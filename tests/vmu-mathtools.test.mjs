@@ -435,9 +435,47 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
 }
 
 if (failed === 0) {
-  console.log('=== VMU MATHTOOLS: ' + passed + ' passed, 0 failed ===')
+  // ── D3: the evaluation scope rides with every plan receipt AND every refusal; no duplicates ─────────
+{
+  const mt = mk({})
+  const plan = mt.t.plan({ op: 'optim/minimize', args: { f: 'x^2' } })
+  ok(plan.enforcedScope === 'evaluated-so-far', 'D3: a plan() receipt states enforcedScope=evaluated-so-far')
+  const refusal = errOf(() => mt.t.plan({ op: 'optim/minimize', args: {}, needsNetwork: true }))
+  ok(!!refusal && refusal.enforcedScope === 'evaluated-so-far', 'D3: a REFUSAL carries enforcedScope itself')
+  ok(!!refusal && Array.isArray(refusal.enforced) && refusal.enforced.includes('vmu.math.sandbox.network'), 'D3: the refusal lists the key that caused it (and states the scope)')
+  const recs = []
+  const tryPush = (fn) => { try { const r = fn(); if (r && Array.isArray(r.enforced)) recs.push(r) } catch (e) { /* refusals covered elsewhere */ } }
+  tryPush(() => mt.t.plan({ op: 'optim/minimize', args: {} }))
+  tryPush(() => mt.t.plan({ op: 'optim/minimize', args: {}, seed: 1 }))
+  tryPush(() => mt.t.plan({ op: 'symbolic/simplify', args: { expr: 'x' } }))
+  const dup = recs.filter((x) => !Array.isArray(x.enforced) || new Set(x.enforced).size !== x.enforced.length)
+  ok(recs.length >= 2, 'no-dup: the batch produced receipts to check (' + recs.length + ')')
+  ok(recs.every((x) => x.enforcedScope === 'evaluated-so-far'), 'D3: every receipt in the batch carries the scope')
+  ok(dup.length === 0, 'no-dup: no receipt in the batch has duplicates (' + (dup.length ? JSON.stringify(dup[0]) : recs.length + ' receipts checked') + ')')
+}
+
+console.log('=== VMU MATHTOOLS: ' + passed + ' passed, 0 failed ===')
   process.exit(0)
 }
 for (const f of failures) console.log('  FAIL - ' + f)
+// ── D3: the evaluation scope rides with every plan receipt AND every refusal; no duplicates ─────────
+{
+  const mt = mk({})
+  const plan = mt.t.plan({ op: 'optim/minimize', args: { f: 'x^2' } })
+  ok(plan.enforcedScope === 'evaluated-so-far', 'D3: a plan() receipt states enforcedScope=evaluated-so-far')
+  const refusal = errOf(() => mt.t.plan({ op: 'optim/minimize', args: {}, needsNetwork: true }))
+  ok(!!refusal && refusal.enforcedScope === 'evaluated-so-far', 'D3: a REFUSAL carries enforcedScope itself')
+  ok(!!refusal && Array.isArray(refusal.enforced) && refusal.enforced.includes('vmu.math.sandbox.network'), 'D3: the refusal lists the key that caused it (and states the scope)')
+  const recs = []
+  const tryPush = (fn) => { try { const r = fn(); if (r && Array.isArray(r.enforced)) recs.push(r) } catch (e) { /* refusals covered elsewhere */ } }
+  tryPush(() => mt.t.plan({ op: 'optim/minimize', args: {} }))
+  tryPush(() => mt.t.plan({ op: 'optim/minimize', args: {}, seed: 1 }))
+  tryPush(() => mt.t.plan({ op: 'symbolic/simplify', args: { expr: 'x' } }))
+  const dup = recs.filter((x) => !Array.isArray(x.enforced) || new Set(x.enforced).size !== x.enforced.length)
+  ok(recs.length >= 2, 'no-dup: the batch produced receipts to check (' + recs.length + ')')
+  ok(recs.every((x) => x.enforcedScope === 'evaluated-so-far'), 'D3: every receipt in the batch carries the scope')
+  ok(dup.length === 0, 'no-dup: no receipt in the batch has duplicates (' + (dup.length ? JSON.stringify(dup[0]) : recs.length + ' receipts checked') + ')')
+}
+
 console.log('=== VMU MATHTOOLS: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(1)

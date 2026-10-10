@@ -25,12 +25,16 @@ import { createBallotBox } from '../vibe-math-vmu/kernel/ballotbox.js'
 import { createMeetings } from '../vibe-math-vmu/kernel/meetings.js'
 import { createRecords } from '../vibe-math-vmu/kernel/records.js'
 import { createMathTools } from '../vibe-math-vmu/kernel/mathtools.js'
+import { createCourse } from '../vibe-math-vmu/kernel/course.js'
+import { createExternal } from '../vibe-math-vmu/kernel/external.js'
+import { createWorkflow } from '../vibe-math-vmu/kernel/workflow.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
 const KERNEL = join(REPO, 'vibe-math-vmu', 'kernel')
 const CLOCK = () => 1000000
 const KEY = 'enforced'
+const GOOD_SEAM = async () => ({ ok: true, status: 200, headers: {}, bytes: 64, body: { results: [{ id: 'x', title: 'T', doi: '10.1/x', concepts: [{ id: 'c1' }, { id: 'c2' }, { id: 'c3' }], mesh: ['m1'], related: ['r1'], abstract: 'a'.repeat(50), authors: [{ name: 'A' }] }] } })
 
 let passed = 0, failed = 0
 const findings = []
@@ -60,6 +64,21 @@ export function collectEnforced(root, maxDepth = 5) {
   }
   walk(root, '$', 0)
   return { arrays, nonArrays, count: arrays.length + nonArrays.length }
+}
+
+/**
+ * Outcome form of rule ③, for keys the module ALWAYS evaluates (the list cannot differ by construction):
+ * the two runs must reach DIFFERENT outcomes, and the key must be reported by the call. Asserting the outcome
+ * as well makes this strictly stronger than "the lists differ" for that class.
+ */
+export function checkOutcomeListed(limiting, permissive, key) {
+  const bad = []
+  if (limiting.outcome === permissive.outcome) {
+    bad.push('OUTCOME-UNCHANGED: ' + limiting.label + ' :: both runs ended "' + limiting.outcome + '" - the pair does not exercise the key (scenario error)')
+  }
+  const reported = [limiting, permissive].some((r) => r.arrays.some((x) => x.value.includes(key)))
+  if (!reported) bad.push('KEY-NOT-ENFORCED-BY-THIS-OPERATION: ' + limiting.label + ' :: ' + key + ' is never reported by this call (scenario attribution error)')
+  return bad
 }
 
 /** The five checkers, pure, so the self-proof can mutate their inputs. */
@@ -179,6 +198,74 @@ const SCENARIOS = [
     limiting: { settings: { 'vmu.math.sandbox.network': 'deny' } }, permissive: { settings: { 'vmu.math.sandbox.network': 'deny' } },
     make: (settings) => createMathTools({ clock: CLOCK, log: () => {}, settings }),
     run: (mt) => mt.plan({ op: 'stats/mean', args: {} }) },
+
+  // ---- ROUND-14 COVERAGE: course.js / external.js / workflow.js (the scan found these three uncovered) ----
+  // course: `vmu.course.visibility` is consulted ONLY when visibility==='public' while allowAuditors is not true
+  // (course.js:112) ⇒ internal vs public changes what this call evaluates.
+  { module: 'course', call: 'open', key: 'vmu.course.visibility', expectDiff: true,
+    limiting: { settings: { 'vmu.course.visibility': 'internal' } }, permissive: { settings: { 'vmu.course.visibility': 'public' } },
+    make: (settings) => createCourse({ clock: CLOCK, log: () => {}, settings }),
+    run: (c) => c.open({ courseId: 'c1', title: 'T' }) },
+  // course: same key, the OTHER trigger (public + allowAuditors=true ⇒ the key is not consulted at all).
+  { module: 'course', call: 'open(public+auditors)', key: 'vmu.course.visibility', expectDiff: true,
+    limiting: { settings: { 'vmu.course.visibility': 'public', 'vmu.course.allowAuditors': false } },
+    permissive: { settings: { 'vmu.course.visibility': 'public', 'vmu.course.allowAuditors': true } },
+    make: (settings) => createCourse({ clock: CLOCK, log: () => {}, settings }),
+    run: (c) => c.open({ courseId: 'c1', title: 'T' }) },
+  // course: `evidencePack` pushes requireEvidence only when it is ON (course.js:256).
+  { module: 'course', call: 'evidencePack', key: 'vmu.course.requireEvidence', expectDiff: true,
+    limiting: { settings: { 'vmu.course.requireEvidence': false } }, permissive: { settings: { 'vmu.course.requireEvidence': true } },
+    make: (settings) => createCourse({ clock: CLOCK, log: () => {}, settings }),
+    run: (c) => c.evidencePack({ claims: [{ refs: ['r1'] }] }) },
+  // course reverse: with an internal course the visibility key must not appear.
+  { module: 'course', call: 'open(internal)', key: 'vmu.course.visibility', expectDiff: false, absentIn: 'both',
+    limiting: { settings: { 'vmu.course.visibility': 'internal' } }, permissive: { settings: { 'vmu.course.visibility': 'internal' } },
+    make: (settings) => createCourse({ clock: CLOCK, log: () => {}, settings }),
+    run: (c) => c.open({ courseId: 'c1', title: 'T' }) },
+
+  // external: `normalize` consults arxiv.maxAbstractChars only when the abstract exceeds it (external.js normalize).
+  { module: 'external', call: 'normalize(arxiv)', key: 'vmu.external.arxiv.maxAbstractChars', expectDiff: true,
+    limiting: { settings: { 'vmu.external.arxiv.maxAbstractChars': 0 } }, permissive: { settings: { 'vmu.external.arxiv.maxAbstractChars': 10 } },
+    make: (settings) => createExternal({ clock: CLOCK, log: () => {}, settings }),
+    run: (ex) => ex.normalize({ source: 'arxiv', enforced: [], results: [{ id: 'x', abstract: 'a'.repeat(50) }] }) },
+  // external: fetchOne refuses on the network gate (allowNetwork=false) and completes with the seam injected.
+  { module: 'external', call: 'fetchOne(allowNetwork)', key: 'vmu.external.allowNetwork', expectDiff: true,
+    limiting: { settings: { 'vmu.external.enabled': true, 'vmu.external.allowNetwork': false } },
+    permissive: { settings: { 'vmu.external.enabled': true, 'vmu.external.allowNetwork': true, 'vmu.external.requireReceipt': false } },
+    make: (settings) => createExternal({ clock: CLOCK, log: () => {}, settings, fetchFn: GOOD_SEAM }),
+    run: (ex) => ex.fetchOne({ source: 'arxiv', id: 'x', by: 'probe' }) },
+  // external: requireReceipt decides whether the receipt rail fires at all (refusal vs success).
+  { module: 'external', call: 'fetchOne(requireReceipt)', key: 'vmu.external.requireReceipt', expectDiff: true,
+    limiting: { settings: { 'vmu.external.enabled': true, 'vmu.external.allowNetwork': true, 'vmu.external.requireReceipt': false } },
+    permissive: { settings: { 'vmu.external.enabled': true, 'vmu.external.allowNetwork': true, 'vmu.external.requireReceipt': true } },
+    make: (settings) => createExternal({ clock: CLOCK, log: () => {}, settings, fetchFn: GOOD_SEAM }),
+    run: (ex) => ex.fetchOne({ source: 'arxiv', id: 'x', by: 'probe' }) },
+  // external reverse: an openalex-only key must not appear while normalizing an arxiv record.
+  { module: 'external', call: 'normalize(arxiv, openalex key)', key: 'vmu.external.openalex.maxConcepts', expectDiff: false, absentIn: 'both',
+    limiting: { settings: { 'vmu.external.openalex.maxConcepts': 3 } }, permissive: { settings: { 'vmu.external.openalex.maxConcepts': 3 } },
+    make: (settings) => createExternal({ clock: CLOCK, log: () => {}, settings }),
+    run: (ex) => ex.normalize({ source: 'arxiv', enforced: [], results: [{ id: 'x', abstract: 'a'.repeat(50) }] }) },
+
+  // workflow: these keys are ALWAYS evaluated, so the list cannot differ - the outcome form is used instead
+  // (outcomeDiff), which asserts one more thing: the two runs must reach different outcomes.
+  { module: 'workflow', call: 'retry', key: 'vmu.workflow.retryMax', outcomeDiff: true,
+    limiting: { settings: { 'vmu.workflow.retryMax': 0 } }, permissive: { settings: { 'vmu.workflow.retryMax': 3 } },
+    make: (settings) => createWorkflow({ clock: CLOCK, log: () => {}, settings }),
+    run: (wf) => { wf.define({ stages: ['open', 'done'], transitions: [{ from: 'open', to: 'done' }] }); wf.advance({ taskId: 't', to: 'open', by: 'a' }); return wf.retry({ taskId: 't', reason: 'probe' }) } },
+  { module: 'workflow', call: 'escalate', key: 'vmu.workflow.escalationAfterMs', outcomeDiff: true,
+    limiting: { settings: { 'vmu.workflow.escalationAfterMs': 0 } }, permissive: { settings: { 'vmu.workflow.escalationAfterMs': 10 ** 9 } },
+    make: (settings) => createWorkflow({ clock: CLOCK, log: () => {}, settings }),
+    run: (wf) => { wf.define({ stages: ['open', 'done'], transitions: [{ from: 'open', to: 'done' }] }); wf.advance({ taskId: 't', to: 'open', by: 'a' }); return wf.escalate({ taskId: 't', reason: 'probe' }) } },
+  { module: 'workflow', call: 'advance(gate)', key: 'vmu.workflow.stageGateMode', outcomeDiff: true,
+    // the missing-evidence gate: `refuse` (default) throws, `advisory` records the block and advances
+    limiting: { settings: { 'vmu.workflow.stageGateMode': 'refuse' } }, permissive: { settings: { 'vmu.workflow.stageGateMode': 'advisory' } },
+    make: (settings) => createWorkflow({ clock: CLOCK, log: () => {}, settings }),
+    run: (wf) => { wf.define({ stages: ['open', 'mid', 'done'], transitions: [{ from: 'open', to: 'mid' }, { from: 'mid', to: 'done' }] }); wf.advance({ taskId: 't', to: 'open', by: 'a' }); return wf.advance({ taskId: 't', to: 'mid', by: 'a' }) } },
+  // workflow reverse: `queue()` (priority order) never consults the retry keys.
+  { module: 'workflow', call: 'queue', key: 'vmu.workflow.retryMax', expectDiff: false, absentIn: 'both',
+    limiting: { settings: { 'vmu.workflow.retryMax': 3 } }, permissive: { settings: { 'vmu.workflow.retryMax': 3 } },
+    make: (settings) => createWorkflow({ clock: CLOCK, log: () => {}, settings }),
+    run: (wf) => { wf.define({ stages: ['open', 'done'], transitions: [{ from: 'open', to: 'done' }] }); wf.advance({ taskId: 't', to: 'open', by: 'a' }); return wf.queue() } },
 ]
 
 // REFUSAL DISCIPLINE: these calls are EXPECTED to refuse. mathtools attaches `enforced` to the thrown error;
@@ -199,17 +286,17 @@ const REFUSAL_SCENARIOS = [
 // ---------------------------------------------------------------------------------------------------------
 // the runner
 // ---------------------------------------------------------------------------------------------------------
-const runVariant = (scn, variant, label) => {
+const runVariant = async (scn, variant, label) => {
   const service = scn.make(variant.settings || {})
   try {
-    const result = scn.run(service, variant)
+    const result = await scn.run(service, variant)
     const c = collectEnforced(result)
     const refused = !!result && typeof result === 'object' && (result.ok === false || typeof result.code === 'string')
-    return { label, ok: true, threw: false, code: refused ? result.code : null, refused, arrays: c.arrays, nonArrays: c.nonArrays, count: c.count }
+    return { label, ok: true, threw: false, code: refused ? result.code : null, refused, outcome: refused ? 'refused:' + result.code : 'ok', arrays: c.arrays, nonArrays: c.nonArrays, count: c.count }
   } catch (e) {
     const refusal = e && typeof e === 'object' ? { enforced: e.enforced } : {}
     const c = collectEnforced(e)
-    return { label, ok: false, threw: true, code: (e && e.code) || 'UNKNOWN', arrays: c.arrays.concat(collectEnforced(refusal).arrays), nonArrays: c.nonArrays, count: c.count, refusalEnforcedIsArray: Array.isArray(e && e.enforced) }
+    return { label, ok: false, threw: true, code: (e && e.code) || 'UNKNOWN', outcome: 'threw:' + ((e && e.code) || 'UNKNOWN'), arrays: c.arrays.concat(collectEnforced(refusal).arrays), nonArrays: c.nonArrays, count: c.count, refusalEnforcedIsArray: Array.isArray(e && e.enforced) }
   }
 }
 
@@ -218,9 +305,9 @@ const attributionRows = []
 const keySetOf = (run) => new Set(run.arrays.flatMap((a) => a.value))
 for (const scn of SCENARIOS) {
   const label = scn.module + '.' + scn.call + ' [' + scn.key + ']'
-  const lim = runVariant(scn, scn.limiting, label + ' limiting')
-  const per = runVariant(scn, scn.permissive, label + ' permissive')
-  const lim2 = runVariant(scn, scn.limiting, label + ' limiting#2')
+  const lim = await runVariant(scn, scn.limiting, label + ' limiting')
+  const per = await runVariant(scn, scn.permissive, label + ' permissive')
+  const lim2 = await runVariant(scn, scn.limiting, label + ' limiting#2')
   if (!byModule.has(scn.module)) byModule.set(scn.module, { diff: 0, keys: [] })
   const m = byModule.get(scn.module)
   {
@@ -254,6 +341,16 @@ for (const scn of SCENARIOS) {
     if (st.length) finding('STATIC-LIST', label, scn.key)
     else { m.diff++; m.keys.push(scn.key) }
   }
+  if (scn.outcomeDiff) {
+    // Keys that the module ALWAYS evaluates cannot make the two lists differ (measured: retry/escalate/advance
+    // report the same key set whether they refuse or not). For those, the honest form of "behaviour changed ⇒
+    // in the list" is the OUTCOME form: the two runs must reach DIFFERENT outcomes, and the key must be
+    // reported by the call. This is not a relaxation - it asserts one more thing (the outcome) than ③ does.
+    const st = checkOutcomeListed(lim, per, scn.key)
+    ok(st.length === 0, 'rule ③ outcome listed: ' + label, st[0])
+    if (st.length) finding(st[0].split(':')[0], label, scn.key)
+    else { m.diff++; m.keys.push(scn.key + ' (outcome)') }
+  }
   if (scn.absentIn) {
     const targets = scn.absentIn === 'both' ? [lim, per] : [scn.absentIn === 'permissive' ? per : lim]
     const abs = targets.map((t) => checkUnevaluatedAbsent(t, scn.key)).flat()
@@ -263,14 +360,15 @@ for (const scn of SCENARIOS) {
 }
 
 // REFUSAL DISCIPLINE runs
-const refusalRuns = REFUSAL_SCENARIOS.map((scn) => {
+const refusalRuns = []
+for (const scn of REFUSAL_SCENARIOS) {
   const label = scn.module + '.' + scn.call
-  const r = runVariant(scn, { settings: scn.settings }, label)
+  const r = await runVariant(scn, { settings: scn.settings }, label)
   const arrayOk = r.threw && r.refusalEnforcedIsArray
   ok(arrayOk, 'rule ⑤ refusal carries enforced[]: ' + label, r.threw ? ('threw ' + r.code + ' with enforced=' + JSON.stringify(r.refusalEnforcedIsArray)) : 'did NOT refuse as expected')
   if (!arrayOk && r.threw) finding('REFUSAL-WITHOUT-ENFORCED', label, r.code)
-  return r
-})
+  refusalRuns.push(r)
+}
 
 // per-module coverage: at least 3 behaviour-changing scenarios
 for (const [mod, m] of [...byModule].sort()) {
@@ -282,7 +380,10 @@ for (const [mod, m] of [...byModule].sort()) {
   const files = readdirSync(KERNEL).filter((f) => f.endsWith('.js')).sort()
   const inCode = files.filter((f) => new RegExp('\\b' + KEY + '\\b').test(stripComments(readFileSync(join(KERNEL, f), 'utf8'), { strings: true })))
   const covered = new Set(SCENARIOS.map((s) => s.module).concat(REFUSAL_SCENARIOS.map((s) => s.module)))
-  const alias = { 'ballotbox.js': 'ballotbox', 'meetings.js': 'meetings', 'records.js': 'records', 'mathtools.js': 'mathtools' }
+  const alias = {
+    'ballotbox.js': 'ballotbox', 'meetings.js': 'meetings', 'records.js': 'records', 'mathtools.js': 'mathtools',
+    'course.js': 'course', 'external.js': 'external', 'workflow.js': 'workflow',
+  }
   const uncovered = inCode.filter((f) => !covered.has(alias[f]) && !covered.has(f.replace(/\.js$/, '')))
   ok(uncovered.length === 0, 'every module mentioning enforced in CODE is covered by this gate', uncovered.join(', '))
   ok(inCode.length >= 3, 'the scan found the enforced-carrying modules', inCode.join(', '))

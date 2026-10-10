@@ -47,6 +47,27 @@ export function createAuditChain({ clock = () => Date.now(), log = () => {}, set
   //   · { ref } together with a `secrets` seam ({ get(ref) | read(ref) | secrets(ref) })
   // The MATERIAL is never logged, never returned and never put into `status()` — only a fingerprint is.
   let macCache = null
+  // ── task-149 (D2): FAILURES ARE NEVER MEMOISED ──────────────────────────────────────────────────────
+  // Memoising a resolution failure turned one transient secret-store hiccup into a permanent, SILENT
+  // degradation of a tamper-resistance control (the whole process stayed unkeyed). Only SUCCESS is cached
+  // (with an optional TTL); failures are recorded as observable attempts and are retried on the next call.
+  let macAttempts = 0
+  let macLastError = null
+  let macLastAttemptAt = null
+  let macResolvedAt = null
+  const cfgMac = () => ({ ttlMs: intOr(settings['vmu.audit.chain.macKeyTtlMs'], 0) })
+  /** Explicit re-resolution hook: clears the (successful) cache so the next call hits the seam again. */
+  function refreshMac() {
+    const had = !!macCache
+    macCache = null
+    macResolvedAt = null
+    return { cleared: had, attempts: macAttempts }
+  }
+  const macExpired = () => {
+    const ttl = cfgMac().ttlMs
+    if (!macCache || !macCache.ok || ttl <= 0 || macResolvedAt === null) return false
+    return clock() - macResolvedAt > ttl
+  }
   const macConfigured = () => macKey !== null && macKey !== undefined && !(typeof macKey === 'string' && macKey === '')
   const usableMaterial = (v) => (typeof v === 'string' && v.length > 0) || (v && typeof v.length === 'number' && v.length > 0) || (typeof v === 'object' && v !== null && v.material !== undefined)
   const macRef = () => {
@@ -54,22 +75,30 @@ export function createAuditChain({ clock = () => Date.now(), log = () => {}, set
     if (macKey && typeof macKey === 'object' && typeof macKey.ref === 'string' && macKey.ref) return macKey.ref
     return macKey ? 'inline' : null
   }
+  /** Record a failed attempt WITHOUT caching it: the next call must try again. */
+  const macFail = (code, reason, ref) => {
+    macAttempts += 1
+    macLastAttemptAt = clock()
+    macLastError = { code, reason }
+    return { ok: false, code, reason, ref: ref === undefined ? macRef() : ref, retryable: true, attempts: macAttempts, lastAttemptAt: macLastAttemptAt }
+  }
   function resolveMac() {
-    if (macCache) return macCache
-    if (!macConfigured()) { macCache = { ok: false, code: 'VMU_CRYPTO_NO_KEY', reason: 'no macKey was provided', ref: null }; return macCache }
+    if (macCache && macCache.ok && !macExpired()) return macCache
+    if (macExpired()) { macCache = null; macResolvedAt = null }
+    if (!macConfigured()) return macFail('VMU_CRYPTO_NO_KEY', 'no macKey was provided', null)
     const done = (material) => {
       if (typeof material === 'string' || material instanceof Uint8Array || Buffer.isBuffer(material)) {
-        if (material.length === 0) { macCache = { ok: false, code: 'VMU_CRYPTO_KEY_UNKNOWN', reason: 'the resolved key material is EMPTY', ref: macRef() }; return macCache }
+        if (material.length === 0) return macFail('VMU_CRYPTO_KEY_UNKNOWN', 'the resolved key material is EMPTY', macRef())
         macCache = {
           ok: true, material, ref: macRef(), algorithm: 'HMAC-SHA256',
           fingerprint: 'sha256:' + createHash('sha256').update(material).digest('hex').slice(0, 12),
           bytes: material.length,
         }
+        macResolvedAt = clock()
         return macCache
       }
       if (material && typeof material === 'object' && material.material !== undefined) return done(material.material)
-      macCache = { ok: false, code: 'VMU_CRYPTO_KEY_UNKNOWN', reason: 'the resolved key material has an unsupported type (' + typeof material + ')', ref: macRef() }
-      return macCache
+      return macFail('VMU_CRYPTO_KEY_UNKNOWN', 'the resolved key material has an unsupported type (' + typeof material + ')', macRef())
     }
     try {
       if (typeof macKey === 'function') return done(macKey())
@@ -79,36 +108,62 @@ export function createAuditChain({ clock = () => Date.now(), log = () => {}, set
         if (typeof macKey.read === 'function') return done(macKey.read())
         const ref = typeof macKey.ref === 'string' ? macKey.ref : null
         if (ref) {
-          if (!secrets) { macCache = { ok: false, code: 'VMU_CRYPTO_UNAVAILABLE', reason: 'macKey is a reference ("' + ref + '") but no `secrets` seam was injected', ref }; return macCache }
+          if (!secrets) return macFail('VMU_CRYPTO_UNAVAILABLE', 'macKey is a reference ("' + ref + '") but no `secrets` seam was injected', ref)
           let got
           if (typeof secrets.get === 'function') got = secrets.get(ref)
           else if (typeof secrets.read === 'function') got = secrets.read(ref)
           else if (typeof secrets === 'function') got = secrets(ref)
-          else { macCache = { ok: false, code: 'VMU_CRYPTO_UNAVAILABLE', reason: 'the `secrets` seam exposes no get/read', ref }; return macCache }
-          if (got === undefined || got === null) { macCache = { ok: false, code: 'VMU_CRYPTO_KEY_UNKNOWN', reason: 'the secrets seam has no entry for "' + ref + '"', ref }; return macCache }
+          else return macFail('VMU_CRYPTO_UNAVAILABLE', 'the `secrets` seam exposes no get/read', ref)
+          if (got === undefined || got === null) return macFail('VMU_CRYPTO_KEY_UNKNOWN', 'the secrets seam has no entry for "' + ref + '"', ref)
           return done(got)
         }
       }
-      macCache = { ok: false, code: 'VMU_CRYPTO_KEY_UNKNOWN', reason: 'macKey has an unrecognised shape', ref: macRef() }
-      return macCache
+      return macFail('VMU_CRYPTO_KEY_UNKNOWN', 'macKey has an unrecognised shape', macRef())
     } catch (e) {
-      macCache = { ok: false, code: 'VMU_CRYPTO_UNAVAILABLE', reason: 'resolving macKey failed: ' + String((e && e.message) || e), ref: macRef() }
-      return macCache
+      // A TRANSIENT failure (e.g. the secret store blipped) must not stick: it is recorded, reported as
+      // retryable, and the NEXT call re-resolves.
+      return macFail('VMU_CRYPTO_UNAVAILABLE', 'resolving macKey failed: ' + String((e && e.message) || e), macRef())
     }
   }
-  /** The PUBLIC, material-free description of the key (this is all that may leave the module). */
+  /**
+   * The PUBLIC, material-free description of the key (this is all that may leave the module).
+   * D2 (task-149): a FAILED attempt is reported (retryable/lastError/attempts/lastAttemptAt) and is NOT
+   * cached, so the next append/verify tries again. `status()` itself does not hammer the seam: it resolves
+   * only on the first touch and otherwise reports the recorded outcome.
+   */
   const macInfo = () => {
-    if (typeof sign === 'function') return { configured: true, source: 'sign-seam', kind: 'injected-seam', ref: null, algorithm: 'seam-defined', fingerprint: null, materialExposed: false, resolved: true }
-    if (!macConfigured()) return { configured: false, source: null, kind: null, ref: null, algorithm: null, fingerprint: null, materialExposed: false, resolved: false, note: 'no macKey: the chain is UNKEYED sha256 (accidental corruption only — an attacker who can rewrite the log can recompute it)' }
-    const m = resolveMac()
-    return m.ok
-      ? { configured: true, source: 'macKey', kind: typeof macKey === 'string' ? 'literal' : (macKey && typeof macKey === 'object' && macKey.ref ? 'secret-ref' : 'inline'), ref: m.ref, algorithm: m.algorithm, fingerprint: m.fingerprint, bytes: m.bytes, materialExposed: false, resolved: true }
-      : { configured: true, source: 'macKey', kind: macKey && typeof macKey === 'object' && macKey.ref ? 'secret-ref' : 'inline', ref: m.ref, algorithm: null, fingerprint: null, materialExposed: false, resolved: false, error: { code: m.code, reason: m.reason } }
+    if (typeof sign === 'function') return { configured: true, source: 'sign-seam', kind: 'injected-seam', ref: null, algorithm: 'seam-defined', fingerprint: null, materialExposed: false, resolved: true, keyed: true, degradation: 'none' }
+    if (!macConfigured()) return { configured: false, source: null, kind: null, ref: null, algorithm: null, fingerprint: null, materialExposed: false, resolved: false, keyed: false, retryable: false, attempts: macAttempts, lastError: macLastError, lastAttemptAt: macLastAttemptAt, degradation: 'unkeyed-by-configuration', note: 'no macKey: the chain is UNKEYED sha256 (accidental corruption only — an attacker who can rewrite the log can recompute it)' }
+    const cachedOk = !!(macCache && macCache.ok && !macExpired())
+    const m = cachedOk ? macCache : (macAttempts === 0 && macCache === null ? resolveMac() : (macCache && macCache.ok ? macCache : null))
+    const common = {
+      configured: true, source: 'macKey',
+      kind: typeof macKey === 'string' ? 'literal' : (macKey && typeof macKey === 'object' && macKey.ref ? 'secret-ref' : 'inline'),
+      materialExposed: false,
+      attempts: macAttempts,
+      lastError: macLastError,
+      lastAttemptAt: macLastAttemptAt,
+      resolvedAt: macResolvedAt,
+      ttlMs: cfgMac().ttlMs,
+      // The degradation stance is FAIL-CLOSED: a configured-but-unresolvable key REFUSES to chain rather
+      // than silently falling back to an unkeyed sha256 chain.
+      degradation: 'fail-closed (a configured key that cannot be resolved refuses; NO silent fallback to sha256)',
+    }
+    if (m && m.ok) return { ...common, ref: m.ref, algorithm: m.algorithm, fingerprint: m.fingerprint, bytes: m.bytes, resolved: true, keyed: true, retryable: false }
+    const err = macLastError || (m && !m.ok ? { code: m.code, reason: m.reason } : null)
+    return {
+      ...common,
+      ref: (m && m.ref) || macRef(), algorithm: null, fingerprint: null, resolved: false, keyed: false,
+      // A failure is always retryable: that is the whole point of task-149 (no sticky degradation).
+      retryable: true,
+      error: err || { code: 'VMU_CRYPTO_UNAVAILABLE', reason: 'the key has not been resolved yet' },
+      note: 'the chain is currently UNKEYED because the key could not be resolved: this is FAIL-CLOSED (appends refuse) and the next attempt will retry — never assume HMAC protection while resolved:false',
+    }
   }
 
   const cfg = () => ({
     hasherInjected: typeof hash === 'function',
-    keyed: typeof sign === 'function' || (macConfigured() && resolveMac().ok),
+    keyed: typeof sign === 'function' || !!(macCache && macCache.ok),
     anchored: !!(anchor && (typeof anchor.write === 'function' || typeof anchor === 'function')),
     // A1: automatic checkpoint rhythm. 0 (default) = manual only. Triggers AND failures are counted.
     checkpointEvery: intOr(settings['vmu.audit.chain.checkpointEvery'], 0),
@@ -464,7 +519,7 @@ export function createAuditChain({ clock = () => Date.now(), log = () => {}, set
   /** Read-only status. Says plainly whether the chain can be built and HOW STRONG it is.
    *  `mac` NEVER contains key material — only a reference, an algorithm and a fingerprint (task-141). */
   const status = () => ({
-    hasher: typeof sign === 'function' ? 'sign(hmac)' : (macConfigured() ? (resolveMac().ok ? 'macKey(HMAC-SHA256)' : 'macKey(UNUSABLE)') : (typeof hash === 'function' ? 'hash' : 'none')),
+    hasher: typeof sign === 'function' ? 'sign(hmac)' : (macConfigured() ? ((macCache && macCache.ok) ? 'macKey(HMAC-SHA256)' : 'macKey(UNRESOLVED: fail-closed, retryable)') : (typeof hash === 'function' ? 'hash' : 'none')),
     chainable: typeof hash === 'function' || typeof sign === 'function' || macConfigured(),
     keyed: cfg().keyed,
     mac: macInfo(),
@@ -490,5 +545,5 @@ export function createAuditChain({ clock = () => Date.now(), log = () => {}, set
     failureReasons: CHAIN_FAILURES.slice(),
   })
 
-  return { apiVersion, append, verifyChain, link, checkpoint, status }
+  return { apiVersion, append, verifyChain, link, checkpoint, status, refresh: refreshMac }
 }

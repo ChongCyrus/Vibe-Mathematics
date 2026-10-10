@@ -1,6 +1,11 @@
 // Independent test for vmu kernel · notify (no dependency on kernel/index.js).
 // Run: node tests/vmu-notify.test.mjs     Last line: === VMU NOTIFY: N passed, M failed ===
+// ROUND 15: the REAL-BUS / REAL-KERNEL sections at the end exist because every earlier section used a stub bus,
+// which accepted a non-string hook - so `notify.emit` crashed bare (`hook.replace is not a function`, bus.js:272)
+// the moment it met the actual bus. A stub cannot catch a shape error against a real contract.
 import { createNotify, CODE } from '../vibe-math-vmu/kernel/notify.js'
+import { createBus } from '../vibe-math-vmu/kernel/bus.js'
+import { createKernel } from '../vibe-math-vmu/kernel/index.js'
 
 let passed = 0
 let failed = 0
@@ -158,6 +163,47 @@ function collector() { const sent = []; return { sent, deliver: (n) => { sent.pu
   const a = mk(); const b = mk()
   ok(JSON.stringify(a.status()) === JSON.stringify(b.status()), 'determinism: two instances agree on status()')
   ok(JSON.stringify(a.list()) === JSON.stringify(b.list()), 'determinism: two instances agree on list()')
+}
+
+// ── 11. THE REAL BUS (round 15): the forward must be a legal STRING hook, and it must not crash ────────────
+{
+  const c = fakeClock()
+  const bus = createBus({ clock: c.clock })
+  const seen = []
+  const rawEmit = bus.emit
+  bus.emit = (hook, payload, opts) => { seen.push({ hook, payload }); return rawEmit(hook, payload, opts) }
+  const { sent, deliver } = collector()
+  const t = createNotify({ clock: c.clock, deliver, settings: on(), bus })
+  t.watch({ subject: 'seam-probe', events: ['seam/probe'], channel: 'probe' })
+  let crashed = null
+  let r = null
+  try { r = t.emit({ event: 'seam/probe', object: 'seam-probe', payload: { at: 1 } }) } catch (e) { crashed = e }
+  ok(crashed === null, 'real bus: emit does NOT throw (was: TypeError hook.replace) :: ' + (crashed && crashed.message))
+  ok(r && r.ok === true && r.delivered === 1, 'real bus: the event is delivered through the seam')
+  ok(seen.length === 1 && typeof seen[0].hook === 'string' && seen[0].hook === 'notify/emit',
+    'real bus: exactly ONE legal STRING hook reached the bus (got ' + JSON.stringify(seen.map((x) => ({ hook: x.hook, type: typeof x.hook })) ) + ')')
+  ok(seen[0] && seen[0].payload && seen[0].payload.event === 'seam/probe' && seen[0].payload.delivered === 1,
+    'real bus: the payload carries the event facts (event + delivered)')
+  ok(sent.length === 1 && sent[0].channel === 'probe' && sent[0].event === 'seam/probe',
+    'real bus: the delivery seam was REALLY called once (fake deliver counted it)')
+}
+
+// ── 12. THE REAL KERNEL (round 15, the reported repro): createKernel → notify.watch → notify.emit ──────────
+{
+  const c = fakeClock()
+  const { sent, deliver } = collector()
+  const k = createKernel({ deliver, clock: c.clock, settings: { 'vmu.core.enabled': true, 'vmu.notify.enabled': true } })
+  const seen = []
+  const rawEmit = k.bus.emit
+  k.bus.emit = (hook, payload, opts) => { seen.push({ hook, payload }); return rawEmit(hook, payload, opts) }
+  k.notify.watch({ subject: 'seam-probe', events: ['seam/probe'], channel: 'probe' })
+  let crashed = null
+  let r = null
+  try { r = k.notify.emit({ event: 'seam/probe', object: 'seam-probe', payload: { at: 1 } }) } catch (e) { crashed = e }
+  ok(crashed === null, 'real kernel: the reported repro no longer crashes :: ' + (crashed && crashed.message))
+  ok(r && r.ok === true && r.delivered === 1, 'real kernel: notify.emit reports one delivery')
+  ok(seen.some((x) => x.hook === 'notify/emit' && typeof x.hook === 'string'), 'real kernel: the kernel bus received the legal string hook')
+  ok(sent.length === 1 && sent[0].subject === 'seam-probe', 'real kernel: the injected deliver seam was called once with the watcher subject')
 }
 
 console.log('=== VMU NOTIFY: ' + passed + ' passed, ' + failed + ' failed ===')

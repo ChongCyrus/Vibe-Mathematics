@@ -228,6 +228,33 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     chunked: 0, lazyExpanded: 0, lists: 0, listTruncated: 0, listSuppressed: 0, headFieldTrimmed: 0, externalAttached: 0, externalVerified: 0,
   }
   let seq = 0
+  /**
+   * THE ONE WAY A KEY ENTERS `enforced`/`fired`: check-before-insert. Duplicates are structurally impossible,
+   * so a receipt never has to be cleaned up at the boundary (the same idiom as kernel/meetings.js).
+   */
+  const mark = (list, key) => { if (key && !list.includes(key)) list.push(key); return list }
+  const markAll = (list, keys) => { for (const k of keys) mark(list, k); return list }
+  /**
+   * EVALUATION SCOPE (D3): `enforced` is BY DESIGN the set of keys evaluated SO FAR on this call — a refusal
+   * that happens early lists only what was consulted before it. `enforcedScope` says that out loud so a reader
+   * cannot mistake a "so far" list for the operation's full key set, and `wouldEvaluate` (refusals) gives that
+   * full set per operation. This is a documented shape, not an omission.
+   */
+  const ENFORCED_SCOPE = 'evaluated-so-far'
+  /** The full key set each operation would consult when it runs to completion (used for `wouldEvaluate`). */
+  const OP_WOULD = Object.freeze({
+    put: [K.tracks, K.requireSettled, K.allowedKinds, K.headMaxItems, K.bodyCapBytes, K.retentionMaxBytes, K.trashCountInQuota, K.slugPolicy, K.slugMaxLength, K.conflictSuffix, K.fingerprintPolicy, K.tierThreshold],
+    get: [K.expandThreshold, K.fingerprintPolicy, K.bodyCapBytes, K.chunkedReturn, K.chunkThreshold, K.chunkBytes, K.headFields],
+    list: [K.tracks, K.headSort, K.headListAt, K.pointerPropagation, K.headFields],
+    supersede: [K.historyStoreMode, K.historyDepth],
+    history: [K.historyStoreMode, K.historyDepth],
+    remove: [K.permanentMarker, K.trashRetainDays, K.trashAutoPurge, K.trashCountInQuota],
+    purge: [K.trashRetainDays, K.trashCountInQuota, K.permanentMarker],
+    restore: [],
+    compact: [K.keepEvery, K.meetingKeepEvery, K.permanentMarker],
+    attachExternal: [K.allowedSchemes, K.verifyExists],
+    externals: [],
+  })
   const bump = (map, key, by = 1) => map.set(key, (map.get(key) || 0) + by)
   const objOf = (map) => { const o = {}; for (const k of [...map.keys()].sort()) o[k] = map.get(k); return o }
   const sumOf = (map) => [...map.values()].reduce((a, b) => a + b, 0)
@@ -247,12 +274,16 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
    * enumeration points). The list is always an array — empty when nothing had been evaluated yet — and it is
    * deduplicated, so "read" (enforced) and "took effect" (fired) stay distinguishable on the REFUSAL path too.
    */
-  const deny = (code, message, hint, enforced = []) => {
+  const deny = (code, message, hint, enforced = [], op = null) => {
     const list = uniq(Array.isArray(enforced) ? enforced : [])
+    const full = op && OP_WOULD[op] ? uniq(OP_WOULD[op].slice()) : list.slice()
     bump(refusals, code, 1)
-    say({ type: 'records/refused', at: now(), code, message, enforced: list })
+    say({ type: 'records/refused', at: now(), code, message, enforced: list, enforcedScope: ENFORCED_SCOPE, op })
     const e = refuse(code, message, hint)
-    e.enforced = list
+    e.enforced = list                      // "evaluated SO FAR" — read `enforcedScope` before treating it as the whole set
+    e.enforcedScope = ENFORCED_SCOPE       // 'evaluated-so-far' (D3: the口径 is part of the refusal itself)
+    e.wouldEvaluate = full                 // the operation's full key set, so the reader gets both facts
+    e.op = op
     return e
   }
   const record_ = (row) => {
@@ -351,69 +382,69 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     put({ track, kind, title, body = '', tags = [], settled = false, permanent = false, by = null } = {}) {
       const enforced = []
       const fired = []
-      enforced.push(K.tracks)
+      mark(enforced, K.tracks)
       if (!tracks.includes(track)) {
-        fired.push(K.tracks)
+        mark(fired, K.tracks)
         throw deny('VMU_INVALID_ARGUMENT', 'unknown record track: ' + String(track) + ' (' + liveTrackNames().join('/') + ')',
-          'vmu.records.tracks declares the tracks; a new track must be declared before it can hold records (vmu.records.tracks)', [K.tracks])
+          'vmu.records.tracks declares the tracks; a new track must be declared before it can hold records (vmu.records.tracks)', [K.tracks], 'put')
       }
-      enforced.push(K.requireSettled)
+      mark(enforced, K.requireSettled)
       if (requireSettled && settled !== true) {
-        fired.push(K.requireSettled)
+        mark(fired, K.requireSettled)
         throw deny('VMU_STATE', 'track "' + track + '" only accepts SETTLED records (vmu.records.requireSettledRecords=true)',
-          'pass settled: true once the record is final, or set vmu.records.requireSettledRecords=false (vmu.records.requireSettledRecords)', [K.tracks, K.requireSettled])
+          'pass settled: true once the record is final, or set vmu.records.requireSettledRecords=false (vmu.records.requireSettledRecords)', [K.tracks, K.requireSettled], 'put')
       }
-      enforced.push(K.allowedKinds)
+      mark(enforced, K.allowedKinds)
       if (!allowedKinds.includes(kind)) {
-        fired.push(K.allowedKinds)
+        mark(fired, K.allowedKinds)
         throw deny('VMU_INVALID_ARGUMENT', 'kind "' + String(kind) + '" is not allowed (vmu.records.allowedKinds)',
-          'allowed kinds: ' + allowedKinds.join(', ') + ' (vmu.records.allowedKinds)', [K.tracks, K.requireSettled, K.allowedKinds])
+          'allowed kinds: ' + allowedKinds.join(', ') + ' (vmu.records.allowedKinds)', [K.tracks, K.requireSettled, K.allowedKinds], 'put')
       }
-      enforced.push(K.headMaxItems)
+      mark(enforced, K.headMaxItems)
       if (headMaxItems > 0 && liveIds(track).length >= headMaxItems) {
-        fired.push(K.headMaxItems)
+        mark(fired, K.headMaxItems)
         throw deny('VMU_QUOTA_EXCEEDED', 'track "' + track + '" is full: ' + liveIds(track).length + '/' + headMaxItems + ' live records (vmu.records.head.maxItems)',
-          'compact or remove records, or raise vmu.records.head.maxItems — the ledger never evicts silently (vmu.records.head.maxItems)', [K.tracks, K.requireSettled, K.allowedKinds, K.headMaxItems])
+          'compact or remove records, or raise vmu.records.head.maxItems — the ledger never evicts silently (vmu.records.head.maxItems)', [K.tracks, K.requireSettled, K.allowedKinds, K.headMaxItems], 'put')
       }
       const bodyText = String(body === undefined || body === null ? '' : body)
       const bytes = bytesOf(bodyText)
-      enforced.push(K.bodyCapBytes)
-      if (bytes > bodyCapBytes) { fired.push(K.bodyCapBytes); counters.bodyTruncated += 1; fire('records/body-truncated', { at: now(), bytes, cap: bodyCapBytes, mode: truncateMode }) }
-      enforced.push(K.retentionMaxBytes)
+      mark(enforced, K.bodyCapBytes)
+      if (bytes > bodyCapBytes) { mark(fired, K.bodyCapBytes); counters.bodyTruncated += 1; fire('records/body-truncated', { at: now(), bytes, cap: bodyCapBytes, mode: truncateMode }) }
+      mark(enforced, K.retentionMaxBytes)
       if (retentionMaxBytes > 0 && trackBytes(track) + bytes > retentionMaxBytes) {
-        fired.push(K.retentionMaxBytes)
-        if (trashCountInQuota) enforced.push(K.trashCountInQuota)
+        mark(fired, K.retentionMaxBytes)
+        if (trashCountInQuota) mark(enforced, K.trashCountInQuota)
         throw deny('VMU_QUOTA_EXCEEDED', 'track "' + track + '" would exceed its size budget: ' + (trackBytes(track) + bytes) + '/' + retentionMaxBytes + ' bytes (vmu.records.retention.maxBytes)',
-          'compact/remove records, or raise vmu.records.retention.maxBytes — nothing is dropped silently' + (trashCountInQuota ? ' (trashed records count: vmu.records.trash.countInQuota=true)' : ' (trashed records do not count: vmu.records.trash.countInQuota=false)'), [K.tracks, K.requireSettled, K.allowedKinds, K.headMaxItems, K.bodyCapBytes, K.retentionMaxBytes])
+          'compact/remove records, or raise vmu.records.retention.maxBytes — nothing is dropped silently' + (trashCountInQuota ? ' (trashed records count: vmu.records.trash.countInQuota=true)' : ' (trashed records do not count: vmu.records.trash.countInQuota=false)'), [K.tracks, K.requireSettled, K.allowedKinds, K.headMaxItems, K.bodyCapBytes, K.retentionMaxBytes], 'put')
       }
       // **去重**（同一键不得出现两次 ✗✓）：`slugMaxLength` 已在上一行整体 push ⇒ 截断时只标 `fired`（不重复进 enforced ✓）
-      enforced.push(K.slugPolicy, K.slugMaxLength, K.conflictSuffix)
+      markAll(enforced, [K.slugPolicy, K.slugMaxLength, K.conflictSuffix])
       const slugged = slugify(title === undefined || title === null ? kind : title, slugPolicy, slugMaxLength)
-      if (slugged.truncated) { counters.slugTruncated += 1; fired.push(K.slugMaxLength) }
-      if (slugged.truncated && enforced.indexOf(K.slugMaxLength) === -1) enforced.push(K.slugMaxLength)
+      if (slugged.truncated) { counters.slugTruncated += 1; mark(fired, K.slugMaxLength) }
+      if (slugged.truncated && enforced.indexOf(K.slugMaxLength) === -1) mark(enforced, K.slugMaxLength)
       const slugIndex = bySlug.get(track) || new Map()
       bySlug.set(track, slugIndex)
       let slug = slugged.slug
       if (slugIndex.has(slug)) {
         counters.slugConflicts += 1
-        fired.push(K.conflictSuffix)
+        mark(fired, K.conflictSuffix)
         const base = slug
         let n = 2
         do { slug = base + suffixFor(n); n += 1 } while (slugIndex.has(slug) && n < 1000)
       }
-      enforced.push(K.fingerprintPolicy)
+      mark(enforced, K.fingerprintPolicy)
       const candidate = { track, kind, title: title === undefined ? null : String(title), slug, body: bodyText, tags: listOf(tags, []), }
       const fp = fingerprintOf(candidate)
       const fpIndex = byFingerprint.get(track) || new Map()
       byFingerprint.set(track, fpIndex)
       if (fpIndex.has(fp)) {
         counters.deduplicated += 1
-        fired.push(K.fingerprintPolicy)
+        mark(fired, K.fingerprintPolicy)
         const existing = records.get(fpIndex.get(fp))
         record_({ type: 'records/deduplicated', id: existing.id, track, fingerprint: fp })
         say({ type: 'records/deduplicated', at: now(), id: existing.id, track, fingerprint: fp })
         fire('records/deduplicated', { id: existing.id, track, fingerprint: fp })
-        return { ok: true, deduplicated: true, id: existing.id, slug: existing.slug, fingerprint: fp, bytes: existing.bytes, enforced: uniq(enforced), fired: uniq(fired), note: 'the same content is already recorded in this track (fingerprintPolicy=' + fingerprintPolicy + '): nothing was added, the duplicate is COUNTED' }
+        return { ok: true, deduplicated: true, id: existing.id, slug: existing.slug, fingerprint: fp, bytes: existing.bytes, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), note: 'the same content is already recorded in this track (fingerprintPolicy=' + fingerprintPolicy + '): nothing was added, the duplicate is COUNTED' }
       }
       const id = 'r-' + (++seq)
       const at = now()
@@ -428,32 +459,32 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       slugIndex.set(slug, id)
       fpIndex.set(fp, id)
       counters.put += 1
-      if (tierThreshold > 0) enforced.push(K.tierThreshold)
+      if (tierThreshold > 0) mark(enforced, K.tierThreshold)
       record_({ type: 'records/put', id, track, kind: rec.kind, slug, bytes, fingerprint: fp })
       say({ type: 'records/put', at, id, track, fingerprint: fp })
       fire('records/put', { id, track, fingerprint: fp })
-      return { ok: true, deduplicated: false, id, slug, fingerprint: fp, bytes, tier: tierOf(rec, at), enforced: uniq(enforced), fired: uniq(fired), at }
+      return { ok: true, deduplicated: false, id, slug, fingerprint: fp, bytes, tier: tierOf(rec, at), enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at }
     },
 
     /** READ a record (head + shaped body). The fingerprint is RECOMPUTED and compared (07 §4.2 spirit). */
     get({ id, includeBody = true } = {}) {
       const rec = records.get(id)
-      if (!rec) throw deny('VMU_NO_SUCH_OBJECT', 'unknown record: ' + String(id), 'known ids: ' + (order.join(', ') || '(none)'), [])
+      if (!rec) throw deny('VMU_NO_SUCH_OBJECT', 'unknown record: ' + String(id), 'known ids: ' + (order.join(', ') || '(none)'), [], 'get')
       const enforced = []
       const fired = []
       const at = now()
       const out = view(rec, { withBody: includeBody, at, count: false })
       const head = rec.bytes <= expandThreshold
-      enforced.push(K.expandThreshold)
-      if (!head) fired.push(K.expandThreshold)
-      enforced.push(K.fingerprintPolicy)
+      mark(enforced, K.expandThreshold)
+      if (!head) mark(fired, K.expandThreshold)
+      mark(enforced, K.fingerprintPolicy)
       const recomputed = fingerprintOf(rec)
       const fingerprintOk = recomputed === rec.fingerprint
-      if (!fingerprintOk) fired.push(K.fingerprintPolicy)
-      if (includeBody && rec.bytes > bodyCapBytes) enforced.push(K.bodyCapBytes)
-      if (includeBody && chunkedReturn && rec.bytes > chunkThreshold) enforced.push(K.chunkedReturn, K.chunkThreshold, K.chunkBytes)
-      if (headFields.some((f) => !(f in out))) enforced.push(K.headFields)
-      return Object.assign({ ok: true, expanded: !head, mode: includeBody ? out.bodyMode : 'head', fingerprintOk, fingerprintRecomputed: recomputed, enforced: uniq(enforced), fired: uniq(fired), at }, out)
+      if (!fingerprintOk) mark(fired, K.fingerprintPolicy)
+      if (includeBody && rec.bytes > bodyCapBytes) mark(enforced, K.bodyCapBytes)
+      if (includeBody && chunkedReturn && rec.bytes > chunkThreshold) markAll(enforced, [K.chunkedReturn, K.chunkThreshold, K.chunkBytes])
+      if (headFields.some((f) => !(f in out))) mark(enforced, K.headFields)
+      return Object.assign({ ok: true, expanded: !head, mode: includeBody ? out.bodyMode : 'head', fingerprintOk, fingerprintRecomputed: recomputed, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at }, out)
     },
 
     /** READ a track's HEAD LIST — the default information channel (07 §4.4; `pointerPropagation` can mute it). */
@@ -462,50 +493,50 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       const fired = []
       const at = now()
       if (track !== null && !tracks.includes(track)) {
-        fired.push(K.tracks)
-        throw deny('VMU_INVALID_ARGUMENT', 'unknown record track: ' + String(track), 'vmu.records.tracks declares the tracks: ' + tracks.join(', '), [K.tracks])
+        mark(fired, K.tracks)
+        throw deny('VMU_INVALID_ARGUMENT', 'unknown record track: ' + String(track), 'vmu.records.tracks declares the tracks: ' + tracks.join(', '), [K.tracks], 'list')
       }
       if (fields !== null) {
         // headFields may TRIM optional fields; the core head fields are immutable (docs/07 §12).
         const missing = CORE_HEAD_FIELDS.filter((f) => !fields.includes(f))
         if (missing.length) {
-          fired.push(K.headFields)
+          mark(fired, K.headFields)
           throw deny('VMU_HEAD_FIELD_IMMUTABLE', 'core head fields cannot be trimmed: ' + missing.join(', '),
-            'vmu.records.headFields may only add/remove OPTIONAL fields; core: ' + CORE_HEAD_FIELDS.join(', '), [K.tracks, K.headFields])
+            'vmu.records.headFields may only add/remove OPTIONAL fields; core: ' + CORE_HEAD_FIELDS.join(', '), [K.tracks, K.headFields], 'list')
         }
       }
       const chosen = fields === null ? headFields.slice() : fields.slice()
       const trimmed = headFields.filter((f) => !chosen.includes(f))
-      if (trimmed.length) fired.push(K.headFields)
+      if (trimmed.length) mark(fired, K.headFields)
       const ids = track === null ? order.slice() : trackList(track).slice()
       let live = ids.map((i) => records.get(i)).filter((r) => r && r.state === 'live')
       live.sort((a, b) => headSort === 'title' ? String(a.title || '').localeCompare(String(b.title || '')) : (headSort === 'createdAt' ? a.createdAt - b.createdAt : a.updatedAt - b.updatedAt) || (a.id < b.id ? -1 : 1))
       const capWanted = Number.isInteger(limit) && limit >= 0 ? limit : headListAt
       if (!pointerPropagation) {
-        fired.push(K.pointerPropagation)
-        return { ok: true, items: [], heads: [], count: 0, available: live.length, dropped: live.length, truncated: live.length > 0, suppressed: true, enforced: uniq(enforced), fired: uniq(fired), at, note: 'vmu.records.pointerPropagation=false: the head list is muted (zero injection, the caller falls back verbatim)' }
+        mark(fired, K.pointerPropagation)
+        return { ok: true, items: [], heads: [], count: 0, available: live.length, dropped: live.length, truncated: live.length > 0, suppressed: true, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at, note: 'vmu.records.pointerPropagation=false: the head list is muted (zero injection, the caller falls back verbatim)' }
       }
       const cap = capWanted === 0 ? live.length : capWanted
       const kept = live.slice(0, cap)
       const dropped = live.length - kept.length
-      if (dropped > 0) fired.push(K.headListAt)
+      if (dropped > 0) mark(fired, K.headListAt)
       const items = kept.map((r) => projectView(r, chosen, at))
-      return { ok: true, items, heads: items.map((x) => x.id), count: items.length, available: live.length, dropped, truncated: dropped > 0, suppressed: false, fields: chosen, sort: headSort, enforced: uniq(enforced), fired: uniq(fired), at, note: 'the head list is the default information channel (docs/07 §4.4); truncation is COUNTED, never silent' }
+      return { ok: true, items, heads: items.map((x) => x.id), count: items.length, available: live.length, dropped, truncated: dropped > 0, suppressed: false, fields: chosen, sort: headSort, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at, note: 'the head list is the default information channel (docs/07 §4.4); truncation is COUNTED, never silent' }
     },
 
     /** Supersede (a new revision). A reason is mandatory; the versioning knobs shape what is stored. */
     supersede({ id, reason = null, by = null, title = null, body = null, tags = null } = {}) {
       const rec = records.get(id)
-      if (!rec) throw deny('VMU_NO_SUCH_OBJECT', 'unknown record: ' + String(id), 'known ids: ' + (order.join(', ') || '(none)'), [K.historyStoreMode, K.historyDepth])
+      if (!rec) throw deny('VMU_NO_SUCH_OBJECT', 'unknown record: ' + String(id), 'known ids: ' + (order.join(', ') || '(none)'), [K.historyStoreMode, K.historyDepth], 'supersede')
       const enforced = [K.historyStoreMode, K.historyDepth]
       const fired = []
-      if (typeof reason !== 'string' || !reason.trim()) throw deny('VMU_REASON_REQUIRED', 'superseding ' + rec.id + ' requires a reason', 'the reason is part of the record history (07 §4)', [K.historyStoreMode, K.historyDepth])
+      if (typeof reason !== 'string' || !reason.trim()) throw deny('VMU_REASON_REQUIRED', 'superseding ' + rec.id + ' requires a reason', 'the reason is part of the record history (07 §4)', [K.historyStoreMode, K.historyDepth], 'supersede')
       const changed = {}
       if (title !== null && String(title) !== rec.title) changed.title = [rec.title, String(title)]
       if (body !== null && String(body) !== rec.body) changed.body = [rec.bytes, bytesOf(body)]
       if (tags !== null) changed.tags = [rec.tags.slice(), listOf(tags, [])]
       pushVersion(rec, { by, reason, changed })
-      if (Object.keys(changed).length === 0) fired.push(K.historyStoreMode)
+      if (Object.keys(changed).length === 0) mark(fired, K.historyStoreMode)
       if (title !== null) rec.title = String(title)
       if (body !== null) { rec.body = String(body); rec.bytes = bytesOf(body) }
       if (tags !== null) rec.tags = listOf(tags, rec.tags)
@@ -518,7 +549,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       fpIndex.set(rec.fingerprint, rec.id)
       record_({ type: 'records/superseded', id: rec.id, rev: rec.rev, why: reason, mode: historyStoreMode })
       fire('records/superseded', { id: rec.id, rev: rec.rev, mode: historyStoreMode })
-      return { ok: true, id: rec.id, rev: rec.rev, mode: historyStoreMode, changedKeys: Object.keys(changed), fingerprint: rec.fingerprint, enforced: uniq(enforced), fired: uniq(fired) }
+      return { ok: true, id: rec.id, rev: rec.rev, mode: historyStoreMode, changedKeys: Object.keys(changed), fingerprint: rec.fingerprint, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired) }
     },
 
     /** READ the version history (bounded; drops are COUNTED). */
@@ -532,22 +563,22 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         for (const v of rec.versions) all.push({ id: rid, rev: v.rev, at: v.at, by: v.by, reason: v.reason, mode: v.mode || 'full', changed: v.changed || null, snapshot: v.snapshot || null, tier: tierOf(rec) })
       }
       const kept = all.slice(Math.max(0, all.length - cap))
-      return { ok: true, versions: kept, count: kept.length, available: all.length, dropped: all.length - kept.length, truncated: all.length > kept.length, retainedDepth: historyDepth, storeMode: historyStoreMode, ringDropped: historyDropped.n, enforced: uniq(enforced), fired: [] }
+      return { ok: true, versions: kept, count: kept.length, available: all.length, dropped: all.length - kept.length, truncated: all.length > kept.length, retainedDepth: historyDepth, storeMode: historyStoreMode, ringDropped: historyDropped.n, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: [] }
     },
 
     /** Move a record to the trash. A permanent record CANNOT be removed (`VMU_RETENTION_CONFLICT`, 20 §6). */
     remove({ id, reason = null, by = null } = {}) {
       const rec = records.get(id)
-      if (!rec) throw deny('VMU_NO_SUCH_OBJECT', 'unknown record: ' + String(id), 'known ids: ' + (order.join(', ') || '(none)'), [K.permanentMarker, K.trashRetainDays])
+      if (!rec) throw deny('VMU_NO_SUCH_OBJECT', 'unknown record: ' + String(id), 'known ids: ' + (order.join(', ') || '(none)'), [K.permanentMarker, K.trashRetainDays], 'remove')
       const enforced = [K.permanentMarker, K.trashRetainDays]
       const fired = []
       if (isPermanent(rec)) {
-        fired.push(K.permanentMarker)
+        mark(fired, K.permanentMarker)
         throw deny('VMU_RETENTION_CONFLICT', 'record ' + rec.id + ' is marked "' + permanentMarker + '" and cannot be removed',
-          'permanent records are protected (docs/20 §6) — clear the marker deliberately first', [K.permanentMarker, K.trashRetainDays])
+          'permanent records are protected (docs/20 §6) — clear the marker deliberately first', [K.permanentMarker, K.trashRetainDays], 'remove')
       }
-      if (rec.state === 'trashed') return { ok: true, id: rec.id, already: true, state: 'trashed', purgeAt: rec.purgeAt, enforced: uniq(enforced), fired: uniq(fired) }
-      if (typeof by !== 'string' || !by.trim()) throw deny('VMU_INVALID_ARGUMENT', 'removing ' + rec.id + ' needs a non-empty `by`', 'a removal is audited: who removed it and why it is recoverable', [K.permanentMarker, K.trashRetainDays])
+      if (rec.state === 'trashed') return { ok: true, id: rec.id, already: true, state: 'trashed', purgeAt: rec.purgeAt, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired) }
+      if (typeof by !== 'string' || !by.trim()) throw deny('VMU_INVALID_ARGUMENT', 'removing ' + rec.id + ' needs a non-empty `by`', 'a removal is audited: who removed it and why it is recoverable', [K.permanentMarker, K.trashRetainDays], 'remove')
       rec.state = 'trashed'
       rec.trashedAt = now()
       rec.purgeAt = rec.trashedAt + trashRetainDays * DAY_MS
@@ -555,48 +586,48 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       record_({ type: 'records/trashed', id: rec.id, purgeAt: rec.purgeAt, why: reason, by })
       fire('records/trashed', { id: rec.id, purgeAt: rec.purgeAt })
       let purged = null
-      if (trashAutoPurge) { enforced.push(K.trashAutoPurge); fired.push(K.trashAutoPurge); purged = api.purge({}) }
+      if (trashAutoPurge) { mark(enforced, K.trashAutoPurge); mark(fired, K.trashAutoPurge); purged = api.purge({}) }
       const autoPurgedCount = purged ? purged.purgedCount : 0
-      if (trashCountInQuota) enforced.push(K.trashCountInQuota)
-      return { ok: true, id: rec.id, state: 'trashed', purgeAt: rec.purgeAt, retainDays: trashRetainDays, autoPurged: autoPurgedCount, autoPurgedIds: purged ? purged.purged.map((x) => x.id) : [], enforced: uniq(enforced), fired: uniq(fired) }
+      if (trashCountInQuota) mark(enforced, K.trashCountInQuota)
+      return { ok: true, id: rec.id, state: 'trashed', purgeAt: rec.purgeAt, retainDays: trashRetainDays, autoPurged: autoPurgedCount, autoPurgedIds: purged ? purged.purged.map((x) => x.id) : [], enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired) }
     },
 
     /** Purge expired trash. Expiry uses the injected clock; every purge is COUNTED (`VMU_TRASH_EXPIRED`). */
     purge({ at = null } = {}) {
       const when = at === null ? now() : at
-      if (!Number.isFinite(when)) throw deny('VMU_INVALID_ARGUMENT', 'purge `at` must be milliseconds', 'omit it to use the injected clock', [K.trashRetainDays, K.trashCountInQuota])
+      if (!Number.isFinite(when)) throw deny('VMU_INVALID_ARGUMENT', 'purge `at` must be milliseconds', 'omit it to use the injected clock', [K.trashRetainDays, K.trashCountInQuota], 'purge')
       const enforced = [K.trashRetainDays, K.trashCountInQuota]
       const fired = []
       const purged = []
       for (const id of order.slice()) {
         const rec = records.get(id)
         if (!rec || rec.state !== 'trashed' || rec.purgeAt === null || rec.purgeAt > when) continue
-        if (isPermanent(rec)) { fired.push(K.permanentMarker); enforced.push(K.permanentMarker); continue }
+        if (isPermanent(rec)) { mark(fired, K.permanentMarker); mark(enforced, K.permanentMarker); continue }
         records.delete(id)
         const idx = order.indexOf(id); if (idx >= 0) order.splice(idx, 1)
         const t = trackList(rec.track); const ti = t.indexOf(id); if (ti >= 0) t.splice(ti, 1)
         const si = bySlug.get(rec.track); if (si) si.delete(rec.slug)
         const fi = byFingerprint.get(rec.track); if (fi) fi.delete(rec.fingerprint)
         externalRefs.delete(id)
-        purged.push({ id, bytes: rec.bytes, trashedAt: rec.trashedAt, expiredAt: rec.purgeAt })
+        markAll(purged, [{ id, bytes: rec.bytes, trashedAt: rec.trashedAt, expiredAt: rec.purgeAt }])
         counters.purged += 1
         record_({ type: 'records/purged', id, bytes: rec.bytes, expiredAt: rec.purgeAt })
       }
-      if (purged.length) { fired.push(K.trashRetainDays); fire('records/trash-expired', { ids: purged.map((p) => p.id), retainDays: trashRetainDays }) }
-      return { ok: true, at: when, purged, purgedCount: purged.length, retainDays: trashRetainDays, autoPurge: trashAutoPurge, enforced: uniq(enforced), fired: uniq(fired), note: purged.length ? 'expired trash was purged (COUNTED, never silent)' : 'nothing was purged' }
+      if (purged.length) { mark(fired, K.trashRetainDays); fire('records/trash-expired', { ids: purged.map((p) => p.id), retainDays: trashRetainDays }) }
+      return { ok: true, at: when, purged, purgedCount: purged.length, retainDays: trashRetainDays, autoPurge: trashAutoPurge, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), note: purged.length ? 'expired trash was purged (COUNTED, never silent)' : 'nothing was purged' }
     },
 
     /** Restore a trashed record. */
     restore({ id, by = null } = {}) {
       const rec = records.get(id)
-      if (!rec) throw deny('VMU_NO_SUCH_OBJECT', 'unknown record: ' + String(id), 'known ids: ' + (order.join(', ') || '(none)'), [])
-      if (rec.state !== 'trashed') throw deny('VMU_STATE', 'record ' + rec.id + ' is ' + rec.state + ', not trashed', 'only trashed records can be restored', [])
+      if (!rec) throw deny('VMU_NO_SUCH_OBJECT', 'unknown record: ' + String(id), 'known ids: ' + (order.join(', ') || '(none)'), [], 'restore')
+      if (rec.state !== 'trashed') throw deny('VMU_STATE', 'record ' + rec.id + ' is ' + rec.state + ', not trashed', 'only trashed records can be restored', [], 'restore')
       rec.state = 'live'
       rec.trashedAt = null
       rec.purgeAt = null
       counters.restored += 1
       record_({ type: 'records/restored', id: rec.id, by })
-      return { ok: true, id: rec.id, state: 'live', enforced: [], fired: [] }
+      return { ok: true, id: rec.id, state: 'live', enforced: [], enforcedScope: ENFORCED_SCOPE, fired: [] }
     },
 
     /**
@@ -610,18 +641,18 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       const prunedVersions = []
       const archived = []
       for (const t of targets) {
-        if (!tracks.includes(t)) throw deny('VMU_INVALID_ARGUMENT', 'unknown record track: ' + String(t), 'vmu.records.tracks declares the tracks: ' + tracks.join(', '), [K.keepEvery, K.meetingKeepEvery, K.permanentMarker])
+        if (!tracks.includes(t)) throw deny('VMU_INVALID_ARGUMENT', 'unknown record track: ' + String(t), 'vmu.records.tracks declares the tracks: ' + tracks.join(', '), [K.keepEvery, K.meetingKeepEvery, K.permanentMarker], 'compact')
         const isMeeting = isMeetingTrack(t)
         const every = Number.isInteger(keepEveryOverride) && keepEveryOverride >= 0 ? keepEveryOverride : (isMeeting ? meetingKeepEvery : keepEvery)
         if (every <= 1) continue
-        if (isMeeting && keepEveryOverride === null) fired.push(K.meetingKeepEvery)
-        else fired.push(K.keepEvery)
+        if (isMeeting && keepEveryOverride === null) mark(fired, K.meetingKeepEvery)
+        else mark(fired, K.keepEvery)
         for (const id of trackList(t).slice()) {
           const rec = records.get(id)
           if (!rec) continue
-          if (isPermanent(rec)) { enforced.push(K.permanentMarker); fired.push(K.permanentMarker); continue }
+          if (isPermanent(rec)) { mark(enforced, K.permanentMarker); mark(fired, K.permanentMarker); continue }
           const kept = []
-          rec.versions.forEach((v, i) => { if (i % every === 0) kept.push(v); else prunedVersions.push({ id, track: t, rev: v.rev }) })
+          rec.versions.forEach((v, i) => { if (i % every === 0) kept.push(v); else markAll(prunedVersions, [{ id, track: t, rev: v.rev }]) })
           if (kept.length !== rec.versions.length) { counters.versionsPruned += rec.versions.length - kept.length; rec.versions = kept }
         }
         if (isMeeting) {
@@ -629,9 +660,9 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           ids.forEach((id, index) => {
             const rec = records.get(id)
             if (!rec || rec.state !== 'live') return
-            if (isPermanent(rec)) { fired.push(K.permanentMarker); return }
+            if (isPermanent(rec)) { mark(fired, K.permanentMarker); return }
             if (index % every === 0) return
-            archived.push({ id, track: t, rev: rec.rev, keepEvery: every })
+            markAll(archived, [{ id, track: t, rev: rec.rev, keepEvery: every }])
             records.delete(id)
             const oi = order.indexOf(id); if (oi >= 0) order.splice(oi, 1)
             const ti = trackList(t).indexOf(id); if (ti >= 0) trackList(t).splice(ti, 1)
@@ -647,7 +678,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       }
       return {
         ok: true, prunedVersions, prunedVersionCount: prunedVersions.length, archived, archivedCount: archived.length,
-        keepEvery, meetingKeepEvery, enforced: uniq(enforced), fired: uniq(fired),
+        keepEvery, meetingKeepEvery, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired),
         note: (prunedVersions.length || archived.length)
           ? 'compaction dropped ' + prunedVersions.length + ' version(s) and ' + archived.length + ' archived record(s) — COUNTED, never silent'
           : 'nothing to compact',
@@ -657,18 +688,18 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     /** Attach an external reference: the scheme allowlist and existence verification are both knobs. */
     attachExternal({ id, uri, by = null } = {}) {
       const rec = records.get(id)
-      if (!rec) throw deny('VMU_NO_SUCH_OBJECT', 'unknown record: ' + String(id), 'known ids: ' + (order.join(', ') || '(none)'), [K.allowedSchemes, K.verifyExists])
+      if (!rec) throw deny('VMU_NO_SUCH_OBJECT', 'unknown record: ' + String(id), 'known ids: ' + (order.join(', ') || '(none)'), [K.allowedSchemes, K.verifyExists], 'attachExternal')
       const enforced = [K.allowedSchemes, K.verifyExists]
       const fired = []
       const text = String(uri === undefined || uri === null ? '' : uri)
       const scheme = (text.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/) || [])[1]
       if (!scheme) {
-        throw deny('VMU_EXTERNAL_QUERY_INVALID', 'the external reference needs a scheme: ' + text, 'e.g. file:///… , http://… — allowed schemes: ' + allowedSchemes.join(', '), [K.allowedSchemes, K.verifyExists])
+        throw deny('VMU_EXTERNAL_QUERY_INVALID', 'the external reference needs a scheme: ' + text, 'e.g. file:///… , http://… — allowed schemes: ' + allowedSchemes.join(', '), [K.allowedSchemes, K.verifyExists], 'attachExternal')
       }
       if (!allowedSchemes.includes(scheme.toLowerCase())) {
-        fired.push(K.allowedSchemes)
+        mark(fired, K.allowedSchemes)
         throw deny('VMU_EXTERNAL_DISABLED', 'scheme "' + scheme + '" is not allowed (vmu.records.external.allowedSchemes)',
-          'allowed schemes: ' + allowedSchemes.join(', '), [K.allowedSchemes, K.verifyExists])
+          'allowed schemes: ' + allowedSchemes.join(', '), [K.allowedSchemes, K.verifyExists], 'attachExternal')
       }
       let verified = null
       if (verifyExists) {
@@ -676,29 +707,29 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           let present
           try { present = exists(text) === true } catch (e) { bump(unwired, 'external-seam', 1); say({ type: 'records/external-unwired', at: now(), why: String((e && e.message) || e) }); present = null }
           if (present === false) {
-            fired.push(K.verifyExists)
-            throw deny('VMU_EXTERNAL_UNAVAILABLE', 'the external reference does not exist: ' + text, 'vmu.records.external.verifyExists=true makes an unverifiable reference an error', [K.allowedSchemes, K.verifyExists])
+            mark(fired, K.verifyExists)
+            throw deny('VMU_EXTERNAL_UNAVAILABLE', 'the external reference does not exist: ' + text, 'vmu.records.external.verifyExists=true makes an unverifiable reference an error', [K.allowedSchemes, K.verifyExists], 'attachExternal')
           }
           if (present === true) { verified = true; counters.externalVerified += 1 }
         } else {
           bump(unwired, 'external-seam', 1)
           say({ type: 'records/external-unwired', at: now(), why: 'no exists() seam was injected: verification is NOT possible (verified=null)' })
         }
-      } else { fired.push(K.verifyExists) }
+      } else { mark(fired, K.verifyExists) }
       const list = externalRefs.get(rec.id) || []
       list.push({ uri: text, scheme: scheme.toLowerCase(), verified, at: now(), by: by === null ? null : String(by) })
       externalRefs.set(rec.id, list)
       counters.externalAttached += 1
       record_({ type: 'records/external-attached', id: rec.id, uri: text, verified })
-      return { ok: true, id: rec.id, uri: text, scheme: scheme.toLowerCase(), verified, count: list.length, enforced: uniq(enforced), fired: uniq(fired), note: verified === null ? 'verification was NOT possible (no exists() seam) — disclosed, not pretended' : 'verified=' + verified }
+      return { ok: true, id: rec.id, uri: text, scheme: scheme.toLowerCase(), verified, count: list.length, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), note: verified === null ? 'verification was NOT possible (no exists() seam) — disclosed, not pretended' : 'verified=' + verified }
     },
 
     /** READ the external references of a record. */
     externals({ id } = {}) {
       const rec = records.get(id)
-      if (!rec) throw deny('VMU_NO_SUCH_OBJECT', 'unknown record: ' + String(id), 'known ids: ' + (order.join(', ') || '(none)'), [])
+      if (!rec) throw deny('VMU_NO_SUCH_OBJECT', 'unknown record: ' + String(id), 'known ids: ' + (order.join(', ') || '(none)'), [], 'externals')
       const list = (externalRefs.get(rec.id) || []).map((x) => Object.assign({}, x))
-      return { ok: true, id: rec.id, refs: list, count: list.length, enforced: [], fired: [] }
+      return { ok: true, id: rec.id, refs: list, count: list.length, enforced: [], enforcedScope: ENFORCED_SCOPE, fired: [] }
     },
 
     /** READ-ONLY self-report: the 24-key partition, the extra wired keys, caps, counters and hot spots. */

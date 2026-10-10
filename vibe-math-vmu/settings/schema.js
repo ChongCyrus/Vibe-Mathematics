@@ -486,6 +486,9 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.records.chunk.chunkBytes', type: 'natural', def: 65536, hot: HOT.H1, who: 'office', doc: '分片大小' },
   { key: 'vmu.records.external.allowedSchemes', type: 'stringList', def: ['file'], hot: HOT.H1, who: 'office', doc: '外部引用方案白名单（表外 ⇒ `VMU_EXTERNAL_DISABLED` ✓）' },
   { key: 'vmu.records.external.verifyExists', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '是否校验外部引用存在（无接缝 ⇒ `verified:null` 自曝，**绝不假装已验证** ✗✓）' },
+  // ROUND 24: the two course keys kernel/course.js reads as fallbacks (they were not among the 24 declared).
+  { key: 'vmu.course.gradeScaleMax', type: 'natural', def: 100, hot: HOT.H2, who: 'chair', doc: '评分量表上限（越界 ⇒ 具名拒 ✓）' },
+  { key: 'vmu.course.passMark', type: 'natural', def: 0, hot: HOT.H2, who: 'chair', doc: '及格线（0＝不设 ✓）' },
   // K5 (round 16): the read-only replay that reconstructs state from the audit log.
   { key: 'vmu.replay.strict', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '未知事件类型是否具名拒（默认 false：计入 unknownKinds ✓ 绝不静默跳过 ✗）' },
   { key: 'vmu.replay.keepUnknown', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '未知事件是否保留在重建结果里（保留并标 unknown ✓）' },
@@ -510,6 +513,7 @@ const CORE_DEFS = Object.freeze([
   // N1/N4 (round 18): the tamper-evident audit chain and the state-version/migration primitive.
   { key: 'vmu.audit.chain.verifyCap', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '分段验证上限（0＝全链；**只验前 N 行时必须如实报未验** ✗✓）' },
   { key: 'vmu.audit.chain.algorithm', type: 'string', def: 'sha256', hot: HOT.H1, who: 'office', doc: '链哈希算法声明（仅回显；实际由注入 hash 决定 ✗）' },
+  { key: 'vmu.audit.chain.macKeyTtlMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '成功解析的密钥缓存时长（0＝不过期；**解析失败不入缓存**，下次必重试 ✗✓ —— 防一次密钥库抖动永久禁用不可否认链 ✓）' },
   { key: 'vmu.audit.macKey', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: '审计链 HMAC 的**密钥引用**（**secret 引用，绝不写密钥材料** ✗✓；经注入的 `secrets` 缝解析 ✓；未给 ⇒ 链保持无密钥并**自曝 `keyed:false`** ✗✓）' },
   { key: 'vmu.state.current', type: 'string', def: '1', hot: HOT.H1, who: 'office', doc: '当前状态版本' },
   { key: 'vmu.state.requireVersion', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '状态必须带版本标签（缺失 ⇒ 具名拒，**绝不当成当前版本** ✗✓）' },

@@ -529,5 +529,43 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
   ok(firedSomewhere.size >= 5, 'receipts: the scenario really fired several knobs (' + firedSomewhere.size + ')')
 }
 
+// ── 7. D3: the evaluation scope rides with the receipt AND the refusal; no receipt has duplicates ─────
+{
+  const c = fakeClock(0)
+  const r = createRecords({ clock: c.clock, settings: S({ 'vmu.records.head.maxItems': 1, 'vmu.records.bodyCapBytes': 4 }) })
+  const p1 = put(r, { title: 'a', body: 'body a' })
+  ok(p1.enforcedScope === 'evaluated-so-far', 'D3: a receipt states enforcedScope=evaluated-so-far')
+  ok(r.list().enforcedScope === 'evaluated-so-far' && r.get({ id: p1.id }).enforcedScope === 'evaluated-so-far', 'D3: every reader receipt carries the scope too')
+  const refusal = (() => { try { put(r, { title: 'b', body: 'body b' }) } catch (e) { return e } return null })()
+  ok(!!refusal && refusal.enforcedScope === 'evaluated-so-far', 'D3: a REFUSAL carries enforcedScope itself (not just a note in status())')
+  ok(!!refusal && Array.isArray(refusal.wouldEvaluate) && refusal.wouldEvaluate.length >= refusal.enforced.length, 'D3: the refusal also gives wouldEvaluate (the full set), ⊇ enforced')
+  ok(!!refusal && refusal.wouldEvaluate.every((k) => WIRED_KEYS.concat(EXTRA_WIRED_KEYS).includes(k)), 'D3: wouldEvaluate lists only wired keys')
+  const empty = (() => { try { r.get({ id: 'r-404' }) } catch (e) { return e } return null })()
+  ok(!!empty && empty.enforcedScope === 'evaluated-so-far' && Array.isArray(empty.enforced) && empty.enforced.length === 0, 'D3: an empty "so far" list still states its scope')
+  ok(!!empty && empty.wouldEvaluate.includes('vmu.records.bodyCapBytes'), 'D3: wouldEvaluate tells the reader what the operation WOULD consult')
+
+  // one full scenario: EVERY receipt must be duplicate-free (not only the path fixed last round)
+  const rc = createRecords({ clock: c.clock, settings: S({ 'vmu.records.bodyCapBytes': 4, 'vmu.records.naming.maxLength': 5, 'vmu.records.body.chunkedReturn': true, 'vmu.records.chunk.thresholdBytes': 1, 'vmu.records.chunk.chunkBytes': 2, 'vmu.records.headListAt': 1, 'vmu.records.retention.tierThreshold': 1, 'vmu.records.retention.keepEvery': 1, 'vmu.records.trash.retainDays': 0, 'vmu.records.trash.autoPurge': true, 'vmu.records.trash.countInQuota': true, 'vmu.records.external.allowedSchemes': ['file'], 'vmu.records.history.depth': 2, 'vmu.records.history.storeMode': 'diff', 'vmu.records.fingerprintPolicy': 'content+display' }), exists: () => true })
+  const receipts = []
+  const tryPush = (fn) => { try { receipts.push(fn()) } catch (e) { /* refusals are checked elsewhere */ } }
+  tryPush(() => rc.put({ track: 'progress', kind: 'progress', title: 'averylongtitle', body: 'x'.repeat(20), settled: true }))
+  tryPush(() => rc.put({ track: 'progress', kind: 'progress', title: 'averylongtitle', body: 'x'.repeat(20), settled: true }))
+  tryPush(() => rc.put({ track: 'progress', kind: 'progress', title: 'third-title', body: 'y'.repeat(20), settled: true }))
+  tryPush(() => rc.get({ id: 'r-1' }))
+  tryPush(() => rc.list())
+  tryPush(() => rc.supersede({ id: 'r-1', reason: 'r', body: 'z'.repeat(20) }))
+  tryPush(() => rc.history({ id: 'r-1' }))
+  tryPush(() => rc.attachExternal({ id: 'r-1', uri: 'file:///x' }))
+  tryPush(() => rc.externals({ id: 'r-1' }))
+  tryPush(() => rc.compact({ track: 'progress' }))
+  tryPush(() => rc.remove({ id: 'r-2', by: 'office', reason: 'done' }))
+  tryPush(() => rc.purge())
+  const bad = receipts.filter((x) => !Array.isArray(x.enforced) || new Set(x.enforced).size !== x.enforced.length || (x.fired && new Set(x.fired).size !== x.fired.length))
+  ok(receipts.length >= 8, 'no-dup: the scenario produced enough receipts to be meaningful (' + receipts.length + ')')
+  ok(receipts.every((x) => Array.isArray(x.enforced) && x.enforcedScope === 'evaluated-so-far'), 'no-dup: every receipt in the scenario carries an array enforced + the scope')
+  ok(bad.length === 0, 'no-dup: NO receipt in the full scenario has duplicates (' + (bad.length ? JSON.stringify(bad[0]) : receipts.length + ' receipts checked') + ')')
+  ok(receipts.every((x) => !x.fired || x.fired.every((k) => x.enforced.includes(k))), 'no-dup: fired ⊆ enforced in every receipt')
+}
+
 console.log('=== VMU RECORDS: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) process.exit(1)

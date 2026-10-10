@@ -1,21 +1,21 @@
-// vmu kernel — the composition root (docs/02 §2, docs/03 §1).
+﻿// vmu kernel 鈥?the composition root (docs/02 搂2, docs/03 搂1).
 //
 // This file is what the goal means by "the vmu framework": the place where the parts are ASSEMBLED, and
 // the place where the framework's first promise is enforced. That promise is the zero-mechanism default
-// (R1, docs/04 §3): a kernel created with no settings, no packs and no middleware must be INERT.
+// (R1, docs/04 搂3): a kernel created with no settings, no packs and no middleware must be INERT.
 // Concretely, and this is asserted by tests/vmu-kernel.test.mjs:
-//   · it registers nothing with the host;
-//   · it subscribes to no hook (the bus is empty);
-//   · it injects no prompt section (the assembled prompt equals the base it was given);
-//   · it opens no durable store unless a root was supplied.
+//   路 it registers nothing with the host;
+//   路 it subscribes to no hook (the bus is empty);
+//   路 it injects no prompt section (the assembled prompt equals the base it was given);
+//   路 it opens no durable store unless a root was supplied.
 // Everything else is activated by DECLARATION: settings choose what runs, packs choose what an
 // institution means, and a capability that is switched on without its seam is refused BY NAME
 // (VMU_ENGINE_UNAVAILABLE) instead of quietly behaving as if it were off.
 //
-// Ownership rule applied here (docs/04 §11, P3): the kernel carries MECHANISM only. Nothing in this
+// Ownership rule applied here (docs/04 搂11, P3): the kernel carries MECHANISM only. Nothing in this
 // file names a role, a stage, a paper or a policy - those arrive as settings values or pack content.
 
-/** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
+/** Public-interface version of this module's surfaces (docs/03 搂7, D13-O3). */
 export const apiVersion = 1
 
 export { PACK_CONTRACT_VERSION } from './registry.js'
@@ -36,7 +36,7 @@ import { createRegistry } from './registry.js'
 import { createWorkLedger } from './work.js'
 import { createLeanFace } from './lean.js'
 import { memoryCeilingExceeded } from './guard.js'
-// IMPLEMENTATION PHASE (docs/11 §9.8): the first planned primitives to become real code.
+// IMPLEMENTATION PHASE (docs/11 搂9.8): the first planned primitives to become real code.
 import { createGovernance } from './governance.js'
 import { createBoard } from './board.js'
 import { createMinutes } from './minutes.js'
@@ -71,6 +71,7 @@ import { createProjectionMigrator } from './projmigrate.js'
 import { createMeetings } from './meetings.js'
 import { createBallotBox } from './ballotbox.js'
 import { createRecords } from './records.js'
+import { createCourse } from './course.js'
 import { createWorkflow } from './workflow.js'
 import { createTrust } from './trust.js'
 import { createHandover } from './handover.js'
@@ -92,7 +93,7 @@ export function refuse(code, message, hint) {
 }
 
 /**
- * MECHANISM-level named predicates the kernel provides (docs/05 §5.2: `subject` predicates are the
+ * MECHANISM-level named predicates the kernel provides (docs/05 搂5.2: `subject` predicates are the
  * kernel's, so a pack can name a mechanism without inventing one). Each reads the EFFECT and expresses no
  * opinion: "there is a settled formal proof for this object" and "the ballot is frozen" are machine facts,
  * not academic judgements. A pack may add its own through `subjects`, and an unknown name is still refused.
@@ -103,8 +104,8 @@ export const DEFAULT_SUBJECTS = Object.freeze({
 })
 
 /**
- * WHO wrote a setting. The manual promises `settings.resolved` ("值 + 来源层"), and without it "改了没反应"
- * cannot be answered (docs/04 §6). The record lives under a SYMBOL key so it never shows up in Object.keys,
+ * WHO wrote a setting. The manual promises `settings.resolved` ("鍊?+ 鏉ユ簮灞?), and without it "鏀逛簡娌″弽搴?
+ * cannot be answered (docs/04 搂6). The record lives under a SYMBOL key so it never shows up in Object.keys,
  * never inflates the declared-key count, and never leaks into a pack's own settings layer.
  */
 const WRITERS = Symbol('vmu.settings.writers')
@@ -139,7 +140,11 @@ export function createKernel({
   host = null,
   settings = {},
   root = null,
-  clock = () => new Date().toISOString(),
+  // THE FACTORY DEFAULT CLOCK IS A NUMBER OF MILLISECONDS. It used to return an ISO string, which the clock guard
+  // (correctly) rejects as non-finite - so with no injected clock every one of the ten guarded services refused by
+  // name, an honest refusal caused by a default that the guard could never accept. A number is also what every
+  // time calculation in the kernel wants; the audit day directory formats it explicitly below.
+  clock = () => Date.now(),
   sections = [],
   bindings = [],
   overrides = null,
@@ -158,20 +163,33 @@ export function createKernel({
   middleware = [],
   spawn = null,
   deliver = null,
+  // Capability seams the HOST owns. They default to null (the modules then refuse by name), but they are real
+  // options now: an absent seam is a deployment fact, not something this file decided. A review proved that
+  // `deliver` was reaching members and meetings while notify was pinned to null, and that status().seams
+  // reported the seam as present anyway - so the report below is now built from what each service ACTUALLY got.
+  signer = null,
+  fetchFn = null,
+  timer = null,
   bus: injectedBus = null,
   // The HOST owns key material. Without this seam the tamper-evident chain is unkeyed and says so; with it the
   // chain becomes keyed and a re-forged chain is refused. The kernel never invents a key.
   secrets = null,
 } = {}) {
+  // THE FOURTH INSTANCE of the phase lesson, and the most systemic: an independent review measured that the kernel
+  // handed every service a view with ONLY a get() method, while thirteen modules read their settings by PROPERTY
+  // access (`settings['vmu.external.enabled']`). Those keys could therefore never be set at runtime - the reviewer
+  // showed external.enabled reading true from a plain object and FALSE through this very view. One shape fixes the
+  // whole class: the view carries the properties AND get(), so both reading styles see the same values.
+  const settingsView = Object.assign({}, settings, { get: (k) => settings[k] })
   // CONSUMER WIRING (round 19, the point an independent reviewer made): a clock guard nobody uses changes
   // nothing - a backwards clock would still extend every TTL and keep every pending idempotency entry alive
   // forever. The guard is therefore built FIRST (before any TTL-sensitive service) and its `now()` is handed to
   // exactly the modules whose semantics depend on elapsed time; the rest of the kernel keeps the raw clock.
-  const clockguard = createClockGuard({ clock, log: (m) => log('clockguard: ' + m), settings: { get: (k) => settings[k] } })
+  const clockguard = createClockGuard({ clock, log: (m) => log('clockguard: ' + m), settings: settingsView })
   const guardedClock = () => clockguard.now()
   // A3 CONSUMER (round 24): the projection migrator existed but no projection used it, so a version bump silently
   // discarded the durable ledger. It is built early enough to be handed to the ledger at construction.
-  const projmigrate = createProjectionMigrator({ settings: { get: (k) => settings[k] }, bus: null, clock, log })
+  const projmigrate = createProjectionMigrator({ settings: settingsView, bus: null, clock, log })
   const enabled = settings['vmu.core.enabled'] !== false
   const dryRun = settings['vmu.middleware.dryRun'] === true
 
@@ -191,13 +209,13 @@ export function createKernel({
     ? createStore({ root, migrators, clock })
     : null
 
-  // IN-FLIGHT LEDGER (docs/07 §3): durable, and only meaningful with a store - without one it stays null and
+  // IN-FLIGHT LEDGER (docs/07 搂3): durable, and only meaningful with a store - without one it stays null and
   // asking for it is refused by name (an in-flight ledger that forgets on exit would be a lie).
   const workLedger = store
     ? createWorkLedger({ store, clock, isPaused: () => controlState.state === 'paused' })
     : null
 
-  // DURABLE AUDIT (docs/07 §5): with a root, every audit row is APPENDED to <root>/vmu/audit/<day>.jsonl, so
+  // DURABLE AUDIT (docs/07 搂5): with a root, every audit row is APPENDED to <root>/vmu/audit/<day>.jsonl, so
   // the trail survives the process (it used to exist only in memory, and `vmu/audit/**` was never written).
   // A write failure must be VISIBLE (R11): it is reported in status().audit.lastWriteError, while the
   // in-memory auditTail keeps working so the run is never silently unauditable.
@@ -222,7 +240,12 @@ export function createKernel({
   const auditToDisk = (row) => {
     if (!auditState.dir) return
     try {
-      const day = String((row && row.ts) || clock()).slice(0, 10)
+      // The clock may now be a millisecond number (the factory default) or an ISO string (a caller's choice);
+      // both must name the same day file, so the value is normalised rather than stringified blindly.
+      const raw = (row && row.ts) || clock()
+      const day = typeof raw === 'number' && Number.isFinite(raw)
+        ? new Date(raw).toISOString().slice(0, 10)
+        : String(raw).slice(0, 10)
       const file = join(auditState.dir, day + '.jsonl')
       appendFileSync(file, JSON.stringify(row) + '\n', 'utf8')
       auditState.file = file
@@ -234,7 +257,7 @@ export function createKernel({
 
   // The audit trail must be OBSERVABLE, not merely logged: `status().auditTail` returns the last rows, so a
   // reader can answer "who changed what, and which middleware refused this call" without opening a log file.
-  // LOG LEVEL (docs/04 §11): a REAL consumer, and a backwards-compatible one. At the default `info` the audit
+  // LOG LEVEL (docs/04 搂11): a REAL consumer, and a backwards-compatible one. At the default `info` the audit
   // line reaches `log()` with EXACTLY the same text as before, so nothing about today's output changes; at
   // `warn`/`error` it is suppressed, and `debug` lets the kernel add detail later. The level never enters the
   // model context - it only decides whether the host's log callback is invoked.
@@ -300,7 +323,7 @@ export function createKernel({
       headListAt: settings['vmu.records.headListAt'],
       truncateMode: settings['vmu.records.truncateMode'],
       fingerprintPolicy: settings['vmu.records.fingerprintPolicy'],
-      // THE PATH POLICY REACHES THE WRITE SURFACE (docs/04 §11): the library gates its writes through
+      // THE PATH POLICY REACHES THE WRITE SURFACE (docs/04 搂11): the library gates its writes through
       // kernel/guard.js, so `vmu.safety.pathPolicy` is a consumer rather than a declaration.
       settings,
       clock,
@@ -310,7 +333,7 @@ export function createKernel({
   // THE LEAN FACE (docs/09, `vmu.math.lean*`): a real subsystem, created only when a spawn seam exists. The
   // face owns the semantics the docs promise ("exit 0 AND the content hash unchanged"); the kernel only wires.
   const lean = spawn
-    ? createLeanFace({ settings: { get: (k) => settings[k] }, spawn, root, clock, log })
+    ? createLeanFace({ settings: settingsView, spawn, root, clock, log })
     : null
 
   // The resource gate closes the `vmu.limits.memoryCeilingMb` loop. The ceiling is the HOST PROCESS RSS (the
@@ -319,7 +342,7 @@ export function createKernel({
 
   // `members` and `library` are re-declarable: a PACK owns the institution (slots, tracks), so applying a
   // pack must be able to declare them. Re-declaring a library rebuilds its index from disk, so no record
-  // is lost by the swap (docs/10 §2).
+  // is lost by the swap (docs/10 搂2).
   let members = createMembersList({ slots, maxLiveMembers, deliver, bus, clock, settings, resourceGate })
   const packNotes = []
   const tasks = createTasks({
@@ -332,86 +355,89 @@ export function createKernel({
     clock,
   })
 
-  // IMPLEMENTATION PHASE, batch 1 (docs/11 §9.8): the governance primitives (docs/08 §2 agenda + motions),
-  // the task board (docs/08 §4 columns/WIP/swimlanes/aging) and minutes (docs/08 §2 minutes/decrees/actions)
+  // IMPLEMENTATION PHASE, batch 1 (docs/11 搂9.8): the governance primitives (docs/08 搂2 agenda + motions),
+  // the task board (docs/08 搂4 columns/WIP/swimlanes/aging) and minutes (docs/08 搂2 minutes/decrees/actions)
   // stop being DECLARATIONS and become real services. They read their own `vmu.agenda.*` / `vmu.motions.*` /
   // `vmu.board.*` / `vmu.minutes.*` keys literally, so the settings table derives their "wired" state by itself.
-  const governance = createGovernance({ settings: { get: (k) => settings[k] }, bus, clock, log })
-  const board = createBoard({ settings: { get: (k) => settings[k] }, bus, clock, log, tasks })
-  const minutes = createMinutes({ settings: { get: (k) => settings[k] }, bus, clock, log, meeting: null })
-  const budget = createBudget({ settings: { get: (k) => settings[k] }, bus, clock, log })
-  const metrics = createMetrics({ settings: { get: (k) => settings[k] }, bus, clock, log })
+  const governance = createGovernance({ settings: settingsView, bus, clock, log })
+  const board = createBoard({ settings: settingsView, bus, clock, log, tasks })
+  const minutes = createMinutes({ settings: settingsView, bus, clock, log, meeting: null })
+  const budget = createBudget({ settings: settingsView, bus, clock, log })
+  const metrics = createMetrics({ settings: settingsView, bus, clock, log })
   // The audit SERVICE reuses the kernel's EXISTING disk seam (`auditToDisk`) instead of opening a second write
   // path: the ring above stays the in-memory view, this service is the queryable/rotatable face over it.
   // ROUND 20: every module whose semantics depend on ELAPSED TIME takes the guarded clock. An independent review
   // pointed out that only four of them did, and that `delegation` was the worst omission - a backwards clock
   // would EXTEND an authorisation's life. The rest of the kernel keeps the raw clock on purpose.
-  const audit = createAudit({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, sink: auditToDisk })
-  const alerts = createAlerts({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, metrics })
+  const audit = createAudit({ settings: settingsView, bus, clock: guardedClock, log, sink: auditToDisk })
+  const alerts = createAlerts({ settings: settingsView, bus, clock: guardedClock, log, metrics })
   // `library` is the EXISTING kernel library; the module counts any unsupported adapter method as skipped and
   // never pretends a delete succeeded. Delegation gets the live members surface plus explicit roots (authority
   // that does not come from a delegation); without roots, S-2 refuses every grant - which is the honest default.
-  const retention = createRetention({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, library })
+  const retention = createRetention({ settings: settingsView, bus, clock: guardedClock, log, library })
   // `roots` = who holds authority that does NOT come from a delegation. It is an EXPLICIT setting rather than
   // a guess from role names: unset means nobody can grant anything (S-2 refuses every grant), which is the
   // honest zero-mechanism default. Guessing "office looks like a root" would be policy hiding in the kernel.
-  const delegation = createDelegation({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, members,
+  const delegation = createDelegation({ settings: settingsView, bus, clock: guardedClock, log, members,
     roots: Array.isArray(settings['vmu.delegation.roots']) ? settings['vmu.delegation.roots'] : [] })
-  const workflow = createWorkflow({ settings: { get: (k) => settings[k] }, bus, clock, log, tasks })
-  const trust = createTrust({ settings: { get: (k) => settings[k] }, bus, clock, log })
-  const handover = createHandover({ settings: { get: (k) => settings[k] }, bus, clock, log, tasks, library })
+  const workflow = createWorkflow({ settings: settingsView, bus, clock, log, tasks })
+  const trust = createTrust({ settings: settingsView, bus, clock, log })
+  const handover = createHandover({ settings: settingsView, bus, clock, log, tasks, library })
   // Batch 2 slice 3: arbitration. `minutes` is the live minutes service so a ruling can be recorded there;
   // `mode` defaults to off (zero mechanism) so nothing is arbitrated unless the institution turns it on.
-  const arbitration = createArbitration({ settings: { get: (k) => settings[k] }, bus, clock, log, members, minutes })
+  const arbitration = createArbitration({ settings: settingsView, bus, clock, log, members, minutes })
   // Batch-2 slices 5-8: recruitment, collaboration topology, charters, fair allocation. All four are
   // zero-mechanism by default (no postings / flat topology / charters disabled / no claimants).
-  const recruit = createRecruit({ settings: { get: (k) => settings[k] }, bus, clock, log, members })
-  const topology = createTopology({ settings: { get: (k) => settings[k] }, bus, clock, log, members })
-  const fairness = createFairness({ settings: { get: (k) => settings[k] }, bus, clock, log, budget, tasks })
-  const charter = createCharter({ settings: { get: (k) => settings[k] }, bus, clock, log, members, delegation })
+  const recruit = createRecruit({ settings: settingsView, bus, clock, log, members })
+  const topology = createTopology({ settings: settingsView, bus, clock, log, members })
+  const fairness = createFairness({ settings: settingsView, bus, clock, log, budget, tasks })
+  const charter = createCharter({ settings: settingsView, bus, clock, log, members, delegation })
   // Batch-3 slice 2: reproduction packs (docs/16 L12). Data is referenced by pointer by default; a missing
   // required member is named rather than silently omitted.
-  const repropack = createReproPack({ settings: { get: (k) => settings[k] }, bus, clock, log, library })
+  const repropack = createReproPack({ settings: settingsView, bus, clock, log, library })
   // Batch-2 slices 10-11: institutional memory and the auction. Memory's `may`/`authorize` always refuse,
   // and the auction's price never depends on reputation unless the institution explicitly turns that on.
-  const memory = createMemory({ settings: { get: (k) => settings[k] }, bus, clock, log, library })
-  const bidding = createBidding({ settings: { get: (k) => settings[k] }, bus, clock, log, members, trust })
+  const memory = createMemory({ settings: settingsView, bus, clock, log, library })
+  const bidding = createBidding({ settings: settingsView, bus, clock, log, members, trust })
   // Batch-2/3/4 tails: skills, publication and the formalisation face. Skills' capacity counts only live and
   // fresh claims (a retired claim frees its slot); all three are zero-mechanism by default.
-  const skills = createSkills({ settings: { get: (k) => settings[k] }, bus, clock, log, members })
-  const publication = createPublication({ settings: { get: (k) => settings[k] }, bus, clock, log, library, repropack })
-  const formal = createFormal({ settings: { get: (k) => settings[k] }, bus, clock, log, spawn, library })
+  const skills = createSkills({ settings: settingsView, bus, clock, log, members })
+  const publication = createPublication({ settings: settingsView, bus, clock, log, library, repropack })
+  const formal = createFormal({ settings: settingsView, bus, clock, log, spawn, library })
   // INTEGRATOR FIX: `vmu.mathjobs` was REGISTERED but never CREATED - the registry advertised a service the
   // kernel did not build. Both job faces now receive the kernel's real spawn seam (the host injects it), so a
   // missing engine surfaces as a named refusal rather than a silent no-op.
-  const mathjobs = createMathJobs({ settings: { get: (k) => settings[k] }, bus, clock, log, spawn })
+  const mathjobs = createMathJobs({ settings: settingsView, bus, clock, log, spawn })
   // Batch-3/5 tails: external fetching (N11) and the clinical/animal approval gates. Both are inert by default
   // (`vmu.external.enabled=false`, no domain pack declared), and both refuse by name rather than inventing data.
-  const external = createExternal({ settings: { get: (k) => settings[k] }, bus, clock, log, fetchFn: null })
-  const domaingate = createDomainGate({ settings: { get: (k) => settings[k] }, bus, clock, log })
-  // Round-15 tails: scheduler (timer seam optional - tick() alone works), non-repudiation, notification
-  // delivery and the research lifecycle. Each one is inert without its declared configuration or its seam.
-  const scheduler = createScheduler({ settings: { get: (k) => settings[k] }, bus, clock, log, timer: null,
+  const external = createExternal({ settings: settingsView, bus, clock, log, fetchFn })
+  const domaingate = createDomainGate({ settings: settingsView, bus, clock, log })
+  // THE THIRD INSTANCE of the phase lesson, found by an independent review: `deliver` was already in hand and
+  // consumed by members and meetings, yet `vmu.notify` was handed a hard null - the same seam wired to A but not
+  // to B. Notify now gets the seam that exists, and signer/fetchFn/timer are real kernel options instead of being
+  // pinned to null, so a host can reach them without editing this file. Absent seams still refuse by name; the
+  // difference is that absence is now a deployment fact rather than a hard-coded one.
+  const scheduler = createScheduler({ settings: settingsView, bus, clock, log, timer,
     isPaused: () => controlState.state === 'paused' })
-  const crypto = createCrypto({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, signer: null })
-  const notify = createNotify({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, deliver: null })
-  const lifecycle = createLifecycle({ settings: { get: (k) => settings[k] }, bus, clock, log, workflow,
+  const crypto = createCrypto({ settings: settingsView, bus, clock: guardedClock, log, signer })
+  const notify = createNotify({ settings: settingsView, bus, clock: guardedClock, log, deliver })
+  const lifecycle = createLifecycle({ settings: settingsView, bus, clock, log, workflow,
     domaingate, publication })
   // K6 (round 16): the unified idempotency ledger that a replay/retry path can consult before doing work again.
   // The ledger gets BOTH the guarded clock (so a backwards clock cannot keep a pending key alive forever) and
   // the kernel store (so idempotency survives the restart that a retry usually follows).
-  const idempotency = createIdempotency({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, store,
+  const idempotency = createIdempotency({ settings: settingsView, bus, clock: guardedClock, log, store,
     migrate: projmigrate })
   // K5 (round 16): read-only replay of the audit log. It never writes back into any service - rebuilding state
   // is a pure function, and gaps in the log are reported rather than papered over.
-  const replay = createReplay({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, audit, idempotency })
+  const replay = createReplay({ settings: settingsView, bus, clock: guardedClock, log, audit, idempotency })
   // K1/K2 (round 17): compensation transactions and rate limiting. Transactions get the idempotency ledger so a
   // replay across instances is deduplicated; the limiter is inert unless a rate is declared (and says so).
-  const transaction = createTransaction({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, idempotency })
-  const ratelimit = createRateLimit({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log })
+  const transaction = createTransaction({ settings: settingsView, bus, clock: guardedClock, log, idempotency })
+  const ratelimit = createRateLimit({ settings: settingsView, bus, clock: guardedClock, log })
   // N4 (round 18): the state-version/migration primitive that keeps an old snapshot from being read silently by
   // newer code. (The chain is built earlier now - see the N1 consumer-wiring comment above the bus.)
-  const stateversion = createStateVersion({ settings: { get: (k) => settings[k] }, bus, clock, log })
+  const stateversion = createStateVersion({ settings: settingsView, bus, clock, log })
 
   // CONSUMER WIRING (round 19, the point an independent reviewer made): a clock guard that nobody uses changes
   // nothing - a backwards clock would still silently extend every TTL and keep every pending idempotency entry
@@ -421,14 +447,17 @@ export function createKernel({
   // (each call's receipt carries an `enforced[]` list, so "the key was read" and "the key did something" are
   // distinguishable), and the projection migrator is what keeps an old on-disk projection from being silently
   // dropped when the kernel's own version moves.
-  const mathtools = createMathTools({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, spawn, library })
+  const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedClock, log, spawn, library })
   // `projmigrate` is built EARLIER now: the idempotency ledger needs it at construction so an old on-disk
   // projection is migrated instead of silently discarded.
   // ROUND 22: three more declared-knob families become behaviour, each following the mathtools standard (the
   // receipt lists the keys it actually enforced, and anything unwired is named rather than silently ignored).
-  const meetings = createMeetings({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log })
-  const ballotbox = createBallotBox({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log })
-  const records = createRecords({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log })
+  const meetings = createMeetings({ settings: settingsView, bus, clock: guardedClock, log })
+  const ballotbox = createBallotBox({ settings: settingsView, bus, clock: guardedClock, log })
+  const records = createRecords({ settings: settingsView, bus, clock: guardedClock, log })
+  // ROUND 24: the teaching face the N13 volume declared (19 of its 24 knobs change behaviour; the five that need
+  // a library, records or ontology seam are named rather than silently accepted).
+  const course = createCourse({ settings: settingsView, bus, clock: guardedClock, log })
 
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
@@ -446,38 +475,38 @@ export function createKernel({
   registry.register('vmu.tasks', { apiVersion: 1 }, { kind: 'service', description: 'task ledger and stage machine' })
   registry.register('vmu.prompt', { apiVersion: 1 }, { kind: 'service', description: 'prompt sections, bindings, overrides' })
   registry.register('vmu.middleware', { apiVersion: 1 }, { kind: 'service', description: 'the hook bus and its four forms' })
-  // Batch-1 services (docs/11 §9.8). Registered unconditionally, like tasks/prompt/middleware: they are
-  // zero-mechanism by construction (no config ⇒ empty agenda, empty board, refusals by name).
-  registry.register('vmu.governance', { apiVersion: 1 }, { kind: 'service', description: 'agenda and motions (docs/08 §2)' })
-  registry.register('vmu.board', { apiVersion: 1 }, { kind: 'service', description: 'board columns, WIP and aging (docs/08 §4)' })
-  registry.register('vmu.minutes', { apiVersion: 1 }, { kind: 'service', description: 'minutes, decisions and action items (docs/08 §2)' })
-  registry.register('vmu.budget', { apiVersion: 1 }, { kind: 'service', description: 'four-kind quotas, reservation and fairness (docs/08 §12.5)' })
-  registry.register('vmu.metrics', { apiVersion: 1 }, { kind: 'service', description: 'metric observation, KPI judgement and counted drops (docs/21 §4)' })
-  registry.register('vmu.audit', { apiVersion: 1 }, { kind: 'service', description: 'append-only audit rows, redaction before storage, counted ring drops (docs/21 §2)' })
-  registry.register('vmu.alerts', { apiVersion: 1 }, { kind: 'service', description: 'thresholds, alert-level dedup, silences that still count, SLO tri-state (docs/21 §5 §13)' })
-  registry.register('vmu.retention', { apiVersion: 1 }, { kind: 'service', description: 'report-first retention, permanent markers, quota tri-state, gc (docs/07 §4.3 §4.8)' })
-  registry.register('vmu.delegation', { apiVersion: 1 }, { kind: 'service', description: 'delegation that can only narrow (S-2), expiry, revocation cascade (docs/17 §4)' })
-  registry.register('vmu.workflow', { apiVersion: 1 }, { kind: 'service', description: 'stage whitelist, gates and escalation, no stage skipping (docs/08 §4)' })
-  registry.register('vmu.trust', { apiVersion: 1 }, { kind: 'service', description: 'auditable reputation that NEVER grants authority (S-3, docs/17 §5)' })
-  registry.register('vmu.handover', { apiVersion: 1 }, { kind: 'service', description: 'handover packets: required fields named, redacted before packing (docs/17 §11)' })
-  registry.register('vmu.arbitration', { apiVersion: 1 }, { kind: 'service', description: 'arbitration: recusal, rationale, advisory vs binding made explicit (docs/17 §6)' })
-  registry.register('vmu.recruit', { apiVersion: 1 }, { kind: 'service', description: 'postings, applications, probation; job titles map to slots explicitly (S-1, docs/17 §7)' })
-  registry.register('vmu.topology', { apiVersion: 1 }, { kind: 'service', description: 'collaboration topologies and path assertions, describe and assert share one rule (docs/17 §14)' })
-  registry.register('vmu.fairness', { apiVersion: 1 }, { kind: 'service', description: 'conserving allocation with a per-person cap; reputation is never a weight (docs/17 §17)' })
-  registry.register('vmu.charter', { apiVersion: 1 }, { kind: 'service', description: 'charters: frozen articles, authority that cannot exceed the parent, dissolution reasons (docs/17 §15)' })
+  // Batch-1 services (docs/11 搂9.8). Registered unconditionally, like tasks/prompt/middleware: they are
+  // zero-mechanism by construction (no config 鈬?empty agenda, empty board, refusals by name).
+  registry.register('vmu.governance', { apiVersion: 1 }, { kind: 'service', description: 'agenda and motions (docs/08 搂2)' })
+  registry.register('vmu.board', { apiVersion: 1 }, { kind: 'service', description: 'board columns, WIP and aging (docs/08 搂4)' })
+  registry.register('vmu.minutes', { apiVersion: 1 }, { kind: 'service', description: 'minutes, decisions and action items (docs/08 搂2)' })
+  registry.register('vmu.budget', { apiVersion: 1 }, { kind: 'service', description: 'four-kind quotas, reservation and fairness (docs/08 搂12.5)' })
+  registry.register('vmu.metrics', { apiVersion: 1 }, { kind: 'service', description: 'metric observation, KPI judgement and counted drops (docs/21 搂4)' })
+  registry.register('vmu.audit', { apiVersion: 1 }, { kind: 'service', description: 'append-only audit rows, redaction before storage, counted ring drops (docs/21 搂2)' })
+  registry.register('vmu.alerts', { apiVersion: 1 }, { kind: 'service', description: 'thresholds, alert-level dedup, silences that still count, SLO tri-state (docs/21 搂5 搂13)' })
+  registry.register('vmu.retention', { apiVersion: 1 }, { kind: 'service', description: 'report-first retention, permanent markers, quota tri-state, gc (docs/07 搂4.3 搂4.8)' })
+  registry.register('vmu.delegation', { apiVersion: 1 }, { kind: 'service', description: 'delegation that can only narrow (S-2), expiry, revocation cascade (docs/17 搂4)' })
+  registry.register('vmu.workflow', { apiVersion: 1 }, { kind: 'service', description: 'stage whitelist, gates and escalation, no stage skipping (docs/08 搂4)' })
+  registry.register('vmu.trust', { apiVersion: 1 }, { kind: 'service', description: 'auditable reputation that NEVER grants authority (S-3, docs/17 搂5)' })
+  registry.register('vmu.handover', { apiVersion: 1 }, { kind: 'service', description: 'handover packets: required fields named, redacted before packing (docs/17 搂11)' })
+  registry.register('vmu.arbitration', { apiVersion: 1 }, { kind: 'service', description: 'arbitration: recusal, rationale, advisory vs binding made explicit (docs/17 搂6)' })
+  registry.register('vmu.recruit', { apiVersion: 1 }, { kind: 'service', description: 'postings, applications, probation; job titles map to slots explicitly (S-1, docs/17 搂7)' })
+  registry.register('vmu.topology', { apiVersion: 1 }, { kind: 'service', description: 'collaboration topologies and path assertions, describe and assert share one rule (docs/17 搂14)' })
+  registry.register('vmu.fairness', { apiVersion: 1 }, { kind: 'service', description: 'conserving allocation with a per-person cap; reputation is never a weight (docs/17 搂17)' })
+  registry.register('vmu.charter', { apiVersion: 1 }, { kind: 'service', description: 'charters: frozen articles, authority that cannot exceed the parent, dissolution reasons (docs/17 搂15)' })
   registry.register('vmu.repropack', { apiVersion: 1 }, { kind: 'service', description: 'reproduction packs: required members named, seed mandatory, diffs located (docs/16 L12)' })
-  registry.register('vmu.memory', { apiVersion: 1 }, { kind: 'service', description: 'institutional memory that NEVER authorizes (S-3), contradictions visible (docs/17 §9)' })
-  registry.register('vmu.bidding', { apiVersion: 1 }, { kind: 'service', description: 'auctions: deadline, rationale, reputation never prices, collusion surfaced (docs/17 §10)' })
-  registry.register('vmu.mathjobs', { apiVersion: 1 }, { kind: 'service', description: 'math jobs: timeout with partial output, complete receipts, seed required (docs/09·15)' })
-  registry.register('vmu.skills', { apiVersion: 1 }, { kind: 'service', description: 'skills: never self-appointed, expiry degrades and says so (docs/17 §8)' })
-  registry.register('vmu.publication', { apiVersion: 1 }, { kind: 'service', description: 'publication: unbroken version chain, offline archive registration, availability that refuses on-request-only (docs/16 §7)' })
+  registry.register('vmu.memory', { apiVersion: 1 }, { kind: 'service', description: 'institutional memory that NEVER authorizes (S-3), contradictions visible (docs/17 搂9)' })
+  registry.register('vmu.bidding', { apiVersion: 1 }, { kind: 'service', description: 'auctions: deadline, rationale, reputation never prices, collusion surfaced (docs/17 搂10)' })
+  registry.register('vmu.mathjobs', { apiVersion: 1 }, { kind: 'service', description: 'math jobs: timeout with partial output, complete receipts, seed required (docs/09路15)' })
+  registry.register('vmu.skills', { apiVersion: 1 }, { kind: 'service', description: 'skills: never self-appointed, expiry degrades and says so (docs/17 搂8)' })
+  registry.register('vmu.publication', { apiVersion: 1 }, { kind: 'service', description: 'publication: unbroken version chain, offline archive registration, availability that refuses on-request-only (docs/16 搂7)' })
   registry.register('vmu.formal', { apiVersion: 1 }, { kind: 'service', description: 'formalisation: sorry refuses by default, compile failure is never a refutation (docs/09)' })
-  registry.register('vmu.external', { apiVersion: 1 }, { kind: 'service', description: 'external fetch adapter: receipts for every fetch, stale never silent, conflicts surfaced (docs/16 §8)' })
-  registry.register('vmu.domaingate', { apiVersion: 1 }, { kind: 'service', description: 'clinical and animal approval gates: no approval, no start (docs/20 §9)' })
-  registry.register('vmu.scheduler', { apiVersion: 1 }, { kind: 'service', description: 'scheduled triggers: timer is a seam, triggerVia defaults to report-only (docs/08 §5)' })
-  registry.register('vmu.crypto', { apiVersion: 1 }, { kind: 'service', description: 'signatures and non-repudiation: no signer means no signature is invented (docs/20 §6)' })
-  registry.register('vmu.notify', { apiVersion: 1 }, { kind: 'service', description: 'watchers and delivery: silence blocks delivery, never the record (docs/17 §29)' })
-  registry.register('vmu.lifecycle', { apiVersion: 1 }, { kind: 'service', description: 'research lifecycle L1-L24: gates delegated to the domain and publication services (docs/16 §1)' })
+  registry.register('vmu.external', { apiVersion: 1 }, { kind: 'service', description: 'external fetch adapter: receipts for every fetch, stale never silent, conflicts surfaced (docs/16 搂8)' })
+  registry.register('vmu.domaingate', { apiVersion: 1 }, { kind: 'service', description: 'clinical and animal approval gates: no approval, no start (docs/20 搂9)' })
+  registry.register('vmu.scheduler', { apiVersion: 1 }, { kind: 'service', description: 'scheduled triggers: timer is a seam, triggerVia defaults to report-only (docs/08 搂5)' })
+  registry.register('vmu.crypto', { apiVersion: 1 }, { kind: 'service', description: 'signatures and non-repudiation: no signer means no signature is invented (docs/20 搂6)' })
+  registry.register('vmu.notify', { apiVersion: 1 }, { kind: 'service', description: 'watchers and delivery: silence blocks delivery, never the record (docs/17 搂29)' })
+  registry.register('vmu.lifecycle', { apiVersion: 1 }, { kind: 'service', description: 'research lifecycle L1-L24: gates delegated to the domain and publication services (docs/16 搂1)' })
   registry.register('vmu.idempotency', { apiVersion: 1 }, { kind: 'service', description: 'idempotency ledger: same key with a different payload is refused by name (K6)' })
   registry.register('vmu.replay', { apiVersion: 1 }, { kind: 'service', description: 'audit replay: pure read-only reconstruction, gaps reported (K5)' })
   registry.register('vmu.transaction', { apiVersion: 1 }, { kind: 'service', description: 'compensation transactions: a step without undo is refused at begin (K1)' })
@@ -485,11 +514,12 @@ export function createKernel({
   registry.register('vmu.auditchain', { apiVersion: 1 }, { kind: 'service', description: 'tamper-evident audit chain: no hash seam, no hash (N1)' })
   registry.register('vmu.stateversion', { apiVersion: 1 }, { kind: 'service', description: 'state versions and explicit migrations: no version is refused, not assumed (N4)' })
   registry.register('vmu.clockguard', { apiVersion: 1 }, { kind: 'service', description: 'monotonic clock guard, consumed by every TTL-sensitive service (N3)' })
-  registry.register('vmu.mathtools', { apiVersion: 1 }, { kind: 'service', description: 'math tool policy layer: 45 declared knobs change behaviour, the rest are named as unwired (docs/09·15)' })
+  registry.register('vmu.mathtools', { apiVersion: 1 }, { kind: 'service', description: 'math tool policy layer: 45 declared knobs change behaviour, the rest are named as unwired (docs/09路15)' })
   registry.register('vmu.projmigrate', { apiVersion: 1 }, { kind: 'service', description: 'projection migration: an unlabelled or unreachable old document is refused, never dropped (A3)' })
   registry.register('vmu.meetings', { apiVersion: 1 }, { kind: 'service', description: 'meeting policy layer: all 47 declared vmu.meetings knobs change behaviour (docs/08)' })
   registry.register('vmu.ballotbox', { apiVersion: 1 }, { kind: 'service', description: 'ballot box: quorum is refused by name, abstention and absence counted apart (docs/08)' })
   registry.register('vmu.records', { apiVersion: 1 }, { kind: 'service', description: 'records tracks: caps refuse by name, retention counts, permanent markers cannot be deleted' })
+  registry.register('vmu.course', { apiVersion: 1 }, { kind: 'service', description: 'teaching: outcome-to-artifact alignment refuses with the missing outcome named (docs/22 N13)' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -497,10 +527,10 @@ export function createKernel({
   const packs = []
   const registrations = []
   let started = false
-  // CONTROL FLOW (docs/08 §5; the user's explicit domain). The kernel owns the STATE; a pause is a real
+  // CONTROL FLOW (docs/08 搂5; the user's explicit domain). The kernel owns the STATE; a pause is a real
   // gate (task work is refused while paused) rather than a label nobody reads.
   const controlState = { state: 'running', pausedAt: null, pausedReason: null, resumes: 0, stops: 0, beats: 0, lastBeatAt: null, stoppedReason: null }
-  // LIVE OBJECTS for the tool faces (docs/03 §3.1): a session's meetings and ballots, addressable by id.
+  // LIVE OBJECTS for the tool faces (docs/03 搂3.1): a session's meetings and ballots, addressable by id.
   // They are the SAME primitives the library level exposes - nothing is re-implemented, and nothing is kept
   // when the session ends. The cap is a counted bound, not a silent drop.
   let liveSeq = 0
@@ -543,7 +573,7 @@ export function createKernel({
   const mathSurface = () => {
     if (!host) {
       throw refuse('VMU_ENGINE_UNAVAILABLE', 'the math surface needs a host seam (register/spawn)',
-        'construct the kernel with { host } (docs/11 §4.1) or leave vmu.math.computation off')
+        'construct the kernel with { host } (docs/11 搂4.1) or leave vmu.math.computation off')
     }
     return createMathSurface({ host, settings })
   }
@@ -554,11 +584,11 @@ export function createKernel({
     prompt,
     store,
     // Getters, not captured values: a pack can re-declare the institution (slots/tracks) AFTER the kernel
-    // was constructed, so the public surface must always reflect the CURRENT surfaces (docs/10 §2).
+    // was constructed, so the public surface must always reflect the CURRENT surfaces (docs/10 搂2).
     get library() { return library },
     get members() { return members },
     get work() { return workLedger },
-    // Batch-1 implementation surfaces (docs/11 §9.8): real services, exposed the same way as tasks/prompt.
+    // Batch-1 implementation surfaces (docs/11 搂9.8): real services, exposed the same way as tasks/prompt.
     get governance() { return governance },
     get board() { return board },
     get minutes() { return minutes },
@@ -601,6 +631,7 @@ export function createKernel({
     get meetings() { return meetings },
     get ballotbox() { return ballotbox },
     get records() { return records },
+    get course() { return course },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,
@@ -613,7 +644,7 @@ export function createKernel({
     ballot: (opts = {}) => {
       const made = createBallot(Object.assign({ quorumRule: settings['vmu.meetings.quorumRule'], bus, clock,
         isPaused: () => controlState.state === 'paused' }, opts))
-      // LIVE OBJECTS (docs/03 §3.1): the tool face addresses a ballot by id, so the kernel keeps the session's
+      // LIVE OBJECTS (docs/03 搂3.1): the tool face addresses a ballot by id, so the kernel keeps the session's
       // live instances. This is not new policy - it is the SAME primitive, reachable by name. Bounded by
       // `liveCap` so a long session cannot grow it without limit (the oldest is evicted, and that is counted).
       if (opts && typeof opts.id === 'string' && opts.id) rememberLive(liveBallots, opts.id, made)
@@ -629,7 +660,7 @@ export function createKernel({
       rememberLive(liveMeetings, id, made)
       return made
     },
-    /** Look up a live meeting/ballot by the id a tool face handed out (never a guess: unknown ⇒ null). */
+    /** Look up a live meeting/ballot by the id a tool face handed out (never a guess: unknown 鈬?null). */
     liveMeeting: (id) => liveMeetings.get(String(id)) || null,
     liveBallot: (id) => liveBallots.get(String(id)) || null,
     liveList: () => ({ meetings: [...liveMeetings.keys()], ballots: [...liveBallots.keys()],
@@ -670,7 +701,7 @@ export function createKernel({
         middleware: decided && decided.decisions ? decided.decisions.length : 0 }
     },
 
-    /** The capability seams, refused by name when they are missing (docs/11 §4.1). */
+    /** The capability seams, refused by name when they are missing (docs/11 搂4.1). */
     math: mathSurface,
     requireStore() {
       if (!store) {
@@ -751,7 +782,7 @@ export function createKernel({
           'construct it with { root }')
       }
       if (list.length === 0) {
-        throw refuse('VMU_INVALID_ARGUMENT', 'a pack must declare at least one track', 'tracks are a closed set (docs/07 §4.2)')
+        throw refuse('VMU_INVALID_ARGUMENT', 'a pack must declare at least one track', 'tracks are a closed set (docs/07 搂4.2)')
       }
       library = createLibrary({
         root,
@@ -760,7 +791,7 @@ export function createKernel({
         truncateMode: settings['vmu.records.truncateMode'],
         fingerprintPolicy: settings['vmu.records.fingerprintPolicy'],
         // The path policy must survive a RE-DECLARATION too, or a pack that declares tracks would silently
-        // drop the write gate the first library had (docs/04 §11).
+        // drop the write gate the first library had (docs/04 搂11).
         settings,
         clock,
       })
@@ -771,7 +802,7 @@ export function createKernel({
     settingsSnapshot() { return Object.assign({}, settings) },
 
     /**
-     * Apply a pack's settings as a LAYER on the constructed values (docs/10 §2). Conflicts are refused
+     * Apply a pack's settings as a LAYER on the constructed values (docs/10 搂2). Conflicts are refused
      * unless the configuration explicitly allows overrides (O4), and the caller gets back exactly what it
      * must restore: the pre-existing values for the keys it overwrote. Keys the pack introduced are simply
      * removed on rollback, so no phantom setting survives an unload.
@@ -782,7 +813,7 @@ export function createKernel({
       for (const [key, value] of Object.entries(incoming)) {
         const existed = Object.prototype.hasOwnProperty.call(settings, key)
         // Two explicit doors and NO silent third one: the blunt `vmu.packs.allowOverride`, or naming THIS exact
-        // key in `vmu.packs.activeOverrides` (finer-grained - docs/04 §11). Anything else stays a named conflict,
+        // key in `vmu.packs.activeOverrides` (finer-grained - docs/04 搂11). Anything else stays a named conflict,
         // and the hint names the precise key so the operator never has to guess which door to open.
         const declaredOverride = Array.isArray(settings['vmu.packs.activeOverrides'])
           && settings['vmu.packs.activeOverrides'].includes(key)
@@ -800,7 +831,7 @@ export function createKernel({
 
     /**
      * The two primitives a pack rollback needs, so an unload can restore or remove a setting exactly.
-     * DELEGATION (docs/04 §11, `vmu.safety.delegableKeys`): a caller that IDENTIFIES itself (`by`) but is not
+     * DELEGATION (docs/04 搂11, `vmu.safety.delegableKeys`): a caller that IDENTIFIES itself (`by`) but is not
      * the key's declared owner may only write keys the configuration delegated. This is a policy hook for
      * middleware/packs - not an authorisation system: the office path and the pack rollback pass no `by`, so
      * their behaviour is unchanged, and a caller that lies about omitting `by` is not caught by design (that
@@ -815,7 +846,7 @@ export function createKernel({
           && settings['vmu.safety.delegableKeys'].includes(key)
         if (owner && String(by) !== String(owner) && !delegable) {
           throw refuse('VMU_NOT_PERMITTED', String(by) + ' may not set ' + key + ' (declared owner: ' + owner + ')',
-            'list "' + key + '" in vmu.safety.delegableKeys to delegate it to a role slot (docs/04 §11)')
+            'list "' + key + '" in vmu.safety.delegableKeys to delegate it to a role slot (docs/04 搂11)')
         }
       }
       settings[key] = value
@@ -825,10 +856,10 @@ export function createKernel({
     unsetSettingsValue(key) { delete settings[key]; return { ok: true, key } },
 
     /**
-     * CONTROL FLOW (docs/08 §5). `pause` is a GATE, not a label: while paused every task mutation is refused
+     * CONTROL FLOW (docs/08 搂5). `pause` is a GATE, not a label: while paused every task mutation is refused
      * by name, and the bus is told (`control/paused` / `control/resumed` / `control/heartbeat`) so middleware
      * can react. The heartbeat answers "is anyone actually working", and `wallClockMs` is the staleness budget
-     * (a real consumer for a key that used to be decoration - docs/04 §11).
+     * (a real consumer for a key that used to be decoration - docs/04 搂11).
      */
     async pause(reason = 'paused') {
       if (controlState.state === 'stopped') throw refuse('VMU_STATE', 'a stopped kernel cannot be paused')
@@ -857,7 +888,7 @@ export function createKernel({
       return { ok: true, beats: controlState.beats, at: controlState.lastBeatAt,
         middleware: decided && decided.decisions ? decided.decisions.length : 0 }
     },
-    /** The control surface: state, history and whether the heartbeat went stale (docs/04 §11 wallClockMs). */
+    /** The control surface: state, history and whether the heartbeat went stale (docs/04 搂11 wallClockMs). */
     control: () => controlView(),
 
     /** The declaration of a setting (hot class, who may change it) - used by the host tool for its receipt. */
@@ -870,7 +901,7 @@ export function createKernel({
 
     /** Observability (R11): the whole assembly in one place, with each part reporting its own state. */
     status() {
-      // `settings.resolved` answers the manual's promise (docs/04 §6): for EVERY declared key, the effective
+      // `settings.resolved` answers the manual's promise (docs/04 搂6): for EVERY declared key, the effective
       // value, WHERE it came from (pack layer > runtime `vibe_vmu_set` > the plugin's config > schema default),
       // its hot class and who may change it. Precedence is stated because a pack and a runtime write are not
       // mutually timestamped; `overridden` lists the sources a pack replaced (O4 makes that explicit).
@@ -928,7 +959,11 @@ export function createKernel({
         loader: loader.status(),
         bridge: bridge.status(),
         registry: registry.status(),
-        seams: { host: !!host, store: !!store, library: !!library, members: !!members, spawn: !!spawn, deliver: !!deliver },
+        seams: { host: !!host, store: !!store, library: !!library, members: !!members, spawn: !!spawn,
+          // Built from what each service ACTUALLY received, not from the option: the review showed this line
+          // reporting deliver:true while vmu.notify had been handed null.
+          deliver: !!deliver, deliverConsumedBy: ['members', 'meetings', 'notify'].filter((n) => !!deliver),
+          signer: !!signer, fetchFn: !!fetchFn, timer: !!timer },
         note: 'a kernel with no declarations is inert by construction (zero mechanism, R1)',
       }
     },

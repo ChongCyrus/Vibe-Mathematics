@@ -492,9 +492,67 @@ const err = (fn) => errOf(fn)
 }
 
 if (failed === 0) {
-  console.log('=== VMU MEETINGS: ' + passed + ' passed, 0 failed ===')
+  // ── D3: the evaluation scope rides with every receipt AND every refusal; no receipt has duplicates ──
+{
+  const h = mk({})
+  const mg = h.t
+  const o = mg.open({ type: 'ordinary', chair: 'acad', roster })
+  ok(o.enforcedScope === 'evaluated-so-far', 'D3: an open() receipt states enforcedScope=evaluated-so-far')
+  ok(o.receipt && o.receipt.enforcedScope === 'evaluated-so-far', 'D3: the nested receipt states it too')
+  const refusal = errOf(() => mg.open({ type: 'nope', chair: 'acad', roster }))
+  ok(!!refusal && refusal.enforcedScope === 'evaluated-so-far', 'D3: a REFUSAL carries enforcedScope itself')
+  ok(!!refusal && Array.isArray(refusal.enforced) && refusal.enforced.includes('vmu.meetings.typeCatalog'), 'D3: the refusal lists the key it consulted (and the scope)')
+  const session = opened({})
+  const recs = []
+  const tryPush = (fn) => { try { const r = fn(); if (r && Array.isArray(r.enforced)) recs.push(r) } catch (e) { /* refusals covered elsewhere */ } }
+  tryPush(() => session.h.t.attend({ meeting: session.id, member: 'acad' }))
+  tryPush(() => session.h.t.speak({ meeting: session.id, member: 'acad', ms: 500 }))
+  tryPush(() => session.h.t.queue({ meeting: session.id, member: 'r-1' }))
+  tryPush(() => session.h.t.motion({ meeting: session.id, member: 'acad', kind: 'ordinary' }))
+  tryPush(() => session.h.t.vote({ meeting: session.id, member: 'r-1' }))
+  tryPush(() => session.h.t.warn({ meeting: session.id, member: 'r-2' }))
+  tryPush(() => session.h.t.leave({ meeting: session.id, member: 'r-3' }))
+  tryPush(() => session.h.t.quorum({ meeting: session.id }))
+  tryPush(() => session.h.t.close({ meeting: session.id }))
+  const dup = recs.filter((x) => !Array.isArray(x.enforced) || new Set(x.enforced).size !== x.enforced.length)
+  ok(recs.length >= 3, 'no-dup: the session produced receipts to check (' + recs.length + ')')
+  ok(recs.every((x) => x.enforcedScope === 'evaluated-so-far'), 'D3: every receipt in the session carries the scope')
+  ok(dup.length === 0, 'no-dup: no receipt in the full session has duplicates (' + (dup.length ? JSON.stringify(dup[0]) : recs.length + ' receipts checked') + ')')
+  ok(mg.status() && mg.receiptsView({}).enforcedScope === 'evaluated-so-far', 'D3: the receipts view carries the scope as well')
+}
+
+console.log('=== VMU MEETINGS: ' + passed + ' passed, 0 failed ===')
   process.exit(0)
 }
 for (const f of failures) console.log('  FAIL - ' + f)
+// ── D3: the evaluation scope rides with every receipt AND every refusal; no receipt has duplicates ──
+{
+  const h = mk({})
+  const mg = h.t
+  const o = mg.open({ type: 'ordinary', chair: 'acad', roster })
+  ok(o.enforcedScope === 'evaluated-so-far', 'D3: an open() receipt states enforcedScope=evaluated-so-far')
+  ok(o.receipt && o.receipt.enforcedScope === 'evaluated-so-far', 'D3: the nested receipt states it too')
+  const refusal = errOf(() => mg.open({ type: 'nope', chair: 'acad', roster }))
+  ok(!!refusal && refusal.enforcedScope === 'evaluated-so-far', 'D3: a REFUSAL carries enforcedScope itself')
+  ok(!!refusal && Array.isArray(refusal.enforced) && refusal.enforced.includes('vmu.meetings.typeCatalog'), 'D3: the refusal lists the key it consulted (and the scope)')
+  const session = opened({})
+  const recs = []
+  const tryPush = (fn) => { try { const r = fn(); if (r && Array.isArray(r.enforced)) recs.push(r) } catch (e) { /* refusals covered elsewhere */ } }
+  tryPush(() => session.h.t.attend({ meeting: session.id, member: 'acad' }))
+  tryPush(() => session.h.t.speak({ meeting: session.id, member: 'acad', ms: 500 }))
+  tryPush(() => session.h.t.queue({ meeting: session.id, member: 'r-1' }))
+  tryPush(() => session.h.t.motion({ meeting: session.id, member: 'acad', kind: 'ordinary' }))
+  tryPush(() => session.h.t.vote({ meeting: session.id, member: 'r-1' }))
+  tryPush(() => session.h.t.warn({ meeting: session.id, member: 'r-2' }))
+  tryPush(() => session.h.t.leave({ meeting: session.id, member: 'r-3' }))
+  tryPush(() => session.h.t.quorum({ meeting: session.id }))
+  tryPush(() => session.h.t.close({ meeting: session.id }))
+  const dup = recs.filter((x) => !Array.isArray(x.enforced) || new Set(x.enforced).size !== x.enforced.length)
+  ok(recs.length >= 3, 'no-dup: the session produced receipts to check (' + recs.length + ')')
+  ok(recs.every((x) => x.enforcedScope === 'evaluated-so-far'), 'D3: every receipt in the session carries the scope')
+  ok(dup.length === 0, 'no-dup: no receipt in the full session has duplicates (' + (dup.length ? JSON.stringify(dup[0]) : recs.length + ' receipts checked') + ')')
+  ok(mg.status() && mg.receiptsView({}).enforcedScope === 'evaluated-so-far', 'D3: the receipts view carries the scope as well')
+}
+
 console.log('=== VMU MEETINGS: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(1)

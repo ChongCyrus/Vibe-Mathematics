@@ -154,7 +154,23 @@ export function createNotify({ clock = () => 0, log = null, settings = {}, bus =
         }
       }
       say({ type: 'notify/emit', at, event, object, targets: targets.length, delivered: deliveredNow, suppressed: suppressedNow, deduped: dedupedNow, failures: failuresNow })
-      if (bus && typeof bus.emit === 'function') { try { bus.emit({ type: 'notify/emit', at, event, object, delivered: deliveredNow }) } catch (e) { /* advisory */ } }
+      if (bus && typeof bus.emit === 'function') {
+        // BUS CONTRACT: `async emit(hook, payload = {}, opts = {})` (bus.js:254) and the hook is used as a
+        // STRING (bus.js:272 `hook.replace(/[^a-z]+/gi, '-')`). This forward used to pass an OBJECT
+        // (`{type:'notify/emit',…}`), so the real bus threw `TypeError: hook.replace is not a function`; and
+        // because `emit` is ASYNC, the rejection escaped the surrounding try/catch and surfaced as a bare crash.
+        // The module's own tests used a stub bus that accepted anything, which is why this stayed hidden.
+        // Fixed shape: a string hook + a payload; a refusal/rejection from the bus is ADVISORY (recorded, never
+        // fatal) - an observability forward must never take the caller down.
+        try {
+          const forwarded = bus.emit('notify/emit', { at, event, object, delivered: deliveredNow })
+          if (forwarded && typeof forwarded.then === 'function') {
+            forwarded.then(undefined, (e) => say({ type: 'notify/bus-forward-failed', at, event, object, code: (e && e.code) || CODE.deliveryFailed, message: String((e && e.message) || e) }))
+          }
+        } catch (e) {
+          say({ type: 'notify/bus-forward-failed', at, event, object, code: (e && e.code) || CODE.deliveryFailed, message: String((e && e.message) || e) })
+        }
+      }
       return { ok: true, enabled: true, event, object, targets: targets.length, recorded: recordedNow, delivered: deliveredNow, suppressed: suppressedNow, deduped: dedupedNow, failures: failuresNow }
     },
 

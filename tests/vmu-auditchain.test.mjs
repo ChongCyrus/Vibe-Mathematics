@@ -394,5 +394,42 @@ const mkMac = (key) => ({ data }) => createHash('sha256').update(key + '::' + da
   ok(r1.code !== r4.code, 'damaged and never-written are distinguishable')
 }
 
+// ===== task-149 (D2): a transient key failure must NOT permanently degrade the chain =====
+
+// 29) jitter seam: the first resolve throws, the next one succeeds ⇒ the second append works
+{
+  let calls = 0
+  const secrets = { get(ref) { calls += 1; if (calls === 1) throw new Error('secret store blip'); return 'material-' + ref } }
+  const c = createAuditChain({ clock: () => now, settings: {}, macKey: { ref: 'k1' }, secrets })
+  const first = rejects(() => c.append({ row: { seq: 0, what: 'update', at: 1 } }))
+  ok(first.threw && first.code === 'VMU_CRYPTO_UNAVAILABLE', 'first resolve fails BY NAME (fail-closed, nothing invented)')
+  const st = c.status().mac
+  ok(st.resolved === false && st.retryable === true && st.attempts === 1 && st.lastAttemptAt === now, 'status exposes retryable/attempts/lastAttemptAt (injected clock)')
+  ok(st.lastError && /blip/.test(String(st.lastError.reason)), 'lastError records why it failed')
+  ok(/fail-closed/.test(String(st.degradation)) && /NO silent fallback/.test(String(st.degradation)), 'the degradation stance is stated (fail-closed, no silent sha256 fallback)')
+  const second = c.append({ row: { seq: 0, what: 'update', at: 2 } })
+  ok(typeof second.hash === 'string' && second.hash.startsWith('hmac:'), 'the SECOND append succeeds (the failure was not memoised)')
+  ok(calls === 2, 'the seam was consulted again (2 attempts)')
+  const st2 = c.status().mac
+  ok(st2.resolved === true && st2.keyed === true && st2.retryable === false, 'after recovery status reports keyed:true, resolved:true')
+  ok(c.status().keyed === true, 'the chain is keyed again')
+}
+
+// 30) refresh() re-resolves; only success is cached
+{
+  const seen = []
+  const secrets = { get(ref) { seen.push(ref); return 'material' } }
+  const c = createAuditChain({ clock: () => now, settings: {}, macKey: { ref: 'k2' }, secrets })
+  c.append({ row: { seq: 0, what: 'update', at: 1 } })
+  c.append({ row: { seq: 1, what: 'update', at: 2 } })
+  ok(seen.length === 1, 'a successful resolution is cached (one seam call)')
+  const r = c.refresh()
+  ok(r.cleared === true, 'refresh() clears the cached key explicitly')
+  c.append({ row: { seq: 2, what: 'update', at: 3 } })
+  ok(seen.length === 2, 'after refresh() the seam is consulted again')
+  ok(c.status().mac.resolved === true, 'a healthy key stays resolved (no spurious degradation)')
+  now = 1000
+}
+
 console.log('=== VMU AUDITCHAIN: ' + pass + ' passed, ' + fail + ' failed ===')
 process.exit(fail ? 1 : 0)

@@ -121,7 +121,17 @@ const DENSE_SIZE_SOFT_CAP = 1000        // documented constant for `linalg.spars
 /** Append a key to an evaluation trail (mutates and returns the SAME array). It must mutate: the shaping
  *  rails call it as a statement, and a value-returning helper would silently become a no-op there (caught by
  *  the round-11 assertions — "read but not listed" is exactly the defect class being fixed). */
-const evalKeyList = (list, key) => { if (!list.includes(key)) list.push(key); return list }
+/**
+ * THE ONE WAY A KEY ENTERS AN `enforced` LIST: check-before-insert. Duplicates are structurally impossible, so no
+ * receipt ever needs cleaning up at the boundary (the same idiom as kernel/meetings.js and kernel/records.js).
+ */
+const mark = (list, key) => { if (key && !list.includes(key)) list.push(key); return list }
+/**
+ * EVALUATION SCOPE (D3): `enforced` is BY DESIGN "the keys evaluated SO FAR on this call" — the rails run in a
+ * documented order and a refusal stops the walk. `enforcedScope` says that out loud on every receipt AND every
+ * refusal, so a "so far" list is never mistaken for the operation's full key set.
+ */
+const ENFORCED_SCOPE = 'evaluated-so-far'
 
 /** The rounding kernels (`vmu.math.precision.*`) — pure and deterministic.
  *  `fixed` counts digits AFTER the decimal point (0 ⇒ round to an integer); `significant` counts significant
@@ -209,9 +219,10 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
     counters.refused += 1
     refusals.set(code, (refusals.get(code) || 0) + 1)
     const keys = Array.isArray(enforced) ? enforced.slice() : []
-    say({ type: 'mathtools/refused', at: clock(), code, message, enforced: keys })
+    say({ type: 'mathtools/refused', at: clock(), code, message, enforced: keys, enforcedScope: ENFORCED_SCOPE })
     const e = refuse(code, message, hint)
     e.enforced = keys                       // ← the proof travels WITH the refusal
+    e.enforcedScope = ENFORCED_SCOPE        // 'evaluated-so-far' (D3: the口径 travels with the proof)
     e.evaluated = keys.slice()
     return e
   }
@@ -264,7 +275,11 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
       // `enforced` is built INCREMENTALLY: every rail pushes its key(s) BEFORE its check runs, so a refusal
       // always carries the proof of exactly what had been evaluated up to that point (round-11 ruling ✗✓).
       const enforced = []
-      const evalKey = (k) => { if (!enforced.includes(k)) enforced.push(k); return enforced }
+      /**
+   * THE ONE WAY A KEY ENTERS `enforced`: check-before-insert (the same `mark` idiom as kernel/meetings.js and
+   * kernel/records.js), so no receipt can ever carry a duplicate.
+   */
+  const evalKey = (k) => mark(enforced, k)   // the per-call alias of the one guard above
       if (typeof req.op !== 'string' || !req.op) {
         throw deny('VMU_MATH_INVALID_INPUT', 'plan/run needs a non-empty `op`', 'e.g. { op: "optim/minimize", args: { … } }', enforced)
       }
@@ -374,8 +389,8 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
         }
       }
       plan.cached = K.cacheEnabled && hit !== undefined && !hit.corrupt
-      say({ type: 'mathtools/planned', at: plan.at, op: plan.op, cacheKey: plan.cacheKey, cached: plan.cached, enforced })
-      return { ok: true, plan, limits: { memoryMb: K.memoryMb, cpuMs: K.cpuMs, wallMs: K.wallMs, threads: K.threads, timeLimitMs: limit, maxParallel: K.maxParallel }, enforced }
+      say({ type: 'mathtools/planned', at: plan.at, op: plan.op, cacheKey: plan.cacheKey, cached: plan.cached, enforced, enforcedScope: ENFORCED_SCOPE })
+      return { ok: true, plan, limits: { memoryMb: K.memoryMb, cpuMs: K.cpuMs, wallMs: K.wallMs, threads: K.threads, timeLimitMs: limit, maxParallel: K.maxParallel }, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /**
@@ -407,38 +422,38 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
       // ⑫ RESULT-CONDITIONAL RAILS (each one belongs to a wired key)
       if (K.certificates && !(raw.certificate || (result && result.certificate))) {
         throw deny('VMU_STATE', 'vmu.math.optim.certificates=true requires a certificate for every accepted run',
-          'the seam returned no certificate — a verified optimum must come with its evidence', evalKeyList(enforced, 'vmu.math.optim.certificates'))
+          'the seam returned no certificate — a verified optimum must come with its evidence', mark(enforced, 'vmu.math.optim.certificates'))
       }
       if (K.sorryPolicy === 'deny' && (raw.sorry === true || (result && result.sorry === true))) {
         throw deny('VMU_FORMAL_SORRY_FOUND', 'the proof still contains `sorry`/`admit` and vmu.math.formal.sorryPolicy="deny"',
-          'sorry is NOT a proof (it is not a compile failure either): fill it, or set sorryPolicy="warn"', evalKeyList(enforced, 'vmu.math.formal.sorryPolicy'))
+          'sorry is NOT a proof (it is not a compile failure either): fill it, or set sorryPolicy="warn"', mark(enforced, 'vmu.math.formal.sorryPolicy'))
       }
       if (K.axiomAudit && Array.isArray(raw.axioms) && raw.axioms.length > 0) {
         throw deny('VMU_FORMAL_AXIOM_UNTRUSTED', 'the proof uses untrusted axioms: ' + raw.axioms.join(', '),
-          'vmu.math.formal.axiomAudit=true refuses proofs outside the trust boundary', evalKeyList(enforced, 'vmu.math.formal.axiomAudit'))
+          'vmu.math.formal.axiomAudit=true refuses proofs outside the trust boundary', mark(enforced, 'vmu.math.formal.axiomAudit'))
       }
       if (K.requireAll && Array.isArray(raw.assistants) && Array.isArray(raw.expectedAssistants)) {
         const missing = raw.expectedAssistants.filter((a) => !raw.assistants.includes(a))
         if (missing.length) {
           throw deny('VMU_FORMAL_ADAPTER_UNSUPPORTED', 'vmu.math.formal.requireAll=true but these assistants did not run: ' + missing.join(', '),
-            '现值=' + raw.assistants.length + '/' + raw.expectedAssistants.length + ' (vmu.math.formal.requireAll)', evalKeyList(enforced, 'vmu.math.formal.requireAll'))
+            '现值=' + raw.assistants.length + '/' + raw.expectedAssistants.length + ' (vmu.math.formal.requireAll)', mark(enforced, 'vmu.math.formal.requireAll'))
         }
       }
       if (K.strictDimensions && raw.dimensionMismatch === true) {
         throw deny('VMU_MATH_DIMENSION_MISMATCH', 'the result carries a dimension mismatch and vmu.math.units.strictDimensions=true',
-          raw.dimensionDetail || '两侧量纲不一致（vmu.math.units.strictDimensions）', evalKeyList(enforced, 'vmu.math.units.strictDimensions'))
+          raw.dimensionDetail || '两侧量纲不一致（vmu.math.units.strictDimensions）', mark(enforced, 'vmu.math.units.strictDimensions'))
       }
       if (K.requireResidual && !(raw.residual !== undefined && raw.residual !== null)) {
         throw deny('VMU_STATE', 'vmu.math.linalg.requireResidual=true requires a residual on every solve',
-          'the seam returned no residual: a solve without an error estimate is not evidence', evalKeyList(enforced, 'vmu.math.linalg.requireResidual'))
+          'the seam returned no residual: a solve without an error estimate is not evidence', mark(enforced, 'vmu.math.linalg.requireResidual'))
       }
       if (K.convergence === 'require' && raw.converged === false) {
         throw deny('VMU_STATE', 'vmu.math.convergence.policy="require" refuses a run that did not converge',
-          'the seam reported converged=false (proposed code name: VMU_MATH_NOT_CONVERGED — not registered yet)', evalKeyList(enforced, 'vmu.math.convergence.policy'))
+          'the seam reported converged=false (proposed code name: VMU_MATH_NOT_CONVERGED — not registered yet)', mark(enforced, 'vmu.math.convergence.policy'))
       }
       if (K.stability === 'require' && raw.unstable === true) {
         throw deny('VMU_STATE', 'vmu.math.numeric.stability="require" refuses an unstable result',
-          'the seam flagged the result as unstable (vmu.math.numeric.stability)', evalKeyList(enforced, 'vmu.math.numeric.stability'))
+          'the seam flagged the result as unstable (vmu.math.numeric.stability)', mark(enforced, 'vmu.math.numeric.stability'))
       }
       if (K.maxFileMb > 0) {
         const mb = num(raw.artifactMb)
@@ -448,29 +463,29 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
       //     EVERY key whose read changes THIS result is recorded here (the round-11 criterion, applied to
       //     the whole shaping path — not only to the rails the reviewer happened to probe).
       const tolerance = /^optim\//.test(p.plan.op) ? K.optimTolerance : K.pTolerance
-      evalKeyList(enforced, /^optim\//.test(p.plan.op) ? 'vmu.math.optim.tolerance' : 'vmu.math.precision.tolerance')
+      mark(enforced, /^optim\//.test(p.plan.op) ? 'vmu.math.optim.tolerance' : 'vmu.math.precision.tolerance')
       const delta = numf(raw.delta, null)
       const converged = delta === null ? (raw.converged === undefined ? null : raw.converged === true) : Math.abs(delta) <= tolerance
       const rounds = K.digits > 0
-      if (rounds) for (const k of ['vmu.math.precision.digits', 'vmu.math.precision.mode', 'vmu.math.precision.rounding']) evalKeyList(enforced, k)
+      if (rounds) for (const k of ['vmu.math.precision.digits', 'vmu.math.precision.mode', 'vmu.math.precision.rounding']) mark(enforced, k)
       const value = result && typeof result.value === 'number' ? roundTo(result.value, K.digits, K.pMode, K.rounding) : (result ? result.value : null)
       const shaped = Object.assign({}, result, value === undefined ? {} : { value })
-      evalKeyList(enforced, 'vmu.math.jobs.persist')          // decides detail kept + whether the library is written
-      if (K.packOnSuccess) evalKeyList(enforced, 'vmu.math.repro.packOnSuccess')
-      if (K.cacheEnabled) evalKeyList(enforced, 'vmu.math.cache.crossProject')   // it shaped the cache key
-      for (const k of ['vmu.math.report.language', 'vmu.math.report.style', 'vmu.math.report.includeRepro']) evalKeyList(enforced, k)
+      mark(enforced, 'vmu.math.jobs.persist')          // decides detail kept + whether the library is written
+      if (K.packOnSuccess) mark(enforced, 'vmu.math.repro.packOnSuccess')
+      if (K.cacheEnabled) mark(enforced, 'vmu.math.cache.crossProject')   // it shaped the cache key
+      for (const k of ['vmu.math.report.language', 'vmu.math.report.style', 'vmu.math.report.includeRepro']) mark(enforced, k)
       let logLines = Array.isArray(raw.logLines) ? raw.logLines.slice() : []
       if (logLines.length > K.logMax) {
         const dropped = logLines.length - K.logMax
         counters.droppedLogLines += dropped
         logLines = logLines.slice(-K.logMax)
-        enforced.push('vmu.math.jobs.logMax')
+        mark(enforced, 'vmu.math.jobs.logMax')
       }
       let warnings = Array.isArray(raw.warnings) ? raw.warnings.slice() : []
       if (!K.warnings && warnings.length) {
         counters.droppedWarnings += warnings.length
         warnings = []
-        enforced.push('vmu.math.numeric.warnings')
+        mark(enforced, 'vmu.math.numeric.warnings')
       }
       const receipt = {
         at, op: p.plan.op, seed: p.plan.seed, backend: p.plan.backend, cacheKey: p.plan.cacheKey,
@@ -489,12 +504,12 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
         else counters.persistUnwired = (counters.persistUnwired || 0) + 1
       }
       if (K.cacheEnabled) store(p.plan.cacheKey, { result: shaped, receipt })
-      if (K.cacheEnabled && counters.cacheEvictions > 0) evalKeyList(enforced, 'vmu.math.cache.maxEntries')   // an eviction changed the cache
+      if (K.cacheEnabled && counters.cacheEvictions > 0) mark(enforced, 'vmu.math.cache.maxEntries')   // an eviction changed the cache
       counters.ran += 1
       pushReceipt(receipt)
       emit({ type: 'mathtools/ran', at, op: p.plan.op, cacheKey: p.plan.cacheKey })
-      say({ type: 'mathtools/ran', at, op: p.plan.op, enforced })
-      return { ok: true, cached: false, result: shaped, receipt, enforced }
+      say({ type: 'mathtools/ran', at, op: p.plan.op, enforced, enforcedScope: ENFORCED_SCOPE })
+      return { ok: true, cached: false, result: shaped, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** Ops maintenance: mark a cache entry corrupt (a partially written entry is a real failure mode).
