@@ -28,6 +28,9 @@
 export const apiVersion = 1
 
 import { readFileSync, existsSync } from 'node:fs'
+// ROUND 60: an AGREEMENT's expiry may be given as an ISO string or as epoch-ms, so it goes through the shared
+// normaliser. `at()` below is a different rule on purpose (an absent instant means "now"), and it stays.
+import { ms as toMs } from './timevalue.js'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -486,12 +489,40 @@ export function createIp({ clock = () => 0, log = null, settings = {}, bus = nul
     },
 
     /** Service surface `vmu.ip.transfer` — transfer with the policy's signature requirement. */
-    transfer({ id, to = null, terms = null, signedRef = null, at: when = null, by = null } = {}) {
+    transfer({ id, to = null, terms = null, signedRef = null, agreement = null, at: when = null, by = null } = {}) {
       const enforced = ['vmu.ip.transferPolicy']
       const fired = []
       const d = dossierOf(id)
       if (!d) return deny('VMU_NO_SUCH_OBJECT', 'unknown dossier: ' + String(id), 'file() it first', enforced)
       if (typeof to !== 'string' || !to.trim()) return deny('VMU_INVALID_ARGUMENT', 'transfer needs a non-empty `to`', 'name the receiving party', enforced)
+      // ROUND 60 (docs/22 §7.4, judged "to be done" after correcting my own verdict): a signed reference may
+      // carry the two facts the CALLER knows and the kernel must not invent - when the agreement EXPIRES and
+      // what it PERMITS. Both are optional, so an opaque ref keeps working; the kinds and the vocabulary stay
+      // in packs. The refusal reuses this face's existing code rather than registering a new one.
+      if (agreement !== null) {
+        if (typeof agreement !== 'object') {
+          return deny('VMU_INVALID_ARGUMENT', 'agreement must be an object when given',
+            'pass { ref, expiresAt, restrictions } or omit it', enforced)
+        }
+        const whenMs = at(when)
+        if (agreement.expiresAt !== undefined && agreement.expiresAt !== null) {
+          const exp = toMs(agreement.expiresAt)
+          if (!Number.isFinite(exp)) {
+            return deny('VMU_INVALID_ARGUMENT', 'agreement.expiresAt cannot be read as an instant: ' + JSON.stringify(agreement.expiresAt),
+              'pass epoch-ms or an ISO timestamp', enforced, { expiresAt: agreement.expiresAt })
+          }
+          if (whenMs >= exp) {
+            mark(fired, 'vmu.ip.transferPolicy')
+            return deny('VMU_IP_TRANSFER_UNLICENSED', 'the agreement ' + String(agreement.ref === undefined ? '(unnamed)' : agreement.ref) + ' had EXPIRED before this transfer of ' + d.id,
+              '现值=' + whenMs + 'ms, 到期=' + exp + 'ms — an expired agreement permits nothing', enforced, { to, expiredAt: exp })
+          }
+        }
+        if (Array.isArray(agreement.restrictions) && agreement.restrictions.length > 0 && !agreement.restrictions.includes('transfer')) {
+          mark(fired, 'vmu.ip.transferPolicy')
+          return deny('VMU_IP_TRANSFER_UNLICENSED', 'the agreement ' + String(agreement.ref === undefined ? '(unnamed)' : agreement.ref) + ' does not permit a transfer of ' + d.id,
+            'it permits: ' + agreement.restrictions.join(', ') + ' — scope is checked, not assumed', enforced, { to, restrictions: agreement.restrictions.slice() })
+        }
+      }
       if (transferPolicy === 'manual') {
         mark(fired, 'vmu.ip.transferPolicy')
         if (typeof signedRef !== 'string' || !signedRef.trim()) {
@@ -511,7 +542,7 @@ export function createIp({ clock = () => 0, log = null, settings = {}, bus = nul
         return deny('VMU_LICENSE_INCOMPATIBLE', 'the requested licence is incompatible with the licences already granted on ' + d.id,
           'licence terms live in docs/20 (`vmu.license.*`); pick a compatible grant', enforced, { to, licence })
       }
-      const t = { id: 'tr-' + (++seq), dossierId: d.id, to: String(to), terms: terms === null ? null : terms, signedRef: signedRef === null ? null : String(signedRef), licence, at: at(when), by: by === null ? null : String(by), policy: transferPolicy }
+      const t = { id: 'tr-' + (++seq), dossierId: d.id, to: String(to), terms: terms === null ? null : terms, signedRef: signedRef === null ? null : String(signedRef), licence, at: at(when), by: by === null ? null : String(by), policy: transferPolicy, agreementRef: agreement && typeof agreement === 'object' && agreement.ref !== undefined ? String(agreement.ref) : null }
       d.transfers.push(t)
       d.ownership = 'joint'
       counters.transfers += 1

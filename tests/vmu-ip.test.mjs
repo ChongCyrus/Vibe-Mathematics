@@ -408,5 +408,27 @@ const goodDossier = (h, extra = {}) => h.ip.file(Object.assign({
   ok(SERVICE_KEYS.length > 0 && SERVICE_KEYS.every((k) => typeof h.ip[k.split('.').pop()] === 'function'), 'the 5 declared service surfaces are real methods (they carry no value to "fire") (non-vacuous: SERVICE_KEYS is a non-empty module constant)')
 }
 
+// ---- ROUND 60 (docs/22 §7.4, re-judged "to be done"): a signed reference may carry EXPIRY and SCOPE, and both
+// are now CHECKED rather than assumed - the two facts the caller knows and the kernel must not invent.
+{
+  const h = mk({ 'vmu.ip.transferPolicy': 'manual' })
+  const f = goodDossier(h)
+  const expired = h.ip.transfer({ id: f.id, to: 'partner', signedRef: 'agr-1', agreement: { ref: 'agr-1', expiresAt: h.now() - 1000 } })
+  ok(codeOf(expired) === 'VMU_IP_TRANSFER_UNLICENSED' && /EXPIRED/.test(String(expired.message)),
+    'an EXPIRED agreement refuses the transfer by name (expiry checked, not assumed)', JSON.stringify(expired).slice(0, 170))
+  const outOfScope = h.ip.transfer({ id: f.id, to: 'partner', signedRef: 'agr-1', agreement: { ref: 'agr-1', restrictions: ['export'] } })
+  ok(codeOf(outOfScope) === 'VMU_IP_TRANSFER_UNLICENSED' && /does not permit a transfer/.test(String(outOfScope.message)),
+    'an agreement whose restrictions exclude transfers refuses by name and quotes what it permits', JSON.stringify(outOfScope).slice(0, 170))
+  const futureIso = new Date(h.now() + 86400000).toISOString()
+  const honest = h.ip.transfer({ id: f.id, to: 'partner', signedRef: 'agr-1', agreement: { ref: 'agr-1', expiresAt: futureIso, restrictions: ['transfer', 'export'] } })
+  ok(honest.ok === true, 'an in-scope, unexpired agreement SUCCEEDS (the check blocks the dishonest, not the honest)', JSON.stringify(honest).slice(0, 170))
+  const opaque = h.ip.transfer({ id: f.id, to: 'partner', signedRef: 'agr-opaque' })
+  ok(opaque.ok === true, 'an opaque signed reference still works (the new fields are optional)', JSON.stringify(opaque).slice(0, 150))
+  const bad = h.ip.transfer({ id: f.id, to: 'partner', signedRef: 'agr-1', agreement: { ref: 'agr-1', expiresAt: 'nope' } })
+  ok(codeOf(bad) === 'VMU_INVALID_ARGUMENT', 'an unreadable expiresAt is refused by name (never treated as "no expiry")', JSON.stringify(bad).slice(0, 150))
+  const nonObject = h.ip.transfer({ id: f.id, to: 'partner', signedRef: 'agr-1', agreement: 'agr-1' })
+  ok(codeOf(nonObject) === 'VMU_INVALID_ARGUMENT', 'a non-object agreement is refused by name', JSON.stringify(nonObject).slice(0, 150))
+}
+
 console.log('=== VMU IP: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed > 0 ? 1 : 0)
