@@ -29,12 +29,26 @@ const boolOr = (v, d) => (typeof v === 'boolean' ? v : d)
 export const VAGUE_PATTERNS = Object.freeze([
   'on request', 'upon request', 'by request', 'available on request', 'available upon request',
   '应要求提供', '可应要求提供', '按需提供', '如有需要可提供', '需要时提供', '可向作者索取', '索取',
+  // contact 族（批评者实测能绕过的写法；中英双语，仍只做声明式表）
+  'contact the authors', 'contact the author', 'contact us', 'please contact the authors',
+  'available from the authors', 'available from the author', 'obtainable from the authors',
+  '联系作者', '请联系作者', '与作者联系', '可联系作者获取', '向作者索取', '可向作者', '来信索取', '联系原作者',
 ])
+
+/** 匹配前归一化：小写 ＋ 空白折叠（全角空格/制表/换行）＋ 去零宽字符。只做声明式匹配，不引入模糊匹配。 */
+export function normalizeForMatch(text) {
+  return String(text === undefined || text === null ? '' : text)
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')   // 零宽字符
+    .replace(/[\s\u3000]+/g, ' ')            // 空白折叠（含全角空格）
+    .trim()
+    .toLowerCase()
+}
 
 export function isVague(text) {
   const s = String(text === undefined || text === null ? '' : text).trim().toLowerCase()
   if (!s) return true
-  return VAGUE_PATTERNS.some((p) => s.includes(p.toLowerCase()))
+  // 归一化后匹配：多空格／全角空格／零宽字符／大小写都不再能绕过短语表
+    return VAGUE_PATTERNS.some((p) => normalizeForMatch(s).includes(normalizeForMatch(p)))
 }
 
 /**
@@ -148,7 +162,9 @@ export function createPublication({ clock = () => Date.now(), log = () => {}, se
     const fields = { data, code, materials }
     const decl = { paperId, ...fields, license, url: urlStr || null, how: howStr || null, at: clock() }
     p.availability = decl
-    return { ...decl, badge: badge({ paperId }).badge }
+    const vagueAccepted = isVague([howStr, urlStr].filter(Boolean).join(' '))
+    // 显式放行也必须**自曝**：回执里出现 onRequest:true，绝不静默
+    return { ...decl, badge: badge({ paperId }).badge, ...(c.allowOnRequest && vagueAccepted ? { onRequest: true, onRequestNote: 'accepted ONLY because vmu.avail.allowOnRequest=true (self-exposed)' } : {}) }
   }
 
   /** Badge (G19): must match the fields — a mismatch is refused by name. */

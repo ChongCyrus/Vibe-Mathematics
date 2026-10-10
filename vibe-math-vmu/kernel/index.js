@@ -58,6 +58,8 @@ import { createScheduler } from './scheduler.js'
 import { createCrypto } from './crypto.js'
 import { createNotify } from './notify.js'
 import { createLifecycle } from './lifecycle.js'
+import { createIdempotency } from './idempotency.js'
+import { createReplay } from './replay.js'
 import { createWorkflow } from './workflow.js'
 import { createTrust } from './trust.js'
 import { createHandover } from './handover.js'
@@ -208,7 +210,11 @@ export function createKernel({
     clock,
     onAudit: (row) => {
       auditRing.push(row)
-      if (auditRing.length > 100) auditRing.shift()
+      // DECLARED, not hard-coded: the ring length had been fixed at 100 while `vmu.audit.ringMax` declares 64 and
+      // docs/21 says 64 - three sources, two answers. The setting wins; 64 stays as the declared fallback.
+      const auditRingMax = Number.isInteger(settings['vmu.audit.ringMax']) && settings['vmu.audit.ringMax'] > 0
+        ? settings['vmu.audit.ringMax'] : 64
+      if (auditRing.length > auditRingMax) auditRing.shift()
       if (logEnabled('info')) log('audit ' + JSON.stringify(row))
       auditToDisk(row)
     },
@@ -317,6 +323,11 @@ export function createKernel({
   const notify = createNotify({ settings: { get: (k) => settings[k] }, bus, clock, log, deliver: null })
   const lifecycle = createLifecycle({ settings: { get: (k) => settings[k] }, bus, clock, log, workflow,
     domaingate, publication })
+  // K6 (round 16): the unified idempotency ledger that a replay/retry path can consult before doing work again.
+  const idempotency = createIdempotency({ settings: { get: (k) => settings[k] }, bus, clock, log })
+  // K5 (round 16): read-only replay of the audit log. It never writes back into any service - rebuilding state
+  // is a pure function, and gaps in the log are reported rather than papered over.
+  const replay = createReplay({ settings: { get: (k) => settings[k] }, bus, clock, log, audit, idempotency })
 
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
@@ -366,6 +377,8 @@ export function createKernel({
   registry.register('vmu.crypto', { apiVersion: 1 }, { kind: 'service', description: 'signatures and non-repudiation: no signer means no signature is invented (docs/20 §6)' })
   registry.register('vmu.notify', { apiVersion: 1 }, { kind: 'service', description: 'watchers and delivery: silence blocks delivery, never the record (docs/17 §29)' })
   registry.register('vmu.lifecycle', { apiVersion: 1 }, { kind: 'service', description: 'research lifecycle L1-L24: gates delegated to the domain and publication services (docs/16 §1)' })
+  registry.register('vmu.idempotency', { apiVersion: 1 }, { kind: 'service', description: 'idempotency ledger: same key with a different payload is refused by name (K6)' })
+  registry.register('vmu.replay', { apiVersion: 1 }, { kind: 'service', description: 'audit replay: pure read-only reconstruction, gaps reported (K5)' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -465,6 +478,8 @@ export function createKernel({
     get crypto() { return crypto },
     get notify() { return notify },
     get lifecycle() { return lifecycle },
+    get idempotency() { return idempotency },
+    get replay() { return replay },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,

@@ -415,8 +415,9 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | 批 3 | 归档落盘适配／复现包 | `07`／`16` | — | — | **未开始** ✗ |
 | 批 4–5 | 计算与形式化／合规运营 | `09·15`／`16·20·22` | — | — | **未开始** ✗ |
 
-> **本阶段累计** ✓：内核**已注册服务面 29 个**（含 `library`／`members`／`tasks`／`prompt`／`middleware`／`store`／`work` 等既有面 ✓；本阶段新增 **22 个**：`governance`／`board`／`minutes`／`budget`／`metrics`／`audit`／`alerts`／`retention`／`delegation`／`workflow`／`trust`／`arbitration`／`handover`／`recruit`／`topology`／`fairness`／`charter`／`repropack`／`memory`／`bidding`／`mathjobs` ＋ `library` 的删除/修订契约 ✓）、**T1 69/69** ✓、**设置表已接线键 51 → 293** ✓（**具体数字永远以 `00-§3.2` 的生成索引为准** ✗✓ —— 本节只记里程碑 ✓）；**每一块都附"未做清单" ✗**（如：无耐久投影、拓扑只约束路径不建席位、公平不含历史欠账、宪章的裂变/合并尚无 API、`skills` 的退役-额度语义仍红 ✗）。
-> **门禁新增的守门能力** ✓（都由真实缺陷逼出来 ✓）：**import 闭包必须随包**（两次救回 `MODULE_NOT_FOUND` ✗✓）、**代码读的键必须已登记**（抓出 v5r 包的真旋钮与 40+ 未登记键 ✓）、**一个旋钮只能有一个名字**（抓出 4 组别名 ✗✓）、**契约面必须与模块公开面一致**（抓出 `vmu.library` 缺 5＋3 个方法 ✗✓）。
+> **本阶段累计** ✓：内核**已注册服务面 37 个**（含 `library`／`members`／`tasks`／`prompt`／`middleware`／`store`／`work` 等既有面 ✓；本阶段服务化 **26 个**：`governance`／`board`／`minutes`／`budget`／`metrics`／`audit`／`alerts`／`retention`／`delegation`／`workflow`／`trust`／`arbitration`／`handover`／`recruit`／`topology`／`fairness`／`charter`／`repropack`／`memory`／`bidding`／`mathjobs`／`skills`／`publication`／`formal`／`external`／`domaingate`／`scheduler`／`crypto`／`notify`／`lifecycle` ＋ `library` 的删除/修订契约 ✓）、**T1 82/82** ✓、**设置表已接线键 51 → 354** ✓（**具体数字永远以 `00-§3.2` 的生成索引为准** ✗✓ —— 本节只记里程碑 ✓）；**每一块都附"未做清单" ✗**（如：无耐久投影、拓扑只约束路径不建席位、公平不含历史欠账、宪章的裂变/合并尚无 API、`crypto` 无真实密码学（只调注入接缝）✓）。
+> **门禁新增的守门能力** ✓（都由真实缺陷逼出来 ✓）：**import 闭包必须随包**（两次救回 `MODULE_NOT_FOUND` ✗✓；第 7 轮复核后**把 `tests/` 也纳入**，因为测试的相对 import 曾整批不被检查 ✗✓）、**代码读的键必须已登记**（抓出 v5r 包的真旋钮与 40+ 未登记键 ✓）、**一个旋钮只能有一个名字**（抓出多组别名 ✗✓）、**契约面必须与模块公开面一致**（抓出 `vmu.library` 缺 5＋3 个方法 ✗✓）、**注册的服务必须真的被构造**（抓出 `mathjobs` 注册却未建 ✗✓，本轮新增且自带"改坏必红"自证 ✓）。
+> **已知未闭合的门禁缺口** ✗（如实记录 ✓）：`audit-vmu-services` 的绑定判定仍是**文本匹配** ⇒ 注释里的假绑定可绕过 ✓（我第 15 轮的"正则剥注释"修法**把 `index.js` 削掉一半** ✗ ⇒ **已回退**并把该洞**明写在门禁里** ✓）；真正修它需要**分词器** ✓（本轮已派单 ✓）。
 | 批 1 · 其余 | 工作流／控制／调度 | `08-§4` | — | — | **未开始** ✗ |
 | 批 2–5 其余 | 信任/仲裁/归档/计算/合规 | `17`／`07`／`09·15`／`16·20` | — | — | **未开始** ✗ |
 

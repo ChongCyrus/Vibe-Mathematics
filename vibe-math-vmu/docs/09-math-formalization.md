@@ -34,7 +34,7 @@ interface EngineAdapter {
 ```
 
 - **登记顺序＝优先级** ✓：内核只按登记顺序探测与调用（现状：8 个 P1 引擎按固定顺序，`sage` 记在 P2 表里 ⛔ 未进 P1 顺序）；顺序本身由一个**引擎顺序族**设置承载（通配 `vmu.math.*` 的引擎子族；具体键名以 04 卷参数总表为准 ✓）；
-- **可用性探测**：启动与按需探测 ✓；**缺席不是灾难**，而是**具名降级**（如 `VMU_ENGINE_UNAVAILABLE` ＋ 建议）✓；
+- **可用性探测**：启动与按需探测 ✓；**缺席不是灾难**，而是**具名降级**（如 `VMU_EXTERNAL_UNAVAILABLE` ＋ 建议 ✓；**不是** `VMU_ENGINE_UNAVAILABLE` ✗ —— 共享码即"外部不可用"的规范名 ✓）；
 - **默认零引擎**：不配置引擎 ⇒ 计算面"存在但不可用"，且**明确告知**（不许假装成功）✓；
 - **商业引擎只给厂商指引** ✓（许可类错误具名，不静默跳过）。
 
@@ -120,7 +120,7 @@ MathJob = { id, kind, engine, input, timeoutMs, budget?, async?, createdAt, stat
 
 **已实现（代码可核）**：
 - 计算面（共享模块的 11 个）：`MATH_NOT_AVAILABLE`、`MATH_ENGINE_NOT_FOUND`、`MATH_ENGINE_LICENSE_REQUIRED`、`MATH_ENGINE_UNUSABLE`、`MATH_MISSING_PACKAGES`、`MATH_TIMEOUT`、`MATH_NONZERO_EXIT`、`MATH_ENGINE_BAD_ARGV`、`MATH_REFUSED`、`MATH_INVALID_ARGUMENT`、`MATH_NO_SUBPROCESS`；
-- vmu 归类与形式化：`VMU_ENGINE_UNAVAILABLE`（把上述"缺席类"归并成一个 vmu 码 ✓）、`VMU_LEAN_NOT_FOUND`、`VMU_LEAN_EXIT_NONZERO`、`VMU_LEAN_TIMEOUT`、`VMU_LEAN_SPAWN_FAILED`、`VMU_LEAN_FILE_REQUIRED`、`VMU_LEAN_FILE_UNREADABLE`、`VMU_LEAN_STATEMENT_REQUIRED`、`VMU_LEAN_HASH_CHANGED`、`VMU_LEAN_NOT_SETTLED`；
+- vmu 归类与形式化：**`VMU_EXTERNAL_UNAVAILABLE`**（**接缝/引擎不可用的统一共享码** ✓；历史提案 `VMU_ENGINE_UNAVAILABLE` **当前未使用** ✗）、`VMU_LEAN_NOT_FOUND`、`VMU_LEAN_EXIT_NONZERO`、`VMU_LEAN_TIMEOUT`、`VMU_LEAN_SPAWN_FAILED`、`VMU_LEAN_FILE_REQUIRED`（**提案码，当前未使用** ✗：参数级错误统一用 **`VMU_MATH_INVALID_INPUT`** ✓）、`VMU_LEAN_FILE_UNREADABLE`、`VMU_LEAN_STATEMENT_REQUIRED`（**提案码，当前未使用** ✗：同上 ✓）、`VMU_LEAN_HASH_CHANGED`、`VMU_LEAN_NOT_SETTLED`；
 - 通用闸门：`VMU_RESOURCE_BUDGET`、`VMU_NOT_PERMITTED`、`VMU_INVALID_ARGUMENT`、`VMU_JOB_TIMEOUT`。
 
 **纪律** ✓：编译失败必须**与"命题为假"区分**（沿用 v5r 的"形式化缺陷非反驳"纪律；代码层面由 `classifyOutcome` 保证）；引擎缺失必须**具名**（不许报告为成功）。
@@ -425,7 +425,7 @@ MathJob = { id, kind, engine, input, timeoutMs, budget?, async?, createdAt, stat
 | `VMU_FORMAL_SKELETON_UNAVAILABLE` | 无法生成骨架 | 警告 | 计划 ⛔ |
 | `VMU_FORMAL_REPRO_INCOMPLETE` | 复现包缺项（版本/依赖/种子） | 拒绝 | 计划 ⛔ |
 
-> 已实现码（勿重复登记）：`MATH_*` 11 个、`VMU_LEAN_*` 9 个、`VMU_ENGINE_UNAVAILABLE`、`VMU_JOB_TIMEOUT`、`VMU_RESOURCE_BUDGET`、`VMU_NOT_PERMITTED`、`VMU_INVALID_ARGUMENT`。
+> 已实现码（勿重复登记）：`MATH_*` 11 个、`VMU_LEAN_*` 9 个（其中 `VMU_LEAN_FILE_REQUIRED`／`VMU_LEAN_STATEMENT_REQUIRED` **为提案码、当前未使用** ✗：参数级错误统一 `VMU_MATH_INVALID_INPUT` ✓）、**`VMU_EXTERNAL_UNAVAILABLE`**（接缝/引擎不可用的统一共享码 ✓；历史提案 `VMU_ENGINE_UNAVAILABLE` **当前未使用** ✗）、`VMU_JOB_TIMEOUT`、`VMU_RESOURCE_BUDGET`、`VMU_NOT_PERMITTED`、`VMU_INVALID_ARGUMENT`。
 
 ---
 

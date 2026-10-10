@@ -262,6 +262,44 @@ const make = (over = {}) => {
     'K8: replacing a bid is recorded as a revision (not hidden)', JSON.stringify(rebid))
 }
 
+// ---- Z. cancel(): the cancellation rail (previously untested) ----------------------------------------
+{
+  const { a, set } = make({ settings: { 'vmu.auction.maxOpenAuctions': 10 } })   // cancelNeedsReason defaults to true
+  const p1 = a.post({ taskId: 't-c1', budget: 100 })
+  const p2 = a.post({ taskId: 't-c2', budget: 100 })
+  a.bid({ postId: p1.postId, by: 'r-1', price: 10, plan: 'x' })
+  a.bid({ postId: p2.postId, by: 'r-2', price: 20, plan: 'y' })
+  set(1500)
+  const c1 = a.cancel({ postId: p1.postId, by: 'office', reason: 'the task was withdrawn' })
+  ok(c1.ok === true && c1.cancelled === true && c1.postId === p1.postId && c1.at === 1500,
+    'Z1: an open auction can be cancelled (and the time is the injected one)', JSON.stringify(c1))
+  ok(c1.reason === 'the task was withdrawn',
+    'Z2: the cancellation LEAVES A TRACE (who/why/when: the reason is echoed)', JSON.stringify(c1))
+  ok(a.status().counters.cancelled === 1, 'Z3: the cancellation is counted', JSON.stringify(a.status().counters))
+  const eNoReason = err(() => a.cancel({ postId: p2.postId, by: 'office' }))
+  ok(eNoReason && eNoReason.code === 'VMU_INVALID_ARGUMENT' && /reason/.test(String(eNoReason.message)),
+    'Z4: cancelNeedsReason=true ⇒ a missing reason is a NAMED refusal', eNoReason && eNoReason.code)
+  const eUnknown = err(() => a.cancel({ postId: 'nope', by: 'office', reason: 'x' }))
+  ok(eUnknown && eUnknown.code === 'VMU_NO_SUCH_OBJECT', 'Z5: an unknown postId is a NAMED refusal', eUnknown && eUnknown.code)
+  const eBadAt = err(() => a.cancel({ postId: p2.postId, by: 'office', reason: 'x', at: 'not-a-time' }))
+  ok(eBadAt && eBadAt.code === 'VMU_INVALID_ARGUMENT', 'Z6: a malformed `at` is a NAMED refusal', eBadAt && eBadAt.code)
+  const p3 = a.post({ taskId: 't-c3', budget: 100 })
+  a.bid({ postId: p3.postId, by: 'r-3', price: 30, plan: 'z', score: 0.9 })   // best-score needs a numeric score
+  set(12000)   // the window must be over before close() (or pass force:true)
+  a.close({ postId: p3.postId })
+  a.award({ postId: p3.postId, to: 'r-3', rationale: 'only bid' })
+  const eAwarded = err(() => a.cancel({ postId: p3.postId, by: 'office', reason: 'late' }))
+  ok(eAwarded && eAwarded.code === 'VMU_STATE' && /awarded/.test(String(eAwarded.message)),
+    'Z7: an AWARDED auction cannot be cancelled (the STATE is named)', eAwarded && eAwarded.code)
+  const eTwice = err(() => a.cancel({ postId: p1.postId, by: 'office', reason: 'again' }))
+  ok(eTwice && eTwice.code === 'VMU_STATE' && /cancelled/.test(String(eTwice.message)),
+    'Z8: cancelling twice is a NAMED refusal (already cancelled)', eTwice && eTwice.code)
+  const c2 = a.cancel({ postId: p2.postId, by: 'office', reason: 'also withdrawn' })
+  ok(c2.ok === true && a.status().counters.cancelled === 2,
+    'Z9: cancelling one auction does NOT disturb the others (a second auction still cancels cleanly)',
+    JSON.stringify(a.status().counters))
+}
+
 if (failed === 0) {
   console.log('=== VMU BIDDING: ' + passed + ' passed, 0 failed ===')
   process.exit(0)

@@ -273,6 +273,30 @@ const fakeMetrics = (rows = {}, kpiImpl = null) => ({
     'K4: every refusal is COUNTED BY CODE before it is thrown', JSON.stringify(a.status().refusals))
 }
 
+// ---- Z. undeclare(): the removal rail (previously untested) ------------------------------------------
+{
+  let now = 1000
+  const logs = []
+  const a = createAlerts({ clock: () => now, log: { append: (e) => logs.push(e) }, settings: {} })
+  a.declare({ id: 't-z', metric: 'refusalRate', op: '>', threshold: 0.1 })
+  ok(a.evaluate().results.length === 1, 'Z1: a declared threshold IS evaluated',
+    JSON.stringify(a.evaluate().results))
+  const u = a.undeclare({ id: 't-z' })
+  ok(u.ok === true && u.undeclared === true && u.id === 't-z',
+    'Z2: a declared threshold can be undeclared', JSON.stringify(u))
+  const after = a.evaluate()
+  ok(after.results.length === 0, 'Z3: after undeclare() the threshold is NOT evaluated any more',
+    JSON.stringify(after.results))
+  ok(after.results.every((r) => r.id !== 't-z'), 'Z4: the undeclared id never reappears in results')
+  const traced = logs.some((l) => l && l.type === 'alerts/undeclared' && l.id === 't-z')
+  ok(traced, 'Z5: undeclare() LEAVES A TRACE in the injected log (alerts/undeclared)', JSON.stringify(logs))
+  const redo = a.declare({ id: 't-z', metric: 'refusalRate', op: '>', threshold: 0.2 })
+  ok(redo.ok === true && a.evaluate().results.length === 1,
+    'Z6: the same id can be declared AGAIN after undeclare() (the removal freed the id)', JSON.stringify(redo))
+  let e = null; try { a.undeclare({ id: 'never-declared' }) } catch (x) { e = x }
+  ok(e && e.code === 'VMU_NO_SUCH_OBJECT', 'Z7: undeclaring an unknown id is a NAMED refusal', e && e.code)
+}
+
 if (failed === 0) {
   console.log('=== VMU ALERTS: ' + passed + ' passed, 0 failed ===')
   process.exit(0)

@@ -534,6 +534,18 @@ vmu.packs.active: [v5r]
 | `vmu.lifecycle.requireEvidence` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 每阶段必须有准入证据 |
 | `vmu.lifecycle.maxArtifacts` | int ≥1 | `20` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 产物条数上限（溢出必计数） |
 | `vmu.lifecycle.allowBackward` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 是否允许回退阶段（默认否：回退即拒 ✓） |
+| `vmu.idempotency.maxEntries` | int ≥1 | `1000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/idempotency.js` | 台账条目上限（溢出 ⇒ 淘汰并计数 ✓） |
+| `vmu.idempotency.ttlMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/idempotency.js` | 条目有效期（0＝不过期） |
+| `vmu.idempotency.pendingTimeoutMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/idempotency.js` | pending 超时（0＝不限；超时可重试并留痕 ✓） |
+| `vmu.idempotency.scopeDefault` | string | `global` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/idempotency.js` | 缺省作用域（同 key 跨 scope 视为不同键 ✓） |
+| `vmu.idempotency.abortNeedsReason` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/idempotency.js` | abort 必须给理由（留痕 ✓） |
+| `vmu.idempotency.retryAfterAbort` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/idempotency.js` | abort 后是否允许同 key 重试（同载荷 ✓） |
+| `vmu.idempotency.maxPayloadBytes` | int ≥0 | `262144` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/idempotency.js` | 载荷指纹计算上限（触界报丢弃 ✗） |
+| `vmu.replay.strict` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/replay.js` | 未知事件类型是否具名拒（默认 false：计入 unknownKinds ✓ 绝不静默跳过 ✗） |
+| `vmu.replay.keepUnknown` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/replay.js` | 未知事件是否保留在重建结果里（保留并标 unknown ✓） |
+| `vmu.replay.requireContiguousSeq` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/replay.js` | 是否要求审计序号连续（缺口必须报 ✗✓） |
+| `vmu.replay.maxEvents` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/replay.js` | 重放事件上限（0＝不限；截断必计数 ✓） |
+| `vmu.replay.maxStateKeys` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/replay.js` | 重建状态键上限（0＝不限；截断必计数 ✓） |
 | `vmu.handover.packBudgetBytes` | int ≥1 | `32768` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 上下文包预算（触界必报丢弃） |
 | `vmu.handover.compress` | enum | `summary` | `none`∣`summary` | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 压缩方式 |
 | `vmu.handover.requireFingerprint` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 每项须带指纹 |
@@ -1356,7 +1368,7 @@ vmu.packs.active: [v5r]
 | `vmu.workflow.escalationTarget` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/workflow.js` | 设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准） |
 | `vmu.workflow.gateKinds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.workflow.handoverNote` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.workflow.idempotencyKeyScope` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
+| `vmu.workflow.idempotencyKeyScope` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/idempotency.js` | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.workflow.parentDoneRule` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.workflow.priorityClasses` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.workflow.retryBaseMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |

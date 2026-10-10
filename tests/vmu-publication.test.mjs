@@ -138,5 +138,23 @@ const mk = (settings = {}, opts = {}) => createPublication({ clock: () => now, s
   ok(p.list().items[0].at === 1000, 'at comes from the injected clock')
 }
 
+
+// ── 反例断言（task-101 加固）：归一化后必须被拒；正例不得被误拒 ─────────────────────────────
+{
+  const must = [
+    ['on  request', '多空格折叠'],
+    ['on\u3000request', '全角空格折叠'],
+    ['on\u200B request', '零宽字符剥离'],
+    ['please contact the authors', 'contact 族（英）'],
+    ['可联系作者获取', 'contact 族（中）'],
+  ]
+  for (const [txt, why] of must) {
+    if (!isVague(txt)) { console.error('  FAIL - [isVague] ' + why + ' 未被判为 vague: ' + JSON.stringify(txt)); process.exit(1) }
+    console.log('  ok - [isVague] ' + why + ' 被拒 :: ' + JSON.stringify(txt))
+  }
+  const positives = ['https://example.org/data.zip', 'openly available under CC-BY-4.0', 'data on Zenodo']
+  for (const p of positives) if (isVague(p)) { console.error('  FAIL - [isVague] 正例被误拒: ' + JSON.stringify(p)); process.exit(1) }
+  console.log('  ok - [isVague] 3 条正例未被误拒（防过严）')
+}
 console.log('=== VMU PUBLICATION: ' + pass + ' passed, ' + fail + ' failed ===')
 process.exit(fail ? 1 : 0)
