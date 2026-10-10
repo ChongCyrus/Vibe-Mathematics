@@ -72,6 +72,12 @@ import { createMeetings } from './meetings.js'
 import { createBallotBox } from './ballotbox.js'
 import { createRecords } from './records.js'
 import { createCourse } from './course.js'
+// Round 32: three faces the docs declared but the kernel did not have. Each one follows the mathtools standard -
+// a wired key must change an observable behaviour, refusals carry the enforced list and its scope, and the keys
+// that are NOT wired are named individually with a reason rather than quietly ignored.
+import { createConference } from './conference.js'
+import { createInstruments } from './instruments.js'
+import { createIp } from './ip.js'
 import { createWorkflow } from './workflow.js'
 import { createTrust } from './trust.js'
 import { createHandover } from './handover.js'
@@ -565,6 +571,11 @@ export function createKernel({
   // ROUND 24: the teaching face the N13 volume declared (19 of its 24 knobs change behaviour; the five that need
   // a library, records or ontology seam are named rather than silently accepted).
   const course = createCourse({ settings: settingsView, bus, clock: guardedClock, log })
+  // The conference face is LAYERED on the single-session policy face: it plans and reviews, `meetings` owns the
+  // session. Its tests prove the layering with a counting proxy (zero calls into meetings).
+  const conference = createConference({ settings: settingsView, bus, clock: guardedClock, log, meetings })
+  const instruments = createInstruments({ settings: settingsView, bus, clock: guardedClock, log })
+  const ip = createIp({ settings: settingsView, bus, clock: guardedClock, log })
 
   // ── THE CAPABILITY GUARDS (task-170, "the eighth case") ────────────────────────────────────────────────
   // These three refusals used to live BOTH in the public guards (`requireStore()` etc.) AND as scattered
@@ -688,6 +699,12 @@ export function createKernel({
   registry.register('vmu.ballotbox', { apiVersion: 1 }, { kind: 'service', description: 'ballot box: quorum is refused by name, abstention and absence counted apart (docs/08)' })
   registry.register('vmu.records', { apiVersion: 1 }, { kind: 'service', description: 'records tracks: caps refuse by name, retention counts, permanent markers cannot be deleted' })
   registry.register('vmu.course', { apiVersion: 1 }, { kind: 'service', description: 'teaching: outcome-to-artifact alignment refuses with the missing outcome named (docs/22 N13)' })
+  // The registry's public contract is a PER-SERVICE VERSION OBJECT (D13-O3): registering with whatever the service
+  // happens to export as `apiVersion` is not it - the registry refused that with VMU_INVALID_ARGUMENT, which is
+  // exactly the kind of thing a gate should catch before a human does.
+  registry.register('vmu.conference', { apiVersion: 1 }, { kind: 'service', description: 'conference hosting: calls for papers, review quorum, anonymity, registration cap and agenda fit (docs/08; layered on the single-session face)' })
+  registry.register('vmu.instruments', { apiVersion: 1 }, { kind: 'service', description: 'instrument ledger: calibration currency, trained operators, reservation conflicts and maintenance windows (docs/22)' })
+  registry.register('vmu.ip', { apiVersion: 1 }, { kind: 'service', description: 'intellectual property: disclosure hold, named inventors, priority dates and family duplicates (docs/21-22)' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -800,6 +817,9 @@ export function createKernel({
     get ballotbox() { return ballotbox },
     get records() { return records },
     get course() { return course },
+    get conference() { return conference },
+    get instruments() { return instruments },
+    get ip() { return ip },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,

@@ -80,7 +80,15 @@ console.log('-- 不变式⑥⑦：注入时钟（确定性）＋只读面不改�
 const g1 = mk(), g2 = mk()
 for (const g of [g1, g2]) { const i = g.open({ from: 'r-1', to: 'r-2' }).id; full(g, i); g.finalize({ id: i }) }
 ok(JSON.stringify(g1.status().items) === JSON.stringify(g2.status().items), 'identical inputs ⇒ identical status().items (deterministic clock)')
-ok(g1.status().items[0].acceptedAt === null || true, 'timestamps come from the injected clock: ' + JSON.stringify(g1.status().items[0].acceptedAt))
+// task-179: this assertion used to be `=== null || true`, which could never fail. It now pins BOTH the
+// unaccepted state and the exact timestamp the INJECTED clock supplies.
+{
+  const idG1 = g1.status().items[0].id
+  ok(g1.status().items[0].acceptedAt === null, 'a finalized-but-unaccepted handover reports acceptedAt === null (no fabricated stamp)')
+  const acc = g1.accept({ id: idG1, by: 'r-2' })
+  ok(acc.acceptedAt === CLOCK() && g1.status().items.find((x) => x.id === idG1).acceptedAt === CLOCK(),
+    'accept() stamps acceptedAt from the INJECTED clock only (' + String(acc.acceptedAt) + ')')
+}
 const w0 = g1.status().counts.writes
 g1.status(); g1.status()
 ok(g1.status().counts.writes === w0, 'read-only calls (status) do not increase the write counter (writes=' + w0 + ')')

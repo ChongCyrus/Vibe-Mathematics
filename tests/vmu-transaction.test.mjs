@@ -302,7 +302,20 @@ const S = (extra = {}) => Object.assign({}, extra)
   ok(JSON.stringify(a.history()) === JSON.stringify(b.history()), 'determinism: two ledgers agree on history()')
   ok(createTransaction({ clock: fakeClock(3).clock, settings: S() }).begin({ id: 't', steps: [{ service: 'a', apply: () => 1, undo: () => 1 }] }).now === 3, 'injected clock: beganAt comes from clock() only')
   ok(refuse('X', 'y', 'z').code === 'X' && refuse('X', 'y', 'z').hint === 'z', 'refuse(): the named-error helper keeps code/hint')
-  ok(tx.status().refusals.VMU_INVALID_ARGUMENT >= 1 || true, 'refusals: grouped by code (see the refusals map)')
+  // task-179: this used to be `>= 1 || true` (always true). It now DRIVES a real refusal and pins the
+  // exact grouped counts (a step without `undo` must be refused at begin).
+  {
+    const codesBefore = { ...tx.status().refusals }
+    let code = null
+    try { tx.begin({ id: 'tx-noundo', steps: [{ service: 'a', apply: () => 1 }] }) } catch (e) { code = e && e.code }
+    const rf = tx.status().refusals
+    const expected = Number(codesBefore[code] || 0) + 1
+    const groupedTotal = Object.values(rf).reduce((s, n) => s + (Number(n) || 0), 0)
+    ok(!!code && /^VMU_[A-Z0-9_]+$/.test(code) && rf[code] === expected && tx.status().refusalsTotal === groupedTotal,
+      'refusals are grouped by named code with exact counts (' + code + '=' + rf[code] + ', total=' + tx.status().refusalsTotal + ')')
+    ok(Object.keys(rf).every((c) => /^VMU_[A-Z0-9_]+$/.test(c) && Number.isInteger(rf[c]) && rf[c] >= 1),
+      'every refusal key is a named code with a positive integer count (' + Object.keys(rf).join('|') + ')')
+  }
   ok(tx.status({ id: 'tx-bus' }).transaction.settled === true, 'status: a committed transaction is settled')
 }
 

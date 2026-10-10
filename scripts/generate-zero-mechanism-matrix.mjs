@@ -61,6 +61,11 @@ const EXPECT = {
   // ── 第 26 轮已修好的具名拒（**待办没跟上 ⇒ 已纠正** ✓）＋ 非服务模块
   pack: G('具名拒（带 code）', '第 26 轮已修 ✓：实测拒绝带 **`VMU_PACK_MISSING`**（曾误标"不带 code" ✗）'),
   'script-bridge': G('具名拒（带 code）', '第 26 轮已修 ✓：实测拒绝带 **`VMU_INVALID_ARGUMENT`**（同上 ✗）'),
+  // ── 在途新模块：**必须被裁定** ✓（第 33 轮规则收紧 ✓）—— 从模块实测反推 ✓
+  instruments: G('ok 或 object', '仪器面：零机制 ⇒ **台账可读、不拒**（`status()` 返回 `ok:true` ＋ `partition` ✓）；其 17 键中 14 已接／3 未接（`ledgerDir`／`dataCaptureRef`／`downtimePolicy` ✗）'),
+  // **在途未落地的新模块** ⇒ **显式待办**（✓ 计数不红；**第 33 轮规则**要求"出现即须裁定" ✓）
+  conference: G('EXPECT_UNDECIDED', '在途未落地 ⇒ **落地后补裁定**（本轮实测前不得编造 ✗）'),
+  ip: G('EXPECT_UNDECIDED', '在途未落地 ⇒ **落地后补裁定**（同上 ✗）'),
   guard: G('EXPECT_NA', '非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）'),
 }
 
@@ -128,7 +133,13 @@ function judge(rows) {
     if (/抛出|import 失败|create 抛出/.test(r.shape)) { probeErrors += 1; continue }
     if (e0 && e0.shape === 'PROBE_NEEDS_ARGS') { probeErrors += 1; continue }
     if (r.refusal === '（无名）✗') { mism.push(r.module + ': 拒绝**没有具名码** ✗'); continue }
-    if (!e0) { unregistered += 1; continue }
+    // **规则收紧（第 33 轮）** ✗✓✓：**"模块出现了却没有裁定行" ⇒ 必须红**（**每个模块都必须被裁定** ✓）；
+    //   `EXPECT_UNDECIDED` 仍是"**显式待办**、只计数不判红" ✓✓ —— **"未定"与"漏了"必须分开** ✗✓。
+    if (!e0) {
+      unregistered += 1
+      mism.push(r.module + ': **出现了却没有裁定行** ✗（给期望，或显式登记 `EXPECT_UNDECIDED` ✓）')
+      continue
+    }
     const s = r.shape
     const okShape = (e0.shape === '具名拒或 ok') ? (s === 'refusal' || s === 'ok')
       : (e0.shape === 'ok 或 object') ? (s === 'ok' || s === 'object')
@@ -157,6 +168,7 @@ const main = async () => {
   if (args.includes('--selftest')) {
     // **自证（不写文件 ✓）**：① 期望改错 ⇒ **必红** ✗✓；② `EXPECT_UNDECIDED` ⇒ **不红但计数** ✓
     const real = { ...EXPECT }
+    const base = judge(rows).mism.length   // **基线**：真实行里已有的 mismatch 数（如未裁定模块 ⇒ 红 ✓）
     let bad = 0
     EXPECT.audit = { shape: '具名拒（带 code）', note: '自证：故意改错（audit 实际是只读放行 ⇒ 应红）' }
     const j1 = judge(rows)
@@ -164,12 +176,20 @@ const main = async () => {
     if (j1.mism.length === 0) bad += 1
     delete EXPECT.audit
     const j2 = judge(rows)
-    console.log('selftest ②: audit 未登记 ⇒ unregistered=' + j2.unregistered + ' mismatches=' + j2.mism.length + ' (期望 unregistered=1 且 mismatches=0 ⇒ ' + ((j2.unregistered === 1 && j2.mism.length === 0) ? 'PASS ✓' : 'FAIL ✗') + ')')
-    if (!(j2.unregistered === 1 && j2.mism.length === 0)) bad += 1
+    // **增量断言**（第 33 轮 ✓）：删掉一个已登记模块 ⇒ `unregistered` **恰 +1** ✓ ⇒ 且按新规则**必须红** ✓
+    const incOk = (j2.unregistered === j1.unregistered + 1 || j2.unregistered === 1)
+    const redOk = j2.mism.some((x) => /audit: \*\*出现了却没有裁定行\*\*/.test(x))
+    console.log('selftest ②: audit 未登记 ⇒ unregistered=' + j2.unregistered + ' mismatches=' + j2.mism.length + ' (期望 unregistered 恰 +1 ⇒ ' + (incOk ? 'PASS ✓' : 'FAIL ✗') + '；且**必须红** ⇒ ' + (redOk ? 'PASS ✓' : 'FAIL ✗') + ')')
+    if (!(incOk && redOk)) bad += 1
+    // ⑤ **造一个未登记模块的 fixture ⇒ 必须红** ✓✓（这条正是本缺口 ✓）
+    const j5 = judge(rows.concat([{ module: 'brand-new-module-fixture', shape: 'ok', refusal: '—', disclosed: '—', note: '' }]))
+    const named5 = j5.mism.some((x) => /^brand-new-module-fixture: \*\*出现了却没有裁定行\*\*/.test(x))
+    console.log('selftest ⑤: 未登记模块 fixture ⇒ mismatches=' + j5.mism.length + '（点名 fixture=' + named5 + ' ⇒ ' + (named5 ? 'PASS ✓' : 'FAIL ✗') + ')')
+    if (!named5) bad += 1
     EXPECT.audit = { shape: 'EXPECT_UNDECIDED', note: '自证：显式待办（→ 计数，不红 ✓）' }
     const j3 = judge(rows)
-    console.log('selftest ③: audit=EXPECT_UNDECIDED ⇒ undecided=' + j3.undecided + ' mismatches=' + j3.mism.length + ' (期望 undecided≥1 且 mismatches=0 ⇒ ' + ((j3.undecided >= 1 && j3.mism.length === 0) ? 'PASS ✓' : 'FAIL ✗') + ')')
-    if (!(j3.undecided >= 1 && j3.mism.length === 0)) bad += 1
+    console.log('selftest ③: audit=EXPECT_UNDECIDED ⇒ undecided=' + j3.undecided + ' mismatches=' + j3.mism.length + ' (期望 undecided≥1 且 mismatches=基线 ' + base + ' ⇒ ' + ((j3.undecided >= 1 && j3.mism.length === base) ? 'PASS ✓' : 'FAIL ✗') + ')')
+    if (!(j3.undecided >= 1 && j3.mism.length === base)) bad += 1
     // ④ 期望与**模块实际返回**不符 ⇒ **mismatch 红** ✓（点名到模块 ✓）
     EXPECT.audit = { shape: '具名拒（带 code）', note: '自证 ④：与实测（只读放行）不符 ⇒ 必须红' }
     const j4 = judge(rows)

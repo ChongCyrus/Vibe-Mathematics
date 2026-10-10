@@ -28,6 +28,9 @@ import { createMathTools } from '../vibe-math-vmu/kernel/mathtools.js'
 import { createCourse } from '../vibe-math-vmu/kernel/course.js'
 import { createExternal } from '../vibe-math-vmu/kernel/external.js'
 import { createWorkflow } from '../vibe-math-vmu/kernel/workflow.js'
+import { createConference } from '../vibe-math-vmu/kernel/conference.js'
+import { createInstruments } from '../vibe-math-vmu/kernel/instruments.js'
+import { createIp } from '../vibe-math-vmu/kernel/ip.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -266,6 +269,68 @@ const SCENARIOS = [
     limiting: { settings: { 'vmu.workflow.retryMax': 3 } }, permissive: { settings: { 'vmu.workflow.retryMax': 3 } },
     make: (settings) => createWorkflow({ clock: CLOCK, log: () => {}, settings }),
     run: (wf) => { wf.define({ stages: ['open', 'done'], transitions: [{ from: 'open', to: 'done' }] }); wf.advance({ taskId: 't', to: 'open', by: 'a' }); return wf.queue() } },
+
+  // ---- ROUND-16 COVERAGE: conference.js / instruments.js / ip.js (read from their own tests, then MEASURED) --
+  // conference: the CfP window keys are conditional - a closed/not-yet-open window refuses and reports the key,
+  // an open window takes the long success path (7 keys) ⇒ the two lists genuinely differ.
+  { module: 'conference', call: 'submit(cfpCloseMs)', key: 'vmu.conference.cfpCloseMs', expectDiff: true,
+    limiting: { settings: { 'vmu.conference.cfpCloseMs': 500 } }, permissive: { settings: { 'vmu.conference.cfpCloseMs': 0 } },
+    make: (settings) => createConference({ clock: CLOCK, log: () => {}, settings }),
+    run: (t) => { const r = t.open({ id: 'c1', topics: ['ml', 'hci'] }); return t.submit({ conference: r.conference, title: 'A', authors: ['ada'], topics: ['ml'] }) } },
+  { module: 'conference', call: 'submit(cfpOpenMs)', key: 'vmu.conference.cfpOpenMs', expectDiff: true,
+    limiting: { settings: { 'vmu.conference.cfpOpenMs': 2_000_000 } }, permissive: { settings: { 'vmu.conference.cfpOpenMs': 0 } },
+    make: (settings) => createConference({ clock: CLOCK, log: () => {}, settings }),
+    run: (t) => { const r = t.open({ id: 'c1', topics: ['ml', 'hci'] }); return t.submit({ conference: r.conference, title: 'A', authors: ['ada'], topics: ['ml'] }) } },
+  { module: 'conference', call: 'register', key: 'vmu.conference.register', expectDiff: true,
+    limiting: { settings: { 'vmu.conference.register': false } }, permissive: { settings: { 'vmu.conference.register': true } },
+    make: (settings) => createConference({ clock: CLOCK, log: () => {}, settings }),
+    run: (t) => { const r = t.open({ id: 'c1', topics: ['ml'] }); return t.register({ conference: r.conference, attendee: 'a' }) } },
+  { module: 'conference', call: 'assign', key: 'vmu.conference.cfpCloseMs', expectDiff: false, absentIn: 'both',
+    limiting: { settings: { 'vmu.conference.reviewAssignmentsPerPaper': 1, 'vmu.conference.assign': 'auto' } },
+    permissive: { settings: { 'vmu.conference.reviewAssignmentsPerPaper': 1, 'vmu.conference.assign': 'auto' } },
+    make: (settings) => createConference({ clock: CLOCK, log: () => {}, settings }),
+    run: (t) => { const r = t.open({ id: 'c1', topics: ['ml'] }); const s = t.submit({ conference: r.conference, title: 'A', authors: ['ada'], topics: ['ml'] }).submission; return t.assign({ conference: r.conference, submission: s, eligible: ['r1', 'r2', 'r3'] }) } },
+
+  // instruments: `reserve` consults maxHoldHours only through the hold rail (1h limit refuses, 24h passes and
+  // additionally consults reservationHorizonDays), and the overbook rail is conditional on overbookRatio.
+  { module: 'instruments', call: 'reserve(maxHoldHours)', key: 'vmu.instruments.maxHoldHours', expectDiff: true,
+    limiting: { settings: { 'vmu.instruments.maxHoldHours': 1 } }, permissive: { settings: { 'vmu.instruments.maxHoldHours': 24 } },
+    make: (settings) => createInstruments({ clock: CLOCK, log: () => {}, settings }),
+    run: (i) => { i.register({ id: 'mri', owner: 'lab' }); return i.reserve({ id: 'mri', by: 'a', hours: 2 }) } },
+  { module: 'instruments', call: 'reserve(overbookRatio, 2nd)', key: 'vmu.instruments.overbookRatio', expectDiff: true,
+    limiting: { settings: { 'vmu.instruments.overbookRatio': 0 } }, permissive: { settings: { 'vmu.instruments.overbookRatio': 1 } },
+    make: (settings) => createInstruments({ clock: CLOCK, log: () => {}, settings }),
+    run: (i) => { i.register({ id: 'x', owner: 'lab' }); i.reserve({ id: 'x', by: 'a', hours: 1 }); return i.reserve({ id: 'x', by: 'b', hours: 1 }) } },
+  // instruments outcome form: skill gate is always evaluated, but the untrained call is REFUSED while the same
+  // call after `train` succeeds ⇒ outcome differs and the key is reported on both sides.
+  { module: 'instruments', call: 'use(capabilityTags)', key: 'vmu.instruments.capabilityTags', outcomeDiff: true,
+    limiting: { settings: { 'vmu.instruments.capabilityTags': ['sem'] }, input: { train: false } },
+    permissive: { settings: { 'vmu.instruments.capabilityTags': ['sem'] }, input: { train: true } },
+    make: (settings) => createInstruments({ clock: CLOCK, log: () => {}, settings }),
+    run: (i, variant) => { i.register({ id: 'sem', owner: 'lab', tags: ['sem'] }); if (variant.input.train) i.train({ by: 'newbie', tags: ['sem'] }); return i.use({ id: 'sem', by: 'newbie', purpose: 'image' }) } },
+  { module: 'instruments', call: 'use', key: 'vmu.instruments.maxHoldHours', expectDiff: false, absentIn: 'both',
+    limiting: { settings: {} }, permissive: { settings: {} },
+    make: (settings) => createInstruments({ clock: CLOCK, log: () => {}, settings }),
+    run: (i) => { i.register({ id: 'scope2', owner: 'lab' }); return i.use({ id: 'scope2', by: 'a', purpose: 'm' }) } },
+
+  // ip: every knob is ALWAYS evaluated (measured: quick/standard, disclosureRequired on/off, authorshipRule,
+  // holdEnforcement all report the SAME key set), so the honest form for ip is the outcome form.
+  { module: 'ip', call: 'file(disclosureRequired)', key: 'vmu.ip.disclosureRequired', outcomeDiff: true,
+    limiting: { settings: { 'vmu.ip.disclosureRequired': true } }, permissive: { settings: { 'vmu.ip.disclosureRequired': false } },
+    make: (settings) => createIp({ clock: CLOCK, log: () => {}, settings }),
+    run: (a) => a.file({ title: 'T', inventors: ['Ada Lovelace'] }) },
+  { module: 'ip', call: 'complete(disclosureFields)', key: 'vmu.ip.disclosureFields', outcomeDiff: true,
+    limiting: { settings: { 'vmu.ip.disclosureFields': ['evidenceRefs'] } }, permissive: { settings: { 'vmu.ip.disclosureFields': [] } },
+    make: (settings) => createIp({ clock: CLOCK, log: () => {}, settings }),
+    run: (a) => { const f = a.file({ title: 'T', inventors: ['Ada Lovelace'], publicDisclosures: [], contributors: [{ id: 'm1', share: 0.9, evidence: ['e'] }], priorArt: { hits: [{ id: 'x' }], conclusion: 'clear' }, evidenceRefs: undefined }); return a.complete({ id: f.id }) } },
+  { module: 'ip', call: 'priorArt(priorArtSearchDepth)', key: 'vmu.ip.priorArtSearchDepth', outcomeDiff: true,
+    limiting: { settings: { 'vmu.ip.priorArtSearchDepth': 'quick' } }, permissive: { settings: { 'vmu.ip.priorArtSearchDepth': 'standard' } },
+    make: (settings) => createIp({ clock: CLOCK, log: () => {}, settings }),
+    run: (a) => { const f = a.file({ title: 'T', inventors: ['Ada Lovelace'], publicDisclosures: [], contributors: [{ id: 'm1', share: 0.9, evidence: ['e'] }], priorArt: { hits: [{ id: 'x' }], conclusion: 'clear' } }); return a.priorArt({ id: f.id, hits: [] }) } },
+  { module: 'ip', call: 'ownership', key: 'vmu.ip.priorArtSearchDepth', expectDiff: false, absentIn: 'both',
+    limiting: { settings: {} }, permissive: { settings: {} },
+    make: (settings) => createIp({ clock: CLOCK, log: () => {}, settings }),
+    run: (a) => { const f = a.file({ title: 'T', inventors: ['Ada Lovelace'], publicDisclosures: [], contributors: [{ id: 'm1', share: 0.9, evidence: ['e'] }], priorArt: { hits: [{ id: 'x' }], conclusion: 'clear' } }); return a.ownership({ id: f.id }) } },
 ]
 
 // REFUSAL DISCIPLINE: these calls are EXPECTED to refuse. mathtools attaches `enforced` to the thrown error;
@@ -281,6 +346,15 @@ const REFUSAL_SCENARIOS = [
     make: (settings) => createRecords({ clock: CLOCK, log: () => {}, settings }), run: (rc) => { const p = put(rc); return rc.remove({ id: p.id }) } },
   { module: 'mathtools', call: 'plan(requireSeed)', settings: { 'vmu.math.repro.requireSeed': true },
     make: (settings) => createMathTools({ clock: CLOCK, log: () => {}, settings }), run: (mt) => mt.plan({ op: 'optim/minimize', args: {} }) },
+  { module: 'conference', call: 'register(closed)', settings: { 'vmu.conference.register': false },
+    make: (settings) => createConference({ clock: CLOCK, log: () => {}, settings }),
+    run: (t) => { const r = t.open({ id: 'c1', topics: ['ml'] }); return t.register({ conference: r.conference, attendee: 'a' }) } },
+  { module: 'instruments', call: 'use(untrained)', settings: { 'vmu.instruments.capabilityTags': ['sem'] },
+    make: (settings) => createInstruments({ clock: CLOCK, log: () => {}, settings }),
+    run: (i) => { i.register({ id: 'sem', owner: 'lab', tags: ['sem'] }); return i.use({ id: 'sem', by: 'newbie', purpose: 'image' }) } },
+  { module: 'ip', call: 'priorArt(standard, empty)', settings: { 'vmu.ip.priorArtSearchDepth': 'standard' },
+    make: (settings) => createIp({ clock: CLOCK, log: () => {}, settings }),
+    run: (a) => { const f = a.file({ title: 'T', inventors: ['Ada Lovelace'], publicDisclosures: [], contributors: [{ id: 'm1', share: 0.9, evidence: ['e'] }], priorArt: { hits: [{ id: 'x' }], conclusion: 'clear' } }); return a.priorArt({ id: f.id, hits: [] }) } },
 ]
 
 // ---------------------------------------------------------------------------------------------------------
@@ -364,9 +438,13 @@ const refusalRuns = []
 for (const scn of REFUSAL_SCENARIOS) {
   const label = scn.module + '.' + scn.call
   const r = await runVariant(scn, { settings: scn.settings }, label)
-  const arrayOk = r.threw && r.refusalEnforcedIsArray
-  ok(arrayOk, 'rule ⑤ refusal carries enforced[]: ' + label, r.threw ? ('threw ' + r.code + ' with enforced=' + JSON.stringify(r.refusalEnforcedIsArray)) : 'did NOT refuse as expected')
-  if (!arrayOk && r.threw) finding('REFUSAL-WITHOUT-ENFORCED', label, r.code)
+  // A refusal may be THROWN or RETURNED (instruments returns `{ok:false, code}`), but either way it must
+  // report an `enforced` ARRAY: "why was it refused" has to name what was read. A refusal with no array is RED.
+  const refusedSomehow = r.threw || r.refused
+  const reportsArray = r.refusalEnforcedIsArray === true || r.arrays.length > 0
+  const arrayOk = refusedSomehow && reportsArray
+  ok(arrayOk, 'rule ⑤ refusal carries enforced[]: ' + label, refusedSomehow ? ('refused (' + (r.threw ? 'thrown ' : 'returned ') + r.code + ') with enforced=' + JSON.stringify(reportsArray)) : 'did NOT refuse as expected')
+  if (!arrayOk && refusedSomehow) finding('REFUSAL-WITHOUT-ENFORCED', label, r.code)
   refusalRuns.push(r)
 }
 
@@ -383,6 +461,7 @@ for (const [mod, m] of [...byModule].sort()) {
   const alias = {
     'ballotbox.js': 'ballotbox', 'meetings.js': 'meetings', 'records.js': 'records', 'mathtools.js': 'mathtools',
     'course.js': 'course', 'external.js': 'external', 'workflow.js': 'workflow',
+    'conference.js': 'conference', 'instruments.js': 'instruments', 'ip.js': 'ip',
   }
   const uncovered = inCode.filter((f) => !covered.has(alias[f]) && !covered.has(f.replace(/\.js$/, '')))
   ok(uncovered.length === 0, 'every module mentioning enforced in CODE is covered by this gate', uncovered.join(', '))
@@ -435,7 +514,11 @@ for (const r of attributionRows) {
     ' listsIdentical=' + r.identical + ' symmetricDiff={' + r.diff.join(',') + '}')
 }
 console.log('scenarios=' + SCENARIOS.length + ' (per module: ' + [...byModule].map(([m, s]) => m + '=' + s.diff + ' behaviour-changing').join(', ') + ')')
-console.log('refusal scenarios=' + refusalRuns.length + ' :: ' + refusalRuns.map((r) => r.label + '=' + (r.threw ? (r.refusalEnforcedIsArray ? 'enforced[]' : 'NO-enforced') : 'no-refusal')).join(', '))
+console.log('refusal scenarios=' + refusalRuns.length + ' :: ' + refusalRuns.map((r) => {
+  const how = r.threw ? 'thrown:' : (r.refused ? 'returned:' : 'no-refusal:')
+  const arr = r.refusalEnforcedIsArray === true || r.arrays.length > 0 ? 'enforced[]' : 'NO-enforced[]'
+  return r.label + '=' + how + arr
+}).join(', '))
 console.log('findings=' + findings.length + (findings.length ? ' :: ' + findings.map((f) => f.kind + '@' + f.name).join(' | ') : ' (none ✓)'))
 console.log('=== VMU ENFORCED CONSISTENCY: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed === 0 ? 0 : 1)

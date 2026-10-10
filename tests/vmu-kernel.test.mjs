@@ -520,6 +520,20 @@ if (SELF_PROBE) {
   k.setSettingsValue('vmu.audit.chain.checkpointEvery', 3, { by: 'office' })
   ok(view['vmu.audit.chain.checkpointEvery'] === 3 && view.get('vmu.audit.chain.checkpointEvery') === 3,
     'reads stay LIVE (property and get() both see the sanctioned write)')
+  // task-179: the self-reported runtime-write surface had NO gate. A write must move the counter and the
+  // last-write record, and both must be observable through status().settings.
+  {
+    const beforeW = k.status().settings.runtimeWrites
+    const w = k.setSettingsValue('vmu.audit.chain.checkpointEvery', 6, { by: 'office' })
+    const st = k.status().settings
+    ok(st.runtimeWrites === beforeW + 1, 'settings.runtimeWrites counts a real runtime write (' + beforeW + ' -> ' + st.runtimeWrites + ')')
+    ok(st.lastRuntimeWrite && st.lastRuntimeWrite.key === 'vmu.audit.chain.checkpointEvery' && st.lastRuntimeWrite.action === 'set',
+      'lastRuntimeWrite names the key and the action (' + JSON.stringify(st.lastRuntimeWrite && { key: st.lastRuntimeWrite.key, action: st.lastRuntimeWrite.action }) + ')')
+    ok((typeof st.lastRuntimeWrite.hot === 'string' && st.lastRuntimeWrite.hot.length > 0) && typeof st.lastRuntimeWrite.at !== 'undefined',
+      'lastRuntimeWrite reports the hot/cold class and the receipt time (hot=' + String(st.lastRuntimeWrite.hot) + ')')
+    ok(w && w.ok === true && String(w.key || 'vmu.audit.chain.checkpointEvery') === 'vmu.audit.chain.checkpointEvery',
+      'the write receipt names the same key the counter recorded')
+  }
 }
 
 // ---- E-7 (task-166): the contract lives in the KERNEL API, not only at the tool boundary --------------

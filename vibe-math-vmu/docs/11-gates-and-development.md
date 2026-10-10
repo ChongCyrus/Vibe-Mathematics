@@ -588,6 +588,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `bus` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `charter` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：章程条项） |
 | `clockguard` · `status()` | null | — | — | ok 或 null（时钟守卫：无声明 ⇒ 不拦（返回 null 亦合规）） |
+| `conference` · `open()` | ok | — | enforced=[2] fired=[2] enforcedScope=evaluated-so-far | EXPECT_UNDECIDED（在途未落地 ⇒ **落地后补裁定**（本轮实测前不得编造 ✗）） |
 | `course` · `open()` | refusal | VMU_INVALID_ARGUMENT | enforced=[1] enforcedScope=evaluated-so-far | 具名拒或 ok（零机制：缺课程参数 ⇒ 具名拒（enforced 非空）✓） |
 | `crypto` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `delegation` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：委派授权对（from/to/范围）） |
@@ -600,6 +601,8 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `handover` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：交接对象） |
 | `idempotency` · `list()` | ok | — | dropped=0 truncated=false | ok 或 object（列表/状态面放行 ✓；**显式 `absent` 只在去重操作上**（该操作需参数 ⇒ 探针见 NEEDS_ARGS ✓）） |
 | `index` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `instruments` · `status()` | ok | — | — | ok 或 object（仪器面：零机制 ⇒ **台账可读、不拒**（`status()` 返回 `ok:true` ＋ `partition` ✓）；其 17 键中 14 已接／3 未接（`ledgerDir`／`dataCaptureRef`／`downtimePolicy` ✗）） |
+| `ip` · `list()` | ok | — | enforced=[1] fired=[0] dropped=0 enforcedScope=evaluated-so-far truncated=false | EXPECT_UNDECIDED（在途未落地 ⇒ **落地后补裁定**（同上 ✗）） |
 | `lean` · `submit()` | refusal | VMU_LEAN_STATEMENT_REQUIRED | — | 具名拒（带 code）（缺必填参数 ⇒ 具名拒并点名） |
 | `library` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：库引用（ref/uri）） |
 | `lifecycle` · `stages()` | refusal | VMU_LIFECYCLE_NOT_DECLARED | — | 具名拒（带 code）（缺必填参数 ⇒ 具名拒并点名） |
@@ -637,5 +640,5 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
 | `workflow` | op 抛出 | — | — | 具名拒或 ok（**两侧都写清** ✓：`define({})` ⇒ **有默认阶梯且放行（ok）** ✓；被探 op 缺参 ⇒ **具名拒** ✓（缺参归 NEEDS_ARGS 计数，不算 mismatch ✓）） |
 
-=== ZERO-MECHANISM MATRIX: 60 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 15 probe-errors, 1 n/a ===
+=== ZERO-MECHANISM MATRIX: 63 modules, 0 mismatches, 0 unregistered, 2 EXPECT_UNDECIDED, 15 probe-errors, 1 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->
