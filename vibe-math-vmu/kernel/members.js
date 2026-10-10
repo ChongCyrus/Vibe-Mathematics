@@ -132,18 +132,13 @@ export function createMembers({
       return { ok: true, id, slot: slotId, occupied: occupancy(slotId), capacity: def.capacity }
     },
 
-    /** Convenience over assignRole with the institute-wide live-member cap applied as well. */
+    /**
+     * Convenience over assignRole. Each cap lives in exactly ONE place: `maxLiveMembers` here (a roster-wide
+     * count, which assignRole does not know) and the HOST-RSS ceiling inside assignRole (which knows whether the
+     * call would GROW the roster, so a no-op re-hire is never refused). The verifier's second round caught both
+     * the duplicated gate read and the resulting false refusal; this is the single-point fix.
+     */
     async hire({ id, slot } = {}) {
-      // The RESOURCE gate first: `vmu.limits.memoryCeilingMb` is the HOST process RSS ceiling, and refusing to
-      // grow the roster when the process is already over it is the whole point of the key (docs/04 §11).
-      if (typeof resourceGate === 'function') {
-        const gate = resourceGate()
-        if (gate && gate.exceeded === true) {
-          throw refuse('VMU_RESOURCE_BUDGET',
-            'host process RSS over the ceiling: ' + gate.rssMb + 'MB > ' + gate.ceilingMb + 'MB',
-            'vmu.limits.memoryCeilingMb caps the HOST process (docs/04 §11); raise it, or end members first')
-        }
-      }
       if (maxLiveMembers > 0 && live().length >= maxLiveMembers && !members.has(id)) {
         throw refuse('VMU_RESOURCE_BUDGET',
           'live members at the ceiling: ' + live().length + '/' + maxLiveMembers,

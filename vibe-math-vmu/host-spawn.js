@@ -122,10 +122,18 @@ export function createHostSpawn({
       else envDropped.push(k)
     }
     const envKeys = Object.keys(env).length
+    // CWD: the host's `targetEnvironment` validates `options.cwd` through `validateNoNullByte` (which calls
+    // `.includes`) and the LIVE evidence shows it throwing there even when the key is OMITTED entirely
+    // (p2-m3-stack3: omitting cwd still crashed at runner-launch:1520). That host is public and cannot be
+    // patched from here, so the seam always passes a REAL STRING: the caller's cwd, else the configured
+    // workspace, else the process cwd. This is a CALLER-SIDE WORKAROUND for a host defect - stated as such,
+    // not a fix of the host.
+    const cwd = typeof request.cwd === 'string' && request.cwd.length > 0 ? request.cwd
+      : (typeof defaultCwd === 'string' && defaultCwd.length > 0 ? defaultCwd : process.cwd())
     try {
       handle = sub.spawn({
         argv,
-        cwd: request.cwd || defaultCwd || undefined,
+        cwd,
         stdio: { stdin: 'ignore', stdout: { maxBytes: stdoutCapBytes }, stderr: { maxBytes: stderrCapBytes } },
         ...(budget ? { graceMs: budget } : {}),
         ...(envKeys > 0 ? { env } : {}),
