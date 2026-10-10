@@ -164,5 +164,34 @@ function fakeClock(start = 1000) { let t = start; return { clock: () => t, set: 
   ok(refuse('X', 'y', 'z').code === 'X', 'refuse(): named-error helper keeps code/hint')
 }
 
+// ── task-217: vmu.trust.halfLifeMs = 0 means DECAY IS OFF, and an explicit 0 stays distinguishable from
+// "not given" (the module self-discloses the SOURCE: explicit vs default).
+{
+  const withHalfLife = (settings) => {
+    const fc = fakeClock(1000)
+    const t = createTrust({ clock: fc.clock, settings })
+    t.signal({ subject: 'm1', kind: 'review', source: 'doc-1', weight: 1, evidence: 'ev-1' })
+    return { t, fc }
+  }
+  // (a) explicit 0 ⇒ no decay + self-disclosed as explicit
+  const zero = withHalfLife({ 'vmu.trust.halfLifeMs': 0 })
+  const s0 = zero.t.score({ subject: 'm1' })
+  ok(s0.halfLifeMs === 0 && s0.decay === 'off' && s0.halfLifeSource === 'explicit', 'halfLifeMs=0 ⇒ decay OFF and the receipt says so (decay=off, source=explicit)')
+  const d0 = zero.t.decay({ subject: 'm1', at: 1000 + 10 * 86400000 })
+  ok(d0.score === s0.score && d0.decay === 'off', 'ten days later the score is UNCHANGED with 0 (0 is read as "no decay", not as a missing value)')
+  // (b) not given ⇒ the module's DECLARED default (0 ⇒ also off) but the SOURCE says default (distinguishable)
+  const none = withHalfLife({})
+  const sn = none.t.score({ subject: 'm1' })
+  ok(sn.halfLifeMs === 0 && sn.decay === 'off' && sn.halfLifeSource === 'default', 'halfLifeMs not given ⇒ the declared default (0, off) with source=default')
+  ok(sn.halfLifeSource !== s0.halfLifeSource, 'explicit 0 and "not given" are DISTINGUISHABLE (source explicit vs default)')
+  // (c) a positive half-life really decays (so 0 is not simply "decay disabled by accident")
+  const on = withHalfLife({ 'vmu.trust.halfLifeMs': 1000 })
+  const s1 = on.t.score({ subject: 'm1' })
+  const d1 = on.t.decay({ subject: 'm1', at: 1000 + 1000 })
+  ok(s1.decay === 'on' && s1.halfLifeSource === 'explicit', 'halfLifeMs=1000 ⇒ decay on (source explicit)')
+  ok(d1.score < s1.score && d1.score > 0, 'one half-life later the score is HALVED (0.5×) — the knob really governs')
+  ok(on.t.explain({ subject: 'm1' }).halfLifeSource === 'explicit', 'explain() self-discloses the half-life source too')
+}
+
 console.log('=== VMU TRUST: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) process.exit(1)

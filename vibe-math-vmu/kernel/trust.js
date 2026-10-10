@@ -39,7 +39,19 @@ export function createTrust({ clock = () => 0, log = null, settings = {}, bus = 
     // INTEGRATOR RULING on the three alias pairs: ONE knob, ONE name. The volume's name wins (17 §20), so the
     // task's alternative spellings were removed rather than declared as a second knob the gate would demand.
     // Reading two names for one setting is the same defect as documenting two names: nobody can tell which is real.
-    halfLifeMs: (() => { const h = sget('vmu.trust.halfLifeMs', 0); return Number.isFinite(h) && h > 0 ? h : 0 })(),
+    // task-217 RULING: `vmu.trust.halfLifeMs = 0` means **decay is OFF** (docs/04 declares `0` as the default
+    // with the words "0＝不衰减"). A caller who sets 0 EXPLICITLY and a caller who sets nothing share the same
+    // effective value (0 ⇒ no decay) but NOT the same source, and the module says which one it was: an explicit
+    // 0 is `explicit`, an absent/invalid value is `default`. 0 is never treated as "missing" ✗.
+    halfLife: (() => {
+      const raw = sget('vmu.trust.halfLifeMs', undefined)
+      if (raw === undefined || raw === null) return { ms: 0, source: 'default', decay: 'off' }
+      const n = Number(raw)
+      if (Number.isFinite(n) && n > 0) return { ms: n, source: 'explicit', decay: 'on' }
+      return { ms: 0, source: 'explicit', decay: 'off' }
+    })(),
+    halfLifeMs: (() => { const raw = sget('vmu.trust.halfLifeMs', undefined); const n = Number(raw); return Number.isFinite(n) && n > 0 ? n : 0 })(),
+    halfLifeSource: (() => { const raw = sget('vmu.trust.halfLifeMs', undefined); return (raw === undefined || raw === null) ? 'default' : 'explicit' })(),
     minEvidenceForWeight: (() => { const v = sget('vmu.trust.evidenceRequired', null); return typeof v === 'number' ? v : (v === true ? 0.75 : null) })(),
     disputeWindowMs: (() => { const v = sget('vmu.trust.appealWindowMs', 0); return Number.isFinite(v) && v > 0 ? v : 0 })(),
     requireSource: sget('vmu.trust.requireSource', true) !== false,
@@ -59,7 +71,7 @@ export function createTrust({ clock = () => 0, log = null, settings = {}, bus = 
   const forSubject = (subject) => signals.filter((s) => s.subject === subject)
   const decayedWeight = (s, at) => {
     const { halfLifeMs } = cfg()
-    if (!halfLifeMs) return s.weight
+    if (halfLifeMs <= 0) return s.weight   // 0 = decay OFF (vmu.trust.halfLifeMs, docs/04 §11); never a divide-by-zero
     const age = Math.max(0, at - s.at)
     return s.weight * Math.pow(0.5, age / halfLifeMs)
   }
@@ -126,8 +138,8 @@ export function createTrust({ clock = () => 0, log = null, settings = {}, bus = 
       if (typeof subject !== 'string' || !subject) throw refuse('VMU_INVALID_ARGUMENT', 'score needs a subject', 'e.g. { subject: "m1" }')
       const c = cfg()
       const r = compute(subject, clock())
-      if (!r.hasData) return { ok: true, subject, score: null, hasData: false, reason: 'no-signals', samples: 0, aggregate: c.aggregate, at: r.at }
-      return { ok: true, subject, score: r.score, hasData: true, samples: r.list.length, aggregate: c.aggregate, halfLifeMs: c.halfLifeMs, at: r.at }
+      if (!r.hasData) return { ok: true, subject, score: null, hasData: false, reason: 'no-signals', samples: 0, aggregate: c.aggregate, halfLifeMs: c.halfLifeMs, halfLifeSource: c.halfLifeSource, decay: c.halfLifeMs > 0 ? 'on' : 'off', at: r.at }
+      return { ok: true, subject, score: r.score, hasData: true, samples: r.list.length, aggregate: c.aggregate, halfLifeMs: c.halfLifeMs, halfLifeSource: c.halfLifeSource, decay: c.halfLifeMs > 0 ? 'on' : 'off', at: r.at }
     },
 
     /** Pure recomputation at `at` (default: now) — never mutates stored signals. */
@@ -137,8 +149,8 @@ export function createTrust({ clock = () => 0, log = null, settings = {}, bus = 
       if (Number.isFinite(at) && at < 0) throw refuse('VMU_INVALID_ARGUMENT', 'at must be a non-negative ms timestamp', 'omit it to use the clock')
       const c = cfg()
       const r = compute(subject, when)
-      if (!r.hasData) return { ok: true, subject, score: null, hasData: false, reason: 'no-signals', halfLifeMs: c.halfLifeMs, at: when }
-      return { ok: true, subject, score: r.score, hasData: true, samples: r.list.length, halfLifeMs: c.halfLifeMs, at: when, note: 'recomputation only: stored signals are unchanged' }
+      if (!r.hasData) return { ok: true, subject, score: null, hasData: false, reason: 'no-signals', halfLifeMs: c.halfLifeMs, halfLifeSource: c.halfLifeSource, decay: c.halfLifeMs > 0 ? 'on' : 'off', at: when }
+      return { ok: true, subject, score: r.score, hasData: true, samples: r.list.length, halfLifeMs: c.halfLifeMs, halfLifeSource: c.halfLifeSource, decay: c.halfLifeMs > 0 ? 'on' : 'off', at: when, note: 'recomputation only: stored signals are unchanged' }
     },
 
     /** Read-only. Every score is explainable: constituents, weights, decay and flags. */
@@ -152,7 +164,7 @@ export function createTrust({ clock = () => 0, log = null, settings = {}, bus = 
         weight: p.s.weight, decayedWeight: p.w, evidence: p.s.evidence, flags: p.s.flags.slice(),
       }))
       return {
-        ok: true, subject, at, aggregate: c.aggregate, halfLifeMs: c.halfLifeMs,
+        ok: true, subject, at, aggregate: c.aggregate, halfLifeMs: c.halfLifeMs, halfLifeSource: c.halfLifeSource, decay: c.halfLifeMs > 0 ? 'on' : 'off',
         hasData: r.hasData, score: r.score,
         noDataReason: r.hasData ? null : 'no-signals: the subject has no signals, so no score exists (this is not 0)',
         signals: parts, samples: parts.length,

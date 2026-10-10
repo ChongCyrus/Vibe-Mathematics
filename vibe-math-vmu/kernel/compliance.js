@@ -58,6 +58,8 @@ export function refuse(code, message, hint, extra) {
   return e
 }
 
+/** 单一规则：`0` 是**合法值** ⇒ 时间/计数类入参一律用 `given()`，**禁止** `!x` 判定（裁决 task-216）。 */
+const given = (v) => v !== undefined && v !== null
 const raw = (settings, key, d) => (settings && Object.prototype.hasOwnProperty.call(settings, key) ? settings[key] : d)
 const boolOf = (v, d) => (v === undefined || v === null ? d : !!v)
 const numOf = (v, d) => { const n = Number(v); return Number.isFinite(n) ? n : d }
@@ -122,16 +124,16 @@ export function createCompliance({ clock = () => new Date(0).toISOString(), log 
       mark(enforced, 'vmu.compliance.irbRequired')
       if (!(irb && irb.approved === true)) {
         mark(enforced, 'vmu.compliance.requireApprovalGate')
-        throw deny('review', 'VMU_COMPLIANCE_APPROVAL_MISSING', 'the ethics approval (IRB) is missing for ' + String(protocolId) + ' (item:' + 'irb' + ')', 'attach the IRB approval before any work starts', enforced, { item: 'irb', protocolId: String(protocolId), at: String(at || clock()) })
+        throw deny('review', 'VMU_COMPLIANCE_APPROVAL_MISSING', 'the ethics approval (IRB) is missing for ' + String(protocolId) + ' (item:' + 'irb' + ')', 'attach the IRB approval before any work starts', enforced, { item: 'irb', protocolId: String(protocolId), at: given(at) ? String(at) : String(clock()) })
       }
     }
     if (C.require.indexOf('consent') !== -1) {
       mark(enforced, 'vmu.compliance.require')
       if (!(consent && consent.signed === true)) {
-        throw deny('review', 'VMU_COMPLIANCE_APPROVAL_MISSING', 'informed consent is not signed for ' + String(protocolId) + ' (item:' + 'consent' + ')', 'collect the signed consent (same code, distinguished by item)', enforced, { item: 'consent', protocolId: String(protocolId), at: String(at || clock()) })
+        throw deny('review', 'VMU_COMPLIANCE_APPROVAL_MISSING', 'informed consent is not signed for ' + String(protocolId) + ' (item:' + 'consent' + ')', 'collect the signed consent (same code, distinguished by item)', enforced, { item: 'consent', protocolId: String(protocolId), at: given(at) ? String(at) : String(clock()) })
       }
     }
-    return ok('review', enforced, enforced.slice(), { protocolId: String(protocolId), irb: !!irb, consent: !!consent, at: String(at || clock()) })
+    return ok('review', enforced, enforced.slice(), { protocolId: String(protocolId), irb: !!irb, consent: !!consent, at: given(at) ? String(at) : String(clock()) })
   }
 
   /** retention：保留期超期 —— `VMU_COMPLIANCE_OVERDUE_BLOCK` ＋ **current/limit**。 */
@@ -141,9 +143,9 @@ export function createCompliance({ clock = () => new Date(0).toISOString(), log 
     const limit = numOf(keepDays, numOf(C.auditPrepLeadDays, 14))
     const current = numOf(usedDays, 0)
     if (current > limit) {
-      throw deny('retention', 'VMU_COMPLIANCE_OVERDUE_BLOCK', 'data retention is over the limit: current=' + current + ' limit=' + limit, 'purge/redact to or below the limit (vmu.compliance.overdueEscalation=' + C.onOverdue + ')', enforced, { current, limit, at: String(at || clock()) })
+      throw deny('retention', 'VMU_COMPLIANCE_OVERDUE_BLOCK', 'data retention is over the limit: current=' + current + ' limit=' + limit, 'purge/redact to or below the limit (vmu.compliance.overdueEscalation=' + C.onOverdue + ')', enforced, { current, limit, at: given(at) ? String(at) : String(clock()) })
     }
-    return ok('retention', enforced, [], { current, limit, over: false, at: String(at || clock()) })
+    return ok('retention', enforced, [], { current, limit, over: false, at: given(at) ? String(at) : String(clock()) })
   }
 
   /** coi：利益冲突未申报 —— **已登记码** `VMU_COMPLIANCE_COI_UNDISCLOSED`。 */
@@ -154,10 +156,10 @@ export function createCompliance({ clock = () => new Date(0).toISOString(), log 
       if (!who) throw deny('coi', 'VMU_INVALID_ARGUMENT', 'coi needs { who }', 'pass the member id', enforced)
       if (!(declared && declared.declared === true)) {
         mark(enforced, 'vmu.compliance.coiScope')
-        throw deny('coi', 'VMU_COMPLIANCE_COI_UNDISCLOSED', 'conflict of interest is not disclosed for ' + String(who), 'file the COI disclosure (scope=' + strOf(scope, C.coiScope) + ')', enforced, { who: String(who), scope: strOf(scope, C.coiScope), at: String(at || clock()) })
+        throw deny('coi', 'VMU_COMPLIANCE_COI_UNDISCLOSED', 'conflict of interest is not disclosed for ' + String(who), 'file the COI disclosure (scope=' + strOf(scope, C.coiScope) + ')', enforced, { who: String(who), scope: strOf(scope, C.coiScope), at: given(at) ? String(at) : String(clock()) })
       }
     }
-    return ok('coi', enforced, enforced.slice(), { who: who ? String(who) : null, declared: true, at: String(at || clock()) })
+    return ok('coi', enforced, enforced.slice(), { who: who ? String(who) : null, declared: true, at: given(at) ? String(at) : String(clock()) })
   }
 
   /** exportData：受试者数据导出未批 —— `VMU_COMPLIANCE_EXPORT_BLOCKED`。 */
@@ -166,12 +168,12 @@ export function createCompliance({ clock = () => new Date(0).toISOString(), log 
     if (!studyId) throw deny('exportData', 'VMU_INVALID_ARGUMENT', 'exportData needs { studyId }', 'pass the study id', enforced)
     mark(enforced, 'vmu.compliance.redactionPolicy')
     if (!approvedBy) {
-      throw deny('exportData', 'VMU_COMPLIANCE_EXPORT_BLOCKED', 'export of subject data is not approved for study ' + String(studyId), 'obtain approval (and redact per vmu.compliance.redactionPolicy=' + C.redaction + ')', enforced, { studyId: String(studyId), at: String(at || clock()) })
+      throw deny('exportData', 'VMU_COMPLIANCE_EXPORT_BLOCKED', 'export of subject data is not approved for study ' + String(studyId), 'obtain approval (and redact per vmu.compliance.redactionPolicy=' + C.redaction + ')', enforced, { studyId: String(studyId), at: given(at) ? String(at) : String(clock()) })
     }
     if (C.redaction !== 'off' && !(redacted && redacted.done === true)) {
-      throw deny('exportData', 'VMU_COMPLIANCE_EXPORT_BLOCKED', 'export is approved but NOT redacted for study ' + String(studyId), 'apply the redaction policy before export (' + C.redaction + ')', enforced, { studyId: String(studyId), redactionPolicy: C.redaction, at: String(at || clock()) })
+      throw deny('exportData', 'VMU_COMPLIANCE_EXPORT_BLOCKED', 'export is approved but NOT redacted for study ' + String(studyId), 'apply the redaction policy before export (' + C.redaction + ')', enforced, { studyId: String(studyId), redactionPolicy: C.redaction, at: given(at) ? String(at) : String(clock()) })
     }
-    return ok('exportData', enforced, enforced.slice(), { studyId: String(studyId), approvedBy: String(approvedBy), redacted: true, at: String(at || clock()) })
+    return ok('exportData', enforced, enforced.slice(), { studyId: String(studyId), approvedBy: String(approvedBy), redacted: true, at: given(at) ? String(at) : String(clock()) })
   }
 
   /** evidence：审计留痕缺失 —— `VMU_COMPLIANCE_EVIDENCE_INCOMPLETE`。 */
@@ -186,9 +188,9 @@ export function createCompliance({ clock = () => new Date(0).toISOString(), log 
     if (C.evidenceMembers === 'all' && m === 0) missing.push('members(all)')
     if (!fields) missing.push('fields(' + C.evidenceFields + ')')
     if (missing.length) {
-      throw deny('evidence', 'VMU_COMPLIANCE_EVIDENCE_INCOMPLETE', 'the audit evidence packet is incomplete: missing ' + missing.join(', '), 'provide the missing evidence parts before the audit', enforced, { missing, at: String(at || clock()) })
+      throw deny('evidence', 'VMU_COMPLIANCE_EVIDENCE_INCOMPLETE', 'the audit evidence packet is incomplete: missing ' + missing.join(', '), 'provide the missing evidence parts before the audit', enforced, { missing, at: given(at) ? String(at) : String(clock()) })
     }
-    return ok('evidence', enforced, enforced.slice(), { kind: C.evidenceKind, members: m, fieldsCount: 1, at: String(at || clock()) })
+    return ok('evidence', enforced, enforced.slice(), { kind: C.evidenceKind, members: m, fieldsCount: 1, at: given(at) ? String(at) : String(clock()) })
   }
 
   /** calendar：合规日历逾期 —— `VMU_COMPLIANCE_CALENDAR_MISSED`。 */
@@ -198,9 +200,11 @@ export function createCompliance({ clock = () => new Date(0).toISOString(), log 
     mark(enforced, 'vmu.compliance.reviewAlertLeadDays')
     mark(enforced, 'vmu.compliance.calendarDir')
     mark(enforced, 'vmu.compliance.calendarTemplate')
-    const when = String(at || clock())
-    if (!dueAt) throw deny('calendar', 'VMU_INVALID_ARGUMENT', 'calendar needs { dueAt }', 'pass the compliance due date', enforced)
-    if (String(dueAt) < when) {
+    const when = given(at) ? String(at) : String(clock())
+    if (!given(dueAt)) throw deny('calendar', 'VMU_INVALID_ARGUMENT', 'calendar needs { dueAt }', 'pass the compliance due date', enforced)
+    const dueMs = typeof dueAt === 'number' ? dueAt : Date.parse(String(dueAt))
+    const overDue = Number.isFinite(dueMs) ? dueMs < Date.parse(when) : String(dueAt) < when
+    if (overDue) {
       throw deny('calendar', 'VMU_COMPLIANCE_CALENDAR_MISSED', 'the compliance calendar entry is overdue: due ' + String(dueAt) + ' < now ' + when, 'file the missing calendar entry in ' + C.calendarDir + '/' + C.calendarTemplate, enforced, { dueAt: String(dueAt), at: when })
     }
     return ok('calendar', enforced, [], { dueAt: String(dueAt), dir: C.calendarDir, template: C.calendarTemplate, leadDays: C.auditPrepLeadDays, alertLeadDays: C.reviewAlertLeadDays, at: when })
@@ -215,7 +219,7 @@ export function createCompliance({ clock = () => new Date(0).toISOString(), log 
       mode: C.prepare, protocolId: protocolId ? String(protocolId) : null,
       calendarDir: C.calendarDir, template: C.calendarTemplate,
       auditPrepLeadDays: C.auditPrepLeadDays, reviewAlertLeadDays: C.reviewAlertLeadDays,
-      domainPacks: C.domainPacks, at: String(at || clock()),
+      domainPacks: C.domainPacks, at: given(at) ? String(at) : String(clock()),
     })
   }
 

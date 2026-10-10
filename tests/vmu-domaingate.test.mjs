@@ -80,6 +80,40 @@ const f1 = mk(), f2 = mk()
 goodReview(f1); goodReview(f2)
 ok(JSON.stringify(f1.status().reviews) === JSON.stringify(f2.status().reviews), 'two instances with the same clock produce identical review state (determinism)')
 
+// task-217 (falsy-zero): epoch 0 is a LEGAL instant everywhere in this module. "not given" is now decided by
+// an explicit undefined/null test, so 0 is ACCEPTED, preserved verbatim, and distinguishable from absence.
+{
+  const dg = mk()
+  // (0) observedAt = 0 is accepted as an instant (before the fix: "report needs { observedAt }")
+  const r0 = dg.report({ kind: 'ae', observedAt: 0, reportedAt: 0 })
+  ok(r0.ok === true && r0.deltaMs === 0, 'report({ observedAt: 0, reportedAt: 0 }) is accepted: 0 is an instant, deltaMs=0 (no clock fallback)')
+  refuses(() => dg.report({ kind: 'ae' }), 'VMU_INVALID_ARGUMENT', ['observedAt'], 'observedAt undefined ⇒ named refusal (needs { observedAt })')
+  refuses(() => dg.report({ kind: 'ae', observedAt: null }), 'VMU_INVALID_ARGUMENT', ['observedAt'], 'observedAt null ⇒ named refusal (null means "not given")')
+  // (1) consent: effectiveAt 0 preserved; withdrawnAt 0 preserved AND distinct from "not withdrawn"
+  const c0 = dg.consent({ studyId: 's-0', version: 'v1', effectiveAt: 0 })
+  ok(c0.effectiveAt === '0', 'consent({ effectiveAt: 0 }) records the epoch-0 instant verbatim (no clock fallback)')
+  ok(c0.withdrawnAt === null, 'consent without withdrawnAt is NOT withdrawn (null), which 0 must not collapse into')
+  const cw = dg.consent({ studyId: 's-0', version: 'v2', effectiveAt: 0, withdrawnAt: 0 })
+  ok(cw.withdrawnAt === '0', 'consent({ withdrawnAt: 0 }) keeps 0 (before the fix the receipt said null)')
+  ok(cw.withdrawnAt !== c0.withdrawnAt, 'withdrawn-at-0 and never-withdrawn are DISTINGUISHABLE (the two receipts differ)')
+  // (2) review: expiresAt 0 is ACCEPTED as a value, then judged on its merits (expired in 1970) — the refusal is
+  //     about EXPIRY, not about a missing argument.
+  refuses(() => dg.review({ protocolId: 'p-0', expiresAt: 0 }), 'VMU_IACUC_EXPIRED', ['expired'], 'review({ expiresAt: 0 }) is accepted as a value, then refused for being EXPIRED (not "needs { expiresAt }")')
+  refuses(() => dg.review({ protocolId: 'p-0' }), 'VMU_IACUC_EXPIRED', ['needs { expiresAt }'], 'review without expiresAt is refused as a MISSING argument (the two are distinguishable)')
+  const gone = dg.review({ protocolId: 'p-1', approvedAt: 0, expiresAt: '2099-01-01T00:00:00.000Z' })
+  ok(gone.ok === true, 'review({ approvedAt: 0, expiresAt: <future> }) is accepted (approvedAt 0 preserved as a value)')
+  // (3) withdraw/checkConsent with an explicit 0 instant
+  dg.consent({ studyId: 's-1', version: 'v1', effectiveAt: 0 })
+  const w = dg.withdraw({ studyId: 's-1', version: 'v1', at: 0 })
+  ok(w.ok === true && w.withdrawnAt === '0', 'withdraw({ at: 0 }) records the epoch-0 instant verbatim')
+  refuses(() => dg.checkConsent({ studyId: 's-2', version: 'v1', at: 0 }), 'VMU_GATE_UNSATISFIED', ['no consent on file'], 'checkConsent({ at: 0 }) on an unknown study is refused by NAME (0 read as an instant, no crash, no falsy fallback)')
+  const c3 = dg.consent({ studyId: 's-3', version: 'v1', effectiveAt: 0 })
+  const cc3 = dg.checkConsent({ studyId: 's-3', version: 'v1', at: 0 })
+  ok(c3.effectiveAt === '0' && cc3.ok === true && cc3.effectiveAt === '0', 'an epoch-0 consent is effective AT epoch 0 (the comparison reads 0 correctly)')
+  const g0 = dg.gate({ domain: 'clinical', at: 0 })
+  ok(g0.ok === true && g0.at === '0', 'gate({ at: 0 }) reports at="0" (the given instant, not the clock)')
+}
+
 console.log('')
 console.log('=== VMU DOMAINGATE: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) process.exit(1)

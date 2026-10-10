@@ -83,7 +83,9 @@ export function createHostSpawn({
         'the script bridge refuses by name in that deployment (the older preset reports NO_SUBPROCESS)')
     }
     const started = clock()
-    const budget = Number.isInteger(request.timeoutMs) && request.timeoutMs > 0 ? request.timeoutMs : null
+    // task-217 (falsy-zero): `timeoutMs: 0` is a LEGAL budget (spawn and time out immediately), so it must not
+    // be folded into "not given". `null` = absent/invalid, `0` = an explicit zero budget — the two are distinct.
+    const budget = Number.isInteger(request.timeoutMs) && request.timeoutMs >= 0 ? request.timeoutMs : null
     const argv = []
     if (typeof request.file === 'string' && request.file.length > 0) argv.push(request.file)
     else if (typeof request.inline === 'string' && request.inline.length > 0) {
@@ -147,7 +149,7 @@ export function createHostSpawn({
         argv,
         cwd,
         stdio: { stdin: 'ignore', stdout: { maxBytes: stdoutCapBytes }, stderr: { maxBytes: stderrCapBytes } },
-        ...(budget ? { graceMs: budget } : {}),
+        ...(budget !== null ? { graceMs: budget } : {}),
         ...(envKeys > 0 ? { env } : {}),
       })
     } catch (e) {
@@ -160,7 +162,7 @@ export function createHostSpawn({
         argvLen: argv.length,
         cwd: request.cwd || defaultCwd || undefined,
         stdio: { stdin: 'ignore', stdout: { maxBytes: stdoutCapBytes }, stderr: { maxBytes: stderrCapBytes } },
-        graceMs: budget || undefined,
+        graceMs: budget === null ? undefined : budget,
         envKeys: request.env ? Object.keys(request.env).length : 0,
       }
       const sum = shapeSummary(shape)
@@ -175,7 +177,7 @@ export function createHostSpawn({
 
     const outcome = await Promise.race([
       Promise.resolve(handle.done).then((v) => ({ settled: true, value: v }), (e) => ({ settled: false, error: e })),
-      budget ? delay(budget).then(() => ({ settled: false, timeout: true })) : new Promise(() => {}),
+      budget !== null ? delay(budget).then(() => ({ settled: false, timeout: true })) : new Promise(() => {}),
     ])
     const ms = clock() - started
     const text = (side) => { try { const c = handle.collected && handle.collected[side]; return c ? c.readFrom(0).text : '' } catch { return '' } }

@@ -64,6 +64,12 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
   }
   const emit = (t, p) => { if (!bus || typeof bus.emit !== 'function') return null; try { return bus.emit(t, p) } catch (e) { log('domaingate: bus emit failed: ' + String((e && e.code) || e)); return null } }
 
+  // task-217 (the falsy-zero class): epoch 0 is a LEGAL instant, so "not given" is decided EXPLICITLY.
+  // `given()` is the one rule for every time input here; `ms()` accepts finite millisecond NUMBERS as well as
+  // ISO strings (a number must not be re-parsed as a year by Date.parse, and 0 must survive untouched).
+  const given = (v) => v !== undefined && v !== null
+  const ms = (v) => { if (typeof v === 'number') return Number.isFinite(v) ? v : NaN; const n = Date.parse(String(v)); return Number.isFinite(n) ? n : NaN }
+
   /** declare：声明一个领域包（clinical|animal）。未声明 ⇒ gate() 报"无闸"。 */
   function declare({ domain, pack } = {}) {
     const d = String(domain || '')
@@ -80,11 +86,11 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
   function consent({ studyId, version, effectiveAt, withdrawnAt = null, by = null } = {}) {
     if (!studyId) throw refuse('VMU_INVALID_ARGUMENT', 'consent needs { studyId }', 'pass { studyId }')
     if (!version) throw refuse('VMU_INVALID_ARGUMENT', 'consent needs { version }', 'a consent without a version cannot be checked later')
-    const at = effectiveAt || clock()
+    const at = given(effectiveAt) ? effectiveAt : clock()
     const list = consents.get(String(studyId)) || []
     const rec = {
-      version: String(version), effectiveAt: String(at), withdrawnAt: withdrawnAt ? String(withdrawnAt) : null, by: by ? String(by) : null,
-      fingerprint: createHash('sha256').update(JSON.stringify({ studyId: String(studyId), version: String(version), at: String(at), w: withdrawnAt || null })).digest('hex').slice(0, 16),
+      version: String(version), effectiveAt: String(at), withdrawnAt: given(withdrawnAt) ? String(withdrawnAt) : null, by: by ? String(by) : null,
+      fingerprint: createHash('sha256').update(JSON.stringify({ studyId: String(studyId), version: String(version), at: String(at), w: given(withdrawnAt) ? String(withdrawnAt) : null })).digest('hex').slice(0, 16),
     }
     list.push(rec)
     consents.set(String(studyId), list)
@@ -98,8 +104,8 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
     const list = consents.get(String(studyId)) || []
     const target = [...list].reverse().find((r) => (version === undefined ? true : r.version === String(version)))
     if (!target) throw refuse('VMU_GATE_UNSATISFIED', 'no consent to withdraw for study ' + String(studyId), 'call consent({ studyId, version }) first')
-    if (target.withdrawnAt) return { ok: true, studyId: String(studyId), version: target.version, withdrawnAt: target.withdrawnAt, alreadyWithdrawn: true }
-    target.withdrawnAt = String(at || clock())
+    if (given(target.withdrawnAt)) return { ok: true, studyId: String(studyId), version: target.version, withdrawnAt: target.withdrawnAt, alreadyWithdrawn: true }
+    target.withdrawnAt = String(given(at) ? at : clock())
     target.withdrawnBy = by ? String(by) : null
     counts.writes += 1
     emit('record/appended', { studyId: String(studyId), consentWithdrawn: target.version, at: target.withdrawnAt })
@@ -109,7 +115,7 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
   /** checkConsent：版本不一致 ⇒ 具名拒；已撤回 ⇒ 拒（并给撤回时刻）。 */
   function checkConsent({ studyId, version, at = null } = {}) {
     const list = consents.get(String(studyId)) || []
-    const when = at || clock()
+    const when = given(at) ? at : clock()
     if (!list.length) throw refuse('VMU_GATE_UNSATISFIED', 'no consent on file for study ' + String(studyId), 'register it first: consent({ studyId, version, effectiveAt })')
     const valid = [...list].reverse().find((r) => !r.withdrawnAt && String(r.effectiveAt) <= String(when))
     if (!valid) {
@@ -129,8 +135,8 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
   function report({ kind, observedAt, reportedAt, studyId = null, protocolId = null } = {}) {
     const k = String(kind || '')
     if (!['sae', 'ae', 'death', 'deviation'].includes(k)) throw refuse('VMU_INVALID_ARGUMENT', 'unknown report kind: ' + k, 'one of sae|ae|death|deviation')
-    if (!observedAt) throw refuse('VMU_INVALID_ARGUMENT', 'report needs { observedAt }', 'the observed time is required for the deadline check')
-    const obs = Date.parse(String(observedAt)), rep = Date.parse(String(reportedAt || clock()))
+    if (!given(observedAt)) throw refuse('VMU_INVALID_ARGUMENT', 'report needs { observedAt }', 'the observed time is required for the deadline check (epoch 0 is a legal instant)')
+    const obs = ms(observedAt), rep = ms(given(reportedAt) ? reportedAt : clock())
     if (!Number.isFinite(obs) || !Number.isFinite(rep)) throw refuse('VMU_INVALID_ARGUMENT', 'report needs ISO timestamps', 'pass observedAt/reportedAt as ISO strings')
     const pack = packs.get(studyId ? 'clinical' : (protocolId ? 'animal' : '')) || null
     const { limitMs, limitLabel } = limitFor(k, pack)
@@ -149,11 +155,11 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
 
   /** review：IACUC/伦理审查登记；过期或方案号缺失 ⇒ 拒；3R/设施/培训逐项校验；ledgerRef 只引用 22 卷 id。 */
   function review({ protocolId, approvedAt, expiresAt, threeR = null, anesthesia = null, facility = null, training = null, ledgerRef = null, at = null } = {}) {
-    const when = String(at || clock())
+    const when = String(given(at) ? at : clock())
     if (protocolId === undefined || protocolId === null || String(protocolId).trim() === '') {
       throw refuse('VMU_REGISTRATION_MISSING', 'review needs { protocolId }: the protocol registration number is missing', 'register the protocol id (IACUC/IRB number) before any work starts')
     }
-    if (!expiresAt) throw refuse('VMU_IACUC_EXPIRED', 'review needs { expiresAt }: an approval without an expiry cannot be gated', 'pass the approval expiry date')
+    if (!given(expiresAt)) throw refuse('VMU_IACUC_EXPIRED', 'review needs { expiresAt }: an approval without an expiry cannot be gated', 'pass the approval expiry date (epoch 0 is a legal instant — it will then read as expired)')
     if (String(expiresAt) <= when) {
       throw refuse('VMU_IACUC_EXPIRED', 'the approval for ' + String(protocolId) + ' expired at ' + String(expiresAt) + ' (now ' + when + ')', 'renew the approval before starting any work')
     }
@@ -164,13 +170,13 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
     if (facility !== null) {
       const okAcc = facility && facility.accredited === true
       const validUntil = facility && facility.validUntil
-      if (!okAcc || (validUntil && String(validUntil) <= when)) {
-        throw refuse('VMU_FACILITY_UNACCREDITED', 'the facility is not accredited for this protocol' + (validUntil ? ' (validUntil ' + String(validUntil) + ' ≤ ' + when + ')' : ''), 'use an accredited facility with a valid Until date')
+      if (!okAcc || (given(validUntil) && String(validUntil) <= when)) {
+        throw refuse('VMU_FACILITY_UNACCREDITED', 'the facility is not accredited for this protocol' + (given(validUntil) ? ' (validUntil ' + String(validUntil) + ' ≤ ' + when + ')' : ''), 'use an accredited facility with a valid Until date')
       }
     }
     if (training !== null) {
       const list = Array.isArray(training) ? training : [training]
-      const bad = list.filter((t) => t && t.validUntil && String(t.validUntil) <= when).map((t) => String((t && (t.who || t.id)) || 'unknown'))
+      const bad = list.filter((t) => t && given(t.validUntil) && String(t.validUntil) <= when).map((t) => String((t && (t.who || t.id)) || 'unknown'))
       if (bad.length) throw refuse('VMU_TRAINING_EXPIRED', 'training is expired for: ' + bad.join(', '), 'renew the training of ' + bad.join(', ') + ' before the work starts')
     }
     if (ledgerRef !== null && ledgerRef !== undefined) {
@@ -178,7 +184,7 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
         throw refuse('VMU_INVALID_ARGUMENT', 'ledgerRef must be an existing LEDGER ID (a string), got ' + JSON.stringify(ledgerRef), 'this module only REFERENCES the ledger ids defined in vol 22 — it never defines ledger structure')
       }
     }
-    const rec = { protocolId: String(protocolId), approvedAt: approvedAt ? String(approvedAt) : null, expiresAt: String(expiresAt), threeR: threeR ? clone(threeR) : null, anesthesia: anesthesia ? clone(anesthesia) : null, facility: facility ? clone(facility) : null, training: training ? clone(training) : null, ledgerRef: ledgerRef ? String(ledgerRef) : null, at: when }
+    const rec = { protocolId: String(protocolId), approvedAt: given(approvedAt) ? String(approvedAt) : null, expiresAt: String(expiresAt), threeR: threeR ? clone(threeR) : null, anesthesia: anesthesia ? clone(anesthesia) : null, facility: facility ? clone(facility) : null, training: training ? clone(training) : null, ledgerRef: ledgerRef ? String(ledgerRef) : null, at: when }
     reviews.set(rec.protocolId, rec)
     counts.writes += 1
     return { ok: true, protocolId: rec.protocolId, expiresAt: rec.expiresAt, ledgerRef: rec.ledgerRef }
@@ -188,7 +194,7 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
   function gate({ domain, at = null, studyId = null, protocolId = null, consentVersion = undefined } = {}) {
     const d = String(domain || '')
     const pack = packs.get(d)
-    const when = String(at || clock())
+    const when = String(given(at) ? at : clock())
     if (!pack) {
       counts.reads += 1
       return { ok: true, gated: false, verdict: 'no-gate', domain: d, at: when, note: 'no domain pack is declared: this is explicitly NO GATE (not a pass) — declare({ domain }) to enable it' }
@@ -204,11 +210,11 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
       } else if (item === 'threeR') {
         if (!rev || !rev.threeR || THREE_R.some((r) => !rev.threeR[r])) problems.push({ item, code: ITEM_CODES.threeR, why: '3R incomplete: missing ' + THREE_R.filter((r) => !(rev && rev.threeR && rev.threeR[r])).join(', ') })
       } else if (item === 'facility') {
-        if (!rev || !rev.facility || rev.facility.accredited !== true || (rev.facility.validUntil && rev.facility.validUntil <= when)) problems.push({ item, code: ITEM_CODES.facility, why: 'facility not accredited / expired' })
+        if (!rev || !rev.facility || rev.facility.accredited !== true || (given(rev.facility.validUntil) && rev.facility.validUntil <= when)) problems.push({ item, code: ITEM_CODES.facility, why: 'facility not accredited / expired' })
       } else if (item === 'training') {
         const list = rev && rev.training ? (Array.isArray(rev.training) ? rev.training : [rev.training]) : []
         if (!list.length) problems.push({ item, code: ITEM_CODES.training, why: 'no training record on file' })
-        else if (list.some((t) => t && t.validUntil && String(t.validUntil) <= when)) problems.push({ item, code: ITEM_CODES.training, why: 'training expired for ' + list.filter((t) => t.validUntil <= when).map((t) => t.who || t.id || 'unknown').join(', ') })
+        else if (list.some((t) => t && given(t.validUntil) && String(t.validUntil) <= when)) problems.push({ item, code: ITEM_CODES.training, why: 'training expired for ' + list.filter((t) => given(t.validUntil) && t.validUntil <= when).map((t) => t.who || t.id || 'unknown').join(', ') })
       } else if (item === 'ledgerRef') {
         if (!rev || !rev.ledgerRef) problems.push({ item, code: 'VMU_REGISTRATION_MISSING', why: 'no ledgerRef (vol 22 ledger id) referenced' })
       } else if (item === 'consent') {
