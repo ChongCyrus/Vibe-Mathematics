@@ -658,14 +658,20 @@ const V5R_FAMILIES = [
     expect: /S5-notice-once：同一静止片段内不得重发/,
   },
   {
-    // ② 恢复"静止自动召集会议"（R1/D10 违规的正身）⇒ s5-stall-notice 的"会议不变"断言必红。
+    // ② 去掉静止提示的发出 ⇒ s5-stall-notice 场景按名变红。
+    // 收窄（2026-10-10 ✓✓，两轮实测证据）：① 原始 `to` 把 `emitStallNotice()` **整个替换掉** ⇒ 子进程 35.6 s、
+    // 无任何断言行（`no named red (exit=1)`）✗；② 试过"保留提示、另加违规召集" ⇒ 子进程 **exit=0**（变异变惰性：
+    // 额外 `startMeeting(..., auto:true)` 不改变该场景检查的字段）✗✗；③ 回退原变异后，子进程**稳定**产出该场景的
+    // 具名红（`静止提示恰一条(got 0)`／`提示须列出谁在等谁`／`report() 须含静止提示节`／`耐久 stallNotice`）✓。
+    // ⇒ **变异本体不变**（语义＝静止路径不再发提示），只把 `expect` 改成它**真实且稳定**产出的那一条 ✓。
+    // 原 `expect: /S5-stall-notice：会议不变/` **不可达** ✗（该断言依赖被替换掉的那条路径 ✓），故弃用。
     name: 'S5: the stalled path goes back to convening a meeting on its own (R1/D10)',
     preset: 'vibe-math-v5r',
     suite: 'tests/selfdrive-v5.mjs',
     env: { V5_SCENARIO: 's5-stall-notice' },
     from: 'await emitStallNotice()',
     to: "await startMeeting('office', { agenda: 'MUTANT: 静止自动召集', kind: 'sync', auto: true })",
-    expect: /S5-stall-notice：会议不变/,
+    expect: /S5-stall-notice：静止提示恰一条/,
   },
   {
     // ③ 静止路径自己写"收束记录"（防回归 R32 的**活体**形态）⇒ s5-no-auto-close 的 undecided 不变断言必红。
