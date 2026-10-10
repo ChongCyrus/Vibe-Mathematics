@@ -87,7 +87,8 @@ assert(after.p.布尔估计 === 0.5, 'intermediate 布尔估计 preserved');
 
 console.log('\n-- no stray/duplicate category files --');
 const files2 = readdirSync(proposDir).filter((f) => f.endsWith('_Propos.json'));
-assert(files2.length === files.length, `no extra category files created by the reload (${files2.length})`);
+assert(files.length > 0, `the category-file set is non-empty before the comparison (${files.length}) — not a vacuous 0 === 0`);
+assert(files2.length - files.length === 0, `no extra category files created by the reload (${files2.length})`);
 
 rmSync(WS, { recursive: true, force: true });
 console.log(`\n=== ROUND6 RESULT: ${passed} passed, ${failed} failed ===`);

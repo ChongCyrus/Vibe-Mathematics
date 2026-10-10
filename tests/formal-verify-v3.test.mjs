@@ -913,12 +913,12 @@ await callTool('vibe_math_add_proposition', { id: 'p-nonote', 概述: '没有理
     await sleep(180)
     assert(/未写明 note/.test(readIf(join(replyProj, 'Logs', '形式化.md'))), 'a blocked judgement without a note is refused with an explicit announcement')
     const st = await callTool('vibe_math_status', {}, RG)
-    assert(st.formal.objects.every((o) => o.target !== 'p-nonote'), 'and no blocker record is created for the refused judgement')
+    assert(st.formal.objects.length > 0 && st.formal.objects.every((o) => o.target !== 'p-nonote'), 'and no blocker record is created for the refused judgement (non-vacuous: the object list is non-empty, so the absence means the record was really withheld)')
     // a formal reply without a target must not invent an object (idSafe('') would fall back to 'id')
     fireEnd(vs[1].childId, { Result: 0.5, Reason: '同上', formal: { decision: 'blocked', note: '没有写 target' } })
     await sleep(180)
     const st2 = await callTool('vibe_math_status', {}, RG)
-    assert(st2.formal.objects.every((o) => o.target !== 'id' && o.target !== ''), 'a `formal` reply with no target cannot invent an object record')
+    assert(st2.formal.objects.length > 0 && st2.formal.objects.every((o) => o.target !== 'id' && o.target !== ''), 'a `formal` reply with no target cannot invent an object record (non-vacuous: the object list is non-empty)')
   }
 }
 await callTool('vibe_math_abort', {}, RG)
@@ -1009,8 +1009,8 @@ await callTool('vibe_math_start', {}, RI)
     const rec = st.formal.objects.find((o) => o.target === 'p-nonote-defect')
     assert(!!rec && rec.status === 'passed', '★ a defect WITHOUT a note is refused: the object stays Lean-passed (no silent downgrade)')
     assert(existsSync(join(nonoteProj, 'Verified', 'Lean', 'p-nonote-defect.lean')), '★ and the archived proof is NOT deleted')
-    assert(st.formal.todo.every((t) => t.id !== 'p-nonote-defect') && !/p-nonote-defect/.test(readIf(join(nonoteProj, 'Formal', 'TODO.md'))),
-      'and no bogus formalization-TODO entry is created')
+    assert(st.formal.todo.every((t) => t.id !== 'p-nonote-defect') && !/p-nonote-defect/.test(readIf(join(nonoteProj, 'Formal', 'TODO.md'))), // EMPTY_ALLOWED: 该断言检查"没有伪条目"，而此时 TODO 列表**本就为空**（空集正是期望结果 ✗ 非空前置会把它变成假红）
+      'and no bogus formalization-TODO entry is created (empty TODO list is the expected outcome here)')
     assert(/未写明 note/.test(readIf(join(nonoteProj, 'Logs', '形式化.md'))), '★ the refusal is announced explicitly')
     fireEnd(vs[1].childId, { Result: 1, Reason: '核对后认为一致' })
     await sleep(300)
@@ -1390,7 +1390,7 @@ section('9b Lean 增量 + 异步：参数/argv/队列/去重/只读面/主动性
   // ── lean_job（修订 §3）：清单/单查/waitMs ────────────────────────────────────────
   const listJobs = await callTool('vibe_math_lean_job', {}, rq)
   assert(listJobs.ok === true && Array.isArray(listJobs.jobs) && listJobs.jobs.length >= 3, '★ lean_job without jobId returns the session job list')
-  assert(listJobs.jobs.every((j) => !!j.paths && typeof j.paths.receipt === 'string'), 'every listed job carries its receipt path')
+  assert(listJobs.jobs.length > 0 && listJobs.jobs.every((j) => !!j.paths && typeof j.paths.receipt === 'string'), 'every listed job carries its receipt path (non-vacuous: the job list is non-empty)')
   const one = await callTool('vibe_math_lean_job', { jobId: q3.async.jobId }, rq)
   assert(one.ok === true && one.state === 'settled' && one.passed === true && one.paths.archive === 'Verified/Lean/pAsymProof.lean', '★ lean_job {jobId} returns state/exitCode/paths and the passed verdict')
   assert((await callTool('vibe_math_lean_job', { jobId: 'nope-000000000000' }, rq)).code === 'V3_NOT_FOUND', 'an unknown jobId is refused with a typed code')
@@ -1704,7 +1704,7 @@ section('10 the captured prompt corpus is written for human review')
   assert(corpus.some((c) => /一致 → Result = 1/.test(c.prompt)), '★ the corpus keeps the passed/fidelity branch verbatim for human review')
   // contract §6 hard requirements 1-2 + §10 item 9, swept over EVERY captured prompt
   const verifier = corpus.filter((c) => c.label.startsWith('verifier:'))
-  assert(verifier.length >= 5 && verifier.every((c) => /Result/.test(c.prompt) && !/verdict/.test(c.prompt)),
+  assert(verifier.length > 0 && verifier.length >= 5 && verifier.every((c) => /Result/.test(c.prompt) && !/verdict/.test(c.prompt)),
     '★ every captured voting prompt names Result and never verdict (§6 hard requirement 2)')
   const bareTools = corpus.filter((c) => /(^|[^a-z_])lean_(run|archive|lib)/.test(c.prompt))
   assert(bareTools.length === 0, '★ no captured prompt abbreviates a Lean tool name (§6 hard requirement 1): ' + bareTools.map((b) => b.label).join(','))
@@ -1722,12 +1722,12 @@ section('10 the captured prompt corpus is written for human review')
   // the stable configuration scalars stay, and the instruction text that references the brief is
   // untouched — so the human reviewer still sees the real planner prompt, not a blank.
   const briefEntries = corpus.filter((c) => /CURRENT STATE BRIEF \(JSON\):/.test(c.prompt))
-  assert(briefEntries.length >= 3 && briefEntries.every((c) => SNAPSHOT_KEYS.every((k) => c.prompt.indexOf('"' + k + '": "<' + k.toUpperCase() + '>"') !== -1)),
+  assert(briefEntries.length > 0 && briefEntries.length >= 3 && briefEntries.every((c) => SNAPSHOT_KEYS.every((k) => c.prompt.indexOf('"' + k + '": "<' + k.toUpperCase() + '>"') !== -1)),
     '★ every captured planner brief keeps all ' + SNAPSHOT_KEYS.length + ' contract keys with canonically placeholdered snapshot values (' + briefEntries.length + ' briefs)')
-  assert(briefEntries.every((c) => /"horizon": \d+/.test(c.prompt) && /"free_slots": <SLOTS>/.test(c.prompt) && /"maxParallelThreshold": \d+/.test(c.prompt)),
-    '★ the brief keeps its real configuration scalars (horizon / free_slots / maxParallelThreshold), not just placeholders')
-  assert(briefEntries.every((c) => /brief\.problems\[\]\.running_solver_dirs and brief\.active_agents/.test(c.prompt) && /ACTION VOCABULARY/.test(c.prompt)),
-    '★ and the planner INSTRUCTION text under review (ACTION VOCABULARY + the HARD RULES naming brief fields) is verbatim')
+  assert(briefEntries.length > 0 && briefEntries.every((c) => /"horizon": \d+/.test(c.prompt) && /"free_slots": <SLOTS>/.test(c.prompt) && /"maxParallelThreshold": \d+/.test(c.prompt)),
+    '★ the brief keeps its real configuration scalars (horizon / free_slots / maxParallelThreshold), not just placeholders (non-vacuous: the brief list is non-empty)')
+  assert(briefEntries.length > 0 && briefEntries.every((c) => /brief\.problems\[\]\.running_solver_dirs and brief\.active_agents/.test(c.prompt) && /ACTION VOCABULARY/.test(c.prompt)),
+    '★ and the planner INSTRUCTION text under review (ACTION VOCABULARY + the HARD RULES naming brief fields) is verbatim (non-vacuous: the brief list is non-empty)')
   {
     // Direct witness of the race the normaliser exists for: the two shapes a background tick can
     // produce (explorer registered before vs. after the forced planner read the brief, activity log

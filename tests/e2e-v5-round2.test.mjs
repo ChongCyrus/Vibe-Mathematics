@@ -78,6 +78,10 @@ function makeHost(opts) {
   const o = opts || {}
   const WS = o.ws || mkdtempSync(join(tmpdir(), 'vibe-v5r2-'))
   const listeners = {}, toolRegs = [], commandRegs = [], spawns = [], wakes = [], interrupts = [], drains = [], sendAttempts = []
+  // NEVER-DRAINED log of every wake the harness actually SENT. `wakes` is a queue that the scheduler shifts
+  // from, so by the time a probe looks at it the item it wants to check is usually already consumed - which made
+  // "wakes.every(...)" assertions vacuously true (rule E shape A, task-225). `wakeLog` is what those probes read.
+  const wakeLog = []
   // Successful sends that SURVIVE consumption: `peekWakeOf` splices items out of `wakes`, so a probe that
   // must compare "rounds" against "successful wakes" needs a counter that is never drained.
   let wakeSends = 0
@@ -152,6 +156,7 @@ function makeHost(opts) {
         sendAttempts.push(childId)
         if (failSend) throw new Error('mock sendMessage failure (G1 seam)')
         wakeSends += 1
+        wakeLog.push({ childId, blocks })
         wakes.push({ childId, blocks }); return 'w' + wakes.length
       },
       interrupt(childId) { interrupts.push(childId) },
@@ -290,7 +295,7 @@ function makeHost(opts) {
     }
     return null
   }
-  return { WS, ctx, ROOT, ROOT_SESSION, removedServiceQueries, spawns, wakes, interrupts, drains, sendAttempts, startAttempts, setFailSend(v) { failSend = !!v }, setFailStart(v) { failStart = !!v }, setFailWriteOn(v) { failWriteOn = v || null }, setFailWriteContent(v) { failWriteContent = v || null }, get wakeSends() { return wakeSends }, toolRegs, commandRegs, listeners, effectDisposers, callTool, childAgent, fireEnd, spawnOf, childOf, labelOf, kindOf, settleSpawns, drain, peekWakeOf, peekWakeWhere, set plannedVotes(v) { plannedVotes = v }, get plannedVotes() { return plannedVotes }, set solvePlan(v) { solvePlan = v } }
+  return { WS, ctx, ROOT, ROOT_SESSION, removedServiceQueries, spawns, wakes, wakeLog, interrupts, drains, sendAttempts, startAttempts, setFailSend(v) { failSend = !!v }, setFailStart(v) { failStart = !!v }, setFailWriteOn(v) { failWriteOn = v || null }, setFailWriteContent(v) { failWriteContent = v || null }, get wakeSends() { return wakeSends }, toolRegs, commandRegs, listeners, effectDisposers, callTool, childAgent, fireEnd, spawnOf, childOf, labelOf, kindOf, settleSpawns, drain, peekWakeOf, peekWakeWhere, set plannedVotes(v) { plannedVotes = v }, get plannedVotes() { return plannedVotes }, set solvePlan(v) { solvePlan = v } }
 }
 
 const pluginModule = await import(PLUGIN.href + '?t=' + Date.now())
@@ -1247,7 +1252,7 @@ console.log('\n[23] final-paper params: closed schema, defaults and explicit coe
   const h = makeHost({ pluginModule })
   const setSpec = h.toolRegs.find(t => t.name === 'vibe_v5_set')
   const keys = ['finalPaper', 'paperFormat', 'paperLanguage', 'paperCompilePdf', 'paperEditor', 'paperLatexCommand']
-  assert(!!setSpec && keys.every(k => Object.prototype.hasOwnProperty.call(setSpec.parameters.properties, k)),
+  assert(!!setSpec && keys.length > 0 && keys.every(k => Object.prototype.hasOwnProperty.call(setSpec.parameters.properties, k)),
     '★ vibe_v5_set advertises all six final-paper keys (the schema is closed, so an unlisted key is unreachable)')
   const props = setSpec.parameters.properties
   assert(JSON.stringify(props.paperFormat.enum) === JSON.stringify(['both', 'md', 'tex']) &&
@@ -1536,7 +1541,7 @@ console.log('\n[27] fake LaTeX compiler: repair path and persistent-failure degr
     '★ [meeting-speak] the chance position is published (phase, roster=residents, asked=[…]): ' + JSON.stringify(st1.meeting && { p: st1.meeting.phase, a: st1.meeting.asked }))
   assert(Array.isArray(st1.meeting.silent) && Array.isArray(st1.meeting.unreached) && Array.isArray(st1.meeting.hands),
     '★ [meeting-speak] 沉默/未送达/举手三个集合各自公布（与"已发言"分开）')
-  assert(st1.meeting.roster.every((id) => String(id).indexOf('t-') !== 0),
+  assert(st1.meeting.roster.length > 0 && st1.meeting.roster.every((id) => String(id).indexOf('t-') !== 0),
     '★★ [meeting-speak] 临时工默认不在征询名单（roster 只含常驻表决者）')
   assert(typeof st1.meeting.hardLimitMs === 'number' && st1.meeting.hardLimitMs === 300000,
     '★ [meeting-speak] the hard limit is published and configurable: ' + JSON.stringify(st1.meeting && st1.meeting.hardLimitMs))
@@ -1649,9 +1654,12 @@ console.log('\n[27] fake LaTeX compiler: repair path and persistent-failure degr
   assert(tempRow(stPre).phase === 'active',
     'precondition: the temp worker is on the ACTIVE roster before the invite: ' + JSON.stringify(tempRow(stPre)))
   // B1（行为级）：临时工**默认不被征询**——本场会议的任何一轮唤醒都不发给它。
-  assert(hs.wakes.every((w) => String((w.blocks && w.blocks[0] && w.blocks[0].text) || '').indexOf(tempId) === -1
-    || !/【研究所会议/.test(String((w.blocks && w.blocks[0] && w.blocks[0].text) || ''))),
-    '★★ [meeting-speak] B1 临时工默认不被征询（会议轮从不发给它）')
+  // 原断言读的是"唤醒文本里是否出现 tempId"，而会议轮文本本就可能在名册里**提到**它 ⇒ 断言既空过又易误报；
+  // 现在改成读**从未被消费**的 wakeLog 并用 `childId`（"发给谁"）判定 ⇒ 与注释的本意一致且真的会咬。
+  const tempChildId = hs.childOf(tempId)
+  assert(!!tempChildId, 'precondition: the temp worker has a child id (' + tempId + ')')
+  assert(hs.wakeLog.length > 0 && hs.wakeLog.every((w) => w.childId !== tempChildId),
+    '★★ [meeting-speak] B1 临时工默认不被征询（会议轮从不发给它；扫描 never-drained wakeLog 的 childId，非空前置 ⇒ 断言真的会咬）')
   assert(Array.isArray((stPre.meeting || {}).roster) && (stPre.meeting.roster || []).indexOf(tempId) === -1,
     '★★ [meeting-speak] C2 受邀资格存在、但临时工**不进征询名单**（roster 只含常驻表决者）')
   assert(readdirSync(join(instDir, 'Members')).join(',') === membersBefore.join(','),
@@ -1921,7 +1929,7 @@ console.log('\n[34] Lean async params: closed schema, coercion, visibleParams, e
   const h = makeHost({ pluginModule })
   const setSpec = h.toolRegs.find(t => t.name === 'vibe_v5_set')
   const keys = ['leanAsync', 'leanInitiative', 'leanSearchPaths', 'leanJobsMaxParallel']
-  assert(keys.every(k => Object.prototype.hasOwnProperty.call(setSpec.parameters.properties, k)),
+  assert(keys.length > 0 && keys.every(k => Object.prototype.hasOwnProperty.call(setSpec.parameters.properties, k)),
     '★ vibe_v5_set advertises all four new Lean keys (the schema is closed, so an unlisted key is unreachable)')
   assert(JSON.stringify(setSpec.parameters.properties.leanInitiative.enum) === JSON.stringify(['off', 'normal', 'eager']),
     'leanInitiative is a closed enum in the schema')
@@ -2510,7 +2518,7 @@ console.log('\n[48] G2: a failed wake does not consume a round (rounds == succes
   for (let i = 0; i < 60 && h.sendAttempts.filter(c => c === r1).length === 0; i++) await sleep(25)
   const failedAttempts = h.sendAttempts.filter(c => c === r1).length
   assert(failedAttempts >= 1, 'precondition: at least one wake for r-1 was attempted and failed (' + failedAttempts + ')')
-  assert(h.wakes.filter(w => w.childId === r1).length === 0, 'precondition: no wake for r-1 succeeded yet')
+  assert(h.wakeLog.filter(w => w.childId === r1).length === 0, 'precondition: no wake for r-1 ever SUCCEEDED yet (scanned over the never-drained wakeLog)') // EMPTY_ALLOWED: 该断言位于"所有发送都失败"的窗口内 ⇒ 成功唤醒本就应当是 0 条（空集＝期望结果 ✓ 非空前置会变成假红 ✗）
   // Heal the host and wake r-1 for real.
   h.setFailSend(false)
   await h.callTool('vibe_v5_say', { to: 'r-1', text: 'G2 成功唤醒' }, h.childAgent(h.childOf('acad')))
@@ -2893,8 +2901,8 @@ console.log('\n[54] vibe_v5_feedback: 用途＋三路由提示；add→list→�
   assert(summary.total === allEntries.length && summary.open + summary.closed === summary.total,
     '★★ [task-30] summary counts match the library contents exactly (' + JSON.stringify(summary) + ')')
   const byCat = allEntries.reduce((m, e) => { m[e.category] = (m[e.category] || 0) + 1; return m }, {})
-  assert(Object.keys(summary.byCategory).every((k) => summary.byCategory[k] === (byCat[k] || 0)),
-    '★★ [task-30] the by-category counts match the entries')
+  assert(allEntries.length > 0 && Object.keys(summary.byCategory).every((k) => summary.byCategory[k] === (byCat[k] || 0)),
+    '★★ [task-30] the by-category counts match the entries (and the entry list is non-empty, so the sweep is not vacuous)')
   const rp = await h.callTool('vibe_v5_report', {})
   assert(rp.report.indexOf('## 反馈库') !== -1 && rp.report.indexOf('条目 ' + summary.total + '｜未闭环 ' + summary.open) !== -1,
     '★★ [task-30] report() shows the SAME counts as the library')

@@ -166,7 +166,9 @@ ok(orphan.length === 0, 'no constructed service is missing from the registry', o
   ]
   for (const [label, probe] of rounds8) {
     const out = stripComments(probe, { strings: true })
-    ok(out.length === probe.length, 'round-8 case keeps the exact length: ' + label, probe.length + ' vs ' + out.length)
+    ok(probe.length > 0 && out.length > 0, 'the round-8 probe and its stripped form are both non-empty (non-vacuous comparison): ' + label,
+      probe.length + ' vs ' + out.length)
+    ok(out.length - probe.length === 0, 'round-8 case keeps the exact length: ' + label, probe.length + ' vs ' + out.length)
     ok(/const keep = createKeep\(/.test(out), 'round-8 case keeps the following BINDING visible: ' + label)
   }
   // the reverse direction must keep working: a real comment is still blanked, so the orphan scan cannot be

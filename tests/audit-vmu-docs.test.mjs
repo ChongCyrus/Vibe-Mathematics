@@ -178,7 +178,8 @@ ok(unregisteredInCode.length === 0,
   const GLOBAL_SKIP = ['status', 'ok', 'root', 'file', 'dir']
   for (const [svc, rel] of Object.entries(MODULES)) {
     const rows = [...contract.matchAll(new RegExp('^\\| `' + svc.replace('.', '\\.') + '`.*$', 'gm'))]
-    if (rows.length === 0) { ok(false, 'contract row exists for ' + svc, 'missing'); continue }
+    ok(rows.length > 0, 'contract row exists for ' + svc, 'missing')
+    if (rows.length === 0) continue
     const row = rows[rows.length - 1][0]
     const impl = publicKeys(readFileSync(join(VMU, rel), 'utf8'))
     const DOC_SKIP = ['async', 'await', 'if', 'for', 'while', 'return', 'function', 'new', 'typeof']
@@ -265,7 +266,9 @@ ok(unregisteredInCode.length === 0,
   // Concrete key rows only: the table also carries namespace PATTERN rows (`vmu.core.*`) which describe a
   // family rather than a key, so they neither need a wired marker nor count towards the key total.
   const rows = settingsDoc.split('\n').filter((l) => /^\| `vmu\.[a-zA-Z0-9.]+`/.test(l))
-  ok(rows.length === SETTING_DEFS.length, '04 §11 has exactly one row per declared key', rows.length + '/' + SETTING_DEFS.length)
+  ok(rows.length > 0 && SETTING_DEFS.length > 0, '04 §11 really has key rows and the registry really declares keys (non-vacuous comparison)',
+    rows.length + ' rows / ' + SETTING_DEFS.length + ' declared')
+  ok(rows.length - SETTING_DEFS.length === 0, '04 §11 has exactly one row per declared key', rows.length + '/' + SETTING_DEFS.length)
   const unmarkedRows = rows.filter((r) => !/已接线|未接线/.test(r))
   ok(unmarkedRows.length === 0, 'every settings row states whether the key is WIRED (no silent promises)',
     unmarkedRows.slice(0, 3).map((r) => (r.split('|')[1] || '').trim()).join(','))

@@ -83,8 +83,10 @@ const expectDistinct = new Set(sanitized).size;
 console.log(`      ids → ${JSON.stringify(ids.map((i, n) => i + ' ⇒ ' + sanitized[n]))}`);
 console.log(`      reported files: ${JSON.stringify(returned)}`);
 console.log(`      refused as duplicates: ${JSON.stringify(rejected)}`);
+assert(ids.length > 0, `the sanitized-id sample is non-empty (${ids.length}) — the duplicate case is not vacuous`);
+assert(expectDistinct >= 1, `the distinct-id expectation is positive (${expectDistinct})`);
 assert(returned.length === expectDistinct, `exactly one accepted add per DISTINCT sanitized id (${returned.length}/${expectDistinct})`);
-assert(rejected.length === ids.length - expectDistinct, `the colliding ids were refused as duplicates (${rejected.length})`);
+assert(rejected.length - (ids.length - expectDistinct) === 0, `the colliding ids were refused as duplicates (${rejected.length})`);
 for (const f of returned) {
   assert(f.replace(/\\/g, '/').startsWith('Propos/'), 'every reported path is under Propos/ (' + f + ')');
   assert(!f.replace(/\\/g, '/').split('/').includes('..'), 'no reported path contains a ".." segment (' + f + ')');

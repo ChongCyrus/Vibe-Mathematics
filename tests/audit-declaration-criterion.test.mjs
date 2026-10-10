@@ -247,6 +247,108 @@ export function auditDocToolNames({ docs, implemented, markers = DOC_PLANNED_MAR
   return { violations, coverage }
 }
 
+// ── RULE E (task-221): "vacuous pass" assertions — a gate that guards nothing ────────────────────────
+
+/** An explicit opt-out comment: the author states the empty case is intended. */
+export const EMPTY_ALLOWED = /EMPTY_ALLOWED/
+/** Evidence that a collection really was non-empty BEFORE the assertion (the required precondition).
+ *  task-222 precision fix: an equality assertion against a POSITIVE integer (`length === 24`) also proves
+ *  non-emptiness — the first version only accepted `> 0`/`!== 0`/`>= 1`, which produced many false hits. */
+export const NON_EMPTY_GUARD = /(\.length\s*>\s*0|\.length\s*!==\s*0|\.length\s*>=\s*1|\.length\s*===\s*[1-9]\d*|non-vacuous|scanned\s*>\s*0)/
+/** Shape A is COUNTED, not failed (the `EXPECT_UNDECIDED` pattern): visible, tracked, no permanent red.
+ *  The baseline is "must not grow": a NEW shape-A vacuous pass turns the gate red. */
+export const A_CLASS_BASELINE = 193
+export function aClassGrowth(violations, baseline = A_CLASS_BASELINE) {
+  const a = violations.filter((v) => /\[A\]/.test(v)).length
+  return {
+    a, baseline, grew: a > baseline,
+    violations: a > baseline ? ['shape A grew from ' + baseline + ' to ' + a + ' (a NEW vacuous pass was introduced): ' + violations.filter((v) => /\[A\]/.test(v)).slice(baseline, baseline + 5).join(' | ')] : [],
+  }
+}
+
+/**
+ * RULE E: find assertions that can pass VACUOUSLY.
+ *   A — `.every(...)` / `.filter(...).length === 0` / `for (… of X)` with no adjacent non-empty guard
+ *   B — `a.length === b.length` / stringified collections where both sides may be empty
+ *   C — a conditional assertion `if (…) { ok(…) }` (the branch may never run)
+ *   D — `try { … } catch { ok(true) }` (the failure is swallowed)
+ * Exceptions must be EXPLICIT: an `EMPTY_ALLOWED` comment, or a non-empty guard near the line.
+ */
+/**
+ * Is the iterable/receiver a NON-EMPTY ARRAY LITERAL (possibly spanning lines)? task-224 precision fix:
+ * `[a, b].every(...)` / `for (const k of [\n a,\n b\n])` can NEVER be vacuous, so flagging them is a false
+ * positive. The exemption is granted only when the literal is PROVABLY non-empty: closed brackets, at
+ * least one element, and no spread (`...`) which could expand to nothing.
+ */
+export function literalNonEmpty(text, window = 60) {
+  const s = String(text).split('\n').slice(0, window).join('\n')
+  const i = s.indexOf('[')
+  if (i < 0) return false
+  let depth = 0, body = ''
+  for (let j = i; j < s.length; j++) {
+    const ch = s[j]
+    if (ch === '[') depth++
+    else if (ch === ']') { depth--; if (depth === 0) break }
+    else if (depth === 1) body += ch
+  }
+  // A literal that is still open after the window is a LARGE literal (it starts with `[` and has text
+  // inside) ⇒ provably non-empty for our purposes; `[]`/`[ ]` are the only empty literals and they close.
+  if (depth !== 0) return body.length > 0
+  if (/\.\.\./.test(body)) return false             // spread ⇒ could expand to nothing
+  return body.split(',').map((x) => x.trim()).filter(Boolean).length >= 1
+}
+
+export function auditVacuousAssertions({ files, window = 3 }) {
+  const violations = []
+  const coverage = []
+  for (const f of files) {
+    const lines = String(f.src).split('\n')
+    lines.forEach((line, i) => {
+      if (!/\b(ok|assert|assert\.ok)\s*\(/.test(line) && !/\bfor\s*\(const\s+\w+\s+of\s+/.test(line)) return
+      const near = lines.slice(Math.max(0, i - window), i + 1).join('\n')
+      const excused = EMPTY_ALLOWED.test(line) || EMPTY_ALLOWED.test(near) || NON_EMPTY_GUARD.test(near)
+      const add = (shape, why) => {
+        coverage.push({ file: basename(f.file), line: i + 1, shape, excused, text: line.trim(), ctx: lines.slice(Math.max(0, i - 3), i + 3).map((l) => l.trim()) })
+        if (!excused) violations.push(basename(f.file) + ':' + (i + 1) + ' [' + shape + '] ' + why)
+      }
+      if (/\.every\s*\(/.test(line)) {
+        const recv = /([A-Za-z_$][\w$.\[\]]*)\.every\s*\(/.exec(line)
+        // task-222/224 precision fix: a receiver that IS a provably non-empty literal is never vacuous.
+        const receiverIsLiteral = literalNonEmpty(line.slice(0, line.indexOf('.every')))
+        if (!receiverIsLiteral) {
+          add('A', 'every() is TRUE on an empty set: "' + (recv ? recv[1] : 'the collection') + '" may be empty, so nothing is checked')
+        }
+      }
+      if (/\.filter\s*\([^)]*\)\.length\s*===\s*0/.test(line)) add('A', 'filter(...).length === 0 also holds when the SOURCE was empty (nothing was filtered)')
+      if (/\bfor\s*\(const\s+\w+\s+of\s+/.test(line)) {
+        // (a) a PROVABLY non-empty literal iterable (possibly MULTI-LINE) is never vacuous (task-224);
+        // (b) the assertion must be INSIDE the loop body — an assertion after the loop is not evidence.
+        const afterOf = lines.slice(i, i + 12).join('\n')
+        const iterText = afterOf.slice(afterOf.indexOf('of ') + 3)
+        const literal = /^\s*\[/.test(iterText) && literalNonEmpty(iterText)
+        if (!literal) {
+          let depth = 0, started = false, body = ''
+          for (let j = i; j < lines.length && j < i + 40; j++) {
+            body += lines[j] + '\n'
+            for (const ch of lines[j]) { if (ch === '{') { depth++; started = true } else if (ch === '}') depth-- }
+            if (started && depth <= 0) break
+          }
+          const inner = body.slice(body.indexOf('{') + 1)
+          if (/\b(ok|assert|assert\.ok)\s*\(/.test(inner)) {
+            const recv = /\bof\s+([A-Za-z_$][\w$.\[\]]*)/.exec(line)
+            add('A', 'a for…of body runs zero times when "' + (recv ? recv[1] : 'the collection') + '" is empty, so its assertions never run')
+          }
+        }
+      }
+      const eq = /(\w+)\.length\s*===\s*(\w+)\.length/.exec(line) || /JSON\.stringify\((\w+)\)\s*===\s*JSON\.stringify\((\w+)\)/.exec(line)
+      if (eq) add('B', 'both sides (' + eq[1] + ', ' + eq[2] + ') may be empty: two empty collections compare equal')
+      if (/\bif\s*\([^)]*\)\s*\{\s*[^}]*\b(ok|assert)\s*\(/.test(line)) add('C', 'the assertion lives inside a conditional: if the branch never runs, the check is skipped silently')
+      if (/catch\s*(\([^)]*\))?\s*\{[^}]*\b(ok|assert)\s*\(\s*true/.test(line)) add('D', 'the catch block asserts success: a thrown failure is swallowed as a pass')
+    })
+  }
+  return { violations, coverage }
+}
+
 // ── real inventory (paths matter: the kernel lives under the preset directory) ────────────────────────
 
 const scriptFiles = listFiles(SCRIPTS, (f) => f.endsWith('.mjs'))
@@ -323,6 +425,38 @@ console.log('  RULE D documented names=' + ruleD.coverage.length + ' hits=' + ru
 ok(implementedTools.size >= 9, 'the implemented tool set was really parsed from host.js TOOL_NAMES (' + implementedTools.size + ' names)')
 red(ruleD.violations, 'RULE D (every documented vibe_vmu_* tool is implemented or explicitly marked 规划/未实现)')
 
+// ── 3c) RULE E on the real tree: assertions that can pass vacuously ──────────────────────────────────
+
+// The gate itself is excluded: it deliberately CONTAINS the bad shapes as negative fixtures.
+const vacuousFiles = listFiles(TESTS, (f) => f.endsWith('.mjs') && f !== 'audit-declaration-criterion.test.mjs').map((f) => ({ file: f, src: readIf(f) }))
+const ruleE = auditVacuousAssertions({ files: vacuousFiles })
+console.log('  RULE E scanned files=' + vacuousFiles.length + ' candidate lines=' + ruleE.coverage.length + ' hits=' + ruleE.violations.length)
+{
+  const byShape = {}
+  const byFile = {}
+  for (const c of ruleE.coverage) if (!c.excused) { byShape[c.shape] = (byShape[c.shape] || 0) + 1; byFile[c.file] = (byFile[c.file] || 0) + 1 }
+  console.log('  RULE E hits by shape: ' + JSON.stringify(byShape))
+  console.log('  RULE E hits by file: ' + JSON.stringify(byFile))
+}
+ok(vacuousFiles.length >= 20, 'RULE E really scanned the test tree (non-vacuous scan: ' + vacuousFiles.length + ' files)')
+// task-222 GRADED enforcement: B/C/D fail immediately (27 hits, C being the most dangerous); shape A is
+// COUNTED and listed but does not fail — except that it must NOT GROW (a new vacuous pass ⇒ red).
+const ruleENonA = ruleE.violations.filter((v) => !/\[A\]/.test(v))
+red(ruleENonA, 'RULE E (shapes B/C/D must not exist: conditional assertions / empty-vs-empty comparisons / swallowed failures)')
+const growth = aClassGrowth(ruleE.violations)
+console.log('  RULE E shape A (counted, not failing): a=' + growth.a + ' baseline=' + growth.baseline)
+red(growth.violations, 'RULE E shape A must not GROW beyond the recorded baseline')
+ok(ruleE.violations.filter((v) => /\[A\]/.test(v)).length <= A_CLASS_BASELINE, 'shape-A vacuous passes are at or below the baseline (' + growth.a + ' ≤ ' + A_CLASS_BASELINE + ')')
+for (const v of ruleE.violations.slice(0, 60)) console.log('    RULE-E-HIT ' + v)
+
+// task-224: SINGLE SOURCE OF TRUTH — the triage script (re)uses THIS gate's detection by asking it to dump
+// the un-excused RULE E coverage as JSON, so the sample can never diverge from the enforced criterion.
+if (process.argv.includes('--dump-rule-e')) {
+  const hits = ruleE.coverage.filter((c) => !c.excused).map((c) => ({ file: c.file, line: c.line, shape: c.shape, text: c.text, ctx: c.ctx }))
+  console.log('RULE_E_DUMP ' + JSON.stringify({ files: vacuousFiles.length, hits }))
+  process.exit(0)
+}
+
 // ── 4) deliberate-breakage fixtures: the checker must be able to go red ──────────────────────────────
 
 {
@@ -392,6 +526,29 @@ red(ruleD.violations, 'RULE D (every documented vibe_vmu_* tool is implemented o
     // …but an unmarked table must NOT be excused
     const gTableBare = auditDocToolNames({ docs: [{ file: 'fake-doc.md', src: '| 工具 | 说明 |\n|---|---|\n| `vibe_vmu_ballot` | 表决 |\n' }], implemented: impl })
     ok(gTableBare.violations.length === 1, 'fixture G⑤: an UNMARKED table row is still red (the exception is not a loophole)')
+
+    // fixture H (task-221): RULE E — three two-way self-tests
+    const hA = auditVacuousAssertions({ files: [{ file: 'fake.test.mjs', src: 'const arr = []\nok(arr.every((x) => x > 0), "all positive")\n' }] })
+    ok(hA.violations.length === 1 && /\[A\]/.test(hA.violations[0]), 'fixture H①: arr.every(...) with no non-empty precondition ⇒ RED (shape A)')
+    const hGuard = auditVacuousAssertions({ files: [{ file: 'fake.test.mjs', src: 'const arr = []\nok(arr.length > 0, "non-vacuous")\nok(arr.every((x) => x > 0), "all positive")\n' }] })
+    ok(hGuard.violations.length === 0, 'fixture H②: the same line WITH a non-empty guard ⇒ green')
+    const hCond = auditVacuousAssertions({ files: [{ file: 'fake.test.mjs', src: 'if (mode === "strict") { ok(codes.length > 2, "more than two codes") }\n' }] })
+    ok(hCond.violations.length === 1 && /\[C\]/.test(hCond.violations[0]), 'fixture H③: a conditional assertion whose branch may never run ⇒ RED (shape C)')
+    const hCatch = auditVacuousAssertions({ files: [{ file: 'fake.test.mjs', src: 'try { risky() } catch (e) { ok(true, "no throw") }\n' }] })
+    ok(hCatch.violations.length === 1 && /\[D\]/.test(hCatch.violations[0]), 'fixture H④: catch{ok(true)} swallows the failure ⇒ RED (shape D)')
+    const hAllowed = auditVacuousAssertions({ files: [{ file: 'fake.test.mjs', src: 'ok(arr.every((x) => x > 0), "all positive") // EMPTY_ALLOWED: the empty case is the point\n' }] })
+    ok(hAllowed.violations.length === 0 && hAllowed.coverage[0].excused === true, 'fixture H⑤: an explicit EMPTY_ALLOWED comment is the sanctioned exception')
+    // fixture I (task-222): graded enforcement — B/C/D red, A counted but not red, A GROWTH red
+    const iBCD = auditVacuousAssertions({ files: [{ file: 'fake.test.mjs', src: 'if (m) { ok(a.length > 2, "more than two") }\ntry { go() } catch (e) { ok(true, "swallowed") }\n' }] })
+    ok(iBCD.violations.length === 2 && iBCD.violations.every((v) => !/\[A\]/.test(v)), 'fixture I①: C and D are violations, unrelated to shape A')
+    const iA = auditVacuousAssertions({ files: [{ file: 'fake.test.mjs', src: 'ok(arr.every((x) => x > 0), "all positive")\n' }] })
+    ok(iA.violations.length === 1 && /\[A\]/.test(iA.violations[0]), 'fixture I②: a shape-A hit is produced (counted)')
+    const atBaseline = aClassGrowth(['f:1 [A] x', 'f:2 [A] y'], 2)
+    const overBaseline = aClassGrowth(['f:1 [A] x', 'f:2 [A] y', 'f:3 [A] z'], 2)
+    ok(atBaseline.grew === false && atBaseline.violations.length === 0, 'fixture I③: A at the baseline does NOT fail')
+    ok(overBaseline.grew === true && /shape A grew from 2 to 3/.test(overBaseline.violations[0]), 'fixture I④: ONE new shape-A vacuous pass ⇒ RED (the sink cannot grow back)')
+    const iGuardEq = auditVacuousAssertions({ files: [{ file: 'fake.test.mjs', src: 'ok(arr.length === 5, "five")\nok(arr.every((x) => x > 0), "all positive")\n' }] })
+    ok(iGuardEq.violations.length === 0, 'fixture I⑤: `length === <positive int>` counts as a non-empty guard (task-222 precision fix)')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

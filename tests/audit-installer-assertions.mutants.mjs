@@ -45,7 +45,9 @@ const CASES = [
 ]
 for (const c of CASES) {
   const mutated = c.edit(ORIGIN)
-  if (mutated === ORIGIN) { ok(false, c.name + ' — the single-site anchor applies', 'ANCHOR MISS'); continue }
+  const anchorOk = mutated !== ORIGIN
+  ok(anchorOk, c.name + ' — the single-site anchor applies', 'ANCHOR MISS')
+  if (!anchorOk) continue
   const dir = mkdtempSync(join(tmpdir(), 'installer-assert-mut-'))
   copyFileSync(SRC, join(dir, 'installer.js'))
   writeFileSync(join(dir, 'installer.js'), mutated)

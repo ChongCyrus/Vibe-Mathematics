@@ -157,7 +157,8 @@ function makeCtx(){
   assert(st1.phase==='brainstorm', 'T3 A3: after abort->resume the phase is brainstorm (re-bootstrap, got '+st1.phase+')')
   const resumedSpawns=m.spawns.slice(before)
   const busyIds=resumedSpawns.map(sp=>sp.label)
-  assert(st1.busy.length===busyIds.length && st1.busy.every(b=>busyIds.includes(b)), 'T3 A3: busy contains exactly the fresh re-spawned residents (busy='+JSON.stringify(st1.busy)+')')
+  assert(st1.busy.length > 0 && busyIds.length > 0, 'T3 A3 前置: busy 与 fresh re-spawned residents 都非空 (否则两个空集合会"相等"; busy='+JSON.stringify(st1.busy)+' ids='+JSON.stringify(busyIds)+')')
+  assert(st1.busy.length - busyIds.length === 0 && st1.busy.every(b=>busyIds.includes(b)), 'T3 A3: busy contains exactly the fresh re-spawned residents (busy='+JSON.stringify(st1.busy)+')')
   for(const sp of resumedSpawns){ m.fireEnd({ id: sp.childId, runId:'br2-'+sp.label, provider:'spawn', local:true, stopReason:'completed', lastAssistantMessage:[{type:'text',text:JSONX({summary:'ins2', solved:false})}] }); await sleep(50) }
   const st2=await m.callTool('vibe_v4_status', {})
   assert(st2.phase==='active', 'T3 A3: completing re-spawned brainstorms drives phase to active (got '+st2.phase+')')

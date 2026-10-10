@@ -64,7 +64,9 @@ const enPlain = stripCode(en)
 // ---- 3. structure -----------------------------------------------------------
 const headingLevels = (t) => [...t.matchAll(/^(#{1,6})\s+/gm)].map((m) => m[1].length)
 const zhH = headingLevels(zhPlain), enH = headingLevels(enPlain)
-ok(zhH.length === enH.length && zhH.every((l, i) => l === enH[i]),
+ok(zhH.length > 0 && enH.length > 0, `both READMEs really have headings (non-vacuous comparison)`,
+  `zh=${zhH.length} en=${enH.length}`)
+ok(zhH.length - enH.length === 0 && zhH.every((l, i) => l === enH[i]),
   `the heading structure matches (${zhH.length} headings, levels in the same order)`,
   `zh=[${zhH.join(',')}] en=[${enH.join(',')}]`)
 

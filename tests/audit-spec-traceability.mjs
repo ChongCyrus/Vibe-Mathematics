@@ -143,7 +143,8 @@ for (const P of PRESETS) {
     const byName = (n) => fns.find((f) => f.name === n)
     for (const w of cfg.writers) {
       const f = byName(w)
-      if (!f) { ok(false, P.tag + ' §8: the documented card writer ' + w + ' does not exist'); continue }
+      ok(!!f, P.tag + ' §8: the documented card writer ' + w + ' exists')
+      if (!f) continue
       const selfGated = cfg.gate.test(f.body)
       const callers = fns.filter((g) => g !== f && new RegExp('(^|[^A-Za-z0-9_$])' + w + '\\s*\\(').test(g.body))
       const allCallersGatedOrRecursive = callers.length > 0 && callers.every((c) => cfg.gate.test(c.body) || fns.some((d) => cfg.gate.test(d.body) && new RegExp('(^|[^A-Za-z0-9_$])' + c.name + '\\s*\\(').test(d.body)))

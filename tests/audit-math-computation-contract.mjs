@@ -227,9 +227,9 @@ for (const P of PRESETS) {
   // open it (absolute `receipt.scriptAbs` / join with `receipt.cwd`): member file tools resolve
   // against the SESSION CWD, while scriptPath is project-root relative.
   const scriptBlocks = blocks.filter((b) => b.indexOf('scriptPath') !== -1)
-  const openableBlocks = scriptBlocks.filter((b) => /receipt\.scriptAbs/.test(b))
+  const missingAbs = scriptBlocks.filter((b) => !/receipt\.scriptAbs/.test(b))
   ok(scriptBlocks.length >= 2, tag + 'both persona blocks mention the archived scriptPath', 'blocks: ' + scriptBlocks.length)
-  ok(openableBlocks.length === scriptBlocks.length && openableBlocks.length >= 2, tag + '★ every scriptPath mention also gives the ABSOLUTE path receipt.scriptAbs', 'openable: ' + openableBlocks.length + '/' + scriptBlocks.length)
+  ok(missingAbs.length === 0, tag + '★ every scriptPath mention also gives the ABSOLUTE path receipt.scriptAbs', 'missing: ' + missingAbs.length + ' of ' + scriptBlocks.length)
 
   // 4e-ter. VERBATIM-from-constant guard: the archive-workflow rule must appear in BOTH persona
   // blocks exactly as the shared module constant defines it (a wording change in the module that is

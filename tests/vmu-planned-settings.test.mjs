@@ -127,7 +127,10 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
   const core = await coreKeys(SCHEMA)
   const recomputed = collectPlannedDefs({ volumes: docVolumes(DOCS), core, namespaces: namespacesOf(core) })
   ok(renderPlannedFile(recomputed.defs) === readFileSync(PLANNED, 'utf8'), 're-rendering from the docs reproduces the committed file byte for byte')
-  ok(recomputed.defs.length === PLANNED_DEFS.length, 'the generator and the committed file agree on the key count',
+  ok(PLANNED_DEFS.length > 0 && recomputed.defs.length > 0, 'both the committed defs and the generator output are non-empty (non-vacuous comparison)',
+    recomputed.defs.length + '/' + PLANNED_DEFS.length)
+  const defCountMatches = recomputed.defs.length === PLANNED_DEFS.length
+  ok(defCountMatches, 'the generator and the committed file agree on the key count',
     recomputed.defs.length + '/' + PLANNED_DEFS.length)
   ok(KEY_RE instanceof RegExp && KEY_RE.source === '\\bvmu\\.[a-z][a-zA-Z0-9]*(?:\\.[a-zA-Z0-9]+)+\\b',
     'the key regex is the audit\'s (kept in step)', KEY_RE && KEY_RE.source)

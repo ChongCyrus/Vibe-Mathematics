@@ -133,7 +133,10 @@ assert(toolRegs.length === 28, '28 tools registered once (not per session)')
 // A6：只断言"个数"时，同数改名会照样通过。这里把**名字集合**钉住（身份校验，不只计数）。
 const EXPECTED_TOOLS = ["math_computation","vibe_math_abort","vibe_math_add_problem","vibe_math_add_proposition","vibe_math_decide","vibe_math_interrupt_agent","vibe_math_lean_archive","vibe_math_lean_job","vibe_math_lean_lib","vibe_math_lean_read","vibe_math_lean_run","vibe_math_list_agents","vibe_math_list_decisions","vibe_math_list_projects","vibe_math_list_propositions","vibe_math_message_agent","vibe_math_new_project","vibe_math_pause","vibe_math_report","vibe_math_resume","vibe_math_save_settings","vibe_math_set_mode","vibe_math_set_params","vibe_math_set_project","vibe_math_setup","vibe_math_start","vibe_math_status","vibe_math_template"]
 const actualToolNames = [...new Set(toolRegs.map((t) => t.name))].sort()
-assert(JSON.stringify(actualToolNames) === JSON.stringify(EXPECTED_TOOLS),
+assert(EXPECTED_TOOLS.length > 0 && actualToolNames.length > 0,
+  '★★ A6 前置：快照与实测工具名集合都非空（否则两个空集合会"相等"）')
+const toolNameSetMatches = JSON.stringify(actualToolNames) === JSON.stringify(EXPECTED_TOOLS)
+assert(toolNameSetMatches,
   '★★ A6：注册的工具**名字集合**与快照逐个匹配（同数改名也会红；多出=' + JSON.stringify(actualToolNames.filter((n) => EXPECTED_TOOLS.indexOf(n) === -1)) + ' 缺少=' + JSON.stringify(EXPECTED_TOOLS.filter((n) => actualToolNames.indexOf(n) === -1)) + '）')
 assert(['vibe_math_lean_run', 'vibe_math_lean_archive', 'vibe_math_lean_lib', 'vibe_math_lean_read', 'vibe_math_lean_job'].every(n => toolRegs.some(t => t.name === n)),
   'all five Lean tools are registered unconditionally (registration is static, not mode-dependent)')

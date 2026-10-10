@@ -50,7 +50,9 @@ const CASES = [
 const ORIGIN = readFileSync(join(SRC, 'math-computation.js'), 'utf8')
 for (const c of CASES) {
   const mutated = c.edit(ORIGIN)
-  if (mutated === ORIGIN) { ok(false, c.name + ' — the single-site anchor applies', 'ANCHOR MISS'); continue }
+  const anchorOk = mutated !== ORIGIN
+  ok(anchorOk, c.name + ' — the single-site anchor applies', 'ANCHOR MISS')
+  if (!anchorOk) continue
   const dir = mkdtempSync(join(tmpdir(), 'mc-archive-mut-'))
   copyFileSync(join(SRC, 'math-engines.js'), join(dir, 'math-engines.js'))
   writeFileSync(join(dir, 'math-computation.js'), mutated)

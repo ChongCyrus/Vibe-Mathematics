@@ -199,7 +199,12 @@ function ok(cond, label, detail) {
   console.error('  FAIL ' + label + (detail ? ' — ' + detail : ''))
   return false
 }
-const eq = (a, b, label) => ok(JSON.stringify(a) === JSON.stringify(b), label, 'got ' + JSON.stringify(a) + ' want ' + JSON.stringify(b))
+const eq = (a, b, label) => {
+  const aArr = Array.isArray(a), bArr = Array.isArray(b)
+  ok((!aArr || a.length > 0) && (!bArr || b.length > 0),
+    label + ' — both collection sides are NON-EMPTY (a vacuous [] === [] comparison proves nothing)')
+  return ok(JSON.stringify(a) === JSON.stringify(b), label, 'got ' + JSON.stringify(a) + ' want ' + JSON.stringify(b))
+}
 
 async function withHost(opts, fn) {
   const state = makeFakeHost(opts)

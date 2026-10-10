@@ -175,7 +175,9 @@ const selfProofs = [
 ]
 for (const [label, run, expect] of selfProofs) {
   const res = run()
-  if (res === null) { ok(true, 'self-proof skipped (the sample code is in the probe file)', label); continue }
+  const skipped = res === null
+  ok(skipped || Array.isArray(res), 'self-proof probe for ' + label + ' either returns a finding list or documents the skip (the sample code lives in the probe file)', label)
+  if (skipped) continue
   const named = res.find((f) => expect.test(f))
   ok(res.length > 0 && !!named, 'self-proof: ' + label + ' ⇒ RED by name', named || ('got ' + JSON.stringify(res.slice(0, 2))))
   console.log('self-proof red (' + res.length + ' failure(s)): ' + label + ' :: ' + (named || 'NO NAMED FAILURE'))

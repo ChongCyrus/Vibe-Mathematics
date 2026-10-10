@@ -1698,7 +1698,10 @@ section('15f P2-v2 D4: both views read ONE participant set (snapshot + round)')
   const rp1 = pick(await h.call('vibe_math_report', {}))
   assert(!!st1 && !!rp1 && st1.expected === 2 && st1.dispatched === 2 && st1.round === 1,
     '★★ [D4-v2] the projection reports the round snapshot: expected=2 dispatched=2 round=1（实测 ' + JSON.stringify({ status: st1, report: rp1 }) + '）')
-  assert(JSON.stringify(st1) === JSON.stringify(rp1),
+  assert(!!st1 && !!rp1 && Object.keys(st1).length > 0 && Object.keys(rp1).length > 0,
+    '★★ [D4-v2] 前置：两个视图都取到了**非空**任务对象（否则两个空对象会"相等"）')
+  const sameView1 = JSON.stringify(st1) === JSON.stringify(rp1)
+  assert(sameView1,
     '★★★ [D4-v2] status 与 report 两个视图对同一任务的参与集/票数**逐字段相同**（一个来源；实测 ' + JSON.stringify({ status: st1, report: rp1 }) + '）')
   // mid-vote "hire more": the office raises verifierCount. The in-flight round keeps its snapshot —
   // a view that re-read the live roster/params would now claim 4.
@@ -1707,7 +1710,10 @@ section('15f P2-v2 D4: both views read ONE participant set (snapshot + round)')
   const afterR = pick(await h.call('vibe_math_report', {}))
   assert(!!after && after.expected === 2 && after.dispatched === 2,
     '★★★ [D4-v2] 中途调高 verifierCount **不改变**在飞轮次的参与集/需求票数（快照仍是 2；实测 ' + JSON.stringify(after) + '）')
-  assert(JSON.stringify(after) === JSON.stringify(afterR),
+  assert(!!after && !!afterR && Object.keys(after).length > 0 && Object.keys(afterR).length > 0,
+    '★★ [D4-v2] 前置：调参后两个视图都取到了**非空**任务对象（否则两个空对象会"相等"）')
+  const sameView2 = JSON.stringify(after) === JSON.stringify(afterR)
+  assert(sameView2,
     '★★ [D4-v2] 调参后两个视图仍然逐字段相同（实测 ' + JSON.stringify({ status: after, report: afterR }) + '）')
   // 6.5：两条路径（buildReport / getStatus）都必须走同一个 verifyTasksView()，整数组逐字段相同。
   const stAll = (await h.call('vibe_math_status', {})).verifyTasks || []

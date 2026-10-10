@@ -168,11 +168,16 @@ const rows = dataRows(block)
 {
   const vols = readdirSync(DOCS).filter((f) => /^\d\d-[A-Za-z0-9-]+\.md$/.test(f)).map((f) => f.slice(0, 2)).sort()
   const rowNums = rows.filter((r) => /^\d\d$/.test(r[0])).map((r) => r[0])
-  ok(rowNums.length === vols.length, 'the table has exactly one data row per discovered design volume',
+  ok(vols.length > 0 && rowNums.length > 0, 'the discovered volumes and the table rows are both non-empty (non-vacuous comparison)',
+    rowNums.length + '/' + vols.length)
+  const oneRowPerVolume = rowNums.length === vols.length
+  ok(oneRowPerVolume, 'the table has exactly one data row per discovered design volume',
     rowNums.length + '/' + vols.length)
   ok(rowNums.join(',') === vols.join(','), 'the rows are sorted by volume number and match the discovered set',
     rowNums.join(','))
-  ok(rows.length === vols.length + 1 && /总计/.test(rows[rows.length - 1][0]),
+  const expectedRows = vols.length + 1
+  const totalRowLast = !!rows[rows.length - 1] && /总计/.test(rows[rows.length - 1][0])
+  ok(rows.length === expectedRows && totalRowLast,
     'the total row is present and LAST', String(rows.length) + ' rows')
   ok(rows.every((r) => r.length === 5), 'every row has the five documented columns',
     String(rows.find((r) => r.length !== 5) || ''))

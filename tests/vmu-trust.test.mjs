@@ -72,7 +72,9 @@ function fakeClock(start = 1000) { let t = start; return { clock: () => t, set: 
   ok(Math.abs(t.score({ subject: 'm1' }).score - 0.25) < 1e-9, 'decay: two half-lives quarter it')
   const a = t.decay({ subject: 'm1', at: 1000 })
   const b = t.decay({ subject: 'm1', at: 1000 })
-  ok(JSON.stringify(a) === JSON.stringify(b) && Math.abs(a.score - 0.5) < 1e-9, 'decay: same `at` ⇒ byte-identical result (deterministic)')
+  ok(Object.keys(a).length > 0 && Object.keys(b).length > 0, 'decay 前置: 两个结果对象都非空 (否则两个空对象会"相等")')
+  const sameDecay = JSON.stringify(a) === JSON.stringify(b)
+  ok(sameDecay && Math.abs(a.score - 0.5) < 1e-9, 'decay: same `at` ⇒ byte-identical result (deterministic)')
   ok(t.score({ subject: 'm1' }).score === t.score({ subject: 'm1' }).score, 'decay: repeated reads agree (no hidden time)')
   throwsNamed(() => t.decay({ subject: 'm1', at: -5 }), 'VMU_INVALID_ARGUMENT', 'decay: negative timestamp refused')
 }

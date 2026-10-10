@@ -309,7 +309,8 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
   const t = mk({})
   const st = t.t.status()
   ok(WIRED_KEYS.length >= 40, 'the batch wires at least 40 keys', String(WIRED_KEYS.length))
-  ok(st.wired.length === WIRED_KEYS.length && st.wiredCount === WIRED_KEYS.length, 'status().wired lists every wired key', String(st.wiredCount))
+  const wiredListed = st.wired.length === WIRED_KEYS.length && st.wiredCount === WIRED_KEYS.length
+  ok(wiredListed, 'status().wired lists every wired key', String(st.wiredCount))
   ok(st.overlap.length === 0, 'WIRED and plannedKeys are COMPLEMENTARY (no key is in both)', JSON.stringify(st.overlap))
   ok(st.complementOk === true && st.plannedCount + st.wiredCount === st.declaredMathKeys && st.declaredMathKeys === 171,
     'the two lists partition the DECLARED universe (171 vmu.math.* keys)', JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredMathKeys }))

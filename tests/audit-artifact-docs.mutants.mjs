@@ -108,7 +108,9 @@ for (const p of probes) {
   const base = p.doc ? readFileSync(join(REPO, p.doc), 'utf8') : (p.tag === 'F' ? enAll : zhAll)
   const anchor = p.from instanceof RegExp ? (base.match(p.from) || [])[0] : p.from
   const n = anchor ? base.split(anchor).length - 1 : 0
-  if (!anchor || n < 1) { ok(false, p.tag + ': the anchor for ' + p.what + ' exists (harness and guard agree)', 'ANCHOR MISS'); continue }
+  const anchorOk = !!anchor && n >= 1
+  ok(anchorOk, p.tag + ': the anchor for ' + p.what + ' exists (harness and guard agree)', 'ANCHOR MISS')
+  if (!anchorOk) continue
   writeFileSync(join(dir, p.file), base.split(anchor).join(p.to))
   const envKey = Object.keys(p.env)[0]
   const r = run({ [envKey]: join(dir, p.file) })
