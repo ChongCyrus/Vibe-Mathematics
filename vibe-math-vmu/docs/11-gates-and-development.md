@@ -319,6 +319,18 @@ _oneoff/vmu/live/<YYYY-MM-DD>/<scenario>/
 | 变异自证 | `MUTANTS_SELFTEST=1 …` | `RETRY CANNOT MASK A RED FAMILY (as required)` ✓ |
 | 定向变异 | `MUTANTS_ONLY='S25A'／'S21'／'G2'／'S8' …` | **4/4、6/6、1/1、7/7 具名红** ✓；写错名字 ⇒ **具名中止 exit=2** ✓ |
 
+**第 8 次 T3（2026-10-10 08:44–09:14，30 min，HEAD `1fe6ffc`，起点 `dirty=0`）—— 🎉 首次全绿 ✓✓**：
+```
+TOTAL 134  PASS 134  FAIL 0  (suites 68 · probes 66)
+PASS  v5-institute-fixes.mutants.mjs  exit=0   488.0s  [shard=0/3]  ALL MUTANTS RED AS REQUIRED
+PASS  v5-institute-fixes.mutants.mjs  exit=0   560.7s  [shard=1/3]  ALL MUTANTS RED AS REQUIRED
+PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS RED AS REQUIRED
+```
+- **拆分直接见效** ✓✓：三片分别 **488／560.7／472.1 s**（≈8–9 min ✓）⇒ 远低于任何上限 ✓，彻底摆脱"单片 25–35 min"的时序窄口 ✗✓；
+- **旁证** ✓：第 7 次全量红掉的 `e2e-v4-fixes`（140/1 ✗）与 `e2e-v5-round2`（532/2 ✗）**本次自动转绿** ⇒ **证实它们同为负载所致** ✓（与我当时的判断一致 ✓）；
+- **发布门禁（同一 HEAD 复跑 ✓✓）**：`release-check` **ALL CHECKS PASSED** ✓（tarball sha1 `8b087b89…` ✓、299 文件 ✓、**293 文本文件无 CRLF** ✓）＋ `--self-test` ✓ ＋ 变异 **ALL MUTANTS RED AS REQUIRED** ✓ ＋ 跑完 `dirty=0` ✓。
+⇒ **目标⑤的"非增量 T3 ＋ 发布门禁"两项证据到齐** ✓✓。
+
 **第 6／7 次 T3（2026-10-09／10，HEAD `fa997e3`／`fec4b30`）**：
 | 次 | 结果 | 红点（**全部为遗留 v4/v5 端到端作业，vmu 范围零红** ✓） | 关键收获 |
 |---|---|---|---|
