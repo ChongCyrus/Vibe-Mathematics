@@ -79,6 +79,16 @@ export function settingWriter(settings, key) {
  * caller owns layering). `root` is the durable root; without it there is no store, and asking for one is
  * refused by name rather than silently creating a memory-only store that pretends to be durable.
  */
+/**
+ * The concurrency gate has ONE meaning in vmu: how many members may be live at once. `v5r`/`v3` users expect the
+ * name `maxParallel`, so it is accepted as a SYNONYM for `vmu.limits.maxLiveMembers` - and the explicit
+ * `maxLiveMembers` wins when both are set, so a profile can always override the shorthand. Measured wiring, not
+ * decoration: both keys now have a real consumer, and the effective cap is reported through the members status.
+ */
+export function liveMemberCapOf(source = {}) {
+  return Number(source['vmu.limits.maxLiveMembers']) || Number(source['vmu.limits.maxParallel']) || 0
+}
+
 export function createKernel({
   host = null,
   settings = {},
@@ -250,7 +260,7 @@ export function createKernel({
 
   function createMembersList(opts) {
     const declaredSlots = opts.slots && opts.slots.length ? opts.slots : []
-    const cap = opts.maxLiveMembers !== undefined ? opts.maxLiveMembers : (opts.settings['vmu.limits.maxLiveMembers'] || 0)
+    const cap = opts.maxLiveMembers !== undefined ? opts.maxLiveMembers : liveMemberCapOf(opts.settings || {})
     if (declaredSlots.length === 0 && cap === 0) {
       // Nothing declared: no roster, no wake seam, no cost. Members become real only when a pack asks.
       return null
@@ -402,7 +412,7 @@ export function createKernel({
       members = list.length > 0
         ? createMembers({
           slots: list,
-          maxLiveMembers: maxLiveMembers !== undefined ? maxLiveMembers : (settings['vmu.limits.maxLiveMembers'] || 0),
+          maxLiveMembers: maxLiveMembers !== undefined ? maxLiveMembers : liveMemberCapOf(settings),
           deliver,
           bus,
           clock,

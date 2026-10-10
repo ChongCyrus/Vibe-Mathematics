@@ -301,6 +301,27 @@ if (SELF_PROBE) {
   await rm(root, { recursive: true, force: true })
 }
 
+// ---- the concurrency gate has ONE meaning: maxLiveMembers, with maxParallel as a declared synonym ---------
+{
+  const k = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z', settings: { 'vmu.limits.maxParallel': 2 } })
+  k.declareSlots([{ id: 'm', label: '成员', capacity: 0 }])
+  await k.members.hire({ id: 'r-1', slot: 'm' })
+  await k.members.hire({ id: 'r-2', slot: 'm' })
+  let refused = null
+  try { await k.members.hire({ id: 'r-3', slot: 'm' }) } catch (e) { refused = e }
+  ok(refused && refused.code === 'VMU_RESOURCE_BUDGET',
+    'vmu.limits.maxParallel is a REAL consumer: it caps live members like maxLiveMembers does', String(refused && refused.code))
+  const k2 = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z',
+    settings: { 'vmu.limits.maxParallel': 9, 'vmu.limits.maxLiveMembers': 1 } })
+  k2.declareSlots([{ id: 'm', label: '成员', capacity: 0 }])
+  await k2.members.hire({ id: 'r-1', slot: 'm' })
+  let refused2 = null
+  try { await k2.members.hire({ id: 'r-2', slot: 'm' }) } catch (e) { refused2 = e }
+  ok(refused2 && refused2.code === 'VMU_RESOURCE_BUDGET',
+    'and the explicit maxLiveMembers WINS when both are set (a profile can always override the shorthand)',
+    String(refused2 && refused2.code))
+}
+
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

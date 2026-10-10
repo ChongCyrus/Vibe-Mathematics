@@ -327,6 +327,17 @@ _oneoff/vmu/live/<YYYY-MM-DD>/<scenario>/
 **第 10 次 T3（2026-10-10 11:36–12:11，35 min，HEAD `86a9e03`，起点 `dirty=0`）**：`TOTAL 134 PASS 133 FAIL 1` ✗ —— 红点**又换了**，且**S5 已修好**（`shard=1/3` **通过** ✓✓）；本次唯一红是 **`shard=0/3`**，具名原因 **`positive control STILL red after retry: s6-not-granted`** ✓（pristine v5 场景、重试后仍红 ✗）。
 - **隔离诊断（决定性 ✓✓）**：`MUTANTS_POSITIVES_ONLY=1 MUTANTS_SHARD=0/3` ⇒ **36/36 全绿**，`s6-not-granted` **1971 ms 通过** ✓，整组正控 **78 s** ✓ —— 而同一组在**全量扫掠内**要 ~9.5 min ✗ ⇒ **负载放大约 7×** ✓✓。**这就是所有偶发的共同机制** ✓（不是产品、不是脚本缺陷 ✓）。
 - **据此改进（本轮 ✓）**：① 正控失败时**打印子进程自己的具名断言行**（无行则打印"无具名行 ＋ 原始输出长度" ✓）⇒ 下次**无需再单独复现** ✓；② 把 **7× 负载放大**这一实测写进文档 ✓（作为"隔离绿／全量红"判据的量化依据 ✓）。**下一次 T3 为验收依据** ✓。
+
+**第 11 次 T3（2026-10-10 12:30–13:00，30 min，HEAD `8ffdf82`，起点 `dirty=0`）—— 🎉 验收全绿（第二次）✓✓**：
+```
+TOTAL 134  PASS 134  FAIL 0  (suites 68 · probes 66)
+PASS  v5-institute-fixes.mutants.mjs  exit=0  480.6s  [shard=0/3]  ALL MUTANTS RED AS REQUIRED
+PASS  v5-institute-fixes.mutants.mjs  exit=0  519.0s  [shard=1/3]  ALL MUTANTS RED AS REQUIRED
+PASS  v5-institute-fixes.mutants.mjs  exit=0  466.4s  [shard=2/3]  ALL MUTANTS RED AS REQUIRED
+```
+- **S5 修复的独立确认** ✓✓：上一轮失败的 **`shard=0/3` 与 `shard=1/3` 本次都通过** ✓（且三片均**零重试** ✓）。
+- **发布门禁（同一 HEAD ✓✓）**：`release-check` **ALL CHECKS PASSED** ✓（tarball sha1 `e6eefc44…` ✓、**300 文件** ✓、**294 文本文件无 CRLF** ✓）＋ `--self-test` ✓ ＋ 变异 **ALL MUTANTS RED AS REQUIRED** ✓ ＋ 跑完 `dirty=0` ✓。
+- **一条新纪律（本轮用两次代价换来 ✓✗）**：**不要在自己还有验证作业在跑时启动全量扫掠** ✓ —— 本轮第一次启动 T3 时，预检因**我自己刚跑完的 shard-1／正控集**把机器打满而 FAIL ✗（**T3 从未开始** ✓，守卫有效 ✓）；空转后一次即全绿 ✓。同一课与 `run-tests.mjs` 自带的实测注释一致 ✓（`--concurrency=6` *"was RED with one 180 s TIMEOUT"* ✓、`--concurrency=4` *"faster but noisier"* ✓）⇒ **偶发是并发度的函数** ✓✓，默认 `concurrency=2` 已是保守选择 ✓；`--concurrency=1` 是**零代码成本**的附加证据路径 ✓（**规范验收仍是默认口径** ✓）。
 - **S5 的第二次定点诊断（更精确 ✓✓）**：定向 `MUTANTS_ONLY='S5'` 也复现 ⇒ **不是纯负载** ✗；失败那一族的判定原文是 **`no named red (exit=1)`** ✓ 且该子进程跑了 **35 617 ms** ✓ ⇒ **既不是"等得不够久"** ✗，而是**变异把场景弄崩、却没有任何具名断言行** ✗ —— 与最初 `S25B` 的缺陷**同类（变异过宽）** ✓，**不是 vmu 缺陷** ✓。**据此登记为定点待办** ✓：把该族（`S5: the stalled path goes back to convening a meeting on its own (R1/D10)` ✓）的变异**收窄**，使其只造成**预期的那条具名红** ✓（同 `S25B` 的修法 ✓）；**不做**"把无断言的崩溃当红" ✗（那会掩盖过宽变异 ✓）。
 
 **第 8 次 T3（2026-10-10 08:44–09:14，30 min，HEAD `1fe6ffc`，起点 `dirty=0`）—— 🎉 首次全绿 ✓✓**：
