@@ -411,11 +411,11 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | 批 2 · 切片 2 | 信任与声誉（**S-3**：声誉绝不授权） | `17-§5` | `kernel/trust.js` | `tests/vmu-trust.test.mjs` | **已实现 ✓**（47/0 ✓；`authorityFrom()` **永远具名拒** ✓；零机制返回"无数据"而非 0 ✓） |
 | 批 2 · 切片 3 | 仲裁（回避/理由/效力显式） | `17-§6` | `kernel/arbitration.js` | `tests/vmu-arbitration.test.mjs` | **已实现 ✓**（108/0 ✓；当事人任仲裁**点名拒** ✓；非约束性**自曝"仅有建议效力"** ✓） |
 | 批 2 · 切片 4 | 交接（点名缺字段/压缩报丢弃） | `17-§11` | `kernel/handover.js` | `tests/vmu-handover.test.mjs` | **已实现 ✓**（21/0 ✓；**未接受的交接绝不算完成** ✗✓） |
-| 批 2 · 切片 5+ | 招募/拓扑/宪章/公平 | `17-§7／§14／§15／§17` | — | — | **进行中** ✗ |
+| 批 2 · 切片 5 起 | 招募／拓扑／宪章／公平／技能／记忆／竞标 | `17-§7..§10`／`§14`／`§15`／`§17` | `recruit`／`topology`／`fairness`／`charter`（**已实现 ✓**：25/0／53/0／23/0／125/0 ✓）；`skills`／`memory`／`bidding`（**进行中** ✗） | 同名测试 ✓ | **部分已实现 ✓** |
 | 批 3 | 归档落盘适配／复现包 | `07`／`16` | — | — | **未开始** ✗ |
 | 批 4–5 | 计算与形式化／合规运营 | `09·15`／`16·20·22` | — | — | **未开始** ✗ |
 
-> **本阶段累计** ✓：**14 个内核服务**（`governance`／`board`／`minutes`／`budget`／`metrics`／`audit`／`alerts`／`retention`／`delegation`／`workflow`／`trust`／`arbitration`／`handover` ＋ 既有的 `tasks`／`prompt`／`middleware` 等 ✓）、**T1 69/69** ✓、**设置表已接线键 51 → 184（/1037）** ✓；**每一块都附"未做清单" ✗**（如：无耐久投影、拓扑只约束路径不建席位、公平不含历史欠账 ✓）。
+> **本阶段累计** ✓：**18 个内核服务** ✓（`tasks`／`prompt`／`middleware`／`governance`／`board`／`minutes`／`budget`／`metrics`／`audit`／`alerts`／`retention`／`delegation`／`workflow`／`trust`／`arbitration`／`handover`／`recruit`／`topology`／`fairness`／`charter` ✓）、**T1 69/69** ✓、**设置表已接线键 51 → 232** ✓（**具体数字永远以 `00-§3.2` 的生成索引为准** ✗✓ —— 本节只记里程碑 ✓）；**每一块都附"未做清单" ✗**（如：无耐久投影、拓扑只约束路径不建席位、公平不含历史欠账、宪章的裂变/合并尚无 API ✓）。
 > **门禁新增的守门能力** ✓（都由真实缺陷逼出来 ✓）：**import 闭包必须随包**（两次救回 `MODULE_NOT_FOUND` ✗✓）、**代码读的键必须已登记**（抓出 v5r 包的真旋钮与 40+ 未登记键 ✓）、**一个旋钮只能有一个名字**（抓出 4 组别名 ✗✓）。
 | 批 1 · 其余 | 工作流／控制／调度 | `08-§4` | — | — | **未开始** ✗ |
 | 批 2–5 其余 | 信任/仲裁/归档/计算/合规 | `17`／`07`／`09·15`／`16·20` | — | — | **未开始** ✗ |

@@ -13,8 +13,8 @@
 // record: reads read the stored value back rather than recomputing it, so the writer and the reader can
 // never disagree (the v5r PR#16 lesson).
 
-import { mkdir, readdir, readFile, writeFile, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, readdir, readFile, writeFile, stat, rename, unlink } from 'node:fs/promises'
+import { join, dirname } from 'node:path'
 import { createHash } from 'node:crypto'
 import { guardWrite } from './guard.js'
 
@@ -159,6 +159,39 @@ export function createLibrary({
     return '---\n' + lines.join('\n') + '\n---\n\n' + body.replace(/\s*$/, '') + '\n'
   }
 
+  /**
+   * Deletion-contract helpers (task-81). The trash is a `.trash/` subdirectory of the card directory:
+   * `rebuildIndex()` ignores it (it only reads `*.md` directly inside the card dir), so trashed records
+   * disappear from the head list without any index surgery.
+   */
+  const TRASH_DIR = '.trash'
+  const isPermanent = (meta) => !!(meta && (meta.permanent === 'true' || meta.status === 'permanent'))
+  const trashDirOf = (file) => join(dirname(file), TRASH_DIR)
+  const bodyOf = (raw) => raw.replace(/^---\n[\s\S]*?\n---\n?/, '')
+  const readTrash = async () => {
+    const out = []
+    let members = []
+    try { members = await readdir(join(root, 'Members')) } catch { return out }
+    for (const member of members) {
+      for (const [kind, dir] of Object.entries(KINDS)) {
+        let files = []
+        try { files = await readdir(join(root, 'Members', member, dir, TRASH_DIR)) } catch { continue }
+        for (const f of files) {
+          if (!f.endsWith('.md')) continue
+          const file = join(root, 'Members', member, dir, TRASH_DIR, f)
+          const meta = parseRecord(await readFile(file, 'utf8'))
+          out.push({
+            id: meta.id || f.replace(/\.md$/, ''), kind, member, file,
+            title: meta.title || null, fingerprint: meta.fingerprint || null,
+            status: meta.status || 'open', owner: meta.owner || member,
+            updatedAt: meta.updatedAt || null, trashedAt: meta.trashedAt || null, reason: meta.reason || null,
+          })
+        }
+      }
+    }
+    return out
+  }
+
   return {
     get root() { return root },
 
@@ -218,6 +251,8 @@ export function createLibrary({
         (filter.kind === undefined || r.kind === filter.kind) &&
         (filter.member === undefined || r.member === filter.member))
       rows.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+      // Trashed records are invisible by default (rebuildIndex never sees them); `includeTrash` opts in.
+      if (filter.includeTrash) { const tr = await readTrash(); for (const t of tr) rows.push(t) }
       // A ROW CAP, and it is COUNTED when it bites (docs/07 §4.4: truncation is never silent). The previous
       // bound was `Math.max(headListAt, rows.length)`, which always resolved to rows.length - so the knob had
       // NO observable effect at all (found by the 2026-10-09 docs-vs-code audit, its finding #35). `0` = all.
@@ -253,6 +288,84 @@ export function createLibrary({
       const rec = index.get(id)
       if (!rec) throw refuse('VMU_NO_SUCH_OBJECT', 'no record with id ' + String(id))
       return { ok: true, id, fingerprint: rec.fingerprint }
+    },
+
+    /**
+     * === Deletion contract (task-81) ===
+     * `kernel/retention.js` calls remove/removeRevision/moveToTrash/restore; before this they did not
+     * exist, so retention could delete nothing (it counted `skippedUnsupported`). Every path here runs
+     * through the SAME `gate()` as writes, so the path policy is never bypassed.
+     */
+    async moveToTrash({ id, reason = null } = {}) {
+      await rebuildIndex()
+      const rec = index.get(id)
+      if (!rec) throw refuse('VMU_NO_SUCH_OBJECT', 'no record with id ' + String(id), 'call list() for the head list; ids are never guessed')
+      const meta = parseRecord(await readFile(rec.file, 'utf8'))
+      if (isPermanent(meta)) throw refuse('VMU_RETENTION_CONFLICT', 'record ' + id + ' is marked permanent and cannot be deleted', 'permanent records are protected (docs/20 §6); clear the marker first')
+      const dir = trashDirOf(rec.file)
+      gate(dir, 'library delete')
+      const at = nowIso(clock)
+      try { await mkdir(dir, { recursive: true }) } catch (e) { throw refuse('VMU_IO_FAILED', 'trash move failed at step mkdir: ' + String((e && e.message) || e), 'step=mkdir') }
+      const to = join(dir, id + '.md')
+      try { await rename(rec.file, to) } catch (e) { throw refuse('VMU_IO_FAILED', 'trash move failed at step rename: ' + String((e && e.message) || e), 'step=rename') }
+      // Tombstone: the trash copy carries WHY and WHEN, so the deletion is traceable on disk.
+      try {
+        const tomb = { ...meta, trashedAt: at, reason: reason === null ? '' : String(reason) }
+        await writeFile(to, render(tomb, bodyOf(await readFile(to, 'utf8'))), 'utf8')
+      } catch (e) { throw refuse('VMU_IO_FAILED', 'trash move failed at step tombstone: ' + String((e && e.message) || e), 'step=tombstone') }
+      index.delete(id)
+      return { ok: true, id, kind: rec.kind, fingerprint: rec.fingerprint, reason: reason === null ? null : String(reason), at, from: rec.file, to, step: 'done' }
+    },
+
+    async remove({ id, reason = null } = {}) {
+      await rebuildIndex()
+      const rec = index.get(id)
+      if (!rec) throw refuse('VMU_NO_SUCH_OBJECT', 'no record with id ' + String(id), 'call list() for the head list; ids are never guessed')
+      const meta = parseRecord(await readFile(rec.file, 'utf8'))
+      if (isPermanent(meta)) throw refuse('VMU_RETENTION_CONFLICT', 'record ' + id + ' is marked permanent and cannot be deleted', 'permanent records are protected (docs/20 §6); clear the marker first')
+      gate(rec.file, 'library delete')
+      const at = nowIso(clock)
+      try { await unlink(rec.file) } catch (e) { throw refuse('VMU_IO_FAILED', 'remove failed at step unlink: ' + String((e && e.message) || e), 'step=unlink') }
+      index.delete(id)
+      return { ok: true, id, kind: rec.kind, fingerprint: rec.fingerprint, reason: reason === null ? null : String(reason), at, path: rec.file, step: 'done' }
+    },
+
+    /** Revisions live beside the record as `<id>@<rev>.md`; a missing one is refused by name. */
+    async removeRevision({ id, rev, reason = null } = {}) {
+      await rebuildIndex()
+      const rec = index.get(id)
+      if (!rec) throw refuse('VMU_NO_SUCH_OBJECT', 'no record with id ' + String(id), 'call list() for the head list; ids are never guessed')
+      if (rev === undefined || rev === null || String(rev).length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'removeRevision needs rev', 'pass rev:<n>; use remove({id}) to delete the whole record')
+      const file = join(dirname(rec.file), id + '@' + String(rev) + '.md')
+      if (!(await exists(file))) throw refuse('VMU_NO_SUCH_OBJECT', 'no revision ' + String(rev) + ' for ' + id, 'revisions are stored as <id>@<rev>.md next to the record')
+      const meta = parseRecord(await readFile(file, 'utf8'))
+      if (isPermanent(meta)) throw refuse('VMU_RETENTION_CONFLICT', 'revision ' + String(rev) + ' of ' + id + ' is marked permanent', 'permanent records are protected (docs/20 §6)')
+      gate(file, 'library delete')
+      const at = nowIso(clock)
+      try { await unlink(file) } catch (e) { throw refuse('VMU_IO_FAILED', 'removeRevision failed at step unlink: ' + String((e && e.message) || e), 'step=unlink') }
+      return { ok: true, id, rev: String(rev), reason: reason === null ? null : String(reason), at, path: file, step: 'done' }
+    },
+
+    /** Restore a trashed record: same id, same stored fingerprint, back in its original directory. */
+    async restore({ id } = {}) {
+      const trashed = await readTrash()
+      const t = trashed.find((r) => r.id === id)
+      if (!t) throw refuse('VMU_NO_SUCH_OBJECT', 'nothing trashed with id ' + String(id), 'listTrash() shows what can be restored')
+      const dir = KINDS[t.kind] ? join(root, 'Members', t.member, KINDS[t.kind]) : dirname(t.file)
+      const to = join(dir, id + '.md')
+      gate(to, 'library write')
+      const at = nowIso(clock)
+      try { await mkdir(dir, { recursive: true }) } catch (e) { throw refuse('VMU_IO_FAILED', 'restore failed at step mkdir: ' + String((e && e.message) || e), 'step=mkdir') }
+      try { await rename(t.file, to) } catch (e) { throw refuse('VMU_IO_FAILED', 'restore failed at step rename: ' + String((e && e.message) || e), 'step=rename') }
+      await rebuildIndex()
+      const back = index.get(id)
+      return { ok: true, id, kind: t.kind, fingerprint: back ? back.fingerprint : t.fingerprint, at, path: to, step: 'done' }
+    },
+
+    /** Read-only view of the trash (head-list shape plus WHY/WHEN). */
+    async listTrash() {
+      const rows = await readTrash()
+      return rows.map((r) => ({ id: r.id, kind: r.kind, title: r.title, fingerprint: r.fingerprint, status: r.status, owner: r.owner, updatedAt: r.updatedAt, trashedAt: r.trashedAt, reason: r.reason }))
     },
 
     async status() {

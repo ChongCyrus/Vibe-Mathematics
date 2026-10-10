@@ -54,6 +54,7 @@ import { createRecruit } from './recruit.js'
 import { createTopology } from './topology.js'
 import { createFairness } from './fairness.js'
 import { createCharter } from './charter.js'
+import { createReproPack } from './repropack.js'
 import { SETTING_DEFS } from '../settings/schema.js'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -276,6 +277,9 @@ export function createKernel({
   const topology = createTopology({ settings: { get: (k) => settings[k] }, bus, clock, log, members })
   const fairness = createFairness({ settings: { get: (k) => settings[k] }, bus, clock, log, budget, tasks })
   const charter = createCharter({ settings: { get: (k) => settings[k] }, bus, clock, log, members, delegation })
+  // Batch-3 slice 2: reproduction packs (docs/16 L12). Data is referenced by pointer by default; a missing
+  // required member is named rather than silently omitted.
+  const repropack = createReproPack({ settings: { get: (k) => settings[k] }, bus, clock, log, library })
 
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
@@ -312,6 +316,7 @@ export function createKernel({
   registry.register('vmu.topology', { apiVersion: 1 }, { kind: 'service', description: 'collaboration topologies and path assertions, describe and assert share one rule (docs/17 §14)' })
   registry.register('vmu.fairness', { apiVersion: 1 }, { kind: 'service', description: 'conserving allocation with a per-person cap; reputation is never a weight (docs/17 §17)' })
   registry.register('vmu.charter', { apiVersion: 1 }, { kind: 'service', description: 'charters: frozen articles, authority that cannot exceed the parent, dissolution reasons (docs/17 §15)' })
+  registry.register('vmu.repropack', { apiVersion: 1 }, { kind: 'service', description: 'reproduction packs: required members named, seed mandatory, diffs located (docs/16 L12)' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -398,6 +403,7 @@ export function createKernel({
     get topology() { return topology },
     get fairness() { return fairness },
     get charter() { return charter },
+    get repropack() { return repropack },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,

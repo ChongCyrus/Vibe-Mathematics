@@ -34,7 +34,7 @@
 
 | 服务键 | 职责 | 主要方法（**与代码一致** ✓） | apiVersion |
 |---|---|---|---|
-| `vmu.library`（有 `root` ✓） | 归档与记忆 | `append(rec,{member?})`、`record(member,track,text)`、`list(filter)`、`expand(id,{capBytes})`、`storedFingerprint(id)`、`fingerprint(kind,parts)`、`truncationReport()`、`status()` | 1 |
+| `vmu.library`（有 `root` ✓） | 归档与记忆 | `append(rec,{member?})`、`record(member,track,text)`、`list(filter,{includeTrash?})`、`expand(id,{capBytes})`、`storedFingerprint(id)`、`fingerprint(kind,parts)`、`truncationReport()`、`status()`、**批 3 新增**：`remove({id})`、`removeRevision({id,rev})`、`moveToTrash({id})`、`restore({id})`、`listTrash()`（**永久标记保护＋删除留痕＋不静默成功** ✓，全部经 `guardWrite` ✓） | 1 |
 | `vmu.members` ✓ | 成员与角色**槽位** | `roles()`、`roster()`、`hire({id,slot})`、`assignRole(id,slot)`、`end(id,reason)`、`wake(id,ask,{role?,phase?})`、`may(id,permission)`、`status()` | 1 |
 | `vmu.tasks` ✓ | 任务与阶段 | `create({title,…})`、`assign(id,who)`、`transition(id,to,{reason})`、`list(filter)`、`stage()`、`advance({to,reason})`、`rollback({reason})`、`status()` | 1 |
 | `vmu.prompt` ✓ | 提示词管线 | `register(section)`、`assemble(ctx)`、`override(section,text,by)`、`rollback(section)`、`snapshot(scopes)`、`bindToHost(adapter)`、`setState(text)`、`status()` | 1 |
@@ -60,7 +60,7 @@
 
 | 服务 | 方法（参数 → 返回；**已核** ✓） | 具名拒 |
 |---|---|---|
-| `vmu.library` | `fingerprint(kind,parts)→hex`（**单点计算** ✓）／`append(rec,{member?})→{ok,id,fingerprint,deduplicated}`／`record(member,track,text)→{ok,file}`／`list(filter)→Head[]`（**七键、不含正文、行数上限＋计数** ✓）／`expand(id,{capBytes})→{ok,head,body,truncated,path}`／`storedFingerprint(id)→{ok,id,fingerprint}`（**读回而非重算** ✓）／`truncationReport()`／`status()`（**异步** ✓） | `VMU_NO_SUCH_OBJECT`／`VMU_INVALID_ARGUMENT` |
+| `vmu.library` | `fingerprint(kind,parts)→hex`（**单点计算** ✓）／`append(rec,{member?})→{ok,id,fingerprint,deduplicated}`／`record(member,track,text)→{ok,file}`／`list(filter)→Head[]`（**七键、不含正文、行数上限＋计数** ✓；新增 `{includeTrash?}` ✓）／`expand(id,{capBytes})→{ok,head,body,truncated,path}`／`storedFingerprint(id)→{ok,id,fingerprint}`（**读回而非重算** ✓）／`truncationReport()`／`status()`（**异步** ✓）／`remove({id})`／`removeRevision({id,rev})`／`moveToTrash({id})`／`restore({id})`／`listTrash()` | `VMU_NO_SUCH_OBJECT`／`VMU_INVALID_ARGUMENT`／`VMU_RETENTION_CONFLICT`（永久标记 ✗）／`VMU_IO_FAILED`（带 `step` ✓） |
 | `vmu.members` | `roles()`／`roster()`／`hire({id,slot})`／`assignRole(id,slot)`／`end(id,reason)`／`wake(id,ask,{role?,phase?})`（**注入接缝**；缺则具名拒 ✓）／`may(id,permission)`（**只做包含判断** ✓）／`status()` | `VMU_RESOURCE_BUDGET`（**报当前数与上限** ✓）／`VMU_NO_SUCH_OBJECT`／`VMU_STATE`／`VMU_ENGINE_UNAVAILABLE` |
 | `vmu.tasks` | `create({title,objective?,owner?,deps?,priority?})→{ok,id,state}`／`assign(id,who)`／`transition(id,to,{reason})`／`list()`／`stage()`／`advance({to,reason})`（**先过 `stageGate`** ✓）／`rollback({reason})`／**`brief(id)`／`briefOf(id)`／`clearBrief(id)`**（任务简报＝给该任务负责人的执行流程 ✓）／`history(id?)`／`status()` | `VMU_STATE`（依赖未满足／非法转换／**暂停中** ✓）／`VMU_RESOURCE_BUDGET` |
 | `vmu.prompt` | `register(s)→entry`／`assemble(ctx)→{ok,text,sources[],truncation[],at}`／`override(section,text,by)→{ok,previous}`／`rollback(section)`／`snapshot(scopes)`／`bindToHost(adapter)`／`setState(text)`／`status()→{sections[],bindings,truncation[],middlewareAppends[]}` | `VMU_NOT_PERMITTED`／`VMU_INVALID_ARGUMENT`／`VMU_NO_SUCH_OBJECT`／`VMU_ENGINE_UNAVAILABLE` |
@@ -345,6 +345,11 @@
 | `VMU_TOPOLOGY_PATH_FORBIDDEN` | 拓扑**不允许该路径**（实现于 `kernel/topology.js` ✓） | 协作拓扑 | ✅（须给**允许路径** ✓） |
 | `VMU_TOPOLOGY_CYCLE` | 层级/流水线**成环或自指**（实现于 `kernel/topology.js` ✓） | 协作拓扑 | ✅（须给**环路径** ✓） |
 | `VMU_TOPOLOGY_SIZE_EXCEEDED` | 委员会/层级**超出规模上限**（实现于 `kernel/topology.js` ✓） | 协作拓扑 | ✅（须给**当前/上限** ✓） |
+| `VMU_MEMORY_NOT_AUTHORITY` | **记忆不得当作授权**（实现于 `kernel/memory.js` ✓；与 S-3 同源：`may()`／`authorize()` **永远拒** ✓） | 机构记忆 | ✅（须说明权威来自席位或委托 ✓） |
+| `VMU_REPRO_COPY_DENIED` | `dataPointerOnly` 下**拒绝复制数据**（实现于 `kernel/repropack.js` ✓） | 复现包 | ✅（须给改为指针的做法 ✓） |
+| `VMU_SKILL_SELF_ATTEST` | **自我见证被拒**（不得自封；实现于 `kernel/skills.js` ✓） | 技能库 | ✅（须提示请他人见证 ✓） |
+| `VMU_SKILL_VOCAB_VIOLATION` | 技能等级**越出受控词表**（实现于 `kernel/skills.js` ✓） | 技能库 | ✅（须给允许等级清单 ✓） |
+| `VMU_SKILL_LIMIT` | **超过单人技能上限**（实现于 `kernel/skills.js` ✓） | 技能库 | ✅（须给现值/上限与释放办法 ✓） |
 
 **共享模块码表（**由数学/归档/脚本模块抛出 ✓；独立批评者第 5 轮发现这些码**整批在登记面之外** ✗ ⇒ 现纳入同一登记表与门禁 ✓）**
 
@@ -641,11 +646,11 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **154** 个码：其中 **72** 个能在运行时代码里找到 ✓，
-> **82** 个**暂时只存在于表里**（提案 ⛔）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
+> 手写表登记 **159** 个码：其中 **80** 个能在运行时代码里找到 ✓，
+> **79** 个**暂时只存在于表里**（提案 ⛔）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓，删改任一码都会让 `--check` 变红 ✓。
 
-提案码（82）：VMU_ALIAS_AMBIGUOUS、VMU_BALLOT_ABSTAIN_NOT_ALLOWED、VMU_BALLOT_FROZEN、VMU_BALLOT_METHOD_UNSUPPORTED、VMU_BALLOT_MIN_VOTES_NOT_MET、VMU_BALLOT_ROUNDS_EXHAUSTED、VMU_BALLOT_SECRECY_LOCKED、VMU_BALLOT_TIE_UNRESOLVED、VMU_COMPAT_UNKNOWN_COMBO、VMU_CONTROL_NO_TIMER、VMU_CONTROL_SCOPE_UNKNOWN、VMU_CRYPTO_VERIFY_FAILED、VMU_DEGRADED、VMU_EXTERNAL_UNAVAILABLE、VMU_FORMAL_ADAPTER_UNSUPPORTED、VMU_FORMAL_AXIOM_UNTRUSTED、VMU_FORMAL_DISAGREEMENT、VMU_FORMAL_LIBRARY_NOT_INDEXED、VMU_FORMAL_NOT_FOUND、VMU_FORMAL_REPRO_INCOMPLETE、VMU_FORMAL_SKELETON_UNAVAILABLE、VMU_FORMAL_SORRY_FOUND、VMU_IDEMPOTENCY_KEY_REUSED、VMU_INDEX_STALE、VMU_JOB_CANCELLED、VMU_LEAN_COMPILE_FAILED、VMU_MATH_ARTIFACT_TOO_LARGE、VMU_MATH_ASSUMPTION_CONFLICT、VMU_MATH_CACHE_CORRUPT、VMU_MATH_DIMENSION_MISMATCH、VMU_MATH_INTERVAL_EMPTY、VMU_MATH_INVALID_INPUT、VMU_MATH_JOB_PERSIST_FAILED、VMU_MATH_NONCONVERGENT、VMU_MATH_PRECISION_LOST、VMU_MATH_REPRO_MISMATCH、VMU_MATH_RESIDUAL_TOO_LARGE、VMU_MATH_RESOURCE_LIMIT、VMU_MATH_SANDBOX_DENIED、VMU_MATH_SEED_REQUIRED、VMU_MATH_SINGULAR_MATRIX、VMU_MATH_UNSUPPORTED_OP、VMU_MEETING_APPEAL_OUT_OF_SCOPE、VMU_MEETING_CONFIDENTIAL_DENIED、VMU_MEETING_DISCIPLINE_DENIED、VMU_MEETING_EMERGENCY_NOT_ALLOWED、VMU_MEETING_INTERRUPT_DENIED、VMU_MEETING_ORDER_DENIED、VMU_MEETING_QUORUM_LOST、VMU_MEETING_RECESS_LIMIT、VMU_MEETING_SPEECH_TIMEBOUND、VMU_MEETING_UNANSWERED_POLICY、VMU_META_VALIDATION_FAILED、VMU_NAME_CONFLICT、VMU_PACK_KERNEL_OVERRIDE_REFUSED、VMU_PARAM_DEPRECATED、VMU_PARAM_REMOVED、VMU_PARAM_RENAMED、VMU_PATH_ESCAPE_REFUSED、VMU_PROXY_CHAIN_TOO_DEEP、VMU_PROXY_NOT_ALLOWED、VMU_RECOUNT_MISMATCH、VMU_RECOUNT_SCOPE_DENIED、VMU_RECUSAL_REQUIRED、VMU_REF_DANGLING、VMU_REOPEN_FLOOR_NOT_MET、VMU_REOPEN_WRONG_INITIATOR、VMU_ROLLBACK_UNAVAILABLE、VMU_SCHEDULER_ACTION_FORBIDDEN、VMU_SCHEDULER_TRIGGER_LIMIT、VMU_TIMEOUT、VMU_VETO_NOT_ALLOWED、VMU_WORKFLOW_ARBITRATION_OFF、VMU_WORKFLOW_CHECKPOINT_MISSING、VMU_WORKFLOW_COMPENSATION_FAILED、VMU_WORKFLOW_DEP_TYPE_UNSUPPORTED、VMU_WORKFLOW_ESCALATION_TARGET_UNKNOWN、VMU_WORKFLOW_GATE_NOT_MET、VMU_WORKFLOW_RACI_MISSING_OWNER、VMU_WORKFLOW_RETRY_EXHAUSTED、VMU_WORKFLOW_SUBTASK_DEPTH、VMU_WORKFLOW_TEMPLATE_UNKNOWN
+提案码（79）：VMU_ALIAS_AMBIGUOUS、VMU_BALLOT_ABSTAIN_NOT_ALLOWED、VMU_BALLOT_FROZEN、VMU_BALLOT_METHOD_UNSUPPORTED、VMU_BALLOT_MIN_VOTES_NOT_MET、VMU_BALLOT_ROUNDS_EXHAUSTED、VMU_BALLOT_SECRECY_LOCKED、VMU_BALLOT_TIE_UNRESOLVED、VMU_COMPAT_UNKNOWN_COMBO、VMU_CONTROL_NO_TIMER、VMU_CONTROL_SCOPE_UNKNOWN、VMU_CRYPTO_VERIFY_FAILED、VMU_DEGRADED、VMU_EXTERNAL_UNAVAILABLE、VMU_FORMAL_ADAPTER_UNSUPPORTED、VMU_FORMAL_AXIOM_UNTRUSTED、VMU_FORMAL_DISAGREEMENT、VMU_FORMAL_LIBRARY_NOT_INDEXED、VMU_FORMAL_NOT_FOUND、VMU_FORMAL_SKELETON_UNAVAILABLE、VMU_FORMAL_SORRY_FOUND、VMU_IDEMPOTENCY_KEY_REUSED、VMU_INDEX_STALE、VMU_JOB_CANCELLED、VMU_LEAN_COMPILE_FAILED、VMU_MATH_ARTIFACT_TOO_LARGE、VMU_MATH_ASSUMPTION_CONFLICT、VMU_MATH_CACHE_CORRUPT、VMU_MATH_DIMENSION_MISMATCH、VMU_MATH_INTERVAL_EMPTY、VMU_MATH_INVALID_INPUT、VMU_MATH_JOB_PERSIST_FAILED、VMU_MATH_NONCONVERGENT、VMU_MATH_PRECISION_LOST、VMU_MATH_RESIDUAL_TOO_LARGE、VMU_MATH_RESOURCE_LIMIT、VMU_MATH_SANDBOX_DENIED、VMU_MATH_SINGULAR_MATRIX、VMU_MATH_UNSUPPORTED_OP、VMU_MEETING_APPEAL_OUT_OF_SCOPE、VMU_MEETING_CONFIDENTIAL_DENIED、VMU_MEETING_DISCIPLINE_DENIED、VMU_MEETING_EMERGENCY_NOT_ALLOWED、VMU_MEETING_INTERRUPT_DENIED、VMU_MEETING_ORDER_DENIED、VMU_MEETING_QUORUM_LOST、VMU_MEETING_RECESS_LIMIT、VMU_MEETING_SPEECH_TIMEBOUND、VMU_MEETING_UNANSWERED_POLICY、VMU_META_VALIDATION_FAILED、VMU_NAME_CONFLICT、VMU_PACK_KERNEL_OVERRIDE_REFUSED、VMU_PARAM_DEPRECATED、VMU_PARAM_REMOVED、VMU_PARAM_RENAMED、VMU_PATH_ESCAPE_REFUSED、VMU_PROXY_CHAIN_TOO_DEEP、VMU_PROXY_NOT_ALLOWED、VMU_RECOUNT_MISMATCH、VMU_RECOUNT_SCOPE_DENIED、VMU_RECUSAL_REQUIRED、VMU_REF_DANGLING、VMU_REOPEN_FLOOR_NOT_MET、VMU_REOPEN_WRONG_INITIATOR、VMU_ROLLBACK_UNAVAILABLE、VMU_SCHEDULER_ACTION_FORBIDDEN、VMU_SCHEDULER_TRIGGER_LIMIT、VMU_TIMEOUT、VMU_VETO_NOT_ALLOWED、VMU_WORKFLOW_ARBITRATION_OFF、VMU_WORKFLOW_CHECKPOINT_MISSING、VMU_WORKFLOW_COMPENSATION_FAILED、VMU_WORKFLOW_DEP_TYPE_UNSUPPORTED、VMU_WORKFLOW_ESCALATION_TARGET_UNKNOWN、VMU_WORKFLOW_GATE_NOT_MET、VMU_WORKFLOW_RACI_MISSING_OWNER、VMU_WORKFLOW_RETRY_EXHAUSTED、VMU_WORKFLOW_SUBTASK_DEPTH、VMU_WORKFLOW_TEMPLATE_UNKNOWN
 
 <!-- PLANNED-CODES:END -->
 

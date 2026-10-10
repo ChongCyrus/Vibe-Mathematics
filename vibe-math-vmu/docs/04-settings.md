@@ -358,7 +358,7 @@ vmu.packs.active: [v5r]
 | `vmu.trust.aggregate` | enum | `weighted` | `mean`∣`weighted`∣`median` | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 聚合方式 |
 | `vmu.trust.useInSelection` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 选择时是否参考声誉（仅参考，绝不授权 ✗） |
 | `vmu.trust.useInArbitration` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 仲裁时是否参考声誉 |
-| `vmu.trust.useInAuction` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 竞标时是否参考声誉 |
+| `vmu.trust.useInAuction` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 竞标时是否参考声誉 |
 | `vmu.arbitration.mode` | enum | `off` | `off`∣`single`∣`panel` | 会话 | H1 | office | ✅ 已接线 | `kernel/arbitration.js` | 仲裁模式（off＝零机制：写操作具名拒） |
 | `vmu.arbitration.binding` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/arbitration.js` | 裁决是否有约束力（false＝仅有建议效力，必须自曝） |
 | `vmu.arbitration.recordInMinutes` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/arbitration.js` | 裁决是否记入纪要 |
@@ -431,6 +431,60 @@ vmu.packs.active: [v5r]
 | `vmu.charter.precedence` | string | `charter-over-pack` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 优先序（当前只自曝，未做冲突强制 ✗） |
 | `vmu.charter.fissionMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 裂变上限（未实现 API ✗） |
 | `vmu.charter.mergeNeedsHuman` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/charter.js` | 合并须人类批准（未实现 API ✗） |
+| `vmu.repro.requiredMembers` | string[] | `[script,entry,envLock,seed,dataFingerprint,deps]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/repropack.js` | 复现包必填成员（缺一即拒并点名） |
+| `vmu.repro.hashAlgo` | string | `sha256` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/repropack.js` | 指纹算法 |
+| `vmu.repro.maxPackBytes` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/repropack.js` | 包体上限（0＝不限；触界必报丢弃） |
+| `vmu.repro.allowMissingSeed` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/repropack.js` | 是否允许缺种子（默认 false：随机作业必须有种子 ✗） |
+| `vmu.repro.envLockMode` | enum | `full` | `full`∣`minimal` | 会话 | H1 | office | ✅ 已接线 | `kernel/repropack.js` | 环境锁模式（两者当前都只用调用方给的 env ✗） |
+| `vmu.repro.dataPointerOnly` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/repropack.js` | 数据只存指针不复制（默认 true ✗） |
+| `vmu.repro.verifyRequiresMatch` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/repropack.js` | 验证要求逐成员一致 |
+| `vmu.skills.levels` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/skills.js` | 技能等级受控词表（空＝内置） |
+| `vmu.skills.evidenceRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/skills.js` | 声明必须带证据 |
+| `vmu.skills.selfAttestAllowed` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/skills.js` | 是否允许自我见证（默认禁：不得自封 ✗） |
+| `vmu.skills.freshnessMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/skills.js` | 技能保鲜期（0＝不过期；过期自曝并降级 ✗） |
+| `vmu.skills.declareTtlMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/skills.js` | 声明有效期（freshnessMs 的兼容名来源） |
+| `vmu.skills.maxSkillsPerMember` | int ≥1 | `50` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/skills.js` | 单人技能上限（超限具名拒） |
+| `vmu.skills.aggregate` | enum | `latest` | `latest`∣`max` | 会话 | H1 | office | ✅ 已接线 | `kernel/skills.js` | 多来源技能等级聚合 |
+| `vmu.skills.degradePolicy` | string | `one-step` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/skills.js` | 过期降级策略（one-step｜hold） |
+| `vmu.skills.requiresPermission` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/skills.js` | 能力 ≠ 权限：技能本身不授权 ✗ |
+| `vmu.skills.negotiationRounds` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/skills.js` | 技能协商轮次（0＝不协商） |
+| `vmu.memory.kinds` | string[] | `[lesson,antipattern,fact,preference]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/memory.js` | 记忆种类受控词表 |
+| `vmu.memory.cardKinds` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/memory.js` | 经验卡种类（空＝同 kinds） |
+| `vmu.memory.requireEvidence` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/memory.js` | 记忆必须带证据 |
+| `vmu.memory.requireSource` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/memory.js` | 记忆必须有来源 |
+| `vmu.memory.maxCards` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/memory.js` | 经验卡上限（0＝不限） |
+| `vmu.memory.maxEntries` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/memory.js` | 记忆条目上限（0＝不限；溢出必计数） |
+| `vmu.memory.cardTtlMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/memory.js` | 经验卡有效期（0＝不过期） |
+| `vmu.memory.ttlMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/memory.js` | 记忆有效期（0＝不过期；过期自曝 ✗） |
+| `vmu.memory.visibility` | enum | `institution` | `institution`∣`team`∣`agent` | 会话 | H1 | office | ✅ 已接线 | `kernel/memory.js` | 默认可见范围 |
+| `vmu.memory.scopeRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/memory.js` | 记忆必须声明作用域 |
+| `vmu.memory.scopeDefault` | enum | `institution` | `institution`∣`team`∣`agent` | 会话 | H1 | office | ✅ 已接线 | `kernel/memory.js` | 缺省作用域 |
+| `vmu.memory.contradictionPolicy` | enum | `report` | `report`∣`block`∣`supersede` | 会话 | H1 | office | ✅ 已接线 | `kernel/memory.js` | 矛盾处理（report 时必须在 contradictions() 可见 ✗） |
+| `vmu.memory.neverDropKinds` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/memory.js` | 永不丢弃的记忆种类 |
+| `vmu.memory.keepEvery` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/memory.js` | 压缩时保留比例 |
+| `vmu.memory.compactionEveryMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/memory.js` | 压缩周期（0＝不自动压缩） |
+| `vmu.memory.supersedeNeedsReason` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/memory.js` | 取代记忆必须给理由 |
+| `vmu.auction.enabled` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 拍卖/竞标开关（默认关＝零机制） |
+| `vmu.auction.claimFirst` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 先认领再拍卖 |
+| `vmu.auction.closeRule` | string | `deadline` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 截止规则 |
+| `vmu.auction.bidWindowMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 投标窗口（0＝不限） |
+| `vmu.auction.maxBidCost` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 报价上限（0＝不限；不得突破 ✗） |
+| `vmu.auction.requirePlan` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 投标必须带方案 |
+| `vmu.auction.maxOpenAuctions` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 同时在办拍卖上限（0＝不限） |
+| `vmu.auction.minBids` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 授标所需最少投标数 |
+| `vmu.auction.maxBids` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 单场投标上限（0＝不限） |
+| `vmu.auction.maxPosts` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 挂单上限（0＝不限） |
+| `vmu.auction.awardNeedsRationale` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 授标必须给理由 |
+| `vmu.auction.cancelNeedsReason` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 取消必须给理由 |
+| `vmu.auction.collusionScan` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 雷同报价扫描（标记必须可见 ✗） |
+| `vmu.auction.reputationInPrice` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 声誉是否入价（默认 false：声誉不得定价 ✗） |
+| `vmu.auction.tieBreak` | string | `lexicographic` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 平手规则（必须确定性） |
+| `vmu.auction.maxSuspects` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 串谋嫌疑上限（0＝不限） |
+| `vmu.auction.allowRuleOverride` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 是否允许调用方覆盖规则（默认 false） |
+| `vmu.collusion.windowMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 串谋扫描窗口（0＝不限） |
+| `vmu.collusion.maxMutualShare` | ratio | `0.8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 互投/雷同份额阈值 |
+| `vmu.collusion.minEvidence` | int ≥0 | `2` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 判定嫌疑所需最少证据数 |
+| `vmu.collusion.onSuspect` | enum | `report` | `report`∣`freeze-review` | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 嫌疑处理（默认只报告；冻结审查须显式开启） |
 | `vmu.handover.packBudgetBytes` | int ≥1 | `32768` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 上下文包预算（触界必报丢弃） |
 | `vmu.handover.compress` | enum | `summary` | `none`∣`summary` | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 压缩方式 |
 | `vmu.handover.requireFingerprint` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 每项须带指纹 |
@@ -456,15 +510,8 @@ vmu.packs.active: [v5r]
 | `vmu.attendance.excusedCounts` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.attendance.markMode` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.attendance.reportLate` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.auction.bidWindowMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.auction.claimFirst` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.auction.closeRule` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.auction.dirtyWorkQuota` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.auction.enabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.auction.fairnessPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.auction.maxBidCost` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.auction.maxOpenAuctions` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.auction.requirePlan` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.auction.rotationWindow` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.audit.dir` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.audit.exportScope` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
@@ -551,11 +598,7 @@ vmu.packs.active: [v5r]
 | `vmu.collab.reconciliationToleranceMinor` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.collab.settlementCycleDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.collusion.maxClusterSize` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.collusion.maxMutualShare` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.collusion.minEvidence` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.collusion.onSuspect` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.collusion.scanEveryMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.collusion.windowMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.committees.kinds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.committees.parentRosterSubsetOnly` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.committees.reportFormat` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
@@ -1001,16 +1044,7 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.verbatimRetentionMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.meetings.wakeFailurePolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.members.may` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.memory.cardKinds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.memory.cardTtlMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.memory.compactEveryMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.memory.compactionEveryMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.memory.keepEvery` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.memory.maxCards` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.memory.neverDropKinds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.memory.requireEvidence` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.memory.scopeRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.memory.visibility` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.mentor.graduationNeedsHuman` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.mentor.maxMenteesPerMentor` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.mentor.requireReviewBeforeGraduation` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
@@ -1202,11 +1236,6 @@ vmu.packs.active: [v5r]
 | `vmu.search.maxResults` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.search.snippetLen` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.skills.catalogTtlMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.skills.declareTtlMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.skills.degradePolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.skills.evidenceRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.skills.negotiationRounds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.skills.requiresPermission` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.sovereignty.crossBorderAllow` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.sovereignty.exportControl` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.sovereignty.region` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |

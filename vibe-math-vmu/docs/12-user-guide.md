@@ -196,9 +196,9 @@ then:
 
 ### 11.0 接线状态横幅（**先读这一节，避免"旋钮幻觉"** ✗✓）
 
-- **设置表共 757 键，其中只有 51 键有运行时消费者** ✓（其余 706 是设计阶段声明的**计划键** ✗）。生成器原文：`vmu settings table: up to date (757 keys (51 wired, 706 declared-but-not-wired))`。
+- **大多数设置键今天没有运行时消费者** ✗（**具体数字不写死** ✗✓ —— 以 `00-§3.2` 的**生成索引**与 `docs/04 §11` 的接线列**实时为准** ✓；本节末尾的命令可随时重算 ✓）。
 - **对计划键调用 `vibe_vmu_set` 会回执 `noConsumer: true`** 并说明"**改了不会有任何变化**" ✓ ⇒ **按计划键设计机制，今天不会生效** ✗（要等实现阶段）。
-- **51 个已接线键**（**派生自 `docs/04-settings.md` 的 `✅ 已接线` 行**，命令见本节末；**非凭记忆** ✗），按族列出：
+- **已接线键**（**派生自 `docs/04-settings.md` 的 `✅ 已接线` 行**，命令见本节末；**非凭记忆** ✗），按族列出（**数量随实现推进增长 ⇒ 永远以命令输出为准** ✓）：
   - **核心/限额（7）**：`vmu.core.enabled`｜`vmu.core.logLevel`｜`vmu.limits.maxLiveMembers`｜`vmu.limits.maxParallel`｜`vmu.limits.memoryCeilingMb`｜`vmu.limits.toolCallsPerTurnCap`｜`vmu.limits.wallClockMs`
   - **任务（2）**：`vmu.tasks.maxOpenTasks`｜`vmu.tasks.stages`
   - **会议（9）**：`vmu.meetings.hardLimitMs`｜`vmu.meetings.quorumCap`｜`vmu.meetings.quorumRule`｜`vmu.meetings.quoteDepthMax`｜`vmu.meetings.quotesPerMessageMax`｜`vmu.meetings.reconsiderFloor`｜`vmu.meetings.roundTimeoutMs`｜`vmu.meetings.verdictMaxRounds`｜`vmu.meetings.wakeRetries`
