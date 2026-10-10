@@ -175,9 +175,13 @@ export function createLibrary({
       }
       const member = record.owner || opts.member || 'shared'
       const dir = cardDir(member, kind)
-      await mkdir(dir, { recursive: true })
       const id = (record.id ? slug(record.id) : slug((record.title || record.statement).slice(0, 40))) + '-' + fp.slice(0, 8)
       const file = join(dir, id + '.md')
+      // GATE FIRST, THEN TOUCH THE FILESYSTEM. Independent verification (task-34) proved that `mkdir` used to
+      // run BEFORE the gate, so an out-of-policy write was refused only AFTER its directory had been created -
+      // a refusal with a side effect. A refused write must leave the disk untouched.
+      gate(file, 'library write')
+      await mkdir(dir, { recursive: true })
       const meta = {
         id, kind, fingerprint: fp,
         title: record.title || record.statement.slice(0, 60),
@@ -185,7 +189,6 @@ export function createLibrary({
         owner: member,
         updatedAt: nowIso(clock),
       }
-      gate(file, 'library write')
       await writeFile(file, render(meta, String(record.statement) + (record.proof ? '\n\n' + record.proof : '')), 'utf8')
       index.set(id, Object.assign({ file }, meta))
       return { ok: true, id, fingerprint: fp, deduplicated: false, file }
@@ -198,11 +201,12 @@ export function createLibrary({
           'declared tracks: ' + tracks.join(', ') + ' (vmu.records.tracks)')
       }
       const file = progressFile(member, track)
+      // Same rule as append(): the gate runs BEFORE anything is created on disk.
+      gate(file, 'library write')
       await mkdir(join(memberDir(member), 'Progress'), { recursive: true })
       let prev = ''
       try { prev = await readFile(file, 'utf8') } catch { prev = '# ' + track + '\n' }
       const line = '- ' + nowIso(clock) + ' ' + String(text).replace(/\s*\n\s*/g, ' ') + '\n'
-      gate(file, 'library write')
       await writeFile(file, prev.replace(/\s*$/, '\n') + line, 'utf8')
       return { ok: true, file, track, member }
     },

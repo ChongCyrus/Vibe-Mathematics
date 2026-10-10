@@ -394,6 +394,20 @@ if (SELF_PROBE) {
     'and an undeclared SIBLING key is still refused (the door is per-key, not a blanket)', String(sibling && sibling.code))
 }
 
+// ---- the Lean face is assembled ONLY when a spawn seam exists (nothing is faked without one) -----------
+{
+  const bare = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z' })
+  ok(bare.lean === null,
+    'without a spawn seam there is NO lean face (kernel.lean === null) - the assembly gate is tested too',
+    String(bare.lean))
+  const seam = async () => ({ code: 0, stdout: '', stderr: '', timedOut: false, ms: 1 })
+  const withSeam = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z', spawn: seam })
+  ok(withSeam.lean && typeof withSeam.lean.submit === 'function' && typeof withSeam.lean.keysUsed === 'function',
+    'and with a seam the face appears (submit/keysUsed present)', JSON.stringify(Object.keys(withSeam.lean || {})))
+  ok(Array.isArray(withSeam.lean.keysUsed()) && withSeam.lean.keysUsed().length === 8,
+    'the face reads exactly the eight Lean keys', JSON.stringify(withSeam.lean.keysUsed()))
+}
+
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

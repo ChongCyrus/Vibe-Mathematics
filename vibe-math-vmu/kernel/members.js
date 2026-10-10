@@ -100,6 +100,19 @@ export function createMembers({
       if (typeof id !== 'string' || !MEMBER_ID.test(id)) {
         throw refuse('VMU_INVALID_ARGUMENT', 'member id is required and must be path-safe: ' + String(id))
       }
+      // THE CEILING IS ENFORCED HERE TOO. `assignRole` is a PUBLISHED service (docs/03 §2), so gating only
+      // `hire()` made the ceiling bypassable from a pack or an M3 script (verifier's task-34 finding #3). The
+      // gate applies only when this call would GROW the roster: re-assigning an already-live member is not growth.
+      const already = members.get(id)
+      const isGrowth = !(already && already.state !== 'ended')
+      if (isGrowth && typeof resourceGate === 'function') {
+        const gate = resourceGate()
+        if (gate && gate.exceeded === true) {
+          throw refuse('VMU_RESOURCE_BUDGET',
+            'host process RSS over the ceiling: ' + gate.rssMb + 'MB > ' + gate.ceilingMb + 'MB',
+            'vmu.limits.memoryCeilingMb caps the HOST process (docs/04 §11); raise it, or end members first')
+        }
+      }
       const def = assertSlot(slotId)
       const existing = members.get(id)
       if (existing && existing.slot === slotId && existing.state !== 'ended') {

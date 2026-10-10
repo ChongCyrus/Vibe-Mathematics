@@ -128,7 +128,15 @@ export function createScriptBridge({ spawn = null, defaultTimeoutMs = 60_000, dr
       } catch (e) {
         stats.failures++
         record({ what: 'script-threw', label, error: String(e && e.message) })
-        throw refuse('VMU_MIDDLEWARE_FAILED', label + ' could not be started: ' + String(e && e.message))
+        // The spawn seam carries the HOST STACK and the exact request shape (task-33's fix). They must SURVIVE
+        // this rewrite: independent verification (task-34) proved with an injected seam that dropping them here
+        // made the live failure undiagnosable, because the tool face can only forward fields the error has.
+        const err = refuse('VMU_MIDDLEWARE_FAILED', label + ' could not be started: ' + String(e && e.message),
+          'the host refused to spawn it; hostStack/shape carry the host own evidence when it provides one')
+        err.hostStack = (e && e.hostStack) || null
+        err.shape = (e && e.shape) || null
+        err.cause = e
+        throw err
       }
       stats.runs++
       if (!raw || raw.timedOut === true) {
