@@ -1877,7 +1877,7 @@ const runPositive = (sc) => {
   } catch (e) { code = (e && e.status) || 1; out = String((e && e.stdout) || '') + String((e && e.stderr) || '') }
   const ms = Date.now() - t0
   rmSync(dest, { recursive: true, force: true })
-  return { green: code === 0 && /SCENARIO GREEN: /.test(out), ms, code }
+  return { green: code === 0 && /SCENARIO GREEN: /.test(out), ms, code, out }
 }
 // SHARDING (user-approved fix for R-6b, 2026-10-10): this file used to be ONE job of 25-35 min with 168
 // families + 107 positive controls, and on a loaded host its timing tolerance was too narrow - seven sweeps
@@ -1924,6 +1924,14 @@ for (const sc of LIST) {
   }
   if (!r.green) { posRed++; failedPositives.push(sc) }
   console.log((r.green ? '  ok   ' : '  FAIL ') + 'positive v5r scenario ' + sc + ' [' + r.ms + 'ms]' + (r.green ? '' : ' :: exit=' + r.code))
+  // A failed positive control must SAY WHY. Without this the sweep only showed the scenario's NAME and every
+  // diagnosis needed a separate isolated run (measured: the same scenario is green in ~2 s alone and can fail
+  // twice under load, where this job runs ~7x slower). The child's own named assertion lines are printed here.
+  if (!r.green) {
+    const lines = String(r.out || '').split(/\r?\n/).filter((l) => /^\s*(FAIL - | {2}- |Error|TypeError)/.test(l)).slice(0, 8)
+    if (lines.length === 0) console.log('      (the scenario produced NO named assertion line - see its raw output length ' + String(r.out || '').length + ')')
+    for (const l of lines) console.log('      ' + l.trim().slice(0, 200))
+  }
   TIMES.push(['positive:' + sc, r.ms])
 }
 console.log('scenario positive controls green: ' + (LIST.length - posRed) + '/' + LIST.length +
