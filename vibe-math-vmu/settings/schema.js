@@ -442,6 +442,11 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.idempotency.retryAfterAbort', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: 'abort 后是否允许同 key 重试（同载荷 ✓）' },
   { key: 'vmu.idempotency.maxPayloadBytes', type: 'natural', def: 262144, hot: HOT.H1, who: 'office', doc: '载荷指纹计算上限（触界报丢弃 ✗）' },
   { key: 'vmu.idempotency.retrySamePayloadOnly', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: 'abort 后重试是否必须同载荷（默认是；放宽 ⇔ 重试是新尝试，必须自曝 ✗✓）' },
+  { key: 'vmu.idempotency.writerId', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: '写者标识（用于识别"更旧的覆盖" ✓；**同一部署的多个进程必须各给唯一值** ✗否则只能靠 seq 回退发现 ✓）' },
+  { key: 'vmu.clock.resyncMs', type: 'natural', def: 60000, hot: HOT.H1, who: 'office', doc: '前跳冻结的**重同步上限**（累计冻结超此值 ⇒ 接受新时刻并自曝 resynced ✓；**永冻不可接受** ✗✓✓）' },
+  // A1/A3 (round 21): anchor hygiene and the projection migrator.
+  { key: 'vmu.audit.chain.checkpointEvery', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '自动检查点节奏（每 N 行；0＝手动 ✓，触发与失败都计数 ✗）' },
+  { key: 'vmu.projection.maxMigrationSteps', type: 'positiveInteger', def: 16, hot: HOT.H1, who: 'office', doc: '投影迁移步数上限（超限具名拒并给当前/上限 ✓）' },
   // K5 (round 16): the read-only replay that reconstructs state from the audit log.
   { key: 'vmu.replay.strict', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '未知事件类型是否具名拒（默认 false：计入 unknownKinds ✓ 绝不静默跳过 ✗）' },
   { key: 'vmu.replay.keepUnknown', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '未知事件是否保留在重建结果里（保留并标 unknown ✓）' },

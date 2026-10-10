@@ -49,6 +49,12 @@ export function createClockGuard({ clock = null, now = null, log = () => {}, set
     if (!POLICIES.includes(v)) throw refuse('VMU_INVALID_ARGUMENT', 'unknown onForward policy: ' + String(v), 'one of ' + POLICIES.join('|'))
     return v
   }
+  // A2 裁决：**有界 clamp ＋ resync 出口**。冻结上限默认 2 天（= 前跳阈值 ×2，明显大于任何正常步进）；
+  // 一旦"待接受的跳幅"超过它（例如休眠 5 天），必须**接受新时刻并自曝**，绝不允许时间永久冻结。
+  const resyncMs = () => {
+    const v = numOf(read(settings, 'vmu.clock.resyncMs', 172800000), 172800000)
+    return Math.max(forwardJumpMs(), v)
+  }
 
   const state = {
     guarded: (typeof clock === 'function' || typeof now === 'function'),
@@ -56,6 +62,7 @@ export function createClockGuard({ clock = null, now = null, log = () => {}, set
     lastAction: null,
     lastClamped: false,
     lastClampedForward: false,
+    frozenSince: null, frozenForMs: 0, resyncs: 0, resynced: false,
     skews: [],
     dropped: { skews: 0 },
     counts: { calls: 0, backward: 0, forward: 0, clamped: 0, refused: 0, warned: 0, observes: 0 },
@@ -125,13 +132,31 @@ export function createClockGuard({ clock = null, now = null, log = () => {}, set
         state.last = raw; state.lastAction = 'forward-warn'; state.lastClamped = false
         return raw
       }
-      // clamp（默认）：**值不跳** ⇒ 消费方的 TTL/reap 不会因为一次异常前跳而集体过期
+      // clamp（默认）：**值不跳** ⇒ 消费方的 TTL/reap 不会因为一次异常前跳而集体过期。
+      // 但 clamp 必须是**有界**的：待接受跳幅超过 resyncMs ⇒ 接受新时刻并自曝 resynced:true（永冻不可接受）。
+      if (jump > resyncMs()) {
+        state.counts.resynced = (state.counts.resynced || 0) + 1
+        state.resyncs += 1
+        state.resynced = true
+        state.frozenForMs = jump
+        state.frozenSince = state.last
+        pushSkew({ at: state.counts.calls, from: state.last, to: raw, jumpMs: jump, frozenMs: jump, action: 'resync', clamped: false, suspect: true, resynced: true, selfExposed: true })
+        state.last = raw
+        state.lastAction = 'resync'
+        state.lastClamped = false
+        state.lastClampedForward = false
+        log('clockguard: forward jump ' + jump + 'ms EXCEEDED the resync budget (' + resyncMs() + 'ms) — RESYNCED to ' + raw + ' (time may never freeze forever)')
+        return raw
+      }
       state.counts.clamped += 1
-      pushSkew({ at: state.counts.calls, from: state.last, to: raw, jumpMs: jump, action: 'forward-clamp', clamped: true, clampedForward: true, suspect: true, selfExposed: true })
+      pushSkew({ at: state.counts.calls, from: state.last, to: raw, jumpMs: jump, frozenMs: jump, action: 'forward-clamp', clamped: true, clampedForward: true, suspect: true, selfExposed: true })
       state.lastAction = 'forward-clamp'
       state.lastClamped = false
       state.lastClampedForward = true
-      log('clockguard: forward jump ' + jump + 'ms CLAMPED (value stays ' + state.last + ')')
+      state.resynced = false
+      if (state.frozenSince === null) state.frozenSince = state.last
+      state.frozenForMs = raw - state.frozenSince
+      log('clockguard: forward jump ' + jump + 'ms CLAMPED (value stays ' + state.last + '; frozenForMs=' + state.frozenForMs + '/' + resyncMs() + ')')
       return state.last
     }
     state.lastClampedForward = false
@@ -176,8 +201,9 @@ export function createClockGuard({ clock = null, now = null, log = () => {}, set
       note: state.guarded ? 'the injected clock is guarded (monotonic by policy "' + policyOf() + '")' : 'no base clock injected: guarded=false (any time-based TTL/reap must be treated as UNGUARDED)',
       policy: { onBackward: policyOf(), policies: [...POLICIES], maxSkews: maxSkews(), forwardJumpMs: forwardJumpMs() },
       value: state.last, lastAction: state.lastAction, clamped: state.lastClamped, clampedForward: state.lastClampedForward === true,
+      frozenSince: state.frozenSince, frozenForMs: state.frozenForMs, resyncs: state.resyncs, resynced: state.resynced,
       clockTrust: {
-        onBackward: policyOf(), onForward: forwardPolicyOf(), policies: [...POLICIES],
+        onBackward: policyOf(), onForward: forwardPolicyOf(), policies: [...POLICIES], resyncMs: resyncMs(),
         maxBackwardMs: Math.max(0, numOf(read(settings, 'vmu.clock.maxBackwardMs', 0), 0)),
         forwardJumpMs: forwardJumpMs(), defaultForwardJumpMs: 86400000,
         counts: { backward: state.counts.backward, forward: state.counts.forward, clamped: state.counts.clamped, warned: state.counts.warned, refused: state.counts.refused },

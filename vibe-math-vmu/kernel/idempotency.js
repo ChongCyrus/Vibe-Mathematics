@@ -57,6 +57,7 @@ const K_ABORT_REASON = 'vmu.idempotency.abortNeedsReason'
 const K_RETRY_AFTER_ABORT = 'vmu.idempotency.retryAfterAbort'
 const K_RETRY_SAME_PAYLOAD = 'vmu.idempotency.retrySamePayloadOnly'
 const K_MAX_PAYLOAD = 'vmu.idempotency.maxPayloadBytes'
+const K_WRITER_ID = 'vmu.idempotency.writerId'
 const K_KEY_SCOPE = 'vmu.workflow.idempotencyKeyScope'   // the 08-doc spelling, read as a scope fallback
 
 /** A stable content checksum for a projection (round 9 / M3: an unverifiable document is never loaded). */
@@ -147,8 +148,10 @@ export function canonicalize(value) {
 /**
  * createIdempotency — the K6 ledger. `store` (kernel/store.js) is an OPTIONAL durability seam: with it the
  * ledger survives a restart; without it the ledger is memory-only and says so (`status().durable === false`).
+ * `writerId` names THIS ledger instance in the projection, so a concurrent overwrite can be DETECTED on load
+ * (round 10 / task-123): detection, not mutual exclusion — see the notes in `status()`.
  */
-export function createIdempotency({ clock = () => 0, log = null, settings = {}, bus = null, store = null } = {}) {
+export function createIdempotency({ clock = () => 0, log = null, settings = {}, bus = null, store = null, writerId = null } = {}) {
   if (typeof clock !== 'function') {
     throw refuse('VMU_INVALID_ARGUMENT', 'createIdempotency needs a clock function', 'pass { clock: () => ms } — the only time source is the injected clock')
   }
@@ -176,6 +179,10 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
   // which is then disclosed as `retryIsNewAttempt:true` (and audited as `payloadChanged`).
   const retrySamePayloadOnly = sget(K_RETRY_SAME_PAYLOAD, true) !== false
   const maxPayloadBytes = nonNegInt(sget(K_MAX_PAYLOAD, 0), 0)
+  // The writer identity is CONFIGURED (option, else the `vmu.idempotency.writerId` setting, else 'default'):
+  // it is never invented from randomness, so two ledgers only collide when the deployment says they are one.
+  const writerIdRaw = writerId === null || writerId === undefined ? sget(K_WRITER_ID, 'default') : writerId
+  const writer = typeof writerIdRaw === 'string' && writerIdRaw ? writerIdRaw : 'default'
 
   function nonNegInt(v, def) { return Number.isInteger(v) && v >= 0 ? v : def }
 
@@ -198,6 +205,13 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
   let lastPersistAt = null
   let lastPersistError = null
   let loadError = null
+  // ── round 10 / task-123: monotonic sequence + writer identity (DETECTION of concurrent overwrites) ──
+  let knownSeq = 0            // the highest seq this instance has written or read
+  let lastWrite = null        // the last successful write BY US: { seq, writerId, at }
+  let lastSeen = null         // what the store last showed us: { seq, writerId, at }
+  let staleWrites = 0
+  let lastLoadStale = null
+  let adoptedForeignWrites = 0
 
   const bump = (map, key, by = 1) => map.set(key, (map.get(key) || 0) + by)
   const objOf = (map) => { const o = {}; for (const k of [...map.keys()].sort()) o[k] = map.get(k); return o }
@@ -233,14 +247,21 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
     attempts: e.attempts, startedAt: e.startedAt, expiresAt: e.expiresAt, committedAt: e.committedAt,
     result: e.result === undefined ? null : e.result, abortedAt: e.abortedAt, abortReason: e.abortReason, by: e.by,
   }))
-  const projection = () => ({ version: CANONICAL_VERSION, savedAt: now(), checksum: checksumOf(rows()), entries: rows() })
+  const projection = (seq) => ({ version: CANONICAL_VERSION, seq, writerId: writer, savedAt: now(), checksum: checksumOf(rows()), entries: rows() })
   const persist = () => {
     if (!store || typeof store.patch !== 'function') {
       durableReason = 'no store seam was injected (the ledger is memory-only)'
       return { ok: true, durable: false, reason: durableReason, rows: rows().length }
     }
+    // The projection carries a MONOTONIC seq: a later load can tell whether the store still holds our write
+    // or an OLDER one (a concurrent overwrite). `seq` is only committed once the write actually succeeded.
+    const nextSeq = knownSeq + 1
+    const doc = projection(nextSeq)
     try {
-      store.patch(LEDGER_KEY, () => projection())
+      store.patch(LEDGER_KEY, () => doc)
+      knownSeq = nextSeq
+      lastWrite = { seq: nextSeq, writerId: writer, at: now() }
+      lastSeen = { seq: nextSeq, writerId: writer, at: now() }
       lastPersistAt = now()
       lastPersistError = null
       lastPatchOk = true
@@ -248,12 +269,12 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
       // cleared ONLY when the store has also been read back successfully in this lifetime (loadOk).
       if (loadOk) {
         durableDegraded = false
-        durableReason = 'persisted and verified through the injected store'
+        durableReason = 'persisted and verified through the injected store (seq ' + nextSeq + ', writer ' + writer + ')'
       } else {
         durableReason = 'the write succeeded, but the store was never read back successfully'
           + (loadError ? ' (' + loadError + ')' : '') + ' — durability is NOT established'
       }
-      return { ok: true, durable: isDurable(), rows: rows().length, at: lastPersistAt }
+      return { ok: true, durable: isDurable(), rows: rows().length, at: lastPersistAt, seq: nextSeq, writerId: writer }
     } catch (e) {
       durableDegraded = true
       lastPatchOk = false
@@ -261,7 +282,7 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
       durableReason = 'the store refused the projection: ' + lastPersistError
       bump(unwired, 'store-seam', 1)
       say({ type: 'idempotency/store-unwired', at: now(), why: lastPersistError })
-      return { ok: false, durable: false, error: lastPersistError, rows: rows().length }
+      return { ok: false, durable: false, error: lastPersistError, rows: rows().length, seq: knownSeq, writerId: writer }
     }
   }
   /** The ONE truthful durability verdict: seam wired + read verified + last write ok + not degraded. */
@@ -321,6 +342,43 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
       return { ok: false, checksumMismatch: true }
     }
     const persisted = doc.entries
+    // ── round 10 / task-123: is this projection still OUR latest write, or an OLDER overwrite? ──────────
+    const docSeq = Number.isInteger(doc.seq) && doc.seq >= 0 ? doc.seq : 0
+    const docWriter = typeof doc.writerId === 'string' && doc.writerId ? doc.writerId : null
+    lastSeen = { seq: docSeq, writerId: docWriter, at: now() }
+    if (docSeq < knownSeq) {
+      // The store holds an OLDER projection than one we already wrote or read: a concurrent writer has
+      // overwritten newer data (last-write-wins). DETECTED and disclosed — the in-memory state is kept.
+      staleWrites += 1
+      lastLoadStale = {
+        reason: 'older-seq', storeSeq: docSeq, knownSeq, storeWriterId: docWriter, writerId: writer, at: now(),
+        note: 'the store holds seq ' + docSeq + ' but this ledger already knows seq ' + knownSeq
+          + (docWriter ? ' (written by "' + docWriter + '")' : '') + ': a concurrent write overwrote newer data',
+      }
+      durableDegraded = true
+      durableReason = lastLoadStale.note + ' — the in-memory ledger is KEPT (it is newer) and stays USABLE, but the projection is NOT trustworthy until a fresh write succeeds'
+      bump(unwired, 'store-stale-write', 1)
+      say({ type: 'idempotency/store-stale-write', at: now(), why: lastLoadStale.note, storeSeq: docSeq, knownSeq })
+      return { ok: false, stale: true, staleWrite: lastLoadStale }
+    }
+    if (lastWrite && docSeq === lastWrite.seq && docWriter !== null && docWriter !== lastWrite.writerId) {
+      // Someone else wrote AT OUR seq after we did: one of the two writes was lost (they are not ordered).
+      staleWrites += 1
+      lastLoadStale = {
+        reason: 'same-seq-foreign-writer', storeSeq: docSeq, knownSeq, storeWriterId: docWriter, writerId: writer, at: now(),
+        note: 'seq ' + docSeq + ' was written by "' + docWriter + '" but this ledger wrote seq ' + lastWrite.seq
+          + ' as "' + lastWrite.writerId + '": a concurrent write was LOST (same seq, different writer)',
+      }
+      durableDegraded = true
+      durableReason = lastLoadStale.note + ' — the in-memory ledger is KEPT (it is USABLE) and the conflict is disclosed for manual reconciliation'
+      bump(unwired, 'store-stale-write', 1)
+      say({ type: 'idempotency/store-stale-write', at: now(), why: lastLoadStale.note, storeSeq: docSeq, knownSeq })
+      return { ok: false, stale: true, staleWrite: lastLoadStale }
+    }
+    if (docSeq > knownSeq) {
+      if (docWriter !== null && docWriter !== writer) adoptedForeignWrites += 1
+      knownSeq = docSeq   // continue the sequence from what the store actually holds
+    }
     let skipped = 0
     const seenInDoc = new Set()
     for (const row of persisted) {
@@ -436,6 +494,7 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
         ok: true, durable: isDurable(), loaded: loadOk, loadAttempted, lastPatchOk,
         degraded: durableDegraded, reason: durableReason, loadError,
         lastWriteAt: lastPersistAt, lastError: lastPersistError, at: now(),
+        seq: knownSeq, writerId: writer, staleWrites, lastLoadStale: lastLoadStale ? Object.assign({}, lastLoadStale) : null,
       }
     },
 
@@ -685,6 +744,14 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
         durableLastWriteAt: lastPersistAt,
         durableLastError: lastPersistError,
         ledgerKey: LEDGER_KEY,
+        seq: knownSeq,
+        writerId: writer,
+        staleWrites,
+        lastLoadStale: lastLoadStale ? Object.assign({}, lastLoadStale) : null,
+        adoptedForeignWrites,
+        lastWrite: lastWrite ? Object.assign({}, lastWrite) : null,
+        lastSeenInStore: lastSeen ? Object.assign({}, lastSeen) : null,
+        concurrencyPolicy: 'DETECT, do not lock: a stale/foreign projection is disclosed (staleWrites) while the newer in-memory state stays usable — there is no CAS, so two writers can still lose a write',
         entries: {
           total: all.length,
           pending: all.filter((e) => e.state === 'pending').length,

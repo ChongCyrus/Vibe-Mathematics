@@ -542,6 +542,10 @@ vmu.packs.active: [v5r]
 | `vmu.idempotency.retryAfterAbort` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/idempotency.js` | abort 后是否允许同 key 重试（同载荷 ✓） |
 | `vmu.idempotency.maxPayloadBytes` | int ≥0 | `262144` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/idempotency.js` | 载荷指纹计算上限（触界报丢弃 ✗） |
 | `vmu.idempotency.retrySamePayloadOnly` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/idempotency.js` | abort 后重试是否必须同载荷（默认是；放宽 ⇔ 重试是新尝试，必须自曝 ✗✓） |
+| `vmu.idempotency.writerId` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/idempotency.js` | 写者标识（用于识别"更旧的覆盖" ✓；**同一部署的多个进程必须各给唯一值** ✗否则只能靠 seq 回退发现 ✓） |
+| `vmu.clock.resyncMs` | int ≥0 | `60000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/clockguard.js` | 前跳冻结的**重同步上限**（累计冻结超此值 ⇒ 接受新时刻并自曝 resynced ✓；**永冻不可接受** ✗✓✓） |
+| `vmu.audit.chain.checkpointEvery` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/auditchain.js` | 自动检查点节奏（每 N 行；0＝手动 ✓，触发与失败都计数 ✗） |
+| `vmu.projection.maxMigrationSteps` | int ≥1 | `16` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/projmigrate.js` | 投影迁移步数上限（超限具名拒并给当前/上限 ✓） |
 | `vmu.replay.strict` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/replay.js` | 未知事件类型是否具名拒（默认 false：计入 unknownKinds ✓ 绝不静默跳过 ✗） |
 | `vmu.replay.keepUnknown` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/replay.js` | 未知事件是否保留在重建结果里（保留并标 unknown ✓） |
 | `vmu.replay.requireContiguousSeq` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/replay.js` | 是否要求审计序号连续（缺口必须报 ✗✓） |
@@ -565,7 +569,7 @@ vmu.packs.active: [v5r]
 | `vmu.audit.chain.algorithm` | string | `sha256` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/auditchain.js` | 链哈希算法声明（仅回显；实际由注入 hash 决定 ✗） |
 | `vmu.state.current` | string | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/stateversion.js` | 当前状态版本 |
 | `vmu.state.requireVersion` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/stateversion.js` | 状态必须带版本标签（缺失 ⇒ 具名拒，**绝不当成当前版本** ✗✓） |
-| `vmu.state.maxMigrationSteps` | int ≥1 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/stateversion.js` | 迁移步数上限（超限具名拒并给当前/上限 ✓） |
+| `vmu.state.maxMigrationSteps` | int ≥1 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/projmigrate.js` | 迁移步数上限（超限具名拒并给当前/上限 ✓） |
 | `vmu.state.onUnknown` | enum | `refuse` | `refuse`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `kernel/stateversion.js` | 未知版本策略（warn 时**必须自曝 `assumed`** ✗✓） |
 | `vmu.state.keepHistory` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/stateversion.js` | 是否保留迁移历史（留痕 ✓） |
 | `vmu.state.allowDowngrade` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/stateversion.js` | 是否允许降级迁移（默认拒；放行也必须自曝 ✗） |
@@ -968,28 +972,28 @@ vmu.packs.active: [v5r]
 | `vmu.lifecycle.searchSources` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.lifecycle.topicRequiredFields` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.lifecycle.variableRoles` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.math.ad` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
+| `vmu.math.ad` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
 | `vmu.math.ad.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.ad.gradCheck` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.artifacts` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
+| `vmu.math.artifacts` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.artifacts.dir` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.artifacts.maxAttemptsPerRun` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.artifacts.maxFileMb` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.artifacts.maxRuns` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.bayes` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
+| `vmu.math.artifacts.maxAttemptsPerRun` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.artifacts.maxFileMb` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.artifacts.maxRuns` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.bayes` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.bayes.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.bayes.chains` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.bayes.diagnostics` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
 | `vmu.math.bayes.iterations` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.bayes.pgm` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.cache` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.cache.crossProject` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.cache.enabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.cache.maxEntries` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.cache.onCorrupt` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.convergence` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.convergence.policy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.discrete` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
+| `vmu.math.cache` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
+| `vmu.math.cache.crossProject` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.cache.enabled` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.cache.maxEntries` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.cache.onCorrupt` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.convergence` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
+| `vmu.math.convergence.policy` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.discrete` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
 | `vmu.math.discrete.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.discrete.count` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.discrete.covering` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
@@ -1001,19 +1005,19 @@ vmu.packs.active: [v5r]
 | `vmu.math.discrete.proof` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.discrete.scheduling` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.discrete.spectral` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.formal` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
+| `vmu.math.formal` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
 | `vmu.math.formal.assistants` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.formal.axiomAudit` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.formal.axiomAudit` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.formal.coqArgs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.formal.coqCommand` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.formal.coqTimeoutMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.formal.coqTimeoutMs` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.formal.crossCheck` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.formal.librarySearch` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.formal.onDisagreement` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.formal.requireAll` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.formal.requireAll` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.formal.skeletonStyle` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.formal.sorryPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.geom` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
+| `vmu.math.formal.sorryPolicy` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.geom` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
 | `vmu.math.geom.algebraic` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.geom.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.geom.computational` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
@@ -1022,15 +1026,15 @@ vmu.packs.active: [v5r]
 | `vmu.math.geom.exactCoordinates` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.geom.symbolic` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.geom.topology` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.interval` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.interval.enabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.jobs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
-| `vmu.math.jobs.dir` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.jobs.logMax` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.jobs.maxParallel` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.jobs.persist` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.linalg` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
-| `vmu.math.linalg.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.interval` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
+| `vmu.math.interval.enabled` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.jobs` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
+| `vmu.math.jobs.dir` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.jobs.logMax` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.jobs.maxParallel` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.jobs.persist` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.linalg` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
+| `vmu.math.linalg.backend` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.linalg.decomp` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.linalg.eigen` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.linalg.generalized` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
@@ -1038,12 +1042,12 @@ vmu.packs.active: [v5r]
 | `vmu.math.linalg.precond` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.linalg.randomized` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.linalg.rank` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.linalg.requireResidual` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.linalg.requireResidual` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.linalg.solve` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.linalg.sparse` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
+| `vmu.math.linalg.sparse` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
 | `vmu.math.linalg.stability` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.network` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.nt` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
+| `vmu.math.network` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
+| `vmu.math.nt` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
 | `vmu.math.nt.approx` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.nt.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.nt.crypto` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
@@ -1055,11 +1059,11 @@ vmu.packs.active: [v5r]
 | `vmu.math.nt.proofRequiredAbove` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.nt.residues` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.nt.zetafn` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.numeric` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
+| `vmu.math.numeric` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
 | `vmu.math.numeric.special` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.numeric.stability` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.numeric.warnings` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
-| `vmu.math.ode` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
+| `vmu.math.numeric.stability` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
+| `vmu.math.numeric.warnings` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
+| `vmu.math.ode` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
 | `vmu.math.ode.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.ode.bvp` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.ode.events` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
@@ -1069,10 +1073,10 @@ vmu.packs.active: [v5r]
 | `vmu.math.ode.reportConvergence` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.ode.symbolic` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.ode.tolerance` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.optim` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
-| `vmu.math.optim.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.optim` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
+| `vmu.math.optim.backend` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.optim.backends` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.optim.certificates` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
+| `vmu.math.optim.certificates` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
 | `vmu.math.optim.convex` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.optim.cp` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.optim.global` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
@@ -1082,32 +1086,32 @@ vmu.packs.active: [v5r]
 | `vmu.math.optim.nlp` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.optim.robust` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.optim.sensitivity` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.optim.timeLimitMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.optim.tolerance` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.optim.timeLimitMs` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.optim.tolerance` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.optim.variational` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.precision` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.precision.digits` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.precision.mode` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.precision.rounding` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.precision.tolerance` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.proof` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.report` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
+| `vmu.math.precision` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
+| `vmu.math.precision.digits` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.precision.mode` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.precision.rounding` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.precision.tolerance` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.proof` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
+| `vmu.math.report` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.report.figures` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.report.includeRepro` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.report.language` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.report.style` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.repro` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.repro.deterministic` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.repro.packOnSuccess` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.repro.requireSeed` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.repro.seed` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
-| `vmu.math.sandbox` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.sandbox.cpuMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.sandbox.memoryMb` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.sandbox.network` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.sandbox.threads` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.sandbox.wallMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.stats` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
+| `vmu.math.report.includeRepro` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.report.language` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.report.style` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.repro` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
+| `vmu.math.repro.deterministic` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.repro.packOnSuccess` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.repro.requireSeed` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.repro.seed` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
+| `vmu.math.sandbox` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
+| `vmu.math.sandbox.cpuMs` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.sandbox.memoryMb` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.sandbox.network` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.sandbox.threads` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.sandbox.wallMs` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.stats` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
 | `vmu.math.stats.anova` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.stats.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.stats.causal` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
@@ -1120,7 +1124,7 @@ vmu.packs.active: [v5r]
 | `vmu.math.stats.survival` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.stats.tests` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.stats.timeseries` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.symbolic` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
+| `vmu.math.symbolic` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
 | `vmu.math.symbolic.assumptions` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
 | `vmu.math.symbolic.assumptionsPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.symbolic.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
@@ -1129,15 +1133,15 @@ vmu.packs.active: [v5r]
 | `vmu.math.symbolic.series` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.symbolic.solve` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.symbolic.special` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.tensor` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
+| `vmu.math.tensor` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
 | `vmu.math.tensor.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.units` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
+| `vmu.math.units` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
 | `vmu.math.units.constants` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.units.constantsSource` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.units.constantsSource` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.units.dimensions` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.units.enabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.units.enabled` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.units.solve` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 15（共见 1 卷：15），尚未实现（元数据以各卷为准） |
-| `vmu.math.units.strictDimensions` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.math.units.strictDimensions` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.units.uncertainty` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 2 卷：09、15），尚未实现（元数据以各卷为准） |
 | `vmu.meetings.appealDeadlineMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.meetings.appealReasonRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |

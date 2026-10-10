@@ -511,6 +511,92 @@ function msgHasNoBareBoom(fn) {
   ok(collide[0] !== collide[1], 'M2: (\'\',\'1:a\') and (\'1\',\':a\') no longer share an ident')
 }
 
+// ── 11e. task-123: monotonic seq + writerId ⇒ a concurrent overwrite is DETECTED and disclosed ──────
+// NOTE: every mutation (begin/commit/abort/retry/reap-with-changes) persists, so the seq advances once per
+// mutation — the assertions below count the writes rather than assuming one write per operation.
+{
+  const c = fakeClock(0)
+  const st = fakeStore()
+  const a = createIdempotency({ clock: c.clock, settings: S(), store: st, writerId: 'A' })
+  a.begin({ key: 'k', payload: 1 })       // write 1
+  a.commit({ key: 'k', result: 'a1' })    // write 2
+  ok(Number.isInteger(st.disk[LEDGER_KEY].seq) && st.disk[LEDGER_KEY].seq === 2 && st.disk[LEDGER_KEY].writerId === 'A', 'seq: the projection carries a monotonic seq and the writer id')
+  a.begin({ key: 'k2', payload: 2 })      // write 3
+  a.commit({ key: 'k2', result: 'a2' })   // write 4
+  ok(st.disk[LEDGER_KEY].seq === 4 && a.status().seq === 4, 'seq: every write increments seq (one write per mutation)')
+  ok(a.status().writerId === 'A' && a.status().lastWrite.seq === 4 && a.status().lastWrite.writerId === 'A', 'seq: status() exposes writerId/seq/lastWrite')
+  ok(a.status().staleWrites === 0 && a.status().lastLoadStale === null, 'seq: a normal same-instance ledger never reports a stale write')
+  const own = a.reload()
+  ok(own.ok === true && own.stale !== true && a.status().staleWrites === 0, 'seq: re-reading OUR OWN latest projection is NOT reported as stale (no false positive)')
+  ok(a.status().durable === true, 'seq: an own read+write cycle keeps the ledger durable')
+  ok(/DETECT, do not lock/.test(a.status().concurrencyPolicy) && /no CAS/.test(a.status().concurrencyPolicy), 'seq: status() states plainly that this is detection, not mutual exclusion')
+
+  // (2) an OLDER projection appears in the store (a stale writer overwrote newer data)
+  const older = JSON.parse(JSON.stringify(st.disk[LEDGER_KEY]))
+  older.seq = 3
+  older.writerId = 'B'
+  older.checksum = checksumOf(older.entries)   // the checksum is VALID: checksums cannot see an overwrite
+  st.disk[LEDGER_KEY] = older
+  const r = a.reload()
+  ok(r.ok === false && r.stale === true && r.staleWrite.reason === 'older-seq', 'stale: an OLDER projection is disclosed, never silently accepted')
+  ok(r.staleWrite.storeSeq === 3 && r.staleWrite.knownSeq === 4 && r.staleWrite.storeWriterId === 'B', 'stale: the disclosure names both seqs and the other writer')
+  const s1 = a.status()
+  ok(s1.staleWrites === 1 && s1.lastLoadStale.reason === 'older-seq' && s1.durableDegraded === true, 'stale: it is counted, kept in lastLoadStale, and durability is degraded')
+  ok(/overwrote newer data/.test(s1.durableReason) && /USABLE/.test(s1.durableReason), 'stale: the reason says what happened AND that the ledger stays usable')
+  ok(s1.unwired['store-stale-write'] === 1, 'stale: the stale read is counted as an unwired hazard')
+  ok(a.lookup({ key: 'k2' }).state === 'committed' && a.status().entries.total === 2, 'stale: the ledger REMAINS USABLE and the newer in-memory state is NOT rolled back')
+  ok(a.status().lastSeenInStore.seq === 3 && a.status().lastSeenInStore.writerId === 'B', 'stale: what the store showed is recorded too')
+  a.persist()   // write 5
+  ok(st.disk[LEDGER_KEY].seq === 5 && st.disk[LEDGER_KEY].writerId === 'A', 'stale: the next write repairs the store at seq 5 (monotonic, never backwards)')
+  ok(a.status().durable === true && a.status().durableDegraded === false, 'stale: a complete read+write cycle restores durability')
+  ok(a.status().staleWrites === 1, 'stale: the historical disclosure is retained (staleWrites keeps counting)')
+
+  // (3a) two writers alternating: the stale writer overwrites a NEWER projection ⇒ detected as an OLDER write
+  const st2 = fakeStore()
+  const w1 = createIdempotency({ clock: c.clock, settings: S(), store: st2, writerId: 'W1' })
+  w1.begin({ key: 'x', payload: 1 })      // 1
+  w1.commit({ key: 'x', result: 'w1' })   // 2  ⇒ doc {seq 2, W1}
+  const w2 = createIdempotency({ clock: c.clock, settings: S(), store: st2, writerId: 'W2' })
+  w2.begin({ key: 'y', payload: 1 })      // adopts 2, write 3
+  w2.commit({ key: 'y', result: 'w2' })   // write 4 ⇒ doc {seq 4, W2}
+  ok(st2.disk[LEDGER_KEY].seq === 4 && st2.disk[LEDGER_KEY].writerId === 'W2', 'concurrency: the second writer continues the sequence from what the store holds')
+  ok(w2.status().adoptedForeignWrites === 1 && w2.status().staleWrites === 0, 'concurrency: a NEWER foreign write is ADOPTED (that is not a stale read)')
+  w1.persist()                            // W1 is stale (knows 2) ⇒ writes 3 ⇒ OVERWRITES W2's newer seq-4 doc
+  ok(st2.disk[LEDGER_KEY].seq === 3 && st2.disk[LEDGER_KEY].writerId === 'W1', 'concurrency: the stale writer can still overwrite newer data (no CAS ⇒ the loss happens)')
+  const r2 = w2.reload()
+  ok(r2.ok === false && r2.stale === true && r2.staleWrite.reason === 'older-seq', 'concurrency: W2 DETECTS that a stale writer replaced its newer projection')
+  ok(r2.staleWrite.storeWriterId === 'W1' && /written by "W1"/.test(r2.staleWrite.note), 'concurrency: the disclosure names the other writer')
+  ok(/overwrote newer data/.test(w2.status().durableReason) && w2.status().staleWrites === 1, 'concurrency: the overwrite is disclosed with its reason and counted')
+  ok(w2.status().entries.total === 2 && w2.status().seq === 4, 'concurrency: W2 keeps its own (newer) in-memory state and stays usable')
+  ok(w2.lookup({ key: 'y' }).state === 'committed' && w2.lookup({ key: 'x' }).state === 'committed', 'concurrency: lookups still answer while the ledger is degraded')
+  const again = w2.reload()
+  ok(again.stale === true && w2.status().staleWrites === 2, 'concurrency: the same conflict is reported EVERY time it is seen (never swallowed after the first)')
+  const fresh = createIdempotency({ clock: c.clock, settings: S(), store: st2, writerId: 'W3' })
+  ok(fresh.status().staleWrites === 0 && fresh.lookup({ key: 'x' }).found === true, 'concurrency: a FRESH instance ADOPTS the projection without a false stale report')
+  ok(fresh.lookup({ key: 'y' }).found === false, 'concurrency: the LOST write is really gone from the store — the detection is what makes it visible')
+  ok(fresh.status().seq === 3 && fresh.status().adoptedForeignWrites === 1, 'concurrency: adopting a foreign projection continues its sequence')
+
+  // (3b) the SAME seq written by two different writers (a real race): our own write was replaced
+  const st3 = fakeStore()
+  const p1 = createIdempotency({ clock: c.clock, settings: S(), store: st3, writerId: 'P' })
+  p1.begin({ key: 'r', payload: 1 })      // 1
+  p1.commit({ key: 'r', result: 'p1' })   // 2 ⇒ lastWrite {seq 2, P}
+  const raced = JSON.parse(JSON.stringify(st3.disk[LEDGER_KEY]))
+  raced.writerId = 'Q'                     // another writer computed the SAME next seq and won the write
+  st3.disk[LEDGER_KEY] = raced
+  const r3 = p1.reload()
+  ok(r3.ok === false && r3.stale === true && r3.staleWrite.reason === 'same-seq-foreign-writer', 'race: the same seq written by another writer is DETECTED')
+  ok(r3.staleWrite.storeSeq === 2 && r3.staleWrite.knownSeq === 2 && r3.staleWrite.storeWriterId === 'Q' && r3.staleWrite.writerId === 'P', 'race: the disclosure names the seq and BOTH writers')
+  ok(/was LOST/.test(p1.status().durableReason) && /manual reconciliation/.test(p1.status().durableReason), 'race: the reason says a write was lost and points at manual reconciliation')
+  ok(p1.status().staleWrites === 1 && p1.status().durableDegraded === true, 'race: it is counted and durability is degraded')
+  ok(p1.lookup({ key: 'r' }).state === 'committed', 'race: the ledger is still USABLE (its in-memory state is kept)')
+
+  const noSeam = createIdempotency({ clock: c.clock, settings: S(), writerId: 'N1' })
+  ok(noSeam.status().writerId === 'N1' && noSeam.status().seq === 0 && noSeam.status().staleWrites === 0, 'seq: without a store the seq stays 0 and no stale report is invented')
+  const bySetting = createIdempotency({ clock: c.clock, settings: S({ 'vmu.idempotency.writerId': 'from-settings' }) })
+  ok(bySetting.status().writerId === 'from-settings', 'seq: the writer identity can come from the setting (no randomness involved)')
+}
+
 // ── 12. truncation counting + read-only purity + determinism ─────────────────────────────────────────
 {
   const c = fakeClock(0)

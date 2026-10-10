@@ -274,6 +274,8 @@
     "vibe-math-vmu/kernel/auditchain.js",
     "vibe-math-vmu/kernel/stateversion.js",
     "vibe-math-vmu/kernel/clockguard.js",
+    "vibe-math-vmu/kernel/mathtools.js",
+    "vibe-math-vmu/kernel/projmigrate.js",
     "tests/vmu-library-remove.test.mjs",
     "tests/vmu-library-revisions.test.mjs",
     "tests/vmu-transaction.test.mjs",

@@ -66,6 +66,8 @@ import { createAuditChain } from './auditchain.js'
 import { createStateVersion } from './stateversion.js'
 import { createHash } from 'node:crypto'
 import { createClockGuard } from './clockguard.js'
+import { createMathTools } from './mathtools.js'
+import { createProjectionMigrator } from './projmigrate.js'
 import { createWorkflow } from './workflow.js'
 import { createTrust } from './trust.js'
 import { createHandover } from './handover.js'
@@ -369,6 +371,13 @@ export function createKernel({
   // nothing - a backwards clock would still silently extend every TTL and keep every pending idempotency entry
   // alive forever. The guard is therefore built FIRST and its `now()` is handed to every module whose semantics
   // depend on elapsed time; the rest of the kernel keeps the raw clock, so the blast radius stays small.
+  // ROUND 21: the math-tool policy layer makes 45 of the declared `vmu.math.*` knobs genuinely change behaviour
+  // (each call's receipt carries an `enforced[]` list, so "the key was read" and "the key did something" are
+  // distinguishable), and the projection migrator is what keeps an old on-disk projection from being silently
+  // dropped when the kernel's own version moves.
+  const mathtools = createMathTools({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, spawn, library })
+  const projmigrate = createProjectionMigrator({ settings: { get: (k) => settings[k] }, bus, clock, log })
+
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
     services: { kernel: Object.freeze({ read: () => (store ? store.read() : null) }), setting: (k) => settings[k] },
@@ -424,6 +433,8 @@ export function createKernel({
   registry.register('vmu.auditchain', { apiVersion: 1 }, { kind: 'service', description: 'tamper-evident audit chain: no hash seam, no hash (N1)' })
   registry.register('vmu.stateversion', { apiVersion: 1 }, { kind: 'service', description: 'state versions and explicit migrations: no version is refused, not assumed (N4)' })
   registry.register('vmu.clockguard', { apiVersion: 1 }, { kind: 'service', description: 'monotonic clock guard, consumed by every TTL-sensitive service (N3)' })
+  registry.register('vmu.mathtools', { apiVersion: 1 }, { kind: 'service', description: 'math tool policy layer: 45 declared knobs change behaviour, the rest are named as unwired (docs/09·15)' })
+  registry.register('vmu.projmigrate', { apiVersion: 1 }, { kind: 'service', description: 'projection migration: an unlabelled or unreachable old document is refused, never dropped (A3)' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -530,6 +541,8 @@ export function createKernel({
     get auditchain() { return auditchain },
     get stateversion() { return stateversion },
     get clockguard() { return clockguard },
+    get mathtools() { return mathtools },
+    get projmigrate() { return projmigrate },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,

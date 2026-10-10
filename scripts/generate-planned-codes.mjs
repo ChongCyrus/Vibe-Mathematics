@@ -23,7 +23,7 @@
 //   · the volume named in the row is the FIRST design volume that mentions the code (deterministic);
 //   · the generated-mirror volume (docs/04, produced by the settings-table generator) is never a source.
 import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs'
-import { join, resolve, dirname } from 'node:path'
+import { join, resolve, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // PORTABILITY (independent reviewer, round 5): the old form resolved REPO from `process.argv[1]` treated as a
@@ -146,17 +146,42 @@ if (isMain) {
     }
   }
   walkRuntime(join(REPO, 'vibe-math-vmu'), 0)
-  const runtime = runtimeFiles.map((f) => readFileSync(f, 'utf8')).join('\n')
   const handCodes = [...handRegistered(head)].sort()
-  const implemented = handCodes.filter((c) => runtime.includes("'" + c + "'") || runtime.includes('"' + c + '"'))
-  const proposed = handCodes.filter((c) => !implemented.includes(c))
+  // PER-CODE LOCATIONS (§8.1, round 9): the previous report listed only the 63 PROPOSAL codes, so "docs call a
+  // code 提案 while the runtime throws something else" had no reader-facing line to check and no per-code status.
+  // Every hand-registered code now gets exactly ONE row carrying its status and the runtime files that contain it
+  // (a code can live in several files), so a reader - and the gate - can verify line by line.
+  const hits = new Map()
+  for (const f of runtimeFiles) {
+    const text = readFileSync(f, 'utf8')
+    const rel = relative(REPO, f).split('\\').join('/')
+    for (const c of handCodes) {
+      if (!(text.includes("'" + c + "'") || text.includes('"' + c + '"'))) continue
+      if (!hits.has(c)) hits.set(c, new Set())
+      hits.get(c).add(rel)
+    }
+  }
+  const filesOf = (c) => [...(hits.get(c) || [])].sort()
+  const implemented = handCodes.filter((c) => filesOf(c).length > 0)
+  const proposed = handCodes.filter((c) => filesOf(c).length === 0)
+  const statusRows = handCodes.map((c) => {
+    const files = filesOf(c)
+    return '| `' + c + '` | ' + (files.length ? '**已实现 ✓**' : '提案 ⛔') + ' | ' +
+      (files.length ? files.map((x) => '`' + x + '`').join('、') : '—') + ' | ' +
+      (files.length ? '代码里有该码字符串 ✓' : '仅登记在表里：实现时补语义与触发时机 ✓') + ' |'
+  })
   const statusLines = [
     '',
     '### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）',
     '',
-    '> 手写表登记 **' + handCodes.length + '** 个码：其中 **' + implemented.length + '** 个能在运行时代码里找到 ✓，',
-    '> **' + proposed.length + '** 个**暂时只存在于表里**（提案 ⛔）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；',
-    '> 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓，删改任一码都会让 `--check` 变红 ✓。',
+    '> 手写表登记 **' + handCodes.length + '** 个码，**逐行**给出状态 ✓：其中 **' + implemented.length + '** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），',
+    '> **' + proposed.length + '** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；',
+    '> 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，',
+    '> 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。',
+    '',
+    '| 码 | 状态 | 在哪实现（文件） | 备注 |',
+    '|---|---|---|---|',
+    ...statusRows,
     '',
     '提案码（' + proposed.length + '）：' + (proposed.length ? proposed.join('、') : '（无 ✓）'),
     '',

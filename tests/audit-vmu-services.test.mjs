@@ -48,6 +48,7 @@ const SURFACES = {
   'vmu.transaction': 'transaction', 'vmu.ratelimit': 'ratelimit',   // K1 (+K2), round 17
   'vmu.auditchain': 'auditchain', 'vmu.stateversion': 'stateversion',   // N1 (+N4), round 18
   'vmu.clockguard': 'clockguard',   // N3, round 19 (wired into every TTL-sensitive service)
+  'vmu.mathtools': 'mathtools', 'vmu.projmigrate': 'projmigrate',   // round 21
   'vmu.store': 'store', 'vmu.work': 'workLedger',
   'vmu.idempotency': 'idempotency',   // K6 (round 16): the unified idempotency ledger
 }

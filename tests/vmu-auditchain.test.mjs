@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
 
 let pass = 0, fail = 0
 const ok = (cond, label) => { if (cond) { pass++ } else { fail++; console.log('FAIL ' + label) } }
-const rejects = (fn) => { try { fn(); return { threw: false } } catch (e) { return { threw: true, code: e && e.code, hint: e && e.hint, op: e && e.op } } }
+const rejects = (fn) => { try { fn(); return { threw: false } } catch (e) { return { threw: true, code: e && e.code, hint: e && e.hint, op: e && e.op, differing: e && e.differing, mirror: e && e.mirror, primary: e && e.primary, reason: e && e.reason } } }
 
 let now = 1000
 const hasher = (pre) => createHash('sha256').update(pre).digest('hex')
@@ -214,6 +214,148 @@ const build = (n) => {
   const empty = c.checkpoint({ rows: [] })
   ok(empty.hash === GENESIS && empty.rows === 0 && /genesis marker/.test(String(empty.note)), 'empty checkpoint uses the explicit genesis marker')
   now = 1000
+}
+
+// ===== task-122: the anchor seam (checkpoint externalisation) =====
+
+// 18) checkpoint({persist}) with a fake external anchor ⇒ written, anchored:true, anchoredTo
+{
+  const store = { name: 'fake-file', cp: null, write(cp) { this.cp = cp }, read() { return this.cp } }
+  const c = createAuditChain({ clock: () => now, settings: {}, hash: hasher, anchor: store })
+  const { rows } = build(3)
+  const cp = c.checkpoint({ rows, persist: true })
+  ok(cp.anchored === true && cp.anchoredTo === 'fake-file' && cp.persisted === true, 'persisted checkpoint self-reports anchored:true + seam name')
+  ok(store.cp && store.cp.hash === rows[2].hash && store.cp.seq === 2, 'the checkpoint really is stored OUTSIDE the chain')
+  ok(/now detectable/.test(String(cp.note)), 'the note says a truncated tail is now detectable')
+  ok(c.status().anchor === 'read-write (fake-file)', 'status() reports the anchor seam')
+}
+
+// 19) no anchor seam ⇒ anchored:false and the plain warning (never a fake anchor)
+{
+  const c = createAuditChain({ clock: () => now, settings: {}, hash: hasher })
+  const { rows } = build(3)
+  const cp = c.checkpoint({ rows, persist: true })
+  ok(cp.anchored === false && cp.persisted === false, 'no seam ⇒ anchored:false')
+  ok(/NOT persisted externally/.test(String(cp.note)) && /cannot be detected/.test(String(cp.note)), 'the note says the checkpoint was NOT kept and a tail truncation cannot be detected')
+  ok(c.status().anchor === 'none' && /no readable anchor/.test(String(c.status().anchorNote)), 'status() says there is no readable anchor')
+}
+
+// 20) with the anchor, deleting the TAIL is detected through useAnchor (the criticised case, now closed)
+{
+  const store = { name: 'fake-file', cp: null, write(cp) { this.cp = cp }, read() { return this.cp } }
+  const c = createAuditChain({ clock: () => now, settings: {}, hash: hasher, anchor: store })
+  const { rows } = build(5)
+  c.checkpoint({ rows, persist: true })
+  const cut = rows.slice(0, 4)
+  const v = c.verifyChain({ rows: cut, useAnchor: true })
+  ok(v.ok === false && v.code === 'VMU_AUDIT_CHAIN_TRUNCATED' && v.reason === 'tail-truncated', 'deleted tail is caught via the anchor')
+  ok(v.anchored === true && v.anchoredTo === 'fake-file' && v.expected === store.cp.hash && v.actual === cut[3].hash, 'the verdict names the seam and shows expected vs actual')
+  ok(c.verifyChain({ rows, useAnchor: true }).ok === true, 'the intact chain passes via the anchor')
+}
+
+// 21) a TAMPERED anchor is reported as an inconsistency (never silently accepted)
+{
+  const store = { name: 'fake-file', cp: null, write(cp) { this.cp = cp }, read() { return this.cp } }
+  const c = createAuditChain({ clock: () => now, settings: {}, hash: hasher, anchor: store })
+  const { rows } = build(4)
+  c.checkpoint({ rows, persist: true })
+  store.cp = { seq: 3, hash: 'F'.repeat(64), at: now }          // the anchor itself was tampered with
+  const v = c.verifyChain({ rows, useAnchor: true })
+  ok(v.ok === false && v.code === 'VMU_AUDIT_CHAIN_TRUNCATED', 'tampered anchor ⇒ named failure (anchor and chain disagree)')
+  ok(v.expected === 'F'.repeat(64) && v.actual === rows[3].hash, 'the verdict shows anchor value vs chain value')
+}
+
+// 22) anchor read failure / empty anchor ⇒ named refusal (no silent downgrade to "unanchored")
+{
+  const broken = { name: 'broken', write() {}, read() { throw new Error('medium offline') } }
+  const c = createAuditChain({ clock: () => now, settings: {}, hash: hasher, anchor: broken })
+  const { rows } = build(2)
+  const r = rejects(() => c.verifyChain({ rows, useAnchor: true }))
+  ok(r.threw && r.code === 'VMU_AUDIT_CHAIN_ANCHOR_UNREADABLE', 'unreadable anchor ⇒ named refusal (not silently unanchored)')
+  const empty = { name: 'empty', write() {}, read() { return null } }
+  const c2 = createAuditChain({ clock: () => now, settings: {}, hash: hasher, anchor: empty })
+  const r2 = rejects(() => c2.verifyChain({ rows, useAnchor: true }))
+  ok(r2.threw && r2.code === 'VMU_AUDIT_CHAIN_ANCHOR_UNREADABLE', 'empty anchor ⇒ named refusal')
+  const writeOnly = createAuditChain({ clock: () => now, settings: {}, hash: hasher, anchor: { name: 'w', write() {} } })
+  const r3 = rejects(() => writeOnly.verifyChain({ rows, useAnchor: true }))
+  ok(r3.threw && r3.code === 'VMU_AUDIT_CHAIN_ANCHOR_UNREADABLE', 'write-only anchor cannot verify ⇒ named refusal')
+  const c3 = createAuditChain({ clock: () => now, settings: {}, hash: hasher })
+  const r4 = rejects(() => c3.verifyChain({ rows, useAnchor: true }))
+  ok(r4.threw && r4.code === 'VMU_AUDIT_CHAIN_ANCHOR_UNREADABLE', 'no anchor at all + useAnchor ⇒ named refusal')
+  const failingWrite = createAuditChain({ clock: () => now, settings: {}, hash: hasher, anchor: { name: 'f', write() { return false }, read() { return null } } })
+  const w = rejects(() => failingWrite.checkpoint({ rows, persist: true }))
+  ok(w.threw && w.code === 'VMU_AUDIT_CHAIN_ANCHOR_FAILED', 'a refusing anchor write fails by name (checkpoint not stored)')
+}
+
+// ===== task-129 (A1): anchor hygiene — cp.mac, mirrors, lag, rhythm =====
+
+const mkMac = (key) => ({ data }) => createHash('sha256').update(key + '::' + data).digest('hex')
+
+// 23) cp carries a mac; verifying it distinguishes "anchor tampered" from "chain tampered"
+{
+  const store = { name: 'primary', cp: null, write(cp) { this.cp = cp }, read() { return this.cp } }
+  const c = createAuditChain({ clock: () => now, settings: {}, sign: mkMac('k1'), anchor: store })
+  const rows = []
+  let prev = null
+  for (let i = 0; i < 3; i++) { const r = c.append({ row: { seq: i, what: 'update', at: 1000 + i, payload: { i } }, prevHash: prev }); rows.push(r); prev = r.hash }
+  const cp = c.checkpoint({ rows, persist: true })
+  ok(typeof cp.mac === 'string' && cp.mac.length > 0, 'checkpoint carries a mac (sign seam)')
+  ok(c.verifyChain({ rows, useAnchor: true }).ok === true, 'intact chain + intact anchor verifies')
+  store.cp = { ...store.cp, hash: 'A'.repeat(64) }          // ANCHOR tampered, old mac kept
+  const tamper = rejects(() => c.verifyChain({ rows, useAnchor: true }))
+  ok(tamper.threw && tamper.code === 'VMU_AUDIT_CHAIN_ANCHOR_TAMPERED', 'anchor mac mismatch ⇒ "the ANCHOR was modified" (not a chain failure)')
+  store.cp = cp
+  const cut = rows.slice(0, 2)                              // CHAIN tampered, anchor untouched
+  const chainTamper = c.verifyChain({ rows: cut, useAnchor: true })
+  ok(chainTamper.ok === false && chainTamper.code === 'VMU_AUDIT_CHAIN_TRUNCATED', 'chain tampered ⇒ chain code (the two failures are distinguishable)')
+  ok(tamper.code !== chainTamper.code, 'the two failures have different codes')
+}
+
+// 24) second copies must AGREE; disagreement names the odd copy
+{
+  const primary = { name: 'primary', cp: null, write(cp) { this.cp = cp }, read() { return this.cp } }
+  const offsite = { name: 'offsite', cp: null, write(cp) { this.cp = cp }, read() { return this.cp } }
+  const c = createAuditChain({ clock: () => now, settings: {}, sign: mkMac('k1'), anchor: primary, mirrors: [offsite] })
+  const rows = []
+  let prev = null
+  for (let i = 0; i < 3; i++) { const r = c.append({ row: { seq: i, what: 'update', at: 1000 + i, payload: { i } }, prevHash: prev }); rows.push(r); prev = r.hash }
+  const cp = c.checkpoint({ rows, persist: true })
+  ok(Array.isArray(cp.mirrors) && cp.mirrors.join(',') === 'offsite', 'the checkpoint reports which mirrors were written')
+  ok(primary.cp.hash === offsite.cp.hash && c.verifyChain({ rows, useAnchor: true }).ok === true, 'agreeing copies verify')
+  offsite.cp = { ...offsite.cp, hash: 'B'.repeat(64) }      // the offsite copy was altered
+  const mism = rejects(() => c.verifyChain({ rows, useAnchor: true }))
+  ok(mism.threw && mism.code === 'VMU_AUDIT_CHAIN_ANCHOR_MISMATCH', 'disagreeing copies ⇒ named refusal (never pick one)')
+  ok(mism.differing === 'offsite' && mism.mirror.hash === 'B'.repeat(64) && mism.primary.hash === cp.hash, 'the refusal NAMES the differing copy and both values')
+}
+
+// 25) anchorLagMs uses the injected clock; checkpointSeq/lastCheckpointAt are exposed
+{
+  const store = { name: 'primary', cp: null, write(cp) { this.cp = cp }, read() { return this.cp } }
+  const c = createAuditChain({ clock: () => now, settings: {}, sign: mkMac('k1'), anchor: store })
+  now = 10_000
+  const { rows } = build(2)
+  c.checkpoint({ rows, persist: true })
+  ok(c.status().lastCheckpointAt === 10_000 && c.status().checkpointSeq === 1 && c.status().anchorLagMs === 0, 'fresh checkpoint ⇒ lag 0, seq/at exposed')
+  now = 13_500
+  ok(c.status().anchorLagMs === 3500, 'anchorLagMs follows the injected clock (3500ms)')
+  ok(c.status().mirrors === 0 && c.status().checkpointEvery === 0, 'status reports mirrors/rhythm defaults')
+  now = 1000
+}
+
+// 26) automatic rhythm: checkpointEvery triggers; a failing anchor is COUNTED (never silent)
+{
+  const store = { name: 'primary', cp: null, write(cp) { this.cp = cp }, read() { return this.cp } }
+  const c1 = createAuditChain({ clock: () => now, settings: { 'vmu.audit.chain.checkpointEvery': 2 }, sign: mkMac('k1'), anchor: store })
+  const r1 = c1.append({ row: { seq: 0, what: 'update', at: 1 } })
+  ok(r1.autoCheckpoint === null, 'before the rhythm boundary nothing is triggered')
+  const r2 = c1.append({ row: { seq: 1, what: 'update', at: 2 }, prevHash: r1.hash })
+  ok(r2.autoCheckpoint && r2.autoCheckpoint.triggered === true && r2.autoCheckpoint.anchored === true, 'every 2nd row triggers a persisted checkpoint')
+  ok(c1.status().checkpointTriggers === 1 && c1.status().checkpointFailures === 0, 'the trigger is counted')
+  const failing = { name: 'broken', write() { throw new Error('medium down') }, read() { return null } }
+  const c2 = createAuditChain({ clock: () => now, settings: { 'vmu.audit.chain.checkpointEvery': 1 }, sign: mkMac('k1'), anchor: failing })
+  const f1 = c2.append({ row: { seq: 0, what: 'update', at: 1 } })
+  ok(f1.autoCheckpoint && f1.autoCheckpoint.triggered === true && f1.autoCheckpoint.failed === true, 'a failing automatic checkpoint is REPORTED on the row receipt')
+  ok(c2.status().checkpointTriggers === 1 && c2.status().checkpointFailures === 1, 'trigger and failure are both counted')
 }
 
 console.log('=== VMU AUDITCHAIN: ' + pass + ' passed, ' + fail + ' failed ===')
