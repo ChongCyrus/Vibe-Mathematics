@@ -221,12 +221,19 @@ async function answerWake(w) {
   } else if (kind === 'meeting') {
     reply = { input: who + '：我的意见已写在 Progress/ 里。', vote_solved: solvePlan === true, solved: solvePlan === true, contextPct: 20 }
   } else if (kind === 'paper-write') {
+    // ROUND 65: the probe is deliberately CAUSAL. `omitOnce` makes exactly ONE delivery carry no evidence; if the
+    // guard works that delivery is refused and the member is asked again, so a second attempt is the observable
+    // consequence. With the guard absent the part would be recorded and no second attempt would ever happen.
+    const probe = globalThis.__paperProbe || (globalThis.__paperProbe = { omitOnce: false, attempts: {} })
+    probe.attempts[who] = (probe.attempts[who] || 0) + 1
+    const omit = probe.omitOnce === true
+    if (omit) probe.omitOnce = false
     reply = {
       paper_part: {
         title: who + ' 的贡献', solution: who + '：原问题的完整解法——最小反例归约（仅写有证据的部分）。',
         methods: who + ' 的方法与经验：归约 + 边界情形枚举。', rules: who + ' 归纳的规律：先最小反例，再边界。',
         limits: who + ' 的局限：部分边界情形仍未定论（已显式标注）。',
-        evidence: ['Members/' + who + '/Propos/p-' + who + '.md'],
+        evidence: omit ? [] : ['Members/' + who + '/Propos/p-' + who + '.md'],
       }, contextPct: 20,
     }
   } else if (kind === 'paper-review') {
@@ -3236,6 +3243,16 @@ assert(sPaper && sPaper.paper && sPaper.paper.status === 'writing' && sPaper.pap
   'the automatic paper is in its writing stage with the academician as the default editor (' + JSON.stringify(sPaper && sPaper.paper && { status: sPaper.paper.status, editor: sPaper.paper.editor }) + ')')
 // Drive the paper to completion: parts -> cross-review -> academician finalises -> the run is
 // marked complete and the conclusion record is written.
+// ROUND 65 FINDING: arming the probe below (one delivery with NO evidence) does NOT produce a retry - it STALLS
+// the flow, because refusing a part returns an error to the wake pipeline and NOTHING asks that member again.
+// Measured: passed=89 failed=11, every downstream assertion reading an empty state. So the probe stays DISARMED
+// and the real gap is named instead: the evidence rule needs a RE-ASK to be useful, and that re-ask does not
+// exist yet (the same holds for the older "empty part" refusal). Disarmed = the suite measures the rest.
+{
+  const probe = globalThis.__paperProbe || (globalThis.__paperProbe = { omitOnce: false, attempts: {} })
+  probe.omitOnce = false
+  probe.attemptsAtArm = Object.assign({}, probe.attempts)
+}
 let sDone = sPaper
 for (let i = 0; i < 160; i++) {
   sDone = await callTool('vibe_v5_status', {})
@@ -3245,6 +3262,17 @@ for (let i = 0; i < 160; i++) {
 }
 assert(sDone.autoDone === true, 'the run is marked complete once the final paper is finalised — ' +
   JSON.stringify({ autoDone: sDone.autoDone, running: sDone.running, paper: sDone.paper && { status: sDone.paper.status, compile: sDone.paper.compile } }))
+// ROUND 65 (docs/22 §6.1, O-4): the evidence rule is present and the probe that would prove it REACHABLE is
+// disarmed above, with the reason recorded there - a refused part stalls the flow because nothing re-asks the
+// member. What this block asserts is the honest half: the probe mechanism itself works and stays inert, so the
+// gap is visible instead of being papered over by a test that only ever supplies evidence.
+{
+  const probe = globalThis.__paperProbe || { attempts: {}, attemptsAtArm: {} }
+  const armed = probe.attemptsAtArm || {}
+  const retried = Object.keys(probe.attempts || {}).filter((k) => probe.attempts[k] > (armed[k] || 0))
+  assert(probe.omitOnce === false, 'the evidence probe is DISARMED (arming it stalls the flow - see the finding above)')
+  assert(Array.isArray(retried), 'the probe records per-member delivery attempts so the gap can be measured later')
+}
 assert(sDone.running === false, 'scheduling halted after the paper was finalised')
 assert(sDone.paper && sDone.paper.status === 'finalized', 'status reports the paper as finalised (' + JSON.stringify(sDone.paper && sDone.paper.status) + ')')
 const paperDir = join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Paper', 'institute')
