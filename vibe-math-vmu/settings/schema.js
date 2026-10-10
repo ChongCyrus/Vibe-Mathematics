@@ -474,6 +474,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.state.allowDowngrade', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '是否允许降级迁移（默认拒；放行也必须自曝 ✗）' },
   // N3 (round 18): the clock monotonicity guard (not wired yet - contract alignment is still open, see docs/11 §9.8).
   { key: 'vmu.clock.onBackward', type: 'enum', domain: ['clamp', 'refuse', 'warn'], def: 'clamp', hot: HOT.H1, who: 'office', doc: '时钟回拨处置（clamp 不回退并自曝；refuse 具名拒；warn 必须自曝 ✗✓）' },
+  { key: 'vmu.clock.maxBackwardMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '回拨容忍（≤ 容忍不判回拨 ✓）' },
   { key: 'vmu.clock.forwardJumpMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '异常前跳阈值（0＝不判定；超阈记 suspect ✓ 不静默 ✗）' },
   { key: 'vmu.clock.maxSkews', type: 'positiveInteger', def: 100, hot: HOT.H1, who: 'office', doc: '回拨/前跳记录上限（溢出必计数 ✓）' },
   { key: 'vmu.handover.packBudgetBytes', type: 'positiveInteger', def: 32768, hot: HOT.H1, who: 'office', doc: '上下文包预算（触界必报丢弃）' },

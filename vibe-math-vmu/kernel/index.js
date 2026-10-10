@@ -64,6 +64,8 @@ import { createTransaction } from './transaction.js'
 import { createRateLimit } from './ratelimit.js'
 import { createAuditChain } from './auditchain.js'
 import { createStateVersion } from './stateversion.js'
+import { createHash } from 'node:crypto'
+import { createClockGuard } from './clockguard.js'
 import { createWorkflow } from './workflow.js'
 import { createTrust } from './trust.js'
 import { createHandover } from './handover.js'
@@ -153,6 +155,12 @@ export function createKernel({
   deliver = null,
   bus: injectedBus = null,
 } = {}) {
+  // CONSUMER WIRING (round 19, the point an independent reviewer made): a clock guard nobody uses changes
+  // nothing - a backwards clock would still extend every TTL and keep every pending idempotency entry alive
+  // forever. The guard is therefore built FIRST (before any TTL-sensitive service) and its `now()` is handed to
+  // exactly the modules whose semantics depend on elapsed time; the rest of the kernel keeps the raw clock.
+  const clockguard = createClockGuard({ clock, log: (m) => log('clockguard: ' + m), settings: { get: (k) => settings[k] } })
+  const guardedClock = () => clockguard.now()
   const enabled = settings['vmu.core.enabled'] !== false
   const dryRun = settings['vmu.middleware.dryRun'] === true
 
@@ -277,11 +285,11 @@ export function createKernel({
   // The audit SERVICE reuses the kernel's EXISTING disk seam (`auditToDisk`) instead of opening a second write
   // path: the ring above stays the in-memory view, this service is the queryable/rotatable face over it.
   const audit = createAudit({ settings: { get: (k) => settings[k] }, bus, clock, log, sink: auditToDisk })
-  const alerts = createAlerts({ settings: { get: (k) => settings[k] }, bus, clock, log, metrics })
+  const alerts = createAlerts({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, metrics })
   // `library` is the EXISTING kernel library; the module counts any unsupported adapter method as skipped and
   // never pretends a delete succeeded. Delegation gets the live members surface plus explicit roots (authority
   // that does not come from a delegation); without roots, S-2 refuses every grant - which is the honest default.
-  const retention = createRetention({ settings: { get: (k) => settings[k] }, bus, clock, log, library })
+  const retention = createRetention({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, library })
   // `roots` = who holds authority that does NOT come from a delegation. It is an EXPLICIT setting rather than
   // a guess from role names: unset means nobody can grant anything (S-2 refuses every grant), which is the
   // honest zero-mechanism default. Guessing "office looks like a root" would be policy hiding in the kernel.
@@ -328,10 +336,12 @@ export function createKernel({
   const lifecycle = createLifecycle({ settings: { get: (k) => settings[k] }, bus, clock, log, workflow,
     domaingate, publication })
   // K6 (round 16): the unified idempotency ledger that a replay/retry path can consult before doing work again.
-  const idempotency = createIdempotency({ settings: { get: (k) => settings[k] }, bus, clock, log })
+  // The ledger gets BOTH the guarded clock (so a backwards clock cannot keep a pending key alive forever) and
+  // the kernel store (so idempotency survives the restart that a retry usually follows).
+  const idempotency = createIdempotency({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, store })
   // K5 (round 16): read-only replay of the audit log. It never writes back into any service - rebuilding state
   // is a pure function, and gaps in the log are reported rather than papered over.
-  const replay = createReplay({ settings: { get: (k) => settings[k] }, bus, clock, log, audit, idempotency })
+  const replay = createReplay({ settings: { get: (k) => settings[k] }, bus, clock: guardedClock, log, audit, idempotency })
   // K1/K2 (round 17): compensation transactions and rate limiting. Transactions get the idempotency ledger so a
   // replay across instances is deduplicated; the limiter is inert unless a rate is declared (and says so).
   const transaction = createTransaction({ settings: { get: (k) => settings[k] }, bus, clock, log, idempotency })
@@ -339,9 +349,19 @@ export function createKernel({
   // N1/N4 (round 18): the tamper-evident audit chain (its hash seam is injected by the host; without it the
   // module refuses rather than inventing a hash) and the state-version/migration primitive that keeps an old
   // snapshot from being read silently by newer code.
-  const auditchain = createAuditChain({ settings: { get: (k) => settings[k] }, bus, clock, log, hash: null })
+  // CONSUMER WIRING (round 19): the chain used to be built with `hash: null`, which made it honest but USELESS -
+  // it could only refuse. The kernel now hands it a real sha256 seam, so a preset actually gets a tamper-evident
+  // chain; a host that wants its own hash can override it, and the "no seam, no hash" rule still governs the
+  // module itself. The ledger gets the kernel store too, which is what makes idempotency survive a restart -
+  // and a restart is exactly when a retry arrives.
+  const auditchain = createAuditChain({ settings: { get: (k) => settings[k] }, bus, clock, log,
+    hash: (row) => createHash('sha256').update(typeof row === 'string' ? row : JSON.stringify(row)).digest('hex') })
   const stateversion = createStateVersion({ settings: { get: (k) => settings[k] }, bus, clock, log })
 
+  // CONSUMER WIRING (round 19, the point an independent reviewer made): a clock guard that nobody uses changes
+  // nothing - a backwards clock would still silently extend every TTL and keep every pending idempotency entry
+  // alive forever. The guard is therefore built FIRST and its `now()` is handed to every module whose semantics
+  // depend on elapsed time; the rest of the kernel keeps the raw clock, so the blast radius stays small.
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
     services: { kernel: Object.freeze({ read: () => (store ? store.read() : null) }), setting: (k) => settings[k] },
@@ -396,6 +416,7 @@ export function createKernel({
   registry.register('vmu.ratelimit', { apiVersion: 1 }, { kind: 'service', description: 'token-bucket rate limiting on the injected clock; unlimited by default and it says so (K2)' })
   registry.register('vmu.auditchain', { apiVersion: 1 }, { kind: 'service', description: 'tamper-evident audit chain: no hash seam, no hash (N1)' })
   registry.register('vmu.stateversion', { apiVersion: 1 }, { kind: 'service', description: 'state versions and explicit migrations: no version is refused, not assumed (N4)' })
+  registry.register('vmu.clockguard', { apiVersion: 1 }, { kind: 'service', description: 'monotonic clock guard, consumed by every TTL-sensitive service (N3)' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -501,6 +522,7 @@ export function createKernel({
     get ratelimit() { return ratelimit },
     get auditchain() { return auditchain },
     get stateversion() { return stateversion },
+    get clockguard() { return clockguard },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,

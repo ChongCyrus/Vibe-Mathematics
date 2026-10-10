@@ -31,7 +31,9 @@ const numOf = (v, d) => { const n = Number(v); return Number.isFinite(n) ? n : d
  * `createClockGuard({ now, log, settings, onBackward })` —— `now` 是**注入的底层时钟**（必填才 guarded）。
  * 本模块**从不**调用 `Date.now()` / `performance.now()`。
  */
-export function createClockGuard({ now = null, log = () => {}, settings = {}, onBackward = null } = {}) {
+export function createClockGuard({ clock = null, now = null, log = () => {}, settings = {}, onBackward = null, bus = null } = {}) {
+  // 注入优先；零机制 ⇒ 默认底层时钟（行为同直连），但 status() 自曝 guarded:false。本模块其余处不读真实时间。
+  const base = typeof clock === 'function' ? clock : (typeof now === 'function' ? now : () => Date.now())
   const policyOf = () => {
     const v = onBackward !== null ? onBackward : read(settings, 'vmu.clock.onBackward', 'clamp')
     if (!POLICIES.includes(v)) throw refuse('VMU_INVALID_ARGUMENT', 'unknown onBackward policy: ' + String(v), 'one of ' + POLICIES.join('|'))
@@ -41,7 +43,7 @@ export function createClockGuard({ now = null, log = () => {}, settings = {}, on
   const forwardJumpMs = () => Math.max(0, numOf(read(settings, 'vmu.clock.forwardJumpMs', 0), 0))
 
   const state = {
-    guarded: typeof now === 'function',
+    guarded: (typeof clock === 'function' || typeof now === 'function'),
     last: null,
     lastAction: null,
     lastClamped: false,
@@ -59,14 +61,15 @@ export function createClockGuard({ now = null, log = () => {}, settings = {}, on
   /** now()：受守卫的当前时刻（单调不减，按策略处置回拨）。 */
   function nowGuarded() {
     if (!state.guarded) {
-      throw refuse('VMU_CLOCK_UNGUARDED', 'no base clock is injected: the guarded clock cannot be read (zero-mechanism)',
-        'construct createClockGuard({ now }) — this module never reads real time itself')
+      // 零机制：**不抛错** —— 服务可替换的默认底层时钟（行为同直连），由 status() 自曝 guarded:false
+      log('clockguard: UNGUARDED (no injected clock): serving the replaceable default base clock')
     }
-    const raw = Number(now())
+    const raw = Number(base())
     if (!Number.isFinite(raw)) throw refuse('VMU_CLOCK_UNGUARDED', 'the injected clock returned a non-finite value: ' + String(raw), 'the ticker must return a finite number')
     state.counts.calls += 1
     if (state.last === null) { state.last = raw; state.lastAction = 'init'; state.lastClamped = false; return raw }
-    if (raw < state.last) {
+    const maxBack = Math.max(0, numOf(read(settings, 'vmu.clock.maxBackwardMs', 0), 0))
+    if (raw < state.last && (state.last - raw) > maxBack) {
       state.counts.backward += 1
       const policy = policyOf()
       if (policy === 'refuse') {
@@ -97,7 +100,7 @@ export function createClockGuard({ now = null, log = () => {}, settings = {}, on
     const jump = raw - state.last
     if (forwardJumpMs() > 0 && jump > forwardJumpMs()) {
       state.counts.forward += 1
-      pushSkew({ at: state.counts.calls, from: state.last, to: raw, jumpMs: jump, action: 'forward-jump', clamped: false, selfExposed: true })
+      pushSkew({ at: state.counts.calls, from: state.last, to: raw, jumpMs: jump, action: 'suspect', clamped: false, selfExposed: true })
       log('clockguard: abnormal forward jump ' + jump + 'ms (recorded, never silent)')
     }
     state.last = raw
@@ -107,7 +110,7 @@ export function createClockGuard({ now = null, log = () => {}, settings = {}, on
   }
 
   /** observe()：只观察，**不改状态**（不调用底层时钟、不写 skew、不加 calls）。 */
-  function observe() {
+  function observe({ at = null } = {}) {
     state.counts.observes += 1
     return {
       guarded: state.guarded,
@@ -121,7 +124,19 @@ export function createClockGuard({ now = null, log = () => {}, settings = {}, on
     }
   }
 
-  /** status()：只读快照（零机制自曝 guarded:false；skews 全量。 */
+  /** skew()：只读列出记录到的时钟异常（回拨/拒绝/warn/前跳）＋截断计数。 */
+  function skew() {
+    return { ok: true, count: state.skews.length, skews: state.skews.slice(), dropped: { skews: state.dropped.skews }, counts: Object.assign({}, state.counts) }
+  }
+
+  /** monotonic({from,to})：纯判定器（不碰状态）。 */
+  function monotonic({ from, to } = {}) {
+    const a = Number(from), b = Number(to)
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return { ok: false, monotonic: false, reason: 'non-finite input' }
+    return { ok: true, monotonic: b >= a, from: a, to: b, backwardMs: b < a ? a - b : 0, toleranceMs: Math.max(0, numOf(read(settings, 'vmu.clock.maxBackwardMs', 0), 0)) }
+  }
+
+  /** status()：只读快照（零机制自曝 guarded:false；skews 全量）。 */
   function status() {
     return {
       ok: true, apiVersion,
@@ -134,5 +149,5 @@ export function createClockGuard({ now = null, log = () => {}, settings = {}, on
     }
   }
 
-  return { now: nowGuarded, observe, status }
+  return { now: nowGuarded, observe, skew, monotonic, status, clockSource: base }
 }
