@@ -38,7 +38,14 @@ const DOC_FILES = readdirSync(DOCS)
   .filter((f) => /^\d\d-[A-Za-z0-9-]+\.md$/.test(f))
   .map((f) => f.replace(/\.md$/, ''))
   .sort()
-ok(DOC_FILES.length === 15, 'the design set is exactly 15 docs (00..14)', DOC_FILES.join(','))
+// The set is DISCOVERED *and it GROWS*: the volume map (00 §3) may add 15, 16, ... as the design phase
+// expands, so the guard is a FLOOR plus CONTIGUITY from 00 - never an equality. The equality is what forced a
+// growing design set into exactly fifteen files, which made the audit itself the bottleneck of the expansion.
+ok(DOC_FILES.length >= 15, 'the design set has at least the 15 core docs (00..14)', DOC_FILES.join(','))
+{
+  const nums = DOC_FILES.map((n) => Number(n.slice(0, 2)))
+  ok(nums.every((n, i) => n === i), 'the design set is numbered contiguously from 00 with no gaps', nums.join(','))
+}
 
 // ---- A. the design set exists and is non-trivial -------------------------------------------------
 const docText = new Map()
@@ -61,7 +68,11 @@ for (const row of contract.matchAll(/^\| ([^|]+)\|/gm)) {
   for (const m of row[1].matchAll(/`(VMU_[A-Z0-9_]+)`/g)) registered.add(m[1])
 }
 ok(registered.size >= 15, 'the error-code table registers a substantial set', registered.size)
-const isPlaceholder = (code) => code.endsWith('_') || code.includes('PACKID') || code.includes('REASON')
+// A FAMILY PREFIX (`VMU_ARCHIVE_`) is prose about a namespace, not a claim that a code exists. This used to
+// also exempt any code CONTAINING "PACKID"/"REASON", which silently skipped REAL codes whose last segment is
+// the word REASON (`VMU_REASON_REQUIRED`, `VMU_DELEGATION_REASON_REQUIRED`) - an independent reviewer proved
+// the hole. The only placeholder form is the trailing-underscore family prefix.
+const isPlaceholder = (code) => code.endsWith('_')
 const codeUse = new Map()
 for (const [name, text] of docText) {
   for (const m of text.matchAll(/\b(VMU_[A-Z0-9_]{3,})\b/g)) {
@@ -202,7 +213,10 @@ ok(unregisteredInCode.length === 0,
   const missingInContract = [...implemented].filter((t) => !contract.includes('`' + t + '`'))
   ok(missingInContract.length === 0, 'every tool the host registers is registered in 03-§3', missingInContract.join(','))
 
-  const MARKERS = /未实现|未接线|规划|提案|roadmap|⛔|待实现|目标形态|尚未/
+  // `计划` is included deliberately: it is the natural Chinese word for "planned", and a volume that writes
+  // "（计划）" IS marking the tool as not-yet-registered. The audit's job is that the reader is told, not that a
+  // particular word is used; the volumes also use 规划/未实现/⛔ (docs/00 §4 fixes the vocabulary).
+  const MARKERS = /未实现|未接线|规划|计划|提案|roadmap|⛔|待实现|目标形态|尚未/
   const unmarked = []
   for (const [name, hits] of documented) {
     if (implemented.has(name)) continue
@@ -312,8 +326,10 @@ ok(unregisteredInCode.length === 0,
   ok(emitted.size >= 10, 'the emitter scan found the real producers', [...emitted].sort().join(','))
 
   // Declared gaps: registered, no producer yet. Keeping this list HONEST is the point (docs/05 §4.3).
+  // `prompt/section-assembled` LEFT this list the moment the assembly path emitted the frozen name instead of
+  // the drifted `prompt/assemble` - which is exactly what this two-sided check is for.
   const KNOWN_UNEMITTED = new Set(['turn/reply-parsed', 'record/append-before', 'record/appended',
-    'prompt/section-assembled', 'budget/exceeded', 'pack/loading', 'pack/loaded'])
+    'budget/exceeded', 'pack/loading', 'pack/loaded'])
   const missing = registered.filter((h) => !emitted.has(h) && !KNOWN_UNEMITTED.has(h))
   ok(missing.length === 0,
     'every registered vmu hook is either EMITTED or explicitly listed as not-yet-emitted',

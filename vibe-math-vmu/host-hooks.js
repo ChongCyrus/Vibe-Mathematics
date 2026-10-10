@@ -146,7 +146,10 @@ export function attachHostHooks({ ctx, kernel, settings = {}, log = () => {} } =
           const payload = { tool: exec.name || exec.tool || null, args: exec.args || {}, agent: exec.agent || null, hook }
           let decided = null
           try {
-            decided = await kernel.bus.emit(hook, payload, {})
+            // BRIDGE: these are the HOST's hook names (DSH vocabulary), forwarded so vmu middleware can observe
+            // and steer them. The bus refuses names outside its frozen set - except on the bridge path, which is
+            // exempt precisely because the vocabulary here belongs to the substrate, not to vmu (kernel/bus.js).
+            decided = await kernel.bus.emit(hook, payload, { bridge: true })
           } catch (e) {
             // A middleware failure must not silently allow the call: the host's own failure policy applies,
             // and vmu records the reason (docs/05 §7).

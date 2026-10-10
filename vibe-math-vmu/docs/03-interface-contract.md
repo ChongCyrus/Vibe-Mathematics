@@ -64,7 +64,7 @@
 | `vmu.members` | `roles()`／`roster()`／`hire({id,slot})`／`assignRole(id,slot)`／`end(id,reason)`／`wake(id,ask,{role?,phase?})`（**注入接缝**；缺则具名拒 ✓）／`may(id,permission)`（**只做包含判断** ✓）／`status()` | `VMU_RESOURCE_BUDGET`（**报当前数与上限** ✓）／`VMU_NO_SUCH_OBJECT`／`VMU_STATE`／`VMU_ENGINE_UNAVAILABLE` |
 | `vmu.tasks` | `create({title,objective?,owner?,deps?,priority?})→{ok,id,state}`／`assign(id,who)`／`transition(id,to,{reason})`／`list()`／`stage()`／`advance({to,reason})`（**先过 `stageGate`** ✓）／`rollback({reason})`／**`brief(id)`／`briefOf(id)`／`clearBrief(id)`**（任务简报＝给该任务负责人的执行流程 ✓）／`history(id?)`／`status()` | `VMU_STATE`（依赖未满足／非法转换／**暂停中** ✓）／`VMU_RESOURCE_BUDGET` |
 | `vmu.prompt` | `register(s)→entry`／`assemble(ctx)→{ok,text,sources[],truncation[],at}`／`override(section,text,by)→{ok,previous}`／`rollback(section)`／`snapshot(scopes)`／`bindToHost(adapter)`／`setState(text)`／`status()→{sections[],bindings,truncation[],middlewareAppends[]}` | `VMU_NOT_PERMITTED`／`VMU_INVALID_ARGUMENT`／`VMU_NO_SUCH_OBJECT`／`VMU_ENGINE_UNAVAILABLE` |
-| `vmu.middleware` | `status()→{dryRun,hookTimeoutMs,breakerThreshold,entries[],hooks[]}`／`entries()`／`disable(id,reason)`／`enable(id)`／`setDryRun(v)`／`isDryRun()`／`emit(hook,payload,{scope?,traceId?,member?,role?,phase?})→{ok,decisions[],traceId,refused?,aborted?,decision}`／`on(entry,handler)→id`／`add(entry)→entry`／`trace(traceId)→Trace[]`／`wrapHostWaterfall(next)→async(payload)` | `VMU_MIDDLEWARE_FAILED`／`VMU_MIDDLEWARE_REJECTED`／`VMU_INVALID_ARGUMENT` |
+| `vmu.middleware` | `status()→{dryRun,hookTimeoutMs,breakerThreshold,entries[],hooks[]}`／`entries()`／`disable(id,reason)`／`enable(id)`／**`declareTopic(name)→{ok,topic,existing}`（协议扩展点：冻结集之外的新钩子主题必须先声明才可 emit ✓，名字非法即具名拒 `VMU_INVALID_ARGUMENT` ✓）**／`setDryRun(v)`／`isDryRun()`／`emit(hook,payload,{scope?,traceId?,member?,role?,phase?})→{ok,decisions[],traceId,refused?,aborted?,decision}`（**未知钩子名具名拒** ✓，宿主瀑布桥以 `bridge:true` 豁免 ✓）／`on(entry,handler)→id`／`add(entry)→entry`／`trace(traceId)→Trace[]`／`wrapHostWaterfall(next)→async(payload)` | `VMU_MIDDLEWARE_FAILED`／`VMU_MIDDLEWARE_REJECTED`／`VMU_INVALID_ARGUMENT` |
 | `vmu.store` | `open(expected)→{opened,version,migration?}`／`read(key)→Value`（**克隆** ✓）／`write(key,value)→{ok,key,version,changed}`／`patch(key,fn)→同左`（**fold 内函数式** ✓）／`subscribe(key,fn)→Disposer`／`migrate()`／`export()→Snapshot`／`import(snapshot)`／`stats()` | `VMU_STORE_FAILED`／`VMU_STORE_MIGRATION`／`VMU_INVALID_ARGUMENT`（未登记键 ✓） |
 | `vmu.work` | `start({owner,kind,objective})→{ok,entry}`／`settle(id,{outcome})→{ok,settled,remaining}`／`interrupt(id,reason)`／`recover({reason})→{ok,recovered,entries[]}`／`list()`／`pending()`／`interrupted()`／`status()` | `VMU_STATE`（**暂停中** ✓）／`VMU_NO_SUCH_OBJECT`／`VMU_INVALID_ARGUMENT`／`VMU_STORE_FAILED`（store 未 open ✓） |
 
@@ -217,6 +217,218 @@
 | `VMU_JOB_TIMEOUT` / `VMU_JOB_CANCELLED` | 作业超时/被取消 | 计算/形式化作业 | ✅ |
 | `VMU_MATH_INVALID_INPUT` | 数学输入非法（域/精度/单位） | 计算面 | ✅ |
 | `VMU_MEETING_TOO_SMALL` | 会议参与人数不足（门槛由中间件定，**码由内核登记**） | 会议原语 | ✅ |
+| `VMU_NOT_FOUND` | 要引用的**段/包/脚本/对象**不存在（泛型缺席；`VMU_NO_SUCH_OBJECT` 更偏"悬空 id"） | 中间件/提示词/装载 | ✅（须给**下一步**） |
+| `VMU_CONFLICT` | **声明冲突**（钩子/段/服务重名、同区间相斥声明） | 中间件/提示词/装载 | ✅（须给**冲突双方**） |
+| `VMU_VERSION_MISMATCH` | **协议/包版本**不匹配（`apiVersion`/manifest/消息 schema） | 中间件/包/协议 | ✅（须给**双方版本**） |
+| `VMU_TIMEOUT` | 泛型超时（钩子/脚本；作业面另有 `VMU_JOB_TIMEOUT`） | 中间件/脚本 | ✅（须给**当前预算**） |
+| `VMU_DEGRADED` | 条目处于**降级窗口**（熔断/退避中，能力可用性下降） | 中间件 | ✅（须给**恢复条件**） |
+| `VMU_NAME_CONFLICT` | 归档**命名冲突**（slug 撞名且策略未给出可用后缀） | 归档/库 | ✅（须给**冲突名与策略**） |
+| `VMU_WRITE_FAILED` | 耐久写入失败（原子写/落盘/权限；比 `VMU_STORE_FAILED` 更贴文件层） | 归档/库 | ✅（须给**路径与 errno 面**） |
+| `VMU_BODY_TRUNCATED` | 正文被**计数式截断**返回（**永不静默** ✓） | 归档/库 | ✅（须给**截断字节与上限**） |
+| `VMU_META_VALIDATION_FAILED` | 元数据 schema 校验失败 | 归档/库 | ✅（须给**字段与规则**） |
+| `VMU_REF_DANGLING` | 引用目标不存在（策略可 warn/refuse） | 归档/库 | ✅（须给**悬空引用 id**） |
+| `VMU_AUDIT_WRITE_FAILED` | 审计落盘失败（**不得静默吞掉** ✓） | 归档/审计 | ✅ |
+| `VMU_INDEX_STALE` | 索引陈旧超容忍度（须重建或降级为直读） | 归档/检索 | ✅（须给**陈旧度**） |
+| `VMU_QUOTA_EXCEEDED` | 触达配额（软/硬阈值） | 归档/配额 | ✅（须给**当前值与阈值**） |
+| `VMU_CRYPTO_VERIFY_FAILED` | 完整性/签名校验失败 | 归档/加密 | ✅ |
+| `VMU_EXTERNAL_UNAVAILABLE` | 外部对象/远端后端不可达 | 归档/远端 | ✅（须给**离线策略**） |
+| `VMU_PATH_ESCAPE_REFUSED` | 路径逃逸被拒（`vmu.safety.pathPolicy` 面；与 `VMU_NOT_PERMITTED` 并存，此码**专指路径面**） | 安全/归档/脚本 | ✅（须给**被拒路径与策略**） |
+| `VMU_MIGRATE_DRYRUN_FAILED` | 迁移 **dry-run** 失败（未落盘即失败 ✓） | 迁移 | ✅（须给**失败步骤**） |
+| `VMU_ROLLBACK_UNAVAILABLE` | 无可用回退点（未先落回退点 ⇒ 拒绝执行） | 迁移 | ✅ |
+| `VMU_ROLLBACK_FAILED` | 回退执行失败（**须人工介入** ✓） | 迁移 | ✅（须给**卡在哪一步**） |
+| `VMU_COMPAT_UNKNOWN_COMBO` | 兼容矩阵里**未知组合**（**不得默认当作兼容** ✓） | 迁移/兼容 | ✅ |
+| `VMU_ALIAS_AMBIGUOUS` | 别名解析**多义**（同别名指向多个目标） | 迁移/命名 | ✅（须给**候选列表**） |
+| `VMU_PARAM_RENAMED` / `VMU_PARAM_DEPRECATED` / `VMU_PARAM_REMOVED` | 参数**改名/废弃/已移除**（三阶段；废弃期须给替代键 ✓） | 设置/迁移 | ✅ |
+| `VMU_PACK_KERNEL_OVERRIDE_REFUSED` | 整合包试图覆盖**内核强制面**被拒（R-d ✓） | 包/装载 | ✅（须给**被拒的键/面**） |
+| `VMU_FORMAL_NOT_FOUND` | 形式化**工具链/定理库**不存在（Lean/Mathlib/Loogle 等） | 形式化面 | ✅（须给**怎么装/怎么指路**） |
+| `VMU_FORMAL_SORRY_FOUND` | 证明里仍有 `sorry`/`admit`（**≠ 编译失败** ✗） | 形式化面 | ✅（须给**位置**） |
+| `VMU_FORMAL_AXIOM_UNTRUSTED` | 用到未受信公理/`axiom`（信任边界外） | 形式化面 | ✅（须给**公理清单**） |
+| `VMU_FORMAL_ADAPTER_UNSUPPORTED` | 该证明助手**无适配器**或适配器不支持该操作 | 形式化面 | ✅ |
+| `VMU_FORMAL_SKELETON_UNAVAILABLE` | 证明骨架生成不可用（缺模板/缺上下文） | 形式化面 | ✅ |
+| `VMU_FORMAL_REPRO_INCOMPLETE` | **复现包不完整**（缺环境锁定/脚本/数据指针） | 形式化/复现 | ✅（须给**缺什么**） |
+| `VMU_FORMAL_DISAGREEMENT` | 形式化结论与数值/经验结论**不一致**（须并置呈现，**不得自动择一** ✓） | 形式化面 | ✅ |
+| `VMU_FORMAL_LIBRARY_NOT_INDEXED` | 定理库未建索引（检索不可用，须给重建办法） | 形式化面 | ✅ |
+| `VMU_MATH_UNSUPPORTED_OP` | 请求的数学操作在**当前引擎**无实现（须给可用引擎/替代 ✓） | 计算面 | ✅ |
+| `VMU_MATH_DIMENSION_MISMATCH` | 量纲/维度不匹配 | 计算面 | ✅（须给**两侧量纲**） |
+| `VMU_MATH_SINGULAR_MATRIX` | 奇异矩阵/不可逆 | 计算面 | ✅ |
+| `VMU_MATH_NONCONVERGENT` | 迭代/求解**不收敛**（须给迭代数/残差 ✓） | 计算面 | ✅ |
+| `VMU_MATH_RESIDUAL_TOO_LARGE` | 残差超容差（结果不可用，**不得当作答案** ✗） | 计算面 | ✅ |
+| `VMU_MATH_PRECISION_LOST` | 精度损失超阈值（须给丢失位数/条件数 ✓） | 计算面 | ✅ |
+| `VMU_MATH_INTERVAL_EMPTY` | 区间/置信区间为**空**（前提矛盾或数据不足） | 计算面 | ✅ |
+| `VMU_MATH_ASSUMPTION_CONFLICT` | 符号假设**互相矛盾**（须给冲突假设 ✓） | 计算面 | ✅ |
+| `VMU_MATH_SEED_REQUIRED` | 结果依赖随机性但**未给种子** ⇒ **拒绝声称可复现** ✓ | 计算/复现 | ✅ |
+| `VMU_MATH_REPRO_MISMATCH` | 复算与既有结果**不一致**（须给两次输入指纹 ✓） | 计算/复现 | ✅ |
+| `VMU_MATH_CACHE_CORRUPT` | 计算缓存损坏（须给处置：丢弃/重建 ✓） | 计算面 | ✅ |
+| `VMU_MATH_JOB_PERSIST_FAILED` | 作业**持久化失败**（断点续算不可用 ✓） | 计算面 | ✅ |
+| `VMU_MATH_SANDBOX_DENIED` | 沙箱**拒绝**（网络/文件/进程能力越界） | 计算/安全 | ✅（须给**被拒能力**） |
+| `VMU_MATH_RESOURCE_LIMIT` | 触达计算资源上限（CPU/内存/时间/输出） | 计算面 | ✅（须给**哪一项与上限**） |
+| `VMU_MATH_ARTIFACT_TOO_LARGE` | 产物超上限（须给出**未落盘字节数** ✓） | 计算面 | ✅ |
+| **会议·议程·动议·纪要（卷 08 规划面 ✓）** | | | |
+| `VMU_MEETING_QUORUM_LOST` | 法定人数**会中流失**（复算时判） | 会议 | ✅（须给**流失后处置**） |
+| `VMU_MEETING_UNANSWERED_POLICY` | 未答语义与门槛配置**冲突** | 会议 | ✅ |
+| `VMU_MEETING_ORDER_DENIED` | 发言顺序/优先权被拒 | 会议 | ✅ |
+| `VMU_MEETING_SPEECH_TIMEBOUND` | 超时间箱/发言配额 | 会议 | ✅（须给**上限**） |
+| `VMU_MEETING_INTERRUPT_DENIED` | 打断不允许/超配额 | 会议 | ✅ |
+| `VMU_MEETING_CONFIDENTIAL_DENIED` | 保密级别不允许读/引用 | 会议 | ✅ |
+| `VMU_MEETING_RECESS_LIMIT` | 休会超上限 | 会议 | ✅ |
+| `VMU_MEETING_APPEAL_OUT_OF_SCOPE` | 申诉不在受理范围 | 会议 | ✅（须给**受理范围**） |
+| `VMU_MEETING_DISCIPLINE_DENIED` | 纪律动作不允许 | 会议 | ✅ |
+| `VMU_MEETING_EMERGENCY_NOT_ALLOWED` | 紧急程序不适用 | 会议 | ✅ |
+| `VMU_AGENDA_ITEM_REQUIRED` | 需要**一等议程条目** | 议程 | ✅ |
+| `VMU_AGENDA_SPLIT_DEPTH` | 议程拆分超深度 | 议程 | ✅ |
+| `VMU_AGENDA_OWNER_REQUIRED` | 条目缺负责人 | 议程 | ✅ |
+| `VMU_MOTION_NOT_SECONDED` | 动议未获附议 | 动议 | ✅ |
+| `VMU_MOTION_EXPIRED` | 动议过期失效 | 动议 | ✅ |
+| `VMU_MOTION_WITHDRAWN` | 动议已撤回 | 动议 | ✅ |
+| `VMU_MOTION_TABLE_LIMIT` | 搁置超上限 | 动议 | ✅ |
+| `VMU_AMENDMENT_REJECTED` | 修正案不被接受 | 动议 | ✅ |
+| `VMU_MINUTES_NOT_CONFIRMED` | 上次纪要未确认 | 纪要 | ✅ |
+| `VMU_MINUTES_ACTION_REQUIRED` | 决议缺行动项 | 纪要 | ✅ |
+| **表决（卷 08 ✓）** | | | |
+| `VMU_BALLOT_METHOD_UNSUPPORTED` | 计票方法未实现/未声明 | 表决 | ✅（须给**可用方法**） |
+| `VMU_BALLOT_MIN_VOTES_NOT_MET` | 本次投票**成立门槛未达** | 表决 | ✅（须给**当前与门槛**） |
+| `VMU_BALLOT_TIE_UNRESOLVED` | 平票且规则未定 | 表决 | ✅ |
+| `VMU_BALLOT_ROUNDS_EXHAUSTED` | 多轮用尽 | 表决 | ✅ |
+| `VMU_BALLOT_SECRECY_LOCKED` | 开票后要求改记名方式 | 表决 | ✅ |
+| `VMU_BALLOT_ABSTAIN_NOT_ALLOWED` | 本板不允许弃权 | 表决 | ✅ |
+| `VMU_BALLOT_FROZEN` | 冻结中投票被拒（**票不入账** ✓） | 表决 | ✅ |
+| `VMU_RECUSAL_REQUIRED` | 该表决要求**回避** | 表决 | ✅ |
+| `VMU_PROXY_NOT_ALLOWED` | 代理/委托未启用（默认 **off** ✓） | 表决 | ✅ |
+| `VMU_PROXY_CHAIN_TOO_DEEP` | 委托链超深/成环 | 表决 | ✅ |
+| `VMU_VETO_NOT_ALLOWED` | 未启用否决权 | 表决 | ✅ |
+| `VMU_REOPEN_FLOOR_NOT_MET` | 复议门槛未达 | 表决 | ✅ |
+| `VMU_REOPEN_WRONG_INITIATOR` | 复议发起人不合规 | 表决 | ✅ |
+| `VMU_RECOUNT_MISMATCH` | **复算与结论不一致** | 表决 | ✅（须给**两次计数**） |
+| `VMU_RECOUNT_SCOPE_DENIED` | 无权复算/导出 | 表决 | ✅ |
+| **工作流·看板·预算·控制·触发·度量（卷 08 ✓）** | | | |
+| `VMU_WORKFLOW_DEP_TYPE_UNSUPPORTED` | 依赖类型未声明 | 工作流 | ✅ |
+| `VMU_WORKFLOW_GATE_NOT_MET` | 门未达成 | 工作流 | ✅（须给**缺哪一项**） |
+| `VMU_WORKFLOW_WIP_LIMIT` | 看板列超 WIP | 工作流 | ✅ |
+| `VMU_WORKFLOW_RETRY_EXHAUSTED` | 重试耗尽 | 工作流 | ✅ |
+| `VMU_WORKFLOW_CHECKPOINT_MISSING` | 无检查点可回滚 | 工作流 | ✅ |
+| `VMU_WORKFLOW_COMPENSATION_FAILED` | 补偿失败 | 工作流 | ✅ |
+| `VMU_WORKFLOW_ESCALATION_TARGET_UNKNOWN` | 升级对象不存在 | 工作流 | ✅ |
+| `VMU_WORKFLOW_RACI_MISSING_OWNER` | 任务无责任人 | 工作流 | ✅ |
+| `VMU_WORKFLOW_SUBTASK_DEPTH` | 子任务超深 | 工作流 | ✅ |
+| `VMU_WORKFLOW_TEMPLATE_UNKNOWN` | 模板不存在 | 工作流 | ✅ |
+| `VMU_WORKFLOW_ARBITRATION_OFF` | 仲裁未启用 | 工作流 | ✅ |
+| `VMU_BUDGET_SCOPE_UNKNOWN` | 预算范围未登记 | 预算 | ✅ |
+| `VMU_BUDGET_RESERVE_EXHAUSTED` | 预留用尽 | 预算 | ✅ |
+| `VMU_CONTROL_SCOPE_UNKNOWN` | 暂停范围非法 | 控制流 | ✅（须给**合法面**） |
+| `VMU_CONTROL_NO_TIMER` | 宿主**无定时器服务**（看门狗不可用 ✓） | 控制流 | ✅ |
+| `VMU_SCHEDULER_TRIGGER_LIMIT` | 触发器超上限 | 调度 | ✅ |
+| `VMU_SCHEDULER_ACTION_FORBIDDEN` | 触发器动作越界（**试图改状态** ✗） | 调度 | ✅ |
+| `VMU_METRICS_TRIGGER_FORBIDDEN` | 度量试图触发动作 | 度量 | ✅ |
+| `VMU_IDEMPOTENCY_KEY_REUSED` | 幂等键重复且**载荷不同** | 工作流 | ✅（须给**键与差异**） |
+
+<!-- PLANNED-CODES:BEGIN (generated by scripts/generate-planned-codes.mjs — do not hand-edit) -->
+
+> **以下为设计阶段登记的计划错误码（生成块 ✓）**：由 `scripts/generate-planned-codes.mjs` 从各设计卷抽取 ✓，
+> 与上表同属 **唯一登记表** ✓；**未实现**（`⛔`）⇒ 实现时把它们移入手写上表并补全语义与触发时机 ✓。
+
+| 码 | 语义 | 来源 | 状态 |
+|---|---|---|---|
+| `VMU_ACTING_NOT_ALLOWED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_ALIAS_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 13 | ⛔ |
+| `VMU_ARBITER_IS_PARTY` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_ARBITER_UNAVAILABLE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_ARBITRATION_OFF` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_AUCTION_CLOSED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_AUCTION_INVALID_BID` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_AUCTION_LIMIT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_CHARTER_CONFLICT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_CHARTER_DEPTH` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_CHARTER_DISSOLVE_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_CHARTER_FISSION_LIMIT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_CHARTER_FROZEN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_CHARTER_NOT_AUTHORIZED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_CHARTER_QUORUM` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_CITE_ID_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
+| `VMU_COLLUSION_SUSPECTED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_COMPAT_MATRIX_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 13 | ⛔ |
+| `VMU_CONFLICT_LIMIT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_CONFLICT_STALE_REVISION` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
+| `VMU_CONFLICT_TARGET_UNKNOWN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_CONSENSUS_NOT_REACHED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_DEDUPE_REFCOUNT_UNDERFLOW` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
+| `VMU_DELEGATION_BUDGET` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_DELEGATION_DEPTH` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_DELEGATION_ESCALATION` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_DELEGATION_EXPIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_DELEGATION_REASON_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_DEPRECATION_SILENT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 13 | ⛔ |
+| `VMU_DISCIPLINE_CIRCUIT_OPEN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_DISCIPLINE_POSTMORTEM_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_DISCIPLINE_QUOTA` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_DISCIPLINE_SUSPENDED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_DUTY_CONFLICT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_EXPLAIN_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_EXPORT_VISIBILITY_BLOCKED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
+| `VMU_FAIRNESS_CONCENTRATION` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_FAIRNESS_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_FAIRNESS_QUOTA` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_FP_ALGO_UNKNOWN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
+| `VMU_GC_REFUSED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
+| `VMU_HANDOVER_FALLBACK_USED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_HANDOVER_INCOMPLETE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_HANDOVER_NOT_ACCEPTED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_HANDOVER_PACK_TOO_BIG` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_HANDOVER_TIMEOUT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_HEAD_FIELD_IMMUTABLE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
+| `VMU_HISTORY_CHAIN_BROKEN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
+| `VMU_HUMAN_APPROVAL_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_HUMAN_TIMEOUT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_HUMAN_VETOED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_IDENTITY_ENDS_WITH_OPEN_WORK` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_IDENTITY_ISSUER_UNTRUSTED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_IDENTITY_MULTI_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_IDENTITY_PSEUDONYM_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_IDENTITY_TRANSFER_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_IDENTITY_UNBOUND` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_IMPORT_CONFLICT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
+| `VMU_IO_FAILED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 08 | ⛔ |
+| `VMU_LOCK_TIMEOUT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
+| `VMU_MEMORY_CARD_INVALID` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_MEMORY_COMPACTION_REFUSED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_MEMORY_KEY_UNSCOPED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_MEMORY_VISIBILITY_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_MENTOR_REVIEW_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_MENTOR_SELF_PAIR` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_MENTOR_UNAVAILABLE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_MIGRATE_CONFIRM_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 13 | ⛔ |
+| `VMU_MIGRATE_UNCOVERED_PRESENT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 13 | ⛔ |
+| `VMU_MW_ORDER_CONFLICT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 13 | ⛔ |
+| `VMU_NEGOTIATION_FAILED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_PACK_MANIFEST_MISMATCH` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
+| `VMU_PACK_TASK_UNVERIFIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 19 | ⛔ |
+| `VMU_PACK_VOTING_NOT_LOCKED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 19 | ⛔ |
+| `VMU_PROBATION_ACTIVE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_PROMPT_SECTION_DRIFT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 13 | ⛔ |
+| `VMU_REASON_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_RECALL_QUORUM_NOT_MET` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_RECRUIT_CLOSED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_RECRUIT_EVIDENCE_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_RETENTION_CONFLICT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
+| `VMU_ROLE_TERM_EXPIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_SEARCH_UNEXPLAINED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
+| `VMU_SKILL_DEGRADED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_SKILL_EVIDENCE_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_SKILL_RETIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_SKILL_UNKNOWN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_SLOT_FULL` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_SLOT_UNKNOWN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_SOCIETY_DISABLED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_STORE_VERSION_NEWER` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
+| `VMU_TOPOLOGY_UNSUPPORTED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_TRASH_EXPIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
+| `VMU_TRUST_APPEAL_WINDOW` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_TRUST_EVIDENCE_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_TRUST_SELF_SCORE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_TRUST_USE_FORBIDDEN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
+| `VMU_WRITE_PARTIAL` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
+
+<!-- PLANNED-CODES:END -->
+
 | **`VMU_IO_FAILED`** | **写盘/IO 失败**（与"状态不对"**区分**：调用方应重试或改路径，而不是改状态机 ✗） | 耐久/记录/归档 | ✅（**R-c 已裁定：新增** ✓，替代把 `V5_WRITE_FAILED` 混入 `VMU_STATE` ✗） |
 
 > **登记纪律（门禁 D14）**：文档/代码中出现的每个 `VMU_*` 都**必须**在本表登记；**未登记即红** ✗。新增码 ⇒ **只增不改语义**（改语义＝新码，见 §7）✓。

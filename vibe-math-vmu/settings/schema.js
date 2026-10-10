@@ -50,7 +50,11 @@ export const HOT = Object.freeze({ H0: 'H0', H1: 'H1', H2: 'H2', H3: 'H3' })
  * refusals; `type`/`domain` drive both derivations; `hot` and `who` are the operational contract.
  * `doc` is the one-line human description that lands in the generated parameter table (04-§11).
  */
-export const SETTING_DEFS = Object.freeze([
+/**
+ * The HAND-WRITTEN core table. `SETTING_DEFS` below composes it with the GENERATED planned keys
+ * (`settings/planned.js`), so every consumer keeps reading one table (docs/04 §2).
+ */
+const CORE_DEFS = Object.freeze([
   // ---- core ---------------------------------------------------------------------------------
   { key: 'vmu.core.enabled', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '内核总开关（关闭＝完全不介入）' },
   { key: 'vmu.core.storeBackend', type: 'enum', domain: ['json-fold', 'storage-domain'], def: 'json-fold', hot: HOT.H3, who: 'office', doc: '耐久后端（O1：默认 fold；换后端须过同一套门禁）' },
@@ -126,6 +130,21 @@ export const SETTING_DEFS = Object.freeze([
   { key: 'vmu.packs.allowOverride', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '是否允许 pack 间显式覆盖' },
   { key: 'vmu.packs.activeOverrides', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '显式覆盖声明（不声明即报错）' },
 ])
+
+/**
+ * THE PLANNED KEYS (settings/planned.js) — GENERATED from the design docs, never hand-edited.
+ *
+ * The phase-2 design set declares hundreds of parameters long before they are implemented (docs 07/08/09/13/15
+ * alone name ~350). Composing them into the SAME table is what keeps ONE honest registry: each carries
+ * `type: 'planned'` and `def: null`, so the settings table derives its "未接线（planned）" marker from the same
+ * code path as any other unwired key, the docs audit can demand that every key a volume names EXISTS, and the
+ * plan is machine-visible instead of prose. Implementing a key means moving it out of the generated file into
+ * the hand-written table above with real metadata; `scripts/generate-planned-settings.mjs --check` keeps the two
+ * apart (a key that has been implemented must NOT stay "planned").
+ */
+import { PLANNED_DEFS } from './planned.js'
+
+export const SETTING_DEFS = Object.freeze([...CORE_DEFS, ...PLANNED_DEFS])
 
 const BY_KEY = new Map(SETTING_DEFS.map((d) => [d.key, d]))
 

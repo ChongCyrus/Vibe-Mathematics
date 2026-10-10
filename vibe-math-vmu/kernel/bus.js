@@ -50,6 +50,13 @@ export const VU_HOOKS = Object.freeze([
   'control/paused', 'control/resumed', 'control/heartbeat',
 ])
 
+/**
+ * Bus topics that are NOT vmu hooks: the host-waterfall bridge publishes the DSH waterfall under this name (and
+ * passes the host's own hook name through) so middleware can observe/steer it. Kept SEPARATE from `VU_HOOKS`
+ * because the docs' hook table is the vmu-internal contract, while these are bridge topics (docs/05 §4.1 vs §4.2).
+ */
+export const BRIDGE_TOPICS = Object.freeze(['host/waterfall'])
+
 /** Default failure policy per hook, so an entry that omits one still behaves safely (docs/05 §4.3). */
 export const DEFAULT_FAILURE = Object.freeze({
   'member/wake-before': 'closed', 'member/wake-after': 'closed', 'turn/reply-parsed': 'closed',
@@ -120,6 +127,9 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
   const traceOrder = []
   let dryRun = false
   let seq = 0
+  // Topics a deployment declared EXPLICITLY (docs/05 §6 protocol extension). The frozen VU_HOOKS set is the
+  // contract; anything else must be declared before it can be emitted - zero mechanism, nothing implicit.
+  const customTopics = new Set()
 
   const audit = (record) => {
     const row = Object.assign({ ts: clock(), seq: seq++ }, record)
@@ -223,10 +233,38 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
     },
 
     /**
+     * Declare a NEW hook topic (docs/05 §6, the protocol-extension point). The frozen `VU_HOOKS` set is the
+     * contract, so a genuinely new topic must be declared here before anything may emit it: nothing appears
+     * without a declaration (zero mechanism). Declaring twice is not an error, and `existing` says which.
+     */
+    declareTopic(name) {
+      if (typeof name !== 'string' || !/^[a-z0-9-]+\/[a-z0-9-]+$/.test(name)) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'a hook topic must look like domain/name: ' + String(name),
+          'e.g. lab/review-requested (kebab-case on both sides)')
+      }
+      const existing = VU_HOOKS.includes(name) || customTopics.has(name)
+      customTopics.add(name)
+      return { ok: true, topic: name, existing }
+    },
+
+    /**
      * Run one hook. Returns { ok, decisions, traceId, refused? , aborted? }.
      * A deny is terminal and named; an abort is reported to the caller to end the turn or stage.
      */
     async emit(hook, payload = {}, opts = {}) {
+      // HOOK-NAME MEMBERSHIP (independent verification, task-40). The name was never validated, so a misspelled
+      // hook - or a name that had drifted from the frozen set (the proven case: `prompt/assemble` was emitted
+      // while the registry declared `prompt/section-assembled`) - reached NO listener: the middleware never ran
+      // and nothing said so. An unknown name is now refused BY NAME, and the message names the extension point.
+      // The host-waterfall BRIDGE is exempt (`opts.bridge`): it deliberately forwards the host's own hook names,
+      // which are DSH's vocabulary, not vmu's, and refusing them would break the substrate bridge itself.
+      const bridged = opts && opts.bridge === true
+      if (!bridged && (typeof hook !== 'string' ||
+        !(VU_HOOKS.includes(hook) || BRIDGE_TOPICS.includes(hook) || customTopics.has(hook)))) {
+        throw refuse('VMU_INVALID_ARGUMENT',
+          'unknown vmu hook: ' + String(hook) + ' (' + VU_HOOKS.length + ' declared + ' + customTopics.size + ' custom)',
+          'declared: ' + VU_HOOKS.join(', ') + ' — declare a NEW topic with bus.declareTopic(name)')
+      }
       const traceId = opts.traceId || ('t' + (++seq) + '-' + hook.replace(/[^a-z]+/gi, '-'))
       const ctx = { member: opts.member, role: opts.role, phase: opts.phase }
       const decisions = []

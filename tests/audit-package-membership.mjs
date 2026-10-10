@@ -50,6 +50,16 @@ for (const c of citers) {
 ok(docRefs.size > 0, 'shipped files cite at least one docs/*.md')
 const unlistedDocs = [...docRefs].filter((f) => !listed.has(f))
 ok(unlistedDocs.length === 0, 'every docs/*.md cited by a shipped file is listed in package.json#files', JSON.stringify(unlistedDocs))
+// DESIGN VOLUME COMPLETENESS: the vmu doc set GROWS (00 §3.1 allows volumes 15+), and a new volume once
+// shipped on disk while being absent from package.json#files - the guard index cannot see that, because
+// nothing cites the new file yet. The set itself is what must ship.
+const volumes = readdirSync(join(REPO, 'vibe-math-vmu', 'docs'))
+  .filter((f) => /^\d\d-[A-Za-z0-9-]+\.md$/.test(f))
+  .map((f) => 'vibe-math-vmu/docs/' + f)
+  .sort()
+ok(volumes.length >= 15, 'the design volumes on disk were found', String(volumes.length))
+const unlistedVolumes = volumes.filter((f) => !listed.has(f))
+ok(unlistedVolumes.length === 0, 'every design volume on disk is listed in package.json#files', JSON.stringify(unlistedVolumes))
 ok(missingPaths.length === 0, 'every listed path exists', JSON.stringify(missingPaths))
 console.log('')
 console.log('=== PACKAGE MEMBERSHIP: ' + passed + ' passed, ' + failed + ' failed ===')

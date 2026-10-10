@@ -177,7 +177,32 @@ const baseSections = [
   ok(/phase=explore/.test(a.text), 'the facts block is still intact after an append')
 }
 
-// ---- 10. self-probe ----------------------------------------------------------------------------
+// ---- 10. the assembly hook uses the FROZEN name, and dry run does not disable it (task-40 finding) ----
+{
+  const seen = []
+  const capturing = {
+    emit: async (hook, payload, opts) => {
+      seen.push({ hook, payload, opts })
+      return { ok: true, decisions: [{ id: 'mw-1', decision: { appendPrompt: [{ section: 'dry', text: 'DRY-APPEND' }] } }] }
+    },
+  }
+  const p = m.createPromptPipeline({ sections: baseSections, bus: capturing })
+  const a = await p.assemble({ member: 'r-1', phase: 'explore', settings: {} })
+  ok(seen.length === 1 && seen[0].hook === 'prompt/section-assembled',
+    'assembly emits the FROZEN hook name (the drifted `prompt/assemble` reached no listener at all)',
+    JSON.stringify(seen.map((s) => s.hook)))
+  ok(/DRY-APPEND/.test(a.text), 'and a middleware append lands when not dry-running')
+
+  const b = await p.assemble({ member: 'r-1', phase: 'explore', settings: { 'vmu.middleware.dryRun': false } })
+  ok(/DRY-APPEND/.test(b.text),
+    'setting the dry-run key to FALSE keeps the hook (it used to disable middleware control of the prompt)')
+
+  const c = await p.assemble({ member: 'r-1', phase: 'explore', settings: { 'vmu.middleware.dryRun': true } })
+  ok(!/DRY-APPEND/.test(c.text) && seen.length === 3,
+    'dry run CALLS the hook and does not apply its effects (the documented meaning)', 'calls=' + seen.length)
+}
+
+// ---- 11. self-probe ----------------------------------------------------------------------------
 if (SELF_PROBE) {
   const src = readFileSync(MODULE, 'utf8')
   const guard = "if (entry.mutable === false) {"

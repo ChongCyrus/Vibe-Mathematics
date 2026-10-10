@@ -187,7 +187,43 @@ const newBus = (settings = {}) => m.createBus({ settings, onAudit: (r) => auditR
   ok(out2.ok === false && secondRan === false, 'a refusing handler stops the host chain')
 }
 
-// ---- 10. self-probe ----------------------------------------------------------------------------
+// ---- 10. hook-name membership: an unknown name is refused by name (task-40 finding) --------------
+{
+  const bus = newBus()
+  let refused = null
+  try { await bus.emit('prompt/assemble', {}) } catch (e) { refused = e }
+  ok(refused && refused.code === 'VMU_INVALID_ARGUMENT',
+    'an emit name outside the frozen set is refused by name (it used to reach no listener silently)', refused && refused.code)
+  ok(refused && typeof refused.hint === 'string' && /declareTopic/.test(refused.hint),
+    'and the hint names the extension point', refused && refused.hint)
+
+  let ran = 0
+  bus.on({ id: 'watch-assembly', kind: 'module', on: ['prompt/section-assembled'], capabilities: ['annotate'] },
+    () => { ran++; return undefined })
+  const good = await bus.emit('prompt/section-assembled', {})
+  ok(good.ok === true && ran === 1, 'the FROZEN assembly hook name reaches its entry', 'ran=' + ran)
+
+  const dec = bus.declareTopic('lab/review-requested')
+  ok(dec.ok === true && dec.existing === false, 'a NEW topic can be declared (zero mechanism)', JSON.stringify(dec))
+  ok(bus.declareTopic('lab/review-requested').existing === true,
+    'declaring it twice reports "existing" instead of failing')
+  let seen = 0
+  bus.on({ id: 'lab-watch', kind: 'module', on: ['lab/review-requested'], capabilities: ['annotate'] },
+    () => { seen++; return undefined })
+  await bus.emit('lab/review-requested', {})
+  ok(seen === 1, 'the declared topic is emittable', 'seen=' + seen)
+
+  let badTopic = null
+  try { bus.declareTopic('NotATopic') } catch (e) { badTopic = e }
+  ok(badTopic && badTopic.code === 'VMU_INVALID_ARGUMENT', 'a malformed topic is refused by name', badTopic && badTopic.code)
+
+  // The host-waterfall BRIDGE forwards the host's OWN hook names, so it is exempt on purpose.
+  const bridge = newBus()
+  await bridge.emit('agent/created', {}, { bridge: true })
+  ok(true, 'bridged host hook names are accepted (the substrate bridge must not be refused)')
+}
+
+// ---- 11. self-probe ----------------------------------------------------------------------------
 if (SELF_PROBE) {
   ok(failed > 0, 'self-probe: the wrapper that forgets next() was caught by the chain assertion', failed)
   console.log('=== VMU BUS SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')

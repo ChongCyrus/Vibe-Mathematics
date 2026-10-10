@@ -63,7 +63,10 @@ export function createPromptPipeline({
 } = {}) {
   const registry = new Map()
   const truncation = []
-  const appends = []
+  // The appends of the LAST assembly only. This used to be a single pipeline-scoped array that every
+  // `assemble()` call pushed into and never reset, so a middleware append made once stayed in the prompt
+  // FOREVER and the prompt grew monotonically (found by the dry-run assertion in tests/vmu-prompt.test.mjs).
+  let lastAppends = []
 
   const inRange = (order, name) => {
     for (const [range, [lo, hi]] of Object.entries(ORDER_RANGES)) {
@@ -227,10 +230,21 @@ export function createPromptPipeline({
      */
     async assemble(ctx = {}) {
       const settings = ctx.settings || {}
-      if (bus && settings['vmu.middleware.dryRun'] === undefined) {
-        const hook = await bus.emit('prompt/assemble', { ctx }, { member: ctx.member, role: ctx.role, phase: ctx.phase })
+      // PER-ASSEMBLY, never pipeline-scoped: an append must not survive into the next prompt.
+      const appends = []
+      lastAppends = appends
+      // MIDDLEWARE CAN ALWAYS SEE THE ASSEMBLY HOOK. Two defects are fixed here (independent verification,
+      // task-40/38): the emitted name was `prompt/assemble`, which is NOT in the frozen `VU_HOOKS` set (the
+      // registry declares `prompt/section-assembled`), so the emit reached no listener and middleware could not
+      // influence the prompt at all; and the guard ran the hook only while `vmu.middleware.dryRun` was
+      // UNDEFINED, so setting it to `false` - the natural way to say "no dry run" - silently disabled middleware
+      // control. Dry run now means what the docs say: the hook IS called, and its effects are simply not applied.
+      if (bus) {
+        const dry = settings['vmu.middleware.dryRun'] === true
+        const hook = await bus.emit('prompt/section-assembled', { ctx, dryRun: dry },
+          { member: ctx.member, role: ctx.role, phase: ctx.phase })
         if (hook && hook.ok === false) return { ok: false, refused: hook.refused || { code: hook.code, message: hook.message }, traceId: hook.traceId }
-        for (const d of hook ? hook.decisions : []) {
+        for (const d of (!dry && hook ? hook.decisions : [])) {
           const ap = d.decision && d.decision.appendPrompt
           const list = Array.isArray(ap) ? ap : ap ? [ap] : []
           for (const item of list) {
@@ -345,7 +359,7 @@ export function createPromptPipeline({
             source: e.source, overridden: typeof overrides[e.name] === 'string' })),
         bindings: bindings.length,
         truncation: truncation.map((t) => ({ section: t.section, kept: t.kept, dropped: t.dropped, mode: t.mode })),
-        middlewareAppends: appends.map((a) => ({ section: a.section, source: a.source })),
+        middlewareAppends: lastAppends.map((a) => ({ section: a.section, source: a.source })),
       }
     },
   }

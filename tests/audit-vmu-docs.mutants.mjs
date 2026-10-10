@@ -53,12 +53,14 @@ const freshCopy = (tag) => {
 // ---- M1: a missing doc ---------------------------------------------------------------------------
 {
   const c = freshCopy('m1')
-  // Delete a doc that ACTUALLY exists in the copy (a guessed filename deleted nothing, which is exactly the
-  // "the mutants must be proven to bite" rule).
-  const victim = readdirSync(c.docs).filter((f) => /^\d\d-.*\.md$/.test(f)).sort().pop()
+  // Delete a doc in the MIDDLE of the set. The guard is CONTIGUITY from 00 plus a floor, so removing the LAST
+  // volume would still be contiguous (and with the extension volumes present the count would still pass): a
+  // middle victim leaves a real gap, which is the mutation this check exists to catch.
+  const victims = readdirSync(c.docs).filter((f) => /^\d\d-.*\.md$/.test(f)).sort()
+  const victim = victims[Math.floor(victims.length / 2)]
   rmSync(join(c.docs, victim), { force: true })
   const r = runAudit(c.docs, c.code)
-  ok(r.code !== 0 && /the design set is exactly 15 docs/.test(r.out), 'M1 a missing doc is a NAMED red (' + victim + ')', r.out.split('\n')[1])
+  ok(r.code !== 0 && /design set is numbered contiguously from 00/.test(r.out), 'M1 a missing doc is a NAMED red (' + victim + ')', r.out.split('\n')[1])
 }
 
 // ---- M2: an emptied doc --------------------------------------------------------------------------

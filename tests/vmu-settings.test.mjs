@@ -43,7 +43,8 @@ const defs = m.SETTING_DEFS
 ok(Array.isArray(defs) && defs.length >= 28, 'the table declares the documented key set', defs.length)
 const keys = defs.map((d) => d.key)
 ok(new Set(keys).size === keys.length, 'every key is unique')
-ok(keys.every((k) => /^vmu\.[a-z]+\.[A-Za-z]+$/.test(k)), 'every key is namespaced vmu.<area>.<name>')
+ok(keys.every((k) => /^vmu\.[a-z][a-z0-9]*(\.[a-zA-Z][a-zA-Z0-9]*)+$/.test(k)),
+  'every key is namespaced vmu.<area>.<name>[.<name>…] (any depth: the design set declares deep keys)')
 ok(defs.every((d) => ['H0', 'H1', 'H2', 'H3'].includes(d.hot)), 'every key declares a hot-reload class (04 §5)')
 ok(defs.every((d) => typeof d.who === 'string' && d.who.length > 0), 'every key declares who may change it')
 ok(defs.every((d) => typeof d.doc === 'string' && d.doc.length > 0), 'every key carries a one-line doc (04 §11)')
@@ -56,7 +57,10 @@ ok(defs.filter((d) => d.hot === 'H3').length > 0, 'the read-only class is actual
 // row without a key can pass. This is the settings equivalent of the docs<->module guard (D16).
 {
   const doc = readFileSync(resolve(REPO, 'vibe-math-vmu', 'docs', '04-settings.md'), 'utf8')
-  const tableRows = [...doc.matchAll(/^\| `(vmu\.[a-z]+\.[A-Za-z]+)`/gm)].map((x) => x[1])
+  // ANY DEPTH, and the SAME pattern the docs audit uses. The old `[a-z]+\.[A-Za-z]+` matched three-letter-only
+  // third segments, so the 4+ segment planned keys (`vmu.math.precision.digits`) were invisible to this check
+  // and the count disagreed with the schema the moment the design set declared deep keys (404 vs 258).
+  const tableRows = [...doc.matchAll(/^\| `(vmu\.[a-zA-Z0-9.]+)`/gm)].map((x) => x[1])
   const documented = new Set(tableRows)
   const declared = new Set(keys)
   const rowsWithoutKey = [...documented].filter((k) => !declared.has(k))
