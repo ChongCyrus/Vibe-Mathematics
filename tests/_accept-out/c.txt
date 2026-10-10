@@ -1,0 +1,215 @@
+============================================================
+ACCEPT-C (verifier-c) — 孤儿任务派发独立验收
+时间: 2026-10-10T14:26:32.080Z
+cwd: E:\学习资料\python项目\dsh-vibe-math\Vibe-Mathematics
+repo: E:\学习资料\python项目\dsh-vibe-math\Vibe-Mathematics\
+HEAD = 46a0ed977b538dfb822e14d0a427e559bbdc4ceb
+（注：stderr 与 stdout 在本文件中可能交错。形如 "vibe-math-v5: 忽略未知参数键…orphanDispatchMaxAttempts（来源：set）"
+  的一行来自**对照组 HEAD** 的 set 调用——HEAD 不认识这个新参数，这正是对照组的预期；被测文件不会打印它。）
+被测文件 = E:\学习资料\python项目\dsh-vibe-math\Vibe-Mathematics\vibe-math-v5\vibe-math-v5.js
+被测文件 size = 630189  sha256 = a3ba531294decabcc80c0214859496080f80b2970822c67ba6e4c647ebfbbe8c
+git status --porcelain -- 被测文件: "M vibe-math-v5/vibe-math-v5.js"
+
+对照组(HEAD) 提取: dir=C:\Users\CAIXIN~1\AppData\Local\Temp\dsh-4Lwmll\v5head-acc-c-W6R0vV
+  git status=0 error="" bytes=614223
+  对照组 sha256 = ba29f1241fbfeba855a3392218738bb46a559451c29fc18de459ef9ec9532ba6
+  node --check 对照组 = exit 0
+  node --check 被测文件 = exit 0
+
+import: 被测 apply=function / 对照 apply=function
+
+============================================================
+[C1-C3] 场景 A：3 名常驻成员 + 1 条无主 pending 任务 + 1 条已认领 in_progress 任务
+============================================================
+vibe-math-v5: 忽略未知参数键（不静默丢失，已记入 diagnostics）：orphanDispatchMaxAttempts（来源：set）
+-- 运行 [new] --
+  成员: ["acad:active","r-1:active","r-2:active"]  空闲: ["acad","r-1","r-2"]
+  参数: {"activityTimeoutMs":300,"maxParallel":3,"chatDigestMs":3600000,"stallAutoMeetingMs":86400000,"orphanDispatchMaxAttempts":3,"verifyAskMaxAttempts":3}  status.params={orphanDispatchMaxAttempts:3,verifyAskMaxAttempts:3}
+  无主任务 t-1 起点: {"status":"pending","ownerId":"","revision":1} → 终点: {"status":"pending","ownerId":"","revision":1}
+  已认领任务 t-2 起点: {"status":"in_progress","ownerId":"r-2","revision":2} → 终点: {"status":"in_progress","ownerId":"r-2","revision":2}
+  逐轮唤醒/状态 = r0[r-2/normal,acad/a.2-orphan,r-1/checkpoint|o:pending|c:in_progress/r-2] r1[r-2/normal,acad/a.2-orphan,r-1/checkpoint|o:pending|c:in_progress/r-2] r2[r-2/normal,acad/a.2-orphan,r-1/checkpoint|o:pending|c:in_progress/r-2] r3[r-2/normal,acad/checkpoint,r-1/checkpoint|o:pending|c:in_progress/r-2] r4[r-2/normal,acad/checkpoint,r-1/checkpoint|o:pending|c:in_progress/r-2] r5[r-2/normal,acad/checkpoint,r-1/checkpoint|o:pending|c:in_progress/r-2] r6[r-2/normal,acad/checkpoint,r-1/checkpoint|o:pending|c:in_progress/r-2] r7[r-2/normal,acad/checkpoint,r-1/checkpoint|o:pending|c:in_progress/r-2] r8[r-2/normal,acad/checkpoint,r-1/checkpoint|o:pending|c:in_progress/r-2] r9[r-2/normal,acad/checkpoint,r-1/checkpoint|o:pending|c:in_progress/r-2]
+  派发总数(主 10 轮) = 3；再跑 6 轮后 = 3
+  分支计数 = {"normal":18,"a.2-orphan":3,"checkpoint":29}
+  成员/分支 = {"r-2/normal":18,"acad/a.2-orphan":3,"r-1/checkpoint":16,"acad/checkpoint":13}
+  成功唤醒总数 = 50  debug={"scheduling":false,"reschedule":false,"passes":73,"schedEnter":73,"schedSkip":0,"arm":73,"begin":0}
+  status.officeRequests(停止后) = []   ← 修好后这里**本来就该**为空：notice 是成员私信，通知不到所办
+  对照通道 vibe_v5_say{to:office} => {"ok":true,"delivered":1,"to":"office","ids":["msg-2"]}
+  status.officeRequests(对照通道写入后) = [{"from":"r-1","text":"CONTROL-CHANNEL-C 成员向所办留言（对照：这条通道是好的）"}]
+  v5state.json 里 to==='office' 的记录 = [{"id":"msg-2","from":"r-1","kind":"dm","text":"CONTROL-CHANNEL-C 成员向所办留言（对照：这条通道是好的）"}]
+  群聊镜像文件 = ["<WS>\\VibeMath\\Projects\\default\\Institutes\\institute\\Shared\\Chat\\2026-10-10.md"]（非空行 3）
+  镜像里提到无主任务 t-1 的行 = 1 条:
+      [<WS>\VibeMath\Projects\default\Institutes\institute\Shared\Chat\2026-10-10.md] - 14:26:34｜【任务板】t-1「ORPHAN-C1 清理未归档引理清单」无人认领，已自动派发 3 次仍无进展（上限 orphanDispatchMaxAttempts=3）：停止自动派发，需要人（或院士）重新分派或删除它。
+  无主派发提示文本(逐条首行/标题行/task_claim 行): 
+    -> member=acad round=0
+       首行="【待认领任务 —— 院士 acad】"
+       标题行="  任务 t-1：ORPHAN-C1 清理未归档引理清单"
+       认领行="**怎么接**：在回复 JSON 里填 "task_claim": "t-1"（当前 revision=1；若它已被别人抢先认领，改写别处，不要假装你有）。"
+    -> member=acad round=1
+       首行="【待认领任务 —— 院士 acad】"
+       标题行="  任务 t-1：ORPHAN-C1 清理未归档引理清单"
+       认领行="**怎么接**：在回复 JSON 里填 "task_claim": "t-1"（当前 revision=1；若它已被别人抢先认领，改写别处，不要假装你有）。"
+    -> member=acad round=2
+       首行="【待认领任务 —— 院士 acad】"
+       标题行="  任务 t-1：ORPHAN-C1 清理未归档引理清单"
+       认领行="**怎么接**：在回复 JSON 里填 "task_claim": "t-1"（当前 revision=1；若它已被别人抢先认领，改写别处，不要假装你有）。"
+
+-- 运行 [head] --
+  成员: ["acad:active","r-1:active","r-2:active"]  空闲: ["acad","r-1","r-2"]
+  参数: {"activityTimeoutMs":300,"maxParallel":3,"chatDigestMs":3600000,"stallAutoMeetingMs":86400000}  status.params={orphanDispatchMaxAttempts:undefined,verifyAskMaxAttempts:undefined}
+  无主任务 t-1 起点: {"status":"pending","ownerId":"","revision":1} → 终点: {"status":"pending","ownerId":"","revision":1}
+  已认领任务 t-2 起点: {"status":"in_progress","ownerId":"r-2","revision":2} → 终点: {"status":"in_progress","ownerId":"r-2","revision":2}
+  逐轮唤醒/状态 = r0[r-2/normal,acad/checkpoint,r-1/checkpoint|o:pending|c:in_progress/r-2] r1[r-2/normal,acad/checkpoint,r-1/checkpoint|o:pending|c:in_progress/r-2] r2[r-2/normal,acad/checkpoint,r-1/checkpoint|o:pending|c:in_progress/r-2] r3[r-2/normal,acad/checkpoint,r-1/checkpoint|o:pending|c:in_progress/r-2] r4[r-2/normal,acad/checkpoint,r-1/checkpoint|o:pending|c:in_progress/r-2] r5[r-2/normal,acad/checkpoint,r-1/checkpoint|o:pending|c:in_progress/r-2] r6[r-2/normal,acad/checkpoint,r-1/checkpoint|o:pending|c:in_progress/r-2] r7[r-2/normal,acad/checkpoint,r-1/checkpoint|o:pending|c:in_progress/r-2] r8[r-2/normal,acad/checkpoint,r-1/checkpoint|o:pending|c:in_progress/r-2] r9[r-2/normal,acad/checkpoint,r-1/checkpoint|o:pending|c:in_progress/r-2]
+  派发总数(主 10 轮) = 0；再跑 6 轮后 = 0
+  分支计数 = {"normal":18,"checkpoint":32}
+  成员/分支 = {"r-2/normal":18,"acad/checkpoint":16,"r-1/checkpoint":16}
+  成功唤醒总数 = 50  debug={"scheduling":false,"reschedule":false,"passes":73,"schedEnter":73,"schedSkip":0,"arm":73,"begin":0}
+  status.officeRequests(停止后) = []   ← 修好后这里**本来就该**为空：notice 是成员私信，通知不到所办
+  对照通道 vibe_v5_say{to:office} => {"ok":true,"delivered":1,"to":"office","ids":["msg-2"]}
+  status.officeRequests(对照通道写入后) = [{"from":"r-1","text":"CONTROL-CHANNEL-C 成员向所办留言（对照：这条通道是好的）"}]
+  v5state.json 里 to==='office' 的记录 = [{"id":"msg-2","from":"r-1","kind":"dm","text":"CONTROL-CHANNEL-C 成员向所办留言（对照：这条通道是好的）"}]
+  群聊镜像文件 = ["<WS>\\VibeMath\\Projects\\default\\Institutes\\institute\\Shared\\Chat\\2026-10-10.md"]（非空行 2）
+  镜像里提到无主任务 t-1 的行 = 0 条:
+
+---- C1 断言 ----
+  ok - C1 无主 pending 任务真的被派发（派发次数=3）
+  ok - C1 派发对象是常驻成员（member=acad，roster=["acad","r-1","r-2"]）
+  ok - C1 派发对象在派发那一刻是**空闲**的（该轮 busyBefore=[]，不含 acad）
+  ok - C1 这一轮提示文本里有一行以【待认领任务 —— 开头（first="【待认领任务 —— 院士 acad】"）
+  ok - C1 提示文本里确实出现任务标题「ORPHAN-C1 清理未归档引理清单」
+  ok - C1 提示文本含精确行「任务 t-1：ORPHAN-C1 清理未归档引理清单」
+  ok - C1 提示文本给出认领方式 task_claim=t-1
+  ok - C1 分支计数 a.2-orphan=3
+  ok - C1 对照(HEAD)侧同场景派发次数=0（证明是本次改动引入的行为；HEAD 侧无主任务终点={"s":"pending","o":""}）
+---- C2 断言 ----
+  ok - C2 前置：已认领任务起点为 in_progress/r-2（{"s":"in_progress","o":"r-2"}）
+  ok - C2 每一轮过后主人仍是 r-2 且仍是 in_progress（偏离轮=[]）
+  ok - C2 终点主人仍是 r-2（{"s":"in_progress","o":"r-2","rev":2}）
+  ok - C2 已认领任务从未被当作孤儿派发（没有任何一条孤儿提示把 t-2 当作待认领对象；命中=0）
+  ok - C2 已认领任务的主人仍被 (a) 分支唤醒（r-2/normal 唤醒次数=18）
+  ok - C2 主人节奏与改动前一致：r-2/normal 唤醒次数 新=18 vs HEAD=18（HEAD 全分支={"r-2/normal":18,"acad/checkpoint":16,"r-1/checkpoint":16}；新全分支={"r-2/normal":18,"acad/a.2-orphan":3,"r-1/checkpoint":16,"acad/checkpoint":13}）
+  ok - C2 (a) 分支给 r-2 的是正常研究轮提示（不是孤儿提示）：first="【第 1 轮 —— 常驻研究员 r-2】"
+  ok - C2 (a) 分支的提示里仍带着它自己的任务「CLAIMED-C2 复核引理编号连续性」
+  [信息] r-2 的 (a) 唤醒文本与 HEAD 完全一致 = true（长度 4792 vs 4792）
+---- C3 断言 ----
+  [信息] 工具面可见参数键数=49；orphanDispatchMaxAttempts 在可见 params 里？是（set 返回 3）；status.params.verifyAskMaxAttempts=3，status.params.orphanDispatchMaxAttempts=3
+  ok - C3 [源码事实] roster 里没有 id===office 的成员（members=["acad:active","r-1:active","r-2:active"]）
+  [源码事实] notice() 定义（第 2119 行起；这解释了上一版 notice('office') 为何静默失败）:
+      2119: async function notice(memberId, text) {
+      2120: if (!memberId) return { ok: false, code: 'V5_MEMBER_NOT_FOUND' }
+      2121: const m = memberById(memberId)
+      2122: if (!m || m.phase !== 'active') return { ok: false, code: 'V5_MEMBER_NOT_FOUND', message: 'active member "' + memberId + '" not found' }
+      2123: return await say('framework', { to: memberId, kind: 'notice', text: String(text) })
+  [源码事实] 无主任务耗尽时的记录点（第 7230 行起）:
+      7229: // in the first cut of this branch: the stop worked, but said nothing anywhere.
+      7230: await saveChatLine('【任务板】' + t.id + '「' + String(t.subject || '') + '」无人认领，已自动派发 ' + n +
+      7231: ' 次仍无进展（上限 orphanDispatchMaxAttempts=' + orphanMax + '）：停止自动派发，需要人（或院士）重新分派或删除它。')
+  ok - C3 [源码事实] notice() 在发送前要求 memberById(memberId) 是一个 active 成员，否则直接返回 V5_MEMBER_NOT_FOUND（不写 inst().messages）
+  ok - C3 [源码事实] 耗尽记录现在走 saveChatLine（群聊镜像），不再走 notice('office')（第 7230 行）
+  ok - C3 [源码事实] (a.2) 分支区域内没有残留的 notice('office', …) 调用（注释里提到不算，已剥掉行注释）
+  ok - C3 派发次数恰好达到缺省上限 orphanDispatchMaxAttempts=3 后停止（派发=3）
+  ok - C3 之后又跑了 6 轮（成员均处于可唤醒状态），派发次数不再增长（3）
+  ok - C3 补充 status.params.verifyAskMaxAttempts === 3（缺省值可读回；实测 3）
+  ok - C3 补充 status.params.orphanDispatchMaxAttempts === 3（缺省值可读回；实测 3）
+  ok - C3 补充 vibe_v5_set 返回的 params 也读得回该键（实测 3）
+  ok - C3 停止后任务仍留在公告栏上等人（{"s":"pending","o":""}）
+  ok - C3 群聊镜像存在且非空（["<WS>\\VibeMath\\Projects\\default\\Institutes\\institute\\Shared\\Chat\\2026-10-10.md"]，非空行 3）
+  ok - C3 群聊镜像里恰好留**一条**可见停止记录（提到任务 t-1 的行数=1，行=["- 14:26:34｜【任务板】t-1「ORPHAN-C1 清理未归档引理清单」无人认领，已自动派发 3 次仍无进展（上限 orphanDispatchMaxAttempts=3）：停止自动派发，需要人（或院士）重新分派或删除它。"]）
+  ok - C3 记录里含任务 id（t-1）
+  ok - C3 记录里含派发次数（"已自动派发 3 次"）
+  ok - C3 记录里含上限值（"orphanDispatchMaxAttempts=3"）
+  ok - C3 记录明确说明已停止自动派发
+  ok - C3 对照(HEAD)侧镜像里没有这条记录（命中=0）⇒ 该可见记录确由本次改动产生
+  ok - C3 [渠道对照] 成员用 vibe_v5_say{to:office} 确实能写进 office 信箱（{"ok":true,"delivered":1,"to":"office","ids":["msg-2"]}）——所以"officeRequests 为空"不是观察面坏了，而是 notice 结构上到不了所办
+  [信息] officeRequests 里没有停止记录（命中=0）——按修正后的验收口径，这是**正确**的：调度级记录走群聊镜像；inst().messages 里 to==='office' 只有成员留言（[{"id":"msg-2","from":"r-1","kind":"dm","text":"CONTROL-CHANNEL-C 成员向所办留言（对照：这条通道是好的）"}]）
+
+---- C3 附加：上限真的是被参数驱动的（orphanDispatchMaxAttempts=1）----
+  max=1 场景：派发=1，之后 6 轮后=1，分支计数={"normal":12,"a.2-orphan":1,"checkpoint":19}，无主任务终点={"s":"pending","o":""}
+  max=1 场景镜像记录 = ["- 14:26:50｜【任务板】t-1「ORPHAN-C1 清理未归档引理清单」无人认领，已自动派发 1 次仍无进展（上限 orphanDispatchMaxAttempts=1）：停止自动派发，需要人（或院士）重新分派或删除它。"]
+  ok - C3+ 配置 orphanDispatchMaxAttempts=1 ⇒ 只派发 1 次（实测 1）
+  ok - C3+ 配置 1 时后续 6 轮也不再派发（实测 1）
+  ok - C3+ 上限=1 时镜像记录也恰好一条且写着上限 1（行数=1）
+  ok - C3+ 配置的上限值也能从 status.params 读回（实测 1，而不是只显示缺省 3）
+
+---- 附带观察（不作为 C1-C4 通过条件，只报告事实）----
+  1) [上一轮观察已消除，现为通过条件] "visibleParams() 白名单未收录两个新参数"不再成立：visibleParams()（第 7880 行起）的显式返回对象里现在有 verifyAskMaxAttempts / orphanDispatchMaxAttempts（结构性检查=true），且 C3 补充断言已验 status.params 读回 3/3、C3+ 读回 1。
+  ok - 观察1复核：visibleParams() 的返回对象里确实同时列出了两个新键（源码第 7880 行起）
+  2) [不计入通过条件] (a.2) 的筛条件只有 `status==='pending' && !ownerId`，不查 taskReady(t)（第 7206 行）：if (t.status !== 'pending' || t.ownerId) continue
+     因此一条被 blocked_by 挡住的无主任务同样会被派发；成员照提示 task_claim 时会被 taskUpdate 的 V5_TASK_BLOCKED 拒绝。已知限制，不作为 C1-C4 失败项。
+  3) [不计入通过条件] 同一个"notice 到不了所办"的写法还留在别处（第 7126 行，spawn 重试停止的通知）：await notice('office', '成员 ' + m.id + ' 的自动重试已停止（非容量类失败）：' + String((e && e.message) || e))
+     该行在 HEAD 里就存在（git show HEAD 可验），属于既有同型问题，不是本次改动引入；本次 (a.2) 已经改用 saveChatLine。
+
+============================================================
+[C4] 场景 B：全所**没有**无主 pending 任务时的逐分支调度对照
+============================================================
+-- 运行 [new-run1] --
+  任务板(无无主 pending): ["t-1:in_progress:r-2"]
+  参数: {"activityTimeoutMs":300,"maxParallel":3,"chatDigestMs":60}
+  规范化波(canon, 不计入比对) = ["r-2/normal","r-2/normal","r-2/normal","acad/checkpoint","r-1/checkpoint"]
+  比对段逐轮唤醒 = r0[acad/normal] r1[r-2/normal,acad/normal,r-1/checkpoint] r2[r-2/normal,acad/normal,r-1/checkpoint] r3[r-2/normal,acad/normal,r-1/checkpoint] r4[r-2/normal,acad/checkpoint,r-1/checkpoint]
+  比对段逐行 trace = round0:acad/normal > round1:r-2/normal > round1:acad/normal > round1:r-1/checkpoint > round2:r-2/normal > round2:acad/normal > round2:r-1/checkpoint > round3:r-2/normal > round3:acad/normal > round3:r-1/checkpoint > round4-chat-published:r-2/normal > round4-chat-published:acad/checkpoint > round4-chat-published:r-1/checkpoint > round4:r-2/normal > round4:acad/checkpoint > round4:r-1/checkpoint > stall:r-1/meeting > stall:acad/meeting > stall:r-2/meeting
+  失速会议(stall, 分支 d) 原序 = ["r-1/meeting","acad/meeting","r-2/meeting"]
+  比对段分支计数 = {"normal":12,"checkpoint":9}  成员/分支 = {"r-2/normal":8,"acad/checkpoint":3,"r-1/checkpoint":6,"acad/normal":4,"r-1/meeting":1,"acad/meeting":1,"r-2/meeting":1}
+  成功唤醒总数 = 24  debug={"scheduling":false,"reschedule":false,"passes":35,"schedEnter":35,"schedSkip":0,"arm":35,"begin":0}  orphanWakes=0
+
+-- 运行 [new-run2] --
+  任务板(无无主 pending): ["t-1:in_progress:r-2"]
+  参数: {"activityTimeoutMs":300,"maxParallel":3,"chatDigestMs":60}
+  规范化波(canon, 不计入比对) = ["r-2/normal","r-2/normal","r-2/normal","acad/checkpoint","r-1/checkpoint"]
+  比对段逐轮唤醒 = r0[acad/normal] r1[r-2/normal,acad/normal,r-1/checkpoint] r2[r-2/normal,acad/normal,r-1/checkpoint] r3[r-2/normal,acad/normal,r-1/checkpoint] r4[r-2/normal,acad/checkpoint,r-1/checkpoint]
+  失速会议(stall, 分支 d) 原序 = ["acad/meeting","r-1/meeting","r-2/meeting"]
+  比对段分支计数 = {"normal":12,"checkpoint":9}  成员/分支 = {"r-2/normal":8,"acad/checkpoint":3,"r-1/checkpoint":6,"acad/normal":4,"acad/meeting":1,"r-1/meeting":1,"r-2/meeting":1}
+  成功唤醒总数 = 24  debug={"scheduling":false,"reschedule":false,"passes":35,"schedEnter":35,"schedSkip":0,"arm":35,"begin":0}  orphanWakes=0
+
+-- 运行 [head-run1] --
+  任务板(无无主 pending): ["t-1:in_progress:r-2"]
+  参数: {"activityTimeoutMs":300,"maxParallel":3,"chatDigestMs":60}
+  规范化波(canon, 不计入比对) = ["r-2/normal","r-2/normal","r-2/normal","acad/checkpoint","r-1/checkpoint"]
+  比对段逐轮唤醒 = r0[acad/normal] r1[r-2/normal,acad/normal,r-1/checkpoint] r2[r-2/normal,acad/normal,r-1/checkpoint] r3[r-2/normal,acad/normal,r-1/checkpoint] r4[r-2/normal,acad/checkpoint,r-1/checkpoint]
+  失速会议(stall, 分支 d) 原序 = ["r-2/meeting","acad/meeting","r-1/meeting"]
+  比对段分支计数 = {"normal":12,"checkpoint":9}  成员/分支 = {"r-2/normal":8,"acad/checkpoint":3,"r-1/checkpoint":6,"acad/normal":4,"r-2/meeting":1,"acad/meeting":1,"r-1/meeting":1}
+  成功唤醒总数 = 24  debug={"scheduling":false,"reschedule":false,"passes":35,"schedEnter":35,"schedSkip":0,"arm":35,"begin":0}  orphanWakes=0
+
+-- 运行 [head-run2] --
+  任务板(无无主 pending): ["t-1:in_progress:r-2"]
+  参数: {"activityTimeoutMs":300,"maxParallel":3,"chatDigestMs":60}
+  规范化波(canon, 不计入比对) = ["r-2/normal","r-2/normal","r-2/normal","acad/checkpoint","r-1/checkpoint"]
+  比对段逐轮唤醒 = r0[acad/normal] r1[r-2/normal,acad/normal,r-1/checkpoint] r2[r-2/normal,acad/normal,r-1/checkpoint] r3[r-2/normal,acad/normal,r-1/checkpoint] r4[r-2/normal,acad/checkpoint,r-1/checkpoint]
+  失速会议(stall, 分支 d) 原序 = ["r-2/meeting","r-1/meeting","acad/meeting"]
+  比对段分支计数 = {"normal":12,"checkpoint":9}  成员/分支 = {"r-2/normal":8,"acad/checkpoint":3,"r-1/checkpoint":6,"acad/normal":4,"r-2/meeting":1,"r-1/meeting":1,"acad/meeting":1}
+  成功唤醒总数 = 24  debug={"scheduling":false,"reschedule":false,"passes":35,"schedEnter":35,"schedSkip":0,"arm":35,"begin":0}  orphanWakes=0
+
+---- C4 断言 ----
+  ok - C4 前提：全所没有无主 pending 任务时，新分支一次都没有唤醒（a.2 计数=0/0）
+  ok - C4 对照侧同样没有 a.2 唤醒（HEAD 计数=0/0）
+  ok - C4 前提：任务板上确实没有无主 pending 任务（新 unownedPending=0，HEAD=0；板=["t-1:in_progress:r-2"]）
+  ok - C4 确定性对照：同一被测文件跑两次，逐轮逐分支唤醒序列完全相同（新1 === 新2）
+  ok - C4 确定性对照：对照组(HEAD)跑两次也完全相同（证明这套比较方法本身是稳定的）
+  ok - C4 逐分支一致：同等驱动下 被测 === HEAD（逐轮、逐分支、含顺序）
+  逐分支计数对照: checkpoint: 新1=9 新2=9 HEAD1=9 HEAD2=9 | normal: 新1=12 新2=12 HEAD1=12 HEAD2=12
+  ok - C4 每个分支的唤醒次数都相同（checkpoint: 新1=9 新2=9 HEAD1=9 HEAD2=9 | normal: 新1=12 新2=12 HEAD1=12 HEAD2=12）
+  成员/分支计数对照: acad/checkpoint: 新=3 HEAD=3 | acad/meeting: 新=1 HEAD=1 | acad/normal: 新=4 HEAD=4 | r-1/checkpoint: 新=6 HEAD=6 | r-1/meeting: 新=1 HEAD=1 | r-2/meeting: 新=1 HEAD=1 | r-2/normal: 新=8 HEAD=8
+  ok - C4 每个成员在每个分支上的唤醒次数都相同（acad/checkpoint: 新=3 HEAD=3 | acad/meeting: 新=1 HEAD=1 | acad/normal: 新=4 HEAD=4 | r-1/checkpoint: 新=6 HEAD=6 | r-1/meeting: 新=1 HEAD=1 | r-2/meeting: 新=1 HEAD=1 | r-2/normal: 新=8 HEAD=8）
+  ok - C4 成功唤醒总数相同（新1=24 新2=24 HEAD1=24 HEAD2=24）
+  ok - C4 调度轮次相同（新 passes=35 HEAD passes=35）
+  逐轮唤醒 新1   = r0[acad/normal] r1[r-2/normal,acad/normal,r-1/checkpoint] r2[r-2/normal,acad/normal,r-1/checkpoint] r3[r-2/normal,acad/normal,r-1/checkpoint] r4[r-2/normal,acad/checkpoint,r-1/checkpoint]
+  逐轮唤醒 新2   = r0[acad/normal] r1[r-2/normal,acad/normal,r-1/checkpoint] r2[r-2/normal,acad/normal,r-1/checkpoint] r3[r-2/normal,acad/normal,r-1/checkpoint] r4[r-2/normal,acad/checkpoint,r-1/checkpoint]
+  逐轮唤醒 HEAD1 = r0[acad/normal] r1[r-2/normal,acad/normal,r-1/checkpoint] r2[r-2/normal,acad/normal,r-1/checkpoint] r3[r-2/normal,acad/normal,r-1/checkpoint] r4[r-2/normal,acad/checkpoint,r-1/checkpoint]
+  逐轮唤醒 HEAD2 = r0[acad/normal] r1[r-2/normal,acad/normal,r-1/checkpoint] r2[r-2/normal,acad/normal,r-1/checkpoint] r3[r-2/normal,acad/normal,r-1/checkpoint] r4[r-2/normal,acad/checkpoint,r-1/checkpoint]
+  ok - C4 逐轮唤醒序列（成员+分支+顺序）四组运行完全相同
+  (d) 会议唤醒集合: 新1=acad/meeting|r-1/meeting|r-2/meeting 新2=acad/meeting|r-1/meeting|r-2/meeting / HEAD1=acad/meeting|r-1/meeting|r-2/meeting HEAD2=acad/meeting|r-1/meeting|r-2/meeting
+  (d) 会议唤醒原序: 新1=["r-1/meeting","acad/meeting","r-2/meeting"] HEAD1=["r-2/meeting","acad/meeting","r-1/meeting"] HEAD2=["r-2/meeting","r-1/meeting","acad/meeting"]（顺序由 Math.random 洗牌决定，既有的随机性，不是本次改动引入）
+  ok - C4 (d) 失速会议分支同样到达，且唤醒集合完全相同（acad/meeting|r-1/meeting|r-2/meeting）
+  ok - C4 (d) 会议分支计数 新=3 HEAD=3
+  ok - C4 (a)/(b)/(c) normal 分支与 (e) checkpoint 分支都被走到（normal=12 checkpoint=9）
+
+============================================================
+被测文件运行后校验（防止验证期间被改动）
+  运行开始时 sha256 = a3ba531294decabcc80c0214859496080f80b2970822c67ba6e4c647ebfbbe8c
+  运行结束时 sha256 = a3ba531294decabcc80c0214859496080f80b2970822c67ba6e4c647ebfbbe8c  size=630189
+  ok - 被测文件在本次运行期间未被改动（与运行开始时的 sha256 一致）
+
+============================================================
+结果: passed=55 failed=0
+原始输出落盘: 进程内直接写 E:\学习资料\python项目\dsh-vibe-math\Vibe-Mathematics\tests\_accept-out\c.txt（被文件沙箱拒绝：EPERM: operation not permitted, open 'E:\学习资料\python项目\dsh-vibe-math\Vibe-Mathematics\tests\_accept-out\c.txt'）
+  → 实际交付方式：stdout 被逐字捕获后由文件工具写到同一路径 tests/_accept-out/c.txt（内容即本文件全部文本）
+============================================================
