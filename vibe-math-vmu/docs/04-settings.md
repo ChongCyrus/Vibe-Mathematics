@@ -120,8 +120,9 @@ export const SettingsJsonSchema = toJsonSchema()   // 单向派生；文档/门�
 
 ### 6.2 又接线的两键（**安全／资源闸门**，2026-10-10 ✓）
 
-- **✅ 已接线 · 写保护范围**（`vmu.safety.pathPolicy`）：新模块 `kernel/guard.js` 是**强制点** ✓ —— `guardWrite()` 管住**库写入**（`kernel/library.js` 每次落盘 ✓，含 pack 重声明后重建 ✓）与**数学宿主落盘**（`host-math.js` 的既有逃逸检查改走同一闸门 ✓）；越界**具名拒** `VMU_NOT_PERMITTED` ✓，message 点名被拒路径 ✓、hint 给出**当前策略**与放开办法 ✓；`../` 穿越亦拒 ✓。**边界 ✗**：`spawn` 的 cwd 判定（`guardSpawnCwd()`）**只导出、未接线** ✗（需再改 `host-spawn.js` 及其两个调用点 ⇒ 已登记为待办 ✓）。
-- **✅ 已接线 · 宿主进程 RSS 上限**（`vmu.limits.memoryCeilingMb`）：`memoryCeilingExceeded()` 由内核在**新建成员**路径调用 ✓（`members.hire` 超限即**具名拒** `VMU_RESOURCE_BUDGET`，message 给出 `rssMB > ceilingMB` ✓）。**边界 ✗**：口径是**宿主进程 RSS**（框架测不了自己的"净"内存 ✓，schema 文案已按此改 ✓）；`0`＝不设 ✓；只挡"新建成员"这一路径 ✓。
+- **✅ 已接线 · 写保护范围**（`vmu.safety.pathPolicy`）：新模块 `kernel/guard.js` 是**强制点** ✓ —— `guardWrite()` 管住**库写入**（`kernel/library.js` 每次落盘 ✓，含 pack 重声明后重建 ✓）与**数学宿主落盘**（`host-math.js` 的既有逃逸检查改走同一闸门 ✓）；越界**具名拒** `VMU_NOT_PERMITTED` ✓，message 点名被拒路径 ✓、hint 给出**当前策略**与放开办法 ✓；`../` 穿越亦拒 ✓；**闸门在一切落盘动作之前** ✓（独立验证曾抓到"先 `mkdir` 后拒绝 ⇒ 拒绝却留目录"✗，已修 ✓）。
+- **✅ 已接线 · 写保护范围的 spawn 一路**：`guardSpawnCwd()` 已接进 `host-spawn.js`（两个调用点都传 `settings`／`root` ✓），但刻意 **opt-in** ✓ —— 只有配置**显式声明**该策略时才拦（spawn 的 cwd 通常是 **agent 工作区**而非内核 root ✓，按策略默认去拦会**把刚修好的 M3 那条路又拒掉** ✗）；未声明时接缝行为与从前完全一致 ✓。
+- **✅ 已接线 · 宿主进程 RSS 上限**（`vmu.limits.memoryCeilingMb`）：`memoryCeilingExceeded()` 由内核接进**所有会增长编制的入口** ✓ —— `members.assignRole`（公开服务 ✓）与 `hire` 共用**同一处**判定 ✓；超限即**具名拒** `VMU_RESOURCE_BUDGET`，message 给出 `rssMB > ceilingMB` ✓；**在役成员的重复安置不误拒** ✓（独立验证抓到"`assignRole` 可绕过"✗ 与"no-op `hire` 被误拒"✗，均已修 ✓）。**边界 ✗**：口径是**宿主进程 RSS**（框架测不了自己的"净"内存 ✓，schema 文案已按此改 ✓）；`0`＝不设 ✓。
 - **✗ 顺带修正的一处错误约定**：上一版 `guard.js` 把两个键用 `['vmu','safety','pathPolicy'].join('.')` **拼出来**再读 ✗（本意是"避免注释字面量被算作接线"）—— 但**设置表与文档审计都按"运行时源码里出现键字面量"判定接线** ✓ ⇒ 拼接会让**两套检查互相矛盾** ✗✗（**实测被抓** ✓）。**正确规则**：**真读的那个字面量就是信号** ✓（读取已改回字面量 ✓，只有人类可读的提示文本仍可拼接 ✓）。
 
 ---
