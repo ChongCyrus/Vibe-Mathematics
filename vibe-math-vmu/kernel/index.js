@@ -216,12 +216,24 @@ export function createKernel({
   const LOG_LEVELS = { debug: 10, info: 20, warn: 30, error: 40 }
   const logEnabled = (level) => LOG_LEVELS[level] >= (LOG_LEVELS[String(settings['vmu.core.logLevel'])] || LOG_LEVELS.info)
   const auditRing = []
+  // N1 CONSUMER WIRING (round 20): the chain must exist BEFORE the audit ring, because the ring is where rows
+  // are born - a chain built afterwards could only verify a history nobody had fed it. It is built here, its
+  // append is called from onAudit below, and `verifyAudit()` exposes the verification over the live ring.
+  // The hash seam is real sha256 here; a host that wants its own can override it, and the module still refuses
+  // rather than inventing a hash when no seam is given at all.
+  const auditchain = createAuditChain({ settings: { get: (k) => settings[k] }, bus: injectedBus, clock, log,
+    hash: (row) => createHash('sha256').update(typeof row === 'string' ? row : JSON.stringify(row)).digest('hex') })
+
   const bus = injectedBus || createBus({
     entries: middleware,
     settings,
     clock,
     onAudit: (row) => {
-      auditRing.push(row)
+      // CHAIN FIRST, then store: the row that reaches the ring and the disk carries its prevHash/hash, so the
+      // tamper-evident chain and the audit trail are the SAME bytes (a separate chain would be a second truth).
+      let chained = row
+      try { chained = auditchain.append({ row }) } catch (e) { auditState.lastWriteError = String((e && e.message) || e) }
+      auditRing.push(chained)
       // DECLARED, not hard-coded: the ring length had been fixed at 100 while `vmu.audit.ringMax` declares 64 and
       // docs/21 says 64 - three sources, two answers. The setting wins; 64 stays as the declared fallback.
       const auditRingMax = Number.isInteger(settings['vmu.audit.ringMax']) && settings['vmu.audit.ringMax'] > 0
@@ -346,16 +358,8 @@ export function createKernel({
   // replay across instances is deduplicated; the limiter is inert unless a rate is declared (and says so).
   const transaction = createTransaction({ settings: { get: (k) => settings[k] }, bus, clock, log, idempotency })
   const ratelimit = createRateLimit({ settings: { get: (k) => settings[k] }, bus, clock, log })
-  // N1/N4 (round 18): the tamper-evident audit chain (its hash seam is injected by the host; without it the
-  // module refuses rather than inventing a hash) and the state-version/migration primitive that keeps an old
-  // snapshot from being read silently by newer code.
-  // CONSUMER WIRING (round 19): the chain used to be built with `hash: null`, which made it honest but USELESS -
-  // it could only refuse. The kernel now hands it a real sha256 seam, so a preset actually gets a tamper-evident
-  // chain; a host that wants its own hash can override it, and the "no seam, no hash" rule still governs the
-  // module itself. The ledger gets the kernel store too, which is what makes idempotency survive a restart -
-  // and a restart is exactly when a retry arrives.
-  const auditchain = createAuditChain({ settings: { get: (k) => settings[k] }, bus, clock, log,
-    hash: (row) => createHash('sha256').update(typeof row === 'string' ? row : JSON.stringify(row)).digest('hex') })
+  // N4 (round 18): the state-version/migration primitive that keeps an old snapshot from being read silently by
+  // newer code. (The chain is built earlier now - see the N1 consumer-wiring comment above the bus.)
   const stateversion = createStateVersion({ settings: { get: (k) => settings[k] }, bus, clock, log })
 
   // CONSUMER WIRING (round 19, the point an independent reviewer made): a clock guard that nobody uses changes
@@ -817,6 +821,8 @@ export function createKernel({
         active: started,
         settings: { keys: Object.keys(settings).length, engineEnabled: enabled, dryRun, resolved },
         auditTail: auditRing.slice(-20),
+        /** N1 consumer (round 20): verify the LIVE ring against the tamper-evident chain, row by row. */
+        auditVerify: () => auditchain.verifyChain({ rows: auditRing }),
         audit: { dir: auditState.dir, file: auditState.file, written: auditState.written,
           lastWriteError: auditState.lastWriteError,
           note: auditState.dir
