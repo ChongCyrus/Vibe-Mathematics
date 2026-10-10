@@ -463,7 +463,34 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   ok(badTask.ok === false && badTask.code === 'VMU_NO_SUCH_OBJECT', 'an unknown task id is refused BY NAME', JSON.stringify(badTask))
 }
 
-// ---- 16. self-probe ---------------------------------------------------------------------------
+// ---- 16. vmu.prompts.resourceSection: off by default (prompt byte-identical), on when asked -----------
+{
+  const base = fakeCtx()
+  const hBase = entry.apply(base.ctx, { clock, prompt: 'X' })
+  await new Promise((r) => setTimeout(r, 20))
+  const shape = (h) => h.prompts().map((p) => p.name + ':' + p.chars).join('|')
+  const baseShape = shape(hBase)
+  ok(!hBase.prompts().some((p) => p.name === 'resources'),
+    'by default NO 【资源】 section is registered (the prompt is untouched)', baseShape)
+
+  const off = fakeCtx()
+  const hOff = entry.apply(off.ctx, { clock, prompt: 'X', vmu: { 'vmu.prompts.resourceSection': false } })
+  await new Promise((r) => setTimeout(r, 20))
+  ok(shape(hOff) === baseShape,
+    'and `false` is byte-for-byte the same as absent (the default really changes nothing)', shape(hOff) + ' vs ' + baseShape)
+
+  const on = fakeCtx()
+  const hOn = entry.apply(on.ctx, { clock, prompt: 'X',
+    vmu: { 'vmu.prompts.resourceSection': true, 'vmu.limits.maxParallel': 4 } })
+  await new Promise((r) => setTimeout(r, 20))
+  const res = hOn.prompts().find((p) => p.name === 'resources')
+  ok(res && res.chars > 20 && hOn.prompts().some((p) => p.name === 'vmu'),
+    'true registers the 【资源】 section alongside the others (and it carries the budget text)', JSON.stringify(hOn.prompts()))
+  ok(hOn.prompts().length === hBase.prompts().length + 1,
+    'exactly ONE section is added - nothing else in the pipeline moves', String(hOn.prompts().length))
+}
+
+// ---- 17. self-probe ---------------------------------------------------------------------------
 if (SELF_PROBE) {
   const src = await readFile(ENTRY, 'utf8')
   const guard = "  if (typeof config.prompt === 'string' && config.prompt.length > 0 && ctx && ctx.systemPrompt &&"

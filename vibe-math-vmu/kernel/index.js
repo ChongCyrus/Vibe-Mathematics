@@ -162,6 +162,12 @@ export function createKernel({
 
   // The audit trail must be OBSERVABLE, not merely logged: `status().auditTail` returns the last rows, so a
   // reader can answer "who changed what, and which middleware refused this call" without opening a log file.
+  // LOG LEVEL (docs/04 §11): a REAL consumer, and a backwards-compatible one. At the default `info` the audit
+  // line reaches `log()` with EXACTLY the same text as before, so nothing about today's output changes; at
+  // `warn`/`error` it is suppressed, and `debug` lets the kernel add detail later. The level never enters the
+  // model context - it only decides whether the host's log callback is invoked.
+  const LOG_LEVELS = { debug: 10, info: 20, warn: 30, error: 40 }
+  const logEnabled = (level) => LOG_LEVELS[level] >= (LOG_LEVELS[String(settings['vmu.core.logLevel'])] || LOG_LEVELS.info)
   const auditRing = []
   const bus = injectedBus || createBus({
     entries: middleware,
@@ -170,7 +176,7 @@ export function createKernel({
     onAudit: (row) => {
       auditRing.push(row)
       if (auditRing.length > 100) auditRing.shift()
-      log('audit ' + JSON.stringify(row))
+      if (logEnabled('info')) log('audit ' + JSON.stringify(row))
       auditToDisk(row)
     },
   })
@@ -461,9 +467,14 @@ export function createKernel({
       const previous = {}
       for (const [key, value] of Object.entries(incoming)) {
         const existed = Object.prototype.hasOwnProperty.call(settings, key)
-        if (existed && settings['vmu.packs.allowOverride'] !== true) {
+        // Two explicit doors and NO silent third one: the blunt `vmu.packs.allowOverride`, or naming THIS exact
+        // key in `vmu.packs.activeOverrides` (finer-grained - docs/04 §11). Anything else stays a named conflict,
+        // and the hint names the precise key so the operator never has to guess which door to open.
+        const declaredOverride = Array.isArray(settings['vmu.packs.activeOverrides'])
+          && settings['vmu.packs.activeOverrides'].includes(key)
+        if (existed && settings['vmu.packs.allowOverride'] !== true && !declaredOverride) {
           throw refuse('VMU_PACK_CONFLICT', 'pack setting ' + key + ' would overwrite an active value',
-            'declare vmu.packs.allowOverride to make the override explicit (O4)')
+            'make the override explicit: list "' + key + '" in vmu.packs.activeOverrides, or set vmu.packs.allowOverride (O4)')
         }
         if (existed) previous[key] = settings[key]
         settings[key] = value
@@ -473,8 +484,30 @@ export function createKernel({
       return { ok: true, applied, previous }
     },
 
-    /** The two primitives a pack rollback needs, so an unload can restore or remove a setting exactly. */
-    setSettingsValue(key, value) { settings[key] = value; markSettingWriter(settings, key, 'runtime'); return { ok: true, key, source: 'runtime' } },
+    /**
+     * The two primitives a pack rollback needs, so an unload can restore or remove a setting exactly.
+     * DELEGATION (docs/04 §11, `vmu.safety.delegableKeys`): a caller that IDENTIFIES itself (`by`) but is not
+     * the key's declared owner may only write keys the configuration delegated. This is a policy hook for
+     * middleware/packs - not an authorisation system: the office path and the pack rollback pass no `by`, so
+     * their behaviour is unchanged, and a caller that lies about omitting `by` is not caught by design (that
+     * would need host identity, which the harness does not hand us). It replaces a purely declarative comment
+     * with something that refuses by name.
+     */
+    setSettingsValue(key, value, { by = null } = {}) {
+      if (by !== null && by !== undefined) {
+        const def = SETTING_DEFS.find((d) => d.key === key)
+        const owner = def ? def.who : null
+        const delegable = Array.isArray(settings['vmu.safety.delegableKeys'])
+          && settings['vmu.safety.delegableKeys'].includes(key)
+        if (owner && String(by) !== String(owner) && !delegable) {
+          throw refuse('VMU_NOT_PERMITTED', String(by) + ' may not set ' + key + ' (declared owner: ' + owner + ')',
+            'list "' + key + '" in vmu.safety.delegableKeys to delegate it to a role slot (docs/04 §11)')
+        }
+      }
+      settings[key] = value
+      markSettingWriter(settings, key, 'runtime')
+      return { ok: true, key, source: 'runtime' }
+    },
     unsetSettingsValue(key) { delete settings[key]; return { ok: true, key } },
 
     /**

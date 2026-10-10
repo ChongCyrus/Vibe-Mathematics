@@ -95,6 +95,25 @@ export function apply(ctx, config = {}) {
     }
     return out
   })()
+  // RESOURCE SECTION (docs/04 §11, `vmu.prompts.resourceSection`): default false means the prompt is BYTE-FOR-
+  // BYTE unchanged - the section is added only when the configuration asks for it. Its text is derived from the
+  // MECHANISM settings (not from live counters), so it states the budget the run is operating under instead of
+  // pretending to be a live dashboard.
+  if (settings['vmu.prompts.resourceSection'] === true) {
+    const cap = (v) => (Number(v) > 0 ? String(Number(v)) : '不限')
+    promptSections.push({
+      name: 'resources',
+      order: 900,
+      source: 'settings:vmu.prompts.resourceSection',
+      text: '【资源】在役成员上限=' + cap(settings['vmu.limits.maxLiveMembers'] || settings['vmu.limits.maxParallel']) +
+        '；任务上限=' + cap(settings['vmu.tasks.maxOpenTasks']) +
+        '；单回合工具上限=' + cap(settings['vmu.limits.toolCallsPerTurnCap']) +
+        '；墙钟预算=' + (Number(settings['vmu.limits.wallClockMs']) > 0 ? Number(settings['vmu.limits.wallClockMs']) + 'ms' : '不限') +
+        '；数学面=' + String(settings['vmu.math.computation'] || 'auto') +
+        '；整合包=' + (Array.isArray(settings['vmu.packs.active']) && settings['vmu.packs.active'].length
+          ? settings['vmu.packs.active'].join('／') : '无'),
+    })
+  }
   const promptOverrides = Object.assign({},
     config.promptOverrides && typeof config.promptOverrides === 'object' ? config.promptOverrides : {})
   const overridesDir = typeof settings['vmu.prompts.overridesDir'] === 'string' ? settings['vmu.prompts.overridesDir'] : null

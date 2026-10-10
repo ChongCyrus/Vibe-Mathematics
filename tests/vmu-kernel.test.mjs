@@ -322,6 +322,78 @@ if (SELF_PROBE) {
     String(refused2 && refused2.code))
 }
 
+// ---- three more wired keys: logLevel, delegableKeys, activeOverrides ----------------------------------
+{
+  // 1) vmu.core.logLevel is a REAL consumer, and backwards compatible: default `info` keeps today's text.
+  const logs = []
+  const kInfo = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z', log: (msg) => logs.push(msg) })
+  kInfo.bus.setDryRun(true)
+  ok(logs.filter((l) => typeof l === 'string' && l.indexOf('audit ') === 0).length >= 1,
+    'at the default logLevel=info the audit line reaches log() exactly as before', JSON.stringify(logs.slice(0, 1)))
+  const quiet = []
+  const kQuiet = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z', log: (msg) => quiet.push(msg),
+    settings: { 'vmu.core.logLevel': 'error' } })
+  kQuiet.bus.setDryRun(true)
+  ok(quiet.filter((l) => typeof l === 'string' && l.indexOf('audit ') === 0).length === 0,
+    'logLevel=error suppresses the info-level audit line (vmu.core.logLevel now has a consumer)', JSON.stringify(quiet))
+
+  // 2) vmu.safety.delegableKeys: the schema ALREADY names each key's owner (`who`), and this makes it
+  //    enforceable. Meeting decisions belong to `role:chair`, so a solver naming itself is refused by name.
+  const k = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z' })
+  const def = k.settingDef('vmu.meetings.quorumCap')
+  ok(def && def.who === 'role:chair',
+    'the schema already declares the owner of meeting decisions (who=role:chair) - this key makes it enforced',
+    JSON.stringify(def && { who: def.who, hot: def.hot }))
+  let refused = null
+  try { k.setSettingsValue('vmu.meetings.quorumCap', 5, { by: 'solver' }) } catch (e) { refused = e }
+  ok(refused && refused.code === 'VMU_NOT_PERMITTED' && /declared owner: role:chair/.test(String(refused.message)),
+    'a non-owner writer is refused by name and told the declared owner', String(refused && refused.message))
+  const k2 = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z',
+    settings: { 'vmu.safety.delegableKeys': ['vmu.meetings.quorumCap'] } })
+  const delegated = k2.setSettingsValue('vmu.meetings.quorumCap', 5, { by: 'solver' })
+  ok(delegated.ok === true && k2.settingsSnapshot()['vmu.meetings.quorumCap'] === 5,
+    'and the same write is allowed once that key is delegated')
+  ok(k.setSettingsValue('vmu.meetings.quorumCap', 4, { by: 'role:chair' }).ok === true,
+    'the declared owner slot is unaffected')
+  ok(k.setSettingsValue('vmu.meetings.quorumCap', 3).ok === true,
+    'and the no-`by` path (office tool + pack rollback) is unchanged')
+
+  // 2b) RESOLUTION vs RUNTIME (found while wiring this, and worth pinning): `resolveSettings` reports the
+  //     schema default (and so does `status().settings.resolved` with source 'default'), but the ENTRY hands the
+  //     kernel the RAW map, so the kernel's own fallback decides behaviour: an UNSET cap is unlimited, and a
+  //     CONFIGURED one is enforced. That is why wiring the synonym changed nothing by default.
+  const kUnset = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z' })
+  kUnset.declareSlots([{ id: 'm', label: '成员', capacity: 0 }])
+  for (const id of ['r-1', 'r-2', 'r-3', 'r-4']) await kUnset.members.hire({ id, slot: 'm' })
+  ok(kUnset.members.roster().length === 4,
+    'an UNSET live-member cap leaves the roster unlimited (the entry passes the raw map, not the resolved one)',
+    String(kUnset.members.roster().length))
+  const kCap = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z', settings: { 'vmu.limits.maxParallel': 3 } })
+  kCap.declareSlots([{ id: 'm', label: '成员', capacity: 0 }])
+  for (const id of ['r-1', 'r-2', 'r-3']) await kCap.members.hire({ id, slot: 'm' })
+  let fourth = null
+  try { await kCap.members.hire({ id: 'r-4', slot: 'm' }) } catch (e) { fourth = e }
+  ok(fourth && fourth.code === 'VMU_RESOURCE_BUDGET',
+    'and a CONFIGURED maxParallel=3 really caps the roster at three', String(fourth && fourth.code))
+
+  // 3) vmu.packs.activeOverrides: naming the key opens exactly that door - and no wider one.
+  const k3 = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z', settings: { 'vmu.meetings.quorumRule': 'majority' } })
+  let conflict = null
+  try { k3.applyPackSettings({ 'vmu.meetings.quorumRule': 'm-unanimous' }, { by: 'p1' }) } catch (e) { conflict = e }
+  ok(conflict && conflict.code === 'VMU_PACK_CONFLICT' && /activeOverrides/.test(String(conflict.hint)),
+    'without a declaration the override is refused, and the hint names the exact key', String(conflict && conflict.hint))
+  const k4 = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z',
+    settings: { 'vmu.meetings.quorumRule': 'majority', 'vmu.limits.maxParallel': 4,
+      'vmu.packs.activeOverrides': ['vmu.meetings.quorumRule'] } })
+  const applied = k4.applyPackSettings({ 'vmu.meetings.quorumRule': 'm-unanimous' }, { by: 'p1' })
+  ok(applied.ok === true && applied.applied.includes('vmu.meetings.quorumRule'),
+    'the DECLARED key may be overridden through the fine-grained door')
+  let sibling = null
+  try { k4.applyPackSettings({ 'vmu.limits.maxParallel': 9 }, { by: 'p1' }) } catch (e) { sibling = e }
+  ok(sibling && sibling.code === 'VMU_PACK_CONFLICT',
+    'and an undeclared SIBLING key is still refused (the door is per-key, not a blanket)', String(sibling && sibling.code))
+}
+
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

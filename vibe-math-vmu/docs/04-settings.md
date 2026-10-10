@@ -102,8 +102,17 @@ export const SettingsJsonSchema = toJsonSchema()   // 单向派生；文档/门�
 
 - **值从哪来（真实现）**：`vibe_vmu_status` ⇒ `settings.resolved[<key>] = { value, source, hot, who, overridden }` ✓，`source` 取值与优先级为 **`pack:<id>` > `runtime`（`vibe_vmu_set` 写过）> `config`（插件行的 `config.vmu`）> `default`（无人设置，用 schema 默认）** ✓；`overridden` 列出被 pack 覆盖过的来源 ✓。**没有** `settings.resolved.json` 这种落盘文件 ✗（见 §2 的修正）。
 - **审计面（真实现，2026-10-09 更新 ✓）**：`vibe_vmu_status` ⇒ **`auditTail`**（总线审计的**最后 20 条**，内存 ✓）＋ **`audit = { dir, file, written, lastWriteError }`** ✓；行形如 `{ ts, seq, what, id, ... }` ✓。**耐久审计已落盘 ✓**：有 `root` 时每条追加到 `<root>/vmu/audit/<YYYY-MM-DD>.jsonl`（JSONL ✓，只增不改 ✓）；**写失败具名上报** ✗→✓（`lastWriteError`，且内存尾照常 ✓）；无 `root` ⇒ 仅内存面 ✓。
-- **写权限（真实现 ✗→✓ 部分）**：`who` 目前是**声明性元数据** ✓（`vibe_vmu_set` 已把它写进回执 ✓）；但**运行期尚未强制** ✗ —— `vmu.safety.delegableKeys` 截至本轮**无消费者** ✗（04 §11 的"接线"列已如实标注 ✓）。
-- **拒收（真实现）**：未声明键 ⇒ `VMU_INVALID_ARGUMENT` ✓；H3 ⇒ `VMU_NOT_PERMITTED` ✓；pack 设置冲突 ⇒ `VMU_PACK_CONFLICT` ✓（除非显式 `vmu.packs.allowOverride` ✓）。
+- **写权限（真实现 ✗→✓，2026-10-10 本轮接线 ✓）**：schema 里**每个键都声明了 owner**（`who`，如会议六键＝`role:chair` ✓）；现在它**可强制** ✓：`setSettingsValue(key, value, { by })` 中若 `by` 不是声明的 owner 且该键未被 `vmu.safety.delegableKeys` 下放 ⇒ **具名拒** `VMU_NOT_PERMITTED`（提示给出 owner 与下放写法 ✓）。**边界 ✗**：这是**政策钩子，不是鉴权系统** ✓——不传 `by` 的路径（office 工具 ✓、pack 回滚 ✓）行为不变，"故意不报 `by`"抓不到（需宿主身份 ✗）。
+- **拒收（真实现）**：未声明键 ⇒ `VMU_INVALID_ARGUMENT` ✓；H3 ⇒ `VMU_NOT_PERMITTED` ✓；pack 设置冲突 ⇒ `VMU_PACK_CONFLICT` ✓（两条显式门：**粗粒度** `vmu.packs.allowOverride` ✓ 或**逐键** `vmu.packs.activeOverrides` ✓；提示会**点名该键** ✓，无静默第三条路 ✓）。
+
+### 6.1 本轮新接线的四键（**语义与边界写清 ✓**，2026-10-10；刻意用要点而非表格，避免被当成 §11 的设置行 ✗）
+
+- **✅ 已接线 · 日志级别**（`vmu.core.logLevel`）：决定**是否调用宿主 `log`** —— 默认 `info` 时审计行**文本逐字不变** ✓，`warn`/`error` 抑制它，`debug` 预留。**边界 ✗**：**永不进模型上下文** ✓，只影响日志回调 ✓。
+- **✅ 已接线 · 资源段**（`vmu.prompts.resourceSection`）：`true` ⇒ 注入**恰好一个** `resources` 段（order 900 ✓；文本由**机制设置**推导：在役成员／任务／回合工具／墙钟／数学面／整合包 ✓）。**边界 ✗**：默认 `false` ⇒ 提示词**逐字节不变** ✓；该文本**不是实时看板** ✗（改设置需重新装配 ✓）。
+- **✅ 已接线 · 键的下放**（`vmu.safety.delegableKeys`）：让 schema 里**早就存在的 `who`** 变得**可强制** ✓ —— `setSettingsValue(key, value, { by })` 中若 `by` 不是声明的 owner（会议六键＝`role:chair` ✓）且该键未下放 ⇒ **具名拒** `VMU_NOT_PERMITTED`（提示给出 owner 与下放写法 ✓）。**边界 ✗**：是**政策钩子、不是鉴权** —— 不传 `by` 的路径（office 工具 ✓、pack 回滚 ✓）行为不变，"故意不报 `by`"抓不到（需宿主身份 ✗）。
+- **✅ 已接线 · 逐键覆盖门**（`vmu.packs.activeOverrides`）：与粗粒度的 `vmu.packs.allowOverride` 并列的**按键显式门** ✓ —— 冲突时键在声明列表内 ⇒ 放行；否则 `VMU_PACK_CONFLICT` 且提示**点名该键** ✓。**边界 ✗**：门是**逐键**的（声明 A 不放行 B ✓，有断言 ✓）。
+
+> **顺带查实的一处层次差异（诚实登记 ✗）**：`settings/schema.js` 的 `resolveSettings()` 会算出 `def`（默认值 ✓，`status().settings.resolved[<key>].source === 'default'` 即它 ✓），但**入口把"原始 map"交给内核** ✗ ⇒ 运行时兜底是内核自己的 `||`（如 `maxLiveMembers || maxParallel || 0` ✓）。**后果** ✓：schema 默认值**不会**自动生效（所以本轮给 `maxParallel` 接线**没有改变任何默认行为** ✓：未设＝不限 ✓、已设才强制 ✓，有断言钉住 ✓）。**待裁决候选** ✗：是否让入口改走 `resolveSettings`（那会让 `maxParallel=3` 等默认值**真的生效** ✗＝行为变更，须批准 ✓）；或维持现状并在 §2 如实写明 ✓。
 
 > **诚实边界** ✗：域外值（类型/枚举越界）目前**只在 `assertDeclared` 一层**做检查 ✓；`config.vmu` 直通内存路径**不校验** ✗（见 12-§10）。
 
@@ -175,12 +184,12 @@ vmu.packs.active: [v5r]
 |---|---|---|---|---|---|---|---|---|---|
 | `vmu.core.enabled` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | 内核总开关（关闭＝完全不介入） |
 | `vmu.core.storeBackend` | enum | `json-fold` | `json-fold`∣`storage-domain` | 会话 | **H3** | office | ⚠️ 未接线（改了不会有行为变化） | — | 耐久后端（O1：默认 fold；换后端须过同一套门禁） |
-| `vmu.core.logLevel` | enum | `info` | `debug`∣`info`∣`warn`∣`error` | 会话 | H0 | office | ⚠️ 未接线（改了不会有行为变化） | — | 日志级别（不进模型上下文） |
-| `vmu.limits.toolCallsPerTurnCap` | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `host-hooks.js` | 单回合工具调用上限；0＝不限 |
-| `vmu.limits.maxLiveMembers` | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/index.js` | 在活成员上限；0＝不设（机器强制） |
+| `vmu.core.logLevel` | enum | `info` | `debug`∣`info`∣`warn`∣`error` | 会话 | H0 | office | ✅ 已接线 | `kernel/index.js` | 日志级别（不进模型上下文） |
+| `vmu.limits.toolCallsPerTurnCap` | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 单回合工具调用上限；0＝不限 |
+| `vmu.limits.maxLiveMembers` | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 在活成员上限；0＝不设（机器强制） |
 | `vmu.limits.memoryCeilingMb` | int ≥0 | `0` | — | 会话 | H0 | office | ⚠️ 未接线（改了不会有行为变化） | — | 内存上限（超限拒绝新建成员）；0＝不设 |
-| `vmu.limits.wallClockMs` | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/index.js` | 阶段墙钟硬上限（框架侧上限，不是用户可设的截止时刻） |
-| `vmu.limits.maxParallel` | int ≥1 | `3` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/index.js` | 并发上限（P3：吸收 v5r 的 maxParallel；机器强制） |
+| `vmu.limits.wallClockMs` | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 阶段墙钟硬上限（框架侧上限，不是用户可设的截止时刻） |
+| `vmu.limits.maxParallel` | int ≥1 | `3` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 并发上限（P3：吸收 v5r 的 maxParallel；机器强制） |
 | `vmu.records.tracks` | string[] | `[progress,routes,obstacles,rejected,state]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 记录分轨（负向知识有独立档） |
 | `vmu.records.headListAt` | int ≥0 | `7` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 头部列表最多返回多少行（0＝全部）；被截断时按 docs/07 §4.4 计数 |
 | `vmu.records.truncateMode` | enum | `keepChars` | `keepChars`∣`keepHeadTail`∣`dropMiddle` | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 截断策略（必须计数，禁静默） |
@@ -190,7 +199,7 @@ vmu.packs.active: [v5r]
 | `vmu.prompts.overridesDir` | path | `prompts/overrides` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 提示词覆盖目录（仓内相对路径） |
 | `vmu.prompts.bindings` | obj[] | `[]` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 四维绑定（优先级 角色<阶段<成员<任务） |
 | `vmu.prompts.whoMayOverride` | string[] | `[office]` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 允许覆盖提示词者 |
-| `vmu.prompts.resourceSection` | bool | `false` | — | 会话 | H0 | office | ⚠️ 未接线（改了不会有行为变化） | — | P3/S25-A：默认 false＝提示词一字不改；true 才注入【资源】段 |
+| `vmu.prompts.resourceSection` | bool | `false` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | P3/S25-A：默认 false＝提示词一字不改；true 才注入【资源】段 |
 | `vmu.meetings.quorumRule` | enum | `m-unanimous` | `m-unanimous`∣`all-unanimous` | 会话 | H1 | role:chair | ✅ 已接线 | `kernel/index.js` | 法定数规则（仅规则，不含"何时开会"） |
 | `vmu.meetings.quorumCap` | int ≥0 | `3` | — | 会话 | H1 | role:chair | ✅ 已接线 | `packs/institute-min.js` | P3：法定数上限 m = min(cap, 参与人数)；0＝不设上限 |
 | `vmu.meetings.reconsiderFloor` | int ≥0 | `0` | — | 会话 | H1 | role:chair | ✅ 已接线 | `packs/institute-min.js` | P3：复议门槛下限（生效门槛 = max(对象标准, 它, 上限)）；0＝只保证"不降" |
@@ -200,7 +209,7 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.roundTimeoutMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 单轮超时；0＝不限 |
 | `vmu.meetings.quotesPerMessageMax` | int ≥0 | `2` | — | 会话 | H1 | role:chair | ✅ 已接线 | `kernel/index.js` | P3：每条发言最多引用几条；超限 ⇒ 具名拒 |
 | `vmu.meetings.quoteDepthMax` | int ≥0 | `3` | — | 会话 | H1 | role:chair | ✅ 已接线 | `kernel/index.js` | P3：引用链深度上限；超深 ⇒ 折叠标注（不拒） |
-| `vmu.tasks.maxOpenTasks` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 未完成任务上限；0＝不限 |
+| `vmu.tasks.maxOpenTasks` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 未完成任务上限；0＝不限 |
 | `vmu.tasks.stages` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | 阶段列表；默认空＝不假装有流程 |
 | `vmu.math.computation` | enum | `auto` | `off`∣`auto`∣`on` | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | P3：数学工具可用性（共享模块默认 auto） |
 | `vmu.math.mode` | enum | `typed+shell` | `typed`∣`typed+shell` | 会话 | H2 | office | ✅ 已接线 | `host-math.js` | P3：typed＝绝不提 shell 且拒绝 engine=cli |
@@ -219,14 +228,14 @@ vmu.packs.active: [v5r]
 | `vmu.math.leanJobsMaxParallel` | int ≥1 | `1` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | P3：后台编译并发（1＝串行） |
 | `vmu.safety.pathPolicy` | enum | `workspace-only` | `workspace-only`∣`workspace+shared` | 会话 | **H3** | office | ⚠️ 未接线（改了不会有行为变化） | — | 写保护范围 |
 | `vmu.safety.approvalRequired` | string[] | `[]` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 需审批的动作（走宿主审批面） |
-| `vmu.safety.delegableKeys` | string[] | `[]` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 可下放给角色槽位的键 |
+| `vmu.safety.delegableKeys` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 可下放给角色槽位的键 |
 | `vmu.middleware.entries` | obj[] | `[]` | — | 会话 | H0 | office | ✅ 已接线 | `host.js` | 中间件清单（默认空＝零机制） |
 | `vmu.middleware.hookTimeoutMs` | int ≥1 | `2000` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/bus.js` | 单钩子预算 |
 | `vmu.middleware.breakerThreshold` | int ≥1 | `3` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/bus.js` | 连续失败熔断阈值 |
 | `vmu.middleware.dryRun` | bool | `false` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/index.js` | 干跑（只报不做） |
 | `vmu.packs.active` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | 生效整合包（冲突按 O4 报错） |
 | `vmu.packs.allowOverride` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 是否允许 pack 间显式覆盖 |
-| `vmu.packs.activeOverrides` | string[] | `[]` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 显式覆盖声明（不声明即报错） |
+| `vmu.packs.activeOverrides` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 显式覆盖声明（不声明即报错） |
 
 **三条硬纪律（本表的门禁）**：① 表内键集合 ≡ schema 键集合（无多无少）；② 每个键都有回显＋非法拒＋热改＋审计四类断言；③ **本表不得手写第二份** —— 已由 **`scripts/generate-vmu-settings-table.mjs`** 落实 ✓✓：`--check` 未通过即红 ✗（**并已接入 T0 预检** ✓），任何人工改动都会被下一次检查抹平 ✓；④ "时间/随机"类**一律不接受用户输入**（`vmu.limits.wallClockMs` 是**框架侧上限**，不是用户可设的截止时刻 ✓）。
 
