@@ -3243,14 +3243,13 @@ assert(sPaper && sPaper.paper && sPaper.paper.status === 'writing' && sPaper.pap
   'the automatic paper is in its writing stage with the academician as the default editor (' + JSON.stringify(sPaper && sPaper.paper && { status: sPaper.paper.status, editor: sPaper.paper.editor }) + ')')
 // Drive the paper to completion: parts -> cross-review -> academician finalises -> the run is
 // marked complete and the conclusion record is written.
-// ROUND 65 FINDING: arming the probe below (one delivery with NO evidence) does NOT produce a retry - it STALLS
-// the flow, because refusing a part returns an error to the wake pipeline and NOTHING asks that member again.
-// Measured: passed=89 failed=11, every downstream assertion reading an empty state. So the probe stays DISARMED
-// and the real gap is named instead: the evidence rule needs a RE-ASK to be useful, and that re-ask does not
-// exist yet (the same holds for the older "empty part" refusal). Disarmed = the suite measures the rest.
+// ROUND 66: the probe is ARMED again, because round 66 added the re-ask the round-65 measurement demanded. The
+// stub omits evidence exactly ONCE; if the refusal re-asks (as it now does, bounded to two attempts), that member
+// is asked a second time and the flow completes. If either half were missing - no refusal, or no re-ask - this
+// either records a part with no evidence or stalls, and the assertions below catch both.
 {
   const probe = globalThis.__paperProbe || (globalThis.__paperProbe = { omitOnce: false, attempts: {} })
-  probe.omitOnce = false
+  probe.omitOnce = true
   probe.attemptsAtArm = Object.assign({}, probe.attempts)
 }
 let sDone = sPaper
@@ -3262,16 +3261,19 @@ for (let i = 0; i < 160; i++) {
 }
 assert(sDone.autoDone === true, 'the run is marked complete once the final paper is finalised — ' +
   JSON.stringify({ autoDone: sDone.autoDone, running: sDone.running, paper: sDone.paper && { status: sDone.paper.status, compile: sDone.paper.compile } }))
-// ROUND 65 (docs/22 §6.1, O-4): the evidence rule is present and the probe that would prove it REACHABLE is
-// disarmed above, with the reason recorded there - a refused part stalls the flow because nothing re-asks the
-// member. What this block asserts is the honest half: the probe mechanism itself works and stays inert, so the
-// gap is visible instead of being papered over by a test that only ever supplies evidence.
+// ROUND 66: the evidence rule is now REACHABLE, and this is the causal proof. The armed probe omitted evidence
+// exactly once; the refusal re-asked that member (round 66's bounded re-ask), so a SECOND attempt for the same
+// member exists - and the run still completed. Remove either half and this fails: without the refusal the part is
+// recorded and no second attempt happens; without the re-ask the flow stalls and the completion assertions above
+// never pass.
 {
   const probe = globalThis.__paperProbe || { attempts: {}, attemptsAtArm: {} }
   const armed = probe.attemptsAtArm || {}
   const retried = Object.keys(probe.attempts || {}).filter((k) => probe.attempts[k] > (armed[k] || 0))
-  assert(probe.omitOnce === false, 'the evidence probe is DISARMED (arming it stalls the flow - see the finding above)')
-  assert(Array.isArray(retried), 'the probe records per-member delivery attempts so the gap can be measured later')
+  assert(probe.omitOnce === false, 'the evidence probe was CONSUMED exactly once (a single no-evidence delivery)')
+  assert(retried.length > 0,
+    'a member whose part carried NO evidence was ASKED AGAIN (refusal + re-ask, not one without the other) — ' +
+    JSON.stringify({ attempts: probe.attempts, atArm: armed }))
 }
 assert(sDone.running === false, 'scheduling halted after the paper was finalised')
 assert(sDone.paper && sDone.paper.status === 'finalized', 'status reports the paper as finalised (' + JSON.stringify(sDone.paper && sDone.paper.status) + ')')

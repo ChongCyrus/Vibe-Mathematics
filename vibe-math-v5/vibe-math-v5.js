@@ -6084,6 +6084,26 @@ export function apply(ctx) {
         autoDisabled: params.finalPaper === false, note: paperAutoNote(),
       }
     }
+    /**
+     * ROUND 66 (found by the round-65 probe): a refusal must not STALL the flow. Measured then: returning the error
+     * left the member unasked and the paper waited for a part that never came (passed=89 failed=11, every downstream
+     * assertion reading an empty state). So a refusal RE-ASKS the member with the very prompt the flow used - but
+     * BOUNDED: at most two re-asks per member, and when it gives up it SAYS SO instead of looping for ever.
+     */
+    async function reaskAfterRefusal(memberId, p, code, message) {
+      const reasks = Object.assign({}, (p && p.partReasks) || {})
+      reasks[memberId] = (reasks[memberId] || 0) + 1
+      await mutatePaper((cur) => (cur ? Object.assign({}, cur, { partReasks: reasks }) : cur))
+      const attempt = reasks[memberId]
+      const m = memberById(memberId)
+      if (attempt <= 2 && m && m.phase === 'active') {
+        await wakeMember(m, paperWritePrompt(m, p), 'paper')
+        await paperLog('拒绝后已再问 ' + memberId + '（第 ' + attempt + '/2 次）', '- 原因：' + code)
+        return { ok: false, code, message: message + ' — the member was ASKED AGAIN (attempt ' + attempt + '/2)' }
+      }
+      await paperLog('拒绝后不再问 ' + memberId + '（已 ' + attempt + ' 次）', '- 原因：' + code + '；论文流程需要所办介入')
+      return { ok: false, code, message: message + ' — refused ' + attempt + ' time(s); NOT asking again (the flow needs the office)' }
+    }
     async function paperRecordPart(memberId, raw) {
       const p = paper()
       if (!p || p.status !== 'writing') return { ok: false, code: 'V5_PAPER_STATE', message: 'the paper flow is not in its writing stage (now: ' + (p ? p.status : 'none') + ')' }
@@ -6100,7 +6120,7 @@ export function apply(ctx) {
       }
       if (!part.title && !part.solution && !part.methods && !part.rules && !part.limits) {
         await notice(memberId, 'paper_part 是空的：请至少给出 title 与你的贡献正文（solution/methods/rules/limits），只写库里已有证据支撑的内容。')
-        return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'paper_part carries no content' }
+        return await reaskAfterRefusal(memberId, p, 'V5_INVALID_ARGUMENT', 'paper_part carries no content')
       }
       // ROUND 64 (docs/22 §6.1, O-4): the prompt has always demanded evidence ("不得编造…在 evidence 里写清证据路径")
       // but acceptance silently took an EMPTY list and merely logged "0 条" - the intention was written down and not
@@ -6108,7 +6128,7 @@ export function apply(ctx) {
       // NAME; the refusal uses the code the volumes already registered for this shape.
       if (part.evidence.length === 0) {
         await notice(memberId, '缺少 evidence：论文里的每一条结论都必须指向**库里已存在**的证据路径；没有证据的推测不要写成结论，未决／被否证的条目必须显式标注。')
-        return { ok: false, code: 'VMU_OUTREACH_REF_MISSING', message: 'paper_part carries no evidence reference: every claim must point at evidence that already exists (docs/22 §6.1, O-4)' }
+        return await reaskAfterRefusal(memberId, p, 'VMU_OUTREACH_REF_MISSING', 'paper_part carries no evidence reference: every claim must point at evidence that already exists (docs/22 §6.1, O-4)')
       }
       await mutatePaper((cur) => (cur ? Object.assign({}, cur, { parts: Object.assign({}, cur.parts || {}, { [memberId]: part }), updatedAt: now() }) : cur))
       await paperLog('收到 ' + memberId + ' 的部分（第 ' + p.round + ' 轮）', '- 标题：' + (part.title || '(无)') + '\n- 声称证据：' + (part.evidence.length || 0) + ' 条')
