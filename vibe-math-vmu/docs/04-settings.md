@@ -541,6 +541,7 @@ vmu.packs.active: [v5r]
 | `vmu.idempotency.abortNeedsReason` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/idempotency.js` | abort 必须给理由（留痕 ✓） |
 | `vmu.idempotency.retryAfterAbort` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/idempotency.js` | abort 后是否允许同 key 重试（同载荷 ✓） |
 | `vmu.idempotency.maxPayloadBytes` | int ≥0 | `262144` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/idempotency.js` | 载荷指纹计算上限（触界报丢弃 ✗） |
+| `vmu.idempotency.retrySamePayloadOnly` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/idempotency.js` | abort 后重试是否必须同载荷（默认是；放宽 ⇔ 重试是新尝试，必须自曝 ✗✓） |
 | `vmu.replay.strict` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/replay.js` | 未知事件类型是否具名拒（默认 false：计入 unknownKinds ✓ 绝不静默跳过 ✗） |
 | `vmu.replay.keepUnknown` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/replay.js` | 未知事件是否保留在重建结果里（保留并标 unknown ✓） |
 | `vmu.replay.requireContiguousSeq` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/replay.js` | 是否要求审计序号连续（缺口必须报 ✗✓） |
@@ -560,6 +561,17 @@ vmu.packs.active: [v5r]
 | `vmu.ratelimit.maxKeys` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ratelimit.js` | 桶数上限（0＝不限；淘汰必计数 ✓） |
 | `vmu.ratelimit.queueMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ratelimit.js` | 排队上限（0＝不排队；溢出降级为具名拒并计数 ✓） |
 | `vmu.ratelimit.perScope` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ratelimit.js` | 按作用域覆盖限额 |
+| `vmu.audit.chain.verifyCap` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/auditchain.js` | 分段验证上限（0＝全链；**只验前 N 行时必须如实报未验** ✗✓） |
+| `vmu.audit.chain.algorithm` | string | `sha256` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/auditchain.js` | 链哈希算法声明（仅回显；实际由注入 hash 决定 ✗） |
+| `vmu.state.current` | string | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/stateversion.js` | 当前状态版本 |
+| `vmu.state.requireVersion` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/stateversion.js` | 状态必须带版本标签（缺失 ⇒ 具名拒，**绝不当成当前版本** ✗✓） |
+| `vmu.state.maxMigrationSteps` | int ≥1 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/stateversion.js` | 迁移步数上限（超限具名拒并给当前/上限 ✓） |
+| `vmu.state.onUnknown` | enum | `refuse` | `refuse`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `kernel/stateversion.js` | 未知版本策略（warn 时**必须自曝 `assumed`** ✗✓） |
+| `vmu.state.keepHistory` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/stateversion.js` | 是否保留迁移历史（留痕 ✓） |
+| `vmu.state.allowDowngrade` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/stateversion.js` | 是否允许降级迁移（默认拒；放行也必须自曝 ✗） |
+| `vmu.clock.onBackward` | enum | `clamp` | `clamp`∣`refuse`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `kernel/clockguard.js` | 时钟回拨处置（clamp 不回退并自曝；refuse 具名拒；warn 必须自曝 ✗✓） |
+| `vmu.clock.forwardJumpMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/clockguard.js` | 异常前跳阈值（0＝不判定；超阈记 suspect ✓ 不静默 ✗） |
+| `vmu.clock.maxSkews` | int ≥1 | `100` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/clockguard.js` | 回拨/前跳记录上限（溢出必计数 ✓） |
 | `vmu.handover.packBudgetBytes` | int ≥1 | `32768` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 上下文包预算（触界必报丢弃） |
 | `vmu.handover.compress` | enum | `summary` | `none`∣`summary` | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 压缩方式 |
 | `vmu.handover.requireFingerprint` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/handover.js` | 每项须带指纹 |

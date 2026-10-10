@@ -2,17 +2,30 @@
 //
 // Design source: docs/07-durability-library.md §4.2 (content identity is computed in ONE place, and the stored
 // fingerprint is read back rather than recomputed) and 03-§8 (`VMU_IDEMPOTENCY_KEY_REUSED`). This module does
-// NOT redefine the library's record fingerprint: it computes a REQUEST fingerprint (canonical JSON of the
-// payload) which is a different concern — 07 identifies *content*, this identifies *a request*.
+// NOT redefine the library's record fingerprint: it computes a REQUEST fingerprint (a TYPE-TAGGED canonical
+// encoding of the payload) which is a different concern — 07 identifies *content*, this identifies *a request*.
 //
-// FOUR HARD INVARIANTS (each one a refusal or an explicit state — never a pretence):
-//   ① SAME KEY + DIFFERENT PAYLOAD ⇒ `VMU_IDEMPOTENCY_KEY_REUSED`, and the refusal CARRIES BOTH FINGERPRINTS
-//      plus where the two canonical payloads diverge (first differing byte, lengths, changed top-level keys).
-//   ② SAME KEY + SAME PAYLOAD ⇒ the EXISTING result is returned (`deduplicated:true`); nothing is executed.
-//   ③ A PENDING KEY IS NEVER A SUCCESS: `lookup()` answers `pending | committed | aborted | absent`, and only
-//      `committed` carries `settled:true`. `begin()` on a pending key says "still in flight — do not execute".
-//   ④ `abort()` NEEDS A REASON and is audited; `reap()` reports `reaped` (TTL) and `dropped` (stale pending)
-//      separately — an entry is never discarded silently.
+// ── ROUND 8 FIXES (three measured bypasses) ─────────────────────────────────────────────────────────────
+//   B1 TYPE-TAGGED CANONICAL ENCODING (canonicalVersion 2): `NaN`, `null`, `Infinity`, `undefined`, `-0`,
+//      bigint and strings can no longer collide (`{x:NaN}` ≠ `{x:null}`, `undefined` ≠ `"undefined"`,
+//      `-0` ≠ `0`, `10n` ≠ `"10"`). Payloads that are NOT JSON-safe (functions, symbols, cyclic graphs,
+//      class instances, Map/Set/Date, …) are refused BY NAME instead of being silently flattened.
+//   B2 SCOPE IS PART OF THE IDENTITY: the ledger key is `scope + '\u0000' + key`, so `meeting:A/close` and
+//      `meeting:B/close` are DIFFERENT entries (before the fix they collided and falsely reported
+//      `VMU_IDEMPOTENCY_KEY_REUSED`). When a bare `key` is ambiguous across scopes the call is refused with
+//      the candidate scopes listed — no silent guess.
+//   B3 THE ABORT→RETRY PAYLOAD RULE IS EXPLICIT: invariant ① (a reused key with another payload is refused)
+//      applies to COMMITTED keys. For an ABORTED key the default `retrySamePayloadOnly=true` demands the
+//      SAME payload (a different one ⇒ `VMU_IDEMPOTENCY_KEY_REUSED`); setting it to false makes the retry a
+//      NEW attempt, which is then self-disclosed as `retryIsNewAttempt:true` (+ `payloadChanged` in the audit).
+//
+// ── N2 PERSISTENCE PROJECTION (optional injected store seam) ─────────────────────────────────────────────
+//   With a `store` (kernel/store.js, the 07 durability layer) the ledger is persisted under one key and
+//   reloaded lazily: the same payload replayed AFTER A RESTART still deduplicates. `status().durable` says
+//   plainly whether that is actually true (true = the seam is wired and the last write succeeded; false =
+//   memory-only, with `durableReason`). A broken seam degrades to memory and is COUNTED — it never crashes
+//   and never pretends to be durable.
+//
 // Invariants shared with the rest of the kernel:
 //   · every refusal is NAMED (VMU_* + hint) — never a bare exception
 //   · every upper bound reports how many items were DROPPED — never silent (list/history/reap)
@@ -24,6 +37,10 @@
 import { createHash } from 'node:crypto'
 
 export const apiVersion = 1
+/** Version of the canonical encoding. It is part of every fingerprint, so v1 and v2 can never be confused. */
+export const CANONICAL_VERSION = 2
+/** The durable projection key inside the injected store (docs/07 §6 layout). */
+export const LEDGER_KEY = 'idempotency'
 
 export function refuse(code, message, hint) {
   const e = new Error(message)
@@ -38,32 +55,76 @@ const K_PENDING_TIMEOUT = 'vmu.idempotency.pendingTimeoutMs'
 const K_SCOPE_DEFAULT = 'vmu.idempotency.scopeDefault'
 const K_ABORT_REASON = 'vmu.idempotency.abortNeedsReason'
 const K_RETRY_AFTER_ABORT = 'vmu.idempotency.retryAfterAbort'
+const K_RETRY_SAME_PAYLOAD = 'vmu.idempotency.retrySamePayloadOnly'
 const K_MAX_PAYLOAD = 'vmu.idempotency.maxPayloadBytes'
 const K_KEY_SCOPE = 'vmu.workflow.idempotencyKeyScope'   // the 08-doc spelling, read as a scope fallback
 
 const STATES = Object.freeze(['pending', 'committed', 'aborted'])
 const DEFAULT_LIST_CAP = 200
 const PREVIEW_CAP = 400
+const IDENT_SEP = '\u0000'
 
-/** Canonical JSON: keys sorted at every depth, so two logically equal payloads fingerprint identically. */
+/**
+ * The TYPE-TAGGED canonical encoding (B1). Every value carries its kind, so two different values can never
+ * produce the same string:
+ *   undefined → `u`        null → `z`         true/false → `t`/`f`
+ *   number    → `n:<repr>` (`n:nan`, `n:inf`, `n:-inf`, `n:-0`, else shortest round-trip `String(v)`)
+ *   bigint    → `g:<digits>`
+ *   string    → `s:` + JSON.stringify(v)
+ *   array     → `a:[…]`    plain object → `o:{s:"k":…,…}` (keys sorted)
+ * A payload that is NOT JSON-safe (function, symbol, cyclic graph, class instance, Map/Set/Date/RegExp …) is
+ * REFUSED by name: a ledger that silently flattened such a payload is exactly how a false "same request" is born.
+ */
 export function canonicalize(value) {
-  const walk = (v) => {
-    if (v === null) return 'null'
-    if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'null'
-    if (typeof v === 'boolean') return v ? 'true' : 'false'
-    if (typeof v === 'string') return JSON.stringify(v)
-    if (Array.isArray(v)) return '[' + v.map(walk).join(',') + ']'
-    if (typeof v === 'object') return '{' + Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + walk(v[k])).join(',') + '}'
-    return JSON.stringify(String(v))
+  const seen = new Set()
+  const walk = (v, path) => {
+    if (v === undefined) return 'u'
+    if (v === null) return 'z'
+    const t = typeof v
+    if (t === 'boolean') return v ? 't' : 'f'
+    if (t === 'number') {
+      if (Number.isNaN(v)) return 'n:nan'
+      if (v === Infinity) return 'n:inf'
+      if (v === -Infinity) return 'n:-inf'
+      if (Object.is(v, -0)) return 'n:-0'
+      return 'n:' + String(v)
+    }
+    if (t === 'bigint') return 'g:' + v.toString()
+    if (t === 'string') return 's:' + JSON.stringify(v)
+    if (t === 'function' || t === 'symbol') {
+      throw refuse('VMU_INVALID_ARGUMENT', 'the payload is not JSON-safe: ' + t + ' at ' + path,
+        'an idempotency fingerprint must represent the REQUEST faithfully — pass the serialisable data, or a stable id for the rest')
+    }
+    if (Array.isArray(v)) {
+      if (seen.has(v)) throw refuse('VMU_INVALID_ARGUMENT', 'the payload contains a cycle at ' + path, 'an idempotency fingerprint cannot encode a cyclic structure')
+      seen.add(v)
+      const out = 'a:[' + v.map((x, i) => walk(x, path + '[' + i + ']')).join(',') + ']'
+      seen.delete(v)
+      return out
+    }
+    if (t === 'object') {
+      const proto = Object.getPrototypeOf(v)
+      if (proto !== Object.prototype && proto !== null) {
+        const name = (v && v.constructor && v.constructor.name) || 'unknown'
+        throw refuse('VMU_INVALID_ARGUMENT', 'the payload is not JSON-safe: ' + name + ' instance at ' + path,
+          'only plain objects/arrays/primitives/bigint are accepted — serialise ' + name + ' first (e.g. toISOString(), [...map])')
+      }
+      if (seen.has(v)) throw refuse('VMU_INVALID_ARGUMENT', 'the payload contains a cycle at ' + path, 'an idempotency fingerprint cannot encode a cyclic structure')
+      seen.add(v)
+      const out = 'o:{' + Object.keys(v).sort().map((k) => 's:' + JSON.stringify(k) + ':' + walk(v[k], path + '.' + k)).join(',') + '}'
+      seen.delete(v)
+      return out
+    }
+    throw refuse('VMU_INVALID_ARGUMENT', 'the payload holds an unsupported value (' + t + ') at ' + path, 'pass JSON-safe data')
   }
-  return walk(value === undefined ? null : value)
+  return 'v' + CANONICAL_VERSION + '|' + walk(value, '$')
 }
 
 /**
- * createIdempotency — the K6 ledger. In-memory by design (a durable projection is a separate slice; see the
- * report): the ledger answers "was this request already done?", and refuses to pretend when it cannot tell.
+ * createIdempotency — the K6 ledger. `store` (kernel/store.js) is an OPTIONAL durability seam: with it the
+ * ledger survives a restart; without it the ledger is memory-only and says so (`status().durable === false`).
  */
-export function createIdempotency({ clock = () => 0, log = null, settings = {}, bus = null } = {}) {
+export function createIdempotency({ clock = () => 0, log = null, settings = {}, bus = null, store = null } = {}) {
   if (typeof clock !== 'function') {
     throw refuse('VMU_INVALID_ARGUMENT', 'createIdempotency needs a clock function', 'pass { clock: () => ms } — the only time source is the injected clock')
   }
@@ -87,25 +148,34 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
     : (typeof keyScope === 'string' && keyScope ? keyScope : 'session')
   const abortNeedsReason = sget(K_ABORT_REASON, true) !== false
   const retryAfterAbort = sget(K_RETRY_AFTER_ABORT, true) !== false
+  // B3: the default demands the SAME payload on a retry; setting it to false makes the retry a NEW attempt,
+  // which is then disclosed as `retryIsNewAttempt:true` (and audited as `payloadChanged`).
+  const retrySamePayloadOnly = sget(K_RETRY_SAME_PAYLOAD, true) !== false
   const maxPayloadBytes = nonNegInt(sget(K_MAX_PAYLOAD, 0), 0)
 
   function nonNegInt(v, def) { return Number.isInteger(v) && v >= 0 ? v : def }
 
   // ── state (mutated only by begin/commit/abort/reap) ────────────────────────────────────────────────
-  const entries = new Map()
-  const order = []
+  const entries = new Map()   // IDENT (scope \0 key) -> entry  ← B2: scope is part of the identity
+  const order = []            // idents in insertion order
   const historyRows = []
   const droppedHistory = { n: 0 }
   const refusals = new Map()
   const unwired = new Map()
   const declaredTopics = new Set()
-  const counts = { begun: 0, committed: 0, aborted: 0, deduplicated: 0, reaped: 0, dropped: 0, refusedAtCap: 0 }
+  const counts = { begun: 0, committed: 0, aborted: 0, deduplicated: 0, reaped: 0, dropped: 0, refusedAtCap: 0, retried: 0, retriedWithNewPayload: 0 }
+  const ident = (scope, key) => String(scope) + IDENT_SEP + String(key)
+  let loaded = false
+  let durableLoaded = false
+  let durableDegraded = false
+  let durableReason = store && typeof store.read === 'function' ? 'not loaded yet' : 'no store seam was injected'
+  let lastPersistAt = null
+  let lastPersistError = null
 
   const bump = (map, key, by = 1) => map.set(key, (map.get(key) || 0) + by)
   const objOf = (map) => { const o = {}; for (const k of [...map.keys()].sort()) o[k] = map.get(k); return o }
   const sumOf = (map) => [...map.values()].reduce((a, b) => a + b, 0)
   const now = () => clock()
-  const findByKey = (key) => entries.get(key) || null
   const isExpired = (e, at = now()) => typeof e.expiresAt === 'number' && at >= e.expiresAt
   const isStalePending = (e, at = now()) => e.state === 'pending' && pendingTimeoutMs > 0 && at - e.startedAt >= pendingTimeoutMs
 
@@ -129,8 +199,96 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
       say({ type: 'idempotency/hook-unwired', at: now(), hook, why: String((e && e.message) || e) })
     }
   }
+
+  // ── N2: the durability projection (optional store seam) ────────────────────────────────────────────
+  const rows = () => order.map((i) => entries.get(i)).filter(Boolean).map((e) => ({
+    scope: e.scope, key: e.key, state: e.state, payloadFingerprint: e.payloadFingerprint, payloadCanon: e.payloadCanon,
+    attempts: e.attempts, startedAt: e.startedAt, expiresAt: e.expiresAt, committedAt: e.committedAt,
+    result: e.result === undefined ? null : e.result, abortedAt: e.abortedAt, abortReason: e.abortReason, by: e.by,
+  }))
+  const persist = () => {
+    if (!store || typeof store.patch !== 'function') {
+      durableReason = 'no store seam was injected (the ledger is memory-only)'
+      return { ok: true, durable: false, reason: durableReason, rows: rows().length }
+    }
+    try {
+      store.patch(LEDGER_KEY, () => ({ version: CANONICAL_VERSION, savedAt: now(), entries: rows() }))
+      lastPersistAt = now()
+      lastPersistError = null
+      durableDegraded = false
+      durableReason = 'persisted through the injected store'
+      return { ok: true, durable: true, rows: rows().length, at: lastPersistAt }
+    } catch (e) {
+      durableDegraded = true
+      lastPersistError = String((e && e.message) || e)
+      durableReason = 'the store refused the projection: ' + lastPersistError
+      bump(unwired, 'store-seam', 1)
+      say({ type: 'idempotency/store-unwired', at: now(), why: lastPersistError })
+      return { ok: false, durable: false, error: lastPersistError, rows: rows().length }
+    }
+  }
+  /** Lazy load: a restart with the same store replays the settled keys (this is the whole point of N2). */
+  const ensureLoaded = () => {
+    if (loaded) return
+    loaded = true
+    if (!store || typeof store.read !== 'function') { durableReason = 'no store seam was injected (the ledger is memory-only)'; return }
+    let doc = null
+    try {
+      doc = store.read(LEDGER_KEY)
+      durableLoaded = true
+    } catch (e) {
+      durableDegraded = true
+      durableReason = 'the store could not be read: ' + String((e && e.message) || e)
+      bump(unwired, 'store-seam', 1)
+      say({ type: 'idempotency/store-unwired', at: now(), why: durableReason })
+      return
+    }
+    if (!doc) { durableReason = 'the store is empty (nothing to replay)'; return }
+    const persisted = Array.isArray(doc) ? doc : (doc && Array.isArray(doc.entries) ? doc.entries : null)
+    if (persisted === null) {
+      bump(unwired, 'store-corrupt-doc', 1)
+      durableReason = 'the store held an unrecognised projection shape'
+      say({ type: 'idempotency/store-unwired', at: now(), why: durableReason })
+      return
+    }
+    let skipped = 0
+    for (const row of persisted) {
+      if (!row || typeof row.key !== 'string' || typeof row.scope !== 'string' || typeof row.state !== 'string' || !STATES.includes(row.state)) { skipped += 1; continue }
+      const i = ident(row.scope, row.key)
+      if (entries.has(i)) { skipped += 1; continue }
+      entries.set(i, {
+        key: row.key, scope: row.scope, state: row.state,
+        payloadFingerprint: typeof row.payloadFingerprint === 'string' ? row.payloadFingerprint : null,
+        payloadCanon: typeof row.payloadCanon === 'string' ? row.payloadCanon : null,
+        attempts: Number.isInteger(row.attempts) ? row.attempts : 1,
+        startedAt: Number.isFinite(row.startedAt) ? row.startedAt : now(),
+        expiresAt: Number.isFinite(row.expiresAt) ? row.expiresAt : null,
+        committedAt: Number.isFinite(row.committedAt) ? row.committedAt : null,
+        result: row.result === undefined ? null : row.result,
+        abortedAt: Number.isFinite(row.abortedAt) ? row.abortedAt : null,
+        abortReason: row.abortReason === undefined ? null : row.abortReason,
+        by: row.by === undefined ? null : row.by,
+      })
+      order.push(i)
+    }
+    if (skipped) bump(unwired, 'store-corrupt-row', skipped)
+    durableReason = skipped
+      ? 'loaded ' + order.length + ' entries; ' + skipped + ' malformed row(s) were SKIPPED and counted'
+      : 'loaded ' + order.length + ' entries from the store'
+    say({ type: 'idempotency/loaded', at: now(), entries: order.length, skipped })
+  }
+  /** Resolve an entry by (scope, key). B2: a bare key that is ambiguous across scopes is REFUSED, not guessed. */
+  const resolve = (scope, key, { required = false } = {}) => {
+    if (typeof key !== 'string' || !key.trim()) throw deny('VMU_INVALID_ARGUMENT', 'a non-empty string `key` is required', 'the key is the idempotency identity: e.g. { key: "task-create:t-3" }')
+    if (scope !== null && scope !== undefined && scope !== '') return entries.get(ident(scope, key)) || null
+    const matches = order.map((i) => entries.get(i)).filter((e) => e && e.key === key)
+    if (matches.length === 0) return null
+    if (matches.length === 1) return matches[0]
+    throw deny('VMU_INVALID_ARGUMENT', 'the key "' + key + '" exists in several scopes: ' + matches.map((e) => e.scope).sort().join(', '),
+      'pass `scope` to say which one you mean — the ledger identity is scope+key (a bare key that matches more than one scope is refused, never guessed)')
+  }
   const view = (e, at = now()) => ({
-    key: e.key, scope: e.scope, state: e.state,
+    ref: e.scope + '/' + e.key, key: e.key, scope: e.scope, state: e.state,
     settled: e.state === 'committed',
     payloadFingerprint: e.payloadFingerprint, attempts: e.attempts,
     startedAt: e.startedAt, committedAt: e.committedAt, abortedAt: e.abortedAt, abortReason: e.abortReason,
@@ -139,79 +297,100 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
   })
   /** Compare two canonical payloads and say WHERE they differ (invariant ① must be diagnosable). */
   const payloadDiff = (aCanon, bCanon) => {
-    const n = Math.min(aCanon.length, bCanon.length)
+    const a = typeof aCanon === 'string' ? aCanon : ''
+    const b = typeof bCanon === 'string' ? bCanon : ''
+    const n = Math.min(a.length, b.length)
     let firstDiffAt = -1
-    for (let i = 0; i < n; i++) if (aCanon[i] !== bCanon[i]) { firstDiffAt = i; break }
-    if (firstDiffAt === -1 && aCanon.length !== bCanon.length) firstDiffAt = n
+    for (let i = 0; i < n; i++) if (a[i] !== b[i]) { firstDiffAt = i; break }
+    if (firstDiffAt === -1 && a.length !== b.length) firstDiffAt = n
     let changedKeys = []
     try {
-      const a = JSON.parse(aCanon)
-      const b = JSON.parse(bCanon)
-      if (a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)) {
-        const keys = [...new Set(Object.keys(a).concat(Object.keys(b)))].sort()
-        changedKeys = keys.filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k]))
-      }
-    } catch (e) { /* not both objects: the byte-level diff above is the answer */ }
+      const wa = a.split('|')[1] || ''
+      const wb = b.split('|')[1] || ''
+      const keysOf = (t) => [...new Set([...t.matchAll(/s:"([^"]+)":/g)].map((m) => m[1]))].sort()
+      const ka = keysOf(wa); const kb = keysOf(wb)
+      changedKeys = [...new Set(ka.concat(kb))].sort().filter((k) => {
+        const esc = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const va = (wa.match(new RegExp('s:"' + esc + '":([^,}]*)')) || [])[1]
+        const vb = (wb.match(new RegExp('s:"' + esc + '":([^,}]*)')) || [])[1]
+        return va !== vb
+      })
+    } catch (e) { /* the byte-level diff above is always available */ }
     return {
-      firstDiffAt,
-      lengths: [aCanon.length, bCanon.length],
-      changedKeys,
-      expected: aCanon.length > PREVIEW_CAP ? aCanon.slice(0, PREVIEW_CAP) + '…' : aCanon,
-      actual: bCanon.length > PREVIEW_CAP ? bCanon.slice(0, PREVIEW_CAP) + '…' : bCanon,
-      truncated: aCanon.length > PREVIEW_CAP || bCanon.length > PREVIEW_CAP,
+      firstDiffAt, lengths: [a.length, b.length], changedKeys,
+      expected: a.length > PREVIEW_CAP ? a.slice(0, PREVIEW_CAP) + '…' : a,
+      actual: b.length > PREVIEW_CAP ? b.slice(0, PREVIEW_CAP) + '…' : b,
+      truncated: a.length > PREVIEW_CAP || b.length > PREVIEW_CAP,
     }
   }
   const fingerprint = (canon) => createHash('sha256').update(canon, 'utf8').digest('hex')
+  const canonicalOf = (payload) => {
+    let canon
+    try { canon = canonicalize(payload) } catch (e) { throw deny(e.code || 'VMU_INVALID_ARGUMENT', e.message, e.hint) }
+    if (maxPayloadBytes > 0 && canon.length > maxPayloadBytes) {
+      throw deny('VMU_INVALID_ARGUMENT', 'the payload is too large for an idempotency fingerprint: ' + canon.length + '/' + maxPayloadBytes + ' bytes (vmu.idempotency.maxPayloadBytes)',
+        'fingerprint a digest or an id instead of the whole payload, or raise vmu.idempotency.maxPayloadBytes')
+    }
+    return canon
+  }
+  const refuseReused = (e, canon, fp, where) => {
+    const diff = payloadDiff(e.payloadCanon, canon)
+    return deny('VMU_IDEMPOTENCY_KEY_REUSED',
+      'key "' + (e.scope + '/' + e.key) + '" was already ' + where + ' with a DIFFERENT payload: expected ' + e.payloadFingerprint + ' but got ' + fp,
+      'first difference at byte ' + diff.firstDiffAt + ' (lengths ' + diff.lengths[0] + '/' + diff.lengths[1] + ')' +
+      (diff.changedKeys.length ? ', changed keys: ' + diff.changedKeys.join(', ') : '') +
+      ' — a reused key with a new payload is a bug in the caller, not a retry')
+  }
 
   const api = {
     apiVersion,
 
-    /** Start (or observe) a request under `key`. Same key + same payload ⇒ the existing result, never a rerun. */
+    /** Whether the projection is actually durable right now (true only when the store is wired and the last write succeeded). */
+    durable() { ensureLoaded(); return { ok: true, durable: !!(store && !durableDegraded && lastPersistError === null && durableLoaded), loaded: durableLoaded, degraded: durableDegraded, reason: durableReason, at: now() } },
+
+    /** Explicitly write the projection (also happens automatically after every mutation). */
+    persist() { ensureLoaded(); return persist() },
+
+    /** Start (or observe) a request under `key` inside `scope`. Same identity + same payload ⇒ the stored result. */
     begin({ key, scope = null, payload = null, by = null } = {}) {
-      if (typeof key !== 'string' || !key.trim()) throw deny('VMU_INVALID_ARGUMENT', 'begin needs a non-empty string `key`', 'the key is the idempotency identity: e.g. { key: "task-create:t-3" }')
-      const canon = canonicalize(payload)
-      if (maxPayloadBytes > 0 && canon.length > maxPayloadBytes) {
-        throw deny('VMU_INVALID_ARGUMENT', 'the payload is too large for an idempotency fingerprint: ' + canon.length + '/' + maxPayloadBytes + ' bytes (vmu.idempotency.maxPayloadBytes)',
-          'fingerprint a digest or an id instead of the whole payload, or raise vmu.idempotency.maxPayloadBytes')
-      }
+      ensureLoaded()
+      const sc = scope === null || scope === undefined || scope === '' ? scopeDefault : String(scope)
+      const canon = canonicalOf(payload)
       const fp = fingerprint(canon)
-      const existing = findByKey(key)
+      const existing = resolve(sc, key)
       if (existing) {
         if (existing.state === 'pending') {
-          // INVARIANT ③: a pending key is NOT a success and must not start a second execution.
-          say({ type: 'idempotency/in-flight', at: now(), key, state: 'pending' })
+          say({ type: 'idempotency/in-flight', at: now(), key: existing.key, scope: existing.scope, state: 'pending' })
           return {
-            ok: true, key, state: 'pending', reused: true, inFlight: true, deduplicated: false, settled: false,
+            ok: true, ref: existing.scope + '/' + existing.key, key: existing.key, scope: existing.scope,
+            state: 'pending', reused: true, inFlight: true, deduplicated: false, settled: false,
             payloadFingerprint: fp, startedAt: existing.startedAt, attempts: existing.attempts,
             note: 'the same key is still IN FLIGHT: do not execute — a pending key is not a success (K6)',
           }
         }
         if (existing.state === 'committed') {
           if (existing.payloadFingerprint === fp) {
-            // INVARIANT ②: same key + same payload ⇒ return the stored result, execute nothing.
             counts.deduplicated += 1
-            record_({ type: 'idempotency/deduplicated', key, fingerprint: fp })
-            say({ type: 'idempotency/deduplicated', at: now(), key, fingerprint: fp })
-            fire('idempotency/deduplicated', { key, fingerprint: fp })
+            record_({ type: 'idempotency/deduplicated', key: existing.key, scope: existing.scope, fingerprint: fp })
+            say({ type: 'idempotency/deduplicated', at: now(), key: existing.key, scope: existing.scope, fingerprint: fp })
+            fire('idempotency/deduplicated', { key: existing.key, scope: existing.scope, fingerprint: fp })
             return {
-              ok: true, key, state: 'committed', reused: true, deduplicated: true, settled: true,
+              ok: true, ref: existing.scope + '/' + existing.key, key: existing.key, scope: existing.scope,
+              state: 'committed', reused: true, deduplicated: true, settled: true,
               payloadFingerprint: fp, result: existing.result, committedAt: existing.committedAt,
               note: 'this request was already committed: the stored result is returned and nothing is executed',
             }
           }
-          // INVARIANT ①: same key + DIFFERENT payload ⇒ named refusal that carries both fingerprints + the diff.
-          const diff = payloadDiff(existing.payloadCanon, canon)
-          throw deny('VMU_IDEMPOTENCY_KEY_REUSED',
-            'key "' + key + '" was already committed with a DIFFERENT payload: expected ' + existing.payloadFingerprint + ' but got ' + fp,
-            'first difference at byte ' + diff.firstDiffAt + ' (lengths ' + diff.lengths[0] + '/' + diff.lengths[1] + ')' +
-            (diff.changedKeys.length ? ', changed keys: ' + diff.changedKeys.join(', ') : '') +
-            ' — a reused key with a new payload is a bug in the caller, not a retry')
+          throw refuseReused(existing, canon, fp, 'committed')
         }
         if (existing.state === 'aborted') {
           if (!retryAfterAbort) {
-            throw deny('VMU_STATE', 'key "' + key + '" was aborted and vmu.idempotency.retryAfterAbort=false: it may not be retried',
+            throw deny('VMU_STATE', 'key "' + existing.scope + '/' + existing.key + '" was aborted and vmu.idempotency.retryAfterAbort=false: it may not be retried',
               'use a fresh key, or set vmu.idempotency.retryAfterAbort=true')
           }
+          // B3: the payload rule for a retry is EXPLICIT (same payload by default).
+          const payloadChanged = existing.payloadFingerprint !== fp
+          if (payloadChanged && retrySamePayloadOnly) throw refuseReused(existing, canon, fp, 'aborted')
           existing.attempts += 1
           existing.state = 'pending'
           existing.payloadFingerprint = fp
@@ -220,9 +399,20 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
           existing.expiresAt = ttlMs > 0 ? now() + ttlMs : null
           existing.by = by === null || by === undefined ? existing.by : String(by)
           counts.begun += 1
-          record_({ type: 'idempotency/retried', key, attempt: existing.attempts, fingerprint: fp, why: existing.abortReason })
-          say({ type: 'idempotency/retried', at: now(), key, attempt: existing.attempts })
-          return { ok: true, key, state: 'pending', reused: true, retried: true, inFlight: true, settled: false, attempt: existing.attempts, payloadFingerprint: fp, note: 'the previously aborted key is retried (attempt ' + existing.attempts + ')' }
+          counts.retried += 1
+          if (payloadChanged) counts.retriedWithNewPayload += 1
+          record_({ type: 'idempotency/retried', key: existing.key, scope: existing.scope, attempt: existing.attempts, fingerprint: fp, payloadChanged, why: existing.abortReason })
+          say({ type: 'idempotency/retried', at: now(), key: existing.key, scope: existing.scope, attempt: existing.attempts, payloadChanged })
+          persist()
+          return {
+            ok: true, ref: existing.scope + '/' + existing.key, key: existing.key, scope: existing.scope,
+            state: 'pending', reused: true, retried: true, inFlight: true, settled: false,
+            attempt: existing.attempts, payloadFingerprint: fp, payloadChanged,
+            retryIsNewAttempt: !retrySamePayloadOnly || payloadChanged,
+            retrySamePayloadOnly,
+            note: 'the previously aborted key is retried (attempt ' + existing.attempts + ')' +
+              (payloadChanged ? ' — THE PAYLOAD CHANGED: this is a NEW attempt, not a replay (vmu.idempotency.retrySamePayloadOnly=false)' : ''),
+          }
         }
       }
       if (maxEntries > 0 && entries.size >= maxEntries) {
@@ -231,71 +421,76 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
           'reap() settled keys (they are kept for replay, not forever), or raise vmu.idempotency.maxEntries — the ledger never evicts silently')
       }
       const e = {
-        key: String(key), scope: scope === null ? scopeDefault : String(scope),
+        key: String(key), scope: sc,
         state: 'pending', payloadFingerprint: fp, payloadCanon: canon,
         attempts: 1, startedAt: now(), expiresAt: ttlMs > 0 ? now() + ttlMs : null,
         committedAt: null, result: null, abortedAt: null, abortReason: null,
         by: by === null || by === undefined ? null : String(by),
       }
-      entries.set(e.key, e)
-      order.push(e.key)
+      const i = ident(sc, e.key)
+      entries.set(i, e)
+      order.push(i)
       counts.begun += 1
       record_({ type: 'idempotency/begun', key: e.key, scope: e.scope, fingerprint: fp, attempt: 1 })
-      say({ type: 'idempotency/begun', at: e.startedAt, key: e.key, fingerprint: fp })
-      return { ok: true, key: e.key, state: 'pending', reused: false, inFlight: true, settled: false, payloadFingerprint: fp, startedAt: e.startedAt, attempt: 1, now: now() }
+      say({ type: 'idempotency/begun', at: e.startedAt, key: e.key, scope: e.scope, fingerprint: fp })
+      persist()
+      return { ok: true, ref: e.scope + '/' + e.key, key: e.key, scope: e.scope, state: 'pending', reused: false, inFlight: true, settled: false, payloadFingerprint: fp, startedAt: e.startedAt, attempt: 1, now: now() }
     },
 
     /** Commit the result of a pending key. A committed key cannot be committed twice with a different result. */
-    commit({ key, result = null, by = null } = {}) {
-      if (typeof key !== 'string' || !key.trim()) throw deny('VMU_INVALID_ARGUMENT', 'commit needs a non-empty string `key`', 'e.g. { key: "task-create:t-3", result: { id: "t-3" } }')
-      const e = findByKey(key)
-      if (!e) throw deny('VMU_NO_SUCH_OBJECT', 'unknown idempotency key: ' + key, 'no begin() was recorded for it — a commit without a begin is a bug (K6)')
+    commit({ key, scope = null, result = null, by = null } = {}) {
+      ensureLoaded()
+      const e = resolve(scope, key)
+      if (!e) throw deny('VMU_NO_SUCH_OBJECT', 'unknown idempotency key: ' + String(key), 'no begin() was recorded for it — a commit without a begin is a bug (K6)')
       if (e.state === 'committed') {
-        const same = canonicalize(result) === canonicalize(e.result)
-        if (same) return { ok: true, key, state: 'committed', already: true, settled: true, result: e.result, committedAt: e.committedAt }
-        throw deny('VMU_STATE', 'key "' + key + '" is already committed with a DIFFERENT result',
+        let same = false
+        try { same = canonicalize(result) === canonicalize(e.result) } catch (err) { same = false }
+        if (same) return { ok: true, ref: e.scope + '/' + e.key, key: e.key, scope: e.scope, state: 'committed', already: true, settled: true, result: e.result, committedAt: e.committedAt }
+        throw deny('VMU_STATE', 'key "' + e.scope + '/' + e.key + '" is already committed with a DIFFERENT result',
           'a second commit with another result means two executions happened — investigate before overwriting')
       }
-      if (e.state === 'aborted') throw deny('VMU_STATE', 'key "' + key + '" was aborted and cannot be committed', 'begin() it again (retry) if the work should be redone')
+      if (e.state === 'aborted') throw deny('VMU_STATE', 'key "' + e.scope + '/' + e.key + '" was aborted and cannot be committed', 'begin() it again (retry) if the work should be redone')
       e.state = 'committed'
       e.result = result === undefined ? null : result
       e.committedAt = now()
       e.by = by === null || by === undefined ? e.by : String(by)
       if (ttlMs > 0) e.expiresAt = e.committedAt + ttlMs
       counts.committed += 1
-      record_({ type: 'idempotency/committed', key: e.key, fingerprint: e.payloadFingerprint, attempt: e.attempts })
-      say({ type: 'idempotency/committed', at: e.committedAt, key: e.key })
-      fire('idempotency/committed', { key: e.key, fingerprint: e.payloadFingerprint })
-      return { ok: true, key: e.key, state: 'committed', settled: true, result: e.result, committedAt: e.committedAt, attempts: e.attempts }
+      record_({ type: 'idempotency/committed', key: e.key, scope: e.scope, fingerprint: e.payloadFingerprint, attempt: e.attempts })
+      say({ type: 'idempotency/committed', at: e.committedAt, key: e.key, scope: e.scope })
+      fire('idempotency/committed', { key: e.key, scope: e.scope, fingerprint: e.payloadFingerprint })
+      persist()
+      return { ok: true, ref: e.scope + '/' + e.key, key: e.key, scope: e.scope, state: 'committed', settled: true, result: e.result, committedAt: e.committedAt, attempts: e.attempts }
     },
 
     /** Abort a pending key. Needs a reason (audited) — an abort is the only sanctioned way to un-settle a key. */
-    abort({ key, reason = null, by = null } = {}) {
-      if (typeof key !== 'string' || !key.trim()) throw deny('VMU_INVALID_ARGUMENT', 'abort needs a non-empty string `key`', 'e.g. { key: "task-create:t-3", reason: "engine refused" }')
-      const e = findByKey(key)
-      if (!e) throw deny('VMU_NO_SUCH_OBJECT', 'unknown idempotency key: ' + key, 'known: ' + (order.join(', ') || '(none)'))
+    abort({ key, scope = null, reason = null, by = null } = {}) {
+      ensureLoaded()
+      const e = resolve(scope, key)
+      if (!e) throw deny('VMU_NO_SUCH_OBJECT', 'unknown idempotency key: ' + String(key), 'known: ' + (order.map((i) => entries.get(i).scope + '/' + entries.get(i).key).join(', ') || '(none)'))
       if (abortNeedsReason && (typeof reason !== 'string' || !reason.trim())) {
-        throw deny('VMU_REASON_REQUIRED', 'aborting ' + key + ' requires a reason (vmu.idempotency.abortNeedsReason)',
+        throw deny('VMU_REASON_REQUIRED', 'aborting ' + e.scope + '/' + e.key + ' requires a reason (vmu.idempotency.abortNeedsReason)',
           'say why the attempt was given up — an unexplained abort hides a retry storm (K6)')
       }
-      if (e.state === 'committed') throw deny('VMU_STATE', 'key "' + key + '" is committed: an abort cannot undo a settled result', 'if it must be re-done, use a NEW key (a new request)')
-      if (e.state === 'aborted') return { ok: true, key, state: 'aborted', already: true, abortedAt: e.abortedAt, reason: e.abortReason }
+      if (e.state === 'committed') throw deny('VMU_STATE', 'key "' + e.scope + '/' + e.key + '" is committed: an abort cannot undo a settled result', 'if it must be re-done, use a NEW key (a new request)')
+      if (e.state === 'aborted') return { ok: true, ref: e.scope + '/' + e.key, key: e.key, scope: e.scope, state: 'aborted', already: true, abortedAt: e.abortedAt, reason: e.abortReason }
       e.state = 'aborted'
       e.abortedAt = now()
       e.abortReason = reason === null ? null : String(reason)
       e.by = by === null || by === undefined ? e.by : String(by)
       counts.aborted += 1
-      record_({ type: 'idempotency/aborted', key: e.key, why: e.abortReason, by: e.by, attempt: e.attempts })
-      say({ type: 'idempotency/aborted', at: e.abortedAt, key: e.key, why: e.abortReason, by: e.by, attempt: e.attempts })
-      fire('idempotency/aborted', { key: e.key, why: e.abortReason, by: e.by })
-      return { ok: true, key: e.key, state: 'aborted', abortedAt: e.abortedAt, reason: e.abortReason, attempts: e.attempts, retryable: retryAfterAbort }
+      record_({ type: 'idempotency/aborted', key: e.key, scope: e.scope, why: e.abortReason, by: e.by, attempt: e.attempts })
+      say({ type: 'idempotency/aborted', at: e.abortedAt, key: e.key, scope: e.scope, why: e.abortReason, by: e.by, attempt: e.attempts })
+      fire('idempotency/aborted', { key: e.key, scope: e.scope, why: e.abortReason, by: e.by })
+      persist()
+      return { ok: true, ref: e.scope + '/' + e.key, key: e.key, scope: e.scope, state: 'aborted', abortedAt: e.abortedAt, reason: e.abortReason, attempts: e.attempts, retryable: retryAfterAbort, retrySamePayloadOnly }
     },
 
     /** READ-ONLY three-state lookup (plus `absent`). Only `committed` reports `settled:true`. */
-    lookup({ key } = {}) {
-      if (typeof key !== 'string' || !key.trim()) throw deny('VMU_INVALID_ARGUMENT', 'lookup needs a non-empty string `key`', 'e.g. { key: "task-create:t-3" }')
-      const e = findByKey(key)
-      if (!e) return { ok: true, key, found: false, state: 'absent', settled: false, result: null, note: 'no attempt is recorded under this key' }
+    lookup({ key, scope = null } = {}) {
+      ensureLoaded()
+      const e = resolve(scope, key)
+      if (!e) return { ok: true, key, scope: scope === null || scope === undefined ? scopeDefault : String(scope), found: false, state: 'absent', settled: false, result: null, note: 'no attempt is recorded under this key' }
       const v = view(e)
       return Object.assign({ ok: true, found: true }, v, {
         note: v.state === 'pending'
@@ -308,41 +503,41 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
 
     /** READ-ONLY: the canonical fingerprint of a payload (so a caller can log what it is about to begin). */
     fingerprintOf({ payload = null } = {}) {
-      const canon = canonicalize(payload)
-      return { ok: true, fingerprint: fingerprint(canon), bytes: canon.length, canonical: canon.length > PREVIEW_CAP ? canon.slice(0, PREVIEW_CAP) + '…' : canon, truncated: canon.length > PREVIEW_CAP }
+      const canon = canonicalOf(payload)
+      return { ok: true, canonicalVersion: CANONICAL_VERSION, fingerprint: fingerprint(canon), bytes: canon.length, canonical: canon.length > PREVIEW_CAP ? canon.slice(0, PREVIEW_CAP) + '…' : canon, truncated: canon.length > PREVIEW_CAP }
     },
 
     /** Reap settled/expired keys. Reports `reaped` (TTL) and `dropped` (STALE PENDING) SEPARATELY. */
     reap({ at = null } = {}) {
+      ensureLoaded()
       const when = at === null ? now() : at
       if (typeof when !== 'number' || !Number.isFinite(when)) throw deny('VMU_INVALID_ARGUMENT', 'reap `at` must be milliseconds', 'omit it to use the injected clock')
       const reaped = []
       const dropped = []
-      for (const key of order.slice()) {
-        const e = entries.get(key)
+      for (const i of order.slice()) {
+        const e = entries.get(i)
         if (!e) continue
         if (isStalePending(e, when)) {
-          // A pending attempt that never settled: the work may or may not have happened — that is exactly why
-          // it is DROPPED with a reason and counted, instead of quietly disappearing or being called a success.
-          entries.delete(key)
-          dropped.push({ key, why: 'stale-pending', state: 'pending', ageMs: when - e.startedAt, attempts: e.attempts })
+          entries.delete(i)
+          dropped.push({ ref: e.scope + '/' + e.key, key: e.key, scope: e.scope, why: 'stale-pending', state: 'pending', ageMs: when - e.startedAt, attempts: e.attempts })
           counts.dropped += 1
-          record_({ type: 'idempotency/dropped', key, why: 'stale-pending', ageMs: when - e.startedAt, at: when })
-          say({ type: 'idempotency/dropped', at: when, key, why: 'stale-pending', attempts: e.attempts })
+          record_({ type: 'idempotency/dropped', key: e.key, scope: e.scope, why: 'stale-pending', ageMs: when - e.startedAt, at: when })
+          say({ type: 'idempotency/dropped', at: when, key: e.key, scope: e.scope, why: 'stale-pending', attempts: e.attempts })
           continue
         }
         if (isExpired(e, when)) {
-          entries.delete(key)
-          reaped.push({ key, why: 'ttl', state: e.state, ageMs: when - (e.committedAt === null ? e.startedAt : e.committedAt) })
+          entries.delete(i)
+          reaped.push({ ref: e.scope + '/' + e.key, key: e.key, scope: e.scope, why: 'ttl', state: e.state, ageMs: when - (e.committedAt === null ? e.startedAt : e.committedAt) })
           counts.reaped += 1
-          record_({ type: 'idempotency/reaped', key, why: 'ttl', state: e.state, at: when })
+          record_({ type: 'idempotency/reaped', key: e.key, scope: e.scope, why: 'ttl', state: e.state, at: when })
           continue
         }
       }
       const kept = [...entries.keys()]
+      if (reaped.length || dropped.length) persist()
       return {
         ok: true, at: when, reaped, dropped, reapedCount: reaped.length, droppedCount: dropped.length,
-        kept: kept.length, byState: { pending: kept.filter((k) => entries.get(k).state === 'pending').length, committed: kept.filter((k) => entries.get(k).state === 'committed').length, aborted: kept.filter((k) => entries.get(k).state === 'aborted').length },
+        kept: kept.length, byState: { pending: kept.filter((i) => entries.get(i).state === 'pending').length, committed: kept.filter((i) => entries.get(i).state === 'committed').length, aborted: kept.filter((i) => entries.get(i).state === 'aborted').length },
         note: dropped.length
           ? 'stale pending attempts were DROPPED (counted + audited): their outcome is unknown, so they are never reported as success'
           : 'nothing was dropped; only settled/expired entries were reaped',
@@ -350,31 +545,48 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
     },
 
     /** READ-ONLY. Bounded: a `limit` below what is available reports the DROPPED count (never silent). */
-    list({ limit = DEFAULT_LIST_CAP, state = null } = {}) {
+    list({ limit = DEFAULT_LIST_CAP, state = null, scope = null } = {}) {
+      ensureLoaded()
       const cap = Number.isInteger(limit) && limit > 0 ? limit : DEFAULT_LIST_CAP
       const at = now()
-      let all = order.map((k) => entries.get(k)).filter(Boolean)
+      let all = order.map((i) => entries.get(i)).filter(Boolean)
       if (typeof state === 'string' && state) all = all.filter((e) => e.state === state)
+      if (typeof scope === 'string' && scope) all = all.filter((e) => e.scope === scope)
       const kept = all.slice(0, cap).map((e) => view(e, at))
       return { ok: true, entries: kept, count: kept.length, available: all.length, dropped: all.length - kept.length, truncated: all.length > kept.length, configured: order.length > 0 }
     },
 
     /** READ-ONLY: the audit trail (a capped ring; drops are counted). */
-    history({ key = null, limit = DEFAULT_LIST_CAP } = {}) {
+    history({ key = null, scope = null, limit = DEFAULT_LIST_CAP } = {}) {
+      ensureLoaded()
       const cap = Number.isInteger(limit) && limit > 0 ? limit : DEFAULT_LIST_CAP
-      const rows = historyRows.filter((r) => key === null || r.key === key)
-      const kept = rows.slice(Math.max(0, rows.length - cap)).map((r) => Object.assign({}, r))
-      return { ok: true, rows: kept, count: kept.length, available: rows.length, dropped: rows.length - kept.length, truncated: rows.length > kept.length, ringDropped: droppedHistory.n }
+      const rows_ = historyRows.filter((r) => (key === null || r.key === key) && (scope === null || r.scope === scope))
+      const kept = rows_.slice(Math.max(0, rows_.length - cap)).map((r) => Object.assign({}, r))
+      return { ok: true, rows: kept, count: kept.length, available: rows_.length, dropped: rows_.length - kept.length, truncated: rows_.length > kept.length, ringDropped: droppedHistory.n }
     },
 
-    /** READ-ONLY self-report. */
+    /** READ-ONLY self-report — including whether the ledger is ACTUALLY durable (N2). */
     status() {
+      ensureLoaded()
       const at = now()
-      const all = order.map((k) => entries.get(k)).filter(Boolean)
+      const all = order.map((i) => entries.get(i)).filter(Boolean)
+      const durableNow = !!(store && !durableDegraded && lastPersistError === null)
       return {
         ok: true,
         configured: all.length > 0,
-        maxEntries, ttlMs, pendingTimeoutMs, scopeDefault, abortNeedsReason, retryAfterAbort, maxPayloadBytes,
+        maxEntries, ttlMs, pendingTimeoutMs, scopeDefault, abortNeedsReason, retryAfterAbort, retrySamePayloadOnly, maxPayloadBytes,
+        canonicalVersion: CANONICAL_VERSION,
+        identity: 'scope' + JSON.stringify(IDENT_SEP) + 'key',
+        scopeIsPartOfIdentity: true,
+        retryIsNewAttempt: !retrySamePayloadOnly,
+        durable: durableNow,
+        durableBackend: store ? 'store' : null,
+        durableLoaded,
+        durableDegraded,
+        durableReason,
+        durableLastWriteAt: lastPersistAt,
+        durableLastError: lastPersistError,
+        ledgerKey: LEDGER_KEY,
         entries: {
           total: all.length,
           pending: all.filter((e) => e.state === 'pending').length,
@@ -383,6 +595,7 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
           expired: all.filter((e) => isExpired(e, at)).length,
           stalePending: all.filter((e) => isStalePending(e, at)).length,
         },
+        scopes: [...new Set(all.map((e) => e.scope))].sort(),
         counters: Object.assign({}, counts),
         listCap: DEFAULT_LIST_CAP,
         historyRows: historyRows.length,
@@ -392,7 +605,9 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
         unwired: objOf(unwired),
         unwiredTotal: sumOf(unwired),
         at,
-        note: 'K6: a replayed request returns the stored result; a reused key with a new payload is refused by name; a pending key is never a success',
+        note: durableNow
+          ? 'K6 with a durability projection: a replay AFTER A RESTART still deduplicates (status().durable=true)'
+          : 'K6 in MEMORY ONLY (status().durable=false: ' + durableReason + ') — a replay after a restart cannot be recognised',
       }
     },
   }

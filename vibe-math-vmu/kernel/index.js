@@ -62,6 +62,8 @@ import { createIdempotency } from './idempotency.js'
 import { createReplay } from './replay.js'
 import { createTransaction } from './transaction.js'
 import { createRateLimit } from './ratelimit.js'
+import { createAuditChain } from './auditchain.js'
+import { createStateVersion } from './stateversion.js'
 import { createWorkflow } from './workflow.js'
 import { createTrust } from './trust.js'
 import { createHandover } from './handover.js'
@@ -334,6 +336,11 @@ export function createKernel({
   // replay across instances is deduplicated; the limiter is inert unless a rate is declared (and says so).
   const transaction = createTransaction({ settings: { get: (k) => settings[k] }, bus, clock, log, idempotency })
   const ratelimit = createRateLimit({ settings: { get: (k) => settings[k] }, bus, clock, log })
+  // N1/N4 (round 18): the tamper-evident audit chain (its hash seam is injected by the host; without it the
+  // module refuses rather than inventing a hash) and the state-version/migration primitive that keeps an old
+  // snapshot from being read silently by newer code.
+  const auditchain = createAuditChain({ settings: { get: (k) => settings[k] }, bus, clock, log, hash: null })
+  const stateversion = createStateVersion({ settings: { get: (k) => settings[k] }, bus, clock, log })
 
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
@@ -387,6 +394,8 @@ export function createKernel({
   registry.register('vmu.replay', { apiVersion: 1 }, { kind: 'service', description: 'audit replay: pure read-only reconstruction, gaps reported (K5)' })
   registry.register('vmu.transaction', { apiVersion: 1 }, { kind: 'service', description: 'compensation transactions: a step without undo is refused at begin (K1)' })
   registry.register('vmu.ratelimit', { apiVersion: 1 }, { kind: 'service', description: 'token-bucket rate limiting on the injected clock; unlimited by default and it says so (K2)' })
+  registry.register('vmu.auditchain', { apiVersion: 1 }, { kind: 'service', description: 'tamper-evident audit chain: no hash seam, no hash (N1)' })
+  registry.register('vmu.stateversion', { apiVersion: 1 }, { kind: 'service', description: 'state versions and explicit migrations: no version is refused, not assumed (N4)' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -490,6 +499,8 @@ export function createKernel({
     get replay() { return replay },
     get transaction() { return transaction },
     get ratelimit() { return ratelimit },
+    get auditchain() { return auditchain },
+    get stateversion() { return stateversion },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,

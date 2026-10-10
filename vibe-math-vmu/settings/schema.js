@@ -441,6 +441,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.idempotency.abortNeedsReason', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: 'abort 必须给理由（留痕 ✓）' },
   { key: 'vmu.idempotency.retryAfterAbort', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: 'abort 后是否允许同 key 重试（同载荷 ✓）' },
   { key: 'vmu.idempotency.maxPayloadBytes', type: 'natural', def: 262144, hot: HOT.H1, who: 'office', doc: '载荷指纹计算上限（触界报丢弃 ✗）' },
+  { key: 'vmu.idempotency.retrySamePayloadOnly', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: 'abort 后重试是否必须同载荷（默认是；放宽 ⇔ 重试是新尝试，必须自曝 ✗✓）' },
   // K5 (round 16): the read-only replay that reconstructs state from the audit log.
   { key: 'vmu.replay.strict', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '未知事件类型是否具名拒（默认 false：计入 unknownKinds ✓ 绝不静默跳过 ✗）' },
   { key: 'vmu.replay.keepUnknown', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '未知事件是否保留在重建结果里（保留并标 unknown ✓）' },
@@ -462,6 +463,19 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.ratelimit.maxKeys', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '桶数上限（0＝不限；淘汰必计数 ✓）' },
   { key: 'vmu.ratelimit.queueMax', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '排队上限（0＝不排队；溢出降级为具名拒并计数 ✓）' },
   { key: 'vmu.ratelimit.perScope', type: 'object', def: {}, hot: HOT.H1, who: 'office', doc: '按作用域覆盖限额' },
+  // N1/N4 (round 18): the tamper-evident audit chain and the state-version/migration primitive.
+  { key: 'vmu.audit.chain.verifyCap', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '分段验证上限（0＝全链；**只验前 N 行时必须如实报未验** ✗✓）' },
+  { key: 'vmu.audit.chain.algorithm', type: 'string', def: 'sha256', hot: HOT.H1, who: 'office', doc: '链哈希算法声明（仅回显；实际由注入 hash 决定 ✗）' },
+  { key: 'vmu.state.current', type: 'string', def: '1', hot: HOT.H1, who: 'office', doc: '当前状态版本' },
+  { key: 'vmu.state.requireVersion', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '状态必须带版本标签（缺失 ⇒ 具名拒，**绝不当成当前版本** ✗✓）' },
+  { key: 'vmu.state.maxMigrationSteps', type: 'positiveInteger', def: 8, hot: HOT.H1, who: 'office', doc: '迁移步数上限（超限具名拒并给当前/上限 ✓）' },
+  { key: 'vmu.state.onUnknown', type: 'enum', domain: ['refuse', 'warn'], def: 'refuse', hot: HOT.H1, who: 'office', doc: '未知版本策略（warn 时**必须自曝 `assumed`** ✗✓）' },
+  { key: 'vmu.state.keepHistory', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '是否保留迁移历史（留痕 ✓）' },
+  { key: 'vmu.state.allowDowngrade', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '是否允许降级迁移（默认拒；放行也必须自曝 ✗）' },
+  // N3 (round 18): the clock monotonicity guard (not wired yet - contract alignment is still open, see docs/11 §9.8).
+  { key: 'vmu.clock.onBackward', type: 'enum', domain: ['clamp', 'refuse', 'warn'], def: 'clamp', hot: HOT.H1, who: 'office', doc: '时钟回拨处置（clamp 不回退并自曝；refuse 具名拒；warn 必须自曝 ✗✓）' },
+  { key: 'vmu.clock.forwardJumpMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '异常前跳阈值（0＝不判定；超阈记 suspect ✓ 不静默 ✗）' },
+  { key: 'vmu.clock.maxSkews', type: 'positiveInteger', def: 100, hot: HOT.H1, who: 'office', doc: '回拨/前跳记录上限（溢出必计数 ✓）' },
   { key: 'vmu.handover.packBudgetBytes', type: 'positiveInteger', def: 32768, hot: HOT.H1, who: 'office', doc: '上下文包预算（触界必报丢弃）' },
   { key: 'vmu.handover.compress', type: 'enum', domain: ['none', 'summary'], def: 'summary', hot: HOT.H1, who: 'office', doc: '压缩方式' },
   { key: 'vmu.handover.requireFingerprint', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '每项须带指纹' },

@@ -46,6 +46,7 @@ const SURFACES = {
   'vmu.crypto': 'crypto', 'vmu.notify': 'notify', 'vmu.lifecycle': 'lifecycle',
   'vmu.replay': 'replay',
   'vmu.transaction': 'transaction', 'vmu.ratelimit': 'ratelimit',   // K1 (+K2), round 17
+  'vmu.auditchain': 'auditchain', 'vmu.stateversion': 'stateversion',   // N1 (+N4), round 18
   'vmu.store': 'store', 'vmu.work': 'workLedger',
   'vmu.idempotency': 'idempotency',   // K6 (round 16): the unified idempotency ledger
 }
@@ -137,6 +138,29 @@ ok(orphan.length === 0, 'no constructed service is missing from the registry', o
   ok(bind(src + '\nconst ghostService3 = createGhost3(\n', 'ghostService3'), 'a real code binding still counts (control)')
   ok(/(?:const|let|var)\s+ghostService\b/.test(src + '\n// const ghostService = createGhost(\n'),
     'without stripping, the same comment WOULD have counted (proves the hole was real)')
+
+  // 6b) ROUND-8 REGRESSION SET (each case was an independent-review false red; length must stay exact):
+  // a regex literal must not be read as a comment/string start, and U+2028/U+2029 must terminate `//`.
+  const rounds8 = [
+    ['a regex char class containing /*', 'const re = /[/*]/; const keep = createKeep('],
+    ['a regex containing a backtick', 'const re = /`/; const keep = createKeep('],
+    ['a regex char class containing a quote', 'const re = /["]/; const keep = createKeep('],
+    ['a LINE SEPARATOR (U+2028) ending a line comment', '// comment\u2028const keep = createKeep('],
+    ['a PARAGRAPH SEPARATOR (U+2029) ending a line comment', '// comment\u2029const keep = createKeep('],
+    ['an escaped slash inside a regex', 'const re = /\\//; const keep = createKeep('],
+    ['division still reading as division', 'const a = b / c; const keep = createKeep('],
+    ['a CRLF shebang line', '#!/usr/bin/env node\r\nconst keep = createKeep('],
+  ]
+  for (const [label, probe] of rounds8) {
+    const out = stripComments(probe, { strings: true })
+    ok(out.length === probe.length, 'round-8 case keeps the exact length: ' + label, probe.length + ' vs ' + out.length)
+    ok(/const keep = createKeep\(/.test(out), 'round-8 case keeps the following BINDING visible: ' + label)
+  }
+  // the reverse direction must keep working: a real comment is still blanked, so the orphan scan cannot be
+  // fooled into shrinking (the round-8 false-green risk was a constructor set shrunk by a misread).
+  const commentProbe = stripComments('// const ghostOrphan = createGhost(\nconst realOrphan = createReal(\n', { strings: true })
+  ok(!/ghostOrphan/.test(commentProbe) && /const realOrphan = createReal\(/.test(commentProbe),
+    'a real comment is blanked while real code after it stays visible (no shrunk constructor set)')
 }
 
 console.log('')

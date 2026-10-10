@@ -94,14 +94,40 @@ const failures = []
   else red++ // the control counts as a satisfied expectation of the harness
 }
 
+// ANCHOR UNIQUENESS (round 8): an anchor that appears 0 times makes the mutant vacuous, and one that appears
+// twice makes `split().join()` mutate MORE than the single point it claims - both silently weaken the family,
+// so the requirement is asserted HERE rather than measured outside the gate.
+const countOf = (hay, needle) => (needle === '' ? 0 : String(hay).split(String(needle)).length - 1)
+let anchorsUnique = 0
+for (const m of MUTANTS) {
+  const c = countOf(original, m.from)
+  if (c === 1) { anchorsUnique++; continue }
+  const why = c === 0 ? 'ANCHOR MISS' : 'ANCHOR NOT UNIQUE (found ' + c + 'x)'
+  skipped.push(m.name + ' (' + why + ': ' + m.from + ')')
+  console.log('FAIL - ' + m.name + ' :: ' + why + ': ' + JSON.stringify(m.from))
+}
+console.log('anchors unique in kernel/index.js: ' + anchorsUnique + '/' + MUTANTS.length)
+
+// SELF-PROBE: the uniqueness guard must be able to REJECT something (a guard that cannot fail is decoration).
+// `'  const '` occurs many times in kernel/index.js, so the same predicate that requires exactly 1 occurrence
+// classifies it as NOT UNIQUE - proving the assertion above is a real discriminator, not a tautology.
+{
+  const dupProbe = countOf(original, '  const ')
+  const wouldReject = dupProbe !== 1
+  console.log('uniqueness-guard self-probe: a duplicated anchor (found ' + dupProbe + 'x) would be rejected = ' + wouldReject)
+  if (!(dupProbe > 1 && wouldReject)) failures.push('uniqueness guard self-probe failed (dupProbe=' + dupProbe + ')')
+}
+
 for (let i = 0; i < MUTANTS.length; i++) {
   const m = MUTANTS[i]
-  if (!original.includes(m.from)) {
-    skipped.push(m.name + ' (ANCHOR MISS: ' + m.from + ')')
-    console.log('FAIL - ' + m.name + ' :: ANCHOR MISS: ' + m.from)
+  if (countOf(original, m.from) !== 1) continue          // already reported above (fails the run via `skipped`)
+  const mutated = original.replace(m.from, m.to) + (m.append || '')
+  // the single-point edit must have landed exactly once: the old text is gone and the new text is present.
+  if (countOf(mutated, m.from) !== 0 || countOf(mutated, m.to) < 1) {
+    failures.push(m.name + ' :: MUTATION DID NOT LAND (from=' + countOf(mutated, m.from) + ', to=' + countOf(mutated, m.to) + ')')
+    console.log('FAIL - ' + m.name + ' :: MUTATION DID NOT LAND')
     continue
   }
-  const mutated = original.split(m.from).join(m.to) + (m.append || '')
   const file = join(dir, 'index.mutant' + (i + 1) + '.js')
   writeFileSync(file, mutated, 'utf8')
   const r = runAudit(file)

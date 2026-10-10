@@ -28,6 +28,16 @@
 // Plus the kernel's usual rails: every upper bound counts its drops; the injected clock is the only time
 // source; read paths (gaps/status) never mutate; determinism is byte-level.
 //
+// CLONE CONTRACT (round-8 reviewer: `apply({initial})` used to crash twice ✗) — the state base is validated
+// and cloned SAFELY, never via `JSON.parse(JSON.stringify())`:
+//   · a `initial` whose SHAPE is not a replay state (`{a:1}`, a missing `events`, …) ⇒ `VMU_INVALID_ARGUMENT`
+//     naming the offending key (it used to die on `reading 'byKind'`);
+//   · a CYCLE or a `function`/`symbol` ⇒ `VMU_INVALID_ARGUMENT` naming the path (it used to die on
+//     `Converting circular structure to JSON`);
+//   · `NaN/±Infinity/-0/undefined/Date/Map/Set/RegExp/bigint` are preserved by the clone and encoded as
+//     deterministic TAGS in the canonical form (`status().clone.lossyTypes` discloses the list) ⇒ two
+//     replays stay byte-identical WITHOUT pretending the JS identity was compared.
+//
 // SETTINGS (read as PLAIN LITERALS — the settings table and the docs audit discover wired keys by scanning
 // file text for the literal, see kernel/guard.js):
 //   vmu.replay.maxEvents (default 1000) · vmu.replay.strict (default false) ·
@@ -56,18 +66,66 @@ export const AUDIT_PREFIXES = Object.freeze(['middleware', 'control', 'metrics',
 /** Kinds that REGISTER an object: a reference to an id that no such event introduced is a missing antecedent. */
 export const REGISTERING_SUFFIXES = Object.freeze(['registered', 'created', 'posted', 'begun', 'declared', 'opened', 'open', 'appended', 'assigned', 'hired', 'settled', 'committed'])
 
-/** Canonical JSON: keys sorted at every depth, so two logically equal states fingerprint identically. */
+/** The fingerprint ENCODINGS this module uses for values plain JSON cannot represent (self-disclosed in
+ *  `status().clone.lossyTypes`): each one is a deterministic TAG, so byte-equality stays well defined even
+ *  though the JS identity (e.g. a Date instance) is not what is compared. */
+export const LOSSY_TYPES = Object.freeze([
+  'Date→{"$date":ISO}', 'Map→{"$map":sorted}', 'Set→{"$set":sorted}', 'RegExp→{"$regex":"src/flags"}',
+  'NaN|Infinity|-Infinity|-0→{"$num":…}', 'undefined→{"$undefined":true}', 'bigint→{"$bigint":"…"}',
+])
+
+const isPlainish = (v) => v !== null && typeof v === 'object'
+
+/**
+ * Canonical JSON with TAGS: keys sorted at every depth, so two logically equal states fingerprint identically;
+ * `NaN/±Infinity/-0/undefined/bigint/Date/Map/Set/RegExp` are encoded as deterministic tags instead of being
+ * silently collapsed (the old form turned `NaN` into `"null"` and lost `undefined` — B5's silent drift ✗).
+ * A CYCLE or a `function`/`symbol` cannot be finger-printed ⇒ NAMED refusal that says WHERE it is.
+ */
 export function canonicalize(value) {
-  const walk = (v) => {
+  const seen = new Set()
+  const walk = (v, path) => {
     if (v === null) return 'null'
-    if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'null'
-    if (typeof v === 'boolean') return v ? 'true' : 'false'
-    if (typeof v === 'string') return JSON.stringify(v)
-    if (Array.isArray(v)) return '[' + v.map(walk).join(',') + ']'
-    if (typeof v === 'object') return '{' + Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + walk(v[k])).join(',') + '}'
-    return JSON.stringify(String(v))
+    const t = typeof v
+    if (t === 'number') {
+      if (Number.isNaN(v)) return '{"$num":"NaN"}'
+      if (v === Infinity) return '{"$num":"Infinity"}'
+      if (v === -Infinity) return '{"$num":"-Infinity"}'
+      if (Object.is(v, -0)) return '{"$num":"-0"}'
+      return String(v)
+    }
+    if (t === 'string') return JSON.stringify(v)
+    if (t === 'boolean') return v ? 'true' : 'false'
+    if (t === 'undefined') return '{"$undefined":true}'
+    if (t === 'bigint') return '{"$bigint":' + JSON.stringify(v.toString()) + '}'
+    if (t === 'function' || t === 'symbol') {
+      throw refuse('VMU_INVALID_ARGUMENT', 'cannot canonicalise a ' + t + ' at ' + path,
+        'a replay state must be finger-printable: remove ' + t + ' values (K5); see status().clone for the contract')
+    }
+    if (v instanceof Date) return '{"$date":' + JSON.stringify(Number.isNaN(v.getTime()) ? 'Invalid' : v.toISOString()) + '}'
+    if (v instanceof RegExp) return '{"$regex":' + JSON.stringify(v.source + '/' + v.flags) + '}'
+    if (v instanceof Map) {
+      const entries = [...v.entries()].map(([k, val]) => '[' + walk(k, path + '.<map-key>') + ',' + walk(val, path + '.<map-value>') + ']')
+      entries.sort()
+      return '{"$map":[' + entries.join(',') + ']}'
+    }
+    if (v instanceof Set) {
+      const items = [...v.values()].map((x, i) => walk(x, path + '.<set-item:' + i + '>'))
+      items.sort()
+      return '{"$set":[' + items.join(',') + ']}'
+    }
+    if (seen.has(v)) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'cannot canonicalise a CYCLE at ' + path,
+        'a replay state must be a tree: break the cycle at ' + path + ' (K5 refuses instead of crashing)')
+    }
+    seen.add(v)
+    let out
+    if (Array.isArray(v)) out = '[' + v.map((x, i) => walk(x, path + '[' + i + ']')).join(',') + ']'
+    else out = '{' + Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + walk(v[k], path + '.' + k)).join(',') + '}'
+    seen.delete(v)
+    return out
   }
-  return walk(value === undefined ? null : value)
+  return walk(value, '$')
 }
 
 /** The event kind: `what` (bus audit rows) or `type`/`kind` (module log rows) — one naming rule, documented. */
@@ -97,7 +155,71 @@ export function emptyState() {
   }
 }
 
-const deepClone = (v) => (v === null || typeof v !== 'object' ? v : JSON.parse(JSON.stringify(v)))
+/** The clone backend actually in use (self-disclosed): `structuredClone` is LOSSLESS for
+ *  `NaN/±Infinity/-0/undefined/Date/Map/Set` and preserves cycles; the manual fallback is JSON+tags and
+ *  therefore REFUSES the exotic types by name instead of silently downgrading them. */
+export const CLONE_BACKEND = (typeof structuredClone === 'function') ? 'structuredClone' : 'manual-json-tags'
+export const CLONE_KIND = CLONE_BACKEND === 'structuredClone' ? 'lossless-safe' : 'json-tags-safe'
+
+/** Required top-level shape of a replay state (B4: an arbitrary `initial` used to crash on `.byKind`). */
+const STATE_SHAPE = Object.freeze([
+  ['events', 'number'], ['timeline', 'object'], ['counts', 'object'], ['unknownKinds', 'object'],
+  ['middleware', 'object'], ['control', 'object'], ['objects', 'object'], ['refusals', 'object'], ['truncated', 'object'],
+])
+
+/** Validate a candidate initial state. Returns `{ok:true}` or `{ok:false, why, hint}` (always NAMED, never a crash). */
+export function assertStateShape(candidate) {
+  if (candidate === null || typeof candidate !== 'object' || Array.isArray(candidate)) {
+    return { ok: false, why: 'an initial state must be a plain object, got ' + (Array.isArray(candidate) ? 'array' : typeof candidate), hint: 'pass a state shaped like emptyState() (or omit `initial`)' }
+  }
+  for (const [key, type] of STATE_SHAPE) {
+    if (!(key in candidate)) return { ok: false, why: 'initial state is missing the key `' + key + '`', hint: 'required keys: ' + STATE_SHAPE.map(([k]) => k).join(', ') }
+    const v = candidate[key]
+    if (type === 'number' && (typeof v !== 'number' || !Number.isFinite(v))) return { ok: false, why: 'initial state key `' + key + '` must be a finite number, got ' + JSON.stringify(v), hint: 'use a state from emptyState()/apply() as the base' }
+    if (type === 'object' && (v === null || typeof v !== 'object' || Array.isArray(v))) return { ok: false, why: 'initial state key `' + key + '` must be an object, got ' + (Array.isArray(v) ? 'array' : typeof v), hint: 'use a state from emptyState()/apply() as the base' }
+  }
+  for (const [key, sub] of [['timeline', ['firstAt', 'lastAt', 'firstSeq', 'lastSeq', 'inverted']], ['counts', ['byKind', 'byPrefix']], ['middleware', ['entries', 'disabled', 'decisions', 'failures']], ['control', ['paused', 'resumed', 'heartbeats']]]) {
+    for (const s of sub) {
+      const v = candidate[key][s]
+      if (s === 'inverted' ? (typeof v !== 'number') : (s === 'paused' || s === 'resumed' || s === 'heartbeats') ? (typeof v !== 'number') : false) {
+        return { ok: false, why: 'initial state `' + key + '.' + s + '` has the wrong type (' + typeof v + ')', hint: 'use a state from emptyState()/apply() as the base' }
+      }
+    }
+  }
+  return { ok: true }
+}
+
+/**
+ * A SAFE deep clone (B5): `structuredClone` when the runtime has it, else a manual clone.
+ * Returns `{ok:true, value}` or `{ok:false, why, hint}` — NEVER a bare `TypeError`, and never a silent
+ * downgrade: a `function`/`symbol`, an un-clonable exotic type on the manual backend, or a CYCLE is refused
+ * by NAME with the path where it was found.
+ */
+export function safeClone(value) {
+  if (!isPlainish(value)) return { ok: true, value }
+  let cloned
+  if (CLONE_BACKEND === 'structuredClone') {
+    try { cloned = structuredClone(value) } catch (e) { return { ok: false, why: 'structuredClone refused the value: ' + String((e && e.message) || e), hint: 'a replay state must be a tree of JSON/clone-safe values (K5)' } }
+  } else {
+    try { cloned = JSON.parse(JSON.stringify(value)) } catch (e) { return { ok: false, why: 'the manual clone backend refused the value: ' + String((e && e.message) || e), hint: 'remove cycles/exotic types, or run on a runtime with structuredClone' } }
+    const exotic = findExotic(value, '$')
+    if (exotic) return { ok: false, why: 'the manual clone backend would LOSE ' + exotic.type + ' at ' + exotic.path, hint: 'run on a runtime with structuredClone, or keep the state JSON-safe' }
+  }
+  // validate the clone itself: functions/symbols/cycles cannot be finger-printed (canonicalize would refuse anyway)
+  try { canonicalize(cloned) } catch (e) { return { ok: false, why: String((e && e.message) || e), hint: String((e && e.hint) || 'a replay state must be a tree of finger-printable values (K5)') } }
+  return { ok: true, value: cloned }
+}
+
+/** Walk a value to find a type the manual backend cannot preserve (used only on that backend). */
+function findExotic(v, path, seen = new Set()) {
+  if (v === null || typeof v !== 'object') return null
+  if (v instanceof Date || v instanceof Map || v instanceof Set || v instanceof RegExp || typeof v === 'bigint') return { type: v.constructor ? v.constructor.name : typeof v, path }
+  if (seen.has(v)) return null
+  seen.add(v)
+  for (const k of Object.keys(v)) { const hit = findExotic(v[k], path + '.' + k, seen); if (hit) return hit }
+  return null
+}
+
 const deepFreeze = (v) => { if (v && typeof v === 'object' && !Object.isFrozen(v)) { Object.freeze(v); for (const k of Object.keys(v)) deepFreeze(v[k]) } return v }
 const bump = (obj, key, by = 1) => { obj[key] = (obj[key] || 0) + by; return obj }
 const sortedObj = (o) => { const out = {}; for (const k of Object.keys(o || {}).sort()) out[k] = o[k]; return out }
@@ -323,7 +445,15 @@ export function createReplay({ clock = () => 0, log = null, settings = {}, bus =
     apply({ plan, initial = null } = {}) {
       if (!plan || typeof plan !== 'object' || !Array.isArray(plan.events)) throw deny('VMU_INVALID_ARGUMENT', 'apply needs a plan from plan()', 'call plan() first; a hand-made plan is not accepted (its gaps would be unknown)')
       const at = clock()
-      const state = initial === null ? emptyState() : deepClone(initial)
+      let state
+      if (initial === null || initial === undefined) state = emptyState()
+      else {
+        const shape = assertStateShape(initial)
+        if (!shape.ok) throw deny('VMU_INVALID_ARGUMENT', 'apply `initial` is not a replay state: ' + shape.why, shape.hint)
+        const cloned = safeClone(initial)
+        if (!cloned.ok) throw deny('VMU_INVALID_ARGUMENT', 'apply `initial` cannot be cloned safely: ' + cloned.why, cloned.hint)
+        state = cloned.value
+      }
       let applied = 0
       let skipped = 0
       const unknownKinds = {}
@@ -383,6 +513,8 @@ export function createReplay({ clock = () => 0, log = null, settings = {}, bus =
     /** READ-ONLY: compare a given state with a fresh reconstruction of the same plan (byte level). */
     verify({ state = null, plan = null } = {}) {
       if (state === null) throw deny('VMU_INVALID_ARGUMENT', 'verify needs the `state` to compare', 'pass the state returned by apply()')
+      const shape = assertStateShape(state)
+      if (!shape.ok) throw deny('VMU_INVALID_ARGUMENT', 'verify `state` is not a replay state: ' + shape.why, shape.hint)
       const p = plan === null ? api.plan() : { plan }
       const fresh = api.apply({ plan: p.plan })
       counters.verifies += 1
@@ -433,6 +565,14 @@ export function createReplay({ clock = () => 0, log = null, settings = {}, bus =
         lastApply: lastApplySummary ? Object.assign({}, lastApplySummary) : null,
         idempotencySeam: !!(idempotency && typeof idempotency.fingerprintOf === 'function'),
         source: readSource().source,
+        cloneKind: CLONE_KIND,
+        lossyTypes: LOSSY_TYPES.slice(),
+        clone: {
+          kind: CLONE_KIND, backend: CLONE_BACKEND, lossyTypes: LOSSY_TYPES.slice(),
+          refuses: ['function', 'symbol', 'cycle', 'unclonable-exotic (manual backend only)'],
+          note: 'byte-equality is promised over the TAGGED canonical form: the tags are listed in lossyTypes; '
+            + 'an `initial` that cannot be cloned losslessly is REFUSED BY NAME instead of being silently mangled (K5)',
+        },
         at: clock(),
         note: 'K5: a pure read-only reconstruction — gaps are reported, unknown kinds are counted, an empty audit is never called a reconstruction',
       }

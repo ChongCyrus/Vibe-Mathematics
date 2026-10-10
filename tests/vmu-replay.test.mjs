@@ -142,7 +142,7 @@ const audit = [
   ok(forbidden.length === 0, 'D3: the module never calls a write-shaped method (the only sink is the advisory `log.append`, wrapped in try/catch)', JSON.stringify(forbidden))
   // `set(`/`delete(` DO appear — every occurrence must be an in-memory Map/Set operation, never a collaborator
   const mapish = (source.match(/[A-Za-z_$][A-Za-z0-9_$]*\.(?:set|delete)\s*\(/g) || [])
-  const notMap = mapish.filter((m) => !/^(reducers|traces|series|disposers|sampler|refusals|silences|posts)\./.test(m))
+  const notMap = mapish.filter((m) => !/^(reducers|seen|traces|series|disposers|sampler|refusals|silences|posts)\./.test(m))
   ok(notMap.length === 0, 'D4: every set(/delete( call is an in-memory collection operation, not a collaborator write', JSON.stringify(mapish.slice(0, 6)))
 }
 
@@ -230,6 +230,51 @@ const audit = [
   ok(only.plan.count === 2 && Object.keys(only.unknownKinds).length === 0, 'I6: plan({kinds}) filters to the requested kinds', JSON.stringify({ n: only.plan.count }))
   const filtered = r.apply({ plan: only.plan })
   ok(filtered.state.control.paused === 1 && filtered.state.control.resumed === 1, 'I7: the filtered reconstruction reflects only those events')
+}
+
+// ---- L. the clone contract (round-8 fixes: no bare crash, no silent loss) --------------------------
+{
+  const r = createReplay({ clock: () => 0, audit })
+  const p = r.plan()
+  // L1/L2: an arbitrary `initial` shape is a NAMED refusal naming the offending key
+  //        (was: bare TypeError "Cannot read properties of undefined (reading 'byKind')" @ replay.js:336)
+  const e1 = (() => { try { r.apply({ plan: p.plan, initial: { a: 1 } }); return null } catch (e) { return e } })()
+  ok(e1 && e1.code === 'VMU_INVALID_ARGUMENT' && /`events`/.test(String(e1.message)),
+    'L1: apply({initial:{a:1}}) is a NAMED refusal naming the missing key (never a bare TypeError)', e1 && (e1.code + ': ' + String(e1.message).slice(0, 90)))
+  ok(e1 && !/byKind/.test(String(e1.message)) && !/byKind/.test(String(e1.stack || '')),
+    'L2: the old bare crash (reading \'byKind\') is gone from both message and stack')
+  const e1b = (() => { try { r.apply({ plan: p.plan, initial: Object.assign(emptyState(), { events: 'x' }) }); return null } catch (e) { return e } })()
+  ok(e1b && e1b.code === 'VMU_INVALID_ARGUMENT' && /`events`/.test(String(e1b.message)),
+    'L3: a wrong TYPE is named too (events must be a finite number)', e1b && String(e1b.message).slice(0, 90))
+  // L4/L5: a CYCLE is a NAMED refusal naming the path (was: bare "Converting circular structure to JSON")
+  const cyc = Object.assign(emptyState(), { extra: {} }); cyc.extra.self = cyc.extra
+  const e2 = (() => { try { r.apply({ plan: p.plan, initial: cyc }); return null } catch (e) { return e } })()
+  ok(e2 && e2.code === 'VMU_INVALID_ARGUMENT' && /CYCLE/i.test(String(e2.message)) && /extra/.test(String(e2.message)),
+    'L4: a circular initial is a NAMED refusal that names WHERE the cycle is', e2 && (e2.code + ': ' + String(e2.message).slice(0, 110)))
+  ok(e2 && !/Converting circular/.test(String(e2.message)), 'L5: the old bare JSON cycle error is gone')
+  ok(codeOf(() => r.verify({ state: { a: 1 }, plan: p.plan })) === 'VMU_INVALID_ARGUMENT',
+    'L6: verify() applies the same shape contract (a malformed state is refused by name)')
+  // L7–L12: NaN/Infinity/-0/Date/undefined survive the clone; two replays byte-identical AND faithful
+  const initial = Object.assign(emptyState(), { extra: { nan: NaN, inf: Infinity, negZero: -0, when: new Date('2020-01-01T00:00:00.000Z'), u: undefined } })
+  const initialBefore = canonicalize(initial.extra)
+  const a1 = r.apply({ plan: p.plan, initial })
+  const a2 = r.apply({ plan: p.plan, initial })
+  ok(canon(a1.state) === canon(a2.state), 'L7: a state containing NaN/Date/undefined replays byte-identically twice')
+  ok(Number.isNaN(a1.state.extra.nan) && a1.state.extra.inf === Infinity && Object.is(a1.state.extra.negZero, -0),
+    'L8: the clone PRESERVES NaN/Infinity/-0 (the old JSON clone turned them into null)', JSON.stringify({ nan: String(a1.state.extra.nan), inf: a1.state.extra.inf, nz: Object.is(a1.state.extra.negZero, -0) }))
+  ok(a1.state.extra.when instanceof Date && a1.state.extra.when.toISOString() === '2020-01-01T00:00:00.000Z',
+    'L9: the clone preserves a Date as a Date (not a string, not {})')
+  ok('u' in a1.state.extra && a1.state.extra.u === undefined, 'L10: an `undefined` property survives the clone (the old JSON clone dropped the key)')
+  ok(canonicalize(initial.extra) === initialBefore, 'L11: the clone does not mutate the caller\'s initial value')
+  ok(canonicalize({ n: NaN }).includes('$num') && canonicalize({ d: new Date(0) }).includes('$date'),
+    'L12: the canonical form TAGS the values JSON cannot represent (so byte-equality is well defined)')
+  // L13–L15: status() self-discloses the clone contract
+  const st = r.status()
+  ok(typeof st.cloneKind === 'string' && st.cloneKind.length > 0, 'L13: status().cloneKind exists (the premise of byte-equality is visible)', st.cloneKind)
+  ok(Array.isArray(st.lossyTypes) && st.lossyTypes.some((x) => /Date/.test(x)) && st.clone.refuses.includes('cycle'),
+    'L14: status() lists the tag encodings and the refused types', JSON.stringify({ lossy: st.lossyTypes.length, refuses: st.clone.refuses }))
+  ok(/lossless-safe|json-tags-safe/.test(st.cloneKind) && st.clone.backend.length > 0,
+    'L15: the clone kind and backend are both reported', st.cloneKind + '/' + st.clone.backend)
 }
 
 if (failed === 0) {
