@@ -19,6 +19,12 @@ let failed = 0
 const cases = []
 const test = (n, f) => cases.push({ n, f })
 const settingsWith = (vals) => Object.assign({ get(k) { return vals[k] }, ...vals })
+/** **中文要点**：`board.js` 读的是**全点键**（`vmu.board.<k>` ✓）⇒ 短名必须补全 ✗✓（否则开关全成空操作 ✗）。 */
+const dottedOf = (shortVals) => {
+  const out = {}
+  for (const k of Object.keys(shortVals || {})) out[k.indexOf('vmu.board.') === 0 ? k : 'vmu.board.' + k] = shortVals[k]
+  return out
+}
 const mk = (vals) => createBoard({ clock: () => 0, log: () => {}, settings: settingsWith(vals), bus: { emit: () => {} } })
 
 /** 探测实例：逐个函数调用（**不改状态文件** ✓），把结果规范化成可比较的结构 ✓。 */
@@ -66,7 +72,7 @@ test('toggling each CORE key never throws, and every change is RECORDED (double-
     else if (key === 'wipDefault') on[key] = 1
     else if (key === 'agingWarnMs') on[key] = 1000
     else on[key] = true
-    const snap = probe(mk(on))
+    const snap = probe(mk(dottedOf(on)))
     const changed = Object.keys(snap).filter((op) => JSON.stringify(snap[op]) !== JSON.stringify(baseSnap[op]))
     const newThrows = Object.keys(snap).filter((op) => snap[op].ok === false && baseSnap[op] && baseSnap[op].ok === true)
     assert.deepEqual(newThrows, [], '改键后**新出现抛错**（应具名拒 ✓）：vmu.board.' + key + ' ⇒ ' + JSON.stringify(newThrows.map((o) => snap[o].threw)))
@@ -111,6 +117,49 @@ test('zero-mechanism does not crash and repeated probing is identical (read-only
   const a = JSON.stringify(probe(mk({})))
   const b = JSON.stringify(probe(mk({})))
   assert.equal(a, b, '同一输入两次探测必须逐字相同（无真实时间 ✗）')
+  passed += 1
+})
+
+// ⑦ **真驱动双证**（读正文取得真参数 ✓）：`columns()`／`swimlanes()`／`aging()`／`status()`／`move({taskId,from,to})` ✓
+test('REAL driving: keys change observable results where driveable; otherwise recorded as 未能证明', () => {
+  const drive = (vals) => {
+    const b = mk(vals)
+    const rec = {}
+    const ops = [
+      ['columns', () => b.columns()],
+      ['swimlanes', () => b.swimlanes()],
+      ['aging', () => b.aging()],
+      ['status', () => b.status()],
+      ['move', () => b.move({ taskId: 't1', from: 'todo', to: 'doing' })],
+    ]
+    for (const [name, fn] of ops) {
+      try { rec[name] = JSON.stringify(fn()) } catch (e) { rec[name] = 'THROW:' + String((e && e.code) || (e && e.message) || e) }
+    }
+    return { rec, throws: Object.values(rec).filter((x) => /^THROW:/.test(x)) }
+  }
+  const base = drive({})
+  const probes = {
+    'vmu.board.columns': { columns: [{ id: 'todo' }, { id: 'doing' }] },
+    'vmu.board.swimlanes': { swimlanes: ['ops'] },
+    'vmu.board.agingWarnMs': { agingWarnMs: 1000 },
+    'vmu.board.wipPerColumn': { columns: [{ id: 'todo' }], wipPerColumn: { todo: 0 } },
+    'vmu.board.wipDefault': { columns: [{ id: 'todo' }], wipDefault: 1 },
+    'vmu.board.moveRequiresTransition': { columns: [{ id: 'todo' }, { id: 'doing' }], moveRequiresTransition: true },
+  }
+  const rows = []
+  for (const [key, vals] of Object.entries(probes)) {
+    const snap = drive(dottedOf(vals))
+    const changed = Object.keys(snap.rec).filter((op) => snap.rec[op] !== base.rec[op])
+    // 真驱动下**新出现的抛错必须具名** ✓（本面用 `throw refuse(...)` ⇒ 有 `code` ✓）
+    const badThrows = snap.throws.filter((t) => !/^THROW:VMU_/.test(t))
+    assert.deepEqual(badThrows, [], key + '：真驱动下抛错必须具名，实际=' + JSON.stringify(badThrows))
+    rows.push({ key, changed })
+    console.log('    - ' + key + ' ⇒ ' + (changed.length ? 'changed=' + changed.join(',') : '未能证明（试过 columns/swimlanes/aging/status/move({taskId,from,to}) 五种驱动 ✗）'))
+  }
+  const proven = rows.filter((r) => r.changed.length)
+  console.log('  · 真驱动下**已证明**改变结果的键：' + (proven.length ? proven.map((r) => r.key).join('、') : '（无 ✗）') + ' / 共 ' + rows.length + ' 键')
+  console.log('  · 空看板驱动实测：' + base.rec.move + '（零机制 ⇒ 具名拒 ✓）')
+  assert.ok(proven.length >= 3, '真驱动下应有 ≥3 键产生**可观测差异**（否则审计本身失效 ✗）；实际=' + JSON.stringify(rows))
   passed += 1
 })
 

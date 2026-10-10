@@ -48,9 +48,9 @@ const EXPECT = {
   idempotency: G('ok 或 object', '列表/状态面放行 ✓；**显式 `absent` 只在去重操作上**（该操作需参数 ⇒ 探针见 NEEDS_ARGS ✓）'),
   meetings: G('按声明默认开成', '零机制＝按声明默认值开成（不拒）✓'),
   // ── 探针缺参（**显式登记**，不算 mismatch ✓）：需显式探针或补参数
-  arbitration: G('具名拒（带 code）', 'task-214 实测：`open()` ⇒ 具名拒 **VMU_ARBITRATION_OFF**（带口径 `enforcedScope=evaluated-so-far`）⇒ 零机制＝没有在办仲裁 ⇒ 具名拒即真实形状 ✓'),
-  budget: G('ok 或 object', 'task-204 实测（形状取自测试 vmu-budget.test.mjs:16）：不传 settings 下 `open({scope})` ⇒ **ok**（零机制＝不限额、放行 ✓）'), charter: G('具名拒（带 code）', 'task-214 实测：`propose()` ⇒ 具名拒 **VMU_CHARTER_NOT_AUTHORIZED** ⇒ 零机制＝无授权 ⇒ 具名拒即真实形状 ✓'),
-  delegation: G('具名拒（带 code）', 'task-214 实测：`check()` ⇒ 具名拒 **VMU_INVALID_ARGUMENT**（带口径 `enforcedScope=evaluated-so-far`）⇒ 零机制＝无可判委派 ⇒ 具名拒即真实形状 ✓'), handover: G('具名拒（带 code）', 'task-214 实测：`open()` ⇒ 具名拒 **VMU_INVALID_ARGUMENT** ⇒ 零机制＝无交接对象 ⇒ 具名拒即真实形状 ✓'),
+  arbitration: G('具名拒或 ok', 'task-214 批 3 补参（形状取自测试 vmu-arbitration.test.mjs:261 `open({parties,subject})`）：补参前实测具名拒 **VMU_ARBITRATION_OFF**（带口径 `enforcedScope=evaluated-so-far`）⇒ 若补参后仍拒，则"具名拒即零机制真实形状"✓；若放行 ⇒ 亦合规 ✓'),
+  budget: G('ok 或 object', 'task-204 实测（形状取自测试 vmu-budget.test.mjs:16）：不传 settings 下 `open({scope})` ⇒ **ok**（零机制＝不限额、放行 ✓）'), charter: G('具名拒或 ok', 'task-214 批 3 补参（形状取自测试 vmu-charter.test.mjs:236 `propose({kind:"charter",text,by,articles:[{id}]})`）：补参前实测具名拒 **VMU_CHARTER_NOT_AUTHORIZED** ⇒ 补参后若放行 ⇒ ok ✓；若仍具名拒 ⇒ 写明"缺参即其零机制形状" ✓'),
+  delegation: G('具名拒或 ok', 'task-214 批 3 补参（形状取自测试 vmu-delegation.test.mjs:30 `check({actor,action})`）：补参前实测具名拒 **VMU_INVALID_ARGUMENT**（带口径 `enforcedScope=evaluated-so-far`）⇒ 补参后应见判定对象（放行）⇒ 已放宽为"具名拒或 ok" ✓'), handover: G('具名拒或 ok', 'task-214 批 3 补参（形状取自测试 vmu-handover.test.mjs:27 `open({from,to})`）：补参前实测具名拒 **VMU_INVALID_ARGUMENT** ⇒ 补参后应见放行 ⇒ 已放宽为"具名拒或 ok" ✓'),
   library: G('PROBE_NEEDS_ARGS', '缺：库引用（ref/uri）'), math: G('PROBE_NEEDS_ARGS', '缺：数学请求体'),
   mathtools: G('具名拒（带 code）', 'task-214 实测：`plan()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT**（带口径 `enforced=[0] enforcedScope=evaluated-so-far`）⇒ 零机制＝无计划入参 ⇒ 具名拒即真实形状 ✓（补参后应见 `ok + enforced:[]`，届时改"具名拒或 ok" ✓）'),
   memory: G('ok 或 object', 'task-204 实测（形状取自测试 vmu-memory.test.mjs:63）：`record({kind,text,by,evidence})` ⇒ **ok**（零机制＝有默认 scope、放行 ✓）'), publication: G('具名拒（带 code）', 'task-214 实测：`advance()` ⇒ 具名拒 **VMU_VERSION_CHAIN_BROKEN** ⇒ 零机制＝无版本链可推进 ⇒ 具名拒即真实形状 ✓'),
@@ -116,6 +116,15 @@ const PROBE_ARGS = {
   records: { op: 'put', args: { track: 'progress', kind: 'progress', title: 'probe', body: 'probe', settled: true } },
   memory: { op: 'record', args: { kind: 'lesson', text: 'rebase before the long run', by: 'alpha', evidence: ['lib-1'], scope: 'team', tags: ['process'] } },
   transaction: { op: 'begin', args: { id: 'probe-tx', steps: [{ service: 'probe', apply: () => 1, undo: () => 1 }] } },
+  // task-214 batch 3/4 — shapes copied from each module's OWN test (never guessed ✗):
+  //   arbitration → tests/vmu-arbitration.test.mjs:261  d.open({ parties: ['p1','q1'], subject: 's1' })
+  //   charter     → tests/vmu-charter.test.mjs:236      d.propose({ kind:'charter', text, by, articles:[{id}] })
+  //   delegation  → tests/vmu-delegation.test.mjs:30    d.check({ actor: 'nobody', action: 'task/create' })
+  //   handover    → tests/vmu-handover.test.mjs:27      a.open({ from: 'r-1', to: 'r-2' })
+  arbitration: { op: 'open', args: { parties: ['probe-p1', 'probe-q1'], subject: 'probe subject' } },
+  charter: { op: 'propose', args: { kind: 'charter', text: 'probe charter', by: 'office', articles: [{ id: 'A-1', text: 'probe article' }] } },
+  delegation: { op: 'check', args: { actor: 'nobody', action: 'task/create' } },
+  handover: { op: 'open', args: { from: 'probe-from', to: 'probe-to' } },
 }
 
 /** 探测一个模块：**不传 settings** ✗；先用第一个 `create*` 工厂，再调它的首个零参操作 ✓（有显式探针参数时用 PROBE_ARGS ✓）。 */
