@@ -50,7 +50,7 @@ const goodDossier = (h, extra = {}) => h.ip.file(Object.assign({
   ok(KNOB_KEYS.every((k) => !SERVICE_KEYS.includes(k)), 'the knob/service split is disjoint')
   ok(new Set(DECLARED_KEYS).size === 20 && new Set(WIRED_KEYS).size === 20, 'no declared key is repeated')
   ok(s.unwiredCount === 0 && Object.keys(UNWIRED_REASONS).length === 0, 'nothing is unwired — stated, not implied (no silent gaps)')
-  ok(SERVICE_KEYS.every((k) => typeof h.ip[k.split('.').pop()] === 'function'), 'each declared service surface really exists as a method')
+  ok(SERVICE_KEYS.length > 0 && SERVICE_KEYS.every((k) => typeof h.ip[k.split('.').pop()] === 'function'), 'each declared service surface really exists as a method (non-vacuous: SERVICE_KEYS is a non-empty module constant)')
   // FACT CHECK: the declared universe is read from the settings sources, not asserted from memory.
   const x = s.registry
   ok(x && x.declaredIpKeys === 20, 'settings/planned.js + settings/schema.js really declare 20 `vmu.ip.*` keys')
@@ -294,7 +294,7 @@ const goodDossier = (h, extra = {}) => h.ip.file(Object.assign({
   ok(receipts.every((r) => Array.isArray(r.enforced)), 'every receipt carries an ARRAY `enforced`')
   ok(receipts.every((r) => r.enforcedScope === 'evaluated-so-far'), 'every receipt states enforcedScope=evaluated-so-far')
   ok(receipts.every((r) => Array.isArray(r.fired) && new Set(r.fired).size === r.fired.length), 'every receipt has a duplicate-free `fired`')
-  ok(receipts.every((r) => new Set(r.enforced).size === r.enforced.length), 'NO receipt has duplicate `enforced` entries')
+  ok(receipts.length > 0 && receipts.every((r) => new Set(r.enforced).size === r.enforced.length), 'NO receipt has duplicate `enforced` entries (non-vacuous: the receipt list is non-empty)')
   ok(receipts.every((r) => r.fired.every((k) => r.enforced.includes(k))), 'fired ⊆ enforced in every receipt')
   ok(receipts.every((r) => r.fired.every((k) => WIRED_KEYS.includes(k)) && r.enforced.every((k) => WIRED_KEYS.includes(k))), 'no receipt lists a key outside the wired set')
 }
@@ -329,14 +329,14 @@ const goodDossier = (h, extra = {}) => h.ip.file(Object.assign({
   ok(refusals.every((r) => Array.isArray(r.enforced)), 'every refusal carries an ARRAY `enforced` (never undefined)')
   ok(refusals.every((r) => r.enforcedScope === 'evaluated-so-far'), 'every refusal carries enforcedScope=evaluated-so-far')
   ok(refusals.every((r) => Array.isArray(r.wouldEvaluate) && r.wouldEvaluate.length >= r.enforced.length), 'every refusal also gives wouldEvaluate ⊇ enforced')
-  ok(refusals.every((r) => typeof r.code === 'string' && typeof r.message === 'string'), 'every refusal is NAMED (code + message)')
+  ok(refusals.length > 0 && refusals.every((r) => typeof r.code === 'string' && typeof r.message === 'string'), 'every refusal is NAMED (code + message) (non-vacuous: the refusals above were just collected)')
   const seen = new Set(refusals.map((r) => r.code))
   for (const c of ['VMU_IP_DISCLOSURE_REQUIRED', 'VMU_IP_DISCLOSURE_INCOMPLETE', 'VMU_IP_PRIORART_MISSING', 'VMU_IP_CONTRIB_EVIDENCE_MISSING', 'VMU_IP_OWNERSHIP_CONFLICT', 'VMU_IP_HOLD_EXEMPTION_REQUIRED', 'VMU_IP_PUBLICATION_HOLD', 'VMU_IP_CONFIDENTIALITY_BREACH', 'VMU_IP_TRANSFER_UNLICENSED', 'VMU_LICENSE_INCOMPATIBLE']) {
     ok(seen.has(c), 'the refusal ' + c + ' is really produced by this surface')
   }
   // BY-CODE COUNTING
   const counted = h.ip.status().refusals
-  ok(Object.keys(counted).length === seen.size && [...seen].every((c) => counted[c] >= 1), 'every produced code is COUNTED by code in status()')
+  ok(Object.keys(counted).length === seen.size && [...seen].length > 0 && [...seen].every((c) => counted[c] >= 1), 'every produced code is COUNTED by code in status() (non-vacuous: at least one code was produced)')
   ok(h.ip.status().refusalsTotal === refusals.length + 0 || h.ip.status().refusalsTotal >= refusals.length, 'the total equals the number of refusals')
   // EVERY CODE IS REGISTERED in docs/03 §8 (no invented codes)
   const c03 = readFileSync(join(REPO, 'vibe-math-vmu/docs/03-interface-contract.md'), 'utf8')
@@ -405,7 +405,7 @@ const goodDossier = (h, extra = {}) => h.ip.file(Object.assign({
   const knobs = KNOB_KEYS.slice()
   const missing = knobs.filter((k) => !fired.has(k))
   ok(missing.length === 0, 'every one of the 15 wired KNOBS appears in at least one receipt `fired` list (' + (missing.join(',') || 'none missing') + ')')
-  ok(SERVICE_KEYS.every((k) => typeof h.ip[k.split('.').pop()] === 'function'), 'the 5 declared service surfaces are real methods (they carry no value to "fire")')
+  ok(SERVICE_KEYS.length > 0 && SERVICE_KEYS.every((k) => typeof h.ip[k.split('.').pop()] === 'function'), 'the 5 declared service surfaces are real methods (they carry no value to "fire") (non-vacuous: SERVICE_KEYS is a non-empty module constant)')
 }
 
 console.log('=== VMU IP: ' + passed + ' passed, ' + failed + ' failed ===')

@@ -398,7 +398,7 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
   const conflict = put(r, { title: 'plain', body: 'different' })
   ok(conflict.fired.includes('vmu.records.naming.conflictSuffix'), 'fired: the conflict suffix fired on a slug clash')
   const universe = new Set(WIRED_KEYS.concat(EXTRA_WIRED_KEYS))
-  ok(a.enforced.concat(big.fired, dup.fired, conflict.fired).every((k) => universe.has(k)), 'enforced/fired: every listed key is a wired key (no invented names)')
+  ok(a.enforced.concat(big.fired, dup.fired, conflict.fired).length > 0 && a.enforced.concat(big.fired, dup.fired, conflict.fired).every((k) => universe.has(k)), 'enforced/fired: every listed key is a wired key (no invented names) (non-vacuous: the three `fired` lists above were just shown to be non-empty)')
   const listed = r.list()
   ok(listed.enforced.includes('vmu.records.head.sort') && listed.enforced.includes('vmu.records.headListAt'), 'enforced: the list receipt names the ordering and cap keys it evaluated')
 }
@@ -449,9 +449,9 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
   const check = (e, label, must = []) => {
     if (!e) { failed += 1; console.log('FAIL enforced: ' + label + ' (no refusal)'); return null }
     ok(Array.isArray(e && e.enforced), 'enforced: ' + label + ' carries an ARRAY (never undefined)')
-    ok(!!e && e.enforced.every((k) => universe.has(k)), 'enforced: ' + label + ' lists only wired keys')
+    ok(!!e && e.enforced.every((k) => universe.has(k)), 'enforced: ' + label + ' lists only wired keys') // EMPTY_ALLOWED: 回执/拒否的 `enforced` 允许为空（零机制回执合法），该断言查的是"不得出现未接线键"，空集无从违规
     ok(!!e && new Set(e.enforced).size === e.enforced.length, 'enforced: ' + label + ' has no duplicates')
-    if (must.length) ok(must.every((k) => e.enforced.includes(k)), 'enforced: ' + label + ' names the key that fired (' + must.join(',') + ')')
+    if (must.length > 0) ok(must.every((k) => e.enforced.includes(k)), 'enforced: ' + label + ' names the key that fired (' + must.join(',') + ')')
     return e
   }
   // the two items the C2 gate named, checked explicitly once more
@@ -520,11 +520,11 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
   receipts.push(full.remove({ id: 'r-2', by: 'office', reason: 'done' }))
   receipts.push(full.purge())
   const all = receipts.slice()   // status() is a REPORT, not an operation receipt: it has no enforced/fired
-  ok(all.every((r) => Array.isArray(r.enforced)), 'receipts: every operation receipt carries an array `enforced`')
+  ok(all.length > 0 && all.every((r) => Array.isArray(r.enforced)), 'receipts: every operation receipt carries an array `enforced` (non-vacuous: 8 receipts were pushed just above)')
   ok(all.every((r) => !Array.isArray(r.enforced) || new Set(r.enforced).size === r.enforced.length), 'receipts: NO receipt has duplicate `enforced` entries (whole module)')
   ok(all.every((r) => !r.fired || new Set(r.fired).size === r.fired.length), 'receipts: NO receipt has duplicate `fired` entries (whole module)')
   ok(all.every((r) => !r.fired || r.fired.every((k) => r.enforced.includes(k))), 'receipts: fired ⊆ enforced everywhere (a fired key was necessarily evaluated)')
-  ok(all.every((r) => r.enforced.every((k) => universe.has(k))), 'receipts: every listed key is a wired key')
+  ok(all.length > 0 && all.every((r) => r.enforced.every((k) => universe.has(k))), 'receipts: every listed key is a wired key (non-vacuous: the receipt list is non-empty)')
   const firedSomewhere = new Set(receipts.flatMap((r) => r.fired || []))
   ok(firedSomewhere.size >= 5, 'receipts: the scenario really fired several knobs (' + firedSomewhere.size + ')')
 }
@@ -539,7 +539,7 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
   const refusal = (() => { try { put(r, { title: 'b', body: 'body b' }) } catch (e) { return e } return null })()
   ok(!!refusal && refusal.enforcedScope === 'evaluated-so-far', 'D3: a REFUSAL carries enforcedScope itself (not just a note in status())')
   ok(!!refusal && Array.isArray(refusal.wouldEvaluate) && refusal.wouldEvaluate.length >= refusal.enforced.length, 'D3: the refusal also gives wouldEvaluate (the full set), ⊇ enforced')
-  ok(!!refusal && refusal.wouldEvaluate.every((k) => WIRED_KEYS.concat(EXTRA_WIRED_KEYS).includes(k)), 'D3: wouldEvaluate lists only wired keys')
+  ok(!!refusal && refusal.wouldEvaluate.length > 0 && refusal.wouldEvaluate.every((k) => WIRED_KEYS.concat(EXTRA_WIRED_KEYS).includes(k)), 'D3: wouldEvaluate lists only wired keys (non-vacuous: the refusal states the set it would consult)')
   const empty = (() => { try { r.get({ id: 'r-404' }) } catch (e) { return e } return null })()
   ok(!!empty && empty.enforcedScope === 'evaluated-so-far' && Array.isArray(empty.enforced) && empty.enforced.length === 0, 'D3: an empty "so far" list still states its scope')
   ok(!!empty && empty.wouldEvaluate.includes('vmu.records.bodyCapBytes'), 'D3: wouldEvaluate tells the reader what the operation WOULD consult')
@@ -561,7 +561,7 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
   tryPush(() => rc.remove({ id: 'r-2', by: 'office', reason: 'done' }))
   tryPush(() => rc.purge())
   const bad = receipts.filter((x) => !Array.isArray(x.enforced) || new Set(x.enforced).size !== x.enforced.length || (x.fired && new Set(x.fired).size !== x.fired.length))
-  ok(receipts.length >= 8, 'no-dup: the scenario produced enough receipts to be meaningful (' + receipts.length + ')')
+  ok(receipts.length > 0 && receipts.length >= 8, 'no-dup: the scenario produced enough receipts to be meaningful (' + receipts.length + ')')
   ok(receipts.every((x) => Array.isArray(x.enforced) && x.enforcedScope === 'evaluated-so-far'), 'no-dup: every receipt in the scenario carries an array enforced + the scope')
   ok(bad.length === 0, 'no-dup: NO receipt in the full scenario has duplicates (' + (bad.length ? JSON.stringify(bad[0]) : receipts.length + ' receipts checked') + ')')
   ok(receipts.every((x) => !x.fired || x.fired.every((k) => x.enforced.includes(k))), 'no-dup: fired ⊆ enforced in every receipt')

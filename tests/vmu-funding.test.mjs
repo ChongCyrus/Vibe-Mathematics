@@ -199,7 +199,7 @@ const ev = { receipt: 'r-1' }
   ok(r.ok === true && r.remainderMinor !== 0 && r.remainderCode === 'VMU_ALLOCATION_REMAINDER',
     'settlementRoundMinor[+]: the rounding REMAINDER is reported (never silently absorbed)', JSON.stringify({ rem: r.remainderMinor }))
   ok(round.f.status().counters.remainderMinor > 0, 'settlementRoundMinor[+]: the remainder is COUNTED')
-  ok(r.allocations.every((a) => a.amountMinor % 100 === 0), 'settlementRoundMinor[+]: every allocation honours the declared rounding unit')
+  ok(r.allocations.length > 0 && r.allocations.every((a) => a.amountMinor % 100 === 0), 'settlementRoundMinor[+]: every allocation honours the declared rounding unit (non-vacuous: the split really produced allocations)')
 }
 
 // ── 14–16. auditPack / auditPackFields / auditPackFormat ────────────────────────────────────────────
@@ -227,8 +227,8 @@ const ev = { receipt: 'r-1' }
   ok(rendered[0].rendered.startsWith('{') && rendered[1].rendered.startsWith('# funding audit') && rendered[2].rendered.startsWith('account,totalMinor'),
     'auditPackFormat[+]: json / markdown / csv render observably differently',
     JSON.stringify(rendered.map((r) => r.rendered.slice(0, 14))))
-  ok(rendered.every((r) => r.format === r.format && r.enforced.includes('vmu.funding.auditPackFormat')),
-    'auditPackFormat[+]: the format rail is listed in enforced[]')
+  ok(rendered.length > 0 && rendered.every((r) => r.format === r.format && r.enforced.includes('vmu.funding.auditPackFormat')),
+    'auditPackFormat[+]: the format rail is listed in enforced[] (non-vacuous: all three formats were rendered)')
 }
 
 // ── over-budget + open-settlement rails ─────────────────────────────────────────────────────────────
@@ -302,7 +302,7 @@ const ev = { receipt: 'r-1' }
   NOW = 1_000_000
   const r1 = h.f.accountView({ account: h.id })
   const rs = h.f.receiptsView({ limit: 50 })
-  ok(rs.items.length >= 2 && rs.items.every((r) => Array.isArray(r.enforced) && Array.isArray(r.fired) && r.enforcedScope === ENFORCED_SCOPE),
+  ok(rs.items.length > 0 && rs.items.length >= 2 && rs.items.every((r) => Array.isArray(r.enforced) && Array.isArray(r.fired) && r.enforcedScope === ENFORCED_SCOPE),
     'receipts: every receipt carries enforced[] + fired[] + enforcedScope', JSON.stringify(rs.items[rs.items.length - 1]))
   ok(rs.items.every((r) => r.fired.every((k) => r.enforced.includes(k))), 'receipts: fired ⊆ enforced')
   ok(rs.items.every((r) => new Set(r.enforced).size === r.enforced.length), 'receipts: enforced[] has no duplicates')

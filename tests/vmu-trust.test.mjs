@@ -195,5 +195,19 @@ function fakeClock(start = 1000) { let t = start; return { clock: () => t, set: 
   ok(on.t.explain({ subject: 'm1' }).halfLifeSource === 'explicit', 'explain() self-discloses the half-life source too')
 }
 
+// ── task-229: `status()` must expose the half-life SOURCE, otherwise "0 = explicitly switched off" is
+// unobservable (an explicit 0 and an absent value share decay=off but not the source).
+{
+  const st = (settings) => createTrust({ clock: () => 1000, settings }).status()
+  const none = st({})
+  const zero = st({ 'vmu.trust.halfLifeMs': 0 })
+  const on = st({ 'vmu.trust.halfLifeMs': 1000 })
+  ok(none.halfLifeMs === 0 && none.halfLifeSource === 'default' && none.decay === 'off', 'status(): halfLife not given ⇒ halfLifeMs=0, halfLifeSource=default, decay=off')
+  ok(zero.halfLifeMs === 0 && zero.halfLifeSource === 'explicit' && zero.decay === 'off', 'status(): halfLifeMs=0 EXPLICIT ⇒ halfLifeSource=explicit, decay=off (the ruling is now observable)')
+  ok(zero.halfLifeSource !== none.halfLifeSource, 'status(): explicit 0 and "not given" are DISTINGUISHABLE via halfLifeSource')
+  ok(on.halfLifeMs === 1000 && on.halfLifeSource === 'explicit' && on.decay === 'on', 'status(): a positive half-life ⇒ decay=on (source explicit)')
+  ok(zero.decay === 'off' && on.decay === 'on', 'status(): the three states are consistent (0/off vs 1000/on)')
+}
+
 console.log('=== VMU TRUST: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) process.exit(1)

@@ -526,6 +526,7 @@ checkPersona('founding', 'r-3', founding[3].persona, [
   [/progress.md/, 'documents Progress/progress.md'],
 ])
 checkPersona('founding', 'r-1', founding[1].persona, [[/一名常驻研究员/, 'opens as 常驻研究员']])
+assert(founding.length > 0, 'non-vacuous: the founding roster must not be empty (' + founding.length + ')')
 for (const sp of founding) {
   const owner = memberOfChild(sp.childId)
   assert(sp.persona.indexOf('Members/' + owner + '/') !== -1, owner + "'s charter points at Members/" + owner + '/')
@@ -567,8 +568,8 @@ assert(normalWakes.length > 0, 'the addressed message produced a wake (' + norma
 for (const w of normalWakes) recordAndCheck('normal', w.owner, w.prompt)
 assert(normalWakes.some(w => w.owner === 'r-2' && w.prompt.indexOf('【研究所·私信 from r-1】') !== -1),
   'r-2 is woken with its inbox containing the DM framed from r-1')
-assert(normalWakes.filter(w => w.owner === 'r-2').every(w => w.prompt.indexOf('【研究所·私信 from r-2】') === -1),
-  'r-2 never receives the DM framed as coming from itself')
+assert(normalWakes.filter(w => w.owner === 'r-2').length > 0 && normalWakes.filter(w => w.owner === 'r-2').every(w => w.prompt.indexOf('【研究所·私信 from r-2】') === -1),
+  'r-2 never receives the DM framed as coming from itself (non-vacuous: the line above shows r-2 really was woken)')
 // (b) the heartbeat must produce a CHECKPOINT prompt. Captured in its OWN single-member institute:
 // the heartbeat wakes the most idle non-busy member, so with exactly one member the pick cannot
 // depend on real `Date.now()` deltas under load — the earlier shared-root version recorded
@@ -784,7 +785,7 @@ await endCase(RG)
 section('8b the reply spec documents exactly the fields the framework honours')
 {
   const specKinds = corpus.filter(c => ['founding', 'founding-temp', 'founding-leaderless', 'normal', 'checkpoint'].indexOf(c.kind) !== -1)
-  assert(specKinds.length >= 6, 'the corpus has round prompts to check the reply spec on (' + specKinds.length + ')')
+  assert(specKinds.length > 0 && specKinds.length >= 6, 'the corpus has round prompts to check the reply spec on (' + specKinds.length + ')')
   for (const c of specKinds) {
     const isTemp = /^t-/.test(c.owner)
     const isAcad = c.owner === 'acad'
@@ -924,7 +925,7 @@ const mtg = await callTool('vibe_v5_meeting', { agenda: '分工与下一步', ki
 assert(mtg.ok === true, 'the academician convened a meeting (' + JSON.stringify(mtg).slice(0, 90) + ')')
 await settle(); await drainWakes(20, RI)
 const meetingOne = delivered.filter(w => /【研究所会议/.test(w.prompt))
-assert(meetingOne.length >= 2, 'both members were asked to speak (' + meetingOne.length + ')')
+assert(meetingOne.length > 0 && meetingOne.length >= 2, 'both members were asked to speak (' + meetingOne.length + ')')
 for (const w of meetingOne) {
   recordAndCheck('meeting', w.owner, w.prompt)
   assert(w.prompt.indexOf('【研究所会议 mt-1 进行中 —— ') === 0, w.owner + "'s meeting prompt is framed with the meeting id")
@@ -1021,7 +1022,9 @@ await callTool('vibe_v5_set', { maxParallel: 8, formalVerify: 'encourage', leanA
 delivered.length = 0
 await callTool('vibe_v5_say', { to: 'r-1', text: '继续推进。' }, childAgent(childOf(RK, 'acad')))
 await settle(); await drainWakes(3, RK)
-for (const w of delivered.filter(d => d.rootId === RK.id)) recordAndCheck('lean-work', w.owner, w.prompt)
+const leanWakes = delivered.filter(d => d.rootId === RK.id)
+assert(leanWakes.length > 0, 'non-vacuous: the work round really woke a member of RK (' + leanWakes.length + ')')
+for (const w of leanWakes) recordAndCheck('lean-work', w.owner, w.prompt)
 {
   const txt = delivered.filter(d => d.rootId === RK.id).map(d => d.prompt).join('\n')
   assert(/\[形式化\] 鼓励 Lean/.test(txt), 'the state block announces the Lean mode with its counts')
@@ -1118,7 +1121,9 @@ assert(recRP.status === 'attempted' && !recRP.proof, 'the defect reply withdrew 
 delivered.length = 0
 await callTool('vibe_v5_say', { to: 'r-1', text: '再继续。' }, childAgent(childOf(R_LEANDEF, 'acad')))
 await settle(); await drainWakes(3, R_LEANDEF)
-for (const w of delivered.filter(d => d.rootId === R_LEANDEF.id)) recordAndCheck('lean-after-defect', w.owner, w.prompt)
+const leanDefWakes = delivered.filter(d => d.rootId === R_LEANDEF.id)
+assert(leanDefWakes.length > 0, 'non-vacuous: the post-defect round really woke a member of R_LEANDEF (' + leanDefWakes.length + ')')
+for (const w of leanDefWakes) recordAndCheck('lean-after-defect', w.owner, w.prompt)
 {
   const txt = delivered.filter(d => d.rootId === R_LEANDEF.id).map(d => d.prompt).join('\n')
   assert(!/该对象已有\*\*通过的 Lean 形式化证明\*\*/.test(txt), '★ the post-defect prompt no longer claims a passing proof')
@@ -1186,7 +1191,7 @@ section('13 full-corpus sweep over every prompt ever sent')
     'lean-tool-hint']) {
     assert(kinds.has(need), 'the corpus contains a ' + need + ' prompt')
   }
-  assert(corpus.every(c => c.prompt && c.prompt.length > 200), 'no captured prompt is suspiciously short')
+  assert(corpus.length > 0 && corpus.every(c => c.prompt && c.prompt.length > 200), 'no captured prompt is suspiciously short (non-vacuous: the corpus must not be empty)')
   assert(corpus.every(c => !GARBAGE.some(g => g.test(c.prompt + (c.persona || '')))), 'no prompt or charter contains undefined/NaN/? garbage')
   // A single prompt must not deliver the same message twice. The inbox used to be
   // prepended AND re-emitted from the [状态] block, so a member read every new message
@@ -1198,6 +1203,7 @@ section('13 full-corpus sweep over every prompt ever sent')
   // states exactly what was checked.
   const duplicateFrames = []
   let inboxOffenders = 0
+  assert(corpus.length > 0, 'non-vacuous: the duplicate-frame sweep must see a non-empty corpus')
   for (const c of corpus) {
     const bodies = c.prompt.match(/【[^】]*】[^\n]{20,}/g) || []
     for (const frame of new Set(bodies)) {
@@ -1213,6 +1219,7 @@ section('13 full-corpus sweep over every prompt ever sent')
       + (duplicateFrames.length ? ' — ' + duplicateFrames.slice(0, 5).map(d => d.kind + '/' + d.owner + ' ' + d.n + '× ' + d.frame).join(' | ') : '')
       + '); prompts with two inbox sections: ' + inboxOffenders)
   // The identity claim inside a prompt must agree with the persona shipped alongside it.
+  assert(corpus.length > 0, 'non-vacuous: the identity cross-check must see a non-empty corpus')
   for (const c of corpus) {
     if (!c.persona) continue
     const st = parseState(c.prompt)

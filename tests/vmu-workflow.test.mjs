@@ -439,9 +439,9 @@ const FLOW = { stages: ['open', 'claimed', 'in-progress', 'review', 'done'], tra
   const check = (e, label, must = []) => {
     if (!e) { fail++; console.log('FAIL enforced: ' + label + ' (no refusal)'); return null }
     ok(Array.isArray(e.enforced), 'enforced: ' + label + ' carries an ARRAY (never undefined)')
-    ok(e.enforced.every((k) => universe.has(k)), 'enforced: ' + label + ' lists only wired keys')
+    ok(e.enforced.every((k) => universe.has(k)), 'enforced: ' + label + ' lists only wired keys') // EMPTY_ALLOWED: 回执/拒否的 `enforced` 允许为空（零机制回执合法），该断言查的是"不得出现未接线键"，空集无从违规
     ok(new Set(e.enforced).size === e.enforced.length, 'enforced: ' + label + ' has no duplicates')
-    if (must.length) ok(must.every((k) => e.enforced.includes(k)), 'enforced: ' + label + ' names the key that fired')
+    if (must.length > 0) ok(must.every((k) => e.enforced.includes(k)), 'enforced: ' + label + ' names the key that fired')
     return e
   }
   const FLOW3 = { stages: ['open', 'doing', 'done'], transitions: [{ from: 'open', to: 'doing' }, { from: 'doing', to: 'done' }] }
@@ -490,11 +490,11 @@ const FLOW = { stages: ['open', 'claimed', 'in-progress', 'review', 'done'], tra
   receipts.push(w2.listTemplates())
   receipts.push(w2.idempotencyScope())
   receipts.push(w2.idempotent({ key: 'k' }))
-  ok(receipts.every((r) => Array.isArray(r.enforced)), 'receipts: every receipt carries an array `enforced`')
+  ok(receipts.length > 0 && receipts.every((r) => Array.isArray(r.enforced)), 'receipts: every receipt carries an array `enforced` (non-vacuous: the receipts were pushed just above)')
   ok(receipts.every((r) => !Array.isArray(r.enforced) || new Set(r.enforced).size === r.enforced.length), 'receipts: NO receipt has duplicate `enforced` entries')
   ok(receipts.every((r) => !r.fired || new Set(r.fired).size === r.fired.length), 'receipts: NO receipt has duplicate `fired` entries')
   ok(receipts.every((r) => !r.fired || r.fired.every((k) => r.enforced.includes(k))), 'receipts: fired ⊆ enforced everywhere')
-  ok(receipts.every((r) => r.enforced.every((k) => universe.has(k))), 'receipts: every listed key is a wired key')
+  ok(receipts.length > 0 && receipts.every((r) => r.enforced.every((k) => universe.has(k))), 'receipts: every listed key is a wired key (non-vacuous: the receipt list is non-empty)')
   // D3: the evaluation scope rides with every receipt AND every refusal
   ok(receipts.every((r) => r.enforcedScope === 'evaluated-so-far'), 'D3: every receipt states enforcedScope=evaluated-so-far')
   const refusal = throwsE(() => w.stage({ taskId: 'ghost' }), 'VMU_WORKFLOW_TASK_UNKNOWN', 'D3: refusal carries the scope')

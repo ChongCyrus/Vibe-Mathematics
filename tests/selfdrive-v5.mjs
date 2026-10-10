@@ -325,6 +325,7 @@ assert(st0.members.every(m => m.busy === true), 'every member is marked in-fligh
 // founding turns complete
 await settleAllSpawns()
 let st1 = await callTool('vibe_v5_status', {})
+assert(st1.members.length > 0, 'non-vacuous: the institute roster must not be empty (' + st1.members.length + ')')
 assert(st1.members.every(m => m.busy === false), 'founding turns were processed (no member left marked busy)')
 assert(st1.members.every(m => m.rounds >= 1), 'each member completed its founding round')
 const propWritten = existsSync(join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute', 'Members', 'r-1', 'Propos', 'p-r-1.md'))
@@ -1113,6 +1114,7 @@ async function runScenario(name) {
     await driveUntilNotice(1, 120)
     await driveUntilNotice(1, 40)
     const after = await snap()
+    assert(Object.keys(before).length > 0, 'non-vacuous: the snapshot must expose fields to compare (' + Object.keys(before).length + ')')
     for (const k of Object.keys(before)) {
       assert(after[k] === before[k], 'S5-no-auto-close：静止期间 ' + k + ' 不变（' + before[k] + ' ⇒ ' + after[k] + '）')
     }
@@ -2239,7 +2241,7 @@ async function runScenario(name) {
       const bytesAfterAdopt = readFileSync(lg.path, 'utf8')
       const parsedAfter = JSON.parse(bytesAfterAdopt)
       const instAfter = parsedAfter.institutes['default::' + lg.instName] || {}
-      assert(S14_KEYS.every((k) => instAfter[k] === undefined),
+      assert(S14_KEYS.length > 0 && S14_KEYS.every((k) => instAfter[k] === undefined),
         'S14：**不补键、不迁移**（文件里仍无 S4–S13 的新键；got ' + JSON.stringify(Object.keys(instAfter).filter((k) => S14_KEYS.indexOf(k) !== -1)) + '）')
       await callTool('vibe_v5_status', {})
       await callTool('vibe_v5_report', {})
@@ -2294,7 +2296,7 @@ async function runScenario(name) {
         'S14：**重复加载结果一致**（幂等：同一所＋同一台账计数；got ' + JSON.stringify([a.st.institute, b.st.institute, Number(a.st.resolutions && a.st.resolutions.count), Number(b.st.resolutions && b.st.resolutions.count)]).slice(0, 200) + '）')
       const finalBytes = readFileSync(lg.path, 'utf8')
       const finalInst = (JSON.parse(finalBytes).institutes['default::' + lg.instName]) || {}
-      assert(S14_KEYS.every((k) => finalInst[k] === undefined),
+      assert(S14_KEYS.length > 0 && S14_KEYS.every((k) => finalInst[k] === undefined),
         'S14：重复加载**不补键**（仍无 S4–S13 新键；got ' + JSON.stringify(Object.keys(finalInst).filter((k) => S14_KEYS.indexOf(k) !== -1)) + '）')
     } else if (name === 's14-meeting-resume') {
       // 旧会议**可续跑**，既有纪要**只追加不重写**（旧正文保留）。
@@ -2812,7 +2814,7 @@ async function runScenario(name) {
       assert(resumed && resumed.ok === true, 'S25-B：resume 可调（got ' + String(JSON.stringify(resumed) || null).slice(0, 160) + '）')
       await drainWakes(8); await settleAll()
       const p2 = await pend()
-      assert(p2.every((x) => x === null),
+      assert(p2.every((x) => x === null), // EMPTY_ALLOWED: 该断言查的是"待续标记**已被清空**"（每个成员都无挂起标记），空列表正是期望结果 ⇒ 空集无从违规
         'S25-B：**恢复且正常收尾 ⇒ 待续标记被清**（got ' + String(JSON.stringify(p2) || null).slice(0, 200) + '）')
     } else {
       assert(false, 'V5_SCENARIO 未知（s25b）：' + name)
@@ -3024,6 +3026,7 @@ async function runScenario(name) {
           '**禁止**自行猜测、改写、拼写对象 id',
           '`vibe_v5_lean_lib` / `vibe_v5_lean_read`',
         ]
+        assert([...seen].length > 0, 'non-vacuous: at least one captured prompt must be swept for the injected contract (' + [...seen].length + ')')
         for (const t of seen) {
           const missing = RULES.filter((r) => t.indexOf(r) === -1)
           assert(missing.length === 0,

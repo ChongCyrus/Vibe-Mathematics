@@ -71,6 +71,41 @@ refuses(() => mk().calendar({}), 'VMU_INVALID_ARGUMENT', null, 'a missing dueAt 
 refuses(() => mk().calendar({ dueAt: null }), 'VMU_INVALID_ARGUMENT', null, 'a null dueAt is refused by name')
 ok(mk().prepare({ at: 0 }).at === '0', 'at:0 is recorded verbatim (not replaced by the clock): at=' + JSON.stringify(mk().prepare({ at: 0 }).at))
 ok(mk().review({ protocolId: 'P-0', irb: { approved: true }, consent: { signed: true }, at: 0 }).at === '0', 'the 7 collapsed sites now preserve at:0 (review receipt)')
+// task-229: the end-to-end proof that `dueAt: 0` means "due at epoch 0" ⇒ OVERDUE (not "missing"). The
+// earlier probe passed a NUMERIC `at`, which is mis-read as a year (see the caveat below), so it only proved
+// "0 is not treated as absent". With an ISO `at` the comparison runs and the refusal must be CALENDAR_MISSED.
+refuses(() => mk().calendar({ dueAt: 0, at: '2026-01-01T00:00:00.000Z' }), 'VMU_COMPLIANCE_CALENDAR_MISSED', null, 'dueAt:0 + ISO at ⇒ the entry is OVERDUE by name (0 is an instant, not an omission)')
+try {
+  mk().calendar({ dueAt: 0, at: '2026-01-01T00:00:00.000Z' })
+  ok(false, 'dueAt:0 must be refused (unreachable)')
+} catch (e) {
+  ok(String(e.message).includes('0') && String(e.message).includes('2026-01-01'), 'the overdue refusal NAMES the due instant and now: ' + JSON.stringify(e.message))
+}
+refuses(() => mk().calendar({ at: '2026-01-01T00:00:00.000Z' }), 'VMU_INVALID_ARGUMENT', null, 'dueAt MISSING + ISO at ⇒ a different, named refusal (needs { dueAt }) — the two are DISTINGUISHABLE')
+ok(mk().calendar({ dueAt: '2099-01-01T00:00:00.000Z', at: '2026-01-01T00:00:00.000Z' }).ok === true, 'a FUTURE dueAt with the same ISO at passes (the comparison really runs both ways)')
+// CAVEAT (reported to the Lead, NOT fixed here — kernel/compliance.js is outside this task's write scope):
+//   calendar({ dueAt: 0, at: 1000 }) currently returns ok=true, because a NUMERIC at is stringified and
+//   Date.parse('1000') = -30610224000000 (year 1000) — finite, so the numeric branch compares 0 < year-1000
+//   ⇒ false. A numeric `at` is therefore silently mis-read; the fix belongs in kernel/compliance.js.
+
+// task-230: a NUMERIC instant must be epoch-ms on BOTH sides of the comparison. The trap for the next reader:
+//   String(1000) = '1000', and Date.parse('1000') = -30610224000000 — the YEAR 1000, not NaN — so the old code
+//   compared 0 < year-1000 ⇒ false ⇒ SILENTLY PASSED. Numbers are never stringified before comparing now.
+refuses(() => mk().calendar({ dueAt: 0, at: 1000 }), 'VMU_COMPLIANCE_CALENDAR_MISSED', null, 'NUMERIC at: {dueAt:0, at:1000} is OVERDUE by name (before the fix it passed silently)')
+try {
+  mk().calendar({ dueAt: 0, at: 1000 })
+  ok(false, 'numeric-at overdue must be refused (unreachable)')
+} catch (e) {
+  ok(String(e.message).includes('0') && String(e.message).includes('1000'), 'the numeric-at refusal NAMES the due epoch and now: ' + JSON.stringify(e.message))
+  ok(e.dueMs === 0 && e.whenMs === 1000, 'the refusal carries the COMPARED numbers (dueMs=0, whenMs=1000) so the judgement is auditable')
+}
+ok(mk().calendar({ dueAt: 2000, at: 1000 }).ok === true, 'NUMERIC at: {dueAt:2000, at:1000} is NOT yet due ⇒ passes (the comparison runs both ways)')
+refuses(() => mk().calendar({ at: 1000 }), 'VMU_INVALID_ARGUMENT', null, 'NUMERIC at + MISSING dueAt ⇒ the other named refusal (needs { dueAt }) — distinguishable from overdue')
+ok(mk().calendar({ dueAt: 1000, at: 1000 }).ok === true, 'due exactly now (dueMs === whenMs) is NOT overdue (strict <, no off-by-one)')
+// ISO must not regress: the same three shapes with ISO strings
+refuses(() => mk().calendar({ dueAt: '1970-01-01T00:00:00.000Z', at: '2026-01-01T00:00:00.000Z' }), 'VMU_COMPLIANCE_CALENDAR_MISSED', null, 'ISO dueAt in 1970 + ISO at in 2026 ⇒ overdue (the original shape still works)')
+ok(mk().calendar({ dueAt: '2099-01-01T00:00:00.000Z', at: '2026-01-01T00:00:00.000Z' }).ok === true, 'ISO future dueAt ⇒ passes (no regression)')
+
 console.log('')
 console.log('=== VMU COMPLIANCE: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) process.exit(1)

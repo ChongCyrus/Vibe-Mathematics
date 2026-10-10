@@ -212,6 +212,10 @@ export function createTrust({ clock = () => 0, log = null, settings = {}, bus = 
         vocab: c.kinds,
         aggregate: c.aggregate,
         halfLifeMs: c.halfLifeMs,
+        // task-229: the SOURCE of the half-life must be observable, otherwise "0 = explicitly switched off"
+        // cannot be asserted by any gate (an explicit 0 and an absent value share decay=off but NOT the source).
+        halfLifeSource: c.halfLifeSource,
+        decay: c.halfLifeMs > 0 ? 'on' : 'off',
         disputeWindowMs: c.disputeWindowMs,
         requireSource: c.requireSource,
         selfScoreAllowed: c.selfScoreAllowed,

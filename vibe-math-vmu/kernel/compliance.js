@@ -193,19 +193,29 @@ export function createCompliance({ clock = () => new Date(0).toISOString(), log 
     return ok('evidence', enforced, enforced.slice(), { kind: C.evidenceKind, members: m, fieldsCount: 1, at: given(at) ? String(at) : String(clock()) })
   }
 
-  /** calendar：合规日历逾期 —— `VMU_COMPLIANCE_CALENDAR_MISSED`。 */
+  /**
+   * calendar：合规日历逾期 —— `VMU_COMPLIANCE_CALENDAR_MISSED`。
+   *
+   * task-230 (REAL DEFECT, fixed here): a NUMERIC instant must never be stringified before it is COMPARED.
+   * `String(1000)` ⇒ `'1000'`, and `Date.parse('1000')` = **-30610224000000** — the year 1000, NOT NaN — so
+   * `{ dueAt: 0, at: 1000 }` used to compare `0 < year-1000` ⇒ false ⇒ **silently passed** ✗. `ms()` normalises
+   * both sides: a finite number IS epoch-ms, anything else is parsed as an ISO string. (Trap for the next
+   * reader: `Date.parse` on a bare year string is VALID input, so the bug is silent, never a crash.)
+   */
+  const ms = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : Date.parse(String(v)))
   function calendar({ dueAt = null, at = null } = {}) {
     const enforced = []
     mark(enforced, 'vmu.compliance.auditPrepLeadDays')
     mark(enforced, 'vmu.compliance.reviewAlertLeadDays')
     mark(enforced, 'vmu.compliance.calendarDir')
     mark(enforced, 'vmu.compliance.calendarTemplate')
-    const when = given(at) ? String(at) : String(clock())
+    const when = given(at) ? String(at) : String(clock())      // display form (echoed verbatim in the receipt)
+    const whenMs = given(at) ? ms(at) : ms(clock())            // comparison form (numbers stay epoch-ms)
     if (!given(dueAt)) throw deny('calendar', 'VMU_INVALID_ARGUMENT', 'calendar needs { dueAt }', 'pass the compliance due date', enforced)
-    const dueMs = typeof dueAt === 'number' ? dueAt : Date.parse(String(dueAt))
-    const overDue = Number.isFinite(dueMs) ? dueMs < Date.parse(when) : String(dueAt) < when
+    const dueMs = ms(dueAt)
+    const overDue = Number.isFinite(dueMs) && Number.isFinite(whenMs) ? dueMs < whenMs : String(dueAt) < when
     if (overDue) {
-      throw deny('calendar', 'VMU_COMPLIANCE_CALENDAR_MISSED', 'the compliance calendar entry is overdue: due ' + String(dueAt) + ' < now ' + when, 'file the missing calendar entry in ' + C.calendarDir + '/' + C.calendarTemplate, enforced, { dueAt: String(dueAt), at: when })
+      throw deny('calendar', 'VMU_COMPLIANCE_CALENDAR_MISSED', 'the compliance calendar entry is overdue: due ' + String(dueAt) + ' < now ' + when, 'file the missing calendar entry in ' + C.calendarDir + '/' + C.calendarTemplate, enforced, { dueAt: String(dueAt), at: when, dueMs, whenMs })
     }
     return ok('calendar', enforced, [], { dueAt: String(dueAt), dir: C.calendarDir, template: C.calendarTemplate, leadDays: C.auditPrepLeadDays, alertLeadDays: C.reviewAlertLeadDays, at: when })
   }
