@@ -218,6 +218,7 @@
     "tests/vmu-wiring-index.test.mjs",
     "vibe-math-vmu/settings/planned.js",
     "scripts/generate-planned-settings.mjs",
+    "scripts/generate-wired-schema.mjs",
     "tests/vmu-planned-settings.test.mjs",
     "vibe-math-vmu/kernel/store.js",
     "vibe-math-vmu/kernel/bus.js",
