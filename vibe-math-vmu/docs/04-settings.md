@@ -235,7 +235,7 @@ vmu.packs.active: [v5r]
 | `vmu.math.leanInitiative` | enum | `normal` | `off`∣`normal`∣`eager` | 会话 | H2 | office | ✅ 已接线 | `kernel/lean.js` | P3：日常形式化积极性（与 formalVerify 判定时要求正交） |
 | `vmu.math.leanSearchPaths` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | P3：额外 -R 根（去重后注入，自动 VibMath 根之前） |
 | `vmu.math.leanJobsMaxParallel` | int ≥1 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | P3：后台编译并发（1＝串行） |
-| `vmu.safety.pathPolicy` | enum | `workspace-only` | `workspace-only`∣`workspace+shared` | 会话 | **H3** | office | ✅ 已接线 | `kernel/guard.js` | 写保护范围 |
+| `vmu.safety.pathPolicy` | enum | `workspace-only` | `workspace-only`∣`workspace+shared` | 会话 | **H3** | office | ✅ 已接线 | `host-spawn.js` | 写保护范围 |
 | `vmu.safety.approvalRequired` | string[] | `[]` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 需审批的动作（走宿主审批面） |
 | `vmu.safety.delegableKeys` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 可下放给角色槽位的键 |
 | `vmu.middleware.entries` | obj[] | `[]` | — | 会话 | H0 | office | ✅ 已接线 | `host.js` | 中间件清单（默认空＝零机制） |
