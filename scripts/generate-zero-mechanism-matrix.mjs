@@ -56,10 +56,11 @@ const EXPECT = {
   memory: G('PROBE_NEEDS_ARGS', '缺：记忆条目'), publication: G('PROBE_NEEDS_ARGS', '缺：出版请求'),
   records: G('PROBE_NEEDS_ARGS', '缺：记录体（track/kind/body）'),
   store: G('PROBE_NEEDS_ARGS', '缺：存储配置'), transaction: G('PROBE_NEEDS_ARGS', '缺：事务体'),
-  work: G('PROBE_NEEDS_ARGS', '缺：工作项'), workflow: G('PROBE_NEEDS_ARGS', '缺：工作流定义'),
-  // ── 显式待办（**不红但计数可见** ✓）＋ 非服务模块
-  pack: G('EXPECT_UNDECIDED', '**现状：拒绝不带 `code`** ⇒ 待补具名码（另派 ✗）'),
-  'script-bridge': G('EXPECT_UNDECIDED', '同上：拒绝不带 `code` ⇒ 待补具名码 ✗'),
+  work: G('PROBE_NEEDS_ARGS', '缺：工作项'),
+  workflow: G('具名拒或 ok', '**两侧都写清** ✓：`define({})` ⇒ **有默认阶梯且放行（ok）** ✓；被探 op 缺参 ⇒ **具名拒** ✓（缺参归 NEEDS_ARGS 计数，不算 mismatch ✓）'),
+  // ── 第 26 轮已修好的具名拒（**待办没跟上 ⇒ 已纠正** ✓）＋ 非服务模块
+  pack: G('具名拒（带 code）', '第 26 轮已修 ✓：实测拒绝带 **`VMU_PACK_MISSING`**（曾误标"不带 code" ✗）'),
+  'script-bridge': G('具名拒（带 code）', '第 26 轮已修 ✓：实测拒绝带 **`VMU_INVALID_ARGUMENT`**（同上 ✗）'),
   guard: G('EXPECT_NA', '非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）'),
 }
 
@@ -167,8 +168,14 @@ const main = async () => {
     if (!(j2.unregistered === 1 && j2.mism.length === 0)) bad += 1
     EXPECT.audit = { shape: 'EXPECT_UNDECIDED', note: '自证：显式待办（→ 计数，不红 ✓）' }
     const j3 = judge(rows)
-    console.log('selftest ③: audit=EXPECT_UNDECIDED ⇒ undecided=' + j3.undecided + ' mismatches=' + j3.mism.length + ' (期望 undecided=3 且 mismatches=0 ⇒ ' + ((j3.undecided === 3 && j3.mism.length === 0) ? 'PASS ✓' : 'FAIL ✗') + ')')
-    if (!(j3.undecided === 3 && j3.mism.length === 0)) bad += 1
+    console.log('selftest ③: audit=EXPECT_UNDECIDED ⇒ undecided=' + j3.undecided + ' mismatches=' + j3.mism.length + ' (期望 undecided≥1 且 mismatches=0 ⇒ ' + ((j3.undecided >= 1 && j3.mism.length === 0) ? 'PASS ✓' : 'FAIL ✗') + ')')
+    if (!(j3.undecided >= 1 && j3.mism.length === 0)) bad += 1
+    // ④ 期望与**模块实际返回**不符 ⇒ **mismatch 红** ✓（点名到模块 ✓）
+    EXPECT.audit = { shape: '具名拒（带 code）', note: '自证 ④：与实测（只读放行）不符 ⇒ 必须红' }
+    const j4 = judge(rows)
+    const named = j4.mism.some((x) => /^audit:/.test(x))
+    console.log('selftest ④: 期望 vs 实测不符 ⇒ mismatches=' + j4.mism.length + '（点名 audit=' + named + ' ⇒ ' + ((j4.mism.length > 0 && named) ? 'PASS ✓' : 'FAIL ✗') + ')')
+    if (!(j4.mism.length > 0 && named)) bad += 1
     for (const k of Object.keys(EXPECT)) if (!(k in real)) delete EXPECT[k]
     EXPECT.audit = real.audit
     console.log('=== ZERO-MECHANISM SELFTEST: ' + (bad === 0 ? 'GREEN' : 'RED') + ' (' + bad + ' failed) ===')

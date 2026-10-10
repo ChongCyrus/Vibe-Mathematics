@@ -8,10 +8,15 @@
 //   · truncation reports how many entries were dropped; the clock is injected; read-only surfaces never mutate
 export const apiVersion = 1
 
+/** D3（第 26 轮）：拒绝**随证明同行** —— `enforcedScope:'evaluated-so-far'` 明写"到此为止"的已求值集合，
+ *  而非该操作会读的完整集合 ⇒ 审计者不得把部分集当全集 ✓（照 records／meetings 已验收口径 ✓）。 */
+export const ENFORCED_SCOPE = 'evaluated-so-far'
+
 export function refuse(code, message, hint) {
   const e = new Error(message)
   e.code = code
   if (hint) e.hint = hint
+  e.enforcedScope = ENFORCED_SCOPE
   return e
 }
 

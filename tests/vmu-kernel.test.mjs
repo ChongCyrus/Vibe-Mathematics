@@ -13,6 +13,7 @@
 // requires the zero-mechanism assertion to fail.
 
 import { readFile, writeFile, mkdtemp, mkdir, rm } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
@@ -582,6 +583,84 @@ if (SELF_PROBE) {
   const k3 = m.createKernel({ clock, settings: { 'vmu.audit.chain.checkpointEvery': 100 } })
   k3.setSettingsValue('vmu.audit.chain.checkpointEvery', 4, { by: 'office' })
   ok(k3.auditchain.status().checkpointEvery === 4, 'H1 is still immediate after the guard was centralised')
+}
+
+// ---- E-8 (task-170): the GUARD FACES are registered, verified, and reachable in PRODUCTION -------------
+{
+  const SRC = readFileSync(MODULE, 'utf8')
+  const DOC11 = readFileSync(resolve(REPO, 'vibe-math-vmu', 'docs', '11-gates-and-development.md'), 'utf8')
+  // The scanner: every guard-shaped face on the returned kernel object must be registered. A `require*` method
+  // or the settingsView accessor that is NOT in the registry is exactly the eighth case (implemented, tested,
+  // and never effective) — so this checker is what the gate runs.
+  const scanFaces = (src) => [...new Set([...src.matchAll(/^\s{4}(require[A-Z]\w*|settingsView)\(\)\s*\{/gm)].map((m) => m[1]))].sort()
+  const checkCoverage = (src, registered) => scanFaces(src).filter((f) => !registered.includes(f))
+  const k = m.createKernel({ clock })
+  const guards = k.status().guards
+  ok(guards && Array.isArray(guards.registered) && guards.registered.length >= 4,
+    'E-8: status() reports the guard-face registry', JSON.stringify(guards && guards.registered))
+  ok(checkCoverage(SRC, guards.registered).length === 0,
+    'E-8: EVERY `require*`/settingsView face in the source is registered (no unregistered guard face)',
+    JSON.stringify(checkCoverage(SRC, guards.registered)))
+  ok(guards.registered.includes('requireStore') && guards.registered.includes('requireLibrary') &&
+    guards.registered.includes('requireMembers') && guards.registered.includes('settingsView'),
+    'E-8: the three faces the reviewer named (plus requireLibrary) are all in the registry')
+  // (乙) SELF-PROOF: a deliberately unregistered guard must make the checker go RED
+  const mutant = SRC.replace('    requireStore() { return mustStore() },', '    requireStore() { return mustStore() },\n    requireNothing() { return 1 },')
+  const mutantUncovered = checkCoverage(mutant, guards.registered)
+  ok(mutantUncovered.includes('requireNothing'),
+    'E-8 self-proof: a fabricated unregistered guard face IS detected (the gate can fail)', JSON.stringify(mutantUncovered))
+  // contract faces declare REAL production call sites; diagnostic faces declare WHY they are diagnostic
+  const contract = Object.entries(guards.faces).filter(([, f]) => f.kind === 'contract')
+  const diagnostic = Object.entries(guards.faces).filter(([, f]) => f.kind === 'diagnostic')
+  ok(contract.length === 2 && diagnostic.length === 2 && guards.contractCount === 2 && guards.diagnosticCount === 2,
+    'E-8: contract and diagnostic faces are counted separately', JSON.stringify({ c: guards.contractCount, d: guards.diagnosticCount }))
+  ok(contract.every(([, f]) => f.usedByProduction === true && f.productionCallSites.length >= 1 && f.reason === null),
+    'E-8: every CONTRACT face names its production call sites', JSON.stringify(contract.map(([n]) => n)))
+  ok(diagnostic.every(([, f]) => f.usedByProduction === false && typeof f.reason === 'string' && f.reason.length > 40),
+    'E-8: every DIAGNOSTIC face states why it is not a production rail', JSON.stringify(diagnostic.map(([n]) => n)))
+  // the declared production sites really exist in the source (a claim that cannot rot silently)
+  ok(/read: \(\) => mustStore\(\)\.read\(\)/.test(SRC),
+    'E-8(甲): the loader kernel facade calls the store guard in production (was `store ? … : null`)')
+  ok(/declareTracks[\s\S]{0,220}mustLibrary\(\)/.test(SRC),
+    'E-8(甲): declareTracks calls the library guard (the inline copy of the same refusal is gone)')
+  ok(!/store \? store\.read\(\) : null/.test(SRC),
+    'E-8(甲): the silent `null` fallback is GONE from the production facade')
+  // (甲) BEHAVIOUR: with no root, the PRODUCTION path refuses by name; with a root it returns the state
+  const probeModule = (sink) => ({ meta: { id: 'guard-probe', apiVersion: 1 }, capabilities: ['read-state'],
+    hooks: { 'meeting/round-start': async () => undefined },   // the loader requires >=1 REGISTERED hook
+    default: ({ kernel }) => {
+      try { sink.push(kernel.read()) } catch (e) { sink.push({ code: e && e.code, message: e && e.message }) }
+      return { hooks: { 'meeting/round-start': async () => undefined } }
+    } })
+  const bare = m.createKernel({ clock })
+  const bareSeen = []
+  await bare.loader.load({ id: 'guard-probe', kind: 'module', module: probeModule(bareSeen) })
+  ok(bareSeen[0] && bareSeen[0].code === 'VMU_ENGINE_UNAVAILABLE' && /no durable root/.test(String(bareSeen[0].message)),
+    'E-8(甲) BEHAVIOUR: a module calling kernel.read() with no root gets the NAMED refusal (not null)',
+    JSON.stringify(bareSeen[0]))
+  const root = await mkdtemp(join(tmpdir(), 'vmu-guard-'))
+  const withRoot = m.createKernel({ clock, root })
+  const rootSeen = []
+  await withRoot.loader.load({ id: 'guard-probe', kind: 'module', module: probeModule(rootSeen) })
+  ok(rootSeen[0] !== undefined && (rootSeen[0] === null || typeof rootSeen[0] === 'object' || typeof rootSeen[0] === 'string'),
+    'E-8(甲) BEHAVIOUR: with a root the same production path returns the store state instead of refusing',
+    JSON.stringify(rootSeen[0]).slice(0, 60))
+  let tracksErr = null
+  try { bare.declareTracks(['progress']) } catch (e) { tracksErr = e }
+  ok(tracksErr && tracksErr.code === 'VMU_ENGINE_UNAVAILABLE' && /no library root/.test(tracksErr.message),
+    'E-8(甲) BEHAVIOUR: declareTracks refuses by name through the guard when there is no root', tracksErr && tracksErr.message)
+  await rm(root, { recursive: true, force: true })
+  // the guard faces are registered in the DOCS too (docs/11 §守卫面清单)
+  const section = DOC11.slice(DOC11.indexOf('## 4.2'), DOC11.indexOf('## 5.'))
+  ok(section.length > 0 && guards.registered.every((f) => section.includes(f)),
+    'E-8(乙): docs/11 §守卫面清单 names every registered face', JSON.stringify(guards.registered.filter((f) => !section.includes(f))))
+  ok(/新增守卫面若不登记/.test(section) && /诊断/.test(section),
+    'E-8(乙): the section states the "a new guard face must be registered" rule and the diagnostic disposition')
+  // status() must never imply a diagnostic face is a live production rail
+  ok(guards.faces.requireMembers.kind === 'diagnostic' && guards.faces.requireMembers.usedByProduction === false,
+    'E-8: status() says plainly that requireMembers() is NOT a production rail')
+  ok(/verifiedBy/.test(JSON.stringify(guards)) && /scans kernel\/index\.js/.test(String(guards.verifiedBy)),
+    'E-8: status() names the verification that keeps this table honest')
 }
 
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')

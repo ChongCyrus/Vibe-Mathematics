@@ -119,6 +119,9 @@ export function createExternal({ clock = () => Date.now(), log = () => {}, setti
     maxResults: intOr(settings['vmu.external.maxResults'], 100),
     maxBytes: intOr(settings['vmu.external.maxBytes'], 1 << 20),
     offline: settings['vmu.external.offline'] === true,
+    // 语义（第 26 轮实测后写明，**不改行为** ✗）：`vmu.external.sources` **默认 `[]` ＝ 不设白名单** ——
+    // 空数组意味着 sourceOf() **不做** source 名校验（**任意源名都能通过** ✓）；只有当它非空时，
+    // 未声明的源名才会被具名拒（VMU_EXTERNAL_UNAVAILABLE）。要"只允许白名单内的源"必须显式声明该键。
     sources: Array.isArray(settings['vmu.external.sources']) ? settings['vmu.external.sources'] : [],
     // ── task-145: the DECLARED keys (plain literals; the settings audit discovers them by scanning text) ─
     allowNetwork: settings['vmu.external.allowNetwork'] !== false,

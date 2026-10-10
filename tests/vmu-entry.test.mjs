@@ -586,6 +586,38 @@ if (SELF_PROBE) {
   ok(err && err.code === 'VMU_NOT_PERMITTED', 'entry: a consumer cannot write kernel settings through the view', err && err.code)
 }
 
+// ---- E-8 (task-170): the guard faces are declared, and the production path really reaches them ---------
+{
+  const host = fakeCtx()
+  const handle = entry.apply(host.ctx, { clock })
+  await new Promise((r) => setTimeout(r, 20))
+  const kernel = handle.kernel
+  const guards = kernel.status().guards
+  ok(guards && Array.isArray(guards.registered) && guards.registered.includes('requireStore') && guards.registered.includes('requireMembers'),
+    'E-8: the ENTRY-assembled kernel reports its guard-face registry', JSON.stringify(guards && guards.registered))
+  ok(guards.faces.requireMembers.kind === 'diagnostic' && /NO production path REQUIRES a roster/.test(String(guards.faces.requireMembers.reason)),
+    'E-8: status() says plainly that requireMembers() is a diagnostic/contract face, with the reason')
+  ok(guards.faces.settingsView.kind === 'diagnostic' && /BY INJECTION/.test(String(guards.faces.settingsView.reason)),
+    'E-8: settingsView() is positioned as a diagnostic API (consumers get the view by injection)')
+  ok(guards.faces.requireStore.kind === 'contract' && guards.faces.requireStore.productionCallSites.length >= 1,
+    'E-8: requireStore() names a real production call site')
+  // (甲) BEHAVIOUR through the entry: a module calling the kernel facade with no root is refused BY NAME
+  const seen = []
+  const probe = { meta: { id: 'entry-guard-probe', apiVersion: 1 }, capabilities: ['read-state'],
+    hooks: { 'meeting/round-start': async () => undefined },
+    default: ({ kernel: face }) => {
+      try { seen.push(face.read()) } catch (e) { seen.push({ code: e && e.code, message: e && e.message }) }
+      return { hooks: { 'meeting/round-start': async () => undefined } }
+    } }
+  await kernel.loader.load({ id: 'entry-guard-probe', kind: 'module', module: probe })
+  ok(seen[0] && seen[0].code === 'VMU_ENGINE_UNAVAILABLE' && /no durable root/.test(String(seen[0].message)),
+    'E-8(甲) BEHAVIOUR: through the ENTRY the production facade refuses instead of returning null', JSON.stringify(seen[0]))
+  let tracksErr = null
+  try { kernel.declareTracks(['progress']) } catch (e) { tracksErr = e }
+  ok(tracksErr && tracksErr.code === 'VMU_ENGINE_UNAVAILABLE' && /no library root/.test(tracksErr.message),
+    'E-8(甲) BEHAVIOUR: declareTracks uses the library guard on the entry path too', tracksErr && tracksErr.message)
+}
+
 console.log('=== VMU ENTRY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

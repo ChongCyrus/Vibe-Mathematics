@@ -105,6 +105,27 @@
 
 ---
 
+## 4.2 守卫面清单（**新增硬要求**，源于第 18 轮系统扫描：守卫"接了≠生效" ✗✓）
+
+**事实**（批评者实测：运行时取 `kernel` 面 **86** 个成员，比对**生产代码** vs **测试**引用）：`requireStore()` **生产 0 次**（测试 2 次）、`requireMembers()` **生产 0 次**（测试 10 次）、`settingsView()` **生产 0 次**（测试 2 次）⇒ **守卫被实现、被测试覆盖，却没有任何生产路径调用它** ⇒ 在真实运行里**永远不生效**（第八例）。
+
+**⇒ 两条硬要求**
+1. **每个守卫面都必须登记在本节**（面 ⇒ 语义 ⇒ **生产是否调用** ⇒ 诊断面则写明理由 ✓）。**新增守卫面若不登记 ⇒ 门禁红**（`tests/vmu-kernel.test.mjs` 扫 `kernel/index.js` 的 `require*`／`settingsView` 面并比对 `status().guards.registered`，另有变异自证"造一个未登记守卫 ⇒ 红" ✓）。
+2. **`status()` 不得声称守卫已生效而实际不生效** ✗✓：`status().guards` 必须报告 `kind`（`contract`／`diagnostic`）、`productionCallSites` 与（诊断面的）`reason`；`contractCount`／`diagnosticCount` 分开计数。
+
+**清单（当前，2026-10-09 第 18 轮）**
+
+| 守卫面 | 语义 | 生产是否调用 | 理由／生产调用点 |
+|---|---|---|---|
+| `requireStore()` | 返回 durable store，缺失则具名拒 `VMU_ENGINE_UNAVAILABLE` | **是** ✓ | loader 的 kernel 门面 `services.kernel.read()`（`kernel/index.js`）：原先 `store ? store.read() : null` 会**静默返回 null**（正是"store 绝不静默假造"要拒的形状）⇒ 现走同一 `mustStore()` |
+| `requireLibrary()` | 返回磁盘 library，缺失则具名拒 | **是** ✓ | `declareTracks()`：原先内联一份"no library root"拒（同一契约的**第二份拷贝**）⇒ 现走同一 `mustLibrary()` |
+| `requireMembers()` | 返回 roster，缺失则具名拒 | **否**（**诊断／硬契约面**） | 今天**没有生产路径需要硬契约**：消费者读**可空**的 `kernel.members` 属性并各自具名拒（D5：内核不自带角色；`declareSlots()` 是**创建** roster 的一方）。该面为"调用方不得拿到 null"的硬契约而存在，登记在此以免被误当生产护栏 ✓ |
+| `settingsView()` | 返回**只读**实时设置视图（属性读＋`get(k)`） | **否**（**诊断 API**） | 生产消费者在**构造期按注入**拿到视图（30+ 服务 `settings: settingsView`）⇒ 模块图不需要访问器；访问器本身是诊断／内省面（只读写穿陷阱也经它测试）。登记同上 ✓ |
+
+**"允许无 store／无 roster 也能跑"的地方（明写，**不得**用守卫）** ✗：`status()` 的 `store`／`members`／`library` 字段（缺席要如实报 `null`，`status()` 抛异常就不是观测了）、`registry.register('vmu.members', …)` 的条件发布（"只有真实能力才出现"）。
+
+---
+
 ## 5. 复用本仓既有基础设施（**已按 B′ 实测校准**）
 
 ### 5.1 计数口径（**先分清两套，别混** ✗✓；**2026-10-09 重算 ✓**）
@@ -581,7 +602,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `metrics` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `minutes` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `notify` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
-| `pack` · `plan()` | refusal | VMU_PACK_MISSING | — | EXPECT_UNDECIDED（**现状：拒绝不带 `code`** ⇒ 待补具名码（另派 ✗）） |
+| `pack` · `plan()` | refusal | VMU_PACK_MISSING | — | 具名拒（带 code）（第 26 轮已修 ✓：实测拒绝带 **`VMU_PACK_MISSING`**（曾误标"不带 code" ✗）） |
 | `projmigrate` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `publication` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：出版请求） |
 | `ratelimit` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
@@ -593,7 +614,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `retention` · `plan()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `rules` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `scheduler` · `list()` | ok | — | dropped=0 truncated=false | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
-| `script-bridge` · `plan()` | refusal | VMU_INVALID_ARGUMENT | — | EXPECT_UNDECIDED（同上：拒绝不带 `code` ⇒ 待补具名码 ✗） |
+| `script-bridge` · `plan()` | refusal | VMU_INVALID_ARGUMENT | — | 具名拒（带 code）（第 26 轮已修 ✓：实测拒绝带 **`VMU_INVALID_ARGUMENT`**（同上 ✗）） |
 | `skills` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `stateversion` · `check()` | refusal | VMU_COMPAT_UNKNOWN_COMBO | — | 具名拒（带 code）（缺必填参数 ⇒ 具名拒并点名） |
 | `store` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：存储配置） |
@@ -602,7 +623,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `transaction` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：事务体） |
 | `trust` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
-| `workflow` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作流定义） |
+| `workflow` | op 抛出 | — | — | 具名拒或 ok（**两侧都写清** ✓：`define({})` ⇒ **有默认阶梯且放行（ok）** ✓；被探 op 缺参 ⇒ **具名拒** ✓（缺参归 NEEDS_ARGS 计数，不算 mismatch ✓）） |
 
-=== ZERO-MECHANISM MATRIX: 60 modules, 0 mismatches, 0 unregistered, 2 EXPECT_UNDECIDED, 15 probe-errors, 1 n/a ===
+=== ZERO-MECHANISM MATRIX: 60 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 15 probe-errors, 1 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->

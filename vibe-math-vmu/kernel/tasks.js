@@ -27,10 +27,15 @@ export const TRANSITIONS = Object.freeze({
   cancelled: [],
 })
 
+/** D3 (round 26): the refusal states its EVALUATION SCOPE — `enforcedScope:'evaluated-so-far'` says in words
+ *  that any key list travelling with it is "what was consulted SO FAR", never the operation's full key set. */
+export const ENFORCED_SCOPE = 'evaluated-so-far'
+
 export function refuse(code, message, hint) {
   const err = new Error(message)
   if (hint) err.hint = hint
   err.code = code
+  err.enforcedScope = ENFORCED_SCOPE
   return err
 }
 

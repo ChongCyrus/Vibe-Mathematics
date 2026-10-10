@@ -565,9 +565,70 @@ export function createKernel({
   // a library, records or ontology seam are named rather than silently accepted).
   const course = createCourse({ settings: settingsView, bus, clock: guardedClock, log })
 
+  // ── THE CAPABILITY GUARDS (task-170, "the eighth case") ────────────────────────────────────────────────
+  // These three refusals used to live BOTH in the public guards (`requireStore()` etc.) AND as scattered
+  // inline checks (e.g. the loader's kernel facade, `declareTracks`), so the guard faces had ZERO production
+  // call sites: implemented, tested, and never effective on a real path. The refusal now has ONE home, and the
+  // public guards plus the production sites all call it.
+  const mustStore = () => {
+    if (!store) {
+      throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no durable root',
+        'construct it with { root } - a store is never silently faked in memory')
+    }
+    return store
+  }
+  const mustLibrary = () => {
+    if (!library) {
+      throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no library root',
+        'construct it with { root } so records can be kept on disk')
+    }
+    return library
+  }
+  const mustMembers = () => {
+    if (!members) {
+      throw refuse('VMU_ENGINE_UNAVAILABLE', 'no roles were declared, so there is no roster',
+        'declare role slots (a pack does this) before asking for members (D5: the kernel ships no roles)')
+    }
+    return members
+  }
+  /**
+   * THE GUARD-FACE REGISTRY (task-170). Every public guard face MUST appear here with its semantics, whether
+   * PRODUCTION calls it, and — for a diagnostic-only face — WHY. `status().guards` reports this table, and
+   * tests/vmu-kernel.test.mjs scans the source to verify the declared production call sites really exist and
+   * that no unregistered `require*` face was added (with a deliberate mutant proving the check can go red).
+   */
+  const GUARD_FACES = Object.freeze({
+    requireStore: {
+      semantics: 'returns the durable store, or refuses by name (VMU_ENGINE_UNAVAILABLE)',
+      kind: 'contract', usedByProduction: true,
+      productionCallSites: ['kernel/index.js: loader kernel facade `read()` (services.kernel.read)'],
+      reason: null,
+    },
+    requireLibrary: {
+      semantics: 'returns the on-disk library, or refuses by name (VMU_ENGINE_UNAVAILABLE)',
+      kind: 'contract', usedByProduction: true,
+      productionCallSites: ['kernel/index.js: declareTracks() (a pack declaring tracks without a root)'],
+      reason: null,
+    },
+    requireMembers: {
+      semantics: 'returns the roster, or refuses by name (VMU_ENGINE_UNAVAILABLE)',
+      kind: 'diagnostic', usedByProduction: false,
+      productionCallSites: [],
+      reason: 'NO production path REQUIRES a roster today: consumers read the (nullable) `kernel.members` property and each module refuses by name on its own (D5: the kernel ships no roles; `declareSlots()` CREATES the roster). This face exists as a hard-contract/diagnostic entry point for callers that must not receive null; it is registered here so nobody mistakes it for a production rail.',
+    },
+    settingsView: {
+      semantics: 'returns the READ-ONLY live settings view (property + get(k) reads)',
+      kind: 'diagnostic', usedByProduction: false,
+      productionCallSites: [],
+      reason: 'production consumers receive the VIEW BY INJECTION at construction (30+ services get `settings: settingsView`), which is why the module graph needs no accessor. The accessor itself is a diagnostic/introspection API (and what the read-only-write trap is tested through); it is registered here for the same reason as above.',
+    },
+  })
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
   const loader = createLoader({
-    services: { kernel: Object.freeze({ read: () => (store ? store.read() : null) }), setting: (k) => settings[k] },
+    // (甲) PRODUCTION GOES THROUGH THE GUARD: this facade used to answer `null` when there was no durable root,
+    // which is exactly the "silent fake" `requireStore()` exists to refuse. A module calling `kernel.read()`
+    // with no root now gets the NAMED refusal (and with a root, the same state as before).
+    services: { kernel: Object.freeze({ read: () => mustStore().read() }), setting: (k) => settings[k] },
     log,
     dryRun,
     clock,
@@ -809,29 +870,13 @@ export function createKernel({
         middleware: decided && decided.decisions ? decided.decisions.length : 0 }
     },
 
-    /** The capability seams, refused by name when they are missing (docs/11 搂4.1). */
+    /** The capability seams, refused by name when they are missing (docs/11 搂4.1). ONE home for each refusal:
+     *  the production sites above call the same `must*` helpers, so a guard can no longer be "implemented and
+     *  never effective" (task-170). `status().guards` discloses how far each face actually reaches. */
     math: mathSurface,
-    requireStore() {
-      if (!store) {
-        throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no durable root',
-          'construct it with { root } - a store is never silently faked in memory')
-      }
-      return store
-    },
-    requireLibrary() {
-      if (!library) {
-        throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no library root',
-          'construct it with { root } so records can be kept on disk')
-      }
-      return library
-    },
-    requireMembers() {
-      if (!members) {
-        throw refuse('VMU_ENGINE_UNAVAILABLE', 'no roles were declared, so there is no roster',
-          'declare role slots (a pack does this) before asking for members (D5: the kernel ships no roles)')
-      }
-      return members
-    },
+    requireStore() { return mustStore() },
+    requireLibrary() { return mustLibrary() },
+    requireMembers() { return mustMembers() },
 
     /**
      * Apply a pack. Conflicts are REFUSED, never silently merged (O4): two declarations of the same key
@@ -885,10 +930,9 @@ export function createKernel({
 
     /** A pack declares the record TRACKS. Rebuilding the library re-reads the directory, so nothing is lost. */
     declareTracks(list = []) {
-      if (!root) {
-        throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no library root, so tracks cannot be declared',
-          'construct it with { root }')
-      }
+      // (甲) the inline "no library root" refusal was a SECOND copy of requireLibrary()'s contract; it now calls
+      // the same helper, so the guard has a real production call site (task-170).
+      mustLibrary()
       if (list.length === 0) {
         throw refuse('VMU_INVALID_ARGUMENT', 'a pack must declare at least one track', 'tracks are a closed set (docs/07 搂4.2)')
       }
@@ -1149,6 +1193,17 @@ export function createKernel({
           timerNote: scheduler.status().timerShape === null
             ? 'timer seam NOT usable: the scheduler accepts one of four OBJECT shapes — {arm,disarm} | {schedule,cancel} | {set,clear} | {setTimeout,clearTimeout} (kernel/scheduler.js owns this contract); a bare function or any other shape is refused by name (VMU_CONTROL_NO_TIMER)'
             : null },
+        // TASK-170: the guard faces report HOW FAR THEY ACTUALLY REACH. A face that no production path calls
+        // is marked `kind:'diagnostic'` with its reason, so `status()` can never imply a guard is a live
+        // production rail while it is not (the eighth case: implemented + tested + never effective).
+        guards: {
+          registered: Object.keys(GUARD_FACES),
+          faces: GUARD_FACES,
+          contractCount: Object.values(GUARD_FACES).filter((f) => f.kind === 'contract').length,
+          diagnosticCount: Object.values(GUARD_FACES).filter((f) => f.kind === 'diagnostic').length,
+          verifiedBy: 'tests/vmu-kernel.test.mjs scans kernel/index.js and asserts every `require*` face is registered here and in docs/11 §守卫面清单 (with a mutant proving the check can fail)',
+          note: 'a face marked diagnostic is NOT a production rail: see its `reason`. A contract face lists its productionCallSites, and the test verifies they exist in the source.',
+        },
         note: 'a kernel with no declarations is inert by construction (zero mechanism, R1)',
       }
     },

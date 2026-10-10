@@ -15,10 +15,15 @@
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
 
+/** D3 (round 26): the refusal states its EVALUATION SCOPE — `enforcedScope:'evaluated-so-far'` says in words
+ *  that any key list travelling with it is "what was consulted SO FAR", never the operation's full key set. */
+export const ENFORCED_SCOPE = 'evaluated-so-far'
+
 export function refuse(code, message, hint) {
   const err = new Error(message)
   err.code = code
   if (hint) err.hint = hint
+  err.enforcedScope = ENFORCED_SCOPE
   return err
 }
 
