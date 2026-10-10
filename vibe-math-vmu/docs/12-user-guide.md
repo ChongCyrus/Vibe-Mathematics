@@ -209,7 +209,7 @@ then:
   - **数学计算面（15）**：`vmu.math.mode`｜`vmu.math.computation`｜`vmu.math.engines`｜`vmu.math.packages`｜`vmu.math.installScope`｜`vmu.math.formalVerify`｜`vmu.math.timeoutMs`｜`vmu.math.compileTimeoutMs`｜`vmu.math.leanCommand`｜`vmu.math.leanArgs`｜`vmu.math.leanAsync`｜`vmu.math.leanTimeoutMs`｜`vmu.math.leanSearchPaths`｜`vmu.math.leanInitiative`｜`vmu.math.leanJobsMaxParallel`
 - **派生命令（以代码/生成物为准 ✓）**：
   ```bash
-  node scripts/generate-vmu-settings-table.mjs --json    # ⇒ {"keys":757,"wired":51,"notWired":706}
+  node scripts/generate-vmu-settings-table.mjs --json    # ⇒ 打印 {"keys":…,"wired":…,"notWired":…}（以输出为准；实测 1242/758/484）
   grep -n '已接线' docs/04-settings.md                    # ⇒ 51 个 ✅ 已接线 行（本节清单即由此派生）
   ```
 - **判断某键今天是否可用（一条命令）**：看 `vibe_vmu_status` 回执的 **`settings.resolved`**（逐键给**值／来源层／热类别**）✓；不在其中 ⇒ 它是**计划键** ✗。

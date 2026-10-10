@@ -48,14 +48,14 @@ const EXPECT = {
   idempotency: G('ok 或 object', '列表/状态面放行 ✓；**显式 `absent` 只在去重操作上**（该操作需参数 ⇒ 探针见 NEEDS_ARGS ✓）'),
   meetings: G('按声明默认开成', '零机制＝按声明默认值开成（不拒）✓'),
   // ── 探针缺参（**显式登记**，不算 mismatch ✓）：需显式探针或补参数
-  arbitration: G('PROBE_NEEDS_ARGS', '缺：裁决请求体（案由/双方）'),
-  budget: G('PROBE_NEEDS_ARGS', '缺：预算条目（额度/科目）'), charter: G('PROBE_NEEDS_ARGS', '缺：章程条项'),
-  delegation: G('PROBE_NEEDS_ARGS', '缺：委派授权对（from/to/范围）'), handover: G('PROBE_NEEDS_ARGS', '缺：交接对象'),
+  arbitration: G('具名拒（带 code）', 'task-214 实测：`open()` ⇒ 具名拒 **VMU_ARBITRATION_OFF**（带口径 `enforcedScope=evaluated-so-far`）⇒ 零机制＝没有在办仲裁 ⇒ 具名拒即真实形状 ✓'),
+  budget: G('ok 或 object', 'task-204 实测（形状取自测试 vmu-budget.test.mjs:16）：不传 settings 下 `open({scope})` ⇒ **ok**（零机制＝不限额、放行 ✓）'), charter: G('具名拒（带 code）', 'task-214 实测：`propose()` ⇒ 具名拒 **VMU_CHARTER_NOT_AUTHORIZED** ⇒ 零机制＝无授权 ⇒ 具名拒即真实形状 ✓'),
+  delegation: G('具名拒（带 code）', 'task-214 实测：`check()` ⇒ 具名拒 **VMU_INVALID_ARGUMENT**（带口径 `enforcedScope=evaluated-so-far`）⇒ 零机制＝无可判委派 ⇒ 具名拒即真实形状 ✓'), handover: G('具名拒（带 code）', 'task-214 实测：`open()` ⇒ 具名拒 **VMU_INVALID_ARGUMENT** ⇒ 零机制＝无交接对象 ⇒ 具名拒即真实形状 ✓'),
   library: G('PROBE_NEEDS_ARGS', '缺：库引用（ref/uri）'), math: G('PROBE_NEEDS_ARGS', '缺：数学请求体'),
-  mathtools: G('PROBE_NEEDS_ARGS', '缺：计划入参（op/limits）—— 零机制期望＝ok + enforced:[] ✓'),
-  memory: G('PROBE_NEEDS_ARGS', '缺：记忆条目'), publication: G('PROBE_NEEDS_ARGS', '缺：出版请求'),
-  records: G('PROBE_NEEDS_ARGS', '缺：记录体（track/kind/body）'),
-  store: G('PROBE_NEEDS_ARGS', '缺：存储配置'), transaction: G('PROBE_NEEDS_ARGS', '缺：事务体'),
+  mathtools: G('具名拒（带 code）', 'task-214 实测：`plan()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT**（带口径 `enforced=[0] enforcedScope=evaluated-so-far`）⇒ 零机制＝无计划入参 ⇒ 具名拒即真实形状 ✓（补参后应见 `ok + enforced:[]`，届时改"具名拒或 ok" ✓）'),
+  memory: G('ok 或 object', 'task-204 实测（形状取自测试 vmu-memory.test.mjs:63）：`record({kind,text,by,evidence})` ⇒ **ok**（零机制＝有默认 scope、放行 ✓）'), publication: G('具名拒（带 code）', 'task-214 实测：`advance()` ⇒ 具名拒 **VMU_VERSION_CHAIN_BROKEN** ⇒ 零机制＝无版本链可推进 ⇒ 具名拒即真实形状 ✓'),
+  records: G('ok 或 object', 'task-204 实测（形状取自测试 vmu-records.test.mjs:103）：`put({track,kind,title,body,settled:true})` ⇒ **ok**（零机制＝无配额限制、放行 ✓）'),
+  store: G('PROBE_NEEDS_ARGS', '缺：存储配置'), transaction: G('ok 或 object', 'task-204 实测（形状取自测试 vmu-transaction.test.mjs:62）：`begin({id,steps:[{service,apply,undo}]})` ⇒ **ok**（零机制＝无预算门、放行 ✓）'),
   work: G('PROBE_NEEDS_ARGS', '缺：工作项'),
   workflow: G('具名拒或 ok', '**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 op 缺参 ⇒ 实测 **`op 抛出`** ✗（归 `probe-error` 计数，**不算 mismatch** ✓）—— 旧 note 曾写"缺参 ⇒ 具名拒" ✗，与实测不符，已按实测改写 ✓'),
   // ── 第 26 轮已修好的具名拒（**待办没跟上 ⇒ 已纠正** ✓）＋ 非服务模块
@@ -83,6 +83,10 @@ const EXPECT = {
   //   hr       · status() ⇒ ok, enforcedScope=evaluated-so-far
   capacity: G('ok 或 object', '实测 `list()` ⇒ **ok**（`enforced=[0] fired=[0] enforcedScope=evaluated-so-far` ⇒ 零机制**清单可读、不拒** ✓；12/12 键已接 ✓）'),
   hr: G('ok 或 object', '实测 `status()` ⇒ **ok**（`enforcedScope=evaluated-so-far` ⇒ 零机制**状态可读、不拒** ✓；11/11 键已接、**零新码** ✓）'),
+  // Round 34/35: the migration face landed at the end of the round. Its probe needs a plan payload
+  // (from/to/backend/steps) that the automatic op choice cannot invent, so it is registered as an explicit
+  // to-do rather than given an invented expectation - the batch that fills probe arguments will upgrade it.
+  migration: G('PROBE_NEEDS_ARGS', '缺：迁移计划入参（`from`／`to`／`backend`／`steps` ✓）；**作者已导出带完整 args 的 `GATE_SCENARIOS`** ⇒ 下一批补参时应可直接实测 ✓（11/11 键已接、**零新码**、全部返回型拒绝 ✓）'),
   guard: G('EXPECT_NA', '非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）'),
 }
 
@@ -101,19 +105,47 @@ const disclosed = (v) => {
   return hit.length ? hit.join(' ') : '—'
 }
 
-/** 探测一个模块：**不传 settings** ✗；先用第一个 `create*` 工厂，再调它的首个零参操作 ✓。 */
+// task-204 (batch 1/4): EXPLICIT probe arguments, each copied from the module's OWN test (never guessed ✗):
+//   budget      → tests/vmu-budget.test.mjs:16       b.open({ scope: 's0' })                       (zero-config unlimited)
+//   records     → tests/vmu-records.test.mjs:103     r.put({ track, kind, title, body, settled:true })
+//   memory      → tests/vmu-memory.test.mjs:63       m.record({ kind, text, by, evidence, scope, tags })
+//   transaction → tests/vmu-transaction.test.mjs:62  tx.begin({ id, steps:[{ service, apply, undo }] })
+// The clock stays injected (`clock: () => 0`) so probes are deterministic and read-only (no disk, no repo writes).
+const PROBE_ARGS = {
+  budget: { op: 'open', args: { scope: 'probe' } },
+  records: { op: 'put', args: { track: 'progress', kind: 'progress', title: 'probe', body: 'probe', settled: true } },
+  memory: { op: 'record', args: { kind: 'lesson', text: 'rebase before the long run', by: 'alpha', evidence: ['lib-1'], scope: 'team', tags: ['process'] } },
+  transaction: { op: 'begin', args: { id: 'probe-tx', steps: [{ service: 'probe', apply: () => 1, undo: () => 1 }] } },
+}
+
+/** 探测一个模块：**不传 settings** ✗；先用第一个 `create*` 工厂，再调它的首个零参操作 ✓（有显式探针参数时用 PROBE_ARGS ✓）。 */
 async function probe(file) {
   const name = file.replace(/\.js$/, '')
+  const spec = PROBE_ARGS[name] || {}
   const mod = await import(pathToFileURL(join(KERNEL, file)).href)
   const factoryKey = Object.keys(mod).find((k) => /^create[A-Z]/.test(k) && typeof mod[k] === 'function')
   if (!factoryKey) return { module: name, shape: '（无 create* 工厂）', refusal: '—', disclosed: '—', note: '跳过（非服务模块）' }
   let inst
   try { inst = mod[factoryKey]({ clock: () => 0 }) } catch (e) { return { module: name, shape: 'create 抛出', refusal: '—', disclosed: '—', note: String((e && e.message) || e) } }
-  const opKey = Object.keys(inst).find((k) => typeof inst[k] === 'function' && /^(open|run|plan|put|status|state|advance|submit|check|build|propose|stages|record|list)$/.test(k))
+  if (spec.op && typeof inst[spec.op] !== 'function') return { module: name, shape: 'PROBE_NEEDS_ARGS', refusal: '—', disclosed: '—', note: '探针指定的 op 不存在：' + spec.op }
+  const opKey = spec.op || Object.keys(inst).find((k) => typeof inst[k] === 'function' && /^(open|run|plan|put|status|state|advance|submit|check|build|propose|stages|record|list)$/.test(k))
     || Object.keys(inst).find((k) => typeof inst[k] === 'function')
   if (!opKey) return { module: name, shape: '（无操作）', refusal: '—', disclosed: '—', note: '跳过' }
   let out
-  try { out = await inst[opKey]({}) } catch (e) { return { module: name, shape: 'op 抛出', refusal: '—', disclosed: '—', note: opKey + '(): ' + String((e && e.message) || e) } }
+  try { out = await inst[opKey](spec.args || {}) } catch (e) {
+    // task-214: a NAMED refusal (carrying `e.code`) is a MEASUREMENT of the module, not a broken probe.
+    // Conflating the two hid the difference for a whole round (`memory.record` without `scope` refused by
+    // name with VMU_MEMORY_KEY_UNSCOPED yet was reported as `op 抛出`). Keep them apart, and report the
+    // disclosure facts the refusal actually carries (`enforced` / `enforcedScope`).
+    if (e && e.code) {
+      const ex = e.enforced, es = e.enforcedScope
+      const parts = []
+      if (ex !== undefined) parts.push('enforced=' + (Array.isArray(ex) ? '[' + ex.length + ']' : String(ex)))
+      if (es !== undefined) parts.push('enforcedScope=' + String(es))
+      return { module: name, op: opKey, shape: 'refusal', refusal: String(e.code), disclosed: parts.length ? parts.join(' ') : '—', note: opKey + '() 具名拒 ' + e.code + '：' + String(e.message || '') }
+    }
+    return { module: name, op: opKey, shape: 'op 抛出', refusal: '—', disclosed: '—', note: 'no code: ' + String((e && e.message) || e) }
+  }
   const v = (out && typeof out === 'object' && 'value' in out) ? out.value : out
   return {
     module: name, op: opKey, shape: shape(v),

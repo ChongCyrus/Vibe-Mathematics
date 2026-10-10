@@ -577,23 +577,23 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | 模块 | 零机制下的返回形状 | 是否具名拒（码） | 自曝字段 | 期望（设计） |
 |---|---|---|---|---|
 | `alerts` · `status()` | ok | — | dropped=[object Object] | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
-| `arbitration` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：裁决请求体（案由/双方）） |
+| `arbitration` · `open()` | refusal | VMU_ARBITRATION_OFF | enforcedScope=evaluated-so-far | 具名拒（带 code）（task-214 实测：`open()` ⇒ 具名拒 **VMU_ARBITRATION_OFF**（带口径 `enforcedScope=evaluated-so-far`）⇒ 零机制＝没有在办仲裁 ⇒ 具名拒即真实形状 ✓） |
 | `audit` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `auditchain` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `ballot` · `open()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `ballotbox` · `open()` | refusal | VMU_CONFLICT | enforced=[0] enforcedScope=evaluated-so-far | 具名拒或 ok（零机制：无票面参数 ⇒ 具名拒；有默认 ⇒ ok ✓） |
 | `bidding` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `board` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
-| `budget` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：预算条目（额度/科目）） |
+| `budget` · `open()` | object | — | — | ok 或 object（task-204 实测（形状取自测试 vmu-budget.test.mjs:16）：不传 settings 下 `open({scope})` ⇒ **ok**（零机制＝不限额、放行 ✓）） |
 | `bus` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `capacity` · `list()` | ok | — | enforced=[0] fired=[0] enforcedScope=evaluated-so-far | ok 或 object（实测 `list()` ⇒ **ok**（`enforced=[0] fired=[0] enforcedScope=evaluated-so-far` ⇒ 零机制**清单可读、不拒** ✓；12/12 键已接 ✓）） |
-| `charter` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：章程条项） |
+| `charter` · `propose()` | refusal | VMU_CHARTER_NOT_AUTHORIZED | — | 具名拒（带 code）（task-214 实测：`propose()` ⇒ 具名拒 **VMU_CHARTER_NOT_AUTHORIZED** ⇒ 零机制＝无授权 ⇒ 具名拒即真实形状 ✓） |
 | `clockguard` · `status()` | null | — | — | ok 或 null（时钟守卫：无声明 ⇒ 不拦（返回 null 亦合规）） |
 | `compliance` · `status()` | ok | — | enforcedScope=evaluated-so-far | ok 或 object（实测 `status()` ⇒ **ok**（`enforcedScope=evaluated-so-far` ⇒ 状态可读、**不拒**；16 wired ＋ 1 planned，`exportControlCheck` 归 domaingate ✓）） |
 | `conference` · `open()` | ok | — | enforced=[2] fired=[2] enforcedScope=evaluated-so-far | ok 或 object（实测 `open()` ⇒ **ok**（`enforced=[2] fired=[2]` ⇒ 零机制**按默认阶梯开成、放行** ✓，与 `meetings` 同口径 ✓）） |
 | `course` · `open()` | refusal | VMU_INVALID_ARGUMENT | enforced=[1] enforcedScope=evaluated-so-far | 具名拒或 ok（零机制：缺课程参数 ⇒ 具名拒（enforced 非空）✓） |
 | `crypto` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
-| `delegation` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：委派授权对（from/to/范围）） |
+| `delegation` · `check()` | refusal | VMU_INVALID_ARGUMENT | enforcedScope=evaluated-so-far | 具名拒（带 code）（task-214 实测：`check()` ⇒ 具名拒 **VMU_INVALID_ARGUMENT**（带口径 `enforcedScope=evaluated-so-far`）⇒ 零机制＝无可判委派 ⇒ 具名拒即真实形状 ✓） |
 | `domaingate` · `status()` | ok | — | dropped=[object Object] | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `external` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `fairness` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
@@ -601,7 +601,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `funding` · `list()` | ok | — | enforced=[0] fired=[0] enforcedScope=evaluated-so-far | ok 或 object（实测 `list()` ⇒ **ok**（`enforced=[0] fired=[0]` ⇒ 零机制清单可读、**不拒**；16/16 键已接 ✓）） |
 | `governance` · `keysUsed()` | array[15] | — | — | array 或 object（治理面：只读列举（keysUsed/partition 不拒）） |
 | `guard` | （无 create* 工厂） | — | — | EXPECT_NA（非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）） |
-| `handover` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：交接对象） |
+| `handover` · `open()` | refusal | VMU_INVALID_ARGUMENT | — | 具名拒（带 code）（task-214 实测：`open()` ⇒ 具名拒 **VMU_INVALID_ARGUMENT** ⇒ 零机制＝无交接对象 ⇒ 具名拒即真实形状 ✓） |
 | `hr` · `status()` | ok | — | enforcedScope=evaluated-so-far | ok 或 object（实测 `status()` ⇒ **ok**（`enforcedScope=evaluated-so-far` ⇒ 零机制**状态可读、不拒** ✓；11/11 键已接、**零新码** ✓）） |
 | `idempotency` · `list()` | ok | — | dropped=0 truncated=false | ok 或 object（列表/状态面放行 ✓；**显式 `absent` 只在去重操作上**（该操作需参数 ⇒ 探针见 NEEDS_ARGS ✓）） |
 | `index` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
@@ -613,19 +613,20 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `loader` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `math` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：数学请求体） |
 | `mathjobs` · `submit()` | refusal | VMU_MATH_INVALID_INPUT | — | 具名拒（带 code）（缺必填参数 ⇒ 具名拒并点名） |
-| `mathtools` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：计划入参（op/limits）—— 零机制期望＝ok + enforced:[] ✓） |
+| `mathtools` · `plan()` | refusal | VMU_MATH_INVALID_INPUT | enforced=[0] enforcedScope=evaluated-so-far | 具名拒（带 code）（task-214 实测：`plan()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT**（带口径 `enforced=[0] enforcedScope=evaluated-so-far`）⇒ 零机制＝无计划入参 ⇒ 具名拒即真实形状 ✓（补参后应见 `ok + enforced:[]`，届时改"具名拒或 ok" ✓）） |
 | `meeting` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `meetings` · `open()` | ok | — | enforced=[0] enforcedScope=evaluated-so-far | 按声明默认开成（零机制＝按声明默认值开成（不拒）✓） |
 | `members` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
-| `memory` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：记忆条目） |
+| `memory` · `record()` | ok | — | — | ok 或 object（task-204 实测（形状取自测试 vmu-memory.test.mjs:63）：`record({kind,text,by,evidence})` ⇒ **ok**（零机制＝有默认 scope、放行 ✓）） |
 | `metrics` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `migration` · `plan()` | refusal | VMU_COMPAT_MATRIX_MISSING | enforced=[6] fired=[1] enforcedScope=evaluated-so-far | PROBE_NEEDS_ARGS（缺：迁移计划入参（`from`／`to`／`backend`／`steps` ✓）；**作者已导出带完整 args 的 `GATE_SCENARIOS`** ⇒ 下一批补参时应可直接实测 ✓（11/11 键已接、**零新码**、全部返回型拒绝 ✓）） |
 | `minutes` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `notify` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `pack` · `plan()` | refusal | VMU_PACK_MISSING | — | 具名拒（带 code）（第 26 轮已修 ✓：实测拒绝带 **`VMU_PACK_MISSING`**（曾误标"不带 code" ✗）） |
 | `projmigrate` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
-| `publication` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：出版请求） |
+| `publication` · `advance()` | refusal | VMU_VERSION_CHAIN_BROKEN | — | 具名拒（带 code）（task-214 实测：`advance()` ⇒ 具名拒 **VMU_VERSION_CHAIN_BROKEN** ⇒ 零机制＝无版本链可推进 ⇒ 具名拒即真实形状 ✓） |
 | `ratelimit` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
-| `records` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：记录体（track/kind/body）） |
+| `records` · `put()` | ok | — | enforced=[10] fired=[0] enforcedScope=evaluated-so-far | ok 或 object（task-204 实测（形状取自测试 vmu-records.test.mjs:103）：`put({track,kind,title,body,settled:true})` ⇒ **ok**（零机制＝无配额限制、放行 ✓）） |
 | `recruit` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `registry` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `replay` · `plan()` | ok | — | truncated=[object Object] | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
@@ -640,10 +641,10 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `storepolicy` · `status()` | ok | — | enforced=[0] fired=[0] enforcedScope=evaluated-so-far | ok 或 object（零机制 `status()` 实测 **ok**，自曝 `enforced=[0] fired=[0] enforcedScope=evaluated-so-far` ⇒ 策略面**可读、不拒** ✓；**本行探针之外另测**：真实 `write()` 缺 root ⇒ **返回型具名拒** `VMU_INVALID_ARGUMENT` 并列 `vmu.store.root` ✓（15/15 键已接 ✓）—— 旧 note 曾写"status 带 backend/rooted/durable/remote" ✗，与实测不符，已按实测改写 ✓） |
 | `tasks` · `list()` | array[0] | — | — | array（任务板：零机制 ⇒ 空列表（放行）） |
 | `topology` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
-| `transaction` | op 抛出 | — | — | PROBE_NEEDS_ARGS（缺：事务体） |
+| `transaction` · `begin()` | ok | — | — | ok 或 object（task-204 实测（形状取自测试 vmu-transaction.test.mjs:62）：`begin({id,steps:[{service,apply,undo}]})` ⇒ **ok**（零机制＝无预算门、放行 ✓）） |
 | `trust` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
-| `workflow` | op 抛出 | — | — | 具名拒或 ok（**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 op 缺参 ⇒ 实测 **`op 抛出`** ✗（归 `probe-error` 计数，**不算 mismatch** ✓）—— 旧 note 曾写"缺参 ⇒ 具名拒" ✗，与实测不符，已按实测改写 ✓） |
+| `workflow` · `advance()` | refusal | VMU_WORKFLOW_TRANSITION_REQUIRED | enforced=[7] enforcedScope=evaluated-so-far | 具名拒或 ok（**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 op 缺参 ⇒ 实测 **`op 抛出`** ✗（归 `probe-error` 计数，**不算 mismatch** ✓）—— 旧 note 曾写"缺参 ⇒ 具名拒" ✗，与实测不符，已按实测改写 ✓） |
 
-=== ZERO-MECHANISM MATRIX: 68 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 15 probe-errors, 1 n/a ===
+=== ZERO-MECHANISM MATRIX: 69 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 5 probe-errors, 1 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->

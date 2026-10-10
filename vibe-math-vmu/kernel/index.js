@@ -90,6 +90,9 @@ import { createStorePolicy } from './storepolicy.js'
 // contract/timesheet/leave semantics it does NOT implement because no keys or codes exist for them.
 import { createCapacity } from './capacity.js'
 import { createHr } from './hr.js'
+// Round 34: the migration face - the namespace the storage POLICY layer explicitly does not own. It orchestrates
+// plan/dry-run/batches/rollback points and never moves bytes itself; the declared backend set is passed in.
+import { createMigration } from './migration.js'
 import { createWorkflow } from './workflow.js'
 import { createTrust } from './trust.js'
 import { createHandover } from './handover.js'
@@ -593,6 +596,7 @@ export function createKernel({
   const storepolicy = createStorePolicy({ settings: settingsView, bus, clock: guardedClock, log })
   const capacity = createCapacity({ settings: settingsView, bus, clock: guardedClock, log })
   const hr = createHr({ settings: settingsView, bus, clock: guardedClock, log })
+  const migration = createMigration({ settings: settingsView, bus, clock: guardedClock, log })
 
   // ── THE CAPABILITY GUARDS (task-170, "the eighth case") ────────────────────────────────────────────────
   // These three refusals used to live BOTH in the public guards (`requireStore()` etc.) AND as scattered
@@ -727,6 +731,7 @@ export function createKernel({
   registry.register('vmu.storepolicy', { apiVersion: 1 }, { kind: 'service', description: 'storage POLICY only: backend/path validation, lock behaviour, backup counting, remote offline policy and the version-too-high stance (no IO; bytes stay with the store seam)' })
   registry.register('vmu.capacity', { apiVersion: 1 }, { kind: 'service', description: 'capacity: seats per domain, machine-hour pool, overcommit reserve, waitlist and preemption that names the victim (docs/20, 22)' })
   registry.register('vmu.hr', { apiVersion: 1 }, { kind: 'service', description: 'personnel rules: recruitment cycle, performance cadence and evidence, tenure decision and quorum, appeals, offboarding and rotation (docs/22; seats stay with members)' })
+  registry.register('vmu.migration', { apiVersion: 1 }, { kind: 'service', description: 'migration orchestration: plan, dry-run, batches, confirm, rollback points and windows (docs/07, 13); the storage policy layer owns backends, this face owns the move' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
   if (host) registry.register('math_computation', { apiVersion: 1 }, { kind: 'tool', description: 'the inherited math tool, name unchanged (D14)' })
@@ -847,6 +852,7 @@ export function createKernel({
     get storepolicy() { return storepolicy },
     get capacity() { return capacity },
     get hr() { return hr },
+    get migration() { return migration },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     tasks,

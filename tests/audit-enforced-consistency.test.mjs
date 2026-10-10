@@ -36,6 +36,7 @@ import { createFunding } from '../vibe-math-vmu/kernel/funding.js'
 import { createStorePolicy } from '../vibe-math-vmu/kernel/storepolicy.js'
 import { createCapacity } from '../vibe-math-vmu/kernel/capacity.js'
 import { createHr } from '../vibe-math-vmu/kernel/hr.js'
+import { createMigration } from '../vibe-math-vmu/kernel/migration.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -485,6 +486,32 @@ const SCENARIOS = [
     limiting: { settings: {} }, permissive: { settings: {} },
     make: (settings) => createHr({ clock: ISO_CLOCK, log: () => {}, settings }),
     run: (h) => h.offboard({ who: 'r-3', done: ['handover', 'keys', 'records'] }) },
+
+  // ---- ROUND-20 (task-215): migration (every key is always evaluated ⇒ outcome form) ----
+  // requireConfirm: the same apply is refused without a confirmation and executes with one.
+  { module: 'migration', call: 'apply(requireConfirm)', key: 'vmu.migration.requireConfirm', outcomeDiff: true,
+    limiting: { settings: { 'vmu.migration.requireConfirm': true, 'vmu.migration.dryRunDefault': false }, input: { confirm: false } },
+    permissive: { settings: { 'vmu.migration.requireConfirm': true, 'vmu.migration.dryRunDefault': false }, input: { confirm: true } },
+    make: (settings) => createMigration({ clock: CLOCK, log: () => {}, settings, backends: ['json-fold', 'storage-domain'] }),
+    run: (m, variant) => { const p = m.plan({ from: 'v1', to: 'v2', backend: 'json-fold', steps: 3 }); return m.apply(Object.assign({ migration: p.migration }, variant.input)) } },
+  // onFailure: a failing step ABORTS by name under 'abort' and is absorbed (executed=3) under 'continue'.
+  { module: 'migration', call: 'apply(onFailure)', key: 'vmu.migration.onFailure', outcomeDiff: true,
+    limiting: { settings: { 'vmu.migration.onFailure': 'abort', 'vmu.migration.dryRunDefault': false } },
+    permissive: { settings: { 'vmu.migration.onFailure': 'continue', 'vmu.migration.dryRunDefault': false } },
+    make: (settings) => createMigration({ clock: CLOCK, log: () => {}, settings, backends: ['json-fold', 'storage-domain'] }),
+    run: (m) => { const p = m.plan({ from: 'v1', to: 'v2', backend: 'json-fold', steps: 3 }); return m.apply({ migration: p.migration, failAtStep: 2 }) } },
+  // keepBackups: with onFailure=rollback and a failing step, no backup ⇒ VMU_ROLLBACK_UNAVAILABLE, with backups
+  // the failure is reported by the migrate rail instead ⇒ the two runs end differently (different named refusals).
+  { module: 'migration', call: 'apply(keepBackups)', key: 'vmu.migration.keepBackups', outcomeDiff: true,
+    limiting: { settings: { 'vmu.migration.keepBackups': false, 'vmu.migration.onFailure': 'rollback', 'vmu.migration.dryRunDefault': false } },
+    permissive: { settings: { 'vmu.migration.keepBackups': true, 'vmu.migration.onFailure': 'rollback', 'vmu.migration.dryRunDefault': false } },
+    make: (settings) => createMigration({ clock: CLOCK, log: () => {}, settings, backends: ['json-fold', 'storage-domain'] }),
+    run: (m) => { const p = m.plan({ from: 'v1', to: 'v2', backend: 'json-fold', steps: 3 }); return m.apply({ migration: p.migration, failAtStep: 2 }) } },
+  // migration reverse: planning never consults the report formatting keys.
+  { module: 'migration', call: 'plan', key: 'vmu.migration.reportFormat', expectDiff: false, absentIn: 'both',
+    limiting: { settings: {} }, permissive: { settings: {} },
+    make: (settings) => createMigration({ clock: CLOCK, log: () => {}, settings, backends: ['json-fold', 'storage-domain'] }),
+    run: (m) => m.plan({ from: 'v1', to: 'v2', backend: 'json-fold', steps: 3 }) },
 ]
 
 // REFUSAL DISCIPLINE: these calls are EXPECTED to refuse. mathtools attaches `enforced` to the thrown error;
@@ -524,6 +551,9 @@ const REFUSAL_SCENARIOS = [
   { module: 'hr', call: 'tenure(auto decision)', settings: { 'vmu.hr.humanDecisionRequired': true },
     make: (settings) => createHr({ clock: ISO_CLOCK, log: () => {}, settings }),
     run: (h) => h.tenure({ who: 'r-2', trackStart: '2023-01-01T00:00:00.000Z', votes: 5, auto: true }) },
+  { module: 'migration', call: 'plan(same-version)', settings: { 'vmu.migration.rollback': 'allow' },
+    make: (settings) => createMigration({ clock: CLOCK, log: () => {}, settings, backends: ['json-fold', 'storage-domain'] }),
+    run: (m) => m.plan({ from: 'v2', to: 'v2', backend: 'json-fold', steps: 1 }) },
 ]
 
 // ---------------------------------------------------------------------------------------------------------
@@ -632,7 +662,7 @@ for (const [mod, m] of [...byModule].sort()) {
     'course.js': 'course', 'external.js': 'external', 'workflow.js': 'workflow',
     'conference.js': 'conference', 'instruments.js': 'instruments', 'ip.js': 'ip',
     'compliance.js': 'compliance', 'funding.js': 'funding', 'storepolicy.js': 'storepolicy',
-    'capacity.js': 'capacity', 'hr.js': 'hr',
+    'capacity.js': 'capacity', 'hr.js': 'hr', 'migration.js': 'migration',
   }
   const uncovered = inCode.filter((f) => !covered.has(alias[f]) && !covered.has(f.replace(/\.js$/, '')))
   ok(uncovered.length === 0, 'every module mentioning enforced in CODE is covered by this gate', uncovered.join(', '))
