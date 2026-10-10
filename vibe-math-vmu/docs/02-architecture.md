@@ -35,7 +35,7 @@
 | **H 资源与控制** | `kernel/bus.js`（能力/失败策略）、`host-hooks.js`（**工具预算强制** ✓）、`kernel/index.js`（**控制状态机** ✓） | 预算与上限、暂停/恢复/心跳、失败三态与熔断 | `vibe_vmu_control` ✓ + 钩子 |
 | **I 总线与扩展点** | `kernel/bus.js`、`kernel/loader.js`、`kernel/rules.js`、`kernel/registry.js`、`kernel/pack.js` | 钩子统一封装、四形态中间件装载、pack 装载、公开接口版本 | `vmu.middleware` ✓ + 注册面 |
 
-> **与草案的差异（都按代码改 ✓）**：草案里的 `fold.js`／`migrate.js`／`records.js`／`workflow-bridge.js`／`lean.js`／`budget.js`／`guard.js`／`middleware/*.js` **都不存在** ✗（职责已并入 `store.js`／`library.js`／`script-bridge.js`／`math.js`／`bus.js`＋`loader.js`＋`rules.js` ✓）；新增 `work.js` 与三个宿主模块 ✓。**真实 `kernel/` 共 16 个文件** ✓（含 `prompt/index.js` ✓）。
+> **与草案的差异（都按代码改 ✓）**：草案里的 `fold.js`／`migrate.js`／`records.js`／`workflow-bridge.js`／`budget.js`／`middleware/*.js` **不存在** ✗（职责已并入 `store.js`／`library.js`／`script-bridge.js`／`math.js`／`bus.js`＋`loader.js`＋`rules.js` ✓）；**而草案里没有的三个模块后来真的长了出来** ✓ —— `work.js`（在途台账 ✓）／`guard.js`（写保护与资源闸的强制点 ✓）／`lean.js`（形式化面 ✓），加上三个宿主模块 ✓。**真实 `kernel/` ＝ 17 个 `.js`（含 `prompt/index.js` 共 18 ✓）** ✓。
 
 **分区 ↔ 公开服务 ↔ 钩子域（**按实际 emit 点重写** ✓；"未触发"＝已登记但没有生产者的钩子 ✗）**
 
@@ -53,7 +53,7 @@
 | 总控 | —（`vmu.kernel`／`vmu.settings`／`vmu.bus`／`vmu.packs` **草案里写了但并未发布** ✗） | **`pack/loading`／`pack/loaded`／`budget/exceeded`／`turn/reply-parsed`／`session/flush` 登记但未触发** ✗ |
 
 > **咬合规则（门禁）** ✓：① 03-§2 的服务表必须与 `registry.register` 一致（**待按代码重写** ✗）；② **`VU_HOOKS` 里每个钩子要么有 emit 点、要么被显式登记为"未触发"** ⇒ 由 `tests/audit-vmu-docs.test.mjs` 的**钩子生产检查**强制 ✓（新增钩子不写生产者就会红 ✓）。
-> **未触发清单（7 个，诚实 ✗）**：`turn/reply-parsed`、`record/append-before`、`record/appended`、`prompt/section-assembled`、`budget/exceeded`、`pack/loading`、`pack/loaded` ＋ 宿主侧白名单 `session/flush` ✓ —— 它们**注册了默认失败策略**，但**目前没有生产者** ✗（要么接上，要么别当"可用挂点"写 ✓）。
+> **未触发清单（6 个，诚实 ✗）**：`turn/reply-parsed`、`record/append-before`、`record/appended`、`budget/exceeded`、`pack/loading`、`pack/loaded` ＋ 宿主侧白名单 `session/flush` ✓ —— 它们**注册了默认失败策略**，但**目前没有生产者** ✗（要么接上，要么别当"可用挂点"写 ✓）。**注** ✓：`prompt/section-assembled` **已不在本清单** ✓ —— 本会话修正了装配路径的 emit 名（曾漂移为 `prompt/assemble` ✗）并给总线加了名字校验 ✓，它现在**真有生产者** ✓。
 
 **模块规则（静态门强制）**：跨模块只经公开接口；不得直接读对方私有状态；不得隐式全局；不得循环依赖。
 
@@ -152,8 +152,9 @@ vibe-math-vmu/                     # 随包发布（package.json#files ✓）
 ├── host-spawn.js                  # 子进程接缝（调用时解析可执行文件 ✓）
 ├── host-math.js                   # 共享数学模块的**真宿主接缝** ✓
 ├── math-computation.js / math-engines.js   # 共享模块（**原样复用**，字节一致门 ✓）
-├── settings/schema.js             # L2：54 键单一源（含 hot／who／doc ✓）
-├── kernel/                        # L1（16 个文件 ✓）
+├── settings/schema.js             # L2：**54 个手写核心键** ＋ 由 `settings/planned.js` 组成的**计划键**（合计 717 键 ✓；含 hot／who／doc ✓）
+├── settings/planned.js            # **生成物**：设计阶段声明的计划键（由 `scripts/generate-planned-settings.mjs` 从 docs 生成 ✓）
+├── kernel/                        # L1（17 个 `.js`；含 `prompt/index.js` 共 18 ✓）
 │   ├── index.js  bus.js  store.js  work.js  library.js  members.js
 │   ├── meeting.js  ballot.js  tasks.js  math.js  rules.js
 │   ├── loader.js  script-bridge.js  registry.js  pack.js

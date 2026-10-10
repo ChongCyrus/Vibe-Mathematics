@@ -1,8 +1,8 @@
 # vmu 16 · 学术研究生命周期（一等基础设施卷）
 
 > 状态：**设计稿 v0.1**（先设计到极致；实现落地后逐字校准）
-> 上位：`01-philosophy.md`（R3 四可／R11 具名拒绝）、`04-settings.md`（设置权威）、`05-middleware.md`、`06-prompting.md`
-> 邻卷：`07-archival.md`（归档轨）、`08-meetings.md`（会议与表决）、`09`／`15`（数学计算与形式化）、`12-user-guide.md`（使用者手册）、`14-open-items-and-roadmap.md`（未决项与路线图）
+> 上位：`01-philosophy.md`（R3 四可／R11 具名拒绝）、`04-settings.md`（设置权威）、`05-middleware.md`、`06-prompt-pipeline.md`（提示词管线）
+> 邻卷：`07-durability-library.md`（归档轨）、`08-primitives-meeting-ballot-workflow.md`（会议与表决）、`09`／`15`（数学计算与形式化）、`12-user-guide.md`（使用者手册）、`14-open-items-and-roadmap.md`（未决项与路线图）
 > 读者：**研究者本人**（要把"一项研究从选题做到长期保存"跑在 vmu 上）＋ **机制作者**（要为新阶段写规则/模块/脚本/包）。
 
 ---

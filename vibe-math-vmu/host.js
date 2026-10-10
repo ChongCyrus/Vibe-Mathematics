@@ -131,10 +131,19 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         // never has to guess whether a change was ignored (H2 ⇒ a new session is required, and we say so).
         const APPLIES = { H0: 'immediately', H1: 'next turn', H2: 'next session (restart required)' }
         const resolved = kernel.status ? (kernel.status().settings.resolved || {})[key] : null
+        // A PLANNED KEY is a design-phase declaration with NO consumer yet (settings/planned.js, docs/04 §6.3).
+        // The receipt must SAY so: "settable but inert" is exactly the trap the manual forbids, and an
+        // independent reviewer measured 51 wired of hundreds of keys - the tool face used to imply every knob
+        // worked. `noConsumer` is present only for planned keys, so no existing receipt changes shape.
+        const planned = !!(def && def.planned === true)
         return { ok: true, key, value: parsed, hot: def ? def.hot : null, who: def ? def.who : null,
-          appliesFrom: def ? (APPLIES[def.hot] || 'unknown hot class') : 'unknown (undeclared key)',
+          appliesFrom: planned ? 'never yet (planned key: no runtime consumer)'
+            : (def ? (APPLIES[def.hot] || 'unknown hot class') : 'unknown (undeclared key)'),
           source: resolved ? resolved.source : null,
-          note: 'settings.resolved in vibe_vmu_status shows every key with its value, source and hot class' }
+          ...(planned ? { noConsumer: true } : {}),
+          note: planned
+            ? 'this key is DECLARED BY THE DESIGN (settings/planned.js, docs/04 §6.3) and has NO consumer yet: setting it changes nothing until it is implemented'
+            : 'settings.resolved in vibe_vmu_status shows every key with its value, source and hot class' }
       },
     })
   }

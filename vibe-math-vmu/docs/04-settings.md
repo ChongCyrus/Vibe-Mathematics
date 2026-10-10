@@ -127,6 +127,21 @@ export const SettingsJsonSchema = toJsonSchema()   // 单向派生；文档/门�
 
 ---
 
+### 6.3 两层 schema：**手写核心键 ＋ 生成计划键**（2026-10-10 设计阶段新增 ✓✓）
+
+> **为什么要有这一节** ✗：设置表现在有 **700+ 键**，其中**绝大多数是"设计阶段已声明、尚未实现"的计划键** ✓ —— 不解释的话，读者会把它们当成"能用的旋钮" ✗，那正是本卷最忌讳的**写着有、实际没反应** ✗。
+
+- **第一层：手写核心键**（`settings/schema.js` 的 `CORE_DEFS` ✓，**54 键** ✓）—— **唯一**"改了真有反应"的那批 ✓（表里 `✅ 已接线` 的 ✓；已声明但未接线的少数键也逐行写明了边界 ✓）。
+- **第二层：生成计划键**（`vibe-math-vmu/settings/planned.js` ✓）—— **生成物，勿手改** ✗；来源＝各设计卷的"拟增键全表" ✓，由 `scripts/generate-planned-settings.mjs` 抽取 ✓，组成＝`SETTING_DEFS = [...CORE_DEFS, ...PLANNED_DEFS]` ✓。
+  - 形状**固定** ✓：`{ key, type:'planned', def:null, hot:'H1', who:'office', scope:'global', planned:true, doc:'设计阶段登记：<来源卷> 声明，尚未实现' }` ⇒ **元数据以来源卷为准** ✓（本表只保证"这个键确实被设计过" ✓，不假装知道它的默认值 ✗）。
+  - **诚实保证** ✓：它们**没有**运行时消费者 ⇒ 表里逐行 `⚠️ 未接线` ✓；`vibe_vmu_set` 能回显但**不会有行为变化** ✗；门禁（`tests/audit-vmu-docs.test.mjs` G 组 ✓）**独立重算**"谁真的被读过" ✓ ⇒ **没人能把计划键说成已接线** ✗。
+- **一键"转正"流程** ✓（实现阶段按此走 ✓）：① 手写核心表加真元数据 ＋ 写真正的消费者 ✓；② 把来源卷里对应条目标为已实现 ✓；③ 重生成 ⇒ `generate-planned-settings.mjs --check` 会要求"**已实现的键不得留在 planned 里**" ✓；④ 重生成设置表 ⇒ 该行变 `✅ 已接线` ✓。
+- **反循环** ✓：`planned.js` 的扫描**跳过生成物镜像卷 `docs/04`** ✓（它是 schema 的镜像，不是设计源 ✓；`--check` 有专门断言守这一点 ✓）。
+
+> **未做 ✗**：本阶段**没有实现任何计划键** ✓ —— 全部计划键都是"设计已声明、代码未读" ✓；这是目标①"先设计到极致"的正常状态 ✓，目标②"逐批实现"从实现阶段开始 ✓。
+
+---
+
 ## 7. 文档自动生成（R4 的落地方式）
 
 `schema → 参数表` 每行字段（**全部由生成器产出 ✓**）：**键 / 类型 / 默认 / 域 / 作用域 / H（热改等级）/ 谁 / 接线 / 载体 / 说明** ✓。
@@ -270,11 +285,14 @@ vmu.packs.active: [v5r]
 | `vmu.auction.maxOpenAuctions` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：17 声明，尚未实现（元数据以该卷为准） |
 | `vmu.auction.requirePlan` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：17 声明，尚未实现（元数据以该卷为准） |
 | `vmu.auction.rotationWindow` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：17 声明，尚未实现（元数据以该卷为准） |
+| `vmu.audit.dir` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
 | `vmu.audit.exportScope` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：08 声明，尚未实现（元数据以该卷为准） |
 | `vmu.audit.level` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：08 声明，尚未实现（元数据以该卷为准） |
 | `vmu.audit.recountRoles` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：08 声明，尚未实现（元数据以该卷为准） |
+| `vmu.audit.redactKeys` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
 | `vmu.audit.retentionDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
 | `vmu.audit.rotateBytes` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
+| `vmu.audit.rotateDaily` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
 | `vmu.audit.sensitiveFields` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
 | `vmu.audit.traceKeepMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：08 声明，尚未实现（元数据以该卷为准） |
 | `vmu.authorship.creditRoles` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：16 声明，尚未实现（元数据以该卷为准） |
@@ -367,6 +385,9 @@ vmu.packs.active: [v5r]
 | `vmu.consensus.dissentRetentionMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：17 声明，尚未实现（元数据以该卷为准） |
 | `vmu.consensus.protocol` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：17 声明，尚未实现（元数据以该卷为准） |
 | `vmu.consensus.requireDissentRecord` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：17 声明，尚未实现（元数据以该卷为准） |
+| `vmu.consent.recheckDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.consent.required` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.consent.scopes` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
 | `vmu.control.beatStaleMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：08 声明，尚未实现（元数据以该卷为准） |
 | `vmu.control.canPauseRoles` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：08 声明，尚未实现（元数据以该卷为准） |
 | `vmu.control.degradeSteps` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：08 声明，尚未实现（元数据以该卷为准） |
@@ -376,9 +397,14 @@ vmu.packs.active: [v5r]
 | `vmu.control.stopClearsRegistry` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：08 声明，尚未实现（元数据以该卷为准） |
 | `vmu.control.watchdogIntervalMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：08 声明，尚未实现（元数据以该卷为准） |
 | `vmu.crypto.enabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
+| `vmu.crypto.requireSignedAudit` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.crypto.rotateAfterDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.crypto.signingKeyId` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.crypto.timestampAuthority` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
 | `vmu.crypto.verifyInterval` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
 | `vmu.data.fingerprintAlgo` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：16 声明，尚未实现（元数据以该卷为准） |
 | `vmu.data.requireParent` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：16 声明，尚未实现（元数据以该卷为准） |
+| `vmu.data.retention` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
 | `vmu.data.versionScheme` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：16 声明，尚未实现（元数据以该卷为准） |
 | `vmu.dedupe.crossWorkspace` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
 | `vmu.dedupe.enabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
@@ -403,7 +429,10 @@ vmu.packs.active: [v5r]
 | `vmu.discipline.postmortemRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：17 声明，尚未实现（元数据以该卷为准） |
 | `vmu.discipline.restoreNeedsHuman` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：17 声明，尚未实现（元数据以该卷为准） |
 | `vmu.discipline.suspendMaxMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：17 声明，尚未实现（元数据以该卷为准） |
+| `vmu.ethics.approvalRef` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
 | `vmu.ethics.dpiaRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：16 声明，尚未实现（元数据以该卷为准） |
+| `vmu.ethics.dualUseReview` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.ethics.irbRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
 | `vmu.ethics.requireApprovalFor` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：16 声明，尚未实现（元数据以该卷为准） |
 | `vmu.explain.correlateBy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：17 声明，尚未实现（元数据以该卷为准） |
 | `vmu.explain.detail` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：17 声明，尚未实现（元数据以该卷为准） |
@@ -455,11 +484,16 @@ vmu.packs.active: [v5r]
 | `vmu.identity.trustedIssuers` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：17 声明，尚未实现（元数据以该卷为准） |
 | `vmu.import.onConflict` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
 | `vmu.import.previewOnly` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
+| `vmu.incident.disclosureDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.incident.freezeCapabilities` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.incident.notifyContacts` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
 | `vmu.index.rebuildBatch` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
 | `vmu.index.staleTolerance` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
 | `vmu.index.verifyChecksum` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
+| `vmu.license.attributionRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
 | `vmu.license.codeDefault` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：16 声明，尚未实现（元数据以该卷为准） |
 | `vmu.license.default` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：16 声明，尚未实现（元数据以该卷为准） |
+| `vmu.license.incompatiblePolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
 | `vmu.lifecycle.alpha` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：16 声明，尚未实现（元数据以该卷为准） |
 | `vmu.lifecycle.dedupeKeys` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：16 声明，尚未实现（元数据以该卷为准） |
 | `vmu.lifecycle.powerTarget` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：16 声明，尚未实现（元数据以该卷为准） |
@@ -749,6 +783,12 @@ vmu.packs.active: [v5r]
 | `vmu.paths.followSymlinks` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
 | `vmu.preserve.migrateAfterYears` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：16 声明，尚未实现（元数据以该卷为准） |
 | `vmu.preserve.pdfProfile` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：16 声明，尚未实现（元数据以该卷为准） |
+| `vmu.privacy.classification` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.privacy.deidentify` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.privacy.dpEpsilon` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.privacy.kAnonK` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.privacy.minExposure` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.privacy.piiDetect` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
 | `vmu.prompt.compatMode` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
 | `vmu.prompt.order` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：13 声明，尚未实现（元数据以该卷为准） |
 | `vmu.prompt.sections` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：13 声明，尚未实现（元数据以该卷为准） |
@@ -820,6 +860,15 @@ vmu.packs.active: [v5r]
 | `vmu.roles.termDefaultMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：17 声明，尚未实现（元数据以该卷为准） |
 | `vmu.roles.termMaxMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：17 声明，尚未实现（元数据以该卷为准） |
 | `vmu.roles.termRenewable` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：17 声明，尚未实现（元数据以该卷为准） |
+| `vmu.safety.askOn` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.safety.capabilityMatrix` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.safety.execAllowlist` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.safety.followSymlinks` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.safety.killSwitch` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.safety.maxCpuMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.safety.maxMemoryMb` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.safety.maxPathLength` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.safety.netPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
 | `vmu.scheduler.actionsAllowed` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：08 声明，尚未实现（元数据以该卷为准） |
 | `vmu.scheduler.maxTriggers` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：08 声明，尚未实现（元数据以该卷为准） |
 | `vmu.scheduler.timeSource` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：08 声明，尚未实现（元数据以该卷为准） |
@@ -836,6 +885,9 @@ vmu.packs.active: [v5r]
 | `vmu.skills.evidenceRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：17 声明，尚未实现（元数据以该卷为准） |
 | `vmu.skills.negotiationRounds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：17 声明，尚未实现（元数据以该卷为准） |
 | `vmu.skills.requiresPermission` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：17 声明，尚未实现（元数据以该卷为准） |
+| `vmu.sovereignty.crossBorderAllow` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.sovereignty.exportControl` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.sovereignty.region` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
 | `vmu.stats.correction` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：16 声明，尚未实现（元数据以该卷为准） |
 | `vmu.stats.effectSize` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：16 声明，尚未实现（元数据以该卷为准） |
 | `vmu.stats.seed` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：16 声明，尚未实现（元数据以该卷为准） |
@@ -854,6 +906,9 @@ vmu.packs.active: [v5r]
 | `vmu.store.remote.url` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
 | `vmu.store.root` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
 | `vmu.store.tmpDir` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
+| `vmu.supplychain.reproducibleBuild` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.supplychain.requireLock` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
+| `vmu.supplychain.sbomPath` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：20 声明，尚未实现（元数据以该卷为准） |
 | `vmu.tags.aliasTable` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
 | `vmu.tags.controlled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |
 | `vmu.tags.maxDepth` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：07 声明，尚未实现（元数据以该卷为准） |

@@ -221,6 +221,19 @@ const newBus = (settings = {}) => m.createBus({ settings, onAudit: (r) => auditR
   const bridge = newBus()
   await bridge.emit('agent/created', {}, { bridge: true })
   ok(true, 'bridged host hook names are accepted (the substrate bridge must not be refused)')
+
+  // NAMESPACE-AWARE validity: a FOREIGN namespace belongs to the substrate and is passed through WITHOUT the
+  // bridge flag, while VMU's own namespaces stay closed (that asymmetry is what keeps `prompt/assemble` - a host
+  // name that collides with vmu's `prompt/` namespace - refused, which is the drift this check exists for).
+  let foreign = null
+  try { await bridge.emit('tools/pre-execute', { tool: 'x' }) } catch (e) { foreign = e }
+  ok(foreign === null, 'a foreign-namespace hook (host vocabulary) passes through without the bridge flag',
+    foreign && foreign.message)
+  let stillRefused = null
+  try { await bridge.emit('prompt/assemble', {}) } catch (e) { stillRefused = e }
+  ok(stillRefused && stillRefused.code === 'VMU_INVALID_ARGUMENT',
+    'and a host name that collides with vmu\'s own namespace is STILL refused (the drift guard survives)',
+    stillRefused && stillRefused.code)
 }
 
 // ---- 11. self-probe ----------------------------------------------------------------------------

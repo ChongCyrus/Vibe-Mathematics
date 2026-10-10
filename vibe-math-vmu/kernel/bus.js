@@ -255,12 +255,16 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
       // HOOK-NAME MEMBERSHIP (independent verification, task-40). The name was never validated, so a misspelled
       // hook - or a name that had drifted from the frozen set (the proven case: `prompt/assemble` was emitted
       // while the registry declared `prompt/section-assembled`) - reached NO listener: the middleware never ran
-      // and nothing said so. An unknown name is now refused BY NAME, and the message names the extension point.
-      // The host-waterfall BRIDGE is exempt (`opts.bridge`): it deliberately forwards the host's own hook names,
-      // which are DSH's vocabulary, not vmu's, and refusing them would break the substrate bridge itself.
+      // and nothing said so. The rule is now NAMESPACE-AWARE:
+      //   · a name in VMU's OWN namespaces must be in VU_HOOKS (or declared with `declareTopic`);
+      //   · a name in a FOREIGN namespace (the host's vocabulary, e.g. `tools/pre-execute`, `fs/write-intent`)
+      //     is passed through, because that vocabulary belongs to the substrate - and note that `prompt/assemble`
+      //     is a HOST name, so allowing all host names wholesale would have re-admitted exactly the drift this
+      //     check exists to catch. The host-waterfall bridge (`opts.bridge`) is exempt for the same reason.
+      const VU_NAMESPACE = /^(member|turn|meeting|ballot|record|task|prompt|budget|pack|settle|control)\//
       const bridged = opts && opts.bridge === true
-      if (!bridged && (typeof hook !== 'string' ||
-        !(VU_HOOKS.includes(hook) || BRIDGE_TOPICS.includes(hook) || customTopics.has(hook)))) {
+      const isVmuName = typeof hook === 'string' && VU_NAMESPACE.test(hook)
+      if (!bridged && isVmuName && !(VU_HOOKS.includes(hook) || customTopics.has(hook))) {
         throw refuse('VMU_INVALID_ARGUMENT',
           'unknown vmu hook: ' + String(hook) + ' (' + VU_HOOKS.length + ' declared + ' + customTopics.size + ' custom)',
           'declared: ' + VU_HOOKS.join(', ') + ' — declare a NEW topic with bus.declareTopic(name)')

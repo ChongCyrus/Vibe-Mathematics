@@ -235,6 +235,13 @@ if (SELF_PROBE) {
       'an H0 key says "immediately"', JSON.stringify(h0))
     const bad = JSON.parse(await spec.execute({ key: 'vmu.limits.notDeclared', value: '1' }, {}))
     ok(bad.ok === false && bad.code === 'VMU_INVALID_ARGUMENT', 'an undeclared key stays refused by name', JSON.stringify(bad))
+    // A PLANNED key (a design-phase declaration with no consumer) must SAY that its value changes nothing:
+    // an independent reviewer measured a single-digit wiring rate among declared keys, so a receipt implying
+    // "the knob works" is exactly the trap docs/04 §6.3 forbids.
+    const planned = JSON.parse(await spec.execute({ key: 'vmu.roles.termRenewable', value: 'false' }, {}))
+    ok(planned.ok === true && planned.noConsumer === true && /no runtime consumer/.test(String(planned.appliesFrom)) &&
+      /NO consumer yet/.test(String(planned.note)),
+      'a planned key is settable but the receipt states that it has no consumer yet', JSON.stringify(planned))
   }
 }
 

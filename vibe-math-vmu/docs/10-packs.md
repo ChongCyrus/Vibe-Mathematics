@@ -263,7 +263,7 @@ id: _template.example
 on: [tools/pre-execute]
 when:
   all:
-    - tool: [vibe_vmu_ballot]
+    - tool: [vibe_vmu_meeting]   # 真实工具面；表决是 `action:'ballot'|'vote'|'tally'` ✓（`vibe_vmu_ballot` 作为独立工具**未实现／规划** ✗，今天不存在该工具名 ✗）
     - not: { subject: has_locked_formal_proof }
 then:
   - deny:

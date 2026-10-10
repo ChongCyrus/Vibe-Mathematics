@@ -197,7 +197,7 @@
 | 9 | `record/appended` | **`open`** | **✗ 无生产者** | ✗ | ✗ | `record`/`annotate` |
 | 10 | `task/assign` | `closed` | ✓ `members.js`/`tasks.js` | ✓ | ✓ | `deny`/`rewriteArgs` |
 | 11 | `task/transition` | `closed` | ✓ `tasks.js` | ✓ | ✗ | `deny`/`record` |
-| 12 | `prompt/section-assembled` | **`open`** | **✗ 无生产者**（§5.4） | ✓ | ✓ | `deny`/`appendPrompt`/`rewriteResult` |
+| 12 | `prompt/section-assembled` | **`open`** | **✓ 已有生产者**（装配路径 emit ✓；曾漂移为 `prompt/assemble` ✗，本会话已修 ✓，见 §5.4） | ✓ | ✓ | `deny`/`appendPrompt`/`rewriteResult` |
 | 13 | `budget/exceeded` | **`abort`** | **✗ 无生产者** | ✓ | ✗ | `deny`/`annotate` |
 | 14 | `pack/loading` | `closed` | **✗ 无生产者** | ✓ | ✓ | `deny`/`rewriteArgs` |
 | 15 | `pack/loaded` | `closed` | **✗ 无生产者** | ✗ | ✗ | `record`/`notify` |

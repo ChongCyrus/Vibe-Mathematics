@@ -205,6 +205,8 @@
     "vibe-math-vmu/docs/17-agent-society-and-delegation.md",
     "vibe-math-vmu/docs/18-command-and-protocol-reference.md",
     "vibe-math-vmu/docs/19-plugin-and-extension-development.md",
+    "vibe-math-vmu/docs/20-security-privacy-and-compliance.md",
+    "vibe-math-vmu/docs/21-observability-and-operations.md",
     "scripts/generate-planned-codes.mjs",
     "vibe-math-vmu/settings/schema.js",
     "vibe-math-vmu/settings/planned.js",
