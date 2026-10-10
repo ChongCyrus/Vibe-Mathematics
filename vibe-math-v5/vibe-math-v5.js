@@ -6102,6 +6102,14 @@ export function apply(ctx) {
         await notice(memberId, 'paper_part 是空的：请至少给出 title 与你的贡献正文（solution/methods/rules/limits），只写库里已有证据支撑的内容。')
         return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'paper_part carries no content' }
       }
+      // ROUND 64 (docs/22 §6.1, O-4): the prompt has always demanded evidence ("不得编造…在 evidence 里写清证据路径")
+      // but acceptance silently took an EMPTY list and merely logged "0 条" - the intention was written down and not
+      // enforced, which is exactly the class this phase hunts. A part with no evidence reference is now refused BY
+      // NAME; the refusal uses the code the volumes already registered for this shape.
+      if (part.evidence.length === 0) {
+        await notice(memberId, '缺少 evidence：论文里的每一条结论都必须指向**库里已存在**的证据路径；没有证据的推测不要写成结论，未决／被否证的条目必须显式标注。')
+        return { ok: false, code: 'VMU_OUTREACH_REF_MISSING', message: 'paper_part carries no evidence reference: every claim must point at evidence that already exists (docs/22 §6.1, O-4)' }
+      }
       await mutatePaper((cur) => (cur ? Object.assign({}, cur, { parts: Object.assign({}, cur.parts || {}, { [memberId]: part }), updatedAt: now() }) : cur))
       await paperLog('收到 ' + memberId + ' 的部分（第 ' + p.round + ' 轮）', '- 标题：' + (part.title || '(无)') + '\n- 声称证据：' + (part.evidence.length || 0) + ' 条')
       return { ok: true, recorded: memberId, round: p.round }
