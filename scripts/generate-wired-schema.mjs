@@ -75,6 +75,8 @@ export function defaultOf(src, key) {
     [new RegExp(S + "\\s*!==\\s*false"), 'true'],
     [new RegExp(S + "\\s*===\\s*true"), 'false'],
     [new RegExp("(?:str|String)\\(\\s*" + S + "\\s*\\)"), "''"],
+    // `listOr(x)` with no fallback yields an empty list: the module's own helper is the authority for that.
+    [new RegExp("(?:listOr|listOf)\\(\\s*" + S + "\\s*\\)"), '[]'],
   ]
   for (const re of shapes) {
     const m = re.exec(src)
@@ -93,9 +95,18 @@ export function defaultOf(src, key) {
         const value = shift[2] === '<<' ? base * Math.pow(2, by) : Math.floor(base / Math.pow(2, by))
         if (Number.isFinite(value)) lit = String(value)
       }
-      // A numeric literal may carry separators (`3_600_000`). They are cosmetic: strip them before validating.
+      // A numeric literal may carry separators (`3_600_000`) or scientific notation (`1e-6`); both are cosmetic.
       if (/^\d[\d_]*$/.test(lit)) lit = lit.replace(/_/g, '')
-      if (/^(true|false|null)$/.test(lit) || /^-?\d+(\.\d+)?$/.test(lit) || /^['"]/.test(lit)
+      // A two-operand arithmetic default (`7 * 86400000`) is evaluated by hand: digits and one operator only,
+      // never `eval`. Anything richer is left unrecovered rather than guessed.
+      const arith = /^(\d[\d_]*)\s*([*/+-])\s*(\d[\d_]*)$/.exec(lit)
+      if (arith) {
+        const a = Number(arith[1].replace(/_/g, ''))
+        const b = Number(arith[3].replace(/_/g, ''))
+        const v = arith[2] === '*' ? a * b : arith[2] === '/' ? a / b : arith[2] === '+' ? a + b : a - b
+        if (Number.isFinite(v)) lit = String(v)
+      }
+      if (/^(true|false|null)$/.test(lit) || /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(lit) || /^['"]/.test(lit)
         || (lit.startsWith('[') && lit.endsWith(']')) || (lit.startsWith('{') && lit.endsWith('}'))) return lit
     }
   }
