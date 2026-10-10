@@ -559,6 +559,33 @@ if (SELF_PROBE) {
   ok(hostHook && hostHook.ok !== false, 'E3[+]: a host-namespace hook still passes through')
 }
 
+// ---- E-6 (task-163): through the ENTRY, the runtime receipt matches observed behaviour ------------------
+{
+  const host = fakeCtx({ settings: { 'vmu.audit.chain.checkpointEvery': 100 } })
+  const handle = entry.apply(host.ctx, { clock })
+  await new Promise((r) => setTimeout(r, 0))
+  const kernel = handle.kernel
+  // H1 ⇒ live: the audit chain observes the new rhythm immediately
+  const r1 = kernel.setSettingsValue('vmu.audit.chain.checkpointEvery', 11, { by: 'office' })
+  ok(r1.requiresRestart === false && kernel.auditchain.status().checkpointEvery === 11,
+    'entry/H1: the receipt says immediate and the consumer really observes 11', JSON.stringify({ restart: r1.requiresRestart, seen: kernel.auditchain.status().checkpointEvery }))
+  // H0 ⇒ live into the bus
+  const r2 = kernel.setSettingsValue('vmu.middleware.dryRun', true, { by: 'office' })
+  ok(r2.requiresRestart === false && kernel.bus.isDryRun() === true && kernel.status().settings.dryRun === true,
+    'entry/H0: dryRun is live in the bus AND in status()')
+  // H2 ⇒ the receipt admits a restart is needed and the running kernel is unchanged
+  const r3 = kernel.setSettingsValue('vmu.core.enabled', false, { by: 'office' })
+  ok(r3.requiresRestart === true && kernel.enabled === true,
+    'entry/H2: requiresRestart:true and the running kernel is honestly unchanged', JSON.stringify({ restart: r3.requiresRestart, enabled: kernel.enabled }))
+  // the host-visible tool face keeps working after the graded writes
+  const names = host.state.specs.map((s) => s.name)
+  ok(names.includes('vibe_vmu_status'), 'the entry still registers its tools after graded runtime writes', names.join(','))
+  // and the read-only view refuses a consumer write (through the entry's kernel)
+  let err = null
+  try { kernel.settingsView()['vmu.safety.pathPolicy'] = 'allow-all' } catch (e) { err = e }
+  ok(err && err.code === 'VMU_NOT_PERMITTED', 'entry: a consumer cannot write kernel settings through the view', err && err.code)
+}
+
 console.log('=== VMU ENTRY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

@@ -58,6 +58,8 @@ export function createCourse(opts) {
    *  D3（第 26 轮）：**口径随证明同行** —— `enforcedScope` 明写这是"**到此为止**"已求值集合，
    *  而非该操作会读的完整集合 ⇒ 审计者**不得**把部分集当成全集 ✗✓（照 records／meetings 已验收口径 ✓）。 */
   const ENFORCED_SCOPE = 'evaluated-so-far'
+  // 入列前查重（D3 统一口径 ✓）：同一个键在同一份回执里**只出现一次** ✗✓ —— **不改** `enforced` 的数组语义 ✓
+  const mark = (list, key) => { if (key && list.indexOf(key) === -1) list.push(key); return list }
   const deny = (code, msg, hint, enforced) => {
     refusals.set(code, (refusals.get(code) || 0) + 1)
     return Object.assign(refuse(code, msg, hint), {
@@ -112,7 +114,7 @@ export function createCourse(opts) {
     const args = a || {}
     const c = cfg()
     const enforced = []
-    const evalKey = (k) => { if (enforced.indexOf(k) === -1) enforced.push(k) }
+    const evalKey = (k) => { mark(enforced, k) }
     evalKey('vmu.course.enabled')
     if (!c.enabled) return deny('VMU_NOT_PERMITTED', '课程面未启用（vmu.course.enabled=false）', '打开它，或不要开课', enforced)
     if (c.visibility === 'public' && c.allowAuditors !== true) evalKey('vmu.course.visibility')
@@ -124,7 +126,7 @@ export function createCourse(opts) {
     enrolled.set(id, course)
     note('course.open', id)
     emit({ type: 'course.open', id })
-    return { ok: true, courseId: id, visibility: c.visibility, enforced }
+    return { ok: true, courseId: id, visibility: c.visibility, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
   const enroll = (a) => {
@@ -132,7 +134,7 @@ export function createCourse(opts) {
     const course = enrolled.get(String(args.courseId || ''))
     const c = cfg()
     const enforced = []
-    const evalKey = (k) => { if (enforced.indexOf(k) === -1) enforced.push(k) }
+    const evalKey = (k) => { mark(enforced, k) }
     if (!course) return deny('VMU_NOT_FOUND', '找不到课程 ' + String(args.courseId || ''), '先 open() 取 id', enforced)
     const who = String(args.who || '').trim()
     if (!who) return deny('VMU_INVALID_ARGUMENT', 'enroll 需要 who', '给学员 id', enforced)
@@ -140,7 +142,7 @@ export function createCourse(opts) {
       evalKey('vmu.course.allowAuditors')
       if (!c.allowAuditors) return deny('VMU_NOT_PERMITTED', '本课不允许旁听（vmu.course.allowAuditors=false）', '打开它，或按正式学员注册', enforced)
       course.auditors.push(who)
-      return { ok: true, courseId: course.id, kind: 'auditor', enforced }
+      return { ok: true, courseId: course.id, kind: 'auditor', enforced, enforcedScope: ENFORCED_SCOPE }
     }
     if (c.cohortMax > 0 && course.cohort.length >= c.cohortMax) {
       evalKey('vmu.course.cohortMax')
@@ -149,7 +151,7 @@ export function createCourse(opts) {
     evalKey('vmu.course.enrollmentNeedsApproval')
     const pending = c.enrollmentNeedsApproval && args.approved !== true
     if (!pending) course.cohort.push(who)
-    return { ok: true, courseId: course.id, kind: pending ? 'pending' : 'enrolled', approved: !pending, enforced }
+    return { ok: true, courseId: course.id, kind: pending ? 'pending' : 'enrolled', approved: !pending, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
   /** 成果↔产物对齐：**缺证据 ⇒ 具名拒并点名哪个 outcome** ✗✓。 */
@@ -163,12 +165,12 @@ export function createCourse(opts) {
     const artifacts = (args.artifacts && typeof args.artifacts === 'object') ? args.artifacts : {}
     if (outcomes.length === 0) return deny('VMU_INVALID_ARGUMENT', 'align 需要 outcomes（学习成果清单）', '给出成果列表', enforced)
     if (c.requireEvidence) {
-      enforced.push('vmu.course.requireEvidence')
+      mark(enforced, 'vmu.course.requireEvidence')
       const missing = outcomes.filter((oc) => !Array.isArray(artifacts[oc]) || artifacts[oc].length === 0)
       if (missing.length) return deny('VMU_META_VALIDATION_FAILED', '成果缺证据（**点名**）：' + missing.join('、'), '给每条成果至少一个产物引用（**只引不复制** ✗）', enforced)
     }
     course.outcomes = outcomes.slice()
-    return { ok: true, courseId: course.id, outcomes: outcomes.length, enforced }
+    return { ok: true, courseId: course.id, outcomes: outcomes.length, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
   const submit = (a) => {
@@ -176,7 +178,7 @@ export function createCourse(opts) {
     const course = enrolled.get(String(args.courseId || ''))
     const c = cfg()
     const enforced = []
-    const evalKey = (k) => { if (enforced.indexOf(k) === -1) enforced.push(k) }
+    const evalKey = (k) => { mark(enforced, k) }
     if (!course) return deny('VMU_NOT_FOUND', '找不到课程', '先 open()', enforced)
     const who = String(args.who || '').trim()
     if (!who) return deny('VMU_INVALID_ARGUMENT', 'submit 需要 who', '给提交人', enforced)
@@ -206,6 +208,7 @@ export function createCourse(opts) {
       ok: true, submissionId: id, attempt, maxAttempts: c.maxAttempts,
       latePolicy: args.late === true ? { applied: true, rule: 'latePenaltyRatio', ratio: c.latePenaltyRatio, additive: c.gradeChangeAdditive } : { applied: false, rule: 'none' },
       enforced,
+      enforcedScope: ENFORCED_SCOPE,
     }
   }
 
@@ -214,7 +217,7 @@ export function createCourse(opts) {
     const sub = submissions.get(String(args.submissionId || ''))
     const c = cfg()
     const enforced = []
-    const evalKey = (k) => { if (enforced.indexOf(k) === -1) enforced.push(k) }
+    const evalKey = (k) => { mark(enforced, k) }
     if (!sub) return deny('VMU_NOT_FOUND', '找不到提交 ' + String(args.submissionId || ''), '先 submit() 取 id', enforced)
     const by = String(args.by || '').trim()
     if (!by) return deny('VMU_INVALID_ARGUMENT', 'review 需要 by', '给评审人', enforced)
@@ -227,9 +230,9 @@ export function createCourse(opts) {
     const need = Math.min(c.reviewersPerSubmission, c.reviewRounds * c.reviewersPerSubmission)
     if (sub.reviews.length < c.reviewersPerSubmission) {
       evalKey('vmu.course.reviewersPerSubmission')
-      return { ok: true, submissionId: sub.id, reviews: sub.reviews.length, needed: c.reviewersPerSubmission, complete: false, blind: c.blindReview, enforced }
+      return { ok: true, submissionId: sub.id, reviews: sub.reviews.length, needed: c.reviewersPerSubmission, complete: false, blind: c.blindReview, enforced, enforcedScope: ENFORCED_SCOPE }
     }
-    return { ok: true, submissionId: sub.id, reviews: sub.reviews.length, needed: need, complete: true, blind: c.blindReview, peerWeight: c.peerWeight, enforced }
+    return { ok: true, submissionId: sub.id, reviews: sub.reviews.length, needed: need, complete: true, blind: c.blindReview, peerWeight: c.peerWeight, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
   /** 评分：`gradeScale`／`passMark` 越界 ⇒ 拒（本面以参数给出尺度与及格线 ✓）。 */
@@ -242,7 +245,7 @@ export function createCourse(opts) {
     const ceil = Number(readKey('vmu.course.gradeScaleMax'))
     const top = Number.isFinite(ceil) && ceil > 0 ? ceil : 100
     const passMark = Number(args.passMark === undefined ? readKey('vmu.course.passMark') : args.passMark)
-    if (readKey('vmu.course.passMark') !== undefined) enforced.push('vmu.course.passMark')
+    if (readKey('vmu.course.passMark') !== undefined) mark(enforced, 'vmu.course.passMark')
     const score = Number(args.score)
     if (!Number.isFinite(score) || score < 0 || score > top) {
       return deny('VMU_META_VALIDATION_FAILED', '分数越界：' + String(args.score) + ' ∉ [0,' + top + ']（尺度上限 ' + top + '）', '在尺度内给分；尺度来自 vmu.course.gradeScale*', enforced)
@@ -251,7 +254,7 @@ export function createCourse(opts) {
       return Object.assign(deny('VMU_META_VALIDATION_FAILED', '未达及格线：' + score + ' < ' + passMark + '（vmu.course.passMark）', '补考或复核', enforced), { passed: false, score, passMark })
     }
     sub.grade = score
-    return { ok: true, submissionId: sub.id, score, passMark: Number.isFinite(passMark) ? passMark : null, passed: true, enforced }
+    return { ok: true, submissionId: sub.id, score, passMark: Number.isFinite(passMark) ? passMark : null, passed: true, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
   /** 认证证据包：**缺引用 ⇒ 拒** ✗✓。 */
@@ -259,12 +262,12 @@ export function createCourse(opts) {
     const args = a || {}
     const c = cfg()
     const enforced = []
-    if (c.requireEvidence) enforced.push('vmu.course.requireEvidence')
+    if (c.requireEvidence) mark(enforced, 'vmu.course.requireEvidence')
     const claims = Array.isArray(args.claims) ? args.claims : []
     if (!claims.length) return deny('VMU_INVALID_ARGUMENT', 'evidencePack 需要 claims', '给自评主张清单', enforced)
     const missing = claims.filter((x) => !x || !Array.isArray(x.refs) || x.refs.length === 0).map((x) => String((x && x.claim) || '（无题）'))
     if (c.requireEvidence && missing.length) return deny('VMU_META_VALIDATION_FAILED', '认证证据包缺引用（**点名**）：' + missing.join('、'), '每条主张至少一个证据引用（只引不复制 ✗）', enforced)
-    return { ok: true, claims: claims.length, enforced }
+    return { ok: true, claims: claims.length, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
   const status = (a) => {

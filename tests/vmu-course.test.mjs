@@ -206,6 +206,42 @@ test('keysUsed() equals the wired set, each is really read, and enforced only li
   passed += 1
 })
 
+// ⑤ D3（回执级口径）：每个成功回执与每个拒绝都带 enforcedScope；完整场景无重复；fired ⊆ enforced
+test('D3: every receipt and every refusal carries enforcedScope, with no duplicate entries', () => {
+  const c = co()
+  const course = c.open({ title: 'C' })
+  assert.equal(course.enforcedScope, 'evaluated-so-far')
+  const enr = c.enroll({ courseId: course.courseId, who: 's1', approved: true })
+  assert.equal(enr.enforcedScope, 'evaluated-so-far')
+  const al = c.align({ courseId: course.courseId, outcomes: ['o1'], artifacts: { o1: ['a'] } })
+  assert.equal(al.enforcedScope, 'evaluated-so-far')
+  const sub = c.submit({ courseId: course.courseId, who: 's1', rubric: 'r' })
+  assert.equal(sub.enforcedScope, 'evaluated-so-far')
+  const rev = c.review({ submissionId: sub.submissionId, by: 'p1', score: 9 })
+  assert.equal(rev.enforcedScope, 'evaluated-so-far')
+  const gr = c.grade({ submissionId: sub.submissionId, score: 90 })
+  assert.equal(gr.enforcedScope, 'evaluated-so-far')
+  const ep = c.evidencePack({ claims: [{ claim: 'c1', refs: ['r1'] }] })
+  assert.equal(ep.enforcedScope, 'evaluated-so-far')
+  // 该面用 `return deny(...)`（**返回**具名拒绝对象，不抛）⇒ 直接取返回值断言口径 ✓
+  const refusal = c.open({})
+  assert.ok(refusal && refusal.ok === false && typeof refusal.code === 'string', 'a refused call returns the named refusal value')
+  assert.equal(refusal.enforcedScope, 'evaluated-so-far')
+  assert.ok(Array.isArray(refusal.enforced))
+  const receipts = [course, enr, al, sub, rev, gr, ep].filter((r) => Array.isArray(r.enforced))
+  assert.ok(receipts.length >= 6, 'the scenario produced receipts to check')
+  assert.ok(c.status({ courseId: course.courseId }).ok === true, 'the status report still answers')
+  for (const r of receipts) {
+    assert.equal(r.enforcedScope, 'evaluated-so-far')
+    assert.equal(new Set(r.enforced).size, r.enforced.length)
+    if (Array.isArray(r.fired)) {
+      assert.equal(new Set(r.fired).size, r.fired.length)
+      for (const k of r.fired) assert.ok(r.enforced.includes(k), 'fired ⊆ enforced')
+    }
+  }
+  passed += 1
+})
+
 for (const c of cases) {
   try { await c.f(); console.log('ok - ' + c.n) } catch (e) { failed += 1; console.log('FAIL - ' + c.n + ' :: ' + String((e && e.message) || e)) }
 }

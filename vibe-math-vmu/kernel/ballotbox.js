@@ -56,6 +56,8 @@ export function createBallotBox(opts) {
   const refusals = new Map()
   const bumpRefusal = (code) => { refusals.set(code, (refusals.get(code) || 0) + 1) }
   const ENFORCED_SCOPE = 'evaluated-so-far'
+  // 入列前查重（D3 统一口径 ✓）：同一个键在一份回执里**只出现一次** ✗✓ —— **不改** `enforced` 的数组语义 ✓
+  const mark = (list, key) => { if (key && list.indexOf(key) === -1) list.push(key); return list }
   const deny = (code, msg, hint, enforced) => {
     bumpRefusal(code)
     // 拒绝一律**带上 `enforced`**（数组 ✓，可空 ✓，**不得 `undefined`** ✗✓）—— 照 `mathtools.js` 口径 ✓
@@ -110,7 +112,7 @@ export function createBallotBox(opts) {
     const c = cfg()
     // **真实求值列表**（求值点即列举点 ✓；未求值/未改变行为者**不得**出现 ✗✓）
     const enforced = []
-    const evalKey = (k) => { if (enforced.indexOf(k) === -1) enforced.push(k) }
+    const evalKey = (k) => { mark(enforced, k) }
     evalKey('vmu.ballot.method')                                        // 用于 method 白名单校验 ⇒ 真求值 ✓
     if (c.secrecy === true) evalKey('vmu.ballot.secrecy')               // 只有"开"才改变可观测行为（sealed=true）✓
     // 注：`abstainAllowed` **不在此处列举** ✗✓（open 读了它但不改变本次结果 ⇒ 留到真正起作用的 cast 拒绝处 ✓）
@@ -123,7 +125,7 @@ export function createBallotBox(opts) {
     const box = { id, question, options, at: clock(), round: 1, votes: new Map(), abstain: new Map(), absent: [], recused: [], sealed: c.secrecy, tieUsed: '', rounds: 0, enforced }
     boxes.set(id, box)
     emit({ type: 'ballot.open', id })
-    return { ok: true, boxId: id, round: box.round, sealed: box.sealed, enforced }
+    return { ok: true, boxId: id, round: box.round, sealed: box.sealed, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
   const cast = (a) => {
@@ -140,21 +142,21 @@ export function createBallotBox(opts) {
       // `true` 时弃权**照样成功** ⇒ **不入列** ✓（否则就是"读"而非"起作用" ✗）。
       if (!c.abstainAllowed) return deny('VMU_BALLOT_ABSTAIN_NOT_ALLOWED', '该配置不允许弃权（abstainAllowed=false）', '打开它，或给出选项', ['vmu.ballot.abstainAllowed'])
       box.abstain.set(by, clock())
-      return { ok: true, boxId: box.id, kind: 'abstain', sealed: box.sealed, enforced }
+      return { ok: true, boxId: box.id, kind: 'abstain', sealed: box.sealed, enforced, enforcedScope: ENFORCED_SCOPE }
     }
     const choice = String(args.choice || '')
     if (box.options.indexOf(choice) === -1) return deny('VMU_CONFLICT', '选项不在票面上：' + choice, '可选：' + box.options.join('、'))
-    if (c.recuseDeclareMode === 'required' && args.recuse !== undefined) enforced.push('vmu.ballot.recuseDeclareMode')
+    if (c.recuseDeclareMode === 'required' && args.recuse !== undefined) mark(enforced, 'vmu.ballot.recuseDeclareMode')
     if (args.recuse === true) {
-      enforced.push('vmu.ballot.recusePublic')
+      mark(enforced, 'vmu.ballot.recusePublic')
       box.recused.push(by)
       if (c.recusePublic) emit({ type: 'ballot.recuse', boxId: box.id, by })
-      return { ok: true, boxId: box.id, kind: 'recused', sealed: box.sealed, enforced }
+      return { ok: true, boxId: box.id, kind: 'recused', sealed: box.sealed, enforced, enforcedScope: ENFORCED_SCOPE }
     }
     box.votes.set(by, String(choice))
-    if (c.proxyMode === 'on' && args.proxyFor) { enforced.push('vmu.ballot.proxyMode'); if (c.proxyChainMaxDepth > 0) enforced.push('vmu.ballot.proxyChainMaxDepth') }
+    if (c.proxyMode === 'on' && args.proxyFor) { mark(enforced, 'vmu.ballot.proxyMode'); if (c.proxyChainMaxDepth > 0) mark(enforced, 'vmu.ballot.proxyChainMaxDepth') }
     if (c.quadraticCreditCap > 0 && Number(args.credits) > c.quadraticCreditCap) { return deny('VMU_CONFLICT', 'credits 超上限 ' + c.quadraticCreditCap + '（`vmu.ballot.quadraticCreditCap`）', '调小 credits', ['vmu.ballot.quadraticCreditCap']) }
-    return { ok: true, boxId: box.id, kind: 'vote', sealed: box.sealed, enforced }
+    return { ok: true, boxId: box.id, kind: 'vote', sealed: box.sealed, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
   /** 缺席/未到（**与弃权分开计数** ✗✓）。 */
@@ -180,7 +182,7 @@ export function createBallotBox(opts) {
       // **点名是哪把尺子不够** ✗✓（`minVotes` 还是 `minVotesRatio`）—— 求值点即列举点 ✓
       const ratioFloor = Math.ceil(c.minVotesRatio * (box.votes.size + box.abstain.size + box.absent.length))
       const boundBy = c.minVotes >= ratioFloor ? 'vmu.ballot.minVotes' : 'vmu.ballot.minVotesRatio'
-      if (enforced.indexOf(boundBy) === -1) enforced.push(boundBy)
+      mark(enforced, boundBy)
       return Object.assign(deny('VMU_BALLOT_MIN_VOTES_NOT_MET', '法定人数不足：' + floorBase + ' < ' + floor + '（受限键：`' + boundBy + '`）⇒ **本次不是"未通过"，而是"未成立"** ✗✓',
         '继续收票/催票；不得把不足法定人数的结果当否决 ✗'), { tally: { cast: castN, votes: box.votes.size, abstain: box.abstain.size, absent: box.absent.length, floor, floorBase, boundBy }, enforced })
     }
@@ -192,16 +194,16 @@ export function createBallotBox(opts) {
     const tie = !!(top && second && top.n === second.n)
     // **平票**：先看是否进第二轮（✓ 顺序很重要：runoff 必须在 unresolved 拒之前），再按 tieRule 处置并自曝 ✓
     if (tie) {
-      enforced.push('vmu.ballot.tieRule')
+      mark(enforced, 'vmu.ballot.tieRule')
       if (c.method === 'runoff' && c.runoffTopN >= 2 && box.round < c.roundsMax) {
-        enforced.push('vmu.ballot.runoffTopN', 'vmu.ballot.roundsMax')
+        mark(enforced, 'vmu.ballot.runoffTopN'); mark(enforced, 'vmu.ballot.roundsMax')
         box.round += 1
         box.votes = new Map(); box.abstain = new Map()
         emit({ type: 'ballot.runoff', boxId: box.id, round: box.round })
-        return { ok: true, boxId: box.id, round: 2, runoff: ranked.slice(0, c.runoffTopN).map((x) => x.option), tally: { cast: castN, votes: castN, abstain: 0, absent: box.absent.length, floor, floorBase }, enforced, note: '进入第二轮 ✓' }
+        return { ok: true, boxId: box.id, round: 2, runoff: ranked.slice(0, c.runoffTopN).map((x) => x.option), tally: { cast: castN, votes: castN, abstain: 0, absent: box.absent.length, floor, floorBase }, enforced, enforcedScope: ENFORCED_SCOPE, note: '进入第二轮 ✓' }
       }
       if (c.method === 'runoff' && box.round >= c.roundsMax) {
-        enforced.push('vmu.ballot.roundsMax')
+        mark(enforced, 'vmu.ballot.roundsMax')
         return Object.assign(deny('VMU_BALLOT_ROUNDS_EXHAUSTED', '轮次用尽（roundsMax=' + c.roundsMax + '）仍平票', '人工裁定或调大 roundsMax'), { enforced })
       }
       if (c.tieRule === 'unresolved') {
@@ -213,22 +215,22 @@ export function createBallotBox(opts) {
     }
     // 第二轮（runoffTopN）
     if (c.method === 'runoff' && c.runoffTopN >= 2 && box.round < c.roundsMax && tie) {
-      enforced.push('vmu.ballot.runoffTopN', 'vmu.ballot.roundsMax')
+      mark(enforced, 'vmu.ballot.runoffTopN'); mark(enforced, 'vmu.ballot.roundsMax')
       box.round += 1
       box.votes = new Map(); box.abstain = new Map()
       emit({ type: 'ballot.runoff', boxId: box.id, round: box.round })
-      return { ok: true, boxId: box.id, round: 2, runoff: ranked.slice(0, c.runoffTopN).map((x) => x.option), tally: { cast: castN, votes: castN, abstain: 0, absent: box.absent.length, floor, floorBase }, enforced, note: '进入第二轮 ✓' }
+      return { ok: true, boxId: box.id, round: 2, runoff: ranked.slice(0, c.runoffTopN).map((x) => x.option), tally: { cast: castN, votes: castN, abstain: 0, absent: box.absent.length, floor, floorBase }, enforced, enforcedScope: ENFORCED_SCOPE, note: '进入第二轮 ✓' }
     }
     if (c.method === 'runoff' && box.round >= c.roundsMax && tie) {
-      enforced.push('vmu.ballot.roundsMax')
+      mark(enforced, 'vmu.ballot.roundsMax')
       return Object.assign(deny('VMU_BALLOT_ROUNDS_EXHAUSTED', '轮次用尽（roundsMax=' + c.roundsMax + '）仍平票', '人工裁定或调大 roundsMax'), { enforced })
     }
     box.rounds += 1
     const audit = c.auditReadOnly ? [] : null
-    if (c.auditReadOnly) enforced.push('vmu.ballot.auditReadOnly')
-    if (c.auditRetentionMs > 0) enforced.push('vmu.ballot.auditRetentionMs')
-    if (c.processReadingsVisible) enforced.push('vmu.ballot.processReadingsVisible')
-    if (c.secrecy && c.secrecyRecordFact) enforced.push('vmu.ballot.secrecyRecordFact')
+    if (c.auditReadOnly) mark(enforced, 'vmu.ballot.auditReadOnly')
+    if (c.auditRetentionMs > 0) mark(enforced, 'vmu.ballot.auditRetentionMs')
+    if (c.processReadingsVisible) mark(enforced, 'vmu.ballot.processReadingsVisible')
+    if (c.secrecy && c.secrecyRecordFact) mark(enforced, 'vmu.ballot.secrecyRecordFact')
     return {
       ok: true, boxId: box.id, round: box.round, outcome,
       // **秘密表决 ⇒ 明细不可回收，但计数保留** ✓
@@ -237,6 +239,7 @@ export function createBallotBox(opts) {
       tieUsed: box.tieUsed || '',
       tally: { cast: castN, votes: box.votes.size, abstain: box.abstain.size, absent: box.absent.length, floor, floorBase, ranked },
       enforced: enforced.slice(),
+      enforcedScope: ENFORCED_SCOPE,
       audit,
     }
   }

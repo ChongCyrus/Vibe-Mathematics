@@ -208,6 +208,35 @@ test('every refusal carries an array enforced (never undefined) and names the ke
   passed += 1
 })
 
+// ⑤ D3（回执级口径）：每个成功回执与每个拒绝都带 enforcedScope；完整场景无重复；fired ⊆ enforced
+test('D3: every receipt and every refusal carries enforcedScope, with no duplicate entries', () => {
+  const b = box({})
+  const o = b.open(OPEN)
+  assert.equal(o.enforcedScope, 'evaluated-so-far')
+  const v1 = b.cast({ boxId: o.boxId, by: 'm1', choice: 'a' })
+  assert.equal(v1.enforcedScope, 'evaluated-so-far')
+  const abs = b.cast({ boxId: o.boxId, by: 'm2', choice: 'abstain' })
+  assert.equal(abs.enforcedScope, 'evaluated-so-far')
+  // 该面用 `return deny(...)`（**返回**具名拒绝对象，不抛）⇒ 直接取返回值断言口径 ✓
+  const refusal = b.cast({ boxId: o.boxId, by: 'm3', choice: 'zzz' })
+  assert.ok(refusal && refusal.ok === false && typeof refusal.code === 'string', 'a refused call returns the named refusal value')
+  assert.equal(refusal.enforcedScope, 'evaluated-so-far')
+  assert.ok(Array.isArray(refusal.enforced))
+  const closed = b.close({ boxId: o.boxId })
+  assert.equal(closed.enforcedScope, 'evaluated-so-far')
+  const receipts = [o, v1, abs, closed].filter((r) => Array.isArray(r.enforced))
+  assert.ok(receipts.length === 4, 'the scenario produced receipts to check')
+  for (const r of receipts) {
+    assert.equal(r.enforcedScope, 'evaluated-so-far')
+    assert.equal(new Set(r.enforced).size, r.enforced.length)
+    if (Array.isArray(r.fired)) {
+      assert.equal(new Set(r.fired).size, r.fired.length)
+      for (const k of r.fired) assert.ok(r.enforced.includes(k), 'fired ⊆ enforced')
+    }
+  }
+  passed += 1
+})
+
 for (const c of cases) {
   try { await c.f(); console.log('ok - ' + c.n) } catch (e) { failed += 1; console.log('FAIL - ' + c.n + ' :: ' + String((e && e.message) || e)) }
 }

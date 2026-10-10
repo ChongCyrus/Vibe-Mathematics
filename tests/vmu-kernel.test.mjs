@@ -457,6 +457,70 @@ if (SELF_PROBE) {
     'E2 hard rule[+]: with a contractual timer both the consumer and status agree it is usable', JSON.stringify({ mode: armed && armed.mode }))
 }
 
+// ---- E-6 (task-163): the runtime receipt is graded by hot class, and the view is READ-ONLY -------------
+{
+  // ① H1 ("next turn") — checkpointEvery used to be frozen at construction: receipt ok, chain still 100
+  const k = m.createKernel({ clock, settings: { 'vmu.audit.chain.checkpointEvery': 100 } })
+  ok(k.auditchain.status().checkpointEvery === 100, 'H1: the declared value rules before the write')
+  const r1 = k.setSettingsValue('vmu.audit.chain.checkpointEvery', 7, { by: 'office' })
+  ok(r1.hot === 'H1' && r1.requiresRestart === false && r1.applied === 'immediate',
+    'H1 receipt: hot class is named and requiresRestart is false', JSON.stringify({ hot: r1.hot, restart: r1.requiresRestart }))
+  ok(k.auditchain.status().checkpointEvery === 7,
+    'H1 BEHAVIOUR: the consumer observes the new value (was frozen at 100 while the receipt said ok)',
+    String(k.auditchain.status().checkpointEvery))
+  ok(r1.requiresRestart === false && k.auditchain.status().checkpointEvery === 7,
+    'H1: the receipt MATCHES the observed behaviour (receipt = verifiable fact)')
+  // ② H0 ("immediate") — dryRun reaches the status AND the bus
+  const k2 = m.createKernel({ clock })
+  ok(k2.status().settings.dryRun === false && k2.bus.isDryRun() === false, 'H0: dryRun starts false in both places')
+  const r2 = k2.setSettingsValue('vmu.middleware.dryRun', true, { by: 'office' })
+  ok(r2.hot === 'H0' && r2.requiresRestart === false && r2.liveApplied.includes('bus'),
+    'H0 receipt: names the consumers it reached live (bus included)', JSON.stringify(r2.liveApplied))
+  ok(k2.status().settings.dryRun === true && k2.bus.isDryRun() === true,
+    'H0 BEHAVIOUR: status() and the BUS both observe true (was: receipt ok, both still false)',
+    JSON.stringify({ status: k2.status().settings.dryRun, bus: k2.bus.isDryRun() }))
+  ok(Array.isArray(r2.pendingConsumers) && r2.pendingConsumers.includes('script-bridge'),
+    'H0 honesty: a consumer that captured the option at construction is DISCLOSED as pending, not claimed',
+    JSON.stringify(r2.pendingConsumers))
+  // ③ H2 ("next session") — the value is stored, nothing pretends it applied, and the receipt says so
+  const k3 = m.createKernel({ clock })
+  const r3 = k3.setSettingsValue('vmu.core.enabled', false, { by: 'office' })
+  ok(r3.hot === 'H2' && r3.requiresRestart === true && r3.applied === 'next-session',
+    'H2 receipt: requiresRestart:true (was a bare {ok:true} while kernel.enabled stayed true)', JSON.stringify({ hot: r3.hot, restart: r3.requiresRestart }))
+  ok(k3.enabled === true, 'H2: the running kernel is honestly UNCHANGED (no false claim of immediate effect)')
+  const st3 = k3.status().settings
+  ok(st3.lastRuntimeWrite && st3.lastRuntimeWrite.requiresRestart === true && st3.lastRuntimeWrite.hot === 'H2',
+    'H2: status() SELF-DISCLOSES the last runtime write and its grading', JSON.stringify(st3.lastRuntimeWrite))
+  ok(/H0\/H1/.test(st3.hotGrading) && /requiresRestart/.test(st3.hotGrading),
+    'status() states the hot-grading promise in words too')
+  // ④ owner check survives the grading change
+  let denied = null
+  try { k3.setSettingsValue('vmu.core.enabled', true, { by: 'member-1' }) } catch (e) { denied = e }
+  ok(denied && denied.code === 'VMU_NOT_PERMITTED', 'the declared-owner check still runs (grading never bypasses it)')
+}
+
+// ---- E-6b (task-163): settingsView refuses to write through --------------------------------------------
+{
+  const k = m.createKernel({ clock })
+  const view = k.settingsView()
+  ok(typeof view === 'object' && typeof view.get === 'function', 'the kernel exposes the sanctioned read-only view')
+  const before = Object.keys(k.settingsSnapshot()).sort().join(',')
+  let setErr = null
+  try { view['vmu.safety.pathPolicy'] = 'allow-all' } catch (e) { setErr = e }
+  ok(setErr && setErr.code === 'VMU_NOT_PERMITTED' && /READ-ONLY/.test(setErr.message),
+    'write-through is a NAMED refusal (was: the key was silently added to kernel settings)', setErr && setErr.code)
+  ok(/setSettingsValue/.test(String(setErr.hint)), 'the refusal points at the sanctioned writer', setErr && setErr.hint)
+  ok(!('vmu.safety.pathPolicy' in k.settingsSnapshot()) && Object.keys(k.settingsSnapshot()).sort().join(',') === before,
+    'the kernel settings object is unchanged after the refused write (no pollution)')
+  let delErr = null
+  try { delete view['vmu.audit.chain.checkpointEvery'] } catch (e) { delErr = e }
+  ok(delErr && delErr.code === 'VMU_NOT_PERMITTED', 'delete-through is refused too', delErr && delErr.code)
+  // the view is still LIVE for reads: a sanctioned write is visible through it immediately
+  k.setSettingsValue('vmu.audit.chain.checkpointEvery', 3, { by: 'office' })
+  ok(view['vmu.audit.chain.checkpointEvery'] === 3 && view.get('vmu.audit.chain.checkpointEvery') === 3,
+    'reads stay LIVE (property and get() both see the sanctioned write)')
+}
+
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

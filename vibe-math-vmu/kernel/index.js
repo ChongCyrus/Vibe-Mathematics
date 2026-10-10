@@ -189,6 +189,18 @@ export function createKernel({
     getOwnPropertyDescriptor: (target, key) => (key === 'get'
       ? { value: (k) => target[k], enumerable: false, configurable: true }
       : Reflect.getOwnPropertyDescriptor(target, key)),
+    // TASK-163: the view was LIVE for reads but WRITABLE for writes, so `view['vmu.safety.pathPolicy'] =
+    // 'allow-all'` silently ADDED the key to the kernel's own settings object — any consumer could change
+    // kernel settings, bypassing the declared-owner check in setSettingsValue(). A view is a VIEW: writing
+    // through it is refused by name, and the hint names the sanctioned path.
+    set: (target, key) => {
+      throw refuse('VMU_NOT_PERMITTED', 'settingsView is READ-ONLY: refusing to write "' + String(key) + '" through the view',
+        'call kernel.setSettingsValue(key, value, { by }) so the declared-owner check runs — a view that writes through would let any consumer change kernel settings')
+    },
+    deleteProperty: (target, key) => {
+      throw refuse('VMU_NOT_PERMITTED', 'settingsView is READ-ONLY: refusing to delete "' + String(key) + '" through the view',
+        'call kernel.unsetSettingsValue(key) instead (it is the sanctioned path and reports a receipt)')
+    },
   })
   // CONSUMER WIRING (round 19, the point an independent reviewer made): a clock guard nobody uses changes
   // nothing - a backwards clock would still extend every TTL and keep every pending idempotency entry alive
@@ -200,7 +212,10 @@ export function createKernel({
   // discarded the durable ledger. It is built early enough to be handed to the ledger at construction.
   const projmigrate = createProjectionMigrator({ settings: settingsView, bus: null, clock, log })
   const enabled = settings['vmu.core.enabled'] !== false
-  const dryRun = settings['vmu.middleware.dryRun'] === true
+  // TASK-163: `dryRun` must be LIVE for H0 ("immediate") writes, so it is a mutable kernel-level fact and
+  // setSettingsValue() pushes the new value into the bus (bus.setDryRun) as well as into this variable.
+  let dryRun = settings['vmu.middleware.dryRun'] === true
+  const runtimeWrites = []
 
   if (!enabled) {
     // Disabled means INERT, and it says so: no store, no bus, no hooks, no prompt work.
@@ -281,19 +296,36 @@ export function createKernel({
   //      is nonzero) so the factory anchors without any host help;
   //   2) `auditVerify()` uses the anchor when one exists, instead of always taking the unanchored path;
   //   3) an explicit `auditCheckpoint()` lets an operator force one and see the receipt.
-  const auditCheckpointEvery = Number.isInteger(settings['vmu.audit.chain.checkpointEvery'])
+  const auditCheckpointEveryDefault = Number.isInteger(settings['vmu.audit.chain.checkpointEvery'])
     && settings['vmu.audit.chain.checkpointEvery'] > 0 ? settings['vmu.audit.chain.checkpointEvery'] : 100
+  // TASK-163 (the sixth "receipt lies" case): this knob used to be READ ONCE here and then injected as a
+  // CONSTANT both as the property and through the `get` seam, so `setSettingsValue('…checkpointEvery', 7)`
+  // returned `{ok:true}` while `auditchain.status().checkpointEvery` stayed 100 — the receipt lied. The
+  // declared hot class is H1 ("next turn"), so the overlay is now LIVE: both channels read the CURRENT
+  // setting, with the declared default kept as the fallback.
+  const liveCheckpointEvery = () => (Number.isInteger(settings['vmu.audit.chain.checkpointEvery']) && settings['vmu.audit.chain.checkpointEvery'] > 0
+    ? settings['vmu.audit.chain.checkpointEvery'] : auditCheckpointEveryDefault)
+  const auditSettings = new Proxy(settings, {
+    get: (t, k) => {
+      if (k === 'get') return (kk) => (kk === 'vmu.audit.chain.checkpointEvery' ? liveCheckpointEvery() : t[kk])
+      if (k === 'vmu.audit.chain.checkpointEvery') return liveCheckpointEvery()
+      return t[k]
+    },
+    has: (t, k) => k === 'get' || k in t,
+    ownKeys: (t) => [...new Set([...Reflect.ownKeys(t), 'get'])],
+    getOwnPropertyDescriptor: (t, k) => (k === 'get'
+      ? { value: (kk) => t[kk], enumerable: false, configurable: true }
+      : Reflect.getOwnPropertyDescriptor(t, k)),
+  })
   // N1 CONSUMER WIRING (round 20): the chain must exist BEFORE the audit ring, because the ring is where rows
   // are born - a chain built afterwards could only verify a history nobody had fed it.
   // The hash seam is real sha256 here; a host that wants its own can override it, and the module still refuses
   // rather than inventing a hash when no seam is given at all.
   const auditchain = createAuditChain({
     // The module reads this knob BOTH ways (a get() seam and a plain property), and a wiring that only satisfies
-    // one of them is the same "seam nobody triggers" defect this round exists to fix - so both are provided.
-    settings: Object.assign({}, settings, {
-      get: (k) => (k === 'vmu.audit.chain.checkpointEvery' ? auditCheckpointEvery : settings[k]),
-      'vmu.audit.chain.checkpointEvery': auditCheckpointEvery,
-    }),
+    // one of them is the same "seam nobody triggers" defect this round exists to fix - so both are provided,
+    // and both are now LIVE (task-163).
+    settings: auditSettings,
     bus: injectedBus, clock, log,
     anchor: auditAnchor,
     // HMAC is used ONLY when the host supplies a secrets seam; otherwise the chain stays unkeyed and SAYS so
@@ -334,7 +366,9 @@ export function createKernel({
       fingerprintPolicy: settings['vmu.records.fingerprintPolicy'],
       // THE PATH POLICY REACHES THE WRITE SURFACE (docs/04 搂11): the library gates its writes through
       // kernel/guard.js, so `vmu.safety.pathPolicy` is a consumer rather than a declaration.
-      settings,
+      // TASK-163: it gets the READ-ONLY LIVE VIEW (not the raw object) — a consumer handed the raw settings
+      // could write straight into kernel settings, which is exactly the write-through this round closed.
+      settings: settingsView,
       clock,
     })
     : null
@@ -823,6 +857,13 @@ export function createKernel({
 
     /** The settings this assembly was constructed with (used by pack planning and residue checks). */
     settingsSnapshot() { return Object.assign({}, settings) },
+    /**
+     * TASK-163: the sanctioned READ-ONLY live view of the settings, for consumers that need to read keys at
+     * call time (property reads and `get(k)` both stay live). It is NOT writable: `view[k] = v` and
+     * `delete view[k]` are refused by name, because a view that writes through let any consumer change kernel
+     * settings without the declared-owner check. Use setSettingsValue(key, value, { by }) to write.
+     */
+    settingsView() { return settingsView },
 
     /**
      * Apply a pack's settings as a LAYER on the constructed values (docs/10 搂2). Conflicts are refused
@@ -863,8 +904,8 @@ export function createKernel({
      */
     setSettingsValue(key, value, { by = null } = {}) {
       if (by !== null && by !== undefined) {
-        const def = SETTING_DEFS.find((d) => d.key === key)
-        const owner = def ? def.who : null
+        const def0 = SETTING_DEFS.find((d) => d.key === key)
+        const owner = def0 ? def0.who : null
         const delegable = Array.isArray(settings['vmu.safety.delegableKeys'])
           && settings['vmu.safety.delegableKeys'].includes(key)
         if (owner && String(by) !== String(owner) && !delegable) {
@@ -874,7 +915,44 @@ export function createKernel({
       }
       settings[key] = value
       markSettingWriter(settings, key, 'runtime')
-      return { ok: true, key, source: 'runtime' }
+      // TASK-163 (sixth "receipt lies" case): the receipt is graded by the DECLARED hot class, so it can never
+      // claim more than the kernel actually did.
+      //   · H2 ("next session") ⇒ the value is stored now and takes effect on the next start: the receipt MUST
+      //     carry `requiresRestart:true` (it used to say a bare `{ok:true}` while `kernel.enabled` stayed true).
+      //   · H0/H1 ("immediate"/"next turn") ⇒ the change is pushed into every consumer this kernel can reach
+      //     LIVE (the bus for dryRun; the audit chain reads its own knob live), and the receipt names exactly
+      //     which consumers were updated and which ones captured the option at construction (disclosed, never
+      //     claimed).
+      const def = SETTING_DEFS.find((d) => d.key === key)
+      const hot = def && def.hot ? String(def.hot) : null
+      const liveApplied = []
+      const pendingConsumers = []
+      if (key === 'vmu.middleware.dryRun') {
+        dryRun = value === true
+        liveApplied.push('kernel')
+        if (bus && typeof bus.setDryRun === 'function') { bus.setDryRun(dryRun); liveApplied.push('bus') }
+        // The script bridge took `dryRun` as a construction option and is NOT rebuilt here: disclosed as
+        // PENDING so the receipt stays a verifiable fact rather than a promise.
+        pendingConsumers.push('script-bridge')
+      }
+      if (key === 'vmu.audit.chain.checkpointEvery') liveApplied.push('auditchain (live read)')
+      const requiresRestart = hot === 'H2'
+      const receipt = {
+        ok: true, key, source: 'runtime', hot,
+        requiresRestart,
+        applied: requiresRestart ? 'next-session' : 'immediate',
+        liveApplied,
+        pendingConsumers,
+        value: value === undefined ? null : value,
+        at: clock(),
+        note: requiresRestart
+          ? 'hot class ' + hot + ': this key is read ONCE at construction, so the value is stored NOW and takes effect on the next start (requiresRestart:true — the receipt does not claim more)'
+          : (pendingConsumers.length
+            ? 'applied live to ' + (liveApplied.join(', ') || '(the settings object only)') + '; NOT yet visible to ' + pendingConsumers.join(', ') + ' (they captured the option at construction — disclosed, not claimed)'
+            : 'applied immediately (hot class ' + String(hot) + '): every consumer reads this key live'),
+      }
+      runtimeWrites.push({ key, hot, by, requiresRestart, liveApplied: liveApplied.slice(), pendingConsumers: pendingConsumers.slice(), at: receipt.at })
+      return receipt
     },
     unsetSettingsValue(key) { delete settings[key]; return { ok: true, key } },
 
@@ -947,7 +1025,12 @@ export function createKernel({
       return {
         enabled: true,
         active: started,
-        settings: { keys: Object.keys(settings).length, engineEnabled: enabled, dryRun, resolved },
+        settings: { keys: Object.keys(settings).length, engineEnabled: enabled, dryRun, resolved,
+          // TASK-163: the hot-grading promise is SELF-DISCLOSED here, and the last runtime write is shown with
+          // what it really applied — the receipt and this line are the same fact, not two opinions.
+          hotGrading: 'H0/H1 runtime writes are applied LIVE (and the receipt names the consumers); an H2 write is stored now and takes effect on the next start, and its receipt carries requiresRestart:true',
+          runtimeWrites: runtimeWrites.length,
+          lastRuntimeWrite: runtimeWrites.length ? Object.assign({}, runtimeWrites[runtimeWrites.length - 1]) : null },
         auditTail: auditRing.slice(-20),
         /** N1 consumer (round 20): verify the LIVE ring against the tamper-evident chain, row by row.
          *  Round 24: it uses the anchor when one exists - an unanchored verification must not be able to look
