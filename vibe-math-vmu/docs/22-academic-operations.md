@@ -895,100 +895,27 @@ AuditTuple := {
 
 ---
 
-## 14. 拟增错误码总表（全部为**规划码** ⛔，由 `03-§8` 唯一登记）
 
-| 码 | 语义 | 卷 |
+---
+
+## 14. 计划项裁决（**先审判、再实现** ✓）
+
+> **裁决口径（五问，任一"是"⇒ 留）**：① 是否**改变某个决定**？② 是否**可经 settings／中间件／pack 调控**？③ 是否**有消费者**（代码读点／有明确归属）？④ 去掉**是否真丢能力**？⑤ 是否**与别处重复**？
+> **五问全"否" ⇒ 判"不做 ✗"**；本节**只留一行＋理由**（**不删历史、也不重复展开** ✗✓）。
+
+**本卷的 90 个规划码不再在本卷重列** ✗ —— **唯一登记处是 `03-§8`**（生成块 ✓）。此处只留**裁决**：哪些**该做**、哪些**判不做 ✗**。
+
+| 族 | 裁决 | 理由（可核） |
 |---|---|---|
-| `VMU_EQUIP_NOT_REGISTERED` | 未登记设备被使用 | 22 |
-| `VMU_EQUIP_OWNER_REQUIRED` | 缺责任人 | 22 |
-| `VMU_EQUIP_SLOT_CONFLICT` | 预约冲突 | 22 |
-| `VMU_EQUIP_HOLD_LIMIT` | 超占用上限 | 22 |
-| `VMU_EQUIP_WAITLIST_FULL` | 候补满 | 22 |
-| `VMU_EQUIP_CALIBRATION_DUE` | 校准过期 | 22 |
-| `VMU_EQUIP_CERT_MISSING` | 缺证书 | 22 |
-| `VMU_EQUIP_MAINTENANCE_BLOCKED` | 维护中禁用 | 22 |
-| `VMU_EQUIP_CAPTURE_UNLINKED` | 采集数据未挂引用 | 22 |
-| `VMU_FUNDING_ACCOUNT_MISSING` | 无账户 | 22 |
-| `VMU_FUNDING_LINE_MISSING` | 无预算行 | 22 |
-| `VMU_FUNDING_OVER_BUDGET` | 超预算 | 22 |
-| `VMU_FUNDING_UNAPPROVED_EXPENSE` | 未批准支出 | 22 |
-| `VMU_FUNDING_APPROVAL_REQUIRED` | 需审批 | 22 |
-| `VMU_FUNDING_RECEIPT_MISSING` | 缺凭证 | 22 |
-| `VMU_FUNDING_COSTSHARE_UNBALANCED` | 分摊不守恒 | 22 |
-| `VMU_FUNDING_SETTLEMENT_OVERDUE` | 结算逾期 | 22 |
-| `VMU_FUNDING_AUDIT_PACK_INCOMPLETE` | 凭证包缺环 | 22 |
-| `VMU_IP_DISCLOSURE_REQUIRED` | 未披露 | 22 |
-| `VMU_IP_DISCLOSURE_INCOMPLETE` | 披露字段缺 | 22 |
-| `VMU_IP_PRIORART_MISSING` | 缺检索记录 | 22 |
-| `VMU_IP_OWNERSHIP_CONFLICT` | 权属冲突 | 22 |
-| `VMU_IP_CONTRIB_EVIDENCE_MISSING` | 贡献缺证据 | 22 |
-| `VMU_IP_PUBLICATION_HOLD` | 处于公开禁运 | 22 |
-| `VMU_IP_HOLD_EXEMPTION_REQUIRED` | 需豁免批准 | 22 |
-| `VMU_IP_CONFIDENTIALITY_BREACH` | 保密窗口违规 | 22 |
-| `VMU_IP_TRANSFER_UNLICENSED` | 无许可转移 | 22 |
-| `VMU_CONF_CFP_CLOSED` | 征稿已关 | 22 |
-| `VMU_CONF_SUBMISSION_INVALID` | 投稿不合规 | 22 |
-| `VMU_CONF_ASSIGNMENT_CONFLICT` | 分配冲突 | 22 |
-| `VMU_CONF_REVIEW_QUORUM_MISSING` | 评审不足额 | 22 |
-| `VMU_CONF_SCHEDULE_CONFLICT` | 日程冲突 | 22 |
-| `VMU_CONF_REGISTRATION_CLOSED` | 注册关闭 | 22 |
-| `VMU_CONF_CAP_REACHED` | 超容量 | 22 |
-| `VMU_CONF_FEE_UNPAID` | 费用未付 | 22 |
-| `VMU_OUTREACH_EVIDENCE_MISMATCH` | 传播证据不保真 | 22 |
-| `VMU_OUTREACH_REF_MISSING` | 结论句无回指 | 22 |
-| `VMU_OUTREACH_EMBARGO` | 禁运期内发布 | 22 |
-| `VMU_OUTREACH_MEDIA_UNAUTHORIZED` | 非发言人发声 | 22 |
-| `VMU_OUTREACH_ANONYMITY_BREACH` | 匿名被破坏 | 22 |
-| `VMU_OUTREACH_IMPACT_INCOMPLETE` | 影响记录缺失 | 22 |
-| `VMU_COLLAB_AGREEMENT_MISSING` | 无合作协议 | 22 |
-| `VMU_COLLAB_DSA_EXPIRED` | 共享协议过期 | 22 |
-| `VMU_COLLAB_SETTLEMENT_MISMATCH` | 对账不一致 | 22 |
-| `VMU_COLLAB_AUTHORSHIP_CONFLICT` | 联合署名冲突 | 22 |
-| `VMU_COMPLIANCE_CALENDAR_MISSED` | 合规项逾期 | 22 |
-| `VMU_COMPLIANCE_OVERDUE_BLOCK` | 逾期阻断 | 22 |
-| `VMU_COMPLIANCE_APPROVAL_MISSING` | 缺审批 | 22 |
-| `VMU_COMPLIANCE_EXPORT_BLOCKED` | 出口管制阻断 | 22 |
-| `VMU_COMPLIANCE_COI_UNDISCLOSED` | 未披露利益冲突 | 22 |
-| `VMU_COMPLIANCE_EVIDENCE_INCOMPLETE` | 证据包缺项 | 22 |
-| `VMU_CAPACITY_EXHAUSTED` | 容量耗尽 | 22 |
-| `VMU_CAPACITY_POOL_LOW` | 池低于阈值 | 22 |
-| `VMU_CAPACITY_PREEMPTED` | 被抢占 | 22 |
-| `VMU_CAPACITY_STORAGE_WARN` | 存储预警 | 22 |
-| `VMU_CAPACITY_FORECAST_STALE` | 预测过期 | 22 |
-| `VMU_CAPACITY_FACILITY_CONFLICT` | 设施占用冲突 | 22 |
-| `VMU_HR_CYCLE_CLOSED` | 招募/评审窗关闭 | 22 |
-| `VMU_HR_PERF_EVIDENCE_MISSING` | 绩效材料缺 | 22 |
-| `VMU_HR_TENURE_DECISION_DUE` | 任期决策到期 | 22 |
-| `VMU_HR_TENURE_QUORUM_MISSING` | 任期评审不足额 | 22 |
-| `VMU_HR_OFFBOARDING_INCOMPLETE` | 离职清单未闭合 | 22 |
-| `VMU_HR_APPEAL_OPEN` | 申诉进行中 | 22 |
-| `VMU_HR_AUTODECISION_FORBIDDEN` | 人事自动决策被禁 | 22 |
-| `VMU_CURRENCY_UNKNOWN` | 未登记币种（无精度） | 22 |
-| `VMU_ROUNDING_UNDEFINED` | 未声明舍入模式 | 22 |
-| `VMU_FX_RATE_MISSING` | 缺汇率快照（跨币种未带换算） | 22 |
-| `VMU_FX_DIRECTION_MISSING` | 汇率方向未显式 | 22 |
-| `VMU_FX_RATE_STALE` | 汇率超龄 | 22 |
-| `VMU_AMOUNT_NOT_INTEGER` | 金额非整数 minor units（浮点/小数） | 22 |
-| `VMU_SCALE_MISMATCH` | 同币种但精度位不一致 | 22 |
-| `VMU_MONEY_MIXED_CURRENCY` | 混币种直接运算 | 22 |
-| `VMU_MONEY_OVERFLOW` | 金额溢出 | 22 |
-| `VMU_MONEY_NEGATIVE_FORBIDDEN` | 禁止负金额（未开 `allowNegative`） | 22 |
-| `VMU_ALLOCATION_REMAINDER` | 分摊余数不守恒/不可归属 | 22 |
-| `VMU_BIOSAMPLE_NOT_REGISTERED` | 未登记样本被操作 | 22 |
-| `VMU_BIOSAMPLE_CHAIN_GAP` | **链式保管断链**（交接不连续/时间倒流/缺环） | 22 |
-| `VMU_BIOSAMPLE_FREEZE_THAW_LIMIT` | 冻融次数超阈值 | 22 |
-| `VMU_BIOSAMPLE_SUBJECT_LINK_FORBIDDEN` | 试图由样本反查受试者（映射默认不可逆） | 22 |
-| `VMU_BIOSAMPLE_DESTROYED` | 样本已销毁（不可再取用） | 22 |
-| `VMU_ENTITY_UNKNOWN` | 未知法律实体 | 22 |
-| `VMU_ENTITY_ACCOUNT_UNBOUND` | 账户未绑定实体 | 22 |
-| `VMU_TAX_FIELD_MISSING` | 发票/报销缺税务字段位 | 22 |
-| `VMU_CROSSBORDER_GATE_REQUIRED` | 跨境单据缺人类批准 | 22 |
-| `VMU_CROSSBORDER_CURRENCY_MISMATCH` | 实体辖区与单据币种不一致 | 22 |
-| `VMU_AGREEMENT_MISSING` | 无协议即共享/转移 | 22 |
-| `VMU_AGREEMENT_UNSIGNED` | **协议未签**（未签不得共享） | 22 |
-| `VMU_AGREEMENT_EXPIRED` | 协议已到期 | 22 |
-| `VMU_AGREEMENT_SCOPE_VIOLATION` | 请求超出协议范围/限制 | 22 |
-| `VMU_AGREEMENT_SIGNATURE_MISSING` | 缺签名引用 | 22 |
+| **设备台账／预约／校准／维护**（`VMU_EQUIP_*`） | **做 ✓** | 有**通用机制**（占用／冲突／候补／过期闸 ✓），与已实现的 `capacity`（池／抢占／候补 ✓）同族 |
+| **经费台账／预算行／凭证链**（`VMU_FUNDING_*`） | **做 ✓** | `funding` 面**已实现**（16 键 ✓、分摊余数具名 ✓）⇒ 其余项是其自然延伸 |
+| **货币与舍入类型**（§3.0，**N1**） | **不做 ✗** | **⑤重复**：`funding` 已用**最小货币单位整数**＋**具名余数**（`VMU_ALLOCATION_REMAINDER` ✓）⇒ 再引入币种／汇率／审计四元组是**另一套会计系统**（**②无对应键**、**③无消费者**）⇒ 超出 vmu 初衷（**研究编排，不是账务** ✓） |
+| **生物样本库链式保管**（§2.5，**N4**） | **不做 ✗** | **③无消费者**（无实验室系统接入面 ✓）；真需要"链式保管"应**复用**已实现的 `ip`（披露闸 ✓）与 `compliance`（同意／IRB ✓），**不新建一族** |
+| **税务与法务实体**（§3.6，**N9**） | **不做 ✗** | **③无消费者**；且该卷自己写明"**禁止实现税率推导** ✗" ⇒ 既不做，就**不留 21 行规格** |
+| **DUA／MTA 协议模板**（§7.4，**N10**） | **不做 ✗** | **⑤重复**：协议闸的**通用形态**已由 `storepolicy`（15 键／10 码 ✓）与 `compliance` 承载 ⇒ **领域模板属 pack**（**可扩展性** ✓），不进核心规格 |
+| **公众摘要证据保真**（§6.1，`VMU_OUTREACH_*`） | **做 ✓** | **①改变决定**（"内部未定论 ⇒ 不得写成已证明"**可判定** ✓）；实现可**复用** `ip` 的披露闸 ✓ |
+
+**落地顺序** ✓：先做**与已实现面同族**的三族（设备／经费／披露 ✓），**其余只留本节一行** ✓；将来**真有消费者 ⇒ 改判**，并把该行升级为规格 ✓。
 
 ---
 
