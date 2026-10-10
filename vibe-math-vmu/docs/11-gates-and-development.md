@@ -319,6 +319,11 @@ _oneoff/vmu/live/<YYYY-MM-DD>/<scenario>/
 | 变异自证 | `MUTANTS_SELFTEST=1 …` | `RETRY CANNOT MASK A RED FAMILY (as required)` ✓ |
 | 定向变异 | `MUTANTS_ONLY='S25A'／'S21'／'G2'／'S8' …` | **4/4、6/6、1/1、7/7 具名红** ✓；写错名字 ⇒ **具名中止 exit=2** ✓ |
 
+**第 9 次 T3（2026-10-10 10:26–10:59，33 min，HEAD `6b61362`，起点 `dirty=0`）**：`TOTAL 134 PASS 133 FAIL 1` ✗ —— 唯一红是 **`shard=1/3`**，具名原因 **`family did not redden by name: S5: the stalled path goes back to convening a meeting on its own (R1/D10)`** ✓（**具名清单再次生效** ✓）。
+- **S5 定点诊断** ✓✓：S5 实为 **7 个族**；**隔离连跑 5/5 全绿（各 ~62 s）** ✓；分片内偶发 ✗ ⇒ **根因不是 S5 的代码，而是"重试跑在同一台仍然很忙的机器上"** ✗ —— **等待下限是"最小驱动时长"**，8 s 在双作业并发时**仍不够**让驱动循环走到被变异步 ✓。
+- **修法（小而精准 ✓）**：重试改用**套件自己的耐心默认（30 s）** ✓（`PATIENT_WAIT_FLOOR_MS = 30000` ✓）；**只在失败时付** ✓，所以"168 族各付 30 s"的顾虑不适用于**单次重试** ✓。**下一次 T3 为验收依据** ✓。
+- **S5 的第二次定点诊断（更精确 ✓✓）**：定向 `MUTANTS_ONLY='S5'` 也复现 ⇒ **不是纯负载** ✗；失败那一族的判定原文是 **`no named red (exit=1)`** ✓ 且该子进程跑了 **35 617 ms** ✓ ⇒ **既不是"等得不够久"** ✗，而是**变异把场景弄崩、却没有任何具名断言行** ✗ —— 与最初 `S25B` 的缺陷**同类（变异过宽）** ✓，**不是 vmu 缺陷** ✓。**据此登记为定点待办** ✓：把该族（`S5: the stalled path goes back to convening a meeting on its own (R1/D10)` ✓）的变异**收窄**，使其只造成**预期的那条具名红** ✓（同 `S25B` 的修法 ✓）；**不做**"把无断言的崩溃当红" ✗（那会掩盖过宽变异 ✓）。
+
 **第 8 次 T3（2026-10-10 08:44–09:14，30 min，HEAD `1fe6ffc`，起点 `dirty=0`）—— 🎉 首次全绿 ✓✓**：
 ```
 TOTAL 134  PASS 134  FAIL 0  (suites 68 · probes 66)

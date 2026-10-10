@@ -27,8 +27,16 @@ function copyGraph(file, dest, preset) {
     if (!readdirSync(dest).includes(dep)) copyGraph(dep, dest)
   }
 }
-/** The patient floor used ONLY when a family failed its first (fast) attempt - diagnosed S25-B load race. */
-const PATIENT_WAIT_FLOOR_MS = 8000
+/**
+ * The patient floor used ONLY when a family failed its first (fast) attempt.
+ * DIAGNOSED (2026-10-10): S5 is 7 families that pass 5/5 in ISOLATION (~62 s each) yet missed once inside a
+ * full shard. The reason is not S5's code but the RETRY RUNNING ON THE SAME LOADED MACHINE: a floor is a
+ * MINIMUM drive time, so 8 s was still not enough for the drive loop to reach the mutated step while two other
+ * jobs were running. The retry therefore uses the SUITE'S OWN patient default (30 s) - the value the comment
+ * above says belongs to a real gate run. It is paid ONLY on a failure, so the 168-family cost concern that
+ * pushed the first attempt down to 2 s does not apply to a single retry.
+ */
+const PATIENT_WAIT_FLOOR_MS = 30000
 
 function runFamily(f, opts) {
   const waitFloorMs = (opts && opts.waitFloorMs) || 2000
