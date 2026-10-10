@@ -84,6 +84,17 @@ export function defaultOf(src, key) {
       lit = lit.replace(/[\s,;]+$/, '')
       if (lit.startsWith('[') && !lit.endsWith(']')) { const close = lit.lastIndexOf(']'); if (close !== -1) lit = lit.slice(0, close + 1) }
       if (lit.startsWith('{') && !lit.endsWith('}')) { const close = lit.lastIndexOf('}'); if (close !== -1) lit = lit.slice(0, close + 1) }
+      // A numeric expression is a literal too: `external.js` writes `1 << 20`. Only digits, a shift and
+      // parentheses are accepted, and the shift is evaluated by hand - `eval` is never used on source text.
+      const shift = /^\(?\s*(\d+)\s*(<<|>>)\s*(\d+)\s*\)?$/.exec(lit)
+      if (shift) {
+        const base = Number(shift[1])
+        const by = Number(shift[3])
+        const value = shift[2] === '<<' ? base * Math.pow(2, by) : Math.floor(base / Math.pow(2, by))
+        if (Number.isFinite(value)) lit = String(value)
+      }
+      // A numeric literal may carry separators (`3_600_000`). They are cosmetic: strip them before validating.
+      if (/^\d[\d_]*$/.test(lit)) lit = lit.replace(/_/g, '')
       if (/^(true|false|null)$/.test(lit) || /^-?\d+(\.\d+)?$/.test(lit) || /^['"]/.test(lit)
         || (lit.startsWith('[') && lit.endsWith(']')) || (lit.startsWith('{') && lit.endsWith('}'))) return lit
     }
