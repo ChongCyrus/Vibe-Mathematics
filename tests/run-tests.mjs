@@ -667,6 +667,13 @@ const VARIANTS = [
   { file: 'audit-prompt-invariants.mjs', args: ['--self-probe'] },
   // The participant-set proof, shipped: the guard's own predicates against broken strings.
   { file: 'audit-participant-set-parity.mjs', args: ['--self-probe'] },
+  // R-6b SPLIT (user-approved 2026-10-10): the 168-family / 107-control monolith used to be ONE ~25-35 min job
+  // whose timing tolerance was too narrow on a loaded host (seven sweeps lost exactly this job, each time a
+  // different family). Three shards replace it; the BARE job is shard 0 (replaceBare), so the job total goes
+  // 132 -> 134 and no job runs more than about a third of the file. Each shard prints its own shard index.
+  { file: 'v5-institute-fixes.mutants.mjs', args: ['shard=0/3'], replaceBare: true },
+  { file: 'v5-institute-fixes.mutants.mjs', args: ['shard=1/3'] },
+  { file: 'v5-institute-fixes.mutants.mjs', args: ['shard=2/3'] },
   // §7/§8 predicates, shipped: same functions fed broken strings.
   { file: 'audit-math-computation-parity.mjs', args: ['--self-probe'] },
   // §30 verify-provenance predicates (case 3), shipped.

@@ -1865,9 +1865,29 @@ const runPositive = (sc) => {
   rmSync(dest, { recursive: true, force: true })
   return { green: code === 0 && /SCENARIO GREEN: /.test(out), ms, code }
 }
+// SHARDING (user-approved fix for R-6b, 2026-10-10): this file used to be ONE job of 25-35 min with 168
+// families + 107 positive controls, and on a loaded host its timing tolerance was too narrow - seven sweeps
+// lost exactly one job, always this one, always a different family. It is now split by the runner's VARIANTS:
+//   tests/run-tests.mjs registers `shard=0/3` with replaceBare (the bare job IS shard 0) plus 1/3 and 2/3.
+// Running the file with no shard argument keeps the OLD behaviour (everything), so an ad-hoc run is unchanged;
+// the gate always passes an explicit shard, and the shard is printed in the verdict so no excerpt can hide it.
+const SHARD_ARG = (process.argv.slice(2).find((a) => /^shard=\d+\/\d+$/.test(a)) || String(process.env.MUTANTS_SHARD || '')).trim()
+let SHARD_INDEX = 0
+let SHARD_COUNT = 1
+if (SHARD_ARG) {
+  const m = /^(\d+)\/(\d+)$/.exec(SHARD_ARG.replace(/^shard=/, ''))
+  if (!m) { console.error('mutants: bad shard argument: ' + SHARD_ARG + ' (expected shard=k/N)'); process.exit(2) }
+  SHARD_INDEX = Number(m[1])
+  SHARD_COUNT = Number(m[2])
+  if (!(SHARD_COUNT >= 1) || SHARD_INDEX >= SHARD_COUNT) { console.error('mutants: shard out of range: ' + SHARD_ARG); process.exit(2) }
+}
+/** Deterministic, contiguous-free partition: index % N. Every item lands in exactly one shard. */
+const shardList = (list) => (SHARD_COUNT === 1 ? list : list.filter((_, i) => i % SHARD_COUNT === SHARD_INDEX))
+if (SHARD_COUNT > 1) console.error('mutants: shard ' + SHARD_INDEX + '/' + SHARD_COUNT + ' (this job is a SHARD: the other shards are separate jobs)')
+
 // The scenario list AND the positives counters are decided HERE (outside the `!ONLY` block) so the final
 // verdict line can report them even in DIRECTED runs, where the positives are skipped entirely.
-const SCENARIO_LIST = POSITIVES_SELFTEST ? ['__selftest-never-green'] : SCENARIOS
+const SCENARIO_LIST = POSITIVES_SELFTEST ? ['__selftest-never-green'] : shardList(SCENARIOS)
 let retried = 0
 let retriedGreen = 0
 // Named lists of WHAT failed. Declared HERE (before the positives loop) because the positives phase already
@@ -1903,7 +1923,7 @@ if (POSITIVES_SELFTEST) {
 if (POSITIVES_ONLY) process.exit(posRed === 0 ? 0 : 1)
 }
 let red = 0
-const ALL_FAMILIES = FAMILIES.concat(V5R_FAMILIES)
+const ALL_FAMILIES = shardList(FAMILIES.concat(V5R_FAMILIES))
 const SELECTED = ONLY ? ALL_FAMILIES.filter((f) => String(f.name).includes(ONLY)) : ALL_FAMILIES
 if (ONLY) {
   if (!SELECTED.length) { console.error('mutants: only=' + ONLY + ' matched 0/' + ALL_FAMILIES.length + ' families - named abort (nothing was run)'); process.exit(2) }
@@ -1966,7 +1986,8 @@ console.log('skipped=[' + skipped.join(' | ') + ']')
 // plain tail, so without this the family's real summary is FILTERED OUT of a sweep's excerpt - which is exactly
 // how five sweeps' worth of "no summary visible" was misread as "the family died silently".
 const verdictBad = red !== SELECTED.length || skipped.length || hangs.length || (!ONLY && posRed)
-const verdict = (verdictBad ? 'FAIL' : 'PASS') + ' v5-institute-fixes.mutants: families=' + red + '/' + SELECTED.length +
+const verdict = (verdictBad ? 'FAIL' : 'PASS') + ' v5-institute-fixes.mutants: shard=' + SHARD_INDEX + '/' + SHARD_COUNT +
+  ' families=' + red + '/' + SELECTED.length +
   ' positives=' + (ONLY ? 'skipped(directed)' : ((SCENARIO_LIST.length - posRed) + '/' + SCENARIO_LIST.length)) +
   ' retries={' + retried + ' positive, ' + mutantRetried + ' family}' + ' crashes=' + crashCount +
   ' hangs=' + hangs.length + ' skipped=' + skipped.length
