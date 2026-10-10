@@ -194,6 +194,36 @@ then:
 
 ## 11. 装配：装什么、从哪来、最小可跑
 
+### 11.0 接线状态横幅（**先读这一节，避免"旋钮幻觉"** ✗✓）
+
+- **设置表共 757 键，其中只有 51 键有运行时消费者** ✓（其余 706 是设计阶段声明的**计划键** ✗）。生成器原文：`vmu settings table: up to date (757 keys (51 wired, 706 declared-but-not-wired))`。
+- **对计划键调用 `vibe_vmu_set` 会回执 `noConsumer: true`** 并说明"**改了不会有任何变化**" ✓ ⇒ **按计划键设计机制，今天不会生效** ✗（要等实现阶段）。
+- **51 个已接线键**（**派生自 `docs/04-settings.md` 的 `✅ 已接线` 行**，命令见本节末；**非凭记忆** ✗），按族列出：
+  - **核心/限额（7）**：`vmu.core.enabled`｜`vmu.core.logLevel`｜`vmu.limits.maxLiveMembers`｜`vmu.limits.maxParallel`｜`vmu.limits.memoryCeilingMb`｜`vmu.limits.toolCallsPerTurnCap`｜`vmu.limits.wallClockMs`
+  - **任务（2）**：`vmu.tasks.maxOpenTasks`｜`vmu.tasks.stages`
+  - **会议（9）**：`vmu.meetings.hardLimitMs`｜`vmu.meetings.quorumCap`｜`vmu.meetings.quorumRule`｜`vmu.meetings.quoteDepthMax`｜`vmu.meetings.quotesPerMessageMax`｜`vmu.meetings.reconsiderFloor`｜`vmu.meetings.roundTimeoutMs`｜`vmu.meetings.verdictMaxRounds`｜`vmu.meetings.wakeRetries`
+  - **中间件（4）**：`vmu.middleware.entries`｜`vmu.middleware.dryRun`｜`vmu.middleware.breakerThreshold`｜`vmu.middleware.hookTimeoutMs`
+  - **提示词（4）**：`vmu.prompts.bindings`｜`vmu.prompts.overridesDir`｜`vmu.prompts.resourceSection`｜`vmu.prompts.whoMayOverride`
+  - **记录（5）**：`vmu.records.tracks`｜`vmu.records.truncateMode`｜`vmu.records.fingerprintPolicy`｜`vmu.records.headListAt`｜`vmu.records.pointerPropagation`
+  - **包/安全（5）**：`vmu.packs.active`｜`vmu.packs.activeOverrides`｜`vmu.packs.allowOverride`｜`vmu.safety.pathPolicy`｜`vmu.safety.delegableKeys`
+  - **数学计算面（15）**：`vmu.math.mode`｜`vmu.math.computation`｜`vmu.math.engines`｜`vmu.math.packages`｜`vmu.math.installScope`｜`vmu.math.formalVerify`｜`vmu.math.timeoutMs`｜`vmu.math.compileTimeoutMs`｜`vmu.math.leanCommand`｜`vmu.math.leanArgs`｜`vmu.math.leanAsync`｜`vmu.math.leanTimeoutMs`｜`vmu.math.leanSearchPaths`｜`vmu.math.leanInitiative`｜`vmu.math.leanJobsMaxParallel`
+- **派生命令（以代码/生成物为准 ✓）**：
+  ```bash
+  node scripts/generate-vmu-settings-table.mjs --json    # ⇒ {"keys":757,"wired":51,"notWired":706}
+  grep -n '已接线' docs/04-settings.md                    # ⇒ 51 个 ✅ 已接线 行（本节清单即由此派生）
+  ```
+- **判断某键今天是否可用（一条命令）**：看 `vibe_vmu_status` 回执的 **`settings.resolved`**（逐键给**值／来源层／热类别**）✓；不在其中 ⇒ 它是**计划键** ✗。
+
+#### 配方与参数：**今天可跑 vs 计划中**（两栏法）
+
+| 栏 | 判据 | 本手册条目 |
+|---|---|---|
+| **今天可跑 ✓** | 只用**已接线键**＋**已实现工具**（`vibe_vmu_status`／`set`／`middleware`／`records`／`script`／`pack`／`control`／`meeting`／`task`） | §11.1–§11.3 装配｜§12.1–§12.4 的 M1–M4 示例｜§13 的 R1–R5、R8、R11–R14、R16、R18 |
+| **计划中 ✗** | 用到**计划键**或**未实现工具** | §13 的 R6（论文流水线）／R7（证明检查）／R9（复现包）／R10（统计）／R15（跨工作区，部分）／R17（归档迁移）—— 均**带标记词** |
+
+> **纪律**：把"计划中"当旋钮用，**今天不会有任何变化** ✗；设计机制前请用 `docs/04` 接线列或 `settings.resolved` 复核 ✓。
+
+
 ### 11.1 三类装配面（**必须写到** ✓）
 
 | 装配面 | 作用 | 写法要点 |
@@ -466,6 +496,7 @@ vmu.prompt.*: { sections: [ <段名>… ], order: <整数> }
 ## 20. 未核项（增补·细化版）
 
 > 每条给：**未核的是什么／为什么未核／如何验证（可执行）／谁负责／何时必须核／不核的后果**。
+> **编号登记见 14-§2**（未决项按主题 T1–T10 登记；本卷的 U1–U6 与 11.0 的接线状态一并在此追溯）。
 
 ### U1 §13 的规划配方（R6 论文流水线、R7 证明检查、R9 复现包、R10 统计分析、R15 跨工作区、R17 归档迁移）
 - **未核**：这些配方的**工具面尚未实现** ✗ ⇒ 照抄**必然失败**。

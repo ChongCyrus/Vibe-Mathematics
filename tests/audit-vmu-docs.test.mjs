@@ -65,7 +65,9 @@ const contract = docText.get('03-interface-contract') || ''
 // that column counts as registered - taking only the first one produced four false positives.
 const registered = new Set()
 for (const row of contract.matchAll(/^\| ([^|]+)\|/gm)) {
-  for (const m of row[1].matchAll(/`(VMU_[A-Z0-9_]+)`/g)) registered.add(m[1])
+  // ANY registered code, including the SHARED-MODULE namespaces (`MATH_*`/`ARCHIVE_*`/`SCRIPT_*`) - the old
+  // scan only read `VMU_*`, so the shared table could not have satisfied the checks that now include them.
+  for (const m of row[1].matchAll(/`((?:VMU|MATH|ARCHIVE|SCRIPT)_[A-Z0-9_]+)`/g)) registered.add(m[1])
 }
 ok(registered.size >= 15, 'the error-code table registers a substantial set', registered.size)
 // A FAMILY PREFIX (`VMU_ARCHIVE_`) is prose about a namespace, not a claim that a code exists. This used to
@@ -73,9 +75,15 @@ ok(registered.size >= 15, 'the error-code table registers a substantial set', re
 // the word REASON (`VMU_REASON_REQUIRED`, `VMU_DELEGATION_REASON_REQUIRED`) - an independent reviewer proved
 // the hole. The only placeholder form is the trailing-underscore family prefix.
 const isPlaceholder = (code) => code.endsWith('_')
+// SHARED-MODULE CODES (independent reviewer, round 5): the math / archive / script modules throw their own
+// codes (`MATH_ENGINE_NOT_FOUND`, `ARCHIVE_RETENTION_EXCEEDED`, `SCRIPT_CHANGED_DURING_RUN`, ...) and the old
+// scan only looked at `VMU_*`, so half of the "named refusals" were outside the registration gate entirely.
+// They are registered in 03-§8's shared-module table and checked in BOTH directions from now on.
+const CODE_RE = /\b((?:VMU|MATH|ARCHIVE|SCRIPT)_[A-Z0-9_]{3,})\b/g
+const CODE_LITERAL_RE = /['"`]((?:VMU|MATH|ARCHIVE|SCRIPT)_[A-Z0-9_]{3,})['"`]/g
 const codeUse = new Map()
 for (const [name, text] of docText) {
-  for (const m of text.matchAll(/\b(VMU_[A-Z0-9_]{3,})\b/g)) {
+  for (const m of text.matchAll(CODE_RE)) {
     const code = m[1]
     if (isPlaceholder(code)) continue
     if (!codeUse.has(code)) codeUse.set(code, new Set())
@@ -104,8 +112,9 @@ ok(codeFiles.length >= 12, 'the vmu runtime modules were found for the code audi
 const codeCodes = new Map()
 for (const file of codeFiles) {
   const text = readFileSync(file, 'utf8')
-  // Only string literals that look like a code: quoted, or a `code:` field value.
-  for (const m of text.matchAll(/['"`](VMU_[A-Z0-9_]{3,})['"`]/g)) {
+  // Only string literals that look like a code: quoted, or a `code:` field value. SHARED-MODULE prefixes are
+  // included, so a new `MATH_*`/`ARCHIVE_*`/`SCRIPT_*` code the code can throw must be registered too.
+  for (const m of text.matchAll(CODE_LITERAL_RE)) {
     if (!codeCodes.has(m[1])) codeCodes.set(m[1], new Set())
     codeCodes.get(m[1]).add(file.replace(VMU + '\\', '').replace(VMU + '/', ''))
   }

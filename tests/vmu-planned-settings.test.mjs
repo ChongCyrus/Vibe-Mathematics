@@ -91,8 +91,38 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
   ok(keys.every((k, i) => k === sorted[i]), 'keys are sorted lexicographically (deterministic file)', keys.find((k, i) => k !== sorted[i]))
   const overlap = keys.filter((k) => CORE_KEYS.includes(k))
   ok(overlap.length === 0, 'no planned key duplicates a core (already declared) key', overlap.slice(0, 5).join(','))
-  const wrongDoc = PLANNED_DEFS.filter((d) => !/设计阶段登记：\d\d 声明/.test(String(d.doc)))
-  ok(wrongDoc.length === 0, 'every doc line names its source volume (e.g. "设计阶段登记：09 声明")', wrongDoc.slice(0, 3).map((d) => d.key).join(','))
+  const wrongDoc = PLANNED_DEFS.filter((d) => !/设计阶段登记：首个声明卷 \d\d（共见 \d+ 卷：/.test(String(d.doc)))
+  ok(wrongDoc.length === 0, 'every doc line names its FIRST source volume explicitly ("首个声明卷 NN（共见 M 卷：…）")',
+    wrongDoc.slice(0, 3).map((d) => d.key).join(','))
+  // ---- multi-volume provenance ------------------------------------------------------------------
+  const noVolumes = PLANNED_DEFS.filter((d) => !Array.isArray(d.volumes) || d.volumes.length === 0)
+  ok(noVolumes.length === 0, 'every entry carries a NON-EMPTY volumes array', noVolumes.slice(0, 5).map((d) => d.key).join(','))
+  const unsorted = PLANNED_DEFS.filter((d) => Array.isArray(d.volumes)
+    && d.volumes.some((v, i) => i > 0 && v < d.volumes[i - 1]))
+  ok(unsorted.length === 0, 'every volumes array is sorted lexicographically (deterministic file)', unsorted.slice(0, 5).map((d) => d.key).join(','))
+  const dupVols = PLANNED_DEFS.filter((d) => Array.isArray(d.volumes) && new Set(d.volumes).size !== d.volumes.length)
+  ok(dupVols.length === 0, 'no duplicated volume inside one entry', dupVols.slice(0, 5).map((d) => d.key).join(','))
+  const firstMismatch = PLANNED_DEFS.filter((d) => {
+    const m = /首个声明卷 (\d\d)/.exec(String(d.doc))
+    return !m || !Array.isArray(d.volumes) || d.volumes[0] !== m[1]
+  })
+  ok(firstMismatch.length === 0, 'the first volume in `volumes` is exactly the "首个声明卷" named in the doc',
+    firstMismatch.slice(0, 5).map((d) => d.key).join(','))
+  const countMismatch = PLANNED_DEFS.filter((d) => {
+    const m = /共见 (\d+) 卷/.exec(String(d.doc))
+    return !m || Number(m[1]) !== d.volumes.length
+  })
+  ok(countMismatch.length === 0, 'the "共见 M 卷" count equals volumes.length (no silent disagreement)',
+    countMismatch.slice(0, 5).map((d) => d.key).join(','))
+  const multiVolume = PLANNED_DEFS.filter((d) => Array.isArray(d.volumes) && d.volumes.length > 1)
+  ok(multiVolume.length > 0, 'multi-volume entries EXIST (the field is load-bearing, not always a single element)',
+    String(multiVolume.length) + '/' + PLANNED_DEFS.length + ' e.g. ' + multiVolume.slice(0, 3).map((d) => d.key + '->' + d.volumes.join('+')).join(', '))
+  const docListMismatch = multiVolume.filter((d) => !d.volumes.every((v) => String(d.doc).indexOf(v) !== -1))
+  ok(docListMismatch.length === 0, 'a multi-volume entry lists ALL of its volumes in the doc text too',
+    docListMismatch.slice(0, 3).map((d) => d.key).join(','))
+  const mirrorVols = PLANNED_DEFS.filter((d) => d.volumes.some((v) => v === '04'))
+  ok(mirrorVols.length === 0, 'no entry claims a GENERATED MIRROR (04) as a declaring volume',
+    mirrorVols.slice(0, 5).map((d) => d.key).join(','))
   // The generator's own extraction must reproduce the committed file AND the same key count.
   const core = await coreKeys(SCHEMA)
   const recomputed = collectPlannedDefs({ volumes: docVolumes(DOCS), core, namespaces: namespacesOf(core) })
@@ -158,11 +188,14 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
     'docs/04 is classified as a mirror because it mentions every CORE key (a design volume never does)',
     four ? four.coreCovered + '/' + four.coreTotal + ' ' + four.why : 'not detected')
   const mirrorNums = mirrors.map((m) => m.vol)
-  const badProvenance = PLANNED_DEFS.filter((d) => mirrorNums.some((n) => String(d.doc).indexOf('：' + n + ' 声明') !== -1))
-  ok(badProvenance.length === 0, 'NO planned key traces to a generated mirror (provenance must name a design volume)',
-    badProvenance.slice(0, 5).map((d) => d.key + '->' + d.doc).join(' | '))
-  ok(PLANNED_DEFS.every((d) => /设计阶段登记：\d\d 声明/.test(String(d.doc))),
-    'every planned key still names SOME source volume (nothing lost by skipping the mirror)')
+  const badProvenance = PLANNED_DEFS.filter((d) => mirrorNums.some((n) => d.volumes.indexOf(n) !== -1))
+  ok(badProvenance.length === 0, 'NO planned key traces to a generated mirror (provenance must name design volumes)',
+    badProvenance.slice(0, 5).map((d) => d.key + '->' + d.volumes.join('+')).join(' | '))
+  const mirrorInDoc = PLANNED_DEFS.filter((d) => mirrorNums.some((n) => new RegExp('：' + n + '(、|）)').test(String(d.doc))))
+  ok(mirrorInDoc.length === 0, 'no doc text lists a generated mirror as a declaring volume either',
+    mirrorInDoc.slice(0, 5).map((d) => d.key).join(','))
+  ok(PLANNED_DEFS.every((d) => /设计阶段登记：首个声明卷 \d\d/.test(String(d.doc)) && d.volumes.length >= 1),
+    'every planned key still names a FIRST source volume (nothing lost by skipping the mirror)')
   // Mirror-independence: emptying the mirror's text must not change the registry at all.
   const mirrorNames = new Set(mirrors.map((m) => m.name))
   const stripped = docVolumes(DOCS).map((v) => (mirrorNames.has(v.name) ? { num: v.num, name: v.name, text: '' } : v))

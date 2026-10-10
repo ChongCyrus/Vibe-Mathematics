@@ -1,7 +1,7 @@
 # vmu 20 · 安全 · 隐私 · 合规 · 伦理（横切面基础设施卷）
 
 > 状态：**设计稿 v0.1**（本轮为"设计到极致"的第一版；实现落地后逐字校准）
-> 上位：`01-philosophy.md`（R3 四可／R11 具名拒绝）、`02-architecture.md`、`03-tools-and-errors.md`、`04-settings.md`、`05-middleware.md`
+> 上位：`01-philosophy.md`（R3 四可／R11 具名拒绝）、`02-architecture.md`、`03-interface-contract.md`（服务/工具/码的唯一登记表 ＋ 共享模块码表 ✓）、`18-command-and-protocol-reference.md`（工具与错误码的处置速查 ✓）、`04-settings.md`、`05-middleware.md`
 > 邻卷：`07`（归档与保留）、`11`（门禁与发布）、`17`（不变式与人类在环）、`12`（使用者手册）、`14`（未决项与路线图）
 > 读者：**研究者/机构管理员**（要合规地跑研究）＋ **机制作者**（要写安全规则）＋ **审计者**（要核账）。
 

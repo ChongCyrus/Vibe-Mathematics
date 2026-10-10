@@ -112,8 +112,7 @@ export function createModule({ bus, settings = {}, log = () => {} }) {
   const off = bus.on('task/transition', (ev) => {
     if (String(ev && ev.to) === 'done' && !(ev && ev.record && ev.record.verified)) {
       log('blocked task/transition -> done (unverified)')
-      return { block: true, code: 'VMU_PACK_TASK_UNVERIFIED',
-        message: 'task cannot be done before verification', hint: 'run the verify step first' }
+      return { deny: { code: 'VMU_PACK_TASK_UNVERIFIED', message: 'task cannot be done before verification', by: 'task-gate' } }
     }
     return { ok: true }
   })
@@ -396,3 +395,51 @@ on success (or operator reset):
 3. ```js 代码块 **≥ 4** 且 ```yaml **= 0** ✓；
 4. 亲测原文可搜：`M3 SELF-CHECK: lean=` 与 `VMU 19 T1 SAMPLE:` 与 `packContractVersion` ✓；
 5. `19.18` 表含 8 行缺口，且第 6 行写明"已接线 ✓／策略不可插拔 ✗"。
+
+---
+
+## 19.20 契约权威表（**以代码为准**，附行号证据）
+
+### 19.20.1 `CAPABILITIES`（常量）vs `capabilities`（字段）
+| 事项 | **权威写法** | 代码证据 |
+|---|---|---|
+| 能力**词表**（导出/常量） | **`CAPABILITIES`（全大写）** | `kernel/bus.js` **L23-L25**（注释 "The capability vocabulary…" 紧接 `'read-state', 'read-args', 'deny', …`）；`kernel/loader.js` **L36** 同名常量 |
+| 模块/条目上的**声明字段** | **`capabilities`（全小写）** | `kernel/loader.js` **L74** `const caps = module.capabilities`；**L75** 报错文案 `the module must declare capabilities (a non-empty list)`；**L87-L88** `entry.capabilities`／"the module uses capabilities the entry did not declare" |
+
+**结论（照抄口径）**：**字段写小写 `capabilities`；词表/常量写大写 `CAPABILITIES`** —— 二者不冲突（一个是对象键名，一个是常量名）。批评者看到的差异正是这两层 ✗，卷内 §19.1.2／§19.2.1 的用法保持不变 ✓，但**新增本表以消歧** ✓。
+
+### 19.20.2 决策名：总线 `deny` vs 宿主桥 `block`
+| 层 | **权威键** | 代码证据 |
+|---|---|---|
+| **vmu 总线**（钩子决策） | **`deny`**（能力名 `deny`） | `kernel/bus.js` **L29-L31**：`/** decision key -> the capability it consumes */` ＋ `deny: 'deny'` |
+| **宿主桥** | `deny` **或** `block`（归一） | `host-hooks.js` **L70** `const block = decision.deny || decision.block`（**L71** 转成 `{ kind:'block', feedback }`）；同文件 **L54-L56** 处理 `decision.deny` |
+
+**结论**：**在 vmu 钩子上返回 `deny`** ✓（`{ deny: { code, message, by? } }`）；`block` 只是**宿主桥接受**的另一种写法（L70 归一）✓。§19.4.1 的规则返回保持不变；**§19.4.2 的 M2 样例已按本表改为 `deny`** ✓（原 `{ block: true, … }` 写法已移除 ✗）。
+
+### 19.20.3 实测断言：真总线上 `deny` 真的拒绝（**逐字命令＋原文**）
+```bash
+node --input-type=module -e "
+import { createBus } from './vibe-math-vmu/kernel/bus.js'
+const entry={ id:'t53-deny', kind:'module', on:['ballot/cast'], capabilities:['deny'],
+  handler:()=>({ deny:{ code:'VMU_PACK_T53_DENY', message:'T53: the ballot is denied by a real entry', by:'t53-deny' } }) }
+const bus=createBus({ entries:[entry] })
+console.log(JSON.stringify(await bus.emit('ballot/cast', { member:'r-1', object:{ id:'p-1' }, vote:1 })))
+"
+```
+原文输出（**实测 ✓**）：
+```json
+{"ok":false,"decision":{"deny":{"code":"VMU_PACK_T53_DENY","message":"T53: the ballot is denied by a real entry","by":"t53-deny"}},"refused":{"code":"VMU_PACK_T53_DENY","message":"T53: the ballot is denied by a real entry"},"entry":"t53-deny","decisions":[…]}
+```
+⇒ **`deny` 形状在真总线上确实触发拒绝**（`ok:false` ＋ `refused` 具名）✓；同轮实测 `Object.keys(bus)` ＝ `["on","add","entries","setDryRun","isDryRun","disable","enable","declareTopic","emit","status","trace","wrapHostWaterfall"]` ⇒ 钩子执行入口是 **`bus.emit(hook, payload)`** ✓（写入 §19.17 的跑法用）。
+
+## 19.21 可执行判据（**升级 §19.19／§19.13 的存在性判据**）
+
+| # | 判据（**可执行** ✓） | 命令 | 期望输出（原文） |
+|---|---|---|---|
+| 1 | 守卫套件全绿 | `node tests/vmu-guard.test.mjs` | `=== VMU GUARD: 19 passed, 0 failed ===` |
+| 2 | T1 样板全绿（可照抄装载） | §19.13 的 `node --input-type=module -e "…"` | `=== VMU 19 T1 SAMPLE: 10 passed, 0 failed ===` |
+| 3 | **真总线 deny 生效** | §19.20.3 的命令 | `"ok":false` ＋ `"code":"VMU_PACK_T53_DENY"` ＋ `"refused"` |
+| 4 | M3 真机探针（缺件如实报） | §19.4.3 的命令 | `M3 SELF-CHECK: lean=no latex=no` |
+| 5 | 结构（保留一条存在性判据作兜底） | `grep -c '^## 19\.'` | `≥ 10`；且含 `> 状态：`／`> 上位：`／"验收"／`未核项`（含 `14-§2`） |
+
+> 判据 1–4 都是"**能 import／装载并跑出预期输出**"✓；任一跑不出即视为本卷回归 ✗。未核项（编号登记见 **14-§2**）：① M1 DSL 端到端未亲测 ✗；② M2 门端到端未亲测 ✗；③ `createPack` 官方签名以 `10-packs` 为准 ✗；④ shared 语义待确认 ✗；⑤ 服务名约束（`notDotted` 未被拒）待核 ✗。

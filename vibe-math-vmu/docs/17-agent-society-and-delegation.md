@@ -14,6 +14,8 @@
 
 `名称` ｜ **目的** ｜ **面向谁** ｜ **接口形状**（服务方法／工具／钩子／协议） ｜ **可调控参数**（具体键名或族） ｜ **相关错误码** ｜ **四条哲学**（自由度 F·可调控性 T·可定义性 D·扩展性 X） ｜ **实现要点** ｜ **依赖与前置** ｜ **成熟度**（**已实现 ✓ / 未实现 ✗**） ｜ **优先级**（P0–P3）。
 
+> **设计目标 vs 实现保证（本卷纪律，与 §0.2 同源）**：凡**未标 ✓** 的机制，其"**机器强制**／**必须在…**／**断言**／**具名红**"一律是**设计验收目标** ✗，**不是今天的实现保证** —— 在实现并由门禁守住之前**不得据以推理** ✓（现状见各条"成熟度"、`settings/planned.js` 的 `planned:true`、§25 未核项 → `14-§2` ✓）。本卷**已实现的底座**只有：`vmu.members`（席位/容量/任职）＋`vmu.store/library/work/tasks`（记忆与台账）＋08 的治理原语 ✓；**19 个社会服务、11 个社会工具、28 个社会钩子全部为规划** ✗。
+
 ### 0.2 本卷的六条社会不变式（**设计不变式：实现前不得据以推理** ✗）
 
 > **实现状态（诚实 ✗，独立批评者第 5 轮点名）**：S-1…S-6 是**设计目标**，不是今天的机器事实 ✓ —— 其中 **S-2（委托只减权）／S-5（人类在环优先）／S-6（身份与归属可分）目前零实现** ✗（`vmu.delegation.*`／`vmu.identity.*` 都还是 `settings/planned.js` 里的**计划键** ✓，全树没有委托/审批优先级的执行代码 ✓）。⇒ 在它们被实现并由门禁守住之前，**不得**把本表当作"系统保证"来推理 ✗；逐条现状与实现归属见 §21／§22 ✓，未核项见 §25（→ `14-§2`）✓。
@@ -81,7 +83,7 @@
 
 ## 4. 委托与转委（Delegation / Sub-delegation）
 
-- **委托（grant a scope to another instance）** ｜ 目的：让"授权"成为**可审计、会过期、只减权**的一等动作（对齐 08 的临时授权面 ✓，但对象是**实例/席位**而非单条命令） ｜ 面向谁：任何有权限者 ｜ 接口形状：规划 `kernel.delegation.grant({to,scope{commands[],resources[],untilMs?},why})`（⛔ 未实现）；工具面规划 `vibe_vmu_delegate`（⛔ 未实现） ｜ 可调控：`vmu.delegation.*` ｜ 错误码：`VMU_DELEGATION_ESCALATION`（拟增，**试图扩大权限**）／`VMU_DELEGATION_EXPIRED`（拟增）／`VMU_NOT_PERMITTED`／`VMU_NO_SUCH_OBJECT` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**S-2 机器强制**：`scope ⊆ grantor.scope`，否则**具名拒**（这是本卷最硬的检查 ✗）＋`why` 必填（S-4）＋到期/事件失效 ✓ ｜ 依赖：席位权限 ✓（`may()` ✓）＋08 授权面 ✓ ｜ 成熟度：**未实现 ✗**（08 已有**命令级**临时授权 `meeting_grant` 语义 ✓；本卷是**实例级**委托） ｜ 优先级：P0
+- **委托（grant a scope to another instance）** ｜ 目的：让"授权"成为**可审计、会过期、只减权**的一等动作（对齐 08 的临时授权面 ✓，但对象是**实例/席位**而非单条命令） ｜ 面向谁：任何有权限者 ｜ 接口形状：规划 `kernel.delegation.grant({to,scope{commands[],resources[],untilMs?},why})`（⛔ 未实现）；工具面规划 `vibe_vmu_delegate`（⛔ 未实现） ｜ 可调控：`vmu.delegation.*` ｜ 错误码：`VMU_DELEGATION_ESCALATION`（拟增，**试图扩大权限**）／`VMU_DELEGATION_EXPIRED`（拟增）／`VMU_NOT_PERMITTED`／`VMU_NO_SUCH_OBJECT` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**S-2（设计目标）**：`scope ⊆ grantor.scope`，否则**具名拒**（这是本卷最硬的检查；**实现时**由内核强制，**当前未实现** ✗）＋`why` 必填（S-4）＋到期/事件失效 ✓ ｜ 依赖：席位权限 ✓（`may()` ✓）＋08 授权面 ✓ ｜ 成熟度：**未实现 ✗**（08 已有**命令级**临时授权 `meeting_grant` 语义 ✓；本卷是**实例级**委托） ｜ 优先级：P0
 - **转委（sub-delegation）** ｜ 目的：链路化授权 ｜ 面向谁：受托方 ｜ 接口形状：规划 `kernel.delegation.subdelegate`（⛔ 未实现） ｜ 可调控：`vmu.delegation.maxDepth`（默认 **1**＝不许转委）／`subdelegateAllowed` ｜ 错误码：`VMU_DELEGATION_DEPTH`（拟增）／`VMU_DELEGATION_ESCALATION` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**默认禁止转委** ✓；若开启：深度上限＋**链上每一跳都不得超过授予者原有范围**＋禁环 ✓ ｜ 依赖：委托 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
 - **撤销与回收（revoke）** ｜ 目的：授权随时可收 ｜ 面向谁：授予者／管理者 ｜ 接口形状：规划 `kernel.delegation.revoke(id,{why})`（⛔ 未实现） ｜ 可调控：`vmu.delegation.revokeBroadcast`（默认 true） ｜ 错误码：`VMU_NO_SUCH_OBJECT`／`VMU_DELEGATION_EXPIRED` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：撤销**立即生效**＋广播＋在飞任务**不静默取消**（转为"待交接"，§11）✓ ｜ 依赖：委托＋在途台账（07/08） ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
 - **委托预算（delegation budget）** ｜ 目的：授权也**消耗资源**（防止用委托绕过预算 ✗） ｜ 面向谁：授予者 ｜ 接口形状：规划 `kernel.delegation.budget(id)`（⛔ 未实现） ｜ 可调控：`vmu.delegation.tokenShare`／`turnsShare`／`onExhausted(refuse|return)` ｜ 错误码：`VMU_RESOURCE_BUDGET`（复用 ✓）／`VMU_DELEGATION_BUDGET`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**子预算从母预算里扣**（复式记账），触界只拒该项委托、不动全局 ✓ ｜ 依赖：08 预算族（`vmu.budget.*`／`vmu.limits.*` ✓） ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
@@ -91,7 +93,7 @@
 
 ## 5. 信任与声誉（Trust / Reputation）
 
-- **可审计评分（auditable scoring）** ｜ 目的：把"谁靠谱"变成**可复核的公开记录**，而不是印象 ｜ 面向谁：全体／管理者 ｜ 接口形状：规划 `kernel.trust.score(subject,{dimension,delta,evidence,why})`（⛔ 未实现）；工具面规划 `vibe_vmu_trust`（⛔ 未实现） ｜ 可调控：`vmu.trust.*` ｜ 错误码：`VMU_TRUST_SELF_SCORE`（拟增，不得给自己打分）／`VMU_TRUST_EVIDENCE_REQUIRED`（拟增）／`VMU_NOT_PERMITTED` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**S-3 机器强制**：评分**只进排序与建议**，**绝不**改权限/票权/预算 ✓；每条评分带 `evidence`（引用归档 id ✓） ｜ 依赖：07 归档 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
+- **可审计评分（auditable scoring）** ｜ 目的：把"谁靠谱"变成**可复核的公开记录**，而不是印象 ｜ 面向谁：全体／管理者 ｜ 接口形状：规划 `kernel.trust.score(subject,{dimension,delta,evidence,why})`（⛔ 未实现）；工具面规划 `vibe_vmu_trust`（⛔ 未实现） ｜ 可调控：`vmu.trust.*` ｜ 错误码：`VMU_TRUST_SELF_SCORE`（拟增，不得给自己打分）／`VMU_TRUST_EVIDENCE_REQUIRED`（拟增）／`VMU_NOT_PERMITTED` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**S-3（设计目标）**：评分**只进排序与建议**，**绝不**改权限/票权/预算 ✓（**实现时**阻断，**当前未实现** ✗）；每条评分带 `evidence`（引用归档 id ✓） ｜ 依赖：07 归档 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
 - **衰减与时效（decay）** ｜ 目的：旧功劳不能永久吃老本 ｜ 面向谁：机构 ｜ 接口形状：规划 `kernel.trust.recompute({windowMs})`（⛔ 未实现） ｜ 可调控：`vmu.trust.halfLifeMs`／`minSamples`／`decayOnEnd` ｜ 错误码：`VMU_INVALID_ARGUMENT` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：衰减**只读重算**（幂等 ✓）；样本不足 ⇒ 展示为"证据不足"而不是 0 分 ✓ ｜ 依赖：评分 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P3
 - **申诉与更正（appeal / correction）** ｜ 目的：错误评分可纠正 ｜ 面向谁：被评者 ｜ 接口形状：规划 `kernel.trust.appeal(id,{why,evidence})`（⛔ 未实现）＋与 08 的申诉面衔接（08-§2.2-B ✓） ｜ 可调控：`vmu.trust.appealWindowMs`／`appealNeedsEvidence` ｜ 错误码：`VMU_TRUST_APPEAL_WINDOW`（拟增）／`VMU_STATE` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：更正**不删除**原记录（追加更正条目 ✓，与 07 的"只增"纪律一致） ｜ 依赖：评分＋07 归档 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
 - **防串谋（collusion resistance）** ｜ 目的：互相刷分的联盟必须可被发现 ｜ 面向谁：审计者 ｜ 接口形状：规划 `kernel.trust.collusionScan({windowMs})`（⛔ 未实现） ｜ 可调控：`vmu.collusion.*` ｜ 错误码：`VMU_COLLUSION_SUSPECTED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：扫描**只报告**（`suspects[]`＋理由），**不自动惩罚** ✗；判据示例：同一小圈互评占比、时间聚集、互为唯一证据源 ✓ ｜ 依赖：评分＋审计 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
@@ -113,7 +115,7 @@
 
 - **共识形成协议（consensus protocol）** ｜ 目的：把"大家同意"变成可判定状态 ｜ 面向谁：全体 ｜ 接口形状：**复用 08** 的表决与三层门槛（✓ 08-§3.2/§13.1）＋规划 `society.consensus` 判定点（⛔ 未实现，用于"何时算达成共识"的地方性口径） ｜ 可调控：`vmu.consensus.*` ｜ 错误码：`VMU_CONSENSUS_NOT_REACHED`（拟增）／`VMU_STATE` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**过程读数不裁定**（沿用 08 的 I-1 ✓）；共识**不抹平少数**（保留异议，§7 下条） ｜ 依赖：08 表决 ✓ ｜ 成熟度：**部分 ✓**（表决面）+ 判定点 ✗ ｜ 优先级：P1
 - **异议与保留（dissent / reservation）** ｜ 目的：少数意见入档并可触发复议 ｜ 面向谁：全体 ｜ 接口形状：**复用 08** 的 `vmu.minutes.dissentMandatory` ✓／`vmu.ballot.reopenInitiatorScope` ✓／少数意见入档纪律 ✓ ｜ 可调控：08 族（✓）＋`vmu.consensus.dissentRetentionMs` ｜ 错误码：`VMU_MINUTES_*`（08）／`VMU_STATE` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**不得**把未表态折算为同意（08 I-3 ✓）；异议必须可检索 ✓ ｜ 依赖：08 纪要 ✓＋07 归档 ✓ ｜ 成熟度：**已定义 ✓** ｜ 优先级：P0
-- **分歧分类（disagreement taxonomy）** ｜ 目的：分清"事实分歧/价值分歧/资源分歧"，走不同出口 ｜ 面向谁：主持人／仲裁者 ｜ 接口形状：规划 `kernel.conflict.classify({kind})`（⛔ 未实现） ｜ 可调控：`vmu.consensus.classes`（默认 `fact｜value｜resource`） ｜ 错误码：`VMU_INVALID_ARGUMENT` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：事实分歧 ⇒ 走验证（09 形式化/数学面 ✓）；价值分歧 ⇒ 走表决（08 ✓）；资源分歧 ⇒ 走预算与公平（§17） ｜ 依赖：08/09/17 三面 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
+- **分歧分类（disagreement taxonomy）** ｜ 目的：分清"事实分歧/价值分歧/资源分歧"，走不同出口 ｜ 面向谁：主持人／仲裁者 ｜ 接口形状：规划 `kernel.conflict.classify({kind})`（⛔ 未实现） ｜ 可调控：`vmu.conflict.classes`（默认 `fact｜value｜resource`；**分类只定义一处** ✓，见 §20.4） ｜ 错误码：`VMU_INVALID_ARGUMENT` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：事实分歧 ⇒ 走验证（09 形式化/数学面 ✓）；价值分歧 ⇒ 走表决（08 ✓）；资源分歧 ⇒ 走预算与公平（§17） ｜ 依赖：08/09/17 三面 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
 - **共识的可撤回性（revocability）** ｜ 目的：新证据出现时能改主意 ｜ 面向谁：全体 ｜ 接口形状：**复用 08** `ballot.reopen` ✓＋`vmu.ballot.reopenFloor/reopenInitiatorScope` ✓ ｜ 可调控：08 族 ✓ ｜ 错误码：`VMU_REOPEN_*`（08） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：撤回**不删旧结论**（追加 ✓）＋限制发起人（防滥诉 ✓） ｜ 依赖：08 ✓ ｜ 成熟度：**已实现 ✓** ｜ 优先级：P1
 
 ---
@@ -226,7 +228,7 @@
 ## 18. 审计与可解释（Auditability & Explainability）
 
 - **委托审计（delegation audit）** ｜ 目的：每次授权都有据 ｜ 面向谁：审计者 ｜ 接口形状：**部分 ✓**＝07 审计落盘（`vmu/audit/<date>.jsonl` ✓）＋各服务 `history()` ✓；规划统一查询（§4 ✓／08 `vmu.audit.*` ✓） ｜ 可调控：`vmu.audit.*` ✓（08）／`vmu.explain.*` ｜ 错误码：`VMU_IO_FAILED`（✓）／`VMU_EXPLAIN_DENIED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**拒绝也审计**（08 I-3 同族 ✓）；写失败必须具名（`audit.lastWriteError` ✓） ｜ 依赖：07 ✓ ｜ 成熟度：**部分 ✓** ｜ 优先级：P0
-- **理由字段（reason discipline）** ｜ 目的：每个社会动作都能回答"凭什么" ｜ 面向谁：全体 ｜ 接口形状：**约定＋判定点**（规划 `society.requireReason` ⛔ 未实现） ｜ 可调控：`vmu.explain.reasonRequired`（默认 true，覆盖委托/仲裁/罢免/解散）／`reasonMaxChars` ｜ 错误码：`VMU_REASON_REQUIRED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**S-4 机器强制**：缺 `reason` ⇒ 具名拒（不是警告 ✓） ｜ 依赖：各动作实现 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P0
+- **理由字段（reason discipline）** ｜ 目的：每个社会动作都能回答"凭什么" ｜ 面向谁：全体 ｜ 接口形状：**约定＋判定点**（规划 `society.requireReason` ⛔ 未实现） ｜ 可调控：`vmu.explain.reasonRequired`（默认 true，覆盖委托/仲裁/罢免/解散）／`reasonMaxChars` ｜ 错误码：`VMU_REASON_REQUIRED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**S-4（设计目标）**：缺 `reason` ⇒ 具名拒（不是警告 ✓；**实现时**由各动作强制，**当前未实现** ✗） ｜ 依赖：各动作实现 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P0
 - **可解释报告（explain report）** ｜ 目的：人可读的"发生了什么、为什么" ｜ 面向谁：人类／审计者 ｜ 接口形状：规划 `kernel.explain.report({subject,windowMs})`（⛔ 未实现）；工具面规划 `vibe_vmu_explain`（⛔ 未实现） ｜ 可调控：`vmu.explain.detail`／`includeChains`／`includeScores` ｜ 错误码：`VMU_EXPLAIN_DENIED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：报告**只读**、可复算（引用审计 id ✓）；不得包含私聊内容（08 D6 ✓） ｜ 依赖：07 ✓＋05 钩子追踪 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
 - **追踪与关联（trace correlation）** ｜ 目的：把"一件事"的全链路串起来 ｜ 面向谁：审计者 ｜ 接口形状：**部分 ✓**＝05 中间件 `traceId`／`trace(traceId)` ✓ ｜ 可调控：`vmu.audit.traceKeepMs` ✓（08）／`vmu.explain.correlateBy` ｜ 错误码：`VMU_NO_SUCH_OBJECT`／`VMU_EXPLAIN_DENIED` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：社会动作**必须带 traceId**（可串到会议/表决/任务 ✓） ｜ 依赖：05 ✓ ｜ 成熟度：**部分 ✓** ｜ 优先级：P1
 
@@ -234,7 +236,7 @@
 
 ## 19. 人类在环（Human in the Loop）
 
-- **人类审批（approval gate）** ｜ 目的：关键动作必须人点头 ｜ 面向谁：人类 ｜ 接口形状：**部分 ✓**＝内核 `vmu.safety.approvalRequired` ✓／`vmu.safety.delegableKeys` ✓；规划 `society.humanGate` 判定点（⛔ 未实现） ｜ 可调控：`vmu.human.*` ｜ 错误码：`VMU_HUMAN_APPROVAL_REQUIRED`（拟增）／`VMU_NOT_PERMITTED` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**S-5 机器强制**：列入审批的动作在未批前**只能排队**，不得"先做后报" ✗ ｜ 依赖：内核安全面 ✓ ｜ 成熟度：**部分 ✓** ｜ 优先级：P0
+- **人类审批（approval gate）** ｜ 目的：关键动作必须人点头 ｜ 面向谁：人类 ｜ 接口形状：**部分 ✓**＝内核 `vmu.safety.approvalRequired` ✓／`vmu.safety.delegableKeys` ✓；规划 `society.humanGate` 判定点（⛔ 未实现） ｜ 可调控：`vmu.human.*` ｜ 错误码：`VMU_HUMAN_APPROVAL_REQUIRED`（拟增）／`VMU_NOT_PERMITTED` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**S-5（设计目标）**：列入审批的动作在未批前**只能排队**，不得"先做后报" ✗（**实现时**由内核安全面强制；**当前仅** `vmu.safety.approvalRequired` 的开关面已实现 ✓，**审批队列未实现** ✗） ｜ 依赖：内核安全面 ✓ ｜ 成熟度：**部分 ✓** ｜ 优先级：P0
 - **人类否决（veto）** ｜ 目的：人能一票叫停 ｜ 面向谁：人类 ｜ 接口形状：规划 `kernel.human.veto(target,{why})`（⛔ 未实现） ｜ 可调控：`vmu.human.vetoScope`（`global｜institution｜task`）／`vetoNeedsReason`（默认 **false**，紧急时允许先停后说明 ✓） ｜ 错误码：`VMU_HUMAN_VETOED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：否决**立即生效＋广播**；被否决方有申诉与复盘出口（§5/§6 ✓） ｜ 依赖：§6 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
 - **人类观察员（observer）** ｜ 目的：人可旁观不干预 ｜ 面向谁：人类 ｜ 接口形状：**已定义 ✓**（08 §2.2-C 观察员/列席 ✓，无表决权 ✓）＋规划人类观察面（⛔ 未实现） ｜ 可调控：`vmu.human.observerScopes[]` ｜ 错误码：`VMU_NOT_PERMITTED` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：观察员**只读**；审计其查看（08 查看留痕纪律 ✓） ｜ 依赖：08 ✓ ｜ 成熟度：**部分 ✓** ｜ 优先级：P2
 - **人类配额与超时（human SLA）** ｜ 目的：人可能不在线 ｜ 面向谁：机构 ｜ 接口形状：规划 `society.humanTimeout` 判定点（⛔ 未实现） ｜ 可调控：`vmu.human.approvalTimeoutMs`／`onTimeout(hold｜default-deny｜default-allow)`（默认 **hold** ✓，绝不默认放行 ✗） ｜ 错误码：`VMU_HUMAN_TIMEOUT`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：超时**不消耗代理配额**（S-5 ✓）；`default-allow` **必须显式开启** ｜ 依赖：§19 审批 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
@@ -277,7 +279,7 @@
 | `vmu.delegation.subdelegateAllowed` | bool | false | bool | 所办 | 立即 | 是否允许转委 |
 | `vmu.delegation.defaultTtlMs` | ms | 0 | ≥0 | 所办 | 立即 | 默认有效期（0＝到事件失效） |
 | `vmu.delegation.maxTtlMs` | ms | 0 | ≥0 | 所办 | 立即 | 有效期上限 |
-| `vmu.delegation.reasonRequired` | bool | true | bool | pack | 立即 | 委托必须给理由（S-4 机器强制） |
+| `vmu.delegation.reasonRequired` | bool | true | bool | pack | 立即 | 委托必须给理由（S-4 设计目标；当前未实现 ✗） |
 | `vmu.delegation.tokenShare` | number | 0 | 0..1 | 所办 | 立即 | 可转授的令牌份额 |
 | `vmu.delegation.turnsShare` | number | 0 | 0..1 | 所办 | 立即 | 可转授的回合份额 |
 | `vmu.delegation.onExhausted` | enum | `refuse` | `refuse｜return` | pack | 立即 | 子预算耗尽时（拒新任务／归还） |
@@ -314,7 +316,7 @@
 | `vmu.conflict.maxOpen` | int | 0 | ≥0 | 所办 | 立即 | 同时未决冲突上限（0＝不限） |
 | `vmu.conflict.cooldownMs` | ms | 0 | ≥0 | 所办 | 立即 | 同一冲突冷却期 |
 | `vmu.conflict.arbiterRule` | enum | `senior-slot` | `senior-slot｜random｜mutual｜human` | pack | 下轮 | 仲裁者选择规则 |
-| `vmu.conflict.arbiterMustDiffer` | bool | true | bool | pack | 立即 | 仲裁者不得为当事人（机器强制） |
+| `vmu.conflict.arbiterMustDiffer` | bool | true | bool | pack | 立即 | 仲裁者不得为当事人（设计目标；当前未实现 ✗） |
 | `vmu.conflict.appealToHuman` | bool | true | bool | pack | 立即 | 是否允许上诉人类 |
 | `vmu.conflict.classes` | string[] | `['fact','value','resource']` | 子集 | pack | 重启 | 分歧分类（决定出口：09/08/§17） |
 | `vmu.conflict.hearingNeedsMinutes` | bool | true | bool | pack | 下轮 | 听证必须留纪要（08 纪要面 ✓） |
@@ -322,7 +324,8 @@
 | `vmu.consensus.protocol` | enum | `ballot-08` | `ballot-08｜judgment｜human` | pack | 下轮 | 共识判定协议（默认复用 08 表决 ✓） |
 | `vmu.consensus.requireDissentRecord` | bool | true | bool | pack | 下轮 | 必须记录异议（对齐 08 少数意见 ✓） |
 | `vmu.consensus.dissentRetentionMs` | ms | 0 | ≥0 | 所办 | 立即 | 异议保留期 |
-| `vmu.consensus.classes` | string[] | `['fact','value','resource']` | 子集 | pack | 重启 | 与 `vmu.conflict.classes` 同源（**建议合并**，见 §26 待裁决 ✓） |
+
+> **不重复定义（本条原为重复项）** ✗：异议/分歧**分类**的定义只保留一处 ⇒ **`vmu.conflict.classes`（本卷 §20.4 的 `vmu.conflict` 族）** ✓；本卷**不另设**"共识分类"键 ✗（v0.1 曾两处各写一套，已删；生成管线随之重新归因 ✓）。
 | `vmu.memory.visibility` | enum | `institution` | `private｜institution｜public` | pack | 立即 | 记忆可见性（私聊永不进入 ✓） |
 | `vmu.memory.cardTtlMs` | ms | 0 | ≥0 | 所办 | 立即 | 经验卡有效期 |
 | `vmu.memory.cardKinds` | string[] | `['lesson','obstacle','rejected']` | 子集 | pack | 重启 | 允许的卡片类型 |
@@ -399,7 +402,6 @@
 | `vmu.identity.pseudonymScopes` | string[] | `[]` | 场景子集 | pack | 下轮 | 允许化名的场景 |
 | `vmu.identity.onEnd` | enum | `both` | `archive｜handover｜both` | pack | 立即 | 离职处置 |
 | `vmu.identity.auditReads` | bool | true | bool | pack | 立即 | 身份读取是否审计 |
-| `vmu.fairness.policy` | enum | `equal` | `equal｜priority｜reserve` | 所办 | 立即 | 资源公平策略（与 08 `vmu.budget.fairnessPolicy` 同源，**建议合并** ✓） |
 | `vmu.fairness.minShares` | object | `{}` | `{slot:0..1}` | 所办 | 立即 | 各席位最低份额 |
 | `vmu.fairness.newcomerQuota` | number | 0 | 0..1 | pack | 立即 | 新人配额 |
 | `vmu.fairness.maxSlotsPerInstance` | int | 1 | ≥1 | 所办 | 下轮 | 单实例可占席位上限（同机构） |
@@ -419,7 +421,9 @@
 | `vmu.human.onTimeout` | enum | `hold` | `hold｜default-deny｜default-allow` | pack | 立即 | 超时行为（**默认挂起，绝不默认放行** ✗） |
 | `vmu.human.dashboardScope` | enum | `institution` | `global｜institution` | 所办 | 立即 | 人类总览范围 |
 
-**计数（逐表实测）**：§20.1 **17** ＋ §20.2 **11** ＋ §20.3 **17** ＋ §20.4 **27** ＋ §20.5 **27** ＋ §20.6 **43** ＝ **142 个拟增键**（按命名空间：`vmu.roles` 10／`vmu.recruit` 7／`vmu.delegation` 11／`vmu.trust` 11／`vmu.collusion` 6／`vmu.conflict` 8／`vmu.consensus` 4／`vmu.memory` 9／`vmu.skills` 6／`vmu.auction` 10／`vmu.handover` 7／`vmu.mentor` 4／`vmu.discipline` 6／`vmu.topology` 5／`vmu.charter` 10／`vmu.identity` 9／`vmu.fairness` 6／`vmu.explain` 7／`vmu.human` 6）。
+> **跨卷不重复定义** ✗：**资源公平策略的定义在 08**（`vmu.budget.fairnessPolicy` ✓，08-§19.6）；本卷**不另设**"公平策略"键 ✓（v0.1 曾重复登记同一旋钮，已删；本卷只保留 `vmu.fairness.*` 里**08 没有的**那些：`minShares`／`newcomerQuota`／`maxSlotsPerInstance`／`criticalSlots`／`rebalanceEveryMs` ✓）。逐条对照见 **§27 交界表** ✓。
+
+**计数（逐表实测；v0.2 起剔除与 08 重复的"公平策略"键与卷内重复的"共识分类"键 ✓，两处**不再以字面键名出现** ✗ 以免被生成管线重新声明 ✓）**：§20.1 **17** ＋ §20.2 **11** ＋ §20.3 **17** ＋ §20.4 **26** ＋ §20.5 **27** ＋ §20.6 **42** ＝ **140 个拟增键**（按命名空间：`vmu.roles` 10／`vmu.recruit` 7／`vmu.delegation` 11／`vmu.trust` 11／`vmu.collusion` 6／`vmu.conflict` 8／`vmu.consensus` 3／`vmu.memory` 9／`vmu.skills` 6／`vmu.auction` 10／`vmu.handover` 7／`vmu.mentor` 4／`vmu.discipline` 6／`vmu.topology` 5／`vmu.charter` 10／`vmu.identity` 9／`vmu.fairness` 5／`vmu.explain` 7／`vmu.human` 6）。
 
 ---
 
@@ -444,7 +448,7 @@
 | `VMU_RECRUIT_CLOSED` | 招募未开放 | 应募 | 开放条件 |
 | `VMU_RECRUIT_EVIDENCE_REQUIRED` | 候选缺证据 | 选拔 | 必备证据 |
 | `VMU_PROBATION_ACTIVE` | 试用期限制 | 行使受限权限 | 限制项＋转正条件 |
-| `VMU_DELEGATION_ESCALATION` | **委托试图扩大权限** | 委托/转委 | 授予者范围与被请求范围的差异（S-2 机器强制） |
+| `VMU_DELEGATION_ESCALATION` | **委托试图扩大权限** | 委托/转委 | 授予者范围与被请求范围的差异（S-2 设计目标；当前未实现 ✗） |
 | `VMU_DELEGATION_EXPIRED` | 委托已失效 | 使用 | 失效时间/事件＋如何重授 |
 | `VMU_DELEGATION_DEPTH` | 委托链超深/成环 | 转委 | 链现状与上限 |
 | `VMU_DELEGATION_BUDGET` | 委托子预算耗尽 | 使用 | 当前值/上限＋来源委托 |
@@ -485,10 +489,11 @@
 | `VMU_DISCIPLINE_QUOTA` | 纪律配额触界 | 动作 | 当前值/上限＋重置时点 |
 | `VMU_DISCIPLINE_SUSPENDED` | 已被停职 | 行使权限 | 停职依据＋复职路径 |
 | `VMU_DISCIPLINE_POSTMORTEM_MISSING` | 缺复盘 | 结项 | 复盘要求＋模板 |
-| `VMU_IDEMPOTENCY_KEY_REUSED` | 幂等键重复且载荷不同 | 写操作 | 差异（08 同码 ✓ 复用） |
 | `VMU_HANDOVER_FALLBACK_USED` | 已走回退路径 | 交接 | 回退原因与最终归属 |
 | `VMU_FAIRNESS_QUOTA` | 公平配额触界 | 分配 | 配额依据＋受影响者 |
 | `VMU_FAIRNESS_CONCENTRATION` | 席位集中超限 | 任职 | 现值/上限＋关键席位说明 |
+
+> **共享码不在此重复登记** ✗：`VMU_IDEMPOTENCY_KEY_REUSED`（v0.1 曾作为行列出）**等 13 个共享码的定义在 08**（见 §27 交界表 ✓）⇒ 本卷只在用到处**引用** ✓，不在本节重复一行 ✓。
 
 ### 21.3 拓扑/宪章/身份/公平/可解释/人类（20）
 
@@ -515,7 +520,7 @@
 | `VMU_HUMAN_TIMEOUT` | 人类审批超时 | 等待 | 超时行为（hold/deny/allow） |
 | `VMU_SOCIETY_DISABLED` | 社会机制未声明 | 任何社会动作 | 如何声明（`vmu.*` 开关；零机制 ✓） |
 
-**计数**：§21.1 **24** ＋ §21.2 **29** ＋ §21.3 **20** ＝ **73 个拟增错误码**（另有**复用** √：`VMU_NOT_PERMITTED／VMU_NOT_MEMBER／VMU_NO_SUCH_OBJECT／VMU_INVALID_ARGUMENT／VMU_STATE／VMU_RESOURCE_BUDGET／VMU_MIDDLEWARE_REJECTED／VMU_MIDDLEWARE_FAILED／VMU_IO_FAILED／VMU_STORE_FAILED／VMU_ENGINE_UNAVAILABLE／VMU_PACK_CONFLICT／VMU_IDEMPOTENCY_KEY_REUSED`（08）／`VMU_REOPEN_*`（08）／`VMU_MEETING_*`（08）／`VMU_MINUTES_*`（08））。
+**计数**：§21.1 **24** ＋ §21.2 **28** ＋ §21.3 **20** ＝ **72 个拟增错误码**（另有**复用** √：`VMU_NOT_PERMITTED／VMU_NOT_MEMBER／VMU_NO_SUCH_OBJECT／VMU_INVALID_ARGUMENT／VMU_STATE／VMU_RESOURCE_BUDGET／VMU_MIDDLEWARE_REJECTED／VMU_MIDDLEWARE_FAILED／VMU_IO_FAILED／VMU_STORE_FAILED／VMU_ENGINE_UNAVAILABLE／VMU_PACK_CONFLICT／VMU_IDEMPOTENCY_KEY_REUSED`（08）／`VMU_REOPEN_*`（08）／`VMU_MEETING_*`（08）／`VMU_MINUTES_*`（08）／`VMU_TASK_*`（08）／`VMU_CONFLICT_*`（本卷）——**共享码的定义一律在 08，逐条见 §27 交界表** ✓）。
 
 ---
 
@@ -633,4 +638,84 @@
 | 实现侧做法 | **11**（§4.1 接缝纪律、§5 场景规范） | 场景与接缝纪律 | 本卷 §24 的门禁断言与具名红 |
 
 > **本卷**的`未核项`已按任务要求写明"编号登记见 `14-§2`" ✓；本卷**不含任何已实现的"社会"服务**（19 个服务、11 个工具、28 个钩子全部为规划 ✗），**唯一已实现的底座**是 `vmu.members`（席位/容量/任职）＋`vmu.store/library/work/tasks`（记忆与台账）＋08 的治理原语 ✓ —— 这一点在全卷对每个条目都标注了成熟度 ✓。
+
+---
+
+## 27. 交界表：与 08 卷的分工（**谁定义／谁引用**；独立批评者第 5 轮 X1 的处置 ✓）
+
+### 27.1 分界规则（三条判据，先判后写 ✓）
+
+| 判据 | 归谁 | 例子 |
+|---|---|---|
+| **机制/程序**：怎样开会、怎样表决、怎样推进阶段、怎样限流与计量 | **08 定义** ✓ | 会议状态机、三层门槛、表决方法族、阶段门、看板 WIP、预算硬门、控制流 |
+| **社会关系/身份**：谁是谁、凭什么被选中、委托给谁、谁来仲裁、记忆与技能归谁、如何交接、机构怎么自组织 | **17 定义** ✓ | 席位与任职、委托链、信任与声誉、仲裁者选择、经验卡与技能库、竞标、交接包、拓扑、宪章、身份归属、公平、人类在环 |
+| **共享项**（两卷都会用到的旋钮/码） | **定义留在 08** ✓（`settings/planned.js` 按"最低卷号"归因 08 ✓）／**17 只引用** ✗ | 本节 27.2／27.3 逐条列出 |
+
+**为什么共享项留 08**：① 它们是**程序性**的（表决/预算/审计/工作流），放在社会卷会让"机制的定义"分裂 ✗；② 生成管线按**最低卷号**归因 ⇒ 两处都写只会让读者以为有两个来源 ✗；③ 08 已经把它们写成**可实现的判定点/参数**，17 需要的是"用在什么社会场景"（那才是 17 的价值 ✓）。
+
+### 27.2 共享**键**（11 条）——定义在 08，17 只引用 ✓
+
+| 键 | 定义（08 的位置） | 本卷的用到处（17） | 为何留 08 |
+|---|---|---|---|
+| `vmu.workflow.escalationAfterMs` | 08-§19.5（工作流族） | §6 升级（L106） | 升级是**工作流**的时限机制 ✓ |
+| `vmu.workflow.escalationTarget` | 08-§19.5 | §6 升级（L106） | 同上（目标对象是程序配置 ✓） |
+| `vmu.workflow.claimRequired` | 08-§19.5 | §10 认领（L147） | 认领门是**任务板**机制 ✓ |
+| `vmu.ballot.reopenInitiatorScope` | 08-§19.4（表决族） | §7 撤回共识（L117） | 复议门槛是**表决**机制（防滥诉 ✓） |
+| `vmu.ballot.reopenFloor` | 08-§19.4 | §7 撤回共识（L119） | 同上 |
+| `vmu.ballot.secrecy` | 08-§19.4 | §16 化名与匿名（L213） | 记名/不记名是**表决**机制 ✓ |
+| `vmu.minutes.dissentMandatory` | 08-§19.1（纪要族） | §7 异议与保留（L117） | 少数意见入档是**纪要**机制 ✓ |
+| `vmu.budget.fairnessPolicy` | 08-§19.6（预算族） | §17 资源公平（L220、L424） | 配额公平是**预算**机制；本卷只加"社会侧份额"（`vmu.fairness.minShares` 等）✓ |
+| `vmu.audit.traceKeepMs` | 08-§19.6（审计族） | §18 追踪与关联（L233） | 审计保留期是**审计**机制 ✓ |
+| `vmu.arbitration.mode` | 08-§19.6（仲裁族） | §6 仲裁（L107、L471） | 仲裁**开关**是程序配置；本卷只定义**仲裁者选择**（`vmu.conflict.arbiterRule`／`arbiterMustDiffer`）✓ |
+| `vmu.arbitration.binding` | 08-§19.6 | §6 仲裁（L108） | 裁决**效力**是程序配置 ✓ |
+
+> **本卷因此删掉的重复项**：**"公平策略"键**（与 08 的 `vmu.budget.fairnessPolicy` 同一旋钮 ✗ ⇒ 已删，且不再以字面键名出现 ✓）。
+
+### 27.3 共享**码**（13 条具体码 ＋ 4 个 08 码族）——定义在 08，17 只引用 ✓
+
+| 码 | 定义（08 的位置） | 本卷的用到处 | 为何留 08 |
+|---|---|---|---|
+| `VMU_INVALID_ARGUMENT` | 08-§20 表头（通用） | 本卷各条"错误码"列 | 通用参数错误 ✓ |
+| `VMU_STATE` | 08-§20 | 状态不允许（席位/委托/交接等） | 通用状态错误 ✓ |
+| `VMU_NOT_PERMITTED` | 08-§20 | 职责分离/罢免/宪章/人类否决 | 通用权限错误 ✓ |
+| `VMU_NOT_MEMBER` | 08-§20 | 身份/归属（§1/§16） | 通用身份错误 ✓ |
+| `VMU_NO_SUCH_OBJECT` | 08-§20 | 悬空席位/任务/纪要 | 通用悬空错误 ✓ |
+| `VMU_RESOURCE_BUDGET` | 08-§20 | 容量/配额/委托预算 | 预算与容量是**机器强制** ✓ |
+| `VMU_MIDDLEWARE_REJECTED` | 08-§20 | 社会钩子被拒（§22.3） | 钩子拒绝的统一码 ✓ |
+| `VMU_MIDDLEWARE_FAILED` | 08-§20 | 判定点异常 | 同上 ✓ |
+| `VMU_IO_FAILED` | 08-§20 | 交接包/记忆写盘 | 耐久层 ✓ |
+| `VMU_STORE_FAILED` | 08-§20 | 记忆底座 | 耐久层 ✓ |
+| `VMU_ENGINE_UNAVAILABLE` | 08-§20 | 能力降级/无引擎 | 引擎不可用 ✓ |
+| `VMU_PACK_CONFLICT` | 08-§20 | 宪章 vs pack（§15） | 与 pack 装载冲突 ✓ |
+| `VMU_IDEMPOTENCY_KEY_REUSED` | 08-§20 | 委托/交接去重 | 幂等是程序纪律 ✓ |
+| 码族 `VMU_MEETING_*`／`VMU_MINUTES_*`／`VMU_REOPEN_*`／`VMU_TASK_*` | 08-§20.1／§20.2 | 听证/纪要/复议/任务（§6/§7/§10） | 08 的码族 ✓ |
+
+> **本卷因此删掉的重复行**：`VMU_IDEMPOTENCY_KEY_REUSED` 原在 §21.2 单列一行 ⇒ 已删（只在上表引用）✓；§21 计数 **73 → 72** ✓。
+
+### 27.4 反向：**17 定义、08 引用**（本卷独有的族 ✓）
+
+| 本卷定义的族 | 08 需要引用的地方 | 说明 |
+|---|---|---|
+| `vmu.delegation.*`（11 键）＋`VMU_DELEGATION_*` | 08 的临时授权面（08-§2.2-B / 44 行授权语义） | **命令级**授权归 08；**实例级**委托归 17 ✓ |
+| `vmu.roles.*`（10）／`vmu.recruit.*`（7） | 08 的席位与法定人数（08-§2.2-C） | 08 只问"谁在场/够不够人"；**任职与任期**归 17 ✓ |
+| `vmu.trust.*`（11）／`vmu.collusion.*`（6） | 08 的仲裁者与候选人排序（08-§6 参考） | 声誉**不改权限**（S-3），08 只读排序建议 ✓ |
+| `vmu.charter.*`（10）／`vmu.topology.*`（5） | 08 的会议类型与阶段（08-§15/§4） | 08 管**一场会**；17 管**机构本身** ✓ |
+| `vmu.identity.*`（9）／`vmu.fairness.*`（5）／`vmu.human.*`（6） | 08 的观察员/表决权/审批（08-§2.2-C/§3.2） | 08 管**票**；17 管**人与归属** ✓ |
+| `vmu.handover.*`（7）／`vmu.memory.*`（9）／`vmu.skills.*`（6）／`vmu.auction.*`（10）／`vmu.conflict.*`（8）／`vmu.consensus.*`（3）／`vmu.explain.*`（7）／`vmu.mentor.*`（4）／`vmu.discipline.*`（6） | 08 的任务板/归档/升级（08-§4/§19.5） | 08 管**任务与在途**；17 管**交接与知识** ✓ |
+
+> **两处"反向归属"已两卷同步** ✓（这是唯一两处由 17 定义、08 改为引用的地方）：
+> ① **仲裁本体**（仲裁者选择/回避/听证/效力）定义在 **17-§6** ✓ ⇒ 08-§4 的"仲裁与冲突解决"一行已改为引用 17-§6（08 侧只保留**升级时限与目标** `vmu.workflow.escalationAfterMs`／`escalationTarget` ✓ 与会议/表决面 ✓）；理由：仲裁是**社会关系**（谁判谁、判了算不算），不是程序机制 ✗。
+> ② **交接本体**（交接单/上下文压缩包/验收字段）定义在 **17-§11** ✓ ⇒ 08-§4 的"交接与升级"一行已改为引用 17-§11（08 侧只保留**在途台账** `work.interrupt()`／`recover()` ✓）；理由：交接是**责任与人际**的事，08 只需保证"在途不丢" ✓。
+
+### 27.5 禁止与处置（**两卷共同纪律**）
+
+1. **一个机制只能有一处定义** ✗：发现两卷各写一套 ⇒ **立刻停下报 Lead**，不得两处并行修改 ✓；
+2. **引用必须给节号** ✓（本表已给到节/行）；
+3. **删改要两卷同步** ✓：本次 17 删**两处重复键**（"公平策略"键／"共识分类"键，均不再以字面键名出现 ✗）＋§21.2 的重复码行 ⇒ 08 侧同步加**交界表 §24** ✓（不重复登记、只列"谁定义／谁引用"）；
+4. **生成管线归 Lead** ✗：本卷只改文档 ✓；`settings/planned.js` 的重新归因由 Lead 跑 `--write` ✓。
+
+### 27.6 本次同步记录（两卷）
+
+- **17**：删**"公平策略"键**（→ 引 08 `vmu.budget.fairnessPolicy`）✓；删**"共识分类"键**（→ 用本卷 `vmu.conflict.classes`）✓；删 §21.2 的 `VMU_IDEMPOTENCY_KEY_REUSED` 行（→ 引 08）✓；键计数 **142 → 140**、码计数 **73 → 72** ✓；新增本节 §27 ✓；§0.1 增"设计目标 vs 实现保证"纪律 ✓；四处 `S-x 机器强制` 改为"设计目标（当前未实现 ✗）" ✓（两处被删键的说明也**不再写具体键名** ✗，避免被生成管线重新声明 ✓）。
+- **08**：新增 **§24 交界表**（镜像本节 ✓）；§19 表头增"**全部为 `planned`（未接线）**" ✓；§6.2 增"本节 8 条**均已实现** ✓" ✓；`vmu.budget.*` 一行的"机器强制"改为"设计原则（当前仅 `vmu.limits.*` 已实现 ✓）" ✓；§0.2 增"设计目标 vs 实现保证"第 ④ 条纪律 ✓。
 

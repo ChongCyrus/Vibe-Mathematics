@@ -110,9 +110,15 @@ export function namespacesOf(keys) {
  * it would mis-attribute every key to volume 04 AND create a cycle (docs/04 <- schema <- planned.js <- 04).
  */
 export const MIRROR_PREFIXES = ['04-']
-/** A volume that mentions (almost) every CORE key is a generated mirror; a design volume never does. */
+/**
+ * A volume is a generated mirror when it is named above, OR when it mentions EVERY core key (threshold
+ * 1.0 by default). The coverage rule must be ALL, not "most": a design volume that merely QUOTES the
+ * settings table covers almost all core keys - measured: docs/12 (user guide) covers 51/54 = 94%, while
+ * the generated docs/04 covers 54/54 = 100%. A 90% cut silently dropped docs/12 as a source, which would
+ * have hidden real declarations (and could drop a key nothing else registers).
+ */
 export function mirrorVolumes(volumes, core, opts = {}) {
-  const threshold = opts.threshold === undefined ? 0.9 : opts.threshold
+  const threshold = opts.threshold === undefined ? 1 : opts.threshold
   const coreSet = new Set(core)
   const out = []
   for (const vol of volumes) {
@@ -130,15 +136,17 @@ export function mirrorVolumes(volumes, core, opts = {}) {
 
 /**
  * Collect the planned keys from the volumes. Pure (all inputs injected) so the test can recompute it.
- * MIRROR volumes are skipped as sources (they are generated from the schema). Returns { defs, stats }
- * where stats carries every exclusion counter and the mirror list (the report quotes them).
+ * MIRROR volumes are skipped as sources (they are generated from the schema). Each key records EVERY
+ * volume that declares it (`volumes`, sorted) - a single "first volume" would imply a unique provenance
+ * that a design set with cross-references does not have. Returns { defs, stats } where stats carries
+ * every exclusion counter, the mirror list and the multi-volume count (the report quotes them).
  */
 export function collectPlannedDefs({ volumes, core, namespaces, mirrors }) {
   const coreSet = new Set(core)
   const nsSet = namespaces instanceof Set ? namespaces : namespacesOf(core)
   const mirrorList = mirrors || mirrorVolumes(volumes, core)
   const mirrorNames = new Set(mirrorList.map((m) => m.name))
-  const planned = new Map()                 // key -> source volume number (lowest wins)
+  const planned = new Map()                 // key -> Set(declaring volume numbers)
   const excluded = { existing: new Set(), wildcard: new Set(), whitelist: new Set(), twoSegment: new Set(), namespace: new Set() }
   let mentions = 0
   let mirrorMentions = 0
@@ -155,20 +163,28 @@ export function collectPlannedDefs({ volumes, core, namespaces, mirrors }) {
       if (coreSet.has(k)) { excluded.existing.add(k); continue }                 // already declared
       if (NON_SETTING.has(k)) { excluded.whitelist.add(k); continue }            // service/registry name
       if (nsSet.has(k)) { excluded.namespace.add(k); continue }                  // derived namespace of a key
-      if (!planned.has(k)) planned.set(k, vol.num)                               // lowest volume wins
+      const decl = planned.get(k) || new Set()
+      decl.add(vol.num)                                                          // EVERY declaring volume
+      planned.set(k, decl)
     }
   }
   const keys = [...planned.keys()].sort()
-  const defs = keys.map((key) => ({
-    key,
-    type: 'planned',
-    def: null,
-    hot: 'H1',
-    who: 'office',
-    scope: 'global',
-    planned: true,
-    doc: '设计阶段登记：' + planned.get(key) + ' 声明，尚未实现（元数据以该卷为准）',
-  }))
+  const defs = keys.map((key) => {
+    const vols = [...planned.get(key)].sort()                                    // deterministic order
+    const first = vols[0]
+    return {
+      key,
+      type: 'planned',
+      def: null,
+      hot: 'H1',
+      who: 'office',
+      scope: 'global',
+      planned: true,
+      volumes: vols,
+      doc: '设计阶段登记：首个声明卷 ' + first + '（共见 ' + vols.length + ' 卷：' + vols.join('、') + '），尚未实现（元数据以各卷为准）',
+    }
+  })
+  const countFor = (num) => defs.filter((d) => d.volumes.indexOf(num) !== -1).length
   const stats = {
     mentions,
     mirrorMentions,
@@ -178,7 +194,8 @@ export function collectPlannedDefs({ volumes, core, namespaces, mirrors }) {
     whitelist: excluded.whitelist.size,
     twoSegment: excluded.twoSegment.size,
     namespace: excluded.namespace.size,
-    byVolume: volumes.map((v) => ({ vol: v.num, keys: defs.filter((d) => d.doc.indexOf('：' + v.num + ' 声明') !== -1).length })),
+    multiVolume: defs.filter((d) => d.volumes.length > 1).length,
+    byVolume: volumes.map((v) => ({ vol: v.num, keys: countFor(v.num) })),
   }
   return { defs, stats }
 }
@@ -197,11 +214,14 @@ export function renderPlannedFile(defs) {
     '// GENERATED MIRRORS ARE NOT SOURCES: docs/04-settings.md §11 is generated FROM the schema, so it is',
     '// skipped (by name and by core-key coverage) - otherwise every key would be attributed to 04 and the',
     '// table <-> registry cycle would make the two files chase each other.',
+    '// PROVENANCE IS MULTI-VOLUME: `volumes` lists EVERY design volume that declares the key (sorted), so a',
+    '// key that two volumes both describe is not silently presented as having a single source. The `doc`',
+    '// text names the FIRST volume explicitly ("首个声明卷") together with the full list.',
     '// Keys are sorted lexicographically; the file is byte-stable (the test asserts it).',
     'export const PLANNED_DEFS = Object.freeze([',
   ]
-  const body = defs.map((d) => '  { key: ' + JSON.stringify(d.key) + ", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, doc: "
-    + JSON.stringify(d.doc) + ' },')
+  const body = defs.map((d) => '  { key: ' + JSON.stringify(d.key) + ", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["
+    + d.volumes.map((v) => JSON.stringify(v)).join(', ') + '], doc: ' + JSON.stringify(d.doc) + ' },')
   return header.concat(body, ['])', '']).join('\n')
 }
 
@@ -227,7 +247,7 @@ async function main() {
   if (asJson) {
     console.log(JSON.stringify({
       plannedKeys: defs.length, docs: volumes.length, stale,
-      byVolume: stats.byVolume, mirrors: stats.mirrors, excluded: {
+      byVolume: stats.byVolume, mirrors: stats.mirrors, multiVolume: stats.multiVolume, excluded: {
         existing: stats.existing, wildcard: stats.wildcard, whitelist: stats.whitelist,
         twoSegment: stats.twoSegment, namespace: stats.namespace,
       },
@@ -236,7 +256,9 @@ async function main() {
   }
 
   console.log('planned keys=' + defs.length + ' (from docs=' + volumes.length + ')')
-  console.log('  by volume: ' + stats.byVolume.filter((v) => v.keys > 0).map((v) => v.vol + '=' + v.keys).join(' '))
+  console.log('  by volume (ALL declarations): ' + stats.byVolume.filter((v) => v.keys > 0).map((v) => v.vol + '=' + v.keys).join(' '))
+  console.log('  multi-volume keys: ' + stats.multiVolume + '/' + defs.length
+    + ' (declared by more than one design volume; each entry lists them all in `volumes`)')
   console.log('  mirrors skipped as sources: ' + (stats.mirrors.length
     ? stats.mirrors.map((m) => m.vol + ' (core ' + m.coreCovered + '/' + m.coreTotal + ', ' + m.why + ')').join(', ')
     : 'none'))
