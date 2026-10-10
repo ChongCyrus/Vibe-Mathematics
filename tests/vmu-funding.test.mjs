@@ -347,6 +347,25 @@ const ev = { receipt: 'r-1' }
   ok(mkSame().status().at === 777, 'status() uses the injected clock (no real time)')
 }
 
+// ---- ROUND 57 (docs/22 §15-10): an amount is an INTEGER number of minor units, or it is refused by name ----
+{
+  const h = funded({ 'vmu.funding.request': 'auto' })
+  const frac = h.f.request({ account: h.id, amountMinor: 1.5, fields: {} })
+  ok(frac.ok === false && frac.code === 'VMU_AMOUNT_NOT_INTEGER',
+    'a FRACTIONAL request amount is refused BY NAME (it used to be silently coerced to zero)', JSON.stringify(frac).slice(0, 170))
+  ok(/现值=1\.5/.test(String(frac.hint)) && /不做四舍五入/.test(String(frac.hint)),
+    'the refusal quotes the offending value and states that no rounding was done', String(frac.hint))
+  const str = h.f.request({ account: h.id, amountMinor: '100', fields: {} })
+  ok(str.ok === false && str.code === 'VMU_AMOUNT_NOT_INTEGER', 'a STRING amount is refused too (never parsed)', JSON.stringify(str).slice(0, 150))
+  const zero = h.f.request({ account: h.id, amountMinor: 0, fields: {} })
+  ok(zero.ok === true && zero.amountMinor === 0, 'a ZERO amount stays legal (integer zero is a value, not an absence)', JSON.stringify(zero).slice(0, 150))
+  // `expense()` checks its EVIDENCE before its amount, so a call that is missing evidence is refused for that
+  // reason first (both are named refusals - the order is recorded here rather than assumed).
+  const expNoEvidence = h.f.expense({ account: h.id, line: 'travel', amountMinor: 2.5 })
+  ok(expNoEvidence.ok === false && expNoEvidence.code === 'VMU_FUNDING_RECEIPT_MISSING',
+    'expense() refuses missing evidence BEFORE it looks at the amount (order recorded, not assumed)', JSON.stringify(expNoEvidence).slice(0, 170))
+}
+
 if (failed === 0) {
   console.log('=== VMU FUNDING: ' + passed + ' passed, 0 failed ===')
   process.exit(0)

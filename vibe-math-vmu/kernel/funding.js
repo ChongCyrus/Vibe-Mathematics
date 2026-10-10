@@ -52,6 +52,9 @@ export const UNWIRED_REASONS = Object.freeze({
 const reasonFor = (key) => UNWIRED_REASONS[key.split('.').slice(0, 2).join('.')] || '尚未接线：该键需要一个尚未存在的子系统或策略语义'
 
 const intOr = (v, d) => (Number.isInteger(v) && v >= 0 ? v : d)
+// ROUND 57 (docs/22 §15-10): amounts are validated by `moneyOr`, which lives INSIDE createFunding because a
+// refusal must go through `deny` (it counts, records and announces the refusal). `intOr` above is for SETTINGS,
+// where a bad value falls back to its default; for an amount that would silently rewrite the caller's money.
 const str = (v) => (typeof v === 'string' ? v : '')
 const listOr = (v) => (Array.isArray(v) ? v.map(String) : [])
 const uniq = (v) => [...new Set(Array.isArray(v) ? v : [])]
@@ -123,8 +126,20 @@ export function createFunding({ clock = () => 0, log = null, settings = {}, bus 
       { enforced: list, fired: firedKeys, enforcedScope: ENFORCED_SCOPE, wouldEvaluate: list.slice() },
       extra || {})
   }
-  const receipt = (obj, enforced, fired) => {
-    const list = uniq(enforced)
+  // ROUND 57 (docs/22 §15-10): an amount is an INTEGER number of MINOR UNITS or it is refused BY NAME.
+  // `intOr` is for settings (a bad value falls back to its default); for money that would silently rewrite the
+  // caller's amount - `1.5` used to become `0` - so amounts never pass through it. Zero stays legal: an integer
+  // zero is a value, not an absence.
+  const moneyOr = (v, label, enforced, fired) => {
+    if (v === undefined || v === null || v === 0) return { ok: true, value: 0 }
+    if (Number.isInteger(v) && v >= 0) return { ok: true, value: v }
+    return {
+      ok: false,
+      error: deny('VMU_AMOUNT_NOT_INTEGER', label + ' must be an integer amount of minor units: ' + JSON.stringify(v),
+        '现值=' + JSON.stringify(v) + '（小数/字符串一律具名拒；不做四舍五入，也不静默归零 ✗）', enforced, { amount: v }, fired),
+    }
+  }
+  const receipt = (obj, enforced, fired) => {    const list = uniq(enforced)
     const firedKeys = uniq(fired).filter((k) => list.includes(k))
     const r = Object.assign({ ok: true, at: clock() }, obj, { enforced: list, fired: firedKeys, enforcedScope: ENFORCED_SCOPE })
     receiptRing.push(r)
@@ -254,7 +269,9 @@ export function createFunding({ clock = () => 0, log = null, settings = {}, bus 
         return deny('VMU_META_VALIDATION_FAILED', 'request is missing required field(s): ' + missing.join(', '),
           'vmu.funding.requiredFields=' + (K.requiredFields.join(', ') || '(none)'), enforced, { missing }, fired)
       }
-      const amount = intOr(amountMinor, 0)
+      const amountM = moneyOr(amountMinor, 'request `amountMinor`', enforced, fired)
+      if (!amountM.ok) return amountM.error
+      const amount = amountM.value
       mark(fired, 'vmu.funding.approvalThresholdMinor')
       let approved = false
       let needsApproval = false
@@ -327,7 +344,9 @@ export function createFunding({ clock = () => 0, log = null, settings = {}, bus 
         return deny('VMU_META_VALIDATION_FAILED', 'expense currency "' + cur + '" differs from the account currency ' + acc.currency,
           'vmu.funding.currency=' + acc.currency, enforced, null, fired)
       }
-      const amount = intOr(amountMinor, 0)
+      const amountM = moneyOr(amountMinor, 'expense `amountMinor`', enforced, fired)
+      if (!amountM.ok) return amountM.error
+      const amount = amountM.value
       if (cash && K.pettyCashLimitMinor > 0 && amount > K.pettyCashLimitMinor) {
         mark(fired, 'vmu.funding.pettyCashLimitMinor')
         return deny('VMU_QUOTA_EXCEEDED', 'petty-cash expense above the limit: ' + amount + ' > ' + K.pettyCashLimitMinor,
