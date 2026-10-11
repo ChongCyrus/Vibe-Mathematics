@@ -341,9 +341,12 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
   // names that single source. The count is asserted above; this pins WHERE it is read from.
   // ROUND 224: the floor moved with the universe (49 measured after the phantom removal), and the SOURCE is what this
   // assertion is really about: the planned list must come from the generated registry, not from a local list.
-  // ROUND 226: the floor follows the measured universe again - fourteen more vmu.math.* keys were wired this round, so
-  // the planned remainder fell from 49 to 35. The SOURCE is what this assertion is about.
-  ok(zero.status().plannedKeys.length > 30 && zero.status().plannedSource === 'settings/schema.js (core + planned)',
+  // ROUND 227: this floor has now moved three times as the declared universe changed, which made it a test of my
+  // bookkeeping. It is STRUCTURAL instead: the planned list must come from the generated registry, must be non-empty, and
+  // must not overlap the wired list. A moving number adds nothing an invariant does not already say.
+  ok(zero.status().plannedKeys.length > 0 &&
+    zero.status().plannedKeys.every((k) => !zero.status().wired.includes(k)) &&
+    zero.status().plannedSource === 'settings/schema.js (core + planned)',
     'the planned list is read from the generated registry', zero.status().plannedSource)
 }
 
@@ -596,6 +599,57 @@ if (failed === 0) {
   ok(declared.t.plan({ op: 'symbolic/solve' }).ok === true, 'symbolic.assumptions[+]: a DECLARED assumption list satisfies a require policy')
   const relaxed = mk({ settings: { 'vmu.math.symbolic.assumptionsPolicy': 'allow-empty' }, seam: () => ({ ok: true, result: { value: 1 } }) })
   ok(relaxed.t.plan({ op: 'symbolic/solve' }).ok === true, 'symbolic.assumptionsPolicy[allow-empty]: the declared default does not demand assumptions')
+}
+
+
+// ── ROUND 227: ad / discrete / geom / nt / tensor — the last five declared families no face read ─────────────
+{
+  // ad.backend / ad.gradCheck
+  const a = mk({ settings: { 'vmu.math.ad.backend': 'jax', 'vmu.math.ad.gradCheck': true }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(codeOf(() => a.t.plan({ op: 'ad/grad', backend: 'torch' })) === 'VMU_MATH_UNSUPPORTED_OP',
+    'ad.backend[-]: a backend other than the declared one is refused by name')
+  ok(a.t.plan({ op: 'ad/grad', backend: 'jax' }).ok === true, 'ad.backend[+]: the declared backend passes')
+  ok(codeOf(() => a.t.run({ op: 'ad/grad' })) === 'VMU_MATH_INVALID_INPUT',
+    'ad.gradCheck[-]: a gradient result with no check is refused by name')
+  const checked = mk({ settings: { 'vmu.math.ad.gradCheck': true }, seam: () => ({ ok: true, result: { value: 1 }, gradCheckPassed: true }) })
+  ok(checked.t.run({ op: 'ad/grad' }).ok === true, 'ad.gradCheck[+]: a checked gradient passes')
+  const unchecked = mk({ settings: { 'vmu.math.ad.gradCheck': false }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(unchecked.t.run({ op: 'ad/grad' }).ok === true, 'ad.gradCheck[off]: with it off no check is demanded')
+
+  // discrete.backend / maxEnumeration — the contract says exceeding it is refused
+  const d = mk({ settings: { 'vmu.math.discrete.backend': 'ortools', 'vmu.math.discrete.maxEnumeration': 1000000 }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(codeOf(() => d.t.plan({ op: 'discrete/enumerate', backend: 'igraph' })) === 'VMU_MATH_UNSUPPORTED_OP',
+    'discrete.backend[-]: another backend is refused by name')
+  ok(codeOf(() => d.t.plan({ op: 'discrete/enumerate', enumerationSize: 2000000 })) === 'VMU_RESOURCE_BUDGET',
+    'discrete.maxEnumeration[-]: an enumeration above the declared cap is refused by name')
+  ok(d.t.plan({ op: 'discrete/enumerate', enumerationSize: 500000 }).ok === true, 'discrete.maxEnumeration[+]: below the cap passes')
+  const tiny = mk({ settings: { 'vmu.math.discrete.maxEnumeration': 10 }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(codeOf(() => tiny.t.plan({ op: 'discrete/enumerate', enumerationSize: 11 })) === 'VMU_RESOURCE_BUDGET',
+    'discrete.maxEnumeration[+]: lowering the declaration tightens the cap')
+
+  // geom.backend / exactCoordinates
+  const g = mk({ settings: { 'vmu.math.geom.backend': 'shapely', 'vmu.math.geom.exactCoordinates': true }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(codeOf(() => g.t.plan({ op: 'geom/intersect', backend: 'sympy' })) === 'VMU_MATH_UNSUPPORTED_OP', 'geom.backend[-]: another backend is refused by name')
+  ok(codeOf(() => g.t.plan({ op: 'geom/intersect', exactCoordinates: false })) === 'VMU_MATH_INVALID_INPUT',
+    'geom.exactCoordinates[-]: asking for approximate coordinates is refused while the declaration prefers exact ones')
+  ok(g.t.plan({ op: 'geom/intersect', exactCoordinates: true }).ok === true, 'geom.exactCoordinates[+]: exact coordinates are accepted')
+  const floating = mk({ settings: { 'vmu.math.geom.exactCoordinates': false }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(floating.t.plan({ op: 'geom/intersect', exactCoordinates: false }).ok === true, 'geom.exactCoordinates[off]: with it off floats are allowed')
+
+  // nt.backend / proofRequiredAbove — the contract says a certificate is mandatory above the size
+  const n = mk({ settings: { 'vmu.math.nt.backend': 'pari', 'vmu.math.nt.proofRequiredAbove': 100 }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(codeOf(() => n.t.plan({ op: 'nt/factor', backend: 'gmpy2' })) === 'VMU_MATH_UNSUPPORTED_OP', 'nt.backend[-]: another backend is refused by name')
+  ok(codeOf(() => n.t.plan({ op: 'nt/factor', scale: 500 })) === 'VMU_MATH_INVALID_INPUT',
+    'nt.proofRequiredAbove[-]: a result above the declared size without a certificate is refused by name')
+  ok(n.t.plan({ op: 'nt/factor', scale: 500, certificate: 'proof-1' }).ok === true, 'nt.proofRequiredAbove[+]: a certificate satisfies it')
+  ok(n.t.plan({ op: 'nt/factor', scale: 50, certificate: undefined }).ok === true, 'nt.proofRequiredAbove[+]: below the size no certificate is needed')
+  const noProof = mk({ settings: { 'vmu.math.nt.proofRequiredAbove': 0 }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(noProof.t.plan({ op: 'nt/factor', scale: 1000000 }).ok === true, 'nt.proofRequiredAbove[0]: zero means no certificate is ever required')
+
+  // tensor.backend
+  const te = mk({ settings: { 'vmu.math.tensor.backend': 'numpy' }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(codeOf(() => te.t.plan({ op: 'tensor/contract', backend: 'jax' })) === 'VMU_MATH_UNSUPPORTED_OP', 'tensor.backend[-]: another backend is refused by name')
+  ok(te.t.plan({ op: 'tensor/contract', backend: 'numpy' }).ok === true, 'tensor.backend[+]: the declared backend passes')
 }
 
 console.log('=== VMU MATHTOOLS: ' + passed + ' passed, 0 failed ===')

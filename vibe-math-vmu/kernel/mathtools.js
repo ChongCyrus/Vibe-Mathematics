@@ -61,6 +61,12 @@ export const WIRED_KEYS = Object.freeze([
   'vmu.math.ode.backend', 'vmu.math.ode.method', 'vmu.math.ode.tolerance', 'vmu.math.ode.reportConvergence',
   'vmu.math.stats.backend', 'vmu.math.stats.multipleComparison', 'vmu.math.stats.effectSize',
   'vmu.math.symbolic.backend', 'vmu.math.symbolic.assumptions', 'vmu.math.symbolic.assumptionsPolicy',
+  // ROUND 227: ad / discrete / geom / nt / tensor
+  'vmu.math.ad.backend', 'vmu.math.ad.gradCheck',
+  'vmu.math.discrete.backend', 'vmu.math.discrete.maxEnumeration',
+  'vmu.math.geom.backend', 'vmu.math.geom.exactCoordinates',
+  'vmu.math.nt.backend', 'vmu.math.nt.proofRequiredAbove',
+  'vmu.math.tensor.backend',
   'vmu.math.linalg.backend', 'vmu.math.linalg.requireResidual', 'vmu.math.linalg.sparse',
   'vmu.math.convergence.policy', 'vmu.math.numeric.warnings', 'vmu.math.numeric.stability',
   'vmu.math.artifacts.maxFileMb', 'vmu.math.artifacts.maxRuns', 'vmu.math.artifacts.maxAttemptsPerRun',
@@ -219,6 +225,14 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
     symbolicBackend: str(sget('vmu.math.symbolic.backend')),
     symbolicAssumptions: (() => { const a = sget('vmu.math.symbolic.assumptions'); return Array.isArray(a) ? a.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : [] })(),
     symbolicAssumptionsPolicy: sget('vmu.math.symbolic.assumptionsPolicy') === 'require' ? 'require' : 'allow-empty',
+    // ROUND 227: ad / discrete / geom / nt / tensor - the last declared math families nobody read.
+    adBackend: str(sget('vmu.math.ad.backend')), adGradCheck: sget('vmu.math.ad.gradCheck') === true,
+    discreteBackend: str(sget('vmu.math.discrete.backend')),
+    discreteMaxEnumeration: (() => { const v = sget('vmu.math.discrete.maxEnumeration'); return Number.isFinite(v) && v >= 0 ? Math.floor(v) : 1000000 })(),
+    geomBackend: str(sget('vmu.math.geom.backend')), geomExactCoordinates: sget('vmu.math.geom.exactCoordinates') !== false,
+    ntBackend: str(sget('vmu.math.nt.backend')),
+    ntProofRequiredAbove: (() => { const v = sget('vmu.math.nt.proofRequiredAbove'); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0 })(),
+    tensorBackend: str(sget('vmu.math.tensor.backend')),
     linalgBackend: str(sget('vmu.math.linalg.backend')), requireResidual: sget('vmu.math.linalg.requireResidual') === true,
     sparse: sget('vmu.math.linalg.sparse') === true,
     convergence: sget('vmu.math.convergence.policy') === 'require' ? 'require' : 'report',
@@ -296,6 +310,11 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
     'vmu.math.stats.backend': K.statsBackend, 'vmu.math.stats.multipleComparison': K.statsMultipleComparison,
     'vmu.math.stats.effectSize': K.statsEffectSize, 'vmu.math.symbolic.backend': K.symbolicBackend,
     'vmu.math.symbolic.assumptions': K.symbolicAssumptions, 'vmu.math.symbolic.assumptionsPolicy': K.symbolicAssumptionsPolicy,
+    'vmu.math.ad.backend': K.adBackend, 'vmu.math.ad.gradCheck': K.adGradCheck,
+    'vmu.math.discrete.backend': K.discreteBackend, 'vmu.math.discrete.maxEnumeration': K.discreteMaxEnumeration,
+    'vmu.math.geom.backend': K.geomBackend, 'vmu.math.geom.exactCoordinates': K.geomExactCoordinates,
+    'vmu.math.nt.backend': K.ntBackend, 'vmu.math.nt.proofRequiredAbove': K.ntProofRequiredAbove,
+    'vmu.math.tensor.backend': K.tensorBackend,
     'vmu.math.linalg.backend': K.linalgBackend, 'vmu.math.linalg.requireResidual': K.requireResidual, 'vmu.math.linalg.sparse': K.sparse,
     'vmu.math.convergence.policy': K.convergence, 'vmu.math.numeric.warnings': K.warnings, 'vmu.math.numeric.stability': K.stability,
     'vmu.math.artifacts.maxFileMb': K.maxFileMb, 'vmu.math.artifacts.maxRuns': K.maxRuns, 'vmu.math.artifacts.maxAttemptsPerRun': K.maxAttempts,
@@ -483,6 +502,43 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
             'pass assumptions:[…], or declare vmu.math.symbolic.assumptions', mark(evalKey('vmu.math.symbolic.assumptionsPolicy'), 'vmu.math.symbolic.assumptionsPolicy'))
         }
       }
+      // ⑦d AD / DISCRETE / GEOM / NT / TENSOR (round 227: nine declared keys nobody read)
+      for (const [prefix, declared, key] of [
+        ['ad/', K.adBackend, 'vmu.math.ad.backend'],
+        ['discrete/', K.discreteBackend, 'vmu.math.discrete.backend'],
+        ['geom/', K.geomBackend, 'vmu.math.geom.backend'],
+        ['nt/', K.ntBackend, 'vmu.math.nt.backend'],
+        ['tensor/', K.tensorBackend, 'vmu.math.tensor.backend'],
+      ]) {
+        if (!new RegExp('^' + prefix).test(req.op)) continue
+        evalKey(key)
+        if (declared && req.backend && req.backend !== declared) {
+          throw deny('VMU_MATH_UNSUPPORTED_OP', 'requested ' + prefix.slice(0, -1) + ' backend is not the declared one',
+            'declared=' + declared + ', requested=' + req.backend + ' (' + key + ')', evalKey(key))
+        }
+      }
+      if (/^discrete\//.test(req.op)) {
+        // The contract states it plainly: an enumeration above the cap is refused by name.
+        evalKey('vmu.math.discrete.maxEnumeration')
+        if (req.enumerationSize !== undefined && num(req.enumerationSize) > K.discreteMaxEnumeration) {
+          throw deny('VMU_RESOURCE_BUDGET', 'enumeration exceeds vmu.math.discrete.maxEnumeration: ' + num(req.enumerationSize) + ' > ' + K.discreteMaxEnumeration,
+            '现值=' + num(req.enumerationSize) + ', 上限=' + K.discreteMaxEnumeration + ' (vmu.math.discrete.maxEnumeration)', mark(evalKey('vmu.math.discrete.maxEnumeration'), 'vmu.math.discrete.maxEnumeration'))
+        }
+      }
+      if (/^geom\//.test(req.op)) {
+        evalKey('vmu.math.geom.exactCoordinates')
+        if (K.geomExactCoordinates && req.exactCoordinates === false) {
+          throw deny('VMU_MATH_INVALID_INPUT', 'vmu.math.geom.exactCoordinates=true: approximate coordinates are not accepted here',
+            'the declaration prefers exact coordinates; change the key deliberately if floats are wanted', mark(evalKey('vmu.math.geom.exactCoordinates'), 'vmu.math.geom.exactCoordinates'))
+        }
+      }
+      if (/^nt\//.test(req.op)) {
+        evalKey('vmu.math.nt.proofRequiredAbove')
+        if (K.ntProofRequiredAbove > 0 && req.scale !== undefined && num(req.scale) > K.ntProofRequiredAbove && !req.certificate) {
+          throw deny('VMU_MATH_INVALID_INPUT', 'a number-theory result above the declared size must carry a certificate: scale ' + num(req.scale) + ' > ' + K.ntProofRequiredAbove,
+            'pass certificate:<…>, or raise vmu.math.nt.proofRequiredAbove deliberately', mark(evalKey('vmu.math.nt.proofRequiredAbove'), 'vmu.math.nt.proofRequiredAbove'))
+        }
+      }
       // ⑧ INTERVAL (interval.enabled)
       if (req.interval !== undefined) evalKey('vmu.math.interval.enabled')
       if (req.interval === true && !K.interval) {
@@ -581,6 +637,12 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
       if (K.requireResidual && !(raw.residual !== undefined && raw.residual !== null)) {
         throw deny('VMU_STATE', 'vmu.math.linalg.requireResidual=true requires a residual on every solve',
           'the seam returned no residual: a solve without an error estimate is not evidence', mark(enforced, 'vmu.math.linalg.requireResidual'))
+      }
+      // ROUND 227: vmu.math.ad.gradCheck - a gradient that was never checked is not a checked gradient.
+      if (K.adGradCheck && /^ad\//.test(p.plan.op) && raw.gradCheckPassed === undefined) {
+        mark(enforced, 'vmu.math.ad.gradCheck')
+        throw deny('VMU_MATH_INVALID_INPUT', 'vmu.math.ad.gradCheck=true but the result carries no gradient check',
+          'the declaration asks for a check, and an unchecked gradient is not evidence', mark(enforced, 'vmu.math.ad.gradCheck'))
       }
       // ROUND 226: the result-side decisions of the four new families.
       if (raw.bayesDiagnosticsFailed === true) {
