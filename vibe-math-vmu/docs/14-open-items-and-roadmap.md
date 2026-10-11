@@ -1390,6 +1390,14 @@
   **门禁与证据** ✓：**`VMU PUBLICATION: 59/0`** ✓；**`publication.js` 语法 0** ✓；**未接线 125 → 121** ✓；**待本轮 T1** ✓。
   **未做（明写 ✗）**：★★ **`attributionRequired` 只是【报出】** ✗（**判定"该许可证是否要求署名"需要许可证数据库 ✓**，**复活条件＝先有该库或一张具名表** ✓）；**`codeDefault` 只报出** ✗（**同上：它与主许可证的关系未在卷里规定 ✓**）；**`legalentity`(6)／`review`(4) 仍未接** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 275：`legalentity`(6) 的【实现已写通并逐支验证九个分支】，但【接线记账的按族规则】把我拦住 ⇒ 本轮【整体回退】，只留下测量结果与精确的下一步** ✓✓
+  ★★★ **① 卷 22 §L285-§L302 的规格【异常具体】，足以直接实现** ✓✓：**协议 `LegalEntity`＝`{entityId, jurisdiction, taxIdRef, currency?}` ✓、`TaxFieldSlots`＝`{slot, required, source}` ✓；六个默认值全给出 ✓（`registryDir=Ops/Entities`、`requireEntity=true`、`taxIdStyle=opaque-ref`、`invoiceTaxSlots` 四个位、`crossBorderGate=require-approval`、`crossBorderApproverRoles=[]`）；五个错误码 ✓；★ 并【点名了方法】`validateInvoice()` ✓。它还写明自身纪律 ✓：**"只做字段位与校验点"**，**检查【位是否存在】而【不判断税率是否正确】** ✓。
+  ★★★ **② 实现写通，九个分支【逐支真机验证】** ✓✓：**登记 ✓；明文样式的税号被拒 ✓；绑定未登记实体 ⇒ `VMU_ENTITY_UNKNOWN` ✓；绑定已登记 ✓；校验通过 ✓；缺位 ⇒ `VMU_TAX_FIELD_MISSING` ✓；跨境无批准 ⇒ `VMU_CROSSBORDER_GATE_REQUIRED` ✓；有批准 ⇒ 通过 ✓；币种不一致 ⇒ `VMU_CROSSBORDER_CURRENCY_MISMATCH` ✓**。
+  ★★★ **③ 但【接线记账是按族分的】—— 这是我此前不知道的规则** ✓✓：**`funding.js` 的 `WIRED_KEYS` 断言【恰好 16 条 `vmu.funding.*`】✓，而 `legalentity` 是【另一族】** ✗ ⇒ **套件三条断言全红** ✓，**第三条把规则说得最清楚** ✓：**"every wired key was really READ by the suite, not merely listed"（未读者即那六条）** ✓✓ ⇒ ★★ **裁定：把别族的键塞进本族的记账表是错的 【正确做法是新建该族自己的面】**，**因此整体回退，而不是留下半套记账** ✓。
+  ★★★ **④ 三次自纠（都靠测量而非猜测）** ✓：**(a) 两行锚点在 CRLF 文件上【静默不匹配】⇒ 什么都没写，我重新探测锚点** ✓；**(b) 方法一度被插到【容纳它们的对象之前】⇒ 语法错，检查立刻抓到** ✓；**(c) 方法名又被列进对象表头，而方法简写需要【模块级绑定】⇒ `not defined`** ✓。
+  **门禁与证据** ✓：**九分支真机验证 ✓**（**随回退撤下** ✓）；**`funding.js` 已回到已提交态、语法 0 ✓**；**未接线回到 121 ✓**；**T1 125/125 绿 ✓**。
+  **未做（明写 ✗）**：★★★ **`legalentity`(6) 仍未接** ✗ —— **复活条件已精确到一步** ✓：**新建 `kernel/legalentity.js` 面**，**并按其族的记账走** ✓（**按第 ⑩ 条先量五处接线清单：`kernel/index.js` 的 import/create/register/getter、`package.json#files`、`installer.js`、`tests/audit-vmu-services.test.mjs` 的 SURFACES、零机制矩阵的裁定** ✓）；**`review`(4) 仍未接** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 
