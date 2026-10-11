@@ -78,6 +78,37 @@
 
 > **成熟度诚实声明** ✗（★ **轮 264 部分更正** ✓✓）：**本卷若干族的承载面【早已存在】** ✓ —— **实测：`kernel/instruments.js`（359 行 ✓，含登记/预约/校准/阻断 ✓）、`kernel/funding.js`（693 行 ✓，含 `openAccount`／`request`／`expense`／`settle` ✓）、`kernel/collab.js`（285 行 ✓，含 `authorship`／`settle` ✓）、`kernel/biospecimen.js`（195 行 ✓）** ✓ ⇒ **下文各处若仍写"计划 ✗"，应以上述承载面为准** ✓；**逐族成熟度的完整复核仍待做** ✗。**原始声明（保留以备对照）**：本卷 **13 个族（含 §3.0 的货币类型与 §2.5／§3.6／§7.4 三个追加族）、9 个服务、9 个工具、10 个钩子、9 个协议全部为规划**（`settings/planned.js` 里 `planned:true`）✓ —— 今天能用的只有**底座**（记录/任务/会议/设置/中间件/pack/脚本桥）✓。
 
+### 0.1 逐族成熟度实测表（轮 265）✓✓
+
+> **为什么加这张表** ✓：**本卷上文多处写"✗ 计划"，而实测显示【14 个族已全部接线、4 个部分接线】** ✗ ⇒ **笼统的成熟度声明已经不可信** ✓；**下表把"每族有多少键、接了多少、由谁读"逐行写明** ✓（**数据源：`docs/04` 设置表 ＋ 内核扫描 ✓**）。
+
+| 族 | 键数 | 已接线 | 读取者（括号＝读了多少条） | 裁定 |
+|---|---|---|---|---|
+| `vmu.instruments` | 17 | **17** | `instruments.js`(17) | ★ **已接线 ✓（上文 §2 的"计划 ✗"已过期）** |
+| `vmu.funding` | 16 | **16** | `funding.js`(16) | ★ **已接线 ✓（§3 的"计划 ✗"已过期）** |
+| `vmu.money` | 11 | **11** | `funding.js`(11) | ★ **已接线 ✓** |
+| `vmu.biospecimen` | 7 | **7** | `biospecimen.js`(7) | ★ **已接线 ✓（§L168"本仓今天没有任何样本/保管实现"【已不成立】✗）** |
+| `vmu.agreements` | 7 | **7** | `collab.js`(7) | ★ **已接线 ✓** |
+| `vmu.capacity` | 12 | **12** | `capacity.js`(12) | ★ **已接线 ✓** |
+| `vmu.hr` | 11 | **11** | `hr.js`(11) | ★ **已接线 ✓** |
+| `vmu.ip` | 15 | **15** | `ip.js`(20) | ★ **已接线 ✓** |
+| `vmu.quota` | 4 | **4** | `retention.js`(4) | ★ **已接线 ✓** |
+| `vmu.conference` | 18 | **18** | `conference.js`(18) | ★ **已接线 ✓** |
+| `vmu.compliance` | 20 | **20** | `compliance.js`(17) ＋ `domaincompliance.js` | ★ **已接线 ✓** |
+| `vmu.audit` | 17 | **17** | `audit.js`(12) ＋ `auditchain.js` | ★ **已接线 ✓** |
+| `vmu.records` | 32 | **32** | `records.js` ＋ `index.js` 等 | ★ **已接线 ✓** |
+| `vmu.budget` | 9 | **9** | `budget.js`(9) ＋ `fairness.js` | ★ **已接线 ✓** |
+| `vmu.collab` | 10 | **7** | `collab.js`(7) | ⚠️ **部分（余 3 条契约薄，见 §L234）** |
+| `vmu.outreach` | 11 | **9** | `publication.js`(9) | ⚠️ **部分** |
+| `vmu.recruit` | 12 | **8** | `recruit.js`(8) | ⚠️ **部分** |
+| `vmu.tasks` | 3 | **2** | `index.js`(2) | ⚠️ **部分** |
+| `vmu.legalentity` | 6 | **0** | *** 无 *** | ✗ **真实缺口（无承载面）** |
+| `vmu.license` | 4 | **0** | *** 无 *** | ✗ **真实缺口** |
+| `vmu.review` | 4 | **0** | *** 无 *** | ✗ **真实缺口** |
+
+> **结论** ✓：**本卷的"13 个族全部为规划"【已不成立】** ✗；**真实缺口只有 `legalentity`／`license`／`review` 三族（共 14 条）＋ 四个部分族** ✓；**上文各处的"✗ 计划"应以本表为准** ✓。
+
+
 ---
 
 ## 2. 实验仪器与设备（Instruments & Equipment）
