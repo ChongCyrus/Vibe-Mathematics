@@ -458,6 +458,10 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 > **可操作做法** ✓：**一切临时脚本都经 `node scripts/dev/run-checked.mjs <脚本>` 执行** ✓ —— **它先 `node --check`，不通过就【拒跑并 exit 3】、并点名失败类别；通过才在子进程里跑，目标退出码即包装器退出码** ✓✓。**双向自证已入账**（**故意坏的脚本被拒、好脚本放行** ✓）。
 > **根因值得记**：**我此前对【源文件】做语法自检，却从不检查【自己写的临时脚本】** ✗ —— **纪律的边界必须覆盖自己动手的那部分** ✓。
 >
+> **⑦ ★★ 止于【行中】的锚点会劈开这一行**（**轮 245 实测：`schema.js` 因此语法错** ✗✓）：**锚点写成 `… who: 'office',`（该行 `doc` 里还有内容）而替换文本含换行 ⇒ 插入后【前缀留下、我的行跟上、该行余下部分被孤立】** ✓ ⇒ **文件坏掉** ✓。**可操作做法** ✓：**插入一律用【按行定位】的 `insertAfterLine`／`insertBeforeLine`**（`scripts/dev/edit-positional.mjs` ✓），**并在写入前核对"文件行数增量恰等于块长"** ✓✓ —— **截断式编辑（曾毁掉一个测试套件）由此在原理上不可能** ✓；**谓词匹配多于一行也抛错** ✓。
+>
+> **⑧ ★★★ 静态计数不等于执行；先读该套件【自己的计数约定】**（**轮 246 实测：我为此毁掉过整个套件** ✗✓）：**该套件的约定是【每个测试体末尾 `passed += 1`】** ✓ ⇒ **我插入的测试【一直在跑并通过】，只因没有自增，计数停在原值** ✗ ⇒ **我却把「计数没变」读成「从未执行」** ✗，**并动用了会截断文件的编辑去「修」这个假象** ✓。**可操作判据** ✓：**看到计数不变，先读该套件的 runner 与 `passed` 的写法**（**`grep -n "passed += 1"` 与 `for (const c of cases)`** ✓），**再判定是否真的没执行** ✓✓；**「没跑到」与「跑到了但没计数」是两种完全不同的故障** ✓。
+>
 > **⑥ ★★★ 未生效的改写是【失败】，不是一句提示**（**轮 242–244 实测，代价整整两轮** ✗✓）：**轮 242 里那段术语校验的插入锚点没匹配** ✗ ⇒ **脚本打印了一行 `SKIP (n=0)` 就继续** ✓ ⇒ **代码【从未存在** ⇒ **`loaded` 恒为 false** ✗。**我却把这个"不存在"误诊为"实现失败"** ✗，**于是回退、又重写一遍同样的、仍然不会插入的代码** ✓ ⇒ **两轮都花在一个从未落地的块上** ✓✓。
 > **可操作规则** ✓：**任何改写脚本【锚点未命中即 exit 非零】** ✓（**`scripts/dev` 的有界编辑器已按此实现** ✓）；**临时脚本打印 SKIP 后继续运行，等同于把失败伪装成成功** ✗✓。**并且：定位优先用【行位置/唯一字面量】，而不是靠缩进猜测** ✓ —— **本轮真行是 `      const parts = []`（6 空格），而我的锚点是 2 空格** ✗。
 > **诊断纪律的补充** ✓：**在把某个行为判为"实现失败"之前，先证明【那段代码当前存在】** ✓ —— **"不存在"与"存在但不对"是两种完全不同的故障** ✓✓。
@@ -614,6 +618,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `crypto` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `delegation` · `check()` | ok | — | — | 具名拒或 ok（task-214 批 3 补参（形状取自测试 vmu-delegation.test.mjs:30 `check({actor,action})`）：补参前实测具名拒 **VMU_INVALID_ARGUMENT**（带口径 `enforcedScope=evaluated-so-far`）⇒ 补参后应见判定对象（放行）⇒ 已放宽为"具名拒或 ok" ✓） |
 | `discipline` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（subjects: 0；breakerOffMeansOff: true 自曝「阈值 0＝机制关，而非允许零次失败」 ✓）） |
+| `domaincompliance` · `status()` | ok | — | — | ok 或 object（实测（轮 247）：零声明下 status() ⇒ ok（declared=[]、trail=0 自曝 ✓）；gate() 对**未满足的必答项【逐项点名】**并拒（VMU_GATE_UNSATISFIED ✓），**fail-closed 是设计**（20 卷 §9.4① 明文：闸未满足 ⇒ 动作不发生 ✓）） |
 | `domaingate` · `status()` | ok | — | dropped=[object Object] | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `explain` · `build()` | refusal | VMU_EXPLAIN_REASON_REQUIRED | — | 具名拒（带 code）（实测（轮 224）：矩阵的**探针**调用在零声明下【具名拒】 ✓——render() 无报告可渲染时以 VMU_INVALID_ARGUMENT 具名拒（status() 本身仍是 ok ✓，但探针走的是调用路径 ⇒ 期望取实测的拒 ✓）。**不假装成功** ✗） |
 | `external` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
@@ -673,5 +678,5 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
 | `workflow` · `advance()` | refusal | VMU_WORKFLOW_TRANSITION_REQUIRED | enforced=[7] enforcedScope=evaluated-so-far | 具名拒或 ok（**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 `advance()` 缺参 ⇒ **task-214 实测：具名拒 `VMU_WORKFLOW_TRANSITION_REQUIRED`（带口径 `enforced=[7]`）** ⇒ 具名拒即真实形状 ✓（旧 note 曾写 `op 抛出` ✗ / "缺参 ⇒ 具名拒" 混述 ✗，均已按实测改写 ✓）） |
 
-=== ZERO-MECHANISM MATRIX: 81 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 5 probe-errors, 3 n/a ===
+=== ZERO-MECHANISM MATRIX: 82 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 5 probe-errors, 3 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->

@@ -111,6 +111,10 @@ const EXPECT = {
   // and has NO `status()` at all, so the matrix does not apply to it - the same form used for other utility modules. Its
   // behaviour is covered where it is USED, by the library suites that call every one of the six.
   'library-policy': G('EXPECT_NA', '非服务模块（无 `status()`；返回六个纯检查器 ✓）—— 行为由调用它的 library 套件覆盖 ✓'),
+  // ROUND 247: MEASURED with nothing declared - status() answers ok with the declared pack list empty, while gate() refuses by name
+  // (`VMU_META_VALIDATION_FAILED` for an unknown domain, and `VMU_GATE_UNSATISFIED` naming every missing item for a domain whose
+  // required evidence is absent). The face is fail-closed by design, which is exactly why it must be ruled rather than assumed.
+  domaincompliance: G('ok 或 object', '实测（轮 247）：零声明下 status() ⇒ ok（declared=[]、trail=0 自曝 ✓）；gate() 对**未满足的必答项【逐项点名】**并拒（VMU_GATE_UNSATISFIED ✓），**fail-closed 是设计**（20 卷 §9.4① 明文：闸未满足 ⇒ 动作不发生 ✓）'),
   guard: G('EXPECT_NA', '非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）'),
   // Round 90-91: the grant face (temporary, scoped, single-command authorization, ported from the v5r line). Its
   // zero mechanism is `vmu.grant.enabled=false`, where NOTHING may be granted or checked and every attempt is

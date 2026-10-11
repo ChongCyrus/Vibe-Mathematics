@@ -113,6 +113,8 @@ import { createTopology } from './topology.js'
 import { createFairness } from './fairness.js'
 import { createCharter } from './charter.js'
 import { createReproPack } from './repropack.js'
+// ROUND 247: the domain compliance face (docs/20 §9.1-§9.4) - clinical (N2) and animal (N3) packs.
+import { createDomainCompliance } from './domaincompliance.js'
 import { SETTING_DEFS } from '../settings/schema.js'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -507,6 +509,7 @@ export function createKernel({
   // pointed out that only four of them did, and that `delegation` was the worst omission - a backwards clock
   // would EXTEND an authorisation's life. The rest of the kernel keeps the raw clock on purpose.
   const audit = createAudit({ settings: settingsView, bus, clock: guardedClock, log, sink: auditToDisk })
+const domainCompliance = createDomainCompliance({ settings: settingsView, clock: guardedClock, log })
   const alerts = createAlerts({ settings: settingsView, bus, clock: guardedClock, log, metrics })
   // `library` is the EXISTING kernel library; the module counts any unsupported adapter method as skipped and
   // never pretends a delete succeeded. Delegation gets the live members surface plus explicit roots (authority
@@ -702,6 +705,7 @@ export function createKernel({
   registry.register('vmu.budget', { apiVersion: 1 }, { kind: 'service', description: 'four-kind quotas, reservation and fairness (docs/08 搂12.5)' })
   registry.register('vmu.metrics', { apiVersion: 1 }, { kind: 'service', description: 'metric observation, KPI judgement and counted drops (docs/21 搂4)' })
   registry.register('vmu.audit', { apiVersion: 1 }, { kind: 'service', description: 'append-only audit rows, redaction before storage, counted ring drops (docs/21 搂2)' })
+    registry.register('vmu.domaincompliance', { apiVersion: 1 }, { kind: 'service', description: 'domain compliance packs: clinical (N2) and animal (N3) approval gates' })
   registry.register('vmu.alerts', { apiVersion: 1 }, { kind: 'service', description: 'thresholds, alert-level dedup, silences that still count, SLO tri-state (docs/21 搂5 搂13)' })
   registry.register('vmu.retention', { apiVersion: 1 }, { kind: 'service', description: 'report-first retention, permanent markers, quota tri-state, gc (docs/07 搂4.3 搂4.8)' })
   registry.register('vmu.delegation', { apiVersion: 1 }, { kind: 'service', description: 'delegation that can only narrow (S-2), expiry, revocation cascade (docs/17 搂4)' })
@@ -834,6 +838,9 @@ export function createKernel({
     get budget() { return budget },
     get metrics() { return metrics },
     get audit() { return audit },
+
+    /** ROUND 247: the domain compliance packs (docs/20 §9.1-§9.4), reachable like every other service. */
+    get domaincompliance() { return domainCompliance },
     get alerts() { return alerts },
     get retention() { return retention },
     get delegation() { return delegation },

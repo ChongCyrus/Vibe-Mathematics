@@ -827,6 +827,27 @@ vmu.packs.active: [v5r]
 | `vmu.lifecycle.dedupeKeys` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 跨研究去重键（命中即拒并点名该键） |
 | `vmu.lifecycle.alpha` | number | `0.05` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 显著性水平（judge() 据此判定；越界回落 0.05） |
 | `vmu.lifecycle.powerTarget` | number | `0.8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 把握度目标（judge() 据此判定；越界回落 0.8） |
+| `vmu.clinical.registrationRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 开工前必须有试验注册号（§9.2） |
+| `vmu.clinical.registrationId` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 试验注册号（主体未给时取此声明） |
+| `vmu.clinical.registrationIdPattern` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 注册号正则（空＝只要求非空；不符即拒并点名） |
+| `vmu.clinical.consentVersioning` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 同意须版本化（version＋effectiveAt；受试版本≠当前生效版本⇒拒） |
+| `vmu.clinical.saeReportLimitHours` | number | `24` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | SAE 上报时限（小时；超时⇒红） |
+| `vmu.clinical.aeReportLimitHours` | number | `72` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | AE 上报时限（小时） |
+| `vmu.clinical.reportChannel` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 上报通道（留空＝未声明） |
+| `vmu.clinical.deviationRegister` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 方案偏离须登记 kind/reason/at/action；major 未登记⇒阻塞 |
+| `vmu.clinical.unblindingRequiresReason` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 揭盲须记 who/why/at；紧急揭盲须事后复核 |
+| `vmu.animal.iacucRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 必须 IACUC 审批（未批/未生效/过期⇒拒） |
+| `vmu.animal.protocolId` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 动物方案号（主体未给时取此声明） |
+| `vmu.animal.reviewCycleDays` | int ≥0 | `365` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 年度复审周期（天） |
+| `vmu.animal.threeRRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 3R 逐条非空（replacement/reduction/refinement） |
+| `vmu.animal.anesthesiaRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 麻醉镇痛须声明（豁免须给理由） |
+| `vmu.animal.deathReportLimitHours` | number | `24` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 人道终点/意外死亡上报时限（小时） |
+| `vmu.animal.facilityAccreditation` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 设施资质 id（须匹配且未过期） |
+| `vmu.animal.trainingRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 人员培训须有效（过期⇒拒） |
+| `vmu.animal.ledgerRef` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 动物台账引用（对象 id 在 22-§2/§8；本面不重定义台账 ✗） |
+| `vmu.compliance.domainPacks` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 启用的领域包（非空时，未声明的域⇒VMU_DOMAIN_PACK_MISSING） |
+| `vmu.compliance.requireApprovalGate` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 是否要求审批闸（§9.4①） |
+| `vmu.compliance.evidenceKind` | string | `compliance-evidence` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 合规证据的 kind（模板位；打包归 22 ✓） |
 | `vmu.prompts.overrides` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 语言无关覆盖 {section:text}（合并【在调用方之下】⇒ 调用方仍可胜出，且合并被上报） |
 | `vmu.prompts.overridesByLang` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 语言级覆盖 {section:{lang:text}}；解析出的语言命中时【优先于语言无关覆盖】 |
 | `vmu.naming.conflictPolicy` | enum | `refuse` | `refuse`∣`suffix` | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 命名冲突策略（★ 只对【显式传入 record.id】生效：显式点名才是对名字的主张；由标题派生的名字不算冲突，因为同标题不同内容正是本面的内容身份语义 ✓） |
@@ -857,8 +878,6 @@ vmu.packs.active: [v5r]
 | `vmu.compliance.calendarTemplate` | string | `audit-checklist` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 已接线（compliance.js 读取）；默认值取自模块源码 |
 | `vmu.compliance.coiScope` | string | `members` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 已接线（compliance.js 读取）；默认值取自模块源码 |
 | `vmu.compliance.conflictOfInterestDisclosure` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 已接线（compliance.js 读取）；默认值取自模块源码 |
-| `vmu.compliance.domainPacks` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 已接线（compliance.js 读取）；默认值取自模块源码 |
-| `vmu.compliance.evidenceKind` | string | `registry` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 已接线（compliance.js 读取）；默认值取自模块源码 |
 | `vmu.compliance.evidenceMembers` | string | `all` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 已接线（compliance.js 读取）；默认值取自模块源码 |
 | `vmu.compliance.evidencePackFields` | string | `kind+members+at` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 已接线（compliance.js 读取）；默认值取自模块源码 |
 | `vmu.compliance.exportControlCheck` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 已接线（compliance.js 读取）；默认值取自模块源码 |
@@ -867,7 +886,6 @@ vmu.packs.active: [v5r]
 | `vmu.compliance.prepare` | string | `checklist` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 已接线（compliance.js 读取）；默认值取自模块源码 |
 | `vmu.compliance.redactionPolicy` | string | `required` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 已接线（compliance.js 读取）；默认值取自模块源码 |
 | `vmu.compliance.require` | string | `irb+consent` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 已接线（compliance.js 读取）；默认值取自模块源码 |
-| `vmu.compliance.requireApprovalGate` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 已接线（compliance.js 读取）；默认值取自模块源码 |
 | `vmu.compliance.reviewAlertLeadDays` | int ≥0 | `7` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 已接线（compliance.js 读取）；默认值取自模块源码 |
 | `vmu.conference.anonymityMode` | string | `single` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/conference.js` | 已接线（conference.js 读取）；默认值取自模块源码 |
 | `vmu.conference.assign` | string | `manual` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/conference.js` | 已接线（conference.js 读取）；默认值取自模块源码 |
@@ -1156,15 +1174,6 @@ vmu.packs.active: [v5r]
 | `vmu.a11y.headingGapPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 21（共见 1 卷：21），尚未实现（元数据以各卷为准） |
 | `vmu.a11y.minContrastRatio` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 21（共见 1 卷：21），尚未实现（元数据以各卷为准） |
 | `vmu.a11y.requireAltText` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 21（共见 1 卷：21），尚未实现（元数据以各卷为准） |
-| `vmu.animal.anesthesiaRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.animal.deathReportLimitHours` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.animal.facilityAccreditation` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.animal.iacucRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.animal.ledgerRef` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.animal.protocolId` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.animal.reviewCycleDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.animal.threeRRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.animal.trainingRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.archive.package.includeEnvironment` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.archive.package.style` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.attendance.excusedCounts` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
@@ -1180,15 +1189,6 @@ vmu.packs.active: [v5r]
 | `vmu.citations.orcid` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.citations.preferIds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.citations.ror` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.clinical.aeReportLimitHours` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.clinical.consentVersioning` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.clinical.deviationRegister` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.clinical.registrationId` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.clinical.registrationIdPattern` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.clinical.registrationRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.clinical.reportChannel` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.clinical.saeReportLimitHours` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.clinical.unblindingRequiresReason` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.collab.authorship` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.collab.exportPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.collab.federationPeers` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
