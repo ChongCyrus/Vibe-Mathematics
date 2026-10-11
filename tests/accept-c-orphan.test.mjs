@@ -2,7 +2,7 @@
 // ACCEPT-C — 独立验收（verifier-c）：孤儿任务派发 / 上限 / 既有分支不变
 //
 // 被测文件（只读，冻结）：vibe-math-v5/vibe-math-v5.js
-// 对照组：`git show HEAD:vibe-math-v5/vibe-math-v5.js` 写到系统临时目录，并把同目录的
+// 对照组：当前被测代码仅禁用无主派发分支的单点变异副本，写到系统临时目录，并把同目录的
 //         math-computation.js / math-engines.js 一起复制过去（vibe-math-v5.js 里有
 //         `import ... from './math-computation.js'`），临时目录放一个 {"type":"module"}
 //         的 package.json。仓库里的原文件绝不被改动（不 stash / 不 checkout）。
@@ -26,7 +26,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 // ---- output tee (逐字保存真实运行输出；任何一行都立即落盘) -------------------
 const REPO = fileURLToPath(new URL('..', import.meta.url))
-const OUT_PATH = join(REPO, 'tests', '_accept-out', 'c.txt')
+const OUT_PATH = process.env.ACCEPT_C_OUT || join(REPO, 'tests', '_accept-out', 'c.txt')
 try { mkdirSync(dirname(OUT_PATH), { recursive: true }) } catch (e) { /* the dir may already exist */ }
 const outLines = []
 let outWriteOk = true
@@ -45,7 +45,12 @@ const failures = []
 function assert(c, m) {
   if (c) { passed++; log('  ok - ' + m) } else { failed++; failures.push(m); log('  FAIL - ' + m) }
 }
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const realNow = Date.now
+let virtualTime = null
+const sleep = async (ms) => {
+  if (virtualTime !== null) virtualTime += ms
+  await new Promise(resolve => setTimeout(resolve, virtualTime === null ? ms : 0))
+}
 
 // round-7/9 isolation copied from tests/e2e-v5-round2.test.mjs: a real engine probe would be
 // recorded as a compiler call. Pin every discovery root at an empty dir BEFORE importing.
@@ -297,7 +302,7 @@ function makeHost(opts) {
 }
 
 // ============================================================
-// baseline (HEAD) extraction -> temp dir. NO pipe is used to capture git's stdout: the child
+// Negative control in a temporary directory; Git is used only for repository metadata. The child
 // writes straight into a FILE descriptor (piped stdio is refused by the Windows sandbox).
 // ============================================================
 function gitToFile(args, outPath) {
@@ -314,9 +319,11 @@ function extractHeadBaseline() {
   for (const f of ['math-computation.js', 'math-engines.js']) copyFileSync(join(srcDir, f), join(dir, f))
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module' }) + '\n', 'utf8')
   const target = join(dir, 'vibe-math-v5.js')
-  const r = gitToFile(['show', 'HEAD:vibe-math-v5/vibe-math-v5.js'], target)
-  const info = { dir, target, gitStatus: r.status, gitError: r.error, bytes: existsSync(target) ? statSync(target).size : 0 }
-  // the temp copy must be the honest HEAD blob (syntax-checked by the caller)
+  const source = readFileSync(NEW_PATH, 'utf8')
+  const anchor = 'if (filled < budget && idlePool.length) {'
+  if (source.split(anchor).length !== 2) throw new Error('orphan negative-control anchor must occur exactly once')
+  writeFileSync(target, source.replace(anchor, 'if (false && filled < budget && idlePool.length) {'))
+  const info = { dir, target, gitStatus: null, gitError: '', bytes: statSync(target).size }
   return info
 }
 
@@ -530,6 +537,13 @@ async function runOrphanScenario(mod, tag, opts) {
 // tail round. Every wake is then a function of the code, not of the wall clock.
 // ============================================================
 async function runNoOrphanScenario(mod, tag) {
+  // Compare scheduler branches under the same clock; disk latency must not create extra heartbeats.
+  virtualTime = 1_000_000
+  Date.now = () => virtualTime
+  try { return await runNoOrphanAtClock(mod, tag) }
+  finally { Date.now = realNow; virtualTime = null }
+}
+async function runNoOrphanAtClock(mod, tag) {
   const h = makeHost({ pluginModule: mod, manualTimers: true })
   const rig = makeRig(h)
   const out = { tag }
@@ -628,7 +642,6 @@ log('时间: ' + new Date().toISOString())
 log('cwd: ' + process.cwd())
 log('repo: ' + REPO)
 
-const HEAD_SPEC = 'HEAD:vibe-math-v5/vibe-math-v5.js'
 const NEW_PATH = process.env.V5_PLUGIN ? String(process.env.V5_PLUGIN) : join(REPO, 'vibe-math-v5', 'vibe-math-v5.js')
 
 const revTmp = join(mkdtempSync(join(tmpdir(), 'v5rev-')), 'rev.txt')
@@ -639,8 +652,7 @@ gitToFile(['status', '--porcelain', '--', 'vibe-math-v5/vibe-math-v5.js'], statu
 const gitStatusLine = existsSync(statusTmp) ? readFileSync(statusTmp, 'utf8').trim() : ''
 
 log('HEAD = ' + headRev)
-log('（注：stderr 与 stdout 在本文件中可能交错。形如 "vibe-math-v5: 忽略未知参数键…orphanDispatchMaxAttempts（来源：set）"')
-log('  的一行来自**对照组 HEAD** 的 set 调用——HEAD 不认识这个新参数，这正是对照组的预期；被测文件不会打印它。）')
+log('对照使用当前被测代码的单点变异副本，只禁用无主任务派发分支；不依赖移动的 HEAD。')
 log('被测文件 = ' + NEW_PATH)
 const HASH_AT_START = sha256File(NEW_PATH)
 log('被测文件 size = ' + statSync(NEW_PATH).size + '  sha256 = ' + HASH_AT_START)
@@ -648,7 +660,7 @@ log('git status --porcelain -- 被测文件: ' + JSON.stringify(gitStatusLine))
 log('')
 
 const headInfo = extractHeadBaseline()
-log('对照组(HEAD) 提取: dir=' + headInfo.dir)
+log('对照组(禁用无主任务派发) 提取: dir=' + headInfo.dir)
 log('  git status=' + headInfo.gitStatus + ' error=' + JSON.stringify(headInfo.gitError) + ' bytes=' + headInfo.bytes)
 log('  对照组 sha256 = ' + (headInfo.bytes ? sha256File(headInfo.target) : '(missing)'))
 const checkHead = spawnSync(process.execPath, ['--check', headInfo.target], { stdio: ['ignore', 'inherit', 'inherit'] })
@@ -720,7 +732,7 @@ assert(A_NEW.orphanDispatches.length >= 1,
   assert(A_NEW.byBranch['a.2-orphan'] === undefined || A_NEW.byBranch['a.2-orphan'] >= 1, 'C1 分支计数 a.2-orphan=' + A_NEW.byBranch['a.2-orphan'])
 }
 assert(A_HEAD.orphansAfterPost === 0,
-  'C1 对照(HEAD)侧同场景派发次数=0（证明是本次改动引入的行为；HEAD 侧无主任务终点=' + JSON.stringify({ s: A_HEAD.orphanEnd.status, o: A_HEAD.orphanEnd.ownerId }) + '）')
+  'C1 对照(禁用无主任务派发)侧同场景派发次数=0（证明派发分支控制该行为；HEAD 侧无主任务终点=' + JSON.stringify({ s: A_HEAD.orphanEnd.status, o: A_HEAD.orphanEnd.ownerId }) + '）')
 
 log('---- C2 断言 ----')
 assert(A_NEW.claimed0.status === 'in_progress' && A_NEW.claimed0.ownerId === 'r-2',
@@ -800,7 +812,7 @@ log('---- C3 断言 ----')
   assert(line.indexOf('orphanDispatchMaxAttempts=' + max) !== -1, 'C3 记录里含上限值（"orphanDispatchMaxAttempts=' + max + '"）')
   assert(line.indexOf('停止自动派发') !== -1, 'C3 记录明确说明已停止自动派发')
   assert(A_HEAD.chatStopLines.length === 0,
-    'C3 对照(HEAD)侧镜像里没有这条记录（命中=' + A_HEAD.chatStopLines.length + '）⇒ 该可见记录确由本次改动产生')
+    'C3 对照(禁用无主任务派发)侧镜像里没有这条记录（命中=' + A_HEAD.chatStopLines.length + '）⇒ 该可见记录确由派发分支产生')
   // 渠道对照：office 信箱那条路由本来就到不了所办（notice 是成员私信）——只报告，不作为通过条件。
   assert(A_NEW.sayOfficeRes && A_NEW.sayOfficeRes.ok === true && ((A_NEW.officeRequestsAfter || []).filter((m) => m.from !== 'office')).length >= 1,
     'C3 [渠道对照] 成员用 vibe_v5_say{to:office} 确实能写进 office 信箱（' + JSON.stringify(A_NEW.sayOfficeRes) + '）——所以"officeRequests 为空"不是观察面坏了，而是 notice 结构上到不了所办')
@@ -878,7 +890,7 @@ assert(B_NEW1.unownedPending === 0 && B_HEAD1.unownedPending === 0,
 assert(keyNew1 === keyNew2,
   'C4 确定性对照：同一被测文件跑两次，逐轮逐分支唤醒序列完全相同（新1 === 新2）')
 assert(keyHead1 === keyHead2,
-  'C4 确定性对照：对照组(HEAD)跑两次也完全相同（证明这套比较方法本身是稳定的）')
+  'C4 确定性对照：对照组(禁用无主任务派发)跑两次也完全相同（证明这套比较方法本身是稳定的）')
 assert(keyNew1 === keyHead1,
   'C4 逐分支一致：同等驱动下 被测 === HEAD（逐轮、逐分支、含顺序）')
 {
@@ -892,6 +904,7 @@ assert(keyNew1 === keyHead1,
   const mkeys = Array.from(new Set(Object.keys(m1).concat(Object.keys(mh)))).sort()
   const mrows = mkeys.map((k) => k + ': 新=' + (m1[k] || 0) + ' HEAD=' + (mh[k] || 0))
   log('  成员/分支计数对照: ' + mrows.join(' | '))
+  assert(mkeys.length > 0, 'C4 比较至少一个实际唤醒分支')
   assert(mkeys.every((k) => (m1[k] || 0) === (mh[k] || 0)), 'C4 每个成员在每个分支上的唤醒次数都相同（' + mrows.join(' | ') + '）')
   assert(B_NEW1.wakeSends === B_HEAD1.wakeSends && B_NEW1.wakeSends === B_NEW2.wakeSends,
     'C4 成功唤醒总数相同（新1=' + B_NEW1.wakeSends + ' 新2=' + B_NEW2.wakeSends + ' HEAD1=' + B_HEAD1.wakeSends + ' HEAD2=' + B_HEAD2.wakeSends + '）')

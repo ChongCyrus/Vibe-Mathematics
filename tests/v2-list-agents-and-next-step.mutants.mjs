@@ -15,6 +15,7 @@
  *
  * Run: node tests/v2-list-agents-and-next-step.mutants.mjs
  */
+// Explicit filters preserve every fixture while avoiding Node's Windows native directory-copy/ACL path.
 import { mkdtempSync, cpSync, copyFileSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -45,7 +46,7 @@ const COPY_AS = 'vibe_math_list_agentsX'
 
 // ---------- baselines: the shipped suites are green on the COPIED artifacts ----------
 const baseRoot = mkdtempSync(join(tmpdir(), 'v2gaps-base-'))
-cpSync(join(REPO, 'vibe-math-v2'), join(baseRoot, 'vibe-math-v2'), { recursive: true })
+cpSync(join(REPO, 'vibe-math-v2'), join(baseRoot, 'vibe-math-v2'), { recursive: true, filter: () => true })
 {
   const a = runSuite('math-computation-v2.test.mjs', { MC_V2_PLUGIN: join(baseRoot, 'vibe-math-v2', 'vibe-math-v2.js') })
   ok(a.status === 0, 'baseline: math-computation-v2 is green on the COPIED v2 preset (MC_V2_PLUGIN)', a.sum.slice(0, 60))
@@ -54,7 +55,7 @@ cpSync(join(REPO, 'vibe-math-v2'), join(baseRoot, 'vibe-math-v2'), { recursive: 
 }
 {
   const pRoot = mkdtempSync(join(tmpdir(), 'v2gaps-persona-'))
-  for (const d of PRESETS) cpSync(join(REPO, d), join(pRoot, d), { recursive: true })
+  for (const d of PRESETS) cpSync(join(REPO, d), join(pRoot, d), { recursive: true, filter: () => true })
   const p = runSuite('audit-persona-surface.test.mjs', { PERSONA_ROOT: pRoot })
   ok(p.status === 0, 'baseline: audit-persona-surface is green on the COPIED preset tree (PERSONA_ROOT)', p.sum.slice(0, 60))
   rmSync(pRoot, { recursive: true, force: true })
@@ -64,7 +65,7 @@ rmSync(baseRoot, { recursive: true, force: true })
 // ---------- F3a: the tool must EXIST (rename the registration -> the documented call fails) ----------
 {
   const dir = mkdtempSync(join(tmpdir(), 'v2gaps-exist-'))
-  cpSync(join(REPO, 'vibe-math-v2'), join(dir, 'vibe-math-v2'), { recursive: true })
+  cpSync(join(REPO, 'vibe-math-v2'), join(dir, 'vibe-math-v2'), { recursive: true, filter: () => true })
   const p = join(dir, 'vibe-math-v2', 'vibe-math-v2.js')
   const src = readFileSync(p, 'utf8')
   writeFileSync(p, src.replace(REGISTER, REGISTER.replace('list_agents', 'list_agentsX')))
@@ -78,7 +79,7 @@ rmSync(baseRoot, { recursive: true, force: true })
 // ---------- F3b: the tool must be MENTIONED (persona still names the old name) ----------
 {
   const root = mkdtempSync(join(tmpdir(), 'v2gaps-mention-'))
-  for (const d of PRESETS) cpSync(join(REPO, d), join(root, d), { recursive: true })
+  for (const d of PRESETS) cpSync(join(REPO, d), join(root, d), { recursive: true, filter: () => true })
   const p = join(root, 'vibe-math-v2', 'vibe-math-v2.js')
   writeFileSync(p, readFileSync(p, 'utf8').split(REGISTER).join(REGISTER.replace('list_agents', 'list_agentsX')))
   const r = runSuite('audit-persona-surface.test.mjs', { PERSONA_ROOT: root })
@@ -91,7 +92,7 @@ rmSync(baseRoot, { recursive: true, force: true })
 // ---------- F4: a require-gate refusal must carry an executable NEXT STEP ----------
 {
   const dir = mkdtempSync(join(tmpdir(), 'v2gaps-next-'))
-  cpSync(join(REPO, 'vibe-math-v2'), join(dir, 'vibe-math-v2'), { recursive: true })
+  cpSync(join(REPO, 'vibe-math-v2'), join(dir, 'vibe-math-v2'), { recursive: true, filter: () => true })
   const p = join(dir, 'vibe-math-v2', 'vibe-math-v2.js')
   const src = readFileSync(p, 'utf8')
   if (src.indexOf(NEXT_STEP) === -1) ok(false, 'F4: the single-site next-step anchor applies', 'ANCHOR MISS')

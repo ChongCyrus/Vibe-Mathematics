@@ -1,3 +1,4 @@
+import { SETTING_DEFS } from '../settings/schema.js'
 // vmu kernel external — the N11 external-fetch adapter (docs/16 §8).
 // `fetchFn` is an INJECTED seam: without it every fetch refuses BY NAME (VMU_EXTERNAL_UNAVAILABLE) and
 // this module NEVER invents metadata. Every fetch produces a complete receipt; cache expiry has three
@@ -78,9 +79,6 @@ export function refuse(code, message, hint, extra) {
 }
 
 import { createHash } from 'node:crypto'
-import { readFileSync, existsSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 const intOr = (v, d) => (Number.isInteger(v) && v >= 0 ? v : d)
 const str = (v) => (typeof v === 'string' ? v : '')
@@ -483,14 +481,8 @@ export function createExternal({ clock = () => Date.now(), log = () => {}, setti
   }
   /** The declared universe (read-only, from the generated registry — never guessed). */
   const declaredKeys = () => {
-    try {
-      const here = dirname(fileURLToPath(import.meta.url))
-      const p = join(here, '..', 'settings', 'planned.js')
-      if (!existsSync(p)) return { keys: [], count: 0, source: 'unavailable' }
-      const text = readFileSync(p, 'utf8')
-      const all = [...new Set([...text.matchAll(/key: "(vmu\.external\.[^"]+)"/g)].map((m) => m[1]))].sort()
-      return { keys: all, count: all.length, source: 'settings/planned.js' }
-    } catch (e) { return { keys: [], count: 0, source: 'error:' + String((e && e.message) || e) } }
+    const all = SETTING_DEFS.map(d => d.key).filter(key => key.startsWith('vmu.external.')).sort()
+    return { keys: all, count: all.length, source: 'settings/schema.js (core + planned)' }
   }
   const status = () => {
     const c = cfg()

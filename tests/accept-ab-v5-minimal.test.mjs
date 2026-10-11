@@ -338,6 +338,7 @@ console.log('\n[A] parseReply failure is discoverable\n')
   dump('SPEC_BAD length', String(SPEC_BAD.length))
   dump('GOOD_TEXT length', String(GOOD_TEXT.length))
   assert(GOOD_TEXT === SPEC_BAD + '}}', 'FIX1 GOOD_TEXT is SPEC_BAD plus exactly the two closing braces', JSON.stringify(GOOD_TEXT.slice(-3)))
+  assert(SPEC_BAD.length > 0, 'FIX2 compares a nonempty malformed specimen')
   assert(GOOD_TEXT.slice(0, SPEC_BAD.length) === SPEC_BAD && GOOD_TEXT.length === SPEC_BAD.length + 2,
     'FIX2 GOOD_TEXT keeps SPEC_BAD byte-for-byte and adds 2 chars', GOOD_TEXT.length + ' vs ' + SPEC_BAD.length)
   let specBadThrew = false
@@ -558,6 +559,7 @@ const BUDGET_MS = 30000
       ? readdirSync(verifiedDir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? readdirSync(join(verifiedDir, e.name)).map((f) => e.name + '/' + f) : [e.name])
       : []
     dump('B3 Verified/ contents (must NOT contain ' + B_TARGET + ')', verifiedFiles)
+    // EMPTY_ALLOWED: no verified files is the expected result for an undecided target.
     assert(verifiedFiles.every((f) => f.indexOf(B_TARGET) === -1),
       'B3g the undecided target was NOT written to Verified/', JSON.stringify(verifiedFiles))
   }

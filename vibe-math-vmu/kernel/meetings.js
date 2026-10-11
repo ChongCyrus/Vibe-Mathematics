@@ -1,3 +1,4 @@
+import { SETTING_DEFS } from '../settings/schema.js'
 // vmu kernel · meetings — the POLICY + GUARD layer that finally READS the `vmu.meetings.*` knobs.
 //
 // WHY: 08-academic-... (docs/08-primitives-meeting-ballot-workflow.md) declares **47 `vmu.meetings.*` keys**
@@ -19,9 +20,6 @@
 //   VMU_QUOTA_EXCEEDED / VMU_QUOTA_SOFT_EXCEEDED · VMU_RESOURCE_BUDGET · VMU_NOT_PERMITTED · VMU_STATE ·
 //   VMU_REASON_REQUIRED · VMU_NOT_MEMBER · VMU_NO_OPEN_MEETING · VMU_NO_SUCH_OBJECT · VMU_INVALID_ARGUMENT ·
 //   VMU_ENGINE_UNAVAILABLE
-import { readFileSync, existsSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 export const apiVersion = 1
 
@@ -780,7 +778,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     receiptsView({ limit = 50 } = {}) {
       const capN = Number.isInteger(limit) && limit > 0 ? limit : 50
       const kept = receipts.slice(Math.max(0, receipts.length - capN)).map((r) => Object.assign({}, r))
-      return { ok: true, receipts: kept, count: kept.length, available: receipts.length, dropped: receipts.length - kept.length, ringDropped: receiptDropped.n }
+      return { ok: true, receipts: kept, count: kept.length, available: receipts.length, dropped: receipts.length - kept.length, ringDropped: receiptDropped.n, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** READ-ONLY self-report: WIRED list, the declared-but-unwired list (per key + reason), counters, values. */
@@ -824,14 +822,8 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     while (receipts.length > RING) { receipts.shift(); receiptDropped.n += 1 }
   }
   function declaredKeys() {
-    try {
-      const here = dirname(fileURLToPath(import.meta.url))
-      const p = join(here, '..', 'settings', 'planned.js')
-      if (!existsSync(p)) return { keys: [], count: 0, source: 'unavailable' }
-      const text = readFileSync(p, 'utf8')
-      const all = [...new Set([...text.matchAll(/key: "(vmu\.meetings\.[^"]+)"/g)].map((m) => m[1]))].sort()
-      return { keys: all, count: all.length, source: 'settings/planned.js' }
-    } catch (e) { return { keys: [], count: 0, source: 'error:' + String((e && e.message) || e) } }
+    const all = SETTING_DEFS.map(d => d.key).filter(key => key.startsWith('vmu.meetings.')).sort()
+    return { keys: all, count: all.length, source: 'settings/schema.js (core + planned)' }
   }
 
   return api

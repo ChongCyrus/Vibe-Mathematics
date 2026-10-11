@@ -379,15 +379,15 @@ const A = async (fn) => { try { return { ok: true, value: await fn() } } catch (
   const e = createExternal({ clock: () => now })
   const st = e.status()
   ok(WIRED_KEYS.length === 27, 'the module wires all 27 declared vmu.external.* keys', String(WIRED_KEYS.length))
-  ok(st.declaredExternalKeys === 27, 'the declared universe is read from settings/planned.js', String(st.declaredExternalKeys))
+  ok(st.declaredExternalKeys === 31, 'the declared universe is read from settings/schema.js (core + planned)', String(st.declaredExternalKeys))
   ok(st.plannedKeys.length + st.wiredCount === st.declaredExternalKeys && st.overlapWithWired.length === 0 && st.complementOk === true,
-    'WIRED and plannedKeys are COMPLEMENTARY and partition the 27 declared keys',
+    'WIRED and plannedKeys are COMPLEMENTARY and partition the 31 declared keys',
     JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredExternalKeys, overlap: st.overlapWithWired }))
   ok(st.wiredNotDeclared.length === 0, 'no wired key is missing from the declared registry', JSON.stringify(st.wiredNotDeclared))
   ok(Object.keys(st.keys).length === 27 && !Object.values(st.keys).some((v) => v === undefined),
     'status().keys reports a real value for all 27 wired keys (no silent nulls)')
   ok(MERGE_POLICIES.length === 3 && st.policy.mergePolicy === 'refuse-on-conflict', 'the merge policies are declared and the default is conservative')
-  ok(Object.keys(e.status().unwiredReasons).length === 0, 'with nothing unwired the reason map is empty (mechanism retained for future keys)')
+  ok(Object.keys(e.status().unwiredReasons).length === 4 && e.status().plannedKeys.includes('vmu.external.offline'), 'four core keys outside this module remain explicitly reported with reasons')
 }
 
 // D3: the evaluation scope rides with every receipt AND every refusal; no duplicates in a full scenario

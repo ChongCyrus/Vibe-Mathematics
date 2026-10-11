@@ -1,3 +1,4 @@
+import { SETTING_DEFS } from '../settings/schema.js'
 // vmu kernel · funding — the RESEARCH-FUNDING face (docs/13, docs/22 §2/§8).
 //
 // WHAT IT IS: accounts, budget lines, expenses, reimbursement, cross-institution settlement and the audit
@@ -20,9 +21,6 @@
 // VMU_FUNDING_COSTSHARE_UNBALANCED · VMU_FUNDING_SETTLEMENT_OVERDUE · VMU_FUNDING_AUDIT_PACK_INCOMPLETE ·
 // VMU_ALLOCATION_REMAINDER · VMU_QUOTA_EXCEEDED · VMU_NOT_PERMITTED · VMU_STATE · VMU_NO_SUCH_OBJECT ·
 // VMU_META_VALIDATION_FAILED · VMU_INVALID_ARGUMENT
-import { readFileSync, existsSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 export const apiVersion = 1
 export const ENFORCED_SCOPE = 'evaluated-so-far'
@@ -531,14 +529,8 @@ export function createFunding({ clock = () => 0, log = null, settings = {}, bus 
   }
 
   function declaredKeys() {
-    try {
-      const here = dirname(fileURLToPath(import.meta.url))
-      const p = join(here, '..', 'settings', 'planned.js')
-      if (!existsSync(p)) return { keys: [], count: 0, source: 'unavailable' }
-      const text = readFileSync(p, 'utf8')
-      const all = [...new Set([...text.matchAll(/key: "(vmu\.funding\.[^"]+)"/g)].map((m) => m[1]))].sort()
-      return { keys: all, count: all.length, source: 'settings/planned.js' }
-    } catch (e) { return { keys: [], count: 0, source: 'error:' + String((e && e.message) || e) } }
+    const all = SETTING_DEFS.map(d => d.key).filter(key => key.startsWith('vmu.funding.')).sort()
+    return { keys: all, count: all.length, source: 'settings/schema.js (core + planned)' }
   }
 
   return api

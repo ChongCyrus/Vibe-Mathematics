@@ -317,7 +317,7 @@ const realPlan = (settings = {}, steps = 3) => {
   const t = mk({})
   const st = t.status()
   ok(WIRED_KEYS.length === 11, 'the face wires all 11 declared vmu.migration.* keys', String(WIRED_KEYS.length))
-  ok(st.declaredMigrationKeys === 11, 'the declared universe is read from settings/planned.js', String(st.declaredMigrationKeys))
+  ok(st.declaredMigrationKeys === 11, 'the declared universe is read from settings/schema.js (core + planned)', String(st.declaredMigrationKeys))
   ok(st.plannedKeys.length + st.wiredCount === st.declaredMigrationKeys && st.overlapWithWired.length === 0 && st.complementOk === true,
     'WIRED and plannedKeys are COMPLEMENTARY and partition the 11 declared keys',
     JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredMigrationKeys }))

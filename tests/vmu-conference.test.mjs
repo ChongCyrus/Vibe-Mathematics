@@ -283,7 +283,7 @@ const goodSubmit = { title: 'A paper', authors: ['ada'], topics: ['ml'] }
   const t = mk({})
   const st = t.status()
   ok(WIRED_KEYS.length === 18, 'the face wires all 18 declared vmu.conference.* keys', String(WIRED_KEYS.length))
-  ok(st.declaredConferenceKeys === 18, 'the declared universe is read from settings/planned.js', String(st.declaredConferenceKeys))
+  ok(st.declaredConferenceKeys === 18, 'the declared universe is read from settings/schema.js (core + planned)', String(st.declaredConferenceKeys))
   ok(st.plannedKeys.length + st.wiredCount === st.declaredConferenceKeys && st.overlapWithWired.length === 0 && st.complementOk === true,
     'WIRED and plannedKeys are COMPLEMENTARY and partition the 18 declared keys',
     JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredConferenceKeys }))

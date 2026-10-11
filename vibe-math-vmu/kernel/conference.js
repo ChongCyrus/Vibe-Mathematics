@@ -1,3 +1,4 @@
+import { SETTING_DEFS } from '../settings/schema.js'
 // vmu kernel · conference — the CROSS-SESSION conference-organiser face (docs/08, docs/16 §8).
 //
 // LAYERING (explicit, and the reason this module exists): `kernel/meetings.js` is the POLICY LAYER OF ONE
@@ -22,9 +23,6 @@
 // VMU_REVIEW_SELF_DENIED · VMU_REVIEW_EVIDENCE_REQUIRED · VMU_COMPLIANCE_COI_UNDISCLOSED ·
 // VMU_OUTREACH_ANONYMITY_BREACH · VMU_REASON_REQUIRED · VMU_NOT_PERMITTED · VMU_STATE · VMU_NO_SUCH_OBJECT ·
 // VMU_INVALID_ARGUMENT
-import { readFileSync, existsSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 export const apiVersion = 1
 
@@ -547,14 +545,8 @@ export function createConference({ clock = () => 0, log = null, settings = {}, b
   }
 
   function declaredKeys() {
-    try {
-      const here = dirname(fileURLToPath(import.meta.url))
-      const p = join(here, '..', 'settings', 'planned.js')
-      if (!existsSync(p)) return { keys: [], count: 0, source: 'unavailable' }
-      const text = readFileSync(p, 'utf8')
-      const all = [...new Set([...text.matchAll(/key: "(vmu\.conference\.[^"]+)"/g)].map((m) => m[1]))].sort()
-      return { keys: all, count: all.length, source: 'settings/planned.js' }
-    } catch (e) { return { keys: [], count: 0, source: 'error:' + String((e && e.message) || e) } }
+    const all = SETTING_DEFS.map(d => d.key).filter(key => key.startsWith('vmu.conference.')).sort()
+    return { keys: all, count: all.length, source: 'settings/schema.js (core + planned)' }
   }
 
   return api

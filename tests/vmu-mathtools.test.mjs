@@ -312,8 +312,8 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
   const wiredListed = st.wired.length === WIRED_KEYS.length && st.wiredCount === WIRED_KEYS.length
   ok(wiredListed, 'status().wired lists every wired key', String(st.wiredCount))
   ok(st.overlap.length === 0, 'WIRED and plannedKeys are COMPLEMENTARY (no key is in both)', JSON.stringify(st.overlap))
-  ok(st.complementOk === true && st.plannedCount + st.wiredCount === st.declaredMathKeys && st.declaredMathKeys === 171,
-    'the two lists partition the DECLARED universe (171 vmu.math.* keys)', JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredMathKeys }))
+  ok(st.complementOk === true && st.plannedCount + st.wiredCount === st.declaredMathKeys && st.declaredMathKeys === 193,
+    'the two lists partition the DECLARED universe (193 vmu.math.* keys)', JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredMathKeys }))
   ok(st.plannedKeys.every((k) => typeof st.unwiredReasons[k] === 'string' && st.unwiredReasons[k].length > 8),
     'every unwired key carries a concrete reason', JSON.stringify(st.plannedKeys.slice(0, 3)))
   ok(Object.keys(st.keys).length === WIRED_KEYS.length && !Object.values(st.keys).some((v) => v === undefined),
@@ -328,7 +328,7 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
   ok(zero.plan({ op: 'stats/mean' }).ok === true, 'zero mechanism[+]: plan() answers with the documented defaults')
   ok(codeOf(() => zero.run({ op: 'stats/mean' })) === 'VMU_ENGINE_UNAVAILABLE', 'zero mechanism[-]: run() without a seam refuses by name')
   ok(codeOf(() => zero.plan({})) === 'VMU_MATH_INVALID_INPUT', 'an op-less request is a named refusal')
-  ok(zero.status().plannedKeys.length > 100 && zero.status().plannedSource === 'settings/planned.js',
+  ok(zero.status().plannedKeys.length > 100 && zero.status().plannedSource === 'settings/schema.js (core + planned)',
     'the planned list is read from the generated registry', zero.status().plannedSource)
   // refusal counters by code
   const counted = mk({ settings: { 'vmu.math.sandbox.network': 'deny' } })

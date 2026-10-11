@@ -1,3 +1,4 @@
+import { SETTING_DEFS } from '../settings/schema.js'
 // vmu kernel · ip — the intellectual-property surface: dossiers, disclosure duties, publication holds,
 // confidentiality windows, prior-art searches, authorship/ownership, transfers/licences and revenue splits.
 //
@@ -27,12 +28,9 @@
 
 export const apiVersion = 1
 
-import { readFileSync, existsSync } from 'node:fs'
 // ROUND 60: an AGREEMENT's expiry may be given as an ISO string or as epoch-ms, so it goes through the shared
 // normaliser. `at()` below is a different rule on purpose (an absent instant means "now"), and it stays.
 import { ms as toMs } from './timevalue.js'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 export function refuse(code, message, hint) {
   const e = new Error(message)
@@ -732,18 +730,8 @@ export function createIp({ clock = () => 0, log = null, settings = {}, bus = nul
 
   /** The declared `vmu.ip.*` universe as registered (read-only cross-check; never guessed). */
   function declaredUniverse() {
-    try {
-      const here = dirname(fileURLToPath(import.meta.url))
-      const p = join(here, '..', 'settings', 'planned.js')
-      const q = join(here, '..', 'settings', 'schema.js')
-      const keys = new Set()
-      if (existsSync(p)) for (const m of readFileSync(p, 'utf8').matchAll(/key: "(vmu\.ip\.[^"]+)"/g)) keys.add(m[1])
-      if (existsSync(q)) for (const m of readFileSync(q, 'utf8').matchAll(/'(vmu\.ip\.[A-Za-z0-9_.]+)'/g)) keys.add(m[1])
-      const all = [...keys].sort()
-      return { source: 'settings/planned.js + settings/schema.js', declaredIpKeys: all.length, undocumented: all.filter((k) => !DECLARED_KEYS.includes(k)) }
-    } catch (e) {
-      return { source: 'error:' + String((e && e.message) || e), declaredIpKeys: DECLARED_KEYS.length, undocumented: [] }
-    }
+    const all = SETTING_DEFS.map(d => d.key).filter(key => key.startsWith('vmu.ip.')).sort()
+    return { source: 'settings/schema.js (core + planned)', declaredIpKeys: all.length, undocumented: all.filter((k) => !DECLARED_KEYS.includes(k)) }
   }
 
   return api

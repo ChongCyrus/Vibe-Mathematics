@@ -284,9 +284,9 @@ const QUICK_ONLY = ['v5', 'audit-participant-set-parity', 'audit-math-computatio
   'audit-math-computation-contract', 'math-computation-shared', 'audit-registration',
   'audit-preset-rows', 'audit-status-report-fields', 'audit-artifact-docs']
 const QUICK_EXCLUDE = ['mutants', 'audit-math-computation-sensitivity']
-// S24: PR #14 brought `tests/v5-meeting-attribution.test.mjs` into the curated quick subset (a new
-// suite is on purpose — it is the regression test for the reply-attribution fix), so 23 -> 24.
-const QUICK_EXPECTED_JOBS = 24
+// Includes the existing accept-ab-v5-minimal and v5-tool-help suites in addition to
+// the prior 24 jobs; keep the fixed count so accidental scope changes still fail.
+const QUICK_EXPECTED_JOBS = 26
 // `vmu` is the ITERATION subset for developing the vmu framework: the vmu jobs themselves, plus every
 // gate that guards a SHARED surface a vmu change can reach (preset rows and the generated patch,
 // the installer, package membership, README/doc counts, path discipline, artifact docs, the shared

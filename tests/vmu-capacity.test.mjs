@@ -267,7 +267,7 @@ const mk = (settings = {}) => createCapacity({ clock: () => NOW, settings })
   const c = mk({})
   const st = c.status()
   ok(WIRED_KEYS.length === 12, 'the face wires all 12 declared vmu.capacity.* keys', String(WIRED_KEYS.length))
-  ok(st.declaredCapacityKeys === 12, 'the declared universe is read from settings/planned.js', String(st.declaredCapacityKeys))
+  ok(st.declaredCapacityKeys === 12, 'the declared universe is read from settings/schema.js (core + planned)', String(st.declaredCapacityKeys))
   ok(st.plannedKeys.length + st.wiredCount === st.declaredCapacityKeys && st.overlapWithWired.length === 0 && st.complementOk === true,
     'WIRED and plannedKeys are COMPLEMENTARY and partition the 12 declared keys',
     JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredCapacityKeys }))

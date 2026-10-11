@@ -23,7 +23,9 @@
 //                        (_oneoff/probe-installer-policy.mjs) uses this to prove these assertions
 //                        really do detect the previous, edit-preserving policy.
 // ============================================================================================
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync, rmSync, cpSync, readdirSync, statSync, symlinkSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync, rmSync, cpSync, readdirSync, statSync } from 'node:fs'
+import fs from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
@@ -247,6 +249,7 @@ console.log('=== 7. an unreadable package manifest replaces nothing (and self-he
 }
 
 console.log('=== 8. the managed list covers what the presets need ===')
+ok(PRESETS.length > 0, 'managed-file coverage has declared presets')
 for (const p of PRESETS) {
   const shippedFiles = (pkg.files || []).filter((f) => f.startsWith(p.src + '/')).map((f) => f.slice(p.src.length + 1))
   const runtime = ['agent.cordis.yml', 'preset.yml', p.src + '.js']
@@ -446,18 +449,23 @@ console.log('=== 16. an UNREADABLE stale file is not deleted (there is no backup
   await applyFrom(pkgA, H.home, [])
   const staleDir = join(H.root, 'vibe-math-v1')
   mkdirSync(staleDir, { recursive: true })
-  // A directory junction sitting at the stale FILE path: existsSync() is true, readFileSync()
-  // throws (EISDIR), and unlinkSync() WOULD succeed — exactly the shape the policy must refuse.
-  // (POSIX ignores the 'junction' type and makes a plain symlink to the directory, which behaves
-  // identically here.) The previous code unlinked it with no backup; the rule is now
-  // "back up before deleting, or do not delete".
-  const target = join(tmp, 'unreadable-target-16')
-  mkdirSync(target, { recursive: true })
-  symlinkSync(target, join(staleDir, 'legacy.js'), 'junction')
+  // Inject an unreadable regular file: no symlink privilege required, and unlink would still succeed.
+  const unreadable = join(staleDir, 'legacy.js')
+  writeFileSync(unreadable, 'unreadable stale bytes')
   const state = readJson(H.state) || { files: {} }
   state.files['vibe-math-v1/legacy.js'] = { hash: sha('bytes this installer wrote long ago\n'), provenance: 'package' }
   writeFileSync(H.state, JSON.stringify(state, null, 2) + '\n')
-  const logs = await applyFrom(pkgA, H.home, [])
+  const originalRead = fs.readFileSync
+  let logs
+  try {
+    fs.readFileSync = (path, ...args) => {
+      if (String(path) === unreadable) throw Object.assign(new Error('injected unreadable file'), { code: 'EACCES' })
+      return originalRead(path, ...args)
+    }
+    syncBuiltinESMExports()
+    logs = await applyFrom(pkgA, H.home, [])
+  } finally { fs.readFileSync = originalRead; syncBuiltinESMExports() }
+
   ok(existsSync(join(staleDir, 'legacy.js')),
     'a stale file whose bytes cannot be read is KEPT (the delete is skipped, not performed unbacked)')
   ok(logs.some((l) => l.includes('无法读取')), '...and the log names it as unreadable',

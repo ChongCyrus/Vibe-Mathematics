@@ -1,3 +1,4 @@
+import { SETTING_DEFS } from '../settings/schema.js'
 // vmu kernel workflow — stage whitelist, transition gates, dependencies, retries, checkpoints, escalation,
 // handover, templates and the arbitration SWITCH. It reads the whole `vmu.workflow.*` family so that every
 // declared key CHANGES AN OBSERVABLE RESULT (docs/08 §4/§10/§12.4/§19.5 — referenced, never redefined).
@@ -21,9 +22,6 @@
 // WHAT IT IS NOT: it does not define arbitration (17-§6), the handover note BODY (17-§11), the durable store
 // (07) or the idempotency ledger (K6, kernel/idempotency.js) — it CONFIGURES them and references their keys.
 
-import { readFileSync, existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 export const apiVersion = 1
 
@@ -694,18 +692,8 @@ export function createWorkflow({ clock = () => 0, log = () => {}, settings = {},
     }
   }
   function declaredRegistry() {
-    try {
-      const here = dirname(fileURLToPath(import.meta.url))
-      const p = join(here, '..', 'settings', 'planned.js')
-      const q = join(here, '..', 'settings', 'schema.js')
-      const keys = new Set()
-      if (existsSync(p)) for (const m of readFileSync(p, 'utf8').matchAll(/key: "(vmu\.workflow\.[^"]+)"/g)) keys.add(m[1])
-      if (existsSync(q)) for (const m of readFileSync(q, 'utf8').matchAll(/'(vmu\.workflow\.[A-Za-z0-9_.]+)'/g)) keys.add(m[1])
-      const all = [...keys].sort()
-      return { source: 'settings/planned.js + settings/schema.js', declaredWorkflowKeys: all.length, undocumented: all.filter((k) => !DECLARED_KEYS.includes(k) && !EXTRA_WIRED_KEYS.includes(k)) }
-    } catch (e) {
-      return { source: 'error:' + String((e && e.message) || e), declaredWorkflowKeys: DECLARED_KEYS.length, undocumented: [] }
-    }
+    const all = SETTING_DEFS.map(d => d.key).filter(key => key.startsWith('vmu.workflow.')).sort()
+    return { source: 'settings/schema.js (core + planned)', declaredWorkflowKeys: all.length, undocumented: all.filter((k) => !DECLARED_KEYS.includes(k) && !EXTRA_WIRED_KEYS.includes(k)) }
   }
 
   /** IMMUTABLE status furniture, computed ONCE (E4 fix). The registry snapshot is taken at construction time:

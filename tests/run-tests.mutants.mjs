@@ -42,7 +42,7 @@ rmSync(dir, { recursive: true, force: true })
 // TIMEOUT path, BOTH directions (a criterion must be validated against a known-positive AND a
 // known-negative before it gates anything): the same real suite under a 1 s limit must be killed
 // and NAMED in the failure list; under the default limit it must not be reported as a timeout.
-const slowRun = spawnSync(process.execPath, [RUNNER, '--only', 'audit-prompt-invariants'], { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, { GATE_SUITE_TIMEOUT_MS: '2000' }) })
+const slowRun = spawnSync(process.execPath, [RUNNER, '--no-temp-hygiene', '--only', 'audit-prompt-invariants'], { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, { GATE_SUITE_TIMEOUT_MS: '2000' }) })
 const slowOut = String(slowRun.stdout || '') + String(slowRun.stderr || '')
 const failList = slowOut.split('\n').filter((l) => /^\s*FAILED:/.test(l))
 const timedOutLine = failList.find((l) => /\[probe\] \(TIMEOUT after 2s\)/.test(l)) || ''
@@ -56,7 +56,7 @@ ok(slowRun.status !== 0 && !!timedOutLine,
 // unrelated in-flight reason (v2/v3 I13/I14: the parameter schema parses to 0 keys), and a proof tool
 // must not inherit someone else's red.
 const fastT0 = Date.now()
-const fastRun = spawnSync(process.execPath, [RUNNER, '--only', 'audit-prompt-invariants'], { cwd: REPO, encoding: 'utf8' })
+const fastRun = spawnSync(process.execPath, [RUNNER, '--no-temp-hygiene', '--only', 'audit-prompt-invariants'], { cwd: REPO, encoding: 'utf8' })
 const fastWallMs = Date.now() - fastT0
 const fastOut = String(fastRun.stdout || '') + String(fastRun.stderr || '')
 // (ii) ruling: a TIMEOUT marker is a REGRESSION only when the child finished INSIDE the default limit.
@@ -69,7 +69,7 @@ const fastStarved = fastWallMs >= DEFAULT_LIMIT_MS
 ok(!/TIMEOUT after/.test(fastOut) || fastStarved,
   'NEGATIVE (a): with the default limit no TIMEOUT marker is produced (a marker only counts as a regression when the child stayed inside the default)',
   'wall=' + fastWallMs + 'ms default=' + DEFAULT_LIMIT_MS + 'ms starvedByLoad=' + fastStarved + ' exit=' + fastRun.status + ' (its own verdict is another owner\'s concern)')
-const greenRun = spawnSync(process.execPath, [RUNNER, '--only', 'audit-package-membership'], { cwd: REPO, encoding: 'utf8' })
+const greenRun = spawnSync(process.execPath, [RUNNER, '--no-temp-hygiene', '--only', 'audit-package-membership'], { cwd: REPO, encoding: 'utf8' })
 const greenOut = String(greenRun.stdout || '') + String(greenRun.stderr || '')
 ok(greenRun.status === 0 && !/TIMEOUT after/.test(greenOut),
   'NEGATIVE (b): a known-green suite exits 0 under the default limit (no false timeout)',

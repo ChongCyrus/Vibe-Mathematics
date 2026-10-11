@@ -1,3 +1,4 @@
+import { SETTING_DEFS } from '../settings/schema.js'
 // vmu kernel · mathtools — the POLICY + GUARD layer that finally READS the `vmu.math.*` knobs.
 //
 // WHY THIS FILE EXISTS (the honest-gap slice): `settings/planned.js` declares 171 `vmu.math.*` keys, the
@@ -29,9 +30,7 @@
 // The full wired list is exported as `WIRED_KEYS`; the complement (read from the generated
 // `settings/planned.js` when present) is reported per key with a reason.
 import { createHash } from 'node:crypto'
-import { readFileSync, existsSync } from 'node:fs'
 import { resolve, join, dirname, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 export const apiVersion = 1
 
@@ -581,17 +580,9 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
   }
   /** The declared `vmu.math.*` universe, read from the generated registry (read-only); never guessed. */
   function plannedKeys() {
-    try {
-      const here = dirname(fileURLToPath(import.meta.url))
-      const p = join(here, '..', 'settings', 'planned.js')
-      if (!existsSync(p)) return { keys: [], source: 'unavailable', declaredMathKeys: WIRED_KEYS.length }
-      const text = readFileSync(p, 'utf8')
-      const all = [...new Set([...text.matchAll(/key: "(vmu\.math\.[^"]+)"/g)].map((m) => m[1]))].sort()
-      const keys = all.filter((k) => !WIRED_KEYS.includes(k))
-      return { keys, source: 'settings/planned.js', declaredMathKeys: all.length }
-    } catch (e) {
-      return { keys: [], source: 'error:' + String((e && e.message) || e), declaredMathKeys: WIRED_KEYS.length }
-    }
+    const all = SETTING_DEFS.map(d => d.key).filter(key => key.startsWith('vmu.math.')).sort()
+    const keys = all.filter(k => !WIRED_KEYS.includes(k))
+    return { keys, source: 'settings/schema.js (core + planned)', declaredMathKeys: all.length }
   }
 
   return api

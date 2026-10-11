@@ -355,9 +355,9 @@ const err = (fn) => errOf(fn)
 {
   const st = mk({}).t.status()
   ok(WIRED_KEYS.length === 47, 'the layer wires all 47 declared vmu.meetings.* keys', String(WIRED_KEYS.length))
-  ok(st.declaredMeetingKeys === 47, 'the declared universe is read from settings/planned.js', String(st.declaredMeetingKeys))
+  ok(st.declaredMeetingKeys === 56, 'the declared universe is read from settings/schema.js (core + planned)', String(st.declaredMeetingKeys))
   ok(st.plannedKeys.length + st.wiredCount === st.declaredMeetingKeys && st.overlapWithWired.length === 0 && st.complementOk === true,
-    'WIRED and plannedKeys are COMPLEMENTARY and partition the 47 declared keys',
+    'WIRED and plannedKeys are COMPLEMENTARY and partition the 56 declared keys',
     JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredMeetingKeys, overlap: st.overlapWithWired }))
   ok(Object.keys(st.keys).length === 47 && !Object.values(st.keys).some((v) => v === undefined),
     'status().keys reports a real value for all 47 wired keys (no silent nulls)')
@@ -385,7 +385,7 @@ const err = (fn) => errOf(fn)
   const zid = zero.open({ roster, chair: 'acad' }).meeting
   ok(zero.speak({ meeting: zid, member: 'acad' }).ok === true, 'zero mechanism[+]: the documented defaults let a plain meeting run')
   ok(codeOf(() => zero.speak({ meeting: 'nope', member: 'acad' })) === 'VMU_NO_SUCH_OBJECT', 'zero mechanism[-]: an unknown meeting is a named refusal')
-  ok(zero.status().declaredMeetingKeys === 47, 'the declared-key universe is available with no settings at all')
+  ok(zero.status().declaredMeetingKeys === 56, 'the declared-key universe is available with no settings at all')
   // read-only faces
   const ro = mk({})
   const rid = ro.t.open({ roster }).meeting
@@ -491,43 +491,9 @@ const err = (fn) => errOf(fn)
   ok(quiet.enforced.length === 1, 'the materialsRequired refusal names exactly the one key consulted', JSON.stringify(quiet.enforced))
 }
 
-if (failed === 0) {
-  // ── D3: the evaluation scope rides with every receipt AND every refusal; no receipt has duplicates ──
-{
-  const h = mk({})
-  const mg = h.t
-  const o = mg.open({ type: 'ordinary', chair: 'acad', roster })
-  ok(o.enforcedScope === 'evaluated-so-far', 'D3: an open() receipt states enforcedScope=evaluated-so-far')
-  ok(o.receipt && o.receipt.enforcedScope === 'evaluated-so-far', 'D3: the nested receipt states it too')
-  const refusal = errOf(() => mg.open({ type: 'nope', chair: 'acad', roster }))
-  ok(!!refusal && refusal.enforcedScope === 'evaluated-so-far', 'D3: a REFUSAL carries enforcedScope itself')
-  ok(!!refusal && Array.isArray(refusal.enforced) && refusal.enforced.includes('vmu.meetings.typeCatalog'), 'D3: the refusal lists the key it consulted (and the scope)')
-  const session = opened({})
-  const recs = []
-  const tryPush = (fn) => { try { const r = fn(); if (r && Array.isArray(r.enforced)) recs.push(r) } catch (e) { /* refusals covered elsewhere */ } }
-  tryPush(() => session.h.t.attend({ meeting: session.id, member: 'acad' }))
-  tryPush(() => session.h.t.speak({ meeting: session.id, member: 'acad', ms: 500 }))
-  tryPush(() => session.h.t.queue({ meeting: session.id, member: 'r-1' }))
-  tryPush(() => session.h.t.motion({ meeting: session.id, member: 'acad', kind: 'ordinary' }))
-  tryPush(() => session.h.t.vote({ meeting: session.id, member: 'r-1' }))
-  tryPush(() => session.h.t.warn({ meeting: session.id, member: 'r-2' }))
-  tryPush(() => session.h.t.leave({ meeting: session.id, member: 'r-3' }))
-  tryPush(() => session.h.t.quorum({ meeting: session.id }))
-  tryPush(() => session.h.t.close({ meeting: session.id }))
-  const dup = recs.filter((x) => !Array.isArray(x.enforced) || new Set(x.enforced).size !== x.enforced.length)
-  ok(recs.length >= 3, 'no-dup: the session produced receipts to check (' + recs.length + ')')
-  ok(recs.every((x) => x.enforcedScope === 'evaluated-so-far'), 'D3: every receipt in the session carries the scope')
-  ok(dup.length === 0, 'no-dup: no receipt in the full session has duplicates (' + (dup.length ? JSON.stringify(dup[0]) : recs.length + ' receipts checked') + ')')
-  ok(mg.status() && mg.receiptsView({}).enforcedScope === 'evaluated-so-far', 'D3: the receipts view carries the scope as well')
-}
-
-console.log('=== VMU MEETINGS: ' + passed + ' passed, 0 failed ===')
-  process.exit(0)
-}
-for (const f of failures) console.log('  FAIL - ' + f)
 // ── D3: the evaluation scope rides with every receipt AND every refusal; no receipt has duplicates ──
 {
-  const h = mk({})
+  const h = mk({ 'vmu.meetings.typeCatalog': ['ordinary'] })
   const mg = h.t
   const o = mg.open({ type: 'ordinary', chair: 'acad', roster })
   ok(o.enforcedScope === 'evaluated-so-far', 'D3: an open() receipt states enforcedScope=evaluated-so-far')
@@ -555,4 +521,5 @@ for (const f of failures) console.log('  FAIL - ' + f)
 }
 
 console.log('=== VMU MEETINGS: ' + passed + ' passed, ' + failed + ' failed ===')
-process.exit(1)
+for (const f of failures) console.log('  FAIL - ' + f)
+process.exit(failed ? 1 : 0)

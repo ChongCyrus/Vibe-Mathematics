@@ -655,6 +655,16 @@ export function apply(ctx) {
       counters() { return dirty ? counters : inst.counters },
     }
   }
+  function upsertById(items, updates) {
+    const valid = (Array.isArray(updates) ? updates : [updates]).filter(x => x && typeof x.id === 'string' && x.id)
+    if (!valid.length) return items
+    const out = items.slice(), positions = new Map(items.map((x, i) => [x.id, i]).reverse())
+    for (const item of valid) {
+      const i = positions.get(item.id)
+      if (i === undefined) { positions.set(item.id, out.length); out.push(item) } else out[i] = item
+    }
+    return out
+  }
   function applyV5Event(state, event) {
     try {
       if (!event || typeof event.type !== 'string') return state
@@ -711,42 +721,14 @@ export function apply(ctx) {
           return n
         })
       }
-      if (t === EV.member) {
+      if (t === EV.member || t === EV.task) {
         return withInstitute(state, key, (inst) => {
+          const field = t === EV.member ? 'members' : 'tasks'
           const alloc = typeof d.make === 'function' ? makeIdAllocator(inst) : null
-          const made = alloc ? d.make(alloc) : d.member
-          const list = (Array.isArray(made) ? made : [made]).filter(Boolean)
-          if (!list.length) return inst
-          const members = inst.members.slice()
-          let changed = false
-          for (const m of list) {
-            if (!m || typeof m.id !== 'string' || !m.id) continue
-            const i = members.findIndex((x) => x.id === m.id)
-            if (i === -1) members.push(m); else members[i] = m
-            changed = true
-          }
-          if (!changed) return inst
-          const out = Object.assign({}, inst, { members })
-          if (alloc) out.counters = alloc.counters()
-          return out
-        })
-      }
-      if (t === EV.task) {
-        return withInstitute(state, key, (inst) => {
-          const alloc = typeof d.make === 'function' ? makeIdAllocator(inst) : null
-          const made = alloc ? d.make(alloc) : d.task
-          const list = (Array.isArray(made) ? made : [made]).filter(Boolean)
-          if (!list.length) return inst
-          const tasks = inst.tasks.slice()
-          let changed = false
-          for (const task of list) {
-            if (!task || typeof task.id !== 'string' || !task.id) continue
-            const i = tasks.findIndex((x) => x.id === task.id)
-            if (i === -1) tasks.push(task); else tasks[i] = task
-            changed = true
-          }
-          if (!changed) return inst
-          const out = Object.assign({}, inst, { tasks })
+          const made = alloc ? d.make(alloc, inst) : d[t === EV.member ? 'member' : 'task']
+          const items = upsertById(inst[field], made)
+          if (items === inst[field]) return inst
+          const out = Object.assign({}, inst, { [field]: items })
           if (alloc) out.counters = alloc.counters()
           return out
         })
@@ -895,7 +877,7 @@ export function apply(ctx) {
       if (t === EV.progress) {
         return withInstitute(state, key, (inst) => Object.assign({}, inst, {
           lastProgressAt: Number(d.at) || now(),
-          artifactCount: Number(d.artifactCount) || inst.artifactCount,
+          artifactCount: typeof d.artifactCount === 'function' ? d.artifactCount(inst.artifactCount) : Number(d.artifactCount) || inst.artifactCount,
         }))
       }
       return state
@@ -971,13 +953,14 @@ export function apply(ctx) {
     const backend = {
       kind: 'file',
       async load() {
+        await chain
         const path = pathOf()
         if (loadedPath === path && (loadOk || loadPromise === null)) return mem
         // A different path (or a previously FAILED load of this one) is read again before it
         // is ever written to. Switching paths starts from the empty initial state: `mem`
         // holds only the fold of the file that is on disk for the CURRENT path.
-        if (loadedPath !== path) { mem = initState(); loadPromise = null }
         if (loadPromise && loadPendingPath === path) return await loadPromise
+        if (loadedPath !== path) { mem = initState(); loadPromise = null }
         loadPendingPath = path
         loadPromise = doLoad(path)
         await loadPromise
@@ -995,6 +978,7 @@ export function apply(ctx) {
       // it is being pointed at already exists on disk) and report the state belonging to
       // `useKey`. The path latch deliberately stays on the file that was actually read.
       async loadAt(path, useKey) {
+        await chain
         loadedPath = path
         loadOk = false
         loadPromise = null
@@ -1013,26 +997,24 @@ export function apply(ctx) {
           throw v5err('V5_STATE_NOT_LOADED',
             'refusing to overwrite ' + path + ' : its state file was never read successfully (a failed or unreadable load must not be clobbered)')
         }
-        mem = applyV5Event(mem, { type, data })
-        const snapshot = mem
-        // Serialize writes per file and defer JSON.stringify to execution time, so a
-        // late writer always lands the FULL newest state and can never overwrite with
-        // a stale subset (v4 §27 writeJson defect).
-        chain = chain.then(async () => {
-          // MEDIUM 7 (deep review): the write used to be wrapped in `catch { /* best effort */ }`,
-          // and `writeTextAbs` already swallows its own failures (it returns `undefined`), so a
-          // failed write was INVISIBLE: the in-memory state advanced, every caller reported
-          // success, and the operator believed the run was persisted. The fold cannot be rolled
-          // back here, so the failure is made durable + visible instead (`onWriteFailure` feeds the
-          // same `diagnostics` list that `report()` prints under `## ⚠ 状态诊断`) and also logged.
-          const outcome = await writeTextAbs(pathOf(), JSON.stringify(snapshot, null, 2))
+        // Fold against the last durable state, then publish only after the write succeeds.
+        // Capture the destination: queued work must never follow a later configure() call.
+        const pending = chain.then(async () => {
+          if (loadedPath !== path || !loadOk) throw v5err('V5_STATE_NOT_LOADED', 'state path changed before commit: ' + path)
+          const snapshot = applyV5Event(mem, { type, data })
+          if (snapshot === mem) return mem
+          let outcome
+          try { outcome = await writeTextAbs(path, JSON.stringify(snapshot, null, 2)) } catch (e) { /* reported below */ }
           if (outcome === undefined) {
-            try { onWriteFailure(pathOf()) } catch (e) { /* diagnostics must never break the chain */ }
-            try { console.error('vibe-math-v5: state write FAILED for ' + pathOf() + ' — the in-memory state advanced but the file is STALE') } catch (e) { /* ignore */ }
+            try { onWriteFailure(path) } catch (e) { /* diagnostics must never break the chain */ }
+            throw v5err('V5_WRITE_FAILED', 'state write FAILED for ' + path + ' — committed state unchanged')
           }
-          return true
+          mem = snapshot
+          return mem
         })
-        return mem
+        // Each caller observes its own failure; a failed write must not poison later commits.
+        chain = pending.then(() => true, () => false)
+        return await pending
       },
     }
     return backend
@@ -1348,7 +1330,14 @@ export function apply(ctx) {
       try { return sp.resolve({}) } catch (e) { return undefined }
     }
     async function fsTargetAbs(p) { return await fs.resolve(p) }
-    async function readTextAbs(p) { try { const t = await fsTargetAbs(p); if (await fs.stat(t) === undefined) return undefined; return await fs.readText(t) } catch (e) { return undefined } }
+    async function readTextAbsStrict(p) {
+      const t = await fsTargetAbs(p)
+      if (await fs.stat(t) === undefined) return undefined
+      const text = await fs.readText(t)
+      if (typeof text !== 'string') throw new Error('existing file returned no text: ' + p)
+      return text
+    }
+    async function readTextAbs(p) { try { return await readTextAbsStrict(p) } catch (e) { return undefined } }
     async function writeTextAbs(p, content) {
       try {
         const t = await fsTargetAbs(p)
@@ -1366,7 +1355,7 @@ export function apply(ctx) {
     async function writeTextRel(rel, content) { return (await writeTextAbs(instRoot() + '/' + rel, content)) !== undefined }
 
     function installBackend() {
-      backend = makeFileBackend(readTextAbs, writeTextAbs, () => instRoot() + '/State/' + instituteName + '.v5state.json',
+      backend = makeFileBackend(readTextAbsStrict, writeTextAbs, () => instRoot() + '/State/' + instituteName + '.v5state.json',
         (p) => noteWriteProblem(p),                       // MEDIUM 7: a failed write must be visible, never swallowed
         (text) => { lastLoadProblem = text; noteLoadProblem(text) })   // S2: a rejected file is visible on READS too
       return backend
@@ -1461,9 +1450,8 @@ export function apply(ctx) {
       if (t && pendingLoadNotes.indexOf(t) === -1) pendingLoadNotes.push(t)
       if (pendingLoadNotes.length > 5) pendingLoadNotes = pendingLoadNotes.slice(-5)
     }
-    // MEDIUM 7 (deep review): a FAILED state write cannot be rolled back (the fold already
-    // advanced the in-memory state), so it must at least be impossible to miss. Counted for
-    // `status()`/`report()` AND queued for the next allowed commit's diagnostics.
+    // Failed writes leave the committed state unchanged. Keep diagnostics visible through
+    // status/report as well as returning the failure to the caller.
     let stateWriteFailures = 0
     // S2: the ACTIONABLE reason a state file that exists was rejected (empty while everything is
     // fine). Surfaced by `status()`/`report()` on the read path, not only after a refused write.
@@ -1476,7 +1464,7 @@ export function apply(ctx) {
     let loadProblemLog = []
     function noteWriteProblem(p) {
       stateWriteFailures += 1
-      noteLoadProblem('state write FAILED (the file is STALE): ' + String(p || '?'))
+      noteLoadProblem('state write FAILED (committed state unchanged): ' + String(p || '?'))
     }
     function drainLoadNotes() {
       if (!pendingLoadNotes.length) return
@@ -1496,9 +1484,7 @@ export function apply(ctx) {
       try {
         stateCache = await backend.commit(type, Object.assign({ version: PROJECTION_VERSION, key }, data))
       } catch (e) {
-        // The write was refused because the state file could not be read. Say so loudly
-        // instead of clobbering it, and keep the note for the next write that is allowed.
-        noteLoadProblem('write REFUSED (a failed state-file load must not be clobbered): ' + String((e && e.message) || e))
+        noteLoadProblem('state commit REFUSED: ' + String((e && e.message) || e))
         throw e
       }
       if (!loaded.ok) noteLoadProblem('the state file ' + String(loaded.path || '?') + ' could not be read (corrupt, unreadable or version-mismatched); it will never be overwritten')
@@ -1528,12 +1514,11 @@ export function apply(ctx) {
     // Convenience commit wrappers.
     const patchInstitute = (patch) => commit(EV.institute, { patch })
     const putMember = (member) => commit(EV.member, { member })
-    const putTask = (task) => commit(EV.task, { task })
     // HIGH 1: creation goes through an in-fold allocator — the callback runs INSIDE the fold, so
     // the id it hands out and the object it returns are committed in one step (makeIdAllocator).
     // The old whole-object creation setters (`putMessage`/`putMeeting`/`putCounters`) are GONE on
     // purpose: reusing one would mint an id from a read taken outside the fold and reintroduce the
-    // silent-loss race this fix removes. Updates use `putMember`/`putTask` (already-identified
+    // silent-loss race this fix removes. Updates use `putMember`/task commits (already-identified
     // objects) and, for messages, the same allocator.
     const putMessageMake = (make) => commit(EV.message, { make })
     // HIGH 3: the "is it solved?" tally is durable state, not an in-memory Map.
@@ -1547,7 +1532,7 @@ export function apply(ctx) {
     // folds themselves (`makeIdAllocator`), so there is no `counters` setter either.
     const markProgress = async () => {
       lastProgressAt = now()
-      await commit(EV.progress, { at: lastProgressAt, artifactCount: inst().artifactCount })
+      await commit(EV.progress, { at: lastProgressAt })
     }
 
     // ---- roster helpers ---------------------------------------------------
@@ -2980,20 +2965,23 @@ export function apply(ctx) {
     }
 
     // ---- task board primitives -------------------------------------------
-    function taskReady(task) {
-      if (!task || task.status !== 'pending') return false
-      const tasks = inst().tasks
-      for (const id of (task.blockedBy || [])) {
-        const b = tasks.find((t) => t.id === id)
-        if (!b || b.status !== 'completed') return false
+    let indexedTasks, tasksById
+    function taskIndex(tasks) {
+      if (indexedTasks !== tasks) {
+        indexedTasks = tasks
+        tasksById = new Map(tasks.map(t => [t.id, t]).reverse())
       }
-      return true
+      return tasksById
+    }
+    function taskReady(task, tasks = inst().tasks) {
+      return !!task && task.status === 'pending' && (task.blockedBy || []).every(id => taskIndex(tasks).get(id)?.status === 'completed')
     }
     function writeScopeWarnings(task) {
+      if (!task.writeScopes?.length) return []
       const out = []
       for (const other of inst().tasks) {
         if (other.id === task.id || other.status !== 'in_progress') continue
-        for (const a of (task.writeScopes || [])) {
+        for (const a of task.writeScopes) {
           for (const b of (other.writeScopes || [])) {
             if (scopesOverlap(a, b)) out.push('与 ' + other.id + '（' + other.ownerId + '）的范围重叠：' + a + ' ~ ' + b)
           }
@@ -3002,11 +2990,7 @@ export function apply(ctx) {
       return Array.from(new Set(out))
     }
     function taskView(task) {
-      const t = Object.assign({}, task)
-      t.ready = taskReady(task)
-      t.ownerName = task.ownerId || ''
-      t.writeScopeWarnings = writeScopeWarnings(task)
-      return t
+      return Object.assign({}, task, { ready: taskReady(task), ownerName: task.ownerId || '', writeScopeWarnings: writeScopeWarnings(task) })
     }
 
     // ================= Lean formal verification ==============================
@@ -3144,40 +3128,14 @@ export function apply(ctx) {
       } catch (e) {
         return { ok: false, code: 'LEAN_SPAWN_FAILED', message: String((e && e.message) || e), file: rel, ms: now() - started }
       }
-      let outcome
-      // docs/formal-verification.md §7: a TIMEOUT must actually TERMINATE the process —
-      // `graceMs` is only a request to the host, so relying on it alone could leave a runaway
-      // Lean (or a host that ignores graceMs) alive while we report LEAN_TIMEOUT. Race `done`
-      // against a `cap` timer that calls `handle.terminate()`, exactly like v2/v3/v4. The
-      // timer disposer runs in BOTH outcomes, so a settled run never leaks a timer.
-      let timerDisposer = null
-      let timedOut = false
-      // A `done` that settles AFTER the timeout won the race must not surface as an unhandled
-      // rejection; the guarded `ran` promise is what the race uses, so the chain is attached
-      // once and never re-created after it may already have rejected.
-      const ran = Promise.resolve(handle.done).then(
-        (v) => ({ settled: true, value: v }),
-        (e) => ({ settled: false, error: e }))
+      let outcome, timedOut = false
       try {
-        const r = await Promise.race([
-          ran,
-          new Promise((resolve) => {
-            timerDisposer = ctx.timeout(() => {
-              timedOut = true
-              try { if (typeof handle.terminate === 'function') handle.terminate() } catch (e) { /* the race result is the report */ }
-              resolve({ settled: true, value: { exitCode: null, signal: 'SIGTERM' } })
-            }, cap)
-          }),
-        ])
-        if (r.settled) outcome = r.value
-        else throw r.error
+        const r = await waitForProcess(handle, cap)
+        timedOut = r.timedOut
+        if (!r.settled) throw r.error
+        outcome = r.value
       } catch (e) {
-        if (timerDisposer) { try { timerDisposer() } catch (e2) { /* already settled */ } }
         return { ok: false, code: 'LEAN_RUN_FAILED', message: String((e && e.message) || e), file: rel, ms: now() - started }
-      } finally {
-        // `done`/error wins -> the timer must not fire later. When the TIMEOUT won, the timer
-        // has already fired and disposing it is a no-op, so this is safe in either order.
-        if (timerDisposer) { try { timerDisposer() } catch (e) { /* already settled */ } }
       }
       let out = '', err = ''
       try { if (handle.collected && handle.collected.stdout) out = handle.collected.stdout.readFrom(0).text } catch (e) { /* best effort */ }
@@ -3769,6 +3727,20 @@ export function apply(ctx) {
     // shell itself, MATH_CAPS.stdout = 64KB) — so the stdio caps must be generous, never the
     // return-shell size. A host without a subprocess service returns null instead of throwing:
     // the module maps that to MATH_NO_SUBPROCESS (its `if (!r)` branch).
+    async function waitForProcess(handle, cap) {
+      let dispose, timedOut = false
+      const ran = Promise.resolve(handle.done).then(value => ({ settled: true, value }), error => ({ settled: false, error }))
+      try {
+        const result = await Promise.race([ran, new Promise(resolve => {
+          dispose = ctx.timeout(() => {
+            timedOut = true
+            try { if (typeof handle.terminate === 'function') handle.terminate() } catch (e) { /* timeout still wins */ }
+            resolve({ settled: true, value: { exitCode: null, signal: 'SIGTERM' } })
+          }, cap)
+        })])
+        return Object.assign(result, { timedOut })
+      } finally { if (dispose) { try { dispose() } catch (e) { /* already settled */ } } }
+    }
     async function mathSpawn(opts) {
       const o = opts || {}
       const sub = subprocessOf()
@@ -3800,29 +3772,13 @@ export function apply(ctx) {
       if (o.stdin !== undefined && handle && handle.stdin && typeof handle.stdin.write === 'function') {
         try { handle.stdin.write(String(o.stdin)); if (typeof handle.stdin.end === 'function') handle.stdin.end() } catch (e) { /* best effort */ }
       }
-      // A TIMEOUT must actually KILL the process: `graceMs` is only a request to the host.
-      let timerDisposer = null
-      let timedOut = false
-      const ran = Promise.resolve(handle.done).then(
-        (v) => ({ settled: true, value: v }),
-        (e) => ({ settled: false, error: e }))
-      let outcome = null
+      let timedOut = false, outcome = null
       try {
-        const r = await Promise.race([
-          ran,
-          new Promise((resolve) => {
-            timerDisposer = ctx.timeout(() => {
-              timedOut = true
-              try { if (typeof handle.terminate === 'function') handle.terminate() } catch (e) { /* the race result is the report */ }
-              resolve({ settled: true, value: { exitCode: null, signal: 'SIGTERM' } })
-            }, cap)
-          }),
-        ])
+        const r = await waitForProcess(handle, cap)
+        timedOut = r.timedOut
         if (r.settled) outcome = r.value
       } catch (e) {
         return { exit: null, timedOut, killed: timedOut, ms: now() - started, stdout: '', stderr: String((e && e.message) || e) }
-      } finally {
-        if (timerDisposer) { try { timerDisposer() } catch (e) { /* already settled */ } }
       }
       let out = '', err = ''
       try { if (handle.collected && handle.collected.stdout) out = handle.collected.stdout.readFrom(0).text } catch (e) { /* best effort */ }
@@ -4539,15 +4495,11 @@ export function apply(ctx) {
     // here; this predicate fails closed as the second line of defence.
     const isOffice = (id) => id === 'office'
     const isAcademician = (id) => { const m = memberById(id); return !!m && m.kind === 'academician' }
-    // MUST be awaited by its callers: `inst()` reads `stateCache`, which `commit` only updates
-    // once its own await resolves. Fire-and-forget here meant two cards written in one reply
-    // (a single reply can carry `record: [ … ]`) both read the same `artifactCount` and
-    // committed the same `n`, and the `meetingKeepEvery` auto-sync could fire twice on one
-    // count (audit M6).
+    // Increment inside the serialized fold: concurrent researchers must each count once.
+    // Ordinary progress updates leave the counter alone.
     async function bumpArtifacts() {
-      const inst0 = inst()
-      const n = (Number(inst0.artifactCount) || 0) + 1
-      await commit(EV.progress, { at: now(), artifactCount: n })
+      let n
+      await commit(EV.progress, { at: now(), artifactCount: value => (n = (Number(value) || 0) + 1) })
       // Auto-sync meeting every `meetingKeepEvery` artifacts: the framework only
       // CONVENES it, never assigns work. Deferred while a meeting or verification is
       // already in progress so consensus is never preempted (v4 §26).
@@ -4557,15 +4509,34 @@ export function apply(ctx) {
       }
       return n
     }
+    // Serialize the whole read/append/write, not just writes: two concurrent receipts
+    // must not both append to the same old proof and overwrite one another.
+    const progressWrites = new Map()
     async function publishProgress(memberId, text) {
       if (!memberId || !memberById(memberId)) return memberDiagnosis('记录研究进度（vibe_v5_record_progress）', memberId)
       if (!String(text || '').trim()) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'empty progress' }
       const rel = 'Members/' + memberId + '/Progress/progress.md'
-      const prev = (await readTextRel(rel)) || ''
-      const ok = await writeTextRel(rel, prev + '\n### ' + fmtTime() + '｜' + memberId + '\n' + String(text) + '\n')
-      if (!ok) return { ok: false, code: 'V5_WRITE_FAILED', message: 'could not write ' + rel }
+      const path = instRoot() + '/' + rel
+      const entry = '\n### ' + fmtTime() + '｜' + memberId + '\n' + String(text) + '\n'
+      const pending = (progressWrites.get(path) || Promise.resolve()).then(async () => {
+        let prev
+        try { prev = await readTextAbsStrict(path) } catch (e) {
+          return { ok: false, code: 'V5_WRITE_FAILED', message: 'could not safely append ' + rel + ': ' + String((e && e.message) || e) }
+        }
+        const ok = await writeTextAbs(path, (prev || '') + entry)
+        return ok === undefined
+          ? { ok: false, code: 'V5_WRITE_FAILED', message: 'could not write ' + rel }
+          : { ok: true, file: rel }
+      })
+      const tail = pending.then(() => {}, () => {})
+      progressWrites.set(path, tail)
+      let saved
+      try { saved = await pending } finally {
+        if (progressWrites.get(path) === tail) progressWrites.delete(path)
+      }
+      if (!saved.ok) return saved
       await markProgress()
-      return { ok: true, file: rel }
+      return saved
     }
     // Every recorded card must state 价值程度 / 动机用途计划 / 概率 — the charter's three
     // hard requirements. Missing fields are refused rather than silently defaulted,
@@ -4652,36 +4623,35 @@ export function apply(ctx) {
     // DAG validation: self-reference, duplicates, and missing/deleted blockers are
     // refused up front; a cycle is detected over the WHOLE candidate graph, exactly
     // like the DSH original, so a bad dependency can never be stored.
-    function validateDeps(candidateId, blockedBy) {
-      const tasks = inst().tasks
+    function validateDeps(candidateId, blockedBy, current = inst()) {
+      const graph = new Map(current.tasks.filter(t => t.status !== 'deleted').map(t => [t.id, t.blockedBy || []]))
       const seen = new Set()
       for (const raw of (blockedBy || [])) {
         const id = String(raw)
         if (id === candidateId) throw v5err('V5_TASK_DEPENDENCY_CYCLE', 'a task cannot depend on itself')
         if (seen.has(id)) throw v5err('V5_INVALID_ARGUMENT', 'duplicate blocker ' + id)
         seen.add(id)
-        const t = tasks.find((x) => x.id === id)
-        if (!t || t.status === 'deleted') throw v5err('V5_TASK_NOT_FOUND', 'blocker ' + id + ' not found')
+        if (!graph.has(id)) throw v5err('V5_TASK_NOT_FOUND', 'blocker ' + id + ' not found')
       }
-      // cycle detection over the candidate graph
-      const graph = new Map()
-      for (const t of tasks) {
-        if (t.status === 'deleted') continue
-        graph.set(t.id, t.id === candidateId ? Array.from(seen) : (t.blockedBy || []).slice())
+      // Topological elimination: linear in vertices + edges, with no recursive stack.
+      graph.set(candidateId, [...seen])
+      const degrees = new Map([...graph.keys()].map(id => [id, 0]))
+      for (const deps of graph.values()) {
+        for (const id of deps) if (degrees.has(id)) degrees.set(id, degrees.get(id) + 1)
       }
-      if (!graph.has(candidateId)) graph.set(candidateId, Array.from(seen))
-      const state = new Map()
-      const walk = (id) => {
-        const st = state.get(id)
-        if (st === 1) return true
-        if (st === 2) return false
-        state.set(id, 1)
-        for (const d of (graph.get(id) || [])) { if (graph.has(d) && walk(d)) return true }
-        state.set(id, 2)
-        return false
+      const queue = [...degrees.keys()].filter(id => degrees.get(id) === 0)
+      for (let i = 0; i < queue.length; i++) {
+        for (const id of graph.get(queue[i])) {
+          if (!degrees.has(id)) continue
+          degrees.set(id, degrees.get(id) - 1)
+          if (degrees.get(id) === 0) queue.push(id)
+        }
       }
-      for (const id of graph.keys()) { if (walk(id)) throw v5err('V5_TASK_DEPENDENCY_CYCLE', 'dependency cycle through ' + id) }
+      if (queue.length !== graph.size) for (const [id, degree] of degrees) {
+        if (degree > 0) throw v5err('V5_TASK_DEPENDENCY_CYCLE', 'dependency cycle through ' + id)
+      }
     }
+
     async function taskCreate(memberId, o) {
       const args = o || {}
       const subject = String(args.subject || '').trim()
@@ -4710,9 +4680,9 @@ export function apply(ctx) {
       // (an earlier shape allocated the id here and committed the bumped counter separately, so
       // two same-tick creates could mint the same `t-N` and the fold's upsert overwrote one).
       const got = { err: null }
-      await commit(EV.task, { make: (alloc) => {
+      await commit(EV.task, { make: (alloc, current) => {
         task.id = alloc.next('task')
-        try { validateDeps(task.id, blockedBy) } catch (e) { got.err = e; return null }
+        try { validateDeps(task.id, blockedBy, current) } catch (e) { got.err = e; return null }
         return task
       } })
       if (got.err) throw got.err
@@ -4739,113 +4709,123 @@ export function apply(ctx) {
     // surface of `vibe_v5_task_update` is unchanged): it lets an in-product caller fold extra fields into
     // the SAME compare-and-set write instead of issuing a second, unprotected one.
     async function taskUpdate(memberId, o, meta, guard) {
-      // An unknown caller must be refused HERE as well: `owner = task.ownerId === memberId` is true
-      // for an UNOWNED task (ownerId '') when memberId is '', so without this guard an
-      // unidentifiable caller would count as the owner of every unclaimed task (audit L6 follow-up).
-      if (!memberId) return memberDiagnosis('修改任务（vibe_v5_task_update）', memberId)
-      const args = o || {}
-      const id = String(args.task_id || args.taskId || '')
-      const task = inst().tasks.find((x) => x.id === id)
-      if (!task) return { ok: false, code: 'V5_TASK_NOT_FOUND', message: 'task ' + id + ' not found' }
-      if (task.status === 'deleted') return { ok: false, code: 'V5_TASK_DELETED', message: 'task ' + id + ' is deleted' }
-      const expected = Number(args.expected_revision !== undefined ? args.expected_revision : args.expectedRevision)
-      if (!Number.isFinite(expected)) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'expected_revision is required' }
-      if (expected !== task.revision) {
-        // F6 (deep-review 5): this message is routed into Chinese frames (`【研究所提示】…`), where a
-        // raw English diagnostic reads as noise. The CODE stays (`V5_TASK_STALE_REVISION`) and the
-        // revision numbers stay, but the sentence is Chinese now for the member reading it.
-        return { ok: false, code: 'V5_TASK_STALE_REVISION', message: '任务 ' + id + ' 当前 revision 是 ' + task.revision + '，不是 ' + expected + ' —— 请先用 vibe_v5_task_get 重新读取（code: V5_TASK_STALE_REVISION）' }
-      }
-      const action = String(args.action || '')
-      const office = isOffice(memberId)
-      const acad = isAcademician(memberId)
-      const lead = office || acad
-      const owner = task.ownerId === memberId
-      const requireOwnerOrLead = () => {
-        if (!lead && !owner) throw v5err('V5_TASK_UNAUTHORIZED', 'task mutation requires its owner, the academician, or the office')
-      }
-      const next = Object.assign({}, task)
-      try {
-        if (action === 'claim') {
-          if (task.ownerId && task.ownerId !== memberId) throw v5err('V5_TASK_ALREADY_CLAIMED', 'task ' + id + ' is owned by ' + task.ownerId)
-          if (task.status !== 'pending') throw v5err('V5_TASK_INVALID_TRANSITION', 'only a pending task can be claimed')
-          if (!taskReady(task)) throw v5err('V5_TASK_BLOCKED', 'task ' + id + ' still has incomplete blockers')
-          next.status = 'in_progress'
-          next.ownerId = office ? (task.ownerId || '') : memberId
-        } else if (action === 'release') {
-          requireOwnerOrLead()
-          if (task.status !== 'in_progress') throw v5err('V5_TASK_INVALID_TRANSITION', 'only an in-progress task can be released')
-          next.status = 'pending'; next.ownerId = ''
-        } else if (action === 'edit') {
-          requireOwnerOrLead()
-          if (args.subject === undefined && args.description === undefined && args.write_scopes === undefined && args.writeScopes === undefined) {
-            throw v5err('V5_INVALID_ARGUMENT', 'edit needs at least one of subject/description/write_scopes')
-          }
-          if (args.subject !== undefined) next.subject = String(args.subject).slice(0, 200)
-          if (args.description !== undefined) next.description = String(args.description).slice(0, 16384)
-          if (args.write_scopes !== undefined || args.writeScopes !== undefined) {
-            const scopes = []
-            for (const s of (args.write_scopes || args.writeScopes || [])) {
-              const n = normalizeScope(s)
-              if (n === undefined) throw v5err('V5_INVALID_WRITE_SCOPE', 'invalid write scope: ' + String(s))
-              if (scopes.indexOf(n) === -1) scopes.push(n)
-            }
-            next.writeScopes = scopes
-          }
-        } else if (action === 'set_dependencies') {
-          requireOwnerOrLead()
-          const raw = args.blocked_by !== undefined ? args.blocked_by : args.blockedBy
-          if (raw === undefined) throw v5err('V5_INVALID_ARGUMENT', 'set_dependencies needs blocked_by (may be [])')
-          const deps = (raw || []).map(String)
-          validateDeps(id, deps)
-          next.blockedBy = deps
-        } else if (action === 'complete') {
-          requireOwnerOrLead()
-          if (task.status !== 'in_progress') throw v5err('V5_TASK_INVALID_TRANSITION', 'only an in-progress task can be completed')
-          next.status = 'completed'
-        } else if (action === 'reopen') {
-          requireOwnerOrLead()
-          if (task.status !== 'completed') throw v5err('V5_TASK_INVALID_TRANSITION', 'only a completed task can be reopened')
-          next.status = 'pending'; next.ownerId = ''
-        } else if (action === 'reassign') {
-          if (!lead) throw v5err('V5_TASK_UNAUTHORIZED', 'only the academician or the office can reassign tasks')
-          if (task.status !== 'pending' && task.status !== 'in_progress') throw v5err('V5_TASK_INVALID_TRANSITION', 'only pending/in-progress tasks can be reassigned')
-          const target = String(args.owner || '').trim()
-          if (!target) { next.status = 'pending'; next.ownerId = '' }
-          else {
-            const m = memberById(target)
-            if (!m || m.phase !== 'active') throw v5err('V5_MEMBER_NOT_FOUND', 'active member "' + target + '" not found')
-            if (!taskReady(task)) throw v5err('V5_TASK_BLOCKED', 'task ' + id + ' still has incomplete blockers')
-            next.status = 'in_progress'; next.ownerId = target
-          }
-        } else if (action === 'delete') {
-          requireOwnerOrLead()
-          const dependents = inst().tasks.filter((t) => t.status !== 'deleted' && t.id !== id && (t.blockedBy || []).indexOf(id) !== -1)
-          if (dependents.length) throw v5err('V5_TASK_HAS_DEPENDENTS', 'cannot delete ' + id + ': ' + dependents.map((d) => d.id).join(', ') + ' depend(s) on it')
-          next.status = 'deleted'
-        } else {
-          throw v5err('V5_INVALID_ARGUMENT', 'unknown action "' + action + '"')
-        }
-      } catch (e) {
-        return { ok: false, code: e.code || 'V5_INVALID_ARGUMENT', message: String((e && e.message) || e) }
-      }
-      if (guard) { const refused = guard(); if (refused) return refused }
-      // G4: assignment metadata travels INSIDE this CAS-protected write. The old shape wrote the task a
-      // second time afterwards (`putTask(withMeta)`), reusing the revision it had just read and never
-      // bumping it — a concurrent `task_update` landing in that window was silently swallowed and left no
-      // revision trace. Gated to `reassign` so no other action can be given out-of-band fields.
-      if (meta && action === 'reassign') {
-        if (meta.assignedBy !== undefined) next.assignedBy = String(meta.assignedBy)
-        if (meta.why !== undefined) next.why = String(meta.why)
-        if (meta.acceptance !== undefined) next.acceptance = String(meta.acceptance)
-      }
-      next.revision = task.revision + 1
-      next.updatedAt = now()
-      await putTask(next)
+      // Revision checks and graph validation share the serialized commit with the edit.
+      // Checking before enqueueing lets concurrent callers both accept the same revision.
+      let result
+      await commit(EV.task, { make: (_alloc, current) => {
+        result = buildUpdate(current)
+        return result.ok ? result.task : null
+      } })
+      if (!result.ok) return result
       await writeTaskboardMirror()
       await markProgress()
       notifyActivity()
-      return { ok: true, task: taskView(next) }
+      return { ok: true, task: taskView(result.task) }
+      function buildUpdate(current) {
+        // An unknown caller must be refused HERE as well: `owner = task.ownerId === memberId` is true
+        // for an UNOWNED task (ownerId '') when memberId is '', so without this guard an
+        // unidentifiable caller would count as the owner of every unclaimed task (audit L6 follow-up).
+        if (!memberId) return memberDiagnosis('修改任务（vibe_v5_task_update）', memberId)
+        const args = o || {}
+        const id = String(args.task_id || args.taskId || '')
+        const task = current.tasks.find((x) => x.id === id)
+        if (!task) return { ok: false, code: 'V5_TASK_NOT_FOUND', message: 'task ' + id + ' not found' }
+        if (task.status === 'deleted') return { ok: false, code: 'V5_TASK_DELETED', message: 'task ' + id + ' is deleted' }
+        const expected = Number(args.expected_revision !== undefined ? args.expected_revision : args.expectedRevision)
+        if (!Number.isFinite(expected)) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'expected_revision is required' }
+        if (expected !== task.revision) {
+          // F6 (deep-review 5): this message is routed into Chinese frames (`【研究所提示】…`), where a
+          // raw English diagnostic reads as noise. The CODE stays (`V5_TASK_STALE_REVISION`) and the
+          // revision numbers stay, but the sentence is Chinese now for the member reading it.
+          return { ok: false, code: 'V5_TASK_STALE_REVISION', message: '任务 ' + id + ' 当前 revision 是 ' + task.revision + '，不是 ' + expected + ' —— 请先用 vibe_v5_task_get 重新读取（code: V5_TASK_STALE_REVISION）' }
+        }
+        const action = String(args.action || '')
+        const office = isOffice(memberId)
+        const acad = isAcademician(memberId)
+        const lead = office || acad
+        const owner = task.ownerId === memberId
+        const requireOwnerOrLead = () => {
+          if (!lead && !owner) throw v5err('V5_TASK_UNAUTHORIZED', 'task mutation requires its owner, the academician, or the office')
+        }
+        const next = Object.assign({}, task)
+        try {
+          if (action === 'claim') {
+            if (task.ownerId && task.ownerId !== memberId) throw v5err('V5_TASK_ALREADY_CLAIMED', 'task ' + id + ' is owned by ' + task.ownerId)
+            if (task.status !== 'pending') throw v5err('V5_TASK_INVALID_TRANSITION', 'only a pending task can be claimed')
+            if (!taskReady(task, current.tasks)) throw v5err('V5_TASK_BLOCKED', 'task ' + id + ' still has incomplete blockers')
+            next.status = 'in_progress'
+            next.ownerId = office ? (task.ownerId || '') : memberId
+          } else if (action === 'release') {
+            requireOwnerOrLead()
+            if (task.status !== 'in_progress') throw v5err('V5_TASK_INVALID_TRANSITION', 'only an in-progress task can be released')
+            next.status = 'pending'; next.ownerId = ''
+          } else if (action === 'edit') {
+            requireOwnerOrLead()
+            if (args.subject === undefined && args.description === undefined && args.write_scopes === undefined && args.writeScopes === undefined) {
+              throw v5err('V5_INVALID_ARGUMENT', 'edit needs at least one of subject/description/write_scopes')
+            }
+            if (args.subject !== undefined) next.subject = String(args.subject).slice(0, 200)
+            if (args.description !== undefined) next.description = String(args.description).slice(0, 16384)
+            if (args.write_scopes !== undefined || args.writeScopes !== undefined) {
+              const scopes = []
+              for (const s of (args.write_scopes || args.writeScopes || [])) {
+                const n = normalizeScope(s)
+                if (n === undefined) throw v5err('V5_INVALID_WRITE_SCOPE', 'invalid write scope: ' + String(s))
+                if (scopes.indexOf(n) === -1) scopes.push(n)
+              }
+              next.writeScopes = scopes
+            }
+          } else if (action === 'set_dependencies') {
+            requireOwnerOrLead()
+            const raw = args.blocked_by !== undefined ? args.blocked_by : args.blockedBy
+            if (raw === undefined) throw v5err('V5_INVALID_ARGUMENT', 'set_dependencies needs blocked_by (may be [])')
+            const deps = (raw || []).map(String)
+            validateDeps(id, deps, current)
+            next.blockedBy = deps
+          } else if (action === 'complete') {
+            requireOwnerOrLead()
+            if (task.status !== 'in_progress') throw v5err('V5_TASK_INVALID_TRANSITION', 'only an in-progress task can be completed')
+            next.status = 'completed'
+          } else if (action === 'reopen') {
+            requireOwnerOrLead()
+            if (task.status !== 'completed') throw v5err('V5_TASK_INVALID_TRANSITION', 'only a completed task can be reopened')
+            next.status = 'pending'; next.ownerId = ''
+          } else if (action === 'reassign') {
+            if (!lead) throw v5err('V5_TASK_UNAUTHORIZED', 'only the academician or the office can reassign tasks')
+            if (task.status !== 'pending' && task.status !== 'in_progress') throw v5err('V5_TASK_INVALID_TRANSITION', 'only pending/in-progress tasks can be reassigned')
+            const target = String(args.owner || '').trim()
+            if (!target) { next.status = 'pending'; next.ownerId = '' }
+            else {
+              const m = memberById(target)
+              if (!m || m.phase !== 'active') throw v5err('V5_MEMBER_NOT_FOUND', 'active member "' + target + '" not found')
+              if (!taskReady(task, current.tasks)) throw v5err('V5_TASK_BLOCKED', 'task ' + id + ' still has incomplete blockers')
+              next.status = 'in_progress'; next.ownerId = target
+            }
+          } else if (action === 'delete') {
+            requireOwnerOrLead()
+            const dependents = current.tasks.filter((t) => t.status !== 'deleted' && t.id !== id && (t.blockedBy || []).indexOf(id) !== -1)
+            if (dependents.length) throw v5err('V5_TASK_HAS_DEPENDENTS', 'cannot delete ' + id + ': ' + dependents.map((d) => d.id).join(', ') + ' depend(s) on it')
+            next.status = 'deleted'
+          } else {
+            throw v5err('V5_INVALID_ARGUMENT', 'unknown action "' + action + '"')
+          }
+        } catch (e) {
+          return { ok: false, code: e.code || 'V5_INVALID_ARGUMENT', message: String((e && e.message) || e) }
+        }
+        if (guard) { const refused = guard(); if (refused) return refused }
+        // G4: assignment metadata travels INSIDE this CAS-protected write. The old shape wrote the task a
+        // second time afterwards (`putTask(withMeta)`), reusing the revision it had just read and never
+        // bumping it — a concurrent `task_update` landing in that window was silently swallowed and left no
+        // revision trace. Gated to `reassign` so no other action can be given out-of-band fields.
+        if (meta && action === 'reassign') {
+          if (meta.assignedBy !== undefined) next.assignedBy = String(meta.assignedBy)
+          if (meta.why !== undefined) next.why = String(meta.why)
+          if (meta.acceptance !== undefined) next.acceptance = String(meta.acceptance)
+        }
+        next.revision = task.revision + 1
+        next.updatedAt = now()
+        return { ok: true, task: next }
+      }
     }
     // The academician's ASSIGN. Mechanically this is a reassign that also records WHY
     // and the acceptance criteria, and then wakes the assignee. It affects WORK only:
@@ -4904,16 +4884,20 @@ export function apply(ctx) {
       const order = (o && o.order) || []
       if (!Array.isArray(order) || !order.length) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'order must be a non-empty array of {task_id, priority}' }
       const applied = []
-      for (const row of order) {
-        const t = inst().tasks.find((x) => x.id === String(row && row.task_id))
-        if (!t || t.status === 'deleted') continue
-        const next = Object.assign({}, t, {
-          priority: Number.isFinite(Number(row.priority)) ? Number(row.priority) : t.priority,
-          revision: t.revision + 1, updatedAt: now(),
-        })
-        await putTask(next)
-        applied.push({ id: next.id, priority: next.priority })
-      }
+      await commit(EV.task, { make: (_alloc, current) => {
+        const tasks = new Map(current.tasks.map(t => [t.id, t])), changed = new Map()
+        for (const row of order) {
+          const t = tasks.get(String(row && row.task_id))
+          if (!t || t.status === 'deleted') continue
+          const next = Object.assign({}, t, {
+            priority: Number.isFinite(Number(row.priority)) ? Number(row.priority) : t.priority,
+            revision: t.revision + 1, updatedAt: now(),
+          })
+          tasks.set(t.id, next); changed.set(t.id, next)
+          applied.push({ id: next.id, priority: next.priority })
+        }
+        return [...changed.values()]
+      } })
       await writeTaskboardMirror()
       notifyActivity()
       return { ok: true, applied, why: String((o && o.why) || '') }
@@ -4921,13 +4905,15 @@ export function apply(ctx) {
     // Reclaim every task a dismissed member owns — DSH's own board explicitly does
     // NOT auto-release an owner (documented limitation), which is the gap v5 closes.
     async function releaseTasksOf(memberId, reason) {
-      const mine = inst().tasks.filter((t) => t.ownerId === memberId && t.status === 'in_progress')
-      for (const t of mine) {
-        await putTask(Object.assign({}, t, { status: 'pending', ownerId: '', revision: t.revision + 1, updatedAt: now(), releaseReason: reason || '' }))
-      }
+      let mine
+      await commit(EV.task, { make: (_alloc, current) => {
+        mine = current.tasks.filter(t => t.ownerId === memberId && t.status === 'in_progress')
+        return mine.map(t => Object.assign({}, t, { status: 'pending', ownerId: '', revision: t.revision + 1, updatedAt: now(), releaseReason: reason || '' }))
+      } })
       if (mine.length) await writeTaskboardMirror()
-      return mine.map((t) => t.id)
+      return mine.map(t => t.id)
     }
+
     async function writeTaskboardMirror() {
       const ts = listTasks()
       const lines = ['# 任务板（人读镜像）｜' + instituteName + '｜' + fmtTime(), '',
@@ -6815,22 +6801,9 @@ export function apply(ctx) {
       try {
         handle = sub.spawn({ argv, cwd, stdio: { stdin: 'ignore', stdout: { maxBytes: 64 * 1024 }, stderr: { maxBytes: 64 * 1024 } }, graceMs: 120000 })
       } catch (e) { return { ok: false, exitCode: null, ms: now() - started, message: String((e && e.message) || e), started: false } }
-      let outcome = null
-      let timer = null
-      try {
-        const ran = Promise.resolve(handle.done).then((v) => ({ settled: true, value: v }), (e) => ({ settled: false, error: e }))
-        const r = await Promise.race([
-          ran,
-          new Promise((resolve) => {
-            timer = ctx.timeout(() => {
-              try { if (typeof handle.terminate === 'function') handle.terminate() } catch (e) { /* the race result is the report */ }
-              resolve({ settled: true, value: { exitCode: null, signal: 'SIGTERM' } })
-            }, 120000)
-          }),
-        ])
-        if (!r.settled) return { ok: false, exitCode: null, ms: now() - started, message: String((r.error && r.error.message) || r.error), started: false }
-        outcome = r.value
-      } finally { if (timer) { try { timer() } catch (e) { /* already settled */ } } }
+      const r = await waitForProcess(handle, 120000)
+      if (!r.settled) return { ok: false, exitCode: null, ms: now() - started, message: String((r.error && r.error.message) || r.error), started: false }
+      const outcome = r.value
       const exitCode = outcome ? outcome.exitCode : null
       // task-235: `started` = the engine process REALLY produced an exit code. A settled outcome with
       // `exitCode === null` (spawn refused / killed before exec / host stub without a real process) is NOT
@@ -8006,7 +7979,7 @@ export function apply(ctx) {
       // Explicit boolean coercion (docs/final-paper.md §2): the old `=== true || === 'true'` turned a
       // legitimate `1` / `'yes'` into FALSE and left junk values truthy-looking. An
       // unrecognised spelling is REJECTED (the default wins) rather than guessed.
-      for (const k of bools) if (input[k] !== undefined) out[k] = coerceBool(input[k], false)
+      for (const k of bools) if (input[k] !== undefined) out[k] = coerceBool(input[k], k === 'leanAsync' ? DEFAULT_PARAMS.leanAsync : false)
       for (const k of strs) if (input[k] !== undefined) out[k] = String(input[k])
       for (const k of arrs) {
         if (input[k] === undefined) continue
@@ -8020,14 +7993,6 @@ export function apply(ctx) {
         out.formalVerify = ['off', 'encourage', 'require'].indexOf(out.formalVerify) !== -1 ? out.formalVerify : 'off'
       }
       if (out.leanCommand !== undefined && !String(out.leanCommand).trim()) out.leanCommand = 'lean'
-      // `leanAsync` gets an EXPLICIT branch (not just the shared bool loop): the mode must be
-      // selected only by a real boolean (or the documented spellings) and an unknown value must
-      // keep the DEFAULT (true) — and the string 'false' must never survive as truthy.
-      if (input.leanAsync !== undefined) {
-        out.leanAsync = (input.leanAsync === true || input.leanAsync === false)
-          ? input.leanAsync
-          : coerceBool(input.leanAsync, DEFAULT_PARAMS.leanAsync)
-      }
       // `leanInitiative` is a CLOSED enum (like quorumMode/formalVerify): a typo degrades to the
       // documented default ('normal') rather than becoming an unreachable fourth mode.
       if (out.leanInitiative !== undefined) {
@@ -8054,18 +8019,8 @@ export function apply(ctx) {
       // so a string 'false', an unknown engine name or a sub-1000 timeout can never leak
       // through. ONLY the keys the caller actually passed are copied, so a partial update can
       // never reset the others back to their defaults.
-      if (MATH_PARAM_NAMES.some((k) => input[k] !== undefined)) {
-        for (const k of MATH_PARAM_NAMES) {
-          if (input[k] === undefined) continue
-          // The typed loops above already coerced the SHAPE (a comma string became an array, an
-          // integer was floored); the module then applies the semantic rules (closed enums, known
-          // engines, >=1000 timeout). A value the module rejects falls back to its own default.
-          const src = out[k] !== undefined ? out[k] : input[k]
-          const norm = normalizeMathParams({ [k]: src })
-          const v = norm[k] !== undefined ? norm[k] : MATH_PARAM_DEFAULTS[k]
-          out[k] = Array.isArray(v) ? v.slice() : v
-        }
-      }
+      const mathInput = Object.fromEntries(MATH_PARAM_NAMES.filter(k => input[k] !== undefined).map(k => [k, out[k] !== undefined ? out[k] : input[k]]))
+      Object.assign(out, normalizeMathParams(mathInput))
       // ── final-paper enums (closed sets; an unknown value degrades to the documented
       // default instead of silently becoming an unreachable fourth mode) ────────────────
       if (out.paperFormat !== undefined) out.paperFormat = coercePaperEnum('paperFormat', out.paperFormat, ['both', 'md', 'tex'], 'both')

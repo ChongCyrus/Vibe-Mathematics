@@ -1,3 +1,4 @@
+import { SETTING_DEFS } from '../settings/schema.js'
 // vmu kernel · migration — the VERSION/ARCHIVE MIGRATION face (docs/07, docs/13).
 //
 // WHY THIS FACE EXISTS AND WHERE IT SITS (layering, referenced not redefined):
@@ -18,9 +19,6 @@
 // VMU_MIGRATE_CONFIRM_REQUIRED · VMU_MIGRATE_DRYRUN_FAILED · VMU_MIGRATE_UNCOVERED_PRESENT ·
 // VMU_ROLLBACK_UNAVAILABLE · VMU_ROLLBACK_FAILED · VMU_VERSION_MISMATCH · VMU_STATE · VMU_QUOTA_EXCEEDED ·
 // VMU_NOT_PERMITTED · VMU_NO_SUCH_OBJECT · VMU_INVALID_ARGUMENT
-import { readFileSync, existsSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 export const apiVersion = 1
 export const ENFORCED_SCOPE = 'evaluated-so-far'
@@ -453,14 +451,8 @@ export function createMigration({ clock = () => 0, log = null, settings = {}, bu
   }
 
   function declaredKeys() {
-    try {
-      const here = dirname(fileURLToPath(import.meta.url))
-      const p = join(here, '..', 'settings', 'planned.js')
-      if (!existsSync(p)) return { keys: [], count: 0, source: 'unavailable' }
-      const text = readFileSync(p, 'utf8')
-      const all = [...new Set([...text.matchAll(/key: "(vmu\.migration\.[^"]+)"/g)].map((m) => m[1]))].sort()
-      return { keys: all, count: all.length, source: 'settings/planned.js' }
-    } catch (e) { return { keys: [], count: 0, source: 'error:' + String((e && e.message) || e) } }
+    const all = SETTING_DEFS.map(d => d.key).filter(key => key.startsWith('vmu.migration.')).sort()
+    return { keys: all, count: all.length, source: 'settings/schema.js (core + planned)' }
   }
 
   return api
