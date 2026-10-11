@@ -27,7 +27,14 @@ const throwsE = (fn, code, label, mustInclude = []) => {
 const throws = (fn) => { try { fn(); return { threw: false } } catch (e) { return { threw: true, code: e && e.code, msg: String(e && e.message), hint: e && e.hint, allowedNext: e && e.allowedNext, missing: e && e.missing } } }
 
 let now = 1000
-const mk = (settings = {}, opts = {}) => createWorkflow({ clock: () => now, settings, listCap: 100, ...opts })
+/** ROUND 176: the shared universal recorder - see tests/helpers/settings-recorder.mjs. */
+import { makeRecorder } from './helpers/settings-recorder.mjs'
+const ALL = []
+const mk = (settings = {}, opts = {}) => {
+  const rec = makeRecorder(settings)
+  ALL.push(rec.reads)
+  return createWorkflow({ clock: () => now, settings: rec.settings, listCap: 100, ...opts })
+}
 const FLOW = { stages: ['open', 'claimed', 'in-progress', 'review', 'done'], transitions: [{ from: 'open', to: 'claimed' }, { from: 'claimed', to: 'in-progress' }, { from: 'in-progress', to: 'review' }, { from: 'review', to: 'done' }] }
 
 // 1) zero-config: no define ⇒ named refusal with a next step; reads never crash
@@ -529,6 +536,18 @@ const FLOW = { stages: ['open', 'claimed', 'in-progress', 'review', 'done'], tra
   ok(median <= BUDGET_US, 'E4 budget: status() median ' + median.toFixed(1) + ' µs <= ' + BUDGET_US + ' µs (no per-call file scan)')
   ok(p90 <= BUDGET_US * 3, 'E4 budget: status() p90 ' + p90.toFixed(1) + ' µs <= ' + (BUDGET_US * 3) + ' µs (jitter headroom)')
   console.log('E4 timing: status() median=' + median.toFixed(1) + ' µs p90=' + p90.toFixed(1) + ' µs (budget ' + BUDGET_US + ' µs)')
+}
+
+/**
+ * ROUND 176: the precondition behind "every key is wired". This suite keeps TWO wired lists - WIRED_KEYS and
+ * EXTRA_WIRED_KEYS - so both are required to be read. The tail was printed first: no early-exit branch here, so the
+ * block goes immediately before the summary.
+ */
+{
+  const reads = ALL.flat()
+  const required = WIRED_KEYS.concat(EXTRA_WIRED_KEYS)
+  const unread = required.filter((k) => reads.indexOf(k) === -1)
+  ok(unread.length === 0, 'every wired key was really READ by the suite, not merely listed (' + (unread.length ? 'unread: ' + unread.join(', ') : reads.length + ' reads recorded; ' + required.length + ' keys in WIRED+EXTRA') + ')')
 }
 
 console.log('=== VMU WORKFLOW: ' + pass + ' passed, ' + fail + ' failed ===')

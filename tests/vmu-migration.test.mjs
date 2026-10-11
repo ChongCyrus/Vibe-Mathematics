@@ -22,7 +22,14 @@ const ok = (cond, name, detail) => {
 const DAY = 86400000
 
 let NOW = 1_000_000
-const mk = (settings = {}) => createMigration({ clock: () => NOW, settings, backends: ['json-fold', 'storage-domain'] })
+/** ROUND 176: the shared universal recorder - see tests/helpers/settings-recorder.mjs. */
+import { makeRecorder } from './helpers/settings-recorder.mjs'
+const ALL = []
+const mk = (settings = {}) => {
+  const rec = makeRecorder(settings)
+  ALL.push(rec.reads)
+  return createMigration({ clock: () => NOW, settings: rec.settings, backends: ['json-fold', 'storage-domain'] })
+}
 /** A real (non-dry-run) plan ready to execute. */
 const realPlan = (settings = {}, steps = 3) => {
   NOW = 1_000_000
@@ -345,6 +352,16 @@ const realPlan = (settings = {}, steps = 3) => {
   ok(JSON.stringify(mkSame().status().counters) === JSON.stringify(mkSame().status().counters), 'two instances with the same inputs produce identical counters')
   ok(mkSame().status().at === 555, 'status() uses the injected clock (no real time)')
   ok(Array.isArray(mk({}).status().gateScenarios) && mk({}).status().gateScenarios.length === 3, 'status() self-discloses the C2 scenario names')
+}
+
+/**
+ * ROUND 176: the precondition behind "all 11 keys are wired". The tail was printed FIRST and this suite HAS an
+ * early-exit branch, so the block goes before it.
+ */
+{
+  const reads = ALL.flat()
+  const unread = WIRED_KEYS.filter((k) => reads.indexOf(k) === -1)
+  ok(unread.length === 0, 'every wired key was really READ by the suite, not merely listed (' + (unread.length ? 'unread: ' + unread.join(', ') : reads.length + ' reads recorded') + ')')
 }
 
 if (failed === 0) {

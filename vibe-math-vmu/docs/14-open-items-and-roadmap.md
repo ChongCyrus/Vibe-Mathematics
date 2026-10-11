@@ -543,6 +543,11 @@
   **进度** ✓：**9 / 12** 面完成 ✓ —— **只剩 `external`／`migration`／`workflow`** ✓（★ **`external` 的访问器与 `mk` 形态尚未量明** ✓ ⇒ 留下一轮**先测后动** ✓）。
   **未完的账** ✗：**73 条候选仍未判决** ✗（**距 12 面补完只差 3 面** ✓）。
 
+- ★★★ **轮 176：补上 `migration`／`workflow`（⇒ 11/12），并【具名】暂缓 `external`** ✓✓
+  **两面的形态与结果** ✓：都是 **`settings.get` 优先** ✓、**都已导入键表** ✓、`migration` **有提前退出**（L350 ✓）⇒ 断言插在其前 ✓、`workflow` **无提前退出** ⇒ 插在摘要前 ✓。**对照都触发且未读为零** ✓：`migration` **`672 reads recorded`** ✓；★ `workflow` **`44160 reads recorded; 27 keys in WIRED+EXTRA`** ✓ —— ★ **该面有两张键表**（`WIRED_KEYS` ＋ `EXTRA_WIRED_KEYS` ✓）⇒ **断言把两张表合并要求** ✓，**27 键全部真被读** ✓。恢复严格断言后 `MIGRATION 69/0` ✓、`WORKFLOW 187/0` ✓。
+  ★★ **`external`：本轮【未做】，理由写明** ✗✓ —— **量明的障碍**：该模块**按下标直读** ✓（`settings['vmu.external.enabled']` ✓ ⇒ 装置本可用 ✓），**但套件有 20 多处【内联字面量】直接 `createExternal({…})`** ✗（**没有构造助手** ✗）⇒ 想装记录器就得**改写大量调用点** ✗（含 20+ 处 ✓）⇒ **这是一项独立且风险更高的机械改造** ✓，**不宜与本轮混做** ✓。★ **因此它是"具名未做"，不是"已做"** ✓（**并已把量明的证据写下** ✓，接手的人不必重测 ✓）。
+  **进度** ✓：**11 / 12** 面完成 ✓（`meetings`／`capacity`／`hr`／`compliance`／`ip`／`grant`／`funding`／`conference`／`mathtools`／`migration`／`workflow` ✓），**每面都有对照** ✓。
+
 ### 0.4 结论
 
 
