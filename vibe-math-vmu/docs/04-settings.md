@@ -1416,7 +1416,7 @@ vmu.packs.active: [v5r]
 | `vmu.stats.seed` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.store.backend` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.store.onVersionTooHigh` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.store.remote` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
+| `vmu.store.remote` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 设计阶段登记：首个声明卷 07（共见 2 卷：07、14），尚未实现（元数据以各卷为准） |
 | `vmu.store.remote.consistency` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.store.remote.offlinePolicy` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.store.remote.url` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |

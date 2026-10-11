@@ -511,7 +511,7 @@ export const PLANNED_DEFS = Object.freeze([
   { key: "vmu.stats.seed", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["16"], doc: "设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准）" },
   { key: "vmu.store.backend", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.store.onVersionTooHigh", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
-  { key: "vmu.store.remote", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
+  { key: "vmu.store.remote", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07", "14"], doc: "设计阶段登记：首个声明卷 07（共见 2 卷：07、14），尚未实现（元数据以各卷为准）" },
   { key: "vmu.store.remote.consistency", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.store.remote.offlinePolicy", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.store.remote.url", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
