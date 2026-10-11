@@ -7,7 +7,10 @@
 //   · to ENFORCE capacity as a machine limit, refusing by name with the current count and the cap
 //     (docs/08 §3, the S25-E lesson: a limit the machine cannot enforce is a suggestion, not a limit);
 //   · to build a wake envelope and hand it to an injected deliver seam, so the module itself never
-//     calls the host (docs/11 §4.1: a missing seam is refused by name, never faked).
+//     calls the host (docs/11 §4.1: a missing seam is refused by name, never faked);
+//   · ROUND 132: to record a member's OWN self-report (v5r's `self_report`, G6) VERBATIM and APPEND-ONLY -
+//     `overall`/`subgoal`/`plan`/`status` - and to expose the latest one per member for the overview. The kernel
+//     records and never judges; who may write WHOSE report is policy and stays outside (only `by` is recorded).
 //
 // Zero policy check (asserted by tests/vmu-members.test.mjs): the source contains none of the role names
 // the v5r line used, and nothing here decides what a permission MEANS.
@@ -29,6 +32,8 @@ export function refuse(code, message, hint) {
 
 const SLOT_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 const MEMBER_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+/** ROUND 132: the field vocabulary of a self-report. `overall` is required; the rest are optional. */
+const SELF_REPORT_FIELDS = Object.freeze(['overall', 'subgoal', 'plan', 'status'])
 
 /**
  * Create the roster. `slots` are pack-declared role slots; `maxLiveMembers` and per-slot `capacity` are
@@ -46,6 +51,9 @@ export function createMembers({
 } = {}) {
   const slotDefs = new Map()
   const members = new Map()
+  // ROUND 132: the append-only self-report log (id -> [ { at, by, fields } ]). Named `reportLog` on purpose -
+  // calling it `selfReports` would sit next to the `selfReports()` method and read like a recursive call.
+  const reportLog = new Map()
 
   for (const raw of slots) {
     if (!raw || typeof raw !== 'object' || typeof raw.id !== 'string' || !SLOT_ID.test(raw.id)) {
@@ -192,6 +200,59 @@ export function createMembers({
       const def = slotDefs.get(m.slot)
       const allowed = !!(def && def.permissions.includes(String(permission)))
       return { ok: true, allowed, member: id, slot: m.slot, permission: String(permission) }
+    },
+
+    // ── ROUND 132: the member's OWN self-report (v5r's `self_report`, G6) ────────────────────────────────
+    /**
+     * Record a self-report. APPEND-ONLY: every update is kept, so "what did this member say they were doing,
+     * and when" stays answerable. `overall` is required (it is the headline the overview shows); the other
+     * three are optional. The fields are stored verbatim and never interpreted here. `by` is recorded as an
+     * audit fact and NOT enforced: who may write whose report is policy, and policy lives in middleware.
+     */
+    async selfReport(id, fields, { by } = {}) {
+      const m = member(id)
+      if (m.state === 'ended') {
+        throw refuse('VMU_STATE', 'member ' + id + ' has ended',
+          'roster() shows who is live; a self-report is for a member who is here')
+      }
+      const src = fields && typeof fields === 'object' ? fields : {}
+      // Unknown fields are REFUSED by name rather than silently dropped: a report that quietly loses half of what
+      // was declared is worse than one that says which key it did not understand (same rule as the Lean kinds).
+      const unknown = Object.keys(src).filter((k) => SELF_REPORT_FIELDS.indexOf(k) === -1
+        && src[k] !== undefined && src[k] !== null && String(src[k]).trim().length > 0)
+      if (unknown.length) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'unknown self-report field(s): ' + unknown.join(', '),
+          'allowed: ' + SELF_REPORT_FIELDS.join(' / ') + ' (unknown fields are refused, never silently dropped)')
+      }
+      const picked = {}
+      for (const k of SELF_REPORT_FIELDS) {
+        const v = src[k]
+        if (v !== undefined && v !== null && String(v).trim().length > 0) picked[k] = String(v)
+      }
+      if (!picked.overall) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'a self-report needs a non-empty `overall`',
+          'fields: ' + SELF_REPORT_FIELDS.join(' / ') + ' (overall is the headline; the rest are optional)')
+      }
+      const rec = { at: clock(), by: by === undefined ? id : String(by), fields: picked }
+      const list = reportLog.get(id) || []
+      list.push(rec)
+      reportLog.set(id, list)
+      if (bus) await bus.emit('member/self-report', { member: id, by: rec.by, fields: picked }, { member: id })
+      return { ok: true, id, at: rec.at, by: rec.by, fields: Object.assign({}, picked), updates: list.length }
+    },
+
+    /** The LATEST self-report per member, plus how many updates each has made. Read-only; nothing is judged. */
+    selfReports() {
+      return [...reportLog.entries()].map(([id, list]) => {
+        const last = list[list.length - 1]
+        return { id, at: last.at, by: last.by, fields: Object.assign({}, last.fields), updates: list.length }
+      })
+    },
+
+    /** One member's append-only history, OLDEST first. Unknown member is refused by name (never an empty list). */
+    selfReportHistory(id) {
+      member(id)
+      return (reportLog.get(id) || []).map((r) => ({ at: r.at, by: r.by, fields: Object.assign({}, r.fields) }))
     },
 
     /** Observability (R11): slots with occupancy, live count, and the caps actually in force. */

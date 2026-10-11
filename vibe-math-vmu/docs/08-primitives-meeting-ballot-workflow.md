@@ -496,7 +496,7 @@ v5r 的 `s8-freeze-say` 真回归：**"本轮是否完成"的判据被写死在�
 |---|---|
 | `vmu.tasks` | `create({title,objective?,owner?,deps?,priority?})→{ok,id,state}`／`assign(id,who)`／`transition(id,to,{reason})`／`advance({to,reason})`／`rollback({reason})`／`brief(id)`／`briefOf(id)`／`clearBrief(id)`／`history(id?)`／`status()` |
 | `vmu.work` | `start({owner,kind,objective})→{ok,entry}`／`settle(id,{outcome})→{ok,settled,remaining}`／`interrupt(id,reason)`／`recover({reason})→{ok,recovered,entries[]}`／`list()`／`pending()`／`interrupted()`／`status()` |
-| `vmu.members` | `roles()`／`roster()`／`hire({id,slot})`／`assignRole(id,slot)`／`end(id,reason)`／`wake(id,ask,{role?,phase?})`／`may(id,permission)`／`status()` |
+| `vmu.members` | `roles()`／`roster()`／`hire({id,slot})`／`assignRole(id,slot)`／`end(id,reason)`／`wake(id,ask,{role?,phase?})`／`may(id,permission)`／`selfReport(id,fields,{by?})`／`selfReports()`／`selfReportHistory(id)`／`status()` |
 | 会议原语 ✓ | `kernel.meeting(opts)` → `{convene,openRound,speak,refuseInput,markSilent,handUp,roundComplete,close,summary,status,history}` |
 | 表决原语 ✓ | `kernel.ballot(opts)` → `{open,freeze,unfreeze,cast,close,reopen,status,history,processReadings}` |
 | 活对象寻址 ✓ | `kernel.liveMeeting(id)`／`kernel.liveBallot(id)`／`kernel.liveList()`（`cap` 与 `evicted` 计数 ✓） |

@@ -151,6 +151,40 @@ if (SELF_PROBE) {
   process.exit(failed > 0 ? 0 : 1)
 }
 
+// ---- ROUND 132: the member's OWN self-report (v5r's `self_report`) ------------------------------
+{
+  const events = []
+  const bus = { emit: (k, p) => { events.push({ k, p }); return { ok: true } } }
+  const mid = mk({ bus })
+  await mid.assignRole('m-1', 'worker')
+
+  const first = await mid.selfReport('m-1', { overall: 'prove the lemma', subgoal: 'find a bound', ignored: '' })
+  ok(first.ok === true && first.updates === 1 && first.by === 'm-1', 'a self-report is recorded and attributed to the member by default', JSON.stringify(first).slice(0, 120))
+  ok(first.fields.overall === 'prove the lemma' && first.fields.subgoal === 'find a bound', 'accepted fields are stored VERBATIM')
+  ok(first.fields.status === undefined && first.fields.plan === undefined, 'omitted optional fields stay absent (nothing is invented)')
+  ok(events.some((e) => e.k === 'member/self-report'), 'the report is emitted on the bus so middleware can observe it')
+
+  const second = await mid.selfReport('m-1', { overall: 'prove the sharper lemma' })
+  const latest = mid.selfReports()
+  ok(second.updates === 2 && latest.length === 1, 'append-only: updates accumulate but the read side shows ONE row per member', JSON.stringify(latest).slice(0, 120))
+  ok(latest[0].fields.overall === 'prove the sharper lemma', 'selfReports() returns the LATEST declaration')
+  const hist = mid.selfReportHistory('m-1')
+  ok(hist.length === 2 && hist[0].fields.overall === 'prove the lemma' && hist[1].fields.overall === 'prove the sharper lemma', 'the history is append-only and OLDEST first', JSON.stringify(hist.map((h) => h.fields.overall)))
+
+  await expectThrow(() => mid.selfReport('m-1', { plan: 'a plan without a headline' }), 'VMU_INVALID_ARGUMENT', 'a report without `overall` is refused by name')
+  await expectThrow(() => mid.selfReport('m-1', { overall: 'x', mood: 'hopeful' }), 'VMU_INVALID_ARGUMENT', 'an UNKNOWN field is refused, never silently dropped')
+  await expectThrow(() => mid.selfReport('nobody', { overall: 'x' }), 'VMU_NO_SUCH_OBJECT', 'an unknown member is refused by name')
+  await expectThrow(() => mid.selfReportHistory('nobody'), 'VMU_NO_SUCH_OBJECT', 'an unknown member history is refused, not an empty list')
+
+  const other = await mid.selfReport('m-1', { overall: 'written by the chair' }, { by: 'chair' })
+  ok(other.by === 'chair', '`by` is recorded as an audit FACT when someone else writes (policy is NOT invented here)')
+  ok(other.updates === 3, 'and the update count reflects it')
+
+  await mid.end('m-1', 'rotated out')
+  await expectThrow(() => mid.selfReport('m-1', { overall: 'after the end' }), 'VMU_STATE', 'a member who has ended cannot file a report')
+  ok(mid.selfReportHistory('m-1').length === 3, 'but the history survives the member ending (nothing is deleted)')
+}
+
 console.log('=== VMU MEMBERS: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
