@@ -1503,6 +1503,10 @@
   **门禁与证据** ✓：**`DOCS AUDIT: 70/0`** ✓；**`CROSS-VOLUME REFS: 747 checked, 0 unresolved`** ✓；**未接线保持 104** ✓。
   **未做（明写 ✗）**：★★ **单键族已【穷尽】** ✓ —— **六键里 1 已接、2 已退役、3 属"不能接／需先建 op／无内核落点"** ✓ ⇒ **下一步转向 2 键族** ✓；**第②档其余 33 条未动** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ 轮 290（区间第二件事）：接 vmu.archive.package.style 与 includeEnvironment 2 键（07 卷 §L245/L651 给出 enum(native/dataverse/zenodo) 默认 native、以及是否含环境说明）；未接线 104 → 102。
+  ★★★ 落点＝publication.js 的 register()，它【已按 c.targets 校验 target 并具名拒】⇒ 同形校验 package.style；四条分支真机全对（默认 native/includeEnvironment=true；声明 dataverse 且带环境说明 ⇒ 回执载之；未知风格 ⇒ VMU_INVALID_ARGUMENT；不允许时带环境说明 ⇒ 具名拒）；断言 +5 ⇒ VMU PUBLICATION: 68/0。
+  ★★ 同档另三族经量【不可接】：collusion.scan 与 handover.open/accept/close 在卷 17 均标 ⛔ 未实现；collab 两键契约薄（旧结论）。
+  **未做（明写 ✗）**：第②档其余 31 条未动；真机复跑 ✗；版本号/release ✗（须你批准）。
 ### 0.4 结论
 
 ## 0.5 未接线键的【三档结构】（轮 287 建表；**轮 290 据实更正数字** ✓✓）

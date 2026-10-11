@@ -239,5 +239,23 @@ const mk = (settings = {}, opts = {}) => createPublication({ clock: () => now, s
   ok(done.ok === true && done.declaration === true, 'federationShare[on]: the marking is recorded and the declaration reported', done)
 }
 
+
+// ── ROUND 290: the long-term preservation package (volume 07 §L245, §L651) ──────────────────────────────────
+{
+  const a = mk({})
+  a.submitPack({ paperId: 'arch-1', venue: 'J' })
+  const reg = a.register({ paperId: 'arch-1', target: 'zenodo', receipt: 'r-1' })
+  ok(reg.packageStyle === 'native' && reg.includeEnvironment === true, 'archive.package defaults: native style, environment note allowed', reg)
+  const declared = a.register({ paperId: 'arch-1', target: 'zenodo', receipt: 'r-2', packageStyle: 'dataverse', environment: 'node 24' })
+  ok(declared.packageStyle === 'dataverse' && declared.environment === 'node 24', 'archive.package: a declared style and an environment note are carried', declared)
+  const bad = (() => { try { a.register({ paperId: 'arch-1', packageStyle: 'nonsense' }); return null } catch (e) { return e } })()
+  ok(bad && bad.code === 'VMU_INVALID_ARGUMENT', 'archive.package.style: an unknown style is refused by name', bad && bad.code)
+  const noEnv = mk({ 'vmu.archive.package.includeEnvironment': false })
+  noEnv.submitPack({ paperId: 'arch-2', venue: 'J' })
+  const envBad = (() => { try { noEnv.register({ paperId: 'arch-2', environment: 'x' }); return null } catch (e) { return e } })()
+  ok(envBad && envBad.code === 'VMU_INVALID_ARGUMENT', 'archive.package.includeEnvironment[off]: an environment note is refused')
+  ok(noEnv.register({ paperId: 'arch-2' }).packageStyle === 'native', 'archive.package.includeEnvironment[off]: registering without one still works')
+}
+
 console.log('=== VMU PUBLICATION: ' + pass + ' passed, ' + fail + ' failed ===')
 process.exit(fail ? 1 : 0)

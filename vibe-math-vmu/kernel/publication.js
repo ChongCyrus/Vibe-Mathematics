@@ -73,6 +73,9 @@ export function createPublication({ clock = () => Date.now(), log = () => {}, se
     offlineFirst: boolOr(settings['vmu.archive.offlineFirst'], true),
     receiptRequired: boolOr(settings['vmu.archive.receiptRequired'], true),
     targets: Array.isArray(settings['vmu.archive.targets']) ? settings['vmu.archive.targets'] : ['zenodo', 'osf', 'swh', 'other'],
+    // ROUND 290 (volume 07 §L245, L651): the long-term preservation package style and whether it carries an environment note.
+    packageStyle: ['native', 'dataverse', 'zenodo'].includes(settings['vmu.archive.package.style']) ? settings['vmu.archive.package.style'] : 'native',
+    includeEnvironment: boolOr(settings['vmu.archive.package.includeEnvironment'], true),
     jatsVersion: settings['vmu.publish.jatsVersion'] || 'JATS-1.3',
     requireChecklist: boolOr(settings['vmu.publish.requireChecklist'], true),
     versionChainStrict: boolOr(settings['vmu.publish.versionChainStrict'], true),
@@ -136,7 +139,22 @@ export function createPublication({ clock = () => Date.now(), log = () => {}, se
    * Archive registration (G12), OFFLINE FIRST. With no network (or no receipt) the call still produces a
    * pending registration; claiming `registered` without a receipt is refused by name.
    */
-  function register({ paperId, target = null, receipt = null, status = null } = {}) {
+  function register({ paperId, target = null, receipt = null, status = null, packageStyle = null, environment = null } = {}) {
+    const p0 = paper(paperId)
+    const c0 = cfg()
+    // ROUND 290: the declared package style decides - an unknown one is refused by name, as an unknown target already is.
+    const style = packageStyle === null ? c0.packageStyle : String(packageStyle)
+    if (!['native', 'dataverse', 'zenodo'].includes(style)) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'unknown archive package style: ' + style,
+        'declared styles: native/dataverse/zenodo (vmu.archive.package.style)', { paperId, style })
+    }
+    // and the environment note is only carried when the declaration allows it
+    const env = environment === null || environment === undefined ? null : String(environment)
+    if (env !== null && !c0.includeEnvironment) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'vmu.archive.package.includeEnvironment=false: no environment note is carried',
+        'clear environment, or set vmu.archive.package.includeEnvironment=true', { paperId })
+    }
+    void p0
     const p = paper(paperId)
     const c = cfg()
     if (target && !c.targets.includes(target)) throw refuse('VMU_ARCHIVE_RECEIPT_MISSING', 'unknown archive target: ' + String(target), 'declared targets: ' + c.targets.join('|') + ' (vmu.archive.targets)', { target })
@@ -145,7 +163,8 @@ export function createPublication({ clock = () => Date.now(), log = () => {}, se
       throw refuse('VMU_ARCHIVE_RECEIPT_MISSING', 'cannot claim a registration without a receipt for ' + paperId,
         'offline-first: record status:"pending" now and add the receipt when the network returns (vmu.archive.receiptRequired=true)', { paperId, target })
     }
-    const reg = { id: 'reg-' + (++seq), paperId, target, status: wanted, receipt: receipt || null, at: clock(), offline: !receipt }
+    const reg = { id: 'reg-' + (++seq), paperId, target, status: wanted, receipt: receipt || null, at: clock(), offline: !receipt,
+      packageStyle: style, environment: env, includeEnvironment: c0.includeEnvironment }
     p.registrations.push(reg)
     return { ...reg }
   }
