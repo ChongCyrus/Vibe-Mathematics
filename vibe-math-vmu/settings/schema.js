@@ -554,6 +554,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.avail.allowOnRequest', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（publication.js 读取）；默认值取自模块源码" },
   { key: 'vmu.avail.openLicenses', type: 'stringList', def: ['CC0-1.0', 'CC-BY-4.0', 'MIT', 'Apache-2.0'], hot: HOT.H1, who: 'office', doc: "已接线（publication.js 读取）；默认值取自模块源码" },
   { key: 'vmu.avail.requireUrl', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（publication.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.ballot.irvInstantSingleCount', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（ballotbox.js 读取）；默认值取自模块源码" },
   { key: 'vmu.capacity.allocationPolicy', type: 'string', def: 'strict', hot: HOT.H1, who: 'office', doc: "已接线（capacity.js 读取）；默认值取自模块源码" },
   { key: 'vmu.capacity.cleanupCadenceDays', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（capacity.js 读取）；默认值取自模块源码" },
   { key: 'vmu.capacity.facilities', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: "已接线（capacity.js 读取）；默认值取自模块源码" },

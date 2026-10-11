@@ -54,7 +54,6 @@ export const PLANNED_DEFS = Object.freeze([
   { key: "vmu.authorship.requireCredit", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["16"], doc: "设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准）" },
   { key: "vmu.ballot.freezeMeetingLinked", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["08"], doc: "设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准）" },
   { key: "vmu.ballot.freezeMode", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["08"], doc: "设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准）" },
-  { key: "vmu.ballot.irvInstantSingleCount", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["08"], doc: "设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准）" },
   { key: "vmu.ballot.reopenFloor", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["08", "17"], doc: "设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准）" },
   { key: "vmu.ballot.reopenInitiatorScope", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["08", "17"], doc: "设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准）" },
   { key: "vmu.ballot.reopenSameMeetingOnly", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["08"], doc: "设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准）" },

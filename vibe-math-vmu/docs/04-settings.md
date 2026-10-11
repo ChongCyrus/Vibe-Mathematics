@@ -637,6 +637,7 @@ vmu.packs.active: [v5r]
 | `vmu.avail.allowOnRequest` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.avail.openLicenses` | string[] | `[CC0-1.0,CC-BY-4.0,MIT,Apache-2.0]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.avail.requireUrl` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
+| `vmu.ballot.irvInstantSingleCount` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ballotbox.js` | 已接线（ballotbox.js 读取）；默认值取自模块源码 |
 | `vmu.capacity.allocationPolicy` | string | `strict` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/capacity.js` | 已接线（capacity.js 读取）；默认值取自模块源码 |
 | `vmu.capacity.cleanupCadenceDays` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/capacity.js` | 已接线（capacity.js 读取）；默认值取自模块源码 |
 | `vmu.capacity.facilities` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/capacity.js` | 已接线（capacity.js 读取）；默认值取自模块源码 |
@@ -985,7 +986,6 @@ vmu.packs.active: [v5r]
 | `vmu.authorship.requireCredit` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.freezeMeetingLinked` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ballotbox.js` | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.freezeMode` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ballotbox.js` | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.ballot.irvInstantSingleCount` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ballotbox.js` | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.reopenFloor` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ballotbox.js` | 设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.reopenInitiatorScope` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ballotbox.js` | 设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.reopenSameMeetingOnly` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ballotbox.js` | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |

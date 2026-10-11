@@ -43,6 +43,53 @@ export function defaultTally({ votes, eligible, quorumRule }) {
 }
 
 /**
+ * ROUND 157 — INSTANT-RUNOFF (IRV) TALLY. The last confirmed gap, implemented BESIDE `defaultTally` because that is
+ * the single tally source and the ballot already takes its tally as an injected seam - so a face selects this one
+ * without the kernel changing shape.
+ *
+ * A voter's `value` is a RANKED LIST of option ids, best first. Each rule below is a decision, so each is stated:
+ *   · a strict majority of the CONTINUING ballots elects immediately;
+ *   · otherwise the option with the fewest first preferences is eliminated and those ballots transfer to their next
+ *     surviving choice - the defining property of IRV, and why the result must carry every ROUND, not just a winner;
+ *   · an EXHAUSTED ballot (every ranked option eliminated) stops counting, and the count is REPORTED, because a
+ *     silent drop would change who wins;
+ *   · a tie for elimination is NOT broken here: the result is `undecided` with the tied options NAMED (the pack's
+ *     tie rule decides - never an implicit sort order ✗).
+ */
+export function instantRunoffTally({ votes, eligible, quorumRule } = {}) {
+  const ballots = Object.entries(votes || {})
+    .filter(([, v]) => v && v.kind === 'decisive')
+    .map(([who, v]) => ({ who, ranking: (Array.isArray(v.value) ? v.value : [v.value]).map(String).filter((x) => x.trim() !== '') }))
+    .filter((b) => b.ranking.length > 0)
+  const alive = new Set()
+  for (const b of ballots) for (const c of b.ranking) alive.add(c)
+  const rounds = []
+  const base = { rule: quorumRule, ballots: ballots.length, eligible: (eligible || []).length }
+  if (!alive.size) return { outcome: 'undecided', reason: 'no ranked ballot carried any option', detail: Object.assign({}, base, { rounds, exhausted: 0, elected: null, tie: [] }) }
+  for (;;) {
+    const firstChoice = ballots.map((b) => b.ranking.find((c) => alive.has(c)) || null)
+    const continuing = firstChoice.filter((c) => c !== null)
+    const exhausted = firstChoice.length - continuing.length
+    const counts = {}
+    for (const c of continuing) counts[c] = (counts[c] || 0) + 1
+    const aliveSorted = [...alive].sort()
+    rounds.push({ round: rounds.length + 1, alive: aliveSorted, counts: Object.assign({}, counts), counted: continuing.length, exhausted })
+    if (!continuing.length) return { outcome: 'undecided', reason: 'every ballot was exhausted', detail: Object.assign({}, base, { rounds, exhausted, elected: null, tie: [] }) }
+    const leader = aliveSorted.filter((c) => counts[c] !== undefined).sort((x, y) => (counts[y] || 0) - (counts[x] || 0))[0]
+    if (counts[leader] * 2 > continuing.length) {
+      return { outcome: leader, reason: 'strict majority of the continuing ballots', detail: Object.assign({}, base, { rounds, exhausted, elected: leader, tie: [] }) }
+    }
+    const rankedAlive = aliveSorted.map((c) => ({ c, n: counts[c] || 0 })).sort((x, y) => x.n - y.n)
+    const lowest = rankedAlive.filter((r) => r.n === rankedAlive[0].n).map((r) => r.c)
+    if (lowest.length !== 1) {
+      // A tie for LAST place is not resolved here: the pack's tie rule owns that decision, and the tied set is named.
+      return { outcome: 'undecided', reason: 'tie for elimination', detail: Object.assign({}, base, { rounds, exhausted, elected: null, tie: lowest }) }
+    }
+    alive.delete(lowest[0])
+  }
+}
+
+/**
  * Create a ballot. Every decision point may be replaced by a pack or a middleware; the defaults do the
  * least surprising thing and never invent a decision.
  */

@@ -199,6 +199,27 @@ if (SELF_PROBE) {
     String(afterResume && afterResume.code))
 }
 
+
+// ROUND 157: the instant-runoff counter, tested where it lives (beside defaultTally, the single tally source).
+{
+  const { instantRunoffTally } = await import('../vibe-math-vmu/kernel/ballot.js')
+  const r = (m) => instantRunoffTally({ votes: m, eligible: [], quorumRule: 'irv' })
+  const one = r({ a: { kind: 'decisive', value: ['x'] }, b: { kind: 'decisive', value: ['x'] }, c: { kind: 'decisive', value: ['y'] } })
+  ok(one.outcome === 'x' && one.reason.indexOf('majority') !== -1, 'irv: a strict majority of continuing ballots elects immediately')
+  const transfer = r({ a: { kind: 'decisive', value: ['p', 'q'] }, b: { kind: 'decisive', value: ['p', 'q'] }, c: { kind: 'decisive', value: ['r', 'q'] }, d: { kind: 'decisive', value: ['r', 'q'] }, e: { kind: 'decisive', value: ['s', 'p'] } })
+  ok(transfer.outcome === 'p' && transfer.detail.rounds.length === 3,
+    'irv: transfers decide it - p=2 r=2 s=1, the zero-first-preference option goes first, then s is eliminated and ITS ballot elects p in round 3 (' + transfer.detail.rounds.length + ' rounds)')
+  const tie = r({ a: { kind: 'decisive', value: ['x'] }, b: { kind: 'decisive', value: ['y'] } })
+  ok(tie.outcome === 'undecided' && tie.reason.indexOf('tie') !== -1 && JSON.stringify(tie.detail.tie) === '["x","y"]',
+    'irv: a tie for elimination is NOT broken here - undecided, with the tied set NAMED')
+  const exh = r({ a: { kind: 'decisive', value: ['x'] }, b: { kind: 'decisive', value: ['y'] }, c: { kind: 'decisive', value: ['z'] } })
+  ok(exh.outcome === 'undecided' && exh.detail.rounds.length === 1, 'irv: an all-way tie is undecided after one round (no arbitrary elimination)')
+  const none = r({ a: { kind: 'decisive', value: [] } })
+  ok(none.outcome === 'undecided' && none.detail.rounds.length === 0, 'irv: no ranked ballot at all is undecided, with no invented round')
+  const skipped = r({ a: { kind: 'advisory', value: ['x'] }, b: { kind: 'decisive', value: ['y'] } })
+  ok(skipped.detail.ballots === 1, 'irv: only decisive ballots are counted')
+}
+
 console.log('=== VMU BALLOT: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

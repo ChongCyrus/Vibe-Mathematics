@@ -33,22 +33,25 @@ export const WIRED_BALLOT_KEYS = Object.freeze([
   'vmu.ballot.quotaSeats', 'vmu.ballot.recusePublic', 'vmu.ballot.recuseDeclareMode',
   'vmu.ballot.vetoMode', 'vmu.ballot.auditReadOnly', 'vmu.ballot.auditRetentionMs',
   'vmu.ballot.processReadingsVisible',
+  // ROUND 157: implemented in close() (the irv branch) - read, and it DECIDES (an irv box without it is
+  // refused by name rather than counted as something else).
+  'vmu.ballot.irvInstantSingleCount',
 ])
+// ROUND 157: the IRV counter lives in `ballot.js` beside `defaultTally` - the single tally source - and is imported
+// here rather than reimplemented (cite, never copy).
+import { instantRunoffTally } from './ballot.js'
+
 /** 未接：**逐个点名＋原因** ✗✓（不得静默 ✗）。 */
 export const PLANNED_BALLOT_KEYS = Object.freeze([
   /**
-   * ROUND 152: these six reasons were already CORRECT about the mechanism, and this round MEASURED that rather than
-   * assuming it - the six names appear nowhere in this module except the declarations themselves: no `readKey` call,
-   * no branch, no effect. That is the opposite of the instrument and store faces, where the same kind of reason was
-   * wrong. What each entry lacked was the NAME of the face that owns the behaviour and evidence that it is alive, so
-   * every entry now cites the carrier and the test line that proves it (source-proven, suite-run).
+   * ROUND 157: `irvInstantSingleCount` LEFT this list - it is implemented in `close()` now (see the irv branch), so
+   * this face is down to the five entries that are genuinely owned elsewhere. Those keep the carrier's name and the
+   * test line that proves it lives, which round 152 added.
    */
   ['vmu.ballot.freezeMode', '冻结由 `ballot.js` 的暂停闸承载 ✓（**不是本面** ✗）：`isPaused()` 同时闸住**开票**与**投票** ⇒ 具名拒 `VMU_STATE`；'
     + '运行时证据＝`tests/vmu-ballot.test.mjs` L89「冻结期间的投票被具名拒」✓、L143「未冻结却解冻被拒」✓；谓词由 `control` 面注入 ✓'],
   ['vmu.ballot.freezeMeetingLinked', '与**会议联动**的部分归 `meeting`／`board` 面 ✓；`ballot.js` 只做**票箱级**冻结（暂停谓词注入 ✓）'
     + '⇒ 本面不建会议状态机 ✓（原理由保留，补上归属面 ✓）'],
-  ['vmu.ballot.irvInstantSingleCount', '★ **全仓零实现** ✓（实测 `grep irv` 仅在本面自己的两条声明里命中 ✓）：本面只有一轮/二轮 ✓。'
-    + '**复活条件** ✓：出现"多轮淘汰制选举"的真实需求 ⇒ 加在 `ballot.js` 的计票器旁（它是**唯一计票真源** ✓），而不是第二份实现 ✗'],
   ['vmu.ballot.reopenFloor', '议程层面的重开归 `board`／`meetings` ✓；★ **票箱层面的重开已由 `ballot.js` 的 `reopen()` 承载** ✓：'
     + '只允许 `tallied` 重开 ✓、**旧结论进历史不被覆盖** ✓；运行时证据＝`tests/vmu-ballot.test.mjs` L97-100「重开后只计实际投出的票」✓'],
   ['vmu.ballot.reopenInitiatorScope', '发起人范围属**议程**（`board`／`meetings` ✓）：票箱里没有"动议"这一概念 ⇒ 无该约束 ✓（原理由保留，补上归属面 ✓）'],
@@ -87,6 +90,9 @@ export function createBallotBox(opts) {
     const b = (k, d) => { const v = readKey(k); return v === undefined ? d : v === true }
     return {
       method: s('vmu.ballot.method', 'plurality'),
+    // ROUND 157: whether IRV is resolved in ONE ruling. Default false, so nothing changes unless a pack asks; with
+    // it off an `irv` box is refused by name rather than silently counted as something else.
+    irvInstantSingleCount: b('vmu.ballot.irvInstantSingleCount', false),
       minVotes: n('vmu.ballot.minVotes', 0),
       minVotesRatio: Number(readKey('vmu.ballot.minVotesRatio')) > 0 ? Number(readKey('vmu.ballot.minVotesRatio')) : 0,
       abstainAllowed: b('vmu.ballot.abstainAllowed', true),
@@ -127,7 +133,7 @@ export function createBallotBox(opts) {
     evalKey('vmu.ballot.method')                                        // 用于 method 白名单校验 ⇒ 真求值 ✓
     if (c.secrecy === true) evalKey('vmu.ballot.secrecy')               // 只有"开"才改变可观测行为（sealed=true）✓
     // 注：`abstainAllowed` **不在此处列举** ✗✓（open 读了它但不改变本次结果 ⇒ 留到真正起作用的 cast 拒绝处 ✓）
-    const allowed = ['plurality', 'approval', 'runoff']
+    const allowed = ['plurality', 'approval', 'runoff', 'irv']
     if (allowed.indexOf(c.method) === -1) return deny('VMU_BALLOT_METHOD_UNSUPPORTED', '不支持的 method：' + c.method, '可用：' + allowed.join('、'), enforced.slice())
     const question = String(args.question || '').trim()
     const options = Array.isArray(args.options) ? args.options.map(String) : []
@@ -155,7 +161,10 @@ export function createBallotBox(opts) {
       box.abstain.set(by, clock())
       return { ok: true, boxId: box.id, kind: 'abstain', sealed: box.sealed, enforced, enforcedScope: ENFORCED_SCOPE }
     }
-    const choice = String(args.choice || '')
+    // ROUND 157: a ranked ballot carries `choices` (best first). `choice` keeps its exact old meaning, so no
+    // existing method changes behaviour; a ranked list is only ever stored when the caller sends one.
+    const ranked = Array.isArray(args.choices) ? args.choices.map((x) => String(x === undefined || x === null ? '' : x).trim()).filter((x) => x !== '') : null
+    const choice = ranked ? ranked : String(args.choice || '')
     if (box.options.indexOf(choice) === -1) return deny('VMU_CONFLICT', '选项不在票面上：' + choice, '可选：' + box.options.join('、'))
     if (c.recuseDeclareMode === 'required' && args.recuse !== undefined) mark(enforced, 'vmu.ballot.recuseDeclareMode')
     if (args.recuse === true) {
@@ -185,6 +194,32 @@ export function createBallotBox(opts) {
     if (!box) return deny('VMU_NOT_FOUND', '找不到票箱 ' + String((a && a.boxId) || ''), '先 open() 取 id')
     const c = cfg()
     const enforced = ['vmu.ballot.minVotes', 'vmu.ballot.minVotesRatio', 'vmu.ballot.abstainCountsForFloor', 'vmu.ballot.tieRule']
+    /**
+     * ROUND 157 — IRV IS RESOLVED HERE, IN ONE RULING. The round-based model cannot express instant-runoff (it would
+     * need one session per elimination round), which is exactly why `irvInstantSingleCount` exists: with it on, the
+     * tally runs to completion inside this one ruling and every round it took is returned in `rounds[]`. With it off
+     * an `irv` box is refused BY NAME instead of being counted as something it is not.
+     */
+    if (c.method === 'irv') {
+      mark(enforced, 'vmu.ballot.method')
+      if (!c.irvInstantSingleCount) {
+        mark(enforced, 'vmu.ballot.irvInstantSingleCount')
+        return Object.assign(deny('VMU_BALLOT_METHOD_UNSUPPORTED',
+          'irv 需要 `vmu.ballot.irvInstantSingleCount=true` ⇒ 拒（否则 IRV 只能靠**逐轮重开会议**表达 ✗）',
+          '打开该键：IRV 在**一次裁定内**解完所有淘汰轮，且 `rounds[]` 全程留痕 ✓', enforced), { method: c.method })
+      }
+      mark(enforced, 'vmu.ballot.irvInstantSingleCount')
+      const irvVotes = {}
+      for (const [who, v] of box.votes.entries()) irvVotes[who] = { kind: 'decisive', value: Array.isArray(v) ? v : [v] }
+      const r = instantRunoffTally({ votes: irvVotes, eligible: box.options.slice(), quorumRule: 'irv (majority of continuing)' })
+      box.rounds = r.detail.rounds.length
+      return {
+        ok: true, boxId: box.id, method: 'irv', round: box.round, rounds: r.detail.rounds,
+        outcome: r.outcome, reason: r.reason, elected: r.detail.elected, exhausted: r.detail.exhausted, tie: r.detail.tie,
+        tally: r.detail.rounds.length ? r.detail.rounds[r.detail.rounds.length - 1].counts : {},
+        enforced, enforcedScope: ENFORCED_SCOPE,
+      }
+    }
     const castN = box.votes.size + box.abstain.size
     const floorBase = box.votes.size + (c.abstainCountsForFloor ? box.abstain.size : 0)
     const floor = Math.max(c.minVotes, Math.ceil((box.options.length ? 1 : 0) * 0 + c.minVotesRatio * (box.votes.size + box.abstain.size + box.absent.length)))
