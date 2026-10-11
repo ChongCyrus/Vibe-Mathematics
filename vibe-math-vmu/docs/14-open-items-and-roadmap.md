@@ -147,6 +147,20 @@
   | **D. 无载体、无引用** | **40 面／约 101 键**：`legalentity`6／`privacy`6／`ethics`5／`compat`4／`data`4／`mentor`4／`review`4／`reviewers`4／`attendance`3／`committees`3／`consensus`3／`consent`3／`dedupe`3／`deprecation`3／`fingerprint`3／`incident`3／`names`3／`prompt`3／`refs`3／`script`3／`search`3／`sovereignty`3／`stats`3／`supplychain`3／`tags`3／`workspace`3／`authorship`2／`export`2／`import`2／`metadata`2／`paths`2／`preserve`2／`provenance`2／`pub`2／`report`2／`templates`2／`naming`1／`notes`1／`visibility`1／`vmu.x`1 | 五问全"否" ✓ | **判"不做 ✗"**，各带复活条件（**该能力真出现消费者时** ✓） |
   ★ **一句话总结** ✓✓：**524 键里，"活面待办"约 60 ✓、"框架内部名"10 ✓、"待核"19 ✓、其余约 430 判不做 ✗** —— **没有一个是"已接线却标未实现"** ✓✓（**两套扫描一致** ✓）。
 
+  ★ **轮 103 对 C 类的核实：7 面里 4 面其实是【活面】，我的分类被实测纠正** ✗✓✓：
+  | 面 | 实测形态 | 修正裁决 |
+  |---|---|---|
+  | **`vmu.auction`**（3 键） | ★ **`bidding.js` 大量 `sget('vmu.auction.*', …)`** ✓✓（`enabled`／`claimFirst`／`closeRule`／`bidWindowMs`／`maxBidCost`／`minBids`／`awardNeedsRationale`… ✓） | **活面待办** ✓（**归入 B 类** ✓） |
+  | **`vmu.collusion`**（2 键） | ★ **`bidding.js` 读 `windowMs`／`maxMutualShare`／`minEvidence`／`onSuspect`** ✓✓ | **活面待办** ✓ |
+  | **`vmu.repro`**（3 键） | ★ **`repropack.js` 读 `requiredMembers`／`hashAlgo`／`maxPackBytes`／`allowMissingSeed`／`envLockMode`…** ✓✓ | **活面待办** ✓ |
+  | **`vmu.schedule`**（3 键） | ★ **`scheduler.js` 读 12 个 `vmu.schedule.*`** ✓✓（`triggerVia`／`maxPending`／`timeSource`／`actionsAllowed`… ✓） | **活面待办** ✓ |
+  | `vmu.license`（4 键） | ✗ 只在 **`ip.js` 的注释与拒绝文案**里出现 ✓（`ip.js:6`／`ip.js:543` ✓） | **仅提及 ⇒ 不做 ✗** ✓ |
+  | `vmu.archive`（2 键） | ✗ 活面读的是 `offlineFirst`／`receiptRequired`／`targets` ✓，而 planned 的 2 个是 **`package.includeEnvironment`／`package.style`** ✗ | **邻近待办** ✓（**活面的另一子区** ✓） |
+  | `vmu.replication`（1 键） | ✗ 活面读 `summaryEnabled` ✓，planned 是 **`federationShare`** ✗ | **邻近待办** ✓ |
+  | `vmu.middleware`（3 键） | ✗ **框架内部名** ✓（`bus.js`／`index.js` 读的是 `hookTimeoutMs`／`breakerThreshold`／`dryRun`／`entries` ✓） | **`NON_SETTING`** ✓ |
+  ⇒ **修正后** ✓✓：**B 类（活面待办）＝ 19 面／约 70 键** ✓；**"仅提及"只剩 `vmu.license`（4 键）** ✓；**"邻近待办"＝ `archive` 2 ＋ `replication` 1** ✓；**D 类不变（40 面／约 101 键，判不做 ✗）** ✓。
+  ★ **方法学收获** ✓✓：**"前缀被引用"是【线索】，"取值形态"是【证据】** —— 本轮正是**先看线索、再核形态**，才把 4 个误判为"仅提及"的活面找回来 ✓✓（**若只信字面量，会把 4 个活面判死** ✗）。
+
 ### 0.4 结论
 
 
