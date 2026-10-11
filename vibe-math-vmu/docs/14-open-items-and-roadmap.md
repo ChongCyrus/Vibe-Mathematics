@@ -1446,6 +1446,14 @@
   **门禁与证据** ✓：**`VMU REVIEWERS: 25/0`** ✓；**`reviewers.js` 语法 0 ✓**；**未接线 108 → 107** ✓；**待本轮生成链与 T1** ✓。
   **未做（明写 ✗）**：★★★ **`vmu.meetings.reconsiderFloor` 仍未接** ✗ —— **复活条件已精确** ✓：**先定义【"对象标准"与"上限"】**（**该族三个计数要同步 ✓**），**再在 `meetings.js` 里按 `max(对象标准, 它, 上限)` 计算生效门槛** ✓；**该族的 5 条计划键整体未动** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 284：按第 ⑬ 条对卷 08 做【就地更正】；查清 `reopen` 的归属与 `reconsiderFloor` 的真正缺口；未接线保持 107** ✓✓
+  ★★★ **① 一个不精确的声明被就地改正** ✓✓：**卷 08 §L217 写"接口形状：**已实现 ✓**＝`reopen(reason)`（旧结论留 history ✓）"** ✓ —— **实测：`reopen(reason)` 在 **`kernel/ballot.js` L241**（async ✓，**只允许 `tallied` 重开 ✓**，**旧结论进 history ✓**；运行时证据 `tests/vmu-ballot.test.mjs` L97-100 ✓**）** ✓，**而【本卷这一面 `kernel/meetings.js` 里 `reopen` 出现 0 次** ✗**）** ✓ ⇒ ★★ **故该句改成"**原语已实现 ✓**"并【就地】附上更正段** ✓（**含"`kernel/ballotbox.js` L60-63 早已带同样结论的更正"** ✓）。**`DOCS AUDIT: 70/0`** ✓。
+  ★★★ **② 顺带确认了两条被质疑的状态** ✓✓：**`vmu.meetings.quorumCap` 【确已接线】** ✓ —— **`meetings.js` L243：`const need = K.quorumCap > 0 ? Math.min(needUncapped, K.quorumCap, m.present.size) : needUncapped`** ✓ —— **正是 `min(cap, participants)` 契约** ✓（**卷 08 L65 的轮 196→203 更正属实 ✓**）；**`vmu.meetings.quorumRule` 确为【仅 pack 供给】** ✓（**`ballot.js` 把它作为【参数】传给计票函数 ✓，不作设置读取 ✓**）。
+  ★★★ **③ `reconsiderFloor` 的缺口被写进【它被声明的地方】** ✓✓（**第 ⑬ 条要求** ✓）：**缺的【不是 pack 示例**（`packs/institute-min.js` L51 已设置该键 ✓**）**，而是**内核侧那个模型**（**生效门槛 = max(对象标准, 它, 上限)** ✓ —— **"对象标准"与"上限"在本面【均无定义** ✗**）**）** ✓。
+  ★★★ **④ 一个更正** ✓：**该族其实只有【一条】计划键（`reconsiderFloor`）** ✓，**不是 5** ✗ ⇒ **套件里 `declaredMeetingKeys` 与 `WIRED_KEYS`（51）之差来自同族统计口径** ✓ —— **故"51 → 52 需动三处计数"这条推断仍需在真正动手时再量一次** ✓（**本轮未据此改动，避免按错误前提动手** ✓）。
+  **门禁与证据** ✓：**`DOCS AUDIT: 70/0`** ✓；**卷 08 的更正段经探针确认落位 ✓**；**未接线保持 107** ✓；**待本轮生成链与 T1** ✓。
+  **未做（明写 ✗）**：★★★ **`vmu.meetings.reconsiderFloor` 仍未接** ✗ —— **复活条件已精确到两个待定义项** ✓（**"对象标准"与"上限"** ✓）；**该族其余键未动** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 
