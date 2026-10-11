@@ -89,7 +89,10 @@ export const NON_SETTING = new Set(['vmu.prompt', 'vmu.library', 'vmu.members', 
   // ROUND 108: the five `vmu.ip.*` SERVICE SURFACES. The module says so itself - "20 DECLARED KEYS = 15 KNOBS
   // + 5 SERVICE SURFACES" - and the real knobs beside them are declared separately (`holdEnforcement`,
   // `ownershipDefault`, `transferPolicy`, ...). A method name is not something a pack can tune.
-  'vmu.ip.hold', 'vmu.ip.ownership', 'vmu.ip.contributors', 'vmu.ip.recordSearch', 'vmu.ip.transfer'])
+  'vmu.ip.hold', 'vmu.ip.ownership', 'vmu.ip.contributors', 'vmu.ip.recordSearch', 'vmu.ip.transfer',
+    // ROUND 270: five more SERVICE SURFACES captured as keys (round 269 measured each appearing in its volume only as a CALL,
+    // and read by the kernel nowhere). Same rule as the audit's `vmu.ip.*` list: dotted like keys, but no pack can tune a method.
+    'vmu.collab.authorship',     'vmu.members.may',     'vmu.outreach.impact',     'vmu.outreach.mediaRequest',     'vmu.tasks.create'])
 
 /** The discovered volumes: [{ num: '07', name: '07-durability-library', text }], sorted by number. */
 export function docVolumes(dir = DOCS_DIR) {
