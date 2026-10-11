@@ -44,8 +44,8 @@ const K_MAX_RECURRENCES = 'vmu.schedule.maxRecurrences'
 const K_MIN_INTERVAL = 'vmu.schedule.minIntervalMs'
 const K_MAX_HORIZON = 'vmu.schedule.maxHorizonMs'
 const K_CANCEL_REASON = 'vmu.schedule.cancelNeedsReason'
-// … and the spellings docs/08 §12.6/§19.6 declared (read as fallbacks so either registration works).
-// INTEGRATOR RULING: `vmu.schedule.*` is the canonical family (docs/08 §12.6), so this alias now points at the
+// … and the spellings docs/08 §12.4/§19.6 declared (read as fallbacks so either registration works).
+// INTEGRATOR RULING: `vmu.schedule.*` is the canonical family (docs/08 §12.4), so this alias now points at the
 // canonical name. Reading an undeclared twin would force the gate to demand a second declaration for one knob.
 // ROUND 106: the ruling above was applied to `triggerVia` only for three rounds. The other four aliases still
 // read the OLD `vmu.scheduler.*` names, which is exactly the twin the ruling warns about - measured: those four

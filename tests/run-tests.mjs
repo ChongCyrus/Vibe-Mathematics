@@ -283,7 +283,7 @@ function lptOrder(list) {
 const QUICK_ONLY = ['v5', 'audit-participant-set-parity', 'audit-math-computation-parity',
   'audit-math-computation-contract', 'math-computation-shared', 'audit-registration',
   'audit-preset-rows', 'audit-status-report-fields', 'audit-artifact-docs', 'audit-enum-branches',
-  'audit-doc-planned-claims']
+  'audit-doc-planned-claims', 'audit-cross-volume-refs']
 const QUICK_EXCLUDE = ['mutants', 'audit-math-computation-sensitivity']
 // S24: PR #14 brought `tests/v5-meeting-attribution.test.mjs` into the curated quick subset (a new
 // suite is on purpose — it is the regression test for the reply-attribution fix), so 23 -> 24.
@@ -298,7 +298,9 @@ const QUICK_EXCLUDE = ['mutants', 'audit-math-computation-sensitivity']
 // 28 -> 29, deliberately: `audit-doc-planned-claims` joined in round 180, when the premise it asserts - that a
 // generated ✅ means the key is really read - finally held for all twelve faces, so the check could stop reporting and
 // start failing, and it is fast enough (it reads the docs).
-const QUICK_EXPECTED_JOBS = 29
+// 29 -> 30, deliberately: `audit-cross-volume-refs` joined in round 181. It checks identifiers (section pointers) rather
+// than prose, it found one dangling reference in 518 - including one inside a kernel comment - and it is fast.
+const QUICK_EXPECTED_JOBS = 30
 // `vmu` is the ITERATION subset for developing the vmu framework: the vmu jobs themselves, plus every
 // gate that guards a SHARED surface a vmu change can reach (preset rows and the generated patch,
 // the installer, package membership, README/doc counts, path discipline, artifact docs, the shared
