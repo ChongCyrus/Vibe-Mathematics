@@ -18,9 +18,17 @@ const codeOf = (fn) => { try { fn(); return 'NO-THROW' } catch (e) { return (e &
 const errOf = (fn) => { try { fn(); return null } catch (e) { return e } }
 
 let NOW = 1000
+/**
+ * ROUND 168 — THE SUITE NOW PROVES ITS OWN HEADER CLAIM. The header says every wired key gets a positive and a
+ * negative assertion; what it never checked is the weaker precondition, that every wired key is READ AT ALL. The
+ * module prefers `settings.get` when it is present, so a recording getter proves it: whatever the tests drive through
+ * `mk` must touch every key in `WIRED_KEYS`, or the suite is quietly exercising less than it claims.
+ */
+const READS = []
+const rec = (vals) => ({ get: (k) => { READS.push(k); return (vals || {})[k] } })
 const mk = (settings = {}, seams = {}) => {
   NOW = 1000
-  const t = createMeetings(Object.assign({ clock: () => NOW, settings }, seams))
+  const t = createMeetings(Object.assign({ clock: () => NOW, settings: rec(settings) }, seams))
   return { t, set: (v) => { NOW = v }, at: () => NOW }
 }
 const roster = ['acad', 'r-1', 'r-2', 'r-3']
@@ -518,6 +526,16 @@ const err = (fn) => errOf(fn)
   ok(recs.every((x) => x.enforcedScope === 'evaluated-so-far'), 'D3: every receipt in the session carries the scope')
   ok(dup.length === 0, 'no-dup: no receipt in the full session has duplicates (' + (dup.length ? JSON.stringify(dup[0]) : recs.length + ' receipts checked') + ')')
   ok(mg.status() && mg.receiptsView({}).enforcedScope === 'evaluated-so-far', 'D3: the receipts view carries the scope as well')
+}
+
+/**
+ * ROUND 168: the precondition behind the header claim, asserted rather than assumed. A key can be listed as wired,
+ * reported by `status()`, and still never be read by any path the suite walks - which is exactly the weakness the
+ * generated ledger inherited from round 115. This is measured through the recording getter above, so it can fail.
+ */
+{
+  const unread = WIRED_KEYS.filter((k) => READS.indexOf(k) === -1)
+  ok(unread.length === 0, 'every wired key was really READ by the suite, not merely listed (' + (unread.length ? 'unread: ' + unread.join(', ') : READS.length + ' reads recorded') + ')')
 }
 
 console.log('=== VMU MEETINGS: ' + passed + ' passed, ' + failed + ' failed ===')
