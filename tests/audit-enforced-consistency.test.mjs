@@ -37,6 +37,7 @@ import { createStorePolicy } from '../vibe-math-vmu/kernel/storepolicy.js'
 import { createCapacity } from '../vibe-math-vmu/kernel/capacity.js'
 import { createHr } from '../vibe-math-vmu/kernel/hr.js'
 import { createMigration } from '../vibe-math-vmu/kernel/migration.js'
+import { createGrant } from '../vibe-math-vmu/kernel/grant.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -438,6 +439,24 @@ const SCENARIOS = [
     run: (s) => s.release({ name: 'a' }) },
 
   // ---- ROUND-19 (task-200): capacity / hr ----
+  // ROUND 91: grant - the zero-mechanism switch CHANGES the outcome of the same call (refused vs granted).
+  { module: 'grant', call: 'grant(enabled)', key: 'vmu.grant.enabled', outcomeDiff: true,
+    limiting: { settings: { 'vmu.grant.enabled': false } },
+    permissive: { settings: { 'vmu.grant.enabled': true } },
+    make: (settings) => createGrant({ clock: CLOCK, log: () => {}, settings }),
+    run: (g) => g.grant({ to: 'a', command: 'convene', why: 'probe' }) },
+  // the ENUMERATED command list changes it too: only `convene` may be granted here, so `assign` is refused.
+  { module: 'grant', call: 'grant(commands)', key: 'vmu.grant.commands', outcomeDiff: true,
+    limiting: { settings: { 'vmu.grant.enabled': true, 'vmu.grant.commands': ['convene'] } },
+    permissive: { settings: { 'vmu.grant.enabled': true, 'vmu.grant.commands': ['assign'] } },
+    make: (settings) => createGrant({ clock: CLOCK, log: () => {}, settings }),
+    run: (g) => g.grant({ to: 'a', command: 'assign', why: 'probe' }) },
+  // and the DEFAULT SCOPE does: a meeting-scoped default refuses a grant that names no meeting.
+  { module: 'grant', call: 'grant(defaultScope)', key: 'vmu.grant.defaultScope', outcomeDiff: true,
+    limiting: { settings: { 'vmu.grant.enabled': true, 'vmu.grant.defaultScope': 'meeting' } },
+    permissive: { settings: { 'vmu.grant.enabled': true, 'vmu.grant.defaultScope': 'once' } },
+    make: (settings) => createGrant({ clock: CLOCK, log: () => {}, settings }),
+    run: (g) => g.grant({ to: 'a', command: 'convene', why: 'probe' }) },
   // capacity (GATE_SCENARIOS ①): the pool rail is always evaluated; 20h into a 10h pool is REFUSED while a 1000h
   // pool accepts the same call ⇒ outcome form.
   { module: 'capacity', call: 'reserve(machineHoursPool)', key: 'vmu.capacity.machineHoursPool', outcomeDiff: true,
@@ -554,6 +573,10 @@ const REFUSAL_SCENARIOS = [
   { module: 'migration', call: 'plan(same-version)', settings: { 'vmu.migration.rollback': 'allow' },
     make: (settings) => createMigration({ clock: CLOCK, log: () => {}, settings, backends: ['json-fold', 'storage-domain'] }),
     run: (m) => m.plan({ from: 'v2', to: 'v2', backend: 'json-fold', steps: 1 }) },
+  // ROUND 91: grant - asking for a capability nobody gave is refused BY NAME (nothing is implied by anything).
+  { module: 'grant', call: 'check(no grant)', settings: { 'vmu.grant.enabled': true },
+    make: (settings) => createGrant({ clock: CLOCK, log: () => {}, settings }),
+    run: (g) => g.check({ member: 'a', command: 'convene' }) },
 ]
 
 // ---------------------------------------------------------------------------------------------------------

@@ -88,6 +88,10 @@ const EXPECT = {
   // to-do rather than given an invented expectation - the batch that fills probe arguments will upgrade it.
   migration: G('PROBE_NEEDS_ARGS', '缺：迁移计划入参（`from`／`to`／`backend`／`steps` ✓）；**作者已导出带完整 args 的 `GATE_SCENARIOS`** ⇒ 下一批补参时应可直接实测 ✓（11/11 键已接、**零新码**、全部返回型拒绝 ✓）'),
   guard: G('EXPECT_NA', '非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）'),
+  // Round 90-91: the grant face (temporary, scoped, single-command authorization, ported from the v5r line). Its
+  // zero mechanism is `vmu.grant.enabled=false`, where NOTHING may be granted or checked and every attempt is
+  // refused BY NAME - so the honest expectation is a named refusal, not an ok.
+  grant: G('具名拒（带 code）', '零机制：`vmu.grant.enabled=false` ⇒ `grant()`／`check()` 均**具名拒 `VMU_NOT_PERMITTED`**（"this face grants nothing (zero mechanism)" ✓）；开启后 `commands` 枚举外亦具名拒 ✓；`check()` 无授予 ⇒ 具名拒 ✓'),
   // Round 48: the instant normaliser became a shared kernel tool and therefore a new file the matrix sees. It is
   // a PURE FUNCTION module - no factory, no service, nothing to probe - so it is registered as not-applicable for
   // the same measured reason as `guard` rather than given an invented expectation. It exists because compliance
