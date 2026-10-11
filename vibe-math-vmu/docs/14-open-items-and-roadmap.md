@@ -207,6 +207,13 @@
   **正确修法（已定位，尚未实施 ✗）** ✓✓：**把未读的 12 个键从 `WIRED_<面>_KEYS` 移入 `PLANNED_<面>_KEYS`** ✓ —— **让模块自述与注册表一致** ✓（`instruments`／`course`／`ballotbox` 的 planned 是 **`[键, 理由]` 对** ✓ ⇒ **每键都要给理由** ✓）；然后**重新生成**（生成器 `splice` 会**整块替换** ✓ ⇒ 未 emit 的键会**从 core 消失** ✓✓）。**待移清单** ✓：`course` 2（`visibility`／`submitMode` ✓）／`instruments` 3（`priorityPolicy`／`waitlistPolicy`／`hashAlgo` ✓）／`store` 8（`backend`／`root`／`tmpDir`／`remote`／`remote.consistency`／`remote.offlinePolicy`／`remote.url`／`onVersionTooHigh` ✓）。
   **方法论** ✓✓：**"清单"也是一种【字面量】** ✗ —— 第 43 例是"子串判定" ✓、第 44 例是"**把清单当读取**" ✓ ⇒ **同一个坑的两副面孔** ✓；**判"是否接线"永远只能看【取值形态】** ✓✓（**这条我已在轮 81 立过，本轮又违反一次** ✗）。
 
+- ★★★ **轮 125：对"docs 承诺 ⇒ 代码兑现"做了一次【系统性】核查，结论是干净的** ✓✓：
+  **方法** ✓：从 `03-§8` 抽出全部 **481 个 `VMU_*` 登记码** ✓，与 kernel 里**出现过的 275 个**做差 ✓。
+  **结果** ✓：**207 个"登记了但 kernel 从未出现"** ✓ —— **逐条看即知：它们全是【已裁决为不做或待办】的那些族的计划码** ✓✓（`VMU_A11Y_*` 8 个 ✓／`VMU_ANIMAL_*` ✓／`VMU_BIOSAMPLE_*` 5 个 ✓／`VMU_COLLAB_*` 4 个 ✓／`VMU_CONSENT_*` 2 个 ✓／`VMU_DISCIPLINE_*` 4 个 ✓／`VMU_MATH_*` 11 个 ✓／`VMU_OUTREACH_*` 5 个 ✓／`VMU_WATCH_*` 7 个 ✓ …）⇒ **这是"计划码注册表"的本意，不是缺陷** ✓✓。
+  **反向** ✓：**只有 1 个"kernel 有、登记表没有"** ⇒ **`VMU_TOPOLOGY_`** ⇒ **经查是 `topology.js:211` 的【前缀测试】** ✓（`String(e.code).indexOf('VMU_TOPOLOGY_') === 0` ✓）⇒ **不是码，是假阳性** ✓✓（**真实码在 L25–28** ✓：`VMU_TOPOLOGY_UNSUPPORTED`／`PATH_FORBIDDEN`／`CYCLE`／`SIZE_EXCEEDED` ✓）。
+  **并验证了轮 116 的修复** ✓✓：**`VMU_FAIRNESS_QUOTA` 已不在那 207 个之中** ✓ —— **它现在有生产者** ✓。
+  **方法论** ✓✓：**"字面量 ≠ 语义"在本阶段第 5 次出现** ✗（**子串判定 ✓／信任清单 ✓／误读清单 ✓／把"返回"当"抛出" ✓／把前缀当码 ✓**）⇒ **凡是用【字符串】代替【语义】的判断，都会出错** ✓✓。
+
 ### 0.4 结论
 
 
