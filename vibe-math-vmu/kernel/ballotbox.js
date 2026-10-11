@@ -164,16 +164,19 @@ export function createBallotBox(opts) {
     // ROUND 157: a ranked ballot carries `choices` (best first). `choice` keeps its exact old meaning, so no
     // existing method changes behaviour; a ranked list is only ever stored when the caller sends one.
     const ranked = Array.isArray(args.choices) ? args.choices.map((x) => String(x === undefined || x === null ? '' : x).trim()).filter((x) => x !== '') : null
-    const choice = ranked ? ranked : String(args.choice || '')
     /**
-     * ROUND 158 — THE RANKED PATH WAS REFUSED, AND THAT IS WHY THE BOX RETURNED NOTHING. Measured: `indexOf` was
-     * called with an ARRAY, which is always -1, so every ranked cast was refused as "option not on the ballot" and
-     * `box.votes` stayed empty - which is exactly why the reply carried `rounds: []` and `tie: []` (the counter's
-     * "no ranked ballots" early return). Every entry is now checked against the ballot, naming the offender.
+     * ROUND 159 — APPROVAL BALLOTS CARRY A SET. `allowed` had declared this method for as long as the whitelist has
+     * existed while no branch ever mentioned it, so an approval box was silently counted as plurality: the face
+     * claimed to support something and did something else. `scripts/audit-enum-branches.mjs` finds exactly that shape
+     * by counting occurrences, and this is the fix it pointed at. A scalar `choice` remains a ONE-ELEMENT approval
+     * set, so the old call shape keeps working unchanged.
      */
-    if (ranked) {
-      const off = ranked.filter((x) => box.options.indexOf(x) === -1)
-      if (off.length) return deny('VMU_CONFLICT', '排序里有不在票面上的选项：' + off.join('、'), '可选：' + box.options.join('、'))
+    const approved = Array.isArray(args.approvals) ? args.approvals.map((x) => String(x === undefined || x === null ? '' : x).trim()).filter((x) => x !== '') : null
+    const list = ranked || approved
+    const choice = list || String(args.choice || '')
+    if (list) {
+      const off = list.filter((x) => box.options.indexOf(x) === -1)
+      if (off.length) return deny('VMU_CONFLICT', '清单里有不在票面上的选项：' + off.join('、'), '可选：' + box.options.join('、'))
     } else if (box.options.indexOf(choice) === -1) return deny('VMU_CONFLICT', '选项不在票面上：' + choice, '可选：' + box.options.join('、'))
     if (c.recuseDeclareMode === 'required' && args.recuse !== undefined) mark(enforced, 'vmu.ballot.recuseDeclareMode')
     if (args.recuse === true) {
@@ -184,7 +187,7 @@ export function createBallotBox(opts) {
     }
     // ROUND 158: a ranked ballot is stored AS A LIST. The scalar path keeps its exact old meaning (`String(choice)`),
     // so no existing method changes behaviour; stringifying a list would have destroyed the ranking that IRV needs.
-    box.votes.set(by, ranked ? ranked.slice() : String(choice))
+    box.votes.set(by, list ? list.slice() : String(choice))
     if (c.proxyMode === 'on' && args.proxyFor) { mark(enforced, 'vmu.ballot.proxyMode'); if (c.proxyChainMaxDepth > 0) mark(enforced, 'vmu.ballot.proxyChainMaxDepth') }
     if (c.quadraticCreditCap > 0 && Number(args.credits) > c.quadraticCreditCap) { return deny('VMU_CONFLICT', 'credits 超上限 ' + c.quadraticCreditCap + '（`vmu.ballot.quadraticCreditCap`）', '调小 credits', ['vmu.ballot.quadraticCreditCap']) }
     return { ok: true, boxId: box.id, kind: 'vote', sealed: box.sealed, enforced, enforcedScope: ENFORCED_SCOPE }
@@ -211,6 +214,33 @@ export function createBallotBox(opts) {
      * tally runs to completion inside this one ruling and every round it took is returned in `rounds[]`. With it off
      * an `irv` box is refused BY NAME instead of being counted as something it is not.
      */
+    /**
+     * ROUND 159 — APPROVAL VOTING, the method `allowed` had been claiming all along. Each voter approves a SET; the
+     * most-approved option wins; a tie for most is NOT broken here but returned as `undecided` with the tied options
+     * NAMED, the same rule the instant-runoff counter follows, because the tie rule belongs to the pack. A scalar
+     * `choice` counts as a one-element approval set, so nothing about the old shape changes.
+     */
+    if (c.method === 'approval') {
+      mark(enforced, 'vmu.ballot.method')
+      const counts = {}
+      const sets = []
+      for (const [who, v] of box.votes.entries()) {
+        const set = [...new Set(Array.isArray(v) ? v : [String(v)])]
+        sets.push({ who, set })
+        for (const o of set) counts[o] = (counts[o] || 0) + 1
+      }
+      const rankedApprovals = Object.keys(counts).map((o) => ({ option: o, n: counts[o] })).sort((x, y) => y.n - x.n || String(x.option).localeCompare(String(y.option)))
+      const top = rankedApprovals[0] || null
+      const tie = top ? rankedApprovals.filter((r) => r.n === top.n).map((r) => r.option) : []
+      return {
+        ok: true, boxId: box.id, method: 'approval', round: box.round,
+        outcome: top && tie.length === 1 ? top.option : 'undecided',
+        reason: !top ? 'no approvals cast' : (tie.length === 1 ? 'most approvals' : 'tie for most approvals'),
+        tally: Object.assign({}, counts), approvals: sets.length, ballots: sets,
+        tie: tie.length > 1 ? tie : [],
+        enforced, enforcedScope: ENFORCED_SCOPE,
+      }
+    }
     if (c.method === 'irv') {
       mark(enforced, 'vmu.ballot.method')
       if (!c.irvInstantSingleCount) {
