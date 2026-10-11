@@ -64,6 +64,8 @@ const K = Object.freeze({
   // ROUND 261 (volume 16 §L9/L10): the dataset declarations.
   dataRequireParent: 'vmu.data.requireParent',
   dataVersionScheme: 'vmu.data.versionScheme',
+  // ROUND 278 (volume 16 §L169): the rebuttal declaration.
+  rebuttalRequired: 'vmu.review.rebuttalRequired',
   headFields: 'vmu.records.headFields',
   bodyCapBytes: 'vmu.records.bodyCapBytes',
   expandThreshold: 'vmu.records.expandThreshold',
@@ -99,9 +101,12 @@ const K = Object.freeze({
 
 const DEFAULTS = Object.freeze({
   // ROUND 261: `dataset` is a kind of RECORD, which is what volume 16 §L129 says a dataset is.
-  [K.allowedKinds]: ['progress', 'route', 'decision', 'finding', 'lesson', 'state', 'dataset'],
+  // ROUND 278 (volume 16 §L166-168): a rebuttal is a RECORD - the volume names the kind and says one entry per comment.
+  [K.allowedKinds]: ['progress', 'route', 'decision', 'finding', 'lesson', 'state', 'dataset', 'rebuttal'],
   [K.dataRequireParent]: false,
   [K.dataVersionScheme]: 'semver',
+  // ROUND 278: §L169. When on (the default), a rebuttal entry must PAIR a comment with a response.
+  [K.rebuttalRequired]: true,
   [K.headFields]: ['id', 'track', 'kind', 'title', 'slug', 'status', 'owner', 'updatedAt', 'fingerprint'],
   [K.bodyCapBytes]: 32768,
   [K.expandThreshold]: 4096,
@@ -417,6 +422,31 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         'version=' + (v === null ? '-' : v), 'scheme=' + scheme].join(' ')
       const rec = this.put({ track, kind: 'dataset', title, body: body || meta, tags, settled, by })
       return Object.assign({}, rec, { dataset: { path, fingerprint, parent: parent === null ? null : String(parent), version: v, scheme },
+        enforced: [...enforced, K.allowedKinds], enforcedScope: 'evaluated-so-far' })
+    },
+
+    /**
+     * ROUND 278 (volume 16 §L166-168): file a rebuttal - one entry per review comment, pairing the comment with the response and the
+     * change it caused. `vmu.review.rebuttalRequired` (default true) refuses an entry that files a comment without a response.
+     */
+    rebuttal({ track, title, comment = null, response = null, changeRef = null, body = '', tags = [], settled = false, by = null } = {}) {
+      const enforced = []
+      mark(enforced, K.rebuttalRequired)
+      const required = sget(K.rebuttalRequired) !== false
+      const hasComment = typeof comment === 'string' && comment.trim() !== ''
+      const hasResponse = typeof response === 'string' && response.trim() !== ''
+      if (!hasComment) {
+        throw deny('VMU_INVALID_ARGUMENT', 'a rebuttal needs the review comment it answers',
+          'pass comment:<the reviewer\'s point> (volume 16 §L168: one entry per comment)', [K.rebuttalRequired], 'rebuttal')
+      }
+      if (required && !hasResponse) {
+        throw deny('VMU_INVALID_ARGUMENT', 'vmu.review.rebuttalRequired=true and this entry files a comment with no response',
+          'pass response:<what changed, or why not>, or set vmu.review.rebuttalRequired=false', [K.rebuttalRequired], 'rebuttal')
+      }
+      const meta = ['rebuttal', 'changeRef=' + (changeRef === null ? '-' : String(changeRef)), 'response=' + (hasResponse ? 'yes' : 'no')].join(' ')
+      const rec = this.put({ track, kind: 'rebuttal', title, body: body || (String(comment) + '\n=> ' + String(response || '-') + '\n' + meta), tags, settled, by })
+      return Object.assign({}, rec, { rebuttal: { comment: String(comment), response: hasResponse ? String(response) : null,
+        changeRef: changeRef === null ? null : String(changeRef), responseRequired: required },
         enforced: [...enforced, K.allowedKinds], enforcedScope: 'evaluated-so-far' })
     },
 
