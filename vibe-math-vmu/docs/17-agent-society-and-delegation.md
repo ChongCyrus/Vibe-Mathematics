@@ -97,7 +97,7 @@
 - **衰减与时效（decay）** ｜ 目的：旧功劳不能永久吃老本 ｜ 面向谁：机构 ｜ 接口形状：规划 `kernel.trust.recompute({windowMs})`（⛔ 未实现） ｜ 可调控：`vmu.trust.halfLifeMs`／`minSamples`／`decayOnEnd` ｜ 错误码：`VMU_INVALID_ARGUMENT` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：衰减**只读重算**（幂等 ✓）；样本不足 ⇒ 展示为"证据不足"而不是 0 分 ✓ ｜ 依赖：评分 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P3
 - **申诉与更正（appeal / correction）** ｜ 目的：错误评分可纠正 ｜ 面向谁：被评者 ｜ 接口形状：规划 `kernel.trust.appeal(id,{why,evidence})`（⛔ 未实现）＋与 08 的申诉面衔接（08-§2.2-B ✓） ｜ 可调控：`vmu.trust.appealWindowMs`／`appealNeedsEvidence` ｜ 错误码：`VMU_TRUST_APPEAL_WINDOW`（拟增）／`VMU_STATE` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：更正**不删除**原记录（追加更正条目 ✓，与 07 的"只增"纪律一致） ｜ 依赖：评分＋07 归档 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
 - **防串谋（collusion resistance）** ｜ 目的：互相刷分的联盟必须可被发现 ｜ 面向谁：审计者 ｜ 接口形状：规划 `kernel.trust.collusionScan({windowMs})`（⛔ 未实现） ｜ 可调控：`vmu.collusion.*` ｜ 错误码：`VMU_COLLUSION_SUSPECTED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：扫描**只报告**（`suspects[]`＋理由），**不自动惩罚** ✗；判据示例：同一小圈互评占比、时间聚集、互为唯一证据源 ✓ ｜ 依赖：评分＋审计 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
-- **声誉的用途边界** ｜ 目的：说清"声誉能干什么" ｜ 面向谁：全体 ｜ 接口形状：**只是约定＋判定点**（规划 `society.trustUsage` ⛔ 未实现） ｜ 可调控：`vmu.trust.useIn{selection,arbitration,auction}` ｜ 错误码：`VMU_NOT_PERMITTED` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：允许的用途＝**候选人排序／仲裁者排序／报价加权**；**禁止**用途＝票权、席位、预算、否决（S-3 ✓） ｜ 依赖：评分 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
+- **声誉的用途边界** ｜ 目的：说清"声誉能干什么" ｜ 面向谁：全体 ｜ 接口形状：**只是约定＋判定点**（规划 `society.trustUsage` ⛔ 未实现） ｜ 可调控：`vmu.trust.useIn*`（**轮 109 更正**：此前写作 `useIn{selection,arbitration,auction}` ✗ ⇒ 生成器只匹配到裸名 `useIn` ✓ ⇒ **改用通配** ✓；三个全名见下表 ✓） ｜ 错误码：`VMU_NOT_PERMITTED` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：允许的用途＝**候选人排序／仲裁者排序／报价加权**；**禁止**用途＝票权、席位、预算、否决（S-3 ✓） ｜ 依赖：评分 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
 
 ---
 
@@ -269,7 +269,7 @@
 | `vmu.recruit.maxCandidates` | int | 0 | ≥0 | 所办 | 立即 | 候选人上限（0＝不限） |
 | `vmu.recruit.decideBy` | enum | `manager` | `manager｜vote｜auction｜human` | pack | 下轮 | 选拔裁决方式 |
 | `vmu.recruit.needsHuman` | bool | false | bool | pack | 立即 | 是否必须人类批准 |
-| `vmu.recruit.evidenceRequired` | bool | true | bool | pack | 立即 | 候选人必须带能力证据 |
+| `vmu.recruit.requireEvidence` | bool | `false` | bool | pack | 立即 | 候选人必须带能力证据（**轮 109 更正**：此前写作孪生名 `evidenceRequired` ✗ 且默认写成 `true` ✗ ⇒ **实现的默认是 `false`** ✓；真实键是 `requireEvidence` ✓） |
 
 ### 20.2 委托与转委（`vmu.delegation.*`）
 
