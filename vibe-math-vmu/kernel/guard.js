@@ -122,7 +122,18 @@ export function readMaxPathLength(settings) {
 
 /** `vmu.safety.followSymlinks`: default false（docs/20 §4）. */
 export function readFollowSymlinks(settings) {
+  // ROUND 229: TWO DECLARED NAMES FOR ONE KNOB - `vmu.safety.followSymlinks` (docs/20, wired in round 217) and
+  // `vmu.paths.followSymlinks` (docs/07). A repository audit already recorded this shape as a defect, so the precedence is
+  // explicit rather than accidental: the durability volume's key wins when it is DECLARED, and the security one decides
+  // otherwise. Both default to false, so an instance that declares neither behaves exactly as before.
+  if (settings && settings['vmu.paths.followSymlinks'] !== undefined) return settings['vmu.paths.followSymlinks'] === true
   return settings ? settings['vmu.safety.followSymlinks'] === true : false
+}
+
+/** `vmu.paths.allowedRoots`: the roots a write may land in. Empty means the policy computes them, as before. */
+export function readAllowedRoots(settings) {
+  const a = settings ? settings['vmu.paths.allowedRoots'] : undefined
+  return Array.isArray(a) ? a.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : []
 }
 
 /** `vmu.safety.netPolicy`: default `off` - the volume says "默认禁网 + 显式放行". */
@@ -231,6 +242,15 @@ export function guardWriteExtended({ settings = {}, root, target, kind = 'write'
       'shorten the path, or raise vmu.safety.maxPathLength')
   }
   const g = guardWrite({ settings, root, target, kind })
+  // ROUND 229: vmu.paths.allowedRoots NARROWS what the policy already allows - it can only remove permission, never add it.
+  const declaredRoots = readAllowedRoots(settings)
+  if (declaredRoots.length > 0) {
+    const allowed = declaredRoots.map((r) => normalize(String(r)))
+    if (!inside(allowed, g.path)) {
+      throw refuse('VMU_NOT_PERMITTED', 'the ' + kind + ' is outside vmu.paths.allowedRoots: ' + g.path,
+        'declared roots: ' + allowed.join(', ') + ' (vmu.paths.allowedRoots narrows the policy; it cannot widen it)')
+    }
+  }
   if (!readFollowSymlinks(settings)) {
     const abs = g.path
     const parts = String(abs).split(/[\\/]/).filter(Boolean)

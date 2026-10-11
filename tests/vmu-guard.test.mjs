@@ -7,7 +7,7 @@ import {
   describePolicy, guardWrite, guardSpawnCwd, memoryCeilingExceeded,
   readPathPolicy, readMemoryCeilingMb, sharedRootFor,
   guardWriteExtended, guardExec, cpuBudgetExceeded, requiresApproval, capabilityOf,
-  readKillSwitch, readMaxPathLength, readFollowSymlinks, readNetPolicy, readExecAllowlist,
+  readKillSwitch, readMaxPathLength, readFollowSymlinks, readNetPolicy, readExecAllowlist, readAllowedRoots,
 } from '../vibe-math-vmu/kernel/guard.js'
 import { createLibrary } from '../vibe-math-vmu/kernel/library.js'
 
@@ -124,5 +124,33 @@ console.log('')
   ok(capabilityOf(S({}), { slot: 'external-reviewer', capability: 'write-artifacts' }).granted === false, 'capabilityMatrix[-]: it does NOT grant a write')
   ok(capabilityOf(S({}), { slot: 'unknown-slot', capability: 'read-artifacts' }).granted === false, 'capabilityMatrix[-]: an unlisted slot is closed by default')
 }
+
+// ── ROUND 229: the two vmu.paths.* keys, and the second name for one knob ─────────────────────────────────────
+{
+  // NOTE: this suite already declares `S` in an earlier block, so this section uses its own name.
+  const PS = (extra) => Object.assign({ 'vmu.core.enabled': true }, extra)
+  ok(readFollowSymlinks(PS({})) === false, 'paths.followSymlinks[default]: with nothing declared it is off')
+  ok(readFollowSymlinks(PS({ 'vmu.safety.followSymlinks': true })) === true,
+    'paths.followSymlinks[+]: the SECURITY name still works on its own (round 217 behaviour preserved)')
+  ok(readFollowSymlinks(PS({ 'vmu.paths.followSymlinks': true })) === true, 'paths.followSymlinks[+]: the durability name works on its own')
+  ok(readFollowSymlinks(PS({ 'vmu.paths.followSymlinks': false, 'vmu.safety.followSymlinks': true })) === false,
+    'paths.followSymlinks[precedence]: when BOTH are declared the paths key wins - the precedence is explicit, not accidental')
+  ok(readFollowSymlinks(PS({ 'vmu.paths.followSymlinks': true, 'vmu.safety.followSymlinks': false })) === true,
+    'paths.followSymlinks[precedence]: and it wins in the other direction too')
+
+  const wide = PS({ 'vmu.safety.pathPolicy': 'workspace+shared' })
+  ok(guardWriteExtended({ settings: wide, root: process.cwd(), target: 'a.txt' }).ok === true,
+    'paths.allowedRoots[baseline]: without the key the policy decides, as before')
+  const narrowed = PS({ 'vmu.safety.pathPolicy': 'workspace+shared', 'vmu.paths.allowedRoots': [process.cwd() + '/Sub'] })
+  ok(guardWriteExtended({ settings: narrowed, root: process.cwd(), target: 'Sub/inside.txt' }).ok === true,
+    'paths.allowedRoots[+]: a write under a declared root passes')
+  let outside = null
+  try { guardWriteExtended({ settings: narrowed, root: process.cwd(), target: 'elsewhere.txt' }) } catch (e) { outside = e && e.code }
+  ok(outside === 'VMU_NOT_PERMITTED', 'paths.allowedRoots[-]: a write outside the declared roots is refused by name', String(outside))
+  ok(readAllowedRoots(PS({ 'vmu.paths.allowedRoots': ['  ', 'x', ''] })).join(',') === 'x',
+    'paths.allowedRoots: blank entries are dropped rather than kept as empty roots')
+  ok(readAllowedRoots(PS({})).length === 0, 'paths.allowedRoots[empty]: an empty declaration means the policy computes the roots')
+}
+
 console.log('=== VMU GUARD: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) process.exit(1)
