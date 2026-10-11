@@ -23,6 +23,70 @@ const okGate = { check: () => ({ ok: true }) }
 const failGate = (missing) => ({ check: () => ({ ok: false, missing }) })
 
 // ① L 编号一一对应（回显；自造名 ⇒ 拒）
+// ⑨ ROUND 246: the research-integrity declarations - pre-registration and significance (wired in round 245)
+test('pre-registration is checked field by field, and locked when declared', () => {
+  const S = {
+    'vmu.lifecycle.searchSources': ['pubmed', 'arxiv'],
+    'vmu.lifecycle.topicRequiredFields': ['title', 'question'],
+    'vmu.lifecycle.variableRoles': ['exposure', 'outcome'],
+    'vmu.lifecycle.dedupeKeys': ['doi'],
+    'vmu.lifecycle.preregLock': true,
+  }
+  const lc = createLifecycle({ settings: mk(S).settings, clock: () => 0 })
+
+  const incomplete = lc.prereg({ studyId: 's1', topic: { title: 'T' }, searches: ['pubmed'] })
+  assert.equal(incomplete.code, 'VMU_LIFECYCLE_PREREG_INCOMPLETE')
+  assert.deepEqual(incomplete.missing, ['question'], 'the missing FIELD is named, not merely counted')
+
+  const missingSource = lc.prereg({ studyId: 's1', topic: { title: 'T', question: 'Q' }, searches: ['pubmed'] })
+  assert.equal(missingSource.code, 'VMU_LIFECYCLE_PREREG_INCOMPLETE')
+  assert.deepEqual(missingSource.missing, ['arxiv'], 'the missing SEARCH SOURCE is named too')
+
+  const badRole = lc.prereg({ studyId: 's1', topic: { title: 'T', question: 'Q' }, searches: ['pubmed', 'arxiv'], variables: [{ name: 'x', role: 'nonsense' }] })
+  assert.equal(badRole.code, 'VMU_LIFECYCLE_PREREG_INCOMPLETE')
+  assert.deepEqual(badRole.missing, ['x'], 'a variable outside the declared roles is named')
+
+  const good = lc.prereg({ studyId: 's1', topic: { title: 'T', question: 'Q' }, searches: ['pubmed', 'arxiv'], variables: [{ name: 'x', role: 'exposure' }], keys: { doi: '10.1/a' } })
+  assert.equal(good.ok, true)
+  assert.equal(good.locked, true, 'the receipt says the registration is locked')
+
+  const relock = lc.prereg({ studyId: 's1', topic: { title: 'T', question: 'Q' }, searches: ['pubmed', 'arxiv'] })
+  assert.equal(relock.code, 'VMU_LIFECYCLE_PREREG_LOCKED', 'preregLock=true refuses a second registration')
+
+  const dup = lc.prereg({ studyId: 's2', topic: { title: 'T', question: 'Q' }, searches: ['pubmed', 'arxiv'], keys: { doi: '10.1/a' } })
+  assert.equal(dup.code, 'VMU_LIFECYCLE_PREREG_DUPLICATE')
+  assert.deepEqual(dup.duplicate, ['doi'], 'the DUPLICATED key is named')
+  const other = lc.prereg({ studyId: 's3', topic: { title: 'T', question: 'Q' }, searches: ['pubmed', 'arxiv'], keys: { doi: '10.1/b' } })
+  assert.equal(other.ok, true, 'a different value under the same key is fine')
+  passed += 1
+})
+
+test('significance is judged against the declared alpha and power target', () => {
+  const lc = createLifecycle({ settings: mk({ 'vmu.lifecycle.alpha': 0.01, 'vmu.lifecycle.powerTarget': 0.9 }).settings, clock: () => 0 })
+  const above = lc.judge({ p: 0.02 })
+  assert.equal(above.alpha, 0.01)
+  assert.equal(above.significant, false, 'above alpha is NOT significant - and that is a result, not a failure')
+  assert.equal(lc.judge({ p: 0.005 }).significant, true)
+  assert.equal(lc.judge({ power: 0.7 }).powerMet, false, 'below the power target is reported')
+  assert.equal(lc.judge({ power: 0.95 }).powerMet, true)
+  assert.equal(lc.judge({}).code, 'VMU_META_VALIDATION_FAILED', 'a judgement with nothing to judge is refused')
+  const fallback = createLifecycle({ settings: mk({ 'vmu.lifecycle.alpha': 9, 'vmu.lifecycle.powerTarget': 0 }).settings, clock: () => 0 })
+  assert.equal(fallback.status().alpha, 0.05, 'an out-of-range alpha falls back instead of changing meaning silently')
+  assert.equal(fallback.status().powerTarget, 0.8)
+  passed += 1
+})
+
+test('every lifecycle key is read through the settings view, and reported in status', () => {
+  const made = mk({ 'vmu.lifecycle.preregLock': true, 'vmu.lifecycle.alpha': 0.02 })
+  const lc = createLifecycle({ settings: made.settings, clock: () => 0 })
+  lc.status()
+  for (const k of LIFECYCLE_KEYS) assert.ok(made.reads.includes(k), 'status() reads ' + k)
+  assert.equal(LIFECYCLE_KEYS.length, 11, 'the face declares all eleven keys')
+  assert.equal(lc.status().preregLock, true)
+  assert.equal(lc.status().alpha, 0.02)
+  passed += 1
+})
+
 test('stages() echoes the declared L ids; inventing a stage name is refused', () => {
   const lc = createLifecycle({ settings: mk({}).settings, clock: () => 0 })
   const s = lc.stages()
