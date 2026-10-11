@@ -20,7 +20,10 @@ const ok = (cond, name, detail) => {
 const DAY = 86400000
 
 let NOW = 1_000_000
-const mk = (settings = {}) => createFunding({ clock: () => NOW, settings })
+/** ROUND 174: the shared universal recorder - see tests/helpers/settings-recorder.mjs. */
+import { makeRecorder } from './helpers/settings-recorder.mjs'
+const ALL = []
+const mk = (settings = {}) => { const rec = makeRecorder(settings); ALL.push(rec.reads); return createFunding({ clock: () => NOW, settings: rec.settings }) }
 /** A funded account with one line, ready for expenses. */
 const funded = (settings = {}, line = { category: 'travel', amountMinor: 100000 }) => {
   NOW = 1_000_000
@@ -375,6 +378,17 @@ const ev = { receipt: 'r-1' }
   const badShare = h.f.request({ account: h.id, amountMinor: 100, costShareMinor: 33.5 })
   ok(badShare.ok === false && badShare.code === 'VMU_AMOUNT_NOT_INTEGER',
     'a FRACTIONAL cost share is refused by name', JSON.stringify(badShare).slice(0, 170))
+}
+
+/**
+ * ROUND 174: the precondition behind "every key is wired", asserted and measurable. The tail was printed FIRST, and it
+ * matters here: this suite HAS an early-exit branch (`if (failed === 0) { print; exit(0) }`), so the block must sit
+ * BEFORE it - inside it the condition has already been evaluated and a failure could no longer stop the exit.
+ */
+{
+  const reads = ALL.flat()
+  const unread = WIRED_KEYS.filter((k) => reads.indexOf(k) === -1)
+  ok(unread.length === 0, 'every wired key was really READ by the suite, not merely listed (' + (unread.length ? 'unread: ' + unread.join(', ') : reads.length + ' reads recorded') + ')')
 }
 
 if (failed === 0) {

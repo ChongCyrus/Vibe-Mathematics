@@ -15,7 +15,14 @@ const codeOf = (fn) => { try { fn(); return null } catch (e) { return e && e.cod
 const refusalOf = (res) => (res && res.ok === false ? res : null)
 
 const ROSTER = { roster: () => [{ id: 'a' }, { id: 'b' }] }
-const mk = (settings, extra = {}) => createGrant(Object.assign({ clock: () => 1000, log: () => {}, settings, members: ROSTER }, extra))
+/** ROUND 174: the shared universal recorder - see tests/helpers/settings-recorder.mjs. */
+import { makeRecorder } from './helpers/settings-recorder.mjs'
+const ALL = []
+const mk = (settings, extra = {}) => {
+  const rec = makeRecorder(settings)
+  ALL.push(rec.reads)
+  return createGrant(Object.assign({ clock: () => 1000, log: () => {}, settings: rec.settings, members: ROSTER }, extra))
+}
 
 // ── 1. the zero mechanism, asserted NEGATIVELY first ─────────────────────────────────────────────────────────
 {
@@ -125,6 +132,14 @@ const mk = (settings, extra = {}) => createGrant(Object.assign({ clock: () => 10
   ok(createGrant({}).status().at === 0, 'a factory without a clock uses the deterministic default, not the wall clock')
   ok(refusalOf(createGrant({ clock: 'not-a-function' })).code === 'VMU_INVALID_ARGUMENT',
     'and a clock that is not a function is refused by name rather than failing later')
+}
+
+// ROUND 174: the precondition behind "every key is wired", asserted and measurable. The tail was printed before this:
+// there is no early-exit branch here, so the block goes just before the summary.
+{
+  const reads = ALL.flat()
+  const unread = WIRED_KEYS.filter((k) => reads.indexOf(k) === -1)
+  ok(unread.length === 0, 'every wired key was really READ by the suite, not merely listed (' + (unread.length ? 'unread: ' + unread.join(', ') : reads.length + ' reads recorded') + ')')
 }
 
 console.log('=== VMU GRANT: ' + passed + ' passed, ' + failures.length + ' failed ===')
