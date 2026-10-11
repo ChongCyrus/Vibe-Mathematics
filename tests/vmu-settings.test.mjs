@@ -108,6 +108,15 @@ ok(defs.filter((d) => d.hot === 'H3').length > 0, 'the read-only class is actual
       read.get(k).add(f.replace(REPO + '\\', '').replace(REPO + '/', ''))
     }
   }
+  // ROUND 99: a name that is the PREFIX of another name is a namespace, not a key. The universe to judge
+  // against is the schema keys plus everything this scan saw, because a root whose longer key is not in the
+  // kernel text at all (`vmu.math.ad` above `vmu.math.ad.backend`) is only recognisable that way. Two passes.
+  {
+    const universe = new Set([...keys, ...read.keys()])
+    for (const k of [...read.keys()]) {
+      if ([...universe].some((o) => o !== k && o.startsWith(k + "."))) read.delete(k)
+    }
+  }
   ok(read.size >= 20, 'the read-side scan found the keys the runtime actually reads', read.size)
   // `declared` lives inside section 1b's block; `keys` is the top-level list of every schema key.
   const declaredKeys = new Set(keys)

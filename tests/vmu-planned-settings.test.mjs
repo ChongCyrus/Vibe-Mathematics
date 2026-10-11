@@ -68,6 +68,19 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
       bogus.add(k + ' (' + vol.name + ')')
     }
   }
+  // ROUND 99: a documented name that is the PREFIX of another documented name is a namespace, not a key -
+  // `vmu.store.remote` above `vmu.store.remote.url`. The set to judge against is the documentation own names,
+  // because that is where both the root and its keys live. Two passes: collect them, then drop the roots.
+  {
+    const documented = new Set()
+    for (const vol of docVolumes(DOCS)) {
+      for (const m of vol.text.matchAll(/\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b/g)) documented.add(m[0])
+    }
+    for (const entry of [...bogus]) {
+      const k = entry.split(" (")[0]
+      if ([...documented].some((o) => o !== k && o.startsWith(k + "."))) bogus.delete(entry)
+    }
+  }
   ok(bogus.size === 0, 'after composing core + planned, NO documented vmu.* name is left unregistered (audit group G)',
     [...bogus].slice(0, 8).join(' | '))
 }
@@ -158,6 +171,15 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
   }
   // SOURCES: mirrors excluded — that is what the generator counts, so the numbers must match exactly.
   for (const vol of docVolumes(DOCS)) if (!mirrorNames.has(vol.name)) classify(vol)
+  // ROUND 99: the `ns` set above only knows namespaces derived from CORE keys, so a planned key that is the
+  // PREFIX of ANOTHER planned key (`vmu.math.ad` of `vmu.math.ad.backend`) was filed as a setting. A root is
+  // not something a pack can set: it is re-filed as a namespace, which keeps the category stats honest.
+  {
+    const plannedAll = new Set(buckets.planned)
+    for (const k of [...buckets.planned]) {
+      if ([...plannedAll].some((o) => o !== k && o.startsWith(k + "."))) { buckets.planned.delete(k); buckets.namespace.add(k) }
+    }
+  }
   const missingFromPlanned = [...buckets.planned].filter((k) => !PLANNED_DEFS.some((d) => d.key === k))
   ok(missingFromPlanned.length === 0, 'the "planned" bucket is exactly the committed registry (recomputed independently)',
     missingFromPlanned.slice(0, 5).join(','))

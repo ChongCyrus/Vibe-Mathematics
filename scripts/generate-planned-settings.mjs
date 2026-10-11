@@ -168,7 +168,13 @@ export function collectPlannedDefs({ volumes, core, namespaces, mirrors }) {
       planned.set(k, decl)
     }
   }
-  const keys = [...planned.keys()].sort()
+  // ROUND 99: a planned key may be the NAMESPACE of another planned key (`vmu.math.ad` of `vmu.math.ad.backend`).
+  // The nsSet guard above only knows namespaces derived from CORE keys, so those survived as if they were
+  // settings. The three gates that scan text now apply the same rule against the set their names live in, which
+  // is what makes this filter safe: removing a root without them left it in neither registry (measured, round 97).
+  const allPlanned = new Set(planned.keys())
+  const isNamespaceRoot = (k) => [...allPlanned].some((o) => o !== k && o.startsWith(k + "."))
+  const keys = [...planned.keys()].filter((k) => !isNamespaceRoot(k)).sort()
   const defs = keys.map((key) => {
     const vols = [...planned.get(key)].sort()                                    // deterministic order
     const first = vols[0]

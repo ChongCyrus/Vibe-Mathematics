@@ -261,6 +261,21 @@ ok(unregisteredInCode.length === 0,
       bogus.add(k + ' (' + name + ')')
     }
   }
+  // ROUND 99: same rule and same set as the planned gate, but this file imports the file helpers rather than
+  // `docVolumes` - calling that helper here is what made an earlier attempt throw a ReferenceError instead of
+  // failing an assertion, which is a much worse way to learn that a name is missing.
+  {
+    const documented = new Set()
+    for (const f of readdirSync(join(VMU, "docs"))) {
+      if (!f.endsWith(".md")) continue
+      const text = readFileSync(join(VMU, "docs", f), "utf8")
+      for (const m of text.matchAll(/\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b/g)) documented.add(m[0])
+    }
+    for (const entry of [...bogus]) {
+      const k = entry.split(" (")[0]
+      if ([...documented].some((o) => o !== k && o.startsWith(k + "."))) bogus.delete(entry)
+    }
+  }
   ok(bogus.size === 0, 'every vmu.* key named in the docs exists in settings/schema.js', [...bogus].slice(0, 8).join(' | '))
 
   const settingsDoc = docText.get(DOC_FILES.find((n) => /^04-/.test(n))) || ''
