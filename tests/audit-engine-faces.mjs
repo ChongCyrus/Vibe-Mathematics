@@ -14,7 +14,7 @@
  */
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve, isAbsolute } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -50,7 +50,15 @@ const resolveFirst = (...cmds) => { for (const c of cmds) { const p = which(c); 
 
 const PY = resolveFirst(String(process.env.LOCALAPPDATA || '') + '\\Programs\\Python\\Python312\\python.exe', 'python', 'python3')
 const RC = resolveFirst('C:\\Program Files\\R\\R-4.6.1\\bin\\Rscript.exe', 'Rscript')
-const LEAN = resolveFirst('D:\\.elan\\bin\\lean.exe', 'lean')
+let LEAN = resolveFirst('D:\\.elan\\bin\\lean.exe', 'lean')
+// An elan launcher without a downloaded compiler is not a usable Lean toolchain.
+// Do not let this read-only probe install one implicitly.
+let leanUnavailable = 'lean did not resolve'
+if (LEAN && /[\\/]\.elan[\\/]bin[\\/]lean(?:\.exe)?$/i.test(LEAN)) {
+  const toolchains = join(dirname(dirname(LEAN)), 'toolchains')
+  const installed = existsSync(toolchains) && readdirSync(toolchains).some(name => existsSync(join(toolchains, name, 'bin', process.platform === 'win32' ? 'lean.exe' : 'lean')))
+  if (!installed) { LEAN = null; leanUnavailable = 'elan launcher exists, but no compiler is installed; no download attempted' }
+}
 const XELATEX = resolveFirst('D:\\texlive\\2025\\bin\\windows\\xelatex.exe', 'xelatex')
 
 // ── shared helpers ────────────────────────────────────────────────────────────────────────────────
@@ -149,6 +157,7 @@ if (!PY && !RC) {
     }
     M.registerMathComputation(host)
     const call = (args) => handlers[M.MATH_TOOL_NAME](args, { id: 'probeProj', session: { id: 'S', header: { cwd: WS } } })
+    ok(engines.length > 0, 'numeric engine checks have at least one discovered engine')
     for (const eng of engines) {
       const p = await call({ op: 'probe', engine: eng })
       const entry = (p.engines || []).find((e) => e.name === eng)
@@ -166,7 +175,7 @@ if (!PY && !RC) {
 // ── FACE 2: Lean — real lean through the REGISTERED tool handler ──────────────────────────────────
 console.log('=== FACE 2: Lean (real toolchain; registered-handler contract) ===')
 if (!LEAN) {
-  skip('lean', 'lean did not resolve (PATH + D:\\.elan\\bin\\lean.exe checked)')
+  skip('lean', leanUnavailable)
 } else {
   const WS = mkdtempSync(join(tmpdir(), 'engine-lean-'))
   try {
@@ -177,9 +186,9 @@ if (!LEAN) {
     const bad = 'theorem t : 1 + 1 = 3 := rfl\n'
     writeFileSync(join(WS, 'Good.lean'), Buffer.from(good, 'utf8'))
     writeFileSync(join(WS, 'Bad.lean'), Buffer.from(bad, 'utf8'))
-    const g = spawnSync(LEAN, [join(WS, 'Good.lean')], { encoding: 'utf8', windowsHide: true })
+    const g = spawnSync(LEAN, [join(WS, 'Good.lean')], { encoding: 'utf8', windowsHide: true, timeout: 20000 })
     ok(g.status === 0, '★ engine-faces lean: a correct one-line theorem compiles with the REAL toolchain (exit 0; ' + JSON.stringify(String(g.stdout || '').trim().slice(0, 60)) + ')')
-    const b = spawnSync(LEAN, [join(WS, 'Bad.lean')], { encoding: 'utf8', windowsHide: true })
+    const b = spawnSync(LEAN, [join(WS, 'Bad.lean')], { encoding: 'utf8', windowsHide: true, timeout: 20000 })
     const bMsg = String(b.stderr || '') + String(b.stdout || '')
     ok(b.status !== 0 && /error/i.test(bMsg),
       '★ engine-faces lean: a WRONG proof fails with the toolchain\'s own error (exit ' + String(b.status) + '; ' + JSON.stringify(bMsg.split('\n')[0].slice(0, 80)) + ')')

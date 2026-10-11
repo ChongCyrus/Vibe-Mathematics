@@ -1,14 +1,11 @@
-import { readFileSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 // Falsifiability for tests/audit-v5-prompt-duplication.mjs: a SINGLE-SITE edit in ONE prompt copy
 // must turn the equality check (and the wording checks) NAMED-red, while the unmutated run is green.
-const SUITE = 'D:/wd/vibemath开发/Vibe-Mathematics/tests/audit-v5-prompt-duplication.mjs'
-const YML = 'D:/wd/vibemath开发/Vibe-Mathematics/vibe-math-v5/agent.cordis.yml'
+const SUITE = new URL('./audit-v5-prompt-duplication.mjs', import.meta.url)
 const run = (env) => {
-  const r = spawnSync(process.execPath, [SUITE, '--json'], { encoding: 'utf8', timeout: 120000, env: Object.assign({}, process.env, env || {}) })
+  const r = spawnSync(process.execPath, [fileURLToPath(SUITE), '--json'], { encoding: 'utf8', timeout: 120000, env: Object.assign({}, process.env, env || {}) })
   let parsed = null
   try { parsed = JSON.parse(r.stdout) } catch (e) { /* reported below */ }
   return { code: r.status, parsed, out: String(r.stdout || '') + String(r.stderr || '') }

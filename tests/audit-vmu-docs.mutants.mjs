@@ -14,6 +14,7 @@
 //
 // Usage: node tests/audit-vmu-docs.mutants.mjs
 
+// Explicit filters preserve every fixture while avoiding Node's Windows native directory-copy/ACL path.
 import { cpSync, mkdtempSync, readFileSync, writeFileSync, rmSync, mkdirSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -43,7 +44,7 @@ const runAudit = (docsDir, codeDir) => {
 const freshCopy = (tag) => {
   const dir = join(scratch, tag)
   mkdirSync(dir, { recursive: true })
-  cpSync(REAL_DOCS, join(dir, 'docs'), { recursive: true })
+  cpSync(REAL_DOCS, join(dir, 'docs'), { recursive: true, filter: () => true })
   cpSync(REAL_VMU, join(dir, 'vmu'), { recursive: true, filter: (src) => !src.includes('docs') })
   // The modules import each other with relative paths, and settings/schema.js imports ../math-computation.js,
   // so the copy keeps the package shape (vmu/kernel/..., vmu/settings/..., vmu/math-computation.js).

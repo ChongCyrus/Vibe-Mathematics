@@ -2,9 +2,10 @@
 // prompt copy of ONE preset must turn both the equality check and the clause check NAMED-red, while
 // the unmutated control stays green.
 import { spawnSync } from 'node:child_process'
-const SUITE = 'D:/wd/vibemath开发/Vibe-Mathematics/tests/audit-prompt-duplication.mjs'
+import { fileURLToPath } from 'node:url'
+const SUITE = new URL('./audit-prompt-duplication.mjs', import.meta.url)
 const run = (env) => {
-  const r = spawnSync(process.execPath, [SUITE, '--json'], { encoding: 'utf8', timeout: 120000, env: Object.assign({}, process.env, env || {}) })
+  const r = spawnSync(process.execPath, [fileURLToPath(SUITE), '--json'], { encoding: 'utf8', timeout: 120000, env: Object.assign({}, process.env, env || {}) })
   let parsed = null
   try { parsed = JSON.parse(r.stdout) } catch (e) { /* reported */ }
   return { code: r.status, parsed, out: String(r.stdout || '') + String(r.stderr || '') }

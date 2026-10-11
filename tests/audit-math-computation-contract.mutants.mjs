@@ -21,12 +21,16 @@ const CHILD_TIMEOUT_MS = Number(process.env.MUTANT_CHILD_TIMEOUT_MS || 120000)
 const TIMES = []
 const hangs = []
 const skipped = []
+// Copy only the inputs read by this audit; research data and local checkouts are not fixtures.
 function copyTree(from, to) {
-  mkdirSync(to, { recursive: true })
-  for (const e of readdirSync(from, { withFileTypes: true })) {
-    if (e.name === '.git' || e.name === 'node_modules' || e.name === '_oneoff') continue
-    if (e.isDirectory()) copyTree(join(from, e.name), join(to, e.name))
-    else copyFileSync(join(from, e.name), join(to, e.name))
+  const files = ['README.md', 'README.en.md', 'docs/math-computation.md', 'vibe-math-v2/math-computation.js']
+  for (const name of ['v2', 'v3', 'v4', 'v5', 'v5r']) {
+    files.push('vibe-math-' + name + '/vibe-math-' + name + '.js', 'vibe-math-' + name + '/agent.cordis.yml')
+  }
+  for (const file of files) {
+    const target = join(to, file)
+    mkdirSync(dirname(target), { recursive: true })
+    copyFileSync(join(from, file), target)
   }
 }
 function runFamily(f) {

@@ -2570,9 +2570,9 @@ console.log('\n[49] G4: the assign writes the task exactly once, and a stale CAS
   const s0 = src.indexOf('async function taskAssign(')
   const s1 = src.indexOf('\n    async function ', s0 + 10)
   const body = src.slice(s0, s1 > 0 ? s1 : s0 + 4000)
-  const writes = (body.match(/putTask\(/g) || []).length
+  const writes = (body.match(/\b(?:putTask\s*\(|commit\s*\(\s*EV\.task\b)/g) || []).length
   assert(writes === 0,
-    '★★★ [G4] the assign path issues NO second, unprotected task write (found ' + writes + ' putTask( in taskAssign) — ' +
+    '★★★ [G4] the assign path issues NO second, unprotected task write (found ' + writes + ' direct task writes in taskAssign) — ' +
     'a second write reusing the just-read revision is the lost-update window')
   assert(/assignedBy: isOffice\(memberId\)/.test(body),
     '★ the metadata goes through the CAS call itself (assignedBy/why/acceptance passed as the internal meta argument)')
@@ -2966,14 +2966,16 @@ console.log('\n[56] context reduction requires a saved checkpoint and a real hos
   async function contextHost(service) {
     const h = makeHost({ pluginModule, compaction: service })
     await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+    assert((await h.callTool('vibe_v5_status', {})).members.length > 0, 'context checks have real members')
     assert((await h.callTool('vibe_v5_status', {})).members.every(m => m.contextPct === null && m.context.estimateSource === 'unknown' && m.context.completedRounds === 0 && m.context.roundsSinceCompaction === 0), 'missing reports do not fabricate context estimates')
     await h.settleSpawns()
     // A real host announces the live member agent before delivering its continuation.
+    assert((h.listeners['subagent/start'] || []).length > 0, 'context test has member-start listeners')
     for (const fn of h.listeners['subagent/start'] || []) fn({ id: h.childOf('r-1') })
     await h.callTool('vibe_v5_set', { compactAfterRounds: 3, compactThreshold: 99, activityTimeoutMs: 30 })
     return h
   }
-  async function end(h, reply) { const w = await h.peekWakeOf('r-1', 3000); assert(!!w, 'context test reaches a completed member turn'); if (w) { for (const fn of h.listeners['subagent/start'] || []) fn({ id: w.childId }); h.fireEnd(w.childId, reply) } await sleep(10) }
+  async function end(h, reply) { const w = await h.peekWakeOf('r-1', 3000); assert(!!w, 'context test reaches a completed member turn'); if (w) { assert((h.listeners['subagent/start'] || []).length > 0, 'member-start listener exists'); for (const fn of h.listeners['subagent/start'] || []) fn({ id: w.childId }); h.fireEnd(w.childId, reply) } await sleep(10) }
   async function member(h) { return (await h.callTool('vibe_v5_status', {})).members.find(m => m.id === 'r-1') }
   let h, calls = 0, savedBefore = false
   h = await contextHost({ async compactNow(agent) {
@@ -3040,10 +3042,12 @@ console.log('\n[56] context reduction requires a saved checkpoint and a real hos
     'a lower end-of-turn estimate cannot cancel a previously triggered compression')
   const failManual = makeHost({ pluginModule, failWriteOn: /Shared[\\/]Protocol\.md$/ })
   await failManual.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  assert(failManual.spawns.length > 0, 'charter check has actual members')
   assert(failManual.spawns.every(sp => !sp.persona.includes('【v5 简明章程')) && failManual.spawns.some(sp => JSON.stringify(sp.request).includes('手册')),
     'unreadable protocol falls back to the full charter and reports the downgrade')
   const failRead = makeHost({ pluginModule, failReadOn: /Shared[\\/]Protocol\.md$/ })
   await failRead.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  assert(failRead.spawns.length > 0, 'charter check has actual members')
   assert(failRead.spawns.every(sp => !sp.persona.includes('【v5 简明章程')) && existsSync(join(failRead.WS, rootRel, 'Shared/Protocol.md')), 'handbook readability is verified even after a successful write')
   const ownHost = await contextHost({ async compactNow() { throw new Error('WRONG_ROOT_HOST') } })
   ownHost.childAgent(ownHost.childOf('r-1')).ctx = { get: () => ({ async compactNow() { return { success: true } } }) }
@@ -3052,6 +3056,7 @@ console.log('\n[56] context reduction requires a saved checkpoint and a real hos
   const fullProblem = '完整问题条件：' + '对任意实数 x，'.repeat(900) + 'END-PROBLEM-CONDITION'
   const longHost = makeHost({ pluginModule })
   await longHost.callTool('vibe_v5_start', { problem: fullProblem, researcherCount: 1 })
+  assert(longHost.spawns.length > 0, 'charter check has actual members')
   assert(longHost.spawns.every(sp => sp.persona.includes(fullProblem)), 'charter budgets never truncate the mathematical problem')
   await h.callTool('vibe_v5_stop', {})
   const statePath = join(h.WS, rootRel, 'State/institute.v5state.json')
