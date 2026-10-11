@@ -344,6 +344,8 @@
 | `VMU_RECRUIT_SEATS_EXCEEDED` | 席位**超员**（含已开岗位预留；实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须给**当前/上限** ✓） |
 | `VMU_RECRUIT_NOT_APPLIED` | 对**未申请**的岗位发出录用（实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须给可用申请入口 ✓） |
 | `VMU_RECRUIT_REASON_REQUIRED` | 评分/拒绝**缺理由**（实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须点明缺哪一项 ✓） |
+| `VMU_RECRUIT_NEEDS_HUMAN` | **必须人类批准**（`vmu.recruit.needsHuman=true` 而无具名批准者；实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须给批准者入口 ✓） |
+| `VMU_RECRUIT_PROBATION_PERMISSIONS` | 试用期权限**超出上位权限**（非子集；实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须点名越界权限 ✓） |
 | `VMU_ROLE_SEPARATION_VIOLATED` | **职责分离**被违反（同一实例兼任 `separationPairs` 的两半；招聘与晋升两条路都拦 ✓，实现于 `kernel/recruit.js` ✓） | 任职（17） | ✅（须给**冲突的两半**与当事人 ✓） |
 | `VMU_ROLE_TERM_NOT_RENEWABLE` | 任期**不可续**（`vmu.roles.termRenewable=false` ✓） | 任职（17） | ✅（须给**席位**与被告知者 ✓） |
 | `VMU_ROLE_RECALL_QUORUM` | **罢免支持率不足**（低于 `vmu.roles.recallQuorum` ✓） | 任职（17） | ✅（须给**现值／阈值** ✓） |
@@ -733,7 +735,6 @@
 | `VMU_RECALL_QUORUM_NOT_MET` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_RECRUIT_CLOSED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_RECRUIT_EVIDENCE_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
-| `VMU_RECRUIT_NEEDS_HUMAN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 14 | ⛔ |
 | `VMU_REGISTRATION_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 14 | ⛔ |
 | `VMU_RESOURCE_EXCEEDED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_RETENTION_CONFLICT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
@@ -787,7 +788,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **280** 个码，**逐行**给出状态 ✓：其中 **242** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **282** 个码，**逐行**给出状态 ✓：其中 **244** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **38** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1013,9 +1014,11 @@
 | `VMU_RATE_LIMITED` | **已实现 ✓** | `vibe-math-vmu/kernel/ratelimit.js` | 代码里有该码字符串 ✓ |
 | `VMU_RECOUNT_MISMATCH` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_RECOUNT_SCOPE_DENIED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
+| `VMU_RECRUIT_NEEDS_HUMAN` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |
 | `VMU_RECRUIT_NOT_APPLIED` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |
 | `VMU_RECRUIT_OFFER_EXPIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |
 | `VMU_RECRUIT_PROBATION_NOT_DUE` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |
+| `VMU_RECRUIT_PROBATION_PERMISSIONS` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |
 | `VMU_RECRUIT_REASON_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |
 | `VMU_RECRUIT_SEATS_EXCEEDED` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |
 | `VMU_RECRUIT_SLOT_UNKNOWN` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |

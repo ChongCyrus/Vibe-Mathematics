@@ -188,6 +188,12 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
       const superior = members && typeof members.permissionsOf === 'function' ? members.permissionsOf(memberId) : null
       if (Array.isArray(superior)) overflow = granted.filter((p) => !superior.includes(p))
     }
+    // ROUND 268 (volume 17 §L268): the declaration is a SUBSET of the superior permissions. With a superior view supplied, an
+    // overflow is refused BY NAME - the key is now registered, so the refusal is permitted again.
+    if (overflow.length) {
+      throw refuse('VMU_RECRUIT_PROBATION_PERMISSIONS', 'vmu.recruit.probationPermissions is not a subset of the superior set: ' + overflow.join(', '),
+        'declare only permissions the post itself has, or clear the key', { overflow, memberId })
+    }
     const permissionVerdict = { declared: granted.slice(), comparable: granted.length > 0, overflow }
     const s = staff.get(memberId)
     if (!s) throw refuse('VMU_RECRUIT_NOT_APPLIED', 'no staff record for ' + String(memberId), 'accept() first', { memberId })
