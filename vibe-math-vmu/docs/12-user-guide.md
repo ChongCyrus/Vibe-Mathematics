@@ -449,6 +449,11 @@ vmu.prompt.*: { sections: [ <段名>… ], order: <整数> }
 
 **规划 ✗ 尚未接线（目标形态，未实现）**：论文编译工具、证明检查工具、复现包工具、统计分析工具、归档迁移工具 —— 以上均为 **roadmap 项**，**当前不可调用**。
 
+★ **轮 164 更正：这句话在【工具层】成立 ✓，在【能力层】不成立 ✗ —— 必须分两层说** ✓✓。
+**① 工具层 ✓（原文这半句是对的）**：宿主工具面**恰好 9 个** ✓（`vibe_vmu_status`／`set`／`middleware`／`records`／`script`／`pack`／`control`／`meeting`／`task` ✓，见 `host.js` 的 `TOOL_NAMES` ✓），其中**没有**编译／证明检查／复现包／归档迁移工具 ✓ ⇒ **作为宿主工具，它们确实不可调用** ✓。
+**② 能力层 ✗（原文过宽 ✗）**：这五类**能力早已由内核模块承载** ✓✓（**实测** ✓）：**论文编译** ⇒ `paper.js`（`createPaper` ✓）＋ `publication.js`（`createPublication` ✓）；**证明检查** ⇒ `formal.js`（`createFormal` ✓）＋ `lean.js`（`createLeanFace` ✓）；**复现包** ⇒ `repropack.js`（`createReproPack` ✓）；**统计分析** ⇒ `mathtools.js`（`createMathTools` ✓）＋ `mathjobs.js`（`createMathJobs` ✓）；**归档迁移** ⇒ `migration.js`（`createMigration` ✓）＋ `projmigrate.js`（`createProjectionMigrator` ✓）—— ★ **每一个都在门禁的"零机制矩阵"里被逐行裁定过** ✓（**各带具名拒** ✓）。
+⇒ **正确读法** ✓：**"能力已在内核模块里承载 ✓；尚未作为【宿主工具】暴露 ✗"** —— **这正是 vmu 的分层：框架给能力，工具是暴露面** ✓。
+
 ---
 
 ## 16. 排障（错误码 → 处置）
