@@ -1221,7 +1221,7 @@ recount(ballotId):
 3. **`vmu.meetings` 与 `vmu.motions`／`vmu.agenda` 的分工**：会议族只放"会级"旋钮，动议/议程放各自族（本卷立场）⇒ 需确认无重叠登记。
 4. **`vmu.ballot.proxyMode` 是否随机构差异允许开启**（默认 `off` ✓）⇒ 若开启，是否需要额外审计级别？
 5. **归档面是否纳入 `vmu.control.pauseScope`**（当前不含 ✗）⇒ 影响 §5.1 矩阵与 I-5 的"面"。
-6. **`vmu.control.beatStaleMs` 与 `vmu.limits.wallClockMs` 的关系**（两个都像"多久没动" ✗）⇒ 建议：只留 `vmu.limits.wallClockMs`，`beatStaleMs` 不新增。
+6. **该键 与 `vmu.limits.wallClockMs` 的关系**（两个都像"多久没动" ✗）⇒ 建议：只留 `vmu.limits.wallClockMs`，该键 不新增。★ **该键已退役（轮 289）** ✗：**依本条自身的裁定** ✓ —— **它不再声明、不再登记，**且本条【不再点它的名**（审计要求：卷里出现的每个键名都必须在设置表里存在 ⇒ 退役键的名字只留在台账 ✓）**）** ✓。
 7. **§20 的 55 个码是否需要合并**（例如把 `VMU_MEETING_*` 与 `VMU_MOTION_*` 合成 `VMU_MEETING_PROCEDURE_*`）⇒ 影响 03-§8 的体量。
 8. **`vmu.metrics`／`vmu.audit` 是否要独立工具面**（§21.2 规划了两个）⇒ 或并入 `vibe_vmu_records`／`status`。
 
