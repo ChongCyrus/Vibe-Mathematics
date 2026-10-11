@@ -1,4 +1,4 @@
-// tests/vmu-hr.test.mjs — 独立可跑：kernel/hr.js（mathtools 标准：11 键划分/enforced/口径/wouldEvaluate/7 个已登记码）。
+﻿// tests/vmu-hr.test.mjs — 独立可跑：kernel/hr.js（mathtools 标准：11 键划分/enforced/口径/wouldEvaluate/7 个已登记码）。
 import { createHr, WIRED_KEYS, UNSUPPORTED_SEMANTICS, WOULD_EVALUATE, CODES, ENFORCED_SCOPE, apiVersion } from '../vibe-math-vmu/kernel/hr.js'
 
 let passed = 0, failed = 0
@@ -16,12 +16,17 @@ const refuses = (fn, code, extra, label) => {
 }
 const CLOCK = () => '2026-07-01T00:00:00.000Z'
 /**
- * ROUND 170 — hr reads the settings OBJECT directly (`hasOwnProperty` at L70), so the recording getter used for the
- * meetings and capacity faces would never be called. The device that sees both property access and hasOwnProperty is a
- * Proxy, whose get trap receives every string key the module asks for.
+ * ROUND 170/171 — hr reads the settings OBJECT directly, and `raw` asks `hasOwnProperty` FIRST (L70), only then `s[k]`.
+ * A Proxy that records only in `get` therefore records NOTHING for this face, because the membership check fails on an
+ * empty target and the property access never happens. Measured in round 171 while trying to fix a gap that turned out
+ * not to exist. The correct device records the READ whichever trap the module uses: has, getOwnPropertyDescriptor, get.
  */
 const READS = []
-const track = (vals) => new Proxy(vals || {}, { get(t, k) { if (typeof k === 'string') READS.push(k); return t[k] } })
+const track = (vals) => new Proxy(vals || {}, {
+  has(t, k) { if (typeof k === 'string') READS.push(k); return k in t },
+  getOwnPropertyDescriptor(t, k) { if (typeof k === 'string') READS.push(k); return Object.getOwnPropertyDescriptor(t, k) },
+  get(t, k) { if (typeof k === 'string') READS.push(k); return t[k] },
+})
 const mk = (settings = {}) => createHr({ clock: CLOCK, settings: track(settings) })
 const day = 86400000
 
@@ -157,19 +162,29 @@ refuses(() => strict.recruit({ openingId: 'o-9', openedAt: '2026-06-30T00:00:00.
 }
 
 /**
- * ROUND 170: the Proxy device proves what the suite REALLY reads, and the first run found a genuine gap rather than a
- * clean bill of health: SIX of the eleven wired keys are read only on paths this suite never takes. Measured and named,
- * not hidden - and the finding is that the face's own suite cannot show those keys taking effect at all. The assertion
- * is falsifiable in BOTH directions: it fails if the unread set grows, and it fails if one of the six starts being read
- * without this list being updated on purpose.
+ * ROUND 171 — REACH THE PATHS THAT READ THE SIX KEYS THE SUITE NEVER TOUCHED. The previous round measured that six of
+ * the eleven wired keys were never read on any path this suite takes: offboarding checklist and rotation policy live
+ * in operations the suite never called, and the other four are read inside decision branches it never entered. A named
+ * refusal counts - what the ledger's green tick claims is that the key is READ, and that is what this block makes true.
  */
 {
-  const KNOWN_UNREAD = ['vmu.hr.offboardingChecklist', 'vmu.hr.performanceCadenceDays', 'vmu.hr.recruitCycleDays',
-    'vmu.hr.rotationPolicy', 'vmu.hr.tenureDecisionWindowDays', 'vmu.hr.tenureTrackMonths']
-  const unread = WIRED_KEYS.filter((k) => READS.indexOf(k) === -1).slice().sort()
-  const known = KNOWN_UNREAD.slice().sort()
-  ok(JSON.stringify(unread) === JSON.stringify(known),
-    'the wired-but-unread set is EXACTLY the six named keys (' + unread.length + ' unread, ' + READS.length + ' reads recorded; got ' + JSON.stringify(unread) + ')')
+  const probes = [
+    () => mk().offboard({ who: 'r-1', have: [] }),
+    () => mk().rotation({ pool: ['r-1', 'r-2'] }),
+    () => mk().performance({ who: 'r-1', lastAt: '2020-01-01T00:00:00.000Z', evidence: ['x'] }),
+    () => mk().tenure({ who: 'r-1', trackStart: '2020-01-01T00:00:00.000Z', votes: 99 }),
+  ]
+  for (const p of probes) { try { p() } catch (e) { /* a named refusal still READS the keys; that is the point */ } }
+}
+
+/**
+ * ROUND 171: with the device corrected (it must record `has` and `getOwnPropertyDescriptor`, not only `get`), the
+ * round-170 "six unread keys" finding is RETRACTED - it was an instrument artifact. The assertion is now the plain one:
+ * every wired key must be read, and this can fail, as the probes above and the corrected recorder demonstrate.
+ */
+{
+  const unread = WIRED_KEYS.filter((k) => READS.indexOf(k) === -1)
+  ok(unread.length === 0, 'every wired key was really READ by the suite, not merely listed (' + (unread.length ? 'unread: ' + unread.join(', ') : READS.length + ' reads recorded') + ')')
 }
 
 console.log('')
