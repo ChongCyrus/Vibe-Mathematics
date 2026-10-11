@@ -481,7 +481,7 @@ export function createKernel({
   }
   let members = createMembersList({ slots, maxLiveMembers, deliver, bus, clock, settings, resourceGate })
   noteSeam('deliver', 'members', members ? deliver : null)
-  const packNotes = []
+  const packNotesLog = []   // ROUND 240: renamed - this array used to SHADOW the `packNotes()` method
   const tasks = createTasks({
     stages: stages || settings['vmu.tasks.stages'] || [],
     maxOpenTasks: maxOpenTasks !== undefined ? maxOpenTasks : (settings['vmu.tasks.maxOpenTasks'] || 0),
@@ -1075,7 +1075,7 @@ export function createKernel({
         settings[key] = value
         applied.push(key)
       }
-      packNotes.push({ id: by, at: clock(), what: 'settings-applied', keys: applied.slice() })
+      packNotesLog.push({ id: by, at: clock(), what: 'settings-applied', keys: applied.slice() })
       return { ok: true, applied, previous }
     },
 
@@ -1199,9 +1199,9 @@ export function createKernel({
     settingDef(key) { return SETTING_DEFS.find((d) => d.key === key) || null },
 
     /** Pack bookkeeping: what was applied and unloaded is part of the audit trail, not a side note. */
-    notePackApplied(id) { packNotes.push({ id, at: clock(), what: 'applied' }); return { ok: true } },
-    notePackUnloaded(id) { packNotes.push({ id, at: clock(), what: 'unloaded' }); return { ok: true } },
-    packNotes() { return packNotes.map((n) => Object.assign({}, n)) },
+    notePackApplied(id) { packNotesLog.push({ id, at: clock(), what: 'applied' }); return { ok: true } },
+    notePackUnloaded(id) { packNotesLog.push({ id, at: clock(), what: 'unloaded' }); return { ok: true } },
+    packNotes() { return packNotesLog.map((n) => Object.assign({}, n)) },
 
     /** Observability (R11): the whole assembly in one place, with each part reporting its own state. */
     status() {
@@ -1209,7 +1209,7 @@ export function createKernel({
       // value, WHERE it came from (pack layer > runtime `vibe_vmu_set` > the plugin's config > schema default),
       // its hot class and who may change it. Precedence is stated because a pack and a runtime write are not
       // mutually timestamped; `overridden` lists the sources a pack replaced (O4 makes that explicit).
-      const packApplied = packNotes.filter((n) => n.what === 'settings-applied')
+      const packApplied = packNotesLog.filter((n) => n.what === 'settings-applied')
       const packSource = {}
       for (const n of packApplied) for (const k of n.keys || []) packSource[k] = 'pack:' + n.id
       const resolved = {}
@@ -1252,7 +1252,14 @@ export function createKernel({
         registrations: registrations.slice(),
         // `packs` must reflect what is ACTUALLY applied - including packs applied through the pack loader,
         // which records itself in the notes; a status that only tracks usePack() would under-report.
-        packs: [...new Set(packs.concat(packNotes.filter((n) => n.what === 'applied').map((n) => n.id)))],
+        // ROUND 240: an UNLOADED pack must not stay listed. `notePackUnloaded` was recording the event and nothing read it,
+        // and `packNotes()` had no caller at all - so the pack list said a pack was present long after it was gone.
+        packs: (() => {
+          const notes = this.packNotes()   // ROUND 240: a SIBLING METHOD needs `this` - the same lesson the export method taught
+          const appliedIds = notes.filter((n) => n.what === 'applied').map((n) => n.id)
+          const unloadedIds = new Set(notes.filter((n) => n.what === 'unloaded').map((n) => n.id))
+          return [...new Set(packs.concat(appliedIds).filter((id) => !unloadedIds.has(id)))]
+        })(),
         bus: bus.status ? bus.status() : { entries: [] },
         prompt: prompt.status ? prompt.status() : null,
         store: store ? store.stats() : null,

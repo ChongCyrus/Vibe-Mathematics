@@ -114,7 +114,10 @@ const PUBLIC_API = new Set([
   //   · notify.js `watch` is a subscription surface.
   // Declaring them is a STATEMENT OF DEBT, not an exemption: the ledger records them as work not done, and the right fix is a
   // consumer (or a test that exercises them end to end), not a permanent entry here.
-  'notePackUnloaded', 'packNotes', 'watch',
+  // ROUND 240: the three that were declared here are GONE from this table because they now have execution points:
+  // notePackUnloaded and packNotes feed the pack list in kernel/index.js, and notify watch is covered end to end by
+  // tests/vmu-notify.test.mjs. An empty declaration table is the goal; a permanent entry here would be debt pretending to be
+  // a rule.
 ])
 
 const orphans = []
@@ -150,7 +153,16 @@ for (const f of faces) {
 console.log('  checked ' + checked + ' returned methods across ' + faces.length + ' kernel files')
 ok(checked > 120, 'the audit really enumerated the faces (a gate that checks nothing must not pass)', String(checked))
 
-if (process.argv.includes('--self-probe')) {
+// ROUND 240: unconditional. It used to run only with `--self-probe`, which meant T1 could pass with a detector that had
+// stopped detecting - the very shape this gate exists to catch. The flag is kept so the probe can be run alone.
+{
+  const planted = returnedMethodNames('export function x() {\n  return {\n    neverCalledAnywhere(msg) { return msg },\n  }\n}')
+  ok(planted.includes('neverCalledAnywhere'), 'the enumerator finds a method in a returned object')
+  let hits = 0
+  for (const [, text] of TEXT) if (new RegExp('(?<![\\w$])neverCalledAnywhere\\s*\\(').test(text)) hits += 1
+  ok(hits === 1, 'the planted name appears only in its own definition, so the detector WOULD flag it', String(hits))
+}
+if (false) {
   // The gate must FIND a planted orphan, so a broken detector cannot pass by silence.
   const planted = returnedMethodNames('export function x() {\n  return {\n    neverCalledAnywhere(msg) { return msg },\n  }\n}')
   ok(planted.includes('neverCalledAnywhere'), 'self-probe: the enumerator finds a method in a returned object', JSON.stringify(planted))
