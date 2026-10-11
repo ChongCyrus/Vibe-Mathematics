@@ -66,7 +66,7 @@ const EXPECT = {
   pack: G('具名拒（带 code）', '第 26 轮已修 ✓：实测拒绝带 **`VMU_PACK_MISSING`**（曾误标"不带 code" ✗）'),
   'script-bridge': G('具名拒（带 code）', '第 26 轮已修 ✓：实测拒绝带 **`VMU_INVALID_ARGUMENT`**（同上 ✗）'),
   // ── 在途新模块：**必须被裁定** ✓（第 33 轮规则收紧 ✓）—— 从模块实测反推 ✓
-  instruments: G('ok 或 object', '仪器面：零机制 ⇒ **台账可读、不拒**（`status()` 返回 `ok:true` ＋ `partition` ✓）；其 17 键中 14 已接／3 未接（`ledgerDir`／`dataCaptureRef`／`downtimePolicy` ✗）'),
+  instruments: G('ok 或 object', '仪器面：零机制 ⇒ **台账可读、不拒**（`status()` 返回 `ok:true` ＋ `partition` ✓）；**键数由本生成器实测输出** ✓（note 只写形状与理由 ✗）'),
   // **按实测升级为真期望**（第 34 轮 ✓；零机制**不传 settings** 实测 ✓，**不编造** ✗）
   conference: G('ok 或 object', '实测 `open()` ⇒ **ok**（`enforced=[2] fired=[2]` ⇒ 零机制**按默认阶梯开成、放行** ✓，与 `meetings` 同口径 ✓）'),
   ip: G('ok 或 object', '实测 `list()` ⇒ **ok**（`enforced=[1] fired=[0] dropped=0` ⇒ 清单可读、**不拒** ✓）'),
@@ -75,22 +75,22 @@ const EXPECT = {
   // refusal carrying vmU.store.root and the scope field. compliance and funding never reached the matrix as
   // unadjudicated because their probes need arguments, so they are counted under PROBE_NEEDS_ARGS, not decided
   // here by invention.
-  storepolicy: G('ok 或 object', '零机制 `status()` 实测 **ok**，自曝 `enforced=[0] fired=[0] enforcedScope=evaluated-so-far` ⇒ 策略面**可读、不拒** ✓；**本行探针之外另测**：真实 `write()` 缺 root ⇒ **返回型具名拒** `VMU_INVALID_ARGUMENT` 并列 `vmu.store.root` ✓（15/15 键已接 ✓）—— 旧 note 曾写"status 带 backend/rooted/durable/remote" ✗，与实测不符，已按实测改写 ✓'),
+  storepolicy: G('ok 或 object', '零机制 `status()` 实测 **ok**，自曝 `enforced=[0] fired=[0] enforcedScope=evaluated-so-far` ⇒ 策略面**可读、不拒** ✓；**本行探针之外另测**：真实 `write()` 缺 root ⇒ **返回型具名拒** `VMU_INVALID_ARGUMENT` 并列 `vmu.store.root` ✓（**键数由本生成器实测输出** ✓）—— 旧 note 曾写"status 带 backend/rooted/durable/remote" ✗，与实测不符，已按实测改写 ✓'),
   // These two landed while this round was in flight and their probes DID reach the matrix, so the "appears without
   // an adjudication" rule flags them one at a time. They are registered as EXPLICIT to-dos with what is already
   // known, rather than given expectations nobody measured - "undecided" is visible and counted, "missing" is not.
-  funding: G('ok 或 object', '实测 `list()` ⇒ **ok**（`enforced=[0] fired=[0]` ⇒ 零机制清单可读、**不拒**；16/16 键已接 ✓）'),
-  compliance: G('ok 或 object', '实测 `status()` ⇒ **ok**（`enforcedScope=evaluated-so-far` ⇒ 状态可读、**不拒**；16 wired ＋ 1 planned，`exportControlCheck` 归 domaingate ✓）'),
+  funding: G('ok 或 object', '实测 `list()` ⇒ **ok**（`enforced=[0] fired=[0]` ⇒ 零机制清单可读、**不拒**；**键数由本生成器实测输出** ✓）'),
+  compliance: G('ok 或 object', '实测 `status()` ⇒ **ok**（`enforcedScope=evaluated-so-far` ⇒ 状态可读、**不拒**；`exportControlCheck` 归 domaingate ✓）'),
   // Round 35: capacity / hr landed while this round was in flight and their probes DID reach the matrix (both
   // answered), so they are adjudicated from the MEASUREMENT above, not from invention:
   //   capacity · list()  ⇒ ok, enforced=[0] fired=[0] enforcedScope=evaluated-so-far
   //   hr       · status() ⇒ ok, enforcedScope=evaluated-so-far
-  capacity: G('ok 或 object', '实测 `list()` ⇒ **ok**（`enforced=[0] fired=[0] enforcedScope=evaluated-so-far` ⇒ 零机制**清单可读、不拒** ✓；12/12 键已接 ✓）'),
-  hr: G('ok 或 object', '实测 `status()` ⇒ **ok**（`enforcedScope=evaluated-so-far` ⇒ 零机制**状态可读、不拒** ✓；11/11 键已接、**零新码** ✓）'),
+  capacity: G('ok 或 object', '实测 `list()` ⇒ **ok**（`enforced=[0] fired=[0] enforcedScope=evaluated-so-far` ⇒ 零机制**清单可读、不拒** ✓；**键数由本生成器实测输出** ✓）'),
+  hr: G('ok 或 object', '实测 `status()` ⇒ **ok**（`enforcedScope=evaluated-so-far` ⇒ 零机制**状态可读、不拒** ✓；**键数由本生成器实测输出**、**零新码** ✓）'),
   // Round 34/35: the migration face landed at the end of the round. Its probe needs a plan payload
   // (from/to/backend/steps) that the automatic op choice cannot invent, so it is registered as an explicit
   // to-do rather than given an invented expectation - the batch that fills probe arguments will upgrade it.
-  migration: G('PROBE_NEEDS_ARGS', '缺：迁移计划入参（`from`／`to`／`backend`／`steps` ✓）；**作者已导出带完整 args 的 `GATE_SCENARIOS`** ⇒ 下一批补参时应可直接实测 ✓（11/11 键已接、**零新码**、全部返回型拒绝 ✓）'),
+  migration: G('PROBE_NEEDS_ARGS', '缺：迁移计划入参（`from`／`to`／`backend`／`steps` ✓）；**作者已导出带完整 args 的 `GATE_SCENARIOS`** ⇒ 下一批补参时应可直接实测 ✓（**键数由本生成器实测输出**、**零新码**、全部返回型拒绝 ✓）'),
   guard: G('EXPECT_NA', '非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）'),
   // Round 90-91: the grant face (temporary, scoped, single-command authorization, ported from the v5r line). Its
   // zero mechanism is `vmu.grant.enabled=false`, where NOTHING may be granted or checked and every attempt is
@@ -295,6 +295,35 @@ const main = async () => {
     console.log('=== ZERO-MECHANISM SELFTEST: ' + (bad === 0 ? 'GREEN' : 'RED') + ' (' + bad + ' failed) ===')
     process.exit(bad > 0 ? 1 : 0)
   }
+  // ── ROUND 150：计划键积压【实测输出】，且 EXPECT 里的【手写键数】直接判红 ✓✓ ──────────────────────────
+  {
+    const { readdirSync } = await import('node:fs')
+    const { pathToFileURL } = await import('node:url')
+    const found = []
+    for (const f of readdirSync(KERNEL).filter((x) => x.endsWith('.js')).sort()) {
+      try {
+        const mod = await import(pathToFileURL(join(KERNEL, f)).href)
+        for (const [name, val] of Object.entries(mod)) {
+          if (!Array.isArray(val) || !/PLANNED|UNWIRED|NOT_WIRED/i.test(name)) continue
+          found.push({ file: f, name, n: val.length, keys: val.map((e) => (Array.isArray(e) ? String(e[0]) : String(e))) })
+        }
+      } catch (e) { /* 模块自身 import 失败是矩阵的发现，不是这个计数器的 */ }
+    }
+    const total = found.reduce((a, b) => a + b.n, 0)
+    console.log('planned backlog (measured, module-side): ' + found.length + ' face(s), ' + total + ' entries'
+      + (found.length ? ' :: ' + found.map((r) => r.file.replace('.js', '') + '=' + r.n).join(' ') : ' :: none'))
+    /**
+     * ★ 为什么要把这条做成红 ✗✓：EXPECT 的 note 里写"17 键中 14 已接／3 未接"这类**手写键数**，会在键一移动的
+     * 那一刻变成假话 —— 本轮实测就抓到这样一条：那个面已经 17/0，而这句话还留在这里一个轮次 ✗。
+     * note 只该写**形状与理由** ✓；键数由上面那行**从模块自己身上**数出来 ✓。
+     */
+    for (const [k, e] of Object.entries(EXPECT)) {
+      if (e && /(\d+\s*\/\s*\d+(\s*键已接)?|\d+\s*(已接|未接|wired|planned))|\d+\s*键已接/.test(String(e.note || ''))) {
+        mism.push(k + ': EXPECT 的 note 里写着**手写键数**（"…已接…／…未接…"）✗ ⇒ 键数由本生成器实测输出 ✓，note 只写形状与理由 ✓')
+      }
+    }
+  }
+
   if (args.includes('--write')) {
     const doc = readFileSync(DOC, 'utf8')
     const next = doc.includes(BEGIN) ? doc.replace(new RegExp(BEGIN + '[\\s\\S]*?' + END), block) : doc.trimEnd() + '\n\n' + block + '\n'
