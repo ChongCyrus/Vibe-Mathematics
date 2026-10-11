@@ -66,6 +66,18 @@ export const SCHEMA_FILE = join(VMU_DIR, 'settings', 'schema.js')
 export const OUT_FILE = join(VMU_DIR, 'settings', 'planned.js')
 
 /** Key shape — VERBATIM from the audit's group G. */
+/**
+ * A RETIREMENT line names a key in order to say it is GONE. PROVEN by minimal reproduction: without this rule a retired key is
+ * re-declared by the very sentence that retires it, and the retirement can never take effect.
+ */
+export const RETIREMENT_RE = /已删除|已退役|已移除|retired|deleted/
+export const isRetirementLine = (line) => RETIREMENT_RE.test(line)
+/** The LINE a match sits on, so the rule is about sentences rather than a character window. */
+export const lineAt = (text, index) => {
+  const start = text.lastIndexOf('\n', Math.max(0, index - 1)) + 1
+  const end = text.indexOf('\n', index)
+  return text.slice(start, end === -1 ? text.length : end)
+}
 export const KEY_RE = /\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b/g
 /** Broader scan: also catches two-segment namespaces so they can be COUNTED as an exclusion, not silently lost. */
 export const BROAD_RE = /\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)*\b/g
@@ -166,6 +178,8 @@ export function collectPlannedDefs({ volumes, core, namespaces, mirrors }) {
   for (const vol of volumes) {
     const isMirror = mirrorNames.has(vol.name)
     for (const m of vol.text.matchAll(BROAD_RE)) {
+    // ROUND 260: a mention on a retirement line is a record of removal, not a declaration.
+    if (isRetirementLine(lineAt(vol.text, m.index || 0))) continue
       if (isMirror) { mirrorMentions++; continue }                               // generated mirror: not a source
       mentions++
       const k = m[0]
