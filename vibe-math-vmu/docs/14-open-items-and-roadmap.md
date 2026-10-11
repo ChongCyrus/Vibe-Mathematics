@@ -1438,6 +1438,14 @@
   **可操作做法** ✓：**下一区间用最小复现测 `wiredKeysOf()`（该生成器【导出】了它 ✓）对 `records.js` 的返回值，即可确定是【文件集】还是【形态】的问题** ✓ —— **测导出函数比猜规则可靠** ✓。
   **未做（明写 ✗）**：★★ **该键的 `planned`／`wired` 标签矛盾未解** ✗（**证据与两个已排除项已如上 ✓**）；**`vmu.reviewers.acknowledgement` 仍未接** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 283：接 `vmu.reviewers.acknowledgement`（评审族的最后一键）；`reviewers` 族由"部分"转为【全部接线】；未接线 108 → 107** ✓✓
+  ★★★ **① 契约直接来自卷 16 §L302** ✓✓：**`vmu.reviewers.acknowledgement`（布尔，默认 `false`，"可选'致谢/报酬'登记"）** ✓ ⇒ **实现为一个【可选登记面】** ✓：**默认关闭 ⇒ `acknowledge()` 具名拒 `VMU_NOT_PERMITTED`** ✓；**声明开启 ⇒ 接受条目（`kind` 限于 `acknowledgement`／`remuneration` ✓，条目与 `trace` 留痕一并保存 ✓）** ✓；**无 `reviewerId` ⇒ 具名拒** ✓。**四条分支真机验证全对** ✓ ⇒ **`VMU REVIEWERS: 25 passed, 0 failed`** ✓。
+  ★★★ **② 一处同步错误当场被套件抓住** ✓✓：**我把"七条声明都被读到"的断言改用【新建的 `on` 实例】** ✗ ⇒ **它只读过 `acknowledgement` 一条 ⇒ 断言红** ✓ ⇒ **改为【两面的键并集】** ✓ ⇒ **绿** ✓。★ **这正是"每条已接线键必须真被读到"那道守卫的价值** ✓。
+  ★★★ **③ `reconsiderFloor` 的正面处理：查清了它到底缺什么** ✓✓：**`docs/08` L217 写着"复议门槛＝规划（`vmu.meetings.reconsiderFloor` **由 pack 消费**）"** ✓，**而 `packs/institute-min.js` L51 **确实已经设置它**（`'vmu.meetings.reconsiderFloor': 0` ✓）⇒ ★★ **"pack 层示例"其实是【存在的** ✗✓**）** ✓；**`docs/04` 的承载体列也写着该 pack** ✓。★★ **真正缺的是【内核侧那个模型**：`docs/04` 明写"**生效门槛 = max(对象标准, 它, 上限)**"，并附轮 202 的实测结论"**本面没有该模型的载体** ✗ —— `fileAppeal()` 是纯程序性的"** ✓**）** ✓ ⇒ ★★★ **本轮裁定：建它等于【发明那个模型】（"对象标准"与"上限"两者本面均无定义 ✓），故【不建】，改为把复活条件写精确** ✓。
+  ★★★ **④ 顺带量清了 `meetings` 族的记账形态** ✓✓（**这正是第 ⑮ 条要求的** ✓）：**`WIRED_KEYS.length === 51`** ✓、**"partition the 56 declared keys"** ✓、**`Object.keys(st.keys).length === 51`** ✓、**"every wired key was really READ by the suite"（L643）** ✓ ⇒ ★★ **故该族若有键要接，需同时动【三处计数 ＋ 套件的读取清单】** ✓（**51 → 52 等** ✓）—— **这条信息给下一次动手省一整轮** ✓。
+  **门禁与证据** ✓：**`VMU REVIEWERS: 25/0`** ✓；**`reviewers.js` 语法 0 ✓**；**未接线 108 → 107** ✓；**待本轮生成链与 T1** ✓。
+  **未做（明写 ✗）**：★★★ **`vmu.meetings.reconsiderFloor` 仍未接** ✗ —— **复活条件已精确** ✓：**先定义【"对象标准"与"上限"】**（**该族三个计数要同步 ✓**），**再在 `meetings.js` 里按 `max(对象标准, 它, 上限)` 计算生效门槛** ✓；**该族的 5 条计划键整体未动** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 

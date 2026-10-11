@@ -30,12 +30,15 @@ export function createReviewers({ clock = () => 0, log = () => {}, settings = {}
     maxLoad: Number.isInteger(settings['vmu.reviewers.maxLoad']) && settings['vmu.reviewers.maxLoad'] > 0 ? settings['vmu.reviewers.maxLoad'] : 3,
     coiPolicy: COI_POLICIES.includes(settings['vmu.reviewers.coiPolicy']) ? settings['vmu.reviewers.coiPolicy'] : 'deny',
     blindUnbindRequiresReason: settings['vmu.reviewers.blindUnbindRequiresReason'] !== false,
+    // ROUND 283 (volume 16 §L302): optional acknowledgement/remuneration registration, off by default.
+    acknowledgement: settings['vmu.reviewers.acknowledgement'] === true,
   })
 
   const reviewers = new Map()      // id -> { id, expertise[], conflicts[] }
   const assignments = new Map()    // assignmentId -> { id, reviewerId, submissionId, mode, blind, assignedAt, unboundAt, unbindReason, unboundBy }
   const trace = []
-  const counts = { registered: 0, assigned: 0, refused: 0, unbound: 0 }
+  const acknowledgements = []   // ROUND 283: only ever written when the declaration allows it
+  const counts = { registered: 0, assigned: 0, refused: 0, unbound: 0, acknowledged: 0 }
   const keysUsed = new Set()
 
   const say = (row) => { try { log(row) } catch (e) { /* a throwing log seam must not corrupt the face */ } }
@@ -126,6 +129,28 @@ export function createReviewers({ clock = () => 0, log = () => {}, settings = {}
       note: c.quorum === 0 ? 'vmu.review.quorum=0: no quorum is required' : null }
   }
 
+  /**
+   * ROUND 283 (`vmu.reviewers.acknowledgement`): an OPTIONAL acknowledgement/remuneration entry. Declared off, registering one is
+   * refused by name - the declaration decides, and nothing silent happens either way.
+   */
+  function acknowledge({ reviewerId = null, submissionId = null, kind = 'acknowledgement', note = null } = {}) {
+    const c = cfg()
+    keysUsed.add('vmu.reviewers.acknowledgement')
+    if (!c.acknowledgement) {
+      return deny('VMU_NOT_PERMITTED', 'vmu.reviewers.acknowledgement=false: this register is off',
+        'set vmu.reviewers.acknowledgement=true to keep acknowledgement or remuneration entries')
+    }
+    const rid = str(reviewerId).trim()
+    if (!rid) return deny('VMU_INVALID_ARGUMENT', 'an acknowledgement needs a reviewerId', 'pass { reviewerId, submissionId, kind }')
+    const row = { reviewerId: rid, submissionId: str(submissionId) || null,
+      kind: ['acknowledgement', 'remuneration'].includes(kind) ? kind : 'acknowledgement',
+      note: typeof note === 'string' && note.trim() ? note.trim() : null, at: clock() }
+    acknowledgements.push(row)
+    counts.acknowledged += 1
+    trace.push({ at: clock(), type: 'reviewers/acknowledged', reviewerId: rid, kind: row.kind })
+    return Object.assign({ ok: true }, row)
+  }
+
   /** Read-only. `trace()` is the audit surface rule ② demands. */
   const reviewerView = (id) => { const r = reviewers.get(str(id)); return r ? Object.assign({}, r, { load: loadOf(r.id) }) : null }
   const status = () => ({
@@ -137,5 +162,6 @@ export function createReviewers({ clock = () => 0, log = () => {}, settings = {}
   })
   const traceView = (limit = 100) => trace.slice(-limit)
 
-  return { apiVersion, register, assign, unbind, quorumMet, reviewerView, status, trace: traceView, keysUsed: () => [...keysUsed].sort() }
+  return { apiVersion, register, assign, unbind, acknowledge, acknowledgements: (limit = 100) => acknowledgements.slice(-limit),
+    quorumMet, reviewerView, status, trace: traceView, keysUsed: () => [...keysUsed].sort() }
 }

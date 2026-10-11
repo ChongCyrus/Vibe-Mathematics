@@ -105,7 +105,7 @@
 | `vmu.legalentity` | 6 | **6** | `legalentity.js`(6) | ★ **已接线 ✓（轮 276 建面：`registerEntity`／`bindAccount`／`validateInvoice`，五码齐 ✓）** |
 | `vmu.license` | 4 | **4** | `publication.js`(4) | ★ **已接线 ✓（轮 274 接线：`default`／`incompatiblePolicy` 执法，`codeDefault`／`attributionRequired` 报出）** |
 | `vmu.review` | 4 | **4** | `records.js`(1) ＋ `reviewers.js`(3) | ★ **已接线 ✓（轮 278 `rebuttalRequired` ＋ 轮 279 `mode`／`conflictPolicy`／`quorum`）** |
-| `vmu.reviewers` | 4 | **3** | `reviewers.js`(3) | ⚠️ **部分（轮 279 建面：`maxLoad`／`coiPolicy`／`blindUnbindRequiresReason` ✓；余 `acknowledgement` 契约未定）** |
+| `vmu.reviewers` | 4 | **4** | `reviewers.js`(4) | ★ **已接线 ✓（轮 279 建面三键 ＋ 轮 283 `acknowledgement`；契约取自 16 卷 §L302）** |
 
 > **结论（轮 271 重测）** ✓✓：**本卷的"13 个族全部为规划"【早已不成立】** ✗；**21 族里【17 族已全部接线】（14 族原本如此 ＋ `outreach`／`recruit`／`tasks` 三族在本轮修正分母后亦为全接线 ✓）** ✓；**部分族只剩 `collab` 一个（7/9 ✓）** ✓；**已无【真实缺口】族** ✓ —— **`license`(4) 于轮 274 接线 ✓、`legalentity`(6) 于轮 276 建面接线 ✓、`review`(4) 于轮 278 转为【部分】（`rebuttalRequired` 已接 ✓，余 3 条待审稿人库）** ✓ ✓。★ **两次"分母错了"的教训** ✓：**① 轮 267 接了 4 条键却【漏更此表** ✗**）**；**② 轮 270 剔除了 5 个服务名，分母随之变化** ✓ ⇒ **本表是【实测的】，就必须在每次接线或登记更正后重测 ✓**。**上文各处的"✗ 计划"应以本表为准** ✓。
 

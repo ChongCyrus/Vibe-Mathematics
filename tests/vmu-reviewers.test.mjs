@@ -78,8 +78,15 @@ void INV
   f.assign({ reviewerId: 'r', submissionId: 's1' })
   f.unbind({ assignmentId: 'ra-1', reason: 'r' })
   f.quorumMet({ submissionId: 's1', completed: 1 })
-  const used = f.status().keysUsed
-  ok(used.length === 6, 'all six declarations are accounted for as read', used)
+  // the optional register: with the declaration off it is refused, so declare it on to exercise the read
+  ok(f.acknowledge({ reviewerId: 'r' }).code === 'VMU_NOT_PERMITTED', 'acknowledgement[off]: the optional register refuses by name')
+  const on = mk({ 'vmu.reviewers.acknowledgement': true })
+  on.register({ id: 'r2' })
+  ok(on.acknowledge({ reviewerId: 'r2', kind: 'remuneration' }).ok === true, 'acknowledgement[on]: the register accepts an entry')
+  ok(mk({ 'vmu.reviewers.acknowledgement': true }).acknowledge({}).code === 'VMU_INVALID_ARGUMENT', 'an acknowledgement without a reviewer is refused')
+  // span BOTH faces: `f` exercised the first six declarations and `on` the acknowledgement
+  const used = [...new Set([...f.status().keysUsed, ...on.status().keysUsed])].sort()
+  ok(used.length === 7, 'all seven declarations are accounted for as read', used)
 }
 
 console.log('=== VMU REVIEWERS: ' + pass + ' passed, ' + fail + ' failed ===')
