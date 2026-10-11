@@ -261,6 +261,16 @@
   **③ ★ 第 8 次"我的仪器错了"，而这次【在断言之前】被拦住** ✓✓：我先前用 PowerShell `>` 把 theirs 导出到 D 盘 ⇒ 它写成 **UTF-16**（**12006 字节的 blob 变成 24236 字节** ✓）⇒ 运行报 `SyntaxError` ✗ ⇒ **若我据此宣布"theirs 坏了"，就是又一次拿坏仪器当证据** ✗。**拦住它的办法是哈希**：`git hash-object 提取物` ≠ `git rev-parse <commit>:<path>` ⇒ **提取不忠实** ✓✓ ⇒ 改用 `git worktree` ＋ 文件复制 ✓。**并入纪律：跨提交/跨版本取文件，必须先以哈希证明提取忠实** ✓。
   **④ 明写未做 ✗**：**仍有 8 个 null**（`auction.dirtyWorkQuota`／`fairnessPolicy`／`rotationWindow`／`course.latePenaltyRatio`／`peerWeight`／`external.mergePolicy`／`grant.commands`／`instruments.capabilityTags` ✓）—— 其中 `auction` 三个的默认值是 **`DEFAULTS.<field>`（标识符）** ✗ ⇒ 需**从模块自身的 `DEFAULTS` 对象字面量**解析 ✓（**复活条件**：按"可证明"原则加一条 `IDENT.field` 解析规则并重跑链与 T1 ✓）；其余多**确实没有默认值**（`Number(readKey(...))` ✓／`listOr(sget(...))` ✓）⇒ **诚实 null** ✓。
 
+  **④ 明写未做 ✗（已被轮 134 收窄）**：当时**仍有 8 个 null** ⇒ **轮 134 降到 3** ✓（见下 ✓）。
+
+- ★★★ **轮 134：把"默认值恢复"从【形态清单】改写成【可证明的性质】，恢复数 287 → 295** ✓✓
+  **三处同族缺陷，都是"清单/单形态代替性质"** ✗✓：
+  **① 助手白名单**（轮 133 已修 ✓）：`(?:sget|b|n)` ✗ ⇒ 改写成**"模块自己定义的、参数 ≥ 2 的函数，第一参数是键字面量、第二参数是字面量"** ✓。
+  **② 标识符路径**：`auction` 的默认值是 **`DEFAULTS.fairnessPolicy`（标识符）** ✗ ⇒ **不是猜**：`DEFAULTS` 是模块**自己声明的对象字面量** ✓ ⇒ 新增一条规则**从该表里读出字段值** ✓（只接受**字面量值** ✓；嵌套路径或计算字段仍为 null ✓）。
+  **③ 访问器形态**（本轮最大的一处 ✓）：判定用的占位符 `S` **只拼了 `settings['k']` 一种形态** ✗，而模块也用 `readKey('k')`／`sget('k')`／`raw(settings,'k')` ✗ ⇒ **所有"缺省答案"规则**（`||`／三元／`!== false`／`=== true`／`listOr(...)`）**都看不见它们** ✗✓ ⇒ 改成**覆盖真实使用的形态** ✓ —— 理由：**那些规则讲的是"缺省时的答案"，与访问器怎么拼写无关** ✓。
+  **实测（逐步）** ✓：`287 → 290`（①）→ `292`（②）→ **`295`（③）**；**`missing 11 → 3`** ✓✓；`INVARIANTS ok … 3 with an honest null default` ✓。**抽查确认非臆造** ✓：`fairnessPolicy='equal'` ✓／`dirtyWorkQuota=0` ✓／`submitMode='artifact'` ✓／`visibility='cohort'` ✓／`peerWeight=0` ✓（**全部与源码字面一致** ✓）。
+  **明写未做 ✗（仍 3 个诚实 null）** ✓：`course.latePenaltyRatio`（**有效默认 0 藏在 `Number.isFinite(ratio) && ratio>=0 && ratio<=1 ? ratio : 0` 里 ✗** ⇒ 条件针对的是**局部变量**而非访问器 ⇒ **要恢复就得上数据流分析**，风险大于收益 ✓）／`external.mergePolicy`／`instruments.capabilityTags`（同族：**缺省答案由局部变量上的表达式给出** ✗）。**复活条件** ✓：**若将来愿意引入"局部变量的缺省答案追踪"**（且能证明不引入误判 ✓），再回收这 3 个 ✓；**在此之前它们以 `def: null` ＋ 明说是"诚实 null"** ✓✓。
+
 ### 0.4 结论
 
 

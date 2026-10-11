@@ -631,9 +631,9 @@ vmu.packs.active: [v5r]
 | `vmu.archive.offlineFirst` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.receiptRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.targets` | string[] | `[zenodo,osf,swh,other]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
-| `vmu.auction.dirtyWorkQuota` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
-| `vmu.auction.fairnessPolicy` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
-| `vmu.auction.rotationWindow` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.auction.dirtyWorkQuota` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
+| `vmu.auction.fairnessPolicy` | string | `equal` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
+| `vmu.auction.rotationWindow` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.avail.allowOnRequest` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.avail.openLicenses` | string[] | `[CC0-1.0,CC-BY-4.0,MIT,Apache-2.0]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.avail.requireUrl` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
@@ -693,7 +693,7 @@ vmu.packs.active: [v5r]
 | `vmu.course.latePenaltyRatio` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
 | `vmu.course.maxAttempts` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
 | `vmu.course.ontologyVersion` | string | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.peerWeight` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.course.peerWeight` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
 | `vmu.course.publishToLibrary` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
 | `vmu.course.requireEvidence` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
 | `vmu.course.requireRubricRef` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
@@ -747,7 +747,7 @@ vmu.packs.active: [v5r]
 | `vmu.funding.requiredFields` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 已接线（funding.js 读取）；默认值取自模块源码 |
 | `vmu.funding.settlementRoundMinor` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 已接线（funding.js 读取）；默认值取自模块源码 |
 | `vmu.funding.split` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 已接线（funding.js 读取）；默认值取自模块源码 |
-| `vmu.grant.commands` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/grant.js` | 已接线（grant.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.grant.commands` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/grant.js` | 已接线（grant.js 读取）；默认值取自模块源码 |
 | `vmu.grant.defaultScope` | string | `once` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/grant.js` | 已接线（grant.js 读取）；默认值取自模块源码 |
 | `vmu.grant.enabled` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/grant.js` | 已接线（grant.js 读取）；默认值取自模块源码 |
 | `vmu.grant.maxOpenGrants` | int ≥0 | `32` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/grant.js` | 已接线（grant.js 读取）；默认值取自模块源码 |

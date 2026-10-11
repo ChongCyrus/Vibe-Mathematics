@@ -82,7 +82,16 @@ export function defaultOf(src, key) {
   // may put SEVERAL entries on one line (`'k': 30, 'k2': 7,`). Measured: capturing to end-of-line swallowed the
   // next entry and the literal was rejected as invalid, so the pair of entries was reported unrecoverable.
   const VAL = "(\\[[^\\]]*\\]|\\{[^}]*\\}|'[^']*'|\"[^\"]*\"|[^,\\n]+)"
-  const S = "settings\\[\\s*['\"]" + esc + "['\"]\\s*\\]"
+  /**
+   * ROUND 134: `S` used to spell ONE accessor form (`settings['k']`), while modules also read the same setting
+   * through `readKey('k')`, `sget('k')` and `raw(settings, 'k')`. Every rule below states a fact about the
+   * ABSENT-VALUE ANSWER, not about the spelling of the accessor, so the placeholder now covers the forms the tree
+   * really uses. Measured reason: `course.peerWeight` writes `Number(readKey('k')) > 0 ? Number(readKey('k')) : 0`
+   * and the ternary rule that reads exactly that answer could not see it, so the key was emitted with a null default
+   * while its answer (`0`) is written in the expression.
+   */
+  const S = "(?:settings\\[\\s*['\"]" + esc + "['\"]\\s*\\]"
+    + "|(?:readKey|sget|raw|get|s)\\s*\\(\\s*(?:settings\\s*,\\s*)?['\"]" + esc + "['\"]\\s*\\))"
   const shapes = [
     new RegExp("(?:sget|b|n|s)\\(\\s*'" + esc + "'\\s*,\\s*" + VAL + "\\s*\\)"),         // sget('k', 5) / s('k', 'x')
     new RegExp("raw\\(\\s*settings\\s*,\\s*'" + esc + "'\\s*,\\s*" + VAL + "\\s*\\)"), // raw(settings, 'k', true)
@@ -161,6 +170,33 @@ export function defaultOf(src, key) {
       }
       if (/^(true|false|null)$/.test(lit) || /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(lit) || /^['"]/.test(lit)
         || (lit.startsWith('[') && lit.endsWith(']')) || (lit.startsWith('{') && lit.endsWith('}'))) return lit
+      /**
+       * ROUND 134: an identifier path (`DEFAULTS.fairnessPolicy`) is not a literal, but reading it is not a guess
+       * either - the module defines that table in its own source, a few lines above the call. Measured: the auction
+       * face writes `sget('vmu.auction.fairnessPolicy', DEFAULTS.fairnessPolicy)` and its three keys were emitted
+       * with an honest null while their real defaults (`equal`, `0`, `0`) sat in the frozen table above them. The
+       * table is found by its own declaration, the field is read out of it, and only a LITERAL value is accepted -
+       * a nested path or a computed field still yields null rather than a guess.
+       */
+      const path = /^([A-Za-z_$][\w$]*)\s*\.\s*([A-Za-z_$][\w$]*)$/.exec(lit.replace(/[)\s,;]+$/, ''))
+      if (path) {
+        // The capture over-runs by the closing parens of an enclosing call when the default sits one level deeper
+        // (`FAIRNESS_POLICIES.includes(sget('k', DEFAULTS.fairnessPolicy))`), which is the same capture-tail problem
+        // the trim above already handles for commas - so the path test trims them too, and only for this test.
+        const decl = new RegExp("(?:const|let|var)\\s+" + path[1] + "\\s*=\\s*(?:Object\\.freeze\\(\\s*)?\\{")
+        const dm = decl.exec(src)
+        if (dm) {
+          const body = src.slice(dm.index + dm[0].length)
+          const field = path[2].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          const fm = new RegExp("(?:^|[,{\\s])['\"]?" + field + "['\"]?\\s*:\\s*" + VAL).exec(body)
+          if (fm && fm[1] !== undefined) {
+            let v = fm[1].trim().replace(/[\s,;]+$/, '')
+            if (v.startsWith('[') && !v.endsWith(']')) { const close = v.lastIndexOf(']'); if (close !== -1) v = v.slice(0, close + 1) }
+            if (/^(true|false|null)$/.test(v) || /^-?\d+(\.\d+)?$/.test(v) || /^['"]/.test(v)
+              || (v.startsWith('[') && v.endsWith(']'))) return v
+          }
+        }
+      }
     }
   }
   // Only now: a comparison/wrapper expresses the absent-value answer directly (see CONST_ANSWERS above).
