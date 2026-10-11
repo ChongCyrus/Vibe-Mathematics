@@ -118,6 +118,11 @@ function scopeMatches(scope, ctx) {
 export function createBus({ entries = [], settings = {}, clock = () => new Date().toISOString(), onAudit } = {}) {
   const hookTimeoutMs = Number.isInteger(settings['vmu.middleware.hookTimeoutMs']) ? settings['vmu.middleware.hookTimeoutMs'] : 2000
   const breakerThreshold = Number.isInteger(settings['vmu.middleware.breakerThreshold']) ? settings['vmu.middleware.breakerThreshold'] : 3
+  // ROUND 294 (volume 05 §L77/§L81/§L63): the DECLARED defaults for three per-entry fields. Each replaces a value that was hard-coded
+  // here, so declaring one changes what an entry that does not state its own gets - and nothing else.
+  const enabledDefault = settings['vmu.middleware.enabled'] !== false
+  const orderDefault = Number.isInteger(settings['vmu.middleware.order']) ? settings['vmu.middleware.order'] : 1000
+  const failureDefault = ['closed', 'open', 'skip'].includes(settings['vmu.middleware.onFailure']) ? settings['vmu.middleware.onFailure'] : null
 
   const registry = new Map() // id -> entry (normalised)
   const failures = new Map() // id -> consecutive failure count
@@ -159,9 +164,9 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
     const on = Array.isArray(entry.on) ? entry.on : [entry.on]
     const normalised = Object.assign({}, entry, {
       on,
-      enabled: entry.enabled !== false,
-      order: Number.isInteger(entry.order) ? entry.order : 1000,
-      failure: entry.failure || DEFAULT_FAILURE[on[0]] || 'closed',
+      enabled: entry.enabled === undefined ? enabledDefault : entry.enabled !== false,
+      order: Number.isInteger(entry.order) ? entry.order : orderDefault,
+      failure: entry.failure || failureDefault || DEFAULT_FAILURE[on[0]] || 'closed',
       capabilities: Array.isArray(entry.capabilities) ? entry.capabilities.slice() : [],
       source: entry.source || 'session',
     })

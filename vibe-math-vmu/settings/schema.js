@@ -140,6 +140,10 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.middleware.entries', type: 'objectList', def: [], hot: HOT.H0, who: 'office', doc: '中间件清单（默认空＝零机制）' },
   { key: 'vmu.middleware.hookTimeoutMs', type: 'positiveInteger', def: 2000, hot: HOT.H0, who: 'office', doc: '单钩子预算' },
   { key: 'vmu.middleware.breakerThreshold', type: 'positiveInteger', def: 3, hot: HOT.H0, who: 'office', doc: '连续失败熔断阈值' },
+  // ROUND 294: 三段逐条目字段的【全局默认值】（05 卷 §L77/§L81/§L63；现由 kernel/bus.js 的条目规范化读取 ✓）.
+  { key: 'vmu.middleware.enabled', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: "条目未声明 enabled 时的默认（false ⇒ 新条目默认【登记但不调用】；★ 条目自身的 enabled 优先 ✓）" },
+  { key: 'vmu.middleware.order', type: 'integer', def: 1000, hot: HOT.H2, who: 'office', doc: "条目未声明 order 时的默认排序键（越小越先；同级按 id 字典序 ✓）" },
+  { key: 'vmu.middleware.onFailure', type: 'enum', domain: ['closed', 'open', 'skip'], def: 'closed', hot: HOT.H2, who: 'office', doc: "条目未声明 failure 时的默认失败策略（★ 条目自身优先，其次本键，再次按钩子的内置默认 ✓）" },
   { key: 'vmu.middleware.dryRun', type: 'boolean', def: false, hot: HOT.H0, who: 'office', doc: '干跑（只报不做）' },
 
   // ---- packs --------------------------------------------------------------------------------
