@@ -57,6 +57,10 @@ const EXPECT = {
   records: G('ok 或 object', 'task-204 实测（形状取自测试 vmu-records.test.mjs:103）：`put({track,kind,title,body,settled:true})` ⇒ **ok**（零机制＝无配额限制、放行 ✓）'),
   store: G('PROBE_NEEDS_ARGS', '缺：存储配置'), transaction: G('ok 或 object', 'task-204 实测（形状取自测试 vmu-transaction.test.mjs:62）：`begin({id,steps:[{service,apply,undo}]})` ⇒ **ok**（零机制＝无预算门、放行 ✓）'),
   work: G('PROBE_NEEDS_ARGS', '缺：工作项'),
+  // ── 轮 135：多成员合著面（paper.js）✓
+  // 零机制形状：**开篇不需要任何设置**（`vmu.paper.*` 只影响"定稿闸"与"谁可定稿"）⇒ 无参 `start()` 具名拒
+  // （缺 title／sections／**无主章节**／editor），带参则 ok ⇒ 与 course/delegation 同族，登记为"具名拒或 ok" ✓。
+  paper: G('具名拒或 ok', '轮 135 实测：`start()` 无参 ⇒ 具名拒 **VMU_INVALID_ARGUMENT**（缺标题／章节／**无主章节**／编辑 ✓ —— 缺参即其零机制真实形状 ✓）；`PROBE_ARGS.paper` 带参后应见 **ok**（开篇不需要任何设置 ✓）⇒ 两态皆合规 ✓'),
   workflow: G('具名拒或 ok', '**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 `advance()` 缺参 ⇒ **task-214 实测：具名拒 `VMU_WORKFLOW_TRANSITION_REQUIRED`（带口径 `enforced=[7]`）** ⇒ 具名拒即真实形状 ✓（旧 note 曾写 `op 抛出` ✗ / "缺参 ⇒ 具名拒" 混述 ✗，均已按实测改写 ✓）'),
   // ── 第 26 轮已修好的具名拒（**待办没跟上 ⇒ 已纠正** ✓）＋ 非服务模块
   pack: G('具名拒（带 code）', '第 26 轮已修 ✓：实测拒绝带 **`VMU_PACK_MISSING`**（曾误标"不带 code" ✗）'),
@@ -134,6 +138,8 @@ const PROBE_ARGS = {
   charter: { op: 'propose', args: { kind: 'charter', text: 'probe charter', by: 'office', articles: [{ id: 'A-1', text: 'probe article' }] } },
   delegation: { op: 'check', args: { actor: 'nobody', action: 'task/create' } },
   handover: { op: 'open', args: { from: 'probe-from', to: 'probe-to' } },
+  //   paper → tests/vmu-paper.test.mjs:39  p.start({ title, sections, contributors, editor })
+  paper: { op: 'start', args: { title: 'probe manuscript', sections: ['probe-introduction'], contributors: { 'probe-introduction': 'probe-m1' }, editor: 'probe-editor' } },
 }
 
 /** 探测一个模块：**不传 settings** ✗；先用第一个 `create*` 工厂，再调它的首个零参操作 ✓（有显式探针参数时用 PROBE_ARGS ✓）。 */

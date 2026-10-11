@@ -808,6 +808,8 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.migration.rollback', type: 'string', def: 'allow', hot: HOT.H1, who: 'office', doc: "已接线（migration.js 读取）；默认值取自模块源码" },
   { key: 'vmu.migration.rollbackPointDensity', type: 'natural', def: 1, hot: HOT.H1, who: 'office', doc: "已接线（migration.js 读取）；默认值取自模块源码" },
   { key: 'vmu.migration.stepBatch', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（migration.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.paper.finalizer', type: 'string', def: 'editor', hot: HOT.H1, who: 'office', doc: "已接线（paper.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.paper.requireAllSections', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（paper.js 读取）；默认值取自模块源码" },
   { key: 'vmu.publish.jatsVersion', type: 'string', def: 'JATS-1.3', hot: HOT.H1, who: 'office', doc: "已接线（publication.js 读取）；默认值取自模块源码" },
   { key: 'vmu.publish.requireChecklist', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（publication.js 读取）；默认值取自模块源码" },
   { key: 'vmu.publish.versionChainStrict', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（publication.js 读取）；默认值取自模块源码" },

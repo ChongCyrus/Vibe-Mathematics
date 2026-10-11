@@ -384,6 +384,8 @@ export const PLANNED_DEFS = Object.freeze([
   { key: "vmu.packs.allowKernelOverride", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["13"], doc: "设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准）" },
   { key: "vmu.packs.priority", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07", "13"], doc: "设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准）" },
   { key: "vmu.packs.searchPaths", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07", "13"], doc: "设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准）" },
+  { key: "vmu.paper.maxSections", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["08"], doc: "设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准）" },
+  { key: "vmu.paper.retentionMs", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["08"], doc: "设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准）" },
   { key: "vmu.paths.allowedRoots", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.paths.followSymlinks", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.preserve.migrateAfterYears", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["16"], doc: "设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准）" },
