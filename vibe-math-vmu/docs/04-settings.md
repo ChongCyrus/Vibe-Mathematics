@@ -697,6 +697,8 @@ vmu.packs.active: [v5r]
 | `vmu.course.reviewersPerSubmission` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
 | `vmu.course.rubricRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
 | `vmu.course.selfReviewAllowed` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.course.submitMode` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.course.visibility` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
 | `vmu.external.allowNetwork` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
 | `vmu.external.arxiv.maxAbstractChars` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
 | `vmu.external.arxiv.preferVersioned` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
@@ -759,13 +761,16 @@ vmu.packs.active: [v5r]
 | `vmu.instruments.blockOnOverdue` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
 | `vmu.instruments.calibrationDueDays` | int ≥0 | `365` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
 | `vmu.instruments.capabilityTags` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.instruments.hashAlgo` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
 | `vmu.instruments.maxHoldHours` | int ≥0 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
 | `vmu.instruments.overbookRatio` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.priorityPolicy` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
 | `vmu.instruments.requireCalibration` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
 | `vmu.instruments.requireOwner` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
 | `vmu.instruments.reservationHorizonDays` | int ≥0 | `30` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
 | `vmu.instruments.reserve` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
 | `vmu.instruments.scheduleMaintenance` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.waitlistPolicy` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
 | `vmu.ip.appealWindowDays` | int ≥0 | `30` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ip.js` | 已接线（ip.js 读取）；默认值取自模块源码 |
 | `vmu.ip.authorshipRule` | string | `byContribution` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ip.js` | 已接线（ip.js 读取）；默认值取自模块源码 |
 | `vmu.ip.confidentialityWindowDays` | int ≥0 | `180` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ip.js` | 已接线（ip.js 读取）；默认值取自模块源码 |
@@ -890,12 +895,20 @@ vmu.packs.active: [v5r]
 | `vmu.records.treatNegativeAsFirstClass` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.replication.summaryEnabled` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.store.autoBackup` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
+| `vmu.store.backend` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
 | `vmu.store.fsync` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
 | `vmu.store.lock` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
 | `vmu.store.lock.backoffMs` | int ≥0 | `25` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
 | `vmu.store.lock.retries` | int ≥0 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
 | `vmu.store.lock.serializeAll` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
 | `vmu.store.lock.timeoutMs` | int ≥0 | `1000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
+| `vmu.store.onVersionTooHigh` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.store.remote` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.store.remote.consistency` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.store.remote.offlinePolicy` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.store.remote.url` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.store.root` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.store.tmpDir` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
 | `vmu.workflow.arbitrationMode` | string | `off` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/workflow.js` | 已接线（workflow.js 读取）；默认值取自模块源码 |
 | `vmu.workflow.checkpointEveryMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/workflow.js` | 已接线（workflow.js 读取）；默认值取自模块源码 |
 | `vmu.workflow.claimRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/workflow.js` | 已接线（workflow.js 读取）；默认值取自模块源码 |
@@ -1033,8 +1046,6 @@ vmu.packs.active: [v5r]
 | `vmu.course.ontologyVersion` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.course.publishToLibrary` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.course.readingsRequired` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.course.submitMode` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.course.visibility` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.crypto.enabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.crypto.requireSignedAudit` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.crypto.rotateAfterDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
@@ -1106,10 +1117,7 @@ vmu.packs.active: [v5r]
 | `vmu.index.verifyChecksum` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.instruments.dataCaptureRef` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.instruments.downtimePolicy` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.instruments.hashAlgo` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.instruments.ledgerDir` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.instruments.priorityPolicy` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.instruments.waitlistPolicy` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.legalentity.crossBorderApproverRoles` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.legalentity.crossBorderGate` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.legalentity.invoiceTaxSlots` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
@@ -1383,13 +1391,6 @@ vmu.packs.active: [v5r]
 | `vmu.stats.correction` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.stats.effectSize` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.stats.seed` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.store.backend` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.store.onVersionTooHigh` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.store.remote.consistency` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.store.remote.offlinePolicy` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.store.remote.url` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.store.root` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 设计阶段登记：首个声明卷 07（共见 2 卷：07、11），尚未实现（元数据以各卷为准） |
-| `vmu.store.tmpDir` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.supplychain.reproducibleBuild` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.supplychain.requireLock` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.supplychain.sbomPath` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |

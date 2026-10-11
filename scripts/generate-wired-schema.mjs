@@ -196,8 +196,12 @@ export function collect() {
     const src = readFileSync(join(KERNEL, f), 'utf8')
     // A module is scanned if it EXPORTS a list or if it READS any key: the second half is the round-81 fix for
     // the blind spot where a face read its settings through an accessor and never exported a list.
-    const exported = src.includes('export const WIRED_KEYS')
-    const keys = exported ? wiredKeysOf(src) : readKeysOf(src)
+    // ROUND 113: ask the LIST function whether it found anything instead of testing for a literal export name.
+    // The substring test missed `WIRED_<FACE>_KEYS` (ballot box, course, instruments, store policy), so those
+    // four faces were scanned for accessor forms only - and a key that lives in an exported list is invisible
+    // to that scan. Nine keys stayed planned for that reason while their own modules listed them as wired.
+    const listed = wiredKeysOf(src)
+    const keys = listed.length ? listed : readKeysOf(src)
     if (!keys.length) continue
     let recovered = 0
     for (const key of keys) {
