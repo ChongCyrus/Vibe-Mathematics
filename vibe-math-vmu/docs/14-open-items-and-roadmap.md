@@ -955,6 +955,13 @@
   ✗ **两处工具性失误（都已修正 ✓）** ✗：① `docs/07` 的族提及行**行首有两个空格**（缩进列表项 ✓），而我用 `startsWith` 判定 ⇒ **两次匹配 0 行** ✓ ⇒ 改为**缩进感知** ✓；② 上一轮那条 `plannedKeys.length > N` 的断言**已因数字漂移被改了三次** ✓ ⇒ ★★ **改为【结构性断言】** ✓（**来源必须是生成注册表 ＋ 非空 ＋ 与 wired 不重叠** ✓）—— **漂移的数字测的是我的记账，不是被测性质** ✓。
   **未做（明写 ✗）**：★ **上述 14 个"有族无键"的设计面【尚未声明任何键】** ✗ —— **这是 objective ① 的下一块正题** ✓；**其余 230 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 228：更正上一轮 13 处【错误断言】＋ 把 `vmu.fingerprint.*` 3 条接进 `library.js`；未接线 230 → 227** ✓✓
+  ✗✓ **先更正我自己的错误**：上一轮我写下「14 族没有任何已声明的键」✗ —— **那是我只查了 `settings/schema.js` 的结果** ✓（**planned 键的声明面是【卷内表格 ＋ `planned.js`】** ✓）⇒ **实测 13 族确实声明了键** ✓（`fingerprint` 3／`dedupe` 3／`index` 3／`search` 3／`tags` 3／`refs` 3／`metadata` 2／`provenance` 2／`export` 2／`workspace` 3／`paths` 2／`visibility` 1／`naming` 1 ✓）⇒ **14 行全部改写为点名真实键** ✓；★ **只有 `tier` 真的无键** ✓。
+  ★★ **而 `tier` 的真相更值得记**：**`retention.js` 已经在读 `vmu.records.retention.tierThreshold`**（注释写明 0 = tiering off ✓）**并有 `tiered` 计数器** ✓ ⇒ **分层能力【已存在】** ✓ ⇒ ★★ **若再声明 `vmu.tier.*` 就是【第二份实现】** ✗（**与阻止我接 `ballot.reopenFloor` 的同一条纪律** ✓）⇒ **该行改为指向既有的键** ✓。
+  **`vmu.fingerprint.*`（3）接入 `kernel/library.js`** ✓ —— **该面自述 CONTENT IDENTITY IS COMPUTED IN ONE PLACE** ✓：`algo`（**替换硬编码的 sha256** ✓；★ **本运行时没有的摘要【具名拒】、而非从 crypto 深处抛出** ✓ —— `blake3` 正是这种情形 ✓）／`truncate`（**hex 截断并【计数自曝】** ✓，且**是完整摘要的前缀**而非另一种哈希 ✓）／`includeMeta`（**默认不含 `recorder`／`at`；声明后才并入摘要** ✓ ⇒ **默认行为不变** ✓）。**`VMU LIBRARY: 44 passed, 0 failed`** ✓（**新增 10 条断言** ✓）；**未接线 230 → 227** ✓。
+  ✗ **一处自伤** ✗：我的确定性断言**两次调用输入不同**（一次带 `recorder`、一次不带 ✓）⇒ **当然不等** ✓ ⇒ 改为**同输入两次比较** ✓。
+  **未做（明写 ✗）**：**`vmu.tier.*` 未声明** ✗（**能力已在 `retention.tierThreshold` 下实现** ✓；**是否要一族独立键是设计裁定，须先回答"是否第二份实现"** ✓）；**其余 227 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 

@@ -200,6 +200,41 @@ await rm(root, { recursive: true, force: true })
   await rm(root, { recursive: true, force: true })
 }
 
+
+// ── ROUND 228: the fingerprint family (docs/07 table) — declared for a while, read by nobody until now ────────
+{
+  const base = mk()
+  const one = base.fingerprint('proposition', { statement: 'S', proof: 'P' })
+  // algo: the declared digest decides the identity, and an unavailable one is refused BY NAME
+  const sha512 = mk({ settings: { 'vmu.fingerprint.algo': 'sha512' } })
+  const other = sha512.fingerprint('proposition', { statement: 'S', proof: 'P' })
+  ok(typeof other === 'string' && other !== one, 'fingerprint.algo[+]: a declared digest produces a different identity than the default')
+  ok(other.length === 128, 'fingerprint.algo[+]: sha512 yields a 128-character digest', String(other.length))
+  ok(one.length === 64, 'fingerprint.algo[default]: the declared default is sha256, 64 characters')
+  let unavailable = null
+  try { mk({ settings: { 'vmu.fingerprint.algo': 'blake3' } }).fingerprint('proposition', { statement: 'S' }) }
+  catch (e) { unavailable = e && e.code }
+  ok(unavailable === 'VMU_INVALID_ARGUMENT',
+    'fingerprint.algo[-]: a declared digest this runtime does NOT have is refused by name, not thrown from deep inside crypto', String(unavailable))
+
+  // truncate: the hex is cut to the declared length
+  const cut = mk({ settings: { 'vmu.fingerprint.truncate': 16 } })
+  const short = cut.fingerprint('proposition', { statement: 'S', proof: 'P' })
+  ok(short.length === 16, 'fingerprint.truncate[+]: the fingerprint is cut to the declared length', String(short.length))
+  ok(one.startsWith(short), 'fingerprint.truncate[+]: the cut is a PREFIX of the full digest, not a different hash')
+  ok(mk({ settings: { 'vmu.fingerprint.truncate': 0 } }).fingerprint('proposition', { statement: 'S', proof: 'P' }).length === 64,
+    'fingerprint.truncate[0]: zero means the whole digest')
+
+  // includeMeta: the metadata that content-only excludes joins the digest only when declared
+  const parts = { statement: 'S', proof: 'P', recorder: 'r-9' }
+  const withoutMeta = mk().fingerprint('proposition', parts)
+  const withMeta = mk({ settings: { 'vmu.fingerprint.includeMeta': true } }).fingerprint('proposition', parts)
+  ok(withoutMeta === one, 'fingerprint.includeMeta[default]: by default the recorder does NOT change identity (content-only holds)')
+  ok(withMeta !== one, 'fingerprint.includeMeta[+]: with it declared, the recorder DOES change identity')
+  ok(mk({ settings: { 'vmu.fingerprint.includeMeta': true } }).fingerprint('proposition', parts) === withMeta,
+    'fingerprint.includeMeta[+]: it is deterministic, not merely different (the SAME input twice)')
+}
+
 console.log('=== VMU LIBRARY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

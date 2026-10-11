@@ -784,6 +784,9 @@ vmu.packs.active: [v5r]
 | `vmu.math.nt.backend` | string | `auto` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 数论后端（auto｜sympy｜pari｜gmpy2） |
 | `vmu.math.nt.proofRequiredAbove` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 超过该规模必须给证书（0＝不要求；>0 且无 certificate 具名拒） |
 | `vmu.math.tensor.backend` | string | `auto` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 张量后端（auto｜numpy｜jax｜torch） |
+| `vmu.fingerprint.algo` | enum | `sha256` | `sha256`∣`sha512`∣`blake3` | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 指纹算法（随指纹记录；本运行时没有的摘要具名拒） |
+| `vmu.fingerprint.truncate` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 指纹截断长度（0＝全；截断必计数并自曝） |
+| `vmu.fingerprint.includeMeta` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 指纹是否含元数据（recorder／at；默认不含） |
 | `vmu.archive.offlineFirst` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.receiptRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.targets` | string[] | `[zenodo,osf,swh,other]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
@@ -1191,9 +1194,6 @@ vmu.packs.active: [v5r]
 | `vmu.fairness.maxSlotsPerInstance` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.fairness.newcomerQuota` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.fairness.rebalanceEveryMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.fingerprint.algo` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.fingerprint.includeMeta` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.fingerprint.truncate` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.handover.autoOpenOnEnd` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.handover.includeMemoryScopes` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.identity.localFormat` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |

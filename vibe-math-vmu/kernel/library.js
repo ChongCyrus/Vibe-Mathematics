@@ -53,6 +53,10 @@ export function createLibrary({
   truncateMode = 'keepChars',
   fingerprintPolicy = 'content-only',
   bodyCapBytes = BODY_CAP_BYTES,
+  // ROUND 228: the fingerprint family (`vmu.fingerprint.*`), read here because this face computes content identity.
+  fingerprintAlgo = (settings && settings['vmu.fingerprint.algo']) || 'sha256',
+  fingerprintTruncate = (() => { const v = Number(settings && settings['vmu.fingerprint.truncate']); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0 })(),
+  fingerprintIncludeMeta = (settings && settings['vmu.fingerprint.includeMeta']) === true,
   clock = () => new Date().toISOString(),
   storeMode = (settings && settings['vmu.records.history.storeMode']) || 'full',
 } = {}) {
@@ -89,7 +93,26 @@ export function createLibrary({
       substantive.push(String(parts.title === undefined ? '' : parts.title))
       if (parts.recorder !== undefined) substantive.push(String(parts.recorder))
     }
-    return createHash('sha256').update(substantive.join('\u0000'), 'utf8').digest('hex')
+    // ROUND 228: the algorithm is DECLARED. A declared algorithm this runtime cannot provide is refused by name here, where
+    // the caller can act on it, rather than surfacing as an opaque throw from node's crypto.
+    let hash
+    try { hash = createHash(fingerprintAlgo) }
+    catch (e) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'vmu.fingerprint.algo names a digest this runtime does not have: ' + String(fingerprintAlgo),
+        'node provides sha256/sha512; use one of those, or add a blake3 implementation deliberately (vmu.fingerprint.algo)')
+    }
+    const meta = []
+    if (fingerprintIncludeMeta) {
+      // The metadata that `content-only` excludes: who recorded it, and when it was recorded.
+      if (parts.recorder !== undefined) meta.push(String(parts.recorder))
+      if (parts.at !== undefined) meta.push(String(parts.at))
+    }
+    const hex = hash.update(substantive.concat(meta).join('\u0000'), 'utf8').digest('hex')
+    if (fingerprintTruncate > 0 && hex.length > fingerprintTruncate) {
+      truncation.push({ what: 'fingerprint', dropped: hex.length - fingerprintTruncate, at: clock() })
+      return hex.slice(0, fingerprintTruncate)
+    }
+    return hex
   }
 
   const truncate = (text, cap, what) => {
