@@ -55,6 +55,9 @@ import { createIdentity } from './identity.js'      // ROUND 220: who a member i
 import { createHuman } from './human.js'            // ROUND 220: the human in the loop - veto, observer, approval (docs/17)
 import { createDiscipline } from './discipline.js'  // ROUND 220: breaker, suspension, restore, post-mortem (docs/17)
 import { createBiospecimen } from './biospecimen.js'  // ROUND 221: sample ledger and chain of custody (docs/22 §2.5)
+import { createExplain } from './explain.js'          // ROUND 222: what an explanation carries, and why it is refused (docs/17)
+import { createControl } from './control.js'          // ROUND 222: pause scope, watchdog, idle, degradation (docs/08)
+import { createCitations } from './citations.js'      // ROUND 222: the bibliography face - style, fields, id priority (docs/07)
 import { createFormal } from './formal.js'
 import { createMathJobs } from './mathjobs.js'
 import { createExternal } from './external.js'
@@ -542,6 +545,9 @@ export function createKernel({
   const human = createHuman({ settings: settingsView, bus, clock, log })
   const discipline = createDiscipline({ settings: settingsView, bus, clock, log })
   const biospecimen = createBiospecimen({ settings: settingsView, bus, clock, log })
+  const explain = createExplain({ settings: settingsView, bus, clock, log })
+  const control = createControl({ settings: settingsView, bus, clock, log })
+  const citations = createCitations({ settings: settingsView, bus, clock, log })
   const formal = createFormal({ settings: settingsView, bus, clock, log, spawn, library })
   // INTEGRATOR FIX: `vmu.mathjobs` was REGISTERED but never CREATED - the registry advertised a service the
   // kernel did not build. Both job faces now receive the kernel's real spawn seam (the host injects it), so a
@@ -562,7 +568,7 @@ export function createKernel({
   const notify = createNotify({ settings: settingsView, bus, clock: guardedClock, log, deliver })
   noteSeam('deliver', 'notify', notify ? deliver : null)
   const lifecycle = createLifecycle({ settings: settingsView, bus, clock, log, workflow,
-    domaingate, publication, collab, identity, human, discipline, biospecimen })
+    domaingate, publication, collab, identity, human, discipline, biospecimen, explain, control, citations })
   // K6 (round 16): the unified idempotency ledger that a replay/retry path can consult before doing work again.
   // The ledger gets BOTH the guarded clock (so a backwards clock cannot keep a pending key alive forever) and
   // the kernel store (so idempotency survives the restart that a retry usually follows).
@@ -718,6 +724,9 @@ export function createKernel({
   registry.register('vmu.human', { apiVersion: 1 }, { kind: 'service', description: 'human: veto scope and reason, observer visibility, approval waiting whose declared timeout is hold rather than allow, and dashboard scope (docs/17)' })
   registry.register('vmu.discipline', { apiVersion: 1 }, { kind: 'service', description: 'discipline: failure breaker with window and half-open probe, suspension cap, restore that needs a human, and a required post-mortem (docs/17)' })
   registry.register('vmu.biospecimen', { apiVersion: 1 }, { kind: 'service', description: 'biospecimen: sample ledger and chain of custody, chain-gap policy, freeze-thaw accounting with a warning threshold, destruction that keeps the reference, subject reference style and an irreversible mapping (docs/22 §2.5)' })
+  registry.register('vmu.explain', { apiVersion: 1 }, { kind: 'service', description: 'explain: report detail, delegation chains and scores, a required reason with a declared length cap, event correlation by the declared key, and markdown or JSON rendering - every omission named (docs/17)' })
+  registry.register('vmu.control', { apiVersion: 1 }, { kind: 'service', description: 'control: what may be paused and by which role, the watchdog interval (zero means no timer), what counts as idle and the notice-only default, the degradation ladder, and whether stopping clears the registry (docs/08)' })
+  registry.register('vmu.citations', { apiVersion: 1 }, { kind: 'service', description: 'citations: the declared style, the required fields, the identifier priority that decides the key, and free text that is off by default (docs/07)' })
   registry.register('vmu.formal', { apiVersion: 1 }, { kind: 'service', description: 'formalisation: sorry refuses by default, compile failure is never a refutation (docs/09)' })
   registry.register('vmu.external', { apiVersion: 1 }, { kind: 'service', description: 'external fetch adapter: receipts for every fetch, stale never silent, conflicts surfaced (docs/16 搂8)' })
   registry.register('vmu.domaingate', { apiVersion: 1 }, { kind: 'service', description: 'clinical and animal approval gates: no approval, no start (docs/20 搂9)' })
@@ -846,6 +855,9 @@ export function createKernel({
     get human() { return human },
     get discipline() { return discipline },
     get biospecimen() { return biospecimen },
+    get explain() { return explain },
+    get control() { return control },
+    get citations() { return citations },
     get formal() { return formal },
     get mathjobs() { return mathjobs },
     get external() { return external },

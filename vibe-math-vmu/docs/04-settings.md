@@ -736,6 +736,24 @@ vmu.packs.active: [v5r]
 | `vmu.audit.exportScope` | string[] | `[settings,middleware,refusals]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/audit.js` | 导出范围（exportScoped 超出它具名拒） |
 | `vmu.audit.recountRoles` | string[] | `[office,chair]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/audit.js` | 谁可复算（recount 对未列角色具名拒） |
 | `vmu.audit.traceKeepMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/audit.js` | 追踪保留期（0＝不清理；>0 时 append 会按龄清理 trace 行并计数） |
+| `vmu.explain.detail` | enum | `summary` | `summary`∣`full` | 会话 | H1 | office | ✅ 已接线 | `kernel/explain.js` | 解释粒度（summary ⇒ 超长字段被截并【点名 omitted】；full ⇒ 原样） |
+| `vmu.explain.includeChains` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/explain.js` | 报告是否含委托链（false ⇒ 该节缺席并点名） |
+| `vmu.explain.includeScores` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/explain.js` | 报告是否含评分（false ⇒ 该节缺席并点名） |
+| `vmu.explain.reasonRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/explain.js` | 社会动作必须给理由（S-4；缺失具名拒） |
+| `vmu.explain.reasonMaxChars` | int ≥1 | `400` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/explain.js` | 理由长度上限（超出【具名拒】而非截断：截断后是另一句话） |
+| `vmu.explain.correlateBy` | enum | `traceId` | `traceId`∣`taskId`∣`none` | 会话 | H1 | office | ✅ 已接线 | `kernel/explain.js` | 关联维度（none ⇒ 【不关联，且不编造 id】；指定维度缺失具名拒） |
+| `vmu.explain.reportFormat` | enum | `md` | `md`∣`json` | 会话 | H1 | office | ✅ 已接线 | `kernel/explain.js` | 报告格式（render 采用；二者不同时产出） |
+| `vmu.control.pauseScope` | string[] | `[tasks,meetings,ballots,work]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/control.js` | 暂停覆盖面（默认【不含归档面】：工作停下时归档必须继续） |
+| `vmu.control.watchdogIntervalMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/control.js` | 看门狗周期（0＝无定时器：本面如实说明，不假装有心跳） |
+| `vmu.control.idleAfterMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/control.js` | 多久算空闲（0＝不定义空闲） |
+| `vmu.control.idleAction` | enum | `notice` | `notice`∣`recess`∣`none` | 会话 | H1 | office | ✅ 已接线 | `kernel/control.js` | 空闲行为（默认 notice＝【只提示，绝不自动散会】；recess 也只记录，散会属会议面） |
+| `vmu.control.degradeSteps` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/control.js` | 降级档位（子集 read-only／report-only／no-spawn；空＝未声明档位，降级具名拒） |
+| `vmu.control.canPauseRoles` | string[] | `[office,chair]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/control.js` | 谁可以暂停（未列角色具名拒） |
+| `vmu.control.stopClearsRegistry` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/control.js` | stop 是否清空注册（回执自曝实际清了多少） |
+| `vmu.citations.style` | enum | `bibtex` | `bibtex`∣`csl-json`∣`csl-yaml` | 会话 | H1 | office | ✅ 已接线 | `kernel/citations.js` | 引文样式（render 采用；未声明样式具名拒） |
+| `vmu.citations.requiredFields` | string[] | `[title,authors,year]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/citations.js` | 必填字段（缺失具名拒并点名缺哪些） |
+| `vmu.citations.idPriority` | string[] | `[doi,arxiv,pmid,url]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/citations.js` | 标识符优先级（【按声明顺序】选键，而非按输入出现顺序） |
+| `vmu.citations.allowFreeText` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/citations.js` | 是否允许无标识符条目（默认 false：无人能解析的引用不算引用） |
 | `vmu.archive.offlineFirst` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.receiptRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.targets` | string[] | `[zenodo,osf,swh,other]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
@@ -1084,13 +1102,9 @@ vmu.packs.active: [v5r]
 | `vmu.ballot.reopenInitiatorScope` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/ballotbox.js` | 设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.reopenSameMeetingOnly` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/ballotbox.js` | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.biosecimen.chainGapPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 14（共见 1 卷：14），尚未实现（元数据以各卷为准） |
-| `vmu.citations.allowFreeText` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.citations.idPriority` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.citations.orcid` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.citations.preferIds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.citations.requiredFields` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.citations.ror` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.citations.style` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 2 卷：07、16），尚未实现（元数据以各卷为准） |
 | `vmu.clinical.aeReportLimitHours` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.clinical.consentVersioning` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.clinical.deviationRegister` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
@@ -1119,13 +1133,6 @@ vmu.packs.active: [v5r]
 | `vmu.consent.required` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.consent.scopes` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.control.beatStaleMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.control.canPauseRoles` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.control.degradeSteps` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.control.idleAction` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.control.idleAfterMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.control.pauseScope` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.control.stopClearsRegistry` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.control.watchdogIntervalMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.course.blindMappingRetentionMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/course.js` | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.course.maxUnits` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/course.js` | 设计阶段登记：首个声明卷 14（共见 2 卷：14、17），尚未实现（元数据以各卷为准） |
 | `vmu.crypto.enabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
@@ -1148,14 +1155,7 @@ vmu.packs.active: [v5r]
 | `vmu.ethics.dualUseReview` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.ethics.irbRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.ethics.requireApprovalFor` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.explain.correlateBy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.explain.detail` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.explain.fairnessDetail` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.explain.includeChains` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.explain.includeScores` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.explain.reasonMaxChars` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.explain.reasonRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.explain.reportFormat` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.export.format` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.export.includeHistory` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.face.key` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 14（共见 1 卷：14），尚未实现（元数据以各卷为准） |

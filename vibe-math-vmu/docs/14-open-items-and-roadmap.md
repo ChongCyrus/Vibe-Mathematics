@@ -908,6 +908,15 @@
   ✗ **三处自伤（全部由自查或套件抓出 ✓）** ✗：① **`biospecimen.js` 里我写了组合键** `'vmu.biosecimen.chainGapPolicy'.replace(...)` ✗ —— **组合键对扫描不可见，正是该文件自己头部禁止的** ✓ ⇒ 改纯字面量 ✓；② **`requireChain=false` 时链可合法为空，但断链策略把"无上一环"也判为断链** ✗ ⇒ **默认 block 会拒掉首次转移** ✗ ⇒ 修为**仅在 `requireChain` 为真时"空链"才算断链** ✓（**由套件抓出** ✓）；③ **audit 的 4 个默认值我第一稿是编的** ✗ ⇒ 量到 `docs/07`／`docs/20` 后改正 ✓。
   **未做（明写 ✗）**：★ **`vmu.ballot.reopen*` 三键** ✗（**实测不可接线，复活条件已写在源码里** ✓）；**biospecimen 之外四个候选族中的 `control`／`explain`／`citations`（无承载）** ✗；**`vmu.math` 的 110 条／其中 30 条有声明** ✗；**其余 365 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 222（超长区间）：一次连开【三个新面】—— explain(7) ＋ control(7) ＋ citations(4)；未接线 365 → 348** ✓✓
+  ★★ **三族的承载都是【零】** ✓（实测：`vmu.explain.*`／`vmu.control.*`／`vmu.citations.*` 在任何既有面里都没有读取者 ✓）⇒ ★ **各自新建一面** ✓；★ **剩余 5 条未接线【无声明契约】** ✓（`explain.fairnessDetail` ✓、`control.beatStaleMs` ✓、`citations.orcid`／`preferIds`／`ror` ✓）⇒ **保持未接线** ✓（**不凭名字造语义** ✓）。
+  **① `kernel/explain.js`（7）** ✓ —— **解释面**：`detail`（**summary 截超长字段并【点名 omitted】；full 原样** ✓）／`includeChains`＋`includeScores`（**缺哪节就点名哪节** ✓）／`reasonRequired`（**缺理由具名拒** ✓）／`reasonMaxChars`（★ **超长【具名拒而非截断】—— 截断后是另一句话** ✓✓）／`correlateBy`（★ **none 时【不关联也不编造 id】** ✓；指定维度缺失具名拒 ✓）／`reportFormat`（**md 或 json，二者不同时产出** ✓）。
+  **② `kernel/control.js`（7）** ✓ —— **运行开关面**，两条不变式写在文件头：★ **`idleAction` 默认 `notice`：空闲只【提示】，绝不自动散会** ✓✓（**即使声明为 `recess`，本面也只记录，散会属会议面** ✓）；★ **`pauseScope` 默认【不含归档面】** ✓ —— **工作停下时归档必须继续** ✓ ⇒ **暂停归档具名拒** ✓。另有 `watchdogIntervalMs`（**0＝无定时器，如实说明、不假装心跳** ✓）／`idleAfterMs`（0＝不定义空闲 ✓）／`degradeSteps`（**空＝未声明档位，降级具名拒；档位外具名拒** ✓）／`canPauseRoles`（**未列角色具名拒** ✓）／`stopClearsRegistry`（**回执自曝实际清了多少** ✓）。
+  **③ `kernel/citations.js`（4）** ✓ —— **引文面**：`style`（**bibtex／csl-json／csl-yaml 三种产出** ✓）／`requiredFields`（**缺失具名拒并点名全部缺项** ✓）／`idPriority`（★ **按【声明顺序】选键，而非按输入出现顺序** ✓✓：输入里 `url` 在前而 `doi` 仍胜出 ✓）／`allowFreeText`（**默认 false：无人能解析的引用不算引用** ✓）。
+  **★ 接线一次做全 11 处** ✓：`index.js`（**import×3／create×3／内部 return／register×3／getter×3** ✓）＋ **手写核心表 18 条** ✓ ＋ **码表 9 条** ✓ ＋ **`package.json#files`** ✓ ＋ **安装器受管清单** ✓ ＋ **服务审计映射** ✓ ⇒ **`VMU EXPLAIN+CONTROL+CITATIONS: 60 passed, 0 failed`** ✓（**每键两向 ＋ 三面的声明默认与纯读不变式** ✓）。
+  ✗ **两处自伤（自查与工具各一 ✓）** ✗：① **我在套件里写了一行"期待拒绝"的错断言** ✗（`correlateBy=none` 时本就**不该**拒 ✓）⇒ 自查后改为断言"不报错" ✓；② **`node -e` 内联转义在 PowerShell 里再次失败** ✗ ⇒ ★★ **改用 `edit` 工具改测试文件** ✓（**并再次印证：改文件用 `edit`／node 脚本，不用 PS 内联** ✓）。
+  **未做（明写 ✗）**：★ **`vmu.math` 110 条（其中 30 条有声明）** ✗ —— **最大一块，须动共享数学模块** ✓；★ **`vmu.ballot.reopen*` 三键** ✗（**实测不可接线** ✓）；**其余 348 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 
