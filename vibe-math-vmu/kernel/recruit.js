@@ -50,6 +50,17 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
     requireEvidence: boolOr(settings['vmu.recruit.requireEvidence'], false),
     maxCandidates: intOr(settings['vmu.recruit.maxCandidates'], Infinity),
     roleMap: (settings['vmu.roles.map'] && typeof settings['vmu.roles.map'] === 'object') ? settings['vmu.roles.map'] : {},
+    // ROUND 217: the appointment/term family (docs/17 §29.3). Every one of these is enforced somewhere below.
+    slotIdPattern: (() => { const v = settings['vmu.roles.slotIdPattern']; try { return new RegExp(typeof v === 'string' && v ? v : '^[a-z][a-z0-9-]*$') } catch { return /^[a-z][a-z0-9-]*$/ } })(),
+    termDefaultMs: intOr(settings['vmu.roles.termDefaultMs'], 0),
+    termMaxMs: intOr(settings['vmu.roles.termMaxMs'], 0),
+    termRenewable: boolOr(settings['vmu.roles.termRenewable'], true),
+    recallQuorum: (() => { const v = settings['vmu.roles.recallQuorum']; return Number.isFinite(v) && v >= 0 && v <= 1 ? v : 0 })(),
+    recallCoolDownMs: intOr(settings['vmu.roles.recallCoolDownMs'], 0),
+    actingMaxMs: intOr(settings['vmu.roles.actingMaxMs'], 0),
+    actingNeedsReason: boolOr(settings['vmu.roles.actingNeedsReason'], true),
+    separationPairs: Array.isArray(settings['vmu.roles.separationPairs']) ? settings['vmu.roles.separationPairs'].filter((p) => p && typeof p === 'object' && p.a && p.b).map((p) => ({ a: String(p.a), b: String(p.b) })) : [],
+    promotionNeedsEvidence: boolOr(settings['vmu.roles.promotionNeedsEvidence'], true),
   })
 
   /** S-1: map a job title to a role slot, or refuse by name. */
@@ -57,7 +68,7 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
     if (typeof title !== 'string' || !title) throw refuse('VMU_RECRUIT_SLOT_UNKNOWN', 'a role slot (or a mapped title) is required', 'pass slot:<id>, or declare vmu.roles.map[title]=slot', { title })
     const c = cfg()
     if (c.roleMap[title]) return c.roleMap[title]
-    if (/^[a-z][a-z0-9-]*$/.test(title)) return title          // already looks like a slot id
+    if (c.slotIdPattern.test(title)) return title               // ROUND 217: shape comes from vmu.roles.slotIdPattern
     throw refuse('VMU_RECRUIT_SLOT_UNKNOWN', 'job title is not mapped to a role slot: ' + title,
       'the kernel does not know titles; add vmu.roles.map[' + JSON.stringify(title) + ']=<slot>', { title, known: Object.keys(c.roleMap) })
   }
@@ -127,8 +138,21 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
     if (taken + 1 > limit) throw refuse('VMU_RECRUIT_SEATS_EXCEEDED', 'seats exceeded for slot ' + o.slot + ': current=' + taken + ' limit=' + limit, 'no seat left; close a seat or raise vmu.recruit.seatsMax', { slot: o.slot, current: taken, limit })
     o.status = 'accepted'
     const probationUntil = c.probationMs > 0 ? clock() + c.probationMs : null
-    staff.set(a.candidate, { memberId: a.candidate, slot: o.slot, hiredAt: clock(), probationUntil, confirmedAt: null, by: by || null })
-    return { memberId: a.candidate, slot: o.slot, probationUntil, confirmed: false }
+    // ROUND 217: separation of duties - one instance may not hold both slots of a declared pair.
+    for (const pair of c.separationPairs) {
+      const other = pair.a === o.slot ? pair.b : (pair.b === o.slot ? pair.a : null)
+      if (other && [...staff.values()].some((x) => x.memberId === a.candidate && x.slot === other)) {
+        throw refuse('VMU_ROLE_SEPARATION_VIOLATED', 'separation of duties: ' + a.candidate + ' already holds ' + other + ' and cannot also hold ' + o.slot,
+          'declare a different candidate, or drop the pair from vmu.roles.separationPairs', { memberId: a.candidate, slot: o.slot, other })
+      }
+    }
+    // Terms: the default任期 applies when set, and the maximum clamps it (the clamp is disclosed, never silent).
+    const nowAccept = clock()
+    let termUntil = c.termDefaultMs > 0 ? nowAccept + c.termDefaultMs : null
+    let termClamped = false
+    if (termUntil !== null && c.termMaxMs > 0 && termUntil - nowAccept > c.termMaxMs) { termUntil = nowAccept + c.termMaxMs; termClamped = true }
+    staff.set(a.candidate, { memberId: a.candidate, slot: o.slot, hiredAt: nowAccept, probationUntil, confirmedAt: null, by: by || null, termUntil, termClamped, recalls: 0 })
+    return { memberId: a.candidate, slot: o.slot, probationUntil, confirmed: false, termUntil, termClamped }
   }
 
   function reject({ offerId, reason = '' } = {}) {
@@ -173,5 +197,82 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
     return { postings: postings.size, applications: applications.size, offers: offers.size, staff: all.length, items: kept, dropped: dropped + (all.length - kept.length), policy: cfg(), memberSource: members ? 'injected' : 'none' }
   }
 
-  return { apiVersion, openPosting, apply, score, offer, accept, reject, probation, confirm, postings: postingsView, status, aggregate: (list, mode) => aggregate(list, mode || cfg().scoreAggregate) }
+  /** ROUND 217: renew a term. `vmu.roles.termRenewable=false` refuses by name. */
+  function renewTerm({ memberId, reason = null } = {}) {
+    const st = staff.get(memberId)
+    if (!st) throw refuse('VMU_RECRUIT_NOT_APPLIED', 'no staff record for ' + String(memberId), 'accept() first', { memberId })
+    const c = cfg()
+    if (!c.termRenewable) throw refuse('VMU_ROLE_TERM_NOT_RENEWABLE', 'vmu.roles.termRenewable=false: this term cannot be renewed', 'the seat must be vacated and refilled', { memberId })
+    const now = clock()
+    const base = st.termUntil !== null && st.termUntil > now ? st.termUntil : now
+    const add = c.termDefaultMs > 0 ? c.termDefaultMs : 0
+    let next = add > 0 ? base + add : st.termUntil
+    if (next !== null && c.termMaxMs > 0 && next - now > c.termMaxMs) next = now + c.termMaxMs
+    st.termUntil = next
+    st.renewedReason = reason === null ? st.renewedReason : String(reason)
+    return { memberId, slot: st.slot, termUntil: st.termUntil, renewable: true }
+  }
+
+  /** ROUND 217: recall. `vmu.roles.recallQuorum` and `recallCoolDownMs` both bite here. */
+  function recall({ memberId, support = 0, total = 0, reason = null } = {}) {
+    const st = staff.get(memberId)
+    if (!st) throw refuse('VMU_RECRUIT_NOT_APPLIED', 'no staff record for ' + String(memberId), 'accept() first', { memberId })
+    const c = cfg()
+    const now = clock()
+    if (c.recallCoolDownMs > 0 && Number.isFinite(st.recalledAt) && (now - st.recalledAt) < c.recallCoolDownMs) {
+      throw refuse('VMU_ROLE_RECALL_COOLDOWN', 'recall cool-down is still running for ' + memberId + ': remaining=' + (c.recallCoolDownMs - (now - st.recalledAt)) + 'ms',
+        'wait, or lower vmu.roles.recallCoolDownMs', { memberId, remainingMs: c.recallCoolDownMs - (now - st.recalledAt) })
+    }
+    if (c.recallQuorum > 0) {
+      const ratio = total > 0 ? support / total : 0
+      if (ratio < c.recallQuorum) {
+        throw refuse('VMU_ROLE_RECALL_QUORUM', 'recall support below quorum: ' + support + '/' + total + ' < ' + c.recallQuorum + '',
+          'gather more support, or lower vmu.roles.recallQuorum', { memberId, support, total, quorum: c.recallQuorum })
+      }
+    }
+    st.recalls = (st.recalls || 0) + 1
+    st.recalledAt = now
+    return { memberId, slot: st.slot, recalled: true, recalls: st.recalls, reason: reason === null ? null : String(reason) }
+  }
+
+  /** ROUND 217: appoint an acting holder. `actingNeedsReason` and `actingMaxMs` both bite here. */
+  function actAsChair({ memberId, ms = null, reason = null } = {}) {
+    const st = staff.get(memberId)
+    if (!st) throw refuse('VMU_RECRUIT_NOT_APPLIED', 'no staff record for ' + String(memberId), 'accept() first', { memberId })
+    const c = cfg()
+    if (c.actingNeedsReason && !(typeof reason === 'string' && reason.trim())) {
+      throw refuse('VMU_REASON_REQUIRED', 'vmu.roles.actingNeedsReason=true: a reason is required to act', 'pass reason:…', { memberId, missing: ['reason'] })
+    }
+    const now = clock()
+    let until = Number.isInteger(ms) && ms > 0 ? now + ms : (c.actingMaxMs > 0 ? now + c.actingMaxMs : null)
+    let clamped = false
+    if (until !== null && c.actingMaxMs > 0 && until - now > c.actingMaxMs) { until = now + c.actingMaxMs; clamped = true }
+    st.actingUntil = until
+    st.actingClamped = clamped
+    st.actingReason = String(reason)
+    return { memberId, slot: st.slot, actingUntil: until, clamped }
+  }
+
+  /** ROUND 217: promote. `promotionNeedsEvidence` bites here. */
+  function promote({ memberId, toSlot, evidence = null } = {}) {
+    const st = staff.get(memberId)
+    if (!st) throw refuse('VMU_RECRUIT_NOT_APPLIED', 'no staff record for ' + String(memberId), 'accept() first', { memberId })
+    const c = cfg()
+    const realTo = slotOf(toSlot)
+    if (c.promotionNeedsEvidence && !evidence) throw refuse('VMU_ROLE_EVIDENCE_REQUIRED', 'vmu.roles.promotionNeedsEvidence=true: a promotion needs evidence', 'pass evidence:<path|note>', { memberId, toSlot: realTo, missing: ['evidence'] })
+    for (const pair of c.separationPairs) {
+      const other = pair.a === realTo ? pair.b : (pair.b === realTo ? pair.a : null)
+      if (other && [...staff.values()].some((x) => x.memberId === memberId && x.slot === other)) {
+        throw refuse('VMU_ROLE_SEPARATION_VIOLATED', 'separation of duties: ' + memberId + ' holds ' + other + '',
+          'promote another member, or drop the pair from vmu.roles.separationPairs', { memberId, toSlot: realTo, other })
+      }
+    }
+    const from = st.slot
+    st.slot = realTo
+    st.promotedAt = clock()
+    st.promotionEvidence = String(evidence)
+    return { memberId, from, to: realTo, promotedAt: st.promotedAt }
+  }
+
+  return { apiVersion, renewTerm, recall, actAsChair, promote, openPosting, apply, score, offer, accept, reject, probation, confirm, postings: postingsView, status, aggregate: (list, mode) => aggregate(list, mode || cfg().scoreAggregate) }
 }

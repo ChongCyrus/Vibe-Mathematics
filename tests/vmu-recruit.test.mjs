@@ -11,6 +11,65 @@ const throws = (fn) => { try { fn(); return { threw: false } } catch (e) { retur
 let now = 1000
 const mk = (settings = {}, opts = {}) => createRecruit({ clock: () => now, settings, listCap: 100, ...opts })
 
+// 0) ROUND 217: the appointment/term family (vmu.roles.*) — ten settings, each enforced here
+{
+  const w = mk({
+    'vmu.roles.slotIdPattern': '^[a-z]+$',
+    'vmu.roles.termDefaultMs': 2000,
+    'vmu.roles.termMaxMs': 1500,
+    'vmu.roles.termRenewable': false,
+    'vmu.roles.recallQuorum': 0.5,
+    'vmu.roles.recallCoolDownMs': 10000,
+    'vmu.roles.actingMaxMs': 100,
+    'vmu.roles.actingNeedsReason': true,
+    'vmu.roles.separationPairs': [{ a: 'planner', b: 'verifier' }],
+    'vmu.roles.promotionNeedsEvidence': true,
+  })
+  // slotIdPattern: the declared pattern decides what counts as a slot id
+  ok(throws(() => w.openPosting({ slot: 'a-b', seats: 1 })).code === 'VMU_RECRUIT_SLOT_UNKNOWN',
+    'slotIdPattern[-]: an id outside the declared pattern is refused by name')
+  ok(w.openPosting({ slot: 'planner', seats: 2 }).slot === 'planner', 'slotIdPattern[+]: an id inside the pattern passes')
+  // termDefaultMs + termMaxMs: the default term is recorded and CLAMPED, and the clamp is disclosed
+  const ap = w.apply({ postingId: w.openPosting({ slot: 'planner', seats: 2 }).id, candidate: 'm1' })
+  const of = w.offer({ applicationId: ap.id })
+  const acc = w.accept({ offerId: of.id, by: 'acad' })
+  ok(acc.termUntil === now + 1500 && acc.termClamped === true,
+    'termDefaultMs[+] + termMaxMs: a 2000ms default term is CLAMPED to the 1500ms maximum and says so', JSON.stringify(acc))
+  // termRenewable[-]
+  ok(throws(() => w.renewTerm({ memberId: 'm1' })).code === 'VMU_ROLE_TERM_NOT_RENEWABLE',
+    'termRenewable[-]: a non-renewable term refuses renewal by name')
+  // recallQuorum[-] and [+], then recallCoolDownMs[-]
+  ok(throws(() => w.recall({ memberId: 'm1', support: 1, total: 4 })).code === 'VMU_ROLE_RECALL_QUORUM',
+    'recallQuorum[-]: support below the declared quorum is refused by name')
+  ok(w.recall({ memberId: 'm1', support: 3, total: 4 }).recalled === true, 'recallQuorum[+]: enough support recalls')
+  ok(throws(() => w.recall({ memberId: 'm1', support: 4, total: 4 })).code === 'VMU_ROLE_RECALL_COOLDOWN',
+    'recallCoolDownMs[-]: a second recall inside the cool-down is refused by name')
+  // actingNeedsReason[-] and actingMaxMs
+  ok(throws(() => w.actAsChair({ memberId: 'm1' })).code === 'VMU_REASON_REQUIRED',
+    'actingNeedsReason[-]: acting without a reason is refused by name')
+  const act = w.actAsChair({ memberId: 'm1', ms: 5000, reason: 'chair unavailable' })
+  ok(act.actingUntil === now + 100 && act.clamped === true,
+    'actingMaxMs: a requested 5000ms acting window is CLAMPED to the 100ms maximum', JSON.stringify(act))
+  // promotionNeedsEvidence[-] and separationPairs[-] on the promotion path
+  ok(throws(() => w.promote({ memberId: 'm1', toSlot: 'verifier', evidence: 'cv' })).code === 'VMU_ROLE_SEPARATION_VIOLATED',
+    'separationPairs[-]: promoting into the paired slot is refused by name')
+  const ap2 = w.apply({ postingId: w.openPosting({ slot: 'analyst', seats: 1 }).id, candidate: 'm2' })
+  const of2 = w.offer({ applicationId: ap2.id })
+  w.accept({ offerId: of2.id, by: 'acad' })
+  ok(throws(() => w.promote({ memberId: 'm2', toSlot: 'verifier' })).code === 'VMU_ROLE_EVIDENCE_REQUIRED',
+    'promotionNeedsEvidence[-]: a promotion without evidence is refused by name')
+  ok(w.promote({ memberId: 'm2', toSlot: 'verifier', evidence: 'peer review' }).to === 'verifier',
+    'promotionNeedsEvidence[+]: with evidence the promotion goes through')
+  // separationPairs[+] on the hiring path: the SAME member cannot take the paired slot
+  const ap3 = w.apply({ postingId: w.openPosting({ slot: 'planner', seats: 1 }).id, candidate: 'm3' })
+  const of3 = w.offer({ applicationId: ap3.id })
+  w.accept({ offerId: of3.id, by: 'acad' })   // m3 now holds planner
+  const ap4 = w.apply({ postingId: w.openPosting({ slot: 'verifier', seats: 1 }).id, candidate: 'm3' })
+  const of4 = w.offer({ applicationId: ap4.id })
+  ok(throws(() => w.accept({ offerId: of4.id, by: 'acad' })).code === 'VMU_ROLE_SEPARATION_VIOLATED',
+    'separationPairs[-]: hiring a member into the other half of a declared pair it already holds is refused by name')
+}
+
 // 1) S-1: kernel does not know titles — a free-form title must be mapped or refused by name
 {
   const w = mk()

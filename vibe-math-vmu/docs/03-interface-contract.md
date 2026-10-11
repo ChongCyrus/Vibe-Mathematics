@@ -344,6 +344,16 @@
 | `VMU_RECRUIT_SEATS_EXCEEDED` | 席位**超员**（含已开岗位预留；实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须给**当前/上限** ✓） |
 | `VMU_RECRUIT_NOT_APPLIED` | 对**未申请**的岗位发出录用（实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须给可用申请入口 ✓） |
 | `VMU_RECRUIT_REASON_REQUIRED` | 评分/拒绝**缺理由**（实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须点明缺哪一项 ✓） |
+| `VMU_ROLE_SEPARATION_VIOLATED` | **职责分离**被违反（同一实例兼任 `separationPairs` 的两半；招聘与晋升两条路都拦 ✓，实现于 `kernel/recruit.js` ✓） | 任职（17） | ✅（须给**冲突的两半**与当事人 ✓） |
+| `VMU_ROLE_TERM_NOT_RENEWABLE` | 任期**不可续**（`vmu.roles.termRenewable=false` ✓） | 任职（17） | ✅（须给**席位**与被告知者 ✓） |
+| `VMU_ROLE_RECALL_QUORUM` | **罢免支持率不足**（低于 `vmu.roles.recallQuorum` ✓） | 任职（17） | ✅（须给**现值／阈值** ✓） |
+| `VMU_ROLE_RECALL_COOLDOWN` | **罢免冷却期内**再次罢免（`vmu.roles.recallCoolDownMs` ✓，防反复弹劾 ✓） | 任职（17） | ✅（须给**剩余时间** ✓） |
+| `VMU_ROLE_EVIDENCE_REQUIRED` | **晋升缺证据**（`vmu.roles.promotionNeedsEvidence=true` ✓） | 任职（17） | ✅（须点明缺 `evidence` ✓） |
+| `VMU_SAFETY_KILL_SWITCH` | **全局停止开关生效**（`vmu.safety.killSwitch=true` ⇒ 一切子进程与写入具名拒；实现于 `kernel/guard.js` ✓） | 安全（20） | ✅（须点明**是总开关**与如何解除 ✓） |
+| `VMU_SAFETY_EXEC_NOT_ALLOWED` | **命令不在白名单**（`vmu.safety.execAllowlist` 非空时；实现于 `kernel/guard.js` ✓） | 安全（20） | ✅（须给**白名单内容** ✓） |
+| `VMU_SAFETY_NET_DENIED` | **默认禁网下启动网络客户端**（`vmu.safety.netPolicy=off`；实现于 `kernel/guard.js` ✓） | 安全（20） | ✅（须给**策略值**与放行方式 ✓） |
+| `VMU_SAFETY_PATH_TOO_LONG` | **路径超长**（`vmu.safety.maxPathLength`；实现于 `kernel/guard.js` ✓） | 安全（20） | ✅（须给**实际长度与上限** ✓） |
+| `VMU_SAFETY_SYMLINK_DENIED` | **路径跨越软链**（`vmu.safety.followSymlinks=false`；实现于 `kernel/guard.js` ✓） | 安全（20） | ✅（须给**具体链接路径** ✓） |
 | `VMU_RECRUIT_OFFER_EXPIRED` | 录用报价**已过期**（实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须给**过期时刻** ✓） |
 | `VMU_RECRUIT_PROBATION_NOT_DUE` | **试用期未满**不得转正（实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须给**剩余时间** ✓） |
 | `VMU_TOPOLOGY_PATH_FORBIDDEN` | 拓扑**不允许该路径**（实现于 `kernel/topology.js` ✓） | 协作拓扑 | ✅（须给**允许路径** ✓） |
@@ -714,7 +724,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **208** 个码，**逐行**给出状态 ✓：其中 **168** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **218** 个码，**逐行**给出状态 ✓：其中 **178** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **40** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -891,8 +901,18 @@
 | `VMU_REPRO_COPY_DENIED` | **已实现 ✓** | `vibe-math-vmu/kernel/repropack.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESOURCE_BUDGET` | **已实现 ✓** | `vibe-math-vmu/kernel/alerts.js`、`vibe-math-vmu/kernel/bidding.js`、`vibe-math-vmu/kernel/budget.js`、`vibe-math-vmu/kernel/course.js`、`vibe-math-vmu/kernel/grant.js`、`vibe-math-vmu/kernel/idempotency.js`、`vibe-math-vmu/kernel/instruments.js`、`vibe-math-vmu/kernel/mathtools.js`、`vibe-math-vmu/kernel/meetings.js`、`vibe-math-vmu/kernel/members.js`、`vibe-math-vmu/kernel/paper.js`、`vibe-math-vmu/kernel/projmigrate.js`、`vibe-math-vmu/kernel/replay.js`、`vibe-math-vmu/kernel/stateversion.js`、`vibe-math-vmu/kernel/tasks.js`、`vibe-math-vmu/kernel/transaction.js` | 代码里有该码字符串 ✓ |
 | `VMU_RETENTION_TRUNCATED` | **已实现 ✓** | `vibe-math-vmu/kernel/retention.js` | 代码里有该码字符串 ✓ |
+| `VMU_ROLE_EVIDENCE_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |
+| `VMU_ROLE_RECALL_COOLDOWN` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |
+| `VMU_ROLE_RECALL_QUORUM` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |
+| `VMU_ROLE_SEPARATION_VIOLATED` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |
+| `VMU_ROLE_TERM_NOT_RENEWABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |
 | `VMU_ROLLBACK_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/alerts.js` | 代码里有该码字符串 ✓ |
 | `VMU_ROLLBACK_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/migration.js` | 代码里有该码字符串 ✓ |
+| `VMU_SAFETY_EXEC_NOT_ALLOWED` | **已实现 ✓** | `vibe-math-vmu/kernel/guard.js` | 代码里有该码字符串 ✓ |
+| `VMU_SAFETY_KILL_SWITCH` | **已实现 ✓** | `vibe-math-vmu/kernel/guard.js` | 代码里有该码字符串 ✓ |
+| `VMU_SAFETY_NET_DENIED` | **已实现 ✓** | `vibe-math-vmu/kernel/guard.js` | 代码里有该码字符串 ✓ |
+| `VMU_SAFETY_PATH_TOO_LONG` | **已实现 ✓** | `vibe-math-vmu/kernel/guard.js` | 代码里有该码字符串 ✓ |
+| `VMU_SAFETY_SYMLINK_DENIED` | **已实现 ✓** | `vibe-math-vmu/kernel/guard.js` | 代码里有该码字符串 ✓ |
 | `VMU_SCHEDULER_ACTION_FORBIDDEN` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_SCHEDULER_TRIGGER_LIMIT` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_SCHEDULE_LIMIT` | **已实现 ✓** | `vibe-math-vmu/kernel/scheduler.js` | 代码里有该码字符串 ✓ |

@@ -859,6 +859,22 @@
   ★ **一处声明缺陷（记在真源 ✓，不静默 ✓）**：`docs/17 §29.3` 把 `vmu.notify.priorityFloor` 声明为 **`string`（空串｜low｜normal｜high）** ✗，而**同名键在 `docs/04` 与内核里已是 `int` 默认 `0`** ✓ ⇒ **一名两型 ⇒ 不可实现** ✗ ⇒ **该行已就地写明冲突与前置裁定、并保持未接线** ✓；★ `§29.3` 的标题「全部未接线」也已按实测更正 ✓。
   ✗ **一处自误（记下 ✓）**：收尾脚本**在声明 `lines` 时就 `.join()` 成字符串** ✗，末尾又调 `.join` ⇒ **账本没写成** ✓ ⇒ ★ **纪律：数组与字符串别同名复用** ✓。
   **未做（明写 ✗）**：★ **`priorityFloor` 的型别裁定** ✗；**`vmu.roles.*`（10 条，需新建面）** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+- ★★★★★ **轮 217：`vmu.roles.*` 10 条【做成实现】—— 未接线 460 → 450；并裁定 `priorityFloor` 的型别冲突** ✓✓
+  ★★ **归属先量后定** ✓：`docs/17` 自己写着「任职与任期归 17」 ✓，而 **`kernel/recruit.js` 正是那个面** ✓ —— 它**已读 `vmu.roles.map`** ✓、维护 `staff: {slot, hiredAt, probationUntil, confirmedAt}` ✓，**且把 `vmu.roles.slotIdPattern` 的声明默认【硬编码】在 `slotOf` 里** ✓（`/^[a-z][a-z0-9-]*$/` ✓）⇒ ★★ **不必新建面** ✓（**新任面计划被实测否掉** ✓）。
+  ★★ **10 条的落点与断言** ✓✓：`slotIdPattern`（**形状改由设置决定** ✓）／`termDefaultMs`＋`termMaxMs`（**默认任期被上限钳制并自曝 `termClamped`** ✓）／`termRenewable`（false ⇒ `renewTerm` **具名拒** ✓）／`recallQuorum`（支持率不足 **具名拒** ✓）／`recallCoolDownMs`（**期内二次罢免具名拒** ✓）／`actingMaxMs`（**代理窗口被钳制** ✓）／`actingNeedsReason`（无理由 **具名拒** ✓）／`separationPairs`（**同一实例不得兼任** ✓，**招聘与晋升两条路都拦** ✓）／`promotionNeedsEvidence`（缺证据 **具名拒** ✓）⇒ ★★ **四个新方法**（`renewTerm`／`recall`／`actAsChair`／`promote` ✓）就是该族声明的能力 ✓。**`VMU RECRUIT: 38 passed, 0 failed`** ✓；**`vmu.roles` 未接线 = 0** ✓；**`docs/04` 10 行 → `✅ 已接线 | kernel/recruit.js`** ✓；**`planned.js` 458 → 447** ✓。
+  ★ **`priorityFloor` 型别冲突【裁定为 `int`】** ✓（**内核与 `docs/04` 已是 `int` 默认 `0`** ✓；`low|normal|high` **用数值表达** ✓）⇒ **声明已就地更正、那条 phantom planned 条目随之消失** ✓。
+  ✗ **四处自伤（连犯，全部记下 ✓）** ✗✗：① 用脚本拼字符串写 `schema.js` 时，**含 `$` 的默认值使整行被截断** ✗（连 `\u0024` 也没救 ✓）—— **改法：该键 `def` 取【空串】表示「用模块内建默认」** ✓（**默认值只写在 `recruit.js` 一处** ✓）；② 两次尝试造成 **roles 条目重复 20 条** ✗ ⇒ 去重 ✓；③ 截断行留下**孤儿后半**（`, hot: …` 一行 ✓），按 key 去重看不见 ✗ ⇒ 按形状删除 ✓；④ 删除时**误伤括号** ⇒ `])` 处语法错 ✗ ⇒ ★★ **回退整个 `schema.js` 并改用 `edit` 工具【字面量插入】** ✓✓ —— **这一类 bug 从此归零** ✓。⇒ ★★ **纪律：改结构化的生成源码，用 `edit` 工具，不要用脚本拼字符串** ✓。
+  ★ **两处断言是【我】算错，不是实现错** ✓（**测试的价值正在于此** ✓）：① 钳制要**默认 > 上限**才会触发（我写成 1000 < 1500 ✓）；② **招聘路径的职责分离**要同一人**先持另一半**（我把已晋升到 `verifier` 的人再往 `verifier` 招 ✓）⇒ 两处均按语义重写 ✓。
+  **未做（明写 ✗）**：**`reconsiderFloor` 的 pack 层示例** ✗；**其余 450 条未接线（其中绝大多数是 `planned`）** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）；**`#11`** ✗（**你的例外** ✓）。
+- ★★★★★ **轮 217（超长区间）：三个族一起做完 —— notify 14 条 ＋ roles 10 条 ＋ safety 10 条；未接线 475 → 440** ✓✓
+  **本区间做法（按用户指示：把时间花在活上，而不是反复开门禁 ✓）** ✓：**三个族连续做完、只在区间末跑一次 T1** ✓（**先前每次都跑门禁，时间基本耗在门上** ✗）。
+  **① `vmu.notify.*` 14 条** ✓（面已存在 ✓，扩展之）：`requireReason` ✓／`maxSubjectsPerWatcher` ✓／`channels` ✓／`defaultChannel`（**解析而非回显** ✓）／`suppressSelfEvents` ✓／`snrFloor`（**只提示＝投递但标 `hintOnly`** ✓）／`mergeWindowMs`＋`mergeMaxPerDigest` ✓／`quietDefault`＋`quietTimezone`（**真 HH:MM 窗口，含跨午夜** ✓）／`digestDefaultMs` ✓／`dropOnFailure`＋`failureKeepMs` ✓／`retentionMs`（**按龄清理并计数** ✓）／`crossInstitution` ✓ ⇒ **`VMU NOTIFY: 68/0`** ✓。
+  **② `vmu.roles.*` 10 条** ✓：★ **归属先量后定** ✓ —— `docs/17` 自写「任职与任期归 17」 ✓，而 **`recruit.js` 已读 `roles.map`、维护 `staff{hiredAt,probationUntil,confirmedAt}`，且把 `slotIdPattern` 的默认【硬编码】在 `slotOf` 里** ✓ ⇒ **不必新建面** ✓（**原「新建面「计划被实测否掉** ✓）；**四个新方法**（`renewTerm`／`recall`／`actAsChair`／`promote` ✓）⇒ **`VMU RECRUIT: 38/0`** ✓。
+  **③ `vmu.safety.*` 10 条** ✓：契约取自 **`docs/20`** ✓（`killSwitch` 默认 false ✓／`maxPathLength` 4096 ✓／`followSymlinks` false ✓／`netPolicy` 默认 off ✓／`execAllowlist` ✓／`maxCpuMs`＋`maxMemoryMb` ✓／`capabilityMatrix` **内建最小集** ✓／`approvalRequired`＋`askOn` **默认同三项、一个判定取并** ✓）⇒ **`VMU GUARD: 43/0`** ✓；★★ **一处设计自纠** ✓：我原把 **`git` 与包管理器列进「网络客户端「** ✗ ⇒ **默认禁网策略会连本地 `git status` 都拒** ✗ ⇒ **收窄为真正的网络客户端** ✓。
+  **④ 区间初修掉上一区间遗留的 3 条红** ✓✓：**5 个新码未登记** ⇒ **已在 `docs/03 §8` 逐条登记** ✓（`VMU_ROLE_*` 五条 ✓，各带「须给什么「 ✓）；**`vmu-host.test.mjs` 用了一个【已不再 planned】的键** ✗ ⇒ **改用仍 planned 的 `vmu.safety.askOn`** ✓（**断言意图不变** ✓）；**其 mutants 家族随之复绿** ✓。
+  ✗ **四处自伤（连犯，全部记下 ✓）** ✗✗：① **用脚本拼字符串写 `schema.js` 时，含 `$` 的默认值使整行被截断** ✗（**连 `\u0024` 也没救** ✓）⇒ **该键 `def` 改取空串＝「用模块内建默认」，默认值只写在 `recruit.js` 一处** ✓；② 两次尝试致 **roles 条目重复 20 条** ✗ ⇒ 去重 ✓；③ 截断行留下**孤儿后半** ✗ ⇒ 按形状删 ✓；④ 删除时**误伤括号** ✗ ⇒ ★★ **回退 `schema.js`、改用 `edit` 工具【字面量插入】** ✓✓ ⇒ ★★ **纪律：改结构化源码用 `edit`，不要拼字符串** ✓。
+  ★ **两处断言是【我】算错而非实现错** ✓（**测试的价值** ✓）：钳制要**默认 > 上限** ✓；招聘路径的职责分离要**同一人先持另一半** ✓ ⇒ 均按语义重写 ✓。
+  **未做（明写 ✗）**：**`reconsiderFloor` 的 pack 层示例** ✗；**其余 440 条未接线（绝大多数 `planned`）** ✗；**真机复跑** ✗（**清单见 `10-§5.1.1`** ✓）；**版本号 / release** ✗（**须你批准** ✓）；**`#11`** ✗（**你的例外** ✓）。
 ### 0.4 结论
 
 

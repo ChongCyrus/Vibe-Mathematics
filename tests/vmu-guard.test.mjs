@@ -6,6 +6,8 @@ import { dirname, join, normalize } from 'node:path'
 import {
   describePolicy, guardWrite, guardSpawnCwd, memoryCeilingExceeded,
   readPathPolicy, readMemoryCeilingMb, sharedRootFor,
+  guardWriteExtended, guardExec, cpuBudgetExceeded, requiresApproval, capabilityOf,
+  readKillSwitch, readMaxPathLength, readFollowSymlinks, readNetPolicy, readExecAllowlist,
 } from '../vibe-math-vmu/kernel/guard.js'
 import { createLibrary } from '../vibe-math-vmu/kernel/library.js'
 
@@ -78,5 +80,49 @@ refuses(() => guardWrite({ settings: {}, root, target: 'Members/../../escape.md'
 
 rmSync(root, { recursive: true, force: true })
 console.log('')
+
+// ── ROUND 217: the security family（docs/20 §2／§4／§12）— every reader and every judgement, both directions ──
+{
+  const S = (extra) => Object.assign({ 'vmu.core.enabled': true }, extra)
+  const k = (a, b) => 'vmu.safety.' + a + (b ? '.' + b : '')
+  // readers
+  ok(readKillSwitch(S({ [k('killSwitch')]: true })) === true, 'killSwitch[+]: the reader sees true')
+  ok(readKillSwitch(S({})) === false, 'killSwitch[-]: absent means false (the declared default)')
+  ok(readMaxPathLength(S({})) === 4096, 'maxPathLength: absent means the declared 4096')
+  ok(readMaxPathLength(S({ [k('maxPathLength')]: 10 })) === 10, 'maxPathLength: a declared value is honoured')
+  ok(readFollowSymlinks(S({})) === false && readFollowSymlinks(S({ [k('followSymlinks')]: true })) === true, 'followSymlinks: default false, declared true')
+  ok(readNetPolicy(S({})) === 'off', 'netPolicy: absent means off (the volume says default no-network)')
+  ok(readNetPolicy(S({ [k('netPolicy')]: 'nonsense' })) === 'off', 'netPolicy[-]: an unknown value falls back to off')
+  ok(readExecAllowlist(S({ [k('execAllowlist')]: ['git', '  '] })).join(',') === 'git', 'execAllowlist: blank entries are dropped')
+  // kill switch stops everything
+  const ks = S({ [k('killSwitch')]: true, [k('pathPolicy')]: 'workspace+shared' })
+  let killed = null; try { guardExec({ settings: ks, argv: ['git', 'status'] }) } catch (e) { killed = e && e.code }
+  ok(killed === 'VMU_SAFETY_KILL_SWITCH', 'killSwitch: it stops a subprocess BY NAME', String(killed))
+  let killedW = null; try { guardWriteExtended({ settings: ks, root: process.cwd(), target: 'a.txt' }) } catch (e) { killedW = e && e.code }
+  ok(killedW === 'VMU_SAFETY_KILL_SWITCH', 'killSwitch: it stops a WRITE BY NAME too', String(killedW))
+  // exec allow-list
+  const allowS = S({ [k('execAllowlist')]: ['git'] })
+  ok(guardExec({ settings: allowS, argv: ['git', 'status'] }).ok === true, 'execAllowlist[+]: a listed command starts')
+  let notAllowed = null; try { guardExec({ settings: allowS, argv: ['rm', '-rf', '/'] }) } catch (e) { notAllowed = e && e.code }
+  ok(notAllowed === 'VMU_SAFETY_EXEC_NOT_ALLOWED', 'execAllowlist[-]: an unlisted command is refused BY NAME', String(notAllowed))
+  // net policy
+  let netDenied = null; try { guardExec({ settings: S({}), argv: ['curl', 'https://example.org'] }) } catch (e) { netDenied = e && e.code }
+  ok(netDenied === 'VMU_SAFETY_NET_DENIED', 'netPolicy[-]: with the default off a network client is refused BY NAME', String(netDenied))
+  ok(guardExec({ settings: S({ [k('netPolicy')]: 'allowlist' }), argv: ['curl', 'https://example.org'] }).ok === true, 'netPolicy[+]: allowlist lets it through')
+  // path length and symlinks
+  let tooLong = null; try { guardWriteExtended({ settings: S({ [k('maxPathLength')]: 5 }), root: process.cwd(), target: 'abcdefgh.txt' }) } catch (e) { tooLong = e && e.code }
+  ok(tooLong === 'VMU_SAFETY_PATH_TOO_LONG', 'maxPathLength[-]: an over-long path is refused BY NAME', String(tooLong))
+  const okPath = guardWriteExtended({ settings: S({}), root: process.cwd(), target: 'fine.txt' })
+  ok(okPath.ok === true && okPath.path.endsWith('fine.txt'), 'guardWriteExtended[+]: a normal write still passes')
+  // cpu gate + approval + capability matrix
+  ok(cpuBudgetExceeded({ settings: S({ [k('maxCpuMs')]: 100 }), cpuMs: 150 }).exceeded === true, 'maxCpuMs[-]: over the ceiling reports exceeded')
+  ok(cpuBudgetExceeded({ settings: S({}), cpuMs: 1e9 }).exceeded === false, 'maxCpuMs[+]: 0 means no ceiling')
+  ok(requiresApproval(S({}), 'publish').required === true, 'approvalRequired[+]: the declared default includes publish')
+  ok(requiresApproval(S({}), 'read').required === false, 'approvalRequired[-]: an unlisted action needs no approval')
+  ok(requiresApproval(S({ [k('askOn')]: ['deploy'] }), 'deploy').required === true, 'askOn[+]: a declared action asks')
+  ok(capabilityOf(S({}), { slot: 'external-reviewer', capability: 'read-artifacts' }).granted === true, 'capabilityMatrix[+]: the built-in minimal set grants read-only artifacts')
+  ok(capabilityOf(S({}), { slot: 'external-reviewer', capability: 'write-artifacts' }).granted === false, 'capabilityMatrix[-]: it does NOT grant a write')
+  ok(capabilityOf(S({}), { slot: 'unknown-slot', capability: 'read-artifacts' }).granted === false, 'capabilityMatrix[-]: an unlisted slot is closed by default')
+}
 console.log('=== VMU GUARD: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) process.exit(1)

@@ -870,7 +870,7 @@ watchers: [{
 | `vmu.notify.requireReason` | bool | true | bool | pack | 立即 | 订阅/退订必须给理由（S-4 同源 ✓） |
 | `vmu.notify.crossInstitution` | bool | false | bool | 所办 | 重启 | 是否允许跨机构订阅（默认否 ✓） |
 | `vmu.notify.suppressSelfEvents` | bool | true | bool | pack | 立即 | 抑制自己触发的事件（降噪 ✓） |
-| `vmu.notify.priorityFloor` | string | `''` | `low｜normal｜high` | pack | 立即 | 低于此优先级不打扰 ★ **轮 216 实测：本条【声明型别冲突】、不可实现** ✗ —— 同名键在 `docs/04` 与内核里已是 **`int` 默认 `0`** ✓（`kernel/notify.js`），**一个名字两种型别** ⇒ **须先裁定取哪一种**（本表这条保持未接线 ✓） |
+| `vmu.notify.priorityFloor` | **int** | `0` | ≥0（越大越优先） | pack | 立即 | 低于此优先级不打扰 —— ★ **轮 217 裁定：取 `int`** ✓（内核与 `docs/04` 已是 `int` 默认 `0` ✓；`low｜normal｜high` 用**数值**表达即可 ✓，原 `string` 声明作废 ✗） ★ **轮 216 实测：本条【声明型别冲突】、不可实现** ✗ —— 同名键在 `docs/04` 与内核里已是 **`int` 默认 `0`** ✓（`kernel/notify.js`），**一个名字两种型别** ⇒ **须先裁定取哪一种**（本表这条保持未接线 ✓） |
 | `vmu.notify.snrFloor` | number | 0 | 0..1 | 所办 | 立即 | 信噪比下限（低于**只提示** ✓） |
 | `vmu.notify.retentionMs` | ms | 0 | ≥0 | 所办 | 立即 | 通知记录保留期 |
 

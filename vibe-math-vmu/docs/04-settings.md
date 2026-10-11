@@ -254,7 +254,7 @@ vmu.packs.active: [v5r]
 | `vmu.math.leanSearchPaths` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | P3：额外 -R 根（去重后注入，自动 VibMath 根之前） |
 | `vmu.math.leanJobsMaxParallel` | int ≥1 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | P3：后台编译并发（1＝串行） |
 | `vmu.safety.pathPolicy` | enum | `workspace-only` | `workspace-only`∣`workspace+shared` | 会话 | **H3** | office | ✅ 已接线 | `host-spawn.js` | 写保护范围 |
-| `vmu.safety.approvalRequired` | string[] | `[]` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 需审批的动作（走宿主审批面） |
+| `vmu.safety.approvalRequired` | string[] | `[publish,delete,network-egress]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 需人类批准的动作（轮 217 接线：默认取 docs/20 §2 的声明；与 vmu.safety.askOn 取并集，由同一判定读取） |
 | `vmu.safety.delegableKeys` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 可下放给角色槽位的键 |
 | `vmu.middleware.entries` | obj[] | `[]` | — | 会话 | H0 | office | ✅ 已接线 | `host.js` | 中间件清单（默认空＝零机制） |
 | `vmu.middleware.hookTimeoutMs` | int ≥1 | `2000` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/bus.js` | 单钩子预算 |
@@ -642,6 +642,25 @@ vmu.packs.active: [v5r]
 | `vmu.notify.dropOnFailure` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 投递失败是否丢弃该条（默认丢弃但绝不阻断业务） |
 | `vmu.notify.failureKeepMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 失败留痕保留期（0＝不按时间清理） |
 | `vmu.notify.retentionMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 通知记录保留期（0＝不清理；清理必计数） |
+| `vmu.roles.slotIdPattern` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 席位 id 形状正则（空串 ⇒ 用 kernel/recruit.js 的内建默认；默认值只写在那里，此处不重复字面量） |
+| `vmu.roles.termDefaultMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 任职默认任期（0＝无期限；accept 时记 termUntil） |
+| `vmu.roles.termMaxMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 任期上限（0＝不限；超上限被钳制并自曝 termClamped） |
+| `vmu.roles.termRenewable` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 任期可否续（false ⇒ renewTerm 具名拒） |
+| `vmu.roles.recallQuorum` | ratio | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 罢免所需支持比例（0＝只看流程；不足具名拒） |
+| `vmu.roles.recallCoolDownMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 罢免冷却（期内二次罢免具名拒，防反复弹劾） |
+| `vmu.roles.actingMaxMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 代理主持最长时长（0＝不限；超出被钳制并自曝 clamped） |
+| `vmu.roles.actingNeedsReason` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 代理必须给理由（无理由具名拒） |
+| `vmu.roles.separationPairs` | obj[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 职责分离对 [{a,b}]（同一实例不得兼任；违反具名拒） |
+| `vmu.roles.promotionNeedsEvidence` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 晋升必须带证据（缺失具名拒） |
+| `vmu.safety.killSwitch` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 全局停止开关（true ⇒ 一切子进程与写入具名拒；默认 false） |
+| `vmu.safety.maxPathLength` | int ≥0 | `4096` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 路径长度上限（默认 4096；超长具名拒） |
+| `vmu.safety.followSymlinks` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 是否允许跟随符号链接（默认 false；路径跨越软链具名拒） |
+| `vmu.safety.netPolicy` | enum | `off` | `off`∣`allowlist`∣`allow` | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 网络策略（默认 off＝禁网；off 时已知网络客户端具名拒） |
+| `vmu.safety.execAllowlist` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 可启动的可执行白名单（空＝不预授权任何命令；非空时不在表内具名拒） |
+| `vmu.safety.maxCpuMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | CPU 用量上限（0＝不限；与内存闸同形） |
+| `vmu.safety.maxMemoryMb` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 内存上限（0＝不限；安全面的资源闸，与 vmu.limits.memoryCeilingMb 分工不同） |
+| `vmu.safety.capabilityMatrix` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 能力矩阵（默认内建最小集：外部审稿人＝只读产物；未列出的槽位默认无权限） |
+| `vmu.safety.askOn` | string[] | `[publish,network-egress,delete]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 需要询问的动作（默认同 approvalRequired；两者由同一判定读取） |
 | `vmu.archive.offlineFirst` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.receiptRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.targets` | string[] | `[zenodo,osf,swh,other]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
@@ -1360,25 +1379,6 @@ vmu.packs.active: [v5r]
 | `vmu.reviewers.blindUnbindRequiresReason` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.reviewers.coiPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.reviewers.maxLoad` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.roles.actingMaxMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.roles.actingNeedsReason` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.roles.promotionNeedsEvidence` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.roles.recallCoolDownMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.roles.recallQuorum` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.roles.separationPairs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.roles.slotIdPattern` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.roles.termDefaultMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.roles.termMaxMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.roles.termRenewable` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.safety.askOn` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.safety.capabilityMatrix` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.safety.execAllowlist` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.safety.followSymlinks` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.safety.killSwitch` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.safety.maxCpuMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.safety.maxMemoryMb` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.safety.maxPathLength` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.safety.netPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.schedule.defaultTimezone` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.schedule.dstPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.schedule.recurrenceEnabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |

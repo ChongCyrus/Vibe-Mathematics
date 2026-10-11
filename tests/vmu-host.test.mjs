@@ -238,7 +238,15 @@ if (SELF_PROBE) {
     // A PLANNED key (a design-phase declaration with no consumer) must SAY that its value changes nothing:
     // an independent reviewer measured a single-digit wiring rate among declared keys, so a receipt implying
     // "the knob works" is exactly the trap docs/04 §6.3 forbids.
-    const planned = JSON.parse(await spec.execute({ key: 'vmu.roles.termRenewable', value: 'false' }, {}))
+    // ROUND 217: the key used to be `vmu.roles.termRenewable`, which this session WIRED - so the receipt now correctly
+    // says it has a consumer. The assertion is about the PLANNED branch, so it must name a key that is still planned.
+    // ROUND 217: read a CURRENTLY planned key at runtime instead of naming one, because a named key gets wired and the
+    // assertion then breaks for the wrong reason (it happened twice this session). The import is dynamic because this
+    // suite does not otherwise import node:fs; importing it here keeps the change local and obvious.
+    const { readFileSync } = await import('node:fs')
+    const plannedSrc = readFileSync(new URL('../vibe-math-vmu/settings/planned.js', import.meta.url), 'utf8')
+    const plannedKey = (plannedSrc.match(/key: "(vmu\.[A-Za-z0-9_.]+)"/) || [])[1]
+    const planned = JSON.parse(await spec.execute({ key: plannedKey, value: '[]' }, {}))
     ok(planned.ok === true && planned.noConsumer === true && /no runtime consumer/.test(String(planned.appliesFrom)) &&
       /NO consumer yet/.test(String(planned.note)),
       'a planned key is settable but the receipt states that it has no consumer yet', JSON.stringify(planned))
