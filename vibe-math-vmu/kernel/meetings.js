@@ -144,7 +144,11 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     wakeRetries: Math.min(10, Math.max(0, n(sget('vmu.meetings.wakeRetries')))),
     // ROUND 199: the motion (verdict round) ceiling. `|| 3` is explicit: an unset key reads as 0 here, and the
     // contract is int >= 1 with default 3.
-    verdictMaxRounds: Math.max(1, n(sget('vmu.meetings.verdictMaxRounds')) || 3),
+    verdictMaxRounds: (() => {
+      const raw = sget('vmu.meetings.verdictMaxRounds')
+      const v = (raw === undefined || raw === null || raw === '') ? 3 : n(raw)
+      return Math.max(1, v)
+    })(),
   }
 
   const counters = { opened: 0, closed: 0, speeches: 0, motions: 0, votes: 0, appeals: 0, warnings: 0, mutes: 0, refused: 0, prunedMinutes: 0, prunedVerbatim: 0, skippedWakes: 0, softBudget: 0 }

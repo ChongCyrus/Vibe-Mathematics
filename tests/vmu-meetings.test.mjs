@@ -563,6 +563,13 @@ const err = (fn) => errOf(fn)
     'verdictMaxRounds[-]: the third motion is refused BY NAME carrying current and ceiling', e && (e.code + ' ' + e.message))
   ok(e && Array.isArray(e.enforced) && e.enforced.indexOf('vmu.meetings.verdictMaxRounds') !== -1,
     'verdictMaxRounds: the refusal names the key it consulted')
+  // ROUND 202: an explicit 0 is a VALUE (out of contract, which is int >= 1), so it clamps to the floor 1 - it must
+  // NOT be mistaken for unset and silently become 3. Same unset-vs-value distinction as the hard-limit reader.
+  const h0 = opened({ 'vmu.meetings.verdictMaxRounds': 0 })
+  ok(h0.h.t.motion({ meeting: h0.id, member: 'acad', text: 'floor-one' }).ok === true,
+    'verdictMaxRounds: an explicit 0 clamps to the floor 1 (not to the default 3)')
+  const e0 = err(() => h0.h.t.motion({ meeting: h0.id, member: 'r-1', text: 'floor-second' }))
+  ok(e0 && e0.code === 'VMU_RESOURCE_BUDGET', 'verdictMaxRounds[-]: with an explicit 0 the SECOND motion is already refused', e0 && e0.code)
   const h3 = opened({ 'vmu.meetings.verdictMaxRounds': 1 })
   ok(h3.h.t.motion({ meeting: h3.id, member: 'acad', text: 'only' }).ok === true, 'verdictMaxRounds: a ceiling of 1 still allows one motion')
   const e3 = err(() => h3.h.t.motion({ meeting: h3.id, member: 'r-1', text: 'second' }))
