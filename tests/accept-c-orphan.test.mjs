@@ -327,17 +327,33 @@ function extractHeadBaseline() {
   const target = join(dir, 'vibe-math-v5.js')
   let ref = CONTROL_REF
   let r = gitToFile(['show', ref + ':vibe-math-v5/vibe-math-v5.js'], target)
-  // ROUND 129: once the patch is committed, `HEAD` IS the subject and the control-side assertions (C1, C3) cannot
-  // hold - they say the control dispatched nothing, and it did, because it is the same file. Rather than fail for a
-  // harness reason, step back one commit and SAY SO. The override still wins, so a caller can name any ref.
-  if (!process.env.ACCEPT_C_CONTROL && existsSync(target) && existsSync(SUBJECT_PATH)
-      && sha256File(target) === sha256File(SUBJECT_PATH)) {
-    const back = 'HEAD~1'
-    const r2 = gitToFile(['show', back + ':vibe-math-v5/vibe-math-v5.js'], target)
-    if (r2.status === 0) {
-      console.log('  ⚠️ ACCEPT-C: 对照组 HEAD 与受测文件是同一个 blob ⇒ 自动退到 ' + back + ' 作为对照（否则 C1/C3 会因"对照即受测"而失败 ✗）')
-      ref = back
-      r = r2
+  // ROUND 130: stepping back exactly ONE commit was not enough. Once the patch is committed, `HEAD` IS the subject,
+  // and `HEAD~1` may be a LATER commit that still contains the patch (any commit made after it), so the control was
+  // still the subject and C1/C3 failed again - the same harness failure, one level down. Walk back until the
+  // extracted blob actually DIFFERS from the working file, and say which ref was used. If none differs within the
+  // search window the harness refuses to pretend it has a control rather than comparing a file with itself.
+  if (!process.env.ACCEPT_C_CONTROL && existsSync(target) && existsSync(SUBJECT_PATH)) {
+    const subjectHash = sha256File(SUBJECT_PATH)
+    if (sha256File(target) === subjectHash) {
+      const tried = []
+      for (let back = 1; back <= 50; back++) {
+        const cand = 'HEAD~' + back
+        const rc = gitToFile(['show', cand + ':vibe-math-v5/vibe-math-v5.js'], target)
+        tried.push(cand)
+        if (rc.status !== 0) break // walked past the root
+        if (sha256File(target) !== subjectHash) {
+          console.log('  ⚠️ ACCEPT-C: 对照组 ' + CONTROL_REF + ' 与受测文件是同一个 blob ⇒ 回退到 ' + cand
+            + ' 作为对照（它是最近的、内容不同的版本；否则 C1/C3 会因"对照即受测"而失败 ✗）')
+          ref = cand
+          r = rc
+          break
+        }
+      }
+      if (ref === CONTROL_REF) {
+        console.error('  ✗ ACCEPT-C: 在 ' + tried.length + ' 个历史版本里找不到与受测文件【不同】的内容 ⇒'
+          + ' 本验收器【拒绝】拿同一个文件跟自己比（不会静默通过 ✗）。请用 ACCEPT_C_CONTROL=<ref> 指定对照。')
+        process.exitCode = 1
+      }
     }
   }
   const info = { dir, target, controlRef: ref, gitStatus: r.status, gitError: r.error, bytes: existsSync(target) ? statSync(target).size : 0 }
