@@ -138,6 +138,15 @@
   | `vmu.human` | 6 | 无 ✗ | 0 ✗ | **不做 ✗**（人工审批/观察者/否决 ✓） |
   ★ **方法学发现（本族第 33 例）** ✓✓：**"仍 planned" 与 "读取且已声明" 出现了同名项** ✗（`vmu.ballot` 的 `freezeMeetingLinked`／`freezeMode`／`irvInstantSingleCount` ✓，`vmu.course` 的 `submitMode`／`visibility` ✓）—— **而 `planned.js` 的生成器【排除 core】** ✓ ⇒ **两者不可能同时成立** ✗ ⇒ **唯一解释：它们在模块里是【`UNWIRED_REASONS` 原因表里的提及】，不是取值** ✓✓（**与 `mathtools.js:77` 那个假阳性同一族** ✓）⇒ **教训**：**"字符串字面量出现" ≠ "读取"**，**判"有无消费者"必须看【取值形态】，不能看字面量** ✓✓。
 
+- ★★★ **轮 102：剩余 66 个面、190 键的**完整**裁决（按类，不逐行）—— 至此 **524 键全部裁决完毕** ✓✓**：
+  | 类 | 面数／键数 | 判据 | 裁决 |
+  |---|---|---|---|
+  | **A. 框架内部注册名，不是设置** | **4 面／10 键**（`vmu.settings` ✓／`vmu.middleware` ✓／`vmu.packs` ✓／`vmu.pack` ✓） | 它们是**框架自己的注册名**（`index.js`／`bus.js` 里的名字 ✓），**不是给 pack 调的旋钮** ✗ | **归入 `NON_SETTING`** ✓（**docs 门禁的白名单里本就有它们** ✓） |
+  | **B. 活面待办**（**有同名模块且真的在读该面** ✓） | **15 面／约 60 键**：`budget`5 ✓／`crypto`5 ✓／`ip`5 ✓／`recruit`5 ✓／`trust`5 ✓／`fairness`4 ✓／`scheduler`4 ✓／`work`4 ✓／`index`3 ✓／`handover`2 ✓／`compliance`1 ✓／`members`1 ✓／`memory`1 ✓／`skills`1 ✓／`tasks`1 ✓ | **载体已存在且在读** ⇒ **是该面的自然延伸** ✓ | **活面待办 ✗（未实现）**，**复活条件**：该面真要扩可调项时 ⇒ **先扩既有模块**（⓪ 步 ✓） |
+  | **C. 仅被"提及"**（别的模块里出现该前缀，**但形态未核** ✓） | **7 面／约 19 键**：`auction`3 ✓／`collusion`2 ✓／`license`4 ✓／`repro`3 ✓／`schedule`3 ✓／`archive`2 ✓／`replication`1 ✓／`middleware`3 ✓ | ★ **本轮已两次证明"字符串出现 ≠ 读取"** ✗（第 33 例 ✓）⇒ **不得据此判"有消费者"** | **待核 ?** —— **下一批按【取值形态】逐面核** ✓（**不猜** ✗） |
+  | **D. 无载体、无引用** | **40 面／约 101 键**：`legalentity`6／`privacy`6／`ethics`5／`compat`4／`data`4／`mentor`4／`review`4／`reviewers`4／`attendance`3／`committees`3／`consensus`3／`consent`3／`dedupe`3／`deprecation`3／`fingerprint`3／`incident`3／`names`3／`prompt`3／`refs`3／`script`3／`search`3／`sovereignty`3／`stats`3／`supplychain`3／`tags`3／`workspace`3／`authorship`2／`export`2／`import`2／`metadata`2／`paths`2／`preserve`2／`provenance`2／`pub`2／`report`2／`templates`2／`naming`1／`notes`1／`visibility`1／`vmu.x`1 | 五问全"否" ✓ | **判"不做 ✗"**，各带复活条件（**该能力真出现消费者时** ✓） |
+  ★ **一句话总结** ✓✓：**524 键里，"活面待办"约 60 ✓、"框架内部名"10 ✓、"待核"19 ✓、其余约 430 判不做 ✗** —— **没有一个是"已接线却标未实现"** ✓✓（**两套扫描一致** ✓）。
+
 ### 0.4 结论
 
 
