@@ -850,7 +850,7 @@ watchers: [{
 - **失败语义（failure semantics）** ｜ 目的：通知坏了不能拖垮业务 ｜ 面向谁：全体 ｜ 接口形状：规划（判定点 `society.notifyFailure` ⛔ 未实现）＋**05 的失败策略** ✓ ｜ 可调控：`vmu.notify.dropOnFailure`（默认 true ✓）／`vmu.notify.failureKeepMs` ｜ 错误码：`VMU_NOTIFY_CHANNEL_FAILED`（拟增）／`VMU_MIDDLEWARE_FAILED`（✓） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**投递失败绝不阻断被通知的业务** ✓（业务回执里带 `notified:false` ✓）；但**必须留痕＋计数** ✓（不得静默 ✗） ｜ 依赖：05 ✓／07 审计 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
 - **可见性与隐私（visibility）** ｜ 目的：谁能订阅谁 ｜ 面向谁：机构／成员 ｜ 接口形状：规划（判定点 `society.watchVisibility` ⛔ 未实现） ｜ 可调控：`vmu.notify.crossInstitution`（默认 false ✓）／§16 的可见性族 ✓ ｜ 错误码：`VMU_WATCH_VISIBILITY_DENIED`（拟增）／`VMU_WATCH_CROSS_INSTITUTION_DENIED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**私聊内容永不进入公共通知**（08 的 D6 口径 ✓）；跨机构默认**不可订阅** ✓；订阅关系本身是否公开＝参数（默认**不公开** ✓，与 §17 反垄断的"关系可见性"待裁 ✗） ｜ 依赖：§16／§17／20 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
 
-### 29.3 拟增键（通知族 `vmu.notify.*`；全部**未接线** ✗）
+### 29.3 拟增键（通知族 `vmu.notify.*`；★ **轮 216：其中 14 条【已接线】** ✓，见下表逐行标记）
 
 | 键 | 类型 | 默认 | 取值域 | 谁可改 | 热改 | 说明 |
 |---|---|---|---|---|---|---|
@@ -870,7 +870,7 @@ watchers: [{
 | `vmu.notify.requireReason` | bool | true | bool | pack | 立即 | 订阅/退订必须给理由（S-4 同源 ✓） |
 | `vmu.notify.crossInstitution` | bool | false | bool | 所办 | 重启 | 是否允许跨机构订阅（默认否 ✓） |
 | `vmu.notify.suppressSelfEvents` | bool | true | bool | pack | 立即 | 抑制自己触发的事件（降噪 ✓） |
-| `vmu.notify.priorityFloor` | string | `''` | `low｜normal｜high` | pack | 立即 | 低于此优先级不打扰 |
+| `vmu.notify.priorityFloor` | string | `''` | `low｜normal｜high` | pack | 立即 | 低于此优先级不打扰 ★ **轮 216 实测：本条【声明型别冲突】、不可实现** ✗ —— 同名键在 `docs/04` 与内核里已是 **`int` 默认 `0`** ✓（`kernel/notify.js`），**一个名字两种型别** ⇒ **须先裁定取哪一种**（本表这条保持未接线 ✓） |
 | `vmu.notify.snrFloor` | number | 0 | 0..1 | 所办 | 立即 | 信噪比下限（低于**只提示** ✓） |
 | `vmu.notify.retentionMs` | ms | 0 | ≥0 | 所办 | 立即 | 通知记录保留期 |
 

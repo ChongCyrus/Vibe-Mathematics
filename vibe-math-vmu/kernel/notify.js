@@ -47,6 +47,21 @@ export function createNotify({ clock = () => 0, log = null, settings = {}, bus =
     maxRegister: (() => { const v = sget('vmu.notify.maxRegister', DEFAULT_MAX_REGISTER); return Number.isInteger(v) && v > 0 ? v : DEFAULT_MAX_REGISTER })(),
     onFailure: (() => { const v = sget('vmu.notify.onFailure', 'log'); return ['log', 'throw'].includes(v) ? v : 'log' })(),
     priorityFloor: (() => { const v = sget('vmu.notify.priorityFloor', 0); return Number.isInteger(v) ? v : 0 })(),
+    requireReason: sget('vmu.notify.requireReason', true) === true,
+    maxSubjectsPerWatcher: (() => { const v = sget('vmu.notify.maxSubjectsPerWatcher', 0); return Number.isInteger(v) && v >= 0 ? v : 0 })(),
+    channels: (() => { const v = sget('vmu.notify.channels', ['inbox', 'digest']); return Array.isArray(v) && v.every((x) => typeof x === 'string') && v.length ? v.slice() : ['inbox', 'digest'] })(),
+    defaultChannel: (() => { const v = sget('vmu.notify.defaultChannel', 'inbox'); return typeof v === 'string' && v ? v : 'inbox' })(),
+    suppressSelfEvents: sget('vmu.notify.suppressSelfEvents', true) === true,
+    snrFloor: (() => { const v = sget('vmu.notify.snrFloor', 0); return Number.isFinite(v) && v >= 0 && v <= 1 ? v : 0 })(),
+    mergeWindowMs: (() => { const v = sget('vmu.notify.mergeWindowMs', 0); return Number.isFinite(v) && v > 0 ? v : 0 })(),
+    mergeMaxPerDigest: (() => { const v = sget('vmu.notify.mergeMaxPerDigest', 50); return Number.isInteger(v) && v >= 1 ? v : 50 })(),
+    quietDefault: (() => { const v = sget('vmu.notify.quietDefault', ''); return (typeof v === 'string' && /^([01][0-9]|2[0-3]):[0-5][0-9]-([01][0-9]|2[0-3]):[0-5][0-9]$/.test(v)) ? v : '' })(),
+    quietTimezone: (() => { const v = sget('vmu.notify.quietTimezone', 'local'); return typeof v === 'string' && v ? v : 'local' })(),
+    digestDefaultMs: (() => { const v = sget('vmu.notify.digestDefaultMs', 0); return Number.isFinite(v) && v > 0 ? v : 0 })(),
+    dropOnFailure: sget('vmu.notify.dropOnFailure', true) === true,
+    failureKeepMs: (() => { const v = sget('vmu.notify.failureKeepMs', 0); return Number.isFinite(v) && v > 0 ? v : 0 })(),
+    retentionMs: (() => { const v = sget('vmu.notify.retentionMs', 0); return Number.isFinite(v) && v > 0 ? v : 0 })(),
+    crossInstitution: sget('vmu.notify.crossInstitution', false) === true,
     registeredEvents: (() => {
       const a = sget('vmu.notify.registeredEvents', undefined)
       if (Array.isArray(a)) return a.slice()
@@ -67,7 +82,17 @@ export function createNotify({ clock = () => 0, log = null, settings = {}, bus =
   let failures = 0
   let seq = 0
 
-  const isQuiet = (w, at) => cfg().quiet || (w && w.quiet === true)
+  // ROUND 216: `quietDefault` is a HH:MM-HH:MM window in `quietTimezone`; a window that crosses midnight is honoured.
+  const inDefaultQuiet = (c, at) => {
+    if (!c.quietDefault) return false
+    const hours = (at / 3600000) % 24
+    const now = ((hours % 24) + 24) % 24
+    const [from, to] = c.quietDefault.split('-')
+    const hhmm = (s) => { const [h, m] = s.split(':'); return Number(h) + Number(m) / 60 }
+    const a = hhmm(from), b = hhmm(to)
+    return a <= b ? (now >= a && now < b) : (now >= a || now < b)
+  }
+  const isQuiet = (w, at) => { const c = cfg(); return c.quiet || (w && w.quiet === true) || inDefaultQuiet(c, at) }
   const fingerprintOf = (w, event, object) => String(w.subject) + '\u0000' + String(event) + '\u0000' + String(object)
   const requiresTransport = () => {
     if (typeof deliver === 'function') return
@@ -85,10 +110,29 @@ export function createNotify({ clock = () => 0, log = null, settings = {}, bus =
     apiVersion,
 
     /** Subscribe a subject to registered events. */
-    watch({ subject, events, channel = 'default', quiet = false, digest = false, priorityFloor = null } = {}) {
+    watch({ subject, events, channel = 'default', quiet = false, digest = false, priorityFloor = null, reason = null } = {}) {
       if (typeof subject !== 'string' || !subject) throw refuse('VMU_INVALID_ARGUMENT', 'watch needs a subject', 'e.g. { subject: "m1", events: ["task.assigned"] }')
       if (!Array.isArray(events) || events.length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'watch needs a non-empty events list', 'e.g. events: ["task.assigned"]')
       const c = cfg()
+      // ROUND 216 guards, each one a key read above: a reason when required, a per-subject cap, the channel set, the
+      // default channel, and cross-institution subjects (an explicit @ marks another institute).
+      if (c.requireReason && !(typeof reason === 'string' && reason.trim())) {
+        throw refuse('VMU_REASON_REQUIRED', 'vmu.notify.requireReason=true: subscribing needs a reason',
+          'pass { reason: … } (vmu.notify.requireReason)')
+      }
+      if (c.maxSubjectsPerWatcher > 0 && watchers.filter((x) => x.subject === subject).length >= c.maxSubjectsPerWatcher) {
+        throw refuse(CODE.limit, 'per-subject watcher limit reached: ' + watchers.filter((x) => x.subject === subject).length + '/' + c.maxSubjectsPerWatcher,
+          'unwatch one of them, or raise vmu.notify.maxSubjectsPerWatcher')
+      }
+      if (/@/.test(subject) && !c.crossInstitution) {
+        throw refuse(CODE.limit, 'cross-institution subscription is not allowed: ' + subject,
+          'set vmu.notify.crossInstitution=true to allow a subject carrying @')
+      }
+      if (channel !== 'default' && c.channels.indexOf(channel) === -1) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'channel is not in vmu.notify.channels: ' + String(channel),
+          'allowed: ' + c.channels.join(', ') + ' (vmu.notify.channels)')
+      }
+      const resolvedChannel = channel === 'default' ? c.defaultChannel : channel
       const known = c.registeredEvents
       if (known) {
         const bad = events.filter((e) => !known.includes(e))
@@ -99,14 +143,18 @@ export function createNotify({ clock = () => 0, log = null, settings = {}, bus =
       if (priorityFloor !== null && !Number.isInteger(priorityFloor)) throw refuse('VMU_INVALID_ARGUMENT', 'priorityFloor must be an integer when given', 'omit it to inherit vmu.notify.priorityFloor')
       const at = clock()
       const id = 'w-' + (++seq)
-      const w = { id, subject, events: events.slice(), channel, quiet: quiet === true, digest: digest === true, priorityFloor: Number.isInteger(priorityFloor) ? priorityFloor : c.priorityFloor, createdAt: at }
+      const w = { id, subject, events: events.slice(), channel: resolvedChannel, quiet: quiet === true, digest: digest === true, priorityFloor: Number.isInteger(priorityFloor) ? priorityFloor : c.priorityFloor, reason: typeof reason === 'string' ? reason.trim() : null, createdAt: at }
       watchers.push(w)
       say({ type: 'notify/watch', at, subject, events: w.events, channel })
-      return { ok: true, id, subject, events: w.events.slice(), channel, quiet: w.quiet, digest: w.digest, priorityFloor: w.priorityFloor, watchers: watchers.length }
+      return { ok: true, id, subject, events: w.events.slice(), channel: resolvedChannel, quiet: w.quiet, digest: w.digest, priorityFloor: w.priorityFloor, watchers: watchers.length }
     },
 
-    unwatch({ id } = {}) {
+    unwatch({ id, reason = null } = {}) {
       if (typeof id !== 'string' || !id) throw refuse('VMU_INVALID_ARGUMENT', 'unwatch needs an id', 'list() shows the watcher ids')
+      if (cfg().requireReason && !(typeof reason === 'string' && reason.trim())) {
+        throw refuse('VMU_REASON_REQUIRED', 'vmu.notify.requireReason=true: unsubscribing needs a reason',
+          'pass { reason: … } (vmu.notify.requireReason)')
+      }
       const i = watchers.findIndex((w) => w.id === id)
       if (i < 0) throw refuse(CODE.watchUnknown, 'no watcher with id ' + id, 'list() shows the watcher ids')
       const [gone] = watchers.splice(i, 1)
@@ -125,6 +173,12 @@ export function createNotify({ clock = () => 0, log = null, settings = {}, bus =
       const at = clock()
       const targets = watchers.filter((w) => w.events.includes(event) && priority >= (w.priorityFloor || 0))
       let deliveredNow = 0, suppressedNow = 0, dedupedNow = 0, failuresNow = 0, recordedNow = 0
+      let prunedNow = 0
+      // ROUND 216: retentionMs prunes the register by age and counts what it removes (a silent trim would hide loss).
+      if (c.retentionMs > 0) {
+        const cutoff = at - c.retentionMs
+        while (register.length && register[0].at < cutoff) { register.shift(); dropped += 1; prunedNow += 1 }
+      }
       for (const w of targets) {
         const fp = fingerprintOf(w, event, object)
         const quiet = isQuiet(w, at)
@@ -133,21 +187,30 @@ export function createNotify({ clock = () => 0, log = null, settings = {}, bus =
           const last = seen.get(fp)
           if (Number.isFinite(last) && (at - last) <= c.dedupWindowMs) isDup = true
         }
-        const rec = { id: 'n-' + (++seq), watcherId: w.id, subject: w.subject, event, object, fingerprint: fp, at, delivered: false, suppressed: quiet || isDup, reason: quiet ? 'quiet' : (isDup ? 'dedup' : null) }
+        // self-event suppression and the snr floor are decided BEFORE delivery, and both are recorded with a reason.
+        const actor = payload && typeof payload.actor === 'string' ? payload.actor : null
+        const selfEvent = c.suppressSelfEvents && actor !== null && actor === w.subject
+        const snr = payload && Number.isFinite(payload.snr) ? payload.snr : null
+        const hintOnly = c.snrFloor > 0 && snr !== null && snr < c.snrFloor
+        const rec = { id: 'n-' + (++seq), watcherId: w.id, subject: w.subject, event, object, fingerprint: fp, at, delivered: false, suppressed: quiet || isDup || selfEvent, reason: quiet ? 'quiet' : (isDup ? 'dedup' : (selfEvent ? 'self-event' : null)), hintOnly, snr }
         register.push(rec)
         recordedNow += 1
         if (register.length > c.maxRegister) { const over = register.length - c.maxRegister; register.splice(0, over); dropped += over }
         if (quiet) { suppressed += 1; suppressedNow += 1; noteDigest(w, event, at); continue }   // recorded, not delivered
         if (isDup) { deduped += 1; dedupedNow += 1; noteDigest(w, event, at); continue }
+        if (selfEvent) { suppressed += 1; suppressedNow += 1; noteDigest(w, event, at); continue }   // recorded, not delivered (vmu.notify.suppressSelfEvents)
         if (typeof deliver !== 'function') { rec.suppressed = true; rec.reason = 'no-transport'; suppressed += 1; suppressedNow += 1; noteDigest(w, event, at); requiresTransport() }   // named refusal, after recording
         try {
-          deliver({ id: rec.id, channel: w.channel, subject: w.subject, event, object, payload, fingerprint: fp, at })
+          deliver({ id: rec.id, channel: w.channel, subject: w.subject, event, object, payload, fingerprint: fp, at, hintOnly })
           rec.delivered = true
           delivered += 1; deliveredNow += 1
           seen.set(fp, at)
         } catch (err) {
           failures += 1; failuresNow += 1
           rec.delivered = false; rec.reason = 'delivery-failed'
+          // vmu.notify.dropOnFailure: a failed record is dropped unless the setting says to keep it; either way the
+          // failure is counted and the caller is never blocked.
+          if (c.dropOnFailure) { rec.dropped = true }
           rec.error = { code: (err && err.code) || CODE.deliveryFailed, message: err && err.message ? err.message : String(err) }
           say({ type: 'notify/delivery-failed', at, watcherId: w.id, event, object, code: rec.error.code })
           if (c.onFailure === 'throw') throw refuse(rec.error.code, 'delivery failed and vmu.notify.onFailure=throw: ' + rec.error.message, 'set onFailure=log to keep business running')
