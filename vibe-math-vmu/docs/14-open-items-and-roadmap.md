@@ -224,6 +224,22 @@
   **并记下一次失败的度量** ✓✓：本轮试图用"**关键词共现**"自动配对 v5r 工具与 vmu 模块 ✓ ⇒ **结果全表 29/29 都"配对成功"** ✗ —— 而它只匹配到 **29 个工具**（**其余 27 个是动态注册** ✗），且 `vibe_v5_task_get → library.js` 之类**明显是噪声** ✓ ⇒ ⇒ **这正是本阶段第 6 次"用名字代替语义"** ✗（**子串 ✓／信任清单 ✓／误读清单 ✓／返回当抛出 ✓／前缀当码 ✓／关键词共现 ✓**）⇒ **该表【不作为证据】** ✓✓。
   **正确方法（下一步 ✓）** ✓：**逐工具人工配对** ✓（每个 v5r 工具 ⇒ 哪个 vmu 原语承载它 ✓，**无法承载的写明"缺"** ✗），**并以测试为证据** ✓ —— **这正是"若没有则继续直至完全包含"的施工图** ✓✓。
 
+- ★★★ **轮 130：v5r **逐工具**包含度对照表（用户第 2 条指示的答案；取代轮 128 那张失效的表）** ✓✓
+  **方法** ✓：先用**多种注册形态**抽出 v5r 的权威工具清单（`registerTool('…')` 单引号形态 ⇒ **56 个** ✓，与轮 84 一致 ✓；轮 128 只抽到 29 个是**我的正则缺陷** ✗）；再以**模块的取值形态与 API** 为证据逐条配对 ✓（**不以名字配对** ✗）。
+  **结论** ✓：**56 个工具中，50 个有承载原语 ✓、3 个部分承载 ○、3 个缺 ✗**（**逐族相加：10＋4＋8＋3＋15＋8＋2＝50 承载 ✓；部分＝论文 2 ＋ `self_report` 1 ✓；缺＝Lean 归档三动词 ✓ ⇒ 50＋3＋3＝56 ✓**）⇒ **框架侧"机制上可表达"的比例很高，但【不等于】v5r 已被包含** ✗✓。
+  | 族（数量） | v5r 工具 | vmu 承载（**证据＝模块 API 形态** ✓） | 判定 |
+  |---|---|---|---|
+  | **院所外壳（10）** | configure／start／resume／pause／stop／status／report／set／message／members | `pack.js`＋settings 模式＋`guard.js`（**唯一的执行点**）／`index.js`（组装根）／`stateversion.js`＋`replay.js`＋`storepolicy.js`（**跨版本读被拒 ＋ 显式迁移**）／`scheduler.js`（**注入计时缝**）／`work.js`（**在飞账本：重启后"被打断的工作"可知**）／`metrics.js`（判定计数面）／`audit.js`（**只追加 ＋ 先脱敏后落盘**）／`bus.js`（**中间件与框架的唯一交汇点**）／`notify.js`（订阅／去重／静默时段／摘要）／`members.js`（**角色槽位 ＋ 容量 ＋ 唤醒信封**） | **10／10 承载** ✓ |
+  | **人事（4）** | hire／fire／add_researcher／remove_researcher | `recruit.js`（**岗位→申请→评分→offer→试用→转正**）／`hr.js`（招聘／绩效／终身教职／申诉／**离任**／轮换）／`capacity.js`（**席位**）／`delegation.js`（**机器强制**的授权回收） | **4／4 承载** ✓ |
+  | **论文（2）** | paper／finalize_paper | `publication.js`（**版本链 ＋ 投稿包 ＋ 归档登记**）＋`repropack.js` | **部分** ○（**无"多成员合著流程"这一编排**） |
+  | **成员记录／沟通（9）** | say／wait／record_progress／record_proposition／record_method／record_subproblem／read_library／feedback／self_report | `bus.js`／`notify.js`（**不轮询的等待**）／`library.js`（**轨道／卡片／内容同一性／head 表**）／`memory.js`（**教训／反模式／事实／偏好**）／`metrics.js` | **8 载 ＋ `self_report` 部分** ○（**缺"每位成员的自述记录"这一原语**） |
+  | **验证（3）** | propose_verify／verdict／end_verify | `meeting.js`（**含轮 87 的 `endDebate()`** ✓）／`ballot.js`＋`ballotbox.js`（**27 键真消费**） | **3／3 承载** ✓ |
+  | **会议治理（15）** | meeting／chair_proxy／procedural_objection／grant／revoke／poll_open／poll_vote／poll_close／reconsider／secretary／motion／second／minutes／result_record／resolutions | `meeting.js`（50 断言）／`meetings.js`（策略层）／`delegation.js`／`arbitration.js`（**回避／听证／裁决／上诉**）／`grant.js`（**自 v5r #47 移植 ＋ 38 断言** ✓）／`ballot.js`／`ballotbox.js`／`minutes.js`（**纪要／决议／行动项**）／`governance.js`（**议程 ＋ 动议** ✓） | **15／15 承载** ✓ |
+  | **任务（8）** | task_create／task_list／task_get／task_update／overview／assign／prioritize／nudge | `tasks.js`（**账本 ＋ 阶段机**）／`workflow.js`（**CAS 动作／依赖／闸点**）／`board.js`（**看板／WIP／泳道／老化**）／`scheduler.js`／`metrics.js` | **8／8 承载** ✓ |
+  | **Lean（5）** | lean_run／lean_job／lean_archive／lean_read／lean_lib | `lean.js`（**8 键真读；队列并发 `leanJobsMaxParallel`；"退出 0 **且**产物哈希未变"才判 passed；具名拒 `VMU_LEAN_*`；丢弃计数** ✓ ⇒ 前两个**承载** ✓）；**后三个缺** ✗（`library.js` 有记录与内容同一性，但**没有"归档定义到词汇表"、"逐字读回归档文件"、"Lean 库"这三个动词** ✗） | **2 载 ＋ 3 缺** ✗ |
+  **★ 另一条轴：提示词正文** ✓✓：v5r 的 **27 段提示** 是**文本**，而 vmu 本体**按设计不含文本**（`packs/v5r-core.js` **121 行是策略** ✓）⇒ ⇒ **"完全包含、内容完全一致"在【正文】这一轴上为否** ✗ —— 它属于 **preset/pack** 的职责（当前由 `vibe-math-v5` **9,065 行**承载 ✓，覆盖 **17/18 段提示** ✓）。
+  **⇒ 因此对"是否完全实现 v5r"的回答** ✓✓：**机制上接近（50／56 有原语）、正文上不包含（提示词不在框架内）、且缺 3 个 Lean 归档动词 ＋ 3 处部分** ✗ ⇒ **"若没有则继续直至完全包含"的施工单＝这 6 项** ✓（**3 缺 ＋ 3 部分** ✓，**逐项写明复活条件** ✓）。
+
 ### 0.4 结论
 
 
