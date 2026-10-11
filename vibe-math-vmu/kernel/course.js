@@ -90,7 +90,10 @@ export function createCourse(opts) {
       allowAuditors: b('vmu.course.allowAuditors', false),
       cohortMax: n('vmu.course.cohortMax', 0),
       enrollmentNeedsApproval: b('vmu.course.enrollmentNeedsApproval', true),
-      submitMode: s('vmu.course.submitMode', 'single'),
+      // ROUND 123: the default was `single`, a value volume 17 does not define (`artifact｜inline｜both`), so the
+      // form guard could never fire on a default configuration. The volume says the default is `artifact` - the
+      // submission references a produced artefact - and that is what it is now.
+      submitMode: s('vmu.course.submitMode', 'artifact'),
       maxAttempts: n('vmu.course.maxAttempts', 1),
       allowLate: b('vmu.course.allowLate', false),
       latePenaltyRatio: Number.isFinite(ratio) && ratio >= 0 && ratio <= 1 ? ratio : 0,

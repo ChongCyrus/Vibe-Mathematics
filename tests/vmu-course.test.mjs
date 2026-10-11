@@ -81,14 +81,14 @@ test('an outcome without evidence is a NAMED refusal naming that outcome', () =>
 test('attempt cap and rubric reference are enforced', () => {
   const c = co({ 'vmu.course.maxAttempts': 1 })
   const o = c.open({ title: 'T' })
-  assert.equal(c.submit({ courseId: o.courseId, who: 'a', rubric: 'r0' }).ok, true)
-  const over = c.submit({ courseId: o.courseId, who: 'a' })
+  assert.equal(c.submit({ courseId: o.courseId, who: 'a', artifact: 'lib/x', rubric: 'r0' }).ok, true)
+  const over = c.submit({ courseId: o.courseId, who: 'a', artifact: 'lib/x' })
   assert.equal(over.code, 'VMU_NOT_PERMITTED')
   assert.ok(over.enforced.indexOf('vmu.course.maxAttempts') !== -1)
-  const noRub = c.submit({ courseId: o.courseId, who: 'b' })
+  const noRub = c.submit({ courseId: o.courseId, who: 'b', artifact: 'lib/x' })
   assert.equal(noRub.code, 'VMU_META_VALIDATION_FAILED')
   assert.ok(noRub.enforced.indexOf('vmu.course.requireRubricRef') !== -1)
-  assert.equal(c.submit({ courseId: o.courseId, who: 'b', rubric: 'r1' }).ok, true)
+  assert.equal(c.submit({ courseId: o.courseId, who: 'b', artifact: 'lib/x', rubric: 'r1' }).ok, true)
   passed += 1
 })
 
@@ -96,15 +96,15 @@ test('attempt cap and rubric reference are enforced', () => {
 test('late submission is handled explicitly and the rule used is SELF-REPORTED', () => {
   const strict = co({ 'vmu.course.allowLate': false })
   const o = strict.open({ title: 'T' })
-  const r = strict.submit({ courseId: o.courseId, who: 'a', rubric: 'r', late: true })
+  const r = strict.submit({ courseId: o.courseId, who: 'a', artifact: 'lib/x', rubric: 'r', late: true })
   assert.equal(r.code, 'VMU_NOT_PERMITTED')
   assert.ok(r.enforced.indexOf('vmu.course.allowLate') !== -1)
   const lax = co({ 'vmu.course.allowLate': true, 'vmu.course.latePenaltyRatio': 0.25 })
   const o2 = lax.open({ title: 'T' })
-  const r2 = lax.submit({ courseId: o2.courseId, who: 'a', rubric: 'r', late: true })
+  const r2 = lax.submit({ courseId: o2.courseId, who: 'a', artifact: 'lib/x', rubric: 'r', late: true })
   assert.equal(r2.ok, true)
   assert.deepEqual(r2.latePolicy, { applied: true, rule: 'latePenaltyRatio', ratio: 0.25, additive: false })
-  const onTime = lax.submit({ courseId: o2.courseId, who: 'b', rubric: 'r' })
+  const onTime = lax.submit({ courseId: o2.courseId, who: 'b', artifact: 'lib/x', rubric: 'r' })
   assert.deepEqual(onTime.latePolicy, { applied: false, rule: 'none' })
   passed += 1
 })
@@ -113,7 +113,7 @@ test('late submission is handled explicitly and the rule used is SELF-REPORTED',
 test('self-review and the reviewer threshold are enforced with current/needed', () => {
   const c = co({ 'vmu.course.selfReviewAllowed': false, 'vmu.course.reviewersPerSubmission': 2, 'vmu.course.blindReview': true })
   const o = c.open({ title: 'T' })
-  const s = c.submit({ courseId: o.courseId, who: 'a', rubric: 'r' })
+  const s = c.submit({ courseId: o.courseId, who: 'a', artifact: 'lib/x', rubric: 'r' })
   const self = c.review({ submissionId: s.submissionId, by: 'a', score: 1 })
   assert.equal(self.code, 'VMU_NOT_PERMITTED')
   assert.ok(self.enforced.indexOf('vmu.course.selfReviewAllowed') !== -1)
@@ -131,7 +131,7 @@ test('self-review and the reviewer threshold are enforced with current/needed', 
 test('a score outside the scale or below passMark is refused', () => {
   const c = co({ 'vmu.course.gradeScaleMax': 10, 'vmu.course.passMark': 6 })
   const o = c.open({ title: 'T' })
-  const s = c.submit({ courseId: o.courseId, who: 'a', rubric: 'r' })
+  const s = c.submit({ courseId: o.courseId, who: 'a', artifact: 'lib/x', rubric: 'r' })
   assert.equal(c.grade({ submissionId: s.submissionId, score: 11 }).code, 'VMU_META_VALIDATION_FAILED')
   const below = c.grade({ submissionId: s.submissionId, score: 5 })
   assert.equal(below.passed, false)
@@ -177,7 +177,7 @@ test('determinism (injected clock), pure read paths, and zero-config', () => {
   const run = () => {
     const c = co({}, () => 7)
     const o = c.open({ title: 'T' })
-    return JSON.stringify(c.submit({ courseId: o.courseId, who: 'a', rubric: 'r' }))
+    return JSON.stringify(c.submit({ courseId: o.courseId, who: 'a', artifact: 'lib/x', rubric: 'r' }))
   }
   assert.equal(run(), run())
   passed += 1
@@ -190,7 +190,7 @@ test('keysUsed() equals the wired set, each is really read, and enforced only li
   const open0 = c.open({ title: 'T' })
   c.enroll({ courseId: open0.courseId, who: 'a' })
   c.align({ courseId: open0.courseId, outcomes: ['O1'], artifacts: { O1: ['x'] } })
-  const s = c.submit({ courseId: open0.courseId, who: 'a', rubric: 'r', late: true })
+  const s = c.submit({ courseId: open0.courseId, who: 'a', artifact: 'lib/x', rubric: 'r', late: true })
   c.review({ submissionId: s.submissionId, by: 'b', score: 1 })
   c.grade({ submissionId: s.submissionId, score: 1 })
   c.evidencePack({ claims: [{ claim: 'C', refs: ['e'] }] })
@@ -215,7 +215,7 @@ test('D3: every receipt and every refusal carries enforcedScope, with no duplica
   assert.equal(enr.enforcedScope, 'evaluated-so-far')
   const al = c.align({ courseId: course.courseId, outcomes: ['o1'], artifacts: { o1: ['a'] } })
   assert.equal(al.enforcedScope, 'evaluated-so-far')
-  const sub = c.submit({ courseId: course.courseId, who: 's1', rubric: 'r' })
+  const sub = c.submit({ courseId: course.courseId, who: 's1', artifact: 'lib/x', rubric: 'r' })
   assert.equal(sub.enforcedScope, 'evaluated-so-far')
   const rev = c.review({ submissionId: sub.submissionId, by: 'p1', score: 9 })
   assert.equal(rev.enforcedScope, 'evaluated-so-far')
