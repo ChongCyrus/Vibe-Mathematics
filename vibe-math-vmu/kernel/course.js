@@ -30,21 +30,16 @@ export const WIRED_COURSE_KEYS = Object.freeze([
   'vmu.course.selfReviewAllowed', 'vmu.course.blindReview', 'vmu.course.reviewersPerSubmission',
   'vmu.course.reviewRounds', 'vmu.course.rubricRequired', 'vmu.course.requireRubricRef',
   'vmu.course.requireEvidence', 'vmu.course.peerWeight', 'vmu.course.retentionMs',
+  // ROUND 127: these four moved here because rounds 121-126 made every one of them change an outcome - the module
+  // reading a key while still claiming it unwired was the stale half of the pair this project keeps finding, and the
+  // generator invariant that nothing a module reads may be silently dropped is what forced the move.
+  'vmu.course.visibility', 'vmu.course.submitMode', 'vmu.course.ontologyVersion', 'vmu.course.publishToLibrary',
 ])
 /** 未接：**逐个点名＋原因** ✗✓。 */
 export const PLANNED_COURSE_KEYS = Object.freeze([
   ['vmu.course.blindMappingRetentionMs', '盲审映射表的保留期未做：无持久化面（映射表不落盘 ✗）'],
-  ['vmu.course.publishToLibrary', '发布到资料库未接：需 library 面（本面只引用 ✗）'],
   ['vmu.course.readingsRequired', '必读材料清单未做：需 records/库引用（本面只给形状 ✗）'],
   ['vmu.course.maxUnits', '单元数上限未接：需课程结构面（本面不定义单元 ✗）'],
-  ['vmu.course.ontologyVersion', '课程本体版本未接：需本体/迁移面（见 stateversion ✗）'],
-  // ROUND 115: two keys were listed as wired while nothing read them. The list's only use in this module is a
-  // reporting function, and neither key appears in an accessor call - a value nobody reads cannot change anything.
-  // ROUND 120: these two are READ into cfg() and then never consulted - `cfg().visibility` and `cfg().submitMode`
-  // have zero use sites - so the honest reason is "read but not used for any decision", not "not read". The round
-  // 115 wording said the key was not read, which was wrong about the mechanism while right about the effect.
-  ['vmu.course.visibility', '课程可见性未接：键被读入 cfg() 但【无任何判定使用它】（使用点 = 0）⇒ 改了不会有行为变化 ✗'],
-  ['vmu.course.submitMode', '提交形式未接：键被读入 cfg() 但【无任何判定使用它】（使用点 = 0）⇒ 改了不会有行为变化 ✗'],
 ])
 
 const refuse = (code, message, hint) => ({ ok: false, code, message, hint })
@@ -107,6 +102,9 @@ export function createCourse(opts) {
       requireEvidence: b('vmu.course.requireEvidence', true),
       peerWeight: Number(readKey('vmu.course.peerWeight')) > 0 ? Number(readKey('vmu.course.peerWeight')) : 0,
       retentionMs: n('vmu.course.retentionMs', 0),
+      // ROUND 127: publishing to the institution library. The documented default is FALSE - privacy - so a
+      // publication has to be switched on explicitly and cannot happen by omission.
+      publishToLibrary: b('vmu.course.publishToLibrary', false),
       // ROUND 124: the ontology version is a string with the documented default `1`, and it becomes the migration
       // guard below rather than another key that is read and forgotten.
       ontologyVersion: s('vmu.course.ontologyVersion', '1'),
@@ -325,6 +323,31 @@ export function createCourse(opts) {
     return { ok: true, claims: claims.length, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
+  /**
+   * Publish course material to the institution library. `vmu.course.publishToLibrary` defaults to FALSE, so the
+   * default answer is a REFUSAL: the volume's default is privacy, and a publication nobody switched on must not
+   * happen by omission. Round 127 - the key was planned and unread before this.
+   */
+  const publish = (a) => {
+    const args = a || {}
+    const course = enrolled.get(String(args.courseId || ''))
+    const c = cfg()
+    const enforced = []
+    const evalKey = (k) => { mark(enforced, k) }
+    if (!course) return deny('VMU_NOT_FOUND', '找不到课程 ' + String(args.courseId || ''), '先 open() 取 id', enforced)
+    evalKey('vmu.course.publishToLibrary')
+    if (c.publishToLibrary !== true) {
+      return deny('VMU_NOT_PERMITTED',
+        '课程材料不进机构库（vmu.course.publishToLibrary=false，默认即隐私）',
+        '显式打开它，或只在本课范围内使用材料（docs/17 §隐私与可见性）', enforced)
+    }
+    const material = String(args.material || '').trim()
+    if (!material) return deny('VMU_INVALID_ARGUMENT', 'publish 需要 material', '给要发布到库的材料引用', enforced)
+    note('course.publish', course.id)
+    emit({ type: 'course.publish', id: course.id, material })
+    return { ok: true, courseId: course.id, material, enforced, enforcedScope: ENFORCED_SCOPE }
+  }
+
   const status = (a) => {
     const c = cfg()
     const id = a && a.courseId ? String(a.courseId) : ''
@@ -336,7 +359,7 @@ export function createCourse(opts) {
     return { ok: true, courses: enrolled.size, submissions: submissions.size, droppedLog, droppedSubmissions, refusals: Object.fromEntries(refusals), partition: partition(), submitMode: c.submitMode, retentionMs: c.retentionMs, blindReview: c.blindReview }
   }
 
-  return { open: openCourse, enroll, align, submit, review, grade, evidencePack, status, keysUsed, partition, config: cfg, refusals: () => Object.fromEntries(refusals), trail: () => trail.slice() }
+  return { open: openCourse, enroll, align, submit, review, grade, evidencePack, publish, status, keysUsed, partition, config: cfg, refusals: () => Object.fromEntries(refusals), trail: () => trail.slice() }
 }
 
 export default createCourse

@@ -292,6 +292,24 @@ test('ontologyVersion is stamped at open and a MISMATCHED enrol is refused by na
   passed += 1
 })
 
+// ROUND 127: publishing to the institution library is refused by DEFAULT, because the volume's default is privacy.
+// The first assertion is the negative one on purpose: a guard stuck on allowing would fail immediately.
+test('publishToLibrary defaults to privacy: publishing is REFUSED until it is switched on', () => {
+  const d = co({})
+  const o = d.open({ title: 'T' })
+  const refused = d.publish({ courseId: o.courseId, material: 'lib/m1' })
+  assert.ok(refused && refused.ok === false && refused.code === 'VMU_NOT_PERMITTED',
+    '默认（false）下发布必须具名拒：' + JSON.stringify(refused).slice(0, 140))
+  const y = co({ 'vmu.course.publishToLibrary': true })
+  const o2 = y.open({ title: 'T' })
+  assert.ok(y.publish({ courseId: o2.courseId, material: 'lib/m1' }).ok === true, '显式打开后可以发布')
+  const noMat = y.publish({ courseId: o2.courseId })
+  assert.ok(noMat && noMat.ok === false && noMat.code === 'VMU_INVALID_ARGUMENT', '开了也要给材料引用：' + JSON.stringify(noMat).slice(0, 120))
+  const noCourse = y.publish({ courseId: 'nope', material: 'lib/m1' })
+  assert.ok(noCourse && noCourse.ok === false && noCourse.code === 'VMU_NOT_FOUND', '未知课程具名拒')
+  passed += 1
+})
+
 for (const c of cases) {
   try { await c.f(); console.log('ok - ' + c.n) } catch (e) { failed += 1; console.log('FAIL - ' + c.n + ' :: ' + String((e && e.message) || e)) }
 }
