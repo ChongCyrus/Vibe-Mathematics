@@ -180,6 +180,70 @@ test('the event log is capped and dropped events are counted', async () => {
   passed += 1
 })
 
+// ── ROUND 131：归档三动词（v5r 的 lean_archive / lean_read / lean_lib）────────────────────────
+test('archive registers a named reference, lib lists it, read returns it VERBATIM', async () => {
+  const original = 'theorem reusable : True := trivial\n'
+  const f = join(dir, 'Reusable.lean')
+  await writeFile(f, original, 'utf8')
+  const face = createLeanFace({ settings: mkSettings({}), spawn: async () => ({ exitCode: 0 }), root: dir, clock: () => 8 })
+  const a = await face.archive({ name: 'reusable', kind: 'def', file: f, statement: 'reusable truth' })
+  assert.equal(a.ok, true, '归档应当成功：' + JSON.stringify(a).slice(0, 120))
+  assert.match(a.hash, /^[0-9a-f]{64}$/, '归档登记的是内容哈希（只引不复制）')
+  const l = face.lib()
+  assert.equal(l.count, 1)
+  assert.deepEqual(l.kinds, ['def'])
+  assert.equal(l.entries[0].name, 'reusable')
+  const r = await face.read({ name: 'reusable' })
+  assert.equal(r.ok, true, 'read 应当成功：' + JSON.stringify(r).slice(0, 120))
+  assert.equal(r.content, original, 'read 返回的是**逐字**原文')
+  assert.equal(r.hash, a.hash)
+  assert.equal(r.dropped.bytes, 0)
+  passed += 1
+})
+
+test('archive refuses a duplicate name instead of silently overwriting', async () => {
+  const f = join(dir, 'Dup.lean')
+  await writeFile(f, 'theorem dup : True := trivial\n', 'utf8')
+  const face = createLeanFace({ settings: mkSettings({}), spawn: async () => ({ exitCode: 0 }), root: dir, clock: () => 9 })
+  const first = await face.archive({ name: 'dup', file: f })
+  assert.equal(first.ok, true, '第一次（kind 缺省 def）成功')
+  const again = await face.archive({ name: 'dup', file: f })
+  assert.equal(again.ok, false)
+  assert.equal(again.code, 'VMU_LEAN_ARCHIVE_NAME_TAKEN', '重名必须具名拒：' + JSON.stringify(again).slice(0, 120))
+  assert.equal(face.lib().count, 1, '被拒的归档不得进入库（不静默覆盖）')
+  passed += 1
+})
+
+test('archive refuses an unknown kind, a missing name and a missing file, each by name', async () => {
+  const f = join(dir, 'Kinds.lean')
+  await writeFile(f, 'theorem k : True := trivial\n', 'utf8')
+  const face = createLeanFace({ settings: mkSettings({}), spawn: async () => ({ exitCode: 0 }), root: dir, clock: () => 10 })
+  const kind = await face.archive({ name: 'x', kind: 'poem', file: f })
+  assert.equal(kind.code, 'VMU_LEAN_KIND_UNKNOWN', '未知 kind 具名拒：' + JSON.stringify(kind).slice(0, 120))
+  const noName = await face.archive({ file: f })
+  assert.equal(noName.code, 'VMU_LEAN_ARCHIVE_NAME_REQUIRED')
+  const noFile = await face.archive({ name: 'y' })
+  assert.equal(noFile.code, 'VMU_LEAN_FILE_REQUIRED')
+  const gone = await face.read({ name: 'never-archived' })
+  assert.equal(gone.code, 'VMU_LEAN_ARCHIVE_NOT_FOUND')
+  assert.equal(face.lib().count, 0, '四次被拒之后库仍为空')
+  passed += 1
+})
+
+test('read refuses when the referenced file DRIFTED (cite-not-copy is enforced)', async () => {
+  const f = join(dir, 'Drift.lean')
+  await writeFile(f, 'theorem stable : True := trivial\n', 'utf8')
+  const face = createLeanFace({ settings: mkSettings({}), spawn: async () => ({ exitCode: 0 }), root: dir, clock: () => 11 })
+  assert.equal((await face.archive({ name: 'drift', kind: 'lemma', file: f })).ok, true)
+  assert.equal((await face.read({ name: 'drift' })).ok, true, '★ 先证明未变时【能】读（否则下面的拒说明不了问题）')
+  await appendFile(f, '-- the file moved under the reference\n', 'utf8')
+  const after = await face.read({ name: 'drift' })
+  assert.equal(after.ok, false)
+  assert.equal(after.code, 'VMU_LEAN_ARCHIVE_DRIFT', '内容变了必须具名拒：' + JSON.stringify(after).slice(0, 140))
+  assert.equal(after.content, undefined, '★ 拒的时候【不得】返回旧内容（否则就变成复制了）')
+  passed += 1
+})
+
 for (const c of cases) {
   try { await c.fn(); console.log('ok - ' + c.name) } catch (e) { failed += 1; console.log('FAIL - ' + c.name + ' :: ' + String((e && e.message) || e)) }
 }

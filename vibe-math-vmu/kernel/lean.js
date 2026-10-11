@@ -6,7 +6,9 @@
 //   · leanJobsMaxParallel 限制**并发**（默认 1 ＝ 串行）；
 //   · leanTimeoutMs 是**单次**预算（传给 spawn，超时具名拒）；
 //   · leanSearchPaths **去重**后注入在**自动 VibMath 根之前**；
-//   · leanInitiative（日常主动性）与 formalVerify（判定时要求 off|encourage|require）**正交**。
+//   · leanInitiative（日常主动性）与 formalVerify（判定时要求 off|encourage|require）**正交**；
+//   · ROUND 131 起另有**归档三动词**（v5r 的 lean_archive / lean_read / lean_lib）：归档登记【具名引用＋内容
+//     哈希】而不复制内容（**只引不复制**），`read()` 回源并校验哈希，漂移即具名拒 —— 见下方归档段。
 //
 // 依赖注入：`createLeanFace({ settings, spawn, root, clock, log })`。
 //   · settings —— 读值接缝：`settings.get(key)` 优先，退回 `settings[key]`（**真读值**才算接线）；
@@ -33,6 +35,15 @@ export const LEAN_KEYS = Object.freeze([
 ])
 
 export const LEAN_JOB_LOG_MAX = 200 // 事件日志上限；超出即 count 丢弃（不静默）
+
+/**
+ * ROUND 131 — 归档允许的 kind。v5r 的 `lean_archive` 把 kind="def" 的可复用定义送进词汇表；这里把同一族
+ * 显式枚举，未知 kind **具名拒**（不猜、不放行）。
+ */
+export const ARCHIVE_KINDS = Object.freeze(['def', 'lemma', 'theorem', 'assumption'])
+
+/** `read()` 一次返回的字节上限；超出即**计数**截断（不静默）。 */
+export const ARCHIVE_READ_MAX = 200000
 
 function refuse(code, message, hint) {
   return { ok: false, code, message, hint }
@@ -214,7 +225,66 @@ export function createLeanFace(opts) {
   }
   const list = () => ({ ok: true, count: order.length, droppedEvents, jobs: order.map((id) => view(jobs.get(id))) })
 
-  return { submit, status, list, settle, keysUsed, policy, commandFor, jobsMaxParallel: () => cfg().leanJobsMaxParallel }
+  // ── 归档（ROUND 131）：v5r 的 lean_archive / lean_read / lean_lib 三个动词 ────────────────────
+  // 设计：**只引不复制** —— 归档登记的是【具名引用】（文件 ＋ 语句 ＋ 内容哈希 ＋ kind），
+  // `read()` 每次都**回到源文件**读，并把当前哈希与登记时比对：不一致即具名拒（引用已失效 ⇒ 不返回旧内容）。
+  // 由此"可复用"与"内容同一性"同时成立，且不存在两份会各自漂移的副本。
+  const archived = new Map()
+
+  const archive = async (a) => {
+    const args = a || {}
+    const name = String(args.name || '').trim()
+    const kind = String(args.kind || 'def').trim()
+    const file = String(args.file || '').trim()
+    const statement = String(args.statement || '').trim()
+    if (!name) return refuse('VMU_LEAN_ARCHIVE_NAME_REQUIRED', 'archive 需要 name（库中引用的名字）', '给一个稳定名字：read() 与 lib() 都用它')
+    if (!file) return refuse('VMU_LEAN_FILE_REQUIRED', 'archive 需要 file（.lean 文件路径）', '归档只登记既有文件，不复制内容')
+    if (ARCHIVE_KINDS.indexOf(kind) === -1) {
+      return refuse('VMU_LEAN_KIND_UNKNOWN', '未知的归档 kind：' + kind + '（允许：' + ARCHIVE_KINDS.join('|') + '）', '用允许的 kind，或先显式扩展 ARCHIVE_KINDS')
+    }
+    if (archived.has(name)) {
+      return refuse('VMU_LEAN_ARCHIVE_NAME_TAKEN', '归档名已被占用：' + name, '换名字，或先 lib() 查看既有条目（**不静默覆盖** ✗）')
+    }
+    const hash = await readHash(file)
+    if (hash === undefined) return refuse('VMU_LEAN_FILE_UNREADABLE', '读不到要归档的 Lean 文件：' + file, '先写出 .lean 文件再归档')
+    const entry = { name, kind, file, statement, hash, at: clock() }
+    archived.set(name, entry)
+    note('archive:' + name, kind)
+    return { ok: true, name, kind, file, hash, statement, at: entry.at, count: archived.size }
+  }
+
+  const read = async (a) => {
+    const args = a || {}
+    const name = String(args.name || '').trim()
+    const e = archived.get(name)
+    if (!e) return refuse('VMU_LEAN_ARCHIVE_NOT_FOUND', '归档里没有 ' + name, '先用 lib() 列出条目')
+    const now = await readHash(e.file)
+    if (now === undefined) return refuse('VMU_LEAN_FILE_UNREADABLE', '归档引用的文件读不到：' + e.file, '文件被删或移走了：重建它，或重新 archive()')
+    if (now !== e.hash) {
+      return refuse('VMU_LEAN_ARCHIVE_DRIFT',
+        '归档内容已变：' + name + '（登记 ' + e.hash.slice(0, 12) + '…，现在 ' + now.slice(0, 12) + '…）',
+        '重新 archive() 登记新内容，或恢复原文件（只引不复制 ⇒ **不返回旧内容** ✗）')
+    }
+    let content
+    try { content = String(await readFile(e.file, 'utf8')) } catch (err) {
+      return refuse('VMU_LEAN_FILE_UNREADABLE', '读不到 ' + e.file, '检查权限或路径')
+    }
+    const truncated = content.length > ARCHIVE_READ_MAX
+    return {
+      ok: true, name, kind: e.kind, file: e.file, hash: e.hash, statement: e.statement, at: e.at,
+      content: truncated ? content.slice(0, ARCHIVE_READ_MAX) : content,
+      dropped: { bytes: truncated ? content.length - ARCHIVE_READ_MAX : 0 }, // 截断必计数（纪律）
+    }
+  }
+
+  const lib = () => ({
+    ok: true,
+    count: archived.size,
+    kinds: [...new Set([...archived.values()].map((e) => e.kind))].sort(),
+    entries: [...archived.values()].map((e) => ({ name: e.name, kind: e.kind, file: e.file, hash: e.hash, statement: e.statement, at: e.at })),
+  })
+
+  return { submit, status, list, settle, archive, read, lib, keysUsed, policy, commandFor, jobsMaxParallel: () => cfg().leanJobsMaxParallel }
 }
 
 export default createLeanFace
