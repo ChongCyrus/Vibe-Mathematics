@@ -21,7 +21,7 @@ import { __testHelpers as V5R } from '../vibe-math-v5r/vibe-math-v5r.js'
 import { createLibrary } from '../vibe-math-vmu/kernel/library.js'
 import { createLeanFace } from '../vibe-math-vmu/kernel/lean.js'
 import { createMembers } from '../vibe-math-vmu/kernel/members.js'
-import { TOOL_NAMES } from '../vibe-math-vmu/host.js'
+import { TOOL_NAMES, sanitizeToolFilter } from '../vibe-math-vmu/host.js'
 
 let passed = 0
 let failed = 0
@@ -161,7 +161,36 @@ const VERDICTS = { EQUAL: [], PROPERTY: [], UNPAIRED: [], DIVERGENT: [] }
     'G6. with no known set to check against, the filter passes through unchanged')
   VERDICTS.PROPERTY.push('registeredToolsFromError ⇄ host.TOOL_NAMES（同一问题："哪些工具是已知的" ✓；'
     + 'v5r 从**宿主错误文本**解析、vmu 直接**发布**（9 个 ✓）⇒ vmu 侧更可靠 ✓）')
-}
+
+  // ★ ROUND 142：缺口已补成能力 ✓，于是它从"未配对"升级为【已驱动的分歧行】✓
+  //   同一输入（已知表 ＋ 一个未知名）：
+  //     · v5r  `sanitizeToolFilter` ⇒ **undefined**（整表消失 ⇒ 一个笔误就让过滤【静默失效】✗）
+  //     · vmu   `sanitizeToolFilter` ⇒ **具名拒**（`VMU_INVALID_ARGUMENT`，且 `err.unknown` 点名是谁 ✗✓）
+  //   并实测 vmu 侧的完整语义：丢弃**计数** ✓、`null`（无限制）与 `[]`（显式为空）**不混同** ✓、
+  //   已知表为**空**时**透传并自曝 `checked:false`** ✓（"未检查"也必须说出来 ✓）。
+  {
+    const knownList = ['vibe_vmu_status', 'vibe_vmu_task']
+    const v5rCollapse = V5R.sanitizeToolFilter(['vibe_vmu_status', 'vibe_vmu_nope'], new Set(knownList))
+    ok(v5rCollapse === undefined, 'H1. ★ v5r collapses the WHOLE filter to undefined when one name is unknown (a typo silently disables filtering)', String(v5rCollapse))
+    let thrown = null
+    try { sanitizeToolFilter(['vibe_vmu_status', 'vibe_vmu_nope'], knownList) } catch (e) { thrown = e }
+    ok(thrown && thrown.code === 'VMU_INVALID_ARGUMENT', 'H2. ★ vmu REFUSES by name instead', thrown && thrown.code)
+    ok(thrown && Array.isArray(thrown.unknown) && thrown.unknown.join(',') === 'vibe_vmu_nope', 'H3. and NAMES the offending entry, so the caller can fix it', thrown && JSON.stringify(thrown.unknown))
+    ok(thrown && typeof thrown.hint === 'string' && thrown.hint.indexOf('known tools') !== -1, 'H4. and lists the known surface in the hint')
+    ok(JSON.stringify(sanitizeToolFilter(['vibe_vmu_task', 'vibe_vmu_task', '', '  '], knownList).dropped) === JSON.stringify({ empty: 2, duplicate: 1 }),
+      'H5. vmu COUNTS what it drops (empties and duplicates) instead of losing it silently',
+      JSON.stringify(sanitizeToolFilter(['vibe_vmu_task', 'vibe_vmu_task', '', '  '], knownList).dropped))
+    ok(sanitizeToolFilter(undefined, knownList).filter === null, 'H6. absent means NO restriction and is returned as null')
+    ok(JSON.stringify(sanitizeToolFilter([], knownList).filter) === '[]', 'H7. ★ while an explicitly EMPTY list stays [] - the two are not conflated')
+    const unchecked = sanitizeToolFilter(['anything'], [])
+    ok(unchecked.checked === false && JSON.stringify(unchecked.filter) === '["anything"]',
+      'H8. ★ with an explicitly empty known surface the check cannot be made, so it passes through AND says it is unchecked')
+    ok(JSON.stringify(sanitizeToolFilter('vibe_vmu_status, vibe_vmu_task', knownList).filter) === JSON.stringify(knownList),
+      'H9. a comma-separated string is accepted and normalised to the same list')
+    VERDICTS.DIVERGENT.push('sanitizeToolFilter —— **缺口已补** ✓，且**刻意做得更好** ✓：v5r 遇未知名 ⇒ **整表 undefined**（静默失效 ✗）；'
+      + 'vmu ⇒ **具名拒 ＋ 点名未知项 ＋ 给出已知面** ✓，丢弃**计数** ✓，`null`／`[]` **不混同** ✓，空已知表**自曝未检查** ✓')
+  }
+}   // ← 收尾 G（ROUND 142 补上：这次编辑一度把 G 的 `}` 用掉了，语法检查当场报 "Unexpected end of input" ✗）
 
 // ── ★ 逐项点名的未配对与刻意分歧（不掩盖 ✗）────────────────────────────────────────────────
 {
@@ -171,9 +200,9 @@ const VERDICTS = { EQUAL: [], PROPERTY: [], UNPAIRED: [], DIVERGENT: [] }
     'fmtTime —— 实测：vmu 的 `timevalue.js` **只导出** `ms`/`msStrict`（"时刻→可比数" ✓），**没有格式化** ⇒ 未配对 ✗；'
     + '并记下 v5r 的一个怪癖 ✓：`fmtTime(0)` 返回 **"现在"**（`new Date(ts || now())` ⇒ 假值被当当下 ✗）',
     'parseReply —— 宿主回合文本的解析；框架侧 `script-bridge.validateRequest` 校验的是**请求形状**，不是回合文本 ⇒ 未配对 ✗',
-    'sanitizeToolFilter —— ★ **框架侧有"名字"却没有"净化器"** ✗：vmu 发布 9 个工具名 ✓，但 grep `toolFilter|sanitize.*[Tt]ool` = 0 ✓ '
-    + '⇒ **消费那一半没有对应物** ✓。缺什么已**实测写明**（v5r 语义：请求含未知工具 ⇒ **整表 undefined**（拒而非丢弃 ✓）；无已知表 ⇒ 原样透传 ✓），'
-    + '所以这不是一句模糊的"没实现"，而是**已规格化的缺口** ✓',
+    // ★ 原先这里有一条 "sanitizeToolFilter —— 有名字没有净化器"。它已在 ROUND 142 被**补成能力** ✓，
+    //   于是整条移入 DIVERGENT（H1–H9 两侧都驱动过 ✓）—— **缺口补上后就必须从"未配对"里删掉** ✓，
+    //   否则同一件事会同时挂在"已配对"和"未配对"两边（本项目专门抓这种自相矛盾 ✗）。
     // ★ 这一条**从"我以为"升级成了实测** ✓：我先写下"vmu 在别处内联夹取、没有导出原语" ✗，
     //   随后实测发现更准确的说法是——**夹取在公开 API 上根本不可观测** ✗✓：
     //   `fairness.allocation()` 对 reserveRatio ∈ {0, 0.25, 1, 5, -3, NaN, "abc"} **输出完全相同**（都是 a:50 b:50），

@@ -41,6 +41,53 @@ export const TOOL_NAMES = Object.freeze({
 })
 
 /**
+ * ROUND 142 — normalise a requested tool filter against the published surface.
+ *
+ * WHY IT EXISTS: the A/B verdict table recorded this as a SPECIFIED GAP (vmu published the tool NAMES while the
+ * half that would consume them was missing). The v5r line has the same capability, its behaviour was measured
+ * first, and that measurement is exactly why this implementation differs: there, a requested name that is NOT
+ * known makes the WHOLE filter undefined - one typo silently removes every restriction and nothing says so.
+ * Here an unknown name is refused BY NAME, listing the unknown ones and the known surface, because a filter that
+ * quietly stops filtering is worse than one that says it did not understand you.
+ *
+ * Also deliberately NOT conflated: absent (no restriction) is `null`, an explicitly empty list is `[]`.
+ * Everything dropped - empty entries, duplicates - is COUNTED in `dropped`, never silently lost.
+ *
+ * `known` defaults to the published surface and may be a Set, an array, or the TOOL_NAMES object itself. When it is
+ * explicitly EMPTY the check cannot be made, so the list passes through with `checked:false` rather than every name
+ * being refused (an unchecked pass-through that SAYS it is unchecked).
+ */
+export function sanitizeToolFilter(filter, known = TOOL_NAMES) {
+  const surface = known instanceof Set ? [...known]
+    : Array.isArray(known) ? known.map(String)
+      : (known && typeof known === 'object' ? Object.values(known).map(String) : [])
+  const raw = filter === undefined || filter === null ? []
+    : Array.isArray(filter) ? filter : String(filter).split(',')
+  const cleaned = []
+  const unknown = []
+  let empty = 0
+  let duplicate = 0
+  for (const item of raw) {
+    const name = String(item === undefined || item === null ? '' : item).trim()
+    if (name === '') { empty += 1; continue }
+    if (cleaned.indexOf(name) !== -1) { duplicate += 1; continue }
+    if (surface.length > 0 && surface.indexOf(name) === -1) { unknown.push(name); continue }
+    cleaned.push(name)
+  }
+  if (unknown.length > 0) {
+    const err = new Error('unknown tool name(s) in the filter: ' + unknown.join(', '))
+    err.code = 'VMU_INVALID_ARGUMENT'
+    err.hint = 'known tools: ' + surface.join(', ')
+      + ' - a filter that silently DROPPED them would stop filtering without saying so (the v5r line collapses the whole filter here)'
+    err.unknown = unknown.slice()
+    err.known = surface.slice()
+    throw err
+  }
+  const noRestriction = filter === undefined || filter === null
+  return { ok: true, filter: noRestriction ? null : cleaned, checked: surface.length > 0, dropped: { empty, duplicate } }
+}
+
+/**
  * The host-verified output envelope: a JSON string rendered as one text part.
  *
  * The host's exact predicate (`dsh-tools/lib/index.js:2881`, read from the installed asar) is:
