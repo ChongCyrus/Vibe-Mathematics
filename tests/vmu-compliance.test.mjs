@@ -19,8 +19,8 @@ const mk = (settings = {}) => createCompliance({ clock: CLOCK, settings })
 
 console.log('-- 0) 17 键**恰好划分** + 口径常量 --')
 ok(apiVersion === 1 && ENFORCED_SCOPE === 'evaluated-so-far', 'module surface: apiVersion=1 and the D3 scope literal')
-ok(WIRED_KEYS.length === 16 && PLANNED_KEYS.length === 1 && WIRED_KEYS.length + PLANNED_KEYS.length === 17, 'the 17 declared keys are PARTITIONED exactly: wired=' + WIRED_KEYS.length + ' + planned=' + PLANNED_KEYS.length + ' = 17')
-ok(/domaingate/.test(PLANNED_REASONS['vmu.compliance.exportControlCheck'] || ''), 'the unwired key is NAMED with its reason (exportControlCheck → domaingate layer)')
+ok(WIRED_KEYS.length === 17 && PLANNED_KEYS.length === 0 && WIRED_KEYS.length + PLANNED_KEYS.length === 17, 'round 155: the 17 declared keys are PARTITIONED exactly: wired=' + WIRED_KEYS.length + ' + planned=' + PLANNED_KEYS.length + ' = 17')
+ok(WIRED_KEYS.length === 17 && Object.keys(PLANNED_REASONS).length === 0, '★ round 155: nothing here is declared-but-unwired any more - the wired set must EQUAL all 17 keys (one missing means a key was dropped)')
 ok(Object.keys(WOULD_EVALUATE).length >= 6, 'WOULD_EVALUATE (records.js OP_WOULD 口径) declares the per-op key sets')
 
 console.log('-- ① 伦理审批缺失 / ② 知情同意未签（同一已登记码 + item 区分）--')
@@ -141,5 +141,35 @@ ok(mk().calendar({ dueAt: '2099-01-01T00:00:00.000Z', at: '2026-01-01T00:00:00.0
 }
 
 console.log('')
+
+// ROUND 155: export control - the pure screening reports, the gate's domain pack requires it, and this face refuses
+// the self-contradicting configuration (a dual-use pack declared while the screening switch is off).
+{
+  const { screenExportControl, CONTROLLED_ITEMS, DEFAULT_PACKS, ITEM_CODES } = await import('../vibe-math-vmu/kernel/domaingate.js')
+  const clean = screenExportControl({ items: ['reagent-a'] })
+  ok(clean.ok === true && clean.flagged.length === 0, 'screening: an uncontrolled item is not flagged')
+  const dirty = screenExportControl({ items: ['encryption-strong', 'reagent-a'] })
+  ok(dirty.ok === false && dirty.flagged.length === 1 && dirty.flagged[0] === 'encryption-strong',
+    'screening: a controlled CLASS is flagged (' + JSON.stringify(dirty.flagged) + ')')
+  const cleared = screenExportControl({ items: ['encryption-strong'], allowed: ['encryption-strong'] })
+  ok(cleared.ok === true, 'screening: an explicitly cleared item is not flagged')
+  ok(screenExportControl({ items: ['x'], controlled: ['x'] }).flagged.length === 1,
+    'screening: a pack can supply its own controlled list (the framework ships classes, not a legal schedule)')
+  ok(CONTROLLED_ITEMS.length > 0 && ITEM_CODES.exportControl === 'VMU_EXPORT_CONTROL_UNSCREENED',
+    'the code and the class list are exported for reuse')
+  ok(DEFAULT_PACKS['dual-use'] && DEFAULT_PACKS['dual-use'].requires.indexOf('exportControl') !== -1,
+    'the dual-use pack requires the screening item')
+
+  const off = mk({ 'vmu.compliance.domainPacks': [{ domain: 'dual-use' }] })
+  refuses(() => off.prepare(), 'VMU_COMPLIANCE_EXPORT_BLOCKED', {},
+    '★ a dual-use pack with vmu.compliance.exportControlCheck=false is refused (self-contradicting config)')
+  const on = mk({ 'vmu.compliance.domainPacks': [{ domain: 'dual-use' }], 'vmu.compliance.exportControlCheck': true })
+  const rec = on.prepare()
+  ok(rec.exportControl && rec.exportControl.required === true && rec.exportControl.screenAt === 'domaingate.screenExportControl',
+    '★ with the switch on, the receipt NAMES the screening and points at domaingate (cite, never copy)')
+  const plain = mk()
+  ok(plain.prepare().exportControl.required === false, 'default off + no dual-use pack => unchanged')
+}
+
 console.log('=== VMU COMPLIANCE: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) process.exit(1)

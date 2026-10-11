@@ -12,13 +12,48 @@ import { createHash } from 'node:crypto'
 import { ms, msStrict } from './timevalue.js'
 
 export const apiVersion = 1
-export const DOMAINS = Object.freeze(['clinical', 'animal'])
+export const DOMAINS = Object.freeze(['clinical', 'animal', 'dual-use'])
 export const THREE_R = Object.freeze(['replace', 'reduce', 'refine'])
+
+/**
+ * ROUND 155 — EXPORT CONTROL LANDS HERE, which is what its own revival condition named. Two pieces:
+ *   · `CONTROLLED_ITEMS` - the item classes this gate screens for, deliberately a SHORT list of classes rather than
+ *     a jurisdiction's real control list, because the framework cannot ship a legal schedule and should not pretend
+ *     to. A pack that needs a real list supplies it through `screenExportControl({ controlled })`.
+ *   · `screenExportControl({ items, jurisdictions, allowed, controlled })` - a PURE report: which items are flagged
+ *     and why. It does not refuse; the GATE refuses, and that separation is what makes the screening auditable on
+ *     its own (a report you can attach to a record) while the gate stays the single decision point.
+ */
+export const CONTROLLED_ITEMS = Object.freeze([
+  'encryption-strong', 'select-agent', 'dual-use-bio', 'radiation-source', 'missile-tech',
+])
+
+/** 纯函数：**只报告，不拒** ✓（拒绝由 `gate()` 单点负责 ✓）。 */
+export function screenExportControl({ items, jurisdictions, allowed, controlled } = {}) {
+  const list = (Array.isArray(controlled) && controlled.length ? controlled : CONTROLLED_ITEMS).map(String)
+  const permit = (Array.isArray(allowed) ? allowed : []).map(String)
+  const asked = (Array.isArray(items) ? items : []).map((x) => String(x === undefined || x === null ? '' : x).trim()).filter((x) => x !== '')
+  const flagged = []
+  for (const item of asked) {
+    if (list.indexOf(item) === -1) continue
+    if (permit.indexOf(item) !== -1) continue
+    if (flagged.indexOf(item) === -1) flagged.push(item)
+  }
+  return {
+    ok: flagged.length === 0,
+    flagged,
+    screened: asked.length,
+    jurisdictions: (Array.isArray(jurisdictions) ? jurisdictions : []).map(String),
+    note: 'item CLASSES only - the framework ships no legal control schedule; pass `controlled` to screen against a real one',
+  }
+}
 
 /** 领域包的最小形状（`declare({domain, pack})` 的对象）：requires 列出本领域**必须满足**的项。 */
 export const DEFAULT_PACKS = Object.freeze({
   clinical: Object.freeze({ domain: 'clinical', requires: ['registration', 'consent', 'training'], saeLimitMs: 24 * 3600 * 1000, aeLimitMs: 72 * 3600 * 1000 }),
   animal: Object.freeze({ domain: 'animal', requires: ['iacuc', 'threeR', 'facility', 'training', 'ledgerRef'], saeLimitMs: 24 * 3600 * 1000, aeLimitMs: 72 * 3600 * 1000 }),
+  // ROUND 155: the third domain. Its one required item is the screening record itself.
+  'dual-use': Object.freeze({ domain: 'dual-use', requires: ['exportControl'], saeLimitMs: 24 * 3600 * 1000, aeLimitMs: 72 * 3600 * 1000 }),
 })
 /** 项 → 具名码（gate() 单点失败时用具体码，多点失败时用 VMU_GATE_UNSATISFIED 并逐项列出）。 */
 export const ITEM_CODES = Object.freeze({
@@ -28,6 +63,7 @@ export const ITEM_CODES = Object.freeze({
   facility: 'VMU_FACILITY_UNACCREDITED',
   training: 'VMU_TRAINING_EXPIRED',
   consent: 'VMU_CONSENT_VERSION_MISMATCH',
+  exportControl: 'VMU_EXPORT_CONTROL_UNSCREENED',
 })
 
 export function refuse(code, message, hint, extra) {
@@ -235,6 +271,19 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
       } else if (item === 'consent') {
         try { if (studyId) checkConsent({ studyId, version: consentVersion, at: when }); else problems.push({ item, code: ITEM_CODES.consent, why: 'no studyId supplied for the consent check' }) }
         catch (e) { problems.push({ item, code: e.code || ITEM_CODES.consent, why: String(e.message) }) }
+      } else if (item === 'exportControl') {
+        /**
+         * ROUND 155: the SCREENING RECORD is the requirement. A pack may carry its own controlled list; the gate
+         * refuses when the record is absent, and when the screening flagged something that was not cleared. The
+         * decision lives here and the report comes from the pure function above - one screening implementation, one
+         * decision point.
+         */
+        const scr = rev && rev.exportScreen
+        if (!scr) problems.push({ item, code: ITEM_CODES.exportControl, why: 'no export-control screening on file' })
+        else {
+          const report = screenExportControl({ items: scr.items, allowed: scr.cleared, controlled: scr.controlled, jurisdictions: scr.jurisdictions })
+          if (!report.ok) problems.push({ item, code: ITEM_CODES.exportControl, why: 'flagged and NOT cleared: ' + report.flagged.join(', ') })
+        }
       } else {
         problems.push({ item, code: 'VMU_GATE_UNSATISFIED', why: 'unknown requirement "' + item + '" cannot be satisfied' })
       }

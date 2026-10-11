@@ -575,6 +575,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.compliance.evidenceKind', type: 'string', def: 'registry', hot: HOT.H1, who: 'office', doc: "已接线（compliance.js 读取）；默认值取自模块源码" },
   { key: 'vmu.compliance.evidenceMembers', type: 'string', def: 'all', hot: HOT.H1, who: 'office', doc: "已接线（compliance.js 读取）；默认值取自模块源码" },
   { key: 'vmu.compliance.evidencePackFields', type: 'string', def: 'kind+members+at', hot: HOT.H1, who: 'office', doc: "已接线（compliance.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.compliance.exportControlCheck', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（compliance.js 读取）；默认值取自模块源码" },
   { key: 'vmu.compliance.irbRequired', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（compliance.js 读取）；默认值取自模块源码" },
   { key: 'vmu.compliance.overdueEscalation', type: 'string', def: 'block', hot: HOT.H1, who: 'office', doc: "已接线（compliance.js 读取）；默认值取自模块源码" },
   { key: 'vmu.compliance.prepare', type: 'string', def: 'checklist', hot: HOT.H1, who: 'office', doc: "已接线（compliance.js 读取）；默认值取自模块源码" },

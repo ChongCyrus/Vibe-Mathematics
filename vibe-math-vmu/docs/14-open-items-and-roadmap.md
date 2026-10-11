@@ -381,6 +381,14 @@
   **测试** ✓：课程套件加一组双向断言（未达 ⇒ 具名拒且含 `1 / 门槛 2` ✓；**凑数列表**（重复＋空白）⇒ 通过但**生效 2 条、丢弃 2 条** ✓；**默认 0 ⇒ 无要求、0 条** ✓）⇒ `VMU COURSE: 17 → 18` 全绿 ✓。
   **过程失误（记下 ✓）** ✗：本轮我又用**内联 Node 脚本**去改文件 ✗ —— **PowerShell 解析当场崩掉** ✓（正则＋`\n`＋括号 ✓）；★ **因为崩在解析阶段，它【什么都没改】** ✓✓ ⇒ 随即改写成**脚本文件**（这是本会话第 N 次验证的规矩 ✓）。**失败关闭（fail closed）比"改坏一半"好** ✓。
 
+- ★★★ **轮 155：第二个确认缺口 `exportControlCheck` 落地 —— 并两次命中"先去复用，别新造"** ✓✓
+  **落点＝复活条件所指的领域闸** ✓✓：`domaingate` 增 **`dual-use` 域**（`DEFAULT_PACKS['dual-use'].requires = ['exportControl']` ✓）、增项码 **`ITEM_CODES.exportControl = 'VMU_EXPORT_CONTROL_UNSCREENED'`** ✓、并在 `gate()` 的项链里加**判定分支** ✓（★ **必须插在最后那个 `else` 之前** ✗ —— 否则会落到"未知项 ⇒ `VMU_GATE_UNSATISFIED`" ✗）。
+  ★ **拆成"报告"与"判定"两件事** ✓✓：**纯函数 `screenExportControl({items, allowed, controlled})` 只报告不拒** ✓（可单独附到记录上 ✓、可审计 ✓），**拒绝由 `gate()` 单点负责** ✓ —— **一个筛查实现、一个判定点** ✓。★ 框架**只发"物项类别"**（`CONTROLLED_ITEMS` ✓）**不发法律清单** ✓：包要用真清单就传 `controlled` ✓ —— **不假装拥有它没有的东西** ✓。
+  **本面只引不重定义** ✓：`compliance` 读 `vmu.compliance.exportControlCheck`（**默认 false ⇒ 零变化** ✓）；★ **声明 `dual-use` 却把筛查关掉 ⇒ 具名拒** ✓✓ —— **"自相矛盾的配置"**（闸会要求一份**没人被告知要产出**的筛查记录 ✗）；开关打开时回执**点名筛查落点**（`domaingate.screenExportControl` ✓）✓。
+  ★★ **两次"复用优先"的命中** ✓✓：① 我本要新造 `VMU_COMPLIANCE_EXPORT_CONTROL_REQUIRED` ✗ ⇒ **`docs/03` 里早已预留 `VMU_COMPLIANCE_EXPORT_BLOCKED`** ✓ ⇒ **改用既有码** ✓；② 更意外的是，`VMU_REGISTRATION_MISSING`／`VMU_IACUC_EXPIRED`／`VMU_THREE_R_INCOMPLETE`／`VMU_FACILITY_UNACCREDITED`／`VMU_TRAINING_EXPIRED`／`VMU_CONSENT_VERSION_MISMATCH` **六个码早就由 `gate()` 抛出** ✓，注册表却一直写 **⛔ 规划码** ✗ ⇒ **六行一并更正为 ✅** ✓✓（**"实现的码被标成规划"与"陈旧的键数"是同一类不实** ✓）。新码 `VMU_EXPORT_CONTROL_UNSCREENED` 也已补登记 ✅ ✓。
+  **数字** ✓：划分实测 **`wired=17 planned=0`** ✓⇒ **积压 10 → 9 条** ✓（`compliance=0` ✓）；新增断言**两条分支都过** ✓（关掉 ⇒ `VMU_COMPLIANCE_EXPORT_BLOCKED` ✓；打开 ⇒ 回执点名 `screenAt` ✓）＋ 纯函数四例 ✓。
+  **未做（明写 ✗）**：**`gate()` 里那条 `exportControl` 分支尚无套件覆盖** ✗（纯函数与域包已覆盖 ✓；该分支留给下一轮，按"打印不猜"的规矩先读该面套件的助手 ✗）。
+
 ### 0.4 结论
 
 

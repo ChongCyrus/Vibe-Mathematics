@@ -35,6 +35,8 @@ export const WIRED_KEYS = Object.freeze([
   'vmu.compliance.calendarDir',
   'vmu.compliance.calendarTemplate',
   'vmu.compliance.domainPacks',
+  // ROUND 155: read and it DECIDES - a dual-use pack declared while this switch is off is refused by name.
+  'vmu.compliance.exportControlCheck',
 ])
 
 /**
@@ -46,9 +48,10 @@ export const WIRED_KEYS = Object.freeze([
  * （与 `ballotbox` 那六条"点名＋测试行号"是同一标准 ✓）。
  */
 export const PLANNED_REASONS = Object.freeze({
-  'vmu.compliance.exportControlCheck': '★ **全仓无该检查** ✓（实测 ✓）：出口管制筛查是**缺口**，不是"归别面" ✗。'
-    + '**归属面**（若要做）＝ `domaingate`（领域闸 ✓，已有 `ITEM_CODES` 与领域包 ✓），本面**只引用不重定义** ✓。'
-    + '**复活条件** ✓：出现两用物项／出口管制合规要求时 ⇒ 在 `domaingate` 增域包与条目码，本面引用 ✓',
+  // ROUND 155: EMPTY ON PURPOSE - the one entry that used to be here is implemented, so this face has nothing
+  // declared-but-unwired. The screening itself lives in `domaingate` (dual-use domain, ITEM_CODES.exportControl, the
+  // pure screenExportControl) and this face only refuses the self-contradicting configuration and points at it, so
+  // "cite, never copy" holds across the two faces.
 })
 export const PLANNED_KEYS = Object.freeze(Object.keys(PLANNED_REASONS))
 
@@ -60,7 +63,7 @@ export const WOULD_EVALUATE = Object.freeze({
   exportData: ['vmu.compliance.redactionPolicy'],
   evidence: ['vmu.compliance.evidenceKind', 'vmu.compliance.evidenceMembers', 'vmu.compliance.evidencePackFields'],
   calendar: ['vmu.compliance.auditPrepLeadDays', 'vmu.compliance.reviewAlertLeadDays', 'vmu.compliance.calendarDir', 'vmu.compliance.calendarTemplate'],
-  prepare: ['vmu.compliance.prepare', 'vmu.compliance.domainPacks'],
+  prepare: ['vmu.compliance.prepare', 'vmu.compliance.domainPacks', 'vmu.compliance.exportControlCheck'],
 })
 
 export function refuse(code, message, hint, extra) {
@@ -104,6 +107,11 @@ export function createCompliance({ clock = () => new Date(0).toISOString(), log 
     calendarDir: strOf(raw(settings, 'vmu.compliance.calendarDir', 'Shared/Compliance'), 'Shared/Compliance'),
     calendarTemplate: strOf(raw(settings, 'vmu.compliance.calendarTemplate', 'audit-checklist'), 'audit-checklist'),
     domainPacks: clone(raw(settings, 'vmu.compliance.domainPacks', [])),
+    // ROUND 155: whether this face enforces export-control screening. Default FALSE, so nothing changes unless a
+    // pack asks. The capability itself lives in `domaingate` (dual-use domain, ITEM_CODES.exportControl and the pure
+    // `screenExportControl`) - this face only refuses the INCONSISTENT configuration and points at it, never
+    // reimplementing the screening.
+    exportControlCheck: boolOf(raw(settings, 'vmu.compliance.exportControlCheck', false), false),
   }
 
   const bump = (code) => { counters.refusals[code] = (counters.refusals[code] || 0) + 1 }
@@ -242,11 +250,29 @@ export function createCompliance({ clock = () => new Date(0).toISOString(), log 
     const enforced = []
     mark(enforced, 'vmu.compliance.prepare')
     mark(enforced, 'vmu.compliance.domainPacks')
+    /**
+     * ROUND 155 — THE EXPORT-CONTROL REFERENCE. Declaring the dual-use pack while the screening switch is OFF is a
+     * self-contradicting configuration: the gate would demand a screening record that this face has just told nobody
+     * to produce. So the inconsistency is refused BY NAME rather than passing as a checklist. When the switch is ON
+     * the requirement is named in the receipt and points at `domaingate` - the screening itself is NOT reimplemented
+     * here (cite, never copy).
+     */
+    const packs = Array.isArray(C.domainPacks) ? C.domainPacks : []
+    const wantsExport = packs.some((p) => String((p && p.domain) || p) === 'dual-use')
+    if (wantsExport) mark(enforced, 'vmu.compliance.exportControlCheck')
+    if (wantsExport && !C.exportControlCheck) {
+      throw deny('prepare', 'VMU_COMPLIANCE_EXPORT_BLOCKED',
+        '声明了 dual-use 领域包，但 `vmu.compliance.exportControlCheck=false` ⇒ 拒（**自相矛盾的配置** ✗）',
+        '把该键设为 true，或移除 dual-use 域包；筛查本身在 `domaingate`（`screenExportControl` ✓，**只引不重定义** ✗）', enforced)
+    }
     return ok('prepare', enforced, [], {
       mode: C.prepare, protocolId: protocolId ? String(protocolId) : null,
       calendarDir: C.calendarDir, template: C.calendarTemplate,
       auditPrepLeadDays: C.auditPrepLeadDays, reviewAlertLeadDays: C.reviewAlertLeadDays,
       domainPacks: C.domainPacks, at: given(at) ? String(at) : String(clock()),
+      exportControl: C.exportControlCheck
+        ? { required: true, screenAt: 'domaingate.screenExportControl', note: '筛查在领域闸单点进行（引用，不重定义）' }
+        : { required: false },
     })
   }
 
