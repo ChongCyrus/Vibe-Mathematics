@@ -677,6 +677,23 @@ if (SELF_PROBE) {
     'E-8: status() names the verification that keeps this table honest')
 }
 
+
+// ── ROUND 240: an UNLOADED pack must not stay in the pack list ───────────────────────────────────────────────
+{
+  const km = await import(pathToFileURL(MODULE).href)   // this suite loads the kernel dynamically, so the assertion does too
+  const k = km.createKernel({ clock: () => 0, settings: {} })
+  ok((k.status().packs || []).includes('round240-pack') === false, 'packs[-]: an unapplied pack is not listed')
+  k.notePackApplied('round240-pack')
+  ok((k.status().packs || []).includes('round240-pack') === true, 'packs[+]: an applied pack IS listed')
+  k.notePackUnloaded('round240-pack')
+  ok((k.status().packs || []).includes('round240-pack') === false,
+    'packs[unload]: after unloading it is GONE from the list - before this round it stayed there for ever, because the unload record was written and nothing read it')
+  ok(k.packNotes().length >= 2, 'packNotes(): the note log is readable, so the record of both events is not write-only')
+  const notes = k.packNotes()
+  ok(notes.some((n) => n.what === 'applied') && notes.some((n) => n.what === 'unloaded'),
+    'packNotes(): both the apply and the unload are recorded', JSON.stringify(notes.map((n) => n.what)))
+}
+
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
