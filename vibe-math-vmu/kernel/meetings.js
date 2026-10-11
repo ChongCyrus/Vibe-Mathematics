@@ -45,6 +45,7 @@ export const WIRED_KEYS = Object.freeze([
   'vmu.meetings.appealDeadlineMs', 'vmu.meetings.appealReasonRequired', 'vmu.meetings.appealScope',
   'vmu.meetings.disciplineWarnMax', 'vmu.meetings.disciplineMuteMs', 'vmu.meetings.disciplineExpelAllowed',
   'vmu.meetings.recessMaxMs', 'vmu.meetings.recessResumeRequiresMotion',
+  'vmu.meetings.verdictMaxRounds',
   'vmu.meetings.confidentialityDefault', 'vmu.meetings.confidentialityQuotePolicy',
   'vmu.meetings.verbatimEnabled', 'vmu.meetings.verbatimRetentionMs', 'vmu.meetings.wakeFailurePolicy',
   'vmu.meetings.wakeRetries',
@@ -70,6 +71,7 @@ const DEFAULTS = Object.freeze({
   'vmu.meetings.appealDeadlineMs': 0, 'vmu.meetings.appealReasonRequired': true, 'vmu.meetings.appealScope': 'all',
   'vmu.meetings.disciplineWarnMax': 0, 'vmu.meetings.disciplineMuteMs': 0, 'vmu.meetings.disciplineExpelAllowed': true,
   'vmu.meetings.recessMaxMs': 0, 'vmu.meetings.recessResumeRequiresMotion': false,
+  'vmu.meetings.verdictMaxRounds': 3,
   'vmu.meetings.confidentialityDefault': 'internal', 'vmu.meetings.confidentialityQuotePolicy': 'allow',
   'vmu.meetings.verbatimEnabled': true, 'vmu.meetings.verbatimRetentionMs': 0, 'vmu.meetings.wakeFailurePolicy': 'refuse',
   // ROUND 198: the retry bound's declared default.
@@ -129,6 +131,9 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     wakeFailurePolicy: oneOf(sget('vmu.meetings.wakeFailurePolicy'), ['refuse', 'skip', 'retry'], 'refuse'),
     // ROUND 198: the retry policy's bound, clamped [0,10] as the key's own contract says.
     wakeRetries: Math.min(10, Math.max(0, n(sget('vmu.meetings.wakeRetries')))),
+    // ROUND 199: the motion (verdict round) ceiling. `|| 3` is explicit: an unset key reads as 0 here, and the
+    // contract is int >= 1 with default 3.
+    verdictMaxRounds: Math.max(1, n(sget('vmu.meetings.verdictMaxRounds')) || 3),
   }
 
   const counters = { opened: 0, closed: 0, speeches: 0, motions: 0, votes: 0, appeals: 0, warnings: 0, mutes: 0, refused: 0, prunedMinutes: 0, prunedVerbatim: 0, skippedWakes: 0, softBudget: 0 }
@@ -448,6 +453,14 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       if (K.materialsRequired) {
         mark(enforced, 'vmu.meetings.materialsRequired')
         if (!materials) throw deny('VMU_STATE', 'vmu.meetings.materialsRequired=true: a motion needs its materials', 'pass { materials: <pointer> } (the pointer is owned by 07/22)', enforced)
+      }
+      // ROUND 199: `vmu.meetings.verdictMaxRounds` - the ceiling on how many times one meeting may be put to a
+      // motion. The "object" of deliberation in this face is the meeting itself (a motion carries no target), and
+      // saying so is the point: the ceiling is per meeting, checked before anything is created.
+      if (m.motions.length >= K.verdictMaxRounds) {
+        mark(enforced, 'vmu.meetings.verdictMaxRounds')
+        throw deny('VMU_RESOURCE_BUDGET', 'the motion ceiling is reached for this meeting: ' + m.motions.length + ' / ' + K.verdictMaxRounds,
+          'raise vmu.meetings.verdictMaxRounds, or close this meeting and open a new one (vmu.meetings.verdictMaxRounds)', enforced)
       }
       const q = quorumOf(m)
       let need = q.required
@@ -857,7 +870,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
 /** The value record for every wired key (explicit map; a name-derived lookup silently produced nulls). */
 function keysSnapshot(K) {
   return {
-    'vmu.meetings.wakeRetries': K.wakeRetries,
+    'vmu.meetings.wakeRetries': K.wakeRetries, 'vmu.meetings.verdictMaxRounds': K.verdictMaxRounds,
     'vmu.meetings.typeCatalog': K.typeCatalog, 'vmu.meetings.attendanceMode': K.attendanceMode, 'vmu.meetings.liveCap': K.liveCap,
     'vmu.meetings.quorumMin': K.quorumMin, 'vmu.meetings.quorumRatio': K.quorumRatio, 'vmu.meetings.quorumLossPolicy': K.quorumLossPolicy,
     'vmu.meetings.quorumRecountMs': K.quorumRecountMs, 'vmu.meetings.unansweredInDenominator': K.unansweredInDenominator,

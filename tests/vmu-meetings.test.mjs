@@ -364,13 +364,14 @@ const err = (fn) => errOf(fn)
   const st = mk({}).t.status()
   // ROUND 198: 47 -> 48, deliberately. `vmu.meetings.wakeRetries` is now WIRED: the `retry` wake policy has its bound,
   // the key is consulted (and marked) when that policy runs, and a pack that sets it now changes behaviour.
-  ok(WIRED_KEYS.length === 48, 'the layer wires all 48 declared vmu.meetings.* keys', String(WIRED_KEYS.length))
+  // ROUND 199: 48 -> 49, deliberately - `vmu.meetings.verdictMaxRounds` is now WIRED (motion ceiling).
+  ok(WIRED_KEYS.length === 49, 'the layer wires all 49 declared vmu.meetings.* keys', String(WIRED_KEYS.length))
   ok(st.declaredMeetingKeys === 56, 'the declared universe is read from settings/schema.js (core + planned)', String(st.declaredMeetingKeys))
   ok(st.plannedKeys.length + st.wiredCount === st.declaredMeetingKeys && st.overlapWithWired.length === 0 && st.complementOk === true,
     'WIRED and plannedKeys are COMPLEMENTARY and partition the 56 declared keys',
     JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredMeetingKeys, overlap: st.overlapWithWired }))
-  ok(Object.keys(st.keys).length === 48 && !Object.values(st.keys).some((v) => v === undefined),
-    'status().keys reports a real value for all 48 wired keys (no silent nulls)')
+  ok(Object.keys(st.keys).length === 49 && !Object.values(st.keys).some((v) => v === undefined),
+    'status().keys reports a real value for all 49 wired keys (no silent nulls)')
   ok(st.plannedKeys.every((k) => typeof st.unwiredReasons[k] === 'string'), 'any unwired key would carry a reason (mechanism present)')
   ok(typeof UNWIRED_REASONS['vmu.meetings'] === 'string', 'the reason table is exported for future keys')
   // enforced[] is precise: a call that evaluates nothing does not claim a key
@@ -550,6 +551,25 @@ const err = (fn) => errOf(fn)
   const h3 = mk({ 'vmu.meetings.wakeFailurePolicy': 'retry', 'vmu.meetings.wakeRetries': 99 }, { wake: () => ({ ok: false, error: 'always' }) })
   const r3 = h3.t.wake({ member: 'r-4' })
   ok(r3.wakeRetries === 10 && r3.retries === 10, 'wakeRetries: the ceiling is CLAMPED to [0,10] (99 -> 10)', JSON.stringify({ wakeRetries: r3.wakeRetries, retries: r3.retries }))
+}
+// ROUND 199: `vmu.meetings.verdictMaxRounds` decides - the motion (verdict round) ceiling.
+{
+  const h = opened({ 'vmu.meetings.verdictMaxRounds': 2 })
+  ok(h.h.t.motion({ meeting: h.id, member: 'acad', text: 'm1' }).ok === true, 'verdictMaxRounds[+]: the first motion is allowed')
+  ok(h.h.t.motion({ meeting: h.id, member: 'r-1', text: 'm2' }).ok === true, 'verdictMaxRounds[+]: the second motion is allowed')
+  const e = err(() => h.h.t.motion({ meeting: h.id, member: 'r-2', text: 'm3' }))
+  ok(e && e.code === 'VMU_RESOURCE_BUDGET' && /2 \/ 2/.test(String(e.message)),
+    'verdictMaxRounds[-]: the third motion is refused BY NAME carrying current and ceiling', e && (e.code + ' ' + e.message))
+  ok(e && Array.isArray(e.enforced) && e.enforced.indexOf('vmu.meetings.verdictMaxRounds') !== -1,
+    'verdictMaxRounds: the refusal names the key it consulted')
+  const h3 = opened({ 'vmu.meetings.verdictMaxRounds': 1 })
+  ok(h3.h.t.motion({ meeting: h3.id, member: 'acad', text: 'only' }).ok === true, 'verdictMaxRounds: a ceiling of 1 still allows one motion')
+  const e3 = err(() => h3.h.t.motion({ meeting: h3.id, member: 'r-1', text: 'second' }))
+  ok(e3 && e3.code === 'VMU_RESOURCE_BUDGET', 'verdictMaxRounds[-]: a ceiling of 1 refuses the second motion', e3 && e3.code)
+  const def = opened()
+  for (let i = 0; i < 3; i += 1) ok(def.h.t.motion({ meeting: def.id, member: 'acad', text: 'd' + i }).ok === true, 'verdictMaxRounds: the DEFAULT ceiling allows three motions (' + (i + 1) + ')')
+  const e4 = err(() => def.h.t.motion({ meeting: def.id, member: 'acad', text: 'fourth' }))
+  ok(e4 && e4.code === 'VMU_RESOURCE_BUDGET', 'verdictMaxRounds[-]: the DEFAULT ceiling refuses the fourth (default is 3, not 1)', e4 && e4.code)
 }
 /**
  * ROUND 168: the precondition behind the header claim, asserted rather than assumed. A key can be listed as wired,
