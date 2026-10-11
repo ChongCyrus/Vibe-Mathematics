@@ -61,6 +61,11 @@ export function createTrust({ clock = () => 0, log = null, settings = {}, bus = 
     useInSelection: sget('vmu.trust.useInSelection', true) !== false,
     useInArbitration: sget('vmu.trust.useInArbitration', false) === true,
     useInAuction: sget('vmu.trust.useInAuction', false) === true,
+    // ROUND 253: the four remaining declarations. Each default keeps the current behaviour, so declaring nothing changes nothing.
+    minSamples: (() => { const v = sget('vmu.trust.minSamples', 0); return Number.isInteger(v) && v > 0 ? v : 0 })(),
+    displayMode: (() => { const v = sget('vmu.trust.displayMode', 'score'); return ['score', 'band', 'hidden'].includes(v) ? v : 'score' })(),
+    appealNeedsEvidence: sget('vmu.trust.appealNeedsEvidence', false) === true,
+    decayOnEnd: sget('vmu.trust.decayOnEnd', true) !== false,
   })
 
   const signals = []           // append-only: { id, subject, kind, weight, source, evidence, at, flags[] }
@@ -84,15 +89,56 @@ export function createTrust({ clock = () => 0, log = null, settings = {}, bus = 
     if (den === 0) return 0
     return pairs.reduce((a, p) => a + p.w * p.w, 0) / den   // weighted (self-weighted)
   }
+  /** Which moment each subject's engagement ended, for `vmu.trust.decayOnEnd=false` (recorded, never inferred). */
+  const endedAt = new Map()
+
   const compute = (subject, at) => {
     const list = forSubject(subject)
     const pairs = list.map((s) => ({ s, w: decayedWeight(s, at) }))
+    const { minSamples, decayOnEnd } = cfg()
     const score = aggregate(pairs)
-    return { list, pairs, score, hasData: list.length > 0, at }
+    // ROUND 253 (`vmu.trust.minSamples`): too few signals is NOT a low score - it is no score, and the receipt says which.
+    const insufficient = minSamples > 0 && list.length < minSamples
+    // `vmu.trust.decayOnEnd`: after an engagement ends, either keep decaying with time (true, the default) or FREEZE the value at
+    // the moment it ended (false) - freezing is what makes a final score reproducible.
+    const ended = endedAt.get(subject)
+    const frozen = ended !== undefined && decayOnEnd === false
+    const value = frozen ? aggregate(list.map((s) => ({ s, w: decayedWeight(s, ended) }))) : score
+    return { list, pairs, score: insufficient ? null : value, raw: score, hasData: list.length > 0,
+      insufficient, minSamples, endedAt: ended === undefined ? null : ended, frozen, at }
+  }
+
+  /** ROUND 253 (`vmu.trust.decayOnEnd`): mark an engagement ended, and say whether a frozen score now applies. */
+  function endEngagement({ subject = null, at = null } = {}) {
+    const id = String(subject || '')
+    if (!id) throw refuse('VMU_INVALID_ARGUMENT', 'endEngagement needs { subject }', 'pass the subject id')
+    const when = at === null || at === undefined ? clock() : Number(at)
+    endedAt.set(id, when)
+    const c = cfg()
+    say({ type: 'trust/ended', subject: id, at: when, freeze: c.decayOnEnd === false })
+    return { ok: true, subject: id, endedAt: when, freeze: c.decayOnEnd === false,
+      enforced: ['vmu.trust.decayOnEnd'], wouldEvaluate: ['vmu.trust.decayOnEnd'], enforcedScope: ENFORCED_SCOPE }
+  }
+
+  /**
+   * ROUND 253 (`vmu.trust.displayMode`): how a score may be SHOWN. `score` states it, `band` states a band and withholds the
+   * number, `hidden` withholds both - a number that leaks through a hidden setting is not hidden.
+   */
+  function publicScore({ subject = null, at = null } = {}) {
+    const c = cfg()
+    const id = String(subject || '')
+    const computed = compute(id, at === null || at === undefined ? clock() : Number(at))
+    const base = { ok: true, subject: id, displayMode: c.displayMode, hasData: computed.hasData,
+      insufficient: computed.insufficient, minSamples: computed.minSamples, samples: computed.list.length }
+    if (computed.score === null) return Object.assign(base, { score: null, band: null, reason: 'insufficient-samples' })
+    const band = computed.score >= 0.75 ? 'high' : (computed.score >= 0.4 ? 'medium' : 'low')
+    if (c.displayMode === 'hidden') return Object.assign(base, { score: null, band: null, reason: 'hidden-by-displayMode' })
+    if (c.displayMode === 'band') return Object.assign(base, { score: null, band })
+    return Object.assign(base, { score: computed.score, band })
   }
 
   return {
-    apiVersion,
+    apiVersion, endEngagement, publicScore,
 
     /** Record one signal. Weight without evidence is DOWNWEIGHTED and self-disclosed (never silent). */
     signal({ subject, kind, weight = null, source = null, evidence = null } = {}) {
@@ -174,7 +220,7 @@ export function createTrust({ clock = () => 0, log = null, settings = {}, bus = 
     },
 
     /** Open a dispute against a computed score. Window is enforced with the injected clock. */
-    dispute({ scoreId, reason } = {}) {
+    dispute({ evidence = null,  scoreId, reason } = {}) {
       if (typeof scoreId !== 'string' || !scoreId) throw refuse('VMU_INVALID_ARGUMENT', 'dispute needs a scoreId', 'use the subject id returned by score()/explain()')
       if (typeof reason !== 'string' || !reason) throw refuse('VMU_INVALID_ARGUMENT', 'dispute needs a reason', 'state what is wrong in one sentence')
       const c = cfg()
@@ -185,7 +231,13 @@ export function createTrust({ clock = () => 0, log = null, settings = {}, bus = 
         const newest = anchors.reduce((a, s) => Math.max(a, s.at), 0)
         if (at - newest > c.disputeWindowMs) throw refuse('VMU_TRUST_APPEAL_WINDOW', 'the dispute window has closed for ' + scoreId, 'window=' + c.disputeWindowMs + 'ms; ask the office for an exception')
       }
-      const id = 'disp-' + (++seq)
+      // ROUND 253 (`vmu.trust.appealNeedsEvidence`): an appeal offering no evidence is refused BY NAME before it is recorded,
+    // because an appeal nobody can check is not an appeal.
+    if (c.appealNeedsEvidence && !(evidence !== undefined && evidence !== null && String(evidence).trim() !== '')) {
+      throw refuse('VMU_TRUST_EVIDENCE_REQUIRED', 'vmu.trust.appealNeedsEvidence=true and this appeal carries no evidence',
+        'attach the evidence reference, or clear vmu.trust.appealNeedsEvidence')
+    }
+    const id = 'disp-' + (++seq)
       disputes.push({ id, scoreId, subject: subj, reason, at, status: 'open' })
       say({ type: 'trust/dispute', at, scoreId, reason })
       return { ok: true, id, scoreId, status: 'open', at, open: disputes.filter((d) => d.status === 'open').length }

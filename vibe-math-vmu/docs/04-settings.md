@@ -358,6 +358,10 @@ vmu.packs.active: [v5r]
 | `vmu.trust.appealWindowMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 申诉窗口（0＝不限） |
 | `vmu.trust.maxSignalsPerSubject` | int ≥1 | `500` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 单主体信号上限（溢出必计数） |
 | `vmu.trust.aggregate` | enum | `weighted` | `mean`∣`weighted`∣`median` | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 聚合方式 |
+| `vmu.trust.minSamples` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 样本数下限（0＝关；不足 ⇒ score=null 且 reason='insufficient-samples'，★ 样本少不是分数低） |
+| `vmu.trust.displayMode` | enum | `score` | `score`∣`band`∣`hidden` | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 分数展示（score 给数／band 只给带／hidden 全隐；★ 经 hidden 泄漏的数字不叫隐藏） |
+| `vmu.trust.appealNeedsEvidence` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 申诉须带证据（true ⇒ dispute() 无证据即具名拒，VMU_TRUST_EVIDENCE_REQUIRED） |
+| `vmu.trust.decayOnEnd` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 关系结束后是否继续按时间衰减（false ⇒ 冻结在结束时刻，使终值可复现） |
 | `vmu.trust.useInSelection` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 选择时是否参考声誉（仅参考，绝不授权 ✗） |
 | `vmu.trust.useInArbitration` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 仲裁时是否参考声誉 |
 | `vmu.trust.useInAuction` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 竞标时是否参考声誉 |
@@ -1323,10 +1327,6 @@ vmu.packs.active: [v5r]
 | `vmu.tasks.create` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.templates.default` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.templates.items` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.trust.appealNeedsEvidence` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.trust.decayOnEnd` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.trust.displayMode` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.trust.minSamples` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.work.autoSettle` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.work.keepEntries` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.work.pauseRule` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |

@@ -251,6 +251,11 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.trust.appealWindowMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '申诉窗口（0＝不限）' },
   { key: 'vmu.trust.maxSignalsPerSubject', type: 'positiveInteger', def: 500, hot: HOT.H1, who: 'office', doc: '单主体信号上限（溢出必计数）' },
   { key: 'vmu.trust.aggregate', type: 'enum', domain: ['mean', 'weighted', 'median'], def: 'weighted', hot: HOT.H1, who: 'office', doc: '聚合方式' },
+  // ROUND 253: 信任面的四键（17 卷；现由 kernel/trust.js 读取）.
+  { key: 'vmu.trust.minSamples', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "样本数下限（0＝关；不足 ⇒ score=null 且 reason='insufficient-samples'，★ 样本少不是分数低）" },
+  { key: 'vmu.trust.displayMode', type: 'enum', domain: ['score', 'band', 'hidden'], def: 'score', hot: HOT.H1, who: 'office', doc: "分数展示（score 给数／band 只给带／hidden 全隐；★ 经 hidden 泄漏的数字不叫隐藏）" },
+  { key: 'vmu.trust.appealNeedsEvidence', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "申诉须带证据（true ⇒ dispute() 无证据即具名拒，VMU_TRUST_EVIDENCE_REQUIRED）" },
+  { key: 'vmu.trust.decayOnEnd', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "关系结束后是否继续按时间衰减（false ⇒ 冻结在结束时刻，使终值可复现）" },
   { key: 'vmu.trust.useInSelection', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '选择时是否参考声誉（仅参考，绝不授权 ✗）' },
   { key: 'vmu.trust.useInArbitration', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '仲裁时是否参考声誉' },
   { key: 'vmu.trust.useInAuction', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '竞标时是否参考声誉' },

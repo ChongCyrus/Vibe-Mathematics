@@ -1198,6 +1198,14 @@
   ★★ **⑤ 第一次 T1 是【红】的，且【没有提交】** ✓✓：**`vmu-planned-settings.test.mjs` 37/2** ✗ —— **它【钉住了溯源句式】**（"每个 doc 行必须显式写出 `首个声明卷 NN（共见 M 卷：…）`" ✓）⇒ **我的改写虽然保留了它，却破坏了匹配** ✗ ⇒ ★★ **裁定：断言守的是【键的来源不得丢失】，这是对的** ✓ ⇒ **改为【把实测裁定前置、原句原封不动保留】** ✓ ⇒ **`ALL GREEN (planned=153, passed=39, failed=0)`** ✓✓。★ **这正是门禁的价值：它拦下了一次"看起来更好、却丢掉了既有保证"的改动** ✓✓。
   **未做（明写 ✗）**：★ **"已穷尽"8 条与"无承载者"145 条的具体复活条件尚未逐条写进表** ✗（**本轮把裁定与所属文件写清楚了 ✓，逐条细化的空间仍在** ✓）；**147 条 C 类未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 253：接 `vmu.trust.*` 4 键进【已在读同前缀 11 键】的 `trust.js`；未接线 155 → 151** ✓✓
+  ★★★ **① 承载者是量出来的** ✓✓：**先按族扫内核** ⇒ **`fairness.js`（248 行 ✓）已在读 `vmu.fairness.`** ✓、**`trust.js`（237 行 ✓）已在读 `vmu.trust.`** ✓ ⇒ ★★ **这两族各有天然承载者** ✓；而 **`data`／`review`／`reviewers`／`compat` 无同名承载者** ✓（**留待后判 ✓**）。**本轮先做 `trust`（其 `cfg()` 最小 ✓）** ✓。
+  **② 四键逐支真机验证** ✓：**`minSamples=3` 而只 1 条 ⇒ `score=null` 且 `reason='insufficient-samples'`** ✓（★ **"样本少不是分数低"—— 这是该键真正的语义** ✓）；**`displayMode=score ⇒ 0.80／high` ✓、`band ⇒ 只给带、隐藏数字 ✓`、`hidden ⇒ 两者皆隐并给原因 ✓`**（★ **"经 hidden 泄漏的数字不叫隐藏"** ✓）；**`appealNeedsEvidence=true` ⇒ `dispute()` 无证据即拒 `VMU_TRUST_EVIDENCE_REQUIRED` ✓、带证据通过 ✓、开关关则通过 ✓**；**`decayOnEnd=false` ⇒ `freeze=true` ✓、`true` ⇒ `false`** ✓（**冻结使终值可复现 ✓**）。
+  ★★★ **③ 一个值得记的选码习惯** ✓✓：**我起初用 `VMU_TRUST_APPEAL_WINDOW`** ✗ —— **而量过之后发现 `VMU_TRUST_EVIDENCE_REQUIRED` 早已存在且已登记** ✓ ⇒ **改用后者** ✓✓。★ **"先量已有什么码，再决定用什么码"** ✓。
+  ★★★ **④ 本区间出过一次【真实损坏】，并按纪律修复** ✗✓：**我把两个 op 插进了【返回对象内部】（我误把 `apiVersion,` 当对象起点 ✗）⇒ 语法错** ✓ ⇒ **立即 `git checkout` 回退，再用【索引计算】定位"后随 `apiVersion,` 的那个 `  return {`"（字符串 `return {` 在文件里出现 14 次 ✗）** ✓ ⇒ **一次性六组编辑全部落位、语法 0** ✓✓。★★ **另外两次自伤**：**向上扫描方法签名时匹配到了守卫行自身** ✗（**因此 `evidence` 参数一直不在签名里，运行时会 ReferenceError ✓**）⇒ **改为"从 `disputes.push` 上溯，且排除 `if/for/return` 等控制语句"** ✓；★ **以及探针把方法名当成 `appeal`，真名是 `dispute`** ✓。
+  **门禁与证据** ✓：**`VMU TRUST: 60 passed, 0 failed`** ✓（**无回归** ✓）；**`VMU KERNEL: 170 passed`** ✓；**`generate-planned-settings --check` 通过**（**planned 153 → 149 ✓，正好少 4 ✓**）；`docs/04` **4 行**由 `⚠️` 变 `✅ 已接线` ✓。
+  **未做（明写 ✗）**：★★ **这 4 键【尚无自动化断言】** ✗ —— **行为已逐支真机验证 ✓，断言属下一区间** ✓；**`fairness`(4) 已找到天然承载者但未接** ✗；**`data`／`review`／`reviewers`／`compat` 各 4 条尚无承载者** ✗；**其余 151 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 
