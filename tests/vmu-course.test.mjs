@@ -242,6 +242,39 @@ test('D3: every receipt and every refusal carries enforcedScope, with no duplica
   passed += 1
 })
 
+// ROUND 122: the two keys that were read into the configuration and changed nothing now change outcomes.
+// NOTE: this module RETURNS refusals rather than throwing them (see the assertion above that a refused call returns
+// the named refusal value), so these cases check the returned value - `assert.throws` was my mistake, not the
+// module's. The passing cases carry a `rubric` because `vmu.course.rubricRequired` defaults to true.
+test('visibility=public without auditors is REFUSED by name, and the other two values are not', () => {
+  const bad = co({ 'vmu.course.visibility': 'public', 'vmu.course.allowAuditors': false }).open({ title: 'T' })
+  assert.ok(bad && bad.ok === false && bad.code === 'VMU_NOT_PERMITTED', 'public 且禁止旁听必须具名拒：' + JSON.stringify(bad).slice(0, 120))
+  assert.ok(co({ 'vmu.course.visibility': 'institution' }).open({ title: 'T' }).ok === true, 'institution 不受该守卫影响')
+  assert.ok(co({ 'vmu.course.visibility': 'public', 'vmu.course.allowAuditors': true }).open({ title: 'T' }).ok === true, 'public 且允许旁听可以通过')
+  passed += 1
+})
+
+test('submitMode refuses a submission in the wrong form, by name, and admits the right one', () => {
+  const a = co({ 'vmu.course.submitMode': 'artifact' })
+  const oa = a.open({ title: 'T' })
+  const noArt = a.submit({ courseId: oa.courseId, who: 'r-1', inline: 'text' })
+  assert.ok(noArt && noArt.ok === false && noArt.code === 'VMU_META_VALIDATION_FAILED', 'artifact 形式缺产出引用必须具名拒：' + JSON.stringify(noArt).slice(0, 120))
+  assert.ok(a.submit({ courseId: oa.courseId, who: 'r-1', artifact: 'lib/x', rubric: 'r' }).ok === true, '给了产出引用则通过')
+
+  const i = co({ 'vmu.course.submitMode': 'inline' })
+  const oi = i.open({ title: 'T' })
+  const noInline = i.submit({ courseId: oi.courseId, who: 'r-1', artifact: 'lib/x' })
+  assert.ok(noInline && noInline.ok === false && noInline.code === 'VMU_META_VALIDATION_FAILED', 'inline 形式缺正文必须具名拒')
+  assert.ok(i.submit({ courseId: oi.courseId, who: 'r-1', inline: 'text', rubric: 'r' }).ok === true, '给了正文则通过')
+
+  const b = co({ 'vmu.course.submitMode': 'both' })
+  const ob = b.open({ title: 'T' })
+  const onlyArt = b.submit({ courseId: ob.courseId, who: 'r-1', artifact: 'lib/x' })
+  assert.ok(onlyArt && onlyArt.ok === false && onlyArt.code === 'VMU_META_VALIDATION_FAILED', 'both 形式缺正文必须具名拒')
+  assert.ok(b.submit({ courseId: ob.courseId, who: 'r-1', artifact: 'lib/x', inline: 'text', rubric: 'r' }).ok === true, 'both 形式两者齐备则通过')
+  passed += 1
+})
+
 for (const c of cases) {
   try { await c.f(); console.log('ok - ' + c.n) } catch (e) { failed += 1; console.log('FAIL - ' + c.n + ' :: ' + String((e && e.message) || e)) }
 }
