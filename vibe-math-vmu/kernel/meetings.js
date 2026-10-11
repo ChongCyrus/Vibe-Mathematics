@@ -47,6 +47,7 @@ export const WIRED_KEYS = Object.freeze([
   'vmu.meetings.recessMaxMs', 'vmu.meetings.recessResumeRequiresMotion',
   'vmu.meetings.confidentialityDefault', 'vmu.meetings.confidentialityQuotePolicy',
   'vmu.meetings.verbatimEnabled', 'vmu.meetings.verbatimRetentionMs', 'vmu.meetings.wakeFailurePolicy',
+  'vmu.meetings.wakeRetries',
 ])
 
 /** Why a key that IS declared would not be wired (used only for keys absent from WIRED_KEYS). */
@@ -71,6 +72,8 @@ const DEFAULTS = Object.freeze({
   'vmu.meetings.recessMaxMs': 0, 'vmu.meetings.recessResumeRequiresMotion': false,
   'vmu.meetings.confidentialityDefault': 'internal', 'vmu.meetings.confidentialityQuotePolicy': 'allow',
   'vmu.meetings.verbatimEnabled': true, 'vmu.meetings.verbatimRetentionMs': 0, 'vmu.meetings.wakeFailurePolicy': 'refuse',
+  // ROUND 198: the retry bound's declared default.
+  'vmu.meetings.wakeRetries': 5,
 })
 
 const RING = 200
@@ -124,6 +127,8 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     confidentialityQuotePolicy: oneOf(sget('vmu.meetings.confidentialityQuotePolicy'), ['allow', 'redact', 'deny'], 'allow'),
     verbatimEnabled: sget('vmu.meetings.verbatimEnabled') !== false, verbatimRetentionMs: n(sget('vmu.meetings.verbatimRetentionMs')),
     wakeFailurePolicy: oneOf(sget('vmu.meetings.wakeFailurePolicy'), ['refuse', 'skip', 'retry'], 'refuse'),
+    // ROUND 198: the retry policy's bound, clamped [0,10] as the key's own contract says.
+    wakeRetries: Math.min(10, Math.max(0, n(sget('vmu.meetings.wakeRetries')))),
   }
 
   const counters = { opened: 0, closed: 0, speeches: 0, motions: 0, votes: 0, appeals: 0, warnings: 0, mutes: 0, refused: 0, prunedMinutes: 0, prunedVerbatim: 0, skippedWakes: 0, softBudget: 0 }
@@ -709,7 +714,21 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
             'seam error: ' + String(out.error || 'unknown') + ' (vmu.meetings.wakeFailurePolicy)', enforced)
         }
         if (K.wakeFailurePolicy === 'skip') { counters.skippedWakes += 1; return { ok: true, woken: false, skipped: true, skippedWakes: counters.skippedWakes, enforced, enforcedScope: ENFORCED_SCOPE } }
-        return { ok: true, woken: false, retry: true, enforced, enforcedScope: ENFORCED_SCOPE }
+        // ROUND 198: `retry` now has its BOUND (`vmu.meetings.wakeRetries`). The face owns the loop, marks the key the
+        // moment the policy consults it, and on exhaustion records the member as `unreached` - "treated as having had
+        // its chance", which is that key's own contract rather than an invention here.
+        let attempts = 1
+        let last = out
+        mark(enforced, 'vmu.meetings.wakeRetries')
+        while (last && last.ok === false && attempts <= K.wakeRetries) {
+          attempts += 1
+          try { last = wake({ member, at: now }) || { ok: true } } catch (e) { last = { ok: false, error: String((e && e.message) || e) } }
+        }
+        if (last && last.ok === false) {
+          counters.unreachedWakes = (counters.unreachedWakes || 0) + 1
+          return { ok: true, woken: false, unreached: true, retries: attempts - 1, wakeRetries: K.wakeRetries, unreachedWakes: counters.unreachedWakes, enforced, enforcedScope: ENFORCED_SCOPE }
+        }
+        return { ok: true, woken: true, retries: attempts - 1, wakeRetries: K.wakeRetries, enforced, enforcedScope: ENFORCED_SCOPE }
       }
       return { ok: true, woken: true, enforced, enforcedScope: ENFORCED_SCOPE }
     },
@@ -838,6 +857,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
 /** The value record for every wired key (explicit map; a name-derived lookup silently produced nulls). */
 function keysSnapshot(K) {
   return {
+    'vmu.meetings.wakeRetries': K.wakeRetries,
     'vmu.meetings.typeCatalog': K.typeCatalog, 'vmu.meetings.attendanceMode': K.attendanceMode, 'vmu.meetings.liveCap': K.liveCap,
     'vmu.meetings.quorumMin': K.quorumMin, 'vmu.meetings.quorumRatio': K.quorumRatio, 'vmu.meetings.quorumLossPolicy': K.quorumLossPolicy,
     'vmu.meetings.quorumRecountMs': K.quorumRecountMs, 'vmu.meetings.unansweredInDenominator': K.unansweredInDenominator,

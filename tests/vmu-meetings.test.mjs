@@ -362,13 +362,15 @@ const err = (fn) => errOf(fn)
 // ── the honesty rails ───────────────────────────────────────────────────────────────────────────────
 {
   const st = mk({}).t.status()
-  ok(WIRED_KEYS.length === 47, 'the layer wires all 47 declared vmu.meetings.* keys', String(WIRED_KEYS.length))
+  // ROUND 198: 47 -> 48, deliberately. `vmu.meetings.wakeRetries` is now WIRED: the `retry` wake policy has its bound,
+  // the key is consulted (and marked) when that policy runs, and a pack that sets it now changes behaviour.
+  ok(WIRED_KEYS.length === 48, 'the layer wires all 48 declared vmu.meetings.* keys', String(WIRED_KEYS.length))
   ok(st.declaredMeetingKeys === 56, 'the declared universe is read from settings/schema.js (core + planned)', String(st.declaredMeetingKeys))
   ok(st.plannedKeys.length + st.wiredCount === st.declaredMeetingKeys && st.overlapWithWired.length === 0 && st.complementOk === true,
     'WIRED and plannedKeys are COMPLEMENTARY and partition the 56 declared keys',
     JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredMeetingKeys, overlap: st.overlapWithWired }))
-  ok(Object.keys(st.keys).length === 47 && !Object.values(st.keys).some((v) => v === undefined),
-    'status().keys reports a real value for all 47 wired keys (no silent nulls)')
+  ok(Object.keys(st.keys).length === 48 && !Object.values(st.keys).some((v) => v === undefined),
+    'status().keys reports a real value for all 48 wired keys (no silent nulls)')
   ok(st.plannedKeys.every((k) => typeof st.unwiredReasons[k] === 'string'), 'any unwired key would carry a reason (mechanism present)')
   ok(typeof UNWIRED_REASONS['vmu.meetings'] === 'string', 'the reason table is exported for future keys')
   // enforced[] is precise: a call that evaluates nothing does not claim a key
@@ -528,6 +530,27 @@ const err = (fn) => errOf(fn)
   ok(mg.status() && mg.receiptsView({}).enforcedScope === 'evaluated-so-far', 'D3: the receipts view carries the scope as well')
 }
 
+// ROUND 198: `vmu.meetings.wakeRetries` decides - the retry policy now has its bound. Before this, `retry` returned
+// `retry: true` with no ceiling and left retrying to the caller, so the key a pack could set meant nothing.
+{
+  let calls = 0
+  const flaky = () => { calls += 1; if (calls <= 7) throw new Error('flaky seam #' + calls); return { ok: true } }
+  const h = mk({ 'vmu.meetings.wakeFailurePolicy': 'retry', 'vmu.meetings.wakeRetries': 3 }, { wake: flaky })
+  const r = h.t.wake({ member: 'r-1' })
+  ok(r.unreached === true && r.woken === false && r.retries === 3 && r.wakeRetries === 3,
+    'wakeRetries[+]: a seam that fails past the ceiling is reported UNREACHED after exactly N retries', JSON.stringify(r))
+  ok(r.enforced.indexOf('vmu.meetings.wakeRetries') !== -1, 'wakeRetries: the result names the key it consulted')
+  let ok2 = 0
+  const h2 = mk({ 'vmu.meetings.wakeFailurePolicy': 'retry', 'vmu.meetings.wakeRetries': 5 }, { wake: () => { ok2 += 1; return ok2 === 2 ? { ok: true } : { ok: false, error: 'nope' } } })
+  const r2 = h2.t.wake({ member: 'r-2' })
+  ok(r2.woken === true && r2.retries === 1, 'wakeRetries[+]: a seam that recovers on the second attempt is WOKEN with retries=1', JSON.stringify(r2))
+  const h0 = mk({ 'vmu.meetings.wakeFailurePolicy': 'retry', 'vmu.meetings.wakeRetries': 0 }, { wake: () => ({ ok: false, error: 'always' }) })
+  const r0 = h0.t.wake({ member: 'r-3' })
+  ok(r0.unreached === true && r0.retries === 0, 'wakeRetries[-]: 0 means NO retry - one failed attempt is already unreached', JSON.stringify(r0))
+  const h3 = mk({ 'vmu.meetings.wakeFailurePolicy': 'retry', 'vmu.meetings.wakeRetries': 99 }, { wake: () => ({ ok: false, error: 'always' }) })
+  const r3 = h3.t.wake({ member: 'r-4' })
+  ok(r3.wakeRetries === 10 && r3.retries === 10, 'wakeRetries: the ceiling is CLAMPED to [0,10] (99 -> 10)', JSON.stringify({ wakeRetries: r3.wakeRetries, retries: r3.retries }))
+}
 /**
  * ROUND 168: the precondition behind the header claim, asserted rather than assumed. A key can be listed as wired,
  * reported by `status()`, and still never be read by any path the suite walks - which is exactly the weakness the
