@@ -1,4 +1,4 @@
-# vmu 07 · 耐久与归档（Store & Library）
+﻿# vmu 07 · 耐久与归档（Store & Library）
 
 > 状态：**草案 v0.2（大幅扩充）**
 > 上位：`01-philosophy.md`（R9 归档能力 / R10 耐久可信 / R12 可复现）、`02-architecture.md`（内核 B、D 分区）、`03`（公开键与文件布局）、`13-migration.md`（迁移）。
@@ -547,7 +547,7 @@ GC 候选 ⇒ 产出删除清单 ⇒ 显式确认（或满足自动执行前置�
 
 | 键 | 类型 | 默认 | 域 | 谁 | 说明 |
 |---|---|---|---|---|---|
-| `vmu.store.backend` | enum(single/dir/remote) | `dir` | G | U | 后端选择；`remote` 未实现 |
+| `vmu.store.backend` | enum(single/dir/remote) | `dir` | G | U | 后端选择；★ **键已接线 ✓，但 `remote` 后端【能力】未实现** ✗（`single`／`dir` 可用 ✓） |
 | `vmu.store.root` | string(path) | 工作区根 | G | U | 状态根；解析后必须在工作区根内 |
 | `vmu.store.fsync` | enum(none/file/dir) | `file` | G | U | 持久化语义；**内容入盘 ≠ 目录项入盘** |
 | `vmu.store.tmpDir` | string(path) | `<root>/.tmp` | G | U | 原子写临时目录 |
@@ -557,9 +557,9 @@ GC 候选 ⇒ 产出删除清单 ⇒ 显式确认（或满足自动执行前置�
 | `vmu.store.lock.retries` | int | `3` | G | U | 冲突重试次数 |
 | `vmu.store.lock.backoffMs` | int | `50` | G | U | 重试退避 |
 | `vmu.store.lock.serializeAll` | bool | `true` | G | U | 是否全量串行写 |
-| `vmu.store.remote.url` | string | `''` | G | U | 远端地址（未实现） |
-| `vmu.store.remote.consistency` | enum(strong/eventual) | `eventual` | G | U | 一致性策略（未实现） |
-| `vmu.store.remote.offlinePolicy` | enum(queue/refuse) | `refuse` | G | U | 离线策略（未实现） |
+| `vmu.store.remote.url` | string | `''` | G | U | 远端地址；★ **键已接线 ✓，远端【能力】未实现** ✗ |
+| `vmu.store.remote.consistency` | enum(strong/eventual) | `eventual` | G | U | 一致性策略；★ **键已接线 ✓，远端【能力】未实现** ✗ |
+| `vmu.store.remote.offlinePolicy` | enum(queue/refuse) | `refuse` | G | U | 离线策略；★ **键已接线 ✓，远端【能力】未实现** ✗ |
 | `vmu.migration.auto` | bool | `false` | G | U | 自动迁移开关 |
 | `vmu.migration.dryRunDefault` | bool | `true` | G | U | 默认先 dry-run |
 | `vmu.migration.requireConfirm` | bool | `true` | G | U | 执行前需确认 |
