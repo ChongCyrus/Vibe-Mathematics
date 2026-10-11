@@ -14,6 +14,7 @@
 //
 // `tests/audit-vmu-docs.mutants.mjs` breaks each of these one at a time and requires the named red.
 
+import { hasConsumer } from '../scripts/generate-vmu-settings-table.mjs'
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -305,8 +306,11 @@ ok(unregisteredInCode.length === 0,
     }
   }
   walkRuntime(VMU, 0)
-  const runtimeText = runtimeFiles.filter((f) => existsSync(f)).map((f) => readFileSync(f, 'utf8')).join('\n')
-  const trulyUnwired = new Set(SETTING_DEFS.filter((d) => !runtimeText.includes("'" + d.key + "'")).map((d) => d.key))
+  // ROUND 195: THE SAME RULE AS THE GENERATOR (one rule, one place). Counting any quoted literal let a key's own
+  // declaration table count as a reader, so `planned` rows could claim 已接线 and this audit could not see it. Note the
+  // consequence, stated deliberately: the rule is evaluated against the REAL repository, not the copied code dir, so a
+  // mutant that changed wiring by editing CODE would not be seen - the wiring mutants here are all docs-side.
+  const trulyUnwired = new Set(SETTING_DEFS.filter((d) => !hasConsumer(d.key)).map((d) => d.key))
   const claimedUnwired = new Set(rows.filter((r) => /未接线/.test(r))
     .map((r) => ((r.match(/`(vmu\.[a-zA-Z0-9.]+)`/) || [])[1])).filter(Boolean))
   const claimedWired = new Set(rows.filter((r) => /已接线/.test(r))

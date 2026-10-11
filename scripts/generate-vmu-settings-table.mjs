@@ -52,7 +52,23 @@ function runtimeSources() {
 }
 
 const SOURCES = runtimeSources()
-const SOURCE_TEXT = SOURCES.map((f) => readFileSync(f, 'utf8')).join('\n')
+/**
+ * ROUND 195: a declaration is not a reader, and a declaration takes two shapes here - a quoted key as an ARRAY
+ * ELEMENT (the planned/wired/all key tables) and a quoted key as an OBJECT KEY (the unwired-reason maps). Both are
+ * filtered per line, with NO bracket matching: the reason strings inside those tables contain brackets of their own
+ * ('removed[]'), which is exactly what made a bracket walker skip a whole table on the first attempt. A real read
+ * such as `settings['vmu.x.y']` or `readKey('vmu.x.y')` matches neither shape and still counts, which keeps the
+ * retention face honest: it reads seventeen keys and declares no wired table at all. A literal inside `Symbol(...)`
+ * is a flag name rather than a read (one occurrence, kernel/index.js), so it is filtered too.
+ */
+const isDeclarationLine = (line) => {
+  const t = line.trim()
+  if (/Symbol\(['"]vmu\./.test(t)) return true                          // flag name, not a read
+  if (/^\[?['"]vmu\.[A-Za-z0-9_.]+['"]\s*(,|$)/.test(t)) return true   // array element
+  if (/^['"]vmu\.[A-Za-z0-9_.]+['"]\s*:/.test(t)) return true          // object key (reasons map)
+  return false
+}
+const SOURCE_TEXT = SOURCES.map((f) => readFileSync(f, 'utf8').split('\n').filter((l) => !isDeclarationLine(l)).join('\n')).join('\n')
 /** Each source with its text, so the CARRIER column can name the first file that actually reads a key. */
 const SOURCE_FILES = SOURCES.map((f) => ({ rel: f.replace(VMU_DIR, '').replace(/^[\\/]/, '').replace(/\\/g, '/'), text: readFileSync(f, 'utf8') }))
 
