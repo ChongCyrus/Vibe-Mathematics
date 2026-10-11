@@ -83,6 +83,11 @@ export const NON_SETTING = new Set(['vmu.prompt', 'vmu.library', 'vmu.members', 
 export function docVolumes(dir = DOCS_DIR) {
   return readdirSync(dir)
     .filter((f) => /^\d\d-[A-Za-z0-9-]+\.md$/.test(f))
+    // ROUND 224: the open-items ledger is a CHANGELOG, not a design volume. It quotes key names while narrating work, so
+    // scanning it as a source re-minted keys that other rules had just removed (measured: my own ledger text restored
+    // `vmu.records.body` as a planned key, and it quotes `vmu.x.y` from another file's comment). Filtering it HERE keeps
+    // every consumer - the collection, the recomputation and the group-G scan - on the same rule instead of three copies.
+    .filter((f) => !f.startsWith('14-'))
     .sort()
     .map((f) => {
       const name = f.replace(/\.md$/, '')
@@ -113,7 +118,11 @@ export function namespacesOf(keys) {
  * `04-settings.md` §11 is the generated settings table (its keys come from settings/schema.js): scanning
  * it would mis-attribute every key to volume 04 AND create a cycle (docs/04 <- schema <- planned.js <- 04).
  */
-export const MIRROR_PREFIXES = ['04-']
+// ROUND 224: `14-` (the open-items ledger) is a CHANGELOG. It quotes key names while describing work, so scanning it as a
+// source re-minted keys that other rules had just removed - measured: my own ledger text restored `vmu.records.body` as a
+// planned key after the namespace rule deleted it. A record of work is not a design volume; a real loss would surface in
+// the docs audits, which is what makes this exclusion safe rather than convenient.
+export const MIRROR_PREFIXES = ['04-', '14-']
 /**
  * A volume is a generated mirror when it is named above, OR when it mentions EVERY core key (threshold
  * 1.0 by default). The coverage rule must be ALL, not "most": a design volume that merely QUOTES the
@@ -162,8 +171,11 @@ export function collectPlannedDefs({ volumes, core, namespaces, mirrors }) {
       const k = m[0]
       const parts = k.split('.')
       if (parts.length <= 2) { excluded.twoSegment.add(k); continue }            // `vmu.math` — a namespace
-      const after = vol.text.slice(m.index + k.length, m.index + k.length + 1)
-      if (after === '*' || after === '…') { excluded.wildcard.add(k); continue } // a family wildcard
+      // A family wildcard may be written `vmu.x.y.*`. KEY_RE ends at a word boundary, so the match stops BEFORE the dot
+      // and a one-character lookahead sees `.` rather than `*` - which is how eight namespace names were minted as keys.
+      const after = vol.text.slice(m.index + k.length, m.index + k.length + 3)
+      const bare = vol.text.slice(m.index + k.length, m.index + k.length + 1)
+      if (bare === '*' || bare === '…' || /^\.\s*[*…]/.test(after)) { excluded.wildcard.add(k); continue } // a family wildcard
       if (coreSet.has(k)) { excluded.existing.add(k); continue }                 // already declared
       if (NON_SETTING.has(k)) { excluded.whitelist.add(k); continue }            // service/registry name
       if (nsSet.has(k)) { excluded.namespace.add(k); continue }                  // derived namespace of a key
@@ -176,8 +188,11 @@ export function collectPlannedDefs({ volumes, core, namespaces, mirrors }) {
   // The nsSet guard above only knows namespaces derived from CORE keys, so those survived as if they were
   // settings. The three gates that scan text now apply the same rule against the set their names live in, which
   // is what makes this filter safe: removing a root without them left it in neither registry (measured, round 97).
-  const allPlanned = new Set(planned.keys())
-  const isNamespaceRoot = (k) => [...allPlanned].some((o) => o !== k && o.startsWith(k + "."))
+  // A name is a NAMESPACE, not a setting, when some other known key lives under it. The children of these namespaces are
+  // CORE keys (declared by hand in settings/schema.js), so checking only the planned set missed them entirely; the union is
+  // what the rule meant. Round 224 measured eight such names being registered as settings.
+  const allKnown = new Set([...coreSet, ...planned.keys()])
+  const isNamespaceRoot = (k) => [...allKnown].some((o) => o !== k && o.startsWith(k + "."))
   const keys = [...planned.keys()].filter((k) => !isNamespaceRoot(k)).sort()
   const defs = keys.map((key) => {
     const vols = [...planned.get(key)].sort()                                    // deterministic order

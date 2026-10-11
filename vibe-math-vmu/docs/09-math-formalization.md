@@ -351,6 +351,8 @@ MathJob = { id, kind, engine, input, timeoutMs, budget?, async?, createdAt, stat
 | `vmu.math.units.strictDimensions` | string | `warn` | `require`｜`warn` | pack | 量纲不一致处置 ⛔ |
 | `vmu.math.units.constantsSource` | string | `builtin` | `builtin`｜`codata` | 院士 | 常数来源 ⛔ |
 | `vmu.math.units.uncertainty` | string | `off` | `off`｜`first-order`｜`monte-carlo` | 院士 | 不确定度传播 ⛔ |
+| `vmu.math.network` | boolean | `false` | — | pack | 外部知识库检索适配层（16 卷 N11；`kernel/mathtools.js` 的 UNWIRED_REASONS 已按名登记 ⛔，故本键是**真键**而非族提及 ✓） |
+| `vmu.math.proof` | boolean | `false` | — | pack | 证明脚本生成（需形式化后端；同 `kernel/mathtools.js` 的 UNWIRED_REASONS 按名登记 ⛔，**真键** ✓） |
 
 ### B.7 形式化（多助手）与证明质量（⛔，Lean 面已有 8 键见附录 A）
 | 键 | 类型 | 默认 | 域 | 谁改 | 说明 |

@@ -49,6 +49,9 @@ ok(DOC_FILES.length >= 15, 'the design set has at least the 15 core docs (00..14
 }
 
 // ---- A. the design set exists and is non-trivial -------------------------------------------------
+// ROUND 224: the open-items ledger is a changelog and is excluded here for the same reason the generator excludes it as a
+// source. Delete a file from this list only together with the generator's provenance rule, or the two disagree.
+const LEDGER_PREFIX = '14-'
 const docText = new Map()
 ok(DOC_FILES.length > 0, 'non-vacuous: DOC_FILES must not be empty')
 for (const name of DOC_FILES) {
@@ -85,6 +88,8 @@ const CODE_RE = /\b((?:VMU|MATH|ARCHIVE|SCRIPT)_[A-Z0-9_]{3,})\b/g
 const CODE_LITERAL_RE = /['"`]((?:VMU|MATH|ARCHIVE|SCRIPT)_[A-Z0-9_]{3,})['"`]/g
 const codeUse = new Map()
 for (const [name, text] of docText) {
+      if (name.startsWith(LEDGER_PREFIX)) continue   // ROUND 224: a changelog is not a declaration source
+
   for (const m of text.matchAll(CODE_RE)) {
     const code = m[1]
     if (isPlaceholder(code)) continue
@@ -256,12 +261,21 @@ ok(unregisteredInCode.length === 0,
     'vmu.ip.hold', 'vmu.ip.ownership', 'vmu.ip.contributors', 'vmu.ip.recordSearch', 'vmu.ip.transfer'])
   const bogus = new Set()
   for (const [name, text] of docText) {
+    // ROUND 224: the open-items ledger is a CHANGELOG. It quotes key names while narrating work, so it neither declares
+    // keys nor obliges anyone to register the names it mentions (it quotes `vmu.x.y` from another file's comment). The
+    // generator excludes it as a source for the same reason; the two must agree.
+    if (name.startsWith(LEDGER_PREFIX)) continue
     for (const m of text.matchAll(/\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b/g)) {
       const k = m[0]
       // A FAMILY wildcard (`vmu.math.lean*`) is prose about a family, not a claim about a key.
       const after = text.slice(m.index + k.length, m.index + k.length + 1)
       if (after === '*' || after === '…') continue
       if (keys.has(k) || NON_SETTING.has(k) || namespaces.has(k)) continue
+      // ROUND 224: a FAMILY mention is not a key. This set is built before any filtering, so the rule must be applied
+      // here: the key regex stops at a word boundary and `vmu.x.y.*` matches as `vmu.x.y`.
+      const afterTxt = text.slice(m.index + m[0].length, m.index + m[0].length + 3)
+      const oneTxt = text.slice(m.index + m[0].length, m.index + m[0].length + 1)
+      if (oneTxt === '*' || oneTxt === '…' || /^\.\s*[*…]/.test(afterTxt)) continue
       bogus.add(k + ' (' + name + ')')
     }
   }
@@ -273,12 +287,27 @@ ok(unregisteredInCode.length === 0,
     // ROUND 100: reuse the text this gate ALREADY loaded through its binding. Reading the files directly here
     // bypassed the binding the mutation suite injects, so all fourteen mutants failed with a readdir error
     // instead of testing what they were written to test - a green audit and a fully red mutant suite.
-    for (const [, text] of docText) {
-      for (const m of text.matchAll(/\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b/g)) documented.add(m[0])
+    for (const [name, text] of docText) {
+      // ROUND 224: the open-items ledger is a changelog - it quotes key names while narrating work, so it neither declares
+      // keys nor creates an obligation to register the names it mentions (`vmu.x.y` comes from the generator's comments).
+      if (name.startsWith(LEDGER_PREFIX)) continue
+      for (const m of text.matchAll(/\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b/g)) {
+        // ROUND 224: a FAMILY mention is not a key. The key regex stops at a word boundary, so `vmu.x.y.*` matches as
+        // `vmu.x.y`; the lookahead must be taken in the TEXT, not inside the collected-name set (which holds bare names
+        // only, so a `k + '.*'` prefix test there could never match - the first attempt at this proved it).
+        const after = text.slice(m.index + m[0].length, m.index + m[0].length + 3)
+        const one = text.slice(m.index + m[0].length, m.index + m[0].length + 1)
+        if (one === '*' || one === '…' || /^\.\s*[*…]/.test(after)) continue
+        documented.add(m[0])
+      }
     }
     for (const entry of [...bogus]) {
       const k = entry.split(" (")[0]
-      if ([...documented].some((o) => o !== k && o.startsWith(k + "."))) bogus.delete(entry)
+      // ROUND 224: a name is not a key when another key lives under it (a namespace), and a FAMILY mention is not a key
+      // either. The generator has applied both rules for a while; this scanner applied neither, so `vmu.math.proof.*`
+      // (written with a wildcard in the design volume) was reported as a key that does not exist.
+      if ([...documented].some((o) => o !== k && o.startsWith(k + "."))) { bogus.delete(entry); continue }
+      if ([...documented].some((o) => o !== k && o.startsWith(k + ".*") )) { bogus.delete(entry); continue }
     }
   }
   ok(bogus.size === 0, 'every vmu.* key named in the docs exists in settings/schema.js', [...bogus].slice(0, 8).join(' | '))

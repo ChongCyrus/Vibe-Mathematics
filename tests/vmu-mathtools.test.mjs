@@ -317,11 +317,12 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
   const wiredListed = st.wired.length === WIRED_KEYS.length && st.wiredCount === WIRED_KEYS.length
   ok(wiredListed, 'status().wired lists every wired key', String(st.wiredCount))
   ok(st.overlap.length === 0, 'WIRED and plannedKeys are COMPLEMENTARY (no key is in both)', JSON.stringify(st.overlap))
-  // ROUND 223: the declared universe GROWS when a key is declared, so a hard-coded total has to be edited every time.
-  // The invariant is the partition: the two lists are complementary and together they ARE the declared set. (Measured this
-  // round: 52 wired + 126 planned = 178.)
-  ok(st.complementOk === true && st.plannedCount + st.wiredCount === st.declaredMathKeys && st.declaredMathKeys >= 170,
-    'the two lists partition the DECLARED universe (177 vmu.math.* keys: 45 wired + 132 still-planned; every wired key is declared in the schema, so the union adds nothing)', JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredMathKeys }))
+  // ROUND 223/224: the declared universe MOVES in both directions - it grows when a key is declared and SHRINKS when a name
+  // that was only a NAMESPACE stops being registered as a setting. The generator fix this round removed 111 such names, so
+  // the total fell from 178 to 101. The invariant is the partition, not the number; the floor only keeps the case from
+  // passing on an empty universe. (Measured: 52 wired + 49 planned = 101.)
+  ok(st.complementOk === true && st.plannedCount + st.wiredCount === st.declaredMathKeys && st.declaredMathKeys >= 95,
+    'the two lists partition the DECLARED vmu.math.* universe (every wired key is declared in the schema, so the union adds nothing; measured 52 wired + 49 planned = 101 after 111 phantom namespace names were removed)', JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredMathKeys }))
   ok(st.plannedKeys.every((k) => typeof st.unwiredReasons[k] === 'string' && st.unwiredReasons[k].length > 8),
     'every unwired key carries a concrete reason', JSON.stringify(st.plannedKeys.slice(0, 3)))
   ok(Object.keys(st.keys).length === WIRED_KEYS.length && !Object.values(st.keys).some((v) => v === undefined),
@@ -338,7 +339,9 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
   ok(codeOf(() => zero.plan({})) === 'VMU_MATH_INVALID_INPUT', 'an op-less request is a named refusal')
   // The declared universe is one table now (settings/schema.js = CORE + PLANNED), so `plannedSource`
   // names that single source. The count is asserted above; this pins WHERE it is read from.
-  ok(zero.status().plannedKeys.length > 100 && zero.status().plannedSource === 'settings/schema.js (core + planned)',
+  // ROUND 224: the floor moved with the universe (49 measured after the phantom removal), and the SOURCE is what this
+  // assertion is really about: the planned list must come from the generated registry, not from a local list.
+  ok(zero.status().plannedKeys.length > 40 && zero.status().plannedSource === 'settings/schema.js (core + planned)',
     'the planned list is read from the generated registry', zero.status().plannedSource)
 }
 

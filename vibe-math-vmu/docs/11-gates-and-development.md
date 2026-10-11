@@ -583,24 +583,24 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `ballot` · `open()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `ballotbox` · `open()` | refusal | VMU_CONFLICT | enforced=[0] enforcedScope=evaluated-so-far | 具名拒或 ok（task-214 实测：`open()` ⇒ 具名拒 **VMU_CONFLICT**（带口径 `enforced=[0]`）⇒ 零机制＝无票面参数 ⇒ 具名拒；有默认 ⇒ ok ✓） |
 | `bidding` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
-| `biospecimen` · `status()` | ok | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
+| `biospecimen` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（samples: 0；chainRequired: true 自曝 ✓）；无样本⇒无可转移对象，**不拒** ✓） |
 | `board` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `budget` · `open()` | object | — | — | ok 或 object（task-204 实测（形状取自测试 vmu-budget.test.mjs:16）：不传 settings 下 `open({scope})` ⇒ **ok**（零机制＝不限额、放行 ✓）） |
 | `bus` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `capacity` · `list()` | ok | — | enforced=[0] fired=[0] enforcedScope=evaluated-so-far | ok 或 object（实测 `list()` ⇒ **ok**（`enforced=[0] fired=[0] enforcedScope=evaluated-so-far` ⇒ 零机制**清单可读、不拒** ✓；**键数由本生成器实测输出** ✓）） |
 | `charter` · `propose()` | refusal | VMU_CHARTER_NOT_AUTHORIZED | — | 具名拒或 ok（task-214 批 3 补参（形状取自测试 vmu-charter.test.mjs:236 `propose({kind:"charter",text,by,articles:[{id}]})`）：补参前实测具名拒 **VMU_CHARTER_NOT_AUTHORIZED** ⇒ 补参后若放行 ⇒ ok ✓；若仍具名拒 ⇒ 写明"缺参即其零机制形状" ✓） |
-| `citations` · `status()` | ok | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
+| `citations` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（entries: 0；freeTextIsOffByDefault: true 自曝 ✓）；无条目⇒无可渲染对象，**不拒** ✓） |
 | `clockguard` · `status()` | null | — | — | ok 或 null（时钟守卫：无声明 ⇒ 不拦（返回 null 亦合规）） |
-| `collab` · `status()` | ok | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
+| `collab` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（counterparties: 0、agreements: 0 自曝 ✓）；agreementRequired 默认 true 但无对手方⇒无可交换对象，**不拒** ✓） |
 | `compliance` · `status()` | ok | — | enforcedScope=evaluated-so-far | ok 或 object（实测 `status()` ⇒ **ok**（`enforcedScope=evaluated-so-far` ⇒ 状态可读、**不拒**）。**ROUND 153 更正** ✗✓：本行原先还写"`exportControlCheck` 归 domaingate ✓" —— **实测 `domaingate` 并没有该检查** ✓（`grep export|control` 只命中 `apiVersion` 与注释 ✓），那是**愿望**不是**承载者** ✗；该能力是**全仓缺口** ✓，归属面与复活条件写在 `compliance.js` 的 `PLANNED_REASONS` 里 ✓） |
 | `conference` · `open()` | ok | — | enforced=[2] fired=[2] enforcedScope=evaluated-so-far | ok 或 object（实测 `open()` ⇒ **ok**（`enforced=[2] fired=[2]` ⇒ 零机制**按默认阶梯开成、放行** ✓，与 `meetings` 同口径 ✓）） |
-| `control` · `status()` | ok | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
+| `control` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（paused: []、registrySize: 0；archivingNeverPausedByItself 与 idleNeverRecessesByItself 自曝两条不变式 ✓）） |
 | `course` · `open()` | refusal | VMU_INVALID_ARGUMENT | enforced=[1] enforcedScope=evaluated-so-far | 具名拒或 ok（task-214 实测：`open()` ⇒ 具名拒 **VMU_INVALID_ARGUMENT**（带口径 `enforced=[1]`）⇒ 零机制＝缺课程参数 ⇒ 具名拒 ✓） |
 | `crypto` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `delegation` · `check()` | ok | — | — | 具名拒或 ok（task-214 批 3 补参（形状取自测试 vmu-delegation.test.mjs:30 `check({actor,action})`）：补参前实测具名拒 **VMU_INVALID_ARGUMENT**（带口径 `enforcedScope=evaluated-so-far`）⇒ 补参后应见判定对象（放行）⇒ 已放宽为"具名拒或 ok" ✓） |
-| `discipline` · `status()` | ok | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
+| `discipline` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（subjects: 0；breakerOffMeansOff: true 自曝「阈值 0＝机制关，而非允许零次失败」 ✓）） |
 | `domaingate` · `status()` | ok | — | dropped=[object Object] | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
-| `explain` · `build()` | refusal | VMU_EXPLAIN_REASON_REQUIRED | — | （**设计未定** ✗：本模块未登记期望） |
+| `explain` · `build()` | refusal | VMU_EXPLAIN_REASON_REQUIRED | — | 具名拒（带 code）（实测（轮 224）：矩阵的**探针**调用在零声明下【具名拒】 ✓——render() 无报告可渲染时以 VMU_INVALID_ARGUMENT 具名拒（status() 本身仍是 ok ✓，但探针走的是调用路径 ⇒ 期望取实测的拒 ✓）。**不假装成功** ✗） |
 | `external` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `fairness` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `formal` · `check()` | refusal | VMU_MATH_INVALID_INPUT | — | 具名拒（带 code）（task-214 实测：`check()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT** ⇒ 零机制＝无形式化请求 ⇒ 具名拒即真实形状 ✓） |
@@ -610,9 +610,9 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `guard` | （无 create* 工厂） | — | — | EXPECT_NA（非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）） |
 | `handover` · `open()` | ok | — | — | 具名拒或 ok（task-214 批 3 补参（形状取自测试 vmu-handover.test.mjs:27 `open({from,to})`）：补参前实测具名拒 **VMU_INVALID_ARGUMENT** ⇒ 补参后应见放行 ⇒ 已放宽为"具名拒或 ok" ✓） |
 | `hr` · `status()` | ok | — | enforcedScope=evaluated-so-far | ok 或 object（实测 `status()` ⇒ **ok**（`enforcedScope=evaluated-so-far` ⇒ 零机制**状态可读、不拒** ✓；**键数由本生成器实测输出**、**零新码** ✓）） |
-| `human` · `status()` | ok | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
+| `human` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（vetoes: 0、approvals: 0 ✓；neverAllowsBySilence: true 自曝「onTimeout 默认 hold ⇒ 沉默绝不变成批准」 ✓）） |
 | `idempotency` · `list()` | ok | — | dropped=0 truncated=false | ok 或 object（列表/状态面放行 ✓；**显式 `absent` 只在去重操作上**（该操作需参数 ⇒ 探针见 NEEDS_ARGS ✓）） |
-| `identity` · `status()` | ok | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
+| `identity` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ **ok**（noIssuerListMeansNoCheck: true 自曝「空 issuer 列表＝完全不做校验」 ✓）；bindPrincipal ⇒ ok 且 binding: off（记录而不耦合 ✓）。**不拒** ⇒ 形状为 ok，而非具名拒 ✓） |
 | `index` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `instruments` · `status()` | ok | — | — | ok 或 object（仪器面：零机制 ⇒ **台账可读、不拒**（`status()` 返回 `ok:true` ＋ `partition` ✓）；**键数由本生成器实测输出** ✓（note 只写形状与理由 ✗）） |
 | `ip` · `list()` | ok | — | enforced=[1] fired=[0] dropped=0 enforcedScope=evaluated-so-far truncated=false | ok 或 object（实测 `list()` ⇒ **ok**（`enforced=[1] fired=[0] dropped=0` ⇒ 清单可读、**不拒** ✓）） |
@@ -657,5 +657,5 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
 | `workflow` · `advance()` | refusal | VMU_WORKFLOW_TRANSITION_REQUIRED | enforced=[7] enforcedScope=evaluated-so-far | 具名拒或 ok（**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 `advance()` 缺参 ⇒ **task-214 实测：具名拒 `VMU_WORKFLOW_TRANSITION_REQUIRED`（带口径 `enforced=[7]`）** ⇒ 具名拒即真实形状 ✓（旧 note 曾写 `op 抛出` ✗ / "缺参 ⇒ 具名拒" 混述 ✗，均已按实测改写 ✓）） |
 
-=== ZERO-MECHANISM MATRIX: 80 modules, 8 mismatches, 8 unregistered, 0 EXPECT_UNDECIDED, 5 probe-errors, 2 n/a ===
+=== ZERO-MECHANISM MATRIX: 80 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 5 probe-errors, 2 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->

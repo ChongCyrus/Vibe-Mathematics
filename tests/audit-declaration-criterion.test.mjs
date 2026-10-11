@@ -112,6 +112,9 @@ export const DECLARED_SELF_REPORT_FIELDS = Object.freeze([
   // task-201: this gate's OWN new fields (it can see them now) and the fields it returns in `coverage`
   'reallyRan', 'mentionedOnly', 'scannedByGate', 'scannedRows',
   // fields the mechanical (claim-family) extraction discovered across the kernel — declared after review
+  // ROUND 224: `paused` - kernel/control.js reports the paused scopes in status(); the mechanical extraction found the
+  // field and the gate demanded it be declared rather than left as a blind spot.
+  'paused',
   'accounts', 'alreadyRecused', 'attested', 'collusionScan', 'extraWiredCount', 'ran', 'receipted',
   'recorded', 'refused', 'reputationGrantsAuthority', 'reused', 'trustUsedForAuthority',
   // ROUND 205: `unreached` - the wake-retry rail reports an exhausted member this way (vmu.meetings.wakeRetries);

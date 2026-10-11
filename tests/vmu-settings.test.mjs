@@ -120,7 +120,13 @@ ok(defs.filter((d) => d.hot === 'H3').length > 0, 'the read-only class is actual
   {
     const universe = new Set([...keys, ...read.keys()])
     for (const k of [...read.keys()]) {
+      // ROUND 224: TWO ways a name is not a key. (a) some other key lives under it - it is a namespace; (b) it was written
+      // as a family, i.e. followed by `.*` or `…`, possibly after the dot the key regex stopped at - the generator learned
+      // both rules this round when eight namespace names were being minted as settings.
       if ([...universe].some((o) => o !== k && o.startsWith(k + "."))) read.delete(k)
+    }
+    for (const k of [...read.keys()]) {
+      if (/[*…]/.test(k)) read.delete(k)
     }
   }
   ok(read.size >= 20, 'the read-side scan found the keys the runtime actually reads', read.size)

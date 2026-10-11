@@ -62,8 +62,11 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
   for (const vol of docVolumes(DOCS)) {
     for (const m of vol.text.matchAll(/\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b/g)) {
       const k = m[0]
-      const after = vol.text.slice(m.index + k.length, m.index + k.length + 1)
-      if (after === '*' || after === '…') continue                    // family wildcard: prose, not a key
+      // ROUND 224: look past the dot too - `vmu.x.y.*` matches as `vmu.x.y` because the key regex stops at a word
+      // boundary, so a one-character lookahead saw `.` and never fired.
+      const afterWide = vol.text.slice(m.index + k.length, m.index + k.length + 3)
+      const afterOne = vol.text.slice(m.index + k.length, m.index + k.length + 1)
+      if (afterOne === '*' || afterOne === '…' || /^\.\s*[*…]/.test(afterWide)) continue   // family wildcard: prose
       if (keys.has(k) || NON_SETTING.has(k) || namespaces.has(k)) continue
       bogus.add(k + ' (' + vol.name + ')')
     }
@@ -160,7 +163,9 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
   const classify = (vol, into = buckets) => {
     for (const m of vol.text.matchAll(genMod.BROAD_RE)) {
       const k = m[0]
-      const after = vol.text.slice(m.index + k.length, m.index + k.length + 1)
+      const afterWide2 = vol.text.slice(m.index + k.length, m.index + k.length + 3)
+      const after = (/^\.\s*[*…]/.test(afterWide2) ? '*' : vol.text.slice(m.index + k.length, m.index + k.length + 1))
+      // (the bucket pass below uses `after` as well, so the wide lookahead already covers it)
       if (k.split('.').length <= 2) into.twoSegment.add(k)                 // `vmu.math` — a namespace
       else if (after === '*' || after === '…') into.wildcard.add(k)        // a family wildcard
       else if (coreSet.has(k)) into.existing.add(k)                        // already declared in the schema

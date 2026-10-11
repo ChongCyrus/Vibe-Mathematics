@@ -91,6 +91,22 @@ const EXPECT = {
   // (from/to/backend/steps) that the automatic op choice cannot invent, so it is registered as an explicit
   // to-do rather than given an invented expectation - the batch that fills probe arguments will upgrade it.
   migration: G('PROBE_NEEDS_ARGS', '缺：迁移计划入参（`from`／`to`／`backend`／`steps` ✓）；**作者已导出带完整 args 的 `GATE_SCENARIOS`** ⇒ 下一批补参时应可直接实测 ✓（**键数由本生成器实测输出**、**零新码**、全部返回型拒绝 ✓）'),
+  // ROUND 224: a new face must be RULED, and the rule must be MEASURED. `identity` discloses
+  // `noIssuerListMeansNoCheck` (an empty issuer list means no issuer check at all), which is a zero-mechanism claim, so the
+  // matrix demanded a row. Measured with no declarations: status().ok === true (it does not refuse) and bindPrincipal()
+  // answers ok with binding 'off'. No ASCII quote appears anywhere in this fragment: that trap has now cost five scripts.
+  identity: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ **ok**（noIssuerListMeansNoCheck: true 自曝「空 issuer 列表＝完全不做校验」 ✓）；bindPrincipal ⇒ ok 且 binding: off（记录而不耦合 ✓）。**不拒** ⇒ 形状为 ok，而非具名拒 ✓'),
+  // ROUND 224: the faces added since round 218 are ruled here, each with its zero-mechanism shape MEASURED (the generator's
+  // own rule: an expectation must be measured, never guessed). Each returns status().ok === true with nothing declared - it
+  // reports rather than refusing - which is the same shape `compliance` was measured to have. No ASCII quote appears in this
+  // fragment: nesting quotes inside a quoted string has now cost five scripts.
+  collab: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（counterparties: 0、agreements: 0 自曝 ✓）；agreementRequired 默认 true 但无对手方⇒无可交换对象，**不拒** ✓'),
+  human: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（vetoes: 0、approvals: 0 ✓；neverAllowsBySilence: true 自曝「onTimeout 默认 hold ⇒ 沉默绝不变成批准」 ✓）'),
+  discipline: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（subjects: 0；breakerOffMeansOff: true 自曝「阈值 0＝机制关，而非允许零次失败」 ✓）'),
+  biospecimen: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（samples: 0；chainRequired: true 自曝 ✓）；无样本⇒无可转移对象，**不拒** ✓'),
+  explain: G('具名拒（带 code）', '实测（轮 224）：矩阵的**探针**调用在零声明下【具名拒】 ✓——render() 无报告可渲染时以 VMU_INVALID_ARGUMENT 具名拒（status() 本身仍是 ok ✓，但探针走的是调用路径 ⇒ 期望取实测的拒 ✓）。**不假装成功** ✗'),
+  control: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（paused: []、registrySize: 0；archivingNeverPausedByItself 与 idleNeverRecessesByItself 自曝两条不变式 ✓）'),
+  citations: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（entries: 0；freeTextIsOffByDefault: true 自曝 ✓）；无条目⇒无可渲染对象，**不拒** ✓'),
   guard: G('EXPECT_NA', '非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）'),
   // Round 90-91: the grant face (temporary, scoped, single-command authorization, ported from the v5r line). Its
   // zero mechanism is `vmu.grant.enabled=false`, where NOTHING may be granted or checked and every attempt is
