@@ -52,8 +52,15 @@ export const PLANNED_BALLOT_KEYS = Object.freeze([
     + '运行时证据＝`tests/vmu-ballot.test.mjs` L89「冻结期间的投票被具名拒」✓、L143「未冻结却解冻被拒」✓；谓词由 `control` 面注入 ✓'],
   ['vmu.ballot.freezeMeetingLinked', '与**会议联动**的部分归 `meeting`／`board` 面 ✓；`ballot.js` 只做**票箱级**冻结（暂停谓词注入 ✓）'
     + '⇒ 本面不建会议状态机 ✓（原理由保留，补上归属面 ✓）'],
-  ['vmu.ballot.reopenFloor', '议程层面的重开归 `board`／`meetings` ✓；★ **票箱层面的重开已由 `ballot.js` 的 `reopen()` 承载** ✓：'
-    + '只允许 `tallied` 重开 ✓、**旧结论进历史不被覆盖** ✓；运行时证据＝`tests/vmu-ballot.test.mjs` L97-100「重开后只计实际投出的票」✓'],
+  ['vmu.ballot.reopenFloor', '★ **轮 190 实测更正** ✗✓：原句写「票箱层面的重开已由 `ballot.js` 的 `reopen()` 承载」✓ —— '
+    + '**这只对【原语】成立** ✓（`ballot.js` 确有 `reopen(reason)` ✓：只允许 `tallied` 重开 ✓、旧结论进历史 ✓；运行时证据＝`tests/vmu-ballot.test.mjs` L97-100 ✓）。'
+    + '★ **但本面【不调用那个原语】** ✗：`ballotbox.js` 只从 `ballot.js` 导入 `instantRunoffTally` ✓，'
+    + '**本面自己没有 `reopen()`** ✗（`reopen` 一词在本文件里只出现在键名与本条理由里 ✓）。'
+    + '⇒ ★★ **因此本键现在【不能接线】** ✗：把 `reopenFloor` 注入原语没用 ✓ —— **本面从不调用它** ✓；'
+    + '若为了接线而给本面**另写一套 reopen**，那就是**第二份重开实现** ✗ —— 与本项目「零机制／避免第二份实现」的纪律相反 ✓✓。'
+    + '**复活条件（已改正 ✓）**：① 本面先有 `reopen()`（**委托原语** ✓ 或**自有** ✓，两者择一，**不许并存** ✗）；'
+    + '② 届时在 `reopen()` 里**先读本键**、**在清空票之前**具名拒 ✓ —— 复用**已登记码** `VMU_BALLOT_MIN_VOTES_NOT_MET` ✓（`docs/03` §8 ✓，语义正是「成立门槛未达」、**须给当前与门槛** ✓）；'
+    + '③ 0（默认）**仍交给 pack 的 `reconsiderFloor`** ✓（**不成为第二意见** ✓）。'],
   ['vmu.ballot.reopenInitiatorScope', '发起人范围属**议程**（`board`／`meetings` ✓）：票箱里没有"动议"这一概念 ⇒ 无该约束 ✓（原理由保留，补上归属面 ✓）'],
   ['vmu.ballot.reopenSameMeetingOnly', '同会期约束同上属**议程** ✓；`reopen(reason)` 只带理由、不带会期 ✓（**理由是审计事实** ✓）'],
 ])
