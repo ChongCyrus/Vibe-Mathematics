@@ -24,15 +24,17 @@ const assertRefusalShape = (r, label) => {
   assert.ok(r.code, label + '：必须具名')
 }
 
-// ③ 恰好划分 15（轮 118 起：**7 已接线 ＋ 8 未接**；未接逐条点名＋理由 ✓）
-test('wired ∪ planned is an exact partition of the 15 keys (7 read + 8 planned)', () => {
+// ③ 恰好划分 15（**轮 151：15 已接线 ＋ 0 未接** —— 八个键经"两值对比"实测后全部接线；未接为空时，
+//    "已接集合恰好等于全部键"才是真正可证伪的断言 ✓，而"每条未接都带理由"在空表上是空过 ✗）
+test('wired ∪ planned is an exact partition of the 15 keys (15 read + 0 planned, after round 151 measured all eight)', () => {
   const s = sp()
   const p = s.partition()
   assert.equal(p.all, 15)
-  assert.equal(p.wired, 7)
-  assert.equal(p.planned, 8)
-  assert.equal(PLANNED_STORE_KEYS.length, 8, '未接集合逐条点名：轮 118 起为 8 条（这 8 个曾被列为已接线，但无人读取）')
+  assert.equal(p.wired, 15)
+  assert.equal(p.planned, 0)
+  assert.equal(PLANNED_STORE_KEYS.length, 0, '未接集合逐条点名：轮 118 起为 8 条（这 8 个曾被列为已接线，但无人读取）')
   assert.ok(PLANNED_STORE_KEYS.every((e) => Array.isArray(e) && String(e[1] || '').trim().length > 0), '每条未接都必须带理由（空理由等于没解释）')
+  assert.equal(WIRED_STORE_KEYS.length, STORE_KEYS.length, '本面零未接键 ⇒ 已接集合必须恰好等于全部键（少一个就是漏了 ✗）')
   assert.equal(p.exact, true)
   assert.equal(p.disjoint, true)
   const union = WIRED_STORE_KEYS.concat(PLANNED_STORE_KEYS.map((e) => e[0])).slice().sort()
@@ -160,17 +162,36 @@ test('fired ⊆ enforced everywhere; read paths pure; zero-config; clock-determi
 })
 
 // keysUsed() ＝ 已接线的 7 键，且每个都被真读（轮 118：8 个曾被列为已接线却无人读取，已移回未接）
-test('keysUsed() lists the SEVEN wired keys and each is really read', () => {
+test('keysUsed() lists ALL wired keys and each is really read', () => {
   const o = mk({ 'vmu.store.tmpDir': 'D:\\vault\\tmp', 'vmu.store.remote': 'on', 'vmu.store.remote.url': 'https://r', 'vmu.store.remote.offlinePolicy': 'queue' })
   const s = createStorePolicy({ settings: o.settings, clock: () => 0 })
   s.capabilities(); s.acquire({ name: 'a' }); s.release({ name: 'a' }); s.write({ id: 'w', online: false }); s.read({ foundVersion: 2, currentVersion: 1 }); s.status()
   const used = s.keysUsed()
   assert.equal(used.length, WIRED_STORE_KEYS.length)
-  assert.equal(WIRED_STORE_KEYS.length, 7)
+  assert.equal(WIRED_STORE_KEYS.length, 15)
   for (const k of WIRED_STORE_KEYS) assert.ok(used.indexOf(k) !== -1, '缺失：' + k)
   for (const e of PLANNED_STORE_KEYS) assert.ok(used.indexOf(e[0]) === -1, '未接的键不得出现在 keysUsed：' + e[0])
   const notRead = used.filter((k) => o.reads.indexOf(k) === -1)
   assert.deepEqual(notRead, [], 'keysUsed 里的键必须真被读过：' + notRead.join('、'))
+  passed += 1
+})
+
+
+// 9. ROUND 151: consistency is a REAL branch - strong consistency cannot defer a write (before this round both
+// values produced the same outcome, which is why the key was listed as unwired).
+test('strong consistency refuses an offline write before the offline policy is consulted', () => {
+  const on = { 'vmu.store.remote': 'on', 'vmu.store.remote.url': 'https://x' }
+  const strong = sp(Object.assign({ 'vmu.store.remote.consistency': 'strong' }, on))
+  const r = strong.write({ id: 'w', online: false })
+  assertRefusalShape(r, 'strong + offline')
+  assert.equal(r.code, 'VMU_NOT_PERMITTED')
+  assert.ok(String(r.message).indexOf('strong') !== -1, 'the refusal names strong consistency: ' + r.message)
+
+  const queued = sp(Object.assign({ 'vmu.store.remote.consistency': 'eventual', 'vmu.store.remote.offlinePolicy': 'queue' }, on))
+  assert.equal(queued.write({ id: 'w', online: false }).ok, true, 'eventual + queue lets it queue (the two values really differ)')
+
+  const refused = sp(Object.assign({ 'vmu.store.remote.consistency': 'eventual', 'vmu.store.remote.offlinePolicy': 'refuse' }, on))
+  assert.equal(refused.write({ id: 'w', online: false }).code, 'VMU_NOT_PERMITTED', 'eventual + refuse refuses')
   passed += 1
 })
 

@@ -24,21 +24,33 @@ export const STORE_KEYS = Object.freeze([
  * module's only use of it is a reporting function, and eight of those keys appear in no accessor call - so they
  * were listed as wired while no code read them, and the registry declared them tunable. The wired list is now
  * explicit and holds only what the module really reads.
+ *
+ * ROUND 151 CORRECTION: that "eight keys appear in no accessor call" claim was itself WRONG - all eight were read by
+ * `cfg()` all along; what the round-115 sweep actually caught was that they were not DECIDED with. They are back on
+ * the wired list now, after a measured effect test rather than a reading of the source (see the list below).
  */
 export const WIRED_STORE_KEYS = Object.freeze([
   'vmu.store.fsync',
   'vmu.store.lock', 'vmu.store.lock.backoffMs', 'vmu.store.lock.retries', 'vmu.store.lock.serializeAll',
   'vmu.store.lock.timeoutMs', 'vmu.store.autoBackup',
+  /**
+   * ROUND 151: the eight that were listed as planned came BACK to wired after a MEASURED effect test - each was
+   * driven twice with two values and the OUTCOMES compared, because reading the source only suggests whether a key
+   * matters. Seven change an outcome outright: an unknown backend is refused by name, a `file` backend needs a root,
+   * `tmpDir` must sit under it, `remote=on` needs a url, the offline policy chooses refuse-versus-queue, and the
+   * version policy chooses refuse-versus-warn. The eighth (`consistency`) produced the SAME outcome for both values
+   * until this round gave it a branch of its own: `strong` cannot defer a write, so it refuses before the offline
+   * policy is consulted. The old reason said "未读取该键" for all eight ✗ - the wrong part was never the reading, it
+   * was which of them decided anything.
+   */
+  'vmu.store.backend', 'vmu.store.root', 'vmu.store.tmpDir',
+  'vmu.store.remote', 'vmu.store.remote.url', 'vmu.store.remote.consistency', 'vmu.store.remote.offlinePolicy',
+  'vmu.store.onVersionTooHigh',
 ])
+/** 未接：**逐个点名＋原因** ✗✓。**本面已清零（轮 151 ✓）** —— 八个键全部经"**两值对比**"实测 ✓，
+ *  七个当场改变结果，一个（`consistency`）在被赋予真分支之后才改变结果 ✓。 */
 export const PLANNED_STORE_KEYS = Object.freeze([
-  ['vmu.store.backend', '后端选择未接：本面只做策略，未读取该键 ✗'],
-  ['vmu.store.root', '存储根目录未接：无 FS 接缝，未读取该键 ✗'],
-  ['vmu.store.tmpDir', '临时目录未接：无 FS 接缝，未读取该键 ✗'],
-  ['vmu.store.remote', '远端存储未接：需网络接缝，未读取该键 ✗'],
-  ['vmu.store.remote.consistency', '远端一致性未接：需网络接缝，未读取该键 ✗'],
-  ['vmu.store.remote.offlinePolicy', '离线策略未接：需网络接缝，未读取该键 ✗'],
-  ['vmu.store.remote.url', '远端地址未接：需网络接缝，未读取该键 ✗'],
-  ['vmu.store.onVersionTooHigh', '版本过高处理未接：需迁移面协同，未读取该键 ✗'],
+  // ROUND 151: empty on purpose - nothing on this face is declared-but-unwired any more.
 ])
 export const ENFORCED_SCOPE = 'evaluated-so-far'
 
@@ -87,7 +99,8 @@ export function createStorePolicy(opts) {
       lockTimeoutMs: n('vmu.store.lock.timeoutMs', 1000),
       autoBackup: b('vmu.store.autoBackup', false),
       remote: s('vmu.store.remote', 'none'),
-      remoteConsistency: s('vmu.store.remote.consistency', 'eventual'),
+      remoteConsistency: ['eventual', 'strong'].indexOf(s('vmu.store.remote.consistency', 'eventual')) === -1
+      ? 'eventual' : s('vmu.store.remote.consistency', 'eventual'),
       remoteOfflinePolicy: s('vmu.store.remote.offlinePolicy', 'refuse'),
       remoteUrl: s('vmu.store.remote.url', ''),
       onVersionTooHigh: s('vmu.store.onVersionTooHigh', 'refuse'),
@@ -189,6 +202,17 @@ export function createStorePolicy(opts) {
       fired.push('vmu.store.remote.consistency')
       if (args.online === false) {
         fired.push('vmu.store.remote.offlinePolicy')
+        /**
+         * ROUND 151 — `strong` NOW DECIDES, AND IT DECIDES FIRST. Measured before this round: changing
+         * `vmu.store.remote.consistency` between `eventual` and `strong` produced the SAME outcome, which is why the
+         * key sat on the planned list - read into the config, echoed by `status()`, pushed onto `fired`, and
+         * consulted by nobody. Strong consistency simply cannot defer a write, so it refuses BEFORE the offline
+         * policy is asked: queuing under `strong` would be the silent contradiction the policy layer exists to stop.
+         */
+        if (c.remoteConsistency === 'strong') {
+          fired.push('vmu.store.remote.consistency')
+          return deny('VMU_NOT_PERMITTED', '远端离线且 `vmu.store.remote.consistency=strong` ⇒ 拒（**强一致不允许延后写** ✗）', '改为 eventual（允许排队），或等联网', ['vmu.store.remote.consistency', 'vmu.store.remote.offlinePolicy'], would)
+        }
         if (c.remoteOfflinePolicy === 'refuse') return deny('VMU_NOT_PERMITTED', '远端离线且 offlinePolicy=refuse ⇒ 拒', '改为 queue 或等联网', ['vmu.store.remote.offlinePolicy', 'vmu.store.remote.consistency'], would)
         counters.queued += 1
       }
