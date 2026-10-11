@@ -501,6 +501,7 @@ export const PLANNED_DEFS = Object.freeze([
   { key: "vmu.search.analyzer", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.search.maxResults", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.search.snippetLen", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
+  { key: "vmu.settings.writers", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["14"], doc: "设计阶段登记：首个声明卷 14（共见 1 卷：14），尚未实现（元数据以各卷为准）" },
   { key: "vmu.skills.catalogTtlMs", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["17"], doc: "设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准）" },
   { key: "vmu.sovereignty.crossBorderAllow", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["20"], doc: "设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准）" },
   { key: "vmu.sovereignty.exportControl", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["20"], doc: "设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准）" },
@@ -538,4 +539,5 @@ export const PLANNED_DEFS = Object.freeze([
   { key: "vmu.workspace.crossWrite", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.workspace.default", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.workspace.sharedPaths", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
+  { key: "vmu.x.y", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["14"], doc: "设计阶段登记：首个声明卷 14（共见 1 卷：14），尚未实现（元数据以各卷为准）" },
 ])
