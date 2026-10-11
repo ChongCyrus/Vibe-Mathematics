@@ -1224,6 +1224,17 @@
   **门禁与证据** ✓：**`VMU FAIRNESS: 34 passed, 0 failed`** ✓；**`generate-planned-settings --check` 通过** ✓；**`regen-all: 9/9 in sync`** ✓；**未接线 148 → 147** ✓。
   **未做（明写 ✗）**：**`data`／`review`／`reviewers`／`compat` 各 4 条尚无承载者** ✗；**其余 147 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 256：`docs/11` 第 ⑪ 条入卷；对 `data`／`review`／`reviewers`／`compat` 四族（16 键）做出【有依据的承载者裁定】，结论是【真实缺口、不接】；未接线保持 147** ✓✓
+  ★★★ **① `docs/11` 第 ⑪ 条：既有断言的【措辞】是一种契约** ✓（**+2 行、经行数校验 ✓**）：**轮 255 我改写守恒失败的消息，打断了一条钉住 `caps every claimant` 的既有断言** ✗ ⇒ **做法：改进消息时【原文逐字保留】、新信息【追加】其后** ✓；**若要改措辞，先搜到引用它的断言并【同时】更新** ✓。★ **理由：机器可读的 `code`／`hint` 之外的【叙述】也是契约** ✓。
+  ★★★ **② 四族承载者的裁定（全部由实测得出）** ✓✓：
+  - **字符串层** ✓：**四个前缀在内核 83 个文件里【全无提及】** ✗；
+  - **概念层** ✓（这一步才是关键）：**版本链 ⇒ `publication.js`／`stateversion.js` ✓；父链 ⇒ `charter`／`delegation`／`governance`／`workflow` ✓；留存 ⇒ 多面 ✓；指纹算法 ⇒ 多面 ✓；评审 ⇒ `conference.js`（574 行 ✓，计数器含 `submitted`／`assigned`／`reviewed`／`decided` ✓）；quorum ⇒ `ballot`／`ballotbox`／`charter`／`conference`／`hr` ✓；COI ⇒ `arbitration`／`ballotbox`／`compliance` ✓；兼容矩阵 ⇒ `external`／`ip`／`workflow` ✓**；
+  - **而 `rebuttal`（答辩）⇒ 内核【全无】** ✗ ⇒ **`review.rebuttalRequired` 与部分 `reviewers.*` 缺概念落点** ✓；
+  - ★★ **理由表层** ✓：**`external.js`／`conference.js` 的 `UNWIRED_REASONS` 只声明【自己的前缀】** ✓，**`records.js` 的为空** ✓ ⇒ **没有任何面【认领】这 16 键** ✓ ⇒ ★★★ **裁定：这不是"已穷尽"，而是【真实缺口】** ✓ —— **与生成器的"经审计无承载者"一致 ✓**。
+  ★★★ **③ 我【没有】为了凑数而接线** ✗✓：**最接近的候选是 `external.js` 之于 `vmu.compat.*`** ✓（**它有 `CONFLICT_POLICIES`／`MERGE_POLICIES` ✓，`merge()` 返回 `conflicts` ✓**）—— 但 **`compat.*` 讲的是【组合的兼容矩阵】，而 `external.js` 管的是【来源合并】** ✗ ⇒ ★★ **按本项目纪律"承载者存疑就不接"⇒ 不接** ✓✓。**该判断的依据已逐条写明** ✓。★ **同样地，`records.js` 之于 `data.*` 也【只相邻不归属】：`data.fingerprintAlgo` 与既有的 `records.fingerprintPolicy` 语义相撞** ✗ ⇒ **不接** ✓。
+  **门禁与证据** ✓：**`docs/11` 行数校验通过** ✓；**未接线保持 147** ✓（**本轮有意不新增接线** ✓）；**`regen-all: 9/9 in sync`** ✓。
+  **未做（明写 ✗）**：★★ **这 16 键仍未接，且【现无承载者】** ✗ —— ★★ **复活条件已按族写明**：**`compat`(4) ⇒ 需先有【组合矩阵】对象（而非"来源合并"）** ✓；**`data`(4) ⇒ 需先厘清与 `records.fingerprintPolicy` 等既有键的边界（不许两个键一个语义 ✗）** ✓；**`review`／`reviewers`(8) ⇒ 需先有【答辩（rebuttal）】概念 —— 该词在内核【全无** ✗**）** ✓；**其余 147 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 
