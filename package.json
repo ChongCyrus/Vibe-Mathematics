@@ -383,7 +383,7 @@
     "tests/vmu-entry.test.mjs",
     "tests/vmu-host-hooks.test.mjs",
     "tests/audit-vmu-docs.test.mjs",
-    "tests/audit-maturity-table.mjs",
+    "tests/audit-vmu-maturity-table.mjs",
     "tests/audit-vmu-docs.mutants.mjs",
     "tests/vmu-script.test.mjs",
     "tests/audit-vmu-release.test.mjs",
