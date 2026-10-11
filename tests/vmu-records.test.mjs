@@ -567,5 +567,39 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
   ok(receipts.every((x) => !x.fired || x.fired.every((k) => x.enforced.includes(k))), 'no-dup: fired ⊆ enforced in every receipt')
 }
 
+
+// ── ROUND 261/262: the dataset registry (volume 16 §L9/L10) ─────────────────────────────────────────────────
+{
+  const TR = 'progress'
+  const mkD = (extra) => createRecords({ clock: () => 0, settings: S(extra) })
+
+  // the control: with nothing declared, a dataset registers exactly as before
+  const plain = mkD({})
+  const d0 = plain.datasetRegister({ track: TR, title: 'd0', fingerprint: 'sha256:a' })
+  ok(d0.ok === true && d0.dataset.scheme === 'semver', 'data.default: a dataset with a fingerprint registers, and the scheme default is semver')
+
+  // the fingerprint is part of what a dataset IS (§L128), so its absence is a named refusal
+  let noFp = null
+  try { plain.datasetRegister({ track: TR, title: 'd1' }) } catch (e) { noFp = e }
+  ok(noFp && noFp.code === 'VMU_INVALID_ARGUMENT', 'data: a dataset without a fingerprint is refused by name, never recorded with a null one', noFp && noFp.code)
+
+  // requireParent: the declaration decides, and in both directions
+  let noParent = null
+  try { mkD({ 'vmu.data.requireParent': true }).datasetRegister({ track: TR, title: 'd2', fingerprint: 'sha256:b' }) } catch (e) { noParent = e }
+  ok(noParent && noParent.code === 'VMU_INVALID_ARGUMENT', 'data.requireParent[on]: a dataset that cannot say where it came from is refused', noParent && noParent.code)
+  const withParent = mkD({ 'vmu.data.requireParent': true }).datasetRegister({ track: TR, title: 'd3', fingerprint: 'sha256:b', parent: 'raw-1' })
+  ok(withParent.ok === true && withParent.dataset.parent === 'raw-1', 'data.requireParent[on]: with a parent it registers and the receipt carries it', withParent.dataset)
+  ok(mkD({}).datasetRegister({ track: TR, title: 'd4', fingerprint: 'sha256:c' }).ok === true, 'data.requireParent[off]: without the declaration a parent-less dataset still registers')
+
+  // versionScheme: a semver scheme validates, a looser one accepts less
+  let badVersion = null
+  try { mkD({}).datasetRegister({ track: TR, title: 'd5', fingerprint: 'sha256:d', version: 'v1' }) } catch (e) { badVersion = e }
+  ok(badVersion && badVersion.code === 'VMU_INVALID_ARGUMENT', 'data.versionScheme[semver]: a version that is not MAJOR.MINOR.PATCH is refused', badVersion && badVersion.code)
+  const versioned = mkD({}).datasetRegister({ track: TR, title: 'd6', fingerprint: 'sha256:d', version: '1.2.3' })
+  ok(versioned.ok === true && versioned.dataset.version === '1.2.3', 'data.versionScheme[semver]: a semantic version is accepted and recorded', versioned.dataset)
+  ok(mkD({ 'vmu.data.versionScheme': 'free' }).datasetRegister({ track: TR, title: 'd7', fingerprint: 'sha256:e' }).ok === true,
+    'data.versionScheme[free]: an unversioned dataset is accepted under a scheme that does not demand a shape')
+}
+
 console.log('=== VMU RECORDS: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) process.exit(1)

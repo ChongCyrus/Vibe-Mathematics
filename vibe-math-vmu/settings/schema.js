@@ -704,6 +704,9 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.citations.requiredFields', type: 'stringList', def: ['title', 'authors', 'year'], hot: HOT.H1, who: 'office', doc: "必填字段（缺失具名拒并点名缺哪些）" },
   { key: 'vmu.citations.idPriority', type: 'stringList', def: ['doi', 'arxiv', 'pmid', 'url'], hot: HOT.H1, who: 'office', doc: "标识符优先级（【按声明顺序】选键，而非按输入出现顺序）" },
   { key: 'vmu.citations.allowFreeText', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "是否允许无标识符条目（默认 false：无人能解析的引用不算引用）" },
+  // ROUND 262: 两条标识符方案（16 卷 L84；现由 kernel/citations.js 读取 ✓）.
+  { key: 'vmu.citations.orcid', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "启用 ORCID 作为可选标识符方案（★ 加入声明的优先级，不另造选键路径）" },
+  { key: 'vmu.citations.ror', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "启用 ROR 作为可选标识符方案（同上；优先级仍以 idPriority 为准）" },
   // ROUND 223: seven vmu.math.* keys that were declared in docs/09 and are now read by kernel/mathtools.js.
   { key: 'vmu.math.units.uncertainty', type: 'enum', domain: ['off', 'first-order', 'monte-carlo'], def: 'off', hot: HOT.H1, who: 'office', doc: "不确定度传播（off ⇒ 请求不确定度时具名拒）" },
   { key: 'vmu.math.formal.assistants', type: 'stringList', def: ['lean'], hot: HOT.H1, who: 'office', doc: "启用助手集合（请求含集合外助手具名拒）" },

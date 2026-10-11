@@ -45,6 +45,10 @@ export function createCitations({ clock = () => 0, log = null, settings = {}, bu
     requiredFields: listOf(sget('vmu.citations.requiredFields'), DEFAULT_FIELDS),
     idPriority: listOf(sget('vmu.citations.idPriority'), DEFAULT_PRIORITY),
     allowFreeText: sget('vmu.citations.allowFreeText') === true,
+  // ROUND 262 (volume 16 §L84): two identifier SCHEMES this face did not consider. They are read here and JOIN the declared
+  // priority rather than creating a second selection path - one way to choose an identifier, not two.
+  orcid: sget('vmu.citations.orcid') === true,
+  ror: sget('vmu.citations.ror') === true,
   })
 
   const entries = []
@@ -56,7 +60,8 @@ export function createCitations({ clock = () => 0, log = null, settings = {}, bu
     const c = cfg()
     const enforced = ['vmu.citations.idPriority']
     const bag = ids && typeof ids === 'object' && !Array.isArray(ids) ? ids : {}
-    for (const key of c.idPriority) {
+    const order = c.idPriority.concat([c.orcid ? 'orcid' : null, c.ror ? 'ror' : null].filter(Boolean))
+    for (const key of order) {
       const v = str(bag[key])
       if (v) return { ok: true, idType: key, id: v, priority: c.idPriority.slice(), enforced, fired: c.idPriority[0] === key ? [] : ['vmu.citations.idPriority'] }
     }

@@ -773,6 +773,8 @@ vmu.packs.active: [v5r]
 | `vmu.citations.requiredFields` | string[] | `[title,authors,year]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/citations.js` | 必填字段（缺失具名拒并点名缺哪些） |
 | `vmu.citations.idPriority` | string[] | `[doi,arxiv,pmid,url]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/citations.js` | 标识符优先级（【按声明顺序】选键，而非按输入出现顺序） |
 | `vmu.citations.allowFreeText` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/citations.js` | 是否允许无标识符条目（默认 false：无人能解析的引用不算引用） |
+| `vmu.citations.orcid` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/citations.js` | 启用 ORCID 作为可选标识符方案（★ 加入声明的优先级，不另造选键路径） |
+| `vmu.citations.ror` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/citations.js` | 启用 ROR 作为可选标识符方案（同上；优先级仍以 idPriority 为准） |
 | `vmu.math.units.uncertainty` | enum | `off` | `off`∣`first-order`∣`monte-carlo` | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 不确定度传播（off ⇒ 请求不确定度时具名拒） |
 | `vmu.math.formal.assistants` | string[] | `[lean]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 启用助手集合（请求含集合外助手具名拒） |
 | `vmu.math.formal.onDisagreement` | enum | `block` | `block`∣`report` | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 助手结论矛盾处置（block ⇒ 具名拒；report ⇒ 记入回执） |
@@ -1211,9 +1213,6 @@ vmu.packs.active: [v5r]
 | `vmu.ballot.reopenFloor` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/ballotbox.js` | ★ **已穷尽**：`ballotbox.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.reopenInitiatorScope` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/ballotbox.js` | ★ **已穷尽**：`ballotbox.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.reopenSameMeetingOnly` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/ballotbox.js` | ★ **已穷尽**：`ballotbox.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.citations.orcid` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.citations.preferIds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.citations.ror` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.collab.authorship` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.collab.exportPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.collab.federationPeers` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |

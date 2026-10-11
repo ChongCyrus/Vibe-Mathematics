@@ -81,7 +81,8 @@
 - **目的**：一条引文＝**稳定标识**（DOI／arXiv／PMID）＋**可渲染**（BibTeX／CSL-JSON）。
 - **面向谁**：写作者；投稿者。
 - **接口形状**：`vibe_vmu_records {action:'append', kind:'citation', text:'<CSL-JSON>'}`（**规划**：`vibe_vmu_cite` 工具**未实现**，属 roadmap）。
-- **可调控参数**：`vmu.citations.style`（`csl` 串，默认 `"apa"`）、`vmu.citations.preferIds`（默认 `["doi","arxiv","pmid"]`）、`vmu.citations.orcid`、`vmu.citations.ror`。
+- **可调控参数**：`vmu.citations.style`（`csl` 串）、`vmu.citations.idPriority`（标识符优先级，已接线 ✓）、`vmu.citations.orcid`、`vmu.citations.ror`。
+- ★★ **更正（轮 262，实测 ✗✓）**：**本节的"preferIds"声明【已退役** ✗**）** —— **它与已接线的 `vmu.citations.idPriority` 是【一个语义两个名字** ✓（**同一件事：按【声明顺序】而非输入顺序选标识符 ✓；两者默认只差长度 ✓**）**）** ⇒ **标识符优先级一律用 `vmu.citations.idPriority`** ✓；**键名与理由的完整记录在台账（`14`）✓**。。
 - **错误码**：`VMU_INVALID_ARGUMENT`（缺稳定标识 ⇒ 具名拒）。
 - **四可**：自由度＝样式可选；可调控性＝style／preferIds；可定义性＝"每条引文有标识"可断言；扩展性＝新样式＝新 CSL。
 - **依赖**：无。**成熟度** ✗ 规划。**优先级** P0。
