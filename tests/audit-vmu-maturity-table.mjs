@@ -35,10 +35,26 @@ export function measured(docText) {
 export function claimed(tableText) {
   const out = []
   for (const line of tableText.split('\n')) {
-    const m = line.match(/^\| `(vmu\.[a-z][a-zA-Z0-9]*)` \| \*{0,2}(\d+)\*{0,2} \| \*{0,2}(\d+)\*{0,2} \|/)
-    if (m) out.push({ fam: m[1], total: Number(m[2]), wired: Number(m[3]) })
+    const m = line.match(/^\| `(vmu\.[a-z][a-zA-Z0-9]*)` \| \*{0,2}(\d+)\*{0,2} \| \*{0,2}(\d+)\*{0,2} \|([^|]*)\|([^|]*)\|/)
+    if (m) out.push({ fam: m[1], total: Number(m[2]), wired: Number(m[3]), verdict: m[5].trim() })
   }
   return out
+}
+
+/**
+ * ROUND 273: the VERDICT must agree with the numbers. A row claiming "fully wired" while its counts disagree, or "genuine gap" while
+ * keys are wired, is the same class of defect as a receipt field that misreports - right data, wrong claim. The table uses exactly three
+ * verdict shapes, so the rule is mechanical:
+ *   · 已接线   -> wired === total
+ *   · 部分     -> 0 < wired < total
+ *   · 真实缺口 -> wired === 0
+ */
+export function verdictOf(row) {
+  const v = row.verdict
+  if (v.includes('真实缺口')) return row.wired === 0 ? null : 'says 真实缺口 but ' + row.wired + ' key(s) are wired'
+  if (v.includes('部分')) return row.wired > 0 && row.wired < row.total ? null : 'says 部分 but the counts are ' + row.wired + '/' + row.total
+  if (v.includes('已接线')) return row.wired === row.total ? null : 'says 已接线 but the counts are ' + row.wired + '/' + row.total
+  return 'no recognisable verdict: ' + JSON.stringify(v).slice(0, 60)
 }
 
 const settingsText = readFileSync(join(REPO, 'vibe-math-vmu', 'docs', '04-settings.md'), 'utf8')
@@ -51,16 +67,27 @@ const rows = claimed(tableText)
 
 if (selftest) {
   const okNoRows = rows.length > 0
-  const fabricated = claimed('| `vmu.demo` | 99 | 98 | x |')
+  // The fabricated row must have the SAME five-cell shape the parser now requires, or the fixture itself goes stale (this selftest caught
+  // exactly that when the verdict cell was added).
+  const fabricated = claimed('| `vmu.demo` | 99 | 98 | x | ★ **已接线 ✓** |')
   const caught = fabricated.length === 1 && (!M.has('vmu.demo') || M.get('vmu.demo').total !== 99)
+  // ROUND 273: the verdict rule must also be provably non-vacuous - a row whose numbers are right but whose claim is wrong must be caught.
+  const wrongClaim = verdictOf({ fam: 'vmu.x', total: 9, wired: 7, verdict: '★ **已接线 ✓**' })
+  const rightClaim = verdictOf({ fam: 'vmu.x', total: 9, wired: 7, verdict: '⚠️ **部分**' })
+  const gapClaim = verdictOf({ fam: 'vmu.x', total: 4, wired: 0, verdict: '✗ **真实缺口**' })
+  const verdictRule = wrongClaim !== null && rightClaim === null && gapClaim === null
   console.log('  selftest: rows found = ' + rows.length + ' -> ' + (okNoRows ? 'ok' : 'FAIL'))
   console.log('  selftest: a fabricated row is detectable -> ' + (caught ? 'ok' : 'FAIL'))
-  process.exit(okNoRows && caught ? 0 : 1)
+  console.log('  selftest: a wrong verdict with right numbers is caught -> ' + (verdictRule ? 'ok' : 'FAIL'))
+  process.exit(okNoRows && caught && verdictRule ? 0 : 1)
 }
 
 const drift = []
 const missing = []
+const misclaimed = []
 for (const r of rows) {
+  const bad = verdictOf(r)
+  if (bad) misclaimed.push(r.fam + ': ' + bad)
   const m = M.get(r.fam)
   if (!m) { missing.push(r.fam); continue }
   if (m.total !== r.total || m.wired !== r.wired) drift.push(r.fam + ': table says ' + r.wired + '/' + r.total + ', measured ' + m.wired + '/' + m.total)
@@ -69,6 +96,7 @@ if (!quiet) {
   console.log('  rows in the maturity table: ' + rows.length)
   console.log('  families not found in the settings table: ' + (missing.length ? missing.join(', ') : 'none'))
   for (const d of drift) console.log('  DRIFT ' + d)
+  for (const c of misclaimed) console.log('  MISCLAIM ' + c)
 }
-console.log('=== MATURITY TABLE: ' + rows.length + ' row(s), ' + drift.length + ' drifted, ' + missing.length + ' unknown family ===')
-process.exit(drift.length || missing.length ? 1 : 0)
+console.log('=== MATURITY TABLE: ' + rows.length + ' row(s), ' + drift.length + ' drifted, ' + misclaimed.length + ' misclaimed, ' + missing.length + ' unknown family ===')
+process.exit(drift.length || misclaimed.length || missing.length ? 1 : 0)
