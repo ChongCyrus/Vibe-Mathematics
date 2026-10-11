@@ -69,6 +69,8 @@ export function createLibrary({
   dedupeWider = (settings && settings['vmu.dedupe.enabled']) === true,
   dedupeScope = (settings && settings['vmu.dedupe.scope']) === 'segment' ? 'segment' : 'full',
   dedupeCrossWorkspace = (settings && settings['vmu.dedupe.crossWorkspace']) === true,
+  // ROUND 237: the naming conflict policy.
+  namingConflictPolicy = (settings && settings['vmu.naming.conflictPolicy']) === 'suffix' ? 'suffix' : 'refuse',
   // ROUND 236: the search family.
   searchAnalyzer = ['simple', 'cjk', 'bigram'].includes(settings && settings['vmu.search.analyzer'])
     ? settings['vmu.search.analyzer'] : 'bigram',
@@ -351,6 +353,29 @@ export function createLibrary({
       const dir = cardDir(member, kind)
       const id = (record.id ? slug(record.id) : slug((record.title || record.statement).slice(0, 40))) + '-' + fp.slice(0, 8)
       const file = join(dir, id + '.md')
+    // ROUND 237: `vmu.naming.conflictPolicy` decides what happens when a DIFFERENT record already owns that name. The
+    // declared default is `refuse`: two records may share content (that is the dedupe above) but must not silently share a
+    // name. `suffix` is the deliberate alternative, and the receipt says which suffix it used.
+    let nameConflict = null
+    // A file name cannot collide - it ends with the fingerprint - but the HUMAN name can: it is the slug prefix. That is the
+    // name `vmu.naming.conflictPolicy` governs, so the check looks for a different record whose id carries the same prefix.
+    const slugPrefix = (record.id ? slug(record.id) : slug((record.title || record.statement).slice(0, 40)))
+    // ONLY an explicitly requested name is a claim on that name. A name derived from a title is not: two records may share a
+    // title with different content, which is exactly what content identity means here, so the declared default must not
+    // refuse that. This is the same trap the dedupe switch set, and the same answer: the default protects the guarantee.
+    const explicitName = typeof record.id === 'string' && record.id.trim() !== ''
+    const taken = explicitName
+      ? [...index.values()].find((r) => r.kind === kind && r.id !== id && r.id.indexOf(slugPrefix + '-') === 0)
+      : undefined
+    if (taken) {
+      if (namingConflictPolicy === 'refuse') {
+        throw refuse('VMU_CONFLICT', 'another record already owns the name ' + slugPrefix + ': ' + taken.id,
+          'pass a different record.id or title, or set vmu.naming.conflictPolicy=suffix deliberately')
+      }
+      let n = 2
+      while (index.has(slugPrefix + '-' + n) || await exists(join(dir, slugPrefix + '-' + n + '.md')).catch(() => false)) n += 1
+      nameConflict = { policy: 'suffix', tried: slugPrefix, used: slugPrefix + '-' + n }
+    }
       // GATE FIRST, THEN TOUCH THE FILESYSTEM. Independent verification (task-34) proved that `mkdir` used to
       // run BEFORE the gate, so an out-of-policy write was refused only AFTER its directory had been created -
       // a refusal with a side effect. A refused write must leave the disk untouched.
@@ -368,7 +393,8 @@ export function createLibrary({
       }
       await writeFile(file, render(meta, String(record.statement) + (record.proof ? '\n\n' + record.proof : '')), 'utf8')
       index.set(id, Object.assign({ file }, meta))
-      return { ok: true, id, fingerprint: fp, deduplicated: false, file,
+      return { ok: true, id: nameConflict ? nameConflict.used : id, fingerprint: fp, deduplicated: false, file: nameConflict ? join(dir, nameConflict.used + '.md') : file,
+        nameConflict,
         references: refCheck ? refCheck.references : [], dangling: refCheck ? refCheck.dangling : [] }
     },
 

@@ -623,7 +623,7 @@ GC 候选 ⇒ 产出删除清单 ⇒ 显式确认（或满足自动执行前置�
 |---|---|---|---|---|---|
 | `vmu.index.rebuildBatch` | int | `500` | P | U | 重建批大小 |
 | `vmu.index.verifyChecksum` | bool | `true` | P | U | 索引是否校验和 |
-| `vmu.index.staleTolerance` | enum(tolerate/rebuild) | `rebuild` | P | U | 过期索引处置 |
+| `vmu.index.staleTolerance` | enum(tolerate/rebuild) | `rebuild` | P | U | ★ **轮 237 更正：本键【不予实现】** ✗✓ —— **实测：本面【每次读取都从盘重建索引】（自述 never cached ✓），根本不存在过期索引** ✓ ⇒ **按原文字实现会变成【第二份机制】** ✗（**与拒绝重复的 tier／reopenFloor 同一条纪律** ✓）。**若将来引入索引缓存，本键才有意义；届时连同重建触发条件一起定义** ✓ |
 | `vmu.search.analyzer` | enum(simple/cjk/bigram) | `bigram` | P | U | 分词器 |
 | `vmu.search.maxResults` | int | `50` | P | U | 结果上限 |
 | `vmu.search.snippetLen` | int | `200` | P | U | 片段长度 |

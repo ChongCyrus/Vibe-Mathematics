@@ -138,7 +138,6 @@ export const PLANNED_DEFS = Object.freeze([
   { key: "vmu.names.aliasTablePath", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07", "13"], doc: "设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准）" },
   { key: "vmu.names.strict", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07", "13"], doc: "设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准）" },
   { key: "vmu.names.warn", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["13"], doc: "设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准）" },
-  { key: "vmu.naming.conflictPolicy", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.notes.linkKinds", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["16"], doc: "设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准）" },
   { key: "vmu.outreach.impact", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["22"], doc: "设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准）" },
   { key: "vmu.outreach.mediaRequest", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["22"], doc: "设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准）" },

@@ -548,6 +548,28 @@ await rm(root, { recursive: true, force: true })
     'search[+]: hits carry the same head fields the list carries, so a hit is actionable without a second lookup')
 }
 
+
+// ── ROUND 237: naming conflicts — only an EXPLICIT name is a claim on that name ──────────────────────────────
+{
+  // An explicit name IS a claim, and the declared default refuses a second one.
+  const named = mk()
+  const first = await named.append({ kind: 'proposition', id: 'NAMETOKEN', statement: 'ONE' })
+  ok(first.ok === true && first.id.indexOf('nametoken-') === 0, 'naming.conflictPolicy: an explicit id becomes the human name', String(first.id))
+  let clash = null
+  try { await mk().append({ kind: 'proposition', id: 'NAMETOKEN', statement: 'TWO' }) } catch (e) { clash = e && e.code }
+  ok(clash === 'VMU_CONFLICT',
+    'naming.conflictPolicy[default=refuse]: a second EXPLICIT claim on the same name is refused by name', String(clash))
+  const suffixed = await mk({ settings: { 'vmu.naming.conflictPolicy': 'suffix' } }).append({ kind: 'proposition', id: 'NAMETOKEN', statement: 'THREE' })
+  ok(suffixed.ok === true && suffixed.id === 'nametoken-2' && suffixed.nameConflict && suffixed.nameConflict.used === 'nametoken-2',
+    'naming.conflictPolicy[suffix]: the declared alternative uses a suffix AND reports which one', JSON.stringify(suffixed.nameConflict))
+  // A title-derived name is NOT a claim: this is the documented content-identity guarantee, and the default must not break it.
+  const titled1 = await mk().append({ kind: 'proposition', title: 'TITLETOKEN', statement: 'A' })
+  const titled2 = await mk().append({ kind: 'proposition', title: 'TITLETOKEN', statement: 'B' })
+  ok(titled1.ok === true && titled2.ok === true && titled1.id !== titled2.id,
+    'naming.conflictPolicy[title]: the same title with different content yields two records - the default cannot destroy content identity')
+  ok(!titled2.nameConflict, 'naming.conflictPolicy[title]: and no conflict is reported, because no name was claimed')
+}
+
 console.log('=== VMU LIBRARY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
