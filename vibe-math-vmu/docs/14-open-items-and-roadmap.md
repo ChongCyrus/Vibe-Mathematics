@@ -995,6 +995,13 @@
   **门禁与证据** ✓：**`VMU LIBRARY: 78 passed`** ✓（+11）／**`VMU GUARD: 59 passed`** ✓（+6）／**`VMU DOCS AUDIT: 70 passed`** ✓（**两处契约行补上 `checkMetadata(`／`provenanceOf(`** ✓）；`docs/04` **7 行**由 `⚠️` 变 `✅ 已接线` ✓；**未接线 216 → 209** ✓；**`regen-all: 9/9 in sync`** ✓。
   **未做（明写 ✗）**：★ **`vmu.workspace.crossWrite` 的【放宽方向】尚未实现** ✗ —— **当前 `true` 只被读取并上报** ✓（`readWorkspacePolicy` ✓），**真正的"允许写调用方显式点名的他区根"需要一个新的参数面** ✗，**属下一区间** ✓；**`vmu.index.*`／`vmu.search.*`／`vmu.export.*`／`vmu.visibility.*`／`vmu.naming.*`** ✗；**其余 209 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 233：接 `vmu.index.*`(3) 并把 `vmu.workspace.crossWrite` 真正贯通到写入路径；未接线 209 → 206** ✓✓
+  **① `vmu.index.*`(3) 落在 `rebuildIndex()` 内部** ✓（**该面自述"索引从盘重建"✓**）：`rebuildBatch`（**一次重建读多少文件；其余【计数延后】** ✓，**绝不静默丢弃** ✓）／`verifyChecksum`（**true ⇒ 读不到或缺 id 的文件【进健康报告】而非从索引里消失** ✓）／`staleTolerance`（**`rebuild`＝默认，从盘重建** ✓）；★ **新增 `indexHealth()` 自曝 `{read, deferred, unreadable, missingId, limit}`** ✓ —— **"读了什么、延后了多少、哪些读不到"全部可见** ✓。**`VMU LIBRARY: 86 passed, 0 failed`** ✓（+8）。
+  **② `crossWrite` 的【放宽方向】真正贯通** ✓✓：**`describePolicy` → `guardWrite` → `guardWriteExtended` 三处都拥有并转发 `otherRoots`** ✓，**真机三向验证** ✓：**声明 true ＋ 点名他区根 ⇒ 可写** ✓；**true 但未点名 ⇒ `VMU_NOT_PERMITTED`** ✓（**绝不静默放宽** ✓）；**默认 false ＋ 点名 ⇒ 拒** ✓。**`VMU GUARD: 65 passed, 0 failed`** ✓（+5）。
+  ✗✗ **③ 本区间是我迄今最差的一次工具操作，必须如实记下** ✓：**(a)** 我把"批次上限"插到了**全文件第一个 `await readFile`（不在循环里）** ✗ ⇒ **语法错** ✓；**(b)** 回退后我用 `/^\}/` 找函数结束括号，**把 `rebuildIndex` 判成 L269..L650** ✗ ⇒ **差点重写数百行** ✓（**幸好脚本自带 sanity 检查并 ABORT** ✓）；**(c)** 改用 `return index` 定界后，**行式拼接又【删掉了生产代码的 `const id = …`】** ✗ ⇒ 测试报 `id is not defined` ✓；**(d)** 我的"转发 `otherRoots`"改到了**第一个** `describePolicy` 调用点（属于基础 `guardWrite` ✓）⇒ **`otherRoots is not defined`** ✗（**与 (a)(c) 同一个病：只匹配"第一次出现"而不限定在目标函数内** ✓）。★★★ **教训已固化为规则：任何源码改写都必须【先按函数签名定界、校验跨度合理、再在界内定位】，并保留 ABORT 与 sanity 检查** ✓ —— **本区间两次 ABORT 与一次 `git diff --stat` 自检正是阻止事故扩大的原因** ✓。
+  **门禁与证据** ✓：`docs/04` **3 行**由 `⚠️` 变 `✅ 已接线` ✓；**未接线 209 → 206** ✓；**两处契约行补上 `indexHealth(`** ✓；**`regen-all: 9/9 in sync`** ✓。
+  **未做（明写 ✗）**：**`vmu.export.*`(2)／`vmu.visibility.*`(1)／`vmu.search.*`(3)／`vmu.naming.conflictPolicy`** ✗；**`vmu.index.staleTolerance` 的 `tolerate` 分支目前只被读取** ✗（**过期检测本身需要一次"盘上变更"信号，属下一区间** ✓）；**其余 206 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 

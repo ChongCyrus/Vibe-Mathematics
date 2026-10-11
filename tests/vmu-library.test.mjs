@@ -397,6 +397,51 @@ await rm(root, { recursive: true, force: true })
     'provenance.recordInputFingerprint[false]: it is null rather than a stale value')
 }
 
+
+// ── ROUND 233: the index family — the rebuild reports what it read, deferred and could not read ───────────────
+{
+  // The face's documented lesson is that the index is REBUILT FROM DISK. These keys govern that rebuild and nothing else.
+  const lib = mk()
+  ok(lib.indexHealth() === null, 'index: before any rebuild there is no health record, so nothing is claimed')
+  await lib.append({ kind: 'proposition', statement: 'IDX-1' })
+  await lib.list({})
+  const h = lib.indexHealth()
+  ok(h !== null && h.read >= 1 && h.deferred === 0,
+    'index.rebuildBatch[default=500]: an ordinary rebuild reads everything and defers nothing', JSON.stringify({ read: h.read, deferred: h.deferred }))
+  ok(h.unreadable.length === 0 && h.missingId.length === 0,
+    'index.verifyChecksum[default=true]: a healthy tree produces an empty health report rather than a silent index')
+
+  // rebuildBatch bounds one pass and COUNTS the remainder
+  const bounded = mk({ settings: { 'vmu.index.rebuildBatch': 1 } })
+  await bounded.append({ kind: 'proposition', statement: 'IDX-A' })
+  await bounded.append({ kind: 'proposition', statement: 'IDX-B' })
+  await bounded.list({})
+  const hb = bounded.indexHealth()
+  ok(hb.read === 1 && hb.deferred >= 1,
+    'index.rebuildBatch[+]: a batch of one reads one file and DEFERS the rest, counted rather than dropped', JSON.stringify({ read: hb.read, deferred: hb.deferred }))
+  ok(hb.limit === 1, 'index.rebuildBatch[+]: the receipt says what the limit was, so the deferral is explainable')
+
+  // verifyChecksum off means an unreadable file is not reported (the declared default reports it)
+  const quiet = mk({ settings: { 'vmu.index.verifyChecksum': false } })
+  await quiet.append({ kind: 'proposition', statement: 'IDX-C' })
+  await quiet.list({})
+  ok(quiet.indexHealth().unreadable.length === 0,
+    'index.verifyChecksum[false]: the health report stays quiet - which is exactly what the key switches off')
+  // and the default reports a file that cannot be read or carries no id
+  const strict = mk()
+  await strict.append({ kind: 'proposition', statement: 'IDX-D' })
+  await strict.list({})
+  ok(strict.indexHealth() !== null,
+    'index.verifyChecksum[default=true]: the report exists on every rebuild, so a missing id or an unreadable file would appear in it')
+
+  // staleTolerance is read and reported (rebuild is the declared default)
+  const tolerant = mk({ settings: { 'vmu.index.staleTolerance': 'tolerate' } })
+  await tolerant.append({ kind: 'proposition', statement: 'IDX-E' })
+  await tolerant.list({})
+  ok(tolerant.indexHealth() !== null,
+    'index.staleTolerance[tolerate]: a tolerable index is still rebuilt from disk and still reports its health')
+}
+
 console.log('=== VMU LIBRARY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

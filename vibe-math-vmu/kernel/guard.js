@@ -61,7 +61,7 @@ export function sharedRootFor(root) {
 }
 
 /** `{ policy, writableRoots, note }` — what the CURRENT settings allow, for回执/日志/自检. */
-export function describePolicy(settings, { root = process.cwd() } = {}) {
+export function describePolicy(settings, { root = process.cwd(), otherRoots = null } = {}) {
   const policy = readPathPolicy(settings)
   // ROUND 232: with declared shared mounts, those ARE the shared roots; without them the fixed sibling remains, so an
   // instance that declares nothing behaves exactly as before.
@@ -69,8 +69,13 @@ export function describePolicy(settings, { root = process.cwd() } = {}) {
   const sharedRoots = wsPolicy.declaredShared
     ? wsPolicy.sharedPaths.map((p) => normalize(String(p)))
     : [normalize(sharedRootFor(root))]
+  // ROUND 233: vmu.workspace.crossWrite widens the set to OTHER workspace roots, but only those the caller names -
+  // the guard cannot discover other workspaces on its own, and a silent widening would be worse than none.
+  const crossRoots = wsPolicy.crossWrite && Array.isArray(otherRoots)
+    ? otherRoots.filter((x) => typeof x === 'string' && x.trim()).map((x) => normalize(String(x)))
+    : []
   const writableRoots = policy === 'workspace+shared'
-    ? [normalize(String(root)), ...sharedRoots]
+    ? [normalize(String(root)), ...sharedRoots, ...crossRoots]
     : [normalize(String(root))]
   return {
     policy,
@@ -92,9 +97,9 @@ function inside(roots, abs) {
  * Decide a write. Allowed ⇒ `{ ok:true, path }`; outside the policy ⇒ throw a NAMED refusal whose message
  * names the rejected path and whose hint names the current policy and how to open it.
  */
-export function guardWrite({ settings = {}, root, target, kind = 'write' } = {}) {
+export function guardWrite({ settings = {}, root, target, kind = 'write', otherRoots = null } = {}) {
   if (!root) throw refuse('VMU_INVALID_ARGUMENT', 'guardWrite needs a workspace root', 'pass { root }')
-  const { policy, writableRoots } = describePolicy(settings, { root })
+  const { policy, writableRoots } = describePolicy(settings, { root, otherRoots })
   const abs = normalize(isAbsolute(String(target)) ? String(target) : join(String(root), String(target)))
   if (!inside(writableRoots, abs)) {
     const opener = ['vmu', 'safety', 'pathPolicy'].join('.')
@@ -253,7 +258,7 @@ export function cpuBudgetExceeded({ settings = {}, cpuMs = 0 } = {}) {
  * ROUND 217 extensions to the write guard: the kill switch stops every write; a path longer than `maxPathLength` is
  * refused; and when `followSymlinks` is false, an existing symlink anywhere on the path is refused BY NAME（docs/20 §4）.
  */
-export function guardWriteExtended({ settings = {}, root, target, kind = 'write' } = {}) {
+export function guardWriteExtended({ settings = {}, root, target, kind = 'write', otherRoots = null } = {}) {
   if (readKillSwitch(settings)) {
     throw refuse('VMU_SAFETY_KILL_SWITCH', 'vmu.safety.killSwitch=true: the ' + kind + ' is refused',
       'clear vmu.safety.killSwitch (it is the global stop)')
@@ -264,7 +269,7 @@ export function guardWriteExtended({ settings = {}, root, target, kind = 'write'
     throw refuse('VMU_SAFETY_PATH_TOO_LONG', 'the path is longer than vmu.safety.maxPathLength: ' + asText.length + ' > ' + maxLen,
       'shorten the path, or raise vmu.safety.maxPathLength')
   }
-  const g = guardWrite({ settings, root, target, kind })
+  const g = guardWrite({ settings, root, target, kind, otherRoots })
   // ROUND 229: vmu.paths.allowedRoots NARROWS what the policy already allows - it can only remove permission, never add it.
   const declaredRoots = readAllowedRoots(settings)
   if (declaredRoots.length > 0) {

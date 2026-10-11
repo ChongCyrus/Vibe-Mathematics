@@ -805,6 +805,9 @@ vmu.packs.active: [v5r]
 | `vmu.workspace.default` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 默认工作区（裸名字归属的工作区；只读并上报，不猜） |
 | `vmu.workspace.sharedPaths` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 共享区挂载点（★ 声明后【接管】硬编码的同级 Shared；空＝保持原行为） |
 | `vmu.workspace.crossWrite` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 跨区写（false ⇒ 只能写工作区根与共享挂载点；true ⇒ 另允许调用方显式点名的他区根） |
+| `vmu.index.rebuildBatch` | int ≥1 | `500` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 重建批大小（一次重建读多少文件；其余【计数延后】，绝不静默丢弃） |
+| `vmu.index.verifyChecksum` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 索引是否校验（true ⇒ 读不到或缺 id 的文件【进健康报告】而非从索引里消失） |
+| `vmu.index.staleTolerance` | enum | `rebuild` | `tolerate`∣`rebuild` | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 过期索引处置（rebuild ⇒ 从盘重建；tolerate ⇒ 保留并上报过期） |
 | `vmu.archive.offlineFirst` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.receiptRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.targets` | string[] | `[zenodo,osf,swh,other]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
@@ -1217,9 +1220,6 @@ vmu.packs.active: [v5r]
 | `vmu.incident.disclosureDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.incident.freezeCapabilities` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.incident.notifyContacts` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.index.rebuildBatch` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.index.staleTolerance` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.index.verifyChecksum` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.legalentity.crossBorderApproverRoles` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.legalentity.crossBorderGate` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.legalentity.invoiceTaxSlots` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |

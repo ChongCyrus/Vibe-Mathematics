@@ -68,6 +68,10 @@ export function createLibrary({
   dedupeWider = (settings && settings['vmu.dedupe.enabled']) === true,
   dedupeScope = (settings && settings['vmu.dedupe.scope']) === 'segment' ? 'segment' : 'full',
   dedupeCrossWorkspace = (settings && settings['vmu.dedupe.crossWorkspace']) === true,
+  // ROUND 233: the index family.
+  indexRebuildBatch = (() => { const v = Number(settings && settings['vmu.index.rebuildBatch']); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 500 })(),
+  indexVerifyChecksum = (settings && settings['vmu.index.verifyChecksum']) !== false,
+  indexStaleTolerance = (settings && settings['vmu.index.staleTolerance']) === 'tolerate' ? 'tolerate' : 'rebuild',
   // ROUND 232: metadata and provenance.
   metadataCustomPrefix = (settings && typeof settings['vmu.metadata.customPrefix'] === 'string' && settings['vmu.metadata.customPrefix'])
     ? settings['vmu.metadata.customPrefix'] : 'x-',
@@ -194,6 +198,7 @@ export function createLibrary({
     return { ok: true, tags: list.slice(), controlled: tagsControlled, maxDepth: tagsMaxDepth, aliasTable: tagsAliasTable || null, enforced, fired }
   }
   const index = new Map() // id -> { id, kind, dir, file, head }
+  let lastIndexHealth = null
 
   const memberDir = (member) => join(root, 'Members', member)
   const progressFile = (member, track) => join(memberDir(member), 'Progress', track + '.md')
@@ -268,6 +273,7 @@ export function createLibrary({
   /** Rebuild the head list from disk (docs/07 §4.3): never cached, never carrying a body. */
   async function rebuildIndex() {
     index.clear()
+  const health = { read: 0, deferred: 0, unreadable: [], missingId: [], limit: indexRebuildBatch }
     let members = []
     try { members = await readdir(join(root, 'Members')) } catch { members = [] }
     for (const member of members) {
@@ -277,8 +283,17 @@ export function createLibrary({
         for (const f of files) {
           if (!f.endsWith('.md')) continue
           const file = join(root, 'Members', member, dir, f)
-          const raw = await readFile(file, 'utf8')
+          // ROUND 233: vmu.index.rebuildBatch bounds ONE pass; the remainder is DEFERRED and counted, never silently dropped.
+          if (health.read >= indexRebuildBatch) { health.deferred += 1; continue }
+          health.read += 1
+          let raw = null
+          try { raw = await readFile(file, 'utf8') } catch (e) {
+            // vmu.index.verifyChecksum: an unreadable file is REPORTED rather than vanishing from the index without a word.
+            if (indexVerifyChecksum) health.unreadable.push(file)
+            continue
+          }
           const meta = parseRecord(raw)
+          if (!meta.id && indexVerifyChecksum) health.missingId.push(file)   // ROUND 233: reported, then indexed
           const id = meta.id || f.replace(/\.md$/, '')
           index.set(id, {
             id, kind, member, file,
@@ -292,6 +307,7 @@ export function createLibrary({
         }
       }
     }
+    lastIndexHealth = health   // ROUND 233: kept so indexHealth() can report what happened
     return index
   }
 
@@ -378,6 +394,7 @@ export function createLibrary({
     backlinks,
     checkMetadata,
     provenanceOf,
+    indexHealth: () => lastIndexHealth,
 
     /** Append a card. Same substantive content twice => same id (idempotent), never a silent duplicate. */
     async append(record = {}, opts = {}) {

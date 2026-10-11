@@ -183,5 +183,25 @@ console.log('')
   ok(stillSibling.ok === true, 'workspace.sharedPaths[empty]: with no mounts declared the sibling area is writable, exactly as before')
 }
 
+
+// ── ROUND 233: vmu.workspace.crossWrite — the declaration WIDENS, but only to roots the caller names ──────────
+{
+  const base = process.cwd()
+  const other = base + '-Other'
+  const settings = (extra) => Object.assign({ 'vmu.safety.pathPolicy': 'workspace+shared' }, extra)
+  const rootsOf = (extra, extraRoots) => describePolicy(settings(extra), { root: base, otherRoots: extraRoots }).writableRoots.join('|')
+  ok(rootsOf({}, [other]).indexOf(other) === -1,
+    'workspace.crossWrite[default=false]: naming another root does NOT widen the writable set - the default stays closed')
+  ok(rootsOf({ 'vmu.workspace.crossWrite': true }, [other]).indexOf(other) !== -1,
+    'workspace.crossWrite[+]: with it declared AND the root named, the set widens')
+  ok(rootsOf({ 'vmu.workspace.crossWrite': true }, null).indexOf(other) === -1,
+    'workspace.crossWrite[+]: declaring it is NOT enough on its own - no root is widened without being named')
+  ok(rootsOf({ 'vmu.workspace.crossWrite': true }, ['  ']).indexOf(other) === -1,
+    'workspace.crossWrite[+]: a blank entry is dropped rather than becoming an empty root that allows everything')
+  ok(readWorkspacePolicy({ 'vmu.workspace.crossWrite': true }).crossWrite === true &&
+     readWorkspacePolicy({}).crossWrite === false,
+    'workspace.crossWrite: the policy reports the declaration, so a receipt can always say which mode is in force')
+}
+
 console.log('=== VMU GUARD: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) process.exit(1)
