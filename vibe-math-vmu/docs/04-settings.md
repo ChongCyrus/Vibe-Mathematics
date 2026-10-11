@@ -811,6 +811,9 @@ vmu.packs.active: [v5r]
 | `vmu.visibility.default` | enum | `internal` | `internal`∣`public` | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 默认可见性（internal ⇒ 导出须显式 allowInternal；public 才默认可出） |
 | `vmu.export.format` | enum | `json` | `json`∣`md`∣`package` | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 导出格式（他者具名拒；md 走 render、package 给 manifest＋正文） |
 | `vmu.export.includeHistory` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 是否含历史（true ⇒ 版本随行，并【计数上报】含了几条） |
+| `vmu.search.analyzer` | enum | `bigram` | `simple`∣`cjk`∣`bigram` | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 分词器（simple＝按词／cjk＝逐字／bigram＝相邻二字；★ 它真的改变什么算命中） |
+| `vmu.search.maxResults` | int ≥1 | `50` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 结果上限（咬合时【计数丢弃】，绝不静默截断） |
+| `vmu.search.snippetLen` | int ≥1 | `200` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 片段长度（超出加省略号，并自曝 snippetTruncated） |
 | `vmu.archive.offlineFirst` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.receiptRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.targets` | string[] | `[zenodo,osf,swh,other]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
@@ -1307,9 +1310,6 @@ vmu.packs.active: [v5r]
 | `vmu.script.stderrCap` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.script.stdoutCap` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.script.timeoutMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 2 卷：16、20），尚未实现（元数据以各卷为准） |
-| `vmu.search.analyzer` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.search.maxResults` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.search.snippetLen` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.skills.catalogTtlMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.sovereignty.crossBorderAllow` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.sovereignty.exportControl` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |

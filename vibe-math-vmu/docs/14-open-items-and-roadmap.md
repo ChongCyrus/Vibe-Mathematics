@@ -1019,6 +1019,13 @@
   ✗✓ **一处自伤（第七次同型）** ✗：抽取脚本里的 **`the project's own` 撇号** ✗ 断了字符串 ⇒ **脚本静默没跑**（**`library.js` 仍 709 行、套件仍 99/0 露了馅** ✓）⇒ 去掉撇号后一次通过 ✓。★★★ **"源码文本里禁止 ASCII 引号/撇号"必须成为写脚本的第一条规则** ✓（**它已连续七次咬我，且每次的代价都是"静默不执行"** ✓）。
   **未做（明写 ✗）**：★ **`createLibrary` 仍有 563 行** ✗ —— **本轮只拆出第一块** ✓，**后续应继续拆（I/O 层／索引层／写入路径各有内聚边界 ✓）**；**`staleTolerance` 的 `tolerate` 分支** ✗；**`vmu.search.*`(3)／`vmu.naming.conflictPolicy`** ✗；**其余 203 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 236：`createLibrary` 的第二刀【经测量后主动放弃】（并说明理由）＋ 接 `vmu.search.*`(3)；未接线 203 → 200** ✓✓
+  ★★★ **① 本区间最重要的产出是一个【基于测量的"不做"决定】** ✓✓：我原计划拆出"I/O 与序列化"单元 ✓，**先量了耦合** ✓ ⇒ **`head` 24 处、`rebuildIndex` 15 处、`parseRecord` 8 处、`render` 5 处** ✗ ⇒ **它们是工厂的【共享脊柱】** ✓；**于是量第二个候选（删除契约块，L464+ 约 130 行）** ✓ ⇒ **其私有助手用量虽轻（`isPermanent` 4／`trashDirOf` 2／`bodyOf` 4／`highWaterPath` 3／`readTrash` 4／`revisionFiles` 5／`nextRev` 2 ✓），但 `revisionFiles`／`readTrash`／`bodyOf` 【同时被读路径使用】** ✗ ⇒ ★★ **这一刀也会流血** ✓ ⇒ ★★★ **裁定：唯一干净的口子就是已完成的策略块（轮 235 ✓）；余下 563 行是【一个工厂拥有一个聚合】的设计选择，不是该硬拆的缺陷** ✓✓ —— **硬拆只会用间接层换掉可读性** ✗。**测量数据已入账** ✓。
+  **② `vmu.search.*`(3) 接成真能力** ✓✓：**`search({text,filter,analyzer,maxResults,snippetLen})`** ✓ —— **`analyzer` 真的改变什么算命中** ✓✓（**`simple` 按词 ⇒ 片段 `lta del` 【不命中】✓；`bigram` 按相邻二字 ⇒ 同一片段【命中】✓** —— **两个方向都有断言** ✓）；**`maxResults` 咬合时【计数丢弃】** ✓（**断言用 `hits + dropped === total` 这一关系式，而非绝对数字** ✓）；**`snippetLen` 越界加省略号并自曝 `snippetTruncated`** ✓；**未知 analyzer 具名拒** ✓。**`VMU LIBRARY: 111 passed, 0 failed`** ✓（**+12 条断言** ✓）。
+  ✗✓ **③ 一处【我的断言本身不稳】，被测试抓出** ✓：该套件的 `mk()` **共享同一个 `root`** ✓ ⇒ **早先用例的记录会累积** ✗ ⇒ **我用绝对数字断言（`total === 3`）⇒ 实测 `total=6`** ✓ ⇒ ★★ **改为【关系式断言】并为每个用例用【唯一标记】** ✓（**这也是"无匹配"那条失败的根因：`zzz-not-there` 的二字组有可能在别的记录里出现** ✓ ⇒ 换成不可能出现的乱码 ✓）。
+  **门禁与证据** ✓：**`VMU DOCS AUDIT: 70 passed`** ✓（**契约行补上 `search(`** ✓）；`docs/04` **3 行**由 `⚠️` 变 `✅ 已接线` ✓；**未接线 203 → 200** ✓；**`regen-all: 9/9 in sync`** ✓。
+  **未做（明写 ✗）**：★ **`createLibrary` 仍是 563 行** ✗ —— **本轮的结论是【不该硬拆】，不是"已完成"** ✓（**若要继续，需要先重设计聚合边界，属独立议题** ✓）；**`staleTolerance` 的 `tolerate` 分支** ✗；**`vmu.naming.conflictPolicy`** ✗；**其余 200 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 

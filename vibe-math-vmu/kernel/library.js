@@ -69,6 +69,11 @@ export function createLibrary({
   dedupeWider = (settings && settings['vmu.dedupe.enabled']) === true,
   dedupeScope = (settings && settings['vmu.dedupe.scope']) === 'segment' ? 'segment' : 'full',
   dedupeCrossWorkspace = (settings && settings['vmu.dedupe.crossWorkspace']) === true,
+  // ROUND 236: the search family.
+  searchAnalyzer = ['simple', 'cjk', 'bigram'].includes(settings && settings['vmu.search.analyzer'])
+    ? settings['vmu.search.analyzer'] : 'bigram',
+  searchMaxResults = (() => { const v = Number(settings && settings['vmu.search.maxResults']); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 50 })(),
+  searchSnippetLen = (() => { const v = Number(settings && settings['vmu.search.snippetLen']); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 200 })(),
   // ROUND 234: visibility and export.
   visibilityDefault = (settings && settings['vmu.visibility.default']) === 'public' ? 'public' : 'internal',
   exportFormat = ['json', 'md', 'package'].includes(settings && settings['vmu.export.format'])
@@ -403,7 +408,51 @@ export function createLibrary({
       return kept
     },
 
-    /** Expand one record by id. A dangling id is refused by name - never an empty body (docs/07 §4.3). */
+    /**
+   * ROUND 236: search the head list. `vmu.search.analyzer` decides HOW text is compared - `simple` by word, `cjk` per
+   * character, `bigram` by adjacent pairs (the declared default) - and the analyzer really changes what matches, which is what
+   * makes it a setting rather than decoration. `vmu.search.maxResults` caps the hits and the cap is COUNTED when it bites, and
+   * `vmu.search.snippetLen` bounds the excerpt, marked with an ellipsis rather than silently cut.
+   */
+  async search({ text = '', filter = {}, analyzer = searchAnalyzer, maxResults = searchMaxResults, snippetLen = searchSnippetLen } = {}) {
+    if (!['simple', 'cjk', 'bigram'].includes(analyzer)) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'unknown search analyzer: ' + String(analyzer), 'vmu.search.analyzer is one of simple/cjk/bigram')
+    }
+    const needle = String(text === null || text === undefined ? '' : text)
+    const analyse = (s) => {
+      const low = String(s).toLowerCase()
+      if (analyzer === 'cjk') return [...low]
+      if (analyzer === 'simple') return low.split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+      const grams = []
+      for (let i = 0; i + 2 <= low.length; i += 1) grams.push(low.slice(i, i + 2))
+      return grams
+    }
+    const wanted = new Set(analyse(needle))
+    await rebuildIndex()
+    const src = [...index.values()].filter((r) =>
+      (filter.kind === undefined || r.kind === filter.kind) && (filter.member === undefined || r.member === filter.member))
+    const hits = []
+    for (const r of src) {
+      const hay = String(r.title || '') + ' ' + String(r.statement === undefined ? '' : r.statement)
+      const terms = analyse(hay)
+      const score = wanted.size === 0 ? 0 : terms.reduce((n, g) => n + (wanted.has(g) ? 1 : 0), 0)
+      if (wanted.size > 0 && score === 0) continue
+      const at = hay.toLowerCase().indexOf(needle.toLowerCase())
+      const from = at < 0 ? 0 : at
+      const cut = hay.slice(from, from + snippetLen)
+      hits.push(Object.assign(head(r), {
+        score,
+        snippet: cut.length < hay.length - from ? cut + '...' : cut,
+        snippetTruncated: cut.length < hay.length - from,
+      }))
+    }
+    hits.sort((a, b) => (b.score - a.score) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+    const capped = hits.slice(0, maxResults)
+    if (capped.length < hits.length) truncation.push({ path: 'search', kept: capped.length, dropped: hits.length - capped.length, mode: 'max-results' })
+    return { ok: true, analyzer, query: needle, hits: capped, total: hits.length, dropped: hits.length - capped.length, snippetLen, enforced: ['vmu.search.analyzer', 'vmu.search.maxResults', 'vmu.search.snippetLen'], fired: hits.length ? ['vmu.search.analyzer'] : [] }
+  },
+
+  /** Expand one record by id. A dangling id is refused by name - never an empty body (docs/07 §4.3). */
     async expand(id, { capBytes = bodyCapBytes } = {}) {
       await rebuildIndex()
       const rec = index.get(id)

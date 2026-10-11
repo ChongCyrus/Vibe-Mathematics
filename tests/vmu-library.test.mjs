@@ -498,6 +498,56 @@ await rm(root, { recursive: true, force: true })
   ok(overridden === 'VMU_NOT_PERMITTED', 'visibility[per-record]: an explicit internal record is refused even when the default is public', String(overridden))
 }
 
+
+// ── ROUND 236: the search family — the analyzer really changes what counts as a hit ───────────────────────────
+{
+  const lib = mk()
+  await lib.append({ kind: 'proposition', statement: 'epsilon delta continuity', proof: 'P' })
+  const all = await lib.search({ text: 'delta' })
+  ok(all.ok === true && all.hits.length >= 1, 'search[+]: a plain word finds the record')
+  ok(all.analyzer === 'bigram', 'search.analyzer[default]: the declared default is bigram', String(all.analyzer))
+  // A garble whose adjacent pairs cannot occur in any record this suite writes.
+  const none = await lib.search({ text: 'QQQQZZZZQQQQ' })
+  ok(none.ok === true && none.hits.length === 0 && none.total === 0, 'search[-]: a query that matches nothing returns nothing, not everything')
+
+  // the analyzer has to CHANGE what matches, or it is decoration
+  const partial = 'lta del'
+  const asSimple = (await mk({ settings: { 'vmu.search.analyzer': 'simple' } }).search({ text: partial }))
+  const asBigram = (await mk({ settings: { 'vmu.search.analyzer': 'bigram' } }).search({ text: partial }))
+  ok(asSimple.hits.length === 0,
+    'search.analyzer[simple]: a fragment that is not a whole word does NOT match - words are compared as words', String(asSimple.hits.length))
+  ok(asBigram.hits.length >= 1,
+    'search.analyzer[bigram]: the SAME fragment DOES match, because adjacent pairs are compared', String(asBigram.hits.length))
+  ok(asSimple.analyzer !== asBigram.analyzer, 'search.analyzer: the receipt names which analyzer was in force')
+  let badAnalyzer = null
+  try { await lib.search({ text: 'x', analyzer: 'telepathy' }) } catch (e) { badAnalyzer = e && e.code }
+  ok(badAnalyzer === 'VMU_INVALID_ARGUMENT', 'search.analyzer[-]: an unknown analyzer is refused by name', String(badAnalyzer))
+
+  // maxResults: the cap bites and is COUNTED
+  // NOTE: the suite shares one root, so counts accumulate - these assertions are about RELATIONSHIPS, and each uses a token
+  // unique to this section so an earlier record cannot satisfy them.
+  const capped = mk({ settings: { 'vmu.search.maxResults': 1 } })
+  await capped.append({ kind: 'proposition', statement: 'CAPTOKEN one' })
+  await capped.append({ kind: 'proposition', statement: 'CAPTOKEN two' })
+  const r = await capped.search({ text: 'CAPTOKEN' })
+  ok(r.hits.length === 1 && r.dropped >= 1 && r.hits.length + r.dropped === r.total,
+    'search.maxResults[+]: the cap bites, and hits + dropped EQUALS the total - nothing is lost silently', JSON.stringify({ hits: r.hits.length, total: r.total, dropped: r.dropped }))
+  const wide = await mk({ settings: { 'vmu.search.maxResults': 50 } }).search({ text: 'CAPTOKEN' })
+  ok(wide.dropped === 0 && wide.hits.length === wide.total, 'search.maxResults[default]: nothing is dropped when the cap is not reached')
+
+  // snippetLen: bounded, and the cut is declared
+  const long = mk()
+  await long.append({ kind: 'proposition', statement: 'SNIPTOKEN ' + 'x'.repeat(300) })
+  const short = await long.search({ text: 'SNIPTOKEN', snippetLen: 20 })
+  ok(short.snippetLen === 20 && short.hits.length >= 1 && short.hits[0].snippet.length <= 23 && short.hits[0].snippet.endsWith('...'),
+    'search.snippetLen[+]: the excerpt is bounded and marked with an ellipsis rather than silently cut', String(short.hits.length ? short.hits[0].snippet.length : 'no hits'))
+  ok(short.hits[0].snippetTruncated === true, 'search.snippetLen[+]: the receipt says the excerpt was cut')
+  const full = await long.search({ text: 'SNIPTOKEN', snippetLen: 2000 })
+  ok(full.hits[0].snippetTruncated === false, 'search.snippetLen[+]: a long enough bound means nothing is marked as cut')
+  ok(full.hits[0].id !== undefined && full.hits[0].fingerprint !== undefined,
+    'search[+]: hits carry the same head fields the list carries, so a hit is actionable without a second lookup')
+}
+
 console.log('=== VMU LIBRARY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
