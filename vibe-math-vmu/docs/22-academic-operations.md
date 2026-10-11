@@ -108,6 +108,13 @@
 
 > **结论** ✓：**本卷的"13 个族全部为规划"【已不成立】** ✗；**真实缺口只有 `legalentity`／`license`／`review` 三族（共 14 条）＋ 四个部分族** ✓；**上文各处的"✗ 计划"应以本表为准** ✓。
 
+### 0.2 三族真实缺口：为什么【没有】承载面（轮 266 实测）✓
+
+> **`vmu.legalentity`（6 条，卷 22）**：**概念层实测：`legalentity`／`jurisdiction`／`taxId`／`crossBorder` 在【内核全无】** ✗ ⇒ **本卷 §L287 的协议 `LegalEntity`／`TaxFieldSlots` 也仍标 ⛔ 待实现** ✓ ⇒ **复活条件**：**先有【法律实体对象】（含 `entityId`／`jurisdiction`／`taxIdRef` ✓）与**发票税位**的稳定字段位** ✓，**再由它读这 6 键** ✓；**在那之前，6 键无宿主** ✓。
+> **`vmu.license`（4 条，卷 20／16）**：**概念层实测：`licen[cs]e`／`attribution`／`incompatible` 命中处【都不是许可证面**（多为注释与其他语义 ✓）**）** ✓ ⇒ **复活条件**：**先有【许可证判定点**（默认许可证 ＋ 归属要求 ＋ 不兼容处置 ✓）**）** ✓，**最自然的宿主是 `publication.js`／`ip.js` 的输出侧** ✓；**未定时不接** ✓。
+> **`vmu.review`（4 条，卷 16）**：**概念层实测：`reviewers`／`reviewMode`／`quorum`／`rebuttal` 中**，**`rebuttal`（答辩）在内核【全无】** ✗；**`quorum` 在 `ballot.js`／`charter.js`／`conference.js`／`hr.js` 有对应概念** ✓ ⇒ **复活条件**：**先有【答辩】概念** ✓（**该词内核零命中 ⇒ 这是一条【真实的新机制】而非"忘了接"** ✓），**否则 `review.rebuttalRequired` 无从判定** ✓。
+
+
 
 ---
 
@@ -122,7 +129,7 @@
 | **名称** | 仪器台账（Instrument Ledger） |
 | **目的** | 每台/每套设备有**唯一身份**（资产号＋位置＋责任人＋能力标签），使"谁能用、用了什么、产出挂在哪"可追溯 ✓ |
 | **面向谁** | 设施管理员、PI、执行实验的代理 |
-| **接口形状** | 服务 `vmu.instruments`（**计划 ✗**）：`register(instrument)`／`list(filter)`／`get(id)`／`retire(id, reason)`；工具 `vibe_vmu_instruments` ⛔ 未实现（唯一入口：登记/预约/维护三类操作）；协议 `InstrumentReservation` ⛔ 待实现 |
+| **接口形状** | 服务 `vmu.instruments`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））：`register(instrument)`／`list(filter)`／`get(id)`／`retire(id, reason)`；工具 `vibe_vmu_instruments` ⛔ 未实现（唯一入口：登记/预约/维护三类操作）；协议 `InstrumentReservation` ⛔ 待实现 |
 | **可调控参数** | `vmu.instruments.ledgerDir`（默认 `Ops/Instruments`）、`vmu.instruments.requireOwner`（默认 `true`）、`vmu.instruments.capabilityTags`（默认 `[]`） |
 | **相关错误码** | `VMU_EQUIP_NOT_REGISTERED` ⛔／`VMU_EQUIP_OWNER_REQUIRED` ⛔（详见 §14） |
 | **四条哲学** | F：不登记＝无设施概念 ✓｜T：目录与必填字段可配 ✓｜D：能力标签与准入规则由 pack 声明 ✓｜X：新设备类型只加标签 ✓ |
@@ -138,7 +145,7 @@
 | **名称** | 预约与占用（Reservation & Occupancy） |
 | **目的** | 同一资源在**时间轴上不冲突** ✓；冲突时按**显式优先级**裁决并留痕（不靠默认先到先得）✓ |
 | **面向谁** | 使用者、设施管理员、调度代理 |
-| **接口形状** | 服务 `vmu.instruments.reserve(holder, window, purpose)`／`release(reservationId)`／`waitlist(id)`（**计划 ✗**）；钩子 `ops/reservation-requested` ⛔ 提案、`ops/reservation-conflict` ⛔ 提案；协议 `InstrumentReservation` ⛔ |
+| **接口形状** | 服务 `vmu.instruments.reserve(holder, window, purpose)`／`release(reservationId)`／`waitlist(id)`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））；钩子 `ops/reservation-requested` ⛔ 提案、`ops/reservation-conflict` ⛔ 提案；协议 `InstrumentReservation` ⛔ |
 | **可调控参数** | `vmu.instruments.reservationHorizonDays`（默认 `30`）、`vmu.instruments.maxHoldHours`（默认 `12`）、`vmu.instruments.priorityPolicy`（默认 `fifo`；可选 `pi-first`／`quota-weighted`）、`vmu.instruments.waitlistPolicy`（默认 `auto-offer`）、`vmu.instruments.overbookRatio`（默认 `1.0`＝不超额） |
 | **相关错误码** | `VMU_EQUIP_SLOT_CONFLICT` ⛔／`VMU_EQUIP_HOLD_LIMIT` ⛔／`VMU_EQUIP_WAITLIST_FULL` ⛔ |
 | **四条哲学** | F：不排期＝自由抢用 ✓｜T：时间窗/上限/优先级全可配 ✓｜D：优先级**是 pack 的判定点**（内核不认识"PI 优先"）✓｜X：新调度算法只换判定点 ✓ |
@@ -154,7 +161,7 @@
 | **名称** | 维护与校准（Maintenance & Calibration） |
 | **目的** | 校准过期/维护中的设备**不得**被用于产出"可引用数据" ✓（把"能用"与"数据可信"分开） |
 | **面向谁** | 设施管理员、质量负责人、执行实验的代理 |
-| **接口形状** | 服务 `vmu.instruments.scheduleMaintenance(id, window)`／`recordCalibration(id, cert)`／`block(id, reason)`（**计划 ✗**）；钩子 `ops/calibration-due` ⛔ 提案、`ops/downtime-started` ⛔ 提案 |
+| **接口形状** | 服务 `vmu.instruments.scheduleMaintenance(id, window)`／`recordCalibration(id, cert)`／`block(id, reason)`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））；钩子 `ops/calibration-due` ⛔ 提案、`ops/downtime-started` ⛔ 提案 |
 | **可调控参数** | `vmu.instruments.requireCalibration`（默认 `true`）、`vmu.instruments.calibrationDueDays`（默认 `365`）、`vmu.instruments.blockOnOverdue`（默认 `true`）、`vmu.instruments.downtimePolicy`（默认 `queue`；可选 `fail`） |
 | **相关错误码** | `VMU_EQUIP_CALIBRATION_DUE` ⛔／`VMU_EQUIP_MAINTENANCE_BLOCKED` ⛔／`VMU_EQUIP_CERT_MISSING` ⛔ |
 | **四条哲学** | F：不声明＝无校准要求 ✓｜T：周期/阻断策略可配 ✓｜D：设备类别→校准要求的映射由 pack ✓｜X：新证书类型只加字段 ✓ |
@@ -170,7 +177,7 @@
 | **名称** | 仪器直采引用（Instrument Capture Reference） |
 | **目的** | 仪器产出的原始文件**不复制**，只在记录里给**引用**（路径＋哈希＋设备号＋时间窗＋校准状态）✓ |
 | **面向谁** | 实验执行者、数据管理、审计 |
-| **接口形状** | 服务 `vmu.instruments.attachCapture(id, datasetRef)`（**计划 ✗**）；协议 `CaptureRef` ⛔ |
+| **接口形状** | 服务 `vmu.instruments.attachCapture(id, datasetRef)`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））；协议 `CaptureRef` ⛔ |
 | **可调控参数** | `vmu.instruments.dataCaptureRef`（默认 `required`；可选 `optional`→`ignore`）、`vmu.instruments.hashAlgo`（默认 `sha256`） |
 | **相关错误码** | `VMU_EQUIP_CAPTURE_UNLINKED` ⛔ |
 | **四条哲学** | F：不挂引用＝数据与设备无关 ✓｜T：必填程度可配 ✓｜D：字段集由 pack ✓｜X：新采集格式只加字段 ✓ |
@@ -190,7 +197,7 @@
 | **名称** | 生物样本台账与链式保管（Biospecimen Ledger & Chain of Custody） |
 | **目的** | 每个样本**可追溯**：谁采集／谁保管／谁取用／冻融几次／是否已销毁 ✓；**链式保管断链必须报** ✗✓；销毁后仍保留**引用**（与 07 只引用 ✓） |
 | **面向谁** | 实验执行者、样本管理员、伦理/合规、审计、代理 |
-| **接口形状** | 协议 `BiospecimenRecord` ⛔ 待实现：`{ sampleId, subjectRef, collectedAt, storage, freezeThawCount, chainOfCustody[] }`；协议 `CustodyEvent` ⛔ 待实现：`{ sampleId, from, to, atMs, why }`；服务 `vmu.biospecimen`（**计划 ✗**）：`register(sample)`／`transfer(sampleId, {from,to,why})`／`chain(sampleId)`／`verify(sampleId)`／`destroy(sampleId,{reason})`；工具 `vibe_vmu_biospecimen` ⛔ 未实现 |
+| **接口形状** | 协议 `BiospecimenRecord` ⛔ 待实现：`{ sampleId, subjectRef, collectedAt, storage, freezeThawCount, chainOfCustody[] }`；协议 `CustodyEvent` ⛔ 待实现：`{ sampleId, from, to, atMs, why }`；服务 `vmu.biospecimen`（★ **已接线 ✓**（实测 7/7，见 §0.1））：`register(sample)`／`transfer(sampleId, {from,to,why})`／`chain(sampleId)`／`verify(sampleId)`／`destroy(sampleId,{reason})`；工具 `vibe_vmu_biospecimen` ⛔ 未实现 |
 | **可调控参数** | `vmu.biospecimen.ledgerDir`（默认 `Ops/Biosamples`）、`vmu.biospecimen.requireChain`（默认 `true`）、`vmu.biospecimen.chainGapPolicy`（默认 `block`；可选 `warn`）、`vmu.biospecimen.freezeThawWarnAt`（默认 `5`）、`vmu.biospecimen.destroyKeepsReference`（默认 `true`）、`vmu.biospecimen.subjectRefStyle`（默认 `pseudonym`）、`vmu.biospecimen.mappingIrreversible`（默认 **`true`** ✗✓） |
 | **相关错误码** | `VMU_BIOSAMPLE_NOT_REGISTERED` ⛔／`VMU_BIOSAMPLE_CHAIN_GAP` ⛔（**断链**）／`VMU_BIOSAMPLE_FREEZE_THAW_LIMIT` ⛔／`VMU_BIOSAMPLE_SUBJECT_LINK_FORBIDDEN` ⛔／`VMU_BIOSAMPLE_DESTROYED` ⛔ |
 | **四条哲学** | F：不登记＝无样本概念 ✓｜T：断链策略/冻融阈值/去标识样式可配 ✓｜D：链式三要素（who/when/why）由 **pack 声明**，内核不认识"生物样本" ✓｜X：新样本类型只加字段 ✓ |
@@ -214,7 +221,7 @@
 | **名称** | 资助账户（Grant Account） |
 | **目的** | 每个资金来源（grant/合同/内部经费）有**账户身份**与**预算行**（科目×期间×额度），使支出可归属、可对账 ✓ |
 | **面向谁** | PI、财务、审计、代理（知道"这笔钱能不能花"） |
-| **接口形状** | 服务 `vmu.funding`（**计划 ✗**）：`openAccount()`／`addBudgetLine()`／`available(account, category)`；工具 `vibe_vmu_funding` ⛔ 未实现；协议 `ExpenseClaim` ⛔、`CostShareSplit` ⛔ |
+| **接口形状** | 服务 `vmu.funding`（★ **已接线 ✓**（实测 16/16，见 §0.1））：`openAccount()`／`addBudgetLine()`／`available(account, category)`；工具 `vibe_vmu_funding` ⛔ 未实现；协议 `ExpenseClaim` ⛔、`CostShareSplit` ⛔ |
 | **可调控参数** | `vmu.funding.accountsDir`（默认 `Ops/Funding`）、`vmu.funding.currency`（默认 `CNY`）、`vmu.funding.budgetLineGranularity`（默认 `category`；可选 `task`／`member`）、`vmu.funding.requiredFields`（**16 已声明**：本卷只**消费**，不重定义 ✓） |
 | **相关错误码** | `VMU_FUNDING_ACCOUNT_MISSING` ⛔／`VMU_FUNDING_LINE_MISSING` ⛔ |
 | **四条哲学** | F：不开账户＝无财务概念 ✓｜T：币种/粒度可配 ✓｜D：科目树由 pack ✓｜X：新资助方只加账户 ✓ |
@@ -230,7 +237,7 @@
 | **名称** | 费用流程（Expense Workflow）——**金额一律遵守 §3.0 的 Money 规则**（整数 minor units／显式舍入／显式汇率）✓ |
 | **目的** | 每笔支出四环闭合（O-2）✓：请求（谁/为什么/多少钱/哪个预算行）→ 批准（谁按什么规则）→ 发生（采购/报销）→ 凭证（发票/收据/哈希） |
 | **面向谁** | PI、财务、采购、代理 |
-| **接口形状** | 服务 `vmu.funding.request()`／`approve()`／`recordReceipt()`（**计划 ✗**）；钩子 `ops/expense-requested` ⛔ 提案、`ops/expense-approved` ⛔ 提案、`ops/receipt-recorded` ⛔ 提案；工具 `vibe_vmu_funding` ⛔ 未实现 |
+| **接口形状** | 服务 `vmu.funding.request()`／`approve()`／`recordReceipt()`（★ **已接线 ✓**（实测 16/16，见 §0.1））；钩子 `ops/expense-requested` ⛔ 提案、`ops/expense-approved` ⛔ 提案、`ops/receipt-recorded` ⛔ 提案；工具 `vibe_vmu_funding` ⛔ 未实现 |
 | **可调控参数** | `vmu.funding.approvalThresholdMinor`（默认 `100000`＝1000 元；分级审批）、`vmu.funding.reimbursementSlaDays`（默认 `14`）、`vmu.funding.expenseRequiredFields`（默认 `["amount","category","account","purpose","receiptHash"]`）、`vmu.funding.pettyCashLimitMinor`（默认 `0`＝无零用金） |
 | **相关错误码** | `VMU_FUNDING_UNAPPROVED_EXPENSE` ⛔／`VMU_FUNDING_OVER_BUDGET` ⛔／`VMU_FUNDING_RECEIPT_MISSING` ⛔／`VMU_FUNDING_APPROVAL_REQUIRED` ⛔ |
 | **四条哲学** | F：不启用＝自由支出（研究机构默认无流程）✓｜T：阈值/必填字段/SLA 可配 ✓｜D：审批链是 pack 的判定点（内核不认识"财务处"）✓｜X：新审批形态＝新判定点 ✓ |
@@ -246,7 +253,7 @@
 | **名称** | 成本分摊与结算（Cost Share & Settlement）——余数与守恒规则见 **§3.0.5** ✓ |
 | **目的** | 一笔支出在多账户/多机构间**按显式比例分摊**，且分摊后**总额守恒** ✓（可复算） |
 | **面向谁** | 财务、合作方、审计 |
-| **接口形状** | 服务 `vmu.funding.split(expenseId, splits)`／`settle(period)`（**计划 ✗**）；协议 `CostShareSplit` ⛔ |
+| **接口形状** | 服务 `vmu.funding.split(expenseId, splits)`／`settle(period)`（★ **已接线 ✓**（实测 16/16，见 §0.1））；协议 `CostShareSplit` ⛔ |
 | **可调控参数** | `vmu.funding.costSharePolicy`（默认 `manual`；可选 `byMember`／`byTask`／`equalAll`）、`vmu.funding.crossInstitutionSettlementDays`（默认 `60`）、`vmu.funding.settlementRoundMinor`（默认 `1`＝到分） |
 | **相关错误码** | `VMU_FUNDING_COSTSHARE_UNBALANCED` ⛔／`VMU_FUNDING_SETTLEMENT_OVERDUE` ⛔ |
 | **四条哲学** | F：不分摊＝单账户 ✓｜T：比例/周期可配 ✓｜D：分摊规则由 pack ✓｜X：新结算通道只加字段 ✓ |
@@ -262,7 +269,7 @@
 | **名称** | 财务审计凭证包（Audit Evidence Pack） |
 | **目的** | 一键导出"**期间×账户×流程**"的完整凭证链（请求/批准/发生/凭证/分摊）供外部审计 ✓ |
 | **面向谁** | 审计、财务、PI |
-| **接口形状** | 服务 `vmu.funding.auditPack(period, filter)`（**计划 ✗**）；工具 `vibe_vmu_funding` ⛔ 未实现（`pack` 动作）；协议 `AuditEvidencePack` ⛔ |
+| **接口形状** | 服务 `vmu.funding.auditPack(period, filter)`（★ **已接线 ✓**（实测 16/16，见 §0.1））；工具 `vibe_vmu_funding` ⛔ 未实现（`pack` 动作）；协议 `AuditEvidencePack` ⛔ |
 | **可调控参数** | `vmu.funding.auditPackFields`（默认 `["claimId","amount","account","approver","receiptHash","split"]`）、`vmu.funding.auditPackFormat`（默认 `jsonl`） |
 | **相关错误码** | `VMU_FUNDING_AUDIT_PACK_INCOMPLETE` ⛔ |
 | **四条哲学** | F：不导出＝无审计面 ✓｜T：字段/格式可配 ✓｜D：审计需求由 pack/外部要求 ✓｜X：新格式只加渲染器 ✓ |
@@ -306,7 +313,7 @@
 | **名称** | 发明披露（Invention Disclosure） |
 | **目的** | 从研究记录里**系统性地**发现"可披露事项"（新方法/装置/数据集/软件），并在公开前登记 ✓ |
 | **面向谁** | PI、技术转移、法务、代理 |
-| **接口形状** | 服务 `vmu.ip`（**计划 ✗**）：`sweep(period)`／`disclose(draft)`／`status(id)`；工具 `vibe_vmu_ip` ⛔ 未实现；钩子 `ip/disclosure-before` ⛔ 提案；协议 `IpDisclosure` ⛔ |
+| **接口形状** | 服务 `vmu.ip`（★ **已接线 ✓**（实测 15/15，见 §0.1））：`sweep(period)`／`disclose(draft)`／`status(id)`；工具 `vibe_vmu_ip` ⛔ 未实现；钩子 `ip/disclosure-before` ⛔ 提案；协议 `IpDisclosure` ⛔ |
 | **可调控参数** | `vmu.ip.disclosureRequired`（默认 `true`）、`vmu.ip.sweepCadenceDays`（默认 `90`）、`vmu.ip.disclosureFields`（默认 `["title","inventors","evidenceRefs","publicDisclosures"]`） |
 | **相关错误码** | `VMU_IP_DISCLOSURE_REQUIRED` ⛔／`VMU_IP_DISCLOSURE_INCOMPLETE` ⛔ |
 | **四条哲学** | F：不启用＝无 IP 流程 ✓｜T：周期/字段可配 ✓｜D："什么算发明"由 pack 判定点 ✓｜X：新 IP 类型只加字段 ✓ |
@@ -322,7 +329,7 @@
 | **名称** | 检索记录（Prior-Art Record） |
 | **目的** | 记录检索式、库、时间、命中项与结论，使"新颖性判断"**可复核** ✓ |
 | **面向谁** | 法务、PI |
-| **接口形状** | 服务 `vmu.ip.recordSearch(query, db, hits, conclusion)`（**计划 ✗**） |
+| **接口形状** | 服务 `vmu.ip.recordSearch(query, db, hits, conclusion)`（★ **已接线 ✓**（实测 15/15，见 §0.1）） |
 | **可调控参数** | `vmu.ip.priorArtSearchDepth`（默认 `standard`；可选 `quick`／`deep`）、`vmu.ip.priorArtRequired`（默认 `true`） |
 | **相关错误码** | `VMU_IP_PRIORART_MISSING` ⛔ |
 | **四条哲学** | F：不检索＝不主张新颖性 ✓｜T：深度可配 ✓｜D：检索标准由 pack ✓｜X：新库只加数据 ✓ |
@@ -338,7 +345,7 @@
 | **名称** | 权属与贡献（Ownership & Contribution） |
 | **目的** | 依据**贡献记录**（谁做了什么、贡献阈值）确定权属与署名顺序，且规则**显式可审** ✓ |
 | **面向谁** | PI、法务、全体成员、代理 |
-| **接口形状** | 服务 `vmu.ip.ownership(id)`／`vmu.ip.contributors(id)`（**计划 ✗**）；协议 `IpOwnership` ⛔ |
+| **接口形状** | 服务 `vmu.ip.ownership(id)`／`vmu.ip.contributors(id)`（★ **已接线 ✓**（实测 15/15，见 §0.1））；协议 `IpOwnership` ⛔ |
 | **可调控参数** | `vmu.ip.ownershipDefault`（默认 `institution`）、`vmu.ip.contributorThreshold`（默认 `0.1`＝贡献占比）、`vmu.ip.authorshipRule`（默认 `byContribution`；可选 `alphabetical`／`seniorLast`）、`vmu.ip.appealWindowDays`（默认 `30`） |
 | **相关错误码** | `VMU_IP_OWNERSHIP_CONFLICT` ⛔／`VMU_IP_CONTRIB_EVIDENCE_MISSING` ⛔ |
 | **四条哲学** | F：不声明＝机构默认 ✓｜T：阈值/排序规则可配 ✓｜D：署名规则**必须是 pack 声明**（与 16 出版面共用同一份声明 ✓）｜X：新贡献模型只加数据 ✓ |
@@ -354,7 +361,7 @@
 | **名称** | 披露时钟（Disclosure Clock） |
 | **目的** | 论文/预印本/会议报告/开源发布**必须**先过披露时钟：在"申请窗口"内不得公开发表（或必须显式豁免），避免损失可专利性 ✓ |
 | **面向谁** | PI、法务、传播、代理 |
-| **接口形状** | 服务 `vmu.ip.hold(targetRef, reason, untilMs)`／`release(holdId, evidence)`（**计划 ✗**）；钩子 `ip/publication-hold` ⛔ 提案、`ip/hold-released` ⛔ 提案 |
+| **接口形状** | 服务 `vmu.ip.hold(targetRef, reason, untilMs)`／`release(holdId, evidence)`（★ **已接线 ✓**（实测 15/15，见 §0.1））；钩子 `ip/publication-hold` ⛔ 提案、`ip/hold-released` ⛔ 提案 |
 | **可调控参数** | `vmu.ip.confidentialityWindowDays`（默认 `180`）、`vmu.ip.publicationHoldDays`（默认 `90`）、`vmu.ip.holdEnforcement`（默认 `block`；可选 `warn`）、`vmu.ip.exemptRoles`（默认 `[]`） |
 | **相关错误码** | `VMU_IP_PUBLICATION_HOLD` ⛔／`VMU_IP_CONFIDENTIALITY_BREACH` ⛔／`VMU_IP_HOLD_EXEMPTION_REQUIRED` ⛔ |
 | **四条哲学** | F：不设时钟＝自由发布 ✓｜T：窗口/强制度可配 ✓｜D：豁免规则由 pack ✓｜X：新公开渠道只加锚点 ✓ |
@@ -369,7 +376,7 @@
 |---|---|
 | **名称** | 技术转移（Transfer） |
 | **目的** | 把许可/转让的**运营步骤**（评估→谈判→签署→交付→收益分配）挂到记录轨 ✓ |
-| **接口形状** | 服务 `vmu.ip.transfer(id, terms)`（**计划 ✗**）；许可证条款本身**引用 20** 的 `vmu.license.*` ✓ |
+| **接口形状** | 服务 `vmu.ip.transfer(id, terms)`（★ **已接线 ✓**（实测 15/15，见 §0.1））；许可证条款本身**引用 20** 的 `vmu.license.*` ✓ |
 | **可调控参数** | `vmu.ip.transferPolicy`（默认 `manual`）、`vmu.ip.revenueSharePolicy`（默认 `institution-first`） |
 | **相关错误码** | `VMU_IP_TRANSFER_UNLICENSED` ⛔ |
 | **四条哲学** | F：不转移＝保留 ✓｜T：政策可配 ✓｜D：条款由 pack/20 ✓｜X：新形式只加流程 ✓ |
@@ -393,7 +400,7 @@
 | **名称** | 征稿与投稿（Call for Papers） |
 | **目的** | 一次征稿＝一个有窗口、有主题、有格式要求的**活动对象**；投稿落在记录轨并可被评审引用 ✓ |
 | **面向谁** | 组织者、投稿者、代理 |
-| **接口形状** | 服务 `vmu.conference`（**计划 ✗**）：`openCfP(spec)`／`submit(paper)`／`closeCfP()`；工具 `vibe_vmu_conference` ⛔ 未实现；协议 `CfP` ⛔ |
+| **接口形状** | 服务 `vmu.conference`（★ **已接线 ✓**（实测 18/18，见 §0.1））：`openCfP(spec)`／`submit(paper)`／`closeCfP()`；工具 `vibe_vmu_conference` ⛔ 未实现；协议 `CfP` ⛔ |
 | **可调控参数** | `vmu.conference.cfpOpenMs`／`cfpCloseMs`（窗口）、`vmu.conference.topicsRequired`（默认 `true`）、`vmu.conference.anonymityMode`（默认 `double-blind`；可选 `single`／`open`） |
 | **相关错误码** | `VMU_CONF_CFP_CLOSED` ⛔／`VMU_CONF_SUBMISSION_INVALID` ⛔ |
 | **四条哲学** | F：不开 CfP＝无会议 ✓｜T：窗口/匿名模式可配 ✓｜D：主题与格式由 pack ✓｜X：新投稿类型只加字段 ✓ |
@@ -408,7 +415,7 @@
 |---|---|
 | **名称** | 评审分配（Review Assignment） |
 | **目的** | 每篇投稿分配到**无冲突**的评审人；评审结论按 16 的判据形成；争议按 08 的表决原语升级 ✓ |
-| **接口形状** | 服务 `vmu.conference.assign()`／`collectReviews()`（**计划 ✗**）；协议 `ReviewAssignment` ⛔；**评审判据引用 16 的 `vmu.review.*`** ✓ |
+| **接口形状** | 服务 `vmu.conference.assign()`／`collectReviews()`（★ **已接线 ✓**（实测 18/18，见 §0.1））；协议 `ReviewAssignment` ⛔；**评审判据引用 16 的 `vmu.review.*`** ✓ |
 | **可调控参数** | `vmu.conference.reviewAssignmentsPerPaper`（默认 `3`）、`vmu.conference.reviewerConflicts`（默认 `["coauthor","institution","advisor"]`）、`vmu.conference.reviewDeadlineDays`（默认 `21`）、`vmu.conference.metaReviewRequired`（默认 `true`） |
 | **相关错误码** | `VMU_CONF_ASSIGNMENT_CONFLICT` ⛔／`VMU_CONF_REVIEW_QUORUM_MISSING` ⛔（引用 16 的 `VMU_REVIEW_*` 语族 ✓） |
 | **四条哲学** | F：不分配＝不评审 ✓｜T：人数/冲突类/期限可配 ✓｜D：冲突定义与升级规则由 pack ✓｜X：新分配算法只换判定点 ✓ |
@@ -423,7 +430,7 @@
 |---|---|
 | **名称** | 日程编排（Program Scheduling） |
 | **目的** | 把录用项排进时间表；冲突检测（同一人/同一场地）与时长控制 ✓ |
-| **接口形状** | 服务 `vmu.conference.schedule()`（**计划 ✗**）；**会议/议程/纪要**一律走 `vibe_vmu_meeting` ✓ 与 08 的议程原语 ✓ |
+| **接口形状** | 服务 `vmu.conference.schedule()`（★ **已接线 ✓**（实测 18/18，见 §0.1））；**会议/议程/纪要**一律走 `vibe_vmu_meeting` ✓ 与 08 的议程原语 ✓ |
 | **可调控参数** | `vmu.conference.scheduleTz`（默认 `UTC`）、`vmu.conference.slotMinutes`（默认 `20`）、`vmu.conference.maxParallelTracks`（默认 `2`） |
 | **相关错误码** | `VMU_CONF_SCHEDULE_CONFLICT` ⛔ |
 | **四条哲学** | F：不排期＝无议程 ✓｜T：时区/时长/并行轨道可配 ✓｜D：优先级由 pack ✓｜X：新形态（线上/混合）只加字段 ✓ |
@@ -438,7 +445,7 @@
 |---|---|
 | **名称** | 注册与论文集（Registration & Proceedings） |
 | **目的** | 注册（人数上限、费用、减免）、论文集生成与发布（版权/许可引用 20）✓ |
-| **接口形状** | 服务 `vmu.conference.register()`／`publishProceedings()`（**计划 ✗**） |
+| **接口形状** | 服务 `vmu.conference.register()`／`publishProceedings()`（★ **已接线 ✓**（实测 18/18，见 §0.1）） |
 | **可调控参数** | `vmu.conference.registrationCap`（默认 `0`＝不限）、`vmu.conference.registrationFeeMinor`（默认 `0`）、`vmu.conference.waiverPolicy`（默认 `none`）、`vmu.conference.proceedingsTrack`（默认 `records`） |
 | **相关错误码** | `VMU_CONF_REGISTRATION_CLOSED` ⛔／`VMU_CONF_CAP_REACHED` ⛔／`VMU_CONF_FEE_UNPAID` ⛔ |
 | **四条哲学** | F：不注册＝开放参加 ✓｜T：上限/费用/减免可配 ✓｜D：减免规则由 pack ✓｜X：新论文集形态只加模板 ✓ |
@@ -460,7 +467,7 @@
 | **名称** | 公众摘要（Public Summary） |
 | **目的** | 面向公众的摘要/图文/视频稿：**必须**可回指内部结论，且**证据强度不高于**内部结论（O-4）✓ |
 | **面向谁** | 传播团队、PI、代理 |
-| **接口形状** | 服务 `vmu.outreach`（**计划 ✗**）：`draft(targetRef)`／`review(draftId)`／`publish(draftId)`；工具 `vibe_vmu_outreach` ⛔ 未实现；钩子 `outreach/draft-before` ⛔ 提案 |
+| **接口形状** | 服务 `vmu.outreach`（⚠️ **部分接线**（实测 9/11，见 §0.1））：`draft(targetRef)`／`review(draftId)`／`publish(draftId)`；工具 `vibe_vmu_outreach` ⛔ 未实现；钩子 `outreach/draft-before` ⛔ 提案 |
 | **可调控参数** | `vmu.outreach.publicSummaryRequired`（默认 `true`）、`vmu.outreach.evidenceFidelity`（默认 `strict`；可选 `warn`）、`vmu.outreach.embargoRespect`（默认 `true`）、`vmu.outreach.languageSet`（默认 `["zh","en"]`） |
 | **相关错误码** | `VMU_OUTREACH_EVIDENCE_MISMATCH` ⛔／`VMU_OUTREACH_EMBARGO` ⛔／`VMU_OUTREACH_REF_MISSING` ⛔ |
 | **四条哲学** | F：不启用＝无传播面 ✓｜T：保真档位/语言集可配 ✓｜D："哪些词算夸大"由 pack 的词表判定点 ✓｜X：新渠道只加渲染器 ✓ |
@@ -476,7 +483,7 @@
 |---|---|
 | **名称** | 媒体与开放评审（Media & Open Review） |
 | **目的** | 媒体询问、开放评审（公开评审意见）的**运营流程**：谁可代表机构发声、什么可公开 ✓ |
-| **接口形状** | 服务 `vmu.outreach.mediaRequest()`／`openReview(package)`（**计划 ✗**） |
+| **接口形状** | 服务 `vmu.outreach.mediaRequest()`／`openReview(package)`（⚠️ **部分接线**（实测 9/11，见 §0.1）） |
 | **可调控参数** | `vmu.outreach.mediaApprovalPolicy`（默认 `spokesperson-only`）、`vmu.outreach.openReviewEnabled`（默认 `false`）、`vmu.outreach.anonymityPreserve`（默认 `true`） |
 | **相关错误码** | `VMU_OUTREACH_MEDIA_UNAUTHORIZED` ⛔／`VMU_OUTREACH_ANONYMITY_BREACH` ⛔ |
 | **四条哲学** | F：不声明＝无人可代表机构 ✓｜T：发言人/开放评审开关可配 ✓｜D：发言人名单由 pack ✓｜X：新渠道只加适配 ✓ |
@@ -491,7 +498,7 @@
 |---|---|
 | **名称** | 影响记录 |
 | **目的** | 记录传播与转化效果（引用数、媒体报道、政策引用、教学使用），**用于运营决策**而非学术评价 ✓ |
-| **接口形状** | 服务 `vmu.outreach.impact()`（**计划 ✗**） |
+| **接口形状** | 服务 `vmu.outreach.impact()`（⚠️ **部分接线**（实测 9/11，见 §0.1）） |
 | **可调控参数** | `vmu.outreach.impactLogFields`（默认 `["channel","reach","date","ref"]`）、`vmu.outreach.impactUseInEvaluation`（默认 `false` ✗） |
 | **相关错误码** | `VMU_OUTREACH_IMPACT_INCOMPLETE` ⛔ |
 | **四条哲学** | F：不记＝无影响面 ✓｜T：字段/是否用于考核可配 ✓｜D：考核规则由 pack ✓｜X：新指标只加字段 ✓ |
@@ -513,7 +520,7 @@
 | **名称** | 合作协议（Agreement & DSA） |
 | **目的** | 与外部机构合作前**必须**有备忘（MoU）与数据共享协议（DSA）的记录；交换范围/期限/责任显式 ✓ |
 | **面向谁** | PI、法务、数据管理、代理 |
-| **接口形状** | 服务 `vmu.collab`（**计划 ✗**）：`registerAgreement()`／`attachDsa()`／`status()`；工具 `vibe_vmu_collab` ⛔ 未实现 |
+| **接口形状** | 服务 `vmu.collab`（⚠️ **部分接线**（实测 7/10，见 §0.1））：`registerAgreement()`／`attachDsa()`／`status()`；工具 `vibe_vmu_collab` ⛔ 未实现 |
 | **可调控参数** | `vmu.collab.agreementRequired`（默认 `true`）、`vmu.collab.dataSharingTemplate`（默认 `standard`）、`vmu.collab.counterpartyRegistry`（默认 `Ops/Partners`）、`vmu.collab.expiryWarnDays`（默认 `30`） |
 | **相关错误码** | `VMU_COLLAB_AGREEMENT_MISSING` ⛔／`VMU_COLLAB_DSA_EXPIRED` ⛔ |
 | **四条哲学** | F：不登记＝无跨机构交换 ✓｜T：模板/预警期可配 ✓｜D：交换范围由 pack ✓｜X：新合作形态只加字段 ✓ |
@@ -546,7 +553,7 @@
 | **名称** | 协议本体与共享闸（Agreement Registry & Sharing Gate） |
 | **目的** | **共享/转移前必须有已签协议** ✗✓（机器可判定）；协议**范围与限制**可核；**到期⇒复审**（机制**引用 21** ✓，本卷不重定义通知/日历） |
 | **面向谁** | PI、法务、数据管理、样本管理员、代理 |
-| **接口形状** | 协议 `Agreement` ⛔ 待实现：`{ agreementId, kind: 'dua'|'mta', parties[], scope, expiresAt, restrictions[], signatureRef }`；服务 `vmu.agreements`（**计划 ✗**）：`register(agreement)`／`sign(agreementId, {signatureRef})`／`check(agreementId, {action, targetRef})`／`expiring(windowDays)`；工具 `vibe_vmu_agreements` ⛔ 未实现；钩子 `agreement/check-before` ⛔ 提案 |
+| **接口形状** | 协议 `Agreement` ⛔ 待实现：`{ agreementId, kind: 'dua'|'mta', parties[], scope, expiresAt, restrictions[], signatureRef }`；服务 `vmu.agreements`（★ **已接线 ✓**（实测 7/7，见 §0.1））：`register(agreement)`／`sign(agreementId, {signatureRef})`／`check(agreementId, {action, targetRef})`／`expiring(windowDays)`；工具 `vibe_vmu_agreements` ⛔ 未实现；钩子 `agreement/check-before` ⛔ 提案 |
 | **可调控参数** | `vmu.agreements.registryDir`（默认 `Ops/Agreements`）、`vmu.agreements.kinds`（默认 `["dua","mta"]`）、`vmu.agreements.unsignedPolicy`（默认 **`block`** ✗✓）、`vmu.agreements.signatureRefRequired`（默认 `true`）、`vmu.agreements.expiryWarnDays`（默认 `30`）、`vmu.agreements.reviewCadenceDays`（默认 `365`）、`vmu.agreements.scopeEnforcement`（默认 `block`） |
 | **相关错误码** | `VMU_AGREEMENT_MISSING` ⛔／`VMU_AGREEMENT_UNSIGNED` ⛔／`VMU_AGREEMENT_EXPIRED` ⛔／`VMU_AGREEMENT_SCOPE_VIOLATION` ⛔／`VMU_AGREEMENT_SIGNATURE_MISSING` ⛔ |
 | **四条哲学** | F：不登记协议＝无共享闸（自由共享）✓｜T：是否阻断/预警期/复审周期可配 ✓｜D：**协议种类与限制项由 pack 声明** ✓｜X：新协议类型只加 `kind` 与字段 ✓ |
@@ -568,7 +575,7 @@
 | **名称** | 合规日历 |
 | **目的** | 把"什么时候必须做什么"（伦理复审、数据保护评估、许可复核、审计窗口、证书续期）变成**日历项＋提醒＋逾期升级** ✓ |
 | **面向谁** | 合规负责人、PI、运营 |
-| **接口形状** | 服务 `vmu.compliance`（**计划 ✗**）：`addDue()`／`listDue()`／`complete()`；工具 `vibe_vmu_compliance` ⛔ 未实现；钩子 `compliance/calendar-due` ⛔ 提案、`compliance/overdue` ⛔ 提案 |
+| **接口形状** | 服务 `vmu.compliance`（★ **已接线 ✓**（实测 20/20，见 §0.1））：`addDue()`／`listDue()`／`complete()`；工具 `vibe_vmu_compliance` ⛔ 未实现；钩子 `compliance/calendar-due` ⛔ 提案、`compliance/overdue` ⛔ 提案 |
 | **可调控参数** | `vmu.compliance.calendarDir`（默认 `Ops/Compliance`）、`vmu.compliance.auditPrepLeadDays`（默认 `30`）、`vmu.compliance.overdueEscalation`（默认 `warn-then-block`）、`vmu.compliance.calendarTemplate`（默认 `standard`） |
 | **相关错误码** | `VMU_COMPLIANCE_CALENDAR_MISSED` ⛔／`VMU_COMPLIANCE_OVERDUE_BLOCK` ⛔ |
 | **四条哲学** | F：不启用＝无日历 ✓｜T：提前量/升级策略可配 ✓｜D：合规项清单由 pack（辖区相关）✓｜X：新辖区只加模板 ✓ |
@@ -583,7 +590,7 @@
 |---|---|
 | **名称** | 伦理/出口/COI 检查 |
 | **目的** | 涉及人类/动物/敏感数据/受控技术/潜在利益冲突的研究，**开工前**取得对应批准与披露 ✓ |
-| **接口形状** | 服务 `vmu.compliance.require(approvalType, targetRef)`／`discloseCoi()`（**计划 ✗**） |
+| **接口形状** | 服务 `vmu.compliance.require(approvalType, targetRef)`／`discloseCoi()`（★ **已接线 ✓**（实测 20/20，见 §0.1）） |
 | **可调控参数** | `vmu.compliance.irbRequired`（默认 `true`）、`vmu.compliance.exportControlCheck`（默认 `true`）、`vmu.compliance.conflictOfInterestDisclosure`（默认 `annual`）、`vmu.compliance.coiScope`（默认 `["funding","review","procurement"]`） |
 | **相关错误码** | `VMU_COMPLIANCE_APPROVAL_MISSING` ⛔／`VMU_COMPLIANCE_EXPORT_BLOCKED` ⛔／`VMU_COMPLIANCE_COI_UNDISCLOSED` ⛔ |
 | **四条哲学** | F：不启用＝无审批要求 ✓｜T：类型/频率可配 ✓｜D：判定点由 pack 声明（**内核不认识"伦理委员会"**）✓｜X：新审批类型只加数据 ✓ |
@@ -598,7 +605,7 @@
 |---|---|
 | **名称** | 审计准备（Audit Prep） |
 | **目的** | 在审计窗口前自动汇总**证据清单**（哪些凭证/记录/审批缺失），并生成**证据包** ✓ |
-| **接口形状** | 服务 `vmu.compliance.prepare(scope)`／`exportPack()`（**计划 ✗**）；工具 `vibe_vmu_compliance` ⛔ 未实现；协议 `AuditEvidencePack` ⛔（与 §3.4 同一形状，财务/合规两视角 ✓） |
+| **接口形状** | 服务 `vmu.compliance.prepare(scope)`／`exportPack()`（★ **已接线 ✓**（实测 20/20，见 §0.1））；工具 `vibe_vmu_compliance` ⛔ 未实现；协议 `AuditEvidencePack` ⛔（与 §3.4 同一形状，财务/合规两视角 ✓） |
 | **可调控参数** | `vmu.compliance.evidencePackFields`（默认 `["itemId","source","owner","evidenceRef","status"]`）、`vmu.compliance.redactionPolicy`（默认 `byClassification`＝引用 20 ✓） |
 | **相关错误码** | `VMU_COMPLIANCE_EVIDENCE_INCOMPLETE` ⛔ |
 | **四条哲学** | F：不准备＝临时抱佛脚 ✓｜T：字段/脱敏策略可配 ✓｜D：审计要求由 pack ✓｜X：新审计框架只加模板 ✓ |
