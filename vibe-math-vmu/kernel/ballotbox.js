@@ -48,10 +48,15 @@ export const PLANNED_BALLOT_KEYS = Object.freeze([
    * this face is down to the five entries that are genuinely owned elsewhere. Those keep the carrier's name and the
    * test line that proves it lives, which round 152 added.
    */
-  ['vmu.ballot.freezeMode', '冻结由 `ballot.js` 的暂停闸承载 ✓（**不是本面** ✗）：`isPaused()` 同时闸住**开票**与**投票** ⇒ 具名拒 `VMU_STATE`；'
-    + '运行时证据＝`tests/vmu-ballot.test.mjs` L89「冻结期间的投票被具名拒」✓、L143「未冻结却解冻被拒」✓；谓词由 `control` 面注入 ✓'],
-  ['vmu.ballot.freezeMeetingLinked', '与**会议联动**的部分归 `meeting`／`board` 面 ✓；`ballot.js` 只做**票箱级**冻结（暂停谓词注入 ✓）'
-    + '⇒ 本面不建会议状态机 ✓（原理由保留，补上归属面 ✓）'],
+  ['vmu.ballot.freezeMode', '冻结行为由 `ballot.js` 的暂停闸承载 ✓（**不是本面** ✗）：`isPaused()` 同时闸住**开票**与**投票** ⇒ 具名拒 `VMU_STATE`；'
+    + '运行时证据＝`tests/vmu-ballot.test.mjs` L89「冻结期间的投票被具名拒」✓、L143「未冻结却解冻被拒」✓；谓词由 `control` 面注入 ✓。'
+    + '★ **轮 193 实测**：★ **本键的 `manual｜event` 区分【在任何面都没有实现】** ✗ —— `manual`（要冻结时才冻结 ✓）正是内核今天的行为 ✓；'
+    + '`event`（按事件自动冻结 ✓）需要**事件源** ✓，而**没有任何面提供它** ✗ ⇒ **复活条件**：先有事件源（`bus` 型 ✓ 或 `scheduler` 型 ✓），再在冻结入口读本键 ✓'],
+  ['vmu.ballot.freezeMeetingLinked', '★ **轮 193 实测更正** ✗✓：原句说「与会议联动的部分归 `meeting`／`board` 面」✓ —— '
+    + '**实测是【设计归属】，不是已存在的机器** ✗：`board.js` 对 `freeze／frozen／reopen／reconsider／initiator／sameMeeting` **命中 0** ✗；'
+    + '`meeting.js` 的 4 处**全是注释** ✓（暂停会冻结会议启动 ✓、s8-freeze-say 的教训 ✓）；`meetings.js` 的 3 处是 **JS 的 `Object.freeze`** ✗（假阳性 ✓）。'
+    + '⇒ ★★ **「冻结是否联动会议轮次」在任何面【都没有实现】** ✗。**复活条件**：先有**会议轮次 ↔ 票箱**的联动点（`meeting.js` 的轮次生命周期 ✓），再读本键 ✓；'
+    + '`ballot.js` 只做**票箱级**冻结 ✓（暂停谓词注入 ✓）⇒ 本面不建会议状态机 ✓'],
   ['vmu.ballot.reopenFloor', '★ **轮 190 实测更正** ✗✓：原句写「票箱层面的重开已由 `ballot.js` 的 `reopen()` 承载」✓ —— '
     + '**这只对【原语】成立** ✓（`ballot.js` 确有 `reopen(reason)` ✓：只允许 `tallied` 重开 ✓、旧结论进历史 ✓；运行时证据＝`tests/vmu-ballot.test.mjs` L97-100 ✓）。'
     + '★ **但本面【不调用那个原语】** ✗：`ballotbox.js` 只从 `ballot.js` 导入 `instantRunoffTally` ✓，'
@@ -61,8 +66,13 @@ export const PLANNED_BALLOT_KEYS = Object.freeze([
     + '**复活条件（已改正 ✓）**：① 本面先有 `reopen()`（**委托原语** ✓ 或**自有** ✓，两者择一，**不许并存** ✗）；'
     + '② 届时在 `reopen()` 里**先读本键**、**在清空票之前**具名拒 ✓ —— 复用**已登记码** `VMU_BALLOT_MIN_VOTES_NOT_MET` ✓（`docs/03` §8 ✓，语义正是「成立门槛未达」、**须给当前与门槛** ✓）；'
     + '③ 0（默认）**仍交给 pack 的 `reconsiderFloor`** ✓（**不成为第二意见** ✓）。'],
-  ['vmu.ballot.reopenInitiatorScope', '发起人范围属**议程**（`board`／`meetings` ✓）：票箱里没有"动议"这一概念 ⇒ 无该约束 ✓（原理由保留，补上归属面 ✓）'],
-  ['vmu.ballot.reopenSameMeetingOnly', '同会期约束同上属**议程** ✓；`reopen(reason)` 只带理由、不带会期 ✓（**理由是审计事实** ✓）'],
+  ['vmu.ballot.reopenInitiatorScope', '★ **轮 193 实测更正** ✗✓：原句说发起人范围属**议程**（`board`／`meetings` ✓）—— '
+    + '**实测：`initiator` 在 `board.js`／`meeting.js`／`meetings.js` 里【全部零命中】** ✗ ⇒ ★ **「防滥诉」目前是【设计意图，没有任何承载】** ✗；'
+    + '票箱里确实没有「动议」这一概念 ✓ ⇒ 本面**不该**凭空造它 ✓。**复活条件**：议程面先有**动议对象**（含发起人 ✓）⇒ 再由它读本键 ✓'],
+  ['vmu.ballot.reopenSameMeetingOnly', '★ **轮 193 实测更正** ✗✓：原句说同会期约束属**议程** ✓ —— '
+    + '**实测：`sameMeeting` 在 `board.js`／`meeting.js`／`meetings.js` 里零命中** ✗ ⇒ **该约束【没有任何实现】** ✗；'
+    + '而 `ballot.js` 的 `reopen(reason)` 只带理由、不带会期 ✓（**理由是审计事实** ✓）⇒ 这一半仍为真 ✓。'
+    + '**复活条件**：票箱先能**记住自己属于哪个会期** ✓（那需要会议面给出会期标识 ✓）⇒ 再读本键 ✓'],
 ])
 
 const refuse = (code, message, hint) => ({ ok: false, code, message, hint })
