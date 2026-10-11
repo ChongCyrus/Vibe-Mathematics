@@ -761,6 +761,20 @@ vmu.packs.active: [v5r]
 | `vmu.math.formal.skeletonStyle` | enum | `off` | `off`∣`have`∣`suffices` | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 证明骨架风格（off ⇒ 请求骨架时具名拒） |
 | `vmu.math.formal.crossCheck` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 多助手交叉核对（true ⇒ 少于两个助手具名拒：一个助手无法交叉核对） |
 | `vmu.math.artifacts.dir` | string | `Computation` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 制品归档目录（相对项目根；制品路径落在其外具名拒） |
+| `vmu.math.bayes.backend` | string | `auto` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 贝叶斯后端（auto｜stan｜pymc；请求指定他者具名拒） |
+| `vmu.math.bayes.chains` | int ≥1 | `4` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 链数下限（请求低于它具名拒） |
+| `vmu.math.bayes.iterations` | int ≥0 | `2000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 迭代数下限（请求低于它具名拒） |
+| `vmu.math.bayes.diagnostics` | enum | `warn` | `warn`∣`refuse` | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | R̂/ESS 不达标处置（refuse ⇒ 具名拒） |
+| `vmu.math.ode.backend` | string | `auto` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | ODE 后端（auto｜scipy｜julia｜sundials） |
+| `vmu.math.ode.method` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 求解方法（空＝不限；非空时请求指定他者具名拒） |
+| `vmu.math.ode.tolerance` | number | `1e-8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 误差容差（请求比它更松具名拒） |
+| `vmu.math.ode.reportConvergence` | enum | `warn` | `require`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 收敛报告要求（require ⇒ 未收敛具名拒） |
+| `vmu.math.stats.backend` | string | `auto` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 统计后端（auto｜r｜python） |
+| `vmu.math.stats.multipleComparison` | enum | `none` | `none`∣`holm`∣`bh` | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 多重比较校正（非 none 时，请求静默改用他法具名拒） |
+| `vmu.math.stats.effectSize` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 是否要求效应量（true ⇒ 结果无效应量具名拒） |
+| `vmu.math.symbolic.backend` | string | `auto` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 符号后端（auto｜引擎名） |
+| `vmu.math.symbolic.assumptions` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 显式假设清单（作为默认假设） |
+| `vmu.math.symbolic.assumptionsPolicy` | enum | `allow-empty` | `require`∣`allow-empty` | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 是否强制假设（require ⇒ 无假设且未声明默认时具名拒） |
 | `vmu.archive.offlineFirst` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.receiptRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.targets` | string[] | `[zenodo,osf,swh,other]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
@@ -1201,10 +1215,6 @@ vmu.packs.active: [v5r]
 | `vmu.lifecycle.variableRoles` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.math.ad.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.ad.gradCheck` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.bayes.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.bayes.chains` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.bayes.diagnostics` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.bayes.iterations` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.discrete.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.discrete.maxEnumeration` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.formal.coqArgs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
@@ -1214,17 +1224,7 @@ vmu.packs.active: [v5r]
 | `vmu.math.network` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.nt.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.nt.proofRequiredAbove` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.ode.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.ode.method` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.ode.reportConvergence` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.ode.tolerance` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.proof` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.stats.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.stats.effectSize` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.stats.multipleComparison` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.symbolic.assumptions` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.symbolic.assumptionsPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
-| `vmu.math.symbolic.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.tensor.backend` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.members.may` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.memory.compactEveryMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |

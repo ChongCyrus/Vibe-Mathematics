@@ -341,7 +341,9 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
   // names that single source. The count is asserted above; this pins WHERE it is read from.
   // ROUND 224: the floor moved with the universe (49 measured after the phantom removal), and the SOURCE is what this
   // assertion is really about: the planned list must come from the generated registry, not from a local list.
-  ok(zero.status().plannedKeys.length > 40 && zero.status().plannedSource === 'settings/schema.js (core + planned)',
+  // ROUND 226: the floor follows the measured universe again - fourteen more vmu.math.* keys were wired this round, so
+  // the planned remainder fell from 49 to 35. The SOURCE is what this assertion is about.
+  ok(zero.status().plannedKeys.length > 30 && zero.status().plannedSource === 'settings/schema.js (core + planned)',
     'the planned list is read from the generated registry', zero.status().plannedSource)
 }
 
@@ -530,6 +532,70 @@ if (failed === 0) {
     'artifacts.dir[-]: an artifact outside the declared directory is refused by name')
   const custom = mk({ settings: { 'vmu.math.artifacts.dir': 'Work/Artifacts' }, seam: () => ({ ok: true, result: { value: 1 }, artifactPath: 'Work/Artifacts/out.txt' }) })
   ok(custom.t.run({ op: 'formal/prove' }).ok === true, 'artifacts.dir[+]: changing the declaration changes which path is accepted')
+}
+
+
+// ── ROUND 226: bayes / ode / stats / symbolic — fourteen declared keys that no face read until now ─────────────
+{
+  // bayes.backend / chains / iterations
+  const b = mk({ settings: { 'vmu.math.bayes.backend': 'stan', 'vmu.math.bayes.chains': 4, 'vmu.math.bayes.iterations': 2000 }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(codeOf(() => b.t.plan({ op: 'bayes/sample', backend: 'pymc' })) === 'VMU_MATH_UNSUPPORTED_OP',
+    'bayes.backend[-]: a backend other than the declared one is refused by name')
+  ok(b.t.plan({ op: 'bayes/sample', backend: 'stan' }).ok === true, 'bayes.backend[+]: the declared backend passes')
+  ok(codeOf(() => b.t.plan({ op: 'bayes/sample', chains: 2 })) === 'VMU_MATH_INVALID_INPUT',
+    'bayes.chains[-]: fewer chains than declared is refused by name')
+  ok(b.t.plan({ op: 'bayes/sample', chains: 8 }).ok === true, 'bayes.chains[+]: more chains than the floor is fine')
+  ok(codeOf(() => b.t.plan({ op: 'bayes/sample', iterations: 500 })) === 'VMU_MATH_INVALID_INPUT',
+    'bayes.iterations[-]: fewer iterations than declared is refused by name')
+  ok(b.t.plan({ op: 'bayes/sample', iterations: 4000 }).ok === true, 'bayes.iterations[+]: above the floor passes')
+  const loose = mk({ settings: { 'vmu.math.bayes.chains': 1, 'vmu.math.bayes.iterations': 100 }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(loose.t.plan({ op: 'bayes/sample', chains: 1, iterations: 100 }).ok === true, 'bayes.chains[+]/iterations[+]: a lowered declaration admits the smaller request')
+  // bayes.diagnostics: the RESULT decides
+  const refusing = mk({ settings: { 'vmu.math.bayes.diagnostics': 'refuse' }, seam: () => ({ ok: true, result: { value: 1 }, bayesDiagnosticsFailed: true }) })
+  ok(codeOf(() => refusing.t.run({ op: 'bayes/sample' })) === 'VMU_MATH_NOT_CONVERGED',
+    'bayes.diagnostics[-]: failed diagnostics are refused by name under "refuse"')
+  const warning = mk({ settings: { 'vmu.math.bayes.diagnostics': 'warn' }, seam: () => ({ ok: true, result: { value: 1 }, bayesDiagnosticsFailed: true }) })
+  ok(warning.t.run({ op: 'bayes/sample' }).ok === true, 'bayes.diagnostics[+]: under "warn" the run is recorded instead of refused')
+
+  // ode.backend / method / tolerance / reportConvergence
+  const o = mk({ settings: { 'vmu.math.ode.backend': 'scipy', 'vmu.math.ode.method': 'rk45', 'vmu.math.ode.tolerance': 1e-8 }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(codeOf(() => o.t.plan({ op: 'ode/solve', backend: 'julia' })) === 'VMU_MATH_UNSUPPORTED_OP', 'ode.backend[-]: another backend is refused by name')
+  ok(codeOf(() => o.t.plan({ op: 'ode/solve', method: 'euler' })) === 'VMU_MATH_UNSUPPORTED_OP', 'ode.method[-]: another method is refused by name')
+  ok(codeOf(() => o.t.plan({ op: 'ode/solve', tolerance: 1e-3 })) === 'VMU_MATH_INVALID_INPUT', 'ode.tolerance[-]: a LOOSER tolerance is refused by name')
+  ok(o.t.plan({ op: 'ode/solve', tolerance: 1e-10, method: 'rk45', backend: 'scipy' }).ok === true, 'ode.tolerance[+]: a tighter tolerance is fine')
+  const noMethod = mk({ settings: { 'vmu.math.ode.method': '' }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(noMethod.t.plan({ op: 'ode/solve', method: 'anything' }).ok === true, 'ode.method[empty]: an empty declaration leaves the method free')
+  const needConv = mk({ settings: { 'vmu.math.ode.reportConvergence': 'require' }, seam: () => ({ ok: true, result: { value: 1 }, converged: false }) })
+  ok(codeOf(() => needConv.t.run({ op: 'ode/solve' })) === 'VMU_STATE', 'ode.reportConvergence[-]: an unconverged result is refused under "require"')
+  const warnConv = mk({ settings: { 'vmu.math.ode.reportConvergence': 'warn' }, seam: () => ({ ok: true, result: { value: 1 }, converged: false }) })
+  ok(warnConv.t.run({ op: 'ode/solve' }).ok === true, 'ode.reportConvergence[+]: under "warn" it is recorded')
+
+  // stats.backend / multipleComparison / effectSize
+  const st = mk({ settings: { 'vmu.math.stats.backend': 'python', 'vmu.math.stats.multipleComparison': 'holm' }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(codeOf(() => st.t.plan({ op: 'stats/test', backend: 'r' })) === 'VMU_MATH_UNSUPPORTED_OP', 'stats.backend[-]: another backend is refused by name')
+  ok(codeOf(() => st.t.plan({ op: 'stats/test', multipleComparison: 'bh' })) === 'VMU_MATH_INVALID_INPUT',
+    'stats.multipleComparison[-]: silently switching the declared correction is refused by name')
+  ok(st.t.plan({ op: 'stats/test', multipleComparison: 'holm' }).ok === true, 'stats.multipleComparison[+]: the declared correction passes')
+  const noCorr = mk({ settings: { 'vmu.math.stats.multipleComparison': 'none' }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(noCorr.t.plan({ op: 'stats/test', multipleComparison: 'bh' }).ok === true, 'stats.multipleComparison[none]: with none declared the request is free')
+  const needsEffect = mk({ settings: { 'vmu.math.stats.effectSize': true }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(codeOf(() => needsEffect.t.run({ op: 'stats/test' })) === 'VMU_MATH_INVALID_INPUT',
+    'stats.effectSize[-]: a result without an effect size is refused by name')
+  const withEffect = mk({ settings: { 'vmu.math.stats.effectSize': true }, seam: () => ({ ok: true, result: { value: 1 }, effectSize: 0.42 }) })
+  ok(withEffect.t.run({ op: 'stats/test' }).ok === true, 'stats.effectSize[+]: a result carrying one passes')
+
+  // symbolic.backend / assumptions / assumptionsPolicy
+  const sy = mk({ settings: { 'vmu.math.symbolic.backend': 'sympy' }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(codeOf(() => sy.t.plan({ op: 'symbolic/solve', backend: 'mathematica' })) === 'VMU_MATH_UNSUPPORTED_OP',
+    'symbolic.backend[-]: another backend is refused by name')
+  const strict = mk({ settings: { 'vmu.math.symbolic.assumptionsPolicy': 'require' }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(codeOf(() => strict.t.plan({ op: 'symbolic/solve' })) === 'VMU_MATH_INVALID_INPUT',
+    'symbolic.assumptionsPolicy[-]: require refuses an operation with no assumptions to rely on')
+  ok(strict.t.plan({ op: 'symbolic/solve', assumptions: ['x>0'] }).ok === true, 'symbolic.assumptionsPolicy[+]: supplying assumptions satisfies it')
+  const declared = mk({ settings: { 'vmu.math.symbolic.assumptionsPolicy': 'require', 'vmu.math.symbolic.assumptions': ['x>0'] }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(declared.t.plan({ op: 'symbolic/solve' }).ok === true, 'symbolic.assumptions[+]: a DECLARED assumption list satisfies a require policy')
+  const relaxed = mk({ settings: { 'vmu.math.symbolic.assumptionsPolicy': 'allow-empty' }, seam: () => ({ ok: true, result: { value: 1 } }) })
+  ok(relaxed.t.plan({ op: 'symbolic/solve' }).ok === true, 'symbolic.assumptionsPolicy[allow-empty]: the declared default does not demand assumptions')
 }
 
 console.log('=== VMU MATHTOOLS: ' + passed + ' passed, 0 failed ===')

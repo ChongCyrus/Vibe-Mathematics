@@ -56,6 +56,11 @@ export const WIRED_KEYS = Object.freeze([
   'vmu.math.formal.assistants', 'vmu.math.formal.onDisagreement', 'vmu.math.formal.librarySearch',
   'vmu.math.formal.skeletonStyle', 'vmu.math.formal.crossCheck',
   'vmu.math.artifacts.dir',
+  // ROUND 226: bayes / ode / stats / symbolic
+  'vmu.math.bayes.backend', 'vmu.math.bayes.chains', 'vmu.math.bayes.iterations', 'vmu.math.bayes.diagnostics',
+  'vmu.math.ode.backend', 'vmu.math.ode.method', 'vmu.math.ode.tolerance', 'vmu.math.ode.reportConvergence',
+  'vmu.math.stats.backend', 'vmu.math.stats.multipleComparison', 'vmu.math.stats.effectSize',
+  'vmu.math.symbolic.backend', 'vmu.math.symbolic.assumptions', 'vmu.math.symbolic.assumptionsPolicy',
   'vmu.math.linalg.backend', 'vmu.math.linalg.requireResidual', 'vmu.math.linalg.sparse',
   'vmu.math.convergence.policy', 'vmu.math.numeric.warnings', 'vmu.math.numeric.stability',
   'vmu.math.artifacts.maxFileMb', 'vmu.math.artifacts.maxRuns', 'vmu.math.artifacts.maxAttemptsPerRun',
@@ -201,6 +206,19 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
     skeletonStyle: ['off', 'have', 'suffices'].includes(sget('vmu.math.formal.skeletonStyle')) ? sget('vmu.math.formal.skeletonStyle') : 'off',
     crossCheck: sget('vmu.math.formal.crossCheck') === true,
     artifactsDir: str(sget('vmu.math.artifacts.dir')) || 'Computation',
+    // ROUND 226: bayes / ode / stats / symbolic - declared in docs/09 and, until now, read by nobody.
+    bayesBackend: str(sget('vmu.math.bayes.backend')), bayesChains: num(sget('vmu.math.bayes.chains'), 4),
+    bayesIterations: num(sget('vmu.math.bayes.iterations'), 2000),
+    bayesDiagnostics: sget('vmu.math.bayes.diagnostics') === 'refuse' ? 'refuse' : 'warn',
+    odeBackend: str(sget('vmu.math.ode.backend')), odeMethod: str(sget('vmu.math.ode.method')),
+    odeTolerance: num(sget('vmu.math.ode.tolerance'), 1e-8),
+    odeReportConvergence: sget('vmu.math.ode.reportConvergence') === 'require' ? 'require' : 'warn',
+    statsBackend: str(sget('vmu.math.stats.backend')),
+    statsMultipleComparison: ['none', 'holm', 'bh'].includes(sget('vmu.math.stats.multipleComparison')) ? sget('vmu.math.stats.multipleComparison') : 'none',
+    statsEffectSize: sget('vmu.math.stats.effectSize') === true,
+    symbolicBackend: str(sget('vmu.math.symbolic.backend')),
+    symbolicAssumptions: (() => { const a = sget('vmu.math.symbolic.assumptions'); return Array.isArray(a) ? a.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : [] })(),
+    symbolicAssumptionsPolicy: sget('vmu.math.symbolic.assumptionsPolicy') === 'require' ? 'require' : 'allow-empty',
     linalgBackend: str(sget('vmu.math.linalg.backend')), requireResidual: sget('vmu.math.linalg.requireResidual') === true,
     sparse: sget('vmu.math.linalg.sparse') === true,
     convergence: sget('vmu.math.convergence.policy') === 'require' ? 'require' : 'report',
@@ -271,6 +289,13 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
     'vmu.math.formal.assistants': K.assistants, 'vmu.math.formal.onDisagreement': K.onDisagreement,
     'vmu.math.formal.librarySearch': K.librarySearch, 'vmu.math.formal.skeletonStyle': K.skeletonStyle,
     'vmu.math.formal.crossCheck': K.crossCheck, 'vmu.math.artifacts.dir': K.artifactsDir,
+    'vmu.math.bayes.backend': K.bayesBackend, 'vmu.math.bayes.chains': K.bayesChains,
+    'vmu.math.bayes.iterations': K.bayesIterations, 'vmu.math.bayes.diagnostics': K.bayesDiagnostics,
+    'vmu.math.ode.backend': K.odeBackend, 'vmu.math.ode.method': K.odeMethod,
+    'vmu.math.ode.tolerance': K.odeTolerance, 'vmu.math.ode.reportConvergence': K.odeReportConvergence,
+    'vmu.math.stats.backend': K.statsBackend, 'vmu.math.stats.multipleComparison': K.statsMultipleComparison,
+    'vmu.math.stats.effectSize': K.statsEffectSize, 'vmu.math.symbolic.backend': K.symbolicBackend,
+    'vmu.math.symbolic.assumptions': K.symbolicAssumptions, 'vmu.math.symbolic.assumptionsPolicy': K.symbolicAssumptionsPolicy,
     'vmu.math.linalg.backend': K.linalgBackend, 'vmu.math.linalg.requireResidual': K.requireResidual, 'vmu.math.linalg.sparse': K.sparse,
     'vmu.math.convergence.policy': K.convergence, 'vmu.math.numeric.warnings': K.warnings, 'vmu.math.numeric.stability': K.stability,
     'vmu.math.artifacts.maxFileMb': K.maxFileMb, 'vmu.math.artifacts.maxRuns': K.maxRuns, 'vmu.math.artifacts.maxAttemptsPerRun': K.maxAttempts,
@@ -399,6 +424,65 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
             'set it to first-order or monte-carlo deliberately, or drop the request', evalKey('vmu.math.units.uncertainty'))
         }
       }
+      // ⑦c BAYES / ODE / STATS / SYMBOLIC (round 226: fourteen declared keys read by nobody until now)
+      if (/^bayes\//.test(req.op)) {
+        evalKey('vmu.math.bayes.backend')
+        if (K.bayesBackend && req.backend && req.backend !== K.bayesBackend) {
+          throw deny('VMU_MATH_UNSUPPORTED_OP', 'requested bayes backend is not the declared one',
+            'declared=' + K.bayesBackend + ', requested=' + req.backend + ' (vmu.math.bayes.backend)', evalKey('vmu.math.bayes.backend'))
+        }
+        evalKey('vmu.math.bayes.chains')
+        if (req.chains !== undefined && num(req.chains) < K.bayesChains) {
+          throw deny('VMU_MATH_INVALID_INPUT', 'chains below the declared minimum: ' + num(req.chains) + ' < ' + K.bayesChains,
+            'pass chains >= ' + K.bayesChains + ', or lower vmu.math.bayes.chains deliberately', mark(evalKey('vmu.math.bayes.chains'), 'vmu.math.bayes.chains'))
+        }
+        evalKey('vmu.math.bayes.iterations')
+        if (req.iterations !== undefined && num(req.iterations) < K.bayesIterations) {
+          throw deny('VMU_MATH_INVALID_INPUT', 'iterations below the declared minimum: ' + num(req.iterations) + ' < ' + K.bayesIterations,
+            'pass iterations >= ' + K.bayesIterations + ', or lower vmu.math.bayes.iterations deliberately', mark(evalKey('vmu.math.bayes.iterations'), 'vmu.math.bayes.iterations'))
+        }
+      }
+      if (/^ode\//.test(req.op)) {
+        evalKey('vmu.math.ode.backend')
+        if (K.odeBackend && req.backend && req.backend !== K.odeBackend) {
+          throw deny('VMU_MATH_UNSUPPORTED_OP', 'requested ode backend is not the declared one',
+            'declared=' + K.odeBackend + ', requested=' + req.backend + ' (vmu.math.ode.backend)', evalKey('vmu.math.ode.backend'))
+        }
+        evalKey('vmu.math.ode.method')
+        if (K.odeMethod && req.method && req.method !== K.odeMethod) {
+          throw deny('VMU_MATH_UNSUPPORTED_OP', 'requested ode method is not the declared one',
+            'declared=' + K.odeMethod + ', requested=' + req.method + ' (vmu.math.ode.method)', mark(evalKey('vmu.math.ode.method'), 'vmu.math.ode.method'))
+        }
+        evalKey('vmu.math.ode.tolerance')
+        if (req.tolerance !== undefined && numf(req.tolerance, 0) > K.odeTolerance) {
+          throw deny('VMU_MATH_INVALID_INPUT', 'requested tolerance is looser than the declared one: ' + numf(req.tolerance, 0) + ' > ' + K.odeTolerance,
+            'pass tolerance <= ' + K.odeTolerance + ', or raise vmu.math.ode.tolerance deliberately', mark(evalKey('vmu.math.ode.tolerance'), 'vmu.math.ode.tolerance'))
+        }
+      }
+      if (/^stats\//.test(req.op)) {
+        evalKey('vmu.math.stats.backend')
+        if (K.statsBackend && req.backend && req.backend !== K.statsBackend) {
+          throw deny('VMU_MATH_UNSUPPORTED_OP', 'requested stats backend is not the declared one',
+            'declared=' + K.statsBackend + ', requested=' + req.backend + ' (vmu.math.stats.backend)', evalKey('vmu.math.stats.backend'))
+        }
+        evalKey('vmu.math.stats.multipleComparison')
+        if (K.statsMultipleComparison !== 'none' && req.multipleComparison !== undefined && req.multipleComparison !== K.statsMultipleComparison) {
+          throw deny('VMU_MATH_INVALID_INPUT', 'the declared multiple-comparison correction is ' + K.statsMultipleComparison,
+            'the declaration is a decision, not a default to override silently (vmu.math.stats.multipleComparison)', mark(evalKey('vmu.math.stats.multipleComparison'), 'vmu.math.stats.multipleComparison'))
+        }
+      }
+      if (/^symbolic\//.test(req.op)) {
+        evalKey('vmu.math.symbolic.backend')
+        if (K.symbolicBackend && req.backend && req.backend !== K.symbolicBackend) {
+          throw deny('VMU_MATH_UNSUPPORTED_OP', 'requested symbolic backend is not the declared one',
+            'declared=' + K.symbolicBackend + ', requested=' + req.backend + ' (vmu.math.symbolic.backend)', evalKey('vmu.math.symbolic.backend'))
+        }
+        evalKey('vmu.math.symbolic.assumptions')
+        if (K.symbolicAssumptionsPolicy === 'require' && !(Array.isArray(req.assumptions) ? req.assumptions.length : K.symbolicAssumptions.length)) {
+          throw deny('VMU_MATH_INVALID_INPUT', 'vmu.math.symbolic.assumptionsPolicy=require: this operation needs explicit assumptions',
+            'pass assumptions:[…], or declare vmu.math.symbolic.assumptions', mark(evalKey('vmu.math.symbolic.assumptionsPolicy'), 'vmu.math.symbolic.assumptionsPolicy'))
+        }
+      }
       // ⑧ INTERVAL (interval.enabled)
       if (req.interval !== undefined) evalKey('vmu.math.interval.enabled')
       if (req.interval === true && !K.interval) {
@@ -497,6 +581,26 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
       if (K.requireResidual && !(raw.residual !== undefined && raw.residual !== null)) {
         throw deny('VMU_STATE', 'vmu.math.linalg.requireResidual=true requires a residual on every solve',
           'the seam returned no residual: a solve without an error estimate is not evidence', mark(enforced, 'vmu.math.linalg.requireResidual'))
+      }
+      // ROUND 226: the result-side decisions of the four new families.
+      if (raw.bayesDiagnosticsFailed === true) {
+        mark(enforced, 'vmu.math.bayes.diagnostics')
+        if (K.bayesDiagnostics === 'refuse') {
+          throw deny('VMU_MATH_NOT_CONVERGED', 'the sampler diagnostics did not pass and vmu.math.bayes.diagnostics=refuse',
+            'R-hat/ESS are not acceptable: fix the model or set the key to warn', mark(enforced, 'vmu.math.bayes.diagnostics'))
+        }
+      }
+      if (raw.converged === false && /^ode\//.test(p.plan.op)) {
+        mark(enforced, 'vmu.math.ode.reportConvergence')
+        if (K.odeReportConvergence === 'require') {
+          throw deny('VMU_STATE', 'the ODE solver did not converge and vmu.math.ode.reportConvergence=require',
+            'tighten the tolerance or change the method; the declaration asks for a refusal', mark(enforced, 'vmu.math.ode.reportConvergence'))
+        }
+      }
+      if (K.statsEffectSize && /^stats\//.test(p.plan.op) && raw.effectSize === undefined) {
+        mark(enforced, 'vmu.math.stats.effectSize')
+        throw deny('VMU_MATH_INVALID_INPUT', 'vmu.math.stats.effectSize=true but the result carries no effect size',
+          'a p-value alone is not the declared standard here', mark(enforced, 'vmu.math.stats.effectSize'))
       }
       // ROUND 223: vmu.math.formal.onDisagreement - when the assistants disagree, block refuses and report records.
       if (raw.assistantDisagreement === true) {
