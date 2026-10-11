@@ -104,6 +104,10 @@ const VERDICTS = { EQUAL: [], PROPERTY: [], NOT_ADOPTED: [], DIVERGENT: [] }
   // 路径敌对的三种名字：两边都必须判"不可原样使用" ✓（v5r 改写、vmu 具名拒 ✓）。
   const pathHostile = ['../evil', 'a/b', 'x\u0000y']
   const neutralised = pathHostile.filter((s) => V5R.idSafe(s) !== s)
+  // EMPTY_ALLOWED: the right-hand side is a three-element LITERAL above, so this comparison cannot be two empty
+  // collections - which is the only way the detector's B shape (`.length === .length` between two collections) could
+  // pass vacuously. Round 182: the detector cannot tell a literal from a filtered collection, so the sanctioned
+  // exception comment is used rather than weakening the shape rule. The assertion below (E1b) pins the measured rewrite.
   ok(neutralised.length === pathHostile.length, 'E1. v5r NEUTRALISES every PATH-hostile name (idSafe rewrites it)', pathHostile.join('|'))
   // 实测值（不是我以为的值 ✗ —— 第一版写成 `..-evil`，跑出来是 `evil`：idSafe 还**剥掉开头连续的点/横线** ✓，
   // 所以路径穿越在 v5r 侧被消掉的是**整段前导**，这也是它真正在防的东西 ✓）。
