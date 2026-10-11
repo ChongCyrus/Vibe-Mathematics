@@ -1023,10 +1023,10 @@ recount(ballotId):
 | `vmu.control.degradeSteps` | string[] | `[]` | 子集 `{read-only,report-only,no-spawn}` | 所办 | 立即 | 降级档位 |
 | `vmu.control.canPauseRoles` | string[] | `['office','chair']` | 角色槽位数组 | pack | 立即 | 谁可以暂停 |
 | `vmu.control.stopClearsRegistry` | bool | true | bool | pack | 重启 | stop 是否清空注册（**当前行为 ✓**） |
-| `vmu.scheduler.triggers` | object[] | `[]` | `{id,at/on,action,enabled}[]` | 所办 | 立即 | 触发器表 |
-| `vmu.scheduler.maxTriggers` | int | 8 | ≥0 | 所办 | 立即 | 触发器上限 |
-| `vmu.scheduler.timeSource` | enum | `clock` | `clock｜host-timer` | 所办 | 重启 | 时间源（`host-timer` **未接线** ✗） |
-| `vmu.scheduler.actionsAllowed` | string[] | `['emit-hook','prompt']` | 子集（**不含改状态** ✗） | pack | 立即 | 触发器允许的动作 |
+| `vmu.schedule.triggers` | object[] | `[]` | `{id,at/on,action,enabled}[]` | 所办 | 立即 | 触发器表（**轮 106 更正**：规范族是 `vmu.schedule.*` ✓；此前写的孪生名（`scheduler.triggers`，**此处不写全前缀以免被生成器当成声明源** ✗✓）已改为规范名，且模块**不再读取孪生名** ✓） |
+| `vmu.schedule.maxPending` | int | 8 | ≥0 | 所办 | 立即 | 触发器上限（**轮 106 更正**：原写作孪生名 `scheduler.maxTriggers` ✗ ⇒ 改规范名 ✓） |
+| `vmu.schedule.timeSource` | enum | `clock` | `clock｜host-timer` | 所办 | 重启 | 时间源（**轮 106 更正**：原写作孪生名 `scheduler.timeSource` ✗ ⇒ 改规范名 ✓；`host-timer` **未接线** ✗） |
+| `vmu.schedule.actionsAllowed` | string[] | `['emit-hook','prompt']` | 子集（**不含改状态** ✗） | pack | 立即 | 触发器允许的动作（**轮 106 更正**：原写作孪生名 `scheduler.actionsAllowed` ✗ ⇒ 改规范名 ✓） |
 | `vmu.metrics.windowMs` | ms | 0 | ≥0 | 所办 | 立即 | 度量窗口 |
 | `vmu.metrics.indicators` | string[] | `['throughput','cycle','backlog','wip']` | 子集 | 所办 | 立即 | 指标白名单 |
 | `vmu.metrics.allowTrigger` | bool | false | bool | 所办 | 立即 | 度量是否可触发动作（**建议恒 false** ✓） |

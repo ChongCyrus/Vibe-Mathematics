@@ -251,7 +251,7 @@ const S = (extra = {}) => Object.assign({ 'vmu.schedule.maxPending': 8 }, extra)
   throwsNamed(() => acts.once({ inMs: 10, what: '  ' }), 'VMU_INVALID_ARGUMENT', 'actions: a blank `what` is refused')
 }
 
-// ── 9. declarative seeds (vmu.schedule.triggers / vmu.scheduler.triggers) ─────────────────────────────
+// ── 9. declarative seeds (vmu.schedule.triggers is the CANONICAL name; the `vmu.scheduler.*` twin is ignored) ──
 {
   const c = fakeClock(0)
   const log = fakeLog()
@@ -259,7 +259,7 @@ const S = (extra = {}) => Object.assign({ 'vmu.schedule.maxPending': 8 }, extra)
   ok(seeded.list().count === 2, 'seeds: two declarative triggers are registered')
   c.advance(100)
   ok(seeded.due().count === 1, 'seeds: the seeded one-shot becomes due on the injected clock')
-  const broken = createScheduler({ clock: c.clock, log, settings: S({ 'vmu.scheduler.triggers': [{ inMs: 100, what: 'lab/bad', intervalMs: -5 }, { inMs: 10, what: 'lab/good' }] }) })
+  const broken = createScheduler({ clock: c.clock, log, settings: S({ 'vmu.schedule.triggers': [{ inMs: 100, what: 'lab/bad', intervalMs: -5 }, { inMs: 10, what: 'lab/good' }] }) })
   ok(broken.list().count === 1, 'seeds: a rejected seed does not abort the rest')
   ok(broken.status().unwired['seed-rejected'] === 1 && log.rows.some((x) => x.type === 'schedule/seed-rejected'), 'seeds: a rejected seed is COUNTED and audited, never swallowed')
 }

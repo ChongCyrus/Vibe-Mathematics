@@ -1375,10 +1375,6 @@ vmu.packs.active: [v5r]
 | `vmu.schedule.defaultTimezone` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.schedule.dstPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.schedule.recurrenceEnabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.scheduler.actionsAllowed` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 设计阶段登记：首个声明卷 08（共见 2 卷：08、14），尚未实现（元数据以各卷为准） |
-| `vmu.scheduler.maxTriggers` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 设计阶段登记：首个声明卷 08（共见 2 卷：08、14），尚未实现（元数据以各卷为准） |
-| `vmu.scheduler.timeSource` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 设计阶段登记：首个声明卷 08（共见 2 卷：08、14），尚未实现（元数据以各卷为准） |
-| `vmu.scheduler.triggers` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 设计阶段登记：首个声明卷 08（共见 2 卷：08、14），尚未实现（元数据以各卷为准） |
 | `vmu.script.stderrCap` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.script.stdoutCap` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.script.timeoutMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 2 卷：16、20），尚未实现（元数据以各卷为准） |

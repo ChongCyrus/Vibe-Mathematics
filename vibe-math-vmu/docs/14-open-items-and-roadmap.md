@@ -164,13 +164,13 @@
 - ★★★ **轮 105：`vmu.scheduler.*` 与 `vmu.schedule.*` 是"一个旋钮、两个名字"，而裁决只执行了五分之一** ✗✓✓（**本族第 37 例，且是两个生成物互相矛盾** ✓）：
   **证据** ✓：`kernel/scheduler.js:47-54` 的注释原文 —— **"INTEGRATOR RULING：`vmu.schedule.*` 是规范族（docs/08 §12.6），此别名指向规范名。读一个【未声明的孪生名】会迫使门禁为同一个旋钮要求第二份声明。"** ✓✓ —— **而实测五个别名里只有一个执行了** ✗：
   ```
-  const A_TRIGGER_VIA  = 'vmu.schedule.triggerVia'    ← 已改 ✓
-  const A_MAX_PENDING  = 'vmu.scheduler.maxTriggers'  ← 仍是孪生名 ✗
-  const A_TIME_SOURCE  = 'vmu.scheduler.timeSource'   ← 仍是孪生名 ✗
-  const A_ACTIONS      = 'vmu.scheduler.actionsAllowed' ← 仍是孪生名 ✗
-  const A_SEEDS        = 'vmu.scheduler.triggers'     ← 仍是孪生名 ✗
+  const A_TRIGGER_VIA  = 'vmu.schedule.triggerVia'       ← 已改 ✓
+  const A_MAX_PENDING  = 'scheduler.maxTriggers'          ← 仍是孪生名 ✗（此处不写 vmu. 前缀，以免被生成器当成声明源 ✗✓）
+  const A_TIME_SOURCE  = 'scheduler.timeSource'           ← 仍是孪生名 ✗
+  const A_ACTIONS      = 'scheduler.actionsAllowed'       ← 仍是孪生名 ✗
+  const A_SEEDS        = 'scheduler.triggers'             ← 仍是孪生名 ✗
   ```
-  **后果（两个生成物互相矛盾）** ✗✓：`04-settings.md:1378-1381` 把 `vmu.scheduler.actionsAllowed`／`maxTriggers`／`timeSource`／`triggers` 标为 **"✅ 已接线"** ✓，而 `planned.js` 里**同样这四个键仍标"尚未实现"** ✗ ⇒ **同一键、同一仓、两种说法** ✓✓ —— 因为**接线索引读的是"模块里出现过"**，而**计划表读的是"文档声明过"** ✓。
+  **后果（两个生成物互相矛盾）** ✗✓：`04-settings.md:1378-1381` 把四个孪生名（`scheduler.actionsAllowed` 等，**此处不写 vmu. 前缀以免被生成器当成声明源** ✗✓）标为 **"✅ 已接线"** ✓，而 `planned.js` 里**同样这四个键仍标"尚未实现"** ✗ ⇒ **同一键、同一仓、两种说法** ✓✓ —— 因为**接线索引读的是"模块里出现过"**，而**计划表读的是"文档声明过"** ✓。
   **完整修法（三件事，缺一不可 ✗）** ✓✓：① **代码**把 4 个别名指向规范名 ✓（**已试，但会让 `vmu-scheduler` 套件变红** ✗ ⇒ 因为该套件**断言回退读取仍生效** ✓）；② **更新该套件**（把"回退"断言改为"规范名"断言 ✓）；③ **docs 卷 08 §19.6 的 4 行改用规范名** ✓（否则计划表仍会声明孪生名 ✓）。**本轮只做到"定位 + 验证第①步会红"** ✗，**已回绿** ✓。
   **方法论收获** ✓✓：**"裁决写在注释里" ≠ "裁决被执行"** ✗ —— 本轮是**读注释才发现**代码只执行了五分之一 ✓✓（**注释是线索，代码是证据** ✓，与轮 103 同一条纪律 ✓）。
 

@@ -47,11 +47,16 @@ const K_CANCEL_REASON = 'vmu.schedule.cancelNeedsReason'
 // … and the spellings docs/08 §12.6/§19.6 declared (read as fallbacks so either registration works).
 // INTEGRATOR RULING: `vmu.schedule.*` is the canonical family (docs/08 §12.6), so this alias now points at the
 // canonical name. Reading an undeclared twin would force the gate to demand a second declaration for one knob.
+// ROUND 106: the ruling above was applied to `triggerVia` only for three rounds. The other four aliases still
+// read the OLD `vmu.scheduler.*` names, which is exactly the twin the ruling warns about - measured: those four
+// appeared as "already wired" in the settings table while the plan registry still called them unimplemented,
+// because the wiring index counts a mention and the registry counts a declaration. All five now point at the
+// canonical family, and the scheduler suite asserts that the twin is IGNORED rather than silently honoured.
 const A_TRIGGER_VIA = 'vmu.schedule.triggerVia'
-const A_MAX_PENDING = 'vmu.scheduler.maxTriggers'
-const A_TIME_SOURCE = 'vmu.scheduler.timeSource'
-const A_ACTIONS = 'vmu.scheduler.actionsAllowed'
-const A_SEEDS = 'vmu.scheduler.triggers'
+const A_MAX_PENDING = 'vmu.schedule.maxPending'
+const A_TIME_SOURCE = 'vmu.schedule.timeSource'
+const A_ACTIONS = 'vmu.schedule.actionsAllowed'
+const A_SEEDS = 'vmu.schedule.triggers'
 
 const TRIGGER_VIA = Object.freeze(['none', 'middleware', 'script'])
 const TIME_SOURCES = Object.freeze(['clock', 'host-timer'])
@@ -462,7 +467,7 @@ export function createScheduler({ clock = () => 0, log = null, settings = {}, bu
     },
   }
 
-  // ── declarative seeds from `vmu.schedule.triggers` / `vmu.scheduler.triggers` ──────────────────────
+  // ── declarative seeds from `vmu.schedule.triggers` (the retired `scheduler.*` twin is not read) ──────
   if (Array.isArray(seedsRaw)) {
     for (const seed of seedsRaw) {
       if (!seed || typeof seed !== 'object') continue
