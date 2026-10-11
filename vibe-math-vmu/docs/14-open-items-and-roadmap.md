@@ -1161,6 +1161,15 @@
   **门禁与证据** ✓：**`VMU COMPLIANCE: 78 passed, 0 failed`** ✓；**`regen-all: 9/9 in sync`** ✓；`docs/04` **6 行**由 `⚠️` 变 `✅ 已接线` ✓；**未接线 166 → 160** ✓。
   **未做（明写 ✗）**：**其余 160 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 250：新增"先量后写"侦察工具并在【首次尝试中零事故】；接 `vmu.crypto.*` 5 键（含一个真发现：签名接缝必须【同步】）；未接线 160 → 155** ✓✓
+  ★★★ **① 新工具 `scripts/dev/recon.mjs`** ✓✓ —— **上一轮四种"语义错误"各得一道闸** ✓：**`exportsOf`／`expectExport`**（**导出名，附近似名** ✓）、**`kindOf`／`expectKind`**（**Array／Set／object／null 分清 ✓**）、**`countOf`／`expectCount`**（**逐处列出出现行号 ✓**）、**`linesMatching`**（**先读形状** ✓）。**自检 8/8** ✓（**自检本身的两处失败又恰好是那类错误：`expectExport` 是 async 而我的检查是同步；`read.has(k)` 已在上轮被我改成 `includes` 而我用了过期字面量** ✓✓）。
+  ★★★ **② 工具【当场】证明了价值** ✓✓：**我对 `crypto.js` 返回形状的假设（`return { sign, verify…`）出现 0 次** ✗ ⇒ **`expectCount` 在任何写入之前抛错** ✓ **`git` 确认该文件与 HEAD 一字不差** ✓✓ —— **与轮 245 那次"猜锚点、劈行、弄坏文件"形成直接对照** ✓。
+  ★★★ **③ 5 键接入既有的 `crypto.js`（实测它已读 5 个同族键）** ✓✓，**真机逐支验证** ✓：**`enabled=false` ⇒ 具名拒（而非静默无签名）** ✓；**`requireSignedAudit=true` ＋ 无 purpose ⇒ 拒并点名 `missing:["purpose"]`** ✓（**无 purpose 的信封无法被审计，这正是该要求的要点** ✓）；★ **声明 `timestampAuthority` 而接缝没给边戳 ⇒ 拒并点名该机构** ✓（**"缺失"值得拒，不值得藏** ✓）、**给了就记进信封（`timestamp` ＋ `timestampAuthority`）** ✓；★ **`rotateAfterDays=0` ⇒ 回执【明说无策略】而非编一个到期日** ✓，**1 天周期：刚建不 due、两天后 due 且报 `ageDays:2`** ✓；**`verifyInterval` 同形**（**从未验证 ⇒ due；刚验证 ⇒ 不 due；八天后 ⇒ due** ✓）；**未知密钥 ⇒ `VMU_CRYPTO_KEY_UNKNOWN`** ✓。
+  ★★★ **④ 一个真发现：该面的接缝是【同步调用】的** ✓✓ —— **我最初用 `async` signer 探针，结果 `out.signature` 永远是 undefined ⇒ 报"接缝没返回签名"** ✗ ⇒ ★★ **裁定：接缝必须同步；这条已写进套件注释与断言** ✓（**不是缺陷，是该面的既定契约 ✓**）。
+  **⑤ 断言补在套件汇总行之前** ✓：**`VMU CRYPTO: 29 → 44 passed, 0 failed`** ✓（**+15，一次成功** ✓）；★ **其中一条用 Proxy 记录"五个键真的被读"，与其余断言同标准** ✓。
+  **门禁与证据** ✓：**`VMU CRYPTO: 44 passed, 0 failed`** ✓；**`regen-all: 9/9 in sync`** ✓；`docs/04` **5 行**由 `⚠️` 变 `✅ 已接线` ✓；**未接线 160 → 155** ✓。
+  **未做（明写 ✗）**：★★ **`recon.mjs` 的四条用法尚未写进 `docs/11`** ✗（**下一区间第一条** ✓）；**其余 155 条未接线** ✗（**已量：`vmu.ballot`(5) 的承载者 `ballotbox.js` 命中 66 ✓；而 `legalentity`(6)／`ethics`(5) 内核命中【均为 0】⇒ 无承载者，须新建面或如实记为缺口** ✓）；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 

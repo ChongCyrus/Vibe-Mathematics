@@ -425,6 +425,12 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.crypto.signingKeyId', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: '默认签名密钥引用（只引用，不落材料 ✓）' },
   { key: 'vmu.crypto.algorithm', type: 'string', def: 'ed25519', hot: HOT.H1, who: 'office', doc: '签名算法声明（实现归注入接缝 ✓）' },
   { key: 'vmu.crypto.allowUnsignedVerify', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '无接缝时是否允许"验证"（放行也**只返回未验证** ✗✓）' },
+  // ROUND 250: 签名面的生命周期与审计声明（07／20 卷；现由 kernel/crypto.js 读取）.
+  { key: 'vmu.crypto.enabled', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "签名面总开关（false ⇒ sign 具名拒，绝不静默无签名）" },
+  { key: 'vmu.crypto.requireSignedAudit', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "审计必须带 purpose（true ⇒ 无 purpose 的签名被拒并点名）" },
+  { key: 'vmu.crypto.rotateAfterDays', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "密钥轮换周期（0＝无策略，回执明说无策略；rotationDue 据此判定）" },
+  { key: 'vmu.crypto.timestampAuthority', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: "时间戳机构（声明后接缝必须返回 timestamp，否则拒；仅引用材料，不落密钥 ✓）" },
+  { key: 'vmu.crypto.verifyInterval', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "复验周期（天；0＝无策略；verificationDue 据此判定）" },
   { key: 'vmu.notify.enabled', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '通知开关（默认关＝零机制）' },
   { key: 'vmu.notify.dedupWindowMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '通知级去重窗口（指纹＝watcher×事件×对象 ✓，与 21 卷分层 ✗）' },
   { key: 'vmu.notify.digestWindowMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '摘要窗口（当前只自曝，未驱动调度 ✗）' },

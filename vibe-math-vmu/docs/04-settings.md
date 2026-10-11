@@ -522,6 +522,11 @@ vmu.packs.active: [v5r]
 | `vmu.crypto.signingKeyId` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/crypto.js` | 默认签名密钥引用（只引用，不落材料 ✓） |
 | `vmu.crypto.algorithm` | string | `ed25519` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/crypto.js` | 签名算法声明（实现归注入接缝 ✓） |
 | `vmu.crypto.allowUnsignedVerify` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/crypto.js` | 无接缝时是否允许"验证"（放行也**只返回未验证** ✗✓） |
+| `vmu.crypto.enabled` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/crypto.js` | 签名面总开关（false ⇒ sign 具名拒，绝不静默无签名） |
+| `vmu.crypto.requireSignedAudit` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/crypto.js` | 审计必须带 purpose（true ⇒ 无 purpose 的签名被拒并点名） |
+| `vmu.crypto.rotateAfterDays` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/crypto.js` | 密钥轮换周期（0＝无策略，回执明说无策略；rotationDue 据此判定） |
+| `vmu.crypto.timestampAuthority` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/crypto.js` | 时间戳机构（声明后接缝必须返回 timestamp，否则拒；仅引用材料，不落密钥 ✓） |
+| `vmu.crypto.verifyInterval` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/crypto.js` | 复验周期（天；0＝无策略；verificationDue 据此判定） |
 | `vmu.notify.enabled` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 通知开关（默认关＝零机制） |
 | `vmu.notify.dedupWindowMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 通知级去重窗口（指纹＝watcher×事件×对象 ✓，与 21 卷分层 ✗） |
 | `vmu.notify.digestWindowMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 摘要窗口（当前只自曝，未驱动调度 ✗） |
@@ -1216,11 +1221,6 @@ vmu.packs.active: [v5r]
 | `vmu.control.beatStaleMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.course.blindMappingRetentionMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/course.js` | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.course.maxUnits` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/course.js` | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.crypto.enabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.crypto.requireSignedAudit` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.crypto.rotateAfterDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.crypto.timestampAuthority` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.crypto.verifyInterval` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.data.fingerprintAlgo` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.data.requireParent` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.data.retention` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |

@@ -147,5 +147,66 @@ const mkSigner = () => {
   ok(signer.calls.filter((x) => x === 'verify:k1').length === 0, 'verify was only called when asked')
 }
 
+
+// ── ROUND 250: the lifecycle and audit declarations (volumes 07 and 20) ─────────────────────────────────────
+{
+  // MEASURED: the seam is called SYNCHRONOUSLY - an async signer leaves `out.signature` undefined and the face refuses.
+  const seam = (o) => ({ signature: 'SIG-' + o.keyId, timestamp: 'TS-1', algorithm: 'ed25519' })
+  const mkC = (settings, signer) => { const c = createCrypto({ settings: settings || {}, clock: () => 1000000, signer: signer === undefined ? seam : signer }); c.rotate({ keyId: 'k1' }); return c }
+
+  // enabled=false refuses by name rather than signing nothing quietly
+  let off = null
+  try { mkC({ 'vmu.crypto.enabled': false }).sign({ payload: {}, keyId: 'k1', purpose: 'p' }) } catch (e) { off = e }
+  ok(off && off.code === 'VMU_CRYPTO_UNAVAILABLE' && off.enabled === false,
+    'vmu.crypto.enabled=false refuses signing by name instead of producing nothing', off && off.code)
+  ok(mkC({}).sign({ payload: { a: 1 }, keyId: 'k1', purpose: 'p' }).signature === 'SIG-k1',
+    'with the switch at its default the same call signs normally')
+
+  // requireSignedAudit makes the PURPOSE mandatory, because an envelope with no stated purpose cannot be audited
+  let noPurpose = null
+  try { mkC({ 'vmu.crypto.requireSignedAudit': true }).sign({ payload: {}, keyId: 'k1' }) } catch (e) { noPurpose = e }
+  ok(noPurpose && noPurpose.code === 'VMU_CRYPTO_NO_KEY' && noPurpose.missing.includes('purpose'),
+    'vmu.crypto.requireSignedAudit=true refuses a signature with no purpose and names the missing field', noPurpose && noPurpose.missing)
+  ok(mkC({ 'vmu.crypto.requireSignedAudit': true }).sign({ payload: {}, keyId: 'k1', purpose: 'audit' }).ok === undefined,
+    'and with a purpose it signs (the envelope is returned, not an ok-flag)')
+
+  // a declared timestamp authority that yields nothing is an ABSENCE, refused rather than hidden
+  let noStamp = null
+  try { mkC({ 'vmu.crypto.timestampAuthority': 'TSA-1' }, (o) => ({ signature: 'S' })).sign({ payload: {}, keyId: 'k1', purpose: 'p' }) } catch (e) { noStamp = e }
+  ok(noStamp && noStamp.code === 'VMU_CRYPTO_UNAVAILABLE' && noStamp.timestampAuthority === 'TSA-1',
+    'a declared timestamp authority with no timestamp from the seam is refused, naming the authority', noStamp && noStamp.code)
+  const stamped = mkC({ 'vmu.crypto.timestampAuthority': 'TSA-1' }).sign({ payload: {}, keyId: 'k1', purpose: 'p' })
+  ok(stamped.timestamp === 'TS-1' && stamped.timestampAuthority === 'TSA-1', 'otherwise both the stamp and the authority are recorded on the envelope', stamped)
+
+  // rotation: 0 means NO policy, and the receipt says so rather than inventing a due date
+  const noPolicy = mkC({}).rotationDue({ keyId: 'k1' })
+  ok(noPolicy.policy === 0 && noPolicy.due === false && /no rotation policy/.test(noPolicy.note),
+    'with rotateAfterDays=0 the receipt reports no policy instead of a due date', noPolicy)
+  const cycle = mkC({ 'vmu.crypto.rotateAfterDays': 1 })
+  ok(cycle.rotationDue({ keyId: 'k1', at: 1000000 }).due === false, 'a one-day cycle is not due immediately after creation')
+  const later = cycle.rotationDue({ keyId: 'k1', at: 1000000 + 2 * 86400000 })
+  ok(later.due === true && later.ageDays === 2, 'and is due two days later, reporting the age', later)
+  let unknown = null
+  try { mkC({}).rotationDue({ keyId: 'nope' }) } catch (e) { unknown = e }
+  ok(unknown && unknown.code === 'VMU_CRYPTO_KEY_UNKNOWN', 'an unknown key is refused by name')
+
+  // re-verification: same shape, same honesty about there being no policy
+  const noVerifyPolicy = mkC({}).verificationDue({})
+  ok(noVerifyPolicy.policy === 0 && /no re-verification policy/.test(noVerifyPolicy.note),
+    'with verifyInterval=0 the receipt reports no policy', noVerifyPolicy)
+  const sevenDay = mkC({ 'vmu.crypto.verifyInterval': 7 })
+  ok(sevenDay.verificationDue({}).due === true, 'under a declared policy, never-verified is due')
+  ok(sevenDay.verificationDue({ lastVerifiedAt: 1000000 }).due === false, 'just verified is not due')
+  ok(sevenDay.verificationDue({ lastVerifiedAt: 1000000, at: 1000000 + 8 * 86400000 }).due === true, 'eight days later it is due again')
+
+  // every one of the five is really READ through the settings object this face uses
+  const seen = []
+  const rec = new Proxy({}, { get(t, k) { if (typeof k === 'string' && k.indexOf('vmu.crypto.') === 0) seen.push(k); return undefined }, has() { return true }, ownKeys() { return [] }, getOwnPropertyDescriptor() { return { configurable: true, enumerable: true, value: undefined } } })
+  const probe = mkC(rec)
+  probe.rotationDue({ keyId: 'k1' }); probe.verificationDue({})
+  const five = ['vmu.crypto.enabled', 'vmu.crypto.requireSignedAudit', 'vmu.crypto.rotateAfterDays', 'vmu.crypto.timestampAuthority', 'vmu.crypto.verifyInterval']
+  ok(five.every((k) => seen.includes(k)), 'all five new keys are actually read, not merely listed', five.filter((k) => !seen.includes(k)))
+}
+
 console.log('=== VMU CRYPTO: ' + pass + ' passed, ' + fail + ' failed ===')
 process.exit(fail ? 1 : 0)

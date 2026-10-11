@@ -49,6 +49,12 @@ export function createCrypto({ clock = () => Date.now(), log = () => {}, setting
     signingKeyId: settings['vmu.crypto.signingKeyId'] || null,
     algorithm: settings['vmu.crypto.algorithm'] || 'ed25519',
     allowUnsignedVerify: settings['vmu.crypto.allowUnsignedVerify'] === true,
+    // ROUND 250: the five lifecycle and audit declarations.
+    enabled: settings['vmu.crypto.enabled'] !== false,                      // absent ⇒ on, so nothing changes unless asked
+    requireSignedAudit: settings['vmu.crypto.requireSignedAudit'] === true,
+    rotateAfterDays: intOr(settings['vmu.crypto.rotateAfterDays'], 0),      // 0 = no rotation policy
+    timestampAuthority: settings['vmu.crypto.timestampAuthority'] || null,
+    verifyInterval: intOr(settings['vmu.crypto.verifyInterval'], 0),        // 0 = no re-verification policy
   })
 
   const keyState = (keyId) => {
@@ -70,6 +76,16 @@ export function createCrypto({ clock = () => Date.now(), log = () => {}, setting
   /** sign(): freeze an envelope that references a key id — never key material. */
   function sign({ payload, keyId = null, purpose = null, by = null } = {}) {
     const c = cfg()
+    // ROUND 250: the declaration decides first. Switched off means no signing at all, said by name rather than by silence.
+    if (!c.enabled) {
+      throw refuse('VMU_CRYPTO_UNAVAILABLE', 'signing is switched off (vmu.crypto.enabled=false)',
+        'set vmu.crypto.enabled=true, or do not ask this face to sign', { op: 'sign', enabled: false })
+    }
+    // A signed AUDIT is the point of the requirement: an envelope with no stated purpose cannot be audited against anything.
+    if (c.requireSignedAudit && !purpose) {
+      throw refuse('VMU_CRYPTO_NO_KEY', 'vmu.crypto.requireSignedAudit=true and no purpose was given',
+        'state the purpose of the signature so the audit row can be read', { op: 'sign', missing: ['purpose'] })
+    }
     // The seam is checked FIRST: without it nothing can be signed, whatever the key state says.
     if (typeof signer !== 'function') {
       throw refuse('VMU_CRYPTO_UNAVAILABLE', 'no signer was injected: sign cannot be performed and no signature will be invented',
@@ -88,10 +104,17 @@ export function createCrypto({ clock = () => Date.now(), log = () => {}, setting
     if (st.key.state === 'revoked') throw refuse('VMU_CRYPTO_KEY_EXPIRED', 'signing key ' + kid + ' is revoked', 'rotate to a new key', { keyId: kid })
     if (st.expired) throw refuse('VMU_CRYPTO_KEY_EXPIRED', 'signing key ' + kid + ' expired at ' + st.key.expiresAt + ' (now=' + clock() + ')', 'rotate to a fresh key', { keyId: kid })
     const payloadDigest = digestOf(payload)
-    const out = callSigner('sign', { keyId: kid, payloadDigest, purpose })
+    const out = callSigner('sign', { keyId: kid, payloadDigest, purpose, timestampAuthority: c.timestampAuthority })
     const signature = out && (out.signature || out.sig)
     if (!signature) throw refuse('VMU_CRYPTO_UNAVAILABLE', 'the injected signer returned no signature', 'the seam must return { signature }', { keyId: kid })
-    const envelope = { v: 1, keyId: kid, algorithm: (out && out.algorithm) || c.algorithm, payloadDigest, purpose, signature: String(signature), at: clock(), by: by || null, seq: ++seq }
+    // ROUND 250: a declared timestamp authority that produced nothing is an absence worth refusing, not one worth hiding.
+    const stamp = out && (out.timestamp || out.tst)
+    if (c.timestampAuthority && !stamp) {
+      throw refuse('VMU_CRYPTO_UNAVAILABLE', 'vmu.crypto.timestampAuthority=' + c.timestampAuthority + ' is declared but the signer returned no timestamp',
+        'have the seam return { timestamp }, or clear vmu.crypto.timestampAuthority', { keyId: kid, timestampAuthority: c.timestampAuthority })
+    }
+    const envelope = { v: 1, keyId: kid, algorithm: (out && out.algorithm) || c.algorithm, payloadDigest, purpose, signature: String(signature), at: clock(), by: by || null, seq: ++seq,
+      timestampAuthority: c.timestampAuthority, timestamp: stamp ? String(stamp) : null }
     signatures.push(envelope)
     if (bus && typeof bus.emit === 'function') bus.emit('crypto/signed', { keyId: kid, purpose, seq: envelope.seq })
     return { ...envelope }
@@ -157,5 +180,33 @@ export function createCrypto({ clock = () => Date.now(), log = () => {}, setting
     return { signer: typeof signer === 'function' ? 'injected' : 'none', keys: keys.size, active, retired, signatures: signatures.length, dropped, policy: cfg(), failureReasons: VERIFY_FAILURES.slice(), keyStates: KEY_STATES.slice() }
   }
 
-  return { apiVersion, sign, verify, keys: keysView, rotate, status }
+  /**
+   * rotationDue (volumes 07/20): is a key older than the declared cycle? A policy of 0 means NO policy, and the receipt says so
+   * rather than reporting a due date nothing asked for.
+   */
+  function rotationDue({ keyId = null, at = null } = {}) {
+    const c = cfg()
+    const now = at === null || at === undefined ? clock() : intOr(at, clock())
+    const kid = keyId || c.signingKeyId || (([...keys.values()].find((k) => k.state === 'active') || {}).keyId)
+    if (!kid) throw refuse('VMU_CRYPTO_NO_KEY', 'rotationDue needs a key: none is configured', 'pass keyId, or set vmu.crypto.signingKeyId', { missing: ['keyId'] })
+    const k = keys.get(kid)
+    if (!k) throw refuse('VMU_CRYPTO_KEY_UNKNOWN', 'unknown key: ' + String(kid), 'register the key via rotate({keyId}) first', { keyId: kid })
+    if (!(c.rotateAfterDays > 0)) return { ok: true, keyId: kid, due: false, policy: 0, note: 'vmu.crypto.rotateAfterDays=0: no rotation policy is declared' }
+    const dueAt = Number(k.createdAt) + c.rotateAfterDays * 86400000
+    const due = Number(now) >= dueAt
+    return { ok: true, keyId: kid, due, dueAt, policy: c.rotateAfterDays, ageDays: Math.floor((Number(now) - Number(k.createdAt)) / 86400000),
+      note: due ? 'rotation is due - rotate to a fresh key' : 'not due yet' }
+  }
+
+  /** verificationDue (volume 20): when was this envelope last verified, and is it due again? 0 means NO policy. */
+  function verificationDue({ lastVerifiedAt = null, at = null } = {}) {
+    const c = cfg()
+    const now = at === null || at === undefined ? clock() : intOr(at, clock())
+    if (!(c.verifyInterval > 0)) return { ok: true, due: false, policy: 0, note: 'vmu.crypto.verifyInterval=0: no re-verification policy is declared' }
+    if (lastVerifiedAt === null || lastVerifiedAt === undefined) return { ok: true, due: true, policy: c.verifyInterval, note: 'never verified, and a policy is declared' }
+    const dueAt = Number(lastVerifiedAt) + c.verifyInterval * 86400000
+    return { ok: true, due: Number(now) >= dueAt, dueAt, policy: c.verifyInterval }
+  }
+
+  return { apiVersion, sign, verify, keys: keysView, rotate, status, rotationDue, verificationDue }
 }
