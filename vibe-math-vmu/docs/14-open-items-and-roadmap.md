@@ -1507,6 +1507,10 @@
   ★★★ 落点＝publication.js 的 register()，它【已按 c.targets 校验 target 并具名拒】⇒ 同形校验 package.style；四条分支真机全对（默认 native/includeEnvironment=true；声明 dataverse 且带环境说明 ⇒ 回执载之；未知风格 ⇒ VMU_INVALID_ARGUMENT；不允许时带环境说明 ⇒ 具名拒）；断言 +5 ⇒ VMU PUBLICATION: 68/0。
   ★★ 同档另三族经量【不可接】：collusion.scan 与 handover.open/accept/close 在卷 17 均标 ⛔ 未实现；collab 两键契约薄（旧结论）。
   **未做（明写 ✗）**：第②档其余 31 条未动；真机复跑 ✗；版本号/release ✗（须你批准）。
+- ★★★ 轮 292：接 vmu.pack.format/includeBody/includeTrash 的尝试【未成功，已整体回退】；但把教训入 docs/11 第 ⑱ 条。
+  ★★★ 承载者与契约【已量清】：library.js 的 exportRecord()（L512）是落点；契约见 07 卷 L615-618（format=enum(tar/zip) 默认 tar；includeBody 默认 true；includeTrash 默认 false）。
+  ★★★ 三次失败【都是形态问题，不是语义问题】：① L83 及其兄弟是 createLibrary 解构参数表里的【解构默认值】，不是对象字面量 ⇒ 按对象属性插入即语法错；② 局部 const 与同名参数自遮蔽 ⇒ TDZ；③ 我写的扫描收尾模式的 while 因模式不匹配跑到文件末尾 ⇒ 教训已成第 ⑱ 条。
+  **未做（明写 ✗）**：三键仍未接；vmu.middleware(3)/vmu.packs(3)/vmu.math(4) 未动；真机复跑 ✗；版本号/release ✗（须你批准）。
 ### 0.4 结论
 
 ## 0.5 未接线键的【三档结构】（轮 287 建表；**轮 290 据实更正数字** ✓✓）
