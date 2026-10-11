@@ -28,10 +28,11 @@ function wiringOf(key) {
 }
 
 const PLANNED_WORDS = /未实现|未接线|planned|规划/
-// ROUND 177: a line that explicitly separates the KEY from a missing CAPABILITY is not a claim that the key is
-// unimplemented - the store table needs exactly that distinction, because `remote` is a declared and read key whose
-// backend does not exist yet. Writing `键已接线` asks the checker to read the sentence the way a human would.
-const KEY_ITSELF_WIRED = /键已接线/
+// ROUND 177/178: a line that says WHERE the key is wired is not a claim that the key is unimplemented. Two markers are
+// recognised, both measured rather than assumed: `键已接线` (the key is read by its face, while a capability built on it
+// is not), and `pack 侧消费` (verified in round 178 - quorumCap and reconsiderFloor appear in the packs and nowhere in
+// meetings.js, so "consumed by the pack" and "the kernel decision point is planned" are both exactly right).
+const KEY_ITSELF_WIRED = /键已接线|pack 侧消费|由 pack 消费|由 pack 接线/
 const KEY = /`(vmu\.[a-zA-Z0-9_.]+)`/g
 const hits = []
 let candidates = 0
@@ -39,6 +40,11 @@ let candidates = 0
 // quotes the very claims it retracts - "volume 17 called vmu.course.cohortMax unimplemented" - and every such sentence
 // would be re-flagged forever. A log of fixes cannot be held to the standard of the prose it fixes.
 const EXCLUDED = new Set(['04-settings.md', '14-open-items-and-roadmap.md'])
+// ROUND 178: the trigger is a WINDOW around the key, not the whole line. Good prose routinely names a wired key while
+// declaring something else unimplemented - "partial: the round timeout key exists; per-speaker time boxes are planned" -
+// and the primitives volume is full of that shape, which is the shape this project asks for. Flagging the whole line
+// would punish exactly the writing the docs are supposed to use, so the key and the claim must sit in the same clause.
+const WINDOW = 14
 for (const f of readdirSync(DOCS).filter((x) => x.endsWith('.md') && !EXCLUDED.has(x)).sort()) {
   const lines = readFileSync(join(DOCS, f), 'utf8').split('\n')
   for (let i = 0; i < lines.length; i += 1) {
@@ -46,6 +52,9 @@ for (const f of readdirSync(DOCS).filter((x) => x.endsWith('.md') && !EXCLUDED.h
     if (KEY_ITSELF_WIRED.test(lines[i])) continue
     for (const m of lines[i].matchAll(KEY)) {
       const key = m[1]
+      // the claim must be about THIS key: a planned word in the same clause, before or after it
+      const near = lines[i].slice(Math.max(0, m.index - WINDOW), m.index + m[0].length + WINDOW)
+      if (!PLANNED_WORDS.test(near)) continue
       const w = wiringOf(key)
       if (w === null) continue
       candidates += 1

@@ -1,4 +1,4 @@
-# vmu 17 · 代理自组织与协作（Agent Society & Delegation）
+﻿# vmu 17 · 代理自组织与协作（Agent Society & Delegation）
 
 > 状态：**设计稿 v0.1（深水区）** —— 理念里那句"**框架＋settings＋中间件＋代理自组织**"的括号，本卷把它**具体到接口、参数、错误码与成熟度** ✓。
 > 上位：`00-README.md`（阅读顺序）、`01-philosophy.md`（R1 内核零策略／R2 能力与挂点齐备／R5 中间件／R6 登记即契约／R11 可观测）、`02-architecture.md`（内核分区与四层模型）、`03-interface-contract.md`（登记处）、`04-settings.md`（参数全表）、`05-middleware.md`（钩子全表）、`06-prompt-pipeline.md`（提示词管线）、`07-durability-library.md`（归档与台账）、`14-open-items-and-roadmap.md`（未决/未核登记）。
