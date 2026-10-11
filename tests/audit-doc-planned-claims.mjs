@@ -83,12 +83,13 @@ if (process.argv.includes('--selftest')) {
   if (!selftestOk) process.exit(1)
 }
 
-// EXIT POLICY (round 167): by default this probe REPORTS and exits 0, because it currently finds seventy-odd
-// candidates and its premise is not yet verified for every face - a job that is red while its premise is unproven is
-// exactly the kind of check this project refuses. `--check` restores the strict exit for when the premise holds.
-const strict = process.argv.includes('--check')
+// EXIT POLICY: as of round 180 this check is STRICT BY DEFAULT and belongs to the gate. The reason it waited: its
+// premise is that a generated ✅ means the key is really read, and that only became true for all twelve faces in round
+// 180, when the last one (external) got a construction helper and the recorder. Before that the premise held for
+// eleven of twelve, so the probe reported without failing. `--report` restores the old non-failing mode for inspection.
+const strict = !process.argv.includes('--report')
 if (!quiet) console.log('  keys checked against the generated table: ' + candidates)
 for (const h of hits) console.log((strict ? 'FINDING ' : 'CANDIDATE ') + h.file + ':' + h.line + '  claims ' + h.key + ' is unimplemented while the generated table marks it wired :: ' + h.text)
-if (!strict) console.log('  (report only: `--check` makes this fail. The premise - that a generated ✅ means really read - holds for 6 of the 18 faces that have a wired key list, so these are candidates, not verdicts.)')
+if (!strict) console.log('  (report only: run without `--report` to fail on findings.)')
 console.log('=== DOC-PLANNED-CLAIM AUDIT: ' + candidates + ' key claim(s) checked, ' + hits.length + ' contradicted by the generated table ===')
 process.exit(strict && hits.length > 0 ? 1 : 0)

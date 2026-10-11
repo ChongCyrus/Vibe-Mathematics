@@ -282,7 +282,8 @@ function lptOrder(list) {
 // before every commit and release (see the GATE DISCIPLINE note at the top of this file).
 const QUICK_ONLY = ['v5', 'audit-participant-set-parity', 'audit-math-computation-parity',
   'audit-math-computation-contract', 'math-computation-shared', 'audit-registration',
-  'audit-preset-rows', 'audit-status-report-fields', 'audit-artifact-docs', 'audit-enum-branches']
+  'audit-preset-rows', 'audit-status-report-fields', 'audit-artifact-docs', 'audit-enum-branches',
+  'audit-doc-planned-claims']
 const QUICK_EXCLUDE = ['mutants', 'audit-math-computation-sensitivity']
 // S24: PR #14 brought `tests/v5-meeting-attribution.test.mjs` into the curated quick subset (a new
 // suite is on purpose — it is the regression test for the reply-attribution fix), so 23 -> 24.
@@ -294,7 +295,10 @@ const QUICK_EXCLUDE = ['mutants', 'audit-math-computation-sensitivity']
 // curated `v5` prefix picks it up too, and it belongs there: it is fast and it is the file an edit to either
 // side should re-run. 26 -> 27, deliberately. 27 -> 28, deliberately: `audit-enum-branches` joined the curated
 // quick subset in round 160, because it is fast and it checks a defect family that has now appeared five times.
-const QUICK_EXPECTED_JOBS = 28
+// 28 -> 29, deliberately: `audit-doc-planned-claims` joined in round 180, when the premise it asserts - that a
+// generated ✅ means the key is really read - finally held for all twelve faces, so the check could stop reporting and
+// start failing, and it is fast enough (it reads the docs).
+const QUICK_EXPECTED_JOBS = 29
 // `vmu` is the ITERATION subset for developing the vmu framework: the vmu jobs themselves, plus every
 // gate that guards a SHARED surface a vmu change can reach (preset rows and the generated patch,
 // the installer, package membership, README/doc counts, path discipline, artifact docs, the shared
