@@ -193,6 +193,9 @@ function makeHost(opts) {
   async function callTool(name, args, agent) {
     const spec = toolRegs.find((x) => x.name === name)
     if (!spec) throw new Error('no tool ' + name)
+    // These fixtures test verification business behavior; unread gates have their own suite.
+    const help = toolRegs.find(x => x.name === 'vibe_v5_tool_help')
+    if (help && name !== 'vibe_v5_tool_help') await help.execute({ tool: name }, { agent: agent || ROOT })
     return JSON.parse(await spec.execute(args || {}, { agent: agent || ROOT }))
   }
 

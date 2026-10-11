@@ -93,8 +93,8 @@ const FAMILIES = [
   {
     // F6 tightening (staff): the member persona ignores `params.staffPersona` again.
     name: 'V5-A3: the staff persona never reaches the prompts',
-    from: "const extra = String(params.staffPersona || '').trim()",
-    to: "const extra = ''",
+    from: "function memberPersona(member) {\n      const extra = String(params.staffPersona || '').trim()",
+    to: "function memberPersona(member) {\n      const extra = ''",
     expect: /V5-A3 the staff persona reaches the member persona\/prompts/,
   },
   {

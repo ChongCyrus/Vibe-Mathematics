@@ -1,0 +1,1503 @@
+{
+  "version": 1,
+  "capturedAt": "2026-10-10T17:35:40.750Z",
+  "sourceSha256": "4209e2f9231543e9aa163185c5b5e580ff7563393204c1eaea20fad7b351caea",
+  "descriptionChars": 15061,
+  "tools": [
+    {
+      "name": "math_computation",
+      "description": "数学计算：先用 op:'probe' 预检本机可用引擎与许可，再用 op:'run' 计算（mode=code|file|expr；P1 引擎=python|r|octave|julia + matlab|maple|wolfram（仅探测/许可，永不安装）+ cli（默认开启：用你指定的命令执行，仍受本工具的超时/输出上限/cwd 约束并留回执；它与宿主 shell 的区别就是有回执与上限——要用宿主 shell 兜底由 mathMode 控制，且结论必须标注未经工具归档））。每次执行都会归档成可复核回执（Computation/<id>/），回执里含 scriptPath/scriptHash 与**实际 argv**；脚本原件就在那个归档目录里，你可以用普通文件工具打开/编辑它，编辑后用 mode:'file' 重跑会得到一份**新回执**——**不得**拿旧回执当作修改后代码的证据。缺引擎/缺包只报告并给\"用户自装指引\"或\"代理代装计划\"（先计划、再确认）；商业引擎只给厂商指引；引擎选项报错时会回显 argv 并提示用 mathEngineOverride。替代方案若改变精确性或结论强度（精确解→数值近似、闭式解→采样/求积、改精度/容差/假设、换算法类）**必须在结论里声明**，不得读起来像得到了原本的结果。计算结果是经验证据，不是证明。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "op": {
+            "type": "string",
+            "enum": [
+              "probe",
+              "run",
+              "receipt",
+              "install"
+            ]
+          },
+          "engine": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "code",
+              "file",
+              "expr"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string"
+          },
+          "expr": {
+            "type": "string"
+          },
+          "packages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "timeoutMs": {
+            "type": "integer"
+          },
+          "captureFiles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "record": {
+            "type": "boolean"
+          },
+          "cli": {
+            "type": "object",
+            "properties": {
+              "command": {
+                "type": "string"
+              },
+              "argv": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "stdin": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "command"
+            ],
+            "additionalProperties": false
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "user",
+              "system"
+            ]
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "confirm": {
+            "type": "string"
+          },
+          "mathEngineOverride": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "op"
+        ],
+        "additionalProperties": false
+      },
+      "examples": [
+        {
+          "op": "probe"
+        },
+        {
+          "op": "run",
+          "engine": "python",
+          "mode": "code",
+          "code": "print(2+2)",
+          "record": true
+        },
+        {
+          "op": "receipt",
+          "file": "Computation/<runId>/receipt.json"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_configure",
+      "description": "Create/configure the research institute (project, institute name, problem, params) WITHOUT starting it. Use this FIRST, then vibe_v5_start.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "institute": {
+            "type": "string"
+          },
+          "problem": {
+            "type": "string"
+          },
+          "params": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      },
+      "examples": [
+        {
+          "institute": "example",
+          "problem": "证明对每个整数 n，n(n+1) 为偶数。"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_start",
+      "description": "Found the institute: create the academician + N permanent researchers and begin. They brainstorm independently, then self-organize (the academician organizes and assigns; the framework only facilitates).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "problem": {
+            "type": "string"
+          },
+          "researcherCount": {
+            "type": "integer"
+          },
+          "academician": {
+            "type": "boolean"
+          },
+          "params": {
+            "type": "object"
+          },
+          "seedDirections": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      },
+      "examples": [
+        {
+          "researcherCount": 2,
+          "academician": true
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_resume",
+      "description": "Resume a persisted institute: reconcile members against their durable sessions, rebuild any missing one from its Progress/, refresh consensus watchdogs, and restart scheduling.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "required": []
+      },
+      "examples": [
+        {}
+      ]
+    },
+    {
+      "name": "vibe_v5_pause",
+      "description": "Pause the institute (in-flight turns finish; no new wakes until resume).",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "required": []
+      },
+      "examples": [
+        {}
+      ]
+    },
+    {
+      "name": "vibe_v5_stop",
+      "description": "Stop the institute: interrupt every member, clear coordination state, and release their child sessions.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "required": []
+      },
+      "examples": [
+        {}
+      ]
+    },
+    {
+      "name": "vibe_v5_status",
+      "description": "Machine-readable institute status (members, tasks, quorum, meetings, verification, mail).",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "required": []
+      },
+      "examples": [
+        {}
+      ]
+    },
+    {
+      "name": "vibe_v5_report",
+      "description": "Human-readable institute report (staffing, tasks, consensus, meetings, file locations).",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "required": []
+      },
+      "examples": [
+        {}
+      ]
+    },
+    {
+      "name": "vibe_v5_set",
+      "description": "Tune institute parameters (persisted in State/<institute>.v5state.json). provider/model override staff LLM routes (empty = inherit the office route). toolAllow/toolDeny restrict PERMANENT staff tools; tempToolAllow/tempToolDeny restrict temp workers. quorumCap sets m = min(quorumCap, voters); an m-vote passes only when at least m Boolean votes (exactly 1 or exactly 0) exist AND no voter returns an opposing Boolean, so with the default roster it degenerates to unanimity among the current voters; only current voters count (a dismissed member's earlier ballot is dropped). quorumMode \"m-unanimous\" (v5) or \"all-unanimous\" (v4 legacy). formalVerify: \"off\" (default, no extra requirement) | \"encourage\" (agents decide by implementation difficulty whether to formalize in Lean; a passing Lean run turns the vote into a FIDELITY review of the Lean statements) | \"require\" (same, plus a gate: a true/false verdict is withheld as undecided until the object is Lean-passed or has an explicit reasoned blocker record). LEAN TOOLCHAIN: leanCommand names the Lean executable (e.g. \"lake\" with leanArgs [\"env\",\"lean\"]); leanArgs are inserted before the file name (the framework appends -R <VibeMath root> unless leanArgs already sets one); leanTimeoutMs is the per-run budget in ms (>=1000, and the per-job budget of the async queue). FINAL PAPER: finalPaper (default true) writes the final paper when the run concludes — the paper phase runs BEFORE the run is marked complete, the permanent staff write their own part, cross-review each other, and the editor named by paperEditor finalises; paperFormat \"both\"|\"md\"|\"tex\"; paperLanguage \"zh\"|\"en\"; paperCompilePdf compiles a PDF when a LaTeX engine is detected; paperEditor \"academician\" (default, the only editor an unattended run can reach) | \"office\" (manual /v5 paper only — the office must first consult the whole institute: >=1 office message AND >=1 meeting, recorded in the finalisation note); paperLatexCommand forces one engine command instead of auto-detection (empty = auto: xelatex -> latexmk -> pdflatex -> lualatex -> tectonic, English prefers pdflatex). LEAN ASYNC: leanAsync (default true) compiles on a per-session background queue (vibe_v5_lean_run / vibe_v5_lean_archive run=true enqueue and return immediately; inspect them with vibe_v5_lean_job or vibe_v5_lean_lib.jobs and wait with vibe_v5_lean_job {jobId,waitMs}); leanAsync=false restores the previous synchronous behaviour. Only a settled job (exit 0, unchanged content hash AND the same build context) may mark an object passed; a job id is the content+build-context digest. leanInitiative \"off\"|\"normal\" (default)|\"eager\" separates DAILY eagerness about formalizing from formalVerify (which stays the verdict-time requirement). leanSearchPaths (string[]) adds extra compiler search roots before the automatic VibeMath root (deduped; an explicit -R/--root in leanArgs wins). leanJobsMaxParallel (default 1) caps simultaneous background compiles. MATH COMPUTATION: mathComputation \"off\"|\"auto\" (default)|\"on\" gates the math_computation tool; mathMode \"typed+shell\" (default: the host shell may be used as a fallback, but a shell run carries no receipt and its conclusion must be marked 未经工具归档/not tool-archived) | \"typed\" (never mention the shell; engine=cli is refused); mathEngines lists the allowed engines (cli is on by default, SageMath is a later phase); mathTimeoutMs is the per-run budget (>=1000); mathPackages are packages a computation may require; mathInstallScope \"user\" (default) | \"system\" (per call only, never remembered). Installs are two-step (plan then confirm-token) and commercial engines are never installed. Unknown spellings of these enums fall back to the documented default. feedback (default \"on\") = the methodology/collaboration feedback library (Shared/Feedback/): \"on\" records entries and injects a short per-round hint; \"off\" injects nothing and refuses every write BY NAME (a switch, not a severity). MEETING SPEAKING (2.9.0): meetings run in two phases — a non-mandatory round-robin (every resident gets ONE chance to decide whether to speak; choosing not to speak is recorded by name and never blocks closing) and then an open floor where anyone (including someone who already spoke) raises a hand with meeting_hand:true and may speak again; the meeting closes when everybody has had the chance AND nobody still has a hand up / is in flight. Silence never triggers any deadline; meetingHardLimitMs (default 1800000 ms, clamped to [300000,7200000]) is the ONLY bound and abandons a genuinely wedged turn (the abandoned minutes still record the full detail); meetingWakeRetries (default 5, clamped to [0,10]) counts RETRIES, so N retries means at most N+1 wake attempts (N=0 still makes exactly ONE attempt - never zero); once attempts are exhausted the member is recorded as unreached, which still counts as having had the chance and does not block closing. Votes are untouched: vote_solved still needs EVERY voter true, so silence still blocks conclusion.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "academician": {
+            "type": "boolean"
+          },
+          "academicianLeads": {
+            "type": "boolean"
+          },
+          "memberMayRejectAssign": {
+            "type": "boolean"
+          },
+          "researcherCount": {
+            "type": "integer"
+          },
+          "quorumCap": {
+            "type": "integer"
+          },
+          "quorumMode": {
+            "type": "string"
+          },
+          "verdictMaxRounds": {
+            "type": "integer"
+          },
+          "verifyAskMaxAttempts": {
+            "type": "integer"
+          },
+          "maxTempPerMember": {
+            "type": "integer"
+          },
+          "maxTempTotal": {
+            "type": "integer"
+          },
+          "compactThreshold": {
+            "type": "integer"
+          },
+          "compactAfterRounds": {
+            "type": "integer"
+          },
+          "maxParallel": {
+            "type": "integer"
+          },
+          "activityTimeoutMs": {
+            "type": "integer"
+          },
+          "stallAutoMeetingMs": {
+            "type": "integer"
+          },
+          "chatDigestMs": {
+            "type": "integer"
+          },
+          "chatDigestMax": {
+            "type": "integer"
+          },
+          "meetingKeepEvery": {
+            "type": "integer"
+          },
+          "orphanDispatchMaxAttempts": {
+            "type": "integer"
+          },
+          "meetingHardLimitMs": {
+            "type": "integer"
+          },
+          "meetingWakeRetries": {
+            "type": "integer"
+          },
+          "formalVerify": {
+            "type": "string",
+            "enum": [
+              "off",
+              "encourage",
+              "require"
+            ]
+          },
+          "leanCommand": {
+            "type": "string"
+          },
+          "leanArgs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "leanTimeoutMs": {
+            "type": "integer"
+          },
+          "leanAsync": {
+            "type": "boolean"
+          },
+          "leanInitiative": {
+            "type": "string",
+            "enum": [
+              "off",
+              "normal",
+              "eager"
+            ]
+          },
+          "leanSearchPaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "leanJobsMaxParallel": {
+            "type": "integer"
+          },
+          "mathComputation": {
+            "type": "string",
+            "enum": [
+              "off",
+              "auto",
+              "on"
+            ]
+          },
+          "mathMode": {
+            "type": "string",
+            "enum": [
+              "typed",
+              "typed+shell"
+            ]
+          },
+          "mathEngines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mathTimeoutMs": {
+            "type": "integer"
+          },
+          "mathPackages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mathInstallScope": {
+            "type": "string",
+            "enum": [
+              "user",
+              "system"
+            ]
+          },
+          "feedback": {
+            "type": "string",
+            "enum": [
+              "on",
+              "off"
+            ]
+          },
+          "finalPaper": {
+            "type": "boolean"
+          },
+          "paperFormat": {
+            "type": "string",
+            "enum": [
+              "both",
+              "md",
+              "tex"
+            ]
+          },
+          "paperLanguage": {
+            "type": "string",
+            "enum": [
+              "zh",
+              "en"
+            ]
+          },
+          "paperCompilePdf": {
+            "type": "boolean"
+          },
+          "paperEditor": {
+            "type": "string",
+            "enum": [
+              "office",
+              "academician"
+            ]
+          },
+          "paperLatexCommand": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "staffPersona": {
+            "type": "string"
+          },
+          "toolAllow": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "toolDeny": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tempToolAllow": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tempToolDeny": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      },
+      "examples": [
+        {
+          "formalVerify": "encourage",
+          "leanAsync": true
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_message",
+      "description": "Relay a message from the office/human into the institute (to a member id, to \"all\", or to \"voters\").",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "to",
+          "content"
+        ]
+      },
+      "examples": [
+        {
+          "to": "all",
+          "content": "请保存完整推导。"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_meeting",
+      "description": "Convene a meeting (office/academician) or propose one (any other member — relayed to the academician/office). Parked automatically while a verification is in flight. kind picks the meeting type: \"sync\" = routine coordination (default), \"division\" = split the work, \"verify-request\" = ask the group to verify an object, \"solve-vote\" = put \"is the original problem solved?\" to a vote; target names the object for verify-request/solve-vote.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "agenda": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "sync",
+              "division",
+              "verify-request",
+              "solve-vote"
+            ]
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "agenda"
+        ]
+      },
+      "examples": [
+        {
+          "agenda": "比较两条推导路线",
+          "kind": "sync"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_members",
+      "description": "List the institute roster (office, employer, phase, direction, rounds).",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "required": []
+      },
+      "examples": [
+        {}
+      ]
+    },
+    {
+      "name": "vibe_v5_hire",
+      "description": "Hire one temp worker (office; the academician and every permanent researcher may also hire their own). Requires purpose and initial_task. term (optional) is the task deadline/period text the worker is told at onboarding; direction (optional) states what it should work on.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "purpose": {
+            "type": "string"
+          },
+          "initial_task": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "term": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "purpose",
+          "initial_task"
+        ]
+      },
+      "examples": [
+        {
+          "purpose": "核对边界条件",
+          "initial_task": "核对 n=0 的情形"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_fire",
+      "description": "Dismiss a temp worker for real: cancel its turn, release its resident child, reclaim its tasks, drop its mail, and mark it dismissed (its id is never reused).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "examples": [
+        {
+          "id": "t-1",
+          "reason": "任务完成"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_add_researcher",
+      "description": "Office only: hire another PERMANENT researcher (members may only propose this).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "direction": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      },
+      "examples": [
+        {}
+      ]
+    },
+    {
+      "name": "vibe_v5_remove_researcher",
+      "description": "Office only: dismiss a PERMANENT researcher.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "examples": [
+        {
+          "id": "r-1"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_paper",
+      "description": "Final paper: start (or re-run) the team-authored paper for this run. The permanent staff write their own part, cross-review another member's part, and the editor named by paperEditor finalises. lang/format override paperLanguage/paperFormat for THIS paper; editor overrides paperEditor for THIS paper only (office = the manual path, which parks the flow until the office consults the institute and calls vibe_v5_finalize_paper); force rewrites an already-finalised paper (idempotent otherwise: it only fills artifacts that are missing).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "lang": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          },
+          "editor": {
+            "type": "string",
+            "enum": [
+              "office",
+              "academician"
+            ]
+          },
+          "force": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      },
+      "examples": [
+        {
+          "lang": "zh",
+          "format": "md",
+          "editor": "academician"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_finalize_paper",
+      "description": "Office: finalise the final paper after consulting the whole institute. Required when paperEditor=\"office\": at least one office message (vibe_v5_message) AND at least one meeting convened by the office must happen first (paper.meta.json records them, and the note must state the conclusion). decision=\"revise\" asks for another writing round (bounded).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "deliverable",
+              "revise"
+            ]
+          },
+          "note": {
+            "type": "string"
+          },
+          "conclusion": {
+            "type": "string"
+          },
+          "force": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "decision"
+        ]
+      },
+      "examples": [
+        {
+          "decision": "revise",
+          "note": "补充引理来源"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_say",
+      "description": "(member) Speak in the group chat (omit \"to\"), send a private message (\"to\":\"r-2\"), or address only the voters (\"to\":\"voters\").",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ]
+      },
+      "examples": [
+        {
+          "text": "已将完整条件写入日志。",
+          "to": "all"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_wait",
+      "description": "(member) Wait for the next institute change (roster/task/mail/status) WITHOUT polling. Returns immediately with noProgress when nobody else is running or provisioning. timeout_ms: 10000-3600000 (default 30000).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "timeout_ms": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      },
+      "examples": [
+        {
+          "timeout_ms": 1000,
+          "reason": "等待分派"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_record_progress",
+      "description": "(member) Append to YOUR progress.md — your research log. Include what you tried, the routes and their obstacles, your current state, your plans, and failed/dead ends (they save the institute from repeating them).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "content"
+        ]
+      },
+      "examples": [
+        {
+          "content": "目标：证明偶性。假设 n∈Z。n 与 n+1 中恰有一个为偶数，故乘积为偶数。"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_record_proposition",
+      "description": "(member) Record a proposition/lemma in your library. REQUIRES value (价值程度), motive (动机用途计划) and p (your probability that it is true).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "statement": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          },
+          "motive": {
+            "type": "string"
+          },
+          "p": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "statement",
+          "value",
+          "motive",
+          "p"
+        ]
+      },
+      "examples": [
+        {
+          "statement": "整数 n 的乘积 n(n+1) 为偶数",
+          "value": 1,
+          "motive": "原问题",
+          "p": 1
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_feedback",
+      "description": "(member) 工作经验／流程反馈库（Shared/Feedback/，方法论/协作层——不是研究结论）。op=add（写一条，需 category/route/phenomenon/impact/action；route=interpersonal 还必须带 assessment）| update（状态流转＋回填结果：id/status/outcome/note）| list（默认只看未闭环，可用 category/route 过滤，all:true 看全部）| summary（按类别/路由计数）。类别：cooperation 合作｜management 管理｜process 流程｜obstacle 障碍｜conflict 矛盾。路由：self 自己调整即可｜team 组织/工作流同样无需审批｜interpersonal 只有这条必须先评估、再事后回填验证。权限：成员/临时工可 add 且只能更新自己发起的条目；所办可更新任何条目。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "op": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "route": {
+            "type": "string"
+          },
+          "context": {
+            "type": "string"
+          },
+          "phenomenon": {
+            "type": "string"
+          },
+          "impact": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "assessment": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "all": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "op"
+        ]
+      },
+      "examples": [
+        {
+          "op": "add",
+          "category": "process",
+          "route": "self",
+          "phenomenon": "重复查找日志",
+          "impact": "耗时",
+          "action": "记录材料路径"
+        },
+        {
+          "op": "list"
+        },
+        {
+          "op": "update",
+          "id": "fb-1",
+          "status": "closed",
+          "outcome": "可从路径读到完整材料"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_record_method",
+      "description": "(member) Record a theory/method/tool in your library. REQUIRES value, motive and p.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "notation": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          },
+          "motive": {
+            "type": "string"
+          },
+          "p": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "content",
+          "value",
+          "motive",
+          "p"
+        ]
+      },
+      "examples": [
+        {
+          "content": "按整数奇偶分类",
+          "value": 1,
+          "motive": "证明偶性",
+          "p": 1
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_record_subproblem",
+      "description": "(member) Record a sub-problem in your library. REQUIRES value, motive and p.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "statement": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          },
+          "motive": {
+            "type": "string"
+          },
+          "p": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "statement",
+          "value",
+          "motive",
+          "p"
+        ]
+      },
+      "examples": [
+        {
+          "statement": "相邻整数必有一个为偶数",
+          "value": 1,
+          "motive": "乘积偶性",
+          "p": 1
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_read_library",
+      "description": "(member) Read anyone's library (read-only): their progress and recorded cards. Omit member to read everyone.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "member": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      },
+      "examples": [
+        {}
+      ]
+    },
+    {
+      "name": "vibe_v5_propose_verify",
+      "description": "(academician) S25-C (issue #13 #1): with op=formal_proof and status=proved|disproved the academician REGISTERS this object as formally proved or disproved and locks it — only such objects may be debated at all, and registration is final, so only register it when you are confident the proof or disproof is complete. Otherwise it proposes an object for consensus verification, and ONLY the academician may open a debate or choose its object: an object that only has proof/disproof ATTEMPTS is a candidate, not a debate subject. Other members may suggest, but the academician must make the proposal.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "op": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "target"
+        ]
+      },
+      "examples": [
+        {
+          "target": "p-even",
+          "op": "formal_proof",
+          "status": "proved",
+          "reason": "完整证明在本成员 Progress 日志：相邻整数恰有一个为偶数。"
+        },
+        {
+          "target": "p-even",
+          "kind": "proposition",
+          "reason": "已登记并定稿，审查完整条件。"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_verdict",
+      "description": "(member) Cast your boolean verdict on the object under verification. verdict is [0,1]: exactly 1 = assert true, exactly 0 = assert false, anything in between = abstention (not counted toward m, counted in the mean).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "number"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "verdict"
+        ]
+      },
+      "examples": [
+        {
+          "target": "p-even",
+          "verdict": 1,
+          "reason": "检查完整整数条件与奇偶分类证明。"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_task_create",
+      "description": "(member) Open a task on the shared board (subject, description, optional blockers, advisory write scopes, priority).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "blocked_by": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "write_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "priority": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "subject"
+        ]
+      },
+      "examples": [
+        {
+          "subject": "核对奇偶分类",
+          "description": "核对所有整数",
+          "write_scopes": [
+            "Progress/r-1"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_task_list",
+      "description": "(member) List shared tasks with readiness, owner, revision, blockers and write-scope warnings.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "ready": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      },
+      "examples": [
+        {}
+      ]
+    },
+    {
+      "name": "vibe_v5_task_get",
+      "description": "(member) Read one task's latest value BEFORE changing it (the revision is the CAS precondition).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "task_id"
+        ]
+      },
+      "examples": [
+        {
+          "task_id": "task-1"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_task_update",
+      "description": "(member) Compare-and-set a task action: claim|release|edit|set_dependencies|complete|reopen|reassign|delete. Pass expected_revision from task_get/task_list; a stale revision is refused.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": "integer"
+          },
+          "action": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "blocked_by": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "write_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "owner": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "task_id",
+          "expected_revision",
+          "action"
+        ]
+      },
+      "examples": [
+        {
+          "task_id": "task-1",
+          "expected_revision": 1,
+          "action": "claim"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_overview",
+      "description": "(academician) Institute-wide view: roster, task board, every member's Progress tail, recent chat, and stall warnings. Use it instead of guessing.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "required": []
+      },
+      "examples": [
+        {}
+      ]
+    },
+    {
+      "name": "vibe_v5_assign",
+      "description": "(office, or the academician when academicianLeads) ASSIGN work: create or pick a task and give it to a specific member (including temp workers), stating WHY and the acceptance criteria. The assignee executes by default and may object with reasons (which are broadcast).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          },
+          "acceptance": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer"
+          },
+          "write_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "to",
+          "why",
+          "acceptance"
+        ]
+      },
+      "examples": [
+        {
+          "to": "r-1",
+          "subject": "核对条件",
+          "why": "该成员负责条件核对",
+          "acceptance": "在日志写出完整条件与来源"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_prioritize",
+      "description": "(office, or the academician when academicianLeads) Set institute-wide priorities: an ordered list of {task_id, priority} plus WHY. This orders work only — it never changes what is true.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "order": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "why": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      },
+      "examples": [
+        {
+          "order": [
+            {
+              "task_id": "task-1",
+              "priority": 1
+            }
+          ],
+          "why": "先核对依赖"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_nudge",
+      "description": "(office, or the academician when academicianLeads) Supervise: wake one member with a stated reason and a concrete suggested next step. Prefer a specific next step over a bare \"hurry up\".",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          },
+          "next_step": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "to",
+          "why"
+        ]
+      },
+      "examples": [
+        {
+          "to": "r-1",
+          "why": "依赖已完成",
+          "next_step": "从完整日志继续"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_lean_run",
+      "description": "(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Parameters: file (required; `Formal/x.lean` or the full CWD-relative path — both name the same file), target (optional object id to record the run against), timeout_ms (optional per-run budget). There is NO run/run=false switch here — run-vs-archive are separate tools; use vibe_v5_lean_archive {run:false} to archive WITHOUT compiling. With leanAsync (default true) the compile is ENQUEUED and this returns immediately with async:{jobId,state} — nothing is compiled yet; the result is durable at Formal/Jobs/<jobId>.json (vibe_v5_lean_job {jobId} reads it), is listed by vibe_v5_lean_lib.jobs, and the initiator also gets ONE 【形式化结果】 announcement in its next round. With leanAsync=false it blocks and returns the compiler output (exitCode/stdout/stderr). Never throws: a host with no subprocess service returns NO_SUBPROCESS and a missing toolchain returns LEAN_NOT_FOUND (in both cases the code can still be written down with vibe_v5_lean_archive), a timeout terminates the process and returns LEAN_TIMEOUT. The framework appends `-R <VibeMath root>` before the file name (unless leanArgs already sets a search root).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "timeout_ms": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "file"
+        ]
+      },
+      "examples": [
+        {
+          "file": "Formal/p-even.lean",
+          "target": "p-even"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_lean_archive",
+      "description": "(member) Archive Lean code. kind=\"def\": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind=\"lemma\": a machine-checked lemma → Formal/Proved. kind=\"proof\": the formal proof of a project object → Formal/<target>.lean, and (only once the queued compile settles ok) also Verified/Lean/<target>.lean, marking the object Lean-passed. Re-archiving IDENTICAL content is de-duplicated (deduped:true, no rewrite/recompile). kind=\"blocked\": record an explicit, reasoned \"cannot/not worth formalizing\" decision (note required). Optional `run` (default true): whether to COMPILE after writing — `run:false` archives the text only (useful when this host has no toolchain; the object then stays `attempted`/unset until something compiles it).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "def",
+              "lemma",
+              "proof",
+              "blocked"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "run": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "kind"
+        ]
+      },
+      "examples": [
+        {
+          "kind": "def",
+          "name": "Example",
+          "content": "def exampleValue : Nat := 2",
+          "run": false
+        },
+        {
+          "kind": "blocked",
+          "target": "p-even",
+          "note": "工具链不可用；已保存代码，尚未编译通过。"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_lean_lib",
+      "description": "(member) List (and by default rebuild) the Lean reuse library: your institute's Formal/Index.md (with an import-dependency column), plus the global cross-project Formal/Lib and Formal/Proved indexes, the background-compile jobs (jobs) and the injected search path (paths.searchPath). Look here BEFORE writing a new definition so you reuse instead of redefining.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "refresh": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      },
+      "examples": [
+        {
+          "refresh": false
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_lean_read",
+      "description": "(member) Read one archived Lean file VERBATIM so it can be reused: name is the archived file name (no extension needed), kind is \"auto\" (Lib then Proved, default), \"lib\" or \"proved\". Returns {ok,name,file,kind,sha256,bytes,text,truncated} (text capped at 64KB). Only the global reusable library is reachable.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "lib",
+              "proved"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ]
+      },
+      "examples": [
+        {
+          "name": "Example",
+          "kind": "lib"
+        }
+      ]
+    },
+    {
+      "name": "vibe_v5_lean_job",
+      "description": "(member) Inspect the background Lean compile queue. With no jobId it lists this session's jobs ({jobs,count,running,maxParallel}); with jobId it returns that job's state/exitCode, its receipt Formal/Jobs/<jobId>.json and, when it passed, the archived proof path. waitMs>0 waits up to that many milliseconds for a queued/running job to settle (it polls the queue instead of blocking the heartbeat) and otherwise returns the CURRENT state.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string"
+          },
+          "waitMs": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      },
+      "examples": [
+        {},
+        {
+          "jobId": "<返回的 jobId>",
+          "waitMs": 1000
+        }
+      ]
+    }
+  ]
+}

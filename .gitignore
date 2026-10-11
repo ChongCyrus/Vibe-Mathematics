@@ -8,3 +8,6 @@ node_modules/
 
 # Self-drive recorder runtime log
 _selfdrive_log.json
+
+# Scratch space for analysis / session dumps (never commit; can reach 1 GB+)
+.tmp-analysis/

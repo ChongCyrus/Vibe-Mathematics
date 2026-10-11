@@ -1290,7 +1290,7 @@ notes.push('composition rows: ' + v5rows.length + '; non-v4 package rows: ' + v5
     ['the status block is built from that member, never a global', 'function stateBlock(member, roundNo) {\n      return briefBlock(member, roundNo)\n    }'],
     ['the founding prompt is told the round it is starting (never a stored 0)', 'const prompt = initialPrompt(member, initialTask, mode, startRound)'],
     ['the joiner is committed to the roster BEFORE its brief is built', "member.phase = 'active'\n      member.childId = ''\n      await putMember(member)"],
-    ['the charter is frozen at hire and reused on resume', 'const persona = member.persona || memberPersona(member)'],
+    ['the charter is frozen at hire and reused on resume', 'const frozen = member.persona || memberPersona(member)'],
     ['a rebuilt session is framed as a rebuild', "const resume = mode === 'resume'"],
     ['leadership text follows the live roster', 'function academicianId() {'],
     ['no charter invents a leader when there is none', "本所当前**没有在册院士**"],

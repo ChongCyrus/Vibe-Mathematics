@@ -196,7 +196,7 @@ const PRESETS = [
     dir: 'vibe-math-v5',
     js: 'vibe-math-v5.js',
     prefix: 'vibe_v5_',
-    tools: 41,
+    tools: 42, // v5 adds the read-only, per-tool help entry; old faces retain their schemas.
     // Member- and academician-facing tools that the v5 persona describes GENERICALLY; the office (main
     // agent) holds only the institute-level controls plus the hiring authority. The final-paper pair is
     // an OFFICE control and IS named in the persona (vibe_v5_paper / vibe_v5_finalize_paper), so it must
