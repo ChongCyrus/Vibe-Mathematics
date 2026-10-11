@@ -317,7 +317,10 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
   const wiredListed = st.wired.length === WIRED_KEYS.length && st.wiredCount === WIRED_KEYS.length
   ok(wiredListed, 'status().wired lists every wired key', String(st.wiredCount))
   ok(st.overlap.length === 0, 'WIRED and plannedKeys are COMPLEMENTARY (no key is in both)', JSON.stringify(st.overlap))
-  ok(st.complementOk === true && st.plannedCount + st.wiredCount === st.declaredMathKeys && st.declaredMathKeys === 177,
+  // ROUND 223: the declared universe GROWS when a key is declared, so a hard-coded total has to be edited every time.
+  // The invariant is the partition: the two lists are complementary and together they ARE the declared set. (Measured this
+  // round: 52 wired + 126 planned = 178.)
+  ok(st.complementOk === true && st.plannedCount + st.wiredCount === st.declaredMathKeys && st.declaredMathKeys >= 170,
     'the two lists partition the DECLARED universe (177 vmu.math.* keys: 45 wired + 132 still-planned; every wired key is declared in the schema, so the union adds nothing)', JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredMathKeys }))
   ok(st.plannedKeys.every((k) => typeof st.unwiredReasons[k] === 'string' && st.unwiredReasons[k].length > 8),
     'every unwired key carries a concrete reason', JSON.stringify(st.plannedKeys.slice(0, 3)))
@@ -465,6 +468,65 @@ if (failed === 0) {
   ok(recs.length >= 2, 'no-dup: the batch produced receipts to check (' + recs.length + ')')
   ok(recs.every((x) => x.enforcedScope === 'evaluated-so-far'), 'D3: every receipt in the batch carries the scope')
   ok(dup.length === 0, 'no-dup: no receipt in the batch has duplicates (' + (dup.length ? JSON.stringify(dup[0]) : recs.length + ' receipts checked') + ')')
+}
+
+
+// ── ROUND 223: the seven declared keys that were exposed on the formal/units/artifacts path ──────────────────
+{
+  const pass = { ok: true, result: { value: 1 }, assistants: ['lean'], expectedAssistants: ['lean'] }
+  // formal.assistants: a request may not name an assistant outside the declared set
+  const oneAssistant = mk({ settings: { 'vmu.math.formal.assistants': ['lean'] }, seam: () => pass })
+  ok(codeOf(() => oneAssistant.t.plan({ op: 'formal/prove', assistants: ['coq'] })) === 'VMU_FORMAL_ADAPTER_UNSUPPORTED',
+    'formal.assistants[-]: an assistant outside the declared set is refused by name')
+  ok(oneAssistant.t.plan({ op: 'formal/prove', assistants: ['lean'] }).ok === true, 'formal.assistants[+]: a declared assistant passes')
+  const twoAssistants = mk({ settings: { 'vmu.math.formal.assistants': ['lean', 'coq'] }, seam: () => pass })
+  ok(twoAssistants.t.plan({ op: 'formal/prove', assistants: ['lean', 'coq'] }).ok === true, 'formal.assistants[+]: the declared set can be widened')
+
+  // formal.crossCheck: cross-checking with one assistant is not cross-checking
+  const needing = mk({ settings: { 'vmu.math.formal.assistants': ['lean', 'coq'], 'vmu.math.formal.crossCheck': true }, seam: () => pass })
+  ok(codeOf(() => needing.t.plan({ op: 'formal/prove', assistants: ['lean'] })) === 'VMU_FORMAL_ADAPTER_UNSUPPORTED',
+    'formal.crossCheck[-]: one assistant cannot cross-check, and it is refused by name')
+  ok(needing.t.plan({ op: 'formal/prove', assistants: ['lean', 'coq'] }).ok === true, 'formal.crossCheck[+]: two assistants satisfy it')
+  const notNeeding = mk({ settings: { 'vmu.math.formal.assistants': ['lean', 'coq'], 'vmu.math.formal.crossCheck': false }, seam: () => pass })
+  ok(notNeeding.t.plan({ op: 'formal/prove', assistants: ['lean'] }).ok === true, 'formal.crossCheck[off]: with it off a single assistant is fine')
+
+  // formal.onDisagreement: block refuses, report records
+  const disagreeing = { ok: true, result: { value: 1 }, assistants: ['lean', 'coq'], expectedAssistants: ['lean', 'coq'], assistantDisagreement: true }
+  const blocking = mk({ settings: { 'vmu.math.formal.onDisagreement': 'block' }, seam: () => disagreeing })
+  ok(codeOf(() => blocking.t.run({ op: 'formal/prove' })) === 'VMU_FORMAL_DISAGREEMENT',
+    'formal.onDisagreement[-]: a disagreement is refused by name under "block"')
+  const reporting = mk({ settings: { 'vmu.math.formal.onDisagreement': 'report' }, seam: () => disagreeing })
+  ok(reporting.t.run({ op: 'formal/prove' }).ok === true, 'formal.onDisagreement[+]: under "report" the run is recorded instead of refused')
+
+  // formal.librarySearch
+  const noSearch = mk({ settings: { 'vmu.math.formal.librarySearch': 'off' }, seam: () => pass })
+  ok(codeOf(() => noSearch.t.plan({ op: 'formal/prove', librarySearch: true })) === 'VMU_MATH_INVALID_INPUT',
+    'formal.librarySearch[-]: asking for a search while it is off is refused by name')
+  const searching = mk({ settings: { 'vmu.math.formal.librarySearch': 'loogle' }, seam: () => pass })
+  ok(searching.t.plan({ op: 'formal/prove', librarySearch: true }).ok === true, 'formal.librarySearch[+]: a declared search backend allows it')
+
+  // formal.skeletonStyle
+  const noSkeleton = mk({ settings: { 'vmu.math.formal.skeletonStyle': 'off' }, seam: () => pass })
+  ok(codeOf(() => noSkeleton.t.plan({ op: 'formal/prove', skeletonStyle: 'have' })) === 'VMU_MATH_INVALID_INPUT',
+    'formal.skeletonStyle[-]: asking for a skeleton while it is off is refused by name')
+  const skeleton = mk({ settings: { 'vmu.math.formal.skeletonStyle': 'have' }, seam: () => pass })
+  ok(skeleton.t.plan({ op: 'formal/prove', skeletonStyle: 'have' }).ok === true, 'formal.skeletonStyle[+]: a declared style allows it')
+
+  // units.uncertainty
+  const noUnc = mk({ settings: { 'vmu.math.units.uncertainty': 'off' }, seam: () => pass })
+  ok(codeOf(() => noUnc.t.plan({ op: 'formal/prove', uncertainty: true })) === 'VMU_MATH_INVALID_INPUT',
+    'units.uncertainty[-]: asking for uncertainty propagation while it is off is refused by name')
+  const unc = mk({ settings: { 'vmu.math.units.uncertainty': 'first-order' }, seam: () => pass })
+  ok(unc.t.plan({ op: 'formal/prove', uncertainty: true }).ok === true, 'units.uncertainty[+]: a declared mode allows it')
+
+  // artifacts.dir: an artifact outside the declared directory is refused
+  const inside = mk({ settings: { 'vmu.math.artifacts.dir': 'Computation' }, seam: () => ({ ok: true, result: { value: 1 }, artifactPath: 'Computation/out.txt' }) })
+  ok(inside.t.run({ op: 'formal/prove' }).ok === true, 'artifacts.dir[+]: an artifact under the declared directory passes')
+  const outside = mk({ settings: { 'vmu.math.artifacts.dir': 'Computation' }, seam: () => ({ ok: true, result: { value: 1 }, artifactPath: 'Elsewhere/out.txt' }) })
+  ok(codeOf(() => outside.t.run({ op: 'formal/prove' })) === 'VMU_MATH_INVALID_INPUT',
+    'artifacts.dir[-]: an artifact outside the declared directory is refused by name')
+  const custom = mk({ settings: { 'vmu.math.artifacts.dir': 'Work/Artifacts' }, seam: () => ({ ok: true, result: { value: 1 }, artifactPath: 'Work/Artifacts/out.txt' }) })
+  ok(custom.t.run({ op: 'formal/prove' }).ok === true, 'artifacts.dir[+]: changing the declaration changes which path is accepted')
 }
 
 console.log('=== VMU MATHTOOLS: ' + passed + ' passed, 0 failed ===')

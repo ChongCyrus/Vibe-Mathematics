@@ -51,6 +51,11 @@ export const WIRED_KEYS = Object.freeze([
   'vmu.math.optim.timeLimitMs', 'vmu.math.optim.tolerance', 'vmu.math.optim.backend', 'vmu.math.optim.certificates',
   'vmu.math.formal.sorryPolicy', 'vmu.math.formal.coqTimeoutMs', 'vmu.math.formal.axiomAudit', 'vmu.math.formal.requireAll',
   'vmu.math.units.enabled', 'vmu.math.units.strictDimensions', 'vmu.math.units.constantsSource',
+  // ROUND 223
+  'vmu.math.units.uncertainty',
+  'vmu.math.formal.assistants', 'vmu.math.formal.onDisagreement', 'vmu.math.formal.librarySearch',
+  'vmu.math.formal.skeletonStyle', 'vmu.math.formal.crossCheck',
+  'vmu.math.artifacts.dir',
   'vmu.math.linalg.backend', 'vmu.math.linalg.requireResidual', 'vmu.math.linalg.sparse',
   'vmu.math.convergence.policy', 'vmu.math.numeric.warnings', 'vmu.math.numeric.stability',
   'vmu.math.artifacts.maxFileMb', 'vmu.math.artifacts.maxRuns', 'vmu.math.artifacts.maxAttemptsPerRun',
@@ -188,6 +193,14 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
     axiomAudit: sget('vmu.math.formal.axiomAudit') === true, requireAll: sget('vmu.math.formal.requireAll') === true,
     unitsEnabled: sget('vmu.math.units.enabled') !== false, strictDimensions: sget('vmu.math.units.strictDimensions') !== false,
     constantsSource: str(sget('vmu.math.units.constantsSource')),
+    // ROUND 223: seven declared keys whose sub-namespace this face already reads (docs/09 L353-390).
+    uncertainty: ['off', 'first-order', 'monte-carlo'].includes(sget('vmu.math.units.uncertainty')) ? sget('vmu.math.units.uncertainty') : 'off',
+    assistants: (() => { const a = sget('vmu.math.formal.assistants'); return Array.isArray(a) && a.length ? a.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : ['lean'] })(),
+    onDisagreement: sget('vmu.math.formal.onDisagreement') === 'report' ? 'report' : 'block',
+    librarySearch: ['off', 'loogle', 'mathlib'].includes(sget('vmu.math.formal.librarySearch')) ? sget('vmu.math.formal.librarySearch') : 'off',
+    skeletonStyle: ['off', 'have', 'suffices'].includes(sget('vmu.math.formal.skeletonStyle')) ? sget('vmu.math.formal.skeletonStyle') : 'off',
+    crossCheck: sget('vmu.math.formal.crossCheck') === true,
+    artifactsDir: str(sget('vmu.math.artifacts.dir')) || 'Computation',
     linalgBackend: str(sget('vmu.math.linalg.backend')), requireResidual: sget('vmu.math.linalg.requireResidual') === true,
     sparse: sget('vmu.math.linalg.sparse') === true,
     convergence: sget('vmu.math.convergence.policy') === 'require' ? 'require' : 'report',
@@ -254,6 +267,10 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
     'vmu.math.optim.timeLimitMs': K.optimTimeLimitMs, 'vmu.math.optim.tolerance': K.optimTolerance, 'vmu.math.optim.backend': K.optimBackend, 'vmu.math.optim.certificates': K.certificates,
     'vmu.math.formal.sorryPolicy': K.sorryPolicy, 'vmu.math.formal.coqTimeoutMs': K.coqTimeoutMs, 'vmu.math.formal.axiomAudit': K.axiomAudit, 'vmu.math.formal.requireAll': K.requireAll,
     'vmu.math.units.enabled': K.unitsEnabled, 'vmu.math.units.strictDimensions': K.strictDimensions, 'vmu.math.units.constantsSource': K.constantsSource,
+    'vmu.math.units.uncertainty': K.uncertainty,
+    'vmu.math.formal.assistants': K.assistants, 'vmu.math.formal.onDisagreement': K.onDisagreement,
+    'vmu.math.formal.librarySearch': K.librarySearch, 'vmu.math.formal.skeletonStyle': K.skeletonStyle,
+    'vmu.math.formal.crossCheck': K.crossCheck, 'vmu.math.artifacts.dir': K.artifactsDir,
     'vmu.math.linalg.backend': K.linalgBackend, 'vmu.math.linalg.requireResidual': K.requireResidual, 'vmu.math.linalg.sparse': K.sparse,
     'vmu.math.convergence.policy': K.convergence, 'vmu.math.numeric.warnings': K.warnings, 'vmu.math.numeric.stability': K.stability,
     'vmu.math.artifacts.maxFileMb': K.maxFileMb, 'vmu.math.artifacts.maxRuns': K.maxRuns, 'vmu.math.artifacts.maxAttemptsPerRun': K.maxAttempts,
@@ -346,6 +363,41 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
       if (K.constantsSource && req.constantsSource && req.constantsSource !== K.constantsSource) {
         throw deny('VMU_MATH_INVALID_INPUT', 'constantsSource differs from the declared one',
           'declared=' + K.constantsSource + ', requested=' + req.constantsSource + ' (vmu.math.units.constantsSource)', enforced)
+      }
+      // ⑦b FORMAL ASSISTANTS / CROSS-CHECK / DISAGREEMENT (round 223: formal.assistants, formal.crossCheck,
+      //     formal.onDisagreement, formal.librarySearch, formal.skeletonStyle)
+      if (formalOp && Array.isArray(req.assistants) && req.assistants.length) {
+        evalKey('vmu.math.formal.assistants')
+        const outside = req.assistants.map(String).filter((a) => !K.assistants.includes(a))
+        if (outside.length) {
+          throw deny('VMU_FORMAL_ADAPTER_UNSUPPORTED', 'assistant(s) not in vmu.math.formal.assistants: ' + outside.join(', '),
+            'declared: ' + K.assistants.join(', ') + ' (vmu.math.formal.assistants)', evalKey('vmu.math.formal.assistants'))
+        }
+        if (K.crossCheck && req.assistants.length < 2) {
+          throw deny('VMU_FORMAL_ADAPTER_UNSUPPORTED', 'vmu.math.formal.crossCheck=true needs at least two assistants to cross-check against',
+            'give two or more of ' + K.assistants.join(', ') + ', or set crossCheck=false', mark(evalKey('vmu.math.formal.crossCheck'), 'vmu.math.formal.crossCheck'))
+        }
+      }
+      if (formalOp && req.librarySearch !== undefined) {
+        evalKey('vmu.math.formal.librarySearch')
+        if (K.librarySearch === 'off' && req.librarySearch !== false) {
+          throw deny('VMU_MATH_INVALID_INPUT', 'vmu.math.formal.librarySearch=off: no theorem-library search is available',
+            'set it to loogle or mathlib deliberately, or drop the request', evalKey('vmu.math.formal.librarySearch'))
+        }
+      }
+      if (formalOp && req.skeletonStyle !== undefined) {
+        evalKey('vmu.math.formal.skeletonStyle')
+        if (K.skeletonStyle === 'off' && req.skeletonStyle !== false && req.skeletonStyle !== 'off') {
+          throw deny('VMU_MATH_INVALID_INPUT', 'vmu.math.formal.skeletonStyle=off: proof skeletons are not produced',
+            'set it to have or suffices deliberately, or drop the request', evalKey('vmu.math.formal.skeletonStyle'))
+        }
+      }
+      if (req.uncertainty !== undefined) {
+        evalKey('vmu.math.units.uncertainty')
+        if (K.uncertainty === 'off' && req.uncertainty !== false) {
+          throw deny('VMU_MATH_INVALID_INPUT', 'vmu.math.units.uncertainty=off: uncertainty is not propagated',
+            'set it to first-order or monte-carlo deliberately, or drop the request', evalKey('vmu.math.units.uncertainty'))
+        }
       }
       // ⑧ INTERVAL (interval.enabled)
       if (req.interval !== undefined) evalKey('vmu.math.interval.enabled')
@@ -446,6 +498,14 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
         throw deny('VMU_STATE', 'vmu.math.linalg.requireResidual=true requires a residual on every solve',
           'the seam returned no residual: a solve without an error estimate is not evidence', mark(enforced, 'vmu.math.linalg.requireResidual'))
       }
+      // ROUND 223: vmu.math.formal.onDisagreement - when the assistants disagree, block refuses and report records.
+      if (raw.assistantDisagreement === true) {
+        mark(enforced, 'vmu.math.formal.onDisagreement')
+        if (K.onDisagreement === 'block') {
+          throw deny('VMU_FORMAL_DISAGREEMENT', 'the assistants disagree and vmu.math.formal.onDisagreement=block',
+            'resolve the disagreement, or set the key to report deliberately', mark(enforced, 'vmu.math.formal.onDisagreement'))
+        }
+      }
       if (K.convergence === 'require' && raw.converged === false) {
         throw deny('VMU_STATE', 'vmu.math.convergence.policy="require" refuses a run that did not converge',
           'the seam reported converged=false (proposed code name: VMU_MATH_NOT_CONVERGED — not registered yet)', mark(enforced, 'vmu.math.convergence.policy'))
@@ -457,6 +517,17 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
       if (K.maxFileMb > 0) {
         const mb = num(raw.artifactMb)
         if (mb > K.maxFileMb) capRefusal('VMU_RESOURCE_BUDGET', 'artifact size (MB)', mb, K.maxFileMb, 'vmu.math.artifacts.maxFileMb', enforced)
+      }
+      // ROUND 223: vmu.math.artifacts.dir. The path was already implemented; the KEY now decides it, and an artifact
+      // reported outside the declared directory is refused rather than quietly accepted.
+      mark(enforced, 'vmu.math.artifacts.dir')
+      if (raw.artifactPath !== undefined && String(raw.artifactPath).trim()) {
+        const declaredDir = K.artifactsDir.replace(/[\\/]+$/, '')
+        const got = String(raw.artifactPath).replace(/\\/g, '/')
+        if (!(got === declaredDir || got.startsWith(declaredDir + '/'))) {
+          throw deny('VMU_MATH_INVALID_INPUT', 'the artifact path is outside vmu.math.artifacts.dir: ' + got,
+            'declared directory: ' + declaredDir + ' (vmu.math.artifacts.dir)', mark(enforced, 'vmu.math.artifacts.dir'))
+        }
       }
       // ⑬ SHAPING (precision / tolerance / logs / warnings / receipts / repro / report)
       //     EVERY key whose read changes THIS result is recorded here (the round-11 criterion, applied to
