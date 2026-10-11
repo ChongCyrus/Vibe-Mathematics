@@ -1424,6 +1424,14 @@
   **门禁与证据** ✓：**`VMU REVIEWERS: 22/0`** ✓；**`SERVICE SURFACE: 48/0（70 registered）`** ✓；**`INSTALLER POLICY: ALL GREEN`** ✓；**矩阵 `0 mismatches, 0 unregistered`** ✓；**未接线 114 → 107** ✓；**待本轮 T1** ✓。
   **未做（明写 ✗）**：★★ **`vmu.reviewers.acknowledgement` 仍未接** ✗（**卷里未给它的语义** ✓ ⇒ **复活条件：先量它在哪一卷被定义** ✓）；**轮 278 那处异常的根因未查** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 280：查清"轮 278 的行报告已写却不存在"的【真根因】并修掉 —— 是一个【生成器识别形态】的盲区，而非编辑工具说谎** ✓✓
+  ★★★ **① 用 `git` 把责任分清** ✓✓：**`git show 0a88a1f` 只动了 `docs/04-settings.md`（2 行 ✓）；`git log -S 'vmu.review.rebuttalRequired' -- schema.js` 【什么都没找到】** ✓ ⇒ **该键【从未进过 `schema.js`】** ✓ —— **所以不是"编辑工具报告成功却未写"** ✗✓，**而是【它写进去后被生成器重建时丢掉了】** ✓。
+  ★★★ **② 根因：`generate-wired-schema.mjs`（轮 69）只认【它知道的形态】** ✓✓：**它的头注释自述识别 `WIRED_KEYS` 导出与四种取值形态** ✓（**`sget('k', <lit>)` · `raw(settings,'k',<lit>)` · `b/n('k',<lit>)` · 对象字面量表 `'k': <lit>`** ✓）⇒ ★★ **而 `records.js` 用的是【反向映射】`rebuttalRequired: 'vmu.review.rebuttalRequired'` ⇒ 形态相反 ⇒ 【看不见】** ✗ ⇒ **该键因此留在 `planned.js`** ✓，**而 `docs/04` 里于是出现一行自相矛盾** ✓：**`planned`／`null`，状态列却 `✅ 已接线`，理由列却"经审计无承载者"** ✗。
+  ★★★ **③ 修法取【最小且有原则】的那一个** ✓✓：**把那次读取改成【直读字面量】`sget('vmu.review.rebuttalRequired', true)`** ✓ —— **它正是生成器（与文档审计）认识的形态** ✓；**名字映射条目保留** ✓（**该面其余部分沿用那套约定** ✓）。**实测**：**生成器报 `schema already in sync`、`INVARIANTS ok: 332 emitted, 680 pre-existing`** ✓；**`VMU RECORDS: 267 passed, 0 failed`** ✓；**`docs/04` 里该键转为已接线** ✓。
+  ★★★ **④ 教训（已够格入 `docs/11`）** ✓✓：**① 编辑工具的"成功"报告【不是证据】，要重读目标文件比对** ✓；**② 但反过来，文件真的变了又变回去时，要先量【是哪个生成器在管它】——本项目有【多个】会重写 `schema.js` 的生成器** ✓（**`generate-wired-schema.mjs` 的 `WIRED-SCHEMA:BEGIN/END` 区块是它所有 ✓**）；**③ 一个键要"被看见"，往往要同时满足【读法形态】与【记账表】两件事** ✓ —— **我此前只注意了后者** ✗。
+  **门禁与证据** ✓：**`VMU RECORDS: 267/0`** ✓；**生成器不变量 ok ✓**；**待本轮生成链与 T1** ✓。
+  **未做（明写 ✗）**：★★ **`generate-wired-schema.mjs` 仍未支持【反向映射】形态** ✗ —— **本轮改的是【调用点】而非生成器** ✓ ⇒ **复活条件：把该形态加入生成器并自测** ✓（**它现在只靠"改用法"绕过 ✓**）；**`vmu.reviewers.acknowledgement` 仍未接** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 

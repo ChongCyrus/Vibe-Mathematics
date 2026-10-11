@@ -432,7 +432,9 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     rebuttal({ track, title, comment = null, response = null, changeRef = null, body = '', tags = [], settled = false, by = null } = {}) {
       const enforced = []
       mark(enforced, K.rebuttalRequired)
-      const required = sget(K.rebuttalRequired) !== false
+      // ROUND 280: read by LITERAL - the shape generate-wired-schema.mjs recognises (see the file header's four accessor
+      // shapes). Read through the name map it was invisible to that generator, so the key sat in the planned registry.
+      const required = sget('vmu.review.rebuttalRequired', true) !== false
       const hasComment = typeof comment === 'string' && comment.trim() !== ''
       const hasResponse = typeof response === 'string' && response.trim() !== ''
       if (!hasComment) {
