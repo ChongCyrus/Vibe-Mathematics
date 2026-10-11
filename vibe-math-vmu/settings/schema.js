@@ -258,6 +258,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.trust.decayOnEnd', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "关系结束后是否继续按时间衰减（false ⇒ 冻结在结束时刻，使终值可复现）" },
   // ROUND 254: 公平面的三键（08-§12.5／17 卷；现由 kernel/fairness.js 读取；★ maxSlotsPerInstance 未接，实测理由见 14 卷）.
   { key: 'vmu.fairness.criticalSlots', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "关键槽位保底（0＝关；reserve/critical 者不低于此数，仍受份额上限约束）" },
+  { key: 'vmu.fairness.maxSlotsPerInstance', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "每实例槽位硬顶（0＝关；★ 基线与【余数轮转】都遵守；当上限使守恒不可能时 ⇒ VMU_FAIRNESS_QUOTA 并点名本键）" },
   { key: 'vmu.fairness.newcomerQuota', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "新来者配额（0＝关；newcomer 者被抬到此数——配额应当【约束】，不只是被满足）" },
   { key: 'vmu.fairness.rebalanceEveryMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "重平衡周期（0＝无策略，回执明说无策略；rebalanceDue() 据此判定）" },
   { key: 'vmu.trust.useInSelection', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '选择时是否参考声誉（仅参考，绝不授权 ✗）' },

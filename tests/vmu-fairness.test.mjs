@@ -68,5 +68,49 @@ const s1 = g1.allocation({ pool: 7, claimants: ['a', 'b', 'c'] }), s2 = g2.alloc
 ok(JSON.stringify(s1.shares) === JSON.stringify(s2.shares) && s1.sum === s2.sum, 'two instances with the same clock agree exactly (determinism)')
 
 console.log('')
+
+// ── ROUND 255: the ceiling and the three floors ──────────────────────────────────────────────────────────────
+{
+  const base = mk().allocation({ pool: 100, claimants: ['a', 'b', 'c', 'd'] })
+  ok(base.shares.map((s) => s.share).join(',') === '25,25,25,25', 'declaring none of the four changes nothing (the control)')
+
+  // the ceiling BINDS: twelve claimants cannot take more than ten each
+  const many = mk({ 'vmu.fairness.maxSlotsPerInstance': 10 }).allocation({ pool: 100, claimants: 'abcdefghijkl'.split('') })
+  ok(many.shares.every((s) => s.share <= 10) && many.sum === 100, 'maxSlotsPerInstance: with twelve claimants and a ceiling of ten, EVERY share is at or below the ceiling and the pool is still fully allocated', many.shares.map((s) => s.share))
+
+  // a ceiling that does not bind changes nothing - the other half of the control
+  const slack = mk({ 'vmu.fairness.maxSlotsPerInstance': 60 }).allocation({ pool: 100, claimants: ['a', 'b'] })
+  ok(slack.shares.map((s) => s.share).join(',') === '50,50', 'maxSlotsPerInstance: a ceiling that nothing reaches leaves the split alone', slack.shares.map((s) => s.share))
+
+  // and when the ceiling makes conservation IMPOSSIBLE, it is refused by name rather than silently under-allocated
+  let impossible = null
+  try { mk({ 'vmu.fairness.maxSlotsPerInstance': 30 }).allocation({ pool: 100, claimants: ['a', 'b'] }) } catch (e) { impossible = e }
+  ok(impossible && impossible.code === 'VMU_FAIRNESS_QUOTA' && /maxSlotsPerInstance/.test(impossible.message),
+    'maxSlotsPerInstance: thirty each for two claimants cannot hold a pool of a hundred, and the refusal NAMES the ceiling', impossible && impossible.code)
+
+  // criticalSlots: the reserve holder is lifted EXACTLY to its floor
+  const crit = mk({ 'vmu.fairness.criticalSlots': 30 }).allocation({ pool: 100, claimants: [{ id: 'a', reserve: true }, { id: 'b' }, { id: 'c' }, { id: 'd' }] })
+  const critA = crit.shares.find((s) => s.id === 'a')
+  ok(critA && critA.share === 30 && crit.shares.filter((s) => s.id !== 'a').every((s) => s.share < 30),
+    'fairness.criticalSlots: the declared critical holder sits AT its floor and the others sit below it', crit.shares.map((s) => s.id + ':' + s.share))
+
+  // newcomerQuota: a quota must CONSTRAIN the give-away, not merely be satisfiable
+  const quota = mk({ 'vmu.fairness.newcomerQuota': 40 }).allocation({ pool: 100, claimants: [{ id: 'old' }, { id: 'new', newcomer: true }, { id: 'o2' }] })
+  const quotaNew = quota.shares.find((s) => s.id === 'new')
+  ok(quotaNew && quotaNew.share === 40, 'fairness.newcomerQuota: the newcomer is lifted exactly to the declared quota (an equal split would only have reached 33)', quota.shares.map((s) => s.id + ':' + s.share))
+
+  // a floor may never cross the ceiling
+  const crossed = mk({ 'vmu.fairness.newcomerQuota': 50, 'vmu.fairness.maxSlotsPerInstance': 40 }).allocation({ pool: 100, claimants: ['x', 'y', 'z'] })
+  ok(crossed.shares.every((s) => s.share <= 40), 'the ceiling wins over a floor that would cross it', crossed.shares.map((s) => s.share))
+
+  // rebalanceEveryMs: zero means NO policy, said in words; otherwise due, not due, due again
+  const noPolicy = mk({}).rebalanceDue({})
+  ok(noPolicy.policy === 0 && /no rebalancing policy/.test(noPolicy.note), 'fairness.rebalanceEveryMs[0]: the receipt reports no policy rather than a due date')
+  const hourly = mk({ 'vmu.fairness.rebalanceEveryMs': 3600000 })
+  ok(hourly.rebalanceDue({}).due === true, 'fairness.rebalanceEveryMs: never rebalanced under a policy is due')
+  ok(hourly.rebalanceDue({ lastAt: 1000, at: 1000 }).due === false, 'fairness.rebalanceEveryMs: just rebalanced is not due')
+  ok(hourly.rebalanceDue({ lastAt: 1000, at: 1000 + 7200000 }).due === true, 'fairness.rebalanceEveryMs: two hours later it is due again')
+}
+
 console.log('=== VMU FAIRNESS: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) process.exit(1)

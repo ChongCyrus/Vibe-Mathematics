@@ -363,6 +363,7 @@ vmu.packs.active: [v5r]
 | `vmu.trust.appealNeedsEvidence` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 申诉须带证据（true ⇒ dispute() 无证据即具名拒，VMU_TRUST_EVIDENCE_REQUIRED） |
 | `vmu.trust.decayOnEnd` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 关系结束后是否继续按时间衰减（false ⇒ 冻结在结束时刻，使终值可复现） |
 | `vmu.fairness.criticalSlots` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/fairness.js` | 关键槽位保底（0＝关；reserve/critical 者不低于此数，仍受份额上限约束） |
+| `vmu.fairness.maxSlotsPerInstance` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/fairness.js` | 每实例槽位硬顶（0＝关；★ 基线与【余数轮转】都遵守；当上限使守恒不可能时 ⇒ VMU_FAIRNESS_QUOTA 并点名本键） |
 | `vmu.fairness.newcomerQuota` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/fairness.js` | 新来者配额（0＝关；newcomer 者被抬到此数——配额应当【约束】，不只是被满足） |
 | `vmu.fairness.rebalanceEveryMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/fairness.js` | 重平衡周期（0＝无策略，回执明说无策略；rebalanceDue() 据此判定） |
 | `vmu.trust.useInSelection` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 选择时是否参考声誉（仅参考，绝不授权 ✗） |
@@ -1241,7 +1242,6 @@ vmu.packs.active: [v5r]
 | `vmu.ethics.irbRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.ethics.requireApprovalFor` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.explain.fairnessDetail` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.fairness.maxSlotsPerInstance` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.handover.autoOpenOnEnd` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.handover.includeMemoryScopes` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.identity.localFormat` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |

@@ -28,6 +28,7 @@ const K = {
   auditWindowMs: 'vmu.fairness.auditWindowMs',
   underUseThreshold: 'vmu.fairness.underUseThreshold',
   minShares: 'vmu.fairness.minShares',
+  maxSlotsPerInstance: 'vmu.fairness.maxSlotsPerInstance',   // ROUND 255: revived under the condition recorded in round 254
   // ROUND 254: the four remaining declarations. All default to off, so declaring nothing changes nothing.
   criticalSlots: 'vmu.fairness.criticalSlots',
   newcomerQuota: 'vmu.fairness.newcomerQuota',
@@ -65,6 +66,9 @@ export function createFairness({ clock = () => new Date(0).toISOString(), log = 
   const criticalSlots = () => { const v = numOf(read(settings, K.criticalSlots, 0), 0); return v > 0 ? Math.floor(v) : 0 }
   const newcomerQuota = () => { const v = numOf(read(settings, K.newcomerQuota, 0), 0); return v > 0 ? Math.floor(v) : 0 }
   const rebalanceEveryMs = () => { const v = numOf(read(settings, K.rebalanceEveryMs, 0), 0); return v > 0 ? Math.floor(v) : 0 }
+  // ROUND 255: a HARD ceiling on any single claimant, applied on the baseline AND in the remainder rotation - round 254 removed
+  // this key because the rotation ignored it, which made it a ceiling honoured in name only.
+  const maxSlotsPerInstance = () => { const v = numOf(read(settings, K.maxSlotsPerInstance, 0), 0); return v > 0 ? Math.floor(v) : 0 }
 
   const normalize = (claimants) => {
     if (!Array.isArray(claimants)) throw refuse('VMU_INVALID_ARGUMENT', 'allocation needs { claimants: [...] }', 'pass an array of ids (or { id, weight?, reserve? })')
@@ -107,8 +111,11 @@ export function createFairness({ clock = () => new Date(0).toISOString(), log = 
       return { ok: true, allocationId, pool: total, policy: pol, sum: 0, unallocated: total, shares: [], explain: [] }
     }
     const cap = Math.floor(total * maxShare())
-    // ROUND 254: read once, so the loop below cannot see a different value mid-allocation.
+    // ROUND 254/255: read once, so the loop below cannot see a different value mid-allocation.
     const crit = criticalSlots()
+    const perInstance = maxSlotsPerInstance()
+    // The effective ceiling for ONE claimant: the share cap, or the declared per-instance ceiling if that is lower.
+    const ceiling = perInstance > 0 ? Math.min(cap, perInstance) : cap
     const quota = newcomerQuota()
     const floorPer = Math.floor(total * minShare())
     const w = weights()
@@ -141,11 +148,14 @@ export function createFairness({ clock = () => new Date(0).toISOString(), log = 
     for (const c of list) {
       if (base.get(c.id) < floorPer) base.set(c.id, Math.min(floorPer, cap))
       if (base.get(c.id) > cap) base.set(c.id, cap)
+      // ROUND 255: the per-instance ceiling clamps the BASELINE as well as the rotation - a baseline above the ceiling is the
+      // very defect that made this key nominal in round 254.
+      if (perInstance > 0 && base.get(c.id) > perInstance) base.set(c.id, perInstance)
       // ROUND 254: a declared reserve or critical holder is never starved below `criticalSlots`, a declared newcomer is lifted
       // to `newcomerQuota`, and `maxSlotsPerInstance` is a HARD ceiling. Ceilings are applied last, so a floor cannot push a
       // share past a cap.
-      if (crit > 0 && (c.reserve === true || c.critical === true) && base.get(c.id) < crit) base.set(c.id, Math.min(crit, cap))
-      if (quota > 0 && c.newcomer === true && base.get(c.id) < quota) base.set(c.id, Math.min(quota, cap))
+      if (crit > 0 && (c.reserve === true || c.critical === true) && base.get(c.id) < crit) base.set(c.id, Math.min(crit, ceiling))
+      if (quota > 0 && c.newcomer === true && base.get(c.id) < quota) base.set(c.id, Math.min(quota, ceiling))
     }
     // 余数：按确定性顺序（字典序）逐一轮转，直到分完或全部触发上限
     let assigned = [...base.values()].reduce((a, b) => a + b, 0)
@@ -157,15 +167,18 @@ export function createFairness({ clock = () => new Date(0).toISOString(), log = 
       for (const c of list) {
         if (unallocated <= 0) break
         const cur = base.get(c.id)
-        if (cur >= cap) { if (!capped.includes(c.id)) capped.push(c.id); continue }
+        // ROUND 255: the rotation honours the per-instance ceiling too, which is what makes the key real rather than nominal.
+        if (cur >= ceiling) { if (!capped.includes(c.id)) capped.push(c.id); continue }
         base.set(c.id, cur + 1); unallocated -= 1; progressed = true
       }
       guard += 1
       if (!progressed) break
     }
     if (unallocated > 0) {
-      throw refuse('VMU_FAIRNESS_QUOTA', 'conservation cannot hold: pool=' + total + ' but maxShare=' + maxShare() + ' caps every claimant at ' + cap + ' (unallocated=' + unallocated + ')',
-        'raise ' + K.maxShare + ' above ' + (total / (cap * list.length || 1)).toFixed(3) + ' or add claimants; nothing was allocated')
+      // The wording the suite pins is kept verbatim; the per-instance ceiling is appended only when one is declared.
+      throw refuse('VMU_FAIRNESS_QUOTA', 'conservation cannot hold: pool=' + total + ' but maxShare=' + maxShare() + ' caps every claimant at ' + cap +
+        (perInstance > 0 ? ' and ' + K.maxSlotsPerInstance + ' caps every claimant at ' + perInstance : '') + ' (unallocated=' + unallocated + ')',
+        'raise ' + K.maxShare + (perInstance > 0 ? ' or ' + K.maxSlotsPerInstance : '') + ' above ' + (total / (ceiling * list.length || 1)).toFixed(3) + ' or add claimants; nothing was allocated')
     }
     const shares = list.map((c) => ({ id: c.id, share: base.get(c.id), capped: base.get(c.id) >= cap, reserve: c.reserve, weight: pol === 'equal' || pol === 'reserve' ? null : Math.max(0, numOf(w[c.id], 0)) }))
     const sum = shares.reduce((a, s) => a + s.share, 0)
