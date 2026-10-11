@@ -789,19 +789,19 @@ vmu.packs.active: [v5r]
 | `vmu.fingerprint.includeMeta` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 指纹是否含元数据（recorder／at；默认不含） |
 | `vmu.paths.followSymlinks` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 是否跟随符号链接（★ 与 vmu.safety.followSymlinks 同指一物：本键【声明时优先】，两者默认同为 false） |
 | `vmu.paths.allowedRoots` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 允许写入的根（只可【收窄】策略，绝不放宽；空＝由策略计算） |
-| `vmu.tags.controlled` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 受控词汇表（true ⇒ 未登记的词具名拒；默认 false＝零机制） |
-| `vmu.tags.maxDepth` | int ≥1 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 标签层级深度（超深具名拒） |
-| `vmu.tags.aliasTable` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 别名表位置（声明后，未登记的别名仍拒并点名该表；本面不自行读文件） |
-| `vmu.refs.requireTarget` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 引用目标必须存在（true ⇒ 悬空引用进入处置流程） |
-| `vmu.refs.danglingPolicy` | enum | `list` | `reject`∣`list` | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 悬空引用处置（reject ⇒ 具名拒；list ⇒ 回执里列出，绝不静默） |
-| `vmu.refs.backlinkDepth` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 反链深度（backlinks(id) 的广度优先层数） |
+| `vmu.tags.controlled` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library-policy.js` | 受控词汇表（true ⇒ 未登记的词具名拒；默认 false＝零机制） |
+| `vmu.tags.maxDepth` | int ≥1 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library-policy.js` | 标签层级深度（超深具名拒） |
+| `vmu.tags.aliasTable` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library-policy.js` | 别名表位置（声明后，未登记的别名仍拒并点名该表；本面不自行读文件） |
+| `vmu.refs.requireTarget` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library-policy.js` | 引用目标必须存在（true ⇒ 悬空引用进入处置流程） |
+| `vmu.refs.danglingPolicy` | enum | `list` | `reject`∣`list` | 会话 | H1 | office | ✅ 已接线 | `kernel/library-policy.js` | 悬空引用处置（reject ⇒ 具名拒；list ⇒ 回执里列出，绝不静默） |
+| `vmu.refs.backlinkDepth` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library-policy.js` | 反链深度（backlinks(id) 的广度优先层数） |
 | `vmu.dedupe.enabled` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | ★ 可选【更宽】去重层的开关；精确身份去重是核心不变式、【不可关】（默认 false ⇒ 只有身份去重） |
 | `vmu.dedupe.scope` | enum | `full` | `full`∣`segment` | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 去重范围（segment ⇒ 按 statement 段级匹配，并在回执自曝 deduplicatedBy） |
 | `vmu.dedupe.crossWorkspace` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 跨区去重（true ⇒ 必须显式给 opts.workspaceScope，本面不自行跨根扫描） |
-| `vmu.metadata.strictness` | enum | `warn` | `strict`∣`warn`∣`loose` | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 校验严格度（strict ⇒ 未知字段具名拒；warn ⇒ 回执列出；loose ⇒ 接受） |
-| `vmu.metadata.customPrefix` | string | `x-` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 自定义字段前缀（带此前缀的字段不受严格度约束） |
-| `vmu.provenance.depth` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 溯源深度（0＝全部；超出者【计数丢弃】而非静默） |
-| `vmu.provenance.recordInputFingerprint` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 是否记输入指纹（false ⇒ 回执里该字段为 null，绝不留旧值） |
+| `vmu.metadata.strictness` | enum | `warn` | `strict`∣`warn`∣`loose` | 会话 | H1 | office | ✅ 已接线 | `kernel/library-policy.js` | 校验严格度（strict ⇒ 未知字段具名拒；warn ⇒ 回执列出；loose ⇒ 接受） |
+| `vmu.metadata.customPrefix` | string | `x-` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library-policy.js` | 自定义字段前缀（带此前缀的字段不受严格度约束） |
+| `vmu.provenance.depth` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library-policy.js` | 溯源深度（0＝全部；超出者【计数丢弃】而非静默） |
+| `vmu.provenance.recordInputFingerprint` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library-policy.js` | 是否记输入指纹（false ⇒ 回执里该字段为 null，绝不留旧值） |
 | `vmu.workspace.default` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 默认工作区（裸名字归属的工作区；只读并上报，不猜） |
 | `vmu.workspace.sharedPaths` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 共享区挂载点（★ 声明后【接管】硬编码的同级 Shared；空＝保持原行为） |
 | `vmu.workspace.crossWrite` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 跨区写（false ⇒ 只能写工作区根与共享挂载点；true ⇒ 另允许调用方显式点名的他区根） |

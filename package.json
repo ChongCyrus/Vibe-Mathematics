@@ -249,6 +249,7 @@
     "vibe-math-vmu/kernel/bus.js",
     "vibe-math-vmu/kernel/prompt/index.js",
     "vibe-math-vmu/kernel/library.js",
+    "vibe-math-vmu/kernel/library-policy.js",
     "vibe-math-vmu/kernel/math.js",
     "vibe-math-vmu/kernel/members.js",
     "vibe-math-vmu/kernel/ballot.js",

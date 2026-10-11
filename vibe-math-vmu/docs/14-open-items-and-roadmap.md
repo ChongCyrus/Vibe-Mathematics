@@ -1010,6 +1010,15 @@
   **门禁与证据** ✓：**`VMU LIBRARY: 86 passed, 0 failed`** ✓（**+9 条断言** ✓）；**`VMU DOCS AUDIT: 70 passed`** ✓（**契约行补上 `exportRecord(`** ✓）；`docs/04` **3 行**由 `⚠️` 变 `✅ 已接线` ✓；**未接线 206 → 203** ✓；**`regen-all: 9/9 in sync`** ✓。
   **未做（明写 ✗）**：★ **`createLibrary` 单函数 620 行** ✗ —— **本轮实测暴露的【结构性坏味道】** ✓（**超出工具的单函数上限，也超出可读性上限** ✓；**拆分它需要一次破坏性重构，属独立议题** ✓）；**`staleTolerance` 的 `tolerate` 分支** ✗；**`vmu.search.*`(3)／`vmu.naming.conflictPolicy`** ✗；**其余 203 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 235：把有界编辑器【收进仓库】＋ 首次成功拆分 `createLibrary`（620 → 563 行，零行为变更）；未接线保持 203** ✓✓
+  **① 工具入库** ✓：`scripts/dev/bounded-edit.mjs` ✓ —— ★★ **实测：计数器完全不变** ✓（`files changed=0` ✓、`suites=150` ✓、`FILES tests/*.mjs=157` ✓）⇒ **`scripts/dev/` 不计入套件统计，放在那里安全** ✓。**它是长期资产，不再留在临时目录** ✓。
+  **② `createLibrary` 的首次拆分（本区间正题）** ✓✓：**实测该函数 620 行** ✓ —— **已超出有界编辑器的单函数上限（400）✓，也超出可读性上限** ✓ ⇒ ★★ **抽出 L97-204 的【108 行纯策略逻辑】到新模块 `kernel/library-policy.js`** ✓✓：`registerVocabulary` ✓／`checkMetadata` ✓／`provenanceOf` ✓／`checkReferences` ✓／`backlinks` ✓／`checkTags` ✓ —— **六者是内聚、纯函数式的单元：只读已解析的 settings、只按名拒绝、不碰磁盘** ✓。
+  **拆法的三条纪律** ✓：**(a) 逐字搬移** ✓（**同一批拒绝、同一顺序、同一文案** ✓）；**(b) 自由变量全部【注入】而非 import** ✓ —— `refuse` 与索引映射都属于调用方 ✓，且 **索引在装配点之后才创建，故以 `getIndex: () => index` 懒取** ✓（**从而避开 TDZ** ✓）；**(c) 边界用【两个精确字面量】定位并校验跨度** ✓（**实测 108 行，预期 ~109** ✓，**不符即 ABORT** ✓）。
+  **证据（最强的那种：行为零变化）** ✓✓：**`library.js` 709 → 616 行** ✓、**`createLibrary` 620 → 563 行** ✓、**diff 15 增 / 108 删** ✓、**`VMU LIBRARY: 99 passed, 0 failed` 全绿 ✓**，且 `vmu-library-revisions` 30／`vmu-library-remove` 31／`vmu-records` 259／**`VMU SERVICE SURFACE: 48 passed (67 registered)`** 全部无回归 ✓。
+  **接线** ✓：`package.json#files` 已登记 `kernel/library-policy.js` ✓；★ **`installer.js` 在【仓库根】而非 `vibe-math-vmu/` 下** ✓，且**其条目相对 `src: 'vibe-math-vmu'`（写 `'kernel/library.js'`）** ✓ —— **这一层相对路径的差异就是第一次锚点没匹配的原因** ✓。
+  ✗✓ **一处自伤（第七次同型）** ✗：抽取脚本里的 **`the project's own` 撇号** ✗ 断了字符串 ⇒ **脚本静默没跑**（**`library.js` 仍 709 行、套件仍 99/0 露了馅** ✓）⇒ 去掉撇号后一次通过 ✓。★★★ **"源码文本里禁止 ASCII 引号/撇号"必须成为写脚本的第一条规则** ✓（**它已连续七次咬我，且每次的代价都是"静默不执行"** ✓）。
+  **未做（明写 ✗）**：★ **`createLibrary` 仍有 563 行** ✗ —— **本轮只拆出第一块** ✓，**后续应继续拆（I/O 层／索引层／写入路径各有内聚边界 ✓）**；**`staleTolerance` 的 `tolerate` 分支** ✗；**`vmu.search.*`(3)／`vmu.naming.conflictPolicy`** ✗；**其余 203 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 
