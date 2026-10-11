@@ -256,15 +256,32 @@ test('irv is resolved in one ruling, and refused by name when the key is off', (
   const on = drive(face({ 'vmu.ballot.irvInstantSingleCount': true }))
   assert.equal(on.ok, true, 'irv WITH the key resolves inside one ruling')
   assert.equal(on.outcome, 'undecided', 'MEASURED: b and c tie for last place, so the counter refuses to invent an elimination')
-  // WITHDRAWN in round 157 (open finding, docs/14): this asserted that the reply NAMES the tied options, and the
-  // printed measurement says the box reply carries tie=[] while the counter's own detail carries ['b','c']. That is a
-  // discrepancy in MY wiring, not a wrong expectation, and writing [] into the assertion would enshrine the bug. The
-  // branch keeps its other guarantees: refused by name without the key, resolved in one ruling with it, rounds returned.
-  // WITHDRAWN (open finding, docs/14): these asserted that the reply carries the elimination ROUNDS, the exhausted
-  // count and the enforced key. Measured: the reply's rounds array is EMPTY, which together with the empty tie array
-  // says the counter took its "no ranked ballot carried any option" early return - so the box branch is NOT yet
-  // working and the fault is in MY wiring, not in the expectation. Asserting the empty values would enshrine the bug.
-  // What IS verified here is what passed: refused by name without the key, and resolved (undecided) with it.
+  /**
+   * ROUND 158: these were withdrawn in round 157 while the box returned nothing, and they come back ONLY because the
+   * fix was measured first: the ranked path had been refused (indexOf with an array is always -1) so the box votes
+   * were empty. With the reply checked by printing, every value below is a measured one, not a hoped-for one.
+   */
+  assert.equal(on.rounds.length, 1, 'the reply carries the elimination rounds (measured: one round, because b and c tie)')
+  assert.deepEqual(on.rounds[0].counts, { a: 2, b: 1, c: 1 }, 'and the first-preference counts of that round')
+  assert.equal(on.exhausted, 0, 'the exhausted count is reported')
+  assert.ok(Array.isArray(on.tie) && on.tie.indexOf('b') !== -1 && on.tie.indexOf('c') !== -1,
+    '★ the tied options are NAMED: ' + JSON.stringify(on.tie))
+  assert.ok(on.enforced.indexOf('vmu.ballot.irvInstantSingleCount') !== -1, 'and the key that made it work is named in enforced')
+
+  // ROUND 158: the ranked path through the BOX with a real transfer, and the new guard for an option that is not on
+  // the ballot. Both exercise code this round changed.
+  {
+    const five = [['v1', ['p', 'q']], ['v2', ['p', 'q']], ['v3', ['r', 'q']], ['v4', ['r', 'q']], ['v5', ['s', 'p']]]
+    const fx = face({ 'vmu.ballot.irvInstantSingleCount': true })
+    const ox = fx.open({ question: 'q', options: ['p', 'q', 'r', 's'] })
+    for (const [by, ch] of five) fx.cast({ boxId: ox.boxId, by, choices: ch })
+    const rx = fx.close({ boxId: ox.boxId })
+    assert.equal(rx.outcome, 'p', 'MEASURED: transfers elect p through the box')
+    assert.ok(Array.isArray(rx.rounds) && rx.rounds.length >= 2, 'and more than one round was needed: ' + (rx.rounds || []).length)
+    const bad = fx.cast({ boxId: ox.boxId, by: 'v9', choices: ['p', 'not-an-option'] })
+    assert.equal(bad.ok, false, '★ a ranked entry that is NOT on the ballot is refused (the new guard)')
+    assert.equal(bad.code, 'VMU_CONFLICT')
+  }
 
   const f2 = face({ 'vmu.ballot.irvInstantSingleCount': true })
   const o2 = f2.open({ question: 'q', options: ['x', 'y'] })
@@ -272,7 +289,7 @@ test('irv is resolved in one ruling, and refused by name when the key is off', (
   f2.cast({ boxId: o2.boxId, by: 'v2', choices: ['y'] })
   const tied = f2.close({ boxId: o2.boxId })
   assert.equal(tied.outcome, 'undecided', 'a last-place tie is undecided, never an implicit sort order')
-  // The tied-set assertion for this box is WITHDRAWN too - same open finding as above (the reply carries tie=[]).
+  assert.deepEqual(tied.tie, ['x', 'y'], 'MEASURED: both tied options are named')
   passed += 1
 })
 

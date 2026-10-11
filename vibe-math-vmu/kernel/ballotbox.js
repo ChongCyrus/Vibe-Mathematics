@@ -165,7 +165,16 @@ export function createBallotBox(opts) {
     // existing method changes behaviour; a ranked list is only ever stored when the caller sends one.
     const ranked = Array.isArray(args.choices) ? args.choices.map((x) => String(x === undefined || x === null ? '' : x).trim()).filter((x) => x !== '') : null
     const choice = ranked ? ranked : String(args.choice || '')
-    if (box.options.indexOf(choice) === -1) return deny('VMU_CONFLICT', '选项不在票面上：' + choice, '可选：' + box.options.join('、'))
+    /**
+     * ROUND 158 — THE RANKED PATH WAS REFUSED, AND THAT IS WHY THE BOX RETURNED NOTHING. Measured: `indexOf` was
+     * called with an ARRAY, which is always -1, so every ranked cast was refused as "option not on the ballot" and
+     * `box.votes` stayed empty - which is exactly why the reply carried `rounds: []` and `tie: []` (the counter's
+     * "no ranked ballots" early return). Every entry is now checked against the ballot, naming the offender.
+     */
+    if (ranked) {
+      const off = ranked.filter((x) => box.options.indexOf(x) === -1)
+      if (off.length) return deny('VMU_CONFLICT', '排序里有不在票面上的选项：' + off.join('、'), '可选：' + box.options.join('、'))
+    } else if (box.options.indexOf(choice) === -1) return deny('VMU_CONFLICT', '选项不在票面上：' + choice, '可选：' + box.options.join('、'))
     if (c.recuseDeclareMode === 'required' && args.recuse !== undefined) mark(enforced, 'vmu.ballot.recuseDeclareMode')
     if (args.recuse === true) {
       mark(enforced, 'vmu.ballot.recusePublic')
@@ -173,7 +182,9 @@ export function createBallotBox(opts) {
       if (c.recusePublic) emit({ type: 'ballot.recuse', boxId: box.id, by })
       return { ok: true, boxId: box.id, kind: 'recused', sealed: box.sealed, enforced, enforcedScope: ENFORCED_SCOPE }
     }
-    box.votes.set(by, String(choice))
+    // ROUND 158: a ranked ballot is stored AS A LIST. The scalar path keeps its exact old meaning (`String(choice)`),
+    // so no existing method changes behaviour; stringifying a list would have destroyed the ranking that IRV needs.
+    box.votes.set(by, ranked ? ranked.slice() : String(choice))
     if (c.proxyMode === 'on' && args.proxyFor) { mark(enforced, 'vmu.ballot.proxyMode'); if (c.proxyChainMaxDepth > 0) mark(enforced, 'vmu.ballot.proxyChainMaxDepth') }
     if (c.quadraticCreditCap > 0 && Number(args.credits) > c.quadraticCreditCap) { return deny('VMU_CONFLICT', 'credits 超上限 ' + c.quadraticCreditCap + '（`vmu.ballot.quadraticCreditCap`）', '调小 credits', ['vmu.ballot.quadraticCreditCap']) }
     return { ok: true, boxId: box.id, kind: 'vote', sealed: box.sealed, enforced, enforcedScope: ENFORCED_SCOPE }
