@@ -170,8 +170,14 @@ export function createDomainCompliance(opts) {
         missing.push({ item: 'IACUC 方案须含 protocolId 与 species', key: 'vmu.animal.protocolId', code: CODE.iacucMissing })
       } else if (p.approvedAt === undefined || p.expiresAt === undefined) {
         missing.push({ item: 'IACUC 方案须含 approvedAt 与 expiresAt', key: 'vmu.animal.iacucRequired', code: CODE.iacucMissing })
-      } else if (Number(p.approvedAt) > now || Number(p.expiresAt) <= now) {
-        missing.push({ item: Number(p.approvedAt) > now ? 'IACUC 尚未生效（approvedAt 在未来）' : 'IACUC 已过期（expiresAt ≤ now）',
+      } else if (Number(p.approvedAt) > now) {
+        // MEASURED CORRECTION: an approval that has not taken effect means NO APPROVAL IS IN FORCE, which is the MISSING code - the
+        // expiry code is for an approval that existed and lapsed. The volume lists exactly these two, and the distinction is what
+        // makes a receipt readable.
+        missing.push({ item: 'IACUC 尚未生效（approvedAt 在未来 ⇒ 当前无有效批准）',
+          key: 'vmu.animal.reviewCycleDays', code: CODE.iacucMissing })
+      } else if (Number(p.expiresAt) <= now) {
+        missing.push({ item: 'IACUC 已过期（expiresAt ≤ now）',
           key: 'vmu.animal.reviewCycleDays', code: CODE.iacucExpired })
       }
     }
