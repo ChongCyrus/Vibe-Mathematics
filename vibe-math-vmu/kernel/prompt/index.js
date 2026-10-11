@@ -70,6 +70,12 @@ export function createPromptPipeline({
   const localeOnMissing = settings['vmu.prompts.locale.onMissing'] === 'refuse' ? 'refuse' : 'warn'
   const overridesByLang = settings['vmu.prompts.overridesByLang'] && typeof settings['vmu.prompts.overridesByLang'] === 'object'
     ? settings['vmu.prompts.overridesByLang'] : {}
+  // ROUND 244: the glossary family.
+  const glossaryMode = ['enforce', 'warn', 'off'].includes(settings['vmu.prompts.glossary.mode']) ? settings['vmu.prompts.glossary.mode'] : 'enforce'
+  const glossaryPath = typeof settings['vmu.prompts.glossary.ontology'] === 'string' && settings['vmu.prompts.glossary.ontology'].trim()
+    ? settings['vmu.prompts.glossary.ontology'].trim() : 'vibe-math-vmu/glossary.json'
+  const glossaryTraces = []
+  let ontologyIds = null   // null means NOT LOADED, which §21.4 insists is different from empty
   // ROUND 242 (verified half): the declared sections and overrides.
   if (overrides === null || typeof overrides !== 'object') overrides = {}   // the kernel passes null EXPLICITLY, so the default never applied
   const declaredSections = Array.isArray(settings['vmu.prompts.sections']) ? settings['vmu.prompts.sections'] : []
@@ -160,6 +166,7 @@ export function createPromptPipeline({
       // ROUND 241: the language the section's text is written in, so `vmu.prompts.locale.onMissing` has something to check.
     // MEASURED: without this the check read `undefined` and never fired at all.
     lang: typeof section.lang === 'string' && section.lang.trim() ? section.lang.trim() : null,
+    terms: Array.isArray(section.terms) ? section.terms.map(String) : [],   // ROUND 244: the ids this section cites
     text: typeof section.text === 'string' ? section.text : null,
       template: section.template || null,
       vars: Array.isArray(section.vars) ? section.vars.slice() : [],
@@ -336,6 +343,48 @@ export function createPromptPipeline({
         .filter((e) => scopeMatches(e.scope, ctx))
         .sort((a, b) => (a.order - b.order) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
 
+  // ROUND 244: §21.4. Placed after the pick deliberately: these are the sections that will actually render.
+  let glossaryRefusal = null
+  if (glossaryMode !== 'off') {
+    if (ontologyIds === null && !readFile) {
+      // A CAPABILITY GAP, not a broken declaration: traced, and assembly continues. Refusing here would make the glossary
+      // mandatory for every pipeline, which is not what the key says.
+      glossaryTraces.push({ what: 'ontology-unchecked', path: glossaryPath, mode: glossaryMode, reason: 'no reader is available in this pipeline' })
+    } else if (ontologyIds === null) {
+      try {
+        const rawGloss = await readFile(glossaryPath, 'utf8')
+        const parsed = JSON.parse(typeof rawGloss === 'string' ? rawGloss : String(rawGloss))
+        const terms = parsed && parsed.terms ? parsed.terms : {}
+        ontologyIds = new Set(Array.isArray(terms)
+          ? terms.map((x) => (x && x.id) || x).filter(Boolean).map(String)
+          : Object.keys(terms).map(String))
+      } catch (e) {
+        // §21.4: an unreadable ontology is NOT "no terms".
+        glossaryTraces.push({ what: 'ontology-unreadable', path: glossaryPath, mode: glossaryMode, reason: String((e && e.message) || e) })
+      }
+    }
+    const unreadable = glossaryTraces.some((x) => x.what === 'ontology-unreadable')
+    if (unreadable && glossaryMode === 'enforce') {
+      glossaryRefusal = { code: 'VMU_NO_SUCH_OBJECT', message: 'vmu.prompts.glossary.mode=enforce and the ontology cannot be read: ' + glossaryPath,
+        hint: 'fix the path or the file, or set vmu.prompts.glossary.mode=warn to continue and trace it' }
+    } else if (ontologyIds !== null) {
+      for (const entry of picked) {
+        const terms = Array.isArray(entry.terms) ? entry.terms : []
+        const unknown = terms.filter((x) => !ontologyIds.has(String(x)))
+        if (!unknown.length) continue
+        if (glossaryMode === 'enforce') {
+          glossaryRefusal = { code: 'VMU_INVALID_ARGUMENT', message: 'section ' + entry.name + ' cites terms outside the ontology: ' + unknown.join(', '),
+            hint: 'add them to ' + glossaryPath + ', or set vmu.prompts.glossary.mode=warn' }
+          break
+        }
+        glossaryTraces.push({ what: 'term-unknown', section: entry.name, terms: unknown })
+      }
+    }
+    if (glossaryRefusal) {
+      return { ok: false, refused: glossaryRefusal,
+        glossary: { mode: glossaryMode, path: glossaryPath, loaded: ontologyIds !== null, traces: glossaryTraces.slice() } }
+    }
+  }
       const parts = []
       const sources = []
       for (const entry of picked) {
@@ -382,6 +431,7 @@ export function createPromptPipeline({
         locale: { asked: (ctx && ctx.lang) || null, tried: langOrder(ctx && ctx.lang), default: localeDefault, chain: localeChain, onMissing: localeOnMissing,
           overrideSources: [...new Set([...registry.values()].map((e) => e.name))].map((n) => ({ section: n, source: overrideFor(n, ctx && ctx.lang).source })).filter((e) => e.source !== null) },
           localeMisses: localeMisses.slice(),
+        glossary: { mode: glossaryMode, path: glossaryPath, loaded: ontologyIds !== null, traces: glossaryTraces.slice() },
         overrideMerge,   // ROUND 241: what onMissing=warn recorded instead of refusing
         enforced: ['vmu.prompts.locale.default', 'vmu.prompts.locale.fallbackChain', 'vmu.prompts.overridesByLang'], at: clock() }
     },

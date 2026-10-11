@@ -159,8 +159,6 @@ export const PLANNED_DEFS = Object.freeze([
   { key: "vmu.prompt.compatMode", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07", "13"], doc: "设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准）" },
   { key: "vmu.prompt.order", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["13"], doc: "设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准）" },
   { key: "vmu.prompt.sections", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["13"], doc: "设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准）" },
-  { key: "vmu.prompts.glossary.mode", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["06"], doc: "设计阶段登记：首个声明卷 06（共见 1 卷：06），尚未实现（元数据以各卷为准）" },
-  { key: "vmu.prompts.glossary.ontology", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["06"], doc: "设计阶段登记：首个声明卷 06（共见 1 卷：06），尚未实现（元数据以各卷为准）" },
   { key: "vmu.pub.retractionRequiresReason", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["16"], doc: "设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准）" },
   { key: "vmu.pub.versionKinds", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["16"], doc: "设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准）" },
   { key: "vmu.recruit.decideBy", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["17"], doc: "设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准）" },

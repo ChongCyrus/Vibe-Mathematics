@@ -366,6 +366,57 @@ if (SELF_PROBE) {
     'locale.onMissing[warn]: the same case is recorded instead, and the prompt is still produced', JSON.stringify(lenientOut.localeMisses))
 }
 
+
+// ── ROUND 244: the glossary family (§21.4), every branch of it ───────────────────────────────────────────────
+{
+  const m = await import(pathToFileURL(MODULE).href)
+  const readerOf = (ids) => async () => JSON.stringify({ apiVersion: 1, terms: Object.fromEntries(ids.map((i) => [i, {}])) })
+  const mkG = (settings, extra = {}) => m.createPromptPipeline(Object.assign({
+    sections: [{ name: 'cites', order: 404, text: 'x', terms: ['known', 'unknown-term'] }],
+    settings,
+  }, extra))
+
+  // the ontology is READ through the pipeline own reader, and loaded once
+  let calls = 0
+  const counted = async () => { calls += 1; return JSON.stringify({ terms: { known: {} } }) }
+  const warnOut = await mkG({ 'vmu.prompts.glossary.mode': 'warn' }, { readFile: counted }).assemble({})
+  ok(calls === 1, 'prompts.glossary.ontology: the ontology is read exactly once for an assembly', String(calls))
+  ok(warnOut.ok === true && warnOut.glossary.loaded === true && warnOut.glossary.traces.some((t) => t.what === 'term-unknown'),
+    'prompts.glossary.mode[warn]: an unknown term is TRACED and assembly continues', JSON.stringify(warnOut.glossary.traces))
+
+  const good = await mkG({ 'vmu.prompts.glossary.mode': 'warn' }, { readFile: readerOf(['known', 'unknown-term']) }).assemble({})
+  ok(good.ok === true && good.glossary.traces.length === 0, 'prompts.glossary[+]: a section citing only known terms is clean')
+
+  const strict = await mkG({ 'vmu.prompts.glossary.mode': 'enforce' }, { readFile: readerOf(['known']) }).assemble({})
+  ok(strict.ok === false && strict.refused && strict.refused.code === 'VMU_INVALID_ARGUMENT',
+    'prompts.glossary.mode[enforce]: the same citation REFUSES the assembly by name', JSON.stringify(strict.refused))
+
+  const off = await mkG({ 'vmu.prompts.glossary.mode': 'off' }, { readFile: readerOf([]) }).assemble({})
+  ok(off.ok === true && off.glossary.loaded === false && off.glossary.traces.length === 0,
+    'prompts.glossary.mode[off]: nothing is read and nothing is traced - the declaration really switches it off')
+
+  // §21.4: an ontology that cannot be READ is not "no terms"
+  const unreadable = async () => { throw new Error('ENOENT') }
+  const badEnforce = await mkG({ 'vmu.prompts.glossary.mode': 'enforce' }, { readFile: unreadable }).assemble({})
+  ok(badEnforce.ok === false && badEnforce.refused.code === 'VMU_NO_SUCH_OBJECT' &&
+     badEnforce.glossary.traces.some((t) => t.what === 'ontology-unreadable'),
+    'prompts.glossary.ontology[-]: an unreadable ontology REFUSES under enforce - it is NEVER mistaken for "no terms"',
+    JSON.stringify(badEnforce.glossary.traces))
+  const badWarn = await mkG({ 'vmu.prompts.glossary.mode': 'warn' }, { readFile: unreadable }).assemble({})
+  ok(badWarn.ok === true && badWarn.glossary.traces.some((t) => t.what === 'ontology-unreadable'),
+    'prompts.glossary.ontology[-]: under warn the same condition is traced and assembly continues', JSON.stringify(badWarn.glossary.traces))
+
+  // a pipeline with NO reader is a CAPABILITY GAP, not a broken declaration
+  const noReader = await mkG({ 'vmu.prompts.glossary.mode': 'enforce' }).assemble({})
+  ok(noReader.ok === true && noReader.glossary.traces.some((t) => t.what === 'ontology-unchecked'),
+    'prompts.glossary[no reader]: a capability gap is traced and NOT fatal, even under enforce', JSON.stringify(noReader.glossary.traces))
+
+  // a declared ontology path is honoured
+  const elsewhere = await mkG({ 'vmu.prompts.glossary.mode': 'warn', 'vmu.prompts.glossary.ontology': 'Ops/terms.json' },
+    { readFile: readerOf(['known']) }).assemble({})
+  ok(elsewhere.glossary.path === 'Ops/terms.json', 'prompts.glossary.ontology[+]: the declared path is the one read', elsewhere.glossary.path)
+}
+
 console.log('=== VMU PROMPT: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
