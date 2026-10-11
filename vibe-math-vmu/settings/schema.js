@@ -72,6 +72,9 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.records.headListAt', type: 'natural', def: 7, hot: HOT.H1, who: 'office', doc: '头部列表最多返回多少行（0＝全部）；被截断时按 docs/07 §4.4 计数' },
   { key: 'vmu.records.truncateMode', type: 'enum', domain: ['keepChars', 'keepHeadTail', 'dropMiddle'], def: 'keepChars', hot: HOT.H1, who: 'office', doc: '截断策略（必须计数，禁静默）' },
   { key: 'vmu.records.fingerprintPolicy', type: 'enum', domain: ['content-only', 'content+display'], def: 'content-only', hot: HOT.H2, who: 'office', doc: '内容指纹口径（默认排除展示头）' },
+  // ROUND 261: 数据集登记（16 卷 §L9/L10；现由 kernel/records.js 的 datasetRegister 读取 ✓）.
+  { key: 'vmu.data.requireParent', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "数据集必须有 parent（§L128：路径＋指纹＋参数＋parent；true ⇒ 无 parent 即具名拒）" },
+  { key: 'vmu.data.versionScheme', type: 'enum', domain: ['semver', 'date', 'free'], def: 'semver', hot: HOT.H1, who: 'office', doc: "数据集版本方案（§L10：可引用到版本；semver ⇒ 版本须形如 MAJOR.MINOR.PATCH）" },
   // Found by the NEW read-side gate (tests/vmu-settings.test.mjs 1c): the v5r pack DECLARES and READS this key
   // (`packs/v5r-core.js:48/97`), yet it had never been in the schema - a real knob with a real consumer living
   // entirely outside the registry. Registering it is exactly what the gate demands.

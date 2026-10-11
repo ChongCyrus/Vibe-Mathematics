@@ -61,6 +61,9 @@ export const CORE_HEAD_FIELDS = Object.freeze(['id', 'track', 'kind', 'status', 
 
 const K = Object.freeze({
   allowedKinds: 'vmu.records.allowedKinds',
+  // ROUND 261 (volume 16 §L9/L10): the dataset declarations.
+  dataRequireParent: 'vmu.data.requireParent',
+  dataVersionScheme: 'vmu.data.versionScheme',
   headFields: 'vmu.records.headFields',
   bodyCapBytes: 'vmu.records.bodyCapBytes',
   expandThreshold: 'vmu.records.expandThreshold',
@@ -95,7 +98,10 @@ const K = Object.freeze({
 })
 
 const DEFAULTS = Object.freeze({
-  [K.allowedKinds]: ['progress', 'route', 'decision', 'finding', 'lesson', 'state'],
+  // ROUND 261: `dataset` is a kind of RECORD, which is what volume 16 §L129 says a dataset is.
+  [K.allowedKinds]: ['progress', 'route', 'decision', 'finding', 'lesson', 'state', 'dataset'],
+  [K.dataRequireParent]: false,
+  [K.dataVersionScheme]: 'semver',
   [K.headFields]: ['id', 'track', 'kind', 'title', 'slug', 'status', 'owner', 'updatedAt', 'fingerprint'],
   [K.bodyCapBytes]: 32768,
   [K.expandThreshold]: 4096,
@@ -377,6 +383,42 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
 
   const api = {
     apiVersion,
+
+    /**
+     * ROUND 261 (volume 16 §L9/L10): register a DATASET - a record with kind `dataset`, carrying path, fingerprint and parent, and
+     * referenceable by version. The two declarations are honoured here and nowhere else, so there is exactly one dataset path.
+     */
+    datasetRegister({ track, title, path = null, fingerprint = null, parent = null, version = null, body = '', tags = [], settled = false, by = null } = {}) {
+      const enforced = []
+      mark(enforced, K.dataRequireParent)
+      const needParent = sget(K.dataRequireParent) === true
+      // §L128: a dataset is path + fingerprint + parameters + parent. A missing fingerprint is a named refusal, never a silent null.
+      if (!fingerprint) {
+        throw deny('VMU_INVALID_ARGUMENT', 'a dataset needs a fingerprint (volume 16 §L128: 路径＋指纹＋参数＋parent)',
+          'compute it with the declared algorithm vmu.fingerprint.algo, or pass fingerprint explicitly', [K.dataRequireParent], 'datasetRegister')
+      }
+      if (needParent && !parent) {
+        throw deny('VMU_INVALID_ARGUMENT', 'vmu.data.requireParent=true and this dataset declares no parent',
+          'set parent to the id of the record it came from (or to an external origin), or set vmu.data.requireParent=false', [K.dataRequireParent], 'datasetRegister')
+      }
+      mark(enforced, K.dataVersionScheme)
+      const scheme = String(sget(K.dataVersionScheme) || 'semver')
+      const v = version === null || version === undefined ? null : String(version)
+      if (scheme === 'semver') {
+        if (v !== null && !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(v)) {
+          throw deny('VMU_INVALID_ARGUMENT', 'vmu.data.versionScheme=semver but the version is not one: ' + JSON.stringify(v),
+            'use MAJOR.MINOR.PATCH (optionally with a pre-release or build suffix)', [K.dataVersionScheme], 'datasetRegister')
+        }
+      } else if (v !== null && v.trim() === '') {
+        throw deny('VMU_INVALID_ARGUMENT', 'versionScheme=' + scheme + ' and the version is empty',
+          'declare a non-empty version, or leave it out for an unversioned dataset', [K.dataVersionScheme], 'datasetRegister')
+      }
+      const meta = ['dataset', 'path=' + String(path), 'fingerprint=' + String(fingerprint), 'parent=' + (parent === null ? '-' : String(parent)),
+        'version=' + (v === null ? '-' : v), 'scheme=' + scheme].join(' ')
+      const rec = this.put({ track, kind: 'dataset', title, body: body || meta, tags, settled, by })
+      return Object.assign({}, rec, { dataset: { path, fingerprint, parent: parent === null ? null : String(parent), version: v, scheme },
+        enforced: [...enforced, K.allowedKinds], enforcedScope: 'evaluated-so-far' })
+    },
 
     /** Create a record. Every cap is a NAMED refusal with 现值/上限; duplicates are COUNTED, never re-added. */
     put({ track, kind, title, body = '', tags = [], settled = false, permanent = false, by = null } = {}) {
