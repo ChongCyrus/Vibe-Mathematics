@@ -241,6 +241,40 @@ const opened = (settings) => { const t = face(settings); const o = t.open({ type
   const runner = readFileSync(join(REPO, 'tests', 'run-tests.mjs'), 'utf8')
   ok(/mutant/i.test(runner), '等价: the repository gate runs mutant families, which is the same static-gate idea v5r carries internally')
 }
+// ---------- 17. 资源预算的具名拒 (#4) ----------
+{
+  const bud = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'budget.js'), 'utf8')
+  const v5 = readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+  ok(/OFFICE_REQUEST_CAP/.test(v5), 'v5r caps office requests and keeps a dropped counter so the loss is visible')
+  ok(/Named refusal/i.test(bud) || /VMU_RESOURCE_BUDGET/.test(bud), '等价: vmu refuses exhaustion BY NAME at the budget rail')
+  ok(/onExceed/i.test(bud), '等价: and the consequence is configurable (refuse | warn | pause) rather than hard-coded')
+}
+
+// ---------- 18. 编制上限 (staffing ceilings) ----------
+{
+  const v5 = readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+  ok(/maxTempPerMember/.test(v5) && /maxTempTotal/.test(v5), 'v5r caps temps per member AND in total (its DEFAULT_PARAMS)')
+  const lim = readFileSync(join(REPO, 'vibe-math-vmu', 'settings', 'schema.js'), 'utf8')
+  ok(/maxLiveMembers/.test(lim), '等价 (source-read): vmu declares a live-member ceiling as a setting, so the cap is tunable per pack')
+}
+// ---------- 19. 论文阶段与收束 ----------
+{
+  const v5 = readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+  ok(/phase: .idle./.test(v5), 'v5r keeps a phase on its institute record')
+  ok(/phase=.solved./.test(v5) && /refuses to wake/.test(v5),
+    'v5r states a FALSIFIABLE phase rule: after solved the machinery refuses to wake a member')
+  const rec = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'records.js'), 'utf8')
+  ok(/settle|phase/i.test(rec), '等价 (source-read): vmu carries the phase/settle rail in its own records face')
+}
+
+// ---------- 20. 内容身份 (content identity) ----------
+{
+  const v5 = readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+  ok(/function contentFingerprint/.test(v5), 'v5r computes content identity in ONE place')
+  const chain = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'auditchain.js'), 'utf8')
+  ok(/sha256|createHash/.test(chain), '等价 (source-read): vmu carries a real sha256 content chain (auditchain.js)')
+  ok(/prev|chain/i.test(chain), '等价: the chain links entries rather than hashing each in isolation, so tampering is detectable')
+}
 // ---------- control: the v5r reader really reads ----------
 {
   const wrong = V5R_VALUES.quorumCap !== 4

@@ -285,6 +285,19 @@ export function collect() {
   return { defs: out, perModule, skipped, preexisting }
 }
 
+/**
+ * ROUND 213: EFFECTIVE DEFAULTS, declared on purpose. When a module declares no default its absent-value path runs, so
+ * the generated table showed `null` and a reader could not discover what actually happens. Each entry carries the
+ * CONSUMING citation, because the effective value is a property of the consumer rather than of this extractor - and it
+ * belongs in a declared table beside the rule, not in the generated block, which is marked do-not-edit and was
+ * overwritten the one time it was edited by hand.
+ */
+export const EFFECTIVE_DEFAULTS = Object.freeze({
+  'vmu.course.latePenaltyRatio': '有效默认 `0`（course.js:113 `Number.isFinite(r) && 0≤r≤1 ? r : 0`）',
+  'vmu.external.mergePolicy': '两步回退：未设或不在 `MERGE_POLICIES` ⇒ 取 `vmu.external.conflictPolicy`；仍不在 `CONFLICT_POLICIES` ⇒ `refuse-on-conflict`（external.js:131-133）',
+  'vmu.instruments.capabilityTags': '有效默认 `[]`（instruments.js:91 `Array.isArray(tags) ? tags.map(String) : []`）',
+})
+
 export function render(defs) {
   const lines = [BEGIN]
   for (const d of defs) {
@@ -294,7 +307,7 @@ export function render(defs) {
       // Not "could not be recovered" - for these the MODULE declares no default at all (it reads the key and
       // lets its own absent-value path run). Saying "unrecovered" would blame the extractor for a property of
       // the code, so the doc states the fact instead.
-      ? '已接线（' + d.module + ' 读取）；该模块未声明默认值（缺省行为见模块自身）'
+      ? '已接线（' + d.module + ' 读取）；该模块未声明默认值' + (EFFECTIVE_DEFAULTS[d.key] ? '；★ 轮 213 实测' + EFFECTIVE_DEFAULTS[d.key] : '（缺省行为见模块自身）')
       : '已接线（' + d.module + ' 读取）；默认值取自模块源码'
     lines.push("  { key: '" + d.key + "', type: '" + type + "', def: " + def + ", hot: HOT.H1, who: 'office', doc: " + JSON.stringify(doc) + ' },')
   }

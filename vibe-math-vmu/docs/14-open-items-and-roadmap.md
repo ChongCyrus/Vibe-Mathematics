@@ -816,7 +816,14 @@
   ★★ **"3 个诚实 null"查清：不是未接线，而是【默认不可发现】** ✓✓ —— 三者**都被真读** ✓（`course.js:100 readKey` ✓／`external.js:131 settings[…]` ✓／`instruments.js:85 readKey` ✓），而 schema 的 `def` 是 `null` ✓ ⇒ **量出有效默认**：`latePenaltyRatio ⇒ 0` ✓（`Number.isFinite && 0≤r≤1 ? r : 0` ✓）、`mergePolicy ⇒ 'refuse-on-conflict'` ✓（**两步回退**：先 `conflictPolicy` ✓）、`capabilityTags ⇒ []` ✓。
   ✗ **一处重要发现（未解决，具名 ✓）**：**我把这三个有效默认写进 `settings/schema.js` 的 `doc` 后，重生成【把它们覆盖回去了】** ✗✓ ⇒ ★ **该文件的头部自称"一个键只声明一次、其余全部派生"** ✓，而 `scripts/generate-planned-settings.mjs` 的 `SCHEMA_FILE` **正指向它** ✓ ⇒ ★★ **"哪一部分是真源、哪一部分被生成"未核实** ✗ ⇒ **本轮回退该文件、不半提交** ✓，**列为下一步第一件事** ✓。
   结果：**对照 16 对 51 断言全绿** ✓；作业数 **217** ✓、快速子集 **32** ✓。
-  **未做（明写 ✗）**：★ **schema 的 doc 更正（须先确认真源）** ✗；**真机复跑** ✗；**52 条冲突候选子集** ✗；**版本号 / release 待批准** ✗。### 0.4 结论
+  **未做（明写 ✗）**：★ **schema 的 doc 更正（须先确认真源）** ✗；**真机复跑** ✗；**52 条冲突候选子集** ✗；**版本号 / release 待批准** ✗。- ★★★★★ **轮 213（大批量）：真源边界查清 ⇒ 改【生成器】而非生成物；对照 16 对 → 20 对；有效默认写进真源并存活重生成** ✓✓
+  ★★★ **`settings/schema.js` 的三段结构（上一轮的具名待查，已定论）** ✓✓：① **`CORE_DEFS`＝手写核心表** ✓；② ★★ **`WIRED-SCHEMA:BEGIN…END`＝`scripts/generate-wired-schema.mjs` 生成、明写 do-not-hand-edit** ✓ —— **那三个 `def: null` 的键正落此段** ✓ ⇒ **改 schema 必被覆盖** ✗；③ **`PLANNED_DEFS`＝从设计文档生成** ✓。
+  ★★ **修法落在生成器，且是【声明的数据】而非硬编码分支** ✓✓：`generate-wired-schema.mjs` 新增 **`EFFECTIVE_DEFAULTS`** 表 ✓（**每项带消费处引用** ✓ —— 有效默认是**消费者的属性**，不是抽取器的 ✓），`doc` 的「模块未声明默认值」分支改为**带上实测值** ✓ ⇒ ★★ **实测：三个键的行现在写着有效默认，且【重生成后存活】** ✓✓：`latePenaltyRatio ⇒ 0` ✓（`course.js:113` ✓）、`mergePolicy ⇒ 两步回退，终值 refuse-on-conflict` ✓（`external.js:131-133` ✓）、`capabilityTags ⇒ []` ✓（`instruments.js:91` ✓）。
+  ★★ **对照 16 对 → 20 对（56 断言全绿）** ✓✓：新增 **资源预算的具名拒** ✓（v5r `OFFICE_REQUEST_CAP` ＋ 丢弃计数 ↔ vmu `budget.js` 的「Named refusal on exhaustion」＋ `onExceed` 可配 ✓）；**编制上限** ✓（v5r `maxTempPerMember/maxTempTotal` ↔ vmu 的 `maxLiveMembers` 设置 ✓）；**论文阶段与收束** ✓（v5r 的可证伪规则「`phase=solved` 后机器拒绝唤醒」✓ ↔ vmu `records.js` 的阶段/收束 rail ✓）；**内容身份** ✓（v5r `contentFingerprint` 一处计算 ✓ ↔ vmu **`auditchain.js` 的 sha256 链** ✓，**且链式关联 ⇒ 篡改可测** ✓）。
+  ★★ **真机复跑的【前置清单】（写成可执行动作 ✓，此前只有散记）** ✓：① **A 侧**：需 **vmu-free 且 CLI 同代**的 profile ⇒ 具体动作 **在同版本 CLI 下新建 profile 并只装 v5r 预设** ✓（现环境不可得 ✗，`design/05` 已记 ✓）；② **B 侧**：**必须在 preset 参数里声明 pack** ✓（2026-10-10 那次 `packs: []` ⇒ **零机制被验证** ✓）；③ **两侧同任务文本／同模型／同 token 上限／各自全新工作区** ✓；④ **观测项按 `§5.1` 四类** ✓；⑤ ★ **新增要求**：**本届已接线的 5 项 v5r 行为参数**（`wakeRetries`／`verdictMaxRounds`／`hardLimitMs`／`quorumCap` ＋ `reconsiderFloor` 已判定无内核载体 ✓）**必须在 B 侧的驱动场景里真的改变行为** ✓ —— 否则复跑仍会得出「零机制」的结论 ✓。
+  ✗ **一处自误（记下 ✓）**：我在**账本字符串里用了 ASCII 单引号** ✗ ⇒ **整个脚本解析失败 ⇒ 两对对照根本没进** ✓（**同一陷阱，此前只记在"锚点"上，这次在"文本"上** ✓）⇒ ★★ **纪律扩写：凡是写入 JS 字符串的文本，内层引号一律用 `「」`** ✓。
+  **未做（明写 ✗）**：**真机复跑** ✗（环境前置 ✓）；**52 条冲突候选子集** ✗；**`#11` 未采纳** ✗；**版本号 / release** ✗（**须你批准** ✓）；**`#20` 本仓库不存在** ✗。
+### 0.4 结论
 
 
 **审判到此为止** ✓✓：剩余体量经抽样核对为"**密集且携带决策**"的表与一行式条目 ✓；**继续裁剪的边际收益低于破坏设计资产的风险** ⇒ **除非出现新的"复制品／与裁决矛盾／无消费者且长规格"证据，不再扩大裁剪** ✗✓。
