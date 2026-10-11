@@ -408,7 +408,7 @@ export const PLANNED_DEFS = Object.freeze([
   { key: "vmu.records.head", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.records.history", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.records.naming", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
-  { key: "vmu.records.retention", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
+  { key: "vmu.records.retention", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07", "14"], doc: "设计阶段登记：首个声明卷 07（共见 2 卷：07、14），尚未实现（元数据以各卷为准）" },
   { key: "vmu.records.trash", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.recruit.decideBy", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["17"], doc: "设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准）" },
   { key: "vmu.recruit.needsHuman", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["17"], doc: "设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准）" },

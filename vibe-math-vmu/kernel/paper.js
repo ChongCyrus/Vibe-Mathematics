@@ -43,8 +43,10 @@ export const PLANNED_KEYS = Object.freeze([
    * MECHANISM is carried by the `retention` face, which is also where this key belongs if it is ever needed: a
    * manuscript face that wrote its own expiry would be a second retention implementation.
    */
-  ['vmu.paper.retentionMs', '保留机制由 **`retention` 面**承载 ✓（`removed[]` 每项可追 ✓）；本面**无持久化面** ⇒ 落点在 `retention` 的登记里 ✓。'
-    + '**复活条件** ✓：稿件需要独立保留期时 ⇒ 在 `retention` 面声明（**避免第二份保留实现** ✗）'],
+  ['vmu.paper.retentionMs', '★ **轮 191 实测补齐指针** ✓：保留机制由 **`retention` 面**承载 ✓（`removed[]` 每项可追 ✓）；★ **登记可以点名** ✓ —— `retention.js` 读 '
+    + '`vmu.records.retention.*`（`keepEvery`／`maxBytes`／`tierThreshold` ✓）、`vmu.records.trash.retainDays`（**默认 30 天** ✓）、`vmu.records.history.depth` ✓。'
+    + '本面**无持久化面** ✓（实测：`paper.js` 里持久化相关命中 **0** ✓）。'
+    + '**复活条件** ✓：稿件需要独立保留期时 ⇒ **加在 `retention` 的键族里** ✓（**避免第二份保留实现** ✗）'],
 ])
 
 export const FINALIZERS = Object.freeze(['editor', 'contributor', 'any'])

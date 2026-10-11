@@ -672,6 +672,13 @@
   ★ **本轮一处自误（记下 ✓）** ✗：我第一版修正脚本**在字符串里用了直引号包直引号** ✗ ⇒ **JS 解析期就死** ✓ ⇒ **失败关闭、什么都没写** ✓（**套件仍绿** ✓）⇒ 改用项目自己的「」引号 ✓。
   **未做（明写 ✗）**：**其余 3 条计划键未过审** ✗（`ballotbox` 剩 4 条里的 3 条 ＋ `course` 1 条 ＋ `paper` 1 条）；★ **`ballotbox` 面是否该有自己的 `reopen()`** ✗（**本轮只判定"现在不接"** ✓，**不替我造 API** ✓）；**`docs/04` 生成行的"提及 vs 声明"矛盾未修** ✗；**v5 institute 两条 mutant 家族真因** ✗。
 
+- ★★★ **轮 191：两条"由 `retention` 承载"的计划键 —— 声称为真，且【指针从模糊变精确】；顺带发现一个真缺口** ✓✓
+  **先验声称** ✓✓：`retention.js` 头部明写 **"EVERY removal is traceable: `removed[]` carries {id, kind, reason, bytes, atMs}"** ✓、**`library.list({ scope })`** ✓，而 **`library.js` 确有 `async list(filter = {})`** ✓ ⇒ **声称成立** ✓；两面"无持久化面"也**实测为真** ✓（`paper.js` 持久化命中 **0** ✓；`course.js` 的 4 处**全是良性** —— 本条目文本 ＋ 两条 `publishToLibrary` 注释 ✓）。
+  ★ **我一度判错并自我更正** ✓：第一次用 `readKey('` 搜 `retention` ⇒ **零命中** ✗ ⇒ 差点写下"它不读任何 settings" ✓ —— ★ **改用 `settings['` 搜后** ✓ 发现它**直读 17 个键／5 个族** ✓✓ ⇒ ★ **教训：搜"读取"不能只搜一种访问形态** ✓（**该面用下标直读** ✓，与轮 167 的"两种访问器形态"同源 ✓）。
+  ★★ **改进** ✓✓：**把"落点在 `retention` 的登记里"换成点名** ✓ —— `vmu.records.retention.*`（`keepEvery`／`maxBytes`／`tierThreshold`／`permanentMarker` ✓）、`vmu.records.trash.retainDays`（**默认 30 天** ✓）、`vmu.records.history.depth` ✓、`vmu.quota.*` ✓、`vmu.gc.*` ✓ ⇒ **"第二份保留实现"这条论点因此有了实际的落点** ✓✓。
+  ★★ **顺带发现（具名后续 ✗）**：**`retention.js` 有 0 张 `WIRED_*` 表，却读 17 个键** ✗ ⇒ ★ **轮 167 的"18 个面"覆盖不到它** ✓（**它的读取无人申报、也没有"每个 wired 键必须真被读"的断言** ✗）⇒ **后续：给 `retention` 补表 ＋ 补断言（与其余 12 面同规）** ✓。
+  **未做（明写 ✗）**：**其余 3 条计划键未过审** ✗（`ballotbox` 的 `freezeMode`／`freezeMeetingLinked`／`reopenInitiatorScope`／`reopenSameMeetingOnly` ✓）；★ **`retention` 的 WIRED 表与断言未补** ✗；**`docs/04` 生成行的"提及 vs 声明"矛盾未修** ✗；**v5 institute 两条 mutant 家族真因** ✗。
+
 ### 0.4 结论
 
 
