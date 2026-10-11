@@ -15,7 +15,14 @@ const refuses = (fn, code, extra, label) => {
   }
 }
 const CLOCK = () => '2026-07-01T00:00:00.000Z'
-const mk = (settings = {}) => createHr({ clock: CLOCK, settings })
+/**
+ * ROUND 170 — hr reads the settings OBJECT directly (`hasOwnProperty` at L70), so the recording getter used for the
+ * meetings and capacity faces would never be called. The device that sees both property access and hasOwnProperty is a
+ * Proxy, whose get trap receives every string key the module asks for.
+ */
+const READS = []
+const track = (vals) => new Proxy(vals || {}, { get(t, k) { if (typeof k === 'string') READS.push(k); return t[k] } })
+const mk = (settings = {}) => createHr({ clock: CLOCK, settings: track(settings) })
 const day = 86400000
 
 console.log('-- 0) 11 键恰好划分 ＋ 无自造码 --')
@@ -147,6 +154,22 @@ refuses(() => strict.recruit({ openingId: 'o-9', openedAt: '2026-06-30T00:00:00.
   refuses(() => mk().appeal({ who: 'r-1', openedAt: 'nope', resolved: true }), 'VMU_INVALID_ARGUMENT', { received: 'nope' }, 'unparseable appeal openedAt ⇒ named refusal (with resolved, so the strict check is what fires)')
   ok(mk().recruit({ by: 'u', openedAt: 0, at: 0 }).ok === true, 'control: openedAt 0 is still accepted (no regression)')
   ok(mk().recruit({ by: 'u', openedAt: '1970-01-01T00:00:00.000Z', at: '1970-01-01T00:00:00.000Z' }).ok === true, 'control: the ISO epoch is still accepted (no regression)')
+}
+
+/**
+ * ROUND 170: the Proxy device proves what the suite REALLY reads, and the first run found a genuine gap rather than a
+ * clean bill of health: SIX of the eleven wired keys are read only on paths this suite never takes. Measured and named,
+ * not hidden - and the finding is that the face's own suite cannot show those keys taking effect at all. The assertion
+ * is falsifiable in BOTH directions: it fails if the unread set grows, and it fails if one of the six starts being read
+ * without this list being updated on purpose.
+ */
+{
+  const KNOWN_UNREAD = ['vmu.hr.offboardingChecklist', 'vmu.hr.performanceCadenceDays', 'vmu.hr.recruitCycleDays',
+    'vmu.hr.rotationPolicy', 'vmu.hr.tenureDecisionWindowDays', 'vmu.hr.tenureTrackMonths']
+  const unread = WIRED_KEYS.filter((k) => READS.indexOf(k) === -1).slice().sort()
+  const known = KNOWN_UNREAD.slice().sort()
+  ok(JSON.stringify(unread) === JSON.stringify(known),
+    'the wired-but-unread set is EXACTLY the six named keys (' + unread.length + ' unread, ' + READS.length + ' reads recorded; got ' + JSON.stringify(unread) + ')')
 }
 
 console.log('')

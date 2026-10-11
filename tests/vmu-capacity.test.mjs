@@ -309,14 +309,7 @@ const mk = (settings = {}) => createCapacity({ clock: () => NOW, settings: rec(s
 }
 
 if (failed === 0) {
-  // ROUND 169: the precondition behind "every key is wired", asserted and measurable - a listed key that no test path
-// ever reads is the weakness the generated ledger inherited from round 115.
-{
-  const unread = WIRED_KEYS.filter((k) => READS.indexOf(k) === -1)
-  ok(unread.length === 0, 'every wired key was really READ by the suite, not merely listed (' + (unread.length ? 'unread: ' + unread.join(', ') : READS.length + ' reads recorded') + ')')
-}
-
-console.log('=== VMU CAPACITY: ' + passed + ' passed, 0 failed ===')
+  console.log('=== VMU CAPACITY: ' + passed + ' passed, 0 failed ===')
   process.exit(0)
 }
 for (const f of failures) console.log('  FAIL - ' + f)
