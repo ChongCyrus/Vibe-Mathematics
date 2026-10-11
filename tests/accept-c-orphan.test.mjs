@@ -308,15 +308,40 @@ function gitToFile(args, outPath) {
   } finally { closeSync(fd) }
 }
 
+/**
+ * The control side. It is the UNPATCHED file, and it used to be `HEAD` - which stops being a control the moment
+ * the patch is committed, because then HEAD IS the subject: two assertions (C1, C3) compare the control against
+ * the subject and cannot hold. ROUND 129: the ref is named explicitly, defaulting to HEAD so an uncommitted run
+ * still works, and the gate passes the pre-patch commit. Measured: with the patch committed and no override, C1
+ * and C3 fail with "the control dispatched too" - a failure of the harness, not of the change.
+ */
+const CONTROL_REF = process.env.ACCEPT_C_CONTROL || 'HEAD'
+/** The working file this harness judges - the control must be a DIFFERENT blob from it. */
+const SUBJECT_PATH = join(REPO, 'vibe-math-v5', 'vibe-math-v5.js')
+
 function extractHeadBaseline() {
   const srcDir = join(REPO, 'vibe-math-v5')
   const dir = mkdtempSync(join(tmpdir(), 'v5head-acc-c-'))
   for (const f of ['math-computation.js', 'math-engines.js']) copyFileSync(join(srcDir, f), join(dir, f))
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module' }) + '\n', 'utf8')
   const target = join(dir, 'vibe-math-v5.js')
-  const r = gitToFile(['show', 'HEAD:vibe-math-v5/vibe-math-v5.js'], target)
-  const info = { dir, target, gitStatus: r.status, gitError: r.error, bytes: existsSync(target) ? statSync(target).size : 0 }
-  // the temp copy must be the honest HEAD blob (syntax-checked by the caller)
+  let ref = CONTROL_REF
+  let r = gitToFile(['show', ref + ':vibe-math-v5/vibe-math-v5.js'], target)
+  // ROUND 129: once the patch is committed, `HEAD` IS the subject and the control-side assertions (C1, C3) cannot
+  // hold - they say the control dispatched nothing, and it did, because it is the same file. Rather than fail for a
+  // harness reason, step back one commit and SAY SO. The override still wins, so a caller can name any ref.
+  if (!process.env.ACCEPT_C_CONTROL && existsSync(target) && existsSync(SUBJECT_PATH)
+      && sha256File(target) === sha256File(SUBJECT_PATH)) {
+    const back = 'HEAD~1'
+    const r2 = gitToFile(['show', back + ':vibe-math-v5/vibe-math-v5.js'], target)
+    if (r2.status === 0) {
+      console.log('  ⚠️ ACCEPT-C: 对照组 HEAD 与受测文件是同一个 blob ⇒ 自动退到 ' + back + ' 作为对照（否则 C1/C3 会因"对照即受测"而失败 ✗）')
+      ref = back
+      r = r2
+    }
+  }
+  const info = { dir, target, controlRef: ref, gitStatus: r.status, gitError: r.error, bytes: existsSync(target) ? statSync(target).size : 0 }
+  // the temp copy must be the honest control blob (syntax-checked by the caller)
   return info
 }
 
