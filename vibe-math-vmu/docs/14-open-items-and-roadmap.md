@@ -782,7 +782,14 @@
   **F1（`task-30: the per-round feedback hint is never injected`）** ✓✓：★ **子进程 exit 0、`ALL GREEN pass=679 failed=0`** ✓ ⇒ **突变【完全无效】** ✓；★ 且它期待的 `/\[task-30\] the per-round prompt carries the feedback hint/` **在套件里根本不存在** ✗（套件 task-30 一节共 **20 条 `[task-30]` 行** ✓，无一条匹配 ✓）⇒ **该家族结构上永不可能具名变红** ✓✓。
   **F2（`task-30: feedback=off stops suppressing the prompt hint`）** ✓✓：★ **子进程 exit 1** ✓，但失败的是 `off refuses the write BY NAME` ✓、`off refuses EVERY op` ✓、`off wrote NOTHING` ✓ —— ★★ **它点名的那条 hint 断言【没有失败】** ✗ ⇒ **`feedbackOn()` 不是承重的门** ✓ ⇒ **off 的抑制走【第二套独立机制】** ✓✓。
   ★★ **harness 的盲点已补（只加诊断，判据不动 ✓）** ✓✓：未具名变红时，现在会打印 **`exit` ✓／`hang` ✓／期待模式命中数 ✓／失败行数 ✓** 与**子进程自己的 `FAILURES:` 块／尾部** ✓✓。
-  **未做（明写 ✗）**：★ **两个家族的修法未做** ✗（**F1 须同时改【突变方向】与 `expect`** ✓ —— 现有突变对正向路径是 no-op ✓；**F2 须找到真正承重的那个门** ✓）；**`reconsiderFloor` 的模型是否建** ✗；**52 条冲突候选子集** ✗；**3 个诚实 null** ✗。### 0.4 结论
+  **未做（明写 ✗）**：★ **两个家族的修法未做** ✗（**F1 须同时改【突变方向】与 `expect`** ✓ —— 现有突变对正向路径是 no-op ✓；**F2 须找到真正承重的那个门** ✓）；**`reconsiderFloor` 的模型是否建** ✗；**52 条冲突候选子集** ✗；**3 个诚实 null** ✗。- ★★★★★ **轮 207：两条长期家族红【修好】—— 突变都在，错的是【期待与断言不搭】** ✓✓✓
+  **量出来的完整结构** ✓✓：★ 那段提示文字进入的是 **`Shared/Protocol.md` 手册** ✓（套件以 `handbook54` 读它 ✓），**而不是"普通研究"的每轮提示** ✗ —— ★ 而套件**明确断言** `p1`／`p2` **【不含】该提示** ✓（`feedback tutorial is absent from ordinary research` ✓、`feedback=off: … NOT injected` ✓）⇒ ★★ **两个家族的 `expect` 都指在了永远不载该提示的那个提示上** ✗✓。
+  **F2** ✓：`feedbackOn() => true` 的突变 **【本来有效】** ✓（**探针实测**：`off refuses the write BY NAME` ✓、`off refuses EVERY op` ✓、`off wrote NOTHING` ✓ **三条真的失败** ✓✓）⇒ ★ **只错在 `expect`** ✓ ⇒ 改为 `/\[task-30\] off refuses the write BY NAME/` ✓，并**改名**为 `feedback=off stops the guard from refusing writes` ✓（**名字说明它真正证明的事** ✓）。
+  **F1** ✓：其 `to: "if (true) return"` **本来就是对的**（**提示永不注入** ✓），✗ **错在 `expect` 指了一条套件【从不打印】的消息** ✗ ⇒ 改为套件真会打印的 `/\[task-30\] the hint explains WHY \/ WHAT \/ what happens after/` ✓，并**改名**为 `the feedback tutorial is never written into the protocol handbook` ✓（**与实测载体一致** ✓）。
+  ★★ **一处自误被解释清楚（记下 ✓）**：**我轮 206 的探针硬编码了 `if (false)`** ✗（**推入提示** ⇒ 手册仍有文字 ⇒ 子进程全绿 ✓）⇒ **一度与"F1 应该变红"矛盾** ✓；★ 按**文件真实原文**核对后矛盾消解 ✓✓ ⇒ ★★ **纪律：验证脚本不得凭记忆重写家族定义，必须从文件读** ✓。
+  ★★ **harness 的诊断盲点已在轮 206 补上** ✓：未具名变红时会打印 `exit`／`hang`／**期待命中数**／**失败行数** 与**子进程 `FAILURES:` 块** ✓✓ —— **这两条家族之所以长期无从诊断，正是因为它把证明性输出丢掉了** ✗。
+  **未做（明写 ✗）**：★ **harness 全量运行结果本轮未收（后台进行中 ✓）**；**`reconsiderFloor` 的模型是否建** ✗；**52 条冲突候选子集** ✗；**3 个诚实 null** ✗；**`#11` 未采纳** ✗；**版本号 / release 待批准** ✗。
+### 0.4 结论
 
 
 **审判到此为止** ✓✓：剩余体量经抽样核对为"**密集且携带决策**"的表与一行式条目 ✓；**继续裁剪的边际收益低于破坏设计资产的风险** ⇒ **除非出现新的"复制品／与裁决矛盾／无消费者且长规格"证据，不再扩大裁剪** ✗✓。

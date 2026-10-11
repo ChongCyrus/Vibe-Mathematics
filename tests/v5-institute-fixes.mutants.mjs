@@ -403,18 +403,23 @@ const FAMILIES = [
   {
     // task-30: the per-round feedback hint must actually reach the members (it is the only place that
     // explains WHY/WHAT/the three routes); suppressing it must redden the prompt guard BY NAME.
-    name: 'task-30: the per-round feedback hint is never injected',
+    // ROUND 207: the injected text lands in the PROTOCOL HANDBOOK (the suite reads it as `handbook54`), not in the
+    // ordinary-research wake prompt - whose absence of the hint the suite asserts on purpose. So the observable red is
+    // the handbook assertion below, not a wake-prompt one (which the suite never emits at all).
+    name: 'task-30: the feedback tutorial is never written into the protocol handbook',
     from: "if (!feedbackOn()) return\n      L.push(''",
     to: "if (true) return\n      L.push(''",
-    expect: /\[task-30\] the per-round prompt carries the feedback hint/,
+    expect: /\[task-30\] the hint explains WHY \/ WHAT \/ what happens after/,
   },
   {
     // task-30: `off` must be a real switch — if the gate always answers "on", the hint keeps being
     // injected and the refusal never fires.
-    name: 'task-30: feedback=off stops suppressing the prompt hint',
+    // ROUND 207: the mutation is effective (the guard stops refusing); its `expect` used to name a hint assertion on a
+    // prompt that never carries the hint, so it could not match. The suite names the real consequence below.
+    name: 'task-30: feedback=off stops the guard from refusing writes',
     from: "function feedbackOn() { return String(params.feedback || 'on') !== 'off' }",
     to: 'function feedbackOn() { return true }',
-    expect: /\[task-30\] feedback=off: the per-round hint is NOT injected/,
+    expect: /\[task-30\] off refuses the write BY NAME/,
   },
   {
     // task-30: `off` must refuse BY NAME and write NOTHING (a silent write while disabled is the defect
