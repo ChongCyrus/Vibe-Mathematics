@@ -131,12 +131,25 @@ const opened = (settings) => { const t = face(settings); const o = t.open({ type
   // refusal half is asserted on the source below and labelled source-read, not dressed up as driven.
   const b = createBallot({ target: 't1', options: ['a', 'b'], isFrozen: () => false })
   ok(b.frozen === false, 'DRIVEN: a fresh ballot starts unfrozen')
-  // SOURCE-READ, not driven, and it says so: my construction of the ballot face did not yield the freeze rail
-  // (freeze(reason) returned {} and left `frozen === false`), and guessing a third option shape is exactly the failure
-  // mode this repository keeps recording. The bypass rail is asserted from the source instead, and the follow-up is
-  // named: tests/vmu-ballot.test.mjs constructs the face correctly, so the driven form belongs there next round.
-  ok(/frozen = true/.test(vmuBallot) || /frozen: true/.test(vmuBallot), '等价 (source-read): vmu freeze sets the frozen state')
-  ok(/get frozen\(\)/.test(vmuBallot), '等价 (source-read): the frozen state is exposed as a getter, so control flow can gate on it')
+  // DRIVEN, with every call copied from a suite that already passes (tests/vmu-ballot.test.mjs:87-96) - and the reason
+  // matters: `createBallot` starts in state 'closed', so a cast throws even when nothing is frozen. An earlier attempt
+  // here asserted only that a cast was refused and was therefore a FALSE POSITIVE; the non-vacuous control is that the
+  // refusal is RECORDED with the freeze reason, which a closed-ballot refusal is not.
+  // The face answered a question I had been guessing at: freeze() on a ballot that is not open is refused with
+  // VMU_STATE ('only an open ballot can be frozen', kernel/ballot.js:152). That refusal is itself the driven observable,
+  // and the half I cannot drive here is labelled and WITNESSED by the ballot's own suite rather than asserted on faith.
+  const elig = ['r-1', 'r-2', 'r-3']
+  const fzb = createBallot({ target: 't1', eligible: elig })
+  ok(fzb.status().frozen === false && fzb.status().state !== 'frozen', 'DRIVEN: a fresh ballot is not frozen')
+  let freezeThrew = null
+  try { await fzb.freeze('v5r: an open ballot freezes the phase') } catch (e) { freezeThrew = e && e.code }
+  ok(freezeThrew === 'VMU_STATE', 'DRIVEN: freeze() refuses a ballot that is not open, BY NAME (the state machine is real)', String(freezeThrew))
+  const witness = readFileSync(join(REPO, 'tests', 'vmu-ballot.test.mjs'), 'utf8')
+  ok(/expectThrow\(\(\) => b\.cast\('r-2', 1\), 'VMU_STATE'/.test(witness),
+    '等价 (source-read, WITNESSED by tests/vmu-ballot.test.mjs): a cast during a frozen ballot is refused BY NAME')
+  ok(/reason === 'in-frozen-ballot'/.test(witness),
+    '等价 (source-read, WITNESSED): the frozen refusal is RECORDED with its reason, so it is not counted as a vote')
+  ok(/refused:\s*dec\.refused/.test(vmuBallot), '等价 (source-read): a refused decision is REPORTED as { refused: { code, message } } rather than thrown')
   ok(/state === 'open' \|\| state === 'frozen'/.test(vmuBallot), 'the frozen state is part of the ballot state machine (control flow gates on it)')
   ok(/ballot\.frozen/.test(readFileSync(join(REPO, 'vibe-math-vmu', 'docs', '08-primitives-meeting-ballot-workflow.md'), 'utf8')),
     'vmu documents the ballot.frozen judgement point (the speech-side gate belongs to round-complete, stated, not flattened)')
@@ -161,6 +174,23 @@ const opened = (settings) => { const t = face(settings); const o = t.open({ type
   ok(/fingerprintPolicy/.test(rec), '有意改进 (source-read): vmu makes the fingerprint policy CONFIGURABLE, where v5r fixes one scheme')
   ok(/raw bytes/.test(readFileSync(join(REPO, 'vibe-math-vmu', 'docs', '07-durability-library.md'), 'utf8')) || true,
     '有意改进: the divergence is on purpose - vmu hashes raw bytes because only unchanged bytes count as passed')
+}
+// ---------- 9. 待续标记 (#5): in-flight work that survives a restart ----------
+{
+  const src = readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+  ok(/pendingWork/.test(src), 'v5r keeps an in-flight work ledger (pendingWork) so a restart does not lose the thread (read from source)')
+  const docs = readFileSync(join(REPO, 'vibe-math-vmu', 'docs', '07-durability-library.md'), 'utf8')
+  ok(/台账/.test(docs), '等价 (source-read): vmu carries the same idea as an in-flight ledger (台账) in the durability volume')
+}
+
+// ---------- 10. 归档头部列表 ＋ 内容指纹载体 (PR#16 / S21) ----------
+{
+  const src = readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+  ok(/头部列表/.test(src), 'v5r states the head-list rule: cross-object references carry id + title + fingerprint + status (source)')
+  const rec = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'records.js'), 'utf8')
+  ok(/headListAt/.test(rec), '等价 (source-read): vmu has a head-list setting (vmu.records.headListAt) so the rule is configurable, not hard-coded')
+  const docs07 = readFileSync(join(REPO, 'vibe-math-vmu', 'docs', '07-durability-library.md'), 'utf8')
+  ok(/头部列表|headList/.test(docs07), '等价: the durability volume documents the head-list carrier for vmu too')
 }
 // ---------- control: the v5r reader really reads ----------
 {
