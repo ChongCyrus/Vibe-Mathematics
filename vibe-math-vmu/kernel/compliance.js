@@ -37,9 +37,18 @@ export const WIRED_KEYS = Object.freeze([
   'vmu.compliance.domainPacks',
 ])
 
-/** 未接键 → 理由（**逐个点名** ✗✓）。`exportControlCheck` 归 domaingate 层（只引用）。 */
+/**
+ * 未接键 → 理由（**逐个点名** ✗✓）。
+ *
+ * ROUND 153 更正 ✓：原句写"`exportControlCheck` **归 domaingate 层**（只引用）" ✗ —— **实测 `domaingate` 并没有该检查** ✓
+ * （`grep export|control` 只命中 `apiVersion` 与注释 ✓；该面是**领域闸**：`clinical`／`animal` ＋ THREE_R ＋ `ITEM_CODES` ✓）。
+ * 那是一句**愿望**、不是**承载者** ✗✓ ⇒ ★ **未接理由必须能指认【已存在的面】；指认不出，就得承认是缺口** ✓
+ * （与 `ballotbox` 那六条"点名＋测试行号"是同一标准 ✓）。
+ */
 export const PLANNED_REASONS = Object.freeze({
-  'vmu.compliance.exportControlCheck': '归 domaingate 层（域名/出口管制）：本面只引用不重定义',
+  'vmu.compliance.exportControlCheck': '★ **全仓无该检查** ✓（实测 ✓）：出口管制筛查是**缺口**，不是"归别面" ✗。'
+    + '**归属面**（若要做）＝ `domaingate`（领域闸 ✓，已有 `ITEM_CODES` 与领域包 ✓），本面**只引用不重定义** ✓。'
+    + '**复活条件** ✓：出现两用物项／出口管制合规要求时 ⇒ 在 `domaingate` 增域包与条目码，本面引用 ✓',
 })
 export const PLANNED_KEYS = Object.freeze(Object.keys(PLANNED_REASONS))
 

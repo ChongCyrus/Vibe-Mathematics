@@ -38,7 +38,13 @@ export const WIRED_KEYS = Object.freeze([
 
 /** Declared but deliberately NOT wired (the audit criterion: named, with a reason, and a revival condition). */
 export const PLANNED_KEYS = Object.freeze([
-  ['vmu.paper.retentionMs', '稿件保留期未接：本面无持久化面（与 course 的同类键同因 ✗）'],
+  /**
+   * ROUND 153: measured as declaration-only (this name appears once in the module - in this very entry). The retention
+   * MECHANISM is carried by the `retention` face, which is also where this key belongs if it is ever needed: a
+   * manuscript face that wrote its own expiry would be a second retention implementation.
+   */
+  ['vmu.paper.retentionMs', '保留机制由 **`retention` 面**承载 ✓（`removed[]` 每项可追 ✓）；本面**无持久化面** ⇒ 落点在 `retention` 的登记里 ✓。'
+    + '**复活条件** ✓：稿件需要独立保留期时 ⇒ 在 `retention` 面声明（**避免第二份保留实现** ✗）'],
 ])
 
 export const FINALIZERS = Object.freeze(['editor', 'contributor', 'any'])

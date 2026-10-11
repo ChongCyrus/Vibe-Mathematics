@@ -364,6 +364,15 @@
   **③ `irvInstantSingleCount` ＝【真缺口】** ✓：**实测 `grep irv` 全仓仅命中本面自己的两条声明** ✓ ⇒ **哪里都没实现** ✓。**复活条件写得更硬** ✓：将来要加就加在 **`ballot.js` 的计票器旁**（**唯一计票真源** ✓），**不许出现第二份计票实现** ✗。
   **过程失误（记下 ✓）** ✗✓：本轮我的**运行时探针连错三处** ✗（`isPaused` 的**选项名** ✗、`tally` 的**方法名** ✗、本地 API 实为 `b.cast()/b.freeze()/b.reopen()` ✗）⇒ ★ **我停止继续猜，改用【已经存在的套件】作为运行时证据** ✓✓ —— **"我的探针老是错"的通用解法，是去用它已经写好的测试** ✓（既有独立检查 ✓，又不必重造轮子 ✓）。
 
+- ★★★ **轮 153：剩余 5 条计划键全部测清 —— 理由机制正确，但【两条是"愿望"而非"承载者"】** ✓✓
+  **实测** ✓：5 个键名在**各自模块**里的出现次数 ⇒ **`blindMappingRetentionMs`＝2**（键表＋理由 ✓）、**`readingsRequired`＝2** ✓、**`maxUnits`＝3**（★ 第三处 **L145 只是注释**"未接 ⇒ 不参与" ✓）、**`exportControlCheck`＝3**（`apiVersion`＋注释＋理由 ✓）、**`retentionMs`＝1** ✓ ⇒ **五条全部【真未读】** ✓（**与 `ballotbox` 同侧 ✓，与 `instruments`／`store` 相反 ✓** —— **再次说明只能逐个测** ✓）。
+  **处置：逐条改成"点名承载者／承认缺口 ＋ 落点 ＋ 复活条件"** ✓✓：
+  **① 保留期（`course.blindMappingRetentionMs`／`paper.retentionMs`）** ⇒ 承载者＝**`retention` 专面** ✓（`removed[]` 每次移除可追 ✓、`library.list({scope})` 可读 ✓）⇒ **落点写死为"`retention` 的登记里"** ✓✓ —— **理由：各面自带一份过期逻辑＝第二份保留实现** ✗。
+  **② `course.maxUnits`** ⇒ 容量机制由 **`capacity` 面**承载 ✓（`seatsPerDomain`／`machineHoursPool`／`overcommitRatio` ✓），**但那是域级、没有课程级上限** ✓ ⇒ 复活条件的落点＝**`course.js` 的招生/注册路径（`cohort` 增长处 ✓）** —— **"超额"就发生在那里** ✓。
+  **③ `course.readingsRequired`** ⇒ ★ **实测全仓无承载** ✓（`readings` 在 `records`／`library`／`topology` **零命中** ✓）⇒ 明写为**缺口** ✓ ＋ 落点＝本面的**成果对齐路径**（那里已有 outcome↔artifact 具名拒 ✓）＋ **引用库条目而非复制内容** ✓。
+  **④ `compliance.exportControlCheck`** ⇒ ★★ **抓到一个"愿望冒充承载者"** ✗✓：理由写着"**归 `domaingate` 层**" ✓ —— **实测 `domaingate` 并没有该检查** ✓（`grep export|control` 只命中 `apiVersion` 与注释 ✓；该面是**领域闸**：`clinical`／`animal` ＋ THREE_R ＋ `ITEM_CODES` ✓）⇒ 改为**"全仓缺口"** ✓ ＋ 归属面（若要做）＝ `domaingate` ✓ ＋ 复活条件 ✓；★ **生成器里同一句话也改了** ✓（`EXPECT.compliance` 的 note ✓ —— **同一断言在两处重复，就得在两处更正** ✓，这是轮 146／150 的教训第三次适用 ✓）。
+  **数字** ✓：套件 `VMU COURSE 17/0` ✓、`compliance` exit 0 ✓、`VMU PAPER 37/0` ✓；**T1 118/118** ✓；链 **9/9** ✓；矩阵 **72 模块／0 mismatches／0 FINDING** ✓；**积压仍 11 条** ✓ —— **数量不变是正确的** ✓：这 5 条与 `ballotbox` 那 6 条一样，**确实不该接线**（能力在别面 ✓ 或确为缺口 ✓），**本轮改的是【理由的可核查性】** ✓✓。
+
 ### 0.4 结论
 
 

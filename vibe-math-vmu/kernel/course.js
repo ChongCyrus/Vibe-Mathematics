@@ -37,9 +37,21 @@ export const WIRED_COURSE_KEYS = Object.freeze([
 ])
 /** 未接：**逐个点名＋原因** ✗✓。 */
 export const PLANNED_COURSE_KEYS = Object.freeze([
-  ['vmu.course.blindMappingRetentionMs', '盲审映射表的保留期未做：无持久化面（映射表不落盘 ✗）'],
-  ['vmu.course.readingsRequired', '必读材料清单未做：需 records/库引用（本面只给形状 ✗）'],
-  ['vmu.course.maxUnits', '单元数上限未接：需课程结构面（本面不定义单元 ✗）'],
+  /**
+   * ROUND 153: all three were MEASURED as declaration-only - each name appears in this module exactly twice, once in
+   * the key list and once in the reason below, with no `readKey` call and no branch (the third hit for `maxUnits` is
+   * a comment saying it does not take part). So the mechanism each reason describes is right. What they lacked was
+   * WHERE the capability lives and what would revive the key, which every entry now states.
+   */
+  ['vmu.course.blindMappingRetentionMs', '保留机制由 **`retention` 面**承载 ✓（`removed[]` 让每次移除可追 ✓、`library.list({scope})` 可读 ✓）；'
+    + '本面**无持久化面** ⇒ 该键的落点在 **`retention` 的登记里** ✓，不必各面自带一份 ✗。'
+    + '**复活条件** ✓：盲审映射表真的需要独立保留期时 ⇒ 在 `retention` 面声明，而不是在课程面内落盘 ✗'],
+  ['vmu.course.readingsRequired', '★ **全仓无承载** ✓（实测 `readings` 在 `records`／`library`／`topology` **零命中** ✓）：本面只给"成果↔产物对齐"的形状 ✓。'
+    + '**复活条件** ✓：当"每位学员精读 N 篇"成为真实评测项 ⇒ 加在**本面的成果对齐路径**（那里已有 outcome↔artifact 具名拒 ✓），'
+    + '并**引用 `library` 条目而不是复制内容** ✓'],
+  ['vmu.course.maxUnits', '容量机制由 **`capacity` 面**承载 ✓（`vmu.capacity.seatsPerDomain`／`machineHoursPool`／`overcommitRatio` ✓），'
+    + '但那是**域级**上限、**没有课程级人数上限** ✓。**复活条件** ✓：需要课程级上限时 ⇒ 加在 `course.js` 的**招生/注册路径**'
+    + '（`cohort` 增长处 ✓）—— **那才是"超额"发生的地方** ✓'],
 ])
 
 const refuse = (code, message, hint) => ({ ok: false, code, message, hint })

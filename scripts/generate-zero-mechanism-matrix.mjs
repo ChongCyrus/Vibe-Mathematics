@@ -80,7 +80,7 @@ const EXPECT = {
   // an adjudication" rule flags them one at a time. They are registered as EXPLICIT to-dos with what is already
   // known, rather than given expectations nobody measured - "undecided" is visible and counted, "missing" is not.
   funding: G('ok 或 object', '实测 `list()` ⇒ **ok**（`enforced=[0] fired=[0]` ⇒ 零机制清单可读、**不拒**；**键数由本生成器实测输出** ✓）'),
-  compliance: G('ok 或 object', '实测 `status()` ⇒ **ok**（`enforcedScope=evaluated-so-far` ⇒ 状态可读、**不拒**；`exportControlCheck` 归 domaingate ✓）'),
+  compliance: G('ok 或 object', '实测 `status()` ⇒ **ok**（`enforcedScope=evaluated-so-far` ⇒ 状态可读、**不拒**）。**ROUND 153 更正** ✗✓：本行原先还写"`exportControlCheck` 归 domaingate ✓" —— **实测 `domaingate` 并没有该检查** ✓（`grep export|control` 只命中 `apiVersion` 与注释 ✓），那是**愿望**不是**承载者** ✗；该能力是**全仓缺口** ✓，归属面与复活条件写在 `compliance.js` 的 `PLANNED_REASONS` 里 ✓'),
   // Round 35: capacity / hr landed while this round was in flight and their probes DID reach the matrix (both
   // answered), so they are adjudicated from the MEASUREMENT above, not from invention:
   //   capacity · list()  ⇒ ok, enforced=[0] fired=[0] enforcedScope=evaluated-so-far
