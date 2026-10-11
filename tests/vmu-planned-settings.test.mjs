@@ -160,6 +160,11 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
   const mirrors = mirrorVolumes(docVolumes(DOCS), core)
   const mirrorNames = new Set(mirrors.map((m) => m.name))
   const buckets = { planned: new Set(), existing: new Set(), wildcard: new Set(), whitelist: new Set(), namespace: new Set(), twoSegment: new Set() }
+  // ROUND 225: the generator drops a NAMESPACE ROOT - a name with a known key living under it is a namespace, not a setting.
+  // The two disagreed on a bare `vmu.records.body` (its children are core keys) and the generator was the correct side. The
+  // rule is applied INSIDE classify, because dropping it at definition time removed nothing (the buckets were still empty).
+  const knownKeys = new Set([...coreSet, ...PLANNED_DEFS.map((d) => d.key)])
+  const isNamespaceRoot = (k) => [...knownKeys].some((o) => o !== k && o.startsWith(k + '.'))
   const classify = (vol, into = buckets) => {
     for (const m of vol.text.matchAll(genMod.BROAD_RE)) {
       const k = m[0]
@@ -171,7 +176,7 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
       else if (coreSet.has(k)) into.existing.add(k)                        // already declared in the schema
       else if (NON_SETTING.has(k)) into.whitelist.add(k)                   // service/registry name
       else if (ns.has(k)) into.namespace.add(k)                            // derived namespace of a key
-      else into.planned.add(k)
+      else if (!isNamespaceRoot(k)) into.planned.add(k)      // a namespace root is not a setting
     }
   }
   // SOURCES: mirrors excluded — that is what the generator counts, so the numbers must match exactly.

@@ -72,7 +72,7 @@ interface VmuStore {
   **目的**：人可读、机器稳定、跨平台安全。
   **面向谁**：代理、用户、导出工具。
   **接口形状**：标题生成 slug（大小写/空白/CJK 策略可配）＋冲突消解后缀。
-  **可调控参数**：`vmu.records.naming.*`（slug 策略、CJK 处理、后缀长度、最大长度）。
+  **可调控参数**：`vmu.records.naming.slugPolicy`／`maxLength`／`conflictSuffix`（**已接线 ✓**）；**CJK 处理由 `slugPolicy=cjk-keep` 表达 ✓**（**无独立键** ✗，不以族名充数 ✓）。
   **错误码族**：`VMU_NAME_*`。**哲学**：自由度／可调控／可定义／扩展性。
   **实现要点**：**id 与 slug 分离**（slug 可改，id 不可变）。
   **依赖**：对象模型。**成熟度**：✓（id 分配）／✗（slug 策略未定型）　**优先级**：P1
@@ -102,7 +102,7 @@ interface VmuStore {
   **目的**：多版可比较、可回溯。
   **面向谁**：用户、代理（"基于上一版"）。
   **接口形状**：每次写入产生新版本，链上保留差异与作者、时间。
-  **可调控参数**：`vmu.records.history.*`（保留深度、全量/差异、压缩策略）。
+  **可调控参数**：`vmu.records.history.depth`／`storeMode`（**已接线 ✓**）；**压缩策略无独立键** ✗（`storeMode=diff` 即差异存储 ✓）。
   **错误码族**：`VMU_HISTORY_*`。**哲学**：自由度／可调控／可定义／扩展性。
   **实现要点**：**差异存储必须有回退全量的手段**，否则一次坏差异毁整条链。
   **依赖**：指纹、保留策略。**成熟度**：✗　**优先级**：P1
@@ -110,7 +110,7 @@ interface VmuStore {
   **目的**：可回溯且磁盘不膨胀。
   **面向谁**：用户、审计者。
   **接口形状**：规则声明（每 N 版／永久／按总大小上限）。
-  **可调控参数**：`vmu.records.retention.*`（keepEvery、永久标记、体积上限、冷热阈值）。
+  **可调控参数**：`vmu.records.retention.keepEvery`／`permanentMarker`／`maxBytes`／`tierThreshold`（**四条全部已接线 ✓**）。
   **错误码族**：`VMU_RETENTION_*`。**哲学**：自由度／可调控／可定义／扩展性。
   **实现要点**：**永久保留是显式标记**，不是"没触发清理"的副作用；回收前产出将被删除清单。
   **依赖**：版本链。**成熟度**：✗　**优先级**：P1
@@ -118,7 +118,7 @@ interface VmuStore {
   **目的**：误删可恢复、删除可审计。
   **面向谁**：用户、审计者。
   **接口形状**：删除＝移入回收站并记录；可按时间/责任人列出、恢复或彻底清除。
-  **可调控参数**：`vmu.records.trash.*`（保留期、自动清除开关、是否计入配额）。
+  **可调控参数**：`vmu.records.trash.retainDays`／`autoPurge`／`countInQuota`（**三条全部已接线 ✓**）。
   **错误码族**：`VMU_TRASH_*`。**哲学**：自由度／可调控／可定义／扩展性。
   **实现要点**：彻底清除是**显式动作**并留审计条目。
   **依赖**：索引、审计。**成熟度**：✗　**优先级**：P1
@@ -137,7 +137,7 @@ interface VmuStore {
   **目的**：超大正文不撑爆单文件与内存。
   **面向谁**：代理、用户。
   **接口形状**：超阈值自动分片；按需拼接；各分片各自指纹。
-  **可调控参数**：`vmu.records.chunk.*`（阈值、分片大小、是否压缩、并发读上限）。
+  **可调控参数**：`vmu.records.chunk.thresholdBytes`／`chunkBytes`（**已接线 ✓**）；**是否压缩与并发读上限【无键】** ✗（未声明 ⇒ 不以族名代替 ✓）。
   **错误码族**：`VMU_CHUNK_*`。**哲学**：自由度／可调控／可定义／扩展性。
   **实现要点**：分片边界**幂等**（同内容同分片），否则去重与校验失效。
   **依赖**：指纹、去重。**成熟度**：✗　**优先级**：P2
@@ -145,7 +145,7 @@ interface VmuStore {
   **目的**：不把大数据搬进研究所，只登记位置与指纹。
   **面向谁**：用户、代理。
   **接口形状**：引用条目（位置＋指纹＋可得性说明）。
-  **可调控参数**：`vmu.records.external.*`（允许方案、是否校验存在性、校验频率）。
+  **可调控参数**：`vmu.records.external.allowedSchemes`／`verifyExists`（**已接线 ✓**）；**校验频率【无键】** ✗。
   **错误码族**：`VMU_EXTERNAL_*`。**哲学**：自由度／可调控／可定义／扩展性。
   **实现要点**：**外部引用不得冒充"已归档"**；导出须标注其不可自足。
   **依赖**：元数据。**成熟度**：✗　**优先级**：P2
@@ -315,7 +315,7 @@ interface VmuStore {
   **目的**："目录常驻、正文按需"，让代理在有限上下文里掌握全貌。
   **面向谁**：代理（首要）、用户。
   **接口形状**：列表返回头部字段；按 id 展开正文。
-  **可调控参数**：`vmu.records.head.*`（条数上限、字段裁剪、排序、分页游标）。
+  **可调控参数**：`vmu.records.head.maxItems`／`head.sort`／`headFields`（**已接线 ✓**）；**分页游标【无键】** ✗。
   **错误码族**：`VMU_HEAD_*`。**哲学**：自由度／可调控／可定义／扩展性。
   **实现要点**：**分页必须有稳定游标**，否则翻页会漏/重。
   **依赖**：对象模型、索引。**成熟度**：✓　**优先级**：P0
@@ -323,7 +323,7 @@ interface VmuStore {
   **目的**：防上下文爆炸，同时**不隐瞒**截断事实。
   **面向谁**：代理、用户。
   **接口形状**：超限即截断，并返回"被截断字节数/行数＋获取全文方式"。
-  **可调控参数**：`vmu.records.body.*`（上限、提示形式、是否分片返回、追加读取窗口）。
+  **可调控参数**：`vmu.records.bodyCapBytes`／`body.noticeStyle`／`body.chunkedReturn`（**已接线 ✓**）；**追加读取窗口【无键】** ✗。
   **错误码族**：`VMU_BODY_*`。**哲学**：自由度／可调控／可定义／扩展性。
   **实现要点**：**截断必须计数**：只说"已截断"而不给数量等于隐瞒。
   **依赖**：对象模型。**成熟度**：✓（`BODY_CAP_BYTES`）　**优先级**：P0
@@ -599,6 +599,13 @@ GC 候选 ⇒ 产出删除清单 ⇒ 显式确认（或满足自动执行前置�
 | `vmu.records.chunk.chunkBytes` | int | `262144` | P | U | 分片大小 |
 | `vmu.records.external.allowedSchemes` | string[] | `[file,http,https]` | P | U | 允许的外部引用方案 |
 | `vmu.records.external.verifyExists` | bool | `true` | P | U | 是否校验存在性 |
+| `vmu.records.tracks` | stringList | ['progress' | P | U | 记录分轨（负向知识有独立档）（轮 225 补登记：`records.js` 早已读取，本表此前遗漏 ✓） |
+| `vmu.records.headListAt` | natural | 7 | P | U | 头部列表最多返回多少行（0＝全部）（轮 225 补登记：`records.js` 早已读取，本表此前遗漏 ✓） |
+| `vmu.records.truncateMode` | enum | 'keepChars' | P | U | 截断策略（必须计数）（轮 225 补登记：`records.js` 早已读取，本表此前遗漏 ✓） |
+| `vmu.records.fingerprintPolicy` | enum | 'content-only' | P | U | 内容指纹口径（轮 225 补登记：`records.js` 早已读取，本表此前遗漏 ✓） |
+| `vmu.records.requireSettledRecords` | boolean | true | P | U | 只允许写入已结算记录（轮 225 补登记：`records.js` 早已读取，本表此前遗漏 ✓） |
+| `vmu.records.meetingKeepEvery` | positiveInteger | 5 | P | U | 会议记录的保留间隔（轮 225 补登记：`records.js` 早已读取，本表此前遗漏 ✓） |
+| `vmu.records.pointerPropagation` | boolean | true | P | U | 指针传播策略（轮 225 补登记：`records.js` 早已读取，本表此前遗漏 ✓） |
 | `vmu.fingerprint.algo` | enum(sha256/sha512/blake3) | `sha256` | G | U | 算法（随指纹记录） |
 | `vmu.fingerprint.truncate` | int | `0` | G | U | 截断长度（0＝全） |
 | `vmu.fingerprint.includeMeta` | bool | `false` | G | U | 指纹是否含元数据 |
