@@ -405,7 +405,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.compliance.maxReports', type: 'positiveInteger', def: 1000, hot: HOT.H1, who: 'office', doc: '合规上报条数上限（溢出必计数）' },
   { key: 'vmu.compliance.saeLimitMs', type: 'natural', def: 86400000, hot: HOT.H1, who: 'office', doc: 'SAE 上报时限（毫秒；默认 24h）' },
   { key: 'vmu.compliance.aeLimitMs', type: 'natural', def: 259200000, hot: HOT.H1, who: 'office', doc: 'AE 上报时限（毫秒；默认 72h）' },
-  // batch-1 slice 10 (scheduler). INTEGRATOR RULING: `vmu.schedule.*` is the canonical family (docs/08 §12.6);
+  // batch-1 slice 10 (scheduler). INTEGRATOR RULING: `vmu.schedule.*` is the canonical family (docs/08 §12.4);
   // the module also tolerates the older `vmu.scheduler.*` spellings, but only THIS family is declared - one
   // meaning, one name, and the declared name is the one the volume actually documents for the schedule face.
   { key: 'vmu.schedule.triggerVia', type: 'enum', domain: ['none', 'middleware', 'script'], def: 'none', hot: HOT.H1, who: 'office', doc: '到期是否触发流程（默认 none＝只报告 ✗✓）' },

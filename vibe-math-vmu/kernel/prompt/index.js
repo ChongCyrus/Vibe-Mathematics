@@ -8,7 +8,7 @@
 //   1. the `state` section is IMMUTABLE: it carries read-only facts, so an override attempt is refused by
 //      name (`VMU_NOT_PERMITTED`). Packs and middleware may only append;
 //   2. assembly is deterministic: same inputs => same bytes (ordering, joins and trailing newline fixed);
-//   3. bindings are four-dimensional with a FIXED priority `role < phase < member < task` (docs/06 §4.1);
+//   3. bindings are four-dimensional with a FIXED priority `role < phase < member < task` (docs/06 §5);
 //   4. template variables come from a whitelist; an unregistered variable is refused, and template syntax
 //      inside a VALUE is escaped so a value can never inject a placeholder (docs/06 §5);
 //   5. truncation is never silent: the notice goes INTO the text and the numbers go into the status
@@ -32,7 +32,7 @@ export const ORDER_RANGES = Object.freeze({
 /** The registered variable whitelist (docs/03 §4, docs/06 §5). `setting:` and `count:` take an argument. */
 export const VARIABLE_WHITELIST = Object.freeze(['member', 'role', 'phase', 'time', 'pack', 'task', 'setting:', 'count:'])
 
-/** Fixed binding priority, low to high (docs/06 §4.1). */
+/** Fixed binding priority, low to high (docs/06 §5). */
 export const BINDING_PRIORITY = Object.freeze(['role', 'phase', 'member', 'task'])
 
 export function refuse(code, message, hint) {
@@ -303,7 +303,7 @@ export function createPromptPipeline({
       return { ok: true, text: parts.length === 0 ? '' : trimTrailing(parts.join('\n\n')), sources, truncation: truncation.slice(), at: clock() }
     },
 
-    /** Register an override by reference (rollback = swapping the reference back; docs/06 §4.3). */
+    /** Register an override by reference (rollback = swapping the reference back; docs/06 §6). */
     override(section, text, by = 'office') {
       const entry = registry.get(section)
       if (!entry) throw refuse('VMU_NO_SUCH_OBJECT', 'unknown section: ' + section)
@@ -313,7 +313,7 @@ export function createPromptPipeline({
       }
       if (!whoMayOverride.includes(by)) {
         throw refuse('VMU_NOT_PERMITTED', by + ' may not override section ' + section,
-          'allowed: ' + whoMayOverride.join(', ') + ' (docs/06 §4.3)')
+          'allowed: ' + whoMayOverride.join(', ') + ' (docs/06 §6)')
       }
       const previous = overrides[section] === undefined ? null : overrides[section]
       overrides[section] = text

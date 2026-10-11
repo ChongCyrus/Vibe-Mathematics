@@ -20,7 +20,7 @@ export const apiVersion = 1
 /** Failure policies (docs/05 §7). */
 export const FAILURE = Object.freeze({ OPEN: 'open', CLOSED: 'closed', ABORT: 'abort' })
 
-/** The capability vocabulary. A decision may only use what its entry declared (docs/05 §5.3, §6). */
+/** The capability vocabulary. A decision may only use what its entry declared (docs/05 §3.2, §6). */
 export const CAPABILITIES = Object.freeze([
   'read-state', 'read-args', 'deny', 'cancel', 'rewrite-args', 'rewrite-result',
   'append-prompt', 'record', 'notify', 'set-setting', 'trigger-workflow', 'annotate',

@@ -18,7 +18,7 @@ export const apiVersion = 1
 /** The predicate whitelist (docs/05 §5.2). Keys outside this list are refused at compile time. */
 export const PREDICATES = Object.freeze(['tool', 'member', 'role', 'phase', 'arg', 'setting', 'count', 'subject', 'match', 'all', 'any', 'not'])
 
-/** The action whitelist (docs/05 §5.3). */
+/** The action whitelist (docs/05 §3.2). */
 export const ACTIONS = Object.freeze(['deny', 'allow', 'cancel', 'ask', 'rewriteArgs', 'replaceResult',
   'appendPrompt', 'record', 'notify', 'setSetting', 'triggerWorkflow', 'annotate'])
 
