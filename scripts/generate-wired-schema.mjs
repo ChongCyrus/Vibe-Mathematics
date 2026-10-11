@@ -84,7 +84,7 @@ export function defaultOf(src, key) {
   const VAL = "(\\[[^\\]]*\\]|\\{[^}]*\\}|'[^']*'|\"[^\"]*\"|[^,\\n]+)"
   const S = "settings\\[\\s*['\"]" + esc + "['\"]\\s*\\]"
   const shapes = [
-    new RegExp("(?:sget|b|n)\\(\\s*'" + esc + "'\\s*,\\s*" + VAL + "\\s*\\)"),          // sget('k', 5)
+    new RegExp("(?:sget|b|n|s)\\(\\s*'" + esc + "'\\s*,\\s*" + VAL + "\\s*\\)"),         // sget('k', 5) / s('k', 'x')
     new RegExp("raw\\(\\s*settings\\s*,\\s*'" + esc + "'\\s*,\\s*" + VAL + "\\s*\\)"), // raw(settings, 'k', true)
     new RegExp("[\"']" + esc + "[\"']\\s*:\\s*" + VAL),                                // an object-literal table
     // A coercing helper's SECOND argument is the fallback the module really uses when the setting is absent.
@@ -99,6 +99,25 @@ export function defaultOf(src, key) {
     new RegExp(S + "[^?\\n]*\\?[^:\\n]*:\\s*" + VAL),
   ]
   if (alias) shapes.push(new RegExp("\\[\\s*K\\." + alias[1] + "\\s*\\]\\s*:\\s*" + VAL)) // [K.alias]: <lit>
+  /**
+   * ROUND 133: several faces read their settings through a SHORT HELPER OF THEIR OWN - `course.js` defines
+   * `const s = (k, d) => (v === undefined || v === '' ? d : String(v))` and then writes `s('vmu.course.submitMode',
+   * 'artifact')`. Requiring a fixed accessor-name list (sget|b|n) could not see that, so two keys whose defaults
+   * ARE written in the module were emitted with `def: null`. The rule is stated as a property, not a longer list:
+   * ANY function the module itself DEFINES with two or more parameters, called with the key literal first and a
+   * literal second, carries that literal as the absent-value answer. That is provable from the source and is not a
+   * guess; the known accessors are tried first, so an explicit form always wins, and a one-parameter helper (a pure
+   * reader, with no fallback to give) never matches.
+   */
+  const definedHelpers = new Set()
+  for (const m of src.matchAll(/(?:const|let|var|function)\s+([A-Za-z_$][\w$]*)\s*=?\s*(?:async\s+)?(?:function\s*)?\(([^)]*)\)/g)) {
+    const params = m[2].split(',').filter((p) => p.trim().length > 0)
+    if (params.length >= 2) definedHelpers.add(m[1])
+  }
+  for (const h of definedHelpers) {
+    if (h === 'raw' || h === 'sget') continue // already covered above, with their own precedence
+    shapes.push(new RegExp(h + "\\(\\s*'" + esc + "'\\s*,\\s*" + VAL + "\\s*\\)"))
+  }
   /**
    * The value a module uses when a setting is ABSENT may be expressed as a COMPARISON rather than a default
    * argument - `external.js` does exactly that. These answers are read off the expression, never guessed:

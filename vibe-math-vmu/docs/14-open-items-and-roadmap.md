@@ -255,6 +255,12 @@
   **为什么是纯 ours** ✓：另一条线**当年一应用就让 9 个模块套件变红** ✗（轮 74 的结论 ✓），而本线是**已验证**的那条（T1 **115/115** ✓、链 **8/8** ✓）；硬裁 8 处生成器冲突**没有实测收益却要冒动到已验证输出的风险** ✗。
   **明写未做 ✗**：**两版 `generate-wired-schema.mjs` 的能力对比尚未实测** ✗（mine **306 行／顶层超集** ✓（多 `READ_FORMS`＋`readKeysOf` ✓）vs theirs **200 行**；theirs **没有任何 mine 缺的顶层定义** ✓）⇒ **theirs 的替代 `defaultOf` 规则未移植** ✗。**复活条件** ✓：**若实测证明 mine 的恢复数更低**（当前 `recovered=287/298`、11 个诚实 null ✓），则把 theirs 的规则**逐条移植**并重跑链与 T1 ✓。
 
+- ★★★ **轮 133：生成器两版对比【实测结案】＋ 修好一处真实缺陷（恢复数 287→290）** ✓✓
+  **① 对比结案（有实测，不再是猜测 ✓）**：用 `git worktree` 取出 `1927e22` 的生成器（**字节忠实**，`git hash-object` 与 git blob **一致** ✓），放回本树**只报告**地跑一次 ⇒ **theirs：发射 245 键／恢复 237／缺 8**；**mine：发射 298 键／恢复 287／缺 11** ✓。逐键比对（D 盘脚本 ✓）⇒ ★ **theirs 的键集（422）是本树键集（720）的真子集** ✓，`keys only theirs emits = 0` ✓，**可移植项 = 0** ✓✓ ⇒ **未决项关闭：theirs 的 `defaultOf` 在【当前树】上没有 mine 缺的规则** ✓。
+  **② 但实测暴露了我方一处真实缺陷** ✗：mine 的 `NO-DEFAULT` 里有 `course.submitMode`／`visibility`／`ontologyVersion` —— **它们的默认值明明写在源码里**（`s('vmu.course.submitMode', 'artifact')` ✓），**只是传给了模块【自己定义的短助手】** ✗。原实现的白名单写作 `(?:sget|b|n)` ✗ —— **又是一个"清单即字面量"** ✓（第 9 次同族 ✓）。**修法（按最优实践，不是补一个字母 ✓）**：把规则**改写成性质** —— **任何【模块自己定义的、参数 ≥ 2 的】函数**，只要**第一参数是键字面量、第二参数是字面量**，该字面量就是"缺省时的答案" ✓（**可从源码证明，非猜测** ✓；已知访问器**优先** ✓；**单参助手永不匹配** ✓）。**实测结果**：**`recovered 287 → 290`**、**`missing 11 → 8`** ✓✓、`INVARIANTS ok … 8 with an honest null default` ✓。
+  **③ ★ 第 8 次"我的仪器错了"，而这次【在断言之前】被拦住** ✓✓：我先前用 PowerShell `>` 把 theirs 导出到 D 盘 ⇒ 它写成 **UTF-16**（**12006 字节的 blob 变成 24236 字节** ✓）⇒ 运行报 `SyntaxError` ✗ ⇒ **若我据此宣布"theirs 坏了"，就是又一次拿坏仪器当证据** ✗。**拦住它的办法是哈希**：`git hash-object 提取物` ≠ `git rev-parse <commit>:<path>` ⇒ **提取不忠实** ✓✓ ⇒ 改用 `git worktree` ＋ 文件复制 ✓。**并入纪律：跨提交/跨版本取文件，必须先以哈希证明提取忠实** ✓。
+  **④ 明写未做 ✗**：**仍有 8 个 null**（`auction.dirtyWorkQuota`／`fairnessPolicy`／`rotationWindow`／`course.latePenaltyRatio`／`peerWeight`／`external.mergePolicy`／`grant.commands`／`instruments.capabilityTags` ✓）—— 其中 `auction` 三个的默认值是 **`DEFAULTS.<field>`（标识符）** ✗ ⇒ 需**从模块自身的 `DEFAULTS` 对象字面量**解析 ✓（**复活条件**：按"可证明"原则加一条 `IDENT.field` 解析规则并重跑链与 T1 ✓）；其余多**确实没有默认值**（`Number(readKey(...))` ✓／`listOr(sget(...))` ✓）⇒ **诚实 null** ✓。
+
 ### 0.4 结论
 
 
