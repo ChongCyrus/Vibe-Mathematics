@@ -360,7 +360,7 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
     trace(traceId) { return (traces.get(traceId) || []).map((r) => Object.assign({}, r)) },
 
     /**
-     * The host-waterfall contract (docs/05 §1, docs/04 §3.1 of the recon): a listener that returns
+     * The host-waterfall contract (docs/05 §1, docs/03 for the contract itself): a listener that returns
      * undefined MUST let the chain continue. Middleware never touches the host waterfall directly —
      * this wrapper is the only place that knows about `next`.
      */

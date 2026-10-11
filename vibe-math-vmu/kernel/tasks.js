@@ -155,7 +155,7 @@ export function createTasks({
       return { ok: true, id, from, to }
     },
 
-    /** The ledger, filtered. Never carries the brief text (that is fetched by id, docs/06 §4.2). */
+    /** The ledger, filtered. Never carries the brief text (that is fetched by id, docs/08). */
     list(filter = {}) {
       return [...tasks.values()]
         .filter((t) => (filter.state === undefined || t.state === filter.state) &&
@@ -166,7 +166,7 @@ export function createTasks({
           ready: unmetDeps(t).length === 0, hasBrief: briefs.has(t.id) }))
     },
 
-    /** Attach a task brief: the prompt fragment injected when the OWNER is woken (docs/06 §4.2). */
+    /** Attach a task brief: the prompt fragment injected when the OWNER is woken (docs/08; the fragment side is docs/06). */
     brief(id, text, { by = null } = {}) {
       task(id)
       if (typeof text !== 'string' || text.trim().length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'a brief needs non-empty text')

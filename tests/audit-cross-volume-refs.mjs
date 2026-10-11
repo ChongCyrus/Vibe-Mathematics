@@ -41,11 +41,13 @@ const REF = /(\d{2})\s*[-‑]?\s*§\s*(\d+(?:\.\d+)?)/g
 // (§4.1 for bindings, which are §5; §4.3 for overrides and rollback, which are §6). THREE citations are known-dangling
 // and named rather than guessed: their correct target could not be established, and a guessed citation is worse than one
 // the audit keeps reporting.
-const KNOWN_DANGLING = new Set([
-  'vibe-math-vmu/kernel/bus.js:363 → docs/04 §3.1',    // docs/04 §3 is the schema single-source section
-  'vibe-math-vmu/kernel/tasks.js:158 → docs/06 §4.2', // docs/06 §4 is order ranges; it has no 4.2
-  'vibe-math-vmu/kernel/tasks.js:169 → docs/06 §4.2',
-])
+// ROUND 186: this list is now EMPTY, and that is the point of keeping it. The three citations that were named here in
+// round 184 have been resolved by measuring where their subject actually lives: the host-waterfall contract is in docs/05
+// (three hits) with its interface contract in docs/03, and the task brief is documented in docs/08 - docs/06, which the
+// code cited, contains the word "brief" nowhere at all because it is the prompt-assembly volume. Where a volume is
+// named WITHOUT a section number, that is deliberate: the statement is true and the audit is not asked to judge a
+// pointer that carries no number. A new dangling citation therefore fails, and no exception is currently claimed.
+const KNOWN_DANGLING = new Set()
 const findings = []
 let total = 0
 for (const f of files) {
