@@ -312,8 +312,8 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
   const wiredListed = st.wired.length === WIRED_KEYS.length && st.wiredCount === WIRED_KEYS.length
   ok(wiredListed, 'status().wired lists every wired key', String(st.wiredCount))
   ok(st.overlap.length === 0, 'WIRED and plannedKeys are COMPLEMENTARY (no key is in both)', JSON.stringify(st.overlap))
-  ok(st.complementOk === true && st.plannedCount + st.wiredCount === st.declaredMathKeys && st.declaredMathKeys === 171,
-    'the two lists partition the DECLARED universe (171 vmu.math.* keys)', JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredMathKeys }))
+  ok(st.complementOk === true && st.plannedCount + st.wiredCount === st.declaredMathKeys && st.declaredMathKeys === 155,
+    'the two lists partition the DECLARED universe (155 vmu.math.* keys: 45 wired + 110 planned; the 16 namespace roots that used to be counted here are not keys)', JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredMathKeys }))
   ok(st.plannedKeys.every((k) => typeof st.unwiredReasons[k] === 'string' && st.unwiredReasons[k].length > 8),
     'every unwired key carries a concrete reason', JSON.stringify(st.plannedKeys.slice(0, 3)))
   ok(Object.keys(st.keys).length === WIRED_KEYS.length && !Object.values(st.keys).some((v) => v === undefined),

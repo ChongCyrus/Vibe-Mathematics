@@ -266,9 +266,10 @@ ok(unregisteredInCode.length === 0,
   // failing an assertion, which is a much worse way to learn that a name is missing.
   {
     const documented = new Set()
-    for (const f of readdirSync(join(VMU, "docs"))) {
-      if (!f.endsWith(".md")) continue
-      const text = readFileSync(join(VMU, "docs", f), "utf8")
+    // ROUND 100: reuse the text this gate ALREADY loaded through its binding. Reading the files directly here
+    // bypassed the binding the mutation suite injects, so all fourteen mutants failed with a readdir error
+    // instead of testing what they were written to test - a green audit and a fully red mutant suite.
+    for (const [, text] of docText) {
       for (const m of text.matchAll(/\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b/g)) documented.add(m[0])
     }
     for (const entry of [...bogus]) {
