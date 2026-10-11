@@ -29,6 +29,17 @@ const END = '  // WIRED-SCHEMA:END'
 
 /** The key list a module exports: an inline freeze, or a `DECLARED_KEYS` array it freezes. */
 export function wiredKeysOf(src) {
+  // ROUND 111: four faces name their wired list `WIRED_<FACE>_KEYS` (ballot box, course, instruments, store
+  // policy) and keep a SEPARATE `PLANNED_<FACE>_KEYS` with a reason per key. Recognising only the two generic
+  // names left every one of those keys unregistered, so the registry called them planned while the module
+  // itself listed them as wired - measured: nineteen keys across four faces.
+  const face = /export const WIRED_[A-Z_]+_KEYS = Object\.freeze\(\[([\s\S]*?)\]\)/.exec(src)
+  if (face) return [...face[1].matchAll(/'([^']+)'/g)].map((x) => x[1])
+  const alias = /export const WIRED_[A-Z_]+_KEYS = ([A-Z_]+_KEYS)\b/.exec(src)
+  if (alias) {
+    const base = new RegExp('export const ' + alias[1] + ' = Object\\.freeze\\(\\[([\\s\\S]*?)\\]\\)').exec(src)
+    if (base) return [...base[1].matchAll(/'([^']+)'/g)].map((x) => x[1])
+  }
   const inline = /export const WIRED_KEYS = Object\.freeze\(\[([\s\S]*?)\]\)/.exec(src)
   if (inline) return [...inline[1].matchAll(/'([^']+)'/g)].map((x) => x[1])
   const decl = /const DECLARED_KEYS = Object\.freeze\(\[([\s\S]*?)\]\)/.exec(src) || /const DECLARED_KEYS = \[([\s\S]*?)\]/.exec(src)
