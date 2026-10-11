@@ -890,6 +890,15 @@
   ✗ **一处自伤（第四次同型，促成方法改变 ✓）** ✗：脚本**又一次**在 `"` 界定符的字符串里写了 ASCII 引号 ✗ ⇒ **解析期即死、什么也没落地** ✓（套件当时显示的是**旧结果** ✓，**差点被误读为"改动生效但测试通过"** ✗✓）⇒ ★★★ **改法：把断言写成【独立片段文件】，由脚本读取后拼接** ✓✓ —— **脚本里再无嵌套转义，整类事故归零** ✓。
   **未做（明写 ✗）**：★ **`vmu.biospecimen.*`（7 条，有声明、有面 `instruments.js`）** ✗（**留下一区间** ✓）；★ **`vmu.math` 里 30 条有声明者** ✗；**其余 406 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 220（超长区间）：一次连开【三个新面】—— identity(9) ＋ human(6) ＋ discipline(6)；未接线 406 → 385** ✓✓
+  ★★ **先量后定** ✓：这四个候选族（identity／human／discipline／biospecimen）**在既有 78 个面里【无人读任何一个兄弟键】** ✓ ⇒ **全是绿地** ✓ ⇒ 与 `fairness.js`（只读自己那族 ✓）形成对照 ✓。**biospecimen 留下一区间** ✓（**有声明、但无链式保管面** ✓，`instruments.js` 只是声明键的面 ✗）。
+  **① `vmu.identity.*`（9）→ 新建 `kernel/identity.js`** ✓：`principalBinding`（**off／advisory／required 三态各自可观察** ✓，required 时无主体**具名拒** ✓）／`trustedIssuers`（**空列表＝完全不做 issuer 校验** ✓ —— **零机制，而不是静默通过或静默拒** ✓）／`claimMap`（**claim→席位；未映射者被 REPORT，绝不悄悄变成席位** ✓）／`multiMembership`＋`maxMemberships`（**第二条归属／超上限各自具名拒并给现值与上限** ✓）／`allowPseudonym`＋`pseudonymScopes`（**未声明场景具名拒；同场景复用同一化名** ✓）／`onEnd`（**archive／handover／both，回执分别自曝两项是否执行** ✓）／`auditReads`（**读取入账并在回执自曝；关掉仍【计数】** ✓）。
+  **② `vmu.human.*`（6）→ 新建 `kernel/human.js`** ✓：`vetoScope`（**超范围具名拒** ✓）／`vetoNeedsReason`（**紧急可后补，且"后补中"被记录与计数，不假装已给** ✓）／`observerScopes`（**空列表＝什么都不可见** ✓）／`approvalTimeoutMs`（**0＝无限等** ✓）／`onTimeout`（★ **默认 `hold`：超时【保持挂起，绝不默认放行】** ✓✓，三态在回执中各自具名 ✓）／`dashboardScope`（**超宽具名拒** ✓）—— ★ **这一族承载本项目最该守的不变式：沉默不得变成批准** ✓。
+  **③ `vmu.discipline.*`（6）→ 新建 `kernel/discipline.js`** ✓：`breakerFailures`（★ **0＝机制【关】，而非"允许零次失败"** ✓）／`breakerWindowMs`（**窗口外的旧失败不计** ✓）／`halfOpenAfterMs`（**半开试探** ✓）／`suspendMaxMs`（**钳制并自曝 `clamped`** ✓）／`restoreNeedsHuman`（**机器不能自行复职** ✓）／`postmortemRequired`（**缺复盘引用具名拒** ✓）。**它只决定纪律** ✓：**不发席位**（`recruit.js` 管 ✓）、**不投票**（`ballot.js` 管 ✓）。
+  **★ 接线一次做全 12 处** ✓：index.js 的 **import×3／create×3／内部 return／register×3／getter×3** ✓ ＋ **手写核心表 21 条** ✓ ＋ **码表 16 条** ✓ ＋ **`package.json#files`** ✓ ＋ **安装器受管清单** ✓ ＋ **服务审计映射** ✓ ⇒ **`VMU IDENTITY+HUMAN+DISCIPLINE: 63 passed, 0 failed`** ✓（**每键两向 ＋ 三面的零机制与纯读不变式** ✓）。
+  ✗ **两处自伤（都在本轮内自己发现并修 ✓）** ✗：① **我写下 `neverAllowsBySilence: cfg().onTimeout !== 'default-allow' || true`** ✗ —— **`|| true` 令其恒真，正是本项目审计在抓的【空洞自报】** ✓ ⇒ 立即删掉并改为按声明判断 ✓；② **熔断"打开"分支永不触发** ✗：我在**失败入队之后**才取前态 ✓ ⇒ **窗口里已含新失败 ⇒ 前后都读作 open** ✓ ⇒ 改为**入队前取前态** ✓（**由套件的一条断言抓出** ✓）。
+  **未做（明写 ✗）**：★ **`vmu.biospecimen.*`（7 条，有声明、需链式保管面）** ✗；★ **`vmu.math` 里 30 条有声明者** ✗；**其余 385 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 

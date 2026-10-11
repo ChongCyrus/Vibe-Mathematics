@@ -381,6 +381,22 @@
 | `VMU_AGREEMENT_UNSIGNED` | **未签协议下的交换**（`vmu.agreements.unsignedPolicy=block`，即"未签不得共享" ✓） | 协议（22） | ✅（须给**先签署的方法**与该键 ✓） |
 | `VMU_AGREEMENT_SIGNATURE_REF_REQUIRED` | 签署**缺引用**（`vmu.agreements.signatureRefRequired=true` ✓） | 协议（22） | ✅（须点明缺 `ref` ✓） |
 | `VMU_AGREEMENT_SCOPE_NOT_COVERED` | 交换**越出协议范围**（`vmu.agreements.scopeEnforcement=block` ✓） | 协议（22） | ✅（须给**请求范围与已约范围** ✓） |
+| `VMU_IDENTITY_PRINCIPAL_REQUIRED` | **`principalBinding=required` 而无主体**（实现于 `kernel/identity.js` ✓） | 身份（17） | ✅（须给**如何提供主体** ✓） |
+| `VMU_IDENTITY_ISSUER_UNTRUSTED` | **issuer 不在可信列表**（`vmu.identity.trustedIssuers` ✓） | 身份（17） | ✅（须给**可信列表** ✓） |
+| `VMU_IDENTITY_CLAIM_UNMAPPED` | claim **未映射到席位**（`vmu.identity.claimMap` ✓；本面 REPORT 而非猜 ✓） | 身份（17） | ✅（须给**已映射项** ✓） |
+| `VMU_IDENTITY_MEMBERSHIP_CAP` | **归属超出上限**（`vmu.identity.maxMemberships` ✓） | 身份（17） | ✅（须给**现值与上限** ✓） |
+| `VMU_IDENTITY_MULTI_MEMBERSHIP_OFF` | **多归属被关**（`vmu.identity.multiMembership=false` ✓） | 身份（17） | ✅（须给**现有归属** ✓） |
+| `VMU_IDENTITY_PSEUDONYM_NOT_ALLOWED` | **不允许化名**（`vmu.identity.allowPseudonym=false` ✓） | 身份（17） | ✅（须给**该键** ✓） |
+| `VMU_IDENTITY_PSEUDONYM_SCOPE` | **化名场景未声明**（`vmu.identity.pseudonymScopes` ✓） | 身份（17） | ✅（须给**已声明场景** ✓） |
+| `VMU_HUMAN_VETO_SCOPE` | **否决范围超出**（`vmu.human.vetoScope` ✓） | 人类（17） | ✅（须给**允许范围** ✓） |
+| `VMU_HUMAN_VETO_REASON_REQUIRED` | **否决缺理由**（`vmu.human.vetoNeedsReason=true` ✓；紧急可后补 ✓） | 人类（17） | ✅（须说明**紧急后补路径** ✓） |
+| `VMU_HUMAN_OBSERVER_SCOPE` | **观察员范围未声明**（`vmu.human.observerScopes` ✓） | 人类（17） | ✅（须给**已声明范围** ✓） |
+| `VMU_HUMAN_APPROVAL_TIMEOUT` | **审批超时且声明为 default-deny**（`vmu.human.onTimeout` ✓） | 人类（17） | ✅（须给**声明的超时行为** ✓） |
+| `VMU_HUMAN_DASHBOARD_SCOPE` | **总览范围超出**（`vmu.human.dashboardScope` ✓） | 人类（17） | ✅（须给**允许范围** ✓） |
+| `VMU_DISCIPLINE_BREAKER_OPEN` | **熔断打开或停职期内**（`vmu.discipline.breakerFailures`／`suspendMaxMs` ✓） | 纪律（17） | ✅（须给**失败数与阈值／停职终点** ✓） |
+| `VMU_DISCIPLINE_SUSPEND_OVER_CAP` | **停职超上限**（`vmu.discipline.suspendMaxMs` ✓；实现为钳制并自曝 ✓） | 纪律（17） | ✅（须给**上限** ✓） |
+| `VMU_DISCIPLINE_RESTORE_NEEDS_HUMAN` | **复职未经人类**（`vmu.discipline.restoreNeedsHuman=true` ✓） | 纪律（17） | ✅（须说明**须由人类决定** ✓） |
+| `VMU_DISCIPLINE_POSTMORTEM_REQUIRED` | **复职缺复盘**（`vmu.discipline.postmortemRequired=true` ✓） | 纪律（17） | ✅（须点明缺复盘引用 ✓） |
 | `VMU_RECRUIT_OFFER_EXPIRED` | 录用报价**已过期**（实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须给**过期时刻** ✓） |
 | `VMU_RECRUIT_PROBATION_NOT_DUE` | **试用期未满**不得转正（实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须给**剩余时间** ✓） |
 | `VMU_TOPOLOGY_PATH_FORBIDDEN` | 拓扑**不允许该路径**（实现于 `kernel/topology.js` ✓） | 协作拓扑 | ✅（须给**允许路径** ✓） |
@@ -634,7 +650,6 @@
 | `VMU_IACUC_APPROVAL_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_IACUC_EXPIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 14 | ⛔ |
 | `VMU_IDENTITY_ENDS_WITH_OPEN_WORK` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
-| `VMU_IDENTITY_ISSUER_UNTRUSTED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_IDENTITY_MULTI_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_IDENTITY_PSEUDONYM_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_IDENTITY_TRANSFER_DENIED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
@@ -749,7 +764,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **245** 个码，**逐行**给出状态 ✓：其中 **205** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **261** 个码，**逐行**给出状态 ✓：其中 **221** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **40** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -811,6 +826,10 @@
 | `VMU_CRYPTO_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/auditchain.js`、`vibe-math-vmu/kernel/crypto.js` | 代码里有该码字符串 ✓ |
 | `VMU_CRYPTO_VERIFY_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/crypto.js` | 代码里有该码字符串 ✓ |
 | `VMU_DEGRADED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
+| `VMU_DISCIPLINE_BREAKER_OPEN` | **已实现 ✓** | `vibe-math-vmu/kernel/discipline.js` | 代码里有该码字符串 ✓ |
+| `VMU_DISCIPLINE_POSTMORTEM_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/discipline.js` | 代码里有该码字符串 ✓ |
+| `VMU_DISCIPLINE_RESTORE_NEEDS_HUMAN` | **已实现 ✓** | `vibe-math-vmu/kernel/discipline.js` | 代码里有该码字符串 ✓ |
+| `VMU_DISCIPLINE_SUSPEND_OVER_CAP` | **已实现 ✓** | `vibe-math-vmu/kernel/discipline.js` | 代码里有该码字符串 ✓ |
 | `VMU_ENGINE_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/host-hooks.js`、`vibe-math-vmu/host-math.js`、`vibe-math-vmu/host-spawn.js`、`vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/instruments.js`、`vibe-math-vmu/kernel/loader.js`、`vibe-math-vmu/kernel/math.js`、`vibe-math-vmu/kernel/mathtools.js`、`vibe-math-vmu/kernel/meeting.js`、`vibe-math-vmu/kernel/meetings.js`、`vibe-math-vmu/kernel/members.js`、`vibe-math-vmu/kernel/pack.js`、`vibe-math-vmu/kernel/paper.js`、`vibe-math-vmu/kernel/prompt/index.js`、`vibe-math-vmu/kernel/script-bridge.js`、`vibe-math-vmu/kernel/work.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
 | `VMU_EXTERNAL_DISABLED` | **已实现 ✓** | `vibe-math-vmu/kernel/external.js`、`vibe-math-vmu/kernel/records.js` | 代码里有该码字符串 ✓ |
 | `VMU_EXTERNAL_RECEIPT_INCOMPLETE` | **已实现 ✓** | `vibe-math-vmu/kernel/external.js` | 代码里有该码字符串 ✓ |
@@ -831,9 +850,21 @@
 | `VMU_FUNDING_FX_SNAPSHOT_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/funding.js` | 代码里有该码字符串 ✓ |
 | `VMU_FUNDING_FX_STALE` | **已实现 ✓** | `vibe-math-vmu/kernel/funding.js` | 代码里有该码字符串 ✓ |
 | `VMU_FUNDING_NEGATIVE_NOT_ALLOWED` | **已实现 ✓** | `vibe-math-vmu/kernel/funding.js` | 代码里有该码字符串 ✓ |
+| `VMU_HUMAN_APPROVAL_TIMEOUT` | **已实现 ✓** | `vibe-math-vmu/kernel/human.js` | 代码里有该码字符串 ✓ |
+| `VMU_HUMAN_DASHBOARD_SCOPE` | **已实现 ✓** | `vibe-math-vmu/kernel/human.js` | 代码里有该码字符串 ✓ |
+| `VMU_HUMAN_OBSERVER_SCOPE` | **已实现 ✓** | `vibe-math-vmu/kernel/human.js` | 代码里有该码字符串 ✓ |
+| `VMU_HUMAN_VETO_REASON_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/human.js` | 代码里有该码字符串 ✓ |
+| `VMU_HUMAN_VETO_SCOPE` | **已实现 ✓** | `vibe-math-vmu/kernel/human.js` | 代码里有该码字符串 ✓ |
 | `VMU_IDEMPOTENCY_KEY_REUSED` | **已实现 ✓** | `vibe-math-vmu/kernel/idempotency.js` | 代码里有该码字符串 ✓ |
+| `VMU_IDENTITY_CLAIM_UNMAPPED` | **已实现 ✓** | `vibe-math-vmu/kernel/identity.js` | 代码里有该码字符串 ✓ |
+| `VMU_IDENTITY_ISSUER_UNTRUSTED` | **已实现 ✓** | `vibe-math-vmu/kernel/identity.js` | 代码里有该码字符串 ✓ |
+| `VMU_IDENTITY_MEMBERSHIP_CAP` | **已实现 ✓** | `vibe-math-vmu/kernel/identity.js` | 代码里有该码字符串 ✓ |
+| `VMU_IDENTITY_MULTI_MEMBERSHIP_OFF` | **已实现 ✓** | `vibe-math-vmu/kernel/identity.js` | 代码里有该码字符串 ✓ |
+| `VMU_IDENTITY_PRINCIPAL_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/identity.js` | 代码里有该码字符串 ✓ |
+| `VMU_IDENTITY_PSEUDONYM_NOT_ALLOWED` | **已实现 ✓** | `vibe-math-vmu/kernel/identity.js` | 代码里有该码字符串 ✓ |
+| `VMU_IDENTITY_PSEUDONYM_SCOPE` | **已实现 ✓** | `vibe-math-vmu/kernel/identity.js` | 代码里有该码字符串 ✓ |
 | `VMU_INDEX_STALE` | **已实现 ✓** | `vibe-math-vmu/kernel/projmigrate.js`、`vibe-math-vmu/kernel/stateversion.js` | 代码里有该码字符串 ✓ |
-| `VMU_INVALID_ARGUMENT` | **已实现 ✓** | `vibe-math-vmu/host-math.js`、`vibe-math-vmu/host-spawn.js`、`vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/alerts.js`、`vibe-math-vmu/kernel/arbitration.js`、`vibe-math-vmu/kernel/ballot.js`、`vibe-math-vmu/kernel/bidding.js`、`vibe-math-vmu/kernel/board.js`、`vibe-math-vmu/kernel/bus.js`、`vibe-math-vmu/kernel/capacity.js`、`vibe-math-vmu/kernel/charter.js`、`vibe-math-vmu/kernel/clockguard.js`、`vibe-math-vmu/kernel/collab.js`、`vibe-math-vmu/kernel/compliance.js`、`vibe-math-vmu/kernel/conference.js`、`vibe-math-vmu/kernel/course.js`、`vibe-math-vmu/kernel/delegation.js`、`vibe-math-vmu/kernel/domaingate.js`、`vibe-math-vmu/kernel/fairness.js`、`vibe-math-vmu/kernel/funding.js`、`vibe-math-vmu/kernel/grant.js`、`vibe-math-vmu/kernel/guard.js`、`vibe-math-vmu/kernel/handover.js`、`vibe-math-vmu/kernel/hr.js`、`vibe-math-vmu/kernel/idempotency.js`、`vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/ip.js`、`vibe-math-vmu/kernel/library.js`、`vibe-math-vmu/kernel/mathtools.js`、`vibe-math-vmu/kernel/meeting.js`、`vibe-math-vmu/kernel/meetings.js`、`vibe-math-vmu/kernel/members.js`、`vibe-math-vmu/kernel/memory.js`、`vibe-math-vmu/kernel/metrics.js`、`vibe-math-vmu/kernel/migration.js`、`vibe-math-vmu/kernel/minutes.js`、`vibe-math-vmu/kernel/notify.js`、`vibe-math-vmu/kernel/pack.js`、`vibe-math-vmu/kernel/paper.js`、`vibe-math-vmu/kernel/projmigrate.js`、`vibe-math-vmu/kernel/prompt/index.js`、`vibe-math-vmu/kernel/publication.js`、`vibe-math-vmu/kernel/ratelimit.js`、`vibe-math-vmu/kernel/records.js`、`vibe-math-vmu/kernel/registry.js`、`vibe-math-vmu/kernel/replay.js`、`vibe-math-vmu/kernel/rules.js`、`vibe-math-vmu/kernel/scheduler.js`、`vibe-math-vmu/kernel/script-bridge.js`、`vibe-math-vmu/kernel/skills.js`、`vibe-math-vmu/kernel/store.js`、`vibe-math-vmu/kernel/storepolicy.js`、`vibe-math-vmu/kernel/tasks.js`、`vibe-math-vmu/kernel/timevalue.js`、`vibe-math-vmu/kernel/topology.js`、`vibe-math-vmu/kernel/transaction.js`、`vibe-math-vmu/kernel/trust.js`、`vibe-math-vmu/kernel/work.js`、`vibe-math-vmu/kernel/workflow.js` | 代码里有该码字符串 ✓ |
+| `VMU_INVALID_ARGUMENT` | **已实现 ✓** | `vibe-math-vmu/host-math.js`、`vibe-math-vmu/host-spawn.js`、`vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/alerts.js`、`vibe-math-vmu/kernel/arbitration.js`、`vibe-math-vmu/kernel/ballot.js`、`vibe-math-vmu/kernel/bidding.js`、`vibe-math-vmu/kernel/board.js`、`vibe-math-vmu/kernel/bus.js`、`vibe-math-vmu/kernel/capacity.js`、`vibe-math-vmu/kernel/charter.js`、`vibe-math-vmu/kernel/clockguard.js`、`vibe-math-vmu/kernel/collab.js`、`vibe-math-vmu/kernel/compliance.js`、`vibe-math-vmu/kernel/conference.js`、`vibe-math-vmu/kernel/course.js`、`vibe-math-vmu/kernel/delegation.js`、`vibe-math-vmu/kernel/discipline.js`、`vibe-math-vmu/kernel/domaingate.js`、`vibe-math-vmu/kernel/fairness.js`、`vibe-math-vmu/kernel/funding.js`、`vibe-math-vmu/kernel/grant.js`、`vibe-math-vmu/kernel/guard.js`、`vibe-math-vmu/kernel/handover.js`、`vibe-math-vmu/kernel/hr.js`、`vibe-math-vmu/kernel/human.js`、`vibe-math-vmu/kernel/idempotency.js`、`vibe-math-vmu/kernel/identity.js`、`vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/ip.js`、`vibe-math-vmu/kernel/library.js`、`vibe-math-vmu/kernel/mathtools.js`、`vibe-math-vmu/kernel/meeting.js`、`vibe-math-vmu/kernel/meetings.js`、`vibe-math-vmu/kernel/members.js`、`vibe-math-vmu/kernel/memory.js`、`vibe-math-vmu/kernel/metrics.js`、`vibe-math-vmu/kernel/migration.js`、`vibe-math-vmu/kernel/minutes.js`、`vibe-math-vmu/kernel/notify.js`、`vibe-math-vmu/kernel/pack.js`、`vibe-math-vmu/kernel/paper.js`、`vibe-math-vmu/kernel/projmigrate.js`、`vibe-math-vmu/kernel/prompt/index.js`、`vibe-math-vmu/kernel/publication.js`、`vibe-math-vmu/kernel/ratelimit.js`、`vibe-math-vmu/kernel/records.js`、`vibe-math-vmu/kernel/registry.js`、`vibe-math-vmu/kernel/replay.js`、`vibe-math-vmu/kernel/rules.js`、`vibe-math-vmu/kernel/scheduler.js`、`vibe-math-vmu/kernel/script-bridge.js`、`vibe-math-vmu/kernel/skills.js`、`vibe-math-vmu/kernel/store.js`、`vibe-math-vmu/kernel/storepolicy.js`、`vibe-math-vmu/kernel/tasks.js`、`vibe-math-vmu/kernel/timevalue.js`、`vibe-math-vmu/kernel/topology.js`、`vibe-math-vmu/kernel/transaction.js`、`vibe-math-vmu/kernel/trust.js`、`vibe-math-vmu/kernel/work.js`、`vibe-math-vmu/kernel/workflow.js` | 代码里有该码字符串 ✓ |
 | `VMU_JOB_CANCELLED` | **已实现 ✓** | `vibe-math-vmu/kernel/mathjobs.js` | 代码里有该码字符串 ✓ |
 | `VMU_JOB_TIMEOUT` | **已实现 ✓** | `vibe-math-vmu/kernel/alerts.js`、`vibe-math-vmu/kernel/script-bridge.js` | 代码里有该码字符串 ✓ |
 | `VMU_LEAN_ARCHIVE_DRIFT` | **已实现 ✓** | `vibe-math-vmu/kernel/lean.js` | 代码里有该码字符串 ✓ |
