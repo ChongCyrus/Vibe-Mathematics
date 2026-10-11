@@ -209,5 +209,60 @@ function fakeClock(start = 1000) { let t = start; return { clock: () => t, set: 
   ok(zero.decay === 'off' && on.decay === 'on', 'status(): the three states are consistent (0/off vs 1000/on)')
 }
 
+
+// ── ROUND 253/254: the four lifecycle and display declarations ───────────────────────────────────────────────
+{
+  const mkT = (settings) => createTrust({ clock: () => 1000, settings: settings || {} })
+  const withSignal = (settings, weight = 0.9) => { const t = mkT(settings); t.signal({ subject: 'm1', kind: 'review', weight, source: 'm2', evidence: 'E' }); return t }
+
+  // minSamples: too few signals is NO score, which is a different fact from a low one
+  ok(withSignal({}).publicScore({ subject: 'm1' }).score !== null, 'trust.minSamples[default]: with the floor off a score is stated')
+  const short = withSignal({ 'vmu.trust.minSamples': 3 }).publicScore({ subject: 'm1' })
+  ok(short.score === null && short.reason === 'insufficient-samples', 'trust.minSamples[below]: one signal under a floor of three yields NO score, with the reason', short)
+  const t2 = mkT({ 'vmu.trust.minSamples': 1 }); t2.signal({ subject: 'm1', kind: 'r', weight: 0.5, source: 's' })
+  ok(t2.publicScore({ subject: 'm1' }).score !== null, 'trust.minSamples[met]: exactly at the floor a score IS stated')
+
+  // displayMode: the strongest setting withholds the number AND the band
+  const asScore = withSignal({ 'vmu.trust.displayMode': 'score' }).publicScore({ subject: 'm1' })
+  ok(asScore.score !== null && asScore.band !== null, 'trust.displayMode[score]: both the number and the band are shown')
+  const asBand = withSignal({ 'vmu.trust.displayMode': 'band' }).publicScore({ subject: 'm1' })
+  ok(asBand.score === null && typeof asBand.band === 'string', 'trust.displayMode[band]: the band is shown and the NUMBER is withheld', asBand)
+  const asHidden = withSignal({ 'vmu.trust.displayMode': 'hidden' }).publicScore({ subject: 'm1' })
+  ok(asHidden.score === null && asHidden.band === null && asHidden.reason === 'hidden-by-displayMode',
+    'trust.displayMode[hidden]: BOTH are withheld - a number that leaks through a hidden setting is not hidden', asHidden)
+  ok(withSignal({ 'vmu.trust.displayMode': 'nonsense' }).publicScore({ subject: 'm1' }).displayMode === 'score',
+    'trust.displayMode[invalid]: an unrecognised mode falls back to score rather than to silence')
+
+  // appealNeedsEvidence: the apt code already existed and is used, not a nearby one
+  const strict = mkT({ 'vmu.trust.appealNeedsEvidence': true })
+  strict.signal({ subject: 's1', kind: 'r', weight: 0.5, source: 'x' })
+  let refusal = null
+  try { strict.dispute({ scoreId: 's1', reason: 'why' }) } catch (e) { refusal = e }
+  ok(refusal && refusal.code === 'VMU_TRUST_EVIDENCE_REQUIRED', 'trust.appealNeedsEvidence[on]: a baseless appeal is refused with the EVIDENCE code', refusal && refusal.code)
+  ok(strict.dispute({ scoreId: 's1', reason: 'why', evidence: 'DOC-1' }).ok === true, 'trust.appealNeedsEvidence[on]: the same appeal passes once it cites evidence')
+  const loose = mkT({ 'vmu.trust.appealNeedsEvidence': false })
+  loose.signal({ subject: 's1', kind: 'r', weight: 0.5, source: 'x' })
+  ok(loose.dispute({ scoreId: 's1', reason: 'why' }).ok === true, 'trust.appealNeedsEvidence[off]: the declaration really decides')
+
+  // decayOnEnd: freezing is what makes a final score reproducible
+  const frozen = mkT({ 'vmu.trust.decayOnEnd': false, 'vmu.trust.halfLifeMs': 1000 })
+  frozen.signal({ subject: 'm2', kind: 'r', weight: 1, source: 's' })
+  ok(frozen.endEngagement({ subject: 'm2', at: 1000 }).freeze === true, 'trust.decayOnEnd[false]: ending an engagement FREEZES the score')
+  const decaying = mkT({ 'vmu.trust.decayOnEnd': true, 'vmu.trust.halfLifeMs': 1000 })
+  decaying.signal({ subject: 'm2', kind: 'r', weight: 1, source: 's' })
+  ok(decaying.endEngagement({ subject: 'm2', at: 1000 }).freeze === false, 'trust.decayOnEnd[true]: it keeps decaying, which is the default')
+  let noSubject = null
+  try { frozen.endEngagement({}) } catch (e) { noSubject = e }
+  ok(noSubject && noSubject.code === 'VMU_INVALID_ARGUMENT', 'trust.decayOnEnd: endEngagement without a subject is refused by name')
+
+  // and every one of the four is really READ through the settings view this face uses
+  const seen = []
+  const rec = { get(k) { seen.push(k); return undefined } }
+  const probe = createTrust({ clock: () => 1000, settings: rec })
+  probe.publicScore({ subject: 'nobody' }); probe.endEngagement({ subject: 'nobody' }); probe.dispute({ scoreId: 'nobody', reason: 'r' })
+  const four = ['vmu.trust.minSamples', 'vmu.trust.displayMode', 'vmu.trust.appealNeedsEvidence', 'vmu.trust.decayOnEnd']
+  ok(four.every((k) => seen.includes(k)), 'all four new keys are actually read, not merely listed', four.filter((k) => !seen.includes(k)))
+}
+
 console.log('=== VMU TRUST: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) process.exit(1)

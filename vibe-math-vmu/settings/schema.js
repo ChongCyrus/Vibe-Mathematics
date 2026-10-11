@@ -256,6 +256,10 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.trust.displayMode', type: 'enum', domain: ['score', 'band', 'hidden'], def: 'score', hot: HOT.H1, who: 'office', doc: "分数展示（score 给数／band 只给带／hidden 全隐；★ 经 hidden 泄漏的数字不叫隐藏）" },
   { key: 'vmu.trust.appealNeedsEvidence', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "申诉须带证据（true ⇒ dispute() 无证据即具名拒，VMU_TRUST_EVIDENCE_REQUIRED）" },
   { key: 'vmu.trust.decayOnEnd', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "关系结束后是否继续按时间衰减（false ⇒ 冻结在结束时刻，使终值可复现）" },
+  // ROUND 254: 公平面的三键（08-§12.5／17 卷；现由 kernel/fairness.js 读取；★ maxSlotsPerInstance 未接，实测理由见 14 卷）.
+  { key: 'vmu.fairness.criticalSlots', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "关键槽位保底（0＝关；reserve/critical 者不低于此数，仍受份额上限约束）" },
+  { key: 'vmu.fairness.newcomerQuota', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "新来者配额（0＝关；newcomer 者被抬到此数——配额应当【约束】，不只是被满足）" },
+  { key: 'vmu.fairness.rebalanceEveryMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "重平衡周期（0＝无策略，回执明说无策略；rebalanceDue() 据此判定）" },
   { key: 'vmu.trust.useInSelection', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '选择时是否参考声誉（仅参考，绝不授权 ✗）' },
   { key: 'vmu.trust.useInArbitration', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '仲裁时是否参考声誉' },
   { key: 'vmu.trust.useInAuction', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '竞标时是否参考声誉' },

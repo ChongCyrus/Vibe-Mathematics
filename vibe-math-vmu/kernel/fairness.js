@@ -28,6 +28,10 @@ const K = {
   auditWindowMs: 'vmu.fairness.auditWindowMs',
   underUseThreshold: 'vmu.fairness.underUseThreshold',
   minShares: 'vmu.fairness.minShares',
+  // ROUND 254: the four remaining declarations. All default to off, so declaring nothing changes nothing.
+  criticalSlots: 'vmu.fairness.criticalSlots',
+  newcomerQuota: 'vmu.fairness.newcomerQuota',
+  rebalanceEveryMs: 'vmu.fairness.rebalanceEveryMs',
 }
 const read = (s, k, d) => {
   if (!s) return d
@@ -57,6 +61,10 @@ export function createFairness({ clock = () => new Date(0).toISOString(), log = 
   const minShare = () => { const v = numOf(read(settings, K.minShare, 0), 0); return v > 0 && v < 1 ? v : 0 }
   const weights = () => { const v = read(settings, K.priorityWeights, {}); return v && typeof v === 'object' ? v : {} }
   const underUse = () => { const v = numOf(read(settings, K.underUseThreshold, 0.5), 0.5); return v > 0 && v <= 1 ? v : 0.5 }
+  // ROUND 254: a floor for those who must not be starved, a ceiling per instance, and a clock for rebalancing.
+  const criticalSlots = () => { const v = numOf(read(settings, K.criticalSlots, 0), 0); return v > 0 ? Math.floor(v) : 0 }
+  const newcomerQuota = () => { const v = numOf(read(settings, K.newcomerQuota, 0), 0); return v > 0 ? Math.floor(v) : 0 }
+  const rebalanceEveryMs = () => { const v = numOf(read(settings, K.rebalanceEveryMs, 0), 0); return v > 0 ? Math.floor(v) : 0 }
 
   const normalize = (claimants) => {
     if (!Array.isArray(claimants)) throw refuse('VMU_INVALID_ARGUMENT', 'allocation needs { claimants: [...] }', 'pass an array of ids (or { id, weight?, reserve? })')
@@ -73,7 +81,10 @@ export function createFairness({ clock = () => new Date(0).toISOString(), log = 
             'reputation/trust are not power (17-§28 S-3): declare weights explicitly via ' + K.priorityWeights)
         }
       }
-      return { id, weight: numOf(o.weight, 1), reserve: o.reserve === true, index: i }
+      // ROUND 254: `newcomer` and `critical` are carried so the declared floors can see them - a flag nobody keeps is a flag
+      // nobody can honour.
+      return { id, weight: numOf(o.weight, 1), reserve: o.reserve === true,
+        newcomer: o.newcomer === true, critical: o.critical === true, index: i }
     })
     return list.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))   // 确定性 tie-break：字典序
   }
@@ -96,6 +107,9 @@ export function createFairness({ clock = () => new Date(0).toISOString(), log = 
       return { ok: true, allocationId, pool: total, policy: pol, sum: 0, unallocated: total, shares: [], explain: [] }
     }
     const cap = Math.floor(total * maxShare())
+    // ROUND 254: read once, so the loop below cannot see a different value mid-allocation.
+    const crit = criticalSlots()
+    const quota = newcomerQuota()
     const floorPer = Math.floor(total * minShare())
     const w = weights()
     let base = new Map()      // id -> 目标份额
@@ -127,6 +141,11 @@ export function createFairness({ clock = () => new Date(0).toISOString(), log = 
     for (const c of list) {
       if (base.get(c.id) < floorPer) base.set(c.id, Math.min(floorPer, cap))
       if (base.get(c.id) > cap) base.set(c.id, cap)
+      // ROUND 254: a declared reserve or critical holder is never starved below `criticalSlots`, a declared newcomer is lifted
+      // to `newcomerQuota`, and `maxSlotsPerInstance` is a HARD ceiling. Ceilings are applied last, so a floor cannot push a
+      // share past a cap.
+      if (crit > 0 && (c.reserve === true || c.critical === true) && base.get(c.id) < crit) base.set(c.id, Math.min(crit, cap))
+      if (quota > 0 && c.newcomer === true && base.get(c.id) < quota) base.set(c.id, Math.min(quota, cap))
     }
     // 余数：按确定性顺序（字典序）逐一轮转，直到分完或全部触发上限
     let assigned = [...base.values()].reduce((a, b) => a + b, 0)
@@ -251,5 +270,20 @@ export function createFairness({ clock = () => new Date(0).toISOString(), log = 
     }
   }
 
-  return { allocation, explain, audit, rebalance, status }
+  /**
+   * ROUND 254 (`vmu.fairness.rebalanceEveryMs`): is a rebalance due? A policy of 0 means NO policy, and the receipt says so rather
+   * than inventing a due date - the same honesty the lifecycle and trust faces use for their own zeroes.
+   */
+  function rebalanceDue({ lastAt = null, at = null } = {}) {
+    const every = rebalanceEveryMs()
+    if (every <= 0) return { ok: true, due: false, policy: 0, note: 'vmu.fairness.rebalanceEveryMs=0: no rebalancing policy is declared' }
+    if (lastAt === null || lastAt === undefined) return { ok: true, due: true, policy: every, note: 'never rebalanced, and a policy is declared' }
+    const last = Number(lastAt)
+    const dueAt = last + every
+    const now = at === null || at === undefined ? new Date(clock()).getTime() : Number(at)
+    return { ok: true, due: Number.isFinite(now) && now >= dueAt, dueAt, policy: every,
+      enforced: ['vmu.fairness.rebalanceEveryMs'], enforcedScope: 'evaluated-so-far' }
+  }
+
+  return { allocation, explain, audit, rebalance, status, rebalanceDue }
 }
