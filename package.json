@@ -122,6 +122,7 @@
     "tests/v5-tool-help.test.mjs",
     "tests/helpers/v5-tool-registry.mjs",
     "tests/helpers/v5-tool-host.mjs",
+    "tests/helpers/settings-recorder.mjs",
     "tests/harness/v5-tool-driver.mjs",
     "tests/harness/v5-tool-evaluate.mjs",
     "tests/harness/v5-tool-score.mjs",

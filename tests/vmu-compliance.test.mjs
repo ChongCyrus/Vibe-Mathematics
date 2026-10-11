@@ -1,5 +1,6 @@
 // tests/vmu-compliance.test.mjs — 独立可跑：kernel/compliance.js（mathtools 标准：enforced/fired/口径/wouldEvaluate/17 键划分）。
 import { createCompliance, WIRED_KEYS, PLANNED_KEYS, PLANNED_REASONS, WOULD_EVALUATE, ENFORCED_SCOPE, apiVersion } from '../vibe-math-vmu/kernel/compliance.js'
+import { makeRecorder } from './helpers/settings-recorder.mjs'
 
 let passed = 0, failed = 0
 const ok = (c, label) => { if (c) { passed++; console.log('  ok - ' + label) } else { failed++; console.error('  FAIL - ' + label) } }
@@ -15,7 +16,13 @@ const refuses = (fn, code, extra, label) => {
   }
 }
 const CLOCK = () => '2026-07-01T00:00:00.000Z'
-const mk = (settings = {}) => createCompliance({ clock: CLOCK, settings })
+/**
+ * ROUND 172: the universal recorder (three traps plus the `get` METHOD) - see tests/helpers/settings-recorder.mjs.
+ * compliance reads settings by asking hasOwnProperty first, which is the route a get-only Proxy cannot see at all; that
+ * mistake is exactly what round 170 published and round 171 retracted.
+ */
+const ALL = []
+const mk = (settings = {}) => { const rec = makeRecorder(settings); ALL.push(rec.reads); return createCompliance({ clock: CLOCK, settings: rec.settings }) }
 
 console.log('-- 0) 17 键**恰好划分** + 口径常量 --')
 ok(apiVersion === 1 && ENFORCED_SCOPE === 'evaluated-so-far', 'module surface: apiVersion=1 and the D3 scope literal')
@@ -169,6 +176,14 @@ console.log('')
     '★ with the switch on, the receipt NAMES the screening and points at domaingate (cite, never copy)')
   const plain = mk()
   ok(plain.prepare().exportControl.required === false, 'default off + no dual-use pack => unchanged')
+}
+
+// ROUND 172: the precondition behind "all 17 keys are wired", asserted and measurable. The tail of this suite was
+// printed before writing this: there is no early-exit branch, so placing the block just before the summary is correct.
+{
+  const reads = ALL.flat()
+  const unread = WIRED_KEYS.filter((k) => reads.indexOf(k) === -1)
+  ok(unread.length === 0, 'every wired key was really READ by the suite, not merely listed (' + (unread.length ? 'unread: ' + unread.join(', ') : reads.length + ' reads recorded') + ')')
 }
 
 console.log('=== VMU COMPLIANCE: ' + passed + ' passed, ' + failed + ' failed ===')
