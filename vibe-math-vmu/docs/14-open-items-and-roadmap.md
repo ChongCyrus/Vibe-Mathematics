@@ -899,6 +899,15 @@
   ✗ **两处自伤（都在本轮内自己发现并修 ✓）** ✗：① **我写下 `neverAllowsBySilence: cfg().onTimeout !== 'default-allow' || true`** ✗ —— **`|| true` 令其恒真，正是本项目审计在抓的【空洞自报】** ✓ ⇒ 立即删掉并改为按声明判断 ✓；② **熔断"打开"分支永不触发** ✗：我在**失败入队之后**才取前态 ✓ ⇒ **窗口里已含新失败 ⇒ 前后都读作 open** ✓ ⇒ 改为**入队前取前态** ✓（**由套件的一条断言抓出** ✓）。
   **未做（明写 ✗）**：★ **`vmu.biospecimen.*`（7 条，有声明、需链式保管面）** ✗；★ **`vmu.math` 里 30 条有声明者** ✗；**其余 385 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 221（超长区间）：一次做完【三个族】—— biospecimen(7，新面) ＋ budget(5) ＋ audit(8)；未接线 385 → 365** ✓✓
+  **① `vmu.biospecimen.*`（7）→ 新建 `kernel/biospecimen.js`** ✓（**样本台账 ＋ 链式保管** ✓）：`ledgerDir`（**只 REPORT 不触碰** ✓）／`requireChain`（**登记须开链、转移须给持有人，否则具名拒** ✓）／`chainGapPolicy`（**断链 block 具名拒／warn 记录并告警** ✓）／`freezeThawWarnAt`（**达阈【告警】而非拒绝 —— 契约要的是告警** ✓）／`destroyKeepsReference`（**灭失后记录留存并说明已灭失** ✓）／`subjectRefStyle`（**看起来像明文标识的引用具名拒** ✓）／`mappingIrreversible`（★ **内核强制：true 时【拒绝】存入主体↔引用的可逆映射** ✓✓ —— **不是加密后寄望，而是根本不收** ✓，**映射须留在台账之外** ✓）。
+  **② `vmu.budget.*`（5）→ 既有 `kernel/budget.js`** ✓：`tokens`／`turns`／`toolCalls`／`subagents`（**0＝不限；>0 即成为作用域默认上限，显式限额仍优先** ✓）＋ `perTaskShare`（★ **同一任务超出其份额具名拒** ✓ 新码 `VMU_BUDGET_TASK_SHARE_EXCEEDED` ✓，**且不同任务各有一份份额** ✓）。**冒烟实证** ✓：声明 `tokens:10` ⇒ 作用域上限 `{tokens:10}` ✓；`perTaskShare:0.5` 下同任务第二次 3 单位被拒 ✓。
+  **③ `vmu.audit.*`（8）→ 既有 `kernel/audit.js`** ✓：`level`（★ **minimal 只留 `what/seq/at`、normal 留字段、verbose 另附脱敏字段名与级别** ✓）／`dir`（**只 REPORT** ✓）／`rotateBytes`＋`rotateDaily`（**驱动既有 `rotate()`：未到期具名拒，`force:true` 可强转** ✓，**且本面【不假装测量文件系统】，用环自身字节估算并说明** ✓）／`sensitiveFields`（**与 `redactKeys` 合并** ✓）／`traceKeepMs`（**append 时按龄清理 trace 行并计数** ✓）／`recountRoles`（**未列角色复算具名拒** ✓）／`exportScope`（**未声明范围导出具名拒** ✓）。
+  ★★ **默认值全部【取自声明】而非我编** ✓✓：`dir`＝`<root>/vmu/audit` 与 `rotateDaily`＝true 来自 **`docs/20` L100** ✓，`rotateBytes`＝10485760 与 `sensitiveFields`＝[] 来自 **`docs/07` L638-639** ✓ —— ★ **我第一稿曾写 `Ops/Audit`／`false`／`0`，是【编的】** ✗ ⇒ **量到声明后改正** ✓。
+  ★★★ **一处【预告被实测推翻】** ✓✓：我原计划实现 `vmu.ballot.reopenFloor` 并借此给 `reconsiderFloor` 找到承载 ✗ —— **`ballotbox.js` L60-75 的 `UNWIRED_REASONS` 表已带实测证据写明三键【不能接线】** ✓：① **本面无 `reopen()`**，**为接线另写一套＝第二份重开实现** ✗（**违反本项目纪律** ✓）；② `initiator`／`sameMeeting` 在议程面**零命中** ✗ ⇒ **不得凭空造** ✓。⇒ ★★ **尊重实测，本区间不碰这三键** ✓（**并把"预告有误"如实记下** ✓）。
+  ✗ **三处自伤（全部由自查或套件抓出 ✓）** ✗：① **`biospecimen.js` 里我写了组合键** `'vmu.biosecimen.chainGapPolicy'.replace(...)` ✗ —— **组合键对扫描不可见，正是该文件自己头部禁止的** ✓ ⇒ 改纯字面量 ✓；② **`requireChain=false` 时链可合法为空，但断链策略把"无上一环"也判为断链** ✗ ⇒ **默认 block 会拒掉首次转移** ✗ ⇒ 修为**仅在 `requireChain` 为真时"空链"才算断链** ✓（**由套件抓出** ✓）；③ **audit 的 4 个默认值我第一稿是编的** ✗ ⇒ 量到 `docs/07`／`docs/20` 后改正 ✓。
+  **未做（明写 ✗）**：★ **`vmu.ballot.reopen*` 三键** ✗（**实测不可接线，复活条件已写在源码里** ✓）；**biospecimen 之外四个候选族中的 `control`／`explain`／`citations`（无承载）** ✗；**`vmu.math` 的 110 条／其中 30 条有声明** ✗；**其余 365 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 

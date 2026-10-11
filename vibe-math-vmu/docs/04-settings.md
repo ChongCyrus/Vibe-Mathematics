@@ -716,6 +716,26 @@ vmu.packs.active: [v5r]
 | `vmu.discipline.suspendMaxMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/discipline.js` | 停职上限（0＝不设上限；有上限则钳制并自曝 clamped） |
 | `vmu.discipline.restoreNeedsHuman` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/discipline.js` | 复职是否需人类（true ⇒ 机器不能自行复职） |
 | `vmu.discipline.postmortemRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/discipline.js` | 复职必须带复盘（缺失具名拒） |
+| `vmu.biospecimen.ledgerDir` | string | `Ops/Biosamples` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/biospecimen.js` | 样本台账目录（相对项目根；本面只 REPORT 不触碰） |
+| `vmu.biospecimen.requireChain` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/biospecimen.js` | 必须链式保管（true ⇒ 登记须开链、转移须给持有人，否则具名拒） |
+| `vmu.biospecimen.chainGapPolicy` | enum | `block` | `block`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `kernel/biospecimen.js` | 链断策略（block ⇒ 断链具名拒；warn ⇒ 记录并告警） |
+| `vmu.biospecimen.freezeThawWarnAt` | int ≥0 | `5` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/biospecimen.js` | 冻融次数预警阈值（达阈告警；契约是告警而非拒绝 ✓） |
+| `vmu.biospecimen.destroyKeepsReference` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/biospecimen.js` | 销毁后保留引用（true ⇒ 记录留存并说明样本已灭失） |
+| `vmu.biospecimen.subjectRefStyle` | enum | `pseudonym` | `pseudonym`∣`code` | 会话 | H1 | office | ✅ 已接线 | `kernel/biospecimen.js` | 主体引用风格（pseudonym ⇒ 看起来像明文标识的引用具名拒） |
+| `vmu.biospecimen.mappingIrreversible` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/biospecimen.js` | 映射不可逆（内核强制：true 时【拒绝】存入主体↔引用的可逆映射，而不是加密后寄望） |
+| `vmu.budget.tokens` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/budget.js` | 令牌总量（0＝不限；>0 即成为作用域默认上限） |
+| `vmu.budget.turns` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/budget.js` | 回合总量（0＝不限） |
+| `vmu.budget.toolCalls` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/budget.js` | 工具调用总量（0＝不限；与单回合上限 vmu.limits.toolCallsPerTurnCap 分工不同） |
+| `vmu.budget.subagents` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/budget.js` | 子代理总量（0＝不限） |
+| `vmu.budget.perTaskShare` | ratio | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/budget.js` | 单任务可占比例（>0 且有限额时，同一任务超出该份额具名拒） |
+| `vmu.audit.level` | enum | `normal` | `minimal`∣`normal`∣`verbose` | 会话 | H1 | office | ✅ 已接线 | `kernel/audit.js` | 审计级别（minimal ⇒ 行只留 what/seq/at；verbose ⇒ 另附脱敏字段名与级别） |
+| `vmu.audit.dir` | string | `<root>/vmu/audit` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/audit.js` | 审计目录（默认取 docs/20 声明；本面只 REPORT 不触碰文件系统） |
+| `vmu.audit.rotateBytes` | int ≥0 | `10485760` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/audit.js` | 轮转大小（默认取 docs/07 声明；rotate() 未 force 且未达阈即具名拒） |
+| `vmu.audit.rotateDaily` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/audit.js` | 每日轮转（默认取 docs/20 声明） |
+| `vmu.audit.sensitiveFields` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/audit.js` | 脱敏字段（默认取 docs/07 声明；与 redactKeys 合并生效） |
+| `vmu.audit.exportScope` | string[] | `[settings,middleware,refusals]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/audit.js` | 导出范围（exportScoped 超出它具名拒） |
+| `vmu.audit.recountRoles` | string[] | `[office,chair]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/audit.js` | 谁可复算（recount 对未列角色具名拒） |
+| `vmu.audit.traceKeepMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/audit.js` | 追踪保留期（0＝不清理；>0 时 append 会按龄清理 trace 行并计数） |
 | `vmu.archive.offlineFirst` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.receiptRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.targets` | string[] | `[zenodo,osf,swh,other]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
@@ -1056,14 +1076,6 @@ vmu.packs.active: [v5r]
 | `vmu.attendance.excusedCounts` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.attendance.markMode` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.attendance.reportLate` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.audit.dir` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.audit.exportScope` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.audit.level` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.audit.recountRoles` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.audit.rotateBytes` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.audit.rotateDaily` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.audit.sensitiveFields` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.audit.traceKeepMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准） |
 | `vmu.authorship.creditRoles` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.authorship.requireCredit` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.freezeMeetingLinked` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/ballotbox.js` | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
@@ -1071,18 +1083,7 @@ vmu.packs.active: [v5r]
 | `vmu.ballot.reopenFloor` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/ballotbox.js` | 设计阶段登记：首个声明卷 08（共见 3 卷：08、14、17），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.reopenInitiatorScope` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/ballotbox.js` | 设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.reopenSameMeetingOnly` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/ballotbox.js` | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.biospecimen.chainGapPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.biospecimen.destroyKeepsReference` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.biospecimen.freezeThawWarnAt` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.biospecimen.ledgerDir` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.biospecimen.mappingIrreversible` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.biospecimen.requireChain` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.biospecimen.subjectRefStyle` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.budget.perTaskShare` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.budget.subagents` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.budget.tokens` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.budget.toolCalls` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.budget.turns` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
+| `vmu.biosecimen.chainGapPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 14（共见 1 卷：14），尚未实现（元数据以各卷为准） |
 | `vmu.citations.allowFreeText` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.citations.idPriority` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.citations.orcid` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |

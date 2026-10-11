@@ -66,6 +66,16 @@ export function createAudit({ clock = () => Date.now(), log = () => {}, settings
     // than this many days are aged out of the ring (counted in `expired`), both on append() and via expire().
     // 0 / absent ⇒ retention disabled (zero-mechanism unchanged; nothing is ever aged out by accident).
     retentionDays: retentionOf(settings['vmu.audit.retentionDays']),
+    // ROUND 221: the audit family. Every default below is DECLARED, not invented: dir is <root>/vmu/audit and
+    // rotateDaily is true (docs/20), rotateBytes is 10485760 and sensitiveFields is empty (docs/07).
+    level: ['minimal', 'normal', 'verbose'].includes(settings['vmu.audit.level']) ? settings['vmu.audit.level'] : 'normal',
+    auditDir: typeof settings['vmu.audit.dir'] === 'string' && settings['vmu.audit.dir'].trim() ? settings['vmu.audit.dir'].trim() : '<root>/vmu/audit',
+    rotateBytes: Number.isInteger(settings['vmu.audit.rotateBytes']) && settings['vmu.audit.rotateBytes'] > 0 ? settings['vmu.audit.rotateBytes'] : 10485760,
+    rotateDaily: settings['vmu.audit.rotateDaily'] !== false,
+    sensitiveFields: Array.isArray(settings['vmu.audit.sensitiveFields']) ? settings['vmu.audit.sensitiveFields'].filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : [],
+    exportScope: (() => { const a = settings['vmu.audit.exportScope']; return Array.isArray(a) && a.length ? a.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : ['settings', 'middleware', 'refusals'] })(),
+    recountRoles: (() => { const a = settings['vmu.audit.recountRoles']; return Array.isArray(a) && a.length ? a.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : ['office', 'chair'] })(),
+    traceKeepMs: (() => { const v = Number(settings['vmu.audit.traceKeepMs']); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0 })(),
   })
   /** Positive whole days or 0 (disabled). A negative/NaN/absent value never enables retention. */
   function retentionOf(v) { const n = Number(v); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0 }
@@ -106,8 +116,21 @@ export function createAudit({ clock = () => Date.now(), log = () => {}, settings
     if (!what || typeof what !== 'string') throw refuse('VMU_AUDIT_WRITE_FAILED', 'append needs a non-empty `what`', 'e.g. append({what:"vote", ballot:"b-1"})')
     const c = cfg()
     if (c.retentionDays > 0) expire({ at: clock() })        // age-out happens BEFORE the new row (counted)
+    // ROUND 221: trace age-out after traceKeepMs (a trace row is one whose `what` starts with trace).
+    if (c.traceKeepMs > 0) {
+      const cutoff = clock() - c.traceKeepMs
+      const before = rows.length
+      for (let i = rows.length - 1; i >= 0; i -= 1) { if (String(rows[i].what).startsWith('trace') && rows[i].at < cutoff) { rows.splice(i, 1); expired += 1 } }
+      if (rows.length !== before) dropped += before - rows.length
+    }
     const seqNo = ++seq
-    const row = { ...redactRow(fields, c.redactKeys), what, seq: seqNo, at: clock() }
+    // sensitiveFields ADDS to the redaction list; level decides how much of the row survives.
+    const redactAll = c.redactKeys.concat(c.sensitiveFields)
+    const redacted = redactRow(fields, redactAll)
+    const payload = c.level === 'minimal' ? {} : (c.level === 'verbose'
+      ? Object.assign({}, redacted, { redactedFields: redactAll.slice(), level: c.level })
+      : redacted)
+    const row = Object.assign(payload, { what, seq: seqNo, at: clock() })
     writeSink(row)                                          // named failure propagates (never swallowed)
     rows.push(row)                                          // append-only: never spliced/sorted in place
     if (rows.length > c.ringMax) { rows.splice(0, rows.length - c.ringMax); dropped += 1 }  // counted drop
@@ -135,13 +158,48 @@ export function createAudit({ clock = () => Date.now(), log = () => {}, settings
     return { ok: mono, rows: rows.length, dropped, firstSeq: rows.length ? rows[0].seq : null, lastSeq: rows.length ? rows[rows.length - 1].seq : null }
   }
   /** rotate(): the only state-changing entry besides append; never deletes history outside the ring. */
-  function rotate() {
+  function rotate({ force = false } = {}) {
     const c = cfg()
+    // ROUND 221: without force, the declared rotation policy decides whether this is due. An estimate of the ring's own
+    // size is used deliberately - the face does not touch the filesystem, and it will not pretend to measure it.
+    if (!force) {
+      const approxBytes = rows.reduce((n, r) => n + JSON.stringify(r).length, 0)
+      const lastAt = rows.length ? rows[rows.length - 1].at : null
+      const dayDue = c.rotateDaily && lastAt !== null && (clock() - lastAt) >= 86400000
+      const bytesDue = c.rotateBytes > 0 && approxBytes >= c.rotateBytes
+      if (!dayDue && !bytesDue) {
+        throw refuse('VMU_AUDIT_WRITE_FAILED', 'rotation is not due: ' + approxBytes + ' bytes of a ' + c.rotateBytes + ' limit, rotateDaily=' + c.rotateDaily,
+          'pass { force: true } to rotate anyway (vmu.audit.rotateBytes / vmu.audit.rotateDaily)', { approxBytes, rotateBytes: c.rotateBytes, rotateDaily: c.rotateDaily })
+      }
+    }
     const kept = rows.filter((_, i) => (i + 1) % c.keepEvery === 0)
     const removed = rows.length - kept.length
     if (removed > 0) { rows.length = 0; for (const r of kept) rows.push(r); dropped += removed }
     if (bus && typeof bus.emit === 'function') bus.emit('audit/rotate', { kept: kept.length, removed })
     return { kept: kept.length, removed, dropped }
+  }
+  /** ROUND 221: who may recount. vmu.audit.recountRoles is the declared list, refused by name. */
+  function recount({ byRole = null } = {}) {
+    const c = cfg()
+    const role = byRole === null ? null : String(byRole)
+    if (role === null || !c.recountRoles.includes(role)) {
+      throw refuse('VMU_AUDIT_RECOUNT_NOT_ALLOWED', 'recount is not allowed for role: ' + (role || '(none)'),
+        'declared: ' + c.recountRoles.join(', ') + ' (vmu.audit.recountRoles)', { byRole: role, declared: c.recountRoles.slice() })
+    }
+    return { ok: true, byRole: role, rows: rows.length, verify: verify(), enforced: ['vmu.audit.recountRoles'], fired: [] }
+  }
+  /** ROUND 221: export filtered by the declared scope; a scope outside the list is refused by name. */
+  function exportScoped({ scope = null, limit = null } = {}) {
+    const c = cfg()
+    const sc = scope === null ? null : String(scope)
+    if (sc !== null && !c.exportScope.includes(sc)) {
+      throw refuse('VMU_AUDIT_SCOPE_NOT_DECLARED', 'export scope is not declared: ' + sc,
+        'declared: ' + c.exportScope.join(', ') + ' (vmu.audit.exportScope)', { scope: sc, declared: c.exportScope.slice() })
+    }
+    const items = rows.map((r) => Object.assign({}, r))
+    const kept = Number.isInteger(limit) && limit > 0 ? items.slice(-limit) : items
+    return { ok: true, scope: sc, scopes: c.exportScope.slice(), dir: c.auditDir, level: c.level, items: kept, total: items.length, dropped, expired,
+      enforced: ['vmu.audit.exportScope', 'vmu.audit.level', 'vmu.audit.dir'], fired: [] }
   }
   /** export(): read-only projection; redaction already happened at append time. */
   const exportRows = ({ format } = {}) => {
@@ -151,5 +209,5 @@ export function createAudit({ clock = () => Date.now(), log = () => {}, settings
     return f === 'jsonl' ? { format: f, text: items.map((r) => JSON.stringify(r)).join('\n') } : { format: f, text: JSON.stringify(items) }
   }
 
-  return { apiVersion, append, tail, query, rotate, expire, export: exportRows, verify, status, what: WHAT_VOCAB.slice() }
+  return { apiVersion, append, tail, query, rotate, expire, export: exportRows, verify, status, recount, exportScoped, what: WHAT_VOCAB.slice() }
 }

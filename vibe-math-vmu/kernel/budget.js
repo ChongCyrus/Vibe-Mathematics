@@ -32,6 +32,16 @@ export function createBudget({ clock = () => Date.now(), log = () => {}, setting
     reserveRatio: num(settings['vmu.budget.reserveRatio']) ?? 0,
     warnAtRatio: num(settings['vmu.budget.warnAtRatio']) ?? 0.8,
     onExceed: settings['vmu.budget.onExceed'] || 'refuse',
+    // ROUND 221: the declared TOTALS. 0 means unlimited, which is the declared default for all four.
+    totals: (() => {
+      const t = {}
+      for (const [kind, key] of [['tokens', 'vmu.budget.tokens'], ['turns', 'vmu.budget.turns'], ['toolCalls', 'vmu.budget.toolCalls'], ['subagents', 'vmu.budget.subagents']]) {
+        const v = num(settings[key])
+        if (v !== null && v > 0) t[kind] = Math.floor(v)
+      }
+      return t
+    })(),
+    perTaskShare: (() => { const v = num(settings['vmu.budget.perTaskShare']); return v !== null && v >= 0 && v <= 1 ? v : 0 })(),
   })
   const need = (scope) => {
     const s = scopes.get(scope)
@@ -44,15 +54,20 @@ export function createBudget({ clock = () => Date.now(), log = () => {}, setting
   /** Open a scope. No limits ⇒ unlimited (zero-config). */
   function open({ scope, limits = {}, perTaskShare = null } = {}) {
     if (!scope || typeof scope !== 'string') throw refuse('VMU_BUDGET_SCOPE_UNKNOWN', 'open needs a string scope', 'e.g. open({scope:"meeting:mt-1"})')
+    const c0 = cfg()
     const l = {}
     for (const k of KINDS) { const v = num(limits[k]); if (v !== null) l[k] = v }
-    const s = { scope, limits: l, used: Object.fromEntries(KINDS.map((k) => [k, 0])), reserved: Object.fromEntries(KINDS.map((k) => [k, 0])), warnings: 0, perTaskShare, openedAt: clock(), paused: false }
+    // ROUND 221: a declared family TOTAL is the default limit for that kind; an explicit limit still wins.
+    for (const [kind, total] of Object.entries(c0.totals)) { if (KINDS.includes(kind) && l[kind] === undefined) l[kind] = total }
+    const share = perTaskShare === null ? c0.perTaskShare : num(perTaskShare)
+    if (share !== null && (share < 0 || share > 1)) throw refuse('VMU_BUDGET_SCOPE_UNKNOWN', 'perTaskShare must be between 0 and 1: ' + String(share), 'pass a ratio (vmu.budget.perTaskShare)')
+    const s = { scope, limits: l, used: Object.fromEntries(KINDS.map((k) => [k, 0])), reserved: Object.fromEntries(KINDS.map((k) => [k, 0])), warnings: 0, perTaskShare: share === null ? 0 : share, tasks: new Map(), openedAt: clock(), paused: false }
     scopes.set(scope, s)
     return snapshot(s)
   }
 
   /** Charge one kind. Named refusal on exhaustion; `onExceed` decides refuse|warn|pause. */
-  function charge({ scope, kind, amount = 0 } = {}) {
+  function charge({ scope, kind, amount = 0, taskId = null } = {}) {
     const s = need(scope)
     if (!KINDS.includes(kind)) throw refuse('VMU_RESOURCE_BUDGET', 'unknown budget kind: ' + String(kind), 'kinds: ' + KINDS.join('|'), { scope, kind })
     const a = num(amount) ?? 0
@@ -60,6 +75,18 @@ export function createBudget({ clock = () => Date.now(), log = () => {}, setting
     const lim = limitOf(s, kind)
     const used = s.used[kind]
     const c = cfg()
+    // ROUND 221: vmu.budget.perTaskShare. With a share declared and a limited kind, ONE task may not take more than
+    // that fraction of the limit - counted per task, refused by name, and independent of the scope total.
+    if (taskId !== null && s.perTaskShare > 0 && lim !== Infinity && lim > 0) {
+      const key = String(taskId) + '\u0000' + kind
+      const shareCap = Math.floor(lim * s.perTaskShare)
+      const already = s.tasks.get(key) || 0
+      if (already + a > shareCap) {
+        throw refuse('VMU_BUDGET_TASK_SHARE_EXCEEDED', 'task ' + String(taskId) + ' would exceed vmu.budget.perTaskShare of ' + kind + ': ' + (already + a) + ' > ' + shareCap,
+          'perTaskShare=' + s.perTaskShare + ' of limit ' + lim + '; charge it to another task or raise the share', { scope, kind, taskId: String(taskId), used: already + a, cap: shareCap })
+      }
+      s.tasks.set(key, already + a)
+    }
     const next = used + a
     // reserve: the reserved slice is held back; spending into it is refused by name.
     // NOTE: only when a reserve actually exists — otherwise the plain limit check must decide.
@@ -108,5 +135,5 @@ export function createBudget({ clock = () => Date.now(), log = () => {}, setting
   const status = () => ({ scopes: scopes.size, kinds: KINDS.slice(), policy: cfg(), paused: [...scopes.values()].filter((s) => s.paused).map((s) => s.scope) })
   const list = () => { const all = [...scopes.values()].map(snapshot); const kept = all.slice(0, listCap); return { items: kept, total: all.length, dropped: all.length - kept.length } }
 
-  return { apiVersion, open, charge, reserve, remaining, status, list, kinds: KINDS.slice() }
+  return { apiVersion, open, charge, reserve, remaining, status, list, kinds: KINDS.slice(), totals: () => cfg().totals, perTaskShare: () => cfg().perTaskShare }
 }

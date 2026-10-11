@@ -85,7 +85,9 @@ const throws = (fn) => { try { fn(); return { threw: false } } catch (e) { retur
   // retention.keepEvery key that no volume owns; one knob must have exactly one name.
   const a = createAudit({ clock: () => 1, ringMax: 100, settings: { 'vmu.records.retention.keepEvery': 2 } })
   for (let i = 0; i < 6; i++) a.append({ what: 'update', i })
-  const r = a.rotate()
+  // ROUND 221: rotate() is now policy-driven (vmu.audit.rotateBytes / rotateDaily); this case is about the swap
+  // accounting, so it forces the rotation. The policy itself is asserted in vmu-biospecimen-budget-audit.test.mjs.
+  const r = a.rotate({ force: true })
   ok(r.kept === 3 && r.removed === 3, 'rotate keeps every 2nd and counts removals')
   ok(a.status().dropped === 3, 'rotate removals counted as dropped')
 }
