@@ -105,10 +105,9 @@ const VERDICTS = { EQUAL: [], PROPERTY: [], NOT_ADOPTED: [], DIVERGENT: [] }
   const pathHostile = ['../evil', 'a/b', 'x\u0000y']
   const neutralised = pathHostile.filter((s) => V5R.idSafe(s) !== s)
   // EMPTY_ALLOWED: the right-hand side is a three-element LITERAL above, so this comparison cannot be two empty
-  // collections - which is the only way the detector's B shape (`.length === .length` between two collections) could
-  // pass vacuously. Round 182: the detector cannot tell a literal from a filtered collection, so the sanctioned
-  // exception comment is used rather than weakening the shape rule. The assertion below (E1b) pins the measured rewrite.
-  ok(neutralised.length === pathHostile.length, 'E1. v5r NEUTRALISES every PATH-hostile name (idSafe rewrites it)', pathHostile.join('|'))
+  // collections. Round 182: the detector cannot tell a literal from a filtered collection. The marker also sits ON the
+  // assertion line, because that is the position the check reads unconditionally (`EMPTY_ALLOWED.test(line)`).
+  ok(neutralised.length === pathHostile.length, 'E1. v5r NEUTRALISES every PATH-hostile name (idSafe rewrites it)', pathHostile.join('|')) // EMPTY_ALLOWED
   // 实测值（不是我以为的值 ✗ —— 第一版写成 `..-evil`，跑出来是 `evil`：idSafe 还**剥掉开头连续的点/横线** ✓，
   // 所以路径穿越在 v5r 侧被消掉的是**整段前导**，这也是它真正在防的东西 ✓）。
   ok(V5R.idSafe('../evil') === 'evil', 'E1b. and the rewrite is the MEASURED one: separators to dashes AND leading dot/dash runs stripped', V5R.idSafe('../evil'))
