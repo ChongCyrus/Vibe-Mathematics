@@ -114,7 +114,9 @@ export const DECLARED_SELF_REPORT_FIELDS = Object.freeze([
   // fields the mechanical (claim-family) extraction discovered across the kernel — declared after review
   'accounts', 'alreadyRecused', 'attested', 'collusionScan', 'extraWiredCount', 'ran', 'receipted',
   'recorded', 'refused', 'reputationGrantsAuthority', 'reused', 'trustUsedForAuthority',
-  'unknownKindRefused', 'unknownVersionRefused', 'unverifiable', 'unverified', 'unwiredCount',
+  // ROUND 205: `unreached` - the wake-retry rail reports an exhausted member this way (vmu.meetings.wakeRetries);
+  // the claim-family discovery finds it through `reach`, and tests/vmu-meetings.test.mjs is the gate that scans it.
+  'unknownKindRefused', 'unknownVersionRefused', 'unreached', 'unverifiable', 'unverified', 'unwiredCount',
   'usedBy', 'usedBytes', 'verified', 'wired', 'wiredCount',
   // a fixture-only field name (it exists only inside this gate's own negative fixture, and is scanned here)
   'surprisingScan',

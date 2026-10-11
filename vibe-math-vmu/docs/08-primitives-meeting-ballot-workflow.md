@@ -62,7 +62,7 @@ v5r 的 `s8-freeze-say` 真回归：**"本轮是否完成"的判据被写死在�
 | `meeting.speech-order` | 会议 | **未实现 ✗**（当前只有举手顺序＝插入顺序） | `{hands, order, round}` | `{next:[member], reason?}` | 轮流／按席位／按权重／按未发言优先 | 未实现 ✗ | P1 |
 | `meeting.speech-budget` | 会议 | **未实现 ✗**（当前只有整轮超时 `vmu.meetings.roundTimeoutMs` ✓ 与"超时后发言被具名拒" ✓） | `{member, round, elapsedMs, chars, spoke}` | `{allow, remainingMs?, code?, message?}` | 单人时间箱／发言次数配额／延长动议 | 未实现 ✗ | P1 |
 | `meeting.interrupt` | 会议 | **未实现 ✗** | `{speaker, interrupter, round}` | `{allow, kind?('yield'/'point-of-order'/'objection'), code?}` | 允许让渡/程序问题/紧急打断；其余拒绝 | 未实现 ✗ | P2 |
-| `meeting.quorum` | 会议 | **未实现 ✗**（`vmu.meetings.quorumCap` 目前**只由 pack 供给数值** ✗：★ **轮 196 实测——没有任何运行源【读取】它** ✗（`kernel/meetings.js` 零命中 ✓；packs 里它只以**对象键**形式出现在 settings 载荷中 ✓）⇒ ★ **"供给"不等于"消费"** ✓✓） | `{roster, present, absent, kind}` | `{met, required, have, lostPolicy?}` | 法定人数、流失后处理（休会/延期/降门槛/明确未决） | 未实现 ✗ | P0 |
+| `meeting.quorum` | 会议 | **未实现 ✗**（★ **轮 196 → 203 的更正**：`vmu.meetings.quorumCap` **已接线 ✓** —— `quorumOf(m)` 按 "m = min(cap, 参与人数)" 施加上限 ✓，有上限时会议**永不要求超过实际在场人数** ✓，`0` 表示**无上限** ✓；★ **仍未实现的是本行这个【更高层的 `kernel.quorum.check(meeting)` 接口】** ⛔ —— 先前把两者混为一谈 ✗） | `{roster, present, absent, kind}` | `{met, required, have, lostPolicy?}` | 法定人数、流失后处理（休会/延期/降门槛/明确未决） | 未实现 ✗ | P0 |
 | `meeting.confidentiality` | 会议 | **未实现 ✗** | `{kind, member, role, agenda}` | `{level('open'|'closed'|'sealed'), allowRead, allowQuote}` | 闭门会：条目不出现在库/提示词；引用被折叠 | 未实现 ✗ | P2 |
 | `meeting.lifecycle` | 会议 | **部分实现 ✓**（当前已发 `meeting/round-start`／`meeting/round-end` 两个钩子 ✓；其余生命周期点**未实现 ✗**） | — | — | 召集/开场/休会/复会/闭会/散会的中间件介入 | 部分 ✓ | P1 |
 | `ballot.can-open` | 表决 | `()=>true`（**不阻拦**） | `{target, eligible, quorumRule}` | `true` 或拒绝 | "只有已登记正式证明/证伪的对象才能进入表决"（pack ✓） | 已实现 ✓ | P0 |
