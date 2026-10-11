@@ -98,6 +98,12 @@
   **那 15 个是什么** ✓：**多通道**（`channels`／`defaultChannel` ✓）／**摘要**（`digestDefaultMs`／`mergeWindowMs`／`mergeMaxPerDigest` ✓）／**静默时段**（`quietDefault`／`quietTimezone` ✓）／**保留**（`retentionMs`／`failureKeepMs`／`dropOnFailure` ✓）／**信噪比下限**（`snrFloor` ✓）／**抑制自身事件**（`suppressSelfEvents` ✓）／**必须给理由**（`requireReason` ✓）／**每观察者上限**（`maxSubjectsPerWatcher` ✓）／**跨机构**（`crossInstitution` ✓）。
   **五问** ✓：①✓（通道/静默/保留都改行为 ✓）②✓ ③**✗（今天无消费者** ✓ —— **且 v5 预设不读框架设置** ✓）④✗（**未实现 ⇒ 去掉不丢任何已存在的能力** ✓）⑤✗ ⇒ **判：不作实现 ✗**；**复活条件（精确）** ✓：**当通知真的需要多通道／摘要／静默时段时** —— 届时**先扩 `notify.js`**（⓪ 步：载体已存在 ✓），**而不是新建面** ✓。
 
+- ★★ **轮 96：发现计划注册表里混着 34 个"命名空间根"（＝不是设置的东西）** ✗✓✓（**已量化、已定位机制、尚未修** ✓）：
+  **现象** ✓：`planned` 里 526 个条目中，**34 个是"别的键以它为前缀"**（如 **`vmu.math.ad`** 之于 `vmu.math.ad.backend` ✓、**`vmu.records.body`** 之于 `vmu.records.body.noticeStyle` ✓、`vmu.archive.package` ✓、`vmu.compat.known` ✓）⇒ **其中 `vmu.math` 独占 23 个** ✓✓（**即上一轮我裁决的 126 个里，23 个是幽灵** ✗）。
+  **机制** ✓（读源码得到 ✓）：生成器**已有五道守卫**（两段名 ✓／通配 ✓／已在 core ✓／`NON_SETTING` ✓／**由 core 派生的命名空间** ✓）—— **但第五道只从 `core` 推导** ✗✓ ⇒ **"某个 planned 键是另一个 planned 键的前缀"这一情况无人拦** ✓。
+  **为什么不能直接删** ✗✓：试做"后置过滤掉根" ⇒ `planned 526 → 507`、**"根 = 0"** ✓，**但三门禁当场变红** ✗✓（`vmu-planned-settings`／`audit-vmu-docs`／`vmu-settings`）⇒ **因为 docs 里确实登记了这些名字** ✓ ⇒ **一删就两边都不在** ✗（**与轮 67 那次失败同形** ✓✓）。
+  **正确修法（已定位 ✓，尚未实施 ✗）** ✓✓：**让"命名空间根不是键"成为一条通用规则** ✓ —— docs 门禁（`tests/audit-vmu-docs.test.mjs:249–260` ✓）已认"**schema ∪ `NON_SETTING` ∪ namespaces**" ✓，但它的 `namespaces` **只涵盖两段名** ✗ ⇒ 需把规则推广到"**任何是别的键前缀的名字**" ✓；`vmu-planned-settings` 与 `vmu-settings` 两处同理 ✓。**改完后**才可重新启用生成器的后置过滤 ✓。
+
 ### 0.4 结论
 
 **审判到此为止** ✓✓：剩余体量经抽样核对为"**密集且携带决策**"的表与一行式条目 ✓；**继续裁剪的边际收益低于破坏设计资产的风险** ⇒ **除非出现新的"复制品／与裁决矛盾／无消费者且长规格"证据，不再扩大裁剪** ✗✓。
