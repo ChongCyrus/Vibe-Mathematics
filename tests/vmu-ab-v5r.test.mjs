@@ -121,18 +121,45 @@ const VERDICTS = { EQUAL: [], PROPERTY: [], UNPAIRED: [], DIVERGENT: [] }
   ok(nonKebabRefused === true, 'E5. ★ while vmu refuses the same name by name (kebab rule) - STRICTER, and recorded rather than smoothed over')
 }
 
+// ── F. 同一性质：内容同一性（两边构造不同，性质必须相同 ✓）────────────────────────────────────
+{
+  const lib = createLibrary({ settings: { get: () => undefined }, clock: () => 0, root: 'D:/_tmp/ab-v5r-fp' })
+  // 真实签名是 `fingerprint(kind, { statement, proof? })`（读源码得到 ✓，不是猜的 ✗ —— 我先猜了两次都错 ✓）
+  const vmu = (s, proof) => lib.fingerprint('proposition', proof === undefined ? { statement: s } : { statement: s, proof })
+  const stable = vmu('n^2+n is even') === vmu('n^2+n is even')
+  const sensitive = vmu('n^2+n is even') !== vmu('n^2+n is odd')
+  ok(stable, 'F1. vmu content identity is STABLE: the same substantive parts give the same fingerprint')
+  ok(sensitive, 'F2. and SENSITIVE: a changed statement gives a different fingerprint')
+  ok(vmu('n^2+n is even', 'by parity') !== vmu('n^2+n is even'), 'F3. a changed PROOF also changes it (the proof is a substantive part)')
+  ok(/^[0-9a-f]{64}$/.test(vmu('n^2+n is even')), 'F4. it is a sha256 digest')
+
+  const theirStable = V5R.contentFingerprint('n^2+n is even') === V5R.contentFingerprint('n^2+n is even')
+  const theirSensitive = V5R.contentFingerprint('n^2+n is even') !== V5R.contentFingerprint('n^2+n is odd')
+  ok(theirStable && theirSensitive, '★ F5. v5r answers the SAME two questions the same way (stable AND sensitive)', 'stable=' + theirStable + ' sensitive=' + theirSensitive)
+  ok(vmu('n^2+n is even') !== V5R.contentFingerprint('n^2+n is even'),
+    '★ F6. the two schemes are NOT the same bytes - and that is recorded, not smoothed: vmu hashes kind\\0statement\\0proof, v5r has its own construction')
+  VERDICTS.PROPERTY.push('contentFingerprint ⇄ library.fingerprint(kind,parts)（同性质：稳定 ✓ ＋ 敏感 ✓ ＋ 证明也是实质部分 ✓；**构造不同**，故不比字节 ✗）')
+}
+
 // ── ★ 逐项点名的未配对与刻意分歧（不掩盖 ✗）────────────────────────────────────────────────
 {
   VERDICTS.UNPAIRED.push(
     'blocksToText/fmtTime/tryJson/parseReply/sanitizeToolFilter/registeredToolsFromError —— 宿主报文与回合形状：'
     + '需要 DSH 主机才能驱动，框架侧**没有**对应原语 ⇒ 未配对 ✗（要证明得建宿主级场景台 ✓）',
-    'clamp01/clPct —— vmu 在 fairness/alerts 内部**内联**夹取（Math.min/max），**没有导出**同名原语 ⇒ 未配对 ✗',
-    'contentFingerprint —— v5r 用「normalise 后哈希」，vmu 的 library 指纹是**另一套方案**（按 kind＋parts 构造）'
-    + '⇒ **刻意不同**，不是缺失 ✗（可比的是"性质相同"：稳定、内容变则变 ✓，已由 vmu 自己的套件覆盖 ✓）',
+    // ★ 这一条**从"我以为"升级成了实测** ✓：我先写下"vmu 在别处内联夹取、没有导出原语" ✗，
+    //   随后实测发现更准确的说法是——**夹取在公开 API 上根本不可观测** ✗✓：
+    //   `fairness.allocation()` 对 reserveRatio ∈ {0, 0.25, 1, 5, -3, NaN, "abc"} **输出完全相同**（都是 a:50 b:50），
+    //   `fairness.status()` 也**不回显**该值 ⇒ 无法做 A/B ✓（这是**可测性缺口**，如实点名 ✓，不是"没有对应物"）。
+    'clamp01 —— **实测：夹取在 vmu 的公开 API 上【不可观测】** ✗✓（`fairness.allocation()` 对 reserveRatio '
+    + '0/0.25/1/5/-3/NaN/"abc" 输出**逐一相同**，`status()` 不回显该值）⇒ 无法 A/B ✓；'
+    + '`clPct`（0..100 夹取）框架侧无同族表面 ⇒ 未配对 ✗',
   )
   VERDICTS.DIVERGENT.push(
     'leanHashText —— 名字像哈希，实际是**文本规范化**（CRLF→LF、去尾空白）✗；vmu 的 Lean 哈希按**原始字节**取 sha256 '
     + '（"产物哈希未变"才判 passed ✓）⇒ **两边口径刻意不同**，且 vmu 的口径更严 ✓：把 v5r 的规范化套上去会让"只改了行尾"也判 passed ✗',
+    // ★ 实测的非有限值口径不同：v5r 给"中点"，vmu 给"声明的默认值" ✓ —— 谁对取决于语义，故并列记录 ✓
+    'clamp01(非有限值) —— **实测口径不同** ✓：v5r `clamp01(NaN)`＝**0.5**（取中点 ✓），而 vmu 的 `numOf` 对非有限值'
+    + '**回落到该键声明的默认值**（如 reserveRatio 的 0 ✓）⇒ **垃圾输入的处置不一致**，已点名 ✗（不比"谁对"，因为两者都自洽 ✓）',
   )
   // 汇总：**必须每一项都有落点**（哪怕落点是"未配对" ✗）
   const total = VERDICTS.EQUAL.length + VERDICTS.PROPERTY.length + VERDICTS.UNPAIRED.length + VERDICTS.DIVERGENT.length
