@@ -93,6 +93,29 @@ export function createPromptPipeline({
     return { text: null, source: null }
   }
   const registry = new Map()
+  // ROUND 243 (§21.1): the registry is keyed by NAME **and** LANG, so the same name may carry several languages. The
+  // language-less entry is the language-agnostic fallback the volume describes.
+  const keyOf = (name, lang) => String(name) + '\u0000' + String(lang === undefined || lang === null ? '' : lang)
+  const langOf = (entry) => (entry && typeof entry.lang === 'string' && entry.lang.trim() ? entry.lang.trim() : null)
+  const byName = (name) => [...registry.values()].filter((e) => e.name === name)
+  const hasName = (name) => byName(name).length > 0
+  /** Which entry renders for this name under this language: the resolved order first, the language-less one last. */
+  const pickFor = (name, lang) => {
+    const all = byName(name)
+    if (!all.length) return null
+    for (const l of langOrder(lang)) { const hit = all.find((e) => e.lang === l); if (hit) return hit }
+    const agnostic = all.find((e) => e.lang === null)
+    if (agnostic) return agnostic
+    // ROUND 243: entries exist for this name but none is in the resolved order - THIS is where on-missing belongs now, because
+    // picking the best entry means a mismatched section would otherwise never be looked at.
+    const langs = all.map((e) => e.lang).filter(Boolean)
+    if (localeOnMissing === 'refuse') {
+      throw refuse('VMU_NO_SUCH_OBJECT', 'no text for this section in the resolved languages: ' + name + ' exists as ' + langs.join(', '),
+        'asked=' + String(lang || '') + ', tried=' + langOrder(lang).join(' > ') + ' (vmu.prompts.locale.onMissing=refuse)')
+    }
+    localeMisses.push({ section: name, langs, tried: langOrder(lang) })
+    return null
+  }
   const truncation = []
   const localeMisses = []   // ROUND 241: what onMissing=warn recorded instead of refusing
   // The appends of the LAST assembly only. This used to be a single pipeline-scoped array that every
@@ -115,7 +138,7 @@ export function createPromptPipeline({
     }
     const order = Number.isInteger(section.order) ? section.order : 600
     const range = inRange(order, name)
-    const existing = registry.get(name)
+    const existing = registry.get(keyOf(name, section.lang))
     if (existing) {
       if (name === 'state' || existing.mutable === false) {
         throw refuse('VMU_NOT_PERMITTED', 'section ' + name + ' is immutable and cannot be re-registered',
@@ -142,7 +165,7 @@ export function createPromptPipeline({
       vars: Array.isArray(section.vars) ? section.vars.slice() : [],
       truncate: section.truncate || null,
     }
-    registry.set(name, entry)
+    registry.set(keyOf(name, langOf(entry)), entry)
     return entry
   }
 
@@ -157,7 +180,7 @@ export function createPromptPipeline({
   // would let a typo switch a rule off without a trace (the same reasoning as R4 for settings keys).
   bindings.forEach((b, i) => {
     if (!b || typeof b.section !== 'string') throw refuse('VMU_INVALID_ARGUMENT', 'binding ' + i + ' must name a section')
-    if (!registry.has(b.section)) {
+    if (!hasName(b.section)) {
       throw refuse('VMU_NO_SUCH_OBJECT', 'binding ' + i + ' targets an unknown section: ' + b.section,
         'register the section first; the registry is docs/06 §3')
     }
@@ -264,11 +287,11 @@ export function createPromptPipeline({
     /** The immutable facts block. Framework-owned, never overridable, always present. */
     setState(text) {
       if (typeof text !== 'string') throw refuse('VMU_INVALID_ARGUMENT', 'state must be a string')
-      const existing = registry.get('state')
+      const existing = registry.get(keyOf('state', null))
       if (existing && existing.text !== null) {
         throw refuse('VMU_NOT_PERMITTED', 'the state block is already set and is immutable')
       }
-      registry.set('state', {
+      registry.set(keyOf('state', null), {
         name: 'state', order: 0, range: 'facts', scope: null, mutable: false,
         source: 'framework', text, template: null, vars: [], truncate: null,
       })
@@ -306,7 +329,10 @@ export function createPromptPipeline({
         }
       }
 
-      const picked = [...registry.values()]
+      // ROUND 243: one entry per NAME, chosen for the resolved language. Renders BOTH languages would be worse than either.
+  const picked = [...new Set([...registry.values()].map((e) => e.name))]
+    .map((n) => pickFor(n, ctx && ctx.lang))
+    .filter((e) => e !== null)
         .filter((e) => scopeMatches(e.scope, ctx))
         .sort((a, b) => (a.order - b.order) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
 
@@ -354,7 +380,7 @@ export function createPromptPipeline({
       return { ok: true, text: parts.length === 0 ? '' : trimTrailing(parts.join('\n\n')), sources, truncation: truncation.slice(),
         // ROUND 241: a language decision that cannot be audited is not a decision.
         locale: { asked: (ctx && ctx.lang) || null, tried: langOrder(ctx && ctx.lang), default: localeDefault, chain: localeChain, onMissing: localeOnMissing,
-          overrideSources: [...registry.keys()].map((n) => ({ section: n, source: overrideFor(n, ctx && ctx.lang).source })).filter((e) => e.source !== null) },
+          overrideSources: [...new Set([...registry.values()].map((e) => e.name))].map((n) => ({ section: n, source: overrideFor(n, ctx && ctx.lang).source })).filter((e) => e.source !== null) },
           localeMisses: localeMisses.slice(),
         overrideMerge,   // ROUND 241: what onMissing=warn recorded instead of refusing
         enforced: ['vmu.prompts.locale.default', 'vmu.prompts.locale.fallbackChain', 'vmu.prompts.overridesByLang'], at: clock() }
@@ -362,7 +388,7 @@ export function createPromptPipeline({
 
     /** Register an override by reference (rollback = swapping the reference back; docs/06 §6). */
     override(section, text, by = 'office') {
-      const entry = registry.get(section)
+      const entry = pickFor(section, undefined)
       if (!entry) throw refuse('VMU_NO_SUCH_OBJECT', 'unknown section: ' + section)
       if (entry.mutable === false) {
         throw refuse('VMU_NOT_PERMITTED', 'section ' + section + ' is immutable: read-only facts cannot be overridden',

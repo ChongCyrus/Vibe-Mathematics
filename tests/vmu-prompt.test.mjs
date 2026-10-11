@@ -299,6 +299,73 @@ if (SELF_PROBE) {
   ok(nullish.ok === true && /X/.test(nullish.text), 'prompts.overrides[null]: an explicit null is normalised, not fatal', nullish.text.slice(0, 40))
 }
 
+
+// ── ROUND 243: one name, several languages (§21.1), and what a language mismatch means ───────────────────────
+{
+  const m = await import(pathToFileURL(MODULE).href)
+  const pair = (extra = {}) => m.createPromptPipeline(Object.assign({
+    settings: {},
+    sections: [
+      { name: 'pair', order: 401, lang: 'en', text: 'ENGLISH' },
+      { name: 'pair', order: 402, lang: 'fr', text: 'FRANCAIS' },
+    ],
+  }, extra))
+
+  const en = await pair().assemble({ lang: 'en' })
+  const fr = await pair().assemble({ lang: 'fr' })
+  ok(/ENGLISH/.test(en.text) && !/FRANCAIS/.test(en.text), 'prompts.sections[lang=en]: the matching language renders', en.text.slice(0, 30))
+  ok(/FRANCAIS/.test(fr.text) && !/ENGLISH/.test(fr.text), 'prompts.sections[lang=fr]: the other declaration renders for its own language', fr.text.slice(0, 30))
+  ok(en.text.split('\n').filter((x) => x.startsWith('#')).length === 1,
+    'prompts.sections[coexist]: ONE name contributes ONE section - the second declaration no longer overwrites the first, and both do not appear at once')
+
+  // the language-less entry is the language-agnostic fallback the volume describes
+  const withFallback = m.createPromptPipeline({
+    // A NARROW chain: the default ends in `en`, which would match the english entry and hide the fallback rule.
+    settings: { 'vmu.prompts.locale.fallbackChain': ['de'] },
+    sections: [
+      { name: 'pair2', order: 403, lang: 'en', text: 'ENGLISH-ONLY' },
+      { name: 'pair2', order: 404, text: 'AGNOSTIC' },
+    ],
+  })
+  const fb = await withFallback.assemble({ lang: 'de' })
+  ok(/AGNOSTIC/.test(fb.text) && !/ENGLISH-ONLY/.test(fb.text),
+    'prompts.sections[fallback]: with no match in the resolved order the LANGUAGE-LESS entry renders', fb.text.slice(0, 30))
+
+  // and with neither a match nor a fallback, the declaration decides
+  const narrowChain = m.createPromptPipeline({
+    settings: { 'vmu.prompts.locale.fallbackChain': ['de'] },
+    sections: [
+      { name: 'pair', order: 401, lang: 'en', text: 'ENGLISH' },
+      { name: 'pair', order: 402, lang: 'fr', text: 'FRANCAIS' },
+    ],
+  })
+  const warned = await narrowChain.assemble({ lang: 'de' })
+  ok(warned.ok === true && warned.localeMisses.some((x) => x.section === 'pair'),
+    'locale.onMissing[warn]: a name with entries in no resolved language is RECORDED and assembly continues', JSON.stringify(warned.localeMisses))
+  // the default chain ends in 'en', so 'de' still finds english; removing the chain proves the refusal path
+  const strict = m.createPromptPipeline({
+    settings: { 'vmu.prompts.locale.fallbackChain': ['de'], 'vmu.prompts.locale.onMissing': 'refuse' },
+    sections: [
+      { name: 'pair3', order: 405, lang: 'en', text: 'E' },
+      { name: 'pair3', order: 406, lang: 'fr', text: 'F' },
+    ],
+  })
+  let refused = null
+  try { await strict.assemble({ lang: 'de' }) } catch (e) { refused = e && e.code }
+  ok(refused === 'VMU_NO_SUCH_OBJECT',
+    'locale.onMissing[refuse]: with entries but no match in the resolved order the assembly is refused BY NAME', String(refused))
+  const lenient = m.createPromptPipeline({
+    settings: { 'vmu.prompts.locale.fallbackChain': ['de'], 'vmu.prompts.locale.onMissing': 'warn' },
+    sections: [
+      { name: 'pair3', order: 405, lang: 'en', text: 'E' },
+      { name: 'pair3', order: 406, lang: 'fr', text: 'F' },
+    ],
+  })
+  const lenientOut = await lenient.assemble({ lang: 'de' })
+  ok(lenientOut.ok === true && lenientOut.localeMisses.some((x) => x.section === 'pair3'),
+    'locale.onMissing[warn]: the same case is recorded instead, and the prompt is still produced', JSON.stringify(lenientOut.localeMisses))
+}
+
 console.log('=== VMU PROMPT: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
