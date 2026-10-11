@@ -300,6 +300,51 @@ const make = (over = {}) => {
     JSON.stringify(a.status().counters))
 }
 
+// ---- Z. ROUND 117: the fair-dispatch quota the volume declares, asserted BOTH ways -------------------
+{
+  // The bidding window is closed by advancing the clock; every scenario pins a short window so the advance is
+  // deliberate and small, and the rotation window is wider than one step so Z6 stays inside it on purpose.
+  const WIN = { 'vmu.auction.bidWindowMs': 100, 'vmu.auction.closeRule': 'lowest-cost' }
+  const run = (s, taskId, by) => {
+    const p = s.a.post({ taskId, budget: 100 })
+    s.a.bid({ postId: p.postId, by, price: 10, plan: 'a' })
+    s.set(s.at() + 200)
+    s.a.close({ postId: p.postId })
+    return p
+  }
+
+  // (a) NEGATIVE FIRST: under the default policy (`equal`) the quota must not bite at all.
+  const d = make({ settings: Object.assign({}, WIN) })
+  const p1 = run(d, 't-1', 'r-1')
+  ok(d.a.award({ postId: p1.postId, to: 'r-1', rationale: 'first' }).ok === true, 'Z1: under the default equal policy the first award goes through')
+  const p2 = run(d, 't-2', 'r-1')
+  ok(code(() => d.a.award({ postId: p2.postId, to: 'r-1', rationale: 'again' })) !== 'VMU_FAIRNESS_QUOTA',
+    'Z2: and a SECOND award to the same member is NOT refused under `equal` (the guard must not fire by default)')
+
+  // (b) the quota policy refuses by name, and the refusal says the share and the knob
+  const q = make({ settings: Object.assign({}, WIN, { 'vmu.auction.fairnessPolicy': 'quota', 'vmu.auction.dirtyWorkQuota': 0.5 }) })
+  const q1 = run(q, 't-1', 'r-1')
+  ok(q.a.award({ postId: q1.postId, to: 'r-1', rationale: 'first' }).ok === true, 'Z3: the first award fits the quota')
+  const q2 = run(q, 't-2', 'r-1')
+  const refusal = err(() => q.a.award({ postId: q2.postId, to: 'r-1', rationale: 'again' }))
+  ok(refusal && refusal.code === 'VMU_FAIRNESS_QUOTA',
+    'Z4: under `quota` a second award to one member is REFUSED by the registered code', refusal && refusal.code)
+  ok(refusal && /2\/2/.test(String(refusal.message)) && /dirtyWorkQuota=0\.5/.test(String(refusal.message)),
+    'Z5: and the refusal names the share it would create and the knob that decided', refusal && refusal.message)
+
+  // (c) the rotation window narrows which past awards count, so the same award becomes admissible again
+  const w = make({ settings: Object.assign({}, WIN, { 'vmu.auction.fairnessPolicy': 'quota', 'vmu.auction.dirtyWorkQuota': 0.5, 'vmu.auction.rotationWindow': 10000 }) })
+  const w1 = run(w, 't-1', 'r-1')
+  w.a.award({ postId: w1.postId, to: 'r-1', rationale: 'first' })
+  const w2 = run(w, 't-2', 'r-1')
+  ok(code(() => w.a.award({ postId: w2.postId, to: 'r-1', rationale: 'again' })) === 'VMU_FAIRNESS_QUOTA',
+    'Z6: inside the rotation window the second award is still refused')
+  w.set(w.at() + 99999)
+  const w3 = run(w, 't-3', 'r-1')
+  ok(code(() => w.a.award({ postId: w3.postId, to: 'r-1', rationale: 'third' })) !== 'VMU_FAIRNESS_QUOTA',
+    'Z7: once the earlier award falls outside the window it no longer counts, so the award is allowed (the window has a real effect)')
+}
+
 if (failed === 0) {
   console.log('=== VMU BIDDING: ' + passed + ' passed, 0 failed ===')
   process.exit(0)
