@@ -147,8 +147,8 @@
 
 ### L12 复现包
 - **目的**：把"环境＋种子＋脚本＋数据指针"打成一包（RO-Crate／BagIt 式）。
-- **接口形状**：`vibe_vmu_pack {action:'build', id:'<包>'}`（**规划 ✗**：当前 pack 只做机制打包，不做复现包）。
-- **可调控参数**：`vmu.repro.lockEnv`（默认 `true`）、`vmu.repro.includeSeed`（默认 `true`）、`vmu.repro.dataPointers`（数组）。
+- **接口形状**：`vibe_vmu_pack {action:'build', id:'<包>'}`（**已实现 ✓**：`kernel/repropack.js` **真实读取 7 个 `vmu.repro.*` 键**（`requiredMembers`／`hashAlgo`／`maxPackBytes`／`allowMissingSeed`／`envLockMode`／`dataPointerOnly`／`verifyRequiresMatch` ✓）⇒ **轮 104 核实并修正** ✓ —— 此前本节写"规划 ✗"是**过期状态** ✗）。
+- **可调控参数**（**轮 104 更正** ✓）：`vmu.repro.envLockMode`（默认 `'full'` ✓，取值 `full|minimal`）、`vmu.repro.allowMissingSeed`（默认 **`false`** ✓ —— **缺种子默认被拒** ✓）、`vmu.repro.dataPointerOnly`（默认 `true` ✓，数据只存指针不复制）。**此前本节写的三个名字**（`lockEnv`／`includeSeed`／`dataPointers`，**均无 `vmu.repro.` 前缀地写在这里，以免再次被生成器当成声明源** ✗✓）**不存在于实现** ✗✓，**且默认值也是错的** ✗（`lockEnv` 写成 `true` ✗／`includeSeed` 写成 `true` ✗）⇒ **判"合并 ⇄"**：**改用真实键名，删除三个平行名** ✓。
 - **错误码**：`VMU_INVALID_ARGUMENT`（缺种子／数据指针 ⇒ 具名拒）。
 - **四可**：可定义性＝"包内四条事实齐备"可断言（指纹／参数／环境／脚本）。
 - **依赖**：L8、L9、L11。**成熟度** ✗ 规划。**优先级** P0。
