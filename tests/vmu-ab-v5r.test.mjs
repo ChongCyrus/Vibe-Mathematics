@@ -10,7 +10,8 @@
 //   · **E. 同一裁定（手段不同）**：v5r 的 `idSafe`/`slugify` 与 vmu 的席位 id 规则，对"含 / 或 .. 的名字"
 //     都必须**不可原样使用** ✓。
 //
-// ★ 并对**无法驱动**或**刻意分歧**的项**逐个点名**（UNPAIRED / DIVERGENT ✗），而不是含糊带过：
+// ★ 并对**无法驱动**或**刻意不做**的项**逐个点名**（NOT_ADOPTED：每条带 what／why／revive ✓；DIVERGENT ✗），
+//   而不是含糊带过：一个诚实的"这一项框架不做，理由是……，出现真实消费者就改判"远比"我们验证了等价"有价值 ✓。
 //   一个诚实的"这一项没对上，理由是……"远比一句"我们验证了等价"有价值。
 //
 // 运行：`node tests/vmu-ab-v5r.test.mjs`（末行 `=== VMU AB v5r: N passed, M failed ===`）。
@@ -34,7 +35,7 @@ const ok = (cond, name, detail) => {
 }
 
 /** A/B 结论表：每一行都必须落进 one of 这三类，缺一不可（拿不到结论也要写下来 ✓）。 */
-const VERDICTS = { EQUAL: [], PROPERTY: [], UNPAIRED: [], DIVERGENT: [] }
+const VERDICTS = { EQUAL: [], PROPERTY: [], NOT_ADOPTED: [], DIVERGENT: [] }
 
 // ── A. 逐字节相等：v5r 手写 sha256 ⇄ node:crypto（vmu 一侧的摘要来源 ✓）────────────────────────
 {
@@ -217,21 +218,35 @@ const VERDICTS = { EQUAL: [], PROPERTY: [], UNPAIRED: [], DIVERGENT: [] }
     + '⇒ 垃圾输入处置不同 ✓（不评孰优 ✔）')
 }
 
-// ── ★ 逐项点名的未配对与刻意分歧（不掩盖 ✗）────────────────────────────────────────────────
+// ── ★ 刻意不采纳的四项：每一条必须带【是什么／为什么归别层／改判条件】✓（不许含糊留着 ✗）
+//   口径见 docs/14 §0.1 ＋ docs/01 §3：判"不做 ✗"者**只留一行＋可核理由＋改判条件** ✓。
 {
-  VERDICTS.UNPAIRED.push(
-    'blocksToText —— 框架侧**零命中**（grep `blocksToText|type === .text.` = 0 ✓）：vmu 的 host.js 有 `OUTPUT` 形状声明'
-    + '但不做"内容块→文本"的转换 ⇒ 未配对 ✗',
-    'fmtTime —— 实测：vmu 的 `timevalue.js` **只导出** `ms`/`msStrict`（"时刻→可比数" ✓），**没有格式化** ⇒ 未配对 ✗；'
-    + '并记下 v5r 的一个怪癖 ✓：`fmtTime(0)` 返回 **"现在"**（`new Date(ts || now())` ⇒ 假值被当当下 ✗）',
-    'parseReply —— 宿主回合文本的解析；框架侧 `script-bridge.validateRequest` 校验的是**请求形状**，不是回合文本 ⇒ 未配对 ✗',
-    // ★ 原先这里有一条 "sanitizeToolFilter —— 有名字没有净化器"。它已在 ROUND 142 被**补成能力** ✓，
-    //   于是整条移入 DIVERGENT（H1–H9 两侧都驱动过 ✓）—— **缺口补上后就必须从"未配对"里删掉** ✓，
-    //   否则同一件事会同时挂在"已配对"和"未配对"两边（本项目专门抓这种自相矛盾 ✗）。
-    // ★ 这一条原先记的是"夹取在公开 API 上不可观测"（可测性缺口 ✗）。ROUND 143 **正面修好** ✓：
-    //   `fairness.status().effective` 现在回显每个被夹取旋钮的【声明值 vs 生效值】并点名被调整者 ✓
-    //   ⇒ 它已升级为 I1–I6 的**已驱动**行（PROPERTY ＋ DIVERGENT ✓），故此处只留 `clPct` ✗。
-    'clPct（0..100 夹取）—— 框架侧无同族表面（grep 无对应物 ✓）⇒ 未配对 ✗',
+  VERDICTS.NOT_ADOPTED.push(
+    {
+      what: 'blocksToText（宿主内容块 → 文本）',
+      why: '框架侧**零命中** ✓（grep `blocksToText|type === .text.` = 0）；`host.js` 只声明 `OUTPUT` 形状，'
+        + '而它恰是**逆向**（框架**产出**内容块 ✓）⇒ 转换属**宿主协议词汇** ✓（docs/01 §3：不重写 DSH 的回合/工具循环 ✓）',
+      revive: '若某**中间件或原语**出现真实消费者（如审计面需把宿主机回合摘要成一行 ✓），'
+        + '则在 `host.js` 内、**紧邻 `OUTPUT`** 处新增 ✓ —— 那时它属于框架，因为**消费者在框架里** ✓',
+    },
+    {
+      what: 'fmtTime（时间显示格式）',
+      why: '`timevalue.js` **刻意只做一件事**："时刻 → 可比数" ✓（唯一口径 ✓）；在此加格式化会**引入第二种时间约定** ✗'
+        + '（与 01-I-3"两类时间不得混用"同源 ✓）。并记下 v5r 的怪癖 ✓：`fmtTime(0)` ⇒ **"现在"**（假值被当当下 ✗）',
+      revive: '若**审计/回执**需要人读的时间戳，则加在 `host.js` 的**渲染面**（显示归宿主 ✓），**不污染** `timevalue.js` ✓',
+    },
+    {
+      what: 'parseReply（宿主回合文本解析）',
+      why: '★ **已有部分承载** ✓：`bus.js` 声明了**关闭集**钩子 **`turn/reply-parsed`** ✓ —— 框架**发布上报点** ✓；'
+        + '解析器本身属宿主回合词汇 ✓（`script-bridge.validateRequest` 校验**请求形状**，不是回合文本 ✓）',
+      revive: '若出现**框架侧**的回合消费者，就让它**订阅 `turn/reply-parsed`** ✓，而不是把解析器内置进框架 ✓',
+    },
+    {
+      what: 'clPct（0..100 夹取）',
+      why: '框架侧**零命中** ✓ 且**无消费者**：vmu 的比类量一律 **0..1** 口径 ✓（`fairness` 的四个旋钮已由 '
+        + '`status().effective` 暴露生效值 ✓）',
+      revive: '若某个面确实以**百分比**表达阈值，则在**该面内**夹取，并像 `fairness` 一样**经 `status()` 暴露生效值** ✓',
+    },
   )
   VERDICTS.DIVERGENT.push(
     'tryJson —— 实测：v5r 对坏 JSON 返回 **undefined**（**吞掉** ✓），而 vmu 各面用朴素 `JSON.parse`（**抛/具名拒** ✓）'
@@ -243,11 +258,16 @@ const VERDICTS = { EQUAL: [], PROPERTY: [], UNPAIRED: [], DIVERGENT: [] }
     // ★ 原先此处还有一条"clamp01(非有限值) 口径不同"。ROUND 143 把它**移到 I6 里两侧驱动** ✓（同一件事
     //   不能同时挂在"已驱动"和"仅记录"两边 ✗），故此处只保留上面两条真正的分歧。
   )
-  // 汇总：**必须每一项都有落点**（哪怕落点是"未配对" ✗）
-  const total = VERDICTS.EQUAL.length + VERDICTS.PROPERTY.length + VERDICTS.UNPAIRED.length + VERDICTS.DIVERGENT.length
+  // 汇总：**必须每一项都有落点**（哪怕落点是"刻意不采纳" ✗）
+  const total = VERDICTS.EQUAL.length + VERDICTS.PROPERTY.length + VERDICTS.NOT_ADOPTED.length + VERDICTS.DIVERGENT.length
   ok(total >= 6, 'the verdict table classifies every probed pair (no row left undecided)', String(total))
   ok(VERDICTS.EQUAL.length >= 1 && VERDICTS.PROPERTY.length >= 3, 'at least one byte-equal row and three same-property rows were actually driven')
-  ok(VERDICTS.UNPAIRED.length >= 2 && VERDICTS.DIVERGENT.length >= 1, 'and the unpairable and deliberately divergent rows are NAMED rather than omitted')
+  ok(VERDICTS.NOT_ADOPTED.length >= 1 && VERDICTS.DIVERGENT.length >= 1, 'and the non-adoptions and deliberate divergences are NAMED rather than omitted')
+  // ★ ROUND 144：每条"刻意不采纳"都必须【三件齐备】✓（是什么／为什么归别层／改判条件）——
+  //   缺一件它就退化成一句耸肩 ✗，而"没做"和"没想清楚"必须分开 ✓。
+  const thin = VERDICTS.NOT_ADOPTED.filter((r) => !r
+    || String(r.what || '').trim() === '' || String(r.why || '').trim() === '' || String(r.revive || '').trim() === '')
+  ok(thin.length === 0, '★ every non-adoption names WHAT it is, WHY it belongs to another layer, and the condition that would revive it', JSON.stringify(thin))
 }
 
 console.log('=== VMU AB v5r: ' + passed + ' passed, ' + failed + ' failed ===')
@@ -255,8 +275,8 @@ console.log('  EQUAL      : ' + VERDICTS.EQUAL.length)
 for (const v of VERDICTS.EQUAL) console.log('    ✓ ' + v)
 console.log('  PROPERTY   : ' + VERDICTS.PROPERTY.length)
 for (const v of VERDICTS.PROPERTY) console.log('    ✓ ' + v)
-console.log('  UNPAIRED   : ' + VERDICTS.UNPAIRED.length + '  (明写未配对 ✗)')
-for (const v of VERDICTS.UNPAIRED) console.log('    ✗ ' + v)
+console.log('  NOT_ADOPTED: ' + VERDICTS.NOT_ADOPTED.length + '  (刻意不采纳 ✗，每条带理由＋改判条件 ✓)')
+for (const v of VERDICTS.NOT_ADOPTED) console.log('    ✗ ' + v.what + '\n        why:    ' + v.why + '\n        revive: ' + v.revive)
 console.log('  DIVERGENT  : ' + VERDICTS.DIVERGENT.length + '  (刻意分歧，已点名 ✗)')
 for (const v of VERDICTS.DIVERGENT) console.log('    ✗ ' + v)
 for (const f of failures) console.log('  FAIL ' + f)
