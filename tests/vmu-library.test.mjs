@@ -355,6 +355,48 @@ await rm(root, { recursive: true, force: true })
     'dedupe.crossWorkspace[+]: with the explicit scope the wider match proceeds', String(crossScoped.deduplicatedBy))
 }
 
+
+// ── ROUND 232: metadata (2) and provenance (2) — the middle strictness is the declared default ────────────────
+{
+  // metadata.customPrefix + metadata.strictness
+  const warn = mk()
+  const warned = warn.checkMetadata({ record: { kind: 'proposition', statement: 'S', 'x-note': 'ok', rogue: 1 } })
+  ok(warned.ok === true && warned.custom.join(',') === 'x-note', 'metadata.customPrefix[default]: the declared default prefix is x-')
+  ok(warned.unknown.join(',') === 'rogue' && warned.reported.join(',') === 'rogue',
+    'metadata.strictness[default=warn]: an unprefixed unknown field is REPORTED, not refused and not dropped', JSON.stringify(warned.reported))
+  const strict = mk({ settings: { 'vmu.metadata.strictness': 'strict' } })
+  ok(strict.checkMetadata({ record: { kind: 'proposition', statement: 'S', 'x-note': 'ok' } }).ok === true,
+    'metadata.strictness[strict+]: a correctly prefixed field passes even under strict')
+  let strictRefused = null
+  try { strict.checkMetadata({ record: { kind: 'proposition', statement: 'S', rogue: 1 } }) } catch (e) { strictRefused = e && e.code }
+  ok(strictRefused === 'VMU_INVALID_ARGUMENT', 'metadata.strictness[strict-]: an unprefixed unknown field is refused by name', String(strictRefused))
+  const loose = mk({ settings: { 'vmu.metadata.strictness': 'loose' } })
+  const looseRes = loose.checkMetadata({ record: { kind: 'proposition', statement: 'S', rogue: 1 } })
+  ok(looseRes.ok === true && looseRes.unknown.length === 1 && looseRes.reported.length === 1,
+    'metadata.strictness[loose]: accepted silently as a decision, while still COUNTED in the receipt (never invisible)')
+  const other = mk({ settings: { 'vmu.metadata.customPrefix': 'my-' } })
+  const otherRes = other.checkMetadata({ record: { kind: 'proposition', statement: 'S', 'my-note': 1, 'x-note': 2 } })
+  ok(otherRes.custom.join(',') === 'my-note' && otherRes.unknown.join(',') === 'x-note',
+    'metadata.customPrefix[+]: a declared prefix replaces the default rather than being added to it')
+  // append really uses it
+  let appendStrict = null
+  try { await mk({ settings: { 'vmu.metadata.strictness': 'strict' } }).append({ kind: 'proposition', statement: 'S', rogue: 1 }) } catch (e) { appendStrict = e && e.code }
+  ok(appendStrict === 'VMU_INVALID_ARGUMENT', 'metadata.strictness via append()[-]: the check is CALLED on the write path, not merely defined', String(appendStrict))
+
+  // provenance.depth + provenance.recordInputFingerprint
+  const all = mk()
+  const allProv = all.provenanceOf({ inputs: ['a', 'b', 'c'] })
+  ok(allProv.kept.length === 3 && allProv.depth === 0, 'provenance.depth[default=0]: zero keeps the whole chain, as declared')
+  const cut = mk({ settings: { 'vmu.provenance.depth': 2 } })
+  const cutProv = cut.provenanceOf({ inputs: ['a', 'b', 'c'] })
+  ok(cutProv.kept.join(',') === 'b,c' && cutProv.dropped === 1 && cutProv.droppedIsCounted === true,
+    'provenance.depth[+]: the chain is bounded to the declared depth and the drop is COUNTED, not silent', JSON.stringify(cutProv.dropped))
+  ok(mk().provenanceOf({ inputs: ['a', 'b'] }).inputFingerprint === 'b',
+    'provenance.recordInputFingerprint[default=true]: the input fingerprint is reported')
+  ok(mk({ settings: { 'vmu.provenance.recordInputFingerprint': false } }).provenanceOf({ inputs: ['a', 'b'] }).inputFingerprint === null,
+    'provenance.recordInputFingerprint[false]: it is null rather than a stale value')
+}
+
 console.log('=== VMU LIBRARY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

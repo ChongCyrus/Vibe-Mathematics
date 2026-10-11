@@ -7,7 +7,7 @@ import {
   describePolicy, guardWrite, guardSpawnCwd, memoryCeilingExceeded,
   readPathPolicy, readMemoryCeilingMb, sharedRootFor,
   guardWriteExtended, guardExec, cpuBudgetExceeded, requiresApproval, capabilityOf,
-  readKillSwitch, readMaxPathLength, readFollowSymlinks, readNetPolicy, readExecAllowlist, readAllowedRoots,
+  readKillSwitch, readMaxPathLength, readFollowSymlinks, readNetPolicy, readExecAllowlist, readAllowedRoots, readWorkspacePolicy,
 } from '../vibe-math-vmu/kernel/guard.js'
 import { createLibrary } from '../vibe-math-vmu/kernel/library.js'
 
@@ -150,6 +150,37 @@ console.log('')
   ok(readAllowedRoots(PS({ 'vmu.paths.allowedRoots': ['  ', 'x', ''] })).join(',') === 'x',
     'paths.allowedRoots: blank entries are dropped rather than kept as empty roots')
   ok(readAllowedRoots(PS({})).length === 0, 'paths.allowedRoots[empty]: an empty declaration means the policy computes the roots')
+}
+
+
+// ── ROUND 232: the workspace family — the declaration takes over the shared mounts ────────────────────────────
+{
+  const base = process.cwd()
+  const empty = readWorkspacePolicy({})
+  ok(empty.default === '' && empty.sharedPaths.length === 0 && empty.crossWrite === false && empty.declaredShared === false,
+    'workspace[defaults]: an instance that declares nothing has no default workspace, no declared mounts and no cross-write')
+  const declared = readWorkspacePolicy({ 'vmu.workspace.default': 'main', 'vmu.workspace.sharedPaths': ['/s/one', ' '], 'vmu.workspace.crossWrite': true })
+  ok(declared.default === 'main' && declared.sharedPaths.join(',') === '/s/one' && declared.crossWrite === true && declared.declaredShared === true,
+    'workspace[+]: the declared values are read, and a blank mount is dropped rather than kept as an empty root', JSON.stringify(declared.sharedPaths))
+
+  const sibling = guardWriteExtended({ settings: { 'vmu.safety.pathPolicy': 'workspace+shared' }, root: base, target: 'a.txt' })
+  ok(sibling.ok === true, 'workspace.sharedPaths[empty]: the workspace root stays writable, exactly as before')
+  const withMount = guardWriteExtended({ settings: { 'vmu.safety.pathPolicy': 'workspace+shared', 'vmu.workspace.sharedPaths': [base + '/DeclaredMount'] }, root: base, target: 'DeclaredMount/x.txt' })
+  ok(withMount.ok === true, 'workspace.sharedPaths[+]: a write into a DECLARED mount is allowed under workspace+shared')
+  let outsideMount = null
+  // The target must be OUTSIDE the workspace root: the root itself is always writable under this policy, so a path inside
+  // it proves nothing about the declared mounts.
+  try { guardWriteExtended({ settings: { 'vmu.safety.pathPolicy': 'workspace+shared', 'vmu.workspace.sharedPaths': [base + '/DeclaredMount'] }, root: base, target: '../Elsewhere/x.txt' }) } catch (e) { outsideMount = e && e.code }
+  ok(outsideMount === 'VMU_NOT_PERMITTED',
+    'workspace.sharedPaths[-]: with mounts declared, a directory that is NOT one of them is refused even under workspace+shared', String(outsideMount))
+  // The declaration TAKES OVER: once mounts are named, the hard-coded sibling is no longer writable on its own.
+  let siblingTakenOver = null
+  try { guardWriteExtended({ settings: { 'vmu.safety.pathPolicy': 'workspace+shared', 'vmu.workspace.sharedPaths': [base + '/DeclaredMount'] }, root: base, target: '../Shared/x.txt' }) } catch (e) { siblingTakenOver = e && e.code }
+  ok(siblingTakenOver === 'VMU_NOT_PERMITTED',
+    'workspace.sharedPaths[+]: the fixed sibling stops being writable once mounts are declared - the declaration took over, it did not add', String(siblingTakenOver))
+  // And with nothing declared the sibling still works, so an instance that declares nothing is unchanged.
+  const stillSibling = guardWriteExtended({ settings: { 'vmu.safety.pathPolicy': 'workspace+shared' }, root: base, target: '../Shared/x.txt' })
+  ok(stillSibling.ok === true, 'workspace.sharedPaths[empty]: with no mounts declared the sibling area is writable, exactly as before')
 }
 
 console.log('=== VMU GUARD: ' + passed + ' passed, ' + failed + ' failed ===')

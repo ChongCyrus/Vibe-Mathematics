@@ -41,6 +41,21 @@ export function readMemoryCeilingMb(settings) {
  * The shared exchange area is the sibling `Shared` directory of the workspace root; `workspace+shared`
  * adds it to the write set. Exported so callers can show exactly what a policy opens.
  */
+// ROUND 232: the declared workspace policy. `sharedPaths` takes over the shared mounts when it is declared (empty keeps the
+// fixed sibling), `crossWrite` decides whether other workspace roots may be written to at all, and `default` names the
+// workspace a bare name belongs to. Nothing here invents a second mechanism: the keys decide, the policy below executes.
+export function readWorkspacePolicy(settings) {
+  const s = settings || {}
+  const shared = Array.isArray(s['vmu.workspace.sharedPaths'])
+    ? s['vmu.workspace.sharedPaths'].filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : []
+  return {
+    default: typeof s['vmu.workspace.default'] === 'string' ? s['vmu.workspace.default'] : '',
+    sharedPaths: shared,
+    crossWrite: s['vmu.workspace.crossWrite'] === true,
+    declaredShared: shared.length > 0,
+  }
+}
+
 export function sharedRootFor(root) {
   return join(dirname(String(root || '.')), 'Shared')
 }
@@ -48,8 +63,14 @@ export function sharedRootFor(root) {
 /** `{ policy, writableRoots, note }` — what the CURRENT settings allow, for回执/日志/自检. */
 export function describePolicy(settings, { root = process.cwd() } = {}) {
   const policy = readPathPolicy(settings)
+  // ROUND 232: with declared shared mounts, those ARE the shared roots; without them the fixed sibling remains, so an
+  // instance that declares nothing behaves exactly as before.
+  const wsPolicy = readWorkspacePolicy(settings)
+  const sharedRoots = wsPolicy.declaredShared
+    ? wsPolicy.sharedPaths.map((p) => normalize(String(p)))
+    : [normalize(sharedRootFor(root))]
   const writableRoots = policy === 'workspace+shared'
-    ? [normalize(String(root)), normalize(sharedRootFor(root))]
+    ? [normalize(String(root)), ...sharedRoots]
     : [normalize(String(root))]
   return {
     policy,

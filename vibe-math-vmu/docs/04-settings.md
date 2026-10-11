@@ -798,6 +798,13 @@ vmu.packs.active: [v5r]
 | `vmu.dedupe.enabled` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | ★ 可选【更宽】去重层的开关；精确身份去重是核心不变式、【不可关】（默认 false ⇒ 只有身份去重） |
 | `vmu.dedupe.scope` | enum | `full` | `full`∣`segment` | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 去重范围（segment ⇒ 按 statement 段级匹配，并在回执自曝 deduplicatedBy） |
 | `vmu.dedupe.crossWorkspace` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 跨区去重（true ⇒ 必须显式给 opts.workspaceScope，本面不自行跨根扫描） |
+| `vmu.metadata.strictness` | enum | `warn` | `strict`∣`warn`∣`loose` | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 校验严格度（strict ⇒ 未知字段具名拒；warn ⇒ 回执列出；loose ⇒ 接受） |
+| `vmu.metadata.customPrefix` | string | `x-` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 自定义字段前缀（带此前缀的字段不受严格度约束） |
+| `vmu.provenance.depth` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 溯源深度（0＝全部；超出者【计数丢弃】而非静默） |
+| `vmu.provenance.recordInputFingerprint` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 是否记输入指纹（false ⇒ 回执里该字段为 null，绝不留旧值） |
+| `vmu.workspace.default` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 默认工作区（裸名字归属的工作区；只读并上报，不猜） |
+| `vmu.workspace.sharedPaths` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 共享区挂载点（★ 声明后【接管】硬编码的同级 Shared；空＝保持原行为） |
+| `vmu.workspace.crossWrite` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 跨区写（false ⇒ 只能写工作区根与共享挂载点；true ⇒ 另允许调用方显式点名的他区根） |
 | `vmu.archive.offlineFirst` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.receiptRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.targets` | string[] | `[zenodo,osf,swh,other]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
@@ -1240,8 +1247,6 @@ vmu.packs.active: [v5r]
 | `vmu.mentor.maxMenteesPerMentor` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.mentor.requireReviewBeforeGraduation` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.mentor.reviewEveryMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.metadata.customPrefix` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.metadata.strictness` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.middleware.enabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准） |
 | `vmu.middleware.onFailure` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
 | `vmu.middleware.order` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准） |
@@ -1278,8 +1283,6 @@ vmu.packs.active: [v5r]
 | `vmu.prompts.overrides` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 06（共见 1 卷：06），尚未实现（元数据以各卷为准） |
 | `vmu.prompts.overridesByLang` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 06（共见 1 卷：06），尚未实现（元数据以各卷为准） |
 | `vmu.prompts.sections` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 06（共见 1 卷：06），尚未实现（元数据以各卷为准） |
-| `vmu.provenance.depth` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.provenance.recordInputFingerprint` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.pub.retractionRequiresReason` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.pub.versionKinds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.recruit.decideBy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
@@ -1328,9 +1331,6 @@ vmu.packs.active: [v5r]
 | `vmu.work.keepEntries` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.work.pauseRule` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.work.start` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.workspace.crossWrite` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.workspace.default` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.workspace.sharedPaths` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 
 **三条硬纪律（本表的门禁）**：① 表内键集合 ≡ schema 键集合（无多无少）；② 每个键都有回显＋非法拒＋热改＋审计四类断言；③ **本表不得手写第二份** —— 已由 **`scripts/generate-vmu-settings-table.mjs`** 落实 ✓✓：`--check` 未通过即红 ✗（**并已接入 T0 预检** ✓），任何人工改动都会被下一次检查抹平 ✓；④ "时间/随机"类**一律不接受用户输入**（`vmu.limits.wallClockMs` 是**框架侧上限**，不是用户可设的截止时刻 ✓）。
 

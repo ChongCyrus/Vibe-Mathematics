@@ -987,6 +987,14 @@
   **门禁与证据** ✓：**`VMU LIBRARY: 67 passed, 0 failed`** ✓（**新增 11 条断言** ✓）；`docs/04` 6 行由 `⚠️` 变 **`✅ 已接线 | kernel/library.js`** ✓；**未接线 222 → 216** ✓；**`regen-all: 9/9 in sync`** ✓；**两处契约行补上 `checkReferences(`／`backlinks(`** ✓（**该审计要求面的契约行记录每个暴露的方法** ✓）。
   **未做（明写 ✗）**：★ **`vmu.dedupe.*` 的"更宽层"目前只有 `segment` 一种匹配** ✗（**`full` 在本实现中即为身份去重** ✓，**语义边界已写进 schema 说明** ✓）；**`vmu.index.*`／`vmu.search.*`／`vmu.metadata.*`／`vmu.provenance.*`／`vmu.export.*`／`vmu.visibility.*`／`vmu.workspace.*`／`vmu.naming.*`** ✗；**其余 216 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 232：接 `vmu.metadata.*`(2)＋`vmu.provenance.*`(2) → `library.js`，`vmu.workspace.*`(3) → `guard.js`；未接线 216 → 209** ✓✓
+  ★★ **① `vmu.workspace.sharedPaths` 不是重复实现，而是【让声明接管硬编码】** ✓✓ —— **实测**：`guard.js` 把共享区**硬编码为工作区根的同级 `Shared` 目录** ✓（`sharedRootFor(root)=dirname(root)/Shared` ✓）⇒ **声明挂载点后，可写根【改为】声明的那些** ✓✓（**不是追加** ✓）⇒ **一个什么都没声明的实例行为完全不变** ✓。这条与上轮 followSymlinks 的区别被量清楚了：**那条是同旋钮两个名字** ✗，**这条是声明接管常量** ✓。
+  **② `vmu.metadata.*`(2)** ✓：`customPrefix`（**默认 `x-`；声明后【替换】默认而非追加** ✓）／`strictness`（**三值**：`strict` **未知字段具名拒** ✓、`warn` **回执列出** ✓、`loose` **接受但【仍计数】** ✓ —— **声明的默认是中间那档** ✓，**且没有任何一档是"静默丢弃"** ✓）。
+  **③ `vmu.provenance.*`(2)** ✓：`depth`（**0＝全部；有界时【计数丢弃】** ✓）／`recordInputFingerprint`（**false ⇒ 字段为 `null` 而非留旧值** ✓）。
+  ✗✓ **④ 三处自伤，全部当场抓住并改正** ✓：**(a)** 我又写了一条 **`ok(a === false || a === true)` 的【空洞断言】** ✗ ⇒ 自查删除 ✓；**(b)** 两条断言的**期望反了** ✓ —— **"声明挂载点后同级 `Shared` 不再可写"** ✓（**因为声明接管而非追加** ✓）与 **"`NotDeclared/x.txt` 在根内 ⇒ 根永远可写"** ✓ ⇒ 都改成能证明论点的路径 ✓；**(c)** **`node -e` 里的反引号被 PowerShell 吃掉、脚本静默死掉** ✗（**套件计数停在旧值 67/53 露了馅** ✓）⇒ ★★★ **改用脚本文件后一次通过** ✓ —— **这条教训本轮第二次被验证，已写进本账本** ✓。
+  **门禁与证据** ✓：**`VMU LIBRARY: 78 passed`** ✓（+11）／**`VMU GUARD: 59 passed`** ✓（+6）／**`VMU DOCS AUDIT: 70 passed`** ✓（**两处契约行补上 `checkMetadata(`／`provenanceOf(`** ✓）；`docs/04` **7 行**由 `⚠️` 变 `✅ 已接线` ✓；**未接线 216 → 209** ✓；**`regen-all: 9/9 in sync`** ✓。
+  **未做（明写 ✗）**：★ **`vmu.workspace.crossWrite` 的【放宽方向】尚未实现** ✗ —— **当前 `true` 只被读取并上报** ✓（`readWorkspacePolicy` ✓），**真正的"允许写调用方显式点名的他区根"需要一个新的参数面** ✗，**属下一区间** ✓；**`vmu.index.*`／`vmu.search.*`／`vmu.export.*`／`vmu.visibility.*`／`vmu.naming.*`** ✗；**其余 209 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 

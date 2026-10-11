@@ -68,6 +68,13 @@ export function createLibrary({
   dedupeWider = (settings && settings['vmu.dedupe.enabled']) === true,
   dedupeScope = (settings && settings['vmu.dedupe.scope']) === 'segment' ? 'segment' : 'full',
   dedupeCrossWorkspace = (settings && settings['vmu.dedupe.crossWorkspace']) === true,
+  // ROUND 232: metadata and provenance.
+  metadataCustomPrefix = (settings && typeof settings['vmu.metadata.customPrefix'] === 'string' && settings['vmu.metadata.customPrefix'])
+    ? settings['vmu.metadata.customPrefix'] : 'x-',
+  metadataStrictness = ['strict', 'warn', 'loose'].includes(settings && settings['vmu.metadata.strictness'])
+    ? settings['vmu.metadata.strictness'] : 'warn',
+  provenanceDepth = (() => { const v = Number(settings && settings['vmu.provenance.depth']); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0 })(),
+  provenanceInputFingerprint = (settings && settings['vmu.provenance.recordInputFingerprint']) !== false,
   clock = () => new Date().toISOString(),
   storeMode = (settings && settings['vmu.records.history.storeMode']) || 'full',
 } = {}) {
@@ -85,6 +92,38 @@ export function createLibrary({
     if (Array.isArray(aliasTags)) for (const x of aliasTags) if (typeof x === 'string' && x.trim()) aliases.add(x.trim())
     return { ok: true, vocabulary: vocabulary.size, aliases: aliases.size, controlled: tagsControlled,
       aliasTable: tagsAliasTable || null, enforced: ['vmu.tags.controlled', 'vmu.tags.aliasTable'], fired: [] }
+  }
+  // ROUND 232: the fields this face knows. A field outside this set must be prefixed (metadata.customPrefix) or it falls
+  // under metadata.strictness, whose declared default is `warn` - reported, not refused, and never silently dropped.
+  const KNOWN_FIELDS = new Set(['id', 'kind', 'title', 'status', 'owner', 'updatedAt', 'fingerprint', 'references', 'statement',
+    'tags', 'provenance', 'inputFingerprint'])
+  const checkMetadata = ({ record = {} } = {}) => {
+    const enforced = ['vmu.metadata.strictness', 'vmu.metadata.customPrefix']
+    const customs = []
+    const unknown = []
+    for (const k of Object.keys(record)) {
+      if (KNOWN_FIELDS.has(k)) continue
+      if (k.startsWith(metadataCustomPrefix)) { customs.push(k); continue }
+      unknown.push(k)
+    }
+    const fired = unknown.length || customs.length ? ['vmu.metadata.strictness'] : []
+    if (unknown.length && metadataStrictness === 'strict') {
+      throw refuse('VMU_INVALID_ARGUMENT', 'field(s) neither known nor prefixed with ' + metadataCustomPrefix + ': ' + unknown.join(', '),
+        'prefix custom fields with ' + metadataCustomPrefix + ', or set vmu.metadata.strictness to warn/loose deliberately',
+        { unknown, customPrefix: metadataCustomPrefix })
+    }
+    return { ok: true, strictness: metadataStrictness, customPrefix: metadataCustomPrefix, custom: customs,
+      unknown, reported: unknown.slice(), enforced, fired }
+  }
+  /** Provenance: the chain of inputs, bounded by vmu.provenance.depth (0 = all). */
+  const provenanceOf = ({ inputs = null } = {}) => {
+    const enforced = ['vmu.provenance.depth', 'vmu.provenance.recordInputFingerprint']
+    const chain = Array.isArray(inputs) ? inputs : []
+    const kept = provenanceDepth > 0 ? chain.slice(-provenanceDepth) : chain.slice()
+    const dropped = chain.length - kept.length
+    return { ok: true, depth: provenanceDepth, kept, dropped, droppedIsCounted: true,
+      inputFingerprint: provenanceInputFingerprint ? (kept.length ? String(kept[kept.length - 1]) : null) : null,
+      enforced, fired: chain.length ? ['vmu.provenance.depth'] : [] }
   }
   /**
    * ROUND 231: check a record's `references` against the declaration.
@@ -337,11 +376,15 @@ export function createLibrary({
     checkTags,
     checkReferences,
     backlinks,
+    checkMetadata,
+    provenanceOf,
 
     /** Append a card. Same substantive content twice => same id (idempotent), never a silent duplicate. */
     async append(record = {}, opts = {}) {
       if (record.tags !== undefined) checkTags({ tags: record.tags })   // ROUND 230: a validator nobody calls is inert
     const refCheck = record.references !== undefined ? checkReferences({ references: record.references }) : null   // ROUND 231
+    const metaCheck = checkMetadata({ record })   // ROUND 232: a custom field must be prefixed, and the strictness decides what
+                                                  // happens to one that is not - refused, reported, or accepted (default: reported)
       const kind = record.kind
       const fp = fingerprint(kind, record)
       await rebuildIndex()
