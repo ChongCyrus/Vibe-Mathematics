@@ -290,7 +290,10 @@ const QUICK_EXCLUDE = ['mutants', 'audit-math-computation-sensitivity']
 // `tests/accept-ab-v5-minimal.test.mjs` (the acceptance harness for the ask-retry cap and unowned-task
 // dispatch) and `tests/v5-tool-help.test.mjs` (the tool-help surface) — so 24 -> 26. Both are new
 // regression tests, which is the same "on purpose" case as S24, not a drifted filter.
-const QUICK_EXPECTED_JOBS = 26
+// S30 (round 137): `tests/vmu-ab-v5r.test.mjs` - the v5r/vmu A/B verdict table - contains `v5r`, so the
+// curated `v5` prefix picks it up too, and it belongs there: it is fast and it is the file an edit to either
+// side should re-run. 26 -> 27, deliberately.
+const QUICK_EXPECTED_JOBS = 27
 // `vmu` is the ITERATION subset for developing the vmu framework: the vmu jobs themselves, plus every
 // gate that guards a SHARED surface a vmu change can reach (preset rows and the generated patch,
 // the installer, package membership, README/doc counts, path discipline, artifact docs, the shared
