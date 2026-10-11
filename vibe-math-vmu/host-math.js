@@ -101,6 +101,27 @@ export function createHostMath({ ctx, settings = {}, projectRoot = null, log = (
       for (const [key, param] of Object.entries(MATH_PARAM_MAP)) {
         if (settings[key] !== undefined) out[param] = settings[key]
       }
+      // ROUND 215: these two are read and VALIDATED here, with literal accesses, for two reasons. The shared module
+      // consumes them through `params()` but a computed `settings[key]` is invisible to the settings table's literal
+      // scan, and that table is a GATE - so the carrier must be visible to it (the same discipline this file's header
+      // records for `vmu.safety.*`). And a malformed value used to be silently defaulted downstream; at the boundary it
+      // is now refused BY NAME, which is what makes the setting's contract checkable.
+      const rawPackages = settings['vmu.math.packages']
+      if (rawPackages !== undefined) {
+        if (!Array.isArray(rawPackages) || rawPackages.some((x) => typeof x !== 'string')) {
+          throw refuse('VMU_INVALID_ARGUMENT', 'vmu.math.packages must be a list of package names',
+            'pass { packages: [\'pkg\', …] } (vmu.math.packages)')
+        }
+        out.mathPackages = rawPackages.map((x) => String(x).trim()).filter(Boolean)
+      }
+      const rawScope = settings['vmu.math.installScope']
+      if (rawScope !== undefined) {
+        if (rawScope !== 'user' && rawScope !== 'system') {
+          throw refuse('VMU_INVALID_ARGUMENT', 'vmu.math.installScope must be user or system',
+            'pass installScope: \'user\' | \'system\' (vmu.math.installScope; system applies to that call only and is never persisted)')
+        }
+        out.mathInstallScope = rawScope
+      }
       return out
     },
     projectRoot: () => root,

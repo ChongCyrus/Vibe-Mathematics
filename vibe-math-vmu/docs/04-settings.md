@@ -242,8 +242,8 @@ vmu.packs.active: [v5r]
 | `vmu.math.mode` | enum | `typed+shell` | `typed`∣`typed+shell` | 会话 | H2 | office | ✅ 已接线 | `host-math.js` | P3：typed＝绝不提 shell 且拒绝 engine=cli |
 | `vmu.math.engines` | string[] | `[python,r,octave,julia,matlab,maple,wolfram,cli]` | — | 会话 | H2 | office | ✅ 已接线 | `host-math.js` | 引擎优先级（默认取自共享模块并拷贝；空＝具名降级） |
 | `vmu.math.timeoutMs` | int ≥0 | `60000` | — | 会话 | H0 | office | ✅ 已接线 | `host-math.js` | P3：单次计算预算（共享模块默认） |
-| `vmu.math.packages` | string[] | `[]` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `host-math.js` | P3：计算可要求的包/工具箱（共享模块默认） |
-| `vmu.math.installScope` | enum | `user` | `user`∣`system` | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `host-math.js` | P3：安装作用域；system 仅当次、绝不记忆 |
+| `vmu.math.packages` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `host-math.js` | P3：计算可要求的包/工具箱（共享模块默认） |
+| `vmu.math.installScope` | enum | `user` | `user`∣`system` | 会话 | H1 | office | ✅ 已接线 | `host-math.js` | P3：安装作用域；system 仅当次、绝不记忆 |
 | `vmu.math.compileTimeoutMs` | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/formal.js` | 编译超时；0＝作业级默认 |
 | `vmu.math.formalVerify` | enum | `off` | `off`∣`encourage`∣`require` | 会话 | H2 | office | ✅ 已接线 | `kernel/lean.js` | P3：判定时的形式化要求；默认 off＝零策略 |
 | `vmu.math.leanCommand` | string | `lean` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | P3：Lean 命令名（命令模板可覆盖） |

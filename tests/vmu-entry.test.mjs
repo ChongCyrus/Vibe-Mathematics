@@ -14,6 +14,7 @@
 // `--self-probe` copies the entry, removes the "prompt only when declared" condition and requires the
 // zero-prompt assertion to fail.
 
+import { createHostMath } from '../vibe-math-vmu/host-math.js'
 import { readFile, writeFile, mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -288,6 +289,22 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   const mapped = handle.mathHost().params()
   ok(mapped.mathTimeoutMs === 12345, 'declared vmu.math.* keys are mapped onto the module\'s parameter names',
     JSON.stringify(mapped))
+  // ROUND 215: the boundary now READS and VALIDATES two keys the shared module consumes through params(). Reading them
+  // literally is deliberate: a computed `settings[key]` is invisible to the settings table's literal scan, and that table
+  // is a gate, so a real carrier has to be visible to it. Validation is a real improvement too - a malformed scope used to
+  // be defaulted downstream in silence, and now it is refused by name where the setting enters.
+  {
+    const good = createHostMath({ settings: { 'vmu.math.packages': ['alpha', ' beta '], 'vmu.math.installScope': 'system' } }).params()
+    ok(Array.isArray(good.mathPackages) && good.mathPackages.join(',') === 'alpha,beta',
+      'vmu.math.packages[+]: read at the boundary and normalised (trimmed, blanks dropped)', JSON.stringify(good.mathPackages))
+    ok(good.mathInstallScope === 'system', 'vmu.math.installScope[+]: a valid scope passes through unchanged', String(good.mathInstallScope))
+    let refused = null
+    try { createHostMath({ settings: { 'vmu.math.installScope': 'banana' } }).params() } catch (e) { refused = e && e.code }
+    ok(refused === 'VMU_INVALID_ARGUMENT', 'vmu.math.installScope[-]: a bad scope is refused BY NAME at the boundary', String(refused))
+    let refusedPkgs = null
+    try { createHostMath({ settings: { 'vmu.math.packages': 'not-a-list' } }).params() } catch (e) { refusedPkgs = e && e.code }
+    ok(refusedPkgs === 'VMU_INVALID_ARGUMENT', 'vmu.math.packages[-]: a non-list is refused BY NAME at the boundary', String(refusedPkgs))
+  }
   // No declaration ⇒ no math tool (zero mechanism, R1).
   const plain = fakeCtx({ get: () => undefined })
   entry.apply(plain.ctx, { clock })
