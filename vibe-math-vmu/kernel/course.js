@@ -124,7 +124,17 @@ export function createCourse(opts) {
     const evalKey = (k) => { mark(enforced, k) }
     evalKey('vmu.course.enabled')
     if (!c.enabled) return deny('VMU_NOT_PERMITTED', '课程面未启用（vmu.course.enabled=false）', '打开它，或不要开课', enforced)
-    if (c.visibility === 'public' && c.allowAuditors !== true) evalKey('vmu.course.visibility')
+    // ROUND 121: the visibility branch used to mark the key as evaluated and change nothing, which is the quietest
+    // form of "declared but ineffective". The volume defines `public` as visible outside the institution and gates
+    // auditor access separately, so a public course that forbids auditors is a contradiction: it is refused by name
+    // instead of being recorded and ignored.
+    if (c.visibility === 'public' && c.allowAuditors !== true) {
+      evalKey('vmu.course.visibility')
+      evalKey('vmu.course.allowAuditors')
+      return deny('VMU_NOT_PERMITTED',
+        'public 课程必须允许旁听（vmu.course.visibility=public 且 vmu.course.allowAuditors=false）',
+        '把 allowAuditors 设为 true，或把 visibility 改为 institution/private（docs/17：public 即机构外可见）', enforced)
+    }
     const title = String(args.title || '').trim()
     if (!title) return deny('VMU_INVALID_ARGUMENT', 'open 需要 title', '给课程标题', enforced)
     const id = 'co-' + (++seq)
@@ -189,6 +199,24 @@ export function createCourse(opts) {
     if (!course) return deny('VMU_NOT_FOUND', '找不到课程', '先 open()', enforced)
     const who = String(args.who || '').trim()
     if (!who) return deny('VMU_INVALID_ARGUMENT', 'submit 需要 who', '给提交人', enforced)
+    // ROUND 121: the submission form was read into the configuration and never consulted. The volume declares
+    // three forms - `artifact` (a reference to a produced artefact, the default), `inline` (the body itself) and
+    // `both` - so a submission that does not match the declared form is refused by name rather than silently kept.
+    evalKey('vmu.course.submitMode')
+    const hasArtifact = typeof args.artifact === 'string' && args.artifact.trim().length > 0
+    const hasInline = typeof args.inline === 'string' && args.inline.trim().length > 0
+    if (c.submitMode === 'artifact' && !hasArtifact) {
+      return deny('VMU_META_VALIDATION_FAILED', '提交形式是 artifact：必须给 artifact 引用（vmu.course.submitMode=artifact）',
+        '把产出放进资料库并给 artifact，或把 submitMode 改为 inline/both', enforced)
+    }
+    if (c.submitMode === 'inline' && !hasInline) {
+      return deny('VMU_META_VALIDATION_FAILED', '提交形式是 inline：必须给 inline 正文（vmu.course.submitMode=inline）',
+        '直接给 inline 正文，或把 submitMode 改为 artifact/both', enforced)
+    }
+    if (c.submitMode === 'both' && !(hasArtifact && hasInline)) {
+      return deny('VMU_META_VALIDATION_FAILED', '提交形式是 both：artifact 引用与 inline 正文都要（vmu.course.submitMode=both）',
+        '补齐缺的那一项，或把 submitMode 改为 artifact/inline', enforced)
+    }
     const attempt = (course.attempts.get(who) || 0) + 1
     evalKey('vmu.course.maxAttempts')
     if (attempt > c.maxAttempts) return deny('VMU_NOT_PERMITTED', '提交次数超上限：' + (attempt - 1) + ' / ' + c.maxAttempts + '（vmu.course.maxAttempts）', '提高上限或走补考流程', enforced)
