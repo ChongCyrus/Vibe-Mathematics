@@ -40,8 +40,11 @@ export const PLANNED_COURSE_KEYS = Object.freeze([
   ['vmu.course.ontologyVersion', '课程本体版本未接：需本体/迁移面（见 stateversion ✗）'],
   // ROUND 115: two keys were listed as wired while nothing read them. The list's only use in this module is a
   // reporting function, and neither key appears in an accessor call - a value nobody reads cannot change anything.
-  ['vmu.course.visibility', '课程可见性未接：本面不做可见性判定，未读取该键 ✗'],
-  ['vmu.course.submitMode', '提交形式未接：本面只记录提交，未读取该键 ✗'],
+  // ROUND 120: these two are READ into cfg() and then never consulted - `cfg().visibility` and `cfg().submitMode`
+  // have zero use sites - so the honest reason is "read but not used for any decision", not "not read". The round
+  // 115 wording said the key was not read, which was wrong about the mechanism while right about the effect.
+  ['vmu.course.visibility', '课程可见性未接：键被读入 cfg() 但【无任何判定使用它】（使用点 = 0）⇒ 改了不会有行为变化 ✗'],
+  ['vmu.course.submitMode', '提交形式未接：键被读入 cfg() 但【无任何判定使用它】（使用点 = 0）⇒ 改了不会有行为变化 ✗'],
 ])
 
 const refuse = (code, message, hint) => ({ ok: false, code, message, hint })
