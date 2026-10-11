@@ -570,6 +570,28 @@ await rm(root, { recursive: true, force: true })
   ok(!titled2.nameConflict, 'naming.conflictPolicy[title]: and no conflict is reported, because no name was claimed')
 }
 
+
+// ── ROUND 238: the provenance chain REACHES the write path (it was defined and never called) ─────────────────
+{
+  const lib = mk()
+  const all = await lib.append({ kind: 'proposition', statement: 'CHAIN-ALL', inputs: ['a', 'b', 'c', 'd'] })
+  ok(all.ok === true && all.provenance && all.provenance.kept === 4 && all.provenance.dropped === 0,
+    'provenance.depth[default=0]: the whole chain is kept, as declared', JSON.stringify(all.provenance))
+  const cut = mk({ settings: { 'vmu.provenance.depth': 2 } })
+  const bounded = await cut.append({ kind: 'proposition', statement: 'CHAIN-CUT', inputs: ['a', 'b', 'c', 'd'] })
+  ok(bounded.provenance.kept === 2 && bounded.provenance.dropped === 2 && bounded.provenance.droppedIsCounted === true,
+    'provenance.depth[+]: the chain is bounded and the excess is COUNTED, not silently lost', JSON.stringify(bounded.provenance))
+  const noFp = mk({ settings: { 'vmu.provenance.recordInputFingerprint': false } })
+  const off = await noFp.append({ kind: 'proposition', statement: 'CHAIN-OFF', inputs: ['x'] })
+  ok(off.provenance.inputFingerprint === null, 'provenance.recordInputFingerprint[false]: null rather than a stale value')
+  const none = await mk().append({ kind: 'proposition', statement: 'CHAIN-NONE' })
+  ok(none.provenance === null, 'provenance: a record that declares no inputs reports no chain rather than an empty pretence')
+  // it must be READ BACK, like every other persisted field in this face
+  const back = await mk().append({ kind: 'proposition', statement: 'CHAIN-BACK', inputs: ['p', 'q'] })
+  const raw = await readFile(back.file, 'utf8')
+  ok(/inputs: p,q/.test(raw), 'provenance: the bounded chain is PERSISTED, so a later read can see it', raw.split('\n').filter((l) => l.indexOf('inputs') === 0).join(''))
+}
+
 console.log('=== VMU LIBRARY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

@@ -321,6 +321,9 @@ export function createLibrary({
       if (record.tags !== undefined) checkTags({ tags: record.tags })   // ROUND 230: a validator nobody calls is inert
     const refCheck = record.references !== undefined ? checkReferences({ references: record.references }) : null   // ROUND 231
     const metaCheck = checkMetadata({ record })   // ROUND 232: a custom field must be prefixed, and the strictness decides what
+    // ROUND 238: the provenance chain. `provenanceOf` existed and was exported, but NOTHING called it - so the two provenance
+    // keys were read into a function no path reached. A record may declare `inputs`, and the chain is bounded by the depth.
+    const provCheck = record.inputs !== undefined ? provenanceOf({ inputs: record.inputs }) : null
                                                   // happens to one that is not - refused, reported, or accepted (default: reported)
       const kind = record.kind
       const fp = fingerprint(kind, record)
@@ -386,6 +389,7 @@ export function createLibrary({
           visibility: (record.visibility === 'public' || record.visibility === 'internal') ? record.visibility : visibilityDefault,   // ROUND 234
       references: refCheck && refCheck.references.length ? refCheck.references.join(',') : null,   // ROUND 231
           statement: record.statement === undefined ? null : String(record.statement),   // ROUND 231: segment-scope dedupe needs it
+      inputs: provCheck && provCheck.kept.length ? provCheck.kept.join(',') : null,   // ROUND 238: the bounded provenance chain
         title: record.title || record.statement.slice(0, 60),
         status: record.status || 'open',
         owner: member,
@@ -394,6 +398,7 @@ export function createLibrary({
       await writeFile(file, render(meta, String(record.statement) + (record.proof ? '\n\n' + record.proof : '')), 'utf8')
       index.set(id, Object.assign({ file }, meta))
       return { ok: true, id: nameConflict ? nameConflict.used : id, fingerprint: fp, deduplicated: false, file: nameConflict ? join(dir, nameConflict.used + '.md') : file,
+        provenance: provCheck ? { depth: provCheck.depth, kept: provCheck.kept.length, dropped: provCheck.dropped, droppedIsCounted: provCheck.droppedIsCounted, inputFingerprint: provCheck.inputFingerprint } : null,
         nameConflict,
         references: refCheck ? refCheck.references : [], dangling: refCheck ? refCheck.dangling : [] }
     },

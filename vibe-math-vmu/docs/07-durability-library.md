@@ -661,7 +661,7 @@ GC 候选 ⇒ 产出删除清单 ⇒ 显式确认（或满足自动执行前置�
 | `vmu.gc.autoRun` | bool | `false` | G | U | 自动 GC（默认只报告） |
 | `vmu.gc.graceDays` | int | `14` | G | U | 孤儿宽限期 |
 | `vmu.gc.exemptMarkers` | string[] | `[permanent]` | G | U | 豁免标记 |
-| `vmu.workspace.default` | string | `''` | G | U | 默认工作区 |
+| `vmu.workspace.default` | string | `''` | G | U | ★ **轮 238 说明：本键【已接线，但目前只被读取并上报】** ✓ —— **实测：裸名字（不含路径的名字）本就归属本面的 `root`** ✓ ⇒ **不存在需要它裁决的解析点** ✗；**`kernel/guard.js` 的 `readWorkspacePolicy` 会把它报出来，供回执与自检使用** ✓。**若将来出现「同一份数据挂多个工作区」的需求，界时应重新定义本键的语义** ✓ |
 | `vmu.workspace.sharedPaths` | string[] | `[]` | G | U | 共享区挂载点 |
 | `vmu.workspace.crossWrite` | bool | `false` | G | U | 跨区写 |
 | `vmu.paths.followSymlinks` | bool | `false` | G | F | 是否跟随符号链接 —— ★ **轮 230 裁定：本键是 `vmu.safety.followSymlinks` 的【别名】** ✓✓，**权威在 `20-§4`** ✓（**关切属安全、执行点属安全面** ✓）；**保留本行只为让声明与命名空间仍然成立** ✓，**新配置应只写权威键** ✓；代码在两者都声明时以本键优先，以便旧 pack 不被静默改变 ✓ |
