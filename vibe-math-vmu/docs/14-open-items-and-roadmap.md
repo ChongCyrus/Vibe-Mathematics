@@ -93,6 +93,11 @@
 - ★ **第一个命名空间的裁决（`vmu.math`，126 键 ＝ 全表 24%）** ✓✓：它是 **25 个数学子域的开关/后端** ✓（`stats` 13／`discrete` 12／`nt` 12／`optim` 12／`linalg` 10／`ode` 10／`geom` 9／`symbolic` 9／`formal` 8／`bayes` 6／`units` 5 …，每个子域含基键 ＋ `backend` ＋ 细节 ✓）。**五问结果** ✓：①改变决定 ✓（开关/后端 ✓）②可调控 ✓ ③**消费者 ✗（实测零字符串引用** ✓）④去掉不丢能力 ✗（**引擎在 `vibe-math-v5/math-computation.js` 与 `math-engines.js`** ✓，不读这些键 ✓）⑤重复 ✗ ⇒ **判：不作实现 ✗，但【保留为已声明的扩展面】** ✓✓ —— **理由**：它们**正是本目标 ① 所要求的"尽可能广的扩展方向"** ✓，而 `planned.js` **就是承载扩展面的机制** ✓；**复活条件** ✓：**当某个数学面真的要在框架层暴露可调开关时**（届时按 ⓪ 步先找已有载体 ✓）。
 
 
+- ★ **轮 95：`vmu.notify` 逐键核完（它有真实消费者 ⇒ 最值得先核）** ✓✓：
+  **`kernel/notify.js` 读 9 个 `vmu.notify.*` 键，全部已声明** ✓✓ —— `dedupWindowMs`／`digestWindowMs`／`enabled`／`maxRegister`／`maxWatchers`／`onFailure`／`priorityFloor`／`quiet`／`registeredEvents`（＋ `vmu.hooks.registered` ✓）；**15 个 planned 无一被读取** ✗ ⇒ **该族不是"接线却标未实现"** ✓（**与轮 81／92 两套扫描一致** ✓）。
+  **那 15 个是什么** ✓：**多通道**（`channels`／`defaultChannel` ✓）／**摘要**（`digestDefaultMs`／`mergeWindowMs`／`mergeMaxPerDigest` ✓）／**静默时段**（`quietDefault`／`quietTimezone` ✓）／**保留**（`retentionMs`／`failureKeepMs`／`dropOnFailure` ✓）／**信噪比下限**（`snrFloor` ✓）／**抑制自身事件**（`suppressSelfEvents` ✓）／**必须给理由**（`requireReason` ✓）／**每观察者上限**（`maxSubjectsPerWatcher` ✓）／**跨机构**（`crossInstitution` ✓）。
+  **五问** ✓：①✓（通道/静默/保留都改行为 ✓）②✓ ③**✗（今天无消费者** ✓ —— **且 v5 预设不读框架设置** ✓）④✗（**未实现 ⇒ 去掉不丢任何已存在的能力** ✓）⑤✗ ⇒ **判：不作实现 ✗**；**复活条件（精确）** ✓：**当通知真的需要多通道／摘要／静默时段时** —— 届时**先扩 `notify.js`**（⓪ 步：载体已存在 ✓），**而不是新建面** ✓。
+
 ### 0.4 结论
 
 **审判到此为止** ✓✓：剩余体量经抽样核对为"**密集且携带决策**"的表与一行式条目 ✓；**继续裁剪的边际收益低于破坏设计资产的风险** ⇒ **除非出现新的"复制品／与裁决矛盾／无消费者且长规格"证据，不再扩大裁剪** ✗✓。
