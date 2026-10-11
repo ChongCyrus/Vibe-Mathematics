@@ -274,6 +274,31 @@ if (SELF_PROBE) {
   ok(/PLAIN/.test(otherLang.text), 'overridesByLang[+]: for another language the plain override still applies', otherLang.text.slice(0, 40))
 }
 
+
+// ── ROUND 242: declared sections and declared overrides (the verified half) ──────────────────────────────────
+{
+  const m = await import(pathToFileURL(MODULE).href)
+  const mkP = (settings, extra = {}) => m.createPromptPipeline(Object.assign({ sections: [], settings }, extra))
+
+  const declared = await mkP({ 'vmu.prompts.sections': [{ name: 'declared-one', order: 400, text: 'from the declaration' }] }).assemble({})
+  ok(/from the declaration/.test(declared.text),
+    'prompts.sections[+]: a section declared in settings reaches the assembled prompt', declared.text.slice(0, 50))
+  const none = await mkP({}).assemble({})
+  ok(!/from the declaration/.test(none.text), 'prompts.sections[empty]: with nothing declared the prompt is unchanged')
+
+  const merged = await mkP({ 'vmu.prompts.overrides': { 'decl-over': 'FROM-DECLARATION' } },
+    { sections: [{ name: 'decl-over', order: 403, text: 'own' }] }).assemble({})
+  ok(/FROM-DECLARATION/.test(merged.text), 'prompts.overrides[+]: a declared override applies', merged.text.slice(0, 50))
+  const callerWins = await mkP({ 'vmu.prompts.overrides': { 'decl-over': 'FROM-DECLARATION' } },
+    { sections: [{ name: 'decl-over', order: 403, text: 'own' }], overrides: { 'decl-over': 'FROM-CALLER' } }).assemble({})
+  ok(/FROM-CALLER/.test(callerWins.text) && callerWins.overrideMerge.declared === 1 && callerWins.overrideMerge.fromCaller === 1,
+    'prompts.overrides[precedence]: the CALLER wins over the declaration, and the receipt reports the merge', JSON.stringify(callerWins.overrideMerge))
+  // The kernel passes overrides: null EXPLICITLY; that must not throw.
+  const nullish = await mkP({ 'vmu.prompts.overrides': { 'decl-over': 'X' } },
+    { sections: [{ name: 'decl-over', order: 403, text: 'own' }], overrides: null }).assemble({})
+  ok(nullish.ok === true && /X/.test(nullish.text), 'prompts.overrides[null]: an explicit null is normalised, not fatal', nullish.text.slice(0, 40))
+}
+
 console.log('=== VMU PROMPT: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

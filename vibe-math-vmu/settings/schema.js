@@ -756,6 +756,9 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.prompts.locale.default', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: "会话未指定语言时的默认语言（空 ⇒ 只走回退链）" },
   { key: 'vmu.prompts.locale.fallbackChain', type: 'stringList', def: ['zh-Hans', 'zh', 'en'], hot: HOT.H1, who: 'office', doc: "回退链（自左向右；声明后【替换】默认链）" },
   { key: 'vmu.prompts.locale.onMissing', type: 'enum', domain: ['warn', 'refuse'], def: 'warn', hot: HOT.H1, who: 'office', doc: "四级都不存在时的处置（warn ⇒ 留痕继续；refuse ⇒ 具名拒）★ 域由本轮裁定并登记" },
+  // ROUND 242: the remaining prompt keys（06 卷声明；现由 kernel/prompt/index.js 读取）.
+  { key: 'vmu.prompts.sections', type: 'objectList', def: [], hot: HOT.H1, who: 'office', doc: "声明的段（§11 最高分来源；同名可带不同 lang 并存）" },
+  { key: 'vmu.prompts.overrides', type: 'object', def: {}, hot: HOT.H1, who: 'office', doc: "语言无关覆盖 {section:text}（合并【在调用方之下】⇒ 调用方仍可胜出，且合并被上报）" },
   { key: 'vmu.prompts.overridesByLang', type: 'object', def: {}, hot: HOT.H1, who: 'office', doc: "语言级覆盖 {section:{lang:text}}；解析出的语言命中时【优先于语言无关覆盖】" },
   { key: 'vmu.naming.conflictPolicy', type: 'enum', domain: ['refuse', 'suffix'], def: 'refuse', hot: HOT.H1, who: 'office', doc: "命名冲突策略（★ 只对【显式传入 record.id】生效：显式点名才是对名字的主张；由标题派生的名字不算冲突，因为同标题不同内容正是本面的内容身份语义 ✓）" },
   // ROUND 226: bayes / ode / stats / symbolic（docs/09 声明；现由 kernel/mathtools.js 读取）.

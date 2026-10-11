@@ -70,6 +70,11 @@ export function createPromptPipeline({
   const localeOnMissing = settings['vmu.prompts.locale.onMissing'] === 'refuse' ? 'refuse' : 'warn'
   const overridesByLang = settings['vmu.prompts.overridesByLang'] && typeof settings['vmu.prompts.overridesByLang'] === 'object'
     ? settings['vmu.prompts.overridesByLang'] : {}
+  // ROUND 242 (verified half): the declared sections and overrides.
+  if (overrides === null || typeof overrides !== 'object') overrides = {}   // the kernel passes null EXPLICITLY, so the default never applied
+  const declaredSections = Array.isArray(settings['vmu.prompts.sections']) ? settings['vmu.prompts.sections'] : []
+  const declaredOverrides = settings['vmu.prompts.overrides'] && typeof settings['vmu.prompts.overrides'] === 'object'
+    ? settings['vmu.prompts.overrides'] : {}
   /** The languages to try, in order, with the reason the list looks like it does. */
   const langOrder = (asked) => {
     const list = []
@@ -142,6 +147,11 @@ export function createPromptPipeline({
   }
 
   for (const s of sections) register(s)
+  // ROUND 242: a section DECLARED in settings is registered too - "settings inline" is the highest-scoring source in §11.
+  for (const s of declaredSections) register(s)
+  // The CALLER wins: a declared override only fills a key the caller left empty.
+  for (const [k, v] of Object.entries(declaredOverrides)) if (typeof v === 'string' && overrides[k] === undefined) overrides[k] = v
+  const overrideMerge = { declared: Object.keys(declaredOverrides).length, fromCaller: Object.keys(overrides).length }
 
   // A binding that names an unknown section is a configuration defect, not a no-op: silently ignoring it
   // would let a typo switch a rule off without a trace (the same reasoning as R4 for settings keys).
@@ -345,7 +355,8 @@ export function createPromptPipeline({
         // ROUND 241: a language decision that cannot be audited is not a decision.
         locale: { asked: (ctx && ctx.lang) || null, tried: langOrder(ctx && ctx.lang), default: localeDefault, chain: localeChain, onMissing: localeOnMissing,
           overrideSources: [...registry.keys()].map((n) => ({ section: n, source: overrideFor(n, ctx && ctx.lang).source })).filter((e) => e.source !== null) },
-          localeMisses: localeMisses.slice(),   // ROUND 241: what onMissing=warn recorded instead of refusing
+          localeMisses: localeMisses.slice(),
+        overrideMerge,   // ROUND 241: what onMissing=warn recorded instead of refusing
         enforced: ['vmu.prompts.locale.default', 'vmu.prompts.locale.fallbackChain', 'vmu.prompts.overridesByLang'], at: clock() }
     },
 
