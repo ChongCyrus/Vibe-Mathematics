@@ -193,6 +193,20 @@
   **轮 111 的有效一半保留** ✓✓：`wiredKeysOf` 现在认 `WIRED_<面>_KEYS` ✓ ⇒ **`TOTAL keys 287 → 291`** ✓（**补上 4 个"任何注册表都没有"的键** ✓）⇒ **实测**：`vmu.ballot` 模块自述 **21 wired／0 未在 core** ✓（**完全一致** ✓）；`course` 2 ✗／`instruments` 3 ✗／`store` 8 ✗ **未在 core**（**共 13** ✓）—— **其中 9 个的去向未查清** ✗ ⇒ **明写为未决项** ✓（**不猜** ✗）。
   **方法论** ✓✓：**"注释是线索、代码是证据"这条纪律，我自己也违反了** ✗ —— 上一轮我只读了生成器的注释就下结论 ✓ ⇒ **本轮读了 schema 的组装行才纠正** ✓。
 
+- ★★★ **轮 114：轮 113 的修法【前提是错的】—— 那些清单是【声明】，不是【读取路径】** ✗✓✓（**第 44 例，且是我自己上一轮的错** ✓）：
+  **实测** ✓✓：四个面的 `WIRED_<面>_KEYS` **唯一的用途是报告函数** ✗ ——
+  ```
+  storepolicy.js:78   const keysUsed = () => WIRED_STORE_KEYS.slice()
+  instruments.js:82   const keysUsed = () => WIRED_INSTRUMENT_KEYS.slice()
+  course.js:102       const keysUsed = () => WIRED_COURSE_KEYS.slice()
+  ballotbox.js:101    const keysUsed = () => WIRED_BALLOT_KEYS.slice()
+  ```
+  ⇒ **没有一处用它们去取值** ✗ ⇒ **12 个键被列为"已接线"却【从不被读】** ✓✓ ⇒ ⇒ **"自称 wired、从不 read"** ✓（**比轮 41 更锋利** ✓）。
+  **所以轮 113 的前提（"活在导出清单里 ⇒ 已接线"）错了** ✗✓：我让生成器**优先信任清单** ✓ ⇒ **结果是把 12 个无人读取的键提升为 core** ✗ ⇒ **它们现在在 schema 里声明为"可调"，而改了不会有任何行为变化** ✗ —— **正是 docs 自己警告的那种状态** ✓✓。
+  **现状（已提交，仍全绿）** ✓：`TOTAL keys=304` ✓、`core=726` ✓、`planned=481` ✓ ⇒ **但其中 12 个是"声明了没人读"** ✗。
+  **正确修法（已定位，尚未实施 ✗）** ✓✓：**把未读的 12 个键从 `WIRED_<面>_KEYS` 移入 `PLANNED_<面>_KEYS`** ✓ —— **让模块自述与注册表一致** ✓（`instruments`／`course`／`ballotbox` 的 planned 是 **`[键, 理由]` 对** ✓ ⇒ **每键都要给理由** ✓）；然后**重新生成**（生成器 `splice` 会**整块替换** ✓ ⇒ 未 emit 的键会**从 core 消失** ✓✓）。**待移清单** ✓：`course` 2（`visibility`／`submitMode` ✓）／`instruments` 3（`priorityPolicy`／`waitlistPolicy`／`hashAlgo` ✓）／`store` 8（`backend`／`root`／`tmpDir`／`remote`／`remote.consistency`／`remote.offlinePolicy`／`remote.url`／`onVersionTooHigh` ✓）。
+  **方法论** ✓✓：**"清单"也是一种【字面量】** ✗ —— 第 43 例是"子串判定" ✓、第 44 例是"**把清单当读取**" ✓ ⇒ **同一个坑的两副面孔** ✓；**判"是否接线"永远只能看【取值形态】** ✓✓（**这条我已在轮 81 立过，本轮又违反一次** ✗）。
+
 ### 0.4 结论
 
 
