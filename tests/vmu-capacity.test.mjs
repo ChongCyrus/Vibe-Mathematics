@@ -20,7 +20,14 @@ const ok = (cond, name, detail) => {
 const DAY = 86400000
 
 let NOW = 1_000_000
-const mk = (settings = {}) => createCapacity({ clock: () => NOW, settings })
+/**
+ * ROUND 169 — the face can prove its wired keys are really READ, not merely listed. `capacity.js` prefers
+ * `settings.get` when one is supplied (measured at L76), so a recording getter captures exactly what the tests touch.
+ * (For a module that reads the settings object directly, the equivalent device is a Proxy - see the hr suite.)
+ */
+const READS = []
+const rec = (vals) => ({ get: (k) => { READS.push(k); return (vals || {})[k] } })
+const mk = (settings = {}) => createCapacity({ clock: () => NOW, settings: rec(settings) })
 
 // ── 1. seatsPerDomain ───────────────────────────────────────────────────────────────────────────────
 {
@@ -292,8 +299,24 @@ const mk = (settings = {}) => createCapacity({ clock: () => NOW, settings })
   ok(Array.isArray(mk({}).status().gateScenarios) && mk({}).status().gateScenarios.length === 3, 'status() self-discloses the C2 scenario names')
 }
 
+// ROUND 169: the precondition behind "every key is wired", asserted and measurable - a listed key that no test path
+// ever reads is the weakness the generated ledger inherited from round 115.
+// NOTE (measured): this block must sit BEFORE the `if (failed === 0)` early-exit below. Inside it, the condition has
+// already been evaluated, so a failure added here can no longer prevent the exit and the control cannot fire.
+{
+  const unread = WIRED_KEYS.filter((k) => READS.indexOf(k) === -1)
+  ok(unread.length === 0, 'every wired key was really READ by the suite, not merely listed (' + (unread.length ? 'unread: ' + unread.join(', ') : READS.length + ' reads recorded') + ')')
+}
+
 if (failed === 0) {
-  console.log('=== VMU CAPACITY: ' + passed + ' passed, 0 failed ===')
+  // ROUND 169: the precondition behind "every key is wired", asserted and measurable - a listed key that no test path
+// ever reads is the weakness the generated ledger inherited from round 115.
+{
+  const unread = WIRED_KEYS.filter((k) => READS.indexOf(k) === -1)
+  ok(unread.length === 0, 'every wired key was really READ by the suite, not merely listed (' + (unread.length ? 'unread: ' + unread.join(', ') : READS.length + ' reads recorded') + ')')
+}
+
+console.log('=== VMU CAPACITY: ' + passed + ' passed, 0 failed ===')
   process.exit(0)
 }
 for (const f of failures) console.log('  FAIL - ' + f)
