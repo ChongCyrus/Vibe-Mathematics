@@ -679,6 +679,14 @@
   ★★ **顺带发现（具名后续 ✗）**：**`retention.js` 有 0 张 `WIRED_*` 表，却读 17 个键** ✗ ⇒ ★ **轮 167 的"18 个面"覆盖不到它** ✓（**它的读取无人申报、也没有"每个 wired 键必须真被读"的断言** ✗）⇒ **后续：给 `retention` 补表 ＋ 补断言（与其余 12 面同规）** ✓。
   **未做（明写 ✗）**：**其余 3 条计划键未过审** ✗（`ballotbox` 的 `freezeMode`／`freezeMeetingLinked`／`reopenInitiatorScope`／`reopenSameMeetingOnly` ✓）；★ **`retention` 的 WIRED 表与断言未补** ✗；**`docs/04` 生成行的"提及 vs 声明"矛盾未修** ✗；**v5 institute 两条 mutant 家族真因** ✗。
 
+- ★★★ **轮 192：补上 `retention` 的"每个键真被读"断言 —— 用【自描述】设计，不凭空造数组** ✓✓
+  **先查这 17 个键今天从哪来** ✓✓：★ **它们【早就在生成表里标 ✅ 已接线】** ✓，且"谁"列**点名归属模块**（`vmu.records.retention.*` → `kernel/records.js` ✓；`vmu.gc.*`／`vmu.quota.*` → `kernel/retention.js` ✓）；`settings/schema.js` 含它们 ✓。★ 生成器头部把机制写得很清楚 ✓：「**WIRED SCHEMA — put the keys kernel modules REALLY READ into the core schema**」✓／「**rounds 67-68 实测：十二个模块导出 `WIRED_KEYS`，共 270 键，而 `schema.js` 一个都没声明**」✓／且它**认 `WIRED_<FACE>_KEYS` 这套命名** ✓。
+  ★ **并且注意到该模块的一条自述** ✓（L45-47 ✓）：「**This module has no such array, so none is invented.**」✗✓ ⇒ ★ **那说的是 `enforced[]` 逐调用清单（D3 纪律）✓，不是 wired 键表** ✓ ⇒ **但它的精神是"别凭空造数组"** ✓ ⇒ ★★ **于是本轮选了更优的设计** ✓✓。
+  **实现（自描述 ✓，两处编辑 ✓）** ✓✓：其套件**只有一个构造助手**（L40 ✓）⇒ ① **装上共享记录器**（该面**按下标直读** ✓ ⇒ Proxy 的 `get` trap 正是要记的路由 ✓）；② **在摘要前**断言：★ **键表【从模块源码】用 `settings\['…'\]` 提取** ✓ ⇒ **模块加一个键，断言自动跟上** ✓；★ **并加 `>= 15` 的非空过地板** ✓（**正则一坏就红，而不是静默通过** ✓✓）。
+  **结果与对照** ✓✓：**`VMU RETENTION: 56 passed, 0 failed`** ✓；★ **对照触发** ✓ 且数字正确：`FAIL … (17 declared by the module, 1057 reads recorded)` ✓ ⇒ ★★ **缺的只是【断言】，覆盖本身是够的** ✓（**这是一条诚实的结论：轮 191 的"缺口"是"无人申报"，不是"没被读"** ✓）。
+  ★ **docs 同步** ✓：`docs/00` §6 的第 8 行 **"12/12 面" ⇒ "13 个面"** ✓（**第 13 个即 `retention`** ✓）。
+  **未做（明写 ✗）**：**`ballotbox` 剩 4 条计划键未过审** ✗；**`docs/04` 生成行的"提及 vs 声明"矛盾未修** ✗；**v5 institute 两条 mutant 家族真因** ✗。
+
 ### 0.4 结论
 
 

@@ -5,6 +5,8 @@
 // trash/restore/purge with named refusals; determinism with an injected clock; read-only surfaces;
 // ASYNC adapter compatibility (the real kernel/library.js surface is async).
 import { createRetention, refuse, RETENTION_WARNING, QUOTA_SOFT_WARNING } from '../vibe-math-vmu/kernel/retention.js'
+import { readFileSync } from 'node:fs'
+import { makeRecorder } from './helpers/settings-recorder.mjs'
 
 let pass = 0, fail = 0
 const ok = (cond, label) => { if (cond) { pass++ } else { fail++; console.log('FAIL ' + label) } }
@@ -37,7 +39,16 @@ function mkAsyncLib(seed = []) {
     restore: async (id) => sync.restore(id),
   }
 }
-const mk = (settings = {}, lib = null, cap = 200) => createRetention({ clock: () => NOW, log: () => {}, settings, library: lib, maxActions: cap })
+/**
+ * ROUND 192: the shared universal recorder (tests/helpers/settings-recorder.mjs). This module reads settings by
+ * INDEX, so the proxy `get` trap is the route that has to be recorded. ALL accumulates every construction's reads.
+ */
+const ALL = []
+const mk = (settings = {}, lib = null, cap = 200) => {
+  const rec = makeRecorder(settings)
+  ALL.push(rec.reads)
+  return createRetention({ clock: () => NOW, log: () => {}, settings: rec.settings, library: lib, maxActions: cap })
+}
 
 // 1) zero-config: no library ⇒ empty plan, no throw, honest reason, read-only status
 {
@@ -239,6 +250,20 @@ const mk = (settings = {}, lib = null, cap = 200) => createRetention({ clock: ()
 // 14) the module exports the named-refusal helper and the counted marker
 ok(typeof refuse === 'function' && refuse('X', 'm').code === 'X', 'refuse() builds a named error')
 ok(RETENTION_WARNING === 'VMU_RETENTION_TRUNCATED', 'the counted-truncation marker is exported')
+
+/**
+ * ROUND 192: the precondition behind `docs/04`'s green tick for this face - every settings key the module READS must
+ * be read by this suite, not merely listed in the generated table. The list is extracted from the module SOURCE, so
+ * it cannot drift from the code, and the floor of fifteen keys keeps a broken extraction from passing vacuously.
+ */
+{
+  const src = readFileSync(new URL('../vibe-math-vmu/kernel/retention.js', import.meta.url), 'utf8')
+  const declared = [...new Set([...src.matchAll(/settings\['([^']+)'\]/g)].map((m) => m[1]))]
+  const reads = ALL.flat()
+  const unread = declared.filter((k) => reads.indexOf(k) === -1)
+  ok(declared.length >= 15 && unread.length === 0,
+    'every key the module reads from settings was really READ by this suite (' + declared.length + ' declared by the module, ' + reads.length + ' reads recorded' + (unread.length ? '; unread: ' + unread.join(', ') : '') + ')')
+}
 
 console.log('=== VMU RETENTION: ' + pass + ' passed, ' + fail + ' failed ===')
 process.exit(fail ? 1 : 0)
