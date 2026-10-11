@@ -208,6 +208,7 @@
 ## 16. 身份与归属（Identity & Membership）
 
 - **本地身份（local identity）** ｜ 目的：实例身份自证 ｜ 面向谁：框架 ｜ 接口形状：**已实现 ✓**＝`config.instance`（身份自证 ✓）＋`kernel.members.roster()` ✓ ｜ 可调控：`vmu.identity.localFormat` ｜ 错误码：`VMU_NOT_MEMBER`（✓）／`VMU_NO_SUCH_OBJECT`（✓） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：身份**只在本地有效**；跨机构必须重新绑定 ✓ ｜ 依赖：内核 ✓ ｜ 成熟度：**已实现 ✓** ｜ 优先级：P0
+> ★ **该键的承载者定位（轮 290 实测）** ✗✓：**本条的"接口形状"说实现是 `config.instance` ＋ `kernel.members.roster()`** ✓ —— **实测：`roster()` 是【被注入各面的接缝**（`bidding.js` L163／`delegation.js` L532／`grant.js` L80 等 ✓），`config.instance` 也【来自宿主**，**内核只接收**）** ✓ ⇒ ★★ **故"本地身份的格式"这一旋钮【在内核里没有落点**：身份由宿主给出，内核不格式化它** ✗**）** ✓ ⇒ **接线前提＝先有一个【由内核格式化本地身份】的落点** ✓（**与 `docs/10` §1 的分界一致：框架给机制，身份实例来自宿主 ✓**）。
 - 宿主主体绑定（principal binding）** ｜ 目的：需要时把代理挂到人类账号上 ｜ 面向谁：机构／人类 ｜ 接口形状：**键已接线 ✓**（`identity.js` 读取 `vmu.identity.principalBinding` 并列入 `enforced` ✓）｜ ★ **宿主 SSO/OIDC 接缝仍未实现** ✗ ⇒ 缺的是让 `advisory/required` 可被**验证**的能力 ✓
 - **归属与多机构（membership）** ｜ 目的：一个实例能不能属于多个机构 ｜ 面向谁：机构 ｜ 接口形状：规划 `kernel.identity.memberships(id)`（⛔ 未实现） ｜ 可调控：`vmu.identity.multiMembership`（默认 **false**）／`maxMemberships` ｜ 错误码：`VMU_IDENTITY_MULTI_DENIED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：默认**单一归属**（避免责任不清 ✓）；多归属时**权限取交集**（S-2 ✓） ｜ 依赖：席位 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P3
 - **化名与匿名（pseudonymity）** ｜ 目的：某些场景要保护提出者 ｜ 面向谁：机构 ｜ 接口形状：规划 `kernel.identity.pseudonym(scope)`（⛔ 未实现） ｜ 可调控：`vmu.identity.allowPseudonym`（默认 false）／`pseudonymScopes[]` ｜ 错误码：`VMU_IDENTITY_PSEUDONYM_DENIED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**匿名不等于不可审计**（审计侧保留可解绑映射 ✓）；**投票匿名**另有 08 的 `vmu.ballot.secrecy` ✓ ｜ 依赖：08 表决匿名面 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P3
