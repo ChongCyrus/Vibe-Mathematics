@@ -34,21 +34,20 @@ export const WIRED_COURSE_KEYS = Object.freeze([
   // reading a key while still claiming it unwired was the stale half of the pair this project keeps finding, and the
   // generator invariant that nothing a module reads may be silently dropped is what forced the move.
   'vmu.course.visibility', 'vmu.course.submitMode', 'vmu.course.ontologyVersion', 'vmu.course.publishToLibrary',
+  // ROUND 154: implemented at the outcome-alignment path (see align) - read, and it DECIDES (a shortfall is a
+  // named refusal carrying the current count and the threshold).
+  'vmu.course.readingsRequired',
 ])
 /** 未接：**逐个点名＋原因** ✗✓。 */
 export const PLANNED_COURSE_KEYS = Object.freeze([
   /**
-   * ROUND 153: all three were MEASURED as declaration-only - each name appears in this module exactly twice, once in
-   * the key list and once in the reason below, with no `readKey` call and no branch (the third hit for `maxUnits` is
-   * a comment saying it does not take part). So the mechanism each reason describes is right. What they lacked was
-   * WHERE the capability lives and what would revive the key, which every entry now states.
+   * ROUND 154: `readingsRequired` LEFT this list - it is implemented in `align()` now, at the outcome-alignment path
+   * its own revival condition named, so it is read and it decides (a shortfall is a named refusal carrying the
+   * current count and the threshold). The two that remain are carried elsewhere and say where.
    */
   ['vmu.course.blindMappingRetentionMs', '保留机制由 **`retention` 面**承载 ✓（`removed[]` 让每次移除可追 ✓、`library.list({scope})` 可读 ✓）；'
     + '本面**无持久化面** ⇒ 该键的落点在 **`retention` 的登记里** ✓，不必各面自带一份 ✗。'
     + '**复活条件** ✓：盲审映射表真的需要独立保留期时 ⇒ 在 `retention` 面声明，而不是在课程面内落盘 ✗'],
-  ['vmu.course.readingsRequired', '★ **全仓无承载** ✓（实测 `readings` 在 `records`／`library`／`topology` **零命中** ✓）：本面只给"成果↔产物对齐"的形状 ✓。'
-    + '**复活条件** ✓：当"每位学员精读 N 篇"成为真实评测项 ⇒ 加在**本面的成果对齐路径**（那里已有 outcome↔artifact 具名拒 ✓），'
-    + '并**引用 `library` 条目而不是复制内容** ✓'],
   ['vmu.course.maxUnits', '容量机制由 **`capacity` 面**承载 ✓（`vmu.capacity.seatsPerDomain`／`machineHoursPool`／`overcommitRatio` ✓），'
     + '但那是**域级**上限、**没有课程级人数上限** ✓。**复活条件** ✓：需要课程级上限时 ⇒ 加在 `course.js` 的**招生/注册路径**'
     + '（`cohort` 增长处 ✓）—— **那才是"超额"发生的地方** ✓'],
@@ -112,6 +111,9 @@ export function createCourse(opts) {
       rubricRequired: b('vmu.course.rubricRequired', true),
       requireRubricRef: b('vmu.course.requireRubricRef', true),
       requireEvidence: b('vmu.course.requireEvidence', true),
+    // ROUND 154: the required number of cited readings per alignment. 0 (the default) means no requirement, so
+    // nothing changes unless a course asks for it.
+    readingsRequired: n('vmu.course.readingsRequired', 0),
       peerWeight: Number(readKey('vmu.course.peerWeight')) > 0 ? Number(readKey('vmu.course.peerWeight')) : 0,
       retentionMs: n('vmu.course.retentionMs', 0),
       // ROUND 127: publishing to the institution library. The documented default is FALSE - privacy - so a
@@ -216,8 +218,30 @@ export function createCourse(opts) {
       const missing = outcomes.filter((oc) => !Array.isArray(artifacts[oc]) || artifacts[oc].length === 0)
       if (missing.length) return deny('VMU_META_VALIDATION_FAILED', '成果缺证据（**点名**）：' + missing.join('、'), '给每条成果至少一个产物引用（**只引不复制** ✗）', enforced)
     }
+    /**
+     * ROUND 154 — `vmu.course.readingsRequired` IS IMPLEMENTED HERE, at the outcome-alignment path, which is exactly
+     * what its own revival condition named. Readings are REFERENCES to library entries - cited, never copied, the same
+     * rule the instrument capture and the lean archive follow. Duplicates and blanks are COUNTED, not silently
+     * dropped: a requirement that can be satisfied by listing the same entry three times is not a requirement.
+     */
+    const readings = []
+    let droppedReadings = 0
+    for (const item of (Array.isArray(args.readings) ? args.readings : [])) {
+      const r = String(item === undefined || item === null ? '' : item).trim()
+      if (r === '' || readings.indexOf(r) !== -1) { droppedReadings += 1; continue }
+      readings.push(r)
+    }
+    if (c.readingsRequired > 0) {
+      mark(enforced, 'vmu.course.readingsRequired')
+      if (readings.length < c.readingsRequired) {
+        return deny('VMU_COURSE_READINGS_SHORT',
+          '必读量未达（**当前 ' + readings.length + ' 篇 / 门槛 ' + c.readingsRequired + ' 篇**，vmu.course.readingsRequired）',
+          '给 `readings`：**引用库条目**（只引不复制 ✗）；重复与空串已计入丢弃数 ' + droppedReadings + ' ✓', enforced)
+      }
+    }
     course.outcomes = outcomes.slice()
-    return { ok: true, courseId: course.id, outcomes: outcomes.length, enforced, enforcedScope: ENFORCED_SCOPE }
+    course.readings = readings.slice()
+    return { ok: true, courseId: course.id, outcomes: outcomes.length, readings: readings.length, droppedReadings, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
   const submit = (a) => {

@@ -612,6 +612,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.course.ontologyVersion', type: 'string', def: '1', hot: HOT.H1, who: 'office', doc: "已接线（course.js 读取）；默认值取自模块源码" },
   { key: 'vmu.course.peerWeight', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（course.js 读取）；默认值取自模块源码" },
   { key: 'vmu.course.publishToLibrary', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（course.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.course.readingsRequired', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（course.js 读取）；默认值取自模块源码" },
   { key: 'vmu.course.requireEvidence', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（course.js 读取）；默认值取自模块源码" },
   { key: 'vmu.course.requireRubricRef', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（course.js 读取）；默认值取自模块源码" },
   { key: 'vmu.course.retentionMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（course.js 读取）；默认值取自模块源码" },

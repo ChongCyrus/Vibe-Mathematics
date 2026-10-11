@@ -310,6 +310,29 @@ test('publishToLibrary defaults to privacy: publishing is REFUSED until it is sw
   passed += 1
 })
 
+// ⑨ ROUND 154：readingsRequired —— 必读量是【引用库条目】的真门槛（默认 0 ＝ 无要求 ✓）
+test('readingsRequired refuses a short alignment with the counts, and never counts a padded list', () => {
+  const base = { 'vmu.course.requireEvidence': false }
+  const need = co(Object.assign({ 'vmu.course.readingsRequired': 2 }, base))
+  const o = need.open({ title: 'T' })
+  const short = need.align({ courseId: o.courseId, outcomes: ['O1'], readings: ['lib/a'] })
+  assert.equal(short.ok, false, '未达门槛 ⇒ 拒')
+  assert.equal(short.code, 'VMU_COURSE_READINGS_SHORT')
+  assert.ok(String(short.message).indexOf('当前 1 篇 / 门槛 2 篇') !== -1, '拒里给【当前/门槛】：' + short.message)
+
+  const padded = need.align({ courseId: o.courseId, outcomes: ['O1'], readings: ['lib/a', 'lib/a', '  ', 'lib/b'] })
+  assert.equal(padded.ok, true, '★ 重复与空白【不计入】⇒ 两条真实引用达标')
+  assert.equal(padded.readings, 2, '生效条数＝2')
+  assert.equal(padded.droppedReadings, 2, '★ 丢弃必须【计数】（重复 1 ＋ 空白 1）')
+
+  const zero = co(base)
+  const z = zero.open({ title: 'T' })
+  const none = zero.align({ courseId: z.courseId, outcomes: ['O1'] })
+  assert.equal(none.ok, true, '默认 0 ⇒ 无要求（既有行为零变化）')
+  assert.equal(none.readings, 0, '没有引用 ⇒ 0 条')
+  passed += 1
+})
+
 for (const c of cases) {
   try { await c.f(); console.log('ok - ' + c.n) } catch (e) { failed += 1; console.log('FAIL - ' + c.n + ' :: ' + String((e && e.message) || e)) }
 }
