@@ -534,6 +534,7 @@ for (const sp of founding) {
   assert(sp.persona.length < 1800, 'short fixed charter stays under budget')
   assert(!/在册常驻研究员：/.test(sp.persona), 'volatile roster is not frozen into short charter')
 }
+assert(founding.length > 0, 'charter ownership checks have founding members')
 for (const sp of founding) {
   const owner = memberOfChild(sp.childId)
   assert(sp.persona.indexOf('Members/' + owner + '/') !== -1, owner + "'s charter points at Members/" + owner + '/')

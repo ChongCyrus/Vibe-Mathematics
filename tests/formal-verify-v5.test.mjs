@@ -685,6 +685,7 @@ const w3 = await wakeAndReply(RF, 'r-1', { formal: { target: 'p-reply3', decisio
 assert(!!w3, 'r-1 was woken for the third judgement')
 const said = delivered.map(d => d.prompt).join('\n')
 assert(/必须写明 note/.test(said), 'a blocked judgement without a note is refused with an explicit notice to the member')
+// EMPTY_ALLOWED: a refused judgement must not create a record, including in an empty store.
 assert((await callTool('vibe_v5_status', {}, RF)).formal.objects.every(o => o.target !== 'p-reply3'),
   'and no blocker record is created for the refused judgement')
 
@@ -739,6 +740,7 @@ delivered.length = 0
 const wDef2 = await wakeAndReply(RG, 'r-1', { formal: { target: 'p-def2', decision: 'defect' }, contextPct: 20 })
 assert(!!wDef2, 'the reviewer was woken for the note-less defect')
 assert(/必须写明 note/.test(delivered.map(d => d.prompt).join('\n')), 'a defect without a note is refused with an explicit notice')
+// EMPTY_ALLOWED: a refused defect must not create a record, including in an empty store.
 assert((await callTool('vibe_v5_status', {}, RG)).formal.objects.every(o => o.target !== 'p-def2'),
   'and no record is created for the refused defect')
 

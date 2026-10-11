@@ -11,6 +11,7 @@
 //
 // Usage: node tests/audit-vmu-release.mutants.mjs
 
+// Explicit filters preserve every fixture while avoiding Node's Windows native directory-copy/ACL path.
 import { cpSync, mkdtempSync, readFileSync, writeFileSync, rmSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -42,7 +43,7 @@ const runAudit = ({ docs, pkg, preset }) => {
 const freshCopy = (tag) => {
   const dir = join(scratch, tag)
   mkdirSync(dir, { recursive: true })
-  cpSync(join(REAL_VMU, 'docs'), join(dir, 'docs'), { recursive: true })
+  cpSync(join(REAL_VMU, 'docs'), join(dir, 'docs'), { recursive: true, filter: () => true })
   cpSync(join(REAL_VMU, 'agent.cordis.yml'), join(dir, 'agent.cordis.yml'))
   cpSync(join(REPO, 'package.json'), join(dir, 'package.json'))
   return { docs: join(dir, 'docs'), pkg: join(dir, 'package.json'), preset: join(dir, 'agent.cordis.yml') }

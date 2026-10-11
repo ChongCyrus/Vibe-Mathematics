@@ -10,7 +10,7 @@
 // ============================================================
 import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, dirname, isAbsolute, delimiter } from 'node:path'
+import { join, dirname, isAbsolute } from 'node:path'
 
 // V5_PLUGIN lets a sensitivity probe point this suite at a deliberately broken copy.
 const PLUGIN = process.env.V5_PLUGIN
@@ -76,7 +76,12 @@ const ctx = {
     if (name === 'compaction') return undefined
     if (name === 'subprocess') {
       return {
-        async spawn({ argv }) {
+        async resolveExecutable(name) {
+          if (name === 'xelatex') return 'C:/fixture/xelatex'
+          throw new Error('fixture executable not found: ' + name)
+        },
+        spawn({ argv }) {
+          if (argv[0] === 'C:/fixture/xelatex') throw new Error('fixture compiler start refused')
           const script = argv[argv.length - 1] || ''
           if (/New-Item/.test(script)) {
             const paths = []
@@ -132,6 +137,7 @@ const ctx = {
   },
 }
 
+const IS_V5R = /vibe-math-v5r/.test(PLUGIN.pathname)
 const mod = await import(PLUGIN.href + '?t=' + Date.now())
 const plugin = mod.default || mod
 plugin.apply(ctx)
@@ -307,12 +313,22 @@ assert(started.ok === true, 'vibe_v5_start ok (' + JSON.stringify(started).slice
 assert(spawns.length === 4, 'founded 1 academician + 3 researchers (got ' + spawns.length + ')')
 assert(!!spawnOf('acad'), 'academician acad exists')
 assert(['r-1', 'r-2', 'r-3'].every(r => !!spawnOf(r)), '3 permanent researchers r-1..r-3')
-assert(spawns.every(s => typeof s.persona === 'string' && s.persona.length <= 1800 && s.persona.includes('Shared/Protocol.md')), 'every member receives a short charter and discovers the full handbook')
-assert(spawns[0].persona.indexOf('研究状态写 Progress/') !== -1 && spawns[0].persona.indexOf('完整材料位置') !== -1,
-  'charter carries the progress definition AND its purpose explanation')
-assert(spawns[0].persona.indexOf('分派与督办') !== -1 && spawns[0].persona.indexOf('不能单方面定论') !== -1,
-  'charter describes the academician as the organizational centre (duties + four boundaries)')
-assert(spawns[0].persona.includes('至少 m 张同向布尔票') && spawns[0].persona.includes('没有反向票'), 'charter preserves the m-vote rule; the live m is in the per-round state')
+// v5 and v5r intentionally use different charter formats; keep both contracts explicit.
+if (IS_V5R) {
+  assert(spawns.length > 0, 'v5r charter check has real members')
+  assert(spawns.every(s => typeof s.persona === 'string' && s.persona.includes('Progress/progress.md')), 'v5r retains its full research charter')
+  assert(spawns[0].persona.includes('你的研究日志'), 'v5r charter explains the research log')
+  assert(spawns[0].persona.includes('组织与协调中心'), 'v5r charter defines the academician role')
+  assert(spawns[0].persona.includes('布尔概率值') && spawns[0].persona.includes('不能定论'), 'v5r charter preserves the m-vote rule')
+} else {
+  assert(spawns.length > 0, 'v5 charter check has real members')
+  assert(spawns.every(s => typeof s.persona === 'string' && s.persona.length <= 1800 && s.persona.includes('Shared/Protocol.md')), 'every member receives a short charter and discovers the full handbook')
+  assert(spawns[0].persona.indexOf('研究状态写 Progress/') !== -1 && spawns[0].persona.indexOf('完整材料位置') !== -1,
+    'charter carries the progress definition AND its purpose explanation')
+  assert(spawns[0].persona.indexOf('分派与督办') !== -1 && spawns[0].persona.indexOf('不能单方面定论') !== -1,
+    'charter describes the academician as the organizational centre (duties + four boundaries)')
+  assert(spawns[0].persona.includes('至少 m 张同向布尔票') && spawns[0].persona.includes('没有反向票'), 'charter preserves the m-vote rule; the live m is in the per-round state')
+ }
 
 const st0 = await callTool('vibe_v5_status', {})
 assert(st0.backend === 'file', 'durable state uses the hardened JSON backend (got ' + st0.backend + ')')
@@ -440,7 +456,6 @@ assert(sawStaff, '* V5-A3 the staff persona reaches the member persona/prompts (
 // preset (V5_PLUGIN=<abs path to vibe-math-v5r/vibe-math-v5r.js>). The static half of the same
 // guarantee always runs in tests/audit-v5-integrity.mjs (gates R10[1..7], each with a single-site
 // self-probe mutation that reddens it BY NAME).
-const IS_V5R = /vibe-math-v5r/.test(PLUGIN.pathname)
 const instDirR10 = join(WS, 'VibeMath', 'Projects', 'default', 'Institutes', 'institute')
 const chatTextR10 = () => {
   const d = join(instDirR10, 'Shared', 'Chat')
@@ -3293,14 +3308,10 @@ assert(/\\documentclass/.test(paperTex) && /\\begin\{document\}/.test(paperTex),
 // The old assertion(s) read `status` alone, so states 2 and 3 were indistinguishable — that is exactly what task-232
 // flagged and task-235 fixed. `status` semantics are UNCHANGED (no renaming, per the ruling); `railRefused` is the
 // machine-readable discriminator, plus per-attempt `started`.
-const LATEX_ORDER = ['xelatex', 'latexmk', 'pdflatex', 'lualatex', 'tectonic']
-const latexOnPath = LATEX_ORDER.filter((bin) => (process.env.PATH || '').split(delimiter).filter(Boolean)
-  .some((d) => existsSync(join(d, bin)) || existsSync(join(d, bin + '.exe'))))
 const compileMeta = (paperMeta && paperMeta.compile) || {}
-// Visible host note (NOT a divergent assertion): this suite's host stub exposes only `subprocess.spawn` and has no
-// `subprocess.run`, so `runPaperProcess` can never launch a compiler here — the harness can only exercise state 2,
-// on ANY host. State 3 needs a host whose subprocess.run really returns an exit code (named in the task report).
-console.log('  HOST-BRANCH(LaTeX): engines on PATH = [' + (latexOnPath.join(', ') || 'none') + '] ; this harness stub has no subprocess.run ⇒ state 2 (railRefused) is expected')
+// Explicit fixture: the resolver finds xelatex, then synchronous spawn refuses it.
+// This tests state 2 independently of software installed on the machine.
+console.log('  HOST-BRANCH(LaTeX): fixture xelatex resolves, spawn refuses ⇒ state 2 (railRefused) is expected')
 assert(!!paperMeta && compileMeta.status === 'failed',
   '★ the compile rail degrades to status=failed and still delivers md+tex (' + JSON.stringify(compileMeta) + ')')
 assert(compileMeta.railRefused === true,

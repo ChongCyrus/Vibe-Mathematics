@@ -14,11 +14,12 @@
  *
  * Usage: node tests/e2e-f1-agent-detach.test.mjs
  */
+import { homedir } from 'node:os'
 import { createRequire } from 'node:module'
 import { existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { pathToFileURL, fileURLToPath } from 'node:url'
 
 /**
  * Where the installed DSH host packages live.
@@ -50,6 +51,17 @@ const NM = (() => {
     candidates.push(join(globalRoot, '@deepseek-ai'))
   }
   const hit = candidates.find((d) => existsSync(join(d, 'cordis')) && existsSync(join(d, 'dsh-agent')))
+  // Desktop bundles its actual host inside ASAR; Electron's Node runtime can load it.
+  const desktop = [process.env.DSH_DESKTOP_EXE, process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, 'Programs', 'DeepSeek Harness', 'DeepSeek Harness.exe'), join(homedir(), 'AppData', 'Local', 'Programs', 'DeepSeek Harness', 'DeepSeek Harness.exe')].find(p => p && existsSync(p))
+  if (!hit && !process.versions.electron && desktop && existsSync(desktop)) {
+    const bundled = join(dirname(desktop), 'resources', 'app.asar', 'dsh', 'node_modules', '@deepseek-ai')
+    const run = spawnSync(desktop, [fileURLToPath(import.meta.url)], {
+      windowsHide: true, stdio: 'inherit', timeout: 30000,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', DSH_NODE_MODULES: bundled },
+    })
+    if (run.error) console.error(run.error.message)
+    process.exit(run.status === null ? 1 : run.status)
+  }
   if (hit === undefined) throw new Error('e2e-f1-agent-detach: cannot locate the installed DSH host packages; looked in:\n  ' + candidates.join('\n  '))
   return pathToFileURL(hit).href
 })()

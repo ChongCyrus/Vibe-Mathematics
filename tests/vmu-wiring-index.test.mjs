@@ -226,9 +226,9 @@ const rows = dataRows(block)
   const makeTree = (tag) => {
     const dir = mkdtempSync(join(tmpdir(), 'vmu-wiring-' + tag + '-'))
     const docsCopy = join(dir, 'docs')
-    cpSync(DOCS, docsCopy, { recursive: true })
+    cpSync(DOCS, docsCopy, { recursive: true, filter: () => true })
     const vmuCopy = join(dir, 'vibe-math-vmu')
-    cpSync(VMU, vmuCopy, { recursive: true })
+    cpSync(VMU, vmuCopy, { recursive: true, filter: () => true })
     const readme = join(dir, '00-README.md')
     copyFileSync(join(docsCopy, '00-README.md'), readme)
     const env = { VMU_SETTINGS_DOC: join(docsCopy, '04-settings.md'), VMU_DOCS_DIR: docsCopy,

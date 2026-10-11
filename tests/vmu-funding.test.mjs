@@ -320,7 +320,7 @@ const ev = { receipt: 'r-1' }
   const f = mk({})
   const st = f.status()
   ok(WIRED_KEYS.length === 16, 'the face wires all 16 declared vmu.funding.* keys', String(WIRED_KEYS.length))
-  ok(st.declaredFundingKeys === 16, 'the declared universe is read from settings/planned.js', String(st.declaredFundingKeys))
+  ok(st.declaredFundingKeys === 16, 'the declared universe is read from settings/schema.js (core + planned)', String(st.declaredFundingKeys))
   ok(st.plannedKeys.length + st.wiredCount === st.declaredFundingKeys && st.overlapWithWired.length === 0 && st.complementOk === true,
     'WIRED and plannedKeys are COMPLEMENTARY and partition the 16 declared keys',
     JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredFundingKeys }))
