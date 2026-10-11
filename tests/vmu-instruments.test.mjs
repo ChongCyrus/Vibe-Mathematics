@@ -303,6 +303,45 @@ test('the ledger lands through the injected seam, and memory advances only after
   passed += 1
 })
 
+// ⑳ ROUND 149：停机窗口内的 use 由 downtimePolicy 决定（默认拒 ✓／degrade 记录例外 ✓／未知回落 ✓）
+test('downtimePolicy decides what a use means inside a maintenance window', () => {
+  const base = { 'vmu.instruments.requireCalibration': false, 'vmu.instruments.requireOwner': false }
+  const open = (f, now) => { f.register({ id: 'u1', owner: 'm1' }); f.openWindow({ id: 'u1', from: 0, to: 4 * 3600000 }); now.v = 3600000 }
+
+  const now1 = { v: 0 }
+  const refuseFace = createInstruments({ settings: mk(base).settings, clock: () => now1.v, log: () => {} })
+  open(refuseFace, now1)
+  const blocked = refuseFace.use({ id: 'u1', by: 'm1', purpose: 'p', capture: 'lib/x' })
+  assert.equal(blocked.ok, false, '★ 默认 refuse ⇒ 维护窗口内【拒】（本轮之前 use 根本不看窗口 ✗）')
+  assert.equal(blocked.code, 'VMU_NOT_PERMITTED')
+  assert.equal(blocked.downtimePolicy, 'refuse', '拒里自曝生效策略')
+  assert.ok(blocked.window && blocked.window.to === 4 * 3600000, '并点名窗口：' + JSON.stringify(blocked.window))
+  assert.equal(refuseFace.status().ledger, 0, '被拒的 use 不进台账')
+
+  const now2 = { v: 0 }
+  const outside = createInstruments({ settings: mk(base).settings, clock: () => now2.v, log: () => {} })
+  open(outside, now2)
+  now2.v = 10 * 86400000
+  assert.equal(outside.use({ id: 'u1', by: 'm1', purpose: 'p', capture: 'lib/x' }).ok, true, '窗口【外】⇒ 照常通过（边界是窗口本身）')
+
+  const now3 = { v: 0 }
+  const degradedFace = createInstruments({ settings: mk(Object.assign({ 'vmu.instruments.downtimePolicy': 'degrade' }, base)).settings, clock: () => now3.v, log: () => {} })
+  open(degradedFace, now3)
+  const okDegraded = degradedFace.use({ id: 'u1', by: 'm1', purpose: 'p', capture: 'lib/x' })
+  assert.equal(okDegraded.ok, true, 'degrade ⇒ 放行')
+  assert.ok(okDegraded.degraded && okDegraded.degraded.reason === 'maintenance-window',
+    '★ 且【记录降级例外】并【在回执里告诉调用者】：' + JSON.stringify(okDegraded.degraded))
+  assert.equal(degradedFace.status().ledger, 1, '降级使用进台账（例外是【被记录】的，不是被忽略的）')
+
+  const now4 = { v: 0 }
+  const typo = createInstruments({ settings: mk(Object.assign({ 'vmu.instruments.downtimePolicy': 'nonsense' }, base)).settings, clock: () => now4.v, log: () => {} })
+  open(typo, now4)
+  const t = typo.use({ id: 'u1', by: 'm1', purpose: 'p', capture: 'lib/x' })
+  assert.equal(t.ok, false, '★ 未知取值【不得】变成放行')
+  assert.equal(t.downtimePolicy, 'refuse', '回落到 refuse 并自曝 —— 笔误不能把拒变成许可')
+  passed += 1
+})
+
 for (const c of cases) {
   try { await c.f(); console.log('ok - ' + c.n) } catch (e) { failed += 1; console.log('FAIL - ' + c.n + ' :: ' + String((e && e.message) || e)) }
 }

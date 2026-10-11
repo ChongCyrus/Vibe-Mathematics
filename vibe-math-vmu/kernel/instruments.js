@@ -33,15 +33,20 @@ export const WIRED_INSTRUMENT_KEYS = Object.freeze([
   'vmu.instruments.dataCaptureRef',
   // ROUND 148: the ledger directory - read, and it DECIDES (a declared directory makes every use land durably).
   'vmu.instruments.ledgerDir',
+  // ROUND 149: the downtime policy - read, and it DECIDES (refuse the use, or record it as degraded).
+  'vmu.instruments.downtimePolicy',
 ])
 /** 未接：**逐个点名＋原因** ✗✓。 */
 export const PLANNED_INSTRUMENT_KEYS = Object.freeze([
-  ['vmu.instruments.downtimePolicy', '停机策略未接：需与运维/告警面协同（本面只做维护窗口 ✗）'],
-  // ROUND 146: the three entries that used to sit here (priorityPolicy / waitlistPolicy / hashAlgo) were moved BACK
-  // to the wired list. Measured: all three ARE read by this module, and the round-115 reasons were wrong about the
-  // mechanism ("未读取该键" ✗) - `hashAlgo` even changes the fingerprint output. What survives of the old note is
-  // only about `priorityPolicy`, which was READ and RECORDED but changed no decision until this round made it
-  // choose who wins a clash. A reason that misdescribes the mechanism sends the next reader to the wrong place.
+  // ROUND 149: the last planned key on this face moved to wired. Nothing is left unwired here - the 17 keys are
+  // 17 wired, which is what the partition test asserts.
+  //
+  // ROUND 146 (kept, because the lesson outlives the entries): the three keys that used to be listed here
+  // (priorityPolicy / waitlistPolicy / hashAlgo) were moved BACK to the wired list after a measurement. All three
+  // ARE read by this module; the round-115 reasons were wrong about the MECHANISM ("未读取该键" ✗) - `hashAlgo`
+  // even changes the fingerprint output. What survives of the old note is only about `priorityPolicy`, which was
+  // read and recorded but changed no decision until round 146 made it choose who wins a clash. A reason that
+  // misdescribes the mechanism sends the next reader to the wrong place.
 ])
 export const ENFORCED_SCOPE = 'evaluated-so-far'
 const refuse = (code, message, hint) => ({ ok: false, code, message, hint })
@@ -104,6 +109,12 @@ export function createInstruments(opts) {
       // ROUND 148: where the ledger is landed, through the injected write seam. Empty (the default) keeps the
       // ledger in memory only, so nothing changes unless a pack names a directory.
       ledgerDir: s('vmu.instruments.ledgerDir', ''),
+      // ROUND 149: what a use means while the UNIT is inside a maintenance/downtime window. `refuse` (default)
+      // stops it by name and names the window; `degrade` lets it happen and RECORDS the exception on the entry.
+      // An unknown value falls back to `refuse` and the effective value travels in the receipt (typos cannot
+      // silently turn a refusal into a permission).
+      downtimePolicy: ['refuse', 'degrade'].indexOf(s('vmu.instruments.downtimePolicy', 'refuse')) === -1
+        ? 'refuse' : s('vmu.instruments.downtimePolicy', 'refuse'),
     }
   }
   const keysUsed = () => WIRED_INSTRUMENT_KEYS.slice()
@@ -179,6 +190,25 @@ export function createInstruments(opts) {
     if (!by) return deny('VMU_META_VALIDATION_FAILED', 'use 需要 by', '给操作人', enforced)
     const purpose = String(args.purpose || '').trim()
     if (!purpose) { mark('vmu.instruments.attachCapture'); return deny('VMU_META_VALIDATION_FAILED', '使用记录**缺目的** ⇒ 拒（`purpose` 必填 ✓）', '写明使用目的', enforced) }
+    /**
+     * ROUND 149 — IS THE MACHINE DOWN? A maintenance window that CONTAINS now says so, and `downtimePolicy` decides
+     * what that means. Until this round `use()` never looked at the windows at all: a unit could be used while it
+     * was scheduled for maintenance, which is the gap this closes. Ordering is deliberate - machine state is judged
+     * BEFORE operator paperwork (training, calibration), the same "shape before ownership" choice the paper face
+     * made for its section cap - because a unit that is down cannot be used by anyone, however well prepared.
+     */
+    const win = u.maintenance.find((w) => clock() >= w.from && clock() < w.to)
+    let degraded = null
+    if (win) {
+      mark('vmu.instruments.downtimePolicy')
+      if (c.downtimePolicy !== 'degrade') {
+        return Object.assign(deny('VMU_NOT_PERMITTED',
+          '仪器处于维护/停机窗口（' + new Date(win.from).toISOString() + ' → ' + new Date(win.to).toISOString() + '）⇒ 拒（vmu.instruments.downtimePolicy=' + c.downtimePolicy + '）',
+          '等窗口结束，或把 vmu.instruments.downtimePolicy 设为 degrade 以【记录降级使用】（例外被记录，而不是被忽略）', enforced),
+        { window: { from: win.from, to: win.to }, downtimePolicy: c.downtimePolicy })
+      }
+      degraded = { reason: 'maintenance-window', from: win.from, to: win.to }
+    }
     // 培训（capabilityTags 非空时按标签要求 ✓）
     if (u.tags.length) {
       mark('vmu.instruments.capabilityTags')
@@ -220,14 +250,14 @@ export function createInstruments(opts) {
       mark('vmu.instruments.dataCaptureRef')
     }
     const at = clock()
-    const record = { id: 'ur-' + (++seq), unit: u.id, by, purpose, at, capture: capture || null, fingerprint: fp({ unit: u.id, by, purpose, at, capture: capture || null }) }
+    const record = { id: 'ur-' + (++seq), unit: u.id, by, purpose, at, capture: capture || null, degraded, fingerprint: fp({ unit: u.id, by, purpose, at, capture: capture || null, degraded }) }
     // ROUND 148: durable FIRST, memory second (a failed write must not leave memory advanced).
     const landed = landLedger(record)
     if (landed && landed.ok === false) return Object.assign({ enforced, enforcedScope: ENFORCED_SCOPE }, landed)
     ledger.push(record)
     log('instruments.use ' + u.id)
     emit({ type: 'instruments.use', unit: u.id })
-    return { ok: true, usageId: record.id, capture: record.capture, persisted: landed ? landed.path : null, fingerprint: record.fingerprint, enforced, enforcedScope: ENFORCED_SCOPE }
+    return { ok: true, usageId: record.id, capture: record.capture, degraded, downtimePolicy: c.downtimePolicy, persisted: landed ? landed.path : null, fingerprint: record.fingerprint, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
   const openWindow = (a) => {

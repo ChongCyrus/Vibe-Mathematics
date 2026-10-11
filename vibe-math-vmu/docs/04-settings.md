@@ -767,6 +767,7 @@ vmu.packs.active: [v5r]
 | `vmu.instruments.calibrationDueDays` | int ≥0 | `365` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
 | `vmu.instruments.capabilityTags` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
 | `vmu.instruments.dataCaptureRef` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.downtimePolicy` | string | `refuse` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
 | `vmu.instruments.hashAlgo` | string | `sha256` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
 | `vmu.instruments.ledgerDir` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
 | `vmu.instruments.maxHoldHours` | int ≥0 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
@@ -1112,7 +1113,6 @@ vmu.packs.active: [v5r]
 | `vmu.index.rebuildBatch` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.index.staleTolerance` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.index.verifyChecksum` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.instruments.downtimePolicy` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.legalentity.crossBorderApproverRoles` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.legalentity.crossBorderGate` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.legalentity.invoiceTaxSlots` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |

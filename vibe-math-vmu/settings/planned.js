@@ -192,7 +192,6 @@ export const PLANNED_DEFS = Object.freeze([
   { key: "vmu.index.rebuildBatch", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.index.staleTolerance", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.index.verifyChecksum", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
-  { key: "vmu.instruments.downtimePolicy", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["22"], doc: "设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准）" },
   { key: "vmu.legalentity.crossBorderApproverRoles", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["22"], doc: "设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准）" },
   { key: "vmu.legalentity.crossBorderGate", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["22"], doc: "设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准）" },
   { key: "vmu.legalentity.invoiceTaxSlots", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["22"], doc: "设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准）" },
