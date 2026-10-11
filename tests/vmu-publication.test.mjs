@@ -200,5 +200,31 @@ const mk = (settings = {}, opts = {}) => createPublication({ clock: () => now, s
   ok(typeof c2.status() === 'object' && c2.status() !== null, 'the face still answers after all of that (no state was corrupted)')
 }
 
+
+// ── ROUND 274: the licence declarations (volume 16 §L215 / volume 20 §L226) ──────────────────────────────────
+{
+  const paper = (r) => { r.submitPack({ paperId: 'lic-1', venue: 'J' }); return r }
+  const avail = (r, extra) => r.availability(Object.assign({ paperId: 'lic-1', data: 'u', url: 'https://example.org/d' }, extra || {}))
+
+  // the declared default is what an unspecified statement carries - that is the key's whole purpose
+  const d = avail(paper(mk({})))
+  ok(d.license === 'CC-BY-4.0' && d.licenseDeclared === null, 'license.default: an unspecified statement carries the declared default, and the receipt says it was not given', d)
+  ok(d.codeLicense === 'MIT' && d.attributionRequired === true, 'license.codeDefault/attributionRequired: both are reported on the receipt')
+
+  // a licence inside the declared open set is recorded as-is
+  const inside = avail(paper(mk({})), { license: 'Apache-2.0' })
+  ok(inside.license === 'Apache-2.0' && inside.licenseNote === null, 'license: a licence in the open set is recorded with no note')
+
+  // outside the set, the declared policy decides - and both branches are visible
+  const denyRun = (() => { const r = paper(mk({})); try { avail(r, { license: 'GPL-3.0' }); return null } catch (e) { return e } })()
+  ok(denyRun && denyRun.code === 'VMU_LICENSE_INCOMPATIBLE', 'license.incompatiblePolicy[deny]: a COPYLEFT licence against a non-copyleft default is refused by name', denyRun && denyRun.code)
+  const warned = avail(paper(mk({ 'vmu.license.incompatiblePolicy': 'warn' })), { license: 'GPL-3.0' })
+  ok(warned.license === 'GPL-3.0' && warned.licenseNote === 'copyleft-warn', 'license.incompatiblePolicy[warn]: accepted but NOT silently - the receipt carries the note', warned.licenseNote)
+
+  // and the defaults themselves are declarations, not constants
+  const declared = avail(paper(mk({ 'vmu.license.default': 'MIT', 'vmu.license.codeDefault': 'GPL-3.0', 'vmu.license.attributionRequired': false })))
+  ok(declared.license === 'MIT' && declared.codeLicense === 'GPL-3.0' && declared.attributionRequired === false, 'license.*: re-declaring all three changes what the receipt carries')
+}
+
 console.log('=== VMU PUBLICATION: ' + pass + ' passed, ' + fail + ' failed ===')
 process.exit(fail ? 1 : 0)

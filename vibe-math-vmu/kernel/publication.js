@@ -64,6 +64,11 @@ export function createPublication({ clock = () => Date.now(), log = () => {}, se
   const cfg = () => ({
     allowOnRequest: boolOr(settings['vmu.avail.allowOnRequest'], false),
     requireUrl: boolOr(settings['vmu.avail.requireUrl'], true),
+    // ROUND 274 (volume 16 §L215 / volume 20 §L226): the licence declarations.
+    licenseDefault: (typeof settings['vmu.license.default'] === 'string' && settings['vmu.license.default']) ? settings['vmu.license.default'] : 'CC-BY-4.0',
+    licenseCodeDefault: (typeof settings['vmu.license.codeDefault'] === 'string' && settings['vmu.license.codeDefault']) ? settings['vmu.license.codeDefault'] : 'MIT',
+    licenseIncompatiblePolicy: ['deny', 'warn'].includes(settings['vmu.license.incompatiblePolicy']) ? settings['vmu.license.incompatiblePolicy'] : 'deny',
+    licenseAttributionRequired: settings['vmu.license.attributionRequired'] !== false,
     openLicenses: Array.isArray(settings['vmu.avail.openLicenses']) && settings['vmu.avail.openLicenses'].length ? settings['vmu.avail.openLicenses'] : ['CC0-1.0', 'CC-BY-4.0', 'MIT', 'Apache-2.0'],
     offlineFirst: boolOr(settings['vmu.archive.offlineFirst'], true),
     receiptRequired: boolOr(settings['vmu.archive.receiptRequired'], true),
@@ -160,7 +165,22 @@ export function createPublication({ clock = () => Date.now(), log = () => {}, se
       }
     }
     const fields = { data, code, materials }
-    const decl = { paperId, ...fields, license, url: urlStr || null, how: howStr || null, at: clock() }
+    // ROUND 274: the licence the statement CARRIES is the declared default when none was given, and a licence outside the declared
+    // open set is handled by the declared policy - refused by name under `deny`, recorded as a warning under `warn`.
+    const licenseGiven = typeof license === 'string' && license.trim() ? license.trim() : null
+    const effectiveLicense = licenseGiven || c.licenseDefault
+    // ROUND 274 (volume 20 §L225): the incompatibility the volume describes is COPYLEFT - a GPL-* derivative must carry the same
+    // licence. A licence that is merely non-open is NOT that: its established behaviour is to stay accepted and make the badge
+    // `restricted` (pinned by this suite), and that behaviour is unchanged here.
+    const isCopyleft = (name) => /^(A?GPL|GPL)/i.test(String(name || '')) || /-SA$/i.test(String(name || ''))
+    const copyleftConflict = isCopyleft(effectiveLicense) && !isCopyleft(c.licenseDefault)
+    if (copyleftConflict && c.licenseIncompatiblePolicy === 'deny') {
+      throw refuse('VMU_LICENSE_INCOMPATIBLE', 'copyleft licence "' + effectiveLicense + '" conflicts with the declared default "' + c.licenseDefault + '"',
+        'declare a matching default, or set vmu.license.incompatiblePolicy=warn (volume 20 §L225: GPL derivatives must use the same licence)', { paperId, license: effectiveLicense, licenseDefault: c.licenseDefault })
+    }
+    const licenseNote = copyleftConflict ? 'copyleft-warn' : null
+    const decl = { paperId, ...fields, license: effectiveLicense, licenseDeclared: licenseGiven, codeLicense: c.licenseCodeDefault,
+      attributionRequired: c.licenseAttributionRequired, licenseNote, url: urlStr || null, how: howStr || null, at: clock() }
     p.availability = decl
     const vagueAccepted = isVague([howStr, urlStr].filter(Boolean).join(' '))
     // 显式放行也必须**自曝**：回执里出现 onRequest:true，绝不静默
