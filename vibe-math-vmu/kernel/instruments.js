@@ -31,10 +31,11 @@ export const WIRED_INSTRUMENT_KEYS = Object.freeze([
   // ROUND 147: `dataCaptureRef` moved here too - it is READ (a use inherits it as the capture reference) and it
   // changes an outcome, since with `attachCapture` on an empty reference refuses the use by name.
   'vmu.instruments.dataCaptureRef',
+  // ROUND 148: the ledger directory - read, and it DECIDES (a declared directory makes every use land durably).
+  'vmu.instruments.ledgerDir',
 ])
 /** 未接：**逐个点名＋原因** ✗✓。 */
 export const PLANNED_INSTRUMENT_KEYS = Object.freeze([
-  ['vmu.instruments.ledgerDir', '台账落盘目录未接：无 FS 接缝（本面只保留内存台账 ✗）'],
   ['vmu.instruments.downtimePolicy', '停机策略未接：需与运维/告警面协同（本面只做维护窗口 ✗）'],
   // ROUND 146: the three entries that used to sit here (priorityPolicy / waitlistPolicy / hashAlgo) were moved BACK
   // to the wired list. Measured: all three ARE read by this module, and the round-115 reasons were wrong about the
@@ -51,6 +52,9 @@ export function createInstruments(opts) {
   const clock = typeof o.clock === 'function' ? o.clock : () => 0
   const log = typeof o.log === 'function' ? o.log : () => {}
   const emit = (ev) => { try { if (o.bus && typeof o.bus.emit === 'function') o.bus.emit(ev) } catch (e) { /* 广播不改结果 */ } }
+  // ROUND 148: the durable-ledger seam. The kernel never touches the host filesystem itself (docs/11 §4.1) - it
+  // calls this, and when a directory IS declared but no seam is bound the write is refused by name, never faked.
+  const writeLedger = typeof o.writeLedger === 'function' ? o.writeLedger : null
 
   const refusals = new Map()
   const units = new Map()
@@ -97,6 +101,9 @@ export function createInstruments(opts) {
       // (cite, never copy - the same rule the Lean archive follows), so this key is where a pack says "captures
       // live here" and an empty value means the caller must name one per use.
       dataCaptureRef: s('vmu.instruments.dataCaptureRef', ''),
+      // ROUND 148: where the ledger is landed, through the injected write seam. Empty (the default) keeps the
+      // ledger in memory only, so nothing changes unless a pack names a directory.
+      ledgerDir: s('vmu.instruments.ledgerDir', ''),
     }
   }
   const keysUsed = () => WIRED_INSTRUMENT_KEYS.slice()
@@ -131,6 +138,33 @@ export function createInstruments(opts) {
     if (!by) return deny('VMU_META_VALIDATION_FAILED', 'train 需要 by', '给人员 id', [])
     trained.set(by, Array.isArray(args.tags) ? args.tags.map(String) : [])
     return { ok: true, by, tags: trained.get(by), enforced: [], enforcedScope: ENFORCED_SCOPE }
+  }
+
+  /**
+   * ROUND 148 — LAND THE LEDGER ENTRY THROUGH THE INJECTED SEAM, AND PUBLISH IT ONLY AFTER THE WRITE RETURNS.
+   *
+   * WHY: the directory knob existed and was declared unwired. With a directory declared, a use must be durable;
+   * without one the ledger stays in memory (the default, unchanged). The ORDERING is the lesson an external review
+   * brought to the v5 line: a failed write must not leave memory advanced, or every caller believes the record was
+   * persisted while the file is stale. So the in-memory push happens only after this returns ok.
+   */
+  const landLedger = (record) => {
+    const dir = cfg().ledgerDir
+    if (!dir) return null                      // no directory declared ⇒ in-memory only (default, unchanged)
+    if (!writeLedger) {
+      return refuse('VMU_ENGINE_UNAVAILABLE', 'no ledger write seam is bound but vmu.instruments.ledgerDir=' + dir,
+        'inject { writeLedger } - the kernel never writes the host filesystem itself (docs/11 §4.1)')
+    }
+    let out
+    try { out = writeLedger({ dir, name: record.id + '.json', text: JSON.stringify(record) }) } catch (e) {
+      return refuse('VMU_IO_FAILED', 'ledger write failed for ' + record.id + ': ' + String((e && e.message) || e),
+        'fix the seam or the directory; the in-memory ledger is NOT advanced')
+    }
+    if (out === false || (out && out.ok === false)) {
+      return refuse('VMU_IO_FAILED', 'ledger write refused for ' + record.id + (out && out.message ? ': ' + out.message : ''),
+        'the in-memory ledger is NOT advanced')
+    }
+    return { ok: true, path: (out && out.path) || (dir + '/' + record.id + '.json') }
   }
 
   /** **校准过期 ⇒ 拒并给到期日** ✓✓；**未培训 ⇒ 拒** ✓；**使用记录缺目的 ⇒ 拒** ✓。 */
@@ -187,10 +221,13 @@ export function createInstruments(opts) {
     }
     const at = clock()
     const record = { id: 'ur-' + (++seq), unit: u.id, by, purpose, at, capture: capture || null, fingerprint: fp({ unit: u.id, by, purpose, at, capture: capture || null }) }
+    // ROUND 148: durable FIRST, memory second (a failed write must not leave memory advanced).
+    const landed = landLedger(record)
+    if (landed && landed.ok === false) return Object.assign({ enforced, enforcedScope: ENFORCED_SCOPE }, landed)
     ledger.push(record)
     log('instruments.use ' + u.id)
     emit({ type: 'instruments.use', unit: u.id })
-    return { ok: true, usageId: record.id, capture: record.capture, fingerprint: record.fingerprint, enforced, enforcedScope: ENFORCED_SCOPE }
+    return { ok: true, usageId: record.id, capture: record.capture, persisted: landed ? landed.path : null, fingerprint: record.fingerprint, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
   const openWindow = (a) => {

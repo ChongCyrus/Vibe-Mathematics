@@ -263,6 +263,46 @@ test('the capture reference is required, can be defaulted, can be waived, and en
   passed += 1
 })
 
+// ⑲ ROUND 148：台账落盘经【注入接缝】，且【写成功才发布内存】（v5 那次外部评审的教训 ✓）
+test('the ledger lands through the injected seam, and memory advances only after the write succeeds', () => {
+  const base = { 'vmu.instruments.requireCalibration': false, 'vmu.instruments.requireOwner': false, 'vmu.instruments.ledgerDir': 'D:/_tmp/instr-ledger' }
+  const withSeam = (over, seam) => createInstruments({ settings: mk(over).settings, clock: () => 0, log: () => {}, writeLedger: seam })
+  const call = (f) => { f.register({ id: 'u1', owner: 'm1' }); return f.use({ id: 'u1', by: 'm1', purpose: 'p', capture: 'lib/x' }) }
+
+  const noSeam = withSeam(base, undefined)
+  const r1 = call(noSeam)
+  assert.equal(r1.ok, false, '声明了目录却没有接缝 ⇒ 拒')
+  assert.equal(r1.code, 'VMU_ENGINE_UNAVAILABLE', '具名拒，绝不假装写成功')
+  assert.equal(noSeam.status().ledger, 0, '★ 且【内存不得推进】（写没发生 ⇒ 记录不存在）')
+
+  const bad = withSeam(base, () => { throw new Error('disk full') })
+  assert.equal(call(bad).code, 'VMU_IO_FAILED', '接缝抛错 ⇒ 具名拒')
+  assert.equal(bad.status().ledger, 0, '★ 写失败也【不得推进内存】—— 这正是 v5 那次评审的教训')
+
+  const refused = withSeam(base, () => ({ ok: false, message: 'read-only fs' }))
+  assert.equal(call(refused).code, 'VMU_IO_FAILED', '接缝"拒绝"与"抛错"同等对待')
+  assert.equal(refused.status().ledger, 0, '同样不推进内存')
+
+  const seen = []
+  const good = withSeam(base, (w) => { seen.push(w); return { ok: true, path: w.dir + '/' + w.name } })
+  const r3 = call(good)
+  assert.equal(r3.ok, true, '接缝成功 ⇒ 通过')
+  assert.equal(r3.persisted, 'D:/_tmp/instr-ledger/ur-1.json', '回执给出落盘路径')
+  assert.equal(seen.length, 1, '接缝恰好被调用一次')
+  assert.ok(seen[0].text.indexOf('ur-1') !== -1 && seen[0].text.indexOf('lib/x') !== -1,
+    '★ 落盘内容含记录 id 与捕获引用（引用随记录走 ✓）')
+  assert.equal(good.status().ledger, 1, '★ 写成功之后才发布到内存台账')
+
+  const noDir = createInstruments({
+    settings: mk({ 'vmu.instruments.requireCalibration': false, 'vmu.instruments.requireOwner': false }).settings,
+    clock: () => 0, log: () => {}, writeLedger: () => { throw new Error('must not be called') },
+  })
+  noDir.register({ id: 'u1', owner: 'm1' })
+  assert.equal(noDir.use({ id: 'u1', by: 'm1', purpose: 'p', capture: 'lib/x' }).ok, true,
+    '默认（无目录）⇒ 接缝根本不被调用，行为零变化')
+  passed += 1
+})
+
 for (const c of cases) {
   try { await c.f(); console.log('ok - ' + c.n) } catch (e) { failed += 1; console.log('FAIL - ' + c.n + ' :: ' + String((e && e.message) || e)) }
 }

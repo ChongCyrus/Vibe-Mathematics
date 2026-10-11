@@ -685,6 +685,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.instruments.capabilityTags', type: 'object', def: null, hot: HOT.H1, who: 'office', doc: "已接线（instruments.js 读取）；该模块未声明默认值（缺省行为见模块自身）" },
   { key: 'vmu.instruments.dataCaptureRef', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: "已接线（instruments.js 读取）；默认值取自模块源码" },
   { key: 'vmu.instruments.hashAlgo', type: 'string', def: 'sha256', hot: HOT.H1, who: 'office', doc: "已接线（instruments.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.instruments.ledgerDir', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: "已接线（instruments.js 读取）；默认值取自模块源码" },
   { key: 'vmu.instruments.maxHoldHours', type: 'natural', def: 8, hot: HOT.H1, who: 'office', doc: "已接线（instruments.js 读取）；默认值取自模块源码" },
   { key: 'vmu.instruments.overbookRatio', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（instruments.js 读取）；默认值取自模块源码" },
   { key: 'vmu.instruments.priorityPolicy', type: 'string', def: 'fifo', hot: HOT.H1, who: 'office', doc: "已接线（instruments.js 读取）；默认值取自模块源码" },
