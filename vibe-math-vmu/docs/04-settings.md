@@ -820,6 +820,13 @@ vmu.packs.active: [v5r]
 | `vmu.prompts.sections` | obj[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 声明的段（§11 最高分来源；同名可带不同 lang 并存） |
 | `vmu.prompts.glossary.mode` | enum | `enforce` | `enforce`∣`warn`∣`off` | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 术语一致性处置（enforce ⇒ 引用本体外术语【拒段】；warn ⇒ 留痕继续；off ⇒ 不加载不查） |
 | `vmu.prompts.glossary.ontology` | string | `vibe-math-vmu/glossary.json` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 本体路径（★ 不可读【不是'无术语'】⇒ enforce 拒、warn 留痕；无 reader 则是【能力缺口】⇒ 留痕但不拒，§21.4） |
+| `vmu.lifecycle.preregLock` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 预注册锁定（true ⇒ 已预注册的研究再注册即【具名拒】） |
+| `vmu.lifecycle.searchSources` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 预注册须覆盖的检索源（缺失者【逐个点名】） |
+| `vmu.lifecycle.topicRequiredFields` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 题目的必填字段（缺失者逐个点名） |
+| `vmu.lifecycle.variableRoles` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 允许的变量角色（集合外的角色【点名】拒绝） |
+| `vmu.lifecycle.dedupeKeys` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 跨研究去重键（命中即拒并点名该键） |
+| `vmu.lifecycle.alpha` | number | `0.05` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 显著性水平（judge() 据此判定；越界回落 0.05） |
+| `vmu.lifecycle.powerTarget` | number | `0.8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 把握度目标（judge() 据此判定；越界回落 0.8） |
 | `vmu.prompts.overrides` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 语言无关覆盖 {section:text}（合并【在调用方之下】⇒ 调用方仍可胜出，且合并被上报） |
 | `vmu.prompts.overridesByLang` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 语言级覆盖 {section:{lang:text}}；解析出的语言命中时【优先于语言无关覆盖】 |
 | `vmu.naming.conflictPolicy` | enum | `refuse` | `refuse`∣`suffix` | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 命名冲突策略（★ 只对【显式传入 record.id】生效：显式点名才是对名字的主张；由标题派生的名字不算冲突，因为同标题不同内容正是本面的内容身份语义 ✓） |
@@ -1243,13 +1250,6 @@ vmu.packs.active: [v5r]
 | `vmu.license.codeDefault` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 2 卷：16、20），尚未实现（元数据以各卷为准） |
 | `vmu.license.default` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 2 卷：16、20），尚未实现（元数据以各卷为准） |
 | `vmu.license.incompatiblePolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.lifecycle.alpha` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.lifecycle.dedupeKeys` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.lifecycle.powerTarget` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.lifecycle.preregLock` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.lifecycle.searchSources` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.lifecycle.topicRequiredFields` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.lifecycle.variableRoles` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.math.formal.coqArgs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.formal.coqCommand` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.network` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/mathtools.js` | 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |

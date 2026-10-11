@@ -19,6 +19,14 @@ export const LIFECYCLE_KEYS = Object.freeze([
   'vmu.lifecycle.requireEvidence',
   'vmu.lifecycle.maxArtifacts',
   'vmu.lifecycle.allowBackward',
+  // ROUND 245: research integrity - the pre-registration unit and the significance unit.
+  'vmu.lifecycle.preregLock',
+  'vmu.lifecycle.searchSources',
+  'vmu.lifecycle.topicRequiredFields',
+  'vmu.lifecycle.variableRoles',
+  'vmu.lifecycle.dedupeKeys',
+  'vmu.lifecycle.alpha',
+  'vmu.lifecycle.powerTarget',
 ])
 const LOG_MAX = 200
 const refuse = (code, message, hint) => ({ ok: false, code, message, hint })
@@ -40,6 +48,14 @@ export function createLifecycle(opts) {
       requireEvidence: readKey('vmu.lifecycle.requireEvidence') !== false,
       maxArtifacts: n('vmu.lifecycle.maxArtifacts', 20),
       allowBackward: readKey('vmu.lifecycle.allowBackward') === true,
+      // ROUND 245: the pre-registration unit and the significance unit.
+      preregLock: readKey('vmu.lifecycle.preregLock') === true,
+      searchSources: (() => { const v = readKey('vmu.lifecycle.searchSources'); return Array.isArray(v) ? v.map(String).filter(Boolean) : [] })(),
+      topicRequiredFields: (() => { const v = readKey('vmu.lifecycle.topicRequiredFields'); return Array.isArray(v) ? v.map(String).filter(Boolean) : [] })(),
+      variableRoles: (() => { const v = readKey('vmu.lifecycle.variableRoles'); return Array.isArray(v) ? v.map(String).filter(Boolean) : [] })(),
+      dedupeKeys: (() => { const v = readKey('vmu.lifecycle.dedupeKeys'); return Array.isArray(v) ? v.map(String).filter(Boolean) : [] })(),
+      alpha: (() => { const v = Number(readKey('vmu.lifecycle.alpha')); return Number.isFinite(v) && v > 0 && v <= 0.5 ? v : 0.05 })(),
+      powerTarget: (() => { const v = Number(readKey('vmu.lifecycle.powerTarget')); return Number.isFinite(v) && v > 0 && v <= 1 ? v : 0.8 })(),
     }
   }
   const keysUsed = () => LIFECYCLE_KEYS.slice()
@@ -88,6 +104,80 @@ export function createLifecycle(opts) {
     const def = t.table.filter((s) => s.id === stage)[0]
     if (!def) return Object.assign(refuse('VMU_NOT_FOUND', '阶段未声明：' + stage, '见 stages()'), { declared: t.table.map((s) => s.id) })
     return { ok: true, studyId, stage, gates: def.gates.slice(), requires: def.requires.slice() }
+  }
+
+  const preregs = new Map()
+  /**
+   * ROUND 245: pre-registration. The declaration says what it must CONTAIN (`topicRequiredFields`, `searchSources`,
+   * `variableRoles`) and what may not be registered twice (`dedupeKeys`); `preregLock` decides whether a locked study may be
+   * registered again at all. A missing field is named, never merely counted.
+   */
+  const prereg = (a) => {
+    const args = a || {}
+    const c = cfg()
+    const studyId = String(args.studyId || '')
+    if (!studyId) return refuse('VMU_META_VALIDATION_FAILED', 'prereg 需要 studyId', '给 studyId')
+    const existing = preregs.get(studyId)
+    if (existing && c.preregLock) {
+      return refuse('VMU_LIFECYCLE_PREREG_LOCKED', 'vmu.lifecycle.preregLock=true 且该研究已预注册：' + studyId,
+        '预注册是锁定件（16 卷）；要改就换 studyId，或显式关掉 preregLock')
+    }
+    const topic = args.topic && typeof args.topic === 'object' ? args.topic : {}
+    const missingFields = c.topicRequiredFields.filter((f) => topic[f] === undefined || topic[f] === null || String(topic[f]).trim() === '')
+    if (missingFields.length) {
+      return Object.assign(refuse('VMU_LIFECYCLE_PREREG_INCOMPLETE', '预注册 topic 缺字段：' + missingFields.join('、'),
+        '补齐 ' + missingFields.join('、') + '（vmu.lifecycle.topicRequiredFields）'), { missing: missingFields })
+    }
+    const searches = Array.isArray(args.searches) ? args.searches.map(String) : []
+    const missingSources = c.searchSources.filter((s) => !searches.includes(s))
+    if (missingSources.length) {
+      return Object.assign(refuse('VMU_LIFECYCLE_PREREG_INCOMPLETE', '预注册缺检索源：' + missingSources.join('、'),
+        '把 ' + missingSources.join('、') + ' 加进 searches[]（vmu.lifecycle.searchSources）'), { missing: missingSources })
+    }
+    const variables = Array.isArray(args.variables) ? args.variables : []
+    const badRoles = c.variableRoles.length
+      ? variables.filter((v) => !c.variableRoles.includes(String((v && v.role) || ''))).map((v) => String((v && v.name) || '?'))
+      : []
+    if (badRoles.length) {
+      return Object.assign(refuse('VMU_LIFECYCLE_PREREG_INCOMPLETE', '变量角色不在声明集合内：' + badRoles.join('、'),
+        '角色只能是 ' + c.variableRoles.join('、') + '（vmu.lifecycle.variableRoles）'), { missing: badRoles })
+    }
+    const dupe = []
+    for (const [otherId, other] of preregs) {
+      if (otherId === studyId) continue
+      // MEASURED BUG: this compared `other.keys[k]` against the whole keys OBJECT, so a duplicate was never detected.
+      const incoming = args.keys && typeof args.keys === 'object' ? args.keys : {}
+      for (const k of c.dedupeKeys) if (other.keys[k] !== undefined && incoming[k] !== undefined && other.keys[k] === incoming[k]) dupe.push(k)
+    }
+    if (dupe.length) {
+      return Object.assign(refuse('VMU_LIFECYCLE_PREREG_DUPLICATE', '预注册与既有研究重复（键：' + dupe.join('、') + '）',
+        '换掉 ' + dupe.join('、') + '，或从 vmu.lifecycle.dedupeKeys 里去掉该键'), { duplicate: dupe })
+    }
+    const keys = args.keys && typeof args.keys === 'object' ? args.keys : {}
+    preregs.set(studyId, { studyId, at: clock(), keys, topic, searches, variables })
+    note('lifecycle.prereg', studyId, { searches: searches.length, variables: variables.length })
+    emit({ type: 'lifecycle.prereg', studyId })
+    return { ok: true, studyId, at: clock(), locked: c.preregLock, topicRequiredFields: c.topicRequiredFields.slice(), searchSources: c.searchSources.slice(), enforced: ['vmu.lifecycle.preregLock', 'vmu.lifecycle.topicRequiredFields', 'vmu.lifecycle.searchSources', 'vmu.lifecycle.variableRoles', 'vmu.lifecycle.dedupeKeys'] }
+  }
+
+  /**
+   * ROUND 245: significance. `alpha` and `powerTarget` are JUDGED here, because a declaration nobody reads is not a rule.
+   * A p-value above alpha is not a failure of the study - it is a result, and the receipt says so without pretending.
+   */
+  const judge = (a) => {
+    const args = a || {}
+    const c = cfg()
+    const p = Number(args.p)
+    const hasP = Number.isFinite(p)
+    const power = Number(args.power)
+    const hasPower = Number.isFinite(power)
+    if (!hasP && !hasPower) {
+      return refuse('VMU_META_VALIDATION_FAILED', 'judge 需要 p 或 power', '给 { p } 或 { power }')
+    }
+    const out = { ok: true, alpha: c.alpha, powerTarget: c.powerTarget, enforced: ['vmu.lifecycle.alpha', 'vmu.lifecycle.powerTarget'] }
+    if (hasP) { out.p = p; out.significant = p <= c.alpha; out.note = out.significant ? '低于 alpha ⇒ 显著' : '高于 alpha ⇒ 不显著（这是一个结果，不是失败）' }
+    if (hasPower) { out.power = power; out.powerMet = power >= c.powerTarget }
+    return out
   }
 
   /** 闸点：**委托**接缝；无接缝 ⇒ 具名拒（不假装已检查 ✗）。 */
@@ -155,10 +245,14 @@ export function createLifecycle(opts) {
   }
   const summary = () => {
     const c = cfg()
-    return { ok: true, studies: studies.size, declared: c.stages ? c.stages.length : 0, droppedLog, droppedArtifacts, requireEvidence: c.requireEvidence, allowBackward: c.allowBackward }
+    return { ok: true, studies: studies.size, declared: c.stages ? c.stages.length : 0, droppedLog, droppedArtifacts, requireEvidence: c.requireEvidence, allowBackward: c.allowBackward,
+      // ROUND 245: the research-integrity declarations are reported, so an operator can see them without reading settings.
+      preregLock: c.preregLock, preregs: preregs.size, alpha: c.alpha, powerTarget: c.powerTarget,
+      searchSources: c.searchSources.slice(), topicRequiredFields: c.topicRequiredFields.slice(), variableRoles: c.variableRoles.slice(), dedupeKeys: c.dedupeKeys.slice() }
   }
 
-  return { stages, state: stateOf, advance, gateAt, artifacts: artifactsOf, status: summary, keysUsed, config: cfg, trail: () => trail.slice() }
+  return { stages, state: stateOf, advance, gateAt, artifacts: artifactsOf, status: summary, keysUsed, config: cfg, trail: () => trail.slice(),
+    prereg, judge, preregOf: (q) => { const id = String((q && q.studyId) || ''); const r = preregs.get(id); return r ? { ok: true, studyId: id, at: r.at, searches: r.searches.slice(), variables: r.variables.slice() } : refuse('VMU_NOT_FOUND', '该研究未预注册：' + id, '先调 prereg({studyId, topic, searches})') } }
 }
 
 export default createLifecycle

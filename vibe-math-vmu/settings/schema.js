@@ -761,6 +761,14 @@ const CORE_DEFS = Object.freeze([
   // ROUND 244: the glossary family（06 卷 §21.4；现由 kernel/prompt/index.js 读取）.
   { key: 'vmu.prompts.glossary.mode', type: 'enum', domain: ['enforce', 'warn', 'off'], def: 'enforce', hot: HOT.H1, who: 'office', doc: "术语一致性处置（enforce ⇒ 引用本体外术语【拒段】；warn ⇒ 留痕继续；off ⇒ 不加载不查）" },
   { key: 'vmu.prompts.glossary.ontology', type: 'string', def: 'vibe-math-vmu/glossary.json', hot: HOT.H1, who: 'office', doc: "本体路径（★ 不可读【不是'无术语'】⇒ enforce 拒、warn 留痕；无 reader 则是【能力缺口】⇒ 留痕但不拒，§21.4）" },
+  // ROUND 245: 研究诚信（16 卷；现由 kernel/lifecycle.js 读取）.
+  { key: 'vmu.lifecycle.preregLock', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "预注册锁定（true ⇒ 已预注册的研究再注册即【具名拒】）" },
+  { key: 'vmu.lifecycle.searchSources', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: "预注册须覆盖的检索源（缺失者【逐个点名】）" },
+  { key: 'vmu.lifecycle.topicRequiredFields', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: "题目的必填字段（缺失者逐个点名）" },
+  { key: 'vmu.lifecycle.variableRoles', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: "允许的变量角色（集合外的角色【点名】拒绝）" },
+  { key: 'vmu.lifecycle.dedupeKeys', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: "跨研究去重键（命中即拒并点名该键）" },
+  { key: 'vmu.lifecycle.alpha', type: 'number', def: 0.05, hot: HOT.H1, who: 'office', doc: "显著性水平（judge() 据此判定；越界回落 0.05）" },
+  { key: 'vmu.lifecycle.powerTarget', type: 'number', def: 0.8, hot: HOT.H1, who: 'office', doc: "把握度目标（judge() 据此判定；越界回落 0.8）" },
   { key: 'vmu.prompts.overrides', type: 'object', def: {}, hot: HOT.H1, who: 'office', doc: "语言无关覆盖 {section:text}（合并【在调用方之下】⇒ 调用方仍可胜出，且合并被上报）" },
   { key: 'vmu.prompts.overridesByLang', type: 'object', def: {}, hot: HOT.H1, who: 'office', doc: "语言级覆盖 {section:{lang:text}}；解析出的语言命中时【优先于语言无关覆盖】" },
   { key: 'vmu.naming.conflictPolicy', type: 'enum', domain: ['refuse', 'suffix'], def: 'refuse', hot: HOT.H1, who: 'office', doc: "命名冲突策略（★ 只对【显式传入 record.id】生效：显式点名才是对名字的主张；由标题派生的名字不算冲突，因为同标题不同内容正是本面的内容身份语义 ✓）" },
