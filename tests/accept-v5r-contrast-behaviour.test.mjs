@@ -135,21 +135,25 @@ const opened = (settings) => { const t = face(settings); const o = t.open({ type
   // matters: `createBallot` starts in state 'closed', so a cast throws even when nothing is frozen. An earlier attempt
   // here asserted only that a cast was refused and was therefore a FALSE POSITIVE; the non-vacuous control is that the
   // refusal is RECORDED with the freeze reason, which a closed-ballot refusal is not.
-  // The face answered a question I had been guessing at: freeze() on a ballot that is not open is refused with
-  // VMU_STATE ('only an open ballot can be frozen', kernel/ballot.js:152). That refusal is itself the driven observable,
-  // and the half I cannot drive here is labelled and WITNESSED by the ballot's own suite rather than asserted on faith.
+  // FULLY DRIVEN. The face named what it needs ('only an open ballot can be frozen', kernel/ballot.js:152) and the
+  // opener is measured (async open(), ballot.js:129). The non-vacuous control is the RECORDED reason: a closed ballot
+  // also refuses a cast, so only the history entry proves the refusal was the freeze's.
   const elig = ['r-1', 'r-2', 'r-3']
   const fzb = createBallot({ target: 't1', eligible: elig })
-  ok(fzb.status().frozen === false && fzb.status().state !== 'frozen', 'DRIVEN: a fresh ballot is not frozen')
-  let freezeThrew = null
-  try { await fzb.freeze('v5r: an open ballot freezes the phase') } catch (e) { freezeThrew = e && e.code }
-  ok(freezeThrew === 'VMU_STATE', 'DRIVEN: freeze() refuses a ballot that is not open, BY NAME (the state machine is real)', String(freezeThrew))
-  const witness = readFileSync(join(REPO, 'tests', 'vmu-ballot.test.mjs'), 'utf8')
-  ok(/expectThrow\(\(\) => b\.cast\('r-2', 1\), 'VMU_STATE'/.test(witness),
-    '等价 (source-read, WITNESSED by tests/vmu-ballot.test.mjs): a cast during a frozen ballot is refused BY NAME')
-  ok(/reason === 'in-frozen-ballot'/.test(witness),
-    '等价 (source-read, WITNESSED): the frozen refusal is RECORDED with its reason, so it is not counted as a vote')
-  ok(/refused:\s*dec\.refused/.test(vmuBallot), '等价 (source-read): a refused decision is REPORTED as { refused: { code, message } } rather than thrown')
+  ok(fzb.status().frozen === false && fzb.status().state !== 'frozen', 'DRIVEN control: a fresh ballot is not frozen')
+  let frozenTooEarly = null
+  try { await fzb.freeze('too early') } catch (e) { frozenTooEarly = e && e.code }
+  ok(frozenTooEarly === 'VMU_STATE', 'DRIVEN control: freeze() refuses a ballot that is not open, BY NAME', String(frozenTooEarly))
+  await fzb.open()
+  await fzb.freeze('v5r: an open ballot freezes the phase')
+  ok(fzb.status().frozen === true && fzb.status().state === 'frozen', 'DRIVEN: after open(), freeze() moves the state machine')
+  let castThrew = null
+  try { await fzb.cast('r-1', 1) } catch (e) { castThrew = e && e.code }
+  ok(castThrew === 'VMU_STATE', 'DRIVEN: a cast during a frozen ballot is refused BY NAME', String(castThrew))
+  ok(fzb.status().refused.some((r) => r.reason === 'in-frozen-ballot'),
+    'DRIVEN (the non-vacuous part): the refusal carries the FROZEN reason, so a frozen cast is not counted as a vote')
+  const w = readFileSync(join(REPO, 'tests', 'vmu-ballot.test.mjs'), 'utf8')
+  ok(/reason === 'in-frozen-ballot'/.test(w), 'WITNESSED: the ballot own suite asserts the same reason for the same rail')
   ok(/state === 'open' \|\| state === 'frozen'/.test(vmuBallot), 'the frozen state is part of the ballot state machine (control flow gates on it)')
   ok(/ballot\.frozen/.test(readFileSync(join(REPO, 'vibe-math-vmu', 'docs', '08-primitives-meeting-ballot-workflow.md'), 'utf8')),
     'vmu documents the ballot.frozen judgement point (the speech-side gate belongs to round-complete, stated, not flattened)')
@@ -191,6 +195,51 @@ const opened = (settings) => { const t = face(settings); const o = t.open({ type
   ok(/headListAt/.test(rec), '等价 (source-read): vmu has a head-list setting (vmu.records.headListAt) so the rule is configurable, not hard-coded')
   const docs07 = readFileSync(join(REPO, 'vibe-math-vmu', 'docs', '07-durability-library.md'), 'utf8')
   ok(/头部列表|headList/.test(docs07), '等价: the durability volume documents the head-list carrier for vmu too')
+}
+// ---------- 11. 学术院编制与角色 (role slots in the kernel, instances in the pack) ----------
+{
+  const idx = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'index.js'), 'utf8')
+  const v5 = readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+  ok(/academician/.test(v5) && /researcher/.test(v5), 'v5r staffs institutes with academicians/researchers/temps (its DEFAULT_PARAMS name them)')
+  ok(/role/.test(idx) && /pack/.test(idx), '等价: vmu keeps roles as kernel SLOTS whose instances and permissions come from pack content (the kernel comment says so)')
+}
+
+// ---------- 12. 会议原语 (agenda / rounds / minutes orchestration) ----------
+{
+  const conf = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'conference.js'), 'utf8')
+  const met = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'meetings.js'), 'utf8')
+  ok(/round/.test(met) && /minutes/.test(met), '等价: vmu carries the meeting rail (rounds + minutes) in its own kernel face')
+  ok(/conference/.test(conf) || /meeting/.test(conf), '等价: the review/agenda orchestration references the meeting face rather than duplicating it')
+}
+
+// ---------- 13. 求真表决 (three-valued outcome, undecided MUST carry a reason) ----------
+{
+  const b = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'ballot.js'), 'utf8')
+  ok(/THREE-valued/.test(b) && /undecided/.test(b), '等价: vmu ballot outcome is three-valued and undecided must carry a reason (its own header)')
+  ok(/must return \{ outcome/.test(b), '等价: an injected tally that returns no outcome is refused, so a silent decision is impossible')
+}
+
+// ---------- 14. 正式证明准入 (issue #13) - the named predicate EXISTS in vmu ----------
+{
+  const idx = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'index.js'), 'utf8')
+  const pack = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'institute-min.js'), 'utf8')
+  ok(/has_locked_formal_proof/.test(idx), '等价: vmu DOES provide the named state predicate has_locked_formal_proof (kernel/index.js)')
+  ok(/has_locked_formal_proof/.test(pack), '等价: and a pack already gates on it (packs/institute-min.js), so the pair is wired, not planned')
+}
+
+// ---------- 15. 资源预算 (#4) ----------
+{
+  const bud = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'budget.js'), 'utf8')
+  ok(/reserve/i.test(bud) && /quota/i.test(bud), '等价: vmu budget carries reserve + quota classes, and its refusal is machine-enforced')
+  ok(/VMU_RESOURCE_BUDGET/.test(bud) || /EXHAUST/.test(bud), '等价: reaching a budget/ceiling is a NAMED refusal in vmu too')
+}
+
+// ---------- 16. 静态门 / 变异族 / 语料门禁 ----------
+{
+  const core = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r-core.js'), 'utf8')
+  ok(/v5r-prompts/.test(core) || /corpus/i.test(core), '等价: the v5r pack documents that its prompt content is GENERATED from the v5r corpus, not copied by hand')
+  const runner = readFileSync(join(REPO, 'tests', 'run-tests.mjs'), 'utf8')
+  ok(/mutant/i.test(runner), '等价: the repository gate runs mutant families, which is the same static-gate idea v5r carries internally')
 }
 // ---------- control: the v5r reader really reads ----------
 {

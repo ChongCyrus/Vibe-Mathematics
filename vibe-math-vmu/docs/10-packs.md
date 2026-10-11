@@ -125,7 +125,7 @@ pack 默认  <  预设 Config  <  会话 settings  <  运行时 set
 | 会议（议程/轮次/举手/纪要/收束） | 会议原语（08）＋ `meeting.*` 判定点中间件 | 完成判据必须外置 |
 | 求真表决（票型/法定数/未定论/复议） | 表决原语（08）＋ `ballot.*` 判定点 | 含"过程票不构成裁定" |
 | 表决期禁言（R3/K12/B9） | `ballot.frozen` 判定点 ＋ `meeting.round-complete` 判定点 | **v5r 的真回归点**：冻结期不得推进轮次 |
-| 正式证明准入（issue #13 #1） | `ballot.can-open` ＋ `ballot.who-may-open` 中间件（M1） | 需 vmu 提供"具名状态谓词"`has_locked_formal_proof` |
+| 正式证明准入（issue #13 #1） | `ballot.can-open` ＋ `ballot.who-may-open` 中间件（M1） | ✅ **轮 212 实测：该具名状态谓词【已提供】** ✓（`kernel/index.js` 的 `has_locked_formal_proof: (ev) => !!(ev.locked === true \|\| ev.subject.settled === true)` ✓），**且已有 pack 在闸门上用它** ✓（`packs/institute-min.js` 的 `when: { all: [ … { not: { subject: 'has_locked_formal_proof' } } ] }` ✓）⇒ ★ 原先写"**需 vmu 提供**"已陈旧 ✗，**已更正** ✓ |
 | 记录分轨＋截断计数（#2） | 归档原语（07-§4）＋ `track` 参数 | 直接复用 |
 | 待续标记（#5） | 在途工作台账（07-§3） | 直接复用 |
 | 资源预算（#4） | `vmu.limits.*` ＋ `budget/exceeded` 中间件 | 机器强制部分进内核能力 |
