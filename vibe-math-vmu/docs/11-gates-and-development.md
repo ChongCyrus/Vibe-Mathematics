@@ -143,11 +143,11 @@
 
 | 资产 | 规模 | 为何通用 |
 |---|---|---|
-| `tests/run-tests.mjs` | 978 行 | 并行 runner（LPT 调度、gate scope、增量/全量、HEADSTART、`--counts`/`--self-check`）；**与预设代数完全解耦**（文件名约定＋目录扫描） |
-| `tests/run-tests.mutants.mjs` | 5.5 KB | 对 runner 自身的变异族（证明其判红能力） |
-| `tests/helpers/doc-counts-format.mjs` | 41 行 | **单一定义**所有计数句子（writer/guard/mutant 三方共用） |
-| `tests/helpers/math-computation-fake-seam.mjs` | 167 行 | **假宿主接缝范本**：不装任何引擎也能驱动全分支 ⇒ **正对应 §4.1 的接缝要求** ✓ |
-| `audit-package-membership`／`audit-path-discipline`／`audit-artifact-docs`／`audit-status-report-fields`／`audit-engine-faces` | 57 行／5 KB／7 KB／9.3 KB／298 行 | 机制级守卫（包成员资格、路径纪律、产物文档、status/report 字段、真引擎三面＋`SKIP` 不算红）⇒ **模式直接照抄** |
+| `tests/run-tests.mjs` | （行数不手写 ✓） | 并行 runner（LPT 调度、gate scope、增量/全量、HEADSTART、`--counts`/`--self-check`）；**与预设代数完全解耦**（文件名约定＋目录扫描） |
+| `tests/run-tests.mutants.mjs` | （体量不手写 ✓） | 对 runner 自身的变异族（证明其判红能力） |
+| `tests/helpers/doc-counts-format.mjs` | （体量不手写 ✓） | **单一定义**所有计数句子（writer/guard/mutant 三方共用） |
+| `tests/helpers/math-computation-fake-seam.mjs` | （体量不手写 ✓） | **假宿主接缝范本**：不装任何引擎也能驱动全分支 ⇒ **正对应 §4.1 的接缝要求** ✓ |
+| `audit-package-membership`／`audit-path-discipline`／`audit-artifact-docs`／`audit-status-report-fields`／`audit-engine-faces` | （体量不手写 ✓）| 机制级守卫（包成员资格、路径纪律、产物文档、status/report 字段、真引擎三面＋`SKIP` 不算红）⇒ **模式直接照抄** |
 | 28 个 `*.mutants.mjs`（实测） | — | "具名单点变异 ＋ 要求守卫变红"的**范式**可复用（内容需重写） |
 
 **预设接线专用守卫（每次加预设都要跑，7 个）** ✗✓：`audit-preset-rows.test.mjs`、`audit-preset-declaration-group.test.mjs`、`audit-preset-mechanism.test.mjs`、`audit-installer-compat.test.mjs`、`audit-installer-policy.test.mjs`、`audit-installer-assertions.mutants.mjs`、`audit-readme-counts.mjs`。
