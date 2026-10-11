@@ -226,5 +226,18 @@ const mk = (settings = {}, opts = {}) => createPublication({ clock: () => now, s
   ok(declared.license === 'MIT' && declared.codeLicense === 'GPL-3.0' && declared.attributionRequired === false, 'license.*: re-declaring all three changes what the receipt carries')
 }
 
+
+// ── ROUND 288: the replication family (volume 16 §L333-§L339) ───────────────────────────────────────────────
+{
+  const r = mk({})
+  const refused = r.shareReplication({ original: 'r-1' })
+  ok(refused.code === 'VMU_INVALID_ARGUMENT', 'federationShare[off]: marking a replication record for sharing is refused by name', refused.code)
+  ok(r.shareReplication({ original: 'r-1', share: false }).ok === true, 'federationShare[off]: UN-sharing is still allowed and says so')
+  ok(mk({}).shareReplication({}).code === 'VMU_INVALID_ARGUMENT', 'shareReplication without a record is refused')
+  const on = mk({ 'vmu.replication.federationShare': true })
+  const done = on.shareReplication({ original: 'r-2', note: 'peers' })
+  ok(done.ok === true && done.declaration === true, 'federationShare[on]: the marking is recorded and the declaration reported', done)
+}
+
 console.log('=== VMU PUBLICATION: ' + pass + ' passed, ' + fail + ' failed ===')
 process.exit(fail ? 1 : 0)

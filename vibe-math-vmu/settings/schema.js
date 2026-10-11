@@ -1126,6 +1126,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.publish.requireChecklist', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（publication.js 读取）；默认值取自模块源码" },
   { key: 'vmu.publish.versionChainStrict', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（publication.js 读取）；默认值取自模块源码" },
   { key: 'vmu.records.treatNegativeAsFirstClass', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（publication.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.replication.federationShare', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（publication.js 读取）；默认值取自模块源码" },
   { key: 'vmu.replication.summaryEnabled', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（publication.js 读取）；默认值取自模块源码" },
   { key: 'vmu.review.conflictPolicy', type: 'string', def: 'recuse', hot: HOT.H1, who: 'office', doc: "已接线（reviewers.js 读取）；默认值取自模块源码" },
   { key: 'vmu.review.mode', type: 'string', def: 'single-blind', hot: HOT.H1, who: 'office', doc: "已接线（reviewers.js 读取）；默认值取自模块源码" },

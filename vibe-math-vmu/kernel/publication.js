@@ -78,7 +78,12 @@ export function createPublication({ clock = () => Date.now(), log = () => {}, se
     versionChainStrict: boolOr(settings['vmu.publish.versionChainStrict'], true),
     treatNegativeAsFirstClass: boolOr(settings['vmu.records.treatNegativeAsFirstClass'], true),
     summaryEnabled: boolOr(settings['vmu.replication.summaryEnabled'], true),
+    // ROUND 288 (volume 16 §L337): whether replication records may be marked for federated sharing, off by default.
+    federationShare: boolOr(settings['vmu.replication.federationShare'], false),
   })
+
+  /** ROUND 288: replication records marked for federated sharing (only ever written when the declaration allows it). */
+  const shared = new Map()
 
   const paper = (paperId) => {
     const p = papers.get(paperId)
@@ -210,6 +215,25 @@ export function createPublication({ clock = () => Date.now(), log = () => {}, se
    * Replication outcomes (G20): `failed` is a FIRST-CLASS result, never an error. A missing `original`
    * or `evidence` is refused by name (that is a malformed record, not a negative result).
    */
+  /**
+   * ROUND 288 (`vmu.replication.federationShare`): mark a replication record for federated sharing. Off by default, so the marking is
+   * refused BY NAME with the code this family already declares; on, the marking is recorded and reported.
+   */
+  function shareReplication({ original = null, share = true, note = null } = {}) {
+    const c = cfg()
+    const id = typeof original === 'string' ? original.trim() : ''
+    if (!id) return { ok: false, code: 'VMU_INVALID_ARGUMENT', message: 'shareReplication needs original',
+      hint: 'pass original:<the replication record id>' }
+    if (share && !c.federationShare) {
+      return { ok: false, code: 'VMU_INVALID_ARGUMENT',
+        message: 'vmu.replication.federationShare=false: a replication record cannot be marked for federated sharing',
+        hint: 'set vmu.replication.federationShare=true to allow it (volume 16 §L336: the federation linkage is optional)' }
+    }
+    shared.set(id, { original: id, share: !!share, note: typeof note === 'string' && note.trim() ? note.trim() : null, at: clock() })
+    return { ok: true, original: id, share: !!share, declaration: c.federationShare,
+      note: c.federationShare ? null : 'vmu.replication.federationShare=false: only an UN-sharing is recorded' }
+  }
+
   function replication({ original, outcome, evidence = null, notes = null } = {}) {
     const c = cfg()
     if (!original) throw refuse('VMU_INVALID_ARGUMENT', 'replication needs original', 'pass original:<paperId|study-id>', { missing: ['original'] })
@@ -358,6 +382,7 @@ export function createPublication({ clock = () => Date.now(), log = () => {}, se
     return { ok: true, paperId, impact: rec.impact.slice(), enforced }
   }
 
-  return { apiVersion, submitPack, advance, register, availability, badge, replication, list, status,
+  return { apiVersion,
+    shareReplication, submitPack, advance, register, availability, badge, replication, list, status,
     outreachPack, publishOutreach, openOutreachReview, logImpact, useImpactInEvaluation }
 }

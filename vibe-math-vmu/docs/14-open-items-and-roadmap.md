@@ -1476,6 +1476,13 @@
   **门禁与证据** ✓：**卷 14 新小节经行数校验 ✓** ✓；**`DOCS AUDIT: 70/0`** ✓；**`CROSS-VOLUME REFS: 747 checked, 0 unresolved`（745 → 747，新引用的 § 全部可解 ✓）** ✓；**未接线保持 107** ✓。
   **未做（明写 ✗）**：★★★ **第 ② 档 38 条尚未开始接** ✗ —— **三档结构与前提已量清** ✓，**下一步即按族记账动手** ✓；**第 ③ 档 69 条需建面** ✗；**`kernel/pack.js` 的设置接缝未加** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 288：按第 ② 档动手，接 `vmu.replication.federationShare`；并把 8 个"单键族"的处境一次分清（4 种，不是 1 种）；未接线 107 → 106** ✓✓
+  ★★★ **① 八个目标【不是同一种处境】，量出来是四类** ✓✓：**① 已属第 ① 档 2 个** ✓（**`data.retention` 单位未定 ✓、`paper.retentionMs` 已穷尽 ✓**）；**② 退役候选 2 个** ✓ —— ★ **`control.beatStaleMs`：卷 08 L1224 **自己写着**"建议：只留 `vmu.limits.wallClockMs`，`beatStaleMs`【不新增】"** ✓✓；★ **`memory.compactEveryMs` vs 该面【已读】的 `vmu.memory.compactionEveryMs`** = **"一个语义两个名字"** ✓✓；**③ 无承载面 2 个** ✓（**`skills.catalogTtlMs` 的 op `skills.catalog()` 与 `explain.fairnessDetail` 的 `fairness.explain()` 都标 ⛔ 未实现** ✓）；**④ 可接 1–2 个** ✓。
+  ★★★ **② 接了 `vmu.replication.federationShare`** ✓✓（**卷 16 §L337：布尔，默认 `false` ✓**）：**其上下文说"与联邦交换联动（**规划 ✗**）"** ✓ ⇒ **裁定：机器是规划，但【声明本身的语义清楚且可观测】** ✓ ⇒ 实现为 **`shareReplication()`**：**默认关闭时【标为共享 ⇒ 具名拒**（用该族已声明的 `VMU_INVALID_ARGUMENT` ✓，**无需新码 ✓**）**）、而【取消共享始终允许】并说明只记录了取消 ✓、无 id ⇒ 具名拒 ✓、声明开启 ⇒ 记录并报出 `declaration: true`** ✓。**四条分支真机验证全对** ✓；**断言 +4 ⇒ `VMU PUBLICATION: 63/0`** ✓；**未接线 107 → 106** ✓。
+  ★★★ **③ 一处值得记下的事实** ✓✓：**`identity.localFormat` 的接口形状在卷 17 标为"**已实现 ✓**＝`config.instance` ＋ `kernel.members.roster()`"** ✓，**而 `kernel/identity.js`（213 行）里【没有 `instance`／`roster`／`format`】** ✗ ⇒ ★★ **该"本地身份"面在别处（`index.js`／`members.js`）** ✓ ⇒ **本轮未动它** ✓，**记为待量** ✓。
+  **门禁与证据** ✓：**`VMU PUBLICATION: 63/0`** ✓；**`publication.js` 语法 0 ✓**；**未接线 107 → 106** ✓；**待本轮生成链与 T1** ✓。
+  **未做（明写 ✗）**：★★★ **`control.beatStaleMs`／`memory.compactEveryMs` 两个【退役】尚未执行** ✗ —— **依据已找到**（**前者是卷自己的裁定 ✓，后者是重复声明 ✓**）⇒ **下一步按轮 260 的机制办** ✓；**`skills.catalogTtlMs`／`explain.fairnessDetail` 需先建 op** ✗；**`identity.localFormat` 的承载面未定位** ✗；**第 ② 档其余 36 条未动** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 ## 0.5 未接线键的【三档结构】（轮 287 实测）✓✓
