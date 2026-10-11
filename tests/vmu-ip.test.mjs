@@ -53,7 +53,8 @@ const goodDossier = (h, extra = {}) => h.ip.file(Object.assign({
   ok(SERVICE_KEYS.length > 0 && SERVICE_KEYS.every((k) => typeof h.ip[k.split('.').pop()] === 'function'), 'each declared service surface really exists as a method (non-vacuous: SERVICE_KEYS is a non-empty module constant)')
   // FACT CHECK: the declared universe is read from the settings sources, not asserted from memory.
   const x = s.registry
-  ok(x && x.declaredIpKeys === 20, 'settings/planned.js + settings/schema.js really declare 20 `vmu.ip.*` keys')
+  ok(x && x.declaredIpKeys === 15,
+    'settings/planned.js + settings/schema.js really declare the 15 `vmu.ip.*` KNOBS (the 5 service surfaces are deliberately not settings; the module itself declares all 20)')
   ok(x && x.undocumented.length === 0, 'every key declared in the settings sources is covered by DECLARED_KEYS (no drift)')
 }
 

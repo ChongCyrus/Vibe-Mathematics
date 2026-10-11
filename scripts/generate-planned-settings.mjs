@@ -73,7 +73,11 @@ export const BROAD_RE = /\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)*\b/g
 export const NON_SETTING = new Set(['vmu.prompt', 'vmu.library', 'vmu.members', 'vmu.tasks', 'vmu.store', 'vmu.bus',
   'vmu.kernel', 'vmu.settings', 'vmu.rules', 'vmu.bridge', 'vmu.loader', 'vmu.registry', 'vmu.meetings',
   'vmu.budget', 'vmu.packs', 'vmu.middleware', 'vmu.records', 'vmu.core', 'vmu.limits', 'vmu.safety',
-  'vmu.math', 'vmu.ballot', 'vmu.meeting', 'vmu.schema', 'vmu.status'])
+  'vmu.math', 'vmu.ballot', 'vmu.meeting', 'vmu.schema', 'vmu.status',
+  // ROUND 108: the five `vmu.ip.*` SERVICE SURFACES. The module says so itself - "20 DECLARED KEYS = 15 KNOBS
+  // + 5 SERVICE SURFACES" - and the real knobs beside them are declared separately (`holdEnforcement`,
+  // `ownershipDefault`, `transferPolicy`, ...). A method name is not something a pack can tune.
+  'vmu.ip.hold', 'vmu.ip.ownership', 'vmu.ip.contributors', 'vmu.ip.recordSearch', 'vmu.ip.transfer'])
 
 /** The discovered volumes: [{ num: '07', name: '07-durability-library', text }], sorted by number. */
 export function docVolumes(dir = DOCS_DIR) {

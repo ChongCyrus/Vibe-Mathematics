@@ -249,7 +249,10 @@ ok(unregisteredInCode.length === 0,
   const NON_SETTING = new Set(['vmu.prompt', 'vmu.library', 'vmu.members', 'vmu.tasks', 'vmu.store', 'vmu.bus',
     'vmu.kernel', 'vmu.settings', 'vmu.rules', 'vmu.bridge', 'vmu.loader', 'vmu.registry', 'vmu.meetings',
     'vmu.budget', 'vmu.packs', 'vmu.middleware', 'vmu.records', 'vmu.core', 'vmu.limits', 'vmu.safety',
-    'vmu.math', 'vmu.ballot', 'vmu.meeting', 'vmu.schema', 'vmu.status'])
+    'vmu.math', 'vmu.ballot', 'vmu.meeting', 'vmu.schema', 'vmu.status',
+    // ROUND 108: the five `vmu.ip.*` service surfaces (fifteen knobs and these five make the twenty the module
+    // declares). Dotted like keys, but no pack can tune a method name.
+    'vmu.ip.hold', 'vmu.ip.ownership', 'vmu.ip.contributors', 'vmu.ip.recordSearch', 'vmu.ip.transfer'])
   const bogus = new Set()
   for (const [name, text] of docText) {
     for (const m of text.matchAll(/\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b/g)) {

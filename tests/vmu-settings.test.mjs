@@ -97,7 +97,13 @@ ok(defs.filter((d) => d.hot === 'H3').length > 0, 'the read-only class is actual
   const PACK_OWNED = /^vmu\.(?:v[2-5]r?|example|lab)\./
   // NOT a read: `Symbol('vmu.settings.writers')` is a symbol DESCRIPTION in kernel/index.js, not a settings
   // lookup. Exempted by exact name so the exemption cannot drift into a blanket hole.
-  const NOT_A_READ = new Set(['vmu.settings.writers'])
+  const NOT_A_READ = new Set([
+    'vmu.settings.writers',
+    // ROUND 108: the five `vmu.ip.*` service surfaces. `kernel/ip.js` lists them in its DECLARED_KEYS table
+    // beside the fifteen real knobs, and the module says so in words. A name in a table is not a lookup - the
+    // same shape as the symbol description above.
+    'vmu.ip.hold', 'vmu.ip.ownership', 'vmu.ip.contributors', 'vmu.ip.recordSearch', 'vmu.ip.transfer',
+  ])
   for (const f of files) {
     for (const m of readFileSync(f, 'utf8').matchAll(/['"`](vmu\.[a-zA-Z0-9.]+)['"`]/g)) {
       const k = m[1]
