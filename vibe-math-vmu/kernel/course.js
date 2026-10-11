@@ -48,9 +48,15 @@ export const PLANNED_COURSE_KEYS = Object.freeze([
   ['vmu.course.blindMappingRetentionMs', '保留机制由 **`retention` 面**承载 ✓（`removed[]` 让每次移除可追 ✓、`library.list({scope})` 可读 ✓）；'
     + '本面**无持久化面** ⇒ 该键的落点在 **`retention` 的登记里** ✓，不必各面自带一份 ✗。'
     + '**复活条件** ✓：盲审映射表真的需要独立保留期时 ⇒ 在 `retention` 面声明，而不是在课程面内落盘 ✗'],
-  ['vmu.course.maxUnits', '容量机制由 **`capacity` 面**承载 ✓（`vmu.capacity.seatsPerDomain`／`machineHoursPool`／`overcommitRatio` ✓），'
-    + '但那是**域级**上限、**没有课程级人数上限** ✓。**复活条件** ✓：需要课程级上限时 ⇒ 加在 `course.js` 的**招生/注册路径**'
-    + '（`cohort` 增长处 ✓）—— **那才是"超额"发生的地方** ✓'],
+  ['vmu.course.maxUnits', '★ **轮 189 实测更正** ✗✓：本键管的是**单元（unit）上限**（`docs/17` L774：「单元上限（0＝不限）」✓），而'
+    + '**课程级人数上限【已经存在且已接线】** ✓✓ —— 实测：`enroll()` 里 `if (c.cohortMax > 0 && course.cohort.length >= c.cohortMax)` ⇒ '
+    + '**具名拒 `VMU_RESOURCE_BUDGET`** ✓，提示带「名额已满：N / M（vmu.course.cohortMax）」✓；套件正负断言见 `tests/vmu-course.test.mjs` L50／L56 ✓。'
+    + '所以原句"没有课程级上限" ✗ 是**说错了对象** ✗（有 **人数**上限 ✓，缺的是 **单元**上限 ✓）。'
+    + '★ **更关键的是**：**`unit` 在本模块里只出现三处** ✓（键表 ✓／本理由 ✓／`openCourse` 的注释"未接⇒不参与" ✓）⇒ '
+    + '**没有任何单元 API、也没有单元对象** ✗（`VMU_COURSE_UNIT_UNKNOWN` 同样只是**规划码** ✓）。'
+    + '**复活条件（已改正 ✓）**：**先有"单元"这一概念** ✓（`docs/17` 的 `kernel.course.unit/syllabus` 一类的规划面 ✓）⇒ '
+    + '**然后在"加单元"的那条路径上限额** ✓ —— ★ **不是在 `cohort` 增长处** ✗：那里发生的是**人**加入 ✓，不是**单元**超额 ✓（原复活条件把两者混为一谈 ✗）。'
+    + '**为什么现在不接** ✓：**在没有单元概念时先接一个"单元上限"，等于凭空造一个子系统** ✗ —— 与本项目"避免第二份实现／零机制"的纪律相反 ✓✓。'],
 ])
 
 const refuse = (code, message, hint) => ({ ok: false, code, message, hint })

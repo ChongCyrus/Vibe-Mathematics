@@ -1051,7 +1051,7 @@ vmu.packs.active: [v5r]
 | `vmu.control.stopClearsRegistry` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.control.watchdogIntervalMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.course.blindMappingRetentionMs` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.course.maxUnits` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
+| `vmu.course.maxUnits` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 设计阶段登记：首个声明卷 14（共见 2 卷：14、17），尚未实现（元数据以各卷为准） |
 | `vmu.crypto.enabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.crypto.requireSignedAudit` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.crypto.rotateAfterDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
