@@ -1,5 +1,6 @@
 # vmu 10 · 整合包手册（Packs）
 
+> ★ **轮 209 实测（仓内可执行对照已落地 ✓）**：`tests/accept-v5r-contrast-behaviour.test.mjs` 按 §5.1 的方法，**把 v5r 一侧读它的源码**（`v5r/DEFAULT_PARAMS` ＋ 键旁契约 ✓ —— **内容锚点、不用行号** ✓）、**把 vmu 一侧【驱动】起来问** ✓，逐对分类 ⇒ **当前 4 等价 / 1 未覆盖** ✓✓：`quorumCap` ✓／`verdictMaxRounds` ✓／`meetingWakeRetries` ✓／`meetingHardLimitMs` ✓ 为**等价**（★ `wakeRetries` 与 `hardLimitMs` 两键，**v5r 键旁的契约与我方实现逐字一致** ✓✓）；`reconsiderFloor` 为**未覆盖** ✗（vmu 的会议面无该模型 ✓，schema 的 `doc` 已如实写明 ✓）。★ **真机复跑仍待做** ✗，且它的两项前置已具名：**A 侧需"未装 vmu 插件且 CLI 同代"的 profile** ✗（`design/05-p3-ab-report.md` 已记：本环境不可得 ✓）、**B 侧必须【声明 pack】** ✗（2026-10-10 那次真机 A/B 的 B 侧 `packs: []` ⇒ **零机制得到验证** ✓）。
 > 状态：**草案 v0.1**（"v5r 机制清单"待 B′ 侦察 §2/§5 合并后补全并逐条映射）
 > 上位：`01-philosophy.md`（R15 可迁移 / D4 v5r 降为整合包 / D8 行为包含对照）、`02-architecture.md`（L4）
 > 定义：**pack ＝ 一份完整"运行机制"的声明组合**（settings 默认 ＋ 中间件 ＋ 提示词包 ＋ 可选脚本 ＋ 迁移），**不是**目录约定或代码分支。
