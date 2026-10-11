@@ -695,3 +695,5 @@ Common controls: `vibe_v5_configure` (configure first) → `vibe_v5_start` (star
 ## 📄 License
 
 MIT
+
+See [v5 member context changes and evaluation protocol](docs/v5-context.md).

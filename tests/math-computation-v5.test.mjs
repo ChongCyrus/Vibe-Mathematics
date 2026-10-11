@@ -208,6 +208,9 @@ function makeHost(seam, opts) {
   async function callTool(name, args, agent) {
     const spec = toolRegs.find((x) => x.name === name)
     if (!spec) throw new Error('no tool ' + name)
+    // Existing business fixtures explicitly acquire methods; unread/identity cases live in v5-tool-help.test.mjs.
+    const help = toolRegs.find(x => x.name === 'vibe_v5_tool_help')
+    if (help && name !== 'vibe_v5_tool_help') await help.execute({ tool: name }, { agent: agent || ROOT })
     const raw = await spec.execute(args || {}, { agent: agent || ROOT })
     return JSON.parse(raw)
   }
@@ -269,7 +272,7 @@ section('1 the six frozen params reach every v5 surface')
     'the three math enums are frozen in the schema')
   const mspec = h.toolRegs.find((t) => t.name === 'math_computation')
   assert(!!mspec, 'the shared module registered math_computation on the v5 tool surface')
-  assert(mspec.description === math.MATH_TOOL_DESCRIPTION, 'the tool description is the frozen shared string')
+  assert((await h.callTool('vibe_v5_tool_help', { tool: 'math_computation' })).instructions.includes(math.MATH_TOOL_DESCRIPTION), 'v5 help retains the frozen shared description')
   assert(JSON.stringify(Object.keys(mspec.parameters.properties)) === JSON.stringify(Object.keys(math.MATH_TOOL_SCHEMA.properties)),
     'the registered parameter schema is the module’s frozen schema')
   // Normalisation goes through the shared module (explicit coercion, no raw leakage).
@@ -561,9 +564,10 @@ section('14 prompt + persona surfaces')
     return w.text
   }
   const shellish = await ask('r-1')
-  assert(/先 probe 再 run/.test(shellish) && /math_computation/.test(shellish),
+  assert(/math_computation：可用引擎/.test(shellish) && shellish.includes('Shared/Protocol.md'),
     '★ the member prompt carries the availability line (' + JSON.stringify(shellish.slice(-200)) + ')')
-  assert(shellish.includes(math.MATH_SHELL_RULE_LINE), 'mathMode=typed+shell advertises the shell fallback + its labelling rule')
+  const handbook = readFileSync(join(h.WS, 'VibeMath/Projects/default/Institutes/institute/Shared/Protocol.md'), 'utf8')
+  assert(!shellish.includes(math.MATH_SHELL_RULE_LINE) && handbook.includes(math.MATH_SHELL_RULE_LINE), 'shell fallback detail is discoverable in the handbook instead of every research round')
   assert(/python 3\.11/.test(shellish), 'the line names the detected engine/version')
   await h.callTool('vibe_v5_set', { mathMode: 'typed' })
   const typed = await ask('r-1')
@@ -578,7 +582,7 @@ section('14 prompt + persona surfaces')
   assert(occurrences === 2, '★ the persona carries MATH_PERSONA_TOOL_LINE in BOTH blocks (found ' + occurrences + ')')
   // Round-6 (A): substitution honesty. The INJECTED availability line must carry the rule, and
   // the persona must carry it in both blocks and both languages.
-  assert(math.MATH_SUBSTITUTION_RULE_LINE && shellish.indexOf(math.MATH_SUBSTITUTION_RULE_LINE) !== -1,
+  assert(math.MATH_SUBSTITUTION_RULE_LINE && handbook.includes(math.MATH_SUBSTITUTION_RULE_LINE) && shellish.includes('近似、替代与有限搜索的范围须声明'),
     '★ the injected availability line carries MATH_SUBSTITUTION_RULE_LINE (' + JSON.stringify(String(shellish).slice(-200)) + ')')
   const subZh = yml.split(math.MATH_SUBSTITUTION_RULE_LINE).length - 1
   const subEn = yml.split(math.MATH_SUBSTITUTION_RULE_LINE_EN).length - 1

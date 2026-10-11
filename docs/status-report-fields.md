@@ -131,7 +131,7 @@
 | `diagnostics` | 未分类（语义见实现） | status()（report() 同源） | 跳过/畸形事件与状态加载问题 |
 | `debug` | 会话 | status()（report() 同源） | 调度调试计数（passes/reschedule 等） |
 | `quorum` | 未分类（语义见实现） | status()（report() 同源） | 共识/投票视图 |
-| `members` | 未分类（语义见实现） | status()（report() 同源） | 成员名册（含会话态字段） |
+| `members` | 未分类（语义见实现） | status()（report() 同源） | 成员名册（含会话态字段；contextPct 无估计时为 null，context 区分估计来源、摘要保存与真实压缩结果，详见 [v5 上下文](v5-context.md)） |
 | `tasks` | 未分类（语义见实现） | status()（report() 同源） | 共享任务板 |
 | `failedMembers` | 未分类（语义见实现） | status()（report() 同源） | provisioning 失败的成员 |
 | `failedMembersNote` | 未分类（语义见实现） | status()（report() 同源） | 失败成员的处理说明（重试口径） |
