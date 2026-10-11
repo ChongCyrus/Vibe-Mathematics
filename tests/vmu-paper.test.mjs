@@ -148,6 +148,38 @@ const OWNERS = { introduction: 'm-1', method: 'm-2', results: 'm-1' }
   ok(found.length === 0, '★ the module carries none of the v5r role names (a slot is a name the pack supplies)', found.join(','))
 }
 
+// ── 8. ROUND 145：章节上限是【真限制】（默认 0 ＝ 不限 ⇒ 不改变既有行为 ✓）──────────────────
+{
+  const many = Array.from({ length: 40 }, (_, i) => 's' + i)
+  const ownersOf = (list) => Object.fromEntries(list.map((n) => [n, 'm1']))
+
+  // ① 默认（未声明 ⇒ 0）⇒ **不设限**：这就是"改了键才有变化"的反面证明 ✓
+  const unlimited = createPaper({ settings: mkSettings({}), clock: () => 20 })
+  const big = unlimited.start({ title: 'T', sections: many, contributors: ownersOf(many), editor: 'ed' })
+  ok(big.ok === true && big.sections === 40, 'M1. with the default 0 there is NO cap (40 sections start ⇒ nothing changes by default)', JSON.stringify(big).slice(0, 90))
+
+  // ② 超上限 ⇒ **具名拒**，且消息里**同时有实际数与上限** ✓
+  const capped = createPaper({ settings: mkSettings({ 'vmu.paper.maxSections': 2 }), clock: () => 21 })
+  let over = null
+  try { capped.start({ title: 'T', sections: many.slice(0, 3), contributors: ownersOf(many.slice(0, 3)), editor: 'ed' }) } catch (e) { over = e }
+  ok(!!over && over.code === 'VMU_RESOURCE_BUDGET', 'M2. ★ over the cap is refused by name', over && over.code)
+  ok(!!over && over.message.indexOf('3 > 2') !== -1, 'M3. ★ and the refusal carries BOTH the actual count and the cap', over && over.message.slice(0, 90))
+
+  // ③ 恰好等于上限 ⇒ 放行（边界 ✓）
+  const atCap = capped.start({ title: 'T', sections: many.slice(0, 2), contributors: ownersOf(many.slice(0, 2)), editor: 'ed' })
+  ok(atCap.ok === true && atCap.sections === 2, 'M4. at the cap is allowed (the bound is ">", not ">=")')
+
+  // ④ 上限检查的【顺序】：超限时拒的是"太大"，而不是"一长串无主章节" ✓（消息里提到的是尺寸 ✓）
+  let sizeFirst = null
+  try { capped.start({ title: 'T', sections: many.slice(0, 5), contributors: {}, editor: 'ed' }) } catch (e) { sizeFirst = e }
+  ok(!!sizeFirst && sizeFirst.message.indexOf('too many sections') !== -1 && sizeFirst.message.indexOf('no owner') === -1,
+    'M5. ★ the SIZE refusal wins over the ownership refusal (a huge request is refused for its size, not for a long list of names)', sizeFirst && sizeFirst.message.slice(0, 80))
+
+  // ⑤ 键表自述与实际一致 ✓：cap 键在 WIRED 里、不在 PLANNED 里
+  ok(WIRED_KEYS.indexOf('vmu.paper.maxSections') !== -1, 'M6. the cap is declared WIRED')
+  ok(PLANNED_KEYS.every((e) => e[0] !== 'vmu.paper.maxSections'), 'M7. and it is no longer claimed unwired')
+}
+
 console.log('=== VMU PAPER: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

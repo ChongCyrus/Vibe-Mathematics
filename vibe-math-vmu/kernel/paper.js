@@ -30,11 +30,14 @@ export const ENFORCED_SCOPE = 'evaluated-so-far'
 export const WIRED_KEYS = Object.freeze([
   'vmu.paper.requireAllSections',
   'vmu.paper.finalizer',
+  // ROUND 145: the section cap used to be declared-but-unwired. It is a real LIMIT now: opening a manuscript with
+  // more sections than the cap is refused by name with the count and the cap, because a bound the machine cannot
+  // enforce is a suggestion. 0 means unlimited, which is also the default, so nothing changes unless a pack asks.
+  'vmu.paper.maxSections',
 ])
 
 /** Declared but deliberately NOT wired (the audit criterion: named, with a reason, and a revival condition). */
 export const PLANNED_KEYS = Object.freeze([
-  ['vmu.paper.maxSections', '章节数上限未接：本面不设上限（超长稿件应由 workflow 的阶段闸约束 ✗）'],
   ['vmu.paper.retentionMs', '稿件保留期未接：本面无持久化面（与 course 的同类键同因 ✗）'],
 ])
 
@@ -59,7 +62,11 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
     const requireAllSections = readKey('vmu.paper.requireAllSections') === false ? false : true
     const finalizerRaw = String(readKey('vmu.paper.finalizer') || 'editor')
     const finalizer = FINALIZERS.indexOf(finalizerRaw) === -1 ? 'editor' : finalizerRaw
-    return { requireAllSections, finalizer }
+    // ROUND 145: written in the `|| <literal>` shape on purpose - the schema generator recovers the default from
+    // that shape (readKey('k') || 0), so this key is declared with its REAL default rather than an honest null.
+    const rawMax = Number(readKey('vmu.paper.maxSections') || 0)
+    const maxSections = Number.isFinite(rawMax) && rawMax > 0 ? Math.floor(rawMax) : 0
+    return { requireAllSections, finalizer, maxSections }
   }
 
   const keysUsed = () => WIRED_KEYS.slice()
@@ -108,6 +115,13 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
       if (dupes.length) throw refuse('VMU_INVALID_ARGUMENT', 'duplicate section name(s): ' + [...new Set(dupes)].join(', '), 'section names are the contract keys')
       const bad = names.filter((n) => !SECTION_ID.test(n))
       if (bad.length) throw refuse('VMU_INVALID_ARGUMENT', 'malformed section name(s): ' + bad.join(', '), 'letters/digits/space/._-/ only')
+      // ROUND 145: the cap is enforced HERE, on the request's shape, before ownership is even examined - so a
+      // hundred-section manuscript is refused for its size rather than for a long list of unowned names.
+      const c = cfg()
+      if (c.maxSections > 0 && names.length > c.maxSections) {
+        throw refuse('VMU_RESOURCE_BUDGET', 'too many sections: ' + names.length + ' > ' + c.maxSections + ' (vmu.paper.maxSections)',
+          'split the manuscript into parts, or raise the cap (0 = unlimited)')
+      }
       const map = contributors && typeof contributors === 'object' ? contributors : {}
       const unowned = names.filter((n) => typeof map[n] !== 'string' || map[n].trim().length === 0)
       if (unowned.length) {

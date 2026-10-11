@@ -171,6 +171,19 @@ export function defaultOf(src, key) {
       if (/^(true|false|null)$/.test(lit) || /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(lit) || /^['"]/.test(lit)
         || (lit.startsWith('[') && lit.endsWith(']')) || (lit.startsWith('{') && lit.endsWith('}'))) return lit
       /**
+       * ROUND 145: the capture over-runs by the closing parens of an ENCLOSING call - `Number(readKey('k') || 0)`
+       * captures `0)`, which fails the literal test and the key is written off as having no default. Measured on
+       * `paper.js`: its section cap is written exactly that way and was emitted with an honest null while the
+       * default sits in the expression. Retry once with trailing parens stripped, and accept ONLY if what remains
+       * is still a literal - so `bar(1))` and `getDefault())` are still rejected (no widening of what counts).
+       */
+      const stripped = lit.replace(/[)\s]+$/, '')
+      if (stripped !== lit
+        && (/^(true|false|null)$/.test(stripped) || /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(stripped) || /^['"]/.test(stripped)
+          || (stripped.startsWith('[') && stripped.endsWith(']')) || (stripped.startsWith('{') && stripped.endsWith('}')))) {
+        return stripped
+      }
+      /**
        * ROUND 134: an identifier path (`DEFAULTS.fairnessPolicy`) is not a literal, but reading it is not a guess
        * either - the module defines that table in its own source, a few lines above the call. Measured: the auction
        * face writes `sget('vmu.auction.fairnessPolicy', DEFAULTS.fairnessPolicy)` and its three keys were emitted
