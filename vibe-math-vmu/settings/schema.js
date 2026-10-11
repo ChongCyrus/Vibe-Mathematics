@@ -791,6 +791,13 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.compliance.domainPacks', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: "启用的领域包（非空时，未声明的域⇒VMU_DOMAIN_PACK_MISSING）" },
   { key: 'vmu.compliance.requireApprovalGate', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "是否要求审批闸（§9.4①）" },
   { key: 'vmu.compliance.evidenceKind', type: 'string', def: 'compliance-evidence', hot: HOT.H1, who: 'office', doc: "合规证据的 kind（模板位；打包归 22 ✓）" },
+  // ROUND 249: 敏感数据分类与去标识化（20 卷 §7；现由 kernel/compliance.js 读取）.
+  { key: 'vmu.privacy.classification', type: 'enum', domain: ['C0', 'C1', 'C2', 'C3', 'C4'], def: 'C1', hot: HOT.H1, who: 'office', doc: "数据等级（C0 公开／C1 内部／C2 PII／C3 PHI／C4 受限；★ 声明低于实际 ⇒ VMU_DATA_CLASS_MISMATCH）" },
+  { key: 'vmu.privacy.piiDetect', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "是否检查载荷中的个人数据（按形状匹配；误报只会【抬高】等级，是安全方向）" },
+  { key: 'vmu.privacy.deidentify', type: 'enum', domain: ['none', 'pseudonymize', 'k-anonymity', 'differential'], def: 'pseudonymize', hot: HOT.H1, who: 'office', doc: "去标识化方式（★ C2+ 写入前必须发生；none ⇒ 拒，VMU_PRIVACY_VIOLATION）" },
+  { key: 'vmu.privacy.kAnonK', type: 'natural', def: 5, hot: HOT.H1, who: 'office', doc: "k-匿名的 k（<2 时 k-匿名被拒）" },
+  { key: 'vmu.privacy.dpEpsilon', type: 'number', def: 1.0, hot: HOT.H1, who: 'office', doc: "差分隐私 ε（≤0 时差分隐私被拒）" },
+  { key: 'vmu.privacy.minExposure', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "最小暴露（true ⇒ 载荷不得含【声明目的之外】的字段，逐字段点名）" },
   { key: 'vmu.prompts.overrides', type: 'object', def: {}, hot: HOT.H1, who: 'office', doc: "语言无关覆盖 {section:text}（合并【在调用方之下】⇒ 调用方仍可胜出，且合并被上报）" },
   { key: 'vmu.prompts.overridesByLang', type: 'object', def: {}, hot: HOT.H1, who: 'office', doc: "语言级覆盖 {section:{lang:text}}；解析出的语言命中时【优先于语言无关覆盖】" },
   { key: 'vmu.naming.conflictPolicy', type: 'enum', domain: ['refuse', 'suffix'], def: 'refuse', hot: HOT.H1, who: 'office', doc: "命名冲突策略（★ 只对【显式传入 record.id】生效：显式点名才是对名字的主张；由标题派生的名字不算冲突，因为同标题不同内容正是本面的内容身份语义 ✓）" },

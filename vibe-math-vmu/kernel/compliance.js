@@ -17,6 +17,16 @@ import { ms, msStrict } from './timevalue.js'
 export const apiVersion = 1
 export const ENFORCED_SCOPE = 'evaluated-so-far'
 
+/** The five classes of volume 20 §7, in order. `classify` compares by INDEX, never by string. */
+export const CLASS_ORDER = Object.freeze(['C0', 'C1', 'C2', 'C3', 'C4'])
+/** What personal data looks like here: SHAPES, not names. A false positive raises the class, which is the safe direction. */
+const PII_PATTERNS = Object.freeze([
+  ['email', /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/],
+  ['phone', /(?:\+?\d[\s-]?){9,}/],
+  ['national-id', /\b(?:\d{15}|\d{17}[\dXx])\b/],
+  ['person-name-field', /"(?:name|fullName|patientName|subjectName)"\s*:/i],
+])
+
 /** 本面已接线的键（字面量读取 ⇒ 设置表/文档审计可按文本扫描发现 ✓）。 */
 export const WIRED_KEYS = Object.freeze([
   'vmu.compliance.irbRequired',
@@ -37,6 +47,13 @@ export const WIRED_KEYS = Object.freeze([
   'vmu.compliance.domainPacks',
   // ROUND 155: read and it DECIDES - a dual-use pack declared while this switch is off is refused by name.
   'vmu.compliance.exportControlCheck',
+  // ROUND 249: sensitive-data classification and de-identification (volume 20 §7). Read and they DECIDE.
+  'vmu.privacy.classification',
+  'vmu.privacy.piiDetect',
+  'vmu.privacy.deidentify',
+  'vmu.privacy.kAnonK',
+  'vmu.privacy.dpEpsilon',
+  'vmu.privacy.minExposure',
 ])
 
 /**
@@ -64,6 +81,11 @@ export const WOULD_EVALUATE = Object.freeze({
   evidence: ['vmu.compliance.evidenceKind', 'vmu.compliance.evidenceMembers', 'vmu.compliance.evidencePackFields'],
   calendar: ['vmu.compliance.auditPrepLeadDays', 'vmu.compliance.reviewAlertLeadDays', 'vmu.compliance.calendarDir', 'vmu.compliance.calendarTemplate'],
   prepare: ['vmu.compliance.prepare', 'vmu.compliance.domainPacks', 'vmu.compliance.exportControlCheck'],
+  // ROUND 249 (volume 20 §7): classification decides the level, redaction decides whether writing is allowed at all, and exposure
+  // decides whether the payload is minimal for the declared purpose.
+  classify: ['vmu.privacy.classification', 'vmu.privacy.piiDetect'],
+  redact: ['vmu.privacy.deidentify', 'vmu.privacy.kAnonK', 'vmu.privacy.dpEpsilon', 'vmu.compliance.redactionPolicy'],
+  exposure: ['vmu.privacy.minExposure', 'vmu.privacy.classification'],
 })
 
 export function refuse(code, message, hint, extra) {
@@ -85,6 +107,7 @@ const clone = (v) => (v === undefined ? v : JSON.parse(JSON.stringify(v)))
 
 export function createCompliance({ clock = () => new Date(0).toISOString(), log = () => {}, settings = {}, bus = null } = {}) {
   if (typeof clock !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'createCompliance needs a clock function', 'pass { clock }')
+  const ORDER = CLASS_ORDER
   const counters = { refusals: {}, ops: {} }
   const audit = []
   const state = { reads: 0, writes: 0 }
@@ -112,6 +135,13 @@ export function createCompliance({ clock = () => new Date(0).toISOString(), log 
     // `screenExportControl`) - this face only refuses the INCONSISTENT configuration and points at it, never
     // reimplementing the screening.
     exportControlCheck: boolOf(raw(settings, 'vmu.compliance.exportControlCheck', false), false),
+    // ROUND 249 (volume 20 §7). Defaults are the volume's own: C1, detection on, pseudonymisation, k=5, epsilon=1.0, minimal exposure on.
+    privacyClass: strOf(raw(settings, 'vmu.privacy.classification', 'C1'), 'C1').toUpperCase(),
+    piiDetect: boolOf(raw(settings, 'vmu.privacy.piiDetect', true), true),
+    deidentify: strOf(raw(settings, 'vmu.privacy.deidentify', 'pseudonymize'), 'pseudonymize'),
+    kAnonK: numOf(raw(settings, 'vmu.privacy.kAnonK', 5), 5),
+    dpEpsilon: numOf(raw(settings, 'vmu.privacy.dpEpsilon', 1.0), 1.0),
+    minExposure: boolOf(raw(settings, 'vmu.privacy.minExposure', true), true),
   }
 
   const bump = (code) => { counters.refusals[code] = (counters.refusals[code] || 0) + 1 }
@@ -298,5 +328,79 @@ export function createCompliance({ clock = () => new Date(0).toISOString(), log 
     }
   }
 
-  return { review, retention, coi, exportData, evidence, calendar, prepare, status }
+  /**
+   * classify (volume 20 §7): the class of a record. `piiDetect` decides whether the payload is INSPECTED at all; the DECLARED
+   * class may never be lower than what the payload implies, and that mismatch is its own code.
+   */
+  function classify({ declared = null, sample = null } = {}) {
+    const enforced = []
+    mark(enforced, 'vmu.privacy.classification')
+    const level = strOf(declared, C.privacyClass).toUpperCase()
+    if (ORDER.indexOf(level) === -1) throw deny('classify', 'VMU_DATA_CLASS_MISMATCH', 'unknown data class: ' + String(level), 'use one of ' + ORDER.join('/') + ' (volume 20 §7)', enforced, { declared: level })
+    const found = []
+    if (C.piiDetect && sample) {
+      mark(enforced, 'vmu.privacy.piiDetect')
+      const text = typeof sample === 'string' ? sample : JSON.stringify(sample)
+      for (const [name, re] of PII_PATTERNS) { re.lastIndex = 0; if (re.test(text)) found.push(name) }
+    }
+    const implied = found.length ? 'C2' : level
+    if (ORDER.indexOf(level) < ORDER.indexOf(implied)) {
+      throw deny('classify', 'VMU_DATA_CLASS_MISMATCH', 'declared ' + level + ' but the payload carries personal data (' + found.join('、') + ')', 'declare at least ' + implied + ', or remove the data (volume 20 §7)', enforced, { declared: level, implied, found })
+    }
+    return ok('classify', enforced, enforced.slice(), { declared: level, level: ORDER[Math.max(ORDER.indexOf(level), ORDER.indexOf(implied))], found, piiDetect: C.piiDetect, ordered: ORDER.slice() })
+  }
+
+  /**
+   * redact (volume 20 §7): may this record be WRITTEN? De-identification happens BEFORE the write, and the mapping table must
+   * live separately - bundled into the record, the redaction is undone by the very file that carries it.
+   */
+  function redact({ record = null, level = null, mappingTable = null, mappingInRecord = false, at = null } = {}) {
+    const enforced = []
+    const lvl = strOf(level, C.privacyClass).toUpperCase()
+    if (ORDER.indexOf(lvl) === -1) throw deny('redact', 'VMU_DATA_CLASS_MISMATCH', 'unknown data class: ' + String(lvl), 'use one of ' + ORDER.join('/'), enforced, { level: lvl })
+    if (ORDER.indexOf(lvl) >= ORDER.indexOf('C2')) {
+      mark(enforced, 'vmu.privacy.deidentify')
+      if (C.deidentify === 'none') {
+        throw deny('redact', 'VMU_PRIVACY_VIOLATION', lvl + ' data may not be written while vmu.privacy.deidentify=none', 'choose pseudonymize / k-anonymity / differential, or lower the class', enforced, { level: lvl, deidentify: C.deidentify, at: given(at) ? String(at) : String(clock()) })
+      }
+      if (mappingInRecord === true) {
+        throw deny('redact', 'VMU_PRIVACY_VIOLATION', 'the re-identification mapping table is bundled INTO the record being redacted', 'store the mapping separately and encrypted - volume 20 §7 requires the split', enforced, { level: lvl, reason: 'mapping-not-separate', at: given(at) ? String(at) : String(clock()) })
+      }
+      if (C.deidentify === 'k-anonymity' && !(C.kAnonK >= 2)) {
+        throw deny('redact', 'VMU_PRIVACY_VIOLATION', 'vmu.privacy.kAnonK must be at least 2 for k-anonymity: ' + String(C.kAnonK), 'raise kAnonK', enforced, { level: lvl, kAnonK: C.kAnonK })
+      }
+      if (C.deidentify === 'differential' && !(C.dpEpsilon > 0)) {
+        throw deny('redact', 'VMU_PRIVACY_VIOLATION', 'vmu.privacy.dpEpsilon must be greater than 0 for differential privacy: ' + String(C.dpEpsilon), 'raise dpEpsilon', enforced, { level: lvl, dpEpsilon: C.dpEpsilon })
+      }
+    }
+    if (strOf(C.redaction, 'required') === 'required') {
+      mark(enforced, 'vmu.compliance.redactionPolicy')
+      if (record === null || record === undefined) {
+        throw deny('redact', 'VMU_PRIVACY_VIOLATION', 'redactionPolicy=required but there is no record to redact', 'pass { record }', enforced, { level: lvl, reason: 'no-record' })
+      }
+    }
+    return ok('redact', enforced, enforced.slice(), { level: lvl, deidentify: C.deidentify, kAnonK: C.kAnonK, dpEpsilon: C.dpEpsilon,
+      redactionPolicy: strOf(C.redaction, 'required'), mappingTable: mappingTable === null ? null : 'separate', beforeWrite: true,
+      at: given(at) ? String(at) : String(clock()) })
+  }
+
+  /** exposure (volume 20 §7): data minimisation - with `minExposure` on, a payload carries no field outside the declared purpose. */
+  function exposure({ fields = null, allowed = null, level = null } = {}) {
+    const enforced = []
+    mark(enforced, 'vmu.privacy.classification')
+    const lvl = strOf(level, C.privacyClass).toUpperCase()
+    const list = Array.isArray(fields) ? fields.map(String) : []
+    if (!Array.isArray(allowed)) throw deny('exposure', 'VMU_INVALID_ARGUMENT', 'exposure needs { fields, allowed }', 'declare the fields the purpose actually needs', enforced, { level: lvl })
+    const allow = allowed.map(String)
+    if (C.minExposure) {
+      mark(enforced, 'vmu.privacy.minExposure')
+      const extra = list.filter((f) => allow.indexOf(f) === -1)
+      if (extra.length) {
+        throw deny('exposure', 'VMU_PRIVACY_VIOLATION', 'fields beyond the declared purpose: ' + extra.join('、'), 'remove them, or declare the purpose honestly (minExposure is on)', enforced, { level: lvl, extra, allowed: allow })
+      }
+    }
+    return ok('exposure', enforced, enforced.slice(), { level: lvl, fields: list, allowed: allow, minExposure: C.minExposure })
+  }
+
+  return { review, retention, coi, exportData, evidence, calendar, prepare, status, classify, redact, exposure }
 }

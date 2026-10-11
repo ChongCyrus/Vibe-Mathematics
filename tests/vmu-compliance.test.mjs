@@ -1,4 +1,4 @@
-// tests/vmu-compliance.test.mjs — 独立可跑：kernel/compliance.js（mathtools 标准：enforced/fired/口径/wouldEvaluate/17 键划分）。
+// tests/vmu-compliance.test.mjs — 独立可跑：kernel/compliance.js（mathtools 标准：enforced/fired/口径/wouldEvaluate/23 键划分）。
 import { createCompliance, WIRED_KEYS, PLANNED_KEYS, PLANNED_REASONS, WOULD_EVALUATE, ENFORCED_SCOPE, apiVersion } from '../vibe-math-vmu/kernel/compliance.js'
 import { makeRecorder } from './helpers/settings-recorder.mjs'
 
@@ -24,10 +24,10 @@ const CLOCK = () => '2026-07-01T00:00:00.000Z'
 const ALL = []
 const mk = (settings = {}) => { const rec = makeRecorder(settings); ALL.push(rec.reads); return createCompliance({ clock: CLOCK, settings: rec.settings }) }
 
-console.log('-- 0) 17 键**恰好划分** + 口径常量 --')
+console.log('-- 0) 23 键**恰好划分** + 口径常量 --')
 ok(apiVersion === 1 && ENFORCED_SCOPE === 'evaluated-so-far', 'module surface: apiVersion=1 and the D3 scope literal')
-ok(WIRED_KEYS.length === 17 && PLANNED_KEYS.length === 0 && WIRED_KEYS.length + PLANNED_KEYS.length === 17, 'round 155: the 17 declared keys are PARTITIONED exactly: wired=' + WIRED_KEYS.length + ' + planned=' + PLANNED_KEYS.length + ' = 17')
-ok(WIRED_KEYS.length === 17 && Object.keys(PLANNED_REASONS).length === 0, '★ round 155: nothing here is declared-but-unwired any more - the wired set must EQUAL all 17 keys (one missing means a key was dropped)')
+ok(WIRED_KEYS.length === 23 && PLANNED_KEYS.length === 0 && WIRED_KEYS.length + PLANNED_KEYS.length === 23, 'ROUND 249: the 23 declared keys are PARTITIONED exactly: wired=' + WIRED_KEYS.length + ' + planned=' + PLANNED_KEYS.length + ' = 17')
+ok(WIRED_KEYS.length === 23 && Object.keys(PLANNED_REASONS).length === 0, '★ ROUND 249: nothing here is declared-but-unwired any more - the wired set must EQUAL all 23 keys (one missing means a key was dropped)')
 ok(Object.keys(WOULD_EVALUATE).length >= 6, 'WOULD_EVALUATE (records.js OP_WOULD 口径) declares the per-op key sets')
 
 console.log('-- ① 伦理审批缺失 / ② 知情同意未签（同一已登记码 + item 区分）--')
@@ -184,6 +184,76 @@ console.log('')
   const reads = ALL.flat()
   const unread = WIRED_KEYS.filter((k) => reads.indexOf(k) === -1)
   ok(unread.length === 0, 'every wired key was really READ by the suite, not merely listed (' + (unread.length ? 'unread: ' + unread.join(', ') : reads.length + ' reads recorded') + ')')
+}
+
+
+// ── ROUND 249: sensitive-data classification and de-identification (volume 20 §7) ───────────────────────────
+console.log('-- 9) 隐私：分类 / 去标识化 / 最小暴露 --')
+{
+  const mkP = (s) => createCompliance({ settings: s || {}, clock: () => 'T0' })
+
+  const plain = mkP().classify({ declared: 'C1', sample: { count: 3 } })
+  ok(plain.ok === true && plain.level === 'C1', 'C1 with no personal data classifies as declared', plain)
+
+  // a declared class BELOW what the payload implies is its own code, not a generic failure
+  let mismatch = null
+  try { mkP().classify({ declared: 'C1', sample: { email: 'someone@example.org' } }) } catch (e) { mismatch = e }
+  ok(mismatch && mismatch.code === 'VMU_DATA_CLASS_MISMATCH' && mismatch.implied === 'C2' && mismatch.found.includes('email'),
+    'prompts.privacy: declaring C1 for a payload carrying an email is VMU_DATA_CLASS_MISMATCH and says which class is implied', mismatch && { code: mismatch.code, implied: mismatch.implied })
+
+  // piiDetect=false is a declaration too: the class is then taken at its word
+  const blind = mkP({ 'vmu.privacy.piiDetect': false }).classify({ declared: 'C1', sample: { email: 'a@b.co' } })
+  ok(blind.ok === true && blind.found.length === 0, 'piiDetect=false stops the inspection, and the receipt shows no findings', blind)
+
+  // writing C2 data with no de-identification is refused, and the refusal states the reason
+  let noDeid = null
+  try { mkP({ 'vmu.privacy.deidentify': 'none' }).redact({ record: {}, level: 'C2' }) } catch (e) { noDeid = e }
+  ok(noDeid && noDeid.code === 'VMU_PRIVACY_VIOLATION' && noDeid.deidentify === 'none',
+    'C2 may not be WRITTEN while deidentify=none (VMU_PRIVACY_VIOLATION)', noDeid && noDeid.code)
+
+  // §7 requires the mapping table to live separately; bundled into the record it undoes the redaction
+  let bundled = null
+  try { mkP().redact({ record: {}, level: 'C2', mappingInRecord: true }) } catch (e) { bundled = e }
+  ok(bundled && bundled.code === 'VMU_PRIVACY_VIOLATION' && bundled.reason === 'mapping-not-separate',
+    'the re-identification table bundled INTO the record is refused by name (volume 20 §7 requires the split)', bundled && bundled.reason)
+
+  const wrote = mkP().redact({ record: { id: 1 }, level: 'C2' })
+  ok(wrote.ok === true && wrote.beforeWrite === true && wrote.deidentify === 'pseudonymize',
+    'a C2 write under the default de-identification is allowed, and the receipt says it happens BEFORE the write', wrote)
+  ok(wrote.mappingTable === null, 'with no mapping table supplied the receipt says so rather than pretending one exists')
+
+  // the two parameters are validated only when the method that needs them is chosen
+  let badK = null
+  try { mkP({ 'vmu.privacy.deidentify': 'k-anonymity', 'vmu.privacy.kAnonK': 1 }).redact({ record: {}, level: 'C2' }) } catch (e) { badK = e }
+  ok(badK && badK.code === 'VMU_PRIVACY_VIOLATION' && badK.kAnonK === 1, 'k-anonymity with k below 2 is refused and reports k', badK && badK.code)
+  let badEps = null
+  try { mkP({ 'vmu.privacy.deidentify': 'differential', 'vmu.privacy.dpEpsilon': 0 }).redact({ record: {}, level: 'C2' }) } catch (e) { badEps = e }
+  ok(badEps && badEps.code === 'VMU_PRIVACY_VIOLATION' && badEps.dpEpsilon === 0, 'differential privacy with epsilon 0 is refused and reports epsilon')
+
+  // data minimisation, and the fact that it can be switched off
+  let extra = null
+  try { mkP().exposure({ fields: ['purpose', 'salary'], allowed: ['purpose'] }) } catch (e) { extra = e }
+  ok(extra && extra.code === 'VMU_PRIVACY_VIOLATION' && extra.extra.join(',') === 'salary',
+    'with minExposure on, a field beyond the declared purpose is refused BY NAME', extra && extra.extra)
+  ok(mkP({ 'vmu.privacy.minExposure': false }).exposure({ fields: ['purpose', 'salary'], allowed: ['purpose'] }).ok === true,
+    'minExposure=false permits the same payload - the declaration really decides')
+
+  // C0 needs no de-identification at all, and the receipt shows only what was evaluated
+  const c0 = mkP().redact({ record: {}, level: 'C0' })
+  ok(c0.ok === true && c0.enforced.indexOf('vmu.privacy.deidentify') === -1,
+    'C0 is written without any de-identification, and the receipt does not claim it happened', c0.enforced)
+
+  // the class order is compared by INDEX, so the upper classes compare correctly too
+  ok(mkP({ 'vmu.privacy.classification': 'C4' }).redact({ record: {}, level: 'C4' }).ok === true, 'C4 is covered by the same ordering')
+
+  // MEASURED: this face reads keys off a PLAIN object (its `raw()` uses hasOwnProperty), so a `get` method records nothing.
+  // The suite's own recorder is the honest instrument for that shape.
+  const recorder = makeRecorder({})
+  const read = recorder.reads
+  const probe = createCompliance({ settings: recorder.settings, clock: () => 'T0' })
+  const privacyKeys = WIRED_KEYS.filter((k) => k.indexOf('vmu.privacy.') === 0)
+  ok(privacyKeys.length === 6 && privacyKeys.every((k) => read.includes(k)),
+    'all six privacy keys are actually READ through the settings view, not merely listed', privacyKeys.filter((k) => !read.includes(k)))
 }
 
 console.log('=== VMU COMPLIANCE: ' + passed + ' passed, ' + failed + ' failed ===')

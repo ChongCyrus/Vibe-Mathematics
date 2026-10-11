@@ -1149,6 +1149,18 @@
   **未做（明写 ✗）**：★★ **`vmu.privacy.*` 6 键仍未接** ✗ —— **已量清**：**(i) 无人读取该前缀** ✓；**(ii) 天然承载者是既有的 `compliance.js`（290 行 ✓，API `{review, retention, coi, exportData, evidence, calendar, prepare, status}` ✓）** ✓；**(iii) 20 卷 §7 给了完整契约**（**C0–C4 五级＋处理规则／6 键默认值／`VMU_PRIVACY_VIOLATION` 与 `VMU_DATA_CLASS_MISMATCH`／★ 去标识化【发生在写入前】且映射表分离加密** ✓）；**(iv) 该面纪律严格** —— **须从 `PLANNED_KEYS` 移入 `WIRED_KEYS` 并给出同一收据形状（`enforced`／`fired ⊆ enforced`／`enforcedScope`／`wouldEvaluate ⊇ enforced` ✓）** ✓ ⇒ **下一区间做** ✓；
   **其余 166 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 249：把 `vmu.privacy.*` 6 键接进既有的 `compliance.js`（分类／去标识化／最小暴露三 op）；未接线 166 → 160** ✓✓
+  ★★★ **① 忠实 20 卷 §7 的契约** ✓✓：**C0–C4 五级（★ 按【索引】比较，不按字符串 ✓）／6 键默认值（`C1`／`true`／`pseudonymize`／`k=5`／`ε=1.0`／`minExposure=true` ✓）／两个码（`VMU_DATA_CLASS_MISMATCH`／`VMU_PRIVACY_VIOLATION` ✓）** ✓。
+  **② 真机逐支验证** ✓✓：
+  - **`classify`**：**C1 无 PII ⇒ 通过** ✓；★★ **声明 C1 而载荷含邮箱 ⇒ `VMU_DATA_CLASS_MISMATCH`，且回执给出【隐含等级 C2】与【命中的形状 email】** ✓✓；**`piiDetect=false` ⇒ 不检查，回执显示无发现** ✓；
+  - **`redact`**（★ **§7 的两条硬规则都在** ✓）：**`deidentify=none` ＋ C2 ⇒ 拒** ✓；★★ **映射表【混入记录】⇒ 拒且 `reason=mapping-not-separate`** ✓✓（**"原数据与映射表分离存放"被强制执行** ✓）；**C2 正常 ⇒ `beforeWrite:true`** ✓（**去标识化【发生在写入前】** ✓）；**k-匿名 k=1 ⇒ 拒并报 k** ✓；**差分 ε=0 ⇒ 拒并报 ε** ✓；**C0 ⇒ 不要求去标识，且回执【不声称】做过** ✓（**`enforced` 里没有该键 ✓**）；
+  - **`exposure`**：**超出声明目的的字段【逐个点名】拒** ✓；**`minExposure=false` ⇒ 同一载荷放行** ✓。
+  ★★ **③ 该面的严格纪律被完整遵守** ✓✓：**每个 op 都在 `WOULD_EVALUATE` 里声明键集** ✓，**边求值边 `mark(enforced, …)`** ✓，**经 `ok()`／`deny()` 作答** ⇒ **`fired ⊆ enforced ⊆ wouldEvaluate` ＋ 口径成立** ✓（**`deny` 会当场校验 `enforced ⊆ WOULD_EVALUATE[op]`，写错就抛 ✓**）。
+  ★★★ **④ 契约变更被【既有断言】当场抓出** ✓✓：**该套件第 0 组断言"23 键恰好划分"** ✓ —— **我加 6 键后它立刻报 `wired=23 + planned=0 = 17` 不成立** ✗ ⇒ **按契约更新为 23（划分本身的严格性不变 ✓）** ✓ ⇒ **`VMU COMPLIANCE: 78 passed, 0 failed`** ✓（**64 → 78，+14** ✓）。
+  ✗✓ **⑤ 本区间四处自伤，全部在【测试块】里，且都是"语义"而非"结构"错误** ✓：**(a)** 用了不存在的导出名 `makeSettingsRecorder` ✗（**真名 `makeRecorder`** ✓）；**(b)** 三行替换按【替换计数】取索引 ⇒ **错位一行，`probe` 未声明** ✗；**(c)** 把 recorder 的 `reads` 当 Set 用 ⇒ **实为数组** ✗；**(d)** 同一处 `read.has` 有**两行**属我，只改了一行 ✗。★ **共同点：结构类错误已被【行数守卫／锚点守卫】挡住（本区间唯一一次锚点未命中就抛错且未写入 ✓✓），而"名字／类型／处数"这类语义错误仍靠我逐次测量** ✓ ⇒ **纪律：改动前先【量出】导出名、类型与出现处数，而不是先写再改** ✓✓。
+  **门禁与证据** ✓：**`VMU COMPLIANCE: 78 passed, 0 failed`** ✓；**`regen-all: 9/9 in sync`** ✓；`docs/04` **6 行**由 `⚠️` 变 `✅ 已接线` ✓；**未接线 166 → 160** ✓。
+  **未做（明写 ✗）**：**其余 160 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 
