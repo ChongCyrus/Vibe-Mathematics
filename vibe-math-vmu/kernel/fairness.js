@@ -203,6 +203,34 @@ export function createFairness({ clock = () => new Date(0).toISOString(), log = 
     return { ok: true, allocationId: rec.id, newAllocationId: again.allocationId, changed: diff.length, diff, sustainable: diff.length === 0 }
   }
 
+  /**
+   * ROUND 143 — the clamped knobs' EFFECTIVE values, and WHICH declared values were adjusted.
+   *
+   * WHY IT EXISTS: the A/B verdict table recorded a TESTABILITY GAP here, not a missing counterpart. `allocation()`
+   * clamps `reserveRatio` into [0,1] (and `maxShare`/`minShare`/`underUseThreshold` each have their own rule), but
+   * nothing exposed the result: `reserveRatio: 5` and `reserveRatio: 0.5` produced identical `status()` output AND
+   * identical allocation output. A knob whose effect cannot be seen is a knob nobody can check, so this echo is the
+   * fix - and it also NAMES which declared value was replaced instead of leaving the reader to compare by hand.
+   */
+  function effectiveKnobs() {
+    const declared = (k, d) => { const v = read(settings, k, d); return v === undefined ? d : v }
+    const rules = [
+      ['reserveRatio', K.reserveRatio, 0, (v) => Math.min(1, Math.max(0, numOf(v, 0)))],
+      ['maxShare', K.maxShare, 1, (v) => { const n = numOf(v, 1); return n > 0 && n <= 1 ? n : 1 }],
+      ['minShare', K.minShare, 0, (v) => { const n = numOf(v, 0); return n > 0 && n < 1 ? n : 0 }],
+      ['underUseThreshold', K.underUseThreshold, 0.5, (v) => { const n = numOf(v, 0.5); return n > 0 && n <= 1 ? n : 0.5 }],
+    ]
+    const knobs = {}
+    const adjusted = []
+    for (const [name, key, dflt, fix] of rules) {
+      const d = declared(key, dflt)
+      const e = fix(d)
+      knobs[name] = { declared: d, effective: e }
+      if (d !== e) adjusted.push(name)
+    }
+    return { knobs, adjusted }
+  }
+
   function status() {
     counts.reads += 1
     return {
@@ -215,6 +243,8 @@ export function createFairness({ clock = () => new Date(0).toISOString(), log = 
         auditWindowMs: numOf(read(settings, K.auditWindowMs, 0), 0), underUseThreshold: underUse(),
         declaredWeights: Object.keys(weights()).length, forbiddenWeightFields: [...FORBIDDEN_WEIGHT_FIELDS],
       },
+      // ROUND 143: what the clamped knobs ACTUALLY became (see effectiveKnobs) - so a clamp is observable ✓.
+      effective: effectiveKnobs(),
       mechanism: { hasBudget: !!budget, hasTasks: !!tasks, hasBus: !!bus, clockInjected: true },
       counts: { reads: counts.reads, writes: counts.writes },
       items: [...allocations.values()].map((r) => ({ id: r.id, at: r.at, pool: r.pool, policy: r.policy, sum: r.sum, capped: r.capped.length })),

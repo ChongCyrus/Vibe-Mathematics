@@ -21,6 +21,7 @@ import { __testHelpers as V5R } from '../vibe-math-v5r/vibe-math-v5r.js'
 import { createLibrary } from '../vibe-math-vmu/kernel/library.js'
 import { createLeanFace } from '../vibe-math-vmu/kernel/lean.js'
 import { createMembers } from '../vibe-math-vmu/kernel/members.js'
+import { createFairness } from '../vibe-math-vmu/kernel/fairness.js'
 import { TOOL_NAMES, sanitizeToolFilter } from '../vibe-math-vmu/host.js'
 
 let passed = 0
@@ -192,6 +193,30 @@ const VERDICTS = { EQUAL: [], PROPERTY: [], UNPAIRED: [], DIVERGENT: [] }
   }
 }   // ← 收尾 G（ROUND 142 补上：这次编辑一度把 G 的 `}` 用掉了，语法检查当场报 "Unexpected end of input" ✗）
 
+// ── I. 缺口正面修好之后：夹取从"不可观测"变成【已驱动】✓（ROUND 143）────────────────────────────
+{
+  // ★ 注意：`fairness.js` 的访问器**不是** `settings.get`（实测记录到 requested keys = [] ✗），
+  //   而是 `read(s,k,d)` 用 `hasOwnProperty` 直读**普通对象**（并回落到 `s.fairness`/`s.budget`/`s` 的短名 ✓）。
+  //   第一版我按别的面的 `{ get }` 形状喂进去 ⇒ 三个断言全红 ✗ —— **框架里 settings 不止一种形状** ✓，必须按模块实测 ✓。
+  const eff = (rr) => createFairness({
+    settings: rr === undefined ? {} : { 'vmu.fairness.reserveRatio': rr }, clock: () => 0,
+  }).status().effective
+  ok(eff(5).knobs.reserveRatio.effective === 1, 'I1. ★ declared 5 takes effect as 1 (the clamp is now OBSERVABLE)', JSON.stringify(eff(5).knobs.reserveRatio))
+  ok(eff(5).adjusted.indexOf('reserveRatio') !== -1, 'I2. and the face NAMES it as adjusted rather than leaving the reader to compare by hand', JSON.stringify(eff(5).adjusted))
+  ok(eff(-3).knobs.reserveRatio.effective === 0, 'I3. declared -3 takes effect as 0', JSON.stringify(eff(-3).knobs.reserveRatio))
+  ok(eff(0.25).knobs.reserveRatio.effective === 0.25 && eff(0.25).adjusted.length === 0,
+    'I4. an in-range value is untouched AND is not reported as adjusted', JSON.stringify(eff(0.25)))
+  ok(V5R.clamp01(5) === 1 && V5R.clamp01(-3) === 0 && V5R.clamp01(0.25) === 0.25,
+    'I5. v5r answers those same three cases the same way (same property, driven on both sides)')
+  ok(V5R.clamp01(NaN) === 0.5 && eff(NaN).knobs.reserveRatio.effective === 0,
+    'I6. ★ and the garbage-input divergence is now MEASURED ON BOTH SIDES: v5r takes a midpoint (0.5), vmu falls back to the declared default (0)',
+    'v5r=' + V5R.clamp01(NaN) + ' vmu=' + eff(NaN).knobs.reserveRatio.effective)
+  VERDICTS.PROPERTY.push('clamp01 ⇄ fairness.status().effective（同性质且**已驱动** ✓：越界有限值 ⇒ 夹取 ✓；'
+    + '域内值 ⇒ 原样且**不报 adjusted** ✓；**"声明值被换掉"也自曝** ✓）')
+  VERDICTS.DIVERGENT.push('clamp01(非有限值) —— **已由 I6 两侧驱动** ✓：v5r ⇒ 0.5（中点），vmu ⇒ 该键声明的默认值（0）'
+    + '⇒ 垃圾输入处置不同 ✓（不评孰优 ✔）')
+}
+
 // ── ★ 逐项点名的未配对与刻意分歧（不掩盖 ✗）────────────────────────────────────────────────
 {
   VERDICTS.UNPAIRED.push(
@@ -203,13 +228,10 @@ const VERDICTS = { EQUAL: [], PROPERTY: [], UNPAIRED: [], DIVERGENT: [] }
     // ★ 原先这里有一条 "sanitizeToolFilter —— 有名字没有净化器"。它已在 ROUND 142 被**补成能力** ✓，
     //   于是整条移入 DIVERGENT（H1–H9 两侧都驱动过 ✓）—— **缺口补上后就必须从"未配对"里删掉** ✓，
     //   否则同一件事会同时挂在"已配对"和"未配对"两边（本项目专门抓这种自相矛盾 ✗）。
-    // ★ 这一条**从"我以为"升级成了实测** ✓：我先写下"vmu 在别处内联夹取、没有导出原语" ✗，
-    //   随后实测发现更准确的说法是——**夹取在公开 API 上根本不可观测** ✗✓：
-    //   `fairness.allocation()` 对 reserveRatio ∈ {0, 0.25, 1, 5, -3, NaN, "abc"} **输出完全相同**（都是 a:50 b:50），
-    //   `fairness.status()` 也**不回显**该值 ⇒ 无法做 A/B ✓（这是**可测性缺口**，如实点名 ✓，不是"没有对应物"）。
-    'clamp01 —— **实测：夹取在 vmu 的公开 API 上【不可观测】** ✗✓（`fairness.allocation()` 对 reserveRatio '
-    + '0/0.25/1/5/-3/NaN/"abc" 输出**逐一相同**，`status()` 不回显该值）⇒ 无法 A/B ✓；'
-    + '`clPct`（0..100 夹取）框架侧无同族表面 ⇒ 未配对 ✗',
+    // ★ 这一条原先记的是"夹取在公开 API 上不可观测"（可测性缺口 ✗）。ROUND 143 **正面修好** ✓：
+    //   `fairness.status().effective` 现在回显每个被夹取旋钮的【声明值 vs 生效值】并点名被调整者 ✓
+    //   ⇒ 它已升级为 I1–I6 的**已驱动**行（PROPERTY ＋ DIVERGENT ✓），故此处只留 `clPct` ✗。
+    'clPct（0..100 夹取）—— 框架侧无同族表面（grep 无对应物 ✓）⇒ 未配对 ✗',
   )
   VERDICTS.DIVERGENT.push(
     'tryJson —— 实测：v5r 对坏 JSON 返回 **undefined**（**吞掉** ✓），而 vmu 各面用朴素 `JSON.parse`（**抛/具名拒** ✓）'
@@ -218,9 +240,8 @@ const VERDICTS = { EQUAL: [], PROPERTY: [], UNPAIRED: [], DIVERGENT: [] }
   VERDICTS.DIVERGENT.push(
     'leanHashText —— 名字像哈希，实际是**文本规范化**（CRLF→LF、去尾空白）✗；vmu 的 Lean 哈希按**原始字节**取 sha256 '
     + '（"产物哈希未变"才判 passed ✓）⇒ **两边口径刻意不同**，且 vmu 的口径更严 ✓：把 v5r 的规范化套上去会让"只改了行尾"也判 passed ✗',
-    // ★ 实测的非有限值口径不同：v5r 给"中点"，vmu 给"声明的默认值" ✓ —— 谁对取决于语义，故并列记录 ✓
-    'clamp01(非有限值) —— **实测口径不同** ✓：v5r `clamp01(NaN)`＝**0.5**（取中点 ✓），而 vmu 的 `numOf` 对非有限值'
-    + '**回落到该键声明的默认值**（如 reserveRatio 的 0 ✓）⇒ **垃圾输入的处置不一致**，已点名 ✗（不比"谁对"，因为两者都自洽 ✓）',
+    // ★ 原先此处还有一条"clamp01(非有限值) 口径不同"。ROUND 143 把它**移到 I6 里两侧驱动** ✓（同一件事
+    //   不能同时挂在"已驱动"和"仅记录"两边 ✗），故此处只保留上面两条真正的分歧。
   )
   // 汇总：**必须每一项都有落点**（哪怕落点是"未配对" ✗）
   const total = VERDICTS.EQUAL.length + VERDICTS.PROPERTY.length + VERDICTS.UNPAIRED.length + VERDICTS.DIVERGENT.length
