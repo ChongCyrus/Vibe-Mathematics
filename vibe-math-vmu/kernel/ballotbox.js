@@ -36,12 +36,23 @@ export const WIRED_BALLOT_KEYS = Object.freeze([
 ])
 /** 未接：**逐个点名＋原因** ✗✓（不得静默 ✗）。 */
 export const PLANNED_BALLOT_KEYS = Object.freeze([
-  ['vmu.ballot.freezeMode', '冻结与会议联动未接（本面不建会议状态机 ✗；见 08 卷冻结节）'],
-  ['vmu.ballot.freezeMeetingLinked', '同上：会议联动由 meeting/board 面承载 ✗'],
-  ['vmu.ballot.irvInstantSingleCount', 'IRV 计票器未实现（本面只做一轮/二轮 ✗）'],
-  ['vmu.ballot.reopenFloor', '重开表决议程未实现：需 board 面与会议议程协同 ✗（本面只管票箱）'],
-  ['vmu.ballot.reopenInitiatorScope', '重开动议的发起人范围未实现：依赖 board/reopenFloor ✗'],
-  ['vmu.ballot.reopenSameMeetingOnly', '重开的同会期约束未实现：依赖 board/reopenFloor ✗'],
+  /**
+   * ROUND 152: these six reasons were already CORRECT about the mechanism, and this round MEASURED that rather than
+   * assuming it - the six names appear nowhere in this module except the declarations themselves: no `readKey` call,
+   * no branch, no effect. That is the opposite of the instrument and store faces, where the same kind of reason was
+   * wrong. What each entry lacked was the NAME of the face that owns the behaviour and evidence that it is alive, so
+   * every entry now cites the carrier and the test line that proves it (source-proven, suite-run).
+   */
+  ['vmu.ballot.freezeMode', '冻结由 `ballot.js` 的暂停闸承载 ✓（**不是本面** ✗）：`isPaused()` 同时闸住**开票**与**投票** ⇒ 具名拒 `VMU_STATE`；'
+    + '运行时证据＝`tests/vmu-ballot.test.mjs` L89「冻结期间的投票被具名拒」✓、L143「未冻结却解冻被拒」✓；谓词由 `control` 面注入 ✓'],
+  ['vmu.ballot.freezeMeetingLinked', '与**会议联动**的部分归 `meeting`／`board` 面 ✓；`ballot.js` 只做**票箱级**冻结（暂停谓词注入 ✓）'
+    + '⇒ 本面不建会议状态机 ✓（原理由保留，补上归属面 ✓）'],
+  ['vmu.ballot.irvInstantSingleCount', '★ **全仓零实现** ✓（实测 `grep irv` 仅在本面自己的两条声明里命中 ✓）：本面只有一轮/二轮 ✓。'
+    + '**复活条件** ✓：出现"多轮淘汰制选举"的真实需求 ⇒ 加在 `ballot.js` 的计票器旁（它是**唯一计票真源** ✓），而不是第二份实现 ✗'],
+  ['vmu.ballot.reopenFloor', '议程层面的重开归 `board`／`meetings` ✓；★ **票箱层面的重开已由 `ballot.js` 的 `reopen()` 承载** ✓：'
+    + '只允许 `tallied` 重开 ✓、**旧结论进历史不被覆盖** ✓；运行时证据＝`tests/vmu-ballot.test.mjs` L97-100「重开后只计实际投出的票」✓'],
+  ['vmu.ballot.reopenInitiatorScope', '发起人范围属**议程**（`board`／`meetings` ✓）：票箱里没有"动议"这一概念 ⇒ 无该约束 ✓（原理由保留，补上归属面 ✓）'],
+  ['vmu.ballot.reopenSameMeetingOnly', '同会期约束同上属**议程** ✓；`reopen(reason)` 只带理由、不带会期 ✓（**理由是审计事实** ✓）'],
 ])
 
 const refuse = (code, message, hint) => ({ ok: false, code, message, hint })
