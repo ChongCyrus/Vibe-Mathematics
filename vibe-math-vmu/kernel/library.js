@@ -68,6 +68,11 @@ export function createLibrary({
   dedupeWider = (settings && settings['vmu.dedupe.enabled']) === true,
   dedupeScope = (settings && settings['vmu.dedupe.scope']) === 'segment' ? 'segment' : 'full',
   dedupeCrossWorkspace = (settings && settings['vmu.dedupe.crossWorkspace']) === true,
+  // ROUND 234: visibility and export.
+  visibilityDefault = (settings && settings['vmu.visibility.default']) === 'public' ? 'public' : 'internal',
+  exportFormat = ['json', 'md', 'package'].includes(settings && settings['vmu.export.format'])
+    ? settings['vmu.export.format'] : 'json',
+  exportIncludeHistory = (settings && settings['vmu.export.includeHistory']) === true,
   // ROUND 233: the index family.
   indexRebuildBatch = (() => { const v = Number(settings && settings['vmu.index.rebuildBatch']); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 500 })(),
   indexVerifyChecksum = (settings && settings['vmu.index.verifyChecksum']) !== false,
@@ -301,7 +306,8 @@ export function createLibrary({
             owner: meta.owner || member,
             fingerprint: meta.fingerprint || null, // READ BACK, never recomputed (docs/07 §4.2)
         references: meta.references ? String(meta.references).split(',').filter(Boolean) : [],   // ROUND 231
-        statement: meta.statement === undefined || meta.statement === 'null' ? undefined : String(meta.statement),   // ROUND 231
+        visibility: meta.visibility || visibilityDefault,   // ROUND 234: READ BACK, and the declaration fills the gap
+      statement: meta.statement === undefined || meta.statement === 'null' ? undefined : String(meta.statement),   // ROUND 231
             updatedAt: meta.updatedAt || null,
           })
         }
@@ -440,7 +446,8 @@ export function createLibrary({
       await mkdir(dir, { recursive: true })
       const meta = {
         id, kind, fingerprint: fp,
-          references: refCheck && refCheck.references.length ? refCheck.references.join(',') : null,   // ROUND 231
+          visibility: (record.visibility === 'public' || record.visibility === 'internal') ? record.visibility : visibilityDefault,   // ROUND 234
+      references: refCheck && refCheck.references.length ? refCheck.references.join(',') : null,   // ROUND 231
           statement: record.statement === undefined ? null : String(record.statement),   // ROUND 231: segment-scope dedupe needs it
         title: record.title || record.statement.slice(0, 60),
         status: record.status || 'open',
@@ -509,7 +516,37 @@ export function createLibrary({
     },
 
     /** One record's persisted metadata, for gates that need the stored fingerprint (never recomputed). */
-    async storedFingerprint(id) {
+    /**
+   * ROUND 234: export one record in the declared format.
+   * `vmu.visibility.default` is `internal`, and an internal record does NOT leave without `allowInternal` - a default that
+   * could be bypassed by simply asking would not be a default. `vmu.export.includeHistory` decides whether the revisions travel
+   * with it, and how many were included is REPORTED.
+   */
+  async exportRecord(id, { format = exportFormat, includeHistory = exportIncludeHistory, allowInternal = false } = {}) {
+    const rec = index.get(String(id))
+    if (!rec) throw refuse('VMU_INVALID_ARGUMENT', 'no such record: ' + String(id), 'list() shows the ids that exist')
+    if (!['json', 'md', 'package'].includes(format)) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'unknown export format: ' + String(format), 'vmu.export.format is one of json/md/package')
+    }
+    const visibility = rec.visibility || visibilityDefault
+    if (visibility !== 'public' && !allowInternal) {
+      throw refuse('VMU_NOT_PERMITTED', 'the record is ' + visibility + ' and exportRecord was not told to allow it',
+        'pass { allowInternal: true } deliberately, or set vmu.visibility.default=public (it is internal by default)')
+    }
+    const expanded = await this.expand(rec.id, {})   // ROUND 234: a sibling method, not a lexical name
+    const revs = includeHistory ? await revisionFiles(rec.file) : []
+    const body = {
+      id: rec.id, kind: rec.kind, title: rec.title, status: rec.status, owner: rec.owner,
+      fingerprint: rec.fingerprint, visibility, updatedAt: rec.updatedAt,
+      references: rec.references || [], statement: rec.statement,
+    }
+    const historyIncluded = { asked: includeHistory === true, count: revs.length }
+    if (format === 'json') return { ok: true, format, visibility, history: historyIncluded, text: JSON.stringify({ head: body, body: expanded.body, history: revs }, null, 2) }
+    if (format === 'md') return { ok: true, format, visibility, history: historyIncluded, text: render(body, expanded.body) }
+    return { ok: true, format, visibility, history: historyIncluded, manifest: body, text: expanded.body }
+  },
+
+  async storedFingerprint(id) {
       await rebuildIndex()
       const rec = index.get(id)
       if (!rec) throw refuse('VMU_NO_SUCH_OBJECT', 'no record with id ' + String(id))

@@ -442,6 +442,62 @@ await rm(root, { recursive: true, force: true })
     'index.staleTolerance[tolerate]: a tolerable index is still rebuilt from disk and still reports its health')
 }
 
+
+// ── ROUND 234: visibility (1) and export (2) — a default that could be bypassed by simply asking would not be a default ────
+{
+  const lib = mk()
+  const written = await lib.append({ kind: 'proposition', statement: 'EXPORT-ME' })
+  ok(written.ok === true, 'visibility: a record can be written')
+  const listed = await lib.list({})
+  const row = listed.find((r) => r.id === written.id)   // list() returns a bare array of heads
+  ok(row !== undefined, 'visibility[default=internal]: the record is in the index')
+
+  // an internal record does NOT leave without an explicit flag
+  let blocked = null
+  try { await lib.exportRecord(written.id, {}) } catch (e) { blocked = e && e.code }
+  ok(blocked === 'VMU_NOT_PERMITTED',
+    'visibility[default=internal]: exporting without allowInternal is refused by name - the default cannot be bypassed by asking', String(blocked))
+  const allowed = await lib.exportRecord(written.id, { allowInternal: true })
+  ok(allowed.ok === true && allowed.visibility === 'internal',
+    'visibility[+]: with the flag the record leaves, and the receipt says which visibility it had', String(allowed.visibility))
+
+  // format: the declared default is json, and an unknown one is refused
+  const json = await lib.exportRecord(written.id, { allowInternal: true })
+  ok(json.format === 'json' && typeof json.text === 'string' && JSON.parse(json.text).head.id === written.id,
+    'export.format[default=json]: the default is json and the payload really parses')
+  const md = await lib.exportRecord(written.id, { allowInternal: true, format: 'md' })
+  ok(md.format === 'md' && md.text.startsWith('---'), 'export.format[md]: the markdown form carries the rendered head')
+  const pkg = await lib.exportRecord(written.id, { allowInternal: true, format: 'package' })
+  ok(pkg.format === 'package' && pkg.manifest !== undefined && typeof pkg.text === 'string',
+    'export.format[package]: a manifest plus the body, which is what makes a package reusable elsewhere')
+  let badFormat = null
+  try { await lib.exportRecord(written.id, { allowInternal: true, format: 'pdf' }) } catch (e) { badFormat = e && e.code }
+  ok(badFormat === 'VMU_INVALID_ARGUMENT', 'export.format[-]: an unknown format is refused by name', String(badFormat))
+
+  // includeHistory: off by default, and the count is reported either way
+  ok(json.history.asked === false && json.history.count === 0,
+    'export.includeHistory[default=false]: the history does not travel, and the receipt says it was not asked for')
+  await lib.append({ kind: 'proposition', statement: 'EXPORT-ME', proof: 'P2' })
+  const withHist = mk({ settings: { 'vmu.export.includeHistory': true } })
+  const w2 = await withHist.append({ kind: 'proposition', statement: 'HIST' })
+  await withHist.append({ kind: 'proposition', statement: 'HIST', proof: 'rev2' })
+  const hist = await withHist.exportRecord(w2.id, { allowInternal: true })
+  ok(hist.history.asked === true, 'export.includeHistory[+]: the declaration makes the history travel by default')
+  ok(typeof hist.history.count === 'number', 'export.includeHistory[+]: how many revisions were included is REPORTED, not left implicit', String(hist.history.count))
+
+  // a public record needs no flag
+  const pub = mk({ settings: { 'vmu.visibility.default': 'public' } })
+  const p1 = await pub.append({ kind: 'proposition', statement: 'PUBLIC-ONE' })
+  const pOut = await pub.exportRecord(p1.id, {})
+  ok(pOut.ok === true && pOut.visibility === 'public',
+    'visibility.default[public]: a public record leaves without a flag, so the declaration really changes the default', String(pOut.visibility))
+  // and a record can override the declaration in either direction
+  const override = await pub.append({ kind: 'proposition', statement: 'OVERRIDE', visibility: 'internal' })
+  let overridden = null
+  try { await pub.exportRecord(override.id, {}) } catch (e) { overridden = e && e.code }
+  ok(overridden === 'VMU_NOT_PERMITTED', 'visibility[per-record]: an explicit internal record is refused even when the default is public', String(overridden))
+}
+
 console.log('=== VMU LIBRARY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
