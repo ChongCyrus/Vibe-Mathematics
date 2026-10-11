@@ -23,10 +23,19 @@ const ok = (cond, label) => { if (cond) { passed += 1 } else { failed += 1; cons
 const DAY = 86400000
 const T0 = 1_700_000_000_000
 
+/**
+ * ROUND 173: the shared universal recorder - see tests/helpers/settings-recorder.mjs. ip prefers `settings.get`, and
+ * the same helper also serves the hasOwnProperty-first faces, so there is exactly one device to keep correct.
+ */
+import { makeRecorder } from './helpers/settings-recorder.mjs'
+
 /** A service with an injected (controllable) clock and plain-object settings. */
+const ALL = []
 const mk = (settings = {}) => {
   let now = T0
-  const ip = createIp({ clock: () => now, settings })
+  const rec = makeRecorder(settings)
+  ALL.push(rec.reads)
+  const ip = createIp({ clock: () => now, settings: rec.settings })
   return { ip, at: (ms) => { now = ms }, now: () => now }
 }
 const codeOf = (r) => (r && (r.code || (r.ok === false ? r.code : null))) || null
@@ -429,6 +438,19 @@ const goodDossier = (h, extra = {}) => h.ip.file(Object.assign({
   ok(codeOf(bad) === 'VMU_INVALID_ARGUMENT', 'an unreadable expiresAt is refused by name (never treated as "no expiry")', JSON.stringify(bad).slice(0, 150))
   const nonObject = h.ip.transfer({ id: f.id, to: 'partner', signedRef: 'agr-1', agreement: 'agr-1' })
   ok(codeOf(nonObject) === 'VMU_INVALID_ARGUMENT', 'a non-object agreement is refused by name', JSON.stringify(nonObject).slice(0, 150))
+}
+
+/**
+ * ROUND 173: five of this face's WIRED_KEYS are SERVICE SURFACES (operations), not settings keys - the schema generator
+ * says so itself on every run ("service-surfaces-skipped=5: vmu.ip.hold, ..."), and skips them for exactly that reason.
+ * They are excluded here by name rather than silently, and every remaining SETTINGS key must really be read.
+ */
+{
+  const SERVICE_SURFACES = ['vmu.ip.hold', 'vmu.ip.ownership', 'vmu.ip.contributors', 'vmu.ip.recordSearch', 'vmu.ip.transfer']
+  const reads = ALL.flat()
+  const settingKeys = WIRED_KEYS.filter((k) => SERVICE_SURFACES.indexOf(k) === -1)
+  const unread = settingKeys.filter((k) => reads.indexOf(k) === -1)
+  ok(unread.length === 0, 'every wired SETTINGS key was really READ (' + settingKeys.length + ' settings keys, ' + SERVICE_SURFACES.length + ' service surfaces excluded by name, ' + reads.length + ' reads recorded' + (unread.length ? '; unread: ' + unread.join(', ') : '') + ')')
 }
 
 console.log('=== VMU IP: ' + passed + ' passed, ' + failed + ' failed ===')
