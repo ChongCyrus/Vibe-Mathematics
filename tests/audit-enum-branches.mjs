@@ -7,8 +7,12 @@
 // silently does something else while claiming to support it. The check is occurrence counting: a value mentioned ONLY
 // by the whitelist is a finding. It is deliberately mechanical so it cannot be argued with.
 //
-//   node scripts/audit-enum-branches.mjs            # report and exit non-zero on findings
-//   node scripts/audit-enum-branches.mjs --quiet    # findings only
+//   node tests/audit-enum-branches.mjs            # report and exit non-zero on findings
+//   node tests/audit-enum-branches.mjs --quiet    # findings only
+//
+// ROUND 160: it lives in `tests/` ON PURPOSE. The runner collects every `tests/*.mjs` that is not `*.test.mjs` as a
+// probe, so placing it beside the suites is what makes it a GATE JOB; it is also named in the curated quick subset,
+// so the fast scope runs it too.
 import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'

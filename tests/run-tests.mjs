@@ -282,7 +282,7 @@ function lptOrder(list) {
 // before every commit and release (see the GATE DISCIPLINE note at the top of this file).
 const QUICK_ONLY = ['v5', 'audit-participant-set-parity', 'audit-math-computation-parity',
   'audit-math-computation-contract', 'math-computation-shared', 'audit-registration',
-  'audit-preset-rows', 'audit-status-report-fields', 'audit-artifact-docs']
+  'audit-preset-rows', 'audit-status-report-fields', 'audit-artifact-docs', 'audit-enum-branches']
 const QUICK_EXCLUDE = ['mutants', 'audit-math-computation-sensitivity']
 // S24: PR #14 brought `tests/v5-meeting-attribution.test.mjs` into the curated quick subset (a new
 // suite is on purpose — it is the regression test for the reply-attribution fix), so 23 -> 24.
@@ -292,8 +292,9 @@ const QUICK_EXCLUDE = ['mutants', 'audit-math-computation-sensitivity']
 // regression tests, which is the same "on purpose" case as S24, not a drifted filter.
 // S30 (round 137): `tests/vmu-ab-v5r.test.mjs` - the v5r/vmu A/B verdict table - contains `v5r`, so the
 // curated `v5` prefix picks it up too, and it belongs there: it is fast and it is the file an edit to either
-// side should re-run. 26 -> 27, deliberately.
-const QUICK_EXPECTED_JOBS = 27
+// side should re-run. 26 -> 27, deliberately. 27 -> 28, deliberately: `audit-enum-branches` joined the curated
+// quick subset in round 160, because it is fast and it checks a defect family that has now appeared five times.
+const QUICK_EXPECTED_JOBS = 28
 // `vmu` is the ITERATION subset for developing the vmu framework: the vmu jobs themselves, plus every
 // gate that guards a SHARED surface a vmu change can reach (preset rows and the generated patch,
 // the installer, package membership, README/doc counts, path discipline, artifact docs, the shared
