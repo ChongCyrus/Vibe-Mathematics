@@ -434,6 +434,10 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.schedule.overdueGraceMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '迟到宽限（超宽限 ⇒ 丢弃并计数，绝不静默 ✗）' },
   { key: 'vmu.schedule.coalesceMissed', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '漏跑是否合并（合并也要报 missed ✓）' },
   { key: 'vmu.schedule.maxRecurrences', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '重复项上限（0＝不限）' },
+  // ROUND 264: 时间与时区声明（07 卷 §L359/L360/L368；现由 kernel/scheduler.js 读取 ✓）.
+  { key: 'vmu.schedule.defaultTimezone', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: "默认时区（IANA 名；事件未带时区时取它，回执据此报告；缺时区 ⇒ VMU_SCHEDULE_TZ_UNKNOWN）" },
+  { key: 'vmu.schedule.recurrenceEnabled', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "是否允许重复规则（false ⇒ every() 具名拒；默认 true ⇒ 不声明就不改变行为）" },
+  { key: 'vmu.schedule.dstPolicy', type: 'enum', domain: ['wall', 'absolute'], def: 'absolute', hot: HOT.H1, who: 'office', doc: "夏令时口径（absolute＝绝对时刻，不受跳变影响 ✓ 默认；wall＝当地墙钟，可能顺延 —— 回执明说 ✓）" },
   { key: 'vmu.schedule.minIntervalMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '最小间隔（低于即拒 ✓）' },
   { key: 'vmu.schedule.maxHorizonMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '最远调度视界（0＝不限；超出即拒 ✓）' },
   { key: 'vmu.schedule.cancelNeedsReason', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '取消必须给理由（留痕 ✓）' },

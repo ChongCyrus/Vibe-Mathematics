@@ -528,6 +528,9 @@ vmu.packs.active: [v5r]
 | `vmu.schedule.overdueGraceMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 迟到宽限（超宽限 ⇒ 丢弃并计数，绝不静默 ✗） |
 | `vmu.schedule.coalesceMissed` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 漏跑是否合并（合并也要报 missed ✓） |
 | `vmu.schedule.maxRecurrences` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 重复项上限（0＝不限） |
+| `vmu.schedule.defaultTimezone` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 默认时区（IANA 名；事件未带时区时取它，回执据此报告；缺时区 ⇒ VMU_SCHEDULE_TZ_UNKNOWN） |
+| `vmu.schedule.recurrenceEnabled` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 是否允许重复规则（false ⇒ every() 具名拒；默认 true ⇒ 不声明就不改变行为） |
+| `vmu.schedule.dstPolicy` | enum | `absolute` | `wall`∣`absolute` | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 夏令时口径（absolute＝绝对时刻，不受跳变影响 ✓ 默认；wall＝当地墙钟，可能顺延 —— 回执明说 ✓） |
 | `vmu.schedule.minIntervalMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 最小间隔（低于即拒 ✓） |
 | `vmu.schedule.maxHorizonMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 最远调度视界（0＝不限；超出即拒 ✓） |
 | `vmu.schedule.cancelNeedsReason` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 取消必须给理由（留痕 ✓） |
@@ -1306,9 +1309,6 @@ vmu.packs.active: [v5r]
 | `vmu.reviewers.blindUnbindRequiresReason` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.reviewers.coiPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.reviewers.maxLoad` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.schedule.defaultTimezone` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.schedule.dstPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.schedule.recurrenceEnabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.script.stderrCap` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.script.stdoutCap` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.script.timeoutMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 2 卷：16、20），尚未实现（元数据以各卷为准） |

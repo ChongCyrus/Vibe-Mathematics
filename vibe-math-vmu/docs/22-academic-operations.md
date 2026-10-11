@@ -76,7 +76,7 @@
 | **11** | **税务与法务实体（N9）** | §3.0 Money／§3.1 账户／20 密级 | `vmu.legalentity.*` | `VMU_ENTITY_*`／`VMU_TAX_*`／`VMU_CROSSBORDER_*` | ✗ |
 | **12** | **DUA／MTA 协议闸（N10）** | §7.1 协议登记／21 提醒（引用） | `vmu.agreements.*` | `VMU_AGREEMENT_*` | ✗ |
 
-> **成熟度诚实声明** ✗：本卷 **13 个族（含 §3.0 的货币类型与 §2.5／§3.6／§7.4 三个追加族）、9 个服务、9 个工具、10 个钩子、9 个协议全部为规划**（`settings/planned.js` 里 `planned:true`）✓ —— 今天能用的只有**底座**（记录/任务/会议/设置/中间件/pack/脚本桥）✓。
+> **成熟度诚实声明** ✗（★ **轮 264 部分更正** ✓✓）：**本卷若干族的承载面【早已存在】** ✓ —— **实测：`kernel/instruments.js`（359 行 ✓，含登记/预约/校准/阻断 ✓）、`kernel/funding.js`（693 行 ✓，含 `openAccount`／`request`／`expense`／`settle` ✓）、`kernel/collab.js`（285 行 ✓，含 `authorship`／`settle` ✓）、`kernel/biospecimen.js`（195 行 ✓）** ✓ ⇒ **下文各处若仍写"计划 ✗"，应以上述承载面为准** ✓；**逐族成熟度的完整复核仍待做** ✗。**原始声明（保留以备对照）**：本卷 **13 个族（含 §3.0 的货币类型与 §2.5／§3.6／§7.4 三个追加族）、9 个服务、9 个工具、10 个钩子、9 个协议全部为规划**（`settings/planned.js` 里 `planned:true`）✓ —— 今天能用的只有**底座**（记录/任务/会议/设置/中间件/pack/脚本桥）✓。
 
 ---
 
@@ -497,7 +497,7 @@
 |---|---|
 | **名称** | 联合署名与结算（Joint Authorship & Settlement） |
 | **目的** | 多机构成果的署名规则（顺序/单位标注）与费用对账 **显式化** ✓ |
-| **接口形状** | 服务 `vmu.collab.authorship()`／`reconcile(period)`（**计划 ✗**） |
+| **接口形状** | 服务 `vmu.collab.authorship()`／`reconcile(period)` —— ★ **已接线 ✓（轮 264 实测）**：**`kernel/collab.js` 的 `authorship()`（L252 ✓）与 `settle()`（L224 ✓，即本处所说的对账动作；`reconciledMinor` 差异逐笔计算 ✓）** ✓ |
 | **可调控参数** | `vmu.collab.jointAuthorshipPolicy`（默认 `contribution-then-alternate`）、`vmu.collab.settlementCycleDays`（默认 `60`）、`vmu.collab.reconciliationToleranceMinor`（默认 `1`） |
 | **相关错误码** | `VMU_COLLAB_SETTLEMENT_MISMATCH` ⛔／`VMU_COLLAB_AUTHORSHIP_CONFLICT` ⛔ |
 | **四条哲学** | F：不声明＝各署各的 ✓｜T：规则/周期可配 ✓｜D：署名规则由 pack（与 §4.3 同一份声明 ✓）｜X：新规则只加判定点 ✓ |

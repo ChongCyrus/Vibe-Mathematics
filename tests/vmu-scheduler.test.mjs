@@ -290,5 +290,32 @@ const S = (extra = {}) => Object.assign({ 'vmu.schedule.maxPending': 8 }, extra)
   ok(refuse('X', 'y', 'z').code === 'X' && refuse('X', 'y', 'z').hint === 'z', 'refuse(): the named-error helper keeps code/hint')
 }
 
+
+// ── ROUND 264: timezone, recurrence and DST declarations (volume 07 §L359/L360/L368) ────────────────────────
+{
+  const mkS = (extra) => createScheduler({ clock: () => 1000, settings: Object.assign({}, extra || {}) })
+
+  // the defaults are the volume defaults, and they change nothing
+  const d = mkS({}).scheduleDeclarations()
+  ok(d.dstPolicy === 'absolute' && d.recurrenceEnabled === true && d.defaultTimezone === null,
+    'schedule defaults: absolute DST handling, recurrence on, and no timezone invented', d)
+  ok(/unaffected by daylight-saving/.test(d.dstNote), 'dstPolicy[absolute]: the receipt says transitions do not affect it')
+  ok(mkS({}).every({ intervalMs: 1000, what: 'lab/r' }).ok === true, 'recurrenceEnabled[default]: a repeat rule is still accepted')
+
+  // the declaration decides, and only for repeat rules
+  let refused = null
+  try { mkS({ 'vmu.schedule.recurrenceEnabled': false }).every({ intervalMs: 1000, what: 'lab/r' }) } catch (e) { refused = e }
+  ok(refused && refused.code === 'VMU_SCHEDULE_RECURRENCE_INVALID',
+    'recurrenceEnabled[off]: a repeat rule is refused BY NAME even though the interval is valid', refused && refused.code)
+  ok(mkS({ 'vmu.schedule.recurrenceEnabled': false }).once({ inMs: 5, what: 'lab/o' }).ok === true,
+    'recurrenceEnabled[off]: a SINGLE occurrence is unaffected - the declaration is about recurrence, not about scheduling')
+
+  // the wall-clock policy is a fact the caller must see
+  const wall = mkS({ 'vmu.schedule.dstPolicy': 'wall', 'vmu.schedule.defaultTimezone': 'Asia/Shanghai' }).scheduleDeclarations()
+  ok(wall.dstPolicy === 'wall' && /may slip across a daylight-saving/.test(wall.dstNote),
+    'dstPolicy[wall]: the receipt warns that an occurrence may slip across a transition', wall)
+  ok(wall.defaultTimezone === 'Asia/Shanghai', 'schedule.defaultTimezone: the declared timezone is the one reported')
+}
+
 console.log('=== VMU SCHEDULER: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) process.exit(1)

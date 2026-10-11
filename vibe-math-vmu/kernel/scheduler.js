@@ -99,6 +99,10 @@ export function createScheduler({ clock = () => 0, log = null, settings = {}, bu
   const minIntervalMs = nonNegInt(sget(K_MIN_INTERVAL, 0), 0)
   const maxHorizonMs = nonNegInt(sget(K_MAX_HORIZON, 0), 0)
   const cancelNeedsReason = sget(K_CANCEL_REASON, true) !== false
+  // ROUND 264 (volume 07 §L359/L360/L368): timezone, recurrence and DST declarations.
+  const defaultTimezone = typeof sget('vmu.schedule.defaultTimezone', '') === 'string' ? sget('vmu.schedule.defaultTimezone', '') : ''
+  const recurrenceEnabled = sget('vmu.schedule.recurrenceEnabled', true) !== false
+  const dstPolicy = ['wall', 'absolute'].includes(sget('vmu.schedule.dstPolicy')) ? sget('vmu.schedule.dstPolicy') : 'absolute'
 
   function nonNegInt(v, def) { return Number.isInteger(v) && v >= 0 ? v : def }
 
@@ -207,7 +211,19 @@ export function createScheduler({ clock = () => 0, log = null, settings = {}, bu
     return it
   }
 
+  /** ROUND 264 (07 §L359/L368): the scheduling declarations, reported so a receipt can name them. */
+  const scheduleDeclarations = () => ({
+    defaultTimezone: defaultTimezone || null,
+    recurrenceEnabled,
+    dstPolicy,
+    dstNote: dstPolicy === 'wall'
+      ? 'wall clock: an occurrence may slip across a daylight-saving transition (07 §L368)'
+      : 'absolute instant: unaffected by daylight-saving transitions (07 §L368)',
+  })
+
   const api = {
+    // ROUND 264: the scheduling declarations.
+    scheduleDeclarations,
     apiVersion,
 
     /** One-shot trigger at an absolute time (`at`) or after a delay (`inMs`). */
@@ -226,7 +242,13 @@ export function createScheduler({ clock = () => 0, log = null, settings = {}, bu
 
     /** Recurring trigger. `intervalMs` is mandatory and floor-checked; `maxRuns` bounds the repetitions. */
     every({ intervalMs, what, payload = null, by = null, at = null, maxRuns = null } = {}) {
-      if (!(Number.isInteger(intervalMs) && intervalMs > 0)) {
+      // ROUND 264 (07 §L360): a repeat rule is refused by name when the declaration says recurrence is off. This sits at the TOP of
+    // the method: nested inside the interval check it would only run for an invalid interval (measured in round 263).
+    if (!recurrenceEnabled) {
+      throw deny('VMU_SCHEDULE_RECURRENCE_INVALID', 'vmu.schedule.recurrenceEnabled=false and a repeat rule was requested',
+        'set vmu.schedule.recurrenceEnabled=true, or schedule a single occurrence with once()')
+    }
+    if (!(Number.isInteger(intervalMs) && intervalMs > 0)) {
         throw deny('VMU_SCHEDULE_RECURRENCE_INVALID', 'every() needs a positive integer intervalMs', 'e.g. every({ intervalMs: 60000, what: "lab/heartbeat" })')
       }
       if (minIntervalMs > 0 && intervalMs < minIntervalMs) {
