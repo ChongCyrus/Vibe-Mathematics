@@ -107,6 +107,9 @@ export function createCourse(opts) {
       requireEvidence: b('vmu.course.requireEvidence', true),
       peerWeight: Number(readKey('vmu.course.peerWeight')) > 0 ? Number(readKey('vmu.course.peerWeight')) : 0,
       retentionMs: n('vmu.course.retentionMs', 0),
+      // ROUND 124: the ontology version is a string with the documented default `1`, and it becomes the migration
+      // guard below rather than another key that is read and forgotten.
+      ontologyVersion: s('vmu.course.ontologyVersion', '1'),
     }
   }
   const keysUsed = () => WIRED_COURSE_KEYS.slice()
@@ -142,7 +145,10 @@ export function createCourse(opts) {
     if (!title) return deny('VMU_INVALID_ARGUMENT', 'open 需要 title', '给课程标题', enforced)
     const id = 'co-' + (++seq)
     // `maxUnits` 未接 ⇒ 不参与
-    const course = { id, title, at: clock(), cohort: [], submissions: 0, outcomes: [], visibility: c.visibility, auditors: [], attempts: new Map() }
+    const course = { id, title, at: clock(), cohort: [], submissions: 0, outcomes: [], visibility: c.visibility, auditors: [], attempts: new Map(),
+      // ROUND 124: the ontology version is stamped when the course opens, which is what makes it a MIGRATION key
+      // rather than a dead one - a later enrol that names a different version is refused below.
+      ontologyVersion: c.ontologyVersion }
     enrolled.set(id, course)
     note('course.open', id)
     emit({ type: 'course.open', id })
@@ -158,6 +164,17 @@ export function createCourse(opts) {
     if (!course) return deny('VMU_NOT_FOUND', '找不到课程 ' + String(args.courseId || ''), '先 open() 取 id', enforced)
     const who = String(args.who || '').trim()
     if (!who) return deny('VMU_INVALID_ARGUMENT', 'enroll 需要 who', '给学员 id', enforced)
+    // ROUND 124: the ontology version becomes a real migration gate. A caller that names a version must name the
+    // one the course was opened under; the check is explicit rather than silent, because a mismatch here means the
+    // caller is working from a different ontology and its answers would not be comparable.
+    if (typeof args.ontologyVersion === 'string' && args.ontologyVersion.trim() !== '') {
+      evalKey('vmu.course.ontologyVersion')
+      if (args.ontologyVersion.trim() !== String(course.ontologyVersion)) {
+        return deny('VMU_CONFLICT',
+          '本体版本不符：课程开于 ' + String(course.ontologyVersion) + '，调用方声明 ' + args.ontologyVersion.trim() + '（vmu.course.ontologyVersion）',
+          '用课程开立时的版本，或按迁移流程重开课程（docs/17 §本体版本）', enforced)
+      }
+    }
     if (args.auditor === true) {
       evalKey('vmu.course.allowAuditors')
       if (!c.allowAuditors) return deny('VMU_NOT_PERMITTED', '本课不允许旁听（vmu.course.allowAuditors=false）', '打开它，或按正式学员注册', enforced)

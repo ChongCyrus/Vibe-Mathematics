@@ -748,7 +748,7 @@
 | `VMU_CLOCK_FORWARD_JUMP` | **已实现 ✓** | `vibe-math-vmu/kernel/clockguard.js` | 代码里有该码字符串 ✓ |
 | `VMU_CLOCK_UNGUARDED` | **已实现 ✓** | `vibe-math-vmu/kernel/clockguard.js` | 代码里有该码字符串 ✓ |
 | `VMU_COMPAT_UNKNOWN_COMBO` | **已实现 ✓** | `vibe-math-vmu/kernel/migration.js`、`vibe-math-vmu/kernel/projmigrate.js`、`vibe-math-vmu/kernel/stateversion.js`、`vibe-math-vmu/kernel/storepolicy.js` | 代码里有该码字符串 ✓ |
-| `VMU_CONFLICT` | **已实现 ✓** | `vibe-math-vmu/kernel/alerts.js`、`vibe-math-vmu/kernel/ballotbox.js`、`vibe-math-vmu/kernel/bidding.js`、`vibe-math-vmu/kernel/governance.js`、`vibe-math-vmu/kernel/instruments.js`、`vibe-math-vmu/kernel/storepolicy.js` | 代码里有该码字符串 ✓ |
+| `VMU_CONFLICT` | **已实现 ✓** | `vibe-math-vmu/kernel/alerts.js`、`vibe-math-vmu/kernel/ballotbox.js`、`vibe-math-vmu/kernel/bidding.js`、`vibe-math-vmu/kernel/course.js`、`vibe-math-vmu/kernel/governance.js`、`vibe-math-vmu/kernel/instruments.js`、`vibe-math-vmu/kernel/storepolicy.js` | 代码里有该码字符串 ✓ |
 | `VMU_CONTROL_NO_TIMER` | **已实现 ✓** | `vibe-math-vmu/kernel/scheduler.js` | 代码里有该码字符串 ✓ |
 | `VMU_CONTROL_SCOPE_UNKNOWN` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_CRYPTO_KEY_EXPIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/crypto.js` | 代码里有该码字符串 ✓ |

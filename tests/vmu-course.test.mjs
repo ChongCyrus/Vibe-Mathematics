@@ -275,6 +275,23 @@ test('submitMode refuses a submission in the wrong form, by name, and admits the
   passed += 1
 })
 
+// ROUND 124: the ontology version is a real migration gate - stamped when the course opens, and checked when a
+// caller names a version. Naming none is allowed on purpose: the check is opt-in, so it cannot break a caller that
+// never knew about versions.
+test('ontologyVersion is stamped at open and a MISMATCHED enrol is refused by name', () => {
+  const c = co({ 'vmu.course.ontologyVersion': '2' })
+  const o = c.open({ title: 'T' })
+  assert.ok(o.ok === true, 'open 通过')
+  const bad = c.enroll({ courseId: o.courseId, who: 'r-1', ontologyVersion: '1' })
+  assert.ok(bad && bad.ok === false && bad.code === 'VMU_CONFLICT', '版本不符必须具名拒：' + JSON.stringify(bad).slice(0, 140))
+  assert.ok(c.enroll({ courseId: o.courseId, who: 'r-2', ontologyVersion: '2' }).ok === true, '版本相符则通过')
+  assert.ok(c.enroll({ courseId: o.courseId, who: 'r-3' }).ok === true, '不声明版本则不受检查（opt-in）')
+  const d = co({ 'vmu.course.ontologyVersion': '9' })
+  const o2 = d.open({ title: 'T' })
+  assert.ok(d.enroll({ courseId: o2.courseId, who: 'r-1', ontologyVersion: '2' }).ok === false, '另一个版本号同样被拒（不是硬编码 1）')
+  passed += 1
+})
+
 for (const c of cases) {
   try { await c.f(); console.log('ok - ' + c.n) } catch (e) { failed += 1; console.log('FAIL - ' + c.n + ' :: ' + String((e && e.message) || e)) }
 }
