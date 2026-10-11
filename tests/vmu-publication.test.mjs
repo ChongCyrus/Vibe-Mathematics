@@ -156,5 +156,49 @@ const mk = (settings = {}, opts = {}) => createPublication({ clock: () => now, s
   for (const p of positives) if (isVague(p)) { console.error('  FAIL - [isVague] 正例被误拒: ' + JSON.stringify(p)); process.exit(1) }
   console.log('  ok - [isVague] 3 条正例未被误拒（防过严）')
 }
+
+// ── ROUND 218: the outreach family (docs/22 §传播, contracts at lines 712-720) — both directions for every key ──
+{
+  now = 0
+  const O = (extra = {}) => mk(extra)
+  const mkPack = (c, o, extra = {}) => c.outreachPack(Object.assign({ paperId: 'paper-1', publicSummary: 'A public summary', claims: [{ text: 'c', evidenceRef: 'R1' }] }, extra))
+  // publicSummaryRequired
+  const c1 = O()
+  let miss = null; try { c1.outreachPack({ paperId: 'paper-1' }) } catch (e) { miss = e && e.code }
+  ok(miss === 'VMU_OUTREACH_INCOMPLETE', 'publicSummaryRequired[-]: no summary is refused by name', String(miss))
+  ok(c1.outreachPack({ paperId: 'paper-1', publicSummary: 'A public summary' }).ok === true, 'publicSummaryRequired[+]: with a summary the pack is built')
+  // languageSet
+  let lang = null; try { c1.outreachPack({ paperId: 'paper-1', publicSummary: 'x', languages: ['fr'] }) } catch (e) { lang = e && e.code }
+  ok(lang === 'VMU_OUTREACH_LANGUAGE', 'languageSet[-]: a language outside the set is refused by name', String(lang))
+  ok(c1.outreachPack({ paperId: 'paper-1', publicSummary: 'x', languages: ['zh'] }).languages.join() === 'zh', 'languageSet[+]: a declared language passes')
+  // evidenceFidelity strict vs warn
+  let ev = null; try { c1.outreachPack({ paperId: 'paper-1', publicSummary: 'x', claims: [{ text: 'no ref' }] }) } catch (e) { ev = e && e.code }
+  ok(ev === 'VMU_OUTREACH_EVIDENCE', 'evidenceFidelity[-]: strict refuses a claim with no evidenceRef', String(ev))
+  const warnC = O({ 'vmu.outreach.evidenceFidelity': 'warn' })
+  const warned = warnC.outreachPack({ paperId: 'paper-1', publicSummary: 'x', claims: [{ text: 'no ref' }] })
+  ok(warned.warnings.length === 1, 'evidenceFidelity=warn: the missing reference is WARNED about, not fatal', JSON.stringify(warned.warnings))
+  // mediaApprovalPolicy
+  let media = null; try { c1.outreachPack({ paperId: 'paper-1', publicSummary: 'x', by: 'stranger' }) } catch (e) { media = e && e.code }
+  ok(media === 'VMU_OUTREACH_MEDIA_DENIED', 'mediaApprovalPolicy[-]: a non-spokesperson is refused by name', String(media))
+  ok(c1.outreachPack({ paperId: 'paper-1', publicSummary: 'x', by: 'spox', spokespersons: ['spox'] }).ok === true, 'mediaApprovalPolicy[+]: a declared spokesperson may speak')
+  // anonymityPreserve keys on AUTHORS travelling with the pack
+  let anon = null; try { c1.outreachPack({ paperId: 'paper-1', publicSummary: 'x', authors: ['m1'] }) } catch (e) { anon = e && e.code }
+  ok(anon === 'VMU_OUTREACH_ANONYMITY', 'anonymityPreserve[-]: author identities with the pack are refused by name', String(anon))
+  // embargoRespect + openReviewEnabled + impactLogFields + impactUseInEvaluation
+  const c2 = O()
+  c2.outreachPack({ paperId: 'paper-2', publicSummary: 'x', embargoUntil: 5000 })
+  let emb = null; try { c2.publishOutreach({ paperId: 'paper-2' }) } catch (e) { emb = e && e.code }
+  ok(emb === 'VMU_OUTREACH_EMBARGO', 'embargoRespect[-]: publishing inside the embargo is refused by name', String(emb))
+  ok(c2.publishOutreach({ paperId: 'paper-2', at: 6000 }).publishedAt === 6000, 'embargoRespect[+]: after the embargo it publishes')
+  let orv = null; try { c2.openOutreachReview({ paperId: 'paper-2' }) } catch (e) { orv = e && e.code }
+  ok(orv === 'VMU_OUTREACH_OPEN_REVIEW_OFF', 'openReviewEnabled[-]: open review with the switch off is refused by name', String(orv))
+  let fields = null; try { c2.logImpact({ paperId: 'paper-2', entries: [{ channel: 'blog' }] }) } catch (e) { fields = e && e.code }
+  ok(fields === 'VMU_OUTREACH_IMPACT_FIELDS', 'impactLogFields[-]: an entry missing declared fields is refused by name', String(fields))
+  ok(c2.logImpact({ paperId: 'paper-2', entries: [{ channel: 'blog', reach: 10, date: '2026-01-01', ref: 'R1' }] }).logged === 1, 'impactLogFields[+]: a complete entry is logged')
+  let evalUse = null; try { c2.useImpactInEvaluation({ paperId: 'paper-2' }) } catch (e) { evalUse = e && e.code }
+  ok(evalUse === 'VMU_OUTREACH_IMPACT_NOT_FOR_EVALUATION', 'impactUseInEvaluation[-]: using outreach impact in evaluation is refused by name', String(evalUse))
+  ok(typeof c2.status() === 'object' && c2.status() !== null, 'the face still answers after all of that (no state was corrupted)')
+}
+
 console.log('=== VMU PUBLICATION: ' + pass + ' passed, ' + fail + ' failed ===')
 process.exit(fail ? 1 : 0)

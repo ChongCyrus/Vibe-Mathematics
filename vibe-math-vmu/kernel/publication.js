@@ -218,5 +218,126 @@ export function createPublication({ clock = () => Date.now(), log = () => {}, se
     chain: VERSION_CHAIN.slice(),
   })
 
-  return { apiVersion, submitPack, advance, register, availability, badge, replication, list, status }
+  // ── ROUND 218: the outreach（传播）family. Contracts are DECLARED, not invented: docs/22 §传播, consolidated parameter
+  // table lines 712-720. Each setting below decides something specific, and every refusal is named.
+  const outreachCfg = () => ({
+    publicSummaryRequired: boolOr(settings['vmu.outreach.publicSummaryRequired'], true),
+    evidenceFidelity: ['strict', 'warn'].includes(settings['vmu.outreach.evidenceFidelity']) ? settings['vmu.outreach.evidenceFidelity'] : 'strict',
+    embargoRespect: boolOr(settings['vmu.outreach.embargoRespect'], true),
+    languageSet: Array.isArray(settings['vmu.outreach.languageSet']) && settings['vmu.outreach.languageSet'].length ? settings['vmu.outreach.languageSet'].slice() : ['zh', 'en'],
+    mediaApprovalPolicy: settings['vmu.outreach.mediaApprovalPolicy'] || 'spokesperson-only',
+    openReviewEnabled: boolOr(settings['vmu.outreach.openReviewEnabled'], false),
+    anonymityPreserve: boolOr(settings['vmu.outreach.anonymityPreserve'], true),
+    impactLogFields: Array.isArray(settings['vmu.outreach.impactLogFields']) && settings['vmu.outreach.impactLogFields'].length ? settings['vmu.outreach.impactLogFields'].slice() : ['channel', 'reach', 'date', 'ref'],
+    impactUseInEvaluation: boolOr(settings['vmu.outreach.impactUseInEvaluation'], false),
+  })
+  const outreach = new Map()   // paperId -> { summary, languages, embargoUntil, media[], impact[], openReview, anonymous, warnings[], at }
+
+  const outreachOf = (paperId) => {
+    const o = outreach.get(paperId)
+    if (!o) throw refuse('VMU_OUTREACH_NOT_READY', 'no outreach pack for ' + String(paperId), 'call outreachPack({paperId,…}) first', { paperId })
+    return o
+  }
+
+  /** Assemble the dissemination record for one paper, enforcing the outreach settings as it goes. */
+  function outreachPack({ paperId, publicSummary = null, languages = null, claims = null, embargoUntil = null, by = null, spokespersons = [], authors = null } = {}) {
+    if (!paperId) throw refuse('VMU_SUBMISSION_INCOMPLETE', 'outreachPack needs paperId', 'e.g. outreachPack({paperId:"paper-1", publicSummary:"…"})', { missing: ['paperId'] })
+    const c = outreachCfg()
+    const warnings = []
+    // publicSummaryRequired
+    if (c.publicSummaryRequired && !(typeof publicSummary === 'string' && publicSummary.trim())) {
+      throw refuse('VMU_OUTREACH_INCOMPLETE', 'vmu.outreach.publicSummaryRequired=true: a public summary is required',
+        'pass publicSummary:"…" (vmu.outreach.publicSummaryRequired)', { paperId, missing: ['publicSummary'] })
+    }
+    // languageSet
+    const langs = Array.isArray(languages) && languages.length ? languages.map(String) : c.languageSet.slice()
+    const outside = langs.filter((x) => !c.languageSet.includes(x))
+    if (outside.length) {
+      throw refuse('VMU_OUTREACH_LANGUAGE', 'summary language outside vmu.outreach.languageSet: ' + outside.join(', '),
+        'allowed: ' + c.languageSet.join(', ') + ' (vmu.outreach.languageSet)', { paperId, outside })
+    }
+    // evidenceFidelity: strict refuses a claim with no evidence reference; warn records it and continues
+    const list = Array.isArray(claims) ? claims : []
+    const unreferenced = list.filter((x) => !x || !(typeof x.evidenceRef === 'string' && x.evidenceRef.trim()))
+    if (unreferenced.length && c.evidenceFidelity === 'strict') {
+      throw refuse('VMU_OUTREACH_EVIDENCE', 'vmu.outreach.evidenceFidelity=strict: every claim needs an evidenceRef',
+        'add evidenceRef to ' + unreferenced.length + ' claim(s), or set the key to warn', { paperId, missing: unreferenced.length })
+    }
+    if (unreferenced.length) warnings.push('evidenceFidelity=warn: ' + unreferenced.length + ' claim(s) carry no evidenceRef')
+    // mediaApprovalPolicy: the declared default allows only a declared spokesperson to speak
+    if (by !== null && c.mediaApprovalPolicy === 'spokesperson-only' && !spokespersons.includes(String(by))) {
+      throw refuse('VMU_OUTREACH_MEDIA_DENIED', 'vmu.outreach.mediaApprovalPolicy=spokesperson-only: ' + by + ' is not a declared spokesperson',
+        'declare the spokesperson, or change vmu.outreach.mediaApprovalPolicy', { paperId, by })
+    }
+    // anonymityPreserve: when on, the pack must not carry AUTHOR identities. The rule is objective on purpose - it is
+    // about authors travelling with the pack, not about who is allowed to speak (a spokesperson is supposed to be named).
+    const authorList = Array.isArray(authors) ? authors.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : []
+    if (c.anonymityPreserve && authorList.length > 0) {
+      throw refuse('VMU_OUTREACH_ANONYMITY', 'vmu.outreach.anonymityPreserve=true: the pack must not carry author identities',
+        'omit authors from the pack, or set vmu.outreach.anonymityPreserve=false deliberately', { paperId, authors: authorList.length })
+    }
+    const rec = { paperId, summary: publicSummary === null ? null : String(publicSummary), languages: langs, claims: list.slice(), embargoUntil: embargoUntil === null ? null : Number(embargoUntil), media: by === null ? [] : [String(by)], authors: authorList.slice(), warnings, published: false, impact: [], openReview: c.openReviewEnabled, at: clock() }
+    outreach.set(paperId, rec)
+    return { ok: true, paperId, languages: langs.slice(), warnings: warnings.slice(), embargoUntil: rec.embargoUntil, enforced: ['vmu.outreach.publicSummaryRequired', 'vmu.outreach.languageSet', 'vmu.outreach.evidenceFidelity', 'vmu.outreach.mediaApprovalPolicy', 'vmu.outreach.anonymityPreserve'] }
+  }
+
+  /** Publish it. `embargoRespect` blocks a publish before the embargo ends; `openReviewEnabled` gates open review. */
+  function publishOutreach({ paperId, at = null } = {}) {
+    const rec = outreachOf(paperId)
+    const c = outreachCfg()
+    const now = at === null ? clock() : Number(at)
+    const enforced = ['vmu.outreach.embargoRespect']
+    if (c.embargoRespect && rec.embargoUntil !== null && now < rec.embargoUntil) {
+      throw refuse('VMU_OUTREACH_EMBARGO', 'vmu.outreach.embargoRespect=true and the embargo runs until ' + rec.embargoUntil,
+        'wait, or clear the embargo deliberately (vmu.outreach.embargoRespect)', { paperId, embargoUntil: rec.embargoUntil, now, enforced })
+    }
+    rec.published = true
+    rec.publishedAt = now
+    return { ok: true, paperId, publishedAt: now, enforced, warnings: rec.warnings.slice() }
+  }
+
+  /** Open review is a switch: `vmu.outreach.openReviewEnabled=false` refuses the request by name. */
+  function openOutreachReview({ paperId } = {}) {
+    const rec = outreachOf(paperId)
+    const c = outreachCfg()
+    const enforced = ['vmu.outreach.openReviewEnabled']
+    if (!c.openReviewEnabled) {
+      throw refuse('VMU_OUTREACH_OPEN_REVIEW_OFF', 'vmu.outreach.openReviewEnabled=false: open review is not enabled',
+        'set the key to true to open the review', { paperId, enforced })
+    }
+    rec.openReview = true
+    return { ok: true, paperId, openReview: true, enforced }
+  }
+
+  /** Log impact entries; every entry must carry exactly the declared `impactLogFields`. */
+  function logImpact({ paperId, entries = null } = {}) {
+    const rec = outreachOf(paperId)
+    const c = outreachCfg()
+    const list = Array.isArray(entries) ? entries : []
+    const enforced = ['vmu.outreach.impactLogFields']
+    list.forEach((e, i) => {
+      const missing = c.impactLogFields.filter((f) => e === null || typeof e !== 'object' || e[f] === undefined)
+      if (missing.length) {
+        throw refuse('VMU_OUTREACH_IMPACT_FIELDS', 'impact entry ' + i + ' is missing declared field(s): ' + missing.join(', '),
+          'entries must carry ' + c.impactLogFields.join(', ') + ' (vmu.outreach.impactLogFields)', { paperId, index: i, missing, enforced })
+      }
+    })
+    rec.impact.push(...list.map((e) => Object.assign({}, e)))
+    return { ok: true, paperId, logged: list.length, total: rec.impact.length, fields: c.impactLogFields.slice(), enforced }
+  }
+
+  /** Whether impact may be used in evaluation. `impactUseInEvaluation=false` refuses it by name. */
+  function useImpactInEvaluation({ paperId } = {}) {
+    const rec = outreachOf(paperId)
+    const c = outreachCfg()
+    const enforced = ['vmu.outreach.impactUseInEvaluation']
+    if (!c.impactUseInEvaluation) {
+      throw refuse('VMU_OUTREACH_IMPACT_NOT_FOR_EVALUATION', 'vmu.outreach.impactUseInEvaluation=false: outreach impact must not be used in evaluation',
+        'it is a dissemination metric, not a research-quality signal (set the key to true only with a deliberate decision)', { paperId, enforced })
+    }
+    return { ok: true, paperId, impact: rec.impact.slice(), enforced }
+  }
+
+  return { apiVersion, submitPack, advance, register, availability, badge, replication, list, status,
+    outreachPack, publishOutreach, openOutreachReview, logImpact, useImpactInEvaluation }
 }

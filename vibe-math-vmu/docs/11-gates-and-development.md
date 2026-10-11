@@ -589,6 +589,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `capacity` · `list()` | ok | — | enforced=[0] fired=[0] enforcedScope=evaluated-so-far | ok 或 object（实测 `list()` ⇒ **ok**（`enforced=[0] fired=[0] enforcedScope=evaluated-so-far` ⇒ 零机制**清单可读、不拒** ✓；**键数由本生成器实测输出** ✓）） |
 | `charter` · `propose()` | refusal | VMU_CHARTER_NOT_AUTHORIZED | — | 具名拒或 ok（task-214 批 3 补参（形状取自测试 vmu-charter.test.mjs:236 `propose({kind:"charter",text,by,articles:[{id}]})`）：补参前实测具名拒 **VMU_CHARTER_NOT_AUTHORIZED** ⇒ 补参后若放行 ⇒ ok ✓；若仍具名拒 ⇒ 写明"缺参即其零机制形状" ✓） |
 | `clockguard` · `status()` | null | — | — | ok 或 null（时钟守卫：无声明 ⇒ 不拦（返回 null 亦合规）） |
+| `collab` · `status()` | ok | — | dropped=0 | （**设计未定** ✗：本模块未登记期望） |
 | `compliance` · `status()` | ok | — | enforcedScope=evaluated-so-far | ok 或 object（实测 `status()` ⇒ **ok**（`enforcedScope=evaluated-so-far` ⇒ 状态可读、**不拒**）。**ROUND 153 更正** ✗✓：本行原先还写"`exportControlCheck` 归 domaingate ✓" —— **实测 `domaingate` 并没有该检查** ✓（`grep export|control` 只命中 `apiVersion` 与注释 ✓），那是**愿望**不是**承载者** ✗；该能力是**全仓缺口** ✓，归属面与复活条件写在 `compliance.js` 的 `PLANNED_REASONS` 里 ✓） |
 | `conference` · `open()` | ok | — | enforced=[2] fired=[2] enforcedScope=evaluated-so-far | ok 或 object（实测 `open()` ⇒ **ok**（`enforced=[2] fired=[2]` ⇒ 零机制**按默认阶梯开成、放行** ✓，与 `meetings` 同口径 ✓）） |
 | `course` · `open()` | refusal | VMU_INVALID_ARGUMENT | enforced=[1] enforcedScope=evaluated-so-far | 具名拒或 ok（task-214 实测：`open()` ⇒ 具名拒 **VMU_INVALID_ARGUMENT**（带口径 `enforced=[1]`）⇒ 零机制＝缺课程参数 ⇒ 具名拒 ✓） |
@@ -649,5 +650,5 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
 | `workflow` · `advance()` | refusal | VMU_WORKFLOW_TRANSITION_REQUIRED | enforced=[7] enforcedScope=evaluated-so-far | 具名拒或 ok（**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 `advance()` 缺参 ⇒ **task-214 实测：具名拒 `VMU_WORKFLOW_TRANSITION_REQUIRED`（带口径 `enforced=[7]`）** ⇒ 具名拒即真实形状 ✓（旧 note 曾写 `op 抛出` ✗ / "缺参 ⇒ 具名拒" 混述 ✗，均已按实测改写 ✓）） |
 
-=== ZERO-MECHANISM MATRIX: 72 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 5 probe-errors, 2 n/a ===
+=== ZERO-MECHANISM MATRIX: 73 modules, 1 mismatches, 1 unregistered, 0 EXPECT_UNDECIDED, 5 probe-errors, 2 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->

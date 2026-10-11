@@ -661,6 +661,22 @@ vmu.packs.active: [v5r]
 | `vmu.safety.maxMemoryMb` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 内存上限（0＝不限；安全面的资源闸，与 vmu.limits.memoryCeilingMb 分工不同） |
 | `vmu.safety.capabilityMatrix` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 能力矩阵（默认内建最小集：外部审稿人＝只读产物；未列出的槽位默认无权限） |
 | `vmu.safety.askOn` | string[] | `[publish,network-egress,delete]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 需要询问的动作（默认同 approvalRequired；两者由同一判定读取） |
+| `vmu.outreach.publicSummaryRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 传播包必须带面向公众的摘要（缺失具名拒） |
+| `vmu.outreach.evidenceFidelity` | enum | `strict` | `strict`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 证据保真：strict ⇒ 每条主张须带 evidenceRef（缺失具名拒）；warn ⇒ 记入 warnings 并继续 |
+| `vmu.outreach.embargoRespect` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 禁运期内不得发布（具名拒，并给禁运终点） |
+| `vmu.outreach.languageSet` | string[] | `[zh,en]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 允许的摘要语言集（超出集合具名拒） |
+| `vmu.outreach.mediaApprovalPolicy` | string | `spokesperson-only` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 媒体发言政策（spokesperson-only ⇒ 只有已声明发言人可发言，否则具名拒） |
+| `vmu.outreach.openReviewEnabled` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 开放评审开关（false ⇒ 请求开放评审具名拒） |
+| `vmu.outreach.anonymityPreserve` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 匿名保护（true ⇒ 传播包不得携带作者身份，违反具名拒） |
+| `vmu.outreach.impactLogFields` | string[] | `[channel,reach,date,ref]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 影响日志必填字段（缺字段具名拒并点名第几条） |
+| `vmu.outreach.impactUseInEvaluation` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 影响是否可用于评价（默认 false ⇒ 用于评价时具名拒：它是传播指标而非研究质量信号） |
+| `vmu.collab.agreementRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 交换须先有协议（true ⇒ 无协议交换具名拒；false ⇒ 记录而不假装） |
+| `vmu.collab.dataSharingTemplate` | string | `standard` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 默认数据共享模板名（协议模板不在对手方声明中具名拒） |
+| `vmu.collab.counterpartyRegistry` | string | `Ops/Partners` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 对手方登记目录（相对项目根；本面只 REPORT 不触碰） |
+| `vmu.collab.expiryWarnDays` | integer | `30` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 协议到期预警天数（进入窗口即记 expiry-warning；到期后交换具名拒） |
+| `vmu.collab.jointAuthorshipPolicy` | string | `contribution-then-alternate` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 共同署名政策（声明顺序；未实现的政策名自曝而非假装） |
+| `vmu.collab.settlementCycleDays` | integer | `60` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 结算周期天数（≥1；未到周期即结算具名拒并给到期时刻） |
+| `vmu.collab.reconciliationToleranceMinor` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 对账容差（最小货币单位；超出容差具名拒并给差额） |
 | `vmu.archive.offlineFirst` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.receiptRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.targets` | string[] | `[zenodo,osf,swh,other]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
@@ -1051,16 +1067,9 @@ vmu.packs.active: [v5r]
 | `vmu.clinical.reportChannel` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.clinical.saeReportLimitHours` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.clinical.unblindingRequiresReason` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.collab.agreementRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.collab.authorship` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.collab.counterpartyRegistry` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.collab.dataSharingTemplate` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.collab.expiryWarnDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.collab.exportPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.collab.federationPeers` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.collab.jointAuthorshipPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.collab.reconciliationToleranceMinor` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.collab.settlementCycleDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.collusion.maxClusterSize` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.collusion.scanEveryMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.committees.kinds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
@@ -1310,17 +1319,8 @@ vmu.packs.active: [v5r]
 | `vmu.names.warn` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准） |
 | `vmu.naming.conflictPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.notes.linkKinds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.outreach.anonymityPreserve` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.outreach.embargoRespect` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.outreach.evidenceFidelity` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.outreach.impact` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.outreach.impactLogFields` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.outreach.impactUseInEvaluation` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.outreach.languageSet` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.outreach.mediaApprovalPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.outreach.mediaRequest` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.outreach.openReviewEnabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.outreach.publicSummaryRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.pack.format` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.pack.includeBody` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.pack.includeTrash` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
