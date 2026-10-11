@@ -537,6 +537,12 @@
   **进度** ✓：**7 / 12** 面完成 ✓（`meetings`／`capacity`／`hr`／`compliance`／`ip`／`grant`／`funding` ✓），**每面都有对照证明断言能红** ✓。
   **未做（明写 ✗）**：**其余 5 个面未补** ✗（`conference`／`external`／`mathtools`／`migration`／`workflow` ✓）；**73 条候选仍未判决** ✗。
 
+- ★★★ **轮 175：再补两面（`conference`／`mathtools`）—— 都带提前退出分支，先读尾部因而关键** ✓✓
+  **两面量明的形态** ✓：都是 **`settings.get` 优先** ✓、**都已导入 `WIRED_KEYS`** ✓（预先检查 ⇒ **无重复导入** ✓）、★ **两面尾部都有提前退出分支** ✓（`conference` 在 L321 ✓、`mathtools` 在 L435 ✓）⇒ **断言必须插在其之前** ✓ —— **若沿用"插在摘要前"的直觉就会重犯轮 169 的陷阱** ✗✓（**两面各有不同的"摘要前"位置，只有先读才能定** ✓）。
+  **结果** ✓✓：**对照都触发且未读为零** —— `conference` **`1196 reads recorded`** ✓、`mathtools` **`4368 reads recorded`** ✓，**都没有 `unread:` 前缀** ✓ ⇒ **两面的 wired 键全被套件真读过** ✓；恢复严格断言后 `CONFERENCE 71/0` ✓、`MATHTOOLS 143/0` ✓。
+  **进度** ✓：**9 / 12** 面完成 ✓ —— **只剩 `external`／`migration`／`workflow`** ✓（★ **`external` 的访问器与 `mk` 形态尚未量明** ✓ ⇒ 留下一轮**先测后动** ✓）。
+  **未完的账** ✗：**73 条候选仍未判决** ✗（**距 12 面补完只差 3 面** ✓）。
+
 ### 0.4 结论
 
 

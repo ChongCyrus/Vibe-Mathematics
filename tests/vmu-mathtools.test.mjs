@@ -24,6 +24,9 @@ const codeOf = (fn) => { try { fn(); return 'NO-THROW' } catch (e) { return (e &
 const errOf = (fn) => { try { fn(); return null } catch (e) { return e } }
 
 /** Build a runtime: settings overrides + optional spawn/library seams + optional clock. */
+/** ROUND 175: the shared universal recorder - see tests/helpers/settings-recorder.mjs. */
+import { makeRecorder } from './helpers/settings-recorder.mjs'
+const ALL = []
 const mk = ({ settings = {}, seam = null, library = null, clock = () => 1000 } = {}) => {
   const calls = { spawn: 0, appends: 0 }
   const spawn = (req) => {
@@ -32,7 +35,9 @@ const mk = ({ settings = {}, seam = null, library = null, clock = () => 1000 } =
     return { ok: true, result: { value: 42 }, logLines: [], warnings: [], durationMs: 1 }
   }
   const lib = library === null ? { append: () => { calls.appends += 1; return { ok: true, id: 'r-' + calls.appends } } } : library
-  const t = createMathTools({ clock, settings, spawn, library: lib })
+  const rec = makeRecorder(settings)
+  ALL.push(rec.reads)
+  const t = createMathTools({ clock, settings: rec.settings, spawn, library: lib })
   return { t, calls }
 }
 const opt = { 'vmu.math.optim.backend': 'ipopt' }
@@ -430,6 +435,16 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
   cap2.run({ op: 'stats/mean', args: { a: 1 } })
   const evicted = cap2.run({ op: 'stats/mean', args: { a: 2 } })
   ok(evicted.enforced.includes('vmu.math.cache.maxEntries'), 'shaping[]: an eviction lists cache.maxEntries', JSON.stringify(evicted.enforced))
+}
+
+/**
+ * ROUND 175: the precondition behind "every key is wired", asserted and measurable. The tail was printed FIRST: this
+ * suite HAS an early-exit branch, so the block goes before it.
+ */
+{
+  const reads = ALL.flat()
+  const unread = WIRED_KEYS.filter((k) => reads.indexOf(k) === -1)
+  ok(unread.length === 0, 'every wired key was really READ by the suite, not merely listed (' + (unread.length ? 'unread: ' + unread.join(', ') : reads.length + ' reads recorded') + ')')
 }
 
 if (failed === 0) {

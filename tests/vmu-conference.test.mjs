@@ -22,7 +22,14 @@ const errOf = (fn) => { try { fn(); return null } catch (e) { return e } }
 const DAY = 86400000
 
 let NOW = 1_000_000
-const mk = (settings = {}, seams = {}) => createConference(Object.assign({ clock: () => NOW, settings }, seams))
+/** ROUND 175: the shared universal recorder - see tests/helpers/settings-recorder.mjs. */
+import { makeRecorder } from './helpers/settings-recorder.mjs'
+const ALL = []
+const mk = (settings = {}, seams = {}) => {
+  const rec = makeRecorder(settings)
+  ALL.push(rec.reads)
+  return createConference(Object.assign({ clock: () => NOW, settings: rec.settings }, seams))
+}
 const conf = (settings = {}, seams = {}) => {
   NOW = 1_000_000
   const t = mk(settings, seams)
@@ -316,6 +323,16 @@ const goodSubmit = { title: 'A paper', authors: ['ada'], topics: ['ml'] }
   ok(calls.length === 0, 'LAYERING: the conference face never calls the meeting layer (sessions are created THERE)', JSON.stringify(calls))
   ok(/kernel\/meetings/.test(layered.status().layeredOn), 'LAYERING: status() states the boundary', layered.status().layeredOn)
   ok(/declarative/.test(mk({}).status().layeredOn), 'LAYERING: without an injected meeting layer the agenda stays declarative')
+}
+
+/**
+ * ROUND 175: the precondition behind "every key is wired". The tail was printed FIRST and this suite HAS an early-exit
+ * branch, so the block goes before it - inside, the condition is already evaluated and a failure cannot stop the exit.
+ */
+{
+  const reads = ALL.flat()
+  const unread = WIRED_KEYS.filter((k) => reads.indexOf(k) === -1)
+  ok(unread.length === 0, 'every wired key was really READ by the suite, not merely listed (' + (unread.length ? 'unread: ' + unread.join(', ') : reads.length + ' reads recorded') + ')')
 }
 
 if (failed === 0) {
