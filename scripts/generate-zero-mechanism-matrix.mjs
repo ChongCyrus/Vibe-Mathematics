@@ -116,6 +116,7 @@ const EXPECT = {
   // required evidence is absent). The face is fail-closed by design, which is exactly why it must be ruled rather than assumed.
   domaincompliance: G('ok 或 object', '实测（轮 247）：零声明下 status() ⇒ ok（declared=[]、trail=0 自曝 ✓）；gate() 对**未满足的必答项【逐项点名】**并拒（VMU_GATE_UNSATISFIED ✓），**fail-closed 是设计**（20 卷 §9.4① 明文：闸未满足 ⇒ 动作不发生 ✓）'),
   legalentity: G('ok 或 object', '实测（轮 276）：零声明下 status() ⇒ ok（entities=0、zeroMechanism=true 自曝 ✓）；validateInvoice() 对**缺声明的税务字段位【逐位点名】**并拒（VMU_TAX_FIELD_MISSING）；绑定未登记实体拒（VMU_ENTITY_UNKNOWN）✓'),
+  reviewers: G('ok 或 object', '实测（轮 279）：零声明下 status() ⇒ ok（reviewers=0、zeroMechanism=true 自曝 ✓）；assign() 对【已声明冲突】具名拒（VMU_COI_VIOLATION）、对【达并发上限】具名拒（VMU_REVIEWER_OVERLOADED）；盲评解绑无理由拒（VMU_BLIND_UNBIND_DENIED）✓'),
   guard: G('EXPECT_NA', '非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）'),
   // Round 90-91: the grant face (temporary, scoped, single-command authorization, ported from the v5r line). Its
   // zero mechanism is `vmu.grant.enabled=false`, where NOTHING may be granted or checked and every attempt is

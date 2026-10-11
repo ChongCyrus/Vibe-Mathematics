@@ -1415,6 +1415,15 @@
   **门禁与证据** ✓：**四条分支真机验证 ✓**；**`records.js` 语法 0 ✓**；**未接线 115 → 114** ✓；**待本轮 T1** ✓。
   **未做（明写 ✗）**：★★ **`review` 的余下 3 条（`mode`／`conflictPolicy`／`quorum`）仍未接** ✗ —— **复活条件已精确** ✓：**先有【审稿人库 ＋ 回避映射表 ＋ 留痕】，其判据照 L301 三条 ✓**；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 279：建成 `kernel/reviewers.js` 面，接 7 键（`review` 余 3 ＋ `reviewers` 3＋1）；**真实缺口族已全部清零**；未接线 114 → 107** ✓✓
+  ★★★ **① 承载者是量出来的，且【又一次避开了按族陷阱】** ✓✓：**`conference.js`（18 条 `vmu.conference.*` 的计数断言 ＋ **无跨族层**）** ✗ ⇒ **塞别族键会红 4 条断言（正是轮 275 的教训 ✓）** ⇒ ★★ **按第 ⑮ 条新建 `kernel/reviewers.js`，自带记账** ✓。★ **但它已是评审概念的近邻**（`reviewer`×65／`conflict`×59／`assignment`×51 ✓），**故新面只补【卷里明确要而它没有的】那部分** ✓。
+  ★★★ **② 规格来自卷 16 §L297-§L305，逐条落地** ✓✓：**schema**（`reviewers[{id, expertise[], load, conflicts[]}]` ✓、`reviewAssignment{…, mode, blind, …}` ✓）；**三条字段级规则** ✓：**① `conflicts[]` 命中被审对象 ⇒ 必须回避，否则【具名拒】** ✓；**② 盲评映射由 `mode` 决定，**分配时记下所用模式 ✓，且解绑必须留痕（谁、何时、为何）** ✓；**③ 同一审稿人并发上限** ✓。**七个键全带卷里的默认值** ✓（`mode=single-blind`／`conflictPolicy=recuse`／`reviewers.maxLoad=3`／`coiPolicy=deny`／`blindUnbindRequiresReason=true` ✓；**`quorum` 卷未给默认 ⇒ 取 0 ＝"不要求"，零机制 ✓**）；**三码全用卷里已声明的名字** ✓（`VMU_COI_VIOLATION`／`VMU_REVIEWER_OVERLOADED`／`VMU_BLIND_UNBIND_DENIED` ✓）。
+  ★★★ **③ 十个分支逐支真机验证 ＋ 22 条断言全绿** ✓✓：**零声明自曝 ✓；COI 命中 ⇒ `VMU_COI_VIOLATION` ✓；超上限 ⇒ `VMU_REVIEWER_OVERLOADED`（回执带 cap ✓）；盲评无理由解绑 ⇒ `VMU_BLIND_UNBIND_DENIED` ✓；有理由则通过且【留痕 `blindTraced=true`】✓；`mode=open` 时无需理由 ✓；`quorum=2` 时 1 条不满足／2 条满足 ✓** ⇒ **`VMU REVIEWERS: 22 passed, 0 failed`** ✓。
+  ★★★ **④ 六处接线一次接通** ✓✓：**`kernel/index.js` 四处 ✓；`package.json#files` ✓；`installer.js` 预设清单 ✓；SURFACES ✓（服务 69 → **70 registered** ✓）；零机制矩阵 ✓**（**★ 生成器先报 `FINDING reviewers: 出现了却没有裁定行` ✓ —— 它自己告诉我该补什么 ✓**）。
+  ★★★ **⑤ 一处【必须如实记下的异常】** ✗：**轮 278 我曾报告 `vmu.review.rebuttalRequired` 行已写入 `schema.js`（并据此提交）** ✓ —— **而本轮实测该行【不在 `schema.js` 里** ✗**）**，**尽管当时的门禁全绿、且 `docs/04` 里也有该键** ✓ ⇒ **本轮已把它重新写入并逐键核验（7 键各 1 处命中 ✓）** ✓；**根因未查明，记为待查** ✗ ⇒ ★★ **下一步：核对"`insertAfterLine` 报告成功但目标文件未变"是否可能（例如它写的是另一份文件/被后续 checkout 覆盖）** ✓。
+  **门禁与证据** ✓：**`VMU REVIEWERS: 22/0`** ✓；**`SERVICE SURFACE: 48/0（70 registered）`** ✓；**`INSTALLER POLICY: ALL GREEN`** ✓；**矩阵 `0 mismatches, 0 unregistered`** ✓；**未接线 114 → 107** ✓；**待本轮 T1** ✓。
+  **未做（明写 ✗）**：★★ **`vmu.reviewers.acknowledgement` 仍未接** ✗（**卷里未给它的语义** ✓ ⇒ **复活条件：先量它在哪一卷被定义** ✓）；**轮 278 那处异常的根因未查** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 

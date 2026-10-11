@@ -40,6 +40,7 @@ const SURFACES = {
   'vmu.budget': 'budget', 'vmu.metrics': 'metrics', 'vmu.audit': 'audit', 'vmu.alerts': 'alerts',
   'vmu.domaincompliance': 'domainCompliance',
   'vmu.legalentity': 'legalEntity',
+  'vmu.reviewers': 'reviewers',
   'vmu.compliance': 'domaincompliance',
   'vmu.retention': 'retention', 'vmu.delegation': 'delegation', 'vmu.workflow': 'workflow', 'vmu.trust': 'trust',
   'vmu.handover': 'handover', 'vmu.arbitration': 'arbitration', 'vmu.recruit': 'recruit', 'vmu.topology': 'topology',

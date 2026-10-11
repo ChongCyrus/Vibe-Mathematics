@@ -116,6 +116,7 @@ import { createReproPack } from './repropack.js'
 // ROUND 247: the domain compliance face (docs/20 §9.1-§9.4) - clinical (N2) and animal (N3) packs.
 import { createDomainCompliance } from './domaincompliance.js'
 import { createLegalEntity } from './legalentity.js'
+import { createReviewers } from './reviewers.js'
 import { SETTING_DEFS } from '../settings/schema.js'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -512,6 +513,7 @@ export function createKernel({
   const audit = createAudit({ settings: settingsView, bus, clock: guardedClock, log, sink: auditToDisk })
 const domainCompliance = createDomainCompliance({ settings: settingsView, clock: guardedClock, log })
 const legalEntity = createLegalEntity({ settings: settingsView, clock: guardedClock, log })
+const reviewers = createReviewers({ settings: settingsView, clock: guardedClock, log })
   const alerts = createAlerts({ settings: settingsView, bus, clock: guardedClock, log, metrics })
   // `library` is the EXISTING kernel library; the module counts any unsupported adapter method as skipped and
   // never pretends a delete succeeded. Delegation gets the live members surface plus explicit roots (authority
@@ -709,6 +711,7 @@ const legalEntity = createLegalEntity({ settings: settingsView, clock: guardedCl
   registry.register('vmu.audit', { apiVersion: 1 }, { kind: 'service', description: 'append-only audit rows, redaction before storage, counted ring drops (docs/21 搂2)' })
     registry.register('vmu.domaincompliance', { apiVersion: 1 }, { kind: 'service', description: 'domain compliance packs: clinical (N2) and animal (N3) approval gates' })
     registry.register('vmu.legalentity', { apiVersion: 1 }, { kind: 'service', description: 'legal entities and tax field slots: registration, account binding, invoice slot validation (volume 22 §L285)' })
+    registry.register('vmu.reviewers', { apiVersion: 1 }, { kind: 'service', description: 'reviewer market: COI recusal, blind mapping with tracing, concurrent load cap (volume 16 §L297)' })
   registry.register('vmu.alerts', { apiVersion: 1 }, { kind: 'service', description: 'thresholds, alert-level dedup, silences that still count, SLO tri-state (docs/21 搂5 搂13)' })
   registry.register('vmu.retention', { apiVersion: 1 }, { kind: 'service', description: 'report-first retention, permanent markers, quota tri-state, gc (docs/07 搂4.3 搂4.8)' })
   registry.register('vmu.delegation', { apiVersion: 1 }, { kind: 'service', description: 'delegation that can only narrow (S-2), expiry, revocation cascade (docs/17 搂4)' })
@@ -845,6 +848,7 @@ const legalEntity = createLegalEntity({ settings: settingsView, clock: guardedCl
     /** ROUND 247: the domain compliance packs (docs/20 §9.1-§9.4), reachable like every other service. */
     get domaincompliance() { return domainCompliance },
     get legalentity() { return legalEntity },
+    get reviewers() { return reviewers },
     get alerts() { return alerts },
     get retention() { return retention },
     get delegation() { return delegation },

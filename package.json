@@ -272,6 +272,7 @@
     "vibe-math-vmu/kernel/audit.js",
     "vibe-math-vmu/kernel/domaincompliance.js",
     "vibe-math-vmu/kernel/legalentity.js",
+    "vibe-math-vmu/kernel/reviewers.js",
     "vibe-math-vmu/kernel/alerts.js",
     "vibe-math-vmu/kernel/retention.js",
     "vibe-math-vmu/kernel/delegation.js",

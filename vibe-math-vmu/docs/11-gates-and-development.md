@@ -685,6 +685,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `replay` · `plan()` | ok | — | truncated=[object Object] | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `repropack` · `build()` | refusal | VMU_MATH_SEED_REQUIRED | — | 具名拒（带 code）（task-214 实测：`build()` ⇒ 具名拒 **VMU_MATH_SEED_REQUIRED** ⇒ 零机制＝无复现种子 ⇒ 具名拒即真实形状 ✓） |
 | `retention` · `plan()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `reviewers` · `status()` | ok | — | — | ok 或 object（实测（轮 279）：零声明下 status() ⇒ ok（reviewers=0、zeroMechanism=true 自曝 ✓）；assign() 对【已声明冲突】具名拒（VMU_COI_VIOLATION）、对【达并发上限】具名拒（VMU_REVIEWER_OVERLOADED）；盲评解绑无理由拒（VMU_BLIND_UNBIND_DENIED）✓） |
 | `rules` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `scheduler` · `list()` | ok | — | dropped=0 truncated=false | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `script-bridge` · `plan()` | refusal | VMU_INVALID_ARGUMENT | — | 具名拒（带 code）（第 26 轮已修 ✓：实测拒绝带 **`VMU_INVALID_ARGUMENT`**（同上 ✗）） |
@@ -700,5 +701,5 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
 | `workflow` · `advance()` | refusal | VMU_WORKFLOW_TRANSITION_REQUIRED | enforced=[7] enforcedScope=evaluated-so-far | 具名拒或 ok（**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 `advance()` 缺参 ⇒ **task-214 实测：具名拒 `VMU_WORKFLOW_TRANSITION_REQUIRED`（带口径 `enforced=[7]`）** ⇒ 具名拒即真实形状 ✓（旧 note 曾写 `op 抛出` ✗ / "缺参 ⇒ 具名拒" 混述 ✗，均已按实测改写 ✓）） |
 
-=== ZERO-MECHANISM MATRIX: 83 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 5 probe-errors, 3 n/a ===
+=== ZERO-MECHANISM MATRIX: 84 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 5 probe-errors, 3 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->
