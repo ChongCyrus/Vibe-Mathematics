@@ -21,6 +21,7 @@ import { __testHelpers as V5R } from '../vibe-math-v5r/vibe-math-v5r.js'
 import { createLibrary } from '../vibe-math-vmu/kernel/library.js'
 import { createLeanFace } from '../vibe-math-vmu/kernel/lean.js'
 import { createMembers } from '../vibe-math-vmu/kernel/members.js'
+import { TOOL_NAMES } from '../vibe-math-vmu/host.js'
 
 let passed = 0
 let failed = 0
@@ -141,11 +142,38 @@ const VERDICTS = { EQUAL: [], PROPERTY: [], UNPAIRED: [], DIVERGENT: [] }
   VERDICTS.PROPERTY.push('contentFingerprint ⇄ library.fingerprint(kind,parts)（同性质：稳定 ✓ ＋ 敏感 ✓ ＋ 证明也是实质部分 ✓；**构造不同**，故不比字节 ✗）')
 }
 
+// ── G. 同一问题、不同可靠性：宿主报告了哪些工具 ⇄ vmu 自己发布工具名 ──────────────────────────
+{
+  const msg = 'unknown tool x; known global tools: alpha, beta, gamma'
+  const known = V5R.registeredToolsFromError(msg)
+  ok(known instanceof Set && [...known].join(',') === 'alpha,beta,gamma',
+    'G1. v5r reads the host tool list OUT OF AN ERROR MESSAGE (correct wording yields the set)', known && [...known].join(','))
+  ok(V5R.registeredToolsFromError('nothing useful here') === undefined,
+    'G2. and any other wording yields undefined (it never invents a list)')
+  const names = Object.keys(TOOL_NAMES)
+  ok(names.length > 0 && names.every((n) => typeof n === 'string' && n.length > 0),
+    '★ G3. vmu answers the SAME question from a PUBLISHED list instead of a parsed error', names.length + ' names')
+  ok(names.indexOf('status') !== -1, 'G4. and that list is the real published surface', names.slice(0, 4).join('|'))
+  // ★ 实测语义（不是猜的 ✗）：请求里出现**未知**工具 ⇒ 整表变 undefined（**拒**，而不是静默丢弃 ✓）
+  ok(V5R.sanitizeToolFilter(['alpha', 'zzz'], known) === undefined,
+    'G5. ★ v5r REFUSES a filter naming an unknown tool (the whole filter becomes undefined, it is not silently pruned)')
+  ok(JSON.stringify(V5R.sanitizeToolFilter(['alpha', 'zzz'], undefined)) === JSON.stringify(['alpha', 'zzz']),
+    'G6. with no known set to check against, the filter passes through unchanged')
+  VERDICTS.PROPERTY.push('registeredToolsFromError ⇄ host.TOOL_NAMES（同一问题："哪些工具是已知的" ✓；'
+    + 'v5r 从**宿主错误文本**解析、vmu 直接**发布**（9 个 ✓）⇒ vmu 侧更可靠 ✓）')
+}
+
 // ── ★ 逐项点名的未配对与刻意分歧（不掩盖 ✗）────────────────────────────────────────────────
 {
   VERDICTS.UNPAIRED.push(
-    'blocksToText/fmtTime/tryJson/parseReply/sanitizeToolFilter/registeredToolsFromError —— 宿主报文与回合形状：'
-    + '需要 DSH 主机才能驱动，框架侧**没有**对应原语 ⇒ 未配对 ✗（要证明得建宿主级场景台 ✓）',
+    'blocksToText —— 框架侧**零命中**（grep `blocksToText|type === .text.` = 0 ✓）：vmu 的 host.js 有 `OUTPUT` 形状声明'
+    + '但不做"内容块→文本"的转换 ⇒ 未配对 ✗',
+    'fmtTime —— 实测：vmu 的 `timevalue.js` **只导出** `ms`/`msStrict`（"时刻→可比数" ✓），**没有格式化** ⇒ 未配对 ✗；'
+    + '并记下 v5r 的一个怪癖 ✓：`fmtTime(0)` 返回 **"现在"**（`new Date(ts || now())` ⇒ 假值被当当下 ✗）',
+    'parseReply —— 宿主回合文本的解析；框架侧 `script-bridge.validateRequest` 校验的是**请求形状**，不是回合文本 ⇒ 未配对 ✗',
+    'sanitizeToolFilter —— ★ **框架侧有"名字"却没有"净化器"** ✗：vmu 发布 9 个工具名 ✓，但 grep `toolFilter|sanitize.*[Tt]ool` = 0 ✓ '
+    + '⇒ **消费那一半没有对应物** ✓。缺什么已**实测写明**（v5r 语义：请求含未知工具 ⇒ **整表 undefined**（拒而非丢弃 ✓）；无已知表 ⇒ 原样透传 ✓），'
+    + '所以这不是一句模糊的"没实现"，而是**已规格化的缺口** ✓',
     // ★ 这一条**从"我以为"升级成了实测** ✓：我先写下"vmu 在别处内联夹取、没有导出原语" ✗，
     //   随后实测发现更准确的说法是——**夹取在公开 API 上根本不可观测** ✗✓：
     //   `fairness.allocation()` 对 reserveRatio ∈ {0, 0.25, 1, 5, -3, NaN, "abc"} **输出完全相同**（都是 a:50 b:50），
@@ -153,6 +181,10 @@ const VERDICTS = { EQUAL: [], PROPERTY: [], UNPAIRED: [], DIVERGENT: [] }
     'clamp01 —— **实测：夹取在 vmu 的公开 API 上【不可观测】** ✗✓（`fairness.allocation()` 对 reserveRatio '
     + '0/0.25/1/5/-3/NaN/"abc" 输出**逐一相同**，`status()` 不回显该值）⇒ 无法 A/B ✓；'
     + '`clPct`（0..100 夹取）框架侧无同族表面 ⇒ 未配对 ✗',
+  )
+  VERDICTS.DIVERGENT.push(
+    'tryJson —— 实测：v5r 对坏 JSON 返回 **undefined**（**吞掉** ✓），而 vmu 各面用朴素 `JSON.parse`（**抛/具名拒** ✓）'
+    + '⇒ **垃圾输入策略不同**；对框架而言"拒"更可审计 ✓，已点名 ✗（不评孰优 ✓）',
   )
   VERDICTS.DIVERGENT.push(
     'leanHashText —— 名字像哈希，实际是**文本规范化**（CRLF→LF、去尾空白）✗；vmu 的 Lean 哈希按**原始字节**取 sha256 '
