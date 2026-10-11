@@ -1320,6 +1320,15 @@
   **门禁与证据** ✓：**卷 22 行数校验通过** ✓；**三条文档审计绿** ✓；**未接线保持 134** ✓（**本轮为文档更正，未接线** ✓）。
   **未做（明写 ✗）**：★★ **`legalentity`(6)／`license`(4)／`review`(4) 三族仍未接** ✗（**复活条件已逐族写明 ✓**）；**部分族 10 条（`collab` 3／`outreach` 2／`recruit` 4／`tasks` 1）** ✗；**`review`／`reviewers` 与三族存在重叠，需在动工前先厘清边界** ✗；**其余 134 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 267：补 `recruit` 的 4 条余键（承载面早已在 ✓）；未接线 134 → 130** ✓✓
+  ★★★ **① 选低风险路径** ✓✓：**优先补【部分族】的余键** ✓（**承载面已在，风险更低 ✓**）⇒ **`recruit` 是首选：`recruit.js`（278 行 ✓）已在读 8 条同族键** ✓，**而该面自己的注释（L53）写着"these is enforced somewhere below"** ✓ —— ★ **这正是它对自己的标准，本轮照它做** ✓。
+  ★★★ **② 四条键的契约全部来自卷 17 §L266-271** ✓✓：**`policy`（`closed|claim|nominate|open`，默认 `closed` ＝零机制 ✓）、`decideBy`（`manager|vote|auction|human`，默认 `manager` ✓）、`needsHuman`（bool，默认 false ✓）、`probationPermissions`（权限【子集】✓）**。
+  ★★★ **③ 实现在该面自己指出的位置上** ✓✓：**`needsHuman` 的闸放在【决策点 `accept()`**（默认 false ⇒ 不改变行为 ✓；true 且无具名批准者 ⇒ `VMU_RECRUIT_NEEDS_HUMAN` ✓**）**）** ✓；**`probationPermissions` 放在 `probation()` ✓（非空且越界即拒 ✓；★ **未提供上级权限视图时【不做比较** —— "没给就没法比" ✓**）**）** ✓；**`policy`／`decideBy` 读取、校验并进 `status().declared` ✓**。
+  ★★★ **④ 逐支真机验证** ✓✓：**默认 ⇒ `{"policy":"closed","decideBy":"manager","needsHuman":false,"probationPermissions":[]}`** ✓；**`needsHuman` 关闭时无批准者 ⇒ 通过（对照 ✓）**；**开启 ⇒ `VMU_RECRUIT_NEEDS_HUMAN`** ✓；**带批准者 ⇒ 通过** ✓；**声明 `open`／`vote` ⇒ 如实上报 ✓**；**非法值 ⇒ 回落到声明的默认 ✓**。**断言 +6** ⇒ **`VMU RECRUIT: 44 passed, 0 failed`** ✓。
+  ✗✓ **⑤ 一处自查发现** ✓：**`declared` 起初【算了却没进返回值** ⇒ "读了却无效果" ✗**）** ✓ ⇒ **补进 `status()` 回执** ✓ —— ★ **与项目"接线＝改变可观测行为"的标准一致** ✓。
+  **门禁与证据** ✓：**`VMU RECRUIT: 44/0`** ✓；**`recruit.js` 语法 0** ✓；**未接线 134 → 130** ✓；**`regen-all: 9/9 in sync`** ✓。
+  **未做（明写 ✗）**：★★ **`probationPermissions` 的【子集判定】需要调用方提供上级权限视图** ✗ —— **未提供时不比较（已如实记 ✓）**，**该分支尚无断言** ✗；**`collab`(3)／`outreach`(2)／`tasks`(1) 仍属部分族** ✗；**三族真实缺口（`legalentity` 6／`license` 4／`review` 4）仍未接** ✗（**复活条件已写明 ✓**）；**其余 130 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 

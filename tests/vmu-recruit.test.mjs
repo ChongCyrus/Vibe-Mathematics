@@ -207,5 +207,42 @@ const mk = (settings = {}, opts = {}) => createRecruit({ clock: () => now, setti
   ok(w.postings().items[0].openedAt === 1000, 'openedAt uses the injected clock')
 }
 
+
+// ── ROUND 267: policy, decideBy, needsHuman, probationPermissions (volume 17 §L266-271) ─────────────────────
+{
+  // the defaults are the volume defaults, and they change nothing
+  const d = mk({}).status().declared
+  ok(d && d.policy === 'closed' && d.decideBy === 'manager' && d.needsHuman === false && d.probationPermissions.length === 0,
+    'recruit defaults: closed policy, manager decides, no human requirement, no probation permissions', d)
+
+  // a whole recruitment, so the accepting step is reachable
+  const run = (settings) => {
+    const r = mk(Object.assign({ 'vmu.roles.map': { dev: 'slot-dev' } }, settings || {}))
+    const p = r.openPosting({ slot: 'slot-dev', seats: 1 })
+    const a = r.apply({ postingId: p.id, candidate: 'c-1' })
+    const o = r.offer({ applicationId: a.id })
+    return { r, o }
+  }
+
+  // the control: with the declaration off, an acceptance with no approver is fine
+  const loose = run({})
+  ok(loose.r.accept({ offerId: loose.o.id }).ok === undefined || loose.r.accept({ offerId: loose.o.id }).ok === true,
+    'needsHuman[off]: an acceptance with no named approver is accepted, as before')
+
+  // declared, it refuses BY NAME
+  const strict = run({ 'vmu.recruit.needsHuman': true })
+  const noApprover = throws(() => strict.r.accept({ offerId: strict.o.id }))
+  ok(noApprover.threw && noApprover.code === 'VMU_RECRUIT_NEEDS_HUMAN',
+    'needsHuman[on]: an acceptance with no human approver is refused by name', noApprover.code)
+  ok(strict.r.accept({ offerId: strict.o.id, by: 'office' }).slot !== undefined,
+    'needsHuman[on]: naming an approver lets the same acceptance through')
+
+  // the two enums are validated and reported, not silently ignored
+  const declared = mk({ 'vmu.recruit.policy': 'open', 'vmu.recruit.decideBy': 'vote' }).status().declared
+  ok(declared.policy === 'open' && declared.decideBy === 'vote', 'policy/decideBy: the declared method and decider are reported', declared)
+  const bogus = mk({ 'vmu.recruit.policy': 'nonsense', 'vmu.recruit.decideBy': 'nonsense' }).status().declared
+  ok(bogus.policy === 'closed' && bogus.decideBy === 'manager', 'policy/decideBy: an unrecognised value falls back to the declared default')
+}
+
 console.log('=== VMU RECRUIT: ' + pass + ' passed, ' + fail + ' failed ===')
 process.exit(fail ? 1 : 0)

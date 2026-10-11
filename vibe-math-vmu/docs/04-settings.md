@@ -407,6 +407,10 @@ vmu.packs.active: [v5r]
 | `vmu.recruit.offerExpiryMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 录用报价有效期（0＝不过期） |
 | `vmu.recruit.rejectNeedsReason` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 拒绝必须给理由 |
 | `vmu.recruit.requireEvidence` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 申请必须带证据 |
+| `vmu.recruit.policy` | enum | `closed` | `closed`∣`claim`∣`nominate`∣`open` | 会话 | H1 | pack | ✅ 已接线 | `kernel/recruit.js` | 招募方式（默认 closed ＝零机制 ✓；读取、校验并在 status() 上报） |
+| `vmu.recruit.decideBy` | enum | `manager` | `manager`∣`vote`∣`auction`∣`human` | 会话 | H1 | pack | ✅ 已接线 | `kernel/recruit.js` | 选拔裁决方式（同上：读取、校验并上报） |
+| `vmu.recruit.needsHuman` | bool | `false` | — | 会话 | H1 | pack | ✅ 已接线 | `kernel/recruit.js` | 是否必须人类批准（true ⇒ accept() 无具名批准者即具名拒 VMU_RECRUIT_NEEDS_HUMAN；默认 false ⇒ 不改变行为） |
+| `vmu.recruit.probationPermissions` | string[] | `[]` | — | 会话 | H1 | pack | ✅ 已接线 | `kernel/recruit.js` | 试用期权限（★ 必须是【上位权限的子集】；非空且越界即具名拒；未提供上级权限视图时不做比较 ✓） |
 | `vmu.recruit.maxCandidates` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 单岗位候选人上限（0＝不限） |
 | `vmu.topology.mode` | enum | `flat` | `flat`∣`star`∣`committee`∣`market`∣`pipeline`∣`swarm`∣`matrix`∣`hierarchy` | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 协作拓扑（flat＝零机制：无路径约束） |
 | `vmu.topology.pipelineStages` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 流水线阶段（跳段即拒） |
@@ -1294,10 +1298,6 @@ vmu.packs.active: [v5r]
 | `vmu.prompt.sections` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准） |
 | `vmu.pub.retractionRequiresReason` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.pub.versionKinds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.recruit.decideBy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.recruit.needsHuman` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.recruit.policy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.recruit.probationPermissions` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.replication.federationShare` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.report.bilingual` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 06（共见 1 卷：06），尚未实现（元数据以各卷为准） |
 | `vmu.report.language` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 06（共见 1 卷：06），尚未实现（元数据以各卷为准） |

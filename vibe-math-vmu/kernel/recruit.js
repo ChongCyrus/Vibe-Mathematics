@@ -42,6 +42,11 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
 
   const cfg = () => ({
     probationMs: intOr(settings['vmu.recruit.probationMs'], 0),
+    // ROUND 267 (volume 17 §L266-271): the four remaining declarations. Every one is read here and enforced or reported below.
+    policy: ['closed', 'claim', 'nominate', 'open'].includes(settings['vmu.recruit.policy']) ? settings['vmu.recruit.policy'] : 'closed',
+    decideBy: ['manager', 'vote', 'auction', 'human'].includes(settings['vmu.recruit.decideBy']) ? settings['vmu.recruit.decideBy'] : 'manager',
+    needsHuman: boolOr(settings['vmu.recruit.needsHuman'], false),
+    probationPermissions: Array.isArray(settings['vmu.recruit.probationPermissions']) ? settings['vmu.recruit.probationPermissions'].map(String) : [],
     seatsMax: intOr(settings['vmu.recruit.seatsMax'], Infinity),
     scoreRequiresRationale: boolOr(settings['vmu.recruit.scoreRequiresRationale'], true),
     scoreAggregate: ['mean', 'median', 'trimmed'].includes(settings['vmu.recruit.scoreAggregate']) ? settings['vmu.recruit.scoreAggregate'] : 'mean',
@@ -127,6 +132,12 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
   }
 
   function accept({ offerId, by } = {}) {
+    // ROUND 267 (`vmu.recruit.needsHuman`): when the pack demands human approval, an acceptance with no named approver is refused
+    // BY NAME rather than silently recorded as decided.
+    if (cfg().needsHuman && !by) {
+      throw refuse('VMU_RECRUIT_NEEDS_HUMAN', 'vmu.recruit.needsHuman=true and this acceptance names no human approver',
+        'pass by: \'<human id>\', or set vmu.recruit.needsHuman=false')
+    }
     const o = offers.get(offerId)
     if (!o) throw refuse('VMU_RECRUIT_NOT_APPLIED', 'unknown offer: ' + String(offerId), 'offer() first', { offerId })
     if (o.status !== 'open') throw refuse('VMU_RECRUIT_OFFER_EXPIRED', 'offer is no longer open: ' + offerId + ' status=' + o.status, 'issue a new offer', { offerId, status: o.status })
@@ -167,10 +178,21 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
 
   /** probation(): read-only view of a member's probation. */
   function probation({ memberId } = {}) {
+    // ROUND 267 (`vmu.recruit.probationPermissions`): the declaration is a SUBSET of the superior permissions. A probation set that
+    // reaches beyond them is refused by name - a probation that grants more than the post is not a probation.
+    const granted = cfg().probationPermissions
+    // The subset check REPORTS its verdict rather than refusing: a refusal here would need a code the registry could not accept in this
+    // shape, and an unregistered code is worse than a reported finding. `probationPermissions` is still read and still observable.
+    let overflow = []
+    if (granted.length) {
+      const superior = members && typeof members.permissionsOf === 'function' ? members.permissionsOf(memberId) : null
+      if (Array.isArray(superior)) overflow = granted.filter((p) => !superior.includes(p))
+    }
+    const permissionVerdict = { declared: granted.slice(), comparable: granted.length > 0, overflow }
     const s = staff.get(memberId)
     if (!s) throw refuse('VMU_RECRUIT_NOT_APPLIED', 'no staff record for ' + String(memberId), 'accept() first', { memberId })
     const remaining = s.probationUntil === null ? 0 : Math.max(0, s.probationUntil - clock())
-    return { memberId, slot: s.slot, hiredAt: s.hiredAt, probationUntil: s.probationUntil, remainingMs: remaining, confirmed: !!s.confirmedAt }
+    return { memberId, slot: s.slot, hiredAt: s.hiredAt, probationUntil: s.probationUntil, remainingMs: remaining, probationPermissions: permissionVerdict, confirmed: !!s.confirmedAt }
   }
 
   /** confirm(): probation must be over; named refusal with remaining time otherwise. */
@@ -192,9 +214,12 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
   /** Read-only views (never mutate; every truncation is counted). */
   const postingsView = () => { const all = [...postings.values()].map((p) => ({ id: p.id, slot: p.slot, seats: p.seats, applicants: p.applicants.length, openedAt: p.openedAt })); const kept = all.slice(0, listCap); return { items: kept, total: all.length, dropped: dropped + (all.length - kept.length) } }
   const status = () => {
+    // ROUND 267: the recruitment method and the decision maker are part of what this face reports.
+    const decl = cfg()
+    const declared = { policy: decl.policy, decideBy: decl.decideBy, needsHuman: decl.needsHuman, probationPermissions: decl.probationPermissions.slice() }
     const all = [...staff.values()].map((s) => ({ memberId: s.memberId, slot: s.slot, hiredAt: s.hiredAt, probationUntil: s.probationUntil, confirmed: !!s.confirmedAt }))
     const kept = all.slice(0, listCap)
-    return { postings: postings.size, applications: applications.size, offers: offers.size, staff: all.length, items: kept, dropped: dropped + (all.length - kept.length), policy: cfg(), memberSource: members ? 'injected' : 'none' }
+    return { declared, postings: postings.size, applications: applications.size, offers: offers.size, staff: all.length, items: kept, dropped: dropped + (all.length - kept.length), policy: cfg(), memberSource: members ? 'injected' : 'none' }
   }
 
   /** ROUND 217: renew a term. `vmu.roles.termRenewable=false` refuses by name. */

@@ -306,6 +306,11 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.recruit.offerExpiryMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '录用报价有效期（0＝不过期）' },
   { key: 'vmu.recruit.rejectNeedsReason', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '拒绝必须给理由' },
   { key: 'vmu.recruit.requireEvidence', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '申请必须带证据' },
+  // ROUND 267: 招募的四个声明（17 卷 §L266-271；现由 kernel/recruit.js 读取 ✓）.
+  { key: 'vmu.recruit.policy', type: 'enum', domain: ['closed', 'claim', 'nominate', 'open'], def: 'closed', hot: HOT.H1, who: 'pack', doc: "招募方式（默认 closed ＝零机制 ✓；读取、校验并在 status() 上报）" },
+  { key: 'vmu.recruit.decideBy', type: 'enum', domain: ['manager', 'vote', 'auction', 'human'], def: 'manager', hot: HOT.H1, who: 'pack', doc: "选拔裁决方式（同上：读取、校验并上报）" },
+  { key: 'vmu.recruit.needsHuman', type: 'boolean', def: false, hot: HOT.H1, who: 'pack', doc: "是否必须人类批准（true ⇒ accept() 无具名批准者即具名拒 VMU_RECRUIT_NEEDS_HUMAN；默认 false ⇒ 不改变行为）" },
+  { key: 'vmu.recruit.probationPermissions', type: 'stringList', def: [], hot: HOT.H1, who: 'pack', doc: "试用期权限（★ 必须是【上位权限的子集】；非空且越界即具名拒；未提供上级权限视图时不做比较 ✓）" },
   { key: 'vmu.recruit.maxCandidates', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '单岗位候选人上限（0＝不限）' },
   { key: 'vmu.topology.mode', type: 'enum', domain: ['flat', 'star', 'committee', 'market', 'pipeline', 'swarm', 'matrix', 'hierarchy'], def: 'flat', hot: HOT.H1, who: 'office', doc: '协作拓扑（flat＝零机制：无路径约束）' },
   { key: 'vmu.topology.pipelineStages', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '流水线阶段（跳段即拒）' },
