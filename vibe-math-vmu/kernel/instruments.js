@@ -22,18 +22,23 @@ export const WIRED_INSTRUMENT_KEYS = Object.freeze([
   'vmu.instruments.requireOwner', 'vmu.instruments.capabilityTags', 'vmu.instruments.reserve',
   'vmu.instruments.maxHoldHours', 'vmu.instruments.reservationHorizonDays', 'vmu.instruments.overbookRatio',
   'vmu.instruments.scheduleMaintenance', 'vmu.instruments.attachCapture',
+  // ROUND 146: these three came BACK to wired after a measurement. All three ARE read: `cfg()` reads them,
+  // `fp()` prefixes the fingerprint with `hashAlgo`, `reserve()` decides with `priorityPolicy` (since this round it
+  // chooses who wins a clash) and records `waitlistPolicy`. The round-115 note claimed none of them appears in an
+  // accessor call - that was WRONG about the mechanism while right about one effect (`priorityPolicy` did not
+  // change a decision until this round). Same class as the course visibility key in round 120.
+  'vmu.instruments.priorityPolicy', 'vmu.instruments.waitlistPolicy', 'vmu.instruments.hashAlgo',
 ])
 /** 未接：**逐个点名＋原因** ✗✓。 */
 export const PLANNED_INSTRUMENT_KEYS = Object.freeze([
   ['vmu.instruments.ledgerDir', '台账落盘目录未接：无 FS 接缝（本面只保留内存台账 ✗）'],
   ['vmu.instruments.dataCaptureRef', '数据捕获引用未接：需 library 面（只引用不重定义 ✗）'],
   ['vmu.instruments.downtimePolicy', '停机策略未接：需与运维/告警面协同（本面只做维护窗口 ✗）'],
-  // ROUND 115: these three were in the WIRED list while no code read them - measured: the list's only use in this
-  // module is a reporting function, and none of the three appears in an accessor call. A key that is listed as
-  // wired but never read is exactly the state where changing the value cannot change behaviour.
-  ['vmu.instruments.priorityPolicy', '优先策略未接：本面按先到先得排队，未读取该键 ✗'],
-  ['vmu.instruments.waitlistPolicy', '候补策略未接：本面只做显式排队，未读取该键 ✗'],
-  ['vmu.instruments.hashAlgo', '哈希算法未接：本面不做指纹计算，未读取该键 ✗'],
+  // ROUND 146: the three entries that used to sit here (priorityPolicy / waitlistPolicy / hashAlgo) were moved BACK
+  // to the wired list. Measured: all three ARE read by this module, and the round-115 reasons were wrong about the
+  // mechanism ("未读取该键" ✗) - `hashAlgo` even changes the fingerprint output. What survives of the old note is
+  // only about `priorityPolicy`, which was READ and RECORDED but changed no decision until this round made it
+  // choose who wins a clash. A reason that misdescribes the mechanism sends the next reader to the wrong place.
 ])
 export const ENFORCED_SCOPE = 'evaluated-so-far'
 const refuse = (code, message, hint) => ({ ok: false, code, message, hint })
@@ -77,7 +82,11 @@ export function createInstruments(opts) {
       maxHoldHours: n('vmu.instruments.maxHoldHours', 8),
       reservationHorizonDays: n('vmu.instruments.reservationHorizonDays', 30),
       overbookRatio: n('vmu.instruments.overbookRatio', 0),
-      priorityPolicy: s('vmu.instruments.priorityPolicy', 'fifo'),
+      // ROUND 146: `preempt` is a REAL policy now (see reserve) - it decides who wins a conflict. An unknown value
+      // falls back to `fifo` (the previous behaviour) and the EFFECTIVE value is echoed in every reservation reply,
+      // so a typo cannot silently change the outcome without saying so.
+      priorityPolicy: ['fifo', 'preempt'].indexOf(s('vmu.instruments.priorityPolicy', 'fifo')) === -1
+        ? 'fifo' : s('vmu.instruments.priorityPolicy', 'fifo'),
       waitlistPolicy: s('vmu.instruments.waitlistPolicy', 'queue'),
       scheduleMaintenance: b('vmu.instruments.scheduleMaintenance', true),
       hashAlgo: s('vmu.instruments.hashAlgo', 'sha256'),
@@ -205,21 +214,40 @@ export function createInstruments(opts) {
       return Object.assign(deny('VMU_CONFLICT', '**维护窗口内**预约 ⇒ 拒（窗口 ' + new Date(win.from).toISOString() + ' → ' + new Date(win.to).toISOString() + '）', '避开维护窗口', enforced), { conflict: [{ from: win.from, to: win.to, kind: 'maintenance' }] })
     }
     const to = from + hours * 3600000
-    const clash = reservations.filter((r) => r.unit === u.id && from < r.to && to > r.from)
+    // ROUND 146: a DISPLACED reservation no longer blocks, but it stays in the ledger (see the preempt branch) -
+    // so `displaced === undefined` is what makes a record "active" for conflict purposes.
+    const clash = reservations.filter((r) => r.unit === u.id && r.displaced === undefined && from < r.to && to > r.from)
+    let preempted = null
     if (clash.length) {
       // overbookRatio 允许有限超额 ✓；否则**拒并点名冲突时段** ✓✓
       mark('vmu.instruments.overbookRatio')
       const allowed = c.overbookRatio > 0 && clash.length <= c.overbookRatio
       mark('vmu.instruments.priorityPolicy')
       if (!allowed) {
-        return Object.assign(deny('VMU_CONFLICT', '**同时段同台已有预约** ⇒ 拒（冲突：' + clash.map((r) => new Date(r.from).toISOString() + '→' + new Date(r.to).toISOString()).join('、') + '；priorityPolicy=' + c.priorityPolicy + '）', '换时段或提高优先级', enforced), { conflict: clash.map((r) => ({ from: r.from, to: r.to, by: r.by })) })
+        if (c.priorityPolicy === 'preempt') {
+          /**
+           * ROUND 146 — THE POLICY DECIDES HERE. `fifo` keeps the first booking and refuses the new request (the
+           * behaviour before this round). `preempt` lets the new request take the window, and the displaced
+           * reservation is moved OUT of the active set while STAYING in the ledger carrying who displaced it - so
+           * the displacement is auditable, the displaced member is NAMED in the reply, and the window frees up.
+           */
+          const victim = clash.slice().sort((a, b) => (a.from - b.from) || String(a.id).localeCompare(String(b.id)))[0]
+          if (victim) {
+            victim.displaced = { by, at: clock(), reason: 'priorityPolicy=preempt' }
+            preempted = { id: victim.id, by: victim.by, from: victim.from, to: victim.to }
+            emit({ type: 'instruments.preempt', unit: u.id, displaced: victim.id, by })
+          }
+        }
+        if (!preempted) {
+          return Object.assign(deny('VMU_CONFLICT', '**同时段同台已有预约** ⇒ 拒（冲突：' + clash.map((r) => new Date(r.from).toISOString() + '→' + new Date(r.to).toISOString()).join('、') + '；priorityPolicy=' + c.priorityPolicy + '）', c.priorityPolicy === 'preempt' ? '该窗口没有可抢占的旧预约' : '换时段，或把 vmu.instruments.priorityPolicy 设为 preempt', enforced), { conflict: clash.map((r) => ({ from: r.from, to: r.to, by: r.by })), priorityPolicy: c.priorityPolicy })
+        }
       }
     }
     const rec = { id: 'rs-' + (++seq), unit: u.id, by, from, to, hours, priority: c.priorityPolicy, waitlist: '' }
     if (clash.length && c.waitlistPolicy === 'queue') { mark('vmu.instruments.waitlistPolicy'); rec.waitlist = 'queued' }
     reservations.push(rec)
     emit({ type: 'instruments.reserve', unit: u.id })
-    return { ok: true, reservationId: rec.id, unit: u.id, from, to, hours, waitlist: rec.waitlist, enforced, enforcedScope: ENFORCED_SCOPE }
+    return { ok: true, reservationId: rec.id, unit: u.id, from, to, hours, waitlist: rec.waitlist, preempted, priorityPolicy: c.priorityPolicy, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
   const calibrate = (a) => {

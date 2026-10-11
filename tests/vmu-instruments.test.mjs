@@ -197,6 +197,42 @@ test('keysUsed() equals the wired set and each key is really read', () => {
   passed += 1
 })
 
+// ⑰ ROUND 146：priorityPolicy 真的决定"谁赢得冲突"（fifo 保持原行为 ✓／preempt 抢占并腾出窗口 ✓）
+test('priorityPolicy DECIDES who wins a conflict: fifo refuses, preempt displaces and frees the window', () => {
+  const off = { 'vmu.instruments.requireCalibration': false, 'vmu.instruments.requireOwner': false }
+  const fifo = ins(off)
+  fifo.register({ id: 'u1', owner: 'm1' })
+  assert.equal(fifo.reserve({ id: 'u1', by: 'm1', from: 0, hours: 2 }).ok, true)
+  const f2 = fifo.reserve({ id: 'u1', by: 'm2', from: 3600000, hours: 1 })
+  assert.equal(f2.ok, false, 'fifo（默认）⇒ 先到先得，冲突被拒')
+  assert.equal(f2.code, 'VMU_CONFLICT')
+  assert.equal(f2.priorityPolicy, 'fifo', '拒里自曝生效策略')
+  assert.equal(fifo.reserve({ id: 'u1', by: 'm3', from: 3600000, hours: 1 }).ok, false, '窗口没腾出 ⇒ 第三个也被拒')
+
+  const pre = ins(Object.assign({ 'vmu.instruments.priorityPolicy': 'preempt' }, off))
+  pre.register({ id: 'u1', owner: 'm1' })
+  const first = pre.reserve({ id: 'u1', by: 'm1', from: 0, hours: 2 })
+  const second = pre.reserve({ id: 'u1', by: 'm2', from: 3600000, hours: 1 })
+  assert.equal(second.ok, true, 'preempt ⇒ 新的预约拿到窗口')
+  assert.ok(second.preempted && second.preempted.id === first.reservationId && second.preempted.by === 'm1',
+    '★ 且【点名】被挤掉的预约与其归属：' + JSON.stringify(second.preempted))
+  assert.equal(second.priorityPolicy, 'preempt', '回执自曝生效策略')
+  assert.equal(pre.reserve({ id: 'u1', by: 'm3', from: 3600000, hours: 1 }).ok, true,
+    '★ 被挤者移出活动集 ⇒ 窗口真的腾出来了（这是"判定确实变了"的最强证据）')
+  assert.ok(pre.status().reservations >= 3, '被挤者【仍在台账里】（可审计，不是被抹掉）')
+  passed += 1
+})
+
+test('an unknown priorityPolicy falls back to fifo and SAYS SO in the reply', () => {
+  const i = ins({ 'vmu.instruments.requireCalibration': false, 'vmu.instruments.requireOwner': false, 'vmu.instruments.priorityPolicy': 'nonsense' })
+  i.register({ id: 'u1', owner: 'm1' })
+  i.reserve({ id: 'u1', by: 'm1', from: 0, hours: 2 })
+  const clash = i.reserve({ id: 'u1', by: 'm2', from: 3600000, hours: 1 })
+  assert.equal(clash.ok, false, '未知取值不得悄悄变成"抢占"')
+  assert.equal(clash.priorityPolicy, 'fifo', '★ 回落到 fifo，并在拒里自曝 —— 笔误不能静默改变行为')
+  passed += 1
+})
+
 for (const c of cases) {
   try { await c.f(); console.log('ok - ' + c.n) } catch (e) { failed += 1; console.log('FAIL - ' + c.n + ' :: ' + String((e && e.message) || e)) }
 }
