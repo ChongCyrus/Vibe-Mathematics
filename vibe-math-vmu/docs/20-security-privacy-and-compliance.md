@@ -62,8 +62,8 @@
 |---|---|---|---|
 | 进程 | 子进程服务 + 白名单启动器 | `vmu.safety.execAllowlist` | ⚠️ |
 | 文件 | 路径策略（§4） | `vmu.safety.pathPolicy` | ✓（已有） |
-| 网络 | 默认禁网 + 显式放行 | `vmu.safety.netPolicy` | ✗ 规划 |
-| CPU/内存 | 资源闸 | `vmu.safety.maxMemoryMb`／`vmu.safety.maxCpuMs` | ✗ 规划 |
+| 网络 | 默认禁网 + 显式放行 | `vmu.safety.netPolicy` | ✅ **已接线**（`guard.js` 读取 ✓） |
+| CPU/内存 | 资源闸 | `vmu.safety.maxMemoryMb`／`vmu.safety.maxCpuMs` | ✅ **已接线**（`guard.js` 读取 ✓） |
 | 墙钟 | 预算即期限 | `vmu.script.timeoutMs`（已有） | ✓ |
 
 **错误码**：`VMU_RESOURCE_EXCEEDED`、`VMU_NETWORK_DENIED`、`VMU_JOB_TIMEOUT`。

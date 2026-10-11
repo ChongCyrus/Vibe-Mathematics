@@ -56,7 +56,7 @@
 
 - **本地**：`kernel.members` 的席位身份**完全本地**，不依赖宿主身份 ✓；`may(id,permission)` 只做包含判断 ✓。
 - **宿主**：DSH 侧的主体身份（SSO/OIDC claims）**当前未读取** ✗ ⇒ 任何"按人类账号授权"的设计**必须**标注为未接线 ✓。
-- **桥**：规划 `vmu.identity.principalBinding`（`off｜advisory｜required`）——`required` 时"没有宿主主体绑定就不得任职"；**默认 `off`** ✓（不引入宿主耦合）。
+- **桥**：`vmu.identity.principalBinding` **已接线 ✓**（`identity.js` 读取并列入 `enforced` ✓）——`required` 时"没有宿主主体绑定就不得任职"；**默认 `off`** ✓（不引入宿主耦合）。★ **仍缺的是【验证】：宿主 SSO/OIDC 接缝未实现** ✗ ⇒ `advisory/required` 的判定无法被核实 ✓。
 - **迁移**：跨机构迁移＝**重新绑定**（`Membership` 变更留痕）；**不搬运**主体身份 ✗。
 
 ---
@@ -208,7 +208,7 @@
 ## 16. 身份与归属（Identity & Membership）
 
 - **本地身份（local identity）** ｜ 目的：实例身份自证 ｜ 面向谁：框架 ｜ 接口形状：**已实现 ✓**＝`config.instance`（身份自证 ✓）＋`kernel.members.roster()` ✓ ｜ 可调控：`vmu.identity.localFormat` ｜ 错误码：`VMU_NOT_MEMBER`（✓）／`VMU_NO_SUCH_OBJECT`（✓） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：身份**只在本地有效**；跨机构必须重新绑定 ✓ ｜ 依赖：内核 ✓ ｜ 成熟度：**已实现 ✓** ｜ 优先级：P0
-- **宿主主体绑定（principal binding）** ｜ 目的：需要时把代理挂到人类账号上 ｜ 面向谁：机构／人类 ｜ 接口形状：**未接线 ✗**（vmu 当前不读宿主 SSO/OIDC claims；规划 `vibe_vmu_identity`，⛔ 未实现） ｜ 可调控：`vmu.identity.principalBinding`（`off｜advisory｜required`，默认 `off`）／`trustedIssuers[]`／`claimMap{}` ｜ 错误码：`VMU_IDENTITY_UNBOUND`（拟增）／`VMU_IDENTITY_ISSUER_UNTRUSTED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**默认不引入宿主耦合** ✓；`required` 时缺绑定**不得任职**（具名拒 ✓） ｜ 依赖：宿主身份接缝（未接线 ✗） ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
+- 宿主主体绑定（principal binding）** ｜ 目的：需要时把代理挂到人类账号上 ｜ 面向谁：机构／人类 ｜ 接口形状：**键已接线 ✓**（`identity.js` 读取 `vmu.identity.principalBinding` 并列入 `enforced` ✓）｜ ★ **宿主 SSO/OIDC 接缝仍未实现** ✗ ⇒ 缺的是让 `advisory/required` 可被**验证**的能力 ✓
 - **归属与多机构（membership）** ｜ 目的：一个实例能不能属于多个机构 ｜ 面向谁：机构 ｜ 接口形状：规划 `kernel.identity.memberships(id)`（⛔ 未实现） ｜ 可调控：`vmu.identity.multiMembership`（默认 **false**）／`maxMemberships` ｜ 错误码：`VMU_IDENTITY_MULTI_DENIED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：默认**单一归属**（避免责任不清 ✓）；多归属时**权限取交集**（S-2 ✓） ｜ 依赖：席位 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P3
 - **化名与匿名（pseudonymity）** ｜ 目的：某些场景要保护提出者 ｜ 面向谁：机构 ｜ 接口形状：规划 `kernel.identity.pseudonym(scope)`（⛔ 未实现） ｜ 可调控：`vmu.identity.allowPseudonym`（默认 false）／`pseudonymScopes[]` ｜ 错误码：`VMU_IDENTITY_PSEUDONYM_DENIED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**匿名不等于不可审计**（审计侧保留可解绑映射 ✓）；**投票匿名**另有 08 的 `vmu.ballot.secrecy` ✓ ｜ 依赖：08 表决匿名面 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P3
 - **身份变更与离职（end of membership）** ｜ 目的：人走账清 ｜ 面向谁：管理者 ｜ 接口形状：**已实现 ✓**＝`kernel.members.end(id,reason)` ✓ ｜ 可调控：`vmu.identity.onEnd`（`archive｜handover｜both`，默认 `both`） ｜ 错误码：`VMU_STATE`（✓）／`VMU_HANDOVER_INCOMPLETE`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：离职**必须走交接**（§11 ✓）＋归档（07 ✓）；在飞任务不得丢 ✓ ｜ 依赖：§11＋07 ✓ ｜ 成熟度：**部分 ✓** ｜ 优先级：P0
@@ -575,7 +575,7 @@
 | `deliver({meeting,round,member,ask,at})` 投递接缝 | **已实现 ✓** | 唤醒信封；缺则具名拒 ✓ |
 | `may(id,permission)` 权限判断 | **已实现 ✓** | 只做包含；**委托检查必须复用它**（S-2 ✓） |
 | `clock()`／`isPaused()` 注入 | **已实现 ✓** | 可复现＋暂停真门禁 ✓ |
-| 宿主身份接缝（SSO/OIDC claims） | **未接线 ✗（规划）** | `vmu.identity.principalBinding` 需它；未接线前 `required` 不可用 ✗ |
+| 宿主身份接缝（SSO/OIDC claims） | **接缝未实现 ✗（规划）**；★ **键已接线 ✓** —— `vmu.identity.principalBinding` 由 `identity.js` 读取 ✓ | 缺的是【验证】能力：接缝就位前 `required` 无法被核实 ✗ |
 | 上下文压缩包格式（`pack v1`） | **未实现 ✗（规划）** | 字段见 §11；含指纹与稳定 id ✓ |
 
 ---
@@ -616,7 +616,7 @@
 
 ## 25. 未核项（**编号登记见 `14-§2`** ✓）
 
-- **宿主身份接缝未接线**：`vmu.identity.principalBinding` 的 `advisory/required` **无法验证**（vmu 当前不读 SSO/OIDC）⇒ 编号登记见 `14-§2` ✓。
+- **宿主身份接缝未实现 ✗**：★ **键已接线 ✓** —— `vmu.identity.principalBinding` 由 `identity.js` 读取并 `enforced` ✓；**缺的是让 `advisory/required` 可被验证的宿主 SSO/OIDC 接缝** ✗ ⇒ 编号登记见 `14-§2` ✓。
 - **声誉模型的判据未实证**：`vmu.trust.*` 的衰减/样本阈值是**设计建议**，没有真实数据校准 ⇒ 见 `14-§2`。
 - **串谋判据的误报率未知**：`vmu.collusion.*` 的阈值可能误伤小机构 ⇒ 见 `14-§2`。
 - **竞标与 08 预算的复式记账未定**：子预算扣减点（委托时/用时时）未核 ⇒ 见 `14-§2`。

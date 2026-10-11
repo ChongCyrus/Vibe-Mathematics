@@ -193,6 +193,46 @@ export function collectPlannedDefs({ volumes, core, namespaces, mirrors }) {
   // what the rule meant. Round 224 measured eight such names being registered as settings.
   const allKnown = new Set([...coreSet, ...planned.keys()])
   const isNamespaceRoot = (k) => [...allKnown].some((o) => o !== k && o.startsWith(k + "."))
+
+  /**
+   * MEASURED VERDICT (round 252): where a planned key actually stands, decided by reading the KERNEL rather than by repeating where
+   * the key was mentioned. This is what turns the reason column from provenance into a finding.
+   */
+  const kernelSources = (() => {
+    const out = []
+    const walk = (dir) => {
+      let entries = []
+      try { entries = readdirSync(dir, { withFileTypes: true }) } catch (e) { return }
+      for (const e of entries) {
+        const p = dir + '/' + e.name
+        if (e.isDirectory()) walk(p)
+        else if (e.name.endsWith('.js')) out.push({ path: p, text: readFileSync(p, 'utf8') })
+      }
+    }
+    walk(join(REPO, 'vibe-math-vmu', 'kernel'))
+    return out
+  })()
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  /** A READ is a lookup: settings[...], get(...), or a raw/readKey/strOf/boolOf/numOf/intOr argument. A declaration list is not a read. */
+  const readersOf = (key) => {
+    const q = esc(key)
+    const pats = [new RegExp("settings\\[\\s*['\"]" + q + "['\"]\\s*\\]"),
+      new RegExp("\\.get\\(\\s*['\"]" + q + "['\"]"),
+      new RegExp("(?:raw|readKey|strOf|boolOf|numOf|intOr)\\(\\s*[^,)]*['\"]" + q + "['\"]")]
+    return kernelSources.filter((s) => pats.some((re) => re.test(s.text))).map((s) => s.path.split('/').pop())
+  }
+  /** A face that lists the key inside a reasons map has recorded its verdict where it belongs. */
+  const declarersOf = (key) => {
+    const re = new RegExp("\\[\\s*['\"]" + esc(key) + "['\"]\\s*,")
+    return kernelSources.filter((s) => re.test(s.text)).map((s) => s.path.split('/').pop())
+  }
+  const verdictOf = (key) => {
+    const rd = readersOf(key)
+    if (rd.length) return '★ **实测矛盾**：已被 `' + rd.join('`／`') + '` **读取** ✗ ⇒ 应从 planned 移入核心表（审计发现的真缺陷 ✓）'
+    const dc = declarersOf(key)
+    if (dc.length) return '★ **已穷尽**：`' + dc.join('`／`') + '` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓）'
+    return '★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗'
+  }
   const keys = [...planned.keys()].filter((k) => !isNamespaceRoot(k)).sort()
   const defs = keys.map((key) => {
     const vols = [...planned.get(key)].sort()                                    // deterministic order
@@ -206,7 +246,7 @@ export function collectPlannedDefs({ volumes, core, namespaces, mirrors }) {
       scope: 'global',
       planned: true,
       volumes: vols,
-      doc: '设计阶段登记：首个声明卷 ' + first + '（共见 ' + vols.length + ' 卷：' + vols.join('、') + '），尚未实现（元数据以各卷为准）',
+      doc: verdictOf(key) + ' ｜ 设计阶段登记：首个声明卷 ' + first + '（共见 ' + vols.length + ' 卷：' + vols.join('、') + '），尚未实现（元数据以各卷为准）',
     }
   })
   const countFor = (num) => defs.filter((d) => d.volumes.indexOf(num) !== -1).length
