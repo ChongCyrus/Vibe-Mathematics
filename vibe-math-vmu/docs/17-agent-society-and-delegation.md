@@ -1,4 +1,4 @@
-﻿# vmu 17 · 代理自组织与协作（Agent Society & Delegation）
+# vmu 17 · 代理自组织与协作（Agent Society & Delegation）
 
 > 状态：**设计稿 v0.1（深水区）** —— 理念里那句"**框架＋settings＋中间件＋代理自组织**"的括号，本卷把它**具体到接口、参数、错误码与成熟度** ✓。
 > 上位：`00-README.md`（阅读顺序）、`01-philosophy.md`（R1 内核零策略／R2 能力与挂点齐备／R5 中间件／R6 登记即契约／R11 可观测）、`02-architecture.md`（内核分区与四层模型）、`03-interface-contract.md`（登记处）、`04-settings.md`（参数全表）、`05-middleware.md`（钩子全表）、`06-prompt-pipeline.md`（提示词管线）、`07-durability-library.md`（归档与台账）、`14-open-items-and-roadmap.md`（未决/未核登记）。
@@ -190,7 +190,7 @@
 | **矩阵（matrix）** | 双线汇报（业务＋专题） | 资源复用 | 责任冲突 | §2 职责分离＋§6 升级 | **未实现 ✗** |
 | **层级（hierarchy）** | 规模大、需分权 | 可扩展 | 层级僵化、信息失真 | §15 子机构＋§4 委托链 | **未实现 ✗** |
 
-- **拓扑选择（topology selection）** ｜ 目的：按任务形状选结构 ｜ 面向谁：机构／人类 ｜ 接口形状：规划 `society.topology` 判定点（⛔ 未实现）＋`vmu.topology.mode` ｜ 可调控：`vmu.topology.mode`（`star｜committee｜market｜pipeline｜swarm｜matrix｜hierarchy`，默认 `star`）／`autoSelect` ｜ 错误码：`VMU_TOPOLOGY_UNSUPPORTED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：拓扑**只影响调度与寻址**，不改变权限模型（S-2 ✓）；切换拓扑须留痕（§15 宪章 ✓） ｜ 依赖：席位＋任务＋会议 ｜ 成熟度：**未实现 ✗**（星型≈当前能力 ✓） ｜ 优先级：P2
+- **拓扑选择（topology selection）** ｜ 目的：按任务形状选结构 ｜ 面向谁：机构／人类 ｜ 接口形状：规划 `society.topology` 判定点（⛔ 未实现）＋`vmu.topology.mode`（键已接线 ✓） ｜ 可调控：`vmu.topology.mode`（`star｜committee｜market｜pipeline｜swarm｜matrix｜hierarchy`，默认 `star`）／`autoSelect` ｜ 错误码：`VMU_TOPOLOGY_UNSUPPORTED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：拓扑**只影响调度与寻址**，不改变权限模型（S-2 ✓）；切换拓扑须留痕（§15 宪章 ✓） ｜ 依赖：席位＋任务＋会议 ｜ 成熟度：**未实现 ✗**（星型≈当前能力 ✓） ｜ 优先级：P2
 - **拓扑与预算的交互** ｜ 目的：市场/群体最烧钱 ｜ 面向谁：机构 ｜ 接口形状：复用 08 `vmu.budget.*` ✓ ｜ 可调控：`vmu.topology.budgetMultiplier` ｜ 错误码：`VMU_RESOURCE_BUDGET`（✓） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：切换拓扑时**预算上限不变**（不得偷偷加倍 ✗） ｜ 依赖：08 预算 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P3
 
 ---

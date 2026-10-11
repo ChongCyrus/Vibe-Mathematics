@@ -156,6 +156,7 @@ export const PLANNED_DEFS = Object.freeze([
   { key: "vmu.explain.reportFormat", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["17"], doc: "设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准）" },
   { key: "vmu.export.format", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
   { key: "vmu.export.includeHistory", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["07"], doc: "设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准）" },
+  { key: "vmu.face.key", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["14"], doc: "设计阶段登记：首个声明卷 14（共见 1 卷：14），尚未实现（元数据以各卷为准）" },
   { key: "vmu.fairness.criticalSlots", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["17"], doc: "设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准）" },
   { key: "vmu.fairness.maxSlotsPerInstance", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["17"], doc: "设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准）" },
   { key: "vmu.fairness.newcomerQuota", type: 'planned', def: null, hot: 'H1', who: 'office', scope: 'global', planned: true, volumes: ["17"], doc: "设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准）" },

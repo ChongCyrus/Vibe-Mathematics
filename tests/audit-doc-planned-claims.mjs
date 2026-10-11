@@ -52,6 +52,14 @@ for (const f of readdirSync(DOCS).filter((x) => x.endsWith('.md') && !EXCLUDED.h
     if (KEY_ITSELF_WIRED.test(lines[i])) continue
     for (const m of lines[i].matchAll(KEY)) {
       const key = m[1]
+      // ROUND 179: a key listed under the `可调控：` label is a TUNING PARAMETER being referenced, while the ⛔ claim in
+      // the same line is about the service surface or decision point in `接口形状：`. The agent-society volume writes
+      // every capability that way, and all twenty-seven of its candidates are exactly this shape - the keys are wired
+      // and several say so ("default true"). The label is what separates the claim from the reference, so it is read as
+      // one: no exemption marker needed in the prose, and a line where the key IS the subject still fires.
+      if (lines[i].lastIndexOf('可调控：', m.index) !== -1) continue
+      // a key immediately followed by a tick is being declared WIRED in place, not claimed unimplemented
+      if (/^\s*✓/.test(lines[i].slice(m.index + m[0].length))) continue
       // the claim must be about THIS key: a planned word in the same clause, before or after it
       const near = lines[i].slice(Math.max(0, m.index - WINDOW), m.index + m[0].length + WINDOW)
       if (!PLANNED_WORDS.test(near)) continue
