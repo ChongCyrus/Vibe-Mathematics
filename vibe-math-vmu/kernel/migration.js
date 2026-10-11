@@ -37,6 +37,8 @@ export const WIRED_KEYS = Object.freeze([
   'vmu.migration.onFailure', 'vmu.migration.report', 'vmu.migration.reportFormat',
   'vmu.migration.requireConfirm', 'vmu.migration.rollback', 'vmu.migration.rollbackPointDensity',
   'vmu.migration.stepBatch',
+  // ROUND 257: the compatibility keys are NOT part of the vmu.migration.* family, so they are not listed here -
+  // their literal reads in this face's own key map are what makes them wired (see K.compat*).
 ])
 
 /** Why a declared-but-unwired key would not be honoured (kept for future declarations). */
@@ -58,6 +60,10 @@ const DEFAULTS = Object.freeze({
   'vmu.migration.keepBackups': true, 'vmu.migration.onFailure': 'abort', 'vmu.migration.report': true,
   'vmu.migration.reportFormat': 'text', 'vmu.migration.requireConfirm': false, 'vmu.migration.rollback': 'allow',
   'vmu.migration.rollbackPointDensity': 1, 'vmu.migration.stepBatch': 0,
+  // ROUND 257, from 13 §9/§L299-302: enforce=true, unknownCombo=refuse ("unknown by default is REFUSED, not tried"), the matrix
+  // source is a generated artifact by default, and a known difference must be citable.
+  'vmu.compat.enforce': true, 'vmu.compat.unknownCombo': 'refuse',
+  'vmu.compat.matrixSource': '', 'vmu.compat.known.requireCitation': true,
 })
 const FAILURE_MODES = Object.freeze(['abort', 'continue', 'rollback'])
 const REPORT_FORMATS = Object.freeze(['text', 'json', 'markdown'])
@@ -84,6 +90,11 @@ export function createMigration({ clock = () => 0, log = null, settings = {}, bu
   const emit = (ev) => { if (bus && typeof bus.emit === 'function') { try { bus.emit(ev) } catch (e) { /* advisory */ } } }
 
   const K = {
+    // ROUND 257 (13 §9): the compatibility declarations.
+    compatEnforce: sget('vmu.compat.enforce') !== false,
+    compatUnknownCombo: ['refuse', 'try'].includes(sget('vmu.compat.unknownCombo')) ? sget('vmu.compat.unknownCombo') : 'refuse',
+    compatMatrixSource: str(sget('vmu.compat.matrixSource')),
+    compatRequireCitation: sget('vmu.compat.known.requireCitation') !== false,
     auto: sget('vmu.migration.auto') === true,
     dryRunDefault: sget('vmu.migration.dryRunDefault') !== false,
     dryrun: sget('vmu.migration.dryrun') === true,
@@ -221,7 +232,69 @@ export function createMigration({ clock = () => 0, log = null, settings = {}, bu
     }
   }
 
+  /**
+   * ROUND 257 (13 §9): the compatibility matrix - which kernel × pack × data combination is usable. The matrix arrives through the
+   * `backends` seam this face already takes; `matrixSource` is the declared location, reported so a receipt can name the matrix it
+   * consulted. An unknown combination is REFUSED by default, because §9 says refuse rather than try it and see.
+   */
+  function compatCheck({ kernelVersion = null, packVersion = null, dataVersion = null } = {}) {
+    const enforced = []
+    const k = K.compatEnforce !== false
+    mark(enforced, 'vmu.compat.enforce')
+    const mode = ['refuse', 'try'].includes(K.compatUnknownCombo) ? K.compatUnknownCombo : 'refuse'
+    mark(enforced, 'vmu.compat.unknownCombo')
+    const source = K.compatMatrixSource
+    mark(enforced, 'vmu.compat.matrixSource')
+    const matrix = backends && backends.matrix && typeof backends.matrix === 'object' ? backends.matrix : null
+    const cell = matrix && kernelVersion !== null && packVersion !== null
+      ? (matrix[String(kernelVersion)] && matrix[String(kernelVersion)][String(packVersion)])
+      : undefined
+    const base = { kernelVersion, packVersion, dataVersion, enforce: k, unknownCombo: mode, matrixSource: source,
+      enforced, enforcedScope: ENFORCED_SCOPE, wouldEvaluate: ['vmu.compat.enforce', 'vmu.compat.unknownCombo', 'vmu.compat.matrixSource'] }
+    if (!matrix) {
+      // Without a matrix there is nothing to consult, and §9's own code says so by name.
+      if (k) throw refuse('VMU_COMPAT_MATRIX_MISSING', 'no compatibility matrix is available (backends.matrix is absent)',
+        'inject { backends: { matrix } }, or set vmu.compat.enforce=false to report without enforcing', { matrixSource: source })
+      return Object.assign({ ok: true, verdict: 'unknown' }, base)
+    }
+    if (cell === undefined) {
+      if (k && mode === 'refuse') {
+        throw refuse('VMU_COMPAT_UNKNOWN_COMBO', 'unknown combination: ' + String(kernelVersion) + ' × ' + String(packVersion),
+          'add it to the matrix (' + (source || 'the declared matrixSource') + '), or set vmu.compat.unknownCombo=try to attempt it', base)
+      }
+      return Object.assign({ ok: true, verdict: 'unknown', warned: k && mode === 'try' }, base)
+    }
+    const verdict = String(cell)
+    if (k && verdict === 'no') {
+      throw refuse('VMU_COMPAT_UNKNOWN_COMBO', 'the matrix marks this combination unusable: ' + String(kernelVersion) + ' × ' + String(packVersion) + ' = ' + verdict,
+        'migrate first, or choose a combination the matrix permits', base)
+    }
+    return Object.assign({ ok: true, verdict, needsMigration: verdict === 'migrate' }, base)
+  }
+
+  /**
+   * ROUND 257 (13 §9, the known-differences list): an entry must be citable when the declaration says so, and every entry has to say
+   * whether the old behaviour can be restored - §L166 is explicit that "whether and how it can be rolled back" is part of the entry.
+   */
+  function knownDifferences({ entries = [] } = {}) {
+    const enforced = []
+    const needCitation = K.compatRequireCitation !== false
+    mark(enforced, 'vmu.compat.known.requireCitation')
+    const list = Array.isArray(entries) ? entries : []
+    const uncited = list.filter((e) => !e || !str(e.citation)).map((e) => String((e && e.id) || '?'))
+    if (needCitation && uncited.length) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'known differences must be citable, and these are not: ' + uncited.join('、'),
+        'give each entry a citation, or set vmu.compat.known.requireCitation=false', { uncited })
+    }
+    const missingRollbackNote = list.filter((e) => e && e.rollback === undefined).map((e) => String(e.id || '?'))
+    return { ok: true, count: list.length, uncited, missingRollbackNote,
+      declared: list.map((e) => ({ id: String((e && e.id) || ''), citation: str(e && e.citation),
+        rollback: (e && e.rollback) === undefined ? null : e.rollback })),
+      enforced, enforcedScope: ENFORCED_SCOPE, wouldEvaluate: ['vmu.compat.known.requireCitation'] }
+  }
+
   const api = {
+    compatCheck, knownDifferences,   // ROUND 257 (13 §9)
     apiVersion, WIRED_KEYS, UNWIRED_REASONS, ENFORCED_SCOPE, GATE_SCENARIOS, FAILURE_MODES, REPORT_FORMATS, ROLLBACK_MODES,
 
     /**

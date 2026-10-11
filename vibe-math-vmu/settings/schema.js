@@ -259,6 +259,11 @@ const CORE_DEFS = Object.freeze([
   // ROUND 254: 公平面的三键（08-§12.5／17 卷；现由 kernel/fairness.js 读取；★ maxSlotsPerInstance 未接，实测理由见 14 卷）.
   { key: 'vmu.fairness.criticalSlots', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "关键槽位保底（0＝关；reserve/critical 者不低于此数，仍受份额上限约束）" },
   { key: 'vmu.fairness.maxSlotsPerInstance', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "每实例槽位硬顶（0＝关；★ 基线与【余数轮转】都遵守；当上限使守恒不可能时 ⇒ VMU_FAIRNESS_QUOTA 并点名本键）" },
+  // ROUND 257: 兼容矩阵（13 卷 §9；现由 kernel/migration.js 读取；★ 码早已登记：VMU_COMPAT_MATRIX_MISSING／VMU_COMPAT_UNKNOWN_COMBO）.
+  { key: 'vmu.compat.enforce', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "是否强制兼容矩阵（false ⇒ 只报告不强制；无矩阵时不拒）" },
+  { key: 'vmu.compat.unknownCombo', type: 'enum', domain: ['refuse', 'try'], def: 'refuse', hot: HOT.H1, who: 'office', doc: "未知组合处置（★ §9：默认【拒】而不是试试看；try ⇒ 允许但留 warned 痕迹）" },
+  { key: 'vmu.compat.matrixSource', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: "矩阵来源（回执据此说明【查的是哪张矩阵】；矩阵本体经 backends.matrix 注入 ✓）" },
+  { key: 'vmu.compat.known.requireCitation', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已知差异须可引用（true ⇒ 无 citation 的条目具名拒；★ 每条还须说明能否回退，缺失者被【报出】）" },
   { key: 'vmu.fairness.newcomerQuota', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "新来者配额（0＝关；newcomer 者被抬到此数——配额应当【约束】，不只是被满足）" },
   { key: 'vmu.fairness.rebalanceEveryMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "重平衡周期（0＝无策略，回执明说无策略；rebalanceDue() 据此判定）" },
   { key: 'vmu.trust.useInSelection', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '选择时是否参考声誉（仅参考，绝不授权 ✗）' },
