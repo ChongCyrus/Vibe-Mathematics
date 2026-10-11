@@ -39,6 +39,7 @@ const SURFACES = {
   'vmu.middleware': 'bus', 'vmu.governance': 'governance', 'vmu.board': 'board', 'vmu.minutes': 'minutes',
   'vmu.budget': 'budget', 'vmu.metrics': 'metrics', 'vmu.audit': 'audit', 'vmu.alerts': 'alerts',
   'vmu.domaincompliance': 'domainCompliance',
+  'vmu.legalentity': 'legalEntity',
   'vmu.compliance': 'domaincompliance',
   'vmu.retention': 'retention', 'vmu.delegation': 'delegation', 'vmu.workflow': 'workflow', 'vmu.trust': 'trust',
   'vmu.handover': 'handover', 'vmu.arbitration': 'arbitration', 'vmu.recruit': 'recruit', 'vmu.topology': 'topology',

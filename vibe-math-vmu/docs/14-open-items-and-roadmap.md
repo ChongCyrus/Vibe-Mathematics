@@ -1398,6 +1398,15 @@
   **门禁与证据** ✓：**九分支真机验证 ✓**（**随回退撤下** ✓）；**`funding.js` 已回到已提交态、语法 0 ✓**；**未接线回到 121 ✓**；**T1 125/125 绿 ✓**。
   **未做（明写 ✗）**：★★★ **`legalentity`(6) 仍未接** ✗ —— **复活条件已精确到一步** ✓：**新建 `kernel/legalentity.js` 面**，**并按其族的记账走** ✓（**按第 ⑩ 条先量五处接线清单：`kernel/index.js` 的 import/create/register/getter、`package.json#files`、`installer.js`、`tests/audit-vmu-services.test.mjs` 的 SURFACES、零机制矩阵的裁定** ✓）；**`review`(4) 仍未接** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 276／277 合区间：建成 `kernel/legalentity.js` 面并落地提交；未接线 121 → 115；真实缺口只剩 `review`(4)** ✓✓
+  ★★★ **① 上一个区间留下的唯一红旗已修** ✓✓：**`audit-installer-policy` 报 "every shipped file is managed or explicitly exempt — `kernel/legalentity.js`"** ✗ ⇒ ★★ **新面必须【同时】加进 `installer.js` 的 `PRESETS.vibe-math-vmu.files` 清单** ✓（**该清单是一整行、含 83 个 kernel 条目 ✓**）⇒ **照 `kernel/domaincompliance.js` 的位置插入一处** ✓ ⇒ **`INSTALLER POLICY: 100 passed, 0 failed`** ✓✓（**原 99/1**）。
+  ★★★ **② 新面 `kernel/legalentity.js` 完全照卷 22 §L285-§L302 写成** ✓✓：**六键** ✓（`registryDir=Ops/Entities`、`requireEntity=true`、`taxIdStyle=opaque-ref`★只存不透明引用、`invoiceTaxSlots` 四位、`crossBorderGate=require-approval`、`crossBorderApproverRoles=[]`）；**三方法** ✓（`registerEntity`／`bindAccount`／`validateInvoice` —— ★ **方法名照卷里点名的那一个** ✓）；**五码** ✓（`VMU_ENTITY_UNKNOWN`／`VMU_ENTITY_ACCOUNT_UNBOUND`／`VMU_TAX_FIELD_MISSING`／`VMU_CROSSBORDER_GATE_REQUIRED`／`VMU_CROSSBORDER_CURRENCY_MISMATCH`）；★ **并遵守该节自述的纪律：只判"位是否存在"，不判税率** ✓；**零声明 ⇒ 空面且自曝** ✓。**真机十一分支全对 ✓；`VMU LEGALENTITY: 22 passed, 0 failed`** ✓。
+  ★★★ **③ 五处接线一次接通（这次先量了清单）** ✓✓：**`kernel/index.js` 四处**（import ✓、create ✓、`registry.register(…, {apiVersion:1}, {kind:'service', description})` ✓、getter ✓）、**`package.json#files`** ✓、**`tests/audit-vmu-services` 的 SURFACES** ✓（**服务由 68 升至 **69 registered** ✓**）、**零机制矩阵逐面裁定** ✓（**`0 mismatches, 0 unregistered`** ✓）；**加上 `installer.js` 清单（本轮补 ✓）＝ 六处** ✓。★ **新面套件 `tests/vmu-legalentity.test.mjs`** ⇒ **`JOBS 225 suites 153`** ✓。
+  ★★★ **④ 两条教训入卷 ⑮** ✓✓：**(a) 接线记账是【按族】的 ⇒ 跨族接线要新建该族的面** ✓，**动手前量【该族的记账表与它的断言】** ✓；**(b) 本仓有【两种拒法先例】**（**`publication.js` 抛 ✓、`funding.js` 返回 ✓**）⇒ **新面先量最近前例再写测试** —— **我按"抛出"写的五条断言全红，而面是对的** ✓。
+  ★★★ **⑤ 防漂探针再次履职** ✓✓：**它先报 `vmu.legalentity: table says 6/6, measured 0/6`** ✗ —— **因为 `docs/04` 尚未从 schema 重生成** ✓ ⇒ **跑生成链后 `0 drifted, 0 misclaimed`** ✓✓。
+  **门禁与证据** ✓：**`VMU LEGALENTITY: 22/0`** ✓；**`INSTALLER POLICY: 100/0`** ✓；**`regen-all: 9/9 in sync`** ✓；**设置表 1118 键（1003 已接线／115 未接线）** ✓；**T1 与 installer 相关作业全绿 ✓**。
+  **未做（明写 ✗）**：★★ **`review`(4) 仍未接** ✗ —— **它是【最后一个真实缺口** ✗**）**，**复活条件：先有【答辩】概念** ✓（**该词内核零命中 ✓**）；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 
