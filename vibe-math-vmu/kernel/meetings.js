@@ -34,6 +34,7 @@ export function refuse(code, message, hint) {
 export const WIRED_KEYS = Object.freeze([
   'vmu.meetings.typeCatalog', 'vmu.meetings.attendanceMode', 'vmu.meetings.liveCap',
   'vmu.meetings.quorumMin', 'vmu.meetings.quorumRatio', 'vmu.meetings.quorumLossPolicy', 'vmu.meetings.quorumRecountMs',
+  'vmu.meetings.quorumCap',
   'vmu.meetings.unansweredInDenominator', 'vmu.meetings.emergencyQuorumRatio', 'vmu.meetings.emergencyKinds',
   'vmu.meetings.chairNeutral', 'vmu.meetings.chairTransferAudit', 'vmu.meetings.committeeMax', 'vmu.meetings.committeeReportRequired',
   'vmu.meetings.budgetTurns', 'vmu.meetings.budgetTokens', 'vmu.meetings.budgetWallMs', 'vmu.meetings.budgetOnExceed',
@@ -61,6 +62,7 @@ const reasonFor = (key) => UNWIRED_REASONS[key.split('.').slice(0, 2).join('.')]
 const DEFAULTS = Object.freeze({
   'vmu.meetings.typeCatalog': [], 'vmu.meetings.attendanceMode': 'roster', 'vmu.meetings.liveCap': 0,
   'vmu.meetings.quorumMin': 0, 'vmu.meetings.quorumRatio': 0, 'vmu.meetings.quorumLossPolicy': 'suspend', 'vmu.meetings.quorumRecountMs': 0,
+  'vmu.meetings.quorumCap': 3,
   'vmu.meetings.unansweredInDenominator': false, 'vmu.meetings.emergencyQuorumRatio': 0, 'vmu.meetings.emergencyKinds': [],
   'vmu.meetings.chairNeutral': false, 'vmu.meetings.chairTransferAudit': false, 'vmu.meetings.committeeMax': 0, 'vmu.meetings.committeeReportRequired': false,
   'vmu.meetings.budgetTurns': 0, 'vmu.meetings.budgetTokens': 0, 'vmu.meetings.budgetWallMs': 0, 'vmu.meetings.budgetOnExceed': 'refuse',
@@ -103,6 +105,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     attendanceMode: oneOf(sget('vmu.meetings.attendanceMode'), ['roster', 'signin', 'quorum-only'], 'roster'),
     liveCap: n(sget('vmu.meetings.liveCap')),
     quorumMin: n(sget('vmu.meetings.quorumMin')), quorumRatio: n(sget('vmu.meetings.quorumRatio')),
+    // ROUND 203: the quorum ceiling (declared default 3; 0 = no ceiling). `undefined` means unset -> default 3,
+    // an explicit 0 is a VALUE -> no ceiling. Same unset-vs-value distinction as the other readers wired here.
+    quorumCap: (() => {
+      const raw = sget('vmu.meetings.quorumCap')
+      return (raw === undefined || raw === null || raw === '') ? 3 : n(raw)
+    })(),
     quorumLossPolicy: oneOf(sget('vmu.meetings.quorumLossPolicy'), ['suspend', 'continue', 'recess'], 'suspend'),
     quorumRecountMs: n(sget('vmu.meetings.quorumRecountMs')),
     unansweredInDenominator: sget('vmu.meetings.unansweredInDenominator') === true,
@@ -228,7 +236,11 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     const effective = K.unansweredInDenominator ? m.roster.length : m.present.size
     const needMin = K.quorumMin
     const needRatio = Math.ceil(K.quorumRatio * m.roster.length)
-    const need = Math.max(needMin, needRatio)
+    // ROUND 203: `vmu.meetings.quorumCap` - the ceiling. The contract words it `min(cap, participants)`, so with a
+    // cap in force a meeting can never require more than the people actually present; that is what stops a small
+    // meeting from being permanently blocked. At 0 there is no cap and quorum CAN be lost.
+    const needUncapped = Math.max(needMin, needRatio)
+    const need = K.quorumCap > 0 ? Math.min(needUncapped, K.quorumCap, m.present.size) : needUncapped
     return {
       meeting: m.id, mode: K.attendanceMode, present: m.present.size, roster: m.roster.length,
       unanswered: unanswered.length, unansweredList: unanswered.slice().sort(),
@@ -894,7 +906,7 @@ function keysSnapshot(K) {
   return {
     'vmu.meetings.wakeRetries': K.wakeRetries, 'vmu.meetings.verdictMaxRounds': K.verdictMaxRounds, 'vmu.meetings.hardLimitMs': K.hardLimitMs,
     'vmu.meetings.typeCatalog': K.typeCatalog, 'vmu.meetings.attendanceMode': K.attendanceMode, 'vmu.meetings.liveCap': K.liveCap,
-    'vmu.meetings.quorumMin': K.quorumMin, 'vmu.meetings.quorumRatio': K.quorumRatio, 'vmu.meetings.quorumLossPolicy': K.quorumLossPolicy,
+    'vmu.meetings.quorumMin': K.quorumMin, 'vmu.meetings.quorumRatio': K.quorumRatio, 'vmu.meetings.quorumLossPolicy': K.quorumLossPolicy, 'vmu.meetings.quorumCap': K.quorumCap,
     'vmu.meetings.quorumRecountMs': K.quorumRecountMs, 'vmu.meetings.unansweredInDenominator': K.unansweredInDenominator,
     'vmu.meetings.emergencyQuorumRatio': K.emergencyQuorumRatio, 'vmu.meetings.emergencyKinds': K.emergencyKinds,
     'vmu.meetings.chairNeutral': K.chairNeutral, 'vmu.meetings.chairTransferAudit': K.chairTransferAudit,

@@ -28,7 +28,10 @@ const READS = []
 const rec = (vals) => ({ get: (k) => { READS.push(k); return (vals || {})[k] } })
 const mk = (settings = {}, seams = {}) => {
   NOW = 1000
-  const t = createMeetings(Object.assign({ clock: () => NOW, settings: rec(settings) }, seams))
+  // ROUND 203: `vmu.meetings.quorumCap` is now WIRED, and its declared default is 3 - so the pre-existing scenarios,
+  // which were written against UNCAPED quorum maths, declare that baseline explicitly. Callers win: `settings` is
+  // assigned last, so a scenario that passes the key overrides this.
+  const t = createMeetings(Object.assign({ clock: () => NOW, settings: rec(Object.assign({ 'vmu.meetings.quorumCap': 0 }, settings)) }, seams))
   return { t, set: (v) => { NOW = v }, at: () => NOW }
 }
 const roster = ['acad', 'r-1', 'r-2', 'r-3']
@@ -366,13 +369,14 @@ const err = (fn) => errOf(fn)
   // the key is consulted (and marked) when that policy runs, and a pack that sets it now changes behaviour.
   // ROUND 199: 48 -> 49, deliberately - `vmu.meetings.verdictMaxRounds` is now WIRED (motion ceiling).
   // ROUND 200/201: 49 -> 50, deliberately - `vmu.meetings.hardLimitMs` is now WIRED (the hard wall-clock backstop).
-  ok(WIRED_KEYS.length === 50, 'the layer wires all 50 declared vmu.meetings.* keys', String(WIRED_KEYS.length))
+  // ROUND 203: 50 -> 51, deliberately - `vmu.meetings.quorumCap` is now WIRED (the quorum ceiling).
+  ok(WIRED_KEYS.length === 51, 'the layer wires all 51 declared vmu.meetings.* keys', String(WIRED_KEYS.length))
   ok(st.declaredMeetingKeys === 56, 'the declared universe is read from settings/schema.js (core + planned)', String(st.declaredMeetingKeys))
   ok(st.plannedKeys.length + st.wiredCount === st.declaredMeetingKeys && st.overlapWithWired.length === 0 && st.complementOk === true,
     'WIRED and plannedKeys are COMPLEMENTARY and partition the 56 declared keys',
     JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredMeetingKeys, overlap: st.overlapWithWired }))
-  ok(Object.keys(st.keys).length === 50 && !Object.values(st.keys).some((v) => v === undefined),
-    'status().keys reports a real value for all 50 wired keys (no silent nulls)')
+  ok(Object.keys(st.keys).length === 51 && !Object.values(st.keys).some((v) => v === undefined),
+    'status().keys reports a real value for all 51 wired keys (no silent nulls)')
   ok(st.plannedKeys.every((k) => typeof st.unwiredReasons[k] === 'string'), 'any unwired key would carry a reason (mechanism present)')
   ok(typeof UNWIRED_REASONS['vmu.meetings'] === 'string', 'the reason table is exported for future keys')
   // enforced[] is precise: a call that evaluates nothing does not claim a key
@@ -605,6 +609,30 @@ const err = (fn) => errOf(fn)
   const eb = err(() => hb.t.speak({ meeting: ob.meeting, member: 'acad', text: 'way late' }))
   ok(eb && eb.code === 'VMU_RESOURCE_BUDGET',
     'hardLimitMs: the ceiling is CLAMPED to 7200000 (99000000 is refused at 8e6 ms)', eb && eb.code)
+}
+// ROUND 203: `vmu.meetings.quorumCap` decides - the quorum ceiling, m = min(cap, participants); 0 = no ceiling.
+{
+  const capped = opened({ 'vmu.meetings.quorumMin': 3, 'vmu.meetings.quorumCap': 2 })
+  ok(capped.h.t.quorum({ meeting: capped.id }).required === 1,
+    'quorumCap[+]: min(cap 2, participants 1) caps the required 3 down to 1', String(capped.h.t.quorum({ meeting: capped.id }).required))
+  capped.h.t.attend({ meeting: capped.id, member: 'r-1' })
+  capped.h.t.attend({ meeting: capped.id, member: 'r-2' })
+  capped.h.t.attend({ meeting: capped.id, member: 'r-3' })
+  ok(capped.h.t.quorum({ meeting: capped.id }).required === 2,
+    'quorumCap[+]: with all four present the cap bites at 2 (uncapped would be 3)', String(capped.h.t.quorum({ meeting: capped.id }).required))
+  const uncapped = opened({ 'vmu.meetings.quorumMin': 3, 'vmu.meetings.quorumCap': 0 })
+  ok(uncapped.h.t.quorum({ meeting: uncapped.id }).required === 3,
+    'quorumCap[-]: 0 means NO ceiling - the required 3 stands even with one present', String(uncapped.h.t.quorum({ meeting: uncapped.id }).required))
+  const lost = err(() => uncapped.h.t.vote({ meeting: uncapped.id, member: 'acad' }))
+  ok(lost && lost.code === 'VMU_MEETING_QUORUM_LOST',
+    'quorumCap[-]: with no ceiling a thin meeting CAN lose quorum (the refusal still exists)', lost && lost.code)
+  // The declared default, tested WITHOUT `mk`: its baseline always supplies the key, so an absent key needs a face
+  // built directly on a getter that returns undefined.
+  const bare = createMeetings({ clock: () => 1000, settings: { get: (k) => (k === 'vmu.meetings.quorumMin' ? 3 : undefined) } })
+  const bo = bare.open({ type: 'ordinary', chair: 'acad', roster })
+  ok(bare.quorum({ meeting: bo.meeting }).required === 1,
+    'quorumCap: an ABSENT key takes the declared default 3, so the required 3 is capped to the 1 present',
+    String(bare.quorum({ meeting: bo.meeting }).required))
 }
 /**
  * ROUND 168: the precondition behind the header claim, asserted rather than assumed. A key can be listed as wired,
