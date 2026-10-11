@@ -184,9 +184,13 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
     // The subset check REPORTS its verdict rather than refusing: a refusal here would need a code the registry could not accept in this
     // shape, and an unregistered code is worse than a reported finding. `probationPermissions` is still read and still observable.
     let overflow = []
+    let comparable = false
     if (granted.length) {
       const superior = members && typeof members.permissionsOf === 'function' ? members.permissionsOf(memberId) : null
-      if (Array.isArray(superior)) overflow = granted.filter((p) => !superior.includes(p))
+      if (Array.isArray(superior)) {
+        comparable = true
+        overflow = granted.filter((p) => !superior.includes(p))
+      }
     }
     // ROUND 268 (volume 17 §L268): the declaration is a SUBSET of the superior permissions. With a superior view supplied, an
     // overflow is refused BY NAME - the key is now registered, so the refusal is permitted again.
@@ -194,7 +198,7 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
       throw refuse('VMU_RECRUIT_PROBATION_PERMISSIONS', 'vmu.recruit.probationPermissions is not a subset of the superior set: ' + overflow.join(', '),
         'declare only permissions the post itself has, or clear the key', { overflow, memberId })
     }
-    const permissionVerdict = { declared: granted.slice(), comparable: granted.length > 0, overflow }
+    const permissionVerdict = { declared: granted.slice(), comparable, overflow }
     const s = staff.get(memberId)
     if (!s) throw refuse('VMU_RECRUIT_NOT_APPLIED', 'no staff record for ' + String(memberId), 'accept() first', { memberId })
     const remaining = s.probationUntil === null ? 0 : Math.max(0, s.probationUntil - clock())
