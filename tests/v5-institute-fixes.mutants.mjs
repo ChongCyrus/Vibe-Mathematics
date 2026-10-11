@@ -94,6 +94,18 @@ if (/\r/.test(before)) { console.error('SETUP-FAIL - the anchor source was not E
   const named = out.split(/\r?\n/).filter((l) => /^\s*(FAIL - | {2}- )/.test(l) && f.expect.test(l)).map((l) => l.trim())
   const ok = !hang && code !== 0 && named.length > 0
   console.log((hang ? '  HANG - ' : (ok ? '  ok - ' : '  FAIL - ')) + f.name + ' [' + ms + 'ms]' + (named.length ? ' :: ' + named[0].slice(0, 150) : ' :: no named red (exit=' + code + ')'))
+  // ROUND 206 - DIAGNOSTICS ONLY (the judgement above is untouched). A family that does not redden by name used to print
+  // nothing about WHY, because the child's output was discarded unless a line already matched. Measured on the two
+  // long-standing reds: one mutated child was ALL GREEN with an INEFFECTIVE mutation, and the other failed on assertions
+  // other than the one the family names. Print the evidence so the next investigation does not start from a guess.
+  if (!ok) {
+    const lines = out.split(/\r?\n/)
+    const shaped = lines.filter((l) => /^\s*(FAIL - | {2}- )/.test(l))
+    console.log('      diagnostics: exit=' + code + ' hang=' + hang + ' expected-pattern matches=' + lines.filter((l) => f.expect.test(l)).length + ' shaped-failure-lines=' + shaped.length)
+    const failuresAt = lines.findIndex((l) => /^FAILURES:?\s*$/.test(l))
+    const block = failuresAt === -1 ? shaped.slice(0, 12) : lines.slice(failuresAt, failuresAt + 14)
+    for (const l of block) console.log('      child | ' + l.trim().slice(0, 150))
+  }
   rmSync(dest, { recursive: true, force: true })
   return ok
 }
