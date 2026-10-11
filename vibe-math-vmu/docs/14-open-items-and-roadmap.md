@@ -1287,6 +1287,14 @@
   **门禁与证据** ✓：**`citations.js` 语法 0** ✓；**`VMU RECORDS: 267/0`** ✓；**未接线 140 → 139（另有 1 条退役）** ✓；**`regen-all: 9/9 in sync`** ✓。
   **未做（明写 ✗）**：★★ **`citations.orcid`／`ror` 与 `data` 2 键的断言尚未合并进各自套件** ✗（**`data` 已补 ✓；`citations` 的断言属下一区间** ✓）；**`vmu.data.retention` 仍未接** ✗（**理由：单位未定 ＋ 该面明文不重定义留存** ✓）；**`collab`(3)／`schedule`(3) 仍未接** ✗（**承载者已量出 ✓**）；**`review`／`reviewers`(8) 仍未接** ✗（**复活条件：先有答辩概念** ✓）；**其余 139 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
+- ★★★★★ **轮 263：补 `citations.orcid`／`ror` 8 条断言（含"只有一条选键路径"对照）；查出卷 22 一处陈旧声明；`schedule`(3) 的尝试【弄坏文件后回退】，如实记录** ✓✓
+  ★★★ **① `citations` 断言就位并全绿** ✓✓：**插在该套件汇总之前（23 行 ✓）**，**紧邻它已有的 `idPriority` 断言** ✓ ⇒ **`VMU EXPLAIN+CONTROL+CITATIONS: 66 passed, 0 failed`** ✓（**+8** ✓）。**含两条关键对照** ✓：**两 scheme 关闭时它们【不被考虑】✓；而开启后仍【以声明的优先级为准】（有 `doi` 时选 `doi` ✓）** —— **"启用一个方案是【增加候选】，不是【重排优先级】"** ✓✓。
+  ★★★ **② 查出一处【陈旧的文档声明】** ✓✓：**卷 22 L500 写着"服务 `vmu.collab.authorship()`／`reconcile(period)`（**计划 ✗**）"** ✓ —— **而 `collab.js` 【早就有 `authorship()`（L252 ✓）与 `settle()`（L224 ✓，即 reconcile 的那个动作 ✓）** ✓ ⇒ **该"计划"已过期** ✗ ⇒ **属目标 ① 要修的"docs 中不合理之处"，记为下一区间的首件事** ✓。
+  ★★ **③ `vmu.collab.authorship`【键】的语义很薄** ✗：**卷 22 只列了 `jointAuthorshipPolicy`／`settlementCycleDays`／`reconciliationToleranceMinor` 等键** ✓，**没有给"名为 `authorship` 的键"一个独立语义** ✓ ⇒ **不硬接，如实记为"语义未定"** ✓。
+  ✗✗ **④ `schedule`(3) 的尝试【失败并已回退】** ✓：**三条读取与该面的 `scheduleDeclarations()` 报告【都曾落位且语法 0** ✓，**`defaultTimezone`／`dstPolicy` 的报告也实测正确 ✓**（**默认 `absolute` 且带注释 ✓**）—— 但 **`recurrenceEnabled` 的闸【落进了 `intervalMs` 校验的 `if` 块内部** ✗（**只在区间非法时才跑 ⇒ 探针用合法区间时被跳过 ✓**）**）** ⇒ **我改用【按行搬移】修它** ✗ ⇒ **括号扫描找错了结尾 `}` ⇒ 语法错** ✓ ⇒ ★★ **按纪律【立即 `git checkout` 回退整个文件】** ✓✓ —— **三条键因此【未接】，而两次发现（闸的位置、按行搬移的括号风险）已记下** ✓。
+  **门禁与证据** ✓：**`VMU EXPLAIN+CONTROL+CITATIONS: 66/0`** ✓；**`scheduler.js` 回到已提交态（语法 0 ✓）** ✓；**未接线保持 137** ✓。
+  **未做（明写 ✗）**：★★ **`schedule` 3 键仍未接** ✗ —— **复活条件已明确：闸要放在方法【体首】而非嵌套在区间校验里，且搬移要用【文本块】而非按行括号扫描** ✓；**`collab`(3) 仍未接** ✗（**`authorship` 语义未定；另两键 `exportPolicy`／`federationPeers` 属卷 16，未量** ✓）；**卷 22 L500 的陈旧声明【尚未改** ✗**）**；**`review`／`reviewers`(8) 仍未接** ✗；**其余 137 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 

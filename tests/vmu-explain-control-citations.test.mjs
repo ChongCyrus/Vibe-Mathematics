@@ -197,5 +197,28 @@ const ci = (s = {}) => createCitations({ clock: () => now, settings: s })
   ok(free.render({ title: 't', authors: ['a'], year: 2026, freeText: 'blog post' }).ok === true, 'allowFreeText[+]: rendering a free-text entry works')
 }
 
+
+// ── ROUND 262/263: the two identifier schemes, and the one selection path they must not break ───────────────
+{
+  const off = ci({})
+  const on = ci({ 'vmu.citations.orcid': true, 'vmu.citations.ror': true })
+
+  // the control: with neither declared, those schemes are not considered at all
+  ok(off.identify({ ids: { orcid: '0000-0002-1825-0097' } }).idType === null,
+    'orcid[-]: with the scheme undeclared it is not an identifier this face will key on')
+  ok(off.identify({ ids: { ror: 'https://ror.org/02mhbdp94' } }).idType === null, 'ror[-]: likewise for ROR')
+
+  // declared, they are considered
+  ok(on.identify({ ids: { orcid: '0000-0002-1825-0097' } }).idType === 'orcid', 'orcid[+]: once declared it is used')
+  ok(on.identify({ ids: { ror: 'https://ror.org/02mhbdp94' } }).idType === 'ror', 'ror[+]: likewise for ROR')
+
+  // and there is still exactly ONE selection path: the declared priority wins over the schemes it enables
+  const both = on.identify({ ids: { doi: '10.1/x', orcid: '0000-0002-1825-0097' } })
+  ok(both.idType === 'doi', 'one path: with a DOI present the DECLARED priority still wins - enabling a scheme adds candidates, it does not reorder them', both)
+  const urlFirst = ci({ 'vmu.citations.idPriority': ['url'], 'vmu.citations.orcid': true })
+  ok(urlFirst.identify({ ids: { url: 'u', orcid: '0000-0002-1825-0097' } }).idType === 'url',
+    'one path: a reordered priority still decides, so the schemes never overrule the declaration')
+}
+
 console.log('=== VMU EXPLAIN+CONTROL+CITATIONS: ' + pass + ' passed, ' + fail + ' failed ===')
 process.exit(fail > 0 ? 1 : 0)
