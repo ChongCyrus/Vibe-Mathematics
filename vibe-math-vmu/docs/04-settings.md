@@ -631,6 +631,9 @@ vmu.packs.active: [v5r]
 | `vmu.archive.offlineFirst` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.receiptRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.targets` | string[] | `[zenodo,osf,swh,other]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
+| `vmu.auction.dirtyWorkQuota` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.auction.fairnessPolicy` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.auction.rotationWindow` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
 | `vmu.avail.allowOnRequest` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.avail.openLicenses` | string[] | `[CC0-1.0,CC-BY-4.0,MIT,Apache-2.0]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.avail.requireUrl` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
@@ -947,9 +950,6 @@ vmu.packs.active: [v5r]
 | `vmu.attendance.excusedCounts` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.attendance.markMode` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.attendance.reportLate` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.auction.dirtyWorkQuota` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.auction.fairnessPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.auction.rotationWindow` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.audit.dir` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.audit.exportScope` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.audit.level` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |

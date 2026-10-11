@@ -54,11 +54,15 @@ export const CLOSE_RULES = Object.freeze(['lowest-cost', 'best-score', 'random']
 /** Deterministic tie-breaks, applied in order when the rule leaves more than one candidate. */
 export const TIE_BREAKS = Object.freeze(['earliest', 'price', 'id'])
 
+/** ROUND 116: the fair-dispatch strategies docs/17 §S09 declares (`equal｜quota｜rotation`). */
+export const FAIRNESS_POLICIES = Object.freeze(['equal', 'quota', 'rotation'])
+
 const DEFAULTS = Object.freeze({
   bidWindowMs: 0, maxBidCost: 0, maxOpenAuctions: 1, maxBids: 50, maxPosts: 100, maxSuspects: 200,
   minBids: 1, awardNeedsRationale: true, cancelNeedsReason: true, collusionScan: true,
   reputationInPrice: false, tieBreak: 'earliest', closeRule: 'best-score', requirePlan: true,
   collusionWindowMs: 0, collusionMaxMutualShare: 0.8, collusionMinEvidence: 2, collusionOnSuspect: 'report',
+  fairnessPolicy: 'equal', dirtyWorkQuota: 0, rotationWindow: 0,
 })
 
 /** A deterministic, dependency-free fingerprint (djb2 hex) — used for plan identity and `random`. */
@@ -120,6 +124,13 @@ export function createBidding({ clock = () => 0, log = null, settings = {}, bus 
   const collusionMinEvidence = asInt(sget('vmu.collusion.minEvidence', DEFAULTS.collusionMinEvidence), DEFAULTS.collusionMinEvidence, 1)
   const collusionOnSuspect = sget('vmu.collusion.onSuspect', DEFAULTS.collusionOnSuspect) === 'freeze-review' ? 'freeze-review' : 'report'
   const maxSuspects = asInt(sget('vmu.auction.maxSuspects', DEFAULTS.maxSuspects), DEFAULTS.maxSuspects, 1)
+  // ROUND 116 (docs/17 §S09, anti-cherry-picking): the three keys the volume declares for fair dispatch. They were
+  // planned while the registry already carried `VMU_FAIRNESS_QUOTA` as a registered code - a code the module never
+  // threw. `equal` is the default, so nothing below changes behaviour unless a pack asks for `quota`.
+  const fairnessPolicy = FAIRNESS_POLICIES.includes(sget('vmu.auction.fairnessPolicy', DEFAULTS.fairnessPolicy))
+    ? sget('vmu.auction.fairnessPolicy', DEFAULTS.fairnessPolicy) : DEFAULTS.fairnessPolicy
+  const dirtyWorkQuota = asNum(sget('vmu.auction.dirtyWorkQuota', DEFAULTS.dirtyWorkQuota), DEFAULTS.dirtyWorkQuota)
+  const rotationWindow = asInt(sget('vmu.auction.rotationWindow', DEFAULTS.rotationWindow), DEFAULTS.rotationWindow)
 
   // ── state (mutated only by post/bid/close/award/cancel) ────────────────────────────────────────────
   const posts = new Map()            // postId -> post
@@ -366,6 +377,26 @@ export function createBidding({ clock = () => 0, log = null, settings = {}, bus 
         counters.awardsRefused += 1
         throw deny('VMU_INVALID_ARGUMENT', 'an award must carry a rationale (vmu.auction.awardNeedsRationale=true): ' + post.id,
           'give rationale as non-empty text: vmu.auction.awardNeedsRationale=true makes the reason mandatory (docs/17 §10) — the reason is what makes the award auditable')
+      }
+      // ROUND 116: fair dispatch (docs/17 S09, anti-cherry-picking). Only the `quota` policy constrains
+      // anything and `equal` is the default, so this cannot change behaviour unless a pack asks for it. The
+      // share counts the awards this face has made - within `rotationWindow` when one is set - and the refusal
+      // is the code the volume already registered and the module never threw: VMU_FAIRNESS_QUOTA.
+      if (fairnessPolicy === 'quota' && dirtyWorkQuota > 0) {
+        let mine = 0
+        let total = 0
+        for (const p of posts.values()) {
+          if (!p.awarded) continue
+          if (rotationWindow > 0 && ms - p.awarded.at > rotationWindow) continue
+          total += 1
+          if (String(p.awarded.to) === String(to)) mine += 1
+        }
+        if (total > 0 && (mine + 1) / (total + 1) > dirtyWorkQuota) {
+          counters.awardsRefused += 1
+          throw deny('VMU_FAIRNESS_QUOTA',
+            'awarding to ' + String(to) + ' would put ' + (mine + 1) + '/' + (total + 1) + ' of the dirty work on one member, above vmu.auction.dirtyWorkQuota=' + dirtyWorkQuota,
+            'pick another member, or raise vmu.auction.dirtyWorkQuota (docs/17 S09: the quota is what stops cherry-picking)')
+        }
       }
       const bids = post.bidOrder.length
       if (bids < minBids) {
