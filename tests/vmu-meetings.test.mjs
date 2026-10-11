@@ -365,13 +365,14 @@ const err = (fn) => errOf(fn)
   // ROUND 198: 47 -> 48, deliberately. `vmu.meetings.wakeRetries` is now WIRED: the `retry` wake policy has its bound,
   // the key is consulted (and marked) when that policy runs, and a pack that sets it now changes behaviour.
   // ROUND 199: 48 -> 49, deliberately - `vmu.meetings.verdictMaxRounds` is now WIRED (motion ceiling).
-  ok(WIRED_KEYS.length === 49, 'the layer wires all 49 declared vmu.meetings.* keys', String(WIRED_KEYS.length))
+  // ROUND 200/201: 49 -> 50, deliberately - `vmu.meetings.hardLimitMs` is now WIRED (the hard wall-clock backstop).
+  ok(WIRED_KEYS.length === 50, 'the layer wires all 50 declared vmu.meetings.* keys', String(WIRED_KEYS.length))
   ok(st.declaredMeetingKeys === 56, 'the declared universe is read from settings/schema.js (core + planned)', String(st.declaredMeetingKeys))
   ok(st.plannedKeys.length + st.wiredCount === st.declaredMeetingKeys && st.overlapWithWired.length === 0 && st.complementOk === true,
     'WIRED and plannedKeys are COMPLEMENTARY and partition the 56 declared keys',
     JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredMeetingKeys, overlap: st.overlapWithWired }))
-  ok(Object.keys(st.keys).length === 49 && !Object.values(st.keys).some((v) => v === undefined),
-    'status().keys reports a real value for all 49 wired keys (no silent nulls)')
+  ok(Object.keys(st.keys).length === 50 && !Object.values(st.keys).some((v) => v === undefined),
+    'status().keys reports a real value for all 50 wired keys (no silent nulls)')
   ok(st.plannedKeys.every((k) => typeof st.unwiredReasons[k] === 'string'), 'any unwired key would carry a reason (mechanism present)')
   ok(typeof UNWIRED_REASONS['vmu.meetings'] === 'string', 'the reason table is exported for future keys')
   // enforced[] is precise: a call that evaluates nothing does not claim a key
@@ -570,6 +571,33 @@ const err = (fn) => errOf(fn)
   for (let i = 0; i < 3; i += 1) ok(def.h.t.motion({ meeting: def.id, member: 'acad', text: 'd' + i }).ok === true, 'verdictMaxRounds: the DEFAULT ceiling allows three motions (' + (i + 1) + ')')
   const e4 = err(() => def.h.t.motion({ meeting: def.id, member: 'acad', text: 'fourth' }))
   ok(e4 && e4.code === 'VMU_RESOURCE_BUDGET', 'verdictMaxRounds[-]: the DEFAULT ceiling refuses the fourth (default is 3, not 1)', e4 && e4.code)
+}
+// ROUND 201: `vmu.meetings.hardLimitMs` - the HARD wall-clock backstop, clamped [300000, 7200000]. The shape is the
+// one a standalone probe PROVED works: build through `mk`, open with the file roster, move the clock, then speak.
+{
+  const h = mk({ 'vmu.meetings.hardLimitMs': 300000, 'vmu.meetings.budgetWallMs': 0 })
+  const o = h.t.open({ type: 'ordinary', chair: 'acad', roster })
+  h.set(1000 + 100)
+  ok(h.t.speak({ meeting: o.meeting, member: 'acad', text: 'inside' }).ok === true,
+    'hardLimitMs[+]: just INSIDE the hard limit speaking is allowed')
+  h.set(1000 + 300001)
+  const e = err(() => h.t.speak({ meeting: o.meeting, member: 'acad', text: 'outside' }))
+  ok(e && e.code === 'VMU_RESOURCE_BUDGET' && /300001 \/ 300000/.test(String(e.message)),
+    'hardLimitMs[-]: past the hard limit speaking is refused BY NAME carrying elapsed and limit', e && (e.code + ' ' + e.message))
+  ok(e && Array.isArray(e.enforced) && e.enforced.indexOf('vmu.meetings.hardLimitMs') !== -1,
+    'hardLimitMs: the refusal names the key it consulted')
+  const hz = mk({ 'vmu.meetings.hardLimitMs': 0, 'vmu.meetings.budgetWallMs': 0 })
+  const oz = hz.t.open({ type: 'ordinary', chair: 'acad', roster })
+  hz.set(1000 + 900000)
+  const ez = err(() => hz.t.speak({ meeting: oz.meeting, member: 'acad', text: 'late' }))
+  ok(ez && ez.code === 'VMU_RESOURCE_BUDGET',
+    'hardLimitMs[-]: 0 is NOT "unlimited" - it clamps to the 300000 floor, so an old meeting is still stopped', ez && ez.code)
+  const hb = mk({ 'vmu.meetings.hardLimitMs': 99000000, 'vmu.meetings.budgetWallMs': 0 })
+  const ob = hb.t.open({ type: 'ordinary', chair: 'acad', roster })
+  hb.set(1000 + 8000000)
+  const eb = err(() => hb.t.speak({ meeting: ob.meeting, member: 'acad', text: 'way late' }))
+  ok(eb && eb.code === 'VMU_RESOURCE_BUDGET',
+    'hardLimitMs: the ceiling is CLAMPED to 7200000 (99000000 is refused at 8e6 ms)', eb && eb.code)
 }
 /**
  * ROUND 168: the precondition behind the header claim, asserted rather than assumed. A key can be listed as wired,

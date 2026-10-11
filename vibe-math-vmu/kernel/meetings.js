@@ -37,6 +37,7 @@ export const WIRED_KEYS = Object.freeze([
   'vmu.meetings.unansweredInDenominator', 'vmu.meetings.emergencyQuorumRatio', 'vmu.meetings.emergencyKinds',
   'vmu.meetings.chairNeutral', 'vmu.meetings.chairTransferAudit', 'vmu.meetings.committeeMax', 'vmu.meetings.committeeReportRequired',
   'vmu.meetings.budgetTurns', 'vmu.meetings.budgetTokens', 'vmu.meetings.budgetWallMs', 'vmu.meetings.budgetOnExceed',
+  'vmu.meetings.hardLimitMs',
   'vmu.meetings.speechDefaultMs', 'vmu.meetings.speechMaxMs', 'vmu.meetings.speechExtendMs', 'vmu.meetings.speechExtendMax', 'vmu.meetings.speechQuotaPerMember',
   'vmu.meetings.interruptAllow', 'vmu.meetings.interruptQuota', 'vmu.meetings.orderMode',
   'vmu.meetings.lateAfterMs', 'vmu.meetings.leaveEarlyPolicy', 'vmu.meetings.materialsRequired',
@@ -63,6 +64,7 @@ const DEFAULTS = Object.freeze({
   'vmu.meetings.unansweredInDenominator': false, 'vmu.meetings.emergencyQuorumRatio': 0, 'vmu.meetings.emergencyKinds': [],
   'vmu.meetings.chairNeutral': false, 'vmu.meetings.chairTransferAudit': false, 'vmu.meetings.committeeMax': 0, 'vmu.meetings.committeeReportRequired': false,
   'vmu.meetings.budgetTurns': 0, 'vmu.meetings.budgetTokens': 0, 'vmu.meetings.budgetWallMs': 0, 'vmu.meetings.budgetOnExceed': 'refuse',
+  'vmu.meetings.hardLimitMs': 1800000,
   'vmu.meetings.speechDefaultMs': 0, 'vmu.meetings.speechMaxMs': 0, 'vmu.meetings.speechExtendMs': 0, 'vmu.meetings.speechExtendMax': 0, 'vmu.meetings.speechQuotaPerMember': 0,
   'vmu.meetings.interruptAllow': true, 'vmu.meetings.interruptQuota': 0, 'vmu.meetings.orderMode': 'fifo',
   'vmu.meetings.lateAfterMs': 0, 'vmu.meetings.leaveEarlyPolicy': 'allow', 'vmu.meetings.materialsRequired': false,
@@ -109,6 +111,15 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     committeeMax: n(sget('vmu.meetings.committeeMax')), committeeReportRequired: sget('vmu.meetings.committeeReportRequired') === true,
     budgetTurns: n(sget('vmu.meetings.budgetTurns')), budgetTokens: n(sget('vmu.meetings.budgetTokens')),
     budgetWallMs: n(sget('vmu.meetings.budgetWallMs')), budgetOnExceed: oneOf(sget('vmu.meetings.budgetOnExceed'), ['refuse', 'warn', 'extend'], 'refuse'),
+    // ROUND 200/201: the HARD wall-clock backstop, clamped [300000, 7200000] with default 1800000. Its contract says
+    // there is no unbounded case, so 0 does NOT mean unlimited here (unlike `budgetWallMs`, the soft one). `undefined`
+    // means unset (use the default); an explicit 0 is a VALUE and therefore clamps to the 300000 floor. Writing this as
+    // `n(...) || 1800000` would conflate the two, because 0 is falsy - my own assertion caught exactly that.
+    hardLimitMs: (() => {
+      const raw = sget('vmu.meetings.hardLimitMs')
+      const v = (raw === undefined || raw === null || raw === '') ? 1800000 : n(raw)
+      return Math.min(7200000, Math.max(300000, v))
+    })(),
     speechDefaultMs: n(sget('vmu.meetings.speechDefaultMs')), speechMaxMs: n(sget('vmu.meetings.speechMaxMs')),
     speechExtendMs: n(sget('vmu.meetings.speechExtendMs')), speechExtendMax: n(sget('vmu.meetings.speechExtendMax')),
     speechQuotaPerMember: n(sget('vmu.meetings.speechQuotaPerMember')),
@@ -374,6 +385,13 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       if (K.budgetTokens > 0 && m.tokens > K.budgetTokens) {
         mark(enforced, 'vmu.meetings.budgetTokens')
         soft = budgetVerdict(m, 'tokens', m.tokens, K.budgetTokens, enforced)
+      }
+      // ROUND 200: the HARD wall-clock backstop is consulted FIRST - it has no off switch, while the soft budget
+      // below may refuse, warn or extend. A pack can set this key and it now changes behaviour.
+      if (now - m.wallStartMs > K.hardLimitMs) {
+        mark(enforced, 'vmu.meetings.hardLimitMs')
+        throw deny('VMU_RESOURCE_BUDGET', 'the meeting wall-clock HARD limit is exceeded: ' + (now - m.wallStartMs) + ' / ' + K.hardLimitMs,
+          'close this meeting; the hard limit has no off switch (vmu.meetings.hardLimitMs, clamped [300000, 7200000])', enforced)
       }
       if (K.budgetWallMs > 0 && now - m.wallStartMs > K.budgetWallMs) {
         mark(enforced, 'vmu.meetings.budgetWallMs')
@@ -870,7 +888,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
 /** The value record for every wired key (explicit map; a name-derived lookup silently produced nulls). */
 function keysSnapshot(K) {
   return {
-    'vmu.meetings.wakeRetries': K.wakeRetries, 'vmu.meetings.verdictMaxRounds': K.verdictMaxRounds,
+    'vmu.meetings.wakeRetries': K.wakeRetries, 'vmu.meetings.verdictMaxRounds': K.verdictMaxRounds, 'vmu.meetings.hardLimitMs': K.hardLimitMs,
     'vmu.meetings.typeCatalog': K.typeCatalog, 'vmu.meetings.attendanceMode': K.attendanceMode, 'vmu.meetings.liveCap': K.liveCap,
     'vmu.meetings.quorumMin': K.quorumMin, 'vmu.meetings.quorumRatio': K.quorumRatio, 'vmu.meetings.quorumLossPolicy': K.quorumLossPolicy,
     'vmu.meetings.quorumRecountMs': K.quorumRecountMs, 'vmu.meetings.unansweredInDenominator': K.unansweredInDenominator,
