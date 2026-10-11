@@ -316,6 +316,16 @@
   **实测（判定确实变了的最强证据 ✓）** ✓：`fifo` ⇒ 第二、第三个都 `VMU_CONFLICT` ✓；`preempt` ⇒ 第二个 **ok** ＋ `preempted={id:'rs-1',by:'m1'}` ✓ ＋ **★ 第三个也 ok（窗口真的腾出来了）** ✓✓；`nonsense` ⇒ 回落且 `priorityPolicy:'fifo'` ✓。
   **数字** ✓：套件 **12 → 14 条全绿** ✓；**`TOTAL keys 301 → 304`** ✓、**`recovered 298 → 301`** ✓（三个键的**真默认值** `fifo`／`queue`／`sha256` 由 `s('k', <lit>)` 形态恢复 ✓）、**诚实 null 仍 3** ✓。
 
+- ★★★ **轮 147：`attachCapture` 名不副实（键被读、却从未"附加"）—— 补成真行为，并让引用【只能引用、且进指纹】** ✓✓
+  **发现（同族第 N 例 ✗）** ✓：`use()` 里只有 `if (c.attachCapture) mark('vmu.instruments.attachCapture')` ✗ —— **键被读取、被标记为"已求值"，但"附加数据捕获"这个动作从未发生** ✗✓：台账记录是 `{id, unit, by, purpose, at, fingerprint}`，**没有任何捕获引用字段** ✗。⇒ **"mark 了它"不等于"它起了作用"** ✓（本项目一路在抓的形态 ✓）。
+  **处置（两个键一起做成真行为 ✓）** ✓：
+  **① `attachCapture`（默认 `true`）** ⇒ `use()` **必须给出它引用了哪个库对象**（或继承 `dataCaptureRef` 的默认 ✓）；**引用为空 ⇒ 具名拒** ✓✓，hint 同时给出两条出路 ✓（给 `capture`／声明默认／确认不需要就关掉该键 ✓）。**理由**：**一条没有指向数据的指针的使用记录，正是没人能审计的记录** ✓。
+  **② `dataCaptureRef`（默认 `''`）** ⇒ **默认引用** ✓（pack 用它声明"捕获放在哪" ✓）；**移入 `WIRED_INSTRUMENT_KEYS`** ✓（它被读、且**改变判定** ✓）。
+  ★ **纪律** ✓：**只引不复制** ✓ —— 记录里存的是**引用**（`capture` ✓），且**引用进指纹** ✓ ⇒ **换引用 ⇒ 指纹必须变** ✓（已断言 ✓✓，这就是"它真的在记录里"的证据 ✓）。
+  **实测** ✓：默认缺引用 ⇒ `VMU_META_VALIDATION_FAILED`（消息含"缺数据捕获引用" ✓）／给引用 ⇒ ok 且 `capture="lib/x"` ✓／`attachCapture:false` ⇒ ok 且 `capture=null`（**不是空串、也不编造** ✓）／`dataCaptureRef:'lib/default'` ⇒ ok 且 `capture="lib/default"` ✓／**换引用 ⇒ 指纹不同** ✓。
+  **并顺手修掉一次【我自己的空过风险】** ✓：套件里那条"确定性"测试比较两次 `use()` 的 JSON —— 新契约下**两侧都会被拒** ✗ ⇒ **两个相同的拒绝比较相等 ⇒ 断言会通过却什么都没证明** ✗✓ ⇒ **给它们补上引用后，它又重新比较两条真实记录** ✓✓（契约变更会让旧断言**偷偷作废**，这条值得记 ✓）。
+  **数字** ✓：套件 **14 → 15 条全绿** ✓（既有 9 处调用按新契约补齐 ✓）；**`TOTAL keys 304 → 305`** ✓、**`recovered 301 → 302`** ✓、**诚实 null 仍 3** ✓；划分实测 **`wired=15 planned=2 all=17 exact=true`** ✓（余下 `ledgerDir`／`downtimePolicy` ✓）。
+
 ### 0.4 结论
 
 

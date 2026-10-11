@@ -28,11 +28,13 @@ export const WIRED_INSTRUMENT_KEYS = Object.freeze([
   // accessor call - that was WRONG about the mechanism while right about one effect (`priorityPolicy` did not
   // change a decision until this round). Same class as the course visibility key in round 120.
   'vmu.instruments.priorityPolicy', 'vmu.instruments.waitlistPolicy', 'vmu.instruments.hashAlgo',
+  // ROUND 147: `dataCaptureRef` moved here too - it is READ (a use inherits it as the capture reference) and it
+  // changes an outcome, since with `attachCapture` on an empty reference refuses the use by name.
+  'vmu.instruments.dataCaptureRef',
 ])
 /** 未接：**逐个点名＋原因** ✗✓。 */
 export const PLANNED_INSTRUMENT_KEYS = Object.freeze([
   ['vmu.instruments.ledgerDir', '台账落盘目录未接：无 FS 接缝（本面只保留内存台账 ✗）'],
-  ['vmu.instruments.dataCaptureRef', '数据捕获引用未接：需 library 面（只引用不重定义 ✗）'],
   ['vmu.instruments.downtimePolicy', '停机策略未接：需与运维/告警面协同（本面只做维护窗口 ✗）'],
   // ROUND 146: the three entries that used to sit here (priorityPolicy / waitlistPolicy / hashAlgo) were moved BACK
   // to the wired list. Measured: all three ARE read by this module, and the round-115 reasons were wrong about the
@@ -91,6 +93,10 @@ export function createInstruments(opts) {
       scheduleMaintenance: b('vmu.instruments.scheduleMaintenance', true),
       hashAlgo: s('vmu.instruments.hashAlgo', 'sha256'),
       attachCapture: b('vmu.instruments.attachCapture', true),
+      // ROUND 147: the DEFAULT capture reference. A use record points at the captured data instead of copying it
+      // (cite, never copy - the same rule the Lean archive follows), so this key is where a pack says "captures
+      // live here" and an empty value means the caller must name one per use.
+      dataCaptureRef: s('vmu.instruments.dataCaptureRef', ''),
     }
   }
   const keysUsed = () => WIRED_INSTRUMENT_KEYS.slice()
@@ -158,12 +164,33 @@ export function createInstruments(opts) {
         }
       }
     }
-    if (c.attachCapture) mark('vmu.instruments.attachCapture')
-    const record = { id: 'ur-' + (++seq), unit: u.id, by, purpose, at: clock(), fingerprint: fp({ unit: u.id, by, purpose, at: clock() }) }
+    /**
+     * ROUND 147 — THE CAPTURE IS ACTUALLY ATTACHED HERE. Until this round `attachCapture` was read and marked and
+     * nothing else happened: the record carried no reference to what was captured, so the "attach" the key names
+     * never occurred (measured: the ledger entry was `{id, unit, by, purpose, at, fingerprint}` with no capture).
+     * Now, with the key on (its default), a use MUST name the capture it refers to - or inherit the declared
+     * default - and an empty reference is refused BY NAME, because a use record with no pointer to the data is
+     * exactly the record nobody can audit. The reference is CITED, never copied, and it enters the fingerprint, so
+     * "which capture" is part of the content identity rather than decoration.
+     */
+    const capture = String(args.capture === undefined || args.capture === null ? '' : args.capture).trim() || c.dataCaptureRef
+    if (c.attachCapture) {
+      mark('vmu.instruments.attachCapture')
+      if (!capture) {
+        return deny('VMU_META_VALIDATION_FAILED',
+          '使用记录**缺数据捕获引用** ⇒ 拒（给 `capture`，或声明 vmu.instruments.dataCaptureRef）',
+          '引用捕获到哪个库对象（**只引不复制** ✗）；确不需要捕获就关掉 vmu.instruments.attachCapture', enforced)
+      }
+      mark('vmu.instruments.dataCaptureRef')
+    } else if (capture) {
+      mark('vmu.instruments.dataCaptureRef')
+    }
+    const at = clock()
+    const record = { id: 'ur-' + (++seq), unit: u.id, by, purpose, at, capture: capture || null, fingerprint: fp({ unit: u.id, by, purpose, at, capture: capture || null }) }
     ledger.push(record)
     log('instruments.use ' + u.id)
     emit({ type: 'instruments.use', unit: u.id })
-    return { ok: true, usageId: record.id, fingerprint: record.fingerprint, enforced, enforcedScope: ENFORCED_SCOPE }
+    return { ok: true, usageId: record.id, capture: record.capture, fingerprint: record.fingerprint, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
   const openWindow = (a) => {

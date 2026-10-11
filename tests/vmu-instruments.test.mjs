@@ -35,7 +35,7 @@ test('an overdue calibration is refused WITH the due date; a fresh one passes', 
   const i = ins({ 'vmu.instruments.calibrationDueDays': 30 }, () => 40 * DAY)
   const u = i.register({ id: 'scope', owner: 'lab', calibratedAt: 0 })
   assert.equal(u.ok, true)
-  const r = i.use({ id: 'scope', by: 'a', purpose: 'measure' })
+  const r = i.use({ id: 'scope', by: 'a', purpose: 'measure', capture: 'lib/ref' })
   assert.equal(r.ok, false)
   assert.equal(r.code, 'VMU_NOT_PERMITTED')
   assert.ok(r.dueDate, '必须给到期日')
@@ -43,7 +43,7 @@ test('an overdue calibration is refused WITH the due date; a fresh one passes', 
   assert.ok(r.enforced.indexOf('vmu.instruments.blockOnOverdue') !== -1)
   // 正例：重新校准 ⇒ 放行
   i.calibrate({ id: 'scope', at: 41 * DAY })
-  assert.equal(i.use({ id: 'scope', by: 'a', purpose: 'measure' }).ok, true)
+  assert.equal(i.use({ id: 'scope', by: 'a', purpose: 'measure', capture: 'lib/ref' }).ok, true)
   passed += 1
 })
 
@@ -51,11 +51,11 @@ test('an overdue calibration is refused WITH the due date; a fresh one passes', 
 test('an untrained operator is refused, and training fixes it', () => {
   const i = ins()
   i.register({ id: 'sem', owner: 'lab', tags: ['sem'] })
-  const r = i.use({ id: 'sem', by: 'newbie', purpose: 'image' })
+  const r = i.use({ id: 'sem', by: 'newbie', purpose: 'image', capture: 'lib/ref' })
   assert.equal(r.code, 'VMU_NOT_PERMITTED')
   assert.ok(/未培训/.test(r.message), '必须说明未培训：' + r.message)
   i.train({ by: 'newbie', tags: ['sem'] })
-  assert.equal(i.use({ id: 'sem', by: 'newbie', purpose: 'image' }).ok, true)
+  assert.equal(i.use({ id: 'sem', by: 'newbie', purpose: 'image', capture: 'lib/ref' }).ok, true)
   passed += 1
 })
 
@@ -135,10 +135,10 @@ test('requireOwner, reserve and scheduleMaintenance switches change behaviour', 
 test('hashAlgo changes the fingerprint prefix and attachCapture is evaluated', () => {
   const a = ins({ 'vmu.instruments.hashAlgo': 'sha256' })
   a.register({ id: 'u1', owner: 'l' })
-  const ra = a.use({ id: 'u1', by: 'p', purpose: 'x' })
+  const ra = a.use({ id: 'u1', by: 'p', purpose: 'x', capture: 'lib/ref' })
   const b = ins({ 'vmu.instruments.hashAlgo': 'blake3' })
   b.register({ id: 'u1', owner: 'l' })
-  const rb = b.use({ id: 'u1', by: 'p', purpose: 'x' })
+  const rb = b.use({ id: 'u1', by: 'p', purpose: 'x', capture: 'lib/ref' })
   assert.ok(ra.fingerprint.startsWith('sha256:') && rb.fingerprint.startsWith('blake3:'), 'hashAlgo 必须改变可观测结果')
   assert.ok(ra.enforced.indexOf('vmu.instruments.attachCapture') !== -1)
   passed += 1
@@ -155,7 +155,7 @@ test('refusals are counted by code and always carry enforced + enforcedScope', (
     assert.ok(Array.isArray(r.enforced), 'enforced 必须是数组')
     assert.equal(r.enforcedScope, 'evaluated-so-far', '拒绝必带 enforcedScope')
   }
-  const nf = i.use({ id: 'nope', by: 'a', purpose: 'x' })
+  const nf = i.use({ id: 'nope', by: 'a', purpose: 'x', capture: 'lib/ref' })
   assert.ok(Array.isArray(nf.enforced) && nf.enforcedScope === 'evaluated-so-far')
   passed += 1
 })
@@ -167,7 +167,7 @@ test('determinism (injected clock), pure read paths, zero-config', () => {
   const run = () => {
     const i = ins({}, () => 5)
     i.register({ id: 'd', owner: 'l' })
-    return JSON.stringify({ u: i.use({ id: 'd', by: 'p', purpose: 'x' }), r: i.reserve({ id: 'd', by: 'p', from: 0, hours: 1 }) })
+    return JSON.stringify({ u: i.use({ id: 'd', by: 'p', purpose: 'x', capture: 'lib/ref' }), r: i.reserve({ id: 'd', by: 'p', from: 0, hours: 1 }) })
   }
   assert.equal(run(), run())
   const i = ins({}, () => 5)
@@ -184,7 +184,7 @@ test('keysUsed() equals the wired set and each key is really read', () => {
   const i = createInstruments({ settings: o.settings, clock: () => 0 })
   i.register({ id: 'k', owner: 'l' })
   i.train({ by: 'p', tags: [] })
-  i.use({ id: 'k', by: 'p', purpose: 'x' })
+  i.use({ id: 'k', by: 'p', purpose: 'x', capture: 'lib/ref' })
   i.openWindow({ id: 'k', from: 0, to: 1000 })
   i.reserve({ id: 'k', by: 'p', from: 1000, hours: 1 })
   i.calibrate({ id: 'k' })
@@ -230,6 +230,36 @@ test('an unknown priorityPolicy falls back to fifo and SAYS SO in the reply', ()
   const clash = i.reserve({ id: 'u1', by: 'm2', from: 3600000, hours: 1 })
   assert.equal(clash.ok, false, '未知取值不得悄悄变成"抢占"')
   assert.equal(clash.priorityPolicy, 'fifo', '★ 回落到 fifo，并在拒里自曝 —— 笔误不能静默改变行为')
+  passed += 1
+})
+
+// ⑱ ROUND 147：数据捕获引用是【真要求】（默认要求 ✓／可给默认 ✓／可关掉 ✓），并【进指纹】✓
+test('the capture reference is required, can be defaulted, can be waived, and enters the fingerprint', () => {
+  const base = { 'vmu.instruments.requireCalibration': false, 'vmu.instruments.requireOwner': false }
+  const req = ins(base)
+  req.register({ id: 'u1', owner: 'm1' })
+  const missing = req.use({ id: 'u1', by: 'm1', purpose: 'p' })
+  assert.equal(missing.ok, false, '默认要求捕获引用 ⇒ 缺则拒')
+  assert.equal(missing.code, 'VMU_META_VALIDATION_FAILED')
+  assert.ok(String(missing.message).indexOf('捕获引用') !== -1, '拒要说明缺什么：' + missing.message)
+
+  const waived = ins(Object.assign({ 'vmu.instruments.attachCapture': false }, base))
+  waived.register({ id: 'u1', owner: 'm1' })
+  const okWaived = waived.use({ id: 'u1', by: 'm1', purpose: 'p' })
+  assert.equal(okWaived.ok, true, '关掉 attachCapture ⇒ 不必给引用')
+  assert.equal(okWaived.capture, null, '未给引用 ⇒ 记录里是 null（不是空串，也不编造）')
+
+  const dflt = ins(Object.assign({ 'vmu.instruments.dataCaptureRef': 'lib/default' }, base))
+  dflt.register({ id: 'u1', owner: 'm1' })
+  const okDefault = dflt.use({ id: 'u1', by: 'm1', purpose: 'p' })
+  assert.equal(okDefault.ok, true, '有默认引用 ⇒ 通过')
+  assert.equal(okDefault.capture, 'lib/default', '★ 生效引用取自 dataCaptureRef')
+
+  const same = ins(base)
+  same.register({ id: 'u1', owner: 'm1' })
+  const one = same.use({ id: 'u1', by: 'm1', purpose: 'p', capture: 'lib/a' })
+  const two = same.use({ id: 'u1', by: 'm1', purpose: 'p', capture: 'lib/b' })
+  assert.notEqual(one.fingerprint, two.fingerprint, '★ 引用进指纹 ⇒ 换引用 ⇒ 指纹变（这是"它真的在记录里"的证据）')
   passed += 1
 })
 
