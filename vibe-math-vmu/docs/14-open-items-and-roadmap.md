@@ -271,6 +271,14 @@
   **实测（逐步）** ✓：`287 → 290`（①）→ `292`（②）→ **`295`（③）**；**`missing 11 → 3`** ✓✓；`INVARIANTS ok … 3 with an honest null default` ✓。**抽查确认非臆造** ✓：`fairnessPolicy='equal'` ✓／`dirtyWorkQuota=0` ✓／`submitMode='artifact'` ✓／`visibility='cohort'` ✓／`peerWeight=0` ✓（**全部与源码字面一致** ✓）。
   **明写未做 ✗（仍 3 个诚实 null）** ✓：`course.latePenaltyRatio`（**有效默认 0 藏在 `Number.isFinite(ratio) && ratio>=0 && ratio<=1 ? ratio : 0` 里 ✗** ⇒ 条件针对的是**局部变量**而非访问器 ⇒ **要恢复就得上数据流分析**，风险大于收益 ✓）／`external.mergePolicy`／`instruments.capabilityTags`（同族：**缺省答案由局部变量上的表达式给出** ✗）。**复活条件** ✓：**若将来愿意引入"局部变量的缺省答案追踪"**（且能证明不引入误判 ✓），再回收这 3 个 ✓；**在此之前它们以 `def: null` ＋ 明说是"诚实 null"** ✓✓。
 
+- ★★★ **轮 136：正文轴落地（v5r 包现在承载【提示词正文】，且"内容完全一致"变成可机械核验的断言）** ✓✓
+  **背景** ✓：轮 135 让工具轴达到 **56／56**，**唯一剩下的是正文轴** —— v5r 的提示词是**文本**，而 vmu 本体**按设计只承载策略** ✓ ⇒ **正文归 pack/preset 层** ✓（我的建议，已按此执行 ✓）。
+  **做法（不制造第二份会漂移的副本 ✓）**：新增生成器 `scripts/generate-pack-prompts.mjs` ✓，从 **`prompt-corpus-v5/prompt-corpus-v5.json`** 生成 **`packs/v5r-prompts.js`** ✓ —— **逐字嵌入**（实测 **67 条／76,503 字符／31 种 kind** ✓），并在**生成物内记下语料的 sha256**（`d889776b36ff…` ✓）⇒ **一旦与语料不一致 ⇒ 链的 `--check` 直接红** ✓✓，而不是"多出一份没人看的副本" ✗。
+  **包字段与【消费者】** ✓✓：`v5r-core` 新增 `prompts: { module, source, count, chars, sourceSha256 }` ✓ —— ★ 而 docs/10 明写"**未知字段会被静默忽略**" ✗ ⇒ **只声明就是本项目一路在抓的"声明无效"** ✗✓ ⇒ 因此**同时给了它真消费者**：`kernel/pack.js` 的 `plan()` **校验**该字段并**输出 `kind:'prompts'` 动作** ✓（实测：`{"kind":"prompts","module":"./v5r-prompts.js","count":67,…}` ✓；非法字段 ⇒ `problems` **逐条点名** ✓）。
+  **证据（"完全一致"不是声明，是断言 ✓）** ✓✓：新增 **`tests/vmu-pack-prompts.test.mjs`（22 条全绿 ✓）** —— 其中 ★ **逐条逐字比较**（`PROMPTS[i].text === corpus.prompts[i].prompt` ✓）、**记录 sha256 ＝ 语料实际 sha256** ✓、**条数／字符数／kind 数三处一致** ✓、**包的声明 ＝ 生成物**（不是手打数字 ✓）、**计划里能看到 `prompts` 动作** ✓、**生成物带 `GENERATED FILE` 标记且被冻结** ✓。
+  **并入链与随包面** ✓：`regen-all` **8 → 9 步** ✓；`package.json#files` 与 `installer.js` 的 vmu 预设清单**都加了 `packs/v5r-prompts.js`** ✓（**正文随包发布** ✓）。
+  **诚实的边界** ✗：本包**不是**"与 v5r 行为等价的证明" ✗（docs/10 §5.3 原话 ✓）—— 它证明的是**正文逐字相同** ✓；**行为等价仍需 A/B 场景台**（P3 ✓），那**仍未做** ✗。
+
 ### 0.4 结论
 
 

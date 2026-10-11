@@ -12,6 +12,12 @@
 //
 // What it does NOT do (honest ✗, docs/10 §5.3): it is not a behavioural-equivalence proof against v5r. The
 // behavioural A/B needs a scenario harness run on both sides (P3) - this pack is the vmu side of it.
+//
+// ROUND 136 — THE CONTENT AXIS: `./v5r-prompts.js` is GENERATED from the v5r prompt corpus by
+// `scripts/generate-pack-prompts.mjs`, which records the corpus sha256 inside it, so this pack carries the line's
+// prompt TEXT and not only its policy. `tests/vmu-pack-prompts.test.mjs` asserts the text equals the corpus
+// VERBATIM (not a paraphrase, not a second copy nobody checks).
+import { SOURCE_REL as PROMPT_SOURCE_REL, SOURCE_SHA256 as PROMPT_SOURCE_SHA256, COUNTS as PROMPT_COUNTS } from './v5r-prompts.js'
 
 /** The stance codes live in the pack's own namespace (R-d), so "the framework refused" stays distinguishable. */
 export const PACK = Object.freeze({
@@ -116,6 +122,26 @@ export const PACK = Object.freeze({
     { from: 'vibe_v5_members', to: 'vmu.members' },
     { from: 'vibe_v5_meeting', to: 'vmu.middleware' },
   ],
+
+  /**
+   * ROUND 136 — THE CONTENT AXIS. Up to this round this pack was policy only: settings, codes, rules, middleware
+   * and aliases, while the v5r line's INSTRUCTIONS are text. The containment table reached every tool and left this
+   * as the one axis that could not be closed inside the framework (vmu holds policy by design), so the text lives
+   * here, in the pack, where the line's own semantics already live.
+   *
+   * The numbers below are NOT typed in by hand and not a second copy: `./v5r-prompts.js` is GENERATED from the
+   * corpus by `scripts/generate-pack-prompts.mjs`, which records the corpus sha256 inside it, and
+   * `tests/vmu-pack-prompts.test.mjs` asserts that every entry's text equals the corpus VERBATIM. The pack
+   * therefore declares the same generated facts the module carries, and the loader reports them in its plan
+   * (`kernel/pack.js`: an action of kind `prompts`).
+   */
+  prompts: {
+    module: './v5r-prompts.js',
+    source: PROMPT_SOURCE_REL,
+    count: PROMPT_COUNTS.total,
+    chars: PROMPT_COUNTS.chars,
+    sourceSha256: PROMPT_SOURCE_SHA256,
+  },
 })
 
 export default PACK

@@ -41,6 +41,7 @@ vibe-math-vmu/packs/<id>.js        # 随包整合包：export const PACK = { …
 | `middleware` | `[{id, …}]` ✓ | **追加到总线的条目** ✓（注意：`kind:'rules'` 的条目**不会**被编译 ⇒ 规则要放 `rules:` ✗✓） |
 | `aliases` | `[{from, to}]` ✓ | 旧名 → 新名映射 ✓（D6 ✓） |
 | `settings` | **键→值映射** ✓（如 `{'vmu.meetings.quorumCap': 3}` ✓） | 作为**一层**在装载期施加 ✓（与现有值冲突且未声明 `vmu.packs.allowOverride` ⇒ **具名拒** O4 ✓） |
+| `prompts` ✓（**轮 136 新增：正文轴**） | **`{ module, source, count, chars?, sourceSha256? }`** ✓ | **包里承载该 line 的【提示词正文】** ✓。`module` 指向**生成物**（`scripts/generate-pack-prompts.mjs` 从 `prompt-corpus-v5/prompt-corpus-v5.json` 生成 ✓，并在生成物内记下**语料的 sha256** ✓）；★ **它的消费者是 `plan()`** ✓ —— 装载计划里会出现一条 **`kind:'prompts'`** 的动作 ✓（**因此它不是"静默字段"** ✗，docs/10 下面那句警告对它不成立 ✓）；字段非法 ⇒ **`problems` 逐条点名** ✓（`prompts.module`／`prompts.source`／`prompts.count` ✓）。**"内容完全一致"由 `tests/vmu-pack-prompts.test.mjs` 逐条逐字证明** ✓✓（不是同义改写 ✗） |
 
 > **未知字段会被静默忽略** ✗✓（`validatePack` 不校验额外键 ✓）⇒ 写错字段名**不会报错**，只会"什么都没发生" ✗ —— 因此**以本表为准**，并在计划里核对 `actions` 是否出现你期望的条目 ✓。
 

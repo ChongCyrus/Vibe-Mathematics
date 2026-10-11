@@ -196,6 +196,25 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
     for (const mm of m.middleware || []) actions.push({ kind: 'middleware', id: mm.id, form: mm.kind || 'module' })
     for (const a of m.aliases || []) actions.push({ kind: 'alias', from: a.from, to: a.to })
     for (const c of m.codes || []) actions.push({ kind: 'code', code: c })
+    /**
+     * ROUND 136: a pack may carry the prompt TEXT it needs - the v5r pack does - and until this block existed the
+     * field would have been dropped IN SILENCE, because `validatePack` does not police extra keys and docs/10 §
+     * says so in as many words. That is precisely the "declaration with no effect" this project keeps finding, so
+     * the field is now VALIDATED (it must name a module, a source and a count) and it appears in the plan as an
+     * action of its own: a loader, and a reader of the plan, can both see that the pack carries text and how much.
+     */
+    if (m.prompts) {
+      const pp = m.prompts
+      const count = Number(pp.count)
+      if (typeof pp.module !== 'string' || pp.module.trim() === '') problems.push('prompts.module must be a module specifier')
+      if (typeof pp.source !== 'string' || pp.source.trim() === '') problems.push('prompts.source must name where the text came from')
+      if (!Number.isInteger(count) || count < 0) problems.push('prompts.count must be a non-negative integer (got ' + JSON.stringify(pp.count) + ')')
+      actions.push({
+        kind: 'prompts', module: String(pp.module || ''),
+        count: Number.isInteger(count) ? count : 0, source: String(pp.source || ''),
+        chars: Number.isInteger(Number(pp.chars)) ? Number(pp.chars) : null,
+      })
+    }
     // THE NAMED REFUSAL (task-159): a plan that cannot be built is a refusal and MUST carry a code —
     // `{ ok:false, problems:[…] }` without one left the caller holding a nameless error (the matrix finding).
     // The code is the SAME one `apply()` uses for the very same `problems` (module consistency), and the

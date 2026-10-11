@@ -24,6 +24,10 @@ const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const CHECK = process.argv.includes('--check')
 const STEPS = [
   ['glossary table (docs/01-§7)', 'scripts/generate-glossary-table.mjs'],
+  // ROUND 136: the pack prompt TEXT is generated from the corpus so the pack cannot become a second, drifting copy.
+  // It is in the chain for the same reason every other generated artefact is: a difference between the module and
+  // the corpus must be a CHECK FAILURE, not something a reader has to notice.
+  ['pack prompts (packs/v5r-prompts.js)', 'scripts/generate-pack-prompts.mjs'],
   // ROUND 70: the wired schema MUST come before the plan registry - that registry's `coreKeys()` reads whatever
   // settings/schema.js declares, so writing the schema second would leave the planned list holding keys the
   // schema now owns. Ordering is the whole point of putting this here instead of running it by hand.
