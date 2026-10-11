@@ -1130,6 +1130,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.review.conflictPolicy', type: 'string', def: 'recuse', hot: HOT.H1, who: 'office', doc: "已接线（reviewers.js 读取）；默认值取自模块源码" },
   { key: 'vmu.review.mode', type: 'string', def: 'single-blind', hot: HOT.H1, who: 'office', doc: "已接线（reviewers.js 读取）；默认值取自模块源码" },
   { key: 'vmu.review.quorum', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（reviewers.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.review.rebuttalRequired', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（records.js 读取）；默认值取自模块源码" },
   { key: 'vmu.reviewers.blindUnbindRequiresReason', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（reviewers.js 读取）；默认值取自模块源码" },
   { key: 'vmu.reviewers.coiPolicy', type: 'string', def: 'deny', hot: HOT.H1, who: 'office', doc: "已接线（reviewers.js 读取）；默认值取自模块源码" },
   { key: 'vmu.reviewers.maxLoad', type: 'natural', def: 3, hot: HOT.H1, who: 'office', doc: "已接线（reviewers.js 读取）；默认值取自模块源码" },

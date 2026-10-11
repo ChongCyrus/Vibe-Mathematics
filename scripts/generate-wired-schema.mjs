@@ -269,7 +269,10 @@ export function collect() {
     // four faces were scanned for accessor forms only - and a key that lives in an exported list is invisible
     // to that scan. Nine keys stayed planned for that reason while their own modules listed them as wired.
     const listed = wiredKeysOf(src)
-    const keys = listed.length ? listed : readKeysOf(src)
+    // ROUND 281: a UNION, not a fallback. The header states it: a key the code reads IS wired. Using the exported list INSTEAD of the
+  // read keys made every other read invisible in a face that exports one - measured: `records.js` exports 24 and reads three more
+  // (`vmu.data.*` twice and the rebuttal declaration), none of which this generator could see.
+  const keys = [...new Set([...listed, ...readKeysOf(src)])]
     if (!keys.length) continue
     let recovered = 0
     for (const key of keys) {
@@ -371,7 +374,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   for (const m of perModule) {
     const src = readFileSync(join(KERNEL, m.module), 'utf8')
     // Same source as the collection: exported list OR actual reads, so the blind spot cannot reappear.
-    const scanned = src.includes('export const WIRED_KEYS') ? wiredKeysOf(src) : readKeysOf(src)
+    const scanned = [...new Set([...wiredKeysOf(src), ...readKeysOf(src)])] // ROUND 281: same union as above
     for (const k of scanned) {
       if (emitted.has(k) || preexisting.has(k) || skipped.includes(k)) continue
       problems.push(m.module + ' reads ' + k + ' but it is neither declared nor documented as a service surface')
