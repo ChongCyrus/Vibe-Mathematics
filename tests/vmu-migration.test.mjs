@@ -365,6 +365,45 @@ const realPlan = (settings = {}, steps = 3) => {
 }
 
 if (failed === 0) {
+
+// ── ROUND 257/259: the compatibility matrix (volume 13 §9) ──────────────────────────────────────────────────
+{
+  const M = (settings, backends) => createMigration({ clock: () => 0, settings: settings || {}, backends: backends || null })
+  const MATRIX = { v1: { p1: 'ok', p2: 'no', p3: 'migrate' } }
+
+  const ready = M({}, { matrix: MATRIX })
+  ok(ready.compatCheck({ kernelVersion: 'v1', packVersion: 'p1' }).verdict === 'ok', 'compat: a cell the matrix marks usable is reported as ok')
+  ok(ready.compatCheck({ kernelVersion: 'v1', packVersion: 'p3' }).needsMigration === true, 'compat: a migrate cell says migration is needed')
+
+  // §9: an unknown combination is REFUSED by default, and the declaration is the only thing that may change that
+  let unknown = null
+  try { ready.compatCheck({ kernelVersion: 'v1', packVersion: 'p9' }) } catch (e) { unknown = e }
+  ok(unknown && unknown.code === 'VMU_COMPAT_UNKNOWN_COMBO', 'compat[default]: an unknown combination is REFUSED, never tried', unknown && unknown.code)
+  const permitting = M({ 'vmu.compat.unknownCombo': 'try' }, { matrix: MATRIX })
+  const attempted = permitting.compatCheck({ kernelVersion: 'v1', packVersion: 'p9' })
+  ok(attempted.verdict === 'unknown' && attempted.warned === true, 'compat[try]: the declaration allows the attempt AND leaves a warned trace', attempted)
+
+  let unusable = null
+  try { ready.compatCheck({ kernelVersion: 'v1', packVersion: 'p2' }) } catch (e) { unusable = e }
+  ok(unusable && unusable.code === 'VMU_COMPAT_UNKNOWN_COMBO', 'compat: a cell the matrix marks unusable is refused by name')
+
+  // no matrix at all is its own code, and enforcement can be switched off to report instead
+  let missing = null
+  try { M({}, null).compatCheck({ kernelVersion: 'v1', packVersion: 'p1' }) } catch (e) { missing = e }
+  ok(missing && missing.code === 'VMU_COMPAT_MATRIX_MISSING', 'compat: no matrix is VMU_COMPAT_MATRIX_MISSING, not a silent pass', missing && missing.code)
+  ok(M({ 'vmu.compat.enforce': false }, null).compatCheck({ kernelVersion: 'v1', packVersion: 'p1' }).ok === true,
+    'compat[enforce=false]: with enforcement off the same absence is merely REPORTED')
+
+  // the known-differences list: citable when declared, and rollback-ability is part of an entry
+  const diffs = M({}, null)
+  let uncited = null
+  try { diffs.knownDifferences({ entries: [{ id: 'd1' }] }) } catch (e) { uncited = e }
+  ok(uncited && uncited.code === 'VMU_INVALID_ARGUMENT', 'compat.known: an entry with no citation is refused by name')
+  ok(diffs.knownDifferences({ entries: [{ id: 'd1', citation: 'doc#1', rollback: 'yes' }] }).ok === true, 'compat.known: a cited entry passes')
+  ok(diffs.knownDifferences({ entries: [{ id: 'd1', citation: 'doc#1' }] }).missingRollbackNote.join(',') === 'd1',
+    'compat.known: an entry that does not say whether it can be rolled back is REPORTED (13 §L166 requires it)')
+}
+
   console.log('=== VMU MIGRATION: ' + passed + ' passed, 0 failed ===')
   process.exit(0)
 }
