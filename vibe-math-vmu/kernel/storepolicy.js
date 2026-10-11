@@ -19,9 +19,27 @@ export const STORE_KEYS = Object.freeze([
   'vmu.store.remote', 'vmu.store.remote.consistency', 'vmu.store.remote.offlinePolicy', 'vmu.store.remote.url',
   'vmu.store.onVersionTooHigh',
 ])
-/** 全部已接 ⇒ 未接为空（**逐条点名**在 `PLANNED` 里显式为空数组 ✓）。 */
-export const WIRED_STORE_KEYS = STORE_KEYS
-export const PLANNED_STORE_KEYS = Object.freeze([])
+/**
+ * ROUND 115: the wired list used to be an alias for the ALL list, which made it a claim rather than a fact. The
+ * module's only use of it is a reporting function, and eight of those keys appear in no accessor call - so they
+ * were listed as wired while no code read them, and the registry declared them tunable. The wired list is now
+ * explicit and holds only what the module really reads.
+ */
+export const WIRED_STORE_KEYS = Object.freeze([
+  'vmu.store.fsync',
+  'vmu.store.lock', 'vmu.store.lock.backoffMs', 'vmu.store.lock.retries', 'vmu.store.lock.serializeAll',
+  'vmu.store.lock.timeoutMs', 'vmu.store.autoBackup',
+])
+export const PLANNED_STORE_KEYS = Object.freeze([
+  ['vmu.store.backend', '后端选择未接：本面只做策略，未读取该键 ✗'],
+  ['vmu.store.root', '存储根目录未接：无 FS 接缝，未读取该键 ✗'],
+  ['vmu.store.tmpDir', '临时目录未接：无 FS 接缝，未读取该键 ✗'],
+  ['vmu.store.remote', '远端存储未接：需网络接缝，未读取该键 ✗'],
+  ['vmu.store.remote.consistency', '远端一致性未接：需网络接缝，未读取该键 ✗'],
+  ['vmu.store.remote.offlinePolicy', '离线策略未接：需网络接缝，未读取该键 ✗'],
+  ['vmu.store.remote.url', '远端地址未接：需网络接缝，未读取该键 ✗'],
+  ['vmu.store.onVersionTooHigh', '版本过高处理未接：需迁移面协同，未读取该键 ✗'],
+])
 export const ENFORCED_SCOPE = 'evaluated-so-far'
 
 const refuse = (code, message, hint) => ({ ok: false, code, message, hint })

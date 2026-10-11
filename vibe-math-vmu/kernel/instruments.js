@@ -21,14 +21,19 @@ export const WIRED_INSTRUMENT_KEYS = Object.freeze([
   'vmu.instruments.requireCalibration', 'vmu.instruments.calibrationDueDays', 'vmu.instruments.blockOnOverdue',
   'vmu.instruments.requireOwner', 'vmu.instruments.capabilityTags', 'vmu.instruments.reserve',
   'vmu.instruments.maxHoldHours', 'vmu.instruments.reservationHorizonDays', 'vmu.instruments.overbookRatio',
-  'vmu.instruments.priorityPolicy', 'vmu.instruments.waitlistPolicy', 'vmu.instruments.scheduleMaintenance',
-  'vmu.instruments.hashAlgo', 'vmu.instruments.attachCapture',
+  'vmu.instruments.scheduleMaintenance', 'vmu.instruments.attachCapture',
 ])
 /** 未接：**逐个点名＋原因** ✗✓。 */
 export const PLANNED_INSTRUMENT_KEYS = Object.freeze([
   ['vmu.instruments.ledgerDir', '台账落盘目录未接：无 FS 接缝（本面只保留内存台账 ✗）'],
   ['vmu.instruments.dataCaptureRef', '数据捕获引用未接：需 library 面（只引用不重定义 ✗）'],
   ['vmu.instruments.downtimePolicy', '停机策略未接：需与运维/告警面协同（本面只做维护窗口 ✗）'],
+  // ROUND 115: these three were in the WIRED list while no code read them - measured: the list's only use in this
+  // module is a reporting function, and none of the three appears in an accessor call. A key that is listed as
+  // wired but never read is exactly the state where changing the value cannot change behaviour.
+  ['vmu.instruments.priorityPolicy', '优先策略未接：本面按先到先得排队，未读取该键 ✗'],
+  ['vmu.instruments.waitlistPolicy', '候补策略未接：本面只做显式排队，未读取该键 ✗'],
+  ['vmu.instruments.hashAlgo', '哈希算法未接：本面不做指纹计算，未读取该键 ✗'],
 ])
 export const ENFORCED_SCOPE = 'evaluated-so-far'
 const refuse = (code, message, hint) => ({ ok: false, code, message, hint })

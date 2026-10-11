@@ -24,8 +24,8 @@ export const COURSE_KEYS = Object.freeze([
   'vmu.course.maxUnits', 'vmu.course.ontologyVersion',
 ])
 export const WIRED_COURSE_KEYS = Object.freeze([
-  'vmu.course.enabled', 'vmu.course.visibility', 'vmu.course.allowAuditors', 'vmu.course.cohortMax',
-  'vmu.course.enrollmentNeedsApproval', 'vmu.course.submitMode', 'vmu.course.maxAttempts',
+  'vmu.course.enabled', 'vmu.course.allowAuditors', 'vmu.course.cohortMax',
+  'vmu.course.enrollmentNeedsApproval', 'vmu.course.maxAttempts',
   'vmu.course.allowLate', 'vmu.course.latePenaltyRatio', 'vmu.course.gradeChangeAdditive',
   'vmu.course.selfReviewAllowed', 'vmu.course.blindReview', 'vmu.course.reviewersPerSubmission',
   'vmu.course.reviewRounds', 'vmu.course.rubricRequired', 'vmu.course.requireRubricRef',
@@ -38,6 +38,10 @@ export const PLANNED_COURSE_KEYS = Object.freeze([
   ['vmu.course.readingsRequired', '必读材料清单未做：需 records/库引用（本面只给形状 ✗）'],
   ['vmu.course.maxUnits', '单元数上限未接：需课程结构面（本面不定义单元 ✗）'],
   ['vmu.course.ontologyVersion', '课程本体版本未接：需本体/迁移面（见 stateversion ✗）'],
+  // ROUND 115: two keys were listed as wired while nothing read them. The list's only use in this module is a
+  // reporting function, and neither key appears in an accessor call - a value nobody reads cannot change anything.
+  ['vmu.course.visibility', '课程可见性未接：本面不做可见性判定，未读取该键 ✗'],
+  ['vmu.course.submitMode', '提交形式未接：本面只记录提交，未读取该键 ✗'],
 ])
 
 const refuse = (code, message, hint) => ({ ok: false, code, message, hint })
