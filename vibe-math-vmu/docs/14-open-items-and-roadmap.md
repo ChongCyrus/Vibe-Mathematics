@@ -1511,6 +1511,11 @@
   ★★★ 承载者与契约【已量清】：library.js 的 exportRecord()（L512）是落点；契约见 07 卷 L615-618（format=enum(tar/zip) 默认 tar；includeBody 默认 true；includeTrash 默认 false）。
   ★★★ 三次失败【都是形态问题，不是语义问题】：① L83 及其兄弟是 createLibrary 解构参数表里的【解构默认值】，不是对象字面量 ⇒ 按对象属性插入即语法错；② 局部 const 与同名参数自遮蔽 ⇒ TDZ；③ 我写的扫描收尾模式的 while 因模式不匹配跑到文件末尾 ⇒ 教训已成第 ⑱ 条。
   **未做（明写 ✗）**：三键仍未接；vmu.middleware(3)/vmu.packs(3)/vmu.math(4) 未动；真机复跑 ✗；版本号/release ✗（须你批准）。
+- ★★★★★ 轮 293：接 vmu.pack.format / includeBody / includeTrash 3 键（**未接线 102 → 99**）；落点＝library.js 的 exportRecord()，读取处须写成 createLibrary 的【解构默认值】（L83 的兄弟形态）。
+  ★★★ 契约（07 卷 L615-618）：format=enum(tar/zip) 默认 tar；includeBody 默认 true；includeTrash 默认 false。
+  ★★★ 行为：package 导出回执报出 {container, includeBody, includeTrash}；未知容器 ⇒ 具名拒；【给非 package 导出传包选项 ⇒ 具名拒】而非静默忽略。
+  ★★ 四次形态/接口自纠（全部靠检查与面自身的提示发现）：解构默认值 vs 对象属性；局部 const 自遮蔽 ⇒ TDZ；while 扫描跑到文件尾（已成 docs/11 第 ⑱ 条）；以及套件接口三连——append 需 statement、append 返回记录本身、导出 internal 记录需 allowInternal:true。
+  **未做（明写 ✗）**：vmu.middleware(3)/vmu.packs(3)/vmu.math(4) 未动；真机复跑 ✗；版本号/release ✗（须你批准）。
 ### 0.4 结论
 
 ## 0.5 未接线键的【三档结构】（轮 287 建表；**轮 290 据实更正数字** ✓✓）

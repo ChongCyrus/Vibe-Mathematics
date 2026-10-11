@@ -81,6 +81,11 @@ export function createLibrary({
   exportFormat = ['json', 'md', 'package'].includes(settings && settings['vmu.export.format'])
     ? settings['vmu.export.format'] : 'json',
   exportIncludeHistory = (settings && settings['vmu.export.includeHistory']) === true,
+    // ROUND 293 (volume 07 §L615-§L618): the PACKAGE export - container and contents. `export.format` says what SHAPE the export
+    // has; these say what the package carries when that shape IS a package. DESTRUCTURING defaults, like their siblings.
+    packContainer = (['tar', 'zip'].includes(settings && settings['vmu.pack.format']) ? settings['vmu.pack.format'] : 'tar'),
+    packIncludeBody = (settings && settings['vmu.pack.includeBody']) !== false,
+    packIncludeTrash = (settings && settings['vmu.pack.includeTrash']) === true,
   // ROUND 233: the index family.
   indexRebuildBatch = (() => { const v = Number(settings && settings['vmu.index.rebuildBatch']); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 500 })(),
   indexVerifyChecksum = (settings && settings['vmu.index.verifyChecksum']) !== false,
@@ -509,7 +514,22 @@ export function createLibrary({
    * could be bypassed by simply asking would not be a default. `vmu.export.includeHistory` decides whether the revisions travel
    * with it, and how many were included is REPORTED.
    */
-  async exportRecord(id, { format = exportFormat, includeHistory = exportIncludeHistory, allowInternal = false } = {}) {
+  async exportRecord(id, { format = exportFormat, includeHistory = exportIncludeHistory, allowInternal = false,
+    container: askedContainer = null, includeBody: askedBody = null, includeTrash: askedTrash = null } = {}) {
+    // ROUND 293: the package declarations govern a PACKAGE export only. Supplying one for another shape is refused BY NAME
+    // rather than silently ignored, and an explicit container must be one the declaration allows.
+    const packOptionsGiven = askedContainer !== null || askedBody !== null || askedTrash !== null
+    if (format !== 'package' && packOptionsGiven) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'package options were given for a ' + String(format) + ' export',
+        'pass format: package, or drop them (vmu.pack.* governs the package export)')
+    }
+    const containerFinal = askedContainer === null ? packContainer : (['tar', 'zip'].includes(askedContainer) ? askedContainer : null)
+    if (askedContainer !== null && containerFinal === null) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'unknown package container: ' + String(askedContainer),
+        'declared containers: tar/zip (vmu.pack.format)')
+    }
+    const bodyFinal = askedBody === null ? packIncludeBody : askedBody === true
+    const trashFinal = askedTrash === null ? packIncludeTrash : askedTrash === true
     const rec = index.get(String(id))
     if (!rec) throw refuse('VMU_INVALID_ARGUMENT', 'no such record: ' + String(id), 'list() shows the ids that exist')
     if (!['json', 'md', 'package'].includes(format)) {
@@ -530,7 +550,8 @@ export function createLibrary({
     const historyIncluded = { asked: includeHistory === true, count: revs.length }
     if (format === 'json') return { ok: true, format, visibility, history: historyIncluded, text: JSON.stringify({ head: body, body: expanded.body, history: revs }, null, 2) }
     if (format === 'md') return { ok: true, format, visibility, history: historyIncluded, text: render(body, expanded.body) }
-    return { ok: true, format, visibility, history: historyIncluded, manifest: body, text: expanded.body }
+    return { ok: true, format, visibility, history: historyIncluded, manifest: body, text: expanded.body,
+      package: { container: containerFinal, includeBody: bodyFinal, includeTrash: trashFinal } }
   },
 
   async storedFingerprint(id) {

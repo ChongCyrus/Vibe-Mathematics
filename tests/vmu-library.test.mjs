@@ -592,6 +592,22 @@ await rm(root, { recursive: true, force: true })
   ok(/inputs: p,q/.test(raw), 'provenance: the bounded chain is PERSISTED, so a later read can see it', raw.split('\n').filter((l) => l.indexOf('inputs') === 0).join(''))
 }
 
+
+// ── ROUND 293: the package export declarations (volume 07 §L615-§L618) ───────────────────────────────────────
+{
+  const packLib = mk()
+  const one = await packLib.append({ kind: 'proposition', statement: 'S', proof: 'P', owner: 'r-1', title: 'Pack' })
+  const pack = await packLib.exportRecord(one.id, { format: 'package', allowInternal: true })
+  ok(pack.package && pack.package.container === 'tar' && pack.package.includeBody === true && pack.package.includeTrash === false,
+    'pack defaults: tar container, body included, trash excluded', pack.package)
+  const declared = await packLib.exportRecord(one.id, { format: 'package', allowInternal: true, container: 'zip', includeTrash: true })
+  ok(declared.package.container === 'zip' && declared.package.includeTrash === true, 'pack: a declared container and trash inclusion are reported', declared.package)
+  const bad = await packLib.exportRecord(one.id, { format: 'package', allowInternal: true, container: 'rar' }).then(() => null, (e) => e)
+  ok(bad && bad.code === 'VMU_INVALID_ARGUMENT', 'pack.format: an unknown container is refused by name', bad && bad.code)
+  const mixed = await packLib.exportRecord(one.id, { format: 'json', allowInternal: true, container: 'zip' }).then(() => null, (e) => e)
+  ok(mixed && mixed.code === 'VMU_INVALID_ARGUMENT', 'pack options for a non-package export are refused rather than ignored')
+}
+
 console.log('=== VMU LIBRARY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

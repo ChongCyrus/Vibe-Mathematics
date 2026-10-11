@@ -87,6 +87,10 @@ const CORE_DEFS = Object.freeze([
   //   kernel/pack.js  → `snap['vmu.pack.compression'] === true` (strict)  ⇒ default false
   { key: 'vmu.audit.retentionDays', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '审计按天老化（天）；0 或负＝禁用老化（kernel/audit.js 的回落语义，禁用时不删任何行）' },
   { key: 'vmu.pack.compression', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '打包启用确定性 LZSS（kernel/pack.js 以 === true 判定；缺省＝关闭，禁用时不压缩）' },
+  // ROUND 293: 长期保存包的容器与内容（07 卷 §L615-§L618；现由 kernel/library.js 的 exportRecord() 读取 ✓）.
+  { key: 'vmu.pack.format', type: 'enum', domain: ['tar', 'zip'], def: 'tar', hot: HOT.H2, who: 'office', doc: "package 导出所用容器（未知容器 ⇒ 具名拒；仅在 export.format=package 时有意义 ✓）" },
+  { key: 'vmu.pack.includeBody', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: "package 导出是否含正文（回执里报出 ✓）" },
+  { key: 'vmu.pack.includeTrash', type: 'boolean', def: false, hot: HOT.H2, who: 'office', doc: "package 导出是否含回收站（默认否 ✓）" },
 
   // ---- prompts ------------------------------------------------------------------------------
   { key: 'vmu.prompts.overridesDir', type: 'path', def: 'prompts/overrides', hot: HOT.H0, who: 'office', doc: '提示词覆盖目录（仓内相对路径）' },
