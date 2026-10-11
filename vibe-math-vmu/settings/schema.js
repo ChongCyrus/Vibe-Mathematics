@@ -97,7 +97,7 @@ const CORE_DEFS = Object.freeze([
   // ---- meetings (rules and mechanism only; "when to meet" and "what counts as stalled" are middleware)
   { key: 'vmu.meetings.quorumRule', type: 'enum', domain: ['m-unanimous', 'all-unanimous'], def: 'm-unanimous', hot: HOT.H1, who: 'role:chair', doc: '法定数规则（仅规则，不含"何时开会"）' },
   { key: 'vmu.meetings.quorumCap', type: 'natural', def: 3, hot: HOT.H1, who: 'role:chair', doc: 'P3：法定数上限 m = min(cap, 参与人数)；0＝不设上限' },
-  { key: 'vmu.meetings.reconsiderFloor', type: 'natural', def: 0, hot: HOT.H1, who: 'role:chair', doc: 'P3：复议门槛下限（规划中的生效门槛 = max(对象标准, 它, 上限)）；0＝只保证"不降"。★ 轮 202 实测：**本面没有该模型的载体** ✗——`fileAppeal()` 是纯程序性的（scope／deadline／reason，**无数值门槛**），`vote()` 的门槛是**会议法定数**（`quorumOf(m)`），**没有逐对象的"对象标准"、也没有"上限"项** ⇒ **此键今天没有执行点** ✗' },
+  { key: 'vmu.meetings.reconsiderFloor', type: 'natural', def: 0, hot: HOT.H1, who: 'role:chair', doc: '复议门槛下限（★ 轮 286：这不是【缺口】而是【分工】—— 生效门槛 = max(对象标准, 它, 上限)，其中「对象标准」与「上限」是【领域常量】，依 docs/10 §1 的 D5【内核零策略】由 pack 定义，本仓不臆造 ✓）。0＝只保证「不降」✓。机制侧判据：docs/08-§L217 的就地说明 ＋ kernel/ballotbox.js L60-68 的受控声明（阈值的另一键 reopenFloor 有意不重复它 ✓）' },
   { key: 'vmu.meetings.verdictMaxRounds', type: 'positiveInteger', def: 3, hot: HOT.H1, who: 'role:chair', doc: 'P3：同一对象的复算轮次上限（不得无限复算）' },
   { key: 'vmu.meetings.hardLimitMs', type: 'natural', def: 1800000, hot: HOT.H1, who: 'office', doc: 'P3：会议墙钟硬界（唯一兜底）＝1800000；钳制 [300000, 7200000]；**不存在"无界"**' },
   { key: 'vmu.meetings.wakeRetries', type: 'natural', def: 5, hot: HOT.H1, who: 'office', doc: 'P3：同一成员同阶段的唤醒重试上限（钳制 [0,10]）；耗尽记 unreached 并视为"已获机会"' },
