@@ -235,6 +235,60 @@ await rm(root, { recursive: true, force: true })
     'fingerprint.includeMeta[+]: it is deterministic, not merely different (the SAME input twice)')
 }
 
+
+// ── ROUND 230: the tags family (docs/07 table) — a capability, not just a read ────────────────────────────────
+{
+  // maxDepth: a tag path deeper than the declared depth is refused
+  const deep = mk({ settings: { 'vmu.tags.maxDepth': 2 } })
+  ok(deep.checkTags({ tags: ['a/b'] }).ok === true, 'tags.maxDepth[+]: a tag within the declared depth passes')
+  let tooDeep = null
+  try { deep.checkTags({ tags: ['a/b/c'] }) } catch (e) { tooDeep = e && e.code }
+  ok(tooDeep === 'VMU_INVALID_ARGUMENT', 'tags.maxDepth[-]: a deeper tag is refused by name', String(tooDeep))
+  ok(mk().checkTags({ tags: ['a/b/c'] }).ok === true, 'tags.maxDepth[default]: the declared default is 3, so a 3-level tag passes')
+  ok(mk({ settings: { 'vmu.tags.maxDepth': 1 } }).checkTags({ tags: ['solo'] }).ok === true,
+    'tags.maxDepth[+]: narrowing the declaration is honoured too')
+
+  // controlled: off by default (zero mechanism), on it demands the registered vocabulary
+  ok(mk().checkTags({ tags: ['anything', 'at/all'] }).ok === true,
+    'tags.controlled[default]: with it off NOTHING is restricted - the zero-mechanism case')
+  const on = mk({ settings: { 'vmu.tags.controlled': true } })
+  on.registerVocabulary({ tags: ['math/analysis', 'math/algebra'] })
+  ok(on.checkTags({ tags: ['math/analysis'] }).ok === true, 'tags.controlled[+]: a registered term passes')
+  let unknown = null
+  try { on.checkTags({ tags: ['math/analysis', 'free-form'] }) } catch (e) { unknown = e && e.code }
+  ok(unknown === 'VMU_INVALID_ARGUMENT', 'tags.controlled[-]: an unregistered term is refused by name', String(unknown))
+  ok(mk({ settings: { 'vmu.tags.controlled': true } }).checkTags({ tags: [] }).ok === true,
+    'tags.controlled[empty]: an empty tag list needs no vocabulary')
+
+  // aliasTable: declared, an alias must have been registered as one - and the refusal names the table
+  const withTable = mk({ settings: { 'vmu.tags.controlled': true, 'vmu.tags.aliasTable': 'Ops/tags.yaml' } })
+  withTable.registerVocabulary({ tags: ['math/analysis'], aliasTags: ['analysis'] })
+  ok(withTable.checkTags({ tags: ['analysis'] }).ok === true,
+    'tags.aliasTable[+]: an alias REGISTERED as one passes while the vocabulary is controlled')
+  const noAlias = mk({ settings: { 'vmu.tags.controlled': true, 'vmu.tags.aliasTable': 'Ops/tags.yaml' } })
+  noAlias.registerVocabulary({ tags: ['math/analysis'] })
+  let aliasHint = null
+  try { noAlias.checkTags({ tags: ['analysis'] }) } catch (e) { aliasHint = e && e.hint }
+  ok(/Ops\/tags\.yaml/.test(String(aliasHint)),
+    'tags.aliasTable[-]: an unregistered alias is refused AND the refusal names the declared table', String(aliasHint))
+  // ROUND 230: with NO table declared there is no alias source at all (this face reads no tag files), so an alias is
+  // refused even when it was registered as one. An earlier version of this assertion expected the opposite and the CODE was
+  // right: an alias that cannot be resolved must not be accepted just because a table name is absent.
+  const withoutTable = mk({ settings: { 'vmu.tags.controlled': true } })
+  withoutTable.registerVocabulary({ tags: ['math/analysis'], aliasTags: ['analysis'] })
+  let noTableAlias = null
+  try { withoutTable.checkTags({ tags: ['analysis'] }) } catch (e) { noTableAlias = e && e.code }
+  ok(noTableAlias === 'VMU_INVALID_ARGUMENT',
+    'tags.aliasTable[empty]: with no table declared an alias is refused - there is no alias source to resolve it from', String(noTableAlias))
+
+  // and append() really USES it - a validator nobody calls would be inert
+  const using = mk({ settings: { 'vmu.tags.controlled': true } })
+  using.registerVocabulary({ tags: ['math/analysis'] })
+  let appendRefused = null
+  try { await using.append({ kind: 'proposition', statement: 'S', tags: ['not-registered'] }) } catch (e) { appendRefused = e && e.code }
+  ok(appendRefused === 'VMU_INVALID_ARGUMENT', 'tags via append()[-]: the tag check is CALLED on the write path, not merely defined', String(appendRefused))
+}
+
 console.log('=== VMU LIBRARY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

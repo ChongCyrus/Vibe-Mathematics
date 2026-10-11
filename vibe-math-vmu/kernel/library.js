@@ -57,6 +57,10 @@ export function createLibrary({
   fingerprintAlgo = (settings && settings['vmu.fingerprint.algo']) || 'sha256',
   fingerprintTruncate = (() => { const v = Number(settings && settings['vmu.fingerprint.truncate']); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0 })(),
   fingerprintIncludeMeta = (settings && settings['vmu.fingerprint.includeMeta']) === true,
+  // ROUND 230: the tags family (`vmu.tags.*`).
+  tagsControlled = (settings && settings['vmu.tags.controlled']) === true,
+  tagsMaxDepth = (() => { const v = Number(settings && settings['vmu.tags.maxDepth']); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 3 })(),
+  tagsAliasTable = (settings && settings['vmu.tags.aliasTable']) || '',
   clock = () => new Date().toISOString(),
   storeMode = (settings && settings['vmu.records.history.storeMode']) || 'full',
 } = {}) {
@@ -66,6 +70,44 @@ export function createLibrary({
   // Enforcement point: every library write is decided by the resolved path policy.
   const gate = (target, kind) => guardWrite({ settings, root, target, kind })
   const truncation = []
+  // ROUND 230: the controlled vocabulary and its aliases, registered by the caller (this face reads no tag files itself).
+  const vocabulary = new Set()
+  const aliases = new Set()
+  const registerVocabulary = ({ tags = null, aliasTags = null } = {}) => {
+    if (Array.isArray(tags)) for (const x of tags) if (typeof x === 'string' && x.trim()) vocabulary.add(x.trim())
+    if (Array.isArray(aliasTags)) for (const x of aliasTags) if (typeof x === 'string' && x.trim()) aliases.add(x.trim())
+    return { ok: true, vocabulary: vocabulary.size, aliases: aliases.size, controlled: tagsControlled,
+      aliasTable: tagsAliasTable || null, enforced: ['vmu.tags.controlled', 'vmu.tags.aliasTable'], fired: [] }
+  }
+  /** Check a tag list against the declaration. Depth first, then the vocabulary, then the alias rule. */
+  const checkTags = ({ tags = null } = {}) => {
+    const enforced = ['vmu.tags.maxDepth', 'vmu.tags.controlled', 'vmu.tags.aliasTable']
+    const fired = []
+    const list = Array.isArray(tags) ? tags.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : []
+    const tooDeep = tagsMaxDepth > 0 ? list.filter((x) => x.split('/').filter(Boolean).length > tagsMaxDepth) : []
+    if (tooDeep.length) {
+      fired.push('vmu.tags.maxDepth')
+      throw refuse('VMU_INVALID_ARGUMENT', 'tag path deeper than vmu.tags.maxDepth=' + tagsMaxDepth + ': ' + tooDeep.join(', '),
+        'flatten the tag, or raise vmu.tags.maxDepth deliberately', { tooDeep, maxDepth: tagsMaxDepth })
+    }
+    if (tagsControlled) {
+      fired.push('vmu.tags.controlled')
+      const unknown = list.filter((x) => !vocabulary.has(x))
+      if (unknown.length) {
+        // The alias rule lives here: an alias may pass ONLY when it was registered as one AND the declaration names a table;
+        // otherwise the refusal points at the table that the caller has to supply.
+        const notAlias = tagsAliasTable ? unknown.filter((x) => !aliases.has(x)) : unknown
+        if (notAlias.length) {
+          throw refuse('VMU_INVALID_ARGUMENT', 'tag(s) outside the controlled vocabulary: ' + notAlias.join(', '),
+            tagsAliasTable
+              ? 'register them as aliases via the declared alias table (' + tagsAliasTable + '), or use a vocabulary term'
+              : 'register a vocabulary with registerVocabulary({tags}), or set vmu.tags.controlled=false deliberately',
+            { notAlias, vocabulary: [...vocabulary].slice(0, 8) })
+        }
+      }
+    }
+    return { ok: true, tags: list.slice(), controlled: tagsControlled, maxDepth: tagsMaxDepth, aliasTable: tagsAliasTable || null, enforced, fired }
+  }
   const index = new Map() // id -> { id, kind, dir, file, head }
 
   const memberDir = (member) => join(root, 'Members', member)
@@ -243,9 +285,12 @@ export function createLibrary({
     get root() { return root },
 
     fingerprint,
+    registerVocabulary,
+    checkTags,
 
     /** Append a card. Same substantive content twice => same id (idempotent), never a silent duplicate. */
     async append(record = {}, opts = {}) {
+      if (record.tags !== undefined) checkTags({ tags: record.tags })   // ROUND 230: a validator nobody calls is inert
       const kind = record.kind
       const fp = fingerprint(kind, record)
       await rebuildIndex()

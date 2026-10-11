@@ -664,7 +664,7 @@ GC 候选 ⇒ 产出删除清单 ⇒ 显式确认（或满足自动执行前置�
 | `vmu.workspace.default` | string | `''` | G | U | 默认工作区 |
 | `vmu.workspace.sharedPaths` | string[] | `[]` | G | U | 共享区挂载点 |
 | `vmu.workspace.crossWrite` | bool | `false` | G | U | 跨区写 |
-| `vmu.paths.followSymlinks` | bool | `false` | G | F | 是否跟随符号链接 |
+| `vmu.paths.followSymlinks` | bool | `false` | G | F | 是否跟随符号链接 —— ★ **轮 230 裁定：本键是 `vmu.safety.followSymlinks` 的【别名】** ✓✓，**权威在 `20-§4`** ✓（**关切属安全、执行点属安全面** ✓）；**保留本行只为让声明与命名空间仍然成立** ✓，**新配置应只写权威键** ✓；代码在两者都声明时以本键优先，以便旧 pack 不被静默改变 ✓ |
 | `vmu.paths.allowedRoots` | string[] | 工作区根 | G | F | 允许写入的根 |
 | `vmu.naming.conflictPolicy` | enum(refuse/suffix) | `refuse` | P | U | 命名冲突策略 |
 | `vmu.names.aliasTablePath` | string(path) | `''` | G | U | 别名表位置 |

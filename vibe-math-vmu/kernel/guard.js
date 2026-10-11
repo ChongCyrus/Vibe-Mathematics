@@ -122,7 +122,9 @@ export function readMaxPathLength(settings) {
 
 /** `vmu.safety.followSymlinks`: default false（docs/20 §4）. */
 export function readFollowSymlinks(settings) {
-  // ROUND 229: TWO DECLARED NAMES FOR ONE KNOB - `vmu.safety.followSymlinks` (docs/20, wired in round 217) and
+  // ROUND 229/230: TWO DECLARED NAMES FOR ONE KNOB, and the ruling that settled it: the security volume is CANONICAL and
+  // the durability key is its alias (docs/20 §4 / docs/07). The precedence below is kept because an existing pack may
+  // declare the alias, and a silent behaviour change for those packs would be worse than the alias itself. - `vmu.safety.followSymlinks` (docs/20, wired in round 217) and
   // `vmu.paths.followSymlinks` (docs/07). A repository audit already recorded this shape as a defect, so the precedence is
   // explicit rather than accidental: the durability volume's key wins when it is DECLARED, and the security one decides
   // otherwise. Both default to false, so an instance that declares neither behaves exactly as before.

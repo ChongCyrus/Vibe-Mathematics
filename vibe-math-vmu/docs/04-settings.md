@@ -789,6 +789,9 @@ vmu.packs.active: [v5r]
 | `vmu.fingerprint.includeMeta` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 指纹是否含元数据（recorder／at；默认不含） |
 | `vmu.paths.followSymlinks` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 是否跟随符号链接（★ 与 vmu.safety.followSymlinks 同指一物：本键【声明时优先】，两者默认同为 false） |
 | `vmu.paths.allowedRoots` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 允许写入的根（只可【收窄】策略，绝不放宽；空＝由策略计算） |
+| `vmu.tags.controlled` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 受控词汇表（true ⇒ 未登记的词具名拒；默认 false＝零机制） |
+| `vmu.tags.maxDepth` | int ≥1 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 标签层级深度（超深具名拒） |
+| `vmu.tags.aliasTable` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 别名表位置（声明后，未登记的别名仍拒并点名该表；本面不自行读文件） |
 | `vmu.archive.offlineFirst` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.receiptRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.targets` | string[] | `[zenodo,osf,swh,other]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
@@ -1313,9 +1316,6 @@ vmu.packs.active: [v5r]
 | `vmu.supplychain.reproducibleBuild` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.supplychain.requireLock` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.supplychain.sbomPath` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.tags.aliasTable` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.tags.controlled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
-| `vmu.tags.maxDepth` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
 | `vmu.tasks.create` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.templates.default` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.templates.items` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
