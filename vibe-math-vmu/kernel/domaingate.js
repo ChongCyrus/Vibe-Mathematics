@@ -201,7 +201,7 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
   }
 
   /** review：IACUC/伦理审查登记；过期或方案号缺失 ⇒ 拒；3R/设施/培训逐项校验；ledgerRef 只引用 22 卷 id。 */
-  function review({ protocolId, approvedAt, expiresAt, threeR = null, anesthesia = null, facility = null, training = null, ledgerRef = null, at = null } = {}) {
+  function review({ protocolId, approvedAt, expiresAt, threeR = null, anesthesia = null, facility = null, training = null, ledgerRef = null, exportScreen = null, at = null } = {}) {
     if (given(at)) judge(at, 'review `at`')
     const when = String(given(at) ? at : clock())
     if (protocolId === undefined || protocolId === null || String(protocolId).trim() === '') {
@@ -234,7 +234,20 @@ export function createDomainGate({ clock = () => new Date(0).toISOString(), log 
         throw refuse('VMU_INVALID_ARGUMENT', 'ledgerRef must be an existing LEDGER ID (a string), got ' + JSON.stringify(ledgerRef), 'this module only REFERENCES the ledger ids defined in vol 22 — it never defines ledger structure')
       }
     }
-    const rec = { protocolId: String(protocolId), approvedAt: given(approvedAt) ? String(approvedAt) : null, expiresAt: String(expiresAt), threeR: threeR ? clone(threeR) : null, anesthesia: anesthesia ? clone(anesthesia) : null, facility: facility ? clone(facility) : null, training: training ? clone(training) : null, ledgerRef: ledgerRef ? String(ledgerRef) : null, at: when }
+    /**
+     * ROUND 156 — A SCREENING RECORD CAN NOW BE REGISTERED. Round 155 taught the gate to REQUIRE one for the dual-use
+     * domain, but `review()` had no way to accept it: the gate's branch read a field nothing could write, so that
+     * domain could never pass. Measured while writing its test. The field is only SHAPE-checked here and the screening
+     * is NOT re-decided: a flagged screening is a legitimate record ("we screened, it flagged, we must not proceed"),
+     * and the single decision point stays the gate.
+     */
+    if (exportScreen !== null && exportScreen !== undefined) {
+      if (typeof exportScreen !== 'object' || !Array.isArray(exportScreen.items)) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'exportScreen must be an object carrying `items` (the screened item classes), got ' + JSON.stringify(exportScreen),
+          'usually the report from screenExportControl({ items }): { ok, flagged, screened, jurisdictions }')
+      }
+    }
+    const rec = { protocolId: String(protocolId), approvedAt: given(approvedAt) ? String(approvedAt) : null, expiresAt: String(expiresAt), threeR: threeR ? clone(threeR) : null, anesthesia: anesthesia ? clone(anesthesia) : null, facility: facility ? clone(facility) : null, training: training ? clone(training) : null, ledgerRef: ledgerRef ? String(ledgerRef) : null, exportScreen: exportScreen ? clone(exportScreen) : null, at: when }
     reviews.set(rec.protocolId, rec)
     counts.writes += 1
     return { ok: true, protocolId: rec.protocolId, expiresAt: rec.expiresAt, ledgerRef: rec.ledgerRef }

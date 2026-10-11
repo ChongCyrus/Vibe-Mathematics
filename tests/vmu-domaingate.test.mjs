@@ -147,5 +147,37 @@ ok(JSON.stringify(f1.status().reviews) === JSON.stringify(f2.status().reviews), 
 }
 
 console.log('')
+
+// ROUND 156: the dual-use domain. The screening record had to become REGISTERABLE first - round 155 taught the gate
+// to require a field that nothing could write, which is why this test ships with the fix rather than after it.
+{
+  const base = { protocolId: 'P-EC', expiresAt: '2026-12-31T00:00:00.000Z' }
+
+  const d = mk()
+  d.declare({ domain: 'dual-use' })
+  d.review(base)
+  refuses(() => d.gate({ domain: 'dual-use', protocolId: 'P-EC' }), 'VMU_EXPORT_CONTROL_UNSCREENED',
+    ['screening'], 'a dual-use gate with NO screening record is refused by name')
+
+  const flagged = mk()
+  flagged.declare({ domain: 'dual-use' })
+  flagged.review(Object.assign({}, base, { exportScreen: { items: ['encryption-strong'] } }))
+  refuses(() => flagged.gate({ domain: 'dual-use', protocolId: 'P-EC' }), 'VMU_EXPORT_CONTROL_UNSCREENED',
+    ['flagged', 'encryption-strong'], '★ a screening that FLAGGED an uncleared class is refused, and the class is NAMED')
+
+  const clean = mk()
+  clean.declare({ domain: 'dual-use' })
+  clean.review(Object.assign({}, base, { exportScreen: { items: ['reagent-a'] } }))
+  ok(clean.gate({ domain: 'dual-use', protocolId: 'P-EC' }).ok === true, '★ a clean screening lets the dual-use gate PASS')
+
+  const cleared = mk()
+  cleared.declare({ domain: 'dual-use' })
+  cleared.review(Object.assign({}, base, { exportScreen: { items: ['encryption-strong'], cleared: ['encryption-strong'] } }))
+  ok(cleared.gate({ domain: 'dual-use', protocolId: 'P-EC' }).ok === true, '★ a class that was explicitly CLEARED passes')
+
+  refuses(() => clean.review(Object.assign({}, base, { exportScreen: 'nope' })), 'VMU_INVALID_ARGUMENT',
+    ['items'], 'the screening record is shape-checked at registration (an items array is required)')
+}
+
 console.log('=== VMU DOMAINGATE: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) process.exit(1)
