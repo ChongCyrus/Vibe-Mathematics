@@ -244,6 +244,9 @@ const acadChildIdOf = (agent) => {
 async function callToolRawPolicy(name, args, agent) {
   const spec = toolRegs.find(x => x.name === name)
   if (!spec) throw new Error('no tool ' + name)
+  // Existing business fixtures explicitly acquire methods; unread/identity cases live in v5-tool-help.test.mjs.
+  const help = toolRegs.find(x => x.name === 'vibe_v5_tool_help')
+  if (help && name !== 'vibe_v5_tool_help') await help.execute({ tool: name }, { agent: agent })
   return JSON.parse(await spec.execute(args || {}, { agent }))
 }
 async function callTool(name, args, agent) {
@@ -512,20 +515,16 @@ for (let i = 0; i < founding.length; i++) {
 assert(founding[0].prompt.indexOf('[状态] 你是 acad（院士）') !== -1, 'the academician brief says 你是 acad（院士） — never "?"')
 assert(!/你是 \?/.test(founding[0].prompt), 'no "你是 ?" placeholder')
 checkPersona('founding', 'acad', founding[0].persona, [
-  [/在册院士：acad/, 'lists itself as the sitting academician'],
-  [/在册常驻研究员：（无）/, 'shows no researchers at that instant'],
-  [/你是「institute」的\*\*院士\*\*/, 'opens by naming its office'],
-  [/Members\/acad\//, 'points at its own library'],
+  [/院士 acad/, 'names its own office'], [/Members\/acad\//, 'points at its own library'], [/Protocol.md/, 'links to the readable protocol'],
 ])
 checkPersona('founding', 'r-3', founding[3].persona, [
-  [/在册院士：acad/, 'names the sitting academician'],
-  [/在册常驻研究员：r-1、r-2、r-3/, 'lists r-1、r-2、r-3 as the sitting researchers'],
-  [/在册临时工：（无）/, 'shows no temps'],
-  [/代号 r-3。/, 'states its own 代号'],
-  [/Members\/r-3\//, 'points at its own library'],
-  [/progress.md/, 'documents Progress/progress.md'],
+  [/常驻研究员 r-3/, 'names its own identity'], [/Members\/r-3\//, 'points at its own library'], [/Progress\//, 'documents its research log'],
 ])
-checkPersona('founding', 'r-1', founding[1].persona, [[/一名常驻研究员/, 'opens as 常驻研究员']])
+checkPersona('founding', 'r-1', founding[1].persona, [[/常驻研究员 r-1/, 'names the researcher']])
+for (const sp of founding) {
+  assert(sp.persona.length < 1800, 'short fixed charter stays under budget')
+  assert(!/在册常驻研究员：/.test(sp.persona), 'volatile roster is not frozen into short charter')
+}
 for (const sp of founding) {
   const owner = memberOfChild(sp.childId)
   assert(sp.persona.indexOf('Members/' + owner + '/') !== -1, owner + "'s charter points at Members/" + owner + '/')
@@ -696,10 +695,10 @@ recordAndCheck('founding-temp', hired.id, tempSpawn.prompt, tempSpawn)
   assert(st.kind === '临时工', 'the temp brief calls it 临时工 (got ' + st.kind + ')')
   assert((rosterOf(tempSpawn.prompt) || []).indexOf(hired.id) !== -1, 'the temp brief lists the temp itself on the roster')
   checkPersona('founding-temp', hired.id, tempSpawn.persona, [
-    [new RegExp('代号 ' + hired.id + '，由 r-1 雇入'), 'names itself and its true employer'],
-    [/用途：核对文献引理/, 'states its purpose'],
+    [new RegExp('临时工 ' + hired.id), 'names itself and its true employer'],
+    [/任务用途：核对文献引理/, 'states its purpose'],
     [new RegExp('Members/' + hired.id + '/'), 'points at its own library'],
-    [/你的雇主：r-1/, 'names its employer'],
+    [/雇主为 r-1/, 'names its employer'],
   ])
   assert(/【入职首轮 —— 临时工 t-\d+】/.test(tempSpawn.prompt), 'the temp brief is framed as its induction')
   assert(/你的初始任务\/用途：/.test(tempSpawn.prompt) && /核对第 3 节引理/.test(tempSpawn.prompt), 'the temp brief carries its initial task')
@@ -768,8 +767,8 @@ for (let i = 0; i < l2spawns.length; i++) {
   const st = parseState(sp.prompt) || {}
   assert(st.m === Math.min(3, i + 1), owner + ': m is computed over the leaderless roster INCLUDING itself (m=' + st.m + ')')
   assert(st.kind === '常驻研究员', owner + ' is a 常驻研究员 (got ' + st.kind + ')')
-  assert(/在册院士：（无）/.test(sp.persona), owner + "'s charter records that there is no academician")
-  assert(/本所当前\*\*没有在册院士\*\*/.test(sp.persona), owner + "'s charter says so in the organization section")
+  assert(/无在册院士/.test(sp.persona), owner + "'s charter records that there is no academician")
+  assert(/无在册院士/.test(sp.persona), owner + "'s charter says so in the organization section")
   assert(!/本所的领头人是\*\*院士/.test(sp.persona), owner + "'s charter does NOT claim a leader exists")
   assert(!/院士 acad/.test(sp.persona), owner + "'s charter never names a non-existent 院士 acad")
   assert(!/主动向院士汇报/.test(sp.persona), owner + "'s charter does not tell it to report to a non-existent academician")
@@ -788,24 +787,16 @@ section('8b the reply spec documents exactly the fields the framework honours')
   for (const c of specKinds) {
     const isTemp = /^t-/.test(c.owner)
     const isAcad = c.owner === 'acad'
-    if (isTemp) {
-      assert(c.prompt.indexOf('"verdict" 字段对你不适用') !== -1, c.owner + ' (temp) is told it has no vote')
-      assert(!/"hire":/.test(c.prompt) && !/"fire":/.test(c.prompt), c.owner + ' (temp) is not offered hire/fire')
-    } else {
-      assert(/"verdict":/.test(c.prompt), c.owner + ' is offered the verdict field')
-      assert(/"hire":/.test(c.prompt) && /"fire":/.test(c.prompt), c.owner + ' is offered hire/fire')
-    }
-    if (isAcad) {
-      assert(/"assign":/.test(c.prompt) && /"prioritize":/.test(c.prompt) && /"nudge":/.test(c.prompt) && /"convene_meeting":/.test(c.prompt),
-        c.owner + ' (academician) is offered its organizational fields')
-    } else {
-      assert(!/"assign":/.test(c.prompt) && !/"prioritize":/.test(c.prompt), c.owner + ' is not offered academician-only fields')
-    }
-    // A field the framework HONOURS but never documents is an unreachable channel: the
-    // member cannot object to an assignment, close a task, or fill a meeting input.
-    assert(/"reject_assign":/.test(c.prompt), c.owner + ' is told about reject_assign (the objection channel is reachable)')
-    assert(/"task_done":/.test(c.prompt), c.owner + ' is told about task_done')
-    assert(/"input":/.test(c.prompt), c.owner + ' is told about the meeting "input" field')
+    assert(/Protocol.md/.test(c.prompt), c.owner + ' can discover the full field catalogue')
+    assert(/progress：/.test(c.prompt) && /record：/.test(c.prompt), 'research fields are offered')
+    assert(/task_done：/.test(c.prompt) && /reject_assign：/.test(c.prompt), 'completion and objection remain discoverable')
+    assert(!/"input":|"meeting_invite":|"verdict":/.test(c.prompt), 'research asks omit meeting and voting catalogues')
+    assert(!/检测不到 LaTeX|【工作经验／流程反馈/.test(c.prompt), 'research asks omit paper and feedback tutorials')
+    if (isTemp) assert(/没有表决权及hire\/fire权限/.test(c.prompt), 'temp authority is explicit')
+    if (isAcad) assert(/assign（/.test(c.prompt) && /nudge（/.test(c.prompt), 'academician coordination remains available')
+    const example = c.prompt.split('\n').find(l => l.startsWith('{"progress"'))
+    assert(!!example && JSON.parse(example).solved === false, 'research sample is strictly valid JSON without a fabricated context estimate')
+    assert(!/"contextPct":\s*\d/.test(c.prompt), 'no fixed context percentage to copy')
   }
 }
 
@@ -1222,6 +1213,46 @@ section('13 full-corpus sweep over every prompt ever sent')
   }
 }
 
+
+section('13b compact framework budgets and paper-specific replies')
+{
+  const baseline = JSON.parse(readFileSync(new URL('../prompt-corpus-v5/baseline-context.json', import.meta.url), 'utf8')).prompts
+  const framework = p => p.replace(/^[\s\S]*?(?=【(?:第 |心跳检查))/, '').replace(/------------\n\[状态\][\s\S]*?\n------------/g, '')
+  for (const kind of ['normal', 'checkpoint']) {
+    const old = baseline.filter(c => c.kind === kind)
+    const fresh = corpus.filter(c => c.kind === kind)
+    assert(old.length === fresh.length && fresh.length > 0, kind + ': baseline fixture coverage is unchanged')
+    for (let i = 0; i < fresh.length; i++) assert(framework(fresh[i].prompt).length <= framework(old[i].prompt).length * 0.4,
+      kind + '/' + fresh[i].owner + ': framework explanation shrinks by at least 60% without cutting inputs')
+  }
+  const rp = makeRoot()
+  await callTool('vibe_v5_start', { problem: '论文阶段协议测试', researcherCount: 1 }, rp)
+  for (const sp of spawnsFor(rp)) { fireEnd(sp.childId, { progress: '已有独立研究材料', contextPct: 10 }); await settle() }
+  await settleInstitute(rp)
+  const startPaper = await callTool('vibe_v5_paper', { lang: 'zh', format: 'md', editor: 'academician' }, rp)
+  assert(startPaper.ok, 'paper fixture starts with a member editor')
+  const seen = new Set()
+  for (let guard = 0; guard < 80 && seen.size < 3; guard++) {
+    const idx = wakes.findIndex(w => w.rootId === rp.id)
+    if (idx < 0) { await settle(); continue }
+    const w = wakes.splice(idx, 1)[0], owner = memberOfChild(w.childId)
+    let reply = { progress: '继续研究' }, kind
+    if (/【最终论文·撰写/.test(w.prompt)) { kind = 'paper-write'; reply = { paper_part: { title: '已有结果', solution: '完整推导与证据', methods: '方法', rules: '规律', limits: '未决', evidence: [] } } }
+    else if (/【最终论文·互审/.test(w.prompt)) { kind = 'paper-review'; reply = { paper_review: { of: owner === 'acad' ? 'r-1' : 'acad', deliverable: true, comments: '核查证据' } } }
+    else if (/【最终论文·定稿/.test(w.prompt)) { kind = 'paper-final'; reply = { paper_final: { decision: 'deliverable', note: '核查完成' } } }
+    if (kind) {
+      seen.add(kind); recordAndCheck(kind, owner, w.prompt)
+      const example = /\{ "paper_(?:part|review|final)"[\s\S]*?\} \}/.exec(w.prompt)
+      let legal = false; try { legal = !!JSON.parse(example?.[0] || '') } catch {}
+      assert(legal, kind + ': the dedicated reply example is strict JSON')
+      assert(!/"contextPct"\s*:\s*\d+/.test(w.prompt), kind + ': no fixed context estimate is suggested')
+    }
+    fireEnd(w.childId, reply); await settle()
+  }
+  assert(seen.size === 3, 'the corpus covers paper writing, peer review and final editing')
+  await endCase(rp)
+}
+
 // =============== corpus dump ====================================================
 section('14 the full prompt corpus is preserved for human review')
 mkdirSync(CORPUS_DIR, { recursive: true })
@@ -1241,7 +1272,7 @@ const seenPersona = new Set()
 const order = ['founding', 'founding-temp', 'founding-leaderless', 'resume', 'normal', 'checkpoint',
   'verify', 'verify-debate', 'meeting', 'meeting-proposal', 'inbox-dm', 'inbox-voters', 'inbox-chat',
   'inbox-office', 'inbox-assign', 'inbox-nudge', 'notice', 'notice-claim', 'after-failure',
-  'lean-work', 'lean-verify', 'lean-fidelity', 'lean-require', 'lean-after-defect', 'lean-tool-hint']
+  'lean-work', 'lean-verify', 'lean-fidelity', 'lean-require', 'lean-after-defect', 'lean-tool-hint', 'paper-write', 'paper-review', 'paper-final']
 // The sort must be TOTAL, not just by kind: entries of the same kind were emitted in whatever order
 // the asynchronous drain produced them (two meeting prompts, two members' normal rounds), so the
 // shipped corpus still changed between runs even after the clock was virtualised. Sorting by

@@ -189,6 +189,9 @@ function makeHost(opts) {
   async function callToolRawPolicy(name, args, agent) {
     const spec = toolRegs.find(x => x.name === name)
     if (!spec) throw new Error('no tool ' + name)
+    // Explicitly acquire methods; current and historical business controls stay comparable.
+    const help = toolRegs.find(x => x.name === 'vibe_v5_tool_help')
+    if (help && name !== 'vibe_v5_tool_help') await help.execute({ tool: name }, { agent: agent || ROOT })
     return JSON.parse(await spec.execute(args || {}, { agent: agent || ROOT }))
   }
   const callTool = callToolRawPolicy

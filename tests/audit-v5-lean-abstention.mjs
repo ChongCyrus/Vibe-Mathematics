@@ -108,7 +108,12 @@ async function mkScenario(tag, o) {
   const cmd = h.commandRegs.find((c) => c.name === 'v5')
   const call = async (raw) => JSON.parse((await cmd.handler({ rawInput: raw, agent: h.ROOT })).text)
   const toolSpec = (name) => h.toolRegs.find((t) => t.name === name)
-  const tool = async (name, args, agent) => JSON.parse(await toolSpec(name).execute(args || {}, { agent: agent || h.ROOT }))
+  const tool = async (name, args, agent) => {
+    // Preserve the abstention audit's premise by explicitly reading methods first.
+    const help = h.toolRegs.find(x => x.name === 'vibe_v5_tool_help')
+    if (help && name !== 'vibe_v5_tool_help') await help.execute({ tool: name }, { agent: agent || h.ROOT })
+    return JSON.parse(await toolSpec(name).execute(args || {}, { agent: agent || h.ROOT }))
+  }
   const child = (id) => h.liveAgents && h.liveAgents.get && h.liveAgents.get(id) ? h.liveAgents.get(id) : { id, session: { header: { parentSession: h.ROOT.id } } }
   const fire = (childId, reply) => { const blocks = [{ type: 'text', text: '```json\n' + JSON.stringify(reply) + '\n```' }]; for (const fn of (h.listeners['subagent/end'] || [])) fn({ id: childId, runId: 'r', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: blocks }) }
   return { WS, h, call, tool, child, fire }

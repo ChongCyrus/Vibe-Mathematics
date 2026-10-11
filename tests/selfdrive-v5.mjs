@@ -139,6 +139,9 @@ plugin.apply(ctx)
 async function callToolRaw(name, args, agent) {
   const spec = toolRegs.find(x => x.name === name)
   if (!spec) throw new Error('no tool ' + name)
+  // Existing business fixtures explicitly acquire methods; unread/identity cases live in v5-tool-help.test.mjs.
+  const help = toolRegs.find(x => x.name === 'vibe_v5_tool_help')
+  if (help && name !== 'vibe_v5_tool_help') await help.execute({ tool: name }, { agent: agent || ROOT })
   return JSON.parse(await spec.execute(args || {}, { agent: agent || ROOT }))
 }
 async function callTool(name, args, agent) {
@@ -297,12 +300,12 @@ assert(started.ok === true, 'vibe_v5_start ok (' + JSON.stringify(started).slice
 assert(spawns.length === 4, 'founded 1 academician + 3 researchers (got ' + spawns.length + ')')
 assert(!!spawnOf('acad'), 'academician acad exists')
 assert(['r-1', 'r-2', 'r-3'].every(r => !!spawnOf(r)), '3 permanent researchers r-1..r-3')
-assert(spawns.every(s => typeof s.persona === 'string' && s.persona.length > 2000), 'every member got the full charter as its persona')
-assert(spawns[0].persona.indexOf('progress.md') !== -1 && spawns[0].persona.indexOf('它的用途') !== -1,
+assert(spawns.every(s => typeof s.persona === 'string' && s.persona.length <= 1800 && s.persona.includes('Shared/Protocol.md')), 'every member receives a short charter and discovers the full handbook')
+assert(spawns[0].persona.indexOf('研究状态写 Progress/') !== -1 && spawns[0].persona.indexOf('完整材料位置') !== -1,
   'charter carries the progress definition AND its purpose explanation')
-assert(spawns[0].persona.indexOf('分派') !== -1 && spawns[0].persona.indexOf('边界') !== -1,
+assert(spawns[0].persona.indexOf('分派与督办') !== -1 && spawns[0].persona.indexOf('不能单方面定论') !== -1,
   'charter describes the academician as the organizational centre (duties + four boundaries)')
-assert(spawns[0].persona.indexOf('m = 3') !== -1 || /至少有 m = \d+ 名有表决权者/.test(spawns[0].persona), 'charter states the m-vote rule with the live m')
+assert(spawns[0].persona.includes('至少 m 张同向布尔票') && spawns[0].persona.includes('没有反向票'), 'charter preserves the m-vote rule; the live m is in the per-round state')
 
 const st0 = await callTool('vibe_v5_status', {})
 assert(st0.backend === 'file', 'durable state uses the hardened JSON backend (got ' + st0.backend + ')')

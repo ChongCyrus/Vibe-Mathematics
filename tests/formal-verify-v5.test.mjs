@@ -185,6 +185,9 @@ const acadChildIdOf = (agent) => {
 async function callToolRawPolicy(name, args, agent) {
   const spec = toolRegs.find(x => x.name === name)
   if (!spec) throw new Error('no tool ' + name)
+  // Existing business fixtures explicitly acquire methods; unread/identity cases live in v5-tool-help.test.mjs.
+  const help = toolRegs.find(x => x.name === 'vibe_v5_tool_help')
+  if (help && name !== 'vibe_v5_tool_help') await help.execute({ tool: name }, { agent: agent })
   return JSON.parse(await spec.execute(args || {}, { agent }))
 }
 async function callTool(name, args, agent) {
@@ -361,9 +364,9 @@ assert(!!toolRegs.find(t => t.name === 'vibe_v5_lean_run') && !!toolRegs.find(t 
     'the schema narrows formalVerify to the three real modes (a typo must not be a fourth)')
   // audit B3: the four Lean keys must be DISCOVERABLE in the description too (v4 already names
   // them; a schema-only key is invisible in the tool list).
-  const setDesc = String(setSpec.description || '')
+  const setDesc = (await callTool('vibe_v5_tool_help', { tool: 'vibe_v5_set' }, RA)).instructions
   assert(['formalVerify', 'leanCommand', 'leanArgs', 'leanTimeoutMs'].every((k) => setDesc.indexOf(k) !== -1),
-    'the set description names all four Lean toolchain keys (audit B3)')
+    'the discoverable set help names all four Lean toolchain keys (audit B3)')
 }
 
 // A stray `formal` reply in OFF mode must be INERT: the field is not offered in the reply contract

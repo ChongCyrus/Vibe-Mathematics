@@ -374,12 +374,117 @@ function hostChildLimitHint(limit) {
     + '，写满后子代理服务抛 ACTIVATION_LIMIT_REACHED）'
 }
 
+export const V5_TOOL_HELP_REQUIRED = Object.freeze(['vibe_v5_set', 'vibe_v5_task_update', 'vibe_v5_assign', 'vibe_v5_propose_verify', 'vibe_v5_lean_run', 'vibe_v5_lean_archive', 'vibe_v5_lean_lib', 'vibe_v5_lean_job', 'vibe_v5_feedback', 'math_computation'])
+const TOOL_HELP_NAV = '复杂工具首次使用前调用 vibe_v5_tool_help({"tool":"工具名称"}) 查阅方法；简单工具和 JSON 回执直接使用。'
+const TOOL_SHORT = {
+  math_computation: '成员/所办：探测或执行计算、读取凭据。仅真实成功的凭据可作证据；修改后重跑，近似结果注明。安装须先计划再确认，商业引擎不安装。首次先查 vibe_v5_tool_help。',
+  vibe_v5_configure: '所办：创建研究所但不启动；然后用 start。方法：vibe_v5_tool_help。',
+  vibe_v5_start: '所办：创建院士/研究员并启动自主研究。组织分派由院士负责。方法：vibe_v5_tool_help。',
+  vibe_v5_resume: '所办：恢复持久研究所及成员会话，缺失会话从完整日志重建。方法：vibe_v5_tool_help。',
+  vibe_v5_pause: '所办：暂停新唤醒，当前回合完成。方法：vibe_v5_tool_help。',
+  vibe_v5_stop: '所办：中断成员并释放会话。方法：vibe_v5_tool_help。',
+  vibe_v5_status: '读取研究所状态。方法：vibe_v5_tool_help。',
+  vibe_v5_report: '读取研究所报告及材料位置。方法：vibe_v5_tool_help。',
+  vibe_v5_set: '仅所办：调整持久参数。共识只计当前投票者的同向布尔票；形式化 require 需要通过或有理由的阻塞。异步入队不代表通过。首次先查 vibe_v5_tool_help。',
+  vibe_v5_message: '所办：向成员或 all 投递消息。方法：vibe_v5_tool_help。',
+  vibe_v5_meeting: '所办：召开会议。结题需要所有投票者同意；每人有发言机会后仍可举手。方法：vibe_v5_tool_help。',
+  vibe_v5_members: '读取成员身份、职责及会话。方法：vibe_v5_tool_help。',
+  vibe_v5_hire: '院士/常驻成员：按职责雇佣临时工（无投票权）；所办可指定上级。方法：vibe_v5_tool_help。',
+  vibe_v5_fire: '院士/常驻成员：辞退自己的临时工；所办可辞退任意临时工。方法：vibe_v5_tool_help。',
+  vibe_v5_add_researcher: '所办：增加常驻研究员。方法：vibe_v5_tool_help。',
+  vibe_v5_remove_researcher: '所办：移除常驻研究员。方法：vibe_v5_tool_help。',
+  vibe_v5_paper: '所办：启动共同写作/互审；强制进入须给理由，所办定稿前须先消息与会议咨询。方法：vibe_v5_tool_help。',
+  vibe_v5_finalize_paper: '所办：互审后裁定 deliverable 或 revise；编辑权限与咨询证据仍受检查。方法：vibe_v5_tool_help。',
+  vibe_v5_say: '成员：发言或向成员/all 投递消息。方法：vibe_v5_tool_help。',
+  vibe_v5_wait: '成员：让出当前回合等待消息；不阻塞心跳。方法：vibe_v5_tool_help。',
+  vibe_v5_record_progress: '成员：将完整数学进展写入自己的研究日志；保留定义、条件、证据及未决步骤。方法：vibe_v5_tool_help。',
+  vibe_v5_record_proposition: '成员：记录命题；必填 statement、value、motive、p，概率不等于证明。方法：vibe_v5_tool_help。',
+  vibe_v5_feedback: '成员/所办：记录与跟进流程反馈。成员仅更新自己的条目；interpersonal 须先评估再回填结果。首次先查 vibe_v5_tool_help。',
+  vibe_v5_record_method: '成员：记录方法；必填 content、value、motive、p。方法：vibe_v5_tool_help。',
+  vibe_v5_record_subproblem: '成员：记录子问题；必填 statement、value、motive、p。方法：vibe_v5_tool_help。',
+  vibe_v5_read_library: '只读成员日志与成果卡；省略 member 读取全部成员。方法：vibe_v5_tool_help。',
+  vibe_v5_propose_verify: '仅院士：先以 op=formal_proof 登记完整证明/证伪并定稿，再提议辩论；登记不可撤回，尝试不算证明。其他成员只能建议。首次先查 vibe_v5_tool_help。',
+  vibe_v5_verdict: '投票成员：1 为真、0 为假，中间值弃权；理由须指向证据，形式化通过仍需忠实性审查。方法：vibe_v5_tool_help。',
+  vibe_v5_task_create: '成员/所办：创建共享任务，可含依赖、优先级与建议写入范围。方法：vibe_v5_tool_help。',
+  vibe_v5_task_list: '读取任务及 owner、revision、依赖与写入范围警告。方法：vibe_v5_tool_help。',
+  vibe_v5_task_get: '修改前读取任务最新 revision。方法：vibe_v5_tool_help。',
+  vibe_v5_task_update: '任务所有者/院士/所办：按动作权限修改任务；expected_revision 必须来自最新读取，冲突须重读再决策。首次先查 vibe_v5_tool_help。',
+  vibe_v5_overview: '读取全所成员、任务、日志末尾、消息与停滞诊断。方法：vibe_v5_tool_help。',
+  vibe_v5_assign: '所办或启用领导职责的院士：给活跃成员分派任务，必填 why 与 acceptance；分派不决定数学真假。首次先查 vibe_v5_tool_help。',
+  vibe_v5_prioritize: '所办或启用领导职责的院士：按理由设置任务优先级，不决定数学真假。方法：vibe_v5_tool_help。',
+  vibe_v5_nudge: '所办或启用领导职责的院士：以理由和下一步唤醒成员。方法：vibe_v5_tool_help。',
+  vibe_v5_lean_run: '成员/所办：编译工作区 .lean 文件。异步返回 queued/jobId 尚未通过；仅完成且内容/构建匹配的成功编译可作证据。缺工具链须如实阻塞。首次先查 vibe_v5_tool_help。',
+  vibe_v5_lean_archive: '成员/所办：归档定义、引理、证明或有理由的 blocked。def/lemma 的 run:false 只存代码；当前 proof 分支忽略此开关。异步入队尚未通过。首次先查 vibe_v5_tool_help。',
+  vibe_v5_lean_lib: '读取复用库、索引、作业与搜索路径；默认重建索引。写定义前先查复用。首次先查 vibe_v5_tool_help。',
+  vibe_v5_lean_read: '只读全局库文件原文；text 上限64KB，检查 truncated，超限完整文件仍在返回路径。方法：vibe_v5_tool_help。',
+  vibe_v5_lean_job: '读取或有限等待后台作业。queued/running 尚未通过；仅已完成且 ok 的编译凭据可作证据。首次先查 vibe_v5_tool_help。',
+}
+export const V5_TOOL_EXAMPLES = Object.freeze({
+  vibe_v5_tool_help: [{ tool: 'vibe_v5_lean_run' }],
+  math_computation: [{ op: 'probe' }, { op: 'run', engine: 'python', mode: 'code', code: 'print(2+2)', record: true }, { op: 'receipt', file: 'Computation/<runId>/receipt.json' }],
+  vibe_v5_configure: [{ institute: 'example', problem: '证明对每个整数 n，n(n+1) 为偶数。' }],
+  vibe_v5_start: [{ researcherCount: 2, academician: true }],
+  vibe_v5_set: [{ formalVerify: 'encourage', leanAsync: true }],
+  vibe_v5_message: [{ to: 'all', content: '请保存完整推导。' }],
+  vibe_v5_meeting: [{ agenda: '比较两条推导路线', kind: 'sync' }],
+  vibe_v5_hire: [{ purpose: '核对边界条件', initial_task: '核对 n=0 的情形' }],
+  vibe_v5_fire: [{ id: 't-1', reason: '任务完成' }],
+  vibe_v5_remove_researcher: [{ id: 'r-1' }],
+  vibe_v5_paper: [{ lang: 'zh', format: 'md', editor: 'academician' }],
+  vibe_v5_finalize_paper: [{ decision: 'revise', note: '补充引理来源' }],
+  vibe_v5_say: [{ text: '已将完整条件写入日志。', to: 'all' }],
+  vibe_v5_wait: [{ timeout_ms: 1000, reason: '等待分派' }],
+  vibe_v5_record_progress: [{ content: '目标：证明偶性。假设 n∈Z。n 与 n+1 中恰有一个为偶数，故乘积为偶数。' }],
+  vibe_v5_record_proposition: [{ statement: '整数 n 的乘积 n(n+1) 为偶数', value: 1, motive: '原问题', p: 1 }],
+  vibe_v5_feedback: [{ op: 'add', category: 'process', route: 'self', phenomenon: '重复查找日志', impact: '耗时', action: '记录材料路径' }, { op: 'list' }, { op: 'update', id: 'fb-1', status: 'closed', outcome: '可从路径读到完整材料' }],
+  vibe_v5_record_method: [{ content: '按整数奇偶分类', value: 1, motive: '证明偶性', p: 1 }],
+  vibe_v5_record_subproblem: [{ statement: '相邻整数必有一个为偶数', value: 1, motive: '乘积偶性', p: 1 }],
+  vibe_v5_propose_verify: [{ target: 'p-even', op: 'formal_proof', status: 'proved', reason: '完整证明在本成员 Progress 日志：相邻整数恰有一个为偶数。' }, { target: 'p-even', kind: 'proposition', reason: '已登记并定稿，审查完整条件。' }],
+  vibe_v5_verdict: [{ target: 'p-even', verdict: 1, reason: '检查完整整数条件与奇偶分类证明。' }],
+  vibe_v5_task_create: [{ subject: '核对奇偶分类', description: '核对所有整数', write_scopes: ['Progress/r-1'] }],
+  vibe_v5_task_get: [{ task_id: 'task-1' }],
+  vibe_v5_task_update: [{ task_id: 'task-1', expected_revision: 1, action: 'claim' }],
+  vibe_v5_assign: [{ to: 'r-1', subject: '核对条件', why: '该成员负责条件核对', acceptance: '在日志写出完整条件与来源' }],
+  vibe_v5_prioritize: [{ order: [{ task_id: 'task-1', priority: 1 }], why: '先核对依赖' }],
+  vibe_v5_nudge: [{ to: 'r-1', why: '依赖已完成', next_step: '从完整日志继续' }],
+  vibe_v5_lean_run: [{ file: 'Formal/p-even.lean', target: 'p-even' }],
+  vibe_v5_lean_archive: [{ kind: 'def', name: 'Example', content: 'def exampleValue : Nat := 2', run: false }, { kind: 'blocked', target: 'p-even', note: '工具链不可用；已保存代码，尚未编译通过。' }],
+  vibe_v5_lean_lib: [{ refresh: false }],
+  vibe_v5_lean_read: [{ name: 'Example', kind: 'lib' }],
+  vibe_v5_lean_job: [{}, { jobId: '<返回的 jobId>', waitMs: 1000 }],
+})
+const TOOL_STEPS = {
+  vibe_v5_set: '先读取 status 当前参数，仅由所办传需修改的键；成功后读 status 核对。不能以参数/优先级决定数学真假；权限错误请由所办处理。',
+  vibe_v5_task_update: '先 task_get/task_list 获取任务与 revision；根据状态选择 action。claim 面向可领取任务；其他修改需所有者/院士/所办，reassign 仅院士/所办。传 expected_revision；V5_TASK_STALE_REVISION 时重新读取后决策，禁止盲目覆盖。write_scopes 只用工作区相对路径，禁止绝对路径和 ..。',
+  vibe_v5_assign: '先 members 确认活跃 to，再 task_get/list 核对依赖；所办或 academicianLeads 启用的院士提供 why 和 acceptance。省略 task_id 会创建任务；指定时修改该任务。依赖未完成先处理依赖，成员可用 reject_assign 回执说明异议。',
+  vibe_v5_propose_verify: '仅院士。先读取完整成果与证明/证伪，确认完成才以 op=formal_proof、status=proved|disproved 登记并锁定，reason 指向材料。然后省略 op 提议共识验证；登记不是 Lean 编译凭据，尝试不具备辩论资格，非院士向院士发送建议。',
+  vibe_v5_lean_run: '编译已存在文件时直接调用 vibe_v5_lean_run，无须重查复用库；仅新写定义时先查 vibe_v5_lean_lib。保存 .lean 后传 file（Formal/x.lean 或工作区内完整路径），可给 target 与 timeout_ms。只允许工作区内 .lean 文件。async.jobId 表示已入队，再用 vibe_v5_lean_job 查完成结果。缺工具链/超时/错误须如实保留代码与输出，用 vibe_v5_lean_archive kind=blocked 写理由；不要自行安装或把下载代理当作可用编译器。修改内容或构建后重跑。',
+  vibe_v5_lean_archive: '先查 vibe_v5_lean_lib，选择 kind。def/lemma 需 name；proof/blocked 需 target；代码用 content 或工作区内 .lean 的 from；blocked 必须 note。已知旧业务限制：仅 def/lemma 的 run:false 保证只写不编译；当前 kind=proof 忽略 run:false，仍可能执行或入队。若要仅保存项目证明，直接用文件工具保存 Formal/<target>.lean 并注明未编译，不调用 proof 归档。异步返回后用 vibe_v5_lean_job 检查；缺工具链如实保留阻塞。全局复用目录在 VibeMath/Formal/Lib 与 Proved，项目证明在研究所 Formal/ 和 Verified/Lean/。',
+  vibe_v5_lean_lib: '先读取复用目录再创建定义；refresh:false 只读已有索引，默认重建索引。用 lean_read 获取原文；jobs 是作业状态，paths 是搜索路径，索引或作业存在不等于编译通过。读取失败时查看返回路径与错误。',
+  vibe_v5_lean_job: '省略 jobId 列出当前研究所作业；使用实际返回的 jobId 查询，waitMs 为有限等待。queued/running/interrupted/failed/timeout 均不能宣称通过。仅 settled 且 ok，并且内容与构建匹配才可引用证明路径。失败先读输出修正，重跑后查新作业。',
+  vibe_v5_feedback: '先 op=list/summary 查看条目；add 必填 category、route、phenomenon、impact、action。只传 parameters 中列出的键，route_note 等未列出的键不合法。self/team 自行调整，interpersonal 需 assessment，关闭需 outcome。update 仅发起人或所办；dropped 写 note/outcome 理由。feedback=off 时请所办启用，不伪称已写入；反馈不是数学证据。',
+  math_computation: '先 op=probe 探测实际可用引擎，再 run；engine 与 mode=code|file|expr 匹配，文件及 captureFiles 在工作区范围，超时受参数限制。需要凭据时 record:true，按返回路径读取 receipt；修改代码/输入后重跑，近似结果须注明。失败保存 stdout/stderr/receipt，不以探测、计划或无凭据 shell 输出声称工具归档。install 先 dryRun 取计划与确认 token，再显式 confirm；商业引擎不安装，不能绕过宿主权限。',
+}
+
 export function apply(ctx) {
   const subagents = ctx.subagents
   const agents = ctx.agents
   const fs = ctx.fs
   const tools = ctx.tools
   const commands = ctx.commands
+  const toolMethods = new Map()
+  const toolReads = new Map() // in memory only; keyed by real session id and method version
+  const toolVersion = method => 'v1-' + sha256Hex(JSON.stringify({ parameters: method.parameters, instructions: method.instructions, examples: method.examples })).slice(0, 16)
+  function requireToolHelp(agent, name) {
+    const read = toolReads.get(sessionIdOf(agent))
+    const method = toolMethods.get(name)
+    method.version = toolVersion(method)
+    if (read && read.session === agent.session && read.versions.get(name) === method.version) return null
+    return { ok: false, code: 'V5_TOOL_HELP_REQUIRED', tool: name, version: method.version,
+      message: '当前会话须先查阅该工具的方法，再重试原操作。',
+      next: { tool: 'vibe_v5_tool_help', arguments: { tool: name } } }
+  }
+  const helpGuard = (agent, name) => () => requireToolHelp(agent, name)
 
   // A plugin UNLOAD must not leave an orphan compiler behind (docs/formal-verification.md §7-6):
   // every session registers its Lean disposer here, and this effect's disposer terminates what
@@ -1091,7 +1196,13 @@ export function apply(ctx) {
     const wakeKind = new Map()
     const rounds = new Map()          // memberId -> rounds since spawn
     const roundsSinceCompact = new Map()
+    const completedRounds = new Map()
     const contextPct = new Map()
+    const contextDiagnostics = new Map()
+    const compactAttempts = new Map()
+    const summaryRequests = new Map()
+    let protocolReadable = false
+    let protocolFailure = ''
     const needReanchor = new Set()
     // G1 (mailbox): ids already PREPENDED to a prompt for this member but not yet acked. The prompt can
     // legitimately be built more than once before the wake (that was the v4 §24 duplicate-read defect),
@@ -1102,7 +1213,7 @@ export function apply(ctx) {
     // own `[新到的消息/通知]` block, or the same messages appear twice in one prompt (the duplicate-read
     // defect the prompt-v5-integrity suite pins). Only set while a block is actually being prepended.
     const inboxSuppressed = new Set()
-    const seeds = new Map()           // memberId -> condensed self-summary seed
+    const seeds = new Map()           // memberId -> navigation to full durable math state
     const lastActiveAt = new Map()
     let currentMember = ''
     let finalizeLock = null
@@ -1285,10 +1396,12 @@ export function apply(ctx) {
     //     `status()`/`report()` so the gap is visible instead of silent.
     let loadSettled = false
     let prematureReads = 0
-    async function ready() {
+    async function ready(options) {
       if (!backend) installBackend()
       await awaitBackendLoad()
       loadSettled = true
+      // Unread calls need loaded authority, not recovery jobs or engine probing.
+      if (options && options.inspectOnly) return true
       // Crash recovery for the Lean queue runs ONCE per session, after the state file is
       // folded in: a leftover Formal/Jobs/*.json is re-queued or explicitly interrupted, and
       // is NEVER silently turned into `passed` (docs/formal-verification.md §7-7).
@@ -1921,6 +2034,8 @@ export function apply(ctx) {
       }
       const ms = activeMembers()
       const b = []
+      const contextInfo = contextDiagnostics.get(member.id)
+      if (contextInfo && contextInfo.lastCompaction === 'checkpoint-not-saved' && contextInfo.lastProgressSaved !== true) b.push('[状态保存失败] 上轮数学状态未确认写入 Progress/，未执行主动压缩；请先保存完整研究状态。')
       b.push('[状态] 你是 ' + member.id + '（' + kindLabel(member.kind) + '）｜轮次 ' + (roundNo !== undefined ? roundNo : (rounds.get(member.id) || 0)) +
         '｜法定票数 m=' + (voterCount() > 0 ? quorumM() : '未启动') + '｜有表决权者 ' + voterCount() + ' 人')
       b.push('[在册] ' + (ms.length ? ms.map((x) => x.id).join('、') : '（无）'))
@@ -2214,7 +2329,58 @@ export function apply(ctx) {
     }
     function memberPersona(member) {
       const extra = String(params.staffPersona || '').trim()
+      const lines = [
+        '【v5 简明章程 v1】',
+        '你是「' + instituteName + '」的' + kindLabel(member.kind) + ' ' + member.id + '。研究目标：',
+        String(inst().problem.statement || '（尚未设定）'),
+        ...(member.direction ? ['任务用途：' + member.direction] : []),
+        ...(member.kind !== 'academician' && !activeMembers().some(m => m.kind === 'academician') ? ['无在册院士：组织与方向由有表决权成员共同商议。'] : []),
+        '优先推进数学：精确定义与假设，给出可检查的推导，明确证明缺口、反例和计算适用范围；共识不是数学证明。',
+        '组织由院士或无院士时的成员共同协调，判断属于你自己；分派工作不决定结论。',
+        member.kind === 'academician' ? '你统筹方向、分派与督办，也参与研究；你的一票与研究员等重，不能单方面定论。' :
+          member.kind === 'temp' ? '你是临时成员，雇主为 ' + (member.hiredBy || '所办') + '；没有表决权及雇佣权限，完成任务后告知雇主。' :
+          '你独立研究并有表决权，可按需协调或雇佣临时成员；向院士或团队报告关键进展。',
+        '只能写自己的 ' + instRel('Members/' + member.id + '/') + '，可读同事成果。研究状态写 Progress/，命题、方法和子问题写成果卡；入库注明价值、动机用途与置信估计。',
+        'Verified/及标记已验证的卡片表示框架已认定的结论；其余材料未验证，引用须标明。不得把近似、有限搜索零命中或共识冒充数学证明。',
+        '定论仍须至少 m 张同向布尔票且没有反向票；临时成员不投票，未决对象保留。只有全体有表决权者明确认为原问题已解决才结题，沉默不是赞成。',
+        '每轮按提示输出合法 JSON；旧字段仍可使用。详细角色规则、各阶段字段和计算/论文指南按需读取 ' + instRel('Shared/Protocol.md') + '（相对会话工作目录）。',
+        '压缩前保存目标、定义与假设、结论及来源、未完成推导、失败路线与适用范围、下一步和完整材料位置；恢复先读自己的完整 Progress/ 与成果卡，不从头重做。',
+        '响应外部干预；仅在协作需要时发消息、开会或记录流程反馈。',
+        TOOL_HELP_NAV,
+      ]
+      return (extra ? extra + '\n\n' : '') + lines.join('\n')
+    }
+    function legacyMemberPersona(member) {
+      const extra = String(params.staffPersona || '').trim()
       return (extra ? extra + '\n\n' : '') + charterFor(member)
+    }
+    async function ensureProtocol() {
+      const L = ['# v5 研究成员协议手册', '- 协议版本：1', '- 本文件由框架生成；按当前角色和阶段查阅。旧回执字段及权限保持兼容。下文 acad、r-1、t-1 是角色示例代号；操作与写入必须使用你自己的代号和章程中的库路径，不能照抄示例身份。']
+      for (const kind of ['academician', 'researcher', 'temp']) {
+        const m = { id: kind === 'academician' ? 'acad' : kind === 'temp' ? 't-1' : 'r-1', kind, hiredBy: 'r-1' }
+        L.push('\n## ' + kindLabel(kind) + '：完整规则\n' + charterFor(m), '\n### 完整回执字段\n' + legacyReplySpec(kind))
+      }
+      L.push('\n## 阶段导航\n普通研究、心跳与任务：progress、record、say、task_done/task_update/reject_assign；院士另用 assign、prioritize、nudge。会议：input、meeting_hand、meeting_invite、vote_solved；仅有表决权成员投票。独立验证：verdict={target,verdict,reason}，判断为 0、1 或 [0,1] 概率；启用形式化时另用 formal={target,decision,file,note}，decision 为 used、blocked 或 defect，后两者说明原因。论文撰写：paper_part；互审：paper_review；定稿：paper_final，按当轮专用提示提供完整字段。所有字段仍接受权限检查。')
+      L.push('\n## 计算与归档\n' + fullMathPromptBlock('zh'), '\n## 流程反馈')
+      feedbackPushLine(L)
+      L.push('\n## 论文专用回执\n撰写：paper_part={title,solution,methods,rules,limits,evidence}；只写已有证据支持的内容，evidence 为路径数组。互审：paper_review={of,deliverable,comments}；deliverable 必须为布尔值，全体同意方可定稿。定稿：paper_final={decision,note,conclusion}；decision 为 deliverable 或 revise，conclusion 可省略。不得编造或把未决项写成已证，异议与局限须显式标注。')
+      L.push('\n## 论文环境排查\n' + paperHintBlock('zh'))
+      L.push('\n## 工具调用方法\n' + TOOL_HELP_NAV)
+      for (const method of toolMethods.values()) L.push('\n### ' + method.tool + '（' + method.version + '）\n' + method.instructions + '\n参数：' + JSON.stringify(method.parameters) + '\n样例：' + JSON.stringify(method.examples))
+      const text = L.join('\n')
+      const rel = 'Shared/Protocol.md'
+      try {
+        const before = await readTextRel(rel)
+        if (before !== text && !await writeTextRel(rel, text)) throw new Error('手册写入失败')
+        if (await readTextRel(rel) !== text) throw new Error('手册不可读或内容不完整')
+        protocolReadable = true
+        protocolFailure = ''
+      } catch (e) {
+        protocolReadable = false
+        protocolFailure = String(e.message || e)
+        console.error('vibe-math-v5: 协议手册不可用，回退完整章程与提示：' + protocolFailure)
+      }
+      return protocolReadable
     }
     function memberToolFilter(member) {
       const allowSrc = member.kind === 'temp' ? params.tempToolAllow : params.toolAllow
@@ -2284,6 +2450,7 @@ export function apply(ctx) {
     // session is being rebuilt: the latter must NOT be told it "just joined the
     // institute" and must not be shown the induction blurb.
     async function spawnMember(member, initialTask, mode) {
+      if (member.childId) toolReads.delete(member.childId)
       // Host live-child cap (DSH ≥0.2): once we KNOW the ceiling and our OWN live members fill it,
       // do not even call the host — it would refuse with the bare "subagent limit reached (active
       // child limit: N)". One line per ROUND (not per member); the caller records the member as
@@ -2307,12 +2474,14 @@ export function apply(ctx) {
       // succeeds (see below). `startRound` is also passed into `initialPrompt` explicitly, so the founding
       // prompt announces the round it is actually starting instead of 0.
       const startRound = (rounds.get(member.id) || 0) + 1
-      const startRoundsSinceCompact = (roundsSinceCompact.get(member.id) || 0) + 1
       // The charter is FROZEN at hire time (it is the durable "seal" record and it says
       // "你入职时的在册编制"). Rebuilding it on resume would silently rewrite that
       // hire-time snapshot into a resume-time one and make the sentence untrue. `newMember`
       // captures it, so every member has one by the time it can be spawned.
-      const persona = member.persona || memberPersona(member)
+      await mkdirs()
+      await ensureProtocol()
+      const frozen = member.persona || memberPersona(member)
+      const persona = !protocolReadable && frozen.includes('【v5 简明章程 v1】') ? legacyMemberPersona(member) : frozen
       member.persona = persona
       const prompt = initialPrompt(member, initialTask, mode, startRound)
       await putMember(member)
@@ -2357,7 +2526,6 @@ export function apply(ctx) {
       // G2-class (spawnMember): the child really exists now, so THIS is the point where the round counts.
       // A failed/invalid start above left both counters untouched (and no longer erased a resume's count).
       rounds.set(member.id, startRound)
-      roundsSinceCompact.set(member.id, startRoundsSinceCompact)
       // Register the FOUNDING turn as in-flight, exactly like a normal wake does.
       // Without this the child's first `subagent/end` has no token to match, so
       // onMemberEnd would ignore it: the founding round would never be processed and
@@ -2385,18 +2553,17 @@ export function apply(ctx) {
       wakeKind.set(member.id, kind || 'normal')
       currentMember = member.id
       lastActiveAt.set(member.id, now())
-      // G2 (F10, ported from v4:1930-1931 — "a failed send must not consume a round"): the two counters
-      // are applied AFTER the successful send (below), not here. The values the soft-compact comparison
-      // would have seen under the old ordering are computed here so the trigger boundary is unchanged.
+      // A successful send advances the historical turn number; only an end event advances
+      // completed-turn and actual-compaction counters. Prospective values prepare this turn
+      // without counting a failed delivery or an unfinished turn as completed.
       const nextRound = (rounds.get(member.id) || 0) + 1
+      const nextCompletedRound = (completedRounds.get(member.id) || 0) + 1
       const nextRoundsSinceCompact = (roundsSinceCompact.get(member.id) || 0) + 1
       // Context directives. TWO distinct needs, and confusing them is what made
       // '[核心规则重申]+[CONTEXT COMPACT]' repeat at the head of nearly every prompt
       // (v4 §24.1-③):
-      //   (a) a soft-compact trigger (context % or rounds) => ask for a self-summary,
-      //       but ONLY on a normal research round: a meeting/verify reply carries no
-      //       contextPct/compacted field, so a directive injected there can never be
-      //       acknowledged and would otherwise repeat forever;
+      //   (a) a research trigger asks for a durable math checkpoint, without resetting
+      //       the actual host-compaction counter. Other phases keep their own asks;
       //   (b) a REAL /compact just ran => the rules may be blurred, so re-anchor the
       //       short core rules once on the next wake of ANY kind and clear the flag.
       let prompt = promptText
@@ -2408,29 +2575,27 @@ export function apply(ctx) {
       const wake = kind || 'normal'
       let softInjected = false
       if (wake === 'normal' || wake === 'checkpoint') {
-        const soft = (contextPct.get(member.id) || 0) >= Number(params.compactThreshold) ||
-          nextRoundsSinceCompact >= Number(params.compactAfterRounds)
+        const soft = compactionDue(member, nextCompletedRound, nextRoundsSinceCompact) &&
+          nextCompletedRound - (summaryRequests.get(member.id) ?? -Infinity) >= Math.max(1, Number(params.compactAfterRounds))
         if (soft) {
-          prompt = coreRules() + '\n[CONTEXT COMPACT — 你的对话已接近上限。不要重新推导历史。\n' +
-            '请把当前工作状态浓缩成一段自述（已有发现、当前方向、已记录的关键成果、下一步具体动作、未决问题），' +
-            '然后照常以 JSON 回答本轮。请在回复里填 "contextPct": 15 与 "compacted": true。]\n\n' + prompt
-          // G2: the reset is applied only AFTER the send succeeds (below). A directive that never
-          // reached the member must not clear the trigger it was asking the member to answer.
+          prompt = coreRules() + '\n[CONTEXT COMPACT — 保存数学状态，摘要不等于宿主压缩。\n' +
+            '在 progress 中记录：当前目标；定义与假设；已建立结论及来源；未完成推导；失败路线及适用范围；下一步；完整材料位置。' +
+            '不得省略关键条件、把未决写成已证或用截断摘要替代完整证明。保存摘要后可填 compacted:true；contextPct 仅在有依据时估计，勿照抄固定比例。]\n\n' + prompt
+          // Record the request only after delivery succeeds; it is not host compaction.
           softInjected = true
         }
       }
       if (needReanchor.has(member.id)) {
-        prompt = coreRules() + '\n' + prompt
+        prompt = coreRules() + '\n压缩后先读取完整研究日志 ' + instRel('Members/' + member.id + '/Progress/progress.md') + ' 和自己的成果卡，核对定义、假设与推导后继续。\n' + prompt
         needReanchor.delete(member.id)
       }
       try {
         if (typeof subagents.sendMessage !== 'function') throw new Error('no subagents.sendMessage continuation API')
         await subagents.sendMessage(rootAgent, member.childId, [textBlock(prompt)], { signal: makeSignal(params.activityTimeoutMs) })
-        // G2 (F10): the turn is really in flight NOW — only count it here, so a failed/invalid send
-        // leaves both counters untouched (the old code counted before the send AND cleared the
-        // soft-compact trigger on a send that never happened).
+        if (softInjected) summaryRequests.set(member.id, nextCompletedRound)
+        // The historical turn number advances only after successful delivery. Completed
+        // counters remain untouched until the idempotent end handler receives a reply.
         rounds.set(member.id, nextRound)
-        roundsSinceCompact.set(member.id, softInjected ? 0 : nextRoundsSinceCompact)
         return true
       } catch (e) {
         console.error('vibe-math-v5: wake ' + member.id + ' failed: ' + String((e && e.message) || e))
@@ -2484,7 +2649,7 @@ export function apply(ctx) {
     // carries only: a tiny current-state block, the newly delivered traffic, and
     // this round's ask. That is what keeps the per-round context small and stops
     // the charter from being re-injected on every turn.
-    function replySpec(kind) {
+    function legacyReplySpec(kind) {
       const L = []
       L.push('结束时请**只**输出一个 JSON 对象（放在 ```json 围栏内，围栏外不要有文字）。支持以下字段，除特别说明外都可省略：')
       // F2 (deep-review 5): the block below is a FIELD CATALOGUE — it carries `←` explanations and
@@ -2543,16 +2708,35 @@ export function apply(ctx) {
       L.push('  "meeting_hand": true,        ← 会议中想发言就举手（**已发言者也可再次举手**；false 撤回）。')
       L.push('  "meeting_invite": {"member":"t-1","why":"…"},  ← 邀请一名临时工在本次会议发言（只记纪要，不计票）。')
       L.push('  "solved": false,           ← 你这一轮的个人判断（框架据此了解全所收敛度）')
-      L.push('  "contextPct": 40,          ← 你当前上下文的占用百分比（0-100）')
-      L.push('  "compacted": false          ← 若框架要求你压缩，填 true 并在 progress 里写下浓缩后的工作状态')
+      L.push('  contextPct：可选的成员估计（0-100，有依据时填写，不照抄固定值）')
+      L.push('  "compacted": false          ← 仅表示已提交 progress 摘要，不等于宿主压缩')
       L.push('}')
       // F2: a strictly valid template, so "only a JSON object" has a concrete, parseable shape even
       // though the catalogue above is not JSON. Keep it minimal and legal (no comments, no unions).
       L.push('最小合法样例（可直接照抄，字段可增删）：')
       L.push('```json')
-      L.push('{"say":"…","progress":"…","solved":false,"contextPct":40}')
+      L.push('{"say":"…","progress":"…","solved":false}')
       L.push('```')
       return L.join('\n')
+    }
+    function replySpec(kind, stage = 'research') {
+      if (!protocolReadable) return TOOL_HELP_NAV + '\n' + legacyReplySpec(kind)
+      const lines = ['只输出一个合法 JSON 对象；所有旧字段仍有效，以下仅列当前阶段常用字段。']
+      if (stage === 'meeting') {
+        lines.push('input：发言；meeting_hand：是否举手；meeting_invite：{member,why}；vote_solved：明确的结题判断，沉默不计赞成。',
+          '{"input":"我的意见","meeting_hand":false,"vote_solved":false}')
+      } else {
+        lines.push('progress：数学进展/阻塞及下一步；record：成果卡数组（kind,id,title,statement或content,value,motive,p）；say：必要消息或{to,text}。',
+          'task_done：完成的任务id；task_update：{task_id,expected_revision,action}（release等）；reject_assign：{task_id,why}。阻塞原因写入progress，不代表已证伪。',
+          kind === 'academician' ? '协调需要时可用assign（subject,description,to,why,acceptance,priority）、prioritize、nudge（to,why）、convene_meeting。' :
+            kind === 'temp' ? '你没有表决权及hire/fire权限；需要复核可propose_verify，需要协调可propose_meeting。' :
+            '协调需要时可propose_verify、propose_meeting、hire/fire；具体字段查手册。',
+          '{"progress":"当前推导、证据及下一步","solved":false}')
+      }
+      if (stage === 'verify' && formalOn()) lines.push('使用形式化时可附formal：{target,decision:"used|blocked|defect",file,note}；blocked/defect必须说明原因。')
+      lines.push(TOOL_HELP_NAV)
+      lines.push('contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明：' + instRel('Shared/Protocol.md'))
+      return lines.join('\n')
     }
     // Every prompt builder below passes the member it is addressing. There is
     // deliberately NO fallback to "the last member we happened to touch": guessing the
@@ -2580,8 +2764,7 @@ export function apply(ctx) {
       if (initialTask) { L.push(resume ? '恢复说明：' : '你的初始任务/用途：'); L.push('  ' + initialTask); L.push('') }
       if (member.direction && !resume) { L.push('给你的起点方向：' + member.direction); L.push('') }
       mathPushLine(L)
-      paperPushLine(L)
-      feedbackPushLine(L)
+      researchSupportLine(L)
       L.push('------------')
       L.push(stateBlock(member, roundNo))
       L.push('------------')
@@ -2601,8 +2784,7 @@ export function apply(ctx) {
       }
       if (leanDailyOn()) { L.push(''); L.push(formalWorkLine()) }
       mathPushLine(L)
-      paperPushLine(L)
-      feedbackPushLine(L)
+      researchSupportLine(L)
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -2620,8 +2802,7 @@ export function apply(ctx) {
       L.push('如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。')
       if (leanDailyOn()) { L.push(''); L.push(formalWorkLine()) }
       mathPushLine(L)
-      paperPushLine(L)
-      feedbackPushLine(L)
+      researchSupportLine(L)
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -2651,8 +2832,7 @@ export function apply(ctx) {
         + '如果你判断它不该做或不该由你做，请在回复里说清理由——**不要沉默**，沉默会让它继续躺在公告栏上。')
       if (leanDailyOn()) { L.push(''); L.push(formalWorkLine()) }
       mathPushLine(L)
-      paperPushLine(L)
-      feedbackPushLine(L)
+      researchSupportLine(L)
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
@@ -2697,13 +2877,12 @@ export function apply(ctx) {
       L.push('**沉默不等于投票**：`vote_solved` 必须显式给出——如果你认为原问题已解决，请填 "vote_solved": true；')
       L.push('只有当**全体有表决权者**都一致认为是真时，本所才会停下来；缺 `vote_solved`（沉默/未表态）会**阻止结题**。')
       mathPushLine(L)
-      paperPushLine(L)
-      feedbackPushLine(L)
+      researchSupportLine(L)
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
       L.push('------------')
-      L.push(replySpec(member.kind))
+      L.push(replySpec(member.kind, 'meeting'))
       return L.join('\n')
     }
     function verifyPrompt(member, vs) {
@@ -2749,14 +2928,13 @@ export function apply(ctx) {
       L.push('**不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**')
       L.push('本所宁可留下未定论，也不要一个骗人的结论。')
       mathPushLine(L)
-      paperPushLine(L)
-      feedbackPushLine(L)
+      researchSupportLine(L)
       L.push('')
       L.push('------------')
       L.push(stateBlock(member))
       L.push('------------')
       L.push('结束时请**只**输出一个 JSON 对象（```json 围栏内）：')
-      L.push('{"verdict":{"target":"' + vs.target + '","verdict":<0-1 数值>,"reason":"<你的理由>"}, "contextPct": 40}')
+      L.push(JSON.stringify({ verdict: { target: vs.target, verdict: 0.5, reason: '尚未完成独立复核' } }))
       if (formalOn()) {
         // The formal field belongs in the VOTING contract too: voters are exactly the agents
         // who must either formalize the object or record why they judged it infeasible.
@@ -3716,7 +3894,7 @@ export function apply(ctx) {
     }
     // The tool section of a member prompt: the availability line + the rules (both come from
     // the module, so all four presets stay byte-comparable).
-    function mathPromptBlock(lang) {
+    function fullMathPromptBlock(lang) {
       const line = lang === 'en' ? mathLineEn : mathLineZh
       if (line) return '\n' + line
       // Fallback: when the dynamic line could not be built, the member still needs to know the
@@ -3726,6 +3904,20 @@ export function apply(ctx) {
       return lang === 'en'
         ? '\n' + MATH_PERSONA_TOOL_LINE + '\n' + MATH_ARCHIVE_WORKFLOW_LINE_EN + '\n' + MATH_SUBSTITUTION_RULE_LINE_EN
         : '\n' + MATH_PERSONA_TOOL_LINE + '\n' + MATH_ARCHIVE_WORKFLOW_LINE + '\n' + MATH_SUBSTITUTION_RULE_LINE
+    }
+    function mathPromptBlock(lang) {
+      if (!protocolReadable) return fullMathPromptBlock(lang)
+      if (String(params.mathComputation) === 'off') return ''
+      const line = lang === 'en' ? mathLineEn : mathLineZh
+      const availability = String(line || '').split('\n').find((x) => x.includes('math_computation')) || 'math_computation：先 probe 确认可用引擎'
+      return '\n' + availability.split('需要')[0] + '\n计算证据请引用回执路径；脚本修改后用同一源文件重跑，旧回执不代表新代码。近似、替代与有限搜索的范围须声明，不得当成精确证明。详细操作按需读 ' + instRel('Shared/Protocol.md')
+    }
+    function researchSupportLine(L) {
+      if (!protocolReadable) {
+        paperPushLine(L)
+        feedbackPushLine(L)
+        L.push('[上下文降级] 协议手册不可用，使用完整说明：' + protocolFailure)
+      }
     }
     // Push the tool section into a prompt under construction (a no-op in the 'off' mode, which
     // is the "off means zero mention" discipline).
@@ -3805,7 +3997,7 @@ export function apply(ctx) {
       } catch (err) { ok = false }
       return ok
     }
-    async function feedbackTool(caller, a) {
+    async function feedbackTool(caller, a, guard) {
       const op = String((a && a.op) || '').trim()
       // `off` is NEVER a silent write: the call is refused BY NAME with the reason and the remedy.
       if (!feedbackOn()) {
@@ -3837,6 +4029,7 @@ export function apply(ctx) {
           return { ok: false, code: 'V5_FEEDBACK_NEEDS_ASSESSMENT', message: 'interpersonal 路由必须带 assessment：先想清楚"要不要让别人改、改了是否真的更优"',
             next: { kind: 'note', hint: '若发现只能靠自己调整，请改记 self；确实需要别人改变时，写完评估再跟进事后验证' } }
         }
+        if (guard) { const refused = guard(); if (refused) return refused }
         const base = { at: now(), by: caller, category, route, status: 'open',
           context: String(a.context || ''), phenomenon, impact, action, assessment,
           outcome: '', note: String(a.note || ''), updatedAt: '', updatedBy: '' }
@@ -3881,6 +4074,7 @@ export function apply(ctx) {
           return { ok: false, code: 'V5_FEEDBACK_NEEDS_REASON', message: 'status=dropped 需要 note 或 outcome 说明"为什么不改"',
             next: { kind: 'note', hint: '评估结论也要留痕，否则下一轮会重新提同一件事' } }
         }
+        if (guard) { const refused = guard(); if (refused) return refused }
         const changes = { updatedAt: now(), updatedBy: caller }
         if (status) changes.status = status
         if (outcome) changes.outcome = outcome
@@ -3893,6 +4087,7 @@ export function apply(ctx) {
         return { ok: true, entry: feedbackView(after), mirror, counts: feedbackCounts() }
       }
       if (op === 'list') {
+        if (guard) { const refused = guard(); if (refused) return refused }
         const category = a.category === undefined ? '' : String(a.category).trim()
         const route = a.route === undefined ? '' : String(a.route).trim()
         const all = a.all === true
@@ -3903,7 +4098,10 @@ export function apply(ctx) {
         return { ok: true, openOnly: !all, count: rows.length, entries: rows, counts: feedbackCounts(),
           note: all ? '全部条目（含已闭环）' : '默认只列未闭环（open|adjusted）；要看全部用 all:true' }
       }
-      if (op === 'summary') return { ok: true, counts: feedbackCounts() }
+      if (op === 'summary') {
+        if (guard) { const refused = guard(); if (refused) return refused }
+        return { ok: true, counts: feedbackCounts() }
+      }
       return { ok: false, code: 'V5_FEEDBACK_BAD_OP', message: 'op 必须是 add|update|list|summary',
         next: { kind: 'note', hint: 'add=写一条；update=状态流转＋回填；list=看未闭环；summary=按类别/路由计数' } }
     }
@@ -4310,15 +4508,25 @@ export function apply(ctx) {
     // checkpoint). v4's defect (§24.1-③) was that only the normal branch consumed
     // `contextPct/compacted/needCompact`, so the flag stuck true and the compression
     // directive re-appeared at the head of every later prompt forever.
+    function contextDiagnostic(member) {
+      if (!contextDiagnostics.has(member.id)) contextDiagnostics.set(member.id, { estimateSource: 'unknown', lastSummarySaved: null, lastProgressSaved: null, lastCompaction: 'not-attempted' })
+      return contextDiagnostics.get(member.id)
+    }
+    function compactionDue(member, total = completedRounds.get(member.id) || 0, since = roundsSinceCompact.get(member.id) || 0, reported = undefined) {
+      const pct = Math.max(contextPct.get(member.id) || 0, reported === undefined ? 0 : clPct(reported))
+      const retryAfter = Math.max(1, Number(params.compactAfterRounds))
+      return (pct >= Number(params.compactThreshold) || since >= retryAfter) && total - (compactAttempts.get(member.id) ?? -Infinity) >= retryAfter
+    }
     function postmark(member, parsed) {
       if (!member) return
-      if (parsed && parsed.contextPct !== undefined) contextPct.set(member.id, clPct(parsed.contextPct))
-      if (parsed && parsed.compacted) {
-        roundsSinceCompact.set(member.id, 0)
-        contextPct.set(member.id, 15)
-        seeds.set(member.id, String(parsed.progress || parsed.summary || '').slice(0, 4000))
+      const d = contextDiagnostic(member)
+      const estimate = parsed && parsed.contextPct
+      if ((typeof estimate === 'number' || (typeof estimate === 'string' && estimate.trim())) && Number.isFinite(Number(estimate))) {
+        contextPct.set(member.id, clPct(estimate))
+        d.estimateSource = 'member-estimate'
       }
-      needReanchor.delete(member.id)
+      // A self-summary is not a measured reduction of host context.
+      if (parsed && parsed.compacted) d.lastSummarySaved = false
     }
 
     // ---- artifact libraries (per member, append/write by the member itself) ----
@@ -4530,7 +4738,7 @@ export function apply(ctx) {
     // `meta` is an INTERNAL positional argument (not part of the tool's `args`, so the advertised key
     // surface of `vibe_v5_task_update` is unchanged): it lets an in-product caller fold extra fields into
     // the SAME compare-and-set write instead of issuing a second, unprotected one.
-    async function taskUpdate(memberId, o, meta) {
+    async function taskUpdate(memberId, o, meta, guard) {
       // An unknown caller must be refused HERE as well: `owner = task.ownerId === memberId` is true
       // for an UNOWNED task (ownerId '') when memberId is '', so without this guard an
       // unidentifiable caller would count as the owner of every unclaimed task (audit L6 follow-up).
@@ -4621,6 +4829,7 @@ export function apply(ctx) {
       } catch (e) {
         return { ok: false, code: e.code || 'V5_INVALID_ARGUMENT', message: String((e && e.message) || e) }
       }
+      if (guard) { const refused = guard(); if (refused) return refused }
       // G4: assignment metadata travels INSIDE this CAS-protected write. The old shape wrote the task a
       // second time afterwards (`putTask(withMeta)`), reusing the revision it had just read and never
       // bumping it — a concurrent `task_update` landing in that window was silently swallowed and left no
@@ -4642,7 +4851,7 @@ export function apply(ctx) {
     // and the acceptance criteria, and then wakes the assignee. It affects WORK only:
     // it can never make any statement true, and the assignee may object with reasons
     // (the objection is broadcast, not silently swallowed).
-    async function taskAssign(memberId, o) {
+    async function taskAssign(memberId, o, guard) {
       if (!memberId) return memberDiagnosis('分派任务（vibe_v5_assign）', memberId)
       if (!isOffice(memberId) && !(isAcademician(memberId) && params.academicianLeads)) {
         return { ok: false, code: 'V5_NOT_ACADEMICIAN', message: 'only the academician (or the office) can assign tasks' }
@@ -4655,6 +4864,7 @@ export function apply(ctx) {
       if (!why) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'assign 必须写明 why（为什么派给他）' }
       const acceptance = String(args.acceptance || '').trim()
       if (!acceptance) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'assign 必须写明 acceptance（验收标准）' }
+      if (guard) { const refused = guard(); if (refused) return refused }
       let taskId = args.task_id ? String(args.task_id) : ''
       if (!taskId) {
         const created = await taskCreate(memberId, {
@@ -4942,7 +5152,7 @@ export function apply(ctx) {
       const fp = formalProofOf(target)
       return fp !== null && fp.locked === true && (fp.status === 'proved' || fp.status === 'disproved')
     }
-    async function registerFormalProof(memberId, target, status, reason) {
+    async function registerFormalProof(memberId, target, status, reason, guard) {
       // 只有院士能登记（与"辩论的开启与对象由院士决定"同一道门）。
       if (!isAcademician(memberId)) {
         return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '只有院士可以登记"正式证明或证伪"（issue #13 #1）' }
@@ -4952,6 +5162,7 @@ export function apply(ctx) {
       if (status !== 'proved' && status !== 'disproved') {
         return { ok: false, code: 'V5_INVALID_ARGUMENT', message: "formal_proof 的 status 必须是 'proved' 或 'disproved'（got " + String(status) + '）' }
       }
+      if (guard) { const refused = guard(); if (refused) return refused }
       // **函数式变更**：并发登记不会互相覆盖（fold 内应用；见 fold 白名单里 formalProofs 的处理）。
       await patchInstitute({
         formalProofs: (cur) => Object.assign({}, cur || {}, {
@@ -4964,7 +5175,7 @@ export function apply(ctx) {
       notifyActivity()
       return { ok: true, target: t, formalProof: { status, by: memberId, at: now(), locked: true } }
     }
-    async function maybeQueueVerify(target, kind, proposer, reason) {
+    async function maybeQueueVerify(target, kind, proposer, reason, guard) {
       const t = idSafe(target)
       if (!t) return { ok: false, code: 'V5_INVALID_ARGUMENT', message: 'target id is empty after sanitising' }
       // S25-C（issue #13 #1，用户点名的两道硬门）：**辩论的开启与辩论对象的选择由院士决定**，
@@ -4975,6 +5186,7 @@ export function apply(ctx) {
       if (!formalProofReady(t)) {
         return { ok: false, code: 'V5_INVALID_ARGUMENT', message: '只有已被正式证明或证伪、且负责人已定稿（locked）的命题才能进入验证/辩论：' + t + '（先用 propose_verify 的 op=formal_proof 登记）' }
       }
+      if (guard) { const refused = guard(); if (refused) return refused }
       const recent = verifiedRecently.get(t)
       if (recent !== undefined && (now() - recent) < recoverStallMs()) {
         return { ok: true, deduped: true, message: t + ' 刚刚定论，忽略重复提议' }
@@ -5911,6 +6123,7 @@ export function apply(ctx) {
     // ---- the three asks ----------------------------------------------------
     function paperWritePrompt(member, p) {
       const L = []
+      paperPushLine(L)
       L.push('【最终论文·撰写 —— ' + kindLabel(member.kind) + ' ' + member.id + '】')
       L.push('本所对原问题的一致结论已经达成，现在撰写**最终论文**（第 ' + p.round + '/' + PAPER_MAX_ROUNDS + ' 轮）。')
       L.push('请你**只写你自己库里已有证据支撑**的内容：')
@@ -5962,6 +6175,7 @@ export function apply(ctx) {
     }
     function paperFinalPrompt(member, p) {
       const L = []
+      paperPushLine(L)
       L.push('【最终论文·定稿（院士）—— ' + member.id + '】')
       L.push('全体参与成员已在互审中表示“可交付”。请你作为定稿代表做**最后一次**把关：')
       L.push('核对合并稿与互审意见，确认没有编造、没有未标注的未决项、没有与表决记录矛盾之处，然后给出决定。')
@@ -5986,7 +6200,7 @@ export function apply(ctx) {
       L.push(stateBlock(member))
       L.push('')
       L.push('结束时只输出一个 JSON 对象：')
-      L.push('{ "paper_final": { "decision": "deliverable" | "revise",')
+      L.push('{ "paper_final": { "decision": "deliverable",')
       L.push('    "note": "定稿说明：你如何审阅、统一术语与符号、是否发现并纠正了问题",')
       L.push('    "conclusion": "（可选）定稿代表对原问题的最终结论（只写有证据的）" } }')
       L.push('decision="revise" 会退回继续修订（有轮次上限）。')
@@ -6909,6 +7123,10 @@ export function apply(ctx) {
       rounds.delete(id)
       roundsSinceCompact.delete(id)
       contextPct.delete(id)
+      completedRounds.delete(id)
+      contextDiagnostics.delete(id)
+      compactAttempts.delete(id)
+      summaryRequests.delete(id)
       seeds.delete(id)
       // A dismissed member is no longer a voter: drop its ballot from every OPEN verdict, so
       // a verdict that has not closed yet can never be carried by a former member's vote
@@ -7329,6 +7547,8 @@ export function apply(ctx) {
       // one reply on purpose — no cross-round state.
       const defectTargetsThisReply = new Set()
       postmark(member, p)
+      const contextInfo = contextDiagnostic(member)
+      contextInfo.lastProgressSaved = false
       // (1) speech  (named `speech`, not `s`: `s` is the session API in this scope)
       const speech = p.say
       if (typeof speech === 'string' && speech.trim()) await say(member.id, { to: 'all', text: speech, kind: 'chat' })
@@ -7340,7 +7560,14 @@ export function apply(ctx) {
         await say(member.id, { to, text: String(speech.text), kind })
       }
       // (2) progress log
-      if (typeof p.progress === 'string' && p.progress.trim()) await publishProgress(member.id, p.progress)
+      if (typeof p.progress === 'string' && p.progress.trim()) {
+        const saved = await publishProgress(member.id, p.progress)
+        contextInfo.lastProgressSaved = saved.ok === true
+        if (p.compacted) {
+          contextInfo.lastSummarySaved = saved.ok === true
+          if (saved.ok) seeds.set(member.id, '恢复导航：先读取自己的完整 ' + instRel('Members/' + member.id + '/Progress/progress.md') + ' 与成果卡，再继续推导。')
+        }
+      }
       // (3) library records
       if (Array.isArray(p.record)) {
         for (const r of p.record) {
@@ -7616,6 +7843,8 @@ export function apply(ctx) {
       const member = byChild(childId)
       if (!member) return
       busy.delete(member.id)
+      completedRounds.set(member.id, (completedRounds.get(member.id) || 0) + 1)
+      roundsSinceCompact.set(member.id, (roundsSinceCompact.get(member.id) || 0) + 1)
       const text = blocksToText(info && info.lastAssistantMessage)
       const stopReason = String((info && info.stopReason) || 'completed')
       if (stopReason !== 'completed') {
@@ -7640,12 +7869,14 @@ export function apply(ctx) {
         // member has already replaced with a good one.
         parseFailures.delete(member.id)
       }
+      const compactNeeded = compactionDue(member, completedRounds.get(member.id) || 0, roundsSinceCompact.get(member.id) || 0, parsed.contextPct)
       try {
         await handleReply(member, parsed, turnKind !== undefined ? turnKind : (wakeKind.get(member.id) || 'normal'))
       } catch (e) {
+        contextDiagnostic(member).lastProgressSaved = false
         console.error('vibe-math-v5: reply dispatch for ' + member.id + ': ' + String((e && e.stack) || e))
       }
-      try { await maybeRealCompact(childId, member) } catch (e) { /* compaction is best-effort */ }
+      try { await maybeRealCompact(childId, member, compactNeeded) } catch (e) { /* compaction is best-effort */ }
       wakeKind.delete(member.id)
       if (member.activeMeetingId) delete member.activeMeetingId
       // The final-paper phase is driven by member turns, exactly like a meeting: the reply was
@@ -7674,28 +7905,38 @@ export function apply(ctx) {
       }
     }
 
-    async function maybeRealCompact(childId, member) {
-      const roundN = roundsSinceCompact.get(member.id) || 0
-      const pct = contextPct.get(member.id) || 0
-      const soft = pct >= Number(params.compactThreshold) || roundN >= Number(params.compactAfterRounds)
-      if (!soft) return
+    async function maybeRealCompact(childId, member, needed) {
+      if (!needed) return
+      const d = contextDiagnostic(member)
+      delete d.error
+      compactAttempts.set(member.id, completedRounds.get(member.id) || 0)
+      if (d.lastProgressSaved !== true) {
+        d.lastCompaction = 'checkpoint-not-saved'
+        return
+      }
       const agent = liveAgentOf(childId)
       const comp = compactionForAgent(agent)
-      if (comp && agent && agent.session) {
-        // Prefer the FORCING verb when the host has it: `compactIfNeeded` is a policy call that may
-        // decide not to compact and return null without saying so, while `compactNow` does what the
-        // operator asked for. Feature-detected so older hosts keep the policy call.
-        const force = typeof comp.compactNow === 'function'
-        const ask = typeof comp.compactIfNeeded === 'function'
-        if (force || ask) {
-          try {
-            const r = force ? await comp.compactNow(agent, makeSignal(params.activityTimeoutMs)) : await comp.compactIfNeeded(agent, 'pressure', makeSignal(params.activityTimeoutMs))
-            if (r) { roundsSinceCompact.set(member.id, 0); needReanchor.add(member.id); return }
-          } catch (e) { /* fall through to the soft path */ }
-        }
+      if (!comp || !agent || !agent.session || (typeof comp.compactNow !== 'function' && typeof comp.compactIfNeeded !== 'function')) {
+        d.lastCompaction = 'unavailable'
+        return
       }
-      needReanchor.add(member.id)
+      try {
+        const r = typeof comp.compactNow === 'function'
+          ? await comp.compactNow(agent, makeSignal(params.activityTimeoutMs))
+          : await comp.compactIfNeeded(agent, 'pressure', makeSignal(params.activityTimeoutMs))
+        if (r == null || r === '' || (typeof r === 'object' && Object.keys(r).length === 0) || r.skipped === true || r.status === 'skipped') { d.lastCompaction = 'not-executed'; return }
+        if ((typeof r !== 'object' && r !== true) || Array.isArray(r) || r.ok === false || r.success === false || r.failed === true || ['failed', 'error', 'unavailable'].includes(r.status) || r.error || r.compacted === false) { d.lastCompaction = 'failed'; d.error = String(r.error || r.reason || r.message || '宿主明确返回失败或无效结果'); return }
+        d.lastCompaction = 'succeeded'
+        toolReads.delete(childId)
+        delete d.error
+        roundsSinceCompact.set(member.id, 0)
+        needReanchor.add(member.id)
+      } catch (e) {
+        d.lastCompaction = 'error'
+        d.error = String(e.message || e)
+      }
     }
+
     function rememberAgent(childId, agent) {
       if (!childId || !agent) return
       try { liveAgents.set(childId, new WeakRef(agent)) } catch (e) { liveAgents.set(childId, { deref: () => agent }) }
@@ -8161,6 +8402,7 @@ export function apply(ctx) {
       // by a resume. `members` keeps its meaning for the return value below.
       const queued = inst().members.filter((m) => isCapRefusedMember(m))
       if (!members.length && !queued.length) return { ok: false, code: 'V5_INSTITUTE_STATE', message: 'no active member to resume' }
+      await ensureProtocol()
       let respawned = 0
       beginSpawnRound()   // the whole re-spawn loop is ONE round for the cap notice
       for (const m of members.concat(queued)) {
@@ -8169,7 +8411,7 @@ export function apply(ctx) {
           const seedText = (await readTextRel('Members/' + m.id + '/Progress/progress.md')) || ''
           // `mode='resume'` is what makes this a RESUME rather than an instruction: the prompt
           // prints the seed as "恢复说明" (your own log, restored), not as a task to execute.
-          await spawnMember(m, seedText ? seedText.slice(-4000) : '（你的 Progress/ 还是空的——请先把当前状态补写进去。）', 'resume')
+          await spawnMember(m, seedText ? '先读取完整研究日志 ' + instRel('Members/' + m.id + '/Progress/progress.md') + ' 与自己的成果卡；不要以恢复导航替代完整证明。' : '（你的 Progress/ 还是空的——请先把当前状态补写进去。）', 'resume')
           respawned += 1
         } catch (e) {
           await putMember(Object.assign({}, m, { phase: 'failed', error: String((e && e.message) || e) }))
@@ -8253,8 +8495,8 @@ export function apply(ctx) {
         // payload, so a reader (or an operator comparing two sessions) cannot mistake them for
         // durable state. Durable = derived from the state file; session = rebuilt on load.
         fieldScopes: {
-          session: ['running', 'autoDone(session mirror of phase)', 'leanNotices', 'debug', 'members[].rounds', 'members[].busy', 'members[].contextPct', 'members[].childId', 'meeting', 'parkedMeeting', 'persistence.writeFailures', 'persistence.prematureReads', 'persistence.loadProblem', 'pendingSpawns[].attempts', 'diagnostics', 'backend'],
-          durable: ['phase', 'runId', 'quorum', 'members[] (except the three session fields)', 'members[].failReason', 'tasks', 'failedMembers', 'pendingSpawns[] (derived from durable failed members)', 'chat', 'officeRequests', 'verify', 'verifyQueue', 'verified', 'verifiedTrue (derived from verdicts)', 'concludedFalse (derived from verdicts)', 'undecided (derived from verdicts)', 'verdicts', 'solve', 'solveVotes', 'formal', 'paper', 'lastProgressAt', 'params'],
+          session: ['running', 'autoDone(session mirror of phase)', 'leanNotices', 'debug', 'members[].rounds', 'members[].busy', 'members[].contextPct', 'members[].context', 'members[].childId', 'meeting', 'parkedMeeting', 'persistence.writeFailures', 'persistence.prematureReads', 'persistence.loadProblem', 'pendingSpawns[].attempts', 'diagnostics', 'backend'],
+          durable: ['phase', 'runId', 'quorum', 'members[] (except the session fields listed above)', 'members[].failReason', 'tasks', 'failedMembers', 'pendingSpawns[] (derived from durable failed members)', 'chat', 'officeRequests', 'verify', 'verifyQueue', 'verified', 'verifiedTrue (derived from verdicts)', 'concludedFalse (derived from verdicts)', 'undecided (derived from verdicts)', 'verdicts', 'solve', 'solveVotes', 'formal', 'paper', 'lastProgressAt', 'params'],
         },
         backend: backend ? backend.kind : 'uninitialized',
         // Skipped/malformed events AND state-file load problems. Without this the two
@@ -8264,7 +8506,8 @@ export function apply(ctx) {
         quorum: quorumView(),
         members: s.members.map((m) => ({
           id: m.id, kind: m.kind, phase: m.phase, direction: m.direction, hiredBy: m.hiredBy,
-          rounds: rounds.get(m.id) || 0, busy: busy.has(m.id), contextPct: contextPct.get(m.id) || 0,
+          rounds: rounds.get(m.id) || 0, busy: busy.has(m.id), contextPct: contextPct.get(m.id) ?? null,
+          context: Object.assign({ estimateSource: 'unknown', lastSummarySaved: null, lastProgressSaved: null, lastCompaction: 'not-attempted' }, contextDiagnostics.get(m.id) || {}, { completedRounds: completedRounds.get(m.id) || 0, roundsSinceCompaction: roundsSinceCompact.get(m.id) || 0, lastAttemptRound: compactAttempts.get(m.id) ?? null }),
           childId: m.childId ? m.childId.slice(0, 12) : '', error: m.error || '',
           // G-6b: the durable reason a failed member is deferred work (`activation-limit` = the host
           // cap refused it, and the framework will retry it) — needed to audit the queue without
@@ -8636,14 +8879,21 @@ export function apply(ctx) {
   // unloads: v2/v3 did this, v4 once dropped the disposer so a second mount collided
   // on the already-registered names and the entries survived an unload.
   function registerTool(name, description, parameters, fn) {
+    const examples = V5_TOOL_EXAMPLES[name] || [{}]
+    const instructions = description + '\n' + (TOOL_STEPS[name] || '按上述角色权限调用；使用返回的真实身份、任务及文件路径。参数以本方法返回的 parameters 为准。失败时查看 code/message，读取最新状态后修正，不伪称成功。')
+      + '\n调用参数是严格 JSON 对象；样例中的成员、任务与凭据路径须替换为实际返回值。数学结论须引用完整条件和证据，文件写入遵守原有权限，不能绕过宿主限制。'
+    const method = { ok: true, tool: name, parameters, instructions, examples }
+    method.version = toolVersion(method)
+    toolMethods.set(name, method)
     ctx.effect(() => tools.register({
-      name, description, parameters,
+      name, description: TOOL_SHORT[name] ? TOOL_SHORT[name].replace('首次先查 vibe_v5_tool_help。', '首次先查 vibe_v5_tool_help({"tool":"' + name + '"})。') : description, parameters,
       output: { schema: { type: 'string' }, render: (_a, v) => [{ type: 'text', text: String(v) }] },
       execute: async (args, exec) => {
         try {
+          if (name === 'vibe_v5_tool_help') return JSON.stringify(await fn(null, args || {}, exec && exec.agent))
           const s = getSession(exec && exec.agent)
           if (!s) return JSON.stringify({ ok: false, error: 'no session' })
-          await s.ready()
+          await s.ready({ inspectOnly: V5_TOOL_HELP_REQUIRED.includes(name) && !!requireToolHelp(exec.agent, name) })
           return JSON.stringify(await fn(s, args || {}, exec && exec.agent))
         } catch (e) {
           return JSON.stringify({ ok: false, error: String((e && e.message) || e) })
@@ -8653,6 +8903,17 @@ export function apply(ctx) {
   }
   const S = { type: 'string' }, N = { type: 'number' }, I = { type: 'integer' }, B = { type: 'boolean' }
   const SA = { type: 'array', items: { type: 'string' } }
+  registerTool('vibe_v5_tool_help', '只读：每次查阅一个工具的完整步骤、权限、参数与 JSON 样例；复杂工具首次调用必须先查。仅当前真实会话获得阅读记录，无需先创建研究所。', objParams({ tool: S }, ['tool']), (_s, a, agent) => {
+    const method = toolMethods.get(String(a.tool || ''))
+    if (!method) return { ok: false, code: 'V5_TOOL_HELP_UNKNOWN', tool: String(a.tool || ''), message: '未知工具；使用实际注册的工具名称。' }
+    method.version = toolVersion(method)
+    const id = sessionIdOf(agent)
+    if (!id || !agent.session) return { ok: false, error: 'no session' }
+    let read = toolReads.get(id)
+    if (!read || read.session !== agent.session) { read = { session: agent.session, versions: new Map() }; toolReads.set(id, read) }
+    read.versions.set(method.tool, method.version)
+    return method
+  })
   /**
    * Resolve the caller of a WRITING tool through `officeCaller` and refuse when nobody can be
    * identified. `memberIdOfAgent` answers '' for a caller that is neither a member child nor the
@@ -8712,7 +8973,7 @@ export function apply(ctx) {
   }
   if (mathToolMeta) {
     registerTool(mathToolMeta.name, mathToolMeta.description, mathToolMeta.parameters,
-      (s, args) => mathHandlerFor(s)(args))
+      (s, args, x) => requireToolHelp(x, 'math_computation') || mathHandlerFor(s)(args))
   }
   /**
    * Resolve the caller of an OFFICE-ONLY control and refuse anything that is not the PROVABLE
@@ -8766,7 +9027,7 @@ export function apply(ctx) {
     paperLanguage: { type: 'string', enum: ['zh', 'en'] },
     paperCompilePdf: B, paperEditor: { type: 'string', enum: ['office', 'academician'] }, paperLatexCommand: S,
     provider: S, model: S, staffPersona: S, toolAllow: SA, toolDeny: SA, tempToolAllow: SA, tempToolDeny: SA,
-  }), (s, a, x) => withOffice(s, x, 'tune institute parameters', () => s.setParams(a)))
+  }), (s, a, x) => withOffice(s, x, 'tune institute parameters', () => requireToolHelp(x, 'vibe_v5_set') || s.setParams(a)))
   registerTool('vibe_v5_message', 'Relay a message from the office/human into the institute (to a member id, to "all", or to "voters").', objParams({ to: S, content: S }, ['to', 'content']), (s, a, x) => {
     // The relay is SIGNED as the office (`say('office', …)`), so only the PROVABLE session root may
     // send it. `memberIdOfAgent` answers '' for an unidentifiable descendant of the root (a nested
@@ -8839,18 +9100,18 @@ export function apply(ctx) {
   })
   registerTool('vibe_v5_record_progress', '(member) Append to YOUR progress.md — your research log. Include what you tried, the routes and their obstacles, your current state, your plans, and failed/dead ends (they save the institute from repeating them).', objParams({ content: S }, ['content']), (s, a, x) => s.publishProgress(s.memberIdOfAgent(x), a.content))
   registerTool('vibe_v5_record_proposition', '(member) Record a proposition/lemma in your library. REQUIRES value (价值程度), motive (动机用途计划) and p (your probability that it is true).', objParams({ id: S, title: S, statement: S, value: N, motive: S, p: N }, ['statement', 'value', 'motive', 'p']), (s, a, x) => s.recordCard(s.memberIdOfAgent(x), 'proposition', a))
-  registerTool('vibe_v5_feedback', '(member) 工作经验／流程反馈库（Shared/Feedback/，方法论/协作层——不是研究结论）。op=add（写一条，需 category/route/phenomenon/impact/action；route=interpersonal 还必须带 assessment）| update（状态流转＋回填结果：id/status/outcome/note）| list（默认只看未闭环，可用 category/route 过滤，all:true 看全部）| summary（按类别/路由计数）。类别：cooperation 合作｜management 管理｜process 流程｜obstacle 障碍｜conflict 矛盾。路由：self 自己调整即可｜team 组织/工作流同样无需审批｜interpersonal 只有这条必须先评估、再事后回填验证。权限：成员/临时工可 add 且只能更新自己发起的条目；所办可更新任何条目。', objParams({ op: S, id: S, category: S, route: S, context: S, phenomenon: S, impact: S, action: S, assessment: S, outcome: S, status: S, note: S, all: B }, ['op']), (s, a, x) => withCaller(s, x, '使用反馈库', (caller) => s.feedbackTool(caller, a)))
+  registerTool('vibe_v5_feedback', '(member) 工作经验／流程反馈库（Shared/Feedback/，方法论/协作层——不是研究结论）。op=add（写一条，需 category/route/phenomenon/impact/action；route=interpersonal 还必须带 assessment）| update（状态流转＋回填结果：id/status/outcome/note）| list（默认只看未闭环，可用 category/route 过滤，all:true 看全部）| summary（按类别/路由计数）。类别：cooperation 合作｜management 管理｜process 流程｜obstacle 障碍｜conflict 矛盾。路由：self 自己调整即可｜team 组织/工作流同样无需审批｜interpersonal 只有这条必须先评估、再事后回填验证。权限：成员/临时工可 add 且只能更新自己发起的条目；所办可更新任何条目。', objParams({ op: S, id: S, category: S, route: S, context: S, phenomenon: S, impact: S, action: S, assessment: S, outcome: S, status: S, note: S, all: B }, ['op']), (s, a, x) => withCaller(s, x, '使用反馈库', (caller) => s.feedbackTool(caller, a, helpGuard(x, 'vibe_v5_feedback'))))
   registerTool('vibe_v5_record_method', '(member) Record a theory/method/tool in your library. REQUIRES value, motive and p.', objParams({ id: S, title: S, type: S, content: S, notation: S, value: N, motive: S, p: N }, ['content', 'value', 'motive', 'p']), (s, a, x) => s.recordCard(s.memberIdOfAgent(x), 'method', a))
   registerTool('vibe_v5_record_subproblem', '(member) Record a sub-problem in your library. REQUIRES value, motive and p.', objParams({ id: S, title: S, statement: S, value: N, motive: S, p: N }, ['statement', 'value', 'motive', 'p']), (s, a, x) => s.recordCard(s.memberIdOfAgent(x), 'subproblem', a))
   registerTool('vibe_v5_read_library', '(member) Read anyone\'s library (read-only): their progress and recorded cards. Omit member to read everyone.', objParams({ member: S, kind: S, id: S }), (s, a) => s.readLibrary(a))
   registerTool('vibe_v5_propose_verify', '(academician) S25-C (issue #13 #1): with op=formal_proof and status=proved|disproved the academician REGISTERS this object as formally proved or disproved and locks it — only such objects may be debated at all, and registration is final, so only register it when you are confident the proof or disproof is complete. Otherwise it proposes an object for consensus verification, and ONLY the academician may open a debate or choose its object: an object that only has proof/disproof ATTEMPTS is a candidate, not a debate subject. Other members may suggest, but the academician must make the proposal.', objParams({ target: S, kind: S, reason: S, op: S, status: S }, ['target']), (s, a, x) => withCaller(s, x, 'a verification proposal', (caller) => (String(a.op || '') === 'formal_proof'
-    ? s.registerFormalProof(caller, a.target, a.status, a.reason)
-    : s.maybeQueueVerify(a.target, a.kind, caller, a.reason))))
+    ? s.registerFormalProof(caller, a.target, a.status, a.reason, helpGuard(x, 'vibe_v5_propose_verify'))
+    : s.maybeQueueVerify(a.target, a.kind, caller, a.reason, helpGuard(x, 'vibe_v5_propose_verify')))))
   registerTool('vibe_v5_verdict', '(member) Cast your boolean verdict on the object under verification. verdict is [0,1]: exactly 1 = assert true, exactly 0 = assert false, anything in between = abstention (not counted toward m, counted in the mean).', objParams({ target: S, verdict: N, reason: S }, ['verdict']), (s, a, x) => s.castVerdict(s.memberIdOfAgent(x), a.target, a.verdict, a.reason))
   registerTool('vibe_v5_task_create', '(member) Open a task on the shared board (subject, description, optional blockers, advisory write scopes, priority).', objParams({ subject: S, description: S, blocked_by: SA, write_scopes: SA, priority: I }, ['subject']), (s, a, x) => withCaller(s, x, 'creating a task', (caller) => s.taskCreate(caller, a)))
   registerTool('vibe_v5_task_list', '(member) List shared tasks with readiness, owner, revision, blockers and write-scope warnings.', objParams({ status: S, owner: S, ready: B }), (s, a) => ({ ok: true, tasks: s.taskList(a) }))
   registerTool('vibe_v5_task_get', '(member) Read one task\'s latest value BEFORE changing it (the revision is the CAS precondition).', objParams({ task_id: S }, ['task_id']), (s, a) => ({ ok: true, task: s.getTask(a.task_id) }))
-  registerTool('vibe_v5_task_update', '(member) Compare-and-set a task action: claim|release|edit|set_dependencies|complete|reopen|reassign|delete. Pass expected_revision from task_get/task_list; a stale revision is refused.', objParams({ task_id: S, expected_revision: I, action: S, subject: S, description: S, blocked_by: SA, write_scopes: SA, owner: S }, ['task_id', 'expected_revision', 'action']), (s, a, x) => withCaller(s, x, 'a task mutation', (caller) => s.taskUpdate(caller, a)))
+  registerTool('vibe_v5_task_update', '(member) Compare-and-set a task action: claim|release|edit|set_dependencies|complete|reopen|reassign|delete. Pass expected_revision from task_get/task_list; a stale revision is refused.', objParams({ task_id: S, expected_revision: I, action: S, subject: S, description: S, blocked_by: SA, write_scopes: SA, owner: S }, ['task_id', 'expected_revision', 'action']), (s, a, x) => withCaller(s, x, 'a task mutation', (caller) => s.taskUpdate(caller, a, undefined, helpGuard(x, 'vibe_v5_task_update'))))
 
   // ── the academician's organizational tools ────────────────────────────────
   registerTool('vibe_v5_overview', '(academician) Institute-wide view: roster, task board, every member\'s Progress tail, recent chat, and stall warnings. Use it instead of guessing.', objParams({}), async (s) => {
@@ -8905,7 +9166,7 @@ export function apply(ctx) {
     parts.push('- 距上次实质进展：' + Math.round(idleFor / 1000) + ' 秒')
     return { ok: true, overview: parts.join('\n') }
   })
-  registerTool('vibe_v5_assign', '(office, or the academician when academicianLeads) ASSIGN work: create or pick a task and give it to a specific member (including temp workers), stating WHY and the acceptance criteria. The assignee executes by default and may object with reasons (which are broadcast).', objParams({ task_id: S, subject: S, description: S, to: S, why: S, acceptance: S, priority: I, write_scopes: SA }, ['to', 'why', 'acceptance']), (s, a, x) => withCaller(s, x, 'an assignment', (caller) => s.taskAssign(caller, a)))
+  registerTool('vibe_v5_assign', '(office, or the academician when academicianLeads) ASSIGN work: create or pick a task and give it to a specific member (including temp workers), stating WHY and the acceptance criteria. The assignee executes by default and may object with reasons (which are broadcast).', objParams({ task_id: S, subject: S, description: S, to: S, why: S, acceptance: S, priority: I, write_scopes: SA }, ['to', 'why', 'acceptance']), (s, a, x) => withCaller(s, x, 'an assignment', (caller) => s.taskAssign(caller, a, helpGuard(x, 'vibe_v5_assign'))))
   registerTool('vibe_v5_prioritize', '(office, or the academician when academicianLeads) Set institute-wide priorities: an ordered list of {task_id, priority} plus WHY. This orders work only — it never changes what is true.', objParams({ order: { type: 'array', items: { type: 'object' } }, why: S }), (s, a, x) => withCaller(s, x, 'setting priorities', (caller) => s.taskPrioritize(caller, a)))
   registerTool('vibe_v5_nudge', '(office, or the academician when academicianLeads) Supervise: wake one member with a stated reason and a concrete suggested next step. Prefer a specific next step over a bare "hurry up".', objParams({ to: S, why: S, next_step: S }, ['to', 'why']), (s, a, x) => withCaller(s, x, 'a nudge', (caller) => s.nudge(caller, a)))
 
@@ -8914,9 +9175,10 @@ export function apply(ctx) {
   // dynamic registration would depend on a runtime knob and break the effect discipline),
   // while the MODE only decides whether the framework TELLS members about them. In 'off'
   // mode they still work if a human or agent calls them deliberately.
-  registerTool('vibe_v5_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Parameters: file (required; `Formal/x.lean` or the full CWD-relative path — both name the same file), target (optional object id to record the run against), timeout_ms (optional per-run budget). There is NO run/run=false switch here — run-vs-archive are separate tools; use vibe_v5_lean_archive {run:false} to archive WITHOUT compiling. With leanAsync (default true) the compile is ENQUEUED and this returns immediately with async:{jobId,state} — nothing is compiled yet; the result is durable at Formal/Jobs/<jobId>.json (vibe_v5_lean_job {jobId} reads it), is listed by vibe_v5_lean_lib.jobs, and the initiator also gets ONE 【形式化结果】 announcement in its next round. With leanAsync=false it blocks and returns the compiler output (exitCode/stdout/stderr). Never throws: a host with no subprocess service returns NO_SUBPROCESS and a missing toolchain returns LEAN_NOT_FOUND (in both cases the code can still be written down with vibe_v5_lean_archive), a timeout terminates the process and returns LEAN_TIMEOUT. The framework appends `-R <VibeMath root>` before the file name (unless leanArgs already sets a search root).', objParams({ file: S, target: S, timeout_ms: I }, ['file']), (s, a, x) => withCaller(s, x, 'a Lean run', (caller) => s.leanRunTool(caller, a)))
-  registerTool('vibe_v5_lean_archive', '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind="lemma": a machine-checked lemma → Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (only once the queued compile settles ok) also Verified/Lean/<target>.lean, marking the object Lean-passed. Re-archiving IDENTICAL content is de-duplicated (deduped:true, no rewrite/recompile). kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required). Optional `run` (default true): whether to COMPILE after writing — `run:false` archives the text only (useful when this host has no toolchain; the object then stays `attempted`/unset until something compiles it).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: S, target: S, content: S, from: S, note: S, run: B }, ['kind']), (s, a, x) => withCaller(s, x, 'a Lean archive', (caller) => s.leanArchive(caller, a)))
-  registerTool('vibe_v5_lean_lib', '(member) List (and by default rebuild) the Lean reuse library: your institute\'s Formal/Index.md (with an import-dependency column), plus the global cross-project Formal/Lib and Formal/Proved indexes, the background-compile jobs (jobs) and the injected search path (paths.searchPath). Look here BEFORE writing a new definition so you reuse instead of redefining.', objParams({ refresh: B }), async (s, a) => {
+  registerTool('vibe_v5_lean_run', '(member) Execute the Lean toolchain on one .lean file inside the workspace and report the result. Parameters: file (required; `Formal/x.lean` or the full CWD-relative path — both name the same file), target (optional object id to record the run against), timeout_ms (optional per-run budget). There is NO run/run=false switch here — run-vs-archive are separate tools; use vibe_v5_lean_archive {run:false} to archive WITHOUT compiling. With leanAsync (default true) the compile is ENQUEUED and this returns immediately with async:{jobId,state} — nothing is compiled yet; the result is durable at Formal/Jobs/<jobId>.json (vibe_v5_lean_job {jobId} reads it), is listed by vibe_v5_lean_lib.jobs, and the initiator also gets ONE 【形式化结果】 announcement in its next round. With leanAsync=false it blocks and returns the compiler output (exitCode/stdout/stderr). Never throws: a host with no subprocess service returns NO_SUBPROCESS and a missing toolchain returns LEAN_NOT_FOUND (in both cases the code can still be written down with vibe_v5_lean_archive), a timeout terminates the process and returns LEAN_TIMEOUT. The framework appends `-R <VibeMath root>` before the file name (unless leanArgs already sets a search root).', objParams({ file: S, target: S, timeout_ms: I }, ['file']), (s, a, x) => withCaller(s, x, 'a Lean run', (caller) => requireToolHelp(x, 'vibe_v5_lean_run') || s.leanRunTool(caller, a)))
+  registerTool('vibe_v5_lean_archive', '(member) Archive Lean code. kind="def": a REUSABLE definition/object/assumption → the global cross-project library (Formal/Lib). kind="lemma": a machine-checked lemma → Formal/Proved. kind="proof": the formal proof of a project object → Formal/<target>.lean, and (only once the queued compile settles ok) also Verified/Lean/<target>.lean, marking the object Lean-passed. Re-archiving IDENTICAL content is de-duplicated (deduped:true, no rewrite/recompile). kind="blocked": record an explicit, reasoned "cannot/not worth formalizing" decision (note required). Optional `run` (default true): whether to COMPILE after writing — `run:false` archives the text only (useful when this host has no toolchain; the object then stays `attempted`/unset until something compiles it).', objParams({ kind: { type: 'string', enum: ['def', 'lemma', 'proof', 'blocked'] }, name: S, target: S, content: S, from: S, note: S, run: B }, ['kind']), (s, a, x) => withCaller(s, x, 'a Lean archive', (caller) => requireToolHelp(x, 'vibe_v5_lean_archive') || s.leanArchive(caller, a)))
+  registerTool('vibe_v5_lean_lib', '(member) List (and by default rebuild) the Lean reuse library: your institute\'s Formal/Index.md (with an import-dependency column), plus the global cross-project Formal/Lib and Formal/Proved indexes, the background-compile jobs (jobs) and the injected search path (paths.searchPath). Look here BEFORE writing a new definition so you reuse instead of redefining.', objParams({ refresh: B }), async (s, a, x) => {
+    const refused = requireToolHelp(x, 'vibe_v5_lean_lib'); if (refused) return refused
     const r = a && a.refresh === false ? { lib: null, proved: null, objects: Object.keys(s.formalRecords()).length } : await s.rebuildLeanLibIndexes()
     const st = s.status()
     return {
@@ -8945,7 +9207,7 @@ export function apply(ctx) {
   // Wait/observe the background compile queue (docs/formal-verification.md §7: no polling tool
   // for the member's own turn — `waitMs` is a bounded internal wait, and the state is returned
   // either way, so a member can also just check and continue).
-  registerTool('vibe_v5_lean_job', '(member) Inspect the background Lean compile queue. With no jobId it lists this session\'s jobs ({jobs,count,running,maxParallel}); with jobId it returns that job\'s state/exitCode, its receipt Formal/Jobs/<jobId>.json and, when it passed, the archived proof path. waitMs>0 waits up to that many milliseconds for a queued/running job to settle (it polls the queue instead of blocking the heartbeat) and otherwise returns the CURRENT state.', objParams({ jobId: S, waitMs: I }), (s, a) => s.leanJobTool(a))
+  registerTool('vibe_v5_lean_job', '(member) Inspect the background Lean compile queue. With no jobId it lists this session\'s jobs ({jobs,count,running,maxParallel}); with jobId it returns that job\'s state/exitCode, its receipt Formal/Jobs/<jobId>.json and, when it passed, the archived proof path. waitMs>0 waits up to that many milliseconds for a queued/running job to settle (it polls the queue instead of blocking the heartbeat) and otherwise returns the CURRENT state.', objParams({ jobId: S, waitMs: I }), (s, a, x) => requireToolHelp(x, 'vibe_v5_lean_job') || s.leanJobTool(a))
 
   // ── /v5 slash command ────────────────────────────────────────────────────
   ctx.effect(() => commands.register({

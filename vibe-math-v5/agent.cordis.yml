@@ -33,6 +33,8 @@
 
       ## Vibe Math V5 toolkit — the research-institute framework
 
+      Before first use of a complex tool, call vibe_v5_tool_help({"tool":"tool name"}) to read its method; simple tools and JSON replies remain directly usable.
+
       This session includes "Vibe Math V5": a self-organizing RESEARCH INSTITUTE
       that solves a research problem by talking. It is NOT a scheduler. It has
       three kinds of staff:
@@ -165,6 +167,8 @@
       You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
 
       ## Vibe Math V5 toolkit — the research-institute framework
+
+      Before first use of a complex tool, call vibe_v5_tool_help({"tool":"tool name"}) to read its method; simple tools and JSON replies remain directly usable.
 
       This session includes "Vibe Math V5": a self-organizing RESEARCH INSTITUTE
       that solves a research problem by talking. It is NOT a scheduler. It has

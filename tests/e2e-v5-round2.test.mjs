@@ -165,7 +165,7 @@ function makeHost(opts) {
         return { targetKey: p, displayPath: p }
       },
       async stat(t) { return existsSync(t.targetKey) ? { version: 'v1', type: 'file', size: 1 } : undefined },
-      async readText(t) { return readFileSync(t.targetKey, 'utf8') },
+      async readText(t) { if (o.failReadOn?.test(String(t.targetKey))) throw new Error('F6_READ_FAIL'); return readFileSync(t.targetKey, 'utf8') },
       async writeText(t, c) {
         // F6 seam: a REAL fs refusal (sandbox denial) rejects, which `writeTextAbs` catches and reports as
         // "not written" — the exact shape a failed required artifact write has in production.
@@ -189,6 +189,9 @@ function makeHost(opts) {
   async function callToolRawPolicy(name, args, agent) {
     const spec = toolRegs.find(x => x.name === name)
     if (!spec) throw new Error('no tool ' + name)
+    // Existing business fixtures explicitly acquire methods; unread/identity cases live in v5-tool-help.test.mjs.
+    const help = toolRegs.find(x => x.name === 'vibe_v5_tool_help')
+    if (help && name !== 'vibe_v5_tool_help') await help.execute({ tool: name }, { agent: agent || ROOT })
     return JSON.parse(await spec.execute(args || {}, { agent: agent || ROOT }))
   }
   async function callTool(name, args, agent) {
@@ -778,10 +781,11 @@ console.log('\n[13] compaction directive appears only when warranted')
   if (r1w) h.fireEnd(r1w.childId, { progress: 'x', contextPct: 100 })
 
   const forced = await h.peekWakeOf('r-1', 4000)
-  assert(!!forced && forced.text.indexOf('[CONTEXT COMPACT') !== -1,
-    'a member reporting 100% context DOES receive the compaction directive')
-  assert(!!forced && forced.text.indexOf('[核心规则]') !== -1,
-    'the compaction round also re-anchors the short core rules')
+  assert(!!forced && forced.text.indexOf('[CONTEXT COMPACT') === -1,
+    'unavailable compaction starts a cooldown instead of asking for a summary every round')
+  const diag13 = (await h.callTool('vibe_v5_status', {})).members.find(m => m.id === 'r-1')
+  assert(diag13.context.lastCompaction === 'unavailable' && diag13.contextPct === 100,
+    'unavailable host compaction preserves the member estimate')
   if (forced) h.fireEnd(forced.childId, { progress: '浓缩后的自述', compacted: true, contextPct: 15 })
 
   // The directive must NOT come back on the following round (v4 §24.1-③ regression).
@@ -1934,7 +1938,7 @@ console.log('\n[34] Lean async params: closed schema, coercion, visibleParams, e
   assert(r.params.leanJobsMaxParallel === 1, 'leanJobsMaxParallel:0 floors at 1')
   assert(JSON.stringify(r.params.leanSearchPaths) === JSON.stringify(['/libA', '/libB']),
     'leanSearchPaths accepts a comma string and keeps the given order (' + JSON.stringify(r.params.leanSearchPaths) + ')')
-  const help = String(setSpec.description || '')
+  const help = (await h.callTool('vibe_v5_tool_help', { tool: 'vibe_v5_set' })).instructions
   assert(/leanAsync/.test(help) && /leanInitiative/.test(help) && /leanSearchPaths/.test(help) && /leanJobsMaxParallel/.test(help),
     'the set-tool help text names all four (the switch is discoverable)')
   const H = pluginModule.__testHelpers
@@ -2353,9 +2357,9 @@ console.log('\n[44] paths stay inside the project root; every quorum view agrees
   // AND every library declaration it offers carries the member root (`Members/<你>/<section>/…`), so a
   // member copying one composes a path inside `Members/<id>/`. The legacy institute-relative shapes
   // (`Progress/<你>/…` and friends) must be gone - those used to send the write outside the member tree.
-  const decls = (brief.match(/Members\/<[^>]*>\/(?:Progress|Propos|Methods|Subproblems)\//g) || [])
-  assert(decls.length >= 4,
-    '* every member-facing library declaration is root-qualified (Members/<你>/<section>/…) (found ' + decls.length + ')')
+  const decls = (brief.match(/Members\/(?:acad|r-1)\//g) || [])
+  assert(decls.length >= 2,
+    '* every compact charter declares its concrete member library root (found ' + decls.length + ')')
   const legacy = (brief.match(/(?:^|[^A-Za-z0-9/_.-])(?:Progress|Propos|Methods|Subproblems)\/<你>\//g) || [])
   assert(legacy.length === 0,
     'no member-facing declaration is left in the legacy institute-relative shape (' + JSON.stringify(legacy) + ')')
@@ -2825,16 +2829,17 @@ console.log('\n[54] vibe_v5_feedback: 用途＋三路由提示；add→list→�
 
   // (1) 每一轮都可见：为什么记／记什么／三条路由／记了之后会怎样
   const p1 = await wake('r-1')
-  assert(p1.indexOf('【工作经验／流程反馈') !== -1, '★ [task-30] the per-round prompt carries the feedback hint')
-  assert(p1.indexOf('为什么记') !== -1 && p1.indexOf('记什么') !== -1 && p1.indexOf('记了之后') !== -1,
+  assert(p1.indexOf('【工作经验／流程反馈') === -1, '★ feedback tutorial is absent from ordinary research')
+  const handbook54 = readFileSync(join(h.WS, 'VibeMath/Projects/default/Institutes/institute/Shared/Protocol.md'), 'utf8')
+  assert(handbook54.indexOf('为什么记') !== -1 && handbook54.indexOf('记什么') !== -1 && handbook54.indexOf('记了之后') !== -1,
     '★ [task-30] the hint explains WHY / WHAT / what happens after')
-  assert(p1.indexOf('self＝') !== -1 && p1.indexOf('team＝') !== -1 && p1.indexOf('interpersonal＝') !== -1,
+  assert(handbook54.indexOf('self＝') !== -1 && handbook54.indexOf('team＝') !== -1 && handbook54.indexOf('interpersonal＝') !== -1,
     '★ [task-30] the hint distinguishes the THREE routes')
-  assert(p1.indexOf('自己调整，无需谁采纳') !== -1 && p1.indexOf('同样无需审批') !== -1,
+  assert(handbook54.indexOf('自己调整，无需谁采纳') !== -1 && handbook54.indexOf('同样无需审批') !== -1,
     '★★ [task-30] self/team routes are self-regulation — the hint never asks for an approval')
-  assert(p1.indexOf('缜密评估') !== -1 && p1.indexOf('事后回填验证') !== -1,
+  assert(handbook54.indexOf('缜密评估') !== -1 && handbook54.indexOf('事后回填验证') !== -1,
     '★ [task-30] only the interpersonal route demands a careful assessment + written-back verification')
-  assert(p1.indexOf('Progress/') !== -1 && p1.indexOf('Verified/') !== -1,
+  assert(handbook54.indexOf('Progress/') !== -1 && handbook54.indexOf('Verified/') !== -1,
     '★ [task-30] the boundary against Progress//Verified/ is stated in the prompt')
   assert(p1.indexOf('向用户问一次') === -1 && p1.indexOf('ask the user once') === -1,
     'the hint never demands an action a member cannot perform (I16)')
@@ -2933,7 +2938,7 @@ console.log('\n[55] task-31: P1 首次提回执处给背景＋字段最小注解
   const w = await h.peekWakeOf('r-1', 3000)
   const p = w ? w.text : ''
   if (w) h.fireEnd(w.childId, { progress: '收到。', solved: false, contextPct: 10 })
-  assert(p.indexOf('回执＝一次 math_computation 调用的 JSON 结果') !== -1,
+  assert(p.indexOf('Shared/Protocol.md') !== -1 && p.indexOf('回执＝一次 math_computation 调用的 JSON 结果') === -1,
     '★★ [task-31] P1: 成员那一轮真正读到的提示词就带这段背景')
   assert(p.indexOf('math_computation：可用引擎 无') !== -1 && p.indexOf('本机可用') === -1,
     '★★ [task-31] P3: 成员提示词里是「可用引擎 无」')
@@ -2944,6 +2949,124 @@ console.log('\n[55] task-31: P1 首次提回执处给背景＋字段最小注解
   assert(src31.indexOf("return '【研究所提示】' + m.text") !== -1,
     '★ [task-31] P4: 研究所回执帧改用【研究所提示】')
 }
+
+// ---------- 56. summaries, durable evidence and actual host compaction ----------
+console.log('\n[56] context reduction requires a saved checkpoint and a real host result')
+{
+  const rootRel = 'VibeMath/Projects/default/Institutes/institute/'
+  const longProof = '目标：保持所有条件。定义与假设：' + '对每个 n 有完整推导；'.repeat(900) + 'END-EXACT-CONDITION'
+  async function contextHost(service) {
+    const h = makeHost({ pluginModule, compaction: service })
+    await h.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+    assert((await h.callTool('vibe_v5_status', {})).members.every(m => m.contextPct === null && m.context.estimateSource === 'unknown' && m.context.completedRounds === 0 && m.context.roundsSinceCompaction === 0), 'missing reports do not fabricate context estimates')
+    await h.settleSpawns()
+    // A real host announces the live member agent before delivering its continuation.
+    for (const fn of h.listeners['subagent/start'] || []) fn({ id: h.childOf('r-1') })
+    await h.callTool('vibe_v5_set', { compactAfterRounds: 3, compactThreshold: 99, activityTimeoutMs: 30 })
+    return h
+  }
+  async function end(h, reply) { const w = await h.peekWakeOf('r-1', 3000); assert(!!w, 'context test reaches a completed member turn'); if (w) { for (const fn of h.listeners['subagent/start'] || []) fn({ id: w.childId }); h.fireEnd(w.childId, reply) } await sleep(10) }
+  async function member(h) { return (await h.callTool('vibe_v5_status', {})).members.find(m => m.id === 'r-1') }
+  let h, calls = 0, savedBefore = false
+  h = await contextHost({ async compactNow(agent) {
+    calls++
+    savedBefore = readFileSync(join(h.WS, rootRel, 'Members/r-1/Progress/progress.md'), 'utf8').includes(longProof)
+    return { compacted: true }
+  } })
+  await end(h, { progress: longProof, compacted: true, contextPct: 100 })
+  let m = await member(h)
+  assert(calls === 1 && savedBefore, 'full proof is saved before the member host compacts')
+  assert(m.context.lastSummarySaved === true && m.context.lastCompaction === 'succeeded' && m.context.roundsSinceCompaction === 0,
+    'a real successful result resets only the real compaction counter')
+  assert(m.contextPct === 100 && m.context.estimateSource === 'member-estimate', 'host success does not fabricate a 15% estimate')
+  const afterRealCompact = await h.peekWakeOf('r-1', 3000)
+  assert(afterRealCompact?.text.includes('压缩后先读取完整研究日志') && afterRealCompact.text.includes('Members/r-1/Progress/progress.md'), 'real compaction re-anchors navigation to the complete mathematical state')
+  if (afterRealCompact) h.fireEnd(afterRealCompact.childId, { progress: '继续', contextPct: null })
+  await sleep(15)
+  assert((await member(h)).contextPct === 100, 'null is not fabricated into a zero occupancy estimate')
+  for (const [label, result] of [['empty', null], ['empty-object', {}], ['failed', { ok: false }], ['explicit-false', false], ['failed-status', { status: 'failed' }], ['skipped', { skipped: true }], ['exception', 'throw']]) {
+    let n = 0
+    const x = await contextHost({ async compactNow() { n++; if (result === 'throw') throw new Error('HOST_TEST'); return result } })
+    await end(x, { progress: longProof, compacted: true, contextPct: 100 })
+    const first = await member(x)
+    assert(n === 1 && first.context.lastSummarySaved === true && first.context.lastCompaction !== 'succeeded' && first.context.roundsSinceCompaction > 0,
+      label + ' cannot masquerade as successful compression')
+    const pending = await x.peekWakeOf('r-1', 3000)
+    const started = await member(x)
+    assert(started.context.completedRounds === first.context.completedRounds && started.context.roundsSinceCompaction === first.context.roundsSinceCompaction, label + ': starting another turn does not count it as completed')
+    if (pending) x.fireEnd(pending.childId, { progress: '继续推导', contextPct: 100 })
+    await sleep(15)
+    await end(x, { progress: '继续推导', contextPct: 100 })
+    assert(n === 1, label + ' waits three completed turns before retrying')
+    await end(x, { progress: '继续推导', contextPct: 100 })
+    assert(n === 2, label + ' retries after the configured interval')
+  }
+  let refusedCalls = 0
+  const x = await contextHost({ async compactNow() { refusedCalls++; return true } })
+  x.setFailWriteOn(/Members[\\/]r-1[\\/]Progress[\\/]progress\.md$/)
+  await end(x, { progress: longProof, compacted: true, contextPct: 100 })
+  const failedSave = await member(x)
+  assert(refusedCalls === 0 && failedSave.context.lastSummarySaved === false && failedSave.context.lastCompaction === 'checkpoint-not-saved',
+    'failed progress persistence forbids proactive compression')
+  const afterSaveFailure = await x.peekWakeOf('r-1', 3000)
+  assert(afterSaveFailure?.text.includes('[状态保存失败]'), 'next prompt reports that mathematical state was not saved')
+  x.setFailWriteOn(null)
+  if (afterSaveFailure) x.fireEnd(afterSaveFailure.childId, { progress: longProof })
+  await sleep(15)
+  const saveRecovered = await x.peekWakeOf('r-1', 3000)
+  assert(saveRecovered && !saveRecovered.text.includes('[状态保存失败]'), 'successful persistence clears the stale save-failure warning')
+  if (saveRecovered) x.fireEnd(saveRecovered.childId, { progress: '继续研究' })
+  const y = await contextHost(undefined)
+  await end(y, { progress: longProof, compacted: true, contextPct: 100 })
+  const before = await member(y)
+  await end(y, { progress: '仅提交摘要', compacted: true, contextPct: 1 })
+  const after = await member(y)
+  assert(before.context.lastCompaction === 'unavailable' && after.context.roundsSinceCompaction > before.context.roundsSinceCompaction,
+    'a summary and a low member estimate cannot reset the actual counter')
+  // Old pressure is captured before accepting this round's lower estimate.
+  const z = await contextHost({ async compactNow() { return true } })
+  await end(z, { progress: '占用高', contextPct: 100 })
+  for (let i = 0; i < 2; i++) await end(z, { progress: '保持高占用', contextPct: 100 })
+  await end(z, { progress: longProof, compacted: true, contextPct: 1 })
+  assert((await member(z)).context.lastAttemptRound === (await member(z)).context.completedRounds,
+    'a lower end-of-turn estimate cannot cancel a previously triggered compression')
+  const failManual = makeHost({ pluginModule, failWriteOn: /Shared[\\/]Protocol\.md$/ })
+  await failManual.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  assert(failManual.spawns.every(sp => !sp.persona.includes('【v5 简明章程')) && failManual.spawns.some(sp => JSON.stringify(sp.request).includes('手册')),
+    'unreadable protocol falls back to the full charter and reports the downgrade')
+  const failRead = makeHost({ pluginModule, failReadOn: /Shared[\\/]Protocol\.md$/ })
+  await failRead.callTool('vibe_v5_start', { problem: PROBLEM, researcherCount: 1 })
+  assert(failRead.spawns.every(sp => !sp.persona.includes('【v5 简明章程')) && existsSync(join(failRead.WS, rootRel, 'Shared/Protocol.md')), 'handbook readability is verified even after a successful write')
+  const ownHost = await contextHost({ async compactNow() { throw new Error('WRONG_ROOT_HOST') } })
+  ownHost.childAgent(ownHost.childOf('r-1')).ctx = { get: () => ({ async compactNow() { return { success: true } } }) }
+  await end(ownHost, { progress: '状态已保存', contextPct: 100 })
+  assert((await member(ownHost)).context.lastCompaction === 'succeeded', 'actual compaction uses the member host ahead of the root host')
+  const fullProblem = '完整问题条件：' + '对任意实数 x，'.repeat(900) + 'END-PROBLEM-CONDITION'
+  const longHost = makeHost({ pluginModule })
+  await longHost.callTool('vibe_v5_start', { problem: fullProblem, researcherCount: 1 })
+  assert(longHost.spawns.every(sp => sp.persona.includes(fullProblem)), 'charter budgets never truncate the mathematical problem')
+  await h.callTool('vibe_v5_stop', {})
+  const statePath = join(h.WS, rootRel, 'State/institute.v5state.json')
+  const frozenState = JSON.parse(readFileSync(statePath, 'utf8'))
+  const oldCharter = JSON.parse(readFileSync(new URL('../prompt-corpus-v5/baseline-context.json', import.meta.url), 'utf8')).prompts.find(p => p.kind === 'founding' && p.owner === 'r-1').charter
+  frozenState.institutes['default::institute'].members.find(m => m.id === 'r-1').persona = oldCharter
+  const restoreWS = mkdtempSync(join(tmpdir(), 'vibe-v5-frozen-'))
+  const restoreStatePath = join(restoreWS, rootRel, 'State/institute.v5state.json')
+  mkdirSync(dirname(restoreStatePath), { recursive: true })
+  writeFileSync(restoreStatePath, JSON.stringify(frozenState), 'utf8')
+  const restoreProgressPath = join(restoreWS, rootRel, 'Members/r-1/Progress/progress.md')
+  mkdirSync(dirname(restoreProgressPath), { recursive: true })
+  writeFileSync(restoreProgressPath, readFileSync(join(h.WS, rootRel, 'Members/r-1/Progress/progress.md'), 'utf8'), 'utf8')
+  const restore = makeHost({ pluginModule, ws: restoreWS })
+  await restore.callTool('vibe_v5_resume', {})
+  const restored = restore.spawnOf('r-1')
+  assert(restored?.persona === oldCharter, 'existing members retain their exact frozen full charter on restore')
+  assert(restored && JSON.stringify(restored.request).includes('完整研究日志') && !JSON.stringify(restored.request).includes('END-EXACT-CONDITION'),
+    'restore contains navigation rather than a truncated proof seed')
+  assert(readFileSync(join(h.WS, rootRel, 'Members/r-1/Progress/progress.md'), 'utf8').includes(longProof),
+    'proof beyond the old 4000-character boundary remains fully readable after restore')
+}
+
 console.log('')
 console.log('passed=' + passed + ' failed=' + failed)
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f); process.exit(1) }

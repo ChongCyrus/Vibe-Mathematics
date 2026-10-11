@@ -232,8 +232,8 @@ const probes = [
     name: 'charter-rewritten-on-resume',
     ref: 'prompt-v5-integrity.test.mjs',
     guarantee: '㉒ the charter is frozen at hire; a resume must not rewrite the induction snapshot',
-    from: "      const persona = member.persona || memberPersona(member)",
-    to: "      const persona = memberPersona(member)",
+    from: "      const frozen = member.persona || memberPersona(member)",
+    to: "      const frozen = memberPersona(member)",
   },
   {
     name: 'resume-framed-as-induction',
