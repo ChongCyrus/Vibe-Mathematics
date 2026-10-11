@@ -289,6 +289,72 @@ await rm(root, { recursive: true, force: true })
   ok(appendRefused === 'VMU_INVALID_ARGUMENT', 'tags via append()[-]: the tag check is CALLED on the write path, not merely defined', String(appendRefused))
 }
 
+
+// ── ROUND 231: refs (3) and dedupe (3), including the design conflict that was RULED rather than papered over ──
+{
+  // The invariant first: exact-identity dedupe is NOT tunable, and the declared dedupe default must not break it.
+  const off = mk()
+  const first = await off.append({ kind: 'proposition', statement: 'IDENT', proof: 'P' })
+  const again = await off.append({ kind: 'proposition', statement: 'IDENT', proof: 'P' })
+  ok(first.id === again.id && again.deduplicated === true && again.deduplicatedBy === 'identity',
+    'dedupe.enabled[default=false]: identical content is STILL idempotent - the face invariant is not switched off by the declaration',
+    String(again.deduplicatedBy))
+
+  // refs.requireTarget / refs.danglingPolicy
+  const listing = mk({ settings: { 'vmu.refs.requireTarget': true, 'vmu.refs.danglingPolicy': 'list' } })
+  const withDangling = await listing.append({ kind: 'proposition', statement: 'REF-1', references: ['does-not-exist'] })
+  ok(withDangling.ok === true && withDangling.dangling.join(',') === 'does-not-exist',
+    'refs.danglingPolicy[list]: a dangling reference is REPORTED in the receipt under the declared default', JSON.stringify(withDangling.dangling))
+  const rejecting = mk({ settings: { 'vmu.refs.requireTarget': true, 'vmu.refs.danglingPolicy': 'reject' } })
+  let refRefused = null
+  try { await rejecting.append({ kind: 'proposition', statement: 'REF-2', references: ['does-not-exist'] }) } catch (e) { refRefused = e && e.code }
+  ok(refRefused === 'VMU_INVALID_ARGUMENT', 'refs.danglingPolicy[reject]: the same reference is refused by name instead', String(refRefused))
+  const lenient = mk({ settings: { 'vmu.refs.requireTarget': false } })
+  const notChecked = await lenient.append({ kind: 'proposition', statement: 'REF-3', references: ['does-not-exist'] })
+  // ROUND 231: turning the REQUIREMENT off does not turn the LOOK off. The dangling reference is still computed and still
+  // reported; what changes is that the policy no longer refuses. An earlier version of this assertion expected an empty
+  // list, which would have made the reference silent - the opposite of the rule.
+  ok(notChecked.ok === true && notChecked.dangling.join(',') === 'does-not-exist',
+    'refs.requireTarget[false]: the requirement is off but the dangling reference is STILL reported, never silent',
+    JSON.stringify(notChecked.dangling))
+  const known = mk()
+  const target = await known.append({ kind: 'proposition', statement: 'TARGET' })
+  const pointing = await known.append({ kind: 'proposition', statement: 'POINTS', references: [target.id] })
+  ok(pointing.ok === true && pointing.dangling.length === 0, 'refs.requireTarget[+]: a reference to a real id passes')
+
+  // refs.backlinkDepth
+  const chain = mk({ settings: { 'vmu.refs.backlinkDepth': 2 } })
+  const a = await chain.append({ kind: 'proposition', statement: 'A' })
+  const b = await chain.append({ kind: 'proposition', statement: 'B', references: [a.id] })
+  const c = await chain.append({ kind: 'proposition', statement: 'C', references: [b.id] })
+  const bl = chain.backlinks(a.id)
+  ok(bl.levels.length === 2 && bl.levels[0].includes(b.id) && bl.levels[1].includes(c.id),
+    'refs.backlinkDepth[+]: backlinks reach two levels when two are declared', JSON.stringify(bl.levels.length))
+  ok(mk().backlinks(a.id).levels.length <= 1, 'refs.backlinkDepth[default]: the declared default is one level')
+
+  // dedupe.enabled / scope / crossWorkspace - the OPTIONAL wider layer
+  const wider = mk({ settings: { 'vmu.dedupe.enabled': true, 'vmu.dedupe.scope': 'segment' } })
+  const w1 = await wider.append({ kind: 'proposition', statement: 'SEG', proof: 'P1' })
+  const w2 = await wider.append({ kind: 'proposition', statement: 'SEG', proof: 'P2' })
+  ok(w1.id === w2.id && w2.deduplicatedBy === 'segment',
+    'dedupe.scope[segment]: with the wider layer ON, a same-statement record matches and says WHY', String(w2.deduplicatedBy))
+  const narrow = mk({ settings: { 'vmu.dedupe.enabled': true, 'vmu.dedupe.scope': 'full' } })
+  const n1 = await narrow.append({ kind: 'proposition', statement: 'SEG', proof: 'P1' })
+  const n2 = await narrow.append({ kind: 'proposition', statement: 'SEG', proof: 'P2' })
+  ok(n1.id !== n2.id, 'dedupe.scope[full]: with full scope a different proof is a DIFFERENT record')
+  const cross = mk({ settings: { 'vmu.dedupe.enabled': true, 'vmu.dedupe.scope': 'segment', 'vmu.dedupe.crossWorkspace': true } })
+  // The scope is required on EVERY call, the first included: the face must know which workspaces it is comparing against, and
+  // a rule that applies only from the second call onwards would be a special case nobody could predict.
+  await cross.append({ kind: 'proposition', statement: 'XW', proof: 'P1' }, { workspaceScope: ['shared'] })
+  let needScope = null
+  try { await cross.append({ kind: 'proposition', statement: 'XW', proof: 'P2' }) } catch (e) { needScope = e && e.code }
+  ok(needScope === 'VMU_INVALID_ARGUMENT',
+    'dedupe.crossWorkspace[+]: cross-workspace matching is refused without an explicit scope - this face does not scan other roots by itself', String(needScope))
+  const crossScoped = await cross.append({ kind: 'proposition', statement: 'XW', proof: 'P2' }, { workspaceScope: ['shared'] })
+  ok(crossScoped.ok === true && crossScoped.deduplicatedBy === 'segment',
+    'dedupe.crossWorkspace[+]: with the explicit scope the wider match proceeds', String(crossScoped.deduplicatedBy))
+}
+
 console.log('=== VMU LIBRARY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

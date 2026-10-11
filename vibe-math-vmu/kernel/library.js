@@ -61,6 +61,13 @@ export function createLibrary({
   tagsControlled = (settings && settings['vmu.tags.controlled']) === true,
   tagsMaxDepth = (() => { const v = Number(settings && settings['vmu.tags.maxDepth']); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 3 })(),
   tagsAliasTable = (settings && settings['vmu.tags.aliasTable']) || '',
+  // ROUND 231: refs and dedupe.
+  refsRequireTarget = (settings && settings['vmu.refs.requireTarget']) !== false,
+  refsDanglingPolicy = (settings && settings['vmu.refs.danglingPolicy']) === 'reject' ? 'reject' : 'list',
+  refsBacklinkDepth = (() => { const v = Number(settings && settings['vmu.refs.backlinkDepth']); return Number.isFinite(v) && v >= 0 ? Math.floor(v) : 1 })(),
+  dedupeWider = (settings && settings['vmu.dedupe.enabled']) === true,
+  dedupeScope = (settings && settings['vmu.dedupe.scope']) === 'segment' ? 'segment' : 'full',
+  dedupeCrossWorkspace = (settings && settings['vmu.dedupe.crossWorkspace']) === true,
   clock = () => new Date().toISOString(),
   storeMode = (settings && settings['vmu.records.history.storeMode']) || 'full',
 } = {}) {
@@ -78,6 +85,45 @@ export function createLibrary({
     if (Array.isArray(aliasTags)) for (const x of aliasTags) if (typeof x === 'string' && x.trim()) aliases.add(x.trim())
     return { ok: true, vocabulary: vocabulary.size, aliases: aliases.size, controlled: tagsControlled,
       aliasTable: tagsAliasTable || null, enforced: ['vmu.tags.controlled', 'vmu.tags.aliasTable'], fired: [] }
+  }
+  /**
+   * ROUND 231: check a record's `references` against the declaration.
+   * `vmu.refs.requireTarget` (default true) makes a reference to an UNKNOWN id a refusal; `vmu.refs.danglingPolicy` then
+   * decides whether that refusal stands (`reject`) or whether the dangling reference is merely LISTED in the receipt
+   * (`list`, the declared default). A dangling reference is never silent under either setting.
+   */
+  const checkReferences = ({ references = null, known = null } = {}) => {
+    const enforced = ['vmu.refs.requireTarget', 'vmu.refs.danglingPolicy']
+    const list = Array.isArray(references) ? references.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : []
+    const ids = known instanceof Set ? known : new Set(index.keys())
+    const dangling = list.filter((r) => !ids.has(r))
+    const fired = dangling.length ? ['vmu.refs.requireTarget'] : []
+    if (dangling.length && refsRequireTarget && refsDanglingPolicy === 'reject') {
+      throw refuse('VMU_INVALID_ARGUMENT', 'reference target does not exist and vmu.refs.danglingPolicy=reject: ' + dangling.join(', '),
+        'create the target first, or set vmu.refs.danglingPolicy=list to have dangling references reported instead',
+        { dangling, policy: refsDanglingPolicy })
+    }
+    return { ok: true, references: list, dangling, reported: dangling.slice(), enforced, fired,
+      requireTarget: refsRequireTarget, policy: refsDanglingPolicy }
+  }
+  /** Backlinks up to `vmu.refs.backlinkDepth`, breadth-first over the index. */
+  const backlinks = (id, depth = refsBacklinkDepth) => {
+    const levels = []
+    let frontier = [String(id)]
+    const seen = new Set(frontier)
+    for (let d = 0; d < Math.max(0, depth); d += 1) {
+      const next = []
+      for (const rec of index.values()) {
+        if (frontier.includes(rec.id)) continue
+        if (next.includes(rec.id)) continue
+        if (frontier.some((f) => (rec.references || []).includes(f))) next.push(rec.id)
+      }
+      if (!next.length) break
+      for (const n of next) seen.add(n)
+      levels.push(next)
+      frontier = next
+    }
+    return { ok: true, id: String(id), depth, levels, backlinks: levels.flat(), enforced: ['vmu.refs.backlinkDepth'], fired: levels.length ? ['vmu.refs.backlinkDepth'] : [] }
   }
   /** Check a tag list against the declaration. Depth first, then the vocabulary, then the alias rule. */
   const checkTags = ({ tags = null } = {}) => {
@@ -200,6 +246,8 @@ export function createLibrary({
             title: meta.title || id, status: meta.status || 'open',
             owner: meta.owner || member,
             fingerprint: meta.fingerprint || null, // READ BACK, never recomputed (docs/07 §4.2)
+        references: meta.references ? String(meta.references).split(',').filter(Boolean) : [],   // ROUND 231
+        statement: meta.statement === undefined || meta.statement === 'null' ? undefined : String(meta.statement),   // ROUND 231
             updatedAt: meta.updatedAt || null,
           })
         }
@@ -287,16 +335,39 @@ export function createLibrary({
     fingerprint,
     registerVocabulary,
     checkTags,
+    checkReferences,
+    backlinks,
 
     /** Append a card. Same substantive content twice => same id (idempotent), never a silent duplicate. */
     async append(record = {}, opts = {}) {
       if (record.tags !== undefined) checkTags({ tags: record.tags })   // ROUND 230: a validator nobody calls is inert
+    const refCheck = record.references !== undefined ? checkReferences({ references: record.references }) : null   // ROUND 231
       const kind = record.kind
       const fp = fingerprint(kind, record)
       await rebuildIndex()
+      // ROUND 231: EXACT-IDENTITY dedupe is the face INVARIANT and is not tunable - vmu.dedupe.enabled defaults to false,
+      // and reading it as "dedupe off" would destroy the documented "same content twice => same id" lesson.
       const existing = [...index.values()].find((r) => r.kind === kind && r.fingerprint === fp)
       if (existing) {
-        return { ok: true, id: existing.id, fingerprint: fp, deduplicated: true, file: existing.file }
+        return { ok: true, id: existing.id, fingerprint: fp, deduplicated: true, deduplicatedBy: 'identity', file: existing.file, references: refCheck ? refCheck.references : [], dangling: refCheck ? refCheck.dangling : [] }
+      }
+      // The OPTIONAL wider layer, which is what vmu.dedupe.* governs. Off by default, so nothing above changes.
+      if (dedupeWider) {
+        if (dedupeCrossWorkspace && !opts.workspaceScope) {
+          throw refuse('VMU_INVALID_ARGUMENT', 'vmu.dedupe.crossWorkspace=true needs an explicit workspace scope',
+            'pass opts.workspaceScope (a list of workspace ids); this face does not scan other roots by itself')
+        }
+        const scope = Array.isArray(opts.workspaceScope) ? new Set(opts.workspaceScope.map(String)) : null
+        const wider = [...index.values()].find((r) => {
+          if (r.kind !== kind) return false
+          if (scope && !scope.has(String(r.member || 'shared'))) return false
+          if (dedupeScope === 'segment') return r.statement !== undefined && String(r.statement) === String(record.statement)
+          return false
+        })
+        if (wider) {
+          return { ok: true, id: wider.id, fingerprint: fp, deduplicated: true, deduplicatedBy: dedupeScope, file: wider.file,
+            scope: dedupeScope, references: refCheck ? refCheck.references : [], dangling: refCheck ? refCheck.dangling : [] }
+        }
       }
       const member = record.owner || opts.member || 'shared'
       const dir = cardDir(member, kind)
@@ -309,6 +380,8 @@ export function createLibrary({
       await mkdir(dir, { recursive: true })
       const meta = {
         id, kind, fingerprint: fp,
+          references: refCheck && refCheck.references.length ? refCheck.references.join(',') : null,   // ROUND 231
+          statement: record.statement === undefined ? null : String(record.statement),   // ROUND 231: segment-scope dedupe needs it
         title: record.title || record.statement.slice(0, 60),
         status: record.status || 'open',
         owner: member,
@@ -316,7 +389,8 @@ export function createLibrary({
       }
       await writeFile(file, render(meta, String(record.statement) + (record.proof ? '\n\n' + record.proof : '')), 'utf8')
       index.set(id, Object.assign({ file }, meta))
-      return { ok: true, id, fingerprint: fp, deduplicated: false, file }
+      return { ok: true, id, fingerprint: fp, deduplicated: false, file,
+        references: refCheck ? refCheck.references : [], dangling: refCheck ? refCheck.dangling : [] }
     },
 
     /** Append a progress line to one track. An unknown track is refused by name (docs/07 §4.1). */
