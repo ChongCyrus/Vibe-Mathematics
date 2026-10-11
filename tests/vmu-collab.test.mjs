@@ -13,7 +13,9 @@ const throwsNamed = (fn, code, label) => {
 
 let now = 0
 const DAY = 86400000
-const mk = (settings = {}) => createCollab({ clock: () => now, settings })
+// ROUND 219: `vmu.agreements.unsignedPolicy` defaults to block, and the pre-existing cases exchange under an unsigned
+// agreement. The helper declares that baseline explicitly; the new section sets block again to prove the refusal.
+const mk = (settings = {}) => createCollab({ clock: () => now, settings: Object.assign({ 'vmu.agreements.unsignedPolicy': 'warn' }, settings) })
 
 // ── 1. zero declarations ⇒ zero mechanism ────────────────────────────────────────────────────────────────────
 {
@@ -125,6 +127,56 @@ const mk = (settings = {}) => createCollab({ clock: () => now, settings })
   c.agreements(); c.status()
   ok(before !== mid || true, 'purity: reads are callable repeatedly')
   ok(c.status().dropped === 0, 'purity: nothing was silently dropped below the cap')
+}
+
+
+// ── ROUND 219: the agreements family (docs/22 协议闸 table) — seven keys, both directions ────────────────────
+{
+  now = 0
+  // kinds[-] and kinds[+]
+  const c1 = mk({ 'vmu.agreements.kinds': ['dua', 'mta'] })
+  c1.addCounterparty({ name: 'Agro' })
+  let badKind = null; try { c1.openAgreement({ counterparty: 'agro', kind: 'nda' }) } catch (e) { badKind = e && e.code }
+  ok(badKind === 'VMU_AGREEMENT_KIND_UNKNOWN', 'kinds[-]: an undeclared kind is refused by name', String(badKind))
+  const a1 = c1.openAgreement({ counterparty: 'agro', kind: 'mta' })
+  ok(a1.kind === 'mta' && a1.signed === false, 'kinds[+]: a declared kind opens, and the agreement starts UNSIGNED')
+  ok(a1.registryDir === 'Ops/Agreements', 'registryDir: the declared default is reported on the agreement')
+  // unsignedPolicy=block (the declared default)
+  const c2 = mk({ 'vmu.agreements.unsignedPolicy': 'block' })
+  c2.addCounterparty({ name: 'Blocker' })
+  const a2 = c2.openAgreement({ counterparty: 'blocker' })
+  let unsigned = null; try { c2.exchange({ counterparty: 'blocker', agreementId: a2.id }) } catch (e) { unsigned = e && e.code }
+  ok(unsigned === 'VMU_AGREEMENT_UNSIGNED', 'unsignedPolicy[-]: an exchange under an UNSIGNED agreement is refused by name', String(unsigned))
+  // signatureRefRequired[-] then sign[+]
+  let noRef = null; try { c2.signAgreement({ agreementId: a2.id, by: 'legal' }) } catch (e) { noRef = e && e.code }
+  ok(noRef === 'VMU_AGREEMENT_SIGNATURE_REF_REQUIRED', 'signatureRefRequired[-]: a signature without a reference is refused by name', String(noRef))
+  ok(c2.signAgreement({ agreementId: a2.id, by: 'legal', ref: 'DUA-2026-01' }).signed === true, 'signatureRefRequired[+]: with a reference the agreement signs')
+  ok(c2.exchange({ counterparty: 'blocker', agreementId: a2.id }).allowed === true, 'unsignedPolicy[+]: once signed, the exchange proceeds')
+  // scopeEnforcement=block
+  const c3 = mk({ 'vmu.collab.agreementRequired': true })
+  c3.addCounterparty({ name: 'Scoper' })
+  const a3 = c3.openAgreement({ counterparty: 'scoper', scope: 'genomics' })
+  c3.signAgreement({ agreementId: a3.id, ref: 'X-1' })
+  let scope = null; try { c3.exchange({ counterparty: 'scoper', agreementId: a3.id, scope: 'proteomics' }) } catch (e) { scope = e && e.code }
+  ok(scope === 'VMU_AGREEMENT_SCOPE_NOT_COVERED', 'scopeEnforcement[-]: an exchange outside the agreed scope is refused by name', String(scope))
+  ok(c3.exchange({ counterparty: 'scoper', agreementId: a3.id, scope: 'genomics' }).allowed === true, 'scopeEnforcement[+]: the agreed scope passes')
+  // reviewCadenceDays: reported, and an overdue review is WARNED about rather than refused
+  const c4 = mk({ 'vmu.agreements.reviewCadenceDays': 10 })
+  c4.addCounterparty({ name: 'Reviewer' })
+  const a4 = c4.openAgreement({ counterparty: 'reviewer' })
+  c4.signAgreement({ agreementId: a4.id, ref: 'R-1' })
+  const first = c4.exchange({ counterparty: 'reviewer', agreementId: a4.id })
+  ok(first.reviewNeverDone === true, 'reviewCadenceDays: an agreement never reviewed says so')
+  ok(c4.reviewAgreement({ agreementId: a4.id }).nextDueAt === now + 10 * DAY, 'reviewCadenceDays[+]: the next review date follows the cadence')
+  const fresh = c4.exchange({ counterparty: 'reviewer', agreementId: a4.id })
+  ok(fresh.reviewOverdue === false, 'reviewCadenceDays[+]: a fresh review is not overdue')
+  now += 11 * DAY
+  ok(c4.exchange({ counterparty: 'reviewer', agreementId: a4.id }).reviewOverdue === true, 'reviewCadenceDays[-]: an overdue review is REPORTED (not refused)')
+  // expiryWarnDays for the agreements key: a near expiry warns
+  const c5 = mk({ 'vmu.agreements.expiryWarnDays': 5, 'vmu.collab.expiryWarnDays': 5 })
+  c5.addCounterparty({ name: 'Expiring' })
+  const a5 = c5.openAgreement({ counterparty: 'expiring', endsAt: 3 * DAY })
+  ok(a5.expiryWarning === true, 'expiryWarnDays[+]: an agreement inside the window warns')
 }
 
 console.log('=== VMU COLLAB: ' + pass + ' passed, ' + fail + ' failed ===')

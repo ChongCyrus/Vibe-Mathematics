@@ -35,6 +35,11 @@ export const CODE = Object.freeze({
   templateUnknown: 'VMU_COLLAB_TEMPLATE_UNKNOWN',
   settlementPremature: 'VMU_COLLAB_SETTLEMENT_PREMATURE',
   reconciliationOff: 'VMU_COLLAB_RECONCILIATION_OFF',
+  // ROUND 219: the agreements family.
+  agreementKindUnknown: 'VMU_AGREEMENT_KIND_UNKNOWN',
+  agreementUnsigned: 'VMU_AGREEMENT_UNSIGNED',
+  signatureRefRequired: 'VMU_AGREEMENT_SIGNATURE_REF_REQUIRED',
+  scopeNotCovered: 'VMU_AGREEMENT_SCOPE_NOT_COVERED',
 })
 
 export function createCollab({ clock = () => 0, log = null, settings = {}, bus = null, listCap = 100 } = {}) {
@@ -54,6 +59,14 @@ export function createCollab({ clock = () => 0, log = null, settings = {}, bus =
     jointAuthorshipPolicy: str(sget('vmu.collab.jointAuthorshipPolicy')) || 'contribution-then-alternate',
     settlementCycleDays: (() => { const v = intOr(sget('vmu.collab.settlementCycleDays', 60), 60); return v >= 1 ? v : 60 })(),
     reconciliationToleranceMinor: (() => { const v = intOr(sget('vmu.collab.reconciliationToleranceMinor', 1), 1); return v >= 0 ? v : 1 })(),
+    // ROUND 219: the agreements family (docs/22 the agreement-gate table).
+    agreementsRegistryDir: str(sget('vmu.agreements.registryDir')) || 'Ops/Agreements',
+    agreementKinds: (() => { const a = sget('vmu.agreements.kinds'); return Array.isArray(a) && a.length ? a.map(String) : ['dua', 'mta'] })(),
+    unsignedPolicy: ['block', 'warn'].includes(sget('vmu.agreements.unsignedPolicy')) ? sget('vmu.agreements.unsignedPolicy') : 'block',
+    signatureRefRequired: sget('vmu.agreements.signatureRefRequired') !== false,
+    agreementsExpiryWarnDays: (() => { const v = intOr(sget('vmu.agreements.expiryWarnDays', 30), 30); return v >= 0 ? v : 30 })(),
+    reviewCadenceDays: (() => { const v = intOr(sget('vmu.agreements.reviewCadenceDays', 365), 365); return v >= 1 ? v : 365 })(),
+    scopeEnforcement: ['block', 'warn'].includes(sget('vmu.agreements.scopeEnforcement')) ? sget('vmu.agreements.scopeEnforcement') : 'block',
   })
 
   const counterparties = new Map()   // id -> { id, name, institution, templates[], at }
@@ -87,9 +100,15 @@ export function createCollab({ clock = () => 0, log = null, settings = {}, bus =
   const daysLeft = (a, at) => (Number.isFinite(a.expiresAt) && a.expiresAt > 0 ? Math.floor((a.expiresAt - at) / 86400000) : null)
 
   /** Open an agreement. `agreementRequired` gates exchanges and `expiryWarnDays` drives the warning below. */
-  function openAgreement({ counterparty, template = null, scope = null, startsAt = null, endsAt = null, authors = null } = {}) {
+  function openAgreement({ counterparty, kind = null, template = null, scope = null, startsAt = null, endsAt = null, authors = null } = {}) {
     const c = cfg()
     const cp = counterpartyOf(counterparty)
+    // vmu.agreements.kinds: the declared kinds are the only ones this face will open.
+    const realKind = str(kind) || c.agreementKinds[0]
+    if (!c.agreementKinds.includes(realKind)) {
+      throw refuse(CODE.agreementKindUnknown, 'agreement kind is not declared: ' + realKind,
+        'allowed: ' + c.agreementKinds.join(', ') + ' (vmu.agreements.kinds)', { kind: realKind, allowed: c.agreementKinds.slice() })
+    }
     const tmpl = str(template) || c.dataSharingTemplate
     if (tmpl !== c.dataSharingTemplate && !cp.templates.includes(tmpl)) {
       throw refuse(CODE.templateUnknown, 'template is not agreed with ' + cp.id + ': ' + tmpl,
@@ -99,13 +118,15 @@ export function createCollab({ clock = () => 0, log = null, settings = {}, bus =
     const start = Number.isFinite(startsAt) ? Number(startsAt) : at
     const end = Number.isFinite(endsAt) && Number(endsAt) > 0 ? Number(endsAt) : null
     const id = nextId('agreement')
-    const rec = { id, counterparty: cp.id, template: tmpl, scope: str(scope) || null, startsAt: start, expiresAt: end, authors: Array.isArray(authors) ? authors.map(String) : [], settlements: [], at, jointAuthorshipPolicy: c.jointAuthorshipPolicy }
+    const rec = { id, counterparty: cp.id, kind: realKind, template: tmpl, scope: str(scope) || null, startsAt: start, expiresAt: end, authors: Array.isArray(authors) ? authors.map(String) : [], settlements: [], at, jointAuthorshipPolicy: c.jointAuthorshipPolicy,
+      signed: null, signatureRef: null, lastReviewedAt: null, reviewWarnings: [] }
     agreements.set(id, rec)
     const left = daysLeft(rec, at)
     const warn = left !== null && left <= c.expiryWarnDays
     if (warn) say({ type: 'collab/expiry-warning', at, agreement: id, daysLeft: left, expiryWarnDays: c.expiryWarnDays })
-    return { ok: true, id, counterparty: cp.id, template: tmpl, expiresAt: end, daysLeft: left, expiryWarning: warn,
-      enforced: ['vmu.collab.agreementRequired', 'vmu.collab.dataSharingTemplate', 'vmu.collab.expiryWarnDays', 'vmu.collab.jointAuthorshipPolicy'] }
+    return { ok: true, id, counterparty: cp.id, kind: realKind, template: tmpl, expiresAt: end, daysLeft: left, expiryWarning: warn,
+      registryDir: c.agreementsRegistryDir, signed: false,
+      enforced: ['vmu.collab.agreementRequired', 'vmu.collab.dataSharingTemplate', 'vmu.collab.expiryWarnDays', 'vmu.collab.jointAuthorshipPolicy', 'vmu.agreements.kinds', 'vmu.agreements.registryDir'] }
   }
 
   const agreementOf = (id) => {
@@ -114,11 +135,36 @@ export function createCollab({ clock = () => 0, log = null, settings = {}, bus =
     return a
   }
 
+  /** ROUND 219: sign an agreement. `signatureRefRequired` refuses a signature that carries no reference. */
+  function signAgreement({ agreementId, by = null, ref = null } = {}) {
+    const c = cfg()
+    const a = agreementOf(agreementId)
+    const enforced = ['vmu.agreements.signatureRefRequired']
+    if (c.signatureRefRequired && !(typeof ref === 'string' && ref.trim())) {
+      throw refuse(CODE.signatureRefRequired, 'vmu.agreements.signatureRefRequired=true: a signature needs a reference',
+        'pass ref, naming the document or its path (vmu.agreements.signatureRefRequired)', { agreementId: a.id, missing: ['ref'], enforced })
+    }
+    a.signed = true
+    a.signatureRef = ref === null ? null : String(ref)
+    a.signedBy = by === null ? null : String(by)
+    a.signedAt = clock()
+    return { ok: true, agreementId: a.id, signed: true, ref: a.signatureRef, enforced }
+  }
+
+  /** ROUND 219: record a review. `reviewCadenceDays` decides when the next one is due. */
+  function reviewAgreement({ agreementId } = {}) {
+    const a = agreementOf(agreementId)
+    const at = clock()
+    a.lastReviewedAt = at
+    a.reviewWarnings = []
+    return { ok: true, agreementId: a.id, reviewedAt: at, cadenceDays: cfg().reviewCadenceDays, nextDueAt: at + cfg().reviewCadenceDays * 86400000, enforced: ['vmu.agreements.reviewCadenceDays'] }
+  }
+
   /**
    * Authorise an exchange (data or otherwise) with a counterparty. This is where `agreementRequired` bites: with it on, an
    * exchange with no live agreement is refused BY NAME; with it off, the face records the decision and pretends nothing.
    */
-  function exchange({ counterparty, kind = 'data', agreementId = null } = {}) {
+  function exchange({ counterparty, kind = 'data', agreementId = null, scope = null } = {}) {
     const c = cfg()
     const cp = counterpartyOf(counterparty)
     const at = clock()
@@ -140,7 +186,35 @@ export function createCollab({ clock = () => 0, log = null, settings = {}, bus =
       throw refuse(CODE.agreementExpired, 'the agreement expired at ' + a.expiresAt + ' (now=' + at + ')',
         'renew the agreement before exchanging (vmu.collab.expiryWarnDays=' + c.expiryWarnDays + ')', { agreementId: a.id, expiresAt: a.expiresAt, at, enforced, fired })
     }
-    return { ok: true, allowed: true, counterparty: cp.id, kind: str(kind) || 'data', template: a.template, agreement: a.id, daysLeft: daysLeft(a, at), enforced, fired }
+    // ROUND 219: this is the only place an agreement is actually USED, so the agreements family is decided here.
+    let unsignedWarn = null
+    if (!a.signed) {
+      if (c.unsignedPolicy === 'block') {
+        fired.push('vmu.agreements.unsignedPolicy')
+        throw refuse(CODE.agreementUnsigned, 'vmu.agreements.unsignedPolicy=block: the agreement is not signed, so nothing may be shared under it',
+          'sign it first with signAgreement, or set the policy to warn deliberately', { agreementId: a.id, enforced: enforced.concat(['vmu.agreements.unsignedPolicy']), fired })
+      }
+      unsignedWarn = 'unsigned-warn'
+      fired.push('vmu.agreements.unsignedPolicy')
+    }
+    const asked = str(scope)
+    if (asked && a.scope && asked !== a.scope) {
+      if (c.scopeEnforcement === 'block') {
+        fired.push('vmu.agreements.scopeEnforcement')
+        throw refuse(CODE.scopeNotCovered, 'the requested scope is outside the agreement: ' + asked + ' vs ' + a.scope,
+          'open a separate agreement for that scope, or set vmu.agreements.scopeEnforcement=warn deliberately', { agreementId: a.id, asked, agreed: a.scope, enforced: enforced.concat(['vmu.agreements.scopeEnforcement']), fired })
+      }
+      a.reviewWarnings.push('scope-warn: ' + asked)
+      fired.push('vmu.agreements.scopeEnforcement')
+    }
+    // An overdue review is REPORTED rather than refused: the declared contract gives the cadence no enforcement of its
+    // own, and inventing one would be a decision this face has no authority to take.
+    const reviewOverdue = a.lastReviewedAt !== null && (at - a.lastReviewedAt) > c.reviewCadenceDays * 86400000
+    const reviewNeverDone = a.lastReviewedAt === null
+    return { ok: true, allowed: true, counterparty: cp.id, kind: str(kind) || 'data', template: a.template, agreement: a.id,
+      kindDeclared: a.kind, daysLeft: daysLeft(a, at), signed: !!a.signed, unsignedWarn, reviewOverdue, reviewNeverDone,
+      reviewWarnings: a.reviewWarnings.slice(), registryDir: c.agreementsRegistryDir,
+      enforced: enforced.concat(['vmu.agreements.unsignedPolicy', 'vmu.agreements.scopeEnforcement', 'vmu.agreements.reviewCadenceDays', 'vmu.agreements.registryDir']), fired }
   }
 
   /**
@@ -207,5 +281,5 @@ export function createCollab({ clock = () => 0, log = null, settings = {}, bus =
     }
   }
 
-  return { apiVersion, addCounterparty, openAgreement, exchange, settle, authorship, agreements: agreementsView, status }
+  return { apiVersion, addCounterparty, openAgreement, signAgreement, reviewAgreement, exchange, settle, authorship, agreements: agreementsView, status }
 }

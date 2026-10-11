@@ -677,6 +677,24 @@ vmu.packs.active: [v5r]
 | `vmu.collab.jointAuthorshipPolicy` | string | `contribution-then-alternate` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 共同署名政策（声明顺序；未实现的政策名自曝而非假装） |
 | `vmu.collab.settlementCycleDays` | integer | `60` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 结算周期天数（≥1；未到周期即结算具名拒并给到期时刻） |
 | `vmu.collab.reconciliationToleranceMinor` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 对账容差（最小货币单位；超出容差具名拒并给差额） |
+| `vmu.money.currencyDefault` | string | `EUR` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 默认币种（缺省时用于 scaleOf 等；不覆盖显式传入者） |
+| `vmu.money.roundingMode` | enum | `half-even` | `half-up`∣`half-even`∣`floor`∣`ceil`∣`trunc` | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 舍入方式（roundMinor 用它；默认银行家舍入） |
+| `vmu.money.scaleByCurrency` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 币种→精度位数（覆盖 ISO 表；自曝 overridden） |
+| `vmu.money.fxSource` | string | `manual-snapshot` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 汇率来源名（离线优先；checkFx 自曝来源） |
+| `vmu.money.fxSnapshotDir` | string | `Ops/FX` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 汇率快照目录（相对项目根；本面只 REPORT 不触碰） |
+| `vmu.money.fxMaxAgeDays` | int ≥0 | `7` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 汇率快照最大年龄（超出具名拒并给实际天数） |
+| `vmu.money.allocationRemainderPolicy` | enum | `largest-remainder` | `largest-remainder`∣`first-party`∣`last-party` | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 分摊余数政策（allocate 用它；分摊结果必须加回总额，加不回则具名拒） |
+| `vmu.money.rejectFloatAmounts` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 拒浮点金额（内核强制：默认 true，只有显式 false 才关；金额一律最小单位整数） |
+| `vmu.money.maxAmountMinor` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 金额上限（最小单位；0＝不限；超出具名拒并给上限） |
+| `vmu.money.allowNegative` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 是否允许负额（默认 false ⇒ 负额具名拒） |
+| `vmu.money.auditTupleFields` | string[] | `[inputs,fx,rounding,result]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 金额审计元组字段（只可增不可删；缺失具名拒并点名缺哪些） |
+| `vmu.agreements.registryDir` | string | `Ops/Agreements` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 协议登记目录（相对项目根；本面只 REPORT 不触碰） |
+| `vmu.agreements.kinds` | string[] | `[dua,mta]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 协议种类（未声明种类在开协议时具名拒） |
+| `vmu.agreements.unsignedPolicy` | enum | `block` | `block`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 未签策略（block ⇒ 未签协议下的交换具名拒，即「未签不得共享」；warn ⇒ 记录并警告） |
+| `vmu.agreements.signatureRefRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 签署必须带引用（无 ref 具名拒） |
+| `vmu.agreements.expiryWarnDays` | integer | `30` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 协议到期预警天数（与 vmu.collab.expiryWarnDays 各自独立，两者都会被读取） |
+| `vmu.agreements.reviewCadenceDays` | integer | `365` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 复核周期（≥1；逾期在回执中 REPORTED 并告警，不擅自升级为拒绝） |
+| `vmu.agreements.scopeEnforcement` | enum | `block` | `block`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 范围强制（block ⇒ 越出协议范围的交换具名拒；warn ⇒ 记录并警告） |
 | `vmu.archive.offlineFirst` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.receiptRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.archive.targets` | string[] | `[zenodo,osf,swh,other]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
@@ -1003,13 +1021,6 @@ vmu.packs.active: [v5r]
 | `vmu.a11y.headingGapPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 21（共见 1 卷：21），尚未实现（元数据以各卷为准） |
 | `vmu.a11y.minContrastRatio` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 21（共见 1 卷：21），尚未实现（元数据以各卷为准） |
 | `vmu.a11y.requireAltText` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 21（共见 1 卷：21），尚未实现（元数据以各卷为准） |
-| `vmu.agreements.expiryWarnDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.agreements.kinds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.agreements.registryDir` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.agreements.reviewCadenceDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.agreements.scopeEnforcement` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.agreements.signatureRefRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.agreements.unsignedPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.animal.anesthesiaRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.animal.deathReportLimitHours` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.animal.facilityAccreditation` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
@@ -1303,17 +1314,6 @@ vmu.packs.active: [v5r]
 | `vmu.middleware.enabled` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准） |
 | `vmu.middleware.onFailure` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
 | `vmu.middleware.order` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准） |
-| `vmu.money.allocationRemainderPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.money.allowNegative` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.money.auditTupleFields` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.money.currencyDefault` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.money.fxMaxAgeDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.money.fxSnapshotDir` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.money.fxSource` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.money.maxAmountMinor` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.money.rejectFloatAmounts` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.money.roundingMode` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
-| `vmu.money.scaleByCurrency` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.names.aliasTablePath` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
 | `vmu.names.strict` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
 | `vmu.names.warn` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准） |

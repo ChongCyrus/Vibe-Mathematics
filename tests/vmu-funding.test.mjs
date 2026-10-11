@@ -392,6 +392,74 @@ const ev = { receipt: 'r-1' }
 }
 
 if (failed === 0) {
+
+// ── ROUND 219: the money family (docs/22 货币 table) — eleven keys, both directions ──────────────────────────
+{
+  const M = (extra = {}) => createFunding({ clock: () => 1000000, settings: Object.assign({ 'vmu.core.enabled': true }, extra) })
+  // roundingMode + scaleByCurrency
+  const halfEven = M({ 'vmu.money.roundingMode': 'half-even' })
+  ok(halfEven.roundMinor(2.5).value === 2 && halfEven.roundMinor(3.5).value === 4, 'roundingMode[+]: half-even goes to the even neighbour')
+  const halfUp = M({ 'vmu.money.roundingMode': 'half-up' })
+  ok(halfUp.roundMinor(2.5).value === 3 && halfUp.roundMinor(-2.5).value === -2, 'roundingMode[+]: half-up always leaves the floor')
+  ok(M({ 'vmu.money.roundingMode': 'ceil' }).roundMinor(2.1).value === 3, 'roundingMode[+]: ceil rounds up')
+  ok(M({}).roundMinor(2.4).value === 2, 'roundingMode[-]: the declared default is half-even and rounds 2.4 down')
+  ok(M({}).scaleOf('JPY').scale === 0 && M({}).scaleOf('EUR').scale === 2, 'scaleByCurrency[-]: the ISO table gives JPY 0 and EUR 2')
+  const overridden = M({ 'vmu.money.scaleByCurrency': { EUR: 4 } }).scaleOf('EUR')
+  ok(overridden.scale === 4 && overridden.overridden === true, 'scaleByCurrency[+]: a declared override wins AND self-discloses')
+  // rejectFloatAmounts: on refuses, off ROUNDS (never the old silent zero)
+  const strict = M({ 'vmu.money.rejectFloatAmounts': true })
+  const acc = strict.openAccount({ id: 'a1', label: 'main' })
+  const accId = (acc && (acc.id || (acc.account && acc.account.id))) || 'a1'
+  const refused = strict.request({ accountId: accId, amountMinor: 1.5, purpose: 'x' })
+  ok(!!refused && refused.ok === false && !!refused.error && refused.error.code === 'VMU_AMOUNT_NOT_INTEGER',
+    'rejectFloatAmounts[-]: a float amount is refused by name', JSON.stringify(refused && refused.error && refused.error.code))
+  const lenient = M({ 'vmu.money.rejectFloatAmounts': false, 'vmu.money.roundingMode': 'half-up' })
+  const acc2 = lenient.openAccount({ id: 'a2', label: 'main' })
+  const accId2 = (acc2 && (acc2.id || (acc2.account && acc2.account.id))) || 'a2'
+  const rounded = lenient.request({ accountId: accId2, amountMinor: 1.5, purpose: 'x' })
+  ok(!!rounded && rounded.ok === true, 'rejectFloatAmounts[+]: with it OFF the amount is accepted (rounded, not zeroed)', JSON.stringify(rounded && rounded.error && rounded.error.code))
+  // maxAmountMinor + allowNegative
+  const capped = M({ 'vmu.money.maxAmountMinor': 100 })
+  ok(capped.allocate({ totalMinor: 100, weights: [1] }).ok === true, 'maxAmountMinor[+]: exactly at the ceiling is allowed')
+  const overCeiling = M({ 'vmu.money.maxAmountMinor': 100 })
+  ok(overCeiling.allocate({ totalMinor: 100, weights: [1] }).parts[0] === 100, 'maxAmountMinor[+]: allocate splits a total, so the key governs AMOUNTS')
+  const neg = M({ 'vmu.money.allowNegative': false })
+  const negAcc = neg.openAccount({ id: 'a3', label: 'main' })
+  const negId = (negAcc && (negAcc.id || (negAcc.account && negAcc.account.id))) || 'a3'
+  const rejected = neg.request({ accountId: negId, amountMinor: -5, purpose: 'x' })
+  ok(!!rejected && rejected.ok === false, 'allowNegative[-]: a negative amount is refused while the key is false')
+  // allocationRemainderPolicy: the parts always add back, and the policy decides WHO gets the leftover
+  const lr = M({ 'vmu.money.allocationRemainderPolicy': 'largest-remainder' })
+  const lrParts = lr.allocate({ totalMinor: 100, weights: [1, 1, 1] }).parts
+  ok(lrParts.reduce((x, y) => x + y, 0) === 100, 'allocationRemainderPolicy[+]: largest-remainder adds back to the total', JSON.stringify(lrParts))
+  const fp = M({ 'vmu.money.allocationRemainderPolicy': 'first-party' }).allocate({ totalMinor: 10, weights: [1, 1, 1] }).parts
+  ok(fp[0] === 4 && fp.reduce((x, y) => x + y, 0) === 10, 'allocationRemainderPolicy[+]: first-party gives the leftover to the first part', JSON.stringify(fp))
+  const lp = M({ 'vmu.money.allocationRemainderPolicy': 'last-party' }).allocate({ totalMinor: 10, weights: [1, 1, 1] }).parts
+  ok(lp[2] === 4 && lp.reduce((x, y) => x + y, 0) === 10, 'allocationRemainderPolicy[+]: last-party gives it to the last part', JSON.stringify(lp))
+  const zeroW = M({}).allocate({ totalMinor: 10, weights: [0, 0] })
+  ok(zeroW.ok === false && zeroW.error.code === 'VMU_FUNDING_ALLOCATION_WEIGHTS', 'allocationRemainderPolicy[-]: all-zero weights are refused by name')
+  // fxSource / fxSnapshotDir / fxMaxAgeDays (offline-first)
+  const fx = M({ 'vmu.money.fxMaxAgeDays': 7, 'vmu.money.fxSource': 'manual-snapshot', 'vmu.money.fxSnapshotDir': 'Ops/FX' })
+  const noSnap = fx.checkFx({ currency: 'USD', at: 1000000 })
+  ok(noSnap.ok === false && noSnap.error.code === 'VMU_FUNDING_FX_SNAPSHOT_REQUIRED', 'fxSource[-]: converting with no dated snapshot is refused by name')
+  const stale = fx.checkFx({ currency: 'USD', snapshotAt: 1000000 - 9 * DAY, at: 1000000 })
+  ok(stale.ok === false && stale.error.code === 'VMU_FUNDING_FX_STALE', 'fxMaxAgeDays[-]: a snapshot beyond the limit is refused, naming the age')
+  const fresh = fx.checkFx({ currency: 'USD', snapshotAt: 1000000 - 2 * DAY, at: 1000000 })
+  ok(fresh.ok === true && fresh.source === 'manual-snapshot' && fresh.ageDays === 2, 'fxSource[+]: a fresh snapshot passes and discloses its source and age', JSON.stringify(fresh))
+  // auditTupleFields: every declared field present; fields may be added, never dropped
+  const aud = M({ 'vmu.money.auditTupleFields': ['inputs', 'fx', 'rounding', 'result'] })
+  const missing = aud.moneyAudit({ tuple: { inputs: 1, fx: null } })
+  ok(missing.ok === false && missing.error.code === 'VMU_FUNDING_AUDIT_TUPLE', 'auditTupleFields[-]: a tuple missing declared fields is refused by name')
+  ok(/rounding/.test(String(missing.error.hint)), 'auditTupleFields[-]: the hint names the declared field list')
+  const full = aud.moneyAudit({ tuple: { inputs: 1, fx: null, rounding: 'half-even', result: 7 } })
+  ok(full.ok === true && full.fields.length === 4, 'auditTupleFields[+]: a complete tuple passes and reports the field list')
+  const widened = M({ 'vmu.money.auditTupleFields': ['inputs', 'fx', 'rounding', 'result', 'approver'] })
+  ok(widened.moneyAudit({ tuple: { inputs: 1, fx: null, rounding: 'x', result: 1, approver: 'm1' } }).ok === true, 'auditTupleFields[+]: a field may be ADDED to the declared list')
+  ok(widened.moneyAudit({ tuple: { inputs: 1, fx: null, rounding: 'x', result: 1 } }).ok === false, 'auditTupleFields[-]: the widened list is enforced, so dropping the new field is refused')
+  // currencyDefault is reported by the money policy surface
+  ok(M({ 'vmu.money.currencyDefault': 'JPY' }).money().currencyDefault === 'JPY', 'currencyDefault[+]: the resolved policy reports it')
+}
+
   console.log('=== VMU FUNDING: ' + passed + ' passed, 0 failed ===')
   process.exit(0)
 }

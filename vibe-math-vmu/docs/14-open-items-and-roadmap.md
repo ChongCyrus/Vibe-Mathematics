@@ -882,6 +882,14 @@
   **④ 一处文档缺口（发现并记录 ✓）**：★ **`vmu.money.*`（11 条）在 `docs/22` 里【没有任何契约声明】** ✗（既无分节表行、也无统一表行 ✓）⇒ ★★ **不可实现** ✗ —— **凭名字猜语义就是伪造契约** ✓ ⇒ **保持未接线，并在此记明"须先补声明"** ✓。
   ✗ **三处自伤（全部由测试或自己发现 ✓）** ✗：① `collab.js` 里**删了 `unknown` 的声明却留着引用** ✗ ⇒ `ReferenceError` ✓ ⇒ 恢复为真计算 `templatesBeyondDefault` ✓；② **匿名保护我按"谁发言"判** ✗ —— **但发言人本就该具名** ✗ ⇒ ★★ 改为客观规则：**随包携带 `authors` 且开启匿名时具名拒** ✓；③ **PowerShell 的 .NET 写入静默失败** ✗（返空却先打印"已修" ✓）⇒ ★★ 纪律：**改文件用 node** ✓。★ 另有**账本脚本因单引号字符串里写了 ASCII 引号而语法错** ✗（**同一个陷阱第三次** ✓）⇒ 本次账本**彻底不用 ASCII 引号** ✓。
   **未做（明写 ✗）**：★ **`vmu.money.*`（11 条，缺声明）** ✗；**其余 424 条未接线（多数 `planned`）** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+- ★★★★★ **轮 219（超长区间）：货币族 11 条 ＋ 协议族 7 条一起做完；未接线 424 → 406** ✓✓
+  ★★ **先纠正上一区间的一个错误结论** ✗✓：我在轮 218 写下「`vmu.money.*` 在 `docs/22` 里**没有任何契约声明**」✗ —— **那是错的** ✓。实测：**该族 11 条全部有声明** ✓，就在 **`docs/22` 的统一参数表 L762-771** ✓（我上轮只查了 §3.1–3.4 分节与另一张表，**漏了那张表** ✗）。⇒ ★★ **教训：判定"无声明"之前，必须遍历所有声明形态（分节表、统一表、散列行），否则会把"我没找到"当成"不存在"** ✓✓。本次因此**先量出全局图** ✓：424 条未接线里 **51 个族有声明契约、212 条完全没有** ✓ —— 这才是"可做与不可做"的界线 ✓。
+  **① 货币族 11 条 → `kernel/funding.js`** ✓（该面自述"owns the MONEY RULES" ✓）：`currencyDefault` ✓／`roundingMode`（**half-up／half-even／floor／ceil／trunc** ✓）／`scaleByCurrency`（**覆盖 ISO 表并自曝 `overridden`** ✓）／`fxSource`＋`fxSnapshotDir`＋`fxMaxAgeDays`（**离线优先：无带日期快照或超龄快照具名拒** ✓）／`allocationRemainderPolicy`（**largest-remainder／first-party／last-party，且分摊结果【必须加回总额】否则具名拒** ✓）／`rejectFloatAmounts`（**内核强制：默认拒浮点** ✓）／`maxAmountMinor` ✓／`allowNegative` ✓／`auditTupleFields`（**只可增不可删：缺字段具名拒并点名** ✓）。★ 关键是接进**既有的唯一金额收口 `moneyOr`** ✓ ⇒ **每个金额路径同时获得该族的约束** ✓。**冒烟实证** ✓：`allocate([1,1,1],100)=[34,33,33]` ✓、**half-even 2.5→2** ✓、**JPY 精度 0** ✓、**无快照换汇 ⇒ `VMU_FUNDING_FX_SNAPSHOT_REQUIRED`** ✓；**`VMU FUNDING: 92 passed, 0 failed`** ✓。
+  **② 协议族 7 条 → `kernel/collab.js`** ✓（**协议正是那个面据以交换的东西** ✓）：`registryDir` ✓／`kinds`（**未声明种类在开协议时具名拒** ✓）／`unsignedPolicy`（**block＝「未签不得共享」，未签协议下的交换具名拒** ✓）／`signatureRefRequired`（**签署无引用具名拒** ✓）／`expiryWarnDays` ✓／`reviewCadenceDays`（★ **逾期复核【只 REPORT 并告警、不擅自升级为拒绝】** ✓ —— **该契约没给这个键强制力，自己发明一个就是越权** ✓）／`scopeEnforcement`（**越出协议范围具名拒** ✓）；新增 **`signAgreement`／`reviewAgreement`** ✓ ⇒ **`VMU COLLAB: 39 passed, 0 failed`** ✓。
+  ★★ **发现并修掉一处"接线但无效"** ✓✓：读套件时注意到 **`rejectFloatAmounts=false` 时我的实现仍然拒** ✗ ⇒ **该键没有任何可观察差异** ✗ ⇒ ★★ 改为**关掉时按 `roundingMode` 舍入**（**绝不回到旧的静默归零** ✓）⇒ **正负断言都能区分** ✓。
+  ✗ **一处自伤（第四次同型，促成方法改变 ✓）** ✗：脚本**又一次**在 `"` 界定符的字符串里写了 ASCII 引号 ✗ ⇒ **解析期即死、什么也没落地** ✓（套件当时显示的是**旧结果** ✓，**差点被误读为"改动生效但测试通过"** ✗✓）⇒ ★★★ **改法：把断言写成【独立片段文件】，由脚本读取后拼接** ✓✓ —— **脚本里再无嵌套转义，整类事故归零** ✓。
+  **未做（明写 ✗）**：★ **`vmu.biospecimen.*`（7 条，有声明、有面 `instruments.js`）** ✗（**留下一区间** ✓）；★ **`vmu.math` 里 30 条有声明者** ✗；**其余 406 条未接线** ✗；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
+
 ### 0.4 结论
 
 
