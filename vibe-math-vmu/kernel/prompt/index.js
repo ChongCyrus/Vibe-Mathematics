@@ -59,10 +59,37 @@ export function createPromptPipeline({
   bus = null,
   readFile = null,
   counts = {},
+  // ROUND 241: the locale family needs somewhere to read from; before this the pipeline had no settings handle at all.
+  settings = {},
   clock = () => new Date().toISOString(),
 } = {}) {
+  const localeDefault = typeof settings['vmu.prompts.locale.default'] === 'string' ? settings['vmu.prompts.locale.default'] : null
+  const localeChain = Array.isArray(settings['vmu.prompts.locale.fallbackChain'])
+    ? settings['vmu.prompts.locale.fallbackChain'].filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim())
+    : ['zh-Hans', 'zh', 'en']
+  const localeOnMissing = settings['vmu.prompts.locale.onMissing'] === 'refuse' ? 'refuse' : 'warn'
+  const overridesByLang = settings['vmu.prompts.overridesByLang'] && typeof settings['vmu.prompts.overridesByLang'] === 'object'
+    ? settings['vmu.prompts.overridesByLang'] : {}
+  /** The languages to try, in order, with the reason the list looks like it does. */
+  const langOrder = (asked) => {
+    const list = []
+    if (typeof asked === 'string' && asked.trim()) list.push(asked.trim())
+    if (localeDefault && !list.includes(localeDefault)) list.push(localeDefault)
+    for (const l of localeChain) if (!list.includes(l)) list.push(l)
+    return list
+  }
+  /** The override in force for one section under one language: the language-level one wins, then the plain one. */
+  const overrideFor = (name, lang) => {
+    const perLang = overridesByLang[name]
+    if (perLang && typeof perLang === 'object') {
+      for (const l of langOrder(lang)) if (typeof perLang[l] === 'string') return { text: perLang[l], source: 'byLang:' + l }
+    }
+    if (typeof overrides[name] === 'string') return { text: overrides[name], source: 'plain' }
+    return { text: null, source: null }
+  }
   const registry = new Map()
   const truncation = []
+  const localeMisses = []   // ROUND 241: what onMissing=warn recorded instead of refusing
   // The appends of the LAST assembly only. This used to be a single pipeline-scoped array that every
   // `assemble()` call pushed into and never reset, so a middleware append made once stayed in the prompt
   // FOREVER and the prompt grew monotonically (found by the dry-run assertion in tests/vmu-prompt.test.mjs).
@@ -102,7 +129,10 @@ export function createPromptPipeline({
       // `state` is immutable by construction: callers cannot opt in to overriding read-only facts.
       mutable: name === 'state' ? false : section.mutable !== false,
       source: section.source || 'kernel',
-      text: typeof section.text === 'string' ? section.text : null,
+      // ROUND 241: the language the section's text is written in, so `vmu.prompts.locale.onMissing` has something to check.
+    // MEASURED: without this the check read `undefined` and never fired at all.
+    lang: typeof section.lang === 'string' && section.lang.trim() ? section.lang.trim() : null,
+    text: typeof section.text === 'string' ? section.text : null,
       template: section.template || null,
       vars: Array.isArray(section.vars) ? section.vars.slice() : [],
       truncate: section.truncate || null,
@@ -162,7 +192,18 @@ export function createPromptPipeline({
       if (typeof binding.file === 'string') return readFile ? readFile(binding.file) : null
       return null
     }
-    if (typeof overrides[entry.name] === 'string') return overrides[entry.name]
+    // ROUND 241: the language-level override wins when the resolved language matches.
+    const ov = overrideFor(entry.name, ctx && ctx.lang)
+    if (ov.text !== null) return ov.text
+    // ROUND 241: and the SAME round closes the gap it would otherwise leave: a section that declares the language of its text
+    // is checked against the resolved order, and the declaration decides what a mismatch means.
+    if (typeof entry.lang === 'string' && entry.lang.trim() && !langOrder(ctx && ctx.lang).includes(entry.lang.trim())) {
+      if (localeOnMissing === 'refuse') {
+        throw refuse('VMU_NO_SUCH_OBJECT', 'no text for this section in the resolved languages: ' + entry.name + ' is ' + entry.lang.trim(),
+          'asked=' + String((ctx && ctx.lang) || '') + ', tried=' + langOrder(ctx && ctx.lang).join(' > ') + ' (vmu.prompts.locale.onMissing=refuse)')
+      }
+      localeMisses.push({ section: entry.name, lang: entry.lang.trim(), tried: langOrder(ctx && ctx.lang) })
+    }
     if (entry.text !== null) return entry.text
     if (entry.template && readFile) return readFile(entry.template)
     return null
@@ -272,7 +313,7 @@ export function createPromptPipeline({
         // The section's OWN content is the starting point: a declaration may carry inline `text`, a
         // `template` reference, or be overridden by reference. Bindings and middleware appends then
         // layer on top; the facts block never reaches here (handled above).
-        const overrideText = overrides[entry.name]
+        const overrideText = overrideFor(entry.name, ctx && ctx.lang).text
         let text = contentOf(entry, ctx, null)
         let source = typeof overrideText === 'string' ? 'override' : entry.source
         for (const m of matchingBindings(ctx)) {
@@ -300,7 +341,12 @@ export function createPromptPipeline({
         sources.push({ section: a.section, source: a.source })
       }
 
-      return { ok: true, text: parts.length === 0 ? '' : trimTrailing(parts.join('\n\n')), sources, truncation: truncation.slice(), at: clock() }
+      return { ok: true, text: parts.length === 0 ? '' : trimTrailing(parts.join('\n\n')), sources, truncation: truncation.slice(),
+        // ROUND 241: a language decision that cannot be audited is not a decision.
+        locale: { asked: (ctx && ctx.lang) || null, tried: langOrder(ctx && ctx.lang), default: localeDefault, chain: localeChain, onMissing: localeOnMissing,
+          overrideSources: [...registry.keys()].map((n) => ({ section: n, source: overrideFor(n, ctx && ctx.lang).source })).filter((e) => e.source !== null) },
+          localeMisses: localeMisses.slice(),   // ROUND 241: what onMissing=warn recorded instead of refusing
+        enforced: ['vmu.prompts.locale.default', 'vmu.prompts.locale.fallbackChain', 'vmu.prompts.overridesByLang'], at: clock() }
     },
 
     /** Register an override by reference (rollback = swapping the reference back; docs/06 §6). */

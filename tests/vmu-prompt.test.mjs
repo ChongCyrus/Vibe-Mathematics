@@ -227,6 +227,53 @@ if (SELF_PROBE) {
   process.exit(failed > 0 ? 0 : 1)
 }
 
+
+// ── ROUND 241: the language unit of the prompt pipeline ──────────────────────────────────────────────────────
+{
+  const m = await import(pathToFileURL(MODULE).href)
+  const mkPipe = (settings, extra = {}) => m.createPromptPipeline(Object.assign({
+    // NOTE: no `scope` - it is an object of dimensions, and `task` is a BINDING dimension, not a scope. A malformed scope
+    // matches nothing, which is how this assertion first failed.
+    sections: [{ name: 'greeting', order: 100, text: 'hello' },
+               { name: 'french', order: 101, lang: 'fr', text: 'bonjour' }],
+    settings,
+  }, extra))
+
+  // locale.default fills in when the session asks for nothing
+  const withDefault = await mkPipe({ 'vmu.prompts.locale.default': 'fr' }).assemble({})
+  ok(withDefault.ok === true && withDefault.locale.tried[0] === 'fr',
+    'locale.default: the declared default LEADS the tried order when the session asks for nothing', JSON.stringify(withDefault.locale.tried.slice(0, 3)))
+  const noDefault = await mkPipe({}).assemble({})
+  ok(noDefault.locale.default === null && noDefault.locale.tried.length > 0,
+    'locale.default[empty]: with nothing declared the chain alone decides, and the receipt says so')
+
+  // locale.fallbackChain replaces the default chain
+  const chained = await mkPipe({ 'vmu.prompts.locale.fallbackChain': ['de', 'en'] }).assemble({ lang: 'de-AT' })
+  ok(chained.locale.chain.join(',') === 'de,en' && chained.locale.tried.join(',').startsWith('de-AT,de,en'),
+    'locale.fallbackChain: a declared chain REPLACES the default and the tried order follows it', JSON.stringify(chained.locale.tried))
+
+  // locale.onMissing decides what a language mismatch means - and it really branches
+  const warning = await mkPipe({ 'vmu.prompts.locale.onMissing': 'warn' }).assemble({ lang: 'zh-Hans' })
+  ok(warning.ok === true && warning.localeMisses.some((x) => x.section === 'french'),
+    'locale.onMissing[warn]: the mismatch is RECORDED and assembly continues', JSON.stringify(warning.localeMisses))
+  let refused = null
+  try { await mkPipe({ 'vmu.prompts.locale.onMissing': 'refuse' }).assemble({ lang: 'zh-Hans' }) } catch (e) { refused = e && e.code }
+  ok(refused === 'VMU_NO_SUCH_OBJECT',
+    'locale.onMissing[refuse]: the same mismatch is refused by name - the declaration really branches', String(refused))
+  const satisfied = await mkPipe({ 'vmu.prompts.locale.onMissing': 'refuse' }).assemble({ lang: 'fr' })
+  ok(satisfied.ok === true, 'locale.onMissing[refuse]: a language that IS in the order does not trip the refusal')
+
+  // overridesByLang wins for the resolved language, and the plain override still applies elsewhere
+  const byLang = await mkPipe({ 'vmu.prompts.overridesByLang': { greeting: { fr: 'BONJOUR' } } },
+    { overrides: { greeting: 'PLAIN' } }).assemble({ lang: 'fr' })
+  ok(/BONJOUR/.test(byLang.text), 'overridesByLang[+]: the language-level override is used for the matching language', byLang.text.slice(0, 40))
+  ok(byLang.locale.overrideSources.some((e) => e.section === 'greeting' && e.source === 'byLang:fr'),
+    'overridesByLang[+]: the receipt says WHICH override source was used', JSON.stringify(byLang.locale.overrideSources))
+  const otherLang = await mkPipe({ 'vmu.prompts.overridesByLang': { greeting: { fr: 'BONJOUR' } } },
+    { overrides: { greeting: 'PLAIN' } }).assemble({ lang: 'en' })
+  ok(/PLAIN/.test(otherLang.text), 'overridesByLang[+]: for another language the plain override still applies', otherLang.text.slice(0, 40))
+}
+
 console.log('=== VMU PROMPT: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
