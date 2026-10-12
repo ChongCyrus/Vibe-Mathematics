@@ -122,6 +122,29 @@
 ⇒ ★★ **教训**（已入 `11` 第 ㉓ 条）：**"某一个面的方法表"不等于"能力面"** ✗✓ —— **附议住在邻面 `governance.js`，只查 `meetings.js` 就会误报缺口** ✓（**与先前否决"子串映射"同因：没查全就断言** ✗）。**故本条按第 ⑬ 条就地更正** ✓，**并保留更正痕迹** ✓。
 
 
+### 2.2.6 **第三片：11 条"待核"里先核掉 5 条（轮 311 实测）** ✓✓
+
+| 待核项 | 实测结果（**证据**） | 判定 |
+|---|---|---|
+| ★★★ **C3 的两类聚合边界** | ★★★ **在 vmu 上是【结构性成立】** ✓✓：① **三值结论** —— `defaultTally` 全 1 ⇒ `true`／全 0 ⇒ `false`／**其余 ⇒ `undecided` 且【必带 reason】** ✓（`docs/08` §L72／§L88／§L174／§L184 ＋ `ballot.js` 的产出枚举 `'undecided' \| true \| false` ✓）；② **"过程票不构成裁定"**（`kind:'process'` 断言 ✓ `docs/08` §L365）；③ ★★ **表决面【没有"取平均"这条通道】**（`ballot.js` 里 `average/mean` 仅 1 处**且不产出**该结果 ✓；`kernel` 与 08／03 卷里 `average` **0 命中** ✓）⇒ ★ **C3 的禁令在 vmu 上不是"允许但受限"，而是【根本没有那条通道】** ✓✓ | ★★ **比 C3 更强 ✓** |
+| **#24 结束辩论（可预期、对称、非突袭）** | ★★★ **`meeting.js` L258 `endDebate({ by, reason, target })`** ✓，**reason 必填** ⇒ 具名拒 ✓；★★ **代码里的理由原句**："an unexplained end is **the silent-stop failure mode this rule exists to prevent**" ✓✓；且**"重复结束会被拒而非被吞"**（L260-263 ✓） | ★★ **载体已定位且理由同源 ✓✓** |
+| **#8／#26 记名 vs 不记名 ＋ 事先选定** | **`vmu.ballot.secrecy`**（enum，**WIRED ✓**，取值 `named｜secret｜mixed`，注释**"开票前选定"** ✓）⇒ 命中 v5r 的"**须事先选定，事后不得两头都要**" ✓ | ★ **载体已定位（已接线 ✓）** |
+| **K5／#22 程序性动议** | **`vmu.motions.proceduralKinds`**（string[]，默认 `['recess','extend','limit-speech','adjourn']`，**WIRED ✓**，实现在 `governance.js` ✓）⇒ 命中 v5r 的"程序性动议＝在不解决实体问题的前提下改变进程" ✓ | ★ **载体已定位（已接线 ✓）** |
+| **D5／K2 附议与复议（补证）** | **`vmu.motions.secondThreshold`（WIRED ✓）**＋`vmu.meetings.appealScope`（enum `all`，WIRED ✓）✓ | ★ **载体已定位 ✓** |
+
+> ★★ **本片结论** ✗✓：**11 条"待核"中 5 条已核**，其中 **C3 的判定从"待核"升级为"vmu 侧结构性成立且更强"** ✓✓。**余 6 条**（D4 延长双上限／D5a 结果分类／D7 简流程闸／D8 列席分层／D9 广播三要素／#6 拆分／#20 通知窗口／#30 生效时点）**仍未核** ✗。
+
+### 2.2.7 ★★ 驱动器的一处**已知限制**（把"NOT_ADOPTED"那条的技术原因钉死）✗✓
+
+**实测** ✗✓：**v5r 的 institute／poll 状态机【无法】用轻量假 fs 驱动** —— 它**写入 `institute.v5state.json` 后【回读校验】**，而假 fs 让校验判 **"the in-memory state advanced but the file is STALE"** ✗ ⇒ **`vibe_v5_start` 之后的一切（开会／开票／关票）都取不到可信结果** ✓。
+
+**故 G1 的能力边界是清楚的** ✓✓：
+- **可驱动**：`apply()` 注册的**工具本体**（会议家族 **13/13** ✓，其**参数 schema** 与**拒绝码**都能取到 ✓）⇒ **§2.2 的第一片／第二片因此成立** ✓；
+- **不可驱动**：**institute 状态机之后的多步流程**（含会议 happy path、投票计票）✗ ⇒ ★★ **这正是 `NOT_ADOPTED: 1`（会议 happy path 未对照）的【具体技术原因】** ✓✓ —— **不是"没做"，而是"缺可信的文件后备接缝"** ✓。
+
+**要它可驱动，需要补什么** ✓：**一个"写入后可回读且指纹一致"的文件后备 fs 接缝**（`readFileSync`／`writeFileSync`／`existsSync`／`mkdirSync` 语义与 v5r 的校验一致 ✓），**或**改用仓库里那套**重驱动**（`tests/harness/v5-tool-driver.mjs`：真 CLI ＋ 隔离 profile ＋ provider ✗，重但真 ✓）。**两条路都记在此，未选** ✗。
+
+
 ## 3. v5r 的 56 个工具（**按家族分组**，实测列举）
 
 | 家族 | 工具 | vmu 侧家族级载体（依据：键族/服务实测存在） | A/B 覆盖 |
