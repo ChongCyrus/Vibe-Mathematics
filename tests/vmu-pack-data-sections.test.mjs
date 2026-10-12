@@ -105,18 +105,26 @@ console.log('=== 4. EVERY PACK RESOLVES THROUGH THE FOLDER PATH THE LOADER PREFE
     'every folder under packs/ is one of the TWO legitimate shapes - a manifest at <id>/index.js, or data the plugin reads by name - which is what makes "a pack is a folder" true for ALL of them rather than most',
     { folders: dirs, manifests: ids, dataOnly, bad })
   // THE LOADED MANIFEST AND THE FOLDER RECORD ARE DIFFERENT OBJECTS. v5r's loaded id is `v5r-core` while its folder
-  // record says `v5r`, and the four fields the folder record carries - the prompt sections, the policy, the notices and
-  // the phases - are invisible to the loader, because validatePack ignores unknown keys by design. A field on a loaded
-  // manifest that nothing reads fails SILENTLY, which is the hazard docs/10 names, so the ids are asserted to differ
-  // rather than to coincide, and the description is asserted to surface what the folder carries.
+  // record says `v5r`, and the fields the folder record carries - the prompt sections, the policy, the notices, the
+  // phases - are invisible to the loader, because validatePack ignores unknown keys by design. A field nothing reads
+  // fails SILENTLY, which is the hazard docs/10 names, so three things are asserted: the ids differ, every field has a
+  // reader, and the reader names the fields the way the record does.
   const v5rMod = await import(pathToFileURL(join(packsDir, 'v5r', 'index.js')).href)
-  const carried = v5rMod.describeV5rPack().carried
+  const desc = v5rMod.describeV5rPack()
   ok(v5rMod.PACK.id !== v5rMod.V5R_PACK.id,
     'the loaded manifest and the folder-level record are two objects with two ids, which is exactly why those contribution fields need a consumer rather than a place to sit',
     { loaded: v5rMod.PACK.id, folderRecord: v5rMod.V5R_PACK.id, twoRecords })
-  ok(carried && typeof carried.promptSections === 'string' && Array.isArray(carried.phases) && carried.phases.length >= 1,
-    'and describeV5rPack() SURFACES what the folder carries - prompt sections, policy, notices, phases - so those fields have a reader instead of looking consumed while doing nothing',
-    { carried })
+  // THE INVARIANT, and it is what makes the previous round's fix durable rather than a one-off: no field may sit on the
+  // folder record without being either part of the manifest that runs or part of the description a deployment reads.
+  // Fields must be surfaced under their OWN names, because renaming one on the way in satisfies a reader while hiding
+  // the fact that the check no longer covers it.
+  const unread = Object.keys(v5rMod.V5R_PACK).filter((k) => !Object.prototype.hasOwnProperty.call(v5rMod.PACK, k) && !Object.prototype.hasOwnProperty.call(desc, k))
+  ok(unread.length === 0,
+    'NO FIELD ON THE FOLDER RECORD SITS UNREAD: every key is either part of the loaded manifest or surfaced by describeV5rPack() under its own name. This is the check that found `defaults` and `contributes` doing nothing, and it is written as an invariant so the next field added has to answer the same question',
+    { unread, recordKeys: Object.keys(v5rMod.V5R_PACK) })
+  ok(typeof desc.sectionModule === 'string' && Array.isArray(desc.phases) && desc.phases.length >= 1 && desc.defaults >= 1,
+    'and describeV5rPack() SURFACES what the folder carries - prompt sections, policy, notices, phases, defaults - so those fields have a reader instead of looking consumed while doing nothing',
+    { sectionModule: desc.sectionModule, phases: desc.phases, defaults: desc.defaults })
 }
 
 console.log('=== PACK DATA SECTIONS: ' + passed + ' passed, ' + failed + ' failed ===')

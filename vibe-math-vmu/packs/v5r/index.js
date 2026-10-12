@@ -3,19 +3,23 @@
  *
  * This folder is the integration pack: the thing that, together with the framework in
  * `vibe-math-vmu/kernel/`, makes an actual running research institution. Its layout is the layout
- * the project's philosophy asks for:
+ * the project's philosophy asks for, and it is the layout a second pack is meant to copy:
  *
- *   settings/    what this pack wants the knobs to be (the framework declares what CAN be set)
+ *   index.js     the folder's entry point: re-exports the manifest the framework loads, and states
+ *                what this folder carries
+ *   settings/    what this pack wants the knobs to be (defaults.json is the pure DATA the plugin
+ *                reads before the kernel exists; defaults.js is this pack's own code view of it)
  *   middleware/  the policy this pack adds at the framework's extension points
- *   prompts/     the prompt content (currently the four sibling modules, which move in over time)
- *   index.js     the manifest the framework loads: one object naming everything above
+ *   prompts/     the prompt content: four modules, plus the transcriptions of the delivered prompts
  *
  * The framework never contains institution-specific choices. If something here would be wrong for a
  * different institution, it does not belong in `kernel/` - it belongs in this folder.
  *
- * The four prompt modules still live one level up as `../v5r-*.js` while they are being moved in.
- * Re-exporting them here means the folder is already the single entry point, so a consumer can start
- * using `packs/v5r/index.js` today and the physical move becomes an internal detail.
+ * THE FOUR PROMPT MODULES ALREADY LIVE HERE, and this header used to say they were on their way. They
+ * are `./prompts/v5r-{core,charter,prompts,persona}.js`, re-exported below so this file is the single
+ * entry point for the folder. Two copies of the same two files existed for a while - one loose in
+ * `packs/`, one here - and the generators were maintaining the copy nobody read; the header is now
+ * written against what is on disk rather than against what was planned.
  */
 export * from './prompts/v5r-core.js'
 export * from './prompts/v5r-charter.js'
@@ -74,8 +78,15 @@ export const V5R_PACK = Object.freeze({
   }),
 })
 
-/** A short, printable description, so a deployment can log what it loaded without reading source. */
-
+/**
+ * A short, printable description, so a deployment can log what it loaded without reading source.
+ *
+ * THE KEYS HERE ARE THE KEYS OF `V5R_PACK`, ON PURPOSE. This description is the consumer for every field the LOADED
+ * manifest cannot see, and a test asserts that invariant by name: every key of the folder record appears either in the
+ * loaded manifest or in this object. Renaming a field on the way in - `sectionModule` arriving as `promptSections` -
+ * would satisfy a reader and defeat the check, so the names are carried through unchanged and the grouping says which
+ * is which. `defaults` and `contributes` were added when that check first ran and found them unread.
+ */
 export function describeV5rPack() {
   return {
     // THE CALLER MUST NAME THE MEETING STATE. The four meeting sections are injected only when the turn supplies
@@ -86,16 +97,16 @@ export function describeV5rPack() {
     id: V5R_PACK.id,
     version: V5R_PACK.version,
     title: V5R_PACK.title,
-    settings: V5R_SETTING_KEYS.length,
     middleware: V5R_PACK.middleware.map((m) => m.id),
-    // WHAT THIS FOLDER CARRIES AND WHERE, which is the question a deployment asks before activating it. These are the
-    // fields a LOADED manifest cannot see, so this is their consumer rather than a place for them to sit unnoticed.
+    // WHAT THIS FOLDER CARRIES AND WHERE, which is the question a deployment asks before activating it. The loaded
+    // manifest cannot see these, so this is their consumer rather than a place for them to sit unnoticed.
     loadedManifestId: PACK.id,
-    carried: {
-      promptSections: V5R_PACK.sectionModule,
-      policy: V5R_PACK.policyModule,
-      notices: V5R_PACK.noticeModule,
-      phases: V5R_PACK.phases,
-    },
+    sectionModule: V5R_PACK.sectionModule,
+    policyModule: V5R_PACK.policyModule,
+    noticeModule: V5R_PACK.noticeModule,
+    phases: V5R_PACK.phases,
+    defaults: Object.keys(V5R_PACK.defaults || {}).length,
+    contributes: V5R_PACK.contributes,
+    settings: V5R_SETTING_KEYS.length,
   }
 }
