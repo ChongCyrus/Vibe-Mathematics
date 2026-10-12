@@ -494,10 +494,10 @@
 | `VMU_AUCTION_MIN_BIDS` | 竞标未达最少投标数（实现于 `kernel/bidding.js` ✓） | 治理/竞标 | ✅（**已实现** ✓；触发位置 `kernel/bidding.js:39` ✓） |
 | `VMU_AWARD_RATIONALE_REQUIRED` | 授标缺理由（实现于 `kernel/bidding.js` ✓） | 治理/竞标 | ✅（**已实现** ✓；`kernel/bidding.js:39` ✓） |
 | `VMU_MATH_NOT_CONVERGED` | 数值迭代**未收敛**（实现于 `kernel/mathtools.js` ✓） | 数学计算 | ✅（**已实现** ✓；`kernel/mathtools.js:452` ✓ —— **不得冒充已收敛** ✗✓） |
-| `VMU_PACK_INSTITUTE_MIN_FROZEN_ROUND` | 整合包**轮次已冻结**后仍要改（实现于 `packs/institute-min.js` ✓） | 整合包 | ✅（**已实现** ✓；`packs/institute-min.js:34` ✓） |
-| `VMU_PACK_INSTITUTE_MIN_NOT_LOCKED` | 整合包**未锁定**即需锁定态才能做的操作（实现于 `packs/institute-min.js` ✓） | 整合包 | ✅（**已实现** ✓；`packs/institute-min.js:33`／`:68` ✓） |
-| `VMU_PACK_V3_CORE_MANUAL_GATE` | v3 核心**人工闸**未通过（实现于 `packs/v3-core.js` ✓） | 整合包 | ✅（**已实现** ✓；`packs/v3-core.js:36`／`:109` ✓） |
-| `VMU_PACK_V3_CORE_VERIFIER_QUORUM` | v3 核心**验证者法定人数**不足（实现于 `packs/v3-core.js` ✓） | 整合包 | ✅（**已实现** ✓；`packs/v3-core.js:35`／`:86` ✓） |
+| `VMU_PACK_INSTITUTE_MIN_FROZEN_ROUND` | 整合包**轮次已冻结**后仍要改（实现于 `packs/institute-min/index.js` ✓） | 整合包 | ✅（**已实现** ✓；`packs/institute-min/index.js:34` ✓） |
+| `VMU_PACK_INSTITUTE_MIN_NOT_LOCKED` | 整合包**未锁定**即需锁定态才能做的操作（实现于 `packs/institute-min/index.js` ✓） | 整合包 | ✅（**已实现** ✓；`packs/institute-min/index.js:33`／`:68` ✓） |
+| `VMU_PACK_V3_CORE_MANUAL_GATE` | v3 核心**人工闸**未通过（实现于 `packs/v3-core/index.js` ✓） | 整合包 | ✅（**已实现** ✓；`packs/v3-core/index.js:36`／`:109` ✓） |
+| `VMU_PACK_V3_CORE_VERIFIER_QUORUM` | v3 核心**验证者法定人数**不足（实现于 `packs/v3-core/index.js` ✓） | 整合包 | ✅（**已实现** ✓；`packs/v3-core/index.js:35`／`:86` ✓） |
 | `VMU_PACK_V5R_CORE_NOT_SETTLED` | v5r 核心**未结项**（实现于 `packs/v5r/prompts/v5r-core.js` ✓） | 整合包 | ✅（**已实现** ✓；`packs/v5r/prompts/v5r-core.js:33`／`:101` ✓） |
 | `VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS` | v5r 核心**禁用临时脚本**（实现于 `packs/v5r/prompts/v5r-core.js` ✓） | 整合包 | ✅（**已实现** ✓；`packs/v5r/prompts/v5r-core.js:34`／`:72` ✓） |
 | `VMU_MONEY_NEGATIVE_FORBIDDEN` | 投标价格**为负**（**价格非负；零价合法** ✓） | 治理/竞标 | ✅（**已实现** ✓；`kernel/bidding.js:295` ✓） |
@@ -998,12 +998,12 @@
 | `VMU_OUTREACH_NOT_READY` | **已实现 ✓** | `vibe-math-vmu/kernel/publication.js` | 代码里有该码字符串 ✓ |
 | `VMU_OUTREACH_OPEN_REVIEW_OFF` | **已实现 ✓** | `vibe-math-vmu/kernel/publication.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_CONFLICT` | **已实现 ✓** | `vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/pack.js` | 代码里有该码字符串 ✓ |
-| `VMU_PACK_INSTITUTE_MIN_FROZEN_ROUND` | **已实现 ✓** | `vibe-math-vmu/packs/institute-min.js` | 代码里有该码字符串 ✓ |
-| `VMU_PACK_INSTITUTE_MIN_NOT_LOCKED` | **已实现 ✓** | `vibe-math-vmu/packs/institute-min.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_INSTITUTE_MIN_FROZEN_ROUND` | **已实现 ✓** | `vibe-math-vmu/packs/institute-min/index.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_INSTITUTE_MIN_NOT_LOCKED` | **已实现 ✓** | `vibe-math-vmu/packs/institute-min/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_KERNEL_OVERRIDE_REFUSED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_PACK_MISSING` | **已实现 ✓** | `vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/pack.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
-| `VMU_PACK_V3_CORE_MANUAL_GATE` | **已实现 ✓** | `vibe-math-vmu/packs/v3-core.js` | 代码里有该码字符串 ✓ |
-| `VMU_PACK_V3_CORE_VERIFIER_QUORUM` | **已实现 ✓** | `vibe-math-vmu/packs/v3-core.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_V3_CORE_MANUAL_GATE` | **已实现 ✓** | `vibe-math-vmu/packs/v3-core/index.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_V3_CORE_VERIFIER_QUORUM` | **已实现 ✓** | `vibe-math-vmu/packs/v3-core/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_CORE_NOT_SETTLED` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/prompts/v5r-core.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/prompts/v5r-core.js` | 代码里有该码字符串 ✓ |
 | `VMU_PARAM_DEPRECATED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |

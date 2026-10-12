@@ -50,7 +50,7 @@ vibe-math-vmu/packs/<id>.js        # 随包整合包：export const PACK = { …
 
 ---
 
-## 3. 清单规范（**真实 JS 形态；照抄 `packs/institute-min.js` ✓**）
+## 3. 清单规范（**真实 JS 形态；照抄 `packs/institute-min/index.js` ✓**）
 
 ```js
 // vibe-math-vmu/packs/my-institute.js
@@ -104,7 +104,7 @@ pack 默认  <  预设 Config  <  会话 settings  <  运行时 set
 > **它不是什么（诚实 ✗）**：**不是**行为等价证明 ✓ —— 行为级 A/B（同场景两侧跑、逐条分类）**仍未做** ✗，需要场景夹具（§5.1 的方法 ✓）。`institute-min` 仍保留为**形状示例**（它的规则指向 v5 时代工具名 ⇒ **不会触发** ✗）。
 > **给 pack 作者的两条硬知识**（本轮用真包换来的 ✓✗）：① **`vmu.members` 只在你声明席位后才发布** ⇒ 带来席位的包**不得**把它列进 `requires`（鸡生蛋 ✓）；② **别名目标必须是"已发布服务"**（`vmu.tasks` ✓），**不能是工具名**（`vibe_vmu_records` ✗ ⇒ `VMU_NO_SUCH_OBJECT`）。
 
-> **现状补充（2026-10-10 ✓）：`packs/v3-core.js` 也已落地并可装载** ✓✓ —— 它表达 **v3 的机构**：三槽位 `planner:1／solver:8／verifier:3` ✓、v3 的机制默认（`vmu.limits.maxLiveMembers:4` ↔ v3 `maxParallelThreshold` ✓；`verdictMaxRounds:5` ↔ `debateMaxRounds` ✓）＋**包自有键** `vmu.v3.*`（`verifierCount`／`solverMaxRounds`／`planningHorizon`／`promoteValueThreshold`／`mode` ✓）、v3 的五条产物轨 ✓，以及**两个随包 M2 模块** ✓✓：`ballot/tally` 上强制 **verifier 法定数**（不足即具名拒 ✓）、`mode=manual` 时**拒绝派发**（具名拒 ✓；auto 下保持沉默 ✓）。场景见 `tests/vmu-entry.test.mjs` 第 14 组 ✓。
+> **现状补充（2026-10-10 ✓）：`packs/v3-core/index.js` 也已落地并可装载** ✓✓ —— 它表达 **v3 的机构**：三槽位 `planner:1／solver:8／verifier:3` ✓、v3 的机制默认（`vmu.limits.maxLiveMembers:4` ↔ v3 `maxParallelThreshold` ✓；`verdictMaxRounds:5` ↔ `debateMaxRounds` ✓）＋**包自有键** `vmu.v3.*`（`verifierCount`／`solverMaxRounds`／`planningHorizon`／`promoteValueThreshold`／`mode` ✓）、v3 的五条产物轨 ✓，以及**两个随包 M2 模块** ✓✓：`ballot/tally` 上强制 **verifier 法定数**（不足即具名拒 ✓）、`mode=manual` 时**拒绝派发**（具名拒 ✓；auto 下保持沉默 ✓）。场景见 `tests/vmu-entry.test.mjs` 第 14 组 ✓。
 > **为什么 v3-core 不带 M1 规则（诚实 ✗✓）**：v3 的两条定规矩是**量化/有状态**的（"至少 N 名验证者表态"、"manual 下未经放行不得跑"）——M1 的谓词 DSL **数不了票** ✓；为凑形态而写一条装饰性规则，正是本仓拒绝的那种撒谎 ✗。**这本身也是结论** ✓：**pack 是 JS ⇒ 它可以携带行为**，而 M1 的形态已由 v5r-core 演示 ✓。
 
 **目标**：用 vmu 的 settings＋中间件＋提示词包**复现 v5r 的可观测行为**；**差异逐条报用户裁定**（不自行抹平）。
@@ -139,7 +139,7 @@ pack 默认  <  预设 Config  <  会话 settings  <  运行时 set
 | 会议（议程/轮次/举手/纪要/收束） | 会议原语（08）＋ `meeting.*` 判定点中间件 | 完成判据必须外置 |
 | 求真表决（票型/法定数/未定论/复议） | 表决原语（08）＋ `ballot.*` 判定点 | 含"过程票不构成裁定" |
 | 表决期禁言（R3/K12/B9） | `ballot.frozen` 判定点 ＋ `meeting.round-complete` 判定点 | **v5r 的真回归点**：冻结期不得推进轮次 |
-| 正式证明准入（issue #13 #1） | `ballot.can-open` ＋ `ballot.who-may-open` 中间件（M1） | ✅ **轮 212 实测：该具名状态谓词【已提供】** ✓（`kernel/index.js` 的 `has_locked_formal_proof: (ev) => !!(ev.locked === true \|\| ev.subject.settled === true)` ✓），**且已有 pack 在闸门上用它** ✓（`packs/institute-min.js` 的 `when: { all: [ … { not: { subject: 'has_locked_formal_proof' } } ] }` ✓）⇒ ★ 原先写"**需 vmu 提供**"已陈旧 ✗，**已更正** ✓ |
+| 正式证明准入（issue #13 #1） | `ballot.can-open` ＋ `ballot.who-may-open` 中间件（M1） | ✅ **轮 212 实测：该具名状态谓词【已提供】** ✓（`kernel/index.js` 的 `has_locked_formal_proof: (ev) => !!(ev.locked === true \|\| ev.subject.settled === true)` ✓），**且已有 pack 在闸门上用它** ✓（`packs/institute-min/index.js` 的 `when: { all: [ … { not: { subject: 'has_locked_formal_proof' } } ] }` ✓）⇒ ★ 原先写"**需 vmu 提供**"已陈旧 ✗，**已更正** ✓ |
 | 记录分轨＋截断计数（#2） | 归档原语（07-§4）＋ `track` 参数 | 直接复用 |
 | 待续标记（#5） | 在途工作台账（07-§3） | 直接复用 |
 | 资源预算（#4） | `vmu.limits.*` ＋ `budget/exceeded` 中间件 | 机器强制部分进内核能力 |
@@ -213,7 +213,7 @@ B′ 判决：v5r 的文档层是**本仓质量最高、与数学无关度最高
 
 ## 7. pack 作者指南（最短路径）
 
-1. 复制 `packs/institute-min.js` 作为起点（**唯一随包的真实示例** ✓；`packs/_template/` 是 **⛔ 未实现**的规划路径 ✗ —— §9 的骨架属目标形态，当前没有该文件）；
+1. 复制 `packs/institute-min/index.js` 作为起点（**唯一随包的真实示例** ✓；`packs/_template/` 是 **⛔ 未实现**的规划路径 ✗ —— §9 的骨架属目标形态，当前没有该文件）；
 2. 写 `pack.yml`（id/version/apiVersion/requires/conflicts/capabilities）；
 3. 写 `settings.yml`（**只放"量"**，流程进中间件）；
 4. 写中间件（**优先 M1**；复杂逻辑才 M2；长流程才 M3）；
@@ -237,7 +237,7 @@ B′ 判决：v5r 的文档层是**本仓质量最高、与数学无关度最高
 
 ## 9. pack 模板
 
-> **⚠️ 校正（2026-10-09 ✗✓）**：本节的 YAML/目录骨架是**目标形态**，**当前没有对应文件** ✗ —— `packs/_template/` **不存在**，`kernel/pack.js` **也不读 YAML** ✗。**唯一随包的真实模板是 `vibe-math-vmu/packs/institute-min.js`**（85 行、内联 JS manifest ✓，可直接复制改名 ✓）；清单字段的**权威列表**见 §2 的表 ✓。下列骨架仅作**未来形态**参考 ✓。
+> **⚠️ 校正（2026-10-09 ✗✓）**：本节的 YAML/目录骨架是**目标形态**，**当前没有对应文件** ✗ —— `packs/_template/` **不存在**，`kernel/pack.js` **也不读 YAML** ✗。**唯一随包的真实模板是 `vibe-math-vmu/packs/institute-min/index.js`**（85 行、内联 JS manifest ✓，可直接复制改名 ✓）；清单字段的**权威列表**见 §2 的表 ✓。下列骨架仅作**未来形态**参考 ✓。
 
 ```
 packs/_template/

@@ -163,7 +163,7 @@
 | 4 | `meeting/round-start` | `closed` | **✓** `meeting.js` | 会议 id、轮次、参与集、议程 | `deny`／`rewriteArgs`／`notify` | ✓ | ✓ | 用户可定义（可否开会） |
 | 5 | `meeting/round-end` | `closed` | **✓** `meeting.js` | 会议 id、轮次、产出摘要 | `record`／`notify`／`annotate` | ✗ | ✗ | 用户可定义 |
 | 6 | `ballot/cast` | `closed` | **✓** `ballot.js` | 投票人、选项、时间 | `deny`（**唯一**） | ✓ | ✗ | **内核强制**（票面不可改写） |
-| 7 | `ballot/tally` | `closed` | **✓** `ballot.js` ＋ `packs/v3-core.js` | 票集、门槛、汇总 | `deny`／`annotate`（**不得** rewrite） | ✓ | ✗ | **内核强制**（计票不可改写） |
+| 7 | `ballot/tally` | `closed` | **✓** `ballot.js` ＋ `packs/v3-core/index.js` | 票集、门槛、汇总 | `deny`／`annotate`（**不得** rewrite） | ✓ | ✗ | **内核强制**（计票不可改写） |
 | 8 | `record/append-before` | `closed` | **✗ 无生产者** | 记录种类、内容、目标 | `deny`／`rewriteArgs`／`record` | ✓ | ✓ | 用户可定义（**不得**删既有记录） |
 | 9 | `record/appended` | **`open`** | **✗ 无生产者** | 记录摘要、哈希 | `record`／`annotate`／`notify` | ✗ | ✗ | 用户可定义（观测；失败放行） |
 | 10 | `task/assign` | `closed` | **✓** `members.js`／`tasks.js` | 任务、被指派者、验收 | `deny`／`rewriteArgs`／`notify` | ✓ | ✓ | 用户可定义 |

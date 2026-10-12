@@ -22,7 +22,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
-const PACK_URL = pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'packs', 'institute-min.js')).href
+const PACK_URL = pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'packs', 'institute-min', 'index.js')).href
 const KERNEL_URL = pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'kernel', 'index.js')).href
 const PL_URL = pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'kernel', 'pack.js')).href
 

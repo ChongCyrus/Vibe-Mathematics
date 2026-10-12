@@ -192,7 +192,7 @@
 | 4 | `meeting/round-start` | `closed` | ✓ `meeting.js` | ✓ | ✓ | `deny`/`rewriteArgs` |
 | 5 | `meeting/round-end` | `closed` | ✓ `meeting.js` | ✗ | ✗ | `record`/`notify` |
 | 6 | `ballot/cast` | `closed` | ✓ `ballot.js` | ✓ | ✗ | `deny`（唯一） |
-| 7 | `ballot/tally` | `closed` | ✓ `ballot.js`＋`packs/v3-core.js` | ✓ | ✗ | `deny`/`annotate` |
+| 7 | `ballot/tally` | `closed` | ✓ `ballot.js`＋`packs/v3-core/index.js` | ✓ | ✗ | `deny`/`annotate` |
 | 8 | `record/append-before` | `closed` | **✗ 无生产者** | ✓ | ✓ | `deny`/`rewriteArgs`/`record` |
 | 9 | `record/appended` | **`open`** | **✗ 无生产者** | ✗ | ✗ | `record`/`annotate` |
 | 10 | `task/assign` | `closed` | ✓ `members.js`/`tasks.js` | ✓ | ✓ | `deny`/`rewriteArgs` |

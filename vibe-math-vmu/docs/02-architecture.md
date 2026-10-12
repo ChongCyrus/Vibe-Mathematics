@@ -159,7 +159,7 @@ vibe-math-vmu/                     # 随包发布（package.json#files ✓）
 │   ├── meeting.js  ballot.js  tasks.js  math.js  rules.js
 │   ├── loader.js  script-bridge.js  registry.js  pack.js
 │   └── prompt/index.js
-├── packs/institute-min.js         # L4 示例整合包（真实 JS manifest ✓；`_template` **未提供** ✗）
+├── packs/institute-min/index.js         # L4 示例整合包（真实 JS manifest ✓；`_template` **未提供** ✗）
 ├── docs/00..14                    # 本套文档（15 篇；仓内门禁守卫 ✓）
 └── agent.cordis.yml               # 预设声明（插件行 ＋ persona ✓）
 

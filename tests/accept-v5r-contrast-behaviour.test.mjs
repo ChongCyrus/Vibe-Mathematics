@@ -222,9 +222,9 @@ const opened = (settings) => { const t = face(settings); const o = t.open({ type
 // ---------- 14. 正式证明准入 (issue #13) - the named predicate EXISTS in vmu ----------
 {
   const idx = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'index.js'), 'utf8')
-  const pack = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'institute-min.js'), 'utf8')
+  const pack = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'institute-min', 'index.js'), 'utf8')
   ok(/has_locked_formal_proof/.test(idx), '等价: vmu DOES provide the named state predicate has_locked_formal_proof (kernel/index.js)')
-  ok(/has_locked_formal_proof/.test(pack), '等价: and a pack already gates on it (packs/institute-min.js), so the pair is wired, not planned')
+  ok(/has_locked_formal_proof/.test(pack), '等价: and a pack already gates on it (packs/institute-min/index.js), so the pair is wired, not planned')
 }
 
 // ---------- 15. 资源预算 (#4) ----------
