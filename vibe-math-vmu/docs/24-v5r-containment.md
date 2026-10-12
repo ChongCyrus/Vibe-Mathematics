@@ -145,6 +145,36 @@
 **要它可驱动，需要补什么** ✓：**一个"写入后可回读且指纹一致"的文件后备 fs 接缝**（`readFileSync`／`writeFileSync`／`existsSync`／`mkdirSync` 语义与 v5r 的校验一致 ✓），**或**改用仓库里那套**重驱动**（`tests/harness/v5-tool-driver.mjs`：真 CLI ＋ 隔离 profile ＋ provider ✗，重但真 ✓）。**两条路都记在此，未选** ✗。
 
 
+### 2.2.8 ★★★ 接缝已实现并生效：happy path 的**第一段**已真跑通（轮 312 实测）✓✓
+
+**接缝契约（实测得出，非猜测）** ✗✓：v5r 的状态路径走宿主的 **`fs` 接缝**，只用到**四个成员** ✓：
+`resolve(p)` ✓／`stat(p)`（**不存在时返回 `undefined`** ✓）／`readText(p)` ✓／`writeText(p, content, …, policy)` ✓；
+★ 且代码明确规定：**`writeText` 返回 `undefined`／`null` 也算"未知但成功"** ✓（真实宿主从不这样返回 ✗）。**另需 ctx 的 `timeout` 钩子** ✓（调度用；缺它则 `schedulePass` 抛错 ⇒ 报 `ctx.timeout is not a function` ✗）。
+
+**补上接缝后的实测结果** ✓✓：
+
+| 步骤 | 结果 |
+|---|---|
+| `vibe_v5_start` | ★★ **成功** ✓：`{ok:true, institute:"institute", project:"default", members:["acad","r-1","r-2","r-3"], running:true, quorumM:3, voters:4}` ✓ —— **状态机加载与提交都通了，"STALE"消失** ✓ |
+| `vibe_v5_meeting({ agenda })` | ★★ **成功** ✓：`{ok:true, meeting:"mt-1", agenda:"A", order:"acad、r-3、r-2、r-1"}` ✓ —— **会议真的开起来了，且带【发言顺序】** ✓ |
+
+⇒ ★★ **这不再是"工具可调用"，而是"多步状态流程的第一段真的跑了"** ✓✓（**轮 311 记的"只能驱动工具本体"因此被【推进】了** ✓）。
+
+### 2.2.9 ★★★ happy path 的**剩余阻塞点**：v5r 是**执行体绑定**的（轮 312 定位）✗✓
+
+**实测与读码** ✓：`currentMember = member.id` 只在**预设调度器真正启动某成员回合**时赋值（`vibe-math-v5r.js` L3782／L3877 ✓）⇒
+- ★ **`vibe_v5_meeting`（开会）走的是所办/主持路径，故能跑** ✓；
+- ✗ **`vibe_v5_motion`／`poll_open`／`poll_vote`／`poll_close` 都要求【在册成员】身份** ⇒ 未启动任何成员回合时，执行体是"**所办（office）**"，于是全部返回 **`V5_MEMBER_NOT_FOUND "office"`** ✓（动议则返回 **`V5_NOT_VOTER`** ✓）。
+
+★★ **结论** ✓✓：**要驱动会议的动议↔投票↔计票，必须让 v5r 自己的调度器【真跑一个成员回合】** ✗ ⇒ **只有两条路**：
+1. **提供会真正执行成员回合的子代理夹具**（模拟回合：把成员的 prompt 跑完并回执 ✓）；
+2. **改用重驱动**（真 CLI ＋ 隔离 profile ＋ provider ✓，仓库已有 `tests/harness/v5-tool-driver.mjs` ✓）。
+
+**两条路都未选、未实现** ✗ ⇒ **`NOT_ADOPTED: 1`（会议 happy path 未对照）现在有了【更精确的原因】：不是"开不了会"，而是"动议与计票要求执行体身份，而身份由调度器产生"** ✓✓。
+
+> ★ **方法论提醒** ✓：**"能开会"≠"能投票"** ✗ —— **同一个工具族内部，各操作的【身份要求】不同** ✓；**判驱动可行性时必须按操作而非按族来判** ✓（已入 `docs/11` 第 ㉕ 条）。
+
+
 ## 3. v5r 的 56 个工具（**按家族分组**，实测列举）
 
 | 家族 | 工具 | vmu 侧家族级载体（依据：键族/服务实测存在） | A/B 覆盖 |
