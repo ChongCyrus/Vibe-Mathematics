@@ -754,6 +754,32 @@ export const CHARTER_BLOCKS = Object.freeze([
       ].join('\n'),
     },
   },
+  // ── THE POINTER-PROPAGATION CONTRACT (source `headerListContractBlock`, L372-383) ────────────────────────────
+  // Transcribed verbatim. This is the discipline that keeps a long session honest about what is actually in front of
+  // it: references exist only as head lists with a content FINGERPRINT, a body must be re-fetched by id, a fingerprint
+  // mismatch must be re-pulled rather than remembered, and anything unresolvable must stop BY NAME rather than be
+  // narrated from memory. It rhymes with this repository's own rule - cite, never drift - which is why the pack
+  // modules record their source hashes in the first place.
+  // The source guards it with a switch (pointerPropagationOn) whose off state is ZERO injection; the loop decides
+  // inclusion, so no "disabled" notice is ever injected (docs/26 section 3.14).
+  {
+    name: 'v5r-pointer-contract',
+    order: 745,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '【指针传播 · 头部列表（机制约束）】',
+        '  · 跨对象引用只以**头部列表**形式存在：`id` + 一行标题 + **内容指纹** + 状态。',
+        '  · 要正文就用 id 调 `vibe_v5_read_library` 展开；**不得**因为"我刚才读过"就当作它仍在你的上下文里。',
+        '  · 引用某对象时若它的**指纹与头部列表不一致，必须重新拉取**，不得沿用记忆里的旧文本。',
+        '  · 引用他人结论**必须**带 id；上下文里没有正文时**不得**凭记忆叙述它。',
+        '  · 论文阶段必须按 `id` + 指纹重建正文；指纹与磁盘正文不一致 ⇒ **具名阻塞并上报**，绝不静默用旧文。',
+        '  · **禁止**自行猜测、改写、拼写对象 id；查不到就**具名停下并上报**。',
+        '  · Lean 归档正文不在头部列表里，也不参与压缩：用 `vibe_v5_lean_lib` / `vibe_v5_lean_read` 按名取原文。',
+      ].join('\n'),
+    },
+  },
 ])
 
 /** One binding per role for every role-varying block, so the assembly puts the right charter in front of each kind. */

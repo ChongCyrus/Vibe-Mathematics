@@ -136,6 +136,9 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.resources.toolCallsPerTurnCap', type: 'number', def: 0, hot: HOT.H2, who: 'office', doc: '本回合工具调用上限；0＝未设上限（仍请克制）' },
   { key: 'vmu.resources.memoryCeilingMb', type: 'number', def: 0, hot: HOT.H2, who: 'office', doc: '内存上限（MB）；0＝只提醒"压力明显增大"而不给数字' },
   { key: 'vmu.resources.selfCheck', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '是否向成员展示资源纪律段（关掉＝零注入，提示词回到该段之前，注入点逐字不变）' },
+  // ROUND 367: the pointer-propagation contract has its own switch, exactly as the original gates it. Off means the
+  // section is not included at all (zero injection), never a "disabled" notice - see docs/26 section 3.14.
+  { key: 'vmu.pointer.propagation', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '是否注入指针传播契约（关掉＝零注入；原线的 S21 开关同义）' },
 
   // ---- math and formalisation ---------------------------------------------------------------
   // A1/A2 (P3): the DEFAULTS come from the shared module, so v2–v5r and vmu stay byte-comparable.

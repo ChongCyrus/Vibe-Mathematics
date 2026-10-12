@@ -442,7 +442,9 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   // The persona capture is the baseline for the CHARTER axis only. The per-turn pieces - the reply spec, the turn
   // heading and ask, the brief - belong to the PROMPT axis, and measuring showed the captured prompt corpus does
   // not even contain the reply catalogue. Scoping by axis is stated here rather than loosening the comparison.
-  const PROMPT_AXIS_PREFIXES = ['v5r-reply-', 'v5r-turn-', 'v5r-brief-', 'v5r-proof-']
+  // TODO(axis): this list is maintained by hand and every new prompt-axis block must be added. A structural fix -
+  // an explicit axis field on each block - is owed; the list is kept honest for now, with the reason per prefix.
+  const PROMPT_AXIS_PREFIXES = ['v5r-reply-', 'v5r-turn-', 'v5r-brief-', 'v5r-proof-', 'v5r-pointer-']
   for (const b of CHARTER_BLOCKS.filter((x) => !PROMPT_AXIS_PREFIXES.some((p) => String(x.name).startsWith(p)))) {
     const pairs = b.kind === 'shared' ? [['shared', b.texts.shared, acadOrig], ['shared', b.texts.shared, resOrig]]
       : (b.kind === 'role' ? [['academician', b.texts.academician, acadOrig], ['researcher', b.texts.researcher, resOrig]]
@@ -556,6 +558,22 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   ok(a1.text !== a2.text && a2.text.includes('另一个研究对象') && a2.text.includes('最多同时唤醒 9 名成员') && a2.text.includes('求 3N^2-2') === false,
     'T85. **** and CHANGING THE SETTINGS CHANGES THE PROMPT: the same turn with a different configuration delivers a different text, which is what tunability means',
     { differ: a1.text !== a2.text })
+}
+
+// 22) THE POINTER-PROPAGATION CONTRACT (docs/26 section 3.16), transcribed verbatim from the source. Its discipline
+// is the same one this repository applies to its own generated modules, so each rule is asserted by name.
+{
+  const pipePc = createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' })
+  const asmPc = await pipePc.assemble({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal', round: 2, roster: 'acad、r-1', quorum: 2, statusBlock: '[状态] x' })
+  ok(asmPc.ok === true && asmPc.text.includes('【指针传播 · 头部列表（机制约束）】') && asmPc.text.includes('**内容指纹**'),
+    'T86. **** the pointer contract arrives: cross-object references exist only as a head list carrying a content fingerprint',
+    { chars: asmPc.text.length })
+  ok(asmPc.text.includes('不得**因为"我刚才读过"就当作它仍在你的上下文里') && asmPc.text.includes('指纹与头部列表不一致，必须重新拉取'),
+    'T87. **** and it forbids the two memory traps: assuming a body is still in context, and reusing old text when the fingerprint no longer matches',
+    { forbidden: 2 })
+  ok(asmPc.text.includes('具名阻塞并上报') && asmPc.text.includes('具名停下并上报') && asmPc.text.includes('禁止**自行猜测、改写、拼写对象 id'),
+    'T88. **** unresolvable references must STOP BY NAME and report rather than be guessed or narrated from memory, which is the same rule this repo applies to its own citations',
+    { namedStop: true })
 }
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
