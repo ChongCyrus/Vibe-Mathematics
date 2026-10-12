@@ -14,7 +14,7 @@
 //
 // Run: node tests/vmu-prompt-type-coverage.test.mjs
 import { PROMPTS } from '../vibe-math-vmu/packs/v5r/prompts/v5r-prompts.js'
-import { CHARTER_SECTIONS, CHARTER_BLOCKS, CHARTER_BINDINGS } from '../vibe-math-vmu/packs/v5r/prompts/v5r-charter.js'
+import { CHARTER_SECTIONS, CHARTER_BLOCKS, CHARTER_BINDINGS, CHARTER_MEMBER_BINDINGS } from '../vibe-math-vmu/packs/v5r/prompts/v5r-charter.js'
 import { createPromptPipeline } from '../vibe-math-vmu/kernel/prompt/index.js'
 import { createTurnOrchestrator } from '../vibe-math-vmu/kernel/turn/index.js'
 import { decideSections } from '../vibe-math-vmu/packs/v5r/middleware/prompt-switches.js'
@@ -51,13 +51,45 @@ const loop = createTurnOrchestrator({
 loop.notify('acad', '【研究所提示】demo 未生效（V5_DEMO）：示例通知')
 
 const PHASES = ['founding', 'normal', 'checkpoint', 'heartbeat', 'verify', 'meeting', 'paper-write', 'paper-review', 'paper-final', 'resume']
+// THE INPUTS A CALLER IS EXPECTED TO VARY. The per-type score should say what the pack CAN produce when it is given the
+// inputs it expects, not what one arbitrary call produced. Two kinds of input change the text: the member, because a
+// founding round seeds each one with a different starting direction, and the reviewed member, because the peer review
+// names who is under review. Assembling once per input and taking the union turns "structurally unreachable" into
+// "reachable with the right call", which is the honest form of the claim.
+const INPUT_VARIANTS = {
+  founding: [
+    { member: 'acad', role: 'academician', roleLabel: '院士' },
+    { member: 'r-1', role: 'researcher', roleLabel: '研究员' },
+    { member: 'r-2', role: 'researcher', roleLabel: '研究员' },
+    { member: 'r-3', role: 'researcher', roleLabel: '研究员' },
+    { member: 't-1', role: 'temp', roleLabel: '临时工' },
+  ],
+  // `paper-review` is handled below with a second loop: its reviewer is a SETTING, not a turn field.
+}
+// THE REVIEW PROMPT NAMES WHO IS UNDER REVIEW, AND THAT IS A SETTING. A pipeline is built with its settings, so the
+// second reviewer needs a second loop rather than a per-call variant - passing a setting to open() does nothing.
+const loopAlt = createTurnOrchestrator({
+  prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }),
+  settings: Object.assign({}, SETTINGS, { "vmu.paper.reviewedMember": "acad" }),
+  sectionPolicy: decideSections, noticeBlock: inboxBlock,
+  extraPhases: ["heartbeat", "paper-write", "paper-review", "paper-final"],
+})
 const ours = {}
 for (const phase of PHASES) {
-  const a = await loop.assemble(loop.open({
-    member: 'acad', role: 'academician', roleLabel: '院士', phase, meetingState: phase === 'meeting' ? 'first' : undefined,
-    roster: 'acad、r-1、r-2', quorum: 2, statusBlock: '[状态] x', round: 3,
-  }).turn)
-  ours[phase] = String(a.text)
+  const variants = INPUT_VARIANTS[phase] || [{}]
+  const parts = []
+  for (const v of variants) {
+    const a = await loop.assemble(loop.open(Object.assign({
+      member: 'acad', role: 'academician', roleLabel: '院士', phase, meetingState: phase === 'meeting' ? 'first' : undefined,
+      roster: 'acad、r-1、r-2、r-3', quorum: 3, statusBlock: '[状态] x', round: 3,
+    }, v)).turn)
+    parts.push(String(a.text))
+  }
+  if (phase === 'paper-review') {
+    const a2 = await loopAlt.assemble(loopAlt.open({ member: 'acad', role: 'academician', roleLabel: '院士', phase, roster: 'acad、r-1、r-2', quorum: 2, statusBlock: '[状态] x', round: 3 }).turn)
+    parts.push(String(a2.text))
+  }
+  ours[phase] = parts.join('\n')
 }
 
 // The same normalisation the big measurement uses: the corpus prints absolute paths while this port names them through
@@ -213,6 +245,31 @@ console.log('=== 5. EVERY REMAINING GAP IS STRUCTURAL, and this says which ===')
   ok(unexplained.length === 0,
     "EVERY REMAINING GAP IS STRUCTURAL: of the " + left.length + " fixed lines not reproduced, every one is either the compact catalogues OTHER wording (the corpus spans a version change of the original, so printing both would print a line the original did not) or a line addressed to a member or reviewer this scenario did not name (one assembly names one member). No line is missing for want of transcription",
     { remaining: left.length, unexplained: unexplained.slice(0, 3).map((x) => x.ph + ": " + x.line.slice(0, 50)) })
+}
+console.log('=== 6. THE PER-MEMBER STARTING DIRECTIONS ARE SELECTED BY MEMBER ===')
+{
+  // The four directions this file reports as unmatched are unmatched because ONE assembly names ONE member. That is
+  // a claim about the harness, not about the mechanism, so it is checked directly: assemble a founding round for
+  // each member the corpus named and require each to receive ITS OWN direction and nobody elses.
+  const texts = new Map()
+  for (const b of CHARTER_MEMBER_BINDINGS) {
+    const l = createTurnOrchestrator({
+      prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }),
+      settings: SETTINGS, sectionPolicy: decideSections, noticeBlock: inboxBlock,
+      extraPhases: ["heartbeat", "paper-write", "paper-review", "paper-final"],
+    })
+    const a = await l.assemble(l.open({ member: b.member, role: "researcher", roleLabel: "研究员", phase: "founding", roster: "acad、r-1、r-2、r-3", quorum: 3, statusBlock: "[状态] x", round: 1 }).turn)
+    texts.set(b.member, String(a.text))
+  }
+  const wrong = []
+  for (const b of CHARTER_MEMBER_BINDINGS) {
+    const mine = texts.get(b.member) || ""
+    if (!mine.includes(b.text)) wrong.push(b.member + " did not receive its own direction")
+    for (const o of CHARTER_MEMBER_BINDINGS) if (o.member !== b.member && mine.includes(o.text)) wrong.push(b.member + " received " + o.member + "s direction")
+  }
+  ok(wrong.length === 0,
+    "EACH MEMBER RECEIVES ITS OWN STARTING DIRECTION and nobody elses. The corpus seeds the institute with distinct directions - lead it, start from definitions, hunt counterexamples, reduce to a core, check the literature - and the binding is by member, so this is checked by assembling a founding round for every member the corpus named rather than by trusting one scenario",
+    { members: CHARTER_MEMBER_BINDINGS.length, wrong: wrong.slice(0, 4) })
 }
 console.log('=== PER-TYPE COVERAGE: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }
