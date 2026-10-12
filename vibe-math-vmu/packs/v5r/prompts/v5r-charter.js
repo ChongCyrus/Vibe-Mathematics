@@ -24,7 +24,7 @@
 
 const LATEX_ENGINE_NOTE = [
           '（**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）',
-          '检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把“未检测到”当失败。',
+          '检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。',
 ]
 
 /**
@@ -704,6 +704,12 @@ export const CHARTER_BLOCKS = Object.freeze([
         '如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。',
       ].join('\n'),
       meeting: [
+        // The ordinary ask FIRST, then the protocol: the original ADDS the meeting rules to the round, it does not
+        // replace the round. A meeting prompt from the corpus carries both, so a member is never told about
+        // procedure at the cost of being told to advance the mathematics.
+                '请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的',
+                '结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。',
+        '',
         '议程与类型由本轮会议帧给出；请按议程发言，需要发言时举手。',
         '',
         // THE MEETING PROTOCOL, from the corpus. It was added as its own `meeting` section first and that broke
@@ -1034,7 +1040,7 @@ export const CHARTER_BLOCKS = Object.freeze([
       'paper-write': [
         ...LATEX_ENGINE_NOTE,
         '【最终论文·撰写 —— {{ roleLabel }} {{ member }}】',
-        '本所对原问题的一致结论已经达成，现在撰写**最终论文**。',
+        '本所对原问题的一致结论已经达成，现在撰写**最终论文**（第 1/3 轮）。',
         '请你**只写你自己库里已有证据支撑**的内容：',
         '- 直接引用你的卡片（Members/{{ member }}/Propos|Methods|Subproblems/）、Members/{{ member }}/Progress/progress.md、你参与的表决记录；',
         '- **不得编造**：没有证据的推测不要写成结论；未决 / 被否证的条目必须显式标注“未定论 / 已被否证”；',
