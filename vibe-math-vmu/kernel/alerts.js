@@ -27,7 +27,7 @@
 // Settings (concrete names are read TOLERANTLY; an absent key uses the documented default):
 //   vmu.alerts.thresholds[] | inhibitions[] | dedupWindowMs | escalateAfterMs | silenceWindows[] | channels[]
 //   vmu.alerts.autoEscalate | maxSamples | maxThresholds | maxFingerprints | maxSilences | maxExemptions
-//   vmu.slo.targets[] | vmu.slo.errorBudgetAction | vmu.slo.exemptions[]
+//   vmu.quality.targets[] | vmu.quality.errorBudgetAction | vmu.quality.exemptions[]
 //
 // Codes used here (03-§8 registry): VMU_INVALID_ARGUMENT · VMU_NO_SUCH_OBJECT · VMU_CONFLICT ·
 //   VMU_RESOURCE_BUDGET · VMU_STATE · VMU_ALERT_SUPPRESSED · VMU_ALERT_SILENCED · VMU_SLO_BUDGET_EXHAUSTED
@@ -122,12 +122,12 @@ export function createAlerts({ clock = () => 0, log = null, settings = {}, bus =
   const maxSilences = asInt(sget('vmu.alerts.maxSilences', DEFAULTS.maxSilences), DEFAULTS.maxSilences)
   const maxExemptions = asInt(sget('vmu.alerts.maxExemptions', DEFAULTS.maxExemptions), DEFAULTS.maxExemptions)
   const channels = arr(sget('vmu.alerts.channels', []))
-  const actionSetting = (() => { const v = sget('vmu.slo.errorBudgetAction', 'freeze-H2'); return ERROR_BUDGET_ACTIONS.includes(v) ? v : 'freeze-H2' })()
+  const actionSetting = (() => { const v = sget('vmu.quality.errorBudgetAction', 'freeze-H2'); return ERROR_BUDGET_ACTIONS.includes(v) ? v : 'freeze-H2' })()
   const declaredThresholds = arr(sget('vmu.alerts.thresholds', []))
   const declaredInhibitions = arr(sget('vmu.alerts.inhibitions', [])).filter((i) => i && typeof i.by === 'string').map((i) => ({ by: i.by, targets: arr(i.targets).filter((t) => typeof t === 'string' && t) }))
   const declaredSilences = arr(sget('vmu.alerts.silenceWindows', []))
-  const declaredSlo = arr(sget('vmu.slo.targets', [])).filter((t) => t && typeof t === 'object')
-  const declaredExemptions = arr(sget('vmu.slo.exemptions', [])).filter((e) => e && typeof e === 'object')
+  const declaredSlo = arr(sget('vmu.quality.targets', [])).filter((t) => t && typeof t === 'object')
+  const declaredExemptions = arr(sget('vmu.quality.exemptions', [])).filter((e) => e && typeof e === 'object')
   const configured = declaredThresholds.length > 0 || declaredSlo.length > 0
 
   // ── state (mutated by declare/undeclare/sample/raise/evaluate/silence/flush/escalate/acknowledge) ──
@@ -497,7 +497,7 @@ export function createAlerts({ clock = () => 0, log = null, settings = {}, bus =
       const ms = atMs(at)
       if (ms === null) throw deny('VMU_INVALID_ARGUMENT', 'budget `at` must be ms or an ISO timestamp', 'omit it to use the injected clock')
       const target = declaredSlo.find((t) => t.id === sli || t.sli === sli || t.metric === sli)
-      if (!target) throw deny('VMU_NO_SUCH_OBJECT', 'no such SLI: ' + String(sli), 'declared: ' + (declaredSlo.map((t) => t.id || t.sli || t.metric).filter(Boolean).join(', ') || 'none — add vmu.slo.targets[]'))
+      if (!target) throw deny('VMU_NO_SUCH_OBJECT', 'no such SLI: ' + String(sli), 'declared: ' + (declaredSlo.map((t) => t.id || t.sli || t.metric).filter(Boolean).join(', ') || 'none — add vmu.quality.targets[]'))
       if (typeof target.target !== 'number' || !Number.isFinite(target.target)) throw deny('VMU_INVALID_ARGUMENT', 'SLO target needs a finite numeric target: ' + String(sli), 'a target must be decidable (docs/21 §13)')
       const base = {
         ok: true, sli: target.id || target.sli || target.metric, metric: target.metric || target.sli, op: String(target.op || '>='),

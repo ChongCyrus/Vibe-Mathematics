@@ -147,7 +147,7 @@ const fakeMetrics = (rows = {}, kpiImpl = null) => ({
 {
   let now = 40000
   const slo = [{ id: 'settle-success', metric: 'settleSuccess', op: '>=', target: 0.99, window: 0, agg: 'avg' }]
-  const a = createAlerts({ clock: () => now, settings: { 'vmu.slo.targets': slo } })
+  const a = createAlerts({ clock: () => now, settings: { 'vmu.quality.targets': slo } })
   const und = a.budget({ sli: 'settle-success' })
   ok(und.state === 'undecided' && und.exhausted === null && und.usedFraction === null,
     'F1: an SLO with no samples is undecided (not a pass)', JSON.stringify(und))
@@ -165,7 +165,7 @@ const fakeMetrics = (rows = {}, kpiImpl = null) => ({
   const guardH1 = a.guardChange({ sli: 'settle-success', hot: 'H1' })
   ok(guardH1.ok === true && guardH1.refused === false, 'F5: H0/H1 firefighting is allowed during exhaustion', JSON.stringify(guardH1))
   ok(throwsCode(() => a.budget({ sli: 'nope' }), 'VMU_NO_SUCH_OBJECT'), 'F6: an unknown SLI is a named refusal')
-  const exempt = createAlerts({ clock: () => now, settings: { 'vmu.slo.targets': slo, 'vmu.slo.exemptions': [{ sli: 'settle-success', from: 0, to: 999999, reason: 'planned drill' }] } })
+  const exempt = createAlerts({ clock: () => now, settings: { 'vmu.quality.targets': slo, 'vmu.quality.exemptions': [{ sli: 'settle-success', from: 0, to: 999999, reason: 'planned drill' }] } })
   const ex = exempt.budget({ sli: 'settle-success' })
   ok(ex.state === 'exempt' && ex.exemptReason === 'planned drill' && ex.exhausted === false,
     'F7: an active exemption is an explicit state carrying its reason (never a silent pass)', JSON.stringify(ex))
@@ -244,7 +244,7 @@ const fakeMetrics = (rows = {}, kpiImpl = null) => ({
     'J2: with an injected metrics object the reading comes from it', JSON.stringify(fromMetrics.results[0]))
   const kpiUndecided = createAlerts({
     clock: () => now,
-    settings: { 'vmu.slo.targets': [{ id: 's1', metric: 'failureRate', op: '<=', target: 0.1 }] },
+    settings: { 'vmu.quality.targets': [{ id: 's1', metric: 'failureRate', op: '<=', target: 0.1 }] },
     metrics: fakeMetrics({}, () => ({ ok: true, samples: 0, actual: null, met: null })),
   }).budget({ sli: 's1' })
   ok(kpiUndecided.state === 'undecided', 'J3: a metrics.kpi() with 0 samples stays undecided', JSON.stringify(kpiUndecided))

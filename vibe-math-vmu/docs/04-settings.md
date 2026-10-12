@@ -354,9 +354,9 @@ vmu.packs.active: [v5r]
 | `vmu.alerts.maxExemptions` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 豁免上限（0＝不限） |
 | `vmu.alerts.maxFingerprints` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 指纹环上限（0＝不限；丢弃计数） |
 | `vmu.alerts.maxSamples` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 评估样本上限（0＝不限） |
-| `vmu.slo.targets` | obj[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | SLO 目标声明 |
-| `vmu.slo.errorBudgetAction` | enum | `warn` | `freeze-H2`∣`warn`∣`none` | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 错误预算耗尽的动作（默认只警告，不冻结） |
-| `vmu.slo.exemptions` | obj[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | SLO 豁免（必须记录理由与时长） |
+| `vmu.quality.targets` | obj[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | SLO 目标声明 |
+| `vmu.quality.errorBudgetAction` | enum | `warn` | `freeze-H2`∣`warn`∣`none` | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 错误预算耗尽的动作（默认只警告，不冻结） |
+| `vmu.quality.exemptions` | obj[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | SLO 豁免（必须记录理由与时长） |
 | `vmu.prune.autoRun` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 是否自动 GC（默认只报告不执行） |
 | `vmu.prune.graceDays` | int ≥0 | `14` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 孤儿宽限期 |
 | `vmu.prune.scope` | string | `workspace` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | GC 作用范围 |
@@ -722,15 +722,15 @@ vmu.packs.active: [v5r]
 | `vmu.safety.maxMemoryMb` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 内存上限（0＝不限；安全面的资源闸，与 vmu.limits.memoryCeilingMb 分工不同） |
 | `vmu.safety.capabilityMatrix` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 能力矩阵（默认内建最小集：外部审稿人＝只读产物；未列出的槽位默认无权限） |
 | `vmu.safety.askOn` | string[] | `[publish,network-egress,delete]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 需要询问的动作（默认同 approvalRequired；两者由同一判定读取） |
-| `vmu.outreach.publicSummaryRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 传播包必须带面向公众的摘要（缺失具名拒） |
-| `vmu.outreach.evidenceFidelity` | enum | `strict` | `strict`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 证据保真：strict ⇒ 每条主张须带 evidenceRef（缺失具名拒）；warn ⇒ 记入 warnings 并继续 |
-| `vmu.outreach.embargoRespect` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 禁运期内不得发布（具名拒，并给禁运终点） |
-| `vmu.outreach.languageSet` | string[] | `[zh,en]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 允许的摘要语言集（超出集合具名拒） |
-| `vmu.outreach.mediaApprovalPolicy` | string | `spokesperson-only` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 媒体发言政策（spokesperson-only ⇒ 只有已声明发言人可发言，否则具名拒） |
-| `vmu.outreach.openReviewEnabled` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 开放评审开关（false ⇒ 请求开放评审具名拒） |
-| `vmu.outreach.anonymityPreserve` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 匿名保护（true ⇒ 传播包不得携带作者身份，违反具名拒） |
-| `vmu.outreach.impactLogFields` | string[] | `[channel,reach,date,ref]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 影响日志必填字段（缺字段具名拒并点名第几条） |
-| `vmu.outreach.impactUseInEvaluation` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 影响是否可用于评价（默认 false ⇒ 用于评价时具名拒：它是传播指标而非研究质量信号） |
+| `vmu.dissemination.publicSummaryRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 传播包必须带面向公众的摘要（缺失具名拒） |
+| `vmu.dissemination.evidenceFidelity` | enum | `strict` | `strict`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 证据保真：strict ⇒ 每条主张须带 evidenceRef（缺失具名拒）；warn ⇒ 记入 warnings 并继续 |
+| `vmu.dissemination.embargoRespect` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 禁运期内不得发布（具名拒，并给禁运终点） |
+| `vmu.dissemination.languageSet` | string[] | `[zh,en]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 允许的摘要语言集（超出集合具名拒） |
+| `vmu.dissemination.mediaApprovalPolicy` | string | `spokesperson-only` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 媒体发言政策（spokesperson-only ⇒ 只有已声明发言人可发言，否则具名拒） |
+| `vmu.dissemination.openReviewEnabled` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 开放评审开关（false ⇒ 请求开放评审具名拒） |
+| `vmu.dissemination.anonymityPreserve` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 匿名保护（true ⇒ 传播包不得携带作者身份，违反具名拒） |
+| `vmu.dissemination.impactLogFields` | string[] | `[channel,reach,date,ref]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 影响日志必填字段（缺字段具名拒并点名第几条） |
+| `vmu.dissemination.impactUseInEvaluation` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 影响是否可用于评价（默认 false ⇒ 用于评价时具名拒：它是传播指标而非研究质量信号） |
 | `vmu.collab.agreementRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 交换须先有协议（true ⇒ 无协议交换具名拒；false ⇒ 记录而不假装） |
 | `vmu.collab.dataSharingTemplate` | string | `standard` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 默认数据共享模板名（协议模板不在对手方声明中具名拒） |
 | `vmu.collab.counterpartyRegistry` | string | `Ops/Partners` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 对手方登记目录（相对项目根；本面只 REPORT 不触碰） |
@@ -738,17 +738,17 @@ vmu.packs.active: [v5r]
 | `vmu.collab.jointAuthorshipPolicy` | string | `contribution-then-alternate` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 共同署名政策（声明顺序；未实现的政策名自曝而非假装） |
 | `vmu.collab.settlementCycleDays` | integer | `60` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 结算周期天数（≥1；未到周期即结算具名拒并给到期时刻） |
 | `vmu.collab.reconciliationToleranceMinor` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 对账容差（最小货币单位；超出容差具名拒并给差额） |
-| `vmu.money.currencyDefault` | string | `EUR` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 默认币种（缺省时用于 scaleOf 等；不覆盖显式传入者） |
-| `vmu.money.roundingMode` | enum | `half-even` | `half-up`∣`half-even`∣`floor`∣`ceil`∣`trunc` | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 舍入方式（roundMinor 用它；默认银行家舍入） |
-| `vmu.money.scaleByCurrency` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 币种→精度位数（覆盖 ISO 表；自曝 overridden） |
-| `vmu.money.fxSource` | string | `manual-snapshot` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 汇率来源名（离线优先；checkFx 自曝来源） |
-| `vmu.money.fxSnapshotDir` | string | `Ops/FX` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 汇率快照目录（相对项目根；本面只 REPORT 不触碰） |
-| `vmu.money.fxMaxAgeDays` | int ≥0 | `7` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 汇率快照最大年龄（超出具名拒并给实际天数） |
-| `vmu.money.allocationRemainderPolicy` | enum | `largest-remainder` | `largest-remainder`∣`first-party`∣`last-party` | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 分摊余数政策（allocate 用它；分摊结果必须加回总额，加不回则具名拒） |
-| `vmu.money.rejectFloatAmounts` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 拒浮点金额（内核强制：默认 true，只有显式 false 才关；金额一律最小单位整数） |
-| `vmu.money.maxAmountMinor` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 金额上限（最小单位；0＝不限；超出具名拒并给上限） |
-| `vmu.money.allowNegative` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 是否允许负额（默认 false ⇒ 负额具名拒） |
-| `vmu.money.auditTupleFields` | string[] | `[inputs,fx,rounding,result]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 金额审计元组字段（只可增不可删；缺失具名拒并点名缺哪些） |
+| `vmu.funds.currencyDefault` | string | `EUR` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 默认币种（缺省时用于 scaleOf 等；不覆盖显式传入者） |
+| `vmu.funds.roundingMode` | enum | `half-even` | `half-up`∣`half-even`∣`floor`∣`ceil`∣`trunc` | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 舍入方式（roundMinor 用它；默认银行家舍入） |
+| `vmu.funds.scaleByCurrency` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 币种→精度位数（覆盖 ISO 表；自曝 overridden） |
+| `vmu.funds.fxSource` | string | `manual-snapshot` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 汇率来源名（离线优先；checkFx 自曝来源） |
+| `vmu.funds.fxSnapshotDir` | string | `Ops/FX` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 汇率快照目录（相对项目根；本面只 REPORT 不触碰） |
+| `vmu.funds.fxMaxAgeDays` | int ≥0 | `7` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 汇率快照最大年龄（超出具名拒并给实际天数） |
+| `vmu.funds.allocationRemainderPolicy` | enum | `largest-remainder` | `largest-remainder`∣`first-party`∣`last-party` | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 分摊余数政策（allocate 用它；分摊结果必须加回总额，加不回则具名拒） |
+| `vmu.funds.rejectFloatAmounts` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 拒浮点金额（内核强制：默认 true，只有显式 false 才关；金额一律最小单位整数） |
+| `vmu.funds.maxAmountMinor` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 金额上限（最小单位；0＝不限；超出具名拒并给上限） |
+| `vmu.funds.allowNegative` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 是否允许负额（默认 false ⇒ 负额具名拒） |
+| `vmu.funds.auditTupleFields` | string[] | `[inputs,fx,rounding,result]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 金额审计元组字段（只可增不可删；缺失具名拒并点名缺哪些） |
 | `vmu.agreements.registryDir` | string | `Ops/Agreements` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 协议登记目录（相对项目根；本面只 REPORT 不触碰） |
 | `vmu.agreements.kinds` | string[] | `[dua,mta]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 协议种类（未声明种类在开协议时具名拒） |
 | `vmu.agreements.unsignedPolicy` | enum | `block` | `block`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 未签策略（block ⇒ 未签协议下的交换具名拒，即「未签不得共享」；warn ⇒ 记录并警告） |
@@ -1294,6 +1294,8 @@ vmu.packs.active: [v5r]
 | `vmu.deprecation.allowExempt` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
 | `vmu.deprecation.exemptList` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准） |
 | `vmu.deprecation.stageDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
+| `vmu.dissemination.impact` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
+| `vmu.dissemination.mediaRequest` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 22（共见 1 卷：22），尚未实现（元数据以各卷为准） |
 | `vmu.ethics.approvalRef` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.ethics.dpiaRequired` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 2 卷：16、20），尚未实现（元数据以各卷为准） |
 | `vmu.ethics.dualUseReview` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |

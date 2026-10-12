@@ -364,7 +364,7 @@
 | `VMU_SAFETY_NET_DENIED` | **默认禁网下启动网络客户端**（`vmu.safety.netPolicy=off`；实现于 `kernel/guard.js` ✓） | 安全（20） | ✅（须给**策略值**与放行方式 ✓） |
 | `VMU_SAFETY_PATH_TOO_LONG` | **路径超长**（`vmu.safety.maxPathLength`；实现于 `kernel/guard.js` ✓） | 安全（20） | ✅（须给**实际长度与上限** ✓） |
 | `VMU_SAFETY_SYMLINK_DENIED` | **路径跨越软链**（`vmu.safety.followSymlinks=false`；实现于 `kernel/guard.js` ✓） | 安全（20） | ✅（须给**具体链接路径** ✓） |
-| `VMU_OUTREACH_INCOMPLETE` | 传播包**缺公共摘要**（`vmu.outreach.publicSummaryRequired=true`；实现于 `kernel/publication.js` ✓） | 传播（22） | ✅（须点明缺 `publicSummary` ✓） |
+| `VMU_OUTREACH_INCOMPLETE` | 传播包**缺公共摘要**（`vmu.dissemination.publicSummaryRequired=true`；实现于 `kernel/publication.js` ✓） | 传播（22） | ✅（须点明缺 `publicSummary` ✓） |
 | `VMU_OUTREACH_LANGUAGE` | 摘要语言**超出 `languageSet`**（实现于 `kernel/publication.js` ✓） | 传播（22） | ✅（须给**允许语言集** ✓） |
 | `VMU_OUTREACH_EVIDENCE` | 主张**缺 `evidenceRef`**（`evidenceFidelity=strict` ✓） | 传播（22） | ✅（须给**缺失条数** ✓） |
 | `VMU_OUTREACH_MEDIA_DENIED` | **非已声明发言人**发言（`mediaApprovalPolicy=spokesperson-only` ✓） | 传播（22） | ✅（须点名**发言人**与该政策 ✓） |
@@ -380,13 +380,13 @@
 | `VMU_COLLAB_TEMPLATE_UNKNOWN` | **模板未与对手方约定**（`dataSharingTemplate` ✓） | 协作（22） | ✅（须给**已声明模板清单** ✓） |
 | `VMU_COLLAB_SETTLEMENT_PREMATURE` | **未到结算周期**即结算（`settlementCycleDays` ✓） | 协作（22） | ✅（须给**到期时刻与周期** ✓） |
 | `VMU_COLLAB_RECONCILIATION_OFF` | **对账差额超出容差**（`reconciliationToleranceMinor` ✓） | 协作（22） | ✅（须给**差额与容差** ✓） |
-| `VMU_FUNDING_NEGATIVE_NOT_ALLOWED` | **负额**而 `vmu.money.allowNegative=false`（实现于 `kernel/funding.js` ✓） | 货币（22） | ✅（须给**金额与该键** ✓） |
-| `VMU_FUNDING_AMOUNT_OVER_CEILING` | 金额**超出 `vmu.money.maxAmountMinor`**（实现于 `kernel/funding.js` ✓） | 货币（22） | ✅（须给**金额与上限** ✓） |
+| `VMU_FUNDING_NEGATIVE_NOT_ALLOWED` | **负额**而 `vmu.funds.allowNegative=false`（实现于 `kernel/funding.js` ✓） | 货币（22） | ✅（须给**金额与该键** ✓） |
+| `VMU_FUNDING_AMOUNT_OVER_CEILING` | 金额**超出 `vmu.funds.maxAmountMinor`**（实现于 `kernel/funding.js` ✓） | 货币（22） | ✅（须给**金额与上限** ✓） |
 | `VMU_FUNDING_ALLOCATION_WEIGHTS` | 分摊**权重非法或全零**（`allocate` ✓） | 货币（22） | ✅（须说明权重要求 ✓） |
 | `VMU_FUNDING_ALLOCATION_MISMATCH` | 分摊**结果加不回总额**（余数政策有 bug ⇒ 一分未应用 ✓） | 货币（22） | ✅（须给**实际与应有总额** ✓） |
-| `VMU_FUNDING_FX_SNAPSHOT_REQUIRED` | 换汇**没有带日期的快照**（`vmu.money.fxSource` 离线优先 ✓） | 货币（22） | ✅（须给**快照目录**与来源名 ✓） |
+| `VMU_FUNDING_FX_SNAPSHOT_REQUIRED` | 换汇**没有带日期的快照**（`vmu.funds.fxSource` 离线优先 ✓） | 货币（22） | ✅（须给**快照目录**与来源名 ✓） |
 | `VMU_FUNDING_FX_STALE` | 汇率快照**超过 `fxMaxAgeDays`**（实现于 `kernel/funding.js` ✓） | 货币（22） | ✅（须给**实际天数与上限** ✓） |
-| `VMU_FUNDING_AUDIT_TUPLE` | 金额审计元组**缺声明字段**（`vmu.money.auditTupleFields` 只可增不可删 ✓） | 货币（22） | ✅（须点名**缺哪些字段** ✓） |
+| `VMU_FUNDING_AUDIT_TUPLE` | 金额审计元组**缺声明字段**（`vmu.funds.auditTupleFields` 只可增不可删 ✓） | 货币（22） | ✅（须点名**缺哪些字段** ✓） |
 | `VMU_AGREEMENT_KIND_UNKNOWN` | **协议种类未声明**（`vmu.agreements.kinds`；实现于 `kernel/collab.js` ✓） | 协议（22） | ✅（须给**允许种类** ✓） |
 | `VMU_AGREEMENT_UNSIGNED` | **未签协议下的交换**（`vmu.agreements.unsignedPolicy=block`，即"未签不得共享" ✓） | 协议（22） | ✅（须给**先签署的方法**与该键 ✓） |
 | `VMU_AGREEMENT_SIGNATURE_REF_REQUIRED` | 签署**缺引用**（`vmu.agreements.signatureRefRequired=true` ✓） | 协议（22） | ✅（须点明缺 `ref` ✓） |

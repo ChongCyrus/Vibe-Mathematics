@@ -62,12 +62,12 @@
 
 | # | 族 | 可依附的现有底座 | 可调控键族 | 码族 | 成熟度 |
 |---|---|---|---|---|---|
-| **0** | **货币与舍入（Money，横切规范）** | **无（本卷新增类型规范 §3.0）** | `vmu.money.*` | `VMU_MONEY_*`／`VMU_CURRENCY_*`／`VMU_FX_*`／`VMU_ROUNDING_*`／`VMU_AMOUNT_*`／`VMU_SCALE_*`／`VMU_ALLOCATION_*` | ✗ |
+| **0** | **货币与舍入（Money，横切规范）** | **无（本卷新增类型规范 §3.0）** | `vmu.funds.*` | `VMU_MONEY_*`／`VMU_CURRENCY_*`／`VMU_FX_*`／`VMU_ROUNDING_*`／`VMU_AMOUNT_*`／`VMU_SCALE_*`／`VMU_ALLOCATION_*` | ✗ |
 | 1 | 仪器与设备 | `vibe_vmu_records`／`vibe_vmu_task`／07 `datasets` | `vmu.resource.*` | `VMU_EQUIP_*` | ✗ |
-| 2 | 经费与财务 | `vibe_vmu_records`／08 工作流／17 令牌（**仅参照**） | `vmu.funding.*`＋`vmu.money.*` | `VMU_FUNDING_*` | ✗ |
+| 2 | 经费与财务 | `vibe_vmu_records`／08 工作流／17 令牌（**仅参照**） | `vmu.funding.*`＋`vmu.funds.*` | `VMU_FUNDING_*` | ✗ |
 | 3 | 知识产权 | `vibe_vmu_records`／16 出版面／20 许可 | `vmu.ip.*` | `VMU_IP_*` | ✗ |
 | 4 | 会务与活动 | **08 会议/表决原语** ＋ 16 评审面 | `vmu.conference.*` | `VMU_CONF_*` | ✗ |
-| 5 | 科学传播 | `vibe_vmu_records`／20 脱敏 | `vmu.outreach.*` | `VMU_OUTREACH_*` | ✗ |
+| 5 | 科学传播 | `vibe_vmu_records`／20 脱敏 | `vmu.dissemination.*` | `VMU_OUTREACH_*` | ✗ |
 | 6 | 跨机构协作 | 17 委托/身份 · 20 数据共享 | `vmu.collab.*` | `VMU_COLLAB_*` | ✗ |
 | 7 | 合规与审计运营 | 20 合规基线 · 21 审计导出 | `vmu.compliance.*` | `VMU_COMPLIANCE_*` | ✗ |
 | 8 | 资源与容量 | 07 `vmu.quota.*` · 17 席位 | `vmu.capacity.*` | `VMU_CAPACITY_*` | ✗ |
@@ -86,7 +86,7 @@
 |---|---|---|---|---|
 | `vmu.resource` | 17 | **17** | `resource.js`(17) | ★ **已接线 ✓（上文 §2 的"计划 ✗"已过期）** |
 | `vmu.funding` | 16 | **16** | `funding.js`(16) | ★ **已接线 ✓（§3 的"计划 ✗"已过期）** |
-| `vmu.money` | 11 | **11** | `funding.js`(11) | ★ **已接线 ✓** |
+| `vmu.funds` | 11 | **11** | `funding.js`(11) | ★ **已接线 ✓** |
 | `vmu.custody` | 7 | **7** | `custody.js`(7) | ★ **已接线 ✓（§L168"本仓今天没有任何样本/保管实现"【已不成立】✗）** |
 | `vmu.agreements` | 7 | **7** | `collab.js`(7) | ★ **已接线 ✓** |
 | `vmu.capacity` | 12 | **12** | `capacity.js`(12) | ★ **已接线 ✓** |
@@ -99,7 +99,7 @@
 | `vmu.records` | 32 | **32** | `records.js` ＋ `index.js` 等 | ★ **已接线 ✓** |
 | `vmu.budget` | 9 | **9** | `budget.js`(9) ＋ `fairness.js` | ★ **已接线 ✓** |
 | `vmu.collab` | **9** | **7** | `collab.js`(7) | ⚠️ **部分（余 2 条契约薄，见 §L234；原 10 含 1 个服务名，轮 270 剔除）** |
-| `vmu.outreach` | **9** | **9** | `publication.js`(9) | ★ **已接线 ✓（轮 270 剔除 2 个服务名后，分母由 11 修正为 9 ✓）** |
+| `vmu.dissemination` | **11** | **9** | `publication.js`(9) | ⚠️ **部分（9/11）** —— 9 条**已接线 ✓**；另 2 条（`impact`／`mediaRequest`）**经审计确认内核无读取者 ⇒ 真实待办 ✗**（见 §0.1 与 `04` 的 `planned` 行 ✓） |
 | `vmu.recruit` | 12 | **12** | `recruit.js`(12) | ★ **已接线 ✓（轮 267 接了余下 4 条，当时漏更此表 ✗，轮 271 修正）** |
 | `vmu.tasks` | **3** | **3** | `index.js`(3) | ★ **已接线 ✓（轮 270 剔除 1 个服务名后，分母由 3 修正为 2 ✓）** |
 | `vmu.legalentity` | 6 | **6** | `legalentity.js`(6) | ★ **已接线 ✓（轮 276 建面：`registerEntity`／`bindAccount`／`validateInvoice`，五码齐 ✓）** |
@@ -471,14 +471,14 @@
 | **名称** | 公众摘要（Public Summary） |
 | **目的** | 面向公众的摘要/图文/视频稿：**必须**可回指内部结论，且**证据强度不高于**内部结论（O-4）✓ |
 | **面向谁** | 传播团队、PI、代理 |
-| **接口形状** | 服务 `vmu.outreach`（⚠️ **部分接线**（实测 9/11，见 §0.1））：`draft(targetRef)`／`review(draftId)`／`publish(draftId)`；工具 `vibe_vmu_outreach` ⛔ 未实现；钩子 `outreach/draft-before` ⛔ 提案 |
-| **可调控参数** | `vmu.outreach.publicSummaryRequired`（默认 `true`）、`vmu.outreach.evidenceFidelity`（默认 `strict`；可选 `warn`）、`vmu.outreach.embargoRespect`（默认 `true`）、`vmu.outreach.languageSet`（默认 `["zh","en"]`） |
+| **接口形状** | 服务 `vmu.dissemination`（⚠️ **部分接线**（实测 9/11，见 §0.1））：`draft(targetRef)`／`review(draftId)`／`publish(draftId)`；工具 `vibe_vmu_outreach` ⛔ 未实现；钩子 `outreach/draft-before` ⛔ 提案 |
+| **可调控参数** | `vmu.dissemination.publicSummaryRequired`（默认 `true`）、`vmu.dissemination.evidenceFidelity`（默认 `strict`；可选 `warn`）、`vmu.dissemination.embargoRespect`（默认 `true`）、`vmu.dissemination.languageSet`（默认 `["zh","en"]`） |
 | **相关错误码** | `VMU_OUTREACH_EVIDENCE_MISMATCH` ⛔／`VMU_OUTREACH_EMBARGO` ⛔／`VMU_OUTREACH_REF_MISSING` ⛔ |
 | **四条哲学** | F：不启用＝无传播面 ✓｜T：保真档位/语言集可配 ✓｜D："哪些词算夸大"由 pack 的词表判定点 ✓｜X：新渠道只加渲染器 ✓ |
 | **实现要点** | 机器判据：稿内每个**结论句**必须带 `evidenceRef`（指向内部结论/回执 id）；无法回指 ⇒ **具名拒** ✓；`strict` 档位下"确定性措辞"必须被内部结论的置信度覆盖 ✓ |
 | **依赖与前置** | 07 记录轨 ✓、16 出版面 ✓、20 脱敏 ✓ |
 | **成熟度** | **意图已承载 ✓／机器判据未实现 ✗**（轮 63 实测）—— 论文轨道**已在提示词层**要求写作方："**不得编造**：没有证据的推测不要写成结论；**未决／被否证的条目必须显式标注**" ＋ "在 **evidence** 里写清证据路径"（`vibe-math-v5.js:5825-5826` ✓）；**但没有机器校验** ✗（交付的 `evidence` 是否为空、未决项是否真的标注，**无人检查** ✗）。 |
-| **裁决（轮 63）** | **做 ✓，但落点在论文轨道的交付点，不新建 `vmu.outreach` 服务** ✗✓ —— **⓪ 步结论**：该机制**已有真实消费者**（**论文轨道自己产出 claims 与 evidence** ✓），而**独立的 `vmu.outreach`（`draft`/`review`/`publish`）没有消费者** ✗（公众摘要＝论文摘要，本已在轨道内产出 ✓）。**最小机器判据** ✓：交付件**`evidence` 为空 ⇒ 具名拒**（＝`VMU_OUTREACH_REF_MISSING` 的形状 ✓；**用该码前须先登记** ✓）；**"确定性措辞被置信度覆盖"（strict 档）明写未做 ✗**（需 pack 词表判定点 ✓）。<br>**未做 ✗ 明列**：`vmu.outreach.*` 四个键**未登记、未接线** ✗；`vmu.outreach` 服务**不建** ✗。 |
+| **裁决（轮 63）** | **做 ✓，但落点在论文轨道的交付点，不新建 `vmu.dissemination` 服务** ✗✓ —— **⓪ 步结论**：该机制**已有真实消费者**（**论文轨道自己产出 claims 与 evidence** ✓），而**独立的 `vmu.dissemination`（`draft`/`review`/`publish`）没有消费者** ✗（公众摘要＝论文摘要，本已在轨道内产出 ✓）。**最小机器判据** ✓：交付件**`evidence` 为空 ⇒ 具名拒**（＝`VMU_OUTREACH_REF_MISSING` 的形状 ✓；**用该码前须先登记** ✓）；**"确定性措辞被置信度覆盖"（strict 档）明写未做 ✗**（需 pack 词表判定点 ✓）。<br>**未做 ✗ 明列**：`vmu.dissemination.*` 四个键**未登记、未接线** ✗；`vmu.dissemination` 服务**不建** ✗。 |
 | **优先级** | P1（诚实性是机构资产） |
 
 ### 6.2 媒体与开放评审
@@ -487,8 +487,8 @@
 |---|---|
 | **名称** | 媒体与开放评审（Media & Open Review） |
 | **目的** | 媒体询问、开放评审（公开评审意见）的**运营流程**：谁可代表机构发声、什么可公开 ✓ |
-| **接口形状** | 服务 `vmu.outreach.mediaRequest()`／`openReview(package)`（⚠️ **部分接线**（实测 9/11，见 §0.1）） |
-| **可调控参数** | `vmu.outreach.mediaApprovalPolicy`（默认 `spokesperson-only`）、`vmu.outreach.openReviewEnabled`（默认 `false`）、`vmu.outreach.anonymityPreserve`（默认 `true`） |
+| **接口形状** | 服务 `vmu.dissemination.mediaRequest()`／`openReview(package)`（⚠️ **部分接线**（实测 9/11，见 §0.1）） |
+| **可调控参数** | `vmu.dissemination.mediaApprovalPolicy`（默认 `spokesperson-only`）、`vmu.dissemination.openReviewEnabled`（默认 `false`）、`vmu.dissemination.anonymityPreserve`（默认 `true`） |
 | **相关错误码** | `VMU_OUTREACH_MEDIA_UNAUTHORIZED` ⛔／`VMU_OUTREACH_ANONYMITY_BREACH` ⛔ |
 | **四条哲学** | F：不声明＝无人可代表机构 ✓｜T：发言人/开放评审开关可配 ✓｜D：发言人名单由 pack ✓｜X：新渠道只加适配 ✓ |
 | **实现要点** | 开放评审**必须**同时保留匿名（评审人身份）与署名（作者）的规则档 ✓ |
@@ -502,8 +502,8 @@
 |---|---|
 | **名称** | 影响记录 |
 | **目的** | 记录传播与转化效果（引用数、媒体报道、政策引用、教学使用），**用于运营决策**而非学术评价 ✓ |
-| **接口形状** | 服务 `vmu.outreach.impact()`（⚠️ **部分接线**（实测 9/11，见 §0.1）） |
-| **可调控参数** | `vmu.outreach.impactLogFields`（默认 `["channel","reach","date","ref"]`）、`vmu.outreach.impactUseInEvaluation`（默认 `false` ✗） |
+| **接口形状** | 服务 `vmu.dissemination.impact()`（⚠️ **部分接线**（实测 9/11，见 §0.1）） |
+| **可调控参数** | `vmu.dissemination.impactLogFields`（默认 `["channel","reach","date","ref"]`）、`vmu.dissemination.impactUseInEvaluation`（默认 `false` ✗） |
 | **相关错误码** | `VMU_OUTREACH_IMPACT_INCOMPLETE` ⛔ |
 | **四条哲学** | F：不记＝无影响面 ✓｜T：字段/是否用于考核可配 ✓｜D：考核规则由 pack ✓｜X：新指标只加字段 ✓ |
 | **实现要点** | **默认禁止**把传播影响用于人事考核（避免"宣传换晋升"，与 17 的 S-3 精神一致 ✓） |
@@ -655,7 +655,7 @@
 ### 11.1 三层职责
 | 层 | 决定什么 | 现状 |
 |---|---|---|
-| **settings**（`vmu.money.*`／`vmu.resource.*`／`funding.*`／`ip.*`／`conference.*`／`outreach.*`／`collab.*`／`compliance.*`／`capacity.*`／`hr.*`） | 阈值、窗口、必填字段、强制度、周期、**金额表示与舍入** | ✗ 全部为计划键（`planned:true`）✓ |
+| **settings**（`vmu.funds.*`／`vmu.resource.*`／`funding.*`／`ip.*`／`conference.*`／`outreach.*`／`collab.*`／`compliance.*`／`capacity.*`／`hr.*`） | 阈值、窗口、必填字段、强制度、周期、**金额表示与舍入** | ✗ 全部为计划键（`planned:true`）✓ |
 | **中间件** | 在运营动作**前后**插入检查与记账（`ops/*`、`ip/*`、`compliance/*` 钩子均为**提案** ✗） | 机制已实现 ✓（05），本卷钩子未实现 ✗ |
 | **pack** | 组织政策：科目树、审批链、冲突定义、发言人、合规项清单、任期规则 | 机制已实现 ✓（10），运营 pack 未写 ✗ |
 
@@ -685,7 +685,7 @@
 |---|---|---|
 | 工具 | `vibe_vmu_resource` ⛔ 未实现、`vibe_vmu_funding` ⛔ 未实现、`vibe_vmu_ip` ⛔ 未实现、`vibe_vmu_conference` ⛔ 未实现、`vibe_vmu_outreach` ⛔ 未实现、`vibe_vmu_collab` ⛔ 未实现、`vibe_vmu_compliance` ⛔ 未实现、`vibe_vmu_capacity` ⛔ 未实现、`vibe_vmu_hr` ⛔ 未实现 | ✗ |
 | 工具（复用） | `vibe_vmu_records` ✓、`vibe_vmu_task` ✓、`vibe_vmu_meeting` ✓、`vibe_vmu_set` ✓、`vibe_vmu_middleware` ✓、`vibe_vmu_pack` ✓、`vibe_vmu_script` ✓、`vibe_vmu_status` ✓、`vibe_vmu_control` ✓ | ✓ |
-| 服务 | `vmu.resource`／`vmu.funding`／`vmu.ip`／`vmu.conference`／`vmu.outreach`／`vmu.collab`／`vmu.compliance`／`vmu.capacity`／`vmu.hr`（计划 `kernel/ops/*`） | ✗ |
+| 服务 | `vmu.resource`／`vmu.funding`／`vmu.ip`／`vmu.conference`／`vmu.dissemination`／`vmu.collab`／`vmu.compliance`／`vmu.capacity`／`vmu.hr`（计划 `kernel/ops/*`） | ✗ |
 | 钩子 | `ops/expense-requested` ⛔ 提案、`ops/expense-approved` ⛔ 提案、`ops/receipt-recorded` ⛔ 提案、`ops/reservation-requested` ⛔ 提案、`ops/reservation-conflict` ⛔ 提案、`ops/calibration-due` ⛔ 提案、`ip/disclosure-before` ⛔ 提案、`ip/publication-hold` ⛔ 提案、`conference/cfp-open` ⛔ 提案、`conference/decision` ⛔ 提案、`outreach/draft-before` ⛔ 提案、`compliance/calendar-due` ⛔ 提案、`capacity/pool-low` ⛔ 提案、`hr/review-season-open` ⛔ 提案 | ✗ |
 | 协议 | `InstrumentReservation` ⛔、`ExpenseClaim` ⛔、`CostShareSplit` ⛔、`IpDisclosure` ⛔、`CfP` ⛔、`ReviewAssignment` ⛔、`AuditEvidencePack` ⛔、`CapacityPlan` ⛔、`TenureReview` ⛔ | ✗ |
 
@@ -751,15 +751,15 @@
 | 会务 | `vmu.conference.registrationFeeMinor` | integer | `0` | ≥0 | pack |
 | 会务 | `vmu.conference.waiverPolicy` | string | `none` | `none`｜`byRole`｜`byRequest` | pack |
 | 会务 | `vmu.conference.proceedingsTrack` | string | `records` | 轨名 | 组织席 |
-| 传播 | `vmu.outreach.publicSummaryRequired` | boolean | `true` | — | pack |
-| 传播 | `vmu.outreach.evidenceFidelity` | string | `strict` | `strict`｜`warn` | pack |
-| 传播 | `vmu.outreach.embargoRespect` | boolean | `true` | — | pack |
-| 传播 | `vmu.outreach.languageSet` | string[] | `["zh","en"]` | 语言码 | 运营席 |
-| 传播 | `vmu.outreach.mediaApprovalPolicy` | string | `spokesperson-only` | 政策名 | pack |
-| 传播 | `vmu.outreach.openReviewEnabled` | boolean | `false` | — | pack |
-| 传播 | `vmu.outreach.anonymityPreserve` | boolean | `true` | — | pack |
-| 传播 | `vmu.outreach.impactLogFields` | string[] | `["channel","reach","date","ref"]` | 字段名 | 运营席 |
-| 传播 | `vmu.outreach.impactUseInEvaluation` | boolean | `false` | — | pack |
+| 传播 | `vmu.dissemination.publicSummaryRequired` | boolean | `true` | — | pack |
+| 传播 | `vmu.dissemination.evidenceFidelity` | string | `strict` | `strict`｜`warn` | pack |
+| 传播 | `vmu.dissemination.embargoRespect` | boolean | `true` | — | pack |
+| 传播 | `vmu.dissemination.languageSet` | string[] | `["zh","en"]` | 语言码 | 运营席 |
+| 传播 | `vmu.dissemination.mediaApprovalPolicy` | string | `spokesperson-only` | 政策名 | pack |
+| 传播 | `vmu.dissemination.openReviewEnabled` | boolean | `false` | — | pack |
+| 传播 | `vmu.dissemination.anonymityPreserve` | boolean | `true` | — | pack |
+| 传播 | `vmu.dissemination.impactLogFields` | string[] | `["channel","reach","date","ref"]` | 字段名 | 运营席 |
+| 传播 | `vmu.dissemination.impactUseInEvaluation` | boolean | `false` | — | pack |
 | 协作 | `vmu.collab.agreementRequired` | boolean | `true` | — | pack |
 | 协作 | `vmu.collab.dataSharingTemplate` | string | `standard` | 模板名 | pack |
 | 协作 | `vmu.collab.counterpartyRegistry` | string | `Ops/Partners` | 相对项目根 | 运营席 |
@@ -800,17 +800,17 @@
 | 人事 | `vmu.hr.appealWindowDays` | integer | `30` | ≥0 | pack |
 | 人事 | `vmu.hr.rotationPolicy` | string | `none` | `none`｜`periodic`｜`byRequest` | pack |
 | 人事 | `vmu.hr.humanDecisionRequired` | boolean | `true` | — | **内核强制** ✓ |
-| 货币 | `vmu.money.currencyDefault` | string | `CNY` | ISO-4217 alpha-3 | 运营席 |
-| 货币 | `vmu.money.roundingMode` | string | `half-even` | `half-up`｜`half-even`｜`floor`｜`ceil`｜`trunc` | pack |
-| 货币 | `vmu.money.scaleByCurrency` | object | `{}` | 币种→精度位数 | pack（覆盖 ISO 表需留痕） |
-| 货币 | `vmu.money.fxSource` | string | `manual-snapshot` | 来源名（离线优先） | pack |
-| 货币 | `vmu.money.fxSnapshotDir` | string | `Ops/FX` | 相对项目根 | 运营席 |
-| 货币 | `vmu.money.fxMaxAgeDays` | integer | `7` | ≥0 | 运营席 |
-| 货币 | `vmu.money.allocationRemainderPolicy` | string | `largest-remainder` | `largest-remainder`｜`first-party`｜`last-party` | pack |
-| 货币 | `vmu.money.rejectFloatAmounts` | boolean | **`true`** | —（**默认拒浮点**，不可静默关闭 ✗） | **内核强制** ✓ |
-| 货币 | `vmu.money.maxAmountMinor` | integer | `0` | ≥0（0＝不限） | pack |
-| 货币 | `vmu.money.allowNegative` | boolean | `false` | — | pack |
-| 货币 | `vmu.money.auditTupleFields` | string[] | `["inputs","fx","rounding","result"]` | 字段名（**只可增不可删** ✓） | 审计席 |
+| 货币 | `vmu.funds.currencyDefault` | string | `CNY` | ISO-4217 alpha-3 | 运营席 |
+| 货币 | `vmu.funds.roundingMode` | string | `half-even` | `half-up`｜`half-even`｜`floor`｜`ceil`｜`trunc` | pack |
+| 货币 | `vmu.funds.scaleByCurrency` | object | `{}` | 币种→精度位数 | pack（覆盖 ISO 表需留痕） |
+| 货币 | `vmu.funds.fxSource` | string | `manual-snapshot` | 来源名（离线优先） | pack |
+| 货币 | `vmu.funds.fxSnapshotDir` | string | `Ops/FX` | 相对项目根 | 运营席 |
+| 货币 | `vmu.funds.fxMaxAgeDays` | integer | `7` | ≥0 | 运营席 |
+| 货币 | `vmu.funds.allocationRemainderPolicy` | string | `largest-remainder` | `largest-remainder`｜`first-party`｜`last-party` | pack |
+| 货币 | `vmu.funds.rejectFloatAmounts` | boolean | **`true`** | —（**默认拒浮点**，不可静默关闭 ✗） | **内核强制** ✓ |
+| 货币 | `vmu.funds.maxAmountMinor` | integer | `0` | ≥0（0＝不限） | pack |
+| 货币 | `vmu.funds.allowNegative` | boolean | `false` | — | pack |
+| 货币 | `vmu.funds.auditTupleFields` | string[] | `["inputs","fx","rounding","result"]` | 字段名（**只可增不可删** ✓） | 审计席 |
 | 保管条目 | `vmu.custody.ledgerDir` | string | `Ops/Biosamples` | 相对项目根 | 样本管理员 |
 | 保管条目 | `vmu.custody.requireChain` | boolean | `true` | — | pack |
 | 保管条目 | `vmu.custody.chainGapPolicy` | string | `block` | `block`｜`warn` | pack |
@@ -852,10 +852,10 @@
 | **保管链与溯源**（§2.5，**N4**） | **不做 ✗** | **③无消费者**（无实验室系统接入面 ✓）；真需要"链式保管"应**复用**已实现的 `ip`（披露闸 ✓）与 `compliance`（同意／IRB ✓），**不新建一族** |
 | **税务与法务实体**（§3.6，**N9**） | **不做 ✗** | **③无消费者**；且该卷自己写明"**禁止实现税率推导** ✗" ⇒ 既不做，就**不留 21 行规格** |
 | **DUA／MTA 协议闸**（§7.4，**N10**） | **做 ✓（轮 60 已落地到期＋范围）** | **轮 59 改判** ✗✓：原判"不做 ✗"的**理由是错的** —— 核心里**没有**通用协议闸 ✗，**但 `kernel/ip.js` 已有『未签不得转移』的具名拒** ⇒ **③有真实消费者** ✓、**①改变决定** ✓ ⇒ 判"做 ✓"。**轮 60 已实现** ✓✓：`transfer()` 可收 **`agreement: { ref, expiresAt, restrictions }`** ⇒ **过期 ⇒ 具名拒** ✓、**范围不含 `transfer` ⇒ 具名拒并列出它允许什么** ✓、**读不出的到期值 ⇒ 具名拒**（**不得当作"无到期"** ✗✓）、**不透明引用仍然可用**（新字段可选 ✓）；**复用本面既有码** ✓（**未新增未登记码** ✓）。**领域词表（dua/mta 种类）仍归 pack** ✓ |
-| **公众摘要证据保真**（§6.1，`VMU_OUTREACH_*`） | **做 ✓（轮 63 收窄落点；轮 64 已实现最小判据）** | **①改变决定** ✓（"**内部未定论 ⇒ 不得写成已证明**"**可判定** ✓）；**⓪ 步结论** ✓：**意图已在论文轨道提示词层承载**（`vibe-math-v5.js:5825-5826` ✓），**但机器判据此前不在** ✗ —— **受理处 `paperRecordPart` 把空 `evidence` 静默收成 `[]`，只把"声称证据：0 条"写进日志** ✗✓。**轮 64 已实现** ✓✓：**交付件 `evidence` 为空 ⇒ 具名拒 `VMU_OUTREACH_REF_MISSING`**（**该码此前已在 `03-§8` 登记为规划码** ✓ ⇒ **用即转"已实现"** ✓），并**同时给成员发一条说明**（"每条结论必须指向库内已存在证据；未决/被否证必须显式标注" ✓）。**未做 ✗ 明列**：① ~~"拒了但没人再问" ⇒ 流程会卡住~~ ⇒ **轮 66 已修 ✓✓**：**拒绝后"有界再问"**（`reaskAfterRefusal` ✓：**每成员最多 2 次**，超限**自曝"需要所办介入"** ⇒ **绝不死循环** ✗）；**且旧有的"空 part"拒绝同样接上了再问** ✓（**既有缺口一并补掉** ✓）。**因果验证** ✓✓：桩**只省略一次证据** ⇒ **`r-2` 被问了两次** ✓（`attempts={"acad":1,"r-1":1,"r-2":2,"r-3":1}` ✓）且**流程正常完成** ✓（`passed=101 failed=0` ✓）⇒ **去掉"拒"则无第二次；去掉"再问"则停摆**（**轮 65 实测 `passed=89 failed=11`** ✓）✓✓；② "**确定性措辞被置信度覆盖**"（strict 档）**需 pack 词表判定点** ✗；③ `vmu.outreach.*` 四键**未登记未接线** ✗；④ **独立 `vmu.outreach` 服务不建** ✗（**无消费者** ✓） |
+| **公众摘要证据保真**（§6.1，`VMU_OUTREACH_*`） | **做 ✓（轮 63 收窄落点；轮 64 已实现最小判据）** | **①改变决定** ✓（"**内部未定论 ⇒ 不得写成已证明**"**可判定** ✓）；**⓪ 步结论** ✓：**意图已在论文轨道提示词层承载**（`vibe-math-v5.js:5825-5826` ✓），**但机器判据此前不在** ✗ —— **受理处 `paperRecordPart` 把空 `evidence` 静默收成 `[]`，只把"声称证据：0 条"写进日志** ✗✓。**轮 64 已实现** ✓✓：**交付件 `evidence` 为空 ⇒ 具名拒 `VMU_OUTREACH_REF_MISSING`**（**该码此前已在 `03-§8` 登记为规划码** ✓ ⇒ **用即转"已实现"** ✓），并**同时给成员发一条说明**（"每条结论必须指向库内已存在证据；未决/被否证必须显式标注" ✓）。**未做 ✗ 明列**：① ~~"拒了但没人再问" ⇒ 流程会卡住~~ ⇒ **轮 66 已修 ✓✓**：**拒绝后"有界再问"**（`reaskAfterRefusal` ✓：**每成员最多 2 次**，超限**自曝"需要所办介入"** ⇒ **绝不死循环** ✗）；**且旧有的"空 part"拒绝同样接上了再问** ✓（**既有缺口一并补掉** ✓）。**因果验证** ✓✓：桩**只省略一次证据** ⇒ **`r-2` 被问了两次** ✓（`attempts={"acad":1,"r-1":1,"r-2":2,"r-3":1}` ✓）且**流程正常完成** ✓（`passed=101 failed=0` ✓）⇒ **去掉"拒"则无第二次；去掉"再问"则停摆**（**轮 65 实测 `passed=89 failed=11`** ✓）✓✓；② "**确定性措辞被置信度覆盖**"（strict 档）**需 pack 词表判定点** ✗；③ `vmu.dissemination.*` 四键**未登记未接线** ✗；④ **独立 `vmu.dissemination` 服务不建** ✗（**无消费者** ✓） |
 
 **落地顺序** ✓：先做**与已实现面同族**的三族（设备／经费／披露 ✓），**其余只留本节一行** ✓；将来**真有消费者 ⇒ 改判**，并把该行升级为规格 ✓。
-> **★ 结局（轮 59–79 已核 ✓✓）**：**设备族 = 已实现**（`kernel/resource.js` 14/17 键 ＋ `capacity` 的 facility 重叠拒 ✓，**不需要新代码** ✗）；**经费族 = 已实现**（`funding` 16 键；**金额必为整数**已由四条入口具名拒 ✓）；**协议闸 = 已落地**（`ip.transfer()` 的 `agreement.expiresAt`／`restrictions` ✓）；**公众摘要证据保真 = 已落地**（论文轨道交付点：**`evidence` 为空 ⇒ 具名拒 ＋ 有界再问** ✓，因果探针实测 `r-2` 被问两次且流程完成 ✓）。**判"不做 ✗"的四族**（会计层／保管条目库／税务实体／DUA 模板）**规格已删、只留一行** ✓。**未做 ✗ 明列**：`vmu.outreach.*` 四键未登记未接线 ✓；"确定性措辞被置信度覆盖"需 pack 词表 ✓；`ip` 的 5 个**服务面**有意不入 settings ✓。
+> **★ 结局（轮 59–79 已核 ✓✓）**：**设备族 = 已实现**（`kernel/resource.js` 14/17 键 ＋ `capacity` 的 facility 重叠拒 ✓，**不需要新代码** ✗）；**经费族 = 已实现**（`funding` 16 键；**金额必为整数**已由四条入口具名拒 ✓）；**协议闸 = 已落地**（`ip.transfer()` 的 `agreement.expiresAt`／`restrictions` ✓）；**公众摘要证据保真 = 已落地**（论文轨道交付点：**`evidence` 为空 ⇒ 具名拒 ＋ 有界再问** ✓，因果探针实测 `r-2` 被问两次且流程完成 ✓）。**判"不做 ✗"的四族**（会计层／保管条目库／税务实体／DUA 模板）**规格已删、只留一行** ✓。**未做 ✗ 明列**：`vmu.dissemination.*` 四键未登记未接线 ✓；"确定性措辞被置信度覆盖"需 pack 词表 ✓；`ip` 的 5 个**服务面**有意不入 settings ✓。
 
 ---
 
@@ -870,7 +870,7 @@
 7. **具名：令牌≠钱（O-1）** —— 静态门：`vmu.budget.*` 与 `vmu.funding.*` 之间**不得**出现隐式换算；任何换算必须在 pack 里显式声明 ✓。
 8. **断言：容量不静默** —— 池耗尽 ⇒ `VMU_CAPACITY_EXHAUSTED` 且观测面计数；**不得**静默排队 ✓。
 9. **场景：设备过期阻断** —— 校准过期的设备产出的数据 ⇒ 引用上带**过期标记**且不可作为"可引用数据"✓。
-10. **断言：金额必为整数（§3.0 规则 M1）** —— 传浮点/小数/字符串金额 ⇒ **具名拒** `VMU_AMOUNT_NOT_INTEGER`（**含现值** ✓）；**零是合法值** ✓。**实现状态：部分 ✓** —— `request()` **已具名拒**（轮 57 ✓）；`expense()`／预算行／`costShareMinor` 仍走强转助手 ⇒ 收尾见 §14 ✓。**该规则无条件生效** ✓（**不引入 `vmu.money.*` 键** ✗ —— 见 §14 裁决）。
+10. **断言：金额必为整数（§3.0 规则 M1）** —— 传浮点/小数/字符串金额 ⇒ **具名拒** `VMU_AMOUNT_NOT_INTEGER`（**含现值** ✓）；**零是合法值** ✓。**实现状态：部分 ✓** —— `request()` **已具名拒**（轮 57 ✓）；`expense()`／预算行／`costShareMinor` 仍走强转助手 ⇒ 收尾见 §14 ✓。**该规则无条件生效** ✓（**不引入 `vmu.funds.*` 键** ✗ —— 见 §14 裁决）。
 11. **断言：分摊守恒与可复算（§3.0.5）** —— 造一组"比例除不尽"的分摊 ⇒ `Σ result = total` **必须**成立（差 1 分即 **红** `VMU_ALLOCATION_REMAINDER`）；同一输入跑两次 ⇒ 输出**逐字节相同** ✓。**实现状态：已实现 ✓**（`settle()` 返回 `remainderMinor` ＋ 余数计 `counters.remainderMinor` ✓）。
 12. **红/绿：未签不得共享（N10；轮 59 改判"做 ✓"，轮 60 已落地）** —— 无协议共享 ⇒ **具名拒** ✓（`vmu.ip.transferPolicy=manual` ＋ 空 `signedRef` ✓）；**`agreement.expiresAt` 已过 ⇒ 具名拒并给"现值/到期"** ✓✓；**`agreement.restrictions` 不含 `transfer` ⇒ 具名拒并列出允许项** ✓✓；**`expiresAt` 读不出 ⇒ 具名拒**（**不得当作"无到期"** ✗✓）；签齐、未过期且在范围内 ⇒ **绿** ✓。**实现状态：已实现 ✓**（`kernel/ip.js` ＋ `tests/vmu-ip.test.mjs` 六条断言 ✓；**到期接受 ISO 或 epoch-ms** ✓，走共享 `timevalue.ms` ✓。**未做 ✗**：独立的 `vmu.agreements` 协议账本与 `VMU_AGREEMENT_*` 码族 —— 目前**复用本面码** ✓；若将来需要账本 ⇒ 按 §14 先登记键与码 ✓）。
 13. **以下 8 条（原 12–16、18–20：汇率方向与时效／审计四元组／混币种与精度／链式保管 N4／样本↔受试者 N4／跨境闸点 N9／税务字段位 N9／销毁保留引用 N4）** ⇒ **裁决：不做 ✗**（**理由与改判条件见 §14** ✓）。

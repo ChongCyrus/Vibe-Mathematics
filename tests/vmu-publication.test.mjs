@@ -174,7 +174,7 @@ const mk = (settings = {}, opts = {}) => createPublication({ clock: () => now, s
   // evidenceFidelity strict vs warn
   let ev = null; try { c1.outreachPack({ paperId: 'paper-1', publicSummary: 'x', claims: [{ text: 'no ref' }] }) } catch (e) { ev = e && e.code }
   ok(ev === 'VMU_OUTREACH_EVIDENCE', 'evidenceFidelity[-]: strict refuses a claim with no evidenceRef', String(ev))
-  const warnC = O({ 'vmu.outreach.evidenceFidelity': 'warn' })
+  const warnC = O({ 'vmu.dissemination.evidenceFidelity': 'warn' })
   const warned = warnC.outreachPack({ paperId: 'paper-1', publicSummary: 'x', claims: [{ text: 'no ref' }] })
   ok(warned.warnings.length === 1, 'evidenceFidelity=warn: the missing reference is WARNED about, not fatal', JSON.stringify(warned.warnings))
   // mediaApprovalPolicy

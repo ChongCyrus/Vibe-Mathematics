@@ -69,7 +69,7 @@ const di = (s = {}) => createDiscipline({ clock: () => now, settings: s })
     'allowPseudonym[-]: with it off no pseudonym is issued')
   const pseudo = id({ 'vmu.identity.allowPseudonym': true, 'vmu.identity.pseudonymScopes': ['review'] })
   pseudo.bindPrincipal({ memberId: 'm8' })
-  throwsNamed(() => pseudo.pseudonymFor({ memberId: 'm8', scope: 'outreach' }), ID_CODE.pseudonymScope,
+  throwsNamed(() => pseudo.pseudonymFor({ memberId: 'm8', scope: 'dissemination' }), ID_CODE.pseudonymScope,
     'pseudonymScopes[-]: an undeclared scope is refused by name')
   const issued = pseudo.pseudonymFor({ memberId: 'm8', scope: 'review' })
   ok(typeof issued.pseudonym === 'string' && issued.pseudonym.startsWith('anon-'), 'pseudonymScopes[+]: a declared scope yields a pseudonym')

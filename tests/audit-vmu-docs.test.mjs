@@ -261,7 +261,7 @@ ok(unregisteredInCode.length === 0,
     // ROUND 270: five more SERVICE SURFACES captured as keys (round 269 measured each appearing in its volume only as a
     // CALL, and read by the kernel nowhere). Same rule as the `vmu.ip.*` list above: dotted like keys, but no pack can tune a method.
     'vmu.ip.hold', 'vmu.ip.ownership', 'vmu.ip.contributors', 'vmu.ip.recordSearch', 'vmu.ip.transfer',
-    'vmu.collab.authorship',     'vmu.members.may',     'vmu.outreach.impact',     'vmu.outreach.mediaRequest',     'vmu.tasks.create'])
+    'vmu.collab.authorship',     'vmu.members.may',     'vmu.dissemination.impact',     'vmu.dissemination.mediaRequest',     'vmu.tasks.create'])
   const bogus = new Set()
   for (const [name, text] of docText) {
     // ROUND 224: the open-items ledger is a CHANGELOG. It quotes key names while narrating work, so it neither declares

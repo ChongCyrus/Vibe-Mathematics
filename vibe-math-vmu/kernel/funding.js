@@ -131,25 +131,25 @@ export function createFunding({ clock = () => 0, log = null, settings = {}, bus 
   const MONEY_REMAINDER = Object.freeze(['largest-remainder', 'first-party', 'last-party'])
   const ISO_SCALE = Object.freeze({ JPY: 0, KRW: 0, VND: 0, CLP: 0, ISK: 0, EUR: 2, USD: 2, GBP: 2, CNY: 2, CHF: 2, SEK: 2, CAD: 2, AUD: 2, INR: 2 })
   const moneyCfg = () => ({
-    currencyDefault: str(sget('vmu.money.currencyDefault')) || str(K.currency) || 'EUR',
-    roundingMode: MONEY_ROUNDING.includes(sget('vmu.money.roundingMode')) ? sget('vmu.money.roundingMode') : 'half-even',
-    scaleByCurrency: (() => { const v = sget('vmu.money.scaleByCurrency'); return v && typeof v === 'object' && !Array.isArray(v) ? v : {} })(),
-    fxSource: str(sget('vmu.money.fxSource')) || 'manual-snapshot',
-    fxSnapshotDir: str(sget('vmu.money.fxSnapshotDir')) || 'Ops/FX',
-    fxMaxAgeDays: intOr(sget('vmu.money.fxMaxAgeDays'), 7),
-    allocationRemainderPolicy: MONEY_REMAINDER.includes(sget('vmu.money.allocationRemainderPolicy')) ? sget('vmu.money.allocationRemainderPolicy') : 'largest-remainder',
-    rejectFloatAmounts: sget('vmu.money.rejectFloatAmounts') !== false,   // 内核强制：默认 true，只有显式 false 才关
-    maxAmountMinor: intOr(sget('vmu.money.maxAmountMinor'), 0),
-    allowNegative: sget('vmu.money.allowNegative') === true,
-    auditTupleFields: (() => { const a = sget('vmu.money.auditTupleFields'); return Array.isArray(a) && a.length ? a.slice() : ['inputs', 'fx', 'rounding', 'result'] })(),
+    currencyDefault: str(sget('vmu.funds.currencyDefault')) || str(K.currency) || 'EUR',
+    roundingMode: MONEY_ROUNDING.includes(sget('vmu.funds.roundingMode')) ? sget('vmu.funds.roundingMode') : 'half-even',
+    scaleByCurrency: (() => { const v = sget('vmu.funds.scaleByCurrency'); return v && typeof v === 'object' && !Array.isArray(v) ? v : {} })(),
+    fxSource: str(sget('vmu.funds.fxSource')) || 'manual-snapshot',
+    fxSnapshotDir: str(sget('vmu.funds.fxSnapshotDir')) || 'Ops/FX',
+    fxMaxAgeDays: intOr(sget('vmu.funds.fxMaxAgeDays'), 7),
+    allocationRemainderPolicy: MONEY_REMAINDER.includes(sget('vmu.funds.allocationRemainderPolicy')) ? sget('vmu.funds.allocationRemainderPolicy') : 'largest-remainder',
+    rejectFloatAmounts: sget('vmu.funds.rejectFloatAmounts') !== false,   // 内核强制：默认 true，只有显式 false 才关
+    maxAmountMinor: intOr(sget('vmu.funds.maxAmountMinor'), 0),
+    allowNegative: sget('vmu.funds.allowNegative') === true,
+    auditTupleFields: (() => { const a = sget('vmu.funds.auditTupleFields'); return Array.isArray(a) && a.length ? a.slice() : ['inputs', 'fx', 'rounding', 'result'] })(),
   })
 
-  /** Round a value to whole minor units. The mode comes from `vmu.money.roundingMode`. */
+  /** Round a value to whole minor units. The mode comes from `vmu.funds.roundingMode`. */
   function roundMinor(value, mode = null) {
     const c = moneyCfg()
     const m = MONEY_ROUNDING.includes(mode) ? mode : c.roundingMode
     const n = Number(value)
-    if (!Number.isFinite(n)) return { ok: false, error: deny('VMU_AMOUNT_NOT_INTEGER', 'roundMinor needs a finite number: ' + JSON.stringify(value), 'pass a number (vmu.money.roundingMode)', []) }
+    if (!Number.isFinite(n)) return { ok: false, error: deny('VMU_AMOUNT_NOT_INTEGER', 'roundMinor needs a finite number: ' + JSON.stringify(value), 'pass a number (vmu.funds.roundingMode)', []) }
     const up = Math.ceil(n), down = Math.floor(n)
     let out
     if (n === down) out = n
@@ -167,7 +167,7 @@ export function createFunding({ clock = () => 0, log = null, settings = {}, bus 
     const cur = String(currency || c.currencyDefault).toUpperCase()
     const over = c.scaleByCurrency[cur]
     const scale = Number.isInteger(over) && over >= 0 ? over : (Number.isInteger(ISO_SCALE[cur]) ? ISO_SCALE[cur] : 2)
-    return { ok: true, currency: cur, scale, overridden: Number.isInteger(over), source: Number.isInteger(over) ? 'vmu.money.scaleByCurrency' : 'ISO 4217 table' }
+    return { ok: true, currency: cur, scale, overridden: Number.isInteger(over), source: Number.isInteger(over) ? 'vmu.funds.scaleByCurrency' : 'ISO 4217 table' }
   }
 
   /**
@@ -177,8 +177,8 @@ export function createFunding({ clock = () => 0, log = null, settings = {}, bus 
    */
   function allocate({ totalMinor = 0, weights = null, enforced = [], fired = [] } = {}) {
     const c = moneyCfg()
-    const enf = enforced.concat(['vmu.money.allocationRemainderPolicy', 'vmu.money.rejectFloatAmounts'])
-    if (!Number.isInteger(totalMinor)) return { ok: false, error: deny('VMU_AMOUNT_NOT_INTEGER', 'allocate needs an integer total in minor units: ' + JSON.stringify(totalMinor), 'pass { totalMinor: <int> } (vmu.money.rejectFloatAmounts)', enf) }
+    const enf = enforced.concat(['vmu.funds.allocationRemainderPolicy', 'vmu.funds.rejectFloatAmounts'])
+    if (!Number.isInteger(totalMinor)) return { ok: false, error: deny('VMU_AMOUNT_NOT_INTEGER', 'allocate needs an integer total in minor units: ' + JSON.stringify(totalMinor), 'pass { totalMinor: <int> } (vmu.funds.rejectFloatAmounts)', enf) }
     const w = Array.isArray(weights) ? weights.map(Number) : []
     if (!w.length || w.some((x) => !Number.isFinite(x) || x < 0)) return { ok: false, error: deny('VMU_FUNDING_ALLOCATION_WEIGHTS', 'allocate needs non-negative finite weights', 'pass { weights: [ … ] }', enf) }
     const sum = w.reduce((a, b) => a + b, 0)
@@ -195,22 +195,22 @@ export function createFunding({ clock = () => 0, log = null, settings = {}, bus 
     }
     const total = parts.reduce((a, b) => a + b, 0)
     if (total !== totalMinor) return { ok: false, error: deny('VMU_FUNDING_ALLOCATION_MISMATCH', 'allocation does not add back to the total: ' + total + ' vs ' + totalMinor, 'this is a bug in the remainder policy; nothing was applied', enf) }
-    return receipt({ parts, totalMinor, policy: c.allocationRemainderPolicy, weights: w.slice() }, enf, ['vmu.money.allocationRemainderPolicy'])
+    return receipt({ parts, totalMinor, policy: c.allocationRemainderPolicy, weights: w.slice() }, enf, ['vmu.funds.allocationRemainderPolicy'])
   }
 
-  /** An FX snapshot older than `vmu.money.fxMaxAgeDays` is refused by name - the face is offline-first by design. */
+  /** An FX snapshot older than `vmu.funds.fxMaxAgeDays` is refused by name - the face is offline-first by design. */
   function checkFx({ currency = null, snapshotAt = null, at = null, enforced = [], fired = [] } = {}) {
     const c = moneyCfg()
-    const enf = enforced.concat(['vmu.money.fxSource', 'vmu.money.fxSnapshotDir', 'vmu.money.fxMaxAgeDays'])
+    const enf = enforced.concat(['vmu.funds.fxSource', 'vmu.funds.fxSnapshotDir', 'vmu.funds.fxMaxAgeDays'])
     const now = Number.isFinite(at) ? Number(at) : clock()
     if (snapshotAt === null || !Number.isFinite(Number(snapshotAt))) {
       return { ok: false, error: deny('VMU_FUNDING_FX_SNAPSHOT_REQUIRED', 'a currency conversion needs a dated snapshot (source ' + c.fxSource + ')',
-        'record the snapshot under ' + c.fxSnapshotDir + ' and pass snapshotAt (vmu.money.fxSource)', enf) }
+        'record the snapshot under ' + c.fxSnapshotDir + ' and pass snapshotAt (vmu.funds.fxSource)', enf) }
     }
     const ageDays = Math.floor((now - Number(snapshotAt)) / 86400000)
     if (c.fxMaxAgeDays > 0 && ageDays > c.fxMaxAgeDays) {
-      return { ok: false, error: deny('VMU_FUNDING_FX_STALE', 'the FX snapshot is ' + ageDays + ' days old, beyond vmu.money.fxMaxAgeDays=' + c.fxMaxAgeDays,
-        'refresh the snapshot under ' + c.fxSnapshotDir + ', or raise the limit deliberately', enf, { ageDays, limit: c.fxMaxAgeDays }, ['vmu.money.fxMaxAgeDays']) }
+      return { ok: false, error: deny('VMU_FUNDING_FX_STALE', 'the FX snapshot is ' + ageDays + ' days old, beyond vmu.funds.fxMaxAgeDays=' + c.fxMaxAgeDays,
+        'refresh the snapshot under ' + c.fxSnapshotDir + ', or raise the limit deliberately', enf, { ageDays, limit: c.fxMaxAgeDays }, ['vmu.funds.fxMaxAgeDays']) }
     }
     return receipt({ currency: String(currency || c.currencyDefault).toUpperCase(), source: c.fxSource, snapshotDir: c.fxSnapshotDir, ageDays, maxAgeDays: c.fxMaxAgeDays }, enf, [])
   }
@@ -218,12 +218,12 @@ export function createFunding({ clock = () => 0, log = null, settings = {}, bus 
   /** The audit tuple: every declared field must be present. Fields may be ADDED to the setting, never dropped. */
   function moneyAudit({ tuple = null, enforced = [], fired = [] } = {}) {
     const c = moneyCfg()
-    const enf = enforced.concat(['vmu.money.auditTupleFields'])
+    const enf = enforced.concat(['vmu.funds.auditTupleFields'])
     if (!tuple || typeof tuple !== 'object') return { ok: false, error: deny('VMU_FUNDING_AUDIT_TUPLE', 'a money audit tuple is required', 'pass { tuple: { inputs, fx, rounding, result } }', enf) }
     const missing = c.auditTupleFields.filter((f) => tuple[f] === undefined)
     if (missing.length) {
       return { ok: false, error: deny('VMU_FUNDING_AUDIT_TUPLE', 'the audit tuple is missing declared field(s): ' + missing.join(', '),
-        'tuple fields are ' + c.auditTupleFields.join(', ') + ' (vmu.money.auditTupleFields may add fields, never drop them)', enf, { missing }, ['vmu.money.auditTupleFields']) }
+        'tuple fields are ' + c.auditTupleFields.join(', ') + ' (vmu.funds.auditTupleFields may add fields, never drop them)', enf, { missing }, ['vmu.funds.auditTupleFields']) }
     }
     return receipt({ tuple: Object.assign({}, tuple), fields: c.auditTupleFields.slice() }, enf, [])
   }
@@ -237,12 +237,12 @@ export function createFunding({ clock = () => 0, log = null, settings = {}, bus 
   // rule bite here too. Every refusal names the key that decided it.
   const moneyOr = (v, label, enforced, fired) => {
     const c = moneyCfg()
-    const enf = (enforced || []).concat(['vmu.money.rejectFloatAmounts'])
+    const enf = (enforced || []).concat(['vmu.funds.rejectFloatAmounts'])
     if (v === undefined || v === null || v === 0) return { ok: true, value: 0 }
     if (typeof v === 'number' && !Number.isInteger(v) && c.rejectFloatAmounts) {
       return { ok: false, error: deny('VMU_AMOUNT_NOT_INTEGER', label + ' must be an integer amount of minor units: ' + JSON.stringify(v),
-        '现值=' + JSON.stringify(v) + '（小数/字符串一律具名拒；不做四舍五入，也不静默归零 ✗）；轮 219：由 vmu.money.rejectFloatAmounts 决定（默认 true＝内核强制）',
-        enf, { amount: v }, ['vmu.money.rejectFloatAmounts']) }
+        '现值=' + JSON.stringify(v) + '（小数/字符串一律具名拒；不做四舍五入，也不静默归零 ✗）；轮 219：由 vmu.funds.rejectFloatAmounts 决定（默认 true＝内核强制）',
+        enf, { amount: v }, ['vmu.funds.rejectFloatAmounts']) }
     }
     if (!Number.isInteger(v) && typeof v === 'number' && Number.isFinite(v)) {
       // rejectFloatAmounts is off: ROUND by the declared mode. The previous code refused here as well, which left the key
@@ -257,12 +257,12 @@ export function createFunding({ clock = () => 0, log = null, settings = {}, bus 
         '现值=' + JSON.stringify(v) + '（字符串等非数值一律具名拒；不做静默归零 ✗）', enf, { amount: v }) }
     }
     if (v < 0 && !c.allowNegative) {
-      return { ok: false, error: deny('VMU_FUNDING_NEGATIVE_NOT_ALLOWED', label + ' is negative and vmu.money.allowNegative=false: ' + v,
-        'pass a non-negative amount, or set vmu.money.allowNegative=true deliberately', enf.concat(['vmu.money.allowNegative']), { amount: v }, ['vmu.money.allowNegative']) }
+      return { ok: false, error: deny('VMU_FUNDING_NEGATIVE_NOT_ALLOWED', label + ' is negative and vmu.funds.allowNegative=false: ' + v,
+        'pass a non-negative amount, or set vmu.funds.allowNegative=true deliberately', enf.concat(['vmu.funds.allowNegative']), { amount: v }, ['vmu.funds.allowNegative']) }
     }
     if (c.maxAmountMinor > 0 && Math.abs(v) > c.maxAmountMinor) {
-      return { ok: false, error: deny('VMU_FUNDING_AMOUNT_OVER_CEILING', label + ' exceeds vmu.money.maxAmountMinor: ' + v + ' > ' + c.maxAmountMinor,
-        'split the amount, or raise vmu.money.maxAmountMinor', enf.concat(['vmu.money.maxAmountMinor']), { amount: v, limit: c.maxAmountMinor }, ['vmu.money.maxAmountMinor']) }
+      return { ok: false, error: deny('VMU_FUNDING_AMOUNT_OVER_CEILING', label + ' exceeds vmu.funds.maxAmountMinor: ' + v + ' > ' + c.maxAmountMinor,
+        'split the amount, or raise vmu.funds.maxAmountMinor', enf.concat(['vmu.funds.maxAmountMinor']), { amount: v, limit: c.maxAmountMinor }, ['vmu.funds.maxAmountMinor']) }
     }
     return { ok: true, value: v }
   }
@@ -658,11 +658,11 @@ export function createFunding({ clock = () => 0, log = null, settings = {}, bus 
 
     // ── ROUND 219: the money family surface (docs/22 §货币, contracts at the consolidated table L762-771) ──────────
     money: () => moneyCfg(),        // the resolved money policy, readable on its own
-    roundMinor,                     // vmu.money.roundingMode
-    scaleOf,                        // vmu.money.scaleByCurrency over the ISO table
-    allocate,                       // vmu.money.allocationRemainderPolicy (the parts always add back; checked)
-    checkFx,                        // vmu.money.fxSource / fxSnapshotDir / fxMaxAgeDays (offline-first: staleness refused)
-    moneyAudit,                     // vmu.money.auditTupleFields (fields may be added, never dropped)
+    roundMinor,                     // vmu.funds.roundingMode
+    scaleOf,                        // vmu.funds.scaleByCurrency over the ISO table
+    allocate,                       // vmu.funds.allocationRemainderPolicy (the parts always add back; checked)
+    checkFx,                        // vmu.funds.fxSource / fxSnapshotDir / fxMaxAgeDays (offline-first: staleness refused)
+    moneyAudit,                     // vmu.funds.auditTupleFields (fields may be added, never dropped)
   }
 
   function declaredKeys() {
