@@ -470,6 +470,7 @@
     "tests/release-check.mutants.mjs",
     "preset-declaration.js",
     "tests/audit-preset-rows.test.mjs",
+    "tests/vmu-setting-rename.test.mjs",
     "docs/COMPAT-AUDIT-ROUND3.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.en.md",

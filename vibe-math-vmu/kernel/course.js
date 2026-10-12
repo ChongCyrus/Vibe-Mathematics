@@ -51,7 +51,7 @@ export const PLANNED_COURSE_KEYS = Object.freeze([
    */
   ['vmu.course.blindMappingRetentionMs', '★ **轮 191 实测补齐指针** ✓：保留机制确由 **`retention` 面**承载 ✓（`removed[]` 每次移除可追 ✓、`library.list({scope})` 可读 ✓）；'
     + '★ **而「登记」现在能点名了** ✓：`retention.js` 读 **17 个键／5 个族** ✓ —— `vmu.records.retention.*`（`keepEvery`／`maxBytes`／`tierThreshold`／`permanentMarker` ✓）、'
-    + '`vmu.records.trash.retainDays`（**默认 30 天** ✓）、`vmu.records.history.depth` ✓、`vmu.quota.*` ✓、`vmu.gc.*` ✓ ⇒ **保留期要配就配在那里** ✓。'
+    + '`vmu.records.trash.retainDays`（**默认 30 天** ✓）、`vmu.records.history.depth` ✓、`vmu.quota.*` ✓、`vmu.prune.*` ✓ ⇒ **保留期要配就配在那里** ✓。'
     + '本面**无持久化面** ✓（实测：持久化相关命中只有本条理由与两条 `publishToLibrary` 注释 ✓）⇒ 各面自带一份就是**第二份保留实现** ✗。'
     + '**复活条件** ✓：盲审映射表真的需要独立保留期时 ⇒ **加在 `retention` 的键族里** ✓（**不是在课程面内落盘** ✗）'],
   ['vmu.course.maxUnits', '★ **轮 189 实测更正** ✗✓：本键管的是**单元（unit）上限**（`docs/17` L774：「单元上限（0＝不限）」✓），而'

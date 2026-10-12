@@ -357,10 +357,10 @@ vmu.packs.active: [v5r]
 | `vmu.slo.targets` | obj[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | SLO 目标声明 |
 | `vmu.slo.errorBudgetAction` | enum | `warn` | `freeze-H2`∣`warn`∣`none` | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | 错误预算耗尽的动作（默认只警告，不冻结） |
 | `vmu.slo.exemptions` | obj[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/alerts.js` | SLO 豁免（必须记录理由与时长） |
-| `vmu.gc.autoRun` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 是否自动 GC（默认只报告不执行） |
-| `vmu.gc.graceDays` | int ≥0 | `14` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 孤儿宽限期 |
-| `vmu.gc.scope` | string | `workspace` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | GC 作用范围 |
-| `vmu.gc.exemptMarkers` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 免于 GC 的标记 |
+| `vmu.prune.autoRun` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 是否自动 GC（默认只报告不执行） |
+| `vmu.prune.graceDays` | int ≥0 | `14` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 孤儿宽限期 |
+| `vmu.prune.scope` | string | `workspace` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | GC 作用范围 |
+| `vmu.prune.exemptMarkers` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 免于 GC 的标记 |
 | `vmu.quota.softBytes` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 软配额（只警告） |
 | `vmu.quota.hardBytes` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 硬配额（0＝不限） |
 | `vmu.quota.warnAt` | ratio | `0.8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/retention.js` | 配额告警阈值（0..1 分数） |

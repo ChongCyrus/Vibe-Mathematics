@@ -274,10 +274,10 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.slo.targets', type: 'objectList', def: [], hot: HOT.H1, who: 'office', doc: 'SLO 目标声明' },
   { key: 'vmu.slo.errorBudgetAction', type: 'enum', domain: ['freeze-H2', 'warn', 'none'], def: 'warn', hot: HOT.H1, who: 'office', doc: '错误预算耗尽的动作（默认只警告，不冻结）' },
   { key: 'vmu.slo.exemptions', type: 'objectList', def: [], hot: HOT.H1, who: 'office', doc: 'SLO 豁免（必须记录理由与时长）' },
-  { key: 'vmu.gc.autoRun', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '是否自动 GC（默认只报告不执行）' },
-  { key: 'vmu.gc.graceDays', type: 'natural', def: 14, hot: HOT.H1, who: 'office', doc: '孤儿宽限期' },
-  { key: 'vmu.gc.scope', type: 'string', def: 'workspace', hot: HOT.H1, who: 'office', doc: 'GC 作用范围' },
-  { key: 'vmu.gc.exemptMarkers', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '免于 GC 的标记' },
+  { key: 'vmu.prune.autoRun', was: ['vmu.gc.autoRun'], type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '是否自动 GC（默认只报告不执行）' },
+  { key: 'vmu.prune.graceDays', was: ['vmu.gc.graceDays'], type: 'natural', def: 14, hot: HOT.H1, who: 'office', doc: '孤儿宽限期' },
+  { key: 'vmu.prune.scope', was: ['vmu.gc.scope'], type: 'string', def: 'workspace', hot: HOT.H1, who: 'office', doc: 'GC 作用范围' },
+  { key: 'vmu.prune.exemptMarkers', was: ['vmu.gc.exemptMarkers'], type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '免于 GC 的标记' },
   { key: 'vmu.quota.softBytes', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '软配额（只警告）' },
   { key: 'vmu.quota.hardBytes', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '硬配额（0＝不限）' },
   { key: 'vmu.quota.warnAt', type: 'ratio', def: 0.8, hot: HOT.H1, who: 'office', doc: '配额告警阈值（0..1 分数）' },
@@ -1255,6 +1255,36 @@ export const SETTING_DEFS = Object.freeze([...CORE_DEFS, ...PLANNED_DEFS])
 
 const BY_KEY = new Map(SETTING_DEFS.map((d) => [d.key, d]))
 
+/**
+ * THE RENAME CHANNEL (docs/03 §8: VMU_PARAM_RENAMED). A key record may carry `was: [formerNames]`; a deployment
+ * that still presents a former name is RESOLVED to the canonical key rather than refused, so a rename is not a
+ * breaking change. Two rules keep this honest: the canonical key is the only one a declaration creates, and an
+ * ambiguous former name - one claiming to be the former name of two different keys - is a REFUSAL, not a guess.
+ */
+export const SETTING_ALIASES = (() => {
+  const map = new Map()
+  for (const d of SETTING_DEFS) {
+    for (const was of d.was || []) {
+      if (map.has(was) && map.get(was) !== d.key) throw refuse('VMU_ALIAS_AMBIGUOUS', 'two keys claim the same former name: ' + was)
+      map.set(was, d.key)
+    }
+  }
+  return map
+})()
+
+/**
+ * WHAT A RENAME RESOLUTION REPORTS (docs/03 §8, VMU_PARAM_RENAMED). Accepting a former name silently would hide the
+ * fact that a deployment is still speaking the old vocabulary, and a rename nobody can observe cannot be finished.
+ * This returns the notice a caller may log or surface; it does NOT throw, because a former name is legitimate.
+ */
+export function renameNotice(key) {
+  const to = SETTING_ALIASES.get(key)
+  return to ? { code: 'VMU_PARAM_RENAMED', from: key, to } : null
+}
+
+/** The canonical key for `key`, or the key itself when it is not a former name. */
+export function resolveKey(key) { return SETTING_ALIASES.get(key) || key }
+
 /** Named refusals. Codes are registered in docs/03 §8 (gate D14 forbids unregistered ones). */
 export function refuse(code, message, hint) {
   const err = new Error(message)
@@ -1265,11 +1295,14 @@ export function refuse(code, message, hint) {
 
 /** R4: a key that is not declared is a defect. Never invent a default for it. */
 export function assertDeclared(key) {
-  if (!BY_KEY.has(key)) {
+  const canonical = resolveKey(key)
+  if (!BY_KEY.has(canonical)) {
     throw refuse('VMU_INVALID_ARGUMENT', 'undeclared setting key: ' + key,
       'declare it in vibe-math-vmu/settings/schema.js first (docs/04 R4)')
   }
-  return BY_KEY.get(key)
+  // A FORMER NAME IS ACCEPTED AND RESOLVED, never silently treated as the canonical one: the record returned is the
+  // canonical declaration, so a caller that reads `record.key` learns the new name without a second lookup.
+  return BY_KEY.get(canonical)
 }
 
 /** I-3: the framework owns time; a user may not hand us an absolute deadline. Budgets (`...Ms`) and

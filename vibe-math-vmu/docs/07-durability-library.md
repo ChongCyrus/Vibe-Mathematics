@@ -277,7 +277,7 @@ interface VmuStore {
   **目的**：清理无引用又无历史价值的数据，且不误删。
   **面向谁**：用户、运维式脚本。
   **接口形状**：扫描 ⇒ 候选删除清单 ⇒ 显式确认 ⇒ 执行（留审计）。
-  **可调控参数**：`vmu.gc.autoRun`／`vmu.gc.exemptMarkers`／`vmu.gc.graceDays`／`vmu.gc.scope``（**已声明 ✓**；原写法是族名，**族提及不是键** ✓ —— 见 `11-§` 纪律 ④。接线状态见 `04-§11` ✓）
+  **可调控参数**：`vmu.prune.autoRun`／`vmu.prune.exemptMarkers`／`vmu.prune.graceDays`／`vmu.prune.scope``（**已声明 ✓**；原写法是族名，**族提及不是键** ✓ —— 见 `11-§` 纪律 ④。接线状态见 `04-§11` ✓）
   **错误码族**：`VMU_GC_*`。**哲学**：自由度／可调控／可定义／扩展性。
   **实现要点**：**默认只报告不执行**；自动执行须受宽限期与排除标记约束。
   **依赖**：索引、审计。**成熟度**：✗　**优先级**：P2
@@ -407,7 +407,7 @@ interface VmuStore {
 
 ## 8. 可调控参数家族（通配总表）
 
-`vmu.store.*`、`vmu.store.remote.*`、`vmu.store.lock.*`、`vmu.migration.*`、`vmu.work.*`、`vmu.records.*`、`vmu.records.retention.*`、`vmu.records.trash.*`、`vmu.records.history.*`、`vmu.records.chunk.*`、`vmu.records.external.*`、`vmu.records.head.*`、`vmu.records.body.*`、`vmu.records.naming.*`、`vmu.fingerprint.*`、`vmu.dedupe.*`、`vmu.tier.*`、`vmu.index.*`、`vmu.search.*`、`vmu.tags.*`、`vmu.refs.*`、`vmu.citations.*`、`vmu.metadata.*`、`vmu.provenance.*`、`vmu.audit.*`、`vmu.export.*`、`vmu.import.*`、`vmu.archive.package.*`、`vmu.visibility.*`、`vmu.crypto.*`、`vmu.quota.*`、`vmu.gc.*`、`vmu.workspace.*`、`vmu.paths.*`、`vmu.naming.*`。
+`vmu.store.*`、`vmu.store.remote.*`、`vmu.store.lock.*`、`vmu.migration.*`、`vmu.work.*`、`vmu.records.*`、`vmu.records.retention.*`、`vmu.records.trash.*`、`vmu.records.history.*`、`vmu.records.chunk.*`、`vmu.records.external.*`、`vmu.records.head.*`、`vmu.records.body.*`、`vmu.records.naming.*`、`vmu.fingerprint.*`、`vmu.dedupe.*`、`vmu.tier.*`、`vmu.index.*`、`vmu.search.*`、`vmu.tags.*`、`vmu.refs.*`、`vmu.citations.*`、`vmu.metadata.*`、`vmu.provenance.*`、`vmu.audit.*`、`vmu.export.*`、`vmu.import.*`、`vmu.archive.package.*`、`vmu.visibility.*`、`vmu.crypto.*`、`vmu.quota.*`、`vmu.prune.*`、`vmu.workspace.*`、`vmu.paths.*`、`vmu.naming.*`。
 
 ## 9. 错误码族（正文只用到族名；具体码由登记表维护）
 
@@ -657,10 +657,10 @@ GC 候选 ⇒ 产出删除清单 ⇒ 显式确认（或满足自动执行前置�
 | `vmu.quota.hardBytes` | int | `0` | W | U | 硬上限 |
 | `vmu.quota.warnAt` | number(0–1) | `0.8` | W | U | 告警阈值 |
 | `vmu.quota.onExceed` | enum(warn/refuse/degrade) | `warn` | W | U | 超限动作 |
-| `vmu.gc.scope` | enum(all/unreferenced) | `unreferenced` | G | U | 扫描范围 |
-| `vmu.gc.autoRun` | bool | `false` | G | U | 自动 GC（默认只报告） |
-| `vmu.gc.graceDays` | int | `14` | G | U | 孤儿宽限期 |
-| `vmu.gc.exemptMarkers` | string[] | `[permanent]` | G | U | 豁免标记 |
+| `vmu.prune.scope` | enum(all/unreferenced) | `unreferenced` | G | U | 扫描范围 |
+| `vmu.prune.autoRun` | bool | `false` | G | U | 自动 GC（默认只报告） |
+| `vmu.prune.graceDays` | int | `14` | G | U | 孤儿宽限期 |
+| `vmu.prune.exemptMarkers` | string[] | `[permanent]` | G | U | 豁免标记 |
 | `vmu.workspace.default` | string | `''` | G | U | ★ **轮 238 说明：本键【已接线，但目前只被读取并上报】** ✓ —— **实测：裸名字（不含路径的名字）本就归属本面的 `root`** ✓ ⇒ **不存在需要它裁决的解析点** ✗；**`kernel/guard.js` 的 `readWorkspacePolicy` 会把它报出来，供回执与自检使用** ✓。**若将来出现「同一份数据挂多个工作区」的需求，界时应重新定义本键的语义** ✓ |
 | `vmu.workspace.sharedPaths` | string[] | `[]` | G | U | 共享区挂载点 |
 | `vmu.workspace.crossWrite` | bool | `false` | G | U | 跨区写 |

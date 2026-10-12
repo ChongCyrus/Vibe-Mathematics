@@ -4,7 +4,7 @@
 //       §4.10 (头部列表/正文上限 ⇒ 截断必须计数) + docs/21-observability-and-operations.md §2.5/§17
 //       ("计数不静默": 任何裁剪/丢弃/跳过都留痕并计数).
 // Keys (settings/planned.js): vmu.records.retention.* / vmu.records.trash.* / vmu.records.history.* /
-//       vmu.quota.* / vmu.gc.*
+//       vmu.quota.* / vmu.prune.*
 // Codes (03-§8): VMU_QUOTA_EXCEEDED / VMU_RETENTION_CONFLICT / VMU_GC_REFUSED / VMU_TRASH_EXPIRED /
 //       VMU_NO_SUCH_OBJECT + the counted-truncation marker VMU_RETENTION_TRUNCATED (NOT yet registered ✗).
 //
@@ -61,7 +61,7 @@ const bool = (v) => (typeof v === 'boolean' ? v : null)
 
 /**
  * Create the retention service. Everything is injected; nothing is read from the environment and no timer
- * is created here (GC runs when CALLED — `vmu.gc.autoRun` only says whether an explicit run may act
+ * is created here (GC runs when CALLED — `vmu.prune.autoRun` only says whether an explicit run may act
  * without a separate confirmation).
  */
 export function createRetention({ clock = () => Date.now(), log = () => {}, settings = {}, bus = null, library = null, maxActions = 200 } = {}) {
@@ -87,10 +87,10 @@ export function createRetention({ clock = () => Date.now(), log = () => {}, sett
     hardBytes: num(settings['vmu.quota.hardBytes']) ?? 0,
     onExceed: str(settings['vmu.quota.onExceed']) || 'warn',
     warnAt: num(settings['vmu.quota.warnAt']) ?? 0.8,
-    gcAutoRun: bool(settings['vmu.gc.autoRun']) ?? false,
-    gcGraceDays: num(settings['vmu.gc.graceDays']) ?? 7,
-    gcExemptMarkers: Array.isArray(settings['vmu.gc.exemptMarkers']) ? settings['vmu.gc.exemptMarkers'].map(String) : [],
-    gcScope: str(settings['vmu.gc.scope']) || 'workspace',
+    gcAutoRun: bool(settings['vmu.prune.autoRun']) ?? false,
+    gcGraceDays: num(settings['vmu.prune.graceDays']) ?? 7,
+    gcExemptMarkers: Array.isArray(settings['vmu.prune.exemptMarkers']) ? settings['vmu.prune.exemptMarkers'].map(String) : [],
+    gcScope: str(settings['vmu.prune.scope']) || 'workspace',
   })
 
   /** Configuration conflicts are NAMED (`VMU_RETENTION_CONFLICT`) instead of silently "fixing" limits. */
@@ -313,7 +313,7 @@ export function createRetention({ clock = () => Date.now(), log = () => {}, sett
   /**
    * GC — orphan collection (07-§4.8: "默认只报告不执行"). Candidates: referenced-by-nobody (`refs===0`),
    * older than the grace window, not carrying an exempt marker and not permanent. Acting requires
-   * `dryRun:false` AND (`vmu.gc.autoRun===true` OR an explicit `confirm:true`) — otherwise `VMU_GC_REFUSED`.
+   * `dryRun:false` AND (`vmu.prune.autoRun===true` OR an explicit `confirm:true`) — otherwise `VMU_GC_REFUSED`.
    */
   async function gc({ scope = null, dryRun = true, confirm = false } = {}) {
     const c = validate(cfg())
@@ -344,8 +344,8 @@ export function createRetention({ clock = () => Date.now(), log = () => {}, sett
     if (dryRun !== false) { stats.planned++; return Object.assign({ applied: false, removed: [] }, out) }
     if (!c.gcAutoRun && confirm !== true) {
       stats.refused++
-      throw refuse('VMU_GC_REFUSED', 'gc would delete ' + kept.length + ' orphan(s) but vmu.gc.autoRun=false and no confirm:true was given',
-        'pass {dryRun:false, confirm:true} for an explicit run, or set vmu.gc.autoRun=true (07-§4.8)', { candidates: kept.length, graceDays: c.gcGraceDays })
+      throw refuse('VMU_GC_REFUSED', 'gc would delete ' + kept.length + ' orphan(s) but vmu.prune.autoRun=false and no confirm:true was given',
+        'pass {dryRun:false, confirm:true} for an explicit run, or set vmu.prune.autoRun=true (07-§4.8)', { candidates: kept.length, graceDays: c.gcGraceDays })
     }
     const removed = []
     let localDropped = dropped

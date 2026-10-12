@@ -154,7 +154,7 @@ const freshCopy = (tag) => {
   const p = join(c.docs, '04-settings.md')
   const text = readFileSync(p, 'utf8')
   // Flip one row that IS wired: its marker must be load-bearing.
-  writeFileSync(p, text.replace(/(\| `vmu\.gc\.autoRun` \|.*?)\| ✅ 已接线 \|/, '$1| ⚠️ 未接线（改了不会有行为变化） |'), 'utf8')
+  writeFileSync(p, text.replace(/(\| `vmu\.prune\.autoRun` \|.*?)\| ✅ 已接线 \|/, '$1| ⚠️ 未接线（改了不会有行为变化） |'), 'utf8')
   const r = runAudit(c.docs, c.code)
   ok(r.code !== 0 && /no key is marked unwired|settings table/.test(r.out),
     'M10 a false 未接线 marker is a NAMED red', r.out.split('\n')[1])

@@ -121,7 +121,7 @@ const mk = (settings = {}, lib = null, cap = 200) => {
     { id: 'orphan-exempt', bytes: 30, atMs: NOW - 30 * DAY, refs: 0, markers: ['legal-hold'] },
     { id: 'referenced', bytes: 40, atMs: NOW - 30 * DAY, refs: 2 },
   ])
-  const r = mk({ 'vmu.gc.graceDays': 7, 'vmu.gc.exemptMarkers': ['legal-hold'] }, lib)
+  const r = mk({ 'vmu.prune.graceDays': 7, 'vmu.prune.exemptMarkers': ['legal-hold'] }, lib)
   const g1 = await r.gc()
   ok(g1.skippedGrace === 1, 'gc skips an orphan inside the grace window (counted)')
   ok(g1.skippedExempt === 1, 'gc skips an exempt-marked orphan (counted)')
@@ -197,7 +197,7 @@ const mk = (settings = {}, lib = null, cap = 200) => {
     { id: 'b', bytes: 20, atMs: NOW - 400 * DAY, refs: 0 },
     { id: 'c', bytes: 30, atMs: NOW - 2 * DAY, refs: 0 },
   ]
-  const cfg = { 'vmu.records.trash.retainDays': 30, 'vmu.gc.graceDays': 7 }
+  const cfg = { 'vmu.records.trash.retainDays': 30, 'vmu.prune.graceDays': 7 }
   const r1 = mk(cfg, mkLib(seed())); const r2 = mk(cfg, mkLib(seed()))
   ok(JSON.stringify(await r1.plan()) === JSON.stringify(await r2.plan()), 'plan is deterministic for the same state + clock')
   ok(JSON.stringify(await r1.gc()) === JSON.stringify(await r2.gc()), 'gc (dry-run) is deterministic too')
@@ -209,7 +209,7 @@ const mk = (settings = {}, lib = null, cap = 200) => {
   ok(bad1.threw && bad1.code === 'VMU_RETENTION_CONFLICT', 'unknown onExceed is a named conflict')
   const bad2 = await throws(() => mk({ 'vmu.quota.softBytes': 100, 'vmu.quota.hardBytes': 10 }).plan())
   ok(bad2.threw && bad2.code === 'VMU_RETENTION_CONFLICT', 'soft > hard is a named conflict')
-  const bad3 = await throws(() => mk({ 'vmu.gc.graceDays': -1 }).plan())
+  const bad3 = await throws(() => mk({ 'vmu.prune.graceDays': -1 }).plan())
   ok(bad3.threw && bad3.code === 'VMU_RETENTION_CONFLICT', 'negative grace is a named conflict')
 }
 
