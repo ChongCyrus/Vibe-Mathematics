@@ -244,6 +244,7 @@
 "vibe-math-vmu/kernel/resource.js",
 "vibe-math-vmu/kernel/custody.js",
     "tests/vmu-ab-v5r-meetings.test.mjs",
+    "tests/vmu-ab-v5r-verification.test.mjs",
     "vibe-math-vmu/settings/planned.js",
     "scripts/generate-planned-settings.mjs",
     "scripts/generate-wired-schema.mjs",
