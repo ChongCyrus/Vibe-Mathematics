@@ -117,7 +117,7 @@
 | `vibe_vmu_read_library` | 读库：头部列表／按 id 展开 | ⛔ 未实现（已由 `vibe_vmu_records` 的 `list`/`expand` 覆盖 ✓） |
 | `vibe_vmu_task` | 任务：建/派/迁移/查 | ⛔ 未实现（库面 `kernel.tasks` ✓） |
 | `vibe_vmu_lean_lib` / `vibe_vmu_lean_read` / `vibe_vmu_lean_archive` | 形式化面 | ⛔ **工具名未注册**（host 未注册这三个工具名，故此行仍标未实现 ✓）—— 但**能力已实现** ✓：`kernel/lean.js` 的 `archive`／`read`／`lib`（轮 131）：登记**具名引用＋内容哈希**、`read` **回源并校验哈希**、**漂移即具名拒且不返回旧内容**（**只引不复制** ✓） |
-| `vibe_vmu_pause` / `vibe_vmu_resume` | 暂停/恢复调度 | ⛔ 未实现（内核**没有** pause/resume ✗） |
+| `vibe_vmu_pause` / `vibe_vmu_resume` | 暂停/恢复调度 | ⛔ **工具名未注册**（★ host 未注册这两个名字 ✓）—— 但**能力【已实现并已接线**]✓✓：★ `kernel/control.js` 提供 `pause({scope,byRole,reason})`／`resume({scope,byRole})` ✓，**按角色授权**（`vmu.control.canPauseRoles` ✓）、**拒绝时点名"谁暂停的"**（`VMU_CONTROL_PAUSED` ✓）；★ `kernel/scheduler.js` **端到端消费它**（`isPaused()` ✓、跳过原因 `kernel-paused` ✓、记 `schedule/skipped` ✓）⇒ ★★ **缺的只是工具面名字，不是内核能力** ✓（★ 轮 475 实测：★ 本行原先写"内核**没有** pause/resume ✗" —— **那是错的** ✗） |
 | `vibe_vmu_mw` | 中间件：查看/校验/干跑/禁用 | ⛔ 未实现 —— 真名是 `vibe_vmu_middleware` ✓（**它的 `validate`/`dryRun` 动作现已实现** ✓，见 §3.1） |
 
 **工具面纪律**（对 DSH 的对接约束，**来源已分级标注** ✓）：
