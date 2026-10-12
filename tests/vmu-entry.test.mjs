@@ -690,6 +690,43 @@ if (SELF_PROBE) {
   await rm(dataRoot, { recursive: true, force: true })
 }
 
+// ---- 16. TWO REAL PACKS AT ONCE, which the conflict tests had never done with shipped folders ----------
+// The conflict paths are covered thoroughly at the kernel and loader levels, but always with synthetic manifests. What
+// had never been run is two SHIPPED pack folders in one deployment. It turns out to be the most informative case in the
+// suite: institute-min and v3-core are different institutions and they CANNOT coexist by default, because both state
+// preferences about the same meeting settings. The refusal is O4 working as designed - detect and name, never silently
+// overwrite - and it names the overlapping keys rather than saying "conflict". A pack plus a data-only pack coexist
+// cleanly, which is the pairing the folder shape exists to make possible.
+{
+  const run = async (packs) => {
+    const host = fakeCtx()
+    const twoRoot = await mkdtemp(join(tmpdir(), 'vmu-entry-twopacks-'))
+    const handle = entry.apply(host.ctx, { clock, root: twoRoot, packs })
+    await new Promise((r) => setTimeout(r, 200))
+    const out = { errors: handle.packErrors() || [], applied: handle.appliedPacks() || [] }
+    await rm(twoRoot, { recursive: true, force: true })
+    return out
+  }
+  const both = await run(['institute-min', 'v3-core'])
+  ok(both.errors.length === 1 && both.errors[0].code === 'VMU_PACK_CONFLICT' && /overlaps existing settings/.test(both.errors[0].message),
+    'E-16: two DIFFERENT shipped institutions refuse to coexist by default, and the refusal names the overlapping settings rather than saying "conflict"',
+    JSON.stringify(both.errors).slice(0, 240))
+  ok(/vmu\.meetings\./.test(String(both.errors[0].message)),
+    'E-16(甲) and the named keys are the meeting settings both institutions state a preference about - which is why they cannot simply both win',
+    String(both.errors[0].message).slice(0, 160))
+  ok(both.applied.length === 1 && both.applied[0].id === 'institute-min',
+    'E-16(乙) the FIRST pack stays applied and the second is refused, so a refusal does not take down what was already running',
+    JSON.stringify(both.applied))
+  const twice = await run(['institute-min', 'institute-min'])
+  ok(twice.errors.length === 1 && /already applied/.test(String(twice.errors[0].message)),
+    'E-16(丙) the same pack twice is refused BY NAME as already applied',
+    JSON.stringify(twice.errors).slice(0, 200))
+  const withData = await run(['institute-min', 'example-data'])
+  ok(withData.errors.length === 0 && withData.applied.length === 2 && withData.applied[1].dataOnly === true,
+    'E-16(丁) a shipped institution and a DATA-ONLY pack coexist with no error - the pairing the folder shape exists to allow',
+    JSON.stringify(withData.applied))
+}
+
 // ---- 15. the data-only branch must NOT make a missing pack look like a success ------------------------
 // The branch above accepts a name that carries data and has no manifest. The risk it creates is the mirror image: a name
 // that carries NOTHING must still fail, or a typo in `config.packs` would produce a clean run and an empty applied list,
