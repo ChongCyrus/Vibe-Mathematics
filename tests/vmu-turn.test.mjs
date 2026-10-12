@@ -607,6 +607,42 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
     'T94. **** with the mode and status values arriving from settings and no placeholder left behind',
     { fromSettings: true })
 }
+
+// 24) THE DATA LINE (docs/26 section 3.21). An independent audit found eight placeholders with no supplier, which
+// rendered as silent empty slots. They are now DECLARED settings with defaults, and the assertions below measure the
+// consequence: no misses at all, the strict policy no longer throws, and each kind gets ITS OWN charter.
+{
+  // The defaults are parsed from the SCHEMA FILE rather than hard-coded here, so this is not the test agreeing with
+  // itself: if a key loses its default the parse loses it too and the misses come back.
+  const schemaSrc = readFileSync(new URL('../vibe-math-vmu/settings/schema.js', import.meta.url), 'utf8')
+  const defaults = {}
+  for (const m of schemaSrc.matchAll(/\{ key: '([^']+)',[^}]*?def: (?:'([^']*)'|([0-9.]+)|(true|false))[^}]*\}/g)) {
+    defaults[m[1]] = m[2] !== undefined ? m[2] : (m[3] !== undefined ? Number(m[3]) : m[4] === 'true')
+  }
+  const pipeD = createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' })
+  const ctxOf = (role) => ({ member: 'r-1', role, roleLabel: role === 'academician' ? '院士' : (role === 'temp' ? '临时工' : '常驻研究员'), phase: 'normal', round: 3, roster: 'acad、r-1', quorum: 2, statusBlock: '[状态] x', settings: defaults })
+  const asmA = await pipeD.assemble(ctxOf('academician'))
+  const asmR = await pipeD.assemble(ctxOf('researcher'))
+  const asmT = await pipeD.assemble(ctxOf('temp'))
+  ok(asmA.variableMisses.length === 0 && asmR.variableMisses.length === 0 && asmT.variableMisses.length === 0,
+    'T95. **** NO PLACEHOLDER IS LEFT UNSUPPLIED: the eight slots the audit found are declared settings with defaults, so every kind assembles with zero misses',
+    { misses: [asmA.variableMisses.length, asmR.variableMisses.length, asmT.variableMisses.length] })
+  const strict = createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' })
+  let threw = null
+  try { await strict.assemble({ ...ctxOf('researcher'), settings: { ...defaults, 'vmu.prompts.missingVariable': 'refuse' } }) } catch (e) { threw = e }
+  ok(threw === null,
+    'T96. **** and the STRICT policy now passes too: with the holes closed, refusing a missing value costs nothing, which is what makes that policy safe to adopt',
+    { code: threw && threw.code })
+  ok(asmT.text.includes('临时工') && asmT.text.includes('你是「institute」的**院士**') === false,
+    'T97. **** EACH KIND GETS ITS OWN CHARTER: the temp member no longer falls back to the academician text, which was the second defect the audit measured',
+    { tempChars: asmT.text.length })
+  ok(asmR.text.includes('你是「institute」的一名常驻研究员') && (asmR.text.match(/你是「institute」的\*\*院士\*\*/g) || []).length === 0,
+    'T98. **** and the researcher gets exactly ONE identity instead of three appended together',
+    { chars: asmR.text.length })
+  ok(asmR.text.length < 20000 && asmR.text.includes('m = 2') === true,
+    'T99. **** with a single quorum value rather than the three the append produced',
+    { chars: asmR.text.length })
+}
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

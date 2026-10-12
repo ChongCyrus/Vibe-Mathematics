@@ -256,6 +256,13 @@ vmu.packs.active: [v5r]
 | `vmu.resources.selfCheck` | bool | `true` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 是否向成员展示资源纪律段（关掉＝零注入，提示词回到该段之前，注入点逐字不变） |
 | `vmu.pointer.propagation` | bool | `true` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 是否注入指针传播契约（关掉＝零注入；原线的 S21 开关同义） |
 | `vmu.prompts.missingVariable` | enum | `report` | `report`∣`refuse` | 会话 | H2 | office | ✅ 已接线 | `kernel/prompt/index.js` | 占位符无人供值时：report＝记录并在装配结果里报告（默认）；refuse＝具名拒（VMU_PROMPT_VARIABLE_MISSING） |
+| `vmu.institute.name` | string | `institute` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 本所名（章程开头与多处句子引用） |
+| `vmu.institute.leaderId` | string | `` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 在册领头人的代号；空＝无领头人（原线：章程绝不可点名不在册的领头人） |
+| `vmu.member.hiredBy` | string | `（未说明）` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 临时工的雇主（临时工章程开头用） |
+| `vmu.member.direction` | string | `（未说明）` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 给临时工的起点方向 |
+| `vmu.member.term` | string | `雇主另行通知` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 临时工任务期（原线默认措辞） |
+| `vmu.meeting.current` | string | `` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 当前会议号；会议相位的标题用它 |
+| `vmu.formal.modeLine` | string | `鼓励：按实现难度自行决定；做了就归档，没做就写明难度判断，` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 回复目录里 Lean 形式化那一行的模式措辞（原线 require/encourage 两套） |
 | `vmu.formal.currentProof` | string | `Formal/p-x.lean` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 忠实性审查时点名的已通过证明文件（每轮按实际目标填） |
 | `vmu.formal.blockedNote` | string | `未说明` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 已记录的阻塞原因（每轮按实际目标填） |
 | `vmu.formal.rootRel` | string | `Formal` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 形式化工作目录（相对会话工作目录）；原线为研究所根下的 Formal/ |
@@ -1296,8 +1303,6 @@ vmu.packs.active: [v5r]
 | `vmu.incident.disclosureDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.incident.freezeCapabilities` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.incident.notifyContacts` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.institute.leaderId` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 26（共见 1 卷：26），尚未实现（元数据以各卷为准） |
-| `vmu.institute.name` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 26（共见 1 卷：26），尚未实现（元数据以各卷为准） |
 | `vmu.math.formal.coqArgs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.formal.coqCommand` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.network` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/mathtools.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
