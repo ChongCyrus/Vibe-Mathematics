@@ -14,6 +14,7 @@ import { v5rPromptSections, v5rTurnSections } from '../vibe-math-vmu/packs/v5r-c
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
 import { collectPackSections } from '../vibe-math-vmu/kernel/pack.js'
 import { PACK } from '../vibe-math-vmu/packs/v5r-core.js'
+import { toolSpecs } from '../vibe-math-vmu/host.js'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -321,6 +322,33 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
     'T52. *** the loop counts who it woke and how often, so a multi-round run is auditable from its own status surface',
     { woken: st.woken, opened: st.counts.opened })
   rmSync(root3, { recursive: true, force: true })
+}
+// 13) THE ENTRY POINT: a host session can actually run a round, and the tool is declared like every other face
+{
+  const root4 = mkdtempSync(join(tmpdir(), 'vmu-turn-tool-'))
+  const kernel4 = createKernel({ settings: {}, root: root4, host: null })
+  const off = toolSpecs({ kernel: kernel4, settings: {}, turnTool: false })
+  ok(!off.some((s) => s.name === 'vibe_vmu_turn'),
+    'T53. *** with nothing declared the turn tool is NOT offered - the preset still registers exactly one tool (zero mechanism)')
+  const on = toolSpecs({ kernel: kernel4, settings: {}, turnTool: true })
+  const spec = on.find((s) => s.name === 'vibe_vmu_turn')
+  ok(spec && typeof spec.execute === 'function' && spec.parameters && spec.parameters.properties.op,
+    'T54. **** and when the configuration declares it, the tool exists with its parameters - the loop is reachable from a session, not only from a test',
+    { names: on.map((s) => s.name).slice(0, 6) })
+  const st = await spec.execute({ op: 'status' })
+  ok(st.ok === true && st.status && st.status.policy === 'round-robin',
+    'T55. **** THE TOOL REACHES THE LOOP: asking for status returns the loop own surface, policy included', { policy: st.status && st.status.policy })
+  const stepOut = await spec.execute({ op: 'step', members: [{ id: 'r-1', role: 'researcher' }], phase: 'normal' })
+  ok(stepOut.ok === false && stepOut.code === 'VMU_ENGINE_UNAVAILABLE',
+    'T56. **** and a round with NO delivery seam comes back as a returned refusal, so a host that cannot deliver is told rather than quietly getting a half-run',
+    { code: stepOut.code })
+  const badOp = await spec.execute({ op: 'nope' })
+  ok(badOp.ok === false && badOp.code === 'VMU_INVALID_ARGUMENT',
+    'T57. *** an unknown op is refused by name and the known ones are listed', { code: badOp.code })
+  const empty = await spec.execute({ op: 'step', members: [] })
+  ok(empty.ok === true && empty.stopped === 'no-members',
+    'T58. *** and nobody to wake is still a LEGAL no-op through the tool, not an error')
+  rmSync(root4, { recursive: true, force: true })
 }
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)

@@ -38,6 +38,9 @@ export const TOOL_NAMES = Object.freeze({
   control: 'vibe_vmu_control',
   meeting: 'vibe_vmu_meeting',
   task: 'vibe_vmu_task',
+  // ROUND 349: the turn loop needs a real entry point. Without it the framework could run a round only from a test,
+  // which is not the same as a host being able to run one - and the objective is the latter.
+  turn: 'vibe_vmu_turn',
 })
 
 /**
@@ -110,7 +113,7 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * adapter turns it into the host shape (`execute` returning JSON). Filtering by what actually exists keeps
  * the surface honest (docs/04 §11 ownership: mechanism only).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false }) {
   // A refusal carries the four documented fields, plus - when the caller has them - host-side DIAGNOSTICS
   // (the host's own stack and the exact request shape we passed). They are added ONLY when present, so no
   // existing refusal changes shape. Without this the live M3 diagnosis died at the tool boundary: the seam
@@ -388,6 +391,38 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
 
   // 7) control flow (docs/08 §5) — only when the configuration declares control intent. A pause is a GATE:
   // while paused the kernel refuses task mutations by name, and the bus is told so middleware can react.
+  // ROUND 349 — THE TURN TOOL (docs/26 §3.4). The loop existed as a service and as a test harness; this is what makes
+  // it reachable from a real session. Declared like every other face: only offered when the configuration asks for it,
+  // because with nothing declared the preset must still register exactly one tool (R1 zero mechanism).
+  if (turnTool) {
+    specs.push({
+      name: TOOL_NAMES.turn,
+      description: 'Run institute TURNS: step runs exactly one round (who is chosen by vmu.turn.wakeupPolicy, what ' +
+        'prompt is assembled by the pipeline), drive runs a bounded number, status reports what the loop has done. ' +
+        'A round with no members is a legal no-op; a failed round is returned with its code rather than thrown.',
+      parameters: {
+        type: 'object',
+        properties: {
+          op: param('string', 'step＝一轮／drive＝连跑若干轮／status＝读数'),
+          members: param('array', '本轮可唤醒的成员：[{id, role}]；缺省时由内核名册推断（无成员 ⇒ 合法空转）'),
+          rounds: param('integer', 'drive 的轮数（必须为正整数；没有无限默认）'),
+          phase: param('string', '相位：founding／normal／checkpoint／verify／verify-debate／meeting／resume'),
+          why: param('string', '为什么唤醒（原预设的唤醒也带这一项）'),
+          next_step: param('string', '下一步要做什么'),
+        },
+        required: ['op'],
+      },
+      async execute(args = {}) {
+        if (!kernel.turn) return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no turn loop')
+        const op = String(args.op || 'status')
+        const members = Array.isArray(args.members) ? args.members : []
+        if (op === 'status') return { ok: true, status: kernel.turn.status() }
+        if (op === 'step') return kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step })
+        if (op === 'drive') return kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step })
+        return refused('VMU_INVALID_ARGUMENT', 'unknown op: ' + op, 'known ops: step, drive, status')
+      },
+    })
+  }
   if (controlTool) {
     specs.push({
       name: TOOL_NAMES.control,
@@ -580,7 +615,7 @@ export function toHostSpec(spec) {
  * offers it - the host's own guidance requires that, and it is what unwinds them on subtree unload - and
  * fall back to keeping the returned disposers otherwise.
  */
-export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false } = {}) {
+export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false } = {}) {
   const disposers = []
   const registered = []
   const failures = []
@@ -588,7 +623,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   let ownedByHost = false
   let chain = Promise.resolve()
 
-  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance, scripts, packLoader, controlTool, meetingTool, taskTool }))
+  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance, scripts, packLoader, controlTool, meetingTool, taskTool, turnTool }))
 
   const doInstall = async () => {
     if (!ctx || !ctx.tools || typeof ctx.tools.register !== 'function') {

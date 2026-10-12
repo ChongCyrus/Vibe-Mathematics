@@ -178,6 +178,9 @@ export function apply(ctx, config = {}) {
   const adapter = createHostAdapter(Object.assign({ ctx, kernel, settings, instance, scripts: Array.isArray(config.scripts) ? config.scripts : [],
     packLoader: packsDeclared ? () => packLoaderRef : null,
     controlTool: config.control !== undefined,
+    // ROUND 349: the turn loop gets an entry point, gated the same way every other face is - declared intent only, so
+    // with nothing declared the preset still registers exactly one tool (R1 zero mechanism).
+    turnTool: config.turn !== undefined,
     // Per-domain tool faces (docs/03 §3.1) - declared intent, exactly like control: a meeting face needs a
     // declared meeting/ballot intent, a task face needs a declared task board or declared stages.
     meetingTool: config.meetings !== undefined || config.ballot !== undefined,
