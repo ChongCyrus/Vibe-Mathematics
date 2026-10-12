@@ -385,6 +385,43 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
   mark('PROPERTY', 'both sides run Lean asynchronously behind a bounded parallel job queue and both keep a reusable Lean archive; and both insist that a recorded claim carries judgement, but v5r fixes WHICH judgements (value, motive, probability) while vmu makes the required field set declarable (vmu.records.headFields) - the same discipline, reached by configuration instead of by hard-coding')
   mark('DIVERGENT', 'the judgement fields on a recorded proposition: v5r requires value, motive and p outright; vmu accepts any declared head-field set, so the v5r discipline is REACHABLE here but not the default. Reason: the framework does not know which judgements a given institute wants to demand, and hard-coding three of them would be exactly the "framework decides methodology" move this design avoids. Revival: a pack that declares vmu.records.headFields to require value/motive/p, which would restore the v5r behaviour verbatim - the mechanism is already wired, the policy is missing.')
 }
+// ── 9. the VERIFICATION family and the MESSAGING family: who decides truth, and how agents talk ─────────────
+{
+  const VERIFY_TOOLS = ['vibe_v5_propose_verify', 'vibe_v5_end_verify', 'vibe_v5_verdict']
+  const MSG_TOOLS = ['vibe_v5_message', 'vibe_v5_say', 'vibe_v5_wait', 'vibe_v5_feedback', 'vibe_v5_read_library', 'vibe_v5_self_report']
+  const reachable = [...VERIFY_TOOLS, ...MSG_TOOLS].filter((n) => registry.get(n))
+  ok(reachable.length === VERIFY_TOOLS.length + MSG_TOOLS.length,
+    'G4a. ★ v5r registers the verification family (3) and the messaging family (6)', { reachable: reachable.length })
+  const req = (n) => ((registry.get(n).parameters || {}).required || []).slice()
+  const props = (n) => Object.keys((registry.get(n).parameters || {}).properties || {})
+  ok(req('vibe_v5_propose_verify').includes('target') && props('vibe_v5_end_verify').includes('status'),
+    'G4b. ★ v5r opens verification on a TARGET and closes the debate explicitly, with a status',
+    { propose: req('vibe_v5_propose_verify'), end: props('vibe_v5_end_verify') })
+  ok(req('vibe_v5_verdict').includes('verdict'),
+    'G4c. ★★ and a MEMBER casts a boolean verdict on that target', { required: req('vibe_v5_verdict') })
+  ok(req('vibe_v5_say').includes('text') && req('vibe_v5_message').includes('to') && req('vibe_v5_message').includes('content') && req('vibe_v5_wait').length === 0,
+    'G4d. ★ v5r separates group chat (say), an office relay (message) and a non-polling WAIT for the next change',
+    { say: req('vibe_v5_say'), message: req('vibe_v5_message'), wait: req('vibe_v5_wait') })
+  ok(req('vibe_v5_feedback').includes('op') && req('vibe_v5_self_report').length === 0,
+    'G4e. ★ and it keeps a process-feedback library plus a per-member self report', { feedback: req('vibe_v5_feedback') })
+
+  const arbSrc = readFileSync(new URL('../vibe-math-vmu/kernel/arbitration.js', import.meta.url), 'utf8')
+  const meetSrc = readFileSync(new URL('../vibe-math-vmu/kernel/meetings.js', import.meta.url), 'utf8')
+  const libSrc = readFileSync(new URL('../vibe-math-vmu/kernel/library.js', import.meta.url), 'utf8')
+  const arbMethods = [...new Set([...arbSrc.matchAll(/^\s{4}(?:async )?([a-zA-Z][\w]*)\(/gm)].map((m) => m[1]))]
+  ok(['open', 'appoint', 'declareConflict', 'recuse', 'hear', 'rule', 'appeal', 'escalate'].every((m) => arbMethods.includes(m)),
+    'G4f. ★★ vmu decides truth through an APPOINTED tribunal: appointment, conflict declaration, recusal, hearing, ruling, appeal, escalation',
+    arbMethods)
+  ok(/\bsay\b/.test(meetSrc) && /quote/.test(meetSrc),
+    'G4g. ★ vmu likewise has a chat surface and a quoting surface inside its meeting face')
+  ok(/record|append/.test(libSrc) && /list/.test(libSrc),
+    'G4h. ★ and a library face for recorded material')
+  ok(arbMethods.includes('declareConflict') && arbMethods.includes('recuse') && arbMethods.includes('rule'),
+    'G4i. ★★ DIVERGENT (named): v5r decides truth by a BOOLEAN VOTE of members, vmu by a tribunal that must handle conflicts and recusal',
+    { v5r: 'propose_verify -> verdict per member -> end_verify -> aggregate', vmu: 'appoint -> declareConflict/recuse -> hear -> rule -> appeal/escalate' })
+  mark('DIVERGENT', 'WHO decides truth: v5r aggregates boolean verdicts cast by the members, with the academician opening and closing the debate, while vmu runs an appointed tribunal with conflict declaration, recusal, hearings, rulings and appeals. Both honour the shared rule that DEBATE does not decide truth - v5r keeps end_verify separate from speaking, and vmu gives speak and say no ruling power - but the institution differs. Reason: v5r optimises for a small institute where consensus is cheap; vmu optimises for review-heavy work where a reviewer judging their own result is the natural conflict to guard against, which is the same reason the reviewer-conflicts family exists. Revival: neither is deprecated - a deployment wanting the v5r semantics can drive votes through the ballot face and treat the aggregate as the verdict, which is a pack-level composition rather than a kernel change.')
+}
+
 {
   mark('NOT_ADOPTED', 'the REST of the meeting happy path (motion -> second -> vote -> tally) is NOT yet compared step by step, and the reason is now measured rather than assumed: the preset is ACTOR-BOUND - its acting member is assigned only when its own scheduler starts a member turn - so convening runs through the office path while motions and polls answer member-not-found. Driving that needs either a subagent harness that really runs member turns, or the heavy CLI driver. See volume 24 §2.2.8-§2.2.9')
 }
