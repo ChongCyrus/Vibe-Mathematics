@@ -1,3 +1,4 @@
+import { RECORDED_FIELDS } from '../vibe-math-vmu/kernel/turn/index.js'
 // tests/vmu-turn.test.mjs — the turn loop itself, on the framework side (docs/26).
 //
 // The goal's first objective is to move the ORCHESTRATION of a member turn into the framework, so that a host which
@@ -586,7 +587,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
 // 23) FORMALISATION AND WORK FEEDBACK (docs/26 section 3.18): the source's most valuable rule and its three routes.
 {
   const pipeFm = createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' })
-  const SET = { 'vmu.formal.currentProof': 'Formal/p-9.lean', 'vmu.formal.blockedNote': '缺一个引理', 'vmu.formal.rootRel': 'Formal', 'vmu.formal.modeLabel': '强制' }
+  const SET = { 'vmu.turn.formalProof': 'Formal/p-9.lean', 'vmu.turn.formalBlockedNote': '缺一个引理', 'vmu.turn.formalRootRel': 'Formal', 'vmu.turn.formalModeLabel': '强制' }
   const asmFm = await pipeFm.assemble({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal', round: 5, roster: 'acad、r-1', quorum: 2, statusBlock: '[状态] x', settings: SET })
   ok(asmFm.ok === true && asmFm.text.includes('忠实性审查') && asmFm.text.includes('你不需要重新检查推导'),
     'T89. **** THE FAITHFULNESS REVIEW: once a Lean proof has passed, the reviewer job CHANGES - they check faithfulness instead of redoing the mathematics',
@@ -672,6 +673,32 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   ok(unknownErr !== null && unknownErr.code === 'VMU_TURN_UNKNOWN_FIELD',
     'T103. **** while a genuinely unknown field is still refused by name - recognising two more fields must not become accepting anything',
     { code: unknownErr && unknownErr.code })
+}
+﻿
+// 26) THE FULL REPLY SURFACE (docs/26 section 3.22). An audit measured that this face knew 12 of the 29 fields the
+// original parses, so a real model using task_claim or meeting_hand had its whole reply refused. Every owner pair was
+// checked against what the kernel services really expose, and the fields with no matching operation are BOOKKEPT so
+// that a real reply is never refused merely because a face is still to be built.
+{
+  ok(FIELDS.length + RECORDED_FIELDS.length === 29,
+    'T104. **** the reply surface now covers all 29 fields the original parses - 21 dispatched to real operations and 8 bookkept',
+    { dispatched: FIELDS.length, bookkept: RECORDED_FIELDS.length, total: FIELDS.length + RECORDED_FIELDS.length })
+  ok(FIELD_OWNERS.vote_solved.face === 'vmu.ballotbox' && FIELD_OWNERS.meeting_hand.op === 'queue' && FIELD_OWNERS.convene_meeting.op === 'open' && FIELD_OWNERS.assign.op === 'assign',
+    'T105. **** and each new owner names an operation the kernel really exposes - nothing is invented',
+    { sample: FIELD_OWNERS.vote_solved.face + '.' + FIELD_OWNERS.vote_solved.op + ' ' + FIELD_OWNERS.meeting_hand.face + '.' + FIELD_OWNERS.meeting_hand.op })
+  // A loop built INSIDE this block: the earlier one lives in another block's scope, and reaching across would be a
+  // dependency on declaration order that the next person would have to rediscover.
+  const loopF = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
+  const realistic = ['```json', JSON.stringify({ say: 'progress note', progress: 'worked on lemma 4', task_claim: 't-4', meeting_hand: true, solved: false, contextPct: 41 }), '```'].join('\n')
+  const parsedReal = (() => { try { return loopF.parse(realistic) } catch (e) { return { ok: false, code: e.code } } })()
+  ok(parsedReal.ok === true && parsedReal.fields.length === 6,
+    'T106. **** A REALISTIC REPLY IS ACCEPTED WHOLE: a reply mixing dispatched fields with a bookkept one no longer loses everything to a refusal',
+    { fields: parsedReal.fields, code: parsedReal.code })
+  const planReal = loopF.plan(parsedReal.reply)
+  const plannedNames = planReal.map((d) => d.field)
+  ok(plannedNames.length === 4 && plannedNames.includes('meeting_hand') && plannedNames.includes('solved') === false && plannedNames.includes('contextPct') === false && planReal.every((d) => typeof d.op === 'string' && d.op !== ''),
+    'T107. **** and the plan sends the four dispatched fields - meeting_hand included, since the meeting service really does expose queue - while the bookkept ones stay out of it',
+    { planned: plannedNames })
 }
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)

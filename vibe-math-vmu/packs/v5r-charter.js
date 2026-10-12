@@ -7,12 +7,12 @@
 // `{{ }}` variable or a settings lookup instead of a frozen string.
 //
 // WHAT THE SOURCE READS, and therefore what must arrive as variables:
-//   instituteName            -> {{ setting:vmu.institute.name }}      (objective lives in vmu.turn.objective)
+//   instituteName            -> {{ setting:vmu.turn.instituteName }}      (objective lives in vmu.turn.objective)
 //   problem.statement        -> {{ setting:vmu.turn.objective }}      (its default IS the source's fallback)
 //   member.id                -> {{ member }}
 //   member.kind              -> {{ role }}                            (the role binding dimension)
 //   member.term/hiredBy/direction -> {{ setting:... }} or turn facts
-//   acadId (may be EMPTY)    -> {{ setting:vmu.institute.leaderId }}  (decides whole sentences)
+//   acadId (may be EMPTY)    -> {{ setting:vmu.turn.leaderId }}  (decides whole sentences)
 //   quorumM()                -> {{ quorum }}
 //   rosterLine(member)       -> {{ roster }}
 //   instRel('Members/<x>/')  -> Members/{{ member }}/
@@ -37,7 +37,7 @@ export const CHARTER_BLOCKS = Object.freeze([
     kind: 'role',
     texts: {
       academician: [
-        '你是「{{ setting:vmu.institute.name }}」的**院士**，本所的领头人与组织协调中心。你不仅亲自做研究，',
+        '你是「{{ setting:vmu.turn.instituteName }}」的**院士**，本所的领头人与组织协调中心。你不仅亲自做研究，',
         '还向全所负责组织与推进。本所的目标是解决下述研究对象（原问题）：',
         '',
         '  {{ setting:vmu.turn.objective }}',
@@ -48,15 +48,15 @@ export const CHARTER_BLOCKS = Object.freeze([
         '你自己**——它分派的是工作，不是结论。',
       ].join('\n'),
       temp: [
-        '你是「{{ setting:vmu.institute.name }}」的**临时工**，代号 {{ member }}，由 {{ setting:vmu.member.hiredBy }} 雇入，',
-        '用途：{{ setting:vmu.member.direction }}。本所的目标是解决下述研究对象（原问题）：',
+        '你是「{{ setting:vmu.turn.instituteName }}」的**临时工**，代号 {{ member }}，由 {{ setting:vmu.turn.tempHiredBy }} 雇入，',
+        '用途：{{ setting:vmu.turn.tempDirection }}。本所的目标是解决下述研究对象（原问题）：',
         '',
         '  {{ setting:vmu.turn.objective }}',
         '',
-        '你的任务期至：{{ setting:vmu.member.term }}。任务完成后请主动告知雇主。',
+        '你的任务期至：{{ setting:vmu.turn.tempTerm }}。任务完成后请主动告知雇主。',
       ].join('\n'),
       researcher: [
-        '你是「{{ setting:vmu.institute.name }}」的一名常驻研究员，代号 {{ member }}。本所是一个自组织的合作研究',
+        '你是「{{ setting:vmu.turn.instituteName }}」的一名常驻研究员，代号 {{ member }}。本所是一个自组织的合作研究',
         '机构，目标是解决下述研究对象（原问题）：',
         '',
         '  {{ setting:vmu.turn.objective }}',
@@ -264,7 +264,7 @@ export const CHARTER_BLOCKS = Object.freeze([
       researcher: [
         '【四、所内的组织与协调（院士领头）】',
         '  本所是自组织的，但**不是没有组织**——现实中一个研究所也有所长/学术带头人统筹全局。',
-        '  本所的领头人是**院士 {{ setting:vmu.institute.leaderId }}**。它以**全所视角**组织与协调：',
+        '  本所的领头人是**院士 {{ setting:vmu.turn.leaderId }}**。它以**全所视角**组织与协调：',
         '    ① **统筹全局**：掌握各方向布局、谁在做什么、哪里是瓶颈、哪里有重复或空白；',
         '    ② **规划与分派**：把原问题拆成值得做的工作，作为**任务**分派给合适的成员（含临时工）。',
         '       分派是它的职责，不是越权；',
@@ -287,7 +287,7 @@ export const CHARTER_BLOCKS = Object.freeze([
       temp: [
         '【四、所内的组织与协调（院士领头）】',
         '  本所是自组织的，但**不是没有组织**——现实中一个研究所也有所长/学术带头人统筹全局。',
-        '  本所的领头人是**院士 {{ setting:vmu.institute.leaderId }}**。它以**全所视角**组织与协调：',
+        '  本所的领头人是**院士 {{ setting:vmu.turn.leaderId }}**。它以**全所视角**组织与协调：',
         '    ① **统筹全局**：掌握各方向布局、谁在做什么、哪里是瓶颈、哪里有重复或空白；',
         '    ② **规划与分派**：把原问题拆成值得做的工作，作为**任务**分派给合适的成员（含临时工）。',
         '       分派是它的职责，不是越权；',
@@ -657,7 +657,7 @@ export const CHARTER_BLOCKS = Object.freeze([
     texts: {
       shared: [
         '  "formal": {"target":"p-x","decision":"used|blocked|defect","file":"Formal/p-x.lean","note":"难度判断（used）/ 阻塞原因（blocked）/ 具体偏差（defect）"}',
-        '             ← Lean 形式化：{{ setting:vmu.formal.modeLine }}详见提示词里的【Lean 形式化验证】段',
+        '             ← Lean 形式化：{{ setting:vmu.turn.formalModeLine }}详见提示词里的【Lean 形式化验证】段',
       ].join('\n'),
     },
   },
@@ -675,7 +675,7 @@ export const CHARTER_BLOCKS = Object.freeze([
       founding: '【入职首轮 —— {{ roleLabel }} {{ member }}】',
       normal: '【第 {{ round }} 轮 —— {{ roleLabel }} {{ member }}】',
       checkpoint: '【心跳检查 —— {{ roleLabel }} {{ member }}】',
-      meeting: '【研究所会议 {{ setting:vmu.meeting.current }} 进行中 —— {{ roleLabel }} {{ member }}】',
+      meeting: '【研究所会议 {{ setting:vmu.turn.meetingId }} 进行中 —— {{ roleLabel }} {{ member }}】',
     },
   },
   {
@@ -812,7 +812,7 @@ export const CHARTER_BLOCKS = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '  · 该对象已有**通过的 Lean 形式化证明**（{{ setting:vmu.formal.currentProof }}，最近运行 exit 0）。',
+        '  · 该对象已有**通过的 Lean 形式化证明**（{{ setting:vmu.turn.formalProof }}，最近运行 exit 0）。',
         '    **你不需要重新检查推导**。你的任务是**忠实性审查**：逐条核对 Lean 代码里的',
         '    定义 / 对象 / 条件 / 假设 / 结论是否与命题原文**完全一致**。',
         '  ▸ 一致 → verdict = 1。',
@@ -832,7 +832,7 @@ export const CHARTER_BLOCKS = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '  · 该对象已被记录为**形式化阻塞**：{{ setting:vmu.formal.blockedNote }}。',
+        '  · 该对象已被记录为**形式化阻塞**：{{ setting:vmu.turn.formalBlockedNote }}。',
         '    请复核这个判断是否成立；若你认为其实可以形式化，请指出来并动手做。',
       ].join('\n'),
     },
@@ -848,7 +848,7 @@ export const CHARTER_BLOCKS = Object.freeze([
         '  · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。',
         '  · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v5_lean_lib 显示 passed 再审。',
         '  · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）',
-        '  · 工作目录（**相对会话工作目录**，你自己的文件工具按这个基准解析）：{{ setting:vmu.formal.rootRel }}/',
+        '  · 工作目录（**相对会话工作目录**，你自己的文件工具按这个基准解析）：{{ setting:vmu.turn.formalRootRel }}/',
         '    （= 研究所根下的 Formal/；v5 工具的 file 参数两种写法都接受：上面这条完整路径，或短的 Formal/xxx.lean。）',
         '  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与',
         '    命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。',
@@ -865,7 +865,7 @@ export const CHARTER_BLOCKS = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '【顺手形式化（{{ setting:vmu.formal.modeLabel }}）】把你工作中常用或可能复用的对象、假设、',
+        '【顺手形式化（{{ setting:vmu.turn.formalModeLabel }}）】把你工作中常用或可能复用的对象、假设、',
         '新定义用 Lean 形式化定义并归档到全局可复用库（vibe_v5_lean_archive kind=\'def\'），已成立的引理归到 Proved/',
         '（kind=\'lemma\'）；写之前先 vibe_v5_lean_lib 查重，避免重复定义。',
         '归档前先跑通（vibe_v5_lean_run 或 run=true）；跑不通的定义不要进可复用库。',

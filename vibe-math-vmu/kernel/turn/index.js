@@ -40,6 +40,19 @@ export const FIELD_OWNERS = Object.freeze({
   formal: Object.freeze({ face: 'vmu.formal', op: 'check' }),
   lean_archive: Object.freeze({ face: 'vmu.mathjobs', op: 'submit' }),
   lean_run: Object.freeze({ face: 'vmu.mathjobs', op: 'submit' }),
+  // ROUND 378: the rest of the reply surface the original parses (an independent audit measured 12 of 29). Every pair
+  // below was checked against what the kernel's services REALLY expose at runtime - the meeting service carries speak,
+  // motion, queue, attend and open; tasks carries assign and transition; the ballot box carries cast - so nothing here
+  // is invented. Sending one of these to a face that does not implement it is visible as face-not-wired, never silent.
+  vote_solved: Object.freeze({ face: 'vmu.ballotbox', op: 'cast' }),
+  meeting_hand: Object.freeze({ face: 'vmu.meetings', op: 'queue' }),
+  meeting_invite: Object.freeze({ face: 'vmu.meetings', op: 'attend' }),
+  input: Object.freeze({ face: 'vmu.meetings', op: 'speak' }),
+  propose_meeting: Object.freeze({ face: 'vmu.meetings', op: 'motion' }),
+  convene_meeting: Object.freeze({ face: 'vmu.meetings', op: 'open' }),
+  task_claim: Object.freeze({ face: 'vmu.tasks', op: 'transition' }),
+  task_done: Object.freeze({ face: 'vmu.tasks', op: 'transition' }),
+  assign: Object.freeze({ face: 'vmu.tasks', op: 'assign' }),
 })
 
 export const FIELDS = Object.freeze(Object.keys(FIELD_OWNERS))
@@ -51,8 +64,17 @@ export const FIELDS = Object.freeze(Object.keys(FIELD_OWNERS))
  * matter here. First, these fields must be RECOGNISED: a real model that answers with `contextPct` was previously
  * refused as an unknown field, which is a blocker for running a real round at all. Second, they are not dispatched to
  * any face - they update turn state - so they get their own list rather than a fabricated owner.
+ *
+ * ROUND 378 adds the fields the original parses that have NO matching operation in this kernel yet: `solved` (the
+ * member's own round judgement), `prioritize`, `nudge`, `reject_assign`, `hire` and `fire`. They are BOOKKEPT rather
+ * than dispatched, for two reasons that are both deliberate: nothing is ever sent to an operation that does not exist,
+ * and a real model's reply is never REFUSED merely because a face is still to be built. Each one is named here so the
+ * gap stays visible instead of hiding behind a refusal.
  */
-export const RECORDED_FIELDS = Object.freeze(['contextPct', 'compacted'])
+export const RECORDED_FIELDS = Object.freeze([
+  'contextPct', 'compacted',
+  'solved', 'prioritize', 'nudge', 'reject_assign', 'hire', 'fire',
+])
 
 const PHASES = Object.freeze(['founding', 'normal', 'checkpoint', 'verify', 'verify-debate', 'meeting', 'resume'])
 

@@ -145,19 +145,19 @@ const CORE_DEFS = Object.freeze([
   // ROUND 376: the eight placeholders an independent audit found with NO supplier are all facts about the institute,
   // so they become DECLARED settings with defaults instead of silent empty slots. A name, a leader id, a term and a
   // meeting number are configuration in this framework's sense: the pack holds the wording, the value comes from here.
-  { key: 'vmu.institute.name', type: 'string', def: 'institute', hot: HOT.H2, who: 'office', doc: '本所名（章程开头与多处句子引用）' },
-  { key: 'vmu.institute.leaderId', type: 'string', def: '', hot: HOT.H2, who: 'office', doc: '在册领头人的代号；空＝无领头人（原线：章程绝不可点名不在册的领头人）' },
-  { key: 'vmu.member.hiredBy', type: 'string', def: '（未说明）', hot: HOT.H2, who: 'office', doc: '临时工的雇主（临时工章程开头用）' },
-  { key: 'vmu.member.direction', type: 'string', def: '（未说明）', hot: HOT.H2, who: 'office', doc: '给临时工的起点方向' },
-  { key: 'vmu.member.term', type: 'string', def: '雇主另行通知', hot: HOT.H2, who: 'office', doc: '临时工任务期（原线默认措辞）' },
-  { key: 'vmu.meeting.current', type: 'string', def: '', hot: HOT.H2, who: 'office', doc: '当前会议号；会议相位的标题用它' },
-  { key: 'vmu.formal.modeLine', type: 'string', def: '鼓励：按实现难度自行决定；做了就归档，没做就写明难度判断，', hot: HOT.H2, who: 'office', doc: '回复目录里 Lean 形式化那一行的模式措辞（原线 require/encourage 两套）' },
+  { key: 'vmu.turn.instituteName', type: 'string', def: 'institute', hot: HOT.H2, who: 'office', doc: '本所名（章程开头与多处句子引用）' },
+  { key: 'vmu.turn.leaderId', type: 'string', def: '', hot: HOT.H2, who: 'office', doc: '在册领头人的代号；空＝无领头人（原线：章程绝不可点名不在册的领头人）' },
+  { key: 'vmu.turn.tempHiredBy', type: 'string', def: '（未说明）', hot: HOT.H2, who: 'office', doc: '临时工的雇主（临时工章程开头用）' },
+  { key: 'vmu.turn.tempDirection', type: 'string', def: '（未说明）', hot: HOT.H2, who: 'office', doc: '给临时工的起点方向' },
+  { key: 'vmu.turn.tempTerm', type: 'string', def: '雇主另行通知', hot: HOT.H2, who: 'office', doc: '临时工任务期（原线默认措辞）' },
+  { key: 'vmu.turn.meetingId', type: 'string', def: '', hot: HOT.H2, who: 'office', doc: '当前会议号；会议相位的标题用它' },
+  { key: 'vmu.turn.formalModeLine', type: 'string', def: '鼓励：按实现难度自行决定；做了就归档，没做就写明难度判断，', hot: HOT.H2, who: 'office', doc: '回复目录里 Lean 形式化那一行的模式措辞（原线 require/encourage 两套）' },
   // ROUND 369: the formalisation block is mode- and status-dependent in the original, so its live values arrive here and
   // the wording stays in the pack. `modeLabel` carries the 强制/鼓励/主动 wording, and the review block names the proof.
-  { key: 'vmu.formal.currentProof', type: 'string', def: 'Formal/p-x.lean', hot: HOT.H2, who: 'office', doc: '忠实性审查时点名的已通过证明文件（每轮按实际目标填）' },
-  { key: 'vmu.formal.blockedNote', type: 'string', def: '未说明', hot: HOT.H2, who: 'office', doc: '已记录的阻塞原因（每轮按实际目标填）' },
-  { key: 'vmu.formal.rootRel', type: 'string', def: 'Formal', hot: HOT.H2, who: 'office', doc: '形式化工作目录（相对会话工作目录）；原线为研究所根下的 Formal/' },
-  { key: 'vmu.formal.modeLabel', type: 'string', def: '鼓励', hot: HOT.H2, who: 'office', doc: '顺手形式化一行的模式措辞：强制／鼓励／主动' },
+  { key: 'vmu.turn.formalProof', type: 'string', def: 'Formal/p-x.lean', hot: HOT.H2, who: 'office', doc: '忠实性审查时点名的已通过证明文件（每轮按实际目标填）' },
+  { key: 'vmu.turn.formalBlockedNote', type: 'string', def: '未说明', hot: HOT.H2, who: 'office', doc: '已记录的阻塞原因（每轮按实际目标填）' },
+  { key: 'vmu.turn.formalRootRel', type: 'string', def: 'Formal', hot: HOT.H2, who: 'office', doc: '形式化工作目录（相对会话工作目录）；原线为研究所根下的 Formal/' },
+  { key: 'vmu.turn.formalModeLabel', type: 'string', def: '鼓励', hot: HOT.H2, who: 'office', doc: '顺手形式化一行的模式措辞：强制／鼓励／主动' },
 
   // ---- math and formalisation ---------------------------------------------------------------
   // A1/A2 (P3): the DEFAULTS come from the shared module, so v2–v5r and vmu stay byte-comparable.
