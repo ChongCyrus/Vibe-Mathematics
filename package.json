@@ -312,7 +312,6 @@
     "vibe-math-vmu/kernel/records.js",
     "vibe-math-vmu/kernel/course.js",
     "vibe-math-vmu/kernel/conference.js",
-    "vibe-math-vmu/kernel/instruments.js",
     "vibe-math-vmu/kernel/ip.js",
     "vibe-math-vmu/kernel/funding.js",
     "vibe-math-vmu/kernel/compliance.js",

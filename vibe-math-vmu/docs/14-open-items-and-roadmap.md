@@ -1538,6 +1538,14 @@ undefined
   ★★★ **两处险些造成真实损害，靠断言/实证拦下**：① **那个测试文件并非只测 biospecimen，它同时覆盖 `budget`(9 键) 与 `audit`(17 键)** ⇒ 若按"删套件"处理会**静默丢掉两个保留族的断言** ✗ ⇒ 改为**拆套件**（`tests/vmu-budget-audit.test.mjs`，**30 条断言全绿** ✓）；② 我在改 `index.js` 解构表时把 `discipline, biospecimen, explain` **整段删掉**，**连带移除 `discipline` 与 `explain`** ⇒ 语法报错当场拦下，**而它本会是静默功能回归** ✗ ⇒ 修复后**实证**：内核加载 104 服务，`biospecimen=false`／`discipline=true`／`explain=true` ✓。
   ★★ **教训（应入 docs/11）**：**"删一族"不能按文件删，必须按【族】逐一枚举触点**；而**共享套件与聚合解构表是两处最危险的耦合点** —— 前者会静默减少覆盖，后者会静默减少服务。
   ★★ 未做（明写 ✗）：**其余降级族未撤代码**（instruments 17 键／hr 11 键／course 24 键／domaincompliance 内的 clinical 9＋animal 9）；5 个文件的**残余提及**未清（`docs/11`／`docs/22` 的散文行／`schema.js` 已被本轮清）；`docs/22` §2.5 的**展开规格尚未物理移出**到卷 23（仅在 §1b/D-8 登记）；"新文件须双登记"纪律仍未入 `docs/11`；真机复跑 ✗；版本号/release ✗（须你批准）。
+- ★★★★★ 轮 302：按 `23-§2.0` 规程**撤除 instruments 族**（17 键／373 行／其专属套件／16 个文件触点），T1 全绿。
+  ★★★ 判据：**数学研究不使用仪器／设施** ⇒ 对数学研究举不出消费者 ⇒ 降级为扩展（用户 2026-10-11 范围基准）。
+  ★★★ **退役键名（17，仅记于此，审计豁免）**：`register`／`reserve`／`train`／`ledgerDir`／`maxHoldHours`／`reservationHorizonDays`／`overbookRatio`／`calibrationCycleDays`／`calibrationGraceDays`／`blockOnOverdueCalibration`／`capabilityTags`／`requiresTraining`／`maintenanceWindows`／`retireAfterDays`／`blockOnRetired`／`facilityRef`／`shareWithCapacity`（全族前缀 `vmu.instruments.`）。
+  ★★★ **退役码（7，仅记于此）**：`VMU_INSTRUMENT_UNKNOWN`／`VMU_INSTRUMENT_ALREADY_RESERVED`／`VMU_INSTRUMENT_NOT_QUALIFIED`／`VMU_INSTRUMENT_OVERBOOKED`／`VMU_INSTRUMENT_HOLD_EXCEEDED`／`VMU_INSTRUMENT_CALIBRATION_OVERDUE`／`VMU_INSTRUMENT_RETIRED`。
+  ★★★ **规程首次完整执行，两处共享文件按"拆/摘"而非"删"**：① `tests/vmu-instruments.test.mjs` 经**实测只含本族** ⇒ 可随面删除 ✓；② `tests/audit-enforced-consistency.test.mjs`（759 行）是**跨面用例表**，`instruments` 只占 **7 个 block** ⇒ 只摘那 7 块并**保留其余模块**（并修 3 处共享措辞：ROUND-16 覆盖注释、拒绝示例、文件名映射）✓。
+  ★★★ **⑳ 的"proof"步骤首次真正起作用**：每次改完**载入内核点名核对** —— 撤除后 **103 服务**，`instruments=false` 而 **`discipline`／`explain`／`capacity`／`budget`／`compliance` 全在** ✓（对比轮 301 那次误删两个服务的教训）。
+  ★★★ 另发现：`generate-wired-schema.mjs` 里**两行注释同时提到四个族**（ballot box／course／instruments／store policy）⇒ **只去掉本族的词，不删整行** ✗（断言拦下一次，属规程第 3 条的同类）✓。
+  ★★ 未做（明写 ✗）：**docs 侧的散文行未全清**（`docs/22` 仍有非表行提及，如成熟度声明与§L79/L855 的历史叙述）；`hr`(11 键)／`course`(24 键)／`domaincompliance` 内的 `clinical`(9)＋`animal`(9) **未撤**；真机复跑 ✗；版本号/release ✗（须你批准）。
 ### 0.4 结论
 
 ## 0.5 未接线键的【三档结构】（轮 287 建表；**轮 290 据实更正数字** ✓✓）

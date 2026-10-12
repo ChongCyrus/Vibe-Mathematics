@@ -29,7 +29,7 @@ const END = '  // WIRED-SCHEMA:END'
 
 /** The key list a module exports: an inline freeze, or a `DECLARED_KEYS` array it freezes. */
 export function wiredKeysOf(src) {
-  // ROUND 111: four faces name their wired list `WIRED_<FACE>_KEYS` (ballot box, course, instruments, store
+  // ROUND 111: four faces name their wired list `WIRED_<FACE>_KEYS` (ballot box, course, store
   // policy) and keep a SEPARATE `PLANNED_<FACE>_KEYS` with a reason per key. Recognising only the two generic
   // names left every one of those keys unregistered, so the registry called them planned while the module
   // itself listed them as wired - measured: nineteen keys across four faces.
@@ -265,7 +265,7 @@ export function collect() {
     // A module is scanned if it EXPORTS a list or if it READS any key: the second half is the round-81 fix for
     // the blind spot where a face read its settings through an accessor and never exported a list.
     // ROUND 113: ask the LIST function whether it found anything instead of testing for a literal export name.
-    // The substring test missed `WIRED_<FACE>_KEYS` (ballot box, course, instruments, store policy), so those
+    // The substring test missed `WIRED_<FACE>_KEYS` (ballot box, course, store policy), so those
     // four faces were scanned for accessor forms only - and a key that lives in an exported list is invisible
     // to that scan. Nine keys stayed planned for that reason while their own modules listed them as wired.
     const listed = wiredKeysOf(src)
@@ -298,7 +298,6 @@ export function collect() {
 export const EFFECTIVE_DEFAULTS = Object.freeze({
   'vmu.course.latePenaltyRatio': '有效默认 `0`（course.js:113 `Number.isFinite(r) && 0≤r≤1 ? r : 0`）',
   'vmu.external.mergePolicy': '两步回退：未设或不在 `MERGE_POLICIES` ⇒ 取 `vmu.external.conflictPolicy`；仍不在 `CONFLICT_POLICIES` ⇒ `refuse-on-conflict`（external.js:131-133）',
-  'vmu.instruments.capabilityTags': '有效默认 `[]`（instruments.js:91 `Array.isArray(tags) ? tags.map(String) : []`）',
 })
 
 export function render(defs) {
