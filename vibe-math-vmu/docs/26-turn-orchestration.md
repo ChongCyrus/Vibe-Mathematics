@@ -48,9 +48,9 @@
 
 ## 4. v1 的边界（**未做，明写** ✗）
 
-1. ★ **投递适配器尚未接真实宿主** ✗：v1 只定义缝与**具名拒**；**接 `subagents`／LLM 的实际投递是下一增量** ✓；
+1. ★★★ **投递缝已接进内核（轮 339）** ✓✓：**vmu.turn 在 kernel/index.js 里以【惰性 getter】建成** ✓，**投递走 host.deliverTurn 缝** ✓；★ **宿主不给缝 ⇒ 具名拒 VMU_ENGINE_UNAVAILABLE** ✓（**绝不假装成员答了** ✗，且**计数可见** ✓）。★ **仍缺** ✗：**一个具体的宿主投递实现**（真发 LLM／子代理）⇒ **那是宿主的职责** ✓，本仓已给出**契约与拒绝语义** ✓；
 2. ★★★ **面表已接真实面（轮 338）** ✓✓：**归属表改为【真实面 ＋ 真实操作名】**（**由运行时枚举真内核读出** ✓，不是猜的 ✗）：`say ⇒ vmu.meetings speak`／`progress ⇒ vmu.records put`／`record ⇒ vmu.library record`／`propose_verify ⇒ vmu.meetings motion`／`verdict ⇒ vmu.ballotbox cast`／`task_create ⇒ vmu.tasks create`／`task_update ⇒ vmu.tasks transition`／`formal ⇒ vmu.formal check`／`lean_* ⇒ vmu.mathjobs submit` ✓；**且 `facesFrom(kernel)` 直接取真实实例** ✓（**面/操作缺失就【不进表**】✓，**分派时【计数回报】而不是造一次调用** ✗）；★ **端到端实测：一条 `task_create` 经循环【真的落进内核任务台账】** ✓✓（**T21** ✓）；★ **归属表可配置** ✓（`bindings` 覆盖逐字段生效 ✓，`status().owners` 报告**实际在用的**表 ✓）。
-3. ★ **调度（谁下一轮被唤醒）尚未并入** ✗：v1 只做**单轮** ✓；**多轮推进需与 `vmu.scheduler` 合并** ✓（该面已存在 ✓）；
+3. ★★★ **多轮推进已可用（轮 339）** ✓✓：**vmu.turn 可由 vmu.scheduler 的触发驱动** ✓（该面已存在 ✓），**每一轮都是一次 run()** ✓；★ **仍缺** ✗：**把"谁下一轮被唤醒"的【策略】写成 settings／pack 的正式配置** ✓（当前由宿主决定 ✓）；
 4. ★ **与原预设的【逐轮 A/B】未做** ✗：这是**首要目标的验收条件 ②** ✓ ⇒ **下一增量开始做** ✓。
 5. ★ **v1 不引入任何新 settings 键** ✓：**策略全部走管线既有 settings** ✓（避免与 `settings/schema.js` 耦合 ✓；日后若需 `vmu.turn.*` 再按纪律登记 ✓）。
 

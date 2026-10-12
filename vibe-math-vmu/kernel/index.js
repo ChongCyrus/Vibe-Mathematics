@@ -23,6 +23,10 @@ export { PACK_CONTRACT_VERSION } from './registry.js'
 import { createStore } from './store.js'
 import { createBus } from './bus.js'
 import { createPromptPipeline } from './prompt/index.js'
+// ROUND 339: the TURN LOOP itself (docs/26) - assemble, deliver, parse, dispatch - so a host that installs only the
+// framework can run a member turn instead of borrowing the original preset loop. Its ownership table names REAL
+// faces and operations (read off this kernel at runtime in round 338), and delivery goes through the host seam.
+import { createTurnOrchestrator, facesFrom } from './turn/index.js'
 import { createLibrary } from './library.js'
 import { createMembers } from './members.js'
 import { createBallot } from './ballot.js'
@@ -610,6 +614,14 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   const meetings = createMeetings({ settings: settingsView, bus, clock: guardedClock, log })
   const ballotbox = createBallotBox({ settings: settingsView, bus, clock: guardedClock, log })
   const records = createRecords({ settings: settingsView, bus, clock: guardedClock, log })
+  // ROUND 339: the TURN LOOP as a service (docs/26). Constructed here, once the faces it dispatches into exist,
+  // so a host that installs only the framework can run a member turn. Delivery goes through the host seam; with no
+  // seam it refuses by name rather than pretending a member answered.
+  const turn = createTurnOrchestrator({
+    prompt,
+    faces: facesFrom({ tasks, records, library, meetings, ballotbox, formal, mathjobs }),
+    deliver: host && typeof host.deliverTurn === 'function' ? host.deliverTurn : null,
+  })
   // ROUND 24: the teaching face the N13 volume declared (19 of its 24 knobs change behaviour; the five that need
   // a library, records or ontology seam are named rather than silently accepted).
   const course = createCourse({ settings: settingsView, bus, clock: guardedClock, log })
@@ -701,6 +713,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   if (members) registry.register('vmu.members', { apiVersion: 1 }, { kind: 'service', description: 'role slots and roster' })
   registry.register('vmu.tasks', { apiVersion: 1 }, { kind: 'service', description: 'task ledger and stage machine' })
   registry.register('vmu.prompt', { apiVersion: 1 }, { kind: 'service', description: 'prompt sections, bindings, overrides' })
+  registry.register('vmu.turn', { apiVersion: 1 }, { kind: 'service', description: 'turn loop: assemble, deliver, parse, dispatch (docs/26)' })
   registry.register('vmu.middleware', { apiVersion: 1 }, { kind: 'service', description: 'the hook bus and its four forms' })
   // Batch-1 services (docs/11 搂9.8). Registered unconditionally, like tasks/prompt/middleware: they are
   // zero-mechanism by construction (no config 鈬?empty agenda, empty board, refusals by name).
@@ -832,6 +845,9 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     enabled: true,
     bus,
     prompt,
+    // ROUND 339: built lazily, because it is assembled FROM this bag's faces - and it refuses by name when the host
+    // offers no delivery seam rather than pretending a member answered (docs/26 stage 3).
+    turn,
     store,
     // Getters, not captured values: a pack can re-declare the institution (slots/tracks) AFTER the kernel
     // was constructed, so the public surface must always reflect the CURRENT surfaces (docs/10 搂2).

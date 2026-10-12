@@ -35,7 +35,7 @@ const ok = (cond, name, detail) => { if (cond) passed++; else { failed++; consol
 
 // service name -> the local identifier that must be constructed and exposed
 const SURFACES = {
-  'vmu.library': 'library', 'vmu.members': 'members', 'vmu.tasks': 'tasks', 'vmu.prompt': 'prompt',
+  'vmu.library': 'library', 'vmu.members': 'members', 'vmu.tasks': 'tasks', 'vmu.prompt': 'prompt', 'vmu.turn': 'turn',
   'vmu.middleware': 'bus', 'vmu.governance': 'governance', 'vmu.board': 'board', 'vmu.minutes': 'minutes',
   'vmu.budget': 'budget', 'vmu.metrics': 'metrics', 'vmu.audit': 'audit', 'vmu.alerts': 'alerts',
   'vmu.domaincompliance': 'domainCompliance',
@@ -121,9 +121,11 @@ ok(orphan.length === 0, 'no constructed service is missing from the registry', o
   const mutated = code.replace(/const mathjobs = createMathJobs\(/, '// intentionally unbound for the self-probe\n  const mathjobsNeverBound = createMathJobs(')
   ok(mutated !== code, 'self-probe: the mutation anchor is present in kernel/index.js',
     'ANCHOR MISS: const mathjobs = createMathJobs(')
-  const boundIn = (text, id) => new RegExp('(?:const|let|var)\\s+' + id + '\\b').test(text)
-    || new RegExp('\\b' + id + '\\s*=\\s*').test(text)
-    || new RegExp('[,{]\\s*' + id + '\\s*[,}]').test(text)
+  // ROUND 340: "bound" means CONSTRUCTED BY A FACTORY, which is what this gate is about. The old third pattern
+  // counted a bare mention inside a map literal as a binding, so passing an identifier into another call (for
+  // instance handing the faces to the turn loop) made the self-probe unable to see a genuinely unbound service -
+  // a gate that cannot fail is decoration, and that is exactly what this probe exists to prevent.
+  const boundIn = (text, id) => new RegExp('(?:const|let|var)\\s+' + id + '\\s*=\\s*create[A-Z]').test(text)
   ok(!boundIn(mutated, 'mathjobs'), 'self-probe: an unbound service is detected (the round-14 defect would fail this gate)')
   ok(boundIn(mutated, 'mathjobsNeverBound'), 'self-probe: the mutant still binds a differently-named identifier')
 }

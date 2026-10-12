@@ -143,6 +143,29 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
     'T23. * and the orchestrator reports the binding table it is actually using, so a half-configured host is visible')
   rmSync(root, { recursive: true, force: true })
 }
+
+// 7) THE LOOP AS A SERVICE: a kernel built with only settings, root and a host seam can run a whole turn
+{
+  const root = mkdtempSync(join(tmpdir(), 'vmu-turn-svc-'))
+  const host = { deliverTurn: async () => '```json\n' + JSON.stringify({ task_create: { title: 'from the host seam' } }) + '\n```' }
+  const kernel = createKernel({ settings: {}, root, host })
+  ok(typeof kernel.turn === 'object' && typeof kernel.turn.run === 'function' && kernel.turn.status().fields === FIELDS.length,
+    'T24. **** the loop is a REGISTERED SERVICE: a kernel built with only settings, root and a host exposes kernel.turn with the whole catalogue',
+    { services: Object.keys(kernel).length, fields: kernel.turn && kernel.turn.status().fields })
+  const before = (kernel.tasks.list() || []).length
+  const receipt = await kernel.turn.run({ member: 'r-1', phase: 'normal' })
+  const after = (kernel.tasks.list() || []).length
+  ok(receipt.ok === true && receipt.fields.length === 1 && receipt.executed.length === 1 && after === before + 1,
+    'T25. **** END TO END THROUGH THE SERVICE: one run call assembles from the pipeline, delivers through the HOST seam, parses, dispatches, and the task ledger grows by one - no original preset involved',
+    { fields: receipt.fields, before, after })
+  const noHost = createKernel({ settings: {}, root, host: null })
+  const refused = await rejects(() => noHost.turn.run({ member: 'r-1', phase: 'normal' }), 'VMU_ENGINE_UNAVAILABLE')
+  ok(refused.caught && refused.code === 'VMU_ENGINE_UNAVAILABLE',
+    'T26. **** and with NO host delivery seam the service refuses by name rather than pretending a member answered', { code: refused.code })
+  ok(noHost.turn.status().counts.refused >= 1,
+    'T27. * the refusal is counted on the service status surface, so a host that cannot deliver is visible')
+  rmSync(root, { recursive: true, force: true })
+}
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
