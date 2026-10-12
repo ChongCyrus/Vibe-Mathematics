@@ -1014,6 +1014,41 @@ export const CHARTER_BLOCKS = Object.freeze([
   // states the threshold: every participating member must vote true before the finaliser may finalise. A unanimous
   // publication rule is the kind of thing a framework should not invent and a pack should declare - and with the phase
   // seam built last round, this pack can declare the phases these prompts belong to.
+  // ── THE LEAN TOOL HINTS AND THE REQUIRED MODE (corpus-derived) ──────────────────────────────────────────────
+  // Two blocks the ballot prompt carries in the formalisation kinds. The hints are what the tools answer with -
+  // green, red, a missing file, a missing name, a blocked record with no reason - and the host injects them into the
+  // prompt, which is why the corpus has them as prompt text. The required mode states the obligation the encouraged
+  // mode leaves open: produce a Lean formalisation, or produce an EXPLICIT reason for blocking it.
+  {
+    name: 'v5r-lean-tool-hints',
+    order: 815,
+    range: 'pack',
+    kind: 'phase',
+    texts: {
+      verify: [
+        'vibe_v5_lean_run hint (green): 通过。若是某个对象的证明，请用 vibe_v5_lean_archive kind=\'proof\' 归档（会写入 Verified/Lean/ 并把审查对象变成忠实性）；若是可复用定义/引理，用 kind=\'def\'/\'lemma\' 归档到全局库。',
+        'vibe_v5_lean_run hint (red): 未通过。请按上面的编译器输出修复后重跑；若判断无法完成，用 vibe_v5_lean_archive kind=\'blocked\' 记录原因。',
+        'vibe_v5_lean_run on a missing file: V5_NOT_FOUND｜no such file: Formal/no-such-file.lean',
+        'vibe_v5_lean_archive without a name: V5_INVALID_ARGUMENT｜name is required for a reusable definition/lemma',
+        'vibe_v5_lean_archive blocked without a note: V5_INVALID_ARGUMENT｜阻塞记录必须写明原因（note）——"因难度决定不做形式化"必须显式、可审计',
+        'vibe_v5_lean_lib hint: 复用优先：先在 VibeMath/Projects/default/Institutes/institute/Formal/Lib/ 里找现成定义（vibe_v5_lean_read {name} 取原文）；新定义用 vibe_v5_lean_archive kind=\'def\' 归档，已证引理用 kind=\'lemma\'。复用已归档内容：import Formal.Lib.<name> / import Formal.Proved.<name>。同内容重复归档会自动去重。',
+      ].join('\n'),
+    },
+  },
+  {
+    name: 'v5r-lean-required',
+    order: 816,
+    range: 'pack',
+    kind: 'phase',
+    texts: {
+      verify: [
+        '· **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因——用',
+        'vibe_v5_lean_archive kind=\'blocked\' note=… 记录，或用回执 formal:{decision:\'blocked\', note:…}。',
+        '  · 只有 decision=' + "'" + 'blocked' + "'" + ' 的 note 会写成阻塞记录；decision=' + "'" + 'used' + "'" + ' 的 note 只是难度判断，',
+        '会被记为未定论（原因 formal-required）并进入「形式化待办」。',
+      ].join('\n'),
+    },
+  },
   {
     name: 'v5r-paper-write',
     order: 810,
