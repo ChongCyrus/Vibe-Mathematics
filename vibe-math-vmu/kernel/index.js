@@ -84,7 +84,7 @@ import { createCourse } from './course.js'
 // a wired key must change an observable behaviour, refusals carry the enforced list and its scope, and the keys
 // that are NOT wired are named individually with a reason rather than quietly ignored.
 import { createConference } from './conference.js'
-import { createInstruments } from './instruments.js'
+import { createResource } from './resource.js'
 import { createIp } from './ip.js'
 // Round 32 continues: three more declared faces. The storage one is a POLICY layer only - it validates backends,
 // paths, lock behaviour, backup counting and the remote/version policies and never does IO itself; the archival
@@ -615,7 +615,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // The conference face is LAYERED on the single-session policy face: it plans and reviews, `meetings` owns the
   // session. Its tests prove the layering with a counting proxy (zero calls into meetings).
   const conference = createConference({ settings: settingsView, bus, clock: guardedClock, log, meetings })
-  const instruments = createInstruments({ settings: settingsView, bus, clock: guardedClock, log })
+  const resource = createResource({ settings: settingsView, bus, clock: guardedClock, log })
   const ip = createIp({ settings: settingsView, bus, clock: guardedClock, log })
   const funding = createFunding({ settings: settingsView, bus, clock: guardedClock, log })
   const compliance = createCompliance({ settings: settingsView, bus, clock: guardedClock, log })
@@ -761,7 +761,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // happens to export as `apiVersion` is not it - the registry refused that with VMU_INVALID_ARGUMENT, which is
   // exactly the kind of thing a gate should catch before a human does.
   registry.register('vmu.conference', { apiVersion: 1 }, { kind: 'service', description: 'conference hosting: calls for papers, review quorum, anonymity, registration cap and agenda fit (docs/08; layered on the single-session face)' })
-  registry.register('vmu.instruments', { apiVersion: 1 }, { kind: 'service', description: 'instrument ledger: calibration currency, trained operators, reservation conflicts and maintenance windows (docs/22)' })
+  registry.register('vmu.resource', { apiVersion: 1 }, { kind: 'service', description: 'instrument ledger: calibration currency, trained operators, reservation conflicts and maintenance windows (docs/22)' })
   registry.register('vmu.ip', { apiVersion: 1 }, { kind: 'service', description: 'intellectual property: disclosure hold, named inventors, priority dates and family duplicates (docs/21-22)' })
   registry.register('vmu.funding', { apiVersion: 1 }, { kind: 'service', description: 'funding: account/currency scope, budget balance, cost-share policy, receipts and settlement windows (docs/13, 22)' })
   registry.register('vmu.compliance', { apiVersion: 1 }, { kind: 'service', description: 'research compliance: IRB and consent approvals, retention windows, COI disclosure and evidence packs (docs/20, 22; export control stays with domaingate)' })
@@ -895,7 +895,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     get records() { return records },
     get course() { return course },
     get conference() { return conference },
-    get instruments() { return instruments },
+    get resource() { return resource },
     get ip() { return ip },
     get funding() { return funding },
     get compliance() { return compliance },

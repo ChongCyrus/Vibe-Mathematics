@@ -241,7 +241,7 @@
     "tests/audit-vmu-glossary.test.mjs",
     "tests/vmu-wiring-index.test.mjs",
     "tests/vmu-work.test.mjs",
-"vibe-math-vmu/kernel/instruments.js",
+"vibe-math-vmu/kernel/resource.js",
 "vibe-math-vmu/kernel/biospecimen.js",
     "tests/vmu-ab-v5r-meetings.test.mjs",
     "vibe-math-vmu/settings/planned.js",

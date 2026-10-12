@@ -1031,23 +1031,6 @@ vmu.packs.active: [v5r]
 | `vmu.hr.tenureDecisionWindowDays` | int ≥0 | `60` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/hr.js` | 已接线（hr.js 读取）；默认值取自模块源码 |
 | `vmu.hr.tenureQuorum` | int ≥0 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/hr.js` | 已接线（hr.js 读取）；默认值取自模块源码 |
 | `vmu.hr.tenureTrackMonths` | int ≥0 | `36` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/hr.js` | 已接线（hr.js 读取）；默认值取自模块源码 |
-| `vmu.instruments.attachCapture` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
-| `vmu.instruments.blockOnOverdue` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
-| `vmu.instruments.calibrationDueDays` | int ≥0 | `365` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
-| `vmu.instruments.capabilityTags` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；该模块未声明默认值；★ 轮 213 实测有效默认 `[]`（instruments.js:91 `Array.isArray(tags) ? tags.map(String) : []`） |
-| `vmu.instruments.dataCaptureRef` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
-| `vmu.instruments.downtimePolicy` | string | `refuse` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
-| `vmu.instruments.hashAlgo` | string | `sha256` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
-| `vmu.instruments.ledgerDir` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
-| `vmu.instruments.maxHoldHours` | int ≥0 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
-| `vmu.instruments.overbookRatio` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
-| `vmu.instruments.priorityPolicy` | string | `fifo` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
-| `vmu.instruments.requireCalibration` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
-| `vmu.instruments.requireOwner` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
-| `vmu.instruments.reservationHorizonDays` | int ≥0 | `30` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
-| `vmu.instruments.reserve` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
-| `vmu.instruments.scheduleMaintenance` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
-| `vmu.instruments.waitlistPolicy` | string | `queue` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
 | `vmu.ip.appealWindowDays` | int ≥0 | `30` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ip.js` | 已接线（ip.js 读取）；默认值取自模块源码 |
 | `vmu.ip.authorshipRule` | string | `byContribution` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ip.js` | 已接线（ip.js 读取）；默认值取自模块源码 |
 | `vmu.ip.confidentialityWindowDays` | int ≥0 | `180` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ip.js` | 已接线（ip.js 读取）；默认值取自模块源码 |
@@ -1186,6 +1169,23 @@ vmu.packs.active: [v5r]
 | `vmu.records.treatNegativeAsFirstClass` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.replication.federationShare` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.replication.summaryEnabled` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
+| `vmu.resource.attachCapture` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
+| `vmu.resource.blockOnOverdue` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
+| `vmu.resource.calibrationDueDays` | int ≥0 | `365` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
+| `vmu.resource.capabilityTags` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；该模块未声明默认值；★ 轮 213 实测有效默认 `[]`（resource.js:91 `Array.isArray(tags) ? tags.map(String) : []`） |
+| `vmu.resource.dataCaptureRef` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
+| `vmu.resource.downtimePolicy` | string | `refuse` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
+| `vmu.resource.hashAlgo` | string | `sha256` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
+| `vmu.resource.ledgerDir` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
+| `vmu.resource.maxHoldHours` | int ≥0 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
+| `vmu.resource.overbookRatio` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
+| `vmu.resource.priorityPolicy` | string | `fifo` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
+| `vmu.resource.requireCalibration` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
+| `vmu.resource.requireOwner` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
+| `vmu.resource.reservationHorizonDays` | int ≥0 | `30` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
+| `vmu.resource.reserve` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
+| `vmu.resource.scheduleMaintenance` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
+| `vmu.resource.waitlistPolicy` | string | `queue` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
 | `vmu.review.conflictPolicy` | string | `recuse` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/reviewers.js` | 已接线（reviewers.js 读取）；默认值取自模块源码 |
 | `vmu.review.mode` | string | `single-blind` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/reviewers.js` | 已接线（reviewers.js 读取）；默认值取自模块源码 |
 | `vmu.review.quorum` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/reviewers.js` | 已接线（reviewers.js 读取）；默认值取自模块源码 |

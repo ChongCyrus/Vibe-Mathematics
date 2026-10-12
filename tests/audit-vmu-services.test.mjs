@@ -56,7 +56,7 @@ const SURFACES = {
   'vmu.meetings': 'meetings', 'vmu.ballotbox': 'ballotbox', 'vmu.records': 'records',   // round 22
   'vmu.course': 'course',   // round 24 (N13 teaching face)
   'vmu.conference': 'conference',   // round 32 (conference hosting, layered on the single-session face)
-  'vmu.instruments': 'instruments', // round 32 (instrument ledger)
+  'vmu.resource': 'resource', // round 32 (instrument ledger)
   'vmu.ip': 'ip',                   // round 32 (intellectual property / disclosure hold)
   'vmu.funding': 'funding',         // round 32 (funding rules: budget balance, cost share, settlement)
   'vmu.compliance': 'compliance',   // round 32 (research compliance; export control stays with domaingate)

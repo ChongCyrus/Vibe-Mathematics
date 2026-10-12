@@ -485,7 +485,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 > **可操作做法** ✓：**① 跨族键 ⇒ 新建该族自己的面** ✓（**用它的键表、它自己的套件** ✓）；**② 动手前【量该族的记账表与它的断言】，而不只量键的语义** ✓；**③ 新面要接的【五处】已量清** ✓（**`kernel/index.js` 四处：import ＋ create ＋ `registry.register(name, {apiVersion:1}, {kind:'service', description})` ＋ getter ✓；`package.json#files` 一条 ✓；`tests/audit-vmu-services.test.mjs` 的 SURFACES 一条 ✓；`scripts/generate-zero-mechanism-matrix.mjs` 的逐面裁定一行 ✓**）—— **轮 276 照此清单一次接通，服务审计由 68 升至 69 ✓**。
 > **另一条并存约定** ✓：**新面的拒法有两种先例** —— **`publication.js` 的 `refuse` 【抛出】✓，`funding.js` 的 `deny` 【返回】** ✓ ⇒ **新面应先量【最近的前例】，再写测试** ✓（**轮 276 我按"抛出"写了五条断言，而该面跟随 `funding` 的"返回"，五条全红 ⇒ 是【测试】错，不是面错** ✓）。，先找【它的来源清单】，再决定是补来源还是改设计** ✓。
 >
-> **⑬ ★★★ 更正一条声明，就要【改掉那条声明】——只加一句"更正说明"不算更正**（**轮 264／265 实测：卷 22 是反例** ✗✓）：**该卷 L85 早已写着"状态更正（轮 61 核实）：以下各条的'计划 ✗'字样已过期"** ✓ —— **而它下面 5 处"计划 ✗"** 【一处都没改** ✗**）** ✓；**轮 265 逐族实测后更发现：该卷点名的 22 个键族里【14 个已全部接线**（含 `instruments` 17/17 ✓、`funding` 16/16 ✓、`biospecimen` 7/7 ✓、`capacity` 12/12 ✓、`conference` 18/18 ✓、`hr` 11/11 ✓、`ip` 15/15 ✓、`records` 32/32 ✓ **）**）** ✗ ⇒ **而卷里仍称这些服务"未实现"** ✓。
+> **⑬ ★★★ 更正一条声明，就要【改掉那条声明】——只加一句"更正说明"不算更正**（**轮 264／265 实测：卷 22 是反例** ✗✓）：**该卷 L85 早已写着"状态更正（轮 61 核实）：以下各条的'计划 ✗'字样已过期"** ✓ —— **而它下面 5 处"计划 ✗"** 【一处都没改** ✗**）** ✓；**轮 265 逐族实测后更发现：该卷点名的 22 个键族里【14 个已全部接线**（含 `resource` 17/17 ✓、`funding` 16/16 ✓、`biospecimen` 7/7 ✓、`capacity` 12/12 ✓、`conference` 18/18 ✓、`hr` 11/11 ✓、`ip` 15/15 ✓、`records` 32/32 ✓ **）**）** ✗ ⇒ **而卷里仍称这些服务"未实现"** ✓。
 > **可操作做法** ✓：**① 更正时【同时】改掉被更正的那句** ✓（**保留原句仅作对照时，必须【就地标注"已过期"**，而不是只在别处加一段说明 ✓**）**；**② 涉及"实现到什么程度"的声明，一律用【实测表】而不是形容词** ✓（**本轮的做法：逐族列出"键数／已接线／读取者／裁定" ✓**）；**③ 表里的判据必须可复算** ✓（**本轮＝`docs/04` 的设置表 ＋ 内核扫描 ✓**）。★ **理由**：**读者只看那句声明本身** ✓ —— **一段远处的更正无法阻止它继续误导** ✓。
 >
 > **⑫ ★★★ 如何【退役】一个键：三处同时认可，且【点名只放台账】**（**轮 258–260 三轮换来** ✗✓）：**发现一个键是重复声明（"一个语义两个名字"）后** ✓，**直接删声明会【连红三处审计** ✗**）** —— **因为 `audit-vmu-docs` 有一条【正确的不变式】："文档里点名的每个 `vmu.*` 键都必须存在于设置中"** ✓。**而该审计【自己文档里】早就写明了豁免** ✓：**前缀属于台账的卷【直接跳过**（"台账既不声明键，也不因提及名字而产生登记义务" ✓）**）**，**生成器也跳过 `14-`** ✓ ⇒ ★★★ **因此退役只需三件事，且【审计一个字都不用改】** ✓✓：
@@ -671,7 +671,6 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `idempotency` · `list()` | ok | — | dropped=0 truncated=false | ok 或 object（列表/状态面放行 ✓；**显式 `absent` 只在去重操作上**（该操作需参数 ⇒ 探针见 NEEDS_ARGS ✓）） |
 | `identity` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ **ok**（noIssuerListMeansNoCheck: true 自曝「空 issuer 列表＝完全不做校验」 ✓）；bindPrincipal ⇒ ok 且 binding: off（记录而不耦合 ✓）。**不拒** ⇒ 形状为 ok，而非具名拒 ✓） |
 | `index` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
-| `instruments` · `status()` | ok | — | — | ok 或 object（仪器面：零机制 ⇒ **台账可读、不拒**（`status()` 返回 `ok:true` ＋ `partition` ✓）；**键数由本生成器实测输出** ✓（note 只写形状与理由 ✗）） |
 | `ip` · `list()` | ok | — | enforced=[1] fired=[0] dropped=0 enforcedScope=evaluated-so-far truncated=false | ok 或 object（实测 `list()` ⇒ **ok**（`enforced=[1] fired=[0] dropped=0` ⇒ 清单可读、**不拒** ✓）） |
 | `lean` · `submit()` | refusal | VMU_LEAN_STATEMENT_REQUIRED | — | 具名拒（带 code）（task-214 实测：`submit()` ⇒ 具名拒 **VMU_LEAN_STATEMENT_REQUIRED** ⇒ 零机制＝无命题文本 ⇒ 具名拒即真实形状 ✓） |
 | `legalentity` · `list()` | object | — | — | ok 或 object（实测（轮 276）：零声明下 status() ⇒ ok（entities=0、zeroMechanism=true 自曝 ✓）；validateInvoice() 对**缺声明的税务字段位【逐位点名】**并拒（VMU_TAX_FIELD_MISSING）；绑定未登记实体拒（VMU_ENTITY_UNKNOWN）✓） |
@@ -700,6 +699,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `registry` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `replay` · `plan()` | ok | — | truncated=[object Object] | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `repropack` · `build()` | refusal | VMU_MATH_SEED_REQUIRED | — | 具名拒（带 code）（task-214 实测：`build()` ⇒ 具名拒 **VMU_MATH_SEED_REQUIRED** ⇒ 零机制＝无复现种子 ⇒ 具名拒即真实形状 ✓） |
+| `resource` · `status()` | ok | — | — | ok 或 object（仪器面：零机制 ⇒ **台账可读、不拒**（`status()` 返回 `ok:true` ＋ `partition` ✓）；**键数由本生成器实测输出** ✓（note 只写形状与理由 ✗）） |
 | `retention` · `plan()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `reviewers` · `status()` | ok | — | — | ok 或 object（实测（轮 279）：零声明下 status() ⇒ ok（reviewers=0、zeroMechanism=true 自曝 ✓）；assign() 对【已声明冲突】具名拒（VMU_COI_VIOLATION）、对【达并发上限】具名拒（VMU_REVIEWER_OVERLOADED）；盲评解绑无理由拒（VMU_BLIND_UNBIND_DENIED）✓） |
 | `rules` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |

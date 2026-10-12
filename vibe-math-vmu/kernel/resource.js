@@ -1,4 +1,4 @@
-// vibe-math-vmu — 仪器/设备面（22 卷仪器与设施）：把 `vmu.instruments.*` **17 键**接成可观测行为。
+// vibe-math-vmu — 仪器/设备面（22 卷仪器与设施）：把 `vmu.resource.*` **17 键**接成可观测行为。
 //
 // ★ 范围基准（2026-10-11）：**本面已判定降级为扩展** ✗ —— **对数学研究举不出消费者** ✓（判据与登记见 docs/23-§1b）。
 //   **本行注释不是"已完成"，而是"待改"的证据** ✗：键族与代码仍在，**移出流程必须包含撤代码**（docs/23-§2 规则 4）。
@@ -12,35 +12,35 @@
 //   **未培训人员操作 ⇒ 拒** ✓；**借用冲突（同时段同台）⇒ 拒并点名冲突时段** ✓✓；
 //   **预约超时长上限 ⇒ 给当前/上限** ✓；**维护窗口内预约 ⇒ 拒** ✓；**使用记录缺目的 ⇒ 拒** ✓。
 
-export const INSTRUMENT_KEYS = Object.freeze([
-  'vmu.instruments.requireCalibration', 'vmu.instruments.calibrationDueDays', 'vmu.instruments.blockOnOverdue',
-  'vmu.instruments.requireOwner', 'vmu.instruments.capabilityTags', 'vmu.instruments.reserve',
-  'vmu.instruments.maxHoldHours', 'vmu.instruments.reservationHorizonDays', 'vmu.instruments.overbookRatio',
-  'vmu.instruments.priorityPolicy', 'vmu.instruments.waitlistPolicy', 'vmu.instruments.downtimePolicy',
-  'vmu.instruments.scheduleMaintenance', 'vmu.instruments.attachCapture', 'vmu.instruments.dataCaptureRef',
-  'vmu.instruments.ledgerDir', 'vmu.instruments.hashAlgo',
+export const RESOURCE_KEYS = Object.freeze([
+  'vmu.resource.requireCalibration', 'vmu.resource.calibrationDueDays', 'vmu.resource.blockOnOverdue',
+  'vmu.resource.requireOwner', 'vmu.resource.capabilityTags', 'vmu.resource.reserve',
+  'vmu.resource.maxHoldHours', 'vmu.resource.reservationHorizonDays', 'vmu.resource.overbookRatio',
+  'vmu.resource.priorityPolicy', 'vmu.resource.waitlistPolicy', 'vmu.resource.downtimePolicy',
+  'vmu.resource.scheduleMaintenance', 'vmu.resource.attachCapture', 'vmu.resource.dataCaptureRef',
+  'vmu.resource.ledgerDir', 'vmu.resource.hashAlgo',
 ])
-export const WIRED_INSTRUMENT_KEYS = Object.freeze([
-  'vmu.instruments.requireCalibration', 'vmu.instruments.calibrationDueDays', 'vmu.instruments.blockOnOverdue',
-  'vmu.instruments.requireOwner', 'vmu.instruments.capabilityTags', 'vmu.instruments.reserve',
-  'vmu.instruments.maxHoldHours', 'vmu.instruments.reservationHorizonDays', 'vmu.instruments.overbookRatio',
-  'vmu.instruments.scheduleMaintenance', 'vmu.instruments.attachCapture',
+export const WIRED_RESOURCE_KEYS = Object.freeze([
+  'vmu.resource.requireCalibration', 'vmu.resource.calibrationDueDays', 'vmu.resource.blockOnOverdue',
+  'vmu.resource.requireOwner', 'vmu.resource.capabilityTags', 'vmu.resource.reserve',
+  'vmu.resource.maxHoldHours', 'vmu.resource.reservationHorizonDays', 'vmu.resource.overbookRatio',
+  'vmu.resource.scheduleMaintenance', 'vmu.resource.attachCapture',
   // ROUND 146: these three came BACK to wired after a measurement. All three ARE read: `cfg()` reads them,
   // `fp()` prefixes the fingerprint with `hashAlgo`, `reserve()` decides with `priorityPolicy` (since this round it
   // chooses who wins a clash) and records `waitlistPolicy`. The round-115 note claimed none of them appears in an
   // accessor call - that was WRONG about the mechanism while right about one effect (`priorityPolicy` did not
   // change a decision until this round). Same class as the course visibility key in round 120.
-  'vmu.instruments.priorityPolicy', 'vmu.instruments.waitlistPolicy', 'vmu.instruments.hashAlgo',
+  'vmu.resource.priorityPolicy', 'vmu.resource.waitlistPolicy', 'vmu.resource.hashAlgo',
   // ROUND 147: `dataCaptureRef` moved here too - it is READ (a use inherits it as the capture reference) and it
   // changes an outcome, since with `attachCapture` on an empty reference refuses the use by name.
-  'vmu.instruments.dataCaptureRef',
+  'vmu.resource.dataCaptureRef',
   // ROUND 148: the ledger directory - read, and it DECIDES (a declared directory makes every use land durably).
-  'vmu.instruments.ledgerDir',
+  'vmu.resource.ledgerDir',
   // ROUND 149: the downtime policy - read, and it DECIDES (refuse the use, or record it as degraded).
-  'vmu.instruments.downtimePolicy',
+  'vmu.resource.downtimePolicy',
 ])
 /** 未接：**逐个点名＋原因** ✗✓。 */
-export const PLANNED_INSTRUMENT_KEYS = Object.freeze([
+export const PLANNED_RESOURCE_KEYS = Object.freeze([
   // ROUND 149: the last planned key on this face moved to wired. Nothing is left unwired here - the 17 keys are
   // 17 wired, which is what the partition test asserts.
   //
@@ -54,7 +54,7 @@ export const PLANNED_INSTRUMENT_KEYS = Object.freeze([
 export const ENFORCED_SCOPE = 'evaluated-so-far'
 const refuse = (code, message, hint) => ({ ok: false, code, message, hint })
 
-export function createInstruments(opts) {
+export function createResource(opts) {
   const o = opts || {}
   const readKey = (k) => (o.settings && typeof o.settings.get === 'function' ? o.settings.get(k) : (o.settings || {})[k])
   const clock = typeof o.clock === 'function' ? o.clock : () => 0
@@ -85,46 +85,46 @@ export function createInstruments(opts) {
     const n = (k, d) => { const v = Number(readKey(k)); return Number.isFinite(v) && v >= 0 ? v : d }
     const b = (k, d) => { const v = readKey(k); return v === undefined ? d : v === true }
     const s = (k, d) => { const v = readKey(k); return (v === undefined || v === null || v === '') ? d : String(v) }
-    const tags = readKey('vmu.instruments.capabilityTags')
+    const tags = readKey('vmu.resource.capabilityTags')
     return {
-      requireCalibration: b('vmu.instruments.requireCalibration', true),
-      calibrationDueDays: n('vmu.instruments.calibrationDueDays', 365),
-      blockOnOverdue: b('vmu.instruments.blockOnOverdue', true),
-      requireOwner: b('vmu.instruments.requireOwner', true),
+      requireCalibration: b('vmu.resource.requireCalibration', true),
+      calibrationDueDays: n('vmu.resource.calibrationDueDays', 365),
+      blockOnOverdue: b('vmu.resource.blockOnOverdue', true),
+      requireOwner: b('vmu.resource.requireOwner', true),
       capabilityTags: Array.isArray(tags) ? tags.map(String) : [],
-      reserve: b('vmu.instruments.reserve', true),
-      maxHoldHours: n('vmu.instruments.maxHoldHours', 8),
-      reservationHorizonDays: n('vmu.instruments.reservationHorizonDays', 30),
-      overbookRatio: n('vmu.instruments.overbookRatio', 0),
+      reserve: b('vmu.resource.reserve', true),
+      maxHoldHours: n('vmu.resource.maxHoldHours', 8),
+      reservationHorizonDays: n('vmu.resource.reservationHorizonDays', 30),
+      overbookRatio: n('vmu.resource.overbookRatio', 0),
       // ROUND 146: `preempt` is a REAL policy now (see reserve) - it decides who wins a conflict. An unknown value
       // falls back to `fifo` (the previous behaviour) and the EFFECTIVE value is echoed in every reservation reply,
       // so a typo cannot silently change the outcome without saying so.
-      priorityPolicy: ['fifo', 'preempt'].indexOf(s('vmu.instruments.priorityPolicy', 'fifo')) === -1
-        ? 'fifo' : s('vmu.instruments.priorityPolicy', 'fifo'),
-      waitlistPolicy: s('vmu.instruments.waitlistPolicy', 'queue'),
-      scheduleMaintenance: b('vmu.instruments.scheduleMaintenance', true),
-      hashAlgo: s('vmu.instruments.hashAlgo', 'sha256'),
-      attachCapture: b('vmu.instruments.attachCapture', true),
+      priorityPolicy: ['fifo', 'preempt'].indexOf(s('vmu.resource.priorityPolicy', 'fifo')) === -1
+        ? 'fifo' : s('vmu.resource.priorityPolicy', 'fifo'),
+      waitlistPolicy: s('vmu.resource.waitlistPolicy', 'queue'),
+      scheduleMaintenance: b('vmu.resource.scheduleMaintenance', true),
+      hashAlgo: s('vmu.resource.hashAlgo', 'sha256'),
+      attachCapture: b('vmu.resource.attachCapture', true),
       // ROUND 147: the DEFAULT capture reference. A use record points at the captured data instead of copying it
       // (cite, never copy - the same rule the Lean archive follows), so this key is where a pack says "captures
       // live here" and an empty value means the caller must name one per use.
-      dataCaptureRef: s('vmu.instruments.dataCaptureRef', ''),
+      dataCaptureRef: s('vmu.resource.dataCaptureRef', ''),
       // ROUND 148: where the ledger is landed, through the injected write seam. Empty (the default) keeps the
       // ledger in memory only, so nothing changes unless a pack names a directory.
-      ledgerDir: s('vmu.instruments.ledgerDir', ''),
+      ledgerDir: s('vmu.resource.ledgerDir', ''),
       // ROUND 149: what a use means while the UNIT is inside a maintenance/downtime window. `refuse` (default)
       // stops it by name and names the window; `degrade` lets it happen and RECORDS the exception on the entry.
       // An unknown value falls back to `refuse` and the effective value travels in the receipt (typos cannot
       // silently turn a refusal into a permission).
-      downtimePolicy: ['refuse', 'degrade'].indexOf(s('vmu.instruments.downtimePolicy', 'refuse')) === -1
-        ? 'refuse' : s('vmu.instruments.downtimePolicy', 'refuse'),
+      downtimePolicy: ['refuse', 'degrade'].indexOf(s('vmu.resource.downtimePolicy', 'refuse')) === -1
+        ? 'refuse' : s('vmu.resource.downtimePolicy', 'refuse'),
     }
   }
-  const keysUsed = () => WIRED_INSTRUMENT_KEYS.slice()
+  const keysUsed = () => WIRED_RESOURCE_KEYS.slice()
   const partition = () => ({
-    all: INSTRUMENT_KEYS.length, wired: WIRED_INSTRUMENT_KEYS.length, planned: PLANNED_INSTRUMENT_KEYS.length,
-    disjoint: WIRED_INSTRUMENT_KEYS.every((k) => PLANNED_INSTRUMENT_KEYS.every((p) => p[0] !== k)),
-    exact: WIRED_INSTRUMENT_KEYS.length + PLANNED_INSTRUMENT_KEYS.length === INSTRUMENT_KEYS.length,
+    all: RESOURCE_KEYS.length, wired: WIRED_RESOURCE_KEYS.length, planned: PLANNED_RESOURCE_KEYS.length,
+    disjoint: WIRED_RESOURCE_KEYS.every((k) => PLANNED_RESOURCE_KEYS.every((p) => p[0] !== k)),
+    exact: WIRED_RESOURCE_KEYS.length + PLANNED_RESOURCE_KEYS.length === RESOURCE_KEYS.length,
   })
   const fp = (x) => { const s = typeof x === 'string' ? x : JSON.stringify(x); let h = 0; for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) >>> 0; return cfg().hashAlgo + ':' + h.toString(16) }
   const DAY = 86400000
@@ -134,11 +134,11 @@ export function createInstruments(opts) {
     const c = cfg()
     const enforced = []
     const mark = (k) => { if (enforced.indexOf(k) === -1) enforced.push(k) }
-    mark('vmu.instruments.requireOwner')
+    mark('vmu.resource.requireOwner')
     const id = String(args.id || '').trim()
     if (!id) return deny('VMU_META_VALIDATION_FAILED', 'register 需要 id', '给仪器 id', enforced)
-    if (c.requireOwner && !String(args.owner || '').trim()) return deny('VMU_NOT_PERMITTED', '该配置要求仪器有责任人（vmu.instruments.requireOwner=true）', '补 owner', enforced)
-    if (c.capabilityTags.length) { mark('vmu.instruments.capabilityTags') }
+    if (c.requireOwner && !String(args.owner || '').trim()) return deny('VMU_NOT_PERMITTED', '该配置要求仪器有责任人（vmu.resource.requireOwner=true）', '补 owner', enforced)
+    if (c.capabilityTags.length) { mark('vmu.resource.capabilityTags') }
     const tags = (Array.isArray(args.tags) ? args.tags.map(String) : []).filter((t) => c.capabilityTags.length === 0 || c.capabilityTags.indexOf(t) !== -1)
     const cal = Number(args.calibratedAt)
     const calibratedAt = Number.isFinite(cal) ? cal : clock()   // **`0` 是合法时刻**（不得用 `||` 兜底 ✗）
@@ -166,7 +166,7 @@ export function createInstruments(opts) {
     const dir = cfg().ledgerDir
     if (!dir) return null                      // no directory declared ⇒ in-memory only (default, unchanged)
     if (!writeLedger) {
-      return refuse('VMU_ENGINE_UNAVAILABLE', 'no ledger write seam is bound but vmu.instruments.ledgerDir=' + dir,
+      return refuse('VMU_ENGINE_UNAVAILABLE', 'no ledger write seam is bound but vmu.resource.ledgerDir=' + dir,
         'inject { writeLedger } - the kernel never writes the host filesystem itself (docs/11 §4.1)')
     }
     let out
@@ -192,7 +192,7 @@ export function createInstruments(opts) {
     const by = String(args.by || '').trim()
     if (!by) return deny('VMU_META_VALIDATION_FAILED', 'use 需要 by', '给操作人', enforced)
     const purpose = String(args.purpose || '').trim()
-    if (!purpose) { mark('vmu.instruments.attachCapture'); return deny('VMU_META_VALIDATION_FAILED', '使用记录**缺目的** ⇒ 拒（`purpose` 必填 ✓）', '写明使用目的', enforced) }
+    if (!purpose) { mark('vmu.resource.attachCapture'); return deny('VMU_META_VALIDATION_FAILED', '使用记录**缺目的** ⇒ 拒（`purpose` 必填 ✓）', '写明使用目的', enforced) }
     /**
      * ROUND 149 — IS THE MACHINE DOWN? A maintenance window that CONTAINS now says so, and `downtimePolicy` decides
      * what that means. Until this round `use()` never looked at the windows at all: a unit could be used while it
@@ -203,30 +203,30 @@ export function createInstruments(opts) {
     const win = u.maintenance.find((w) => clock() >= w.from && clock() < w.to)
     let degraded = null
     if (win) {
-      mark('vmu.instruments.downtimePolicy')
+      mark('vmu.resource.downtimePolicy')
       if (c.downtimePolicy !== 'degrade') {
         return Object.assign(deny('VMU_NOT_PERMITTED',
-          '仪器处于维护/停机窗口（' + new Date(win.from).toISOString() + ' → ' + new Date(win.to).toISOString() + '）⇒ 拒（vmu.instruments.downtimePolicy=' + c.downtimePolicy + '）',
-          '等窗口结束，或把 vmu.instruments.downtimePolicy 设为 degrade 以【记录降级使用】（例外被记录，而不是被忽略）', enforced),
+          '仪器处于维护/停机窗口（' + new Date(win.from).toISOString() + ' → ' + new Date(win.to).toISOString() + '）⇒ 拒（vmu.resource.downtimePolicy=' + c.downtimePolicy + '）',
+          '等窗口结束，或把 vmu.resource.downtimePolicy 设为 degrade 以【记录降级使用】（例外被记录，而不是被忽略）', enforced),
         { window: { from: win.from, to: win.to }, downtimePolicy: c.downtimePolicy })
       }
       degraded = { reason: 'maintenance-window', from: win.from, to: win.to }
     }
     // 培训（capabilityTags 非空时按标签要求 ✓）
     if (u.tags.length) {
-      mark('vmu.instruments.capabilityTags')
+      mark('vmu.resource.capabilityTags')
       const have = trained.get(by) || []
       const missing = u.tags.filter((t) => have.indexOf(t) === -1)
       if (missing.length) return deny('VMU_NOT_PERMITTED', '**未培训**人员操作 ⇒ 拒（缺资质：' + missing.join('、') + '）', '先 train() 补资质', enforced)
     }
     // 校准
     if (c.requireCalibration) {
-      mark('vmu.instruments.requireCalibration')
+      mark('vmu.resource.requireCalibration')
       const due = u.calibratedAt + c.calibrationDueDays * DAY
       if (clock() > due) {
-        mark('vmu.instruments.calibrationDueDays')
+        mark('vmu.resource.calibrationDueDays')
         if (c.blockOnOverdue) {
-          mark('vmu.instruments.blockOnOverdue')
+          mark('vmu.resource.blockOnOverdue')
           return Object.assign(deny('VMU_NOT_PERMITTED', '**校准已过期**（到期日 ' + new Date(due).toISOString().slice(0, 10) + '）⇒ 拒', '先重新校准', enforced), { dueAt: due, dueDate: new Date(due).toISOString().slice(0, 10) })
         }
       }
@@ -242,15 +242,15 @@ export function createInstruments(opts) {
      */
     const capture = String(args.capture === undefined || args.capture === null ? '' : args.capture).trim() || c.dataCaptureRef
     if (c.attachCapture) {
-      mark('vmu.instruments.attachCapture')
+      mark('vmu.resource.attachCapture')
       if (!capture) {
         return deny('VMU_META_VALIDATION_FAILED',
-          '使用记录**缺数据捕获引用** ⇒ 拒（给 `capture`，或声明 vmu.instruments.dataCaptureRef）',
-          '引用捕获到哪个库对象（**只引不复制** ✗）；确不需要捕获就关掉 vmu.instruments.attachCapture', enforced)
+          '使用记录**缺数据捕获引用** ⇒ 拒（给 `capture`，或声明 vmu.resource.dataCaptureRef）',
+          '引用捕获到哪个库对象（**只引不复制** ✗）；确不需要捕获就关掉 vmu.resource.attachCapture', enforced)
       }
-      mark('vmu.instruments.dataCaptureRef')
+      mark('vmu.resource.dataCaptureRef')
     } else if (capture) {
-      mark('vmu.instruments.dataCaptureRef')
+      mark('vmu.resource.dataCaptureRef')
     }
     const at = clock()
     const record = { id: 'ur-' + (++seq), unit: u.id, by, purpose, at, capture: capture || null, degraded, fingerprint: fp({ unit: u.id, by, purpose, at, capture: capture || null, degraded }) }
@@ -258,8 +258,8 @@ export function createInstruments(opts) {
     const landed = landLedger(record)
     if (landed && landed.ok === false) return Object.assign({ enforced, enforcedScope: ENFORCED_SCOPE }, landed)
     ledger.push(record)
-    log('instruments.use ' + u.id)
-    emit({ type: 'instruments.use', unit: u.id })
+    log('resource.use ' + u.id)
+    emit({ type: 'resource.use', unit: u.id })
     return { ok: true, usageId: record.id, capture: record.capture, degraded, downtimePolicy: c.downtimePolicy, persisted: landed ? landed.path : null, fingerprint: record.fingerprint, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
@@ -267,8 +267,8 @@ export function createInstruments(opts) {
     const args = a || {}
     const c = cfg()
     const enforced = []
-    if (!c.scheduleMaintenance) return deny('VMU_NOT_PERMITTED', '本配置不允许排维护（vmu.instruments.scheduleMaintenance=false）', '打开它', ['vmu.instruments.scheduleMaintenance'])
-    enforced.push('vmu.instruments.scheduleMaintenance')
+    if (!c.scheduleMaintenance) return deny('VMU_NOT_PERMITTED', '本配置不允许排维护（vmu.resource.scheduleMaintenance=false）', '打开它', ['vmu.resource.scheduleMaintenance'])
+    enforced.push('vmu.resource.scheduleMaintenance')
     const u = units.get(String(args.id || ''))
     if (!u) return deny('VMU_NOT_FOUND', '找不到仪器', '先 register()', enforced)
     const from = Number(args.from), to = Number(args.to)
@@ -284,8 +284,8 @@ export function createInstruments(opts) {
     const c = cfg()
     const enforced = []
     const mark = (k) => { if (enforced.indexOf(k) === -1) enforced.push(k) }
-    mark('vmu.instruments.reserve')
-    if (!c.reserve) return deny('VMU_NOT_PERMITTED', '本配置不允许预约（vmu.instruments.reserve=false）', '打开它', enforced)
+    mark('vmu.resource.reserve')
+    if (!c.reserve) return deny('VMU_NOT_PERMITTED', '本配置不允许预约（vmu.resource.reserve=false）', '打开它', enforced)
     const u = units.get(String(args.id || ''))
     if (!u) return deny('VMU_NOT_FOUND', '找不到仪器 ' + String(args.id || ''), '先 register()', enforced)
     const by = String(args.by || '').trim()
@@ -295,19 +295,19 @@ export function createInstruments(opts) {
     const current = Number(args.hours)
     const hours = Number.isFinite(current) && current > 0 ? current : 1
     // 超时长上限 ⇒ **给当前/上限** ✓
-    mark('vmu.instruments.maxHoldHours')
+    mark('vmu.resource.maxHoldHours')
     if (c.maxHoldHours > 0 && hours > c.maxHoldHours) {
-      return deny('VMU_RESOURCE_BUDGET', '预约超时长上限：**当前 ' + hours + ' h / 上限 ' + c.maxHoldHours + ' h**（vmu.instruments.maxHoldHours）', '缩短时长或申请特批', enforced)
+      return deny('VMU_RESOURCE_BUDGET', '预约超时长上限：**当前 ' + hours + ' h / 上限 ' + c.maxHoldHours + ' h**（vmu.resource.maxHoldHours）', '缩短时长或申请特批', enforced)
     }
     const hrs = (from - clock()) / 3600000
-    mark('vmu.instruments.reservationHorizonDays')
+    mark('vmu.resource.reservationHorizonDays')
     if (c.reservationHorizonDays > 0 && hrs > c.reservationHorizonDays * 24) {
       return deny('VMU_RESOURCE_BUDGET', '超出预约视野：' + Math.round(hrs / 24) + ' 天 > ' + c.reservationHorizonDays + ' 天', '推近时段', enforced)
     }
     // 维护窗口 ⇒ 拒
     const win = u.maintenance.find((w) => from < w.to && (from + hours * 3600000) > w.from)
     if (win) {
-      mark('vmu.instruments.scheduleMaintenance')
+      mark('vmu.resource.scheduleMaintenance')
       return Object.assign(deny('VMU_CONFLICT', '**维护窗口内**预约 ⇒ 拒（窗口 ' + new Date(win.from).toISOString() + ' → ' + new Date(win.to).toISOString() + '）', '避开维护窗口', enforced), { conflict: [{ from: win.from, to: win.to, kind: 'maintenance' }] })
     }
     const to = from + hours * 3600000
@@ -317,9 +317,9 @@ export function createInstruments(opts) {
     let preempted = null
     if (clash.length) {
       // overbookRatio 允许有限超额 ✓；否则**拒并点名冲突时段** ✓✓
-      mark('vmu.instruments.overbookRatio')
+      mark('vmu.resource.overbookRatio')
       const allowed = c.overbookRatio > 0 && clash.length <= c.overbookRatio
-      mark('vmu.instruments.priorityPolicy')
+      mark('vmu.resource.priorityPolicy')
       if (!allowed) {
         if (c.priorityPolicy === 'preempt') {
           /**
@@ -332,18 +332,18 @@ export function createInstruments(opts) {
           if (victim) {
             victim.displaced = { by, at: clock(), reason: 'priorityPolicy=preempt' }
             preempted = { id: victim.id, by: victim.by, from: victim.from, to: victim.to }
-            emit({ type: 'instruments.preempt', unit: u.id, displaced: victim.id, by })
+            emit({ type: 'resource.preempt', unit: u.id, displaced: victim.id, by })
           }
         }
         if (!preempted) {
-          return Object.assign(deny('VMU_CONFLICT', '**同时段同台已有预约** ⇒ 拒（冲突：' + clash.map((r) => new Date(r.from).toISOString() + '→' + new Date(r.to).toISOString()).join('、') + '；priorityPolicy=' + c.priorityPolicy + '）', c.priorityPolicy === 'preempt' ? '该窗口没有可抢占的旧预约' : '换时段，或把 vmu.instruments.priorityPolicy 设为 preempt', enforced), { conflict: clash.map((r) => ({ from: r.from, to: r.to, by: r.by })), priorityPolicy: c.priorityPolicy })
+          return Object.assign(deny('VMU_CONFLICT', '**同时段同台已有预约** ⇒ 拒（冲突：' + clash.map((r) => new Date(r.from).toISOString() + '→' + new Date(r.to).toISOString()).join('、') + '；priorityPolicy=' + c.priorityPolicy + '）', c.priorityPolicy === 'preempt' ? '该窗口没有可抢占的旧预约' : '换时段，或把 vmu.resource.priorityPolicy 设为 preempt', enforced), { conflict: clash.map((r) => ({ from: r.from, to: r.to, by: r.by })), priorityPolicy: c.priorityPolicy })
         }
       }
     }
     const rec = { id: 'rs-' + (++seq), unit: u.id, by, from, to, hours, priority: c.priorityPolicy, waitlist: '' }
-    if (clash.length && c.waitlistPolicy === 'queue') { mark('vmu.instruments.waitlistPolicy'); rec.waitlist = 'queued' }
+    if (clash.length && c.waitlistPolicy === 'queue') { mark('vmu.resource.waitlistPolicy'); rec.waitlist = 'queued' }
     reservations.push(rec)
-    emit({ type: 'instruments.reserve', unit: u.id })
+    emit({ type: 'resource.reserve', unit: u.id })
     return { ok: true, reservationId: rec.id, unit: u.id, from, to, hours, waitlist: rec.waitlist, preempted, priorityPolicy: c.priorityPolicy, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
@@ -351,7 +351,7 @@ export function createInstruments(opts) {
     const u = units.get(String((a && a.id) || ''))
     if (!u) return deny('VMU_NOT_FOUND', '找不到仪器', '先 register()', [])
     u.calibratedAt = Number(a && a.at) || clock()
-    return { ok: true, id: u.id, calibratedAt: u.calibratedAt, enforced: ['vmu.instruments.requireCalibration'], enforcedScope: ENFORCED_SCOPE }
+    return { ok: true, id: u.id, calibratedAt: u.calibratedAt, enforced: ['vmu.resource.requireCalibration'], enforcedScope: ENFORCED_SCOPE }
   }
 
   const status = (a) => {
@@ -369,4 +369,4 @@ export function createInstruments(opts) {
   return { register, train: setSkill, use, openWindow, reserve, calibrate, status, keysUsed, partition, config: cfg, refusals: () => Object.fromEntries(refusals), ledger: () => ledger.slice(), reservations: () => reservations.slice() }
 }
 
-export default createInstruments
+export default createResource

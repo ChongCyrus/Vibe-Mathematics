@@ -66,7 +66,7 @@ const EXPECT = {
   pack: G('具名拒（带 code）', '第 26 轮已修 ✓：实测拒绝带 **`VMU_PACK_MISSING`**（曾误标"不带 code" ✗）'),
   'script-bridge': G('具名拒（带 code）', '第 26 轮已修 ✓：实测拒绝带 **`VMU_INVALID_ARGUMENT`**（同上 ✗）'),
   // ── 在途新模块：**必须被裁定** ✓（第 33 轮规则收紧 ✓）—— 从模块实测反推 ✓
-  instruments: G('ok 或 object', '仪器面：零机制 ⇒ **台账可读、不拒**（`status()` 返回 `ok:true` ＋ `partition` ✓）；**键数由本生成器实测输出** ✓（note 只写形状与理由 ✗）'),
+  resource: G('ok 或 object', '仪器面：零机制 ⇒ **台账可读、不拒**（`status()` 返回 `ok:true` ＋ `partition` ✓）；**键数由本生成器实测输出** ✓（note 只写形状与理由 ✗）'),
   // **按实测升级为真期望**（第 34 轮 ✓；零机制**不传 settings** 实测 ✓，**不编造** ✗）
   conference: G('ok 或 object', '实测 `open()` ⇒ **ok**（`enforced=[2] fired=[2]` ⇒ 零机制**按默认阶梯开成、放行** ✓，与 `meetings` 同口径 ✓）'),
   ip: G('ok 或 object', '实测 `list()` ⇒ **ok**（`enforced=[1] fired=[0] dropped=0` ⇒ 清单可读、**不拒** ✓）'),

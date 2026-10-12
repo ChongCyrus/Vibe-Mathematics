@@ -37,7 +37,7 @@
 
 ### 0.3 四条哲学自检（每节末都能回答）
 
-- **自由度（F）**：默认**无运营层** —— 不声明 `vmu.funding.*`／`vmu.instruments.*` 等任何族，就等于"没有财务/设施/法务流程"的纯研究机构 ✓；
+- **自由度（F）**：默认**无运营层** —— 不声明 `vmu.funding.*`／`vmu.resource.*` 等任何族，就等于"没有财务/设施/法务流程"的纯研究机构 ✓；
 - **可调控性（T）**：每个旋钮给默认/域/热改等级（H0–H3）/谁可改（院士／运营席／pack） ✓；
 - **可定义性（D）**：所有"规则"落在 **判定点**（`ops.*` 谓词）或 **pack 声明**（预算表、席位表、合规日历模板）⇒ 不改内核 ✓；
 - **扩展性（X）**：新资助方/新会议形态/新合规辖区**只加数据与判定点** ✓。
@@ -63,7 +63,7 @@
 | # | 族 | 可依附的现有底座 | 可调控键族 | 码族 | 成熟度 |
 |---|---|---|---|---|---|
 | **0** | **货币与舍入（Money，横切规范）** | **无（本卷新增类型规范 §3.0）** | `vmu.money.*` | `VMU_MONEY_*`／`VMU_CURRENCY_*`／`VMU_FX_*`／`VMU_ROUNDING_*`／`VMU_AMOUNT_*`／`VMU_SCALE_*`／`VMU_ALLOCATION_*` | ✗ |
-| 1 | 仪器与设备 | `vibe_vmu_records`／`vibe_vmu_task`／07 `datasets` | `vmu.instruments.*` | `VMU_EQUIP_*` | ✗ |
+| 1 | 仪器与设备 | `vibe_vmu_records`／`vibe_vmu_task`／07 `datasets` | `vmu.resource.*` | `VMU_EQUIP_*` | ✗ |
 | 2 | 经费与财务 | `vibe_vmu_records`／08 工作流／17 令牌（**仅参照**） | `vmu.funding.*`＋`vmu.money.*` | `VMU_FUNDING_*` | ✗ |
 | 3 | 知识产权 | `vibe_vmu_records`／16 出版面／20 许可 | `vmu.ip.*` | `VMU_IP_*` | ✗ |
 | 4 | 会务与活动 | **08 会议/表决原语** ＋ 16 评审面 | `vmu.conference.*` | `VMU_CONF_*` | ✗ |
@@ -76,7 +76,7 @@
 | **11** | **税务与法务实体（N9）** | §3.0 Money／§3.1 账户／20 密级 | `vmu.legalentity.*` | `VMU_ENTITY_*`／`VMU_TAX_*`／`VMU_CROSSBORDER_*` | ✗ |
 | **12** | **DUA／MTA 协议闸（N10）** | §7.1 协议登记／21 提醒（引用） | `vmu.agreements.*` | `VMU_AGREEMENT_*` | ✗ |
 
-> **成熟度诚实声明** ✗（★ **轮 264 部分更正** ✓✓）：**本卷若干族的承载面【早已存在】** ✓ —— **实测：`kernel/instruments.js`（359 行 ✓，含登记/预约/校准/阻断 ✓）、`kernel/funding.js`（693 行 ✓，含 `openAccount`／`request`／`expense`／`settle` ✓）、`kernel/collab.js`（285 行 ✓，含 `authorship`／`settle` ✓）、`kernel/biospecimen.js`（195 行 ✓）** ✓ ⇒ **下文各处若仍写"计划 ✗"，应以上述承载面为准** ✓；**逐族成熟度的完整复核仍待做** ✗。**原始声明（保留以备对照）**：本卷 **13 个族（含 §3.0 的货币类型与 §2.5／§3.6／§7.4 三个追加族）、9 个服务、9 个工具、10 个钩子、9 个协议全部为规划**（`settings/planned.js` 里 `planned:true`）✓ —— 今天能用的只有**底座**（记录/任务/会议/设置/中间件/pack/脚本桥）✓。
+> **成熟度诚实声明** ✗（★ **轮 264 部分更正** ✓✓）：**本卷若干族的承载面【早已存在】** ✓ —— **实测：`kernel/resource.js`（359 行 ✓，含登记/预约/校准/阻断 ✓）、`kernel/funding.js`（693 行 ✓，含 `openAccount`／`request`／`expense`／`settle` ✓）、`kernel/collab.js`（285 行 ✓，含 `authorship`／`settle` ✓）、`kernel/biospecimen.js`（195 行 ✓）** ✓ ⇒ **下文各处若仍写"计划 ✗"，应以上述承载面为准** ✓；**逐族成熟度的完整复核仍待做** ✗。**原始声明（保留以备对照）**：本卷 **13 个族（含 §3.0 的货币类型与 §2.5／§3.6／§7.4 三个追加族）、9 个服务、9 个工具、10 个钩子、9 个协议全部为规划**（`settings/planned.js` 里 `planned:true`）✓ —— 今天能用的只有**底座**（记录/任务/会议/设置/中间件/pack/脚本桥）✓。
 
 ### 0.1 逐族成熟度实测表（轮 265）✓✓
 
@@ -84,7 +84,7 @@
 
 | 族 | 键数 | 已接线 | 读取者（括号＝读了多少条） | 裁定 |
 |---|---|---|---|---|
-| `vmu.instruments` | 17 | **17** | `instruments.js`(17) | ★ **已接线 ✓（上文 §2 的"计划 ✗"已过期）** |
+| `vmu.resource` | 17 | **17** | `resource.js`(17) | ★ **已接线 ✓（上文 §2 的"计划 ✗"已过期）** |
 | `vmu.funding` | 16 | **16** | `funding.js`(16) | ★ **已接线 ✓（§3 的"计划 ✗"已过期）** |
 | `vmu.money` | 11 | **11** | `funding.js`(11) | ★ **已接线 ✓** |
 | `vmu.biospecimen` | 7 | **7** | `biospecimen.js`(7) | ★ **已接线 ✓（§L168"本仓今天没有任何样本/保管实现"【已不成立】✗）** |
@@ -119,9 +119,9 @@
 
 ---
 
-## 2. 实验仪器与设备（Instruments & Equipment）
+## 2. 共享资源与资格授权（Shared Resources & Qualification）
 
-> **⚠ 状态更正（轮 61 核实；以下各条的"计划 ✗"字样已过期）** ✓✓：**本族已实现** —— 归属面是 **`kernel/instruments.js`**（**14/17 键已接线** ✓：责任人／能力标签／**校准到期即阻断**（`blockOnOverdue`）／预约（`reserve`／`maxHoldHours`／`reservationHorizonDays`／`overbookRatio`／`priorityPolicy`／`waitlistPolicy`）／**维护排期**（`scheduleMaintenance`）／**采集挂引用**（`attachCapture`））＋ **`kernel/capacity.js`**（`facilities`＋重叠即 `VMU_CAPACITY_FACILITY_CONFLICT` ✓）✓。**仅 3 键未接线且理由已由模块写明** ✗（`ledgerDir` 无 FS 接缝／`dataCaptureRef` 需 library／`downtimePolicy` 需运维协同）。**归属表以 §14 为准** ✓（本节只保留接口形状与判定点，**不再声称未实现** ✗✓）。
+> **⚠ 状态更正（轮 61 核实；以下各条的"计划 ✗"字样已过期）** ✓✓：**本族已实现** —— 归属面是 **`kernel/resource.js`**（**14/17 键已接线** ✓：责任人／能力标签／**校准到期即阻断**（`blockOnOverdue`）／预约（`reserve`／`maxHoldHours`／`reservationHorizonDays`／`overbookRatio`／`priorityPolicy`／`waitlistPolicy`）／**维护排期**（`scheduleMaintenance`）／**采集挂引用**（`attachCapture`））＋ **`kernel/capacity.js`**（`facilities`＋重叠即 `VMU_CAPACITY_FACILITY_CONFLICT` ✓）✓。**仅 3 键未接线且理由已由模块写明** ✗（`ledgerDir` 无 FS 接缝／`dataCaptureRef` 需 library／`downtimePolicy` 需运维协同）。**归属表以 §14 为准** ✓（本节只保留接口形状与判定点，**不再声称未实现** ✗✓）。
 
 ### 2.1 台账与登记
 
@@ -130,8 +130,8 @@
 | **名称** | 仪器台账（Instrument Ledger） |
 | **目的** | 每台/每套设备有**唯一身份**（资产号＋位置＋责任人＋能力标签），使"谁能用、用了什么、产出挂在哪"可追溯 ✓ |
 | **面向谁** | 设施管理员、PI、执行实验的代理 |
-| **接口形状** | 服务 `vmu.instruments`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））：`register(instrument)`／`list(filter)`／`get(id)`／`retire(id, reason)`；工具 `vibe_vmu_instruments` ⛔ 未实现（唯一入口：登记/预约/维护三类操作）；协议 `InstrumentReservation` ⛔ 待实现 |
-| **可调控参数** | `vmu.instruments.ledgerDir`（默认 `Ops/Instruments`）、`vmu.instruments.requireOwner`（默认 `true`）、`vmu.instruments.capabilityTags`（默认 `[]`） |
+| **接口形状** | 服务 `vmu.resource`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））：`register(instrument)`／`list(filter)`／`get(id)`／`retire(id, reason)`；工具 `vibe_vmu_instruments` ⛔ 未实现（唯一入口：登记/预约/维护三类操作）；协议 `InstrumentReservation` ⛔ 待实现 |
+| **可调控参数** | `vmu.resource.ledgerDir`（默认 `Ops/Instruments`）、`vmu.resource.requireOwner`（默认 `true`）、`vmu.resource.capabilityTags`（默认 `[]`） |
 | **相关错误码** | `VMU_EQUIP_NOT_REGISTERED` ⛔／`VMU_EQUIP_OWNER_REQUIRED` ⛔（详见 §14） |
 | **四条哲学** | F：不登记＝无设施概念 ✓｜T：目录与必填字段可配 ✓｜D：能力标签与准入规则由 pack 声明 ✓｜X：新设备类型只加标签 ✓ |
 | **实现要点** | 台账是**记录轨条目**（07 只追加）＋**索引视图**；删除＝`retire`（保留历史，不物理删）✓ |
@@ -146,8 +146,8 @@
 | **名称** | 预约与占用（Reservation & Occupancy） |
 | **目的** | 同一资源在**时间轴上不冲突** ✓；冲突时按**显式优先级**裁决并留痕（不靠默认先到先得）✓ |
 | **面向谁** | 使用者、设施管理员、调度代理 |
-| **接口形状** | 服务 `vmu.instruments.reserve(holder, window, purpose)`／`release(reservationId)`／`waitlist(id)`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））；钩子 `ops/reservation-requested` ⛔ 提案、`ops/reservation-conflict` ⛔ 提案；协议 `InstrumentReservation` ⛔ |
-| **可调控参数** | `vmu.instruments.reservationHorizonDays`（默认 `30`）、`vmu.instruments.maxHoldHours`（默认 `12`）、`vmu.instruments.priorityPolicy`（默认 `fifo`；可选 `pi-first`／`quota-weighted`）、`vmu.instruments.waitlistPolicy`（默认 `auto-offer`）、`vmu.instruments.overbookRatio`（默认 `1.0`＝不超额） |
+| **接口形状** | 服务 `vmu.resource.reserve(holder, window, purpose)`／`release(reservationId)`／`waitlist(id)`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））；钩子 `ops/reservation-requested` ⛔ 提案、`ops/reservation-conflict` ⛔ 提案；协议 `InstrumentReservation` ⛔ |
+| **可调控参数** | `vmu.resource.reservationHorizonDays`（默认 `30`）、`vmu.resource.maxHoldHours`（默认 `12`）、`vmu.resource.priorityPolicy`（默认 `fifo`；可选 `pi-first`／`quota-weighted`）、`vmu.resource.waitlistPolicy`（默认 `auto-offer`）、`vmu.resource.overbookRatio`（默认 `1.0`＝不超额） |
 | **相关错误码** | `VMU_EQUIP_SLOT_CONFLICT` ⛔／`VMU_EQUIP_HOLD_LIMIT` ⛔／`VMU_EQUIP_WAITLIST_FULL` ⛔ |
 | **四条哲学** | F：不排期＝自由抢用 ✓｜T：时间窗/上限/优先级全可配 ✓｜D：优先级**是 pack 的判定点**（内核不认识"PI 优先"）✓｜X：新调度算法只换判定点 ✓ |
 | **实现要点** | 冲突判定＝**区间集合**运算（确定性、可复算）；裁决必须写 `reason` 与规则来源 ✓；候补"自动递补"可被人类审批打断（O-6）✓ |
@@ -162,8 +162,8 @@
 | **名称** | 维护与校准（Maintenance & Calibration） |
 | **目的** | 校准过期/维护中的设备**不得**被用于产出"可引用数据" ✓（把"能用"与"数据可信"分开） |
 | **面向谁** | 设施管理员、质量负责人、执行实验的代理 |
-| **接口形状** | 服务 `vmu.instruments.scheduleMaintenance(id, window)`／`recordCalibration(id, cert)`／`block(id, reason)`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））；钩子 `ops/calibration-due` ⛔ 提案、`ops/downtime-started` ⛔ 提案 |
-| **可调控参数** | `vmu.instruments.requireCalibration`（默认 `true`）、`vmu.instruments.calibrationDueDays`（默认 `365`）、`vmu.instruments.blockOnOverdue`（默认 `true`）、`vmu.instruments.downtimePolicy`（默认 `queue`；可选 `fail`） |
+| **接口形状** | 服务 `vmu.resource.scheduleMaintenance(id, window)`／`recordCalibration(id, cert)`／`block(id, reason)`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））；钩子 `ops/calibration-due` ⛔ 提案、`ops/downtime-started` ⛔ 提案 |
+| **可调控参数** | `vmu.resource.requireCalibration`（默认 `true`）、`vmu.resource.calibrationDueDays`（默认 `365`）、`vmu.resource.blockOnOverdue`（默认 `true`）、`vmu.resource.downtimePolicy`（默认 `queue`；可选 `fail`） |
 | **相关错误码** | `VMU_EQUIP_CALIBRATION_DUE` ⛔／`VMU_EQUIP_MAINTENANCE_BLOCKED` ⛔／`VMU_EQUIP_CERT_MISSING` ⛔ |
 | **四条哲学** | F：不声明＝无校准要求 ✓｜T：周期/阻断策略可配 ✓｜D：设备类别→校准要求的映射由 pack ✓｜X：新证书类型只加字段 ✓ |
 | **实现要点** | "过期阻断"必须**与产出绑定**：被阻断设备的数据在 07 的 `datasets` 上打**来源标注**（血缘可追，引用 16-L9）✓；解除阻断需人批准 ✓ |
@@ -178,8 +178,8 @@
 | **名称** | 仪器直采引用（Instrument Capture Reference） |
 | **目的** | 仪器产出的原始文件**不复制**，只在记录里给**引用**（路径＋哈希＋设备号＋时间窗＋校准状态）✓ |
 | **面向谁** | 实验执行者、数据管理、审计 |
-| **接口形状** | 服务 `vmu.instruments.attachCapture(id, datasetRef)`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））；协议 `CaptureRef` ⛔ |
-| **可调控参数** | `vmu.instruments.dataCaptureRef`（默认 `required`；可选 `optional`→`ignore`）、`vmu.instruments.hashAlgo`（默认 `sha256`） |
+| **接口形状** | 服务 `vmu.resource.attachCapture(id, datasetRef)`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））；协议 `CaptureRef` ⛔ |
+| **可调控参数** | `vmu.resource.dataCaptureRef`（默认 `required`；可选 `optional`→`ignore`）、`vmu.resource.hashAlgo`（默认 `sha256`） |
 | **相关错误码** | `VMU_EQUIP_CAPTURE_UNLINKED` ⛔ |
 | **四条哲学** | F：不挂引用＝数据与设备无关 ✓｜T：必填程度可配 ✓｜D：字段集由 pack ✓｜X：新采集格式只加字段 ✓ |
 | **实现要点** | 引用**必须**含校准状态快照 ⇒ 事后可判定"这份数据来自已校准设备"✓ |
@@ -652,7 +652,7 @@
 ### 11.1 三层职责
 | 层 | 决定什么 | 现状 |
 |---|---|---|
-| **settings**（`vmu.money.*`／`vmu.instruments.*`／`funding.*`／`ip.*`／`conference.*`／`outreach.*`／`collab.*`／`compliance.*`／`capacity.*`／`hr.*`） | 阈值、窗口、必填字段、强制度、周期、**金额表示与舍入** | ✗ 全部为计划键（`planned:true`）✓ |
+| **settings**（`vmu.money.*`／`vmu.resource.*`／`funding.*`／`ip.*`／`conference.*`／`outreach.*`／`collab.*`／`compliance.*`／`capacity.*`／`hr.*`） | 阈值、窗口、必填字段、强制度、周期、**金额表示与舍入** | ✗ 全部为计划键（`planned:true`）✓ |
 | **中间件** | 在运营动作**前后**插入检查与记账（`ops/*`、`ip/*`、`compliance/*` 钩子均为**提案** ✗） | 机制已实现 ✓（05），本卷钩子未实现 ✗ |
 | **pack** | 组织政策：科目树、审批链、冲突定义、发言人、合规项清单、任期规则 | 机制已实现 ✓（10），运营 pack 未写 ✗ |
 
@@ -682,7 +682,7 @@
 |---|---|---|
 | 工具 | `vibe_vmu_instruments` ⛔ 未实现、`vibe_vmu_funding` ⛔ 未实现、`vibe_vmu_ip` ⛔ 未实现、`vibe_vmu_conference` ⛔ 未实现、`vibe_vmu_outreach` ⛔ 未实现、`vibe_vmu_collab` ⛔ 未实现、`vibe_vmu_compliance` ⛔ 未实现、`vibe_vmu_capacity` ⛔ 未实现、`vibe_vmu_hr` ⛔ 未实现 | ✗ |
 | 工具（复用） | `vibe_vmu_records` ✓、`vibe_vmu_task` ✓、`vibe_vmu_meeting` ✓、`vibe_vmu_set` ✓、`vibe_vmu_middleware` ✓、`vibe_vmu_pack` ✓、`vibe_vmu_script` ✓、`vibe_vmu_status` ✓、`vibe_vmu_control` ✓ | ✓ |
-| 服务 | `vmu.instruments`／`vmu.funding`／`vmu.ip`／`vmu.conference`／`vmu.outreach`／`vmu.collab`／`vmu.compliance`／`vmu.capacity`／`vmu.hr`（计划 `kernel/ops/*`） | ✗ |
+| 服务 | `vmu.resource`／`vmu.funding`／`vmu.ip`／`vmu.conference`／`vmu.outreach`／`vmu.collab`／`vmu.compliance`／`vmu.capacity`／`vmu.hr`（计划 `kernel/ops/*`） | ✗ |
 | 钩子 | `ops/expense-requested` ⛔ 提案、`ops/expense-approved` ⛔ 提案、`ops/receipt-recorded` ⛔ 提案、`ops/reservation-requested` ⛔ 提案、`ops/reservation-conflict` ⛔ 提案、`ops/calibration-due` ⛔ 提案、`ip/disclosure-before` ⛔ 提案、`ip/publication-hold` ⛔ 提案、`conference/cfp-open` ⛔ 提案、`conference/decision` ⛔ 提案、`outreach/draft-before` ⛔ 提案、`compliance/calendar-due` ⛔ 提案、`capacity/pool-low` ⛔ 提案、`hr/review-season-open` ⛔ 提案 | ✗ |
 | 协议 | `InstrumentReservation` ⛔、`ExpenseClaim` ⛔、`CostShareSplit` ⛔、`IpDisclosure` ⛔、`CfP` ⛔、`ReviewAssignment` ⛔、`AuditEvidencePack` ⛔、`CapacityPlan` ⛔、`TenureReview` ⛔ | ✗ |
 
@@ -692,20 +692,20 @@
 
 | 族 | 键 | 类型 | 默认 | 域 | 谁可改 |
 |---|---|---|---|---|---|
-| 仪器 | `vmu.instruments.ledgerDir` | string | `Ops/Instruments` | 相对项目根 | 运营席 |
-| 仪器 | `vmu.instruments.requireOwner` | boolean | `true` | — | pack |
-| 仪器 | `vmu.instruments.capabilityTags` | string[] | `[]` | 标签 | pack |
-| 仪器 | `vmu.instruments.reservationHorizonDays` | integer | `30` | ≥0 | 运营席 |
-| 仪器 | `vmu.instruments.maxHoldHours` | integer | `12` | ≥1 | 运营席 |
-| 仪器 | `vmu.instruments.priorityPolicy` | string | `fifo` | `fifo`｜`pi-first`｜`quota-weighted` | pack |
-| 仪器 | `vmu.instruments.waitlistPolicy` | string | `auto-offer` | `auto-offer`｜`manual`｜`off` | 运营席 |
-| 仪器 | `vmu.instruments.overbookRatio` | number | `1.0` | ≥1.0 | 运营席 |
-| 仪器 | `vmu.instruments.requireCalibration` | boolean | `true` | — | pack |
-| 仪器 | `vmu.instruments.calibrationDueDays` | integer | `365` | ≥1 | 运营席 |
-| 仪器 | `vmu.instruments.blockOnOverdue` | boolean | `true` | — | pack |
-| 仪器 | `vmu.instruments.downtimePolicy` | string | `queue` | `queue`｜`fail` | 运营席 |
-| 仪器 | `vmu.instruments.dataCaptureRef` | string | `required` | `required`｜`optional`｜`ignore` | pack |
-| 仪器 | `vmu.instruments.hashAlgo` | string | `sha256` | 算法名 | 内核固定（可读） |
+| 资源 | `vmu.resource.ledgerDir` | string | `Ops/Instruments` | 相对项目根 | 运营席 |
+| 资源 | `vmu.resource.requireOwner` | boolean | `true` | — | pack |
+| 资源 | `vmu.resource.capabilityTags` | string[] | `[]` | 标签 | pack |
+| 资源 | `vmu.resource.reservationHorizonDays` | integer | `30` | ≥0 | 运营席 |
+| 资源 | `vmu.resource.maxHoldHours` | integer | `12` | ≥1 | 运营席 |
+| 资源 | `vmu.resource.priorityPolicy` | string | `fifo` | `fifo`｜`pi-first`｜`quota-weighted` | pack |
+| 资源 | `vmu.resource.waitlistPolicy` | string | `auto-offer` | `auto-offer`｜`manual`｜`off` | 运营席 |
+| 资源 | `vmu.resource.overbookRatio` | number | `1.0` | ≥1.0 | 运营席 |
+| 资源 | `vmu.resource.requireCalibration` | boolean | `true` | — | pack |
+| 资源 | `vmu.resource.calibrationDueDays` | integer | `365` | ≥1 | 运营席 |
+| 资源 | `vmu.resource.blockOnOverdue` | boolean | `true` | — | pack |
+| 资源 | `vmu.resource.downtimePolicy` | string | `queue` | `queue`｜`fail` | 运营席 |
+| 资源 | `vmu.resource.dataCaptureRef` | string | `required` | `required`｜`optional`｜`ignore` | pack |
+| 资源 | `vmu.resource.hashAlgo` | string | `sha256` | 算法名 | 内核固定（可读） |
 | 经费 | `vmu.funding.accountsDir` | string | `Ops/Funding` | 相对项目根 | 运营席 |
 | 经费 | `vmu.funding.currency` | string | `CNY` | ISO-4217 | 运营席 |
 | 经费 | `vmu.funding.budgetLineGranularity` | string | `category` | `category`｜`task`｜`member` | pack |
@@ -843,7 +843,7 @@
 
 | 族 | 裁决 | 理由（可核） |
 |---|---|---|
-| **设备台账／预约／校准／维护**（`VMU_EQUIP_*`） | **已实现 ✓（轮 61 核到归属；不需新代码 ✗）** | **⓪ 前提步的实测结果** ✓✓：该族**已由 `kernel/instruments.js` 实现**（**14/17 键已接线** ✓）—— `requireOwner`／`capabilityTags`／`requireCalibration`／`calibrationDueDays`／**`blockOnOverdue`**（**校准过期即阻断** ✓＝§2.3）／**`reserve`**／`maxHoldHours`（**超占用上限** ✓）／`reservationHorizonDays`／`overbookRatio`／`priorityPolicy`／**`waitlistPolicy`**（候补 ✓）／**`scheduleMaintenance`** ✓／`attachCapture`（**采集挂引用** ✓＝§2.4）／`hashAlgo`；**facility 预约与重叠拒**另由 **`kernel/capacity.js`** 承担（`facilities`／`fromMs`／`toMs`／`VMU_CAPACITY_FACILITY_CONFLICT` ✓＝§2.2）✓。**剩余 3 个键未接线且理由由模块自己写明** ✓✓：`ledgerDir`（**无 FS 接缝** ✗）、`dataCaptureRef`（**需 library 面，只引用** ✗）、`downtimePolicy`（**需运维/告警协同** ✗）⇒ **未做 ✗ 且明写** ✓ |
+| **设备台账／预约／校准／维护**（`VMU_EQUIP_*`） | **已实现 ✓（轮 61 核到归属；不需新代码 ✗）** | **⓪ 前提步的实测结果** ✓✓：该族**已由 `kernel/resource.js` 实现**（**14/17 键已接线** ✓）—— `requireOwner`／`capabilityTags`／`requireCalibration`／`calibrationDueDays`／**`blockOnOverdue`**（**校准过期即阻断** ✓＝§2.3）／**`reserve`**／`maxHoldHours`（**超占用上限** ✓）／`reservationHorizonDays`／`overbookRatio`／`priorityPolicy`／**`waitlistPolicy`**（候补 ✓）／**`scheduleMaintenance`** ✓／`attachCapture`（**采集挂引用** ✓＝§2.4）／`hashAlgo`；**facility 预约与重叠拒**另由 **`kernel/capacity.js`** 承担（`facilities`／`fromMs`／`toMs`／`VMU_CAPACITY_FACILITY_CONFLICT` ✓＝§2.2）✓。**剩余 3 个键未接线且理由由模块自己写明** ✓✓：`ledgerDir`（**无 FS 接缝** ✗）、`dataCaptureRef`（**需 library 面，只引用** ✗）、`downtimePolicy`（**需运维/告警协同** ✗）⇒ **未做 ✗ 且明写** ✓ |
 | **经费台账／预算行／凭证链**（`VMU_FUNDING_*`） | **做 ✓** | `funding` 面**已实现**（16 键 ✓、分摊余数具名 ✓）⇒ 其余项是其自然延伸 |
 | **货币与舍入类型**（§3.0，**N1**） | **不做 ✗** | **⑤重复**：`funding` 已用**最小货币单位整数**＋**具名余数**（`VMU_ALLOCATION_REMAINDER` ✓）⇒ 再引入币种／汇率／审计四元组是**另一套会计系统**（**②无对应键**、**③无消费者**）⇒ 超出 vmu 初衷（**研究编排，不是账务** ✓） |
 | **生物样本库链式保管**（§2.5，**N4**） | **不做 ✗** | **③无消费者**（无实验室系统接入面 ✓）；真需要"链式保管"应**复用**已实现的 `ip`（披露闸 ✓）与 `compliance`（同意／IRB ✓），**不新建一族** |
@@ -852,7 +852,7 @@
 | **公众摘要证据保真**（§6.1，`VMU_OUTREACH_*`） | **做 ✓（轮 63 收窄落点；轮 64 已实现最小判据）** | **①改变决定** ✓（"**内部未定论 ⇒ 不得写成已证明**"**可判定** ✓）；**⓪ 步结论** ✓：**意图已在论文轨道提示词层承载**（`vibe-math-v5.js:5825-5826` ✓），**但机器判据此前不在** ✗ —— **受理处 `paperRecordPart` 把空 `evidence` 静默收成 `[]`，只把"声称证据：0 条"写进日志** ✗✓。**轮 64 已实现** ✓✓：**交付件 `evidence` 为空 ⇒ 具名拒 `VMU_OUTREACH_REF_MISSING`**（**该码此前已在 `03-§8` 登记为规划码** ✓ ⇒ **用即转"已实现"** ✓），并**同时给成员发一条说明**（"每条结论必须指向库内已存在证据；未决/被否证必须显式标注" ✓）。**未做 ✗ 明列**：① ~~"拒了但没人再问" ⇒ 流程会卡住~~ ⇒ **轮 66 已修 ✓✓**：**拒绝后"有界再问"**（`reaskAfterRefusal` ✓：**每成员最多 2 次**，超限**自曝"需要所办介入"** ⇒ **绝不死循环** ✗）；**且旧有的"空 part"拒绝同样接上了再问** ✓（**既有缺口一并补掉** ✓）。**因果验证** ✓✓：桩**只省略一次证据** ⇒ **`r-2` 被问了两次** ✓（`attempts={"acad":1,"r-1":1,"r-2":2,"r-3":1}` ✓）且**流程正常完成** ✓（`passed=101 failed=0` ✓）⇒ **去掉"拒"则无第二次；去掉"再问"则停摆**（**轮 65 实测 `passed=89 failed=11`** ✓）✓✓；② "**确定性措辞被置信度覆盖**"（strict 档）**需 pack 词表判定点** ✗；③ `vmu.outreach.*` 四键**未登记未接线** ✗；④ **独立 `vmu.outreach` 服务不建** ✗（**无消费者** ✓） |
 
 **落地顺序** ✓：先做**与已实现面同族**的三族（设备／经费／披露 ✓），**其余只留本节一行** ✓；将来**真有消费者 ⇒ 改判**，并把该行升级为规格 ✓。
-> **★ 结局（轮 59–79 已核 ✓✓）**：**设备族 = 已实现**（`kernel/instruments.js` 14/17 键 ＋ `capacity` 的 facility 重叠拒 ✓，**不需要新代码** ✗）；**经费族 = 已实现**（`funding` 16 键；**金额必为整数**已由四条入口具名拒 ✓）；**协议闸 = 已落地**（`ip.transfer()` 的 `agreement.expiresAt`／`restrictions` ✓）；**公众摘要证据保真 = 已落地**（论文轨道交付点：**`evidence` 为空 ⇒ 具名拒 ＋ 有界再问** ✓，因果探针实测 `r-2` 被问两次且流程完成 ✓）。**判"不做 ✗"的四族**（会计层／生物样本库／税务实体／DUA 模板）**规格已删、只留一行** ✓。**未做 ✗ 明列**：`vmu.outreach.*` 四键未登记未接线 ✓；"确定性措辞被置信度覆盖"需 pack 词表 ✓；`ip` 的 5 个**服务面**有意不入 settings ✓。
+> **★ 结局（轮 59–79 已核 ✓✓）**：**设备族 = 已实现**（`kernel/resource.js` 14/17 键 ＋ `capacity` 的 facility 重叠拒 ✓，**不需要新代码** ✗）；**经费族 = 已实现**（`funding` 16 键；**金额必为整数**已由四条入口具名拒 ✓）；**协议闸 = 已落地**（`ip.transfer()` 的 `agreement.expiresAt`／`restrictions` ✓）；**公众摘要证据保真 = 已落地**（论文轨道交付点：**`evidence` 为空 ⇒ 具名拒 ＋ 有界再问** ✓，因果探针实测 `r-2` 被问两次且流程完成 ✓）。**判"不做 ✗"的四族**（会计层／生物样本库／税务实体／DUA 模板）**规格已删、只留一行** ✓。**未做 ✗ 明列**：`vmu.outreach.*` 四键未登记未接线 ✓；"确定性措辞被置信度覆盖"需 pack 词表 ✓；`ip` 的 5 个**服务面**有意不入 settings ✓。
 
 ---
 

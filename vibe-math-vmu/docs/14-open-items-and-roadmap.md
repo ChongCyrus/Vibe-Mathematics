@@ -1576,6 +1576,12 @@ undefined
   The tempting shortcut was refused deliberately: reverse-applying the two removal commits conflicted in six files and, worse, would have rolled back the ledger and volume records written in rounds 301-304. A record must not be swallowed by a revert.
   Renaming is NOT done: instruments should become resource (registration, qualification, authorisation, maintenance window, retirement of a shared resource) and biospecimen should become custody (chain of custody and provenance), with the pseudonym half expressed as anonymity. A rename touches about sixteen points per family and must follow section 2.0; until it is done, do not claim the names fit.
   Lesson recorded in docs/11 (entry 21): on Windows quote the revision argument when taking a file out of git history, because Node runs execSync through cmd.exe where a caret is an escape character - the failure reads as "path does not exist in <commit>" while the real cause is that the commit expression was altered.
+- ***** 306 RENAME (instruments -> resource), the user rule being that a name must fit what a thing actually is.
+  What it is: the registration, qualification, authorisation, maintenance window and retirement of a SHARED RESOURCE, plus the gate that asks who is qualified and authorised to use it. So the family is resource, not instruments.
+  Identifiers renamed: the key family, the seven error codes, the factory, the three exported key lists (INSTRUMENT_KEYS / WIRED_ / PLANNED_), the module basename and path, the service registration name, and the suite filename. The suite is now tests/vmu-resource.test.mjs and passes 17/0.
+  Deliberately NOT renamed: the many unrelated uses of the English word (an instrumented settings object, the honest instrument, an instrumentation artifact). Those are genuine and were listed before deciding, so the blind word replacement was refused.
+  Still owed from round 304 and now written: volume 24 section G1 records the meeting A/B slice (14 passed, 0 failed; EQUAL 1 / PROPERTY 2 / NOT_ADOPTED 1 / DIVERGENT 1) and names the meeting happy path as the next slice.
+  NOT done: biospecimen -> custody (with the pseudonym half as anonymity) is still only planned; the clinical and animal demotion still awaits user confirmation; and the real-machine re-run and version/release remain open.
 ### 0.4 结论
 
 ## 0.5 未接线键的【三档结构】（轮 287 建表；**轮 290 据实更正数字** ✓✓）
