@@ -46,6 +46,7 @@ export function refuse(code, message, hint) {
 export function createTasks({
   stages = [],
   maxOpenTasks = 0,
+  requireExpectedRevision = false,
   stageGate = () => ({ ok: true }),
   isPaused = () => false,
   bus = null,
@@ -72,6 +73,26 @@ export function createTasks({
     if (!t) throw refuse('VMU_NO_SUCH_OBJECT', 'no task with id ' + String(id), 'call list() for the ledger')
     return t
   }
+
+  // ROUND 318: the A/B found that a task update carried no revision at all, so two writers could lose one
+  // another - v5r REQUIRES the revision the caller saw. The same idea already exists in this kernel (bid
+  // revisions in bidding.js, staleness windows in capacity.js); here it is a precondition with a named refusal,
+  // plus a switch (`vmu.tasks.requireExpectedRevision`) that can demand it. Default OFF keeps every existing
+  // caller working; the refusal happens either way when a caller DOES state a revision and states a stale one.
+  function requireFresh(t2, expected) {
+    if (expected === undefined || expected === null) {
+      if (requireExpectedRevision) {
+        throw refuse('VMU_TASK_STALE_REVISION', 'this face requires the revision you saw: task ' + t2.id + ' is at revision ' + t2.revision,
+          'pass { expectedRevision: ' + t2.revision + ' } (vmu.tasks.requireExpectedRevision=true)')
+      }
+      return
+    }
+    if (Number(expected) !== t2.revision) {
+      throw refuse('VMU_TASK_STALE_REVISION', 'stale write refused: task ' + t2.id + ' is at revision ' + t2.revision + ', you expected ' + Number(expected),
+        're-read the task and retry with the current revision - a stale write is refused by name, never merged')
+    }
+  }
+  function bump(t2) { t2.revision += 1 }
 
   const openCount = () => [...tasks.values()].filter((t) => t.state !== 'done' && t.state !== 'cancelled').length
 
@@ -101,15 +122,16 @@ export function createTasks({
       const id = 't-' + (++seq)
       const t = { id, title: String(title), objective: objective === null ? null : String(objective),
         owner: owner === null ? null : String(owner), deps: Array.isArray(deps) ? deps.map(String) : [],
-        priority, state: owner ? 'assigned' : 'open', createdAt: clock(), transitions: [] }
+        priority, state: owner ? 'assigned' : 'open', createdAt: clock(), transitions: [], revision: 1 }
       tasks.set(id, t)
       record('task-created', { id, title: t.title, deps: t.deps.slice(), owner: t.owner })
       return { ok: true, id, state: t.state }
     },
 
     /** Assign (or reassign) an owner. Being assigned is a state, so it follows the transition table. */
-    async assign(id, who) {
+    async assign(id, who, { expectedRevision = null } = {}) {
       const t = task(id)
+      requireFresh(t, expectedRevision)
       if (typeof who !== 'string' || who.length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'assign needs a member id')
       if (bus) {
         const dec = await bus.emit('task/assign', { id, who, state: t.state }, { member: who })
@@ -122,13 +144,15 @@ export function createTasks({
       t.owner = String(who)
       if (from === 'open') t.state = 'assigned'
       t.transitions.push({ at: clock(), from, to: t.state, reason: 'assigned to ' + t.owner })
+      bump(t)
       record('task-assigned', { id, who: t.owner, state: t.state })
       return { ok: true, id, owner: t.owner, state: t.state }
     },
 
     /** Transition. Dependencies are enforced when work STARTS, not when it is created. */
-    async transition(id, to, { reason = null } = {}) {
+    async transition(id, to, { reason = null, expectedRevision = null } = {}) {
       const t = task(id)
+      requireFresh(t, expectedRevision)
       if (!TASK_STATES.includes(to)) throw refuse('VMU_INVALID_ARGUMENT', 'unknown task state: ' + String(to), TASK_STATES.join(', '))
       // A pause also freezes transitions (finishing work is work); `settle/before` stays reachable because it
       // is a STAGE move, and a pause must not be a way to bypass the stage gate either way (docs/08 §5).
@@ -151,6 +175,7 @@ export function createTasks({
       }
       t.state = to
       t.transitions.push({ at: clock(), from, to, reason: reason === null ? null : String(reason) })
+      bump(t)
       record('task-transition', { id, from, to, reason })
       return { ok: true, id, from, to }
     },
@@ -162,16 +187,17 @@ export function createTasks({
           (filter.owner === undefined || t.owner === filter.owner) &&
           (filter.ready === undefined || (filter.ready ? (t.state === 'open' || t.state === 'assigned') && unmetDeps(t).length === 0 : true)))
         .sort((a, b) => (b.priority - a.priority) || a.id.localeCompare(b.id))
-        .map((t) => ({ id: t.id, title: t.title, state: t.state, owner: t.owner, deps: t.deps.slice(),
+        .map((t) => ({ id: t.id, title: t.title, state: t.state, owner: t.owner, revision: t.revision, deps: t.deps.slice(),
           ready: unmetDeps(t).length === 0, hasBrief: briefs.has(t.id) }))
     },
 
     /** Attach a task brief: the prompt fragment injected when the OWNER is woken (docs/08; the fragment side is docs/06). */
-    brief(id, text, { by = null } = {}) {
-      task(id)
+    brief(id, text, { by = null, expectedRevision = null } = {}) {
+      requireFresh(task(id), expectedRevision)
       if (typeof text !== 'string' || text.trim().length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'a brief needs non-empty text')
       const previous = briefs.get(id) || null
       briefs.set(id, { text, by, at: clock() })
+      bump(task(id))
       record('brief-set', { id, by, previous: previous ? previous.at : null })
       return { ok: true, id, previous, rollbackable: true }
     },
@@ -184,10 +210,11 @@ export function createTasks({
     },
 
     /** Breaks a task free of its brief (the rollback of `brief`). */
-    clearBrief(id) {
-      task(id)
+    clearBrief(id, { expectedRevision = null } = {}) {
+      requireFresh(task(id), expectedRevision)
       const previous = briefs.get(id) || null
       briefs.delete(id)
+      bump(task(id))
       record('brief-cleared', { id, previous: previous ? previous.at : null })
       return { ok: true, id, previous }
     },

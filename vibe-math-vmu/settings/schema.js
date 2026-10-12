@@ -117,6 +117,7 @@ const CORE_DEFS = Object.freeze([
 
   // ---- tasks and stages ---------------------------------------------------------------------
   { key: 'vmu.tasks.maxOpenTasks', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '未完成任务上限；0＝不限' },
+  { key: 'vmu.tasks.requireExpectedRevision', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '任务变更必须声明所见版本（防丢更新；关＝仅在声明时校验）' },
   { key: 'vmu.tasks.stages', type: 'stringList', def: [], hot: HOT.H2, who: 'office', doc: '阶段列表；默认空＝不假装有流程' },
 
   // ---- math and formalisation ---------------------------------------------------------------

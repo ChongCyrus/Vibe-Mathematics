@@ -15,6 +15,7 @@ import { join, dirname } from 'node:path'
 import { apply as applyV5R } from '../vibe-math-v5r/vibe-math-v5r.js'
 import { createMeetings } from '../vibe-math-vmu/kernel/meetings.js'
 import { createMembers } from '../vibe-math-vmu/kernel/members.js'
+import { createTasks } from '../vibe-math-vmu/kernel/tasks.js'
 
 let passed = 0
 let failed = 0
@@ -307,10 +308,33 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
     ok(membersMethods.includes('hire') && membersMethods.includes('end') && membersMethods.includes('roles'),
       'G2f. ★ vmu likewise hires, ends and assigns roles (the member family the earlier review re-judged as KEEP)', membersMethods)
     mark('EQUAL', 'both sides separate create / read / update for tasks and both name a hire and a dismissal for members')
-    ok(!/revision/i.test(tasksSrc),
-      'G2g. ★★ DIVERGENT (named, and it matters): vmu task updates carry NO revision, so two writers can lose one another',
-      { v5r: 'expected_revision is REQUIRED', vmu: 'no revision concept in kernel/tasks.js' })
-    mark('DIVERGENT', 'a task update: v5r REQUIRES expected_revision (the caller states the revision it saw), while vmu kernel/tasks.js has no revision concept at all, so a lost update is possible. Reason: the face was built for a single writer; the revision idea already exists elsewhere in the kernel (bidding.js revisions, capacity.js staleness), so the shape is familiar. Revival: give the task face an expected-revision precondition and refuse a stale write by name; that is a kernel change and gets its own interval.')
+    const revSrc = tasksSrc
+    ok(/revision/.test(revSrc),
+      'G2g. ★★ FIXED (found by this harness): vmu task records now carry a revision and honour an expected one',
+      { v5r: 'expected_revision is REQUIRED in the tool schema', vmu: 'the face carries revision + expectedRevision' })
+    {
+      const strictTasks = createTasks({ clock: () => 1000, requireExpectedRevision: true })
+      const looseTasks = createTasks({ clock: () => 1000 })
+      const t1 = await strictTasks.create({ title: 'L1' })
+      const t2 = await looseTasks.create({ title: 'L2' })
+      // these faces are async, so the calls must be awaited before they are judged
+      const attempt = async (fn) => { try { const r = await fn(); return r && r.ok === false ? { returned: true, code: r.code } : { returned: true, ok: true } } catch (e) { return { thrown: true, code: e && e.code } } }
+      const strictNoDecl = await attempt(() => strictTasks.transition(t1.id, 'doing'))
+      const strictRight = await attempt(() => strictTasks.transition(t1.id, 'doing', { expectedRevision: 1 }))
+      const looseWrong = await attempt(() => looseTasks.transition(t2.id, 'doing', { expectedRevision: 99 }))
+      const looseNoDecl = await attempt(() => looseTasks.transition(t2.id, 'doing'))
+      ok(strictNoDecl.thrown === true && strictNoDecl.code === 'VMU_TASK_STALE_REVISION',
+        'G2g2. ★★ with the switch ON, a write that does not state the revision it saw is REFUSED by name', strictNoDecl)
+      ok(strictRight.returned === true && strictRight.ok === true,
+        'G2g3. ★★ the same write succeeds when it states the right revision', strictRight)
+      ok(looseWrong.thrown === true && looseWrong.code === 'VMU_TASK_STALE_REVISION',
+        'G2g4. ★★ a STALE revision is refused in BOTH modes (never merged into the newer state)', looseWrong)
+      ok(looseNoDecl.returned === true && looseNoDecl.ok === true,
+        'G2g5. ★ the switch OFF leaves existing callers exactly as they were', looseNoDecl)
+      ok(looseTasks.list()[0].revision > 1,
+        'G2g6. ★ and the revision ADVANCES with each accepted write, so a read can be re-issued', { revision: looseTasks.list()[0].revision })
+      mark('PROPERTY', 'a task write can be made conditional on the revision the caller saw, and a stale one is refused by name rather than merged - v5r requires that argument outright; vmu makes it a switch (vmu.tasks.requireExpectedRevision) plus an always-on stale check, which is the same guarantee without breaking single-writer callers')
+    }
 
     // and the member family, driven on our side
     const mm = createMembers({ clock: () => 1000, settings: {}, log: () => {} })

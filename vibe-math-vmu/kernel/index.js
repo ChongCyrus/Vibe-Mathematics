@@ -489,6 +489,7 @@ export function createKernel({
   const tasks = createTasks({
     stages: stages || settings['vmu.tasks.stages'] || [],
     maxOpenTasks: maxOpenTasks !== undefined ? maxOpenTasks : (settings['vmu.tasks.maxOpenTasks'] || 0),
+    requireExpectedRevision: settings['vmu.tasks.requireExpectedRevision'] === true,
     stageGate,
     // `control` is declared below; the arrow is only CALLED at runtime, so this is not a use-before-init.
     isPaused: () => controlState.state === 'paused',
