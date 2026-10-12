@@ -98,6 +98,8 @@ vibe-math-vmu/
 | ★★ **提示词内容物理入包** | `packs/v5r/prompts/`（4 个模块 ✓ ＋ 73 处引用同步 ✓） | 导入闭包审计绿 ✓ |
 | ★★ **通知措辞入包** | `packs/v5r/notices.js`（**四种形态** ✓） | ★★ **对语料里 6 条真实通知【逐字复现**】✓（`tests/vmu-notice-shapes.test.mjs` ✓，10/10 ✓） |
 | ★★★ **无损改名通道** | `was:` ＋ `SETTING_ALIASES` ＋ `resolveKey` ＋ `renameNotice` ✓ | ★ **11 个家族已改名 ＋ 1 次拆分**（`custody` ⇒ `custody`＋`anonymity` ✓）、**68 个旧名可解析** ✓、**0 自别名** ✓ |
+| ★★★ **相位集可由 pack 扩展** | 循环校验 **`PHASES ∪ extraPhases`** ✓；pack 导出 **`V5R_PHASES`** ✓ | ★★ **`heartbeat`／`paper-write`／`paper-review`／`paper-final` 由【pack 声明**】✓，**框架不认识这些词** ✗✓（★ 架构词归机构 ✓）；★★ 断言**双向**：**pack 声明的被接受** ✓ ＋ **谁都没声明的【具名拒**]✓ 并把**框架列表与 pack 列表一起打印** ✓（★ **"一个什么都接受的校验不是校验"** ✓）；★ **边界如实标注**：★ **第三方 pack 目前须由其【自己的插件**]把相位传进来 ✓ |
+| ★★ **论文撰写／互审／定稿入包** | `prompts/v5r-charter.js`（★ 以 **`paper-*` 相位**出现 ✓） | ★ **(i) 评审与出版** ✓；★ 承载 **"全体参与成员都投 true 才能定稿"** ✓ 与 ★ **`decision="revise"` 退回继续修订** ✓ |
 
 ### 未做（明写 ✗）
 

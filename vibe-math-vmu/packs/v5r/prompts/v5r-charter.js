@@ -698,7 +698,22 @@ export const CHARTER_BLOCKS = Object.freeze([
         '或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。',
         '如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。',
       ].join('\n'),
-      meeting: '议程与类型由本轮会议帧给出；请按议程发言，需要发言时举手。',
+      meeting: [
+        '议程与类型由本轮会议帧给出；请按议程发言，需要发言时举手。',
+        '',
+        // THE MEETING PROTOCOL, from the corpus. It was added as its own `meeting` section first and that broke
+        // `vmu-turn` T127, which asserts the three speaker STATES appear alone - correctly, because a second meeting
+        // section sitting beside them is a different thing from the meeting's own text. The protocol belongs IN this
+        // section's meeting variant, and this is where it now lives.
+        '（流程：**先轮流发言**——每位常驻成员都会获得一次“要不要发言”的机会，**不强制**；随后进入**举手发言**阶段：想发言的人举手（`meeting_hand:true`），发言结束后**还可以再次举手**，可多轮。**无人举手**时会议收束。沉默本身**不会**触发任何截止；纪要会具名记下“已获得机会、选择未发言”。框架每轮最多同时唤醒 maxParallel 名成员（默认 3），并把已收集到的发言附在提示里。收束时纪要与结论写入 Shared/Meetings/<会议id>.md 并同步到群聊。）',
+        '',
+        '请就议程发表你的意见。分工、优先级、下一步做什么、是否认为原问题已解决，都可以说。',
+        '（会议轮请把你的发言填进 JSON 的 "input" 字段，框架据此写会议纪要。）',
+        '**要不要发言由你决定**：本轮不填 "input" 即视为放弃本次发言机会（会被具名记为“选择未发言”）——不会因此被追问，也不会阻塞会议。',
+        '**想发言就举手**：填 "meeting_hand": true 表示你要发言（**已发言者也可再次举手**）；给出 "input" 即视为交付本次发言；填 "meeting_hand": false 可撤回举手。',
+        '**沉默不等于投票**：`vote_solved` 必须显式给出——如果你认为原问题已解决，请填 "vote_solved": true；',
+        '只有当**全体有表决权者**都一致认为是真时，本所才会停下来；缺 `vote_solved`（沉默/未表态）会**阻止结题**。',
+      ].join('\n'),
     },
   },
   // The academician-leads nudge is conditional on BOTH the kind and a runtime switch, so the loop includes it only
