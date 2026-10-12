@@ -176,7 +176,10 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
 // 8) DECLARATION INSTEAD OF HAND-PASSING: the pack declares its sections and the assembly collects them
 {
   const declared = collectPackSections([PACK])
-  ok(Array.isArray(declared) && declared.length === v5rTurnSections.length + 11 && declared.length >= 79,
+  // ROUND 374: the declared set is now the hand-written charter plus the authored role block, not the captured
+  // corpus and persona. The assertion checks the STRUCTURE - the charter is declared - rather than pinning a count
+  // that changes whenever a section is added.
+  ok(Array.isArray(declared) && declared.length >= 17 && declared.some((s) => s.name === 'v5r-charter-opening') && declared.some((s) => s.name === 'v5r-role-block'),
     'T28. **** the pack DECLARES its prompt sections and a pure collector gathers them - 68 sections with no hand-passing',
     { declared: declared.length })
   const loopDeclared = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: declared, clock: () => '2026-01-01T00:00:00.000Z' }) })
@@ -397,9 +400,13 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
 {
   const declaredP = collectPackSections([PACK])
   const personaSections = declaredP.filter((s) => String(s.name).startsWith('v5r-persona-'))
-  ok(personaSections.length === 11,
-    'T63. **** the pack DECLARES the whole persona: eleven sections, six shared and five that vary by role or name the member',
-    { personaSections: personaSections.length, all: declaredP.length })
+  // ROUND 375: the persona is now kept as CONTENT EVIDENCE and deliberately NOT declared at runtime - the pack
+  // declares the hand-written charter instead. This assertion used to require the 11 captured persona sections to be
+  // declared, which is exactly the snapshot-in-the-runtime problem an independent audit measured, so the claim is
+  // inverted rather than deleted: nothing from the capture may appear in the declaration.
+  ok(personaSections.length === 0,
+    'T63. **** the captured persona is NOT declared at runtime: the pack declares the hand-written charter, because a snapshot of one run must never enter a live assembly',
+    { declaredFromCapture: personaSections.length })
   const loopP = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: declaredP, bindings: PACK.bindings, clock: () => '2026-01-01T00:00:00.000Z' }) })
   const acadAsm = await loopP.assemble(loopP.open({ member: 'acad', role: 'academician', phase: 'founding' }).turn)
   const resAsm = await loopP.assemble(loopP.open({ member: 'r-1', role: 'researcher', phase: 'founding' }).turn)

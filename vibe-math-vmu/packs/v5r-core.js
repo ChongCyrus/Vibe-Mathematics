@@ -142,14 +142,20 @@ export const PACK = Object.freeze({
   // A GETTER, not a plain value: the section list is defined below the manifest, and a manifest that read it
   // eagerly would hit the temporal dead zone. Evaluated on access, so the declaration stays where the manifest is.
   //
-  // ROUND 355: the sections are now the prompt corpus AND the persona blocks (docs/26 section 3.7), because the
-  // original hands each member a six-thousand-character charter that measuring showed to be a structured document.
-  // Six of its eleven blocks are the same for everyone and five vary by role or name the member, so the pack declares
-  // the sections here AND the per-role bindings below, and the assembly puts the right charter in front of the right
-  // member instead of making everyone read a researcher's or the academician's version.
-  get sections() { return v5rPersonaSectionsGlobal() },
-  /** The role bindings for the varying persona blocks, declared the same way. */
-  get bindings() { return v5rPersonaBindingsGlobal() },
+  // ROUND 355: the sections were the prompt corpus AND the persona blocks (docs/26 section 3.7).
+  //
+  // ROUND 374 - CORRECTED AFTER AN INDEPENDENT AUDIT READ THE PACK FILE BY FILE. The corpus and the persona are
+  // SNAPSHOTS of one captured run, and declaring them as runtime sections let frozen values into a live assembly:
+  // concrete round numbers, concrete rosters, absolute paths, a fixed engine count, and headings built from the
+  // binding KEY rather than the human role name. Worse, the persona's per-role blocks carried one binding per captured
+  // member while the pipeline appended EVERY matching binding, so a researcher received three identities and three
+  // different quorums in one charter. The runtime declaration is now the HAND-WRITTEN, fully variable-ised charter,
+  // transcribed from the original source and branching the way the source branches (docs/26 sections 3.10-3.18). The
+  // corpus and persona modules stay in the repository as the CONTENT EVIDENCE they are, and are deliberately NOT
+  // declared here.
+  get sections() { return v5rCharterSectionsGlobal() },
+  /** The charter's role and phase bindings, declared the same way. */
+  get bindings() { return v5rCharterBindingsGlobal() },
   aliases: [
     { from: 'vibe_v5_poll_vote', to: 'vmu.tasks' },
     { from: 'vibe_v5_poll_open', to: 'vmu.tasks' },
@@ -189,6 +195,21 @@ const v5rPersonaSectionsGlobal = () => [...v5rTurnSections, ...PERSONA_SECTIONS]
 /** The role bindings for the persona blocks that vary by role (the roster block names the MEMBER, so it needs the
  *  assembly to fill it - recorded as the remaining slot in docs/26 section 3.7 rather than frozen here). */
 const v5rPersonaBindingsGlobal = () => PERSONA_BINDINGS
+
+// ROUND 374: the RUNTIME declaration is the hand-written charter, not the captured persona. See the comment on the
+// manifest's `sections` getter. Both persona helpers stay exported because a consumer may still want the raw capture;
+// only the charter is declared. The import is hoisted like the persona one above, so the getters resolve at access time.
+import { CHARTER_SECTIONS, CHARTER_BINDINGS } from './v5r-charter.js'
+
+/**
+ * The runtime sections: the charter transcribed from the original source (docs/26 sections 3.10-3.18), PLUS the authored
+ * per-member role block. That block is not a snapshot - it is written by hand and driven by member/role/phase - and it is
+ * the one section that simply NAMES the phase, which the charter headings do not.
+ */
+const v5rCharterSectionsGlobal = () => [...CHARTER_SECTIONS, v5rRoleSection]
+
+/** Its role and phase bindings - one winner per section per assembly is the pipeline's job (docs/26 section 3.20). */
+const v5rCharterBindingsGlobal = () => CHARTER_BINDINGS
 
 export default PACK
 

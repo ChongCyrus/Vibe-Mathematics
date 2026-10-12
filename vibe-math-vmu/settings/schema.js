@@ -139,6 +139,9 @@ const CORE_DEFS = Object.freeze([
   // ROUND 367: the pointer-propagation contract has its own switch, exactly as the original gates it. Off means the
   // section is not included at all (zero injection), never a "disabled" notice - see docs/26 section 3.14.
   { key: 'vmu.pointer.propagation', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '是否注入指针传播契约（关掉＝零注入；原线的 S21 开关同义）' },
+  // ROUND 374: a placeholder nobody supplied used to become a silent empty slot. The policy decides whether a miss
+  // is recorded (default) or refused by name; the pack's holes are closed first, then refuse can become the default.
+  { key: 'vmu.prompts.missingVariable', type: 'enum', domain: ['report', 'refuse'], def: 'report', hot: HOT.H2, who: 'office', doc: '占位符无人供值时：report＝记录并在装配结果里报告（默认）；refuse＝具名拒（VMU_PROMPT_VARIABLE_MISSING）' },
   // ROUND 369: the formalisation block is mode- and status-dependent in the original, so its live values arrive here and
   // the wording stays in the pack. `modeLabel` carries the 强制/鼓励/主动 wording, and the review block names the proof.
   { key: 'vmu.formal.currentProof', type: 'string', def: 'Formal/p-x.lean', hot: HOT.H2, who: 'office', doc: '忠实性审查时点名的已通过证明文件（每轮按实际目标填）' },

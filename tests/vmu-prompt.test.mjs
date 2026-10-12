@@ -104,9 +104,26 @@ const baseSections = [
   const bp = a.text.indexOf('PHASE')
   const cm = a.text.indexOf('MEMBER')
   const dt = a.text.indexOf('TASK')
-  ok(at > -1 && bp > at && cm > bp && dt > cm, 'binding contributions follow role < phase < member < task', at + ',' + bp + ',' + cm + ',' + dt)
+  // ROUND 374: a binding means "this section says something different for this role / phase / member / task", so at
+  // most ONE wins and it REPLACES the section text. The old assertion pinned the append order, which is the bug an
+  // independent pack audit measured (three identities and three quorums inside one charter), so it now asserts the
+  // new truth: the most specific dimension wins and the others contribute nothing.
+  ok(dt > -1 && at === -1 && bp === -1 && cm === -1, 'only the MOST SPECIFIC binding wins: task beats member beats phase beats role, and the losers contribute nothing', at + ',' + bp + ',' + cm + ',' + dt)
   const b = await p.assemble({ member: 'r-2', role: 'solver', phase: 'formalize' })
   ok(b.text.indexOf('TASK') === -1 && b.text.indexOf('ROLE') === -1, 'bindings that do not match contribute nothing')
+  // A tie on the SAME dimension is refused by name rather than silently picked, because a silent pick is the same
+  // class of bug the append was (docs/03 section 8: VMU_PROMPT_BINDING_CONFLICT).
+  {
+
+    const p2 = m.createPromptPipeline({ sections: [{ name: 'tie-sec', order: 10, range: 'pack', text: 'BASE' }], bindings: [
+      { section: 'tie-sec', role: 'solver', text: 'ONE' },
+      { section: 'tie-sec', role: 'solver', text: 'TWO' },
+    ], clock: () => '2026-01-01T00:00:00.000Z' })
+    let refused = null
+    try { await p2.assemble({ member: 'r-1', role: 'solver', phase: 'explore' }) } catch (e) { refused = e }
+    ok(refused !== null && refused.code === 'VMU_PROMPT_BINDING_CONFLICT',
+      'and a TIE on one dimension is refused by name rather than silently picked', refused && refused.code)
+  }
 }
 
 // ---- 5. the variable whitelist and escaping ----------------------------------------------------

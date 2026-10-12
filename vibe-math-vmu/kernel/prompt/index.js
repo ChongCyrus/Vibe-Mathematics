@@ -266,7 +266,16 @@ export function createPromptPipeline({
     return null
   }
 
+  // ROUND 374: a placeholder whose value nobody supplied used to render as an empty string SILENTLY, which measured
+  // out as live text like "hired by  " and "debate round limit  ". Nothing here is allowed to fail silently, so every
+  // miss is recorded on the assembly result, and `vmu.prompts.missingVariable` decides whether a miss is merely
+  // recorded or refused by name. The default is 'report' for one migration step: the pack has holes to close first,
+  // and the gate asserts that once those holes are closed the 'refuse' mode passes too.
+  const variableMisses = []
+
   const renderVariables = (text, ctx) => {
+    // The policy is read from the CALL's settings, not from a factory-scope value: `ctx` exists only per assembly.
+    const missingVariable = ctx && ctx.settings && ctx.settings['vmu.prompts.missingVariable'] === 'refuse' ? 'refuse' : 'report'
     return text.replace(/\{\{\s*([a-zA-Z:-]+[a-zA-Z0-9:._-]*)\s*\}\}/g, (whole, raw) => {
       const key = raw.trim()
       const allowed = VARIABLE_WHITELIST.includes(key) ||
@@ -280,7 +289,16 @@ export function createPromptPipeline({
       if (key.startsWith('setting:')) value = ctx.settings ? ctx.settings[key.slice(8)] : undefined
       else if (key.startsWith('count:')) value = counts[key.slice(6)]
       else value = ctx[key]
-      return value === undefined || value === null ? '' : escapeTemplate(value)
+      if (value === undefined || value === null) {
+        variableMisses.push({ variable: key, asked: whole })
+        if (missingVariable === 'refuse') {
+          throw refuse('VMU_PROMPT_VARIABLE_MISSING',
+            'no value was supplied for ' + whole + ', so the section would have rendered an empty slot',
+            'supply it in the assembly context (or in settings for a setting: variable); set vmu.prompts.missingVariable=report to record instead of refusing')
+        }
+        return ''
+      }
+      return escapeTemplate(value)
     })
   }
 
@@ -418,13 +436,30 @@ export function createPromptPipeline({
         const overrideText = overrideFor(entry.name, ctx && ctx.lang).text
         let text = contentOf(entry, ctx, null)
         let source = typeof overrideText === 'string' ? 'override' : entry.source
-        for (const m of matchingBindings(ctx)) {
-          if (m.binding.section !== entry.name) continue
-          const extra = contentOf(entry, ctx, m.binding)
-          if (extra === null) continue
-          text = (text === null ? '' : text + '\n') + extra
-          source = 'binding:' + m.dim
-          sources.push({ section: entry.name, source: 'binding:' + m.dim, by: m.binding.owner || null })
+        // ROUND 374 - CORRECTED AFTER AN INDEPENDENT PACK AUDIT. A binding means "this section says something different
+        // for this role / phase / member / task", so it REPLACES the section's own text and at most ONE binding may win.
+        // The code here used to APPEND every matching binding, which measured out as a researcher receiving three
+        // identities and three different quorums inside one charter - eighteen and a half thousand characters saying at
+        // once that the reader was the academician, r-1, r-2 and r-3, with m equal to 1, 2 and 3. BINDING_PRIORITY is
+        // low to high (role < phase < member < task), so the MOST SPECIFIC dimension wins; a tie on the same dimension
+        // is REFUSED rather than silently picked, because a silent pick is the same class of bug the append was.
+        // Middleware `appends` keep their append semantics on top of the winner.
+        const matches = matchingBindings(ctx).filter((m) => m.binding.section === entry.name)
+        if (matches.length) {
+          const rankOf = (m) => BINDING_PRIORITY.indexOf(m.dim)
+          const top = Math.max(...matches.map(rankOf))
+          const winners = matches.filter((m) => rankOf(m) === top)
+          if (winners.length > 1) {
+            throw refuse('VMU_PROMPT_BINDING_CONFLICT',
+              'two bindings tie for section ' + entry.name + ' on the same dimension (' + winners[0].dim + ')',
+              'give one of them a more specific dimension; priority is ' + BINDING_PRIORITY.join(' < '))
+          }
+          const extra = contentOf(entry, ctx, winners[0].binding)
+          if (extra !== null) {
+            text = extra
+            source = 'binding:' + winners[0].dim
+            sources.push({ section: entry.name, source: 'binding:' + winners[0].dim, by: winners[0].binding.owner || null })
+          }
         }
         for (const a of appends) {
           if (a.section !== entry.name) continue
@@ -444,6 +479,10 @@ export function createPromptPipeline({
       }
 
       return { ok: true, text: parts.length === 0 ? '' : trimTrailing(parts.join('\n\n')), sources, truncation: truncation.slice(),
+        // ROUND 374: the auditable record of every placeholder nobody supplied. A missing value is a fact about the
+        // assembly, so it is reported rather than swallowed.
+        variableMisses: variableMisses.slice(),
+        missingVariable: (ctx && ctx.settings && ctx.settings['vmu.prompts.missingVariable'] === 'refuse') ? 'refuse' : 'report',
         // ROUND 241: a language decision that cannot be audited is not a decision.
         locale: { asked: (ctx && ctx.lang) || null, tried: langOrder(ctx && ctx.lang), default: localeDefault, chain: localeChain, onMissing: localeOnMissing,
           overrideSources: [...new Set([...registry.values()].map((e) => e.name))].map((n) => ({ section: n, source: overrideFor(n, ctx && ctx.lang).source })).filter((e) => e.source !== null) },

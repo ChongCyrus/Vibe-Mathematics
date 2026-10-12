@@ -294,6 +294,8 @@
 | `VMU_BALLOT_METHOD_UNSUPPORTED` | 计票方法未实现/未声明 | 表决 | ✅（须给**可用方法**） |
 | `VMU_BALLOT_MIN_VOTES_NOT_MET` | 本次投票**成立门槛未达** | 表决 | ✅（须给**当前与门槛**） |
 | `VMU_TURN_NO_FENCE` | 回复里**没有 json 围栏** ⇒ 无可分派 | 轮次编排 26 | ✗（须要求"只输出一个围栏 JSON 对象"） |
+| `VMU_PROMPT_BINDING_CONFLICT` | **同一段、同一维度上有两条绑定并列** ⇒ 拒（不再静默取其一） | 提示管线 06 | ✗（给其中一条更具体的维度；优先级 `role < phase < member < task`） |
+| `VMU_PROMPT_VARIABLE_MISSING` | **占位符无人供值**（`vmu.prompts.missingVariable=refuse` 时） | 提示管线 06 | ✗（在装配上下文或 settings 里补值；默认 `report` 只记录不拒） |
 | `VMU_TURN_BAD_JSON` | 围栏内容**不是合法 JSON**，或不是对象 | 轮次编排 26 | ✗（与"没有围栏"是**两种**失败 ✗） |
 | `VMU_TURN_UNKNOWN_FIELD` | 回复字段**不在已宣告目录**里 | 轮次编排 26 | ✗（须**点名**该字段并列出已知字段，**绝不猜** ✗） |
 | `VMU_TURN_ASSEMBLY_FAILED` | **管线拒绝了本轮装配** | 轮次编排 26 | ✗（须转述管线的拒因） |
@@ -789,7 +791,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **286** 个码，**逐行**给出状态 ✓：其中 **248** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **288** 个码，**逐行**给出状态 ✓：其中 **250** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **38** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1008,6 +1010,8 @@
 | `VMU_PARAM_REMOVED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_PARAM_RENAMED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_PATH_ESCAPE_REFUSED` | **已实现 ✓** | `vibe-math-vmu/kernel/mathtools.js` | 代码里有该码字符串 ✓ |
+| `VMU_PROMPT_BINDING_CONFLICT` | **已实现 ✓** | `vibe-math-vmu/kernel/prompt/index.js` | 代码里有该码字符串 ✓ |
+| `VMU_PROMPT_VARIABLE_MISSING` | **已实现 ✓** | `vibe-math-vmu/kernel/prompt/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_PROXY_CHAIN_TOO_DEEP` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_PROXY_NOT_ALLOWED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_QUOTA_EXCEEDED` | **已实现 ✓** | `vibe-math-vmu/kernel/capacity.js`、`vibe-math-vmu/kernel/funding.js`、`vibe-math-vmu/kernel/mathtools.js`、`vibe-math-vmu/kernel/meetings.js`、`vibe-math-vmu/kernel/records.js`、`vibe-math-vmu/kernel/retention.js` | 代码里有该码字符串 ✓ |
