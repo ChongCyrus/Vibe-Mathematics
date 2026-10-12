@@ -484,24 +484,24 @@ const SCENARIOS = [
 
   // hr (all rails THROW): humanDecisionRequired forbids an automatic tenure decision while the human path needs a
   // decisionAt inside the window ⇒ the outcome differs (forbidden vs due vs ok).
-  { module: 'hr', call: 'tenure(humanDecisionRequired)', key: 'vmu.hr.humanDecisionRequired', outcomeDiff: true,
-    limiting: { settings: { 'vmu.hr.humanDecisionRequired': true }, input: { votes: 5, auto: true } },
-    permissive: { settings: { 'vmu.hr.humanDecisionRequired': false }, input: { votes: 3, decisionAt: '2026-06-01T00:00:00.000Z' } },
+  { module: 'tenure', call: 'tenure(humanDecisionRequired)', key: 'vmu.tenure.humanDecisionRequired', outcomeDiff: true,
+    limiting: { settings: { 'vmu.tenure.humanDecisionRequired': true }, input: { votes: 5, auto: true } },
+    permissive: { settings: { 'vmu.tenure.humanDecisionRequired': false }, input: { votes: 3, decisionAt: '2026-06-01T00:00:00.000Z' } },
     make: (settings) => createHr({ clock: ISO_CLOCK, log: () => {}, settings }),
     run: (h, variant) => h.tenure(Object.assign({ who: 'r-2', trackStart: '2023-01-01T00:00:00.000Z' }, variant.input)) },
   // hr: offboardingChecklist decides whether the offboarding set is complete (refused vs admitted).
-  { module: 'hr', call: 'offboard(offboardingChecklist)', key: 'vmu.hr.offboardingChecklist', outcomeDiff: true,
+  { module: 'tenure', call: 'offboard(offboardingChecklist)', key: 'vmu.tenure.offboardingChecklist', outcomeDiff: true,
     limiting: { settings: {}, input: { done: ['handover'] } },
     permissive: { settings: {}, input: { done: ['handover', 'keys', 'records'] } },
     make: (settings) => createHr({ clock: ISO_CLOCK, log: () => {}, settings }),
     run: (h, variant) => h.offboard({ who: 'r-3', done: variant.input.done }) },
   // hr: appealWindowDays is consulted while an appeal is open (refused) and cleared once it is resolved.
-  { module: 'hr', call: 'appeal(appealWindowDays)', key: 'vmu.hr.appealWindowDays', outcomeDiff: true,
+  { module: 'tenure', call: 'appeal(appealWindowDays)', key: 'vmu.tenure.appealWindowDays', outcomeDiff: true,
     limiting: { settings: {}, input: { resolved: false } }, permissive: { settings: {}, input: { resolved: true } },
     make: (settings) => createHr({ clock: ISO_CLOCK, log: () => {}, settings }),
     run: (h, variant) => h.appeal({ who: 'r-4', openedAt: '2026-06-20T00:00:00.000Z', resolved: variant.input.resolved }) },
   // hr reverse: offboarding never consults the appeal window.
-  { module: 'hr', call: 'offboard', key: 'vmu.hr.appealWindowDays', expectDiff: false, absentIn: 'both',
+  { module: 'tenure', call: 'offboard', key: 'vmu.tenure.appealWindowDays', expectDiff: false, absentIn: 'both',
     limiting: { settings: {} }, permissive: { settings: {} },
     make: (settings) => createHr({ clock: ISO_CLOCK, log: () => {}, settings }),
     run: (h) => h.offboard({ who: 'r-3', done: ['handover', 'keys', 'records'] }) },
@@ -567,7 +567,7 @@ const REFUSAL_SCENARIOS = [
   { module: 'capacity', call: 'reserve(pool exhausted)', settings: { 'vmu.capacity.machineHoursPool': 10, 'vmu.capacity.overcommitRatio': 1 },
     make: (settings) => createCapacity({ clock: CLOCK, log: () => {}, settings }),
     run: (c) => c.reserve({ domain: 'd1', hours: 20 }) },
-  { module: 'hr', call: 'tenure(auto decision)', settings: { 'vmu.hr.humanDecisionRequired': true },
+  { module: 'tenure', call: 'tenure(auto decision)', settings: { 'vmu.tenure.humanDecisionRequired': true },
     make: (settings) => createHr({ clock: ISO_CLOCK, log: () => {}, settings }),
     run: (h) => h.tenure({ who: 'r-2', trackStart: '2023-01-01T00:00:00.000Z', votes: 5, auto: true }) },
   { module: 'migration', call: 'plan(same-version)', settings: { 'vmu.migration.rollback': 'allow' },
@@ -687,7 +687,7 @@ for (const [mod, m] of [...byModule].sort()) {
     'course.js': 'course', 'external.js': 'external', 'workflow.js': 'workflow',
     'conference.js': 'conference', 'resource.js': 'resource', 'ip.js': 'ip',
     'compliance.js': 'compliance', 'funding.js': 'funding', 'storepolicy.js': 'storepolicy',
-    'capacity.js': 'capacity', 'hr.js': 'hr', 'migration.js': 'migration',
+    'capacity.js': 'capacity', 'hr.js': 'tenure', 'migration.js': 'migration',
   }
   // PURE-FUNCTION MODULES: a module with no factory cannot be driven the way the scenarios drive services, so a
   // silent hole here would be worse than an explicit one. It is exempt ONLY when its own refusal path is covered

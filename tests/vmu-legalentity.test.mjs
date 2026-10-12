@@ -59,13 +59,13 @@ const INV = { taxIdRef: 'r', taxRateRef: 't', taxAmountMinor: 1, taxJurisdiction
   ok(cur.code === 'VMU_CROSSBORDER_CURRENCY_MISMATCH', 'a currency that differs from the entity currency is refused', cur)
   const unbound = f.validateInvoice({ account: 'a9', invoice: INV })
   ok(unbound.code === 'VMU_ENTITY_ACCOUNT_UNBOUND', 'an unbound account is refused while requireEntity is on', unbound)
-  ok(mk({ 'vmu.legalentity.requireEntity': false }).validateInvoice({ account: 'a9', invoice: INV }).ok === true,
+  ok(mk({ 'vmu.partnership.requireEntity': false }).validateInvoice({ account: 'a9', invoice: INV }).ok === true,
     'requireEntity=false lets an unbound account through - the declaration decides')
 }
 
 // the declarations decide, and every one of the six is read
 {
-  const f = mk({ 'vmu.legalentity.invoiceTaxSlots': ['taxIdRef'], 'vmu.legalentity.crossBorderGate': 'off' })
+  const f = mk({ 'vmu.partnership.invoiceTaxSlots': ['taxIdRef'], 'vmu.partnership.crossBorderGate': 'off' })
   f.registerEntity({ entityId: 'ent-1' })
   f.bindAccount({ account: 'a1', entityId: 'ent-1' })
   ok(f.validateInvoice({ account: 'a1', invoice: { taxIdRef: 'r' } }).ok === true, 'a re-declared slot set is what gets checked')

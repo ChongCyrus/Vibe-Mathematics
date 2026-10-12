@@ -10,7 +10,7 @@
 //   · the method validateInvoice() checks that the declared slots are PRESENT and - as the section says of itself - does NOT judge
 //     whether a tax rate is correct. Tax identifiers are stored as opaque references; a plainly formatted tax number is refused.
 //
-// WHY IT IS ITS OWN FACE (round 275's lesson): the wiring bookkeeping is PER FAMILY. `vmu.legalentity.*` is not `vmu.funding.*`, and a
+// WHY IT IS ITS OWN FACE (round 275's lesson): the wiring bookkeeping is PER FAMILY. `vmu.partnership.*` is not `vmu.funding.*`, and a
 // family's key list asserts its own keys and that the family's own suite reads them. A cross-family key belongs in a family of its own.
 export const apiVersion = 1
 
@@ -27,16 +27,16 @@ export const DEFAULT_SLOTS = Object.freeze(['taxIdRef', 'taxRateRef', 'taxAmount
 
 export function createLegalEntity({ clock = () => 0, log = () => {}, settings = {}, bus = null } = {}) {
   const cfg = () => ({
-    registryDir: typeof settings['vmu.legalentity.registryDir'] === 'string' && settings['vmu.legalentity.registryDir']
-      ? settings['vmu.legalentity.registryDir'] : 'Ops/Entities',
-    requireEntity: settings['vmu.legalentity.requireEntity'] !== false,
-    taxIdStyle: ['opaque-ref', 'none'].includes(settings['vmu.legalentity.taxIdStyle']) ? settings['vmu.legalentity.taxIdStyle'] : 'opaque-ref',
-    invoiceTaxSlots: Array.isArray(settings['vmu.legalentity.invoiceTaxSlots']) && settings['vmu.legalentity.invoiceTaxSlots'].length
-      ? settings['vmu.legalentity.invoiceTaxSlots'].map(String) : DEFAULT_SLOTS.slice(),
-    crossBorderGate: ['require-approval', 'warn', 'off'].includes(settings['vmu.legalentity.crossBorderGate'])
-      ? settings['vmu.legalentity.crossBorderGate'] : 'require-approval',
-    crossBorderApproverRoles: Array.isArray(settings['vmu.legalentity.crossBorderApproverRoles'])
-      ? settings['vmu.legalentity.crossBorderApproverRoles'].map(String) : [],
+    registryDir: typeof settings['vmu.partnership.registryDir'] === 'string' && settings['vmu.partnership.registryDir']
+      ? settings['vmu.partnership.registryDir'] : 'Ops/Entities',
+    requireEntity: settings['vmu.partnership.requireEntity'] !== false,
+    taxIdStyle: ['opaque-ref', 'none'].includes(settings['vmu.partnership.taxIdStyle']) ? settings['vmu.partnership.taxIdStyle'] : 'opaque-ref',
+    invoiceTaxSlots: Array.isArray(settings['vmu.partnership.invoiceTaxSlots']) && settings['vmu.partnership.invoiceTaxSlots'].length
+      ? settings['vmu.partnership.invoiceTaxSlots'].map(String) : DEFAULT_SLOTS.slice(),
+    crossBorderGate: ['require-approval', 'warn', 'off'].includes(settings['vmu.partnership.crossBorderGate'])
+      ? settings['vmu.partnership.crossBorderGate'] : 'require-approval',
+    crossBorderApproverRoles: Array.isArray(settings['vmu.partnership.crossBorderApproverRoles'])
+      ? settings['vmu.partnership.crossBorderApproverRoles'].map(String) : [],
   })
 
   const entities = new Map()
@@ -56,26 +56,26 @@ export function createLegalEntity({ clock = () => 0, log = () => {}, settings = 
   /** Register a legal entity. `taxIdStyle=opaque-ref` refuses a value that looks like a plaintext tax number. */
   function registerEntity({ entityId = null, jurisdiction = null, taxIdRef = null, currency = null } = {}) {
     const c = cfg()
-    keysUsed.add('vmu.legalentity.registryDir').add('vmu.legalentity.taxIdStyle')
+    keysUsed.add('vmu.partnership.registryDir').add('vmu.partnership.taxIdStyle')
     const id = str(entityId).trim()
     if (!id) return deny('VMU_INVALID_ARGUMENT', 'an entity needs entityId', 'pass { entityId, jurisdiction, taxIdRef, currency? }')
     const stored = taxIdRef === null || taxIdRef === undefined ? null : String(taxIdRef)
     if (c.taxIdStyle === 'opaque-ref' && stored && /^[0-9][0-9-]{5,}$/.test(stored)) {
       return deny('VMU_INVALID_ARGUMENT', 'taxIdRef looks like a plaintext tax number',
-        'store an opaque reference instead (vmu.legalentity.taxIdStyle=opaque-ref; volume 20 owns privacy)')
+        'store an opaque reference instead (vmu.partnership.taxIdStyle=opaque-ref; volume 20 owns privacy)')
     }
     const rec = { entityId: id, jurisdiction: str(jurisdiction) || null, taxIdRef: stored, currency: str(currency) || null,
       registryDir: c.registryDir, at: clock() }
     entities.set(id, rec)
     counts.registered += 1
     if (bus && typeof bus.emit === 'function') bus.emit('legalentity/registered', { entityId: id, at: clock() })
-    return Object.assign({ ok: true }, rec, { enforced: ['vmu.legalentity.registryDir', 'vmu.legalentity.taxIdStyle'], enforcedScope: 'evaluated-so-far' })
+    return Object.assign({ ok: true }, rec, { enforced: ['vmu.partnership.registryDir', 'vmu.partnership.taxIdStyle'], enforcedScope: 'evaluated-so-far' })
   }
 
   /** Bind an account to an entity. An unregistered entity is a NAMED refusal. */
   function bindAccount({ account = null, entityId = null } = {}) {
     const c = cfg()
-    keysUsed.add('vmu.legalentity.requireEntity')
+    keysUsed.add('vmu.partnership.requireEntity')
     const acct = str(account).trim()
     if (!acct) return deny('VMU_ENTITY_ACCOUNT_UNBOUND', 'bindAccount needs an account', 'pass { account, entityId }')
     const id = str(entityId).trim()
@@ -83,7 +83,7 @@ export function createLegalEntity({ clock = () => 0, log = () => {}, settings = 
     if (!entities.has(id)) return deny('VMU_ENTITY_UNKNOWN', 'entity not registered: ' + id, 'register it with registerEntity() first')
     bindings.set(acct, id)
     return { ok: true, account: acct, entityId: id, requireEntity: c.requireEntity,
-      enforced: ['vmu.legalentity.requireEntity'], enforcedScope: 'evaluated-so-far' }
+      enforced: ['vmu.partnership.requireEntity'], enforcedScope: 'evaluated-so-far' }
   }
 
   /**
@@ -91,26 +91,26 @@ export function createLegalEntity({ clock = () => 0, log = () => {}, settings = 
    */
   function validateInvoice({ account = null, invoice = null } = {}) {
     const c = cfg()
-    keysUsed.add('vmu.legalentity.invoiceTaxSlots').add('vmu.legalentity.crossBorderGate').add('vmu.legalentity.crossBorderApproverRoles')
+    keysUsed.add('vmu.partnership.invoiceTaxSlots').add('vmu.partnership.crossBorderGate').add('vmu.partnership.crossBorderApproverRoles')
     const inv = invoice && typeof invoice === 'object' ? invoice : {}
     const missing = c.invoiceTaxSlots.filter((s) => inv[s] === undefined || inv[s] === null || inv[s] === '')
     if (missing.length) {
       return deny('VMU_TAX_FIELD_MISSING', 'invoice is missing declared tax slot(s): ' + missing.join(', '),
-        'the declared slots are vmu.legalentity.invoiceTaxSlots; this check is about PRESENCE, not about tax rates',
+        'the declared slots are vmu.partnership.invoiceTaxSlots; this check is about PRESENCE, not about tax rates',
         { missing, slots: c.invoiceTaxSlots.slice() })
     }
     const crossBorder = inv.crossBorder === true
     if (crossBorder && c.crossBorderGate === 'require-approval' && !inv.approvedBy) {
       return deny('VMU_CROSSBORDER_GATE_REQUIRED', 'a cross-border invoice needs an approver',
-        'pass approvedBy from ' + (c.crossBorderApproverRoles.length ? c.crossBorderApproverRoles.join('/') : 'vmu.legalentity.crossBorderApproverRoles'))
+        'pass approvedBy from ' + (c.crossBorderApproverRoles.length ? c.crossBorderApproverRoles.join('/') : 'vmu.partnership.crossBorderApproverRoles'))
     }
     const acct = str(account).trim()
     const boundId = acct ? bindings.get(acct) || null : null
     const entity = boundId ? entities.get(boundId) || null : null
     if (acct && c.requireEntity && !entity) {
-      keysUsed.add('vmu.legalentity.requireEntity')
+      keysUsed.add('vmu.partnership.requireEntity')
       return deny('VMU_ENTITY_ACCOUNT_UNBOUND', 'account ' + acct + ' has no bound legal entity',
-        'bindAccount({account, entityId}) first (vmu.legalentity.requireEntity=true)')
+        'bindAccount({account, entityId}) first (vmu.partnership.requireEntity=true)')
     }
     if (entity && entity.currency && inv.currency && String(inv.currency) !== entity.currency) {
       return deny('VMU_CROSSBORDER_CURRENCY_MISMATCH', 'invoice currency ' + String(inv.currency) + ' differs from the entity currency ' + entity.currency,
@@ -119,7 +119,7 @@ export function createLegalEntity({ clock = () => 0, log = () => {}, settings = 
     counts.validated += 1
     return { ok: true, account: acct || null, entityId: entity ? entity.entityId : null, slots: c.invoiceTaxSlots.slice(),
       crossBorder, approvedBy: inv.approvedBy || null, crossBorderGate: c.crossBorderGate,
-      enforced: ['vmu.legalentity.invoiceTaxSlots', 'vmu.legalentity.crossBorderGate'], enforcedScope: 'evaluated-so-far' }
+      enforced: ['vmu.partnership.invoiceTaxSlots', 'vmu.partnership.crossBorderGate'], enforcedScope: 'evaluated-so-far' }
   }
 
   /** Read-only views. Every declaration this face read is named, so a reader can see WHICH keys had an effect. */

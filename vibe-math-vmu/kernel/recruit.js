@@ -47,7 +47,7 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
     probationMs: intOr(settings['vmu.recruit.probationMs'], 0),
     // ROUND 267 (volume 17 §L266-271): the four remaining declarations. Every one is read here and enforced or reported below.
     policy: ['closed', 'claim', 'nominate', 'open'].includes(settings['vmu.recruit.policy']) ? settings['vmu.recruit.policy'] : 'closed',
-    decideBy: ['manager', 'vote', 'auction', 'human'].includes(settings['vmu.recruit.decideBy']) ? settings['vmu.recruit.decideBy'] : 'manager',
+    decideBy: ['manager', 'vote', 'allocation', 'human'].includes(settings['vmu.recruit.decideBy']) ? settings['vmu.recruit.decideBy'] : 'manager',
     needsHuman: boolOr(settings['vmu.recruit.needsHuman'], false),
     probationPermissions: Array.isArray(settings['vmu.recruit.probationPermissions']) ? settings['vmu.recruit.probationPermissions'].map(String) : [],
     seatsMax: intOr(settings['vmu.recruit.seatsMax'], Infinity),

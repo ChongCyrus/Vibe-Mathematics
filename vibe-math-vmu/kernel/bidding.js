@@ -7,19 +7,19 @@
 //       countered by the post-mortem discipline (§13), not by a hidden score.
 //   §17 anti-collusion: `kernel.collusion.scan` reports, it does NOT auto-punish (`onSuspect` default
 //       `report`); the criteria are public and recomputable; false positives can be appealed (§5).
-//   §20.5 keys (`vmu.auction.*`) and §20.3 keys (`vmu.collusion.*`, `vmu.trust.*`) — read TOLERANTLY here
+//   §20.5 keys (`vmu.allocation.*`) and §20.3 keys (`vmu.collusion.*`, `vmu.trust.*`) — read TOLERANTLY here
 //       (absent ⇒ the documented default), so this module is usable without the registry rows landing first.
 //   §27 交界: the TASK BOARD and the BUDGET belong to 08 — this module takes a `taskId` and a budget and
 //       REFERENCES them; it never redefines task state or resource accounting.
 //
 // HARD INVARIANTS (the task's six, plus the kernel's usual rails)
 //   ① NO BID AFTER THE DEADLINE — a named refusal (`VMU_AUCTION_CLOSED`) that CARRIES the deadline;
-//   ② AN AWARD NEEDS A RATIONALE — `vmu.auction.awardNeedsRationale` (default true) ⇒ a nameless award is
+//   ② AN AWARD NEEDS A RATIONALE — `vmu.allocation.awardNeedsRationale` (default true) ⇒ a nameless award is
 //      refused with a hint that names the key;
-//   ③ REPUTATION MUST NOT PRICE A BID — with `vmu.auction.reputationInPrice=false` (default) a bid that
+//   ③ REPUTATION MUST NOT PRICE A BID — with `vmu.allocation.reputationInPrice=false` (default) a bid that
 //      carries a reputation weight/adjusted price is refused BY NAME (`VMU_TRUST_USE_FORBIDDEN`); trust may
 //      only ORDER candidates (`vmu.trust.useInAuction`), never move a price;
-//   ④ priceCap (`vmu.auction.maxBidCost`, 0 = unlimited) CANNOT BE EXCEEDED — refusal carries 现值/上限;
+//   ④ priceCap (`vmu.allocation.maxBidCost`, 0 = unlimited) CANNOT BE EXCEEDED — refusal carries 现值/上限;
 //   ⑤ AN AWARD NEEDS `minBids` — fewer bids ⇒ refusal carrying the CURRENT count and the minimum;
 //   ⑥ DUPLICATE BIDS MUST BE VISIBLE — the collusion scan marks identical prices / identical plans /
 //      mutual-affinity pairs and the marks go into `status()`; silence here would hide围标 ✗.
@@ -27,7 +27,7 @@
 //   · the only time source is the injected `clock`; `random` is a deterministic hash of the post id (no
 //     Math.random anywhere) ⇒ two runs over the same calls produce byte-identical status();
 //   · READ paths (list/candidates/collusion/status) never mutate recorded data;
-//   · ZERO MECHANISM: `vmu.auction.enabled` defaults to FALSE ⇒ nothing can be posted, `list()`/`status()`
+//   · ZERO MECHANISM: `vmu.allocation.enabled` defaults to FALSE ⇒ nothing can be posted, `list()`/`status()`
 //     still answer, and every attempt is a NAMED refusal — never a crash.
 //
 // Codes used here (all registered in 03-§8 — this module deliberately invents NONE):
@@ -103,34 +103,34 @@ export function createBidding({ clock = () => 0, log = null, settings = {}, bus 
       : (typeof at === 'string' && !Number.isNaN(Date.parse(at)) ? Date.parse(at) : null)))
   const r6 = (n) => Number(Number(n).toFixed(6))
 
-  const enabled = sget('vmu.auction.enabled', false) === true
-  const claimFirst = sget('vmu.auction.claimFirst', true) === true
-  const closeRuleSetting = (() => { const v = sget('vmu.auction.closeRule', DEFAULTS.closeRule); return CLOSE_RULES.includes(v) ? v : DEFAULTS.closeRule })()
-  const bidWindowMs = asInt(sget('vmu.auction.bidWindowMs', DEFAULTS.bidWindowMs), DEFAULTS.bidWindowMs)
-  const maxBidCost = asNum(sget('vmu.auction.maxBidCost', DEFAULTS.maxBidCost), DEFAULTS.maxBidCost)
-  const requirePlan = sget('vmu.auction.requirePlan', DEFAULTS.requirePlan) === true
-  const maxOpenAuctions = asInt(sget('vmu.auction.maxOpenAuctions', DEFAULTS.maxOpenAuctions), DEFAULTS.maxOpenAuctions)
-  const minBids = asInt(sget('vmu.auction.minBids', DEFAULTS.minBids), DEFAULTS.minBids)
-  const maxBids = asInt(sget('vmu.auction.maxBids', DEFAULTS.maxBids), DEFAULTS.maxBids, 1)
-  const maxPosts = asInt(sget('vmu.auction.maxPosts', DEFAULTS.maxPosts), DEFAULTS.maxPosts, 1)
-  const awardNeedsRationale = sget('vmu.auction.awardNeedsRationale', DEFAULTS.awardNeedsRationale) === true
-  const cancelNeedsReason = sget('vmu.auction.cancelNeedsReason', DEFAULTS.cancelNeedsReason) === true
-  const collusionScanOn = sget('vmu.auction.collusionScan', DEFAULTS.collusionScan) === true
-  const reputationInPrice = sget('vmu.auction.reputationInPrice', DEFAULTS.reputationInPrice) === true
-  const tieBreak = (() => { const v = sget('vmu.auction.tieBreak', DEFAULTS.tieBreak); return TIE_BREAKS.includes(v) ? v : DEFAULTS.tieBreak })()
+  const enabled = sget('vmu.allocation.enabled', false) === true
+  const claimFirst = sget('vmu.allocation.claimFirst', true) === true
+  const closeRuleSetting = (() => { const v = sget('vmu.allocation.closeRule', DEFAULTS.closeRule); return CLOSE_RULES.includes(v) ? v : DEFAULTS.closeRule })()
+  const bidWindowMs = asInt(sget('vmu.allocation.bidWindowMs', DEFAULTS.bidWindowMs), DEFAULTS.bidWindowMs)
+  const maxBidCost = asNum(sget('vmu.allocation.maxBidCost', DEFAULTS.maxBidCost), DEFAULTS.maxBidCost)
+  const requirePlan = sget('vmu.allocation.requirePlan', DEFAULTS.requirePlan) === true
+  const maxOpenAuctions = asInt(sget('vmu.allocation.maxOpenAuctions', DEFAULTS.maxOpenAuctions), DEFAULTS.maxOpenAuctions)
+  const minBids = asInt(sget('vmu.allocation.minBids', DEFAULTS.minBids), DEFAULTS.minBids)
+  const maxBids = asInt(sget('vmu.allocation.maxBids', DEFAULTS.maxBids), DEFAULTS.maxBids, 1)
+  const maxPosts = asInt(sget('vmu.allocation.maxPosts', DEFAULTS.maxPosts), DEFAULTS.maxPosts, 1)
+  const awardNeedsRationale = sget('vmu.allocation.awardNeedsRationale', DEFAULTS.awardNeedsRationale) === true
+  const cancelNeedsReason = sget('vmu.allocation.cancelNeedsReason', DEFAULTS.cancelNeedsReason) === true
+  const collusionScanOn = sget('vmu.allocation.collusionScan', DEFAULTS.collusionScan) === true
+  const reputationInPrice = sget('vmu.allocation.reputationInPrice', DEFAULTS.reputationInPrice) === true
+  const tieBreak = (() => { const v = sget('vmu.allocation.tieBreak', DEFAULTS.tieBreak); return TIE_BREAKS.includes(v) ? v : DEFAULTS.tieBreak })()
   const trustUseInAuction = sget('vmu.trust.useInAuction', true) === true
   const collusionWindowMs = asInt(sget('vmu.collusion.windowMs', DEFAULTS.collusionWindowMs), DEFAULTS.collusionWindowMs)
   const collusionMaxMutualShare = asNum(sget('vmu.collusion.maxMutualShare', DEFAULTS.collusionMaxMutualShare), DEFAULTS.collusionMaxMutualShare)
   const collusionMinEvidence = asInt(sget('vmu.collusion.minEvidence', DEFAULTS.collusionMinEvidence), DEFAULTS.collusionMinEvidence, 1)
   const collusionOnSuspect = sget('vmu.collusion.onSuspect', DEFAULTS.collusionOnSuspect) === 'freeze-review' ? 'freeze-review' : 'report'
-  const maxSuspects = asInt(sget('vmu.auction.maxSuspects', DEFAULTS.maxSuspects), DEFAULTS.maxSuspects, 1)
+  const maxSuspects = asInt(sget('vmu.allocation.maxSuspects', DEFAULTS.maxSuspects), DEFAULTS.maxSuspects, 1)
   // ROUND 116 (docs/17 §S09, anti-cherry-picking): the three keys the volume declares for fair dispatch. They were
   // planned while the registry already carried `VMU_FAIRNESS_QUOTA` as a registered code - a code the module never
   // threw. `equal` is the default, so nothing below changes behaviour unless a pack asks for `quota`.
-  const fairnessPolicy = FAIRNESS_POLICIES.includes(sget('vmu.auction.fairnessPolicy', DEFAULTS.fairnessPolicy))
-    ? sget('vmu.auction.fairnessPolicy', DEFAULTS.fairnessPolicy) : DEFAULTS.fairnessPolicy
-  const dirtyWorkQuota = asNum(sget('vmu.auction.dirtyWorkQuota', DEFAULTS.dirtyWorkQuota), DEFAULTS.dirtyWorkQuota)
-  const rotationWindow = asInt(sget('vmu.auction.rotationWindow', DEFAULTS.rotationWindow), DEFAULTS.rotationWindow)
+  const fairnessPolicy = FAIRNESS_POLICIES.includes(sget('vmu.allocation.fairnessPolicy', DEFAULTS.fairnessPolicy))
+    ? sget('vmu.allocation.fairnessPolicy', DEFAULTS.fairnessPolicy) : DEFAULTS.fairnessPolicy
+  const dirtyWorkQuota = asNum(sget('vmu.allocation.dirtyWorkQuota', DEFAULTS.dirtyWorkQuota), DEFAULTS.dirtyWorkQuota)
+  const rotationWindow = asInt(sget('vmu.allocation.rotationWindow', DEFAULTS.rotationWindow), DEFAULTS.rotationWindow)
 
   // ── state (mutated only by post/bid/close/award/cancel) ────────────────────────────────────────────
   const posts = new Map()            // postId -> post
@@ -250,7 +250,7 @@ export function createBidding({ clock = () => 0, log = null, settings = {}, bus 
     post({ taskId, requirements = null, budget, deadlineMs = null, id = null, at = null } = {}) {
       if (!enabled) {
         counters.skips += 1
-        throw deny('VMU_STATE', 'vmu.auction.enabled is false: the market is inert (zero mechanism)', 'set vmu.auction.enabled=true to open auctions (docs/17 §20.5)')
+        throw deny('VMU_STATE', 'vmu.allocation.enabled is false: the market is inert (zero mechanism)', 'set vmu.allocation.enabled=true to open auctions (docs/17 §20.5)')
       }
       if (typeof taskId !== 'string' || !taskId) throw deny('VMU_INVALID_ARGUMENT', 'post needs a taskId (the 08 task board owns the task itself)', 'e.g. { taskId: "t-1", budget: 100, deadlineMs: now + 60000 }')
       if (typeof budget !== 'number' || !Number.isFinite(budget) || budget <= 0) throw deny('VMU_INVALID_ARGUMENT', 'post needs a positive finite budget', 'the budget belongs to 08; this module only references it (docs/17 §27)')
@@ -259,17 +259,17 @@ export function createBidding({ clock = () => 0, log = null, settings = {}, bus 
       const deadline = deadlineMs === null
         ? (bidWindowMs > 0 ? ms + bidWindowMs : null)
         : (typeof deadlineMs === 'number' && Number.isFinite(deadlineMs) ? deadlineMs : null)
-      if (deadline === null) throw deny('VMU_INVALID_ARGUMENT', 'post needs a deadline: give deadlineMs or set vmu.auction.bidWindowMs', 'a deadline is what makes "no bid after the deadline" decidable (docs/17 §10)')
-      if (deadline <= ms) throw deny('VMU_INVALID_ARGUMENT', 'the deadline must be in the future: ' + deadline + ' (now ' + ms + ')', 'give deadlineMs > now, or a positive vmu.auction.bidWindowMs')
+      if (deadline === null) throw deny('VMU_INVALID_ARGUMENT', 'post needs a deadline: give deadlineMs or set vmu.allocation.bidWindowMs', 'a deadline is what makes "no bid after the deadline" decidable (docs/17 §10)')
+      if (deadline <= ms) throw deny('VMU_INVALID_ARGUMENT', 'the deadline must be in the future: ' + deadline + ' (now ' + ms + ')', 'give deadlineMs > now, or a positive vmu.allocation.bidWindowMs')
       if (openPosts().length >= maxOpenAuctions) {
         throw deny('VMU_RESOURCE_BUDGET', 'open auctions at the cap (' + openPosts().length + '/' + maxOpenAuctions + '): ' + taskId,
-          'close or cancel an open auction, or raise vmu.auction.maxOpenAuctions (docs/17 §10: 现值/上限)')
+          'close or cancel an open auction, or raise vmu.allocation.maxOpenAuctions (docs/17 §10: 现值/上限)')
       }
       if (posts.size >= maxPosts) {
         postDropped.n += 1
         say({ type: 'bidding/dropped', at: ms, what: 'post', cap: maxPosts })
         throw deny('VMU_RESOURCE_BUDGET', 'post cap reached (' + posts.size + '/' + maxPosts + ')',
-          'raise vmu.auction.maxPosts; every dropped post is counted, never silent')
+          'raise vmu.allocation.maxPosts; every dropped post is counted, never silent')
       }
       const postId = String(id === null ? 'p' + (counters.posted + 1) : id)
       if (posts.has(postId)) throw deny('VMU_CONFLICT', 'post id already exists: ' + postId, 'ids are never reused — history stays addressable')
@@ -286,10 +286,10 @@ export function createBidding({ clock = () => 0, log = null, settings = {}, bus 
     /**
      * Place (or replace) a bid. INVARIANT ①: after the deadline this is a NAMED refusal carrying the
      * deadline. INVARIANT ③: a reputation weight on the PRICE is refused by name unless the operator has
-     * explicitly enabled `vmu.auction.reputationInPrice`.
+     * explicitly enabled `vmu.allocation.reputationInPrice`.
      */
     bid({ postId, by, price, plan = null, score = null, cost = null, reputationWeight = null, adjustedPrice = null, at = null } = {}) {
-      if (!enabled) { counters.skips += 1; throw deny('VMU_STATE', 'vmu.auction.enabled is false: the market is inert (zero mechanism)', 'set vmu.auction.enabled=true to bid') }
+      if (!enabled) { counters.skips += 1; throw deny('VMU_STATE', 'vmu.allocation.enabled is false: the market is inert (zero mechanism)', 'set vmu.allocation.enabled=true to bid') }
       const post = postOf(postId)
       if (!post) throw deny('VMU_NO_SUCH_OBJECT', 'no such auction: ' + String(postId), 'open: ' + (order.filter((i) => posts.get(i).state === 'open').join(', ') || 'none'))
       const ms = atMs(at)
@@ -306,16 +306,16 @@ export function createBidding({ clock = () => 0, log = null, settings = {}, bus 
       if (price < 0) throw deny('VMU_MONEY_NEGATIVE_FORBIDDEN', 'a bid price cannot be negative: ' + price, 'money is non-negative; a zero bid is allowed, a negative one is not')
       // ④ THE PRICE CAP RAIL
       if (maxBidCost > 0 && price > maxBidCost) {
-        throw deny('VMU_AUCTION_INVALID_BID', 'bid exceeds vmu.auction.maxBidCost: ' + r6(price) + ' > ' + maxBidCost,
+        throw deny('VMU_AUCTION_INVALID_BID', 'bid exceeds vmu.allocation.maxBidCost: ' + r6(price) + ' > ' + maxBidCost,
           '现值=' + r6(price) + ', 上限=' + maxBidCost + ' (the cap cannot be exceeded; docs/17 §10)')
       }
       // ③ THE REPUTATION-IN-PRICE RAIL
       if (!reputationInPrice && (reputationWeight !== null || adjustedPrice !== null)) {
-        throw deny('VMU_TRUST_USE_FORBIDDEN', 'reputation must not price a bid (vmu.auction.reputationInPrice=false): ' + by,
+        throw deny('VMU_TRUST_USE_FORBIDDEN', 'reputation must not price a bid (vmu.allocation.reputationInPrice=false): ' + by,
           'pass no reputationWeight/adjustedPrice; reputation may ORDER candidates (vmu.trust.useInAuction) but never move a price (docs/17 §10 S-3)')
       }
       if (requirePlan && !normalizePlan(plan)) {
-        throw deny('VMU_AUCTION_INVALID_BID', 'bid needs a plan (vmu.auction.requirePlan=true): ' + by,
+        throw deny('VMU_AUCTION_INVALID_BID', 'bid needs a plan (vmu.allocation.requirePlan=true): ' + by,
           'a bid states cost, time and risk — give plan as text or an object')
       }
       const existing = post.bids.get(by)
@@ -323,7 +323,7 @@ export function createBidding({ clock = () => 0, log = null, settings = {}, bus 
         counters.bidDropped += 1
         say({ type: 'bidding/dropped', at: ms, what: 'bid', post: post.id, cap: maxBids })
         throw deny('VMU_RESOURCE_BUDGET', 'bid cap reached for this auction (' + post.bidOrder.length + '/' + maxBids + '): ' + by,
-          'raise vmu.auction.maxBids; the dropped bid is COUNTED (现值/上限)')
+          'raise vmu.allocation.maxBids; the dropped bid is COUNTED (现值/上限)')
       }
       const entry = {
         by, price: r6(price), plan: plan === null ? null : plan, planNorm: normalizePlan(plan),
@@ -358,7 +358,7 @@ export function createBidding({ clock = () => 0, log = null, settings = {}, bus 
 
     /**
      * Award the task. INVARIANT ② (rationale), ⑤ (minBids) and the declared-rule rail: awarding a bidder
-     * the rule did not pick is a NAMED conflict unless `vmu.auction.allowRuleOverride` is set.
+     * the rule did not pick is a NAMED conflict unless `vmu.allocation.allowRuleOverride` is set.
      */
     award({ postId, to, rationale = null, at = null, overrideRule = null } = {}) {
       const post = postOf(postId)
@@ -375,8 +375,8 @@ export function createBidding({ clock = () => 0, log = null, settings = {}, bus 
       }
       if (awardNeedsRationale && !(typeof rationale === 'string' && rationale.trim())) {
         counters.awardsRefused += 1
-        throw deny('VMU_INVALID_ARGUMENT', 'an award must carry a rationale (vmu.auction.awardNeedsRationale=true): ' + post.id,
-          'give rationale as non-empty text: vmu.auction.awardNeedsRationale=true makes the reason mandatory (docs/17 §10) — the reason is what makes the award auditable')
+        throw deny('VMU_INVALID_ARGUMENT', 'an award must carry a rationale (vmu.allocation.awardNeedsRationale=true): ' + post.id,
+          'give rationale as non-empty text: vmu.allocation.awardNeedsRationale=true makes the reason mandatory (docs/17 §10) — the reason is what makes the award auditable')
       }
       // ROUND 116: fair dispatch (docs/17 S09, anti-cherry-picking). Only the `quota` policy constrains
       // anything and `equal` is the default, so this cannot change behaviour unless a pack asks for it. The
@@ -394,15 +394,15 @@ export function createBidding({ clock = () => 0, log = null, settings = {}, bus 
         if (total > 0 && (mine + 1) / (total + 1) > dirtyWorkQuota) {
           counters.awardsRefused += 1
           throw deny('VMU_FAIRNESS_QUOTA',
-            'awarding to ' + String(to) + ' would put ' + (mine + 1) + '/' + (total + 1) + ' of the dirty work on one member, above vmu.auction.dirtyWorkQuota=' + dirtyWorkQuota,
-            'pick another member, or raise vmu.auction.dirtyWorkQuota (docs/17 S09: the quota is what stops cherry-picking)')
+            'awarding to ' + String(to) + ' would put ' + (mine + 1) + '/' + (total + 1) + ' of the dirty work on one member, above vmu.allocation.dirtyWorkQuota=' + dirtyWorkQuota,
+            'pick another member, or raise vmu.allocation.dirtyWorkQuota (docs/17 S09: the quota is what stops cherry-picking)')
         }
       }
       const bids = post.bidOrder.length
       if (bids < minBids) {
         counters.awardsRefused += 1
         throw deny('VMU_STATE', 'not enough bids to award: ' + bids + ' < minBids ' + minBids + ' (post ' + post.id + ')',
-          '现值=' + bids + ', 下限=' + minBids + ' (vmu.auction.minBids) — extend the window or cancel the auction')
+          '现值=' + bids + ', 下限=' + minBids + ' (vmu.allocation.minBids) — extend the window or cancel the auction')
       }
       if (typeof to !== 'string' || !post.bids.has(to)) {
         counters.awardsRefused += 1
@@ -410,7 +410,7 @@ export function createBidding({ clock = () => 0, log = null, settings = {}, bus 
       }
       const ranked = rankBids(post)
       const expected = ranked.length ? ranked[0].by : null
-      const override = overrideRule === true || sget('vmu.auction.allowRuleOverride', false) === true
+      const override = overrideRule === true || sget('vmu.allocation.allowRuleOverride', false) === true
       if (!override && expected !== null && to !== expected) {
         counters.awardsRefused += 1
         throw deny('VMU_CONFLICT', 'the close rule (' + post.closeRule + ') picks ' + expected + ', not ' + to,
@@ -419,7 +419,7 @@ export function createBidding({ clock = () => 0, log = null, settings = {}, bus 
       if (expected === null && post.closeRule === 'best-score') {
         counters.awardsRefused += 1
         throw deny('VMU_STATE', 'closeRule best-score has no scores to rank (post ' + post.id + ')',
-          'no bid carried a numeric score: record scores, or post with vmu.auction.closeRule=lowest-cost (no silent fallback)')
+          'no bid carried a numeric score: record scores, or post with vmu.allocation.closeRule=lowest-cost (no silent fallback)')
       }
       post.awarded = { to, at: ms, rationale: rationale === null ? null : String(rationale), rule: post.closeRule, expected, override: !!override, bids }
       post.state = 'awarded'
@@ -428,14 +428,14 @@ export function createBidding({ clock = () => 0, log = null, settings = {}, bus 
       return { ok: true, awarded: true, postId: post.id, to, rule: post.closeRule, expected, override: !!override, bids, rationale: post.awarded.rationale, at: ms }
     },
 
-    /** Cancel an open auction (reason required unless `vmu.auction.cancelNeedsReason=false`). */
+    /** Cancel an open auction (reason required unless `vmu.allocation.cancelNeedsReason=false`). */
     cancel({ postId, by = null, reason = null, at = null } = {}) {
       const post = postOf(postId)
       if (!post) throw deny('VMU_NO_SUCH_OBJECT', 'no such auction: ' + String(postId), 'open: ' + (order.filter((i) => posts.get(i).state === 'open').join(', ') || 'none'))
       const ms = atMs(at)
       if (ms === null) throw deny('VMU_INVALID_ARGUMENT', 'cancel `at` must be ms or an ISO timestamp', 'omit it to use the injected clock')
       if (cancelNeedsReason && !(typeof reason === 'string' && reason.trim())) {
-        throw deny('VMU_INVALID_ARGUMENT', 'cancel needs a reason (vmu.auction.cancelNeedsReason=true): ' + post.id,
+        throw deny('VMU_INVALID_ARGUMENT', 'cancel needs a reason (vmu.allocation.cancelNeedsReason=true): ' + post.id,
           'an unexplained cancellation is indistinguishable from an accident')
       }
       if (post.state === 'awarded') throw deny('VMU_STATE', 'the auction is already awarded to ' + post.awarded.to, 'an awarded task is not cancelled here; open a follow-up post')
@@ -463,7 +463,7 @@ export function createBidding({ clock = () => 0, log = null, settings = {}, bus 
         ok: true, postId: post.id, closeRule: post.closeRule, tieBreak, count: rows.length, candidates: rows,
         undecidable: rows.length === 0 && post.bidOrder.length > 0 && post.closeRule === 'best-score',
         reputation: { used: reputationUsed, role: 'selection-only', inPrice: reputationInPrice },
-        note: 'reputation may ORDER candidates (vmu.trust.useInAuction) but never changes a price (vmu.auction.reputationInPrice=false by default)',
+        note: 'reputation may ORDER candidates (vmu.trust.useInAuction) but never changes a price (vmu.allocation.reputationInPrice=false by default)',
         at: clock(),
       }
     },

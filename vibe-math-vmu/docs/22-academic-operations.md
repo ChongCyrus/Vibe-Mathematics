@@ -71,9 +71,9 @@
 | 6 | 跨机构协作 | 17 委托/身份 · 20 数据共享 | `vmu.collab.*` | `VMU_COLLAB_*` | ✗ |
 | 7 | 合规与审计运营 | 20 合规基线 · 21 审计导出 | `vmu.compliance.*` | `VMU_COMPLIANCE_*` | ✗ |
 | 8 | 资源与容量 | 07 `vmu.quota.*` · 17 席位 | `vmu.capacity.*` | `VMU_CAPACITY_*` | ✗ |
-| 9 | 人事与任期 | 17 `vmu.recruit.*`／席位 | `vmu.hr.*` | `VMU_HR_*` | ✗ |
+| 9 | 人事与任期 | 17 `vmu.recruit.*`／席位 | `vmu.tenure.*` | `VMU_HR_*` | ✗ |
 | **10** | **保管链与溯源（N4）** | `vibe_vmu_records`／§2.1 台账／07 记录轨 | `vmu.custody.*` | `VMU_BIOSAMPLE_*` | ✗ |
-| **11** | **税务与法务实体（N9）** | §3.0 Money／§3.1 账户／20 密级 | `vmu.legalentity.*` | `VMU_ENTITY_*`／`VMU_TAX_*`／`VMU_CROSSBORDER_*` | ✗ |
+| **11** | **税务与法务实体（N9）** | §3.0 Money／§3.1 账户／20 密级 | `vmu.partnership.*` | `VMU_ENTITY_*`／`VMU_TAX_*`／`VMU_CROSSBORDER_*` | ✗ |
 | **12** | **DUA／MTA 协议闸（N10）** | §7.1 协议登记／21 提醒（引用） | `vmu.agreements.*` | `VMU_AGREEMENT_*` | ✗ |
 
 > **成熟度诚实声明** ✗（★ **轮 264 部分更正** ✓✓）：**本卷若干族的承载面【早已存在】** ✓ —— **实测：`kernel/resource.js`（359 行 ✓，含登记/预约/校准/阻断 ✓）、`kernel/funding.js`（693 行 ✓，含 `openAccount`／`request`／`expense`／`settle` ✓）、`kernel/collab.js`（285 行 ✓，含 `authorship`／`settle` ✓）、`kernel/custody.js`（195 行 ✓）** ✓ ⇒ **下文各处若仍写"计划 ✗"，应以上述承载面为准** ✓；**逐族成熟度的完整复核仍待做** ✗。**原始声明（保留以备对照）**：本卷 **13 个族（含 §3.0 的货币类型与 §2.5／§3.6／§7.4 三个追加族）、9 个服务、9 个工具、10 个钩子、9 个协议全部为规划**（`settings/planned.js` 里 `planned:true`）✓ —— 今天能用的只有**底座**（记录/任务/会议/设置/中间件/pack/脚本桥）✓。
@@ -90,7 +90,7 @@
 | `vmu.custody` | 7 | **7** | `custody.js`(7) | ★ **已接线 ✓（§L168"本仓今天没有任何样本/保管实现"【已不成立】✗）** |
 | `vmu.agreements` | 7 | **7** | `collab.js`(7) | ★ **已接线 ✓** |
 | `vmu.capacity` | 12 | **12** | `capacity.js`(12) | ★ **已接线 ✓** |
-| `vmu.hr` | 11 | **11** | `hr.js`(11) | ★ **已接线 ✓** |
+| `vmu.tenure` | 11 | **11** | `hr.js`(11) | ★ **已接线 ✓** |
 | `vmu.ip` | 15 | **15** | `ip.js`(20) | ★ **已接线 ✓** |
 | `vmu.quota` | 4 | **4** | `retention.js`(4) | ★ **已接线 ✓** |
 | `vmu.conference` | 18 | **18** | `conference.js`(18) | ★ **已接线 ✓** |
@@ -102,7 +102,7 @@
 | `vmu.dissemination` | **11** | **9** | `publication.js`(9) | ⚠️ **部分（9/11）** —— 9 条**已接线 ✓**；另 2 条（`impact`／`mediaRequest`）**经审计确认内核无读取者 ⇒ 真实待办 ✗**（见 §0.1 与 `04` 的 `planned` 行 ✓） |
 | `vmu.recruit` | 12 | **12** | `recruit.js`(12) | ★ **已接线 ✓（轮 267 接了余下 4 条，当时漏更此表 ✗，轮 271 修正）** |
 | `vmu.tasks` | **3** | **3** | `index.js`(3) | ★ **已接线 ✓（轮 270 剔除 1 个服务名后，分母由 3 修正为 2 ✓）** |
-| `vmu.legalentity` | 6 | **6** | `legalentity.js`(6) | ★ **已接线 ✓（轮 276 建面：`registerEntity`／`bindAccount`／`validateInvoice`，五码齐 ✓）** |
+| `vmu.partnership` | 6 | **6** | `legalentity.js`(6) | ★ **已接线 ✓（轮 276 建面：`registerEntity`／`bindAccount`／`validateInvoice`，五码齐 ✓）** |
 | `vmu.license` | 4 | **4** | `publication.js`(4) | ★ **已接线 ✓（轮 274 接线：`default`／`incompatiblePolicy` 执法，`codeDefault`／`attributionRequired` 报出）** |
 | `vmu.review` | 4 | **4** | `records.js`(1) ＋ `reviewers.js`(3) | ★ **已接线 ✓（轮 278 `rebuttalRequired` ＋ 轮 279 `mode`／`conflictPolicy`／`quorum`）** |
 | `vmu.reviewers` | 4 | **4** | `reviewers.js`(4) | ★ **已接线 ✓（轮 279 建面三键 ＋ 轮 283 `acknowledgement`；契约取自 16 卷 §L302）** |
@@ -111,7 +111,7 @@
 
 ### 0.2 三族真实缺口：为什么【没有】承载面（轮 266 实测）✓
 
-> **`vmu.legalentity`（6 条，卷 22）**：**概念层实测：`legalentity`／`jurisdiction`／`taxId`／`crossBorder` 在【内核全无】** ✗ ⇒ **本卷 §L287 的协议 `LegalEntity`／`TaxFieldSlots` 也仍标 ⛔ 待实现** ✓ ⇒ **复活条件**：**先有【法律实体对象】（含 `entityId`／`jurisdiction`／`taxIdRef` ✓）与**发票税位**的稳定字段位** ✓，**再由它读这 6 键** ✓；**在那之前，6 键无宿主** ✓。
+> **`vmu.partnership`（6 条，卷 22）**：**概念层实测：`legalentity`／`jurisdiction`／`taxId`／`crossBorder` 在【内核全无】** ✗ ⇒ **本卷 §L287 的协议 `LegalEntity`／`TaxFieldSlots` 也仍标 ⛔ 待实现** ✓ ⇒ **复活条件**：**先有【法律实体对象】（含 `entityId`／`jurisdiction`／`taxIdRef` ✓）与**发票税位**的稳定字段位** ✓，**再由它读这 6 键** ✓；**在那之前，6 键无宿主** ✓。
 > **`vmu.license`（4 条，卷 20／16）**：**概念层实测：`licen[cs]e`／`attribution`／`incompatible` 命中处【都不是许可证面**（多为注释与其他语义 ✓）**）** ✓ ⇒ **复活条件**：**先有【许可证判定点**（默认许可证 ＋ 归属要求 ＋ 不兼容处置 ✓）**）** ✓，**最自然的宿主是 `publication.js`／`ip.js` 的输出侧** ✓；**未定时不接** ✓。
 > **`vmu.review`（4 条，卷 16）**：**概念层实测：`reviewers`／`reviewMode`／`quorum`／`rebuttal` 中**，**`rebuttal`（答辩）在内核【全无】** ✗；**`quorum` 在 `ballot.js`／`charter.js`／`conference.js`／`hr.js` 有对应概念** ✓ ⇒ **复活条件**：**先有【答辩】概念** ✓（**该词内核零命中 ⇒ 这是一条【真实的新机制】而非"忘了接"** ✓），**否则 `review.rebuttalRequired` 无从判定** ✓。
 
@@ -295,8 +295,8 @@
 | **名称** | 法律实体与税务字段位（Legal Entity & Tax Field Slots） |
 | **目的** | 每笔钱的**法律归属**可核（哪个实体、哪个辖区、哪个税号引用）✓；发票/报销的**必要字段位**缺失即拒 ✓；**跨境**报销多一道闸点 ✓ |
 | **面向谁** | 财务、法务、审计、PI、代理 |
-| **接口形状** | 协议 `LegalEntity` ⛔ 待实现：`{ entityId, jurisdiction, taxIdRef, currency? }`；协议 `TaxFieldSlots` ⛔ 待实现：`{ slot, required, source }`；服务 `vmu.legalentity`（**计划 ✗**）：`register(entity)`／`bind(accountId, entityId)`／`validateInvoice(doc)`／`gate(documentType, context)`；工具 `vibe_vmu_legalentity` ⛔ 未实现 |
-| **可调控参数** | `vmu.legalentity.registryDir`（默认 `Ops/Entities`）、`vmu.legalentity.requireEntity`（默认 `true`）、`vmu.legalentity.taxIdStyle`（默认 `opaque-ref`＝**只存引用，不存明文** ✓）、`vmu.legalentity.invoiceTaxSlots`（默认 `["taxIdRef","taxRateRef","taxAmountMinor","taxJurisdiction"]`）、`vmu.legalentity.crossBorderGate`（默认 `require-approval`）、`vmu.legalentity.crossBorderApproverRoles`（默认 `[]`） |
+| **接口形状** | 协议 `LegalEntity` ⛔ 待实现：`{ entityId, jurisdiction, taxIdRef, currency? }`；协议 `TaxFieldSlots` ⛔ 待实现：`{ slot, required, source }`；服务 `vmu.partnership`（**计划 ✗**）：`register(entity)`／`bind(accountId, entityId)`／`validateInvoice(doc)`／`gate(documentType, context)`；工具 `vibe_vmu_legalentity` ⛔ 未实现 |
+| **可调控参数** | `vmu.partnership.registryDir`（默认 `Ops/Entities`）、`vmu.partnership.requireEntity`（默认 `true`）、`vmu.partnership.taxIdStyle`（默认 `opaque-ref`＝**只存引用，不存明文** ✓）、`vmu.partnership.invoiceTaxSlots`（默认 `["taxIdRef","taxRateRef","taxAmountMinor","taxJurisdiction"]`）、`vmu.partnership.crossBorderGate`（默认 `require-approval`）、`vmu.partnership.crossBorderApproverRoles`（默认 `[]`） |
 | **相关错误码** | `VMU_ENTITY_UNKNOWN` ⛔／`VMU_ENTITY_ACCOUNT_UNBOUND` ⛔／`VMU_TAX_FIELD_MISSING` ⛔／`VMU_CROSSBORDER_GATE_REQUIRED` ⛔／`VMU_CROSSBORDER_CURRENCY_MISMATCH` ⛔ |
 | **四条哲学** | F：不登记实体＝无税务位 ✓｜T：字段位清单/闸点策略/审批角色可配 ✓｜D：**字段位是 pack 声明**，税率与法条**只在 pack/外部** ✓｜X：新辖区只加实体行与字段位 ✓ |
 | **实现要点** | ① **只做字段位与校验点** ✗：`validateInvoice()` 检查清单里的**位**是否存在（缺位 ⇒ `VMU_TAX_FIELD_MISSING`），**不判断税率是否"正确"** ✓；② 税务标识只存**不透明引用**（`taxIdRef`）⇒ 明文税号不进研究所记录 ✓；③ 金额与币种一律走 **§3.0 的 Money**（整数 minor units）✓，实体 `currency` 与单据币种不一致 ⇒ `VMU_CROSSBORDER_CURRENCY_MISMATCH` ✓；④ **跨境闸点**：单据涉及非本实体辖区的支付/收款时，`crossBorderGate=require-approval` ⇒ 缺人类批准即**具名拒** `VMU_CROSSBORDER_GATE_REQUIRED` ✓（人类在环 O-6 ✓） |
@@ -640,11 +640,11 @@
 
 | 条目 | 名称 | 目的 | 可调控参数 | 码 | 成熟度 | 优先级 |
 |---|---|---|---|---|---|---|
-| 10.1 | **招募周期（运营）** | 与 17 的招募衔接：周期开窗、评审季排期、名额与容量联动（§9.1） | `vmu.hr.recruitCycleDays`（默认 `60`）、`vmu.hr.recruitWindowOpenMs` | `VMU_HR_CYCLE_CLOSED` ⛔ | ✗ | P2 |
-| 10.2 | **绩效节奏** | 定期回顾的节奏与材料清单（**材料来自记录轨**，不凭印象 ✓） | `vmu.hr.performanceCadenceDays`（默认 `180`）、`vmu.hr.performanceEvidenceRequired`（默认 `true`） | `VMU_HR_PERF_EVIDENCE_MISSING` ⛔ | ✗ | P2 |
-| 10.3 | **任期与晋升** | 任期时钟、里程碑、决策窗口（引用 16 的成果面，引用 17 的席位面） | `vmu.hr.tenureTrackMonths`（默认 `60`）、`vmu.hr.tenureDecisionWindowDays`（默认 `90`）、`vmu.hr.tenureQuorum`（默认 `3`） | `VMU_HR_TENURE_DECISION_DUE` ⛔／`VMU_HR_TENURE_QUORUM_MISSING` ⛔ | ✗ | P1 |
-| 10.4 | **轮换·离职·申诉** | 轮换与离职清单（权限回收、数据交接、设备归还、文件归档）；申诉窗口与受理 | `vmu.hr.offboardingChecklist`（默认 `["revoke","handover","return","archive"]`）、`vmu.hr.appealWindowDays`（默认 `30`）、`vmu.hr.rotationPolicy`（默认 `none`） | `VMU_HR_OFFBOARDING_INCOMPLETE` ⛔／`VMU_HR_APPEAL_OPEN` ⛔ | ✗ | P1 |
-| 10.5 | **人类在环** | 人事决策**永不**自动化（只准备材料），人类审批可打断（O-6） | `vmu.hr.humanDecisionRequired`（默认 `true`） | `VMU_HR_AUTODECISION_FORBIDDEN` ⛔ | ✗ | P0（纪律） |
+| 10.1 | **招募周期（运营）** | 与 17 的招募衔接：周期开窗、评审季排期、名额与容量联动（§9.1） | `vmu.tenure.recruitCycleDays`（默认 `60`）、`vmu.tenure.recruitWindowOpenMs` | `VMU_HR_CYCLE_CLOSED` ⛔ | ✗ | P2 |
+| 10.2 | **绩效节奏** | 定期回顾的节奏与材料清单（**材料来自记录轨**，不凭印象 ✓） | `vmu.tenure.performanceCadenceDays`（默认 `180`）、`vmu.tenure.performanceEvidenceRequired`（默认 `true`） | `VMU_HR_PERF_EVIDENCE_MISSING` ⛔ | ✗ | P2 |
+| 10.3 | **任期与晋升** | 任期时钟、里程碑、决策窗口（引用 16 的成果面，引用 17 的席位面） | `vmu.tenure.tenureTrackMonths`（默认 `60`）、`vmu.tenure.tenureDecisionWindowDays`（默认 `90`）、`vmu.tenure.tenureQuorum`（默认 `3`） | `VMU_HR_TENURE_DECISION_DUE` ⛔／`VMU_HR_TENURE_QUORUM_MISSING` ⛔ | ✗ | P1 |
+| 10.4 | **轮换·离职·申诉** | 轮换与离职清单（权限回收、数据交接、设备归还、文件归档）；申诉窗口与受理 | `vmu.tenure.offboardingChecklist`（默认 `["revoke","handover","return","archive"]`）、`vmu.tenure.appealWindowDays`（默认 `30`）、`vmu.tenure.rotationPolicy`（默认 `none`） | `VMU_HR_OFFBOARDING_INCOMPLETE` ⛔／`VMU_HR_APPEAL_OPEN` ⛔ | ✗ | P1 |
+| 10.5 | **人类在环** | 人事决策**永不**自动化（只准备材料），人类审批可打断（O-6） | `vmu.tenure.humanDecisionRequired`（默认 `true`） | `VMU_HR_AUTODECISION_FORBIDDEN` ⛔ | ✗ | P0（纪律） |
 
 > **这一族怎么组合出来** ✓：**settings** 给周期/窗口/清单；**中间件**在 `before`（权限变更/离职动作前）检查清单闭合、在 `after` 记录；**pack** 给"任期规则、评审季规则、申诉流程" ✓。**招募与试用语义归 17** ✓（引用不重定义）。
 
@@ -685,7 +685,7 @@
 |---|---|---|
 | 工具 | `vibe_vmu_resource` ⛔ 未实现、`vibe_vmu_funding` ⛔ 未实现、`vibe_vmu_ip` ⛔ 未实现、`vibe_vmu_conference` ⛔ 未实现、`vibe_vmu_outreach` ⛔ 未实现、`vibe_vmu_collab` ⛔ 未实现、`vibe_vmu_compliance` ⛔ 未实现、`vibe_vmu_capacity` ⛔ 未实现、`vibe_vmu_hr` ⛔ 未实现 | ✗ |
 | 工具（复用） | `vibe_vmu_records` ✓、`vibe_vmu_task` ✓、`vibe_vmu_meeting` ✓、`vibe_vmu_set` ✓、`vibe_vmu_middleware` ✓、`vibe_vmu_pack` ✓、`vibe_vmu_script` ✓、`vibe_vmu_status` ✓、`vibe_vmu_control` ✓ | ✓ |
-| 服务 | `vmu.resource`／`vmu.funding`／`vmu.ip`／`vmu.conference`／`vmu.dissemination`／`vmu.collab`／`vmu.compliance`／`vmu.capacity`／`vmu.hr`（计划 `kernel/ops/*`） | ✗ |
+| 服务 | `vmu.resource`／`vmu.funding`／`vmu.ip`／`vmu.conference`／`vmu.dissemination`／`vmu.collab`／`vmu.compliance`／`vmu.capacity`／`vmu.tenure`（计划 `kernel/ops/*`） | ✗ |
 | 钩子 | `ops/expense-requested` ⛔ 提案、`ops/expense-approved` ⛔ 提案、`ops/receipt-recorded` ⛔ 提案、`ops/reservation-requested` ⛔ 提案、`ops/reservation-conflict` ⛔ 提案、`ops/calibration-due` ⛔ 提案、`ip/disclosure-before` ⛔ 提案、`ip/publication-hold` ⛔ 提案、`conference/cfp-open` ⛔ 提案、`conference/decision` ⛔ 提案、`outreach/draft-before` ⛔ 提案、`compliance/calendar-due` ⛔ 提案、`capacity/pool-low` ⛔ 提案、`hr/review-season-open` ⛔ 提案 | ✗ |
 | 协议 | `InstrumentReservation` ⛔、`ExpenseClaim` ⛔、`CostShareSplit` ⛔、`IpDisclosure` ⛔、`CfP` ⛔、`ReviewAssignment` ⛔、`AuditEvidencePack` ⛔、`CapacityPlan` ⛔、`TenureReview` ⛔ | ✗ |
 
@@ -789,17 +789,17 @@
 | 容量 | `vmu.capacity.forecastStaleDays` | integer | `14` | ≥1 | 运营席 |
 | 容量 | `vmu.capacity.facilities` | string[] | `[]` | 设施名 | 运营席 |
 | 容量 | `vmu.capacity.safetyBriefingRequired` | boolean | `true` | — | pack |
-| 人事 | `vmu.hr.recruitCycleDays` | integer | `60` | ≥1 | 运营席（衔接 17） |
-| 人事 | `vmu.hr.recruitWindowOpenMs` | integer | `0` | ≥0 | 运营席 |
-| 人事 | `vmu.hr.performanceCadenceDays` | integer | `180` | ≥1 | pack |
-| 人事 | `vmu.hr.performanceEvidenceRequired` | boolean | `true` | — | pack |
-| 人事 | `vmu.hr.tenureTrackMonths` | integer | `60` | ≥1 | pack |
-| 人事 | `vmu.hr.tenureDecisionWindowDays` | integer | `90` | ≥1 | pack |
-| 人事 | `vmu.hr.tenureQuorum` | integer | `3` | ≥1 | pack |
-| 人事 | `vmu.hr.offboardingChecklist` | string[] | `["revoke","handover","return","archive"]` | 步骤 | pack |
-| 人事 | `vmu.hr.appealWindowDays` | integer | `30` | ≥0 | pack |
-| 人事 | `vmu.hr.rotationPolicy` | string | `none` | `none`｜`periodic`｜`byRequest` | pack |
-| 人事 | `vmu.hr.humanDecisionRequired` | boolean | `true` | — | **内核强制** ✓ |
+| 人事 | `vmu.tenure.recruitCycleDays` | integer | `60` | ≥1 | 运营席（衔接 17） |
+| 人事 | `vmu.tenure.recruitWindowOpenMs` | integer | `0` | ≥0 | 运营席 |
+| 人事 | `vmu.tenure.performanceCadenceDays` | integer | `180` | ≥1 | pack |
+| 人事 | `vmu.tenure.performanceEvidenceRequired` | boolean | `true` | — | pack |
+| 人事 | `vmu.tenure.tenureTrackMonths` | integer | `60` | ≥1 | pack |
+| 人事 | `vmu.tenure.tenureDecisionWindowDays` | integer | `90` | ≥1 | pack |
+| 人事 | `vmu.tenure.tenureQuorum` | integer | `3` | ≥1 | pack |
+| 人事 | `vmu.tenure.offboardingChecklist` | string[] | `["revoke","handover","return","archive"]` | 步骤 | pack |
+| 人事 | `vmu.tenure.appealWindowDays` | integer | `30` | ≥0 | pack |
+| 人事 | `vmu.tenure.rotationPolicy` | string | `none` | `none`｜`periodic`｜`byRequest` | pack |
+| 人事 | `vmu.tenure.humanDecisionRequired` | boolean | `true` | — | **内核强制** ✓ |
 | 货币 | `vmu.funds.currencyDefault` | string | `CNY` | ISO-4217 alpha-3 | 运营席 |
 | 货币 | `vmu.funds.roundingMode` | string | `half-even` | `half-up`｜`half-even`｜`floor`｜`ceil`｜`trunc` | pack |
 | 货币 | `vmu.funds.scaleByCurrency` | object | `{}` | 币种→精度位数 | pack（覆盖 ISO 表需留痕） |
@@ -818,12 +818,12 @@
 | 保管条目 | `vmu.custody.destroyKeepsReference` | boolean | `true` | — | pack（引用 07 保留面 ✓） |
 | 保管条目 | `vmu.custody.pseudonymStyle` | string | `pseudonym` | `pseudonym`｜`code` | pack（与 20 联动） |
 | 保管条目 | `vmu.custody.mappingIrreversible` | boolean | **`true`** | —（**默认不可逆** ✓） | **内核强制** ✓ |
-| 税务/法务 | `vmu.legalentity.registryDir` | string | `Ops/Entities` | 相对项目根 | 财务/法务 |
-| 税务/法务 | `vmu.legalentity.requireEntity` | boolean | `true` | — | pack |
-| 税务/法务 | `vmu.legalentity.taxIdStyle` | string | `opaque-ref` | `opaque-ref`｜`none` | pack（**不存明文** ✓） |
-| 税务/法务 | `vmu.legalentity.invoiceTaxSlots` | string[] | `["taxIdRef","taxRateRef","taxAmountMinor","taxJurisdiction"]` | 字段位名 | pack |
-| 税务/法务 | `vmu.legalentity.crossBorderGate` | string | `require-approval` | `require-approval`｜`warn`｜`off` | pack |
-| 税务/法务 | `vmu.legalentity.crossBorderApproverRoles` | string[] | `[]` | 席位名 | pack |
+| 税务/法务 | `vmu.partnership.registryDir` | string | `Ops/Entities` | 相对项目根 | 财务/法务 |
+| 税务/法务 | `vmu.partnership.requireEntity` | boolean | `true` | — | pack |
+| 税务/法务 | `vmu.partnership.taxIdStyle` | string | `opaque-ref` | `opaque-ref`｜`none` | pack（**不存明文** ✓） |
+| 税务/法务 | `vmu.partnership.invoiceTaxSlots` | string[] | `["taxIdRef","taxRateRef","taxAmountMinor","taxJurisdiction"]` | 字段位名 | pack |
+| 税务/法务 | `vmu.partnership.crossBorderGate` | string | `require-approval` | `require-approval`｜`warn`｜`off` | pack |
+| 税务/法务 | `vmu.partnership.crossBorderApproverRoles` | string[] | `[]` | 席位名 | pack |
 | 协议闸 | `vmu.agreements.registryDir` | string | `Ops/Agreements` | 相对项目根 | 法务 |
 | 协议闸 | `vmu.agreements.kinds` | string[] | `["dua","mta"]` | 协议种类 | pack |
 | 协议闸 | `vmu.agreements.unsignedPolicy` | string | **`block`** | `block`｜`warn` | pack（"未签不得共享" ✓） |

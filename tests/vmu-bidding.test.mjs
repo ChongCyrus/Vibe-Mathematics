@@ -5,13 +5,13 @@
 //   A. the deadline rail: a bid at/after the deadline is a NAMED refusal that CARRIES the deadline;
 //   B. an award needs a RATIONALE (and the refusal names the key that would relax it);
 //   C. reputation must NOT price a bid: a reputation weight on the price is refused by name unless the
-//      operator explicitly enabled `vmu.auction.reputationInPrice`;
+//      operator explicitly enabled `vmu.allocation.reputationInPrice`;
 //   D. the price cap cannot be exceeded (the refusal carries 现值/上限);
 //   E. an award needs `minBids` (the refusal carries the current count and the floor);
 //   F. duplicate bids are VISIBLE: identical prices / identical plans are marked and the marks appear in
 //      status() (silence here would hide 围标 ✗);
 //   G. every cap counts its DROPS (bids/posts) and the open-auction cap is a named refusal with 现值/上限;
-//   H. ZERO MECHANISM: `vmu.auction.enabled` defaults false ⇒ nothing posts, list()/status() still answer,
+//   H. ZERO MECHANISM: `vmu.allocation.enabled` defaults false ⇒ nothing posts, list()/status() still answer,
 //      and the refusal is named (never a crash);
 //   I. DETERMINISM: two instances fed the same calls produce byte-identical status(), and the `random`
 //      close rule is a deterministic hash (no Math.random anywhere);
@@ -32,7 +32,7 @@ const err = (fn) => { try { fn(); return null } catch (e) { return e } }
 const make = (over = {}) => {
   let now = 1000
   const settings = Object.assign(
-    { 'vmu.auction.enabled': true, 'vmu.auction.bidWindowMs': 10000, 'vmu.auction.awardNeedsRationale': true },
+    { 'vmu.allocation.enabled': true, 'vmu.allocation.bidWindowMs': 10000, 'vmu.allocation.awardNeedsRationale': true },
     over.settings || {})
   const a = createBidding(Object.assign({ clock: () => now }, over, { settings }))
   return { a, at: () => now, set: (t) => { now = t } }
@@ -53,7 +53,7 @@ const make = (over = {}) => {
 
 // ---- B. an award needs a rationale -----------------------------------------------------------------
 {
-  const { a, set } = make({ settings: { 'vmu.auction.closeRule': 'lowest-cost' } })
+  const { a, set } = make({ settings: { 'vmu.allocation.closeRule': 'lowest-cost' } })
   const p = a.post({ taskId: 't-1', budget: 100 })
   a.bid({ postId: p.postId, by: 'r-1', price: 10, plan: 'do it' })
   set(12000)
@@ -94,7 +94,7 @@ const make = (over = {}) => {
   ok(e && /never move a price|S-3/.test(String(e.hint || '')), 'C2: the refusal explains the layering (trust orders, never prices)', e && e.hint)
   ok(err(() => a.bid({ postId: p.postId, by: 'r-1', price: 10, plan: 'x', adjustedPrice: 8 })) !== null,
     'C3: an adjusted price is refused by the same rail')
-  const { a: b } = make({ settings: { 'vmu.auction.reputationInPrice': true } })
+  const { a: b } = make({ settings: { 'vmu.allocation.reputationInPrice': true } })
   const p2 = b.post({ taskId: 't-1', budget: 100 })
   const r = b.bid({ postId: p2.postId, by: 'r-1', price: 10, plan: 'x', reputationWeight: 0.9 })
   ok(r.ok === true && r.reputationInPrice === true, 'C4: with the explicit opt-in, the weight is recorded (loudly)', JSON.stringify(r))
@@ -103,7 +103,7 @@ const make = (over = {}) => {
 
 // ---- D. the price cap ------------------------------------------------------------------------------
 {
-  const { a } = make({ settings: { 'vmu.auction.maxBidCost': 20 } })
+  const { a } = make({ settings: { 'vmu.allocation.maxBidCost': 20 } })
   const p = a.post({ taskId: 't-1', budget: 100 })
   const e = err(() => a.bid({ postId: p.postId, by: 'r-1', price: 21, plan: 'x' }))
   ok(e && e.code === 'VMU_AUCTION_INVALID_BID', 'D1: exceeding priceCap is refused', e && e.code)
@@ -115,7 +115,7 @@ const make = (over = {}) => {
 
 // ---- E. minBids ------------------------------------------------------------------------------------
 {
-  const { a, set } = make({ settings: { 'vmu.auction.minBids': 2 } })
+  const { a, set } = make({ settings: { 'vmu.allocation.minBids': 2 } })
   const p = a.post({ taskId: 't-1', budget: 100 })
   a.bid({ postId: p.postId, by: 'r-1', price: 10, plan: 'x' })
   set(12000)
@@ -128,7 +128,7 @@ const make = (over = {}) => {
 
 // ---- F. duplicate bids must be visible -------------------------------------------------------------
 {
-  const { a, set } = make({ settings: { 'vmu.auction.minBids': 1 } })
+  const { a, set } = make({ settings: { 'vmu.allocation.minBids': 1 } })
   const p = a.post({ taskId: 't-1', budget: 100 })
   a.bid({ postId: p.postId, by: 'r-1', price: 30, plan: 'Step A\nStep B' })
   a.bid({ postId: p.postId, by: 'r-2', price: 30, plan: ' step b \n step a ' })
@@ -144,7 +144,7 @@ const make = (over = {}) => {
   ok(st.collusion.suspects.length >= 2 && st.collusion.marks >= 2, 'F5: the marks are VISIBLE in status() (never silent)', JSON.stringify(st.collusion.marks))
   ok(st.collusion.suspects.every((s) => s.code === 'VMU_COLLUSION_SUSPECTED'), 'F6: every mark carries the collusion code')
   ok(st.collusion.onSuspect === 'report', 'F7: the default action is REPORT (no auto-punishment)')
-  const frozen = make({ settings: { 'vmu.collusion.onSuspect': 'freeze-review', 'vmu.auction.minBids': 1 } })
+  const frozen = make({ settings: { 'vmu.collusion.onSuspect': 'freeze-review', 'vmu.allocation.minBids': 1 } })
   const p2 = frozen.a.post({ taskId: 't-1', budget: 100 })
   frozen.a.bid({ postId: p2.postId, by: 'r-1', price: 30, plan: 'same' })
   frozen.a.bid({ postId: p2.postId, by: 'r-2', price: 30, plan: 'same' })
@@ -156,7 +156,7 @@ const make = (over = {}) => {
 
 // ---- G. caps and counted drops ---------------------------------------------------------------------
 {
-  const { a, set } = make({ settings: { 'vmu.auction.maxBids': 2, 'vmu.auction.maxOpenAuctions': 1, 'vmu.auction.minBids': 1 } })
+  const { a, set } = make({ settings: { 'vmu.allocation.maxBids': 2, 'vmu.allocation.maxOpenAuctions': 1, 'vmu.allocation.minBids': 1 } })
   const p = a.post({ taskId: 't-1', budget: 100 })
   a.bid({ postId: p.postId, by: 'r-1', price: 10, plan: 'x' })
   a.bid({ postId: p.postId, by: 'r-2', price: 12, plan: 'y' })
@@ -166,7 +166,7 @@ const make = (over = {}) => {
   ok(second && second.code === 'VMU_RESOURCE_BUDGET' && /\(1\/1\)/.test(String(second.message)), 'G2: the open-auction cap is a named refusal naming 现值/上限', second && second.message)
   const st = a.status()
   ok(st.dropped.bids === 1 && st.dropped.total === 1, 'G3: the rejected bid is counted as a DROP', JSON.stringify(st.dropped))
-  const small = make({ settings: { 'vmu.auction.maxPosts': 1, 'vmu.auction.maxOpenAuctions': 5 } })
+  const small = make({ settings: { 'vmu.allocation.maxPosts': 1, 'vmu.allocation.maxOpenAuctions': 5 } })
   small.a.post({ taskId: 't-1', budget: 10 })
   ok(code(() => small.a.post({ taskId: 't-2', budget: 10 })) === 'VMU_RESOURCE_BUDGET', 'G4: the post cap refuses by name')
   ok(small.a.status().dropped.posts === 1, 'G5: the dropped post is counted (the open-auction cap is not what fires here)')
@@ -199,12 +199,12 @@ const make = (over = {}) => {
     a.award({ postId: p.postId, to: 'r-1', rationale: 'tie broken deterministically', overrideRule: true })
     return JSON.stringify(a.status())
   }
-  const one = make({ settings: { 'vmu.auction.closeRule': 'lowest-cost' } }); one.set(1000)
-  const two = make({ settings: { 'vmu.auction.closeRule': 'lowest-cost' } }); two.set(1000)
+  const one = make({ settings: { 'vmu.allocation.closeRule': 'lowest-cost' } }); one.set(1000)
+  const two = make({ settings: { 'vmu.allocation.closeRule': 'lowest-cost' } }); two.set(1000)
   const s1 = run(one.a); const s2 = run(two.a)
   ok(s1 === s2, 'I1: two instances fed the same calls produce byte-identical status()')
   // the `random` rule is a deterministic hash, not Math.random
-  const mk = () => { const m = make({ settings: { 'vmu.auction.closeRule': 'random', 'vmu.auction.minBids': 1 } }); return m }
+  const mk = () => { const m = make({ settings: { 'vmu.allocation.closeRule': 'random', 'vmu.allocation.minBids': 1 } }); return m }
   const A = mk(); const pA = A.a.post({ taskId: 't', budget: 10 })
   A.a.bid({ postId: pA.postId, by: 'r-1', price: 1, plan: 'x' }); A.a.bid({ postId: pA.postId, by: 'r-2', price: 2, plan: 'y' })
   A.set(12000); A.a.close({ postId: pA.postId })
@@ -231,7 +231,7 @@ const make = (over = {}) => {
 
 // ---- K. the declared close rule is enforced --------------------------------------------------------
 {
-  const { a, set } = make({ settings: { 'vmu.auction.closeRule': 'lowest-cost', 'vmu.auction.minBids': 1 } })
+  const { a, set } = make({ settings: { 'vmu.allocation.closeRule': 'lowest-cost', 'vmu.allocation.minBids': 1 } })
   const p = a.post({ taskId: 't-1', budget: 100 })
   ok(p.closeRule === 'lowest-cost', 'K1: the post records the rule declared up front')
   a.bid({ postId: p.postId, by: 'r-1', price: 30, plan: 'x' })
@@ -244,7 +244,7 @@ const make = (over = {}) => {
   ok(e && e.code === 'VMU_CONFLICT' && /picks r-2/.test(String(e.message)), 'K3: awarding against the declared rule is a NAMED conflict naming the rule pick', e && e.message)
   ok(a.award({ postId: p.postId, to: 'r-1', rationale: 'deliberate override', overrideRule: true }).override === true,
     'K4: an explicit override is recorded (never silent)')
-  const scored = make({ settings: { 'vmu.auction.closeRule': 'best-score', 'vmu.auction.minBids': 1 } })
+  const scored = make({ settings: { 'vmu.allocation.closeRule': 'best-score', 'vmu.allocation.minBids': 1 } })
   const p2 = scored.a.post({ taskId: 't', budget: 10 })
   scored.a.bid({ postId: p2.postId, by: 'r-1', price: 5, plan: 'x' })
   scored.set(12000)
@@ -264,7 +264,7 @@ const make = (over = {}) => {
 
 // ---- Z. cancel(): the cancellation rail (previously untested) ----------------------------------------
 {
-  const { a, set } = make({ settings: { 'vmu.auction.maxOpenAuctions': 10 } })   // cancelNeedsReason defaults to true
+  const { a, set } = make({ settings: { 'vmu.allocation.maxOpenAuctions': 10 } })   // cancelNeedsReason defaults to true
   const p1 = a.post({ taskId: 't-c1', budget: 100 })
   const p2 = a.post({ taskId: 't-c2', budget: 100 })
   a.bid({ postId: p1.postId, by: 'r-1', price: 10, plan: 'x' })
@@ -304,7 +304,7 @@ const make = (over = {}) => {
 {
   // The bidding window is closed by advancing the clock; every scenario pins a short window so the advance is
   // deliberate and small, and the rotation window is wider than one step so Z6 stays inside it on purpose.
-  const WIN = { 'vmu.auction.bidWindowMs': 100, 'vmu.auction.closeRule': 'lowest-cost' }
+  const WIN = { 'vmu.allocation.bidWindowMs': 100, 'vmu.allocation.closeRule': 'lowest-cost' }
   const run = (s, taskId, by) => {
     const p = s.a.post({ taskId, budget: 100 })
     s.a.bid({ postId: p.postId, by, price: 10, plan: 'a' })
@@ -322,7 +322,7 @@ const make = (over = {}) => {
     'Z2: and a SECOND award to the same member is NOT refused under `equal` (the guard must not fire by default)')
 
   // (b) the quota policy refuses by name, and the refusal says the share and the knob
-  const q = make({ settings: Object.assign({}, WIN, { 'vmu.auction.fairnessPolicy': 'quota', 'vmu.auction.dirtyWorkQuota': 0.5 }) })
+  const q = make({ settings: Object.assign({}, WIN, { 'vmu.allocation.fairnessPolicy': 'quota', 'vmu.allocation.dirtyWorkQuota': 0.5 }) })
   const q1 = run(q, 't-1', 'r-1')
   ok(q.a.award({ postId: q1.postId, to: 'r-1', rationale: 'first' }).ok === true, 'Z3: the first award fits the quota')
   const q2 = run(q, 't-2', 'r-1')
@@ -333,7 +333,7 @@ const make = (over = {}) => {
     'Z5: and the refusal names the share it would create and the knob that decided', refusal && refusal.message)
 
   // (c) the rotation window narrows which past awards count, so the same award becomes admissible again
-  const w = make({ settings: Object.assign({}, WIN, { 'vmu.auction.fairnessPolicy': 'quota', 'vmu.auction.dirtyWorkQuota': 0.5, 'vmu.auction.rotationWindow': 10000 }) })
+  const w = make({ settings: Object.assign({}, WIN, { 'vmu.allocation.fairnessPolicy': 'quota', 'vmu.allocation.dirtyWorkQuota': 0.5, 'vmu.allocation.rotationWindow': 10000 }) })
   const w1 = run(w, 't-1', 'r-1')
   w.a.award({ postId: w1.postId, to: 'r-1', rationale: 'first' })
   const w2 = run(w, 't-2', 'r-1')

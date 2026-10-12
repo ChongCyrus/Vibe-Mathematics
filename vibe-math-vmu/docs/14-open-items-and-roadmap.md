@@ -150,7 +150,7 @@
   ★ **轮 103 对 C 类的核实：7 面里 4 面其实是【活面】，我的分类被实测纠正** ✗✓✓：
   | 面 | 实测形态 | 修正裁决 |
   |---|---|---|
-  | **`vmu.auction`**（3 键） | ★ **`bidding.js` 大量 `sget('vmu.auction.*', …)`** ✓✓（`enabled`／`claimFirst`／`closeRule`／`bidWindowMs`／`maxBidCost`／`minBids`／`awardNeedsRationale`… ✓） | **活面待办** ✓（**归入 B 类** ✓） |
+  | **`vmu.allocation`**（3 键） | ★ **`bidding.js` 大量 `sget('vmu.allocation.*', …)`** ✓✓（`enabled`／`claimFirst`／`closeRule`／`bidWindowMs`／`maxBidCost`／`minBids`／`awardNeedsRationale`… ✓） | **活面待办** ✓（**归入 B 类** ✓） |
   | **`vmu.collusion`**（2 键） | ★ **`bidding.js` 读 `windowMs`／`maxMutualShare`／`minEvidence`／`onSuspect`** ✓✓ | **活面待办** ✓ |
   | **`vmu.repro`**（3 键） | ★ **`repropack.js` 读 `requiredMembers`／`hashAlgo`／`maxPackBytes`／`allowMissingSeed`／`envLockMode`…** ✓✓ | **活面待办** ✓ |
   | **`vmu.schedule`**（3 键） | ★ **`scheduler.js` 读 12 个 `vmu.schedule.*`** ✓✓（`triggerVia`／`maxPending`／`timeSource`／`actionsAllowed`… ✓） | **活面待办** ✓ |
@@ -1317,7 +1317,7 @@
 - ★★★★★ **轮 266：按第 ⑬ 条把卷 22 的 26 处服务声明【就地标注】；并为三族真实缺口写入【有实测依据的复活条件】；未接线保持 134** ✓✓
   ★★★ **① 逐处就地标注（26 处）** ✓✓：**按族映射** —— **全接线的族写 `★ 已接线 ✓（实测 N/N，见 §0.1）`** ✓（**`ip` 5 处 ✓、`instruments` 4 ✓、`funding` 4 ✓、`conference` 4 ✓、`compliance` 3 ✓、`biospecimen` 1 ✓、`agreements` 1 ✓**）；**部分族写 `⚠️ 部分接线`** ✓（**`outreach` 3 ✓、`collab` 1 ✓**）⇒ **卷 22 里"计划 ✗"从 31 处降到 5 处** ✓，**而剩下的 5 处全部合理** ✓：**L79 我的更正 ✓、L87/88 实测表本身（它引述该字样以说明"已过期"✓）、L116 轮 61 那条更正 ✓、L287 是一行【协议**（`LegalEntity ⛔ 待实现` ✓ = 真实缺口 ✓**）**）** ✓。**三条审计仍全绿** ✓。
   ★★★ **② 三族真实缺口的【概念层实测】** ✓✓（**不是看键名，而是看概念是否存在于内核** ✓）：
-  - **`vmu.legalentity`(6，卷 22)**：**`legalentity`／`taxId`／`crossBorder` ⇒ 内核【全无】** ✗（**仅 `jurisdiction` 在 `domaingate.js` 命中 1 处 ✓**）⇒ **复活条件**：**先有【法律实体对象】（`entityId`／`jurisdiction`／`taxIdRef` ✓）与**发票税位的稳定字段位** ✓，**再由它读这 6 键** ✓；
+  - **`vmu.partnership`(6，卷 22)**：**`legalentity`／`taxId`／`crossBorder` ⇒ 内核【全无】** ✗（**仅 `jurisdiction` 在 `domaingate.js` 命中 1 处 ✓**）⇒ **复活条件**：**先有【法律实体对象】（`entityId`／`jurisdiction`／`taxIdRef` ✓）与**发票税位的稳定字段位** ✓，**再由它读这 6 键** ✓；
   - **`vmu.license`(4，卷 20／16)**：**`attribution` ⇒ 全无** ✗、**`incompatible` 仅 1 处** ✓（**`licence/license` 的 3 处命中也都不构成许可证面 ✓**）⇒ **复活条件**：**先有【许可证判定点】（默认许可证 ＋ 归属要求 ＋ 不兼容处置 ✓），最自然的宿主是 `publication.js`／`ip.js` 的输出侧** ✓；
   - **`vmu.review`(4，卷 16)**：★★★ **`rebuttal` 与 `peerReview` ⇒ 内核【全无】** ✗（**而 `quorum` 在 `ballot`／`charter`／`conference`／`hr` 有对应概念 ✓**）⇒ **复活条件**：**先有【答辩】概念** ✓ —— **"该词内核零命中 ⇒ 这是一条【真实的新机制】，而不是'忘了接'"** ✓。
   **③ 裁定块入卷（+7 行 ✓，经行数校验 ✓）** ✓：**§0.2 逐族写明"为什么没有承载面"与复活条件** ✓，**与 §0.1 的实测表相邻** ✓。
@@ -1407,7 +1407,7 @@
   ★★★ **② 新面 `kernel/legalentity.js` 完全照卷 22 §L285-§L302 写成** ✓✓：**六键** ✓（`registryDir=Ops/Entities`、`requireEntity=true`、`taxIdStyle=opaque-ref`★只存不透明引用、`invoiceTaxSlots` 四位、`crossBorderGate=require-approval`、`crossBorderApproverRoles=[]`）；**三方法** ✓（`registerEntity`／`bindAccount`／`validateInvoice` —— ★ **方法名照卷里点名的那一个** ✓）；**五码** ✓（`VMU_ENTITY_UNKNOWN`／`VMU_ENTITY_ACCOUNT_UNBOUND`／`VMU_TAX_FIELD_MISSING`／`VMU_CROSSBORDER_GATE_REQUIRED`／`VMU_CROSSBORDER_CURRENCY_MISMATCH`）；★ **并遵守该节自述的纪律：只判"位是否存在"，不判税率** ✓；**零声明 ⇒ 空面且自曝** ✓。**真机十一分支全对 ✓；`VMU LEGALENTITY: 22 passed, 0 failed`** ✓。
   ★★★ **③ 五处接线一次接通（这次先量了清单）** ✓✓：**`kernel/index.js` 四处**（import ✓、create ✓、`registry.register(…, {apiVersion:1}, {kind:'service', description})` ✓、getter ✓）、**`package.json#files`** ✓、**`tests/audit-vmu-services` 的 SURFACES** ✓（**服务由 68 升至 **69 registered** ✓**）、**零机制矩阵逐面裁定** ✓（**`0 mismatches, 0 unregistered`** ✓）；**加上 `installer.js` 清单（本轮补 ✓）＝ 六处** ✓。★ **新面套件 `tests/vmu-legalentity.test.mjs`** ⇒ **`JOBS 225 suites 153`** ✓。
   ★★★ **④ 两条教训入卷 ⑮** ✓✓：**(a) 接线记账是【按族】的 ⇒ 跨族接线要新建该族的面** ✓，**动手前量【该族的记账表与它的断言】** ✓；**(b) 本仓有【两种拒法先例】**（**`publication.js` 抛 ✓、`funding.js` 返回 ✓**）⇒ **新面先量最近前例再写测试** —— **我按"抛出"写的五条断言全红，而面是对的** ✓。
-  ★★★ **⑤ 防漂探针再次履职** ✓✓：**它先报 `vmu.legalentity: table says 6/6, measured 0/6`** ✗ —— **因为 `docs/04` 尚未从 schema 重生成** ✓ ⇒ **跑生成链后 `0 drifted, 0 misclaimed`** ✓✓。
+  ★★★ **⑤ 防漂探针再次履职** ✓✓：**它先报 `vmu.partnership: table says 6/6, measured 0/6`** ✗ —— **因为 `docs/04` 尚未从 schema 重生成** ✓ ⇒ **跑生成链后 `0 drifted, 0 misclaimed`** ✓✓。
   **门禁与证据** ✓：**`VMU LEGALENTITY: 22/0`** ✓；**`INSTALLER POLICY: 100/0`** ✓；**`regen-all: 9/9 in sync`** ✓；**设置表 1118 键（1003 已接线／115 未接线）** ✓；**T1 与 installer 相关作业全绿 ✓**。
   **未做（明写 ✗）**：★★ **`review`(4) 仍未接** ✗ —— **它是【最后一个真实缺口** ✗**）**，**复活条件：先有【答辩】概念** ✓（**该词内核零命中 ✓**）；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 

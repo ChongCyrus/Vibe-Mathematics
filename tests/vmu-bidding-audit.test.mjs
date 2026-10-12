@@ -96,8 +96,8 @@ test('refusals are named; zero-mechanism works; repeated probing is identical', 
   passed += 1
 })
 
-// ⑥ **真驱动**（读 `bidding.js` 正文取得真键与真操作 ✓）：键在 **`vmu.auction.*`** ✗✓（**不是** `vmu.bidding.*` ✓）
-//    `post()` 需要 `deadlineMs` **或**正的 `vmu.auction.bidWindowMs` ✓；`bid()` 的具名拒**是抛出的**（读 `e.code` ✓）。
+// ⑥ **真驱动**（读 `bidding.js` 正文取得真键与真操作 ✓）：键在 **`vmu.allocation.*`** ✗✓（**不是** `vmu.bidding.*` ✓）
+//    `post()` 需要 `deadlineMs` **或**正的 `vmu.allocation.bidWindowMs` ✓；`bid()` 的具名拒**是抛出的**（读 `e.code` ✓）。
 //    三条：**窗口外** `VMU_AUCTION_CLOSED` ✓／**超 `maxBids`** `VMU_RESOURCE_BUDGET`（带**现值/上限** ✓）／
 //    **超 `maxBidCost`** `VMU_AUCTION_INVALID_BID`（带**现值/上限** ✓）⇒ 驱动不到 ⇒ **如实写"未能证明＋试过的参数"** ✓✓（不猜 ✗）
 test('REAL driving: window / maxBids / maxBidCost produce NAMED refusals (or recorded as 未能证明)', () => {
@@ -124,17 +124,17 @@ test('REAL driving: window / maxBids / maxBidCost produce NAMED refusals (or rec
     return false
   }
   // **真参数**（读正文 L239–252 取得 ✓）：`post({taskId, budget, deadlineMs?, at?})` 必填 `taskId`＋`budget` ✓；
-  //   **零机制下 `vmu.auction.enabled=false` ⇒ `post` 直接 `VMU_STATE`（"market is inert"）** ✗✓ ⇒ 必须显式 `enabled:true` ✓
-  const EN = { 'vmu.auction.enabled': true, 'vmu.auction.maxOpenAuctions': 1 }
+  //   **零机制下 `vmu.allocation.enabled=false` ⇒ `post` 直接 `VMU_STATE`（"market is inert"）** ✗✓ ⇒ 必须显式 `enabled:true` ✓
+  const EN = { 'vmu.allocation.enabled': true, 'vmu.allocation.maxOpenAuctions': 1 }
   const OK_POST = [{ taskId: 't-1', budget: 100 }]
   // ① 窗口外：不传 deadlineMs ⇒ 截止＝现在＋bidWindowMs(1000) ✓，时钟推 2000 ⇒ 已关 ✓
-  drive('① 窗口外（bidWindowMs=1000，时钟推 +2000）', Object.assign({ 'vmu.auction.bidWindowMs': 1000 }, EN), OK_POST, (b, adv, id) => { adv(2000); return b.bid({ postId: id, by: 'a', price: 1 }) })
+  drive('① 窗口外（bidWindowMs=1000，时钟推 +2000）', Object.assign({ 'vmu.allocation.bidWindowMs': 1000 }, EN), OK_POST, (b, adv, id) => { adv(2000); return b.bid({ postId: id, by: 'a', price: 1 }) })
   // ② 超 maxBids：首个投标 ok ⇒ 第二人触发上限 ✓
-  drive('② 超 maxBids=1（第二人投标）', Object.assign({ 'vmu.auction.bidWindowMs': 600000, 'vmu.auction.maxBids': 1 }, EN), OK_POST, (b, adv, id) => { b.bid({ postId: id, by: 'a', price: 1, plan: 'plan-a' }); return b.bid({ postId: id, by: 'b', price: 2, plan: 'plan-b' }) })
+  drive('② 超 maxBids=1（第二人投标）', Object.assign({ 'vmu.allocation.bidWindowMs': 600000, 'vmu.allocation.maxBids': 1 }, EN), OK_POST, (b, adv, id) => { b.bid({ postId: id, by: 'a', price: 1, plan: 'plan-a' }); return b.bid({ postId: id, by: 'b', price: 2, plan: 'plan-b' }) })
   // ③ 超 maxBidCost：报价 11 > 上限 10 ✓（hint 必须带现值/上限 ✓）
-  drive('③ 超 maxBidCost=10（报价 11）', Object.assign({ 'vmu.auction.bidWindowMs': 600000, 'vmu.auction.maxBidCost': 10 }, EN), OK_POST, (b, adv, id) => b.bid({ postId: id, by: 'a', price: 11 }))
+  drive('③ 超 maxBidCost=10（报价 11）', Object.assign({ 'vmu.allocation.bidWindowMs': 600000, 'vmu.allocation.maxBidCost': 10 }, EN), OK_POST, (b, adv, id) => b.bid({ postId: id, by: 'a', price: 11 }))
   // **消灭"空过"** ✗✓✓：**先断言非空** ⇒ 三条都驱不到时**必须红** ✓；再断言具名 ✓
-  assert.ok(codes.length > 0, '真驱动必须**至少**复现一条具名拒（否则本断言为空过 ✗）；试过的参数见上；`post()` 需 taskId＋budget 且 `vmu.auction.enabled=true` ✓')
+  assert.ok(codes.length > 0, '真驱动必须**至少**复现一条具名拒（否则本断言为空过 ✗）；试过的参数见上；`post()` 需 taskId＋budget 且 `vmu.allocation.enabled=true` ✓')
   for (const c of codes) assert.ok(/^VMU_/.test(c), '真驱动下的拒绝必须具名（无名 ⇒ ✗）：' + c)
   console.log('  · 真驱动实测到的码：' + codes.join('、'))
   passed += 1

@@ -142,11 +142,11 @@
 
 ## 10. 任务竞标与分配（Auction / Bid / Claim）
 
-- **竞标（auction）** ｜ 目的：让"谁来做"由**报价与能力**决定 ｜ 面向谁：全体 ｜ 接口形状：规划 `kernel.auction.open/bid/close`（⛔ 未实现）；工具面规划 `vibe_vmu_auction`（⛔ 未实现）＋**复用 08 任务板**（`vmu.tasks.*` ✓／`meeting_task_claim` 语义 ✓） ｜ 可调控：`vmu.auction.*` ｜ 错误码：`VMU_AUCTION_CLOSED`（拟增）／`VMU_AUCTION_INVALID_BID`（拟增）／`VMU_RESOURCE_BUDGET`（✓） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：结标规则**事先写明**（最低价/最优评分/随机）；**不得**因声誉直接内定（S-3 ✓） ｜ 依赖：任务板（08 ✓）＋预算（08 ✓） ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
-- **报价（bid）** ｜ 目的：把成本/时间/风险讲清楚 ｜ 面向谁：投标者 ｜ 接口形状：规划 `kernel.auction.bid({taskId,cost{tokens,turns,wallMs},plan,confidence})`（⛔ 未实现） ｜ 可调控：`vmu.auction.maxBidCost`／`requirePlan` ｜ 错误码：`VMU_AUCTION_INVALID_BID`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：报价**进审计**；虚报低价者由**完工复盘**反制（§13 纪律 ✓） ｜ 依赖：预算 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
-- **认领（claim）** ｜ 目的：简单场景不必竞标 ｜ 面向谁：全体 ｜ 接口形状：**已实现 ✓**（08 的 `vibe_vmu_task {action:'assign'}` ✓ 与"认领"语义面 ✓；`claimRequired` 在 08 §19.5 ✓） ｜ 可调控：`vmu.workflow.claimRequired` ✓（08）／`vmu.auction.claimFirst`（默认 true） ｜ 错误码：`VMU_TASK_*`（08）／`VMU_STATE` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**先认领后竞标**（默认）⇒ 小任务不开标（避免仪式过重 ✓） ｜ 依赖：08 任务板 ✓ ｜ 成熟度：**已实现 ✓**（认领侧） ｜ 优先级：P0
+- **竞标（auction）** ｜ 目的：让"谁来做"由**报价与能力**决定 ｜ 面向谁：全体 ｜ 接口形状：规划 `kernel.auction.open/bid/close`（⛔ 未实现）；工具面规划 `vibe_vmu_auction`（⛔ 未实现）＋**复用 08 任务板**（`vmu.tasks.*` ✓／`meeting_task_claim` 语义 ✓） ｜ 可调控：`vmu.allocation.*` ｜ 错误码：`VMU_AUCTION_CLOSED`（拟增）／`VMU_AUCTION_INVALID_BID`（拟增）／`VMU_RESOURCE_BUDGET`（✓） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：结标规则**事先写明**（最低价/最优评分/随机）；**不得**因声誉直接内定（S-3 ✓） ｜ 依赖：任务板（08 ✓）＋预算（08 ✓） ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
+- **报价（bid）** ｜ 目的：把成本/时间/风险讲清楚 ｜ 面向谁：投标者 ｜ 接口形状：规划 `kernel.auction.bid({taskId,cost{tokens,turns,wallMs},plan,confidence})`（⛔ 未实现） ｜ 可调控：`vmu.allocation.maxBidCost`／`requirePlan` ｜ 错误码：`VMU_AUCTION_INVALID_BID`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：报价**进审计**；虚报低价者由**完工复盘**反制（§13 纪律 ✓） ｜ 依赖：预算 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
+- **认领（claim）** ｜ 目的：简单场景不必竞标 ｜ 面向谁：全体 ｜ 接口形状：**已实现 ✓**（08 的 `vibe_vmu_task {action:'assign'}` ✓ 与"认领"语义面 ✓；`claimRequired` 在 08 §19.5 ✓） ｜ 可调控：`vmu.workflow.claimRequired` ✓（08）／`vmu.allocation.claimFirst`（默认 true） ｜ 错误码：`VMU_TASK_*`（08）／`VMU_STATE` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**先认领后竞标**（默认）⇒ 小任务不开标（避免仪式过重 ✓） ｜ 依赖：08 任务板 ✓ ｜ 成熟度：**已实现 ✓**（认领侧） ｜ 优先级：P0
 - **分配（assignment / dispatch）** ｜ 目的：有人定夺时直接派 ｜ 面向谁：管理者 ｜ 接口形状：**已实现 ✓** `vibe_vmu_task {action:'assign'}` ✓ ｜ 可调控：08 族 ✓ ｜ 错误码：`VMU_RESOURCE_BUDGET`（✓）／`VMU_NOT_PERMITTED` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：派单**必须带验收标准**（08 `create/assign` 面 ✓）；不得派给已满席位（容量 ✓） ｜ 依赖：席位＋任务 ✓ ｜ 成熟度：**已实现 ✓** ｜ 优先级：P0
-- **防挑活与公平轮转（anti-cherry-picking）** ｜ 目的：脏活也得有人干 ｜ 面向谁：机构 ｜ 接口形状：规划 `society.dispatchFairness` 判定点（⛔ 未实现） ｜ 可调控：`vmu.auction.fairnessPolicy`／`dirtyWorkQuota`／`rotationWindow` ｜ 错误码：`VMU_FAIRNESS_QUOTA`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：配额**只影响分配顺序**（不改权限 ✓）；轮转记录可审计 ✓ ｜ 依赖：§17 公平 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
+- **防挑活与公平轮转（anti-cherry-picking）** ｜ 目的：脏活也得有人干 ｜ 面向谁：机构 ｜ 接口形状：规划 `society.dispatchFairness` 判定点（⛔ 未实现） ｜ 可调控：`vmu.allocation.fairnessPolicy`／`dirtyWorkQuota`／`rotationWindow` ｜ 错误码：`VMU_FAIRNESS_QUOTA`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：配额**只影响分配顺序**（不改权限 ✓）；轮转记录可审计 ✓ ｜ 依赖：§17 公平 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
 
 ---
 
@@ -343,20 +343,20 @@
 | `vmu.skills.requiresPermission` | bool | true | bool | pack | 立即 | 能力不替代权限（S-2/S-3） |
 | `vmu.skills.evidenceRequired` | bool | true | bool | pack | 立即 | 声明必须带证据 |
 
-### 20.5 竞标、交接、带教、纪律（`vmu.auction.*`、`vmu.handover.*`、`vmu.mentor.*`、`vmu.discipline.*`）
+### 20.5 竞标、交接、带教、纪律（`vmu.allocation.*`、`vmu.handover.*`、`vmu.mentor.*`、`vmu.discipline.*`）
 
 | 键 | 类型 | 默认 | 取值域 | 谁可改 | 热改 | 说明 |
 |---|---|---|---|---|---|---|
-| `vmu.auction.enabled` | bool | false | bool | 所办 | 下轮 | 竞标开关（默认关：零机制 ✓） |
-| `vmu.auction.claimFirst` | bool | true | bool | pack | 下轮 | 先认领再竞标 |
-| `vmu.auction.closeRule` | enum | `best-score` | `lowest-cost｜best-score｜random` | pack | 下轮 | 结标规则（事先写明 ✓） |
-| `vmu.auction.bidWindowMs` | ms | 0 | ≥0 | 所办 | 立即 | 报价窗口 |
-| `vmu.auction.maxBidCost` | int | 0 | ≥0 | 所办 | 立即 | 单次报价上限（0＝不限） |
-| `vmu.auction.requirePlan` | bool | true | bool | pack | 立即 | 报价必须带计划 |
-| `vmu.auction.maxOpenAuctions` | int | 1 | ≥0 | 所办 | 立即 | 同时开标数 |
-| `vmu.auction.fairnessPolicy` | enum | `equal` | `equal｜quota｜rotation` | pack | 立即 | 分配公平策略 |
-| `vmu.auction.dirtyWorkQuota` | number | 0 | 0..1 | pack | 立即 | 脏活配额（防挑活） |
-| `vmu.auction.rotationWindow` | int | 0 | ≥0 | pack | 立即 | 轮转窗口（0＝不轮转） |
+| `vmu.allocation.enabled` | bool | false | bool | 所办 | 下轮 | 竞标开关（默认关：零机制 ✓） |
+| `vmu.allocation.claimFirst` | bool | true | bool | pack | 下轮 | 先认领再竞标 |
+| `vmu.allocation.closeRule` | enum | `best-score` | `lowest-cost｜best-score｜random` | pack | 下轮 | 结标规则（事先写明 ✓） |
+| `vmu.allocation.bidWindowMs` | ms | 0 | ≥0 | 所办 | 立即 | 报价窗口 |
+| `vmu.allocation.maxBidCost` | int | 0 | ≥0 | 所办 | 立即 | 单次报价上限（0＝不限） |
+| `vmu.allocation.requirePlan` | bool | true | bool | pack | 立即 | 报价必须带计划 |
+| `vmu.allocation.maxOpenAuctions` | int | 1 | ≥0 | 所办 | 立即 | 同时开标数 |
+| `vmu.allocation.fairnessPolicy` | enum | `equal` | `equal｜quota｜rotation` | pack | 立即 | 分配公平策略 |
+| `vmu.allocation.dirtyWorkQuota` | number | 0 | 0..1 | pack | 立即 | 脏活配额（防挑活） |
+| `vmu.allocation.rotationWindow` | int | 0 | ≥0 | pack | 立即 | 轮转窗口（0＝不轮转） |
 | `vmu.handover.acceptTimeoutMs` | ms | 0 | ≥0 | 所办 | 立即 | 接手超时（0＝不超时） |
 | `vmu.handover.onTimeout` | enum | `return` | `return｜reassign｜escalate` | pack | 立即 | 超时行为（默认退回 ✓） |
 | `vmu.handover.packBudgetBytes` | int | 32768 | ≥0 | 所办 | 立即 | 上下文压缩包字节预算 |
@@ -424,7 +424,7 @@
 
 > **跨卷不重复定义** ✗：**资源公平策略的定义在 08**（`vmu.budget.fairnessPolicy` ✓，08-§19.6）；本卷**不另设**"公平策略"键 ✓（v0.1 曾重复登记同一旋钮，已删；本卷只保留 `vmu.fairness.*` 里**08 没有的**那些：`minShares`／`newcomerQuota`／`maxSlotsPerInstance`／`criticalSlots`／`rebalanceEveryMs` ✓）。逐条对照见 **§27 交界表** ✓。
 
-**计数（逐表实测；v0.2 起剔除与 08 重复的"公平策略"键与卷内重复的"共识分类"键 ✓，两处**不再以字面键名出现** ✗ 以免被生成管线重新声明 ✓；**v0.3 增 §28/§29 两族 ✓**）**：§20.1 **17** ＋ §20.2 **11** ＋ §20.3 **17** ＋ §20.4 **26** ＋ §20.5 **27** ＋ §20.6 **42** ＝ **140 个拟增键**，**另加 §28 教学族 `vmu.course.*` 24 个 ＋ §29 通知族 `vmu.notify.*` 19 个**（两族的同格式表在各自节内 ✓）⇒ **本卷合计 183 个拟增键**（按命名空间：`vmu.roles` 10／`vmu.recruit` 7／`vmu.delegation` 11／`vmu.trust` 11／`vmu.collusion` 6／`vmu.conflict` 8／`vmu.consensus` 3／`vmu.memory` 9／`vmu.skills` 6／`vmu.auction` 10／`vmu.handover` 7／`vmu.mentor` 4／`vmu.discipline` 6／`vmu.topology` 5／`vmu.charter` 10／`vmu.identity` 9／`vmu.fairness` 5／`vmu.explain` 7／`vmu.human` 6）。
+**计数（逐表实测；v0.2 起剔除与 08 重复的"公平策略"键与卷内重复的"共识分类"键 ✓，两处**不再以字面键名出现** ✗ 以免被生成管线重新声明 ✓；**v0.3 增 §28/§29 两族 ✓**）**：§20.1 **17** ＋ §20.2 **11** ＋ §20.3 **17** ＋ §20.4 **26** ＋ §20.5 **27** ＋ §20.6 **42** ＝ **140 个拟增键**，**另加 §28 教学族 `vmu.course.*` 24 个 ＋ §29 通知族 `vmu.notify.*` 19 个**（两族的同格式表在各自节内 ✓）⇒ **本卷合计 183 个拟增键**（按命名空间：`vmu.roles` 10／`vmu.recruit` 7／`vmu.delegation` 11／`vmu.trust` 11／`vmu.collusion` 6／`vmu.conflict` 8／`vmu.consensus` 3／`vmu.memory` 9／`vmu.skills` 6／`vmu.allocation` 10／`vmu.handover` 7／`vmu.mentor` 4／`vmu.discipline` 6／`vmu.topology` 5／`vmu.charter` 10／`vmu.identity` 9／`vmu.fairness` 5／`vmu.explain` 7／`vmu.human` 6）。
 
 ---
 
@@ -534,7 +534,7 @@
 | `vmu.members`（席位/容量/任职） | **已实现 ✓** | role **slot** 面；`hire/assignRole/end/wake/may` ✓ |
 | `vmu.store`／`vmu.library`／`vmu.work`／`vmu.tasks`／`vmu.prompt`／`vmu.middleware` | **已实现 ✓** | 记忆底座、任务与在途、提示词、总线 |
 | `kernel.meeting()`／`kernel.ballot()` | **已实现 ✓**（工厂） | 会议/表决原语（08 治理面 ✓） |
-| `vmu.roles`／`vmu.recruit`／`vmu.delegation`／`vmu.trust`／`vmu.conflict`／`vmu.consensus`／`vmu.memory`／`vmu.skills`／`vmu.auction`／`vmu.handover`／`vmu.mentor`／`vmu.discipline`／`vmu.topology`／`vmu.charter`／`vmu.identity`／`vmu.fairness`／`vmu.collusion`／`vmu.explain`／`vmu.human` | **未实现 ✗**（19 个） | 目标形态见 §2–§19；**登记前不得被依赖** ✗ |
+| `vmu.roles`／`vmu.recruit`／`vmu.delegation`／`vmu.trust`／`vmu.conflict`／`vmu.consensus`／`vmu.memory`／`vmu.skills`／`vmu.allocation`／`vmu.handover`／`vmu.mentor`／`vmu.discipline`／`vmu.topology`／`vmu.charter`／`vmu.identity`／`vmu.fairness`／`vmu.collusion`／`vmu.explain`／`vmu.human` | **未实现 ✗**（19 个） | 目标形态见 §2–§19；**登记前不得被依赖** ✗ |
 
 ### 22.2 工具（宿主面）
 
@@ -593,7 +593,7 @@
 | S06 | **失败熔断** | 05 `vmu.middleware.breakerThreshold` ✓ ＋ `vmu.discipline.breakerFailures` | 连续失败 ⇒ `VMU_DISCIPLINE_CIRCUIT_OPEN`（具名）＋新任务被拒 | 一个坏代理拖垮全所 | **部分 ✓**（中间件级 ✓） |
 | S07 | **交接不丢活** | 07 `work.interrupt/recover` ✓ ＋ 交接单 `requiredFields` ＋ 压缩包 | 未接受就清账 ⇒ `VMU_HANDOVER_NOT_ACCEPTED`（具名） | 责任悬空 | **部分 ✓**（台账 ✓／交接单 ✗） |
 | S08 | **只报告不惩罚的串谋扫描** | `vmu.collusion.onSuspect='report'` ＋ 07 审计 ✓ | 扫描命中 ⇒ `VMU_COLLUSION_SUSPECTED`（**只报告**，评分不变） | 自动惩罚误伤/寒蝉效应 | 规划 ✗ |
-| S09 | **脏活轮转** | `vmu.auction.dirtyWorkQuota` ＋ `rotationWindow` ＋ 08 任务板 ✓ | 配额触界 ⇒ `VMU_FAIRNESS_QUOTA`（具名） | 没人干脏活 | 规划 ✗ |
+| S09 | **脏活轮转** | `vmu.allocation.dirtyWorkQuota` ＋ `rotationWindow` ＋ 08 任务板 ✓ | 配额触界 ⇒ `VMU_FAIRNESS_QUOTA`（具名） | 没人干脏活 | 规划 ✗ |
 | S10 | **人类一票叫停** | 内核 `vmu.safety.approvalRequired` ✓ ＋ `vmu.human.vetoScope` | 未批就做 ⇒ `VMU_HUMAN_APPROVAL_REQUIRED`（具名） | 自动化架空人类 | **部分 ✓**（安全面 ✓） |
 | S11 | **宪章冻结条款** | `vmu.charter.frozenClauses=['S-1'…'S-6']` ＋ 08 表决（修订 ✓） | 表决改冻结条款 ⇒ `VMU_CHARTER_FROZEN`（断言红） | 六条不变式被"民主地"废掉 | 规划 ✗ |
 | S12 | **子机构不放大权限** | `vmu.charter.spawnMaxChildren/depthMax` ＋ S-2 委托检查 | 子机构拿到母机构没有的权限 ⇒ `VMU_DELEGATION_ESCALATION`（具名） | 层级越权 | 规划 ✗ |
@@ -602,7 +602,7 @@
 
 ## 24. 门禁（本卷验收判据；**每条都能指出断言与具名红**）
 
-1. **零机制默认**：未声明任何 `vmu.roles.*`／`vmu.charter.*`／`vmu.auction.*` 时，社会动作**全不存在** ⇒ **断言**：`status().society === undefined`（或 `enabled:false`）＋尝试调用 ⇒ **具名红** `VMU_SOCIETY_DISABLED`；
+1. **零机制默认**：未声明任何 `vmu.roles.*`／`vmu.charter.*`／`vmu.allocation.*` 时，社会动作**全不存在** ⇒ **断言**：`status().society === undefined`（或 `enabled:false`）＋尝试调用 ⇒ **具名红** `VMU_SOCIETY_DISABLED`；
 2. **席位身份局部性**：内核源码中**不得出现任何角色名**（沿用 01-§5 D5 的**场景**：`tests/vmu-members.test.mjs` 的零策略断言 ✓）⇒ 违反 ⇒ 静态门 **红**；
 3. **委托只减权**：用一对**场景**（合法委托／越权委托）断言：合法 ⇒ `ok:true` 且 `scope ⊆ grantor.scope`；越权 ⇒ **具名红** `VMU_DELEGATION_ESCALATION`；
 4. **理由必填**：对 S-4 覆盖的每个动作跑一次**缺 reason** 的**场景** ⇒ 必须**具名红** `VMU_REASON_REQUIRED`（不得只警告 ✗）；
@@ -713,7 +713,7 @@
 | `vmu.trust.*`（11）／`vmu.collusion.*`（6） | 08 的仲裁者与候选人排序（08-§6 参考） | 声誉**不改权限**（S-3），08 只读排序建议 ✓ |
 | `vmu.charter.*`（10）／`vmu.topology.*`（5） | 08 的会议类型与阶段（08-§15/§4） | 08 管**一场会**；17 管**机构本身** ✓ |
 | `vmu.identity.*`（9）／`vmu.fairness.*`（5）／`vmu.human.*`（6） | 08 的观察员/表决权/审批（08-§2.2-C/§3.2） | 08 管**票**；17 管**人与归属** ✓ |
-| `vmu.handover.*`（7）／`vmu.memory.*`（9）／`vmu.skills.*`（6）／`vmu.auction.*`（10）／`vmu.conflict.*`（8）／`vmu.consensus.*`（3）／`vmu.explain.*`（7）／`vmu.mentor.*`（4）／`vmu.discipline.*`（6） | 08 的任务板/归档/升级（08-§4/§19.5） | 08 管**任务与在途**；17 管**交接与知识** ✓ |
+| `vmu.handover.*`（7）／`vmu.memory.*`（9）／`vmu.skills.*`（6）／`vmu.allocation.*`（10）／`vmu.conflict.*`（8）／`vmu.consensus.*`（3）／`vmu.explain.*`（7）／`vmu.mentor.*`（4）／`vmu.discipline.*`（6） | 08 的任务板/归档/升级（08-§4/§19.5） | 08 管**任务与在途**；17 管**交接与知识** ✓ |
 
 > **两处"反向归属"已两卷同步** ✓（这是唯一两处由 17 定义、08 改为引用的地方）：
 > ① **仲裁本体**（仲裁者选择/回避/听证/效力）定义在 **17-§6** ✓ ⇒ 08-§4 的"仲裁与冲突解决"一行已改为引用 17-§6（08 侧只保留**升级时限与目标** `vmu.workflow.escalationAfterMs`／`escalationTarget` ✓ 与会议/表决面 ✓）；理由：仲裁是**社会关系**（谁判谁、判了算不算），不是程序机制 ✗。

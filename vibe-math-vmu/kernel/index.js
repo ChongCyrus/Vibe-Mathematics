@@ -642,7 +642,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   const compliance = createCompliance({ settings: settingsView, bus, clock: guardedClock, log })
   const storepolicy = createStorePolicy({ settings: settingsView, bus, clock: guardedClock, log })
   const capacity = createCapacity({ settings: settingsView, bus, clock: guardedClock, log })
-  const hr = createHr({ settings: settingsView, bus, clock: guardedClock, log })
+  const tenure = createHr({ settings: settingsView, bus, clock: guardedClock, log })
   const migration = createMigration({ settings: settingsView, bus, clock: guardedClock, log })
 
   // ── THE CAPABILITY GUARDS (task-170, "the eighth case") ────────────────────────────────────────────────
@@ -732,7 +732,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   registry.register('vmu.metrics', { apiVersion: 1 }, { kind: 'service', description: 'metric observation, KPI judgement and counted drops (docs/21 搂4)' })
   registry.register('vmu.audit', { apiVersion: 1 }, { kind: 'service', description: 'append-only audit rows, redaction before storage, counted ring drops (docs/21 搂2)' })
     registry.register('vmu.domaincompliance', { apiVersion: 1 }, { kind: 'service', description: 'domain compliance packs: clinical (N2) and animal (N3) approval gates' })
-    registry.register('vmu.legalentity', { apiVersion: 1 }, { kind: 'service', description: 'legal entities and tax field slots: registration, account binding, invoice slot validation (volume 22 §L285)' })
+    registry.register('vmu.partnership', { apiVersion: 1 }, { kind: 'service', description: 'legal entities and tax field slots: registration, account binding, invoice slot validation (volume 22 §L285)' })
     registry.register('vmu.reviewers', { apiVersion: 1 }, { kind: 'service', description: 'reviewer market: COI recusal, blind mapping with tracing, concurrent load cap (volume 16 §L297)' })
   registry.register('vmu.alerts', { apiVersion: 1 }, { kind: 'service', description: 'thresholds, alert-level dedup, silences that still count, SLO tri-state (docs/21 搂5 搂13)' })
   registry.register('vmu.retention', { apiVersion: 1 }, { kind: 'service', description: 'report-first retention, permanent markers, quota tri-state, gc (docs/07 搂4.3 搂4.8)' })
@@ -789,7 +789,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   registry.register('vmu.compliance', { apiVersion: 1 }, { kind: 'service', description: 'research compliance: IRB and consent approvals, retention windows, COI disclosure and evidence packs (docs/20, 22; export control stays with domaingate)' })
   registry.register('vmu.storepolicy', { apiVersion: 1 }, { kind: 'service', description: 'storage POLICY only: backend/path validation, lock behaviour, backup counting, remote offline policy and the version-too-high stance (no IO; bytes stay with the store seam)' })
   registry.register('vmu.capacity', { apiVersion: 1 }, { kind: 'service', description: 'capacity: seats per domain, machine-hour pool, overcommit reserve, waitlist and preemption that names the victim (docs/20, 22)' })
-  registry.register('vmu.hr', { apiVersion: 1 }, { kind: 'service', description: 'personnel rules: recruitment cycle, performance cadence and evidence, tenure decision and quorum, appeals, offboarding and rotation (docs/22; seats stay with members)' })
+  registry.register('vmu.tenure', { apiVersion: 1 }, { kind: 'service', description: 'personnel rules: recruitment cycle, performance cadence and evidence, tenure decision and quorum, appeals, offboarding and rotation (docs/22; seats stay with members)' })
   registry.register('vmu.migration', { apiVersion: 1 }, { kind: 'service', description: 'migration orchestration: plan, dry-run, batches, confirm, rollback points and windows (docs/07, 13); the storage policy layer owns backends, this face owns the move' })
   if (root) registry.register('vmu.store', { apiVersion: 1 }, { kind: 'service', description: 'durable, versioned state' })
   if (workLedger) registry.register('vmu.work', { apiVersion: 1 }, { kind: 'service', description: 'durable in-flight ledger (recover after restart)' })
@@ -926,7 +926,9 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     get compliance() { return compliance },
     get storepolicy() { return storepolicy },
     get capacity() { return capacity },
-    get hr() { return hr },
+    get tenure() { return tenure },
+  /** Deprecated alias: the family was renamed to vmu.tenure; a caller using the old face name is early, not wrong. */
+  get hr() { return tenure },
     get migration() { return migration },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },

@@ -39,7 +39,7 @@ const SURFACES = {
   'vmu.middleware': 'bus', 'vmu.governance': 'governance', 'vmu.board': 'board', 'vmu.minutes': 'minutes',
   'vmu.budget': 'budget', 'vmu.metrics': 'metrics', 'vmu.audit': 'audit', 'vmu.alerts': 'alerts',
   'vmu.domaincompliance': 'domainCompliance',
-  'vmu.legalentity': 'legalEntity',
+  'vmu.partnership': 'legalEntity',
   'vmu.reviewers': 'reviewers',
   'vmu.compliance': 'domaincompliance',
   'vmu.retention': 'retention', 'vmu.delegation': 'delegation', 'vmu.workflow': 'workflow', 'vmu.trust': 'trust',
@@ -62,7 +62,7 @@ const SURFACES = {
   'vmu.compliance': 'compliance',   // round 32 (research compliance; export control stays with domaingate)
   'vmu.storepolicy': 'storepolicy', // round 32 (storage policy layer only - no IO)
   'vmu.capacity': 'capacity',       // round 33 (seats/pool/quota/preemption)
-  'vmu.hr': 'hr',                   // round 33 (personnel rules; seats stay with members)
+  'vmu.tenure': 'tenure',                   // round 33 (personnel rules; seats stay with members)
   'vmu.migration': 'migration',     // round 34 (migration orchestration; backends stay with storepolicy)
   'vmu.store': 'store', 'vmu.work': 'workLedger',
   'vmu.idempotency': 'idempotency',   // K6 (round 16): the unified idempotency ledger

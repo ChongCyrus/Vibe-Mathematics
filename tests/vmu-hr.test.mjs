@@ -32,7 +32,7 @@ const day = 86400000
 
 console.log('-- 0) 11 键恰好划分 ＋ 无自造码 --')
 ok(apiVersion === 1 && ENFORCED_SCOPE === 'evaluated-so-far', 'module surface: apiVersion=1 and the D3 scope literal')
-ok(WIRED_KEYS.length === 11, 'all 11 declared vmu.hr.* keys are wired (' + WIRED_KEYS.length + ')')
+ok(WIRED_KEYS.length === 11, 'all 11 declared vmu.tenure.* keys are wired (' + WIRED_KEYS.length + ')')
 ok(Object.values(CODES).every((c) => /^VMU_HR_/.test(c)) && Object.values(CODES).length === 7, 'only the 7 registered VMU_HR_* codes are used (no invented codes)')
 ok(Object.keys(UNSUPPORTED_SEMANTICS).length === 6, 'the 6 requested-but-unregistered semantics are NAMED (contract/timesheet/leave/overlap/qualification/probation)')
 ok(Object.keys(WOULD_EVALUATE).length === 6, 'WOULD_EVALUATE declares the per-op key sets (records.js OP_WOULD 口径)')
@@ -76,14 +76,14 @@ ok(z.status().mechanism.zeroMechanismSafe === true && z.rotation({}).ok === true
 const h1 = mk(), h2 = mk()
 h1.rotation({ pool: ['a'] }); h2.rotation({ pool: ['a'] })
 ok(JSON.stringify(h1.status().counts) === JSON.stringify(h2.status().counts), 'two instances with the same clock agree exactly (determinism)')
-const off = mk({ 'vmu.hr.humanDecisionRequired': false, 'vmu.hr.performanceEvidenceRequired': false, 'vmu.hr.tenureQuorum': 0 })
+const off = mk({ 'vmu.tenure.humanDecisionRequired': false, 'vmu.tenure.performanceEvidenceRequired': false, 'vmu.tenure.tenureQuorum': 0 })
 ok(off.tenure({ who: 'r-9', trackStart: '2023-01-01T00:00:00.000Z', votes: 0, auto: true, decisionAt: '2026-01-15T00:00:00.000Z' }).ok === true, 'settings pair (1): humanDecisionRequired=false + auto=true passes (the key really governs)')
 ok(off.performance({ who: 'r-9', lastAt: '2026-06-30T00:00:00.000Z', evidence: [] }).ok === true, 'settings pair (1): performanceEvidenceRequired=false ⇒ missing evidence is allowed')
-const win = mk({ 'vmu.hr.appealWindowDays': 1 })
+const win = mk({ 'vmu.tenure.appealWindowDays': 1 })
 ok(win.appeal({ who: 'r-9', openedAt: '2026-06-30T12:00:00.000Z', at: '2026-07-01T00:00:00.000Z', resolved: true }).ok === true, 'settings pair (2): a 1-day appeal window is read from settings (in-window passes)')
 refuses(() => win.appeal({ who: 'r-9', openedAt: '2026-05-01T00:00:00.000Z', at: '2026-07-01T00:00:00.000Z' }), CODES.APPEAL_OPEN, null, 'settings pair (2): beyond the 1-day window the appeal is refused (window really governs)')
 ok(JSON.stringify(off.status().policy.offboardingChecklist) === JSON.stringify(['handover', 'keys', 'records']), 'settings pair (2): the default checklist is visible (customisable per 22 卷)')
-const strict = mk({ 'vmu.hr.tenureQuorum': 5, 'vmu.hr.recruitWindowOpenMs': 1000 })
+const strict = mk({ 'vmu.tenure.tenureQuorum': 5, 'vmu.tenure.recruitWindowOpenMs': 1000 })
 refuses(() => strict.tenure({ who: 'r-9', trackStart: '2023-01-01T00:00:00.000Z', votes: 3 }), CODES.TENURE_QUORUM_MISSING, { quorum: 5 }, 'settings pair (3): quorum=5 refuses 3 votes (and reports quorum=5)')
 refuses(() => strict.recruit({ openingId: 'o-9', openedAt: '2026-06-30T00:00:00.000Z', at: '2026-07-01T00:00:00.000Z' }), CODES.CYCLE_CLOSED, null, 'settings pair (3): a 1-second window closes immediately')
 
@@ -107,14 +107,14 @@ refuses(() => strict.recruit({ openingId: 'o-9', openedAt: '2026-06-30T00:00:00.
   // (2) the SAME class elsewhere in hr.js: lastAt / trackStart / decisionAt / appeal openedAt, plus `at: 0`
   const perf = h.performance({ who: 'r-1', lastAt: 0, evidence: ['ev'], at: 0 })
   ok(perf.ok === true && perf.at === '0', 'performance({ lastAt: 0, at: 0 }) is accepted (0 is an instant, not a fallback)')
-  const ten = mk({ 'vmu.hr.tenureQuorum': 0, 'vmu.hr.humanDecisionRequired': false })
+  const ten = mk({ 'vmu.tenure.tenureQuorum': 0, 'vmu.tenure.humanDecisionRequired': false })
   ok(ten.tenure({ who: 'r-1', trackStart: 0, votes: 0, decisionAt: 0, at: 0 }).ok === true, 'tenure({ trackStart: 0, decisionAt: 0, at: 0 }) is accepted')
   refuses(() => ten.tenure({ who: 'r-1', votes: 0 }), 'VMU_INVALID_ARGUMENT', null, 'tenure without trackStart is still refused by name')
   // `appeal({openedAt})` means "an appeal IS open" — so reading 0 must REFUSE by name (before the fix the falsy
   // guard IGNORED it and the call silently succeeded: that difference is the whole point of this case).
   refuses(() => h.appeal({ who: 'r-1', openedAt: 0, at: 0 }), CODES.APPEAL_OPEN, { openedAt: '0' }, 'appeal({ openedAt: 0 }) ⇒ the epoch-0 appeal is SEEN (named refusal, openedAt recorded as 0)')
   ok(h.appeal({ who: 'r-1', resolved: true, at: 0 }).ok === true, 'appeal({ resolved: true, at: 0 }) passes with at=0 recorded (no clock fallback)')
-  refuses(() => mk({ 'vmu.hr.appealWindowDays': 1 }).appeal({ who: 'r-1', openedAt: 0, at: day }), CODES.APPEAL_OPEN, null, 'an epoch-0 appeal really ages: past the window it is refused (0 is not ignored)')
+  refuses(() => mk({ 'vmu.tenure.appealWindowDays': 1 }).appeal({ who: 'r-1', openedAt: 0, at: day }), CODES.APPEAL_OPEN, null, 'an epoch-0 appeal really ages: past the window it is refused (0 is not ignored)')
 }
 
 // task-234: the instant→ms rule is now the SHARED kernel/timevalue.js one (the local `num()` copy is gone).
@@ -139,8 +139,8 @@ refuses(() => strict.recruit({ openingId: 'o-9', openedAt: '2026-06-30T00:00:00.
   ok(p0.ok === true && pIso.ok === true && p0.cadenceDays === pIso.cadenceDays, 'performance: lastAt 0 / at 0 and their ISO equivalents are judged identically')
   ok(p0.at === '0' && pIso.at === ISO, 'performance: the receipt echoes each caller value verbatim (the ONLY difference is the display form)')
   // tenure (quorum satisfied so the track dates are what gets exercised)
-  const t0 = mk({ 'vmu.hr.tenureQuorum': 0 }).tenure({ who: 'r-1', trackStart: 0, votes: 0, decisionAt: 0, at: 0 })
-  const tIso = mk({ 'vmu.hr.tenureQuorum': 0 }).tenure({ who: 'r-1', trackStart: ISO, votes: 0, decisionAt: ISO, at: ISO })
+  const t0 = mk({ 'vmu.tenure.tenureQuorum': 0 }).tenure({ who: 'r-1', trackStart: 0, votes: 0, decisionAt: 0, at: 0 })
+  const tIso = mk({ 'vmu.tenure.tenureQuorum': 0 }).tenure({ who: 'r-1', trackStart: ISO, votes: 0, decisionAt: ISO, at: ISO })
   ok(t0.ok === true && tIso.ok === true && t0.trackMonths === tIso.trackMonths && t0.quorum === tIso.quorum, 'tenure: trackStart/decisionAt 0 and their ISO equivalents are judged identically')
   ok(t0.at === '0' && tIso.at === ISO, 'tenure: the receipt echoes each caller value verbatim (the ONLY difference is the display form)')
   // appeal: an epoch-0 appeal is SEEN (both spellings refuse with the same code)
@@ -155,7 +155,7 @@ refuses(() => strict.recruit({ openingId: 'o-9', openedAt: '2026-06-30T00:00:00.
 {
   refuses(() => mk().recruit({ by: 'u', openedAt: 'nope' }), 'VMU_INVALID_ARGUMENT', { received: 'nope' }, 'unparseable openedAt ⇒ named refusal carrying the received value')
   refuses(() => mk().performance({ who: 'r-1', lastAt: 'nope', evidence: ['ev'] }), 'VMU_INVALID_ARGUMENT', { received: 'nope' }, 'unparseable lastAt ⇒ named refusal carrying the received value')
-  refuses(() => mk({ 'vmu.hr.tenureQuorum': 0 }).tenure({ who: 'r-1', trackStart: 'nope' }), 'VMU_INVALID_ARGUMENT', { received: 'nope' }, 'unparseable trackStart ⇒ named refusal carrying the received value')
+  refuses(() => mk({ 'vmu.tenure.tenureQuorum': 0 }).tenure({ who: 'r-1', trackStart: 'nope' }), 'VMU_INVALID_ARGUMENT', { received: 'nope' }, 'unparseable trackStart ⇒ named refusal carrying the received value')
   refuses(() => mk().appeal({ who: 'r-1', openedAt: 'nope', resolved: true }), 'VMU_INVALID_ARGUMENT', { received: 'nope' }, 'unparseable appeal openedAt ⇒ named refusal (with resolved, so the strict check is what fires)')
   ok(mk().recruit({ by: 'u', openedAt: 0, at: 0 }).ok === true, 'control: openedAt 0 is still accepted (no regression)')
   ok(mk().recruit({ by: 'u', openedAt: '1970-01-01T00:00:00.000Z', at: '1970-01-01T00:00:00.000Z' }).ok === true, 'control: the ISO epoch is still accepted (no regression)')
