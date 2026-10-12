@@ -904,6 +904,28 @@ export const CHARTER_BLOCKS = Object.freeze([
     kind: 'shared',
     texts: { shared: '已尝试未通过' },
   },
+  // ── THE COMPACT REPLY CATALOGUE (from the delivered-prompt corpus, all three phases) ──────────────────────────
+  // This is the biggest family in the acceptance measurement: the corpus carries a per-phase COMPACT catalogue as well
+  // as the full one, and only the full one had been transcribed. Transcribed verbatim from the corpus, with the one
+  // hard-coded absolute path replaced by a setting, because a project path baked into a prompt is exactly the class of
+  // value this work has been removing everywhere else.
+  {
+    name: 'v5r-reply-compact',
+    order: 764,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '只输出一个合法 JSON 对象；所有旧字段仍有效，以下仅列当前阶段常用字段。',
+        'progress：数学进展/阻塞及下一步；record：成果卡数组（kind,id,title,statement或content,value,motive,p）；say：必要消息或{to,text}。',
+        'task_done：完成的任务id；task_update：{task_id,expected_revision,action}（release等）；reject_assign：{task_id,why}。阻塞原因写入progress，不代表已证伪。',
+        '协调需要时可用assign（subject,description,to,why,acceptance,priority）、prioritize、nudge（to,why）、convene_meeting。',
+        '{"progress":"当前推导、证据及下一步","solved":false}',
+        '复杂工具首次使用前调用 vibe_v5_tool_help({"tool":"工具名称"}) 查阅方法；简单工具和 JSON 回执直接使用。',
+        'contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明：{{ setting:vmu.turn.protocolPath }}',
+      ].join('\n'),
+    },
+  },
   {
     name: 'v5r-formal-status-none',
     order: 783,
