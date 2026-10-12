@@ -426,7 +426,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   loopAB.notify("acad", "【研究所提示】demo 未生效（V5_DEMO）：示例通知，用于让比对看见表头与缩进")
   const oursAB = {}
   for (const phase of ["founding", "normal", "checkpoint", "verify", "heartbeat", "paper-write", "paper-review", "paper-final", "meeting", "resume"]) {
-    const a = await loopAB.assemble(loopAB.open({ member: "acad", role: "academician", roleLabel: "院士", phase, roster: "acad、r-1、r-2", quorum: 3, statusBlock: "[状态] x", round: 3 }).turn)
+    const a = await loopAB.assemble(loopAB.open({ member: "acad", role: "academician", roleLabel: "院士", phase, meetingState: phase === "meeting" ? "first" : undefined, roster: "acad、r-1、r-2", quorum: 3, statusBlock: "[状态] x", round: 3 }).turn)
     oursAB[phase] = a.text
   }
   // A kind alone cannot place a prompt: nine of the ten heartbeat prompts in the corpus carry kind `normal`, because
