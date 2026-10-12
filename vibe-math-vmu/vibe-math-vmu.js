@@ -167,6 +167,41 @@ export function apply(ctx, config = {}) {
   // merged object is used ONLY for the kernel: `declared` below still counts the USER's keys, so a deployment that
   // configured nothing keeps the documented "zero mechanism" behaviour rather than becoming declared by its pack.
   const packDefaults = {}
+  // A PACK CONTRIBUTES PROMPT TEXT AS DATA. Sections and bindings must exist when the kernel is constructed, and this
+  // top level cannot await a dynamic import - so a pack that wants to contribute prompt material declares it as DATA in
+  // its own folder, exactly the way it already declares settings defaults. `sections.json` holds the pipeline's own
+  // shape: { "sections": [{ name, order, range, text }], "bindings": [{ section, role|phase|member, text }] }.
+  // This is what makes a SECOND pack possible without touching this plugin: it reads its own data, and the plugin
+  // merges it in. The v5r pack keeps its hand-written modules because they carry logic (choose per role and phase),
+  // while a pack that only needs text needs only data.
+  const packSections = []
+  const packBindings = []
+  {
+    const here = dirname(fileURLToPath(import.meta.url))
+    const wantedPacks = Array.isArray(config.packs) ? config.packs.filter((p) => typeof p === 'string') : []
+    for (const name of wantedPacks) {
+      try {
+        const parsed = JSON.parse(readFileSync(join(here, 'packs', name, 'prompts', 'sections.json'), 'utf8'))
+        for (const s of (parsed && Array.isArray(parsed.sections) ? parsed.sections : [])) {
+          if (!s || typeof s.name !== 'string' || typeof s.text !== 'string') continue
+          packSections.push({ name: s.name, order: Number.isFinite(s.order) ? s.order : 999, range: typeof s.range === 'string' ? s.range : 'pack', source: 'pack:' + name, text: s.text })
+        }
+        for (const b of (parsed && Array.isArray(parsed.bindings) ? parsed.bindings : [])) {
+          if (!b || typeof b.section !== 'string' || typeof b.text !== 'string') continue
+          const dims = {}
+          for (const d of ['role', 'phase', 'member', 'task']) if (typeof b[d] === 'string' && b[d]) dims[d] = b[d]
+          if (!Object.keys(dims).length) continue
+          packBindings.push(Object.assign({ section: b.section, text: b.text }, dims))
+        }
+      } catch (e) {
+        // Only a MISSING file is expected (a pack that contributes no prompt data). Anything else is a real error:
+        // a malformed sections file would otherwise silently contribute nothing, which is the failure this project
+        // keeps finding in other clothes.
+        const missing = e && (e.code === 'ENOENT' || e.code === 'ERR_MODULE_NOT_FOUND')
+        if (!missing) throw e
+      }
+    }
+  }
   {
     const here = dirname(fileURLToPath(import.meta.url))
     const wantedPacks = Array.isArray(config.packs) ? config.packs.filter((p) => typeof p === 'string') : []
@@ -185,7 +220,8 @@ export function apply(ctx, config = {}) {
   }
   const settingsWithPackDefaults = Object.assign({}, packDefaults, settings)
   const kernel = createKernel(Object.assign({ sectionPolicy: V5R_DECIDE_SECTIONS, noticeBlock: V5R_INBOX_BLOCK, extraPhases: V5R_PHASES, settings: settingsWithPackDefaults, root, spawn: spawnSeam, host: mathHost,
-    sections: promptSections, bindings: promptBindings, overrides: promptOverrides, whoMayOverride, readFile: readRel },
+    // a packs DATA-declared prompt text joins what the configuration supplies; the pipelines own `order` places it
+    sections: [...packSections, ...promptSections], bindings: [...packBindings, ...promptBindings], overrides: promptOverrides, whoMayOverride, readFile: readRel },
   clock ? { clock } : {}))
   // DECLARATION IS THE CONFIGURATION. With nothing declared the preset must not even offer a settings
   // tool (the documented way to switch the first thing on is the profile's cordis.patch.yml), and the

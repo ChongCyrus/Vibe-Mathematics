@@ -1,0 +1,22 @@
+{
+  "_note": "A SECOND PACK, DECLARED AS PURE DATA. This folder exists to prove that a pack can contribute prompt material without contributing code: the plugin reads this file at its top level, before the kernel is constructed, merges the sections and bindings into what it passes down, and the pipelines own `order` decides where they land. Nothing in the plugin knows this packs name. A deployment activates it the same way it activates v5r - by naming it in the active packs list - and a pack that only needs text needs only data.",
+  "_shape": {
+    "sections": "[{ name, order, range?, text }] - the pipelines own section shape",
+    "bindings": "[{ section, role|phase|member|task, text }] - one dimension selects it"
+  },
+  "sections": [
+    {
+      "name": "example-data-opening",
+      "order": 10,
+      "range": "pack",
+      "text": "【示例数据包】这一段提示词来自 pack 文件夹里的纯数据，而不是来自任何代码。"
+    }
+  ],
+  "bindings": [
+    {
+      "section": "example-data-opening",
+      "phase": "normal",
+      "text": "【示例数据包】这一段只出现在常规相位，由 prompts/sections.json 里的 phase 绑定选中。"
+    }
+  ]
+}
