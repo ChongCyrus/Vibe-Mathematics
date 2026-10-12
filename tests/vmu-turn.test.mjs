@@ -456,6 +456,29 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
     'T72. **** and the ASSEMBLY produces the charter from those sections, in source order, with every placeholder filled',
     { chars: asmC.text.length })
 }
+
+// 17) THE PER-ROUND BRIEF (docs/26 section 3.11). The source's briefBlock builds a compact data block whose lines
+// the loop composes from the kernel's own state; the pack only PLACES it. The format is asserted literally against
+// the source's own line shape, so the brief cannot drift into a different dialect.
+{
+  const status = [
+    '[状态] 你是 r-2（常驻研究员）｜轮次 7｜法定票数 m=3｜有表决权者 3 人',
+    '[在册] acad、r-1、r-2',
+    '[未就位] t-9（provisioning）',
+    '[形式化] 鼓励 Lean｜已通过 2｜已记录阻塞 1',
+    '[任务板] 进行中 1｜可认领 2｜我负责 t-1「probe」',
+    '[新到的消息/通知]',
+    '  from acad: please look at lemma 3',
+  ].join('\n')
+  const loopB = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_ROLE_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
+  const asmB = await loopB.assemble(loopB.open({ member: 'r-2', role: 'researcher', phase: 'normal', roster: 'acad、r-1、r-2', quorum: 3, statusBlock: status, round: 7 }).turn)
+  ok(asmB.ok === true && asmB.text.includes(status),
+    'T73. **** THE PER-ROUND BRIEF reaches the prompt intact: the state line, the roster, the members not yet on the floor, the formalisation knob, the task board and the mail all arrive as the source formats them',
+    { chars: asmB.text.length })
+  ok(asmB.text.includes('[状态] 你是 r-2（常驻研究员）｜轮次 7｜法定票数 m=3｜有表决权者 3 人') && asmB.text.includes('[未就位] ') && asmB.text.includes('[形式化] '),
+    'T74. **** and the LINE SHAPE matches the source: identity and kind in brackets, the round, the quorum and the voter count, plus the not-yet-seated line the source says must never be omitted silently',
+    { statusLine: true })
+}
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

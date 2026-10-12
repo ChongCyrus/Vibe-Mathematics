@@ -37,8 +37,13 @@ export const ORDER_RANGES = Object.freeze({
  * comes from the turn loop, which knows who is seated.
  * ROUND 358: `round` and `quorum` joined for the same reason - measuring the captured texts found twenty-four literal
  * round numbers and sixty-six quorum numbers baked in, and both are facts the turn itself owns.
+ * ROUND 362: `statusBlock` joined for the PER-ROUND BRIEF. The original's briefBlock builds a compact data block -
+ * who you are, the round, the quorum, the roster, who is not yet on the floor, the formalisation knob, one-shot Lean
+ * notices, the task board and new mail - and every one of those lines is turn data, not prose. The loop composes that
+ * block from the kernel's own state and hands it over as ONE variable, so the pipeline still owns the assembly while
+ * the loop owns the facts. The finer-grained alternative (a variable per datum) is recorded in docs/26 section 3.11.
  */
-export const VARIABLE_WHITELIST = Object.freeze(['member', 'role', 'phase', 'time', 'pack', 'task', 'roster', 'round', 'quorum', 'setting:', 'count:'])
+export const VARIABLE_WHITELIST = Object.freeze(['member', 'role', 'phase', 'time', 'pack', 'task', 'roster', 'round', 'quorum', 'statusBlock', 'setting:', 'count:'])
 
 /** Fixed binding priority, low to high (docs/06 §5). */
 export const BINDING_PRIORITY = Object.freeze(['role', 'phase', 'member', 'task'])

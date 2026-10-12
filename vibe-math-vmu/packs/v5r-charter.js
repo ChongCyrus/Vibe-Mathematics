@@ -513,6 +513,22 @@ export const CHARTER_BLOCKS = Object.freeze([
       ].join('\n'),
     },
   },
+  // ── the per-round BRIEF (source `briefBlock`, L3376-3421) ────────────────────────────────────────────────────
+  // The source's brief is a compact DATA block, not prose: [状态] who you are, the round, the quorum and the voter
+  // count; [在册] the roster; [未就位] members on the books but not on the floor, which the source says must never be
+  // omitted silently because a failed provision would then be invisible; [形式化] the Lean knob, computed per round
+  // because it is a RUNTIME switch; the one-shot Lean notices, announced exactly once in the member's next prompt;
+  // [任务板] the counts and the tasks you own; and [新到的消息/通知]. Every line is turn data, so the loop composes
+  // the block from the kernel's own state and this section places it, keeping the pipeline in charge of assembly.
+  {
+    name: 'v5r-brief-status',
+    order: 720,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: '{{ statusBlock }}',
+    },
+  },
 ])
 
 /** One binding per role for every role-varying block, so the assembly puts the right charter in front of each kind. */
