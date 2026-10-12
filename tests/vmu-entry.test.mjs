@@ -437,6 +437,28 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   await rm(dir, { recursive: true, force: true })
 }
 
+// ---- 15b. the turn loop has a REAL entry point: declared only, and it reaches the loop the plugin assembled ------
+{
+  const plainT = fakeCtx()
+  entry.apply(plainT.ctx, { clock })
+  await new Promise((r) => setTimeout(r, 20))
+  ok(!plainT.state.specs.map((s) => s.name).includes('vibe_vmu_turn'),
+    'ROUND 349: without a declared turn intent the turn tool does not appear (zero mechanism holds)',
+    plainT.state.specs.map((s) => s.name).join(','))
+
+  const ht = fakeCtx()
+  entry.apply(ht.ctx, { clock, turn: true })
+  await new Promise((r) => setTimeout(r, 30))
+  const turnTool = ht.state.specs.find((s) => s.name === 'vibe_vmu_turn')
+  ok(!!turnTool, 'declaring the turn intent publishes the turn tool', ht.state.specs.map((s) => s.name).join(','))
+  const tstate = JSON.parse(await turnTool.execute({ op: 'status' }, {}))
+  ok(tstate.ok === true && tstate.status && tstate.status.policy === 'round-robin',
+    'and the tool reaches the LOOP the plugin assembled, not a copy of it', JSON.stringify(tstate).slice(0, 120))
+  const tstep = JSON.parse(await turnTool.execute({ op: 'step', members: [{ id: 'r-1' }], phase: 'normal' }, {}))
+  ok(tstep.ok === false && tstep.code === 'VMU_ENGINE_UNAVAILABLE',
+    'a round with no delivery seam is a RETURNED refusal through the plugin too, never a half-run', JSON.stringify(tstep).slice(0, 120))
+}
+
 // ---- 15. per-domain tool faces: declared only, and they really drive the kernel primitives ----------
 {
   const plain = fakeCtx()

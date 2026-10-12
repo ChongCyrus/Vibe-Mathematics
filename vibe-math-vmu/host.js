@@ -395,6 +395,21 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   // it reachable from a real session. Declared like every other face: only offered when the configuration asks for it,
   // because with nothing declared the preset must still register exactly one tool (R1 zero mechanism).
   if (turnTool) {
+    // ROUND 349: ONE CORE, TWO THIN WRAPPERS. The middleware wrapper calls `spec.run` and stringifies what it gets,
+    // while direct callers (and the tests) call `spec.execute` and parse a string themselves. Measured the hard way:
+    // a face that returns a string from `run` gets it stringified AGAIN, so the caller parses back the same string.
+    // `run` therefore returns the OBJECT and `execute` returns the JSON STRING, both from the same core.
+    const coreTurn = async (args = {}) => {
+      if (!kernel.turn) return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no turn loop')
+      const op = String(args.op || 'status')
+      const members = Array.isArray(args.members) ? args.members : []
+      if (op === 'status') return { ok: true, status: kernel.turn.status() }
+      if (op === 'step') return await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step })
+      if (op === 'drive') return await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step })
+      return refused('VMU_INVALID_ARGUMENT', 'unknown op: ' + op, 'known ops: step, drive, status')
+    }
+    const runTurn = (args = {}) => coreTurn(args)
+    const executeTurn = async (args = {}) => JSON.stringify(await coreTurn(args))
     specs.push({
       name: TOOL_NAMES.turn,
       description: 'Run institute TURNS: step runs exactly one round (who is chosen by vmu.turn.wakeupPolicy, what ' +
@@ -412,15 +427,8 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         },
         required: ['op'],
       },
-      async execute(args = {}) {
-        if (!kernel.turn) return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no turn loop')
-        const op = String(args.op || 'status')
-        const members = Array.isArray(args.members) ? args.members : []
-        if (op === 'status') return { ok: true, status: kernel.turn.status() }
-        if (op === 'step') return kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step })
-        if (op === 'drive') return kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step })
-        return refused('VMU_INVALID_ARGUMENT', 'unknown op: ' + op, 'known ops: step, drive, status')
-      },
+      execute: executeTurn,
+      run: runTurn,
     })
   }
   if (controlTool) {

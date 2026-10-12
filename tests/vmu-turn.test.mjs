@@ -335,17 +335,19 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   ok(spec && typeof spec.execute === 'function' && spec.parameters && spec.parameters.properties.op,
     'T54. **** and when the configuration declares it, the tool exists with its parameters - the loop is reachable from a session, not only from a test',
     { names: on.map((s) => s.name).slice(0, 6) })
-  const st = await spec.execute({ op: 'status' })
+  const st = JSON.parse(await spec.execute({ op: 'status' }))
   ok(st.ok === true && st.status && st.status.policy === 'round-robin',
     'T55. **** THE TOOL REACHES THE LOOP: asking for status returns the loop own surface, policy included', { policy: st.status && st.status.policy })
-  const stepOut = await spec.execute({ op: 'step', members: [{ id: 'r-1', role: 'researcher' }], phase: 'normal' })
+  ok(typeof (await spec.execute({ op: 'status' })) === 'string',
+    'T55b. *** and it answers with a JSON STRING like every other face, so a host never has to know which tool speaks which type')
+  const stepOut = JSON.parse(await spec.execute({ op: 'step', members: [{ id: 'r-1', role: 'researcher' }], phase: 'normal' }))
   ok(stepOut.ok === false && stepOut.code === 'VMU_ENGINE_UNAVAILABLE',
     'T56. **** and a round with NO delivery seam comes back as a returned refusal, so a host that cannot deliver is told rather than quietly getting a half-run',
     { code: stepOut.code })
-  const badOp = await spec.execute({ op: 'nope' })
+  const badOp = JSON.parse(await spec.execute({ op: 'nope' }))
   ok(badOp.ok === false && badOp.code === 'VMU_INVALID_ARGUMENT',
     'T57. *** an unknown op is refused by name and the known ones are listed', { code: badOp.code })
-  const empty = await spec.execute({ op: 'step', members: [] })
+  const empty = JSON.parse(await spec.execute({ op: 'step', members: [] }))
   ok(empty.ok === true && empty.stopped === 'no-members',
     'T58. *** and nobody to wake is still a LEGAL no-op through the tool, not an error')
   rmSync(root4, { recursive: true, force: true })
