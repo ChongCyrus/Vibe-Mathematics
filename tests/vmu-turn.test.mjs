@@ -643,6 +643,36 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
     'T99. **** with a single quorum value rather than the three the append produced',
     { chars: asmR.text.length })
 }
+
+// 25) CONTEXT BOOKKEEPING AND THE RESUME SEED (docs/26 section 3.21). The original accounts for context usage on
+// EVERY reply, and its own comment records the v4 defect where only the normal branch did: the flag stuck true and the
+// compaction directive reappeared at the head of every later prompt forever. Here the two fields must be RECOGNISED -
+// refusing them was a blocker for a real round - and the compacted case must store the seed.
+{
+  const loopC = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
+  // NOTE: the sample deliberately carries no other field. `solved`, `assign`, `task_claim` and the rest are REAL
+  // reply fields the original parses and this face still does not know, which is the audit's field-surface gap (12 of
+  // 29) and is recorded as owed rather than hidden by a sample that avoids them.
+  const withPct = (() => { try { return loopC.parse('```json\n{"say":"hi","contextPct":63}\n```') } catch (e) { return { ok: false, code: e.code } } })()
+  ok(withPct.ok === true && withPct.fields.includes('contextPct'),
+    'T100. **** contextPct is RECOGNISED rather than refused as an unknown field, which is what a real model emits and what used to make a real round impossible',
+    { fields: withPct.fields })
+  const bk1 = await loopC.apply({ contextPct: 63 })
+  ok(bk1.bookkeeping.some((b) => b.field === 'contextPct' && b.pct === 63),
+    'T101. **** and it is ACCOUNTED for on a reply that dispatches nothing else, in the same single place for every phase',
+    { bookkeeping: bk1.bookkeeping })
+  const bk2 = await loopC.apply({ compacted: true, progress: 'X'.repeat(5000) })
+  const seed = bk2.bookkeeping.find((b) => b.field === 'compacted')
+  ok(seed !== undefined && seed.seedChars === 4000,
+    'T102. **** and a REAL compaction stores the RESUME SEED, capped the way the source caps it, so a rebuilt session is handed something instead of starting from nothing',
+    { seedChars: seed && seed.seedChars })
+  // `parse` REFUSES BY THROWING (the named-refusal contract), so the negative case is a try/catch, not a returned flag.
+  let unknownErr = null
+  try { loopC.parse('```json\n{"nope":1}\n```') } catch (e) { unknownErr = e }
+  ok(unknownErr !== null && unknownErr.code === 'VMU_TURN_UNKNOWN_FIELD',
+    'T103. **** while a genuinely unknown field is still refused by name - recognising two more fields must not become accepting anything',
+    { code: unknownErr && unknownErr.code })
+}
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

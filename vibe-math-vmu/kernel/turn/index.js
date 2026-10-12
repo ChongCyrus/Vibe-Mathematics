@@ -44,6 +44,16 @@ export const FIELD_OWNERS = Object.freeze({
 
 export const FIELDS = Object.freeze(Object.keys(FIELD_OWNERS))
 
+/**
+ * ROUND 377 - THE BOOKKEEPING FIELDS (docs/26 section 3.21). The original accounts for context usage on EVERY reply,
+ * not only on a normal round: its own comment records the v4 defect where only the normal branch consumed these, so the
+ * flag stuck true and the compaction directive reappeared at the head of every later prompt forever. Two consequences
+ * matter here. First, these fields must be RECOGNISED: a real model that answers with `contextPct` was previously
+ * refused as an unknown field, which is a blocker for running a real round at all. Second, they are not dispatched to
+ * any face - they update turn state - so they get their own list rather than a fabricated owner.
+ */
+export const RECORDED_FIELDS = Object.freeze(['contextPct', 'compacted'])
+
 const PHASES = Object.freeze(['founding', 'normal', 'checkpoint', 'verify', 'verify-debate', 'meeting', 'resume'])
 
 export function refuse(code, message, hint) {
@@ -255,10 +265,10 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
         'the reply carries no usable json object, so there is nothing to apply',
         'ask for exactly one fenced json object (docs/26 §3); a bare fence, a bare object and a prose-wrapped object are all accepted')
     }
-    const unknown = Object.keys(obj).filter((k) => !Object.prototype.hasOwnProperty.call(owners, k))
+    const unknown = Object.keys(obj).filter((k) => !Object.prototype.hasOwnProperty.call(owners, k) && !RECORDED_FIELDS.includes(k))
     if (unknown.length) {
       fail('VMU_TURN_UNKNOWN_FIELD', 'unknown reply field(s): ' + unknown.join(', ') + ' - refusing rather than guessing what was meant',
-        'known fields: ' + known.join(', '))
+        'known fields: ' + known.concat(RECORDED_FIELDS).join(', '))
     }
     counts.parsed += 1
     return { ok: true, reply: obj, fields: Object.keys(obj) }
@@ -275,9 +285,33 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
   /**
    * ⑤ apply: run the plan through the face map. A field whose face is not wired is COUNTED and reported, so a
    * half-installed host is visible instead of quietly losing the model's work.
+   *
+   * ROUND 377: the BOOKKEEPING fields are accounted for here, in ONE place and on EVERY reply - which is exactly the
+   * fix the source records for a v4 defect where only the normal branch consumed them, so the flag stuck true and the
+   * compaction directive reappeared at the head of every later prompt forever. `compacted` also stores the RESUME
+   * SEED: the member's own progress (or summary) text, capped the way the source caps it, which is what a rebuilt
+   * session is handed so it does not start from nothing.
    */
+  // The loop's own context accounting (docs/26 section 3.21): the last reported percentage, how many rounds since a
+  // real compaction, and the resume seed a rebuilt session is handed. Kept here rather than in the kernel because it is
+  // bookkeeping about the TURN, and the source keeps it in the same place its own round loop does.
+  const context = new Map()
+
   const apply = async (reply, faceMap = null) => {
     const map = faceMap || faces
+    const r = reply && typeof reply === 'object' ? reply : {}
+    const bookkeeping = []
+    if (r.contextPct !== undefined && r.contextPct !== null) {
+      const pct = Math.max(0, Math.min(100, Math.floor(Number(r.contextPct))))
+      if (Number.isFinite(pct)) { context.set('pct', pct); bookkeeping.push({ field: 'contextPct', pct }) }
+    }
+    if (r.compacted) {
+      context.set('pct', 15)                     // a fresh context, exactly as the source resets it
+      context.set('sinceCompact', 0)             // and the counter that drives the directive
+      const seed = String(r.progress !== undefined ? r.progress : (r.summary !== undefined ? r.summary : '')).slice(0, 4000)
+      context.set('seed', seed)
+      bookkeeping.push({ field: 'compacted', seedChars: seed.length })
+    }
     const dispatches = plan(reply)
     const executed = []
     const skipped = []
@@ -293,7 +327,8 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
       counts.dispatched += 1
       executed.push({ field: d.field, face: d.face, op: d.op, result: res })
     }
-    return { ok: true, executed, skipped, planned: dispatches.length }
+    if (bookkeeping.length) counts.bookkept = (counts.bookkept || 0) + bookkeeping.length
+    return { ok: true, executed, skipped, planned: dispatches.length, bookkeeping }
   }
 
   /** One full turn, in order. Returns the turn receipt rather than making the caller re-implement the sequence. */
