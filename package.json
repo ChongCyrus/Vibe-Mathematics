@@ -86,6 +86,7 @@
     "tests/audit-engine-faces.mjs",
     "tests/audit-path-discipline.mutants.mjs",
     "tests/audit-path-discipline.mjs",
+    "tests/audit-code-size.test.mjs",
     "tests/audit-math-computation-contract.mjs",
     "tests/audit-math-computation-contract.mutants.mjs",
     "tests/audit-math-computation-sensitivity.mjs",
