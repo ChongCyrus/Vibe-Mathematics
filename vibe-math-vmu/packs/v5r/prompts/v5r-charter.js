@@ -953,6 +953,44 @@ export const CHARTER_BLOCKS = Object.freeze([
       ].join('\n'),
     },
   },
+  // ── THE HEARTBEAT PROMPT (source `heartbeatPrompt`, L4110-4115) ──────────────────────────────────────────────
+  // The fourth prompt TYPE the grouped measurement found, and the second largest family after the ballot. It is what a
+  // member receives when the institute has made no progress for a while, and it is deliberately written as a PROMPT AND
+  // NOT A DRIVER: it says what to try, and it says that saying so is a valid answer. Declared as a PHASE block, so it
+  // appears in the checkpoint phase and nowhere else.
+  {
+    name: 'v5r-heartbeat-core',
+    order: 806,
+    range: 'pack',
+    kind: 'phase',
+    texts: {
+      checkpoint: [
+        '【心跳检查 —— {{ roleLabel }} {{ member }}】',
+        '',
+        '所内一段时间没有新进展了。请**继续推进**这个问题，而不是停在原地：',
+        '读一读同事的库、推进你的子问题/引理/方法、尝试一条新路线；',
+        '或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。',
+        '如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。',
+      ].join('\n'),
+    },
+  },
+  // ── THE MATHS PUSH LINE, AS THE MEMBER ACTUALLY READ IT (corpus-derived, not source-derived) ─────────────────
+  // This line has NO counterpart in the `vibe-math-v5r/` checkout: its phrases appear in the delivered-prompt capture
+  // and nowhere in the source tree, so it was composed by the original's host at delivery time rather than by the
+  // preset. Transcribing it from the CORPUS is the faithful choice, because the corpus is the original's real output,
+  // and the provenance is stated rather than implied. It sits in the ordinary phase because that is where it appeared.
+  {
+    name: 'v5r-math-push-rendered',
+    order: 807,
+    range: 'pack',
+    kind: 'phase',
+    texts: {
+      normal: [
+        '计算证据请引用回执路径；脚本修改后用同一源文件重跑，旧回执不代表新代码。近似、替代与有限搜索的范围须声明，不得当成精确证明。详细操作按需读 {{ setting:vmu.turn.protocolPath }}',
+        'contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明：{{ setting:vmu.turn.protocolPath }}',
+      ].join('\n'),
+    },
+  },
   // ── THE VERIFICATION PROMPT (source `verifyPrompt`, L4177-4213) ─────────────────────────────────────────────
   // A whole prompt TYPE, not a section of the ordinary turn, which is why neither a section-by-section reading nor an
   // item count ever surfaced it: the acceptance measurement found it only when the unmatched lines were grouped, and it

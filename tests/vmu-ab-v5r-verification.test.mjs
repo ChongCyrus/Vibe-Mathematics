@@ -395,6 +395,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
 // no list is a number nobody can act on.
 {
   const SETTINGS_AB = {
+    "vmu.turn.protocolPath": "VibeMath/Projects/default/Institutes/institute/Shared/Protocol.md",
     "vmu.turn.instituteName": "institute", "vmu.turn.objective": "probe", "vmu.turn.leaderId": "acad",
     "vmu.turn.maxParallel": 3, "vmu.turn.toolCallsPerTurnCap": 0, "vmu.turn.memoryCeilingMb": 0,
     "vmu.pointer.propagation": true, "vmu.turn.feedback": true, "vmu.meetings.verdictMaxRounds": 3,
@@ -471,9 +472,9 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
     "framework notices beyond a refusal: office and academician assignment, group-chat relay, office notice",
     "the compact catalogue VARIANT per phase (its field list says it lists the current phase, and one was transcribed)",
     "the full catalogue and the compact one are alternatives in the original, and both are currently injected here",
-    "the rendered join of the maths push line: the source holds it as several entries while the corpus has one line",
+    "the office/chat notice header the corpus writes as [新到的消息] before the line itself",
   ]
-  ok(pctAB >= 43 && knownGapsAB.length === 4,
+  ok(pctAB >= 55 && knownGapsAB.length === 4,
     "V67. **** and the gap is NAMED rather than rounded away, with a FLOOR on the measured ratio: the closed families are the compact catalogue, the refusal notice and the contextPct/compacted clarification, and the four that remain are listed",
     { families: knownGapsAB.length, percent: pctAB })
 }
