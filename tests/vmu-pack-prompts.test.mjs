@@ -1,4 +1,4 @@
-// vibe-math-vmu —— v5r 包【正文轴】的机械证明（packs/v5r-prompts.js ⇄ prompt-corpus-v5/*.json）。
+// vibe-math-vmu —— v5r 包【正文轴】的机械证明（packs/v5r/prompts/v5r-prompts.js ⇄ prompt-corpus-v5/*.json）。
 //
 // 这套测试要证明的不是"我们说了包含"，而是**逐字相同**：把生成物里的每一条正文与语料里对应的一条做严格比较，
 // 并核对语料自身的 sha256（生成物把它写在模块里 ✓）。生成物一旦与语料不一致 ⇒ **红**，而不是悄悄多出一份副本。
@@ -8,8 +8,8 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { PROMPTS, COUNTS, KIND_HISTOGRAM, SOURCE_REL, SOURCE_SHA256 } from '../vibe-math-vmu/packs/v5r-prompts.js'
-import { PACK } from '../vibe-math-vmu/packs/v5r-core.js'
+import { PROMPTS, COUNTS, KIND_HISTOGRAM, SOURCE_REL, SOURCE_SHA256 } from '../vibe-math-vmu/packs/v5r/prompts/v5r-prompts.js'
+import { PACK } from '../vibe-math-vmu/packs/v5r/prompts/v5r-core.js'
 
 let passed = 0
 let failed = 0
@@ -74,7 +74,7 @@ const corpus = JSON.parse(String(RAW))
 
 // ④ 生成物不得被手改：它是 GENERATED，且包【装载计划】里必须看得到这条正文来源
 {
-  const src = readFileSync(new URL('../vibe-math-vmu/packs/v5r-prompts.js', import.meta.url), 'utf8')
+  const src = readFileSync(new URL('../vibe-math-vmu/packs/v5r/prompts/v5r-prompts.js', import.meta.url), 'utf8')
   ok(src.indexOf('GENERATED FILE') !== -1, 'the module says it is generated (so a hand edit is recognisable)')
   ok(Object.isFrozen(PROMPTS), 'the prompt table is frozen (no runtime mutation)')
   const { createPackLoader } = await import('../vibe-math-vmu/kernel/pack.js')

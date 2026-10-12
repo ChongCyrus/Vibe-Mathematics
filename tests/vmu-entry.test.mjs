@@ -371,7 +371,7 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
 {
   const dir = await mkdtemp(join(tmpdir(), 'vmu-v5r-core-'))
   const h = fakeCtx()
-  const handle = entry.apply(h.ctx, { clock, root: dir, packs: ['v5r-core'] })
+  const handle = entry.apply(h.ctx, { clock, root: dir, packs: ['v5r'] })
   await new Promise((r) => setTimeout(r, 80))
   ok(handle.packErrors().length === 0, 'v5r-core loads without error', JSON.stringify(handle.packErrors()).slice(0, 200))
   ok(handle.appliedPacks().some((p) => p.id === 'v5r-core'), 'and it is recorded as applied', JSON.stringify(handle.appliedPacks()))

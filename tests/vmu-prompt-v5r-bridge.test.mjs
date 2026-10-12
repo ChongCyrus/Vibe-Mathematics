@@ -10,8 +10,8 @@
 // Run: node tests/vmu-prompt-v5r-bridge.test.mjs   (last line: === VMU PROMPT v5r bridge: N passed, M failed ===)
 
 import { createPromptPipeline, ORDER_RANGES } from '../vibe-math-vmu/kernel/prompt/index.js'
-import { v5rPromptSections } from '../vibe-math-vmu/packs/v5r-core.js'
-import { PROMPTS, COUNTS } from '../vibe-math-vmu/packs/v5r-prompts.js'
+import { v5rPromptSections } from '../vibe-math-vmu/packs/v5r/prompts/v5r-core.js'
+import { PROMPTS, COUNTS } from '../vibe-math-vmu/packs/v5r/prompts/v5r-prompts.js'
 
 let passed = 0
 let failed = 0

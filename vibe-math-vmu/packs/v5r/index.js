@@ -17,10 +17,10 @@
  * Re-exporting them here means the folder is already the single entry point, so a consumer can start
  * using `packs/v5r/index.js` today and the physical move becomes an internal detail.
  */
-export * from '../v5r-core.js'
-export * from '../v5r-charter.js'
-export * from '../v5r-prompts.js'
-export * from '../v5r-persona.js'
+export * from './prompts/v5r-core.js'
+export * from './prompts/v5r-charter.js'
+export * from './prompts/v5r-prompts.js'
+export * from './prompts/v5r-persona.js'
 
 import { V5R_SETTING_DEFAULTS, V5R_SETTING_KEYS } from './settings/defaults.js'
 import { decideSections, v5rPromptSwitchMiddleware, V5R_PROMPT_SWITCH_STATES } from './middleware/prompt-switches.js'
@@ -28,6 +28,10 @@ import { decideSections, v5rPromptSwitchMiddleware, V5R_PROMPT_SWITCH_STATES } f
 export { V5R_SETTING_DEFAULTS, V5R_SETTING_KEYS, decideSections, v5rPromptSwitchMiddleware, V5R_PROMPT_SWITCH_STATES }
 
 /**
+ * THE FOLDER-LEVEL RECORD, deliberately NOT named PACK: the pack manifest the loader consumes is exported by
+ * `prompts/v5r-core.js` and carries the slots, tracks and sections. An explicit export beats a star re-export, so
+ * naming this one PACK silently replaced the real manifest and the roster disappeared - a lesson kept in the name.
+ *
  * The manifest, in the shape `kernel/pack.js` validates and applies: an id, a version, and the
  * lists the framework knows how to consume. `sections` and `bindings` are filled by the caller
  * (they are large arrays the sibling modules own); everything else is stated here.
@@ -48,8 +52,6 @@ export const V5R_PACK = Object.freeze({
 })
 
 /** A short, printable description, so a deployment can log what it loaded without reading source. */
-/** The name the pack loader looks for. Keeping the descriptive name too costs nothing and reads better in code. */
-export const PACK = V5R_PACK
 
 export function describeV5rPack() {
   return {

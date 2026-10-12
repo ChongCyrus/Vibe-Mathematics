@@ -1,6 +1,6 @@
 # 整合包·提示词内容审查（v5r pack content review）
 
-- 审查对象（**逐字通读**，见文末"怎么查的"）：`vibe-math-vmu/packs/v5r-charter.js`、`vibe-math-vmu/packs/v5r-persona.js`、`vibe-math-vmu/packs/v5r-prompts.js`、`vibe-math-vmu/packs/v5r-core.js`、`vibe-math-vmu/kernel/prompt/index.js`、`vibe-math-vmu/settings/schema.js`（＋`settings/planned.js`）、`vibe-math-vmu/docs/26-turn-orchestration.md` §3.9–3.19。
+- 审查对象（**逐字通读**，见文末"怎么查的"）：`vibe-math-vmu/packs/v5r/prompts/v5r-charter.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-persona.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-prompts.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-core.js`、`vibe-math-vmu/kernel/prompt/index.js`、`vibe-math-vmu/settings/schema.js`（＋`settings/planned.js`）、`vibe-math-vmu/docs/26-turn-orchestration.md` §3.9–3.19。
 - 判据：`docs/26` §3.9（快照→片段，**装配后不得残留具体成员名与具体轮次**，行 187–202）、§3.10（片段与分支的施工图，行 204–251）、§3.13（每轮骨架与 `role` vs `roleLabel` 的分工，行 289–310）、§3.14（资源数字走 settings，行 312–330）、§3.16（指针契约开关，行 348–364）、§3.19（本节审查方法，行 400–417）。
 - 类别记号：**(a)** 有意固定的散文／本就属于数据层的声明（**不算缺陷**）；**(b)** **本该是 `{{ }}` 变量或 settings 键却写死**（缺陷）；**(c)** 写死但只在**注释／元数据／采集证据**里（低严重度）。
 - 本报告**只读不改**：未修改任何被审文件；仅新增本文件。
@@ -15,7 +15,7 @@
 
 ## 1. 各文件内容与文本质量
 
-### 1.1 `vibe-math-vmu/packs/v5r-charter.js`（902 行，67 KB）
+### 1.1 `vibe-math-vmu/packs/v5r/prompts/v5r-charter.js`（902 行，67 KB）
 
 **是什么**：把原版 `charterFor(member)` 的**片段拼接**重建成 `CHARTER_BLOCKS`（19 个块，`order` 700–750，行 31–882），并派生出 `CHARTER_ROLE_BINDINGS`（行 885）、`CHARTER_PHASE_BINDINGS`（889）、`CHARTER_BINDINGS`（893）、`CHARTER_LEADER_VARIANTS`（896）、`CHARTER_SECTIONS`（900–908）。块种类齐全：开头／分工／编制／通用规章／规则 7／三条硬规则／资料库／组织／求真说明／表决／节奏／雇佣／任务板／任务板-领头人／上下文／停止／简报占位／回复目录／formal 字段／逐轮标题／逐轮要求／院士统筹／资源／命题准入／指针契约／反馈行／formal 三块。
 
@@ -30,7 +30,7 @@
 6. **`v5r-reply-formal` 的句子悬空**：行 660 `← Lean 形式化：{{ setting:vmu.formal.modeLine }}详见提示词里的【Lean 形式化验证】段` —— `modeLine` **没有任何来源**（见 §4）⇒ 渲染成"…：详见…"，引导语消失 ✗。
 7. **`v5r-charter-libraries` 里 `{{ member }}` 与 `<你>` 两种写法混用**（行 197–199 用 `Members/{{ member }}/`，行 198–229 又用 `Members/<你>/`）⇒ 同一段里两套记号，读者需要自己换算（§3.10 行 220 只要求前者）✓（可读性问题）。
 
-### 1.2 `vibe-math-vmu/packs/v5r-persona.js`（218 行，57 KB）
+### 1.2 `vibe-math-vmu/packs/v5r/prompts/v5r-persona.js`（218 行，57 KB）
 
 **是什么**：`scripts/generate-pack-persona.mjs` 从 `prompt-corpus-v5/persona-corpus-v5.json`（sha256 见行 11）生成的 **11 个 persona 段**（`PERSONA_SECTIONS`，order 610–620，行 21–99）＋**20 条 role binding**（`PERSONA_BINDINGS`，行 102–203）＋段名说明表（行 206–218）。
 
@@ -42,7 +42,7 @@
 5. **`v5r-persona-duties` 的标题写死"（院士）"**（行 55、166、171、176、181）而内容对 researcher 其实是"院士领头 + 对你的要求" ⇒ 标题与读者不匹配（研究员也读到"你的组织职责与边界（院士）"）✓。
 6. **与 charter 大段重复**：`rules`（行 41）＝ charter 的 `rules`＋`hard-rules`；`duties`（行 55/166）含 charter 的 `truth-note`；`hiring`（行 76）＝ charter 的 `hiring`；`taskboard`（行 83）＝ charter 的 `taskboard`＋`taskboard-leader`（把 leader-conditional 两套**合并成一套院士版**✗）。
 
-### 1.3 `vibe-math-vmu/packs/v5r-prompts.js`（120 行，156 KB）
+### 1.3 `vibe-math-vmu/packs/v5r/prompts/v5r-prompts.js`（120 行，156 KB）
 
 **是什么**：`scripts/generate-pack-prompts.mjs` 从 `prompt-corpus-v5/prompt-corpus-v5.json`（sha256 行 9）生成的 **67 条采集提示词**（`PROMPTS`，行 51–117，一行一条）＋计数（`COUNTS.total=67`／`kinds=31`／`chars=79138`，行 10–14）＋`KIND_HISTOGRAM`（行 15–47）。
 
@@ -58,7 +58,7 @@
 - 元数据 `"charterChars":797`（行 56 等）是采集期度量 ⇒ **(c)** ✓。
 - **重复度**：每条尾部都有同一段 ~700 字回复目录＋状态块 ⇒ 67 段拼成一份 **78,136 字**的提示（实测 §2.4）；作为"section"显然不应整体投递 ✗。
 
-### 1.4 `vibe-math-vmu/packs/v5r-core.js`（215 行）
+### 1.4 `vibe-math-vmu/packs/v5r/prompts/v5r-core.js`（215 行）
 
 **是什么**：pack 清单（`PACK`：id/version/description、`requires`、两个 code、settings 默认层、slots、tracks、M1 规则、M2 模块中间件、aliases、`prompts` 元数据，行 43–179）＋把语料变成 section 的桥（`v5rPromptSections`，行 34–40）＋`v5rRoleSection`（order 601，行 202–212）＋`v5rTurnSections`（行 215）＋两个 getter（行 150–152）。
 
@@ -229,10 +229,10 @@
 
 ## 8. 怎么查的（读过什么、读到哪一行）
 
-- `vibe-math-vmu/packs/v5r-charter.js`：**全文 1–908 行**（含头文 1–30、块定义 31–882、绑定导出 884–908）。
-- `vibe-math-vmu/packs/v5r-persona.js`：**全文 1–218 行**（sections 21–99、bindings 102–203、headings 206–218）。
-- `vibe-math-vmu/packs/v5r-prompts.js`：头 1–50（sha/计数/直方图）＋正文 51–117 **逐行模式扫描（67/67 条）**＋抽样逐字读（51–59、63–65、73、80–82 等）。
-- `vibe-math-vmu/packs/v5r-core.js`：**全文 1–215 行**。
+- `vibe-math-vmu/packs/v5r/prompts/v5r-charter.js`：**全文 1–908 行**（含头文 1–30、块定义 31–882、绑定导出 884–908）。
+- `vibe-math-vmu/packs/v5r/prompts/v5r-persona.js`：**全文 1–218 行**（sections 21–99、bindings 102–203、headings 206–218）。
+- `vibe-math-vmu/packs/v5r/prompts/v5r-prompts.js`：头 1–50（sha/计数/直方图）＋正文 51–117 **逐行模式扫描（67/67 条）**＋抽样逐字读（51–59、63–65、73、80–82 等）。
+- `vibe-math-vmu/packs/v5r/prompts/v5r-core.js`：**全文 1–215 行**。
 - `vibe-math-vmu/kernel/prompt/index.js`：**全文 1–518 行**（白名单 50；替换 269–284；装配 405–444；绑定 205–244）。
 - `vibe-math-vmu/kernel/turn/index.js`：150–229（`open` 169–180、`assemble` 182–201、投递 203–212），并用 195 行的实参列表作为"谁供值"的依据。
 - `vibe-math-vmu/settings/schema.js`：与本审查相关的键逐条 grep（`vmu.turn.objective` 131、`vmu.resources.*` 135–137、`vmu.formal.*` 144–147、`vmu.pointer.propagation` 141、`vmu.records.pointerPropagation` 82）；`settings/planned.js` 68–69。

@@ -512,11 +512,11 @@
 
 | 事实 | 证据 |
 |---|---|
-| **位置** | ★ **`vibe-math-vmu/packs/v5r-prompts.js`**（**不在** `vibe-math-v5r/` 里 ✗）✓ |
+| **位置** | ★ **`vibe-math-vmu/packs/v5r/prompts/v5r-prompts.js`**（**不在** `vibe-math-v5r/` 里 ✗）✓ |
 | **性质** | ★ **生成物**（文件头："**GENERATED FILE, do not edit by hand**" ✓），由 **`scripts/generate-pack-prompts.mjs`**（97 行 ✓）从 **`prompt-corpus-v5/prompt-corpus-v5.json`** 写出 ✓ |
 | **内容规模** | **`COUNTS = {total: 67, kinds: 31, chars: 76503}`** ✓ ＋ **`KIND_HISTOGRAM`**（`founding`／`resume`／`normal`／`verify`／`verify-debate`／`meeting`／`inbox-*` … ✓）＋ **`PROMPTS`** ✓ |
 | **防漂移** | ★★ **把语料 `sha256` 写进模块**（`SOURCE_SHA256 = d889776b…` ✓）⇒ **日后任何差异是【检查失败】而非静默分歧** ✓；生成器自带 **`--check`** 模式 ✓ |
-| **被谁消费** | ★ **`packs/v5r-core.js` L20 导入它**（`SOURCE_REL`／`SOURCE_SHA256`／`COUNTS` ✓）⇒ **不是无人使用的孤儿** ✓ |
+| **被谁消费** | ★ **`packs/v5r/prompts/v5r-core.js` L20 导入它**（`SOURCE_REL`／`SOURCE_SHA256`／`COUNTS` ✓）⇒ **不是无人使用的孤儿** ✓ |
 | **登记与门禁** | **`package.json` ✓ ＋ `installer.js` ✓ 双清单**；**在 `scripts/regen-all.mjs` 的生成链里** ✓；**`tests/vmu-pack-prompts.test.mjs`（87 行）逐字比对** ✓ |
 | **生成器的自述理由** ✓ | *"v5r 对照表已到 **56/56 工具**，剩一条轴是**框架内关不掉的：提示词【文本】**。**vmu 按设计只持策略**，而 v5r 那一线的指令**以文本存在** ⇒ 既然要求完整包含，**文本就该进 pack**；这个生成器就是**防止 pack 变成第二份会漂移的副本**"* ✓✓ —— 纪律：**"cite, never drift"** ✓ |
 
@@ -767,7 +767,7 @@ So the answer flips: the prompt text IS now composed and regulated by the framew
 |---|---|---|
 | **① 怎么拼的** | 装配**确实是管线** ✓（段→排序→绑定→覆盖→截断→快照 ✓）；★ **但插件建管线时【只读 `config.promptSections`**】✓，**实测：插件里【没有】** `collectPackSections`、**也没用到包的 `.sections`** ✗ | ★★★★ **包的段【没接进默认运行路径**】✗✓ —— ★ **"看不到片段"的原因就是这个** ✓ |
 | **② 那文件是什么** | **67 条／31 类／76.5k 字／哈希锁定** ✓；★★★ **实测：24 处"第 N 轮"**（**第 6／10／12／11／9／1 轮** ✓）＋ **66/67 条文本写死了具体成员名**（如"院士 acad" ✓） | ★★★★ **它是"某次运行某一轮的【快照】**"，**不是模板** ✗✓ —— **用户判断正确** ✓ |
-| **③ 删掉怎样** | `packs/v5r-core.js` **import 它** ✓；生成器／清单／测试也引用 ✓ ⇒ **删 ⇒ 包加载失败 ⇒ 测试与对拍全红** ✓；★ **但真实运行的提示词【目前不受影响**】✗✓（因为①的缺口 ✓） | ★★ **"删了对运行没影响"在当前状态下基本成立** ✗✓ —— **而这恰好证明缺口是真的** ✓ |
+| **③ 删掉怎样** | `packs/v5r/prompts/v5r-core.js` **import 它** ✓；生成器／清单／测试也引用 ✓ ⇒ **删 ⇒ 包加载失败 ⇒ 测试与对拍全红** ✓；★ **但真实运行的提示词【目前不受影响**】✗✓（因为①的缺口 ✓） | ★★ **"删了对运行没影响"在当前状态下基本成立** ✗✓ —— **而这恰好证明缺口是真的** ✓ |
 
 ★★★ **两根必须补的线** ✓✓：
 1. ★★ **把"快照"变成"片段/模板"** ✗✓：采集时**不要抄"某成员某轮的成品"** ✓，而是把**可变处变占位** —— **成员名 ⇒ `{{ member }}`**、**轮次／相位 ⇒ 变量** ✓、**名单 ⇒ `{{ roster }}`** ✓、**目标 ⇒ 设定项** ✓ ⇒ **这样包里才是可复用的片段** ✓✓；

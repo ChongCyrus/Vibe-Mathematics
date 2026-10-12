@@ -236,7 +236,7 @@ const opened = (settings) => { const t = face(settings); const o = t.open({ type
 
 // ---------- 16. 静态门 / 变异族 / 语料门禁 ----------
 {
-  const core = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r-core.js'), 'utf8')
+  const core = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-core.js'), 'utf8')
   ok(/v5r-prompts/.test(core) || /corpus/i.test(core), '等价: the v5r pack documents that its prompt content is GENERATED from the v5r corpus, not copied by hand')
   const runner = readFileSync(join(REPO, 'tests', 'run-tests.mjs'), 'utf8')
   ok(/mutant/i.test(runner), '等价: the repository gate runs mutant families, which is the same static-gate idea v5r carries internally')

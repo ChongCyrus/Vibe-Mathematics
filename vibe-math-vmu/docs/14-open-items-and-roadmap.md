@@ -49,7 +49,7 @@
 
   **确证缺口** ✗✓（**逐条 grep 核过** ✓，非提取伪影 ✓）：**9 个工具** —— `chair_proxy`／`motion`／`procedural`／`poll_open`／`poll_vote`／`poll_close`／`minutes`／`grant`／`end_verify`（**在 v5 预设里 0 命中** ✗）；**1 段提示**（`资源` ✓）；**1 个码**（`V5_RESOURCE_BUDGET` 只在 v5r 出现 4 处、v5 预设里没有 ✓）；**2 个阶段**（`closed`／`open` ✓）。
   ⇒ ★ **规律** ✓✓：**缺的正是"会议治理族"**（主持代理／动议／程序性／表决开票计票／纪要／经费授予／验证收束 ✓）—— **而这一族恰好是 vmu 的 `08`（会议/表决/工作流原语）与 `17`（社会机制）两卷所规划的面** ✓✓ ⇒ **两条线在此交汇** ✓：**v5r 缺的、vmu 规划了、但 vmu 尚未实现（仍在 `planned` 的 524 条里** ✗）。
-  **结论（对"v5r 整合包是否完整"的回答）** ✗✓：**不完整，且差距是结构性的** —— `packs/v5r-core.js` **仅 122 行**（**策略包：码 ＋ 一条策略钩子** ✓，**0/56 工具、0/18 提示** ✗）；**v5r 的逻辑与提示词在 `vibe-math-v5r/`（原线）与 `vibe-math-v5/`（后继预设）里** ✓；**目前没有任何门禁在核对这条对齐** ✗（现有 `audit-*-parity` 都不是 v5r 对齐 ✓）⇒ **本轮给出的是可复现的度量，而非"完整"的断言** ✓✓。
+  **结论（对"v5r 整合包是否完整"的回答）** ✗✓：**不完整，且差距是结构性的** —— `packs/v5r/prompts/v5r-core.js` **仅 122 行**（**策略包：码 ＋ 一条策略钩子** ✓，**0/56 工具、0/18 提示** ✗）；**v5r 的逻辑与提示词在 `vibe-math-v5r/`（原线）与 `vibe-math-v5/`（后继预设）里** ✓；**目前没有任何门禁在核对这条对齐** ✗（现有 `audit-*-parity` 都不是 v5r 对齐 ✓）⇒ **本轮给出的是可复现的度量，而非"完整"的断言** ✓✓。
   ★★ **但"9 个工具缺失"是【预设层】的，不是【框架层】的** ✗✓✓（**轮 85 的 ⓪ 步核实推翻了我上一轮的判断** ✓）：
   | v5r 工具 | vmu 框架是否已有承载 | 证据 |
   |---|---|---|
@@ -219,7 +219,7 @@
   **实测答案：否** ✗✓，分两层说清：
   | 读法 | 答案 | 证据 |
   |---|---|---|
-  | **"整合包"本身要装下 v5r** | **否** ✗✓ | `packs/v5r-core.js` **仅 121 行** ✓（轮 84 实测 ✓；**码 ＋ 一条策略钩子** ✓），而 `vibe-math-v5r/vibe-math-v5r.js` **11,597 行／27 段提示／56 个工具** ✓（轮 84 实测 ✓）⇒ **差距是结构性的** ✓ |
+  | **"整合包"本身要装下 v5r** | **否** ✗✓ | `packs/v5r/prompts/v5r-core.js` **仅 121 行** ✓（轮 84 实测 ✓；**码 ＋ 一条策略钩子** ✓），而 `vibe-math-v5r/vibe-math-v5r.js` **11,597 行／27 段提示／56 个工具** ✓（轮 84 实测 ✓）⇒ **差距是结构性的** ✓ |
   | **vmu（框架）是否具备"完全表达 v5r"的能力** | **大部分是，但【未经证明】** ✗ | 轮 84 量出 **9 项能力缺口** ✓ ⇒ **已补 2 项**（`end_verify` ✓／`grant` ✓，**各带测试** ✓）；**但没有逐项对照表** ✗ |
   **并记下一次失败的度量** ✓✓：本轮试图用"**关键词共现**"自动配对 v5r 工具与 vmu 模块 ✓ ⇒ **结果全表 29/29 都"配对成功"** ✗ —— 而它只匹配到 **29 个工具**（**其余 27 个是动态注册** ✗），且 `vibe_v5_task_get → library.js` 之类**明显是噪声** ✓ ⇒ ⇒ **这正是本阶段第 6 次"用名字代替语义"** ✗（**子串 ✓／信任清单 ✓／误读清单 ✓／返回当抛出 ✓／前缀当码 ✓／关键词共现 ✓**）⇒ **该表【不作为证据】** ✓✓。
   **正确方法（下一步 ✓）** ✓：**逐工具人工配对** ✓（每个 v5r 工具 ⇒ 哪个 vmu 原语承载它 ✓，**无法承载的写明"缺"** ✗），**并以测试为证据** ✓ —— **这正是"若没有则继续直至完全包含"的施工图** ✓✓。
@@ -237,7 +237,7 @@
   | **会议治理（15）** | meeting／chair_proxy／procedural_objection／grant／revoke／poll_open／poll_vote／poll_close／reconsider／secretary／motion／second／minutes／result_record／resolutions | `meeting.js`（50 断言）／`meetings.js`（策略层）／`delegation.js`／`arbitration.js`（**回避／听证／裁决／上诉**）／`grant.js`（**自 v5r #47 移植 ＋ 38 断言** ✓）／`ballot.js`／`ballotbox.js`／`minutes.js`（**纪要／决议／行动项**）／`governance.js`（**议程 ＋ 动议** ✓） | **15／15 承载** ✓ |
   | **任务（8）** | task_create／task_list／task_get／task_update／overview／assign／prioritize／nudge | `tasks.js`（**账本 ＋ 阶段机**）／`workflow.js`（**CAS 动作／依赖／闸点**）／`board.js`（**看板／WIP／泳道／老化**）／`scheduler.js`／`metrics.js` | **8／8 承载** ✓ |
   | **Lean（5）** | lean_run／lean_job／lean_archive／lean_read／lean_lib | `lean.js`：**8 键真读；队列并发 `leanJobsMaxParallel`；"退出 0 **且**产物哈希未变"才判 passed；具名拒 `VMU_LEAN_*`；丢弃计数** ✓（⇒ lean_run／lean_job **承载** ✓）；**轮 131 补上归档三动词** ✓：`archive()` 登记**具名引用＋内容哈希**（**不复制内容** ✓）、`read()` **回源并校验哈希**、**漂移即 `VMU_LEAN_ARCHIVE_DRIFT` 且不返回旧内容** ✓、`lib()` 列条目 ✓，**13 条断言全绿** ✓（含"**先证明未变时能读**"再断言漂移被拒 ✓） | **5／5 承载** ✓ |
-  **★ 另一条轴：提示词正文** ✓✓：v5r 的 **27 段提示** 是**文本**，而 vmu 本体**按设计不含文本**（`packs/v5r-core.js` **121 行是策略** ✓）⇒ ⇒ **"完全包含、内容完全一致"在【正文】这一轴上为否** ✗ —— 它属于 **preset/pack** 的职责（当前由 `vibe-math-v5` **9,065 行**承载 ✓，覆盖 **17/18 段提示** ✓）。
+  **★ 另一条轴：提示词正文** ✓✓：v5r 的 **27 段提示** 是**文本**，而 vmu 本体**按设计不含文本**（`packs/v5r/prompts/v5r-core.js` **121 行是策略** ✓）⇒ ⇒ **"完全包含、内容完全一致"在【正文】这一轴上为否** ✗ —— 它属于 **preset/pack** 的职责（当前由 `vibe-math-v5` **9,065 行**承载 ✓，覆盖 **17/18 段提示** ✓）。
   **⇒ 因此对"是否完全实现 v5r"的回答** ✓✓：★ **工具轴上【已无缺、也无部分】（56／56 有承载原语）** ✓✓、**正文轴上不包含（提示词是文本，vmu 只承载策略）** ✗ ⇒ **"若没有则继续直至完全包含"的剩余施工单＝【正文轴】这一项** ✓（**它需要你先裁决：v5r 的提示词正文由【框架】还是【pack/preset】承载** ✓ —— **我的建议仍是留在 pack/preset 层** ✓，框架只承载策略与机制 ✓）。
 
 - ★★ **轮 130（续）：PR #18 落地后的验收器缺陷与一次负载抖动，逐条记清** ✓✓
@@ -273,10 +273,10 @@
 
 - ★★★ **轮 136：正文轴落地（v5r 包现在承载【提示词正文】，且"内容完全一致"变成可机械核验的断言）** ✓✓
   **背景** ✓：轮 135 让工具轴达到 **56／56**，**唯一剩下的是正文轴** —— v5r 的提示词是**文本**，而 vmu 本体**按设计只承载策略** ✓ ⇒ **正文归 pack/preset 层** ✓（我的建议，已按此执行 ✓）。
-  **做法（不制造第二份会漂移的副本 ✓）**：新增生成器 `scripts/generate-pack-prompts.mjs` ✓，从 **`prompt-corpus-v5/prompt-corpus-v5.json`** 生成 **`packs/v5r-prompts.js`** ✓ —— **逐字嵌入**（实测 **67 条／76,503 字符／31 种 kind** ✓），并在**生成物内记下语料的 sha256**（`d889776b36ff…` ✓）⇒ **一旦与语料不一致 ⇒ 链的 `--check` 直接红** ✓✓，而不是"多出一份没人看的副本" ✗。
+  **做法（不制造第二份会漂移的副本 ✓）**：新增生成器 `scripts/generate-pack-prompts.mjs` ✓，从 **`prompt-corpus-v5/prompt-corpus-v5.json`** 生成 **`packs/v5r/prompts/v5r-prompts.js`** ✓ —— **逐字嵌入**（实测 **67 条／76,503 字符／31 种 kind** ✓），并在**生成物内记下语料的 sha256**（`d889776b36ff…` ✓）⇒ **一旦与语料不一致 ⇒ 链的 `--check` 直接红** ✓✓，而不是"多出一份没人看的副本" ✗。
   **包字段与【消费者】** ✓✓：`v5r-core` 新增 `prompts: { module, source, count, chars, sourceSha256 }` ✓ —— ★ 而 docs/10 明写"**未知字段会被静默忽略**" ✗ ⇒ **只声明就是本项目一路在抓的"声明无效"** ✗✓ ⇒ 因此**同时给了它真消费者**：`kernel/pack.js` 的 `plan()` **校验**该字段并**输出 `kind:'prompts'` 动作** ✓（实测：`{"kind":"prompts","module":"./v5r-prompts.js","count":67,…}` ✓；非法字段 ⇒ `problems` **逐条点名** ✓）。
   **证据（"完全一致"不是声明，是断言 ✓）** ✓✓：新增 **`tests/vmu-pack-prompts.test.mjs`（22 条全绿 ✓）** —— 其中 ★ **逐条逐字比较**（`PROMPTS[i].text === corpus.prompts[i].prompt` ✓）、**记录 sha256 ＝ 语料实际 sha256** ✓、**条数／字符数／kind 数三处一致** ✓、**包的声明 ＝ 生成物**（不是手打数字 ✓）、**计划里能看到 `prompts` 动作** ✓、**生成物带 `GENERATED FILE` 标记且被冻结** ✓。
-  **并入链与随包面** ✓：`regen-all` **8 → 9 步** ✓；`package.json#files` 与 `installer.js` 的 vmu 预设清单**都加了 `packs/v5r-prompts.js`** ✓（**正文随包发布** ✓）。
+  **并入链与随包面** ✓：`regen-all` **8 → 9 步** ✓；`package.json#files` 与 `installer.js` 的 vmu 预设清单**都加了 `packs/v5r/prompts/v5r-prompts.js`** ✓（**正文随包发布** ✓）。
   **诚实的边界** ✗：本包**不是**"与 v5r 行为等价的证明" ✗（docs/10 §5.3 原话 ✓）—— 它证明的是**正文逐字相同** ✓；**行为等价仍需 A/B 场景台**（P3 ✓），那**仍未做** ✗。
 
 - ★★★ **轮 139：采纳 PR #19（外部作者），并如实记下它查出的【两处我的缺陷】** ✓✓
@@ -1730,8 +1730,8 @@ undefined
   The verification A/B file now holds thirty-seven green assertions.
   What remains before release: user confirmation for the clinical and animal demotion; the real-machine re-run; and the version and release decision itself, which needs user approval. Nothing else in the containment plan is open.
 - ***** 334 ANSWERED A DIRECT QUESTION WITH EVIDENCE: what v5r-prompts.js is, and whether the preset still composes prompts in code.
-  It is NOT the preset prompt engine. It lives at vibe-math-vmu/packs/v5r-prompts.js, it is a GENERATED file whose header says so, and it is written by scripts/generate-pack-prompts.mjs from prompt-corpus-v5/prompt-corpus-v5.json. It carries sixty-seven prompts across thirty-one kinds and seventy-six thousand characters, and it records the corpus sha256 inside the module so that any later difference is a check failure rather than a silent divergence.
-  It is consumed rather than orphaned: packs/v5r-core.js imports its source path, hash and counts; both file lists register it; the regeneration chain includes it with a check mode; and a test compares every entry verbatim against the corpus. The generator own comment states the reason plainly - the containment table had reached fifty-six of fifty-six tools and the remaining axis was the prompt TEXT, which cannot be closed inside the framework because the framework holds policy while that line instructions live as text. Embedding the text as a hash-locked citation is how the content axis is contained without becoming a second drifting copy.
+  It is NOT the preset prompt engine. It lives at vibe-math-vmu/packs/v5r/prompts/v5r-prompts.js, it is a GENERATED file whose header says so, and it is written by scripts/generate-pack-prompts.mjs from prompt-corpus-v5/prompt-corpus-v5.json. It carries sixty-seven prompts across thirty-one kinds and seventy-six thousand characters, and it records the corpus sha256 inside the module so that any later difference is a check failure rather than a silent divergence.
+  It is consumed rather than orphaned: packs/v5r/prompts/v5r-core.js imports its source path, hash and counts; both file lists register it; the regeneration chain includes it with a check mode; and a test compares every entry verbatim against the corpus. The generator own comment states the reason plainly - the containment table had reached fifty-six of fifty-six tools and the remaining axis was the prompt TEXT, which cannot be closed inside the framework because the framework holds policy while that line instructions live as text. Embedding the text as a hash-locked citation is how the content axis is contained without becoming a second drifting copy.
   The original mechanism is untouched: prompt composition lives in vibe-math-v5r.js as charterFor(member), briefBlock(member, roundNo), replySpec(kind) and initialPrompt(member, initialTask, mode, roundNo), and that file header states the invariant that every builder takes the member it addresses rather than reading the last member touched. Every A/B in this volume drove that preset itself - apply(ctx), the real tool registry, the real state machine, the childIds its own scheduler issues, the real meetings, ballots, reconsiderations, verification and Lean queue.
   So the two axes must not be confused: fixed TEXT is containment evidence, while code-composed prompts are the runtime mechanism, and the observation that the former looks hard-coded does not mean the latter was replaced.
   Also this round: the round budget was raised to eight hundred at the user request, and the demotion volume for the clinical and animal domains was opened, registered in both file lists and pointed at from the registry.
@@ -1970,7 +1970,7 @@ undefined
 | **P0 骨架** | **✅ 完成** | 惰性零机制 ✓（无配置只注册 **1** 个只读工具 ✓）；Store（fold／白名单／原子写／备份／迁移缺则拒启动 ✓）；总线（能力校验／失败三态／熔断／trace／宿主瀑布 ✓）；提示词管线 ✓ |
 | **P1 六域能力面** | **✅ 完成（库面）** | 成员／归档／数学／会议／表决／任务 **六域全部落地** ✓（`kernel/{members,library,math,meeting,ballot,tasks}.js` ✓，各有场景＋自证 ✓） |
 | **P2 中间件四形态** | **✅ 完成** | M1 规则引擎 ✓／M2 模块装载器 ✓／M3 脚本桥 ✓／M4 注册面 ✓；**真机**：M1 拒绝含中间件 id ✓、M2 模块拒绝 ✓、M4 整合包应用 ✓（11-§9.6 ✓） |
-| **P3 v5r-pack** | **部分** ⚠️（**行为级 A/B 已跑一轮 ✓**） | **面级对照** ✓（`design/04-v5r-contrast-live.md` ✓）；**两种运行模式的包都已落地且会真正触发** ✓✓（`packs/v5r-core.js` ✓＋ **`packs/v3-core.js`** ✓，见 10-§5 与 `vmu-entry` 第 13／14 组 ✓）；**行为级 A/B**：同任务/同模型/同主机、仅换预设 ⇒ 报告 `design/05-p3-ab-report.md` ＋ 真机转写 `live/2026-10-10/p3-ab/` ✓（要点：两侧都"具名拒绝不编造" ✓、vmu 出货默认真机上**仅 5 工具／`packs: []`** ✓、拒绝带可执行提示 ✓、**核心无表决面** ✗） | **v2-pack 未做** ✗；**干净复跑（无 vmu 插件的 profile）未做** ✗；**M3 真机 NON-RESULT** ✗；样本 1 轮/侧 ⚠️ | 逐域工具面 ⇒ 再跑一轮 |
+| **P3 v5r-pack** | **部分** ⚠️（**行为级 A/B 已跑一轮 ✓**） | **面级对照** ✓（`design/04-v5r-contrast-live.md` ✓）；**两种运行模式的包都已落地且会真正触发** ✓✓（`packs/v5r/prompts/v5r-core.js` ✓＋ **`packs/v3-core.js`** ✓，见 10-§5 与 `vmu-entry` 第 13／14 组 ✓）；**行为级 A/B**：同任务/同模型/同主机、仅换预设 ⇒ 报告 `design/05-p3-ab-report.md` ＋ 真机转写 `live/2026-10-10/p3-ab/` ✓（要点：两侧都"具名拒绝不编造" ✓、vmu 出货默认真机上**仅 5 工具／`packs: []`** ✓、拒绝带可执行提示 ✓、**核心无表决面** ✗） | **v2-pack 未做** ✗；**干净复跑（无 vmu 插件的 profile）未做** ✗；**M3 真机 NON-RESULT** ✗；样本 1 轮/侧 ⚠️ | 逐域工具面 ⇒ 再跑一轮 |
 | **P4 扩展面** | **✅ 完成（除文档生成余项）** | M3 脚本工具 ✓；M4 `apiVersion`＋`packContractVersion` ✓；设置表自动生成 ✓ |
 | **P5 硬化与发布门禁** | **机器面 ✅／发布 ✗** | **T3 非增量全量两次全绿 ✓✓**（`132/132` 于 `1fe6ffc`；**`134/134` 于 `8ffdf82`** ✓，第二次含**拆分后的三片全绿且零重试** ✓）；发布门禁 `release-check` **ALL CHECKS PASSED** ✓＋自检 ✓＋变异 4/4 ✓；**发布本身未做** ✗（须用户批准 ✓） |
 | **控制流（V7）** | **✅ 完成** | `pause/resume/stop/beat` ✓；暂停**真门禁**（任务／会议／表决 ✓）；`wallClockMs` 作心跳预算 ✓；`vibe_vmu_control` 仅声明时出现 ✓ |
