@@ -190,6 +190,26 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   ok(collision !== null && collision.code === 'VMU_PACK_CONFLICT',
     'T31. *** and two packs claiming one section name is a CONFLICT, never resolved silently', { code: collision && collision.code })
 }
+
+// 9) PHASES: the assembled turn must vary with the phase, because the role section carries {{ phase }} - which is how
+// a two-sided comparison can be extended beyond founding without inventing per-phase texts.
+{
+  const loopP = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: collectPackSections([PACK]), clock: () => '2026-01-01T00:00:00.000Z' }) })
+  const phases = ['founding', 'normal', 'verify']
+  const texts = []
+  for (const phase of phases) {
+    const out = await loopP.assemble(loopP.open({ member: 'r-1', role: 'researcher', phase }).turn)
+    texts.push(out.text)
+    ok(out.ok === true && out.text.includes('阶段：' + phase),
+      'T32. *** the assembled turn for phase ' + phase + ' NAMES that phase - the section is phase-sensitive without a text per phase')
+  }
+  ok(new Set(texts).size === phases.length,
+    'T33. **** THREE PHASES, THREE DIFFERENT TEXTS: the framework turn is phase-aware, which is what lets the comparison against the original cover more than the founding round',
+    { chars: texts.map((t) => t.length) })
+  const same = await loopP.assemble(loopP.open({ member: 'r-1', role: 'researcher', phase: 'verify' }).turn)
+  ok(same.text === texts[2],
+    'T34. *** and the same phase assembles to identical bytes, so a phase comparison is reproducible')
+}
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
