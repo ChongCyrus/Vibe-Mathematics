@@ -43,7 +43,19 @@ export { V5R_SETTING_DEFAULTS, V5R_SETTING_KEYS, decideSections, v5rPromptSwitch
  */
 export const V5R_PHASES = Object.freeze(['heartbeat', 'paper-write', 'paper-review', 'paper-final'])
 
+// WHAT A PACK CONTRIBUTES, AND WHAT IT CANNOT CONTRIBUTE YET. A pack carries middleware, settings defaults and
+// settings claims, and those reach the kernel. Prompt SECTIONS and PHASES do not: they must exist when the kernel
+// is constructed, while this plugin reads a packs defaults as pure DATA at the top level and cannot await a
+// dynamic import (its own comment says so). So the extensible form - and the reason these fields are named here
+// rather than wired - is for a pack to declare its prompt material as DATA in its folder, the way it already
+// declares defaults.json, and for whoever drives the turn to import the named module during an async phase.
+// Until that exists a second pack gets its middleware and its defaults, and its prompt text must be supplied by
+// the code that loads it. Recording the shape is the honest step; pretending the wiring exists would not be.
 export const V5R_PACK = Object.freeze({
+  sectionModule: "./prompts/v5r-charter.js",
+  phases: V5R_PHASES,
+  policyModule: "./middleware/prompt-switches.js",
+  noticeModule: "./notices.js",
   id: 'v5r',
   version: '1.0.0',
   title: 'vibe-math-v5r institution',
