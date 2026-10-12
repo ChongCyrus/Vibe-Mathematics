@@ -623,6 +623,9 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     deliver: host && typeof host.deliverTurn === 'function' ? host.deliverTurn : null,
     // ROUND 347: the wakeup policy is a DECLARED setting, so the framework — not the host — decides who is woken next.
     wakeupPolicy: settings['vmu.turn.wakeupPolicy'],
+    // ROUND 366: the whole resolved settings map travels with the loop, so `{{ setting:... }}` inside a section is
+    // filled from configuration during a REAL round and not only in a hand-made assembly call.
+    settings,
   })
   // ROUND 24: the teaching face the N13 volume declared (19 of its 24 knobs change behaviour; the five that need
   // a library, records or ontology seam are named rather than silently accepted).

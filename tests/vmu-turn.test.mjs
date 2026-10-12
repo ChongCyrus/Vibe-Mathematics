@@ -539,6 +539,24 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
     'T83. **** and PROOF ADMISSION arrives: the three evidence grades, the ban on passing drafts off as argued, and the line that writing truly beats writing fully',
     { admission: true })
 }
+
+// 21) SETTINGS REACH THE ASSEMBLY THROUGH THE LOOP (docs/26 section 3.15). This is the objective's own words: the
+// prompt must be tunable from configuration. The assertion drives a REAL turn through the orchestrator - not a
+// hand-made assemble call - and checks that a section's {{ setting:... }} is filled from the settings the loop was
+// given, and that changing the setting changes the delivered prompt.
+{
+  const mkLoop = (settings) => createTurnOrchestrator({ prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }), settings })
+  const one = mkLoop({ 'vmu.turn.objective': '求 3N^2-2=b^2 的全部整数解', 'vmu.resources.maxParallel': 4 })
+  const a1 = await one.assemble(one.open({ member: 'acad', role: 'academician', phase: 'founding', roster: 'acad', quorum: 1, round: 1 }).turn)
+  const two = mkLoop({ 'vmu.turn.objective': '另一个研究对象', 'vmu.resources.maxParallel': 9 })
+  const a2 = await two.assemble(two.open({ member: 'acad', role: 'academician', phase: 'founding', roster: 'acad', quorum: 1, round: 1 }).turn)
+  ok(a1.ok === true && a1.text.includes('求 3N^2-2=b^2 的全部整数解') && a1.text.includes('最多同时唤醒 4 名成员') && a1.text.includes('{{') === false,
+    'T84. **** a REAL TURN renders a section value FROM SETTINGS: the objective and the resource numbers arrive through configuration, and no placeholder is left behind',
+    { chars: a1.text.length })
+  ok(a1.text !== a2.text && a2.text.includes('另一个研究对象') && a2.text.includes('最多同时唤醒 9 名成员') && a2.text.includes('求 3N^2-2') === false,
+    'T85. **** and CHANGING THE SETTINGS CHANGES THE PROMPT: the same turn with a different configuration delivers a different text, which is what tunability means',
+    { differ: a1.text !== a2.text })
+}
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

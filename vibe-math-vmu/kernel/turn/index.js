@@ -133,7 +133,7 @@ export function resolveOwners(bindings = null) {
  * Create the orchestrator. `prompt` is the pipeline (docs/06), `deliver` is the adapter seam, `faces` maps a face
  * name to its operations, e.g. `{ 'vmu.tasks': { create: async (p) => ... } }`.
  */
-export function createTurnOrchestrator({ prompt = null, deliver = null, faces = {}, bindings = null, wakeupPolicy = 'round-robin', clock = () => new Date().toISOString() } = {}) {
+export function createTurnOrchestrator({ prompt = null, deliver = null, faces = {}, bindings = null, wakeupPolicy = 'round-robin', settings = null, clock = () => new Date().toISOString() } = {}) {
   const owners = resolveOwners(bindings)
   const known = Object.keys(owners)
   // ROUND 347: the wakeup POLICY (docs/26 section 3.2). The original preset recorded only WHO should be woken and
@@ -174,7 +174,9 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
     // deliberately separate from `role`, which is the KEY that bindings select on: mixing display text into a binding
     // would make the assembly depend on wording.
     const roleLabel = ({ academician: '院士', researcher: '常驻研究员', temp: '临时工' })[turn.role] || turn.role
-    const out = await prompt.assemble({ member: turn.member, role: turn.role, roleLabel, phase: turn.phase, task: turn.task, roster: turn.roster, quorum: turn.quorum, statusBlock: turn.statusBlock, round: turn.round })
+    // ROUND 366: the resolved settings travel WITH the assembly context, because `{{ setting:... }}` resolves from
+    // `ctx.settings` - so a real round, not just a hand-made call, can be tuned from configuration.
+    const out = await prompt.assemble({ member: turn.member, role: turn.role, roleLabel, phase: turn.phase, task: turn.task, roster: turn.roster, quorum: turn.quorum, statusBlock: turn.statusBlock, round: turn.round, settings: settings || undefined })
     if (!out || out.ok !== true) {
       fail('VMU_TURN_ASSEMBLY_FAILED', 'the prompt pipeline refused this turn: ' + JSON.stringify((out && out.refused) || {}).slice(0, 160))
     }
