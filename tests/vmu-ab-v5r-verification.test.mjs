@@ -200,6 +200,29 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
     { v5r: 'veto and cumulative marked DO NOT ADOPT', vmu: 'present as settings' })
 }
 
+// ── the notification window, the effective-time chain, and the conflicts the v5r volumes declare themselves ──
+{
+  const confSrc = readFileSync(new URL('../vibe-math-vmu/kernel/conference.js', import.meta.url), 'utf8')
+  ok(/vmu\.conference\.cfpOpenMs/.test(confSrc) && /vmu\.conference\.cfpCloseMs/.test(confSrc),
+    'V33. ★★ the NOTIFICATION WINDOW is a pair of tunable keys here: when the call opens and when it closes',
+    { keys: 'cfpOpenMs / cfpCloseMs' })
+  const pubSrc = readFileSync(new URL('../vibe-math-vmu/kernel/publication.js', import.meta.url), 'utf8')
+  const chain = (pubSrc.match(/VERSION_CHAIN = Object\.freeze\(\[([^\]]+)\]/) || [])[1] || ''
+  ok(/preprint/.test(chain) && /vor/.test(chain) && /erratum/.test(chain),
+    'V34. ★★★ the EFFECTIVE-TIME notion exists as a publication version chain - preprint, accepted, version of record, erratum - with each step timestamped in the history',
+    { chain: chain.trim() })
+  ok(/rollback is not allowed/.test(pubSrc) && /legal next/.test(pubSrc) && /VMU_VERSION_CHAIN_BROKEN/.test(pubSrc),
+    'V35. ★★★ and the chain is enforced: a jump or a rollback is refused BY NAME with the current version and the legal next one - never silently accepted')
+  const rulings = readFileSync(new URL('../vibe-math-v5r/MEETING-PLATFORM-RULINGS.md', import.meta.url), 'utf8')
+  const covered = (rulings.match(/已覆盖/g) || []).length
+  ok(covered >= 5 && /矛盾与张力/.test(rulings) && /残余漏洞/.test(rulings),
+    'V36. ★★★ the three-volume CONFLICTS ARE DECLARED BY THE VOLUMES THEMSELVES: the ruling volume carries a consistency review of the decision volume faults plus residual gaps, each with a coverage verdict',
+    { coveredRows: covered })
+  ok(/出人 1|出人 2/.test(rulings) && /新增要求/.test(rulings) && /收紧/.test(rulings),
+    'V37. ★★★ and the two drafting discrepancies are NAMED with their direction - one is an ADDITION the decision volume never stated, the other a TIGHTENING that was confirmed - rather than being smoothed away',
+    { cites: 'the ruling volume discrepancy list' })
+}
+
 rmSync(workspace, { recursive: true, force: true })
 console.log('=== VMU AB v5r verification: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed > 0 ? 1 : 0)
