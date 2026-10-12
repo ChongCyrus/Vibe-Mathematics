@@ -727,6 +727,39 @@ if (SELF_PROBE) {
     JSON.stringify(withData.applied))
 }
 
+// ---- 17. the DOCUMENTED escape hatch, with two real institutions, and the fact it never mentioned --------
+// docs/10 tells a deployment to declare `vmu.packs.allowKernelOverride` when two packs disagree about a setting. Two
+// layers enforce that rule and they read DIFFERENT key names - the loader read allowKernelOverride, the kernel read
+// allowOverride - so for as long as both existed the documented name opened the first door and the second stayed shut,
+// with a hint telling the operator to set the key they had just set. Both layers honour both names now. What the probe
+// then showed is a fact no document stated: with the override declared, BOTH institutions apply and the LAST ONE WINS
+// the overlapping settings, so the order in `config.packs` decides how the institute runs.
+{
+  const boot = async (packs, extra) => {
+    const host = fakeCtx()
+    const r = await mkdtemp(join(tmpdir(), 'vmu-entry-override-'))
+    const handle = entry.apply(host.ctx, Object.assign({ clock, root: r, packs }, extra))
+    await new Promise((res) => setTimeout(res, 220))
+    const snap = handle.kernel.settingsSnapshot() || {}
+    const val = (k) => (snap[k] && typeof snap[k] === 'object' && snap[k].value !== undefined ? snap[k].value : snap[k])
+    const out = { errors: handle.packErrors() || [], applied: (handle.appliedPacks() || []).map((a) => a.id), quorum: val('vmu.meetings.quorumRule') }
+    await rm(r, { recursive: true, force: true })
+    return out
+  }
+  const off = await boot(['institute-min', 'v3-core'], {})
+  ok(off.errors.length === 1 && off.applied.length === 1,
+    'E-17: without a declaration the two institutions do NOT coexist, and the refusal covers the overlapping settings only',
+    JSON.stringify({ errors: off.errors.length, applied: off.applied }))
+  const on = await boot(['institute-min', 'v3-core'], { vmu: { 'vmu.packs.allowKernelOverride': true } })
+  ok(on.errors.length === 0 && on.applied.length === 2,
+    'E-17(甲) the DOCUMENTED name alone is enough: both doors open, both institutions apply, no error - it used to open only the loaders',
+    JSON.stringify(on))
+  const reversed = await boot(['v3-core', 'institute-min'], { vmu: { 'vmu.packs.allowKernelOverride': true } })
+  ok(reversed.errors.length === 0 && reversed.applied.length === 2 && reversed.quorum !== on.quorum,
+    'E-17(乙) and the ORDER decides the overlapping settings: the last pack applied wins, so config.packs is not a set but a sequence - a fact the documents never stated',
+    { forward: on.quorum, reversed: reversed.quorum })
+}
+
 // ---- 15. the data-only branch must NOT make a missing pack look like a success ------------------------
 // The branch above accepts a name that carries data and has no manifest. The risk it creates is the mirror image: a name
 // that carries NOTHING must still fail, or a typo in `config.packs` would produce a clean run and an empty applied list,

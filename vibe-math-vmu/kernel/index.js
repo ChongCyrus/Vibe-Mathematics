@@ -1036,7 +1036,12 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
           conflicts.push({ key: code, already: 'pack codes must be ' + codePrefix + '<REASON> (R-d)' })
         }
       }
-      if (conflicts.length > 0 && settings['vmu.packs.allowOverride'] !== true) {
+      // THE DOCUMENTED NAME OPENS THIS DOOR TOO. The pack handbook tells a deployment to declare
+      // `vmu.packs.allowKernelOverride`; this layer used to read only `vmu.packs.allowOverride`, so the documented key
+      // opened the loader's door and left the kernel's shut - the escape hatch was documented under a name that worked
+      // halfway. Both names are honoured here now.
+      const overrideDeclared = settings['vmu.packs.allowOverride'] === true || settings['vmu.packs.allowKernelOverride'] === true
+      if (conflicts.length > 0 && !overrideDeclared) {
         throw refuse('VMU_PACK_CONFLICT', 'pack ' + id + ' conflicts with the active configuration',
           JSON.stringify(conflicts))
       }
@@ -1118,9 +1123,11 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
         // and the hint names the precise key so the operator never has to guess which door to open.
         const declaredOverride = Array.isArray(settings['vmu.packs.activeOverrides'])
           && settings['vmu.packs.activeOverrides'].includes(key)
-        if (existed && settings['vmu.packs.allowOverride'] !== true && !declaredOverride) {
+        // either declared name opens both doors, so a deployment that read the pack handbook is not sent to a second key
+        const bluntOverride = settings['vmu.packs.allowOverride'] === true || settings['vmu.packs.allowKernelOverride'] === true
+        if (existed && !bluntOverride && !declaredOverride) {
           throw refuse('VMU_PACK_CONFLICT', 'pack setting ' + key + ' would overwrite an active value',
-            'make the override explicit: list "' + key + '" in vmu.packs.activeOverrides, or set vmu.packs.allowOverride (O4)')
+            'make the override explicit: list "' + key + '" in vmu.packs.activeOverrides, or set vmu.packs.allowKernelOverride (the name the pack handbook documents; vmu.packs.allowOverride is the same door under another name) (O4)')
         }
         if (existed) previous[key] = settings[key]
         settings[key] = value

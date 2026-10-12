@@ -234,7 +234,7 @@ vmu.packs.active: [v5r]
 | `vmu.pack.format` | enum | `tar` | `tar`∣`zip` | 会话 | H2 | office | ✅ 已接线 | `kernel/library.js` | package 导出所用容器（未知容器 ⇒ 具名拒；仅在 export.format=package 时有意义 ✓） |
 | `vmu.pack.includeBody` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/library.js` | package 导出是否含正文（回执里报出 ✓） |
 | `vmu.pack.includeTrash` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/library.js` | package 导出是否含回收站（默认否 ✓） |
-| `vmu.packs.allowKernelOverride` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/pack.js` | pack 的设置与现有值【重叠】时是否允许覆盖（false ⇒ 具名拒 `VMU_PACK_CONFLICT`，即 10 卷 O4：绝不静默覆盖 ✓；调用方显式传 allowOverride 仍然优先 ✓） |
+| `vmu.packs.allowKernelOverride` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | pack 的设置与现有值【重叠】时是否允许覆盖（false ⇒ 具名拒 `VMU_PACK_CONFLICT`，即 10 卷 O4：绝不静默覆盖 ✓；调用方显式传 allowOverride 仍然优先 ✓） |
 | `vmu.packs.priority` | integer | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/pack.js` | pack 优先级（越大越先；★ 仅用于 status().applied 的排序，manifest 自身的 priority 优先 ✓） |
 | `vmu.work.keepEntries` | integer | `200` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/work.js` | 在途台账保留条数（超过即裁掉【最旧】的，使仍未完成的工作保持可见 ✓） |
 | `vmu.work.autoSettle` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/work.js` | 重启后 recover() 是否【自动标记】残留项为中断（false ⇒ 只报告不改写，即'仅安全动作' ✓） |

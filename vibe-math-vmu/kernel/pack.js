@@ -187,7 +187,13 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
    */
   const overrideAllowed = () => {
     const snap = settingsNow()
-    return allowOverride === true || snap['vmu.packs.allowKernelOverride'] === true
+    // TWO DECLARED KEYS, ONE INTENT. `vmu.packs.allowKernelOverride` is the name the pack handbook documents and this
+  // loader reads; `vmu.packs.allowOverride` is the name the KERNEL's own settings application reads. Both are declared
+  // in the schema and both meant the same thing, so a deployment that declared the documented one had the loader open
+  // the first door and the kernel shut the second - with a hint naming the other key. This layer now honours either, so
+  // the name a reader finds in the pack volume actually works. Neither is removed: they are two doors to one decision
+  // and the finer `activeOverrides` list sits beside them.
+  return allowOverride === true || snap['vmu.packs.allowKernelOverride'] === true || snap['vmu.packs.allowOverride'] === true
   }
 
   /** ROUND 296 (`vmu.packs.priority`): the declared pack priority, used only to order what status() reports. */
