@@ -205,7 +205,7 @@ then:
   - **中间件（4）**：`vmu.middleware.entries`｜`vmu.middleware.dryRun`｜`vmu.middleware.breakerThreshold`｜`vmu.middleware.hookTimeoutMs`
   - **提示词（4）**：`vmu.prompts.bindings`｜`vmu.prompts.overridesDir`｜`vmu.prompts.resourceSection`｜`vmu.prompts.whoMayOverride`
   - **记录（5）**：`vmu.records.tracks`｜`vmu.records.truncateMode`｜`vmu.records.fingerprintPolicy`｜`vmu.records.headListAt`｜`vmu.records.pointerPropagation`
-  - **包/安全（5）**：`vmu.packs.active`｜`vmu.packs.activeOverrides`｜`vmu.packs.allowOverride`｜`vmu.safety.pathPolicy`｜`vmu.safety.delegableKeys`
+  - **包/安全（5）**：`vmu.packs.active`｜`vmu.packs.activeOverrides`｜`vmu.packs.allowOverride`（＝ `allowKernelOverride`，**同一决策的两个名字** ✓）｜`vmu.safety.pathPolicy`｜`vmu.safety.delegableKeys`
   - **数学计算面（15）**：`vmu.math.mode`｜`vmu.math.computation`｜`vmu.math.engines`｜`vmu.math.packages`｜`vmu.math.installScope`｜`vmu.math.formalVerify`｜`vmu.math.timeoutMs`｜`vmu.math.compileTimeoutMs`｜`vmu.math.leanCommand`｜`vmu.math.leanArgs`｜`vmu.math.leanAsync`｜`vmu.math.leanTimeoutMs`｜`vmu.math.leanSearchPaths`｜`vmu.math.leanInitiative`｜`vmu.math.leanJobsMaxParallel`
 - **派生命令（以代码/生成物为准 ✓）**：
   ```bash
