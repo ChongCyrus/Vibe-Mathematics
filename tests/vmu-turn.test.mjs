@@ -456,7 +456,15 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   // TODO(axis): this list is maintained by hand and every new prompt-axis block must be added. A structural fix -
   // an explicit axis field on each block - is owed. A block may now DECLARE itself corpus-derived, which is the honest
   // form: the prefix list below stays for the blocks that predate the field, and a new corpus-derived block says so.
-  const PROMPT_AXIS_PREFIXES = ['v5r-reply-', 'v5r-turn-', 'v5r-brief-', 'v5r-proof-', 'v5r-pointer-', 'v5r-feedback-', 'v5r-formal-', 'v5r-meeting-', 'v5r-math-']
+  // A block is checked against the source unless it DECLARES that it came from the delivered prompts (the field
+  // round 429 added and round 430 put on the twenty-two transcribed blocks), OR it is behind one of these prefixes.
+  // THE PREFIX LIST IS NOT PROVENANCE, and round 430 measured exactly what it hides: remove it and ten blocks fail
+  // the line check - the charter roster, rules, voting and hiring blocks, the reply spec and the compact catalogue,
+  // the formal review, plan and work blocks, and the maths rules. Reading them shows why they fail: the source
+  // wraps those sentences across lines and this check compares whole lines, so a wrapped sentence can never match.
+  // So the list stays as a documented exemption for the blocks that predate the field, and the honest statement is
+  // that their source parity is UNVERIFIED by this check rather than proven by it.
+  const PROMPT_AXIS_PREFIXES = ['v5r-reply-', 'v5r-turn-', 'v5r-brief-', 'v5r-proof-', 'v5r-pointer-', 'v5r-feedback-', 'v5r-formal-', 'v5r-meeting-']
   for (const b of CHARTER_BLOCKS.filter((x) => x.derivedFrom !== 'corpus' && !PROMPT_AXIS_PREFIXES.some((p) => String(x.name).startsWith(p)))) {
     const pairs = b.kind === 'shared' ? [['shared', b.texts.shared, acadOrig], ['shared', b.texts.shared, resOrig]]
       : (b.kind === 'role' ? [['academician', b.texts.academician, acadOrig], ['researcher', b.texts.researcher, resOrig]]

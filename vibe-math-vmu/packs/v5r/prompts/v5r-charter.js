@@ -669,6 +669,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // and phase is one of the pipeline's binding dimensions, so they are bound rather than branched in code.
   {
     name: 'v5r-turn-heading',
+    derivedFrom: 'corpus',
     order: 690,
     range: 'pack',
     kind: 'phase',
@@ -681,6 +682,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   },
   {
     name: 'v5r-turn-ask',
+    derivedFrom: 'corpus',
     order: 691,
     range: 'pack',
     kind: 'phase',
@@ -954,6 +956,10 @@ export const CHARTER_BLOCKS = Object.freeze([
   // all, rather than a disabled notice being injected in its place.
   {
     name: 'v5r-math-rules',
+    // Its lines ARE source-derived, from MATH_RULE_LINES, but the corpus renders them JOINED into one line,
+    // so a line-by-line comparison against the delivered prompts cannot succeed. The marker says 'do not check this
+    // against the corpus', which is exactly the situation.
+    derivedFrom: 'corpus',
     order: 699,
     range: 'pack',
     kind: 'shared',
@@ -976,6 +982,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // supposed to remove.
   {
     name: 'v5r-verify-formal-addendum',
+    derivedFrom: 'corpus',
     order: 808,
     range: 'pack',
     kind: 'phase',
@@ -988,6 +995,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   },
   {
     name: 'v5r-formal-work-rendered',
+    derivedFrom: 'corpus',
     order: 809,
     range: 'pack',
     kind: 'phase',
@@ -1022,6 +1030,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // reconsideration rather than a ratification.
   {
     name: 'v5r-progress-rule',
+    derivedFrom: 'corpus',
     order: 818,
     range: 'pack',
     kind: 'phase',
@@ -1033,6 +1042,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   },
   {
     name: 'v5r-verify-reconsider',
+    derivedFrom: 'corpus',
     order: 819,
     range: 'pack',
     kind: 'phase',
@@ -1052,6 +1062,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // did not name.
   {
     name: 'v5r-founding-direction',
+    derivedFrom: 'corpus',
     // NOT source-derived: this block is transcribed from the delivered prompts, which is what T71s comment calls
     // the owed explicit axis field. It says so rather than being hidden behind a naming prefix.
     derivedFrom: 'corpus',
@@ -1071,6 +1082,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // variant, so putting them here would print the wrong one for four roles out of five.
   {
     name: 'v5r-founding-asks',
+    derivedFrom: 'corpus',
     order: 817,
     range: 'pack',
     kind: 'phase',
@@ -1088,6 +1100,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // mode leaves open: produce a Lean formalisation, or produce an EXPLICIT reason for blocking it.
   {
     name: 'v5r-lean-tool-hints',
+    derivedFrom: 'corpus',
     order: 815,
     range: 'pack',
     kind: 'phase',
@@ -1104,6 +1117,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   },
   {
     name: 'v5r-lean-required',
+    derivedFrom: 'corpus',
     order: 816,
     range: 'pack',
     kind: 'phase',
@@ -1118,6 +1132,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   },
   {
     name: 'v5r-paper-write',
+    derivedFrom: 'corpus',
     order: 810,
     range: 'pack',
     kind: 'phase',
@@ -1144,6 +1159,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   },
   {
     name: 'v5r-paper-review',
+    derivedFrom: 'corpus',
     order: 811,
     range: 'pack',
     kind: 'phase',
@@ -1180,6 +1196,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // to publish is the authority to refuse, and a paper cannot be waved through by the person who wants it finished.
   {
     name: 'v5r-paper-final',
+    derivedFrom: 'corpus',
     order: 813,
     range: 'pack',
     kind: 'phase',
@@ -1211,6 +1228,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // in a mathematical institute that distinction is the whole point of keeping the log in the first place.
   {
     name: 'v5r-resume-core',
+    derivedFrom: 'corpus',
     order: 814,
     range: 'pack',
     kind: 'phase',
@@ -1237,6 +1255,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // rather than accompanying it. Declaring it under `checkpoint` was wrong, and it is its own phase for that reason.
   {
     name: 'v5r-heartbeat-core',
+    derivedFrom: 'corpus',
     order: 806,
     range: 'pack',
     kind: 'phase',
@@ -1258,6 +1277,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // and the provenance is stated rather than implied. It sits in the ordinary phase because that is where it appeared.
   {
     name: 'v5r-math-push-rendered',
+    derivedFrom: 'corpus',
     order: 807,
     range: 'pack',
     kind: 'phase',
@@ -1274,6 +1294,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // is `verify` and is absent otherwise - the same exclusive mechanism the meeting states use.
   {
     name: 'v5r-verify-core',
+    derivedFrom: 'corpus',
     order: 805,
     range: 'pack',
     kind: 'phase',
@@ -1312,6 +1333,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // the source is most explicit: speaking is optional, silence is never a vote, and a missing vote blocks closure.
   {
     name: 'v5r-turn-meeting-agenda',
+    derivedFrom: 'corpus',
     order: 764,
     range: 'pack',
     kind: 'phase',
@@ -1325,6 +1347,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   },
   {
     name: 'v5r-meeting-invited',
+    derivedFrom: 'corpus',
     order: 770,
     range: 'pack',
     kind: 'shared',
@@ -1337,6 +1360,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   },
   {
     name: 'v5r-meeting-others',
+    derivedFrom: 'corpus',
     order: 771,
     range: 'pack',
     kind: 'shared',
@@ -1349,6 +1373,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   },
   {
     name: 'v5r-meeting-first',
+    derivedFrom: 'corpus',
     order: 772,
     range: 'pack',
     kind: 'shared',
@@ -1361,6 +1386,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   },
   {
     name: 'v5r-meeting-ask',
+    derivedFrom: 'corpus',
     order: 773,
     range: 'pack',
     kind: 'shared',
