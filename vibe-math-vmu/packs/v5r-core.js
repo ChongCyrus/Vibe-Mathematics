@@ -165,3 +165,25 @@ export const PACK = Object.freeze({
 })
 
 export default PACK
+
+/**
+ * ROUND 341 - THE PER-MEMBER SECTION. The measurement in round 340 showed the original writing a different charter
+ * for every member while the framework assembled the SAME text for two different members, because the corpus is
+ * member-agnostic. The pipeline already solves that with template variables, so this adds ONE section instead of a
+ * text per member: the values come from the assembly context (member, role, phase), which the turn loop supplies,
+ * and the whole thing stays editable through settings, config or middleware like any other section.
+ */
+export const v5rRoleSection = Object.freeze({
+  name: 'v5r-role-block',
+  order: 601,
+  range: 'pack',
+  source: 'v5r-corpus:role-template',
+  vars: Object.freeze(['member', 'role', 'phase']),
+  text: [
+    '【本轮面向的成员】代号：{{ member }} ｜角色：{{ role }} ｜阶段：{{ phase }}',
+    '★★ 分派决定做什么，判断属于你自己；异议与未表态都要留痕，沉默不得被折算成任何一侧。',
+  ].join('\n'),
+})
+
+/** The corpus sections PLUS the per-member section - what a v5r-pack host should hand the pipeline. */
+export const v5rTurnSections = Object.freeze([...v5rPromptSections, v5rRoleSection])

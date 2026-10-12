@@ -105,13 +105,13 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
   const fail = (code, message, hint) => { counts.refused += 1; lastRefusal.code = code; lastRefusal.message = message; throw refuse(code, message, hint) }
 
   /** ① open a turn: who, which round, which phase, which task. */
-  const open = ({ member, phase, task = null, round = 1 } = {}) => {
+  const open = ({ member, role = null, phase, task = null, round = 1 } = {}) => {
     if (typeof member !== 'string' || member.trim() === '') fail('VMU_INVALID_ARGUMENT', 'a turn needs a member', 'pass { member, phase }')
     if (typeof phase !== 'string' || !PHASES.includes(phase)) {
       fail('VMU_INVALID_ARGUMENT', 'unknown phase: ' + String(phase), 'known phases: ' + PHASES.join(', '))
     }
     seq += 1
-    const turn = { id: 't-' + seq, member, phase, task, round, at: clock() }
+    const turn = { id: 't-' + seq, member, role, phase, task, round, at: clock() }
     turns.set(turn.id, turn)
     counts.opened += 1
     return { ok: true, turn }
@@ -123,7 +123,8 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
       fail('VMU_ENGINE_UNAVAILABLE', 'no prompt pipeline is wired: the turn loop delegates assembly and never composes text itself',
         'inject { prompt: createPromptPipeline(...) } (docs/26 §2 stage 2)')
     }
-    const out = await prompt.assemble({ member: turn.member, phase: turn.phase, task: turn.task, round: turn.round })
+    // The role travels with the member, so a template section can address THIS member (docs/26 section 3.1).
+    const out = await prompt.assemble({ member: turn.member, role: turn.role, phase: turn.phase, task: turn.task, round: turn.round })
     if (!out || out.ok !== true) {
       fail('VMU_TURN_ASSEMBLY_FAILED', 'the prompt pipeline refused this turn: ' + JSON.stringify((out && out.refused) || {}).slice(0, 160))
     }

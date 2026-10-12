@@ -22,7 +22,7 @@ import { apply as applyV5R } from '../vibe-math-v5r/vibe-math-v5r.js'
 import { createTasks } from '../vibe-math-vmu/kernel/tasks.js'
 import { createTurnOrchestrator, facesFrom } from '../vibe-math-vmu/kernel/turn/index.js'
 import { createPromptPipeline } from '../vibe-math-vmu/kernel/prompt/index.js'
-import { v5rPromptSections } from '../vibe-math-vmu/packs/v5r-core.js'
+import { v5rPromptSections, v5rTurnSections } from '../vibe-math-vmu/packs/v5r-core.js'
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
 import { mkdtempSync as mkdtempSyncTurn } from 'node:fs'
 import { tmpdir as tmpdirTurn } from 'node:os'
@@ -311,8 +311,19 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
     'V52. ★★★ THE FRAMEWORK assembles a real turn from its own pipeline, carrying the v5r corpus, with no original preset involved',
     { chars: [asm1.text && asm1.text.length, asm2.text && asm2.text.length], sources: asm1.sources && asm1.sources.length })
   ok(asm1.text === asm2.text,
-    'V53. ★★★★ DIVERGENT, and it is the precise gap the objective still has: with no per-member binding the framework assembles THE SAME text for two different members, while the original writes a different charter for each. The pipeline CAN express this - bindings bind a section per role, phase, member or task - so the fix is a binding table over the corpus, not a new mechanism.',
+    'V53. ★★ the plain corpus alone is MEMBER-AGNOSTIC: two members get identical text, which is exactly why the role section exists',
     { same: asm1.text === asm2.text })
+  // ROUND 341: the gap V53 used to name is closed by the pipeline own variable injection - one template section
+  // addresses whichever member is being assembled, so nothing is hard-coded per member and the section stays
+  // editable through settings, config or middleware.
+  const loopRole = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: v5rTurnSections, clock: () => '2026-01-01T00:00:00.000Z' }), faces: facesFrom(kernelTurn) })
+  const r1 = await loopRole.assemble(loopRole.open({ member: 'r-1', role: 'researcher', phase: 'founding' }).turn)
+  const ac = await loopRole.assemble(loopRole.open({ member: 'acad', role: 'academician', phase: 'founding' }).turn)
+  ok(r1.ok === true && ac.ok === true && r1.text !== ac.text && r1.text.includes('{{') === false,
+    'V54. ★★★★ CLOSED: with the role section the framework composes PER MEMBER, two members get different text, and no placeholder is left unsubstituted',
+    { chars: [r1.text.length, ac.text.length], differ: r1.text !== ac.text })
+  ok(r1.text.includes('r-1') && r1.text.includes('researcher') && ac.text.includes('acad') && ac.text.includes('academician'),
+    'V55. ★★★ and each assembled turn names the member and role it was written for')
 }
 rmSync(workspace, { recursive: true, force: true })
 console.log('=== VMU AB v5r verification: ' + passed + ' passed, ' + failed + ' failed ===')
