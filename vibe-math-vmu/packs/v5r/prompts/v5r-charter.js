@@ -1044,6 +1044,24 @@ export const CHARTER_BLOCKS = Object.freeze([
       ].join('\n'),
     },
   },
+  // ── THE PER-MEMBER STARTING DIRECTIONS (corpus-derived; member-keyed) ──────────────────────────────────────
+  // The original seeds each member with a DIFFERENT starting direction - lead the institute, start from definitions,
+  // hunt counterexamples, reduce to a core, check the literature - and the corpus keys them by member, not by role.
+  // `member` is already a binding dimension of the pipeline, so the direction is declared here and CHARTER_MEMBER_
+  // BINDINGS below turns each into a member-keyed override. The shared text is the default for a member the corpus
+  // did not name.
+  {
+    name: 'v5r-founding-direction',
+    // NOT source-derived: this block is transcribed from the delivered prompts, which is what T71s comment calls
+    // the owed explicit axis field. It says so rather than being hidden behind a naming prefix.
+    derivedFrom: 'corpus',
+    order: 820,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: '给你的起点方向：统领全所：统筹全局、拆解并分派工作、设定优先级、督导进度。',
+    },
+  },
   // ── THE FOUNDING ASKS (corpus-derived) ─────────────────────────────────────────────────────────────────────
   // The academicians own opening question - read the problem, name its hard part, decide how to divide it and tell
   // the institute what you concluded - and the line that states a temporary members limits: no vote, no hire or
@@ -1371,7 +1389,15 @@ export const CHARTER_PHASE_BINDINGS = Object.freeze(CHARTER_BLOCKS.filter((b) =>
   Object.entries(b.texts).map(([phase, text]) => ({ section: b.name, phase, text }))))
 
 /** Both binding sets, for an assembly that wants the whole picture in one argument. */
-export const CHARTER_BINDINGS = Object.freeze([...CHARTER_ROLE_BINDINGS, ...CHARTER_PHASE_BINDINGS])
+/** Each members starting direction, keyed by the member the corpus named. */
+export const CHARTER_MEMBER_BINDINGS = Object.freeze([
+  { section: 'v5r-founding-direction', member: "acad", text: '给你的起点方向：统领全所：统筹全局、拆解并分派工作、设定优先级、督导进度。' },
+  { section: 'v5r-founding-direction', member: "r-1", text: '给你的起点方向：从最基础的定义与已知结论出发，寻找可用的经典工具与已有定理。' },
+  { section: 'v5r-founding-direction', member: "r-2", text: '给你的起点方向：尝试构造反例或极端情形，界定命题的适用范围与边界。' },
+  { section: 'v5r-founding-direction', member: "r-3", text: '给你的起点方向：把它归约到一个更小、更本质的核心里程，先攻这个核心。' },
+  { section: 'v5r-founding-direction', member: "t-1", text: '给你的起点方向：核对文献引理' },
+])
+export const CHARTER_BINDINGS = Object.freeze([...CHARTER_ROLE_BINDINGS, ...CHARTER_PHASE_BINDINGS, ...CHARTER_MEMBER_BINDINGS])
 
 /** The leader-conditional pairs, by section, for the loop to choose between (docs/26 section 3.10). */
 export const CHARTER_LEADER_VARIANTS = Object.freeze(Object.fromEntries(
