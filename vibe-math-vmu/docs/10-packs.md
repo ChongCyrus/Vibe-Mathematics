@@ -215,12 +215,14 @@ B′ 判决：v5r 的文档层是**本仓质量最高、与数学无关度最高
 
 ## 7. pack 作者指南（最短路径）
 
-1. 复制 `packs/institute-min/index.js` 作为起点（**唯一随包的真实示例** ✓；`packs/_template/` 是 **⛔ 未实现**的规划路径 ✗ —— §9 的骨架属目标形态，当前没有该文件）；
-2. 写 `pack.yml`（id/version/apiVersion/requires/conflicts/capabilities）；
-3. 写 `settings.yml`（**只放"量"**，流程进中间件）；
+> ★★★ **轮 449 重写了本节** ✗：★ **原文让作者写 `pack.yml` 与 `settings.yml`** ✗ —— ★★ **而运行时不读任何 YAML** ✓（★ 见 §2 ✓，**同卷两节互相矛盾** ✗），**并称 `vibe_vmu_pack` 未实现** ✗ —— ★ **而 `host.js` 注册了它** ✓（`vmu-entry.test.mjs` 第 7 组 ✓）、**§3 也把它当作真字段校验** ✓。★ **指南与规格矛盾比指南过期更糟** ✓，**因为作者跟着指南走** ✓。
+
+1. ★★ **挑一个【真实起点**]✓（★ `packs/_template/` **不存在** ✓ —— ★ **不设它是有意的** ✓：**四个真包覆盖了两种形态** ✓，**再加一个空壳只会多一份要同步的东西** ✗）：★ **只贡献文字 ⇒ 抄 `packs/example-data/`** ✓（★ **只有 `prompts/sections.json`** ✓，**没有 `index.js`、没有代码** ✓）；★ **要行为 ⇒ 抄 `packs/institute-min/index.js`** ✓（★ 席位／M1 规则／别名 ✓，86 行 ✓）；★ **要一个完整机构 ⇒ 抄 `packs/v5r/`** ✓（★ 四子目录齐全 ✓）；★ **要另一套制度 ⇒ 抄 `packs/v3-core/index.js`** ✓（★ 量化规则走 M2 模块 ✓）；
+2. ★★ **清单是【代码**]，不是 YAML** ✓：**`packs/<id>/index.js` 导出 `PACK`** ✓（★ 字段全集见 §2 表 ✓；★ **`conflicts` 【不被读取**]✗、**`apiVersion` 用 `packContractVersion`** ✓）；
+3. ★ **设置默认值**：**`packs/<id>/settings/defaults.json`** ✓（★ **插件在建内核前按纯数据读** ✓，**用户设置永远赢** ✓）；★ **"只放量"的原则不变** ✓ —— **流程进中间件** ✓；
 4. 写中间件（**优先 M1**；复杂逻辑才 M2；长流程才 M3）；
-5. 写提示词包（段模板 + 绑定；**不要改状态块**）；
-6. **装载**：在 profile 行的 `config.packs: ['<id>']`（或内联 manifest）里声明 ⇒ 插件装载期 `plan → apply` ✓；`vibe_vmu_pack` 是 **⛔ 未实现**的工具 ✗（库面是 `createPackLoader().plan/apply/unload` ✓）；
+5. 写提示词包（段模板 ＋ 绑定 ✓ —— ★ **可以纯数据** ✓：`packs/<id>/prompts/sections.json` ✓；**不要改状态块**）；
+6. **装载**：在 profile 行的 `config.packs: ['<id>']`（或内联 manifest）里声明 ⇒ 插件装载期 `plan → apply` ✓；★★ **`vibe_vmu_pack` 【已实现**]✓（`host.js` 注册 ✓，`action: list｜plan｜apply｜unload` ✓；★ **`plan` 是纯报告** ✓，★ **`apply` 冲突即具名拒** ✓）—— ★ **原文的"⛔ 未实现"是错的** ✗；库面是 `createPackLoader().plan/apply/unload` ✓）；
 7. 跑对照（若有历史参照）⇒ 写 README（机制、代价、取舍、已知差异）。
 
 ---

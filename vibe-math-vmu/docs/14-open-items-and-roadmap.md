@@ -144,7 +144,7 @@
 | **P4 扩展面** | **✅ 完成（除文档生成余项）** | M3 脚本工具 ✓；M4 `apiVersion`＋`packContractVersion` ✓；设置表自动生成 ✓ |
 | **P5 硬化与发布门禁** | **机器面 ✅／发布 ✗** | **T3 非增量全量两次全绿 ✓✓**（`132/132` 于 `1fe6ffc`；**`134/134` 于 `8ffdf82`** ✓，第二次含**拆分后的三片全绿且零重试** ✓）；发布门禁 `release-check` **ALL CHECKS PASSED** ✓＋自检 ✓＋变异 4/4 ✓；**发布本身未做** ✗（须用户批准 ✓） |
 | **控制流（V7）** | **✅ 完成** | `pause/resume/stop/beat` ✓；暂停**真门禁**（任务／会议／表决 ✓）；`wallClockMs` 作心跳预算 ✓；`vibe_vmu_control` 仅声明时出现 ✓ |
-| **数学计算面（V9）** | **✅ 接入** | `host-math.js` 真宿主接缝 ✓；6 个 `vmu.math.*` 键生效 ✓；**真机真实计算未跑通** ✗（M3 NON-RESULT ✓） |
+| **数学计算面（V9）** | **✅ 接入** | `host-math.js` 真宿主接缝 ✓；6 个 `vmu.math.*` 键生效 ✓；**真机真实计算未跑通** ✗（M3 NON-RESULT ✓）★★ **轮 448 量清了卡在哪一步** ✓：① **宿主 `ctx` 提供子进程接缝** ✓；② **`vmu.math.computation` 指向真实引擎模块** ✓。★ **对桩 ctx 实测**：`hasSubprocess() = false` ✓、`resolveExecutable('python') = {}` ✓、`spawn(...)` **要 `argv` 不是 `args`** ✓。★★ **诚实边界**：★ 那个 `false` 来自**桩宿主** ✓，**不是这台机器** ✓（本机 `python 3.12.10` ＋ `node v24.21.0` ✓）⇒ ★ **缺的是【一个提供子进程接缝的宿主上下文**]✓，**不在本仓循环里** ✓（★ 与 `vmu-entry.test.mjs` 的 `fakeCtx` 同因 ✓） |
 | **审计与台账** | **✅ 完成** | 审计**落盘** `<root>/vmu/audit/<day>.jsonl` ✓（写失败具名 ✓）；**在途台账**真实现 ✓（重启后标记 `interrupted` ＋ owner ✓） |
 | **真机矩阵** | **P0 六项 ✓／P1 两项 ✓／P2 四项 ✓／M3 NON-RESULT ✗／P3 部分 ⚠️／P4·P5 未做 ✗** | 11-§9.6（24 个证据目录 ✓） |
 
