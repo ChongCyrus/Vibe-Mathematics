@@ -231,6 +231,42 @@ if (SELF_PROBE) {
   ok(inv, 'the report is honest: packedBytes <= rawBytes, applied = (compression && helps), exact = true')
 }
 
+
+// ── ROUND 297: the two pack declarations (volume 10 §L46/§L80) ───────────────────────────────────────────────
+{
+  const stubKernel = (existing, extra) => {
+    const vals = Object.assign({}, existing, extra || {})
+    return {
+      settingsSnapshot: () => Object.assign({}, vals),
+      applyPackSettings: (settings) => {
+        const previous = {}; const keys = []
+        for (const [k, v] of Object.entries(settings)) {
+          if (Object.prototype.hasOwnProperty.call(vals, k)) previous[k] = vals[k]
+          vals[k] = v; keys.push(k)
+        }
+        return { applied: keys, previous }
+      },
+      setSettingsValue: (k, v) => { vals[k] = v }, unsetSettingsValue: (k) => { delete vals[k] },
+      notePackApplied: () => {}, notePackUnloaded: () => {},
+      bus: { add: () => {}, remove: () => {}, status: () => ({ entries: [] }) },
+    }
+  }
+  const man = (id, settings, priority) => Object.assign({ id, version: '1.0.0', settings: settings || {} }, priority === undefined ? {} : { priority })
+  const attempt = async (kernel, m2, opts) => { try { const r = await m.createPackLoader(Object.assign({ kernel }, opts || {})).apply(m2); return r } catch (e) { return e } }
+  const refused = await attempt(stubKernel({ 'vmu.meetings.quorumCap': 3 }), man('o1', { 'vmu.meetings.quorumCap': 5 }))
+  ok(refused && refused.code === 'VMU_PACK_CONFLICT', 'packs.allowKernelOverride[off]: a settings overlap is refused BY NAME (O4: never silently)', refused && refused.code)
+  const declared = await attempt(stubKernel({ 'vmu.meetings.quorumCap': 3 }, { 'vmu.packs.allowKernelOverride': true }), man('o2', { 'vmu.meetings.quorumCap': 5 }))
+  ok(declared && declared.ok === true, 'packs.allowKernelOverride[on]: the declared override allows the overlap', declared && declared.ok)
+  const byCaller = await attempt(stubKernel({ 'vmu.meetings.quorumCap': 3 }), man('o3', { 'vmu.meetings.quorumCap': 5 }), { allowOverride: true })
+  ok(byCaller && byCaller.ok === true, 'packs.allowKernelOverride: an explicit caller flag still wins (the more deliberate act)')
+  const distinct = await attempt(stubKernel({ 'vmu.meetings.quorumCap': 3 }), man('o4', { 'vmu.other.key': 1 }))
+  ok(distinct && distinct.ok === true, 'a pack that overlaps NOTHING is applied without any declaration')
+  const ordered = m.createPackLoader({ kernel: stubKernel({}, { 'vmu.packs.priority': 5 }) })
+  await ordered.apply(man('p-aaa', {}, 1)); await ordered.apply(man('p-bbb', {}, 9)); await ordered.apply(man('p-ccc', {}))
+  const ids = ordered.status().applied.map((a) => a.id)
+  ok(ids[0] === 'p-bbb' && ids[1] === 'p-ccc' && ids[2] === 'p-aaa', 'packs.priority: status() reports applied packs by priority (manifest first, then the declaration)', ids)
+}
+
 console.log('=== VMU PACK: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
