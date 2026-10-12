@@ -243,6 +243,22 @@ if (SELF_PROBE) {
   process.exit(failed > 0 ? 0 : 1)
 }
 
+
+// ── ROUND 295: the three declared entry defaults (volume 05 §L77/§L81/§L63) ──────────────────────────────────
+{
+  const e = (extra) => Object.assign({ id: 'md-' + Math.random().toString(36).slice(2, 8), kind: 'rules', on: 'before-write', handler: () => true }, extra || {})
+  const b = m.createBus({ entries: [e()], settings: {} }).status().entries[0]
+  ok(b.enabled === true && b.order === 1000 && b.failure === 'closed',
+    'middleware defaults: an entry that declares none gets enabled/1000/closed', JSON.stringify(b))
+  const declared = m.createBus({ entries: [e()], settings: { 'vmu.middleware.enabled': false, 'vmu.middleware.order': 7, 'vmu.middleware.onFailure': 'open' } }).status().entries[0]
+  ok(declared.enabled === false && declared.order === 7 && declared.failure === 'open',
+    'middleware declarations: the declared defaults replace the built-in ones', JSON.stringify(declared))
+  const own = m.createBus({ entries: [e({ enabled: true, order: 3, failure: 'closed' })],
+    settings: { 'vmu.middleware.enabled': false, 'vmu.middleware.order': 7, 'vmu.middleware.onFailure': 'open' } }).status().entries[0]
+  ok(own.enabled === true && own.order === 3 && own.failure === 'closed',
+    'the ENTRY wins over every declared default - the keys only fill gaps', JSON.stringify(own))
+}
+
 console.log('=== VMU BUS: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
