@@ -79,8 +79,8 @@ ok(unrecorded.length === 0,
   { unrecorded })
 ok(ROLE_SITES.length === 0,
   'and there is NOTHING left to exempt, which is the state a fix reaches: the kernel carries the role label as a field from the caller instead of holding a map of an institutions words')
-ok(ROLE_SITES.length === 1,
-  'exactly one kernel site is recorded, because exactly one was measured - a list of one is a finding, a list of many would be an excuse')
+ok(ROLE_SITES.length === 0,
+  'the backlog is EMPTY and may only ever shrink: the one site was fixed by carrying the field, not by exempting it, which is the state this gate exists to reach')
 
 console.log('=== 3. THE SAME WORDS ARE STILL ALLOWED WHERE THE DESIGN SAYS THEY ARE ===')
 const packs = walk('vibe-math-vmu/packs').filter((f) => f.endsWith('.js'))
