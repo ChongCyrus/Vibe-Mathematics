@@ -163,6 +163,7 @@ const CORE_DEFS = Object.freeze([
   // the wording stays in the pack. `modeLabel` carries the 强制/鼓励/主动 wording, and the review block names the proof.
   { key: 'vmu.turn.formalProof', type: 'string', def: 'Formal/p-x.lean', hot: HOT.H2, who: 'office', doc: '忠实性审查时点名的已通过证明文件（每轮按实际目标填）' },
   { key: 'vmu.turn.formalBlockedNote', type: 'string', def: '未说明', hot: HOT.H2, who: 'office', doc: '已记录的阻塞原因（每轮按实际目标填）' },
+  { key: 'vmu.paper.reviewedMember', type: 'string', def: '(unspecified)', hot: HOT.H2, who: 'office', doc: 'whose part of the paper is under peer review' },
   { key: 'vmu.turn.formalRootRel', type: 'string', def: 'Formal', hot: HOT.H2, who: 'office', doc: '形式化工作目录（相对会话工作目录）；原线为研究所根下的 Formal/' },
   { key: 'vmu.turn.formalModeLabel', type: 'string', def: '鼓励', hot: HOT.H2, who: 'office', doc: '顺手形式化一行的模式措辞：强制／鼓励／主动' },
 

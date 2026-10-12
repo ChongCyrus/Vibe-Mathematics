@@ -404,7 +404,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   const mkAB = () => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS,
     prompt: createPromptPipeline({ sections: [...CHARTER_SECTIONS, v5rRoleSection], bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }),
     settings: SETTINGS_AB,
-    extraPhases: ["heartbeat"],
+    extraPhases: ["heartbeat", "paper-write", "paper-review", "paper-final"],
     noticeBlock: INBOX.inboxBlock,
   })
   const loopAB = mkAB()
@@ -425,7 +425,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   // queue one notice, so the inbox block the corpus shows is really rendered
   loopAB.notify("acad", "【研究所提示】demo 未生效（V5_DEMO）：示例通知，用于让比对看见表头与缩进")
   const oursAB = {}
-  for (const phase of ["founding", "normal", "checkpoint", "verify", "heartbeat"]) {
+  for (const phase of ["founding", "normal", "checkpoint", "verify", "heartbeat", "paper-write", "paper-review", "paper-final"]) {
     const a = await loopAB.assemble(loopAB.open({ member: "acad", role: "academician", roleLabel: "院士", phase, roster: "acad、r-1、r-2", quorum: 3, statusBlock: "[状态] x", round: 3 }).turn)
     oursAB[phase] = a.text
   }
@@ -437,6 +437,7 @@ const phaseOf = (kind, text) => {
   if (/^founding/.test(k)) return "founding"
   if (/所内一段时间没有新进展了/.test(x)) return "heartbeat"
   if (/checkpoint|heartbeat/.test(k)) return "checkpoint"
+  if (/^paper-/.test(k)) return k
   if (/verify|vote|ballot|lean/.test(k)) return "verify"
   return "normal"
 }

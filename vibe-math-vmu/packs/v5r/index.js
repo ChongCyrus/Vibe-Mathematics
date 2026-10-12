@@ -41,7 +41,7 @@ export { V5R_SETTING_DEFAULTS, V5R_SETTING_KEYS, decideSections, v5rPromptSwitch
  * `heartbeat` is institution vocabulary - it is the phase in which a member is told the institute has made no
  * progress - and the framework should not have to know the word. The pack names it and the loop accepts it.
  */
-export const V5R_PHASES = Object.freeze(['heartbeat'])
+export const V5R_PHASES = Object.freeze(['heartbeat', 'paper-write', 'paper-review', 'paper-final'])
 
 export const V5R_PACK = Object.freeze({
   id: 'v5r',

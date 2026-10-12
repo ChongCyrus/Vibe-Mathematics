@@ -996,6 +996,51 @@ export const CHARTER_BLOCKS = Object.freeze([
       ].join('\n'),
     },
   },
+  // ── THE FINAL PAPER: WRITING AND PEER REVIEW (corpus-derived; direction (i) review and publication) ───────────
+  // Two prompt TYPES rather than sections of a round, which is why they were still missing: the paper phase happens
+  // after the institute has settled the question, and both prompts are written for that moment. They are transcribed
+  // from the delivered prompts, and the rules they carry are the reason they matter. The writing prompt confines a
+  // member to evidence already in their own library, forbids invention, and requires an undecided or refuted item to be
+  // LABELLED as such rather than quietly dropped. The review prompt asks whether a colleague's part is deliverable and
+  // states the threshold: every participating member must vote true before the finaliser may finalise. A unanimous
+  // publication rule is the kind of thing a framework should not invent and a pack should declare - and with the phase
+  // seam built last round, this pack can declare the phases these prompts belong to.
+  {
+    name: 'v5r-paper-write',
+    order: 810,
+    range: 'pack',
+    kind: 'phase',
+    texts: {
+      'paper-write': [
+        '【最终论文·撰写 —— {{ role }} {{ member }}】',
+        '本所对原问题的一致结论已经达成，现在撰写**最终论文**。',
+        '请你**只写你自己库里已有证据支撑**的内容：',
+        '- 直接引用你的卡片（Members/{{ member }}/Propos|Methods|Subproblems/）、Members/{{ member }}/Progress/progress.md、你参与的表决记录；',
+        '- **不得编造**：没有证据的推测不要写成结论；未决 / 被否证的条目必须显式标注“未定论 / 已被否证”；',
+        '- 在 evidence 里写清证据路径，附录会逐条索引。',
+      ].join('\n'),
+    },
+  },
+  {
+    name: 'v5r-paper-review',
+    order: 811,
+    range: 'pack',
+    kind: 'phase',
+    texts: {
+      'paper-review': [
+        '【最终论文·互审 —— {{ role }} {{ member }}】',
+        '请你审阅 **{{ setting:vmu.paper.reviewedMember }}** 撰写的部分，判断它是否可以交付（deliverable）。',
+        '要点：证据是否充分；是否与已定论的表决一致；有无编造或未标注的未决项；术语与符号是否清楚。',
+        '',
+        '------------ 待审部分（{{ setting:vmu.paper.reviewedMember }}）------------',
+        '------------',
+        '',
+        '结束时只输出一个 JSON 对象：',
+        '{ "paper_review": { "of": "{{ setting:vmu.paper.reviewedMember }}", "deliverable": true, "comments": "具体意见" } }',
+        'deliverable 必须是 true（可交付）或 false（不可交付，需修改）。只有**全体参与成员**都投 true，定稿代表才能定稿。',
+      ].join('\n'),
+    },
+  },
   // ── THE HEARTBEAT PROMPT (source `heartbeatPrompt`, L4110-4115) ──────────────────────────────────────────────
   // The fourth prompt TYPE the grouped measurement found, and the second largest family after the ballot. It is what a
   // member receives when the institute has made no progress for a while, and it is deliberately written as a PROMPT AND

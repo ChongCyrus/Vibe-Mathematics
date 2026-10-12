@@ -278,6 +278,7 @@ vmu.packs.active: [v5r]
 | `vmu.turn.formalModeLine` | string | `鼓励：按实现难度自行决定；做了就归档，没做就写明难度判断，` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 回复目录里 Lean 形式化那一行的模式措辞（原线 require/encourage 两套） |
 | `vmu.turn.formalProof` | string | `Formal/p-x.lean` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 忠实性审查时点名的已通过证明文件（每轮按实际目标填） |
 | `vmu.turn.formalBlockedNote` | string | `未说明` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 已记录的阻塞原因（每轮按实际目标填） |
+| `vmu.paper.reviewedMember` | string | `(unspecified)` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | whose part of the paper is under peer review |
 | `vmu.turn.formalRootRel` | string | `Formal` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 形式化工作目录（相对会话工作目录）；原线为研究所根下的 Formal/ |
 | `vmu.turn.formalModeLabel` | string | `鼓励` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 顺手形式化一行的模式措辞：强制／鼓励／主动 |
 | `vmu.math.computation` | enum | `auto` | `off`∣`auto`∣`on` | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | P3：数学工具可用性（共享模块默认 auto） |
