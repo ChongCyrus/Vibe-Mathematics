@@ -585,6 +585,36 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
       { message: String(propose.message).slice(0, 100) })
     mark('PROPERTY', 'a decision that would settle substance is gated by the meeting LEVEL (a light meeting cannot produce one, and the refusal names both the ruling and the way out), while a formal meeting is parked until its verification prerequisite is clear - so on the v5r side the flow is: a recorded proposition, locked by its owner, formally proved or disproved, and only THEN debated and aggregated. That ordering is a property of the design rather than a limitation: substance is decided by verification first and consensus second.')
     mark('EQUAL', 'motions carry a required second count and a seconder list on the v5r side, and the framework meeting face models a motion state machine with exactly those states (proposed, seconded, carried, tabled, withdrawn) - compared first at the schema level and now at the level of a driven motion.')
+
+    // ── 14. the RECORD half of the verification chain, and the honest degradation when no toolchain exists
+    const rec = await seatCall('vibe_v5_record_proposition', { id: 'p-1', title: 'L1', statement: 'L1 holds', value: 0.8, motive: 'base case', p: 0.6 }, asMember('r-1'))
+    ok(rec.ok === true && typeof rec.fingerprint === 'string' && rec.fingerprint.length >= 32 && rec.owner === 'r-1',
+      'G9a. ★★ a recorded proposition is a file-backed card carrying a FINGERPRINT and an owner',
+      { file: rec.file, fingerprint: rec.fingerprint && rec.fingerprint.slice(0, 12), owner: rec.owner })
+    const jobs = await seatCall('vibe_v5_lean_job', {}, asMember('r-1'))
+    ok(jobs.ok === true && Array.isArray(jobs.jobs) && typeof jobs.maxParallel === 'number',
+      'G9b. ★★ the background compile queue reports its jobs and its parallel ceiling', { maxParallel: jobs.maxParallel })
+    const archived = await seatCall('vibe_v5_lean_archive', { kind: 'proof', target: 'p-1', name: 'L1', content: 'theorem L1 : True := trivial', run: false }, asMember('r-1'))
+    ok(archived.ok === true && typeof archived.sha256 === 'string' && archived.passed === false,
+      'G9c. ★★ archiving formal code stores it WITH A HASH and does not claim it passed', { sha256: archived.sha256 && archived.sha256.slice(0, 12), passed: archived.passed })
+    ok(archived.run && archived.run.ok === false && /NO_SUBPROCESS|LEAN_NOT_FOUND/.test(String(archived.run.code)),
+      'G9d. ★★★ DEGRADATION MEASURED: with no subprocess service the archive still happens and the REASON is named, instead of a silent failure or a false pass',
+      { code: archived.run && archived.run.code, message: String(archived.run && archived.run.message || '').slice(0, 70) })
+    const blockedRec = await seatCall('vibe_v5_lean_archive', { kind: 'blocked', target: 'p-1', note: 'host has no Lean toolchain' }, asMember('r-1'))
+    ok(blockedRec.ok === true && blockedRec.status === 'blocked',
+      'G9e. ★★ and "we could not formalise this" is a first-class RECORD rather than silence', blockedRec)
+    const stillLocked = await seatCall('vibe_v5_propose_verify', { target: 'p-1', kind: 'proposition', reason: 'debate' }, asMember('acad'))
+    ok(stillLocked.ok === false && /locked|定稿/.test(String(stillLocked.message)),
+      'G9f. ★★★ CONSEQUENCE MEASURED: an archived-but-unpassed proof does NOT unlock the debate - the gate holds, because passed is false',
+      { message: String(stillLocked.message).slice(0, 90) })
+    mark('PROPERTY', 'formal code is preserved with a hash and an explicit pass/fail on the v5r side, the reason is named when the toolchain is missing, and a failure to formalise is itself a recorded, reasoned outcome - so the gate that keeps the debate locked cannot be opened by optimism. The framework side has the same ingredients (a Lean face with a command, an async switch, a parallel ceiling and a timeout) and the honest-degradation idea is what its own receipts are for.')
+
+    // our side: the same ingredients, read from the face
+    const leanFace = readFileSync(new URL('../vibe-math-vmu/kernel/lean.js', import.meta.url), 'utf8')
+    ok(/leanCommand/.test(leanFace) && /leanTimeoutMs/.test(leanFace) && /leanAsync/.test(leanFace) && /leanJobsMaxParallel/.test(leanFace),
+      'G9g. ★★ vmu Lean runs are a command, a timeout, an async switch and a parallel ceiling - all as settings, so the same degradation policy is expressible')
+    ok(/sha256|hash|fingerprint/i.test(leanFace) || /fingerprint/i.test(readFileSync(new URL('../vibe-math-vmu/kernel/records.js', import.meta.url), 'utf8')),
+      'G9h. ★ and the framework records material with a content fingerprint rather than a bare path')
   }
 }
 

@@ -402,6 +402,22 @@
 
 ★★ **动议链实测** ✓：`topic` 动议 ⇒ 记录 **`needed`（所需附议数）＋ `secondedBy[]`** ✓；**附议达阈 ⇒ `state:"carried"`** ✓。
 
+### 2.2.24 ★★★ 验证链的"记录"一半：**诚实降级被实测**，且**闸不会因乐观而开**（轮 326）✓✓
+
+| 步骤 | 实测 |
+|---|---|
+| **`record_proposition`** ✓ | 生成**文件化卡片**（`Members/r-1/Propos/p-1.md` ✓），带 **`fingerprint`** ✓、`owner` ✓、`status:'未定论'` ✓ |
+| **`lean_job`** ✓ | **真实的后台编译队列**：`{jobs:[], count:0, running:0, **maxParallel:1**}` ✓ |
+| ★★★ **`lean_archive(kind:'proof')`** | **归档成功并记 `sha256`** ✓，**`passed:false`** ✓，且 **`run:{ok:false, code:'NO_SUBPROCESS', "the host exposes no subprocess service; Lean cannot be executed here"}`** ✓✓ |
+| ★★ **`lean_archive(kind:'blocked')`** | **"我们无法形式化"是一等记录**（`{ok:true, status:'blocked', note}` ✓），**而不是沉默** ✓ |
+| ★★★ **其后 `propose_verify`** | ★ **仍被拒** ✓ —— **"归档了但未通过"的证明【不能】解锁辩论；闸因为 `passed=false` 而守住** ✓✓ |
+
+★★★ **由此得到两条重要结论** ✓✓：
+1. **诚实降级**：**没有工具链时，代码仍被保存、原因被具名、且【绝不假装通过】** ✓✓（**"静默失败"与"虚假通过"两种坏结局都被避开** ✓）；
+2. **对 ④ 的直接含义** ✗✓：**在没有 Lean 工具链的宿主上，辩论【不可达】** ✓ —— **故"vmu 要包含 v5r 的功能"，两边都必须有可用的 Lean 通路** ✓：**我们侧已有 `leanCommand`／`leanTimeoutMs`／`leanAsync`／`leanJobsMaxParallel`** ✓✓（**同一套旋钮** ✓）。
+
+**判据总账** ⇒ **EQUAL 5／PROPERTY 12／DIVERGENT 4** ✓（**109 passed, 0 failed** ✓）。
+
 ## 3. v5r 的 56 个工具
 
 > ★★ **A/B 覆盖率：56/56** ✓✓（**轮 323 实测**：以注册表为准的 56 个工具**全部被断言点名** ✓）；**判据总账** ＝ **EQUAL 4／PROPERTY 10／DIVERGENT 4** ✓（**94 passed, 0 failed** ✓）。★★★ **`NOT_ADOPTED` 归零（轮 324）** ✓✓ —— **happy path 已逐段对照**（§2.2.22）：**执行体绑定不是"够不着"，而是"要按它的方式入席"** ✓（让调度器发出 `childId` 并用它当调用者 ✓）。（**按家族分组**，实测列举）

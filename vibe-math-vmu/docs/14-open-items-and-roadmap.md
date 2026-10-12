@@ -1692,6 +1692,11 @@ undefined
   Motions were driven too: a motion records how many seconds it needs and who has seconded it, and once that count is met it CARRIES.
   The tally is now five equal, eleven property and four divergent over a hundred and one green assertions.
   Still open: driving the record-and-lock half of the verification chain so the debate itself can be compared end to end; the stage-level precondition; six check items; the drafting conflicts; the voting-method set; user confirmation for the clinical and animal demotion; the real-machine re-run; version and release.
+- ***** 326 THE RECORD HALF OF THE VERIFICATION CHAIN IS DRIVEN, and its honest degradation is measured.
+  A recorded proposition comes back as a file-backed card with a content fingerprint, an owner and an undecided status. The background compile queue reports its jobs and its parallel ceiling. Archiving formal code stores it with a sha256 and does not claim it passed, and when the host exposes no subprocess service the archive still happens while the reason is named in the receipt - neither a silent failure nor a false pass. Recording "we could not formalise this" is a first-class outcome on that side rather than an absence of one.
+  The consequence is the sharpest finding of the round: a proof that was archived but did NOT pass does not unlock the debate. The gate holds because the passed flag is false, so the ordering is enforced by the same record that carries the evidence. It also means, plainly, that on a host with no Lean toolchain the debate is unreachable - which is a containment fact rather than a defect, because the framework needs a working Lean path too, and it turns out to have the same four knobs already: command, timeout, asynchronous switch and parallel ceiling.
+  The tally is now five equal, twelve property and four divergent over a hundred and nine green assertions.
+  Still open: driving a PASSING Lean run once a toolchain subprocess seam exists, which is the remaining prerequisite for the debate itself; the stage-level precondition; the remaining check items; the drafting conflicts; the voting-method set; user confirmation for the clinical and animal demotion; the real-machine re-run; version and release.
 ### 0.4 结论
 
 ## 0.5 未接线键的【三档结构】（轮 287 建表；**轮 290 据实更正数字** ✓✓）
