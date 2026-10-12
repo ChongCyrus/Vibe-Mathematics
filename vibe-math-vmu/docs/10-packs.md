@@ -3,7 +3,7 @@
 > ★ **轮 209 实测（仓内可执行对照已落地 ✓）**：`tests/accept-v5r-contrast-behaviour.test.mjs` 按 §5.1 的方法，**把 v5r 一侧读它的源码**（`v5r/DEFAULT_PARAMS` ＋ 键旁契约 ✓ —— **内容锚点、不用行号** ✓）、**把 vmu 一侧【驱动】起来问** ✓，逐对分类 ⇒ **当前 4 等价 / 1 未覆盖** ✓✓：`quorumCap` ✓／`verdictMaxRounds` ✓／`meetingWakeRetries` ✓／`meetingHardLimitMs` ✓ 为**等价**（★ `wakeRetries` 与 `hardLimitMs` 两键，**v5r 键旁的契约与我方实现逐字一致** ✓✓）；`reconsiderFloor` 为**未覆盖** ✗（vmu 的会议面无该模型 ✓，schema 的 `doc` 已如实写明 ✓）。★ **真机复跑仍待做** ✗，且它的两项前置已具名：**A 侧需"未装 vmu 插件且 CLI 同代"的 profile** ✗（`design/05-p3-ab-report.md` 已记：本环境不可得 ✓）、**B 侧必须【声明 pack】** ✗（2026-10-10 那次真机 A/B 的 B 侧 `packs: []` ⇒ **零机制得到验证** ✓）。
 > 状态：**草案 v0.1**（"v5r 机制清单"待 B′ 侦察 §2/§5 合并后补全并逐条映射）
 > 上位：`01-philosophy.md`（R15 可迁移 / D4 v5r 降为整合包 / D8 行为包含对照）、`02-architecture.md`（L4）
-> 定义：**pack ＝ 一份完整"运行机制"的声明组合**（settings 默认 ＋ 中间件 ＋ 提示词包 ＋ 可选脚本 ＋ 迁移），**不是**目录约定或代码分支。
+> 定义：**pack ＝ 一份完整「运行机制」的声明组合**（settings 默认 ＋ 中间件 ＋ 提示词包 ＋ 可选脚本 ＋ 迁移），**装在一个文件夹 `packs/<id>/` 里** ✓ —— ★★ **它不是代码分支** ✗，**但【目录形态确实是约定**]✓：**插件按目录名读两个纯数据文件**（`settings/defaults.json` ✓、`prompts/sections.json` ✓）—— ★ 因为清单里那些东西**必须在建内核【之前**]就位** ✓，**而插件顶层不能 await 动态 import** ✓ ⇒ **目录约定是【机制的载体**]，不是风格选择** ✓。
 
 ---
 
@@ -22,14 +22,13 @@
 
 ## 2. 目录与清单规范（**按实际实现重写，2026-10-09 ✓**）
 
-**一个 pack ＝ 一个 JS 模块**（**没有** YAML 清单、**没有**目录约定 ✗ —— 运行时不读任何 YAML ✓）：
-
+**一个 pack ＝ 一个文件夹** `packs/<id>/` ✓（★ **加载器优先 `<id>/index.js`** ✓，**仅在该 import 失败时回退 `<id>.js`** ✓ ⇒ **散装形态走的是兼容路径** ✗）。**文件夹里各有其位** ✓：
 ```
-vibe-math-vmu/packs/<id>.js        # 随包整合包：export const PACK = { … }
-                                   # 或：在 profile 行的 config.packs 里给**内联 manifest**（同一个对象 ✓）
+vibe-math-vmu/packs/<id>/index.js     # 有行为的 pack：清单在这里（`export const PACK = { … }`）或 star 再导出它 ✓
+vibe-math-vmu/packs/<id>/settings/      # 该 pack 想让旋钮取什么值（纯数据 defaults.json ＋ 可选代码视图 defaults.js ✓）
+vibe-math-vmu/packs/<id>/prompts/       # 提示词正文与段（纯数据 sections.json ✓ 或代码模块 ✓）
+vibe-math-vmu/packs/<id>/middleware/    # 该 pack 在框架扩展点上加的策略 ✓
 ```
-
-**清单字段（`kernel/pack.js` 的 `validatePack` 真正认的集合 ✓）**
 
 | 字段 | 形状 | 校验／行为 |
 |---|---|---|
@@ -47,13 +46,16 @@ vibe-math-vmu/packs/<id>.js        # 随包整合包：export const PACK = { …
 | `prompts` ✓（**轮 136 新增：正文轴**） | **`{ module, source, count, chars?, sourceSha256? }`** ✓ | **包里承载该 line 的【提示词正文】** ✓。`module` 指向**生成物**（`scripts/generate-pack-prompts.mjs` 从 `prompt-corpus-v5/prompt-corpus-v5.json` 生成 ✓，并在生成物内记下**语料的 sha256** ✓）；★ **它的消费者是 `plan()`** ✓ —— 装载计划里会出现一条 **`kind:'prompts'`** 的动作 ✓（**因此它不是"静默字段"** ✗，docs/10 下面那句警告对它不成立 ✓）；字段非法 ⇒ **`problems` 逐条点名** ✓（`prompts.module`／`prompts.source`／`prompts.count` ✓）。**"内容完全一致"由 `tests/vmu-pack-prompts.test.mjs` 逐条逐字证明** ✓✓（不是同义改写 ✗） |
 
 > **未知字段会被静默忽略** ✗✓（`validatePack` 不校验额外键 ✓）⇒ 写错字段名**不会报错**，只会"什么都没发生" ✗ —— 因此**以本表为准**，并在计划里核对 `actions` 是否出现你期望的条目 ✓。
+> ★★★ **一个 pack 文件夹里可能有【两份清单**]，而且它们是【不同的对象**]✓（★ 实测 ✓）：**加载器消费的是 `loaded.PACK`** ✓（★ 插件装载点自己写着 ✓）—— 对 v5r 而言它是 `prompts/v5r-core.js` 导出的 `PACK`，`id = 'v5r-core'` ✓，**带 `slots`／`rules`／`codes`／`tracks`／`aliases`／`prompts`** ✓；**而文件夹自己那份记录叫 `V5R_PACK`** ✓，`id = 'v5r'` ✓，**带 `sectionModule`／`policyModule`／`noticeModule`／`phases`** ✓。
+> ★★ **为什么改名而不合并** ✓：★ `export *` 星号再导出**不会**把名字带进本模块作用域 ✓，**而同一个模块里再写一个显式 `export const PACK` 会【静默替换**]星号带来的真清单** ✗ ⇒ **名册消失** ✓ ⇒ ★★ **教训留在了名字里** ✓（★ `packs/v5r/index.js` 的注释原文 ✓）。
+> ★★★ **而 `validatePack` 按设计【忽略未知键**]✓ ⇒ **放在被装载清单上的、没人读的字段会【静默失效**]✗ ⇒ ★★ **那四个「本文件夹贡献了什么」的字段因此被 `describeV5rPack()` 读出来** ✓（★ `loadedManifestId` ＋ `carried` ✓）—— ★ **有一个读者，比看上去被消费而其实什么都不做要好** ✓。本轮之前它们正是后者 ✓。
 
 ---
 
 ## 3. 清单规范（**真实 JS 形态；照抄 `packs/institute-min/index.js` ✓**）
 
 ```js
-// vibe-math-vmu/packs/my-institute.js
+// vibe-math-vmu/packs/my-institute/index.js
 export const PACK = {
   id: 'my-institute',
   version: '1.0.0',

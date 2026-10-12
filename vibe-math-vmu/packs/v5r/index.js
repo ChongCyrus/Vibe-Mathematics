@@ -22,6 +22,9 @@ export * from './prompts/v5r-charter.js'
 export * from './prompts/v5r-prompts.js'
 export * from './prompts/v5r-persona.js'
 
+// A star re-export does NOT put a name in this module's own scope, and `describeV5rPack` needs the LOADED manifest to
+// report both ids - so the manifest is imported explicitly even though it is also re-exported two lines up.
+import { PACK } from './prompts/v5r-core.js'
 import { V5R_SETTING_DEFAULTS, V5R_SETTING_KEYS } from './settings/defaults.js'
 import { decideSections, v5rPromptSwitchMiddleware, V5R_PROMPT_SWITCH_STATES } from './middleware/prompt-switches.js'
 
@@ -43,14 +46,15 @@ export { V5R_SETTING_DEFAULTS, V5R_SETTING_KEYS, decideSections, v5rPromptSwitch
  */
 export const V5R_PHASES = Object.freeze(['heartbeat', 'paper-write', 'paper-review', 'paper-final'])
 
-// WHAT A PACK CONTRIBUTES, AND WHAT IT CANNOT CONTRIBUTE YET. A pack carries middleware, settings defaults and
-// settings claims, and those reach the kernel. Prompt SECTIONS and PHASES do not: they must exist when the kernel
-// is constructed, while this plugin reads a packs defaults as pure DATA at the top level and cannot await a
-// dynamic import (its own comment says so). So the extensible form - and the reason these fields are named here
-// rather than wired - is for a pack to declare its prompt material as DATA in its folder, the way it already
-// declares defaults.json, and for whoever drives the turn to import the named module during an async phase.
-// Until that exists a second pack gets its middleware and its defaults, and its prompt text must be supplied by
-// the code that loads it. Recording the shape is the honest step; pretending the wiring exists would not be.
+// THE FOLDER-LEVEL CONTRIBUTION RECORD, and the distinction is load-bearing: the manifest the LOADER consumes is `PACK`
+// from `prompts/v5r-core.js` (star-re-exported above), which carries the slots, tracks, rules, codes and prompt text.
+// This object is the folder's own statement of what it contributes. An explicit export beats a star re-export, so once
+// naming this one `PACK` silently replaced the real manifest and the roster disappeared - a lesson kept in the name.
+//
+// THESE FIELDS ARE NOT THE LOADERS BUSINESS, so they are surfaced through `describeV5rPack()` instead of being left to
+// look consumed. `validatePack` ignores unknown keys by design, which means a field on a loaded manifest that nothing
+// reads fails SILENTLY - the exact hazard docs/10 warns about. The four below answer "what does this folder carry and
+// where", the question a deployment asks before activating it, and the description is where they are readable.
 export const V5R_PACK = Object.freeze({
   sectionModule: "./prompts/v5r-charter.js",
   phases: V5R_PHASES,
@@ -75,14 +79,23 @@ export const V5R_PACK = Object.freeze({
 export function describeV5rPack() {
   return {
     // THE CALLER MUST NAME THE MEETING STATE. The four meeting sections are injected only when the turn supplies
-    // `meetingState: invited|first|others`; absent means none of them, deliberately, because guessing which
-    // speaker situation a round is in would put the wrong instructions in front of a member. Nothing in this
-    // repository names it outside the tests, so it is stated here as part of what the pack expects of its driver.
+    // `meetingState: invited|first|others`; absent means none of them, deliberately, because guessing which speaker
+    // situation a round is in would put the wrong instructions in front of a member. Nothing in this repository names
+    // it outside the tests, so it is stated here as part of what the pack expects of its driver.
     meetingStateRequired: true,
     id: V5R_PACK.id,
     version: V5R_PACK.version,
     title: V5R_PACK.title,
     settings: V5R_SETTING_KEYS.length,
     middleware: V5R_PACK.middleware.map((m) => m.id),
+    // WHAT THIS FOLDER CARRIES AND WHERE, which is the question a deployment asks before activating it. These are the
+    // fields a LOADED manifest cannot see, so this is their consumer rather than a place for them to sit unnoticed.
+    loadedManifestId: PACK.id,
+    carried: {
+      promptSections: V5R_PACK.sectionModule,
+      policy: V5R_PACK.policyModule,
+      notices: V5R_PACK.noticeModule,
+      phases: V5R_PACK.phases,
+    },
   }
 }

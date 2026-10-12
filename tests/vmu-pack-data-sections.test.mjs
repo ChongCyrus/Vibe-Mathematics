@@ -74,19 +74,28 @@ console.log('=== 4. EVERY PACK RESOLVES THROUGH THE FOLDER PATH THE LOADER PREFE
   const bad = []
   const ids = []
   const dataOnly = []
+  const twoRecords = []
   for (const id of dirs) {
     // TWO LEGITIMATE SHAPES. A pack with behaviour carries an `index.js` manifest; a pack that only contributes TEXT or
     // DEFAULTS needs no manifest at all, because the plugin reads its data by name from the active packs list. A folder
     // that is neither is the thing worth failing on.
     let manifest = null
+    let mod = null
     try {
-      const mod = await import(pathToFileURL(join(packsDir, id, 'index.js')).href)
-      manifest = [mod.V5R_PACK, mod.PACK, mod.default, ...Object.values(mod)]
-        .find((x) => x && typeof x === 'object' && typeof x.id === 'string') || null
+      mod = await import(pathToFileURL(join(packsDir, id, 'index.js')).href)
+      // THE LOADED MANIFEST IS `PACK`, and the plugin says so at its own load site (`loaded.PACK`). Reading it by that
+      // name is the difference between checking the manifest that RUNS and checking one that merely exists - my first
+      // version searched every export for an object with an id, so it found the folder record and never noticed that
+      // the two are different objects with different ids.
+      manifest = (mod.PACK && typeof mod.PACK.id === 'string') ? mod.PACK : null
     } catch (e) {
       if (!(e && (e.code === 'ERR_MODULE_NOT_FOUND' || e.code === 'MODULE_NOT_FOUND'))) { bad.push(id + ': ' + String(e.message).slice(0, 60)); continue }
     }
-    if (manifest) { ids.push(manifest.id); continue }
+    if (manifest) {
+      ids.push(manifest.id)
+      if (mod.V5R_PACK) twoRecords.push(id + ': loaded=' + manifest.id + ' folder-record=' + mod.V5R_PACK.id)
+      continue
+    }
     const hasPromptData = existsSync(join(packsDir, id, 'prompts', 'sections.json'))
     const hasDefaults = existsSync(join(packsDir, id, 'settings', 'defaults.json'))
     if (hasPromptData || hasDefaults) dataOnly.push(id + (hasPromptData ? ' (prompt data)' : '') + (hasDefaults ? ' (defaults)' : ''))
@@ -95,6 +104,19 @@ console.log('=== 4. EVERY PACK RESOLVES THROUGH THE FOLDER PATH THE LOADER PREFE
   ok(bad.length === 0 && dirs.length >= 4,
     'every folder under packs/ is one of the TWO legitimate shapes - a manifest at <id>/index.js, or data the plugin reads by name - which is what makes "a pack is a folder" true for ALL of them rather than most',
     { folders: dirs, manifests: ids, dataOnly, bad })
+  // THE LOADED MANIFEST AND THE FOLDER RECORD ARE DIFFERENT OBJECTS. v5r's loaded id is `v5r-core` while its folder
+  // record says `v5r`, and the four fields the folder record carries - the prompt sections, the policy, the notices and
+  // the phases - are invisible to the loader, because validatePack ignores unknown keys by design. A field on a loaded
+  // manifest that nothing reads fails SILENTLY, which is the hazard docs/10 names, so the ids are asserted to differ
+  // rather than to coincide, and the description is asserted to surface what the folder carries.
+  const v5rMod = await import(pathToFileURL(join(packsDir, 'v5r', 'index.js')).href)
+  const carried = v5rMod.describeV5rPack().carried
+  ok(v5rMod.PACK.id !== v5rMod.V5R_PACK.id,
+    'the loaded manifest and the folder-level record are two objects with two ids, which is exactly why those contribution fields need a consumer rather than a place to sit',
+    { loaded: v5rMod.PACK.id, folderRecord: v5rMod.V5R_PACK.id, twoRecords })
+  ok(carried && typeof carried.promptSections === 'string' && Array.isArray(carried.phases) && carried.phases.length >= 1,
+    'and describeV5rPack() SURFACES what the folder carries - prompt sections, policy, notices, phases - so those fields have a reader instead of looking consumed while doing nothing',
+    { carried })
 }
 
 console.log('=== PACK DATA SECTIONS: ' + passed + ' passed, ' + failed + ' failed ===')

@@ -35,7 +35,7 @@ vmu 是**插件**：它的配置来自**该插件在 profile 里的那一行**�
       config:
         instance: my-vmu            # 可选；多实例排障用（回执里自证身份）
         root: 'D:/work/vmu-data'    # 可选；有它才有耐久库与 vibe_vmu_records
-        packs: ['institute-min']    # 整合包：随包 id（解析 ./packs/<id>.js 的 PACK）或内联 manifest
+        packs: ['institute-min']    # 整合包：文件夹名（解析 ./packs/<id>/index.js 的 PACK）或内联 manifest
         modules: ['D:/work/mod.js'] # M2 代码模块：文件路径（动态 import）或内联 { id, module }
         scripts:                    # M3 脚本：声明了才注册 vibe_vmu_script
           - id: probe
