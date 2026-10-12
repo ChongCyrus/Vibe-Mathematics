@@ -28,6 +28,7 @@ const STEPS = [
   // It is in the chain for the same reason every other generated artefact is: a difference between the module and
   // the corpus must be a CHECK FAILURE, not something a reader has to notice.
   ['pack prompts (packs/v5r-prompts.js)', 'scripts/generate-pack-prompts.mjs'],
+  ['pack persona (packs/v5r-persona.js)', 'scripts/generate-pack-persona.mjs'],
   // ROUND 70: the wired schema MUST come before the plan registry - that registry's `coreKeys()` reads whatever
   // settings/schema.js declares, so writing the schema second would leave the planned list holding keys the
   // schema now owns. Ordering is the whole point of putting this here instead of running it by hand.

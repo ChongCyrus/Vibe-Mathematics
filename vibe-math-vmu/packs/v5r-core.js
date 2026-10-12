@@ -141,7 +141,15 @@ export const PACK = Object.freeze({
   // pipeline has no unregister), which is why this is a declaration rather than an apply-time side effect.
   // A GETTER, not a plain value: the section list is defined below the manifest, and a manifest that read it
   // eagerly would hit the temporal dead zone. Evaluated on access, so the declaration stays where the manifest is.
-  get sections() { return v5rTurnSections },
+  //
+  // ROUND 355: the sections are now the prompt corpus AND the persona blocks (docs/26 section 3.7), because the
+  // original hands each member a six-thousand-character charter that measuring showed to be a structured document.
+  // Six of its eleven blocks are the same for everyone and five vary by role or name the member, so the pack declares
+  // the sections here AND the per-role bindings below, and the assembly puts the right charter in front of the right
+  // member instead of making everyone read a researcher's or the academician's version.
+  get sections() { return v5rPersonaSectionsGlobal() },
+  /** The role bindings for the varying persona blocks, declared the same way. */
+  get bindings() { return v5rPersonaBindingsGlobal() },
   aliases: [
     { from: 'vibe_v5_poll_vote', to: 'vmu.tasks' },
     { from: 'vibe_v5_poll_open', to: 'vmu.tasks' },
@@ -169,6 +177,18 @@ export const PACK = Object.freeze({
     sourceSha256: PROMPT_SOURCE_SHA256,
   },
 })
+
+// ── THE PERSONA (round 355, docs/26 section 3.7) ──────────────────────────────────────────────────────────────
+// Import declarations are hoisted, so importing here keeps the definitions where the data is while the manifest
+// getters above still resolve: the getters run at ACCESS time, long after every const below has been initialised.
+import { PERSONA_SECTIONS, PERSONA_BINDINGS } from './v5r-persona.js'
+
+/** The sections this pack brings: the prompt corpus, the authored role block, and the captured persona blocks. */
+const v5rPersonaSectionsGlobal = () => [...v5rTurnSections, ...PERSONA_SECTIONS]
+
+/** The role bindings for the persona blocks that vary by role (the roster block names the MEMBER, so it needs the
+ *  assembly to fill it - recorded as the remaining slot in docs/26 section 3.7 rather than frozen here). */
+const v5rPersonaBindingsGlobal = () => PERSONA_BINDINGS
 
 export default PACK
 

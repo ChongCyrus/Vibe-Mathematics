@@ -15,7 +15,9 @@ import { createKernel } from '../vibe-math-vmu/kernel/index.js'
 import { collectPackSections } from '../vibe-math-vmu/kernel/pack.js'
 import { PACK } from '../vibe-math-vmu/packs/v5r-core.js'
 import { toolSpecs } from '../vibe-math-vmu/host.js'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { SOURCE_SHA256 as PERSONA_SOURCE_SHA256 } from '../vibe-math-vmu/packs/v5r-persona.js'
+import { createHash } from 'node:crypto'
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -173,7 +175,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
 // 8) DECLARATION INSTEAD OF HAND-PASSING: the pack declares its sections and the assembly collects them
 {
   const declared = collectPackSections([PACK])
-  ok(Array.isArray(declared) && declared.length === v5rTurnSections.length && declared.length >= 68,
+  ok(Array.isArray(declared) && declared.length === v5rTurnSections.length + 11 && declared.length >= 79,
     'T28. **** the pack DECLARES its prompt sections and a pure collector gathers them - 68 sections with no hand-passing',
     { declared: declared.length })
   const loopDeclared = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: declared, clock: () => '2026-01-01T00:00:00.000Z' }) })
@@ -387,6 +389,30 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   try { live.override(TARGET, SPEC, 'r-9') } catch (e) { forbidden = e }
   ok(forbidden !== null && forbidden.code === 'VMU_NOT_PERMITTED',
     'T62. **** and CHANGING THE TEXT IS PERMISSIONED: an identity outside whoMayOverride is refused by name', { code: forbidden && forbidden.code })
+}
+
+// 15) THE PERSONA (docs/26 section 3.7): the six-thousand-character charter the original composes, carried as
+// SECTIONS by the pack and assembled per member - with the capture hash checked here so drift fails the gate.
+{
+  const declaredP = collectPackSections([PACK])
+  const personaSections = declaredP.filter((s) => String(s.name).startsWith('v5r-persona-'))
+  ok(personaSections.length === 11,
+    'T63. **** the pack DECLARES the whole persona: eleven sections, six shared and five that vary by role or name the member',
+    { personaSections: personaSections.length, all: declaredP.length })
+  const loopP = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: declaredP, bindings: PACK.bindings, clock: () => '2026-01-01T00:00:00.000Z' }) })
+  const acadAsm = await loopP.assemble(loopP.open({ member: 'acad', role: 'academician', phase: 'founding' }).turn)
+  const resAsm = await loopP.assemble(loopP.open({ member: 'r-1', role: 'researcher', phase: 'founding' }).turn)
+  ok(acadAsm.text.includes('通用规章') && acadAsm.text.includes('表决与定论') && acadAsm.text.includes('{{') === false,
+    'T64. **** THE ASSEMBLED TURN CARRIES THE CHARTER, titles included and every placeholder filled - the persona is assembled, not appended as a blob',
+    { chars: acadAsm.text.length })
+  ok(acadAsm.text.includes('作为院士，你对本所的组织与推进负总责') && resAsm.text.includes('本所是自组织的，但**不是没有组织**') && acadAsm.text !== resAsm.text,
+    'T65. **** AND THE RIGHT CHARTER REACHES THE RIGHT MEMBER: the academician sees the academician duties and the researcher sees the researcher ones, through role bindings rather than two hard-coded texts',
+    { acad: acadAsm.text.length, researcher: resAsm.text.length })
+  const rawP = readFileSync(new URL('../prompt-corpus-v5/persona-corpus-v5.json', import.meta.url))
+  const shaP = createHash('sha256').update(rawP).digest('hex')
+  ok(PERSONA_SOURCE_SHA256 === shaP,
+    'T66. **** and the module RECORDS the capture hash, so a drift between the pack and the capture is a gate failure rather than a silent difference',
+    { recorded: PERSONA_SOURCE_SHA256.slice(0, 12), onDisk: shaP.slice(0, 12) })
 }
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
