@@ -20,6 +20,14 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { apply as applyV5R } from '../vibe-math-v5r/vibe-math-v5r.js'
 import { createTasks } from '../vibe-math-vmu/kernel/tasks.js'
+import { createTurnOrchestrator, facesFrom } from '../vibe-math-vmu/kernel/turn/index.js'
+import { createPromptPipeline } from '../vibe-math-vmu/kernel/prompt/index.js'
+import { v5rPromptSections } from '../vibe-math-vmu/packs/v5r-core.js'
+import { createKernel } from '../vibe-math-vmu/kernel/index.js'
+import { mkdtempSync as mkdtempSyncTurn } from 'node:fs'
+import { tmpdir as tmpdirTurn } from 'node:os'
+import { join as joinTurn } from 'node:path'
+const turnRoot = mkdtempSyncTurn(joinTurn(tmpdirTurn(), 'vmu-turn-ab-'))
 
 let passed = 0
 let failed = 0
@@ -35,6 +43,8 @@ const agents = new Map([[root.id, root]])
 const seats = new Map()
 let seq = 0
 const spawns = []
+// ROUND 340: every prompt the ORIGINAL hands a member, captured at the seam, so the two sides can be compared.
+const capturedSpans = []
 // THE SEAM: resolveExecutable(name) + spawn({argv,cwd,stdio,graceMs}) -> a handle whose `done` yields the outcome.
 const subprocess = {
   resolveExecutable: async (name) => '/fake/bin/' + String(name),
@@ -45,7 +55,7 @@ const subprocess = {
 }
 applyV5R({
   agents: { roots: () => [root], get: (id) => agents.get(id), list: () => [...agents.values()] },
-  subagents: { list: () => ['spawn'], async startContinuable() { seq += 1; return { childId: 'v-child-' + seq, messageId: 'm' } }, async sendMessage() { return 'm' }, interrupt() {}, async drainContinuableChildren() {} },
+  subagents: { list: () => ['spawn'], async startContinuable(spec) { seq += 1; capturedSpans.push(spec); return { childId: 'v-child-' + seq, messageId: 'm' } }, async sendMessage() { return 'm' }, interrupt() {}, async drainContinuableChildren() {} },
   fs: {
     // the preset derives an absolute institute root and passes it straight back: an already-absolute path must pass
     // through untouched, or joining it under the temp dir would mangle it into a path that cannot be created.
@@ -274,6 +284,36 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
     'V48. ★ PROPERTY: the framework meeting face carries the same two surfaces - speaking into the record and quoting out of it - so delivery and citation are separate acts on both sides')
 }
 
+
+// ── THE PER-ROUND A/B: the same member, both sides, and only the properties that are observable ─────────────
+{
+  const asks = capturedSpans.map((s) => {
+    const req = s && s.request
+    const first = req && Array.isArray(req.prompt) ? req.prompt[0] : null
+    return { persona: req && typeof req.persona === 'string' ? req.persona : '', ask: first && typeof first.text === 'string' ? first.text : '' }
+  })
+  ok(asks.length >= 2 && asks.every((x) => x.persona.length > 200 && x.ask.length > 40),
+    'V49. ★★★ THE ORIGINAL composes per member: every spawned turn carries a charter AND a turn ask',
+    { turns: asks.length, charters: asks.map((x) => x.persona.length) })
+  ok(new Set(asks.map((x) => x.persona)).size >= 2,
+    'V50. ★★★ and the charter DIFFERS per member - it addresses the member it is written for, never a global')
+  ok(new Set(asks.map((x) => x.ask)).size >= 2,
+    'V51. ★★ so does the turn ask, because each member is given its own phase and starting point')
+
+  // The kernel injects no section by itself (its header says so: with an empty config the assembled prompt equals the
+  // base). So the corpus sections the pack publishes are handed to the pipeline explicitly - which is what proves the
+  // MECHANISM carries a real turn, while the DEFAULT pack-to-pipeline wiring is what V53 names as outstanding.
+  const kernelTurn = createKernel({ settings: {}, root: turnRoot, host: null })
+  const loop = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: v5rPromptSections, clock: () => '2026-01-01T00:00:00.000Z' }), faces: facesFrom(kernelTurn) })
+  const asm1 = await loop.assemble(loop.open({ member: 'r-1', phase: 'founding' }).turn)
+  const asm2 = await loop.assemble(loop.open({ member: 'acad', phase: 'founding' }).turn)
+  ok(asm1.ok === true && asm1.text.length > 1000 && asm2.ok === true && asm2.text.length > 1000,
+    'V52. ★★★ THE FRAMEWORK assembles a real turn from its own pipeline, carrying the v5r corpus, with no original preset involved',
+    { chars: [asm1.text && asm1.text.length, asm2.text && asm2.text.length], sources: asm1.sources && asm1.sources.length })
+  ok(asm1.text === asm2.text,
+    'V53. ★★★★ DIVERGENT, and it is the precise gap the objective still has: with no per-member binding the framework assembles THE SAME text for two different members, while the original writes a different charter for each. The pipeline CAN express this - bindings bind a section per role, phase, member or task - so the fix is a binding table over the corpus, not a new mechanism.',
+    { same: asm1.text === asm2.text })
+}
 rmSync(workspace, { recursive: true, force: true })
 console.log('=== VMU AB v5r verification: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed > 0 ? 1 : 0)
