@@ -1,4 +1,7 @@
 import { SETTING_DEFS } from '../settings/schema.js'
+//
+// ★ 范围基准（2026-10-11）：**本面列入【建议复核】** ❓ —— 有研究向消费者与没有，两种读法都成立（判据与争议点见 docs/23-§1b）。
+//   **复核结论出来前，本面不新增能力、也不标 P0** ✓；**结论应写进 docs/23，而不是只在对话里** ✗。
 // vmu kernel · capacity — the INFRASTRUCTURE capacity face (docs/20, docs/22): seats, machine-hours,
 // facilities, storage headroom, waitlists, preemption and forecasting.
 //

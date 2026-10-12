@@ -1,4 +1,8 @@
 // vmu kernel · biospecimen — the sample ledger and the CHAIN OF CUSTODY
+//
+// ★ 范围基准（2026-10-11）：**本面已判定降级为扩展** ✗ —— **对数学研究举不出消费者** ✓（判据与登记见 docs/23-§1b）。
+//   **本行注释不是"已完成"，而是"待改"的证据** ✗：键族与代码仍在，**移出流程必须包含撤代码**（docs/23-§2 规则 4）。
+//   ★★ 另注：22-§14 早已判它"不做 ✗（无消费者）"，**而代码却存在且 7 键全部接线** —— 该矛盾见 docs/23-§1c。
 // （docs/22 §2.5 biobank / chain of custody; docs/07 owns the durability library and is referenced for retention, never
 // redefined here; docs/20 supplies the pseudonymisation side）.
 //
