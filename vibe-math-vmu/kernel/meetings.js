@@ -587,8 +587,15 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     },
 
     /** Recess. `recessMaxMs` bounds it (and `recessResumeRequiresMotion` governs resuming). */
-    recess({ meeting, ms = 0, at = null } = {}) {
+    recess({ meeting, ms = 0, by = null, at = null } = {}) {
       const m = requireMeeting(meeting)
+      // ROUND 315: recess changes the process for everyone, so it is an ACT, not a read: with a roster seam in force
+      // the acting member must be named and be a member. Without a seam nothing changes.
+      if (members) {
+        if (!by) throw deny('VMU_NOT_MEMBER', 'recess() needs the acting member: this instance has a roster seam',
+          'pass { by: "<member id>" } - suspending a meeting is an act that has to be attributable (08 D-series)', [])
+        if (!isMember(String(by))) throw deny('VMU_NOT_MEMBER', 'the acting member is not on the roster: ' + String(by), 'the roster seam rejected the actor for recess()', [])
+      }
       const enforced = []
       const now = at === null ? clock() : at
       if (K.recessMaxMs > 0) {
@@ -627,9 +634,17 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     },
 
     /** Warn / mute / expel. `disciplineWarnMax`, `disciplineMuteMs`, `disciplineExpelAllowed`. */
-    warn({ meeting, member, reason = null, at = null } = {}) {
+    warn({ meeting, member, by = null, reason = null, at = null } = {}) {
       const m = requireMeeting(meeting)
       if (!isMember(String(member))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'warn() acts as or on the member being warned - the roster seam rejected this id; a non-member never votes (08 D-series)', [])
+      // ROUND 315: the TARGET was gated in round 314, the ACTOR was not - so an outsider could still discipline
+      // members. With a roster seam in force the actor must be named AND be a member; without a seam nothing changes
+      // (mechanism follows the seam: a deployment with no roster has no membership concept to enforce).
+      if (members) {
+        if (!by) throw deny('VMU_NOT_MEMBER', 'warn() needs the acting member: this instance has a roster seam',
+          'pass { by: "<member id>" } - who disciplines must be answerable, and an unnamed actor cannot be (08 D-series)', [])
+        if (!isMember(String(by))) throw deny('VMU_NOT_MEMBER', 'the acting member is not on the roster: ' + String(by), 'the roster seam rejected the actor for warn()', [])
+      }
       const enforced = []
       const now = at === null ? clock() : at
       const used = (m.warnings.get(String(member)) || 0) + 1
@@ -652,9 +667,15 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       pushReceipt(receipt)
       return { ok: true, count: used, escalated, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
-    expel({ meeting, member, reason = null, at = null } = {}) {
+    expel({ meeting, member, by = null, reason = null, at = null } = {}) {
       const m = requireMeeting(meeting)
       if (!isMember(String(member))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'expel() acts as or on the member being expelled - the roster seam rejected this id; a non-member never votes (08 D-series)', [])
+      // ROUND 315: expulsion is the heaviest act in the face, so its ACTOR is gated exactly as warn()'s is.
+      if (members) {
+        if (!by) throw deny('VMU_NOT_MEMBER', 'expel() needs the acting member: this instance has a roster seam',
+          'pass { by: "<member id>" } - an expulsion no member ordered is not attributable (08 D-series)', [])
+        if (!isMember(String(by))) throw deny('VMU_NOT_MEMBER', 'the acting member is not on the roster: ' + String(by), 'the roster seam rejected the actor for expel()', [])
+      }
       const enforced = ['vmu.meetings.disciplineExpelAllowed']
       if (!K.disciplineExpelAllowed) {
         throw deny('VMU_MEETING_DISCIPLINE_DENIED', 'vmu.meetings.disciplineExpelAllowed=false: expulsion is not allowed',

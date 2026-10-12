@@ -217,6 +217,34 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
     { v5r: theirMotion.code, vmu: oursMotion.code })
   mark('PROPERTY', 'a motion requires a seated identity on both sides - v5r answers V5_NOT_VOTER, vmu now refuses VMU_NOT_MEMBER. A defect the harness found in vmu is fixed: ten operations carried no member gate (motion, interrupt, queue, fileAppeal, quote, confirmMinutes, warn, expel, transferChair, recess); the nine that already carry a subject parameter are gated by name. Four operations still have NO actor parameter at all (warn, expel, recess, verbatim) and are recorded as the next item.')
 
+  // (e) the ACTOR gate, and the rule that mechanism follows the seam. Round 315: warn/expel/recess had no actor
+  // parameter, so an outsider could discipline members or suspend the meeting. With a roster seam in force the actor
+  // must now be named and be a member; WITHOUT a seam nothing changes, which is the zero-mechanism default.
+  {
+    const withSeam = strict()
+    withSeam.open({ by: 'acad', chair: 'acad', roster: ['acad', 'r-1'], at: 0 })
+    const warnFromOutsider = vmu(() => withSeam.warn({ meeting: 'm1', member: 'r-1', by: 'outsider', reason: 'x' }))
+    const warnUnnamed = vmu(() => withSeam.warn({ meeting: 'm1', member: 'r-1', reason: 'x' }))
+    const expelFromOutsider = vmu(() => withSeam.expel({ meeting: 'm1', member: 'r-1', by: 'outsider', reason: 'x' }))
+    const recessFromOutsider = vmu(() => withSeam.recess({ meeting: 'm1', by: 'outsider' }))
+    const recessUnnamed = vmu(() => withSeam.recess({ meeting: 'm1' }))
+    ok(warnFromOutsider.thrown === true && warnFromOutsider.code === 'VMU_NOT_MEMBER',
+      'G1p. ★★ an outsider may no longer WARN a member', warnFromOutsider)
+    ok(expelFromOutsider.thrown === true && expelFromOutsider.code === 'VMU_NOT_MEMBER',
+      'G1q. ★★ an outsider may no longer EXPEL a member', expelFromOutsider)
+    ok(recessFromOutsider.thrown === true && recessFromOutsider.code === 'VMU_NOT_MEMBER',
+      'G1r. ★★ an outsider may no longer SUSPEND the meeting', recessFromOutsider)
+    ok(warnUnnamed.thrown === true || recessUnnamed.thrown === true,
+      'G1s. ★★ with a roster seam the actor must be NAMED: an unnamed actor is refused, not silently allowed',
+      { warn: warnUnnamed.code, recess: recessUnnamed.code })
+    const noSeam = mkMeetings()
+    noSeam.open({ by: 'acad', chair: 'acad', roster: ['acad', 'r-1'], at: 0 })
+    const seamless = vmu(() => noSeam.warn({ meeting: 'm1', member: 'r-1', reason: 'x' }))
+    ok(seamless.returned === true && seamless.ok === true,
+      'G1t. ★ PROPERTY (mechanism follows the seam): with NO roster seam the same call is unchanged', seamless)
+    mark('PROPERTY', 'an act that disciplines or suspends requires a NAMED member actor when a roster seam is in force, and behaves exactly as before when there is none - mechanism follows the seam (vmu philosophy), and v5r makes the same requirement with V5_NOT_VOTER')
+  }
+
   seamRegistry.clear()
   rmSync(seamWorkspace, { recursive: true, force: true })
 }
