@@ -234,6 +234,7 @@
     "vibe-math-vmu/docs/24-v5r-containment.md",
     "vibe-math-vmu/docs/25-demoted-domains.md",
     "vibe-math-vmu/docs/26-turn-orchestration.md",
+    "vibe-math-vmu/docs/27-pack-folder.md",
     "scripts/generate-planned-codes.mjs",
     "vibe-math-vmu/settings/schema.js",
     "vibe-math-vmu/glossary.json",

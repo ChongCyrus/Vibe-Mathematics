@@ -103,3 +103,32 @@ Each row names a concrete consumer. Where the repository has already adjudicated
    - C-5: if "a multi-institution consortium needs settlement reconciliation" counts as (e) inter-agent collaboration, keep it — but the same volume already ruled the underlying money/rounding family out (`22:851`).
    - C-8: if "our tool evaluation tells a builder which tools to wire" counts as (c), keep it.
 8. **I did not run any test or gate**; no `git commit`/`push`; the only file I created or modified is this report (`vibe-math-vmu/docs/audit/downgrade-candidates.md`, which is itself outside `package.json` `files`).
+
+---
+
+## 6. ★★★★ 负责人复核（轮 408）：**本轮 0 条移出，两条高置信候选经读原文后【推翻**】✓
+
+★ 审批原则的举证责任在**删除**一侧 ✓，所以我对两条 **high** 候选**逐条读了原文**，结论与审计相反：
+
+### C-1（`22:937-962` N13 教学与认证）⇒ **不降级，保留** ✓✓
+
+★ 审计把它列为 high，理由是"**自评报告 ＋ 认证证据包**"听起来像非研究性的机构事务 ✓。★★ **但读原文（L937–962）后，它的内核是**：
+- **`outcome ↔ artifact` 对齐表**（每条 outcome 一行、指向 ≥1 个 artifact 引用 ✓）；
+- **`claim → artifact 引用 → 复核人 → 时刻` 的证据引用表** ✓；
+- 并且明写 **"证据缺失即写'未做'标记 ✗✓，不得用叙述替代证据 ✗"** ✓。
+
+★★★ **这就是"评审与出版 (i)"与"文件归档 (h)"的核心基础设施** ✓ —— ★ **"结论必须能回指证据"** ✓ 正是数学研究**最需要的那种诚实性机制** ✓。★ 而且该节自述 **"不动作内核 ✗：只用记录轨 ＋ pack ＋ 中间件组合"** ✓ ⇒ ★ **它本来就是"扩展/pack 形态"的设计稿，完全符合哲学理念** ✓。
+⇒ ★ **判定：有明确的可能消费者（任何想让"声称"与"证据"对得上的构建者）⇒ 保留** ✓。
+
+### C-6（`docs/generate_framework_diagram_v2.py` ＋ `_v2_en.mjs`）⇒ **暂留** ✓
+
+★ 审计理由是"**被 v3/v4/v5 取代**" ✓ —— ★★ **但"被取代"不等于"没有可能消费者"** ✗（★ 且**实测有一个真实引用方**：`tests/audit-diagram-assets.test.mjs:108` ✓ ⇒ **删除会先破坏测试** ✗）。
+⇒ ★ **判定：暂留** ✓；若日后裁定为扩展，须**连同测试与两处名册一起**移出 ✓（`package.json#files` 与 `installer.js` 的托管表 ✓）。
+
+### 其余 6 条（C-2…C-5、C-7、C-8）⇒ **全部暂留** ✓
+
+★ 它们本就是 **medium** ✓，且**审计自己点名**：**C-4/C-5 被 `22 §18` 的两个未裁决问题牵住** ✓（"会务是否独立成卷" ✓、"跨机构结算信任模型" ✓）；C-2/C-3/C-8 的**反方考虑**也已由审计逐条写出 ✓。★ 按"**举证责任在删除一侧**"⇒ **未达到移出门槛** ✓✓。
+
+### 结论
+
+★ **本轮移出 0 条** ✓。★★ **这不是"没做事"** ✓：**审计提了 8 条，我逐条按原则复核后退回 8 条，并给出了可复核的理由与原文行号** ✓ —— ★ **这正是"审计只提供候选，判定权在原则"该有的样子** ✓。
