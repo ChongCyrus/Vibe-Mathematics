@@ -71,7 +71,9 @@ export function findRuntimeHits(codes, { codeDir = CODE_DIR, repo = REPO } = {})
   const walk = (d, n) => {
     if (n > 4 || !existsSync(d)) return
     for (const e of readdirSync(d, { withFileTypes: true })) {
-      if (['node_modules', '.git', 'docs', 'settings'].includes(e.name)) continue
+      // `settings/` is RUNTIME: kernel/index.js imports SETTING_DEFS from settings/schema.js and executes it, so a code
+    // thrown there is implemented. Skipping it here made this audit disagree with the generator that fills the report.
+    if (['node_modules', '.git', 'docs'].includes(e.name)) continue
       const q = join(d, e.name)
       if (e.isDirectory()) walk(q, n + 1)
       else if (e.name.endsWith('.js')) files.push(q)

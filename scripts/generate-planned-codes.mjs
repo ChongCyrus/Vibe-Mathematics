@@ -139,7 +139,10 @@ if (isMain) {
   const walkRuntime = (d, n) => {
     if (n > 3 || !existsSync(d)) return
     for (const e of readdirSync(d, { withFileTypes: true })) {
-      if (['node_modules', '.git', 'docs', 'settings'].includes(e.name)) continue
+      // `docs` is prose. `settings` is NOT skipped: kernel/index.js imports SETTING_DEFS from settings/schema.js
+      // and executes it, so a code thrown there is implemented - skipping it made two implemented codes look like
+      // proposals (measured: VMU_ALIAS_AMBIGUOUS and VMU_PARAM_RENAMED).
+      if (['node_modules', '.git', 'docs'].includes(e.name)) continue
       const q = join(d, e.name)
       if (e.isDirectory()) walkRuntime(q, n + 1)
       else if (e.name.endsWith('.js')) runtimeFiles.push(q)
