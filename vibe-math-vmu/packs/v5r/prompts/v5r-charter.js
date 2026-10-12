@@ -957,6 +957,45 @@ export const CHARTER_BLOCKS = Object.freeze([
       ].join('\n'),
     },
   },
+  // ── THE BALLOT'S FORMAL ADDENDUM AND THE FORMAL WORK BLOCK (corpus-derived) ──────────────────────────────────
+  // Both appear in the delivered prompts and neither is in the preset source in this form, so they are transcribed
+  // from the corpus like the maths plot line. They belong to the verification phase: the addendum tells a voter how to
+  // report a formalisation decision alongside the verdict, and the work block is the standing encouragement to
+  // formalise. The work block is the third place the same honesty rule appears in this repository - do not claim a
+  // proof passed while its background compilation is still queued - and the first place it says why: a formalisation
+  // you are not sure of must be recorded as blocked, because otherwise the formalism hides the uncertainty it was
+  // supposed to remove.
+  {
+    name: 'v5r-verify-formal-addendum',
+    order: 808,
+    range: 'pack',
+    kind: 'phase',
+    texts: {
+      verify: [
+        '若你本轮做了形式化或给出难度判断，请一并加上：',
+        '{"formal":{"target":"{{ setting:vmu.turn.verifyTarget }}","decision":"used|blocked|defect","file":"Formal/{{ setting:vmu.turn.verifyTarget }}.lean","note":"难度判断（used）/ 阻塞原因（blocked）/ 具体偏差（defect）"}}',
+      ].join('\n'),
+    },
+  },
+  {
+    name: 'v5r-formal-work-rendered',
+    order: 809,
+    range: 'pack',
+    kind: 'phase',
+    texts: {
+      verify: [
+        '【Lean 形式化验证（鼓励模式）】',
+        '  · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。',
+        '  · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。',
+        '  · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v5_lean_lib 显示 passed 再审。',
+        '  · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）',
+        '  · 工作目录（**相对会话工作目录**，你自己的文件工具按这个基准解析）：{{ setting:vmu.turn.formalRootRel }}',
+        '    （= 研究所根下的 Formal/；v5 工具的 file 参数两种写法都接受：上面这条完整路径，或短的 Formal/xxx.lean。）',
+        '    可复用定义放 <VIBEMATH>/Formal/Lib/，',
+        '    已证引理放 <VIBEMATH>/Formal/Proved/；写之前先 vibe_v5_lean_lib 查重。',
+      ].join('\n'),
+    },
+  },
   // ── THE HEARTBEAT PROMPT (source `heartbeatPrompt`, L4110-4115) ──────────────────────────────────────────────
   // The fourth prompt TYPE the grouped measurement found, and the second largest family after the ballot. It is what a
   // member receives when the institute has made no progress for a while, and it is deliberately written as a PROMPT AND
