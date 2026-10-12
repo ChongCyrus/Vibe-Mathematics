@@ -464,6 +464,16 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   // wraps those sentences across lines and this check compares whole lines, so a wrapped sentence can never match.
   // So the list stays as a documented exemption for the blocks that predate the field, and the honest statement is
   // that their source parity is UNVERIFIED by this check rather than proven by it.
+  // ROUND 431 TRIED TO RETIRE THIS LIST AND THE ATTEMPT IS THE ARGUMENT FOR KEEPING IT. Removing it and then marking
+  // what failed ended with FIFTY-TWO of the fifty-eight blocks declaring themselves outside the check - including the
+  // opening, the division, the roster snapshot and most of the charter. A gate that exempts nine tenths of its subject
+  // is not a gate, and marking a block is not evidence that it is correct: it is a claim about where the text came
+  // from, and the marking can always be extended until the check says nothing. The two comparisons also measure
+  // DIFFERENT things, which is what the round got wrong: this check asks whether a blocks text appears in the
+  // DELIVERED PROMPTS, while the scratch check that said everything was fine asked whether it appears in the SOURCE.
+  // A block can be in the source and not in the delivered prompts - the formal reply specification is - so the two
+  // answers are not in conflict and neither is a defect. The list stays, the coverage number stays honest, and the
+  // honest statement remains that these blocks source parity is unverified by this check.
   const PROMPT_AXIS_PREFIXES = ['v5r-reply-', 'v5r-turn-', 'v5r-brief-', 'v5r-proof-', 'v5r-pointer-', 'v5r-feedback-', 'v5r-formal-', 'v5r-meeting-']
   for (const b of CHARTER_BLOCKS.filter((x) => x.derivedFrom !== 'corpus' && !PROMPT_AXIS_PREFIXES.some((p) => String(x.name).startsWith(p)))) {
     const pairs = b.kind === 'shared' ? [['shared', b.texts.shared, acadOrig], ['shared', b.texts.shared, resOrig]]
