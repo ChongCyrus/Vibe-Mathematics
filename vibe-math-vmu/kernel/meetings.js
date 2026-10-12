@@ -435,6 +435,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     /** Interrupt. `interruptAllow` + `interruptQuota` govern the floor. */
     interrupt({ meeting, member, target = null, at = null } = {}) {
       const m = requireMeeting(meeting)
+      if (!isMember(String(member))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'interrupt() acts as or on the interrupting member - the roster seam rejected this id; a non-member never votes (08 D-series)', [])
       const enforced = []
       const now = at === null ? clock() : at
       mark(enforced, 'vmu.meetings.interruptAllow')
@@ -458,6 +459,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     /** Queue a speaker; `orderMode` decides the position (observable via the returned order). */
     queue({ meeting, member, at = null } = {}) {
       const m = requireMeeting(meeting)
+      if (!isMember(String(member))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'queue() acts as or on the member taking a place in the queue - the roster seam rejected this id; a non-member never votes (08 D-series)', [])
       const enforced = ['vmu.meetings.orderMode']
       if (!m.queue.includes(String(member))) m.queue.push(String(member))
       let order
@@ -476,6 +478,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     /** Move a motion. `emergencyKinds`/`emergencyQuorumRatio` and `materialsRequired` apply. */
     motion({ meeting, member, kind = 'ordinary', text = '', materials = null, at = null } = {}) {
       const m = requireMeeting(meeting)
+      if (!isMember(String(member))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'motion() acts as or on the member moving the motion - the roster seam rejected this id; a non-member never votes (08 D-series)', [])
       const enforced = []
       const now = at === null ? clock() : at
       const emergency = K.emergencyKinds.length > 0 && K.emergencyKinds.includes(String(kind))
@@ -564,6 +567,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     /** Transfer the chair. `chairTransferAudit` demands a reason. */
     transferChair({ meeting, to, reason = null, at = null } = {}) {
       const m = requireMeeting(meeting)
+      if (!isMember(String(to))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(to), 'transferChair() acts as or on the member taking the chair - the roster seam rejected this id; a non-member never votes (08 D-series)', [])
       const enforced = []
       if (typeof to !== 'string' || !to) throw deny('VMU_INVALID_ARGUMENT', 'transferChair needs a target member', 'e.g. { meeting, to: "r-2", reason: "…" }', [])
       if (K.chairTransferAudit) {
@@ -625,6 +629,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     /** Warn / mute / expel. `disciplineWarnMax`, `disciplineMuteMs`, `disciplineExpelAllowed`. */
     warn({ meeting, member, reason = null, at = null } = {}) {
       const m = requireMeeting(meeting)
+      if (!isMember(String(member))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'warn() acts as or on the member being warned - the roster seam rejected this id; a non-member never votes (08 D-series)', [])
       const enforced = []
       const now = at === null ? clock() : at
       const used = (m.warnings.get(String(member)) || 0) + 1
@@ -649,6 +654,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     },
     expel({ meeting, member, reason = null, at = null } = {}) {
       const m = requireMeeting(meeting)
+      if (!isMember(String(member))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'expel() acts as or on the member being expelled - the roster seam rejected this id; a non-member never votes (08 D-series)', [])
       const enforced = ['vmu.meetings.disciplineExpelAllowed']
       if (!K.disciplineExpelAllowed) {
         throw deny('VMU_MEETING_DISCIPLINE_DENIED', 'vmu.meetings.disciplineExpelAllowed=false: expulsion is not allowed',
@@ -666,6 +672,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     /** Quote a meeting record. `confidentialityQuotePolicy` (allow/redact/deny) decides. */
     quote({ meeting, member = null, text = '', at = null } = {}) {
       const m = requireMeeting(meeting)
+      if (!isMember(String(member))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'quote() acts as or on the member quoting - the roster seam rejected this id; a non-member never votes (08 D-series)', [])
       const enforced = ['vmu.meetings.confidentialityDefault', 'vmu.meetings.confidentialityQuotePolicy']
       if (K.confidentialityQuotePolicy === 'deny') {
         throw deny('VMU_MEETING_CONFIDENTIAL_DENIED', 'vmu.meetings.confidentialityQuotePolicy="deny": quoting is not allowed',
@@ -681,6 +688,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     fileAppeal({ meeting = null, member, kind = 'procedural', reason = null, at = null } = {}) {
       const m = meeting === null ? null : requireMeeting(meeting)
       const enforced = ['vmu.meetings.appealScope']
+      if (!isMember(String(member))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'fileAppeal() acts as or on the member filing the appeal - the roster seam rejected this id; a non-member never votes (08 D-series)', [])
       const now = at === null ? clock() : at
       if (K.appealScope === 'none' || (K.appealScope === 'procedural' && String(kind) !== 'procedural')) {
         throw deny('VMU_MEETING_APPEAL_OUT_OF_SCOPE', 'appeal kind "' + kind + '" is out of scope (vmu.meetings.appealScope=' + K.appealScope + ')',
@@ -708,6 +716,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     /** Confirm the previous minutes (`confirmPreviousMinutes` gates starting new business). */
     confirmMinutes({ meeting, by = null, at = null } = {}) {
       const m = requireMeeting(meeting)
+      if (!isMember(String(by))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(by), 'confirmMinutes() acts as or on the member confirming the minutes - the roster seam rejected this id; a non-member never votes (08 D-series)', [])
       const enforced = ['vmu.meetings.confirmPreviousMinutes']
       m.previousConfirmed = true
       m.minutes.entries.push({ at: at === null ? clock() : at, kind: 'minutes-confirmed', by })

@@ -196,20 +196,26 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
     { v5r: convened.order, vmu: q2 && q2.order })
   mark('PROPERTY', 'speaking rights become an ordered structure on both sides (v5r: a name string; vmu: an array) - the representations differ, the property does not')
 
-  // (d) actor binding, measured: this is where the two sides DIVERGE, and the divergence is a defect on OUR side
+  // (d) actor binding, measured WITH a roster seam that really rejects outsiders. The first version of this block
+  // compared a speech (which requires PRESENCE) against a motion (which had no gate at all), so it proved less than
+  // it claimed; with a rejecting seam it proved a real defect, and that defect is now fixed. Kept as the regression.
   const theirMotion = await seamCall('vibe_v5_motion', { op: 'propose', kind: 'procedural', text: 'recess' })
-  const ours = mkMeetings()
+  const strict = () => createMeetings({ clock: () => 1000, settings: {}, log: () => {}, members: { has: (id) => id === 'acad' || id === 'r-1' } })
+  const ours = strict()
   ours.open({ by: 'acad', chair: 'acad', roster: ['acad', 'r-1'], at: 0 })
-  const oursMotion = vmu(() => ours.motion({ meeting: 'm1', member: 'nobody', text: 'x' }))
-  const oursSpeak = vmu(() => ours.speak({ meeting: 'm1', member: 'nobody' }))
+  const oursMotion = vmu(() => ours.motion({ meeting: 'm1', member: 'outsider', text: 'x' }))
+  const oursInterrupt = vmu(() => { const x = strict(); x.open({ by: 'acad', chair: 'acad', roster: ['acad', 'r-1'], at: 0 }); return x.interrupt({ meeting: 'm1', member: 'outsider' }) })
+  const oursChair = vmu(() => { const x = strict(); x.open({ by: 'acad', chair: 'acad', roster: ['acad', 'r-1'], at: 0 }); return x.transferChair({ meeting: 'm1', to: 'outsider', reason: 'x' }) })
   ok(theirMotion.ok !== true && typeof theirMotion.code === 'string',
     'G1m. ★ v5r refuses a motion from a NON-seated actor, by name', theirMotion)
-  ok(oursSpeak.thrown === true || oursSpeak.code !== undefined,
-    'G1n. ★ vmu DOES refuse a SPEECH from a non-member, by name (so the face knows how to gate)', oursSpeak)
-  ok(oursMotion.returned === true && oursMotion.ok === true,
-    'G1o. ★★ DIVERGENT (a real defect on our side): vmu ACCEPTS a motion from a non-member while refusing a speech from one',
-    { motion: oursMotion.value && oursMotion.value.motion, speak: oursSpeak.code })
-  mark('DIVERGENT', 'a motion from a non-member: v5r refuses by name (V5_NOT_VOTER), vmu ACCEPTS it - and vmu refuses a SPEECH from the same non-member, so the meeting face is internally inconsistent. Reason: membership is checked on speak but not on motion. Revival: fix meetings.motion to refuse a non-member by name, per the D-series rule that a non-member never votes (volume 08); that fix is a kernel change and gets its own interval.')
+  ok(oursMotion.thrown === true && oursMotion.code === 'VMU_NOT_MEMBER',
+    'G1n. ★★ FIXED (found by this harness): vmu now refuses a motion from a NON-member, by name', oursMotion)
+  ok(oursInterrupt.thrown === true && oursInterrupt.code === 'VMU_NOT_MEMBER',
+    'G1n2. ★★ and likewise for interrupt and for a chair transfer to a non-member', { interrupt: oursInterrupt.code, chair: oursChair.code })
+  ok(theirMotion.ok !== true && oursMotion.code === 'VMU_NOT_MEMBER',
+    'G1o. ★ PROPERTY (A/B): a motion requires a seated/member identity on BOTH sides',
+    { v5r: theirMotion.code, vmu: oursMotion.code })
+  mark('PROPERTY', 'a motion requires a seated identity on both sides - v5r answers V5_NOT_VOTER, vmu now refuses VMU_NOT_MEMBER. A defect the harness found in vmu is fixed: ten operations carried no member gate (motion, interrupt, queue, fileAppeal, quote, confirmMinutes, warn, expel, transferChair, recess); the nine that already carry a subject parameter are gated by name. Four operations still have NO actor parameter at all (warn, expel, recess, verbatim) and are recorded as the next item.')
 
   seamRegistry.clear()
   rmSync(seamWorkspace, { recursive: true, force: true })
