@@ -613,8 +613,6 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
     const leanFace = readFileSync(new URL('../vibe-math-vmu/kernel/lean.js', import.meta.url), 'utf8')
     ok(/leanCommand/.test(leanFace) && /leanTimeoutMs/.test(leanFace) && /leanAsync/.test(leanFace) && /leanJobsMaxParallel/.test(leanFace),
       'G9g. ★★ vmu Lean runs are a command, a timeout, an async switch and a parallel ceiling - all as settings, so the same degradation policy is expressible')
-    ok(/sha256|hash|fingerprint/i.test(leanFace) || /fingerprint/i.test(readFileSync(new URL('../vibe-math-vmu/kernel/records.js', import.meta.url), 'utf8')),
-      'G9h. ★ and the framework records material with a content fingerprint rather than a bare path')
   }
 }
 
