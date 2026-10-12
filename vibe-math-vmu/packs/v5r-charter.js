@@ -11,7 +11,7 @@
 //   problem.statement        -> {{ setting:vmu.turn.objective }}      (its default IS the source's fallback)
 //   member.id                -> {{ member }}
 //   member.kind              -> {{ role }}                            (the role binding dimension)
-//   member.term/hiredBy/direction -> {{ setting:... }} or turn facts
+//   member.term/hiredBy/direction -> {{ setting:vmu.turn.tempTerm }} / tempHiredBy / tempDirection, or turn facts
 //   acadId (may be EMPTY)    -> {{ setting:vmu.turn.leaderId }}  (decides whole sentences)
 //   quorumM()                -> {{ quorum }}
 //   rosterLine(member)       -> {{ roster }}

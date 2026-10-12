@@ -18,6 +18,8 @@ import { PACK } from '../vibe-math-vmu/packs/v5r-core.js'
 import { toolSpecs } from '../vibe-math-vmu/host.js'
 import { SOURCE_SHA256 as PERSONA_SOURCE_SHA256 } from '../vibe-math-vmu/packs/v5r-persona.js'
 import { CHARTER_SECTIONS, CHARTER_BLOCKS, CHARTER_ROLE_BINDINGS, CHARTER_BINDINGS } from '../vibe-math-vmu/packs/v5r-charter.js'
+import { v5rRoleSection as V5R_ROLE_SECTION } from '../vibe-math-vmu/packs/v5r-core.js'
+const V5R_ROLE_SECTION_VARS = V5R_ROLE_SECTION.vars
 import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -879,6 +881,28 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   ok(fErr !== null && fErr.code === "VMU_INVALID_ARGUMENT",
     "T134. **** while an unrecognised status is refused by name rather than guessed",
     { code: fErr && fErr.code })
+}
+
+// 34) THE DISPLAY LINE AND A PROVABLY DEAD FALLBACK (docs/26 section 3.29). An audit measured that headings were
+// built from the binding KEY rather than the human role name; this authored section had the same defect, and the
+// fallback text in CHARTER_SECTIONS is only safe while every role-bound block carries every role.
+{
+  // The authored role section is contributed by the PACK rather than by CHARTER_SECTIONS, so the assertion assembles
+  // from the pack declaration - which is also what a real round does, and therefore the stronger place to check it.
+  const loopR = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: collectPackSections([PACK]), bindings: PACK.bindings, clock: () => "2026-01-01T00:00:00.000Z" }) })
+  const aR = await loopR.assemble(loopR.open({ member: "r-1", role: "researcher", roleLabel: "常驻研究员", phase: "normal", round: 2, statusBlock: "[状态] x" }).turn)
+  ok(aR.text.includes("【本轮面向的成员】代号：r-1 ｜角色：常驻研究员 ｜阶段：normal"),
+    "T135. **** the DISPLAY LINE names the human role, not the binding key: role selects sections, roleLabel is what a reader sees",
+    { line: "roleLabel" })
+  const roleBlocks = CHARTER_BLOCKS.filter((b) => b.kind === "role")
+  const incomplete = roleBlocks.filter((b) => !["academician", "researcher", "temp"].every((r) => typeof b.texts[r] === "string" && b.texts[r] !== ""))
+  ok(roleBlocks.length >= 6 && incomplete.length === 0,
+    "T136. **** and every role-bound block carries ALL THREE roles, which is what makes the baseline fallback in CHARTER_SECTIONS provably dead rather than merely unused today",
+    { blocks: roleBlocks.length, incomplete: incomplete.map((b) => b.name) })
+  const v = V5R_ROLE_SECTION_VARS
+  ok(v.includes("roleLabel") === true,
+    "T137. **** and the authored role section declares roleLabel among the variables it uses, so the contract and the text agree",
+    { vars: v })
 }
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)

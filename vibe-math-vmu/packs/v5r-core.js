@@ -225,9 +225,13 @@ export const v5rRoleSection = Object.freeze({
   order: 601,
   range: 'pack',
   source: 'v5r-corpus:role-template',
-  vars: Object.freeze(['member', 'role', 'phase']),
+  // ROUND 393: the display line names the member with the HUMAN role name, not the binding key. An independent pack
+  // audit measured the difference on the generated corpus (fifty headings rendered as "researcher r-1" and none as
+  // "常驻研究员 r-1"), and this authored section had the same defect: `role` is the key bindings select on, while
+  // `roleLabel` is what a reader sees (docs/26 sections 3.13 and 3.22).
+  vars: Object.freeze(['member', 'role', 'roleLabel', 'phase']),
   text: [
-    '【本轮面向的成员】代号：{{ member }} ｜角色：{{ role }} ｜阶段：{{ phase }}',
+    '【本轮面向的成员】代号：{{ member }} ｜角色：{{ roleLabel }} ｜阶段：{{ phase }}',
     '★★ 分派决定做什么，判断属于你自己；异议与未表态都要留痕，沉默不得被折算成任何一侧。',
   ].join('\n'),
 })
