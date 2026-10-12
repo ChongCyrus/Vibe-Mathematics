@@ -1171,12 +1171,12 @@ vmu.packs.active: [v5r]
 | `vmu.paper.finalizer` | string | `editor` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
 | `vmu.paper.maxSections` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
 | `vmu.paper.requireAllSections` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
-| `vmu.partnership.crossBorderApproverRoles` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/legalentity.js` | 已接线（legalentity.js 读取）；默认值取自模块源码 |
-| `vmu.partnership.crossBorderGate` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/legalentity.js` | 已接线（legalentity.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
-| `vmu.partnership.invoiceTaxSlots` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/legalentity.js` | 已接线（legalentity.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
-| `vmu.partnership.registryDir` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/legalentity.js` | 已接线（legalentity.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
-| `vmu.partnership.requireEntity` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/legalentity.js` | 已接线（legalentity.js 读取）；默认值取自模块源码 |
-| `vmu.partnership.taxIdStyle` | string | `opaque-ref` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/legalentity.js` | 已接线（legalentity.js 读取）；默认值取自模块源码 |
+| `vmu.partnership.crossBorderApproverRoles` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；默认值取自模块源码 |
+| `vmu.partnership.crossBorderGate` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.partnership.invoiceTaxSlots` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.partnership.registryDir` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.partnership.requireEntity` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；默认值取自模块源码 |
+| `vmu.partnership.taxIdStyle` | string | `opaque-ref` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；默认值取自模块源码 |
 | `vmu.publish.jatsVersion` | string | `JATS-1.3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.publish.requireChecklist` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.publish.versionChainStrict` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
@@ -1223,17 +1223,17 @@ vmu.packs.active: [v5r]
 | `vmu.store.remote.url` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
 | `vmu.store.root` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
 | `vmu.store.tmpDir` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
-| `vmu.tenure.appealWindowDays` | int ≥0 | `14` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/hr.js` | 已接线（hr.js 读取）；默认值取自模块源码 |
-| `vmu.tenure.humanDecisionRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/hr.js` | 已接线（hr.js 读取）；默认值取自模块源码 |
-| `vmu.tenure.offboardingChecklist` | string[] | `[handover,keys,records]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/hr.js` | 已接线（hr.js 读取）；默认值取自模块源码 |
-| `vmu.tenure.performanceCadenceDays` | int ≥0 | `180` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/hr.js` | 已接线（hr.js 读取）；默认值取自模块源码 |
-| `vmu.tenure.performanceEvidenceRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/hr.js` | 已接线（hr.js 读取）；默认值取自模块源码 |
-| `vmu.tenure.recruitCycleDays` | int ≥0 | `30` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/hr.js` | 已接线（hr.js 读取）；默认值取自模块源码 |
-| `vmu.tenure.recruitWindowOpenMs` | int ≥0 | `604800000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/hr.js` | 已接线（hr.js 读取）；默认值取自模块源码 |
-| `vmu.tenure.rotationPolicy` | string | `round-robin` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/hr.js` | 已接线（hr.js 读取）；默认值取自模块源码 |
-| `vmu.tenure.tenureDecisionWindowDays` | int ≥0 | `60` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/hr.js` | 已接线（hr.js 读取）；默认值取自模块源码 |
-| `vmu.tenure.tenureQuorum` | int ≥0 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/hr.js` | 已接线（hr.js 读取）；默认值取自模块源码 |
-| `vmu.tenure.tenureTrackMonths` | int ≥0 | `36` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/hr.js` | 已接线（hr.js 读取）；默认值取自模块源码 |
+| `vmu.tenure.appealWindowDays` | int ≥0 | `14` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tenure.js` | 已接线（tenure.js 读取）；默认值取自模块源码 |
+| `vmu.tenure.humanDecisionRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tenure.js` | 已接线（tenure.js 读取）；默认值取自模块源码 |
+| `vmu.tenure.offboardingChecklist` | string[] | `[handover,keys,records]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tenure.js` | 已接线（tenure.js 读取）；默认值取自模块源码 |
+| `vmu.tenure.performanceCadenceDays` | int ≥0 | `180` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tenure.js` | 已接线（tenure.js 读取）；默认值取自模块源码 |
+| `vmu.tenure.performanceEvidenceRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tenure.js` | 已接线（tenure.js 读取）；默认值取自模块源码 |
+| `vmu.tenure.recruitCycleDays` | int ≥0 | `30` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tenure.js` | 已接线（tenure.js 读取）；默认值取自模块源码 |
+| `vmu.tenure.recruitWindowOpenMs` | int ≥0 | `604800000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tenure.js` | 已接线（tenure.js 读取）；默认值取自模块源码 |
+| `vmu.tenure.rotationPolicy` | string | `round-robin` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tenure.js` | 已接线（tenure.js 读取）；默认值取自模块源码 |
+| `vmu.tenure.tenureDecisionWindowDays` | int ≥0 | `60` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tenure.js` | 已接线（tenure.js 读取）；默认值取自模块源码 |
+| `vmu.tenure.tenureQuorum` | int ≥0 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tenure.js` | 已接线（tenure.js 读取）；默认值取自模块源码 |
+| `vmu.tenure.tenureTrackMonths` | int ≥0 | `36` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tenure.js` | 已接线（tenure.js 读取）；默认值取自模块源码 |
 | `vmu.workflow.arbitrationMode` | string | `off` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/workflow.js` | 已接线（workflow.js 读取）；默认值取自模块源码 |
 | `vmu.workflow.checkpointEveryMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/workflow.js` | 已接线（workflow.js 读取）；默认值取自模块源码 |
 | `vmu.workflow.claimRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/workflow.js` | 已接线（workflow.js 读取）；默认值取自模块源码 |

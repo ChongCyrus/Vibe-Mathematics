@@ -1,5 +1,5 @@
-﻿// tests/vmu-hr.test.mjs — 独立可跑：kernel/hr.js（mathtools 标准：11 键划分/enforced/口径/wouldEvaluate/7 个已登记码）。
-import { createHr, WIRED_KEYS, UNSUPPORTED_SEMANTICS, WOULD_EVALUATE, CODES, ENFORCED_SCOPE, apiVersion } from '../vibe-math-vmu/kernel/hr.js'
+﻿// tests/vmu-tenure.test.mjs — 独立可跑：kernel/tenure.js（mathtools 标准：11 键划分/enforced/口径/wouldEvaluate/7 个已登记码）。
+import { createHr, WIRED_KEYS, UNSUPPORTED_SEMANTICS, WOULD_EVALUATE, CODES, ENFORCED_SCOPE, apiVersion } from '../vibe-math-vmu/kernel/tenure.js'
 
 let passed = 0, failed = 0
 const ok = (c, label) => { if (c) { passed++; console.log('  ok - ' + label) } else { failed++; console.error('  FAIL - ' + label) } }
@@ -104,7 +104,7 @@ refuses(() => strict.recruit({ openingId: 'o-9', openedAt: '2026-06-30T00:00:00.
   // (1) really missing ⇒ named refusal (and NOT the "ISO instants" branch: the absence is named precisely)
   refuses(() => h.recruit({ by: 'u' }), 'VMU_INVALID_ARGUMENT', null, 'openedAt=undefined ⇒ named refusal (needs { openedAt })')
   refuses(() => h.recruit({ by: 'u', openedAt: null }), 'VMU_INVALID_ARGUMENT', null, 'openedAt=null ⇒ named refusal (null means "not given")')
-  // (2) the SAME class elsewhere in hr.js: lastAt / trackStart / decisionAt / appeal openedAt, plus `at: 0`
+  // (2) the SAME class elsewhere in tenure.js: lastAt / trackStart / decisionAt / appeal openedAt, plus `at: 0`
   const perf = h.performance({ who: 'r-1', lastAt: 0, evidence: ['ev'], at: 0 })
   ok(perf.ok === true && perf.at === '0', 'performance({ lastAt: 0, at: 0 }) is accepted (0 is an instant, not a fallback)')
   const ten = mk({ 'vmu.tenure.tenureQuorum': 0, 'vmu.tenure.humanDecisionRequired': false })

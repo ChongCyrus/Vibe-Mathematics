@@ -35,7 +35,7 @@ import { createCompliance } from '../vibe-math-vmu/kernel/compliance.js'
 import { createFunding } from '../vibe-math-vmu/kernel/funding.js'
 import { createStorePolicy } from '../vibe-math-vmu/kernel/storepolicy.js'
 import { createCapacity } from '../vibe-math-vmu/kernel/capacity.js'
-import { createHr } from '../vibe-math-vmu/kernel/hr.js'
+import { createHr } from '../vibe-math-vmu/kernel/tenure.js'
 import { createMigration } from '../vibe-math-vmu/kernel/migration.js'
 import { createGrant } from '../vibe-math-vmu/kernel/grant.js'
 
@@ -687,7 +687,7 @@ for (const [mod, m] of [...byModule].sort()) {
     'course.js': 'course', 'external.js': 'external', 'workflow.js': 'workflow',
     'conference.js': 'conference', 'resource.js': 'resource', 'ip.js': 'ip',
     'compliance.js': 'compliance', 'funding.js': 'funding', 'storepolicy.js': 'storepolicy',
-    'capacity.js': 'capacity', 'hr.js': 'tenure', 'migration.js': 'migration',
+    'capacity.js': 'capacity', 'tenure.js': 'tenure', 'migration.js': 'migration',
   }
   // PURE-FUNCTION MODULES: a module with no factory cannot be driven the way the scenarios drive services, so a
   // silent hole here would be worse than an explicit one. It is exempt ONLY when its own refusal path is covered

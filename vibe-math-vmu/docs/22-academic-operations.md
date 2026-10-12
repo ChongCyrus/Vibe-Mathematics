@@ -90,7 +90,7 @@
 | `vmu.custody` | 7 | **7** | `custody.js`(7) | ★ **已接线 ✓（§L168"本仓今天没有任何样本/保管实现"【已不成立】✗）** |
 | `vmu.agreements` | 7 | **7** | `collab.js`(7) | ★ **已接线 ✓** |
 | `vmu.capacity` | 12 | **12** | `capacity.js`(12) | ★ **已接线 ✓** |
-| `vmu.tenure` | 11 | **11** | `hr.js`(11) | ★ **已接线 ✓** |
+| `vmu.tenure` | 11 | **11** | `tenure.js`(11) | ★ **已接线 ✓** |
 | `vmu.ip` | 15 | **15** | `ip.js`(20) | ★ **已接线 ✓** |
 | `vmu.quota` | 4 | **4** | `retention.js`(4) | ★ **已接线 ✓** |
 | `vmu.conference` | 18 | **18** | `conference.js`(18) | ★ **已接线 ✓** |
@@ -102,7 +102,7 @@
 | `vmu.dissemination` | **11** | **9** | `publication.js`(9) | ⚠️ **部分（9/11）** —— 9 条**已接线 ✓**；另 2 条（`impact`／`mediaRequest`）**经审计确认内核无读取者 ⇒ 真实待办 ✗**（见 §0.1 与 `04` 的 `planned` 行 ✓） |
 | `vmu.recruit` | 12 | **12** | `recruit.js`(12) | ★ **已接线 ✓（轮 267 接了余下 4 条，当时漏更此表 ✗，轮 271 修正）** |
 | `vmu.tasks` | **3** | **3** | `index.js`(3) | ★ **已接线 ✓（轮 270 剔除 1 个服务名后，分母由 3 修正为 2 ✓）** |
-| `vmu.partnership` | 6 | **6** | `legalentity.js`(6) | ★ **已接线 ✓（轮 276 建面：`registerEntity`／`bindAccount`／`validateInvoice`，五码齐 ✓）** |
+| `vmu.partnership` | 6 | **6** | `partnership.js`(6) | ★ **已接线 ✓（轮 276 建面：`registerEntity`／`bindAccount`／`validateInvoice`，五码齐 ✓）** |
 | `vmu.license` | 4 | **4** | `publication.js`(4) | ★ **已接线 ✓（轮 274 接线：`default`／`incompatiblePolicy` 执法，`codeDefault`／`attributionRequired` 报出）** |
 | `vmu.review` | 4 | **4** | `records.js`(1) ＋ `reviewers.js`(3) | ★ **已接线 ✓（轮 278 `rebuttalRequired` ＋ 轮 279 `mode`／`conflictPolicy`／`quorum`）** |
 | `vmu.reviewers` | 4 | **4** | `reviewers.js`(4) | ★ **已接线 ✓（轮 279 建面三键 ＋ 轮 283 `acknowledgement`；契约取自 16 卷 §L302）** |
@@ -113,7 +113,7 @@
 
 > **`vmu.partnership`（6 条，卷 22）**：**概念层实测：`legalentity`／`jurisdiction`／`taxId`／`crossBorder` 在【内核全无】** ✗ ⇒ **本卷 §L287 的协议 `LegalEntity`／`TaxFieldSlots` 也仍标 ⛔ 待实现** ✓ ⇒ **复活条件**：**先有【法律实体对象】（含 `entityId`／`jurisdiction`／`taxIdRef` ✓）与**发票税位**的稳定字段位** ✓，**再由它读这 6 键** ✓；**在那之前，6 键无宿主** ✓。
 > **`vmu.license`（4 条，卷 20／16）**：**概念层实测：`licen[cs]e`／`attribution`／`incompatible` 命中处【都不是许可证面**（多为注释与其他语义 ✓）**）** ✓ ⇒ **复活条件**：**先有【许可证判定点**（默认许可证 ＋ 归属要求 ＋ 不兼容处置 ✓）**）** ✓，**最自然的宿主是 `publication.js`／`ip.js` 的输出侧** ✓；**未定时不接** ✓。
-> **`vmu.review`（4 条，卷 16）**：**概念层实测：`reviewers`／`reviewMode`／`quorum`／`rebuttal` 中**，**`rebuttal`（答辩）在内核【全无】** ✗；**`quorum` 在 `ballot.js`／`charter.js`／`conference.js`／`hr.js` 有对应概念** ✓ ⇒ **复活条件**：**先有【答辩】概念** ✓（**该词内核零命中 ⇒ 这是一条【真实的新机制】而非"忘了接"** ✓），**否则 `review.rebuttalRequired` 无从判定** ✓。
+> **`vmu.review`（4 条，卷 16）**：**概念层实测：`reviewers`／`reviewMode`／`quorum`／`rebuttal` 中**，**`rebuttal`（答辩）在内核【全无】** ✗；**`quorum` 在 `ballot.js`／`charter.js`／`conference.js`／`tenure.js` 有对应概念** ✓ ⇒ **复活条件**：**先有【答辩】概念** ✓（**该词内核零命中 ⇒ 这是一条【真实的新机制】而非"忘了接"** ✓），**否则 `review.rebuttalRequired` 无从判定** ✓。
 
 
 

@@ -24,7 +24,7 @@
 | M10 | 会议等级（formal/light） | **2218–2259** | `formal_agenda` 可显式覆盖；简流程**不得产出实体定论** | **PARTIAL** | `kernel/meetings.js`（`meetingLevelOf` 对应物） | `tests/vmu-meetings.test.mjs` |
 | M11 | 会务（秘书、动议、附议、发言区） | **2277–2305**（secretaries）、**2346–2396**（motion/secondedBy）、**2444**（inputs 空则记 gap） | 秘书可撤换；动议需在册成员；二楼附议 | **PARTIAL** | `kernel/meetings.js`、`kernel/ballotbox.js` | `tests/vmu-meetings.test.mjs`、`tests/vmu-ballotbox.test.mjs` |
 | M12 | 任务板（依赖/认领/CAS） | 提示词 **4007–4010**（`task_create`/`task_claim`/`task_done`/`task_update`） | `task_update` 带 `expected_revision` | **PARTIAL** | `kernel/turn/index.js` L36–37 → `vmu.tasks/create|transition`；`kernel/board.js` | `tests/vmu-kernel.test.mjs`（CAS 相关） |
-| M13 | hire/fire 权限 | 提示词 **3310–3318**；`GRANTABLE_COMMANDS` **1595** | 院士可雇/解雇自己雇的临时工；可授权 4 条命令 | **PARTIAL** | `kernel/recruit.js`、`kernel/hr.js`（存在） | `tests/vmu-recruit.test.mjs`；**未核**：授权命令集是否等价 |
+| M13 | hire/fire 权限 | 提示词 **3310–3318**；`GRANTABLE_COMMANDS` **1595** | 院士可雇/解雇自己雇的临时工；可授权 4 条命令 | **PARTIAL** | `kernel/recruit.js`、`kernel/tenure.js`（存在） | `tests/vmu-recruit.test.mjs`；**未核**：授权命令集是否等价 |
 | M14 | pause/resume | **未核** | 暂停后停止唤醒 | **未核** | `kernel/index.js`（control 面） | `tests/vmu-turn.test.mjs`？**未核** |
 | M15 | `contextPct` / `compacted` | **5820–5824** | 成员可在回复里报告上下文占用与压缩摘要 | **NO（在 turn 字段表中无 owner）** | — | 见 §2 |
 

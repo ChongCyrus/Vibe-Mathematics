@@ -1,7 +1,7 @@
-// tests/vmu-legalentity.test.mjs — the legal-entity face (volume 22 §L285-§L302).
+// tests/vmu-partnership.test.mjs — the legal-entity face (volume 22 §L285-§L302).
 //
-// ROUND 276. Written straight from the volume: six declarations, three operations and five named refusals. Run: node tests/vmu-legalentity.test.mjs
-import { createLegalEntity, DEFAULT_SLOTS } from '../vibe-math-vmu/kernel/legalentity.js'
+// ROUND 276. Written straight from the volume: six declarations, three operations and five named refusals. Run: node tests/vmu-partnership.test.mjs
+import { createLegalEntity, DEFAULT_SLOTS } from '../vibe-math-vmu/kernel/partnership.js'
 
 let pass = 0
 let fail = 0

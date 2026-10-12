@@ -104,7 +104,7 @@ import { ms as toMs } from './timevalue.js'
 // evidence, tenure, appeals, offboarding, rotation). Both reuse registered codes only; the hr face names the
 // contract/timesheet/leave semantics it does NOT implement because no keys or codes exist for them.
 import { createCapacity } from './capacity.js'
-import { createHr } from './hr.js'
+import { createHr } from './tenure.js'
 // Round 34: the migration face - the namespace the storage POLICY layer explicitly does not own. It orchestrates
 // plan/dry-run/batches/rollback points and never moves bytes itself; the declared backend set is passed in.
 import { createMigration } from './migration.js'
@@ -119,7 +119,7 @@ import { createCharter } from './charter.js'
 import { createReproPack } from './repropack.js'
 // ROUND 247: the domain compliance face (docs/20 §9.1-§9.4) - clinical (N2) and animal (N3) packs.
 import { createDomainCompliance } from './domaincompliance.js'
-import { createLegalEntity } from './legalentity.js'
+import { createLegalEntity } from './partnership.js'
 import { createReviewers } from './reviewers.js'
 import { SETTING_DEFS } from '../settings/schema.js'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'

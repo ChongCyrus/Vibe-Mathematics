@@ -336,7 +336,7 @@ export const A_CLASS_BASELINE_FINGERPRINTS = Object.freeze([
   'vmu-host-hooks.test.mjs:A:line',
   'vmu-host.test.mjs:A:after.entries',
   'vmu-host.test.mjs:A:spec.parameters.required',
-  'vmu-hr.test.mjs:A:ar.fired',
+  'vmu-tenure.test.mjs:A:ar.fired',
   'vmu-math.test.mjs:A:for:cases',
   'vmu-mathtools.test.mjs:A:for:failures',
   'vmu-mathtools.test.mjs:A:st.plannedKeys',

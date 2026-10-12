@@ -1,4 +1,4 @@
-// vibe-math-vmu/kernel/legalentity.js — legal entities and tax FIELD SLOTS (volume 22 §L285-§L302, family N9).
+// vibe-math-vmu/kernel/partnership.js — legal entities and tax FIELD SLOTS (volume 22 §L285-§L302, family N9).
 //
 // ROUND 276. The volume is unusually specific, so this face is written straight from it:
 //   · protocols  LegalEntity { entityId, jurisdiction, taxIdRef, currency? }
