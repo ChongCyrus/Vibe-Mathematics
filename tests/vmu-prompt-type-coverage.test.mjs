@@ -191,5 +191,28 @@ console.log('=== 4. THE PIPELINE VIEW IS THE LOAD-BEARING ONE, and this assertio
     { pipelineView: sectionPct, authoringForm: blockPct })
 }
 
+console.log('=== 5. EVERY REMAINING GAP IS STRUCTURAL, and this says which ===')
+{
+  // The strongest honest claim this file can make. A single assembly names one member, one reviewer and one
+  // wording of the compact catalogue; the corpus spans two versions of that catalogue and several members. So the
+  // lines that cannot match fall into two classes, and naming them is better than reporting a percentage that
+  // invites the reader to guess. If a THIRD class appears this fails and prints the line, which is the signal
+  // that real transcription is missing rather than a structural limit being reached.
+  const left = []
+  for (const p of PROMPTS) {
+    const ph = phaseOf(String(p.kind), String(p.text))
+    const mine = norm(ours[ph] || "")
+    for (const line of fixedOf(p.text)) {
+      if (looksLikeData(line)) continue
+      if (!mine.includes(norm(line))) left.push({ ph, line })
+    }
+  }
+  const isOtherCatalogueVersion = (l) => /协调需要时可用assign（subject/.test(l)
+  const isAddressedToSomeoneElse = (l) => /给你的起点方向：/.test(l) || /请你审阅 \*\*/.test(l)
+  const unexplained = left.filter((x) => !isOtherCatalogueVersion(x.line) && !isAddressedToSomeoneElse(x.line))
+  ok(unexplained.length === 0,
+    "EVERY REMAINING GAP IS STRUCTURAL: of the " + left.length + " fixed lines not reproduced, every one is either the compact catalogues OTHER wording (the corpus spans a version change of the original, so printing both would print a line the original did not) or a line addressed to a member or reviewer this scenario did not name (one assembly names one member). No line is missing for want of transcription",
+    { remaining: left.length, unexplained: unexplained.slice(0, 3).map((x) => x.ph + ": " + x.line.slice(0, 50)) })
+}
 console.log('=== PER-TYPE COVERAGE: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }

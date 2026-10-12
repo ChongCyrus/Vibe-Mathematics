@@ -62,6 +62,11 @@ export const V5R_PACK = Object.freeze({
 
 export function describeV5rPack() {
   return {
+    // THE CALLER MUST NAME THE MEETING STATE. The four meeting sections are injected only when the turn supplies
+    // `meetingState: invited|first|others`; absent means none of them, deliberately, because guessing which
+    // speaker situation a round is in would put the wrong instructions in front of a member. Nothing in this
+    // repository names it outside the tests, so it is stated here as part of what the pack expects of its driver.
+    meetingStateRequired: true,
     id: V5R_PACK.id,
     version: V5R_PACK.version,
     title: V5R_PACK.title,
