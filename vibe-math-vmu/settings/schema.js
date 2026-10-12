@@ -94,6 +94,9 @@ const CORE_DEFS = Object.freeze([
   // ROUND 296: 整合包装载（10 卷 §L46/§L80；现由 kernel/pack.js 按 compressionOn 的同一方式读取 ✓）.
   { key: 'vmu.packs.allowKernelOverride', type: 'boolean', def: false, hot: HOT.H2, who: 'office', doc: "pack 的设置与现有值【重叠】时是否允许覆盖（false ⇒ 具名拒 `VMU_PACK_CONFLICT`，即 10 卷 O4：绝不静默覆盖 ✓；调用方显式传 allowOverride 仍然优先 ✓）" },
   { key: 'vmu.packs.priority', type: 'integer', def: 0, hot: HOT.H2, who: 'office', doc: "pack 优先级（越大越先；★ 仅用于 status().applied 的排序，manifest 自身的 priority 优先 ✓）" },
+  // ROUND 298: 在途台账（07 卷 §L570-§L571；现由 kernel/work.js 读取 ✓ —— 该面此前【一个 vmu.work.* 都不读】）.
+  { key: 'vmu.work.keepEntries', type: 'integer', def: 200, hot: HOT.H2, who: 'office', doc: "在途台账保留条数（超过即裁掉【最旧】的，使仍未完成的工作保持可见 ✓）" },
+  { key: 'vmu.work.autoSettle', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: "重启后 recover() 是否【自动标记】残留项为中断（false ⇒ 只报告不改写，即'仅安全动作' ✓）" },
 
   // ---- prompts ------------------------------------------------------------------------------
   { key: 'vmu.prompts.overridesDir', type: 'path', def: 'prompts/overrides', hot: HOT.H0, who: 'office', doc: '提示词覆盖目录（仓内相对路径）' },

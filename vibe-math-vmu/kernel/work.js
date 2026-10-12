@@ -30,7 +30,12 @@ export const WORK_KEY = 'work'
 // `Date.parse(<number>)` is NaN - which used to collapse the id suffix to a constant.
 import { ms as toMs } from './timevalue.js'
 
-export function createWorkLedger({ store, clock = () => new Date().toISOString(), isPaused = () => false } = {}) {
+export function createWorkLedger({ store, clock = () => new Date().toISOString(), isPaused = () => false, settings = {} } = {}) {
+  // ROUND 298 (volume 07 §L570-§L571): the ledger's own two declarations, read once from the settings map handed in.
+  const keepEntriesRaw = Number(settings['vmu.work.keepEntries'])
+  const keepEntries = Number.isInteger(keepEntriesRaw) && keepEntriesRaw > 0 ? keepEntriesRaw : 200
+  /** `autoSettle` true (the default) means recover() marks survivors itself; false means it only REPORTS them. */
+  const autoSettle = settings['vmu.work.autoSettle'] !== false
   if (!store || typeof store.patch !== 'function') {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'the work ledger needs a durable store',
       'construct the kernel with { root } - an in-flight ledger that forgets on exit would be a lie')
@@ -86,7 +91,14 @@ export function createWorkLedger({ store, clock = () => new Date().toISOString()
         interruptedAt: null,
         interruptedReason: null,
       }
-      await write(readStrict().concat([entry]))
+      const combined = readStrict().concat([entry])
+  // ROUND 298 (`vmu.work.keepEntries`): the ledger is bounded, and it keeps the NEWEST entries - dropping the oldest is the
+  // only direction that leaves the still-unfinished work visible, which is the whole point of this ledger.
+  const kept = combined.length > keepEntries ? combined.slice(combined.length - keepEntries) : combined
+  await write(kept)
+  if (kept.length !== combined.length) {
+    return { ok: true, entry: Object.assign({}, entry), pruned: combined.length - kept.length, keepEntries }
+  }
       return { ok: true, entry: Object.assign({}, entry) }
     },
 
@@ -124,6 +136,12 @@ export function createWorkLedger({ store, clock = () => new Date().toISOString()
       const all = readStrict()
       const pending = all.filter((e) => !e.interrupted)
       if (pending.length === 0) return { ok: true, recovered: 0, entries: all, note: 'nothing was in flight' }
+  // ROUND 298 (`vmu.work.autoSettle`): false means "report only" - the ledger tells the owner what survived a restart
+  // WITHOUT rewriting it, because marking an entry is a state change and the declaration says safe actions only.
+  if (!autoSettle) {
+    return { ok: true, recovered: 0, reported: pending.length, entries: all, autoSettle: false,
+      note: pending.length + ' in-flight item(s) survived a restart; vmu.work.autoSettle=false so they are REPORTED, not marked' }
+  }
       const at = clock()
       const next = all.map((e) => (e.interrupted ? e
         : Object.assign({}, e, { interrupted: true, interruptedAt: at, interruptedReason: String(reason) })))
