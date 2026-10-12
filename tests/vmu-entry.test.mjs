@@ -690,6 +690,27 @@ if (SELF_PROBE) {
   await rm(dataRoot, { recursive: true, force: true })
 }
 
+// ---- 15. the data-only branch must NOT make a missing pack look like a success ------------------------
+// The branch above accepts a name that carries data and has no manifest. The risk it creates is the mirror image: a name
+// that carries NOTHING must still fail, or a typo in `config.packs` would produce a clean run and an empty applied list,
+// and the deployment would believe a pack it never wrote was in force. Both directions are asserted, because a fix that
+// widens an acceptance path is only as good as the case it still refuses.
+{
+  for (const name of ['no-such-pack-at-all', 'v5r-typo']) {
+    const host = fakeCtx()
+    const missingRoot = await mkdtemp(join(tmpdir(), 'vmu-entry-missing-'))
+    const handle = entry.apply(host.ctx, { clock, root: missingRoot, packs: [name] })
+    await new Promise((r) => setTimeout(r, 60))
+    const errs = handle.packErrors()
+    ok(errs.length === 1 && errs[0].id === name && /neither a manifest/.test(String(errs[0].message)),
+      'E-15: a name with NEITHER a manifest NOR data is still refused BY NAME, so a typo cannot pass for a deployment',
+      JSON.stringify(errs))
+    ok(handle.appliedPacks().length === 0, 'and it is not recorded as applied (absent from the list, not silently included)',
+      JSON.stringify(handle.appliedPacks()))
+    await rm(missingRoot, { recursive: true, force: true })
+  }
+}
+
 console.log('=== VMU ENTRY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
