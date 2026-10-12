@@ -93,7 +93,16 @@ export function deliverViaSubagents(subagents, extract = null) {
       'inject { deliver } yourself, or give the loop a seam with startContinuable (docs/26 stage 3)')
   }
   return async ({ turn, text }) => {
-    const spec = { label: 'vmu-turn-' + String(turn && turn.id ? turn.id : 'unknown'), request: { prompt: [{ type: 'text', text: String(text) }] } }
+    // ROUND 346: the spec carries the SAME three elements the original's wake carries - who, why, and what next -
+    // because a host that only receives "here is some text" cannot supervise the turn it just started. Measured
+    // against the original: its wake takes { to, why, next_step }, so the framework labels its own the same way.
+    const spec = {
+      label: 'vmu-turn-' + String(turn && turn.id ? turn.id : 'unknown'),
+      to: turn && turn.member ? turn.member : null,
+      why: turn && typeof turn.why === 'string' ? turn.why : null,
+      next_step: turn && typeof turn.nextStep === 'string' ? turn.nextStep : null,
+      request: { prompt: [{ type: 'text', text: String(text) }] },
+    }
     const handle = await subagents.startContinuable(spec)
     if (typeof extract === 'function') {
       const got = extract(handle)
@@ -135,13 +144,13 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
   const fail = (code, message, hint) => { counts.refused += 1; lastRefusal.code = code; lastRefusal.message = message; throw refuse(code, message, hint) }
 
   /** ① open a turn: who, which round, which phase, which task. */
-  const open = ({ member, role = null, phase, task = null, round = 1 } = {}) => {
+  const open = ({ member, role = null, phase, task = null, why = null, nextStep = null, round = 1 } = {}) => {
     if (typeof member !== 'string' || member.trim() === '') fail('VMU_INVALID_ARGUMENT', 'a turn needs a member', 'pass { member, phase }')
     if (typeof phase !== 'string' || !PHASES.includes(phase)) {
       fail('VMU_INVALID_ARGUMENT', 'unknown phase: ' + String(phase), 'known phases: ' + PHASES.join(', '))
     }
     seq += 1
-    const turn = { id: 't-' + seq, member, role, phase, task, round, at: clock() }
+    const turn = { id: 't-' + seq, member, role, phase, task, why, nextStep, round, at: clock() }
     turns.set(turn.id, turn)
     counts.opened += 1
     return { ok: true, turn }

@@ -233,6 +233,23 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   ok(seen[0] && seen[0].label === 'vmu-turn-' + run2.turn.id && typeof seen[0].request.prompt[0].text === 'string' && seen[0].request.prompt[0].text.length > 1000,
     'T37. **** and what reached the seam is the ASSEMBLED text, labelled with the turn it belongs to',
     { label: seen[0] && seen[0].label, chars: seen[0] && seen[0].request.prompt[0].text.length })
+  // ROUND 346: the delivery spec carries the SAME three elements the original's wake takes ({ to, why, next_step }),
+  // because a host handed only "some text" cannot supervise the turn it just started.
+  const wake = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: collectPackSections([PACK]) }), faces: facesFrom(kernel2), deliver: bridge })
+  const opened = wake.open({ member: 'r-2', role: 'researcher', phase: 'normal', why: 'the lemma is open', nextStep: 'close it' })
+  ok(opened.turn.why === 'the lemma is open' && opened.turn.nextStep === 'close it' && opened.turn.member === 'r-2',
+    'T40. **** a turn records WHO, WHY and WHAT NEXT together - the three elements the original wake carries',
+    { member: opened.turn.member, why: opened.turn.why, nextStep: opened.turn.nextStep })
+  const seen2 = []
+  const seam2 = { async startContinuable(spec) { seen2.push(spec); return { reply: '```json\n{}\n```' } } }
+  await deliverViaSubagents(seam2)({ turn: opened.turn, text: 'x' })
+  const keys = Object.keys(seen2[0] || {}).sort()
+  ok(keys.includes('to') && keys.includes('why') && keys.includes('next_step') && seen2[0].to === 'r-2',
+    'T41. **** and the host SEES them: the delivery spec names the member, the reason and the next step, so supervision does not depend on reading the prompt text',
+    { keys, to: seen2[0] && seen2[0].to })
+  ok(JSON.stringify(keys) === JSON.stringify(['label', 'next_step', 'request', 'to', 'why']),
+    'T42. **** PROPERTY: the spec key set is exactly what the original wake takes plus the trace label - the two sides wake a member with the same information',
+    { keys })
   let noSeam = null
   try { deliverViaSubagents(null) } catch (e) { noSeam = e }
   ok(noSeam !== null && noSeam.code === 'VMU_ENGINE_UNAVAILABLE',
