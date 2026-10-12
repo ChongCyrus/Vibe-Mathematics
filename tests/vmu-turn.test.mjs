@@ -682,7 +682,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
 // checked against what the kernel services really expose, and the fields with no matching operation are BOOKKEPT so
 // that a real reply is never refused merely because a face is still to be built.
 {
-  ok(FIELDS.length + RECORDED_FIELDS.length === 29,
+  ok(FIELDS.length + RECORDED_FIELDS.length === 29 && FIELDS.length === 23,
     'T104. **** the reply surface now covers all 29 fields the original parses - 21 dispatched to real operations and 8 bookkept',
     { dispatched: FIELDS.length, bookkept: RECORDED_FIELDS.length, total: FIELDS.length + RECORDED_FIELDS.length })
   ok(FIELD_OWNERS.vote_solved.face === 'vmu.ballotbox' && FIELD_OWNERS.meeting_hand.op === 'queue' && FIELD_OWNERS.convene_meeting.op === 'open' && FIELD_OWNERS.assign.op === 'assign',
@@ -903,6 +903,27 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   ok(v.includes("roleLabel") === true,
     "T137. **** and the authored role section declares roleLabel among the variables it uses, so the contract and the text agree",
     { vars: v })
+}
+
+// 35) WHAT HAPPENS TO A FIELD WITH NO FACE (docs/26 section 3.30). A probe showed that the recorded fields were
+// recognised and then DISCARDED: a model writing prioritize, nudge or fire had its payload vanish with no trace.
+// Two of them now have real operations, and every remaining one is KEPT on the turn state and reported.
+{
+  const loopK = createTurnOrchestrator({ prompt: { assemble: async () => ({ ok: true, text: "x", sources: [] }) }, faces: {} })
+  const resK = await loopK.apply({ prioritize: { order: [{ task_id: "t-1", priority: 2 }] }, fire: { id: "t-2", reason: "done" }, solved: false })
+  ok(resK.bookkeeping.length === 3 && resK.bookkeeping.every((b) => b.kept === true),
+    "T138. **** a field with no face is KEPT, not discarded: the payload reaches the turn state and the receipt says so, so it can neither vanish nor be mistaken for handled",
+    { bookkeeping: resK.bookkeeping })
+  const stK = loopK.status()
+  ok(typeof stK === "object" && stK !== null,
+    "T139. **** and the loop still reports its status after keeping them",
+    { keys: Object.keys(stK).length })
+  ok(FIELD_OWNERS.nudge.face === "vmu.meetings" && FIELD_OWNERS.nudge.op === "warn" && FIELD_OWNERS.reject_assign.op === "speak",
+    "T140. **** while the two fields that DO have a real operation are dispatched to it - a nudge is the meeting service warn, and a rejected assignment is broadcast as speech, which is what the source says happens to that reason",
+    { nudge: FIELD_OWNERS.nudge.face + "." + FIELD_OWNERS.nudge.op })
+  ok(RECORDED_FIELDS.includes("hire") && RECORDED_FIELDS.includes("fire") && RECORDED_FIELDS.includes("prioritize") && RECORDED_FIELDS.includes("solved"),
+    "T141. **** and the fields with NO real operation stay recorded rather than being sent somewhere invented - the members service is not even present in a default kernel",
+    { recorded: RECORDED_FIELDS })
 }
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)

@@ -53,6 +53,8 @@ export const FIELD_OWNERS = Object.freeze({
   task_claim: Object.freeze({ face: 'vmu.tasks', op: 'transition' }),
   task_done: Object.freeze({ face: 'vmu.tasks', op: 'transition' }),
   assign: Object.freeze({ face: 'vmu.tasks', op: 'assign' }),
+  nudge: Object.freeze({ face: 'vmu.meetings', op: 'warn' }),
+  reject_assign: Object.freeze({ face: 'vmu.meetings', op: 'speak' }),
 })
 
 export const FIELDS = Object.freeze(Object.keys(FIELD_OWNERS))
@@ -73,7 +75,7 @@ export const FIELDS = Object.freeze(Object.keys(FIELD_OWNERS))
  */
 export const RECORDED_FIELDS = Object.freeze([
   'contextPct', 'compacted',
-  'solved', 'prioritize', 'nudge', 'reject_assign', 'hire', 'fire',
+  'solved', 'prioritize', 'hire', 'fire',
 ])
 
 const PHASES = Object.freeze(['founding', 'normal', 'checkpoint', 'verify', 'verify-debate', 'meeting', 'resume'])
@@ -435,6 +437,17 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
       const res = await fn(d.payload, { field: d.field, face: d.face, op: d.op })
       counts.dispatched += 1
       executed.push({ field: d.field, face: d.face, op: d.op, result: res })
+    }
+    // ROUND 394: the remaining recorded fields used to be RECOGNISED AND THEN DISCARDED - a model that wrote prioritize,
+    // hire or fire had its payload vanish with no trace, which is the silent-failure class this repository refuses.
+    // Each one is now kept on the turn state under its own name and reported in the receipt, so the framework can read
+    // it and a consumer can see that it arrived. No face is invented for them: the members service is not even present
+    // in a default kernel, and sending a payload to an operation that does not exist would be worse than keeping it.
+    for (const field of RECORDED_FIELDS) {
+      if (r[field] === undefined || r[field] === null) continue
+      if (bookkeeping.some((b) => b.field === field)) continue
+      context.set(field, r[field])
+      bookkeeping.push({ field, kept: true })
     }
     if (bookkeeping.length) counts.bookkept = (counts.bookkept || 0) + bookkeeping.length
     return { ok: true, executed, skipped, planned: dispatches.length, bookkeeping }
