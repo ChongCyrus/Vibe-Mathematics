@@ -705,7 +705,7 @@ export const CHARTER_BLOCKS = Object.freeze([
         // `vmu-turn` T127, which asserts the three speaker STATES appear alone - correctly, because a second meeting
         // section sitting beside them is a different thing from the meeting's own text. The protocol belongs IN this
         // section's meeting variant, and this is where it now lives.
-        '（流程：**先轮流发言**——每位常驻成员都会获得一次“要不要发言”的机会，**不强制**；随后进入**举手发言**阶段：想发言的人举手（`meeting_hand:true`），发言结束后**还可以再次举手**，可多轮。**无人举手**时会议收束。沉默本身**不会**触发任何截止；纪要会具名记下“已获得机会、选择未发言”。框架每轮最多同时唤醒 maxParallel 名成员（默认 3），并把已收集到的发言附在提示里。收束时纪要与结论写入 Shared/Meetings/<会议id>.md 并同步到群聊。）',
+        '（流程：**先轮流发言**——每位常驻成员都会获得一次"要不要发言"的机会，**不强制**；随后进入**举手发言**阶段：想发言的人举手（`meeting_hand:true`），发言结束后**还可以再次举手**，可多轮。**无人举手**时会议收束。沉默本身**不会**触发任何截止；纪要会具名记下“已获得机会、选择未发言”。框架每轮最多同时唤醒 maxParallel 名成员（默认 3），并把已收集到的发言附在提示里。收束时纪要与结论写入 Shared/Meetings/<会议id>.md 并同步到群聊。）',
         '',
         '请就议程发表你的意见。分工、优先级、下一步做什么、是否认为原问题已解决，都可以说。',
         '（会议轮请把你的发言填进 JSON 的 "input" 字段，框架据此写会议纪要。）',
@@ -1027,12 +1027,23 @@ export const CHARTER_BLOCKS = Object.freeze([
     kind: 'phase',
     texts: {
       'paper-write': [
-        '【最终论文·撰写 —— {{ role }} {{ member }}】',
+        '（**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）',
+        '检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把“未检测到”当失败。',
+        '【最终论文·撰写 —— {{ roleLabel }} {{ member }}】',
         '本所对原问题的一致结论已经达成，现在撰写**最终论文**。',
         '请你**只写你自己库里已有证据支撑**的内容：',
         '- 直接引用你的卡片（Members/{{ member }}/Propos|Methods|Subproblems/）、Members/{{ member }}/Progress/progress.md、你参与的表决记录；',
         '- **不得编造**：没有证据的推测不要写成结论；未决 / 被否证的条目必须显式标注“未定论 / 已被否证”；',
         '- 在 evidence 里写清证据路径，附录会逐条索引。',
+        '',
+        '结束时只输出一个 JSON 对象：',
+        '{ "paper_part": {',
+        '    "title": "你这部分的标题",',
+        '    "solution": "你对**原问题完整解法**的贡献（推理链与结论，只写有证据的）",',
+        '    "methods": "你创造/发现的方法、理论、思想、有价值经验、数学理解",',
+        '    "rules": "你从这些工作中归纳出的可复用规律",',
+        '    "limits": "局限、未决、被否证之处（必须诚实、显式）",',
+        '    "evidence": ["Members/{{ member }}/Propos/p-x.md"] } }',
       ].join('\n'),
     },
   },

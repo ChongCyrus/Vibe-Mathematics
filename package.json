@@ -474,6 +474,7 @@
     "tests/audit-preset-rows.test.mjs",
     "tests/vmu-setting-rename.test.mjs",
     "tests/vmu-notice-shapes.test.mjs",
+    "tests/vmu-prompt-type-coverage.test.mjs",
     "tests/vmu-partnership.test.mjs",
     "tests/vmu-tenure.test.mjs",
     "docs/COMPAT-AUDIT-ROUND3.md",
