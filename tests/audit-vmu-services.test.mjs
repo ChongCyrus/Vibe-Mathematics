@@ -45,7 +45,7 @@ const SURFACES = {
   'vmu.retention': 'retention', 'vmu.delegation': 'delegation', 'vmu.workflow': 'workflow', 'vmu.trust': 'trust',
   'vmu.handover': 'handover', 'vmu.arbitration': 'arbitration', 'vmu.recruit': 'recruit', 'vmu.topology': 'topology',
   'vmu.fairness': 'fairness', 'vmu.charter': 'charter', 'vmu.repropack': 'repropack', 'vmu.memory': 'memory',
-  'vmu.bidding': 'bidding', 'vmu.mathjobs': 'mathjobs', 'vmu.skills': 'skills', 'vmu.publication': 'publication', 'vmu.collab': 'collab', 'vmu.identity': 'identity', 'vmu.human': 'human', 'vmu.discipline': 'discipline', 'vmu.biospecimen': 'biospecimen', 'vmu.explain': 'explain', 'vmu.control': 'control', 'vmu.citations': 'citations',
+  'vmu.bidding': 'bidding', 'vmu.mathjobs': 'mathjobs', 'vmu.skills': 'skills', 'vmu.publication': 'publication', 'vmu.collab': 'collab', 'vmu.identity': 'identity', 'vmu.human': 'human', 'vmu.discipline': 'discipline', 'vmu.custody': 'custody', 'vmu.explain': 'explain', 'vmu.control': 'control', 'vmu.citations': 'citations',
   'vmu.formal': 'formal', 'vmu.external': 'external', 'vmu.domaingate': 'domaingate', 'vmu.scheduler': 'scheduler',
   'vmu.crypto': 'crypto', 'vmu.notify': 'notify', 'vmu.lifecycle': 'lifecycle',
   'vmu.replay': 'replay',

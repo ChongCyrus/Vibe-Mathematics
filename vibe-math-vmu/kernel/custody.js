@@ -1,4 +1,4 @@
-// vmu kernel · biospecimen — the sample ledger and the CHAIN OF CUSTODY
+// vmu kernel · custody — the sample ledger and the CHAIN OF CUSTODY
 //
 // ★ 范围基准（2026-10-11）：**本面已判定降级为扩展** ✗ —— **对数学研究举不出消费者** ✓（判据与登记见 docs/23-§1b）。
 //   **本行注释不是"已完成"，而是"待改"的证据** ✗：键族与代码仍在，**移出流程必须包含撤代码**（docs/23-§2 规则 4）。
@@ -32,19 +32,19 @@ const boolOr = (v, d) => (typeof v === 'boolean' ? v : d)
 const intOr = (v, d) => (Number.isInteger(v) ? v : d)
 
 export const CODE = Object.freeze({
-  sampleUnknown: 'VMU_BIOSPECIMEN_SAMPLE_UNKNOWN',
-  chainRequired: 'VMU_BIOSPECIMEN_CHAIN_REQUIRED',
-  chainGap: 'VMU_BIOSPECIMEN_CHAIN_GAP',
-  reversibleMapping: 'VMU_BIOSPECIMEN_REVERSIBLE_MAPPING',
-  subjectRefStyle: 'VMU_BIOSPECIMEN_SUBJECT_REF_STYLE',
-  alreadyDestroyed: 'VMU_BIOSPECIMEN_ALREADY_DESTROYED',
+  sampleUnknown: 'VMU_CUSTODY_ENTRY_UNKNOWN',
+  chainRequired: 'VMU_CUSTODY_CHAIN_REQUIRED',
+  chainGap: 'VMU_CUSTODY_CHAIN_GAP',
+  reversibleMapping: 'VMU_CUSTODY_REVERSIBLE_MAPPING',
+  pseudonymStyle: 'VMU_CUSTODY_PSEUDONYM_STYLE',
+  alreadyDestroyed: 'VMU_CUSTODY_ALREADY_DESTROYED',
 })
 
 /** A reference that looks like a raw identifier rather than a code or pseudonym. Deliberately conservative. */
 const LOOKS_PLAINTEXT = /^[^@\s]+@[^@\s]+$|^[A-Z][a-z]+\s+[A-Z][a-z]+$/
 
-export function createBiospecimen({ clock = () => 0, log = null, settings = {}, bus = null, listCap = 100 } = {}) {
-  if (typeof clock !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'createBiospecimen needs a clock function', 'pass { clock: () => ms }')
+export function createCustody({ clock = () => 0, log = null, settings = {}, bus = null, listCap = 100 } = {}) {
+  if (typeof clock !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'createCustody needs a clock function', 'pass { clock: () => ms }')
   const sget = (key, def) => {
     if (settings && typeof settings.get === 'function') { const v = settings.get(key); return v === undefined ? def : v }
     if (settings && Object.prototype.hasOwnProperty.call(settings, key)) return settings[key]
@@ -53,13 +53,13 @@ export function createBiospecimen({ clock = () => 0, log = null, settings = {}, 
   const say = (ev) => { if (log && typeof log.append === 'function') { try { log.append(ev) } catch (e) { /* logging never breaks the face */ } } }
 
   const cfg = () => ({
-    ledgerDir: str(sget('vmu.biospecimen.ledgerDir')) || 'Ops/Biosamples',
-    requireChain: boolOr(sget('vmu.biospecimen.requireChain'), true),
-    chainGapPolicy: ['block', 'warn'].includes(sget('vmu.biospecimen.chainGapPolicy')) ? sget('vmu.biospecimen.chainGapPolicy') : 'block',
-    freezeThawWarnAt: intOr(sget('vmu.biospecimen.freezeThawWarnAt', 5), 5),
-    destroyKeepsReference: sget('vmu.biospecimen.destroyKeepsReference') !== false,
-    subjectRefStyle: ['pseudonym', 'code'].includes(sget('vmu.biospecimen.subjectRefStyle')) ? sget('vmu.biospecimen.subjectRefStyle') : 'pseudonym',
-    mappingIrreversible: sget('vmu.biospecimen.mappingIrreversible') !== false,   // 内核强制：默认 true
+    ledgerDir: str(sget('vmu.custody.ledgerDir')) || 'Ops/Biosamples',
+    requireChain: boolOr(sget('vmu.custody.requireChain'), true),
+    chainGapPolicy: ['block', 'warn'].includes(sget('vmu.custody.chainGapPolicy')) ? sget('vmu.custody.chainGapPolicy') : 'block',
+    freezeThawWarnAt: intOr(sget('vmu.custody.freezeThawWarnAt', 5), 5),
+    destroyKeepsReference: sget('vmu.custody.destroyKeepsReference') !== false,
+    pseudonymStyle: ['pseudonym', 'code'].includes(sget('vmu.custody.pseudonymStyle')) ? sget('vmu.custody.pseudonymStyle') : 'pseudonym',
+    mappingIrreversible: sget('vmu.custody.mappingIrreversible') !== false,   // 内核强制：默认 true
   })
 
   const samples = new Map()   // id -> { id, ref, kind, chain[], freezeThaw, destroyedAt, destroyReason, warnings[] }
@@ -73,26 +73,26 @@ export function createBiospecimen({ clock = () => 0, log = null, settings = {}, 
   }
 
   /**
-   * Register a sample. `subjectRefStyle` decides what a reference may look like, and `mappingIrreversible` decides whether a
+   * Register a sample. `pseudonymStyle` decides what a reference may look like, and `mappingIrreversible` decides whether a
    * mapping back to the subject may be stored at all - it may NOT when the key is on, which is the default and is marked
    * kernel-enforced in the design volume.
    */
-  function registerSample({ id = null, subjectRef = null, kind = null, mapping = null } = {}) {
+  function registerSample({ id = null, pseudonym = null, kind = null, mapping = null } = {}) {
     const c = cfg()
-    const enforced = ['vmu.biospecimen.subjectRefStyle', 'vmu.biospecimen.mappingIrreversible', 'vmu.biospecimen.ledgerDir']
+    const enforced = ['vmu.custody.pseudonymStyle', 'vmu.custody.mappingIrreversible', 'vmu.custody.ledgerDir']
     const fired = []
-    const ref = str(subjectRef)
-    if (!ref) throw refuse('VMU_INVALID_ARGUMENT', 'registerSample needs a subjectRef', 'pass { subjectRef: "anon-…" }')
-    // subjectRefStyle: a pseudonym must not look like a plaintext identifier; a code must look like a code.
-    if (c.subjectRefStyle === 'pseudonym' && LOOKS_PLAINTEXT.test(ref)) {
-      fired.push('vmu.biospecimen.subjectRefStyle')
-      throw refuse(CODE.subjectRefStyle, 'vmu.biospecimen.subjectRefStyle=pseudonym but the reference looks like a plaintext identifier',
-        'use a pseudonym, or set the style to code deliberately', { ref, style: c.subjectRefStyle, enforced, fired })
+    const ref = str(pseudonym)
+    if (!ref) throw refuse('VMU_INVALID_ARGUMENT', 'registerSample needs a pseudonym', 'pass { pseudonym: "anon-…" }')
+    // pseudonymStyle: a pseudonym must not look like a plaintext identifier; a code must look like a code.
+    if (c.pseudonymStyle === 'pseudonym' && LOOKS_PLAINTEXT.test(ref)) {
+      fired.push('vmu.custody.pseudonymStyle')
+      throw refuse(CODE.pseudonymStyle, 'vmu.custody.pseudonymStyle=pseudonym but the reference looks like a plaintext identifier',
+        'use a pseudonym, or set the style to code deliberately', { ref, style: c.pseudonymStyle, enforced, fired })
     }
     // mappingIrreversible: with it on (the default) a reversible mapping is REFUSED, not encrypted and hoped over.
     if (c.mappingIrreversible && mapping !== null && mapping !== undefined) {
-      fired.push('vmu.biospecimen.mappingIrreversible')
-      throw refuse(CODE.reversibleMapping, 'vmu.biospecimen.mappingIrreversible=true: a mapping from subject to reference may not be stored here',
+      fired.push('vmu.custody.mappingIrreversible')
+      throw refuse(CODE.reversibleMapping, 'vmu.custody.mappingIrreversible=true: a mapping from subject to reference may not be stored here',
         'keep the mapping outside this ledger, or set the key to false deliberately and record that decision', { ref, enforced, fired })
     }
     const realId = str(id) || ('sample-' + (++seq))
@@ -101,7 +101,7 @@ export function createBiospecimen({ clock = () => 0, log = null, settings = {}, 
     // requireChain: a registered sample must OPEN its chain with a holder, so the chain can never start empty.
     if (c.requireChain) {
       rec.chain.push({ at, holder: null, action: 'registered', reason: null })
-      fired.push('vmu.biospecimen.requireChain')
+      fired.push('vmu.custody.requireChain')
     }
     samples.set(realId, rec)
     return { ok: true, id: realId, ref, kind: rec.kind, ledgerDir: c.ledgerDir, chainLength: rec.chain.length, enforced, fired }
@@ -110,7 +110,7 @@ export function createBiospecimen({ clock = () => 0, log = null, settings = {}, 
   /** Move custody. `requireChain` is what makes a transfer carry a holder and a reason rather than a bare note. */
   function transfer({ sampleId, to = null, reason = null, at = null } = {}) {
     const c = cfg()
-    const enforced = ['vmu.biospecimen.requireChain', 'vmu.biospecimen.chainGapPolicy']
+    const enforced = ['vmu.custody.requireChain', 'vmu.custody.chainGapPolicy']
     const fired = []
     const s = sampleOf(sampleId)
     if (s.destroyedAt !== null) {
@@ -119,8 +119,8 @@ export function createBiospecimen({ clock = () => 0, log = null, settings = {}, 
     }
     const holder = str(to)
     if (c.requireChain && !holder) {
-      fired.push('vmu.biospecimen.requireChain')
-      throw refuse(CODE.chainRequired, 'vmu.biospecimen.requireChain=true: a transfer needs a new holder',
+      fired.push('vmu.custody.requireChain')
+      throw refuse(CODE.chainRequired, 'vmu.custody.requireChain=true: a transfer needs a new holder',
         'pass to:<holder>, or set the key to false deliberately', { sampleId: s.id, enforced, fired })
     }
     const when = Number.isFinite(at) ? Number(at) : clock()
@@ -131,11 +131,11 @@ export function createBiospecimen({ clock = () => 0, log = null, settings = {}, 
     // `requireChain: false` permits, and conflating the two made the default block policy refuse a first transfer.
     const gap = (last !== undefined && when < last.at) || (last === undefined && c.requireChain)
     if (gap && c.chainGapPolicy === 'block') {
-      fired.push('vmu.biospecimen.chainGapPolicy')
+      fired.push('vmu.custody.chainGapPolicy')
       throw refuse(CODE.chainGap, 'the custody chain has a gap: ' + (last ? 'the transfer is dated before the previous link' : 'there is no previous link'),
-        'record the missing link, or set vmu.biospecimen.chainGapPolicy=warn deliberately', { sampleId: s.id, lastAt: last ? last.at : null, when, enforced, fired })
+        'record the missing link, or set vmu.custody.chainGapPolicy=warn deliberately', { sampleId: s.id, lastAt: last ? last.at : null, when, enforced, fired })
     }
-    if (gap) { s.warnings.push('chain-gap-warn at ' + when); fired.push('vmu.biospecimen.chainGapPolicy') }
+    if (gap) { s.warnings.push('chain-gap-warn at ' + when); fired.push('vmu.custody.chainGapPolicy') }
     s.chain.push({ at: when, holder: holder || null, action: 'transfer', reason: reason === null ? null : String(reason) })
     return { ok: true, sampleId: s.id, holder: holder || null, chainLength: s.chain.length, gapWarned: gap, enforced, fired }
   }
@@ -150,7 +150,7 @@ export function createBiospecimen({ clock = () => 0, log = null, settings = {}, 
     if (warn) s.warnings.push('freeze-thaw ' + s.freezeThaw + ' >= ' + c.freezeThawWarnAt)
     s.chain.push({ at: clock(), holder: s.chain.length ? s.chain[s.chain.length - 1].holder : null, action: which, reason: null })
     return { ok: true, sampleId: s.id, kind: which, cycles: s.freezeThaw, warnAt: c.freezeThawWarnAt, warned: warn,
-      enforced: ['vmu.biospecimen.freezeThawWarnAt'], fired: warn ? ['vmu.biospecimen.freezeThawWarnAt'] : [] }
+      enforced: ['vmu.custody.freezeThawWarnAt'], fired: warn ? ['vmu.custody.freezeThawWarnAt'] : [] }
   }
 
   /**
@@ -159,7 +159,7 @@ export function createBiospecimen({ clock = () => 0, log = null, settings = {}, 
    */
   function destroy({ sampleId, reason = null } = {}) {
     const c = cfg()
-    const enforced = ['vmu.biospecimen.destroyKeepsReference']
+    const enforced = ['vmu.custody.destroyKeepsReference']
     const s = sampleOf(sampleId)
     if (s.destroyedAt !== null) {
       throw refuse(CODE.alreadyDestroyed, 'the sample was already destroyed at ' + s.destroyedAt, 'nothing to do', { sampleId: s.id, destroyedAt: s.destroyedAt, enforced, fired: [] })
@@ -169,7 +169,7 @@ export function createBiospecimen({ clock = () => 0, log = null, settings = {}, 
     s.destroyReason = reason === null ? null : String(reason)
     s.chain.push({ at, holder: s.chain.length ? s.chain[s.chain.length - 1].holder : null, action: 'destroyed', reason: s.destroyReason })
     if (!c.destroyKeepsReference) { samples.delete(s.id); dropped += 1 }
-    return { ok: true, sampleId: s.id, destroyedAt: at, referenceKept: c.destroyKeepsReference, reason: s.destroyReason, enforced, fired: c.destroyKeepsReference ? [] : ['vmu.biospecimen.destroyKeepsReference'] }
+    return { ok: true, sampleId: s.id, destroyedAt: at, referenceKept: c.destroyKeepsReference, reason: s.destroyReason, enforced, fired: c.destroyKeepsReference ? [] : ['vmu.custody.destroyKeepsReference'] }
   }
 
   /** Read-only view of one sample, including the whole chain and the warnings raised against it. */
@@ -178,7 +178,7 @@ export function createBiospecimen({ clock = () => 0, log = null, settings = {}, 
     return { ok: true, id: s.id, ref: s.ref, kind: s.kind, ledgerDir: cfg().ledgerDir,
       chain: s.chain.map((x) => Object.assign({}, x)), chainLength: s.chain.length,
       freezeThaw: s.freezeThaw, destroyedAt: s.destroyedAt, warnings: s.warnings.slice(),
-      enforced: ['vmu.biospecimen.ledgerDir'], fired: [] }
+      enforced: ['vmu.custody.ledgerDir'], fired: [] }
   }
 
   const status = () => {

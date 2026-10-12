@@ -1,9 +1,9 @@
-// tests/vmu-biospecimen-budget-audit.test.mjs — independent tests for the three families this round added or completed:
-//   kernel/biospecimen.js  (vmu.biospecimen.*  seven declared keys, a NEW face)
+// tests/vmu-custody-budget-audit.test.mjs — independent tests for the three families this round added or completed:
+//   kernel/custody.js  (vmu.custody.*  seven declared keys, a NEW face)
 //   kernel/budget.js       (vmu.budget.*       five declared keys, an existing face)
 //   kernel/audit.js        (vmu.audit.*        eight declared keys, an existing face)
 // Every setting is asserted in BOTH directions. Last line: === VMU BIOSPECIMEN+BUDGET+AUDIT: N passed, M failed ===
-import { createBiospecimen } from '../vibe-math-vmu/kernel/biospecimen.js'
+import { createCustody } from '../vibe-math-vmu/kernel/custody.js'
 import { createBudget } from '../vibe-math-vmu/kernel/budget.js'
 import { createAudit } from '../vibe-math-vmu/kernel/audit.js'
 
@@ -17,53 +17,53 @@ const throwsCode = (fn, code, label) => {
 
 let now = 1000
 const DAY = 86400000
-const bio = (s = {}) => createBiospecimen({ clock: () => now, settings: s })
+const bio = (s = {}) => createCustody({ clock: () => now, settings: s })
 const bud = (s = {}) => createBudget({ clock: () => now, settings: s })
 const aud = (s = {}) => createAudit({ clock: () => now, settings: s })
 
 // ── BIOSPECIMEN ──────────────────────────────────────────────────────────────────────────────────────────────
 {
   const z = bio()
-  ok(z.status().samples === 0 && z.status().chainRequired === true, 'biospecimen zero-config: nothing registered, chain required by default')
+  ok(z.status().samples === 0 && z.status().chainRequired === true, 'custody zero-config: nothing registered, chain required by default')
 
-  // subjectRefStyle: a plaintext-looking reference is refused under pseudonym style
-  const p = bio({ 'vmu.biospecimen.subjectRefStyle': 'pseudonym' })
-  throwsCode(() => p.registerSample({ subjectRef: 'someone@example.org' }), 'VMU_BIOSPECIMEN_SUBJECT_REF_STYLE',
-    'subjectRefStyle[-]: a plaintext-looking reference is refused by name')
-  ok(p.registerSample({ subjectRef: 'anon-0001' }).ok === true, 'subjectRefStyle[+]: a pseudonym registers')
-  const asCode = bio({ 'vmu.biospecimen.subjectRefStyle': 'code' })
-  ok(asCode.registerSample({ subjectRef: 'PT-0042' }).ok === true, 'subjectRefStyle[+]: under code style a code registers')
+  // pseudonymStyle: a plaintext-looking reference is refused under pseudonym style
+  const p = bio({ 'vmu.custody.pseudonymStyle': 'pseudonym' })
+  throwsCode(() => p.registerSample({ pseudonym: 'someone@example.org' }), 'VMU_CUSTODY_PSEUDONYM_STYLE',
+    'pseudonymStyle[-]: a plaintext-looking reference is refused by name')
+  ok(p.registerSample({ pseudonym: 'anon-0001' }).ok === true, 'pseudonymStyle[+]: a pseudonym registers')
+  const asCode = bio({ 'vmu.custody.pseudonymStyle': 'code' })
+  ok(asCode.registerSample({ pseudonym: 'PT-0042' }).ok === true, 'pseudonymStyle[+]: under code style a code registers')
 
   // mappingIrreversible: kernel-enforced, so a reversible mapping is REFUSED rather than encrypted and hoped over
-  const irrev = bio({ 'vmu.biospecimen.mappingIrreversible': true })
-  const rev = throwsCode(() => irrev.registerSample({ subjectRef: 'anon-9', mapping: { subject: 'Jane Doe', ref: 'anon-9' } }),
-    'VMU_BIOSPECIMEN_REVERSIBLE_MAPPING', 'mappingIrreversible[-]: a reversible mapping is refused by name')
+  const irrev = bio({ 'vmu.custody.mappingIrreversible': true })
+  const rev = throwsCode(() => irrev.registerSample({ pseudonym: 'anon-9', mapping: { subject: 'Jane Doe', ref: 'anon-9' } }),
+    'VMU_CUSTODY_REVERSIBLE_MAPPING', 'mappingIrreversible[-]: a reversible mapping is refused by name')
   ok(!!rev && /outside this ledger/.test(String(rev.hint)), 'mappingIrreversible[-]: the hint says where the mapping belongs')
-  const allowed = bio({ 'vmu.biospecimen.mappingIrreversible': false })
-  ok(allowed.registerSample({ subjectRef: 'anon-9', mapping: { subject: 'Jane Doe' } }).ok === true,
+  const allowed = bio({ 'vmu.custody.mappingIrreversible': false })
+  ok(allowed.registerSample({ pseudonym: 'anon-9', mapping: { subject: 'Jane Doe' } }).ok === true,
     'mappingIrreversible[+]: only when the key is switched off may a mapping be stored')
 
   // requireChain: a transfer needs a holder
-  const chain = bio({ 'vmu.biospecimen.requireChain': true })
-  const s1 = chain.registerSample({ subjectRef: 'anon-A', kind: 'serum' })
+  const chain = bio({ 'vmu.custody.requireChain': true })
+  const s1 = chain.registerSample({ pseudonym: 'anon-A', kind: 'serum' })
   ok(s1.chainLength === 1, 'requireChain[+]: registration opens the chain')
-  throwsCode(() => chain.transfer({ sampleId: s1.id }), 'VMU_BIOSPECIMEN_CHAIN_REQUIRED',
+  throwsCode(() => chain.transfer({ sampleId: s1.id }), 'VMU_CUSTODY_CHAIN_REQUIRED',
     'requireChain[-]: a transfer with no holder is refused by name')
   const moved = chain.transfer({ sampleId: s1.id, to: 'freezer-2', reason: 'moved' })
   ok(moved.chainLength === 2 && chain.chainOf({ sampleId: s1.id }).chain.length === 2, 'requireChain[+]: a transfer with a holder extends the chain')
-  const loose = bio({ 'vmu.biospecimen.requireChain': false })
-  const s2 = loose.registerSample({ subjectRef: 'anon-B' })
+  const loose = bio({ 'vmu.custody.requireChain': false })
+  const s2 = loose.registerSample({ pseudonym: 'anon-B' })
   ok(s2.chainLength === 0 && loose.transfer({ sampleId: s2.id }).ok === true, 'requireChain[off]: with it off neither the opening nor the holder is required')
 
   // chainGapPolicy: a backwards-dated link is a gap
-  const blocking = bio({ 'vmu.biospecimen.chainGapPolicy': 'block' })
-  const s3 = blocking.registerSample({ subjectRef: 'anon-C' })
+  const blocking = bio({ 'vmu.custody.chainGapPolicy': 'block' })
+  const s3 = blocking.registerSample({ pseudonym: 'anon-C' })
   now += 5000
   blocking.transfer({ sampleId: s3.id, to: 'freezer-1' })
-  throwsCode(() => blocking.transfer({ sampleId: s3.id, to: 'freezer-2', at: now - 10000 }), 'VMU_BIOSPECIMEN_CHAIN_GAP',
+  throwsCode(() => blocking.transfer({ sampleId: s3.id, to: 'freezer-2', at: now - 10000 }), 'VMU_CUSTODY_CHAIN_GAP',
     'chainGapPolicy[-]: a link dated before the previous one is refused by name')
-  const warning = bio({ 'vmu.biospecimen.chainGapPolicy': 'warn' })
-  const s4 = warning.registerSample({ subjectRef: 'anon-D' })
+  const warning = bio({ 'vmu.custody.chainGapPolicy': 'warn' })
+  const s4 = warning.registerSample({ pseudonym: 'anon-D' })
   now += 5000
   warning.transfer({ sampleId: s4.id, to: 'freezer-1' })
   const gapWarned = warning.transfer({ sampleId: s4.id, to: 'freezer-2', at: now - 10000 })
@@ -71,28 +71,28 @@ const aud = (s = {}) => createAudit({ clock: () => now, settings: s })
     'chainGapPolicy[warn]: a gap is recorded and warned about instead of refused')
 
   // freezeThawWarnAt: a warning at the declared count, never a refusal
-  const ft = bio({ 'vmu.biospecimen.freezeThawWarnAt': 2 })
-  const s5 = ft.registerSample({ subjectRef: 'anon-E' })
+  const ft = bio({ 'vmu.custody.freezeThawWarnAt': 2 })
+  const s5 = ft.registerSample({ pseudonym: 'anon-E' })
   ok(ft.freezeThawCycle({ sampleId: s5.id, kind: 'thaw' }).warned === false, 'freezeThawWarnAt[+]: the first cycle does not warn')
   const warned = ft.freezeThawCycle({ sampleId: s5.id, kind: 'thaw' })
   ok(warned.warned === true && warned.cycles === 2, 'freezeThawWarnAt[-]: at the declared count it WARNS (the contract asks for a warning, not a refusal)')
   ok(ft.freezeThawCycle({ sampleId: s5.id, kind: 'thaw' }).ok === true, 'freezeThawWarnAt: crossing the threshold does not refuse')
 
   // destroyKeepsReference
-  const keeping = bio({ 'vmu.biospecimen.destroyKeepsReference': true })
-  const s6 = keeping.registerSample({ subjectRef: 'anon-F' })
+  const keeping = bio({ 'vmu.custody.destroyKeepsReference': true })
+  const s6 = keeping.registerSample({ pseudonym: 'anon-F' })
   const kept = keeping.destroy({ sampleId: s6.id, reason: 'used up' })
   ok(kept.referenceKept === true && keeping.status().samples === 1 && keeping.status().destroyed === 1,
     'destroyKeepsReference[+]: the record stays and says the material is gone')
-  throwsCode(() => keeping.transfer({ sampleId: s6.id, to: 'x' }), 'VMU_BIOSPECIMEN_ALREADY_DESTROYED',
+  throwsCode(() => keeping.transfer({ sampleId: s6.id, to: 'x' }), 'VMU_CUSTODY_ALREADY_DESTROYED',
     'destroy[+]: a destroyed sample cannot change custody')
-  const forgetting = bio({ 'vmu.biospecimen.destroyKeepsReference': false })
-  const s7 = forgetting.registerSample({ subjectRef: 'anon-G' })
+  const forgetting = bio({ 'vmu.custody.destroyKeepsReference': false })
+  const s7 = forgetting.registerSample({ pseudonym: 'anon-G' })
   ok(forgetting.destroy({ sampleId: s7.id }).referenceKept === false && forgetting.status().samples === 0,
     'destroyKeepsReference[-]: with it off the record is removed and the removal is counted')
 
   // ledgerDir is reported, never touched
-  ok(bio({ 'vmu.biospecimen.ledgerDir': 'Custom/Samples' }).status().policy.ledgerDir === 'Custom/Samples', 'ledgerDir[+]: the declared directory is reported')
+  ok(bio({ 'vmu.custody.ledgerDir': 'Custom/Samples' }).status().policy.ledgerDir === 'Custom/Samples', 'ledgerDir[+]: the declared directory is reported')
   ok(bio().status().policy.ledgerDir === 'Ops/Biosamples', 'ledgerDir[-]: the declared default is reported')
 }
 

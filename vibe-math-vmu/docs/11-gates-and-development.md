@@ -465,7 +465,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 > **⑥ ★★★ 未生效的改写是【失败】，不是一句提示**（**轮 242–244 实测，代价整整两轮** ✗✓）：**轮 242 里那段术语校验的插入锚点没匹配** ✗ ⇒ **脚本打印了一行 `SKIP (n=0)` 就继续** ✓ ⇒ **代码【从未存在** ⇒ **`loaded` 恒为 false** ✗。**我却把这个"不存在"误诊为"实现失败"** ✗，**于是回退、又重写一遍同样的、仍然不会插入的代码** ✓ ⇒ **两轮都花在一个从未落地的块上** ✓✓。
 >
 > **⑭ ★★★ 码必须先【出现在文档里】才能被登记**（**轮 268 实测：一个码被码表拒收，另一个却早被接受** ✗✓）：**`generate-planned-codes.mjs` 的登记来源只有两处** ✓ —— **① 文档点名的码（`docs/03` 的生成块由它派生 ✓）；② `docs/03` 手写表【第一列】的反引号码 ✓**（**族前缀（尾部 `_`）跳过 ✓；手写区已有的不重复 ✓**）。**实测差异** ✓：**`VMU_RECRUIT_NEEDS_HUMAN` 早在生成块里作为"规划码"出现**（**由某卷点名 ⇒ 生成器认它 ✓**），**同批另一个码两处都没有 ⇒ 被拒** ✗。
-> **⑳ ★★★ 删一个【族】不能按文件删，必须按族逐一枚举触点**（**轮 301 实测** ✗✓）：**撤 `biospecimen` 时共 15 处触点**（内核面／`schema.js` 行／`index.js` 的 import＋构造＋**聚合解构表成员**＋`registry.register`＋getter／`package.json` ＋ `installer.js` 双清单／零机制矩阵生成器／服务审计映射／`03` 的码表行／卷内设置表与章节／生成物／台账）✓。★★ **两处最危险的耦合点**：**① 共享套件** —— 那个测试文件**同时覆盖三个族**（被撤的 ＋ `budget` ＋ `audit`），**按文件删会静默丢掉两个保留族的 30 条断言** ✗ ⇒ **必须拆套件**（拆后实测 30/0 全绿 ✓）；**② 聚合解构表** —— 我把 `discipline, biospecimen, explain` **整段删掉**，**连带移除两个活着的服务** ✗ ⇒ **语法检查当场拦下**，修复后**实证**内核 104 服务且两个服务都在 ✓。**可操作做法** ✓：**先 `git grep -c` 取全触点清单再动手**；**共享套件一律"拆"不"删"**；**聚合表只改成员、不删整段，并断言修复结果**；**撤完必须 `node --check` ＋ 载入内核点数服务** ✓。
+> **⑳ ★★★ 删一个【族】不能按文件删，必须按族逐一枚举触点**（**轮 301 实测** ✗✓）：**撤 `custody` 时共 15 处触点**（内核面／`schema.js` 行／`index.js` 的 import＋构造＋**聚合解构表成员**＋`registry.register`＋getter／`package.json` ＋ `installer.js` 双清单／零机制矩阵生成器／服务审计映射／`03` 的码表行／卷内设置表与章节／生成物／台账）✓。★★ **两处最危险的耦合点**：**① 共享套件** —— 那个测试文件**同时覆盖三个族**（被撤的 ＋ `budget` ＋ `audit`），**按文件删会静默丢掉两个保留族的 30 条断言** ✗ ⇒ **必须拆套件**（拆后实测 30/0 全绿 ✓）；**② 聚合解构表** —— 我把 `discipline, custody, explain` **整段删掉**，**连带移除两个活着的服务** ✗ ⇒ **语法检查当场拦下**，修复后**实证**内核 104 服务且两个服务都在 ✓。**可操作做法** ✓：**先 `git grep -c` 取全触点清单再动手**；**共享套件一律"拆"不"删"**；**聚合表只改成员、不删整段，并断言修复结果**；**撤完必须 `node --check` ＋ 载入内核点数服务** ✓。
 >
 > **㉑ ★★★ 在 Windows 上从 git 历史取文件时，【修订号必须加引号】**（**轮 305 实测** ✗✓）：**Node 的 `execSync` 走 `cmd.exe`，而 `cmd` 把 `^` 当转义符** ✗ ⇒ 把 `git show <sha>^:<path>` 直接拼进命令行时，`^` 会被吞掉，**报错却是 "path does not exist in `<sha>`"** —— **看起来像"文件不存在"，其实是"修订号被改了"** ✗✓。**正确做法** ✓：把 `<sha>:<path>` 整段加双引号再交给 `git`。★ **同类**：`^`／`&`／`|`／`>` 在 `cmd` 里都不是普通字符 ⇒ **凡把 git 修订表达式拼进 shell 字符串，一律加引号** ✓。
 >
@@ -485,7 +485,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 > **可操作做法** ✓：**① 跨族键 ⇒ 新建该族自己的面** ✓（**用它的键表、它自己的套件** ✓）；**② 动手前【量该族的记账表与它的断言】，而不只量键的语义** ✓；**③ 新面要接的【五处】已量清** ✓（**`kernel/index.js` 四处：import ＋ create ＋ `registry.register(name, {apiVersion:1}, {kind:'service', description})` ＋ getter ✓；`package.json#files` 一条 ✓；`tests/audit-vmu-services.test.mjs` 的 SURFACES 一条 ✓；`scripts/generate-zero-mechanism-matrix.mjs` 的逐面裁定一行 ✓**）—— **轮 276 照此清单一次接通，服务审计由 68 升至 69 ✓**。
 > **另一条并存约定** ✓：**新面的拒法有两种先例** —— **`publication.js` 的 `refuse` 【抛出】✓，`funding.js` 的 `deny` 【返回】** ✓ ⇒ **新面应先量【最近的前例】，再写测试** ✓（**轮 276 我按"抛出"写了五条断言，而该面跟随 `funding` 的"返回"，五条全红 ⇒ 是【测试】错，不是面错** ✓）。，先找【它的来源清单】，再决定是补来源还是改设计** ✓。
 >
-> **⑬ ★★★ 更正一条声明，就要【改掉那条声明】——只加一句"更正说明"不算更正**（**轮 264／265 实测：卷 22 是反例** ✗✓）：**该卷 L85 早已写着"状态更正（轮 61 核实）：以下各条的'计划 ✗'字样已过期"** ✓ —— **而它下面 5 处"计划 ✗"** 【一处都没改** ✗**）** ✓；**轮 265 逐族实测后更发现：该卷点名的 22 个键族里【14 个已全部接线**（含 `resource` 17/17 ✓、`funding` 16/16 ✓、`biospecimen` 7/7 ✓、`capacity` 12/12 ✓、`conference` 18/18 ✓、`hr` 11/11 ✓、`ip` 15/15 ✓、`records` 32/32 ✓ **）**）** ✗ ⇒ **而卷里仍称这些服务"未实现"** ✓。
+> **⑬ ★★★ 更正一条声明，就要【改掉那条声明】——只加一句"更正说明"不算更正**（**轮 264／265 实测：卷 22 是反例** ✗✓）：**该卷 L85 早已写着"状态更正（轮 61 核实）：以下各条的'计划 ✗'字样已过期"** ✓ —— **而它下面 5 处"计划 ✗"** 【一处都没改** ✗**）** ✓；**轮 265 逐族实测后更发现：该卷点名的 22 个键族里【14 个已全部接线**（含 `resource` 17/17 ✓、`funding` 16/16 ✓、`custody` 7/7 ✓、`capacity` 12/12 ✓、`conference` 18/18 ✓、`hr` 11/11 ✓、`ip` 15/15 ✓、`records` 32/32 ✓ **）**）** ✗ ⇒ **而卷里仍称这些服务"未实现"** ✓。
 > **可操作做法** ✓：**① 更正时【同时】改掉被更正的那句** ✓（**保留原句仅作对照时，必须【就地标注"已过期"**，而不是只在别处加一段说明 ✓**）**；**② 涉及"实现到什么程度"的声明，一律用【实测表】而不是形容词** ✓（**本轮的做法：逐族列出"键数／已接线／读取者／裁定" ✓**）；**③ 表里的判据必须可复算** ✓（**本轮＝`docs/04` 的设置表 ＋ 内核扫描 ✓**）。★ **理由**：**读者只看那句声明本身** ✓ —— **一段远处的更正无法阻止它继续误导** ✓。
 >
 > **⑫ ★★★ 如何【退役】一个键：三处同时认可，且【点名只放台账】**（**轮 258–260 三轮换来** ✗✓）：**发现一个键是重复声明（"一个语义两个名字"）后** ✓，**直接删声明会【连红三处审计** ✗**）** —— **因为 `audit-vmu-docs` 有一条【正确的不变式】："文档里点名的每个 `vmu.*` 键都必须存在于设置中"** ✓。**而该审计【自己文档里】早就写明了豁免** ✓：**前缀属于台账的卷【直接跳过**（"台账既不声明键，也不因提及名字而产生登记义务" ✓）**）**，**生成器也跳过 `14-`** ✓ ⇒ ★★★ **因此退役只需三件事，且【审计一个字都不用改】** ✓✓：
@@ -639,7 +639,6 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `ballot` · `open()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `ballotbox` · `open()` | refusal | VMU_CONFLICT | enforced=[0] enforcedScope=evaluated-so-far | 具名拒或 ok（task-214 实测：`open()` ⇒ 具名拒 **VMU_CONFLICT**（带口径 `enforced=[0]`）⇒ 零机制＝无票面参数 ⇒ 具名拒；有默认 ⇒ ok ✓） |
 | `bidding` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
-| `biospecimen` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（samples: 0；chainRequired: true 自曝 ✓）；无样本⇒无可转移对象，**不拒** ✓） |
 | `board` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `budget` · `open()` | object | — | — | ok 或 object（task-204 实测（形状取自测试 vmu-budget.test.mjs:16）：不传 settings 下 `open({scope})` ⇒ **ok**（零机制＝不限额、放行 ✓）） |
 | `bus` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
@@ -653,6 +652,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `control` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（paused: []、registrySize: 0；archivingNeverPausedByItself 与 idleNeverRecessesByItself 自曝两条不变式 ✓）） |
 | `course` · `open()` | refusal | VMU_INVALID_ARGUMENT | enforced=[1] enforcedScope=evaluated-so-far | 具名拒或 ok（task-214 实测：`open()` ⇒ 具名拒 **VMU_INVALID_ARGUMENT**（带口径 `enforced=[1]`）⇒ 零机制＝缺课程参数 ⇒ 具名拒 ✓） |
 | `crypto` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `custody` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（samples: 0；chainRequired: true 自曝 ✓）；无样本⇒无可转移对象，**不拒** ✓） |
 | `delegation` · `check()` | ok | — | — | 具名拒或 ok（task-214 批 3 补参（形状取自测试 vmu-delegation.test.mjs:30 `check({actor,action})`）：补参前实测具名拒 **VMU_INVALID_ARGUMENT**（带口径 `enforcedScope=evaluated-so-far`）⇒ 补参后应见判定对象（放行）⇒ 已放宽为"具名拒或 ok" ✓） |
 | `discipline` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（subjects: 0；breakerOffMeansOff: true 自曝「阈值 0＝机制关，而非允许零次失败」 ✓）） |
 | `domaincompliance` · `status()` | ok | — | — | ok 或 object（实测（轮 247）：零声明下 status() ⇒ ok（declared=[]、trail=0 自曝 ✓）；gate() 对**未满足的必答项【逐项点名】**并拒（VMU_GATE_UNSATISFIED ✓），**fail-closed 是设计**（20 卷 §9.4① 明文：闸未满足 ⇒ 动作不发生 ✓）） |
