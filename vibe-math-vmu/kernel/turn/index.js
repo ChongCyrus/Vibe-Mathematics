@@ -214,14 +214,19 @@ export function createTurnOrchestrator({
   const fail = (code, message, hint) => { counts.refused += 1; lastRefusal.code = code; lastRefusal.message = message; throw refuse(code, message, hint) }
 
   /** ① open a turn: who, which round, which phase, which task. */
-  const open = ({ member, role = null, phase, task = null, why = null, nextStep = null, roster = null, quorum = null, statusBlock = null, facts = null, meetingState = null, formalStatus = null, round = 1 } = {}) => {
+  const open = ({ member, role = null, roleLabel = null, phase, task = null, why = null, nextStep = null, roster = null, quorum = null, statusBlock = null, facts = null, meetingState = null, formalStatus = null, round = 1 } = {}) => {
     if (typeof member !== 'string' || member.trim() === '') fail('VMU_INVALID_ARGUMENT', 'a turn needs a member', 'pass { member, phase }')
     const knownPhases = extraPhases && extraPhases.length ? PHASES.concat(extraPhases) : PHASES
     if (typeof phase !== 'string' || !knownPhases.includes(phase)) {
       fail('VMU_INVALID_ARGUMENT', 'unknown phase: ' + String(phase), 'known phases: ' + (extraPhases && extraPhases.length ? PHASES.concat(extraPhases) : PHASES).join(', '))
     }
     seq += 1
-    const turn = { id: 't-' + seq, member, role, phase, task, why, nextStep, roster, quorum, statusBlock, facts, meetingState, formalStatus, round, at: clock() }
+    // R1 ZERO POLICY (round 466): `roleLabel` BELONGS IN THIS LIST. It was missing, so `turn.roleLabel` was always
+    // undefined and the kernel had to carry a map of institution role names to fill the heading at all - the display
+    // name and the framework's vocabulary were entangled by a MISSING FIELD, not by a design choice. With the field
+    // carried, the caller owns the name (the pack supplies it in real use) and the kernel holds none of an
+    // institution's words. A caller that supplies nothing gets the KEY it passed.
+    const turn = { id: 't-' + seq, member, role, roleLabel, phase, task, why, nextStep, roster, quorum, statusBlock, facts, meetingState, formalStatus, round, at: clock() }
     turns.set(turn.id, turn)
     woken.set(member, (woken.get(member) || 0) + 1)
     counts.opened += 1
@@ -238,7 +243,11 @@ export function createTurnOrchestrator({
     // `roleLabel` is the human name the source's kindLabel produces for every heading (docs/26 section 3.13). It is
     // deliberately separate from `role`, which is the KEY that bindings select on: mixing display text into a binding
     // would make the assembly depend on wording.
-    const roleLabel = ({ academician: '院士', researcher: '常驻研究员', temp: '临时工' })[turn.role] || turn.role
+    // R1 ZERO POLICY (round 465): these labels used to live here, and the rule forbids exactly that - the kernel must
+    // not know an institutions vocabulary. They are a DISPLAY variable (kernel/prompt VARIABLE_WHITELIST), selected by
+    // nothing: role selects sections, roleLabel is what a reader sees, which is what the packs headings interpolate.
+    // So the caller supplies the name, as the pack does in real use, and a caller that supplies none gets the KEY.
+    const roleLabel = turn.roleLabel || turn.role
     // ROUND 366: the resolved settings travel WITH the assembly context, because `{{ setting:... }}` resolves from
     // `ctx.settings` - so a real round, not just a hand-made call, can be tuned from configuration.
     // ROUND 382: per-turn FACTS are merged OVER the resolved settings, so a section can read something that is only

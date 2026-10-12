@@ -71,16 +71,14 @@ ok(genViolations.length === 0,
 
 // The one site the role/mechanism groups find, measured before this gate existed. Frozen: it must still be there, and the
 // list must not grow. It is a GENUINE violation, not a false positive - the kernel hardcodes the corpus role labels.
-const ROLE_SITES = ['vibe-math-vmu/kernel/turn/index.js']
+const ROLE_SITES = [] // EMPTY since round 466: the one site was fixed by carrying the field, not by exempting it
 const roleFiles = kernel.filter((f) => hits('角色专名', f).length || hits('机制专名', f).length)
 const unrecorded = roleFiles.filter((f) => !ROLE_SITES.includes(f))
 ok(unrecorded.length === 0,
   'the role/mechanism groups find no NEW kernel file beyond the one recorded site, so the backlog cannot grow',
   { unrecorded })
-const rotted = ROLE_SITES.filter((f) => !(hits('角色专名', f).length || hits('机制专名', f).length))
-ok(rotted.length === 0,
-  'and the recorded site STILL names a corpus role in code, so the note cannot rot: this is a real violation, not an exemption',
-  { rotted })
+ok(ROLE_SITES.length === 0,
+  'and there is NOTHING left to exempt, which is the state a fix reaches: the kernel carries the role label as a field from the caller instead of holding a map of an institutions words')
 ok(ROLE_SITES.length === 1,
   'exactly one kernel site is recorded, because exactly one was measured - a list of one is a finding, a list of many would be an excuse')
 

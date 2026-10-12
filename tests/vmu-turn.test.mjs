@@ -187,8 +187,8 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     'T28. **** the pack DECLARES its prompt sections and a pure collector gathers them - 68 sections with no hand-passing',
     { declared: declared.length })
   const loopDeclared = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: declared, clock: () => '2026-01-01T00:00:00.000Z' }) })
-  const d1 = await loopDeclared.assemble(loopDeclared.open({ member: 'r-1', role: 'researcher', phase: 'founding' }).turn)
-  const d2 = await loopDeclared.assemble(loopDeclared.open({ member: 'acad', role: 'academician', phase: 'founding' }).turn)
+  const d1 = await loopDeclared.assemble(loopDeclared.open({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'founding' }).turn)
+  const d2 = await loopDeclared.assemble(loopDeclared.open({ member: 'acad', role: 'academician', roleLabel: '院士', phase: 'founding' }).turn)
   ok(d1.ok === true && d1.text !== d2.text && d1.text.includes('{{') === false,
     'T29. **** ASSEMBLED FROM THE DECLARATION ALONE: two members still get different text, no placeholder left',
     { chars: [d1.text.length, d2.text.length], differ: d1.text !== d2.text })
@@ -209,7 +209,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   const phases = ['founding', 'normal', 'verify']
   const texts = []
   for (const phase of phases) {
-    const out = await loopP.assemble(loopP.open({ member: 'r-1', role: 'researcher', phase }).turn)
+    const out = await loopP.assemble(loopP.open({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase }).turn)
     texts.push(out.text)
     ok(out.ok === true && out.text.includes('阶段：' + phase),
       'T32. *** the assembled turn for phase ' + phase + ' NAMES that phase - the section is phase-sensitive without a text per phase')
@@ -217,7 +217,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(new Set(texts).size === phases.length,
     'T33. **** THREE PHASES, THREE DIFFERENT TEXTS: the framework turn is phase-aware, which is what lets the comparison against the original cover more than the founding round',
     { chars: texts.map((t) => t.length) })
-  const same = await loopP.assemble(loopP.open({ member: 'r-1', role: 'researcher', phase: 'verify' }).turn)
+  const same = await loopP.assemble(loopP.open({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'verify' }).turn)
   ok(same.text === texts[2],
     'T34. *** and the same phase assembles to identical bytes, so a phase comparison is reproducible')
 }
@@ -236,7 +236,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   const kernel2 = createKernel({ settings: {}, root: root2, host: null })
   const loop2 = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: collectPackSections([PACK]) }), faces: facesFrom(kernel2), deliver: bridge })
   const before2 = (kernel2.tasks.list() || []).length
-  const run2 = await loop2.run({ member: 'r-1', role: 'researcher', phase: 'normal' })
+  const run2 = await loop2.run({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal' })
   const after2 = (kernel2.tasks.list() || []).length
   ok(run2.ok === true && after2 === before2 + 1 && seen.length === 1,
     'T36. **** A WHOLE TURN THROUGH THE HOST SEAM: the loop assembles, the bridge delivers, the reply parses, and the task ledger grows - a host needs one line to run an institute turn',
@@ -247,7 +247,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   // ROUND 346: the delivery spec carries the SAME three elements the original's wake takes ({ to, why, next_step }),
   // because a host handed only "some text" cannot supervise the turn it just started.
   const wake = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: collectPackSections([PACK]) }), faces: facesFrom(kernel2), deliver: bridge })
-  const opened = wake.open({ member: 'r-2', role: 'researcher', phase: 'normal', why: 'the lemma is open', nextStep: 'close it' })
+  const opened = wake.open({ member: 'r-2', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal', why: 'the lemma is open', nextStep: 'close it' })
   ok(opened.turn.why === 'the lemma is open' && opened.turn.nextStep === 'close it' && opened.turn.member === 'r-2',
     'T40. **** a turn records WHO, WHY and WHAT NEXT together - the three elements the original wake carries',
     { member: opened.turn.member, why: opened.turn.why, nextStep: opened.turn.nextStep })
@@ -275,7 +275,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 
 // 11) MULTI-ROUND: the framework chooses who is woken next, by a DECLARED policy, and can drive several rounds
 {
-  const roster = [{ id: 'acad', role: 'academician' }, { id: 'r-1', role: 'researcher' }, { id: 'r-2', role: 'researcher' }]
+  const roster = [{ id: 'acad', role: 'academician', roleLabel: '院士' }, { id: 'r-1', role: 'researcher', roleLabel: '常驻研究员' }, { id: 'r-2', role: 'researcher' }]
   const mkLoop = (policy) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: collectPackSections([PACK]) }), wakeupPolicy: policy })
   const rr = mkLoop('round-robin')
   const rrOrder = []
@@ -312,7 +312,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   let n = 0
   const tickDeliver = async () => '```json\n' + JSON.stringify({ task_create: { title: 'round ' + (n += 1) } }) + '\n```'
   const loop3 = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: collectPackSections([PACK]) }), faces: facesFrom(kernel3), deliver: tickDeliver })
-  const roster = [{ id: 'acad', role: 'academician' }, { id: 'r-1', role: 'researcher' }, { id: 'r-2', role: 'researcher' }]
+  const roster = [{ id: 'acad', role: 'academician', roleLabel: '院士' }, { id: 'r-1', role: 'researcher', roleLabel: '常驻研究员' }, { id: 'r-2', role: 'researcher' }]
   const before3 = (kernel3.tasks.list() || []).length
   const ticks = []
   for (let i = 0; i < 3; i += 1) ticks.push(await loop3.step({ members: roster, phase: 'normal', why: 'tick', nextStep: 'keep going' }))
@@ -350,7 +350,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     'T55. **** THE TOOL REACHES THE LOOP: asking for status returns the loop own surface, policy included', { policy: st.status && st.status.policy })
   ok(typeof (await spec.execute({ op: 'status' })) === 'string',
     'T55b. *** and it answers with a JSON STRING like every other face, so a host never has to know which tool speaks which type')
-  const stepOut = JSON.parse(await spec.execute({ op: 'step', members: [{ id: 'r-1', role: 'researcher' }], phase: 'normal' }))
+  const stepOut = JSON.parse(await spec.execute({ op: 'step', members: [{ id: 'r-1', role: 'researcher', roleLabel: '常驻研究员' }], phase: 'normal' }))
   ok(stepOut.ok === false && stepOut.code === 'VMU_ENGINE_UNAVAILABLE',
     'T56. **** and a round with NO delivery seam comes back as a returned refusal, so a host that cannot deliver is told rather than quietly getting a half-run',
     { code: stepOut.code })
@@ -373,7 +373,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   const viaSettings = createPromptPipeline({ sections, clock: () => '2026-01-01T00:00:00.000Z',
     settings: { 'vmu.prompts.overrides': { [TARGET]: SPEC } } })
   const svc = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: viaSettings })
-  const outSettings = await svc.assemble(svc.open({ member: 'r-1', role: 'researcher', phase: 'normal' }).turn)
+  const outSettings = await svc.assemble(svc.open({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal' }).turn)
   ok(outSettings.ok === true && outSettings.text.includes(SPEC) && outSettings.text.includes('【本轮面向的成员】') === false,
     'T59. **** SETTINGS CONTROL THE TEXT: a declared override replaces the section and the assembled turn obeys it - no code change, still assembled by the pipeline',
     { hasSpec: outSettings.text.includes(SPEC) })
@@ -381,14 +381,14 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   // (b) the same thing at RUNTIME, and reversible
   const live = createPromptPipeline({ sections, clock: () => '2026-01-01T00:00:00.000Z' })
   const lv = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: live })
-  const before = await lv.assemble(lv.open({ member: 'r-1', role: 'researcher', phase: 'normal' }).turn)
+  const before = await lv.assemble(lv.open({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal' }).turn)
   const changed = live.override(TARGET, SPEC, 'office')
-  const after = await lv.assemble(lv.open({ member: 'r-1', role: 'researcher', phase: 'normal' }).turn)
+  const after = await lv.assemble(lv.open({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal' }).turn)
   ok(changed.ok === true && changed.rollbackable === true && after.text.includes(SPEC) && before.text.includes(SPEC) === false,
     'T60. **** and RUNTIME CONTROL works the same way, with the previous text handed back so the change can be undone',
     { rollbackable: changed.rollbackable })
   live.rollback(TARGET, changed.previous)
-  const rolled = await lv.assemble(lv.open({ member: 'r-1', role: 'researcher', phase: 'normal' }).turn)
+  const rolled = await lv.assemble(lv.open({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal' }).turn)
   ok(rolled.text === before.text,
     'T61. **** ROLLBACK restores the assembly byte for byte, so tuning a prompt is not a one-way door')
 
@@ -412,8 +412,8 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     'T63. **** the captured persona is NOT declared at runtime: the pack declares the hand-written charter, because a snapshot of one run must never enter a live assembly',
     { declaredFromCapture: personaSections.length })
   const loopP = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: declaredP, bindings: PACK.bindings, clock: () => '2026-01-01T00:00:00.000Z' }) })
-  const acadAsm = await loopP.assemble(loopP.open({ member: 'acad', role: 'academician', phase: 'founding' }).turn)
-  const resAsm = await loopP.assemble(loopP.open({ member: 'r-1', role: 'researcher', phase: 'founding' }).turn)
+  const acadAsm = await loopP.assemble(loopP.open({ member: 'acad', role: 'academician', roleLabel: '院士', phase: 'founding' }).turn)
+  const resAsm = await loopP.assemble(loopP.open({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'founding' }).turn)
   ok(acadAsm.text.includes('通用规章') && acadAsm.text.includes('表决与定论') && acadAsm.text.includes('{{') === false,
     'T64. **** THE ASSEMBLED TURN CARRIES THE CHARTER, titles included and every placeholder filled - the persona is assembled, not appended as a blob',
     { chars: acadAsm.text.length })
@@ -491,7 +491,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     'T71. **** PARITY WITH THE SOURCE: every fixed prose line of the source-derived charter appears verbatim in the charter the original really hands a member',
     { checked: total, missing: missing.slice(0, 3) })
   const loopC = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_ROLE_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
-  const asmC = await loopC.assemble(loopC.open({ member: 'acad', role: 'academician', phase: 'founding', roster: 'acad、r-1', quorum: 2, round: 1 }).turn)
+  const asmC = await loopC.assemble(loopC.open({ member: 'acad', role: 'academician', roleLabel: '院士', phase: 'founding', roster: 'acad、r-1', quorum: 2, round: 1 }).turn)
   ok(asmC.ok === true && asmC.text.includes('【二、通用规章（全员必读）】') && asmC.text.includes('【一、所内编制与你的同事】') && asmC.text.includes('{{') === false,
     'T72. **** and the ASSEMBLY produces the charter from those sections, in source order, with every placeholder filled',
     { chars: asmC.text.length })
@@ -511,7 +511,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     '  from acad: please look at lemma 3',
   ].join('\n')
   const loopB = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_ROLE_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
-  const asmB = await loopB.assemble(loopB.open({ member: 'r-2', role: 'researcher', phase: 'normal', roster: 'acad、r-1、r-2', quorum: 3, statusBlock: status, round: 7 }).turn)
+  const asmB = await loopB.assemble(loopB.open({ member: 'r-2', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal', roster: 'acad、r-1、r-2', quorum: 3, statusBlock: status, round: 7 }).turn)
   ok(asmB.ok === true && asmB.text.includes(status),
     'T73. **** THE PER-ROUND BRIEF reaches the prompt intact: the state line, the roster, the members not yet on the floor, the formalisation knob, the task board and the mail all arrive as the source formats them',
     { chars: asmB.text.length })
@@ -526,7 +526,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 {
   // These assertions test the FULL catalogue, so they name it: the loop selects one of the two by settings.
   const loopRp = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_ROLE_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }), settings: { 'vmu.turn.replyCatalogue': 'full' } })
-  const asmRp = await loopRp.assemble(loopRp.open({ member: 'r-2', role: 'researcher', phase: 'normal', round: 3 }).turn)
+  const asmRp = await loopRp.assemble(loopRp.open({ member: 'r-2', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal', round: 3 }).turn)
   ok(asmRp.ok === true && asmRp.text.includes('字段目录') && asmRp.text.includes('因此这一段并非合法 JSON') && asmRp.text.includes('你真正要输出的对象必须严格合法'),
     'T75. **** the catalogue arrives AND admits it is not JSON while demanding a valid object - the contradiction is stated instead of left for a model to guess',
     { chars: asmRp.text.length })
@@ -542,9 +542,9 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 // sequence whose first two parts differ by phase, so they are PHASE bindings rather than code branches.
 {
   const loopPh = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
-  const asmF = await loopPh.assemble(loopPh.open({ member: 'r-1', role: 'researcher', phase: 'founding', round: 1 }).turn)
-  const asmN = await loopPh.assemble(loopPh.open({ member: 'r-1', role: 'researcher', phase: 'normal', round: 7 }).turn)
-  const asmC = await loopPh.assemble(loopPh.open({ member: 'acad', role: 'academician', phase: 'checkpoint', round: 9 }).turn)
+  const asmF = await loopPh.assemble(loopPh.open({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'founding', round: 1 }).turn)
+  const asmN = await loopPh.assemble(loopPh.open({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal', round: 7 }).turn)
+  const asmC = await loopPh.assemble(loopPh.open({ member: 'acad', role: 'academician', roleLabel: '院士', phase: 'checkpoint', round: 9 }).turn)
   ok(asmF.text.includes('【入职首轮 —— 常驻研究员 r-1】') && asmF.text.includes('你刚刚加入本所。请你先**独立**想清楚'),
     'T78. **** the FOUNDING phase assembles its own heading and its own ask, with the human role name from roleLabel rather than the binding key',
     { heading: 'founding' })
@@ -580,9 +580,9 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 {
   const mkLoop = (settings) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }), settings })
   const one = mkLoop({ 'vmu.turn.objective': '求 3N^2-2=b^2 的全部整数解', 'vmu.turn.maxParallel': 4 })
-  const a1 = await one.assemble(one.open({ member: 'acad', role: 'academician', phase: 'founding', roster: 'acad', quorum: 1, round: 1 }).turn)
+  const a1 = await one.assemble(one.open({ member: 'acad', role: 'academician', roleLabel: '院士', phase: 'founding', roster: 'acad', quorum: 1, round: 1 }).turn)
   const two = mkLoop({ 'vmu.turn.objective': '另一个研究对象', 'vmu.turn.maxParallel': 9 })
-  const a2 = await two.assemble(two.open({ member: 'acad', role: 'academician', phase: 'founding', roster: 'acad', quorum: 1, round: 1 }).turn)
+  const a2 = await two.assemble(two.open({ member: 'acad', role: 'academician', roleLabel: '院士', phase: 'founding', roster: 'acad', quorum: 1, round: 1 }).turn)
   ok(a1.ok === true && a1.text.includes('求 3N^2-2=b^2 的全部整数解') && a1.text.includes('最多同时唤醒 4 名成员') && a1.text.includes('{{') === false,
     'T84. **** a REAL TURN renders a section value FROM SETTINGS: the objective and the resource numbers arrive through configuration, and no placeholder is left behind',
     { chars: a1.text.length })
@@ -730,8 +730,8 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 {
   const mkL = (settings) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }), settings })
   const lf = mkL({ 'vmu.turn.meetingId': 'm-static' })
-  const aF = await lf.assemble(lf.open({ member: 'acad', role: 'academician', phase: 'meeting', round: 2, facts: { 'vmu.turn.meetingId': 'm-7' } }).turn)
-  const bF = await lf.assemble(lf.open({ member: 'acad', role: 'academician', phase: 'meeting', round: 2 }).turn)
+  const aF = await lf.assemble(lf.open({ member: 'acad', role: 'academician', roleLabel: '院士', phase: 'meeting', round: 2, facts: { 'vmu.turn.meetingId': 'm-7' } }).turn)
+  const bF = await lf.assemble(lf.open({ member: 'acad', role: 'academician', roleLabel: '院士', phase: 'meeting', round: 2 }).turn)
   ok(aF.ok === true && aF.text.includes('m-7') && aF.text.includes('m-static') === false,
     'T108. **** a PER-TURN FACT overrides the static setting for the turn that supplied it, so a value that changes between meetings is never frozen',
     { fact: 'm-7' })
@@ -770,14 +770,14 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 {
   const lq = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }) })
   const q1 = lq.notify("r-1", "[形式化结果] p-9 passed")
-  const a1 = await lq.assemble(lq.open({ member: "r-1", role: "researcher", phase: "normal", round: 5, statusBlock: "[状态] x" }).turn)
-  const a2 = await lq.assemble(lq.open({ member: "r-1", role: "researcher", phase: "normal", round: 6, statusBlock: "[状态] x" }).turn)
+  const a1 = await lq.assemble(lq.open({ member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "normal", round: 5, statusBlock: "[状态] x" }).turn)
+  const a2 = await lq.assemble(lq.open({ member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "normal", round: 6, statusBlock: "[状态] x" }).turn)
   ok(q1.ok === true && a1.text.includes("[形式化结果] p-9 passed") && a2.text.includes("[形式化结果] p-9 passed") === false,
     "T114. **** a queued notice is announced EXACTLY ONCE: it reaches the next prompt and is gone from the one after, so it can neither repeat nor be lost",
     { queued: q1.queued })
   lq.notify("r-2", "notice for r-2")
-  const a3 = await lq.assemble(lq.open({ member: "r-1", role: "researcher", phase: "normal", round: 7, statusBlock: "[状态] x" }).turn)
-  const a4 = await lq.assemble(lq.open({ member: "r-2", role: "researcher", phase: "normal", round: 7, statusBlock: "[状态] x" }).turn)
+  const a3 = await lq.assemble(lq.open({ member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "normal", round: 7, statusBlock: "[状态] x" }).turn)
+  const a4 = await lq.assemble(lq.open({ member: "r-2", role: "researcher", roleLabel: '常驻研究员', phase: "normal", round: 7, statusBlock: "[状态] x" }).turn)
   ok(a3.text.includes("notice for r-2") === false && a4.text.includes("notice for r-2"),
     "T115. **** and notices are PER MEMBER: someone else round never carries it",
     { leaked: a3.text.includes("notice for r-2") })
@@ -804,7 +804,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 // produces NOTHING - not a disabled notice, which would change the prompt words - while ON restores it unchanged.
 {
   const mkS = (settings) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }), settings })
-  const base = { member: "r-1", role: "researcher", phase: "normal", round: 3, statusBlock: "[状态] x" }
+  const base = { member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "normal", round: 3, statusBlock: "[状态] x" }
   const on = mkS({})
   const aOn = await on.assemble(on.open(base).turn)
   const off = mkS({ "vmu.pointer.propagation": false, "vmu.turn.selfCheck": false, "vmu.turn.feedback": false })
@@ -831,7 +831,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 // and the loop enables exactly one, plus an ask that states speaking is optional and silence is never a vote.
 {
   const mM = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }), settings: { "vmu.turn.invitedBy": "acad", "vmu.turn.invitedWhy": "needs the lemma" } })
-  const aM = await mM.assemble(mM.open({ member: "t-1", role: "temp", phase: "meeting", meetingState: "invited", round: 2, statusBlock: "[状态] x" }).turn)
+  const aM = await mM.assemble(mM.open({ member: "t-1", role: "temp", roleLabel: '临时工', phase: "meeting", meetingState: "invited", round: 2, statusBlock: "[状态] x" }).turn)
   ok(aM.ok === true && aM.text.includes("受邀发言") && aM.text.includes("acad") && aM.text.includes("needs the lemma") && aM.text.includes("不计票") === true,
     "T122. **** the INVITED-TEMP state arrives with its inviter and reason, and states that the speech is minutes only, never a vote, and does not block",
     { chars: aM.text.length })
@@ -842,7 +842,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   // meeting round that names NO state gets none of the three, because guessing which one applies would put words in
   // the prompt that the caller never asked for.
   const declaredMeetingStates = CHARTER_SECTIONS.filter((s) => String(s.name).startsWith('v5r-meeting-')).map((s) => s.name).sort()
-  const unnamed = await mM.assemble(mM.open({ member: "t-1", role: "temp", phase: "meeting", round: 2, statusBlock: "[状态] x" }).turn)
+  const unnamed = await mM.assemble(mM.open({ member: "t-1", role: "temp", roleLabel: '临时工', phase: "meeting", round: 2, statusBlock: "[状态] x" }).turn)
   ok(declaredMeetingStates.length === 4 && unnamed.text.includes('受邀发言') === false && unnamed.text.includes('第一位发言者') === false && aM.text.includes('第一位发言者') === false,
     'T124. **** all three speaker states and the ask are DECLARED, and a meeting round that names NO state gets NONE of them - the loop refuses to guess which situation applies',
     { declared: declaredMeetingStates })
@@ -853,24 +853,24 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 // an unrecognised state rather than silently rendering the first speaker.
 {
   const mkM = () => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }), settings: { "vmu.turn.invitedBy": "acad", "vmu.turn.invitedWhy": "w" } })
-  const invited = await mkM().assemble(mkM().open({ member: "t-1", role: "temp", phase: "meeting", meetingState: "invited", round: 2, statusBlock: "[状态] x" }).turn)
+  const invited = await mkM().assemble(mkM().open({ member: "t-1", role: "temp", roleLabel: '临时工', phase: "meeting", meetingState: "invited", round: 2, statusBlock: "[状态] x" }).turn)
   ok(invited.ok === true && invited.text.includes("受邀发言") && invited.text.includes("第一位发言者") === false && invited.text.includes("其他成员本次会议已发表的意见") === false,
     "T125. **** the INVITED state is injected ALONE: the first-speaker and the others-inputs states are absent, which is what mutually exclusive means",
     { chars: invited.text.length })
-  const first = await mkM().assemble(mkM().open({ member: "r-1", role: "researcher", phase: "meeting", meetingState: "first", round: 2, statusBlock: "[状态] x" }).turn)
+  const first = await mkM().assemble(mkM().open({ member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "meeting", meetingState: "first", round: 2, statusBlock: "[状态] x" }).turn)
   ok(first.text.includes("第一位发言者") && first.text.includes("受邀发言") === false && first.text.includes("### 其他成员本次会议已发表的意见") === false,
     "T126. **** and the FIRST-SPEAKER state is injected alone, with the speaking model it carries",
     { chars: first.text.length })
-  const others = await mkM().assemble(mkM().open({ member: "r-1", role: "researcher", phase: "meeting", meetingState: "others", round: 2, statusBlock: "[状态] x" }).turn)
+  const others = await mkM().assemble(mkM().open({ member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "meeting", meetingState: "others", round: 2, statusBlock: "[状态] x" }).turn)
   ok(others.text.includes("### 其他成员本次会议已发表的意见") && others.text.includes("第一位发言者") === false,
     "T127. **** and the OTHERS state forwards the inputs without claiming to be first",
     { chars: others.text.length })
-  const normal = await mkM().assemble(mkM().open({ member: "r-1", role: "researcher", phase: "normal", round: 2, statusBlock: "[状态] x" }).turn)
+  const normal = await mkM().assemble(mkM().open({ member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "normal", round: 2, statusBlock: "[状态] x" }).turn)
   ok(normal.text.includes("受邀发言") === false && normal.text.includes("第一位发言者") === false && normal.text.includes("### 其他成员本次会议已发表的意见") === false,
     "T128. **** and OUTSIDE the meeting phase none of the three appears at all, because they are states of a meeting rather than of every round",
     { chars: normal.text.length })
   let sErr = null
-  try { await mkM().assemble(mkM().open({ member: "r-1", role: "researcher", phase: "meeting", meetingState: "nope", round: 2, statusBlock: "[状态] x" }).turn) } catch (e) { sErr = e }
+  try { await mkM().assemble(mkM().open({ member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "meeting", meetingState: "nope", round: 2, statusBlock: "[状态] x" }).turn) } catch (e) { sErr = e }
   ok(sErr !== null && sErr.code === "VMU_INVALID_ARGUMENT",
     "T129. **** while an unrecognised state is REFUSED by name rather than silently rendered as the first speaker",
     { code: sErr && sErr.code })
@@ -880,7 +880,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 // the meeting states it is ALWAYS shown, so the default is the not-attempted branch rather than nothing.
 {
   const mkF = (settings) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }), settings: settings || {} })
-  const base = { member: "r-1", role: "researcher", phase: "normal", round: 3, statusBlock: "[状态] x" }
+  const base = { member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "normal", round: 3, statusBlock: "[状态] x" }
   const p1 = await mkF({ "vmu.turn.formalProof": "Formal/p-9.lean" }).assemble(mkF({ "vmu.turn.formalProof": "Formal/p-9.lean" }).open({ ...base, formalStatus: "passed" }).turn)
   ok(p1.ok === true && p1.text.includes("Lean 通过（Formal/p-9.lean）") && p1.text.includes("未尝试") === false && p1.text.includes("阻塞（") === false,
     "T130. **** the PASSED branch is shown alone, naming the proof file - the same exclusive pattern as the meeting states",
@@ -957,7 +957,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     deliver: async () => "```json\n{\"task_update\":{\"task_id\":\"t-1\",\"expected_revision\":99}}\n```",
     faces: { "vmu.tasks": { transition: refuser } },
   })
-  const baseN = { member: "r-1", role: "researcher", phase: "normal", statusBlock: "[状态] x" }
+  const baseN = { member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "normal", statusBlock: "[状态] x" }
   const r1 = await loopN.run({ ...baseN, round: 1 })
   ok(r1.ok === true && r1.refused.length === 1 && r1.refused[0].field === "task_update" && r1.refused[0].code === "V5_TASK_STALE_REVISION",
     "T142. **** a refused dispatch is REPORTED on the receipt rather than silently counted as executed",

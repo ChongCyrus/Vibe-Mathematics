@@ -321,8 +321,8 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   // addresses whichever member is being assembled, so nothing is hard-coded per member and the section stays
   // editable through settings, config or middleware.
   const loopRole = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: v5rTurnSections, clock: () => '2026-01-01T00:00:00.000Z' }), faces: facesFrom(kernelTurn) })
-  const r1 = await loopRole.assemble(loopRole.open({ member: 'r-1', role: 'researcher', phase: 'founding' }).turn)
-  const ac = await loopRole.assemble(loopRole.open({ member: 'acad', role: 'academician', phase: 'founding' }).turn)
+  const r1 = await loopRole.assemble(loopRole.open({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'founding' }).turn)
+  const ac = await loopRole.assemble(loopRole.open({ member: 'acad', role: 'academician', roleLabel: '院士', phase: 'founding' }).turn)
   ok(r1.ok === true && ac.ok === true && r1.text !== ac.text && r1.text.includes('{{') === false,
     'V54. ★★★★ CLOSED: with the role section the framework composes PER MEMBER, two members get different text, and no placeholder is left unsubstituted',
     { chars: [r1.text.length, ac.text.length], differ: r1.text !== ac.text })
