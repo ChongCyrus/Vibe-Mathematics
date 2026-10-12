@@ -1014,6 +1014,25 @@ export const CHARTER_BLOCKS = Object.freeze([
   // states the threshold: every participating member must vote true before the finaliser may finalise. A unanimous
   // publication rule is the kind of thing a framework should not invent and a pack should declare - and with the phase
   // seam built last round, this pack can declare the phases these prompts belong to.
+  // ── THE FOUNDING ASKS (corpus-derived) ─────────────────────────────────────────────────────────────────────
+  // The academicians own opening question - read the problem, name its hard part, decide how to divide it and tell
+  // the institute what you concluded - and the line that states a temporary members limits: no vote, no hire or
+  // fire, but a verification proposal or a meeting is open to them. Both are phase text because both are addressed
+  // to a role in a phase, and the role-keyed starting directions the corpus also carries are recorded as owed: they
+  // are five variants keyed by role, and the section view this pack binds against resolves role blocks to a single
+  // variant, so putting them here would print the wrong one for four roles out of five.
+  {
+    name: 'v5r-founding-asks',
+    order: 817,
+    range: 'pack',
+    kind: 'phase',
+    texts: {
+      founding: [
+        '你是本所的院士。请先独立研判这个问题：它的关键困难在哪？应当拆成哪几块工作？你打算如何组织全所（谁适合做什么、先做什么）？把你的判断写进你的 Progress/，并把关键结论在群聊里说出来。',
+        '你没有表决权及hire/fire权限；需要复核可propose_verify，需要协调可propose_meeting。',
+      ].join('\n'),
+    },
+  },
   // ── THE LEAN TOOL HINTS AND THE REQUIRED MODE (corpus-derived) ──────────────────────────────────────────────
   // Two blocks the ballot prompt carries in the formalisation kinds. The hints are what the tools answer with -
   // green, red, a missing file, a missing name, a blocked record with no reason - and the host injects them into the
