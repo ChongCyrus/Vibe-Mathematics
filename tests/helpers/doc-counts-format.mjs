@@ -6,11 +6,19 @@
 // VOCABULARY: `derived.*` are JOB counts (the gate's own job list: base jobs + VARIANTS jobs), NOT file
 // counts (a naive file count gives 82/38). `shipped.*` ARE file counts (package.json#files is a file list).
 
-export function claims(derived, shipped) {
+export function claims(derived, shipped, scoped) {
   const zhTotal = '`TOTAL ' + derived.total + '`（' + derived.suites + ' 套件 + ' + derived.probes + ' 探针/变体，**作业计数**（job count），不是文件计数）'
   const zhShipped = shipped.total + ' 个 `tests/*.mjs`（' + shipped.suites + ' 个套件 + ' + shipped.probes + ' 个探针/脚本）'
   const enTotal = '`TOTAL ' + derived.total + ' (' + derived.suites + ' suites + ' + derived.probes + ' probes/variants — JOB counts, not file counts)'
   const enShipped = 'which ' + shipped.total + ' of the `tests/*.mjs` files ship in the package (' + shipped.suites + ' suites + ' + shipped.probes + ' probe/script files)'
+  // THE GATE VOLUME'S TWO COUNT LINES ARE OWNED HERE TOO. They used to be typed by hand and had drifted to
+  // `49 作业` and `total 96 / suites 41 / probes 55` while the tree said 137 and 170 - in the one volume a reader
+  // opens to learn how big the gate is. A count no generator owns will drift; these are owned now.
+  const v11Scoped = scoped
+    ? '**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **' + scoped.total + ' 作业**（' + scoped.suites + ' 套件 + ' + scoped.probes + ' 探针/变体，**作业计数**；**由 `--counts` 派生** ✓）'
+    : null
+  const v11Shipped = '| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total ' + shipped.total
+    + ' / suites ' + shipped.suites + ' / probes ' + shipped.probes + '`** ✓ |'
   const ttRow = '| `tests/run-tests.mjs`（**' + derived.total + ' 项作业**（job count）= ' + derived.suites + ' 套件 + '
     + derived.probes + ' 探针/变体；**由 `--counts` 派生**） | ≈ 424 s（历史基线） | **≈ 121 s**（历史基线；当前实测墙钟 ≈ 200 s，并发 4） | `TOTAL '
     + derived.total + '  PASS ' + derived.total + '  FAIL 0  (suites ' + derived.suites + ' · probes ' + derived.probes + ')`；实测 `wall 120.7s · sum 424.2s`，关键路径 = `e2e-v4-fixes`（≈ 98 s） |'
@@ -29,7 +37,7 @@ export function claims(derived, shipped) {
     + '`node tests/run-tests.mjs --counts` (JOB counts, not file counts), checked by '
     + '[`tests/audit-readme-counts.mjs`](tests/audit-readme-counts.mjs); ' + enShipped
     + ' and which are repository-only is in §1.1 of that document; every runner prints its elapsed time/speedup so the next strategy can be chosen)'
-  return { zhTotal, zhShipped, enTotal, enShipped, ttRow, ttOutput, ckClaim, ckShipped, d1Row, zhBullet, enBullet }
+  return { zhTotal, zhShipped, enTotal, enShipped, ttRow, ttOutput, ckClaim, ckShipped, d1Row, zhBullet, enBullet, v11Scoped, v11Shipped }
 }
 
 /** Stable line markers: each canonical line replaces the line that carries its marker. */
@@ -38,4 +46,7 @@ export const MARKERS = {
   enBullet: '[`docs/test-timing.md`](docs/test-timing.md) (`node tests/run-tests.mjs`',
   ttRow: '| `tests/run-tests.mjs`（',
   d1Row: '- **计数（实测',
+  // the gate volume's two lines, each identified by a substring that survives a stale count
+  v11Scoped: '**vmu 子集**：`GATE_SCOPE=vmu`',
+  v11Shipped: '| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数',
 }

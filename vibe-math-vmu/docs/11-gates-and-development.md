@@ -133,10 +133,10 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数** | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 134 / suites 68 / probes 66`** ✓（R-6b 拆分后 **132→134** ✓：`v5-institute-fixes.mutants.mjs` 由 1 个作业变为 3 个分片 ✓） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 96 / suites 41 / probes 55`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 170 / suites 106 / probes 64`** ✓ |
 
 **134 的推导链（逐行可核 ✓）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 134 ✓；`.test.mjs` 裸作业 68 = suites；`134−68=66` = probes ✓。
-**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **49 作业**（≈60 s ✓，含两份文档审计与其变异族、宿主/脚本/整合包/包含性/控制流/台账场景 ✓）。
+**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **137 作业**（**114 套件 + 23 探针/变体** ✓；★ **这一行【不由生成器产出**]✗：★ `run-tests.mjs --counts` **不认 `GATE_SCOPE`** ✓（★ 它返回全量 236 ✓）⇒ ★ **数字来源是 T1 运行【实报的那一行**]✓：`TOTAL 137 PASS 137 (suites 114 · probes 23)` ✓ —— ★★ **一个生成器帮不上忙时，它不该写一个自信的错数** ✓）
 **更新方式（诚实 ✗）**：`scripts/update-doc-counts.mjs` 只**整行重写 4 处**（两个 README、`docs/test-timing.md`、`docs/AUDIT-CHECKLIST.md` ✓）—— **不含** `vibe-math-vmu/docs/**` ✗ ⇒ 本节数字**必须手工同步**（因此必须带日期 ✓）；若再次漂移，以 `--check` 的输出为准 ✓。
 
 ### 5.2 可原样复用的**通用基础设施** ✓

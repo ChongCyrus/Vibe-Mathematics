@@ -24,11 +24,28 @@ const REPO = join(HERE, '..')
 const checkOnly = process.argv.includes('--check')
 
 const derived = JSON.parse(spawnSync(process.execPath, [join(REPO, 'tests', 'run-tests.mjs'), '--counts'], { cwd: REPO, encoding: 'utf8' }).stdout.trim())
+// THE SCOPED COUNT IS DERIVED THE SAME WAY, from the gate's own list under the scope the docs quote. Two spawns of
+// `--counts` are cheap (it prints the job list and runs nothing), and deriving it is the whole point.
+let scoped = null
+try {
+  const r = spawnSync(process.execPath, [join(REPO, 'tests', 'run-tests.mjs'), '--counts'], { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, { GATE_SCOPE: 'vmu' }) })
+  const parsed = JSON.parse(String(r.stdout || '').trim())
+  // A SCOPE THAT RETURNS THE FULL LIST IS NOT A SCOPE. `--counts` currently ignores GATE_SCOPE, so this
+  // returned 236/164/72 - the full job list - and the generated line would have said the vmu subset was 236 jobs when
+  // the gate itself prints 137 (114 suites + 23 probes). Refusing the value is the difference between a generator that
+  // helps and one that writes a confident wrong number into the volume a reader trusts.
+  if (parsed && Number.isInteger(parsed.total) && parsed.total !== derived.total) scoped = { total: parsed.total, suites: parsed.suites, probes: parsed.probes }
+  else if (parsed && parsed.total === derived.total) process.stderr.write('update-doc-counts: --counts ignored GATE_SCOPE (returned the full ' + parsed.total + '), so the scoped line is NOT generated\n')
+} catch (e) {
+  // `log` is declared further down, so a failure here cannot use it; a scoped count that cannot be derived must be
+  // VISIBLE rather than silent, because the line it feeds is one of the two that drifted for years.
+  process.stderr.write('update-doc-counts: scoped count unavailable: ' + String(e && e.message) + '\n')
+}
 const pkg = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8'))
 const shippedFiles = pkg.files.filter((f) => f.startsWith('tests/') && f.endsWith('.mjs'))
 const shipped = { total: shippedFiles.length, suites: shippedFiles.filter((f) => f.endsWith('.test.mjs')).length }
 shipped.probes = shipped.total - shipped.suites
-const c = claims(derived, shipped)
+const c = claims(derived, shipped, scoped)
 
 function replaceLine(text, marker, canonical) {
   const lines = text.split(/\r?\n/)
@@ -53,6 +70,12 @@ const apply = (file, fn) => {
   }
 }
 
+// THE GATE VOLUME'S TWO LINES, which were typed by hand until now and had drifted in the one place a reader looks to
+// learn how big the gate is. `v11Scoped` is left alone when the scoped count could not be derived, so a failure shows up
+// as MARKER MISS rather than as a silently removed line.
+apply('vibe-math-vmu/docs/11-gates-and-development.md', (s) => replaceLine(s, MARKERS.v11Shipped, c.v11Shipped))
+if (c.v11Scoped) apply('vibe-math-vmu/docs/11-gates-and-development.md', (s) => replaceLine(s, MARKERS.v11Scoped, c.v11Scoped))
+else process.stderr.write('update-doc-counts: the scoped line for docs/11 was NOT rewritten (no scoped count)\n')
 apply('README.md', (s) => replaceLine(s, MARKERS.zhBullet, c.zhBullet))
 apply('README.en.md', (s) => replaceLine(s, MARKERS.enBullet, c.enBullet))
 apply('docs/test-timing.md', (s) => replaceLine(s, MARKERS.ttRow, c.ttRow))
