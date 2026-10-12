@@ -422,7 +422,7 @@ const phaseOf = (kind, text) => {
   if (/^founding/.test(k)) return "founding"
   if (/所内一段时间没有新进展了/.test(x)) return "heartbeat"
   if (/checkpoint|heartbeat/.test(k)) return "checkpoint"
-  if (/verify|vote|ballot/.test(k)) return "verify"
+  if (/verify|vote|ballot|lean/.test(k)) return "verify"
   return "normal"
 }
   const fixedOf = (s) => String(s).split("\n").map((l) => l.trim()).filter((l) => l.length > 12 && !l.includes("{{") && !/^[-#*|·]/.test(l))
@@ -433,12 +433,14 @@ const phaseOf = (kind, text) => {
   let hitAB = 0
   let totalAB = 0
   const missAB = new Set()
+  // An UNCAPPED tally, because missAB stops at eight samples and cannot say how large a family is.
+  const leftAB = new Map()
   for (const p of PROMPTS) {
     const mine = oursAB[phaseOf(String(p.kind), String(p.text))]
     for (const line of fixedOf(p.text)) {
       totalAB += 1
       if (normPath(mine).includes(normPath(line))) hitAB += 1
-      else if (missAB.size < 8) missAB.add(line.slice(0, 46))
+      else { const k = String(line).slice(0, 18); leftAB.set(k, (leftAB.get(k) || 0) + 1); if (missAB.size < 8) missAB.add(line.slice(0, 46)) }
     }
   }
   const pctAB = Math.round(100 * hitAB / totalAB)
@@ -488,9 +490,15 @@ const phaseOf = (kind, text) => {
     "the full catalogue and the compact one are alternatives in the original, and both are currently injected here",
     "the office/chat notice header the corpus writes as [新到的消息] before the line itself",
   ]
-  ok(pctAB >= 66 && knownGapsAB.length === 4,
+  ok(pctAB >= 75 && knownGapsAB.length === 4,
     "V67. **** and the gap is NAMED rather than rounded away, with a FLOOR on the measured ratio: the closed families are the compact catalogue, the refusal notice and the contextPct/compacted clarification, and the four that remain are listed",
     { families: knownGapsAB.length, percent: pctAB })
-}
+
+  // The biggest remaining family. See the comment above: this is the number that distinguishes "65 percent and
+  // closing" from "65 percent with one large family still missing".
+  const BIGGEST_LEFT = leftAB.size ? Math.max(...leftAB.values()) : 0
+  ok(BIGGEST_LEFT <= 15,
+    "V70. **** NO SINGLE REMAINING FAMILY EXCEEDS FIFTEEN LINES, AND THE FIFTEEN IS DATA: the largest group still unmatched is " + BIGGEST_LEFT + " line(s), the largest group is the ballot minimal sample, whose only difference is the OBJECT NAME - p-lean-a against the scenario name - and a data row cannot match unless the harness picks the same object; what is left is names, statements, task boards and status rather than a missing block of prose",
+    { biggest: BIGGEST_LEFT, groups: knownGapsAB.length })}
 
 rmSync(workspace, { recursive: true, force: true })
