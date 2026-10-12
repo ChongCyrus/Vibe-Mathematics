@@ -294,6 +294,34 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   ok(defaulted.turn.status().policy === 'round-robin',
     'T48. *** and with nothing declared the default is round-robin, which is the zero-configuration behaviour')
 }
+// 12) THE TICK SEAM: a host ticks, the framework decides everything else - who by policy, what prompt by pipeline
+{
+  const root3 = mkdtempSync(join(tmpdir(), 'vmu-turn-tick-'))
+  const kernel3 = createKernel({ settings: {}, root: root3, host: null })
+  let n = 0
+  const tickDeliver = async () => '```json\n' + JSON.stringify({ task_create: { title: 'round ' + (n += 1) } }) + '\n```'
+  const loop3 = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: collectPackSections([PACK]) }), faces: facesFrom(kernel3), deliver: tickDeliver })
+  const roster = [{ id: 'acad', role: 'academician' }, { id: 'r-1', role: 'researcher' }, { id: 'r-2', role: 'researcher' }]
+  const before3 = (kernel3.tasks.list() || []).length
+  const ticks = []
+  for (let i = 0; i < 3; i += 1) ticks.push(await loop3.step({ members: roster, phase: 'normal', why: 'tick', nextStep: 'keep going' }))
+  const after3 = (kernel3.tasks.list() || []).length
+  ok(ticks.every((t) => t.ok === true && t.receipt) && after3 === before3 + 3,
+    'T49. **** A HOST TICKS, THE FRAMEWORK RUNS: three step calls produced three real rounds, each landing in the task ledger, with the member chosen by the policy',
+    { members: ticks.map((t) => t.receipt && t.receipt.member), before: before3, after: after3 })
+  ok(ticks[0].receipt.member === 'acad' && ticks[1].receipt.member === 'r-1' && ticks[2].receipt.member === 'r-2',
+    'T50. **** and the THREE QUESTIONS now have three owners: WHEN is the host tick (the clock is a seam by design), WHO is the declared policy, and WHAT PROMPT is the pipeline - none of them left to the host to compose',
+    { order: ticks.map((t) => t.receipt && t.receipt.member) })
+  const bad = await loop3.step({ members: roster, phase: 'not-a-phase' })
+  ok(bad.ok === false && bad.code === 'VMU_INVALID_ARGUMENT' && bad.receipt === null,
+    'T51. **** a failed round is RETURNED with its code rather than thrown, because a failed round is an operational outcome - while a malformed ARGUMENT still throws',
+    { code: bad.code })
+  const st = loop3.status()
+  ok(typeof st.woken === 'object' && Object.keys(st.woken).length >= 3 && st.counts.opened >= 3,
+    'T52. *** the loop counts who it woke and how often, so a multi-round run is auditable from its own status surface',
+    { woken: st.woken, opened: st.counts.opened })
+  rmSync(root3, { recursive: true, force: true })
+}
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

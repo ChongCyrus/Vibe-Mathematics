@@ -295,8 +295,25 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
     return { ok: true, receipts, roundsRun: receipts.length }
   }
 
+  /**
+   * ⑧ step: EXACTLY ONE round, chosen by the policy - the shape a scheduler tick wants (docs/26 section 3.3). The
+   * host owns WHEN (the clock is a seam by design: `vmu.schedule.timeSource` is tick-only), the policy owns WHO, and
+   * the pipeline owns WHAT PROMPT. A round that fails is RETURNED rather than thrown, because a failed round is an
+   * operational outcome; a malformed ARGUMENT still throws, because that is a programming error.
+   */
+  const step = async ({ members = [], phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
+    const spec = nextTurn({ members, phase, why, nextStep, role })
+    if (!spec) return { ok: true, receipt: null, stopped: 'no-members' }
+    try {
+      const r = await run({ ...spec, round: turns.size + 1 })
+      return { ok: true, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, turn: r.turn.id } }
+    } catch (e) {
+      return { ok: false, code: e && e.code, message: String((e && e.message) || e), receipt: null }
+    }
+  }
+
   return {
-    open, assemble, deliver: deliverTurn, parse, plan, apply, run, nextTurn, drive,
+    open, assemble, deliver: deliverTurn, parse, plan, apply, run, nextTurn, drive, step,
     status: () => ({ apiVersion, turns: turns.size, fields: known.length, owners, policy: POLICY, woken: Object.fromEntries(woken), counts: { ...counts }, lastRefusal: { ...lastRefusal } }),
   }
 }
