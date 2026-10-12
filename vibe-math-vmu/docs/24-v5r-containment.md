@@ -566,6 +566,28 @@ A correction first: asked whether the prompts are composed the way the original 
 Every corpus entry now becomes a pipeline section in the pack range 600..899, one order per entry, kebab-case names, text verbatim. The new test proves properties rather than the existence of an array: the pipeline assembles the text as a pure function, assembly is byte-identical across runs so it can be snapshotted, provenance names every contributing section, a further section can be APPENDED at assembly time so the text is composable rather than frozen, and a declaration outside the reserved range is refused by name instead of being quietly re-ordered. Ten for ten on the first run.
 
 So the answer flips: the prompt text IS now composed and regulated by the framework, through the same settings, config and middleware path as everything else. What remains true is the other half of the earlier answer - the original preset still runs its own per-member, per-round composition, so handing the whole institute turn orchestration to the framework is still not done.
+### 2.2.34 ★★★★ 首要目标（用户指定）第一个增量：**整轮循环搬进框架**（轮 337）✓✓
+
+**用户裁定** ✓：把"vmu 完全独立实现 v5r 的运行机制（含提示词拼装）"**升为首要目标** ✓。**第一步：先设计，再实现，再门禁** ✓。
+
+| 产物 | 内容 |
+|---|---|
+| ★ **设计卷 `26-turn-orchestration.md`** ✓ | 一轮 ＝ **装配 → 投递 → 解析 → 分派** ✓；五阶段的归属与失败语义逐条写明 ✓；**v1 边界（未做四项）明写** ✗ |
+| ★★★ **`kernel/turn/index.js`** ✓ | **`open`／`assemble`／`deliver`／`parse`／`plan`／`apply`／`run`／`status`** ✓ |
+| ★★★ **`tests/vmu-turn.test.mjs`** ✓ | **19 条断言，一次全绿** ✓ |
+
+★★★ **五条验收全部成立** ✓✓：
+1. ★ **装配【确实由管线产出**】✓（**管线缺席 ⇒ `VMU_ENGINE_UNAVAILABLE`** ✓，**本模块绝不自拼文本** ✗）；
+2. ★★★ **解析三种失败三种名** ✓：**`VMU_TURN_NO_FENCE`**（没围栏 ✓）／**`VMU_TURN_BAD_JSON`**（坏 JSON ✓）／**`VMU_TURN_UNKNOWN_FIELD`**（未知字段，**点名并列出已知字段** ✓ —— **绝不猜模型的意图** ✗）；
+3. ★★ **`plan()` 是纯函数** ✓：**每个已登记字段恰有一个归属面** ✓，目录外字段**不入表** ✓；
+4. ★★★ **分派到拥有它的面、且只调一次** ✓；**面未接线的字段【被计数并回报**】✓ —— **半装宿主是可见的，绝不静默丢模型的产出** ✗；
+5. ★★★ **确定性**：同输入 ⇒ **逐字节相同** ✓（可快照、可与原预设逐轮比对 ✓）。
+
+★ **两道守卫当场各抓到一处** ✗✓（**这就是它们存在的意义** ✓）：① **`audit-package-membership`**：**新设计卷必须同时进 `package.json#files`** ✗（我只进了 installer ✓）⇒ 补 ✓；② **`audit-vmu-docs`**：**凡代码能抛的 `VMU_*` 码必须在 `03-§8` 登记** ✗ ⇒ 四个码已按四列格式登记 ✓（**§8.1 是生成段**，由 `regen-all` 刷新 ✓）。
+
+★★ **另记一条纪律教训** ✗✓：**"记录脚本被守卫拒绝"时，命令【不得继续提交**】✓ —— 本轮我先跑了记录脚本（**它被拒** ✗），却仍提交了代码 ✓ ⇒ **文档欠账一次** ✓（本条即补 ✓）。**新纪律：门禁链里的每一步都必须判返回值，被拒即中止** ✓。
+
+**判据** ⇒ **T1 `TOTAL 133, PASS 133, FAIL 0`（suites 110）** ✓；**`VMU TURN: 19 passed, 0 failed`** ✓。
 ## 3. v5r 的 56 个工具
 
 > ★★ **A/B 覆盖率：56/56** ✓✓（**轮 323 实测**：以注册表为准的 56 个工具**全部被断言点名** ✓）；**判据总账** ＝ **EQUAL 4／PROPERTY 10／DIVERGENT 4** ✓（**94 passed, 0 failed** ✓）。★★★ **`NOT_ADOPTED` 归零（轮 324）** ✓✓ —— **happy path 已逐段对照**（§2.2.22）：**执行体绑定不是"够不着"，而是"要按它的方式入席"** ✓（让调度器发出 `childId` 并用它当调用者 ✓）。（**按家族分组**，实测列举）
