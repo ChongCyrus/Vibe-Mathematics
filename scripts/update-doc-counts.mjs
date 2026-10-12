@@ -30,12 +30,15 @@ let scoped = null
 try {
   const r = spawnSync(process.execPath, [join(REPO, 'tests', 'run-tests.mjs'), '--counts'], { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, { GATE_SCOPE: 'vmu' }) })
   const parsed = JSON.parse(String(r.stdout || '').trim())
-  // A SCOPE THAT RETURNS THE FULL LIST IS NOT A SCOPE. `--counts` currently ignores GATE_SCOPE, so this
-  // returned 236/164/72 - the full job list - and the generated line would have said the vmu subset was 236 jobs when
-  // the gate itself prints 137 (114 suites + 23 probes). Refusing the value is the difference between a generator that
-  // helps and one that writes a confident wrong number into the volume a reader trusts.
+  // `--counts` IS DELIBERATELY SCOPE-INDEPENDENT, and this guard is here because that is easy to mistake for a bug.
+  // The runner says why: documented counts are properties of the REPOSITORY, not of an edit loop, so a scope that
+  // narrowed them would make the docs depend on how the run was invoked and would break every guard that spawns the
+  // runner as a child. The consequence for THIS script is that the number it can derive is the repository job count
+  // (236 = base jobs + variant jobs), which is NOT the vmu-subset count a reader of the gate volume is asking for. A
+  // generator that cannot answer a question must not answer it wrongly, so a scoped count equal to the full one is
+  // refused and the line is left to the number a run actually prints.
   if (parsed && Number.isInteger(parsed.total) && parsed.total !== derived.total) scoped = { total: parsed.total, suites: parsed.suites, probes: parsed.probes }
-  else if (parsed && parsed.total === derived.total) process.stderr.write('update-doc-counts: --counts ignored GATE_SCOPE (returned the full ' + parsed.total + '), so the scoped line is NOT generated\n')
+  else if (parsed && parsed.total === derived.total) process.stderr.write('update-doc-counts: --counts is scope-independent BY DESIGN (it returned the repository job count ' + parsed.total + '), which is not the scoped count, so the scoped line is NOT generated\n')
 } catch (e) {
   // `log` is declared further down, so a failure here cannot use it; a scoped count that cannot be derived must be
   // VISIBLE rather than silent, because the line it feeds is one of the two that drifted for years.
