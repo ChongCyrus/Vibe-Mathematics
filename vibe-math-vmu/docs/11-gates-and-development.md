@@ -45,27 +45,28 @@
 
 ### 2.1 可追溯表（**一行一表**，仿 v5r `12-traceability` 范式：便于正则守卫 ✓）
 
+> ★★★ **对齐的【强度**]必须说清（轮 456 ✓）**：★ **右列的 `tests/…` 是按【名字**]映射、并核对了【文件确实存在**]✓（15/15 ✓），**但【没有逐个读文件去确认它真的在管那条要求**]✗ ⇒ ★★ **它回答的是"这个要求【看起来**]由谁负责"，不是"我已读过并证明它负责"** ✓。★★ **要把它升级成后者，需要逐族读源码** ✓ —— ★ **在做到之前，本列只能当作【找文件的索引**]，不是覆盖证明** ✓。
 > ★★★ **读法警告（轮 455 实测加）** ✓：★ **本表 21 个「门禁 id」在 `tests/` 与 `tests/run-tests.mjs` 里【一个都找不到**]✗** —— ★ **它们是设计阶段的草案 id** ✓，**列名却直接写着"门禁 id"** ✗ ⇒ ★★ **用 `grep` 核对覆盖的人会把"找不到"读成"没做"** ✗（★ 本轮又这么做过一次 ✓）。★★ **诚实的现状**：★ **没有任何门禁读本表的 id** ✗ ⇒ ★ **它证明的是"设计时打算由谁负责"** ✓，**不是"今天谁在跑"** ✓；★★ **今天活着的覆盖在 `tests/` 的文件名与 `run-tests.mjs` 的作业表里** ✓ —— ★ **把本表与它们对齐是一件【真待做的事**]✗（★ 需要逐个族去定，不能靠猜 ✓）。
 
 > 每行**一条**：`要求 → 门禁 id → 文档落点 → 场景/族命名约定`。命名约定是**可机器检查**的：门禁实现后，场景名与族名必须按此拼写，否则红 ✓。
 
-| 要求 | 门禁 id（★ **草案 id** ✓ —— ★ **无门禁读它** ✗） | 文档落点 | 场景/族命名约定 |
+| 要求 | 门禁 id（★★★ **右边一栏是【轮 456 对齐后的真实作业族**]✓） | 文档落点 | 场景/族命名约定 |
 |---|---|---|---|
-| R1 内核零策略 | `S-zpolicy` | 01-§2／11-§4 | 静态门（无场景）；词表数据文件 `settings/zpolicy-words.json` |
-| R2 能力齐备 | `T-surface`＋`B-cap-*` | 02-§2／03-§2 | `s-cap-<area>-usable`／`s-cap-<area>-hookable` |
-| R3 四可 | `S-schema`＋`B-set-*`＋`C-status` | 04-§2／04-§11 | `s-set-<key>-echo`／`-reject`／`-hot`／`-audit` |
-| R4 单一源 | `S-schema`＋`C-docgen` | 04-§3 | `s-docgen-table-eq-schema` |
-| R5 四形态 | `B-mw-*`＋`M-mw-*` | 05-§3 | `s-mw-{rules,module,script,plugin}`＋`m-mw-*` |
-| R6 钩子契约化 | `T-hooks` | 05-§4 | `s-hooks-registry-eq-code` |
-| R7 稳定接口 | `S-api`＋`T-surface` | 03-§7 | `s-api-no-private-access` |
-| R8 提示词可管理 | `C-corpus`＋`B-prompt-*` | 06-§3／06-§4 | `c-prompt-<pack>-<role>-<phase>` |
-| R9 归档与记忆 | `B-lib-*` | 07-§4 | `s-lib-{fingerprint,dangling,tracks,truncation}` |
-| R10 耐久可信 | `B-store-*`＋`S-nolog` | 07-§1／07-§3 | `s-store-{concurrent,recover,migrate,no-session-log}` |
-| R11 可观测 | `C-status`＋`B-refuse-*` | 03-§8／04-§2 | `s-refuse-named-<code>` |
-| R12 可复现 | `B-determinism` | 01-§3.1／11-§4.1 | `s-determinism-<area>-twice` |
-| R13 门禁即文档 | `S-map` | 11-§2／11-§2.1 | `s-map-no-gap`（本表自身可被解析校验） |
-| R14 无屎山 | `S-size`＋`S-import` | 02-§2 | `s-size-<file>`／`s-import-whitelist` |
-| R15 可迁移 | `B-parity-v5r`＋`C-parity-report` | 10-§5 | `b-parity-<scenario>`／`c-parity-report-classified` |
+| R1 内核零策略 | **已对齐** ✓ `tests/vmu-kernel.test.mjs`、`tests/audit-preset-rows.test.mjs` | 01-§2／11-§4 | 静态门（无场景）；词表数据文件 `settings/zpolicy-words.json` |
+| R2 能力齐备 | **已对齐** ✓ `tests/audit-registration.mjs` | 02-§2／03-§2 | `s-cap-<area>-usable`／`s-cap-<area>-hookable` |
+| R3 四可 | **已对齐** ✓ `tests/audit-settings-channels.test.mjs`、`tests/audit-settings-roundtrip.test.mjs`、`tests/vmu-settings.test.mjs` | 04-§2／04-§11 | `s-set-<key>-echo`／`-reject`／`-hot`／`-audit` |
+| R4 单一源 | **已对齐** ✓ `tests/audit-settings-roundtrip.test.mjs`、`tests/vmu-planned-settings.test.mjs`、`tests/vmu-setting-rename.test.mjs` | 04-§3 | `s-docgen-table-eq-schema` |
+| R5 四形态 | **已对齐** ✓ `tests/vmu-bus.test.mjs`、`tests/vmu-script.test.mjs` | 05-§3 | `s-mw-{rules,module,script,plugin}`＋`m-mw-*` |
+| R6 钩子契约化 | **已对齐** ✓ `tests/vmu-turn.test.mjs` | 05-§4 | `s-hooks-registry-eq-code` |
+| R7 稳定接口 | **已对齐** ✓ `tests/audit-code-status.test.mjs`、`tests/audit-registration.mjs` | 03-§7 | `s-api-no-private-access` |
+| R8 提示词可管理 | **已对齐** ✓ `tests/audit-prompt-invariants.mjs`、`tests/vmu-prompt.test.mjs`、`tests/vmu-prompt-v5r-bridge.test.mjs` | 06-§3／06-§4 | `c-prompt-<pack>-<role>-<phase>` |
+| R9 归档与记忆 | **已对齐** ✓ `tests/vmu-library.test.mjs`、`tests/vmu-library-revisions.test.mjs`、`tests/vmu-memory.test.mjs` | 07-§4 | `s-lib-{fingerprint,dangling,tracks,truncation}` |
+| R10 耐久可信 | **已对齐** ✓ `tests/vmu-store.test.mjs`、`tests/vmu-storepolicy.test.mjs`、`tests/vmu-transaction.test.mjs` | 07-§1／07-§3 | `s-store-{concurrent,recover,migrate,no-session-log}` |
+| R11 可观测 | **已对齐** ✓ `tests/audit-status-report-fields.mjs`、`tests/audit-code-status.test.mjs`、`tests/vmu-metrics.test.mjs` | 03-§8／04-§2 | `s-refuse-named-<code>` |
+| R12 可复现 | **已对齐** ✓ `tests/vmu-repropack.test.mjs`、`tests/vmu-idempotency.test.mjs`、`tests/vmu-replay.test.mjs` | 01-§3.1／11-§4.1 | `s-determinism-<area>-twice` |
+| R13 门禁即文档 | **已对齐** ✓ `tests/audit-readme-counts.mjs`、`tests/audit-artifact-docs.mjs`、`tests/audit-docs-entry-template.mjs` **等** | 11-§2／11-§2.1 | `s-map-no-gap`（本表自身可被解析校验） |
+| R14 无屎山 | **已对齐** ✓ `tests/audit-path-discipline.mjs`、`tests/audit-prompt-duplication.mjs` | 02-§2 | `s-size-<file>`／`s-import-whitelist` |
+| R15 可迁移 | **已对齐** ✓ `tests/accept-v5r-contrast-behaviour.test.mjs`、`tests/vmu-ab-v5r-verification.test.mjs`、`tests/vmu-containment.test.mjs` | 10-§5 | `b-parity-<scenario>`／`c-parity-report-classified` |
 
 **自身可校验性**：`s-map-no-gap` 解析**本表**（一行一条）⇒ ① R1..R15 全覆盖；② 每个门禁 id 在 11-§2 出现；③ 每个文档落点存在 ⇒ 任一不满足即红 ✓（这正是"门禁即文档"的自指闭环 ✓）。
 
