@@ -1783,6 +1783,11 @@ undefined
   The second landing is phase sensitivity. The role section carries the phase as a template variable, so one path covers many phases instead of a text per phase: measured, founding, normal and verify each name their own phase, the three assembled texts differ, and the same phase assembles byte-identically so a comparison is reproducible. That is the mechanism that lets the two-sided comparison against the original move beyond the founding round.
   The turn suite now passes thirty-six assertions.
   Still undone on the first objective: the two-sided comparison beyond the founding phase, a concrete host deliverer, and the wakeup policy as configuration.
+- ***** 344 THE HOST BRIDGE MAKES "THE FRAMEWORK RUNS A TURN ITSELF" TRUE ON A HOST SEAM. The loop had a delivery seam and refused without one, but a host still had to write its own adapter; this round provides the one-line bridge, deliverViaSubagents, which takes the subagent seam and returns the delivery adapter the loop wants.
+  Its contract is deliberately narrow, and each clause is measured. It sends the ASSEMBLED text and never composes anything itself. It labels the turn so a run can be traced. A host with no seam is refused by name. And a host that ACCEPTS the turn but hands back no reply is also a named failure, never parsed into "the model said nothing" - an empty answer and an absent answer are different events and the loop keeps them apart.
+  The measurement is a whole turn through the seam: assembly from the pipeline at over a thousand characters, delivery through the bridge carrying the turn label, strict parsing, dispatch into the real faces, and a task ledger that really grew. No original preset is involved anywhere in that path, which is the objective's own sentence - that the framework run a member turn itself.
+  The turn suite passes forty-one assertions.
+  Still undone on the first objective: extending the two-sided comparison against the original past the founding phase, and formalising the next-round wakeup policy as settings or a pack.
 ### 0.4 结论
 
 ## 0.5 未接线键的【三档结构】（轮 287 建表；**轮 290 据实更正数字** ✓✓）

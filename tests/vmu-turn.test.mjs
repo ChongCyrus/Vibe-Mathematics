@@ -8,7 +8,7 @@
 //
 // Run: node tests/vmu-turn.test.mjs   (last line: === VMU TURN: N passed, M failed ===)
 
-import { createTurnOrchestrator, FIELD_OWNERS, FIELDS, extractFence, facesFrom, resolveOwners } from '../vibe-math-vmu/kernel/turn/index.js'
+import { createTurnOrchestrator, FIELD_OWNERS, FIELDS, extractFence, facesFrom, resolveOwners, deliverViaSubagents } from '../vibe-math-vmu/kernel/turn/index.js'
 import { createPromptPipeline } from '../vibe-math-vmu/kernel/prompt/index.js'
 import { v5rPromptSections, v5rTurnSections } from '../vibe-math-vmu/packs/v5r-core.js'
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
@@ -209,6 +209,40 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   const same = await loopP.assemble(loopP.open({ member: 'r-1', role: 'researcher', phase: 'verify' }).turn)
   ok(same.text === texts[2],
     'T34. *** and the same phase assembles to identical bytes, so a phase comparison is reproducible')
+}
+// 10) THE HOST BRIDGE: a host with a subagent seam hands it to the loop in one line, and the loop really runs
+{
+  const seen = []
+  const fakeSeam = {
+    async startContinuable(spec) {
+      seen.push(spec)
+      return { handle: 'h-1', reply: '```json\n' + JSON.stringify({ task_create: { title: 'via the host bridge' } }) + '\n```' }
+    },
+  }
+  const bridge = deliverViaSubagents(fakeSeam)
+  ok(typeof bridge === 'function', 'T35. *** the bridge turns a subagent seam into a delivery adapter in one line')
+  const root2 = mkdtempSync(join(tmpdir(), 'vmu-turn-bridge-'))
+  const kernel2 = createKernel({ settings: {}, root: root2, host: null })
+  const loop2 = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: collectPackSections([PACK]) }), faces: facesFrom(kernel2), deliver: bridge })
+  const before2 = (kernel2.tasks.list() || []).length
+  const run2 = await loop2.run({ member: 'r-1', role: 'researcher', phase: 'normal' })
+  const after2 = (kernel2.tasks.list() || []).length
+  ok(run2.ok === true && after2 === before2 + 1 && seen.length === 1,
+    'T36. **** A WHOLE TURN THROUGH THE HOST SEAM: the loop assembles, the bridge delivers, the reply parses, and the task ledger grows - a host needs one line to run an institute turn',
+    { delivered: seen.length, before: before2, after: after2 })
+  ok(seen[0] && seen[0].label === 'vmu-turn-' + run2.turn.id && typeof seen[0].request.prompt[0].text === 'string' && seen[0].request.prompt[0].text.length > 1000,
+    'T37. **** and what reached the seam is the ASSEMBLED text, labelled with the turn it belongs to',
+    { label: seen[0] && seen[0].label, chars: seen[0] && seen[0].request.prompt[0].text.length })
+  let noSeam = null
+  try { deliverViaSubagents(null) } catch (e) { noSeam = e }
+  ok(noSeam !== null && noSeam.code === 'VMU_ENGINE_UNAVAILABLE',
+    'T38. *** a host with no subagent seam is refused by name rather than silently undelivered', { code: noSeam && noSeam.code })
+  let noReply = null
+  const silent = deliverViaSubagents({ async startContinuable() { return { handle: 'h-2' } } })
+  try { await silent({ turn: { id: 't-x' }, text: 'x' }) } catch (e) { noReply = e }
+  ok(noReply !== null && noReply.code === 'VMU_ENGINE_UNAVAILABLE',
+    'T39. *** and a host that accepts the turn but hands back NO reply is a named failure, never parsed as an empty answer', { code: noReply && noReply.code })
+  rmSync(root2, { recursive: true, force: true })
 }
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)

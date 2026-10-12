@@ -657,6 +657,27 @@ So the answer flips: the prompt text IS now composed and regulated by the framew
 
 **判据** ⇒ **`VMU TURN: 36 passed, 0 failed`** ✓（**T32–T34 为本轮新增** ✓）。
 
+### 2.2.40 ★★★★ 宿主桥：**"vmu 自己跑一轮"在宿主缝上成立**（轮 344）✓✓
+
+★★★ **新增 `deliverViaSubagents(subagents, extract?)`** ✓✓ —— **宿主一行即可**：`deliver: deliverViaSubagents(ctx.get('subagents'))` ✓。**契约** ✓：
+- ★ **只送【装配后的文本】，本模块绝不自拼** ✗；**标签带轮次 id**（`vmu-turn-t-N` ✓，**可追** ✓）；
+- ★ **不给缝 ⇒ 具名拒 `VMU_ENGINE_UNAVAILABLE`** ✓；
+- ★★ **宿主收下却不回回复 ⇒ 同样【具名拒**】✓ —— **绝不解析成"模型什么都没说"** ✗；
+- ★ `extract` 允许宿主指定回复在哪（**内置顺序：`reply` → `text`** ✓，覆盖已见两种形状 ✓）。
+
+★★★★ **实测（T35–T39）** ✓✓：
+```
+一次 run()，投递走宿主缝
+  ⇒ 装配（管线，>1000 字）⇒ 桥投递（标签＝vmu-turn-t-N）⇒ 严格解析 ⇒ 分派
+  ⇒ 内核任务台账【真的增长】✓✓        （T36）
+到达缝的内容＝装配后的文本 ＋ 轮次标签 （T37）
+缺缝 ⇒ VMU_ENGINE_UNAVAILABLE         （T38）
+收下但不回复 ⇒ VMU_ENGINE_UNAVAILABLE （T39）
+```
+⇒ ★★★ **目标句"使 vmu 自己就能跑出一轮研究所"在【宿主缝】上已成立** ✓✓：**装配来自管线 ✓、投递来自一行桥 ✓、解析与分派来自框架 ✓、全程不涉及原预设** ✓。
+
+**判据** ⇒ **`VMU TURN: 41 passed, 0 failed`** ✓（**T35–T39 为本轮新增** ✓）。
+
 ## 3. v5r 的 56 个工具
 
 > ★★ **A/B 覆盖率：56/56** ✓✓（**轮 323 实测**：以注册表为准的 56 个工具**全部被断言点名** ✓）；**判据总账** ＝ **EQUAL 4／PROPERTY 10／DIVERGENT 4** ✓（**94 passed, 0 failed** ✓）。★★★ **`NOT_ADOPTED` 归零（轮 324）** ✓✓ —— **happy path 已逐段对照**（§2.2.22）：**执行体绑定不是"够不着"，而是"要按它的方式入席"** ✓（让调度器发出 `childId` 并用它当调用者 ✓）。（**按家族分组**，实测列举）

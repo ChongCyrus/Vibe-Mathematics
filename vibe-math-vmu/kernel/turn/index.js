@@ -77,6 +77,36 @@ export function facesFrom(services = {}, owners = FIELD_OWNERS) {
   return map
 }
 
+/**
+ * ROUND 344 — THE HOST BRIDGE. A host that owns a subagent seam can hand it straight to the loop instead of writing
+ * its own delivery adapter (docs/26 stage 3): `deliver: deliverViaSubagents(ctx.get('subagents'))`. The bridge sends
+ * the ASSEMBLED text - it never composes anything - labels the turn so a run can be traced, and refuses by name when
+ * the seam is missing or when the host hands back no reply at all. A null reply is a real failure, not an empty
+ * success, so it is named rather than parsed into "the model said nothing".
+ *
+ * `extract` lets a host whose handle carries the reply elsewhere say where it is; the built-in order is `reply`, then
+ * `text`, which covers the two shapes seen in practice.
+ */
+export function deliverViaSubagents(subagents, extract = null) {
+  if (!subagents || typeof subagents.startContinuable !== 'function') {
+    throw refuse('VMU_ENGINE_UNAVAILABLE', 'the subagents seam cannot start a member turn',
+      'inject { deliver } yourself, or give the loop a seam with startContinuable (docs/26 stage 3)')
+  }
+  return async ({ turn, text }) => {
+    const spec = { label: 'vmu-turn-' + String(turn && turn.id ? turn.id : 'unknown'), request: { prompt: [{ type: 'text', text: String(text) }] } }
+    const handle = await subagents.startContinuable(spec)
+    if (typeof extract === 'function') {
+      const got = extract(handle)
+      if (typeof got === 'string') return got
+      throw refuse('VMU_ENGINE_UNAVAILABLE', 'the extractor returned no reply text for this turn')
+    }
+    if (handle && typeof handle.reply === 'string') return handle.reply
+    if (handle && typeof handle.text === 'string') return handle.text
+    throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host accepted the turn but handed back no reply',
+      'give the loop an extractor, or deliver the reply through the loop as a later turn')
+  }
+}
+
 /** Resolve the effective ownership table: the declared default, with a caller-supplied override winning per field. */
 export function resolveOwners(bindings = null) {
   if (!bindings || typeof bindings !== 'object') return FIELD_OWNERS
