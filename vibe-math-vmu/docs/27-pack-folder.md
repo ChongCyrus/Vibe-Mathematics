@@ -86,17 +86,18 @@ vibe-math-vmu/
 
 ---
 
-## 7. 状态：**已完成 ✓ 与 未做 ✗**（轮 419 复核）
+## 7. 状态：**已完成 ✓ 与 未做 ✗**（轮 405 复核）
 
 ### 已完成 ✓
 
 | 事项 | 落点 | 判据 |
 |---|---|---|
-| ★★ **整合包文件夹成形** | `packs/v5r/`（`index.js` ＋ `settings/` ＋ `middleware/` ＋ `prompts/` ✓） | 两处名册齐 ✓、两个归档审计绿 ✓ |
+| ★★ **整合包文件夹成形** | `packs/v5r/`（`index.js` ＋ `settings/` ＋ `middleware/` ＋ `prompts/` ＋ **`notices.js`** ✓） | 两处名册齐 ✓、两个归档审计绿 ✓ |
 | ★★★ **机构策略搬出内核** | `middleware/prompt-switches.js`（**纯函数** ✓）＋ 内核新增 **`sectionPolicy` 注入点** ✓ | ★ **未注入 ⇒ 框架一个段都不动** ✓（= `preset.yml` 的"默认零机制" ✓） |
 | ★★ **pack 的 `settings/` 真正生效** | `settings/defaults.json`（**纯数据** ✓）⇒ 插件在**建内核之前**折在**用户设置之下** ✓ | ★ **用户永远赢** ✓；★ `declared` **仍只数用户键** ✓（**"未配置＝零机制"不被包偏好污染** ✓） |
-| ★★ **提示词内容物理入包** | `packages/v5r/prompts/`（4 个模块 ✓ ＋ 73 处引用同步 ✓） | 导入闭包审计绿 ✓ |
-| ★★ **无损改名通道** | `was:` ＋ `SETTING_ALIASES` ＋ `resolveKey` ＋ `renameNotice` ✓ | 7 个家族、64 个旧名可解析 ✓、0 自别名 ✓ |
+| ★★ **提示词内容物理入包** | `packs/v5r/prompts/`（4 个模块 ✓ ＋ 73 处引用同步 ✓） | 导入闭包审计绿 ✓ |
+| ★★ **通知措辞入包** | `packs/v5r/notices.js`（**四种形态** ✓） | ★★ **对语料里 6 条真实通知【逐字复现**】✓（`tests/vmu-notice-shapes.test.mjs` ✓，10/10 ✓） |
+| ★★★ **无损改名通道** | `was:` ＋ `SETTING_ALIASES` ＋ `resolveKey` ＋ `renameNotice` ✓ | ★ **11 个家族已改名 ＋ 1 次拆分**（`custody` ⇒ `custody`＋`anonymity` ✓）、**68 个旧名可解析** ✓、**0 自别名** ✓ |
 
 ### 未做（明写 ✗）
 

@@ -85,6 +85,26 @@ export const NOTICE_SHAPES = Object.freeze({
   office: officeNotice,
 })
 
+/**
+ * THE INBOX HEADER AND BLOCK (corpus-derived, and the shape matters).
+ *
+ * Twenty of the sixty-seven delivered prompts begin with this block, which is a third of the corpus: a header line, then
+ * every queued notice INDENTED BY TWO SPACES, then a blank line, and only then the ordinary round heading. It is not
+ * decoration. The indentation is what separates what the framework is telling the member from what the round is asking,
+ * and a notice that arrives unindented reads as part of the task.
+ *
+ * This is a rendering the loop must perform rather than a line it can carry: the loop knows which notices are queued
+ * for this member, and the pack knows how to write them down. The seam is `noticeBlock`.
+ */
+export const INBOX_HEADER = '[新到的消息]'
+
+/** Render the queued notices as the corpus renders them: header, each line indented, then a blank line. */
+export function inboxBlock(notices = []) {
+  const lines = (Array.isArray(notices) ? notices : []).filter((l) => typeof l === 'string' && l.trim() !== '')
+  if (!lines.length) return ''
+  return [INBOX_HEADER, ...lines.map((l) => '  ' + l.trim()), ''].join('\n')
+}
+
 /** Format by name, refusing an unknown kind rather than guessing which shape was meant. */
 export function formatNotice(kind, fields = {}) {
   const fn = NOTICE_SHAPES[kind]

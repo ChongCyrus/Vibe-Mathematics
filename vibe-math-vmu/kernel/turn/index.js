@@ -186,6 +186,9 @@ export function createTurnOrchestrator({
   // The institution policy for prompt-section switches. Null means the framework switches NOTHING,
   // which is this preset's stated design: "default zero mechanism, mechanisms provided as packs".
   sectionPolicy = null,
+  // Renders this member's queued notices as the pack writes them (header, indented lines, blank line). Null means
+  // the notices join the status block as before, which keeps the framework usable with no pack at all.
+  noticeBlock = null,
   prompt = null, deliver = null, faces = {}, bindings = null, wakeupPolicy = 'round-robin', settings = null, clock = () => new Date().toISOString() } = {}) {
   const owners = resolveOwners(bindings)
   const known = Object.keys(owners)
@@ -237,7 +240,14 @@ export function createTurnOrchestrator({
     // inside the per-round brief. Taking them is what makes the announcement one-shot, and it happens on the same call
     // that delivers the prompt, so a notice cannot be skipped by a phase that builds a different status block.
     const pendingNotices = drainNotices(turn.member)
-    const statusWithNotices = [turn.statusBlock, ...pendingNotices].filter((l) => typeof l === "string" && l.trim() !== "").join("\n")
+    // With a noticeBlock the notices are PREPENDED as their own block and kept OUT of the status block, because that
+    // is what the corpus shows: a header, indented notice lines, a blank line, then the round heading. Without one
+    // they join the status block, which is the framework's own fallback rather than an institution's wording.
+    const noticeText = pendingNotices.length && typeof noticeBlock === "function"
+      ? String(noticeBlock(pendingNotices) || "")
+      : ""
+    const statusWithNotices = (noticeText ? [turn.statusBlock] : [turn.statusBlock, ...pendingNotices])
+      .filter((l) => typeof l === "string" && l.trim() !== "").join("\n")
     const turnSettings = (settings || turn.facts) ? { ...(settings || {}), ...(turn.facts || {}) } : undefined
     // ROUND 407: THE FRAMEWORK OFFERS THE MECHANISM; THE PACK STATES THE POLICY (goal 2). Which optional blocks an
     // institution switches on, which reply catalogue it sends, which meeting speaker state applies and which
@@ -254,7 +264,7 @@ export function createTurnOrchestrator({
       fail('VMU_TURN_ASSEMBLY_FAILED', 'the prompt pipeline refused this turn: ' + JSON.stringify((out && out.refused) || {}).slice(0, 160))
     }
     counts.assembled += 1
-    return { ok: true, text: out.text, sources: out.sources || [], truncation: out.truncation || null }
+    return { ok: true, text: (noticeText ? noticeText + "\n" : "") + out.text, sources: out.sources || [], truncation: out.truncation || null }
   }
 
   /** ③ deliver through the adapter seam. A missing adapter is refused, never faked. */

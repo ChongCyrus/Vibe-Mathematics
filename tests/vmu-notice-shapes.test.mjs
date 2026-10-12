@@ -10,7 +10,7 @@
 //
 // Run: node tests/vmu-notice-shapes.test.mjs
 import { PROMPTS } from '../vibe-math-vmu/packs/v5r/prompts/v5r-prompts.js'
-import { assignmentNotice, nudgeNotice, chatNotice, officeNotice, formatNotice, NOTICE_SHAPES } from '../vibe-math-vmu/packs/v5r/notices.js'
+import { assignmentNotice, nudgeNotice, chatNotice, officeNotice, formatNotice, NOTICE_SHAPES, inboxBlock, INBOX_HEADER } from '../vibe-math-vmu/packs/v5r/notices.js'
 
 let passed = 0
 let failed = 0
@@ -92,6 +92,29 @@ console.log('=== 4. A MISSING FIELD IS REFUSED BY NAME, never rendered as a hole
   ok(kindErr !== null && kindErr.code === 'VMU_INVALID_ARGUMENT',
     'an unknown notice kind is refused rather than guessed', { code: kindErr && kindErr.code })
   ok(Object.keys(NOTICE_SHAPES).length === 4, 'the four shapes are the four the corpus carries', { shapes: Object.keys(NOTICE_SHAPES) })
+}
+
+console.log('=== 5. THE INBOX BLOCK: the header, the indentation and the blank line, exactly as the corpus writes them ===')
+{
+  // Twenty of the sixty-seven captured prompts begin with this block, a third of the corpus, and it cannot be measured
+  // by the assembly comparison at all: the header line is shorter than the comparison's minimum length and the notice
+  // bodies are data rather than prose. Its SHAPE is what has to be right, so it is asserted here.
+  const captured = PROMPTS.map((p) => String(p.text || '')).filter((t) => t.startsWith(INBOX_HEADER))
+  ok(captured.length >= 10, 'a third of the corpus begins with the inbox header', { count: captured.length })
+  const sample = captured[0]
+  const lines = sample.split('\n')
+  ok(lines[0] === INBOX_HEADER, 'the block starts with the header on its own line')
+  const indented = lines.slice(1).filter((l) => l.startsWith('  '))
+  ok(indented.length >= 1, 'the notices under it are INDENTED by two spaces, which is what separates what the framework is telling the member from what the round is asking', { indented: indented.length })
+  const firstNonEmptyAfter = lines.slice(1).find((l) => l.trim() !== '' && !l.startsWith('  '))
+  ok(typeof firstNonEmptyAfter === 'string' && firstNonEmptyAfter.startsWith('【第'),
+    'and the ordinary round heading follows the block, so the block sits ABOVE the round rather than inside its status',
+    { next: String(firstNonEmptyAfter).slice(0, 30) })
+  const mine = inboxBlock(['【研究所提示】demo 未生效（V5_DEMO）：x'])
+  ok(mine === INBOX_HEADER + '\n  【研究所提示】demo 未生效（V5_DEMO）：x\n',
+    'our renderer produces exactly that shape: header, indented line, trailing blank line',
+    { mine: JSON.stringify(mine) })
+  ok(inboxBlock([]) === '', 'and an empty queue renders NOTHING rather than a bare header, so a round with no news looks like a round with no news')
 }
 
 console.log('=== NOTICE SHAPES: ' + passed + ' passed, ' + failed + ' failed ===')
