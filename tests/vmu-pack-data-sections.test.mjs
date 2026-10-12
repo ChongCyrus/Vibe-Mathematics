@@ -11,8 +11,8 @@
 // this pack, which is the point: a deployment names it in the active packs list and gets its text.
 //
 // Run: node tests/vmu-pack-data-sections.test.mjs
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 import { createPromptPipeline } from '../vibe-math-vmu/kernel/prompt/index.js'
 
@@ -59,6 +59,43 @@ console.log('=== 3. NOTHING IN THE PLUGIN KNOWS THIS PACKS NAME ===')
 const pluginSrc = readFileSync(join(here, '..', 'vibe-math-vmu', 'vibe-math-vmu.js'), 'utf8')
 ok(pluginSrc.includes("'prompts', 'sections.json'"), 'the plugin reads prompts/sections.json from a packs folder')
 ok(!pluginSrc.includes('example-data'), 'and it does not mention this packs name anywhere: a deployment names the pack, the plugin reads its data')
+
+console.log('=== 4. EVERY PACK RESOLVES THROUGH THE FOLDER PATH THE LOADER PREFERS ===')
+{
+  // A PACK IS A FOLDER, and this is the machine proof rather than the claim. The loader prefers packs/<id>/index.js and
+  // only falls back to packs/<id>.js when that import fails - so a loose pack file was using the compatibility path, and
+  // the philosophy held only for the packs that happened to be folders. Every directory under packs/ must resolve
+  // through the preferred path and expose a manifest with an id.
+  const packsDir = join(here, '..', 'vibe-math-vmu', 'packs')
+  const entries = readdirSync(packsDir, { withFileTypes: true })
+  const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name).sort()
+  const loose = entries.filter((e) => e.isFile()).map((e) => e.name)
+  ok(loose.length === 0, 'packs/ holds NO loose files, so no pack uses the loaders compatibility fallback', { loose })
+  const bad = []
+  const ids = []
+  const dataOnly = []
+  for (const id of dirs) {
+    // TWO LEGITIMATE SHAPES. A pack with behaviour carries an `index.js` manifest; a pack that only contributes TEXT or
+    // DEFAULTS needs no manifest at all, because the plugin reads its data by name from the active packs list. A folder
+    // that is neither is the thing worth failing on.
+    let manifest = null
+    try {
+      const mod = await import(pathToFileURL(join(packsDir, id, 'index.js')).href)
+      manifest = [mod.V5R_PACK, mod.PACK, mod.default, ...Object.values(mod)]
+        .find((x) => x && typeof x === 'object' && typeof x.id === 'string') || null
+    } catch (e) {
+      if (!(e && (e.code === 'ERR_MODULE_NOT_FOUND' || e.code === 'MODULE_NOT_FOUND'))) { bad.push(id + ': ' + String(e.message).slice(0, 60)); continue }
+    }
+    if (manifest) { ids.push(manifest.id); continue }
+    const hasPromptData = existsSync(join(packsDir, id, 'prompts', 'sections.json'))
+    const hasDefaults = existsSync(join(packsDir, id, 'settings', 'defaults.json'))
+    if (hasPromptData || hasDefaults) dataOnly.push(id + (hasPromptData ? ' (prompt data)' : '') + (hasDefaults ? ' (defaults)' : ''))
+    else bad.push(id + ': neither a manifest nor data the plugin reads by name')
+  }
+  ok(bad.length === 0 && dirs.length >= 4,
+    'every folder under packs/ is one of the TWO legitimate shapes - a manifest at <id>/index.js, or data the plugin reads by name - which is what makes "a pack is a folder" true for ALL of them rather than most',
+    { folders: dirs, manifests: ids, dataOnly, bad })
+}
 
 console.log('=== PACK DATA SECTIONS: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }
