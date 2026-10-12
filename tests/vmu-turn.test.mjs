@@ -808,20 +808,49 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
 // and the loop enables exactly one, plus an ask that states speaking is optional and silence is never a vote.
 {
   const mM = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }), settings: { "vmu.turn.invitedBy": "acad", "vmu.turn.invitedWhy": "needs the lemma" } })
-  const aM = await mM.assemble(mM.open({ member: "t-1", role: "temp", phase: "meeting", round: 2, statusBlock: "[状态] x" }).turn)
+  const aM = await mM.assemble(mM.open({ member: "t-1", role: "temp", phase: "meeting", meetingState: "invited", round: 2, statusBlock: "[状态] x" }).turn)
   ok(aM.ok === true && aM.text.includes("受邀发言") && aM.text.includes("acad") && aM.text.includes("needs the lemma") && aM.text.includes("不计票") === true,
     "T122. **** the INVITED-TEMP state arrives with its inviter and reason, and states that the speech is minutes only, never a vote, and does not block",
     { chars: aM.text.length })
   ok(aM.text.includes("沉默不等于投票") && aM.text.includes("阻止结题") && aM.text.includes("要不要发言由你决定"),
     "T123. **** and the MEETING ASK carries the two rules the source is explicit about: speaking is optional AND silence is never a vote, with a missing vote blocking closure",
     { ask: true })
-  // OWED, stated rather than hidden: the three states are DECLARED, but the loop does not yet enable exactly one, so a
-  // meeting prompt currently carries all of them. The assertion therefore checks the declaration and names the gap -
-  // asserting a selection that does not exist would be a lie, and deleting the check would hide it.
+  // EXCLUSION NOW EXISTS, so the assertion moves from "declared but not selected" to the meaningful default: a
+  // meeting round that names NO state gets none of the three, because guessing which one applies would put words in
+  // the prompt that the caller never asked for.
   const declaredMeetingStates = CHARTER_SECTIONS.filter((s) => String(s.name).startsWith('v5r-meeting-')).map((s) => s.name).sort()
-  ok(declaredMeetingStates.length === 4 && declaredMeetingStates.includes('v5r-meeting-invited') && declaredMeetingStates.includes('v5r-meeting-first') && aM.text.includes('第一位发言者') === true,
-    'T124. **** all three speaker states and the ask are DECLARED, and the loop does not yet enable exactly one - so a meeting prompt carries them all today, which is recorded as owed rather than asserted away',
+  const unnamed = await mM.assemble(mM.open({ member: "t-1", role: "temp", phase: "meeting", round: 2, statusBlock: "[状态] x" }).turn)
+  ok(declaredMeetingStates.length === 4 && unnamed.text.includes('受邀发言') === false && unnamed.text.includes('第一位发言者') === false && aM.text.includes('第一位发言者') === false,
+    'T124. **** all three speaker states and the ask are DECLARED, and a meeting round that names NO state gets NONE of them - the loop refuses to guess which situation applies',
     { declared: declaredMeetingStates })
+}
+
+// 32) EXACTLY ONE MEETING SPEAKER STATE (docs/26 section 3.27). Declaring all three was the previous round gap; the
+// loop now injects the one the caller names and disables the rest, injects none outside the meeting phase, and refuses
+// an unrecognised state rather than silently rendering the first speaker.
+{
+  const mkM = () => createTurnOrchestrator({ prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }), settings: { "vmu.turn.invitedBy": "acad", "vmu.turn.invitedWhy": "w" } })
+  const invited = await mkM().assemble(mkM().open({ member: "t-1", role: "temp", phase: "meeting", meetingState: "invited", round: 2, statusBlock: "[状态] x" }).turn)
+  ok(invited.ok === true && invited.text.includes("受邀发言") && invited.text.includes("第一位发言者") === false && invited.text.includes("其他成员本次会议已发表的意见") === false,
+    "T125. **** the INVITED state is injected ALONE: the first-speaker and the others-inputs states are absent, which is what mutually exclusive means",
+    { chars: invited.text.length })
+  const first = await mkM().assemble(mkM().open({ member: "r-1", role: "researcher", phase: "meeting", meetingState: "first", round: 2, statusBlock: "[状态] x" }).turn)
+  ok(first.text.includes("第一位发言者") && first.text.includes("受邀发言") === false && first.text.includes("### 其他成员本次会议已发表的意见") === false,
+    "T126. **** and the FIRST-SPEAKER state is injected alone, with the speaking model it carries",
+    { chars: first.text.length })
+  const others = await mkM().assemble(mkM().open({ member: "r-1", role: "researcher", phase: "meeting", meetingState: "others", round: 2, statusBlock: "[状态] x" }).turn)
+  ok(others.text.includes("### 其他成员本次会议已发表的意见") && others.text.includes("第一位发言者") === false,
+    "T127. **** and the OTHERS state forwards the inputs without claiming to be first",
+    { chars: others.text.length })
+  const normal = await mkM().assemble(mkM().open({ member: "r-1", role: "researcher", phase: "normal", round: 2, statusBlock: "[状态] x" }).turn)
+  ok(normal.text.includes("受邀发言") === false && normal.text.includes("第一位发言者") === false && normal.text.includes("### 其他成员本次会议已发表的意见") === false,
+    "T128. **** and OUTSIDE the meeting phase none of the three appears at all, because they are states of a meeting rather than of every round",
+    { chars: normal.text.length })
+  let sErr = null
+  try { await mkM().assemble(mkM().open({ member: "r-1", role: "researcher", phase: "meeting", meetingState: "nope", round: 2, statusBlock: "[状态] x" }).turn) } catch (e) { sErr = e }
+  ok(sErr !== null && sErr.code === "VMU_INVALID_ARGUMENT",
+    "T129. **** while an unrecognised state is REFUSED by name rather than silently rendered as the first speaker",
+    { code: sErr && sErr.code })
 }
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)

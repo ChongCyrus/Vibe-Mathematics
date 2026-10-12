@@ -197,13 +197,13 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
   const fail = (code, message, hint) => { counts.refused += 1; lastRefusal.code = code; lastRefusal.message = message; throw refuse(code, message, hint) }
 
   /** ① open a turn: who, which round, which phase, which task. */
-  const open = ({ member, role = null, phase, task = null, why = null, nextStep = null, roster = null, quorum = null, statusBlock = null, facts = null, round = 1 } = {}) => {
+  const open = ({ member, role = null, phase, task = null, why = null, nextStep = null, roster = null, quorum = null, statusBlock = null, facts = null, meetingState = null, round = 1 } = {}) => {
     if (typeof member !== 'string' || member.trim() === '') fail('VMU_INVALID_ARGUMENT', 'a turn needs a member', 'pass { member, phase }')
     if (typeof phase !== 'string' || !PHASES.includes(phase)) {
       fail('VMU_INVALID_ARGUMENT', 'unknown phase: ' + String(phase), 'known phases: ' + PHASES.join(', '))
     }
     seq += 1
-    const turn = { id: 't-' + seq, member, role, phase, task, why, nextStep, roster, quorum, statusBlock, facts, round, at: clock() }
+    const turn = { id: 't-' + seq, member, role, phase, task, why, nextStep, roster, quorum, statusBlock, facts, meetingState, round, at: clock() }
     turns.set(turn.id, turn)
     woken.set(member, (woken.get(member) || 0) + 1)
     counts.opened += 1
@@ -241,8 +241,26 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
       ]
       for (const pair of offSwitches) {
         const declared = settings ? settings[pair[0]] : undefined
-        if (declared === false) prompt.disable(pair[1])
-        else if (typeof prompt.enable === "function") prompt.enable(pair[1])
+        setSectionEnabled(pair[1], declared !== false)
+      }
+    }
+    // ROUND 390: the meeting prompt has THREE mutually exclusive speaker states in the source, and exactly one applies.
+    // Declaring all three and injecting all three was the gap the previous round recorded; the loop now picks by the
+    // state the caller knows, and disables the other two. Two rules are deliberate: outside the meeting phase none of
+    // them appears at all, and an unrecognised state is refused rather than silently rendered as the first speaker.
+    if (prompt && typeof prompt.disable === "function") {
+      const MEETING_STATES = [
+        ["invited", "v5r-meeting-invited"],
+        ["others", "v5r-meeting-others"],
+        ["first", "v5r-meeting-first"],
+      ]
+      const state = turn.phase === "meeting" ? (turn.meetingState || null) : null
+      if (turn.phase === "meeting" && state !== null && !MEETING_STATES.some((p) => p[0] === state)) {
+        fail("VMU_INVALID_ARGUMENT", "unknown meeting speaker state: " + String(state),
+          "one of: " + MEETING_STATES.map((p) => p[0]).join(", "))
+      }
+      for (const pair of MEETING_STATES) {
+        setSectionEnabled(pair[1], turn.phase === "meeting" && state === pair[0])
       }
     }
     const pendingNotices = drainNotices(turn.member)
@@ -353,6 +371,18 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
   const notices = new Map()
 
   /** Drain a member notices. Called by the assembly, which is what makes the announcement one-shot. */
+  /**
+   * ROUND 391 - disable/enable a section IF the pipeline carries it. The pipeline is right to refuse an unknown name,
+   * and a suite or a host may legitimately assemble with a subset of the pack sections, so the loop swallows EXACTLY
+   * that one refusal and lets every other failure through: a switch must not be able to turn a configuration mistake
+   * into silence.
+   */
+  const setSectionEnabled = (name, on) => {
+    if (!prompt) return
+    try { if (on) prompt.enable(name); else prompt.disable(name) }
+    catch (e) { if (!e || e.code !== "VMU_NO_SUCH_OBJECT") throw e }
+  }
+
   const drainNotices = (memberId) => {
     const q = notices.get(memberId) || []
     notices.delete(memberId)
