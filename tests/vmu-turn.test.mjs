@@ -10,8 +10,10 @@
 
 import { createTurnOrchestrator, FIELD_OWNERS, FIELDS, extractFence, facesFrom, resolveOwners } from '../vibe-math-vmu/kernel/turn/index.js'
 import { createPromptPipeline } from '../vibe-math-vmu/kernel/prompt/index.js'
-import { v5rPromptSections } from '../vibe-math-vmu/packs/v5r-core.js'
+import { v5rPromptSections, v5rTurnSections } from '../vibe-math-vmu/packs/v5r-core.js'
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
+import { collectPackSections } from '../vibe-math-vmu/kernel/pack.js'
+import { PACK } from '../vibe-math-vmu/packs/v5r-core.js'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -165,6 +167,28 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   ok(noHost.turn.status().counts.refused >= 1,
     'T27. * the refusal is counted on the service status surface, so a host that cannot deliver is visible')
   rmSync(root, { recursive: true, force: true })
+}
+
+// 8) DECLARATION INSTEAD OF HAND-PASSING: the pack declares its sections and the assembly collects them
+{
+  const declared = collectPackSections([PACK])
+  ok(Array.isArray(declared) && declared.length === v5rTurnSections.length && declared.length >= 68,
+    'T28. **** the pack DECLARES its prompt sections and a pure collector gathers them - 68 sections with no hand-passing',
+    { declared: declared.length })
+  const loopDeclared = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: declared, clock: () => '2026-01-01T00:00:00.000Z' }) })
+  const d1 = await loopDeclared.assemble(loopDeclared.open({ member: 'r-1', role: 'researcher', phase: 'founding' }).turn)
+  const d2 = await loopDeclared.assemble(loopDeclared.open({ member: 'acad', role: 'academician', phase: 'founding' }).turn)
+  ok(d1.ok === true && d1.text !== d2.text && d1.text.includes('{{') === false,
+    'T29. **** ASSEMBLED FROM THE DECLARATION ALONE: two members still get different text, no placeholder left',
+    { chars: [d1.text.length, d2.text.length], differ: d1.text !== d2.text })
+  let malformed = null
+  try { collectPackSections([{ id: 'x', sections: [{ name: 'Not Kebab' }] }]) } catch (e) { malformed = e }
+  ok(malformed !== null && malformed.code === 'VMU_PACK_INVALID',
+    'T30. *** a malformed declaration is refused by name rather than skipped', { code: malformed && malformed.code })
+  let collision = null
+  try { collectPackSections([{ id: 'a', sections: [{ name: 'dup' }] }, { id: 'b', sections: [{ name: 'dup' }] }]) } catch (e) { collision = e }
+  ok(collision !== null && collision.code === 'VMU_PACK_CONFLICT',
+    'T31. *** and two packs claiming one section name is a CONFLICT, never resolved silently', { code: collision && collision.code })
 }
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)

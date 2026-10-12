@@ -136,6 +136,12 @@ export const PACK = Object.freeze({
   // Legacy names keep working through the alias layer (never by renaming a tool: D6/D14).
   // CONSTRAINT (learned by building this pack): an alias target must be a PUBLISHED SERVICE, not a tool name
   // - the registry validates it, and `vibe_vmu_records` is a tool, so `vibe_v5_poll_vote` maps to `vmu.tasks`.
+  // ROUND 342: a pack DECLARES the prompt sections it brings, so assembling a host from this pack needs no
+  // hand-passing. They are collected BEFORE the kernel is constructed (a pack must leave no residue, and the
+  // pipeline has no unregister), which is why this is a declaration rather than an apply-time side effect.
+  // A GETTER, not a plain value: the section list is defined below the manifest, and a manifest that read it
+  // eagerly would hit the temporal dead zone. Evaluated on access, so the declaration stays where the manifest is.
+  get sections() { return v5rTurnSections },
   aliases: [
     { from: 'vibe_v5_poll_vote', to: 'vmu.tasks' },
     { from: 'vibe_v5_poll_open', to: 'vmu.tasks' },

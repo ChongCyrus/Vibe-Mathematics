@@ -140,6 +140,30 @@ function removeEntry(bus, id) {
 /**
  * Create the loader. `kernel` is a composed kernel (kernel/index.js); `registry` is its public face.
  */
+/**
+ * ROUND 342 - COLLECT THE SECTIONS PACKS DECLARE. Pure on purpose: the pipeline registers a section when it is
+ * CONSTRUCTED and cannot unregister one, while a pack must leave no residue on unload - so a section cannot be an
+ * apply-time side effect. It is a declaration the assembly collects BEFORE building the kernel.
+ * A malformed declaration, or two packs claiming one name, is refused by name rather than resolved silently.
+ */
+export function collectPackSections(manifests = []) {
+  const list = Array.isArray(manifests) ? manifests : []
+  const out = []
+  for (const m of list) {
+    if (!m || !Array.isArray(m.sections)) continue
+    for (const s of m.sections) {
+      if (!s || typeof s.name !== 'string' || !/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(s.name)) {
+        throw refuse('VMU_PACK_INVALID', 'a declared prompt section needs a kebab-case name', 'offender: pack ' + String(m.id))
+      }
+      if (out.some((x) => x.name === s.name)) {
+        throw refuse('VMU_PACK_CONFLICT', 'two packs declare the same prompt section: ' + s.name, 'conflicts are declared explicitly (docs/10 section 4)')
+      }
+      out.push(s)
+    }
+  }
+  return out
+}
+
 export function createPackLoader({ kernel, registry = null, allowOverride = false, clock = () => new Date().toISOString() } = {}) {
   const applied = new Map()
 
