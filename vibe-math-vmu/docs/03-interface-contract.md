@@ -107,10 +107,10 @@
 
 | 工具（规划） | 意图 | 状态 |
 |---|---|---|
-| `vibe_vmu_report` | 面向人的报告（可裁剪字段） | ⛔ 未实现 |
+| ~~`vibe_vmu_report`~~ | 面向人的报告（可裁剪字段） | ★★★ **已【移出本表、降级为扩展**]✓（★ 轮 476 ✓）：★ **全仓搜寻【零消费者**]✗ —— ★ **提到它的只有【把它列为计划的两份文档**]✓（★ 本卷 ＋ `14-open-items-and-roadmap` ✓），**代码 0 处、测试 0 处** ✓ ⇒ ★★ **按审批原则（对 (a)–(j) 任一方向不存在可能消费者 ⇒ 降级为扩展、不再实现 ✓）移入 `23-extensions-and-deferred`** ✓ |
 | `vibe_vmu_members` | 花名册与角色槽位（只读） | ⛔ 未实现（库面 `kernel.members` ✓） |
-| `vibe_vmu_hire` / `vibe_vmu_fire` | 增/减成员（走内核槽位） | ⛔ 未实现 |
-| `vibe_vmu_say` | 发消息（可被中间件拦截） | ⛔ 未实现 |
+| `vibe_vmu_hire` / `vibe_vmu_fire` | 增/减成员（走内核槽位） | ⛔ **工具名未注册** —— 但**能力【两侧都已实现**]✓✓：★ `kernel/identity.js` **同时导出 `addMembership({memberId, institution, since})` 与 `endMembership(...)`** ✓（★ 同一份探针一次找到 ✓）⇒ ★★ **所以这一条是【纯缺名字**]，**不是缺能力** ✓ —— ★ **补它是一行 host 注册** ✓（★ 与上一轮 `pause`／`resume` 同一形态 ✓） |
+| `vibe_vmu_say` | 发消息（可被中间件拦截） | ⛔ **工具名未注册** —— ★★ **注意一个同名陷阱** ✗：★ **内核里的 `say({type:...})` 是【事件发射器**]✓（★ 例如 `kernel/control.js` 的 `say({type:'control/paused'})` ✓），**不是成员发消息** ✓ ⇒ ★★ **两者不要混读** ✓；★★ **宿主桥在 `kernel/bus.js`**（★ 导出 `createBus({entries,settings,clock,…})` ✓、`VU_HOOKS` ✓、`BRIDGE_TOPICS: ['host/waterfall']` ✓）⇒ ★ **那是【宿主面**]，**成员面向成员的消息面本轮未找到** ✗ |
 | `vibe_vmu_meeting` | 会议原语：召集/议程/举手/收束 | ⛔ 未实现（库面 `kernel.meeting()` ✓） |
 | `vibe_vmu_ballot` | 表决原语：开板/投票/计票/结束 | ⛔ 未实现（库面 `kernel.ballot()` ✓） |
 | `vibe_vmu_record_progress` / `vibe_vmu_record_{proposition,method,subproblem}` | 记录与成果卡 | ⛔ 未实现（已由 `vibe_vmu_records` 的 `append` 覆盖 ✓） |
