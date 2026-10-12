@@ -638,7 +638,28 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       throw Object.assign(new Error('the host context has no tools.register'), { code: 'VMU_ENGINE_UNAVAILABLE',
         hint: 'pass a DSH context; the adapter never invents a tool surface' })
     }
-    const list = specs()
+    const raw = specs()
+    // ROUND 478: the filter published in round 142 finally has a consumer. `vmu.tools.enabled` narrows the surface;
+    // absent (null) means no restriction and an explicit [] means nothing registers - the distinction
+    // sanitizeToolFilter was written to preserve. An unknown name is refused BY NAME and the refusal is recorded
+    // in failures and logged, never swallowed: a filter that quietly stops filtering is the failure this
+    // mechanism exists to prevent.
+    const declared = settings && Object.prototype.hasOwnProperty.call(settings, 'vmu.tools.enabled') ? settings['vmu.tools.enabled'] : null
+    let filterResult = null
+    try {
+      filterResult = sanitizeToolFilter(declared, TOOL_NAMES)
+    } catch (e) {
+      // sanitizeToolFilter REFUSES an unknown name by throwing. FAIL-CLOSED: an unusable filter must never widen
+      // the surface, so nothing registers and the refusal is recorded where install problems are already reported.
+      filterResult = { ok: false, refused: { code: (e && e.code) || 'VMU_INVALID_ARGUMENT', message: (e && e.message) || String(e), hint: (e && e.hint) || 'vmu.tools.enabled must list published tool names' } }
+    }
+    if (!filterResult.ok) {
+      const refused = filterResult.refused
+      failures.push({ name: '(tool filter)', code: refused.code, message: refused.message, hint: refused.hint || null })
+      log('vmu.tools.enabled refused, nothing will register: ' + String(refused.message))
+    }
+    const wanted = filterResult.ok ? filterResult.filter : []
+    const list = wanted === null ? raw : raw.filter((s) => wanted.includes(s.name))
     if (list.length === 0) {
       installed = true
       log('vmu is disabled: nothing registered')

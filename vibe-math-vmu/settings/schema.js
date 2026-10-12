@@ -133,6 +133,7 @@ const CORE_DEFS = Object.freeze([
   // NUMBERS are runtime parameters (docs/26 section 3.14). They live here so the text stays in the pack and the values
   // stay configurable - the point of the whole settings surface.
   { key: 'vmu.turn.maxParallel', was: ['vmu.agentBudget.maxParallel', 'vmu.resources.maxParallel'], was: ['vmu.resources.maxParallel'], type: 'number', def: 3, hot: HOT.H2, who: 'office', doc: '每轮最多同时唤醒的成员数（原线默认 3；非法值回落 3）' },
+  { key: 'vmu.tools.enabled', type: 'stringList', def: null, hot: HOT.H2, who: 'office', doc: "已接线（host.js 的 install 读取）：宿主注册哪些 vmu 工具。空/缺省（null）＝不限制；显式空表 [] ＝一个都不注册；未知名会被具名拒绝而不是静默放开（docs/03 §7）。" },
   { key: 'vmu.turn.toolCallsPerTurnCap', was: ['vmu.agentBudget.toolCallsPerTurnCap', 'vmu.resources.toolCallsPerTurnCap'], was: ['vmu.resources.toolCallsPerTurnCap'], type: 'number', def: 0, hot: HOT.H2, who: 'office', doc: '本回合工具调用上限；0＝未设上限（仍请克制）' },
   { key: 'vmu.turn.memoryCeilingMb', was: ['vmu.agentBudget.memoryCeilingMb', 'vmu.resources.memoryCeilingMb'], was: ['vmu.resources.memoryCeilingMb'], type: 'number', def: 0, hot: HOT.H2, who: 'office', doc: '内存上限（MB）；0＝只提醒"压力明显增大"而不给数字' },
   { key: 'vmu.turn.selfCheck', was: ['vmu.agentBudget.selfCheck', 'vmu.resources.selfCheck'], was: ['vmu.resources.selfCheck'], type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '是否向成员展示资源纪律段（关掉＝零注入，提示词回到该段之前，注入点逐字不变）' },
