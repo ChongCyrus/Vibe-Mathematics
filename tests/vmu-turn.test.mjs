@@ -352,6 +352,42 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
     'T58. *** and nobody to wake is still a LEGAL no-op through the tool, not an error')
   rmSync(root4, { recursive: true, force: true })
 }
+// 14) CONTROL: the assembled turn text is changeable through settings AND through the live override API, and the
+// pipeline still does the assembling - which is the clause the objective states and nothing had yet proved.
+{
+  const sections = collectPackSections([PACK])
+  const TARGET = 'v5r-role-block'
+  const SPEC = '__CONTROLLED_BY_SETTINGS__'
+
+  // (a) declared in SETTINGS: no code change, the next assembly obeys it
+  const viaSettings = createPromptPipeline({ sections, clock: () => '2026-01-01T00:00:00.000Z',
+    settings: { 'vmu.prompts.overrides': { [TARGET]: SPEC } } })
+  const svc = createTurnOrchestrator({ prompt: viaSettings })
+  const outSettings = await svc.assemble(svc.open({ member: 'r-1', role: 'researcher', phase: 'normal' }).turn)
+  ok(outSettings.ok === true && outSettings.text.includes(SPEC) && outSettings.text.includes('【本轮面向的成员】') === false,
+    'T59. **** SETTINGS CONTROL THE TEXT: a declared override replaces the section and the assembled turn obeys it - no code change, still assembled by the pipeline',
+    { hasSpec: outSettings.text.includes(SPEC) })
+
+  // (b) the same thing at RUNTIME, and reversible
+  const live = createPromptPipeline({ sections, clock: () => '2026-01-01T00:00:00.000Z' })
+  const lv = createTurnOrchestrator({ prompt: live })
+  const before = await lv.assemble(lv.open({ member: 'r-1', role: 'researcher', phase: 'normal' }).turn)
+  const changed = live.override(TARGET, SPEC, 'office')
+  const after = await lv.assemble(lv.open({ member: 'r-1', role: 'researcher', phase: 'normal' }).turn)
+  ok(changed.ok === true && changed.rollbackable === true && after.text.includes(SPEC) && before.text.includes(SPEC) === false,
+    'T60. **** and RUNTIME CONTROL works the same way, with the previous text handed back so the change can be undone',
+    { rollbackable: changed.rollbackable })
+  live.rollback(TARGET, changed.previous)
+  const rolled = await lv.assemble(lv.open({ member: 'r-1', role: 'researcher', phase: 'normal' }).turn)
+  ok(rolled.text === before.text,
+    'T61. **** ROLLBACK restores the assembly byte for byte, so tuning a prompt is not a one-way door')
+
+  // (c) control is PERMISSIONED, not open to anyone
+  let forbidden = null
+  try { live.override(TARGET, SPEC, 'r-9') } catch (e) { forbidden = e }
+  ok(forbidden !== null && forbidden.code === 'VMU_NOT_PERMITTED',
+    'T62. **** and CHANGING THE TEXT IS PERMISSIONED: an identity outside whoMayOverride is refused by name', { code: forbidden && forbidden.code })
+}
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
