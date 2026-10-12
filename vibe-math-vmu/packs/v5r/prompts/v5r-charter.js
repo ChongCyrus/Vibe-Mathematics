@@ -1166,7 +1166,6 @@ export const CHARTER_BLOCKS = Object.freeze([
     texts: {
       normal: [
         '计算证据请引用回执路径；脚本修改后用同一源文件重跑，旧回执不代表新代码。近似、替代与有限搜索的范围须声明，不得当成精确证明。详细操作按需读 {{ setting:vmu.turn.protocolPath }}',
-        'contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明：{{ setting:vmu.turn.protocolPath }}',
       ].join('\n'),
     },
   },
