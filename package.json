@@ -232,6 +232,7 @@
     "vibe-math-vmu/docs/22-academic-operations.md",
     "vibe-math-vmu/docs/23-extensions-and-deferred.md",
     "vibe-math-vmu/docs/24-v5r-containment.md",
+    "vibe-math-vmu/docs/25-demoted-domains.md",
     "scripts/generate-planned-codes.mjs",
     "vibe-math-vmu/settings/schema.js",
     "vibe-math-vmu/glossary.json",
