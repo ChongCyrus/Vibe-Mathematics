@@ -17,7 +17,27 @@
 // `scripts/generate-pack-prompts.mjs`, which records the corpus sha256 inside it, so this pack carries the line's
 // prompt TEXT and not only its policy. `tests/vmu-pack-prompts.test.mjs` asserts the text equals the corpus
 // VERBATIM (not a paraphrase, not a second copy nobody checks).
-import { SOURCE_REL as PROMPT_SOURCE_REL, SOURCE_SHA256 as PROMPT_SOURCE_SHA256, COUNTS as PROMPT_COUNTS } from './v5r-prompts.js'
+import { SOURCE_REL as PROMPT_SOURCE_REL, SOURCE_SHA256 as PROMPT_SOURCE_SHA256, COUNTS as PROMPT_COUNTS, PROMPTS as PROMPT_ENTRIES } from './v5r-prompts.js'
+
+/**
+ * ROUND 336 — THE BRIDGE FROM TEXT TO PIPELINE. Until now the v5r prompt corpus was carried as DATA: hash-locked,
+ * verbatim, and unused by the runtime. The framework already owns a prompt pipeline (`kernel/prompt/index.js`,
+ * docs/06) whose sections are declared, ordered by range, bindable per role/phase/member/task, overridable and
+ * assembled as a pure function. This export is the whole bridge: every corpus entry becomes a PACK-RANGE section
+ * (600..899, one order per entry so the order is total and deterministic), which means the v5r text is now
+ * assembled, ordered, snapshotted and overridable BY THE FRAMEWORK rather than concatenated by hand.
+ *
+ * Why the pack range and not a kernel one: docs/06 §4 forbids a pack from claiming `facts`/`charter`/`contract`,
+ * and it is right to - those carry the framework's own read-only contract. The line's text is exactly what a pack
+ * is for.
+ */
+export const v5rPromptSections = Object.freeze((Array.isArray(PROMPT_ENTRIES) ? PROMPT_ENTRIES : []).map((p, i) => ({
+  name: 'v5r-' + String(p && p.id ? p.id : 'entry-' + (i + 1)).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
+  order: 600 + i,
+  range: 'pack',
+  source: 'v5r-corpus:' + PROMPT_SOURCE_REL,
+  text: String((p && (p.text !== undefined ? p.text : p.prompt)) || ''),
+})))
 
 /** The stance codes live in the pack's own namespace (R-d), so "the framework refused" stays distinguishable. */
 export const PACK = Object.freeze({

@@ -559,6 +559,13 @@
 
 **判据总账** ⇒ **`48 passed, 0 failed`** ✓（**V38–V48 为本轮新增** ✓）。
 
+### 2.2.33 BRIDGE BUILT: the v5r prompt corpus is now assembled by the framework pipeline (round 336)
+
+A correction first: asked whether the prompts are composed the way the original composes them, I answered that the framework side had no prompt mechanism. That was wrong - the framework has owned a pipeline for many rounds (kernel/prompt/index.js, 502 lines: reserved order ranges, section registration, four-dimensional bindings, overrides and rollback, a variable whitelist, counted truncation, a deterministic assembly exit; service vmu.prompt; its own volume, whose title is why a pipeline rather than string concatenation). What was missing was the BRIDGE, and this round builds it.
+
+Every corpus entry now becomes a pipeline section in the pack range 600..899, one order per entry, kebab-case names, text verbatim. The new test proves properties rather than the existence of an array: the pipeline assembles the text as a pure function, assembly is byte-identical across runs so it can be snapshotted, provenance names every contributing section, a further section can be APPENDED at assembly time so the text is composable rather than frozen, and a declaration outside the reserved range is refused by name instead of being quietly re-ordered. Ten for ten on the first run.
+
+So the answer flips: the prompt text IS now composed and regulated by the framework, through the same settings, config and middleware path as everything else. What remains true is the other half of the earlier answer - the original preset still runs its own per-member, per-round composition, so handing the whole institute turn orchestration to the framework is still not done.
 ## 3. v5r 的 56 个工具
 
 > ★★ **A/B 覆盖率：56/56** ✓✓（**轮 323 实测**：以注册表为准的 56 个工具**全部被断言点名** ✓）；**判据总账** ＝ **EQUAL 4／PROPERTY 10／DIVERGENT 4** ✓（**94 passed, 0 failed** ✓）。★★★ **`NOT_ADOPTED` 归零（轮 324）** ✓✓ —— **happy path 已逐段对照**（§2.2.22）：**执行体绑定不是"够不着"，而是"要按它的方式入席"** ✓（让调度器发出 `childId` 并用它当调用者 ✓）。（**按家族分组**，实测列举）
