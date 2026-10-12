@@ -1,7 +1,7 @@
 // vmu kernel recruit — postings, applications, scoring, offers, probation, confirmation.
 //
-// ★ 范围基准（2026-10-11）：**本面列入【建议复核】** ❓ —— 有研究向消费者与没有，两种读法都成立（判据与争议点见 docs/23-§1b）。
-//   **复核结论出来前，本面不新增能力、也不标 P0** ✓；**结论应写进 docs/23，而不是只在对话里** ✗。
+// ★ 范围基准（2026-10-11）**复核结论：保留 ✓**（判据与依据见 docs/23-§1d）—— **它命中的是"机制"而非"领域实例"**：
+//   **边界** ✗：`seats`/`facilities`（或拟人化 HR 词汇）那半**不再扩写**；新增能力前先回答"对数学研究或机制可定义性有什么用"。
 // Spec: docs/17-agent-society-and-delegation.md §7 (recruitment & probation) + §21 (code table).
 // INVARIANT S-1: the kernel does NOT know job titles. A title must be mapped EXPLICITLY to a role slot
 // (vmu.roles.map / roleMap option); an unmapped title is refused BY NAME.

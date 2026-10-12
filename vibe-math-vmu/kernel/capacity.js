@@ -1,7 +1,7 @@
 import { SETTING_DEFS } from '../settings/schema.js'
 //
-// ★ 范围基准（2026-10-11）：**本面列入【建议复核】** ❓ —— 有研究向消费者与没有，两种读法都成立（判据与争议点见 docs/23-§1b）。
-//   **复核结论出来前，本面不新增能力、也不标 P0** ✓；**结论应写进 docs/23，而不是只在对话里** ✗。
+// ★ 范围基准（2026-10-11）**复核结论：保留 ✓**（判据与依据见 docs/23-§1d）—— **它命中的是"机制"而非"领域实例"**：
+//   **边界** ✗：`seats`/`facilities`（或拟人化 HR 词汇）那半**不再扩写**；新增能力前先回答"对数学研究或机制可定义性有什么用"。
 // vmu kernel · capacity — the INFRASTRUCTURE capacity face (docs/20, docs/22): seats, machine-hours,
 // facilities, storage headroom, waitlists, preemption and forecasting.
 //
