@@ -719,6 +719,27 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
     'T110. **** so two turns of the same member under the same configuration differ exactly where the turn knew something the configuration did not',
     { differ: aF.text !== bF.text })
 }
+
+// 28) THE LAST MILE (docs/26 section 3.24). A pack is loaded AFTER the kernel, so its declared sections used to be
+// visible to tests and invisible to a real round. The pipeline now accepts late sections AND late bindings; this
+// asserts both, because a late section without its binding would assemble with another role's baseline.
+{
+  const late = createPromptPipeline({ sections: [{ name: 'seed-block', order: 10, range: 'pack', text: 'SEED' }], clock: () => '2026-01-01T00:00:00.000Z' })
+  for (const s of CHARTER_SECTIONS) late.register(s)
+  for (const b of CHARTER_BINDINGS) late.bind(b)
+  const asmL = await late.assemble({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal', round: 4, roster: 'acad、r-1', quorum: 2, statusBlock: '[状态] x' })
+  ok(asmL.ok === true && asmL.text.includes('【二、通用规章（全员必读）】') && asmL.text.includes('SEED'),
+    'T111. **** a pack loaded AFTER the kernel still reaches a real assembly: its sections register into the live pipeline',
+    { chars: asmL.text.length })
+  ok(asmL.text.includes('本所是自组织的，但**不是没有组织**') && asmL.text.includes('作为院士，你对本所的组织与推进负总责') === false,
+    'T112. **** AND ITS BINDINGS TOO: the late charter assembles with the RESEARCHER text, not the academician baseline that a section alone would have carried',
+    { bound: CHARTER_BINDINGS.length })
+  let tieErr = null
+  try { late.bind({ section: 'seed-block', role: 'a', phase: 'b', text: 'x' }) } catch (e) { tieErr = e }
+  ok(tieErr !== null && tieErr.code === 'VMU_INVALID_ARGUMENT',
+    'T113. **** and a malformed binding is refused by name rather than pushed into the list',
+    { code: tieErr && tieErr.code })
+}
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

@@ -153,6 +153,25 @@ export function createPromptPipeline({
     throw refuse('VMU_INVALID_ARGUMENT', 'section ' + name + ': order ' + order + ' is outside every reserved range')
   }
 
+  /**
+   * ROUND 383: register a BINDING into the live pipeline, symmetric with `register`. A pack is loaded after the
+   * kernel (its apply may need the kernel), so without this a late-registered charter section would assemble with
+   * whatever baseline text it carries - which is how a researcher once received the academician's charter. The raw
+   * binding shape is the same one the factory and the tests use: `{ section, <one dimension>: value, text }`.
+   */
+  const bind = (b) => {
+    if (!b || typeof b !== 'object') throw refuse('VMU_INVALID_ARGUMENT', 'a binding must be an object')
+    if (typeof b.section !== 'string' || !KEBAB.test(b.section)) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'a binding must name its section in kebab-case: ' + String(b && b.section))
+    }
+    const dims = ['role', 'phase', 'member', 'task'].filter((d) => typeof b[d] === 'string' && b[d] !== '')
+    if (dims.length !== 1) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'a binding must name exactly one dimension', 'one of: role < phase < member < task')
+    }
+    bindings.push(b)
+    return { section: b.section, dim: dims[0], total: bindings.length }
+  }
+
   const register = (section) => {
     if (!section || typeof section !== 'object') throw refuse('VMU_INVALID_ARGUMENT', 'a section must be an object')
     const { name } = section
@@ -325,6 +344,7 @@ export function createPromptPipeline({
 
   const pipeline = {
     register,
+    bind,
 
     /** The immutable facts block. Framework-owned, never overridable, always present. */
     setState(text) {

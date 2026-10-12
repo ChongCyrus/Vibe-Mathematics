@@ -282,6 +282,23 @@ export function apply(ctx, config = {}) {
               ? (await import('./packs/' + wanted + '.js')).PACK
               : wanted
             const res = await packLoader.apply(manifest)
+    // ROUND 383 - THE LAST MILE. A pack is loaded AFTER the kernel, because a pack's apply may need it, but the
+    // prompt pipeline is built from `config.promptSections` at kernel construction. So a pack that DECLARES sections
+    // - which is how this pack brings the charter transcribed from the original source - used to be visible to the
+    // tests and invisible to a real round. The pipeline supports late section registration, and a binding channel was
+    // added for the same reason: without bindings a late charter would assemble with a baseline written for another
+    // role. Failures are NOT swallowed: a declared section the pipeline refuses is a configuration error worth seeing.
+    if (manifest && kernel.prompt) {
+      const declared = Array.isArray(manifest.sections) ? manifest.sections : []
+      for (const s of declared) kernel.prompt.register(s)
+      const declaredBindings = Array.isArray(manifest.bindings) ? manifest.bindings : []
+      if (declaredBindings.length) {
+        if (typeof kernel.prompt.bind !== 'function') {
+          throw new Error('this kernel prompt face cannot accept bindings, so a pack that declares them would assemble with a wrong baseline')
+        }
+        for (const b of declaredBindings) kernel.prompt.bind(b)
+      }
+    }
             appliedPacks.push({ id: res.id, applied: res.applied })
           } catch (e) {
             const id = typeof wanted === 'string' ? wanted : (wanted && wanted.id)
