@@ -1011,12 +1011,21 @@ export const CHARTER_BLOCKS = Object.freeze([
         '请给出你**诚实独立的判断**：',
         '  verdict = 1  表示你认为该对象**绝对为真**；',
         '  verdict = 0  表示你认为该对象**绝对为假**；',
-        '  介于 0 与 1 之间（例如 0.9）表示**不确定的中间估计**（计入平均概率，不计入法定票数 m）；',
-        "  verdict = 'abstain'（弃权）表示**明确弃权**：计入已投，但**不计选项**（既不算赞成也不算反对）；",
-        "  verdict = 'unable'（无法判断）表示你**无法给出判断**：你会退出本次分母（不计分母），但**仍列在名单中**。",
+        '  介于 0 与 1 之间（例如 0.9）表示你不确定——这会被记为**弃权/存疑**，',
+        '  不计入法定票数 m，但会计入全组平均概率。',
+        '',
+        // The sentence the source's own version does NOT carry, and the reason this block is transcribed from the
+        // delivered prompts rather than from the preset: without it a member is asked for an honest judgement and told
+        // nothing about the pressure to agree. It is the anti-conformity clause, and in multi-agent mathematics it is
+        // the difference between a ballot and a ratification.
+        '**不要为了配合别人而改票，也不要为了让流程往前走而给出你不相信的 1 或 0。**',
+        '本所宁可留下未定论，也不要一个骗人的结论。',
         '',
         '**计票规则（不得误解）**：只有投票通道产生票；**表决期内的发言不改变任何票**；',
         '**沉默不是同意，也不是反对**——未表态会**阻塞结题**（未表态名单会被列出），绝不会被折算为赞成或反对。',
+        '',
+        '结束时请**只**输出一个 JSON 对象（```json 围栏内）：',
+        '{"verdict":{"target":"{{ setting:vmu.turn.verifyTarget }}","verdict":0.5,"reason":"尚未完成独立复核"}}',
       ].join('\n'),
     },
   },

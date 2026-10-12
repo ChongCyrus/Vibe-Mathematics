@@ -18,6 +18,7 @@
 //     unavailable and refuses BY NAME. Wiring a real subprocess seam is a separate, explicit step.
 
 import { decideSections as V5R_DECIDE_SECTIONS } from './packs/v5r/middleware/prompt-switches.js'
+import { inboxBlock as V5R_INBOX_BLOCK } from './packs/v5r/notices.js'
 import { createKernel } from './kernel/index.js'
 import { createHostAdapter } from './host.js'
 import { attachHostHooks } from './host-hooks.js'
@@ -182,7 +183,7 @@ export function apply(ctx, config = {}) {
     }
   }
   const settingsWithPackDefaults = Object.assign({}, packDefaults, settings)
-  const kernel = createKernel(Object.assign({ sectionPolicy: V5R_DECIDE_SECTIONS, settings: settingsWithPackDefaults, root, spawn: spawnSeam, host: mathHost,
+  const kernel = createKernel(Object.assign({ sectionPolicy: V5R_DECIDE_SECTIONS, noticeBlock: V5R_INBOX_BLOCK, settings: settingsWithPackDefaults, root, spawn: spawnSeam, host: mathHost,
     sections: promptSections, bindings: promptBindings, overrides: promptOverrides, whoMayOverride, readFile: readRel },
   clock ? { clock } : {}))
   // DECLARATION IS THE CONFIGURATION. With nothing declared the preset must not even offer a settings
