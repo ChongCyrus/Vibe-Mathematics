@@ -48,6 +48,9 @@ export const V5R_PACK = Object.freeze({
 })
 
 /** A short, printable description, so a deployment can log what it loaded without reading source. */
+/** The name the pack loader looks for. Keeping the descriptive name too costs nothing and reads better in code. */
+export const PACK = V5R_PACK
+
 export function describeV5rPack() {
   return {
     id: V5R_PACK.id,

@@ -191,6 +191,8 @@ export function liveMemberCapOf(source = {}) {
 
 export function createKernel({
   host = null,
+  // The institution policy for prompt-section switches; null means the framework switches nothing.
+  sectionPolicy = null,
   settings = {},
   root = null,
   // THE FACTORY DEFAULT CLOCK IS A NUMBER OF MILLISECONDS. It used to return an ISO string, which the clock guard
@@ -618,6 +620,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // so a host that installs only the framework can run a member turn. Delivery goes through the host seam; with no
   // seam it refuses by name rather than pretending a member answered.
   const turn = createTurnOrchestrator({
+    sectionPolicy: sectionPolicy || null,
     prompt,
     faces: facesFrom({ tasks, records, library, meetings, ballotbox, formal, mathjobs }),
     deliver: host && typeof host.deliverTurn === 'function' ? host.deliverTurn : null,

@@ -15,6 +15,7 @@
 //
 // Run: node tests/vmu-ab-v5r-verification.test.mjs   (last line: === VMU AB v5r verification: N passed, M failed ===)
 
+import { decideSections as DECIDE_SECTIONS } from '../vibe-math-vmu/packs/v5r/middleware/prompt-switches.js'
 import { PROMPTS } from '../vibe-math-vmu/packs/v5r-prompts.js'
 import { v5rRoleSection } from '../vibe-math-vmu/packs/v5r-core.js'
 import { CHARTER_SECTIONS, CHARTER_BINDINGS } from '../vibe-math-vmu/packs/v5r-charter.js'
@@ -307,7 +308,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   // base). So the corpus sections the pack publishes are handed to the pipeline explicitly - which is what proves the
   // MECHANISM carries a real turn, while the DEFAULT pack-to-pipeline wiring is what V53 names as outstanding.
   const kernelTurn = createKernel({ settings: {}, root: turnRoot, host: null })
-  const loop = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: v5rPromptSections, clock: () => '2026-01-01T00:00:00.000Z' }), faces: facesFrom(kernelTurn) })
+  const loop = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: v5rPromptSections, clock: () => '2026-01-01T00:00:00.000Z' }), faces: facesFrom(kernelTurn) })
   const asm1 = await loop.assemble(loop.open({ member: 'r-1', phase: 'founding' }).turn)
   const asm2 = await loop.assemble(loop.open({ member: 'acad', phase: 'founding' }).turn)
   ok(asm1.ok === true && asm1.text.length > 1000 && asm2.ok === true && asm2.text.length > 1000,
@@ -319,7 +320,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   // ROUND 341: the gap V53 used to name is closed by the pipeline own variable injection - one template section
   // addresses whichever member is being assembled, so nothing is hard-coded per member and the section stays
   // editable through settings, config or middleware.
-  const loopRole = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: v5rTurnSections, clock: () => '2026-01-01T00:00:00.000Z' }), faces: facesFrom(kernelTurn) })
+  const loopRole = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: v5rTurnSections, clock: () => '2026-01-01T00:00:00.000Z' }), faces: facesFrom(kernelTurn) })
   const r1 = await loopRole.assemble(loopRole.open({ member: 'r-1', role: 'researcher', phase: 'founding' }).turn)
   const ac = await loopRole.assemble(loopRole.open({ member: 'acad', role: 'academician', phase: 'founding' }).turn)
   ok(r1.ok === true && ac.ok === true && r1.text !== ac.text && r1.text.includes('{{') === false,
@@ -345,7 +346,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
     'V58. ★★★★ MEASURED, AND IT IS THE POINT OF THIS OBJECTIVE: the original ACCEPTS the wake and still spawns no turn, because its orchestration lives OUTSIDE its own tools - in the host loop. The framework exposes that loop itself (turn.open, assemble, deliver, parse, apply), which is what makes it runnable by a different host',
     { before, after: capturedSpans.length })
   let anonymous = null
-  const anonLoop = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: v5rTurnSections, clock: () => '2026-01-01T00:00:00.000Z' }) })
+  const anonLoop = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: v5rTurnSections, clock: () => '2026-01-01T00:00:00.000Z' }) })
   try { anonLoop.open({ phase: 'normal' }) } catch (e) { anonymous = e }
   ok(anonymous !== null && (anonymous.code === 'VMU_INVALID_ARGUMENT' || /member/i.test(String(anonymous.message))),
     'V59. ★★★ so does the framework: a turn with no member is refused rather than seated anonymously, which is the same rule on both sides',
@@ -398,7 +399,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
     "vmu.resources.maxParallel": 3, "vmu.resources.toolCallsPerTurnCap": 0, "vmu.resources.memoryCeilingMb": 0,
     "vmu.pointer.propagation": true, "vmu.turn.feedback": true, "vmu.meetings.verdictMaxRounds": 3,
   }
-  const mkAB = () => createTurnOrchestrator({
+  const mkAB = () => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS,
     prompt: createPromptPipeline({ sections: [...CHARTER_SECTIONS, v5rRoleSection], bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }),
     settings: SETTINGS_AB,
   })

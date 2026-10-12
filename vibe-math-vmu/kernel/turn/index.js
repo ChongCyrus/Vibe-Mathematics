@@ -182,7 +182,11 @@ export function resolveOwners(bindings = null) {
  * Create the orchestrator. `prompt` is the pipeline (docs/06), `deliver` is the adapter seam, `faces` maps a face
  * name to its operations, e.g. `{ 'vmu.tasks': { create: async (p) => ... } }`.
  */
-export function createTurnOrchestrator({ prompt = null, deliver = null, faces = {}, bindings = null, wakeupPolicy = 'round-robin', settings = null, clock = () => new Date().toISOString() } = {}) {
+export function createTurnOrchestrator({
+  // The institution policy for prompt-section switches. Null means the framework switches NOTHING,
+  // which is this preset's stated design: "default zero mechanism, mechanisms provided as packs".
+  sectionPolicy = null,
+  prompt = null, deliver = null, faces = {}, bindings = null, wakeupPolicy = 'round-robin', settings = null, clock = () => new Date().toISOString() } = {}) {
   const owners = resolveOwners(bindings)
   const known = Object.keys(owners)
   // ROUND 347: the wakeup POLICY (docs/26 section 3.2). The original preset recorded only WHO should be woken and
@@ -232,67 +236,19 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
     // The notices for THIS member are taken here and appended to the status block, which is where the source puts them:
     // inside the per-round brief. Taking them is what makes the announcement one-shot, and it happens on the same call
     // that delivers the prompt, so a notice cannot be skipped by a phase that builds a different status block.
-    // ROUND 386: the DECLARED off-switches (docs/26 section 3.26). OFF means the section is not injected at all - not
-    // a "disabled" notice, which would change the prompt words - and ON restores it unchanged. Absent settings mean ON,
-    // because a deployment that never configured them must get the full prompt.
-    if (prompt && typeof prompt.disable === "function") {
-      const offSwitches = [
-        ["vmu.pointer.propagation", "v5r-pointer-contract"],
-        ["vmu.resources.selfCheck", "v5r-turn-resources"],
-        ["vmu.turn.feedback", "v5r-feedback-line"],
-      ]
-      for (const pair of offSwitches) {
-        const declared = settings ? settings[pair[0]] : undefined
-        setSectionEnabled(pair[1], declared !== false)
-      }
-    }
-    // ROUND 390: the meeting prompt has THREE mutually exclusive speaker states in the source, and exactly one applies.
-    // Declaring all three and injecting all three was the gap the previous round recorded; the loop now picks by the
-    // state the caller knows, and disables the other two. Two rules are deliberate: outside the meeting phase none of
-    // them appears at all, and an unrecognised state is refused rather than silently rendered as the first speaker.
-    if (prompt && typeof prompt.disable === "function") {
-      const MEETING_STATES = [
-        ["invited", "v5r-meeting-invited"],
-        ["others", "v5r-meeting-others"],
-        ["first", "v5r-meeting-first"],
-      ]
-      const state = turn.phase === "meeting" ? (turn.meetingState || null) : null
-      if (turn.phase === "meeting" && state !== null && !MEETING_STATES.some((p) => p[0] === state)) {
-        fail("VMU_INVALID_ARGUMENT", "unknown meeting speaker state: " + String(state),
-          "one of: " + MEETING_STATES.map((p) => p[0]).join(", "))
-      }
-      for (const pair of MEETING_STATES) {
-        setSectionEnabled(pair[1], turn.phase === "meeting" && state === pair[0])
-      }
-    }
-    // ROUND 392: the formalisation status is ONE line with FOUR branches in the source, and exactly one applies. Unlike
-    // the meeting states this line is ALWAYS shown, so the default is the "not attempted" branch rather than nothing.
-    // An unrecognised status is refused rather than guessed, for the same reason as the meeting states.
-    if (prompt && typeof prompt.disable === "function") {
-      const FORMAL_STATUSES = [
-        ["passed", "v5r-formal-status-passed"],
-        ["blocked", "v5r-formal-status-blocked"],
-        ["attempted", "v5r-formal-status-attempted"],
-        ["none", "v5r-formal-status-none"],
-      ]
-      const status = turn.formalStatus === null || turn.formalStatus === undefined ? "none" : turn.formalStatus
-      if (!FORMAL_STATUSES.some((p) => p[0] === status)) {
-        fail("VMU_INVALID_ARGUMENT", "unknown formalisation status: " + String(status),
-          "one of: " + FORMAL_STATUSES.map((p) => p[0]).join(", "))
-      }
-      for (const pair of FORMAL_STATUSES) setSectionEnabled(pair[1], status === pair[0])
-    }
-    // ROUND 399: the original sends EITHER the compact reply catalogue OR the full one, never both, and the corpus of
-    // delivered prompts is the evidence for which: every captured prompt carries the compact form. Both sections exist
-    // here, so the loop selects one and disables the other, with the choice declared as a setting.
-    if (prompt && typeof prompt.disable === "function") {
-      const catalogue = settings && settings["vmu.turn.replyCatalogue"] === "full" ? "full" : "compact"
-      setSectionEnabled("v5r-reply-compact", catalogue === "compact")
-      setSectionEnabled("v5r-reply-spec", catalogue === "full")
-    }
     const pendingNotices = drainNotices(turn.member)
     const statusWithNotices = [turn.statusBlock, ...pendingNotices].filter((l) => typeof l === "string" && l.trim() !== "").join("\n")
     const turnSettings = (settings || turn.facts) ? { ...(settings || {}), ...(turn.facts || {}) } : undefined
+    // ROUND 407: THE FRAMEWORK OFFERS THE MECHANISM; THE PACK STATES THE POLICY (goal 2). Which optional blocks an
+    // institution switches on, which reply catalogue it sends, which meeting speaker state applies and which
+    // formalisation status line is shown are INSTITUTION preferences, so the loop no longer contains them: it asks
+    // the policy it was given. Declared as a factory parameter on purpose - an undeclared name would make
+    // `typeof sectionPolicy` return "undefined" and the policy would silently never run.
+    if (prompt && typeof prompt.disable === "function" && typeof sectionPolicy === "function") {
+      const decided = sectionPolicy({ settings: turnSettings || {}, turn })
+      for (const e of (decided && decided.errors) || []) fail(e.code, e.message, e.hint)
+      for (const d of (decided && decided.decisions) || []) setSectionEnabled(d.name, d.enabled !== false)
+    }
     const out = await prompt.assemble({ member: turn.member, role: turn.role, roleLabel, phase: turn.phase, task: turn.task, roster: turn.roster, quorum: turn.quorum, statusBlock: statusWithNotices === "" ? turn.statusBlock : statusWithNotices, round: turn.round, settings: turnSettings })
     if (!out || out.ok !== true) {
       fail('VMU_TURN_ASSEMBLY_FAILED', 'the prompt pipeline refused this turn: ' + JSON.stringify((out && out.refused) || {}).slice(0, 160))

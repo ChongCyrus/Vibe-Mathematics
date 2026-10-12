@@ -17,6 +17,7 @@
 //   · it does NOT reach for the math host seam: `createKernel` is given no host, so the math surface stays
 //     unavailable and refuses BY NAME. Wiring a real subprocess seam is a separate, explicit step.
 
+import { decideSections as V5R_DECIDE_SECTIONS } from './packs/v5r/middleware/prompt-switches.js'
 import { createKernel } from './kernel/index.js'
 import { createHostAdapter } from './host.js'
 import { attachHostHooks } from './host-hooks.js'
@@ -156,7 +157,7 @@ export function apply(ctx, config = {}) {
     } catch (e) { mathHost = null }
   }
 
-  const kernel = createKernel(Object.assign({ settings, root, spawn: spawnSeam, host: mathHost,
+  const kernel = createKernel(Object.assign({ sectionPolicy: V5R_DECIDE_SECTIONS, settings, root, spawn: spawnSeam, host: mathHost,
     sections: promptSections, bindings: promptBindings, overrides: promptOverrides, whoMayOverride, readFile: readRel },
   clock ? { clock } : {}))
   // DECLARATION IS THE CONFIGURATION. With nothing declared the preset must not even offer a settings
@@ -278,9 +279,33 @@ export function apply(ctx, config = {}) {
       const run = (async () => {
         for (const wanted of packsWanted) {
           try {
-            const manifest = typeof wanted === 'string'
-              ? (await import('./packs/' + wanted + '.js')).PACK
-              : wanted
+            // GOAL 2: a pack may be a FOLDER - settings/ plus middleware/ plus an index.js manifest - or the older flat
+
+            // module. The folder is tried first, and ONLY a module-not-found falls back: a real error inside the folder's
+
+            // index must not be mistaken for "no folder", or a broken pack would silently load the flat one instead.
+
+            let loaded = null
+
+            if (typeof wanted === 'string') {
+
+              try {
+
+                loaded = await import('./packs/' + wanted + '/index.js')
+
+              } catch (e) {
+
+                const missing = e && (e.code === 'ERR_MODULE_NOT_FOUND' || e.code === 'MODULE_NOT_FOUND')
+
+                if (!missing) throw e
+
+                loaded = await import('./packs/' + wanted + '.js')
+
+              }
+
+            }
+
+            const manifest = typeof wanted === 'string' ? loaded.PACK : wanted
             const res = await packLoader.apply(manifest)
     // ROUND 383 - THE LAST MILE. A pack is loaded AFTER the kernel, because a pack's apply may need it, but the
     // prompt pipeline is built from `config.promptSections` at kernel construction. So a pack that DECLARES sections
