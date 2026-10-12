@@ -88,6 +88,7 @@
     "tests/audit-path-discipline.mjs",
     "tests/audit-code-size.test.mjs",
     "tests/audit-zpolicy.test.mjs",
+    "tests/audit-dependency-cycles.test.mjs",
     "tests/audit-math-computation-contract.mjs",
     "tests/audit-math-computation-contract.mutants.mjs",
     "tests/audit-math-computation-sensitivity.mjs",
