@@ -1740,6 +1740,10 @@ undefined
   The notable part is that the framework code was independently arrived at - it was added in round 318 as a fix for the very gap this comparison had found - and the two sides ended up in the same code family with the same field name. The only difference is a design one: v5r makes the argument mandatory, while here it is a switch that defaults off so single-writer callers are not broken, which is the tunability this framework is for.
   The verification A/B file now holds forty-three green assertions. The next rows to convert from carrier-located to measured are the messaging family, the member family and the Lean queue, all of which the same fixture can drive.
   Still open: the remaining row-by-row measurements; user confirmation is still needed for the pre-release full gate and for the version and release decision.
+- ***** 335b ROW-BY-ROW CONTINUED: the messaging family is driven, and its delivery rules turn out to differ by WHO is speaking.
+  A member speaking to the group delivers one message per recipient, each with its own id, and the SENDER is not among them. A private message reaches exactly the member named. The office relay, by contrast, reaches everyone including the academician - a different delivery rule for a different kind of speaker rather than one rule bent to fit both. The framework side keeps the same separation of concerns, with speaking into the record and quoting out of it as two distinct surfaces.
+  The non-polling wait is bounded and says so: a too-short window is refused with the acceptable range named, ten seconds to one hour. The Lean queue meanwhile reports zero jobs, zero running and a parallel ceiling of one, which is what an idle institute should look like.
+  The verification A/B file now holds forty-eight green assertions.
 ### 0.4 结论
 
 ## 0.5 未接线键的【三档结构】（轮 287 建表；**轮 290 据实更正数字** ✓✓）

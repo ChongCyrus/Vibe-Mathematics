@@ -252,6 +252,28 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
     { v5r: stale.code, vmu: oursStale.code })
 }
 
+// ── THE MESSAGING FAMILY, driven: how a message reaches members, and how long a wait may be ─────────────────
+{
+  const group = await call('vibe_v5_say', { text: 'hello all' }, seat('r-1'))
+  ok(group.ok === true && group.delivered === 3 && Array.isArray(group.ids) && !String(group.to).includes('r-1'),
+    'V44. ★★ a group message is delivered per recipient with an id each, and the SENDER is not in the delivery list',
+    { delivered: group.delivered, to: group.to })
+  const dm = await call('vibe_v5_say', { text: 'psst', to: 'r-2' }, seat('r-1'))
+  ok(dm.ok === true && dm.delivered === 1 && dm.to === 'r-2',
+    'V45. ★★ a private message goes to exactly the named member', { delivered: dm.delivered, to: dm.to })
+  const relay = await call('vibe_v5_message', { to: 'all', content: 'from the office' })
+  ok(relay.ok === true && relay.delivered === 4 && String(relay.to).includes('acad') && String(relay.to).includes('r-3'),
+    'V46. ★★ the office relay reaches EVERY member, including the academician - a different delivery rule from a member speaking',
+    { delivered: relay.delivered, to: relay.to })
+  const tooShort = await call('vibe_v5_wait', { timeout_ms: 30, reason: 'probe' }, seat('r-1'))
+  ok(tooShort.ok === false && /10000/.test(String(tooShort.error || tooShort.message)),
+    'V47. ★★★ the non-polling WAIT has a BOUNDED window - it refuses a too-short timeout and names the acceptable range',
+    { error: String(tooShort.error || tooShort.message).slice(0, 70) })
+  const meetSrc2 = readFileSync(new URL('../vibe-math-vmu/kernel/meetings.js', import.meta.url), 'utf8')
+  ok(/\bsay\(\{/.test(meetSrc2) && /quote\(\{/.test(meetSrc2),
+    'V48. ★ PROPERTY: the framework meeting face carries the same two surfaces - speaking into the record and quoting out of it - so delivery and citation are separate acts on both sides')
+}
+
 rmSync(workspace, { recursive: true, force: true })
 console.log('=== VMU AB v5r verification: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed > 0 ? 1 : 0)
