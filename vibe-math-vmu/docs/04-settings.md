@@ -254,6 +254,7 @@ vmu.packs.active: [v5r]
 | `vmu.resources.toolCallsPerTurnCap` | number | `0` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 本回合工具调用上限；0＝未设上限（仍请克制） |
 | `vmu.resources.memoryCeilingMb` | number | `0` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 内存上限（MB）；0＝只提醒"压力明显增大"而不给数字 |
 | `vmu.resources.selfCheck` | bool | `true` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/turn/index.js` | 是否向成员展示资源纪律段（关掉＝零注入，提示词回到该段之前，注入点逐字不变） |
+| `vmu.turn.replyCatalogue` | enum | `compact` | `compact`∣`full` | 会话 | H2 | office | ✅ 已接线 | `kernel/turn/index.js` | which reply catalogue is injected: compact (what the delivered-prompt corpus carries) or full |
 | `vmu.turn.protocolPath` | string | `Shared/Protocol.md` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | protocol path named by the compact reply catalogue (relative to the session working directory) |
 | `vmu.turn.invitedBy` | string | `(unspecified)` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | who invited this temp to speak (meeting phase) |
 | `vmu.turn.invitedWhy` | string | `(unspecified)` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | why this temp was invited to speak (meeting phase) |

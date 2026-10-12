@@ -282,6 +282,14 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
       }
       for (const pair of FORMAL_STATUSES) setSectionEnabled(pair[1], status === pair[0])
     }
+    // ROUND 399: the original sends EITHER the compact reply catalogue OR the full one, never both, and the corpus of
+    // delivered prompts is the evidence for which: every captured prompt carries the compact form. Both sections exist
+    // here, so the loop selects one and disables the other, with the choice declared as a setting.
+    if (prompt && typeof prompt.disable === "function") {
+      const catalogue = settings && settings["vmu.turn.replyCatalogue"] === "full" ? "full" : "compact"
+      setSectionEnabled("v5r-reply-compact", catalogue === "compact")
+      setSectionEnabled("v5r-reply-spec", catalogue === "full")
+    }
     const pendingNotices = drainNotices(turn.member)
     const statusWithNotices = [turn.statusBlock, ...pendingNotices].filter((l) => typeof l === "string" && l.trim() !== "").join("\n")
     const turnSettings = (settings || turn.facts) ? { ...(settings || {}), ...(turn.facts || {}) } : undefined

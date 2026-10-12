@@ -541,7 +541,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // RUNTIME switch, so the loop decides whether to include that block (recorded as the remaining conditional).
   {
     name: 'v5r-reply-spec',
-    order: 760,
+    order: 795,
     range: 'pack',
     kind: 'role',
     texts: {
@@ -651,7 +651,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // own block that the loop includes only when formalisation is on. Wording transcribed from the source.
   {
     name: 'v5r-reply-formal',
-    order: 761,
+    order: 796,
     range: 'pack',
     kind: 'shared',
     texts: {
@@ -911,7 +911,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // value this work has been removing everywhere else.
   {
     name: 'v5r-reply-compact',
-    order: 764,
+    order: 797,
     range: 'pack',
     kind: 'shared',
     texts: {

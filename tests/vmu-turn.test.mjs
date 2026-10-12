@@ -504,7 +504,8 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
 // The source's two hard-won rules are asserted literally: the catalogue SAYS it is not valid JSON while demanding a
 // valid object, and it ends with a strictly valid minimal sample so a model never has to guess.
 {
-  const loopRp = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_ROLE_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
+  // These assertions test the FULL catalogue, so they name it: the loop selects one of the two by settings.
+  const loopRp = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_ROLE_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }), settings: { 'vmu.turn.replyCatalogue': 'full' } })
   const asmRp = await loopRp.assemble(loopRp.open({ member: 'r-2', role: 'researcher', phase: 'normal', round: 3 }).turn)
   ok(asmRp.ok === true && asmRp.text.includes('字段目录') && asmRp.text.includes('因此这一段并非合法 JSON') && asmRp.text.includes('你真正要输出的对象必须严格合法'),
     'T75. **** the catalogue arrives AND admits it is not JSON while demanding a valid object - the contradiction is stated instead of left for a model to guess',
@@ -772,7 +773,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   const charterOrder = numerals.join("")
   const firstHeading = a1.text.indexOf("【第 5 轮")
   const lastSection = a1.text.lastIndexOf("【十、")
-  const catalogue = a1.text.indexOf("结束时请**只**输出一个 JSON 对象")
+  const catalogue = a1.text.indexOf('# v5r-reply-compact')
   ok(charterOrder === "一二三四五六七八九十" && firstHeading > -1 && firstHeading < lastSection && catalogue > lastSection,
     "T117. **** THE ASSEMBLER ORDER IS THE SOURCE ORDER: the round heading comes first, the charter runs one to ten, and the reply catalogue closes the prompt - the evidence the audit said was missing",
     { numerals: charterOrder, catalogueLast: catalogue > lastSection })
