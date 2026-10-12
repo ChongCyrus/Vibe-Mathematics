@@ -349,6 +349,41 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
     { code: anonymous && anonymous.code, message: anonymous && String(anonymous.message).slice(0, 90) })
 }
 
+// ── PAUSE: which AUTHORITY, and what it actually stops - measured on both sides ─────────────────────────────
+{
+  const acadAs = (() => { for (const [id] of seats.entries()) if (id === 'acad') return { id: seats.get(id), session: { id: seats.get(id), header: { cwd: workspace, parentSession: root.id } }, options: {} }; return root })()
+  const asMember = await call('vibe_v5_pause', {}, acadAs)
+  ok(asMember.ok === false && asMember.code === 'V5_NOT_OFFICE' && /session root|office/i.test(String(asMember.message)),
+    'V60. ★★★ PAUSE IS PERMISSIONED on the original side: a member is refused by name, and the refusal says the office is the PROVABLE session root',
+    { code: asMember.code, message: String(asMember.message).slice(0, 80) })
+  const asOffice = await call('vibe_v5_pause', {})
+  ok(asOffice.ok === true && asOffice.paused === true && /不会被再次唤醒|schedul/i.test(String(asOffice.message)),
+    'V61. ★★★ and the office may pause, with the receipt stating WHAT it stops: no member is woken again',
+    { message: String(asOffice.message).slice(0, 70) })
+  const writePaused = await call('vibe_v5_task_create', { subject: 'while paused', description: 'd' })
+  const sayPaused = await call('vibe_v5_say', { text: 'still talking' })
+  ok(writePaused.ok === true && sayPaused.ok === true,
+    'V62. ★★★★ MEASURED DIFFERENCE: the original pause does NOT gate writes or speech - the task is created and the message is delivered while the institute is paused, because it pauses the SCHEDULER and not the doors',
+    { write: writePaused.ok, say: sayPaused.ok })
+  await call('vibe_v5_resume', {})
+
+  const kp = createKernel({ settings: {}, root: mkdtempSync(join(tmpdir(), 'vmu-pause-')), host: null })
+  await kp.tasks.create({ title: 'before' })
+  await kp.pause('the A/B measured both sides')
+  let gated = null
+  try { await kp.tasks.create({ title: 'while paused' }) } catch (e) { gated = e }
+  ok(gated !== null && gated.code === 'VMU_STATE',
+    'V63. ★★★★ while HERE pause gates the DOORS: a write while paused is refused by name', { code: gated && gated.code })
+  const sched = readFileSync(new URL('../vibe-math-vmu/kernel/scheduler.js', import.meta.url), 'utf8')
+  ok(/isPaused/.test(sched),
+    'V64. ★★★★ and it ALSO stops the scheduler, because that face takes an isPaused seam - so this side pauses both axes while the original pauses one, which is what makes the difference a superset rather than a substitution',
+    { cites: 'scheduler.js isPaused' })
+  await kp.resume('done')
+  const openAgain = await kp.tasks.create({ title: 'after resume' })
+  ok(openAgain && openAgain.id,
+    'V65. *** and resuming reopens the doors, so the gate is not a trap')
+}
+
 rmSync(workspace, { recursive: true, force: true })
 console.log('=== VMU AB v5r verification: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed > 0 ? 1 : 0)
