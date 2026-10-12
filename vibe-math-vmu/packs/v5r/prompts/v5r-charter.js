@@ -1090,6 +1090,8 @@ export const CHARTER_BLOCKS = Object.freeze([
     kind: 'phase',
     texts: {
       'paper-final': [
+        '（**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）',
+        '检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把“未检测到”当失败。',
         '【最终论文·定稿（{{ roleLabel }}）—— {{ member }}】',
         '全体参与成员已在互审中表示“可交付”。请你作为定稿代表做**最后一次**把关：',
         '核对合并稿与互审意见，确认没有编造、没有未标注的未决项、没有与表决记录矛盾之处，然后给出决定。',
@@ -1103,6 +1105,31 @@ export const CHARTER_BLOCKS = Object.freeze([
         '    "note": "定稿说明：你如何审阅、统一术语与符号、是否发现并纠正了问题",',
         '    "conclusion": "（可选）定稿代表对原问题的最终结论（只写有证据的）" } }',
         'decision="revise" 会退回继续修订（有轮次上限）。',
+      ].join('\n'),
+    },
+  },
+  // ── THE RESUME PROMPT (corpus-derived; a session was rebuilt) ───────────────────────────────────────────────
+  // The fifth prompt TYPE the grouped measurement found, and the one with the best sentence in it. A resident session
+  // is rebuilt - the process restarted, or the office stopped it and restored it - and the member is told to read its
+  // own progress log and result cards first, work out where it is and what comes next, and then continue WITHOUT
+  // starting over or redoing work already done. The instruction that matters is the last one: do not let the recovery
+  // navigation stand in for the full proof. A summary that says where you were is not evidence of what you proved, and
+  // in a mathematical institute that distinction is the whole point of keeping the log in the first place.
+  {
+    name: 'v5r-resume-core',
+    order: 814,
+    range: 'pack',
+    kind: 'phase',
+    texts: {
+      resume: [
+        '【会话重建 —— {{ roleLabel }} {{ member }}】',
+        '',
+        '你的常驻会话已被重建（进程重启或被所办停止后恢复），现在继续工作。',
+        '请**先读回你自己的 Progress/ 与成果库**，确认你在哪、做到哪一步、下一步做什么，',
+        '然后接着推进——不要从头再来，也不要重新做已经做过的事。',
+        '',
+        '恢复说明：',
+        '  先读取完整研究日志 Members/{{ member }}/Progress/progress.md 与自己的成果卡；不要以恢复导航替代完整证明。',
       ].join('\n'),
     },
   },

@@ -46,11 +46,11 @@ const loop = createTurnOrchestrator({
   settings: SETTINGS,
   sectionPolicy: decideSections,
   noticeBlock: inboxBlock,
-  extraPhases: ['heartbeat', 'paper-write', 'paper-review', 'paper-final'],
+  extraPhases: ['heartbeat', 'paper-write', 'paper-review', 'paper-final', 'resume'],
 })
 loop.notify('acad', '【研究所提示】demo 未生效（V5_DEMO）：示例通知')
 
-const PHASES = ['founding', 'normal', 'checkpoint', 'heartbeat', 'verify', 'meeting', 'paper-write', 'paper-review', 'paper-final']
+const PHASES = ['founding', 'normal', 'checkpoint', 'heartbeat', 'verify', 'meeting', 'paper-write', 'paper-review', 'paper-final', 'resume']
 const ours = {}
 for (const phase of PHASES) {
   const a = await loop.assemble(loop.open({
@@ -75,6 +75,7 @@ const phaseOf = (kind, text) => {
   if (/checkpoint|heartbeat/.test(k)) return 'checkpoint'
   if (/^paper-/.test(k)) return k
   if (k === 'meeting' || k === 'meeting-proposal') return 'meeting'
+  if (k === 'resume') return 'resume'
   if (/verify|vote|ballot|lean/.test(k)) return 'verify'
   return 'normal'
 }

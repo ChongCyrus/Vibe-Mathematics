@@ -425,7 +425,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   // queue one notice, so the inbox block the corpus shows is really rendered
   loopAB.notify("acad", "【研究所提示】demo 未生效（V5_DEMO）：示例通知，用于让比对看见表头与缩进")
   const oursAB = {}
-  for (const phase of ["founding", "normal", "checkpoint", "verify", "heartbeat", "paper-write", "paper-review", "paper-final", "meeting"]) {
+  for (const phase of ["founding", "normal", "checkpoint", "verify", "heartbeat", "paper-write", "paper-review", "paper-final", "meeting", "resume"]) {
     const a = await loopAB.assemble(loopAB.open({ member: "acad", role: "academician", roleLabel: "院士", phase, roster: "acad、r-1、r-2", quorum: 3, statusBlock: "[状态] x", round: 3 }).turn)
     oursAB[phase] = a.text
   }
@@ -439,6 +439,7 @@ const phaseOf = (kind, text) => {
   if (/checkpoint|heartbeat/.test(k)) return "checkpoint"
   if (/^paper-/.test(k)) return k
   if (k === "meeting" || k === "meeting-proposal") return "meeting"
+  if (k === "resume") return "resume"
   if (/verify|vote|ballot|lean/.test(k)) return "verify"
   return "normal"
 }
@@ -507,7 +508,7 @@ const phaseOf = (kind, text) => {
     "the full catalogue and the compact one are alternatives in the original, and both are currently injected here",
     "the office/chat notice header the corpus writes as [新到的消息] before the line itself",
   ]
-  ok(pctAB >= 75 && knownGapsAB.length === 4,
+  ok(pctAB >= 78 && knownGapsAB.length === 4,
     "V67. **** and the gap is NAMED rather than rounded away, with a FLOOR on the measured ratio: the closed families are the compact catalogue, the refusal notice and the contextPct/compacted clarification, and the four that remain are listed",
     { families: knownGapsAB.length, percent: pctAB })
 
