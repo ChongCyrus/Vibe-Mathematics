@@ -700,6 +700,25 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
     'T107. **** and the plan sends the four dispatched fields - meeting_hand included, since the meeting service really does expose queue - while the bookkept ones stay out of it',
     { planned: plannedNames })
 }
+
+// 27) PER-TURN FACTS (docs/26 section 3.23). Some values a section needs are true only of THIS turn - the current
+// meeting number, whether a leader is on staff - so the loop merges them OVER the resolved settings. Static
+// configuration stays the floor and the turn overrides what it knows.
+{
+  const mkL = (settings) => createTurnOrchestrator({ prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }), settings })
+  const lf = mkL({ 'vmu.turn.meetingId': 'm-static' })
+  const aF = await lf.assemble(lf.open({ member: 'acad', role: 'academician', phase: 'meeting', round: 2, facts: { 'vmu.turn.meetingId': 'm-7' } }).turn)
+  const bF = await lf.assemble(lf.open({ member: 'acad', role: 'academician', phase: 'meeting', round: 2 }).turn)
+  ok(aF.ok === true && aF.text.includes('m-7') && aF.text.includes('m-static') === false,
+    'T108. **** a PER-TURN FACT overrides the static setting for the turn that supplied it, so a value that changes between meetings is never frozen',
+    { fact: 'm-7' })
+  ok(bF.text.includes('m-static'),
+    'T109. **** and the NEXT turn falls back to the static configuration - the fact did not leak, because a fresh object is built per assembly rather than mutating the settings',
+    { next: 'm-static' })
+  ok(aF.text !== bF.text,
+    'T110. **** so two turns of the same member under the same configuration differ exactly where the turn knew something the configuration did not',
+    { differ: aF.text !== bF.text })
+}
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

@@ -197,13 +197,13 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
   const fail = (code, message, hint) => { counts.refused += 1; lastRefusal.code = code; lastRefusal.message = message; throw refuse(code, message, hint) }
 
   /** ① open a turn: who, which round, which phase, which task. */
-  const open = ({ member, role = null, phase, task = null, why = null, nextStep = null, roster = null, quorum = null, statusBlock = null, round = 1 } = {}) => {
+  const open = ({ member, role = null, phase, task = null, why = null, nextStep = null, roster = null, quorum = null, statusBlock = null, facts = null, round = 1 } = {}) => {
     if (typeof member !== 'string' || member.trim() === '') fail('VMU_INVALID_ARGUMENT', 'a turn needs a member', 'pass { member, phase }')
     if (typeof phase !== 'string' || !PHASES.includes(phase)) {
       fail('VMU_INVALID_ARGUMENT', 'unknown phase: ' + String(phase), 'known phases: ' + PHASES.join(', '))
     }
     seq += 1
-    const turn = { id: 't-' + seq, member, role, phase, task, why, nextStep, roster, quorum, statusBlock, round, at: clock() }
+    const turn = { id: 't-' + seq, member, role, phase, task, why, nextStep, roster, quorum, statusBlock, facts, round, at: clock() }
     turns.set(turn.id, turn)
     woken.set(member, (woken.get(member) || 0) + 1)
     counts.opened += 1
@@ -223,7 +223,12 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
     const roleLabel = ({ academician: '院士', researcher: '常驻研究员', temp: '临时工' })[turn.role] || turn.role
     // ROUND 366: the resolved settings travel WITH the assembly context, because `{{ setting:... }}` resolves from
     // `ctx.settings` - so a real round, not just a hand-made call, can be tuned from configuration.
-    const out = await prompt.assemble({ member: turn.member, role: turn.role, roleLabel, phase: turn.phase, task: turn.task, roster: turn.roster, quorum: turn.quorum, statusBlock: turn.statusBlock, round: turn.round, settings: settings || undefined })
+    // ROUND 382: per-turn FACTS are merged OVER the resolved settings, so a section can read something that is only
+    // true of THIS turn - the current meeting number, whether a leader is actually on staff - without a second
+    // variable channel and without freezing a value that changes. Static configuration stays the floor; the turn
+    // overrides what it knows. Nothing is mutated: a fresh object is built per assembly.
+    const turnSettings = (settings || turn.facts) ? { ...(settings || {}), ...(turn.facts || {}) } : undefined
+    const out = await prompt.assemble({ member: turn.member, role: turn.role, roleLabel, phase: turn.phase, task: turn.task, roster: turn.roster, quorum: turn.quorum, statusBlock: turn.statusBlock, round: turn.round, settings: turnSettings })
     if (!out || out.ok !== true) {
       fail('VMU_TURN_ASSEMBLY_FAILED', 'the prompt pipeline refused this turn: ' + JSON.stringify((out && out.refused) || {}).slice(0, 160))
     }
