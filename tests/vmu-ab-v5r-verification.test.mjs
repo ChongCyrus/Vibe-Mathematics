@@ -476,12 +476,16 @@ const phaseOf = (kind, text) => {
   if (/verify|vote|ballot|lean/.test(k)) return "verify"
   return "normal"
 }
-  const fixedOf = (s) => String(s).split("\n").map((l) => l.trim()).filter((l) => l.length > 12 && !l.includes("{{") && !/^[-#*|·]/.test(l))
+  const fixedOf = (s) => String(s).split("\n").map((l) => l.trim()).filter((l) => l.length > 12 && !l.includes("{{") && !/^[-#*|·]/.test(l) && !/^\{"|^\{ "/.test(l))
   // The corpus carries an absolute project path in a few lines; this port names that path through a setting
   // rather than hard-coding it, so a literal comparison would count a covered line as a gap. Normalising both
   // sides compares what a reader sees rather than where this deployment happens to live.
   const normPath = (s) => String(s).replace(/VibeMath\/Projects\/[^\s，。；、]*/g, "<project>").replace(/\{\{ setting:vmu\.turn\.protocolPath \}\}/g, "<protocol>")
   let hitAB = 0
+  // the prose-only figure, so this number and the per-type one say comparable things
+  let proseHitAB = 0
+  let proseTotalAB = 0
+  const isDataLine = (l) => /[a-z]{1,8}-\d/.test(l) || /^[\[▸]/.test(l) || /^【/.test(l) || /p-[a-z]/.test(l) || /:\s*"/.test(l) || /^陈述：/.test(l) || /^对象：/.test(l) || /^类型：/.test(l)
   let totalAB = 0
   const missAB = new Set()
   // An UNCAPPED tally, because missAB stops at eight samples and cannot say how large a family is.
@@ -490,13 +494,15 @@ const phaseOf = (kind, text) => {
     const mine = oursAB[phaseOf(String(p.kind), String(p.text))]
     for (const line of fixedOf(p.text)) {
       totalAB += 1
-      if (normPath(mine).includes(normPath(line))) hitAB += 1
+      const dataLine = isDataLine(line)
+        if (!dataLine) proseTotalAB += 1
+        if (normPath(mine).includes(normPath(line))) { hitAB += 1; if (!dataLine) proseHitAB += 1 }
       else { const k = String(line).slice(0, 18); leftAB.set(k, (leftAB.get(k) || 0) + 1); if (missAB.size < 8) missAB.add(line.slice(0, 46)) }
     }
   }
   const pctAB = Math.round(100 * hitAB / totalAB)
   ok(totalAB > 800 && hitAB > 0,
-    "V66. **** ACCEPTANCE (2), MEASURED: our assembly reproduces " + hitAB + " of the " + totalAB + " fixed prose lines in the prompts the original really delivered (" + pctAB + "%)",
+    "V66. **** ACCEPTANCE (2), MEASURED: our assembly reproduces " + hitAB + " of the " + totalAB + " fixed lines in the prompts the original really delivered (" + pctAB + "%). OF THE PROSE ALONE - excluding lines that name an object, a task or a status, which no scenario can reproduce whatever it does - " + proseHitAB + " of " + proseTotalAB + " (" + Math.round(100 * proseHitAB / Math.max(1, proseTotalAB)) + "%), which is the figure comparable to the per-type table",
     { hit: hitAB, total: totalAB, percent: pctAB })
   // THE OTHER DIRECTION, which the first number cannot see. A line-by-line comparison against the original
   // under-counts whatever the source holds as several entries but renders as one line, so it can report a gap that
@@ -541,7 +547,7 @@ const phaseOf = (kind, text) => {
     "the full catalogue and the compact one are alternatives in the original, and both are currently injected here",
     "the office/chat notice header the corpus writes as [新到的消息] before the line itself",
   ]
-  ok(pctAB >= 84 && knownGapsAB.length === 4,
+  ok(pctAB >= 86 && knownGapsAB.length === 4,
     "V67. **** and the gap is NAMED rather than rounded away, with a FLOOR on the measured ratio: the closed families are the compact catalogue, the refusal notice and the contextPct/compacted clarification, and the four that remain are listed",
     { families: knownGapsAB.length, percent: pctAB })
 
