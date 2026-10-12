@@ -208,5 +208,19 @@ export function createIdentity({ clock = () => 0, log = null, settings = {}, bus
     listCap,
   })
 
-  return { apiVersion, bindPrincipal, addMembership, pseudonymFor, endMembership, member, status }
+
+  /**
+   * ROUND 480: read-only roster, capped by `listCap`. docs/03 planned a read-only members surface and nothing exposed
+   * one, while this object knew every member privately. Bounded on purpose: a roster that cannot be capped is a dump.
+   */
+  function list() {
+    const rows = [...members.values()].slice(0, listCap).map((m) => ({
+      id: m.id,
+      principal: m.principal === undefined ? null : m.principal,
+      memberships: Array.isArray(m.memberships) ? m.memberships.slice() : [],
+      pseudonym: m.pseudonym === undefined ? null : m.pseudonym,
+    }))
+    return { ok: true, total: members.size, returned: rows.length, capped: members.size > rows.length, members: rows }
+  }
+  return { apiVersion, bindPrincipal, addMembership, pseudonymFor, endMembership, member, status, list }
 }

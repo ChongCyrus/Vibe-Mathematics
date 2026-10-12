@@ -90,6 +90,7 @@
     "tests/audit-zpolicy.test.mjs",
     "tests/audit-dependency-cycles.test.mjs",
     "tests/vmu-tools-filter.test.mjs",
+    "tests/vmu-control-roster.test.mjs",
     "tests/audit-math-computation-contract.mjs",
     "tests/audit-math-computation-contract.mutants.mjs",
     "tests/audit-math-computation-sensitivity.mjs",
