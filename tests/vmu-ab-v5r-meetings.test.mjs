@@ -422,6 +422,50 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
   mark('DIVERGENT', 'WHO decides truth: v5r aggregates boolean verdicts cast by the members, with the academician opening and closing the debate, while vmu runs an appointed tribunal with conflict declaration, recusal, hearings, rulings and appeals. Both honour the shared rule that DEBATE does not decide truth - v5r keeps end_verify separate from speaking, and vmu gives speak and say no ruling power - but the institution differs. Reason: v5r optimises for a small institute where consensus is cheap; vmu optimises for review-heavy work where a reviewer judging their own result is the natural conflict to guard against, which is the same reason the reviewer-conflicts family exists. Revival: neither is deprecated - a deployment wanting the v5r semantics can drive votes through the ballot face and treat the aggregate as the verdict, which is a pack-level composition rather than a kernel change.')
 }
 
+// ── 10. the LIFECYCLE family, the PAPER family and work assignment ─────────────────────────────────────────
+{
+  const LIFE_TOOLS = ['vibe_v5_start', 'vibe_v5_resume', 'vibe_v5_pause', 'vibe_v5_stop', 'vibe_v5_status', 'vibe_v5_report', 'vibe_v5_set', 'vibe_v5_configure', 'vibe_v5_overview']
+  const WORK_TOOLS = ['vibe_v5_paper', 'vibe_v5_finalize_paper', 'vibe_v5_assign', 'vibe_v5_prioritize']
+  const reachable = [...LIFE_TOOLS, ...WORK_TOOLS].filter((n) => registry.get(n))
+  ok(reachable.length === LIFE_TOOLS.length + WORK_TOOLS.length,
+    'G5a. ★ v5r registers the lifecycle family (9) and the paper/assignment family (4)', { reachable: reachable.length })
+  const req = (n) => ((registry.get(n).parameters || {}).required || []).slice()
+  const props = (n) => Object.keys((registry.get(n).parameters || {}).properties || {})
+  const desc = (n) => String(registry.get(n).description || '')
+  ok(props('vibe_v5_pause').length === 0 && /in-flight|finish/i.test(desc('vibe_v5_pause')) && /interrupt/i.test(desc('vibe_v5_stop')),
+    'G5b. ★ v5r separates PAUSE (in-flight turns finish, no new wakes) from STOP (interrupt every member and release their sessions)',
+    { pause: desc('vibe_v5_pause').slice(0, 60), stop: desc('vibe_v5_stop').slice(0, 60) })
+  ok(props('vibe_v5_set').includes('researcherCount') && /(provider|model)/i.test(desc('vibe_v5_set')),
+    'G5c. ★★ v5r tune() reaching into MODEL ROUTING: set persists institute parameters and can override each staff LLM route',
+    { props: props('vibe_v5_set') })
+  ok(props('vibe_v5_configure').includes('project') && props('vibe_v5_configure').includes('params'),
+    'G5d. ★ and configure() splits "create the institute" from "start it"', props('vibe_v5_configure'))
+  ok(props('vibe_v5_paper').includes('editor') && req('vibe_v5_finalize_paper').includes('decision'),
+    'G5e. ★ the paper family names its editor and requires a DECISION to finalise',
+    { paper: props('vibe_v5_paper'), finalize: req('vibe_v5_finalize_paper') })
+  ok(req('vibe_v5_assign').includes('to') && req('vibe_v5_assign').includes('why') && req('vibe_v5_assign').includes('acceptance') && props('vibe_v5_prioritize').includes('order'),
+    'G5f. ★★ work is assigned with a WHY and an ACCEPTANCE criterion, and priorities are an ordered list with a reason',
+    { assign: req('vibe_v5_assign'), prioritize: props('vibe_v5_prioritize') })
+
+  // our side
+  const hostSrc = readFileSync(new URL('../vibe-math-vmu/host.js', import.meta.url), 'utf8')
+  const ctrlSrc = readFileSync(new URL('../vibe-math-vmu/kernel/control.js', import.meta.url), 'utf8')
+  const pubSrc = readFileSync(new URL('../vibe-math-vmu/kernel/publication.js', import.meta.url), 'utf8')
+  ok(/vibe_vmu_set/.test(hostSrc) && /vibe_vmu_control/.test(hostSrc) && /vibe_vmu_status/.test(hostSrc) && /vibe_vmu_task/.test(hostSrc),
+    'G5g. ★ vmu exposes the same three verbs as tools: set, control and status (plus the task board)')
+  ok(/vmu\.control\.pauseScope/.test(ctrlSrc) && /vmu\.control\.idleAction/.test(ctrlSrc) && /vmu\.control\.degradeSteps/.test(ctrlSrc),
+    'G5h. ★ and its pause is a SETTING with a scope, an idle action and degradation steps - tunable where v5r pauses wholesale')
+  ok(/vmu\.avail\./.test(pubSrc) && /vmu\.license\./.test(pubSrc),
+    'G5i. ★ the publication face carries availability and licensing policy for released material')
+  {
+    const kernelFiles = readdirSync(new URL('../vibe-math-vmu/kernel/', import.meta.url)).filter((f) => f.endsWith('.js'))
+    const withModelKey = kernelFiles.filter((f) => /vmu\.[a-z.]*\.(model|provider)(['"]|\b)/.test(readFileSync(new URL('../vibe-math-vmu/kernel/' + f, import.meta.url), 'utf8')))
+    ok(withModelKey.length === 0,
+      'G5j. ★★ DIVERGENT (named): no kernel key routes a member to a model - in vmu the model route belongs to the HOST, not to the institute settings',
+      { v5r: 'set can override each staff LLM route (provider/model; empty = inherit)', vmu: 'zero model/provider keys across ' + kernelFiles.length + ' kernel faces' })
+    mark('DIVERGENT', 'model routing: v5r persists it inside the institute state and lets set() override each staff member route, while vmu keeps zero model/provider keys in the kernel and leaves routing to the host profile. Reason: the framework is meant to be deployable against any harness, so binding an agent to a model inside the institute would hard-code one runtime into the design - and the host already owns that switch. Revival: a deployment that wants per-seat routing declared in settings can express it once the host exposes a routing seam; the key would then be a thin declaration rather than a new mechanism.')
+  }
+}
 {
   mark('NOT_ADOPTED', 'the REST of the meeting happy path (motion -> second -> vote -> tally) is NOT yet compared step by step, and the reason is now measured rather than assumed: the preset is ACTOR-BOUND - its acting member is assigned only when its own scheduler starts a member turn - so convening runs through the office path while motions and polls answer member-not-found. Driving that needs either a subagent harness that really runs member turns, or the heavy CLI driver. See volume 24 §2.2.8-§2.2.9')
 }
