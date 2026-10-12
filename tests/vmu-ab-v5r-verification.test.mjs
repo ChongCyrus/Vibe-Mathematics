@@ -425,9 +425,42 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   // queue one notice, so the inbox block the corpus shows is really rendered
   loopAB.notify("acad", "【研究所提示】demo 未生效（V5_DEMO）：示例通知，用于让比对看见表头与缩进")
   const oursAB = {}
+  // ONE assembly per phase, for the fidelity number, which must not have its denominator inflated by the union.
+  const oursSingle = {}
+  // THE SAME INPUT UNION THE PER-TYPE FILE USES, and for the same reason: this number should say what the pack CAN
+  // produce when a caller supplies the inputs it expects, not what one assembly happened to produce. A founding round
+  // is seeded per member and a review names who is reviewed, so one call sees one of each and reports the rest as
+  // missing - a claim about the harness wearing the costume of a claim about the pack.
+  const UNION_INPUTS = {
+    founding: [
+      { member: "acad", role: "academician", roleLabel: "院士" },
+      { member: "r-1", role: "researcher", roleLabel: "研究员" },
+      { member: "r-2", role: "researcher", roleLabel: "研究员" },
+      { member: "r-3", role: "researcher", roleLabel: "研究员" },
+      { member: "t-1", role: "temp", roleLabel: "临时工" },
+    ],
+  }
   for (const phase of ["founding", "normal", "checkpoint", "verify", "heartbeat", "paper-write", "paper-review", "paper-final", "meeting", "resume"]) {
-    const a = await loopAB.assemble(loopAB.open({ member: "acad", role: "academician", roleLabel: "院士", phase, meetingState: phase === "meeting" ? "first" : undefined, roster: "acad、r-1、r-2", quorum: 3, statusBlock: "[状态] x", round: 3 }).turn)
-    oursAB[phase] = a.text
+    const variants = UNION_INPUTS[phase] || [{}]
+    const parts = []
+    for (const v of variants) {
+      const a = await loopAB.assemble(loopAB.open(Object.assign({ member: "acad", role: "academician", roleLabel: "院士", phase, meetingState: phase === "meeting" ? "first" : undefined, roster: "acad、r-1、r-2、r-3", quorum: 3, statusBlock: "[状态] x", round: 3 }, v)).turn)
+      parts.push(String(a.text))
+    }
+    // the reviewer is a SETTING, so the second one needs a second loop rather than a per-call variant
+    if (phase === "paper-review") {
+      const alt = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS,
+        prompt: createPromptPipeline({ sections: [...CHARTER_SECTIONS, v5rRoleSection], bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }),
+        settings: Object.assign({}, SETTINGS_AB, { "vmu.paper.reviewedMember": "acad" }),
+        extraPhases: ["heartbeat", "paper-write", "paper-review", "paper-final"],
+        noticeBlock: INBOX.inboxBlock,
+      })
+      alt.notify("acad", "【研究所提示】demo 未生效（V5_DEMO）：示例通知，用于让比对看见表头与缩进")
+      const a2 = await alt.assemble(alt.open({ member: "acad", role: "academician", roleLabel: "院士", phase, roster: "acad、r-1、r-2", quorum: 3, statusBlock: "[状态] x", round: 3 }).turn)
+      parts.push(String(a2.text))
+    }
+    oursSingle[phase] = parts[0]
+    oursAB[phase] = parts.join("\n")
   }
   // A kind alone cannot place a prompt: nine of the ten heartbeat prompts in the corpus carry kind `normal`, because
 // the heartbeat REPLACES an ordinary round rather than accompanying one. The text is what distinguishes it.
@@ -469,7 +502,7 @@ const phaseOf = (kind, text) => {
   // under-counts whatever the source holds as several entries but renders as one line, so it can report a gap that
   // is not there. Asking the reverse question - how much of OUR prompt comes from the original at all - is the
   // fidelity number a deployment actually cares about, and the two together cannot both be gamed.
-  const oursAll = Object.values(oursAB).join("\n")
+  const oursAll = Object.values(oursSingle).join("\n")
   const originalBlob = PROMPTS.map((p) => String(p.text)).join("\n")
   const ourLines = fixedOf(oursAll)
   const fromOriginal = ourLines.filter((l) => normPath(originalBlob).includes(normPath(l)))
@@ -508,7 +541,7 @@ const phaseOf = (kind, text) => {
     "the full catalogue and the compact one are alternatives in the original, and both are currently injected here",
     "the office/chat notice header the corpus writes as [新到的消息] before the line itself",
   ]
-  ok(pctAB >= 80 && knownGapsAB.length === 4,
+  ok(pctAB >= 84 && knownGapsAB.length === 4,
     "V67. **** and the gap is NAMED rather than rounded away, with a FLOOR on the measured ratio: the closed families are the compact catalogue, the refusal notice and the contextPct/compacted clarification, and the four that remain are listed",
     { families: knownGapsAB.length, percent: pctAB })
 
