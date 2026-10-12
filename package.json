@@ -378,6 +378,7 @@
     "vibe-math-vmu/packs/v5r-core.js",
     "vibe-math-vmu/packs/v5r-prompts.js",
     "vibe-math-vmu/packs/v5r-persona.js",
+    "vibe-math-vmu/packs/v5r-charter.js",
     "vibe-math-vmu/packs/v3-core.js",
     "vibe-math-vmu/host.js",
     "vibe-math-vmu/host-hooks.js",

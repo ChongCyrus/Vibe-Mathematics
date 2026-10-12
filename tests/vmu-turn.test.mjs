@@ -16,6 +16,7 @@ import { collectPackSections } from '../vibe-math-vmu/kernel/pack.js'
 import { PACK } from '../vibe-math-vmu/packs/v5r-core.js'
 import { toolSpecs } from '../vibe-math-vmu/host.js'
 import { SOURCE_SHA256 as PERSONA_SOURCE_SHA256 } from '../vibe-math-vmu/packs/v5r-persona.js'
+import { CHARTER_SECTIONS, CHARTER_BLOCKS, CHARTER_ROLE_BINDINGS } from '../vibe-math-vmu/packs/v5r-charter.js'
 import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -413,6 +414,41 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   ok(PERSONA_SOURCE_SHA256 === shaP,
     'T66. **** and the module RECORDS the capture hash, so a drift between the pack and the capture is a gate failure rather than a silent difference',
     { recorded: PERSONA_SOURCE_SHA256.slice(0, 12), onDisk: shaP.slice(0, 12) })
+}
+
+// 16) THE CHARTER, REBUILT FROM THE ORIGINAL SOURCE (docs/26 section 3.10). The fragments are transcribed from
+// `charterFor` rather than inferred from captured output, so the parity check is: every fixed prose line of every
+// source-derived fragment must appear VERBATIM in the charter the original really hands that kind of member.
+{
+  ok(CHARTER_SECTIONS.length === 7 && CHARTER_ROLE_BINDINGS.length === 6,
+    'T70. **** the charter is declared as source-derived sections with role bindings for the three member kinds',
+    { sections: CHARTER_SECTIONS.length, bindings: CHARTER_ROLE_BINDINGS.length })
+  const corpusC = JSON.parse(readFileSync(new URL('../prompt-corpus-v5/persona-corpus-v5.json', import.meta.url), 'utf8'))
+  const originalOf = (id) => corpusC.roles[id].blocks.map((b) => b.text).join('\n')
+  const acadOrig = originalOf('acad')
+  const resOrig = originalOf('r-1')
+  let total = 0
+  const missing = []
+  for (const b of CHARTER_BLOCKS) {
+    const pairs = b.kind === 'shared' ? [['shared', b.texts.shared, acadOrig], ['shared', b.texts.shared, resOrig]]
+      : (b.kind === 'role' ? [['academician', b.texts.academician, acadOrig], ['researcher', b.texts.researcher, resOrig]]
+        : [['with-leader', b.texts['with-leader'], acadOrig]])
+    for (const [variant, raw, source] of pairs) {
+      if (!raw) continue
+      for (const line of raw.split('\n').map((l) => l.trim()).filter((l) => l.length > 18 && !l.includes('{{'))) {
+        total += 1
+        if (!source.includes(line)) missing.push(b.name + '/' + variant + ': ' + line.slice(0, 40))
+      }
+    }
+  }
+  ok(total > 30 && missing.length === 0,
+    'T71. **** PARITY WITH THE SOURCE: every fixed prose line of the source-derived charter appears verbatim in the charter the original really hands a member',
+    { checked: total, missing: missing.slice(0, 3) })
+  const loopC = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_ROLE_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
+  const asmC = await loopC.assemble(loopC.open({ member: 'acad', role: 'academician', phase: 'founding', roster: 'acad、r-1', quorum: 2, round: 1 }).turn)
+  ok(asmC.ok === true && asmC.text.includes('【二、通用规章（全员必读）】') && asmC.text.includes('【一、所内编制与你的同事】') && asmC.text.includes('{{') === false,
+    'T72. **** and the ASSEMBLY produces the charter from those sections, in source order, with every placeholder filled',
+    { chars: asmC.text.length })
 }
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
