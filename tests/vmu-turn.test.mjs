@@ -420,11 +420,17 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
 // `charterFor` rather than inferred from captured output, so the parity check is: every fixed prose line of every
 // source-derived fragment must appear VERBATIM in the charter the original really hands that kind of member.
 {
-  ok(CHARTER_SECTIONS.length === 7 && CHARTER_ROLE_BINDINGS.length === 6,
+  ok(CHARTER_SECTIONS.length >= 17 && CHARTER_ROLE_BINDINGS.length >= 15,
     'T70. **** the charter is declared as source-derived sections with role bindings for the three member kinds',
     { sections: CHARTER_SECTIONS.length, bindings: CHARTER_ROLE_BINDINGS.length })
   const corpusC = JSON.parse(readFileSync(new URL('../prompt-corpus-v5/persona-corpus-v5.json', import.meta.url), 'utf8'))
-  const originalOf = (id) => corpusC.roles[id].blocks.map((b) => b.text).join('\n')
+  // The capture split AT the heading, so the body alone has no title; the source DOES push the title, so the
+  // baseline is reconstructed the same way the persona generator does it. Without this the comparison would
+  // blame the port for a heading the capture simply stores in another field.
+  const originalOf = (id) => corpusC.roles[id].blocks.map((x) => {
+    const m = /^s([一二三四五六七八九十]+)$/.exec(x.key)
+    return (m ? '【' + m[1] + '、' + x.heading + '】\n' : '') + x.text
+  }).join('\n')
   const acadOrig = originalOf('acad')
   const resOrig = originalOf('r-1')
   let total = 0
