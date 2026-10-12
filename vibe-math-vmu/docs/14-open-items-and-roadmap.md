@@ -1562,6 +1562,14 @@ undefined
   3. hr (11 keys) and course (24 keys) were marked for demotion but NOT removed; both are now RE-JUDGED AS KEEP (agent seat lifecycle; and teaching/training agents), and the demotion notes are withdrawn. The duplicate-review remark about course stays as a design note, not as a reason to demote.
   4. mentor / attendance / committees / consensus / consent (plans only) are re-judged as KEEP (meeting system; human-subjects consent).
   5. clinical (9) and animal (9) keep their demotion: for them no possible consumer exists in any of the ten directions - and even that demotion still needs user confirmation before any code is withdrawn.
+- ***** 305 DECISION (user delegated the call, with two pointers: "qualification/permission control is definitely necessary" and "do not use such strange names - a name must fit what it actually is").
+  KEEP BOTH capabilities, and RENAME them to what they actually are:
+  1. the family formerly named instruments is, inside the kernel, the registration, qualification, authorisation, maintenance window and retirement of a SHARED RESOURCE - so its name should be resource, not instruments. Its capabilityTags / requiresTraining / train are exactly the "who is qualified and authorised to use this" gate the user calls necessary.
+  2. the family formerly named biospecimen is an IRREVERSIBLE PSEUDONYM MAPPING (what blind review needs) plus a CHAIN OF CUSTODY (provenance and tamper-evidence) - so its name should be custody (with the pseudonym half expressed as anonymity), not biospecimen.
+  3. clinical and animal keep their demotion: for them no possible consumer exists in any of the ten directions, and even that demotion awaits user confirmation.
+  NAMING DISCIPLINE (user 2026-10-11, general): a name must fit what the thing actually is; "what it looks like" may not stand in for "what it is". Two existing counterexamples are instruments and biospecimen. Before naming a family, write one sentence saying what it actually is and take the name from that sentence.
+  RESTORE MECHANICS: take the code and tests back FROM GIT HISTORY (do not rewrite them), restore under the original names first so T1 stays green, and do the rename as the immediately following, separate step - a rename touches about sixteen touch points per family and must follow the section 2.0 procedure. Until the rename is done, do not claim the name fits.
+  NOT DONE YET (explicit): the restore itself. A reverse-apply of the two removal commits was attempted and ABORTED deliberately: it conflicted in six files and, worse, would have rolled back ledger and volume records written in rounds 301-304 (the ledger is a record and must not be swallowed by a revert). The restore will therefore be surgical: faces from 7eac256^ and bc29a5e^, their tests, and the schema/index/package/installer/doc rows re-inserted rather than reverted.
 ### 0.4 结论
 
 ## 0.5 未接线键的【三档结构】（轮 287 建表；**轮 290 据实更正数字** ✓✓）
