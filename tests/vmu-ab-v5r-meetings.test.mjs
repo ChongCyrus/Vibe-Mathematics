@@ -348,7 +348,43 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
   rmSync(seamWorkspace, { recursive: true, force: true })
 }
 
-// ── 6. what is NOT yet compared is named, not implied ──────────────────────────────────────────────────────
+// ── 8. the LEAN family and the RECORD family: two more families, compared the same way ─────────────────────
+{
+  const LEAN_TOOLS = ['vibe_v5_lean_run', 'vibe_v5_lean_archive', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_job']
+  const RECORD_TOOLS = ['vibe_v5_record_progress', 'vibe_v5_record_proposition', 'vibe_v5_record_method', 'vibe_v5_record_subproblem']
+  const reachable = [...LEAN_TOOLS, ...RECORD_TOOLS].filter((n) => registry.get(n))
+  ok(reachable.length === LEAN_TOOLS.length + RECORD_TOOLS.length,
+    'G3a. ★ v5r registers the lean family (5) and the record family (4)', { reachable: reachable.length })
+  const req = (n) => ((registry.get(n).parameters || {}).required || []).slice()
+  ok(req('vibe_v5_lean_run').includes('file') && req('vibe_v5_lean_archive').includes('kind') && req('vibe_v5_lean_read').includes('name'),
+    'G3b. ★ v5r names the file it compiles, the kind it archives and the name it reads back',
+    { run: req('vibe_v5_lean_run'), archive: req('vibe_v5_lean_archive'), read: req('vibe_v5_lean_read') })
+  ok(req('vibe_v5_lean_job').length === 0 && Object.keys((registry.get('vibe_v5_lean_job').parameters || {}).properties || {}).includes('jobId'),
+    'G3c. ★ v5r exposes the BACKGROUND COMPILE QUEUE as a tool of its own (list jobs, or wait on one)')
+  ok(req('vibe_v5_record_proposition').includes('value') && req('vibe_v5_record_proposition').includes('motive') && req('vibe_v5_record_proposition').includes('p'),
+    'G3d. ★★ v5r REQUIRES a proposition to state its value, its motive and its probability', req('vibe_v5_record_proposition'))
+  ok(req('vibe_v5_record_method').includes('value') && req('vibe_v5_record_subproblem').includes('motive'),
+    'G3e. ★★ and it demands the same three judgements for methods and sub-problems',
+    { method: req('vibe_v5_record_method'), subproblem: req('vibe_v5_record_subproblem') })
+
+  // our side, read from the faces
+  const leanSrc = readFileSync(new URL('../vibe-math-vmu/kernel/lean.js', import.meta.url), 'utf8')
+  const jobsSrc = readFileSync(new URL('../vibe-math-vmu/kernel/mathjobs.js', import.meta.url), 'utf8')
+  const recSrc = readFileSync(new URL('../vibe-math-vmu/kernel/records.js', import.meta.url), 'utf8')
+  ok(/vmu\.math\.leanAsync/.test(leanSrc) && /vmu\.math\.leanJobsMaxParallel/.test(leanSrc) && /vmu\.math\.leanCommand/.test(leanSrc),
+    'G3f. ★ vmu runs Lean too, asynchronously, with a bounded parallel job count - as settings, not as hard-coded behaviour')
+  ok(/queueWaitMs/.test(jobsSrc) && /vmu\.math\.maxParallel/.test(jobsSrc) && /jobId/.test(jobsSrc),
+    'G3g. ★ and its computation face has the same queue discipline: over the cap means WAIT, counted in queueWaitMs, never dropped silently')
+  ok(/lean_archive|lean_read|lean_lib/.test(leanSrc) && /archive/i.test(leanSrc),
+    'G3h. ★★ the Lean reuse library is here too: the face itself names the archive/read/list trio it mirrors', { found: 'lean.js names the v5r trio it implements' })
+  ok(/vmu\.records\.headFields/.test(recSrc),
+    'G3i. ★ vmu records are generic: a record is a kind plus a DECLARED head field set (vmu.records.headFields)', { face: 'records.js' })
+  ok(!/value.*motive.*p/.test(recSrc),
+    'G3j. ★★ DIVERGENT (named, and it is a design choice rather than a defect): v5r HARD-CODES value/motive/p as required; vmu requires whatever vmu.records.headFields declares',
+    { v5r: 'value, motive, p are required arguments', vmu: 'the required field set is declared by the deployment' })
+  mark('PROPERTY', 'both sides run Lean asynchronously behind a bounded parallel job queue and both keep a reusable Lean archive; and both insist that a recorded claim carries judgement, but v5r fixes WHICH judgements (value, motive, probability) while vmu makes the required field set declarable (vmu.records.headFields) - the same discipline, reached by configuration instead of by hard-coding')
+  mark('DIVERGENT', 'the judgement fields on a recorded proposition: v5r requires value, motive and p outright; vmu accepts any declared head-field set, so the v5r discipline is REACHABLE here but not the default. Reason: the framework does not know which judgements a given institute wants to demand, and hard-coding three of them would be exactly the "framework decides methodology" move this design avoids. Revival: a pack that declares vmu.records.headFields to require value/motive/p, which would restore the v5r behaviour verbatim - the mechanism is already wired, the policy is missing.')
+}
 {
   mark('NOT_ADOPTED', 'the REST of the meeting happy path (motion -> second -> vote -> tally) is NOT yet compared step by step, and the reason is now measured rather than assumed: the preset is ACTOR-BOUND - its acting member is assigned only when its own scheduler starts a member turn - so convening runs through the office path while motions and polls answer member-not-found. Driving that needs either a subagent harness that really runs member turns, or the heavy CLI driver. See volume 24 §2.2.8-§2.2.9')
 }

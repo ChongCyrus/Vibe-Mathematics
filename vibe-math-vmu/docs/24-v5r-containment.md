@@ -293,6 +293,25 @@
 
 **一处归类更正（轮 319）** ✗✓：**`advance`／`rollback` 不是任务变更，而是【阶段机】移动**（`stageIndex` ✓）⇒ **版本前置条件对它们【不适用**】✓（**原先写成"未接入"是错的** ✗）。★ **但"两个人同时推进同一阶段机"是真实的可能消费者** ✓ ⇒ **阶段级前置条件（"我看到的是第几阶段"）作为独立问题登记，未实现** ✗。**真正的未做** ✗：**卷 08 的 §4.1／§10.5／§12.4 三处设计行尚未补写** ✗（**键已在 schema 中接线** ✓，故门禁不受影响 ✓，但设计文档欠账已记 ✓）。
 
+### 2.2.18 ★★★ A/B 再扩两族：**Lean 族（5）＋ 记录族（4）**（轮 320）✓✓
+
+**判据分布** ⇒ **EQUAL 2／PROPERTY 8／NOT_ADOPTED 1／DIVERGENT 2** ✓（**58 passed, 0 failed** ✓）。
+
+| 对照项 | 实测 |
+|---|---|
+| **v5r `lean_run/archive/lib/read/job`** | `run` 要 **`file`** ✓、`archive` 要 **`kind`** ✓、`read` 要 **`name`** ✓、★ **`job` 是【独立工具】：列/等后台编译队列** ✓ |
+| **v5r `record_progress/proposition/method/subproblem`** | ★★ **`proposition`／`method`／`subproblem` 都把 `value`（价值程度）／`motive`（动机用途计划）／`p`（概率）列为【必需】** ✓✓ |
+| ★★ **我们侧三个面都在** ✓✓ | **`lean.js`（291 行）**：`vmu.math.leanCommand／leanAsync／leanJobsMaxParallel／leanTimeoutMs` ✓ —— ★ **文件头自己写明"归档三动词（v5r 的 `lean_archive`／`lean_read`／`lean_lib`）"** ✓✓；**`mathjobs.js`（187 行）**：★ **"并发上限：超出 ⇒ 排队等待（`queueWaitMs`），不静默丢弃"** ✓✓；**`records.js`（882 行）**：通用 **kind ＋ `vmu.records.headFields`（必需字段可声明）** ✓ |
+
+★★ **两族都是 PROPERTY** ✓✓：
+1. **两边都以【有界并行队列】异步跑 Lean** ✓（v5r 用 `lean_job` ＋ `maxP`；我们用 `leanAsync`／`leanJobsMaxParallel` ＋ 队列等待 ✓）；
+2. **两边都保留可复用 Lean 归档** ✓（我们侧**面里直接点名它所镜像的三动词** ✓）；
+3. **两边都要求"被记录的断言必须带判断"** ✓ —— ★ 区别在于 **v5r 钉死是【哪三个】判断**，而我们**让必需字段可声明** ✓。
+
+★★ **DIVERGENT（具名，且【是设计选择而非缺陷】）** ✓✓：**v5r 硬编码 `value`／`motive`／`p`；我们要求的是 `vmu.records.headFields` 所声明的那一套** ✓。
+★ **理由** ✓：**框架不知道某个研究所想强制哪几种判断；把三个写死，恰恰是这套设计要避开的"框架替人类定方法论"** ✓。
+★ **改判条件** ✓：**一个把 `vmu.records.headFields` 声明为要求 `value`／`motive`／`p` 的 pack** ⇒ **即可逐字恢复 v5r 的行为** ✓ —— ★ **机制已经接线，缺的只是策略** ✓。
+
 ## 3. v5r 的 56 个工具（**按家族分组**，实测列举）
 
 | 家族 | 工具 | vmu 侧家族级载体（依据：键族/服务实测存在） | A/B 覆盖 |
