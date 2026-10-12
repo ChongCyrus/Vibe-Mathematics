@@ -541,7 +541,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 // slogan: every number in it is a runtime parameter, so the assertion is that the NUMBERS COME FROM SETTINGS.
 {
   const pipeRs = createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' })
-  const ctxRs = { member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal', round: 4, roster: 'acad、r-1', quorum: 2, statusBlock: '[状态] x', settings: { 'vmu.resources.maxParallel': 5, 'vmu.resources.toolCallsPerTurnCap': 12, 'vmu.resources.memoryCeilingMb': 4096 } }
+  const ctxRs = { member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal', round: 4, roster: 'acad、r-1', quorum: 2, statusBlock: '[状态] x', settings: { 'vmu.turn.maxParallel': 5, 'vmu.turn.toolCallsPerTurnCap': 12, 'vmu.turn.memoryCeilingMb': 4096 } }
   const asmRs = await pipeRs.assemble(ctxRs)
   ok(asmRs.ok === true && asmRs.text.includes('最多同时唤醒 5 名成员') && asmRs.text.includes('工具调用不超过 12 次') && asmRs.text.includes('接近 4096 MB'),
     'T81. **** the RESOURCE DISCIPLINE renders its numbers FROM SETTINGS: concurrency, tool budget and memory ceiling are configuration, not prose',
@@ -560,9 +560,9 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 // given, and that changing the setting changes the delivered prompt.
 {
   const mkLoop = (settings) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }), settings })
-  const one = mkLoop({ 'vmu.turn.objective': '求 3N^2-2=b^2 的全部整数解', 'vmu.resources.maxParallel': 4 })
+  const one = mkLoop({ 'vmu.turn.objective': '求 3N^2-2=b^2 的全部整数解', 'vmu.turn.maxParallel': 4 })
   const a1 = await one.assemble(one.open({ member: 'acad', role: 'academician', phase: 'founding', roster: 'acad', quorum: 1, round: 1 }).turn)
-  const two = mkLoop({ 'vmu.turn.objective': '另一个研究对象', 'vmu.resources.maxParallel': 9 })
+  const two = mkLoop({ 'vmu.turn.objective': '另一个研究对象', 'vmu.turn.maxParallel': 9 })
   const a2 = await two.assemble(two.open({ member: 'acad', role: 'academician', phase: 'founding', roster: 'acad', quorum: 1, round: 1 }).turn)
   ok(a1.ok === true && a1.text.includes('求 3N^2-2=b^2 的全部整数解') && a1.text.includes('最多同时唤醒 4 名成员') && a1.text.includes('{{') === false,
     'T84. **** a REAL TURN renders a section value FROM SETTINGS: the objective and the resource numbers arrive through configuration, and no placeholder is left behind',
@@ -788,7 +788,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   const base = { member: "r-1", role: "researcher", phase: "normal", round: 3, statusBlock: "[状态] x" }
   const on = mkS({})
   const aOn = await on.assemble(on.open(base).turn)
-  const off = mkS({ "vmu.pointer.propagation": false, "vmu.resources.selfCheck": false, "vmu.turn.feedback": false })
+  const off = mkS({ "vmu.pointer.propagation": false, "vmu.turn.selfCheck": false, "vmu.turn.feedback": false })
   const aOff = await off.assemble(off.open(base).turn)
   ok(aOn.text.includes("【指针传播 · 头部列表（机制约束）】") && aOn.text.includes("【资源】") && aOn.text.includes("【工作经验／流程反馈"),
     "T118. **** by default all three optional blocks are injected, because a deployment that never configured them must get the full prompt",

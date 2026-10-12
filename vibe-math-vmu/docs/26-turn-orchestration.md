@@ -315,9 +315,9 @@
 
 | 行 | 参数 | 我们的载体 |
 |---|---|---|
-| 并发 | `params.maxParallel`（★ **默认 3** ✓，非法则回落 3 ✓） | **`{{ setting:vmu.resources.maxParallel }}`** ✓ |
-| 工具预算 | `toolCallsPerTurnCap()`（**0 ＝ 未设上限** ✓） | **`{{ setting:vmu.resources.toolCallsPerTurnCap }}`** ✓ |
-| 自监测 | `memoryCeilingMb()`（**0 ＝ 只说"压力明显增大"** ✓） | **`{{ setting:vmu.resources.memoryCeilingMb }}`** ✓ |
+| 并发 | `params.maxParallel`（★ **默认 3** ✓，非法则回落 3 ✓） | **`{{ setting:vmu.turn.maxParallel }}`** ✓ |
+| 工具预算 | `toolCallsPerTurnCap()`（**0 ＝ 未设上限** ✓） | **`{{ setting:vmu.turn.toolCallsPerTurnCap }}`** ✓ |
+| 自监测 | `memoryCeilingMb()`（**0 ＝ 只说"压力明显增大"** ✓） | **`{{ setting:vmu.turn.memoryCeilingMb }}`** ✓ |
 | 取舍 | 固定 ✓（**"正确性优先于产出量"** ✓；★ **"OOM 会丢掉全部未落盘工作"** ✓） | 固定段 ✓ |
 
 ★★ **这正好落在"可调控参数"这个方向上** ✓：**资源纪律不是写死的口号，而是【由配置决定数值】的一段** ✓ ⇒ ★ 我们**照搬**：**段在包里、数值在 settings** ✓✓。

@@ -16,7 +16,7 @@ export const V5R_SETTING_DEFAULTS = Object.freeze({
   // The three optional blocks the source gates. On is the source's default: a deployment that never
   // configured them gets the full prompt.
   'vmu.pointer.propagation': true,
-  'vmu.resources.selfCheck': true,
+  'vmu.turn.selfCheck': true,
   'vmu.turn.feedback': true,
   // Where the protocol lives, named by the compact catalogue. A path, not a hard-coded string.
   'vmu.turn.protocolPath': 'Shared/Protocol.md',

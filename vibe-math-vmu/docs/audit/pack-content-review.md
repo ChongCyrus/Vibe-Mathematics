@@ -81,7 +81,7 @@
 
 ### 1.6 `vibe-math-vmu/settings/schema.js`（1356 行）＋`planned.js`
 
-**与本审查相关的部分**：`vmu.turn.objective`（schema:131）、`vmu.resources.maxParallel|toolCallsPerTurnCap|memoryCeilingMb`（135–137）、`vmu.formal.currentProof|blockedNote|rootRel|modeLabel`（144–147）、`vmu.pointer.propagation`（141）、`vmu.records.pointerPropagation`（82）。
+**与本审查相关的部分**：`vmu.turn.objective`（schema:131）、`vmu.turn.maxParallel|toolCallsPerTurnCap|memoryCeilingMb`（135–137）、`vmu.formal.currentProof|blockedNote|rootRel|modeLabel`（144–147）、`vmu.pointer.propagation`（141）、`vmu.records.pointerPropagation`（82）。
 **缺失**：`vmu.institute.name`／`vmu.institute.leaderId` —— **只在 `settings/planned.js:68–69` 以 `type:'planned'` 声明**（按仓库口径＝"声明但未接线"，`docs/04-settings.md:257` 对同类键明确写"⚠️ 未接线"）；`vmu.member.hiredBy`／`vmu.member.direction`／`vmu.member.term`／`vmu.verdict.maxRounds`／`vmu.meeting.current`／`vmu.formal.modeLine` —— **schema 与 planned 里都没有** ✗。
 
 ### 1.7 `docs/26 §3.9–3.18`（作为判据）
@@ -121,7 +121,7 @@
 | 22 | `v5r-prompts.js:56` 等 | `"charterChars":797` | **(c)** | 采集期度量（长度会随运行变化） | 保留（证据），但注明它**不是**运行时字段 |
 | 23 | `v5r-core.js:78–82` | `capacity: 1` / `capacity: 0` / `capacity: 12` | **(a)/(c)** | 声明层数据 ✓，但 `0` 的含义（无限/零）未注明 | 补一句注释 |
 | 24 | `v5r-core.js:65–75` | `quorumCap:3`、`hardLimitMs:1800000`、`wakeRetries:5` … | **(a)** | 属于 pack 的机制默认层（数据 ✓） | 无需改；仅需与章程/文档同键名 |
-| 25 | `v5r-charter.js:730–734` | `每轮最多同时唤醒 {{ setting:vmu.resources.maxParallel }} 名…` | **(a)** | 全部走 settings（`docs/26:318–320`）✓ | —— |
+| 25 | `v5r-charter.js:730–734` | `每轮最多同时唤醒 {{ setting:vmu.turn.maxParallel }} 名…` | **(a)** | 全部走 settings（`docs/26:318–320`）✓ | —— |
 | 26 | `v5r-charter.js:551–575` 等 | 回复目录里的示例 `{"to":"r-2"…}`、`"t-3"`、`"expected_revision":2`、`"contextPct": 40` | **(c)** | 这些是**示例值**（散文的一部分）✓，但 `r-2`／`t-3` 恰好是真实存在的 id，读者可能误以为是约定 | 示例改成中性记号（`r-x`／`t-x`／`contextPct: <0-100>`） |
 | 27 | `v5r-charter.js:699`、`v5r-persona.js:48` 等 | `例如 Members/acad/Progress/progress.md` | **(c)** | 说明性举例 ✓（但仍是具体成员名） | 可选：改 `Members/<你的 id>/…` |
 | 28 | `v5r-prompts.js:51–117` | 每条尾部同一段 ~700 字回复目录／状态块 | **(c)** | 采集重复 ✓（不是错误），但说明语料**不能**整体当 section | 见 §6 建议 |
@@ -144,7 +144,7 @@
 | `{{ phase }}` | 1 | ✓ | turn loop | ✓ |
 | `{{ statusBlock }}` | 1 | ✓ | turn loop（循环自己组块，`docs/26:268`） | ✓ |
 | `{{ setting:vmu.turn.objective }}` | 9 | ✓ | schema:131 | ✓ |
-| `{{ setting:vmu.resources.maxParallel / toolCallsPerTurnCap / memoryCeilingMb }}` | 各 1 | ✓ | schema:135–137 | ✓ |
+| `{{ setting:vmu.turn.maxParallel / toolCallsPerTurnCap / memoryCeilingMb }}` | 各 1 | ✓ | schema:135–137 | ✓ |
 | `{{ setting:vmu.formal.currentProof / blockedNote / rootRel / modeLabel }}` | 各 1 | ✓ | schema:144–147 | ✓ |
 | `{{ setting:vmu.institute.name }}` | 4 | ✓ | **只有 `planned.js:69`（未接线）** | ✗ **空串** |
 | `{{ setting:vmu.institute.leaderId }}` | 3 | ✓ | **只有 `planned.js:68`（未接线）** | ✗ **空串** |
@@ -235,7 +235,7 @@
 - `vibe-math-vmu/packs/v5r/prompts/v5r-core.js`：**全文 1–215 行**。
 - `vibe-math-vmu/kernel/prompt/index.js`：**全文 1–518 行**（白名单 50；替换 269–284；装配 405–444；绑定 205–244）。
 - `vibe-math-vmu/kernel/turn/index.js`：150–229（`open` 169–180、`assemble` 182–201、投递 203–212），并用 195 行的实参列表作为"谁供值"的依据。
-- `vibe-math-vmu/settings/schema.js`：与本审查相关的键逐条 grep（`vmu.turn.objective` 131、`vmu.resources.*` 135–137、`vmu.formal.*` 144–147、`vmu.pointer.propagation` 141、`vmu.records.pointerPropagation` 82）；`settings/planned.js` 68–69。
+- `vibe-math-vmu/settings/schema.js`：与本审查相关的键逐条 grep（`vmu.turn.objective` 131、`vmu.turn.*` 135–137、`vmu.formal.*` 144–147、`vmu.pointer.propagation` 141、`vmu.records.pointerPropagation` 82）；`settings/planned.js` 68–69。
 - `vibe-math-vmu/docs/26-turn-orchestration.md`：§3.9–3.19（**全文 181–417 行**）。
 - 交叉证据（只读、不落盘）：三个临时脚本（在仓库外的 `_oneoff/` 下，已删除）
   1. 语料模式扫描：对 67 条统计 `轮次 \d+`、`有表决权者 \d+ 人`、`acad`、`r-N`、`t-N`、`VibeMath/Projects/...`、`你是 {{ member }}（常驻研究员）`、`可用引擎 无`、`{{ }}` 等，并给出每个命中的 `id@行号`；

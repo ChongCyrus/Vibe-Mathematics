@@ -113,7 +113,7 @@ Legend for COVERED: **YES** = the text and its variation points are present in t
 | `params.quorumCap` | 2770, 2829, 2904 | `\|\| 3` | NO | `vmu.meetings.quorumCap` |
 | `params.quorumMode` | 2939 | verbatim | NO | — |
 | `params.reconsiderFloor` | 2719 | `\|\| 0` | NO | `vmu.meetings.reconsiderFloor` |
-| `params.maxParallel` (resource + meeting text) | 2076, 4152 | `3` | NO (`vmu.turn.maxParallel`) | `vmu.limits.maxParallel` \| `vmu.resources.maxParallel` \| `vmu.math.maxParallel` |
+| `params.maxParallel` (resource + meeting text) | 2076, 4152 | `3` | NO (`vmu.turn.maxParallel`) | `vmu.limits.maxParallel` \| `vmu.turn.maxParallel` \| `vmu.math.maxParallel` |
 | tool-call cap (resource text) | 2078 | `cap > 0` else no-limit | YES `vmu.limits.toolCallsPerTurnCap` | — |
 | memory ceiling (resource + spawn guard) | 2079, 3766–3769 | `> 0` test | YES `vmu.limits.memoryCeilingMb` | — |
 | `params.formalVerify` → `formalMode()`/`formalOn()` | 4324–4325 | `'off'` unless in `FORMAL_MODES` | YES `vmu.math.formalVerify` | — |

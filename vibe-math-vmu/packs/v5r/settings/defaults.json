@@ -3,7 +3,7 @@
   "defaults": {
     "vmu.turn.replyCatalogue": "compact",
     "vmu.pointer.propagation": true,
-    "vmu.resources.selfCheck": true,
+    "vmu.turn.selfCheck": true,
     "vmu.turn.feedback": true,
     "vmu.turn.protocolPath": "Shared/Protocol.md"
   }

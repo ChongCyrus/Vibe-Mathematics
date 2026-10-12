@@ -44,6 +44,7 @@ function spellings(family) {
     { label: 'key literal', find: 'vmu.' + family + '.', replace: (n) => 'vmu.' + n + '.' },
     { label: 'key escaped', find: 'vmu\\.' + family + '\\.', replace: (n) => 'vmu\\.' + n + '\\.' },
     { label: 'bare quoted', find: "'" + family + "'", replace: (n) => "'" + n + "'" },
+    // (kept last, and gated below: see allowBare)
     { label: 'bare dquoted', find: '"' + family + '"', replace: (n) => '"' + n + '"' },
     // a family with NO trailing dot is how a measured table names it: `vmu.outreach` rather than a key.
     { label: 'family bare', find: 'vmu.' + family, replace: (n) => 'vmu.' + n },
@@ -52,6 +53,10 @@ function spellings(family) {
 
 const args = process.argv.slice(2)
 const write = args.includes('--write')
+// A family name in quotes may be an OPERATION name, a metadata value or a label rather than a settings family. One
+// round renamed 'recruit' inside the tenure face and turned a named refusal into an argument error, so this spelling
+// is opt-in and must be justified per file.
+const allowBare = args.includes('--allow-bare')
 const [oldName, newName] = args.filter((a) => !a.startsWith('--'))
 if (!oldName || !newName) {
   console.error('usage: node scripts/dev/rename-family.mjs <old> <new> [--write]')
@@ -78,6 +83,7 @@ console.log('  a kernel file carries this name: ' + sameNamedKernelFile +
   (sameNamedKernelFile ? '  (FILE RENAMES ARE OUT OF SCOPE HERE - see the header)' : ''))
 
 for (const s of spellings(oldName)) {
+  if (s.label === 'bare quoted' && !allowBare) { console.log('  spelling "bare quoted": SKIPPED (needs --allow-bare; it may be an operation name, not a family)'); continue }
   let n = 0
   let nf = 0
   for (const f of files) if (readFileSync(join(REPO, f), 'utf8').split(s.find).length - 1) { n += readFileSync(join(REPO, f), 'utf8').split(s.find).length - 1; nf += 1 }
@@ -101,7 +107,10 @@ for (const f of files) {
       t = t.split("key: 'vmu." + oldName + "." + k + "'").join("key: 'vmu." + newName + "." + k + "', was: ['vmu." + oldName + "." + k + "']")
     }
   }
-  for (const s of spellings(oldName)) t = t.split(s.find).join(s.replace(newName))
+  for (const s of spellings(oldName)) {
+    if (s.label === 'bare quoted' && !allowBare) continue
+    t = t.split(s.find).join(s.replace(newName))
+  }
   if (isSchema(f)) {
     // the blanket replacement rewrote the former names inside `was`; put them back
     for (const k of keys) t = t.split("was: ['vmu." + newName + "." + k + "']").join("was: ['vmu." + oldName + "." + k + "']")

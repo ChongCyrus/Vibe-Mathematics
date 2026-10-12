@@ -24,7 +24,7 @@
 /** The three blocks the source gates. Absent settings mean ON. */
 const OFF_SWITCHES = Object.freeze([
   ['vmu.pointer.propagation', 'v5r-pointer-contract'],
-  ['vmu.resources.selfCheck', 'v5r-turn-resources'],
+  ['vmu.turn.selfCheck', 'v5r-turn-resources'],
   ['vmu.turn.feedback', 'v5r-feedback-line'],
 ])
 

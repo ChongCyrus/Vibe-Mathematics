@@ -728,9 +728,9 @@ export const CHARTER_BLOCKS = Object.freeze([
     texts: {
       shared: [
         '【资源】本机可能资源紧张，请自觉控本回合开销：',
-        '  · 并发：框架每轮最多同时唤醒 {{ setting:vmu.resources.maxParallel }} 名成员（`maxParallel`）；**不要**为了提速而让你自己一次性铺开大量子代理。',
-        '  · 工具预算：**本回合工具调用不超过 {{ setting:vmu.resources.toolCallsPerTurnCap }} 次**。',
-        '  · 自监测：若观察到内存占用接近 {{ setting:vmu.resources.memoryCeilingMb }} MB，**先让出**：停止新起子代理、改用轻量路径（减少重复读写与大文件扫描）、把大任务切成更小的可交付步，并在回执里写明"因资源让出、剩余工作是什么"。',
+        '  · 并发：框架每轮最多同时唤醒 {{ setting:vmu.turn.maxParallel }} 名成员（`maxParallel`）；**不要**为了提速而让你自己一次性铺开大量子代理。',
+        '  · 工具预算：**本回合工具调用不超过 {{ setting:vmu.turn.toolCallsPerTurnCap }} 次**。',
+        '  · 自监测：若观察到内存占用接近 {{ setting:vmu.turn.memoryCeilingMb }} MB，**先让出**：停止新起子代理、改用轻量路径（减少重复读写与大文件扫描）、把大任务切成更小的可交付步，并在回执里写明"因资源让出、剩余工作是什么"。',
         '  · 取舍：**正确性优先于产出量**；资源紧张时宁可少做一步并说明，也不要冒险把本机拖垮（OOM 会丢掉全部未落盘工作）。',
       ].join('\n'),
     },
@@ -990,7 +990,7 @@ export const CHARTER_BLOCKS = Object.freeze([
     texts: {
       shared: [
         '（你是本次会议的第一位发言者，目前还没有别人发言。）',
-        '（流程：**先轮流发言**——每位常驻成员都会获得一次"要不要发言"的机会，**不强制**；随后进入**举手发言**阶段：想发言的人举手（`meeting_hand:true`），发言结束后**还可以再次举手**，可多轮。**无人举手**时会议收束。沉默本身**不会**触发任何截止；纪要会具名记下"已获得机会、选择未发言"。框架每轮最多同时唤醒 maxParallel 名成员（当前 {{ setting:vmu.resources.maxParallel }}），并把已收集到的发言附在提示里。收束时纪要与结论写入 Shared/Meetings/<会议id>.md 并同步到群聊。）',
+        '（流程：**先轮流发言**——每位常驻成员都会获得一次"要不要发言"的机会，**不强制**；随后进入**举手发言**阶段：想发言的人举手（`meeting_hand:true`），发言结束后**还可以再次举手**，可多轮。**无人举手**时会议收束。沉默本身**不会**触发任何截止；纪要会具名记下"已获得机会、选择未发言"。框架每轮最多同时唤醒 maxParallel 名成员（当前 {{ setting:vmu.turn.maxParallel }}），并把已收集到的发言附在提示里。收束时纪要与结论写入 Shared/Meetings/<会议id>.md 并同步到群聊。）',
       ].join('\n'),
     },
   },

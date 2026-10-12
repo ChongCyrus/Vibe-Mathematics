@@ -396,7 +396,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
 {
   const SETTINGS_AB = {
     "vmu.turn.instituteName": "institute", "vmu.turn.objective": "probe", "vmu.turn.leaderId": "acad",
-    "vmu.resources.maxParallel": 3, "vmu.resources.toolCallsPerTurnCap": 0, "vmu.resources.memoryCeilingMb": 0,
+    "vmu.turn.maxParallel": 3, "vmu.turn.toolCallsPerTurnCap": 0, "vmu.turn.memoryCeilingMb": 0,
     "vmu.pointer.propagation": true, "vmu.turn.feedback": true, "vmu.meetings.verdictMaxRounds": 3,
   }
   const mkAB = () => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS,
