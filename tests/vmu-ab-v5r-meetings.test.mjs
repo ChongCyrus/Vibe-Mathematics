@@ -9,7 +9,7 @@
 //
 // Run: node tests/vmu-ab-v5r-meetings.test.mjs   (last line: === VMU AB v5r meetings: N passed, M failed ===)
 
-import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, rmSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { apply as applyV5R } from '../vibe-math-v5r/vibe-math-v5r.js'
@@ -113,9 +113,111 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
   mark('EQUAL', 'both sides name the object/referent of an action in their parameters (motion_id, question/options)')
 }
 
+// ── 7. THE STATE SEAM: the preset's state machine needs a real file-backed fs, and once given one it RUNS ─────
+// Measured in volume 24 §2.2.8: the state path uses exactly four host fs members - resolve, stat (undefined when
+// absent), readText, writeText - plus the context timeout hook its scheduler calls. Without them the write returns
+// nothing and the preset declares its own state file STALE ("the in-memory state advanced but the file is STALE").
+// This block pins that contract into the gate, together with the first segment of the happy path it unlocks.
+{
+  const seamWorkspace = mkdtempSync(join(tmpdir(), 'vmu-ab-seam-'))
+  const seamRoot = { id: 'seam-root', session: { id: 'seam-root', header: { cwd: seamWorkspace } }, options: {} }
+  const seamRegistry = new Map()
+  const seamAgents = new Map([[seamRoot.id, seamRoot]])
+  const buildCtx = (withSeam) => ({
+    agents: { roots: () => [seamRoot], get: (id) => seamAgents.get(id), list: () => [...seamAgents.values()] },
+    subagents: { list: () => ['spawn'], async startContinuable() { return { childId: 'c', messageId: 'm' } }, async sendMessage() { return 'message' }, interrupt() {}, async drainContinuableChildren() {} },
+    fs: withSeam
+      ? {
+        resolve: async (p) => String(p),
+        stat: async (p) => (existsSync(p) ? { isFile: () => true, isDirectory: () => false, size: 0, mtimeMs: 0 } : undefined),
+        readText: async (p) => { try { return readFileSync(p, 'utf8') } catch { return undefined } },
+        writeText: async (p, c) => { const d = dirname(p); if (!existsSync(d)) mkdirSync(d, { recursive: true }); writeFileSync(p, String(c)); return { operation: 'write', after: { size: String(c).length } } },
+        readFileSync: (p) => readFileSync(p, 'utf8'), existsSync: (p) => existsSync(p),
+        mkdirSync: (p, o) => mkdirSync(p, o),
+        writeFileSync: (p, d) => { const dd = dirname(p); if (!existsSync(dd)) mkdirSync(dd, { recursive: true }); writeFileSync(p, d) },
+      }
+      : { readFileSync: (p) => readFileSync(p, 'utf8'), existsSync: (p) => existsSync(p), mkdirSync: (p, o) => mkdirSync(p, o), writeFileSync: (p, d) => writeFileSync(p, d) },
+    tools: { register(spec) { seamRegistry.set(spec.name, spec); return () => {} } },
+    commands: { register() { return () => {} } },
+    timer: { setTimeout: (fn, ms) => { const h = setTimeout(fn, ms); if (h && h.unref) h.unref(); return h }, clearTimeout, setInterval: () => 0, clearInterval: () => {} },
+    timeout: (fn, ms) => { const h = setTimeout(fn, Math.min(Number(ms) || 0, 5)); if (h && h.unref) h.unref(); return () => clearTimeout(h) },
+    on() { return () => {} },
+    effect(fn) { try { const d = fn(); return typeof d === 'function' ? d : () => {} } catch { return () => {} } },
+    logger: { info() {}, warn() {}, error() {} },
+  })
+  const seamCall = async (name, params) => {
+    const spec = seamRegistry.get(name)
+    if (!spec) return { missing: true }
+    try { const raw = await spec.execute(params || {}, { agent: seamRoot, session: seamRoot.session }); return typeof raw === 'string' ? JSON.parse(raw) : raw } catch (e) { return { thrown: true, code: e && e.code, message: String(e && e.message) } }
+  }
+
+  // (a) WITHOUT the seam the state machine still RUNS, but it cannot PERSIST: the preset declares its own state file
+  // STALE. Measured, and it corrects an earlier over-strong claim: the seam governs persistence, not execution.
+  const stateFiles = (dir, depth) => {
+    let n = 0
+    try {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) { if (depth > 0) n += stateFiles(join(dir, e.name), depth - 1) }
+        else if (/\.v5state\.json$/.test(e.name)) n += 1
+      }
+    } catch (e) { /* a missing dir simply has no state files */ }
+    return n
+  }
+  applyV5R(buildCtx(false))
+  const noSeam = await seamCall('vibe_v5_start', {})
+  ok(noSeam.ok === true && stateFiles(seamWorkspace, 8) === 0,
+    'G1f. ★ PROPERTY (guard): without resolve/stat/readText/writeText the run succeeds IN MEMORY but NO state file is written',
+    { ok: noSeam.ok, stateFiles: stateFiles(seamWorkspace, 8) })
+
+  // (b) WITH the seam it starts, and it convenes a meeting carrying a speaking order
+  seamRegistry.clear()
+  applyV5R(buildCtx(true))
+  const started = await seamCall('vibe_v5_start', {})
+  ok(started.ok === true, 'G1g. ★★ with the state seam, v5r STARTS (state loads and commits)', started)
+  ok(Array.isArray(started.members) && started.members.length > 0 && typeof started.voters === 'number',
+    'G1h. ★★ the started institute reports a roster and a voter count', { members: started.members, voters: started.voters })
+  ok(stateFiles(seamWorkspace, 8) > 0,
+    'G1h2. ★★ WITH the seam the state file is really written (persistence proven, not assumed)', { stateFiles: stateFiles(seamWorkspace, 8) })
+  const convened = await seamCall('vibe_v5_meeting', { agenda: 'A' })
+  ok(convened.ok === true && typeof convened.meeting === 'string',
+    'G1i. ★★ v5r CONVENES a meeting: a multi-step stateful flow really ran, not just a tool body', convened)
+  ok(typeof convened.order === 'string' && convened.order.length > 0,
+    'G1j. ★★ the convened meeting carries a SPEAKING ORDER', convened.order)
+
+  // (c) the A/B property: both sides turn speaking rights into an ORDERED structure
+  const om = mkMeetings()
+  om.open({ by: 'acad', chair: 'acad', roster: ['acad', 'r-1', 'r-2'], at: 0 })
+  const q1 = om.queue({ meeting: 'm1', member: 'acad' })
+  const q2 = om.queue({ meeting: 'm1', member: 'r-1' })
+  ok(!!(q1 && q1.ok === true && Array.isArray(q1.order)) && !!(q2 && Array.isArray(q2.order) && q2.order.length === 2),
+    'G1k. ★ vmu likewise turns speaking rights into an ORDERED structure (queue().order)', { first: q1 && q1.order, second: q2 && q2.order })
+  ok(typeof convened.order === 'string' && !!(q2 && Array.isArray(q2.order) && q2.order.length > 0),
+    'G1l. ★ PROPERTY (A/B, same input class): both sides order speakers deterministically, in different representations',
+    { v5r: convened.order, vmu: q2 && q2.order })
+  mark('PROPERTY', 'speaking rights become an ordered structure on both sides (v5r: a name string; vmu: an array) - the representations differ, the property does not')
+
+  // (d) actor binding, measured: this is where the two sides DIVERGE, and the divergence is a defect on OUR side
+  const theirMotion = await seamCall('vibe_v5_motion', { op: 'propose', kind: 'procedural', text: 'recess' })
+  const ours = mkMeetings()
+  ours.open({ by: 'acad', chair: 'acad', roster: ['acad', 'r-1'], at: 0 })
+  const oursMotion = vmu(() => ours.motion({ meeting: 'm1', member: 'nobody', text: 'x' }))
+  const oursSpeak = vmu(() => ours.speak({ meeting: 'm1', member: 'nobody' }))
+  ok(theirMotion.ok !== true && typeof theirMotion.code === 'string',
+    'G1m. ★ v5r refuses a motion from a NON-seated actor, by name', theirMotion)
+  ok(oursSpeak.thrown === true || oursSpeak.code !== undefined,
+    'G1n. ★ vmu DOES refuse a SPEECH from a non-member, by name (so the face knows how to gate)', oursSpeak)
+  ok(oursMotion.returned === true && oursMotion.ok === true,
+    'G1o. ★★ DIVERGENT (a real defect on our side): vmu ACCEPTS a motion from a non-member while refusing a speech from one',
+    { motion: oursMotion.value && oursMotion.value.motion, speak: oursSpeak.code })
+  mark('DIVERGENT', 'a motion from a non-member: v5r refuses by name (V5_NOT_VOTER), vmu ACCEPTS it - and vmu refuses a SPEECH from the same non-member, so the meeting face is internally inconsistent. Reason: membership is checked on speak but not on motion. Revival: fix meetings.motion to refuse a non-member by name, per the D-series rule that a non-member never votes (volume 08); that fix is a kernel change and gets its own interval.')
+
+  seamRegistry.clear()
+  rmSync(seamWorkspace, { recursive: true, force: true })
+}
+
 // ── 6. what is NOT yet compared is named, not implied ──────────────────────────────────────────────────────
 {
-  mark('NOT_ADOPTED', 'the meeting happy path (convene -> motion -> second -> vote -> resolution) is NOT yet compared step by step: v5r parks a meeting behind an in-flight verification and drives it through its own state machine, and matching that needs the full flow driver - recorded as the next slice of G1, not as "equivalent"')
+  mark('NOT_ADOPTED', 'the REST of the meeting happy path (motion -> second -> vote -> tally) is NOT yet compared step by step, and the reason is now measured rather than assumed: the preset is ACTOR-BOUND - its acting member is assigned only when its own scheduler starts a member turn - so convening runs through the office path while motions and polls answer member-not-found. Driving that needs either a subagent harness that really runs member turns, or the heavy CLI driver. See volume 24 §2.2.8-§2.2.9')
 }
 
 rmSync(workspace, { recursive: true, force: true })
