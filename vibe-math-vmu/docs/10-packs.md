@@ -233,68 +233,56 @@ B′ 判决：v5r 的文档层是**本仓质量最高、与数学无关度最高
 2. **能力缺失/冲突 ⇒ 具名拒**（两场景）；
 3. **dry-run 无副作用**（前后状态哈希一致）；
 4. **优先级可证**：四层覆盖各有一条断言；
-5. **v5r-pack 对照**：差异报告生成且分类完整（`等价/有意改进/缺陷/未覆盖`）；
-6. **接线手册可复跑**：按 §6 步骤能在干净检出上装出 vmu 预设并通过 `--counts` 与文档计数门禁；
+5. ★★ **v5r-pack 对照【已达**]✓：★ **差异报告已生成** ✓（`design/04-v5r-contrast-live.md` ✓）＋ ★★ **行为级 A/B 双向量化** ✓（★ 正向按条目 **706/823（86%）**／只看散文 **632/642（98%）** ✓；★ 反向 **398/1478（27%）** ✓）⇒ **D8 的「逐条报裁」落到 `docs/24` 与 11-§9.6 ✓**；
+6. ★★ **接线手册可复跑 —— 【真待做**]✗：★ **「按 §6 在【干净检出**]上装出 vmu 预设并通过 `--counts` 与文档计数门禁」从未实跑** ✓（★ 本仓是**长期演进的工作区** ✓，**不是干净检出** ✓）⇒ ★ **它需要一个新的克隆** ✓；★★ **在实跑之前这一条【不算完成**]✓（★ 与 11-§9.6／`docs/14` 的「未通过门禁的东西一律不算完成」一致 ✓）；
 7. **无静默覆盖**：pack 间覆盖未声明 ⇒ 报错（§4）。
 
 ---
 
-## 9. pack 模板
+## 9. pack 骨架（**真实形态；`packs/_template/` 有意不存在** ✗）
 
-> **⚠️ 校正（2026-10-09 ✗✓）**：本节的 YAML/目录骨架是**目标形态**，**当前没有对应文件** ✗ —— `packs/_template/` **不存在**，`kernel/pack.js` **也不读 YAML** ✗。**唯一随包的真实模板是 `vibe-math-vmu/packs/institute-min/index.js`**（85 行、内联 JS manifest ✓，可直接复制改名 ✓）；清单字段的**权威列表**见 §2 的表 ✓。下列骨架仅作**未来形态**参考 ✓。
+> ★★★ **轮 450 重写本节** ✗：★ **原文给出 5 个 YAML 文件**（`pack.yml`／`settings.yml`／`middleware/rules/*.yml`／`prompts/bindings.yml`）✗ —— ★★ **而运行时不读其中任何一个** ✗ ⇒ ★ **那是一个我们【有意不建**]的形态的模板** ✓（★ §2 已写「没有 YAML 清单」✓）。★★ **给一个「运行时不读的形态」写模板，与 §7 曾犯的是同一个错** ✓（★ 那里的形式是散文，这里是骨架 ✓）。
 
-```
-packs/_template/
-├── pack.yml
-├── settings.yml
-├── middleware/rules/example.yml
-├── middleware/modules/example.js
-├── prompts/bindings.yml
-└── README.md
-```
+★★ **`packs/_template/` 不存在，而且这是【有意**]的** ✓（§7 ✓）：**四个真包覆盖了两种形态** ✓，**再加一个空壳只会多一份要同步的东西** ✗。★ **要骨架，就抄一个真包** ✓ —— ★ **本节给的是「抄哪个、改哪几行」** ✓，**不是一份平行于实现的模板** ✗。
 
-**`pack.yml`**
-```yaml
-id: _template
-name: 示例整合包（请改名）
-version: 0.1.0
-apiVersion: 1                     # 需要的 vmu 公开接口版本（03-§7 / D13-O3）
-requires: { vmu: '>=1.0 <2' }
-conflicts: []
-description: |
-  一句话说明这套"运行机制"想达到什么、代价是什么。
-capabilities: []                  # 依赖的内核能力；缺失 ⇒ 装载即 VMU_PACK_MISSING
-settings: settings.yml
-middleware: []
-prompts: prompts/bindings.yml
-scripts: []
-migrations: []
-```
+### 9.1 有行为的 pack（抄 `packs/institute-min/index.js` ✓，86 行）
 
-**`settings.yml`**（**只放"量"，流程进中间件**）
-```yaml
-vmu.limits.toolCallsPerTurnCap: 12
-vmu.meetings.quorumRule: m-unanimous
-```
-
-**`middleware/rules/example.yml`**（M1：可静态校验、可干跑、无副作用能力）
-```yaml
-id: _template.example
-on: [tools/pre-execute]
-when:
-  all:
-    - tool: [vibe_vmu_meeting]   # 真实工具面；表决是 `action:'ballot'|'vote'|'tally'` ✓（`vibe_vmu_ballot` 作为独立工具**未实现／规划** ✗，今天不存在该工具名 ✗）
-    - not: { subject: has_locked_formal_proof }
-then:
-  - deny:
-      code: VMU_INVALID_ARGUMENT
-      message: "只有已被正式证明或证伪、且已定稿的对象才能进入表决"
-      hint: "先由有权限者登记 formal_proof"
-```
-
-**`middleware/modules/example.js`**（M2：**必须**声明 `meta.apiVersion` 与 `capabilities`，且**每个分支都要 return**）
 ```js
-export const meta = { id: '_template.example', apiVersion: 1 }
+// packs/<id>/index.js  —— 清单是【代码**]，导出 `PACK`（字段全集见 §2 表 ✓）
+export const PACK = {
+  id: 'my-institute',
+  version: '1.0.0',
+  packContractVersion: 1,                                   // ← 不是 `apiVersion` ✗
+  requires: [{ service: 'vmu.tasks', minVersion: 1 }],       // ← 数组，不是 map ✗
+  codes: ['VMU_PACK_MY_INSTITUTE_<REASON>'],                 // ← 必须这个前缀（R-d）
+  settings: { 'vmu.meetings.quorumCap': 3 },                 // ← 一层键→值（用户设置仍会赢）
+  slots: [{ id: 'chair', capacity: 1 }, { id: 'member', capacity: 8 }],
+  tracks: ['progress', 'rejected'],
+  rules: [{                                                  // ← M1 规则是【JS 对象**]，不是 YAML ✗
+    id: 'my-institute-no-vote-without-proof',
+    kind: 'rules',
+    on: ['tools/pre-execute'],
+    when: { all: [{ tool: ['vibe_vmu_meeting'] }, { not: { subject: 'has_locked_formal_proof' } }] },
+    then: [{ deny: { code: 'VMU_INVALID_ARGUMENT', message: '只有已定稿且已证伪或证明的对象才能进入表决' } }],
+  }],
+  middleware: [],                                            // ← 追加条目（`kind:rules` 的条目不编译 ✗）
+  aliases: [{ from: 'my_old_tool', to: 'vibe_vmu_records' }],
+}
+```
+
+### 9.2 设置默认值与提示词（**可以纯数据** ✓）
+
+```
+packs/<id>/settings/defaults.json     # 插件在建内核前按纯数据读 ✓（"只放量"，流程进中间件 ✓）
+packs/<id>/prompts/sections.json      # { sections: [{name,order,text}], bindings: [{section, role|phase|member|task, text}] } ✓
+```
+
+★ **只贡献文字、不要行为的 pack【没有 `index.js`**]✓（`packs/example-data/` 就是这样 ✓，**且它被 `config.packs` 点名时【不报错**]✓）。
+
+### 9.3 M2 模块（**必须**声明 `meta.apiVersion` 与 `capabilities`，且**每个分支都要 return**）
+
+```js
+export const meta = { id: 'example.module', apiVersion: 1 }
 export const capabilities = ['read-state', 'deny', 'appendPrompt']
 export default ({ log }) => ({
   hooks: {
@@ -306,17 +294,16 @@ export default ({ log }) => ({
 })
 ```
 
-**`prompts/bindings.yml`**（提示词包：**不得改状态块**）
-```yaml
-- { section: charter, role: reviewer, file: ../../prompts/reviewer-charter.md }
-- { section: task-brief, task: ['t-1'], owner: 'm-2', file: task-1-brief.md }
-```
+### 9.4 `README.md` 必须回答
 
-**`README.md` 必须回答**：① 这套机制在做什么；② **依赖哪些内核能力**；③ **代价**（并发/预算/提示词长度）；④ **已知差异与有意放弃**（D8：逐条列出，禁静默）。
+① 这套机制在做什么；② **依赖哪些内核能力**；③ **代价**（并发／预算／提示词长度）；④ **已知差异与有意放弃**（D8：逐条列出，禁静默 ✗）。
 
-**装载（两条路，均已可用 ✓）**：① **随包整合包** ⇒ profile 行的 `config.packs: ['<id>']`（或内联 manifest）⇒ 装载期 `plan → apply`（冲突即具名拒 ✓）；② **运行期检查/装载内联 manifest** ⇒ 工具 `vibe_vmu_pack`：`{action:'plan', manifest:'<json>'}`（**纯报告** ✓）⇒ `{action:'apply', …}` ⇒ `{action:'list'}` / `{action:'unload', id}` ✓（该工具**只在声明了整合包时出现** ✓）。
+### 9.5 装载（两条路，均已可用 ✓）
+
+① **随包整合包** ⇒ profile 行的 `config.packs` 里给 `<id>`（或内联 manifest ✓）⇒ 装载期 `plan → apply`（★ 冲突即具名拒 ✓；★★ **`config.packs` 是【序列**]不是集合** ✓ —— ★ **后者对同一设置的主张会覆盖前者** ✓）；② **运行期检查/装载** ⇒ `vibe_vmu_pack`（★ **已实现** ✓：`list｜plan｜apply｜unload` ✓）。
 
 ---
+
 
 ## 10. 未核项
 
