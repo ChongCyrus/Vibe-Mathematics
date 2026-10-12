@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const SOURCE_REL = 'prompt-corpus-v5/persona-corpus-v5.json'
-const OUT = join(REPO, 'vibe-math-vmu', 'packs', 'v5r-persona.js')
+const OUT = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-persona.js')
 const CHECK = process.argv.includes('--check')
 
 const raw = readFileSync(join(REPO, SOURCE_REL))

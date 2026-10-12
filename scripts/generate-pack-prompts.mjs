@@ -11,7 +11,7 @@
  * a silent divergence.
  *
  * USAGE: node scripts/generate-pack-prompts.mjs [--check]
- *   without --check it writes packs/v5r-prompts.js; with it, drift is a FAILURE (that is what the chain calls).
+ *   without --check it writes packs/v5r/prompts/v5r-prompts.js; with it, drift is a FAILURE (that is what the chain calls).
  */
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { createHash } from 'node:crypto'
@@ -22,7 +22,7 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const CORPUS_REL = 'prompt-corpus-v5/prompt-corpus-v5.json'
 const CORPUS = join(REPO, CORPUS_REL)
-const OUT = join(REPO, 'vibe-math-vmu', 'packs', 'v5r-prompts.js')
+const OUT = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-prompts.js')
 const CHECK = process.argv.includes('--check')
 
 const raw = readFileSync(CORPUS)
@@ -117,7 +117,7 @@ if (empty.length) {
 if (CHECK) {
   const current = existsSync(OUT) ? readFileSync(OUT, 'utf8') : ''
   if (current !== next) {
-    console.error('FAIL - pack prompts: packs/v5r-prompts.js is not what ' + CORPUS_REL + ' yields'
+    console.error('FAIL - pack prompts: packs/v5r/prompts/v5r-prompts.js is not what ' + CORPUS_REL + ' yields'
       + ' (run `node scripts/generate-pack-prompts.mjs` to rewrite it)')
     process.exit(1)
   }
@@ -125,5 +125,5 @@ if (CHECK) {
 } else {
   writeFileSync(OUT, next)
   console.log('  pack prompts: WROTE ' + entries.length + ' prompts (' + chars + ' chars, ' + Object.keys(kinds).length
-    + ' kinds, sha ' + sha.slice(0, 12) + ') into vibe-math-vmu/packs/v5r-prompts.js')
+    + ' kinds, sha ' + sha.slice(0, 12) + ') into vibe-math-vmu/packs/v5r/prompts/v5r-prompts.js')
 }
