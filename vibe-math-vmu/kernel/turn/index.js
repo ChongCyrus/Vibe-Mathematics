@@ -78,7 +78,10 @@ export const RECORDED_FIELDS = Object.freeze([
   'solved', 'prioritize', 'hire', 'fire',
 ])
 
-const PHASES = Object.freeze(['founding', 'normal', 'checkpoint', 'verify', 'verify-debate', 'meeting', 'resume'])
+// ROUND 409: `heartbeat` joins the set because the ORIGINAL has it - it sends a no-progress prompt that REPLACES an
+// ordinary round, and ten of the delivered prompts carry one. The extensible form, a pack declaring its own phases,
+// is owed rather than pretended: this set is read at open() time and a pack is applied after the kernel exists.
+const PHASES = Object.freeze(['founding', 'normal', 'checkpoint', 'heartbeat', 'verify', 'verify-debate', 'meeting', 'resume'])
 
 export function refuse(code, message, hint) {
   const err = new Error(message)

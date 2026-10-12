@@ -919,7 +919,11 @@ export const CHARTER_BLOCKS = Object.freeze([
         '只输出一个合法 JSON 对象；所有旧字段仍有效，以下仅列当前阶段常用字段。',
         'progress：数学进展/阻塞及下一步；record：成果卡数组（kind,id,title,statement或content,value,motive,p）；say：必要消息或{to,text}。',
         'task_done：完成的任务id；task_update：{task_id,expected_revision,action}（release等）；reject_assign：{task_id,why}。阻塞原因写入progress，不代表已证伪。',
-        '协调需要时可用assign（subject,description,to,why,acceptance,priority）、prioritize、nudge（to,why）、convene_meeting。',
+        // THE MORE COMMON OF TWO WORDINGS. The corpus carries this line in two forms and they are not interchangeable:
+        // this one appears in thirty-three entries across eighteen kinds, while the other (`协调需要时可用assign（…）、
+        // prioritize、nudge（to,why）、convene_meeting。`) appears in ten. The more common one is what a round normally
+        // says; the other is kept below as its own section rather than deleted, because it is real output too.
+        '协调需要时可propose_verify、propose_meeting、hire/fire；具体字段查手册。',
         '{"progress":"当前推导、证据及下一步","solved":false}',
         '复杂工具首次使用前调用 vibe_v5_tool_help({"tool":"工具名称"}) 查阅方法；简单工具和 JSON 回执直接使用。',
         'contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明：{{ setting:vmu.turn.protocolPath }}',
@@ -956,15 +960,18 @@ export const CHARTER_BLOCKS = Object.freeze([
   // ── THE HEARTBEAT PROMPT (source `heartbeatPrompt`, L4110-4115) ──────────────────────────────────────────────
   // The fourth prompt TYPE the grouped measurement found, and the second largest family after the ballot. It is what a
   // member receives when the institute has made no progress for a while, and it is deliberately written as a PROMPT AND
-  // NOT A DRIVER: it says what to try, and it says that saying so is a valid answer. Declared as a PHASE block, so it
-  // appears in the checkpoint phase and nowhere else.
+  // NOT A DRIVER: it says what to try, and it says that saying so is a valid answer.
+  //
+  // ITS PHASE IS NOT `checkpoint`. Measured against the corpus: nine of the ten entries carrying this text have kind
+  // `normal` and one has `checkpoint`, so the original sends it in the ordinary phase - it REPLACES the ordinary round
+  // rather than accompanying it. Declaring it under `checkpoint` was wrong, and it is its own phase for that reason.
   {
     name: 'v5r-heartbeat-core',
     order: 806,
     range: 'pack',
     kind: 'phase',
     texts: {
-      checkpoint: [
+      heartbeat: [
         '【心跳检查 —— {{ roleLabel }} {{ member }}】',
         '',
         '所内一段时间没有新进展了。请**继续推进**这个问题，而不是停在原地：',

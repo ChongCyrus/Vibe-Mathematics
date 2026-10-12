@@ -410,11 +410,21 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   // queue one notice, so the inbox block the corpus shows is really rendered
   loopAB.notify("acad", "【研究所提示】demo 未生效（V5_DEMO）：示例通知，用于让比对看见表头与缩进")
   const oursAB = {}
-  for (const phase of ["founding", "normal", "checkpoint", "verify"]) {
+  for (const phase of ["founding", "normal", "checkpoint", "verify", "heartbeat"]) {
     const a = await loopAB.assemble(loopAB.open({ member: "acad", role: "academician", roleLabel: "院士", phase, roster: "acad、r-1、r-2", quorum: 3, statusBlock: "[状态] x", round: 3 }).turn)
     oursAB[phase] = a.text
   }
-  const phaseOf = (kind) => (/^founding/.test(kind) ? "founding" : (/checkpoint|heartbeat/.test(kind) ? "checkpoint" : (/verify|vote|ballot/.test(kind) ? "verify" : "normal")))
+  // A kind alone cannot place a prompt: nine of the ten heartbeat prompts in the corpus carry kind `normal`, because
+// the heartbeat REPLACES an ordinary round rather than accompanying one. The text is what distinguishes it.
+const phaseOf = (kind, text) => {
+  const k = String(kind)
+  const x = String(text || "")
+  if (/^founding/.test(k)) return "founding"
+  if (/所内一段时间没有新进展了/.test(x)) return "heartbeat"
+  if (/checkpoint|heartbeat/.test(k)) return "checkpoint"
+  if (/verify|vote|ballot/.test(k)) return "verify"
+  return "normal"
+}
   const fixedOf = (s) => String(s).split("\n").map((l) => l.trim()).filter((l) => l.length > 12 && !l.includes("{{") && !/^[-#*|·]/.test(l))
   // The corpus carries an absolute project path in a few lines; this port names that path through a setting
   // rather than hard-coding it, so a literal comparison would count a covered line as a gap. Normalising both
@@ -424,7 +434,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   let totalAB = 0
   const missAB = new Set()
   for (const p of PROMPTS) {
-    const mine = oursAB[phaseOf(String(p.kind))]
+    const mine = oursAB[phaseOf(String(p.kind), String(p.text))]
     for (const line of fixedOf(p.text)) {
       totalAB += 1
       if (normPath(mine).includes(normPath(line))) hitAB += 1
@@ -478,7 +488,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
     "the full catalogue and the compact one are alternatives in the original, and both are currently injected here",
     "the office/chat notice header the corpus writes as [新到的消息] before the line itself",
   ]
-  ok(pctAB >= 59 && knownGapsAB.length === 4,
+  ok(pctAB >= 65 && knownGapsAB.length === 4,
     "V67. **** and the gap is NAMED rather than rounded away, with a FLOOR on the measured ratio: the closed families are the compact catalogue, the refusal notice and the contextPct/compacted clarification, and the four that remain are listed",
     { families: knownGapsAB.length, percent: pctAB })
 }
