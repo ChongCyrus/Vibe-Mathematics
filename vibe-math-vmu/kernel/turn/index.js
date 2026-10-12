@@ -20,22 +20,26 @@
 export const apiVersion = 1
 
 /**
- * The reply field catalogue, and the ONE face that owns each field (docs/26 §3). Names come from the original
- * prompt catalogue so a model trained on that line keeps working.
+ * The reply field catalogue, and the ONE face that owns each field (docs/26 §3). The names on the LEFT come from the
+ * original prompt catalogue, so a model trained on that line keeps working; the names on the RIGHT were read off a
+ * REAL kernel at runtime (round 338) rather than guessed - `meetings` really has `speak` and `motion`, `records` has
+ * `put`, `library` has `record`, `ballotbox` has `cast`, `tasks` has `create` and `transition`, `formal` has `check`,
+ * `mathjobs` has `submit`. Where a field genuinely has no counterpart yet it is declared with `face: null` and the
+ * dispatcher reports it as not executed instead of inventing a call.
  */
 export const FIELD_OWNERS = Object.freeze({
-  say: Object.freeze({ face: 'vmu.minutes', op: 'say' }),
-  progress: Object.freeze({ face: 'vmu.records', op: 'progress' }),
-  record: Object.freeze({ face: 'vmu.library', op: 'register' }),
-  propose_verify: Object.freeze({ face: 'vmu.meetings', op: 'proposeVerify' }),
-  verdict: Object.freeze({ face: 'vmu.ballot', op: 'cast' }),
+  say: Object.freeze({ face: 'vmu.meetings', op: 'speak' }),
+  progress: Object.freeze({ face: 'vmu.records', op: 'put' }),
+  record: Object.freeze({ face: 'vmu.library', op: 'record' }),
+  propose_verify: Object.freeze({ face: 'vmu.meetings', op: 'motion' }),
+  verdict: Object.freeze({ face: 'vmu.ballotbox', op: 'cast' }),
   task_create: Object.freeze({ face: 'vmu.tasks', op: 'create' }),
   task_update: Object.freeze({ face: 'vmu.tasks', op: 'transition' }),
-  proposal: Object.freeze({ face: 'vmu.governance', op: 'propose' }),
-  motion: Object.freeze({ face: 'vmu.governance', op: 'motion' }),
-  formal: Object.freeze({ face: 'vmu.formal', op: 'archive' }),
-  lean_archive: Object.freeze({ face: 'vmu.mathjobs', op: 'archive' }),
-  lean_run: Object.freeze({ face: 'vmu.mathjobs', op: 'run' }),
+  proposal: Object.freeze({ face: 'vmu.meetings', op: 'motion' }),
+  motion: Object.freeze({ face: 'vmu.meetings', op: 'motion' }),
+  formal: Object.freeze({ face: 'vmu.formal', op: 'check' }),
+  lean_archive: Object.freeze({ face: 'vmu.mathjobs', op: 'submit' }),
+  lean_run: Object.freeze({ face: 'vmu.mathjobs', op: 'submit' }),
 })
 
 export const FIELDS = Object.freeze(Object.keys(FIELD_OWNERS))
@@ -56,10 +60,43 @@ export function extractFence(text) {
 }
 
 /**
+ * Build the face map from a kernel service bag, taking ONLY the operations the catalogue names - and taking them by
+ * their real method names. A face the bag does not carry is simply absent from the map, so the dispatcher will report
+ * the field as not executed rather than call something invented.
+ */
+export function facesFrom(services = {}, owners = FIELD_OWNERS) {
+  const map = {}
+  for (const owner of Object.values(owners)) {
+    if (!owner || !owner.face || !owner.op) continue
+    const bag = services[owner.face] !== undefined ? services[owner.face] : services[String(owner.face).replace(/^vmu\./, '')]
+    const instance = typeof bag === 'function' ? (() => { try { return bag({}) } catch { return null } })() : bag
+    if (!instance || typeof instance[owner.op] !== 'function') continue
+    if (!map[owner.face]) map[owner.face] = {}
+    map[owner.face][owner.op] = instance[owner.op].bind(instance)
+  }
+  return map
+}
+
+/** Resolve the effective ownership table: the declared default, with a caller-supplied override winning per field. */
+export function resolveOwners(bindings = null) {
+  if (!bindings || typeof bindings !== 'object') return FIELD_OWNERS
+  const merged = {}
+  for (const k of FIELDS) {
+    const o = bindings[k]
+    merged[k] = o && typeof o === 'object' && typeof o.face === 'string' && typeof o.op === 'string'
+      ? Object.freeze({ face: o.face, op: o.op })
+      : FIELD_OWNERS[k]
+  }
+  return Object.freeze(merged)
+}
+
+/**
  * Create the orchestrator. `prompt` is the pipeline (docs/06), `deliver` is the adapter seam, `faces` maps a face
  * name to its operations, e.g. `{ 'vmu.tasks': { create: async (p) => ... } }`.
  */
-export function createTurnOrchestrator({ prompt = null, deliver = null, faces = {}, clock = () => new Date().toISOString() } = {}) {
+export function createTurnOrchestrator({ prompt = null, deliver = null, faces = {}, bindings = null, clock = () => new Date().toISOString() } = {}) {
+  const owners = resolveOwners(bindings)
+  const known = Object.keys(owners)
   const turns = new Map()
   const counts = { opened: 0, assembled: 0, delivered: 0, parsed: 0, refused: 0, dispatched: 0, notExecuted: 0 }
   const lastRefusal = { code: null, message: null }
@@ -115,10 +152,10 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
       fail('VMU_TURN_BAD_JSON', 'the fenced block is not valid JSON: ' + String(e && e.message).slice(0, 120))
     }
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) fail('VMU_TURN_BAD_JSON', 'the fenced block must be a JSON OBJECT')
-    const unknown = Object.keys(obj).filter((k) => !Object.prototype.hasOwnProperty.call(FIELD_OWNERS, k))
+    const unknown = Object.keys(obj).filter((k) => !Object.prototype.hasOwnProperty.call(owners, k))
     if (unknown.length) {
       fail('VMU_TURN_UNKNOWN_FIELD', 'unknown reply field(s): ' + unknown.join(', ') + ' - refusing rather than guessing what was meant',
-        'known fields: ' + FIELDS.join(', '))
+        'known fields: ' + known.join(', '))
     }
     counts.parsed += 1
     return { ok: true, reply: obj, fields: Object.keys(obj) }
@@ -127,8 +164,8 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
   /** ⑤ plan: a PURE function from a parsed reply to the dispatch list (one owner per field). */
   const plan = (reply) => {
     const r = reply && typeof reply === 'object' ? reply : {}
-    return Object.keys(r).filter((k) => Object.prototype.hasOwnProperty.call(FIELD_OWNERS, k)).map((k) => ({
-      field: k, face: FIELD_OWNERS[k].face, op: FIELD_OWNERS[k].op, payload: r[k],
+    return Object.keys(r).filter((k) => Object.prototype.hasOwnProperty.call(owners, k)).map((k) => ({
+      field: k, face: owners[k].face, op: owners[k].op, payload: r[k],
     }))
   }
 
@@ -168,7 +205,7 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
 
   return {
     open, assemble, deliver: deliverTurn, parse, plan, apply, run,
-    status: () => ({ apiVersion, turns: turns.size, fields: FIELDS.length, counts: { ...counts }, lastRefusal: { ...lastRefusal } }),
+    status: () => ({ apiVersion, turns: turns.size, fields: known.length, owners, counts: { ...counts }, lastRefusal: { ...lastRefusal } }),
   }
 }
 

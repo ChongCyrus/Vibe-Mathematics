@@ -8,9 +8,13 @@
 //
 // Run: node tests/vmu-turn.test.mjs   (last line: === VMU TURN: N passed, M failed ===)
 
-import { createTurnOrchestrator, FIELD_OWNERS, FIELDS, extractFence } from '../vibe-math-vmu/kernel/turn/index.js'
+import { createTurnOrchestrator, FIELD_OWNERS, FIELDS, extractFence, facesFrom, resolveOwners } from '../vibe-math-vmu/kernel/turn/index.js'
 import { createPromptPipeline } from '../vibe-math-vmu/kernel/prompt/index.js'
 import { v5rPromptSections } from '../vibe-math-vmu/packs/v5r-core.js'
+import { createKernel } from '../vibe-math-vmu/kernel/index.js'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 let passed = 0
 let failed = 0
@@ -79,14 +83,14 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
 {
   const calls = []
   const faces = {
-    'vmu.minutes': { say: async (p) => { calls.push(['minutes.say', p]); return { ok: true } } },
+    'vmu.meetings': { speak: async (p) => { calls.push(['meetings.speak', p]); return { ok: true } } },
     'vmu.tasks': { create: async (p) => { calls.push(['tasks.create', p]); return { ok: true } } },
   }
   const t = createTurnOrchestrator({ prompt: pipeline(), faces })
   const out = await t.apply({ say: 'hello', task_create: { title: 'x' } })
   ok(out.ok === true && out.executed.length === 2 && calls.length === 2,
     'T14. ★★★ each field reaches the face that owns it, exactly once', { executed: out.executed.length })
-  ok(calls.some((c) => c[0] === 'minutes.say') && calls.some((c) => c[0] === 'tasks.create'),
+  ok(calls.some((c) => c[0] === 'meetings.speak') && calls.some((c) => c[0] === 'tasks.create'),
     'T15. ★★ and they go to DIFFERENT faces, because ownership is one-to-one', calls.map((c) => c[0]))
   const half = await t.apply({ verdict: true })
   ok(half.skipped.length === 1 && half.skipped[0].reason === 'face-not-wired' && t.status().counts.notExecuted === 1,
@@ -99,7 +103,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   const t = createTurnOrchestrator({
     prompt: pipeline(),
     deliver: async ({ turn }) => fence({ progress: 'worked on L1' }),
-    faces: { 'vmu.records': { progress: async () => ({ ok: true }) } },
+    faces: { 'vmu.records': { put: async () => ({ ok: true }) } },
   })
   const receipt = await t.run({ member: 'r-2', phase: 'normal', round: 4 })
   ok(receipt.ok === true && receipt.fields.length === 1 && receipt.executed.length === 1 && receipt.skipped.length === 0,
@@ -112,6 +116,33 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
     'T19. ★ a bad phase is refused and the refusal is REMEMBERED on the status surface', { code: bad.code })
 }
 
+
+// 6) THE REAL WIRING: the table names real operations, and a field actually LANDS in kernel state
+{
+  const root = mkdtempSync(join(tmpdir(), 'vmu-turn-'))
+  const kernel = createKernel({ settings: {}, root, host: null })
+  const faces = facesFrom(kernel)
+  ok(Object.keys(faces).length >= 4 && Object.values(faces).every((m) => Object.values(m).every((f) => typeof f === 'function')),
+    'T20. * facesFrom builds the face map from a REAL kernel: every catalogued operation resolves to a bound function',
+    { faces: Object.keys(faces) })
+  const listed = kernel.tasks.list()
+  const before = Array.isArray(listed) ? listed.length : ((listed && listed.tasks) || []).length
+  const t = createTurnOrchestrator({ prompt: pipeline(), faces })
+  const out = await t.apply({ task_create: { title: 'via the turn loop' } })
+  const listed2 = kernel.tasks.list()
+  const after = Array.isArray(listed2) ? listed2.length : ((listed2 && listed2.tasks) || []).length
+  ok(out.ok === true && out.executed.length === 1 && after === before + 1,
+    'T21. **** END TO END: a task_create field in a parsed reply becomes a REAL task in the kernel task ledger - the loop lands state, it does not just report success',
+    { before, after, executed: out.executed.length })
+  const overridden = resolveOwners({ task_create: { face: 'vmu.tasks', op: 'list' } })
+  ok(FIELD_OWNERS.task_create.op === 'create' && overridden.task_create.op === 'list' && overridden.verdict.op === 'cast',
+    'T22. *** the ownership table is CONFIGURABLE: a caller binding wins per field while the declared default stays intact',
+    { defaultOp: FIELD_OWNERS.task_create.op, overrideOp: overridden.task_create.op })
+  const custom = createTurnOrchestrator({ prompt: pipeline(), bindings: { progress: { face: 'vmu.records', op: 'list' } } })
+  ok(custom.status().fields === FIELDS.length && custom.status().owners.progress.op === 'list',
+    'T23. * and the orchestrator reports the binding table it is actually using, so a half-configured host is visible')
+  rmSync(root, { recursive: true, force: true })
+}
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

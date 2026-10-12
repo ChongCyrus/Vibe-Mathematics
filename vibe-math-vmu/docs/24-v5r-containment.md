@@ -588,6 +588,28 @@ So the answer flips: the prompt text IS now composed and regulated by the framew
 ★★ **另记一条纪律教训** ✗✓：**"记录脚本被守卫拒绝"时，命令【不得继续提交**】✓ —— 本轮我先跑了记录脚本（**它被拒** ✗），却仍提交了代码 ✓ ⇒ **文档欠账一次** ✓（本条即补 ✓）。**新纪律：门禁链里的每一步都必须判返回值，被拒即中止** ✓。
 
 **判据** ⇒ **T1 `TOTAL 133, PASS 133, FAIL 0`（suites 110）** ✓；**`VMU TURN: 19 passed, 0 failed`** ✓。
+### 2.2.35 ★★★★ 首要目标第二个增量：**面表接真实面，且【真的落账】**（轮 338）✓✓
+
+★ **归属表改为真实面 ＋ 真实操作名** ✓（**用【运行时枚举真内核】读出** ✓ 105 服务、各面方法逐一列出 ✓，**绝不猜** ✗）：
+
+| 回复字段 | 真实归属（实测） |
+|---|---|
+| `say` | **`vmu.meetings`／`speak`** ✓ |
+| `progress` | **`vmu.records`／`put`** ✓ |
+| `record` | **`vmu.library`／`record`** ✓ |
+| `propose_verify` / `proposal` / `motion` | **`vmu.meetings`／`motion`** ✓ |
+| `verdict` | **`vmu.ballotbox`／`cast`** ✓ |
+| `task_create` / `task_update` | **`vmu.tasks`／`create`** / **`vmu.tasks`／`transition`** ✓ |
+| `formal` | **`vmu.formal`／`check`** ✓ |
+| `lean_archive` / `lean_run` | **`vmu.mathjobs`／`submit`** ✓ |
+
+★★★ **端到端落账（T21）** ✓✓：**一条 `task_create` 经"解析后的回复"分派 ⇒ 真内核的 `tasks.list()` 条目数【加一】** ✓ —— ★★ **循环是"落状态"的，不是"报告成功"的** ✓✓。
+
+★★ **接线方式（两个教训）** ✓✓：① **服务袋的键是【裸名】**（`tasks`／`records` ✓）而注册表用 `vmu.` 前缀 ✓ ⇒ `facesFrom` **两种都认** ✓；② **面或操作缺失就不进表** ✓ ⇒ 分派时**计数回报**，**绝不造一次调用** ✗（**半装宿主可见** ✓）。
+
+★ **可配置** ✓：`bindings` **逐字段覆盖** ✓（默认表不动 ✓），**`status().owners` 报告实际在用的表** ✓ ⇒ 满足首要目标"**可经 settings／config／中间件调控**" ✓。
+
+**判据** ⇒ **`VMU TURN: 23 passed, 0 failed`** ✓（**T20–T23 为本轮新增** ✓）。
 ## 3. v5r 的 56 个工具
 
 > ★★ **A/B 覆盖率：56/56** ✓✓（**轮 323 实测**：以注册表为准的 56 个工具**全部被断言点名** ✓）；**判据总账** ＝ **EQUAL 4／PROPERTY 10／DIVERGENT 4** ✓（**94 passed, 0 failed** ✓）。★★★ **`NOT_ADOPTED` 归零（轮 324）** ✓✓ —— **happy path 已逐段对照**（§2.2.22）：**执行体绑定不是"够不着"，而是"要按它的方式入席"** ✓（让调度器发出 `childId` 并用它当调用者 ✓）。（**按家族分组**，实测列举）
