@@ -133,9 +133,15 @@ export function resolveOwners(bindings = null) {
  * Create the orchestrator. `prompt` is the pipeline (docs/06), `deliver` is the adapter seam, `faces` maps a face
  * name to its operations, e.g. `{ 'vmu.tasks': { create: async (p) => ... } }`.
  */
-export function createTurnOrchestrator({ prompt = null, deliver = null, faces = {}, bindings = null, clock = () => new Date().toISOString() } = {}) {
+export function createTurnOrchestrator({ prompt = null, deliver = null, faces = {}, bindings = null, wakeupPolicy = 'round-robin', clock = () => new Date().toISOString() } = {}) {
   const owners = resolveOwners(bindings)
   const known = Object.keys(owners)
+  // ROUND 347: the wakeup POLICY (docs/26 section 3.2). The original preset recorded only WHO should be woken and
+  // left WHEN and WITH WHICH PROMPT to its host - which is why only that host could run an institute. The policy is
+  // a declared setting here, so the framework drives its own rounds and a host may still override the choice.
+  const POLICY = ['round-robin', 'least-recent'].includes(wakeupPolicy) ? wakeupPolicy : 'round-robin'
+  const woken = new Map()   // member -> how often this loop has opened a turn for it
+  let cursor = 0            // round-robin position, so cycling is positional rather than count-based
   const turns = new Map()
   const counts = { opened: 0, assembled: 0, delivered: 0, parsed: 0, refused: 0, dispatched: 0, notExecuted: 0 }
   const lastRefusal = { code: null, message: null }
@@ -152,6 +158,7 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
     seq += 1
     const turn = { id: 't-' + seq, member, role, phase, task, why, nextStep, round, at: clock() }
     turns.set(turn.id, turn)
+    woken.set(member, (woken.get(member) || 0) + 1)
     counts.opened += 1
     return { ok: true, turn }
   }
@@ -243,9 +250,54 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
     return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, fields: parsed.fields, ...out }
   }
 
+  /**
+   * ⑥ nextTurn: WHO should be woken next, by the DECLARED policy. Pure with respect to everything but the loop's own
+   * counters, so the same roster and the same history choose the same member - which is what makes a multi-round run
+   * reproducible. Nobody to wake is a LEGAL state (null), never an invented member and never a failure.
+   */
+  const nextTurn = ({ members = [], phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
+    const list = (Array.isArray(members) ? members : []).filter((m) => m && typeof m.id === 'string' && m.id.trim() !== '')
+    if (list.length === 0) return null
+    let pick = null
+    if (POLICY === 'least-recent') {
+      const min = Math.min(...list.map((m) => woken.get(m.id) || 0))
+      pick = list.find((m) => (woken.get(m.id) || 0) === min)
+    } else {
+      pick = list[cursor % list.length]
+      cursor += 1
+    }
+    return { member: pick.id, role: role || pick.role || null, phase, why, nextStep }
+  }
+
+  /**
+   * ⑦ drive: run SEVERAL turns, one after another, choosing each member by the policy. The bound is explicit (there
+   * is no unlimited default), and a failing round STOPS the run and reports its number with the receipts so far -
+   * a half-finished run is reported as half-finished, never as complete.
+   */
+  const drive = async ({ members = [], rounds = 1, phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
+    const n = Number(rounds)
+    if (!Number.isInteger(n) || n < 1) {
+      fail('VMU_INVALID_ARGUMENT', 'rounds must be a positive integer: the bound is stated, never assumed',
+        'pass { rounds: N } (docs/26 section 3.2 invariant 2)')
+    }
+    const receipts = []
+    for (let i = 1; i <= n; i += 1) {
+      const spec = nextTurn({ members, phase, why, nextStep, role })
+      if (!spec) return { ok: true, receipts, stopped: 'no-members', roundsRun: receipts.length }
+      try {
+        const r = await run({ ...spec, round: i })
+        receipts.push({ round: i, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, turn: r.turn.id })
+      } catch (e) {
+        counts.refused += 0
+        return { ok: false, round: i, code: e && e.code, message: String((e && e.message) || e), receipts, roundsRun: receipts.length }
+      }
+    }
+    return { ok: true, receipts, roundsRun: receipts.length }
+  }
+
   return {
-    open, assemble, deliver: deliverTurn, parse, plan, apply, run,
-    status: () => ({ apiVersion, turns: turns.size, fields: known.length, owners, counts: { ...counts }, lastRefusal: { ...lastRefusal } }),
+    open, assemble, deliver: deliverTurn, parse, plan, apply, run, nextTurn, drive,
+    status: () => ({ apiVersion, turns: turns.size, fields: known.length, owners, policy: POLICY, woken: Object.fromEntries(woken), counts: { ...counts }, lastRefusal: { ...lastRefusal } }),
   }
 }
 

@@ -261,6 +261,39 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
     'T39. *** and a host that accepts the turn but hands back NO reply is a named failure, never parsed as an empty answer', { code: noReply && noReply.code })
   rmSync(root2, { recursive: true, force: true })
 }
+
+// 11) MULTI-ROUND: the framework chooses who is woken next, by a DECLARED policy, and can drive several rounds
+{
+  const roster = [{ id: 'acad', role: 'academician' }, { id: 'r-1', role: 'researcher' }, { id: 'r-2', role: 'researcher' }]
+  const mkLoop = (policy) => createTurnOrchestrator({ prompt: createPromptPipeline({ sections: collectPackSections([PACK]) }), wakeupPolicy: policy })
+  const rr = mkLoop('round-robin')
+  const rrOrder = []
+  for (let i = 0; i < 4; i += 1) { const s = rr.nextTurn({ members: roster, phase: 'normal' }); rrOrder.push(s.member); rr.open({ member: s.member, phase: 'normal' }) }
+  ok(rrOrder.join(',') === 'acad,r-1,r-2,acad',
+    'T43. **** round-robin wakes the roster in ORDER and cycles - positional, so every member gets a turn before anyone repeats',
+    { order: rrOrder })
+  const lr = mkLoop('least-recent')
+  lr.open({ member: 'acad', phase: 'normal' })
+  lr.open({ member: 'acad', phase: 'normal' })
+  const lrPick = lr.nextTurn({ members: roster, phase: 'normal' })
+  ok(lrPick.member !== 'acad',
+    'T44. **** least-recent DIVERGES once the counts do: after the academician is woken twice, someone else is chosen - this is what makes the two policies different, and the earlier runs only agreed because everyone had been woken once',
+    { pick: lrPick.member, woken: lr.status().woken })
+  const empty = mkLoop('round-robin')
+  ok(empty.nextTurn({ members: [] }) === null,
+    'T45. **** nobody to wake is a LEGAL state (null), never an invented member and never a failure')
+  let unbounded = null
+  try { await empty.drive({ members: roster, rounds: 0 }) } catch (e) { unbounded = e }
+  ok(unbounded !== null && unbounded.code === 'VMU_INVALID_ARGUMENT',
+    'T46. **** and the bound is EXPLICIT: rounds must be a positive integer, because there is no unlimited default', { code: unbounded && unbounded.code })
+  const policyFromSettings = createKernel({ settings: { 'vmu.turn.wakeupPolicy': 'least-recent' }, root: null, host: null })
+  ok(policyFromSettings.turn.status().policy === 'least-recent',
+    'T47. **** THE POLICY IS A SETTING: a kernel told least-recent reports it, so a profile changes who gets woken without touching code',
+    { policy: policyFromSettings.turn.status().policy })
+  const defaulted = createKernel({ settings: {}, root: null, host: null })
+  ok(defaulted.turn.status().policy === 'round-robin',
+    'T48. *** and with nothing declared the default is round-robin, which is the zero-configuration behaviour')
+}
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

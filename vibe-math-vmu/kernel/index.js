@@ -621,6 +621,8 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     prompt,
     faces: facesFrom({ tasks, records, library, meetings, ballotbox, formal, mathjobs }),
     deliver: host && typeof host.deliverTurn === 'function' ? host.deliverTurn : null,
+    // ROUND 347: the wakeup policy is a DECLARED setting, so the framework — not the host — decides who is woken next.
+    wakeupPolicy: settings['vmu.turn.wakeupPolicy'],
   })
   // ROUND 24: the teaching face the N13 volume declared (19 of its 24 knobs change behaviour; the five that need
   // a library, records or ontology seam are named rather than silently accepted).

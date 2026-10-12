@@ -120,6 +120,12 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.tasks.requireExpectedRevision', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '任务变更必须声明所见版本（防丢更新；关＝仅在声明时校验）' },
   { key: 'vmu.tasks.stages', type: 'stringList', def: [], hot: HOT.H2, who: 'office', doc: '阶段列表；默认空＝不假装有流程' },
 
+  // ---- turn orchestration (docs/26 §3.2) ------------------------------------------------------
+  // ROUND 347: the wakeup POLICY belongs in settings, not in the host. The original preset records only WHO should
+  // be woken and leaves WHEN and WITH WHICH PROMPT to whoever runs it, which is exactly why only that host could run
+  // an institute; making the policy a declared key is what lets the framework drive its own rounds.
+  { key: 'vmu.turn.wakeupPolicy', type: 'enum', domain: ['round-robin', 'least-recent'], def: 'round-robin', hot: HOT.H2, who: 'office', doc: '下一轮唤醒谁：round-robin＝按在册次序轮转；least-recent＝最少被唤醒者优先（同票按在册次序，确定性）' },
+
   // ---- math and formalisation ---------------------------------------------------------------
   // A1/A2 (P3): the DEFAULTS come from the shared module, so v2–v5r and vmu stay byte-comparable.
   { key: 'vmu.math.computation', type: 'enum', domain: ['off', 'auto', 'on'], def: mathDefaults().mathComputation, hot: HOT.H2, who: 'office', doc: 'P3：数学工具可用性（共享模块默认 auto）' },
