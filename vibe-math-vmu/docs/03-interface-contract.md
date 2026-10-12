@@ -111,11 +111,11 @@
 | `vibe_vmu_members` | 花名册与角色槽位（只读） | ⛔ 未实现（库面 `kernel.members` ✓） |
 | `vibe_vmu_hire` / `vibe_vmu_fire` | 增/减成员（走内核槽位） | ⛔ **工具名未注册** —— 但**能力【两侧都已实现**]✓✓：★ `kernel/identity.js` **同时导出 `addMembership({memberId, institution, since})` 与 `endMembership(...)`** ✓（★ 同一份探针一次找到 ✓）⇒ ★★ **所以这一条是【纯缺名字**]，**不是缺能力** ✓ —— ★ **补它是一行 host 注册** ✓（★ 与上一轮 `pause`／`resume` 同一形态 ✓） |
 | `vibe_vmu_say` | 发消息（可被中间件拦截） | ⛔ **工具名未注册** —— ★★ **注意一个同名陷阱** ✗：★ **内核里的 `say({type:...})` 是【事件发射器**]✓（★ 例如 `kernel/control.js` 的 `say({type:'control/paused'})` ✓），**不是成员发消息** ✓ ⇒ ★★ **两者不要混读** ✓；★★ **宿主桥在 `kernel/bus.js`**（★ 导出 `createBus({entries,settings,clock,…})` ✓、`VU_HOOKS` ✓、`BRIDGE_TOPICS: ['host/waterfall']` ✓）⇒ ★ **那是【宿主面**]，**成员面向成员的消息面本轮未找到** ✗ |
-| `vibe_vmu_meeting` | 会议原语：召集/议程/举手/收束 | ⛔ 未实现（库面 `kernel.meeting()` ✓） |
+| `vibe_vmu_meeting` | 会议原语：召集/议程/举手/收束 | ✅ **已实现并已注册** ✓（★ 轮 477 实测 ✓）—— ★ `host.js` 用 `TOOL_NAMES.meeting` **注册了它** ✓（★ `kernel/meeting.js` ＋ `kernel/meetings.js` ✓）；★★ **本行原写"⛔ 未实现"，那是【假的**]✗**（★ 与 `pause`／`resume`、`hire`／`fire` 同一类：★ **文档落后于代码** ✓） |
 | `vibe_vmu_ballot` | 表决原语：开板/投票/计票/结束 | ⛔ 未实现（库面 `kernel.ballot()` ✓） |
 | `vibe_vmu_record_progress` / `vibe_vmu_record_{proposition,method,subproblem}` | 记录与成果卡 | ⛔ 未实现（已由 `vibe_vmu_records` 的 `append` 覆盖 ✓） |
 | `vibe_vmu_read_library` | 读库：头部列表／按 id 展开 | ⛔ 未实现（已由 `vibe_vmu_records` 的 `list`/`expand` 覆盖 ✓） |
-| `vibe_vmu_task` | 任务：建/派/迁移/查 | ⛔ 未实现（库面 `kernel.tasks` ✓） |
+| `vibe_vmu_task` | 任务：建/派/迁移/查 | ✅ **已实现并已注册** ✓（★ 轮 477 实测 ✓）—— ★ `host.js` 用 `TOOL_NAMES.task` **注册了它** ✓（★ `kernel/tasks` 一带 ✓）；★★ **本行原写"⛔ 未实现"，那是【假的**]✗**（★ 与 `pause`／`resume`、`hire`／`fire` 同一类：★ **文档落后于代码** ✓） |
 | `vibe_vmu_lean_lib` / `vibe_vmu_lean_read` / `vibe_vmu_lean_archive` | 形式化面 | ⛔ **工具名未注册**（host 未注册这三个工具名，故此行仍标未实现 ✓）—— 但**能力已实现** ✓：`kernel/lean.js` 的 `archive`／`read`／`lib`（轮 131）：登记**具名引用＋内容哈希**、`read` **回源并校验哈希**、**漂移即具名拒且不返回旧内容**（**只引不复制** ✓） |
 | `vibe_vmu_pause` / `vibe_vmu_resume` | 暂停/恢复调度 | ⛔ **工具名未注册**（★ host 未注册这两个名字 ✓）—— 但**能力【已实现并已接线**]✓✓：★ `kernel/control.js` 提供 `pause({scope,byRole,reason})`／`resume({scope,byRole})` ✓，**按角色授权**（`vmu.control.canPauseRoles` ✓）、**拒绝时点名"谁暂停的"**（`VMU_CONTROL_PAUSED` ✓）；★ `kernel/scheduler.js` **端到端消费它**（`isPaused()` ✓、跳过原因 `kernel-paused` ✓、记 `schedule/skipped` ✓）⇒ ★★ **缺的只是工具面名字，不是内核能力** ✓（★ 轮 475 实测：★ 本行原先写"内核**没有** pause/resume ✗" —— **那是错的** ✗） |
 | `vibe_vmu_mw` | 中间件：查看/校验/干跑/禁用 | ⛔ 未实现 —— 真名是 `vibe_vmu_middleware` ✓（**它的 `validate`/`dryRun` 动作现已实现** ✓，见 §3.1） |
