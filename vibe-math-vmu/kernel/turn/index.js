@@ -227,8 +227,13 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
     // true of THIS turn - the current meeting number, whether a leader is actually on staff - without a second
     // variable channel and without freezing a value that changes. Static configuration stays the floor; the turn
     // overrides what it knows. Nothing is mutated: a fresh object is built per assembly.
+    // The notices for THIS member are taken here and appended to the status block, which is where the source puts them:
+    // inside the per-round brief. Taking them is what makes the announcement one-shot, and it happens on the same call
+    // that delivers the prompt, so a notice cannot be skipped by a phase that builds a different status block.
+    const pendingNotices = drainNotices(turn.member)
+    const statusWithNotices = [turn.statusBlock, ...pendingNotices].filter((l) => typeof l === "string" && l.trim() !== "").join("\n")
     const turnSettings = (settings || turn.facts) ? { ...(settings || {}), ...(turn.facts || {}) } : undefined
-    const out = await prompt.assemble({ member: turn.member, role: turn.role, roleLabel, phase: turn.phase, task: turn.task, roster: turn.roster, quorum: turn.quorum, statusBlock: turn.statusBlock, round: turn.round, settings: turnSettings })
+    const out = await prompt.assemble({ member: turn.member, role: turn.role, roleLabel, phase: turn.phase, task: turn.task, roster: turn.roster, quorum: turn.quorum, statusBlock: statusWithNotices === "" ? turn.statusBlock : statusWithNotices, round: turn.round, settings: turnSettings })
     if (!out || out.ok !== true) {
       fail('VMU_TURN_ASSEMBLY_FAILED', 'the prompt pipeline refused this turn: ' + JSON.stringify((out && out.refused) || {}).slice(0, 160))
     }
@@ -323,6 +328,21 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
   // real compaction, and the resume seed a rebuilt session is handed. Kept here rather than in the kernel because it is
   // bookkeeping about the TURN, and the source keeps it in the same place its own round loop does.
   const context = new Map()
+
+  /**
+   * ROUND 384 - THE ONE-SHOT NOTICE QUEUE (docs/26 section 3.25). The source composes a settled asynchronous compile
+   * announcement into the NEXT prompt of the member it concerns, and states that announcement point explicitly: once.
+   * Not "every round until acknowledged" and not dropped - the assembly that reaches that member drains the queue, so a
+   * notice cannot be repeated and cannot be lost. The charter carries the wording; the queue carries the timing.
+   */
+  const notices = new Map()
+
+  /** Drain a member notices. Called by the assembly, which is what makes the announcement one-shot. */
+  const drainNotices = (memberId) => {
+    const q = notices.get(memberId) || []
+    notices.delete(memberId)
+    return q
+  }
 
   const apply = async (reply, faceMap = null) => {
     const map = faceMap || faces
@@ -432,6 +452,22 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
 
   return {
     open, assemble, deliver: deliverTurn, parse, plan, apply, run, nextTurn, drive, step,
+    /**
+     * ROUND 384 - a ONE-SHOT notice for a member (docs/26 section 3.25). Queued here, drained by the next assembly
+     * addressed to them, so it is announced exactly once: not repeated every round and never dropped. The charter
+     * carries the wording of such a line; this queue carries the timing.
+     */
+    notify: (memberId, line) => {
+      if (typeof memberId !== "string" || memberId.trim() === "") fail("VMU_INVALID_ARGUMENT", "a notice needs a member", "pass (memberId, line)")
+      const l = String(line === undefined || line === null ? "" : line).trim()
+      if (l === "") fail("VMU_INVALID_ARGUMENT", "a notice needs a line", "an empty notice would render as a blank line")
+      const q = notices.get(memberId) || []
+      q.push(l)
+      notices.set(memberId, q)
+      return { ok: true, queued: q.length }
+    },
+    /** Drain a member queued notices. The assembly calls this, which is what makes the announcement one-shot. */
+    takeNotices: (memberId) => drainNotices(memberId),
     status: () => ({ apiVersion, turns: turns.size, fields: known.length, owners, policy: POLICY, woken: Object.fromEntries(woken), counts: { ...counts }, lastRefusal: { ...lastRefusal } }),
   }
 }

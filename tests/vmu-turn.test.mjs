@@ -740,6 +740,41 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
     'T113. **** and a malformed binding is refused by name rather than pushed into the list',
     { code: tieErr && tieErr.code })
 }
+
+// 29) THE ONE-SHOT NOTICE QUEUE and THE ASSEMBLER ORDER (docs/26 section 3.25). The source composes a settled
+// compile announcement into the member NEXT prompt and says so explicitly: once. And the audit found no evidence
+// that the five-part round prompt is assembled in the source order, so that is asserted here too.
+{
+  const lq = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }) })
+  const q1 = lq.notify("r-1", "[形式化结果] p-9 passed")
+  const a1 = await lq.assemble(lq.open({ member: "r-1", role: "researcher", phase: "normal", round: 5, statusBlock: "[状态] x" }).turn)
+  const a2 = await lq.assemble(lq.open({ member: "r-1", role: "researcher", phase: "normal", round: 6, statusBlock: "[状态] x" }).turn)
+  ok(q1.ok === true && a1.text.includes("[形式化结果] p-9 passed") && a2.text.includes("[形式化结果] p-9 passed") === false,
+    "T114. **** a queued notice is announced EXACTLY ONCE: it reaches the next prompt and is gone from the one after, so it can neither repeat nor be lost",
+    { queued: q1.queued })
+  lq.notify("r-2", "notice for r-2")
+  const a3 = await lq.assemble(lq.open({ member: "r-1", role: "researcher", phase: "normal", round: 7, statusBlock: "[状态] x" }).turn)
+  const a4 = await lq.assemble(lq.open({ member: "r-2", role: "researcher", phase: "normal", round: 7, statusBlock: "[状态] x" }).turn)
+  ok(a3.text.includes("notice for r-2") === false && a4.text.includes("notice for r-2"),
+    "T115. **** and notices are PER MEMBER: someone else round never carries it",
+    { leaked: a3.text.includes("notice for r-2") })
+  let nErr = null
+  try { lq.notify("", "x") } catch (e) { nErr = e }
+  ok(nErr !== null && nErr.code === "VMU_INVALID_ARGUMENT",
+    "T116. **** while a notice with no member or no line is refused by name rather than queued as a blank",
+    { code: nErr && nErr.code })
+  const ord = a1.text
+  // Robust by construction: the order is read off the assembled text by the section NUMERALS the source uses, so a
+  // reworded heading cannot break the check while a reordered charter still does.
+  const numerals = [...a1.text.matchAll(/【([一二三四五六七八九十]+)、/g)].map((m) => m[1])
+  const charterOrder = numerals.join("")
+  const firstHeading = a1.text.indexOf("【第 5 轮")
+  const lastSection = a1.text.lastIndexOf("【十、")
+  const catalogue = a1.text.indexOf("结束时请**只**输出一个 JSON 对象")
+  ok(charterOrder === "一二三四五六七八九十" && firstHeading > -1 && firstHeading < lastSection && catalogue > lastSection,
+    "T117. **** THE ASSEMBLER ORDER IS THE SOURCE ORDER: the round heading comes first, the charter runs one to ten, and the reply catalogue closes the prompt - the evidence the audit said was missing",
+    { numerals: charterOrder, catalogueLast: catalogue > lastSection })
+}
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

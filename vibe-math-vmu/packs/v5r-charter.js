@@ -541,7 +541,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // RUNTIME switch, so the loop decides whether to include that block (recorded as the remaining conditional).
   {
     name: 'v5r-reply-spec',
-    order: 730,
+    order: 760,
     range: 'pack',
     kind: 'role',
     texts: {
@@ -651,7 +651,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // own block that the loop includes only when formalisation is on. Wording transcribed from the source.
   {
     name: 'v5r-reply-formal',
-    order: 731,
+    order: 761,
     range: 'pack',
     kind: 'shared',
     texts: {
@@ -668,7 +668,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // and phase is one of the pipeline's binding dimensions, so they are bound rather than branched in code.
   {
     name: 'v5r-turn-heading',
-    order: 740,
+    order: 690,
     range: 'pack',
     kind: 'phase',
     texts: {
@@ -680,7 +680,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   },
   {
     name: 'v5r-turn-ask',
-    order: 741,
+    order: 691,
     range: 'pack',
     kind: 'phase',
     texts: {
@@ -705,7 +705,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // when both hold (docs/26 section 3.13). Wording transcribed from the source.
   {
     name: 'v5r-turn-acad-leads',
-    order: 742,
+    order: 692,
     range: 'pack',
     kind: 'shared',
     texts: {
@@ -722,7 +722,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // would change the prompt's words, while omitting it returns the prompt to what it was before the feature.
   {
     name: 'v5r-turn-resources',
-    order: 743,
+    order: 693,
     range: 'pack',
     kind: 'shared',
     texts: {
@@ -764,7 +764,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // inclusion, so no "disabled" notice is ever injected (docs/26 section 3.14).
   {
     name: 'v5r-pointer-contract',
-    order: 745,
+    order: 721,
     range: 'pack',
     kind: 'shared',
     texts: {
@@ -786,7 +786,7 @@ export const CHARTER_BLOCKS = Object.freeze([
   // member's own business and need nobody's approval.
   {
     name: 'v5r-feedback-line',
-    order: 746,
+    order: 722,
     range: 'pack',
     kind: 'shared',
     texts: {
