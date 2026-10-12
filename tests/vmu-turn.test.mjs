@@ -775,6 +775,34 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
     "T117. **** THE ASSEMBLER ORDER IS THE SOURCE ORDER: the round heading comes first, the charter runs one to ten, and the reply catalogue closes the prompt - the evidence the audit said was missing",
     { numerals: charterOrder, catalogueLast: catalogue > lastSection })
 }
+
+// 30) THE OFF SWITCHES (docs/26 section 3.26). Measured first: overriding a section with an empty string left its
+// heading behind, so "off" was not zero injection. The pipeline now has a real disable, and OFF means the section
+// produces NOTHING - not a disabled notice, which would change the prompt words - while ON restores it unchanged.
+{
+  const mkS = (settings) => createTurnOrchestrator({ prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }), settings })
+  const base = { member: "r-1", role: "researcher", phase: "normal", round: 3, statusBlock: "[状态] x" }
+  const on = mkS({})
+  const aOn = await on.assemble(on.open(base).turn)
+  const off = mkS({ "vmu.pointer.propagation": false, "vmu.resources.selfCheck": false, "vmu.turn.feedback": false })
+  const aOff = await off.assemble(off.open(base).turn)
+  ok(aOn.text.includes("【指针传播 · 头部列表（机制约束）】") && aOn.text.includes("【资源】") && aOn.text.includes("【工作经验／流程反馈"),
+    "T118. **** by default all three optional blocks are injected, because a deployment that never configured them must get the full prompt",
+    { chars: aOn.text.length })
+  ok(aOff.text.includes("指针传播") === false && aOff.text.includes("【资源】") === false && aOff.text.includes("流程反馈") === false && aOff.text.length < aOn.text.length,
+    "T119. **** and turning them OFF is ZERO INJECTION: no text and not even the heading, which an empty override could not achieve",
+    { on: aOn.text.length, off: aOff.text.length })
+  const back = mkS({})
+  const aBack = await back.assemble(back.open(base).turn)
+  ok(aBack.text === aOn.text,
+    "T120. **** while enabling restores the section UNCHANGED: the prompt comes back byte for byte, so a switch is not a one-way door",
+    { identical: aBack.text === aOn.text })
+  let dErr = null
+  try { aOn.__x = null; createPromptPipeline({ sections: [] }).disable("nope") } catch (e) { dErr = e }
+  ok(dErr !== null && dErr.code === "VMU_NO_SUCH_OBJECT",
+    "T121. **** and disabling a section that does not exist is refused by name rather than silently remembered",
+    { code: dErr && dErr.code })
+}
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

@@ -172,6 +172,24 @@ export function createPromptPipeline({
     return { section: b.section, dim: dims[0], total: bindings.length }
   }
 
+  /**
+   * ROUND 386 - THE OFF SWITCH (docs/26 section 3.26). The source gates several blocks and its off state is ZERO
+   * INJECTION: the block produces nothing at all, not even its heading, so the prompt returns byte for byte to what it
+   * was before the block existed. Measured, that was NOT what this pipeline did: overriding a section with an empty
+   * string still emitted its `# name` heading, and re-registering it did the same. Disabling is therefore a state of
+   * its own, and enabling restores the section unchanged rather than re-registering it.
+   */
+  const disabled = new Set()
+  const disable = (name) => {
+    if (typeof name !== "string" || !registry.has(keyOf(name, undefined))) {
+      throw refuse("VMU_NO_SUCH_OBJECT", "no such section to disable: " + String(name))
+    }
+    disabled.add(name)
+    return { ok: true, section: name, disabled: true }
+  }
+  const enable = (name) => { disabled.delete(name); return { ok: true, section: name, disabled: false } }
+  const isDisabled = (name) => disabled.has(name)
+
   const register = (section) => {
     if (!section || typeof section !== 'object') throw refuse('VMU_INVALID_ARGUMENT', 'a section must be an object')
     const { name } = section
@@ -345,6 +363,8 @@ export function createPromptPipeline({
   const pipeline = {
     register,
     bind,
+    disable,
+    enable,
 
     /** The immutable facts block. Framework-owned, never overridable, always present. */
     setState(text) {
@@ -443,6 +463,8 @@ export function createPromptPipeline({
       const parts = []
       const sources = []
       for (const entry of picked) {
+        // A disabled section is skipped WHOLE, heading included: that is what zero injection means (round 386).
+        if (disabled.has(entry.name)) continue
         // Immutable sections ignore every override, binding and append: only their own text counts.
         if (entry.name === 'state' || entry.mutable === false) {
           if (entry.text === null) continue

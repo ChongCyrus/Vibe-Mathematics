@@ -230,6 +230,21 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
     // The notices for THIS member are taken here and appended to the status block, which is where the source puts them:
     // inside the per-round brief. Taking them is what makes the announcement one-shot, and it happens on the same call
     // that delivers the prompt, so a notice cannot be skipped by a phase that builds a different status block.
+    // ROUND 386: the DECLARED off-switches (docs/26 section 3.26). OFF means the section is not injected at all - not
+    // a "disabled" notice, which would change the prompt words - and ON restores it unchanged. Absent settings mean ON,
+    // because a deployment that never configured them must get the full prompt.
+    if (prompt && typeof prompt.disable === "function") {
+      const offSwitches = [
+        ["vmu.pointer.propagation", "v5r-pointer-contract"],
+        ["vmu.resources.selfCheck", "v5r-turn-resources"],
+        ["vmu.turn.feedback", "v5r-feedback-line"],
+      ]
+      for (const pair of offSwitches) {
+        const declared = settings ? settings[pair[0]] : undefined
+        if (declared === false) prompt.disable(pair[1])
+        else if (typeof prompt.enable === "function") prompt.enable(pair[1])
+      }
+    }
     const pendingNotices = drainNotices(turn.member)
     const statusWithNotices = [turn.statusBlock, ...pendingNotices].filter((l) => typeof l === "string" && l.trim() !== "").join("\n")
     const turnSettings = (settings || turn.facts) ? { ...(settings || {}), ...(turn.facts || {}) } : undefined
