@@ -435,7 +435,11 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   const resOrig = originalOf('r-1')
   let total = 0
   const missing = []
-  for (const b of CHARTER_BLOCKS) {
+  // Scope: the CHARTER blocks are checked against the persona the original really hands out. The reply spec is
+  // deliberately EXCLUDED because measuring showed the captured prompt corpus does NOT contain it - only its opening
+  // sentence and vote_solved appear - so there is no capture-side baseline for it. That gap is recorded in docs/26
+  // section 3.12 rather than papered over with a weaker check.
+  for (const b of CHARTER_BLOCKS.filter((x) => !String(x.name).startsWith('v5r-reply-'))) {
     const pairs = b.kind === 'shared' ? [['shared', b.texts.shared, acadOrig], ['shared', b.texts.shared, resOrig]]
       : (b.kind === 'role' ? [['academician', b.texts.academician, acadOrig], ['researcher', b.texts.researcher, resOrig]]
         : [['with-leader', b.texts['with-leader'], acadOrig]])
@@ -478,6 +482,23 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   ok(asmB.text.includes('[状态] 你是 r-2（常驻研究员）｜轮次 7｜法定票数 m=3｜有表决权者 3 人') && asmB.text.includes('[未就位] ') && asmB.text.includes('[形式化] '),
     'T74. **** and the LINE SHAPE matches the source: identity and kind in brackets, the round, the quorum and the voter count, plus the not-yet-seated line the source says must never be omitted silently',
     { statusLine: true })
+}
+
+// 18) THE REPLY SPEC (docs/26 section 3.12): the field catalogue that closes the loop, transcribed from `replySpec`.
+// The source's two hard-won rules are asserted literally: the catalogue SAYS it is not valid JSON while demanding a
+// valid object, and it ends with a strictly valid minimal sample so a model never has to guess.
+{
+  const loopRp = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_ROLE_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
+  const asmRp = await loopRp.assemble(loopRp.open({ member: 'r-2', role: 'researcher', phase: 'normal', round: 3 }).turn)
+  ok(asmRp.ok === true && asmRp.text.includes('字段目录') && asmRp.text.includes('因此这一段并非合法 JSON') && asmRp.text.includes('你真正要输出的对象必须严格合法'),
+    'T75. **** the catalogue arrives AND admits it is not JSON while demanding a valid object - the contradiction is stated instead of left for a model to guess',
+    { chars: asmRp.text.length })
+  ok(asmRp.text.includes('最小合法样例') && asmRp.text.includes('{"say":"…","progress":"…","solved":false,"contextPct":40}') && asmRp.text.includes('"vote_solved": true|false'),
+    'T76. **** and it ends with a STRICTLY VALID minimal sample, with the unanimity rule stated right next to vote_solved and the authority matrix next to fire',
+    { sample: true })
+  ok(asmRp.text.includes('常驻研究员只能由所办解聘') && asmRp.text.includes('只要有一位有表决权者没有填 true'),
+    'T77. **** the two corrections the source records are carried verbatim: the firing authority matrix and what a partial yes does',
+    { corrected: true })
 }
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
