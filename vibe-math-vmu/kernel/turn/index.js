@@ -150,13 +150,13 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
   const fail = (code, message, hint) => { counts.refused += 1; lastRefusal.code = code; lastRefusal.message = message; throw refuse(code, message, hint) }
 
   /** ① open a turn: who, which round, which phase, which task. */
-  const open = ({ member, role = null, phase, task = null, why = null, nextStep = null, round = 1 } = {}) => {
+  const open = ({ member, role = null, phase, task = null, why = null, nextStep = null, roster = null, round = 1 } = {}) => {
     if (typeof member !== 'string' || member.trim() === '') fail('VMU_INVALID_ARGUMENT', 'a turn needs a member', 'pass { member, phase }')
     if (typeof phase !== 'string' || !PHASES.includes(phase)) {
       fail('VMU_INVALID_ARGUMENT', 'unknown phase: ' + String(phase), 'known phases: ' + PHASES.join(', '))
     }
     seq += 1
-    const turn = { id: 't-' + seq, member, role, phase, task, why, nextStep, round, at: clock() }
+    const turn = { id: 't-' + seq, member, role, phase, task, why, nextStep, roster, round, at: clock() }
     turns.set(turn.id, turn)
     woken.set(member, (woken.get(member) || 0) + 1)
     counts.opened += 1

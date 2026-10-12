@@ -249,6 +249,7 @@ vmu.packs.active: [v5r]
 | `vmu.tasks.requireExpectedRevision` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 任务变更必须声明所见版本（防丢更新；关＝仅在声明时校验） |
 | `vmu.tasks.stages` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | 阶段列表；默认空＝不假装有流程 |
 | `vmu.turn.wakeupPolicy` | enum | `round-robin` | `round-robin`∣`least-recent` | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | 下一轮唤醒谁：round-robin＝按在册次序轮转；least-recent＝最少被唤醒者优先（同票按在册次序，确定性） |
+| `vmu.turn.objective` | string | `（尚未设定）` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 本所研究对象（原问题）；默认值与原线未设定时的输出一字不差，绝不留空括号 |
 | `vmu.math.computation` | enum | `auto` | `off`∣`auto`∣`on` | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | P3：数学工具可用性（共享模块默认 auto） |
 | `vmu.math.mode` | enum | `typed+shell` | `typed`∣`typed+shell` | 会话 | H2 | office | ✅ 已接线 | `host-math.js` | P3：typed＝绝不提 shell 且拒绝 engine=cli |
 | `vmu.math.engines` | string[] | `[python,r,octave,julia,matlab,maple,wolfram,cli]` | — | 会话 | H2 | office | ✅ 已接线 | `host-math.js` | 引擎优先级（默认取自共享模块并拷贝；空＝具名降级） |

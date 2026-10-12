@@ -125,6 +125,10 @@ const CORE_DEFS = Object.freeze([
   // be woken and leaves WHEN and WITH WHICH PROMPT to whoever runs it, which is exactly why only that host could run
   // an institute; making the policy a declared key is what lets the framework drive its own rounds.
   { key: 'vmu.turn.wakeupPolicy', type: 'enum', domain: ['round-robin', 'least-recent'], def: 'round-robin', hot: HOT.H2, who: 'office', doc: '下一轮唤醒谁：round-robin＝按在册次序轮转；least-recent＝最少被唤醒者优先（同票按在册次序，确定性）' },
+  // ROUND 356: the research objective is DATA, not text. The charter's opening block carries a "（尚未设定）" slot in
+  // the original, and freezing an objective into a section would make every deployment's charter wrong. It is a
+  // settings value, reached from the section through the pipeline own `{{ setting:... }}` variable.
+  { key: 'vmu.turn.objective', type: 'string', def: '（尚未设定）', hot: HOT.H2, who: 'office', doc: '本所研究对象（原问题）；默认值与原线未设定时的输出一字不差，绝不留空括号' },
 
   // ---- math and formalisation ---------------------------------------------------------------
   // A1/A2 (P3): the DEFAULTS come from the shared module, so v2–v5r and vmu stay byte-comparable.

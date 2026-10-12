@@ -41,7 +41,20 @@ const identical = (key) => roleIds.every((id) => textOf(id, key) === textOf(role
 // number (s二 => 二), so the title is reconstructed rather than dropped - measured: without this the assembled charter
 // read as untitled prose and the sections could not be recognised by their own names.
 const numbered = (key) => { const m = /^s([一二三四五六七八九十]+)$/.exec(key); return m ? m[1] : null }
-const titled = (key, body) => { const n = numbered(key); return n ? '【' + n + '、' + headingOf(key) + '】\n' + body : body }
+// THE TWO DATA SLOTS (docs/26 section 3.8). The original marks them itself: the opening carries a "（尚未设定）" slot
+// for the research objective, and the roster block states that the authoritative roster and quorum come from the
+// per-turn state block and that the composition may change. Freezing either would publish a known-wrong charter, so
+// both become PLACEHOLDERS the assembly fills - and the objective's setting default reproduces the original sentence
+// exactly when nothing is configured.
+const PLACEHOLDERS = {
+  opening: (body) => body.replace(/（尚未设定）/, '{{ setting:vmu.turn.objective }}'),
+  s一: (body) => body
+    .replace(/^[ \t]*在册院士：.*$/m, '{{ roster }}')
+    .replace(/^[ \t]*在册常驻研究员：.*\n?/m, '')
+    .replace(/^[ \t]*在册临时工：.*\n?/m, ''),
+}
+const filled = (key, body) => (PLACEHOLDERS[key] ? PLACEHOLDERS[key](body) : body)
+const titled = (key, body) => { const n = numbered(key); const b = filled(key, body); return n ? '【' + n + '、' + headingOf(key) + '】\n' + b : b }
 const sections = blockOrder.map((key, i) => ({
   name: sectionName(key),
   order: 610 + i,                            // inside the pack range, after the corpus sections (600..666)
