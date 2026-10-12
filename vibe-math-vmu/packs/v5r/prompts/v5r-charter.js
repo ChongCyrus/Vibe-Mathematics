@@ -22,6 +22,11 @@
 //   2. a brief must describe THE MEMBER IT IS ADDRESSED TO, never a "last member we touched" global - the source
 //      records that this exact mistake once shipped, telling every member it was the previously founded one.
 
+const LATEX_ENGINE_NOTE = [
+          '（**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）',
+          '检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把“未检测到”当失败。',
+]
+
 /**
  * The fragment blocks, in the SOURCE ORDER. `kind` says how the block varies:
  *   'shared'          - one text for everyone
@@ -1027,8 +1032,7 @@ export const CHARTER_BLOCKS = Object.freeze([
     kind: 'phase',
     texts: {
       'paper-write': [
-        '（**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）',
-        '检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把“未检测到”当失败。',
+        ...LATEX_ENGINE_NOTE,
         '【最终论文·撰写 —— {{ roleLabel }} {{ member }}】',
         '本所对原问题的一致结论已经达成，现在撰写**最终论文**。',
         '请你**只写你自己库里已有证据支撑**的内容：',
@@ -1090,8 +1094,7 @@ export const CHARTER_BLOCKS = Object.freeze([
     kind: 'phase',
     texts: {
       'paper-final': [
-        '（**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）',
-        '检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把“未检测到”当失败。',
+        ...LATEX_ENGINE_NOTE,
         '【最终论文·定稿（{{ roleLabel }}）—— {{ member }}】',
         '全体参与成员已在互审中表示“可交付”。请你作为定稿代表做**最后一次**把关：',
         '核对合并稿与互审意见，确认没有编造、没有未标注的未决项、没有与表决记录矛盾之处，然后给出决定。',
@@ -1286,6 +1289,15 @@ export const CHARTER_LEADER_VARIANTS = Object.freeze(Object.fromEntries(
   CHARTER_BLOCKS.filter((b) => b.kind === 'leader-conditional').map((b) => [b.name, b.texts])))
 
 /** The sections as the pipeline wants them: the shared text is the default, bindings override per role or phase. */
+/**
+ * THE SHARED PAPER-COMPILATION NOTE, defined ONCE.
+ *
+ * The corpus carries these two lines in both the writing and the finalising prompts, byte for byte, and this module
+ * had them duplicated in two sections - so a correction to one would silently leave the other saying something else.
+ * A block that two prompts share belongs in ONE place; a section is a slice of a prompt, not the only way to reuse
+ * text. Which phases receive it is still the sections decision below, so overriding either section still works.
+ */
+
 export const CHARTER_SECTIONS = Object.freeze(CHARTER_BLOCKS.map((b) => ({
   name: b.name,
   order: b.order,
