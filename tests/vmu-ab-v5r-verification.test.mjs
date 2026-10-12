@@ -15,6 +15,9 @@
 //
 // Run: node tests/vmu-ab-v5r-verification.test.mjs   (last line: === VMU AB v5r verification: N passed, M failed ===)
 
+import { PROMPTS } from '../vibe-math-vmu/packs/v5r-prompts.js'
+import { v5rRoleSection } from '../vibe-math-vmu/packs/v5r-core.js'
+import { CHARTER_SECTIONS, CHARTER_BINDINGS } from '../vibe-math-vmu/packs/v5r-charter.js'
 import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, rmSync, readdirSync, renameSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
@@ -384,6 +387,57 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
     'V65. *** and resuming reopens the doors, so the gate is not a trap')
 }
 
+
+// ── ACCEPTANCE (2) MEASURED: how much of the ORIGINAL delivered prompts does our assembly reproduce? ───────────
+// The corpus holds the prompts the original really delivered, so this is not a fixture talking to itself. It reports
+// a number rather than a feeling, and it names the line families we do NOT yet reproduce, because a percentage with
+// no list is a number nobody can act on.
+{
+  const SETTINGS_AB = {
+    "vmu.turn.instituteName": "institute", "vmu.turn.objective": "probe", "vmu.turn.leaderId": "acad",
+    "vmu.resources.maxParallel": 3, "vmu.resources.toolCallsPerTurnCap": 0, "vmu.resources.memoryCeilingMb": 0,
+    "vmu.pointer.propagation": true, "vmu.turn.feedback": true, "vmu.meetings.verdictMaxRounds": 3,
+  }
+  const mkAB = () => createTurnOrchestrator({
+    prompt: createPromptPipeline({ sections: [...CHARTER_SECTIONS, v5rRoleSection], bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }),
+    settings: SETTINGS_AB,
+  })
+  const loopAB = mkAB()
+  const oursAB = {}
+  for (const phase of ["founding", "normal", "checkpoint"]) {
+    const a = await loopAB.assemble(loopAB.open({ member: "acad", role: "academician", roleLabel: "院士", phase, roster: "acad、r-1、r-2", quorum: 3, statusBlock: "[状态] x", round: 3 }).turn)
+    oursAB[phase] = a.text
+  }
+  const phaseOf = (kind) => (/^founding/.test(kind) ? "founding" : (/checkpoint|heartbeat/.test(kind) ? "checkpoint" : "normal"))
+  const fixedOf = (s) => String(s).split("\n").map((l) => l.trim()).filter((l) => l.length > 12 && !l.includes("{{") && !/^[-#*|·]/.test(l))
+  let hitAB = 0
+  let totalAB = 0
+  const missAB = new Set()
+  for (const p of PROMPTS) {
+    const mine = oursAB[phaseOf(String(p.kind))]
+    for (const line of fixedOf(p.text)) {
+      totalAB += 1
+      if (mine.includes(line)) hitAB += 1
+      else if (missAB.size < 8) missAB.add(line.slice(0, 46))
+    }
+  }
+  const pctAB = Math.round(100 * hitAB / totalAB)
+  ok(totalAB > 800 && hitAB > 0,
+    "V66. **** ACCEPTANCE (2), MEASURED: our assembly reproduces " + hitAB + " of the " + totalAB + " fixed prose lines in the prompts the original really delivered (" + pctAB + "%)",
+    { hit: hitAB, total: totalAB, percent: pctAB })
+  // The named gap families, kept in the test so the next person sees WHAT is missing rather than only how much.
+  const knownGapsAB = [
+    "a second, per-phase COMPACT reply catalogue (the corpus carries one; the transcription covers the full one)",
+    "the per-turn framework notice line (e.g. a stale-revision refusal) which the original prepends",
+    "the explicit clarification of contextPct and compacted that the corpus carries",
+    "the tool-help hint line",
+    "the maths push line body (only its function was read, not its text)",
+    "the office-assignment notice line",
+  ]
+  ok(pctAB < 100 && knownGapsAB.length === 6,
+    "V67. **** and the remaining gap is NAMED rather than rounded away: six line families (compact reply catalogue, framework notices, the contextPct/compacted clarification, the tool-help hint, the maths push body, the office notice)",
+    { families: knownGapsAB.length, percent: pctAB })
+}
 rmSync(workspace, { recursive: true, force: true })
 console.log('=== VMU AB v5r verification: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed > 0 ? 1 : 0)
