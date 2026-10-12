@@ -45,7 +45,7 @@
 
 ### 2.1 可追溯表（**一行一表**，仿 v5r `12-traceability` 范式：便于正则守卫 ✓）
 
-> ★★★ **对齐的【强度**]必须说清（轮 456 ✓）**：★ **右列的 `tests/…` 是按【名字**]映射、并核对了【文件确实存在**]✓（15/15 ✓），**但【没有逐个读文件去确认它真的在管那条要求**]✗ ⇒ ★★ **它回答的是"这个要求【看起来**]由谁负责"，不是"我已读过并证明它负责"** ✓。★★ **要把它升级成后者，需要逐族读源码** ✓ —— ★ **在做到之前，本列只能当作【找文件的索引**]，不是覆盖证明** ✓。
+> ★★★ **对齐的【强度**]必须说清（轮 456／457 ✓）**：★★ **R2 与 R6 两行已经【读完源码**]✓（★ **各自点出断言行与它断言什么** ✓ —— ★ 这两行此前只映射到"看着像"的文件，★ 尤其 R6 曾错映射到 `vmu-turn.test.mjs` ✗，**真门禁是 `vmu-loader.test.mjs`** ✓）。★★ **其余 13 行仍是"按名字对齐"** ✓：★ **右列的 `tests/…` 是按【名字**]映射、并核对了【文件确实存在**]✓（15/15 ✓），**但【没有逐个读文件去确认它真的在管那条要求**]✗ ⇒ ★★ **它回答的是"这个要求【看起来**]由谁负责"，不是"我已读过并证明它负责"** ✓。★★ **要把它升级成后者，需要逐族读源码** ✓ —— ★ **在做到之前，本列只能当作【找文件的索引**]，不是覆盖证明** ✓。
 > ★★★ **读法警告（轮 455 实测加）** ✓：★ **本表 21 个「门禁 id」在 `tests/` 与 `tests/run-tests.mjs` 里【一个都找不到**]✗** —— ★ **它们是设计阶段的草案 id** ✓，**列名却直接写着"门禁 id"** ✗ ⇒ ★★ **用 `grep` 核对覆盖的人会把"找不到"读成"没做"** ✗（★ 本轮又这么做过一次 ✓）。★★ **诚实的现状**：★ **没有任何门禁读本表的 id** ✗ ⇒ ★ **它证明的是"设计时打算由谁负责"** ✓，**不是"今天谁在跑"** ✓；★★ **今天活着的覆盖在 `tests/` 的文件名与 `run-tests.mjs` 的作业表里** ✓ —— ★ **把本表与它们对齐是一件【真待做的事**]✗（★ 需要逐个族去定，不能靠猜 ✓）。
 
 > 每行**一条**：`要求 → 门禁 id → 文档落点 → 场景/族命名约定`。命名约定是**可机器检查**的：门禁实现后，场景名与族名必须按此拼写，否则红 ✓。
@@ -53,11 +53,11 @@
 | 要求 | 门禁 id（★★★ **右边一栏是【轮 456 对齐后的真实作业族**]✓） | 文档落点 | 场景/族命名约定 |
 |---|---|---|---|
 | R1 内核零策略 | **已对齐** ✓ `tests/vmu-kernel.test.mjs`、`tests/audit-preset-rows.test.mjs` | 01-§2／11-§4 | 静态门（无场景）；词表数据文件 `settings/zpolicy-words.json` |
-| R2 能力齐备 | **已对齐** ✓ `tests/audit-registration.mjs` | 02-§2／03-§2 | `s-cap-<area>-usable`／`s-cap-<area>-hookable` |
+| R2 能力齐备 | ★★★ **已读并证明** ✓ **`tests/vmu-host-hooks.test.mjs`**（★ **"什么都不声明 ⇒ 桥不计划任何钩子"** ✓、★ **"声明的宿主钩子被桥接"** ✓、★ **"注册经过 `ctx.effect` 并带标签 `vmu:hook:…`"** ✓、★ **deny／allow／cancel／ask 四种决策都映射到宿主** ✓、★ **不支持的请求记入 `refusedUnsupported`** ✓ ⇒ **能力"可用"与"可挂"两半都有断言** ✓）＋ `tests/audit-registration.mjs`（★ L69：**每个注册工具都必须满足宿主的强制输出契约** ✓） | 02-§2／03-§2 | `s-cap-<area>-usable`／`s-cap-<area>-hookable` |
 | R3 四可 | **已对齐** ✓ `tests/audit-settings-channels.test.mjs`、`tests/audit-settings-roundtrip.test.mjs`、`tests/vmu-settings.test.mjs` | 04-§2／04-§11 | `s-set-<key>-echo`／`-reject`／`-hot`／`-audit` |
 | R4 单一源 | **已对齐** ✓ `tests/audit-settings-roundtrip.test.mjs`、`tests/vmu-planned-settings.test.mjs`、`tests/vmu-setting-rename.test.mjs` | 04-§3 | `s-docgen-table-eq-schema` |
 | R5 四形态 | **已对齐** ✓ `tests/vmu-bus.test.mjs`、`tests/vmu-script.test.mjs` | 05-§3 | `s-mw-{rules,module,script,plugin}`＋`m-mw-*` |
-| R6 钩子契约化 | **已对齐** ✓ `tests/vmu-turn.test.mjs` | 05-§4 | `s-hooks-registry-eq-code` |
+| R6 钩子契约化 | ★★★ **已读并证明** ✓ **`tests/vmu-loader.test.mjs`**（★ L90-97：**拼错的钩子 `meeting/round-strat` 在【装载期被拒**]✓ —— ★ 断言原文是 **"a misspelled hook is refused at load time, not silently ignored"** ✓；★ **`isRegisteredHook` 认得 vmu 钩子／宿主基底钩子／`workflow/*`，而拼错与空名不认得** ✓；★ **文档化的宿主钩子被接受且登记进 `hooks[]`** ✓ ⇒ **"代码钩子点 ↔ 05 表 ↔ 03 索引 三处一致"里的【代码那一侧有门禁**]✓）＋ `tests/vmu-turn.test.mjs` | 05-§4 | `s-hooks-registry-eq-code` |
 | R7 稳定接口 | **已对齐** ✓ `tests/audit-code-status.test.mjs`、`tests/audit-registration.mjs` | 03-§7 | `s-api-no-private-access` |
 | R8 提示词可管理 | **已对齐** ✓ `tests/audit-prompt-invariants.mjs`、`tests/vmu-prompt.test.mjs`、`tests/vmu-prompt-v5r-bridge.test.mjs` | 06-§3／06-§4 | `c-prompt-<pack>-<role>-<phase>` |
 | R9 归档与记忆 | **已对齐** ✓ `tests/vmu-library.test.mjs`、`tests/vmu-library-revisions.test.mjs`、`tests/vmu-memory.test.mjs` | 07-§4 | `s-lib-{fingerprint,dangling,tracks,truncation}` |
