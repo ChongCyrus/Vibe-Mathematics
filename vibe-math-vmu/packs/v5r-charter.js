@@ -879,6 +879,62 @@ export const CHARTER_BLOCKS = Object.freeze([
       ].join('\n'),
     },
   },
+  // ── THE MEETING PROMPT'S THREE SPEAKER STATES AND ITS ASK (source `meetingPrompt`, L4128-4163) ───────────────
+  // The source describes three mutually exclusive situations and enables exactly one: a temp invited to speak (minutes
+  // only, no vote, does not block), a member who is not first (the others' inputs are forwarded verbatim), and the
+  // first speaker, who is ALSO told the speaking model exactly as the code implements it. The ask that follows is where
+  // the source is most explicit: speaking is optional, silence is never a vote, and a missing vote blocks closure.
+  {
+    name: 'v5r-meeting-invited',
+    order: 770,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '（你是**受邀发言**的临时工：{{ setting:vmu.turn.invitedBy }} 邀请你发言，理由：{{ setting:vmu.turn.invitedWhy }}。',
+        '你的发言只记入会议纪要与群聊、**不计票**；你不发言也不会阻塞会议。）',
+      ].join('\n'),
+    },
+  },
+  {
+    name: 'v5r-meeting-others',
+    order: 771,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '### 其他成员本次会议已发表的意见（框架已转发给你，请参考、补充或反驳）',
+        '{{ statusBlock }}',
+      ].join('\n'),
+    },
+  },
+  {
+    name: 'v5r-meeting-first',
+    order: 772,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '（你是本次会议的第一位发言者，目前还没有别人发言。）',
+        '（流程：**先轮流发言**——每位常驻成员都会获得一次"要不要发言"的机会，**不强制**；随后进入**举手发言**阶段：想发言的人举手（`meeting_hand:true`），发言结束后**还可以再次举手**，可多轮。**无人举手**时会议收束。沉默本身**不会**触发任何截止；纪要会具名记下"已获得机会、选择未发言"。框架每轮最多同时唤醒 maxParallel 名成员（当前 {{ setting:vmu.resources.maxParallel }}），并把已收集到的发言附在提示里。收束时纪要与结论写入 Shared/Meetings/<会议id>.md 并同步到群聊。）',
+      ].join('\n'),
+    },
+  },
+  {
+    name: 'v5r-meeting-ask',
+    order: 773,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '请就议程发表你的意见。分工、优先级、下一步做什么、是否认为原问题已解决，都可以说。',
+        '（会议轮请把你的发言填进 JSON 的 "input" 字段，框架据此写会议纪要。）',
+        '**要不要发言由你决定**：本轮不填 "input" 即视为放弃本次发言机会（会被具名记为"选择未发言"）——不会因此被追问，也不会阻塞会议。',
+        '**想发言就举手**：填 "meeting_hand": true 表示你要发言（**已发言者也可再次举手**）；给出 "input" 即视为交付本次发言；填 "meeting_hand": false 可撤回举手。',
+        '**沉默不等于投票**：`vote_solved` 必须显式给出——如果你认为原问题已解决，请填 "vote_solved": true；只有当**全体有表决权者**都一致认为是真时，本所才会停下来；缺 `vote_solved`（沉默/未表态）会**阻止结题**。',
+      ].join('\n'),
+    },
+  },
 ])
 
 /** One binding per role for every role-varying block, so the assembly puts the right charter in front of each kind. */

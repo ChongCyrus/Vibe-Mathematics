@@ -138,6 +138,8 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.resources.selfCheck', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '是否向成员展示资源纪律段（关掉＝零注入，提示词回到该段之前，注入点逐字不变）' },
   // ROUND 367: the pointer-propagation contract has its own switch, exactly as the original gates it. Off means the
   // section is not included at all (zero injection), never a "disabled" notice - see docs/26 section 3.14.
+  { key: 'vmu.turn.invitedBy', type: 'string', def: '(unspecified)', hot: HOT.H2, who: 'office', doc: 'who invited this temp to speak (meeting phase)' },
+  { key: 'vmu.turn.invitedWhy', type: 'string', def: '(unspecified)', hot: HOT.H2, who: 'office', doc: 'why this temp was invited to speak (meeting phase)' },
   { key: 'vmu.turn.feedback', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '是否注入工作反馈行（关掉＝零注入，连段标题都不出现；原线 feedbackOn 同义）' },
   { key: 'vmu.pointer.propagation', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '是否注入指针传播契约（关掉＝零注入；原线的 S21 开关同义）' },
   // ROUND 374: a placeholder nobody supplied used to become a silent empty slot. The policy decides whether a miss

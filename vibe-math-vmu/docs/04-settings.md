@@ -254,6 +254,8 @@ vmu.packs.active: [v5r]
 | `vmu.resources.toolCallsPerTurnCap` | number | `0` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 本回合工具调用上限；0＝未设上限（仍请克制） |
 | `vmu.resources.memoryCeilingMb` | number | `0` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 内存上限（MB）；0＝只提醒"压力明显增大"而不给数字 |
 | `vmu.resources.selfCheck` | bool | `true` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/turn/index.js` | 是否向成员展示资源纪律段（关掉＝零注入，提示词回到该段之前，注入点逐字不变） |
+| `vmu.turn.invitedBy` | string | `(unspecified)` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | who invited this temp to speak (meeting phase) |
+| `vmu.turn.invitedWhy` | string | `(unspecified)` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | why this temp was invited to speak (meeting phase) |
 | `vmu.turn.feedback` | bool | `true` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/turn/index.js` | 是否注入工作反馈行（关掉＝零注入，连段标题都不出现；原线 feedbackOn 同义） |
 | `vmu.pointer.propagation` | bool | `true` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/turn/index.js` | 是否注入指针传播契约（关掉＝零注入；原线的 S21 开关同义） |
 | `vmu.prompts.missingVariable` | enum | `report` | `report`∣`refuse` | 会话 | H2 | office | ✅ 已接线 | `kernel/prompt/index.js` | 占位符无人供值时：report＝记录并在装配结果里报告（默认）；refuse＝具名拒（VMU_PROMPT_VARIABLE_MISSING） |

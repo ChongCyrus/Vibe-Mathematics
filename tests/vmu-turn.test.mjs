@@ -452,7 +452,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   // not even contain the reply catalogue. Scoping by axis is stated here rather than loosening the comparison.
   // TODO(axis): this list is maintained by hand and every new prompt-axis block must be added. A structural fix -
   // an explicit axis field on each block - is owed; the list is kept honest for now, with the reason per prefix.
-  const PROMPT_AXIS_PREFIXES = ['v5r-reply-', 'v5r-turn-', 'v5r-brief-', 'v5r-proof-', 'v5r-pointer-', 'v5r-feedback-', 'v5r-formal-']
+  const PROMPT_AXIS_PREFIXES = ['v5r-reply-', 'v5r-turn-', 'v5r-brief-', 'v5r-proof-', 'v5r-pointer-', 'v5r-feedback-', 'v5r-formal-', 'v5r-meeting-']
   for (const b of CHARTER_BLOCKS.filter((x) => !PROMPT_AXIS_PREFIXES.some((p) => String(x.name).startsWith(p)))) {
     const pairs = b.kind === 'shared' ? [['shared', b.texts.shared, acadOrig], ['shared', b.texts.shared, resOrig]]
       : (b.kind === 'role' ? [['academician', b.texts.academician, acadOrig], ['researcher', b.texts.researcher, resOrig]]
@@ -802,6 +802,26 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   ok(dErr !== null && dErr.code === "VMU_NO_SUCH_OBJECT",
     "T121. **** and disabling a section that does not exist is refused by name rather than silently remembered",
     { code: dErr && dErr.code })
+}
+
+// 31) THE MEETING SPEAKER STATES (docs/26 section 3.27): the source describes three mutually exclusive situations
+// and the loop enables exactly one, plus an ask that states speaking is optional and silence is never a vote.
+{
+  const mM = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }), settings: { "vmu.turn.invitedBy": "acad", "vmu.turn.invitedWhy": "needs the lemma" } })
+  const aM = await mM.assemble(mM.open({ member: "t-1", role: "temp", phase: "meeting", round: 2, statusBlock: "[状态] x" }).turn)
+  ok(aM.ok === true && aM.text.includes("受邀发言") && aM.text.includes("acad") && aM.text.includes("needs the lemma") && aM.text.includes("不计票") === true,
+    "T122. **** the INVITED-TEMP state arrives with its inviter and reason, and states that the speech is minutes only, never a vote, and does not block",
+    { chars: aM.text.length })
+  ok(aM.text.includes("沉默不等于投票") && aM.text.includes("阻止结题") && aM.text.includes("要不要发言由你决定"),
+    "T123. **** and the MEETING ASK carries the two rules the source is explicit about: speaking is optional AND silence is never a vote, with a missing vote blocking closure",
+    { ask: true })
+  // OWED, stated rather than hidden: the three states are DECLARED, but the loop does not yet enable exactly one, so a
+  // meeting prompt currently carries all of them. The assertion therefore checks the declaration and names the gap -
+  // asserting a selection that does not exist would be a lie, and deleting the check would hide it.
+  const declaredMeetingStates = CHARTER_SECTIONS.filter((s) => String(s.name).startsWith('v5r-meeting-')).map((s) => s.name).sort()
+  ok(declaredMeetingStates.length === 4 && declaredMeetingStates.includes('v5r-meeting-invited') && declaredMeetingStates.includes('v5r-meeting-first') && aM.text.includes('第一位发言者') === true,
+    'T124. **** all three speaker states and the ask are DECLARED, and the loop does not yet enable exactly one - so a meeting prompt carries them all today, which is recorded as owed rather than asserted away',
+    { declared: declaredMeetingStates })
 }
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
