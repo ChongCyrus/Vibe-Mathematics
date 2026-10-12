@@ -852,6 +852,34 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
     "T129. **** while an unrecognised state is REFUSED by name rather than silently rendered as the first speaker",
     { code: sErr && sErr.code })
 }
+
+// 33) THE FORMALISATION STATUS LINE (docs/26 section 3.28): one line, four branches, exactly one shown - and unlike
+// the meeting states it is ALWAYS shown, so the default is the not-attempted branch rather than nothing.
+{
+  const mkF = (settings) => createTurnOrchestrator({ prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }), settings: settings || {} })
+  const base = { member: "r-1", role: "researcher", phase: "normal", round: 3, statusBlock: "[状态] x" }
+  const p1 = await mkF({ "vmu.turn.formalProof": "Formal/p-9.lean" }).assemble(mkF({ "vmu.turn.formalProof": "Formal/p-9.lean" }).open({ ...base, formalStatus: "passed" }).turn)
+  ok(p1.ok === true && p1.text.includes("Lean 通过（Formal/p-9.lean）") && p1.text.includes("未尝试") === false && p1.text.includes("阻塞（") === false,
+    "T130. **** the PASSED branch is shown alone, naming the proof file - the same exclusive pattern as the meeting states",
+    { chars: p1.text.length })
+  const b1 = await mkF({ "vmu.turn.formalBlockedNote": "needs lemma X" }).assemble(mkF({ "vmu.turn.formalBlockedNote": "needs lemma X" }).open({ ...base, formalStatus: "blocked" }).turn)
+  ok(b1.text.includes("阻塞（needs lemma X）") && b1.text.includes("Lean 通过（") === false && b1.text.includes("已尝试未通过") === false,
+    "T131. **** the BLOCKED branch is shown alone and carries its reason",
+    { chars: b1.text.length })
+  const a1 = await mkF({}).assemble(mkF({}).open({ ...base, formalStatus: "attempted" }).turn)
+  ok(a1.text.includes("已尝试未通过") && a1.text.includes("未尝试") === false,
+    "T132. **** the ATTEMPTED branch is shown alone",
+    { chars: a1.text.length })
+  const n1 = await mkF({}).assemble(mkF({}).open({ ...base }).turn)
+  ok(n1.text.includes("未尝试") && n1.text.includes("Lean 通过（") === false && n1.text.includes("已尝试未通过") === false,
+    "T133. **** and with NO status named the NOT-ATTEMPTED branch appears, because this line is always shown",
+    { chars: n1.text.length })
+  let fErr = null
+  try { await mkF({}).assemble(mkF({}).open({ ...base, formalStatus: "maybe" }).turn) } catch (e) { fErr = e }
+  ok(fErr !== null && fErr.code === "VMU_INVALID_ARGUMENT",
+    "T134. **** while an unrecognised status is refused by name rather than guessed",
+    { code: fErr && fErr.code })
+}
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

@@ -879,6 +879,38 @@ export const CHARTER_BLOCKS = Object.freeze([
       ].join('\n'),
     },
   },
+  // ── FORMALISATION STATUS, ONE LINE, FOUR BRANCHES (source `formalStatusLine`, L4353-4359) ────────────────────
+  // The source renders exactly one of four lines per target, and the loop enables exactly one - the same exclusive
+  // pattern as the meeting speaker states. The source also records why `passed` is worded the way it is: it requires a
+  // GREEN RUN rather than an archived file, because a proof file that has never been executed proves nothing.
+  {
+    name: 'v5r-formal-status-passed',
+    order: 780,
+    range: 'pack',
+    kind: 'shared',
+    texts: { shared: 'Lean 通过（{{ setting:vmu.turn.formalProof }}）' },
+  },
+  {
+    name: 'v5r-formal-status-blocked',
+    order: 781,
+    range: 'pack',
+    kind: 'shared',
+    texts: { shared: '阻塞（{{ setting:vmu.turn.formalBlockedNote }}）' },
+  },
+  {
+    name: 'v5r-formal-status-attempted',
+    order: 782,
+    range: 'pack',
+    kind: 'shared',
+    texts: { shared: '已尝试未通过' },
+  },
+  {
+    name: 'v5r-formal-status-none',
+    order: 783,
+    range: 'pack',
+    kind: 'shared',
+    texts: { shared: '未尝试' },
+  },
   // ── THE MEETING PROMPT'S THREE SPEAKER STATES AND ITS ASK (source `meetingPrompt`, L4128-4163) ───────────────
   // The source describes three mutually exclusive situations and enables exactly one: a temp invited to speak (minutes
   // only, no vote, does not block), a member who is not first (the others' inputs are forwarded verbatim), and the

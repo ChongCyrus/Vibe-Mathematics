@@ -197,13 +197,13 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
   const fail = (code, message, hint) => { counts.refused += 1; lastRefusal.code = code; lastRefusal.message = message; throw refuse(code, message, hint) }
 
   /** ① open a turn: who, which round, which phase, which task. */
-  const open = ({ member, role = null, phase, task = null, why = null, nextStep = null, roster = null, quorum = null, statusBlock = null, facts = null, meetingState = null, round = 1 } = {}) => {
+  const open = ({ member, role = null, phase, task = null, why = null, nextStep = null, roster = null, quorum = null, statusBlock = null, facts = null, meetingState = null, formalStatus = null, round = 1 } = {}) => {
     if (typeof member !== 'string' || member.trim() === '') fail('VMU_INVALID_ARGUMENT', 'a turn needs a member', 'pass { member, phase }')
     if (typeof phase !== 'string' || !PHASES.includes(phase)) {
       fail('VMU_INVALID_ARGUMENT', 'unknown phase: ' + String(phase), 'known phases: ' + PHASES.join(', '))
     }
     seq += 1
-    const turn = { id: 't-' + seq, member, role, phase, task, why, nextStep, roster, quorum, statusBlock, facts, meetingState, round, at: clock() }
+    const turn = { id: 't-' + seq, member, role, phase, task, why, nextStep, roster, quorum, statusBlock, facts, meetingState, formalStatus, round, at: clock() }
     turns.set(turn.id, turn)
     woken.set(member, (woken.get(member) || 0) + 1)
     counts.opened += 1
@@ -262,6 +262,23 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
       for (const pair of MEETING_STATES) {
         setSectionEnabled(pair[1], turn.phase === "meeting" && state === pair[0])
       }
+    }
+    // ROUND 392: the formalisation status is ONE line with FOUR branches in the source, and exactly one applies. Unlike
+    // the meeting states this line is ALWAYS shown, so the default is the "not attempted" branch rather than nothing.
+    // An unrecognised status is refused rather than guessed, for the same reason as the meeting states.
+    if (prompt && typeof prompt.disable === "function") {
+      const FORMAL_STATUSES = [
+        ["passed", "v5r-formal-status-passed"],
+        ["blocked", "v5r-formal-status-blocked"],
+        ["attempted", "v5r-formal-status-attempted"],
+        ["none", "v5r-formal-status-none"],
+      ]
+      const status = turn.formalStatus === null || turn.formalStatus === undefined ? "none" : turn.formalStatus
+      if (!FORMAL_STATUSES.some((p) => p[0] === status)) {
+        fail("VMU_INVALID_ARGUMENT", "unknown formalisation status: " + String(status),
+          "one of: " + FORMAL_STATUSES.map((p) => p[0]).join(", "))
+      }
+      for (const pair of FORMAL_STATUSES) setSectionEnabled(pair[1], status === pair[0])
     }
     const pendingNotices = drainNotices(turn.member)
     const statusWithNotices = [turn.statusBlock, ...pendingNotices].filter((l) => typeof l === "string" && l.trim() !== "").join("\n")
