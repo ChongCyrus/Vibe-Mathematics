@@ -1685,6 +1685,13 @@ undefined
   That also settles C3 by measurement instead of by reading: a vote that misses its floor is reported as not reaching it on both sides rather than becoming an outcome - v5r sets the flag false, and vmu keeps a three-valued tally whose undecided branch must carry a reason.
   The tally is now four equal, ten property and four divergent over ninety-four green assertions, with NO not-adopted item left. The last one did not need a heavy CLI driver after all; it needed the acting member to be seated.
   Still open: the stage-level precondition; six check items; the drafting conflicts; the voting-method set; user confirmation for the clinical and animal demotion; the real-machine re-run; version and release.
+- ***** 325 DEEPER WITH THE SEATED FIXTURE: motions driven, D7 measured, and the verification order found to be proof-first.
+  D7 stops being a checked-against item: in a light meeting a resolution motion is refused, the refusal text cites D7 and the gap number, and it names both ways out - make the meeting formal, or open a decision-type meeting. That is exactly the type-times-decision-gate shape the first slice predicted, and it is now code-level evidence rather than inference.
+  A formal meeting turns out to be PARKED rather than convened: the call succeeds and reports that the meeting is held pending until its verification prerequisite clears. That is the very behaviour the first slice described from the outside, now measured from the inside.
+  The verification order is proof-first, and this is the strongest structural finding of the round: proposing an object for verification is refused unless that object has already been formally proved or disproved AND locked by its own owner. So the chain is: record the proposition, have it locked, register the formal result, and only then debate and aggregate. The rule that debate does not decide truth is therefore structural on that side rather than merely stated - the debate cannot begin until the machine result exists.
+  Motions were driven too: a motion records how many seconds it needs and who has seconded it, and once that count is met it CARRIES.
+  The tally is now five equal, eleven property and four divergent over a hundred and one green assertions.
+  Still open: driving the record-and-lock half of the verification chain so the debate itself can be compared end to end; the stage-level precondition; six check items; the drafting conflicts; the voting-method set; user confirmation for the clinical and animal demotion; the real-machine re-run; version and release.
 ### 0.4 结论
 
 ## 0.5 未接线键的【三档结构】（轮 287 建表；**轮 290 据实更正数字** ✓✓）

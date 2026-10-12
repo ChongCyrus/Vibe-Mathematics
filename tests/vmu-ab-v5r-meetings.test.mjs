@@ -551,6 +551,41 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
     { v5r: 'min_votes_reached=false', vmu: "outcome 'undecided' + a required reason" })
   mark('PROPERTY', 'a vote that misses its floor is reported as NOT reaching it on both sides rather than becoming an outcome: v5r sets min_votes_reached=false, and vmu keeps a three-valued tally whose undecided branch must carry a reason. The happy path now RUNS: convene, open a poll with a floor, vote as a seated member, close - driven through v5r own state machine with a fixture that only lets its scheduler start member turns.')
   mark('EQUAL', 'the meeting life cycle from convening to a closed tally is now compared step by step, which retires the last not-adopted item: nothing about it was unreachable after all, it needed the acting member to be seated the way the preset seats one.')
+
+  // ── 13. DEEPER, still with the same fixture: motions, and the ruling that a light meeting cannot decide substance
+  {
+    const lightMtg = await seatCall('vibe_v5_meeting', { agenda: 'A2' }, asMember('acad'))
+    ok(lightMtg.ok === true, 'G8a. ★ a second meeting opens for the motion drill', lightMtg)
+    const topic = await seatCall('vibe_v5_motion', { op: 'propose', kind: 'topic', text: 'L1 holds' }, asMember('r-1'))
+    ok(topic.ok === true && topic.motion && topic.motion.state === 'proposed' && typeof topic.motion.needed === 'number' && Array.isArray(topic.motion.secondedBy),
+      'G8b. ★★ a motion records its required seconds and its current seconders', topic.motion)
+    const motionId = topic.motion && topic.motion.id
+    const seconded = await seatCall('vibe_v5_second', { motion_id: motionId }, asMember('r-2'))
+    ok(seconded.ok === true && seconded.motion && seconded.motion.state === 'carried' && seconded.motion.secondedBy.includes('r-2'),
+      'G8c. ★★ seconding it CARRIES the motion once the required count is met', seconded.motion)
+
+    // D7 measured: a resolution motion is refused in a LIGHT meeting, with the ruling cited and the way out named
+    const resolutionLight = await seatCall('vibe_v5_motion', { op: 'propose', kind: 'resolution', text: 'adopt L1' }, asMember('r-1'))
+    ok(resolutionLight.ok === false && /D7|简流程/.test(String(resolutionLight.message)) && /formal_agenda/.test(String(resolutionLight.message)),
+      'G8d. ★★★ D7 MEASURED: a resolution motion is REFUSED in a light meeting, the refusal cites the ruling, and it names the way out (formal_agenda, or a decision-type meeting)',
+      { code: resolutionLight.code, message: String(resolutionLight.message).slice(0, 90) })
+    const formal = await seatCall('vibe_v5_meeting', { agenda: 'B', formal_agenda: true }, asMember('acad'))
+    ok(formal.ok === true && formal.parked === true,
+      'G8e. ★★★ and a FORMAL meeting is PARKED behind the verification prerequisite rather than convened: exactly the parking behaviour the first slice described, now measured',
+      { parked: formal.parked, message: String(formal.message || '').slice(0, 60) })
+
+    // the verification chain, in the order the refusal itself dictates
+    const formalFirst = await seatCall('vibe_v5_end_verify', { target: 'L1', status: 'formal_proof', reason: 'lean ok' }, asMember('acad'))
+    ok(formalFirst.ok === false && /no verification in progress/.test(String(formalFirst.message)),
+      'G8f. ★★ registering a formal result before anything is under verification is refused, not accepted',
+      { code: formalFirst.code })
+    const propose = await seatCall('vibe_v5_propose_verify', { target: 'L1', kind: 'proposition', reason: 'debate it' }, asMember('acad'))
+    ok(propose.ok === false && /locked|定稿/.test(String(propose.message)),
+      'G8g. ★★★ the prerequisite is stated in full: only a proposition already formally proved or disproved AND locked by its OWNER may enter verification - machine proof precedes human debate',
+      { message: String(propose.message).slice(0, 100) })
+    mark('PROPERTY', 'a decision that would settle substance is gated by the meeting LEVEL (a light meeting cannot produce one, and the refusal names both the ruling and the way out), while a formal meeting is parked until its verification prerequisite is clear - so on the v5r side the flow is: a recorded proposition, locked by its owner, formally proved or disproved, and only THEN debated and aggregated. That ordering is a property of the design rather than a limitation: substance is decided by verification first and consensus second.')
+    mark('EQUAL', 'motions carry a required second count and a seconder list on the v5r side, and the framework meeting face models a motion state machine with exactly those states (proposed, seconded, carried, tabled, withdrawn) - compared first at the schema level and now at the level of a driven motion.')
+  }
 }
 
 // ── 11. THE LAST SIX: permanent roster changes, temporary grants, supervision and resolutions ──────────────
