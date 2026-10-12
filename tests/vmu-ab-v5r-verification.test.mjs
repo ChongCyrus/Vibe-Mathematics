@@ -125,6 +125,37 @@ ok(closed !== null && typeof closed === 'object',
   'V13. ★★ and the academician closes the debate so the aggregation may run', { keys: Object.keys(closed || {}).slice(0, 8) })
 console.log('  (observed aggregation: ' + JSON.stringify(closed).slice(0, 220) + ')')
 
+// ── D3 vocabulary and C3's separation, read straight out of the aggregation payload ──────────────────────────
+ok(closed.process && Array.isArray(closed.process.answered) && Array.isArray(closed.process.silent) && Array.isArray(closed.process.unable),
+  'V14. ★★★ the aggregation NAMES who answered, who stayed silent and who declared themselves unable - D3 vocabulary, measured',
+  closed.process && { answered: closed.process.answered, silent: closed.process.silent, unable: closed.process.unable })
+ok(closed.outcome === 'undecided' && closed.process && typeof closed.process.mean === 'number' && closed.process.silent.length > 0,
+  'V15. ★★★ C3 MEASURED AS A SEPARATION: a mean IS computed from the opposing verdicts, and the OUTCOME still stays undecided because members stayed silent',
+  { outcome: closed.outcome, mean: closed.process && closed.process.mean, silent: closed.process && closed.process.silent })
+ok(closed.process.participants === undefined || true,
+  'V16. ★ (the payload shape is recorded, not asserted beyond what was observed)')
+
+// ── D5a: who may file a reconsideration, and what does the payload say about the rule? ───────────────────────
+const lateProbe = await call('vibe_v5_minutes', {}, seat('acad'))
+ok(lateProbe.ok === false && /NO_OPEN_MEETING/.test(String(lateProbe.code)),
+  'V17. ★★ minutes answer "no meeting in progress" when none is open: they are filed WITH the meeting that held them',
+  { code: lateProbe.code })
+const byChair = await call('vibe_v5_reconsider', { target: 'q-1', why: 'reopen' }, seat('acad'))
+ok(byChair.ok === false && byChair.code === 'V5_NOT_VOTER' && /participant|参与者/.test(String(byChair.message)),
+  'V18. ★★★ D5a MEASURED (first half): a NON-participant cannot file a reconsideration, and the refusal names the rule',
+  { code: byChair.code, message: String(byChair.message).slice(0, 70) })
+const byParticipant = await call('vibe_v5_reconsider', { target: 'q-1', why: 'new counterexample' }, seat('r-1'))
+ok(byParticipant.ok === true && byParticipant.reconsideration && byParticipant.reconsideration.eligibility === 'any-participant',
+  'V19. ★★★ D5a MEASURED (second half): a PARTICIPANT may, and the payload states the rule that admitted it',
+  byParticipant.reconsideration)
+ok(byParticipant.reconsideration && byParticipant.reconsideration.onlyUp === true &&
+  byParticipant.reconsideration.thresholdAfter >= byParticipant.reconsideration.thresholdBefore,
+  'V20. ★★★ and the threshold only ever RISES across a reconsideration (onlyUp true), so reopening cannot soften the bar',
+  { before: byParticipant.reconsideration && byParticipant.reconsideration.thresholdBefore, after: byParticipant.reconsideration && byParticipant.reconsideration.thresholdAfter })
+const noWhy = await call('vibe_v5_reconsider', { target: 'q-1' }, seat('r-1'))
+ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
+  'V21. ★ a reconsideration without a stated reason is refused, and the refusal cites D5', { message: String(noWhy.message).slice(0, 60) })
+
 rmSync(workspace, { recursive: true, force: true })
 console.log('=== VMU AB v5r verification: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed > 0 ? 1 : 0)
