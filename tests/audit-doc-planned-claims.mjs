@@ -39,7 +39,7 @@ let candidates = 0
 // ROUND 177: the roadmap volume is EXCLUDED on purpose. It is the living record of corrections, so by construction it
 // quotes the very claims it retracts - "volume 17 called vmu.course.cohortMax unimplemented" - and every such sentence
 // would be re-flagged forever. A log of fixes cannot be held to the standard of the prose it fixes.
-const EXCLUDED = new Set(['04-settings.md', '14-open-items-and-roadmap.md'])
+const EXCLUDED = new Set(['04-settings.md', '14-open-items-and-roadmap.md', '28-decision-history.md'])
 // ROUND 178: the trigger is a WINDOW around the key, not the whole line. Good prose routinely names a wired key while
 // declaring something else unimplemented - "partial: the round timeout key exists; per-speaker time boxes are planned" -
 // and the primitives volume is full of that shape, which is the shape this project asks for. Flagging the whole line

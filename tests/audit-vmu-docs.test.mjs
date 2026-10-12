@@ -51,7 +51,10 @@ ok(DOC_FILES.length >= 15, 'the design set has at least the 15 core docs (00..14
 // ---- A. the design set exists and is non-trivial -------------------------------------------------
 // ROUND 224: the open-items ledger is a changelog and is excluded here for the same reason the generator excludes it as a
 // source. Delete a file from this list only together with the generator's provenance rule, or the two disagree.
-const LEDGER_PREFIX = '14-'
+// A changelog is identified by being a changelog, not by one number: the roadmap ledger split into a live volume
+// (14-) and a history volume (28-) in round 420, and both narrate rounds while quoting key names.
+const LEDGER_PREFIXES = ['14-', '28-']
+const LEDGER_PREFIX = LEDGER_PREFIXES[0]
 const docText = new Map()
 ok(DOC_FILES.length > 0, 'non-vacuous: DOC_FILES must not be empty')
 for (const name of DOC_FILES) {
@@ -88,7 +91,7 @@ const CODE_RE = /\b((?:VMU|MATH|ARCHIVE|SCRIPT)_[A-Z0-9_]{3,})\b/g
 const CODE_LITERAL_RE = /['"`]((?:VMU|MATH|ARCHIVE|SCRIPT)_[A-Z0-9_]{3,})['"`]/g
 const codeUse = new Map()
 for (const [name, text] of docText) {
-      if (name.startsWith(LEDGER_PREFIX)) continue   // ROUND 224: a changelog is not a declaration source
+      if (LEDGER_PREFIXES.some((p) => name.startsWith(p))) continue   // ROUND 224: a changelog is not a declaration source
 
   for (const m of text.matchAll(CODE_RE)) {
     const code = m[1]
@@ -267,7 +270,7 @@ ok(unregisteredInCode.length === 0,
     // ROUND 224: the open-items ledger is a CHANGELOG. It quotes key names while narrating work, so it neither declares
     // keys nor obliges anyone to register the names it mentions (it quotes `vmu.x.y` from another file's comment). The
     // generator excludes it as a source for the same reason; the two must agree.
-    if (name.startsWith(LEDGER_PREFIX)) continue
+    if (LEDGER_PREFIXES.some((p) => name.startsWith(p))) continue
     for (const m of text.matchAll(/\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b/g)) {
       const k = m[0]
       // A FAMILY wildcard (`vmu.math.lean*`) is prose about a family, not a claim about a key.
@@ -293,7 +296,7 @@ ok(unregisteredInCode.length === 0,
     for (const [name, text] of docText) {
       // ROUND 224: the open-items ledger is a changelog - it quotes key names while narrating work, so it neither declares
       // keys nor creates an obligation to register the names it mentions (`vmu.x.y` comes from the generator's comments).
-      if (name.startsWith(LEDGER_PREFIX)) continue
+      if (LEDGER_PREFIXES.some((p) => name.startsWith(p))) continue
       for (const m of text.matchAll(/\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b/g)) {
         // ROUND 224: a FAMILY mention is not a key. The key regex stops at a word boundary, so `vmu.x.y.*` matches as
         // `vmu.x.y`; the lookahead must be taken in the TEXT, not inside the collected-name set (which holds bare names

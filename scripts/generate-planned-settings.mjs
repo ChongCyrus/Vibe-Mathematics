@@ -102,7 +102,7 @@ export function docVolumes(dir = DOCS_DIR) {
     // scanning it as a source re-minted keys that other rules had just removed (measured: my own ledger text restored
     // `vmu.records.body` as a planned key, and it quotes `vmu.x.y` from another file's comment). Filtering it HERE keeps
     // every consumer - the collection, the recomputation and the group-G scan - on the same rule instead of three copies.
-    .filter((f) => !f.startsWith('14-'))
+    .filter((f) => !['14-', '28-'].some((ledger) => f.startsWith(ledger)))
     .sort()
     .map((f) => {
       const name = f.replace(/\.md$/, '')

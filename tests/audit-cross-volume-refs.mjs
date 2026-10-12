@@ -18,7 +18,7 @@ const quiet = process.argv.includes('--quiet')
 // The roadmap volume is EXCLUDED for the same reason the planned-claim check excludes it: it is the living record of
 // corrections, so it necessarily quotes the dangling references it fixes ("the kernel comment cited section 12.6, which
 // the volume does not declare"). Round 181 discovered this the moment its own record was written.
-const EXCLUDED = new Set(['14-open-items-and-roadmap.md'])
+const EXCLUDED = new Set(['14-open-items-and-roadmap.md', '28-decision-history.md'])
 const files = readdirSync(DOCS).filter((x) => x.endsWith('.md') && !EXCLUDED.has(x)).sort()
 const volumeOf = (name) => Number(name.slice(0, 2))
 
