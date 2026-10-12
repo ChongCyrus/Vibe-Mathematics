@@ -230,6 +230,21 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     } catch (e) { return true }
     return true
   }
+  /**
+   * ROUND 316: reading a MEETING RECORD (minutes, transcript) is not the act of speaking, so it is not gated by
+   * membership the way the acting surface is. What gates it is the meeting's own confidentiality LEVEL: a meeting
+   * opened at `restricted` (vmu.meetings.confidentialityDefault) may not be read anonymously once a roster seam is in
+   * force. Without a roster seam nothing changes - mechanism follows the seam, as everywhere else in this face. The
+   * level was already recorded at open() and already enforced by quote(); the two READ surfaces ignored it, which is
+   * the same species of gap the A/B found in the acting surface.
+   */
+  const assertCanReadRecord = (m, what, by) => {
+    if (m.confidentiality !== 'restricted' || !members) return
+    if (!by) throw deny('VMU_MEETING_CONFIDENTIAL_DENIED', what + '() on a restricted meeting needs the acting member',
+      'pass { by: "<member id>" } - the level is "' + m.confidentiality + '" (vmu.meetings.confidentialityDefault), and a restricted record is not an anonymous read', [])
+    if (!isMember(String(by))) throw deny('VMU_NOT_MEMBER', 'the acting member is not on the roster: ' + String(by),
+      'the roster seam rejected the actor for ' + what + '()', [])
+  }
   /** The quorum computation (READ-ONLY): `attendanceMode` + `unansweredInDenominator` change the numbers. */
   const quorumOf = (m) => {
     const unanswered = m.roster.filter((r) => !m.present.has(r))
@@ -747,8 +762,9 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     },
 
     /** Minutes (READ-ONLY): shaped by `minutesDetail`, `minutesIncludeRefused`, pruned by `minutesRetentionMs`. */
-    minutes({ meeting, at = null } = {}) {
+    minutes({ meeting, by = null, at = null } = {}) {
       const m = requireMeeting(meeting)
+      assertCanReadRecord(m, 'minutes', by)
       const now = at === null ? clock() : at
       const refused = m.minutes.refused.filter(() => K.minutesIncludeRefused)
       const entries = K.minutesDetail === 'full' ? m.minutes.entries.slice() : m.minutes.entries.filter((e) => e.kind !== 'speech' || e.ms > 0).slice(0, 20)
@@ -762,8 +778,9 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     },
 
     /** Verbatim transcript (READ-ONLY; pruned by `verbatimRetentionMs`, drops counted). */
-    verbatim({ meeting, at = null } = {}) {
+    verbatim({ meeting, by = null, at = null } = {}) {
       const m = requireMeeting(meeting)
+      assertCanReadRecord(m, 'verbatim', by)
       if (!K.verbatimEnabled) return { ok: true, enabled: false, lines: [], dropped: counters.prunedVerbatim, note: 'vmu.meetings.verbatimEnabled=false: nothing is captured' }
       const now = at === null ? clock() : at
       let lines = m.transcript.slice()

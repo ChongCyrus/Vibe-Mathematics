@@ -245,6 +245,41 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
     mark('PROPERTY', 'an act that disciplines or suspends requires a NAMED member actor when a roster seam is in force, and behaves exactly as before when there is none - mechanism follows the seam (vmu philosophy), and v5r makes the same requirement with V5_NOT_VOTER')
   }
 
+  // (f) READING a record is not the same act as speaking. Round 316 found the same species of gap as round 314, one
+  // layer over: the meeting's confidentiality LEVEL was recorded at open() and enforced by quote(), but the two READ
+  // surfaces (minutes, verbatim) ignored it. What gates a restricted read is the level plus a named member actor.
+  {
+    const restricted = (withSeam) => {
+      const m = createMeetings({
+        clock: () => 1000, log: () => {}, settings: { 'vmu.meetings.confidentialityDefault': 'restricted' },
+        ...(withSeam ? { members: { has: (id) => id === 'acad' || id === 'r-1' } } : {}),
+      })
+      m.open({ by: 'acad', chair: 'acad', roster: ['acad', 'r-1'], at: 0 })
+      return m
+    }
+    const rm = restricted(true)
+    const anonMinutes = vmu(() => rm.minutes({ meeting: 'm1' }))
+    const namedMinutes = vmu(() => rm.minutes({ meeting: 'm1', by: 'acad' }))
+    const outsiderMinutes = vmu(() => rm.minutes({ meeting: 'm1', by: 'outsider' }))
+    const anonVerbatim = vmu(() => rm.verbatim({ meeting: 'm1' }))
+    const namedVerbatim = vmu(() => rm.verbatim({ meeting: 'm1', by: 'acad' }))
+    ok(anonMinutes.thrown === true && anonMinutes.code === 'VMU_MEETING_CONFIDENTIAL_DENIED',
+      'G1u. ★★ a RESTRICTED record may not be read anonymously when a roster seam is in force', anonMinutes)
+    ok(namedMinutes.returned === true && namedMinutes.ok === true && namedVerbatim.returned === true && namedVerbatim.ok === true,
+      'G1v. ★★ the same read succeeds when the acting member is NAMED', { minutes: namedMinutes.ok, verbatim: namedVerbatim.ok })
+    ok(outsiderMinutes.thrown === true && outsiderMinutes.code === 'VMU_NOT_MEMBER',
+      'G1w. ★★ naming a NON-member does not open it either', outsiderMinutes)
+    const openNoSeam = restricted(false)
+    const noSeamRead = vmu(() => openNoSeam.minutes({ meeting: 'm1' }))
+    const internal = createMeetings({ clock: () => 1000, log: () => {}, settings: { 'vmu.meetings.confidentialityDefault': 'internal' }, members: { has: () => true } })
+    internal.open({ by: 'acad', chair: 'acad', roster: ['acad'], at: 0 })
+    const internalRead = vmu(() => internal.minutes({ meeting: 'm1' }))
+    ok(noSeamRead.returned === true && noSeamRead.ok === true && internalRead.returned === true && internalRead.ok === true,
+      'G1x. ★ PROPERTY (mechanism follows the seam): without a seam, and at the internal level, reads are unchanged',
+      { noSeam: noSeamRead.ok, internal: internalRead.ok })
+    mark('PROPERTY', 'reading a restricted meeting record requires a named member actor when a roster seam is in force, while a seam-less deployment and the internal level are untouched - the level was already recorded and enforced on the quoting path, and the read paths now honour it too')
+  }
+
   seamRegistry.clear()
   rmSync(seamWorkspace, { recursive: true, force: true })
 }
