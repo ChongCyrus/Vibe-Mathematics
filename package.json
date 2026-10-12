@@ -384,6 +384,8 @@
     "vibe-math-vmu/packs/v5r/prompts/v5r-prompts.js",
     "vibe-math-vmu/packs/v5r/prompts/v5r-persona.js",
     "vibe-math-vmu/packs/v5r/prompts/v5r-charter.js",
+    "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js",
+    "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js",
     "vibe-math-vmu/packs/v5r/index.js",
     "vibe-math-vmu/packs/example-data/prompts/sections.json",
     "vibe-math-vmu/packs/v5r/notices.js",

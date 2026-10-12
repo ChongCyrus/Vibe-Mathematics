@@ -20,7 +20,6 @@ const LIMIT = 1200
 // The four files that exceed the decided limit today. Frozen on purpose: this list may shrink, never grow.
 const KNOWN = [
   'vibe-math-vmu/math-computation.js',
-  'vibe-math-vmu/packs/v5r/prompts/v5r-charter.js',
   'vibe-math-vmu/settings/schema.js',
   'vibe-math-vmu/kernel/index.js',
 ]
@@ -58,7 +57,7 @@ const rotted = KNOWN.filter((f) => lines(join(REPO, f)) <= LIMIT)
 ok(rotted.length === 0,
   'every file in the backlog is STILL over the limit, so the list cannot rot into a claim about code that has since been split',
   { rotted })
-ok(KNOWN.length === 4, 'and the backlog has not grown: it holds the four files measured when this gate was written', { size: KNOWN.length })
+ok(KNOWN.length === 3, 'and the backlog has SHRUNK to three: v5r-charter.js was split at a block boundary, which was possible because no generator reads it and it carries no markers - unlike schema.js, which is input to five generators, and math-computation.js, which is byte-compared against a second copy', { size: KNOWN.length })
 ok(KNOWN.length === over.length, 'the backlog and the measurement agree exactly', { known: KNOWN.length, measured: over.length })
 
 console.log('=== 4. THE PREDICATE IS SHOWN TO FIRE ===')
