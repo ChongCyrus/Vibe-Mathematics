@@ -228,6 +228,8 @@ vmu.packs.active: [v5r]
 | `vmu.pack.format` | enum | `tar` | `tar`∣`zip` | 会话 | H2 | office | ✅ 已接线 | `kernel/library.js` | package 导出所用容器（未知容器 ⇒ 具名拒；仅在 export.format=package 时有意义 ✓） |
 | `vmu.pack.includeBody` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/library.js` | package 导出是否含正文（回执里报出 ✓） |
 | `vmu.pack.includeTrash` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/library.js` | package 导出是否含回收站（默认否 ✓） |
+| `vmu.packs.allowKernelOverride` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/pack.js` | pack 的设置与现有值【重叠】时是否允许覆盖（false ⇒ 具名拒 `VMU_PACK_CONFLICT`，即 10 卷 O4：绝不静默覆盖 ✓；调用方显式传 allowOverride 仍然优先 ✓） |
+| `vmu.packs.priority` | integer | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/pack.js` | pack 优先级（越大越先；★ 仅用于 status().applied 的排序，manifest 自身的 priority 优先 ✓） |
 | `vmu.prompts.overridesDir` | path | `prompts/overrides` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 提示词覆盖目录（仓内相对路径） |
 | `vmu.prompts.bindings` | obj[] | `[]` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 四维绑定（优先级 角色<阶段<成员<任务） |
 | `vmu.prompts.whoMayOverride` | string[] | `[office]` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 允许覆盖提示词者 |
@@ -1290,8 +1292,6 @@ vmu.packs.active: [v5r]
 | `vmu.names.strict` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
 | `vmu.names.warn` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准） |
 | `vmu.notes.linkKinds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.packs.allowKernelOverride` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 10（共见 2 卷：10、13），尚未实现（元数据以各卷为准） |
-| `vmu.packs.priority` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
 | `vmu.packs.searchPaths` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 3 卷：07、10、13），尚未实现（元数据以各卷为准） |
 | `vmu.paper.retentionMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/paper.js` | ★ **已穷尽**：`paper.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.preserve.migrateAfterYears` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |

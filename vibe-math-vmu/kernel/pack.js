@@ -154,6 +154,25 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
    * `vmu.pack.compression` — read FOR REAL (task-194) from the running settings layer, per call, so a hot
    * change is honoured. Absent/false ⇒ the raw snapshot is reported (zero-mechanism unchanged).
    */
+  /** The running settings snapshot, read per call exactly as compressionOn does (ROUND 296). */
+  const settingsNow = () => (typeof kernel.settingsSnapshot === 'function' ? kernel.settingsSnapshot() : null) || {}
+
+  /**
+   * ROUND 296 (`vmu.packs.allowKernelOverride`): the declaration that governs the setting-overlap refusal docs/10 §L80 calls O4.
+   * An explicit caller flag still wins, because it is the more deliberate act; the declaration is the default.
+   */
+  const overrideAllowed = () => {
+    const snap = settingsNow()
+    return allowOverride === true || snap['vmu.packs.allowKernelOverride'] === true
+  }
+
+  /** ROUND 296 (`vmu.packs.priority`): the declared pack priority, used only to order what status() reports. */
+  const priorityOf = (manifest) => {
+    if (Number.isInteger(manifest && manifest.priority)) return manifest.priority
+    const snap = settingsNow()
+    return Number.isInteger(snap['vmu.packs.priority']) ? snap['vmu.packs.priority'] : 0
+  }
+
   const compressionOn = () => {
     const snap = typeof kernel.settingsSnapshot === 'function' ? kernel.settingsSnapshot() : null
     return !!snap && snap['vmu.pack.compression'] === true
@@ -254,6 +273,14 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
       // Settings are a LAYER, not a mutation: if this assembly gives no way to apply a pack's settings,
       // the pack is refused rather than silently losing them (a silently dropped setting is a lie).
       if (Object.keys(manifest.settings || {}).length > 0) {
+      // ROUND 296 (docs/10 §L80): a settings OVERLAP is a named refusal unless the override is declared. Checked before
+      // anything is written, so a refusal leaves no partial institution behind.
+      const snapBefore = settingsNow()
+      const overlapping = Object.keys(manifest.settings).filter((k) => Object.prototype.hasOwnProperty.call(snapBefore, k))
+      if (overlapping.length > 0 && !overrideAllowed()) {
+        throw refuse('VMU_PACK_CONFLICT', 'pack ' + manifest.id + ' overlaps existing settings: ' + overlapping.join(', '),
+          'declare vmu.packs.allowKernelOverride=true (or pass { allowOverride: true }) to allow the override (O4: never silently)')
+      }
         if (typeof kernel.applyPackSettings !== 'function') {
           throw refuse('VMU_ENGINE_UNAVAILABLE', 'pack ' + manifest.id + ' declares settings but this kernel has no settings layer for packs',
             'construct the kernel with a pack-settings layer, or move the values into the pack manifest\'s slots/tracks/rules')
@@ -304,7 +331,7 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         for (const undoOne of undo.slice().reverse()) { try { undoOne() } catch { /* best effort during rollback */ } }
         throw e
       }
-      const record = { id: manifest.id, version: manifest.version || null, appliedAt: clock(), actions: plan.actions, undo }
+      const record = { id: manifest.id, version: manifest.version || null, appliedAt: clock(), actions: plan.actions, undo, priority: priorityOf(manifest) }
       applied.set(manifest.id, record)
       if (kernel.notePackApplied) kernel.notePackApplied(manifest.id)
       return { ok: true, id: manifest.id, applied: plan.count, actions: plan.actions, requires: plan.requires }
@@ -326,7 +353,11 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
     /** Observability (R11): what is applied, and what each pack changed. */
     status() {
       return {
-        applied: [...applied.values()].map((r) => ({ id: r.id, version: r.version, at: r.appliedAt, actions: r.actions.length })),
+        // ROUND 296: ordered by the declared priority (higher first), then by id, so the report is deterministic.
+      applied: [...applied.values()]
+        .map((r) => ({ id: r.id, version: r.version, at: r.appliedAt, actions: r.actions.length, priority: r.priority }))
+        .sort((a, b) => (b.priority - a.priority) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+      allowKernelOverride: overrideAllowed(),
         allowOverride,
         snapshot: snapshotPacked(),
         note: 'plan() is pure; apply() refuses conflicts; unload() reverses the applied actions and reports residue; `snapshot.compression` reports vmu.pack.compression (LZSS-12/4, exact)',
