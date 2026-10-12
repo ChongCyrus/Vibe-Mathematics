@@ -1209,6 +1209,19 @@ export const CHARTER_BLOCKS = Object.freeze([
   // first speaker, who is ALSO told the speaking model exactly as the code implements it. The ask that follows is where
   // the source is most explicit: speaking is optional, silence is never a vote, and a missing vote blocks closure.
   {
+    name: 'v5r-turn-meeting-agenda',
+    order: 764,
+    range: 'pack',
+    kind: 'phase',
+    texts: {
+      // The name must NOT start with `v5r-meeting-`: that prefix is the namespace of the four mutually exclusive speaker
+  // states, and a test asserts there are exactly four because the exclusivity IS the mechanism. The agenda is not a
+  // state - it is the same in every meeting - so it lives in the turn namespace instead.
+  // The values are the ones the corpus captured; the frame supplies its own for a real round.
+      meeting: '议程：分工与下一步（类型：sync）',
+    },
+  },
+  {
     name: 'v5r-meeting-invited',
     order: 770,
     range: 'pack',

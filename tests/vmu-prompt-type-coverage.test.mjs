@@ -14,7 +14,7 @@
 //
 // Run: node tests/vmu-prompt-type-coverage.test.mjs
 import { PROMPTS } from '../vibe-math-vmu/packs/v5r/prompts/v5r-prompts.js'
-import { CHARTER_SECTIONS, CHARTER_BINDINGS } from '../vibe-math-vmu/packs/v5r/prompts/v5r-charter.js'
+import { CHARTER_SECTIONS, CHARTER_BLOCKS, CHARTER_BINDINGS } from '../vibe-math-vmu/packs/v5r/prompts/v5r-charter.js'
 import { createPromptPipeline } from '../vibe-math-vmu/kernel/prompt/index.js'
 import { createTurnOrchestrator } from '../vibe-math-vmu/kernel/turn/index.js'
 import { decideSections } from '../vibe-math-vmu/packs/v5r/middleware/prompt-switches.js'
@@ -156,6 +156,39 @@ console.log('=== 3. THE OTHER TYPES CARRY THEIR OWN RULES TOO ===')
     const text = ours[phase] || ''
     ok(text.includes(line), '[' + phase + '] ' + why, { phase, missing: line.slice(0, 40) })
   }
+}
+
+console.log('=== 4. THE PIPELINE VIEW IS THE LOAD-BEARING ONE, and this assertion is why ===')
+{
+  // Round 423 measured both views of the pack text and the result INVERTED a confident note this project had already
+  // written down. The authoring form keys its texts by phase and role; the view the pipeline binds against collapses
+  // each block to one text. I recorded the authoring form as authoritative and the other as a lossy derivative that
+  // callers should avoid - and the measurement says the opposite, by a wide margin, because the bindings are what
+  // select among the variants. A note in the wrong direction is worse than no note: it points the next reader at
+  // simplifying the view that carries eighty-one percent of the corpus. So the measurement is asserted, not narrated.
+  const score = async (sections) => {
+    const l = createTurnOrchestrator({
+      prompt: createPromptPipeline({ sections, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }),
+      settings: SETTINGS, sectionPolicy: decideSections, noticeBlock: inboxBlock,
+      extraPhases: ["heartbeat", "paper-write", "paper-review", "paper-final"],
+    })
+    const mine = {}
+    for (const phase of PHASES) {
+      const a = await l.assemble(l.open({ member: "acad", role: "academician", roleLabel: "院士", phase, meetingState: phase === "meeting" ? "first" : undefined, roster: "acad、r-1、r-2", quorum: 2, statusBlock: "[状态] x", round: 3 }).turn)
+      mine[phase] = norm(String(a.text))
+    }
+    let total = 0, hit = 0
+    for (const p of PROMPTS) {
+      const m = mine[phaseOf(String(p.kind), String(p.text))] || ""
+      for (const line of fixedOf(p.text)) { total += 1; if (m.includes(norm(line))) hit += 1 }
+    }
+    return total ? Math.round(100 * hit / total) : 0
+  }
+  const sectionPct = await score(CHARTER_SECTIONS)
+  const blockPct = await score(CHARTER_BLOCKS)
+  ok(sectionPct >= blockPct,
+    "the view the PIPELINE binds against reproduces at least as much of the corpus as the authoring form does: " + sectionPct + "% against " + blockPct + "%. They are NOT interchangeable, and a note in this repository once said the opposite - that the authoring form was authoritative and this one a lossy derivative. Anyone tempted to simplify the load-bearing view has to get past this assertion first, and it takes its numbers from the corpus rather than from an opinion",
+    { pipelineView: sectionPct, authoringForm: blockPct })
 }
 
 console.log('=== PER-TYPE COVERAGE: ' + passed + ' passed, ' + failed + ' failed ===')
