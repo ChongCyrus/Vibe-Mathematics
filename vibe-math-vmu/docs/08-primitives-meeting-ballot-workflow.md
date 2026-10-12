@@ -231,10 +231,14 @@ v5r 的 `s8-freeze-say` 真回归：**"本轮是否完成"的判据被写死在�
 
 ### 4.1 已实现的任务/台账 API（**精确，按 `kernel/tasks.js`／`kernel/work.js` ✓**）
 
-- `vmu.tasks` ✓（服务）：`create({title,objective?,owner?,deps?,priority?})`、`assign(id,who)`、`transition(id,to,{reason})`、`list()`、`stage()`、`advance({to,reason})`（**先过阶段门** ✓）、`rollback({reason})`、`brief(id)`／`briefOf(id)`／`clearBrief(id)`（任务简报＝给负责人的执行流程 ✓）、`history(id?)`、`status()`；具名拒：`VMU_STATE`／`VMU_RESOURCE_BUDGET`／`VMU_NO_SUCH_OBJECT`／`VMU_INVALID_ARGUMENT` ✓。
+- `vmu.tasks` ✓（服务）：`create({title,objective?,owner?,deps?,priority?})`、`assign(id,who,{expectedRevision?})`、`transition(id,to,{reason?,expectedRevision?})`、`brief(id,text,{by?,expectedRevision?})`、`clearBrief(id,{expectedRevision?})`、`list()`、`stage()`、`advance({to,reason})`（**先过阶段门** ✓）、`rollback({reason})`、`brief(id)`／`briefOf(id)`／`clearBrief(id)`（任务简报＝给负责人的执行流程 ✓）、`history(id?)`、`status()`；具名拒：`VMU_STATE`／`VMU_RESOURCE_BUDGET`／`VMU_NO_SUCH_OBJECT`／`VMU_INVALID_ARGUMENT` ✓。
 - `vmu.work` ✓（服务）：`start({owner,kind,objective})`、`settle(id,{outcome})`、`interrupt(id,reason)`、`recover({reason})`、`list()`、`pending()`、`interrupted()`、`status()` —— **在途工作台账**（重启后"谁还有活没干完" ✓）。
 - 钩子 ✓：`task/assign`、`task/transition`、`settle/before`、`settle/after` ✓；工具面 `vibe_vmu_task`（`list|create|assign|transition|stage|advance|brief|history` ✓）。
 - 机器强制 ✓：**依赖未满足不得 start**；**阶段门**；**暂停中新建/转换被拒**（I-5 ✓）；**任务上限** `vmu.tasks.maxOpenTasks`（`VMU_RESOURCE_BUDGET` ✓）。
+- ★★ **版本前置条件 ✓（轮 318 实现）**：**每条任务记录带 `revision`**（创建即 1 ✓，**每次被接受的写入递增** ✓）；**四个变更点**（`assign`／`transition`／`brief`／`clearBrief` ✓）接受 **`expectedRevision`** —— ★ **声明了过期版本 ⇒ 具名拒 `VMU_TASK_STALE_REVISION`，【绝不合并**】✓；★ **开关 `vmu.tasks.requireExpectedRevision`（默认 `false`）打开后，不声明版本的写入同样被拒** ✓ ⇒ **同 v5r 的严格语义，且默认不破坏单写入者调用者** ✓。
+
+> ★ **口径（轮 319 更正）** ✗✓：**`advance`／`rollback` 【不是任务变更**】，而是**跑的【阶段机】移动**（`stageIndex` ✓）⇒ **版本前置条件对它们不适用** ✓（**上一轮把它列为"未接入"是归类错误** ✗）。★ **但"两个人同时推进同一阶段机"是一个真实的可能消费者** ✓ ⇒ **阶段级的前置条件（"我看到的是第几阶段"）作为独立问题登记** ✓（**未实现** ✗）。
+
 
 ### 4.2 工作流广度清单（一行式条目）
 
@@ -473,6 +477,7 @@ v5r 的 `s8-freeze-say` 真回归：**"本轮是否完成"的判据被写死在�
 | 对象 | 字段（✓ 实有／✗ 规划） |
 |---|---|
 | `Task` ✓ | `id, title, objective?, owner?, deps[], priority?, state, stage?, brief?, history[], createdAt` ✓ |
+| `Task`（轮 318 ✓） | **`revision`**（**每次被接受的写入递增** ✓；`expectedRevision` 与之比对 ⇒ 过期写入具名拒 ✓） |
 | `Task`（规划 ✗） | `due?, raci{}, wipColumn?, checkpoints[], retry{}, gates{}, subtasks[], templateId?` |
 | `WorkEntry` ✓ | `id, owner, kind, objective, state(pending/settled/interrupted), outcome?, at` ✓ |
 | `Board`（规划 ✗） | `columns[{id,name,wipLimit,order}], swimlanes[], agingWarnMs` |
@@ -624,6 +629,7 @@ v5r 的 `s8-freeze-say` 真回归：**"本轮是否完成"的判据被写死在�
 | 族 | 旋钮 | 默认 | 域 | 热改 | 谁可改 | 成熟度 |
 |---|---|---|---|---|---|---|
 | `vmu.workflow.*` | 依赖类型矩阵／门类型／重试退避／超时／升级链／检查点周期 | 最保守（无重试、无自动升级） | 对象/enum/ms | 重启/下轮 | pack＋所办 | ✗ |
+| `vmu.tasks.*` | `stages`（阶段机，默认空 ✓）／`maxOpenTasks`（默认 0＝无限 ✓）／★ **`requireExpectedRevision`（默认 `false`** ✓**）** | 零机制（无阶段、无上限、只在声明时校验版本 ✓） | 数组/int/bool | 重启/立即 | 所办 | ★ **三项均已接线 ✓** |
 | `vmu.board.*` | 列定义／WIP 上限／泳道／老化提醒 | 无列（零机制 ✓） | 对象/int/ms | 立即 | 所办 | ✗ |
 | `vmu.budget.*` | 令牌/回合/子代理配额与公平策略（**设计原则**：实现时机器强制；**当前仅** `vmu.limits.*` 已实现 ✓，本族为**计划键** ✗） | 未声明 | 对象 | 立即 | 所办 | ✗ |
 | `vmu.control.*` | 暂停范围／看门狗间隔／空闲策略／降级档位 | 未声明（无定时器 ✗） | 对象/ms | 立即 | 所办 | ✗ |
