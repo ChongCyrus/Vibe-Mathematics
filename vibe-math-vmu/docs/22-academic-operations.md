@@ -87,7 +87,8 @@
 | `vmu.resource` | 17 | **17** | `resource.js`(17) | ★ **已接线 ✓（上文 §2 的"计划 ✗"已过期）** |
 | `vmu.funding` | 16 | **16** | `funding.js`(16) | ★ **已接线 ✓（§3 的"计划 ✗"已过期）** |
 | `vmu.funds` | 11 | **11** | `funding.js`(11) | ★ **已接线 ✓** |
-| `vmu.custody` | 7 | **7** | `custody.js`(7) | ★ **已接线 ✓（§L168"本仓今天没有任何样本/保管实现"【已不成立】✗）** |
+| `vmu.custody` | 5 | **5** | `custody.js`(5) | ★ **已接线 ✓（§L168"本仓今天没有任何样本/保管实现"【已不成立】✗）** |
+| `vmu.anonymity` | 2 | **2** | `custody.js`(2) | ★ **已接线 ✓**（**轮 400 由 `custody` 分出** ✓：`pseudonymStyle`／`mappingIrreversible` 讲的是**不暴露主体是谁**，不是保管链 ✓；旧名仍可解析 ✓）|
 | `vmu.agreements` | 7 | **7** | `collab.js`(7) | ★ **已接线 ✓** |
 | `vmu.capacity` | 12 | **12** | `capacity.js`(12) | ★ **已接线 ✓** |
 | `vmu.tenure` | 11 | **11** | `tenure.js`(11) | ★ **已接线 ✓** |
@@ -202,7 +203,7 @@
 | **目的** | 每个样本**可追溯**：谁入库／谁保管／谁取用／取还几次／是否已销毁 ✓；**链式保管断链必须报** ✗✓；销毁后仍保留**引用**（与 07 只引用 ✓） |
 | **面向谁** | 实验执行者、保管管理员、合规/审计、代理 |
 | **接口形状** | 协议 `CustodyRecord` ⛔ 待实现：`{ sampleId, pseudonym, collectedAt, storage, storageCycles, chainOfCustody[] }`；协议 `CustodyEvent` ⛔ 待实现：`{ sampleId, from, to, atMs, why }`；服务 `vmu.custody`（★ **已接线 ✓**（实测 7/7，见 §0.1））：`register(sample)`／`transfer(sampleId, {from,to,why})`／`chain(sampleId)`／`verify(sampleId)`／`destroy(sampleId,{reason})`；工具 `vibe_vmu_custody` ⛔ 未实现 |
-| **可调控参数** | `vmu.custody.ledgerDir`（默认 `Ops/Biosamples`）、`vmu.custody.requireChain`（默认 `true`）、`vmu.custody.chainGapPolicy`（默认 `block`；可选 `warn`）、`vmu.custody.storageCycleWarnAt`（默认 `5`）、`vmu.custody.destroyKeepsReference`（默认 `true`）、`vmu.custody.pseudonymStyle`（默认 `pseudonym`）、`vmu.custody.mappingIrreversible`（默认 **`true`** ✗✓） |
+| **可调控参数** | `vmu.custody.ledgerDir`（默认 `Ops/Biosamples`）、`vmu.custody.requireChain`（默认 `true`）、`vmu.custody.chainGapPolicy`（默认 `block`；可选 `warn`）、`vmu.custody.storageCycleWarnAt`（默认 `5`）、`vmu.custody.destroyKeepsReference`（默认 `true`）、`vmu.anonymity.pseudonymStyle`（默认 `pseudonym`）、`vmu.anonymity.mappingIrreversible`（默认 **`true`** ✗✓） |
 | **相关错误码** | 见 `03-§8` 的 **VMU_CUSTODY_\***（**已实现 ✓**；本行原列的 ⛔ 计划名已作废 ✗）（**断链**）／见 `03-§8` 的 **VMU_CUSTODY_\***（**已实现 ✓**；本行原列的 ⛔ 计划名已作废 ✗） |
 | **四条哲学** | F：不登记＝无保管条目概念 ✓｜T：断链策略/取还阈值/假名样式可配 ✓｜D：链式三要素（who/when/why）由 **pack 声明**，内核不认识"保管条目" ✓｜X：新的保管对象类型只加字段 ✓ |
 | **实现要点** | ① 链式保管是**只追加事件流** ✓，每次转移三要素缺一即拒（见 `03-§8` 的 **VMU_CUSTODY_\***（**已实现 ✓**；本行原列的 ⛔ 计划名已作废 ✗））✓；② **断链检测＝连续性检查**：上一环 `to` ≠ 下一环 `from`、时间倒流、或事件缺失 ⇒ **断链必须报** ✗✓（`block` 时拒绝后续操作并具名，`warn` 时计数并继续）；③ **销毁＝状态转换＋保留引用**（`destroyed`＋原因＋时间；样本记录**不删**，与 07 的保留/回收站面**只引用不重定义** ✗）；④ 与 **20 卷去标识化只引用** ✗：本卷只存 `pseudonym`（假名），**样本↔受试者映射默认不可逆** ✓ —— 不提供反向查询接口，任何"由样本找回受试者"的请求 ⇒ 见 `03-§8` 的 **VMU_CUSTODY_\***（**已实现 ✓**；本行原列的 ⛔ 计划名已作废 ✗） |
@@ -816,8 +817,8 @@
 | 保管条目 | `vmu.custody.chainGapPolicy` | string | `block` | `block`｜`warn` | pack |
 | 保管条目 | `vmu.custody.storageCycleWarnAt` | integer | `5` | ≥0 | pack |
 | 保管条目 | `vmu.custody.destroyKeepsReference` | boolean | `true` | — | pack（引用 07 保留面 ✓） |
-| 保管条目 | `vmu.custody.pseudonymStyle` | string | `pseudonym` | `pseudonym`｜`code` | pack（与 20 联动） |
-| 保管条目 | `vmu.custody.mappingIrreversible` | boolean | **`true`** | —（**默认不可逆** ✓） | **内核强制** ✓ |
+| 保管条目 | `vmu.anonymity.pseudonymStyle` | string | `pseudonym` | `pseudonym`｜`code` | pack（与 20 联动） |
+| 保管条目 | `vmu.anonymity.mappingIrreversible` | boolean | **`true`** | —（**默认不可逆** ✓） | **内核强制** ✓ |
 | 税务/法务 | `vmu.partnership.registryDir` | string | `Ops/Entities` | 相对项目根 | 财务/法务 |
 | 税务/法务 | `vmu.partnership.requireEntity` | boolean | `true` | — | pack |
 | 税务/法务 | `vmu.partnership.taxIdStyle` | string | `opaque-ref` | `opaque-ref`｜`none` | pack（**不存明文** ✓） |

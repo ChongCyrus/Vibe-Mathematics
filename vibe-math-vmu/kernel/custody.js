@@ -1,7 +1,11 @@
 // vmu kernel · custody — the entry ledger and the CHAIN OF CUSTODY
 //
-// ★ 范围基准（2026-10-11）：**本面已判定降级为扩展** ✗ —— **对数学研究举不出消费者** ✓（判据与登记见 docs/23-§1b）。
-//   **本行注释不是"已完成"，而是"待改"的证据** ✗：键族与代码仍在，**移出流程必须包含撤代码**（docs/23-§2 规则 4）。
+// SCOPE (corrected in round 400): the demotion this header carried was reversed by the repository itself.
+// docs/23 §0b.2 names this face among the reclassifications, and the user's 2026-10-11 criterion puts the burden on
+// deletion while the test is POSSIBILITY: a chain of custody plus irreversible pseudonymisation has a possible
+// consumer in (h) file archiving and (i) review and publication, where a claim must trace to a sample or a subject
+// without exposing who it was. The two halves are now named for what they are: custody keeps the chain, and the
+// pseudonymisation keys are vmu.anonymity.* (with `was:` recording the former names).
 //   ★★ 另注：22-§14 早已判它"不做 ✗（无消费者）"，**而代码却存在且 7 键全部接线** —— 该矛盾见 docs/23-§1c。
 // （docs/22 §2.5 biobank / chain of custody; docs/07 owns the durability library and is referenced for retention, never
 // redefined here; docs/20 supplies the pseudonymisation side）.
@@ -58,8 +62,8 @@ export function createCustody({ clock = () => 0, log = null, settings = {}, bus 
     chainGapPolicy: ['block', 'warn'].includes(sget('vmu.custody.chainGapPolicy')) ? sget('vmu.custody.chainGapPolicy') : 'block',
     storageCycleWarnAt: intOr(sget('vmu.custody.storageCycleWarnAt', 5), 5),
     destroyKeepsReference: sget('vmu.custody.destroyKeepsReference') !== false,
-    pseudonymStyle: ['pseudonym', 'code'].includes(sget('vmu.custody.pseudonymStyle')) ? sget('vmu.custody.pseudonymStyle') : 'pseudonym',
-    mappingIrreversible: sget('vmu.custody.mappingIrreversible') !== false,   // 内核强制：默认 true
+    pseudonymStyle: ['pseudonym', 'code'].includes(sget('vmu.anonymity.pseudonymStyle')) ? sget('vmu.anonymity.pseudonymStyle') : 'pseudonym',
+    mappingIrreversible: sget('vmu.anonymity.mappingIrreversible') !== false,   // 内核强制：默认 true
   })
 
   const entries = new Map()   // id -> { id, ref, kind, chain[], storageCycles, destroyedAt, destroyReason, warnings[] }
@@ -79,20 +83,20 @@ export function createCustody({ clock = () => 0, log = null, settings = {}, bus 
    */
   function registerEntry({ id = null, pseudonym = null, kind = null, mapping = null } = {}) {
     const c = cfg()
-    const enforced = ['vmu.custody.pseudonymStyle', 'vmu.custody.mappingIrreversible', 'vmu.custody.ledgerDir']
+    const enforced = ['vmu.anonymity.pseudonymStyle', 'vmu.anonymity.mappingIrreversible', 'vmu.custody.ledgerDir']
     const fired = []
     const ref = str(pseudonym)
     if (!ref) throw refuse('VMU_INVALID_ARGUMENT', 'registerEntry needs a pseudonym', 'pass { pseudonym: "anon-…" }')
     // pseudonymStyle: a pseudonym must not look like a plaintext identifier; a code must look like a code.
     if (c.pseudonymStyle === 'pseudonym' && LOOKS_PLAINTEXT.test(ref)) {
-      fired.push('vmu.custody.pseudonymStyle')
-      throw refuse(CODE.pseudonymStyle, 'vmu.custody.pseudonymStyle=pseudonym but the reference looks like a plaintext identifier',
+      fired.push('vmu.anonymity.pseudonymStyle')
+      throw refuse(CODE.pseudonymStyle, 'vmu.anonymity.pseudonymStyle=pseudonym but the reference looks like a plaintext identifier',
         'use a pseudonym, or set the style to code deliberately', { ref, style: c.pseudonymStyle, enforced, fired })
     }
     // mappingIrreversible: with it on (the default) a reversible mapping is REFUSED, not encrypted and hoped over.
     if (c.mappingIrreversible && mapping !== null && mapping !== undefined) {
-      fired.push('vmu.custody.mappingIrreversible')
-      throw refuse(CODE.reversibleMapping, 'vmu.custody.mappingIrreversible=true: a mapping from subject to reference may not be stored here',
+      fired.push('vmu.anonymity.mappingIrreversible')
+      throw refuse(CODE.reversibleMapping, 'vmu.anonymity.mappingIrreversible=true: a mapping from subject to reference may not be stored here',
         'keep the mapping outside this ledger, or set the key to false deliberately and record that decision', { ref, enforced, fired })
     }
     const realId = str(id) || ('entry-' + (++seq))

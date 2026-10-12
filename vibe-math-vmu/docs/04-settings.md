@@ -788,8 +788,8 @@ vmu.packs.active: [v5r]
 | `vmu.custody.chainGapPolicy` | enum | `block` | `block`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 链断策略（block ⇒ 断链具名拒；warn ⇒ 记录并告警） |
 | `vmu.custody.storageCycleWarnAt` | int ≥0 | `5` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 冻融次数预警阈值（达阈告警；契约是告警而非拒绝 ✓） |
 | `vmu.custody.destroyKeepsReference` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 销毁后保留引用（true ⇒ 记录留存并说明样本已灭失） |
-| `vmu.custody.pseudonymStyle` | enum | `pseudonym` | `pseudonym`∣`code` | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 主体引用风格（pseudonym ⇒ 看起来像明文标识的引用具名拒） |
-| `vmu.custody.mappingIrreversible` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 映射不可逆（内核强制：true 时【拒绝】存入主体↔引用的可逆映射，而不是加密后寄望） |
+| `vmu.anonymity.pseudonymStyle` | enum | `pseudonym` | `pseudonym`∣`code` | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 主体引用风格（pseudonym ⇒ 看起来像明文标识的引用具名拒） |
+| `vmu.anonymity.mappingIrreversible` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 映射不可逆（内核强制：true 时【拒绝】存入主体↔引用的可逆映射，而不是加密后寄望） |
 | `vmu.budget.tokens` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/budget.js` | 令牌总量（0＝不限；>0 即成为作用域默认上限） |
 | `vmu.budget.turns` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/budget.js` | 回合总量（0＝不限） |
 | `vmu.budget.toolCalls` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/budget.js` | 工具调用总量（0＝不限；与单回合上限 vmu.limits.toolCallsPerTurnCap 分工不同） |

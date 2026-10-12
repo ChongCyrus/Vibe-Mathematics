@@ -1,7 +1,10 @@
 // vibe-math-vmu — 共享资源面（22 卷共享资源与资格）：把 `vmu.resource.*` **17 键**接成可观测行为。
 //
-// ★ 范围基准（2026-10-11）：**本面已判定降级为扩展** ✗ —— **对数学研究举不出消费者** ✓（判据与登记见 docs/23-§1b）。
-//   **本行注释不是"已完成"，而是"待改"的证据** ✗：键族与代码仍在，**移出流程必须包含撤代码**（docs/23-§2 规则 4）。
+// SCOPE (corrected in round 400): this face was REMOVED in an earlier round and the repository itself asked for it
+// back. docs/23 §0b.1 records "已在轮 302 撤除" and concludes 提请恢复 (restore), and §0b.2 records the decision as
+// 恢复: its capabilityTags / requiresTraining / train are the eligibility gate for sharing a resource, which has a
+// possible consumer in (e) inter-agent collaboration and (j) self-organisation. The stale verdict line is replaced
+// so no reader deletes a capability the project reinstated.
 //
 // 标准（`mathtools.js` 口径 ✓）：① 每键**改变可观测行为** ✓；② 回执带 **`enforced[]`**（只列真求值者 ✓）；
 //   **拒绝一律带 `enforced[]`（数组、可空、不得 undefined ✓）＋ `enforcedScope:'evaluated-so-far'`** ✓✓；

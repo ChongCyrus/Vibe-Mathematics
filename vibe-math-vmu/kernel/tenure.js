@@ -1,7 +1,12 @@
 // vmu kernel hr — 人事面（招聘周期/绩效/终身教职/申诉/离任/轮换）。
 //
-// ★ 范围基准（2026-10-11）：**本面已判定降级为扩展** ✗ —— **对数学研究举不出消费者** ✓（判据与登记见 docs/23-§1b）。
-//   **本行注释不是"已完成"，而是"待改"的证据** ✗：键族与代码仍在，**移出流程必须包含撤代码**（docs/23-§2 规则 4）。
+// SCOPE (corrected in round 400): the demotion this header used to carry was REVERSED by the repository itself.
+// docs/23 §0b.1 records the review under the user's 2026-10-11 criterion - keep first, the test is POSSIBILITY,
+// and the burden of proof is on deletion - and concludes "改判：保留" (reclassified: KEEP) for this family, because
+// tenure, performance review, appeals and rotation are the possible consumer of a research institution's membership
+// life cycle (directions (j) self-organisation and (e) inter-agent collaboration). The stale verdict line is replaced
+// rather than deleted so the correction is visible: a header that tells a reader to delete what the project decided
+// to keep is worse than no header at all.
 //
 // 与 members（角色席位）**分层**：本面是**人事规则**（22 卷 `vmu.tenure.*`）。
 // 标准＝mathtools（已验收）：每键**改变可观测行为**；`enforced[]`／`fired[]`／`enforcedScope`；

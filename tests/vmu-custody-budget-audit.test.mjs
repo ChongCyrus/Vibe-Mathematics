@@ -27,19 +27,19 @@ const aud = (s = {}) => createAudit({ clock: () => now, settings: s })
   ok(z.status().entries === 0 && z.status().chainRequired === true, 'custody zero-config: nothing registered, chain required by default')
 
   // pseudonymStyle: a plaintext-looking reference is refused under pseudonym style
-  const p = bio({ 'vmu.custody.pseudonymStyle': 'pseudonym' })
+  const p = bio({ 'vmu.anonymity.pseudonymStyle': 'pseudonym' })
   throwsCode(() => p.registerEntry({ pseudonym: 'someone@example.org' }), 'VMU_CUSTODY_PSEUDONYM_STYLE',
     'pseudonymStyle[-]: a plaintext-looking reference is refused by name')
   ok(p.registerEntry({ pseudonym: 'anon-0001' }).ok === true, 'pseudonymStyle[+]: a pseudonym registers')
-  const asCode = bio({ 'vmu.custody.pseudonymStyle': 'code' })
+  const asCode = bio({ 'vmu.anonymity.pseudonymStyle': 'code' })
   ok(asCode.registerEntry({ pseudonym: 'PT-0042' }).ok === true, 'pseudonymStyle[+]: under code style a code registers')
 
   // mappingIrreversible: kernel-enforced, so a reversible mapping is REFUSED rather than encrypted and hoped over
-  const irrev = bio({ 'vmu.custody.mappingIrreversible': true })
+  const irrev = bio({ 'vmu.anonymity.mappingIrreversible': true })
   const rev = throwsCode(() => irrev.registerEntry({ pseudonym: 'anon-9', mapping: { subject: 'Jane Doe', ref: 'anon-9' } }),
     'VMU_CUSTODY_REVERSIBLE_MAPPING', 'mappingIrreversible[-]: a reversible mapping is refused by name')
   ok(!!rev && /outside this ledger/.test(String(rev.hint)), 'mappingIrreversible[-]: the hint says where the mapping belongs')
-  const allowed = bio({ 'vmu.custody.mappingIrreversible': false })
+  const allowed = bio({ 'vmu.anonymity.mappingIrreversible': false })
   ok(allowed.registerEntry({ pseudonym: 'anon-9', mapping: { subject: 'Jane Doe' } }).ok === true,
     'mappingIrreversible[+]: only when the key is switched off may a mapping be stored')
 

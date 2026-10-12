@@ -1,6 +1,10 @@
 // vibe-math-vmu — 教学面（22 卷 N13）：把 `vmu.teaching.*` **24 键**接成可观测行为。
 //
-// ★ 范围基准（2026-10-11）**复核结论：降级为扩展 ✗**（判据与依据见 docs/23-§1d）—— **教学行政非研究活动**，
+// SCOPE (corrected in round 400): docs/23 §0b.1 reversed this demotion under the user's 2026-10-11 criterion.
+// Teaching and peer evaluation DO have a possible consumer - (e) inter-agent collaboration: mentoring and training
+// agents - and the overlap of its peer-review half with existing faces is a design hint, not a reason to demote
+// (measured wording: 其同行评审部分与既有面重复，属设计提示，不构成降级理由).
+// 教学行政非研究活动（旧的降级理由，已撤销）✗ —— 
 //   且其真正的机制部分（blindReview/reviewersPerSubmission/reviewRounds/rubric/peerWeight）**与 review/reviewers/conference 重复** ⇒ 依先例"重复即复用既有面"。
 //   **本行是"待改"的证据** ✗：代码仍在，**移出流程必须包含撤代码**（§2 规则 4）。
 //
