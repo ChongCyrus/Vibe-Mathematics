@@ -446,7 +446,7 @@ CacheEntry = { keyHash, engineIdentity, argv, precision, receiptRef, createdAt, 
 ---
 
 ## 18. 未核项
-1. **真机首跑未做** ⛔：从未跑过一次真实计算/Lean 编译（负例一律由注入接缝制造）⇒ 8 个 P1 引擎的**真实可用性**未知；
+1. **真机首跑未做** ⛔：从未跑过一次真实计算/Lean 编译（负例一律由注入接缝制造）⇒ 8 个 P1 引擎的**真实可用性**未知。★★ **轮 448 量清了它【卡在哪一步**]✓，**因此这条从「⛔ 未知」变成「有具名第一步」** ✓：★ **一次真跑需要两件东西**——① **宿主 `ctx` 提供【子进程接缝**]✓（`createHostMath` 的面暴露 `hasSubprocess()`／`resolveExecutable()`／`spawn()` ✓）；② **`vmu.math.computation` 指向一个真实引擎模块** ✓（`host-math.js` 的参数映射表把它映射到引擎的 `mathComputation` 参数 ✓）。★★ **实测（桩 ctx ✓）**：`hasSubprocess() = false` ✓、`resolveExecutable('python') = {}` ✓、`spawn({command, args})` ⇒ `VMU_INVALID_ARGUMENT: a spawn needs an argv` ✓（★ **参数名是 `argv` 不是 `args`** ✓）。★★★ **诚实边界**：★ **那个 `false` 来自【我搭的桩 ctx**]✓ ⇒ **它说明的是「桩宿主没有子进程接缝」，不是「这台机器不能算」** ✓（★ 本机 `python 3.12.10` ✓ 与 `node v24.21.0` ✓ 都在 ✓）⇒ ★★ **真机首跑缺的是【一个提供子进程接缝的宿主上下文**]，**而这不在本仓的循环里** ✓ —— ★ 与 `vmu-entry.test.mjs` 的 `fakeCtx` 同因 ✓；
 2. **引擎版本敏感性**未核 ⛔：同脚本在不同版本下结果差异未测；
 3. **caps 真实触发**未核 ⛔：64KB/64KB/4MB 在大输出下的行为未实测；
 4. **归档保留上限**未核 ⛔：达到上限时的警告路径未实测；
