@@ -470,6 +470,41 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
   mark('NOT_ADOPTED', 'the REST of the meeting happy path (motion -> second -> vote -> tally) is NOT yet compared step by step, and the reason is now measured rather than assumed: the preset is ACTOR-BOUND - its acting member is assigned only when its own scheduler starts a member turn - so convening runs through the office path while motions and polls answer member-not-found. Driving that needs either a subagent harness that really runs member turns, or the heavy CLI driver. See volume 24 §2.2.8-§2.2.9')
 }
 
+// ── 11. THE LAST SIX: permanent roster changes, temporary grants, supervision and resolutions ──────────────
+{
+  const LAST_SIX = ['vibe_v5_add_researcher', 'vibe_v5_remove_researcher', 'vibe_v5_grant', 'vibe_v5_revoke', 'vibe_v5_nudge', 'vibe_v5_result_record']
+  const reachable = LAST_SIX.filter((n) => registry.get(n))
+  ok(reachable.length === LAST_SIX.length, 'G6a. ★ the last six tools exist', { reachable: reachable.length })
+  const req = (n) => ((registry.get(n).parameters || {}).required || []).slice()
+  const props = (n) => Object.keys((registry.get(n).parameters || {}).properties || {})
+  const desc = (n) => String(registry.get(n).description || '')
+  ok(/office only/i.test(desc('vibe_v5_add_researcher')) && req('vibe_v5_remove_researcher').includes('id'),
+    'G6b. ★ a PERMANENT roster change is office-only, and dismissing names the id', { add: desc('vibe_v5_add_researcher').slice(0, 40) })
+  ok(props('vibe_v5_grant').includes('command') && props('vibe_v5_grant').includes('grant_scope') && props('vibe_v5_grant').includes('why'),
+    'G6c. ★★ a TEMPORARY GRANT names ONE enumerated command, an event SCOPE, and a reason - it is not a general permission',
+    { props: props('vibe_v5_grant') })
+  ok(props('vibe_v5_revoke').includes('grant_id') && props('vibe_v5_revoke').includes('why') && /event|broadcast/i.test(desc('vibe_v5_revoke')),
+    'G6d. ★★ and revoking one WRITES AN EVENT and is broadcast rather than done silently', { props: props('vibe_v5_revoke') })
+  ok(req('vibe_v5_nudge').includes('to') && req('vibe_v5_nudge').includes('why') && props('vibe_v5_nudge').includes('next_step'),
+    'G6e. ★ supervision wakes ONE member with a stated reason and a concrete next step')
+  ok(req('vibe_v5_result_record').includes('text') && props('vibe_v5_result_record').includes('actions'),
+    'G6f. ★ and a resolution is recorded with its text and its follow-up actions')
+
+  // our side
+  const grantSrc = readFileSync(new URL('../vibe-math-vmu/kernel/grant.js', import.meta.url), 'utf8')
+  const membSrc = readFileSync(new URL('../vibe-math-vmu/kernel/members.js', import.meta.url), 'utf8')
+  const grantMethods = [...new Set([...grantSrc.matchAll(/^\s{4}(?:async )?([a-zA-Z][\w]*)\(/gm)].map((m) => m[1]))]
+  const membMethods = [...new Set([...membSrc.matchAll(/^\s{4}(?:async )?([a-zA-Z][\w]*)\(/gm)].map((m) => m[1]))]
+  ok(['grant', 'check', 'revoke', 'list'].every((m) => grantMethods.includes(m)),
+    'G6g. ★★ vmu has the same shape: a grant face with grant, check, revoke and list', grantMethods)
+  ok(/scope|event/i.test(grantSrc),
+    'G6h. ★★ and its grants are scoped to an event rather than to a permanent capability')
+  ok(membMethods.includes('hire') && membMethods.includes('end') && membMethods.includes('wake') && membMethods.includes('assignRole'),
+    'G6i. ★ the roster face covers all three: hire, dismiss, wake and role assignment', membMethods)
+  mark('PROPERTY', 'temporary authorisation is an EVENT-SCOPED, enumerated grant with a named command and a stated reason on both sides, revocation is written down rather than done silently, a permanent roster change is set apart from a temporary grant, and supervision names both a reason and a next step')
+  mark('EQUAL', 'the six remaining tools all have counterparts: grant/check/revoke/list against the grant face, hire/end/wake/assignRole against the roster face, and the resolution against the minutes and records surfaces')
+}
+
 rmSync(workspace, { recursive: true, force: true })
 
 console.log('  ── verdicts ──')
