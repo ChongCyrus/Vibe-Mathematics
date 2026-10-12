@@ -933,6 +933,26 @@ export const CHARTER_BLOCKS = Object.freeze([
     kind: 'shared',
     texts: { shared: '未尝试' },
   },
+  // ── THE MATHS RULES (source `math-computation.js`, MATH_RULE_LINES + MATH_SUBSTITUTION_RULE_LINE) ──────────────
+  // The maths push line has three parts in the source: a DYNAMIC availability line, which belongs to the status block
+  // because it reports the engines actually present, and these STATIC rules, which are the fallback text and were the
+  // body the acceptance measurement had never transcribed - only the function name had been read. Transcribed verbatim.
+  // The source's off mode matches the discipline used here: `mathComputation: 'off'` means the block is not injected at
+  // all, rather than a disabled notice being injected in its place.
+  {
+    name: 'v5r-math-rules',
+    order: 699,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。',
+        '- 复核他人的数值结论时用 op:\'receipt\'（或 op:\'run\', mode:\'file\' 指向同一脚本）重跑，并把回执路径写进报告。',
+        '- 替代必须声明（诚实性）：当替代方案改变了**精确性或结论强度**时（精确符号解 → 数值近似、闭式解 → 采样/求积、改了精度/容差/假设、换了算法类），结论里**必须写明**，不得读起来像得到了原本（精确/所要求的）结果；拿不到精确结果就直说。',
+        '- math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。',
+      ].join('\n'),
+    },
+  },
   // ── THE MEETING PROMPT'S THREE SPEAKER STATES AND ITS ASK (source `meetingPrompt`, L4128-4163) ───────────────
   // The source describes three mutually exclusive situations and enables exactly one: a temp invited to speak (minutes
   // only, no vote, does not block), a member who is not first (the others' inputs are forwarded verbatim), and the

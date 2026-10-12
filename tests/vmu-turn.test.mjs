@@ -454,7 +454,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   // not even contain the reply catalogue. Scoping by axis is stated here rather than loosening the comparison.
   // TODO(axis): this list is maintained by hand and every new prompt-axis block must be added. A structural fix -
   // an explicit axis field on each block - is owed; the list is kept honest for now, with the reason per prefix.
-  const PROMPT_AXIS_PREFIXES = ['v5r-reply-', 'v5r-turn-', 'v5r-brief-', 'v5r-proof-', 'v5r-pointer-', 'v5r-feedback-', 'v5r-formal-', 'v5r-meeting-']
+  const PROMPT_AXIS_PREFIXES = ['v5r-reply-', 'v5r-turn-', 'v5r-brief-', 'v5r-proof-', 'v5r-pointer-', 'v5r-feedback-', 'v5r-formal-', 'v5r-meeting-', 'v5r-math-']
   for (const b of CHARTER_BLOCKS.filter((x) => !PROMPT_AXIS_PREFIXES.some((p) => String(x.name).startsWith(p)))) {
     const pairs = b.kind === 'shared' ? [['shared', b.texts.shared, acadOrig], ['shared', b.texts.shared, resOrig]]
       : (b.kind === 'role' ? [['academician', b.texts.academician, acadOrig], ['researcher', b.texts.researcher, resOrig]]
