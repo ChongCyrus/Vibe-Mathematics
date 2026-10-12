@@ -25,8 +25,8 @@ import { createPackLoader } from './kernel/pack.js'
 import { createHostSpawn, hasHostSpawn } from './host-spawn.js'
 import { createHostMath } from './host-math.js'
 import { assertDeclared } from './settings/schema.js'
-import { pathToFileURL } from 'node:url'
-import { basename, isAbsolute, join } from 'node:path'
+import { pathToFileURL, fileURLToPath } from 'node:url'
+import { basename, isAbsolute, join, dirname } from 'node:path'
 import { readFileSync } from 'node:fs'
 
 export const name = 'vibe-math-vmu'
@@ -157,7 +157,32 @@ export function apply(ctx, config = {}) {
     } catch (e) { mathHost = null }
   }
 
-  const kernel = createKernel(Object.assign({ sectionPolicy: V5R_DECIDE_SECTIONS, settings, root, spawn: spawnSeam, host: mathHost,
+  // GOAL 2: A PACK'S settings/ FOLDER STATES WHAT IT WANTS THE KNOBS TO BE. The kernel reads settings when it is
+  // constructed and a pack is applied afterwards (its own comment explains why), so a pack's defaults must be folded
+  // in BEFORE construction. They are read as pure DATA - settings/defaults.json - both because a plugin top level
+  // cannot await a dynamic import and because a settings default is data rather than code.
+  // The user's own settings always WIN: a pack states a preference, it does not override a deployment. And the
+  // merged object is used ONLY for the kernel: `declared` below still counts the USER's keys, so a deployment that
+  // configured nothing keeps the documented "zero mechanism" behaviour rather than becoming declared by its pack.
+  const packDefaults = {}
+  {
+    const here = dirname(fileURLToPath(import.meta.url))
+    const wantedPacks = Array.isArray(config.packs) ? config.packs.filter((p) => typeof p === 'string') : []
+    for (const name of wantedPacks) {
+      try {
+        const parsed = JSON.parse(readFileSync(join(here, 'packs', name, 'settings', 'defaults.json'), 'utf8'))
+        const d = parsed && typeof parsed.defaults === 'object' && parsed.defaults ? parsed.defaults : {}
+        for (const [k, v] of Object.entries(d)) if (packDefaults[k] === undefined) packDefaults[k] = v
+      } catch (e) {
+        // Only a MISSING file is expected (a flat pack has no settings folder). Anything else is a real error and
+        // must not be swallowed: a malformed defaults file would otherwise silently contribute no defaults at all.
+        const missing = e && (e.code === 'ENOENT' || e.code === 'ERR_MODULE_NOT_FOUND')
+        if (!missing) throw e
+      }
+    }
+  }
+  const settingsWithPackDefaults = Object.assign({}, packDefaults, settings)
+  const kernel = createKernel(Object.assign({ sectionPolicy: V5R_DECIDE_SECTIONS, settings: settingsWithPackDefaults, root, spawn: spawnSeam, host: mathHost,
     sections: promptSections, bindings: promptBindings, overrides: promptOverrides, whoMayOverride, readFile: readRel },
   clock ? { clock } : {}))
   // DECLARATION IS THE CONFIGURATION. With nothing declared the preset must not even offer a settings

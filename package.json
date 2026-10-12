@@ -382,6 +382,7 @@
     "vibe-math-vmu/packs/v5r-charter.js",
     "vibe-math-vmu/packs/v5r/index.js",
     "vibe-math-vmu/packs/v5r/settings/defaults.js",
+    "vibe-math-vmu/packs/v5r/settings/defaults.json",
     "vibe-math-vmu/packs/v5r/middleware/prompt-switches.js",
     "vibe-math-vmu/packs/v3-core.js",
     "vibe-math-vmu/host.js",

@@ -1,0 +1,10 @@
+{
+  "_comment": "The v5r pack's own settings defaults. Pure data on purpose: the plugin must fold these UNDER the user's settings BEFORE the kernel is constructed, and a synchronous JSON read is the only way to do that from a plugin whose top level cannot await. Every key must exist in settings/schema.js; the gate can check that, because a default for an undeclared key is a typo that would otherwise fail silently.",
+  "defaults": {
+    "vmu.turn.replyCatalogue": "compact",
+    "vmu.pointer.propagation": true,
+    "vmu.resources.selfCheck": true,
+    "vmu.turn.feedback": true,
+    "vmu.turn.protocolPath": "Shared/Protocol.md"
+  }
+}
