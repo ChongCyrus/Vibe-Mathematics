@@ -1014,6 +1014,36 @@ export const CHARTER_BLOCKS = Object.freeze([
   // states the threshold: every participating member must vote true before the finaliser may finalise. A unanimous
   // publication rule is the kind of thing a framework should not invent and a pack should declare - and with the phase
   // seam built last round, this pack can declare the phases these prompts belong to.
+  // ── TWO HONESTY RULES THE FORMATS CARRY (corpus-derived) ────────────────────────────────────────────────────
+  // The progress rule says what a progress note must contain - goal, definitions, established results and their
+  // sources, unfinished derivations, failed routes and their scope, next step, where the full material lives - and
+  // then forbids the two ways a summary lies: dropping a condition, and writing an open question as settled. The
+  // ballot rule says a voter may keep, change or refute anyone else's view, which is what makes a ballot a
+  // reconsideration rather than a ratification.
+  {
+    name: 'v5r-progress-rule',
+    order: 818,
+    range: 'pack',
+    kind: 'phase',
+    texts: {
+      normal: [
+        '在 progress 中记录：当前目标；定义与假设；已建立结论及来源；未完成推导；失败路线及适用范围；下一步；完整材料位置。不得省略关键条件、把未决写成已证或用截断摘要替代完整证明。保存摘要后可填 compacted:true；contextPct 仅在有依据时估计，勿照抄固定比例。]',
+      ].join('\n'),
+    },
+  },
+  {
+    name: 'v5r-verify-reconsider',
+    order: 819,
+    range: 'pack',
+    kind: 'phase',
+    texts: {
+      verify: [
+        '你可以维持、修改或反驳任何人的看法。',
+        '审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。',
+        '「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办）。本档没有门禁：请务必给一个严格介于 0 与 1 之间的弃权值，以保证本轮无法得出一致结论；',
+      ].join('\n'),
+    },
+  },
   // ── THE FOUNDING ASKS (corpus-derived) ─────────────────────────────────────────────────────────────────────
   // The academicians own opening question - read the problem, name its hard part, decide how to divide it and tell
   // the institute what you concluded - and the line that states a temporary members limits: no vote, no hire or
