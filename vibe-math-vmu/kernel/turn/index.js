@@ -53,10 +53,25 @@ export function refuse(code, message, hint) {
   return err
 }
 
-/** Extract the single fenced json block. Returns null when there is none (that is a DIFFERENT failure from bad JSON). */
+/**
+ * Extract the LAST fenced block that parses to a plain object. Returns null when there is none (that is a DIFFERENT
+ * failure from bad JSON).
+ *
+ * ROUND 370, corrected against the source: the original's fence pattern is `/```(?:json)?[ \t]*([\s\S]*?)```/gi` - the
+ * `json` tag is OPTIONAL - and its loop OVERWRITES as it goes, so the last parseable fence wins rather than the first.
+ * This function used to require the tag and take the first, which is a real divergence found by reading `parseReply`.
+ */
 export function extractFence(text) {
-  const m = String(text === undefined || text === null ? '' : text).match(/```json\s*([\s\S]*?)```/)
-  return m ? m[1] : null
+  const raw = String(text === undefined || text === null ? '' : text)
+  const fence = /```(?:json)?[ \t]*([\s\S]*?)```/gi
+  // Extraction only: hand back the LAST fenced body, with the json tag optional, exactly as the source's pattern is
+  // written. Whether that body PARSES is deliberately not this function's business - parseReply's loop does the
+  // parsing and keeps the last fence that yields an object, and keeping the two jobs apart is what lets a caller ask
+  // "is there a fence at all" separately from "is the fenced text usable".
+  let body = null
+  let m
+  while ((m = fence.exec(raw)) !== null) body = m[1]
+  return body
 }
 
 /**
@@ -195,16 +210,51 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
     return reply
   }
 
-  /** ④ parse strictly: no fence, bad JSON and unknown fields are three different named refusals. */
+  /**
+   * ④ parse strictly: no usable object, bad JSON and unknown fields are three different named refusals.
+   *
+   * ROUND 370, aligned with the source's `parseReply`: the original has THREE tiers - every fenced block (tag optional,
+   * last parseable one wins), then the whole text as JSON, then the OUTERMOST `{...}` span, because as the source puts
+   * it, models sometimes wrap prose around the object. It rejects arrays and null at every tier and never throws,
+   * returning `{}` when all three fail. Here the third tier is adopted but the total failure stays a NAMED refusal
+   * rather than a silent empty object, since this repository refuses rather than guesses.
+   */
   const parse = (text) => {
-    const body = extractFence(text)
-    if (body === null) fail('VMU_TURN_NO_FENCE', 'the reply carries no json fence, so there is nothing to apply',
-      'ask for exactly one fenced json object (docs/26 §3)')
-    let obj = null
-    try { obj = JSON.parse(body) } catch (e) {
-      fail('VMU_TURN_BAD_JSON', 'the fenced block is not valid JSON: ' + String(e && e.message).slice(0, 120))
+    const raw = String(text === undefined || text === null ? '' : text)
+    const asObject = (s) => {
+      try {
+        const o = JSON.parse(s)
+        return o && typeof o === 'object' && !Array.isArray(o) ? o : null
+      } catch (e) { return null }
     }
-    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) fail('VMU_TURN_BAD_JSON', 'the fenced block must be a JSON OBJECT')
+    // Tier 1: every fenced block, keeping the LAST that parses to an object (the source's loop overwrites as it goes).
+    const fence = /```(?:json)?[ \t]*([\s\S]*?)```/gi
+    let obj = null
+    let m
+    while ((m = fence.exec(raw)) !== null) {
+      const o = asObject(String(m[1]).trim())
+      if (o) obj = o
+    }
+    let sawJsonish = obj !== null
+    // Tier 2: the whole text as JSON.
+    if (!obj) { obj = asObject(raw.trim()); if (obj) sawJsonish = true }
+    // Tier 3: the outermost braces - the source notes models sometimes wrap prose around the object.
+    if (!obj) {
+      const i = raw.indexOf('{')
+      const j = raw.lastIndexOf('}')
+      if (i !== -1 && j > i) {
+        obj = asObject(raw.slice(i, j + 1))
+        if (obj) sawJsonish = true
+        // A brace span that is present but unparseable is BAD JSON, not a missing fence: the two failures must stay
+        // distinguishable, which is the whole reason both codes exist.
+        else fail('VMU_TURN_BAD_JSON', 'the braces in the reply do not hold valid JSON: ' + raw.slice(i, j + 1).slice(0, 120))
+      }
+    }
+    if (!obj) {
+      fail(sawJsonish ? 'VMU_TURN_BAD_JSON' : 'VMU_TURN_NO_FENCE',
+        'the reply carries no usable json object, so there is nothing to apply',
+        'ask for exactly one fenced json object (docs/26 §3); a bare fence, a bare object and a prose-wrapped object are all accepted')
+    }
     const unknown = Object.keys(obj).filter((k) => !Object.prototype.hasOwnProperty.call(owners, k))
     if (unknown.length) {
       fail('VMU_TURN_UNKNOWN_FIELD', 'unknown reply field(s): ' + unknown.join(', ') + ' - refusing rather than guessing what was meant',
