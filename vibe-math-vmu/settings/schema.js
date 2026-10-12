@@ -140,6 +140,8 @@ const CORE_DEFS = Object.freeze([
   // section is not included at all (zero injection), never a "disabled" notice - see docs/26 section 3.14.
   { key: 'vmu.turn.replyCatalogue', type: 'enum', domain: ['compact', 'full'], def: 'compact', hot: HOT.H2, who: 'office', doc: 'which reply catalogue is injected: compact (what the delivered-prompt corpus carries) or full' },
   { key: 'vmu.turn.protocolPath', type: 'string', def: 'Shared/Protocol.md', hot: HOT.H2, who: 'office', doc: 'protocol path named by the compact reply catalogue (relative to the session working directory)' },
+  { key: 'vmu.turn.verifyTarget', type: 'string', def: '(unspecified)', hot: HOT.H2, who: 'office', doc: 'the object under a truth ballot (verify phase)' },
+  { key: 'vmu.turn.verifyKindLabel', type: 'string', def: '(unspecified)', hot: HOT.H2, who: 'office', doc: 'the kind label shown next to the object under a truth ballot' },
   { key: 'vmu.turn.invitedBy', type: 'string', def: '(unspecified)', hot: HOT.H2, who: 'office', doc: 'who invited this temp to speak (meeting phase)' },
   { key: 'vmu.turn.invitedWhy', type: 'string', def: '(unspecified)', hot: HOT.H2, who: 'office', doc: 'why this temp was invited to speak (meeting phase)' },
   { key: 'vmu.turn.feedback', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '是否注入工作反馈行（关掉＝零注入，连段标题都不出现；原线 feedbackOn 同义）' },

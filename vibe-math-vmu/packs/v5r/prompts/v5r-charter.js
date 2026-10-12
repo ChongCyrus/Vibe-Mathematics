@@ -953,6 +953,35 @@ export const CHARTER_BLOCKS = Object.freeze([
       ].join('\n'),
     },
   },
+  // ── THE VERIFICATION PROMPT (source `verifyPrompt`, L4177-4213) ─────────────────────────────────────────────
+  // A whole prompt TYPE, not a section of the ordinary turn, which is why neither a section-by-section reading nor an
+  // item count ever surfaced it: the acceptance measurement found it only when the unmatched lines were grouped, and it
+  // was the largest single family still missing. It is declared as a PHASE block, so it appears when the turn's phase
+  // is `verify` and is absent otherwise - the same exclusive mechanism the meeting states use.
+  {
+    name: 'v5r-verify-core',
+    order: 805,
+    range: 'pack',
+    kind: 'phase',
+    texts: {
+      verify: [
+        '【求真表决 —— {{ roleLabel }} {{ member }} 就对象 {{ setting:vmu.turn.verifyTarget }} 投票】',
+        '',
+        '本所正在对下列对象发起共识验证：',
+        '  对象：{{ setting:vmu.turn.verifyTarget }}（类型：{{ setting:vmu.turn.verifyKindLabel }}）',
+        '',
+        '请给出你**诚实独立的判断**：',
+        '  verdict = 1  表示你认为该对象**绝对为真**；',
+        '  verdict = 0  表示你认为该对象**绝对为假**；',
+        '  介于 0 与 1 之间（例如 0.9）表示**不确定的中间估计**（计入平均概率，不计入法定票数 m）；',
+        "  verdict = 'abstain'（弃权）表示**明确弃权**：计入已投，但**不计选项**（既不算赞成也不算反对）；",
+        "  verdict = 'unable'（无法判断）表示你**无法给出判断**：你会退出本次分母（不计分母），但**仍列在名单中**。",
+        '',
+        '**计票规则（不得误解）**：只有投票通道产生票；**表决期内的发言不改变任何票**；',
+        '**沉默不是同意，也不是反对**——未表态会**阻塞结题**（未表态名单会被列出），绝不会被折算为赞成或反对。',
+      ].join('\n'),
+    },
+  },
   // ── THE MEETING PROMPT'S THREE SPEAKER STATES AND ITS ASK (source `meetingPrompt`, L4128-4163) ───────────────
   // The source describes three mutually exclusive situations and enables exactly one: a temp invited to speak (minutes
   // only, no vote, does not block), a member who is not first (the others' inputs are forwarded verbatim), and the

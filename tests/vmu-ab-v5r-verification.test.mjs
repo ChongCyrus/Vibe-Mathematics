@@ -405,12 +405,16 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   })
   const loopAB = mkAB()
   const oursAB = {}
-  for (const phase of ["founding", "normal", "checkpoint"]) {
+  for (const phase of ["founding", "normal", "checkpoint", "verify"]) {
     const a = await loopAB.assemble(loopAB.open({ member: "acad", role: "academician", roleLabel: "院士", phase, roster: "acad、r-1、r-2", quorum: 3, statusBlock: "[状态] x", round: 3 }).turn)
     oursAB[phase] = a.text
   }
-  const phaseOf = (kind) => (/^founding/.test(kind) ? "founding" : (/checkpoint|heartbeat/.test(kind) ? "checkpoint" : "normal"))
+  const phaseOf = (kind) => (/^founding/.test(kind) ? "founding" : (/checkpoint|heartbeat/.test(kind) ? "checkpoint" : (/verify|vote|ballot/.test(kind) ? "verify" : "normal")))
   const fixedOf = (s) => String(s).split("\n").map((l) => l.trim()).filter((l) => l.length > 12 && !l.includes("{{") && !/^[-#*|·]/.test(l))
+  // The corpus carries an absolute project path in a few lines; this port names that path through a setting
+  // rather than hard-coding it, so a literal comparison would count a covered line as a gap. Normalising both
+  // sides compares what a reader sees rather than where this deployment happens to live.
+  const normPath = (s) => String(s).replace(/VibeMath\/Projects\/[^\s，。；、]*/g, "<project>").replace(/\{\{ setting:vmu\.turn\.protocolPath \}\}/g, "<protocol>")
   let hitAB = 0
   let totalAB = 0
   const missAB = new Set()
@@ -418,7 +422,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
     const mine = oursAB[phaseOf(String(p.kind))]
     for (const line of fixedOf(p.text)) {
       totalAB += 1
-      if (mine.includes(line)) hitAB += 1
+      if (normPath(mine).includes(normPath(line))) hitAB += 1
       else if (missAB.size < 8) missAB.add(line.slice(0, 46))
     }
   }
@@ -433,7 +437,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   const oursAll = Object.values(oursAB).join("\n")
   const originalBlob = PROMPTS.map((p) => String(p.text)).join("\n")
   const ourLines = fixedOf(oursAll)
-  const fromOriginal = ourLines.filter((l) => originalBlob.includes(l))
+  const fromOriginal = ourLines.filter((l) => normPath(originalBlob).includes(normPath(l)))
   const pctOurs = Math.round(100 * fromOriginal.length / ourLines.length)
   ok(ourLines.length > 100 && pctOurs >= 0,
     "V68. **** THE OTHER DIRECTION: " + fromOriginal.length + " of our " + ourLines.length + " fixed prose lines appear in the prompts the original really delivered (" + pctOurs + "%) - the fidelity number, which cannot be inflated by transcribing more text of our own invention",
@@ -467,9 +471,9 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
     "framework notices beyond a refusal: office and academician assignment, group-chat relay, office notice",
     "the compact catalogue VARIANT per phase (its field list says it lists the current phase, and one was transcribed)",
     "the full catalogue and the compact one are alternatives in the original, and both are currently injected here",
-    "the maths push line body (only its function was read, not its text)",
+    "the rendered join of the maths push line: the source holds it as several entries while the corpus has one line",
   ]
-  ok(pctAB >= 39 && knownGapsAB.length === 4,
+  ok(pctAB >= 43 && knownGapsAB.length === 4,
     "V67. **** and the gap is NAMED rather than rounded away, with a FLOOR on the measured ratio: the closed families are the compact catalogue, the refusal notice and the contextPct/compacted clarification, and the four that remain are listed",
     { families: knownGapsAB.length, percent: pctAB })
 }
