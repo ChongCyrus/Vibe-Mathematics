@@ -29,7 +29,7 @@ import { createHostMath } from './host-math.js'
 import { assertDeclared } from './settings/schema.js'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { basename, isAbsolute, join, dirname } from 'node:path'
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 
 export const name = 'vibe-math-vmu'
 
@@ -362,10 +362,48 @@ export function apply(ctx, config = {}) {
 
                 if (!missing) throw e
 
-                loaded = await import('./packs/' + wanted + '.js')
+                // A PACK THAT ONLY CARRIES DATA HAS NO MANIFEST AT ALL, and that is not a failure. The flat file is
+                // kept as a compatibility fallback for packs written before the folder shape, so BOTH misses together
+                // mean "this name carries no manifest" - which the branch below decides on, by looking for data.
+                try {
+
+                  loaded = await import('./packs/' + wanted + '.js')
+
+                } catch (e2) {
+
+                  const missing2 = e2 && (e2.code === 'ERR_MODULE_NOT_FOUND' || e2.code === 'MODULE_NOT_FOUND')
+
+                  if (!missing2) throw e2
+
+                  loaded = null
+
+                }
 
               }
 
+            }
+
+            // A DATA-ONLY PACK IS ACTIVATED, NOT REFUSED. It has no manifest because it has no machinery: the plugin
+            // already read its prompts/sections.json (and settings/defaults.json) by folder name before the kernel was
+            // constructed, and those are the whole of what it contributes. Reporting it as "not applied" would tell a
+            // deployment that turning on a text-only pack FAILED, while the text was in fact already in the pipeline -
+            // so this branch records it as applied with nothing to apply, and only a name with neither a manifest NOR
+            // data reaches the error path below.
+            if (loaded === null) {
+              const here2 = dirname(fileURLToPath(import.meta.url))
+              // A GUARD MUST NOT SWALLOW ITS OWN BUG. The first version of this line wrapped `existsSync` in a try/catch
+              // to tolerate a missing packs folder - and when `existsSync` was not imported at all, the ReferenceError
+              // was caught and reported as "carries nothing", so the pack was refused and the reason was invisible.
+              // A missing folder returns false on its own; the only thing this try/catch could ever hide was a mistake
+              // in the check itself, which is exactly the class of failure this branch exists to prevent.
+              const carries = (rel) => existsSync(join(here2, 'packs', wanted, rel))
+              const promptData = carries(join('prompts', 'sections.json'))
+              const defaultsData = carries(join('settings', 'defaults.json'))
+              if (promptData || defaultsData) {
+                appliedPacks.push({ id: wanted, applied: [], dataOnly: true, carries: { promptSections: promptData, settingsDefaults: defaultsData } })
+                continue
+              }
+              throw new Error('no pack named ' + wanted + ': neither a manifest (packs/' + wanted + '/index.js or packs/' + wanted + '.js) nor data (prompts/sections.json, settings/defaults.json)')
             }
 
             const manifest = typeof wanted === 'string' ? loaded.PACK : wanted

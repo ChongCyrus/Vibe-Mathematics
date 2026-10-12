@@ -657,6 +657,39 @@ if (SELF_PROBE) {
     'E-8(甲) BEHAVIOUR: declareTracks uses the library guard on the entry path too', tracksErr && tracksErr.message)
 }
 
+// ---- 14. a DATA-ONLY pack is activated through the entry, and its text reaches a REAL turn --------------
+// The folder shape says a pack may contribute prompt text as DATA - no manifest, no code - and the plugin reads
+// `packs/<name>/prompts/sections.json` before the kernel exists. What this section adds is the OTHER half: that naming
+// such a pack in `config.packs` ACTIVATES it. Before this round it did not. The loader tried `packs/example-data/index.js`,
+// then `packs/example-data.js`, and reported the name as a pack that failed to apply - while the text had in fact already
+// been merged into the pipeline. A deployment would have seen an error and an empty applied list for a pack that was
+// doing its job, which is the worst version of the defect: the failure report is the only thing that is wrong.
+{
+  const host = fakeCtx()
+  const dataRoot = await mkdtemp(join(tmpdir(), 'vmu-entry-dataonly-'))
+  const handle = entry.apply(host.ctx, { clock, root: dataRoot, packs: ['example-data'] })
+  await new Promise((r) => setTimeout(r, 60))
+  ok(handle.packErrors().length === 0,
+    'E-14: a pack that carries ONLY data activates without a pack error - it has no manifest because it has no machinery',
+    JSON.stringify(handle.packErrors()))
+  const applied = handle.appliedPacks()
+  ok(applied.length === 1 && applied[0].id === 'example-data' && applied[0].dataOnly === true && applied[0].carries.promptSections === true,
+    'and it is recorded as APPLIED, marked data-only, naming what it carries - so a deployment reading the applied list is told the truth',
+    JSON.stringify(applied))
+  const turn = handle.kernel && handle.kernel.turn
+  if (turn && typeof turn.assemble === 'function') {
+    const opened = turn.open({ member: 'acad', role: 'academician', roleLabel: '院士', phase: 'normal', round: 1 })
+    const asm = await turn.assemble(opened.turn)
+    ok(String(asm.text).includes('这一段只出现在常规相位'),
+      'E-14(甲) BEHAVIOUR: the data packs phase-bound text reaches an assembly through the ENTRY, not only through a pipeline built by hand',
+      { chars: String(asm.text).length, hasMarker: String(asm.text).includes('纯数据') })
+  } else {
+    ok(false, 'E-14(甲) the entry must expose the turn face, or the data packs text cannot be observed end to end',
+      { keys: turn ? Object.keys(turn).slice(0, 8) : null })
+  }
+  await rm(dataRoot, { recursive: true, force: true })
+}
+
 console.log('=== VMU ENTRY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

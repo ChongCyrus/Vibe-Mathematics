@@ -22,7 +22,7 @@
 
 ## 2. 目录与清单规范（**按实际实现重写，2026-10-09 ✓**）
 
-**一个 pack ＝ 一个文件夹** `packs/<id>/` ✓（★ **加载器优先 `<id>/index.js`** ✓，**仅在该 import 失败时回退 `<id>.js`** ✓ ⇒ **散装形态走的是兼容路径** ✗）。**文件夹里各有其位** ✓：
+**一个 pack ＝ 一个文件夹** `packs/<id>/` ✓（★ **加载器优先 `<id>/index.js`** ✓，**仅在该 import 失败时回退 `<id>.js`** ✓ ⇒ **散装形态走的是兼容路径** ✗）。★★★ **而一个文件夹可以【没有清单**]✓：★ **只贡献文字的 pack 就是如此** ✓ —— ★ 插件按目录名读它的 `prompts/sections.json` ✓，**它没有机械可应用，所以没有 `PACK`** ✓，**而 `config.packs` 点名它时【它被记为已应用（`dataOnly: true` ＋ 它承载什么）**]✓、**不报错** ✓（★ 轮 442 之前它会报 `ERR_MODULE_NOT_FOUND` ✗ —— ★★ **"文本早已进了流水线，而报告说这个 pack 失败了"** ✓）。**文件夹里各有其位** ✓：
 ```
 vibe-math-vmu/packs/<id>/index.js     # 有行为的 pack：清单在这里（`export const PACK = { … }`）或 star 再导出它 ✓
 vibe-math-vmu/packs/<id>/settings/      # 该 pack 想让旋钮取什么值（纯数据 defaults.json ＋ 可选代码视图 defaults.js ✓）
