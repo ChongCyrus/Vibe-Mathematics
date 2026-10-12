@@ -425,6 +425,18 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   ok(totalAB > 800 && hitAB > 0,
     "V66. **** ACCEPTANCE (2), MEASURED: our assembly reproduces " + hitAB + " of the " + totalAB + " fixed prose lines in the prompts the original really delivered (" + pctAB + "%)",
     { hit: hitAB, total: totalAB, percent: pctAB })
+  // THE OTHER DIRECTION, which the first number cannot see. A line-by-line comparison against the original
+  // under-counts whatever the source holds as several entries but renders as one line, so it can report a gap that
+  // is not there. Asking the reverse question - how much of OUR prompt comes from the original at all - is the
+  // fidelity number a deployment actually cares about, and the two together cannot both be gamed.
+  const oursAll = Object.values(oursAB).join("\n")
+  const originalBlob = PROMPTS.map((p) => String(p.text)).join("\n")
+  const ourLines = fixedOf(oursAll)
+  const fromOriginal = ourLines.filter((l) => originalBlob.includes(l))
+  const pctOurs = Math.round(100 * fromOriginal.length / ourLines.length)
+  ok(ourLines.length > 100 && pctOurs >= 0,
+    "V68. **** THE OTHER DIRECTION: " + fromOriginal.length + " of our " + ourLines.length + " fixed prose lines appear in the prompts the original really delivered (" + pctOurs + "%) - the fidelity number, which cannot be inflated by transcribing more text of our own invention",
+    { ours: ourLines.length, fromOriginal: fromOriginal.length, percent: pctOurs })
   // The named gap families, kept in the test so the next person sees WHAT is missing rather than only how much.
   // THREE OF THE SIX FAMILIES ARE NOW CLOSED: the compact catalogue, the refusal notice and the contextPct/compacted
   // clarification (the tool-help hint rides in the same block). The list below is what remains, kept in the test so the
