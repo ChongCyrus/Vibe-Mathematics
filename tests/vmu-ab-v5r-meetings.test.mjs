@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { apply as applyV5R } from '../vibe-math-v5r/vibe-math-v5r.js'
 import { createMeetings } from '../vibe-math-vmu/kernel/meetings.js'
+import { createMembers } from '../vibe-math-vmu/kernel/members.js'
 
 let passed = 0
 let failed = 0
@@ -278,6 +279,45 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
       'G1x. ★ PROPERTY (mechanism follows the seam): without a seam, and at the internal level, reads are unchanged',
       { noSeam: noSeamRead.ok, internal: internalRead.ok })
     mark('PROPERTY', 'reading a restricted meeting record requires a named member actor when a roster seam is in force, while a seam-less deployment and the internal level are untouched - the level was already recorded and enforced on the quoting path, and the read paths now honour it too')
+  }
+
+  // (g) BEYOND THE MEETING FAMILY: the task family and the member family. Same method - drive both sides, compare
+  // observable structure, and name whatever does not match instead of smoothing it over.
+  {
+    const TASK_TOOLS = ['vibe_v5_task_create', 'vibe_v5_task_list', 'vibe_v5_task_get', 'vibe_v5_task_update']
+    const MEMBER_TOOLS = ['vibe_v5_members', 'vibe_v5_hire', 'vibe_v5_fire', 'vibe_v5_assign', 'vibe_v5_prioritize']
+    const reachable = [...TASK_TOOLS, ...MEMBER_TOOLS].filter((n) => registry.get(n))
+    ok(reachable.length === TASK_TOOLS.length + MEMBER_TOOLS.length,
+      'G2a. ★ v5r registers the task family (4) and the member family (5)', { reachable: reachable.length })
+    const req = (n) => ((registry.get(n).parameters || {}).required || []).slice()
+    ok(req('vibe_v5_task_create').includes('subject') && req('vibe_v5_task_get').includes('task_id'),
+      'G2b. ★ v5r names the subject on create and the task_id on get', { create: req('vibe_v5_task_create'), get: req('vibe_v5_task_get') })
+    ok(req('vibe_v5_task_update').includes('expected_revision'),
+      'G2c. ★★ v5r REQUIRES expected_revision on a task update: the caller must state the revision it saw', req('vibe_v5_task_update'))
+    ok(req('vibe_v5_hire').includes('purpose') && req('vibe_v5_hire').includes('initial_task') && req('vibe_v5_fire').includes('id'),
+      'G2d. ★ v5r names why a member is hired and why one is dismissed', { hire: req('vibe_v5_hire'), fire: req('vibe_v5_fire') })
+
+    // our side, from the faces themselves
+    const tasksSrc = readFileSync(new URL('../vibe-math-vmu/kernel/tasks.js', import.meta.url), 'utf8')
+    const membersSrc = readFileSync(new URL('../vibe-math-vmu/kernel/members.js', import.meta.url), 'utf8')
+    const tasksMethods = [...new Set([...tasksSrc.matchAll(/^\s{4}(?:async )?([a-zA-Z][\w]*)\(/gm)].map((m) => m[1]))]
+    const membersMethods = [...new Set([...membersSrc.matchAll(/^\s{4}(?:async )?([a-zA-Z][\w]*)\(/gm)].map((m) => m[1]))]
+    ok(tasksMethods.includes('create') && tasksMethods.includes('transition') && tasksMethods.includes('list'),
+      'G2e. ★ vmu likewise creates, transitions and lists tasks', tasksMethods)
+    ok(membersMethods.includes('hire') && membersMethods.includes('end') && membersMethods.includes('roles'),
+      'G2f. ★ vmu likewise hires, ends and assigns roles (the member family the earlier review re-judged as KEEP)', membersMethods)
+    mark('EQUAL', 'both sides separate create / read / update for tasks and both name a hire and a dismissal for members')
+    ok(!/revision/i.test(tasksSrc),
+      'G2g. ★★ DIVERGENT (named, and it matters): vmu task updates carry NO revision, so two writers can lose one another',
+      { v5r: 'expected_revision is REQUIRED', vmu: 'no revision concept in kernel/tasks.js' })
+    mark('DIVERGENT', 'a task update: v5r REQUIRES expected_revision (the caller states the revision it saw), while vmu kernel/tasks.js has no revision concept at all, so a lost update is possible. Reason: the face was built for a single writer; the revision idea already exists elsewhere in the kernel (bidding.js revisions, capacity.js staleness), so the shape is familiar. Revival: give the task face an expected-revision precondition and refuse a stale write by name; that is a kernel change and gets its own interval.')
+
+    // and the member family, driven on our side
+    const mm = createMembers({ clock: () => 1000, settings: {}, log: () => {} })
+    const h = vmu(() => mm.hire({ id: 'r-9', purpose: 'prove lemma L' }))
+    const e = vmu(() => mm.end({ id: 'r-9', reason: 'done' }))
+    ok(h.returned === true && h.ok === true && e.returned === true && e.ok === true,
+      'G2h. ★ vmu hires and ends a member through its own surface (not just in schema)', { hire: h.ok, end: e.ok })
   }
 
   seamRegistry.clear()
