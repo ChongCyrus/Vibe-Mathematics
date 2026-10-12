@@ -269,7 +269,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.trust.maxSignalsPerSubject', type: 'positiveInteger', def: 500, hot: HOT.H1, who: 'office', doc: '单主体信号上限（溢出必计数）' },
   { key: 'vmu.trust.aggregate', type: 'enum', domain: ['mean', 'weighted', 'median'], def: 'weighted', hot: HOT.H1, who: 'office', doc: '聚合方式' },
   // ROUND 253: 信任面的四键（17 卷；现由 kernel/trust.js 读取）.
-  { key: 'vmu.trust.minSamples', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "样本数下限（0＝关；不足 ⇒ score=null 且 reason='insufficient-samples'，★ 样本少不是分数低）" },
+  { key: 'vmu.trust.minSamples', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "样本数下限（0＝关；不足 ⇒ score=null 且 reason='insufficient-entries'，★ 样本少不是分数低）" },
   { key: 'vmu.trust.displayMode', type: 'enum', domain: ['score', 'band', 'hidden'], def: 'score', hot: HOT.H1, who: 'office', doc: "分数展示（score 给数／band 只给带／hidden 全隐；★ 经 hidden 泄漏的数字不叫隐藏）" },
   { key: 'vmu.trust.appealNeedsEvidence', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "申诉须带证据（true ⇒ dispute() 无证据即具名拒，VMU_TRUST_EVIDENCE_REQUIRED）" },
   { key: 'vmu.trust.decayOnEnd', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "关系结束后是否继续按时间衰减（false ⇒ 冻结在结束时刻，使终值可复现）" },
@@ -688,10 +688,10 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.discipline.restoreNeedsHuman', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "复职是否需人类（true ⇒ 机器不能自行复职）" },
   { key: 'vmu.discipline.postmortemRequired', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "复职必须带复盘（缺失具名拒）" },
   // ROUND 221: custody (kernel/custody.js) / budget (kernel/budget.js) / audit (kernel/audit.js).
-  { key: 'vmu.custody.ledgerDir', type: 'string', def: 'Ops/Biosamples', hot: HOT.H1, who: 'office', doc: "样本台账目录（相对项目根；本面只 REPORT 不触碰）" },
+  { key: 'vmu.custody.ledgerDir', type: 'string', def: 'Ops/Custody', hot: HOT.H1, who: 'office', doc: "样本台账目录（相对项目根；本面只 REPORT 不触碰）" },
   { key: 'vmu.custody.requireChain', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "必须链式保管（true ⇒ 登记须开链、转移须给持有人，否则具名拒）" },
   { key: 'vmu.custody.chainGapPolicy', type: 'enum', domain: ['block', 'warn'], def: 'block', hot: HOT.H1, who: 'office', doc: "链断策略（block ⇒ 断链具名拒；warn ⇒ 记录并告警）" },
-  { key: 'vmu.custody.freezeThawWarnAt', type: 'natural', def: 5, hot: HOT.H1, who: 'office', doc: "冻融次数预警阈值（达阈告警；契约是告警而非拒绝 ✓）" },
+  { key: 'vmu.custody.storageCycleWarnAt', type: 'natural', def: 5, hot: HOT.H1, who: 'office', doc: "冻融次数预警阈值（达阈告警；契约是告警而非拒绝 ✓）" },
   { key: 'vmu.custody.destroyKeepsReference', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "销毁后保留引用（true ⇒ 记录留存并说明样本已灭失）" },
   { key: 'vmu.custody.pseudonymStyle', type: 'enum', domain: ['pseudonym', 'code'], def: 'pseudonym', hot: HOT.H1, who: 'office', doc: "主体引用风格（pseudonym ⇒ 看起来像明文标识的引用具名拒）" },
   { key: 'vmu.custody.mappingIrreversible', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "映射不可逆（内核强制：true 时【拒绝】存入主体↔引用的可逆映射，而不是加密后寄望）" },

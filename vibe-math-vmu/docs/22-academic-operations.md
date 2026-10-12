@@ -131,11 +131,11 @@
 | 字段 | 内容 |
 |---|---|
 | **名称** | 共享资源台账（Shared Resource Ledger） |
-| **目的** | 每台/每套设备有**唯一身份**（资产号＋位置＋责任人＋能力标签），使"谁能用、用了什么、产出挂在哪"可追溯 ✓ |
-| **面向谁** | 设施管理员、PI、执行实验的代理 |
+| **目的** | 每个共享资源有**唯一身份**（资源号＋位置/端点＋责任人＋能力标签），使"谁能用、用了什么、产出挂在哪"可追溯 ✓ |
+| **面向谁** | 资源管理员、使用资源的代理、审计 |
 | **接口形状** | 服务 `vmu.resource`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））：`register(resource)`／`list(filter)`／`get(id)`／`retire(id, reason)`；工具 `vibe_vmu_resource` ⛔ 未实现（唯一入口：登记/预约/维护三类操作）；协议 `InstrumentReservation` ⛔ 待实现 |
 | **可调控参数** | `vmu.resource.ledgerDir`（默认 `Ops/Resources`）、`vmu.resource.requireOwner`（默认 `true`）、`vmu.resource.capabilityTags`（默认 `[]`） |
-| **相关错误码** | `VMU_EQUIP_NOT_REGISTERED` ⛔／`VMU_EQUIP_OWNER_REQUIRED` ⛔（详见 §14） |
+| **相关错误码** | 见 `03-§8` 的 **VMU_RESOURCE_\***（**已实现 ✓**；本行原列的 ⛔ 计划名已作废 ✗）（详见 §14） |
 | **四条哲学** | F：不登记＝无设施概念 ✓｜T：目录与必填字段可配 ✓｜D：能力标签与准入规则由 pack 声明 ✓｜X：新设备类型只加标签 ✓ |
 | **实现要点** | 台账是**记录轨条目**（07 只追加）＋**索引视图**；删除＝`retire`（保留历史，不物理删）✓ |
 | **依赖与前置** | `vibe_vmu_records` ✓、`vibe_vmu_set` ✓（键）、`vibe_vmu_status` ✓（现况） |
@@ -148,13 +148,13 @@
 |---|---|
 | **名称** | 预约与占用（Reservation & Occupancy） |
 | **目的** | 同一资源在**时间轴上不冲突** ✓；冲突时按**显式优先级**裁决并留痕（不靠默认先到先得）✓ |
-| **面向谁** | 使用者、设施管理员、调度代理 |
+| **面向谁** | 使用者、资源管理员、调度代理 |
 | **接口形状** | 服务 `vmu.resource.reserve(holder, window, purpose)`／`release(reservationId)`／`waitlist(id)`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））；钩子 `ops/reservation-requested` ⛔ 提案、`ops/reservation-conflict` ⛔ 提案；协议 `InstrumentReservation` ⛔ |
 | **可调控参数** | `vmu.resource.reservationHorizonDays`（默认 `30`）、`vmu.resource.maxHoldHours`（默认 `12`）、`vmu.resource.priorityPolicy`（默认 `fifo`；可选 `pi-first`／`quota-weighted`）、`vmu.resource.waitlistPolicy`（默认 `auto-offer`）、`vmu.resource.overbookRatio`（默认 `1.0`＝不超额） |
-| **相关错误码** | `VMU_EQUIP_SLOT_CONFLICT` ⛔／`VMU_EQUIP_HOLD_LIMIT` ⛔／`VMU_EQUIP_WAITLIST_FULL` ⛔ |
+| **相关错误码** | 见 `03-§8` 的 **VMU_RESOURCE_\***（**已实现 ✓**；本行原列的 ⛔ 计划名已作废 ✗） |
 | **四条哲学** | F：不排期＝自由抢用 ✓｜T：时间窗/上限/优先级全可配 ✓｜D：优先级**是 pack 的判定点**（内核不认识"PI 优先"）✓｜X：新调度算法只换判定点 ✓ |
 | **实现要点** | 冲突判定＝**区间集合**运算（确定性、可复算）；裁决必须写 `reason` 与规则来源 ✓；候补"自动递补"可被人类审批打断（O-6）✓ |
-| **依赖与前置** | §2.1 台账、`vibe_vmu_task` ✓（把占用挂到任务）、08 工作流原语 ✓（审批形态） |
+| **依赖与前置** | §2.1 台账、`vibe_vmu_task` ✓（把占用挂到任务（(f) 工作流））、08 工作流原语 ✓（审批形态） |
 | **成熟度** | ✗ 计划 |
 | **优先级** | P1 |
 
@@ -164,10 +164,10 @@
 |---|---|
 | **名称** | 维护与校准（Maintenance & Calibration） |
 | **目的** | 校准过期/维护中的设备**不得**被用于产出"可引用数据" ✓（把"能用"与"数据可信"分开） |
-| **面向谁** | 设施管理员、质量负责人、执行实验的代理 |
+| **面向谁** | 资源管理员、质量负责人、使用资源的代理 |
 | **接口形状** | 服务 `vmu.resource.scheduleMaintenance(id, window)`／`recordCalibration(id, cert)`／`block(id, reason)`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））；钩子 `ops/calibration-due` ⛔ 提案、`ops/downtime-started` ⛔ 提案 |
 | **可调控参数** | `vmu.resource.requireCalibration`（默认 `true`）、`vmu.resource.calibrationDueDays`（默认 `365`）、`vmu.resource.blockOnOverdue`（默认 `true`）、`vmu.resource.downtimePolicy`（默认 `queue`；可选 `fail`） |
-| **相关错误码** | `VMU_EQUIP_CALIBRATION_DUE` ⛔／`VMU_EQUIP_MAINTENANCE_BLOCKED` ⛔／`VMU_EQUIP_CERT_MISSING` ⛔ |
+| **相关错误码** | 见 `03-§8` 的 **VMU_RESOURCE_\***（**已实现 ✓**；本行原列的 ⛔ 计划名已作废 ✗） |
 | **四条哲学** | F：不声明＝无校准要求 ✓｜T：周期/阻断策略可配 ✓｜D：设备类别→校准要求的映射由 pack ✓｜X：新证书类型只加字段 ✓ |
 | **实现要点** | "过期阻断"必须**与产出绑定**：被阻断设备的数据在 07 的 `datasets` 上打**来源标注**（血缘可追，引用 16-L9）✓；解除阻断需人批准 ✓ |
 | **依赖与前置** | §2.1、07 `datasets` ✓、16 血缘面 ✓ |
@@ -180,10 +180,10 @@
 |---|---|
 | **名称** | 资源产出引用（Resource Capture Reference） |
 | **目的** | 资源产出的原始文件**不复制**，只在记录里给**引用**（路径＋哈希＋设备号＋时间窗＋校准状态）✓ |
-| **面向谁** | 实验执行者、数据管理、审计 |
+| **面向谁** | 使用资源的代理、数据管理、审计 |
 | **接口形状** | 服务 `vmu.resource.attachCapture(id, datasetRef)`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））；协议 `CaptureRef` ⛔ |
 | **可调控参数** | `vmu.resource.dataCaptureRef`（默认 `required`；可选 `optional`→`ignore`）、`vmu.resource.hashAlgo`（默认 `sha256`） |
-| **相关错误码** | `VMU_EQUIP_CAPTURE_UNLINKED` ⛔ |
+| **相关错误码** | 见 `03-§8` 的 **VMU_RESOURCE_\***（**已实现 ✓**；本行原列的 ⛔ 计划名已作废 ✗） |
 | **四条哲学** | F：不挂引用＝数据与设备无关 ✓｜T：必填程度可配 ✓｜D：字段集由 pack ✓｜X：新采集格式只加字段 ✓ |
 | **实现要点** | 引用**必须**含校准状态快照 ⇒ 事后可判定"这份数据来自已校准设备"✓ |
 | **依赖与前置** | 07 归档/`datasets` ✓、§2.3 |
@@ -194,18 +194,18 @@
 
 ### 2.5 保管链与溯源（Biobank / Custody —— **补 N4** ✗✓）
 
-> **为什么要有这一节** ✗：批评者第 6/7 轮关键词实测"**共享资源与保管**"**0 命中** ✗ —— 一个能管仪器与经费的平台却**没有资源台账与保管链**这一最典型的实验资产 ✓。样本的特殊性在于：它**不可重建** ✓、与**假名引用**关联 ✓、且必须证明"**一直没脱离监管**" ✓。
+> **为什么要有这一节** ✗：批评者第 6/7 轮关键词实测"**共享资源与保管**"**0 命中** ✗ —— 一个能管仪器与经费的平台却**没有资源台账与保管链**这一最典型的实验资产 ✓。样本的特殊性在于：它**不可重建** ✓、与**不可逆假名引用**关联 ✓、且必须证明"**一直没脱离监管**" ✓。
 
 | 字段 | 内容 |
 |---|---|
 | **名称** | 保管条目台账与链式保管（Custody Ledger & Chain of Custody） |
-| **目的** | 每个样本**可追溯**：谁采集／谁保管／谁取用／冻融几次／是否已销毁 ✓；**链式保管断链必须报** ✗✓；销毁后仍保留**引用**（与 07 只引用 ✓） |
-| **面向谁** | 实验执行者、样本管理员、伦理/合规、审计、代理 |
-| **接口形状** | 协议 `CustodyRecord` ⛔ 待实现：`{ sampleId, pseudonym, collectedAt, storage, freezeThawCount, chainOfCustody[] }`；协议 `CustodyEvent` ⛔ 待实现：`{ sampleId, from, to, atMs, why }`；服务 `vmu.custody`（★ **已接线 ✓**（实测 7/7，见 §0.1））：`register(sample)`／`transfer(sampleId, {from,to,why})`／`chain(sampleId)`／`verify(sampleId)`／`destroy(sampleId,{reason})`；工具 `vibe_vmu_custody` ⛔ 未实现 |
-| **可调控参数** | `vmu.custody.ledgerDir`（默认 `Ops/Biosamples`）、`vmu.custody.requireChain`（默认 `true`）、`vmu.custody.chainGapPolicy`（默认 `block`；可选 `warn`）、`vmu.custody.freezeThawWarnAt`（默认 `5`）、`vmu.custody.destroyKeepsReference`（默认 `true`）、`vmu.custody.pseudonymStyle`（默认 `pseudonym`）、`vmu.custody.mappingIrreversible`（默认 **`true`** ✗✓） |
-| **相关错误码** | `VMU_BIOSAMPLE_NOT_REGISTERED` ⛔／`VMU_BIOSAMPLE_CHAIN_GAP` ⛔（**断链**）／`VMU_BIOSAMPLE_FREEZE_THAW_LIMIT` ⛔／`VMU_BIOSAMPLE_SUBJECT_LINK_FORBIDDEN` ⛔／`VMU_BIOSAMPLE_DESTROYED` ⛔ |
-| **四条哲学** | F：不登记＝无样本概念 ✓｜T：断链策略/冻融阈值/去标识样式可配 ✓｜D：链式三要素（who/when/why）由 **pack 声明**，内核不认识"保管条目" ✓｜X：新样本类型只加字段 ✓ |
-| **实现要点** | ① 链式保管是**只追加事件流** ✓，每次转移三要素缺一即拒（`VMU_BIOSAMPLE_CHAIN_GAP`）✓；② **断链检测＝连续性检查**：上一环 `to` ≠ 下一环 `from`、时间倒流、或事件缺失 ⇒ **断链必须报** ✗✓（`block` 时拒绝后续操作并具名，`warn` 时计数并继续）；③ **销毁＝状态转换＋保留引用**（`destroyed`＋原因＋时间；样本记录**不删**，与 07 的保留/回收站面**只引用不重定义** ✗）；④ 与 **20 卷去标识化只引用** ✗：本卷只存 `pseudonym`（假名），**样本↔受试者映射默认不可逆** ✓ —— 不提供反向查询接口，任何"由样本找回受试者"的请求 ⇒ `VMU_BIOSAMPLE_SUBJECT_LINK_FORBIDDEN` |
+| **目的** | 每个样本**可追溯**：谁入库／谁保管／谁取用／取还几次／是否已销毁 ✓；**链式保管断链必须报** ✗✓；销毁后仍保留**引用**（与 07 只引用 ✓） |
+| **面向谁** | 实验执行者、保管管理员、合规/审计、代理 |
+| **接口形状** | 协议 `CustodyRecord` ⛔ 待实现：`{ sampleId, pseudonym, collectedAt, storage, storageCycles, chainOfCustody[] }`；协议 `CustodyEvent` ⛔ 待实现：`{ sampleId, from, to, atMs, why }`；服务 `vmu.custody`（★ **已接线 ✓**（实测 7/7，见 §0.1））：`register(sample)`／`transfer(sampleId, {from,to,why})`／`chain(sampleId)`／`verify(sampleId)`／`destroy(sampleId,{reason})`；工具 `vibe_vmu_custody` ⛔ 未实现 |
+| **可调控参数** | `vmu.custody.ledgerDir`（默认 `Ops/Biosamples`）、`vmu.custody.requireChain`（默认 `true`）、`vmu.custody.chainGapPolicy`（默认 `block`；可选 `warn`）、`vmu.custody.storageCycleWarnAt`（默认 `5`）、`vmu.custody.destroyKeepsReference`（默认 `true`）、`vmu.custody.pseudonymStyle`（默认 `pseudonym`）、`vmu.custody.mappingIrreversible`（默认 **`true`** ✗✓） |
+| **相关错误码** | 见 `03-§8` 的 **VMU_CUSTODY_\***（**已实现 ✓**；本行原列的 ⛔ 计划名已作废 ✗）（**断链**）／见 `03-§8` 的 **VMU_CUSTODY_\***（**已实现 ✓**；本行原列的 ⛔ 计划名已作废 ✗） |
+| **四条哲学** | F：不登记＝无保管条目概念 ✓｜T：断链策略/取还阈值/假名样式可配 ✓｜D：链式三要素（who/when/why）由 **pack 声明**，内核不认识"保管条目" ✓｜X：新的保管对象类型只加字段 ✓ |
+| **实现要点** | ① 链式保管是**只追加事件流** ✓，每次转移三要素缺一即拒（见 `03-§8` 的 **VMU_CUSTODY_\***（**已实现 ✓**；本行原列的 ⛔ 计划名已作废 ✗））✓；② **断链检测＝连续性检查**：上一环 `to` ≠ 下一环 `from`、时间倒流、或事件缺失 ⇒ **断链必须报** ✗✓（`block` 时拒绝后续操作并具名，`warn` 时计数并继续）；③ **销毁＝状态转换＋保留引用**（`destroyed`＋原因＋时间；样本记录**不删**，与 07 的保留/回收站面**只引用不重定义** ✗）；④ 与 **20 卷去标识化只引用** ✗：本卷只存 `pseudonym`（假名），**样本↔受试者映射默认不可逆** ✓ —— 不提供反向查询接口，任何"由样本找回受试者"的请求 ⇒ 见 `03-§8` 的 **VMU_CUSTODY_\***（**已实现 ✓**；本行原列的 ⛔ 计划名已作废 ✗） |
 | **依赖与前置** | §2.1 台账（同构）、07 记录轨/保留（引用 ✓）、20 去标识化与密级（引用 ✓）、§8.2 伦理审批（取样前闸点）✓ |
 | **成熟度** | ✗ 计划（本仓今天**没有**任何样本/保管实现 ✓） |
 | **优先级** | P1（不可重建的资产 + 合规风险） |
@@ -814,7 +814,7 @@
 | 保管条目 | `vmu.custody.ledgerDir` | string | `Ops/Biosamples` | 相对项目根 | 样本管理员 |
 | 保管条目 | `vmu.custody.requireChain` | boolean | `true` | — | pack |
 | 保管条目 | `vmu.custody.chainGapPolicy` | string | `block` | `block`｜`warn` | pack |
-| 保管条目 | `vmu.custody.freezeThawWarnAt` | integer | `5` | ≥0 | pack |
+| 保管条目 | `vmu.custody.storageCycleWarnAt` | integer | `5` | ≥0 | pack |
 | 保管条目 | `vmu.custody.destroyKeepsReference` | boolean | `true` | — | pack（引用 07 保留面 ✓） |
 | 保管条目 | `vmu.custody.pseudonymStyle` | string | `pseudonym` | `pseudonym`｜`code` | pack（与 20 联动） |
 | 保管条目 | `vmu.custody.mappingIrreversible` | boolean | **`true`** | —（**默认不可逆** ✓） | **内核强制** ✓ |

@@ -370,7 +370,7 @@ vmu.packs.active: [v5r]
 | `vmu.trust.appealWindowMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 申诉窗口（0＝不限） |
 | `vmu.trust.maxSignalsPerSubject` | int ≥1 | `500` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 单主体信号上限（溢出必计数） |
 | `vmu.trust.aggregate` | enum | `weighted` | `mean`∣`weighted`∣`median` | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 聚合方式 |
-| `vmu.trust.minSamples` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 样本数下限（0＝关；不足 ⇒ score=null 且 reason='insufficient-samples'，★ 样本少不是分数低） |
+| `vmu.trust.minSamples` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 样本数下限（0＝关；不足 ⇒ score=null 且 reason='insufficient-entries'，★ 样本少不是分数低） |
 | `vmu.trust.displayMode` | enum | `score` | `score`∣`band`∣`hidden` | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 分数展示（score 给数／band 只给带／hidden 全隐；★ 经 hidden 泄漏的数字不叫隐藏） |
 | `vmu.trust.appealNeedsEvidence` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 申诉须带证据（true ⇒ dispute() 无证据即具名拒，VMU_TRUST_EVIDENCE_REQUIRED） |
 | `vmu.trust.decayOnEnd` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/trust.js` | 关系结束后是否继续按时间衰减（false ⇒ 冻结在结束时刻，使终值可复现） |
@@ -752,10 +752,10 @@ vmu.packs.active: [v5r]
 | `vmu.discipline.suspendMaxMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/discipline.js` | 停职上限（0＝不设上限；有上限则钳制并自曝 clamped） |
 | `vmu.discipline.restoreNeedsHuman` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/discipline.js` | 复职是否需人类（true ⇒ 机器不能自行复职） |
 | `vmu.discipline.postmortemRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/discipline.js` | 复职必须带复盘（缺失具名拒） |
-| `vmu.custody.ledgerDir` | string | `Ops/Biosamples` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 样本台账目录（相对项目根；本面只 REPORT 不触碰） |
+| `vmu.custody.ledgerDir` | string | `Ops/Custody` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 样本台账目录（相对项目根；本面只 REPORT 不触碰） |
 | `vmu.custody.requireChain` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 必须链式保管（true ⇒ 登记须开链、转移须给持有人，否则具名拒） |
 | `vmu.custody.chainGapPolicy` | enum | `block` | `block`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 链断策略（block ⇒ 断链具名拒；warn ⇒ 记录并告警） |
-| `vmu.custody.freezeThawWarnAt` | int ≥0 | `5` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 冻融次数预警阈值（达阈告警；契约是告警而非拒绝 ✓） |
+| `vmu.custody.storageCycleWarnAt` | int ≥0 | `5` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 冻融次数预警阈值（达阈告警；契约是告警而非拒绝 ✓） |
 | `vmu.custody.destroyKeepsReference` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 销毁后保留引用（true ⇒ 记录留存并说明样本已灭失） |
 | `vmu.custody.pseudonymStyle` | enum | `pseudonym` | `pseudonym`∣`code` | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 主体引用风格（pseudonym ⇒ 看起来像明文标识的引用具名拒） |
 | `vmu.custody.mappingIrreversible` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 映射不可逆（内核强制：true 时【拒绝】存入主体↔引用的可逆映射，而不是加密后寄望） |

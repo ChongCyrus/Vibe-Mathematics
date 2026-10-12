@@ -467,6 +467,8 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 > **⑭ ★★★ 码必须先【出现在文档里】才能被登记**（**轮 268 实测：一个码被码表拒收，另一个却早被接受** ✗✓）：**`generate-planned-codes.mjs` 的登记来源只有两处** ✓ —— **① 文档点名的码（`docs/03` 的生成块由它派生 ✓）；② `docs/03` 手写表【第一列】的反引号码 ✓**（**族前缀（尾部 `_`）跳过 ✓；手写区已有的不重复 ✓**）。**实测差异** ✓：**`VMU_RECRUIT_NEEDS_HUMAN` 早在生成块里作为"规划码"出现**（**由某卷点名 ⇒ 生成器认它 ✓**），**同批另一个码两处都没有 ⇒ 被拒** ✗。
 > **⑳ ★★★ 删一个【族】不能按文件删，必须按族逐一枚举触点**（**轮 301 实测** ✗✓）：**撤 `custody` 时共 15 处触点**（内核面／`schema.js` 行／`index.js` 的 import＋构造＋**聚合解构表成员**＋`registry.register`＋getter／`package.json` ＋ `installer.js` 双清单／零机制矩阵生成器／服务审计映射／`03` 的码表行／卷内设置表与章节／生成物／台账）✓。★★ **两处最危险的耦合点**：**① 共享套件** —— 那个测试文件**同时覆盖三个族**（被撤的 ＋ `budget` ＋ `audit`），**按文件删会静默丢掉两个保留族的 30 条断言** ✗ ⇒ **必须拆套件**（拆后实测 30/0 全绿 ✓）；**② 聚合解构表** —— 我把 `discipline, custody, explain` **整段删掉**，**连带移除两个活着的服务** ✗ ⇒ **语法检查当场拦下**，修复后**实证**内核 104 服务且两个服务都在 ✓。**可操作做法** ✓：**先 `git grep -c` 取全触点清单再动手**；**共享套件一律"拆"不"删"**；**聚合表只改成员、不删整段，并断言修复结果**；**撤完必须 `node --check` ＋ 载入内核点数服务** ✓。
 >
+> **㉒ ★★★ 改名时【不要替换裸词】**（**轮 308 实测** ✗✓）：**把 `sample` 整词替换成 `entry` 时，误伤了无关的标识符** ✗ —— `vmu.metrics.`**`sampleHighVolume`**／**`sampleRate`** 被改成 `entryHighVolume`／`entryRate` ✗ ⇒ **生成器随即把【原键】重新登记**，于是同一语义出现**两行**，**未接线计数 +2**（92 → 94）✓。**危害是"看起来都对"**：语法绿、门禁绿，**只有成熟度/计数审计把差值暴露出来** ✓✓。**可操作做法** ✓：**① 只替换【限定名**（带族前缀的 `vmu.<family>.<key>`，或确切列出的键名表）**✗；② 若确需替换裸词，先 `git grep -c` 列出**它出现的每一处**并逐条判定** ✓；③ 改完**对比生成物**（`git diff` 生成表/注册表）**，让"多出来的行"自己现身 ✓**。
+>
 > **㉑ ★★★ 在 Windows 上从 git 历史取文件时，【修订号必须加引号】**（**轮 305 实测** ✗✓）：**Node 的 `execSync` 走 `cmd.exe`，而 `cmd` 把 `^` 当转义符** ✗ ⇒ 把 `git show <sha>^:<path>` 直接拼进命令行时，`^` 会被吞掉，**报错却是 "path does not exist in `<sha>`"** —— **看起来像"文件不存在"，其实是"修订号被改了"** ✗✓。**正确做法** ✓：把 `<sha>:<path>` 整段加双引号再交给 `git`。★ **同类**：`^`／`&`／`|`／`>` 在 `cmd` 里都不是普通字符 ⇒ **凡把 git 修订表达式拼进 shell 字符串，一律加引号** ✓。
 >
 >
@@ -652,7 +654,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `control` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（paused: []、registrySize: 0；archivingNeverPausedByItself 与 idleNeverRecessesByItself 自曝两条不变式 ✓）） |
 | `course` · `open()` | refusal | VMU_INVALID_ARGUMENT | enforced=[1] enforcedScope=evaluated-so-far | 具名拒或 ok（task-214 实测：`open()` ⇒ 具名拒 **VMU_INVALID_ARGUMENT**（带口径 `enforced=[1]`）⇒ 零机制＝缺课程参数 ⇒ 具名拒 ✓） |
 | `crypto` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
-| `custody` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（samples: 0；chainRequired: true 自曝 ✓）；无样本⇒无可转移对象，**不拒** ✓） |
+| `custody` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（entries: 0；chainRequired: true 自曝 ✓）；无条目⇒无可转移对象，**不拒** ✓） |
 | `delegation` · `check()` | ok | — | — | 具名拒或 ok（task-214 批 3 补参（形状取自测试 vmu-delegation.test.mjs:30 `check({actor,action})`）：补参前实测具名拒 **VMU_INVALID_ARGUMENT**（带口径 `enforcedScope=evaluated-so-far`）⇒ 补参后应见判定对象（放行）⇒ 已放宽为"具名拒或 ok" ✓） |
 | `discipline` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（subjects: 0；breakerOffMeansOff: true 自曝「阈值 0＝机制关，而非允许零次失败」 ✓）） |
 | `domaincompliance` · `status()` | ok | — | — | ok 或 object（实测（轮 247）：零声明下 status() ⇒ ok（declared=[]、trail=0 自曝 ✓）；gate() 对**未满足的必答项【逐项点名】**并拒（VMU_GATE_UNSATISFIED ✓），**fail-closed 是设计**（20 卷 §9.4① 明文：闸未满足 ⇒ 动作不发生 ✓）） |

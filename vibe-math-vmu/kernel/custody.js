@@ -1,4 +1,4 @@
-// vmu kernel · custody — the sample ledger and the CHAIN OF CUSTODY
+// vmu kernel · custody — the entry ledger and the CHAIN OF CUSTODY
 //
 // ★ 范围基准（2026-10-11）：**本面已判定降级为扩展** ✗ —— **对数学研究举不出消费者** ✓（判据与登记见 docs/23-§1b）。
 //   **本行注释不是"已完成"，而是"待改"的证据** ✗：键族与代码仍在，**移出流程必须包含撤代码**（docs/23-§2 规则 4）。
@@ -6,7 +6,7 @@
 // （docs/22 §2.5 biobank / chain of custody; docs/07 owns the durability library and is referenced for retention, never
 // redefined here; docs/20 supplies the pseudonymisation side）.
 //
-// WHAT IT IS: a ledger of physical samples, the custody chain that moves with them, the policy when that chain has a gap,
+// WHAT IT IS: a ledger of physical entries, the custody chain that moves with them, the policy when that chain has a gap,
 // freeze/thaw accounting with a warning threshold, destruction that keeps the reference, the style of subject reference and
 // the irreversibility of the mapping from subject to reference.
 //
@@ -32,7 +32,7 @@ const boolOr = (v, d) => (typeof v === 'boolean' ? v : d)
 const intOr = (v, d) => (Number.isInteger(v) ? v : d)
 
 export const CODE = Object.freeze({
-  sampleUnknown: 'VMU_CUSTODY_ENTRY_UNKNOWN',
+  entryUnknown: 'VMU_CUSTODY_ENTRY_UNKNOWN',
   chainRequired: 'VMU_CUSTODY_CHAIN_REQUIRED',
   chainGap: 'VMU_CUSTODY_CHAIN_GAP',
   reversibleMapping: 'VMU_CUSTODY_REVERSIBLE_MAPPING',
@@ -53,36 +53,36 @@ export function createCustody({ clock = () => 0, log = null, settings = {}, bus 
   const say = (ev) => { if (log && typeof log.append === 'function') { try { log.append(ev) } catch (e) { /* logging never breaks the face */ } } }
 
   const cfg = () => ({
-    ledgerDir: str(sget('vmu.custody.ledgerDir')) || 'Ops/Biosamples',
+    ledgerDir: str(sget('vmu.custody.ledgerDir')) || 'Ops/Custody',
     requireChain: boolOr(sget('vmu.custody.requireChain'), true),
     chainGapPolicy: ['block', 'warn'].includes(sget('vmu.custody.chainGapPolicy')) ? sget('vmu.custody.chainGapPolicy') : 'block',
-    freezeThawWarnAt: intOr(sget('vmu.custody.freezeThawWarnAt', 5), 5),
+    storageCycleWarnAt: intOr(sget('vmu.custody.storageCycleWarnAt', 5), 5),
     destroyKeepsReference: sget('vmu.custody.destroyKeepsReference') !== false,
     pseudonymStyle: ['pseudonym', 'code'].includes(sget('vmu.custody.pseudonymStyle')) ? sget('vmu.custody.pseudonymStyle') : 'pseudonym',
     mappingIrreversible: sget('vmu.custody.mappingIrreversible') !== false,   // 内核强制：默认 true
   })
 
-  const samples = new Map()   // id -> { id, ref, kind, chain[], freezeThaw, destroyedAt, destroyReason, warnings[] }
+  const entries = new Map()   // id -> { id, ref, kind, chain[], storageCycles, destroyedAt, destroyReason, warnings[] }
   let dropped = 0
   let seq = 0
 
-  const sampleOf = (id) => {
-    const s = samples.get(String(id))
-    if (!s) throw refuse(CODE.sampleUnknown, 'unknown sample: ' + String(id), 'register it first with registerSample', { id: String(id) })
+  const entryOf = (id) => {
+    const s = entries.get(String(id))
+    if (!s) throw refuse(CODE.entryUnknown, 'unknown entry: ' + String(id), 'register it first with registerEntry', { id: String(id) })
     return s
   }
 
   /**
-   * Register a sample. `pseudonymStyle` decides what a reference may look like, and `mappingIrreversible` decides whether a
+   * Register a entry. `pseudonymStyle` decides what a reference may look like, and `mappingIrreversible` decides whether a
    * mapping back to the subject may be stored at all - it may NOT when the key is on, which is the default and is marked
    * kernel-enforced in the design volume.
    */
-  function registerSample({ id = null, pseudonym = null, kind = null, mapping = null } = {}) {
+  function registerEntry({ id = null, pseudonym = null, kind = null, mapping = null } = {}) {
     const c = cfg()
     const enforced = ['vmu.custody.pseudonymStyle', 'vmu.custody.mappingIrreversible', 'vmu.custody.ledgerDir']
     const fired = []
     const ref = str(pseudonym)
-    if (!ref) throw refuse('VMU_INVALID_ARGUMENT', 'registerSample needs a pseudonym', 'pass { pseudonym: "anon-…" }')
+    if (!ref) throw refuse('VMU_INVALID_ARGUMENT', 'registerEntry needs a pseudonym', 'pass { pseudonym: "anon-…" }')
     // pseudonymStyle: a pseudonym must not look like a plaintext identifier; a code must look like a code.
     if (c.pseudonymStyle === 'pseudonym' && LOOKS_PLAINTEXT.test(ref)) {
       fired.push('vmu.custody.pseudonymStyle')
@@ -95,33 +95,33 @@ export function createCustody({ clock = () => 0, log = null, settings = {}, bus 
       throw refuse(CODE.reversibleMapping, 'vmu.custody.mappingIrreversible=true: a mapping from subject to reference may not be stored here',
         'keep the mapping outside this ledger, or set the key to false deliberately and record that decision', { ref, enforced, fired })
     }
-    const realId = str(id) || ('sample-' + (++seq))
+    const realId = str(id) || ('entry-' + (++seq))
     const at = clock()
-    const rec = { id: realId, ref, kind: str(kind) || null, chain: [], freezeThaw: 0, destroyedAt: null, destroyReason: null, warnings: [], mapping: mapping === null || mapping === undefined ? null : Object.assign({}, mapping), at }
-    // requireChain: a registered sample must OPEN its chain with a holder, so the chain can never start empty.
+    const rec = { id: realId, ref, kind: str(kind) || null, chain: [], storageCycles: 0, destroyedAt: null, destroyReason: null, warnings: [], mapping: mapping === null || mapping === undefined ? null : Object.assign({}, mapping), at }
+    // requireChain: a registered entry must OPEN its chain with a holder, so the chain can never start empty.
     if (c.requireChain) {
       rec.chain.push({ at, holder: null, action: 'registered', reason: null })
       fired.push('vmu.custody.requireChain')
     }
-    samples.set(realId, rec)
+    entries.set(realId, rec)
     return { ok: true, id: realId, ref, kind: rec.kind, ledgerDir: c.ledgerDir, chainLength: rec.chain.length, enforced, fired }
   }
 
   /** Move custody. `requireChain` is what makes a transfer carry a holder and a reason rather than a bare note. */
-  function transfer({ sampleId, to = null, reason = null, at = null } = {}) {
+  function transfer({ entryId, to = null, reason = null, at = null } = {}) {
     const c = cfg()
     const enforced = ['vmu.custody.requireChain', 'vmu.custody.chainGapPolicy']
     const fired = []
-    const s = sampleOf(sampleId)
+    const s = entryOf(entryId)
     if (s.destroyedAt !== null) {
-      throw refuse(CODE.alreadyDestroyed, 'the sample was destroyed at ' + s.destroyedAt + ' and cannot change custody',
-        'register a new sample if material still exists', { sampleId: s.id, destroyedAt: s.destroyedAt, enforced, fired })
+      throw refuse(CODE.alreadyDestroyed, 'the entry was destroyed at ' + s.destroyedAt + ' and cannot change custody',
+        'register a new entry if material still exists', { entryId: s.id, destroyedAt: s.destroyedAt, enforced, fired })
     }
     const holder = str(to)
     if (c.requireChain && !holder) {
       fired.push('vmu.custody.requireChain')
       throw refuse(CODE.chainRequired, 'vmu.custody.requireChain=true: a transfer needs a new holder',
-        'pass to:<holder>, or set the key to false deliberately', { sampleId: s.id, enforced, fired })
+        'pass to:<holder>, or set the key to false deliberately', { entryId: s.id, enforced, fired })
     }
     const when = Number.isFinite(at) ? Number(at) : clock()
     const last = s.chain[s.chain.length - 1]
@@ -133,67 +133,67 @@ export function createCustody({ clock = () => 0, log = null, settings = {}, bus 
     if (gap && c.chainGapPolicy === 'block') {
       fired.push('vmu.custody.chainGapPolicy')
       throw refuse(CODE.chainGap, 'the custody chain has a gap: ' + (last ? 'the transfer is dated before the previous link' : 'there is no previous link'),
-        'record the missing link, or set vmu.custody.chainGapPolicy=warn deliberately', { sampleId: s.id, lastAt: last ? last.at : null, when, enforced, fired })
+        'record the missing link, or set vmu.custody.chainGapPolicy=warn deliberately', { entryId: s.id, lastAt: last ? last.at : null, when, enforced, fired })
     }
     if (gap) { s.warnings.push('chain-gap-warn at ' + when); fired.push('vmu.custody.chainGapPolicy') }
     s.chain.push({ at: when, holder: holder || null, action: 'transfer', reason: reason === null ? null : String(reason) })
-    return { ok: true, sampleId: s.id, holder: holder || null, chainLength: s.chain.length, gapWarned: gap, enforced, fired }
+    return { ok: true, entryId: s.id, holder: holder || null, chainLength: s.chain.length, gapWarned: gap, enforced, fired }
   }
 
-  /** Freeze or thaw. `freezeThawWarnAt` warns at the declared count - it does not refuse, because the contract states a warning. */
-  function freezeThawCycle({ sampleId, kind = 'freeze' } = {}) {
+  /** Freeze or thaw. `storageCycleWarnAt` warns at the declared count - it does not refuse, because the contract states a warning. */
+  function storageCycle({ entryId, kind = 'freeze' } = {}) {
     const c = cfg()
-    const s = sampleOf(sampleId)
+    const s = entryOf(entryId)
     const which = str(kind) === 'thaw' ? 'thaw' : 'freeze'
-    if (which === 'thaw') s.freezeThaw += 1
-    const warn = s.freezeThaw >= c.freezeThawWarnAt && c.freezeThawWarnAt > 0
-    if (warn) s.warnings.push('freeze-thaw ' + s.freezeThaw + ' >= ' + c.freezeThawWarnAt)
+    if (which === 'thaw') s.storageCycles += 1
+    const warn = s.storageCycles >= c.storageCycleWarnAt && c.storageCycleWarnAt > 0
+    if (warn) s.warnings.push('freeze-thaw ' + s.storageCycles + ' >= ' + c.storageCycleWarnAt)
     s.chain.push({ at: clock(), holder: s.chain.length ? s.chain[s.chain.length - 1].holder : null, action: which, reason: null })
-    return { ok: true, sampleId: s.id, kind: which, cycles: s.freezeThaw, warnAt: c.freezeThawWarnAt, warned: warn,
-      enforced: ['vmu.custody.freezeThawWarnAt'], fired: warn ? ['vmu.custody.freezeThawWarnAt'] : [] }
+    return { ok: true, entryId: s.id, kind: which, cycles: s.storageCycles, warnAt: c.storageCycleWarnAt, warned: warn,
+      enforced: ['vmu.custody.storageCycleWarnAt'], fired: warn ? ['vmu.custody.storageCycleWarnAt'] : [] }
   }
 
   /**
-   * Destroy a sample. `destroyKeepsReference` is the difference between a ledger that remembers what it lost and one that
+   * Destroy a entry. `destroyKeepsReference` is the difference between a ledger that remembers what it lost and one that
    * quietly forgets: with it on (the default) the record stays and says the material is gone.
    */
-  function destroy({ sampleId, reason = null } = {}) {
+  function destroy({ entryId, reason = null } = {}) {
     const c = cfg()
     const enforced = ['vmu.custody.destroyKeepsReference']
-    const s = sampleOf(sampleId)
+    const s = entryOf(entryId)
     if (s.destroyedAt !== null) {
-      throw refuse(CODE.alreadyDestroyed, 'the sample was already destroyed at ' + s.destroyedAt, 'nothing to do', { sampleId: s.id, destroyedAt: s.destroyedAt, enforced, fired: [] })
+      throw refuse(CODE.alreadyDestroyed, 'the entry was already destroyed at ' + s.destroyedAt, 'nothing to do', { entryId: s.id, destroyedAt: s.destroyedAt, enforced, fired: [] })
     }
     const at = clock()
     s.destroyedAt = at
     s.destroyReason = reason === null ? null : String(reason)
     s.chain.push({ at, holder: s.chain.length ? s.chain[s.chain.length - 1].holder : null, action: 'destroyed', reason: s.destroyReason })
-    if (!c.destroyKeepsReference) { samples.delete(s.id); dropped += 1 }
-    return { ok: true, sampleId: s.id, destroyedAt: at, referenceKept: c.destroyKeepsReference, reason: s.destroyReason, enforced, fired: c.destroyKeepsReference ? [] : ['vmu.custody.destroyKeepsReference'] }
+    if (!c.destroyKeepsReference) { entries.delete(s.id); dropped += 1 }
+    return { ok: true, entryId: s.id, destroyedAt: at, referenceKept: c.destroyKeepsReference, reason: s.destroyReason, enforced, fired: c.destroyKeepsReference ? [] : ['vmu.custody.destroyKeepsReference'] }
   }
 
-  /** Read-only view of one sample, including the whole chain and the warnings raised against it. */
-  function chainOf({ sampleId } = {}) {
-    const s = sampleOf(sampleId)
+  /** Read-only view of one entry, including the whole chain and the warnings raised against it. */
+  function chainOf({ entryId } = {}) {
+    const s = entryOf(entryId)
     return { ok: true, id: s.id, ref: s.ref, kind: s.kind, ledgerDir: cfg().ledgerDir,
       chain: s.chain.map((x) => Object.assign({}, x)), chainLength: s.chain.length,
-      freezeThaw: s.freezeThaw, destroyedAt: s.destroyedAt, warnings: s.warnings.slice(),
+      storageCycles: s.storageCycles, destroyedAt: s.destroyedAt, warnings: s.warnings.slice(),
       enforced: ['vmu.custody.ledgerDir'], fired: [] }
   }
 
   const status = () => {
     const c = cfg()
-    const all = [...samples.values()]
+    const all = [...entries.values()]
     return {
-      ok: true, samples: samples.size, destroyed: all.filter((s) => s.destroyedAt !== null).length, dropped,
+      ok: true, entries: entries.size, destroyed: all.filter((s) => s.destroyedAt !== null).length, dropped,
       policy: c,
       chainRequired: c.requireChain,
       mappingKept: all.filter((s) => s.mapping !== null).length,
       readsArePure: true,
-      items: all.slice(0, listCap).map((s) => ({ id: s.id, ref: s.ref, chainLength: s.chain.length, freezeThaw: s.freezeThaw, destroyed: s.destroyedAt !== null, warnings: s.warnings.length })),
+      items: all.slice(0, listCap).map((s) => ({ id: s.id, ref: s.ref, chainLength: s.chain.length, storageCycles: s.storageCycles, destroyed: s.destroyedAt !== null, warnings: s.warnings.length })),
       at: clock(),
     }
   }
 
-  return { apiVersion, registerSample, transfer, freezeThawCycle, destroy, chainOf, status }
+  return { apiVersion, registerEntry, transfer, storageCycle, destroy, chainOf, status }
 }
