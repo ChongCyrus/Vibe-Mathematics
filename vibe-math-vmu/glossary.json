@@ -50,7 +50,7 @@
     { "id": "relation-graph", "zh": "关系图", "en": "Relation graph", "layer": "cross", "definedIn": "07-§4", "note": "结论之间的有类型关系（G8 新增）" },
     { "id": "schedule", "zh": "日程轨", "en": "Schedule track", "layer": "cross", "definedIn": "07-§4", "note": "业务时间的事实轨；纯数据、不触发流程（G6 新增）" },
     { "id": "subscription", "zh": "订阅", "en": "Subscription", "layer": "cross", "definedIn": "17-§29", "note": "谁在什么事件上被通知（G17 新增；阈值在 21 卷）" },
-    { "id": "course", "zh": "课程/研讨班", "en": "Course / seminar", "layer": "cross", "definedIn": "17-§28", "note": "教学机构的可选语义（G11 新增；默认不启用）" },
+    { "id": "teaching", "zh": "课程/研讨班", "en": "Course / seminar", "layer": "cross", "definedIn": "17-§28", "note": "教学机构的可选语义（G11 新增；默认不启用）" },
     { "id": "de-identification", "zh": "去标识化", "en": "De-identification", "layer": "cross", "definedIn": "20-§7", "note": "写入前的前置处理，不得事后脱敏" },
     { "id": "irb", "zh": "伦理审查", "en": "IRB / ethics review", "layer": "cross", "definedIn": "20-§9", "note": "高风险研究的前置审批闸" },
     { "id": "kill-switch", "zh": "紧急制动", "en": "Kill switch", "layer": "cross", "definedIn": "20-§14", "note": "事发时冻结能力的总开关（触发主体待裁）" },

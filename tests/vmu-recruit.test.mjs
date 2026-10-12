@@ -82,7 +82,7 @@ const mk = (settings = {}, opts = {}) => createRecruit({ clock: () => now, setti
 
 // 2) seat overflow refuses with current/limit (openPosting path)
 {
-  const w = mk({ 'vmu.recruit.seatsMax': 1 })
+  const w = mk({ 'vmu.admission.seatsMax': 1 })
   w.openPosting({ slot: 'researcher', seats: 1 })
   const r = throws(() => w.openPosting({ slot: 'researcher', seats: 1 }))
   ok(r.threw && r.code === 'VMU_RECRUIT_SEATS_EXCEEDED' && r.limit === 1, 'over-seating refused with limit')
@@ -103,7 +103,7 @@ const mk = (settings = {}, opts = {}) => createRecruit({ clock: () => now, setti
 
 // 4) probation not over ⇒ named refusal with remaining time; then it becomes due
 {
-  const w = mk({ 'vmu.recruit.probationMs': 5000 })
+  const w = mk({ 'vmu.admission.probationMs': 5000 })
   const p = w.openPosting({ slot: 'fellow', seats: 1 })
   const a = w.apply({ postingId: p.id, candidate: 'r-2' })
   const o = w.offer({ applicationId: a.id })
@@ -151,11 +151,11 @@ const mk = (settings = {}, opts = {}) => createRecruit({ clock: () => now, setti
 
 // 8) evidence requirement + candidate cap
 {
-  const w = mk({ 'vmu.recruit.requireEvidence': true })
+  const w = mk({ 'vmu.admission.requireEvidence': true })
   const p = w.openPosting({ slot: 'researcher', seats: 1 })
   const r = throws(() => w.apply({ postingId: p.id, candidate: 'a1' }))
   ok(r.threw && r.code === 'VMU_RECRUIT_NOT_APPLIED' && r.missing.includes('evidence'), 'evidence required to apply')
-  const cap = mk({ 'vmu.recruit.maxCandidates': 1 })
+  const cap = mk({ 'vmu.admission.maxCandidates': 1 })
   const p2 = cap.openPosting({ slot: 'researcher', seats: 2 })
   cap.apply({ postingId: p2.id, candidate: 'c1' })
   const r2 = throws(() => cap.apply({ postingId: p2.id, candidate: 'c2' }))
@@ -167,7 +167,7 @@ const mk = (settings = {}, opts = {}) => createRecruit({ clock: () => now, setti
   ok(aggregate([1, 2, 3], 'mean') === 2, 'mean')
   ok(aggregate([1, 2, 3, 4], 'median') === 2.5, 'median')
   ok(aggregate([0, 1, 10], 'trimmed') === 1, 'trimmed drops extremes')
-  const w = mk({ 'vmu.recruit.scoreAggregate': 'median' })
+  const w = mk({ 'vmu.admission.scoreAggregate': 'median' })
   const p = w.openPosting({ slot: 'researcher', seats: 1 })
   const a = w.apply({ postingId: p.id, candidate: 'm1' })
   w.score({ applicationId: a.id, by: 'a', score: 0.2, rationale: 'r' })
@@ -230,7 +230,7 @@ const mk = (settings = {}, opts = {}) => createRecruit({ clock: () => now, setti
     'needsHuman[off]: an acceptance with no named approver is accepted, as before')
 
   // declared, it refuses BY NAME
-  const strict = run({ 'vmu.recruit.needsHuman': true })
+  const strict = run({ 'vmu.admission.needsHuman': true })
   const noApprover = throws(() => strict.r.accept({ offerId: strict.o.id }))
   ok(noApprover.threw && noApprover.code === 'VMU_RECRUIT_NEEDS_HUMAN',
     'needsHuman[on]: an acceptance with no human approver is refused by name', noApprover.code)
@@ -238,9 +238,9 @@ const mk = (settings = {}, opts = {}) => createRecruit({ clock: () => now, setti
     'needsHuman[on]: naming an approver lets the same acceptance through')
 
   // the two enums are validated and reported, not silently ignored
-  const declared = mk({ 'vmu.recruit.policy': 'open', 'vmu.recruit.decideBy': 'vote' }).status().declared
+  const declared = mk({ 'vmu.admission.policy': 'open', 'vmu.admission.decideBy': 'vote' }).status().declared
   ok(declared.policy === 'open' && declared.decideBy === 'vote', 'policy/decideBy: the declared method and decider are reported', declared)
-  const bogus = mk({ 'vmu.recruit.policy': 'nonsense', 'vmu.recruit.decideBy': 'nonsense' }).status().declared
+  const bogus = mk({ 'vmu.admission.policy': 'nonsense', 'vmu.admission.decideBy': 'nonsense' }).status().declared
   ok(bogus.policy === 'closed' && bogus.decideBy === 'manager', 'policy/decideBy: an unrecognised value falls back to the declared default')
 }
 

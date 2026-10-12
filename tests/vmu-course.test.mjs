@@ -31,16 +31,16 @@ test('wired ∪ planned is an exact partition of the 24 keys with reasons for th
 
 // ① enabled / visibility / allowAuditors
 test('enabled gates the course面; auditors need allowAuditors', () => {
-  const off = co({ 'vmu.course.enabled': false }).open({ title: 'T' })
+  const off = co({ 'vmu.teaching.enabled': false }).open({ title: 'T' })
   assert.equal(off.code, 'VMU_NOT_PERMITTED')
-  assert.ok(Array.isArray(off.enforced) && off.enforced.indexOf('vmu.course.enabled') !== -1, '拒绝必须点名 enabled')
+  assert.ok(Array.isArray(off.enforced) && off.enforced.indexOf('vmu.teaching.enabled') !== -1, '拒绝必须点名 enabled')
   const c = co()
   const o = c.open({ title: 'T' })
   assert.equal(o.ok, true)
   const aud = c.enroll({ courseId: o.courseId, who: 'x', auditor: true })
   assert.equal(aud.code, 'VMU_NOT_PERMITTED')
-  assert.ok(aud.enforced.indexOf('vmu.course.allowAuditors') !== -1)
-  const c2 = co({ 'vmu.course.allowAuditors': true })
+  assert.ok(aud.enforced.indexOf('vmu.teaching.allowAuditors') !== -1)
+  const c2 = co({ 'vmu.teaching.allowAuditors': true })
   const o2 = c2.open({ title: 'T' })
   assert.equal(c2.enroll({ courseId: o2.courseId, who: 'x', auditor: true }).ok, true)
   passed += 1
@@ -48,13 +48,13 @@ test('enabled gates the course面; auditors need allowAuditors', () => {
 
 // ① cohortMax / enrollmentNeedsApproval
 test('cohortMax caps enrollment; approval keeps the enrolment pending', () => {
-  const c = co({ 'vmu.course.cohortMax': 1, 'vmu.course.enrollmentNeedsApproval': false })
+  const c = co({ 'vmu.teaching.cohortMax': 1, 'vmu.teaching.enrollmentNeedsApproval': false })
   const o = c.open({ title: 'T' })
   assert.equal(c.enroll({ courseId: o.courseId, who: 'a' }).kind, 'enrolled')
   const full = c.enroll({ courseId: o.courseId, who: 'b' })
   assert.equal(full.code, 'VMU_RESOURCE_BUDGET')
-  assert.ok(full.enforced.indexOf('vmu.course.cohortMax') !== -1, '必须点名 cohortMax')
-  const appr = co({ 'vmu.course.enrollmentNeedsApproval': true })
+  assert.ok(full.enforced.indexOf('vmu.teaching.cohortMax') !== -1, '必须点名 cohortMax')
+  const appr = co({ 'vmu.teaching.enrollmentNeedsApproval': true })
   const o2 = appr.open({ title: 'T' })
   assert.equal(appr.enroll({ courseId: o2.courseId, who: 'a' }).kind, 'pending')
   assert.equal(appr.enroll({ courseId: o2.courseId, who: 'a', approved: true }).kind, 'enrolled')
@@ -68,10 +68,10 @@ test('an outcome without evidence is a NAMED refusal naming that outcome', () =>
   const r = c.align({ courseId: o.courseId, outcomes: ['O1', 'O2'], artifacts: { O1: ['a1'] } })
   assert.equal(r.code, 'VMU_META_VALIDATION_FAILED')
   assert.ok(r.message.indexOf('O2') !== -1, '必须点名缺证据的 outcome：' + r.message)
-  assert.ok(r.enforced.indexOf('vmu.course.requireEvidence') !== -1)
+  assert.ok(r.enforced.indexOf('vmu.teaching.requireEvidence') !== -1)
   assert.equal(c.align({ courseId: o.courseId, outcomes: ['O1'], artifacts: { O1: ['a1'] } }).ok, true)
   // requireEvidence=false ⇒ 放行（正反例）
-  const lax = co({ 'vmu.course.requireEvidence': false })
+  const lax = co({ 'vmu.teaching.requireEvidence': false })
   const o2 = lax.open({ title: 'T' })
   assert.equal(lax.align({ courseId: o2.courseId, outcomes: ['O1'], artifacts: {} }).ok, true)
   passed += 1
@@ -79,27 +79,27 @@ test('an outcome without evidence is a NAMED refusal naming that outcome', () =>
 
 // maxAttempts / rubricRequired＋requireRubricRef
 test('attempt cap and rubric reference are enforced', () => {
-  const c = co({ 'vmu.course.maxAttempts': 1 })
+  const c = co({ 'vmu.teaching.maxAttempts': 1 })
   const o = c.open({ title: 'T' })
   assert.equal(c.submit({ courseId: o.courseId, who: 'a', artifact: 'lib/x', rubric: 'r0' }).ok, true)
   const over = c.submit({ courseId: o.courseId, who: 'a', artifact: 'lib/x' })
   assert.equal(over.code, 'VMU_NOT_PERMITTED')
-  assert.ok(over.enforced.indexOf('vmu.course.maxAttempts') !== -1)
+  assert.ok(over.enforced.indexOf('vmu.teaching.maxAttempts') !== -1)
   const noRub = c.submit({ courseId: o.courseId, who: 'b', artifact: 'lib/x' })
   assert.equal(noRub.code, 'VMU_META_VALIDATION_FAILED')
-  assert.ok(noRub.enforced.indexOf('vmu.course.requireRubricRef') !== -1)
+  assert.ok(noRub.enforced.indexOf('vmu.teaching.requireRubricRef') !== -1)
   assert.equal(c.submit({ courseId: o.courseId, who: 'b', artifact: 'lib/x', rubric: 'r1' }).ok, true)
   passed += 1
 })
 
 // allowLate / latePenaltyRatio：显式处置并**自曝所选**
 test('late submission is handled explicitly and the rule used is SELF-REPORTED', () => {
-  const strict = co({ 'vmu.course.allowLate': false })
+  const strict = co({ 'vmu.teaching.allowLate': false })
   const o = strict.open({ title: 'T' })
   const r = strict.submit({ courseId: o.courseId, who: 'a', artifact: 'lib/x', rubric: 'r', late: true })
   assert.equal(r.code, 'VMU_NOT_PERMITTED')
-  assert.ok(r.enforced.indexOf('vmu.course.allowLate') !== -1)
-  const lax = co({ 'vmu.course.allowLate': true, 'vmu.course.latePenaltyRatio': 0.25 })
+  assert.ok(r.enforced.indexOf('vmu.teaching.allowLate') !== -1)
+  const lax = co({ 'vmu.teaching.allowLate': true, 'vmu.teaching.latePenaltyRatio': 0.25 })
   const o2 = lax.open({ title: 'T' })
   const r2 = lax.submit({ courseId: o2.courseId, who: 'a', artifact: 'lib/x', rubric: 'r', late: true })
   assert.equal(r2.ok, true)
@@ -111,12 +111,12 @@ test('late submission is handled explicitly and the rule used is SELF-REPORTED',
 
 // selfReviewAllowed / blindReview / reviewersPerSubmission（当前/门槛）
 test('self-review and the reviewer threshold are enforced with current/needed', () => {
-  const c = co({ 'vmu.course.selfReviewAllowed': false, 'vmu.course.reviewersPerSubmission': 2, 'vmu.course.blindReview': true })
+  const c = co({ 'vmu.teaching.selfReviewAllowed': false, 'vmu.teaching.reviewersPerSubmission': 2, 'vmu.teaching.blindReview': true })
   const o = c.open({ title: 'T' })
   const s = c.submit({ courseId: o.courseId, who: 'a', artifact: 'lib/x', rubric: 'r' })
   const self = c.review({ submissionId: s.submissionId, by: 'a', score: 1 })
   assert.equal(self.code, 'VMU_NOT_PERMITTED')
-  assert.ok(self.enforced.indexOf('vmu.course.selfReviewAllowed') !== -1)
+  assert.ok(self.enforced.indexOf('vmu.teaching.selfReviewAllowed') !== -1)
   const first = c.review({ submissionId: s.submissionId, by: 'b', score: 1 })
   assert.equal(first.complete, false)
   assert.equal(first.needed, 2, '必须给门槛')
@@ -129,7 +129,7 @@ test('self-review and the reviewer threshold are enforced with current/needed', 
 
 // gradeScale / passMark 越界 ⇒ 拒
 test('a score outside the scale or below passMark is refused', () => {
-  const c = co({ 'vmu.course.gradeScaleMax': 10, 'vmu.course.passMark': 6 })
+  const c = co({ 'vmu.teaching.gradeScaleMax': 10, 'vmu.teaching.passMark': 6 })
   const o = c.open({ title: 'T' })
   const s = c.submit({ courseId: o.courseId, who: 'a', artifact: 'lib/x', rubric: 'r' })
   assert.equal(c.grade({ submissionId: s.submissionId, score: 11 }).code, 'VMU_META_VALIDATION_FAILED')
@@ -152,7 +152,7 @@ test('an accreditation evidence pack without references is refused and names the
 
 // 拒绝按码计数 ＋ 每条拒绝都带数组型 enforced（可空、不得 undefined）
 test('refusals are counted by code and every refusal carries an array enforced', () => {
-  const c = co({ 'vmu.course.cohortMax': 1, 'vmu.course.enrollmentNeedsApproval': false })
+  const c = co({ 'vmu.teaching.cohortMax': 1, 'vmu.teaching.enrollmentNeedsApproval': false })
   const o = c.open({ title: 'T' })
   c.enroll({ courseId: o.courseId, who: 'a' })
   const r1 = c.enroll({ courseId: o.courseId, who: 'b' })
@@ -245,29 +245,29 @@ test('D3: every receipt and every refusal carries enforcedScope, with no duplica
 // ROUND 122: the two keys that were read into the configuration and changed nothing now change outcomes.
 // NOTE: this module RETURNS refusals rather than throwing them (see the assertion above that a refused call returns
 // the named refusal value), so these cases check the returned value - `assert.throws` was my mistake, not the
-// module's. The passing cases carry a `rubric` because `vmu.course.rubricRequired` defaults to true.
+// module's. The passing cases carry a `rubric` because `vmu.teaching.rubricRequired` defaults to true.
 test('visibility=public without auditors is REFUSED by name, and the other two values are not', () => {
-  const bad = co({ 'vmu.course.visibility': 'public', 'vmu.course.allowAuditors': false }).open({ title: 'T' })
+  const bad = co({ 'vmu.teaching.visibility': 'public', 'vmu.teaching.allowAuditors': false }).open({ title: 'T' })
   assert.ok(bad && bad.ok === false && bad.code === 'VMU_NOT_PERMITTED', 'public 且禁止旁听必须具名拒：' + JSON.stringify(bad).slice(0, 120))
-  assert.ok(co({ 'vmu.course.visibility': 'institution' }).open({ title: 'T' }).ok === true, 'institution 不受该守卫影响')
-  assert.ok(co({ 'vmu.course.visibility': 'public', 'vmu.course.allowAuditors': true }).open({ title: 'T' }).ok === true, 'public 且允许旁听可以通过')
+  assert.ok(co({ 'vmu.teaching.visibility': 'institution' }).open({ title: 'T' }).ok === true, 'institution 不受该守卫影响')
+  assert.ok(co({ 'vmu.teaching.visibility': 'public', 'vmu.teaching.allowAuditors': true }).open({ title: 'T' }).ok === true, 'public 且允许旁听可以通过')
   passed += 1
 })
 
 test('submitMode refuses a submission in the wrong form, by name, and admits the right one', () => {
-  const a = co({ 'vmu.course.submitMode': 'artifact' })
+  const a = co({ 'vmu.teaching.submitMode': 'artifact' })
   const oa = a.open({ title: 'T' })
   const noArt = a.submit({ courseId: oa.courseId, who: 'r-1', inline: 'text' })
   assert.ok(noArt && noArt.ok === false && noArt.code === 'VMU_META_VALIDATION_FAILED', 'artifact 形式缺产出引用必须具名拒：' + JSON.stringify(noArt).slice(0, 120))
   assert.ok(a.submit({ courseId: oa.courseId, who: 'r-1', artifact: 'lib/x', rubric: 'r' }).ok === true, '给了产出引用则通过')
 
-  const i = co({ 'vmu.course.submitMode': 'inline' })
+  const i = co({ 'vmu.teaching.submitMode': 'inline' })
   const oi = i.open({ title: 'T' })
   const noInline = i.submit({ courseId: oi.courseId, who: 'r-1', artifact: 'lib/x' })
   assert.ok(noInline && noInline.ok === false && noInline.code === 'VMU_META_VALIDATION_FAILED', 'inline 形式缺正文必须具名拒')
   assert.ok(i.submit({ courseId: oi.courseId, who: 'r-1', inline: 'text', rubric: 'r' }).ok === true, '给了正文则通过')
 
-  const b = co({ 'vmu.course.submitMode': 'both' })
+  const b = co({ 'vmu.teaching.submitMode': 'both' })
   const ob = b.open({ title: 'T' })
   const onlyArt = b.submit({ courseId: ob.courseId, who: 'r-1', artifact: 'lib/x' })
   assert.ok(onlyArt && onlyArt.ok === false && onlyArt.code === 'VMU_META_VALIDATION_FAILED', 'both 形式缺正文必须具名拒')
@@ -279,14 +279,14 @@ test('submitMode refuses a submission in the wrong form, by name, and admits the
 // caller names a version. Naming none is allowed on purpose: the check is opt-in, so it cannot break a caller that
 // never knew about versions.
 test('ontologyVersion is stamped at open and a MISMATCHED enrol is refused by name', () => {
-  const c = co({ 'vmu.course.ontologyVersion': '2' })
+  const c = co({ 'vmu.teaching.ontologyVersion': '2' })
   const o = c.open({ title: 'T' })
   assert.ok(o.ok === true, 'open 通过')
   const bad = c.enroll({ courseId: o.courseId, who: 'r-1', ontologyVersion: '1' })
   assert.ok(bad && bad.ok === false && bad.code === 'VMU_CONFLICT', '版本不符必须具名拒：' + JSON.stringify(bad).slice(0, 140))
   assert.ok(c.enroll({ courseId: o.courseId, who: 'r-2', ontologyVersion: '2' }).ok === true, '版本相符则通过')
   assert.ok(c.enroll({ courseId: o.courseId, who: 'r-3' }).ok === true, '不声明版本则不受检查（opt-in）')
-  const d = co({ 'vmu.course.ontologyVersion': '9' })
+  const d = co({ 'vmu.teaching.ontologyVersion': '9' })
   const o2 = d.open({ title: 'T' })
   assert.ok(d.enroll({ courseId: o2.courseId, who: 'r-1', ontologyVersion: '2' }).ok === false, '另一个版本号同样被拒（不是硬编码 1）')
   passed += 1
@@ -300,7 +300,7 @@ test('publishToLibrary defaults to privacy: publishing is REFUSED until it is sw
   const refused = d.publish({ courseId: o.courseId, material: 'lib/m1' })
   assert.ok(refused && refused.ok === false && refused.code === 'VMU_NOT_PERMITTED',
     '默认（false）下发布必须具名拒：' + JSON.stringify(refused).slice(0, 140))
-  const y = co({ 'vmu.course.publishToLibrary': true })
+  const y = co({ 'vmu.teaching.publishToLibrary': true })
   const o2 = y.open({ title: 'T' })
   assert.ok(y.publish({ courseId: o2.courseId, material: 'lib/m1' }).ok === true, '显式打开后可以发布')
   const noMat = y.publish({ courseId: o2.courseId })
@@ -312,8 +312,8 @@ test('publishToLibrary defaults to privacy: publishing is REFUSED until it is sw
 
 // ⑨ ROUND 154：readingsRequired —— 必读量是【引用库条目】的真门槛（默认 0 ＝ 无要求 ✓）
 test('readingsRequired refuses a short alignment with the counts, and never counts a padded list', () => {
-  const base = { 'vmu.course.requireEvidence': false }
-  const need = co(Object.assign({ 'vmu.course.readingsRequired': 2 }, base))
+  const base = { 'vmu.teaching.requireEvidence': false }
+  const need = co(Object.assign({ 'vmu.teaching.readingsRequired': 2 }, base))
   const o = need.open({ title: 'T' })
   const short = need.align({ courseId: o.courseId, outcomes: ['O1'], readings: ['lib/a'] })
   assert.equal(short.ok, false, '未达门槛 ⇒ 拒')

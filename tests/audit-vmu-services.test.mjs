@@ -43,7 +43,7 @@ const SURFACES = {
   'vmu.reviewers': 'reviewers',
   'vmu.compliance': 'domaincompliance',
   'vmu.retention': 'retention', 'vmu.delegation': 'delegation', 'vmu.workflow': 'workflow', 'vmu.trust': 'trust',
-  'vmu.handover': 'handover', 'vmu.arbitration': 'arbitration', 'vmu.recruit': 'recruit', 'vmu.topology': 'topology',
+  'vmu.handover': 'handover', 'vmu.arbitration': 'arbitration', 'vmu.admission': 'admission', 'vmu.topology': 'topology',
   'vmu.fairness': 'fairness', 'vmu.charter': 'charter', 'vmu.repropack': 'repropack', 'vmu.memory': 'memory',
   'vmu.bidding': 'bidding', 'vmu.mathjobs': 'mathjobs', 'vmu.skills': 'skills', 'vmu.publication': 'publication', 'vmu.collab': 'collab', 'vmu.identity': 'identity', 'vmu.human': 'human', 'vmu.discipline': 'discipline', 'vmu.custody': 'custody', 'vmu.explain': 'explain', 'vmu.control': 'control', 'vmu.citations': 'citations',
   'vmu.formal': 'formal', 'vmu.external': 'external', 'vmu.domaingate': 'domaingate', 'vmu.scheduler': 'scheduler',
@@ -54,7 +54,7 @@ const SURFACES = {
   'vmu.clockguard': 'clockguard',   // N3, round 19 (wired into every TTL-sensitive service)
   'vmu.mathtools': 'mathtools', 'vmu.projmigrate': 'projmigrate',   // round 21
   'vmu.meetings': 'meetings', 'vmu.ballotbox': 'ballotbox', 'vmu.records': 'records',   // round 22
-  'vmu.course': 'course',   // round 24 (N13 teaching face)
+  'vmu.teaching': 'teaching',   // round 24 (N13 teaching face)
   'vmu.conference': 'conference',   // round 32 (conference hosting, layered on the single-session face)
   'vmu.resource': 'resource', // round 32 (instrument ledger)
   'vmu.ip': 'ip',                   // round 32 (intellectual property / disclosure hold)

@@ -27,7 +27,7 @@
 | **② 有面【提及】该前缀** | 20 | **35** | 某内核面出现 `vmu.<族>.` 字样 ✓ | ★ **可接线候选：先量契约，再按族记账接线** ✓（**轮 288 接掉 `vmu.replication.federationShare` ✓；轮 289 退役本档两条 ✓**） |
 | **③ 【无面提及**（孤儿）**） | 23 | **69** | 任何内核面都不含该前缀 ✓ | **需先建面** ✓，**或如实登记为扩展方向** ✓ |
 
-**第 ② 档的族（按键数）** ✓：`vmu.ballot`(5，★ **已查明属第 ① 档** ✓)、`vmu.math`(4)、`vmu.middleware`(3)、`vmu.pack`(3)、`vmu.packs`(3)、`vmu.archive`(2)、`vmu.collab`(2)、`vmu.collusion`(2)、`vmu.course`(2)、`vmu.handover`(2)、`vmu.core`(1)、`vmu.meetings`(1 ★ **属第 ① 档** ✓)、`vmu.control`(1)、`vmu.data`(1)、`vmu.explain`(1)、`vmu.identity`(1)、`vmu.memory`(1)、`vmu.paper`(1)、`vmu.replication`(1)、`vmu.skills`(1)。
+**第 ② 档的族（按键数）** ✓：`vmu.ballot`(5，★ **已查明属第 ① 档** ✓)、`vmu.math`(4)、`vmu.middleware`(3)、`vmu.pack`(3)、`vmu.packs`(3)、`vmu.archive`(2)、`vmu.collab`(2)、`vmu.collusion`(2)、`vmu.teaching`(2)、`vmu.handover`(2)、`vmu.core`(1)、`vmu.meetings`(1 ★ **属第 ① 档** ✓)、`vmu.control`(1)、`vmu.data`(1)、`vmu.explain`(1)、`vmu.identity`(1)、`vmu.memory`(1)、`vmu.paper`(1)、`vmu.replication`(1)、`vmu.skills`(1)。
 
 **第 ③ 档的族（按键数）** ✓：`vmu.a11y`(7)、`vmu.ethics`(5)、`vmu.mentor`(4)、`vmu.work`(4)、`vmu.attendance`(3)、`vmu.committees`(3)、`vmu.consensus`(3)、`vmu.consent`(3)、`vmu.deprecation`(3)、`vmu.incident`(3)、`vmu.names`(3)、`vmu.prompt`(3)、`vmu.script`(3)、`vmu.sovereignty`(3)、`vmu.stats`(3)、`vmu.supplychain`(3)、`vmu.authorship`(2)、`vmu.import`(2)、`vmu.preserve`(2)、`vmu.pub`(2)、`vmu.report`(2)、`vmu.templates`(2)、`vmu.notes`(1)。
 

@@ -44,19 +44,19 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
   const nextId = (p) => p + '-' + (++seq)
 
   const cfg = () => ({
-    probationMs: intOr(settings['vmu.recruit.probationMs'], 0),
+    probationMs: intOr(settings['vmu.admission.probationMs'], 0),
     // ROUND 267 (volume 17 §L266-271): the four remaining declarations. Every one is read here and enforced or reported below.
-    policy: ['closed', 'claim', 'nominate', 'open'].includes(settings['vmu.recruit.policy']) ? settings['vmu.recruit.policy'] : 'closed',
-    decideBy: ['manager', 'vote', 'allocation', 'human'].includes(settings['vmu.recruit.decideBy']) ? settings['vmu.recruit.decideBy'] : 'manager',
-    needsHuman: boolOr(settings['vmu.recruit.needsHuman'], false),
-    probationPermissions: Array.isArray(settings['vmu.recruit.probationPermissions']) ? settings['vmu.recruit.probationPermissions'].map(String) : [],
-    seatsMax: intOr(settings['vmu.recruit.seatsMax'], Infinity),
-    scoreRequiresRationale: boolOr(settings['vmu.recruit.scoreRequiresRationale'], true),
-    scoreAggregate: ['mean', 'median', 'trimmed'].includes(settings['vmu.recruit.scoreAggregate']) ? settings['vmu.recruit.scoreAggregate'] : 'mean',
-    offerExpiryMs: intOr(settings['vmu.recruit.offerExpiryMs'], 0),
-    rejectNeedsReason: boolOr(settings['vmu.recruit.rejectNeedsReason'], true),
-    requireEvidence: boolOr(settings['vmu.recruit.requireEvidence'], false),
-    maxCandidates: intOr(settings['vmu.recruit.maxCandidates'], Infinity),
+    policy: ['closed', 'claim', 'nominate', 'open'].includes(settings['vmu.admission.policy']) ? settings['vmu.admission.policy'] : 'closed',
+    decideBy: ['manager', 'vote', 'allocation', 'human'].includes(settings['vmu.admission.decideBy']) ? settings['vmu.admission.decideBy'] : 'manager',
+    needsHuman: boolOr(settings['vmu.admission.needsHuman'], false),
+    probationPermissions: Array.isArray(settings['vmu.admission.probationPermissions']) ? settings['vmu.admission.probationPermissions'].map(String) : [],
+    seatsMax: intOr(settings['vmu.admission.seatsMax'], Infinity),
+    scoreRequiresRationale: boolOr(settings['vmu.admission.scoreRequiresRationale'], true),
+    scoreAggregate: ['mean', 'median', 'trimmed'].includes(settings['vmu.admission.scoreAggregate']) ? settings['vmu.admission.scoreAggregate'] : 'mean',
+    offerExpiryMs: intOr(settings['vmu.admission.offerExpiryMs'], 0),
+    rejectNeedsReason: boolOr(settings['vmu.admission.rejectNeedsReason'], true),
+    requireEvidence: boolOr(settings['vmu.admission.requireEvidence'], false),
+    maxCandidates: intOr(settings['vmu.admission.maxCandidates'], Infinity),
     roleMap: (settings['vmu.roles.map'] && typeof settings['vmu.roles.map'] === 'object') ? settings['vmu.roles.map'] : {},
     // ROUND 217: the appointment/term family (docs/17 §29.3). Every one of these is enforced somewhere below.
     slotIdPattern: (() => { const v = settings['vmu.roles.slotIdPattern']; try { return new RegExp(typeof v === 'string' && v ? v : '^[a-z][a-z0-9-]*$') } catch { return /^[a-z][a-z0-9-]*$/ } })(),
@@ -93,7 +93,7 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
     const taken = seated + reserved
     const limit = Math.min(c.seatsMax, Number.isFinite(c.seatsMax) ? c.seatsMax : Infinity)
     if (taken + wantSeats > limit) throw refuse('VMU_RECRUIT_SEATS_EXCEEDED', 'seats exceeded for slot ' + realSlot + ': current=' + taken + ' requested=' + wantSeats + ' limit=' + limit,
-      'close an existing seat or raise vmu.recruit.seatsMax', { slot: realSlot, current: taken, requested: wantSeats, limit })
+      'close an existing seat or raise vmu.admission.seatsMax', { slot: realSlot, current: taken, requested: wantSeats, limit })
     const id = nextId('posting')
     postings.set(id, { id, slot: realSlot, seats: wantSeats, requirements: Array.isArray(requirements) ? requirements.slice() : [], applicants: [], openedAt: clock() })
     return { id, slot: realSlot, seats: wantSeats, taken, limit }
@@ -104,7 +104,7 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
     if (!p) throw refuse('VMU_RECRUIT_NOT_APPLIED', 'unknown posting: ' + String(postingId), 'openPosting() first', { postingId })
     if (!candidate) throw refuse('VMU_RECRUIT_NOT_APPLIED', 'apply needs a candidate', 'e.g. apply({postingId, candidate:"acad"})', { postingId })
     const c = cfg()
-    if (p.applicants.length >= c.maxCandidates) throw refuse('VMU_RECRUIT_SEATS_EXCEEDED', 'candidate limit reached for ' + postingId + ': current=' + p.applicants.length + ' limit=' + c.maxCandidates, 'raise vmu.recruit.maxCandidates or close the posting', { postingId, current: p.applicants.length, limit: c.maxCandidates })
+    if (p.applicants.length >= c.maxCandidates) throw refuse('VMU_RECRUIT_SEATS_EXCEEDED', 'candidate limit reached for ' + postingId + ': current=' + p.applicants.length + ' limit=' + c.maxCandidates, 'raise vmu.admission.maxCandidates or close the posting', { postingId, current: p.applicants.length, limit: c.maxCandidates })
     if (c.requireEvidence && !evidence) throw refuse('VMU_RECRUIT_NOT_APPLIED', 'evidence is required to apply for ' + postingId, 'pass evidence:<path|note>', { postingId, missing: ['evidence'] })
     const id = nextId('app')
     applications.set(id, { id, postingId, candidate, evidence, scores: [], status: 'applied', at: clock() })
@@ -117,7 +117,7 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
     if (!a) throw refuse('VMU_RECRUIT_NOT_APPLIED', 'unknown application: ' + String(applicationId), 'apply() first', { applicationId })
     const c = cfg()
     if (typeof value !== 'number' || !Number.isFinite(value)) throw refuse('VMU_RECRUIT_NOT_APPLIED', 'score must be a finite number', 'e.g. score({applicationId, by:"acad", score:0.8, rationale:"…"})', { applicationId })
-    if (c.scoreRequiresRationale && !String(rationale || '').trim()) throw refuse('VMU_RECRUIT_REASON_REQUIRED', 'a rationale is required for scoring ' + applicationId, 'vmu.recruit.scoreRequiresRationale=true', { applicationId, missing: ['rationale'] })
+    if (c.scoreRequiresRationale && !String(rationale || '').trim()) throw refuse('VMU_RECRUIT_REASON_REQUIRED', 'a rationale is required for scoring ' + applicationId, 'vmu.admission.scoreRequiresRationale=true', { applicationId, missing: ['rationale'] })
     a.scores.push({ by: by || null, score: value, rationale: String(rationale || ''), at: clock() })
     return { applicationId, scores: a.scores.length, aggregate: aggregate(a.scores.map((s) => s.score), c.scoreAggregate), mode: c.scoreAggregate }
   }
@@ -135,11 +135,11 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
   }
 
   function accept({ offerId, by } = {}) {
-    // ROUND 267 (`vmu.recruit.needsHuman`): when the pack demands human approval, an acceptance with no named approver is refused
+    // ROUND 267 (`vmu.admission.needsHuman`): when the pack demands human approval, an acceptance with no named approver is refused
     // BY NAME rather than silently recorded as decided.
     if (cfg().needsHuman && !by) {
-      throw refuse('VMU_RECRUIT_NEEDS_HUMAN', 'vmu.recruit.needsHuman=true and this acceptance names no human approver',
-        'pass by: \'<human id>\', or set vmu.recruit.needsHuman=false')
+      throw refuse('VMU_RECRUIT_NEEDS_HUMAN', 'vmu.admission.needsHuman=true and this acceptance names no human approver',
+        'pass by: \'<human id>\', or set vmu.admission.needsHuman=false')
     }
     const o = offers.get(offerId)
     if (!o) throw refuse('VMU_RECRUIT_NOT_APPLIED', 'unknown offer: ' + String(offerId), 'offer() first', { offerId })
@@ -149,7 +149,7 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
     const a = applications.get(o.applicationId)
     const taken = [...staff.values()].filter((s) => s.slot === o.slot).length
     const limit = Number.isFinite(c.seatsMax) ? c.seatsMax : Infinity
-    if (taken + 1 > limit) throw refuse('VMU_RECRUIT_SEATS_EXCEEDED', 'seats exceeded for slot ' + o.slot + ': current=' + taken + ' limit=' + limit, 'no seat left; close a seat or raise vmu.recruit.seatsMax', { slot: o.slot, current: taken, limit })
+    if (taken + 1 > limit) throw refuse('VMU_RECRUIT_SEATS_EXCEEDED', 'seats exceeded for slot ' + o.slot + ': current=' + taken + ' limit=' + limit, 'no seat left; close a seat or raise vmu.admission.seatsMax', { slot: o.slot, current: taken, limit })
     o.status = 'accepted'
     const probationUntil = c.probationMs > 0 ? clock() + c.probationMs : null
     // ROUND 217: separation of duties - one instance may not hold both slots of a declared pair.
@@ -173,7 +173,7 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
     const o = offers.get(offerId)
     if (!o) throw refuse('VMU_RECRUIT_NOT_APPLIED', 'unknown offer: ' + String(offerId), 'offer() first', { offerId })
     const c = cfg()
-    if (c.rejectNeedsReason && !String(reason || '').trim()) throw refuse('VMU_RECRUIT_REASON_REQUIRED', 'rejection needs a reason for ' + offerId, 'pass reason:"…" (vmu.recruit.rejectNeedsReason=true)', { offerId, missing: ['reason'] })
+    if (c.rejectNeedsReason && !String(reason || '').trim()) throw refuse('VMU_RECRUIT_REASON_REQUIRED', 'rejection needs a reason for ' + offerId, 'pass reason:"…" (vmu.admission.rejectNeedsReason=true)', { offerId, missing: ['reason'] })
     o.status = 'rejected'
     o.reason = String(reason || '')
     return { offerId, status: 'rejected', reason: o.reason }
@@ -181,7 +181,7 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
 
   /** probation(): read-only view of a member's probation. */
   function probation({ memberId } = {}) {
-    // ROUND 267 (`vmu.recruit.probationPermissions`): the declaration is a SUBSET of the superior permissions. A probation set that
+    // ROUND 267 (`vmu.admission.probationPermissions`): the declaration is a SUBSET of the superior permissions. A probation set that
     // reaches beyond them is refused by name - a probation that grants more than the post is not a probation.
     const granted = cfg().probationPermissions
     // The subset check REPORTS its verdict rather than refusing: a refusal here would need a code the registry could not accept in this
@@ -198,7 +198,7 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
     // ROUND 268 (volume 17 §L268): the declaration is a SUBSET of the superior permissions. With a superior view supplied, an
     // overflow is refused BY NAME - the key is now registered, so the refusal is permitted again.
     if (overflow.length) {
-      throw refuse('VMU_RECRUIT_PROBATION_PERMISSIONS', 'vmu.recruit.probationPermissions is not a subset of the superior set: ' + overflow.join(', '),
+      throw refuse('VMU_RECRUIT_PROBATION_PERMISSIONS', 'vmu.admission.probationPermissions is not a subset of the superior set: ' + overflow.join(', '),
         'declare only permissions the post itself has, or clear the key', { overflow, memberId })
     }
     const permissionVerdict = { declared: granted.slice(), comparable, overflow }
@@ -216,7 +216,7 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
     const now = clock()
     if (s.probationUntil !== null && now < s.probationUntil) {
       throw refuse('VMU_RECRUIT_PROBATION_NOT_DUE', 'probation not over for ' + memberId + ': remaining=' + (s.probationUntil - now) + 'ms',
-        'wait for probation to elapse (vmu.recruit.probationMs=' + cfg().probationMs + ')', { memberId, remainingMs: s.probationUntil - now, probationUntil: s.probationUntil })
+        'wait for probation to elapse (vmu.admission.probationMs=' + cfg().probationMs + ')', { memberId, remainingMs: s.probationUntil - now, probationUntil: s.probationUntil })
     }
     s.confirmedAt = now
     s.by = by || s.by

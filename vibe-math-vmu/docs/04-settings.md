@@ -138,7 +138,13 @@ export const SettingsJsonSchema = toJsonSchema()   // 单向派生；文档/门�
 - **一键"转正"流程** ✓（实现阶段按此走 ✓）：① 手写核心表加真元数据 ＋ 写真正的消费者 ✓；② 把来源卷里对应条目标为已实现 ✓；③ 重生成 ⇒ `generate-planned-settings.mjs --check` 会要求"**已实现的键不得留在 planned 里**" ✓；④ 重生成设置表 ⇒ 该行变 `✅ 已接线` ✓。
 - **反循环** ✓：`planned.js` 的扫描**跳过生成物镜像卷 `docs/04`** ✓（它是 schema 的镜像，不是设计源 ✓；`--check` 有专门断言守这一点 ✓）。
 
-> **未做 ✗**：本阶段**没有实现任何计划键** ✓ —— 全部计划键都是"设计已声明、代码未读" ✓；这是目标①"先设计到极致"的正常状态 ✓，目标②"逐批实现"从实现阶段开始 ✓。
+> **现状（由生成器实测，勿手写 ✗）**：设置表共 **1147** 键 ⇒ **1028 已接线 ✓** ＋ **119 逐行标注"⚠️ 未接线（改了不会有行为变化）"** ✓；`schema` 里 `planned:true` 的 **96** 键 ✓。
+>
+> ★★ **怎么读这一列（重要，避免误读为欠账 ✗）**：★★ **"已声明但未接线"【不是欠账，是预留的自由度**】✓ —— ★ **框架的职责是声明"【能被设什么**】"** ✓，**接线是 pack／中间件按它自己的需要做的** ✓✓ —— ★ **这正是"框架 ＋ settings ＋ 中间件"的本意** ✓。★★ **而每一条都逐行写明"改了不会有行为变化"** ✓ ⇒ **这是【诚实标注**】✓，**不是能力缺失** ✗；★ 门禁（`audit-vmu-docs` G 组 ✓）**独立重算"谁真的被读过"** ✓ ⇒ **没人能把计划键说成已接线** ✗。
+>
+> ★ **三档的判读** ✓：**`✅ 已接线` ＝ 现在改就有效** ✓；**`⚠️ 未接线` ＝ 键已声明、当前无读取者** ✓（★ **接上消费者即生效** ✓，见下方"转正"四步 ✓）；**`planned` ＝ 设计阶段登记** ✓（★ **连默认值都还没有** ✓，元数据以来源卷为准 ✓）。
+>
+> ★ **转正流程**（实现阶段按此走 ✓）：① 手写核心表加真元数据 ＋ 写真正的消费者 ✓；② 把来源卷里对应条目标为已实现 ✓；③ 重生成 ⇒ `generate-planned-settings.mjs --check` 会要求"**已实现的键不得留在 planned 里**" ✓；④ 重生成设置表 ⇒ 该行变 `✅ 已接线` ✓。
 
 ---
 
@@ -435,18 +441,18 @@ vmu.packs.active: [v5r]
 | `vmu.workflow.gateOnOpenTasks` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/workflow.js` | 有未结任务时拦门（需注入 tasks 接缝） |
 | `vmu.workflow.reopenPolicy` | enum | `deny` | `deny`∣`allow`∣`gate` | 会话 | H1 | office | ✅ 已接线 | `kernel/workflow.js` | 回退到首阶段的策略（gate 未实现 ✗） |
 | `vmu.roles.map` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 职位名 → role slot 显式映射（S-1：内核不认识职位名，未映射即拒） |
-| `vmu.recruit.probationMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 试用期（0＝无试用期） |
-| `vmu.recruit.seatsMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 席位总上限（0＝不限） |
-| `vmu.recruit.scoreRequiresRationale` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 评分必须给理由 |
-| `vmu.recruit.scoreAggregate` | enum | `mean` | `mean`∣`median`∣`trimmed` | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 评分聚合方式 |
-| `vmu.recruit.offerExpiryMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 录用报价有效期（0＝不过期） |
-| `vmu.recruit.rejectNeedsReason` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 拒绝必须给理由 |
-| `vmu.recruit.requireEvidence` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 申请必须带证据 |
-| `vmu.recruit.policy` | enum | `closed` | `closed`∣`claim`∣`nominate`∣`open` | 会话 | H1 | pack | ✅ 已接线 | `kernel/recruit.js` | 招募方式（默认 closed ＝零机制 ✓；读取、校验并在 status() 上报） |
-| `vmu.recruit.decideBy` | enum | `manager` | `manager`∣`vote`∣`allocation`∣`human` | 会话 | H1 | pack | ✅ 已接线 | `kernel/recruit.js` | 选拔裁决方式（同上：读取、校验并上报） |
-| `vmu.recruit.needsHuman` | bool | `false` | — | 会话 | H1 | pack | ✅ 已接线 | `kernel/recruit.js` | 是否必须人类批准（true ⇒ accept() 无具名批准者即具名拒 VMU_RECRUIT_NEEDS_HUMAN；默认 false ⇒ 不改变行为） |
-| `vmu.recruit.probationPermissions` | string[] | `[]` | — | 会话 | H1 | pack | ✅ 已接线 | `kernel/recruit.js` | 试用期权限（★ 必须是【上位权限的子集】；非空且越界即具名拒；未提供上级权限视图时不做比较 ✓） |
-| `vmu.recruit.maxCandidates` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 单岗位候选人上限（0＝不限） |
+| `vmu.admission.probationMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 试用期（0＝无试用期） |
+| `vmu.admission.seatsMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 席位总上限（0＝不限） |
+| `vmu.admission.scoreRequiresRationale` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 评分必须给理由 |
+| `vmu.admission.scoreAggregate` | enum | `mean` | `mean`∣`median`∣`trimmed` | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 评分聚合方式 |
+| `vmu.admission.offerExpiryMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 录用报价有效期（0＝不过期） |
+| `vmu.admission.rejectNeedsReason` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 拒绝必须给理由 |
+| `vmu.admission.requireEvidence` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 申请必须带证据 |
+| `vmu.admission.policy` | enum | `closed` | `closed`∣`claim`∣`nominate`∣`open` | 会话 | H1 | pack | ✅ 已接线 | `kernel/recruit.js` | 招募方式（默认 closed ＝零机制 ✓；读取、校验并在 status() 上报） |
+| `vmu.admission.decideBy` | enum | `manager` | `manager`∣`vote`∣`allocation`∣`human` | 会话 | H1 | pack | ✅ 已接线 | `kernel/recruit.js` | 选拔裁决方式（同上：读取、校验并上报） |
+| `vmu.admission.needsHuman` | bool | `false` | — | 会话 | H1 | pack | ✅ 已接线 | `kernel/recruit.js` | 是否必须人类批准（true ⇒ accept() 无具名批准者即具名拒 VMU_RECRUIT_NEEDS_HUMAN；默认 false ⇒ 不改变行为） |
+| `vmu.admission.probationPermissions` | string[] | `[]` | — | 会话 | H1 | pack | ✅ 已接线 | `kernel/recruit.js` | 试用期权限（★ 必须是【上位权限的子集】；非空且越界即具名拒；未提供上级权限视图时不做比较 ✓） |
+| `vmu.admission.maxCandidates` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 单岗位候选人上限（0＝不限） |
 | `vmu.topology.mode` | enum | `flat` | `flat`∣`star`∣`committee`∣`market`∣`pipeline`∣`swarm`∣`matrix`∣`hierarchy` | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 协作拓扑（flat＝零机制：无路径约束） |
 | `vmu.topology.pipelineStages` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 流水线阶段（跳段即拒） |
 | `vmu.topology.hierarchyDepthMax` | int ≥1 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 层级深度上限 |
@@ -645,8 +651,8 @@ vmu.packs.active: [v5r]
 | `vmu.records.chunk.chunkBytes` | int ≥0 | `65536` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/records.js` | 分片大小 |
 | `vmu.records.external.allowedSchemes` | string[] | `[file]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/records.js` | 外部引用方案白名单（表外 ⇒ `VMU_EXTERNAL_DISABLED` ✓） |
 | `vmu.records.external.verifyExists` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/records.js` | 是否校验外部引用存在（无接缝 ⇒ `verified:null` 自曝，**绝不假装已验证** ✗✓） |
-| `vmu.course.gradeScaleMax` | int ≥0 | `100` | — | 会话 | H2 | chair | ✅ 已接线 | `kernel/course.js` | 评分量表上限（越界 ⇒ 具名拒 ✓） |
-| `vmu.course.passMark` | int ≥0 | `0` | — | 会话 | H2 | chair | ✅ 已接线 | `kernel/course.js` | 及格线（0＝不设 ✓） |
+| `vmu.teaching.gradeScaleMax` | int ≥0 | `100` | — | 会话 | H2 | chair | ✅ 已接线 | `kernel/course.js` | 评分量表上限（越界 ⇒ 具名拒 ✓） |
+| `vmu.teaching.passMark` | int ≥0 | `0` | — | 会话 | H2 | chair | ✅ 已接线 | `kernel/course.js` | 及格线（0＝不设 ✓） |
 | `vmu.replay.strict` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/replay.js` | 未知事件类型是否具名拒（默认 false：计入 unknownKinds ✓ 绝不静默跳过 ✗） |
 | `vmu.replay.keepUnknown` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/replay.js` | 未知事件是否保留在重建结果里（保留并标 unknown ✓） |
 | `vmu.replay.requireContiguousSeq` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/replay.js` | 是否要求审计序号连续（缺口必须报 ✗✓） |
@@ -976,28 +982,6 @@ vmu.packs.active: [v5r]
 | `vmu.conference.slotMinutes` | int ≥0 | `30` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/conference.js` | 已接线（conference.js 读取）；默认值取自模块源码 |
 | `vmu.conference.topicsRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/conference.js` | 已接线（conference.js 读取）；默认值取自模块源码 |
 | `vmu.conference.waiverPolicy` | string | `require-reason` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/conference.js` | 已接线（conference.js 读取）；默认值取自模块源码 |
-| `vmu.course.allowAuditors` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.allowLate` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.blindReview` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.cohortMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.enabled` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.enrollmentNeedsApproval` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.gradeChangeAdditive` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.latePenaltyRatio` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；该模块未声明默认值；★ 轮 213 实测有效默认 `0`（course.js:113 `Number.isFinite(r) && 0≤r≤1 ? r : 0`） |
-| `vmu.course.maxAttempts` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.ontologyVersion` | string | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.peerWeight` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.publishToLibrary` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.readingsRequired` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.requireEvidence` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.requireRubricRef` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.retentionMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.reviewRounds` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.reviewersPerSubmission` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.rubricRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.selfReviewAllowed` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.submitMode` | string | `artifact` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.course.visibility` | string | `cohort` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
 | `vmu.external.allowNetwork` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
 | `vmu.external.arxiv.maxAbstractChars` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
 | `vmu.external.arxiv.preferVersioned` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
@@ -1223,6 +1207,28 @@ vmu.packs.active: [v5r]
 | `vmu.store.remote.url` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
 | `vmu.store.root` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
 | `vmu.store.tmpDir` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.allowAuditors` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.allowLate` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.blindReview` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.cohortMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.enabled` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.enrollmentNeedsApproval` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.gradeChangeAdditive` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.latePenaltyRatio` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.teaching.maxAttempts` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.ontologyVersion` | string | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.peerWeight` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.publishToLibrary` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.readingsRequired` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.requireEvidence` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.requireRubricRef` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.retentionMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.reviewRounds` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.reviewersPerSubmission` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.rubricRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.selfReviewAllowed` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.submitMode` | string | `artifact` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
+| `vmu.teaching.visibility` | string | `cohort` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
 | `vmu.tenure.appealWindowDays` | int ≥0 | `14` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tenure.js` | 已接线（tenure.js 读取）；默认值取自模块源码 |
 | `vmu.tenure.humanDecisionRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tenure.js` | 已接线（tenure.js 读取）；默认值取自模块源码 |
 | `vmu.tenure.offboardingChecklist` | string[] | `[handover,keys,records]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tenure.js` | 已接线（tenure.js 读取）；默认值取自模块源码 |
@@ -1288,8 +1294,6 @@ vmu.packs.active: [v5r]
 | `vmu.consent.recheckDays` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.consent.required` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.consent.scopes` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
-| `vmu.course.blindMappingRetentionMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/course.js` | ★ **已穷尽**：`course.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
-| `vmu.course.maxUnits` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/course.js` | ★ **已穷尽**：`course.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.data.retention` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.deprecation.allowExempt` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
 | `vmu.deprecation.exemptList` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准） |
@@ -1349,6 +1353,8 @@ vmu.packs.active: [v5r]
 | `vmu.supplychain.reproducibleBuild` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.supplychain.requireLock` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.supplychain.sbomPath` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.teaching.blindMappingRetentionMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/course.js` | ★ **已穷尽**：`course.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
+| `vmu.teaching.maxUnits` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/course.js` | ★ **已穷尽**：`course.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.templates.default` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.templates.items` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.work.pauseRule` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |

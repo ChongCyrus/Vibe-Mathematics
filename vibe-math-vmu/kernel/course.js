@@ -1,4 +1,4 @@
-// vibe-math-vmu — 教学面（22 卷 N13）：把 `vmu.course.*` **24 键**接成可观测行为。
+// vibe-math-vmu — 教学面（22 卷 N13）：把 `vmu.teaching.*` **24 键**接成可观测行为。
 //
 // ★ 范围基准（2026-10-11）**复核结论：降级为扩展 ✗**（判据与依据见 docs/23-§1d）—— **教学行政非研究活动**，
 //   且其真正的机制部分（blindReview/reviewersPerSubmission/reviewRounds/rubric/peerWeight）**与 review/reviewers/conference 重复** ⇒ 依先例"重复即复用既有面"。
@@ -18,29 +18,29 @@
 //   `VMU_RESOURCE_BUDGET`／`VMU_CONFLICT`／`VMU_NOT_FOUND`／`VMU_INVALID_ARGUMENT`）。
 
 export const COURSE_KEYS = Object.freeze([
-  'vmu.course.enabled', 'vmu.course.visibility', 'vmu.course.allowAuditors', 'vmu.course.cohortMax',
-  'vmu.course.enrollmentNeedsApproval', 'vmu.course.submitMode', 'vmu.course.maxAttempts',
-  'vmu.course.allowLate', 'vmu.course.latePenaltyRatio', 'vmu.course.gradeChangeAdditive',
-  'vmu.course.selfReviewAllowed', 'vmu.course.blindReview', 'vmu.course.reviewersPerSubmission',
-  'vmu.course.reviewRounds', 'vmu.course.rubricRequired', 'vmu.course.requireRubricRef',
-  'vmu.course.requireEvidence', 'vmu.course.peerWeight', 'vmu.course.retentionMs',
-  'vmu.course.blindMappingRetentionMs', 'vmu.course.publishToLibrary', 'vmu.course.readingsRequired',
-  'vmu.course.maxUnits', 'vmu.course.ontologyVersion',
+  'vmu.teaching.enabled', 'vmu.teaching.visibility', 'vmu.teaching.allowAuditors', 'vmu.teaching.cohortMax',
+  'vmu.teaching.enrollmentNeedsApproval', 'vmu.teaching.submitMode', 'vmu.teaching.maxAttempts',
+  'vmu.teaching.allowLate', 'vmu.teaching.latePenaltyRatio', 'vmu.teaching.gradeChangeAdditive',
+  'vmu.teaching.selfReviewAllowed', 'vmu.teaching.blindReview', 'vmu.teaching.reviewersPerSubmission',
+  'vmu.teaching.reviewRounds', 'vmu.teaching.rubricRequired', 'vmu.teaching.requireRubricRef',
+  'vmu.teaching.requireEvidence', 'vmu.teaching.peerWeight', 'vmu.teaching.retentionMs',
+  'vmu.teaching.blindMappingRetentionMs', 'vmu.teaching.publishToLibrary', 'vmu.teaching.readingsRequired',
+  'vmu.teaching.maxUnits', 'vmu.teaching.ontologyVersion',
 ])
 export const WIRED_COURSE_KEYS = Object.freeze([
-  'vmu.course.enabled', 'vmu.course.allowAuditors', 'vmu.course.cohortMax',
-  'vmu.course.enrollmentNeedsApproval', 'vmu.course.maxAttempts',
-  'vmu.course.allowLate', 'vmu.course.latePenaltyRatio', 'vmu.course.gradeChangeAdditive',
-  'vmu.course.selfReviewAllowed', 'vmu.course.blindReview', 'vmu.course.reviewersPerSubmission',
-  'vmu.course.reviewRounds', 'vmu.course.rubricRequired', 'vmu.course.requireRubricRef',
-  'vmu.course.requireEvidence', 'vmu.course.peerWeight', 'vmu.course.retentionMs',
+  'vmu.teaching.enabled', 'vmu.teaching.allowAuditors', 'vmu.teaching.cohortMax',
+  'vmu.teaching.enrollmentNeedsApproval', 'vmu.teaching.maxAttempts',
+  'vmu.teaching.allowLate', 'vmu.teaching.latePenaltyRatio', 'vmu.teaching.gradeChangeAdditive',
+  'vmu.teaching.selfReviewAllowed', 'vmu.teaching.blindReview', 'vmu.teaching.reviewersPerSubmission',
+  'vmu.teaching.reviewRounds', 'vmu.teaching.rubricRequired', 'vmu.teaching.requireRubricRef',
+  'vmu.teaching.requireEvidence', 'vmu.teaching.peerWeight', 'vmu.teaching.retentionMs',
   // ROUND 127: these four moved here because rounds 121-126 made every one of them change an outcome - the module
   // reading a key while still claiming it unwired was the stale half of the pair this project keeps finding, and the
   // generator invariant that nothing a module reads may be silently dropped is what forced the move.
-  'vmu.course.visibility', 'vmu.course.submitMode', 'vmu.course.ontologyVersion', 'vmu.course.publishToLibrary',
+  'vmu.teaching.visibility', 'vmu.teaching.submitMode', 'vmu.teaching.ontologyVersion', 'vmu.teaching.publishToLibrary',
   // ROUND 154: implemented at the outcome-alignment path (see align) - read, and it DECIDES (a shortfall is a
   // named refusal carrying the current count and the threshold).
-  'vmu.course.readingsRequired',
+  'vmu.teaching.readingsRequired',
 ])
 /** 未接：**逐个点名＋原因** ✗✓。 */
 export const PLANNED_COURSE_KEYS = Object.freeze([
@@ -49,14 +49,14 @@ export const PLANNED_COURSE_KEYS = Object.freeze([
    * its own revival condition named, so it is read and it decides (a shortfall is a named refusal carrying the
    * current count and the threshold). The two that remain are carried elsewhere and say where.
    */
-  ['vmu.course.blindMappingRetentionMs', '★ **轮 191 实测补齐指针** ✓：保留机制确由 **`retention` 面**承载 ✓（`removed[]` 每次移除可追 ✓、`library.list({scope})` 可读 ✓）；'
+  ['vmu.teaching.blindMappingRetentionMs', '★ **轮 191 实测补齐指针** ✓：保留机制确由 **`retention` 面**承载 ✓（`removed[]` 每次移除可追 ✓、`library.list({scope})` 可读 ✓）；'
     + '★ **而「登记」现在能点名了** ✓：`retention.js` 读 **17 个键／5 个族** ✓ —— `vmu.records.retention.*`（`keepEvery`／`maxBytes`／`tierThreshold`／`permanentMarker` ✓）、'
     + '`vmu.records.trash.retainDays`（**默认 30 天** ✓）、`vmu.records.history.depth` ✓、`vmu.quota.*` ✓、`vmu.prune.*` ✓ ⇒ **保留期要配就配在那里** ✓。'
     + '本面**无持久化面** ✓（实测：持久化相关命中只有本条理由与两条 `publishToLibrary` 注释 ✓）⇒ 各面自带一份就是**第二份保留实现** ✗。'
     + '**复活条件** ✓：盲审映射表真的需要独立保留期时 ⇒ **加在 `retention` 的键族里** ✓（**不是在课程面内落盘** ✗）'],
-  ['vmu.course.maxUnits', '★ **轮 189 实测更正** ✗✓：本键管的是**单元（unit）上限**（`docs/17` L774：「单元上限（0＝不限）」✓），而'
+  ['vmu.teaching.maxUnits', '★ **轮 189 实测更正** ✗✓：本键管的是**单元（unit）上限**（`docs/17` L774：「单元上限（0＝不限）」✓），而'
     + '**课程级人数上限【已经存在且已接线】** ✓✓ —— 实测：`enroll()` 里 `if (c.cohortMax > 0 && course.cohort.length >= c.cohortMax)` ⇒ '
-    + '**具名拒 `VMU_RESOURCE_BUDGET`** ✓，提示带「名额已满：N / M（vmu.course.cohortMax）」✓；套件正负断言见 `tests/vmu-course.test.mjs` L50／L56 ✓。'
+    + '**具名拒 `VMU_RESOURCE_BUDGET`** ✓，提示带「名额已满：N / M（vmu.teaching.cohortMax）」✓；套件正负断言见 `tests/vmu-course.test.mjs` L50／L56 ✓。'
     + '所以原句"没有课程级上限" ✗ 是**说错了对象** ✗（有 **人数**上限 ✓，缺的是 **单元**上限 ✓）。'
     + '★ **更关键的是**：**`unit` 在本模块里只出现三处** ✓（键表 ✓／本理由 ✓／`openCourse` 的注释"未接⇒不参与" ✓）⇒ '
     + '**没有任何单元 API、也没有单元对象** ✗（`VMU_COURSE_UNIT_UNKNOWN` 同样只是**规划码** ✓）。'
@@ -101,39 +101,39 @@ export function createCourse(opts) {
     const n = (k, d) => { const v = Number(readKey(k)); return Number.isFinite(v) && v >= 0 ? Math.floor(v) : d }
     const s = (k, d) => { const v = readKey(k); return (v === undefined || v === null || v === '') ? d : String(v) }
     const b = (k, d) => { const v = readKey(k); return v === undefined ? d : v === true }
-    const ratio = Number(readKey('vmu.course.latePenaltyRatio'))
+    const ratio = Number(readKey('vmu.teaching.latePenaltyRatio'))
     return {
-      enabled: b('vmu.course.enabled', true),
-      visibility: s('vmu.course.visibility', 'cohort'),
-      allowAuditors: b('vmu.course.allowAuditors', false),
-      cohortMax: n('vmu.course.cohortMax', 0),
-      enrollmentNeedsApproval: b('vmu.course.enrollmentNeedsApproval', true),
+      enabled: b('vmu.teaching.enabled', true),
+      visibility: s('vmu.teaching.visibility', 'cohort'),
+      allowAuditors: b('vmu.teaching.allowAuditors', false),
+      cohortMax: n('vmu.teaching.cohortMax', 0),
+      enrollmentNeedsApproval: b('vmu.teaching.enrollmentNeedsApproval', true),
       // ROUND 123: the default was `single`, a value volume 17 does not define (`artifact｜inline｜both`), so the
       // form guard could never fire on a default configuration. The volume says the default is `artifact` - the
       // submission references a produced artefact - and that is what it is now.
-      submitMode: s('vmu.course.submitMode', 'artifact'),
-      maxAttempts: n('vmu.course.maxAttempts', 1),
-      allowLate: b('vmu.course.allowLate', false),
+      submitMode: s('vmu.teaching.submitMode', 'artifact'),
+      maxAttempts: n('vmu.teaching.maxAttempts', 1),
+      allowLate: b('vmu.teaching.allowLate', false),
       latePenaltyRatio: Number.isFinite(ratio) && ratio >= 0 && ratio <= 1 ? ratio : 0,
-      gradeChangeAdditive: b('vmu.course.gradeChangeAdditive', false),
-      selfReviewAllowed: b('vmu.course.selfReviewAllowed', false),
-      blindReview: b('vmu.course.blindReview', false),
-      reviewersPerSubmission: n('vmu.course.reviewersPerSubmission', 1),
-      reviewRounds: n('vmu.course.reviewRounds', 1),
-      rubricRequired: b('vmu.course.rubricRequired', true),
-      requireRubricRef: b('vmu.course.requireRubricRef', true),
-      requireEvidence: b('vmu.course.requireEvidence', true),
+      gradeChangeAdditive: b('vmu.teaching.gradeChangeAdditive', false),
+      selfReviewAllowed: b('vmu.teaching.selfReviewAllowed', false),
+      blindReview: b('vmu.teaching.blindReview', false),
+      reviewersPerSubmission: n('vmu.teaching.reviewersPerSubmission', 1),
+      reviewRounds: n('vmu.teaching.reviewRounds', 1),
+      rubricRequired: b('vmu.teaching.rubricRequired', true),
+      requireRubricRef: b('vmu.teaching.requireRubricRef', true),
+      requireEvidence: b('vmu.teaching.requireEvidence', true),
     // ROUND 154: the required number of cited readings per alignment. 0 (the default) means no requirement, so
     // nothing changes unless a course asks for it.
-    readingsRequired: n('vmu.course.readingsRequired', 0),
-      peerWeight: Number(readKey('vmu.course.peerWeight')) > 0 ? Number(readKey('vmu.course.peerWeight')) : 0,
-      retentionMs: n('vmu.course.retentionMs', 0),
+    readingsRequired: n('vmu.teaching.readingsRequired', 0),
+      peerWeight: Number(readKey('vmu.teaching.peerWeight')) > 0 ? Number(readKey('vmu.teaching.peerWeight')) : 0,
+      retentionMs: n('vmu.teaching.retentionMs', 0),
       // ROUND 127: publishing to the institution library. The documented default is FALSE - privacy - so a
       // publication has to be switched on explicitly and cannot happen by omission.
-      publishToLibrary: b('vmu.course.publishToLibrary', false),
+      publishToLibrary: b('vmu.teaching.publishToLibrary', false),
       // ROUND 124: the ontology version is a string with the documented default `1`, and it becomes the migration
       // guard below rather than another key that is read and forgotten.
-      ontologyVersion: s('vmu.course.ontologyVersion', '1'),
+      ontologyVersion: s('vmu.teaching.ontologyVersion', '1'),
     }
   }
   const keysUsed = () => WIRED_COURSE_KEYS.slice()
@@ -152,17 +152,17 @@ export function createCourse(opts) {
     const c = cfg()
     const enforced = []
     const evalKey = (k) => { mark(enforced, k) }
-    evalKey('vmu.course.enabled')
-    if (!c.enabled) return deny('VMU_NOT_PERMITTED', '课程面未启用（vmu.course.enabled=false）', '打开它，或不要开课', enforced)
+    evalKey('vmu.teaching.enabled')
+    if (!c.enabled) return deny('VMU_NOT_PERMITTED', '课程面未启用（vmu.teaching.enabled=false）', '打开它，或不要开课', enforced)
     // ROUND 121: the visibility branch used to mark the key as evaluated and change nothing, which is the quietest
     // form of "declared but ineffective". The volume defines `public` as visible outside the institution and gates
     // auditor access separately, so a public course that forbids auditors is a contradiction: it is refused by name
     // instead of being recorded and ignored.
     if (c.visibility === 'public' && c.allowAuditors !== true) {
-      evalKey('vmu.course.visibility')
-      evalKey('vmu.course.allowAuditors')
+      evalKey('vmu.teaching.visibility')
+      evalKey('vmu.teaching.allowAuditors')
       return deny('VMU_NOT_PERMITTED',
-        'public 课程必须允许旁听（vmu.course.visibility=public 且 vmu.course.allowAuditors=false）',
+        'public 课程必须允许旁听（vmu.teaching.visibility=public 且 vmu.teaching.allowAuditors=false）',
         '把 allowAuditors 设为 true，或把 visibility 改为 institution/private（docs/17：public 即机构外可见）', enforced)
     }
     const title = String(args.title || '').trim()
@@ -192,24 +192,24 @@ export function createCourse(opts) {
     // one the course was opened under; the check is explicit rather than silent, because a mismatch here means the
     // caller is working from a different ontology and its answers would not be comparable.
     if (typeof args.ontologyVersion === 'string' && args.ontologyVersion.trim() !== '') {
-      evalKey('vmu.course.ontologyVersion')
+      evalKey('vmu.teaching.ontologyVersion')
       if (args.ontologyVersion.trim() !== String(course.ontologyVersion)) {
         return deny('VMU_CONFLICT',
-          '本体版本不符：课程开于 ' + String(course.ontologyVersion) + '，调用方声明 ' + args.ontologyVersion.trim() + '（vmu.course.ontologyVersion）',
+          '本体版本不符：课程开于 ' + String(course.ontologyVersion) + '，调用方声明 ' + args.ontologyVersion.trim() + '（vmu.teaching.ontologyVersion）',
           '用课程开立时的版本，或按迁移流程重开课程（docs/17 §本体版本）', enforced)
       }
     }
     if (args.auditor === true) {
-      evalKey('vmu.course.allowAuditors')
-      if (!c.allowAuditors) return deny('VMU_NOT_PERMITTED', '本课不允许旁听（vmu.course.allowAuditors=false）', '打开它，或按正式学员注册', enforced)
+      evalKey('vmu.teaching.allowAuditors')
+      if (!c.allowAuditors) return deny('VMU_NOT_PERMITTED', '本课不允许旁听（vmu.teaching.allowAuditors=false）', '打开它，或按正式学员注册', enforced)
       course.auditors.push(who)
       return { ok: true, courseId: course.id, kind: 'auditor', enforced, enforcedScope: ENFORCED_SCOPE }
     }
     if (c.cohortMax > 0 && course.cohort.length >= c.cohortMax) {
-      evalKey('vmu.course.cohortMax')
-      return deny('VMU_RESOURCE_BUDGET', '名额已满：' + course.cohort.length + ' / ' + c.cohortMax + '（vmu.course.cohortMax）', '扩大名额或排队', enforced)
+      evalKey('vmu.teaching.cohortMax')
+      return deny('VMU_RESOURCE_BUDGET', '名额已满：' + course.cohort.length + ' / ' + c.cohortMax + '（vmu.teaching.cohortMax）', '扩大名额或排队', enforced)
     }
-    evalKey('vmu.course.enrollmentNeedsApproval')
+    evalKey('vmu.teaching.enrollmentNeedsApproval')
     const pending = c.enrollmentNeedsApproval && args.approved !== true
     if (!pending) course.cohort.push(who)
     return { ok: true, courseId: course.id, kind: pending ? 'pending' : 'enrolled', approved: !pending, enforced, enforcedScope: ENFORCED_SCOPE }
@@ -226,12 +226,12 @@ export function createCourse(opts) {
     const artifacts = (args.artifacts && typeof args.artifacts === 'object') ? args.artifacts : {}
     if (outcomes.length === 0) return deny('VMU_INVALID_ARGUMENT', 'align 需要 outcomes（学习成果清单）', '给出成果列表', enforced)
     if (c.requireEvidence) {
-      mark(enforced, 'vmu.course.requireEvidence')
+      mark(enforced, 'vmu.teaching.requireEvidence')
       const missing = outcomes.filter((oc) => !Array.isArray(artifacts[oc]) || artifacts[oc].length === 0)
       if (missing.length) return deny('VMU_META_VALIDATION_FAILED', '成果缺证据（**点名**）：' + missing.join('、'), '给每条成果至少一个产物引用（**只引不复制** ✗）', enforced)
     }
     /**
-     * ROUND 154 — `vmu.course.readingsRequired` IS IMPLEMENTED HERE, at the outcome-alignment path, which is exactly
+     * ROUND 154 — `vmu.teaching.readingsRequired` IS IMPLEMENTED HERE, at the outcome-alignment path, which is exactly
      * what its own revival condition named. Readings are REFERENCES to library entries - cited, never copied, the same
      * rule the instrument capture and the lean archive follow. Duplicates and blanks are COUNTED, not silently
      * dropped: a requirement that can be satisfied by listing the same entry three times is not a requirement.
@@ -244,10 +244,10 @@ export function createCourse(opts) {
       readings.push(r)
     }
     if (c.readingsRequired > 0) {
-      mark(enforced, 'vmu.course.readingsRequired')
+      mark(enforced, 'vmu.teaching.readingsRequired')
       if (readings.length < c.readingsRequired) {
         return deny('VMU_COURSE_READINGS_SHORT',
-          '必读量未达（**当前 ' + readings.length + ' 篇 / 门槛 ' + c.readingsRequired + ' 篇**，vmu.course.readingsRequired）',
+          '必读量未达（**当前 ' + readings.length + ' 篇 / 门槛 ' + c.readingsRequired + ' 篇**，vmu.teaching.readingsRequired）',
           '给 `readings`：**引用库条目**（只引不复制 ✗）；重复与空串已计入丢弃数 ' + droppedReadings + ' ✓', enforced)
       }
     }
@@ -268,35 +268,35 @@ export function createCourse(opts) {
     // ROUND 121: the submission form was read into the configuration and never consulted. The volume declares
     // three forms - `artifact` (a reference to a produced artefact, the default), `inline` (the body itself) and
     // `both` - so a submission that does not match the declared form is refused by name rather than silently kept.
-    evalKey('vmu.course.submitMode')
+    evalKey('vmu.teaching.submitMode')
     const hasArtifact = typeof args.artifact === 'string' && args.artifact.trim().length > 0
     const hasInline = typeof args.inline === 'string' && args.inline.trim().length > 0
     if (c.submitMode === 'artifact' && !hasArtifact) {
-      return deny('VMU_META_VALIDATION_FAILED', '提交形式是 artifact：必须给 artifact 引用（vmu.course.submitMode=artifact）',
+      return deny('VMU_META_VALIDATION_FAILED', '提交形式是 artifact：必须给 artifact 引用（vmu.teaching.submitMode=artifact）',
         '把产出放进资料库并给 artifact，或把 submitMode 改为 inline/both', enforced)
     }
     if (c.submitMode === 'inline' && !hasInline) {
-      return deny('VMU_META_VALIDATION_FAILED', '提交形式是 inline：必须给 inline 正文（vmu.course.submitMode=inline）',
+      return deny('VMU_META_VALIDATION_FAILED', '提交形式是 inline：必须给 inline 正文（vmu.teaching.submitMode=inline）',
         '直接给 inline 正文，或把 submitMode 改为 artifact/both', enforced)
     }
     if (c.submitMode === 'both' && !(hasArtifact && hasInline)) {
-      return deny('VMU_META_VALIDATION_FAILED', '提交形式是 both：artifact 引用与 inline 正文都要（vmu.course.submitMode=both）',
+      return deny('VMU_META_VALIDATION_FAILED', '提交形式是 both：artifact 引用与 inline 正文都要（vmu.teaching.submitMode=both）',
         '补齐缺的那一项，或把 submitMode 改为 artifact/inline', enforced)
     }
     const attempt = (course.attempts.get(who) || 0) + 1
-    evalKey('vmu.course.maxAttempts')
-    if (attempt > c.maxAttempts) return deny('VMU_NOT_PERMITTED', '提交次数超上限：' + (attempt - 1) + ' / ' + c.maxAttempts + '（vmu.course.maxAttempts）', '提高上限或走补考流程', enforced)
+    evalKey('vmu.teaching.maxAttempts')
+    if (attempt > c.maxAttempts) return deny('VMU_NOT_PERMITTED', '提交次数超上限：' + (attempt - 1) + ' / ' + c.maxAttempts + '（vmu.teaching.maxAttempts）', '提高上限或走补考流程', enforced)
     // rubric 要求
     if (c.rubricRequired) {
-      evalKey('vmu.course.rubricRequired')
-      if (!args.rubric && c.requireRubricRef) { evalKey('vmu.course.requireRubricRef'); return deny('VMU_META_VALIDATION_FAILED', '缺少评分标准引用（vmu.course.requireRubricRef=true）', '附 rubric 引用', enforced) }
+      evalKey('vmu.teaching.rubricRequired')
+      if (!args.rubric && c.requireRubricRef) { evalKey('vmu.teaching.requireRubricRef'); return deny('VMU_META_VALIDATION_FAILED', '缺少评分标准引用（vmu.teaching.requireRubricRef=true）', '附 rubric 引用', enforced) }
     }
     // 迟交：**显式处置并自曝所选** ✓
     let latePenalty = 0
     if (args.late === true) {
-      evalKey('vmu.course.allowLate')
-      if (!c.allowLate) return deny('VMU_NOT_PERMITTED', '迟交被拒（vmu.course.allowLate=false）', '打开它，或按时提交', enforced)
-      evalKey('vmu.course.latePenaltyRatio')
+      evalKey('vmu.teaching.allowLate')
+      if (!c.allowLate) return deny('VMU_NOT_PERMITTED', '迟交被拒（vmu.teaching.allowLate=false）', '打开它，或按时提交', enforced)
+      evalKey('vmu.teaching.latePenaltyRatio')
       if (c.latePenaltyRatio > 0) latePenalty = c.latePenaltyRatio
     }
     course.attempts.set(who, attempt)
@@ -323,14 +323,14 @@ export function createCourse(opts) {
     const by = String(args.by || '').trim()
     if (!by) return deny('VMU_INVALID_ARGUMENT', 'review 需要 by', '给评审人', enforced)
     if (by === sub.by) {
-      evalKey('vmu.course.selfReviewAllowed')
-      if (!c.selfReviewAllowed) return deny('VMU_NOT_PERMITTED', '不允许自评（vmu.course.selfReviewAllowed=false）', '换评审人', enforced)
+      evalKey('vmu.teaching.selfReviewAllowed')
+      if (!c.selfReviewAllowed) return deny('VMU_NOT_PERMITTED', '不允许自评（vmu.teaching.selfReviewAllowed=false）', '换评审人', enforced)
     }
-    if (c.blindReview) evalKey('vmu.course.blindReview')
+    if (c.blindReview) evalKey('vmu.teaching.blindReview')
     sub.reviews.push({ by, at: clock(), blind: c.blindReview, score: Number(args.score) })
     const need = Math.min(c.reviewersPerSubmission, c.reviewRounds * c.reviewersPerSubmission)
     if (sub.reviews.length < c.reviewersPerSubmission) {
-      evalKey('vmu.course.reviewersPerSubmission')
+      evalKey('vmu.teaching.reviewersPerSubmission')
       return { ok: true, submissionId: sub.id, reviews: sub.reviews.length, needed: c.reviewersPerSubmission, complete: false, blind: c.blindReview, enforced, enforcedScope: ENFORCED_SCOPE }
     }
     return { ok: true, submissionId: sub.id, reviews: sub.reviews.length, needed: need, complete: true, blind: c.blindReview, peerWeight: c.peerWeight, enforced, enforcedScope: ENFORCED_SCOPE }
@@ -343,16 +343,16 @@ export function createCourse(opts) {
     const c = cfg()
     const enforced = []
     if (!sub) return deny('VMU_NOT_FOUND', '找不到提交', '先 submit()', enforced)
-    const ceil = Number(readKey('vmu.course.gradeScaleMax'))
+    const ceil = Number(readKey('vmu.teaching.gradeScaleMax'))
     const top = Number.isFinite(ceil) && ceil > 0 ? ceil : 100
-    const passMark = Number(args.passMark === undefined ? readKey('vmu.course.passMark') : args.passMark)
-    if (readKey('vmu.course.passMark') !== undefined) mark(enforced, 'vmu.course.passMark')
+    const passMark = Number(args.passMark === undefined ? readKey('vmu.teaching.passMark') : args.passMark)
+    if (readKey('vmu.teaching.passMark') !== undefined) mark(enforced, 'vmu.teaching.passMark')
     const score = Number(args.score)
     if (!Number.isFinite(score) || score < 0 || score > top) {
-      return deny('VMU_META_VALIDATION_FAILED', '分数越界：' + String(args.score) + ' ∉ [0,' + top + ']（尺度上限 ' + top + '）', '在尺度内给分；尺度来自 vmu.course.gradeScale*', enforced)
+      return deny('VMU_META_VALIDATION_FAILED', '分数越界：' + String(args.score) + ' ∉ [0,' + top + ']（尺度上限 ' + top + '）', '在尺度内给分；尺度来自 vmu.teaching.gradeScale*', enforced)
     }
     if (Number.isFinite(passMark) && score < passMark) {
-      return Object.assign(deny('VMU_META_VALIDATION_FAILED', '未达及格线：' + score + ' < ' + passMark + '（vmu.course.passMark）', '补考或复核', enforced), { passed: false, score, passMark })
+      return Object.assign(deny('VMU_META_VALIDATION_FAILED', '未达及格线：' + score + ' < ' + passMark + '（vmu.teaching.passMark）', '补考或复核', enforced), { passed: false, score, passMark })
     }
     sub.grade = score
     return { ok: true, submissionId: sub.id, score, passMark: Number.isFinite(passMark) ? passMark : null, passed: true, enforced, enforcedScope: ENFORCED_SCOPE }
@@ -363,7 +363,7 @@ export function createCourse(opts) {
     const args = a || {}
     const c = cfg()
     const enforced = []
-    if (c.requireEvidence) mark(enforced, 'vmu.course.requireEvidence')
+    if (c.requireEvidence) mark(enforced, 'vmu.teaching.requireEvidence')
     const claims = Array.isArray(args.claims) ? args.claims : []
     if (!claims.length) return deny('VMU_INVALID_ARGUMENT', 'evidencePack 需要 claims', '给自评主张清单', enforced)
     const missing = claims.filter((x) => !x || !Array.isArray(x.refs) || x.refs.length === 0).map((x) => String((x && x.claim) || '（无题）'))
@@ -372,7 +372,7 @@ export function createCourse(opts) {
   }
 
   /**
-   * Publish course material to the institution library. `vmu.course.publishToLibrary` defaults to FALSE, so the
+   * Publish course material to the institution library. `vmu.teaching.publishToLibrary` defaults to FALSE, so the
    * default answer is a REFUSAL: the volume's default is privacy, and a publication nobody switched on must not
    * happen by omission. Round 127 - the key was planned and unread before this.
    */
@@ -383,10 +383,10 @@ export function createCourse(opts) {
     const enforced = []
     const evalKey = (k) => { mark(enforced, k) }
     if (!course) return deny('VMU_NOT_FOUND', '找不到课程 ' + String(args.courseId || ''), '先 open() 取 id', enforced)
-    evalKey('vmu.course.publishToLibrary')
+    evalKey('vmu.teaching.publishToLibrary')
     if (c.publishToLibrary !== true) {
       return deny('VMU_NOT_PERMITTED',
-        '课程材料不进机构库（vmu.course.publishToLibrary=false，默认即隐私）',
+        '课程材料不进机构库（vmu.teaching.publishToLibrary=false，默认即隐私）',
         '显式打开它，或只在本课范围内使用材料（docs/17 §隐私与可见性）', enforced)
     }
     const material = String(args.material || '').trim()

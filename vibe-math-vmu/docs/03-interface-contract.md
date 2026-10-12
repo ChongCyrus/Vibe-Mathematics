@@ -352,7 +352,7 @@
 | `VMU_RECRUIT_SEATS_EXCEEDED` | 席位**超员**（含已开岗位预留；实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须给**当前/上限** ✓） |
 | `VMU_RECRUIT_NOT_APPLIED` | 对**未申请**的岗位发出录用（实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须给可用申请入口 ✓） |
 | `VMU_RECRUIT_REASON_REQUIRED` | 评分/拒绝**缺理由**（实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须点明缺哪一项 ✓） |
-| `VMU_RECRUIT_NEEDS_HUMAN` | **必须人类批准**（`vmu.recruit.needsHuman=true` 而无具名批准者；实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须给批准者入口 ✓） |
+| `VMU_RECRUIT_NEEDS_HUMAN` | **必须人类批准**（`vmu.admission.needsHuman=true` 而无具名批准者；实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须给批准者入口 ✓） |
 | `VMU_RECRUIT_PROBATION_PERMISSIONS` | 试用期权限**超出上位权限**（非子集；实现于 `kernel/recruit.js` ✓） | 招募 | ✅（须点名越界权限 ✓） |
 | `VMU_ROLE_SEPARATION_VIOLATED` | **职责分离**被违反（同一实例兼任 `separationPairs` 的两半；招聘与晋升两条路都拦 ✓，实现于 `kernel/recruit.js` ✓） | 任职（17） | ✅（须给**冲突的两半**与当事人 ✓） |
 | `VMU_ROLE_TERM_NOT_RENEWABLE` | 任期**不可续**（`vmu.roles.termRenewable=false` ✓） | 任职（17） | ✅（须给**席位**与被告知者 ✓） |

@@ -74,8 +74,8 @@
 ## 3. 招募与选拔（能力声明 / 试用期 / 晋升 / 席位裂变）
 
 - **能力声明（capability claim）** ｜ 目的：代理**自报**能做什么，供协商与匹配 ｜ 面向谁：全体 ｜ 接口形状：规划 `kernel.skills.declare(id,{skills[],evidence[],ttlMs})`（⛔ 未实现）；工具面规划 `vibe_vmu_skills`（⛔ 未实现） ｜ 可调控：`vmu.skills.*` ｜ 错误码：`VMU_SKILL_UNKNOWN`（拟增）／`VMU_INVALID_ARGUMENT` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：声明**不作为权限**（S-3 同族）＋可带 `evidence`（引用 07 归档 id ✓）＋`ttlMs` 到期自动降级为"未验证" ✓ ｜ 依赖：07 归档 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
-- **招募（recruit）** ｜ 目的：按需增员且**有据** ｜ 面向谁：管理者 ｜ 接口形状：**部分 ✓**（`hire({id,slot})` ✓ 是"入册"，不是"选拔"）+ 规划 `kernel.recruit.open/close/decide`（⛔ 未实现） ｜ 可调控：`vmu.recruit.*` ｜ 错误码：`VMU_RESOURCE_BUDGET`（上限 ✓）／`VMU_SLOT_FULL`（拟增）／`VMU_RECRUIT_CLOSED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：招募**不得**绕过容量与内存上限（沿用 08 的机器强制纪律 ✓）；候选人来源可以是人类、宿主子代理或**已有实例转岗** ✓ ｜ 依赖：席位 ✓＋`vmu.limits.maxLiveMembers` ✓ ｜ 成熟度：**部分 ✓** ｜ 优先级：P1
-- **试用期（probation）** ｜ 目的：新席位**先受限再放权** ｜ 面向谁：管理者 ｜ 接口形状：规划 `kernel.recruit.probation(id,{untilMs,limits{}})`（⛔ 未实现） ｜ 可调控：`vmu.recruit.probationMs`／`probationPermissions` ｜ 错误码：`VMU_PROBATION_ACTIVE`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：试用期＝**权限收窄＋额外审计**，不是"二等公民"；到期自动复核 ✓ ｜ 依赖：席位＋审计 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
+- **招募（recruit）** ｜ 目的：按需增员且**有据** ｜ 面向谁：管理者 ｜ 接口形状：**部分 ✓**（`hire({id,slot})` ✓ 是"入册"，不是"选拔"）+ 规划 `kernel.recruit.open/close/decide`（⛔ 未实现） ｜ 可调控：`vmu.admission.*` ｜ 错误码：`VMU_RESOURCE_BUDGET`（上限 ✓）／`VMU_SLOT_FULL`（拟增）／`VMU_RECRUIT_CLOSED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：招募**不得**绕过容量与内存上限（沿用 08 的机器强制纪律 ✓）；候选人来源可以是人类、宿主子代理或**已有实例转岗** ✓ ｜ 依赖：席位 ✓＋`vmu.limits.maxLiveMembers` ✓ ｜ 成熟度：**部分 ✓** ｜ 优先级：P1
+- **试用期（probation）** ｜ 目的：新席位**先受限再放权** ｜ 面向谁：管理者 ｜ 接口形状：规划 `kernel.recruit.probation(id,{untilMs,limits{}})`（⛔ 未实现） ｜ 可调控：`vmu.admission.probationMs`／`probationPermissions` ｜ 错误码：`VMU_PROBATION_ACTIVE`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：试用期＝**权限收窄＋额外审计**，不是"二等公民"；到期自动复核 ✓ ｜ 依赖：席位＋审计 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
 - **晋升与降级（promotion / demotion）** ｜ 目的：能力与位置匹配 ｜ 面向谁：管理者 ｜ 接口形状：规划 `kernel.roles.promote/demote(id,{to,why,evidence})`（⛔ 未实现） ｜ 可调控：`vmu.roles.promotionNeedsEvidence` ｜ 错误码：`VMU_NOT_PERMITTED`／`VMU_SLOT_FULL` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：`why`＋`evidence` 必填（S-4）；晋升**不得**跳过容量 ✓ ｜ 依赖：席位＋技能库 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
 - **席位裂变（slot fission）** ｜ 目的：一个席位压力过大时**拆成多个** ｜ 面向谁：机构／人类 ｜ 接口形状：规划 `kernel.charter.fission(slot,{into[],by,why})`（⛔ 未实现） ｜ 可调控：`vmu.charter.fissionMax`／`fissionNeedsHuman` ｜ 错误码：`VMU_CHARTER_FISSION_LIMIT`（拟增）／`VMU_NOT_PERMITTED` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：裂变＝**宪章修订**（新版本＋生效时点），不是悄悄加人 ✗；裂变后必须复核依赖与容量 ✓ ｜ 依赖：宪章（§15） ｜ 成熟度：**未实现 ✗** ｜ 优先级：P3
 
@@ -250,7 +250,7 @@
 > 列义：**键** ｜ **类型** ｜ **默认** ｜ **取值域** ｜ **谁可改** ｜ **热改** ｜ **说明**。
 > 说明：以下键**均未接线**（`type:'planned'`, `def:null`）✓；**已实现**的键（`vmu.members.*` 无键、`vmu.limits.*`／`vmu.safety.*`／08 各族）**不在此表** ✗，见 04/08。
 
-### 20.1 角色与招募（`vmu.roles.*`、`vmu.recruit.*`）
+### 20.1 角色与招募（`vmu.roles.*`、`vmu.admission.*`）
 
 | 键 | 类型 | 默认 | 取值域 | 谁可改 | 热改 | 说明 |
 |---|---|---|---|---|---|---|
@@ -264,13 +264,13 @@
 | `vmu.roles.separationPairs` | object[] | `[]` | `{a,b}[]` | pack | 重启 | 职责分离对（不得同一实例兼任） |
 | `vmu.roles.promotionNeedsEvidence` | bool | true | bool | pack | 下轮 | 晋升必须带证据 |
 | `vmu.roles.slotIdPattern` | string | `^[a-z][a-z0-9-]*$` | 正则 | pack | 重启 | 席位 id 形状（与内核校验一致 ✓） |
-| `vmu.recruit.policy` | enum | `closed` | `closed｜claim｜nominate｜open` | pack | 下轮 | 招募方式（默认关：零机制 ✓） |
-| `vmu.recruit.probationMs` | ms | 0 | ≥0 | 所办 | 下轮 | 试用期时长（0＝无试用期） |
-| `vmu.recruit.probationPermissions` | string[] | `[]` | 权限子集 | pack | 下轮 | 试用期可用权限（应为上位权限的子集 ✓） |
-| `vmu.recruit.maxCandidates` | int | 0 | ≥0 | 所办 | 立即 | 候选人上限（0＝不限） |
-| `vmu.recruit.decideBy` | enum | `manager` | `manager｜vote｜auction｜human` | pack | 下轮 | 选拔裁决方式 |
-| `vmu.recruit.needsHuman` | bool | false | bool | pack | 立即 | 是否必须人类批准 |
-| `vmu.recruit.requireEvidence` | bool | `false` | bool | pack | 立即 | 候选人必须带能力证据（**轮 109 更正**：此前写作孪生名 `evidenceRequired` ✗ 且默认写成 `true` ✗ ⇒ **实现的默认是 `false`** ✓；真实键是 `requireEvidence` ✓） |
+| `vmu.admission.policy` | enum | `closed` | `closed｜claim｜nominate｜open` | pack | 下轮 | 招募方式（默认关：零机制 ✓） |
+| `vmu.admission.probationMs` | ms | 0 | ≥0 | 所办 | 下轮 | 试用期时长（0＝无试用期） |
+| `vmu.admission.probationPermissions` | string[] | `[]` | 权限子集 | pack | 下轮 | 试用期可用权限（应为上位权限的子集 ✓） |
+| `vmu.admission.maxCandidates` | int | 0 | ≥0 | 所办 | 立即 | 候选人上限（0＝不限） |
+| `vmu.admission.decideBy` | enum | `manager` | `manager｜vote｜auction｜human` | pack | 下轮 | 选拔裁决方式 |
+| `vmu.admission.needsHuman` | bool | false | bool | pack | 立即 | 是否必须人类批准 |
+| `vmu.admission.requireEvidence` | bool | `false` | bool | pack | 立即 | 候选人必须带能力证据（**轮 109 更正**：此前写作孪生名 `evidenceRequired` ✗ 且默认写成 `true` ✗ ⇒ **实现的默认是 `false`** ✓；真实键是 `requireEvidence` ✓） |
 
 ### 20.2 委托与转委（`vmu.delegation.*`）
 
@@ -424,7 +424,7 @@
 
 > **跨卷不重复定义** ✗：**资源公平策略的定义在 08**（`vmu.budget.fairnessPolicy` ✓，08-§19.6）；本卷**不另设**"公平策略"键 ✓（v0.1 曾重复登记同一旋钮，已删；本卷只保留 `vmu.fairness.*` 里**08 没有的**那些：`minShares`／`newcomerQuota`／`maxSlotsPerInstance`／`criticalSlots`／`rebalanceEveryMs` ✓）。逐条对照见 **§27 交界表** ✓。
 
-**计数（逐表实测；v0.2 起剔除与 08 重复的"公平策略"键与卷内重复的"共识分类"键 ✓，两处**不再以字面键名出现** ✗ 以免被生成管线重新声明 ✓；**v0.3 增 §28/§29 两族 ✓**）**：§20.1 **17** ＋ §20.2 **11** ＋ §20.3 **17** ＋ §20.4 **26** ＋ §20.5 **27** ＋ §20.6 **42** ＝ **140 个拟增键**，**另加 §28 教学族 `vmu.course.*` 24 个 ＋ §29 通知族 `vmu.notify.*` 19 个**（两族的同格式表在各自节内 ✓）⇒ **本卷合计 183 个拟增键**（按命名空间：`vmu.roles` 10／`vmu.recruit` 7／`vmu.delegation` 11／`vmu.trust` 11／`vmu.collusion` 6／`vmu.conflict` 8／`vmu.consensus` 3／`vmu.memory` 9／`vmu.skills` 6／`vmu.allocation` 10／`vmu.handover` 7／`vmu.mentor` 4／`vmu.discipline` 6／`vmu.topology` 5／`vmu.charter` 10／`vmu.identity` 9／`vmu.fairness` 5／`vmu.explain` 7／`vmu.human` 6）。
+**计数（逐表实测；v0.2 起剔除与 08 重复的"公平策略"键与卷内重复的"共识分类"键 ✓，两处**不再以字面键名出现** ✗ 以免被生成管线重新声明 ✓；**v0.3 增 §28/§29 两族 ✓**）**：§20.1 **17** ＋ §20.2 **11** ＋ §20.3 **17** ＋ §20.4 **26** ＋ §20.5 **27** ＋ §20.6 **42** ＝ **140 个拟增键**，**另加 §28 教学族 `vmu.teaching.*` 24 个 ＋ §29 通知族 `vmu.notify.*` 19 个**（两族的同格式表在各自节内 ✓）⇒ **本卷合计 183 个拟增键**（按命名空间：`vmu.roles` 10／`vmu.admission` 7／`vmu.delegation` 11／`vmu.trust` 11／`vmu.collusion` 6／`vmu.conflict` 8／`vmu.consensus` 3／`vmu.memory` 9／`vmu.skills` 6／`vmu.allocation` 10／`vmu.handover` 7／`vmu.mentor` 4／`vmu.discipline` 6／`vmu.topology` 5／`vmu.charter` 10／`vmu.identity` 9／`vmu.fairness` 5／`vmu.explain` 7／`vmu.human` 6）。
 
 ---
 
@@ -534,7 +534,7 @@
 | `vmu.members`（席位/容量/任职） | **已实现 ✓** | role **slot** 面；`hire/assignRole/end/wake/may` ✓ |
 | `vmu.store`／`vmu.library`／`vmu.work`／`vmu.tasks`／`vmu.prompt`／`vmu.middleware` | **已实现 ✓** | 记忆底座、任务与在途、提示词、总线 |
 | `kernel.meeting()`／`kernel.ballot()` | **已实现 ✓**（工厂） | 会议/表决原语（08 治理面 ✓） |
-| `vmu.roles`／`vmu.recruit`／`vmu.delegation`／`vmu.trust`／`vmu.conflict`／`vmu.consensus`／`vmu.memory`／`vmu.skills`／`vmu.allocation`／`vmu.handover`／`vmu.mentor`／`vmu.discipline`／`vmu.topology`／`vmu.charter`／`vmu.identity`／`vmu.fairness`／`vmu.collusion`／`vmu.explain`／`vmu.human` | **未实现 ✗**（19 个） | 目标形态见 §2–§19；**登记前不得被依赖** ✗ |
+| `vmu.roles`／`vmu.admission`／`vmu.delegation`／`vmu.trust`／`vmu.conflict`／`vmu.consensus`／`vmu.memory`／`vmu.skills`／`vmu.allocation`／`vmu.handover`／`vmu.mentor`／`vmu.discipline`／`vmu.topology`／`vmu.charter`／`vmu.identity`／`vmu.fairness`／`vmu.collusion`／`vmu.explain`／`vmu.human` | **未实现 ✗**（19 个） | 目标形态见 §2–§19；**登记前不得被依赖** ✗ |
 
 ### 22.2 工具（宿主面）
 
@@ -588,7 +588,7 @@
 | S01 | **只减权的委托** | `society.delegation` 判定点 ＋ `may()` ✓ ＋ `vmu.delegation.requireExplicitScope` | 越权委托 ⇒ 具名 `VMU_DELEGATION_ESCALATION`（**场景级**红） | 代理自我提权 | **可实现 ✓**（判定点规划 ✗） |
 | S02 | **任命有期限** | `vmu.roles.termDefaultMs` ＋ 到期标记 `expired`（不自动免职） | 到期行使权限 ⇒ `VMU_ROLE_TERM_EXPIRED`（具名） | 位置被永久占有 | 规划 ✗ |
 | S03 | **声誉不换权力** | `vmu.trust.useIn*` 白名单 ＋ 08 票权面（`ballot.eligible` ✓） | 用声誉改票权 ⇒ `VMU_TRUST_USE_FORBIDDEN`（断言红） | 好评寡头 | 规划 ✗ |
-| S04 | **新席位先受限** | `vmu.recruit.probationMs` ＋ `probationPermissions`（上位权限子集 ✓） | 试用期越权 ⇒ `VMU_PROBATION_ACTIVE`（具名） | 新代理一上来就全权 | 规划 ✗ |
+| S04 | **新席位先受限** | `vmu.admission.probationMs` ＋ `probationPermissions`（上位权限子集 ✓） | 试用期越权 ⇒ `VMU_PROBATION_ACTIVE`（具名） | 新代理一上来就全权 | 规划 ✗ |
 | S05 | **僵局可仲裁** | `vmu.conflict.arbiterRule` ＋ 08 会议/表决（听证＝会议、裁决＝决议 ✓） | 当事人当仲裁者 ⇒ `VMU_ARBITER_IS_PARTY`（具名） | 自己判自己 | **部分 ✓**（08 面 ✓／选择器 ✗） |
 | S06 | **失败熔断** | 05 `vmu.middleware.breakerThreshold` ✓ ＋ `vmu.discipline.breakerFailures` | 连续失败 ⇒ `VMU_DISCIPLINE_CIRCUIT_OPEN`（具名）＋新任务被拒 | 一个坏代理拖垮全所 | **部分 ✓**（中间件级 ✓） |
 | S07 | **交接不丢活** | 07 `work.interrupt/recover` ✓ ＋ 交接单 `requiredFields` ＋ 压缩包 | 未接受就清账 ⇒ `VMU_HANDOVER_NOT_ACCEPTED`（具名） | 责任悬空 | **部分 ✓**（台账 ✓／交接单 ✗） |
@@ -709,7 +709,7 @@
 | 本卷定义的族 | 08 需要引用的地方 | 说明 |
 |---|---|---|
 | `vmu.delegation.*`（11 键）＋`VMU_DELEGATION_*` | 08 的临时授权面（08-§2.2-B / 44 行授权语义） | **命令级**授权归 08；**实例级**委托归 17 ✓ |
-| `vmu.roles.*`（10）／`vmu.recruit.*`（7） | 08 的席位与法定人数（08-§2.2-C） | 08 只问"谁在场/够不够人"；**任职与任期**归 17 ✓ |
+| `vmu.roles.*`（10）／`vmu.admission.*`（7） | 08 的席位与法定人数（08-§2.2-C） | 08 只问"谁在场/够不够人"；**任职与任期**归 17 ✓ |
 | `vmu.trust.*`（11）／`vmu.collusion.*`（6） | 08 的仲裁者与候选人排序（08-§6 参考） | 声誉**不改权限**（S-3），08 只读排序建议 ✓ |
 | `vmu.charter.*`（10）／`vmu.topology.*`（5） | 08 的会议类型与阶段（08-§15/§4） | 08 管**一场会**；17 管**机构本身** ✓ |
 | `vmu.identity.*`（9）／`vmu.fairness.*`（5）／`vmu.human.*`（6） | 08 的观察员/表决权/审批（08-§2.2-C/§3.2） | 08 管**票**；17 管**人与归属** ✓ |
@@ -736,9 +736,9 @@
 ## 28. G11 · 教学/研讨班与课程面（Course & Cohort；**默认不启用＝零机制** ✗✓）
 
 > **定位**：§12 的"监护与带教"只覆盖**一对一**（mentor/mentee）✗；本节补**一对多／多对多**的教学语义（课程、同期组、作业、互评、盲评、反馈发布）✓。
-> **零机制**：`vmu.course.enabled=false`（默认 ✓）⇒ 不声明就**不存在课程对象、不存在教学角色、不存在作业** ✓（与 §0.2 的 S-1 同族：内核只给 role **slot**，教学是**机构语义** ✓）。
+> **零机制**：`vmu.teaching.enabled=false`（默认 ✓）⇒ 不声明就**不存在课程对象、不存在教学角色、不存在作业** ✓（与 §0.2 的 S-1 同族：内核只给 role **slot**，教学是**机构语义** ✓）。
 > **成熟度**：★ **轮 166 更正** ✗✓：原句写"本节**全部为规划** ✗（**当前没有任何课程/作业/评分代码** ✅）" ✗ —— **实测不成立** ✓✓：**`kernel/course.js` 是一个完整的课程面** ✓（**401 行** ✓；**已接线 22 个键／未接 2 个** ✓，实测划分 ✓），含 `open`（开课 ✓）／`enroll`（选课 ✓）／`align`（**成果↔产物对齐**，缺证据**具名拒** ✓）／`submit`（作业提交 ✓）／`review`／`publish`（发布到库 ✓）✓，**并有 18 条断言的独立套件** ✓，**在门禁的零机制矩阵里被逐行裁定** ✓。
-> ⇒ **正确读法** ✓：**课程/作业/评分的【机器部分已实现】✓**（原语的层 ✓）；**本节的"社会语义"（教学角色、机构流程）仍是规划 ✗**（那部分原文成立 ✓）。**已实现底座**在原文三项之外**还要加上 `vmu.course.*` 本面** ✓。
+> ⇒ **正确读法** ✓：**课程/作业/评分的【机器部分已实现】✓**（原语的层 ✓）；**本节的"社会语义"（教学角色、机构流程）仍是规划 ✗**（那部分原文成立 ✓）。**已实现底座**在原文三项之外**还要加上 `vmu.teaching.*` 本面** ✓。
 
 ### 28.1 本体（对象与字段；✗ 规划）
 
@@ -754,45 +754,45 @@
 
 ### 28.2 条目（11 字段）
 
-- **课程与单元（course/unit）** ｜ 目的：把"教什么、按什么顺序、用什么材料"变成可引用对象 ｜ 面向谁：讲师／机构 ｜ 接口形状：规划 `kernel.course.create/addUnit/publish`（⛔ 未实现）；工具面规划 `vibe_vmu_course`（⛔ 未实现） ｜ 可调控：`vmu.course.*` ｜ 错误码：`VMU_COURSE_DISABLED`（拟增）／`VMU_COURSE_CLOSED`（拟增）／`VMU_COURSE_UNIT_UNKNOWN`（拟增）／`VMU_INVALID_ARGUMENT`（✓） ｜ 哲学：F✓（默认关）T✓D✓X✓ ｜ 实现要点：课程**不改变权限**（S-2/S-3 同族 ✓）；材料只**引用**库 id（不搬正文 ✓ 07 纪律） ｜ 依赖：席位 ✓＋库 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
-- **同期组与选课（cohort/enrollment）** ｜ 目的：谁和谁同期、以什么身份参加 ｜ 面向谁：讲师／机构 ｜ 接口形状：规划 `kernel.course.enroll/roster`（⛔ 未实现） ｜ 可调控：`vmu.course.cohortMax`／`enrollmentNeedsApproval`／`allowAuditors` ｜ 错误码：`VMU_COURSE_ENROLL_DENIED`（拟增）／`VMU_COURSE_COHORT_FULL`（拟增）／`VMU_SLOT_FULL`（拟增，若绑定席位容量） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**旁听＝只读**（不提交、不评分 ✓）；容量与席位容量**双重检查** ✓ ｜ 依赖：§2 席位 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
+- **课程与单元（course/unit）** ｜ 目的：把"教什么、按什么顺序、用什么材料"变成可引用对象 ｜ 面向谁：讲师／机构 ｜ 接口形状：规划 `kernel.course.create/addUnit/publish`（⛔ 未实现）；工具面规划 `vibe_vmu_course`（⛔ 未实现） ｜ 可调控：`vmu.teaching.*` ｜ 错误码：`VMU_COURSE_DISABLED`（拟增）／`VMU_COURSE_CLOSED`（拟增）／`VMU_COURSE_UNIT_UNKNOWN`（拟增）／`VMU_INVALID_ARGUMENT`（✓） ｜ 哲学：F✓（默认关）T✓D✓X✓ ｜ 实现要点：课程**不改变权限**（S-2/S-3 同族 ✓）；材料只**引用**库 id（不搬正文 ✓ 07 纪律） ｜ 依赖：席位 ✓＋库 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
+- **同期组与选课（cohort/enrollment）** ｜ 目的：谁和谁同期、以什么身份参加 ｜ 面向谁：讲师／机构 ｜ 接口形状：规划 `kernel.course.enroll/roster`（⛔ 未实现） ｜ 可调控：`vmu.teaching.cohortMax`／`enrollmentNeedsApproval`／`allowAuditors` ｜ 错误码：`VMU_COURSE_ENROLL_DENIED`（拟增）／`VMU_COURSE_COHORT_FULL`（拟增）／`VMU_SLOT_FULL`（拟增，若绑定席位容量） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**旁听＝只读**（不提交、不评分 ✓）；容量与席位容量**双重检查** ✓ ｜ 依赖：§2 席位 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
 - **教学角色（instructor / TA / student / auditor）** ｜ 目的：把教学身份落到既有 role slot 上 ｜ 面向谁：机构 ｜ 接口形状：**pack 声明 slot** ✓（`kernel.members.roles()` ✓）＋**选课记录**（Enrollment ✗） ｜ 可调控：pack 的 `slots[]` ✓／`vmu.roles.*`（§20.1 ✓） ｜ 错误码：`VMU_SLOT_UNKNOWN`（拟增）／`VMU_NOT_PERMITTED`（✓） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**席位给权限、选课给归属** ✓（两层，不得混 ✗）；内核**不出现**"讲师"这种字面角色名（S-1 ✓） ｜ 依赖：§2／§3 ｜ 成熟度：**部分 ✓**（席位）／教学语义 ✗ ｜ 优先级：P1
-- **作业与提交（assignment/submission）** ｜ 目的：有截止、有次数、有产出的学习任务 ｜ 面向谁：学员／讲师 ｜ 接口形状：规划 `kernel.course.submit/withdraw`（⛔ 未实现） ｜ 可调控：`vmu.course.submitMode`／`allowLate`／`latePenaltyRatio`／`maxAttempts` ｜ 错误码：`VMU_ASSIGNMENT_DUE_PASSED`（拟增）／`VMU_ASSIGNMENT_ATTEMPTS_EXHAUSTED`（拟增）／`VMU_SUBMISSION_DUPLICATE`（拟增）／`VMU_SUBMISSION_WITHDRAWN`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**先固定 rubric 再收作业** ✓；迟交按参数扣分（**默认不允许迟交、也不扣分** ✓ 最保守） ｜ 依赖：库 ✓／07 归档 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
-- **互评与盲评（peer review / blind review）** ｜ 目的：多视角反馈＋公平 ｜ 面向谁：学员／讲师 ｜ 接口形状：规划 `kernel.course.review`（⛔ 未实现）＋盲评映射（审计侧可解绑 ✓） ｜ 可调控：`vmu.course.reviewRounds`／`reviewersPerSubmission`／**`blindReview`（默认 true ✓）**／`selfReviewAllowed`（默认 false ✓）／`peerWeight` ｜ 错误码：`VMU_REVIEW_NOT_ELIGIBLE`（拟增）／`VMU_REVIEW_SELF_DENIED`（拟增）／`VMU_REVIEW_ROUNDS_EXHAUSTED`（拟增）／`VMU_BLIND_MAPPING_DENIED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**盲评＝评阅时不写 `reviewer`**，映射只留审计侧（与 §16 化名机制同源 ✓）；不得自评；互评**不得**成为唯一成绩来源（§12 带教复核的独立性 ✓） ｜ 依赖：§17 公平＋§5 防串谋 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
-- **反馈发布与评分公正（feedback / fairness）** ｜ 目的：评语**有据**、成绩**可复核** ｜ 面向谁：讲师／学员／审计者 ｜ 接口形状：规划 `kernel.course.publishGrade/amend`（⛔ 未实现）；工具面规划 `vibe_vmu_grade`（⛔ 未实现） ｜ 可调控：`vmu.course.rubricRequired`（默认 true ✓）／`requireEvidence`（默认 true ✓）／`requireRubricRef`（默认 true ✓）／`gradeChangeAdditive`（默认 true ✓）／`peerWeight` ｜ 错误码：`VMU_COURSE_RUBRIC_REQUIRED`（拟增）／`VMU_REVIEW_EVIDENCE_REQUIRED`（拟增）／`VMU_REVIEW_RUBRIC_REQUIRED`（拟增）／`VMU_GRADE_IMMUTABLE`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**无证据/无 rubric 锚点 ⇒ 不得发布**（不是警告 ✓）；改分＝**追加记录**（不覆盖 ✓，与 07 只增纪律一致）；同侪评分离群时**只提示复核**，不自动剔除 ✗（与 §17 "只报告不惩罚"同族 ✓） ｜ 依赖：§17／§18／07 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
-- **评语与证据留痕（auditability）** ｜ 目的：成绩与评语可解释、可复算 ｜ 面向谁：审计者／人类 ｜ 接口形状：**复用 §18** 的理由字段与解释报告（`vmu.explain.*` ✗）＋07 归档 ✓ ｜ 可调控：`vmu.explain.reasonRequired` ✓（§20.6）／`vmu.course.requireEvidence`／`vmu.course.retentionMs` ｜ 错误码：`VMU_EXPLAIN_DENIED`（拟增）／`VMU_REASON_REQUIRED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：每份评语必带 `evidenceRefs`＋`rubricAnchors`；**盲评解绑也要留痕** ✓ ｜ 依赖：§18＋07 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
-- **隐私与可见性（privacy）** ｜ 目的：作业/评语不得默认公开 ｜ 面向谁：机构／学员 ｜ 接口形状：规划 `society.courseVisibility` 判定点（⛔ 未实现） ｜ 可调控：`vmu.course.publishToLibrary`（默认 false ✓）／`vmu.course.visibility`／`blindMappingRetentionMs` ｜ 错误码：`VMU_COURSE_PRIVACY_DENIED`（拟增）／`VMU_MEMORY_VISIBILITY_DENIED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：默认**不进机构库**；跨机构默认**不可见**（与 §16/§17 的可见性纪律一致 ✓）；与 20 卷（隐私合规）的执行面衔接 ✓ ｜ 依赖：§16／§17／20 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
-- **课程归档与结束（archive）** ｜ 目的：课程结束不等于记忆消失 ｜ 面向谁：机构 ｜ 接口形状：**复用 07**（`vmu.store`／`vmu.library` ✓）＋规划 `kernel.course.archive`（⛔ 未实现） ｜ 可调控：`vmu.course.retentionMs`／`state=archived` ｜ 错误码：`VMU_IO_FAILED`（✓）／`VMU_STORE_FAILED`（✓）／`VMU_COURSE_CLOSED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：归档保存**大纲-单元-作业-rubric-评语链**（可复算成绩 ✓）；归档后不得再提交（`VMU_COURSE_CLOSED` ✓） ｜ 依赖：07 ✓ ｜ 成熟度：**部分 ✓**（底座）／课程归档 ✗ ｜ 优先级：P3
-- **研讨班与既有会议面的衔接（seminar＝a meeting）** ｜ 目的：不重复造"开会" ✗ ｜ 面向谁：讲师／学员 ｜ 接口形状：**复用 08**（`kernel.meeting()` ✓、`kind:'seminar'` ✓ 08-§15 类型目录）＋可选关联课程（✗ 规划） ｜ 可调控：08 的会议族 ✓（`vmu.meetings.*`）／`vmu.course.*` ｜ 错误码：`VMU_STATE`（✓）／`VMU_COURSE_DISABLED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**会议机制全部复用 08**（轮次/发言/纪要 ✓），17 只提供"这节课属于哪门课/哪些人" ✓（交界见 §28.4 ✓） ｜ 依赖：08 ✓ ｜ 成熟度：**已实现 ✓**（会议）／课程关联 ✗ ｜ 优先级：P2
+- **作业与提交（assignment/submission）** ｜ 目的：有截止、有次数、有产出的学习任务 ｜ 面向谁：学员／讲师 ｜ 接口形状：规划 `kernel.course.submit/withdraw`（⛔ 未实现） ｜ 可调控：`vmu.teaching.submitMode`／`allowLate`／`latePenaltyRatio`／`maxAttempts` ｜ 错误码：`VMU_ASSIGNMENT_DUE_PASSED`（拟增）／`VMU_ASSIGNMENT_ATTEMPTS_EXHAUSTED`（拟增）／`VMU_SUBMISSION_DUPLICATE`（拟增）／`VMU_SUBMISSION_WITHDRAWN`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**先固定 rubric 再收作业** ✓；迟交按参数扣分（**默认不允许迟交、也不扣分** ✓ 最保守） ｜ 依赖：库 ✓／07 归档 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
+- **互评与盲评（peer review / blind review）** ｜ 目的：多视角反馈＋公平 ｜ 面向谁：学员／讲师 ｜ 接口形状：规划 `kernel.course.review`（⛔ 未实现）＋盲评映射（审计侧可解绑 ✓） ｜ 可调控：`vmu.teaching.reviewRounds`／`reviewersPerSubmission`／**`blindReview`（默认 true ✓）**／`selfReviewAllowed`（默认 false ✓）／`peerWeight` ｜ 错误码：`VMU_REVIEW_NOT_ELIGIBLE`（拟增）／`VMU_REVIEW_SELF_DENIED`（拟增）／`VMU_REVIEW_ROUNDS_EXHAUSTED`（拟增）／`VMU_BLIND_MAPPING_DENIED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**盲评＝评阅时不写 `reviewer`**，映射只留审计侧（与 §16 化名机制同源 ✓）；不得自评；互评**不得**成为唯一成绩来源（§12 带教复核的独立性 ✓） ｜ 依赖：§17 公平＋§5 防串谋 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
+- **反馈发布与评分公正（feedback / fairness）** ｜ 目的：评语**有据**、成绩**可复核** ｜ 面向谁：讲师／学员／审计者 ｜ 接口形状：规划 `kernel.course.publishGrade/amend`（⛔ 未实现）；工具面规划 `vibe_vmu_grade`（⛔ 未实现） ｜ 可调控：`vmu.teaching.rubricRequired`（默认 true ✓）／`requireEvidence`（默认 true ✓）／`requireRubricRef`（默认 true ✓）／`gradeChangeAdditive`（默认 true ✓）／`peerWeight` ｜ 错误码：`VMU_COURSE_RUBRIC_REQUIRED`（拟增）／`VMU_REVIEW_EVIDENCE_REQUIRED`（拟增）／`VMU_REVIEW_RUBRIC_REQUIRED`（拟增）／`VMU_GRADE_IMMUTABLE`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**无证据/无 rubric 锚点 ⇒ 不得发布**（不是警告 ✓）；改分＝**追加记录**（不覆盖 ✓，与 07 只增纪律一致）；同侪评分离群时**只提示复核**，不自动剔除 ✗（与 §17 "只报告不惩罚"同族 ✓） ｜ 依赖：§17／§18／07 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
+- **评语与证据留痕（auditability）** ｜ 目的：成绩与评语可解释、可复算 ｜ 面向谁：审计者／人类 ｜ 接口形状：**复用 §18** 的理由字段与解释报告（`vmu.explain.*` ✗）＋07 归档 ✓ ｜ 可调控：`vmu.explain.reasonRequired` ✓（§20.6）／`vmu.teaching.requireEvidence`／`vmu.teaching.retentionMs` ｜ 错误码：`VMU_EXPLAIN_DENIED`（拟增）／`VMU_REASON_REQUIRED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：每份评语必带 `evidenceRefs`＋`rubricAnchors`；**盲评解绑也要留痕** ✓ ｜ 依赖：§18＋07 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
+- **隐私与可见性（privacy）** ｜ 目的：作业/评语不得默认公开 ｜ 面向谁：机构／学员 ｜ 接口形状：规划 `society.courseVisibility` 判定点（⛔ 未实现） ｜ 可调控：`vmu.teaching.publishToLibrary`（默认 false ✓）／`vmu.teaching.visibility`／`blindMappingRetentionMs` ｜ 错误码：`VMU_COURSE_PRIVACY_DENIED`（拟增）／`VMU_MEMORY_VISIBILITY_DENIED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：默认**不进机构库**；跨机构默认**不可见**（与 §16/§17 的可见性纪律一致 ✓）；与 20 卷（隐私合规）的执行面衔接 ✓ ｜ 依赖：§16／§17／20 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
+- **课程归档与结束（archive）** ｜ 目的：课程结束不等于记忆消失 ｜ 面向谁：机构 ｜ 接口形状：**复用 07**（`vmu.store`／`vmu.library` ✓）＋规划 `kernel.course.archive`（⛔ 未实现） ｜ 可调控：`vmu.teaching.retentionMs`／`state=archived` ｜ 错误码：`VMU_IO_FAILED`（✓）／`VMU_STORE_FAILED`（✓）／`VMU_COURSE_CLOSED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：归档保存**大纲-单元-作业-rubric-评语链**（可复算成绩 ✓）；归档后不得再提交（`VMU_COURSE_CLOSED` ✓） ｜ 依赖：07 ✓ ｜ 成熟度：**部分 ✓**（底座）／课程归档 ✗ ｜ 优先级：P3
+- **研讨班与既有会议面的衔接（seminar＝a meeting）** ｜ 目的：不重复造"开会" ✗ ｜ 面向谁：讲师／学员 ｜ 接口形状：**复用 08**（`kernel.meeting()` ✓、`kind:'seminar'` ✓ 08-§15 类型目录）＋可选关联课程（✗ 规划） ｜ 可调控：08 的会议族 ✓（`vmu.meetings.*`）／`vmu.teaching.*` ｜ 错误码：`VMU_STATE`（✓）／`VMU_COURSE_DISABLED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**会议机制全部复用 08**（轮次/发言/纪要 ✓），17 只提供"这节课属于哪门课/哪些人" ✓（交界见 §28.4 ✓） ｜ 依赖：08 ✓ ｜ 成熟度：**已实现 ✓**（会议）／课程关联 ✗ ｜ 优先级：P2
 
-### 28.3 拟增键（教学族 `vmu.course.*`；全部**未接线** ✗）
+### 28.3 拟增键（教学族 `vmu.teaching.*`；全部**未接线** ✗）
 
 | 键 | 类型 | 默认 | 取值域 | 谁可改 | 热改 | 说明 |
 |---|---|---|---|---|---|---|
-| `vmu.course.enabled` | bool | false | bool | 所办 | 重启 | 教学面总开关（**默认关＝零机制** ✓） |
-| `vmu.course.ontologyVersion` | string | `1` | 版本号 | pack | 重启 | 本体版本（迁移用，13 卷） |
-| `vmu.course.visibility` | enum | `institution` | `private｜institution｜public` | pack | 下轮 | 课程可见性（默认**仅机构内** ✓；与 `publishToLibrary` 分工：一个管"谁能看"，一个管"是否进库" ✓） |
-| `vmu.course.maxUnits` | int | 0 | ≥0 | 所办 | 立即 | 单元上限（0＝不限） |
-| `vmu.course.readingsRequired` | bool | false | bool | pack | 下轮 | 单元是否必须带读物 |
-| `vmu.course.rubricRequired` | bool | true | bool | pack | 下轮 | 发布作业前必须有 rubric |
-| `vmu.course.cohortMax` | int | 0 | ≥0 | 所办 | 立即 | 同期组容量（0＝不限） |
-| `vmu.course.allowAuditors` | bool | true | bool | pack | 下轮 | 是否允许旁听（只读 ✓） |
-| `vmu.course.enrollmentNeedsApproval` | bool | false | bool | pack | 下轮 | 选课是否需要批准 |
-| `vmu.course.submitMode` | enum | `artifact` | `artifact｜inline｜both` | pack | 下轮 | 提交形式（默认走库里的产出 ✓） |
-| `vmu.course.allowLate` | bool | false | bool | pack | 下轮 | 是否允许迟交（默认否 ✓） |
-| `vmu.course.latePenaltyRatio` | number | 0 | 0..1 | pack | 下轮 | 迟交扣分比例 |
-| `vmu.course.maxAttempts` | int | 1 | ≥1 | 所办 | 下轮 | 每人提交次数上限 |
-| `vmu.course.reviewRounds` | int | 1 | ≥1 | 所办 | 下轮 | 互评轮次（有界 ✓） |
-| `vmu.course.reviewersPerSubmission` | int | 2 | ≥1 | 所办 | 下轮 | 每份作业评阅人数 |
-| `vmu.course.blindReview` | bool | true | bool | pack | 下轮 | **盲评开关（默认开＝更公平** ✓） |
-| `vmu.course.blindMappingRetentionMs` | ms | 0 | ≥0 | 所办 | 立即 | 盲评映射保留期（审计侧可解绑 ✓） |
-| `vmu.course.selfReviewAllowed` | bool | false | bool | pack | 下轮 | 是否允许自评（默认否 ✓） |
-| `vmu.course.peerWeight` | number | 0 | 0..1 | 所办 | 下轮 | 互评占成绩权重（0＝只作反馈 ✓） |
-| `vmu.course.requireEvidence` | bool | true | bool | pack | 下轮 | 评语必须带证据才可发布 |
-| `vmu.course.requireRubricRef` | bool | true | bool | pack | 下轮 | 评语必须带 rubric 锚点 |
-| `vmu.course.gradeChangeAdditive` | bool | true | bool | pack | 重启 | 成绩变更只增不改（**建议恒 true** ✓） |
-| `vmu.course.publishToLibrary` | bool | false | bool | pack | 下轮 | 课程材料是否进机构库（默认否＝隐私 ✓） |
-| `vmu.course.retentionMs` | ms | 0 | ≥0 | 所办 | 立即 | 课程归档保留期 |
+| `vmu.teaching.enabled` | bool | false | bool | 所办 | 重启 | 教学面总开关（**默认关＝零机制** ✓） |
+| `vmu.teaching.ontologyVersion` | string | `1` | 版本号 | pack | 重启 | 本体版本（迁移用，13 卷） |
+| `vmu.teaching.visibility` | enum | `institution` | `private｜institution｜public` | pack | 下轮 | 课程可见性（默认**仅机构内** ✓；与 `publishToLibrary` 分工：一个管"谁能看"，一个管"是否进库" ✓） |
+| `vmu.teaching.maxUnits` | int | 0 | ≥0 | 所办 | 立即 | 单元上限（0＝不限） |
+| `vmu.teaching.readingsRequired` | bool | false | bool | pack | 下轮 | 单元是否必须带读物 |
+| `vmu.teaching.rubricRequired` | bool | true | bool | pack | 下轮 | 发布作业前必须有 rubric |
+| `vmu.teaching.cohortMax` | int | 0 | ≥0 | 所办 | 立即 | 同期组容量（0＝不限） |
+| `vmu.teaching.allowAuditors` | bool | true | bool | pack | 下轮 | 是否允许旁听（只读 ✓） |
+| `vmu.teaching.enrollmentNeedsApproval` | bool | false | bool | pack | 下轮 | 选课是否需要批准 |
+| `vmu.teaching.submitMode` | enum | `artifact` | `artifact｜inline｜both` | pack | 下轮 | 提交形式（默认走库里的产出 ✓） |
+| `vmu.teaching.allowLate` | bool | false | bool | pack | 下轮 | 是否允许迟交（默认否 ✓） |
+| `vmu.teaching.latePenaltyRatio` | number | 0 | 0..1 | pack | 下轮 | 迟交扣分比例 |
+| `vmu.teaching.maxAttempts` | int | 1 | ≥1 | 所办 | 下轮 | 每人提交次数上限 |
+| `vmu.teaching.reviewRounds` | int | 1 | ≥1 | 所办 | 下轮 | 互评轮次（有界 ✓） |
+| `vmu.teaching.reviewersPerSubmission` | int | 2 | ≥1 | 所办 | 下轮 | 每份作业评阅人数 |
+| `vmu.teaching.blindReview` | bool | true | bool | pack | 下轮 | **盲评开关（默认开＝更公平** ✓） |
+| `vmu.teaching.blindMappingRetentionMs` | ms | 0 | ≥0 | 所办 | 立即 | 盲评映射保留期（审计侧可解绑 ✓） |
+| `vmu.teaching.selfReviewAllowed` | bool | false | bool | pack | 下轮 | 是否允许自评（默认否 ✓） |
+| `vmu.teaching.peerWeight` | number | 0 | 0..1 | 所办 | 下轮 | 互评占成绩权重（0＝只作反馈 ✓） |
+| `vmu.teaching.requireEvidence` | bool | true | bool | pack | 下轮 | 评语必须带证据才可发布 |
+| `vmu.teaching.requireRubricRef` | bool | true | bool | pack | 下轮 | 评语必须带 rubric 锚点 |
+| `vmu.teaching.gradeChangeAdditive` | bool | true | bool | pack | 重启 | 成绩变更只增不改（**建议恒 true** ✓） |
+| `vmu.teaching.publishToLibrary` | bool | false | bool | pack | 下轮 | 课程材料是否进机构库（默认否＝隐私 ✓） |
+| `vmu.teaching.retentionMs` | ms | 0 | ≥0 | 所办 | 立即 | 课程归档保留期 |
 
 ### 28.4 交界（**不重复造机制** ✗）
 

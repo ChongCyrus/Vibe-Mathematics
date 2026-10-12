@@ -539,7 +539,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   const arbitration = createArbitration({ settings: settingsView, bus, clock, log, members, minutes })
   // Batch-2 slices 5-8: recruitment, collaboration topology, charters, fair allocation. All four are
   // zero-mechanism by default (no postings / flat topology / charters disabled / no claimants).
-  const recruit = createRecruit({ settings: settingsView, bus, clock, log, members })
+  const admission = createRecruit({ settings: settingsView, bus, clock, log, members })
   const topology = createTopology({ settings: settingsView, bus, clock, log, members })
   const fairness = createFairness({ settings: settingsView, bus, clock, log, budget, tasks })
   const charter = createCharter({ settings: settingsView, bus, clock, log, members, delegation })
@@ -632,7 +632,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   })
   // ROUND 24: the teaching face the N13 volume declared (19 of its 24 knobs change behaviour; the five that need
   // a library, records or ontology seam are named rather than silently accepted).
-  const course = createCourse({ settings: settingsView, bus, clock: guardedClock, log })
+  const teaching = createCourse({ settings: settingsView, bus, clock: guardedClock, log })
   // The conference face is LAYERED on the single-session policy face: it plans and reviews, `meetings` owns the
   // session. Its tests prove the layering with a counting proxy (zero calls into meetings).
   const conference = createConference({ settings: settingsView, bus, clock: guardedClock, log, meetings })
@@ -741,7 +741,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   registry.register('vmu.trust', { apiVersion: 1 }, { kind: 'service', description: 'auditable reputation that NEVER grants authority (S-3, docs/17 搂5)' })
   registry.register('vmu.handover', { apiVersion: 1 }, { kind: 'service', description: 'handover packets: required fields named, redacted before packing (docs/17 搂11)' })
   registry.register('vmu.arbitration', { apiVersion: 1 }, { kind: 'service', description: 'arbitration: recusal, rationale, advisory vs binding made explicit (docs/17 搂6)' })
-  registry.register('vmu.recruit', { apiVersion: 1 }, { kind: 'service', description: 'postings, applications, probation; job titles map to slots explicitly (S-1, docs/17 搂7)' })
+  registry.register('vmu.admission', { apiVersion: 1 }, { kind: 'service', description: 'postings, applications, probation; job titles map to slots explicitly (S-1, docs/17 搂7)' })
   registry.register('vmu.topology', { apiVersion: 1 }, { kind: 'service', description: 'collaboration topologies and path assertions, describe and assert share one rule (docs/17 搂14)' })
   registry.register('vmu.fairness', { apiVersion: 1 }, { kind: 'service', description: 'conserving allocation with a per-person cap; reputation is never a weight (docs/17 搂17)' })
   registry.register('vmu.charter', { apiVersion: 1 }, { kind: 'service', description: 'charters: frozen articles, authority that cannot exceed the parent, dissolution reasons (docs/17 搂15)' })
@@ -778,7 +778,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   registry.register('vmu.meetings', { apiVersion: 1 }, { kind: 'service', description: 'meeting policy layer: all 47 declared vmu.meetings knobs change behaviour (docs/08)' })
   registry.register('vmu.ballotbox', { apiVersion: 1 }, { kind: 'service', description: 'ballot box: quorum is refused by name, abstention and absence counted apart (docs/08)' })
   registry.register('vmu.records', { apiVersion: 1 }, { kind: 'service', description: 'records tracks: caps refuse by name, retention counts, permanent markers cannot be deleted' })
-  registry.register('vmu.course', { apiVersion: 1 }, { kind: 'service', description: 'teaching: outcome-to-artifact alignment refuses with the missing outcome named (docs/22 N13)' })
+  registry.register('vmu.teaching', { apiVersion: 1 }, { kind: 'service', description: 'teaching: outcome-to-artifact alignment refuses with the missing outcome named (docs/22 N13)' })
   // The registry's public contract is a PER-SERVICE VERSION OBJECT (D13-O3): registering with whatever the service
   // happens to export as `apiVersion` is not it - the registry refused that with VMU_INVALID_ARGUMENT, which is
   // exactly the kind of thing a gate should catch before a human does.
@@ -881,7 +881,9 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     get trust() { return trust },
     get handover() { return handover },
     get arbitration() { return arbitration },
-    get recruit() { return recruit },
+    get admission() { return admission },
+  /** Deprecated alias: the family is vmu.admission now; using the old face name is early, not wrong. */
+  get recruit() { return admission },
     get topology() { return topology },
     get fairness() { return fairness },
     get charter() { return charter },
@@ -918,7 +920,9 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     get meetings() { return meetings },
     get ballotbox() { return ballotbox },
     get records() { return records },
-    get course() { return course },
+    get teaching() { return teaching },
+  /** Deprecated alias: the family is vmu.teaching now. */
+  get course() { return teaching },
     get conference() { return conference },
     get resource() { return resource },
     get ip() { return ip },

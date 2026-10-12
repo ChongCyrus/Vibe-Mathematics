@@ -212,26 +212,26 @@ const SCENARIOS = [
     run: (mt) => mt.plan({ op: 'stats/mean', args: {} }) },
 
   // ---- ROUND-14 COVERAGE: course.js / external.js / workflow.js (the scan found these three uncovered) ----
-  // course: `vmu.course.visibility` is consulted ONLY when visibility==='public' while allowAuditors is not true
+  // course: `vmu.teaching.visibility` is consulted ONLY when visibility==='public' while allowAuditors is not true
   // (course.js:112) ⇒ internal vs public changes what this call evaluates.
-  { module: 'course', call: 'open', key: 'vmu.course.visibility', expectDiff: true,
-    limiting: { settings: { 'vmu.course.visibility': 'internal' } }, permissive: { settings: { 'vmu.course.visibility': 'public' } },
+  { module: 'teaching', call: 'open', key: 'vmu.teaching.visibility', expectDiff: true,
+    limiting: { settings: { 'vmu.teaching.visibility': 'internal' } }, permissive: { settings: { 'vmu.teaching.visibility': 'public' } },
     make: (settings) => createCourse({ clock: CLOCK, log: () => {}, settings }),
     run: (c) => c.open({ courseId: 'c1', title: 'T' }) },
   // course: same key, the OTHER trigger (public + allowAuditors=true ⇒ the key is not consulted at all).
-  { module: 'course', call: 'open(public+auditors)', key: 'vmu.course.visibility', expectDiff: true,
-    limiting: { settings: { 'vmu.course.visibility': 'public', 'vmu.course.allowAuditors': false } },
-    permissive: { settings: { 'vmu.course.visibility': 'public', 'vmu.course.allowAuditors': true } },
+  { module: 'teaching', call: 'open(public+auditors)', key: 'vmu.teaching.visibility', expectDiff: true,
+    limiting: { settings: { 'vmu.teaching.visibility': 'public', 'vmu.teaching.allowAuditors': false } },
+    permissive: { settings: { 'vmu.teaching.visibility': 'public', 'vmu.teaching.allowAuditors': true } },
     make: (settings) => createCourse({ clock: CLOCK, log: () => {}, settings }),
     run: (c) => c.open({ courseId: 'c1', title: 'T' }) },
   // course: `evidencePack` pushes requireEvidence only when it is ON (course.js:256).
-  { module: 'course', call: 'evidencePack', key: 'vmu.course.requireEvidence', expectDiff: true,
-    limiting: { settings: { 'vmu.course.requireEvidence': false } }, permissive: { settings: { 'vmu.course.requireEvidence': true } },
+  { module: 'teaching', call: 'evidencePack', key: 'vmu.teaching.requireEvidence', expectDiff: true,
+    limiting: { settings: { 'vmu.teaching.requireEvidence': false } }, permissive: { settings: { 'vmu.teaching.requireEvidence': true } },
     make: (settings) => createCourse({ clock: CLOCK, log: () => {}, settings }),
     run: (c) => c.evidencePack({ claims: [{ refs: ['r1'] }] }) },
   // course reverse: with an internal course the visibility key must not appear.
-  { module: 'course', call: 'open(internal)', key: 'vmu.course.visibility', expectDiff: false, absentIn: 'both',
-    limiting: { settings: { 'vmu.course.visibility': 'internal' } }, permissive: { settings: { 'vmu.course.visibility': 'internal' } },
+  { module: 'teaching', call: 'open(internal)', key: 'vmu.teaching.visibility', expectDiff: false, absentIn: 'both',
+    limiting: { settings: { 'vmu.teaching.visibility': 'internal' } }, permissive: { settings: { 'vmu.teaching.visibility': 'internal' } },
     make: (settings) => createCourse({ clock: CLOCK, log: () => {}, settings }),
     run: (c) => c.open({ courseId: 'c1', title: 'T' }) },
 
@@ -684,7 +684,7 @@ for (const [mod, m] of [...byModule].sort()) {
   const covered = new Set(SCENARIOS.map((s) => s.module).concat(REFUSAL_SCENARIOS.map((s) => s.module)))
   const alias = {
     'ballotbox.js': 'ballotbox', 'meetings.js': 'meetings', 'records.js': 'records', 'mathtools.js': 'mathtools',
-    'course.js': 'course', 'external.js': 'external', 'workflow.js': 'workflow',
+    'course.js': 'teaching', 'external.js': 'external', 'workflow.js': 'workflow',
     'conference.js': 'conference', 'resource.js': 'resource', 'ip.js': 'ip',
     'compliance.js': 'compliance', 'funding.js': 'funding', 'storepolicy.js': 'storepolicy',
     'capacity.js': 'capacity', 'tenure.js': 'tenure', 'migration.js': 'migration',

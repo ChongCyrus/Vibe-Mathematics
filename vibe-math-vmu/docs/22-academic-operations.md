@@ -22,7 +22,7 @@
 `名称` ｜ **目的** ｜ **面向谁** ｜ **接口形状**（服务方法／工具／钩子／协议） ｜ **可调控参数**（具体键名或族） ｜ **相关错误码** ｜ **四条哲学**（自由度 F·可调控性 T·可定义性 D·扩展性 X） ｜ **实现要点** ｜ **依赖与前置** ｜ **成熟度**（**已实现 ✓ / 未实现 ✗**） ｜ **优先级**（P0–P3）。
 
 > **设计目标 vs 实现保证（本卷纪律，与 17-§0.1 同源 ✗）**：凡**未标 ✓** 的机制，其"机器强制／必须／断言／具名红"一律是**设计验收目标** ✗，不是今天的实现保证 —— 在实现并由门禁守住之前**不得据以推理** ✓。
-> **本卷可依附的已实现底座**（其余全为规划）：`vibe_vmu_records` ✓（记录轨：只追加、可导出）、`vibe_vmu_task` ✓（任务板与分派）、`vibe_vmu_meeting` ✓（会议/议程/表决原语）、`vibe_vmu_set` ✓（设置读写与下放）、`vibe_vmu_middleware` ✓（钩子注册与动作）、`vibe_vmu_pack` ✓（组织政策的载体）、`vibe_vmu_script` ✓（脚本桥：外部命令＋回执）、`vibe_vmu_status` ✓（现况）、`vibe_vmu_control` ✓（暂停/恢复/拒绝）；以及 `vmu.records.*`／`vmu.meeting.*`／`vmu.tasks.*`／`vmu.budget.*`／`vmu.audit.*`／`vmu.quota.*`／`vmu.license.*`／`vmu.review.*`／`vmu.recruit.*` 键族（分属 07/08/16/17/20 ✓）。
+> **本卷可依附的已实现底座**（其余全为规划）：`vibe_vmu_records` ✓（记录轨：只追加、可导出）、`vibe_vmu_task` ✓（任务板与分派）、`vibe_vmu_meeting` ✓（会议/议程/表决原语）、`vibe_vmu_set` ✓（设置读写与下放）、`vibe_vmu_middleware` ✓（钩子注册与动作）、`vibe_vmu_pack` ✓（组织政策的载体）、`vibe_vmu_script` ✓（脚本桥：外部命令＋回执）、`vibe_vmu_status` ✓（现况）、`vibe_vmu_control` ✓（暂停/恢复/拒绝）；以及 `vmu.records.*`／`vmu.meeting.*`／`vmu.tasks.*`／`vmu.budget.*`／`vmu.audit.*`／`vmu.quota.*`／`vmu.license.*`／`vmu.review.*`／`vmu.admission.*` 键族（分属 07/08/16/17/20 ✓）。
 
 ### 0.2 本卷的六条运营不变式（**设计不变式：实现前不得据以推理** ✗）
 
@@ -71,7 +71,7 @@
 | 6 | 跨机构协作 | 17 委托/身份 · 20 数据共享 | `vmu.collab.*` | `VMU_COLLAB_*` | ✗ |
 | 7 | 合规与审计运营 | 20 合规基线 · 21 审计导出 | `vmu.compliance.*` | `VMU_COMPLIANCE_*` | ✗ |
 | 8 | 资源与容量 | 07 `vmu.quota.*` · 17 席位 | `vmu.capacity.*` | `VMU_CAPACITY_*` | ✗ |
-| 9 | 人事与任期 | 17 `vmu.recruit.*`／席位 | `vmu.tenure.*` | `VMU_HR_*` | ✗ |
+| 9 | 人事与任期 | 17 `vmu.admission.*`／席位 | `vmu.tenure.*` | `VMU_HR_*` | ✗ |
 | **10** | **保管链与溯源（N4）** | `vibe_vmu_records`／§2.1 台账／07 记录轨 | `vmu.custody.*` | `VMU_BIOSAMPLE_*` | ✗ |
 | **11** | **税务与法务实体（N9）** | §3.0 Money／§3.1 账户／20 密级 | `vmu.partnership.*` | `VMU_ENTITY_*`／`VMU_TAX_*`／`VMU_CROSSBORDER_*` | ✗ |
 | **12** | **DUA／MTA 协议闸（N10）** | §7.1 协议登记／21 提醒（引用） | `vmu.agreements.*` | `VMU_AGREEMENT_*` | ✗ |
@@ -100,7 +100,7 @@
 | `vmu.budget` | 9 | **9** | `budget.js`(9) ＋ `fairness.js` | ★ **已接线 ✓** |
 | `vmu.collab` | **9** | **7** | `collab.js`(7) | ⚠️ **部分（余 2 条契约薄，见 §L234；原 10 含 1 个服务名，轮 270 剔除）** |
 | `vmu.dissemination` | **11** | **9** | `publication.js`(9) | ⚠️ **部分（9/11）** —— 9 条**已接线 ✓**；另 2 条（`impact`／`mediaRequest`）**经审计确认内核无读取者 ⇒ 真实待办 ✗**（见 §0.1 与 `04` 的 `planned` 行 ✓） |
-| `vmu.recruit` | 12 | **12** | `recruit.js`(12) | ★ **已接线 ✓（轮 267 接了余下 4 条，当时漏更此表 ✗，轮 271 修正）** |
+| `vmu.admission` | 12 | **12** | `recruit.js`(12) | ★ **已接线 ✓（轮 267 接了余下 4 条，当时漏更此表 ✗，轮 271 修正）** |
 | `vmu.tasks` | **3** | **3** | `index.js`(3) | ★ **已接线 ✓（轮 270 剔除 1 个服务名后，分母由 3 修正为 2 ✓）** |
 | `vmu.partnership` | 6 | **6** | `partnership.js`(6) | ★ **已接线 ✓（轮 276 建面：`registerEntity`／`bindAccount`／`validateInvoice`，五码齐 ✓）** |
 | `vmu.license` | 4 | **4** | `publication.js`(4) | ★ **已接线 ✓（轮 274 接线：`default`／`incompatiblePolicy` 执法，`codeDefault`／`attributionRequired` 报出）** |
@@ -636,7 +636,7 @@
 
 ## 10. 人事与任期运营（Personnel & Tenure Operations）
 
-> **交界（只写一次 ✗）**：**17 管"席位/招募/试用/权限"（`vmu.recruit.*` ✓）**；**22 管"周期运营"**：评审季、绩效节奏、任期决策、轮换、离职、申诉 ✓。
+> **交界（只写一次 ✗）**：**17 管"席位/招募/试用/权限"（`vmu.admission.*` ✓）**；**22 管"周期运营"**：评审季、绩效节奏、任期决策、轮换、离职、申诉 ✓。
 
 | 条目 | 名称 | 目的 | 可调控参数 | 码 | 成熟度 | 优先级 |
 |---|---|---|---|---|---|---|
@@ -888,7 +888,7 @@
 - `10`：pack 机制（本卷所有"组织政策"的载体）✓。
 - `11`：门禁分层（本卷 §15 的场景应登记进 T1/T2）✓。
 - `16`：生命周期/评审/出版/经费面（`vmu.review.*`／`vmu.funding.requiredFields` **归 16** ✗）。
-- `17`：席位/招募/委托/仲裁/预算令牌（`vmu.recruit.*`／`vmu.budget.*` **归 17** ✗；本卷管"钱与物"）。
+- `17`：席位/招募/委托/仲裁/预算令牌（`vmu.admission.*`／`vmu.budget.*` **归 17** ✗；本卷管"钱与物"）。
 - `20`：许可/密级/脱敏/合规基线（本卷合规运营**引用**其判据 ✗）。
 - `21`：审计/指标/SLO/导出（本卷运营事件**必须**经其留痕）✓。
 - **边界加注（N4／N9／N10）** ✗：**样本销毁与保留**只引用 07 的保留/回收站面；**样本↔受试者映射**只引用 20 的去标识化（本卷默认**不可逆** ✓）；**协议到期复审的提醒/日历/告警**只引用 21 ✓；**税务字段位**只声明"位与校验点"，法条与税率**不在本卷** ✓。
