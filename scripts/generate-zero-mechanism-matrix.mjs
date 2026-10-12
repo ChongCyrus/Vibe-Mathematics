@@ -86,7 +86,7 @@ const EXPECT = {
   //   capacity · list()  ⇒ ok, enforced=[0] fired=[0] enforcedScope=evaluated-so-far
   //   hr       · status() ⇒ ok, enforcedScope=evaluated-so-far
   capacity: G('ok 或 object', '实测 `list()` ⇒ **ok**（`enforced=[0] fired=[0] enforcedScope=evaluated-so-far` ⇒ 零机制**清单可读、不拒** ✓；**键数由本生成器实测输出** ✓）'),
-  hr: G('ok 或 object', '实测 `status()` ⇒ **ok**（`enforcedScope=evaluated-so-far` ⇒ 零机制**状态可读、不拒** ✓；**键数由本生成器实测输出**、**零新码** ✓）'),
+  tenure: G('ok 或 object', '实测 `status()` ⇒ **ok**（`enforcedScope=evaluated-so-far` ⇒ 零机制**状态可读、不拒** ✓；**键数由本生成器实测输出**、**零新码** ✓）'),
   // Round 34/35: the migration face landed at the end of the round. Its probe needs a plan payload
   // (from/to/backend/steps) that the automatic op choice cannot invent, so it is registered as an explicit
   // to-do rather than given an invented expectation - the batch that fills probe arguments will upgrade it.
@@ -115,7 +115,7 @@ const EXPECT = {
   // (`VMU_META_VALIDATION_FAILED` for an unknown domain, and `VMU_GATE_UNSATISFIED` naming every missing item for a domain whose
   // required evidence is absent). The face is fail-closed by design, which is exactly why it must be ruled rather than assumed.
   domaincompliance: G('ok 或 object', '实测（轮 247）：零声明下 status() ⇒ ok（declared=[]、trail=0 自曝 ✓）；gate() 对**未满足的必答项【逐项点名】**并拒（VMU_GATE_UNSATISFIED ✓），**fail-closed 是设计**（20 卷 §9.4① 明文：闸未满足 ⇒ 动作不发生 ✓）'),
-  legalentity: G('ok 或 object', '实测（轮 276）：零声明下 status() ⇒ ok（entities=0、zeroMechanism=true 自曝 ✓）；validateInvoice() 对**缺声明的税务字段位【逐位点名】**并拒（VMU_TAX_FIELD_MISSING）；绑定未登记实体拒（VMU_ENTITY_UNKNOWN）✓'),
+  partnership: G('ok 或 object', '实测（轮 276）：零声明下 status() ⇒ ok（entities=0、zeroMechanism=true 自曝 ✓）；validateInvoice() 对**缺声明的税务字段位【逐位点名】**并拒（VMU_TAX_FIELD_MISSING）；绑定未登记实体拒（VMU_ENTITY_UNKNOWN）✓'),
   reviewers: G('ok 或 object', '实测（轮 279）：零声明下 status() ⇒ ok（reviewers=0、zeroMechanism=true 自曝 ✓）；assign() 对【已声明冲突】具名拒（VMU_COI_VIOLATION）、对【达并发上限】具名拒（VMU_REVIEWER_OVERLOADED）；盲评解绑无理由拒（VMU_BLIND_UNBIND_DENIED）✓'),
   guard: G('EXPECT_NA', '非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）'),
   // Round 90-91: the grant face (temporary, scoped, single-command authorization, ported from the v5r line). Its
