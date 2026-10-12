@@ -1041,6 +1041,45 @@ export const CHARTER_BLOCKS = Object.freeze([
       ].join('\n'),
     },
   },
+  // ── THE MEETING PROMPT: OWED, and here is exactly why ───────────────────────────────────────────────────────
+  // Its text is fully transcribed and ready - it is the densest block in the corpus and it states the whole meeting
+  // protocol: everyone invited once without obligation, raised hands, a speaker allowed to raise a hand again, and
+  // closure only when nobody does; silence triggering no deadline; the minutes recording BY NAME that a member had
+  // the chance and chose not to speak; and silence not being a vote, with a missing vote_solved BLOCKING closure.
+  // It is NOT enabled, because as a `meeting`-phase section it joins the sections the loop already supplies for that
+  // phase, and `vmu-turn` T127 asserts the mutually exclusive speaker states - first speaker, others-inputs - appear
+  // ALONE. Adding a second meeting section to the same phase broke that assertion, and the honest reading is that the
+  // meeting prompt belongs in the loop's existing meeting-state mechanism rather than beside it. Enabling the text
+  // means understanding that mechanism first, which is a task rather than a paste, so the section is recorded as
+  // owed instead of forced in with the assertion loosened to fit.
+  // ── THE FINALISER'S PROMPT (corpus-derived) ──────────────────────────────────────────────────────────────────
+  // The last gate before a paper is published, and it is deliberately adversarial about the institute's own output:
+  // check the merged draft against the peer reviews and confirm there is no invention, no unlabelled undecided item,
+  // and nothing contradicting the ballot record. `decision="revise"` sends it back for another round, so the authority
+  // to publish is the authority to refuse, and a paper cannot be waved through by the person who wants it finished.
+  {
+    name: 'v5r-paper-final',
+    order: 813,
+    range: 'pack',
+    kind: 'phase',
+    texts: {
+      'paper-final': [
+        '【最终论文·定稿（{{ roleLabel }}）—— {{ member }}】',
+        '全体参与成员已在互审中表示“可交付”。请你作为定稿代表做**最后一次**把关：',
+        '核对合并稿与互审意见，确认没有编造、没有未标注的未决项、没有与表决记录矛盾之处，然后给出决定。',
+        '',
+        '------------ 合并稿（各成员部分）------------',
+        '',
+        '------------ 互审结论 ------------',
+        '',
+        '结束时只输出一个 JSON 对象：',
+        '{ "paper_final": { "decision": "deliverable",',
+        '    "note": "定稿说明：你如何审阅、统一术语与符号、是否发现并纠正了问题",',
+        '    "conclusion": "（可选）定稿代表对原问题的最终结论（只写有证据的）" } }',
+        'decision="revise" 会退回继续修订（有轮次上限）。',
+      ].join('\n'),
+    },
+  },
   // ── THE HEARTBEAT PROMPT (source `heartbeatPrompt`, L4110-4115) ──────────────────────────────────────────────
   // The fourth prompt TYPE the grouped measurement found, and the second largest family after the ballot. It is what a
   // member receives when the institute has made no progress for a while, and it is deliberately written as a PROMPT AND
