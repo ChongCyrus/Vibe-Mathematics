@@ -35,8 +35,10 @@ export const ORDER_RANGES = Object.freeze({
  * states in that very block that the authoritative roster and the quorum m come from the per-turn state block and
  * that the composition may change, so freezing a snapshot into a section would publish a known-stale list. The value
  * comes from the turn loop, which knows who is seated.
+ * ROUND 358: `round` and `quorum` joined for the same reason - measuring the captured texts found twenty-four literal
+ * round numbers and sixty-six quorum numbers baked in, and both are facts the turn itself owns.
  */
-export const VARIABLE_WHITELIST = Object.freeze(['member', 'role', 'phase', 'time', 'pack', 'task', 'roster', 'setting:', 'count:'])
+export const VARIABLE_WHITELIST = Object.freeze(['member', 'role', 'phase', 'time', 'pack', 'task', 'roster', 'round', 'quorum', 'setting:', 'count:'])
 
 /** Fixed binding priority, low to high (docs/06 §5). */
 export const BINDING_PRIORITY = Object.freeze(['role', 'phase', 'member', 'task'])

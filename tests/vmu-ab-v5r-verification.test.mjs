@@ -310,8 +310,8 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   ok(asm1.ok === true && asm1.text.length > 1000 && asm2.ok === true && asm2.text.length > 1000,
     'V52. ★★★ THE FRAMEWORK assembles a real turn from its own pipeline, carrying the v5r corpus, with no original preset involved',
     { chars: [asm1.text && asm1.text.length, asm2.text && asm2.text.length], sources: asm1.sources && asm1.sources.length })
-  ok(asm1.text === asm2.text,
-    'V53. ★★ the plain corpus alone is MEMBER-AGNOSTIC: two members get identical text, which is exactly why the role section exists',
+  ok(asm1.text !== asm2.text,
+    'V53. ★★★★ after round 358 the plain corpus is no longer member-agnostic: the captured texts carry {{ member }}/{{ role }} placeholders, so two members already get different text before any role section - the fragments do the work the snapshot could not',
     { same: asm1.text === asm2.text })
   // ROUND 341: the gap V53 used to name is closed by the pipeline own variable injection - one template section
   // addresses whichever member is being assembled, so nothing is hard-coded per member and the section stays

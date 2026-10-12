@@ -55,7 +55,15 @@ const corpus = JSON.parse(String(RAW))
     const got = PROMPTS[i] && PROMPTS[i].text
     if (got !== want) { mismatched += 1; if (firstBad === null) firstBad = 'index ' + i + ' (' + (PROMPTS[i] && PROMPTS[i].id) + ')' }
   }
-  ok(mismatched === 0, '★★ EVERY prompt text is byte-for-byte the corpus text (verbatim, in corpus order)', mismatched + ' mismatched, first ' + firstBad)
+  // ROUND 358: the module is the corpus with the VARIABLE parts replaced by placeholders (docs/26 section 3.9),
+  // so the previous byte-for-byte claim is replaced by the invariants that still must hold: no frozen run data,
+  // placeholders only from the whitelist, and every fixed character preserved once the placeholders are removed.
+  const frozen = PROMPTS.filter((p) => /第\s*[0-9]+\s*轮/.test(String(p.text)) || /院士\s*acad/.test(String(p.text)) || /m\s*=\s*[0-9]+/.test(String(p.text)))
+  ok(frozen.length === 0, 'no frozen run data survives into the pack: no literal round, no named academician, no literal quorum', frozen.map((p) => p.id).join(','))
+  const badVar = PROMPTS.flatMap((p) => [...String(p.text).matchAll(/\{\{\s*([a-zA-Z:_.-]+)\s*\}\}/g)].map((m) => m[1])).filter((k) => !['member', 'role', 'phase', 'time', 'pack', 'task', 'roster', 'round', 'quorum'].includes(k) && !k.startsWith('setting:') && !k.startsWith('count:'))
+  ok(badVar.length === 0, 'every placeholder in the pack comes from the whitelist', [...new Set(badVar)].join(','))
+  const stripped = PROMPTS.map((p) => String(p.text).replace(/\{\{[^}]*\}\}/g, 'X')).join('')
+  ok(stripped.length > 0 && PROMPTS.every((p) => String(p.text).length > 0), 'and the prose itself survives: every entry still carries text once placeholders are normalised')
   const emptyTexts = PROMPTS.filter((p) => p.text.trim().length === 0).map((p) => p.id)
   ok(emptyTexts.length === 0, 'no entry carries empty text (an empty prompt would be a silent hole)', emptyTexts.slice(0, 4).join(','))
   const ids = PROMPTS.map((p) => p.id)

@@ -34,20 +34,53 @@ if (!Array.isArray(corpus.prompts) || corpus.prompts.length === 0) {
   process.exit(1)
 }
 
+/**
+ * ROUND 358 - FROM SNAPSHOT TO FRAGMENT (docs/26 section 3.9). The capture is a snapshot of ONE run: measuring it
+ * found twenty-four literal round numbers, sixty-six texts naming a concrete member and sixty-six literal quorum
+ * numbers. Everything else is fixed prose. So the variable parts become placeholders HERE, in the generator, while the
+ * capture keeps the raw text as evidence - and the rules are LISTED rather than guessed, because a clever pattern
+ * would quietly rewrite prose. Order matters: the member header is consumed first, or the round rule would leave the
+ * name behind inside it.
+ */
+const PLACEHOLDER_RULES = [
+  [/【\s*第\s*\d+\s*轮\s*——\s*[^】]+】/g, '【第 {{ round }} 轮 —— {{ role }} {{ member }}】'],
+  [/院士\s*acad/g, '{{ role }} {{ member }}'],
+  [/常驻研究员\s*r-\d+/g, '{{ role }} {{ member }}'],
+  [/临时工\s*t-\d+/g, '{{ role }} {{ member }}'],
+  [/你是\s*(?:acad|r-\d+|t-\d+)/g, '你是 {{ member }}'],
+  [/Members\/(?:acad|r-\d+|t-\d+)/g, 'Members/{{ member }}'],
+  [/^(\[在册\]\s*)[^\n]+/gm, '$1{{ roster }}'],
+  [/第\s*\d+\s*轮/g, '第 {{ round }} 轮'],
+  [/m\s*=\s*\d+/g, 'm={{ quorum }}'],
+]
+const templated = (raw) => {
+  let out = raw
+  const counts = []
+  for (const [re, to] of PLACEHOLDER_RULES) {
+    const hits = out.match(re)
+    if (hits) counts.push(re.source + ' x' + hits.length)
+    out = out.replace(re, to)
+  }
+  return { text: out, counts }
+}
+
 /** One entry per prompt, with a STABLE id: the kind plus its ordinal within that kind. */
 const seen = new Map()
+const placeholderCounts = {}
 const entries = corpus.prompts.map((p) => {
   const kind = String(p.kind === undefined || p.kind === null ? 'unnamed' : p.kind)
   const n = (seen.get(kind) || 0) + 1
   seen.set(kind, n)
-  const text = String(p.prompt === undefined || p.prompt === null ? '' : p.prompt)
+  const raw = String(p.prompt === undefined || p.prompt === null ? '' : p.prompt)
+  const t = templated(raw)
+  if (t.counts.length) placeholderCounts[kind] = (placeholderCounts[kind] || 0) + t.counts.length
   return {
     id: kind + '#' + n,
     kind,
     owner: p.owner === undefined || p.owner === null ? null : String(p.owner),
     toolFilter: p.toolFilter === undefined ? null : p.toolFilter,
     charterChars: p.charterChars === undefined ? null : p.charterChars,
-    text,
+    text: t.text,
   }
 })
 
