@@ -156,6 +156,25 @@ const noWhy = await call('vibe_v5_reconsider', { target: 'q-1' }, seat('r-1'))
 ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   'V21. ★ a reconsideration without a stated reason is refused, and the refusal cites D5', { message: String(noWhy.message).slice(0, 60) })
 
+// ── D4 and D8: one is a DELIBERATE ABSENCE (so not a gap), the other is enforced in code ──────────────────────
+{
+  const rulings = readFileSync(new URL('../vibe-math-v5r/docs/02-rulings.md', import.meta.url), 'utf8')
+  ok(/故意不做/.test(rulings) && /无窗口|无定时器/.test(rulings) && /D10/.test(rulings),
+    'V22. ★★★ D4 ANSWERED AS A DESIGNED ABSENCE: the ruling volume says the window/frequency layer of reconsideration is DELIBERATELY not built, on the R1/D10 principle that the framework recommends and never drives - so "no extension cap" is a decision, not a missing gate',
+    { cites: 'docs/02-rulings.md' })
+  const hire = registry.get('vibe_v5_hire')
+  const hireProps = Object.keys((hire.parameters || {}).properties || {})
+  ok(hireProps.includes('term') && hireProps.includes('purpose') && hireProps.includes('initial_task'),
+    'V23. ★ a temporary worker is hired with a TERM, a purpose and a first task - the roster distinguishes temp from permanent', hireProps)
+  const vsrc = readFileSync(new URL('../vibe-math-v5r/vibe-math-v5r.js', import.meta.url), 'utf8')
+  ok(/kind !== 'temp'/.test(vsrc) && /列席／受邀／临时工没有表决权（D8）/.test(vsrc),
+    'V24. ★★★ D8 ENFORCED IN CODE: temporary members are excluded from the active set, and a vote attempt is refused by name with the ruling cited',
+    { cites: "kind !== 'temp' + the D8 refusal" })
+  ok(/你的意见已转达给表决者/.test(vsrc) && /to: 'voters'/.test(vsrc),
+    'V25. ★★★ and the refusal RELAYS the non-voter opinion to the voters instead of dropping it: D8 says an observer may be quoted and may speak, but never votes - and the code keeps the speaking half rather than discarding it',
+    { cites: 'the relay inside the refusal path' })
+}
+
 rmSync(workspace, { recursive: true, force: true })
 console.log('=== VMU AB v5r verification: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed > 0 ? 1 : 0)
