@@ -404,9 +404,24 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   const mkAB = () => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS,
     prompt: createPromptPipeline({ sections: [...CHARTER_SECTIONS, v5rRoleSection], bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }),
     settings: SETTINGS_AB,
+    extraPhases: ["heartbeat"],
     noticeBlock: INBOX.inboxBlock,
   })
   const loopAB = mkAB()
+  // THE PHASE SEAM BITES BOTH WAYS. The framework validates a phase but does not own the vocabulary: a phase the
+  // pack declares is accepted, and one nobody declares is refused by name with the union printed. A seam that only
+  // accepts everything is not a validation.
+  {
+    const withPack = mkAB()
+    let okPack = true
+    try { withPack.open({ member: "acad", role: "academician", roleLabel: "院士", phase: "heartbeat" }) } catch (e) { okPack = false }
+    ok(okPack, "a phase the PACK declares is accepted by the framework", { phase: "heartbeat" })
+    let refusal = null
+    try { withPack.open({ member: "acad", role: "academician", roleLabel: "院士", phase: "not-a-phase" }) } catch (e) { refusal = e }
+    ok(refusal && refusal.code === "VMU_INVALID_ARGUMENT" && /heartbeat/.test(String(refusal.hint || "")),
+      "and a phase NOBODY declares is refused by name, with the framework list AND the pack list printed - so a pack can extend the set without the framework learning its vocabulary",
+      { code: refusal && refusal.code, hint: refusal && String(refusal.hint || "").slice(0, 90) })
+  }
   // queue one notice, so the inbox block the corpus shows is really rendered
   loopAB.notify("acad", "【研究所提示】demo 未生效（V5_DEMO）：示例通知，用于让比对看见表头与缩进")
   const oursAB = {}

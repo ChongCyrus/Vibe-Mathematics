@@ -78,10 +78,12 @@ export const RECORDED_FIELDS = Object.freeze([
   'solved', 'prioritize', 'hire', 'fire',
 ])
 
-// ROUND 409: `heartbeat` joins the set because the ORIGINAL has it - it sends a no-progress prompt that REPLACES an
-// ordinary round, and ten of the delivered prompts carry one. The extensible form, a pack declaring its own phases,
-// is owed rather than pretended: this set is read at open() time and a pack is applied after the kernel exists.
-const PHASES = Object.freeze(['founding', 'normal', 'checkpoint', 'heartbeat', 'verify', 'verify-debate', 'meeting', 'resume'])
+// THE FRAMEWORK OWNS THE IDEA OF A PHASE, NOT THE WORDS. Round 409 added `heartbeat` here because the original has it
+// - a no-progress prompt that REPLACES an ordinary round - and that was the framework learning an institution word.
+// Round 413 removes it again: `heartbeat` is one of the phases the v5r pack declares, and the loop validates the
+// UNION of this list and whatever the pack supplies. The framework list is what a turn can be by itself; anything
+// further is vocabulary, and vocabulary belongs to the institution.
+const PHASES = Object.freeze(['founding', 'normal', 'checkpoint', 'verify', 'verify-debate', 'meeting', 'resume'])
 
 export function refuse(code, message, hint) {
   const err = new Error(message)
@@ -192,6 +194,9 @@ export function createTurnOrchestrator({
   // Renders this member's queued notices as the pack writes them (header, indented lines, blank line). Null means
   // the notices join the status block as before, which keeps the framework usable with no pack at all.
   noticeBlock = null,
+  // Phases the PACK declares, beyond the framework's own. See PHASES: which phases exist is institution
+  // vocabulary, so the framework validates and the pack names.
+  extraPhases = null,
   prompt = null, deliver = null, faces = {}, bindings = null, wakeupPolicy = 'round-robin', settings = null, clock = () => new Date().toISOString() } = {}) {
   const owners = resolveOwners(bindings)
   const known = Object.keys(owners)
@@ -211,8 +216,9 @@ export function createTurnOrchestrator({
   /** ① open a turn: who, which round, which phase, which task. */
   const open = ({ member, role = null, phase, task = null, why = null, nextStep = null, roster = null, quorum = null, statusBlock = null, facts = null, meetingState = null, formalStatus = null, round = 1 } = {}) => {
     if (typeof member !== 'string' || member.trim() === '') fail('VMU_INVALID_ARGUMENT', 'a turn needs a member', 'pass { member, phase }')
-    if (typeof phase !== 'string' || !PHASES.includes(phase)) {
-      fail('VMU_INVALID_ARGUMENT', 'unknown phase: ' + String(phase), 'known phases: ' + PHASES.join(', '))
+    const knownPhases = extraPhases && extraPhases.length ? PHASES.concat(extraPhases) : PHASES
+    if (typeof phase !== 'string' || !knownPhases.includes(phase)) {
+      fail('VMU_INVALID_ARGUMENT', 'unknown phase: ' + String(phase), 'known phases: ' + (extraPhases && extraPhases.length ? PHASES.concat(extraPhases) : PHASES).join(', '))
     }
     seq += 1
     const turn = { id: 't-' + seq, member, role, phase, task, why, nextStep, roster, quorum, statusBlock, facts, meetingState, formalStatus, round, at: clock() }

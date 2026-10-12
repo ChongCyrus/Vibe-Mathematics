@@ -195,6 +195,7 @@ export function createKernel({
   sectionPolicy = null,
   // Renders a member queued notices the way the institution writes them; null means the framework fallback.
   noticeBlock = null,
+  extraPhases = null,
   settings = {},
   root = null,
   // THE FACTORY DEFAULT CLOCK IS A NUMBER OF MILLISECONDS. It used to return an ISO string, which the clock guard
@@ -624,6 +625,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   const turn = createTurnOrchestrator({
     sectionPolicy: sectionPolicy || null,
     noticeBlock: noticeBlock || null,
+    extraPhases: extraPhases || null,
     prompt,
     faces: facesFrom({ tasks, records, library, meetings, ballotbox, formal, mathjobs }),
     deliver: host && typeof host.deliverTurn === 'function' ? host.deliverTurn : null,
