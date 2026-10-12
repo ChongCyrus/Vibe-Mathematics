@@ -442,7 +442,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   // The persona capture is the baseline for the CHARTER axis only. The per-turn pieces - the reply spec, the turn
   // heading and ask, the brief - belong to the PROMPT axis, and measuring showed the captured prompt corpus does
   // not even contain the reply catalogue. Scoping by axis is stated here rather than loosening the comparison.
-  const PROMPT_AXIS_PREFIXES = ['v5r-reply-', 'v5r-turn-', 'v5r-brief-']
+  const PROMPT_AXIS_PREFIXES = ['v5r-reply-', 'v5r-turn-', 'v5r-brief-', 'v5r-proof-']
   for (const b of CHARTER_BLOCKS.filter((x) => !PROMPT_AXIS_PREFIXES.some((p) => String(x.name).startsWith(p)))) {
     const pairs = b.kind === 'shared' ? [['shared', b.texts.shared, acadOrig], ['shared', b.texts.shared, resOrig]]
       : (b.kind === 'role' ? [['academician', b.texts.academician, acadOrig], ['researcher', b.texts.researcher, resOrig]]
@@ -521,6 +521,23 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   ok(asmC.text.includes('【心跳检查 —— 院士 acad】') && asmC.text.includes('所内一段时间没有新进展了') && asmC.text.includes('【入职首轮') === false,
     'T80. **** and the CHECKPOINT phase gets the heartbeat heading and its own ask, with the founding heading absent - the bindings really select',
     { heading: 'checkpoint' })
+}
+
+// 20) THE RESOURCE DISCIPLINE and PROOF ADMISSION (docs/26 section 3.14). The source's resource block is not a
+// slogan: every number in it is a runtime parameter, so the assertion is that the NUMBERS COME FROM SETTINGS.
+{
+  const pipeRs = createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' })
+  const ctxRs = { member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal', round: 4, roster: 'acad、r-1', quorum: 2, statusBlock: '[状态] x', settings: { 'vmu.resources.maxParallel': 5, 'vmu.resources.toolCallsPerTurnCap': 12, 'vmu.resources.memoryCeilingMb': 4096 } }
+  const asmRs = await pipeRs.assemble(ctxRs)
+  ok(asmRs.ok === true && asmRs.text.includes('最多同时唤醒 5 名成员') && asmRs.text.includes('工具调用不超过 12 次') && asmRs.text.includes('接近 4096 MB'),
+    'T81. **** the RESOURCE DISCIPLINE renders its numbers FROM SETTINGS: concurrency, tool budget and memory ceiling are configuration, not prose',
+    { chars: asmRs.text.length })
+  ok(asmRs.text.includes('正确性优先于产出量') && asmRs.text.includes('OOM 会丢掉全部未落盘工作'),
+    'T82. **** while the fixed judgement stays verbatim: correctness before throughput, and the reason - an OOM loses all unflushed work',
+    { fixed: true })
+  ok(asmRs.text.includes('【命题准入（本所纪律）】') && asmRs.text.includes('写实比写全更重要') && asmRs.text.includes('禁止') && asmRs.text.includes('已论证'),
+    'T83. **** and PROOF ADMISSION arrives: the three evidence grades, the ban on passing drafts off as argued, and the line that writing truly beats writing fully',
+    { admission: true })
 }
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)

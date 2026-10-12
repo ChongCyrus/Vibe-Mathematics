@@ -129,6 +129,13 @@ const CORE_DEFS = Object.freeze([
   // the original, and freezing an objective into a section would make every deployment's charter wrong. It is a
   // settings value, reached from the section through the pipeline own `{{ setting:... }}` variable.
   { key: 'vmu.turn.objective', type: 'string', def: '（尚未设定）', hot: HOT.H2, who: 'office', doc: '本所研究对象（原问题）；默认值与原线未设定时的输出一字不差，绝不留空括号' },
+  // ROUND 365: the resource discipline the original puts in front of every member is not a slogan, it is a block whose
+  // NUMBERS are runtime parameters (docs/26 section 3.14). They live here so the text stays in the pack and the values
+  // stay configurable - the point of the whole settings surface.
+  { key: 'vmu.resources.maxParallel', type: 'number', def: 3, hot: HOT.H2, who: 'office', doc: '每轮最多同时唤醒的成员数（原线默认 3；非法值回落 3）' },
+  { key: 'vmu.resources.toolCallsPerTurnCap', type: 'number', def: 0, hot: HOT.H2, who: 'office', doc: '本回合工具调用上限；0＝未设上限（仍请克制）' },
+  { key: 'vmu.resources.memoryCeilingMb', type: 'number', def: 0, hot: HOT.H2, who: 'office', doc: '内存上限（MB）；0＝只提醒"压力明显增大"而不给数字' },
+  { key: 'vmu.resources.selfCheck', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '是否向成员展示资源纪律段（关掉＝零注入，提示词回到该段之前，注入点逐字不变）' },
 
   // ---- math and formalisation ---------------------------------------------------------------
   // A1/A2 (P3): the DEFAULTS come from the shared module, so v2–v5r and vmu stay byte-comparable.

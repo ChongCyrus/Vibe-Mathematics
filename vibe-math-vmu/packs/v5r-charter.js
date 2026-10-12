@@ -715,6 +715,45 @@ export const CHARTER_BLOCKS = Object.freeze([
       ].join('\n'),
     },
   },
+  // ── THE RESOURCE DISCIPLINE (source `resourceBlock`, L2069-2085) ────────────────────────────────────────────
+  // Every number in the source's block is a runtime parameter, so the values arrive through settings and only the
+  // wording lives here (docs/26 section 3.14). The switch is the loop's job: when self-checks are off the block is not
+  // included at all, which is ZERO injection - the source is explicit that injecting a "disabled" notice instead
+  // would change the prompt's words, while omitting it returns the prompt to what it was before the feature.
+  {
+    name: 'v5r-turn-resources',
+    order: 743,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '【资源】本机可能资源紧张，请自觉控本回合开销：',
+        '  · 并发：框架每轮最多同时唤醒 {{ setting:vmu.resources.maxParallel }} 名成员（`maxParallel`）；**不要**为了提速而让你自己一次性铺开大量子代理。',
+        '  · 工具预算：**本回合工具调用不超过 {{ setting:vmu.resources.toolCallsPerTurnCap }} 次**。',
+        '  · 自监测：若观察到内存占用接近 {{ setting:vmu.resources.memoryCeilingMb }} MB，**先让出**：停止新起子代理、改用轻量路径（减少重复读写与大文件扫描）、把大任务切成更小的可交付步，并在回执里写明"因资源让出、剩余工作是什么"。',
+        '  · 取舍：**正确性优先于产出量**；资源紧张时宁可少做一步并说明，也不要冒险把本机拖垮（OOM 会丢掉全部未落盘工作）。',
+      ].join('\n'),
+    },
+  },
+  // ── PROOF ADMISSION (source `proofStatusBlock`, L2087-2097) ─────────────────────────────────────────────────
+  // The source's discipline for what may enter a debate, kept verbatim: a proposition's advocate must state its
+  // evidence grade, drafts must never be passed off as argued, and writing truly beats writing fully.
+  {
+    name: 'v5r-proof-admission',
+    order: 744,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '【命题准入（本所纪律）】进入本场辩论/裁决的命题，主张方必须**明示其证据等级**，三者之一：',
+        '  · **已论证**：本所已归档的正式证明/证伪（例如 Lean 通过的对象，或 `verdicts` 里已裁决的条目）；',
+        '  · **仅有尝试/草稿**：**必须显式写出"这还只是尝试/草稿"**，并**点明还缺哪一个具体引理或哪一步**；',
+        '  · **无证据**：只能作为**待验证的猜想**提出，**不得**在当前轮次当作支撑更外层命题的依据。',
+        '**禁止**把"证明尝试／证伪尝试"当作"已论证"去支撑更外层结论（这会把算力花在"否决别人"上而让中间引理无人论证）。',
+        '**写实比写全更重要**：宁可如实说"只有草稿"，也不要含糊地把它当成已成立。',
+      ].join('\n'),
+    },
+  },
 ])
 
 /** One binding per role for every role-varying block, so the assembly puts the right charter in front of each kind. */
