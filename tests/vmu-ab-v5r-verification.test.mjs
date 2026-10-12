@@ -325,6 +325,30 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   ok(r1.text.includes('r-1') && r1.text.includes('researcher') && ac.text.includes('acad') && ac.text.includes('academician'),
     'V55. ★★★ and each assembled turn names the member and role it was written for')
 }
+// ── THE WAKE PATH, both sides: a turn is bound to a NAMED member, and nobody gets an anonymous turn ────────────
+{
+  const acadAgent = (() => {
+    for (const [id, m] of seats.entries()) if (id === 'acad') return { id: seats.get(id), session: { id: seats.get(id), header: { cwd: workspace, parentSession: root.id } }, options: {} }
+    return root
+  })()
+  const before = capturedSpans.length
+  const unnamed = await call('vibe_v5_nudge', { why: 'no target', next_step: 'none' }, acadAgent)
+  ok(unnamed.ok === false && unnamed.code === 'V5_MEMBER_NOT_FOUND',
+    'V56. ★★★ the ORIGINAL refuses a wake that names no member, by name - there is no anonymous turn', { code: unnamed.code })
+  const named = await call('vibe_v5_nudge', { to: 'r-1', why: 'continue the proof', next_step: 'close the lemma' }, acadAgent)
+  ok(named.ok === true && named.nudged === 'r-1',
+    'V57. ★★ and a proper wake names WHO, WHY and WHAT NEXT - the three elements the framework turn carries too', named)
+  ok(capturedSpans.length === before,
+    'V58. ★★★★ MEASURED, AND IT IS THE POINT OF THIS OBJECTIVE: the original ACCEPTS the wake and still spawns no turn, because its orchestration lives OUTSIDE its own tools - in the host loop. The framework exposes that loop itself (turn.open, assemble, deliver, parse, apply), which is what makes it runnable by a different host',
+    { before, after: capturedSpans.length })
+  let anonymous = null
+  const anonLoop = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: v5rTurnSections, clock: () => '2026-01-01T00:00:00.000Z' }) })
+  try { anonLoop.open({ phase: 'normal' }) } catch (e) { anonymous = e }
+  ok(anonymous !== null && (anonymous.code === 'VMU_INVALID_ARGUMENT' || /member/i.test(String(anonymous.message))),
+    'V59. ★★★ so does the framework: a turn with no member is refused rather than seated anonymously, which is the same rule on both sides',
+    { code: anonymous && anonymous.code, message: anonymous && String(anonymous.message).slice(0, 90) })
+}
+
 rmSync(workspace, { recursive: true, force: true })
 console.log('=== VMU AB v5r verification: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed > 0 ? 1 : 0)

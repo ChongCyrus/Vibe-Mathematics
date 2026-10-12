@@ -1788,6 +1788,11 @@ undefined
   The measurement is a whole turn through the seam: assembly from the pipeline at over a thousand characters, delivery through the bridge carrying the turn label, strict parsing, dispatch into the real faces, and a task ledger that really grew. No original preset is involved anywhere in that path, which is the objective's own sentence - that the framework run a member turn itself.
   The turn suite passes forty-one assertions.
   Still undone on the first objective: extending the two-sided comparison against the original past the founding phase, and formalising the next-round wakeup policy as settings or a pack.
+- ***** 345 THE WAKE PATH IS COMPARED, AND THE COMPARISON PROVES THE OBJECTIVE OWN PREMISE. Round 344 ended with the two-sided comparison still short of a second phase, so this round went looking for the tool that advances the institute - and found there is none. Fifty-seven tools, not one of them advances a round; advancement happens through a wake, vibe_v5_nudge with a target, a reason and a next step.
+  Measured on both sides. Without a target the original refuses by name and says the active member is empty, so there is no anonymous turn. With a target it accepts the wake and reports who was nudged, carrying who, why and what next. And then the finding that matters: after an ACCEPTED wake, the original spawns NO turn at all - the spawned-span count is identical before and after. Its orchestration lives outside its own tools, in the host loop.
+  That is not a criticism of the original; it is a division of labour, and it is precisely why this objective exists. Because the orchestration lived in the host, only that host could run the institute. The framework now exposes the loop itself - open, assemble, deliver, parse, apply - so a different host can run it, and the framework applies the same rule the original does: a turn with no member is refused rather than seated anonymously.
+  The A/B harness now holds fifty-nine green assertions.
+  Still undone on the first objective: capturing the original's SECOND phase needs the host loop, which a fixture does not run, so the deeper per-phase comparison waits on running the original under a real host; and the wakeup policy is not yet formalised as settings or a pack.
 ### 0.4 结论
 
 ## 0.5 未接线键的【三档结构】（轮 287 建表；**轮 290 据实更正数字** ✓✓）
