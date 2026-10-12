@@ -103,7 +103,6 @@ const EXPECT = {
   collab: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（counterparties: 0、agreements: 0 自曝 ✓）；agreementRequired 默认 true 但无对手方⇒无可交换对象，**不拒** ✓'),
   human: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（vetoes: 0、approvals: 0 ✓；neverAllowsBySilence: true 自曝「onTimeout 默认 hold ⇒ 沉默绝不变成批准」 ✓）'),
   discipline: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（subjects: 0；breakerOffMeansOff: true 自曝「阈值 0＝机制关，而非允许零次失败」 ✓）'),
-  biospecimen: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（samples: 0；chainRequired: true 自曝 ✓）；无样本⇒无可转移对象，**不拒** ✓'),
   explain: G('具名拒（带 code）', '实测（轮 224）：矩阵的**探针**调用在零声明下【具名拒】 ✓——render() 无报告可渲染时以 VMU_INVALID_ARGUMENT 具名拒（status() 本身仍是 ok ✓，但探针走的是调用路径 ⇒ 期望取实测的拒 ✓）。**不假装成功** ✗'),
   control: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（paused: []、registrySize: 0；archivingNeverPausedByItself 与 idleNeverRecessesByItself 自曝两条不变式 ✓）'),
   citations: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（entries: 0；freeTextIsOffByDefault: true 自曝 ✓）；无条目⇒无可渲染对象，**不拒** ✓'),

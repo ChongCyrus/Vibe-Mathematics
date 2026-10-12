@@ -1531,6 +1531,13 @@ undefined
 undefined
 undefined
 undefined
+- ★★★★★ 轮 301：**执行既有裁决** —— 撤除 biospecimen 族（7 键／内核面／其测试的对应半／12 处文档触点／登记项），作为"降级必须撤代码"的**模板**；T1 129/129 全绿。
+  ★★★ 为什么先撤它：`22-§14` **早已判它"不做 ✗（③无消费者：无实验室系统接入面；真需要应复用已实现的 `ip` 与 `compliance`，不新建一族）"**，**而内核里却存在 `biospecimen.js`（200 行）且 7 键全部标 ✅ 已接线** ⇒ 记录与实现不一致（§1c）。撤除＝**执行既有裁决**，不是新决策。
+  ★★★ **退役键名（审计唯一豁免处；`vmu.biospecimen.*` 共 7 个）**：`ledgerDir`／`requireChain`／`chainGapPolicy`／`freezeThawWarnAt`／`destroyKeepsReference`／`subjectRefStyle`／`mappingIrreversible`。**退役码（6）**：`VMU_BIOSPECIMEN_SAMPLE_UNKNOWN`／`_CHAIN_REQUIRED`／`_CHAIN_GAP`／`_REVERSIBLE_MAPPING`／`_SUBJECT_REF_STYLE`／`_ALREADY_DESTROYED`。
+  ★★★ **触点共 15 处**，逐一处理：内核面删除；`schema.js` 7 行；`kernel/index.js` 5 处（import／构造／解构表成员／`registry.register`／getter）；`package.json` 2 条；`installer.js` 预设清单；`scripts/generate-zero-mechanism-matrix.mjs` 行；`tests/audit-vmu-services.test.mjs` 服务映射；`tests/vmu-audit.test.mjs` 注释；`docs/03` 18 处码提及（6 行码表＋6 行"已实现"表＋共享码行的模块列）；`docs/22`（7 行设置表＋成熟度行＋§2.5 从 21 行缩为 4 行裁决）；`docs/04`（生成）；`docs/11`；`docs/23` D-8 改"已撤除"。
+  ★★★ **两处险些造成真实损害，靠断言/实证拦下**：① **那个测试文件并非只测 biospecimen，它同时覆盖 `budget`(9 键) 与 `audit`(17 键)** ⇒ 若按"删套件"处理会**静默丢掉两个保留族的断言** ✗ ⇒ 改为**拆套件**（`tests/vmu-budget-audit.test.mjs`，**30 条断言全绿** ✓）；② 我在改 `index.js` 解构表时把 `discipline, biospecimen, explain` **整段删掉**，**连带移除 `discipline` 与 `explain`** ⇒ 语法报错当场拦下，**而它本会是静默功能回归** ✗ ⇒ 修复后**实证**：内核加载 104 服务，`biospecimen=false`／`discipline=true`／`explain=true` ✓。
+  ★★ **教训（应入 docs/11）**：**"删一族"不能按文件删，必须按【族】逐一枚举触点**；而**共享套件与聚合解构表是两处最危险的耦合点** —— 前者会静默减少覆盖，后者会静默减少服务。
+  ★★ 未做（明写 ✗）：**其余降级族未撤代码**（instruments 17 键／hr 11 键／course 24 键／domaincompliance 内的 clinical 9＋animal 9）；5 个文件的**残余提及**未清（`docs/11`／`docs/22` 的散文行／`schema.js` 已被本轮清）；`docs/22` §2.5 的**展开规格尚未物理移出**到卷 23（仅在 §1b/D-8 登记）；"新文件须双登记"纪律仍未入 `docs/11`；真机复跑 ✗；版本号/release ✗（须你批准）。
 ### 0.4 结论
 
 ## 0.5 未接线键的【三档结构】（轮 287 建表；**轮 290 据实更正数字** ✓✓）

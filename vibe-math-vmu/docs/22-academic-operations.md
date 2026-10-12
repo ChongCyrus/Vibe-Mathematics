@@ -87,7 +87,6 @@
 | `vmu.instruments` | 17 | **17** | `instruments.js`(17) | ★ **已接线 ✓（上文 §2 的"计划 ✗"已过期）** |
 | `vmu.funding` | 16 | **16** | `funding.js`(16) | ★ **已接线 ✓（§3 的"计划 ✗"已过期）** |
 | `vmu.money` | 11 | **11** | `funding.js`(11) | ★ **已接线 ✓** |
-| `vmu.biospecimen` | 7 | **7** | `biospecimen.js`(7) | ★ **已接线 ✓（§L168"本仓今天没有任何样本/保管实现"【已不成立】✗）** |
 | `vmu.agreements` | 7 | **7** | `collab.js`(7) | ★ **已接线 ✓** |
 | `vmu.capacity` | 12 | **12** | `capacity.js`(12) | ★ **已接线 ✓** |
 | `vmu.hr` | 11 | **11** | `hr.js`(11) | ★ **已接线 ✓** |
@@ -189,27 +188,9 @@
 
 > **这一族怎么由 settings＋中间件＋pack 组合出来** ✓：**settings** 给"要不要台账、时间窗多长、过期是否阻断"；**中间件**在 `before`（预约/占用前）查台账与校准状态、在 `after`（数据产出后）校验引用链，把违规**具名拒**；**pack** 声明"哪些设备类别需要校准、谁有优先权、哪些设备禁止某类用途"。**内核只提供记录、任务、钩子与设置** —— 不出现"仪器/PI"这类组织名词 ✓。
 
-### 2.5 生物样本库与链式保管（Biobank / Biospecimen —— **补 N4** ✗✓）
+### 2.5 生物样本库与链式保管（N4）—— **裁决：不做 ✗（轮 301 已撤除）**
 
-> **为什么要有这一节** ✗：批评者第 6/7 轮关键词实测"**生物样本**"**0 命中** ✗ —— 一个能管仪器与经费的平台却**没有样本**这一最典型的实验资产 ✓。样本的特殊性在于：它**不可重建** ✓、与**受试者**关联 ✓、且必须证明"**一直没脱离监管**" ✓。
-
-| 字段 | 内容 |
-|---|---|
-| **名称** | 生物样本台账与链式保管（Biospecimen Ledger & Chain of Custody） |
-| **目的** | 每个样本**可追溯**：谁采集／谁保管／谁取用／冻融几次／是否已销毁 ✓；**链式保管断链必须报** ✗✓；销毁后仍保留**引用**（与 07 只引用 ✓） |
-| **面向谁** | 实验执行者、样本管理员、伦理/合规、审计、代理 |
-| **接口形状** | 协议 `BiospecimenRecord` ⛔ 待实现：`{ sampleId, subjectRef, collectedAt, storage, freezeThawCount, chainOfCustody[] }`；协议 `CustodyEvent` ⛔ 待实现：`{ sampleId, from, to, atMs, why }`；服务 `vmu.biospecimen`（★ **已接线 ✓**（实测 7/7，见 §0.1））：`register(sample)`／`transfer(sampleId, {from,to,why})`／`chain(sampleId)`／`verify(sampleId)`／`destroy(sampleId,{reason})`；工具 `vibe_vmu_biospecimen` ⛔ 未实现 |
-| **可调控参数** | `vmu.biospecimen.ledgerDir`（默认 `Ops/Biosamples`）、`vmu.biospecimen.requireChain`（默认 `true`）、`vmu.biospecimen.chainGapPolicy`（默认 `block`；可选 `warn`）、`vmu.biospecimen.freezeThawWarnAt`（默认 `5`）、`vmu.biospecimen.destroyKeepsReference`（默认 `true`）、`vmu.biospecimen.subjectRefStyle`（默认 `pseudonym`）、`vmu.biospecimen.mappingIrreversible`（默认 **`true`** ✗✓） |
-| **相关错误码** | `VMU_BIOSAMPLE_NOT_REGISTERED` ⛔／`VMU_BIOSAMPLE_CHAIN_GAP` ⛔（**断链**）／`VMU_BIOSAMPLE_FREEZE_THAW_LIMIT` ⛔／`VMU_BIOSAMPLE_SUBJECT_LINK_FORBIDDEN` ⛔／`VMU_BIOSAMPLE_DESTROYED` ⛔ |
-| **四条哲学** | F：不登记＝无样本概念 ✓｜T：断链策略/冻融阈值/去标识样式可配 ✓｜D：链式三要素（who/when/why）由 **pack 声明**，内核不认识"生物样本" ✓｜X：新样本类型只加字段 ✓ |
-| **实现要点** | ① 链式保管是**只追加事件流** ✓，每次转移三要素缺一即拒（`VMU_BIOSAMPLE_CHAIN_GAP`）✓；② **断链检测＝连续性检查**：上一环 `to` ≠ 下一环 `from`、时间倒流、或事件缺失 ⇒ **断链必须报** ✗✓（`block` 时拒绝后续操作并具名，`warn` 时计数并继续）；③ **销毁＝状态转换＋保留引用**（`destroyed`＋原因＋时间；样本记录**不删**，与 07 的保留/回收站面**只引用不重定义** ✗）；④ 与 **20 卷去标识化只引用** ✗：本卷只存 `subjectRef`（假名），**样本↔受试者映射默认不可逆** ✓ —— 不提供反向查询接口，任何"由样本找回受试者"的请求 ⇒ `VMU_BIOSAMPLE_SUBJECT_LINK_FORBIDDEN` |
-| **依赖与前置** | §2.1 台账（同构）、07 记录轨/保留（引用 ✓）、20 去标识化与密级（引用 ✓）、§8.2 伦理审批（取样前闸点）✓ |
-| **成熟度** | ✗ 计划（本仓今天**没有**任何样本/保管实现 ✓） |
-| **优先级** | P1（不可重建的资产 + 合规风险） |
-
-> **这一节怎么由 settings＋中间件＋pack 组合出来** ✓：**settings** 给账本位置、是否强制链式、断链处置、冻融阈值、去标识样式；**中间件**在 `before`（取样/转移/取用/销毁）校验登记与链条连续性、在 `after` 追加事件并广播；**pack** 给"链式三要素的字段、样本类型、允许的存储条件"。**内核只提供记录、钩子与设置** ✓。
-
----
+> ★ **执行既有裁决** ✓✓：本节原本已被 **§14 判"不做 ✗"**（理由"**③无消费者**（无实验室系统接入面）＋ 真需要应**复用**已实现的 `ip` 与 `compliance`"），**但内核里却存在 `kernel/biospecimen.js`（7 键全部标 ✅ 已接线）** ✗ —— 这是**记录与实现不一致**（登记于 `23-§1c`）。**轮 301 已撤除代码与声明** ✓：**7 键、内核面、其测试、`03` 的 6 个错误码行、零机制矩阵行、安装器与包清单**全部移除；**展开规格移出到 `23-§1b` D-8** ✓，**退役键名记于 `14` 台账** ✓。**复活条件**：真需要链式保管时，按 `23-§3` **以 pack 复用 `ip`／`compliance`**，不重建内核面 ✗。
 
 ## 3. 经费与财务（Funding & Finance）
 
@@ -808,13 +789,6 @@
 | 货币 | `vmu.money.maxAmountMinor` | integer | `0` | ≥0（0＝不限） | pack |
 | 货币 | `vmu.money.allowNegative` | boolean | `false` | — | pack |
 | 货币 | `vmu.money.auditTupleFields` | string[] | `["inputs","fx","rounding","result"]` | 字段名（**只可增不可删** ✓） | 审计席 |
-| 生物样本 | `vmu.biospecimen.ledgerDir` | string | `Ops/Biosamples` | 相对项目根 | 样本管理员 |
-| 生物样本 | `vmu.biospecimen.requireChain` | boolean | `true` | — | pack |
-| 生物样本 | `vmu.biospecimen.chainGapPolicy` | string | `block` | `block`｜`warn` | pack |
-| 生物样本 | `vmu.biospecimen.freezeThawWarnAt` | integer | `5` | ≥0 | pack |
-| 生物样本 | `vmu.biospecimen.destroyKeepsReference` | boolean | `true` | — | pack（引用 07 保留面 ✓） |
-| 生物样本 | `vmu.biospecimen.subjectRefStyle` | string | `pseudonym` | `pseudonym`｜`code` | pack（与 20 联动） |
-| 生物样本 | `vmu.biospecimen.mappingIrreversible` | boolean | **`true`** | —（**默认不可逆** ✓） | **内核强制** ✓ |
 | 税务/法务 | `vmu.legalentity.registryDir` | string | `Ops/Entities` | 相对项目根 | 财务/法务 |
 | 税务/法务 | `vmu.legalentity.requireEntity` | boolean | `true` | — | pack |
 | 税务/法务 | `vmu.legalentity.taxIdStyle` | string | `opaque-ref` | `opaque-ref`｜`none` | pack（**不存明文** ✓） |
