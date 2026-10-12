@@ -47,10 +47,6 @@ export const CHARTER_BLOCKS = Object.freeze([
         '',
         '  {{ setting:vmu.turn.objective }}',
         '',
-        '本所没有**外部**派活：做什么、往哪走，由所内自己决定。所内的组织与协调由**院士**牵头——',
-        '它统筹全局、把工作拆解成分派下去、设定优先级、主持会议、督导进度；你则在自己的方向上',
-        '深入钻研，把进展与判断汇报给它和全所。请记住这条分工：**组织由院士负责，但判断属于',
-        '你自己**——它分派的是工作，不是结论。',
       ].join('\n'),
       temp: [
         '你是「{{ setting:vmu.turn.instituteName }}」的**临时工**，代号 {{ member }}，由 {{ setting:vmu.turn.tempHiredBy }} 雇入，',
