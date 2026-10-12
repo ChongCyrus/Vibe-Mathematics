@@ -28,7 +28,7 @@
 
 | # | 不变式 | 为什么 | 违反了会怎样 |
 |---|---|---|---|
-| 服务 | `vmu.funding`／`vmu.ip`／`vmu.conference`／`vmu.outreach`／`vmu.collab`／`vmu.compliance`／`vmu.capacity`／`vmu.hr`（计划 `kernel/ops/*`） | ✗ |
+| **O-1** | **令牌 ≠ 钱**：`vmu.budget.*`（17，令牌/回合/子代理）与 `vmu.funding.*`（本卷，货币）是两套账；任何换算必须**显式、留痕、可复算** ✓ | 令牌是机制配额，钱是组织资源 | 幻觉式"攒够令牌就能买设备" |
 | **O-2** | **凭证链闭合**：每笔支出/占用/披露都要有 `请求 → 批准 → 发生 → 凭证` 四环；缺环 ⇒ **具名拒** ✓ | 审计与结算的前提 | 说不清"这笔钱/这台机器为什么这样花" |
 | **O-3** | **披露时钟**决定公开与保密：IP/合规的公开时序由**显式时间轴**（而不是记忆）判定 ✓ | 专利新颖性与合规窗口 | 因早发预印本损失可专利性 |
 | **O-4** | **对外证据强度 ≤ 内部证据强度**：传播稿/公众摘要**不得**比内部结论更强 ✓ | 学术诚信 | 夸大传播污染机构信誉 |
@@ -63,6 +63,7 @@
 | # | 族 | 可依附的现有底座 | 可调控键族 | 码族 | 成熟度 |
 |---|---|---|---|---|---|
 | **0** | **货币与舍入（Money，横切规范）** | **无（本卷新增类型规范 §3.0）** | `vmu.money.*` | `VMU_MONEY_*`／`VMU_CURRENCY_*`／`VMU_FX_*`／`VMU_ROUNDING_*`／`VMU_AMOUNT_*`／`VMU_SCALE_*`／`VMU_ALLOCATION_*` | ✗ |
+| 1 | 仪器与设备 | `vibe_vmu_records`／`vibe_vmu_task`／07 `datasets` | `vmu.instruments.*` | `VMU_EQUIP_*` | ✗ |
 | 2 | 经费与财务 | `vibe_vmu_records`／08 工作流／17 令牌（**仅参照**） | `vmu.funding.*`＋`vmu.money.*` | `VMU_FUNDING_*` | ✗ |
 | 3 | 知识产权 | `vibe_vmu_records`／16 出版面／20 许可 | `vmu.ip.*` | `VMU_IP_*` | ✗ |
 | 4 | 会务与活动 | **08 会议/表决原语** ＋ 16 评审面 | `vmu.conference.*` | `VMU_CONF_*` | ✗ |
@@ -83,8 +84,10 @@
 
 | 族 | 键数 | 已接线 | 读取者（括号＝读了多少条） | 裁定 |
 |---|---|---|---|---|
+| `vmu.instruments` | 17 | **17** | `instruments.js`(17) | ★ **已接线 ✓（上文 §2 的"计划 ✗"已过期）** |
 | `vmu.funding` | 16 | **16** | `funding.js`(16) | ★ **已接线 ✓（§3 的"计划 ✗"已过期）** |
 | `vmu.money` | 11 | **11** | `funding.js`(11) | ★ **已接线 ✓** |
+| `vmu.biospecimen` | 7 | **7** | `biospecimen.js`(7) | ★ **已接线 ✓（§L168"本仓今天没有任何样本/保管实现"【已不成立】✗）** |
 | `vmu.agreements` | 7 | **7** | `collab.js`(7) | ★ **已接线 ✓** |
 | `vmu.capacity` | 12 | **12** | `capacity.js`(12) | ★ **已接线 ✓** |
 | `vmu.hr` | 11 | **11** | `hr.js`(11) | ★ **已接线 ✓** |
@@ -118,10 +121,95 @@
 
 ## 2. 实验仪器与设备（Instruments & Equipment）
 
-> ★★ **两处撤除的痕迹（轮 301／302）** ✗✓：**① §2 的仪器族已撤除**（17 键与 `kernel/instruments.js` ⇒ 裁定与登记见 `23-§1b` D-6）；**② 原 §2.5（生物样本库与链式保管，N4）的本地小节已随本节收缩被吞并** ✗ ⇒ **其裁决仍完整保留在 §14 的裁决表**（"不做 ✗：③无消费者"✓），**展开登记见 `23-§1b` D-4/D-8**，**退役键名见 `14` 台账** ✓。**本节收缩时的副作用已在此记明，不掩盖** ✓。
+> **⚠ 状态更正（轮 61 核实；以下各条的"计划 ✗"字样已过期）** ✓✓：**本族已实现** —— 归属面是 **`kernel/instruments.js`**（**14/17 键已接线** ✓：责任人／能力标签／**校准到期即阻断**（`blockOnOverdue`）／预约（`reserve`／`maxHoldHours`／`reservationHorizonDays`／`overbookRatio`／`priorityPolicy`／`waitlistPolicy`）／**维护排期**（`scheduleMaintenance`）／**采集挂引用**（`attachCapture`））＋ **`kernel/capacity.js`**（`facilities`＋重叠即 `VMU_CAPACITY_FACILITY_CONFLICT` ✓）✓。**仅 3 键未接线且理由已由模块写明** ✗（`ledgerDir` 无 FS 接缝／`dataCaptureRef` 需 library／`downtimePolicy` 需运维协同）。**归属表以 §14 为准** ✓（本节只保留接口形状与判定点，**不再声称未实现** ✗✓）。
 
+### 2.1 台账与登记
 
-> ★ **范围基准：本面已撤除 ✓（轮 302）** ✗✓：**对数学研究举不出消费者**（数学研究不使用仪器／设施）⇒ 17 键与 `kernel/instruments.js`（373 行）**已从内核撤除** ✓（规程见 `23-§2.0`，登记见 `23-§1b` D-6）。**退役键名与码记于 `14` 台账** ✓。**复活条件**：真需要设备管理时，按 `23-§3` **以 pack 声明**，不重建内核面 ✗。
+| 字段 | 内容 |
+|---|---|
+| **名称** | 仪器台账（Instrument Ledger） |
+| **目的** | 每台/每套设备有**唯一身份**（资产号＋位置＋责任人＋能力标签），使"谁能用、用了什么、产出挂在哪"可追溯 ✓ |
+| **面向谁** | 设施管理员、PI、执行实验的代理 |
+| **接口形状** | 服务 `vmu.instruments`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））：`register(instrument)`／`list(filter)`／`get(id)`／`retire(id, reason)`；工具 `vibe_vmu_instruments` ⛔ 未实现（唯一入口：登记/预约/维护三类操作）；协议 `InstrumentReservation` ⛔ 待实现 |
+| **可调控参数** | `vmu.instruments.ledgerDir`（默认 `Ops/Instruments`）、`vmu.instruments.requireOwner`（默认 `true`）、`vmu.instruments.capabilityTags`（默认 `[]`） |
+| **相关错误码** | `VMU_EQUIP_NOT_REGISTERED` ⛔／`VMU_EQUIP_OWNER_REQUIRED` ⛔（详见 §14） |
+| **四条哲学** | F：不登记＝无设施概念 ✓｜T：目录与必填字段可配 ✓｜D：能力标签与准入规则由 pack 声明 ✓｜X：新设备类型只加标签 ✓ |
+| **实现要点** | 台账是**记录轨条目**（07 只追加）＋**索引视图**；删除＝`retire`（保留历史，不物理删）✓ |
+| **依赖与前置** | `vibe_vmu_records` ✓、`vibe_vmu_set` ✓（键）、`vibe_vmu_status` ✓（现况） |
+| **成熟度** | ✗ 计划 |
+| **优先级** | P1（运营最小闭环的第一块） |
+
+### 2.2 预约与占用（排他、优先级、候补）
+
+| 字段 | 内容 |
+|---|---|
+| **名称** | 预约与占用（Reservation & Occupancy） |
+| **目的** | 同一资源在**时间轴上不冲突** ✓；冲突时按**显式优先级**裁决并留痕（不靠默认先到先得）✓ |
+| **面向谁** | 使用者、设施管理员、调度代理 |
+| **接口形状** | 服务 `vmu.instruments.reserve(holder, window, purpose)`／`release(reservationId)`／`waitlist(id)`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））；钩子 `ops/reservation-requested` ⛔ 提案、`ops/reservation-conflict` ⛔ 提案；协议 `InstrumentReservation` ⛔ |
+| **可调控参数** | `vmu.instruments.reservationHorizonDays`（默认 `30`）、`vmu.instruments.maxHoldHours`（默认 `12`）、`vmu.instruments.priorityPolicy`（默认 `fifo`；可选 `pi-first`／`quota-weighted`）、`vmu.instruments.waitlistPolicy`（默认 `auto-offer`）、`vmu.instruments.overbookRatio`（默认 `1.0`＝不超额） |
+| **相关错误码** | `VMU_EQUIP_SLOT_CONFLICT` ⛔／`VMU_EQUIP_HOLD_LIMIT` ⛔／`VMU_EQUIP_WAITLIST_FULL` ⛔ |
+| **四条哲学** | F：不排期＝自由抢用 ✓｜T：时间窗/上限/优先级全可配 ✓｜D：优先级**是 pack 的判定点**（内核不认识"PI 优先"）✓｜X：新调度算法只换判定点 ✓ |
+| **实现要点** | 冲突判定＝**区间集合**运算（确定性、可复算）；裁决必须写 `reason` 与规则来源 ✓；候补"自动递补"可被人类审批打断（O-6）✓ |
+| **依赖与前置** | §2.1 台账、`vibe_vmu_task` ✓（把占用挂到任务）、08 工作流原语 ✓（审批形态） |
+| **成熟度** | ✗ 计划 |
+| **优先级** | P1 |
+
+### 2.3 维护、校准与停机
+
+| 字段 | 内容 |
+|---|---|
+| **名称** | 维护与校准（Maintenance & Calibration） |
+| **目的** | 校准过期/维护中的设备**不得**被用于产出"可引用数据" ✓（把"能用"与"数据可信"分开） |
+| **面向谁** | 设施管理员、质量负责人、执行实验的代理 |
+| **接口形状** | 服务 `vmu.instruments.scheduleMaintenance(id, window)`／`recordCalibration(id, cert)`／`block(id, reason)`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））；钩子 `ops/calibration-due` ⛔ 提案、`ops/downtime-started` ⛔ 提案 |
+| **可调控参数** | `vmu.instruments.requireCalibration`（默认 `true`）、`vmu.instruments.calibrationDueDays`（默认 `365`）、`vmu.instruments.blockOnOverdue`（默认 `true`）、`vmu.instruments.downtimePolicy`（默认 `queue`；可选 `fail`） |
+| **相关错误码** | `VMU_EQUIP_CALIBRATION_DUE` ⛔／`VMU_EQUIP_MAINTENANCE_BLOCKED` ⛔／`VMU_EQUIP_CERT_MISSING` ⛔ |
+| **四条哲学** | F：不声明＝无校准要求 ✓｜T：周期/阻断策略可配 ✓｜D：设备类别→校准要求的映射由 pack ✓｜X：新证书类型只加字段 ✓ |
+| **实现要点** | "过期阻断"必须**与产出绑定**：被阻断设备的数据在 07 的 `datasets` 上打**来源标注**（血缘可追，引用 16-L9）✓；解除阻断需人批准 ✓ |
+| **依赖与前置** | §2.1、07 `datasets` ✓、16 血缘面 ✓ |
+| **成熟度** | ✗ 计划 |
+| **优先级** | P2 |
+
+### 2.4 数据直采的引用面（与 07/16 的衔接）
+
+| 字段 | 内容 |
+|---|---|
+| **名称** | 仪器直采引用（Instrument Capture Reference） |
+| **目的** | 仪器产出的原始文件**不复制**，只在记录里给**引用**（路径＋哈希＋设备号＋时间窗＋校准状态）✓ |
+| **面向谁** | 实验执行者、数据管理、审计 |
+| **接口形状** | 服务 `vmu.instruments.attachCapture(id, datasetRef)`（★ **已接线 ✓**（实测 17/17，见 §0.1 实测表））；协议 `CaptureRef` ⛔ |
+| **可调控参数** | `vmu.instruments.dataCaptureRef`（默认 `required`；可选 `optional`→`ignore`）、`vmu.instruments.hashAlgo`（默认 `sha256`） |
+| **相关错误码** | `VMU_EQUIP_CAPTURE_UNLINKED` ⛔ |
+| **四条哲学** | F：不挂引用＝数据与设备无关 ✓｜T：必填程度可配 ✓｜D：字段集由 pack ✓｜X：新采集格式只加字段 ✓ |
+| **实现要点** | 引用**必须**含校准状态快照 ⇒ 事后可判定"这份数据来自已校准设备"✓ |
+| **依赖与前置** | 07 归档/`datasets` ✓、§2.3 |
+| **成熟度** | ✗ 计划 |
+| **优先级** | P2 |
+
+> **这一族怎么由 settings＋中间件＋pack 组合出来** ✓：**settings** 给"要不要台账、时间窗多长、过期是否阻断"；**中间件**在 `before`（预约/占用前）查台账与校准状态、在 `after`（数据产出后）校验引用链，把违规**具名拒**；**pack** 声明"哪些设备类别需要校准、谁有优先权、哪些设备禁止某类用途"。**内核只提供记录、任务、钩子与设置** —— 不出现"仪器/PI"这类组织名词 ✓。
+
+### 2.5 生物样本库与链式保管（Biobank / Biospecimen —— **补 N4** ✗✓）
+
+> **为什么要有这一节** ✗：批评者第 6/7 轮关键词实测"**生物样本**"**0 命中** ✗ —— 一个能管仪器与经费的平台却**没有样本**这一最典型的实验资产 ✓。样本的特殊性在于：它**不可重建** ✓、与**受试者**关联 ✓、且必须证明"**一直没脱离监管**" ✓。
+
+| 字段 | 内容 |
+|---|---|
+| **名称** | 生物样本台账与链式保管（Biospecimen Ledger & Chain of Custody） |
+| **目的** | 每个样本**可追溯**：谁采集／谁保管／谁取用／冻融几次／是否已销毁 ✓；**链式保管断链必须报** ✗✓；销毁后仍保留**引用**（与 07 只引用 ✓） |
+| **面向谁** | 实验执行者、样本管理员、伦理/合规、审计、代理 |
+| **接口形状** | 协议 `BiospecimenRecord` ⛔ 待实现：`{ sampleId, subjectRef, collectedAt, storage, freezeThawCount, chainOfCustody[] }`；协议 `CustodyEvent` ⛔ 待实现：`{ sampleId, from, to, atMs, why }`；服务 `vmu.biospecimen`（★ **已接线 ✓**（实测 7/7，见 §0.1））：`register(sample)`／`transfer(sampleId, {from,to,why})`／`chain(sampleId)`／`verify(sampleId)`／`destroy(sampleId,{reason})`；工具 `vibe_vmu_biospecimen` ⛔ 未实现 |
+| **可调控参数** | `vmu.biospecimen.ledgerDir`（默认 `Ops/Biosamples`）、`vmu.biospecimen.requireChain`（默认 `true`）、`vmu.biospecimen.chainGapPolicy`（默认 `block`；可选 `warn`）、`vmu.biospecimen.freezeThawWarnAt`（默认 `5`）、`vmu.biospecimen.destroyKeepsReference`（默认 `true`）、`vmu.biospecimen.subjectRefStyle`（默认 `pseudonym`）、`vmu.biospecimen.mappingIrreversible`（默认 **`true`** ✗✓） |
+| **相关错误码** | `VMU_BIOSAMPLE_NOT_REGISTERED` ⛔／`VMU_BIOSAMPLE_CHAIN_GAP` ⛔（**断链**）／`VMU_BIOSAMPLE_FREEZE_THAW_LIMIT` ⛔／`VMU_BIOSAMPLE_SUBJECT_LINK_FORBIDDEN` ⛔／`VMU_BIOSAMPLE_DESTROYED` ⛔ |
+| **四条哲学** | F：不登记＝无样本概念 ✓｜T：断链策略/冻融阈值/去标识样式可配 ✓｜D：链式三要素（who/when/why）由 **pack 声明**，内核不认识"生物样本" ✓｜X：新样本类型只加字段 ✓ |
+| **实现要点** | ① 链式保管是**只追加事件流** ✓，每次转移三要素缺一即拒（`VMU_BIOSAMPLE_CHAIN_GAP`）✓；② **断链检测＝连续性检查**：上一环 `to` ≠ 下一环 `from`、时间倒流、或事件缺失 ⇒ **断链必须报** ✗✓（`block` 时拒绝后续操作并具名，`warn` 时计数并继续）；③ **销毁＝状态转换＋保留引用**（`destroyed`＋原因＋时间；样本记录**不删**，与 07 的保留/回收站面**只引用不重定义** ✗）；④ 与 **20 卷去标识化只引用** ✗：本卷只存 `subjectRef`（假名），**样本↔受试者映射默认不可逆** ✓ —— 不提供反向查询接口，任何"由样本找回受试者"的请求 ⇒ `VMU_BIOSAMPLE_SUBJECT_LINK_FORBIDDEN` |
+| **依赖与前置** | §2.1 台账（同构）、07 记录轨/保留（引用 ✓）、20 去标识化与密级（引用 ✓）、§8.2 伦理审批（取样前闸点）✓ |
+| **成熟度** | ✗ 计划（本仓今天**没有**任何样本/保管实现 ✓） |
+| **优先级** | P1（不可重建的资产 + 合规风险） |
+
+> **这一节怎么由 settings＋中间件＋pack 组合出来** ✓：**settings** 给账本位置、是否强制链式、断链处置、冻融阈值、去标识样式；**中间件**在 `before`（取样/转移/取用/销毁）校验登记与链条连续性、在 `after` 追加事件并广播；**pack** 给"链式三要素的字段、样本类型、允许的存储条件"。**内核只提供记录、钩子与设置** ✓。
+
+---
 
 ## 3. 经费与财务（Funding & Finance）
 
@@ -564,6 +652,7 @@
 ### 11.1 三层职责
 | 层 | 决定什么 | 现状 |
 |---|---|---|
+| **settings**（`vmu.money.*`／`vmu.instruments.*`／`funding.*`／`ip.*`／`conference.*`／`outreach.*`／`collab.*`／`compliance.*`／`capacity.*`／`hr.*`） | 阈值、窗口、必填字段、强制度、周期、**金额表示与舍入** | ✗ 全部为计划键（`planned:true`）✓ |
 | **中间件** | 在运营动作**前后**插入检查与记账（`ops/*`、`ip/*`、`compliance/*` 钩子均为**提案** ✗） | 机制已实现 ✓（05），本卷钩子未实现 ✗ |
 | **pack** | 组织政策：科目树、审批链、冲突定义、发言人、合规项清单、任期规则 | 机制已实现 ✓（10），运营 pack 未写 ✗ |
 
@@ -593,6 +682,7 @@
 |---|---|---|
 | 工具 | `vibe_vmu_instruments` ⛔ 未实现、`vibe_vmu_funding` ⛔ 未实现、`vibe_vmu_ip` ⛔ 未实现、`vibe_vmu_conference` ⛔ 未实现、`vibe_vmu_outreach` ⛔ 未实现、`vibe_vmu_collab` ⛔ 未实现、`vibe_vmu_compliance` ⛔ 未实现、`vibe_vmu_capacity` ⛔ 未实现、`vibe_vmu_hr` ⛔ 未实现 | ✗ |
 | 工具（复用） | `vibe_vmu_records` ✓、`vibe_vmu_task` ✓、`vibe_vmu_meeting` ✓、`vibe_vmu_set` ✓、`vibe_vmu_middleware` ✓、`vibe_vmu_pack` ✓、`vibe_vmu_script` ✓、`vibe_vmu_status` ✓、`vibe_vmu_control` ✓ | ✓ |
+| 服务 | `vmu.instruments`／`vmu.funding`／`vmu.ip`／`vmu.conference`／`vmu.outreach`／`vmu.collab`／`vmu.compliance`／`vmu.capacity`／`vmu.hr`（计划 `kernel/ops/*`） | ✗ |
 | 钩子 | `ops/expense-requested` ⛔ 提案、`ops/expense-approved` ⛔ 提案、`ops/receipt-recorded` ⛔ 提案、`ops/reservation-requested` ⛔ 提案、`ops/reservation-conflict` ⛔ 提案、`ops/calibration-due` ⛔ 提案、`ip/disclosure-before` ⛔ 提案、`ip/publication-hold` ⛔ 提案、`conference/cfp-open` ⛔ 提案、`conference/decision` ⛔ 提案、`outreach/draft-before` ⛔ 提案、`compliance/calendar-due` ⛔ 提案、`capacity/pool-low` ⛔ 提案、`hr/review-season-open` ⛔ 提案 | ✗ |
 | 协议 | `InstrumentReservation` ⛔、`ExpenseClaim` ⛔、`CostShareSplit` ⛔、`IpDisclosure` ⛔、`CfP` ⛔、`ReviewAssignment` ⛔、`AuditEvidencePack` ⛔、`CapacityPlan` ⛔、`TenureReview` ⛔ | ✗ |
 
@@ -602,6 +692,20 @@
 
 | 族 | 键 | 类型 | 默认 | 域 | 谁可改 |
 |---|---|---|---|---|---|
+| 仪器 | `vmu.instruments.ledgerDir` | string | `Ops/Instruments` | 相对项目根 | 运营席 |
+| 仪器 | `vmu.instruments.requireOwner` | boolean | `true` | — | pack |
+| 仪器 | `vmu.instruments.capabilityTags` | string[] | `[]` | 标签 | pack |
+| 仪器 | `vmu.instruments.reservationHorizonDays` | integer | `30` | ≥0 | 运营席 |
+| 仪器 | `vmu.instruments.maxHoldHours` | integer | `12` | ≥1 | 运营席 |
+| 仪器 | `vmu.instruments.priorityPolicy` | string | `fifo` | `fifo`｜`pi-first`｜`quota-weighted` | pack |
+| 仪器 | `vmu.instruments.waitlistPolicy` | string | `auto-offer` | `auto-offer`｜`manual`｜`off` | 运营席 |
+| 仪器 | `vmu.instruments.overbookRatio` | number | `1.0` | ≥1.0 | 运营席 |
+| 仪器 | `vmu.instruments.requireCalibration` | boolean | `true` | — | pack |
+| 仪器 | `vmu.instruments.calibrationDueDays` | integer | `365` | ≥1 | 运营席 |
+| 仪器 | `vmu.instruments.blockOnOverdue` | boolean | `true` | — | pack |
+| 仪器 | `vmu.instruments.downtimePolicy` | string | `queue` | `queue`｜`fail` | 运营席 |
+| 仪器 | `vmu.instruments.dataCaptureRef` | string | `required` | `required`｜`optional`｜`ignore` | pack |
+| 仪器 | `vmu.instruments.hashAlgo` | string | `sha256` | 算法名 | 内核固定（可读） |
 | 经费 | `vmu.funding.accountsDir` | string | `Ops/Funding` | 相对项目根 | 运营席 |
 | 经费 | `vmu.funding.currency` | string | `CNY` | ISO-4217 | 运营席 |
 | 经费 | `vmu.funding.budgetLineGranularity` | string | `category` | `category`｜`task`｜`member` | pack |
@@ -704,6 +808,13 @@
 | 货币 | `vmu.money.maxAmountMinor` | integer | `0` | ≥0（0＝不限） | pack |
 | 货币 | `vmu.money.allowNegative` | boolean | `false` | — | pack |
 | 货币 | `vmu.money.auditTupleFields` | string[] | `["inputs","fx","rounding","result"]` | 字段名（**只可增不可删** ✓） | 审计席 |
+| 生物样本 | `vmu.biospecimen.ledgerDir` | string | `Ops/Biosamples` | 相对项目根 | 样本管理员 |
+| 生物样本 | `vmu.biospecimen.requireChain` | boolean | `true` | — | pack |
+| 生物样本 | `vmu.biospecimen.chainGapPolicy` | string | `block` | `block`｜`warn` | pack |
+| 生物样本 | `vmu.biospecimen.freezeThawWarnAt` | integer | `5` | ≥0 | pack |
+| 生物样本 | `vmu.biospecimen.destroyKeepsReference` | boolean | `true` | — | pack（引用 07 保留面 ✓） |
+| 生物样本 | `vmu.biospecimen.subjectRefStyle` | string | `pseudonym` | `pseudonym`｜`code` | pack（与 20 联动） |
+| 生物样本 | `vmu.biospecimen.mappingIrreversible` | boolean | **`true`** | —（**默认不可逆** ✓） | **内核强制** ✓ |
 | 税务/法务 | `vmu.legalentity.registryDir` | string | `Ops/Entities` | 相对项目根 | 财务/法务 |
 | 税务/法务 | `vmu.legalentity.requireEntity` | boolean | `true` | — | pack |
 | 税务/法务 | `vmu.legalentity.taxIdStyle` | string | `opaque-ref` | `opaque-ref`｜`none` | pack（**不存明文** ✓） |

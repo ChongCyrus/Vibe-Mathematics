@@ -45,7 +45,7 @@ const SURFACES = {
   'vmu.retention': 'retention', 'vmu.delegation': 'delegation', 'vmu.workflow': 'workflow', 'vmu.trust': 'trust',
   'vmu.handover': 'handover', 'vmu.arbitration': 'arbitration', 'vmu.recruit': 'recruit', 'vmu.topology': 'topology',
   'vmu.fairness': 'fairness', 'vmu.charter': 'charter', 'vmu.repropack': 'repropack', 'vmu.memory': 'memory',
-  'vmu.bidding': 'bidding', 'vmu.mathjobs': 'mathjobs', 'vmu.skills': 'skills', 'vmu.publication': 'publication', 'vmu.collab': 'collab', 'vmu.identity': 'identity', 'vmu.human': 'human', 'vmu.discipline': 'discipline', 'vmu.explain': 'explain', 'vmu.control': 'control', 'vmu.citations': 'citations',
+  'vmu.bidding': 'bidding', 'vmu.mathjobs': 'mathjobs', 'vmu.skills': 'skills', 'vmu.publication': 'publication', 'vmu.collab': 'collab', 'vmu.identity': 'identity', 'vmu.human': 'human', 'vmu.discipline': 'discipline', 'vmu.biospecimen': 'biospecimen', 'vmu.explain': 'explain', 'vmu.control': 'control', 'vmu.citations': 'citations',
   'vmu.formal': 'formal', 'vmu.external': 'external', 'vmu.domaingate': 'domaingate', 'vmu.scheduler': 'scheduler',
   'vmu.crypto': 'crypto', 'vmu.notify': 'notify', 'vmu.lifecycle': 'lifecycle',
   'vmu.replay': 'replay',
@@ -56,7 +56,7 @@ const SURFACES = {
   'vmu.meetings': 'meetings', 'vmu.ballotbox': 'ballotbox', 'vmu.records': 'records',   // round 22
   'vmu.course': 'course',   // round 24 (N13 teaching face)
   'vmu.conference': 'conference',   // round 32 (conference hosting, layered on the single-session face)
-  // round 32 (instrument ledger)
+  'vmu.instruments': 'instruments', // round 32 (instrument ledger)
   'vmu.ip': 'ip',                   // round 32 (intellectual property / disclosure hold)
   'vmu.funding': 'funding',         // round 32 (funding rules: budget balance, cost share, settlement)
   'vmu.compliance': 'compliance',   // round 32 (research compliance; export control stays with domaingate)

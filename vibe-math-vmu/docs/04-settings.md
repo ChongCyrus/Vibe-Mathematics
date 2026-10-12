@@ -752,6 +752,13 @@ vmu.packs.active: [v5r]
 | `vmu.discipline.suspendMaxMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/discipline.js` | 停职上限（0＝不设上限；有上限则钳制并自曝 clamped） |
 | `vmu.discipline.restoreNeedsHuman` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/discipline.js` | 复职是否需人类（true ⇒ 机器不能自行复职） |
 | `vmu.discipline.postmortemRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/discipline.js` | 复职必须带复盘（缺失具名拒） |
+| `vmu.biospecimen.ledgerDir` | string | `Ops/Biosamples` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/biospecimen.js` | 样本台账目录（相对项目根；本面只 REPORT 不触碰） |
+| `vmu.biospecimen.requireChain` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/biospecimen.js` | 必须链式保管（true ⇒ 登记须开链、转移须给持有人，否则具名拒） |
+| `vmu.biospecimen.chainGapPolicy` | enum | `block` | `block`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `kernel/biospecimen.js` | 链断策略（block ⇒ 断链具名拒；warn ⇒ 记录并告警） |
+| `vmu.biospecimen.freezeThawWarnAt` | int ≥0 | `5` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/biospecimen.js` | 冻融次数预警阈值（达阈告警；契约是告警而非拒绝 ✓） |
+| `vmu.biospecimen.destroyKeepsReference` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/biospecimen.js` | 销毁后保留引用（true ⇒ 记录留存并说明样本已灭失） |
+| `vmu.biospecimen.subjectRefStyle` | enum | `pseudonym` | `pseudonym`∣`code` | 会话 | H1 | office | ✅ 已接线 | `kernel/biospecimen.js` | 主体引用风格（pseudonym ⇒ 看起来像明文标识的引用具名拒） |
+| `vmu.biospecimen.mappingIrreversible` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/biospecimen.js` | 映射不可逆（内核强制：true 时【拒绝】存入主体↔引用的可逆映射，而不是加密后寄望） |
 | `vmu.budget.tokens` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/budget.js` | 令牌总量（0＝不限；>0 即成为作用域默认上限） |
 | `vmu.budget.turns` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/budget.js` | 回合总量（0＝不限） |
 | `vmu.budget.toolCalls` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/budget.js` | 工具调用总量（0＝不限；与单回合上限 vmu.limits.toolCallsPerTurnCap 分工不同） |
@@ -1024,6 +1031,23 @@ vmu.packs.active: [v5r]
 | `vmu.hr.tenureDecisionWindowDays` | int ≥0 | `60` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/hr.js` | 已接线（hr.js 读取）；默认值取自模块源码 |
 | `vmu.hr.tenureQuorum` | int ≥0 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/hr.js` | 已接线（hr.js 读取）；默认值取自模块源码 |
 | `vmu.hr.tenureTrackMonths` | int ≥0 | `36` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/hr.js` | 已接线（hr.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.attachCapture` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.blockOnOverdue` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.calibrationDueDays` | int ≥0 | `365` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.capabilityTags` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；该模块未声明默认值；★ 轮 213 实测有效默认 `[]`（instruments.js:91 `Array.isArray(tags) ? tags.map(String) : []`） |
+| `vmu.instruments.dataCaptureRef` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.downtimePolicy` | string | `refuse` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.hashAlgo` | string | `sha256` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.ledgerDir` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.maxHoldHours` | int ≥0 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.overbookRatio` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.priorityPolicy` | string | `fifo` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.requireCalibration` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.requireOwner` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.reservationHorizonDays` | int ≥0 | `30` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.reserve` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.scheduleMaintenance` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
+| `vmu.instruments.waitlistPolicy` | string | `queue` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/instruments.js` | 已接线（instruments.js 读取）；默认值取自模块源码 |
 | `vmu.ip.appealWindowDays` | int ≥0 | `30` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ip.js` | 已接线（ip.js 读取）；默认值取自模块源码 |
 | `vmu.ip.authorshipRule` | string | `byContribution` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ip.js` | 已接线（ip.js 读取）；默认值取自模块源码 |
 | `vmu.ip.confidentialityWindowDays` | int ≥0 | `180` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ip.js` | 已接线（ip.js 读取）；默认值取自模块源码 |

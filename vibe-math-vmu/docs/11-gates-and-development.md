@@ -467,6 +467,9 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 > **⑭ ★★★ 码必须先【出现在文档里】才能被登记**（**轮 268 实测：一个码被码表拒收，另一个却早被接受** ✗✓）：**`generate-planned-codes.mjs` 的登记来源只有两处** ✓ —— **① 文档点名的码（`docs/03` 的生成块由它派生 ✓）；② `docs/03` 手写表【第一列】的反引号码 ✓**（**族前缀（尾部 `_`）跳过 ✓；手写区已有的不重复 ✓**）。**实测差异** ✓：**`VMU_RECRUIT_NEEDS_HUMAN` 早在生成块里作为"规划码"出现**（**由某卷点名 ⇒ 生成器认它 ✓**），**同批另一个码两处都没有 ⇒ 被拒** ✗。
 > **⑳ ★★★ 删一个【族】不能按文件删，必须按族逐一枚举触点**（**轮 301 实测** ✗✓）：**撤 `biospecimen` 时共 15 处触点**（内核面／`schema.js` 行／`index.js` 的 import＋构造＋**聚合解构表成员**＋`registry.register`＋getter／`package.json` ＋ `installer.js` 双清单／零机制矩阵生成器／服务审计映射／`03` 的码表行／卷内设置表与章节／生成物／台账）✓。★★ **两处最危险的耦合点**：**① 共享套件** —— 那个测试文件**同时覆盖三个族**（被撤的 ＋ `budget` ＋ `audit`），**按文件删会静默丢掉两个保留族的 30 条断言** ✗ ⇒ **必须拆套件**（拆后实测 30/0 全绿 ✓）；**② 聚合解构表** —— 我把 `discipline, biospecimen, explain` **整段删掉**，**连带移除两个活着的服务** ✗ ⇒ **语法检查当场拦下**，修复后**实证**内核 104 服务且两个服务都在 ✓。**可操作做法** ✓：**先 `git grep -c` 取全触点清单再动手**；**共享套件一律"拆"不"删"**；**聚合表只改成员、不删整段，并断言修复结果**；**撤完必须 `node --check` ＋ 载入内核点数服务** ✓。
 >
+> **㉑ ★★★ 在 Windows 上从 git 历史取文件时，【修订号必须加引号】**（**轮 305 实测** ✗✓）：**Node 的 `execSync` 走 `cmd.exe`，而 `cmd` 把 `^` 当转义符** ✗ ⇒ 把 `git show <sha>^:<path>` 直接拼进命令行时，`^` 会被吞掉，**报错却是 "path does not exist in `<sha>`"** —— **看起来像"文件不存在"，其实是"修订号被改了"** ✗✓。**正确做法** ✓：把 `<sha>:<path>` 整段加双引号再交给 `git`。★ **同类**：`^`／`&`／`|`／`>` 在 `cmd` 里都不是普通字符 ⇒ **凡把 git 修订表达式拼进 shell 字符串，一律加引号** ✓。
+>
+>
 > **⑲ ★★★ 新交付文件必须【双登记】**（**轮 277／299 两次实测** ✗✓）：**`package.json` 的 `files` 与 `installer.js` 的 `PRESETS.*.files` 是两份独立清单**，**只登记一处会让两个审计分别变红** —— `audit-package-membership`（"every design volume on disk is listed"）与 `audit-installer-policy`（"every shipped file is managed or explicitly exempt"）✗✓。★ **典型表现**：T1 报出**名字很像的两条**失败，人容易只修一条；**正确做法＝一次把两份清单都改** ✓。
 >
 > **⑱ ★★★ 凡"扫描到某个收尾模式为止"的循环，必须先断言【它真的找到了】**（**轮 291 实测** ✗✓）：**我写了个 `while` 去找参数表的闭括号，模式【不匹配】** ✗ ⇒ **循环一路跑到文件末尾（`end` 停在 697 行 ✗）** ⇒ **脚本在【打印**时崩掉、**`writeFileSync` 尚未执行** ✓ ⇒ **该次没有写入** ✓。★ **损害取决于【其后的代码**：若打印在前，就是"白跑一趟"；若写在先，就是"把一个从 512 到 697 的巨大区间整体替换掉"** ✗**）** ✓。**可操作做法** ✓：**① 循环后立刻断言 `found`，否则 `throw`（本仓的 `anchored`／`insertAfterLine` 正是这个形状 ✓）；② 修改类脚本把【日志】放在【写盘】之后，或至少让写盘成为最后一步 ✓；③ 大文件里**宁可用单行锚点，也不要自己扫括号** ✓**（本轮改用单行锚点后一次成功 ✓）。
@@ -636,6 +639,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `ballot` · `open()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `ballotbox` · `open()` | refusal | VMU_CONFLICT | enforced=[0] enforcedScope=evaluated-so-far | 具名拒或 ok（task-214 实测：`open()` ⇒ 具名拒 **VMU_CONFLICT**（带口径 `enforced=[0]`）⇒ 零机制＝无票面参数 ⇒ 具名拒；有默认 ⇒ ok ✓） |
 | `bidding` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `biospecimen` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（samples: 0；chainRequired: true 自曝 ✓）；无样本⇒无可转移对象，**不拒** ✓） |
 | `board` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `budget` · `open()` | object | — | — | ok 或 object（task-204 实测（形状取自测试 vmu-budget.test.mjs:16）：不传 settings 下 `open({scope})` ⇒ **ok**（零机制＝不限额、放行 ✓）） |
 | `bus` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
@@ -667,6 +671,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `idempotency` · `list()` | ok | — | dropped=0 truncated=false | ok 或 object（列表/状态面放行 ✓；**显式 `absent` 只在去重操作上**（该操作需参数 ⇒ 探针见 NEEDS_ARGS ✓）） |
 | `identity` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ **ok**（noIssuerListMeansNoCheck: true 自曝「空 issuer 列表＝完全不做校验」 ✓）；bindPrincipal ⇒ ok 且 binding: off（记录而不耦合 ✓）。**不拒** ⇒ 形状为 ok，而非具名拒 ✓） |
 | `index` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `instruments` · `status()` | ok | — | — | ok 或 object（仪器面：零机制 ⇒ **台账可读、不拒**（`status()` 返回 `ok:true` ＋ `partition` ✓）；**键数由本生成器实测输出** ✓（note 只写形状与理由 ✗）） |
 | `ip` · `list()` | ok | — | enforced=[1] fired=[0] dropped=0 enforcedScope=evaluated-so-far truncated=false | ok 或 object（实测 `list()` ⇒ **ok**（`enforced=[1] fired=[0] dropped=0` ⇒ 清单可读、**不拒** ✓）） |
 | `lean` · `submit()` | refusal | VMU_LEAN_STATEMENT_REQUIRED | — | 具名拒（带 code）（task-214 实测：`submit()` ⇒ 具名拒 **VMU_LEAN_STATEMENT_REQUIRED** ⇒ 零机制＝无命题文本 ⇒ 具名拒即真实形状 ✓） |
 | `legalentity` · `list()` | object | — | — | ok 或 object（实测（轮 276）：零声明下 status() ⇒ ok（entities=0、zeroMechanism=true 自曝 ✓）；validateInvoice() 对**缺声明的税务字段位【逐位点名】**并拒（VMU_TAX_FIELD_MISSING）；绑定未登记实体拒（VMU_ENTITY_UNKNOWN）✓） |
@@ -712,5 +717,5 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
 | `workflow` · `advance()` | refusal | VMU_WORKFLOW_TRANSITION_REQUIRED | enforced=[7] enforcedScope=evaluated-so-far | 具名拒或 ok（**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 `advance()` 缺参 ⇒ **task-214 实测：具名拒 `VMU_WORKFLOW_TRANSITION_REQUIRED`（带口径 `enforced=[7]`）** ⇒ 具名拒即真实形状 ✓（旧 note 曾写 `op 抛出` ✗ / "缺参 ⇒ 具名拒" 混述 ✗，均已按实测改写 ✓）） |
 
-=== ZERO-MECHANISM MATRIX: 82 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 5 probe-errors, 3 n/a ===
+=== ZERO-MECHANISM MATRIX: 84 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 5 probe-errors, 3 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->
