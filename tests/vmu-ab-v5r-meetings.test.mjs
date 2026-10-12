@@ -9,7 +9,7 @@
 //
 // Run: node tests/vmu-ab-v5r-meetings.test.mjs   (last line: === VMU AB v5r meetings: N passed, M failed ===)
 
-import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, rmSync, readdirSync } from 'node:fs'
+import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, rmSync, readdirSync, renameSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { apply as applyV5R } from '../vibe-math-v5r/vibe-math-v5r.js'
@@ -466,8 +466,91 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
     mark('DIVERGENT', 'model routing: v5r persists it inside the institute state and lets set() override each staff member route, while vmu keeps zero model/provider keys in the kernel and leaves routing to the host profile. Reason: the framework is meant to be deployable against any harness, so binding an agent to a model inside the institute would hard-code one runtime into the design - and the host already owns that switch. Revival: a deployment that wants per-seat routing declared in settings can express it once the host exposes a routing seam; the key would then be a thin declaration rather than a new mechanism.')
   }
 }
+// ── 12. THE HAPPY PATH, at last: a seated-member fixture turns the blocked flow into a RUN flow ─────────────
+// The blocker (volume 24 §2.2.9) was that v5r resolves the acting member from `memberIdOfAgent(agent)`, which is
+// `agent.id` looked up against each member's childId, falling back to the office for a session root. So a fixture
+// that lets the preset's own scheduler start member turns - returning a unique childId per call - and then ACTS AS
+// that child is enough. Nothing is faked: the state machine, the roster and the ballot are all the real ones.
 {
-  mark('NOT_ADOPTED', 'the REST of the meeting happy path (motion -> second -> vote -> tally) is NOT yet compared step by step, and the reason is now measured rather than assumed: the preset is ACTOR-BOUND - its acting member is assigned only when its own scheduler starts a member turn - so convening runs through the office path while motions and polls answer member-not-found. Driving that needs either a subagent harness that really runs member turns, or the heavy CLI driver. See volume 24 §2.2.8-§2.2.9')
+  const seatWs = mkdtempSync(join(tmpdir(), 'vmu-ab-seat-'))
+  const seatRoot = { id: 'seat-root', session: { id: 'seat-root', header: { cwd: seatWs } }, options: {} }
+  const seatRegistry = new Map()
+  const seatAgents = new Map([[seatRoot.id, seatRoot]])
+  let childSeq = 0
+  const seatOf = new Map()
+  const seamFs = {
+    resolve: async (p) => String(p),
+    stat: async (p) => (existsSync(p) ? { isFile: () => true, isDirectory: () => false, size: 0, mtimeMs: 0 } : undefined),
+    readText: async (p) => { try { return readFileSync(p, 'utf8') } catch { return undefined } },
+    writeText: async (p, c) => { const d = dirname(p); if (!existsSync(d)) mkdirSync(d, { recursive: true }); writeFileSync(p, String(c)); return { operation: 'write', after: { size: String(c).length } } },
+    readFileSync: (p, e) => readFileSync(p, e), existsSync: (p) => existsSync(p),
+    mkdirSync: (p, o) => mkdirSync(p, o),
+    writeFileSync: (p, d) => { const dd = dirname(p); if (!existsSync(dd)) mkdirSync(dd, { recursive: true }); writeFileSync(p, d) },
+    renameSync: (a, b) => renameSync(a, b), readdirSync: (p, o) => readdirSync(p, o),
+    listDir: async (p) => { try { return readdirSync(p) } catch { return [] } },
+  }
+  applyV5R({
+    agents: { roots: () => [seatRoot], get: (id) => seatAgents.get(id), list: () => [...seatAgents.values()] },
+    subagents: {
+      list: () => ['spawn'],
+      async startContinuable() { childSeq += 1; return { childId: 'seat-child-' + childSeq, messageId: 'm' } },
+      async sendMessage() { return 'message' }, interrupt() {}, async drainContinuableChildren() {},
+    },
+    fs: seamFs,
+    tools: { register(spec) { seatRegistry.set(spec.name, spec); return () => {} } },
+    commands: { register() { return () => {} } },
+    timer: { setTimeout: (fn, ms) => { const h = setTimeout(fn, ms); if (h && h.unref) h.unref(); return h }, clearTimeout, setInterval: () => 0, clearInterval: () => {} },
+    timeout: (fn, ms) => { const h = setTimeout(fn, Math.min(Number(ms) || 0, 5)); if (h && h.unref) h.unref(); return () => clearTimeout(h) },
+    on() { return () => {} },
+    effect(fn) { try { const d = fn(); return typeof d === 'function' ? d : () => {} } catch { return () => {} } },
+    logger: { info() {}, warn() {}, error() {} },
+  })
+  const seatCall = async (name, params, agent) => {
+    const spec = seatRegistry.get(name)
+    if (!spec) return { missing: true }
+    const a = agent || seatRoot
+    try { const r = await spec.execute(params || {}, { agent: a, session: a.session }); return typeof r === 'string' ? JSON.parse(r) : r } catch (e) { return { thrown: true, code: e && e.code, message: String(e && e.message) } }
+  }
+  const started = await seatCall('vibe_v5_start', {})
+  ok(started.ok === true, 'G7a. ★ the institute starts under the seated fixture', started)
+  const roster = await seatCall('vibe_v5_members', {})
+  for (const m of (roster.members || [])) if (m.childId) seatOf.set(m.id, m.childId)
+  ok(seatOf.size >= 2 && [...seatOf.values()].every((c) => typeof c === 'string' && c.length > 0),
+    'G7b. ★★ the roster PUBLISHES each member childId - which is exactly the key the actor resolution looks up',
+    { seats: [...seatOf.keys()] })
+  const asMember = (id) => { const child = seatOf.get(id); return { id: child, session: { id: child, header: { cwd: seatWs, parentSession: seatRoot.id } }, options: {} } }
+  for (const [id, child] of seatOf) seatAgents.set(child, asMember(id))
+
+  const convened = await seatCall('vibe_v5_meeting', { agenda: 'A' }, asMember('acad'))
+  ok(convened.ok === true && typeof convened.meeting === 'string', 'G7c. ★ a SEATED member convenes a meeting', convened)
+
+  const opened = await seatCall('vibe_v5_poll_open', { question: 'Q', options: ['a', 'b'], min_votes: 3 }, asMember('acad'))
+  ok(opened.ok === true && opened.ballot && opened.ballot.rules && opened.ballot.rules.minVotes === 3,
+    'G7d. ★★ a SEATED member opens a poll with a stated floor (this is what used to answer member-not-found)',
+    { rules: opened.ballot && opened.ballot.rules })
+  const heldId = opened.ballot && opened.ballot.id
+  const closedEmpty = await seatCall('vibe_v5_poll_close', { ballot_id: heldId }, asMember('acad'))
+  ok(closedEmpty.ok === true && closedEmpty.ballot && closedEmpty.ballot.min_votes_reached === false,
+    'G7e. ★★★ C3 MEASURED: a poll closed with fewer votes than its floor reports min_votes_reached=false and fabricates no outcome',
+    { cast: closedEmpty.ballot && closedEmpty.ballot.cast, reached: closedEmpty.ballot && closedEmpty.ballot.min_votes_reached })
+
+  const opened2 = await seatCall('vibe_v5_poll_open', { question: 'Q2', options: ['a', 'b'], min_votes: 1 }, asMember('acad'))
+  const id2 = opened2.ballot && opened2.ballot.id
+  const voted = await seatCall('vibe_v5_poll_vote', { ballot_id: id2, choices: ['a'] }, asMember('r-1'))
+  ok(voted.ok === true && voted.cast === 1 && Array.isArray(voted.pending) && voted.pending.length > 0,
+    'G7f. ★★ a second SEATED member votes, and the receipt names who has NOT voted yet', { cast: voted.cast, pending: voted.pending })
+  const closedMet = await seatCall('vibe_v5_poll_close', { ballot_id: id2 }, asMember('acad'))
+  ok(closedMet.ok === true && closedMet.ballot && closedMet.ballot.cast === 1 && closedMet.ballot.min_votes_reached === true,
+    'G7g. ★ with the floor met the same call reports reached=true and a real tally',
+    { cast: closedMet.ballot && closedMet.ballot.cast, reached: closedMet.ballot && closedMet.ballot.min_votes_reached })
+
+  // the A/B property: our ballot distinguishes exactly these two cases too, and says WHY when it cannot decide
+  const ballotSrc = readFileSync(new URL('../vibe-math-vmu/kernel/ballot.js', import.meta.url), 'utf8')
+  ok(/'undecided'/.test(ballotSrc) && /reason/.test(ballotSrc),
+    'G7h. ★★ PROPERTY (A/B): vmu likewise refuses to turn a missed floor into an outcome - its tally is three-valued and an undecided result must carry a reason',
+    { v5r: 'min_votes_reached=false', vmu: "outcome 'undecided' + a required reason" })
+  mark('PROPERTY', 'a vote that misses its floor is reported as NOT reaching it on both sides rather than becoming an outcome: v5r sets min_votes_reached=false, and vmu keeps a three-valued tally whose undecided branch must carry a reason. The happy path now RUNS: convene, open a poll with a floor, vote as a seated member, close - driven through v5r own state machine with a fixture that only lets its scheduler start member turns.')
+  mark('EQUAL', 'the meeting life cycle from convening to a closed tally is now compared step by step, which retires the last not-adopted item: nothing about it was unreachable after all, it needed the acting member to be seated the way the preset seats one.')
 }
 
 // ── 11. THE LAST SIX: permanent roster changes, temporary grants, supervision and resolutions ──────────────

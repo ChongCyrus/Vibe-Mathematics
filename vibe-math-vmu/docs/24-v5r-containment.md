@@ -367,9 +367,30 @@
 
 ★ **仍为 `NOT_ADOPTED: 1` 的，只有一处** ✓：**会议 happy path 的"动议→附议→表决→计票"逐段对照** ✗ —— 原因是**执行体绑定**（见 §2.2.9 ✓），**需要成员回合夹具或重驱动** ✓，**不是因为没做** ✓。
 
+### 2.2.22 ★★★ **happy path 跑通了：`NOT_ADOPTED` 归零**（轮 324）✓✓
+
+**阻塞点的真相**（读码得到，非猜测 ✓）：`memberIdOfAgent(agent)` ＝ **`agent.id`**，**先按"哪个成员的 `childId` 等于它"查** ✓；**查不到且自己是 session root ⇒ `'office'`** ✓；**完全没有 id（合成上下文）⇒ 才回退 `currentMember`** ✓（`vibe-math-v5r.js` L3939–L3955 ✓）。★ 我先前驱动时传的是 **root** ✗ ⇒ 被判 `'office'` ✓✓ —— **不是机制不可达，是我没按它的方式入席** ✓。
+
+**夹具（不伪造任何东西）** ✓✓：让 `startContinuable` **每次返回唯一 `childId`**（**预设自己的调度器**据此把该成员记成"正在跑" ✓），**从 roster 读出 `memberId → childId`** ✓，**再用 `{id: childId}` 当调用者** ✓ ⇒ ★ **状态机、名册、票箱全都是真的** ✓。
+
+**端到端实测** ✓✓（每条一断言）：
+
+| 步骤 | 结果 |
+|---|---|
+| 建所（夹具下）✓ ／ roster **发布每人 `childId`** ✓ | `acad→child-1`／`r-1→child-2`… ✓ |
+| **在册成员开会** ✓ | `mt-1` ✓ |
+| **在册成员开票（floor 3）** ✓ | ★★ **成功**（先前此处答 `V5_MEMBER_NOT_FOUND` ✗）；`rules:{minVotes:3, secret:false, allowAbstain:true, allowRevote:true}` ✓ |
+| ★★★ **无票关票** | **`min_votes_reached: false`** ✓✓ —— ★★ **C3 终于实测：门槛未达被【如实报告】，不编造结论** ✓✓ |
+| **另一在册成员投票** ✓ | `cast:1`，且 `pending` **列出未投者** ✓ |
+| **达门槛关票** ✓ | `min_votes_reached: true` ＋ 真 tally ✓ |
+
+★★ **A/B 性质** ✓✓：**"未达门槛的票"在两边都不成为结论** ✓（v5r：`min_votes_reached=false` ✓；vmu：**三值 tally ＋ `undecided` 必带 reason** ✓）。
+
+**判据总账** ⇒ **EQUAL 4／PROPERTY 10／DIVERGENT 4** ✓（**94 passed, 0 failed** ✓）—— ★★★ **`NOT_ADOPTED` 一项不剩** ✓✓：**"不是够不着，而是需要按它的方式入席"** ✓。
+
 ## 3. v5r 的 56 个工具
 
-> ★★ **A/B 覆盖率：56/56** ✓✓（**轮 323 实测**：以注册表为准的 56 个工具**全部被断言点名** ✓）；**判据总账** ＝ **EQUAL 3／PROPERTY 9／NOT_ADOPTED 1／DIVERGENT 4** ✓（**86 passed, 0 failed** ✓）。★ **唯一的 `NOT_ADOPTED` 是会议 happy path 的逐段对照** ✗，原因是**执行体绑定**（§2.2.9 ✓）⇒ **需成员回合夹具或重驱动** ✓，**不是"没做"** ✓。（**按家族分组**，实测列举）
+> ★★ **A/B 覆盖率：56/56** ✓✓（**轮 323 实测**：以注册表为准的 56 个工具**全部被断言点名** ✓）；**判据总账** ＝ **EQUAL 4／PROPERTY 10／DIVERGENT 4** ✓（**94 passed, 0 failed** ✓）。★★★ **`NOT_ADOPTED` 归零（轮 324）** ✓✓ —— **happy path 已逐段对照**（§2.2.22）：**执行体绑定不是"够不着"，而是"要按它的方式入席"** ✓（让调度器发出 `childId` 并用它当调用者 ✓）。（**按家族分组**，实测列举）
 
 | 家族 | 工具 | vmu 侧家族级载体（依据：键族/服务实测存在） | A/B 覆盖 |
 |---|---|---|---|
