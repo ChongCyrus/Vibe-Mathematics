@@ -1552,6 +1552,16 @@ undefined
   ★★★ 卷 24 内容：判据与诚实口径 ／ 实测基线 ／**被否决的证据路径** ／ 56 工具的家族级对照（含 **A/B 覆盖列**：仅 Lean 与库为"部分 ✓"）／**GAP G1–G5**（G1 把 A/B 台扩到 56 工具；G2 逐份对照会议规格；G3 `procedural_objection` 等先实测再判；G4 `hr` 降级后 `hire`/`fire` 职能归属；G5 v5r 的 `set`/`configure`（provider/model 覆盖 staff 路由）在 vmu 侧如何等价）／ 未核项（含**"效果更强"缺可比口径**）✓。
   ★★ 两处修正：① 上轮误删的「服务」清单行已恢复（只去掉已撤族）；② 悬空的 `22-§2.5` 指针已改指 `22-§14` 裁决表 —— **根因是轮 302 的 §2 收缩把其下子节一并吞掉（含 §2.5）** ✗，**该副作用已在卷 22 就地记明**（不掩盖 ✓）。
   ★★ 未做（明写 ✗）：**卷 24 的 G1–G5 全部未实现**（本次只建立度量与计划）；`hr`(11 键)／`course`(24 键)／`domaincompliance` 内的 `clinical`(9)＋`animal`(9) 未撤；`docs/22` 的非表散文行未全清；真机复跑 ✗；版本号/release ✗（须你批准）。
+- ***** 304 (user clarification): the RETENTION criterion is relaxed and inverted - "if it MIGHT have a consumer anywhere in these directions, KEEP it".
+  The directions: mathematics research / formalisation / computation and tools / agent communication and MEETING systems / inter-agent collaboration / workflow / control flow / archiving / review and publishing / agent self-organisation. Scope explicitly includes infrastructure, optional features, interfaces and plugins, tunable parameters, agent-executable commands, scripts and protocols.
+  The test is POSSIBILITY, not proof, and the burden of proof is on DELETION. A demotion now requires BOTH that no possible consumer exists in any of those directions AND that it duplicates an existing mechanism - and it requires USER CONFIRMATION before code is withdrawn.
+  Recorded in the goal text (revision 5) and in docs/23 section 0b.
+- ***** 304 RE-CHECK of what I had changed, honestly reopened:
+  1. instruments (17 keys, 373 lines) was REMOVED in round 302. Under the relaxed criterion it has a POSSIBLE consumer: (e) inter-agent collaboration and (j) agent self-organisation, because it carries capabilityTags / requiresTraining / train - i.e. a qualification gate for who may use a shared resource. PROPOSED FOR RESTORATION, pending the user decision. Git history holds it.
+  2. biospecimen (7 keys, 200 lines) was REMOVED in round 301. Under the relaxed criterion it has a POSSIBLE consumer: (i) review and publishing, because subjectRefStyle / mappingIrreversible ARE an irreversible pseudonym mapping (what blind review needs), and (h) archiving, because a chain of custody is provenance and tamper-evidence. PROPOSED FOR RESTORATION, pending the user decision. Git history holds it.
+  3. hr (11 keys) and course (24 keys) were marked for demotion but NOT removed; both are now RE-JUDGED AS KEEP (agent seat lifecycle; and teaching/training agents), and the demotion notes are withdrawn. The duplicate-review remark about course stays as a design note, not as a reason to demote.
+  4. mentor / attendance / committees / consensus / consent (plans only) are re-judged as KEEP (meeting system; human-subjects consent).
+  5. clinical (9) and animal (9) keep their demotion: for them no possible consumer exists in any of the ten directions - and even that demotion still needs user confirmation before any code is withdrawn.
 ### 0.4 结论
 
 ## 0.5 未接线键的【三档结构】（轮 287 建表；**轮 290 据实更正数字** ✓✓）
