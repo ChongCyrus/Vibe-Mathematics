@@ -86,7 +86,7 @@ console.log('=== 1. PER-TYPE COVERAGE (the number the whole-corpus ratio cannot 
 // boards, result-card headings holding that day content. Those lines are DATA, and mixing them with missing
 // wording makes a faithful type look half-empty. So each type reports both, and the prose figure is the one that
 // answers "did we transcribe this".
-const looksLikeData = (l) => /[a-z]{1,8}-\d/.test(l) || /^[\[▸]/.test(l) || /^【/.test(l) || /p-[a-z]/.test(l) || /:\s*"/.test(l)
+const looksLikeData = (l) => /[a-z]{1,8}-\d/.test(l) || /^[\[▸]/.test(l) || /^【/.test(l) || /p-[a-z]/.test(l) || /:\s*"/.test(l) || /^陈述：/.test(l) || /^对象：/.test(l) || /^类型：/.test(l)
 
 const perType = new Map()
 for (const p of PROMPTS) {

@@ -81,7 +81,12 @@ export function decideSections({ settings = {}, turn = {} } = {}) {
 
   // (3) The meeting speaker states: exactly one inside the meeting phase, none outside it, and an
   // unrecognised state is refused rather than defaulted.
-  const state = turn.phase === 'meeting' ? (turn.meetingState === undefined ? null : turn.meetingState) : null
+    // THE CALLER MUST NAME THE MEETING STATE, AND NOTHING DEFAULTS IT. The four `v5r-meeting-*` sections are
+  // injected only when `turn.meetingState` says which one applies - absent means NONE of them, deliberately,
+  // because guessing which speaker situation a round is in would put the wrong instructions in front of a member.
+  // That makes naming it the DRIVER's job: whoever opens the turn supplies `meetingState: invited|first|others`.
+  // The tests do this and the plugin does not, which is exactly why this note exists rather than a fallback.
+const state = turn.phase === 'meeting' ? (turn.meetingState === undefined ? null : turn.meetingState) : null
   if (state !== null && !MEETING_STATES.some(([key]) => key === state)) {
     errors.push({
       code: 'VMU_INVALID_ARGUMENT',
