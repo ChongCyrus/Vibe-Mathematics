@@ -754,6 +754,14 @@ suites = lptOrder(suites)
 if (!suites.length) { console.error('no suites matched'); process.exit(2) }
 // The scope/concurrency header goes to STDERR so `--counts` and `--json` keep stdout machine-readable.
 console.error('run-tests: scope=' + GATE_SCOPE + '  jobs=' + suites.length + '  concurrency=' + concurrency)
+// THE REQUESTED SCOPE AND THE EFFECTIVE ONE ARE DIFFERENT VARIABLES, and printing only the first beside a job count
+// from the second is what made `scope=vmu jobs=236` read as a scope that did nothing. Machine modes force `full` on
+// purpose (L344-345, with the incident that produced the rule), so say so whenever the two disagree. The line above is
+// left untouched because guards parse it.
+if (SCOPE !== GATE_SCOPE) {
+  console.error('run-tests: requested scope=' + GATE_SCOPE + ' but the EFFECTIVE scope is ' + SCOPE
+    + ' - machine modes (--counts / --self-check / --only) always run the full list BY DESIGN, so this job count is the repository count, not the scoped one')
+}
 // SCOPE GUARDS (checked on EVERY run, not only under --self-check, because the gate is where a curated
 // filter would hurt): the quick subset must resolve to a FIXED number of jobs and must contain NO mutant
 // family. A drifted filter therefore REDS BY NAME instead of silently changing what the edit loop covers.
