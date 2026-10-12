@@ -438,6 +438,27 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   ok(ourLines.length > 100 && pctOurs >= 0,
     "V68. **** THE OTHER DIRECTION: " + fromOriginal.length + " of our " + ourLines.length + " fixed prose lines appear in the prompts the original really delivered (" + pctOurs + "%) - the fidelity number, which cannot be inflated by transcribing more text of our own invention",
     { ours: ourLines.length, fromOriginal: fromOriginal.length, percent: pctOurs })
+  // A SEPARATE NUMBER FOR A FAMILY THE FIRST ONE CANNOT SEE. The framework notices are not part of an assembled
+  // prompt: the loop adds them at delivery time, so a comparison against assembled text is blind to them no matter
+  // how complete they are. Measuring them separately is the honest fix, and the target is exactness rather than a
+  // percentage - the templates are transcribed, so every captured notice must be reproducible verbatim.
+  const NOTICE_PREFIXES = ["【所办分派】", "【院士分派】", "【督办 from", "【研究所·群聊】", "【所办通知】"]
+  const noticeLines = [...new Set(originalBlob.split("\n").map((l) => l.trim()).filter((l) => NOTICE_PREFIXES.some((p) => l.startsWith(p))))]
+  const NOTICES = await import("../vibe-math-vmu/packs/v5r/notices.js")
+  let reproduced = 0
+  for (const line of noticeLines) {
+    const asg = /^【(.+?)分派】任务 (.+?)「(.+?)」分派给你。理由：(.+?)｜验收标准：(.+?)。默认应当执行；/.exec(line)
+    if (asg) { if (NOTICES.assignmentNotice({ assignerLabel: asg[1], taskId: asg[2], title: asg[3], why: asg[4], acceptance: asg[5] }) === line) reproduced += 1; continue }
+    const nud = /^【督办 from (.+?)】(.+?)督办：(.+?)(?:｜建议的下一步：(.+))?$/.exec(line)
+    if (nud) { if (NOTICES.nudgeNotice({ by: nud[1], byLabel: nud[2], why: nud[3], nextStep: nud[4] }) === line) reproduced += 1; continue }
+    const chat = /^【研究所·群聊】(.+?)：(.+)$/.exec(line)
+    if (chat) { if (NOTICES.chatNotice({ member: chat[1], text: chat[2] }) === line) reproduced += 1; continue }
+    const off = /^【所办通知】(.+)$/.exec(line)
+    if (off) { if (NOTICES.officeNotice({ text: off[1] }) === line) reproduced += 1; continue }
+  }
+  ok(noticeLines.length >= 5 && reproduced === noticeLines.length,
+    "V69. **** THE NOTICE FAMILY, measured on its own because the assembly comparison cannot see it: " + reproduced + " of " + noticeLines.length + " captured framework notices are reproduced VERBATIM",
+    { captured: noticeLines.length, reproduced })
   // The named gap families, kept in the test so the next person sees WHAT is missing rather than only how much.
   // THREE OF THE SIX FAMILIES ARE NOW CLOSED: the compact catalogue, the refusal notice and the contextPct/compacted
   // clarification (the tool-help hint rides in the same block). The list below is what remains, kept in the test so the
