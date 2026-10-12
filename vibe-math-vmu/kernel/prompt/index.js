@@ -42,8 +42,12 @@ export const ORDER_RANGES = Object.freeze({
  * notices, the task board and new mail - and every one of those lines is turn data, not prose. The loop composes that
  * block from the kernel's own state and hands it over as ONE variable, so the pipeline still owns the assembly while
  * the loop owns the facts. The finer-grained alternative (a variable per datum) is recorded in docs/26 section 3.11.
+ * ROUND 364: `roleLabel` joined for the per-turn HEADINGS. The source's kindLabel turns the member kind into the
+ * human name used in every header (院士 / 常驻研究员 / 临时工). It is deliberately a SEPARATE variable from `role`:
+ * `role` is the kind KEY that bindings select on, while `roleLabel` is what a reader sees, and mixing the two would
+ * make a binding depend on display text.
  */
-export const VARIABLE_WHITELIST = Object.freeze(['member', 'role', 'phase', 'time', 'pack', 'task', 'roster', 'round', 'quorum', 'statusBlock', 'setting:', 'count:'])
+export const VARIABLE_WHITELIST = Object.freeze(['member', 'role', 'roleLabel', 'phase', 'time', 'pack', 'task', 'roster', 'round', 'quorum', 'statusBlock', 'setting:', 'count:'])
 
 /** Fixed binding priority, low to high (docs/06 §5). */
 export const BINDING_PRIORITY = Object.freeze(['role', 'phase', 'member', 'task'])

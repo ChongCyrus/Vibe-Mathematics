@@ -170,7 +170,11 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
         'inject { prompt: createPromptPipeline(...) } (docs/26 §2 stage 2)')
     }
     // The role travels with the member, so a template section can address THIS member (docs/26 section 3.1).
-    const out = await prompt.assemble({ member: turn.member, role: turn.role, phase: turn.phase, task: turn.task, roster: turn.roster, quorum: turn.quorum, statusBlock: turn.statusBlock, round: turn.round })
+    // `roleLabel` is the human name the source's kindLabel produces for every heading (docs/26 section 3.13). It is
+    // deliberately separate from `role`, which is the KEY that bindings select on: mixing display text into a binding
+    // would make the assembly depend on wording.
+    const roleLabel = ({ academician: '院士', researcher: '常驻研究员', temp: '临时工' })[turn.role] || turn.role
+    const out = await prompt.assemble({ member: turn.member, role: turn.role, roleLabel, phase: turn.phase, task: turn.task, roster: turn.roster, quorum: turn.quorum, statusBlock: turn.statusBlock, round: turn.round })
     if (!out || out.ok !== true) {
       fail('VMU_TURN_ASSEMBLY_FAILED', 'the prompt pipeline refused this turn: ' + JSON.stringify((out && out.refused) || {}).slice(0, 160))
     }

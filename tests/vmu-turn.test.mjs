@@ -16,7 +16,7 @@ import { collectPackSections } from '../vibe-math-vmu/kernel/pack.js'
 import { PACK } from '../vibe-math-vmu/packs/v5r-core.js'
 import { toolSpecs } from '../vibe-math-vmu/host.js'
 import { SOURCE_SHA256 as PERSONA_SOURCE_SHA256 } from '../vibe-math-vmu/packs/v5r-persona.js'
-import { CHARTER_SECTIONS, CHARTER_BLOCKS, CHARTER_ROLE_BINDINGS } from '../vibe-math-vmu/packs/v5r-charter.js'
+import { CHARTER_SECTIONS, CHARTER_BLOCKS, CHARTER_ROLE_BINDINGS, CHARTER_BINDINGS } from '../vibe-math-vmu/packs/v5r-charter.js'
 import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -439,7 +439,11 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   // deliberately EXCLUDED because measuring showed the captured prompt corpus does NOT contain it - only its opening
   // sentence and vote_solved appear - so there is no capture-side baseline for it. That gap is recorded in docs/26
   // section 3.12 rather than papered over with a weaker check.
-  for (const b of CHARTER_BLOCKS.filter((x) => !String(x.name).startsWith('v5r-reply-'))) {
+  // The persona capture is the baseline for the CHARTER axis only. The per-turn pieces - the reply spec, the turn
+  // heading and ask, the brief - belong to the PROMPT axis, and measuring showed the captured prompt corpus does
+  // not even contain the reply catalogue. Scoping by axis is stated here rather than loosening the comparison.
+  const PROMPT_AXIS_PREFIXES = ['v5r-reply-', 'v5r-turn-', 'v5r-brief-']
+  for (const b of CHARTER_BLOCKS.filter((x) => !PROMPT_AXIS_PREFIXES.some((p) => String(x.name).startsWith(p)))) {
     const pairs = b.kind === 'shared' ? [['shared', b.texts.shared, acadOrig], ['shared', b.texts.shared, resOrig]]
       : (b.kind === 'role' ? [['academician', b.texts.academician, acadOrig], ['researcher', b.texts.researcher, resOrig]]
         : [['with-leader', b.texts['with-leader'], acadOrig]])
@@ -499,6 +503,24 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   ok(asmRp.text.includes('常驻研究员只能由所办解聘') && asmRp.text.includes('只要有一位有表决权者没有填 true'),
     'T77. **** the two corrections the source records are carried verbatim: the firing authority matrix and what a partial yes does',
     { corrected: true })
+}
+
+// 19) THE PER-TURN HEADING AND ASK BY PHASE (docs/26 section 3.13): every prompt in the source is one eight-part
+// sequence whose first two parts differ by phase, so they are PHASE bindings rather than code branches.
+{
+  const loopPh = createTurnOrchestrator({ prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
+  const asmF = await loopPh.assemble(loopPh.open({ member: 'r-1', role: 'researcher', phase: 'founding', round: 1 }).turn)
+  const asmN = await loopPh.assemble(loopPh.open({ member: 'r-1', role: 'researcher', phase: 'normal', round: 7 }).turn)
+  const asmC = await loopPh.assemble(loopPh.open({ member: 'acad', role: 'academician', phase: 'checkpoint', round: 9 }).turn)
+  ok(asmF.text.includes('【入职首轮 —— 常驻研究员 r-1】') && asmF.text.includes('你刚刚加入本所。请你先**独立**想清楚'),
+    'T78. **** the FOUNDING phase assembles its own heading and its own ask, with the human role name from roleLabel rather than the binding key',
+    { heading: 'founding' })
+  ok(asmN.text.includes('【第 7 轮 —— 常驻研究员 r-1】') && asmN.text.includes('请推进你的研究'),
+    'T79. **** and the NORMAL phase announces the round the RUN supplies and asks for research rather than induction',
+    { heading: 'normal' })
+  ok(asmC.text.includes('【心跳检查 —— 院士 acad】') && asmC.text.includes('所内一段时间没有新进展了') && asmC.text.includes('【入职首轮') === false,
+    'T80. **** and the CHECKPOINT phase gets the heartbeat heading and its own ask, with the founding heading absent - the bindings really select',
+    { heading: 'checkpoint' })
 }
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)

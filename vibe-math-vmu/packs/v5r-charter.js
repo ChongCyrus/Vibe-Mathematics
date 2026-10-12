@@ -661,21 +661,84 @@ export const CHARTER_BLOCKS = Object.freeze([
       ].join('\n'),
     },
   },
+  // ── THE PER-TURN HEADING AND ASK, bound by PHASE (source L4054-4141) ────────────────────────────────────────
+  // Reading the four builders shows every per-turn prompt is the SAME EIGHT-PART SEQUENCE: heading, this round's
+  // ask, any conditional blocks, the resource block, the three push lines, a `------------` rule, the pointer
+  // contract, the state block, another rule, and the reply spec. The heading and the ask are what differ by phase,
+  // and phase is one of the pipeline's binding dimensions, so they are bound rather than branched in code.
+  {
+    name: 'v5r-turn-heading',
+    order: 740,
+    range: 'pack',
+    kind: 'phase',
+    texts: {
+      founding: '【入职首轮 —— {{ roleLabel }} {{ member }}】',
+      normal: '【第 {{ round }} 轮 —— {{ roleLabel }} {{ member }}】',
+      checkpoint: '【心跳检查 —— {{ roleLabel }} {{ member }}】',
+      meeting: '【研究所会议 {{ setting:vmu.meeting.current }} 进行中 —— {{ roleLabel }} {{ member }}】',
+    },
+  },
+  {
+    name: 'v5r-turn-ask',
+    order: 741,
+    range: 'pack',
+    kind: 'phase',
+    texts: {
+      founding: [
+        '你刚刚加入本所。请你先**独立**想清楚：面对这个问题，你打算从哪个方向切入？',
+        '给出你的初始见解、思路与可行的方向；如果已有具体想法，可以顺手记进你自己的 Progress/ 与成果库。',
+      ].join('\n'),
+      normal: [
+        '请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的',
+        '结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。',
+      ].join('\n'),
+      checkpoint: [
+        '所内一段时间没有新进展了。请**继续推进**这个问题，而不是停在原地：',
+        '读一读同事的库、推进你的子问题/引理/方法、尝试一条新路线；',
+        '或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。',
+        '如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。',
+      ].join('\n'),
+      meeting: '议程与类型由本轮会议帧给出；请按议程发言，需要发言时举手。',
+    },
+  },
+  // The academician-leads nudge is conditional on BOTH the kind and a runtime switch, so the loop includes it only
+  // when both hold (docs/26 section 3.13). Wording transcribed from the source.
+  {
+    name: 'v5r-turn-acad-leads',
+    order: 742,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '作为院士，除了做研究，你还要**统筹全所**：用 vibe_v5_overview 看清谁在做什么、',
+        '哪里是瓶颈；把工作拆成任务并用 vibe_v5_assign 分派；必要时用 vibe_v5_nudge 督办。',
+      ].join('\n'),
+    },
+  },
 ])
 
 /** One binding per role for every role-varying block, so the assembly puts the right charter in front of each kind. */
 export const CHARTER_ROLE_BINDINGS = Object.freeze(CHARTER_BLOCKS.filter((b) => b.kind === 'role').flatMap((b) =>
   Object.entries(b.texts).map(([role, text]) => ({ section: b.name, role, text }))))
 
+/** One binding per PHASE for the heading and the ask (docs/26 section 3.13): the phase dimension carries them. */
+export const CHARTER_PHASE_BINDINGS = Object.freeze(CHARTER_BLOCKS.filter((b) => b.kind === 'phase').flatMap((b) =>
+  Object.entries(b.texts).map(([phase, text]) => ({ section: b.name, phase, text }))))
+
+/** Both binding sets, for an assembly that wants the whole picture in one argument. */
+export const CHARTER_BINDINGS = Object.freeze([...CHARTER_ROLE_BINDINGS, ...CHARTER_PHASE_BINDINGS])
+
 /** The leader-conditional pairs, by section, for the loop to choose between (docs/26 section 3.10). */
 export const CHARTER_LEADER_VARIANTS = Object.freeze(Object.fromEntries(
   CHARTER_BLOCKS.filter((b) => b.kind === 'leader-conditional').map((b) => [b.name, b.texts])))
 
-/** The sections as the pipeline wants them: the shared text is the default, bindings override per role. */
+/** The sections as the pipeline wants them: the shared text is the default, bindings override per role or phase. */
 export const CHARTER_SECTIONS = Object.freeze(CHARTER_BLOCKS.map((b) => ({
   name: b.name,
   order: b.order,
   range: b.range,
   source: 'v5r-charter:source-derived',
-  text: b.kind === 'shared' ? b.texts.shared : (b.texts['with-leader'] || b.texts.researcher || ''),
+  text: b.kind === 'shared' ? b.texts.shared
+    : (b.kind === 'phase' ? (b.texts.normal || '')
+      : (b.texts['with-leader'] || b.texts.researcher || '')),
 })))
