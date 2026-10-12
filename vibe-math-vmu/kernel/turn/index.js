@@ -389,6 +389,17 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
    */
   const notices = new Map()
 
+  /** Queue a one-shot notice. Extracted so the turn loop itself can queue one (a refused dispatch, round 396). */
+  const queueNotice = (memberId, line) => {
+    if (typeof memberId !== "string" || memberId.trim() === "") fail("VMU_INVALID_ARGUMENT", "a notice needs a member", "pass (memberId, line)")
+    const l = String(line === undefined || line === null ? "" : line).trim()
+    if (l === "") fail("VMU_INVALID_ARGUMENT", "a notice needs a line", "an empty notice would render as a blank line")
+    const q = notices.get(memberId) || []
+    q.push(l)
+    notices.set(memberId, q)
+    return { ok: true, queued: q.length }
+  }
+
   /** Drain a member notices. Called by the assembly, which is what makes the announcement one-shot. */
   /**
    * ROUND 391 - disable/enable a section IF the pipeline carries it. The pipeline is right to refuse an unknown name,
@@ -460,7 +471,20 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
     const raw = await deliverTurn(turn, asm.text)
     const parsed = parse(raw)
     const out = await apply(parsed.reply)
-    return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, fields: parsed.fields, ...out }
+    // ROUND 396: a REFUSED dispatch becomes a notice for this member's NEXT prompt, which is the shape the original's
+    // own corpus shows - "【研究所提示】task_update 未生效（V5_TASK_STALE_REVISION）：…". A refusal that lives only in the
+    // receipt is invisible to the member that caused it, and the source is explicit that the announcement point is the
+    // next prompt. The notice is queued AFTER this turn's assembly, so it cannot appear in the prompt that caused it.
+    const refused = []
+    for (const e of out.executed || []) {
+      const r = e && e.result
+      if (!r || r.ok !== false) continue
+      const line = '【研究所提示】' + e.field + ' 未生效（' + String(r.code === undefined ? '' : r.code) + '）：'
+        + String(r.message === undefined ? '' : r.message)
+      queueNotice(turn.member, line)
+      refused.push({ field: e.field, code: r.code === undefined ? null : r.code })
+    }
+    return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, fields: parsed.fields, refused, ...out }
   }
 
   /**
@@ -532,15 +556,7 @@ export function createTurnOrchestrator({ prompt = null, deliver = null, faces = 
      * addressed to them, so it is announced exactly once: not repeated every round and never dropped. The charter
      * carries the wording of such a line; this queue carries the timing.
      */
-    notify: (memberId, line) => {
-      if (typeof memberId !== "string" || memberId.trim() === "") fail("VMU_INVALID_ARGUMENT", "a notice needs a member", "pass (memberId, line)")
-      const l = String(line === undefined || line === null ? "" : line).trim()
-      if (l === "") fail("VMU_INVALID_ARGUMENT", "a notice needs a line", "an empty notice would render as a blank line")
-      const q = notices.get(memberId) || []
-      q.push(l)
-      notices.set(memberId, q)
-      return { ok: true, queued: q.length }
-    },
+    notify: (memberId, line) => queueNotice(memberId, line),
     /** Drain a member queued notices. The assembly calls this, which is what makes the announcement one-shot. */
     takeNotices: (memberId) => drainNotices(memberId),
     status: () => ({ apiVersion, turns: turns.size, fields: known.length, owners, policy: POLICY, woken: Object.fromEntries(woken), counts: { ...counts }, lastRefusal: { ...lastRefusal } }),

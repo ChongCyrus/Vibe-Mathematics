@@ -925,6 +925,40 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
     "T141. **** and the fields with NO real operation stay recorded rather than being sent somewhere invented - the members service is not even present in a default kernel",
     { recorded: RECORDED_FIELDS })
 }
+
+// 36) A REFUSED DISPATCH BECOMES A NOTICE (docs/26 section 3.31). The original corpus shows the shape: a refused field
+// is announced to that member in the NEXT prompt. A refusal living only in the receipt is invisible to the member that
+// caused it. The check is programmatic on purpose - the receipt and the queue - so no wording is duplicated here.
+{
+  const refuser = async () => ({ ok: false, code: "V5_TASK_STALE_REVISION", message: "stale revision" })
+  const loopN = createTurnOrchestrator({
+    prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }),
+    deliver: async () => "```json\n{\"task_update\":{\"task_id\":\"t-1\",\"expected_revision\":99}}\n```",
+    faces: { "vmu.tasks": { transition: refuser } },
+  })
+  const baseN = { member: "r-1", role: "researcher", phase: "normal", statusBlock: "[状态] x" }
+  const r1 = await loopN.run({ ...baseN, round: 1 })
+  ok(r1.ok === true && r1.refused.length === 1 && r1.refused[0].field === "task_update" && r1.refused[0].code === "V5_TASK_STALE_REVISION",
+    "T142. **** a refused dispatch is REPORTED on the receipt rather than silently counted as executed",
+    { refused: r1.refused })
+  const queuedN = loopN.takeNotices("r-1")
+  ok(queuedN.length === 1,
+    "T143. **** and it is QUEUED for that member, so the refusal reaches them in their next prompt - the announcement point the source names",
+    { queued: queuedN.length })
+  const a2 = await loopN.assemble(loopN.open({ ...baseN, round: 2 }).turn)
+  ok(a2.ok === true && loopN.takeNotices("r-1").length === 0,
+    "T144. **** and the next assembly DRAINS it exactly once, so the notice neither repeats nor lingers",
+    { drained: true })
+  const okFace = createTurnOrchestrator({
+    prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }),
+    deliver: async () => "```json\n{\"task_update\":{\"task_id\":\"t-1\",\"expected_revision\":1}}\n```",
+    faces: { "vmu.tasks": { transition: async () => ({ ok: true }) } },
+  })
+  const r2 = await okFace.run({ ...baseN, round: 1 })
+  ok(r2.refused.length === 0 && okFace.takeNotices("r-1").length === 0,
+    "T145. **** while a SUCCESSFUL dispatch queues nothing at all, because a notice about nothing is noise",
+    { refused: r2.refused.length })
+}
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
