@@ -444,7 +444,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   // not even contain the reply catalogue. Scoping by axis is stated here rather than loosening the comparison.
   // TODO(axis): this list is maintained by hand and every new prompt-axis block must be added. A structural fix -
   // an explicit axis field on each block - is owed; the list is kept honest for now, with the reason per prefix.
-  const PROMPT_AXIS_PREFIXES = ['v5r-reply-', 'v5r-turn-', 'v5r-brief-', 'v5r-proof-', 'v5r-pointer-']
+  const PROMPT_AXIS_PREFIXES = ['v5r-reply-', 'v5r-turn-', 'v5r-brief-', 'v5r-proof-', 'v5r-pointer-', 'v5r-feedback-', 'v5r-formal-']
   for (const b of CHARTER_BLOCKS.filter((x) => !PROMPT_AXIS_PREFIXES.some((p) => String(x.name).startsWith(p)))) {
     const pairs = b.kind === 'shared' ? [['shared', b.texts.shared, acadOrig], ['shared', b.texts.shared, resOrig]]
       : (b.kind === 'role' ? [['academician', b.texts.academician, acadOrig], ['researcher', b.texts.researcher, resOrig]]
@@ -574,6 +574,31 @@ const mk = (extra = {}) => createTurnOrchestrator({ prompt: pipeline(), ...extra
   ok(asmPc.text.includes('具名阻塞并上报') && asmPc.text.includes('具名停下并上报') && asmPc.text.includes('禁止**自行猜测、改写、拼写对象 id'),
     'T88. **** unresolvable references must STOP BY NAME and report rather than be guessed or narrated from memory, which is the same rule this repo applies to its own citations',
     { namedStop: true })
+}
+
+// 23) FORMALISATION AND WORK FEEDBACK (docs/26 section 3.18): the source's most valuable rule and its three routes.
+{
+  const pipeFm = createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' })
+  const SET = { 'vmu.formal.currentProof': 'Formal/p-9.lean', 'vmu.formal.blockedNote': '缺一个引理', 'vmu.formal.rootRel': 'Formal', 'vmu.formal.modeLabel': '强制' }
+  const asmFm = await pipeFm.assemble({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal', round: 5, roster: 'acad、r-1', quorum: 2, statusBlock: '[状态] x', settings: SET })
+  ok(asmFm.ok === true && asmFm.text.includes('忠实性审查') && asmFm.text.includes('你不需要重新检查推导'),
+    'T89. **** THE FAITHFULNESS REVIEW: once a Lean proof has passed, the reviewer job CHANGES - they check faithfulness instead of redoing the mathematics',
+    { chars: asmFm.text.length })
+  ok(asmFm.text.includes('发现任何偏差，不要投 0') && asmFm.text.includes('偏差只说明**形式化不合格**，不代表命题为假') && asmFm.text.includes('严格介于 0 与 1 之间'),
+    'T90. **** and a DEFECT IS NOT A REFUTATION: abstaining plus recording the defect, because deviation-to-zero would make the mechanism that exists for rigour fabricate a false negative',
+    { rule: 'deviation != false' })
+  ok(asmFm.text.includes('只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0') && asmFm.text.includes("decision:'defect'"),
+    'T91. **** a zero verdict requires an INDEPENDENT argument, and the defect goes into the receipt so the framework withdraws the passed status',
+    { independent: true })
+  ok(asmFm.text.includes('没把握的先别入库') && asmFm.text.includes('在作业落地为“通过”之前，不得把该对象当成已通过'),
+    'T92. **** and the as-you-go line keeps two honesty rules: do not archive what you are unsure of, and never call a queued compile passed',
+    { honesty: 2 })
+  ok(asmFm.text.includes('self＝你自己的做法⇒**自己调整，无需谁采纳**') && asmFm.text.includes('只有这条要先**缜密评估**') && asmFm.text.includes('interpersonal 必须回填 outcome'),
+    'T93. **** and the feedback line carries three routes with three levels of ceremony: two need nobody approval, and only the one that requires OTHERS to change needs assessment and a written outcome',
+    { routes: 3 })
+  ok(asmFm.text.includes('Formal/p-9.lean') && asmFm.text.includes('缺一个引理') && asmFm.text.includes('强制') && asmFm.text.includes('{{') === false,
+    'T94. **** with the mode and status values arriving from settings and no placeholder left behind',
+    { fromSettings: true })
 }
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)

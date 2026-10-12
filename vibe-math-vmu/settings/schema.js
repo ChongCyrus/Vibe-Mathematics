@@ -139,6 +139,12 @@ const CORE_DEFS = Object.freeze([
   // ROUND 367: the pointer-propagation contract has its own switch, exactly as the original gates it. Off means the
   // section is not included at all (zero injection), never a "disabled" notice - see docs/26 section 3.14.
   { key: 'vmu.pointer.propagation', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '是否注入指针传播契约（关掉＝零注入；原线的 S21 开关同义）' },
+  // ROUND 369: the formalisation block is mode- and status-dependent in the original, so its live values arrive here and
+  // the wording stays in the pack. `modeLabel` carries the 强制/鼓励/主动 wording, and the review block names the proof.
+  { key: 'vmu.formal.currentProof', type: 'string', def: 'Formal/p-x.lean', hot: HOT.H2, who: 'office', doc: '忠实性审查时点名的已通过证明文件（每轮按实际目标填）' },
+  { key: 'vmu.formal.blockedNote', type: 'string', def: '未说明', hot: HOT.H2, who: 'office', doc: '已记录的阻塞原因（每轮按实际目标填）' },
+  { key: 'vmu.formal.rootRel', type: 'string', def: 'Formal', hot: HOT.H2, who: 'office', doc: '形式化工作目录（相对会话工作目录）；原线为研究所根下的 Formal/' },
+  { key: 'vmu.formal.modeLabel', type: 'string', def: '鼓励', hot: HOT.H2, who: 'office', doc: '顺手形式化一行的模式措辞：强制／鼓励／主动' },
 
   // ---- math and formalisation ---------------------------------------------------------------
   // A1/A2 (P3): the DEFAULTS come from the shared module, so v2–v5r and vmu stay byte-comparable.

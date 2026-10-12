@@ -255,6 +255,10 @@ vmu.packs.active: [v5r]
 | `vmu.resources.memoryCeilingMb` | number | `0` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 内存上限（MB）；0＝只提醒"压力明显增大"而不给数字 |
 | `vmu.resources.selfCheck` | bool | `true` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 是否向成员展示资源纪律段（关掉＝零注入，提示词回到该段之前，注入点逐字不变） |
 | `vmu.pointer.propagation` | bool | `true` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 是否注入指针传播契约（关掉＝零注入；原线的 S21 开关同义） |
+| `vmu.formal.currentProof` | string | `Formal/p-x.lean` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 忠实性审查时点名的已通过证明文件（每轮按实际目标填） |
+| `vmu.formal.blockedNote` | string | `未说明` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 已记录的阻塞原因（每轮按实际目标填） |
+| `vmu.formal.rootRel` | string | `Formal` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 形式化工作目录（相对会话工作目录）；原线为研究所根下的 Formal/ |
+| `vmu.formal.modeLabel` | string | `鼓励` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 顺手形式化一行的模式措辞：强制／鼓励／主动 |
 | `vmu.math.computation` | enum | `auto` | `off`∣`auto`∣`on` | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | P3：数学工具可用性（共享模块默认 auto） |
 | `vmu.math.mode` | enum | `typed+shell` | `typed`∣`typed+shell` | 会话 | H2 | office | ✅ 已接线 | `host-math.js` | P3：typed＝绝不提 shell 且拒绝 engine=cli |
 | `vmu.math.engines` | string[] | `[python,r,octave,julia,matlab,maple,wolfram,cli]` | — | 会话 | H2 | office | ✅ 已接线 | `host-math.js` | 引擎优先级（默认取自共享模块并拷贝；空＝具名降级） |

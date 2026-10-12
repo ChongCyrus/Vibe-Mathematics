@@ -780,6 +780,105 @@ export const CHARTER_BLOCKS = Object.freeze([
       ].join('\n'),
     },
   },
+  // ── THE WORK-FEEDBACK LINE (source `feedbackPushLine`, L5403-5411) ──────────────────────────────────────────
+  // Methodology and collaboration only, never research conclusions. The three routes carry three different levels of
+  // ceremony, and only the interpersonal one needs a careful assessment and a written outcome - the other two are the
+  // member's own business and need nobody's approval.
+  {
+    name: 'v5r-feedback-line',
+    order: 746,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '【工作经验／流程反馈（鼓励积极记录）】',
+        '· 为什么记：怎么一起工作（组织、流程、合作、障碍、摩擦）属于**方法论层**的自我调节；研究结论请进 Progress/ 与 Verified/，这里不记结论。',
+        '· 记什么：类别（合作/管理/流程/障碍/矛盾）＋路由＋情境/现象/影响＋你**已做的调整或建议**；写到多细由你把控。',
+        '· 三条路由：self＝你自己的做法⇒**自己调整，无需谁采纳**；team＝组织/工作流/团队运行的调整⇒**同样无需审批**，觉得不好就及时调整；interpersonal＝**别人造成的、要别人改变才能解决**⇒只有这条要先**缜密评估**"要不要改、改了是否真更优"，并**事后回填验证**。',
+        '· 记了之后：未闭环条目会出现在汇报与总览的计数里；用 vibe_v5_feedback 的 update 回填结果即闭环（interpersonal 必须回填 outcome）。',
+      ].join('\n'),
+    },
+  },
+  // ── FORMALISATION, THE FAITHFULNESS REVIEW (source `formalPromptBlock`, L5413-5472) ─────────────────────────
+  // The single most valuable rule in this family, stated in the source's own comment: when a Lean proof has passed, the
+  // reviewer's job CHANGES - it is not to redo the mathematics but to check FAITHFULNESS. And a defect must NOT be
+  // reported as a verdict of 0, because "deviation -> 0" would make the very mechanism that exists for rigour
+  // fabricate a false negative conclusion. Hence: abstain (a value strictly between 0 and 1), record the defect, and
+  // let the framework withdraw the passed status. Only an independent argument may yield 0.
+  {
+    name: 'v5r-formal-review',
+    order: 747,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '  · 该对象已有**通过的 Lean 形式化证明**（{{ setting:vmu.formal.currentProof }}，最近运行 exit 0）。',
+        '    **你不需要重新检查推导**。你的任务是**忠实性审查**：逐条核对 Lean 代码里的',
+        '    定义 / 对象 / 条件 / 假设 / 结论是否与命题原文**完全一致**。',
+        '  ▸ 一致 → verdict = 1。',
+        '  ▸ **发现任何偏差，不要投 0**：偏差只说明**形式化不合格**，不代表命题为假。此时请：',
+        '      ① verdict 给一个严格介于 0 与 1 之间的值（记为弃权），并在 reason 里写清偏差；',
+        '      ② 用回执 formal:{decision:\'defect\', note:\'<具体偏差>\'} 记录它。框架会撤回这条证明的',
+        '         「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办）；',
+        '         修正形式化并重新跑通后再投票。',
+        '  ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 reason 里写清独立理由。',
+      ].join('\n'),
+    },
+  },
+  {
+    name: 'v5r-formal-blocked',
+    order: 748,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '  · 该对象已被记录为**形式化阻塞**：{{ setting:vmu.formal.blockedNote }}。',
+        '    请复核这个判断是否成立；若你认为其实可以形式化，请指出来并动手做。',
+      ].join('\n'),
+    },
+  },
+  {
+    name: 'v5r-formal-plan',
+    order: 749,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '  · 请先判断该对象的**实现难度**：若能在可接受的工作量内形式化，优先写 Lean 代码并执行。',
+        '  · 形式化只写你有把握的版本；没把握就记 blocked 并写清难点——不要用形式化掩盖不确定。',
+        '  · 该对象若已有后台编译在队列中，**不得**在它落地前声称已通过或走忠实性审查；等 vibe_v5_lean_lib 显示 passed 再审。',
+        '  · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）',
+        '  · 工作目录（**相对会话工作目录**，你自己的文件工具按这个基准解析）：{{ setting:vmu.formal.rootRel }}/',
+        '    （= 研究所根下的 Formal/；v5 工具的 file 参数两种写法都接受：上面这条完整路径，或短的 Formal/xxx.lean。）',
+        '  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与',
+        '    命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。',
+        '  · 归档可复用定义/引理前先跑通（vibe_v5_lean_archive run=true 或先 vibe_v5_lean_run）；跑不通不要入库。',
+        '  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并把"宿主无 Lean 工具链"写成**阻塞记录**（vibe_v5_lean_archive kind=\'blocked\' note=… 或回执 formal:{decision:\'blocked\', note:…}）——这算显式阻塞原因，定论门禁可以据此放行。',
+      ].join('\n'),
+    },
+  },
+  // ── THE "FORMALISE AS YOU GO" LINE (source `formalWorkLine`, L5473-5492) ────────────────────────────────────
+  {
+    name: 'v5r-formal-work',
+    order: 750,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '【顺手形式化（{{ setting:vmu.formal.modeLabel }}）】把你工作中常用或可能复用的对象、假设、',
+        '新定义用 Lean 形式化定义并归档到全局可复用库（vibe_v5_lean_archive kind=\'def\'），已成立的引理归到 Proved/',
+        '（kind=\'lemma\'）；写之前先 vibe_v5_lean_lib 查重，避免重复定义。',
+        '归档前先跑通（vibe_v5_lean_run 或 run=true）；跑不通的定义不要进可复用库。',
+        '  · 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。**没把握的先别入库**——',
+        '进了 Formal/Proved 的东西会被当成已核对引理；没把握就记 blocked 并写清难点，别用形式化掩盖不确定。',
+        '  · 复用优先：写新定义/证明前**先 vibe_v5_lean_lib 查已有库**；复用已归档内容用 ',
+        '`import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = <VibeMath 根>，框架已把它加进编译搜索路径），',
+        '或 `vibe_v5_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。',
+        '  · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v5_lean_lib 的 jobs 字段或下一轮提示里的 ',
+        '【形式化结果】行看结果。**在作业落地为“通过”之前，不得把该对象当成已通过。**',
+      ].join('\n'),
+    },
+  },
 ])
 
 /** One binding per role for every role-varying block, so the assembly puts the right charter in front of each kind. */
