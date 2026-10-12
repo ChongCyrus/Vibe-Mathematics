@@ -175,6 +175,31 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
     { cites: 'the relay inside the refusal path' })
 }
 
+// ── D9's broadcast triple, and the VOTING method set compared against our ballot face ────────────────────────
+{
+  ok(typeof closed.endedBy === 'string' && typeof closed.reason === 'string' && closed.outcome !== undefined,
+    'V26. ★★ D9 MEASURED: the broadcast carries all three elements - by which rule/who it was closed, WHY, and the result',
+    { by: closed.endedBy, why: String(closed.reason).slice(0, 40), outcome: closed.outcome })
+  const voting = readFileSync(new URL('../vibe-math-v5r/MEETING-PLATFORM-VOTING.md', import.meta.url), 'utf8')
+  const rows = voting.split('\n').filter((l) => /^\|\s*\d+\s*\|/.test(l))
+  ok(rows.length >= 10 && /纳入/.test(voting) && /不建议纳入/.test(voting),
+    'V27. ★★ v5r enumerates a full method set with adopt / adapt / DO-NOT-ADOPT verdicts per method', { methods: rows.length })
+  const boxSrc = readFileSync(new URL('../vibe-math-vmu/kernel/ballotbox.js', import.meta.url), 'utf8')
+  const ballotSrc = readFileSync(new URL('../vibe-math-vmu/kernel/ballot.js', import.meta.url), 'utf8')
+  const declared = (boxSrc.match(/const allowed = \[([^\]]+)\]/) || [])[1] || ''
+  ok(/plurality/.test(declared) && /approval/.test(declared) && /runoff/.test(declared) && /irv/.test(declared),
+    'V28. ★★★ vmu IMPLEMENTS four methods, matching four of v5r adopt rows: relative majority, option-style approval, the two-round runoff, and ranked instant-runoff', { allowed: declared.trim() })
+  ok(/instantRunoffTally/.test(ballotSrc) && /a tie for elimination is NOT broken here/.test(ballotSrc),
+    'V29. ★★★ and its IRV matches v5r adapt verdict exactly: one collection round, one tally, and an elimination TIE is left undecided rather than broken by an implicit sort order')
+  ok(/vmu\.ballot\.roundsMax/.test(boxSrc) && /vmu\.ballot\.runoffTopN/.test(boxSrc),
+    'V30. ★★ the two-round path carries an explicit ROUND CAP and a top-N - which is v5r requirement that the round limit be written down in advance')
+  ok(/vmu\.ballot\.secrecy/.test(boxSrc) && /vmu\.ballot\.secrecyRecordFact/.test(boxSrc) && /vmu\.ballot\.reopenFloor/.test(boxSrc),
+    'V31. ★★★ secrecy is chosen in advance, the fact that a ballot was secret is RECORDED, and reopening cannot lower the bar - the three halves of the confidentiality rule')
+  ok(/vmu\.ballot\.vetoMode/.test(boxSrc) && /vmu\.ballot\.quadraticCreditCap/.test(boxSrc) && /vmu\.ballot\.quotaSeats/.test(boxSrc),
+    'V32. ★★★ DIVERGENT (named, and it is the retention rule in action): v5r DECLINES veto power and cumulative voting as architecture conflicts, while vmu carries them as TUNABLE options - vetoMode, quadraticCreditCap, quotaSeats - available and off by default rather than absent',
+    { v5r: 'veto and cumulative marked DO NOT ADOPT', vmu: 'present as settings' })
+}
+
 rmSync(workspace, { recursive: true, force: true })
 console.log('=== VMU AB v5r verification: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed > 0 ? 1 : 0)

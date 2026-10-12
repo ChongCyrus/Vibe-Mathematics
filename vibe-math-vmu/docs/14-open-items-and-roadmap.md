@@ -1717,6 +1717,13 @@ undefined
   D5a is corrected in place rather than annotated: the row had said the initiator qualification was not expressed anywhere, and it is - a non-participant is refused by name, a participant succeeds, and the payload states the eligibility that admitted it as any-participant.
   The verification A/B file now holds twenty-five green assertions.
   Still open: the remaining check items (the broadcast triple and the notification window); the drafting conflicts; the voting-method set; user confirmation for the clinical and animal demotion; the real-machine re-run; version and release.
+- ***** 331 THE LAST PIECE OF G2: the voting-method set is compared, and D9 broadcast triple is measured.
+  D9 first: the aggregation payload carries who closed the debate and by which rule, WHY, and the result - the three elements the voting volume demands, all present in one receipt.
+  Then the method set. Four methods are implemented here and each matches an adopted row: relative majority, option-style approval, the two-round runoff with an explicit round cap and top-N, and ranked instant-runoff. The ranked case matches the adapt verdict word for word - one collection round, one tally, and an elimination tie deliberately left undecided rather than broken by an implicit sort order.
+  Confidentiality matches its three halves as well: the secrecy mode is chosen in advance, the FACT that a ballot was secret is recorded, and reopening cannot lower the bar.
+  The divergence is the retention rule in action. v5r DECLINES veto power and cumulative voting outright, judging them architecture conflicts; here they exist as tunable options - a veto mode, a quadratic credit cap, a quota seat count - available and off by default. Neither side needs to change: the option set is a superset of the adopted rows and the veto behaviour is a setting rather than a hard-wired rule.
+  The framework side also carries more than the adopted rows ask for: proxy voting with a chain depth, a roll-call order, recusal declaration and publicity, and a freeze mode linked to the meeting.
+  The verification A/B file now holds thirty-two green assertions. Still open: the notification-window and effective-time items; the drafting conflicts between the three v5r volumes; user confirmation for the clinical and animal demotion; the real-machine re-run; version and release.
 ### 0.4 结论
 
 ## 0.5 未接线键的【三档结构】（轮 287 建表；**轮 290 据实更正数字** ✓✓）
