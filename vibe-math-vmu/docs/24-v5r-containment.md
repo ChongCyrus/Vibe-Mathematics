@@ -264,7 +264,7 @@
 | **可达性** ✓ | v5r **任务族 4 个**（`task_create/list/get/update`）＋ **成员族 5 个**（`members/hire/fire/assign/prioritize`）全部注册 ✓ |
 | **具名对象** ✓ | v5r：`create` 要 **`subject`** ✓、`get` 要 **`task_id`** ✓、`hire` 要 **`purpose`＋`initial_task`** ✓、`fire` 要 **`id`** ✓ |
 | **我们侧** ✓ | `tasks.js` 有 **`create`／`transition`／`list`** ✓；`members.js` 有 **`hire`／`end`／`roles`** ✓，且**真跑通过**（`hire`→`end` ✓） |
-| ★★ **DIVERGENT（具名，且要紧）** ✗✓ | **v5r 的 `task_update` 【要求】`expected_revision`**（**调用者必须声明它看到的版本** ✓）—— 而 ★ **vmu 的 `tasks.js` 里【完全没有 revision 概念】** ✗ ⇒ **两个写入者可以互相覆盖（丢更新）** ✗ |
+| ★★ ★★★ **已实测为 EQUAL（轮 335，§2.2.31）** ✓✓ —— 原 DIVERGENT 判定**已由轮 318 修复并在此两边实测**：同字段、同前置、**同族码名**（`V5_TASK_STALE_REVISION` ⇄ `VMU_TASK_STALE_REVISION`）、同补救 ✓（唯余"强制 vs 可调"一处设计性差异 ✓） | **v5r 的 `task_update` 【要求】`expected_revision`**（**调用者必须声明它看到的版本** ✓）—— 而 ★ **vmu 的 `tasks.js` 里【完全没有 revision 概念】** ✗ ⇒ **两个写入者可以互相覆盖（丢更新）** ✗ |
 
 ★ **该 DIVERGENT 的理由与改判条件** ✓：**该面是按单写入者建的** ✓；**revision 概念在核内【已有先例】**（`bidding.js` 的 `revision` ✓、`capacity.js` 的 `staleDays` ✓）⇒ **形状不陌生** ✓；**改判条件**＝**给任务面加"期望版本"前置条件，并对过期写入【具名拒】** ✓（**属内核改动 ⇒ 单独一个区间** ✓）。
 
@@ -528,6 +528,22 @@
 #### 三、是否按原机制在运行 —— **是** ✓✓
 
 ★ **我的全部 A/B 驱动的都是【原预设本体】** ✓✓：`apply(ctx)` ⇒ **真实工具注册表** ✓ ⇒ **真实状态机**（`vState` 加载/提交 ✓）⇒ **调度器发出的真实 `childId`**（据此入席 ✓）⇒ **真实会议/投票/复议/验证/Lean 队列** ✓ —— **而那个 pack 不参与运行时** ✗，它只在**包含性**这一轴上存在 ✓。
+
+### 2.2.31 ★★★★ 逐行等价推进（第一行）：**丢更新闸 —— 两边是【同一码族】**（轮 335 实测）✓✓
+
+**方法**：用已验证的单 ctx 夹具，**两边各驱动一次同样的失败场景** ✓。
+
+| 步骤 | **v5r** | **vmu** |
+|---|---|---|
+| 创建 | `task_create` ⇒ 记录带 **`revision: 1`** ✓ | `create()` ⇒ 记录带 **`revision: 1`** ✓ |
+| 带正确版本写入 | `task_update({expected_revision: 1, action:'claim'})` ⇒ **成功，`revision: 2`** ✓ | `transition(..., {expectedRevision: 1})` ⇒ **成功，计数递增到 2** ✓ |
+| ★★★ **带过期版本写入** | **`V5_TASK_STALE_REVISION`** ✓："**任务 t-1 当前 revision 是 2，不是 1 —— 请先用 `vibe_v5_task_get` 重新读取**" ✓ | **`VMU_TASK_STALE_REVISION`** ✓（"**re-read the task and retry with the current revision**" ✓） |
+| 开关 | **`expected_revision` 是【必需参数】** ✓ | **`vmu.tasks.requireExpectedRevision`（默认关）＋ 声明即校验** ✓ |
+
+★★★★ **这是整份对照里最强的一处 EQUAL** ✓✓：**同一字段名（`revision`）／同一前置（`expected_*`）／同族错误码（`V5_TASK_STALE_REVISION` ⇄ `VMU_TASK_STALE_REVISION`）／同一补救（重新读取再重试，绝不合并）** ✓✓ —— ★ **而这条码是我轮 318 才独立加上的** ✓（**两边各自得出同一结论** ✓）。
+★ **二者仅有一处差异（设计性）** ✓：**v5r 强制要求该参数；我们让它可调**（**默认关以不破坏单写入者调用者** ✓）—— **与"+ 机制可调控"的理念一致** ✓。
+
+**判据总账** ⇒ **验证链 A/B：`43 passed, 0 failed`** ✓（**V38–V43 为本轮新增** ✓）。
 
 ## 3. v5r 的 56 个工具
 

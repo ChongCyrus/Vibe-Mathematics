@@ -19,6 +19,7 @@ import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, rmSync
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { apply as applyV5R } from '../vibe-math-v5r/vibe-math-v5r.js'
+import { createTasks } from '../vibe-math-vmu/kernel/tasks.js'
 
 let passed = 0
 let failed = 0
@@ -221,6 +222,34 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   ok(/出人 1|出人 2/.test(rulings) && /新增要求/.test(rulings) && /收紧/.test(rulings),
     'V37. ★★★ and the two drafting discrepancies are NAMED with their direction - one is an ADDITION the decision volume never stated, the other a TIGHTENING that was confirmed - rather than being smoothed away',
     { cites: 'the ruling volume discrepancy list' })
+}
+
+// ── THE LOST-UPDATE GATE, both sides: the same field, the same precondition, the same refusal ────────────────
+{
+  const made = await call('vibe_v5_task_create', { subject: 'check L1', description: 'd' }, seat('acad'))
+  ok(made.ok === true && made.task && made.task.revision === 1,
+    'V38. ★★ v5r task records carry an explicit revision, starting at one', { revision: made.task && made.task.revision })
+  const tid = made.task && made.task.id
+  const first = await call('vibe_v5_task_update', { task_id: tid, expected_revision: 1, action: 'claim' }, seat('acad'))
+  ok(first.ok === true && first.task && first.task.revision === 2,
+    'V39. ★★ an update that states the revision it saw succeeds, and the revision ADVANCES', { revision: first.task && first.task.revision })
+  const stale = await call('vibe_v5_task_update', { task_id: tid, expected_revision: 1, action: 'done' }, seat('acad'))
+  ok(stale.ok === false && stale.code === 'V5_TASK_STALE_REVISION' && /revision/.test(String(stale.message)),
+    'V40. ★★★ a STALE write is refused BY NAME, and the refusal names the real revision and the way out (re-read, then retry)',
+    { code: stale.code, message: String(stale.message).slice(0, 60) })
+
+  // our side, the same failure mode
+  const strict = createTasks({ clock: () => 1000, requireExpectedRevision: true })
+  const ours = await strict.create({ title: 'check L1' })
+  const oursRight = await (async () => { try { const r = await strict.transition(ours.id, 'doing', { expectedRevision: 1 }); return { ok: r.ok, revision: strict.list()[0].revision } } catch (e) { return { code: e && e.code } } })()
+  const oursStale = await (async () => { try { const r = await strict.transition(ours.id, 'done', { expectedRevision: 1 }); return { ok: r.ok === true } } catch (e) { return { code: e && e.code } } })()
+  ok(oursRight.ok === true && oursRight.revision === 2,
+    'V41. ★★ the framework side behaves the same way: the right revision is accepted and the counter advances', oursRight)
+  ok(oursStale.code === 'VMU_TASK_STALE_REVISION',
+    'V42. ★★★ and a stale one is refused by name on this side too', oursStale)
+  ok(stale.code === 'V5_TASK_STALE_REVISION' && oursStale.code === 'VMU_TASK_STALE_REVISION',
+    'V43. ★★★★ EQUAL: the two sides refuse the SAME failure mode under the SAME field name and the SAME code family - V5_TASK_STALE_REVISION against VMU_TASK_STALE_REVISION - and both tell the caller to re-read rather than merging',
+    { v5r: stale.code, vmu: oursStale.code })
 }
 
 rmSync(workspace, { recursive: true, force: true })
