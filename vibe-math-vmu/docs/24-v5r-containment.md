@@ -571,6 +571,7 @@ A correction first: asked whether the prompts are composed the way the original 
 Every corpus entry now becomes a pipeline section in the pack range 600..899, one order per entry, kebab-case names, text verbatim. The new test proves properties rather than the existence of an array: the pipeline assembles the text as a pure function, assembly is byte-identical across runs so it can be snapshotted, provenance names every contributing section, a further section can be APPENDED at assembly time so the text is composable rather than frozen, and a declaration outside the reserved range is refused by name instead of being quietly re-ordered. Ten for ten on the first run.
 
 So the answer flips: the prompt text IS now composed and regulated by the framework, through the same settings, config and middleware path as everything else. What remains true is the other half of the earlier answer - the original preset still runs its own per-member, per-round composition, so handing the whole institute turn orchestration to the framework is still not done.
+
 ### 2.2.34 ★★★★ 首要目标（用户指定）第一个增量：**整轮循环搬进框架**（轮 337）✓✓
 
 **用户裁定** ✓：把"vmu 完全独立实现 v5r 的运行机制（含提示词拼装）"**升为首要目标** ✓。**第一步：先设计，再实现，再门禁** ✓。
@@ -593,6 +594,7 @@ So the answer flips: the prompt text IS now composed and regulated by the framew
 ★★ **另记一条纪律教训** ✗✓：**"记录脚本被守卫拒绝"时，命令【不得继续提交**】✓ —— 本轮我先跑了记录脚本（**它被拒** ✗），却仍提交了代码 ✓ ⇒ **文档欠账一次** ✓（本条即补 ✓）。**新纪律：门禁链里的每一步都必须判返回值，被拒即中止** ✓。
 
 **判据** ⇒ **T1 `TOTAL 133, PASS 133, FAIL 0`（suites 110）** ✓；**`VMU TURN: 19 passed, 0 failed`** ✓。
+
 ### 2.2.35 ★★★★ 首要目标第二个增量：**面表接真实面，且【真的落账】**（轮 338）✓✓
 
 ★ **归属表改为真实面 ＋ 真实操作名** ✓（**用【运行时枚举真内核】读出** ✓ 105 服务、各面方法逐一列出 ✓，**绝不猜** ✗）：
@@ -615,6 +617,7 @@ So the answer flips: the prompt text IS now composed and regulated by the framew
 ★ **可配置** ✓：`bindings` **逐字段覆盖** ✓（默认表不动 ✓），**`status().owners` 报告实际在用的表** ✓ ⇒ 满足首要目标"**可经 settings／config／中间件调控**" ✓。
 
 **判据** ⇒ **`VMU TURN: 23 passed, 0 failed`** ✓（**T20–T23 为本轮新增** ✓）。
+
 ### 2.2.36 ★★★★ 首要目标第三个增量：**循环成为【服务】，一轮真的跑通**（轮 339）✓✓
 
 ★ **vmu.turn 已在内核注册** ✓（**服务数 105 → 106** ✓）：以**惰性 getter** 建成 ✓（因为它由本包的面装配 ✓），**投递走 host.deliverTurn 缝** ✓。
@@ -632,6 +635,7 @@ So the answer flips: the prompt text IS now composed and regulated by the framew
 ★ **纪律 ㉘ 已补进 docs/11** ✓（**"面.操作"连字写法会被当成设置键"** 这条 ✗✓）；★ **本轮记录脚本又被守门拦下一次** ✓（**模板字符串里含反引号** ✗）—— ★★ **而链条这次【停下了、没有提交**】✓✓，**上轮那条纪律当场生效** ✓。
 
 **判据** ⇒ **VMU TURN: 27 passed, 0 failed** ✓（**T24–T27 为本轮新增** ✓）。
+
 ### 2.2.37 ★★★★ 自证探针按其【自身意图】收紧，本区间增量就此落地（轮 340）✓✓
 
 ★ **挡提交的那条断言，真因是我自己算出来的** ✓：审计的自证探针把"**已绑定**"定义为三条正则，其中第三条是 **裸提及也算** ✗（"出现在花括号/逗号之间" ✓）—— ★★ **而我新写的 `facesFrom({ tasks, records, library, meetings, ballotbox, formal, mathjobs })` 里就有这样一个裸提及** ✗✓ ⇒ **探针以为 `mathjobs` 仍被绑定** ⇒ **它抓不到被变异的服务** ⇒ **红** ✓。
@@ -643,6 +647,7 @@ So the answer flips: the prompt text IS now composed and regulated by the framew
 ★★ **本轮一共被守卫拦下四次，四次都对** ✓✓（**这就是"不断检查并核查"的实际形态** ✓）：① 服务审计要**手写映射表**有条目 ✗；② 它还要**映射值＝内核实际暴露的属性名** ✗（**防"注册了却取不到"** ✓）；③ **成熟度漂移**来自我在 `docs/11`㉘ 里举的**坏写法示例本身被生成器当成设置键** ✗✓；④ **自证探针的绑定定义过松** ✗ ⇒ 本轮修 ✓。
 
 **判据** ⇒ **T1 `TOTAL 133, PASS 133, FAIL 0`（suites 110）** ✓；**`VMU TURN: 27 passed, 0 failed`** ✓。
+
 ### 2.2.38 ★★★★ V53 闭合：逐成员装配靠管线的【模板变量】，零硬编码（轮 341）✓✓
 
 ★ **轮 340 测出的差距** ✗：原预设逐成员写不同章程 ✓；而框架在无绑定时**给两个成员装配同一文本** ✗。
@@ -654,6 +659,7 @@ So the answer flips: the prompt text IS now composed and regulated by the framew
 ★★★★ **实测** ✓✓：**段数 68**（67 语料 ＋ 1 角色段 ✓）；**r-1 为 78049 字、acad 为 78051 字 ⇒ 两者不同** ✓✓；**各自带着自己那一行**（研究者／院士 ✓）⇒ ★ **V53 从"具名分歧"就地翻成"已闭合"** ✓✓（**V54／V55** ✓）。
 
 ★ **纪律** ✓：**这不是新机制** ✓ —— 用的是**管线自己的变量注入** ✓，**且该段与其它段一样可被 settings／config／中间件替换** ✓。
+
 ### 2.2.39 ★★★★ 默认接线是【声明】；且装配文本【随相位而变】（轮 343）✓✓
 
 ★ **一处架构结论（实测得出，并据此更正了设计卷** ✗✓）：**"插件自动 import 包再取段"做不到** ✓ —— **插件在同步段里建内核**（`vibe-math-vmu.js` L159 同步 `createKernel` ✓）**而 `import()` 是异步的** ✗；★ **"apply 时注册段"也被否掉** ✗（**管线无注销** ✓ ＋ **"卸载不得留残余"是装载器明文不变量** ✓）⇒ ★★★ **"pack 声明 ＋ 构造前收集"不是权宜之计，而是【唯一自洽】** ✓✓。**可执行做法**（已在测试中实证 ✓）：`sections: [...ownSections, ...collectPackSections([PACK])]` ✓。
