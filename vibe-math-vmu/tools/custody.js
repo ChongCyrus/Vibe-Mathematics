@@ -17,10 +17,10 @@ export function makeCustodySpec({ param, refused, TOOL_NAMES, kernel }) {
       try {
         const custody = kernel.custody
         if (action === 'registerEntry') return Object.assign({ ok: true, action }, await custody.registerEntry({ pseudonym, note }))
-        if (action === 'transfer') return Object.assign({ ok: true, action }, await custody.transfer({ entry, to, note }))
-        if (action === 'storageCycle') return Object.assign({ ok: true, action }, await custody.storageCycle({ entry, note }))
-        if (action === 'destroy') return Object.assign({ ok: true, action }, await custody.destroy({ entry, note }))
-        if (action === 'chainOf') return Object.assign({ ok: true, action }, await custody.chainOf({ entry }))
+        if (action === 'transfer') return Object.assign({ ok: true, action }, await custody.transfer({ entry, entryId: entry, to, note }))
+        if (action === 'storageCycle') return Object.assign({ ok: true, action }, await custody.storageCycle({ entry, entryId: entry, note }))
+        if (action === 'destroy') return Object.assign({ ok: true, action }, await custody.destroy({ entry, entryId: entry, note }))
+        if (action === 'chainOf') return Object.assign({ ok: true, action }, await custody.chainOf({ entry, entryId: entry }))
         if (action === 'status') return Object.assign({ ok: true, action }, await custody.status())
         return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
       } catch (e) {
