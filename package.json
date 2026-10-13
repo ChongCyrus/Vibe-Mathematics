@@ -585,6 +585,7 @@
     "tests/vmu-ip-tool.test.mjs",
     "vibe-math-vmu/tools/bidding.js",
     "tests/vmu-bidding-tool.test.mjs",
+    "tests/vmu-middleware-hooks-declared.test.mjs",
     "docs/COMPAT-AUDIT-ROUND3.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.en.md",
