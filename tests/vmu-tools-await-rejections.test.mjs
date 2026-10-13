@@ -69,6 +69,7 @@ const TOOLS = [
   [{ projmigrateTool: true }, 'projmigrate', 'projmigrate', { action: 'status' }],
   [{ bridgeTool: true }, 'bridge', 'bridge', { action: 'history' }],
   [{ externalTool: true }, 'external', 'external', { action: 'status' }],
+  [{ auditchainTool: true }, 'auditchain', 'auditchain', { action: 'status' }],
   // ---- the eight that were already there ----
   [{ taskTool: true }, 'task', 'tasks', { action: 'list' }],
   [{ recordsTool: true }, 'records', 'library', { action: 'list' }],
