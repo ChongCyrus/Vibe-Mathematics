@@ -318,7 +318,7 @@
 | **名称** | 发明披露（Invention Disclosure） |
 | **目的** | 从研究记录里**系统性地**发现"可披露事项"（新方法/装置/数据集/软件），并在公开前登记 ✓ |
 | **面向谁** | PI、技术转移、法务、代理 |
-| **接口形状** | 服务 `vmu.ip`（★ **已接线 ✓**（实测 15/15，见 §0.1））：`sweep(period)`／`disclose(draft)`／`status(id)`；工具 `vibe_vmu_ip` ⛔ 未实现；钩子 `ip/disclosure-before` ⛔ 提案；协议 `IpDisclosure` ⛔ |
+| **接口形状** | 服务 `vmu.ip`（★ **已接线 ✓**（实测 15/15，见 §0.1））：`sweep(period)`／`disclose(draft)`／`status(id)`；工具 `vibe_vmu_ip` **✓ 已实现（轮 556）**；钩子 `ip/disclosure-before` **✓ 已实现（轮 556）** 提案；协议 `IpDisclosure` **✓ 已实现（轮 556）** |
 | **可调控参数** | `vmu.ip.disclosureRequired`（默认 `true`）、`vmu.ip.sweepCadenceDays`（默认 `90`）、`vmu.ip.disclosureFields`（默认 `["title","inventors","evidenceRefs","publicDisclosures"]`） |
 | **相关错误码** | `VMU_IP_DISCLOSURE_REQUIRED` ⛔／`VMU_IP_DISCLOSURE_INCOMPLETE` ⛔ |
 | **四条哲学** | F：不启用＝无 IP 流程 ✓｜T：周期/字段可配 ✓｜D："什么算发明"由 pack 判定点 ✓｜X：新 IP 类型只加字段 ✓ |

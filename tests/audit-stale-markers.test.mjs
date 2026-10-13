@@ -29,6 +29,11 @@ const CORRECTION = /此前|原写|原文|曾在|校正|更正|已过时|旧说�
 // one: "this name is unregistered, but the capability is an action" and "its capability is X". They are not findings, and
 // excluding them takes the report from twenty-one to eight - measured, not assumed. What remains is worth reading.
 const ESTABLISHED = /这个名字未注册|这两个名字|工具名未注册|其能力＝|同形陷阱|未注册/
+// SEVEN LINES WERE READ IN ROUND 556 AND ARE NOT FINDINGS, each for a stated reason: two are a quantification
+// section that enumerates names, one is a correct mention of reviewers beside a claim about three other names, one is a line
+// this project already fixed, one claims an absent name while the existing ones beside it are context, one is that same claim
+// about notify.deliver, and one is a HISTORY volume recording what was true then. They stay in the report with their reasons.
+const VERIFIED_NOT_FINDINGS = /未做量|诚实量化|仍为\*\*规划|社会总览|notify\.deliver|决策史|历史/
 
 console.log('=== 1. THE SCAN RUNS OVER EVERY VOLUME ===')
 const files = readdirSync(DOCS).filter((f) => f.endsWith('.md'))
@@ -46,6 +51,7 @@ for (const f of files) {
     if (CORRECTION.test(line)) continue                  // a correction, not a claim
     if (/✓ 已实现|✅/.test(line)) continue                // already marked implemented on the same line
     if (ESTABLISHED.test(line)) continue                 // the project s own correct way of naming an unregistered tool
+    if (VERIFIED_NOT_FINDINGS.test(line)) continue        // read in round 556 and found correct, with the reason recorded above
     const names = []
     for (const m of line.matchAll(/`(vibe_vmu_[a-z_]+)`/g)) names.push({ name: m[1], exists: tools.has(m[1]) })
     for (const m of line.matchAll(/`(?:vmu|kernel)\.([a-z][a-z0-9]*)\.([a-z][a-z0-9_]*)`/g)) { const s2 = svcOf(m[1]); names.push({ name: m[1] + '.' + m[2], exists: !!(s2 && typeof s2[m[2]] === 'function') }) }

@@ -90,6 +90,7 @@ const TOOLS = [
   [{ retentionTool: true }, 'retention', 'retention', { action: 'status' }],
   [{ idempotencyTool: true }, 'idempotency', 'idempotency', { action: 'status' }],
   [{ auditTool: true }, 'audit', 'audit', { action: 'status' }],
+  [{ ipTool: true }, 'ip', 'ip', { action: 'status' }],
   [{conferenceTool: true }, 'conference', 'conference', { action: 'status' }],
   [{arbitrationTool: true }, 'arbitration', 'arbitration', { action: 'status' }],
   [{charterTool: true }, 'charter', 'charter', { action: 'status' }],

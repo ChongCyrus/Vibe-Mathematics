@@ -137,7 +137,6 @@
 | `vibe_vmu_funding` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_grade` | `docs/17` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_identity` | `docs/17` | **✓** ⛔ 规划/未实现 | **✓** |
-| `vibe_vmu_ip` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_lean_archive` | `docs/03` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_legalentity` | `docs/22` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_math` | `docs/15` | **✓** ⛔ 规划/未实现 | **✓** |
