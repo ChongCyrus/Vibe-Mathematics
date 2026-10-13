@@ -46,7 +46,10 @@ for (const f of files) {
     let hit = null
     if (t && tools.has(t[1])) hit = t[1]
     else if (p) { const s = svcOf(p[1]); if (s && typeof s[p[2]] === 'function') hit = p[1] + '.' + p[2] }
-    if (hit) report.push(f + ':' + (i + 1) + ' -> ' + hit)
+    // Name the MATCHED TOKEN and the kind of line, because nine reported lines turned out to hold zero stale claims: four were
+    // already fixed (stale line numbers) and five merely MENTIONED a name - a rule, a count, or a claim about another object.
+    const kind = /纪律|规则|必须写在|计数|行 .⛔.|\\b\\d+ 行/.test(line) ? 'mention' : 'claim?'
+    if (hit) report.push(f + ':' + (i + 1) + ' [' + kind + '] matched=' + hit + ' :: ' + line.trim().slice(0, 70))
   }
 }
 ok(scanned > 500, 'the marker scan saw the whole surface, so a small report is not an empty scan', { scanned })
