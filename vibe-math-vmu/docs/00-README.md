@@ -281,24 +281,38 @@ vmu 是**插件**：配置来自**该插件在 profile 里的那一行**（`conf
 
 ### 7.5 目标 ⑤：初版、最小可用但足够强大
 
+<!-- BEGIN GENERATED: readiness-faces (scripts/generate-readiness-figures.mjs) -->
+> ★★★★ **下面这些值由 `scripts/generate-readiness-figures.mjs` 派生** ✓（★ 轮 623 ✓ —— ★ 按本卷那条规矩：★ "凡可由作业打印的数字，本文不手写" ✓）—— ★ **要当前值就读这里、★ 不要改** ✓；★★ **而"由作业打印"的那几行是【一次运行的结果**]，★ 本表不复制它们** ✓。
+>
+> ★★★★★ **只收【能按同一口径派生**]的量** ✓（★ 轮 623 实测的教训 ✓）：★★ **第一版把"文档里所有 `✓✗⚠` 字符数"当成"标记账目"，★ 派生出 730／26919，★ 而 `docs/14` §8 那个数是【另一种口径**]的 1364 ✗✓ ⇒ ★★★ **"能算"不等于"算的是同一个量"** ✓ ⇒ ★ **故那两个量【已撤出本块**]，★ 仍由各自的作业打印** ✓（★ 否则本块会给出一个【带着"派生"标签、★ 却量着别的东西**]的数，★ 比手写副本更坏 ✗）** ✓✓。
+
+| ★ 量 | ★ 值（★ 派生 ✓） |
+|---|---|
+| ★ 可调控设置键 | ★ **1152** ✓ |
+| ★ 宿主发布工具面 | ★ **45** ✓ |
+| ★ 钩子（总线／宿主） | ★ **22 ／ 14** ✓ |
+| ★ pack 文件夹（带清单） | ★ **3** ✓ |
+| ★ 路线图结构（章／节／子节／行） | ★ **12 ／ 29 ／ 20 ／ 720** ✓ |
+<!-- END GENERATED: readiness-faces -->
+
 | 维 | 可跑检查 | 当前值 |
 |---|---|---|
 | ★★ **(a)–(j) 十面【有工具**]** | ★ `tests/vmu-ten-faces-usable.test.mjs` ✓ | ★ 十面 ✓ |
 | ★★ **十面【能成功**]** | ★ 同上 ✓ | ★ 十面 ✓ |
 | ★★ **十面【有写路径**]** | ★ 同上 ✓ | ★ 十面 ✓（32／32 ✓） |
-| ★★★ **十面【可调控**]** | ★ `tests/vmu-ten-faces-tunable.test.mjs` ✓ | ★ **十面无空缺**，★ **1152 键** ✓ |
-| ★ 代理可执行命令 | ★ `tests/audit-tool-table.test.mjs` ✓ | ★ **45 命令** ✓（★ 轮 616 实测；★ **真源是 `host.js` 的 `TOOL_NAMES`** ✓） |
-| ★ 接口/插件 | ★ `tests/vmu-middleware-hooks-declared.test.mjs` ✓ | ★ **总线 22 ＋ 宿主 14，★ 不相交** ✓ |
+| ★★★ **十面【可调控**]** | ★ `tests/vmu-ten-faces-tunable.test.mjs` ✓ | ★ **十面无空缺** ✓（★ **键数见上方派生块** ✓） |
+| ★ 代理可执行命令 | ★ `tests/audit-tool-table.test.mjs` ✓ | ★ **由该作业守** ✓（★ 个数见上方派生块 ✓） |
+| ★ 接口/插件 | ★ `tests/vmu-middleware-hooks-declared.test.mjs` ✓ | ★ **两集合不相交** ✓（★ 个数见上方派生块 ✓） |
 | ★★ **脚本与协议** | ★ `tests/vmu-script-and-protocol.test.mjs` ✓ | ★ **脚本 seam 与协议版本** ✓ |
 | ★★★ **每个流水线面走完** | ★ `vmu-admission-tool`／`vmu-budget-pipeline`／`vmu-collab-pipeline`／`vmu-publication-pipeline`／`vmu-formal-pipeline` ✓ | ★ **五个面各 11–18 条断言，★ 全绿** ✓（★ `recruit` 由 `admission` 覆盖 ✓ —— ★ 同一个服务 ✓） |
 | ★★★ **调用方给的字段到达服务** | ★ `tests/vmu-request-reaches-service.test.mjs` ✓ | ★ **15 个声明 `request` 的工具、★ 0 未命中** ✓ |
 | ★★★ **语料＝对照基准，★ 非运行时模板** | ★ `tests/vmu-corpus-is-baseline-not-template.test.mjs` ✓ | ★ **7 条断言** ✓（★ 含"基准仍带快照" ✓） |
 | ★★★ **pack 字段与类别一致** | ★ `tests/vmu-pack-fields-match-category.test.mjs` ✓ | ★ **packs=3、refusals=0、misplaced=0** ✓ |
-| ★★★ **标题用读者标签** | ★ `tests/vmu-v5r-heading-label.test.mjs` ✓ | ★ **`{{ roleLabel }}` ×65，★ `{{ role }}` 残留 0** ✓ |
+| ★★★ **标题用读者标签** | ★ `tests/vmu-v5r-heading-label.test.mjs` ✓ | ★ **残留 0** ✓（★ 两数见上方派生块 ✓） |
 | ★★ **拒绝会引导** | ★ `tests/vmu-refusals-guide.test.mjs` ✓ | ★ **316 动作／157 具名拒 ⇒ 141 带 hint** ✓ |
-| ★★ **拒绝不引用引擎** | ★ `tests/vmu-no-engine-leaks.test.mjs` ✓ | ★ **45 工具 × 316 动作，0 泄露** ✓ |
+| ★★ **拒绝不引用引擎** | ★ `tests/vmu-no-engine-leaks.test.mjs` ✓ | ★ **0 泄露** ✓（★ 工具数与动作数由该作业打印 ✓） |
 | ★★ **示例可被机器照做** | ★ `tests/vmu-refusal-examples.test.mjs` ✓ | ★ **推进 3／未推进 2**（★ 报告型 ✓） |
-| ★ 工作量已量清 | ★ `docs/14` §8 ✓ | ★ **1364 标记 ＝ 生成 4 ＋ 手写 1360** ✓ |
+| ★ 工作量已量清 | ★ `docs/14` §8 ✓ | ★ **标记账目见上方派生块** ✓（★ 生成区／手写区分开 ✓） |
 | ★ 可选扩展（★ 非缺口 ✓） | ★ `docs/14` §8 ✓ | ★ **158 具名项** ✓
 
 ### 7.6 发布就绪（★ **数字分两类** ✓ —— ★ **可派生的由生成器写、★ 不可派生的只有指针** ✓）

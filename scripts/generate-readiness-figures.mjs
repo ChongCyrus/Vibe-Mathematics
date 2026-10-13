@@ -4,7 +4,7 @@
 //
 // THE GATE FIGURE IS NOT DERIVED, AND SAYS SO. Job and suite counts only exist as the output of a run, so the block points at the
 // command instead of copying its result - a copy of a run's output is the most perishable number of all.
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -28,7 +28,33 @@ export async function figures() {
   const h3 = (road.match(/^### /gm) || []).length
   const h4 = (road.match(/^#### /gm) || []).length
   const packs = ['v5r', 'v3-core', 'institute-min'].filter((p) => existsSync(join(V, 'packs', p, 'index.js'))).length
+  // ROUND 623, AND THE LESSON OF THE ROUND: a marker count and a `{{ roleLabel }}` count were computed here and then REMOVED, because they
+  // did not measure the same quantity as the figures the documents state - the first counted every check/cross glyph in the tree, the
+  // second counted occurrences in one source file, while the documents' figures come from a scan and from the bridge's output
+  // respectively. A generated block carrying a "derived" label over a different quantity is worse than a hand-typed copy, so the
+  // computation is gone rather than merely unused: a number you can compute is not the same as a number you can compute CORRECTLY.
   return { tools, keys, vu, hostHooks, h2, h3, h4, packs, lines: road.split('\n').length }
+}
+
+export const FACES_BEGIN = '<!-- BEGIN GENERATED: readiness-faces (scripts/generate-readiness-figures.mjs) -->'
+export const FACES_END = '<!-- END GENERATED: readiness-faces -->'
+
+export function renderFaces(f) {
+  return [
+    FACES_BEGIN,
+    '> ★★★★ **下面这些值由 `scripts/generate-readiness-figures.mjs` 派生** ✓（★ 轮 623 ✓ —— ★ 按本卷那条规矩：★ "凡可由作业打印的数字，本文不手写" ✓）—— ★ **要当前值就读这里、★ 不要改** ✓；★★ **而"由作业打印"的那几行是【一次运行的结果**]，★ 本表不复制它们** ✓。',
+    '>',
+    '> ★★★★★ **只收【能按同一口径派生**]的量** ✓（★ 轮 623 实测的教训 ✓）：★★ **第一版把"文档里所有 `✓✗⚠` 字符数"当成"标记账目"，★ 派生出 730／26919，★ 而 `docs/14` §8 那个数是【另一种口径**]的 1364 ✗✓ ⇒ ★★★ **"能算"不等于"算的是同一个量"** ✓ ⇒ ★ **故那两个量【已撤出本块**]，★ 仍由各自的作业打印** ✓（★ 否则本块会给出一个【带着"派生"标签、★ 却量着别的东西**]的数，★ 比手写副本更坏 ✗）** ✓✓。',
+    '',
+    '| ★ 量 | ★ 值（★ 派生 ✓） |',
+    '|---|---|',
+    '| ★ 可调控设置键 | ★ **' + f.keys + '** ✓ |',
+    '| ★ 宿主发布工具面 | ★ **' + f.tools + '** ✓ |',
+    '| ★ 钩子（总线／宿主） | ★ **' + f.vu + ' ／ ' + f.hostHooks + '** ✓ |',
+    '| ★ pack 文件夹（带清单） | ★ **' + f.packs + '** ✓ |',
+    '| ★ 路线图结构（章／节／子节／行） | ★ **' + f.h2 + ' ／ ' + f.h3 + ' ／ ' + f.h4 + ' ／ ' + f.lines + '** ✓ |',
+    FACES_END,
+  ].join('\n')
 }
 
 export function render(f) {
@@ -48,16 +74,27 @@ export function render(f) {
 
 const check = !process.argv.includes('--write')
 const f = await figures()
-const block = render(f)
 const doc = readFileSync(DOC, 'utf8')
-const b = doc.indexOf(BEGIN)
-if (b === -1) {
-  console.log('readiness figures: block not found in the document; nothing to check')
-  process.exit(0)
+let next = doc
+let stale = []
+for (const [B, E, block] of [[BEGIN, END, render(f)], [FACES_BEGIN, FACES_END, renderFaces(f)]]) {
+  const b = next.indexOf(B)
+  if (b === -1) { stale.push('no-block'); continue }
+  const e = next.indexOf(E, b)
+  const current = next.slice(b, e + E.length)
+  if (current !== block) stale.push(B.includes('faces') ? 'faces' : 'figures')
+  else next = next.slice(0, b) + block + next.slice(e + E.length)
 }
-const e = doc.indexOf(END, b)
-const current = doc.slice(b, e + END.length)
-if (current === block) { console.log('readiness figures: current (' + JSON.stringify(f) + ')'); process.exit(0) }
-if (check) { console.log('readiness figures: STALE - the block is not what the runtime yields (' + JSON.stringify(f) + ')'); process.exit(1) }
-writeFileSync(DOC, doc.slice(0, b) + block + doc.slice(e + END.length))
+if (stale.length === 0) { console.log('readiness figures: current (' + JSON.stringify(f) + ')'); process.exit(0) }
+if (stale.includes('no-block')) { console.log('readiness figures: block not found in the document; nothing to check'); process.exit(0) }
+if (check) { console.log('readiness figures: STALE (' + stale.join(',') + ') - the block is not what the runtime yields (' + JSON.stringify(f) + ')'); process.exit(1) }
+// write mode: rebuild every block in place
+let out = doc
+for (const [B, E, block] of [[BEGIN, END, render(f)], [FACES_BEGIN, FACES_END, renderFaces(f)]]) {
+  const b = out.indexOf(B)
+  if (b === -1) continue
+  const e = out.indexOf(E, b)
+  out = out.slice(0, b) + block + out.slice(e + E.length)
+}
+writeFileSync(DOC, out)
 console.log('readiness figures: written (' + JSON.stringify(f) + ')')
