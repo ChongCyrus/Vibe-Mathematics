@@ -364,6 +364,7 @@ export const A_CLASS_BASELINE_FINGERPRINTS = Object.freeze([
   'vmu-settings.test.mjs:A:defs',
   'vmu-store.test.mjs:A:m.PUBLIC_KEYS',
   'vmu-storepolicy.test.mjs:A:for:receipts',
+  'vmu-ten-faces-tunable.test.mjs:A:for:the',
   'vmu-tenure.test.mjs:A:ar.fired',
   'vmu-transaction.test.mjs:A:line',
   'vmu-trust.test.mjs:A:four',

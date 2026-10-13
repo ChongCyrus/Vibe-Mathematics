@@ -513,3 +513,30 @@
 
 
 ★★★★ **结论** ✓：★ **未发现发布阻塞项** ✓；★ 两处**元数据不一致已修** ✓ ⇒ ★★ **随包安装路径（★ `installer.js` ＋ packs ＋ 44 工具面 ✓）是完整的** ✓。
+
+﻿### 10. ★★★★★ 目标 ⑤ 的第三维：**可调控参数**（★ 轮 561 实测 ✓ —— ★ 此前无人核过这一维）
+
+> ★★★★ **为什么核它** ✓：★ 目标 ⑤ 的括注里写着"**含基础设施、可选功能、接口/插件、★ **可调控参数**、代理可执行命令、脚本与协议等等**" ✓ —— ★ **十面的"工具"与"可用性"已核过** ✓（★ 轮 548／555／560 ✓），★ **而"可调控"这一维一直没有人量** ✗ ✓。
+>
+> ★★★★ **做法** ✓：★ 从 `settings/schema.js` 的 **`SETTING_DEFS`** 取出**全部键** ✓（★ **先读一条的形状** ✓：`{key, type, def, hot, who, doc}` ✓ —— ★ 不猜字段名 ✓），★ 再**按十面分组** ✓。
+>
+> | 量 | 值（★ 实测 ✓） |
+> |---|---|
+> | ★ 可调控键总数 | ★★★★ **1152** ✓ |
+> | ★★ **十面中【无可调控键**]的** | ★★★★ **0** ✓ |
+>
+> | 面 | 命中键数 | 例 |
+> |---|---|---|
+> | ★ (a) 数学研究 | ★ **113** | `vmu.turn.formalModeLine`／`formalProof`／`formalRootRel` ✓ |
+> | ★ (b) 形式化 | ★ **32** | `vmu.turn.formalProof` ✓ |
+> | ★ (c) 计算与工具 | ★ **30** | `vmu.limits.toolCallsPerTurnCap`／`memoryCeilingMb`／`wallClockMs` ✓ |
+> | ★ (d) 代理通信与会议 | ★ **135** | `vmu.meetings.quorumRule`／`quorumCap`／`reconsiderFloor` ✓ |
+> | ★ (e) 代理间协作 | ★ **29** | `vmu.delegation.maxDepth`／`defaultTtlMs` ✓ |
+> | ★ (f) 工作流 | ★ **71** | `vmu.tasks.maxOpenTasks`／`stages`／`audit.retentionDays` ✓ |
+> | ★ (g) 控制流 | ★ **53** | `vmu.turn.wakeupPolicy`／`maxParallel` ✓ |
+> | ★ (h) 文件归档 | ★ **55** | `vmu.core.storeBackend`／`records.trash.retainDays` ✓ |
+> | ★ (i) 评审与出版 | ★ **116** | `vmu.paper.reviewedMember`／`board.wipDefault` ✓ |
+> | ★ (j) 代理自组织 | ★ **80** | `vmu.trust.kinds`／`weights`／`halfLifeMs` ✓ |
+>
+> ★★★★★ **结论** ✓：★ **"可调控"在十面上【无一空缺**]** ✓，★ 且总数 **1152** ✓ ⇒ ★★ **哲学理念的"极其容易地高自由度地控制、调控"，★ 在【设置维**]是被实测满足的** ✓✓。★ 检查落在 `tests/vmu-ten-faces-tunable.test.mjs` ✓（★ **每面必须有可调控键，★ 且键必须都是点分 `vmu.` 路径 ✓**）。
+> ★★ **并记** ✓：★ **这一维是【我此前漏核的**]** ✗ —— ★ 十面的另三维（★ 存在／能用／能改 ✓）都核过，★ **只有"可调控"没核** ✓ ⇒ ★★ **纪律：★ 目标里列举的每一维都要【各自**]立一次检查** ✗✓（★ 否则"覆盖了"只是覆盖了**想到的**那几维 ✓）。
