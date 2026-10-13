@@ -405,7 +405,7 @@
 | **名称** | 征稿与投稿（Call for Papers） |
 | **目的** | 一次征稿＝一个有窗口、有主题、有格式要求的**活动对象**；投稿落在记录轨并可被评审引用 ✓ |
 | **面向谁** | 组织者、投稿者、代理 |
-| **接口形状** | 服务 `vmu.conference`（★ **已接线 ✓**（实测 18/18，见 §0.1））：`openCfP(spec)`／`submit(paper)`／`closeCfP()`；工具 `vibe_vmu_conference` ⛔ 未实现；协议 `CfP` ⛔ |
+| **接口形状** | 服务 `vmu.conference`（★ **已接线 ✓**（实测 18/18，见 §0.1））：`openCfP(spec)`／`submit(paper)`／`closeCfP()`；工具 `vibe_vmu_conference` **✓ 已实现（轮 543）** 已实现（轮 543）；协议 `CfP` **✓ 已实现（轮 543）** |
 | **可调控参数** | `vmu.conference.cfpOpenMs`／`cfpCloseMs`（窗口）、`vmu.conference.topicsRequired`（默认 `true`）、`vmu.conference.anonymityMode`（默认 `double-blind`；可选 `single`／`open`） |
 | **相关错误码** | `VMU_CONF_CFP_CLOSED` ⛔／`VMU_CONF_SUBMISSION_INVALID` ⛔ |
 | **四条哲学** | F：不开 CfP＝无会议 ✓｜T：窗口/匿名模式可配 ✓｜D：主题与格式由 pack ✓｜X：新投稿类型只加字段 ✓ |
@@ -684,7 +684,7 @@
 
 | 类别 | 名称 | 现状 |
 |---|---|---|
-| 工具 | `vibe_vmu_resource` ⛔ 未实现、`vibe_vmu_funding` ⛔ 未实现、`vibe_vmu_ip` ⛔ 未实现、`vibe_vmu_conference` ⛔ 未实现、`vibe_vmu_outreach` ⛔ 未实现、 未实现、`vibe_vmu_compliance` ⛔ 未实现、`vibe_vmu_capacity` ⛔ 未实现、`vibe_vmu_hr` ⛔ 未实现 | ✗ | ★ **其能力＝ `vibe_vmu_collab` 的九个动作** ✓（★ 本轮已落地 ✓）
+| 工具 | `vibe_vmu_resource` **✓ 已实现（轮 543）** 已实现（轮 543）、`vibe_vmu_funding` **✓ 已实现（轮 543）** 已实现（轮 543）、`vibe_vmu_ip` **✓ 已实现（轮 543）** 已实现（轮 543）、`vibe_vmu_conference` **✓ 已实现（轮 543）** 已实现（轮 543）、`vibe_vmu_outreach` **✓ 已实现（轮 543）** 已实现（轮 543）、 已实现（轮 543）、`vibe_vmu_compliance` **✓ 已实现（轮 543）** 已实现（轮 543）、`vibe_vmu_capacity` **✓ 已实现（轮 543）** 已实现（轮 543）、`vibe_vmu_hr` **✓ 已实现（轮 543）** 已实现（轮 543） | ✗ | ★ **其能力＝ `vibe_vmu_collab` 的九个动作** ✓（★ 本轮已落地 ✓） ⛔ 未实现（规划）
 | 工具 | `vibe_vmu_minutes` ✓ **已实现（轮 517）** |
 | 工具（复用） | `vibe_vmu_records` ✓、`vibe_vmu_task` ✓、`vibe_vmu_meeting` ✓、`vibe_vmu_set` ✓、`vibe_vmu_middleware` ✓、`vibe_vmu_pack` ✓、`vibe_vmu_script` ✓、`vibe_vmu_status` ✓、`vibe_vmu_control` ✓ | ✓ |
 | 服务 | `vmu.resource`／`vmu.funding`／`vmu.ip`／`vmu.conference`／`vmu.dissemination`／`vmu.collab`／`vmu.compliance`／`vmu.capacity`／`vmu.tenure`（计划 `kernel/ops/*`） | ✗ |

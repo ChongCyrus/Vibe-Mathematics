@@ -24,7 +24,7 @@
 
 ---
 
-## 1. 工具总表（34 个 `vibe_vmu_*` ＋ 1 个继承工具）
+## 1. 工具总表（36 个 `vibe_vmu_*` ＋ 1 个继承工具）
 
 | 工具（`TOOL_NAMES` 键） | 出现条件 | 权限面 | 幂等性 | 主要 action |
 |---|---|---|---|---|
@@ -62,6 +62,8 @@
 | `vibe_vmu_publication`（`publication`） | `publicationTool` 为真 | 出版：可得性/徽章/推广/影响 | `list`/`status` ✓；其余视状态 ✗ | `status`(默认)`/shareReplication/submitPack/advance/register/availability/badge/replication/list/outreachPack/publishOutreach/openOutreachReview/logImpact/useImpactInEvaluation` |
 | `vibe_vmu_fairness`（`fairness`） | `fairnessTool` 为真 | 公平：分配/解释/审计/再平衡 | `status`/`rebalanceDue` ✓；其余视参数 ✗ | `status`(默认)`/allocation/explain/audit/rebalance/rebalanceDue` |
 | `vibe_vmu_handover`（`handover`） | `handoverTool` 为真 | 交接：开/附/定稿/接受/拒绝 | `status` ✓；其余视状态 ✗ | `status`(默认)`/open/attach/finalize/accept/reject/pack` |
+| `vibe_vmu_conference`（`conference`） | `conferenceTool` 为真 | 会议：投稿/指派/评审/决议 | `list`/`status` ✓；其余视状态 ✗ | `status`(默认)`/open/submit/assign/review/decide/register/planAgenda/viewSubmission/list/receiptsView` |
+| `vibe_vmu_arbitration`（`arbitration`） | `arbitrationTool` 为真 | 裁决：回避/听证/裁定/上诉 | `list`/`history`/`status` ✓；其余视状态 ✗ | `status`(默认)`/open/appoint/pick/declareConflict/recuse/hear/rule/appeal/escalate/effective/list/history` |
 | `math_computation` | **声明了数学意图**（`vibe-math-vmu.js:149`） | 计算面 | `probe/receipt` ✓；`run/install` ✗ | 由共享模块登记：`op=probe|run|receipt|install` |
 
 **注册面硬纪律（`host.js` 逐条）**
@@ -431,6 +433,9 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 4. `who` 面是否新增主体（当前 `office`／`role:chair` 两档），以支撑更细的机制管理权限。
 5. 本卷 §7 是否需要在 `03-§8` 上生成**自动投影**（避免人工同步漂移）。
 
+| `vibe_vmu_conference`（`conference`） | `conferenceTool` 为真 | 会议：投稿/指派/评审/决议 | `list`/`status` ✓；其余视状态 ✗ | `status`(默认)`/open/submit/assign/review/decide/register/planAgenda/viewSubmission/list/receiptsView` |
+| `vibe_vmu_arbitration`（`arbitration`） | `arbitrationTool` 为真 | 裁决：回避/听证/裁定/上诉 | `list`/`history`/`status` ✓；其余视状态 ✗ | `status`(默认)`/open/appoint/pick/declareConflict/recuse/hear/rule/appeal/escalate/effective/list/history` |
+
 <!-- BEGIN GENERATED: tool-index -->
 
 ### 工具与 action 索引（★ **生成**：来自 `host.js` 的 `TOOL_NAMES` 与 action 枚举 ✓）
@@ -472,8 +477,10 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 31 | `publication` | `vibe_vmu_publication` |
 | 32 | `fairness` | `vibe_vmu_fairness` |
 | 33 | `handover` | `vibe_vmu_handover` |
-| 34 | `turn` | `vibe_vmu_turn` |
+| 34 | `conference` | `vibe_vmu_conference` |
+| 35 | `arbitration` | `vibe_vmu_arbitration` |
+| 36 | `turn` | `vibe_vmu_turn` |
 
-> ★★ 合计 **34** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
+> ★★ 合计 **36** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
 
 <!-- END GENERATED: tool-index -->

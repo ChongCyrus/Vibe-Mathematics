@@ -129,18 +129,15 @@
 | `vibe_vmu_attendance` | `docs/08` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_auction` | `docs/17` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_audit` | `docs/08` | **✓** ⛔ 规划/未实现 | **✓** | **capability: the `audit` action of `vibe_vmu_fairness`** (round 542)
-| `vibe_vmu_capacity` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_charter` | `docs/17` | **✓** ⛔ 规划/未实现 | **✓** |
 
 | `vibe_vmu_committee` | `docs/08` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_compliance` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |
-| `vibe_vmu_conference` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_course` | `docs/17` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_delegate` | `docs/17` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_formal_search` | `docs/15` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_funding` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_grade` | `docs/17` | — ⛔ 规划/未实现 | — |
-| `vibe_vmu_hr` | `docs/22` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_identity` | `docs/17` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_ip` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_lean_archive` | `docs/03` | — ⛔ 规划/未实现 | — |
@@ -466,3 +463,17 @@
 ### 4v. ★★ 工具面账目（★ 轮 542 ✓）
 
 > ★★ **已实现工具面 24** ✓（★ 取数：`Object.keys(TOOL_NAMES).length` ✓）／★ **规格模块 28** ✓／★ **十个功能面全部有工具面** ✓（★ 轮 541 起 ✓）。
+
+### 4w. ★★★★ 目标 ③ 的四个残留族：逐族实测（★ 轮 543 ✓）
+
+> ★★★ **这些族【不是猜的**]** ✓ —— ★ **它们写在 `tests/vmu-ab-v5r-verification.test.mjs` 的 `knownGapsAB` 里** ✓（★ L544–549 ✓），★ 而**测试还写了为什么**：★ "**这是区分「65% 且在收敛」与「65% 且有一大族仍缺」的那个数**" ✓ ⇒ ★★ **本轮逐族实测，得出每族的【精确状态与归属**]** ✓。
+
+| 族 | 实测状态（★ 轮 543 ✓） | 修复归属 |
+|---|---|---|
+| **① 除拒绝通告外的框架通告**（所办/院士分派、群聊转达、所办通知 ✓） | ★★ **构造器【齐**]✓**：`notices.js` 有 **6 个**（`assignmentNotice`／`nudgeNotice`／`chatNotice`／`officeNotice`／`inboxBlock`／`formatNotice` ✓），★ 且 `INBOX_HEADER = "[新到的消息]"` ✓、`NOTICE_SHAPES` 有 **4 种**（`assignment`／`nudge`／`chat`／`office` ✓）；★★ **而 pack 里【零调用点**]** ✗ ⇒ ★★ **缺的是【注入**]，不是构造** ✓ | ★ **交付路径**（★ 由 preset/宿主在投递时调用 ✓） |
+| **② 紧凑目录的按相位变体** | ★ **未做** ✓（★ 其字段表自称"列当前相位"，而只转写了一种 ✓） | ★★ **本 pack 的中间件** ✓ —— ★ **`middleware/prompt-switches.js` 的职责正是"哪些段开/关"** ✓（★ 其头部即写"这是院所自己的偏好，不是框架知识" ✓） |
+| **③ 全目录与紧凑目录在原版里【互斥二选一**]，而这里两者都注入** ✗ | ★ **实测成立** ✓（★ 一个开关问题 ✓） | ★★ **同上：本 pack 的中间件** ✓ |
+| **④ `[新到的消息]` 头** | ★★ **素材已具备** ✓（★ `INBOX_HEADER` 字面值就是它 ✓、`inboxBlock` 会前置它 ✓） | ★ **交付路径**（★ 与 ① 同处 ✓） |
+
+> ★★★ **由此得出两条** ✓：★ **① 四族里两族的【素材全在**]（★ ①／④ ⇒ 只差接线 ✓），★ 另两族是【一个开关**]（★ ②／③ ⇒ ★ 归属明确是本 pack 的中间件 ✓）⇒ ★★ **没有一族需要新的框架能力** ✓✓ —— ★★★ **即：目标 ③ 的剩余工作【不需要动框架**]，★ 只动 **pack ＋ preset** ✓ —— ★ **而这与哲学理念一致**（★ 框架提供机制、pack 声明策略 ✓）。
+> ★★ **② 并记一条** ✓：★ `notices.js` 的 `NOTICE_SHAPES` **不经 `index.js` re-export** ✓（★ 而 manifest 用 `noticeModule: "./notices.js"` 指过去 ✓，★ 其注释写明"**这是它们的消费者**" ✓）⇒ ★ **这是【声明的模式**]，★ 不是遗漏** ✓（★ 量的时候要按 manifest 的指针取，而不是按 `index.js` ✓）。
