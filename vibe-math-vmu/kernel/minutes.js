@@ -140,7 +140,11 @@ export function createMinutes({ clock = () => new Date(0).toISOString(), log = (
   }
 
   /** actions：列出行动项（只读，深拷贝，不得改状态）。 */
-  function actions({ id } = {}) {
+  function actions(input = {}) {
+  // A DEFAULT PARAMETER DOES NOT PROTECT AGAINST null: `{ id } = {}` throws when called with null, which is how this
+  // method once leaked a V8 message. Normalise first, so an imperfect caller is refused rather than crashed.
+  const { id } = input || {}
+  if (!id) throw refuse('VMU_INVALID_ARGUMENT', 'actions needs { id }', 'pass { id: "<minutes id>" }; list() shows the ids')
     const rec = need(id)
     dirty.reads += 1
     return { ok: true, id: rec.id, actions: clone(rec.actions) }
