@@ -328,8 +328,12 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   ok(r1.ok === true && ac.ok === true && r1.text !== ac.text && r1.text.includes('{{') === false,
     'V54. ★★★★ CLOSED: with the role section the framework composes PER MEMBER, two members get different text, and no placeholder is left unsubstituted',
     { chars: [r1.text.length, ac.text.length], differ: r1.text !== ac.text })
-  ok(r1.text.includes('r-1') && r1.text.includes('researcher') && ac.text.includes('acad') && ac.text.includes('academician'),
-    'V55. ★★★ and each assembled turn names the member and role it was written for')
+  // ROUND 594 — A DELIBERATE EXPECTATION CHANGE, with its reason. This assertion used to ask for the KIND KEY ('researcher'), which
+  // is what the heading interpolated before the bridge was fixed. The prompt pipeline's own note (ROUND 364) calls that a mixing
+  // error: `role` is the key that BINDINGS select on, `roleLabel` is what a READER sees, and mixing the two renders a heading as
+  // "—— researcher r-1". Measured after the fix: the assembled turn carries the member and the LABEL, and no kind key at all.
+  ok(r1.text.includes('r-1') && r1.text.includes('常驻研究员') && ac.text.includes('acad') && ac.text.includes('院士'),
+    'V55. ★★★ and each assembled turn names the member and the READER-FACING role label it was written for')
 }
 // ── THE WAKE PATH, both sides: a turn is bound to a NAMED member, and nobody gets an anonymous turn ────────────
 {

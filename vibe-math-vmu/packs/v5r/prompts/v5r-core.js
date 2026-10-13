@@ -31,12 +31,22 @@ import { SOURCE_REL as PROMPT_SOURCE_REL, SOURCE_SHA256 as PROMPT_SOURCE_SHA256,
  * and it is right to - those carry the framework's own read-only contract. The line's text is exactly what a pack
  * is for.
  */
+/**
+ * ROUND 594 - THE HEADING FIX. The corpus is verbatim from the capture, so it cannot be edited (the drift check would fail), but a
+ * capture records what the ORIGINAL printed and the original's heading interpolated the member's kind KEY where the reader-facing
+ * LABEL belongs: `kernel/prompt/index.js` says it exactly - `role` is the kind key that bindings select on while `roleLabel` is what
+ * a reader sees, and mixing the two renders a heading as "—— researcher r-1". `roleLabel` is already whitelisted, so the bridge - the
+ * one place a recording becomes a runtime artifact - rewrites the HEADING occurrence only and leaves every other `{{ role }}` alone.
+ */
+const headingRoleToLabel = (text) => String(text === undefined || text === null ? '' : text)
+  .replace(/(——\s*)\{\{\s*role\s*\}\}/g, '$1{{ roleLabel }}')
+
 export const v5rPromptSections = Object.freeze((Array.isArray(PROMPT_ENTRIES) ? PROMPT_ENTRIES : []).map((p, i) => ({
   name: 'v5r-' + String(p && p.id ? p.id : 'entry-' + (i + 1)).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
   order: 600 + i,
   range: 'pack',
   source: 'v5r-corpus:' + PROMPT_SOURCE_REL,
-  text: String((p && (p.text !== undefined ? p.text : p.prompt)) || ''),
+  text: headingRoleToLabel(p && (p.text !== undefined ? p.text : p.prompt)),
 })))
 
 /** The stance codes live in the pack's own namespace (R-d), so "the framework refused" stays distinguishable. */
