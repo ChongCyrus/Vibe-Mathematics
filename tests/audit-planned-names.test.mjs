@@ -134,5 +134,34 @@ ok(foundAll.length === 0,
   'not one of the ' + total + ' planned rows hidden across ' + volumes.length + ' volumes marks a registered tool, and none hides a capability that exists as an action',
   { found: foundAll.slice(0, 6) })
 
+console.log('=== 4. THE VOLUMES THAT ARE NOT SELECTED HAVE STATED REASONS ===')
+// A volume can carry a mark and still be out of scope, for one of exactly two reasons: its rows state a resolution, or its
+// rows mark something that is not a TOOL at all (a protocol, an interface shape). Anything else would mean the check is
+// silently missing rows, which is the defect this whole file exists to prevent.
+const unexplained = []
+for (const f of allDocs) {
+  const lines = readFileSync(join(DOCS, f), 'utf8').split('\n')
+  const marked = []
+  lines.forEach((l, i) => {
+    if (!l.trim().startsWith('|') || !/⛔/.test(l)) return
+    const c = l.split('|')
+    marked.push({ line: i + 1, l, c })
+  })
+  if (!marked.length) continue
+  const selected = volumes.includes(f)
+  if (selected) continue
+  for (const m of marked) {
+    const head = m.c.slice(1, 4).join('|')
+    const statesResolution = RESOLVED.test(head)
+    const namesATool = /\`vibe_vmu_[a-z_]+\`/.test(head)
+    if (!statesResolution && namesATool) {
+      unexplained.push(f + ' L' + m.line + ': marked, names a tool, and is neither selected nor resolved')
+    }
+  }
+}
+ok(unexplained.length === 0,
+  'every volume carrying a mark is either selected by the check, or its rows state a resolution, or they mark something that is not a tool - so no volume falls out of the check unexplained',
+  { unexplained: unexplained.slice(0, 6) })
+
 console.log('=== PLANNED NAMES: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }
