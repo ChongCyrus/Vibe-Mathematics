@@ -568,6 +568,8 @@
     "tests/vmu-charter-tool.test.mjs",
     "vibe-math-vmu/tools/recruit.js",
     "tests/vmu-recruit-tool.test.mjs",
+    "vibe-math-vmu/tools/capacity.js",
+    "tests/vmu-capacity-tool.test.mjs",
     "docs/COMPAT-AUDIT-ROUND3.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.en.md",

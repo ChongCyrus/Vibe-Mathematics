@@ -684,7 +684,7 @@
 
 | 类别 | 名称 | 现状 |
 |---|---|---|
-| 工具 | `vibe_vmu_resource` **✓ 已实现（轮 543）** 已实现（轮 543）、`vibe_vmu_funding` **✓ 已实现（轮 543）** 已实现（轮 543）、`vibe_vmu_ip` **✓ 已实现（轮 543）** 已实现（轮 543）、`vibe_vmu_conference` **✓ 已实现（轮 543）** 已实现（轮 543）、`vibe_vmu_outreach` **✓ 已实现（轮 543）** 已实现（轮 543）、 已实现（轮 543）、`vibe_vmu_compliance` **✓ 已实现（轮 543）** 已实现（轮 543）、`vibe_vmu_capacity` **✓ 已实现（轮 543）** 已实现（轮 543）、`vibe_vmu_hr` **✓ 已实现（轮 543）** 已实现（轮 543） | ✗ | ★ **其能力＝ `vibe_vmu_collab` 的九个动作** ✓（★ 本轮已落地 ✓） ⛔ 未实现（规划）
+| 工具 | `vibe_vmu_resource` **✓ 已实现（轮 543）** 已实现（轮 543）、`vibe_vmu_funding` **✓ 已实现（轮 543）** 已实现（轮 543）、`vibe_vmu_ip` **✓ 已实现（轮 543）** 已实现（轮 543）、`vibe_vmu_conference` **✓ 已实现（轮 543）** 已实现（轮 543）、`vibe_vmu_outreach` **✓ 已实现（轮 543）** 已实现（轮 543）、 已实现（轮 543）、`vibe_vmu_compliance` **✓ 已实现（轮 543）** 已实现（轮 543）、`vibe_vmu_capacity` **✓ 已实现（轮 543）** 已实现（轮 543）、`vibe_vmu_hr` **✓ 已实现（轮 543）** 已实现（轮 543） | ✗ | ★ **其能力＝ `vibe_vmu_collab` 的九个动作** ✓（★ 本轮已落地 ✓） **已实现（轮 545）** 未实现（规划）
 | 工具 | `vibe_vmu_minutes` ✓ **已实现（轮 517）** |
 | 工具（复用） | `vibe_vmu_records` ✓、`vibe_vmu_task` ✓、`vibe_vmu_meeting` ✓、`vibe_vmu_set` ✓、`vibe_vmu_middleware` ✓、`vibe_vmu_pack` ✓、`vibe_vmu_script` ✓、`vibe_vmu_status` ✓、`vibe_vmu_control` ✓ | ✓ |
 | 服务 | `vmu.resource`／`vmu.funding`／`vmu.ip`／`vmu.conference`／`vmu.dissemination`／`vmu.collab`／`vmu.compliance`／`vmu.capacity`／`vmu.tenure`（计划 `kernel/ops/*`） | ✗ |

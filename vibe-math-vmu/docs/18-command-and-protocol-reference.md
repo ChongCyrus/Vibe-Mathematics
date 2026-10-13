@@ -24,7 +24,7 @@
 
 ---
 
-## 1. 工具总表（38 个 `vibe_vmu_*` ＋ 1 个继承工具）
+## 1. 工具总表（39 个 `vibe_vmu_*` ＋ 1 个继承工具）
 
 | 工具（`TOOL_NAMES` 键） | 出现条件 | 权限面 | 幂等性 | 主要 action |
 |---|---|---|---|---|
@@ -76,6 +76,7 @@
 
 | `vibe_vmu_charter`（`charter`） | 见 `docs/03` §3.1（★ 本表补记 ✓） | 由宿主与设置面提供 | 始终可用（★ `status` 是零机制的观察点 ✓） | `status`(默认) |
 | `vibe_vmu_recruit`（`recruit`） | 见 `docs/03` §3.1（★ 本表补记 ✓） | 由宿主与设置面提供 | 始终可用（★ `status` 是零机制的观察点 ✓） | `status`(默认) |
+| `vibe_vmu_capacity`（`capacity`） | `capacityTool` 为真 | 容量：登记/预约/校准/阻断 | `list`/`status`/`receiptsView`/`waitlistView`/`forecast` ✓；其余视参数 ✗ | `status`(默认)`/admit/forecast/list/receiptsView/release/reserve/status/storage/waitlistView` |
 
 ## 2. 逐工具参考（可照抄）
 
@@ -487,8 +488,9 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 35 | `arbitration` | `vibe_vmu_arbitration` |
 | 36 | `charter` | `vibe_vmu_charter` |
 | 37 | `recruit` | `vibe_vmu_recruit` |
-| 38 | `turn` | `vibe_vmu_turn` |
+| 38 | `capacity` | `vibe_vmu_capacity` |
+| 39 | `turn` | `vibe_vmu_turn` |
 
-> ★★ 合计 **38** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
+> ★★ 合计 **39** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
 
 <!-- END GENERATED: tool-index -->
