@@ -24,7 +24,7 @@
 
 ---
 
-## 1. 工具总表（24 个 `vibe_vmu_*` ＋ 1 个继承工具）
+## 1. 工具总表（25 个 `vibe_vmu_*` ＋ 1 个继承工具）
 
 | 工具（`TOOL_NAMES` 键） | 出现条件 | 权限面 | 幂等性 | 主要 action |
 |---|---|---|---|---|
@@ -52,6 +52,7 @@
 | `vibe_vmu_mathtools`（`mathtools`） | `mathtoolsTool` 为真 | 数学计算：计划/执行/缓存/回执 | `cacheView`/`receiptsView`/`status` ✓；`plan`/`run` 视 `op` ✗；`cacheMarkCorrupt` ✗（★ 需 `cacheKey` ✓） | `status`(默认)`/plan/run/cacheMarkCorrupt/cacheView/receiptsView` |
 | `vibe_vmu_auditchain`（`auditchain`） | `auditchainTool` 为真 | 审计链追加/校验/锚定 | `verifyChain`/`link`/`status` ✓；`append`/`checkpoint`/`refresh` 视状态 ✗ | `status`(默认)`/append/verifyChain/link/checkpoint/refresh` |
 | `vibe_vmu_notify`（`notify`） | `notifyTool` 为真 | 订阅/投递/摘要 | `flush`/`list`/`status` ✓；`watch`/`unwatch`/`emit` 视参数 ✗ | `status`(默认)`/watch/unwatch/emit/flush/list` |
+| `vibe_vmu_transaction`（`transaction`） | `transactionTool` 为真 | 事务与补偿 | `status`/`list`/`history` ✓；`begin`/`run`/`compensate` 视状态 ✗ | `status`(默认)`/begin/run/list/history/compensate` |
 | `math_computation` | **声明了数学意图**（`vibe-math-vmu.js:149`） | 计算面 | `probe/receipt` ✓；`run/install` ✗ | 由共享模块登记：`op=probe|run|receipt|install` |
 
 **注册面硬纪律（`host.js` 逐条）**
@@ -452,8 +453,9 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 21 | `mathtools` | `vibe_vmu_mathtools` |
 | 22 | `auditchain` | `vibe_vmu_auditchain` |
 | 23 | `notify` | `vibe_vmu_notify` |
-| 24 | `turn` | `vibe_vmu_turn` |
+| 24 | `transaction` | `vibe_vmu_transaction` |
+| 25 | `turn` | `vibe_vmu_turn` |
 
-> ★★ 合计 **24** 个工具 ✓；★ **action 枚举 **23** 组／**105** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload` ｜ `status/pause/resume/stop/beat/roster/hire/fire` ｜ `list/open/speak/silent/close/ballot/vote/tally/reopen` ｜ `decisive/advisory` ｜ `list/create/assign/transition/stage/advance/brief/history` ｜ `list/draft/confirm/append/actions/status` ｜ `columns/move/swimlanes/aging/status` ｜ `open/charge/reserve/remaining/status/list/totals` ｜ `identify/validate/render/status` ｜ `suspend/restore/status` ｜ `config` ｜ `take/peek/reset/bucket/status` ｜ `correlate/build/render/status` ｜ `register/read/upgrade/status` ｜ `validate/plan/run/status/history` ｜ `normalize/cache/receipts/status` ｜ `plan/run/status` ｜ `append/link/checkpoint/status/refresh` ｜ `watch/unwatch/emit/flush/list/status`。
+> ★★ 合计 **25** 个工具 ✓；★ **action 枚举 **23** 组／**105** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload` ｜ `status/pause/resume/stop/beat/roster/hire/fire` ｜ `list/open/speak/silent/close/ballot/vote/tally/reopen` ｜ `decisive/advisory` ｜ `list/create/assign/transition/stage/advance/brief/history` ｜ `list/draft/confirm/append/actions/status` ｜ `columns/move/swimlanes/aging/status` ｜ `open/charge/reserve/remaining/status/list/totals` ｜ `identify/validate/render/status` ｜ `suspend/restore/status` ｜ `config` ｜ `take/peek/reset/bucket/status` ｜ `correlate/build/render/status` ｜ `register/read/upgrade/status` ｜ `validate/plan/run/status/history` ｜ `normalize/cache/receipts/status` ｜ `plan/run/status` ｜ `append/link/checkpoint/status/refresh` ｜ `watch/unwatch/emit/flush/list/status`。
 
 <!-- END GENERATED: tool-index -->
