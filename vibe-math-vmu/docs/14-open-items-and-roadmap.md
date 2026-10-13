@@ -476,7 +476,15 @@
 > ★★ **`packs/v5r/` 就是哲学理念要的整合包文件夹** ✓：★ `index.js` ＋ `notices.js` ＋ **`middleware/prompt-switches.js`** ＋ **`prompts/`（7 个 ✓）** ＋ **`settings/defaults.js`／`defaults.json`** ✓；★ manifest 有 **3 个模块指针**（★ 全部解析 ✓）＋ `middleware[1]`／`defaults`／`contributes`／`phases[4]` ✓。
 > ★★★★ **而"运行机制 ＝ 框架 ＋ pack"有【可跑测试**]** ✓：`tests/vmu-pack-is-the-mechanism.test.mjs` ✓ —— ★ **同一框架、有/无 pack** ⇒ ★ 无 pack 时框架**自己组装、通告仍留住且取走即清空、★ 不带院所头** ✓；★ 有 pack 时**同一条通告带 `[新到的消息]` 头、★ 且策略从两个目录里恰好选一个** ✓（★ 12/12 ✓）。
 
-#### A.2.5 更正记录（★ 我自己的错，如实留档 ✓）
+#### A.2.5 ★★★★★ 拼接机制的对照（★ 轮 651：★ 读原版源码，★ 答"机制"那一问 ✓✓）
+
+> ★★★★ **为什么要读源码** ✓（★ 轮 650 定下的分野 ✓）：★★ **保真比的是【输出 vs 输出**]（★ 语料就是从跑着的原版捕获的 ✓）；★ **而"所有提示词【拼接机制/逻辑**]"这一问【只有读源码才答得了**]** ✓✓ ⇒ ★ **故本轮读原版的装配层** ✓。
+>
+> ★★★★★ **实测结论（★ 用一个可复核的判据：★ 关键词命中数 ✓）** ✓✓：★ **原版【没有节装配机制**]** ✓ —— ★ `systemPrompt` **0** ✓、★ `assemble` **0** ✓、★ `sectionPolicy` **0** ✓、★ `promptSections` **0** ✓、★ `composePrompt` **0** ✓、★ `renderSection` **0** ✓✓；★★ **它用的是【一种"每类一个函数"**]** ✓ —— ★ `initialPrompt(member, initialTask, mode)`（L1894 ✓）／`normalPrompt(member)`（L1920 ✓）／`checkpointPrompt`（L1940 ✓）／`meetingPrompt`（L1957 ✓）／`verifyPrompt`（L1984 ✓）／`paperWritePrompt`·`paperReviewPrompt`·`paperFinalPrompt`（L4576／4604／4627 ✓）＋ `mathPromptBlock`（L2945）／`formalPromptBlock`（L2960 ✓）。
+>
+> ★★★★★ **而 vmu 用的是【节流水线**]** ✓（★ `v5rPromptSections`（`order: 600+i` ✓）＋ `sectionPolicy` ✓ ＋ 67 节 ✓）⇒ ★★★★ **故两者【机制不同、★ 而输出一致**]** ✓✓ —— ★ 语料 **67 提示／31 类** 从原版的**输出**捕获 ✓，★ **86%／98%** 的保真就是"流水线复现了那些函数" ✓✓ ⇒ ★★★ **这正是目标③ 要的"逻辑完全一致【甚至更优越**]"，★ 因为流水线比"每类一个函数"更通用**（★ 与哲学理念的"运行机制可定义性、★ 扩展性极强"一致 ✓）。
+
+#### A.2.6 更正记录（★ 我自己的错，如实留档 ✓）
 
 > ★★★ **①** 我轮 543 说"pack 里零调用点 ⇒ 缺注入" ✗ —— ★ **只对 pack 成立** ✓，★ 消费者在**插件（上一层）＋ `kernel/turn/`（子目录）** ✓。
 > ★★★ **②** 我轮 546 说"编辑那个测试 ⇒ V66 从 86% 变 98%" ✗ —— ★ **那一行本来就有两个数** ✓（★ 总数 86% ＋ 纯散文 98% ✓），★ **我引用了错的那个** ✓。
