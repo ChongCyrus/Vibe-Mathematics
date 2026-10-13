@@ -109,6 +109,7 @@
     "tests/audit-shared-module-parity.test.mjs",
     "tests/audit-module-coverage.test.mjs",
     "tests/audit-verbatim-claims.test.mjs",
+    "tests/audit-planned-tools-inventory.test.mjs",
     "tests/audit-planned-names.test.mjs",
     "tests/audit-math-computation-contract.mjs",
     "tests/audit-math-computation-contract.mutants.mjs",

@@ -137,6 +137,62 @@
 4h. ★★★ **`docs/03` §3.2 的 12 个计划工具【逐个定性完毕**]✓（★ 轮 475–476 ✓）—— ★★ **四类，而它们需要四种不同的处置** ✓：① **纯缺名字**（★ 能力两侧都在 ✓）⇒ **`pause`／`resume`** ✓、**`hire`／`fire`** ✓（★ `kernel/control.js` 的 `pause`·`resume` ＋ `kernel/scheduler.js` 端到端消费 ✓；`kernel/identity.js` 的 **`addMembership` 与 `endMembership`** ✓）⇒ ★ **补它是一行 host 注册** ✓；② **能力已由【另一个工具**]提供** ⇒ **`members`／`meeting`／`ballot`／`task`／`record_*`／`read_library`／`mw`**（★ 分别由 `kernel.members`／`kernel.meeting()`／`kernel.ballot()`／`kernel.tasks`／`vibe_vmu_records` 的 append·list·expand／真名 `vibe_vmu_middleware` 覆盖 ✓）；③ **零消费者** ⇒ **`report`** ✓（★ 只有把它列为计划的两份文档提到 ✓，**代码 0、测试 0** ✓）⇒ ★★ **已按审批原则移出本表、降级进 `23-extensions-and-deferred`** ✓；④ **同名陷阱** ⇒ **`say`** ✓（★ 内核的 `say()` 是**事件发射器** ✓，**不是成员发消息** ✓；★ 宿主桥在 `kernel/bus.js` ✓，**成员互发面未找到** ✓）。★★★ **而第②类需要一个【我不应单方面做的判断**]✗**：★ **"库面已有"说明【能力已实现**]，**但"是否把该能力暴露成一个 agent 工具"是另一个问题** ✓ —— ★ **工具面的宽度是【集成层的设计选择**]✓（★ 暴露越多，agent 的选择空间越大、提示词的体量也越大 ✓）。★★ **建议（待你定 ✓）**：★ **②类七条【保持登记但标为"由 X 覆盖，不另立工具"**]✓，**除非某个 preset 明确要求** ✓ —— ★ **理由：登记的价值是追溯"这个名字曾属于什么意图"，而不是承诺去实现它** ✓。
 4i. ★★★ **"文档落后于代码"这一类，本轮已累计【五处**]✗（★ 轮 475–477 ✓）：★ **① `pause`／`resume`** ✓（★ 行写"内核没有"，**而 `kernel/control.js` 两侧都实现、`scheduler.js` 端到端消费** ✓）；★ **② `hire`／`fire`** ✓（★ `kernel/identity.js` 的 `addMembership` ＋ `endMembership` ✓）；★ **③④ `meeting`／`task`** ✓（★ 行写"⛔ 未实现"，**而 `host.js` 的 `TOOL_NAMES` 就注册着它们** ✓）；★ **⑤ `report`**（★ 反面：零消费者，已降级 ✓）。★★★ **共同成因**：★ **`docs/03` §3.2 是【规划追溯表**]✓，**它的行在实现落地后没有回头改** ✓ ⇒ ★★ **所以这类假声明是【系统的**]，不是个别的** ✓ —— ★ **下一处一定还在那张表里** ✓。★★ **教训（与"名字 vs 能力"并列）**：★ **"未实现"必须带上【它相对什么说的**]✓：★ **相对【当前代码**]还是相对【某个计划版本**]✗ —— ★ **不带基准的完成度声明，会在两边都读错** ✓。
 4j. ★★★ **"自称逐字"的三栏清单（★ 轮 513 实测 ✓）** —— ★ **全卷扫"逐字／逐项来自／等于代码／与代码一致／按代码"** ✓，**并对能机器核的【真的去核**]✓：
+4k. ★★★ **计划工具的清单与"最小必要"的首要结论（★ 轮 514 实测 ✓）** —— ★★ **这是目标 ⑤ 排序的依据** ✓：
+   - ★★ **标 ⛔ 的工具共 47 个** ✓ —— ★ **归属：** `docs/08`、`docs/22`、`docs/17`、`docs/15`、`docs/03`、`docs/14` ✓。
+   - ★★★ **首要结论：其中 **30／47** 个【已经有服务载体或 settings 家族**]✓** ⇒ ★★ **能力已经作为【服务**]实现了，★ 缺的只是【工具外壳**]✓ ⇒ ★★★ **所以"最小必要"的含义是：★ 多数计划工具只需在【既有服务上加一层薄工具**]，**而不是新建子系统** ✓** —— ★ 这直接决定了实现顺序：★ **先做"载体已备"的那批** ✓。
+
+| 计划工具 | 首见卷 | 服务载体 | settings 家族 |
+|---|---|---|---|
+| `vibe_vmu_agenda` | `docs/08` | — | **✓** |
+| `vibe_vmu_agreements` | `docs/22` | — | **✓** |
+| `vibe_vmu_attendance` | `docs/08` | — | — |
+| `vibe_vmu_auction` | `docs/17` | — | — |
+| `vibe_vmu_audit` | `docs/08` | **✓** | **✓** |
+| `vibe_vmu_board` | `docs/08` | **✓** | **✓** |
+| `vibe_vmu_budget` | `docs/08` | **✓** | **✓** |
+| `vibe_vmu_capacity` | `docs/22` | **✓** | **✓** |
+| `vibe_vmu_charter` | `docs/17` | **✓** | **✓** |
+| `vibe_vmu_collab` | `docs/22` | **✓** | **✓** |
+| `vibe_vmu_committee` | `docs/08` | — | — |
+| `vibe_vmu_compliance` | `docs/22` | **✓** | **✓** |
+| `vibe_vmu_conference` | `docs/22` | **✓** | **✓** |
+| `vibe_vmu_course` | `docs/17` | — | — |
+| `vibe_vmu_custody` | `docs/22` | **✓** | **✓** |
+| `vibe_vmu_delegate` | `docs/17` | — | — |
+| `vibe_vmu_explain` | `docs/17` | **✓** | **✓** |
+| `vibe_vmu_formal` | `docs/15` | **✓** | **✓** |
+| `vibe_vmu_formal_search` | `docs/15` | — | — |
+| `vibe_vmu_funding` | `docs/22` | **✓** | **✓** |
+| `vibe_vmu_grade` | `docs/17` | — | — |
+| `vibe_vmu_handover` | `docs/17` | **✓** | **✓** |
+| `vibe_vmu_hr` | `docs/22` | — | — |
+| `vibe_vmu_identity` | `docs/17` | **✓** | **✓** |
+| `vibe_vmu_ip` | `docs/22` | **✓** | **✓** |
+| `vibe_vmu_lean_archive` | `docs/03` | — | — |
+| `vibe_vmu_legalentity` | `docs/22` | — | — |
+| `vibe_vmu_math` | `docs/15` | **✓** | **✓** |
+| `vibe_vmu_math_cache` | `docs/15` | — | — |
+| `vibe_vmu_math_job` | `docs/15` | — | — |
+| `vibe_vmu_memory` | `docs/17` | **✓** | **✓** |
+| `vibe_vmu_metrics` | `docs/08` | **✓** | **✓** |
+| `vibe_vmu_middleware` | `docs/03` | **✓** | **✓** |
+| `vibe_vmu_minutes` | `docs/08` | **✓** | **✓** |
+| `vibe_vmu_motion` | `docs/08` | — | **✓** |
+| `vibe_vmu_notify` | `docs/17` | **✓** | **✓** |
+| `vibe_vmu_outreach` | `docs/22` | — | — |
+| `vibe_vmu_resource` | `docs/22` | **✓** | **✓** |
+| `vibe_vmu_resume` | `docs/14` | — | — |
+| `vibe_vmu_roles` | `docs/17` | — | **✓** |
+| `vibe_vmu_scheduler` | `docs/08` | **✓** | — |
+| `vibe_vmu_skills` | `docs/17` | **✓** | **✓** |
+| `vibe_vmu_society` | `docs/17` | — | — |
+| `vibe_vmu_trust` | `docs/17` | **✓** | **✓** |
+| `vibe_vmu_units` | `docs/15` | — | — |
+| `vibe_vmu_watch` | `docs/17` | — | — |
+| `vibe_vmu_workflow` | `docs/08` | **✓** | **✓** |
+
+   - ★★ **由 `tests/audit-planned-tools-inventory.test.mjs` 守着** ✓：★ **本表的行数必须与文档里 ⛔ 标记的工具数一致** ✓，★ **且每个列出的名字都真的带 ⛔ 标记** ✓（★ 于是表不会与文档脱节 ✓）。
+
    - ★★ **① 已机器核对：48 行** ✓ —— ★ **它们点名的符号或路径【全部真实存在**]✓**（★ 由 `tests/audit-verbatim-claims.test.mjs` 守着：★ **凡点名的路径必须在树里解析得到** ✓ —— ★ 候选目录含包内路径 `packs/v5r/prompts/` 等 ✓）。
    - ★★★ **② 在构造上不可机器核：110 行** ✗ —— ★ **它们宣称"逐字"，却【不点名是对【什么**]逐字** ✗ ⇒ ★★ **这类宣称【连作者自己也核不了**]✓**。★★★ **而这不是说它们【假**]✗ —— ★ 它们可能全是真的 ✓；★ **问题是"不可核对"与"假"是两件事，★ 而写成后者会让别人放弃一次本来可做的核对** ✓（★ 与本会话轮 510 的 parity 误报同一类 ✓）。
    - ★★★ **③ 处置与纪律** ✓：★ **① 保持为门禁** ✓（★ 路径必须解析 ✓）；★ **② 【不设为门禁**]✗** ✓ —— ★ **因为修 110 行是【写作**]工作、不是【机械**]工作** ✓，★ **强行设卡只会永远红着，或者被"补上无意义的反引号"糊过去** ✓ ⇒ ★★ **所以它【计数并报告**]，数的非零性被断言（★ 免得这行悄悄变成空话 ✓）；★★ **而纪律是**：★ **凡写"逐字"，必须点名它是对【哪个符号、哪条路径或哪份产物**]逐字** ✓ —— ★ **否则读者无法核对，★ 而"无法核对"的宣称在【关键路径**]上等于没有宣称** ✓。
