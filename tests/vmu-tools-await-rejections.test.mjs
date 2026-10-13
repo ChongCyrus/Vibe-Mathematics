@@ -72,6 +72,7 @@ const TOOLS = [
   [{ auditchainTool: true }, 'auditchain', 'auditchain', { action: 'status' }],
   [{ notifyTool: true }, 'notify', 'notify', { action: 'status' }],
   [{ transactionTool: true }, 'transaction', 'transaction', { action: 'status' }],
+  [{ custodyTool: true }, 'custody', 'custody', { action: 'status' }],
   // ---- the eight that were already there ----
   [{ taskTool: true }, 'task', 'tasks', { action: 'list' }],
   [{ recordsTool: true }, 'records', 'library', { action: 'list' }],
