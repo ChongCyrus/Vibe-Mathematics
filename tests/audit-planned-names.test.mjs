@@ -1,21 +1,28 @@
-// tests/audit-planned-names.test.mjs - a documented planned name must not hide a capability that already exists.
+// tests/audit-planned-names.test.mjs - a documented planned name must not HIDE a capability that exists.
 //
-// WHY IT EXISTS, AND WHY IT IS WRITTEN THIS WAY. Five rows in the contract's planning table once claimed a capability was
-// missing while it was implemented, wired and even exposed - as an ACTION of a registered tool. Every one was found by
-// hand. An earlier version of this guard was withdrawn because it could not pass on a CORRECT table: it read every
-// backticked name in a row, so the tool a row cites as the carrier looked like a name the row marks, and it decided
-// "planned" by searching the whole row, so a row that quoted the old mark while stating the truth looked planned.
+// WHY IT EXISTS. Several rows in the vmu volumes once claimed a capability was missing while it was implemented, wired and
+// even exposed - as an ACTION of a registered tool. Each was found by hand, one at a time, which is why this exists.
 //
-// The discriminator that works is exact: a row is planned iff its STATUS cell STARTS with the mark. Measured on the real
-// table, nine rows start with it and three do not - and the three are exactly the rows that state a resolution.
+// WHAT COUNTS AS A DEFECT - exactly two things, and nothing else:
+//   1. a planned row names something that IS a registered tool (then the row must not mark it at all);
+//   2. a planned row names something whose capability exists as an ACTION, while the row does not say so.
+// A planned row with NOTHING behind it is not a defect - that is what "planned" means. An earlier version flagged those
+// and had to be withdrawn: it was too strict, not too loose.
 //
-// The predicate is exercised on a SYNTHETIC table as well, because a guard that cannot fire proves nothing.
-import { readFileSync } from 'node:fs'
+// HOW "PLANNED" IS DECIDED, after three failed attempts. Two rules that were measured on the real tables, not guessed:
+//   * the mark must be in the HEAD cells (1..3) - searching the whole row misfires, because rows legitimately quote the old
+//     mark while stating what is true now;
+//   * a row that states a resolution is not planned, whatever it quotes.
+//
+// SCOPE: every volume that carries such a table - six of them today. The predicate is exercised on a SYNTHETIC table that
+// mirrors the real shape, because a guard that cannot fire proves nothing.
+import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
+const DOCS = join(REPO, 'vibe-math-vmu', 'docs')
 
 let passed = 0
 let failed = 0
@@ -41,36 +48,37 @@ function readSurface(hostSrc) {
   return { tools, actions }
 }
 
-/** A row is planned iff its STATUS cell starts with the mark; only its FIRST cell holds planned names. */
-function plannedRows(lines, from) {
+/** A sentence saying the item is resolved, withdrawn, or already carried elsewhere. */
+const RESOLVED = /已移出|降级|不再实现|已实现并已注册|已由|覆盖|库面|能力已实现|能力已具备|真名|同名陷阱/
+
+/** Planned rows: the mark is in the head cells and the row does not state a resolution. Only cell 1 holds the names. */
+function plannedRows(lines) {
   const rows = []
-  for (let i = from; i < lines.length; i++) {
+  for (let i = 0; i < lines.length; i++) {
     const l = lines[i]
-    if (!l.trim().startsWith('|')) { if (rows.length) break; else continue }
+    if (!l.trim().startsWith('|')) continue
     const c = l.split('|')
-    if (!(c[3] || '').trim().startsWith('⛔')) continue
+    if (!/⛔/.test(c.slice(1, 4).join('|'))) continue
+    if (RESOLVED.test(l)) continue
     const names = [...(c[1] || '').matchAll(/`(vibe_vmu_[a-z_]+)`/g)].map((m) => m[1])
     if (names.length) rows.push({ line: i + 1, l, names })
   }
   return rows
 }
 
-/** The audit itself, split out so it can be exercised on a synthetic table. */
-function audit(rows, tools, actions) {
-  const silent = []
+/** The two defects, and only those two. Split out so the predicate can be exercised on a synthetic table. */
+function defects(rows, tools, actions, file) {
+  const found = []
   for (const r of rows) {
     for (const n of r.names) {
-      if (tools.has(n)) { silent.push('L' + r.line + ' ' + n + ': IS a registered tool, so the row must not mark it'); continue }
+      const where = (file ? file + ' ' : '') + 'L' + r.line + ' ' + n + ': '
+      if (tools.has(n)) { found.push(where + 'IS a registered tool, so the row must not mark it'); continue }
       const short = n.replace('vibe_vmu_', '')
-      const namesAnAction = [...actions.keys()].some((a) => a.toLowerCase().includes(short) && r.l.includes(a))
-      const namesATool = [...tools].some((x) => x !== n && r.l.includes('`' + x + '`'))
-      const statesConclusion = /已由|覆盖|库面|动作|已移出|降级|不再实现|同名陷阱|真名|能力已实现|能力已具备|已实现/.test(r.l)
-      if (!namesAnAction && !namesATool && !statesConclusion) {
-        silent.push('L' + r.line + ' ' + n + ': no tool, no action, and the row does not say where the capability lives')
-      }
+      const asAction = [...actions.keys()].filter((a) => a.toLowerCase().includes(short))
+      if (asAction.length) found.push(where + 'its capability is the action ' + asAction.join('/') + ' and the row does not say so')
     }
   }
-  return silent
+  return found
 }
 
 const host = readFileSync(join(REPO, 'vibe-math-vmu', 'host.js'), 'utf8')
@@ -80,31 +88,42 @@ console.log('=== 1. THE SURFACE IS READ FROM THE SOURCE OF TRUTH ===')
 ok(tools.size >= 8, 'the published tool registry is read', { tools: tools.size })
 ok(actions.size >= 20, 'and the ACTION enums too - the column that was missed for three rounds', { actions: actions.size })
 
-console.log('=== 2. THE DISCRIMINATOR IS EXERCISED BOTH WAYS ON A SYNTHETIC TABLE ===')
+console.log('=== 2. BOTH DEFECTS AND THE QUIET CASES ARE EXERCISED ON A SYNTHETIC TABLE ===')
+// mirrors the real shape: the mark sits in cell 1, and one row states a resolution
 const synthetic = [
-  '| 工具（规划） | 意图 | 状态 |',
+  '| 工具（规划，⛔ 未实现） | 参数草案 | 覆盖的广度项 |',
   '|---|---|---|',
-  '| `vibe_vmu_status` | 已注册的工具 | ⛔ 未实现 |',
-  '| `vibe_vmu_imaginary` | 谁也没有 | ⛔ 未实现 |',
-  '| `vibe_vmu_finished` | 已经做完 | ✅ 已实现并已注册 |',
+  '| `vibe_vmu_status`（⛔ 未实现） | `x` | 已注册的工具 |',
+  '| `vibe_vmu_ballot`（⛔ 未实现） | `x` | 表决 |',
+  '| `vibe_vmu_imaginary`（⛔ 未实现） | `x` | 谁也没有 |',
+  '| `vibe_vmu_finished`（⛔ 未实现） | `x` | ✅ 已实现并已注册 |',
 ]
-const synthRows = plannedRows(synthetic, 0)
-ok(synthRows.length === 2, 'exactly the rows whose STATUS cell starts with the mark are treated as planned', { planned: synthRows.length })
-const synthSilent = audit(synthRows, tools, actions)
-ok(synthSilent.some((s) => s.includes('IS a registered tool')), 'a planned row naming an already-registered tool is flagged')
-ok(synthSilent.some((s) => s.includes('no tool, no action')), 'and a planned row with nothing behind it and no explanation is flagged')
-ok(!synthSilent.some((s) => s.includes('vibe_vmu_finished')), 'while a row that states a resolution is not')
+const synthRows = plannedRows(synthetic)
+ok(synthRows.length === 3, 'the marked rows are planned and the one stating a resolution is not', { planned: synthRows.length })
+const synthFound = defects(synthRows, tools, actions, '')
+ok(synthFound.some((s) => s.includes('IS a registered tool')), 'defect 1 fires: a planned row naming a registered tool')
+ok(synthFound.some((s) => s.includes('the action')), 'defect 2 fires: a planned row hiding a capability that is an action')
+ok(!synthFound.some((s) => s.includes('vibe_vmu_imaginary')), 'and a planned row with NOTHING behind it is quiet, because that is what planned means')
+ok(!synthFound.some((s) => s.includes('vibe_vmu_finished')), 'while a row that states a resolution is quiet too')
 
-console.log('=== 3. THE REAL TABLE PASSES ===')
-const lines = readFileSync(join(REPO, 'vibe-math-vmu', 'docs', '03-interface-contract.md'), 'utf8').split('\n')
-const heading = lines.findIndex((l) => /^### 3\.2/.test(l))
-ok(heading >= 0, 'the planning table is found in the interface contract')
-const rows = plannedRows(lines, heading + 1)
-ok(rows.length >= 5, 'and it still carries marked rows to check', { rows: rows.length })
-const silent = audit(rows, tools, actions)
-ok(silent.length === 0,
-  'every marked row either names where its capability lives or states a resolution, so "not implemented" can no longer stand in for "implemented under another name"',
-  { silent: silent.slice(0, 6) })
+console.log('=== 3. EVERY VOLUME THAT CARRIES SUCH A TABLE PASSES ===')
+let total = 0
+const volumes = []
+const foundAll = []
+const allDocs = readdirSync(DOCS).filter((x) => x.endsWith('.md'))
+for (const f of allDocs) {
+  const rows = plannedRows(readFileSync(join(DOCS, f), 'utf8').split('\n'))
+  if (!rows.length) continue
+  volumes.push(f)
+  total += rows.length
+  for (const d of defects(rows, tools, actions, f)) foundAll.push(d)
+}
+// the property is COVERAGE of the whole docs directory, not a guessed volume count
+ok(volumes.length >= 1, 'at least one volume carries a planned-tool table', { volumes: volumes.length, of: allDocs.length })
+ok(total >= 20, 'and they carry the rows the check is for', { plannedRows: total })
+ok(foundAll.length === 0,
+  'not one of the ' + total + ' planned rows hidden across ' + volumes.length + ' volumes marks a registered tool, and none hides a capability that exists as an action',
+  { found: foundAll.slice(0, 6) })
 
 console.log('=== PLANNED NAMES: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }
