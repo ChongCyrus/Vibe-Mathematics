@@ -266,7 +266,7 @@ assemble(ctx = { settings, member, role, phase, task, ... })
 
 ### 17.1 `prompt/assemble` ≠ `prompt/section-assembled` ✅ **已修复（本轮复核 ✓）**
 **历史问题**：`kernel/prompt/index.js` 的 `assemble()` 曾 emit **`prompt/assemble`**，而冻结集是 **`prompt/section-assembled`** ⇒ 总线上无人应答（emit 名不校验）⇒ 中间件无法介入装配。
-**当前事实（本轮实仓复核 ✓）**：`VU_HOOKS` 注册 **20** 个，**实际 emit 14 个**，其中**含 `prompt/section-assembled`** ✓（`tests/audit-vmu-docs.test.mjs` 的 `KNOWN_UNEMITTED` 也已缩到 6 项，不再包含它）⇒ **本条缺口已关闭**；仍待定的是**触发粒度**（每段一次 vs 一次带清单，见 §19-⑤）。
+**当前事实（★ 轮 508 复核并更正 ✓）**：`VU_HOOKS` 注册 **22** 个 ✓，**其中 22 个都有 emit 生产者** ✓（★ 含 `prompt/section-assembled` ✓），**无默认策略的 0 个** ✓；★ `tests/audit-vmu-docs.test.mjs` 的 `KNOWN_UNEMITTED` 【已【清空**]✓**（★ 轮 496 ✓）。★★★ **本行原先写着"注册 20 个、实际 emit 14 个、`KNOWN_UNEMITTED` 6 项"—— ★ 三个数【全部过期**]✗** ⇒ ★★ **所以本行现在【不写数**]，而是指向 `docs/05` 里**由生成器产出的钩子索引** ✓（★ 那才是不会过期的读法 ✓）⇒ **本条缺口已关闭**；仍待定的是**触发粒度**（每段一次 vs 一次带清单，见 §19-⑤）。
 **仍然存在的相邻问题**：`assemble()` 的守卫是 `if (bus && settings['vmu.middleware.dryRun'] === undefined)` ⇒ **只要该键有定义（哪怕 `false`）就完全跳过钩子**；§20-4 已记"已按文档统一（干跑照常调用、只不施加）"，**旧行为的兼容性未核** ✗。
 
 ### 17.2 `budget/exceeded` 未接线 ✗
