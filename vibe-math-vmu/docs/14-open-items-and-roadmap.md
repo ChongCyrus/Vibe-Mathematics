@@ -326,6 +326,8 @@
 
 ## 10. 实现阶段的分批计划（"可调控性幻觉"的收口）
 
+> ★★★ **本卷所有计数【都有同一个可运行的真源**]（★ 轮 510 补 ✓）**：★ `node scripts/generate-wiring-index.mjs` 一行印出**全部口径** ✓ —— ★ 实测输出：**`wiring index: 29 volumes · planned=96 · wired=1029/1151 · proposed codes=275`** ✓✓ ⇒ ★★ **要数字就读它，不要在散文里抄** ✓。★ **而 `--check` 由 `tests/audit-generators-current.test.mjs` 守着** ✓。
+>
 > **事实** ✓：★ **本行【不再写键数**]（★ 轮 509 ✓）—— ★ 它原先写"设置表 **757 键** ＝ **51 已接线** ＋ **706 计划键**"** ✗，**而生成器实报 `1151 keys (1029 wired, 122 declared-but-not-wired)`** ✓ ⇒ ★★ **两个数都过期了** ✗。★★ **要当前数字就读生成器**：★ `node scripts/generate-vmu-settings-table.mjs`（★ `--check` 由 `tests/audit-generators-current.test.mjs` 守着 ✓）。★★★ **而本行【真正**]要说的那件事仍然成立、且必须留着** ✓：★ **"未接线"是【生成器的口径**]✓ —— ★ `readersOf(key)` 在内核里找**真的读**（`settings[...]`／`get(...)`／`raw`·`readKey`·`strOf`·`boolOf`·`numOf`·`intOr(...)` ✓），**找不到即标 `planned`** ✓。★★ **另一种口径给出完全不同的数**：★ **按【键名全串**]在全部代码与测试里搜，**只有极少数键在任何地方都找不到** ✓ ⇒ ★★ **两个数都对，它们回答的是不同的问题** ✓；★★★ **写数字必须带定义** ✓ —— ★ 否则两组数会像互相矛盾的事实 ✗。
 > ★★★ **"未接线"是【谁的定义**]（★ 轮 497 补 ✓）**：★ **生成器 `scripts/generate-planned-settings.mjs` 的 `readersOf(key)` 在内核里找【真的读**]—— `settings[...]`／`get(...)`／`raw`·`readKey`·`strOf`·`boolOf`·`numOf`·`intOr(...)` 的参数形式 ✓ —— **找不到即标 `planned`** ✓ ⇒ ★★ **所以 706 回答的是"有没有人【按登记的方式**]读它"** ✓。
 > ★★ **而另一种口径会给出完全不同的数**：★ **按【键名全串**]在全部代码与测试里搜，**只有 **7** 个键在【任何地方**]都找不到** ✓（★ 轮 497 实测 ✓）⇒ ★★ **它回答的是"这个名字有没有出现过"** ✓。

@@ -34,7 +34,9 @@ try {
   // The runner says why: documented counts are properties of the REPOSITORY, not of an edit loop, so a scope that
   // narrowed them would make the docs depend on how the run was invoked and would break every guard that spawns the
   // runner as a child. The consequence for THIS script is that the number it can derive is the repository job count
-  // (236 = base jobs + variant jobs), which is NOT the vmu-subset count a reader of the gate volume is asking for. A
+  // (the repository job count), which is NOT the vmu-subset count a reader of the gate volume is asking for - and the number
+// itself is deliberately NOT written here, because a comment quoting a count goes stale exactly like prose does. Run
+// `node tests/run-tests.mjs --counts` for it. A
   // generator that cannot answer a question must not answer it wrongly, so a scoped count equal to the full one is
   // refused and the line is left to the number a run actually prints.
   if (parsed && Number.isInteger(parsed.total) && parsed.total !== derived.total) scoped = { total: parsed.total, suites: parsed.suites, probes: parsed.probes }
