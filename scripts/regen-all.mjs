@@ -37,6 +37,7 @@ const STEPS = [
   ['planned-code registry (docs/03-§8)', 'scripts/generate-planned-codes.mjs'],
   ['settings table (docs/04-§11)', 'scripts/generate-vmu-settings-table.mjs'],
   ['wiring index (docs/00-§3.2)', 'scripts/generate-wiring-index.mjs'],
+  ['readiness figures (docs/00-§7.6)', 'scripts/generate-readiness-figures.mjs'],
   ['documented counts (README / checklist)', 'scripts/update-doc-counts.mjs'],
   ['zero-mechanism matrix (docs/11-§) ', 'scripts/generate-zero-mechanism-matrix.mjs', '--write'],
   ['kernel index (docs/02)', 'scripts/generate-kernel-index.mjs', '--write'],

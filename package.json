@@ -286,6 +286,7 @@
     "vibe-math-vmu/glossary.json",
     "scripts/generate-glossary-table.mjs",
     "scripts/generate-wiring-index.mjs",
+    "scripts/generate-readiness-figures.mjs",
     "scripts/regen-all.mjs",
     "tests/audit-vmu-glossary.test.mjs",
     "tests/vmu-wiring-index.test.mjs",
