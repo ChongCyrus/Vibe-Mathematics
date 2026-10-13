@@ -418,7 +418,7 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 1. **工具名清单一致**：`TOOL_NAMES` 的 9 个值 ＋ `math_computation` **必须**与本卷 §1 表逐字相同（断言：从 `host.js` 导入 `TOOL_NAMES` 并逐名比较）。
 2. **action 枚举一致**：每个工具的 `parameters.action.enum` **必须**等于本卷 §2 列出的 action 列表（断言：`toolSpecs(...)` 产出的 schema 与 §2 表逐项比对）。
 3. **错误码可登记性**：本卷 §7 出现的每个 `VMU_*` 码**必须**能在 `03-§8` 找到（断言：抽取本卷反引号码，集合差为空）。
-4. **钩子名合法性**：本卷 §5.1 的 20 个钩子名**必须**与 `VU_HOOKS` 集合相等；§5.2 的 14 个宿主钩子名**必须**与 `BRIDGED_HOOKS` 集合相等。
+4. **钩子名合法性**：本卷 §5.1 的钩子名**必须**与 `VU_HOOKS` 集合相等；§5.2 的宿主钩子名**必须**与 `BRIDGED_HOOKS` 集合相等。★ **不在此处写个数** ✗（★ 轮 622 ✓）—— ★ 原写"**20 个**"与"**14 个**"，★ 而**实测 `VU_HOOKS` 已是 22** ✗ ⇒ ★★ **两个数都是【可派生的**]，★ 故按本卷既有规矩：★ **要个数就读那两个集合，★ 或读 `docs/00` 的生成块** ✓✓。
 5. **零机制**：`vmu.core.enabled=false` ⇒ `plan().names === []`；enabled 且无声明 ⇒ `plan().names === ['vibe_vmu_status']`。
 6. **cwd 规避**：`validateRequest({file, args, cwd: undefined})` 的问题列表**包含** `cwd must be a string`（证明"给 undefined 也算给了"这一真实约束）；且 `host-spawn` 注入接缝在缺 `cwd` 时仍传**非空字符串**。
 
