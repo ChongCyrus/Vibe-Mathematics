@@ -286,6 +286,8 @@ export function createPublication({ clock = () => Date.now(), log = () => {}, se
   const outreachCfg = () => ({
     publicSummaryRequired: boolOr(settings['vmu.dissemination.publicSummaryRequired'], true),
     evidenceFidelity: ['strict', 'warn'].includes(settings['vmu.dissemination.evidenceFidelity']) ? settings['vmu.dissemination.evidenceFidelity'] : 'strict',
+  // ROUND 530 (docs/22 O5, ruling round 63): WHICH WORDS COUNT IS THE PACK'S DECLARATION, never the kernel's opinion.
+  exaggerationWords: Array.isArray(settings['vmu.dissemination.exaggerationWords']) ? settings['vmu.dissemination.exaggerationWords'].map((w) => String(w)).filter((w) => w) : [],
     embargoRespect: boolOr(settings['vmu.dissemination.embargoRespect'], true),
     languageSet: Array.isArray(settings['vmu.dissemination.languageSet']) && settings['vmu.dissemination.languageSet'].length ? settings['vmu.dissemination.languageSet'].slice() : ['zh', 'en'],
     mediaApprovalPolicy: settings['vmu.dissemination.mediaApprovalPolicy'] || 'spokesperson-only',
@@ -327,6 +329,17 @@ export function createPublication({ clock = () => Date.now(), log = () => {}, se
         'add evidenceRef to ' + unreferenced.length + ' claim(s), or set the key to warn', { paperId, missing: unreferenced.length })
     }
     if (unreferenced.length) warnings.push('evidenceFidelity=warn: ' + unreferenced.length + ' claim(s) carry no evidenceRef')
+    // the WORDLIST judgement point: only in strict, and only for words the configuration declared
+    if (c.exaggerationWords.length) {
+      const summary = String(publicSummary || '')
+      const hit = c.exaggerationWords.filter((w) => summary.includes(w))
+      if (hit.length && c.evidenceFidelity === 'strict') {
+        throw refuse('VMU_OUTREACH_EXAGGERATED', 'vmu.dissemination.evidenceFidelity=strict: the public summary uses declared exaggeration word(s): ' + hit.join(', '),
+          'rewrite the claim in the strength the internal evidence supports, or remove the word from vmu.dissemination.exaggerationWords deliberately',
+          { paperId, words: hit })
+      }
+      if (hit.length) warnings.push('evidenceFidelity=warn: ' + hit.length + ' declared exaggeration word(s) in the summary: ' + hit.join(', '))
+    }
     // mediaApprovalPolicy: the declared default allows only a declared spokesperson to speak
     if (by !== null && c.mediaApprovalPolicy === 'spokesperson-only' && !spokespersons.includes(String(by))) {
       throw refuse('VMU_OUTREACH_MEDIA_DENIED', 'vmu.dissemination.mediaApprovalPolicy=spokesperson-only: ' + by + ' is not a declared spokesperson',

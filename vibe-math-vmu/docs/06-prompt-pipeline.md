@@ -416,7 +416,7 @@ assemble(ctx = { settings, member, role, phase, task, ... })
 | `vibe_vmu_locale`（**计划/未实现**） | 工具 | `action=list|validate|coverage`：列出实例支持语言、校验回退链、给**语言覆盖率**（哪些段有 `en`） | ✗ 未实现 |
 | `vibe_vmu_prompts_snapshot`（**计划**，与 §20/`21` 交叉） | 工具 | 快照**带语言**导出与 diff（同语言 A/B） | ✗ 未实现 |
 | `vibe_vmu_glossary`（**计划/未实现**） | 工具 | `action=list|check`：列术语、按段/语言查引用一致性 | ✗ 未实现 |
-| `vibe_vmu_explain`（**计划**，见 `21`） | 工具 | 解释"为什么这段回退/被拒/冲突" | ✗ 未实现 |
+| `vibe_vmu_explain`（**✓ 已实现，轮 530**） | 工具 | 解释"为什么这段回退/被拒/冲突" | ✓ 已实现 |
 
 ### 21.8 与既有机制的关系（一张图）
 ```

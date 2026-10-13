@@ -736,6 +736,7 @@ vmu.packs.active: [v5r]
 | `vmu.safety.askOn` | string[] | `[publish,network-egress,delete]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 需要询问的动作（默认同 approvalRequired；两者由同一判定读取） |
 | `vmu.dissemination.publicSummaryRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 传播包必须带面向公众的摘要（缺失具名拒） |
 | `vmu.dissemination.evidenceFidelity` | enum | `strict` | `strict`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 证据保真：strict ⇒ 每条主张须带 evidenceRef（缺失具名拒）；warn ⇒ 记入 warnings 并继续 |
+| `vmu.dissemination.exaggerationWords` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | ★★ pack 声明的【夸大词表】：strict 档下，对外摘要若命中表内词且该结论的内部置信度未覆盖，则具名拒；默认【空】⇒ 零机制（轮 530 按 docs/22 轮 63 裁定实现 ✓） |
 | `vmu.dissemination.embargoRespect` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 禁运期内不得发布（具名拒，并给禁运终点） |
 | `vmu.dissemination.languageSet` | string[] | `[zh,en]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 允许的摘要语言集（超出集合具名拒） |
 | `vmu.dissemination.mediaApprovalPolicy` | string | `spokesperson-only` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 媒体发言政策（spokesperson-only ⇒ 只有已声明发言人可发言，否则具名拒） |
@@ -902,24 +903,6 @@ vmu.packs.active: [v5r]
 | `vmu.lifecycle.dedupeKeys` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 跨研究去重键（命中即拒并点名该键） |
 | `vmu.lifecycle.alpha` | number | `0.05` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 显著性水平（judge() 据此判定；越界回落 0.05） |
 | `vmu.lifecycle.powerTarget` | number | `0.8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 把握度目标（judge() 据此判定；越界回落 0.8） |
-| `vmu.clinical.registrationRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 开工前必须有试验注册号（§9.2） |
-| `vmu.clinical.registrationId` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 试验注册号（主体未给时取此声明） |
-| `vmu.clinical.registrationIdPattern` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 注册号正则（空＝只要求非空；不符即拒并点名） |
-| `vmu.clinical.consentVersioning` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 同意须版本化（version＋effectiveAt；受试版本≠当前生效版本⇒拒） |
-| `vmu.clinical.saeReportLimitHours` | number | `24` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | SAE 上报时限（小时；超时⇒红） |
-| `vmu.clinical.aeReportLimitHours` | number | `72` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | AE 上报时限（小时） |
-| `vmu.clinical.reportChannel` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 上报通道（留空＝未声明） |
-| `vmu.clinical.deviationRegister` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 方案偏离须登记 kind/reason/at/action；major 未登记⇒阻塞 |
-| `vmu.clinical.unblindingRequiresReason` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 揭盲须记 who/why/at；紧急揭盲须事后复核 |
-| `vmu.animal.iacucRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 必须 IACUC 审批（未批/未生效/过期⇒拒） |
-| `vmu.animal.protocolId` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 动物方案号（主体未给时取此声明） |
-| `vmu.animal.reviewCycleDays` | int ≥0 | `365` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 年度复审周期（天） |
-| `vmu.animal.threeRRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 3R 逐条非空（replacement/reduction/refinement） |
-| `vmu.animal.anesthesiaRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 麻醉镇痛须声明（豁免须给理由） |
-| `vmu.animal.deathReportLimitHours` | number | `24` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 人道终点/意外死亡上报时限（小时） |
-| `vmu.animal.facilityAccreditation` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 设施资质 id（须匹配且未过期） |
-| `vmu.animal.trainingRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 人员培训须有效（过期⇒拒） |
-| `vmu.animal.ledgerRef` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 动物台账引用（对象 id 在 22-§2/§8；本面不重定义台账 ✗） |
 | `vmu.compliance.domainPacks` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 启用的领域包（非空时，未声明的域⇒VMU_DOMAIN_PACK_MISSING） |
 | `vmu.compliance.requireApprovalGate` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 是否要求审批闸（§9.4①） |
 | `vmu.compliance.evidenceKind` | string | `compliance-evidence` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 合规证据的 kind（模板位；打包归 22 ✓） |
@@ -1276,6 +1259,15 @@ vmu.packs.active: [v5r]
 | `vmu.a11y.headingGapPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 21（共见 1 卷：21），尚未实现（元数据以各卷为准） |
 | `vmu.a11y.minContrastRatio` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 21（共见 1 卷：21），尚未实现（元数据以各卷为准） |
 | `vmu.a11y.requireAltText` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 21（共见 1 卷：21），尚未实现（元数据以各卷为准） |
+| `vmu.animal.anesthesiaRequired` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.animal.deathReportLimitHours` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.animal.facilityAccreditation` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.animal.iacucRequired` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.animal.ledgerRef` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.animal.protocolId` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.animal.reviewCycleDays` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.animal.threeRRequired` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.animal.trainingRequired` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.attendance.excusedCounts` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.attendance.markMode` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.attendance.reportLate` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
@@ -1287,6 +1279,15 @@ vmu.packs.active: [v5r]
 | `vmu.ballot.reopenInitiatorScope` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/ballotbox.js` | ★ **已穷尽**：`ballotbox.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.reopenSameMeetingOnly` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/ballotbox.js` | ★ **已穷尽**：`ballotbox.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.ballotbox.minVotes` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 24（共见 1 卷：24），尚未实现（元数据以各卷为准） |
+| `vmu.clinical.aeReportLimitHours` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.clinical.consentVersioning` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.clinical.deviationRegister` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.clinical.registrationId` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.clinical.registrationIdPattern` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.clinical.registrationRequired` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.clinical.reportChannel` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.clinical.saeReportLimitHours` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.clinical.unblindingRequiresReason` | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.collab.exportPolicy` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.collab.federationPeers` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.collusion.maxClusterSize` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
@@ -1385,7 +1386,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1056** 个，前缀家族 **108** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1039** 个，前缀家族 **106** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1396,7 +1397,6 @@ vmu.packs.active: [v5r]
 | `vmu.agreements.*` | 7 |
 | `vmu.alerts.*` | 12 |
 | `vmu.allocation.*` | 20 |
-| `vmu.animal.*` | 9 |
 | `vmu.anonymity.*` | 2 |
 | `vmu.arbitration.*` | 8 |
 | `vmu.archive.*` | 5 |
@@ -1408,7 +1408,6 @@ vmu.packs.active: [v5r]
 | `vmu.capacity.*` | 12 |
 | `vmu.charter.*` | 18 |
 | `vmu.citations.*` | 6 |
-| `vmu.clinical.*` | 9 |
 | `vmu.clock.*` | 7 |
 | `vmu.collab.*` | 7 |
 | `vmu.collusion.*` | 4 |
@@ -1424,7 +1423,7 @@ vmu.packs.active: [v5r]
 | `vmu.dedupe.*` | 3 |
 | `vmu.delegation.*` | 12 |
 | `vmu.discipline.*` | 6 |
-| `vmu.dissemination.*` | 9 |
+| `vmu.dissemination.*` | 10 |
 | `vmu.explain.*` | 7 |
 | `vmu.export.*` | 2 |
 | `vmu.external.*` | 31 |

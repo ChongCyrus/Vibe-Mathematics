@@ -45,6 +45,7 @@ export const TOOL_NAMES = Object.freeze({
   discipline: 'vibe_vmu_discipline',
   governance: 'vibe_vmu_governance',
   ratelimit: 'vibe_vmu_ratelimit',
+  explain: 'vibe_vmu_explain',
   // ROUND 349: the turn loop needs a real entry point. Without it the framework could run a round only from a test,
   // which is not the same as a host being able to run one - and the objective is the latter.
   turn: 'vibe_vmu_turn',
@@ -120,7 +121,7 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * adapter turns it into the host shape (`execute` returning JSON). Filtering by what actually exists keeps
  * the surface honest (docs/04 §11 ownership: mechanism only).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false, budgetTool = false, citationsTool = false, disciplineTool = false, governanceTool = false, ratelimitTool = false }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false, budgetTool = false, citationsTool = false, disciplineTool = false, governanceTool = false, ratelimitTool = false, explainTool = false }) {
   // A refusal carries the four documented fields, plus - when the caller has them - host-side DIAGNOSTICS
   // (the host's own stack and the exact request shape we passed). They are added ONLY when present, so no
   // existing refusal changes shape. Without this the live M3 diagnosis died at the tool boundary: the seam
@@ -803,6 +804,40 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           if (action === 'reset') return Object.assign({ ok: true, action }, ratelimit.reset({ key, reason, by }))
           if (action === 'bucket') return Object.assign({ ok: true, action }, ratelimit.bucket({ key }))
           if (action === 'status') return Object.assign({ ok: true, action }, ratelimit.status())
+          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
+        } catch (e) {
+          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
+        }
+      },
+    })
+  }
+
+  if (explainTool) {
+    specs.push({
+      name: TOOL_NAMES.explain,
+      description: 'vmu 解释面：action=checkReason|correlate|build|render|status。' +
+        '「这一步为什么发生」由内核服务回答：理由必填、按 traceId/taskId 关联、报表由它构建与渲染；本工具只做**寻址与调用**，不复制任何策略。',
+      parameters: {
+        action: param('string', 'checkReason｜correlate｜build｜render｜status', { required: true,
+          enum: ['checkReason', 'correlate', 'build', 'render', 'status'] }),
+        reason: param('string', '理由（checkReason/build 用；★ 服务的 reasonRequired 会强制它 ✓）'),
+        targetAction: param('string', '要解释或被检查的那个动作（★ 转交给服务的 `action` 形参 ✓；本工具的 action 是分派器）'),
+        traceId: param('string', '关联用的 trace id（correlate/build 用；★ 关联轴由服务的 correlateBy 决定 ✓）'),
+        taskId: param('string', '关联用的任务 id（可选）'),
+        chains: param('boolean', 'build 是否含链（可选）'),
+        scores: param('boolean', 'build 是否含评分（可选）'),
+        fields: param('array', 'build 的字段选择（可选）'),
+        report: param('object', 'render 的报表（★ build 的产物 ✓）'),
+        format: param('string', 'render 的格式（可选；★ 默认见服务 ✓）'),
+      },
+      run: async ({ action, reason, targetAction, traceId, taskId, chains, scores, fields, report, format } = {}) => {
+        try {
+          const explain = kernel.explain
+          if (action === 'checkReason') return Object.assign({ ok: true, action }, explain.checkReason({ reason, action: targetAction || null }))
+          if (action === 'correlate') return Object.assign({ ok: true, action }, explain.correlate({ traceId, taskId }))
+          if (action === 'build') return Object.assign({ ok: true, action }, explain.build({ action: targetAction || null, reason, traceId, taskId, chains, scores, fields }))
+          if (action === 'render') return Object.assign({ ok: true, action }, explain.render({ report, format }))
+          if (action === 'status') return Object.assign({ ok: true, action }, explain.status())
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)

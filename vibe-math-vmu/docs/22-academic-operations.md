@@ -100,7 +100,7 @@
 | `vmu.records` | 32 | **32** | `records.js` ＋ `index.js` 等 | ★ **已接线 ✓** |
 | `vmu.budget` | 9 | **9** | `budget.js`(9) ＋ `fairness.js` | ★ **已接线 ✓** |
 | `vmu.collab` | **9** | **7** | `collab.js`(7) | ⚠️ **部分（余 2 条契约薄，见 §L234；原 10 含 1 个服务名，轮 270 剔除）** |
-| `vmu.dissemination` | **11** | **9** | `publication.js`(9) | ⚠️ **部分（9/11）** —— 9 条**已接线 ✓**；另 2 条（`impact`／`mediaRequest`）**经审计确认内核无读取者 ⇒ 真实待办 ✗**（见 §0.1 与 `04` 的 `planned` 行 ✓） |
+| `vmu.dissemination` | **12** | **10** | `publication.js`(9) | ⚠️ **部分（10/12）**（★ 轮 530 更正：**声明 12／已接线 10** ✓ —— ★ 新增 `exaggerationWords` 所致 ✓） —— 9 条**已接线 ✓**；另 2 条（`impact`／`mediaRequest`）**经审计确认内核无读取者 ⇒ 真实待办 ✗**（见 §0.1 与 `04` 的 `planned` 行 ✓） |
 | `vmu.admission` | 12 | **12** | `recruit.js`(12) | ★ **已接线 ✓（轮 267 接了余下 4 条，当时漏更此表 ✗，轮 271 修正）** |
 | `vmu.tasks` | **3** | **3** | `index.js`(3) | ★ **已接线 ✓（轮 270 剔除 1 个服务名后，分母由 3 修正为 2 ✓）** |
 | `vmu.partnership` | 6 | **6** | `partnership.js`(6) | ★ **已接线 ✓（轮 276 建面：`registerEntity`／`bindAccount`／`validateInvoice`，五码齐 ✓）** |
@@ -472,7 +472,7 @@
 | **名称** | 公众摘要（Public Summary） |
 | **目的** | 面向公众的摘要/图文/视频稿：**必须**可回指内部结论，且**证据强度不高于**内部结论（O-4）✓ |
 | **面向谁** | 传播团队、PI、代理 |
-| **接口形状** | 服务 `vmu.dissemination`（⚠️ **部分接线**（实测 9/11，见 §0.1））：`draft(targetRef)`／`review(draftId)`／`publish(draftId)`；工具 `vibe_vmu_outreach` ⛔ 未实现；钩子 `outreach/draft-before` ⛔ 提案 |
+| **接口形状** | 服务 `vmu.dissemination`（⚠️ **部分接线**（实测 10/12，见 §0.1））：`draft(targetRef)`／`review(draftId)`／`publish(draftId)`；工具 `vibe_vmu_outreach` ⛔ 未实现；钩子 `outreach/draft-before` ⛔ 提案 |
 | **可调控参数** | `vmu.dissemination.publicSummaryRequired`（默认 `true`）、`vmu.dissemination.evidenceFidelity`（默认 `strict`；可选 `warn`）、`vmu.dissemination.embargoRespect`（默认 `true`）、`vmu.dissemination.languageSet`（默认 `["zh","en"]`） |
 | **相关错误码** | `VMU_OUTREACH_EVIDENCE_MISMATCH` ⛔／`VMU_OUTREACH_EMBARGO` ⛔／`VMU_OUTREACH_REF_MISSING` ⛔ |
 | **四条哲学** | F：不启用＝无传播面 ✓｜T：保真档位/语言集可配 ✓｜D："哪些词算夸大"由 pack 的词表判定点 ✓｜X：新渠道只加渲染器 ✓ |
@@ -488,7 +488,7 @@
 |---|---|
 | **名称** | 媒体与开放评审（Media & Open Review） |
 | **目的** | 媒体询问、开放评审（公开评审意见）的**运营流程**：谁可代表机构发声、什么可公开 ✓ |
-| **接口形状** | 服务 `vmu.dissemination.mediaRequest()`／`openReview(package)`（⚠️ **部分接线**（实测 9/11，见 §0.1）） |
+| **接口形状** | 服务 `vmu.dissemination.mediaRequest()`／`openReview(package)`（⚠️ **部分接线**（实测 10/12，见 §0.1）） |
 | **可调控参数** | `vmu.dissemination.mediaApprovalPolicy`（默认 `spokesperson-only`）、`vmu.dissemination.openReviewEnabled`（默认 `false`）、`vmu.dissemination.anonymityPreserve`（默认 `true`） |
 | **相关错误码** | `VMU_OUTREACH_MEDIA_UNAUTHORIZED` ⛔／`VMU_OUTREACH_ANONYMITY_BREACH` ⛔ |
 | **四条哲学** | F：不声明＝无人可代表机构 ✓｜T：发言人/开放评审开关可配 ✓｜D：发言人名单由 pack ✓｜X：新渠道只加适配 ✓ |
@@ -503,7 +503,7 @@
 |---|---|
 | **名称** | 影响记录 |
 | **目的** | 记录传播与转化效果（引用数、媒体报道、政策引用、教学使用），**用于运营决策**而非学术评价 ✓ |
-| **接口形状** | 服务 `vmu.dissemination.impact()`（⚠️ **部分接线**（实测 9/11，见 §0.1）） |
+| **接口形状** | 服务 `vmu.dissemination.impact()`（⚠️ **部分接线**（实测 10/12，见 §0.1）） |
 | **可调控参数** | `vmu.dissemination.impactLogFields`（默认 `["channel","reach","date","ref"]`）、`vmu.dissemination.impactUseInEvaluation`（默认 `false` ✗） |
 | **相关错误码** | `VMU_OUTREACH_IMPACT_INCOMPLETE` ⛔ |
 | **四条哲学** | F：不记＝无影响面 ✓｜T：字段/是否用于考核可配 ✓｜D：考核规则由 pack ✓｜X：新指标只加字段 ✓ |
@@ -907,7 +907,7 @@
 | O2 | ~~财务金额与币种：本仓**没有任何货币类型/舍入实现**~~ ★★ **已过期（★ 轮 521 实测 ✓）**：★ **`funding.js` 实现了【最小单位**]金额** ✓（`vmu.funding.currency`／`approvalThresholdMinor`／`pettyCashLimitMinor`／`settlementRoundMinor` ✓）★ 以及内部的 `moneyOr` 校验器（★ 注释即指向本卷 §15-10 ✓）⇒ ★ **本项应改为"最小货币类型【已有**]，★ 缺的是【跨面统一**]"** ✓ | 已核实（本卷 §1 成熟度表） | 全卷为设计目标；不得据以推理 ✗ |
 | O3 | 与 17 的令牌/钱换算边界 | 需要一条**静态门**才能变成机器事实 ★★ **轮 524 实测【部分有载体**]✓：★ 核心里 `rate` **368** 处／`convert` **3** 处 ⇒ ★ **换算面已存在** ✓ ⇒ **缺的是"跨面统一口径"** ✓ |
 | O4 | 披露时钟与 16 出版面的仲裁顺序 | 需要一条**判定点**与冲突记录格式 ★★ **轮 524 实测【有载体**]✓：★ `disclosure` **96** 处／`embargo` **25** 处 ⇒ ★ **披露时钟与禁运已实现** ✓ ⇒ **缺的是与 16 出版面的【仲裁顺序判定点**]** ✓ |
-| O5 | 传播"夸大词表"的来源与维护者 | 无 | §6.1 的 `strict` 档位缺词表即无法判定  ★★ **轮 525 判定：保留** ✓ —— ★ **消费者＝(i) 评审与出版** ✓：★ `strict` 档位要判"传播是否夸大"，**没有词表就无法判定** ✓ ⇒ ★ **有消费者、留待做** ✓ |
+| O5 | 传播"夸大词表"的来源与维护者 | ★★★ **轮 530 已实现** ✓：★ **`vmu.dissemination.exaggerationWords`（stringList，默认【空**]⇒ 零机制 ✓）**；★ `publication.js` 的 `outreachPack` 在 `strict` 档命中即 **具名拒 `VMU_OUTREACH_EXAGGERATED`** ✓（★ 带 `words` 与指向设置的 hint ✓）；★ `warn` 档记警告不拒 ✓；★★ **词表由【声明**]决定，内核对它没有任何意见** ✓（★ 轮 63 裁定：落点在论文轨道的交付点 ✓） | §6.1 的 `strict` 档位缺词表即无法判定  ★★ **轮 525 判定：保留** ✓ —— ★ **消费者＝(i) 评审与出版** ✓：★ `strict` 档位要判"传播是否夸大"，**没有词表就无法判定** ✓ ⇒ ★ **有消费者、留待做** ✓ |
 | O6 | 会计科目树与合规项清单的模板集 | 无 | pack 无法落地（§3/§8）  ★★ **轮 525 判定：【降级为扩展**]** ✓ —— ★ **消费者＝无** ✗：★ 会计科目树与合规项模板集是**财务/审计**的物件，★ **对数学研究不产生消费者** ✓ ⇒ ★ 按审批原则移出原卷、不再实现 ✓ |
 | O7 | 容量预测的数据来源（任务板？历史用量？） | §9.4 的 `fair-share` 无输入 ★★ **轮 524 实测【有载体**]✓：★ `forecast` **35** 处／`predict` **1** 处 ⇒ ★ **容量预测有实现** ✓ ⇒ **缺的是数据来源的统一** ✓ |
 | O8 | 人事决策的"人类在环"在无人类在场时如何处置 | 未定 | §10.5 的阻塞语义  ★★ **轮 525 判定：保留** ✓ —— ★ **消费者＝(j) 代理自组织** ✓：★ "无人类在场时如何阻塞"**正是多智能体自组织的核心语义** ✓ ⇒ 有消费者、留待做 ✓ |

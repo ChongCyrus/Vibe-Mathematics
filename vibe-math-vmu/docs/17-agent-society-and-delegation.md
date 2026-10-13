@@ -232,7 +232,7 @@
 
 - **委托审计（delegation audit）** ｜ 目的：每次授权都有据 ｜ 面向谁：审计者 ｜ 接口形状：**部分 ✓**＝07 审计落盘（`vmu/audit/<date>.jsonl` ✓）＋各服务 `history()` ✓；规划统一查询（§4 ✓／08 `vmu.audit.*` ✓） ｜ 可调控：`vmu.audit.*` ✓（08）／`vmu.explain.*` ｜ 错误码：`VMU_IO_FAILED`（✓）／`VMU_EXPLAIN_DENIED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**拒绝也审计**（08 I-3 同族 ✓）；写失败必须具名（`audit.lastWriteError` ✓） ｜ 依赖：07 ✓ ｜ 成熟度：**部分 ✓** ｜ 优先级：P0
 - **理由字段（reason discipline）** ｜ 目的：每个社会动作都能回答"凭什么" ｜ 面向谁：全体 ｜ 接口形状：**约定＋判定点**（规划 `society.requireReason` ⛔ 未实现） ｜ 可调控：`vmu.explain.reasonRequired`（默认 true，覆盖委托/仲裁/罢免/解散）／`reasonMaxChars` ｜ 错误码：`VMU_REASON_REQUIRED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**S-4（设计目标）**：缺 `reason` ⇒ 具名拒（不是警告 ✓；**实现时**由各动作强制，**当前未实现** ✗） ｜ 依赖：各动作实现 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P0
-- **可解释报告（explain report）** ｜ 目的：人可读的"发生了什么、为什么" ｜ 面向谁：人类／审计者 ｜ 接口形状：规划 `kernel.explain.report({subject,windowMs})`（⛔ 未实现）；工具面规划 `vibe_vmu_explain`（⛔ 未实现） ｜ 可调控：`vmu.explain.detail`／`includeChains`／`includeScores` ｜ 错误码：`VMU_EXPLAIN_DENIED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：报告**只读**、可复算（引用审计 id ✓）；不得包含私聊内容（08 D6 ✓） ｜ 依赖：07 ✓＋05 钩子追踪 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
+- **可解释报告（explain report）** ｜ 目的：人可读的"发生了什么、为什么" ｜ 面向谁：人类／审计者 ｜ 接口形状：规划 `kernel.explain.report({subject,windowMs})`（⛔ 未实现）；工具面**已落地** `vibe_vmu_explain`（✓ 轮 530；原写规划（⛔ 未实现） ｜ 可调控：`vmu.explain.detail`／`includeChains`／`includeScores` ｜ 错误码：`VMU_EXPLAIN_DENIED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：报告**只读**、可复算（引用审计 id ✓）；不得包含私聊内容（08 D6 ✓） ｜ 依赖：07 ✓＋05 钩子追踪 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
 - **追踪与关联（trace correlation）** ｜ 目的：把"一件事"的全链路串起来 ｜ 面向谁：审计者 ｜ 接口形状：**部分 ✓**＝05 中间件 `traceId`／`trace(traceId)` ✓ ｜ 可调控：`vmu.audit.traceKeepMs` ✓（08）／`vmu.explain.correlateBy` ｜ 错误码：`VMU_NO_SUCH_OBJECT`／`VMU_EXPLAIN_DENIED` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：社会动作**必须带 traceId**（可串到会议/表决/任务 ✓） ｜ 依赖：05 ✓ ｜ 成熟度：**部分 ✓** ｜ 优先级：P1
 
 ---
@@ -552,7 +552,7 @@
 | `vibe_vmu_handover` | **未实现 ⛔（规划）** | 交接单/压缩包/验收 |
 | `vibe_vmu_charter` | **未实现 ⛔（规划）** | 宪章/创设/裂变/解散 |
 | `vibe_vmu_identity` | **未实现 ⛔（规划）** | 主体绑定/归属/化名 |
-| `vibe_vmu_explain` | **未实现 ⛔（规划）** | 可解释报告/导出 |
+| `vibe_vmu_explain` | **✓ 已实现（轮 530）** | 可解释报告/导出（★ 工具已落地：`vibe_vmu_explain` ✓） |
 | `vibe_vmu_memory` | **未实现 ⛔（规划）** | 经验卡/技能库/压缩 |
 | `vibe_vmu_course` | **未实现 ⛔（规划）** | 课程/单元/作业/提交（§28） |
 | `vibe_vmu_grade` | **未实现 ⛔（规划）** | 评审/发布/追加改分（§28） |

@@ -138,7 +138,6 @@
 | `vibe_vmu_course` | `docs/17` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_custody` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_delegate` | `docs/17` | — ⛔ 规划/未实现 | — |
-| `vibe_vmu_explain` | `docs/17` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_formal` | `docs/15` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_formal_search` | `docs/15` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_funding` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |
