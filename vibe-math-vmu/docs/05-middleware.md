@@ -352,3 +352,38 @@
 4. **脚本桥沙箱边界未定** ✗：M3 脚本能否调用外部命令（本卷建议**默认否** ✓）尚未由代码强制 ✗。
 5. **熔断/降级的观测面**未核 ✗：`control/heartbeat` 是否常驻携带"被熔断条目清单"未定 ✓。
 6. **`rewriteArgs` 在宿主 `tools/pre-execute` 永久不支持** ✗（当前具名拒 `VMU_NOT_PERMITTED` ✓）⇒ 是否需要 vmu 侧"改写入参"通道未裁 ✗。
+
+<!-- BEGIN GENERATED: hook-index -->
+
+### 钩子索引（★ **生成**：来自 `VU_HOOKS` ＋ `DEFAULT_FAILURE` ＋ 实仓 emit 扫描 ✓）
+
+> ★★★ **本节的数字【曾经手写、并因此过期**]✗** ✓：★ **§5 的标题写着"**20** 个冻结名"，而 `VU_HOOKS` 在轮 496 已增至 **22**（★ 新增 `budget/warn` 与 `member/self-report` ✓ —— ★ 两个都是**修活 bug 时**加上的 ✓）⇒ ★★ **手写计数【必然**]落后于代码** ✓ ⇒ **这张表改为生成** ✓。
+
+| 钩子 | 默认失败策略 | 生产者 |
+|---|---|---|
+| `member/self-report` | `open` | `members.js` |
+| `budget/warn` | `open` | `budget.js` |
+| `member/wake-before` | `closed` | `members.js` |
+| `member/wake-after` | `closed` | `members.js` |
+| `turn/reply-parsed` | `closed` | `index.js` |
+| `meeting/round-start` | `closed` | `meeting.js` |
+| `meeting/round-end` | `closed` | `meeting.js`、`minutes.js` |
+| `ballot/cast` | `closed` | `ballot.js` |
+| `ballot/tally` | `closed` | `ballot.js` |
+| `record/append-before` | `closed` | `library.js` |
+| `record/appended` | `open` | `compliance.js`、`domaingate.js`、`handover.js`、`minutes.js`、`tenure.js` |
+| `task/assign` | `closed` | `members.js`、`tasks.js` |
+| `task/transition` | `closed` | `tasks.js` |
+| `prompt/section-assembled` | `open` | `index.js` |
+| `budget/exceeded` | `abort` | `fairness.js` |
+| `pack/loading` | `closed` | `pack.js` |
+| `pack/loaded` | `closed` | `pack.js` |
+| `settle/before` | `closed` | `tasks.js` |
+| `settle/after` | `closed` | `tasks.js` |
+| `control/paused` | `open` | `index.js` |
+| `control/resumed` | `open` | `index.js` |
+| `control/heartbeat` | `open` | `index.js` |
+
+> ★★ 合计 **22** 个冻结钩子 ✓；★ **无默认策略的 **0** 个** ✓。
+
+<!-- END GENERATED: hook-index -->

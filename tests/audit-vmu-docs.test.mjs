@@ -207,7 +207,9 @@ ok(unregisteredInCode.length === 0,
     const rows = [...contract.matchAll(new RegExp('^\\| `' + svc.replace('.', '\\.') + '`.*$', 'gm'))]
     ok(rows.length > 0, 'contract row exists for ' + svc, 'missing')
     if (rows.length === 0) continue
-    const row = rows[rows.length - 1][0]
+    // The row that DOCUMENTS methods is the row that documents methods. The generated service index also has one row per
+    // service, with a purpose and no method list, so picking by position would make every method look omitted.
+    const row = rows.map((r) => r[0]).sort((a, b) => (b.match(/\(/g) || []).length - (a.match(/\(/g) || []).length)[0]
     const impl = publicKeys(readFileSync(join(VMU, rel), 'utf8'))
     const DOC_SKIP = ['async', 'await', 'if', 'for', 'while', 'return', 'function', 'new', 'typeof']
     const documented = new Set([...row.matchAll(/`?([a-zA-Z][a-zA-Z0-9]*)\(/g)].map((m) => m[1]).filter((n) => !DOC_SKIP.includes(n)))

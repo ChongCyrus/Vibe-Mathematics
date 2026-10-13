@@ -1378,3 +1378,123 @@ vmu.packs.active: [v5r]
 - **JSON Schema 投影工具**未定（Schemastery 是否自带 `toJSONSchema`，或需自写）⇒ 未核；
 - **DSH settings 命名空间与本方案的对齐方式**（是否用 `settings/document-updated` 做热改入口）未核 ⇒ 见 14-§1（O1 邻近项）；
 - **谁能改**的默认集合（office vs 角色槽位）为提案，待 P2 权限面落地后校准。
+
+<!-- BEGIN GENERATED: settings-index -->
+
+### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
+
+> ★★ **键 **1056** 个，前缀家族 **108** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+
+| 家族 | 键数 |
+|---|---|
+| ` + key,
+      .*` | 1 |
+| `vmu.admission.*` | 12 |
+| `vmu.agenda.*` | 6 |
+| `vmu.agreements.*` | 7 |
+| `vmu.alerts.*` | 12 |
+| `vmu.allocation.*` | 20 |
+| `vmu.animal.*` | 9 |
+| `vmu.anonymity.*` | 2 |
+| `vmu.arbitration.*` | 8 |
+| `vmu.archive.*` | 5 |
+| `vmu.audit.*` | 17 |
+| `vmu.avail.*` | 3 |
+| `vmu.ballot.*` | 22 |
+| `vmu.board.*` | 6 |
+| `vmu.budget.*` | 9 |
+| `vmu.capacity.*` | 12 |
+| `vmu.charter.*` | 18 |
+| `vmu.citations.*` | 6 |
+| `vmu.clinical.*` | 9 |
+| `vmu.clock.*` | 7 |
+| `vmu.collab.*` | 7 |
+| `vmu.collusion.*` | 4 |
+| `vmu.compat.*` | 4 |
+| `vmu.compliance.*` | 20 |
+| `vmu.conference.*` | 18 |
+| `vmu.conflict.*` | 8 |
+| `vmu.control.*` | 7 |
+| `vmu.core.*` | 3 |
+| `vmu.crypto.*` | 10 |
+| `vmu.custody.*` | 5 |
+| `vmu.data.*` | 2 |
+| `vmu.dedupe.*` | 3 |
+| `vmu.delegation.*` | 12 |
+| `vmu.discipline.*` | 6 |
+| `vmu.dissemination.*` | 9 |
+| `vmu.explain.*` | 7 |
+| `vmu.export.*` | 2 |
+| `vmu.external.*` | 31 |
+| `vmu.fairness.*` | 13 |
+| `vmu.fingerprint.*` | 3 |
+| `vmu.formal.*` | 5 |
+| `vmu.funding.*` | 16 |
+| `vmu.funds.*` | 11 |
+| `vmu.grant.*` | 4 |
+| `vmu.handover.*` | 11 |
+| `vmu.hooks.*` | 1 |
+| `vmu.human.*` | 6 |
+| `vmu.idempotency.*` | 9 |
+| `vmu.identity.*` | 9 |
+| `vmu.index.*` | 3 |
+| `vmu.ip.*` | 15 |
+| `vmu.license.*` | 4 |
+| `vmu.lifecycle.*` | 11 |
+| `vmu.limits.*` | 5 |
+| `vmu.math.*` | 97 |
+| `vmu.meetings.*` | 56 |
+| `vmu.memory.*` | 16 |
+| `vmu.metadata.*` | 2 |
+| `vmu.metrics.*` | 7 |
+| `vmu.middleware.*` | 7 |
+| `vmu.migration.*` | 11 |
+| `vmu.minutes.*` | 7 |
+| `vmu.motions.*` | 9 |
+| `vmu.naming.*` | 1 |
+| `vmu.notify.*` | 24 |
+| `vmu.pack.*` | 4 |
+| `vmu.packs.*` | 5 |
+| `vmu.paper.*` | 4 |
+| `vmu.partnership.*` | 6 |
+| `vmu.paths.*` | 2 |
+| `vmu.pointer.*` | 1 |
+| `vmu.privacy.*` | 6 |
+| `vmu.projection.*` | 1 |
+| `vmu.prompts.*` | 13 |
+| `vmu.provenance.*` | 2 |
+| `vmu.prune.*` | 4 |
+| `vmu.publish.*` | 3 |
+| `vmu.quality.*` | 3 |
+| `vmu.quota.*` | 4 |
+| `vmu.ratelimit.*` | 8 |
+| `vmu.records.*` | 32 |
+| `vmu.refs.*` | 3 |
+| `vmu.replay.*` | 5 |
+| `vmu.replication.*` | 2 |
+| `vmu.repro.*` | 7 |
+| `vmu.resource.*` | 17 |
+| `vmu.review.*` | 4 |
+| `vmu.reviewers.*` | 4 |
+| `vmu.roles.*` | 11 |
+| `vmu.safety.*` | 12 |
+| `vmu.schedule.*` | 14 |
+| `vmu.search.*` | 3 |
+| `vmu.skills.*` | 10 |
+| `vmu.state.*` | 6 |
+| `vmu.store.*` | 15 |
+| `vmu.tags.*` | 3 |
+| `vmu.tasks.*` | 3 |
+| `vmu.teaching.*` | 24 |
+| `vmu.tenure.*` | 11 |
+| `vmu.tools.*` | 1 |
+| `vmu.topology.*` | 12 |
+| `vmu.trust.*` | 16 |
+| `vmu.turn.*` | 24 |
+| `vmu.tx.*` | 6 |
+| `vmu.visibility.*` | 1 |
+| `vmu.work.*` | 2 |
+| `vmu.workflow.*` | 27 |
+| `vmu.workspace.*` | 3 |
+
+<!-- END GENERATED: settings-index -->

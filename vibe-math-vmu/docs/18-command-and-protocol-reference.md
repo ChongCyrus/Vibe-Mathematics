@@ -406,3 +406,26 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 3. §3 计划工具的命名是否照本卷草案（避免与 `math_computation` 重叠）。
 4. `who` 面是否新增主体（当前 `office`／`role:chair` 两档），以支撑更细的机制管理权限。
 5. 本卷 §7 是否需要在 `03-§8` 上生成**自动投影**（避免人工同步漂移）。
+
+<!-- BEGIN GENERATED: tool-index -->
+
+### 工具与 action 索引（★ **生成**：来自 `host.js` 的 `TOOL_NAMES` 与 action 枚举 ✓）
+
+> ★★ **本节§1 的表与 `TOOL_NAMES` 实测【已经一致**]✓（★ 轮 491 起有守卫 ✓）；★ **但它是**手写**的** ⇒ ★ **改为生成，使未来不一致在源头不可能** ✓。
+
+| # | 工具键 | 工具名 |
+|---|---|---|
+| 1 | `status` | `vibe_vmu_status` |
+| 2 | `set` | `vibe_vmu_set` |
+| 3 | `middleware` | `vibe_vmu_middleware` |
+| 4 | `records` | `vibe_vmu_records` |
+| 5 | `script` | `vibe_vmu_script` |
+| 6 | `pack` | `vibe_vmu_pack` |
+| 7 | `control` | `vibe_vmu_control` |
+| 8 | `meeting` | `vibe_vmu_meeting` |
+| 9 | `task` | `vibe_vmu_task` |
+| 10 | `turn` | `vibe_vmu_turn` |
+
+> ★★ 合计 **10** 个工具 ✓；★ **action 枚举 **9** 组／**43** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload` ｜ `status/pause/resume/stop/beat/roster/hire/fire` ｜ `list/open/speak/silent/close/ballot/vote/tally/reopen` ｜ `decisive/advisory` ｜ `list/create/assign/transition/stage/advance/brief/history`。
+
+<!-- END GENERATED: tool-index -->

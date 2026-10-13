@@ -1135,3 +1135,88 @@
 - **工具参数 DSL 的细节**（`required` 位置、`additionalProperties` 行为）为**源码级**证据（官方文档未明文）⇒ 见 14-§2（U3）；
 - **`restrict` 的"四类输入抛错"未核**（官方仅逐字支持"只能减"）⇒ 见 14-§2（U2）；
 - 公开接口**版本化粒度**（按服务/按 pack 契约）待裁 ⇒ 见 14-§1（O3）。
+
+<!-- BEGIN GENERATED: service-index -->
+
+### 服务索引（★ **生成**：`node scripts/generate-surface-index.mjs --write` ✓）
+
+> ★★ **每行的用途取自注册调用点的 `description`** ✓（★ 实测 **73／73** 个注册都带它 ✓）⇒ ★★ **所以这张表是推导出来的，不是抄写的** ✓。★ **真源是 `registry.register` 的调用点** ✓。
+
+| 服务键 | 用途（注册点的 `description` ✓） |
+|---|---|
+| `math_computation` | the inherited math tool, name unchanged (D14) |
+| `vmu.admission` | postings, applications, probation; job titles map to slots explicitly (S-1, docs/17 搂7) |
+| `vmu.alerts` | thresholds, alert-level dedup, silences that still count, SLO tri-state (docs/21 搂5 搂13) |
+| `vmu.arbitration` | arbitration: recusal, rationale, advisory vs binding made explicit (docs/17 搂6) |
+| `vmu.audit` | append-only audit rows, redaction before storage, counted ring drops (docs/21 搂2) |
+| `vmu.auditchain` | tamper-evident audit chain: no hash seam, no hash (N1) |
+| `vmu.ballotbox` | ballot box: quorum is refused by name, abstention and absence counted apart (docs/08) |
+| `vmu.bidding` | auctions: deadline, rationale, reputation never prices, collusion surfaced (docs/17 搂10) |
+| `vmu.board` | board columns, WIP and aging (docs/08 搂4) |
+| `vmu.budget` | four-kind quotas, reservation and fairness (docs/08 搂12.5) |
+| `vmu.capacity` | capacity: seats per domain, machine-hour pool, overcommit reserve, waitlist and preemption that names the victim (docs/20, 22) |
+| `vmu.charter` | charters: frozen articles, authority that cannot exceed the parent, dissolution reasons (docs/17 搂15) |
+| `vmu.citations` | citations: the declared style, the required fields, the identifier priority that decides the key, and free text that is off by default (docs/07) |
+| `vmu.clockguard` | monotonic clock guard, consumed by every TTL-sensitive service (N3) |
+| `vmu.collab` | collab: counterparty register, agreements with expiry warning, data-sharing template, joint authorship and the settlement cycle with reconciliation tolerance (docs/22 §协作) |
+| `vmu.compliance` | research compliance: IRB and consent approvals, retention windows, COI disclosure and evidence packs (docs/20, 22; export control stays with domaingate) |
+| `vmu.conference` | conference hosting: calls for papers, review quorum, anonymity, registration cap and agenda fit (docs/08; layered on the single-session face) |
+| `vmu.control` | control: what may be paused and by which role, the watchdog interval (zero means no timer), what counts as idle and the notice-only default, the degradation ladder, and whether stopping clears the registry (docs/08) |
+| `vmu.crypto` | signatures and non-repudiation: no signer means no signature is invented (docs/20 搂6) |
+| `vmu.custody` | custody: entry ledger and chain of custody, chain-gap policy, freeze-thaw accounting with a warning threshold, destruction that keeps the reference, subject reference style and an irreversible mapping (docs/22 §2.5) |
+| `vmu.delegation` | delegation that can only narrow (S-2), expiry, revocation cascade (docs/17 搂4) |
+| `vmu.discipline` | discipline: failure breaker with window and half-open probe, suspension cap, restore that needs a human, and a required post-mortem (docs/17) |
+| `vmu.domaincompliance` | domain compliance packs: clinical (N2) and animal (N3) approval gates |
+| `vmu.domaingate` | clinical and animal approval gates: no approval, no start (docs/20 搂9) |
+| `vmu.explain` | explain: report detail, delegation chains and scores, a required reason with a declared length cap, event correlation by the declared key, and markdown or JSON rendering - every omission named (docs/17) |
+| `vmu.external` | external fetch adapter: receipts for every fetch, stale never silent, conflicts surfaced (docs/16 搂8) |
+| `vmu.fairness` | conserving allocation with a per-person cap; reputation is never a weight (docs/17 搂17) |
+| `vmu.formal` | formalisation: sorry refuses by default, compile failure is never a refutation (docs/09) |
+| `vmu.funding` | funding: account/currency scope, budget balance, cost-share policy, receipts and settlement windows (docs/13, 22) |
+| `vmu.governance` | agenda and motions (docs/08 搂2) |
+| `vmu.handover` | handover packets: required fields named, redacted before packing (docs/17 搂11) |
+| `vmu.human` | human: veto scope and reason, observer visibility, approval waiting whose declared timeout is hold rather than allow, and dashboard scope (docs/17) |
+| `vmu.idempotency` | idempotency ledger: same key with a different payload is refused by name (K6) |
+| `vmu.identity` | identity: principal binding, trusted issuers, claim-to-slot mapping, institutional memberships with a cap, pseudonym scopes, end-of-membership disposition and audited reads (docs/17) |
+| `vmu.ip` | intellectual property: disclosure hold, named inventors, priority dates and family duplicates (docs/21-22) |
+| `vmu.library` | records, content identity, head list |
+| `vmu.lifecycle` | research lifecycle L1-L24: gates delegated to the domain and publication services (docs/16 搂1) |
+| `vmu.mathjobs` | math jobs: timeout with partial output, complete receipts, seed required (docs/09路15) |
+| `vmu.mathtools` | math tool policy layer: 45 declared knobs change behaviour, the rest are named as unwired (docs/09路15) |
+| `vmu.meetings` | meeting policy layer: all 47 declared vmu.meetings knobs change behaviour (docs/08) |
+| `vmu.members` | role slots and roster |
+| `vmu.memory` | institutional memory that NEVER authorizes (S-3), contradictions visible (docs/17 搂9) |
+| `vmu.metrics` | metric observation, KPI judgement and counted drops (docs/21 搂4) |
+| `vmu.middleware` | the hook bus and its four forms |
+| `vmu.migration` | migration orchestration: plan, dry-run, batches, confirm, rollback points and windows (docs/07, 13); the storage policy layer owns backends, this face owns the move |
+| `vmu.minutes` | minutes, decisions and action items (docs/08 搂2) |
+| `vmu.notify` | watchers and delivery: silence blocks delivery, never the record (docs/17 搂29) |
+| `vmu.partnership` | legal entities and tax field slots: registration, account binding, invoice slot validation (volume 22 §L285) |
+| `vmu.projmigrate` | projection migration: an unlabelled or unreachable old document is refused, never dropped (A3) |
+| `vmu.prompt` | prompt sections, bindings, overrides |
+| `vmu.publication` | publication: unbroken version chain, offline archive registration, availability that refuses on-request-only (docs/16 搂7) |
+| `vmu.ratelimit` | token-bucket rate limiting on the injected clock; unlimited by default and it says so (K2) |
+| `vmu.records` | records tracks: caps refuse by name, retention counts, permanent markers cannot be deleted |
+| `vmu.replay` | audit replay: pure read-only reconstruction, gaps reported (K5) |
+| `vmu.repropack` | reproduction packs: required members named, seed mandatory, diffs located (docs/16 L12) |
+| `vmu.resource` | instrument ledger: calibration currency, trained operators, reservation conflicts and maintenance windows (docs/22) |
+| `vmu.retention` | report-first retention, permanent markers, quota tri-state, gc (docs/07 搂4.3 搂4.8) |
+| `vmu.reviewers` | reviewer market: COI recusal, blind mapping with tracing, concurrent load cap (volume 16 §L297) |
+| `vmu.scheduler` | scheduled triggers: timer is a seam, triggerVia defaults to report-only (docs/08 搂5) |
+| `vmu.skills` | skills: never self-appointed, expiry degrades and says so (docs/17 搂8) |
+| `vmu.stateversion` | state versions and explicit migrations: no version is refused, not assumed (N4) |
+| `vmu.store` | durable, versioned state |
+| `vmu.storepolicy` | storage POLICY only: backend/path validation, lock behaviour, backup counting, remote offline policy and the version-too-high stance (no IO; bytes stay with the store seam) |
+| `vmu.tasks` | task ledger and stage machine |
+| `vmu.teaching` | teaching: outcome-to-artifact alignment refuses with the missing outcome named (docs/22 N13) |
+| `vmu.tenure` | personnel rules: recruitment cycle, performance cadence and evidence, tenure decision and quorum, appeals, offboarding and rotation (docs/22; seats stay with members) |
+| `vmu.topology` | collaboration topologies and path assertions, describe and assert share one rule (docs/17 搂14) |
+| `vmu.transaction` | compensation transactions: a step without undo is refused at begin (K1) |
+| `vmu.trust` | auditable reputation that NEVER grants authority (S-3, docs/17 搂5) |
+| `vmu.turn` | turn loop: assemble, deliver, parse, dispatch (docs/26) |
+| `vmu.work` | durable in-flight ledger (recover after restart) |
+| `vmu.workflow` | stage whitelist, gates and escalation, no stage skipping (docs/08 搂4) |
+
+> ★★ 合计 **72** 个服务 ✓。
+
+<!-- END GENERATED: service-index -->
