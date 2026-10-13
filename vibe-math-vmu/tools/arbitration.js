@@ -21,7 +21,7 @@ export function makeArbitrationSpec({ param, refused, TOOL_NAMES, kernel }) {
         if (action === 'rule') return Object.assign({ ok: true, action }, await arbitration.rule(request))
         if (action === 'appeal') return Object.assign({ ok: true, action }, await arbitration.appeal(request))
         if (action === 'escalate') return Object.assign({ ok: true, action }, await arbitration.escalate(request))
-        if (action === 'effective') return Object.assign({ ok: true, action }, await arbitration.effective({ id }))
+        if (action === 'effective') return Object.assign({ ok: true, action }, await arbitration.effective({ ...request, id }))
         if (action === 'list') return Object.assign({ ok: true, action }, await arbitration.list())
         if (action === 'history') return Object.assign({ ok: true, action }, await arbitration.history())
         if (action === 'status') return Object.assign({ ok: true, action }, await arbitration.status())

@@ -19,9 +19,9 @@ export function makeConferenceSpec({ param, refused, TOOL_NAMES, kernel }) {
         if (action === 'decide') return Object.assign({ ok: true, action }, await conference.decide(request))
         if (action === 'register') return Object.assign({ ok: true, action }, await conference.register(request))
         if (action === 'planAgenda') return Object.assign({ ok: true, action }, await conference.planAgenda(request))
-        if (action === 'viewSubmission') return Object.assign({ ok: true, action }, await conference.viewSubmission({ id }))
+        if (action === 'viewSubmission') return Object.assign({ ok: true, action }, await conference.viewSubmission({ ...request, id }))
         if (action === 'list') return Object.assign({ ok: true, action }, await conference.list())
-        if (action === 'receiptsView') return Object.assign({ ok: true, action }, await conference.receiptsView({ id }))
+        if (action === 'receiptsView') return Object.assign({ ok: true, action }, await conference.receiptsView({ ...request, id }))
         if (action === 'status') return Object.assign({ ok: true, action }, await conference.status())
         return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
       } catch (e) {

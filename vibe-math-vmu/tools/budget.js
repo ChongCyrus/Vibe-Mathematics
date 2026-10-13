@@ -33,10 +33,10 @@ export function makeBudgetSpec({ param, refused, TOOL_NAMES, kernel }) {
       ratio = ratio !== undefined ? ratio : rq.ratio
         try {
           const budget = kernel.budget
-          if (action === 'open') return Object.assign({ ok: true, action }, await budget.open({ scope, limits: limits || {}, perTaskShare }))
-          if (action === 'charge') return Object.assign({ ok: true, action }, await budget.charge({ scope, kind, amount, taskId }))
-          if (action === 'reserve') return Object.assign({ ok: true, action }, await budget.reserve({ scope, ratio }))
-          if (action === 'remaining') return Object.assign({ ok: true, action }, await budget.remaining({ scope, kind }))
+          if (action === 'open') return Object.assign({ ok: true, action }, await budget.open({ ...request, scope, limits: limits || {}, perTaskShare }))
+          if (action === 'charge') return Object.assign({ ok: true, action }, await budget.charge({ ...request, scope, kind, amount, taskId }))
+          if (action === 'reserve') return Object.assign({ ok: true, action }, await budget.reserve({ ...request, scope, ratio }))
+          if (action === 'remaining') return Object.assign({ ok: true, action }, await budget.remaining({ ...request, scope, kind }))
           if (action === 'status') return Object.assign({ ok: true, action }, await budget.status())
           if (action === 'list') return Object.assign({ ok: true, action }, await budget.list())
           if (action === 'totals') return Object.assign({ ok: true, action }, { totals: await budget.totals() })
