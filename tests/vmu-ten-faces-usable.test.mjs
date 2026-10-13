@@ -40,10 +40,10 @@ for (const [face, key, action] of FACES) {
   if (!spec) continue
   let r
   try { r = await spec.run({ action }) } catch (e) { r = { ok: false, threw: String(e && e.message) } }
-  // some faces legitimately refuse a bare action; what must hold is that the tool ANSWERS - it reached the service and came
-  // back with either a result or a NAMED refusal. A tool that cannot be called at all would return undefined.
-  const answered = r && typeof r === 'object' && (r.ok === true || typeof r.code === 'string')
-  ok(answered, face + ': ' + TOOL_NAMES[key] + ' answers for action ' + action + ' (a result or a NAMED refusal)', { r })
+  // ROUND 555: STRICTER. The first version accepted a named refusal, which let a face whose only reachable action refuses
+  // everything pass. Each face now names a read-only action that must SUCCEED against the real kernel, so "usable" means it
+  // produces a result rather than that it can be called.
+  ok(r && r.ok === true, face + ': ' + TOOL_NAMES[key] + ' SUCCEEDS at action ' + action + ' against the real kernel', { r })
 }
 
 console.log('=== AND THE COUNT IS NOT VACUOUS ===')

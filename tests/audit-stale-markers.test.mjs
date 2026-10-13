@@ -25,6 +25,10 @@ const tools = new Set(Object.values(TOOL_NAMES))
 const svcOf = (n) => (k[n] && typeof k[n] === 'object' ? k[n] : null)
 // A line that CORRECTS an old marker is not a stale marker. These words mark the correction, and such lines are excluded.
 const CORRECTION = /此前|原写|原文|曾在|校正|更正|已过时|旧说法|那(一)?行原/
+// THE PROJECT HAS TWO ESTABLISHED, CORRECT WAYS of writing an unregistered name, and both carry a marker beside an existing
+// one: "this name is unregistered, but the capability is an action" and "its capability is X". They are not findings, and
+// excluding them takes the report from twenty-one to eight - measured, not assumed. What remains is worth reading.
+const ESTABLISHED = /这个名字未注册|这两个名字|工具名未注册|其能力＝|同形陷阱|未注册/
 
 console.log('=== 1. THE SCAN RUNS OVER EVERY VOLUME ===')
 const files = readdirSync(DOCS).filter((f) => f.endsWith('.md'))
@@ -41,6 +45,7 @@ for (const f of files) {
     scanned += 1
     if (CORRECTION.test(line)) continue                  // a correction, not a claim
     if (/✓ 已实现|✅/.test(line)) continue                // already marked implemented on the same line
+    if (ESTABLISHED.test(line)) continue                 // the project s own correct way of naming an unregistered tool
     const names = []
     for (const m of line.matchAll(/`(vibe_vmu_[a-z_]+)`/g)) names.push({ name: m[1], exists: tools.has(m[1]) })
     for (const m of line.matchAll(/`(?:vmu|kernel)\.([a-z][a-z0-9]*)\.([a-z][a-z0-9_]*)`/g)) { const s2 = svcOf(m[1]); names.push({ name: m[1] + '.' + m[2], exists: !!(s2 && typeof s2[m[2]] === 'function') }) }

@@ -175,7 +175,7 @@
 - `vibe_vmu_explain`（**✓ 已实现，轮 530**）：输入"某次拒绝/某条截断/某个字段变更"⇒ 输出**判据链**（规则→能力→决策→裁决），与 `17` 的 explain 面统一。
 - `vibe_vmu_metrics`（**计划/未实现**）：指标快照/序列查询（§4 的聚合）。
 - `vibe_vmu_health`（**计划/未实现**）：§5.1 自检清单的一键版（含降级档位与未接线项）。
-- `vibe_vmu_audit`（**计划/未实现**）：`tail/query/verify`（含审计链校验）。
+- `vibe_vmu_audit`**✓ 已实现（轮 554 ✓，10 个动作）**：`tail/query/verify`（含审计链校验）。
 - `vibe_vmu_runbook`（**计划/未实现**）：按故障指纹取 runbook 条目（§14）。
 - `vibe_vmu_export`（**计划/未实现**）：审计/指标/快照的导出与打包（脱敏后）。
 
