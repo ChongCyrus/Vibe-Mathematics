@@ -355,7 +355,6 @@ export const A_CLASS_BASELINE_FINGERPRINTS = Object.freeze([
   'vmu-planned-settings.test.mjs:A:keys',
   'vmu-prompt-v5r-bridge.test.mjs:A:names',
   'vmu-prompt-v5r-bridge.test.mjs:A:v5rPromptSections',
-  'vmu-prompt-v5r-bridge.test.mjs:B:v5rPromptSections~PROMPTS',
   'vmu-prompt.test.mjs:A:sections',
   'vmu-rules.test.mjs:A:capabilityKeys',
   'vmu-scheduler.test.mjs:A:line',

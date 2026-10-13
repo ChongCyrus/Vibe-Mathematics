@@ -131,7 +131,7 @@
 | `vibe_vmu_task` | 任务：建/派/迁移/查 | ✅ **已实现并已注册** ✓（★ 轮 477 实测 ✓）—— ★ `host.js` 用 `TOOL_NAMES.task` **注册了它** ✓（★ `kernel/tasks` 一带 ✓）；★★ **本行原写"⛔ 未实现"，那是【假的**]✗**（★ 与 `pause`／`resume`、`hire`／`fire` 同一类：★ **文档落后于代码** ✓） |
 | `vibe_vmu_lean_lib` / `vibe_vmu_lean_read` / `vibe_vmu_lean_archive` | 形式化面 | ⛔ **工具名未注册**（host 未注册这三个工具名，故此行仍标未实现 ✓）—— 但**能力已实现** ✓：`kernel/lean.js` 的 `archive`／`read`／`lib`（轮 131）：登记**具名引用＋内容哈希**、`read` **回源并校验哈希**、**漂移即具名拒且不返回旧内容**（**只引不复制** ✓） |
 | `vibe_vmu_pause` / `vibe_vmu_resume` | 暂停/恢复调度 | ⛔ **这两个名字未注册** —— 但**能力已实现且早已暴露** ✓：★ **它们是 `vibe_vmu_control` 的 `action=pause|resume`** ✓（★ 该工具描述原话：**"暂停是**真门禁**（任务变更会被具名拒）"** ✓）⇒ ★★★ **本行先后错过三次** ✗：**"内核没有它" ✗ → "只缺名字" ✗ → 真相：★【能力在另一个工具的动作里**]✓ |
-| `vibe_vmu_mw` | 中间件：查看/校验/干跑/禁用 | ⛔ 未实现 —— 真名是 `vibe_vmu_middleware` ✓（**它的 `validate`/`dryRun` 动作现已实现** ✓，见 §3.1） |
+| `vibe_vmu_mw` | 中间件：查看/校验/干跑/禁用 | ⛔ **工具名未注册**（★ 它只是**同形陷阱**的名字 ✓）—— 真名是 `vibe_vmu_middleware` ✓（**它的 `validate`/`dryRun` 动作现已实现** ✓，见 §3.1） |
 
 **工具面纪律**（对 DSH 的对接约束，**来源已分级标注** ✓）：
 - **参数 DSL（源码级）**：`parameters: { <名>: { type, required: true, description, enum } }` —— **`required` 写在参数内部**，**不是**顶层 `required[]` 数组 ✗；

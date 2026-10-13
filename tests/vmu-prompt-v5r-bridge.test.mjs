@@ -20,6 +20,8 @@ const ok = (cond, name, detail) => {
   if (cond) { passed += 1; console.log('  ok   ' + name) } else { failed += 1; failures.push(name); console.log('  FAIL ' + name + (detail === undefined ? '' : ' [' + JSON.stringify(detail).slice(0, 200) + ']')) }
 }
 
+ok(v5rPromptSections.length > 0 && PROMPTS.length > 0, 'B-shape guard: v5rPromptSections and PROMPTS are BOTH non-empty, so the comparison below cannot pass vacuously', { v5rPromptSections: v5rPromptSections.length, PROMPTS: PROMPTS.length })
+ok(v5rPromptSections.length > 0 && PROMPTS.length > 0, 'B-shape guard: v5rPromptSections and PROMPTS are BOTH non-empty, so the comparison below cannot pass vacuously', { v5rPromptSections: v5rPromptSections.length, PROMPTS: PROMPTS.length })
 ok(Array.isArray(v5rPromptSections) && v5rPromptSections.length === PROMPTS.length && PROMPTS.length === COUNTS.total,
   'B1. ★ every corpus entry becomes a SECTION (the counts agree: sections, corpus entries, and the recorded total)',
   { sections: v5rPromptSections.length, corpus: PROMPTS.length, recorded: COUNTS.total })
