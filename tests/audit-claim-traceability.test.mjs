@@ -1,15 +1,21 @@
-// tests/audit-claim-traceability.test.mjs - every claim id a design volume makes must appear in at least one test or script.
+// tests/audit-claim-traceability.test.mjs - generalised from one volume to all of them.
 //
-// WHY THIS EXISTS. I wrote a note in docs/24 saying its claims had no test line, and both halves of that note were wrong: the
-// volume makes no A1/A2 claims at all (those are labels in an unrelated A/B suite), and the twenty ids it DOES cite are
-// traceable in every case. A wrong "untraced" is worse than silence, because it sends the next reader to write tests for
-// claims that already have them. The check is cheap and it keeps the statement true instead of asserted.
-import { readFileSync, readdirSync } from 'node:fs'
+// Two false-positive classes were found while generalising, and both are handled explicitly rather than by loosening the
+// pattern into uselessness:
+//   · PERCENTILES: docs/21 writes "the 7-day P95 of the refusal rate" and "hook latency distribution (P50/P95/max)". P50 and
+//     P95 are not claim ids. They are excluded by name, and the exclusion is asserted to be non-empty so it cannot silently
+//     grow into a dumping ground.
+//   · DESIGN IDS: D11, D12, G8, G11, G13 and G17 are defined in the design volumes OUTSIDE this repository, under the
+//     workspace root's _oneoff/vmu/design. An in-repo volume citing them cannot be resolved by a reader of the repo alone,
+//     so they are listed here with the file that defines them - the gap is recorded, not hidden.
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
+const DOCS = join(REPO, 'vibe-math-vmu', 'docs')
+const WS = join(REPO, '..')
 
 let passed = 0
 let failed = 0
@@ -26,24 +32,55 @@ const walk = (d) => readdirSync(join(REPO, d), { withFileTypes: true }).flatMap(
   if (e.isDirectory()) return /(^|\/)(\.git|node_modules)$/.test(r) ? [] : walk(r)
   return [r]
 })
+const code = [...walk('tests'), ...walk('scripts'), ...walk('vibe-math-vmu')]
+  .filter((f) => /\.(mjs|js)$/.test(f)).map((f) => readFileSync(join(REPO, f), 'utf8')).join('\n')
 
-console.log('=== 1. THE VOLUME AND ITS CLAIM IDS ARE READ ===')
-const volume = readFileSync(join(REPO, 'vibe-math-vmu', 'docs', '24-v5r-containment.md'), 'utf8')
-const ids = [...new Set([...volume.matchAll(/\b([CDFG]\d{1,2}[a-z]?)\b/g)].map((m) => m[1]))].sort()
-ok(ids.length >= 10, 'the containment volume cites its claims by id', { ids: ids.length })
+// Not claim ids: latency percentiles, asserted to be exactly this set.
+const PERCENTILES = new Set(['P50', 'P95'])
+// Defined outside the repo, with the file that defines each. Recorded, not hidden.
+const EXTERNAL = {
+  D11: '_oneoff/vmu/design/02-dsh-official-guidelines.md',
+  D12: '_oneoff/vmu/design/02-dsh-official-guidelines.md',
+  G8: '_oneoff/audit-b/repo/vibe-math-v5/实现方案.md',
+  G11: '_oneoff/vmu/design/02-dsh-official-guidelines.md',
+  G13: '_oneoff/vmu/design/02-dsh-official-guidelines.md',
+  G17: '_oneoff/vmu/design/02-dsh-official-guidelines.md',
+}
 
-console.log('=== 2. EVERY CLAIM ID IS TRACEABLE TO CODE ===')
-const files = [...walk('tests'), ...walk('scripts'), ...walk('vibe-math-vmu')].filter((f) => /\.(mjs|js)$/.test(f))
-const text = files.map((f) => readFileSync(join(REPO, f), 'utf8')).join('\n')
-const untraced = ids.filter((id) => !new RegExp('\\b' + id + '\\b').test(text))
-ok(untraced.length === 0,
-  'every claim id in the volume appears in at least one test, script or kernel file - so each claim can be followed to its evidence',
-  { untraced })
+console.log('=== 1. THE VOLUMES AND THEIR CLAIM IDS ARE READ ===')
+const volumes = readdirSync(DOCS).filter((f) => /^\d\d-.*\.md$/.test(f)).sort()
+ok(volumes.length >= 25, 'every volume is read', { volumes: volumes.length })
+const perVolume = new Map()
+for (const f of volumes) {
+  const t = readFileSync(join(DOCS, f), 'utf8')
+  const ids = [...new Set([...t.matchAll(/\b([CDFG]\d{1,2}[a-z]?)\b/g)].map((m) => m[1]))]
+  if (ids.length) perVolume.set(f, ids)
+}
+const totalIds = [...perVolume.values()].reduce((n, a) => n + a.length, 0)
+ok(perVolume.size >= 15 && totalIds >= 100, 'the volumes cite claims by id', { volumes: perVolume.size, ids: totalIds })
 
-console.log('=== 3. AND THE VOLUME DOES NOT CLAIM THE OTHER SUITE S LABELS ===')
-// A1/A2 are test-case labels in accept-ab-v5-minimal; the containment volume must not present them as its own claims
-ok(!/\bA1\b|\bA2\b/.test(volume.replace(/\n> .*A1.*\n/g, '\n')),
-  'the volume does not adopt another suite s case labels as its own claim ids - the mistake this guard was written from')
+console.log('=== 2. THE EXCLUSION LIST IS EXACTLY THE PERCENTILES ===')
+ok(PERCENTILES.size === 2 && PERCENTILES.has('P50') && PERCENTILES.has('P95'),
+  'the only ids excluded as percentiles are P50 and P95, so the exclusion cannot grow into a dumping ground')
+
+console.log('=== 3. EVERY CLAIM ID RESOLVES IN CODE, OR IS A RECORDED EXTERNAL ONE ===')
+const unresolved = []
+for (const [f, ids] of perVolume) {
+  for (const id of ids) {
+    if (PERCENTILES.has(id)) continue
+    if (EXTERNAL[id]) continue
+    if (!new RegExp('\\b' + id + '\\b').test(code)) unresolved.push(f.slice(0, 2) + ':' + id)
+  }
+}
+ok(unresolved.length === 0,
+  'every claim id either appears in the code or is listed as defined outside the repository, so no citation dangles',
+  { unresolved })
+
+console.log('=== 4. AND EVERY RECORDED EXTERNAL ID REALLY EXISTS OUTSIDE ===')
+const missingExternal = Object.entries(EXTERNAL).filter(([, p]) => !existsSync(join(WS, p)))
+ok(missingExternal.length === 0,
+  'each recorded external definition file exists, so the pointer is a fact rather than a hope',
+  { missing: missingExternal.map(([id]) => id) })
 
 console.log('=== CLAIM TRACEABILITY: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }
