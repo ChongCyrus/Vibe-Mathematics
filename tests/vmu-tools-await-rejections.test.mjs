@@ -86,6 +86,10 @@ const TOOLS = [
   [{ recordsTool: true }, 'records', 'library', { action: 'list' }],
   // script: `list` only reads the declared scripts array, so `run` is the action that calls the bridge.
   [{ scriptingTool: true }, 'script', 'bridge', { action: 'run', id: 'x' }],
+  [{conferenceTool: true }, 'conference', 'conference', { action: 'status' }],
+  [{arbitrationTool: true }, 'arbitration', 'arbitration', { action: 'status' }],
+  [{charterTool: true }, 'charter', 'charter', { action: 'status' }],
+  [{recruitTool: true }, 'recruit', 'recruit', { action: 'status' }],
 ]
 
 console.log('=== 1. EVERY DISPATCHER TOOL IS DRIVEN AGAINST A REJECTING SERVICE ===')

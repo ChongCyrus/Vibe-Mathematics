@@ -29,6 +29,8 @@ import { makeFairnessSpec } from './tools/fairness.js'
 import { makeHandoverSpec } from './tools/handover.js'
 import { makeConferenceSpec } from './tools/conference.js'
 import { makeArbitrationSpec } from './tools/arbitration.js'
+import { makeCharterSpec } from './tools/charter.js'
+import { makeRecruitSpec } from './tools/recruit.js'
 //
 // TOOL SHAPE (learned from the REAL HOST, not from our own assumptions): the first scripted live run
 // (SLV) showed the preset active but NO vmu tools in the agent's tool list. The cause was this file: the
@@ -94,6 +96,8 @@ export const TOOL_NAMES = Object.freeze({
   handover: 'vibe_vmu_handover',
   conference: 'vibe_vmu_conference',
   arbitration: 'vibe_vmu_arbitration',
+  charter: 'vibe_vmu_charter',
+  recruit: 'vibe_vmu_recruit',
   // ROUND 349: the turn loop needs a real entry point. Without it the framework could run a round only from a test,
   // which is not the same as a host being able to run one - and the objective is the latter.
   turn: 'vibe_vmu_turn',
@@ -169,7 +173,7 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * adapter turns it into the host shape (`execute` returning JSON). Filtering by what actually exists keeps
  * the surface honest (docs/04 §11 ownership: mechanism only).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false, budgetTool = false, citationsTool = false, disciplineTool = false, governanceTool = false, ratelimitTool = false, explainTool = false, projmigrateTool = false, bridgeTool = false, externalTool = false, mathtoolsTool = false, auditchainTool = false, notifyTool = false, transactionTool = false, custodyTool = false, topologyTool = false, formalTool = false, collabTool = false, reviewersTool = false, clockguardTool = false, publicationTool = false, fairnessTool = false, handoverTool = false, conferenceTool = false, arbitrationTool = false }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false, budgetTool = false, citationsTool = false, disciplineTool = false, governanceTool = false, ratelimitTool = false, explainTool = false, projmigrateTool = false, bridgeTool = false, externalTool = false, mathtoolsTool = false, auditchainTool = false, notifyTool = false, transactionTool = false, custodyTool = false, topologyTool = false, formalTool = false, collabTool = false, reviewersTool = false, clockguardTool = false, publicationTool = false, fairnessTool = false, handoverTool = false, conferenceTool = false, arbitrationTool = false, charterTool = false, recruitTool = false }) {
   // A refusal carries the four documented fields, plus - when the caller has them - host-side DIAGNOSTICS
   // (the host's own stack and the exact request shape we passed). They are added ONLY when present, so no
   // existing refusal changes shape. Without this the live M3 diagnosis died at the tool boundary: the seam
@@ -504,6 +508,8 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   if (handoverTool) specs.push(makeHandoverSpec({ param, refused, TOOL_NAMES, kernel }))
   if (conferenceTool) specs.push(makeConferenceSpec({ param, refused, TOOL_NAMES, kernel }))
   if (arbitrationTool) specs.push(makeArbitrationSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (charterTool) specs.push(makeCharterSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (recruitTool) specs.push(makeRecruitSpec({ param, refused, TOOL_NAMES, kernel }))
 
   return specs
 }

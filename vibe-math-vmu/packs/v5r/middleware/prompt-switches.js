@@ -116,12 +116,13 @@ const state = turn.phase === 'meeting' ? (turn.meetingState === undefined ? null
 
 /**
  * The middleware entry as the pack mechanism wants it: an id, a kind, and the hook it contributes.
- * `on` names the point in the turn where the framework should ask; a framework that does not know
- * the point simply never asks, which is why the entry is declarative rather than imperative.
+ * `on` names the point in the turn where the framework should ask. ROUND 544: this said `turn.assemble`, a name the host
+ * does not bridge - the framework publishes `prompt/assemble` - so the entry was INERT in a real preset while the tests,
+ * which call `decideSections` directly, stayed green. A pack speaks the framework's vocabulary, so the name is the host's.
  */
 export const v5rPromptSwitchMiddleware = Object.freeze({
   id: 'v5r.prompt-switches',
   kind: 'module',
-  on: 'turn.assemble',
+  on: 'prompt/assemble',
   apply: decideSections,
 })

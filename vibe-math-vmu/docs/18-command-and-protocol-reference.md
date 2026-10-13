@@ -24,7 +24,7 @@
 
 ---
 
-## 1. 工具总表（36 个 `vibe_vmu_*` ＋ 1 个继承工具）
+## 1. 工具总表（38 个 `vibe_vmu_*` ＋ 1 个继承工具）
 
 | 工具（`TOOL_NAMES` 键） | 出现条件 | 权限面 | 幂等性 | 主要 action |
 |---|---|---|---|---|
@@ -73,6 +73,9 @@
 - `plan()` 纯函数给出"将会注册哪些名字"（零机制的宿主侧证明）；`uninstall()` 视 `ownedByHost` 决定是否由宿主回收。
 
 ---
+
+| `vibe_vmu_charter`（`charter`） | 见 `docs/03` §3.1（★ 本表补记 ✓） | 由宿主与设置面提供 | 始终可用（★ `status` 是零机制的观察点 ✓） | `status`(默认) |
+| `vibe_vmu_recruit`（`recruit`） | 见 `docs/03` §3.1（★ 本表补记 ✓） | 由宿主与设置面提供 | 始终可用（★ `status` 是零机制的观察点 ✓） | `status`(默认) |
 
 ## 2. 逐工具参考（可照抄）
 
@@ -436,6 +439,9 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | `vibe_vmu_conference`（`conference`） | `conferenceTool` 为真 | 会议：投稿/指派/评审/决议 | `list`/`status` ✓；其余视状态 ✗ | `status`(默认)`/open/submit/assign/review/decide/register/planAgenda/viewSubmission/list/receiptsView` |
 | `vibe_vmu_arbitration`（`arbitration`） | `arbitrationTool` 为真 | 裁决：回避/听证/裁定/上诉 | `list`/`history`/`status` ✓；其余视状态 ✗ | `status`(默认)`/open/appoint/pick/declareConflict/recuse/hear/rule/appeal/escalate/effective/list/history` |
 
+| `vibe_vmu_charter`（`charter`） | `charterTool` 为真 | 章程：提议/修订/批准/生效 | `articles`/`children`/`list`/`history`/`status` ✓；其余视状态 ✗ | `status`(默认)`/propose/amend/ratify/inForce/cite/dissolve/articles/children/list/history` |
+| `vibe_vmu_recruit`（`recruit`） | `recruitTool` 为真 | 招募：任期/晋升/试用/招聘 | `postings`/`status`/`aggregate` ✓；其余视状态 ✗ | `status`(默认)`/renewTerm/recall/actAsChair/promote/openPosting/apply/score/offer/accept/reject/probation/confirm/postings/aggregate` |
+
 <!-- BEGIN GENERATED: tool-index -->
 
 ### 工具与 action 索引（★ **生成**：来自 `host.js` 的 `TOOL_NAMES` 与 action 枚举 ✓）
@@ -479,8 +485,10 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 33 | `handover` | `vibe_vmu_handover` |
 | 34 | `conference` | `vibe_vmu_conference` |
 | 35 | `arbitration` | `vibe_vmu_arbitration` |
-| 36 | `turn` | `vibe_vmu_turn` |
+| 36 | `charter` | `vibe_vmu_charter` |
+| 37 | `recruit` | `vibe_vmu_recruit` |
+| 38 | `turn` | `vibe_vmu_turn` |
 
-> ★★ 合计 **36** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
+> ★★ 合计 **38** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
 
 <!-- END GENERATED: tool-index -->

@@ -129,7 +129,6 @@
 | `vibe_vmu_attendance` | `docs/08` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_auction` | `docs/17` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_audit` | `docs/08` | **✓** ⛔ 规划/未实现 | **✓** | **capability: the `audit` action of `vibe_vmu_fairness`** (round 542)
-| `vibe_vmu_charter` | `docs/17` | **✓** ⛔ 规划/未实现 | **✓** |
 
 | `vibe_vmu_committee` | `docs/08` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_compliance` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |
@@ -477,3 +476,14 @@
 
 > ★★★ **由此得出两条** ✓：★ **① 四族里两族的【素材全在**]（★ ①／④ ⇒ 只差接线 ✓），★ 另两族是【一个开关**]（★ ②／③ ⇒ ★ 归属明确是本 pack 的中间件 ✓）⇒ ★★ **没有一族需要新的框架能力** ✓✓ —— ★★★ **即：目标 ③ 的剩余工作【不需要动框架**]，★ 只动 **pack ＋ preset** ✓ —— ★ **而这与哲学理念一致**（★ 框架提供机制、pack 声明策略 ✓）。
 > ★★ **② 并记一条** ✓：★ `notices.js` 的 `NOTICE_SHAPES` **不经 `index.js` re-export** ✓（★ 而 manifest 用 `noticeModule: "./notices.js"` 指过去 ✓，★ 其注释写明"**这是它们的消费者**" ✓）⇒ ★ **这是【声明的模式**]，★ 不是遗漏** ✓（★ 量的时候要按 manifest 的指针取，而不是按 `index.js` ✓）。
+
+### 4x. ★★★ 目标 ③ 的族 ②／③ 已关闭，且原因值得记（★ 轮 544 ✓）
+
+> ★★★★ **实测** ✓：★ `middleware/prompt-switches.js` 的 `decideSections` **早就实现了"目录二选一"** ✓（★ L77–80：★ "**Exactly one reply catalogue**" ✓、★ 默认 `compact`、★ 只有 `'full'` 才切 ✓）⇒ ★★ **A/B 测试的 `knownGapsAB` 第 ③ 条（"两者都在注入"）已经【过时**]** ✗ —— ★★★ **"清单落后于代码"的第六例，★ 又是在测试里** ✓。
+> ★★★★ **而真正的缺口在别处** ✓✓：★ 该中间件声明 **`on: 'turn.assemble'`** ✗ —— ★★ **而宿主公布的词汇是 `prompt/assemble`（斜杠）** ✓ ⇒ ★★★ **名字不通 ⇒ 声明【空转**]，★ 测试因**直接调 `decideSections`** 而仍绿** ✗（★ 其代码注释**自己写着**"测试这么做、而插件没做" ✓）⇒ ★ **已改为宿主公布的 `prompt/assemble`** ✓，★ **并加守卫 `tests/vmu-middleware-hooks-bridged.test.mjs`** ✓（★ 检查**每个 pack 中间件的 `on:` 都在 `BRIDGED_HOOKS` 里** ✓ ＋ 自咬证明 ✓）。
+>
+> ★★ **由此族 ②／③ 关闭** ✓（★ 中间件现在会真的触发 ✓）；★ **剩 ①／④（通告注入）** ✓ —— ★ 素材全在（★ 6 构造器 ＋ `INBOX_HEADER` ＋ 4 形状 ✓），★ **而它们属于【交付路径**]，★ 与 `prompt/assemble` 的注入是同一处接缝** ✓。
+
+### 4y. ★★ `capacity` 与 `cost` 的判断（★ 轮 544 ✓）
+
+> ★★ **`capacity` 有 9 个方法** ✓（★ 容量登记/预约 ✓）⇒ ★ **消费者成立**（★ `(f) 工作流` ＋ `(j) 自组织` 的资源面 ✓）⇒ ★ **登记为候选，★ 未在本轮建** ✓；★ **`cost` 服务【不存在**]** ✓（★ 实测 ✓）⇒ ★ **不建** ✓（★ 无服务可包 ✓）。
