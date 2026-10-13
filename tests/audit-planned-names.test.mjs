@@ -99,8 +99,12 @@ function defects(rows, tools, actions, file) {
   return found
 }
 
+// ROUND 538: the tool specs moved to vibe-math-vmu/tools/<key>.js, so the surface is host.js PLUS every module. Reading only
+// the host made the action count collapse to fourteen - exactly the silent narrowing a guard must not have.
 const host = readFileSync(join(REPO, 'vibe-math-vmu', 'host.js'), 'utf8')
-const { tools, actions } = readSurface(host)
+const toolDir = join(REPO, 'vibe-math-vmu', 'tools')
+const modules = readdirSync(toolDir).filter((f) => f.endsWith('.js')).map((f) => readFileSync(join(toolDir, f), 'utf8'))
+const { tools, actions } = readSurface(host + String.fromCharCode(10) + modules.join(String.fromCharCode(10)))
 
 console.log('=== 1. THE SURFACE IS READ FROM THE SOURCE OF TRUTH ===')
 ok(tools.size >= 8, 'the published tool registry is read', { tools: tools.size })

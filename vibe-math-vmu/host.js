@@ -1,5 +1,23 @@
 // vmu host adapter — attaching the assembled kernel to the DSH tool surface (docs/03 §3, docs/11 §9).
 import { makeTransactionSpec } from './tools/transaction.js'
+import { makeTurnSpec } from './tools/turn.js'
+import { makeControlSpec } from './tools/control.js'
+import { makeMeetingSpec } from './tools/meeting.js'
+import { makeTaskSpec } from './tools/task.js'
+import { makeMinutesSpec } from './tools/minutes.js'
+import { makeBoardSpec } from './tools/board.js'
+import { makeBudgetSpec } from './tools/budget.js'
+import { makeCitationsSpec } from './tools/citations.js'
+import { makeDisciplineSpec } from './tools/discipline.js'
+import { makeGovernanceSpec } from './tools/governance.js'
+import { makeRatelimitSpec } from './tools/ratelimit.js'
+import { makeExplainSpec } from './tools/explain.js'
+import { makeProjmigrateSpec } from './tools/projmigrate.js'
+import { makeBridgeSpec } from './tools/bridge.js'
+import { makeExternalSpec } from './tools/external.js'
+import { makeMathtoolsSpec } from './tools/mathtools.js'
+import { makeAuditchainSpec } from './tools/auditchain.js'
+import { makeNotifySpec } from './tools/notify.js'
 //
 // TOOL SHAPE (learned from the REAL HOST, not from our own assumptions): the first scripted live run
 // (SLV) showed the preset active but NO vmu tools in the agent's tool list. The cause was this file: the
@@ -410,631 +428,49 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   // ROUND 349 — THE TURN TOOL (docs/26 §3.4). The loop existed as a service and as a test harness; this is what makes
   // it reachable from a real session. Declared like every other face: only offered when the configuration asks for it,
   // because with nothing declared the preset must still register exactly one tool (R1 zero mechanism).
-  if (turnTool) {
-    // ROUND 349: ONE CORE, TWO THIN WRAPPERS. The middleware wrapper calls `spec.run` and stringifies what it gets,
-    // while direct callers (and the tests) call `spec.execute` and parse a string themselves. Measured the hard way:
-    // a face that returns a string from `run` gets it stringified AGAIN, so the caller parses back the same string.
-    // `run` therefore returns the OBJECT and `execute` returns the JSON STRING, both from the same core.
-    const coreTurn = async (args = {}) => {
-      if (!kernel.turn) return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no turn loop')
-      const op = String(args.op || 'status')
-      const members = Array.isArray(args.members) ? args.members : []
-      if (op === 'status') return { ok: true, status: kernel.turn.status() }
-      if (op === 'step') return await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step })
-      if (op === 'drive') return await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step })
-      return refused('VMU_INVALID_ARGUMENT', 'unknown op: ' + op, 'known ops: step, drive, status')
-    }
-    const runTurn = (args = {}) => coreTurn(args)
-    const executeTurn = async (args = {}) => JSON.stringify(await coreTurn(args))
-    specs.push({
-      name: TOOL_NAMES.turn,
-      description: 'Run institute TURNS: step runs exactly one round (who is chosen by vmu.turn.wakeupPolicy, what ' +
-        'prompt is assembled by the pipeline), drive runs a bounded number, status reports what the loop has done. ' +
-        'A round with no members is a legal no-op; a failed round is returned with its code rather than thrown.',
-      parameters: {
-        type: 'object',
-        properties: {
-          op: param('string', 'step＝一轮／drive＝连跑若干轮／status＝读数'),
-          members: param('array', '本轮可唤醒的成员：[{id, role}]；缺省时由内核名册推断（无成员 ⇒ 合法空转）'),
-          rounds: param('integer', 'drive 的轮数（必须为正整数；没有无限默认）'),
-          phase: param('string', '相位：founding／normal／checkpoint／verify／verify-debate／meeting／resume'),
-          why: param('string', '为什么唤醒（原预设的唤醒也带这一项）'),
-          next_step: param('string', '下一步要做什么'),
-        },
-        required: ['op'],
-      },
-      execute: executeTurn,
-      run: runTurn,
-    })
-  }
-  if (controlTool) {
-    specs.push({
-      name: TOOL_NAMES.control,
-      description: 'vmu 控制流：action=status|pause|resume|stop|beat|roster|hire|fire。暂停是**真门禁**（任务变更会被具名拒）；' +
-        'beat 是心跳（观察，供 wallClockMs 判定 stale）；roster 只读花名册（带上限），hire/fire 是成员加入与离开（走内核槽位，docs/17）。',
-      parameters: {
-        action: param('string', 'status（默认）｜pause｜resume｜stop｜beat｜roster｜hire｜fire', { required: true, enum: ['status', 'pause', 'resume', 'stop', 'beat', 'roster', 'hire', 'fire'] }),
-        member_id: param('string', 'roster 可省；hire/fire 必填的成员 id'),
-        institution: param('string', 'hire 的所属机构（缺省时由内核决定）'),
-        since: param('string', 'hire 的加入时间戳（可省）'),
-        reason: param('string', 'pause/stop 的原因（写入控制面与审计）'),
-        note: param('string', 'beat 的备注（可选）'),
-      },
-      run: async ({ action = 'status', reason, note, member_id, institution, since } = {}) => {
-        try {
-          if (action === 'status') return Object.assign({ ok: true, action }, kernel.control())
-          if (action === 'pause') return Object.assign({ ok: true, action }, await kernel.pause(reason || 'paused by tool'))
-          if (action === 'resume') return Object.assign({ ok: true, action }, await kernel.resume(reason || null))
-          if (action === 'stop') return Object.assign({ ok: true, action }, await kernel.stop(reason || null))
-          if (action === 'beat') return Object.assign({ ok: true, action }, await kernel.beat(note || null))
-          if (action === 'roster') return Object.assign({ ok: true, action }, kernel.identity ? kernel.identity.list() : refused('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no identity surface'))
-          if (action === 'hire') return Object.assign({ ok: true, action }, kernel.identity.addMembership({ memberId: member_id, institution: institution === undefined ? null : institution, since: since === undefined ? null : since }))
-          if (action === 'fire') return Object.assign({ ok: true, action }, kernel.identity.endMembership({ memberId: member_id, reason: reason === undefined ? null : reason }))
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
-        } catch (e) {
-          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
-        }
-      },
-    })
-  }
 
   // 8) per-domain tool faces (docs/03 §3.1): meetings/ballots and the task board, addressable from a session.
   // They appear ONLY when the configuration declares the intent (zero mechanism, R1): a meeting face needs a
   // declared meeting intent, a task face needs a declared task board (or declared stages). They never invent
   // state - they call the SAME kernel primitives the library level exposes, by id.
-  if (meetingTool) {
-    specs.push({
-      name: TOOL_NAMES.meeting,
-      description: 'vmu 会议/表决面：action=list|open|speak|silent|close|ballot|vote|tally|reopen。' +
-        '会议与表决是**逐对象原语**（内核给工厂、pack 给政策）；本工具只用**内核已登记的实例 id** 寻址（未知 id 具名拒）。',
-      parameters: {
-        action: param('string', 'list｜open｜speak｜silent｜close｜ballot｜vote｜tally｜reopen', { required: true,
-          enum: ['list', 'open', 'speak', 'silent', 'close', 'ballot', 'vote', 'tally', 'reopen'] }),
-        id: param('string', '会议 id（speak/silent/close 必填；open 可指定）'),
-        ballotId: param('string', '表决 id（vote/tally/reopen 必填）'),
-        member: param('string', '成员 id（speak/silent/vote 必填）'),
-        text: param('string', '发言内容（speak 必填）'),
-        reason: param('string', 'silent/close/reopen 的原因'),
-        agenda: param('string', 'open 的议程文本'),
-        roster: param('array', 'open 的成员清单（默认取该会议的既定语料）'),
-        target: param('string', 'ballot 的标的（必填）'),
-        value: param('string', 'vote 的票值（必填）'),
-        kind: param('string', 'vote 的票型（默认 decisive）', { enum: ['decisive', 'advisory'] }),
-      },
-      run: async ({ action, id, ballotId, member, text, reason, agenda, roster, target, value, kind } = {}) => {
-        const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
-        try {
-          if (action === 'list') return Object.assign({ ok: true, action }, kernel.liveList())
-          if (action === 'open') {
-            const meeting = kernel.meeting({ id: id || undefined, roster: Array.isArray(roster) ? roster : undefined })
-            await meeting.convene(agenda === undefined ? null : agenda)
-            await meeting.openRound({ members: Array.isArray(roster) ? roster : null })
-            return { ok: true, action, id: meeting.id, state: meeting.state }
-          }
-          if (action === 'speak') {
-            const meeting = kernel.liveMeeting(need(id, 'id'))
-            if (!meeting) return refused('VMU_NO_SUCH_OBJECT', 'no live meeting with id ' + String(id), 'use action=list')
-            return Object.assign({ ok: true, action, id }, await meeting.speak(need(member, 'member'), need(text, 'text')))
-          }
-          if (action === 'silent') {
-            const meeting = kernel.liveMeeting(need(id, 'id'))
-            if (!meeting) return refused('VMU_NO_SUCH_OBJECT', 'no live meeting with id ' + String(id), 'use action=list')
-            return Object.assign({ ok: true, action, id }, await meeting.markSilent(need(member, 'member'), reason || 'no input'))
-          }
-          if (action === 'close') {
-            const meeting = kernel.liveMeeting(need(id, 'id'))
-            if (!meeting) return refused('VMU_NO_SUCH_OBJECT', 'no live meeting with id ' + String(id), 'use action=list')
-            return Object.assign({ ok: true, action, id }, await meeting.close(reason || 'closed'))
-          }
-          if (action === 'ballot') {
-            const bid = ballotId || ('b-' + (kernel.liveList().ballots.length + 1) + '-' + Date.now().toString(36))
-            const ballot = kernel.ballot({ id: bid })
-            const opened = await ballot.open()
-            return { ok: true, action, ballotId: bid, opened, target: need(target, 'target') }
-          }
-          if (action === 'vote') {
-            const ballot = kernel.liveBallot(need(ballotId, 'ballotId'))
-            if (!ballot) return refused('VMU_NO_SUCH_OBJECT', 'no live ballot with id ' + String(ballotId), 'use action=list')
-            // The ballot primitive speaks 1/0 for decisive votes (it says so in its own refusal), but a model
-            // reasons in words: normalise the obvious spellings HERE, at the face, and pass anything else
-            // through untouched so the primitive still gives the authoritative refusal.
-            const raw = need(value, 'value')
-            const key = String(raw).trim().toLowerCase()
-            const castValue = raw === 1 || raw === 0 ? raw
-              : (['1', 'true', 'for', 'yes', '赞成', '同意'].includes(key) ? 1
-                : (['0', 'false', 'against', 'no', '反对'].includes(key) ? 0 : raw))
-            return Object.assign({ ok: true, action, ballotId },
-              await ballot.cast(need(member, 'member'), castValue, { kind: kind || 'decisive' }))
-          }
-          if (action === 'tally') {
-            const ballot = kernel.liveBallot(need(ballotId, 'ballotId'))
-            if (!ballot) return refused('VMU_NO_SUCH_OBJECT', 'no live ballot with id ' + String(ballotId), 'use action=list')
-            return Object.assign({ ok: true, action, ballotId }, await ballot.close('tally'))
-          }
-          if (action === 'reopen') {
-            const ballot = kernel.liveBallot(need(ballotId, 'ballotId'))
-            if (!ballot) return refused('VMU_NO_SUCH_OBJECT', 'no live ballot with id ' + String(ballotId), 'use action=list')
-            return Object.assign({ ok: true, action, ballotId }, ballot.reopen ? await ballot.reopen(reason || 'reopened') : { reopened: false })
-          }
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
-        } catch (e) {
-          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
-        }
-      },
-    })
-  }
 
-  if (taskTool) {
-    specs.push({
-      name: TOOL_NAMES.task,
-      description: 'vmu 任务面：action=list|create|assign|transition|stage|advance|brief|history。' +
-        '任务是内核台账（依赖/阶段门/暂停门都由内核强制）；本工具只做**寻址与调用**，不复制任何策略。',
-      parameters: {
-        action: param('string', 'list｜create｜assign｜transition｜stage｜advance｜brief｜history', { required: true,
-          enum: ['list', 'create', 'assign', 'transition', 'stage', 'advance', 'brief', 'history'] }),
-        id: param('string', '任务 id（assign/transition/brief 必填）'),
-        title: param('string', 'create 的标题（必填）'),
-        objective: param('string', 'create 的目标（可选）'),
-        owner: param('string', 'create/assign 的负责人'),
-        deps: param('array', 'create 的依赖 id 列表（可选）'),
-        to: param('string', 'transition/advance 的目标状态或阶段'),
-        reason: param('string', 'transition/advance 的原因'),
-      },
-      run: async ({ action, id, title, objective, owner, deps, to, reason } = {}) => {
-        const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
-        try {
-          const tasks = kernel.tasks
-          if (action === 'list') return Object.assign({ ok: true, action }, { tasks: await tasks.list() })
-          if (action === 'create') return Object.assign({ ok: true, action }, await tasks.create({ title: need(title, 'title'), objective: objective || null, owner: owner || null, deps: Array.isArray(deps) ? deps : null }))
-          if (action === 'assign') return Object.assign({ ok: true, action }, await tasks.assign(need(id, 'id'), need(owner, 'owner')))
-          if (action === 'transition') return Object.assign({ ok: true, action }, await tasks.transition(need(id, 'id'), need(to, 'to'), { reason: reason || null }))
-          if (action === 'stage') return Object.assign({ ok: true, action }, await tasks.stage())
-          if (action === 'advance') return Object.assign({ ok: true, action }, await tasks.advance({ to: to || null, reason: reason || null }))
-          if (action === 'brief') return Object.assign({ ok: true, action }, await tasks.brief(need(id, 'id')))
-          if (action === 'history') return Object.assign({ ok: true, action }, { history: await tasks.history(id || null) })
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
-        } catch (e) {
-          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
-        }
-      },
-    })
-  }
 
-  if (minutesTool) {
-    specs.push({
-      name: TOOL_NAMES.minutes,
-      description: 'vmu 纪要面：action=list|draft|confirm|append|actions|status。' +
-        '纪要由内核服务保管（谁记、何时定稿、哪些动作被记下都由它强制）；本工具只做**寻址与调用**，不复制任何策略。',
-      parameters: {
-        action: param('string', 'list｜draft｜confirm｜append｜actions｜status', { required: true,
-          enum: ['list', 'draft', 'confirm', 'append', 'actions', 'status'] }),
-        id: param('string', '纪要 id（draft/confirm/append 必填）'),
-        kind: param('string', 'draft 的类别（可选）'),
-        text: param('string', 'draft/append 的正文（必填）'),
-        member: param('string', '记录归属的成员（可选）'),
-        session: param('string', '所属会话（可选）'),
-      },
-      run: async ({ action, id, kind, text, member, session } = {}) => {
-        const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }) }
-        try {
-          const minutes = kernel.minutes
-          if (action === 'list') return Object.assign({ ok: true, action }, { minutes: await minutes.list() })
-          if (action === 'draft') return Object.assign({ ok: true, action }, await minutes.draft({ id: need(id, 'id'), kind: kind || null, text: need(text, 'text'), member: member || null, session: session || null }))
-          if (action === 'confirm') return Object.assign({ ok: true, action }, await minutes.confirm(need(id, 'id')))
-          if (action === 'append') return Object.assign({ ok: true, action }, await minutes.append(need(id, 'id'), need(text, 'text')))
-          if (action === 'actions') return Object.assign({ ok: true, action }, { actions: await minutes.actions(id || null) })
-          if (action === 'status') return Object.assign({ ok: true, action }, await minutes.status())
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
-        } catch (e) {
-          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
-        }
-      },
-    })
-  }
 
-  if (boardTool) {
-    specs.push({
-      name: TOOL_NAMES.board,
-      description: 'vmu 看板面：action=columns|addColumn|move|setWip|swimlanes|aging|status。' +
-        '看板由内核服务保管（列、WIP 上限、泳道、老化都由它强制）；本工具只做**寻址与调用**，不复制任何策略。',
-      parameters: {
-        action: param('string', 'columns｜addColumn｜move｜setWip｜swimlanes｜aging｜status', { required: true,
-          enum: ['columns', 'addColumn', 'move', 'setWip', 'swimlanes', 'aging', 'status'] }),
-        id: param('string', 'addColumn 的列 id'),
-        name: param('string', 'addColumn 的列名'),
-        wipLimit: param('number', 'addColumn 的 WIP 上限（可选）'),
-        order: param('number', 'addColumn 的次序（可选）'),
-        taskId: param('string', 'move 的任务 id'),
-        toColumn: param('string', 'move 的目标列'),
-        by: param('string', 'move 的执行者（可选）'),
-        transition: param('string', 'move 的迁移标签（可选）'),
-        column: param('string', 'setWip 的列 id'),
-        limit: param('number', 'setWip 的上限（aging 时是返回条数上限）'),
-        warnMs: param('number', 'aging 的告警阈值毫秒（可选）'),
-      },
-      run: async ({ action, id, name, wipLimit, order, taskId, toColumn, by, transition, column, limit, warnMs } = {}) => {
-        try {
-          const board = kernel.board
-          if (action === 'columns') return Object.assign({ ok: true, action }, await board.columns())
-          if (action === 'addColumn') return Object.assign({ ok: true, action }, await board.addColumn({ id, name, wipLimit, order }))
-          if (action === 'move') return Object.assign({ ok: true, action }, await board.move({ taskId, toColumn, by, transition }))
-          if (action === 'setWip') return Object.assign({ ok: true, action }, await board.setWip({ column, limit }))
-          if (action === 'swimlanes') return Object.assign({ ok: true, action }, await board.swimlanes())
-          if (action === 'aging') return Object.assign({ ok: true, action }, await board.aging({ warnMs, limit }))
-          if (action === 'status') return Object.assign({ ok: true, action }, await board.status())
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
-        } catch (e) {
-          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
-        }
-      },
-    })
-  }
 
-  if (budgetTool) {
-    specs.push({
-      name: TOOL_NAMES.budget,
-      description: 'vmu 预算面：action=open|charge|reserve|remaining|status|list|totals|perTaskShare。' +
-        '配额四类（tokens/turns/toolCalls/subagents）、预留、公平与越界动作都由内核服务强制；本工具只做**寻址与调用**，不复制任何策略。',
-      parameters: {
-        action: param('string', 'open｜charge｜reserve｜remaining｜status｜list｜totals｜perTaskShare', { required: true,
-          enum: ['open', 'charge', 'reserve', 'remaining', 'status', 'list', 'totals', 'perTaskShare'] }),
-        scope: param('string', '作用域名（open/charge/reserve/remaining 需要）'),
-        kind: param('string', '配额类别（charge/remaining 用；★ 四类见服务自己的 kinds ✓）'),
-        amount: param('number', 'charge 的数量（默认 0）'),
-        taskId: param('string', 'charge 归属的任务（可选；★ 与 perTaskShare 一起作用 ✓）'),
-        limits: param('object', 'open 的初始上限（可选）'),
-        perTaskShare: param('number', 'open 的单任务占比（可选，0..1）'),
-        ratio: param('number', 'reserve 的比例'),
-      },
-      run: async ({ action, scope, kind, amount, taskId, limits, perTaskShare, ratio } = {}) => {
-        try {
-          const budget = kernel.budget
-          if (action === 'open') return Object.assign({ ok: true, action }, await budget.open({ scope, limits: limits || {}, perTaskShare }))
-          if (action === 'charge') return Object.assign({ ok: true, action }, await budget.charge({ scope, kind, amount, taskId }))
-          if (action === 'reserve') return Object.assign({ ok: true, action }, await budget.reserve({ scope, ratio }))
-          if (action === 'remaining') return Object.assign({ ok: true, action }, await budget.remaining({ scope, kind }))
-          if (action === 'status') return Object.assign({ ok: true, action }, await budget.status())
-          if (action === 'list') return Object.assign({ ok: true, action }, await budget.list())
-          if (action === 'totals') return Object.assign({ ok: true, action }, { totals: await budget.totals() })
-          if (action === 'perTaskShare') return Object.assign({ ok: true, action }, { perTaskShare: await budget.perTaskShare() })
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
-        } catch (e) {
-          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
-        }
-      },
-    })
-  }
 
-  if (citationsTool) {
-    specs.push({
-      name: TOOL_NAMES.citations,
-      description: 'vmu 引用面：action=identify|validate|render|status。' +
-        '标识符优先级、必填字段与渲染样式都由内核服务强制；本工具只做**寻址与调用**，不复制任何策略。',
-      parameters: {
-        action: param('string', 'identify｜validate｜render｜status', { required: true,
-          enum: ['identify', 'validate', 'render', 'status'] }),
-        ids: param('object', '标识符表（identify 用；★ 优先级见服务自己的 idPriority ✓）'),
-        title: param('string', '标题（validate/render 用）'),
-        authors: param('array', '作者列表（validate/render 用）'),
-        year: param('number', '年份（validate/render 用）'),
-        freeText: param('string', '自由文本条目（validate/render 用；★ 是否允许由服务自己的 allowFreeText 决定 ✓）'),
-        style: param('string', '渲染样式（render 用；★ 默认见服务自己的 style ✓）'),
-      },
-      run: async ({ action, ids, title, authors, year, freeText, style } = {}) => {
-        try {
-          const citations = kernel.citations
-          if (action === 'identify') return Object.assign({ ok: true, action }, await citations.identify({ ids }))
-          if (action === 'validate') return Object.assign({ ok: true, action }, await citations.validate({ title, authors, year, ids, freeText }))
-          if (action === 'render') return Object.assign({ ok: true, action }, await citations.render({ title, authors, year, ids, freeText, style }))
-          if (action === 'status') return Object.assign({ ok: true, action }, await citations.status())
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
-        } catch (e) {
-          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
-        }
-      },
-    })
-  }
 
-  if (disciplineTool) {
-    specs.push({
-      name: TOOL_NAMES.discipline,
-      description: 'vmu 纪律面：action=recordFailure|mayAct|suspend|restore|status。' +
-        '断路器窗口、暂停上限与「恢复必须由人决定」都由内核服务强制；本工具只做**寻址与调用**，不复制任何策略。',
-      parameters: {
-        action: param('string', 'recordFailure｜mayAct｜suspend｜restore｜status', { required: true,
-          enum: ['recordFailure', 'mayAct', 'suspend', 'restore', 'status'] }),
-        subject: param('string', '主体（成员/角色；recordFailure/mayAct/suspend/restore 需要）'),
-        kind: param('string', '失败类别（recordFailure 可选）'),
-        detail: param('string', '失败细节（recordFailure 可选）'),
-        ms: param('number', '暂停时长毫秒（suspend 可选；★ 会被服务的 suspendMaxMs 夹住 ✓）'),
-        reason: param('string', '暂停原因（suspend 可选）'),
-        byHuman: param('boolean', '是否已由人决定（restore 用；★ 服务的 restoreNeedsHuman 会强制它 ✓）'),
-        postmortem: param('string', '复盘记录（restore 可选）'),
-      },
-      run: async ({ action, subject, kind, detail, ms, reason, byHuman, postmortem } = {}) => {
-        try {
-          const discipline = kernel.discipline
-          if (action === 'recordFailure') return Object.assign({ ok: true, action }, await discipline.recordFailure({ subject, kind, detail }))
-          if (action === 'mayAct') return Object.assign({ ok: true, action }, await discipline.mayAct({ subject }))
-          if (action === 'suspend') return Object.assign({ ok: true, action }, await discipline.suspend({ subject, ms, reason }))
-          if (action === 'restore') return Object.assign({ ok: true, action }, await discipline.restore({ subject, byHuman, postmortem }))
-          if (action === 'status') return Object.assign({ ok: true, action }, await discipline.status())
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
-        } catch (e) {
-          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
-        }
-      },
-    })
-  }
 
-  if (governanceTool) {
-    specs.push({
-      name: TOOL_NAMES.governance,
-      description: 'vmu 治理面：action=keysUsed|config|droppedEvents。' +
-        '议程/动议读了哪些设置、解析出来的配置是什么、有多少事件因未声明而被丢弃，全部由内核服务回答；本工具只做**寻址与调用**，不复制任何策略。',
-      parameters: {
-        action: param('string', 'keysUsed｜config｜droppedEvents', { required: true,
-          enum: ['keysUsed', 'config', 'droppedEvents'] }),
-      },
-      run: async ({ action } = {}) => {
-        try {
-          const governance = kernel.governance
-          if (action === 'keysUsed') return Object.assign({ ok: true, action }, { keysUsed: await governance.keysUsed() })
-          if (action === 'config') return Object.assign({ ok: true, action }, { config: await governance.config() })
-          if (action === 'droppedEvents') return Object.assign({ ok: true, action }, { droppedEvents: await governance.droppedEvents() })
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
-        } catch (e) {
-          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
-        }
-      },
-    })
-  }
 
-  if (ratelimitTool) {
-    specs.push({
-      name: TOOL_NAMES.ratelimit,
-      description: 'vmu 速率面：action=take|peek|reset|bucket|status。' +
-        '速率上限、重置必须给理由、以及"零配置下【不算保护】"的自我申明都由内核服务回答；本工具只做**寻址与调用**，不复制任何策略。',
-      parameters: {
-        action: param('string', 'take｜peek｜reset｜bucket｜status', { required: true,
-          enum: ['take', 'peek', 'reset', 'bucket', 'status'] }),
-        key: param('string', '限流键（可选；★ 缺省由服务决定，如 `global` ✓）'),
-        cost: param('number', 'take 的代价（默认 1）'),
-        scope: param('string', 'take 的作用域（可选）'),
-        reason: param('string', 'reset 的理由（★ 服务强制必填 ✓）'),
-        by: param('string', 'reset 的执行者（可选）'),
-      },
-      run: async ({ action, key, cost, scope, reason, by } = {}) => {
-        try {
-          const ratelimit = kernel.ratelimit
-          if (action === 'take') return Object.assign({ ok: true, action }, await ratelimit.take({ key, cost, scope }))
-          if (action === 'peek') return Object.assign({ ok: true, action }, await ratelimit.peek({ key }))
-          if (action === 'reset') return Object.assign({ ok: true, action }, await ratelimit.reset({ key, reason, by }))
-          if (action === 'bucket') return Object.assign({ ok: true, action }, await ratelimit.bucket({ key }))
-          if (action === 'status') return Object.assign({ ok: true, action }, await ratelimit.status())
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
-        } catch (e) {
-          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
-        }
-      },
-    })
-  }
 
-  if (explainTool) {
-    specs.push({
-      name: TOOL_NAMES.explain,
-      description: 'vmu 解释面：action=checkReason|correlate|build|render|status。' +
-        '「这一步为什么发生」由内核服务回答：理由必填、按 traceId/taskId 关联、报表由它构建与渲染；本工具只做**寻址与调用**，不复制任何策略。',
-      parameters: {
-        action: param('string', 'checkReason｜correlate｜build｜render｜status', { required: true,
-          enum: ['checkReason', 'correlate', 'build', 'render', 'status'] }),
-        reason: param('string', '理由（checkReason/build 用；★ 服务的 reasonRequired 会强制它 ✓）'),
-        targetAction: param('string', '要解释或被检查的那个动作（★ 转交给服务的 `action` 形参 ✓；本工具的 action 是分派器）'),
-        traceId: param('string', '关联用的 trace id（correlate/build 用；★ 关联轴由服务的 correlateBy 决定 ✓）'),
-        taskId: param('string', '关联用的任务 id（可选）'),
-        chains: param('boolean', 'build 是否含链（可选）'),
-        scores: param('boolean', 'build 是否含评分（可选）'),
-        fields: param('array', 'build 的字段选择（可选）'),
-        report: param('object', 'render 的报表（★ build 的产物 ✓）'),
-        format: param('string', 'render 的格式（可选；★ 默认见服务 ✓）'),
-      },
-      run: async ({ action, reason, targetAction, traceId, taskId, chains, scores, fields, report, format } = {}) => {
-        try {
-          const explain = kernel.explain
-          if (action === 'checkReason') return Object.assign({ ok: true, action }, await explain.checkReason({ reason, action: targetAction || null }))
-          if (action === 'correlate') return Object.assign({ ok: true, action }, await explain.correlate({ traceId, taskId }))
-          if (action === 'build') return Object.assign({ ok: true, action }, await explain.build({ action: targetAction || null, reason, traceId, taskId, chains, scores, fields }))
-          if (action === 'render') return Object.assign({ ok: true, action }, await explain.render({ report, format }))
-          if (action === 'status') return Object.assign({ ok: true, action }, await explain.status())
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
-        } catch (e) {
-          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
-        }
-      },
-    })
-  }
 
-  if (projmigrateTool) {
-    specs.push({
-      name: TOOL_NAMES.projmigrate,
-      description: 'vmu 迁移面：action=register|read|upgrade|status。' +
-        '未知版本必须具名拒、迁移步骤必须显式声明 —— 这两条不变式由内核服务守着；本工具只做**寻址与调用**，不复制任何策略。',
-      parameters: {
-        action: param('string', 'register｜read｜upgrade｜status', { required: true,
-          enum: ['register', 'read', 'upgrade', 'status'] }),
-        kind: param('string', '迁移家族名（register/read/upgrade 必填；★ 服务自己的码会点名它 ✓）'),
-        version: param('number', 'register 的当前版本号'),
-        migrate: param('array', 'register 的迁移步骤（★ 必须显式 ✓）'),
-        doc: param('object', 'read/upgrade 的文档'),
-        to: param('number', 'upgrade 的目标版本'),
-      },
-      run: async ({ action, kind, version, migrate, doc, to } = {}) => {
-        try {
-          const projmigrate = kernel.projmigrate
-          if (action === 'register') return Object.assign({ ok: true, action }, await projmigrate.register({ kind, version, migrate }))
-          if (action === 'read') return Object.assign({ ok: true, action }, await projmigrate.read({ kind, doc }))
-          if (action === 'upgrade') return Object.assign({ ok: true, action }, await projmigrate.upgrade({ kind, doc, to }))
-          if (action === 'status') return Object.assign({ ok: true, action }, await projmigrate.status())
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
-        } catch (e) {
-          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
-        }
-      },
-    })
-  }
 
-  if (bridgeTool) {
-    specs.push({
-      name: TOOL_NAMES.bridge,
-      description: 'vmu 脚本面（M3）：action=validate|plan|run|status|history。' +
-        '请求形状（`file` 与 `inline` 互斥等）由内核服务校验，★ **本工具把 `request` 对象【原样转发**]，**不解释它的字段** ✓；干跑真的不执行 ✓。',
-      parameters: {
-        action: param('string', 'validate｜plan｜run｜status｜history', { required: true,
-          enum: ['validate', 'plan', 'run', 'status', 'history'] }),
-        request: param('object', '脚本请求（★ 形状见 `docs/05 §6.2` ✓；`validate`/`plan`/`run` 用；★ 本工具不解释其字段 ✓）'),
-      },
-      run: async ({ action, request } = {}) => {
-        try {
-          const bridge = kernel.bridge
-          if (action === 'validate') return Object.assign({ ok: true, action }, { problems: await bridge.validate(request) })
-          if (action === 'plan') return Object.assign({ ok: true, action }, await bridge.plan(request))
-          if (action === 'run') return Object.assign({ ok: true, action }, await bridge.run(request))
-          if (action === 'status') return Object.assign({ ok: true, action }, await bridge.status())
-          if (action === 'history') return Object.assign({ ok: true, action }, { history: await bridge.history() })
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
-        } catch (e) {
-          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
-        }
-      },
-    })
-  }
 
-  if (externalTool) {
-    specs.push({
-      name: TOOL_NAMES.external,
-      description: 'vmu 外部面：action=fetchOne|fetchMany|normalize|cache|receipts|status。' +
-        '★ **没声明就没有网络**（零配置下 `enabled:false`、`seam:none` ✓）；来源、策略与字节上限都由内核服务强制；本工具只做**寻址与调用**，不复制任何策略。',
-      parameters: {
-        action: param('string', 'fetchOne｜fetchMany｜normalize｜cache｜receipts｜status', { required: true,
-          enum: ['fetchOne', 'fetchMany', 'normalize', 'cache', 'receipts', 'status'] }),
-        source: param('string', '来源名（★ 由声明决定；★ 服务会回「已声明来源」清单 ✓）'),
-        id: param('string', 'fetchOne 的条目 id（可选）'),
-        query: param('string', 'fetchOne 的查询（可选）'),
-        by: param('string', '发起者（可选）'),
-        cacheDir: param('string', '缓存目录（可选）'),
-        refs: param('array', 'fetchMany 的引用列表'),
-        results: param('array', 'normalize 的原始结果（可选）'),
-        raw: param('string', 'normalize 的原文（可选）'),
-        enforced: param('array', 'normalize 的已求值键（可选）'),
-      },
-      run: async ({ action, source, id, query, by, cacheDir, refs, results, raw, enforced } = {}) => {
-        try {
-          const external = kernel.external
-          if (action === 'fetchOne') return Object.assign({ ok: true, action }, await external.fetchOne({ source, id, query, by, cacheDir }))
-          if (action === 'fetchMany') return Object.assign({ ok: true, action }, await external.fetchMany({ refs, by }))
-          if (action === 'normalize') return Object.assign({ ok: true, action }, await external.normalize({ results, source, enforced, raw }))
-          if (action === 'cache') return Object.assign({ ok: true, action }, await external.cache({ source }))
-          if (action === 'receipts') return Object.assign({ ok: true, action }, await external.receipts({ source }))
-          if (action === 'status') return Object.assign({ ok: true, action }, await external.status())
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
-        } catch (e) {
-          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
-        }
-      },
-    })
-  }
 
-  if (mathtoolsTool) {
-    specs.push({
-      name: TOOL_NAMES.mathtools,
-      description: 'vmu 数学工具面：action=plan|run|cacheMarkCorrupt|cacheView|receiptsView|status。' +
-        '沙箱上限、缓存与回执都由内核服务强制；本工具只做**寻址与调用**，不复制任何策略（★ `op` 的取值与参数形状由服务校验 ✓）。',
-      parameters: {
-        action: param('string', 'plan｜run｜cacheMarkCorrupt｜cacheView｜receiptsView｜status', { required: true,
-          enum: ['plan', 'run', 'cacheMarkCorrupt', 'cacheView', 'receiptsView', 'status'] }),
-        op: param('string', '运算名（plan/run 必填；★ 例见服务自己的 hint ✓）'),
-        args: param('object', '运算参数（plan/run 可选；★ 形状由服务决定 ✓）'),
-        cacheKey: param('string', '缓存键（cacheMarkCorrupt 必填；★ 可从回执的 `cacheKey` 取 ✓）'),
-      },
-      run: async ({ action, op, args, cacheKey } = {}) => {
-        try {
-          const mathtools = kernel.mathtools
-          if (action === 'plan') return Object.assign({ ok: true, action }, await mathtools.plan({ op, args }))
-          if (action === 'run') return Object.assign({ ok: true, action }, await mathtools.run({ op, args }))
-          if (action === 'cacheMarkCorrupt') return Object.assign({ ok: true, action }, await mathtools.cacheMarkCorrupt({ cacheKey }))
-          if (action === 'cacheView') return Object.assign({ ok: true, action }, await mathtools.cacheView())
-          if (action === 'receiptsView') return Object.assign({ ok: true, action }, await mathtools.receiptsView())
-          if (action === 'status') return Object.assign({ ok: true, action }, await mathtools.status())
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
-        } catch (e) {
-          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
-        }
-      },
-    })
-  }
 
-  if (auditchainTool) {
-    specs.push({
-      name: TOOL_NAMES.auditchain,
-      description: 'vmu 审计链面：action=append|verifyChain|link|checkpoint|status|refresh。' +
-        '★ **这是一条真的哈希链**（`prevHash`／`hash`／`GENESIS` ✓）：追加、校验、锚定与检查点都由内核服务强制；本工具只做**寻址与调用**，不复制任何策略。',
-      parameters: {
-        action: param('string', 'append｜verifyChain｜link｜checkpoint｜status｜refresh', { required: true,
-          enum: ['append', 'verifyChain', 'link', 'checkpoint', 'status', 'refresh'] }),
-        entry: param('object', 'append 的条目（可选；★ 形状由服务决定 ✓）'),
-        seq: param('number', 'checkpoint／link 的序号（可选）'),
-        note: param('string', 'checkpoint 的备注（可选）'),
-        key: param('string', 'refresh 的键（可选）'),
-      },
-      run: async ({ action, entry, seq, note, key } = {}) => {
-        try {
-          const auditchain = kernel.auditchain
-          if (action === 'append') return Object.assign({ ok: true, action }, await auditchain.append({ entry }))
-          if (action === 'verifyChain') return Object.assign({ ok: true, action }, await auditchain.verifyChain())
-          if (action === 'link') return Object.assign({ ok: true, action }, { link: await auditchain.link({ seq }) })
-          if (action === 'checkpoint') return Object.assign({ ok: true, action }, await auditchain.checkpoint({ seq, note }))
-          if (action === 'status') return Object.assign({ ok: true, action }, await auditchain.status())
-          if (action === 'refresh') return Object.assign({ ok: true, action }, await auditchain.refresh({ key }))
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
-        } catch (e) {
-          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
-        }
-      },
-    })
-  }
 
-  if (notifyTool) {
-    specs.push({
-      name: TOOL_NAMES.notify,
-      description: 'vmu 通知面：action=watch|unwatch|emit|flush|list|status。' +
-        '★ **默认【关】**（零配置下 `enabled:false`／`defaultOff:true` ✓）；订阅、去重、抑制与投递都由内核服务强制；本工具只做**寻址与调用**，不复制任何策略。',
-      parameters: {
-        action: param('string', 'watch｜unwatch｜emit｜flush｜list｜status', { required: true,
-          enum: ['watch', 'unwatch', 'emit', 'flush', 'list', 'status'] }),
-        subject: param('string', '订阅主体（watch 必填）'),
-        id: param('string', '订阅 id（unwatch 必填）'),
-        event: param('string', '事件名（emit 必填）'),
-        payload: param('object', '事件负载（emit 可选）'),
-        channel: param('string', '通道（可选；★ 由服务决定可用值 ✓）'),
-      },
-      run: async ({ action, subject, id, event, payload, channel } = {}) => {
-        try {
-          const notify = kernel.notify
-          if (action === 'watch') return Object.assign({ ok: true, action }, await notify.watch({ subject, channel }))
-          if (action === 'unwatch') return Object.assign({ ok: true, action }, await notify.unwatch({ id }))
-          if (action === 'emit') return Object.assign({ ok: true, action }, await notify.emit({ event, payload }))
-          if (action === 'flush') return Object.assign({ ok: true, action }, await notify.flush())
-          if (action === 'list') return Object.assign({ ok: true, action }, await notify.list())
-          if (action === 'status') return Object.assign({ ok: true, action }, await notify.status())
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
-        } catch (e) {
-          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
-        }
-      },
-    })
-  }
 
   if (transactionTool) specs.push(makeTransactionSpec({ param, refused, TOOL_NAMES, kernel }))
+
+  // ROUND 538: the tool specs live in tools/<key>.js so this file stays inside the decided 1200-line limit. The CONDITIONS
+  // stay here: which intent declares a tool is policy, and policy belongs with the host.
+  if (turnTool) specs.push(makeTurnSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (controlTool) specs.push(makeControlSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (meetingTool) specs.push(makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (taskTool) specs.push(makeTaskSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (minutesTool) specs.push(makeMinutesSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (boardTool) specs.push(makeBoardSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (budgetTool) specs.push(makeBudgetSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (citationsTool) specs.push(makeCitationsSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (disciplineTool) specs.push(makeDisciplineSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (governanceTool) specs.push(makeGovernanceSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (ratelimitTool) specs.push(makeRatelimitSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (explainTool) specs.push(makeExplainSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (projmigrateTool) specs.push(makeProjmigrateSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (bridgeTool) specs.push(makeBridgeSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (externalTool) specs.push(makeExternalSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (mathtoolsTool) specs.push(makeMathtoolsSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (auditchainTool) specs.push(makeAuditchainSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (notifyTool) specs.push(makeNotifySpec({ param, refused, TOOL_NAMES, kernel }))
 
   return specs
 }

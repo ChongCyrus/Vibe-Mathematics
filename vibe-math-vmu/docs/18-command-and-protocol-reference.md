@@ -456,6 +456,6 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 24 | `transaction` | `vibe_vmu_transaction` |
 | 25 | `turn` | `vibe_vmu_turn` |
 
-> ★★ 合计 **25** 个工具 ✓；★ **action 枚举 **23** 组／**105** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload` ｜ `status/pause/resume/stop/beat/roster/hire/fire` ｜ `list/open/speak/silent/close/ballot/vote/tally/reopen` ｜ `decisive/advisory` ｜ `list/create/assign/transition/stage/advance/brief/history` ｜ `list/draft/confirm/append/actions/status` ｜ `columns/move/swimlanes/aging/status` ｜ `open/charge/reserve/remaining/status/list/totals` ｜ `identify/validate/render/status` ｜ `suspend/restore/status` ｜ `config` ｜ `take/peek/reset/bucket/status` ｜ `correlate/build/render/status` ｜ `register/read/upgrade/status` ｜ `validate/plan/run/status/history` ｜ `normalize/cache/receipts/status` ｜ `plan/run/status` ｜ `append/link/checkpoint/status/refresh` ｜ `watch/unwatch/emit/flush/list/status`。
+> ★★ 合计 **25** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
 
 <!-- END GENERATED: tool-index -->
