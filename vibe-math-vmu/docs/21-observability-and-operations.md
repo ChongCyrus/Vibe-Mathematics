@@ -8,6 +8,13 @@
 
 ---
 
+> ★★★ **本章要教的 API（★ 轮 502 实测补 ✓）**：★ **本卷原先【一个都没有点名**]✗ —— ★ **`audit.js`／`metrics.js`／`alerts.js`／`auditchain.js` 四个模块共 **19** 个公开导出，覆盖率 **0%** ** ✓（★ 与 `docs/07` 对 `records.js` 是同一类 ✓）。★ **现在逐个点名** ✓：
+> - ★ **审计**：★ **`createAudit({ … })`** ✓、**`WHAT_VOCAB`** ✓（★ 审计行的 **`what` 词表** ✓）、**`DEFAULT_REDACT_KEYS`** ✓（★ 默认脱敏哪些键 ✓）、**`ENFORCED_SCOPE`** ✓（★ 强制作用域 ✓）、**`redactRow(row)`** ✓（★ 单行脱敏 ✓）；
+> - ★ **度量**：★ **`createMetrics({ … })`** ✓、**`METRIC_CATALOGUE`** ✓（★ 指标目录 ✓）、**`NEVER_SAMPLED_KINDS`** ✓（★ **永不采样**的类别 ✓ —— ★ 这一项的意义是**明确哪些东西【不进**]样本** ✓）；
+> - ★ **告警**：★ **`OPS`** ✓、**`SLO_STATES`** ✓、**`ERROR_BUDGET_ACTIONS`** ✓（★ 错误预算动作 ✓）、**`ALERT_CODES`** ✓、**`RUNBOOK`** ✓（★ 处置手册 ✓）、**`fingerprintOf(…)`** ✓（★ **告警去重的指纹** ✓）、以及告警面工厂 ✓；
+> - ★ **审计链**：★ **`GENESIS`** ✓（★ 链的**创世行** ✓）、**`CHAIN_FAILURES`** ✓（★ 链失败的具名原因 ✓）、**`rowPreimage(row)`** ✓（★ **指纹前像** ✓ —— ★ 与 `fingerprintOf` 配对 ✓）、**`createAuditChain({ … })`** ✓。
+> ★★ **由 `tests/audit-doc-api-coverage.test.mjs` 的配对表守着** ✓。
+
 ## 1. 心智模型：三层观测 + 一条不变量
 
 ```

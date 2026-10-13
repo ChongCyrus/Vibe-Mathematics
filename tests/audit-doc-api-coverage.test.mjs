@@ -34,6 +34,12 @@ const PAIRS = [
   { vol: '06-prompt-pipeline.md', mod: 'kernel/prompt/index.js', must: ['createPromptPipeline'] },
   { vol: '08-primitives-meeting-ballot-workflow.md', mod: 'kernel/meeting.js', must: ['createMeeting'] },
   { vol: '08-primitives-meeting-ballot-workflow.md', mod: 'kernel/ballot.js', must: ['createBallot'] },
+  // Round 502: docs/21 is the observability volume and named NONE of these nineteen exports - the same zero-coverage
+  // shape docs/07 had for records.js.
+  { vol: '21-observability-and-operations.md', mod: 'kernel/audit.js', must: ['createAudit', 'WHAT_VOCAB', 'DEFAULT_REDACT_KEYS', 'ENFORCED_SCOPE', 'redactRow'] },
+  { vol: '21-observability-and-operations.md', mod: 'kernel/metrics.js', must: ['createMetrics', 'METRIC_CATALOGUE', 'NEVER_SAMPLED_KINDS'] },
+  { vol: '21-observability-and-operations.md', mod: 'kernel/alerts.js', must: ['OPS', 'SLO_STATES', 'ERROR_BUDGET_ACTIONS', 'ALERT_CODES', 'RUNBOOK', 'fingerprintOf'] },
+  { vol: '21-observability-and-operations.md', mod: 'kernel/auditchain.js', must: ['GENESIS', 'CHAIN_FAILURES', 'rowPreimage', 'createAuditChain'] },
 ]
 
 console.log('=== 1. EVERY PAIR RESOLVES, AND THE NAMES ARE REAL EXPORTS ===')

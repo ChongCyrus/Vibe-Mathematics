@@ -45,6 +45,12 @@
 | `vmu.work`（有 `root` ✓） | **在途工作台账** | `start({owner,kind,objective})`、`settle(id,{outcome})`、`interrupt(id,reason)`、`recover({reason})`、`list()`、`pending()`、`interrupted()`、`status()` | 1 |
 | `math_computation`（声明了数学意图 ✓） | 继承的数学工具（D14 原名 ✓） | 由共享模块注册（`op=probe\|run\|receipt\|install` ✓） | 1 |
 
+> ★★★ **其余服务的清单（★ 轮 502 实测补 ✓）**：★ **`registry.register` 共注册 **72** 个服务，其中 **18** 个原先【在任何文档里都查不到名字**]✗** ✓ ⇒ ★★ **一个 pack 可以 `requires` 一个读者【无从查证**]的服务名** ✓。★ **现列于此** ✓：
+> 
+> ★ `vmu.alerts` ✓ ｜ `vmu.retention` ✓ ｜ `vmu.repropack` ✓ ｜ `vmu.bidding` ✓ ｜ `vmu.publication` ✓ ｜ `vmu.external` ✓ ｜ `vmu.crypto` ✓ ｜ `vmu.idempotency` ✓ ｜ `vmu.replay` ✓ ｜ `vmu.transaction` ✓ ｜ `vmu.ratelimit` ✓ ｜ `vmu.auditchain` ✓ ｜ `vmu.stateversion` ✓ ｜ `vmu.clockguard` ✓ ｜ `vmu.mathtools` ✓ ｜ `vmu.projmigrate` ✓ ｜ `vmu.storepolicy` ✓ ｜ `vmu.migration` ✓。
+> 
+> ★★ **真源仍是 `registry.register` 的调用点** ✓；★ **本行只是让这 18 个名字【可查**] ✓。
+
 **② 未发布：内核**内部句柄**与**工厂（**不是服务** ✗ —— 草案把它们当服务写了 ✗）**
 
 | 名字 | 真实形态（✓） | 说明 |

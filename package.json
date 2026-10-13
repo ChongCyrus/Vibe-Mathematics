@@ -100,6 +100,7 @@
     "tests/audit-hook-coverage.test.mjs",
     "tests/audit-claim-traceability.test.mjs",
     "tests/audit-doc-api-coverage.test.mjs",
+    "tests/audit-service-coverage.test.mjs",
     "tests/audit-planned-names.test.mjs",
     "tests/audit-math-computation-contract.mjs",
     "tests/audit-math-computation-contract.mutants.mjs",
