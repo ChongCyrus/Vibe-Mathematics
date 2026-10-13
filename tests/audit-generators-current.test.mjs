@@ -1,3 +1,14 @@
+// WHAT THIS PROVES, AND WHAT IT CANNOT (round 608, discipline 11.ao).
+//
+// This proves NO DRIFT: each generator, run bare, produces what the committed file already contains. It cannot prove the artifact is
+// CORRECT, because the criterion is the generator itself - and round 606 measured exactly that blind spot: a real bug, a generator
+// reading source code as data, passed this check fourteen times out of fourteen both before and after the fix, since it produced the
+// same wrong output every time.
+//
+// THE INDEPENDENT CRITERION LIVES ELSEWHERE, and it is the OUTCOME rather than the agreement: the generated settings table's counts
+// (1038 keys across 105 families, asserted against the schema) and the content of the generated schema (no source fragment admitted as
+// a key). A guard may only claim what its criterion can reach, so this one claims currency.
+//
 // tests/audit-generators-current.test.mjs - run EVERY generator that regen-all lists, bare, and require each to verify.
 //
 // WHY. Nine generators were wired into regen-all and only seven had a guard: generate-pack-prompts and generate-pack-persona

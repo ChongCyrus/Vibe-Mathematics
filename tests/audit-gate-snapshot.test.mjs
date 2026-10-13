@@ -1,3 +1,9 @@
+// WHAT THIS PROVES (round 608, discipline 11.ao). This one is NOT a self-checking guard, and round 607 wrongly listed it as one. Its
+// criterion is the checkout's REAL git state - `head=<short SHA>` and `dirty=<n>` - which is independent of the generator that emits the
+// line, so it can prove more than "no drift": it can prove the conclusion belongs to this tree. It also proves its own assertions bite,
+// by fault injection. A self-checking guard compares a producer's output to what that producer would produce; this compares it to
+// something the producer does not own.
+//
 // audit-gate-snapshot.test.mjs — D4 gate: every gate/generator conclusion line must carry a snapshot
 // fingerprint (head=<short SHA> + dirty=<n>), so a transient red caused by IN-FLIGHT edits is identifiable.
 // The reviewer hit exactly that this round: two gates were reported red while the tree was being edited.
