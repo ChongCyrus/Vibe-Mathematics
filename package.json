@@ -601,6 +601,7 @@
     "tests/vmu-formal-pipeline.test.mjs",
     "tests/vmu-v5r-heading-label.test.mjs",
     "tests/vmu-corpus-is-baseline-not-template.test.mjs",
+    "tests/vmu-pack-fields-match-category.test.mjs",
     "docs/COMPAT-AUDIT-ROUND3.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.en.md",
