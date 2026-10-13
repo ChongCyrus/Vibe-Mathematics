@@ -118,6 +118,8 @@
     "tests/vmu-ratelimit-tool.test.mjs",
     "tests/vmu-dissemination-wordlist.test.mjs",
     "tests/vmu-explain-tool.test.mjs",
+    "tests/vmu-ops-cannot-decide.test.mjs",
+    "tests/vmu-projmigrate-tool.test.mjs",
     "tests/audit-planned-names.test.mjs",
     "tests/audit-math-computation-contract.mjs",
     "tests/audit-math-computation-contract.mutants.mjs",

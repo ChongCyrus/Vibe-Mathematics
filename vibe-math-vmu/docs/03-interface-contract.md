@@ -93,7 +93,7 @@
 
 > ★★ **两处内核工厂（★ 轮 503 补 ✓）**：★ **`kernel/identity.js` 的 `createIdentity({ … })`** ✓ —— ★ **成员身份与假名面工厂** ✓；★ **`kernel/notify.js` 的 `createNotify({ … })`** ✓ —— ★ **通知面工厂** ✓（★ 它 emit 的是**自己命名空间**的 `notify/emit` ✓ —— ★ 中间件要挂它必须**先 `declareTopic`** ✓，★ 这是**刻意**的 ✓）。
 
-### 3.1 已实现（★ **8 个**：minutes／board／budget／citations／discipline／governance／ratelimit／explain ✓）
+### 3.1 已实现（★ **9 个**：minutes／board／budget／citations／discipline／governance／ratelimit／explain／projmigrate ✓）
 
 > ★★★ **计数口径（★ 轮 494 实测修正 ✓）**：★ 本标题原先写 **"真机已验证的 5 个 ＋ 本轮新增 1 个"** ✗ —— ★ **那是写下时的快照，之后每加一个工具都没回头改** ✓ ⇒ ★★ **现在写"本表列 N 个"，且 N 由表本身决定** ✓；★★ **真机验证状态另见 `11-§9.6`，不要在这里凭记忆写** ✓。
 
@@ -117,6 +117,7 @@
 | `vibe_vmu_governance` | 治理面（★ **可观测**）：`action=keysUsed\|config\|droppedEvents` ✓ —— **只做寻址与调用** ✓ | `action`(必填，枚举) | `governanceTool` 为真 | `VMU_INVALID_ARGUMENT`（未知 action） |
 | `vibe_vmu_ratelimit` | 速率面：`action=take\|peek\|reset\|bucket\|status` ✓ —— **只做寻址与调用** ✓ | `action`(必填，枚举)、`key`、`cost`、`scope`、`reason`、`by` | `ratelimitTool` 为真 | **服务自己的码原样透传** ✓（如 `reset` 缺理由 ⇒ `VMU_INVALID_ARGUMENT` ＋ hint ✓） |
 | `vibe_vmu_explain` | 解释面：`action=checkReason\|correlate\|build\|render\|status` ✓ —— **只做寻址与调用** ✓ | `action`(必填，枚举)、`reason`、`targetAction`(**转交给服务的 `action` ✓**)、`traceId`、`taskId`、`chains`、`scores`、`fields`、`report`、`format` | `explainTool` 为真 | **服务自己的码原样透传** ✓（`VMU_EXPLAIN_REASON_REQUIRED`／`VMU_EXPLAIN_CORRELATION_UNKNOWN` ✓） |
+| `vibe_vmu_projmigrate` | 迁移面：`action=register\|read\|upgrade\|status` ✓ —— **只做寻址与调用** ✓ | `action`(必填，枚举)、`kind`、`version`、`migrate`、`doc`、`to` | `projmigrateTool` 为真 | **服务自己的码原样透传** ✓（缺 `kind` ⇒ `VMU_INVALID_ARGUMENT` ＋ 调用样例 hint ✓） |
 
 > **活对象登记（本节新增面所需 ✓）**：内核持有**会话内**的会议/表决实例表（`kernel.liveMeeting(id)`／`liveBallot(id)` ✓，`status().live = {meetings[],ballots[],cap,evicted}` ✓）；**上限 50，超出按最旧逐出并计数** ✓（`evicted` 绝不静默 ✓）。它**不是新策略** ✓：同一批原语，只是**可按 id 寻址** ✓（docs/08 §2 的"逐对象原语" ✓）。
 
@@ -674,7 +675,7 @@
 | `VMU_HEAD_FIELD_IMMUTABLE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
 | `VMU_HISTORY_CHAIN_BROKEN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
 | `VMU_HR_APPEAL_OPEN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
-| `VMU_HR_AUTODECISION_FORBIDDEN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
+| `VMU_HR_AUTODECISION_FORBIDDEN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 11 | ⛔ |
 | `VMU_HR_CYCLE_CLOSED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_HR_OFFBOARDING_INCOMPLETE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |
 | `VMU_HR_PERF_EVIDENCE_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 22 | ⛔ |

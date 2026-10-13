@@ -645,7 +645,7 @@
 | 10.2 | **绩效节奏** | 定期回顾的节奏与材料清单（**材料来自记录轨**，不凭印象 ✓） | `vmu.tenure.performanceCadenceDays`（默认 `180`）、`vmu.tenure.performanceEvidenceRequired`（默认 `true`） | `VMU_HR_PERF_EVIDENCE_MISSING` ⛔ | ✗ | P2 |
 | 10.3 | **任期与晋升** | 任期时钟、里程碑、决策窗口（引用 16 的成果面，引用 17 的席位面） | `vmu.tenure.tenureTrackMonths`（默认 `60`）、`vmu.tenure.tenureDecisionWindowDays`（默认 `90`）、`vmu.tenure.tenureQuorum`（默认 `3`） | `VMU_HR_TENURE_DECISION_DUE` ⛔／`VMU_HR_TENURE_QUORUM_MISSING` ⛔ | ✗ | P1 |
 | 10.4 | **轮换·离职·申诉** | 轮换与离职清单（权限回收、数据交接、设备归还、文件归档）；申诉窗口与受理 | `vmu.tenure.offboardingChecklist`（默认 `["revoke","handover","return","archive"]`）、`vmu.tenure.appealWindowDays`（默认 `30`）、`vmu.tenure.rotationPolicy`（默认 `none`） | `VMU_HR_OFFBOARDING_INCOMPLETE` ⛔／`VMU_HR_APPEAL_OPEN` ⛔ | ✗ | P1 |
-| 10.5 | **人类在环** | 人事决策**永不**自动化（只准备材料），人类审批可打断（O-6） | `vmu.tenure.humanDecisionRequired`（默认 `true`） | `VMU_HR_AUTODECISION_FORBIDDEN` ⛔ | ✗ | P0（纪律） |
+| 10.5 | **人类在环** | 人事决策**永不**自动化（只准备材料），人类审批可打断（O-6） | `vmu.tenure.humanDecisionRequired`（默认 `true`） | `VMU_HR_AUTODECISION_FORBIDDEN` ✓ | ✓ **已实现（轮 531 实测 ✓）** | P0（纪律） |
 
 > **这一族怎么组合出来** ✓：**settings** 给周期/窗口/清单；**中间件**在 `before`（权限变更/离职动作前）检查清单闭合、在 `after` 记录；**pack** 给"任期规则、评审季规则、申诉流程" ✓。**招募与试用语义归 17** ✓（引用不重定义）。
 
@@ -910,7 +910,7 @@
 | O5 | 传播"夸大词表"的来源与维护者 | ★★★ **轮 530 已实现** ✓：★ **`vmu.dissemination.exaggerationWords`（stringList，默认【空**]⇒ 零机制 ✓）**；★ `publication.js` 的 `outreachPack` 在 `strict` 档命中即 **具名拒 `VMU_OUTREACH_EXAGGERATED`** ✓（★ 带 `words` 与指向设置的 hint ✓）；★ `warn` 档记警告不拒 ✓；★★ **词表由【声明**]决定，内核对它没有任何意见** ✓（★ 轮 63 裁定：落点在论文轨道的交付点 ✓） | §6.1 的 `strict` 档位缺词表即无法判定  ★★ **轮 525 判定：保留** ✓ —— ★ **消费者＝(i) 评审与出版** ✓：★ `strict` 档位要判"传播是否夸大"，**没有词表就无法判定** ✓ ⇒ ★ **有消费者、留待做** ✓ |
 | O6 | 会计科目树与合规项清单的模板集 | 无 | pack 无法落地（§3/§8）  ★★ **轮 525 判定：【降级为扩展**]** ✓ —— ★ **消费者＝无** ✗：★ 会计科目树与合规项模板集是**财务/审计**的物件，★ **对数学研究不产生消费者** ✓ ⇒ ★ 按审批原则移出原卷、不再实现 ✓ |
 | O7 | 容量预测的数据来源（任务板？历史用量？） | §9.4 的 `fair-share` 无输入 ★★ **轮 524 实测【有载体**]✓：★ `forecast` **35** 处／`predict` **1** 处 ⇒ ★ **容量预测有实现** ✓ ⇒ **缺的是数据来源的统一** ✓ |
-| O8 | 人事决策的"人类在环"在无人类在场时如何处置 | 未定 | §10.5 的阻塞语义  ★★ **轮 525 判定：保留** ✓ —— ★ **消费者＝(j) 代理自组织** ✓：★ "无人类在场时如何阻塞"**正是多智能体自组织的核心语义** ✓ ⇒ 有消费者、留待做 ✓ |
+| O8 | 人事决策的"人类在环"在无人类在场时如何处置 | ★★★ **轮 531 实测：已实现** ✓ | §10.5 的阻塞语义**已落地** ✓ —— ★ 无人在场 ⇒ `onTimeout: 'hold'`（`vmu.human` ✓）  ★★ **轮 525 判定：保留** ✓ —— ★ **消费者＝(j) 代理自组织** ✓：★ "无人类在场时如何阻塞"**正是多智能体自组织的核心语义** ✓ ⇒ 有消费者、留待做 ✓ |
 | O9 | 审计证据包的**跨机构格式**兼容性 | §3.4/§8.3 只能自用 ★★ **轮 524 实测【部分有载体**]✓：★ `auditPack` **44** 处／**`crossOrg` = 0** ⇒ ★ **审计证据包已实现、跨机构格式未实现** ✓ |
 | O10 | **规划码**（★ 数目见生成器 ✓，本行原先写 90 ✗）与既有码族的命名冲突 | 未核 | 04/03 登记前可能撞名 |
 | **O14** | **样本链式保管的真实载体** ✗ | 未定（记录轨条目？外部 LIMS？） | §2.5 的断链检测依赖事件流的真实来源 |
