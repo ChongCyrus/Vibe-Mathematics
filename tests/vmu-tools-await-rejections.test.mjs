@@ -92,6 +92,7 @@ const TOOLS = [
   [{ auditTool: true }, 'audit', 'audit', { action: 'status' }],
   [{ ipTool: true }, 'ip', 'ip', { action: 'status' }],
   [{ biddingTool: true }, 'bidding', 'bidding', { action: 'status' }],
+  [{ admissionTool: true }, 'admission', 'admission', { action: 'status' }],
   [{conferenceTool: true }, 'conference', 'conference', { action: 'status' }],
   [{arbitrationTool: true }, 'arbitration', 'arbitration', { action: 'status' }],
   [{charterTool: true }, 'charter', 'charter', { action: 'status' }],

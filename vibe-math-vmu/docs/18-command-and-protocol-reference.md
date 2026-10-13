@@ -24,7 +24,7 @@
 
 ---
 
-## 1. 工具总表（44 个 `vibe_vmu_*` ＋ 1 个继承工具）
+## 1. 工具总表（45 个 `vibe_vmu_*` ＋ 1 个继承工具）
 
 | 工具（`TOOL_NAMES` 键） | 出现条件 | 权限面 | 幂等性 | 主要 action |
 |---|---|---|---|---|
@@ -82,6 +82,7 @@
 | `vibe_vmu_audit`（`audit`） | 见 `docs/03` §3.1 | 由宿主提供 | 恒可用（★ 零机制的观察点 ✓） | `status`(默认) |
 | `vibe_vmu_ip`（`ip`） | `ipTool` 为真 | 知识产权：归属/披露/争议 | `list`/`status`/`get`/`history`/`contributors`/`ownership`/`priorArt`/`disclose` ✓；写动作视请求 ✗ | `status`(默认)`/appeal/complete/contributors/disclose/dispute/exportDossier/file/get/history/hold/list/ownership/priorArt/recordSearch/release/revenue/status/sweep/transfer` |
 | `vibe_vmu_bidding`（`bidding`） | `biddingTool` 为真 | 竞标：竞标/围标检测 | `list`/`status`/`candidates`/`collusion`/`fingerprintOf`/`normalizePlan` ✓；写动作视请求 ✗ | `status`(默认)`/award/bid/cancel/candidates/close/collusion/fingerprintOf/list/normalizePlan/post/status` |
+| `vibe_vmu_admission`（`admission`） | `admissionTool` 为真 | 招募/准入流水线 | `postings`/`status`/`aggregate` ✓；写动作视前置步骤 ✗ | `status`(默认)`/accept/actAsChair/aggregate/apply/confirm/offer/openPosting/postings/probation/promote/recall/reject/renewTerm/score` |
 
 ## 2. 逐工具参考（可照抄）
 
@@ -498,8 +499,9 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 41 | `audit` | `vibe_vmu_audit` |
 | 42 | `ip` | `vibe_vmu_ip` |
 | 43 | `bidding` | `vibe_vmu_bidding` |
-| 44 | `turn` | `vibe_vmu_turn` |
+| 44 | `admission` | `vibe_vmu_admission` |
+| 45 | `turn` | `vibe_vmu_turn` |
 
-> ★★ 合计 **44** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
+> ★★ 合计 **45** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
 
 <!-- END GENERATED: tool-index -->
