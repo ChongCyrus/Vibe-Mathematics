@@ -31,6 +31,8 @@ import { createKernel } from '../vibe-math-vmu/kernel/index.js'
 import { mkdtempSync as mkdtempSyncTurn } from 'node:fs'
 import { tmpdir as tmpdirTurn } from 'node:os'
 import { join as joinTurn } from 'node:path'
+// A URL is accepted by existsSync directly, which avoids Windows path juggling on a URL-derived string.
+const REPO_URL = new URL("..", import.meta.url)
 const turnRoot = mkdtempSyncTurn(joinTurn(tmpdirTurn(), 'vmu-turn-ab-'))
 
 let passed = 0
@@ -550,6 +552,25 @@ const phaseOf = (kind, text) => {
   ok(pctAB >= 86 && knownGapsAB.length === 4,
     "V67. **** and the gap is NAMED rather than rounded away, with a FLOOR on the measured ratio: the closed families are the compact catalogue, the refusal notice and the contextPct/compacted clarification, and the four that remain are listed",
     { families: knownGapsAB.length, percent: pctAB })
+
+  // ROUND 549 - THE GAP LIST, CHECKED RATHER THAN TRUSTED. The four families above were each verified by hand and all four are
+  // CLOSED: the notice chain has a producer (queueNotice, called by the turn loop and exposed as notify), a one-shot consumer
+  // (drainNotices/takeNotices), a renderer (notices.js noticeBlock with INBOX_HEADER) and an injection path (the preset passing
+  // both through createKernel into the orchestrator); the catalogue switch chooses EXACTLY ONE, defaulting to compact and
+  // switching on the literal "full"; and the inbox header is that same INBOX_HEADER. This companion names, for each family, the
+  // code that closes it and requires that code to exist - appended AFTER the measurement, so it cannot move a number above it.
+  const CLOSED_BY_VERIFIED = [
+    { family: 'framework notices beyond a refusal', by: 'vibe-math-vmu/kernel/turn/index.js', what: 'queueNotice + drainNotices' },
+    { family: 'the compact catalogue VARIANT per phase', by: 'vibe-math-vmu/packs/v5r/middleware/prompt-switches.js', what: 'decideSections chooses exactly one' },
+    { family: 'the two catalogues are alternatives', by: 'vibe-math-vmu/packs/v5r/middleware/prompt-switches.js', what: 'the same switch' },
+    { family: 'the inbox header before the line', by: 'vibe-math-vmu/packs/v5r/notices.js', what: 'INBOX_HEADER' },
+  ]
+  // NON-EMPTY FIRST: two empty collections compare equal, which the declaration criterion calls shape B - the check would pass
+  // by having nothing to check. And the existence clause is evaluated over a list now required to be non-empty.
+  ok(CLOSED_BY_VERIFIED.length > 0 && CLOSED_BY_VERIFIED.length === knownGapsAB.length && CLOSED_BY_VERIFIED.every((c) => typeof c.by === 'string' && c.by.length > 0 && existsSync(new URL(c.by, REPO_URL))),
+    'V71. **** AND THE GAP LIST IS NOW CHECKED: every family once listed as open names the file that closes it, and that file exists - so the list cannot sit there as prose while the mechanism it names is in the tree',
+    { families: CLOSED_BY_VERIFIED.length, by: CLOSED_BY_VERIFIED.map((c) => c.by) })
+
 
   // The biggest remaining family. See the comment above: this is the number that distinguishes "65 percent and
   // closing" from "65 percent with one large family still missing".
