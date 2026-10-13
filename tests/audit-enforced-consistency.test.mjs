@@ -709,7 +709,6 @@ for (const [mod, m] of [...byModule].sort()) {
     'control.js': 'receipts carry enforced[] (canPauseRoles/pauseScope); pause/resume refusals are driven by the control scenarios',
     'custody.js': 'receipts carry enforced[]; its kernel-enforced mappingIrreversible invariant is asserted in its own suite',
     'discipline.js': 'receipts carry enforced[]; the breaker refusals are asserted in its own suite',
-    'domaincompliance.js': 'a single receipt key; the domain gate refusals are driven by the domaingate scenarios',
     'explain.js': 'receipts carry enforced[] (reasonRequired/reasonMaxChars); refusals asserted in its own suite',
     'fairness.js': 'receipts carry enforced[]; the share refusals are driven by the fairness scenarios',
     'human.js': 'receipts carry enforced[]; the in-the-loop refusals are asserted in its own suite',

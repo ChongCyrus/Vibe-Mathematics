@@ -568,9 +568,9 @@ vmu.packs.active: [v5r]
 | `vmu.external.maxResults` | int ≥1 | `100` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 单次取数结果上限（截断必计数） |
 | `vmu.external.offline` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 离线模式（只许命中缓存 ✓ 零网络） |
 | `vmu.external.sources` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 允许的来源清单（空＝不限制） |
-| `vmu.compliance.maxReports` | int ≥1 | `1000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaingate.js` | 合规上报条数上限（溢出必计数） |
-| `vmu.compliance.saeLimitMs` | int ≥0 | `86400000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaingate.js` | SAE 上报时限（毫秒；默认 24h） |
-| `vmu.compliance.aeLimitMs` | int ≥0 | `259200000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaingate.js` | AE 上报时限（毫秒；默认 72h） |
+| `vmu.compliance.maxReports` | int ≥1 | `1000` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/gate.js` | 合规上报条数上限（溢出必计数） |
+| `vmu.compliance.saeLimitMs` | int ≥0 | `86400000` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/gate.js` | SAE 上报时限（毫秒；默认 24h） |
+| `vmu.compliance.aeLimitMs` | int ≥0 | `259200000` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/gate.js` | AE 上报时限（毫秒；默认 72h） |
 | `vmu.schedule.triggerVia` | enum | `none` | `none`∣`middleware`∣`script` | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 到期是否触发流程（默认 none＝只报告 ✗✓） |
 | `vmu.schedule.maxPending` | int ≥0 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 待触发项上限（0＝不限；超限具名拒 ✓） |
 | `vmu.schedule.timeSource` | enum | `tick-only` | `tick-only`∣`host-timer` | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 时间来源（tick-only＝只用 tick() 推进 ✓；host-timer 需注入 timer 接缝 ✗） |
@@ -902,27 +902,27 @@ vmu.packs.active: [v5r]
 | `vmu.lifecycle.dedupeKeys` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 跨研究去重键（命中即拒并点名该键） |
 | `vmu.lifecycle.alpha` | number | `0.05` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 显著性水平（judge() 据此判定；越界回落 0.05） |
 | `vmu.lifecycle.powerTarget` | number | `0.8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lifecycle.js` | 把握度目标（judge() 据此判定；越界回落 0.8） |
-| `vmu.clinical.registrationRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 开工前必须有试验注册号（§9.2） |
-| `vmu.clinical.registrationId` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 试验注册号（主体未给时取此声明） |
-| `vmu.clinical.registrationIdPattern` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 注册号正则（空＝只要求非空；不符即拒并点名） |
-| `vmu.clinical.consentVersioning` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 同意须版本化（version＋effectiveAt；受试版本≠当前生效版本⇒拒） |
-| `vmu.clinical.saeReportLimitHours` | number | `24` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | SAE 上报时限（小时；超时⇒红） |
-| `vmu.clinical.aeReportLimitHours` | number | `72` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | AE 上报时限（小时） |
-| `vmu.clinical.reportChannel` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 上报通道（留空＝未声明） |
-| `vmu.clinical.deviationRegister` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 方案偏离须登记 kind/reason/at/action；major 未登记⇒阻塞 |
-| `vmu.clinical.unblindingRequiresReason` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 揭盲须记 who/why/at；紧急揭盲须事后复核 |
-| `vmu.animal.iacucRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 必须 IACUC 审批（未批/未生效/过期⇒拒） |
-| `vmu.animal.protocolId` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 动物方案号（主体未给时取此声明） |
-| `vmu.animal.reviewCycleDays` | int ≥0 | `365` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 年度复审周期（天） |
-| `vmu.animal.threeRRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 3R 逐条非空（replacement/reduction/refinement） |
-| `vmu.animal.anesthesiaRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 麻醉镇痛须声明（豁免须给理由） |
-| `vmu.animal.deathReportLimitHours` | number | `24` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 人道终点/意外死亡上报时限（小时） |
-| `vmu.animal.facilityAccreditation` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 设施资质 id（须匹配且未过期） |
-| `vmu.animal.trainingRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 人员培训须有效（过期⇒拒） |
-| `vmu.animal.ledgerRef` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/domaincompliance.js` | 动物台账引用（对象 id 在 22-§2/§8；本面不重定义台账 ✗） |
-| `vmu.compliance.domainPacks` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 启用的领域包（非空时，未声明的域⇒VMU_DOMAIN_PACK_MISSING） |
-| `vmu.compliance.requireApprovalGate` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 是否要求审批闸（§9.4①） |
-| `vmu.compliance.evidenceKind` | string | `compliance-evidence` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 合规证据的 kind（模板位；打包归 22 ✓） |
+| `vmu.clinical.registrationRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 开工前必须有试验注册号（§9.2） |
+| `vmu.clinical.registrationId` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 试验注册号（主体未给时取此声明） |
+| `vmu.clinical.registrationIdPattern` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 注册号正则（空＝只要求非空；不符即拒并点名） |
+| `vmu.clinical.consentVersioning` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 同意须版本化（version＋effectiveAt；受试版本≠当前生效版本⇒拒） |
+| `vmu.clinical.saeReportLimitHours` | number | `24` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | SAE 上报时限（小时；超时⇒红） |
+| `vmu.clinical.aeReportLimitHours` | number | `72` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | AE 上报时限（小时） |
+| `vmu.clinical.reportChannel` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 上报通道（留空＝未声明） |
+| `vmu.clinical.deviationRegister` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 方案偏离须登记 kind/reason/at/action；major 未登记⇒阻塞 |
+| `vmu.clinical.unblindingRequiresReason` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 揭盲须记 who/why/at；紧急揭盲须事后复核 |
+| `vmu.animal.iacucRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 必须 IACUC 审批（未批/未生效/过期⇒拒） |
+| `vmu.animal.protocolId` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 动物方案号（主体未给时取此声明） |
+| `vmu.animal.reviewCycleDays` | int ≥0 | `365` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 年度复审周期（天） |
+| `vmu.animal.threeRRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 3R 逐条非空（replacement/reduction/refinement） |
+| `vmu.animal.anesthesiaRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 麻醉镇痛须声明（豁免须给理由） |
+| `vmu.animal.deathReportLimitHours` | number | `24` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 人道终点/意外死亡上报时限（小时） |
+| `vmu.animal.facilityAccreditation` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 设施资质 id（须匹配且未过期） |
+| `vmu.animal.trainingRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 人员培训须有效（过期⇒拒） |
+| `vmu.animal.ledgerRef` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 动物台账引用（对象 id 在 22-§2/§8；本面不重定义台账 ✗） |
+| `vmu.compliance.domainPacks` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 启用的领域包（非空时，未声明的域⇒VMU_DOMAIN_PACK_MISSING） |
+| `vmu.compliance.requireApprovalGate` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 是否要求审批闸（§9.4①） |
+| `vmu.compliance.evidenceKind` | string | `compliance-evidence` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | 合规证据的 kind（模板位；打包归 22 ✓） |
 | `vmu.privacy.classification` | enum | `C1` | `C0`∣`C1`∣`C2`∣`C3`∣`C4` | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 数据等级（C0 公开／C1 内部／C2 PII／C3 PHI／C4 受限；★ 声明低于实际 ⇒ VMU_DATA_CLASS_MISMATCH） |
 | `vmu.privacy.piiDetect` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 是否检查载荷中的个人数据（按形状匹配；误报只会【抬高】等级，是安全方向） |
 | `vmu.privacy.deidentify` | enum | `pseudonymize` | `none`∣`pseudonymize`∣`k-anonymity`∣`differential` | 会话 | H1 | office | ✅ 已接线 | `kernel/compliance.js` | 去标识化方式（★ C2+ 写入前必须发生；none ⇒ 拒，VMU_PRIVACY_VIOLATION） |

@@ -118,7 +118,7 @@ ok(mk().calendar({ dueAt: '2099-01-01T00:00:00.000Z', at: '2026-01-01T00:00:00.0
 // (-30610224000000) and NOT NaN, so a number must be handled as a number before any stringification.
 {
   const { ms } = await import('../vibe-math-vmu/kernel/timevalue.js')
-  const { createDomainGate } = await import('../vibe-math-vmu/kernel/domaingate.js')
+  const { createDomainGate } = await import('../vibe-math-vmu/extensions/domain-compliance/gate.js')
   ok(typeof ms === 'function' && ms(0) === 0 && ms(1000) === 1000, 'shared ms(): a finite NUMBER is epoch-ms (0 included)')
   ok(ms('1970-01-01T00:00:00.000Z') === 0 && ms(1000) === 1000, 'shared ms(): ISO strings and numbers agree on the same instant')
   ok(!Number.isNaN(ms('1000')) && ms('1000') === Date.parse('1000') && ms('1000') !== 1000, 'the bare-year trap is SILENT: ms("1000") = year 1000, not NaN and not 1000')
@@ -152,7 +152,7 @@ console.log('')
 // ROUND 155: export control - the pure screening reports, the gate's domain pack requires it, and this face refuses
 // the self-contradicting configuration (a dual-use pack declared while the screening switch is off).
 {
-  const { screenExportControl, CONTROLLED_ITEMS, DEFAULT_PACKS, ITEM_CODES } = await import('../vibe-math-vmu/kernel/domaingate.js')
+  const { screenExportControl, CONTROLLED_ITEMS, DEFAULT_PACKS, ITEM_CODES } = await import('../vibe-math-vmu/extensions/domain-compliance/gate.js')
   const clean = screenExportControl({ items: ['reagent-a'] })
   ok(clean.ok === true && clean.flagged.length === 0, 'screening: an uncontrolled item is not flagged')
   const dirty = screenExportControl({ items: ['encryption-strong', 'reagent-a'] })

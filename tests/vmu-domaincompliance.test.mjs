@@ -7,7 +7,7 @@
 // STYLE: a plain script with a counter and a summary at the END. This suite deliberately has NO home-grown runner, because round
 // 246 was spent on a suite whose runner sat in the middle of the file and whose count lived inside each test body - two shapes that
 // made a passing test look like a test that never ran.
-import { createDomainCompliance, DOMAIN_KEYS, CODE } from '../vibe-math-vmu/kernel/domaincompliance.js'
+import { createDomainCompliance, DOMAIN_KEYS, CODE } from '../vibe-math-vmu/extensions/domain-compliance/index.js'
 
 let passed = 0
 let failed = 0

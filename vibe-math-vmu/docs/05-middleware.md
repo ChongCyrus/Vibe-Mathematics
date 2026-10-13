@@ -371,7 +371,7 @@
 | `ballot/cast` | `closed` | `ballot.js` |
 | `ballot/tally` | `closed` | `ballot.js` |
 | `record/append-before` | `closed` | `library.js` |
-| `record/appended` | `open` | `compliance.js`、`domaingate.js`、`handover.js`、`minutes.js`、`tenure.js` |
+| `record/appended` | `open` | `compliance.js`、`handover.js`、`minutes.js`、`tenure.js` |
 | `task/assign` | `closed` | `members.js`、`tasks.js` |
 | `task/transition` | `closed` | `tasks.js` |
 | `prompt/section-assembled` | `open` | `index.js` |

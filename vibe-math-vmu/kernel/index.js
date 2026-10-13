@@ -65,7 +65,6 @@ import { createCitations } from './citations.js'      // ROUND 222: the bibliogr
 import { createFormal } from './formal.js'
 import { createMathJobs } from './mathjobs.js'
 import { createExternal } from './external.js'
-import { createDomainGate } from './domaingate.js'
 import { createScheduler } from './scheduler.js'
 import { createCrypto } from './crypto.js'
 import { createNotify } from './notify.js'
@@ -118,7 +117,6 @@ import { createFairness } from './fairness.js'
 import { createCharter } from './charter.js'
 import { createReproPack } from './repropack.js'
 // ROUND 247: the domain compliance face (docs/20 §9.1-§9.4) - clinical (N2) and animal (N3) packs.
-import { createDomainCompliance } from './domaincompliance.js'
 import { createLegalEntity } from './partnership.js'
 import { createReviewers } from './reviewers.js'
 import { SETTING_DEFS } from '../settings/schema.js'
@@ -521,7 +519,6 @@ export function createKernel({
   // pointed out that only four of them did, and that `delegation` was the worst omission - a backwards clock
   // would EXTEND an authorisation's life. The rest of the kernel keeps the raw clock on purpose.
   const audit = createAudit({ settings: settingsView, bus, clock: guardedClock, log, sink: auditToDisk })
-const domainCompliance = createDomainCompliance({ settings: settingsView, clock: guardedClock, log })
 const legalEntity = createLegalEntity({ settings: settingsView, clock: guardedClock, log })
 const reviewers = createReviewers({ settings: settingsView, clock: guardedClock, log })
   const alerts = createAlerts({ settings: settingsView, bus, clock: guardedClock, log, metrics })
@@ -573,7 +570,6 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // Batch-3/5 tails: external fetching (N11) and the clinical/animal approval gates. Both are inert by default
   // (`vmu.external.enabled=false`, no domain pack declared), and both refuse by name rather than inventing data.
   const external = createExternal({ settings: settingsView, bus, clock, log, fetchFn })
-  const domaingate = createDomainGate({ settings: settingsView, bus, clock, log })
   // THE THIRD INSTANCE of the phase lesson, found by an independent review: `deliver` was already in hand and
   // consumed by members and meetings, yet `vmu.notify` was handed a hard null - the same seam wired to A but not
   // to B. Notify now gets the seam that exists, and signer/fetchFn/timer are real kernel options instead of being
@@ -585,7 +581,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   const notify = createNotify({ settings: settingsView, bus, clock: guardedClock, log, deliver })
   noteSeam('deliver', 'notify', notify ? deliver : null)
   const lifecycle = createLifecycle({ settings: settingsView, bus, clock, log, workflow,
-    domaingate, publication, collab, identity, human, discipline, custody, explain, control, citations })
+    publication, collab, identity, human, discipline, custody, explain, control, citations })
   // K6 (round 16): the unified idempotency ledger that a replay/retry path can consult before doing work again.
   // The ledger gets BOTH the guarded clock (so a backwards clock cannot keep a pending key alive forever) and
   // the kernel store (so idempotency survives the restart that a retry usually follows).
@@ -736,7 +732,6 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   registry.register('vmu.budget', { apiVersion: 1 }, { kind: 'service', description: 'four-kind quotas, reservation and fairness (docs/08 搂12.5)' })
   registry.register('vmu.metrics', { apiVersion: 1 }, { kind: 'service', description: 'metric observation, KPI judgement and counted drops (docs/21 搂4)' })
   registry.register('vmu.audit', { apiVersion: 1 }, { kind: 'service', description: 'append-only audit rows, redaction before storage, counted ring drops (docs/21 搂2)' })
-    registry.register('vmu.domaincompliance', { apiVersion: 1 }, { kind: 'service', description: 'domain compliance packs: clinical (N2) and animal (N3) approval gates' })
     registry.register('vmu.partnership', { apiVersion: 1 }, { kind: 'service', description: 'legal entities and tax field slots: registration, account binding, invoice slot validation (volume 22 §L285)' })
     registry.register('vmu.reviewers', { apiVersion: 1 }, { kind: 'service', description: 'reviewer market: COI recusal, blind mapping with tracing, concurrent load cap (volume 16 §L297)' })
   registry.register('vmu.alerts', { apiVersion: 1 }, { kind: 'service', description: 'thresholds, alert-level dedup, silences that still count, SLO tri-state (docs/21 搂5 搂13)' })
@@ -766,7 +761,6 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   registry.register('vmu.citations', { apiVersion: 1 }, { kind: 'service', description: 'citations: the declared style, the required fields, the identifier priority that decides the key, and free text that is off by default (docs/07)' })
   registry.register('vmu.formal', { apiVersion: 1 }, { kind: 'service', description: 'formalisation: sorry refuses by default, compile failure is never a refutation (docs/09)' })
   registry.register('vmu.external', { apiVersion: 1 }, { kind: 'service', description: 'external fetch adapter: receipts for every fetch, stale never silent, conflicts surfaced (docs/16 搂8)' })
-  registry.register('vmu.domaingate', { apiVersion: 1 }, { kind: 'service', description: 'clinical and animal approval gates: no approval, no start (docs/20 搂9)' })
   registry.register('vmu.scheduler', { apiVersion: 1 }, { kind: 'service', description: 'scheduled triggers: timer is a seam, triggerVia defaults to report-only (docs/08 搂5)' })
   registry.register('vmu.crypto', { apiVersion: 1 }, { kind: 'service', description: 'signatures and non-repudiation: no signer means no signature is invented (docs/20 搂6)' })
   registry.register('vmu.notify', { apiVersion: 1 }, { kind: 'service', description: 'watchers and delivery: silence blocks delivery, never the record (docs/17 搂29)' })
@@ -876,7 +870,6 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     get audit() { return audit },
 
     /** ROUND 247: the domain compliance packs (docs/20 §9.1-§9.4), reachable like every other service. */
-    get domaincompliance() { return domainCompliance },
     get legalentity() { return legalEntity },
     get reviewers() { return reviewers },
     get alerts() { return alerts },
@@ -908,7 +901,6 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     get formal() { return formal },
     get mathjobs() { return mathjobs },
     get external() { return external },
-    get domaingate() { return domaingate },
     get scheduler() { return scheduler },
     get crypto() { return crypto },
     get notify() { return notify },

@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto'
 // task-231: the instant→ms rule is a SINGLE source of truth (kernel/timevalue.js). It was duplicated here and
 // in compliance.js; the trap it documents (Date.parse('1000') = the YEAR 1000, never NaN) is why numbers must
 // be handled as numbers BEFORE any stringification.
-import { ms, msStrict } from './timevalue.js'
+import { ms, msStrict } from '../../kernel/timevalue.js'
 
 export const apiVersion = 1
 export const DOMAINS = Object.freeze(['clinical', 'animal', 'dual-use'])

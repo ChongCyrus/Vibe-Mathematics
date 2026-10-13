@@ -1,5 +1,5 @@
 // tests/vmu-domaingate.test.mjs — 独立可跑：kernel/domaingate.js 的十条不变式。
-import { createDomainGate, DOMAINS, THREE_R, apiVersion } from '../vibe-math-vmu/kernel/domaingate.js'
+import { createDomainGate, DOMAINS, THREE_R, apiVersion } from '../vibe-math-vmu/extensions/domain-compliance/gate.js'
 
 let passed = 0, failed = 0
 const ok = (c, label) => { if (c) { passed++; console.log('  ok - ' + label) } else { failed++; console.error('  FAIL - ' + label) } }

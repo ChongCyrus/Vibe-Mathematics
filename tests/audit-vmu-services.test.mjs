@@ -38,7 +38,6 @@ const SURFACES = {
   'vmu.library': 'library', 'vmu.members': 'members', 'vmu.tasks': 'tasks', 'vmu.prompt': 'prompt', 'vmu.turn': 'turn',
   'vmu.middleware': 'bus', 'vmu.governance': 'governance', 'vmu.board': 'board', 'vmu.minutes': 'minutes',
   'vmu.budget': 'budget', 'vmu.metrics': 'metrics', 'vmu.audit': 'audit', 'vmu.alerts': 'alerts',
-  'vmu.domaincompliance': 'domainCompliance',
   'vmu.partnership': 'legalEntity',
   'vmu.reviewers': 'reviewers',
   'vmu.compliance': 'domaincompliance',
@@ -46,7 +45,7 @@ const SURFACES = {
   'vmu.handover': 'handover', 'vmu.arbitration': 'arbitration', 'vmu.admission': 'admission', 'vmu.topology': 'topology',
   'vmu.fairness': 'fairness', 'vmu.charter': 'charter', 'vmu.repropack': 'repropack', 'vmu.memory': 'memory',
   'vmu.bidding': 'bidding', 'vmu.mathjobs': 'mathjobs', 'vmu.skills': 'skills', 'vmu.publication': 'publication', 'vmu.collab': 'collab', 'vmu.identity': 'identity', 'vmu.human': 'human', 'vmu.discipline': 'discipline', 'vmu.custody': 'custody', 'vmu.explain': 'explain', 'vmu.control': 'control', 'vmu.citations': 'citations',
-  'vmu.formal': 'formal', 'vmu.external': 'external', 'vmu.domaingate': 'domaingate', 'vmu.scheduler': 'scheduler',
+  'vmu.formal': 'formal', 'vmu.external': 'external', 'vmu.scheduler': 'scheduler',
   'vmu.crypto': 'crypto', 'vmu.notify': 'notify', 'vmu.lifecycle': 'lifecycle',
   'vmu.replay': 'replay',
   'vmu.transaction': 'transaction', 'vmu.ratelimit': 'ratelimit',   // K1 (+K2), round 17
