@@ -224,3 +224,39 @@ vmu 是**插件**：配置来自**该插件在 profile 里的那一行**（`conf
 **新卷/新键/新码/新工具的登记清单（代理自组织必读 ✓）** ✗✓：新卷 ⇒ 本文**阅读顺序（生成块之外）** ＋ `14`；新键 ⇒ `04` 参数表；新码 ⇒ `03-§8`（**已实现／提案**须可区分 ✓）；新工具 ⇒ `03` 工具表 ＋ `11` 门禁（**未实现工具名与标记词同行** ✗✓）。
 
 **"未做"如何被发现** ✓：统一标记 **`✗`／`⚠️`／`✓`** ⇒ **`grep ✗` 即列出全部未做** ✓✓；每条未做**同段写明缺什么** ✗✓。未决/未核一律登记在 `14-§2` ✓。
+
+## 附录：全部卷清单（★ 轮 494 补 ✓）
+
+> ★★★ **为什么要这张表**：★ **`docs/` 下有 **29** 卷，而本索引此前【漏列了 6 卷**]✗（`23-extensions-and-deferred`、`24-v5r-containment`、`25-demoted-domains`、`26-turn-orchestration`、`27-pack-folder`、`28-decision-history`）⇒ ★ **照索引读的人不会知道它们存在** ✓。★ 这张表由 `tests/audit-doc-index.test.mjs` 守着：★ **磁盘上多一卷、本表就少一行，门禁即红** ✓。
+
+| 卷 | 状态 |
+|---|---|
+| `00-README` | 已有 |
+| `01-philosophy` | 已有 |
+| `02-architecture` | 已有 |
+| `03-interface-contract` | 已有 |
+| `04-settings` | 已有 |
+| `05-middleware` | 已有 |
+| `06-prompt-pipeline` | 已有 |
+| `07-durability-library` | 已有 |
+| `08-primitives-meeting-ballot-workflow` | 已有 |
+| `09-math-formalization` | 已有 |
+| `10-packs` | 已有 |
+| `11-gates-and-development` | 已有 |
+| `12-user-guide` | 已有 |
+| `13-migration` | 已有 |
+| `14-open-items-and-roadmap` | 已有 |
+| `15-math-computation-toolbox` | 已有 |
+| `16-research-lifecycle` | 已有 |
+| `17-agent-society-and-delegation` | 已有 |
+| `18-command-and-protocol-reference` | 已有 |
+| `19-plugin-and-extension-development` | 已有 |
+| `20-security-privacy-and-compliance` | 已有 |
+| `21-observability-and-operations` | 已有 |
+| `22-academic-operations` | 已有 |
+| `23-extensions-and-deferred` | ★★ **轮 494 补入** ✓ |
+| `24-v5r-containment` | ★★ **轮 494 补入** ✓ |
+| `25-demoted-domains` | ★★ **轮 494 补入** ✓ |
+| `26-turn-orchestration` | ★★ **轮 494 补入** ✓ |
+| `27-pack-folder` | ★★ **轮 494 补入** ✓ |
+| `28-decision-history` | ★★ **轮 494 补入** ✓ |

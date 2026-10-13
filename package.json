@@ -96,6 +96,7 @@
     "tests/vmu-charter-contracts.test.mjs",
     "tests/audit-tool-table.test.mjs",
     "tests/audit-doc-vs-code-tables.test.mjs",
+    "tests/audit-doc-index.test.mjs",
     "tests/audit-planned-names.test.mjs",
     "tests/audit-math-computation-contract.mjs",
     "tests/audit-math-computation-contract.mutants.mjs",
