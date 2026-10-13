@@ -90,5 +90,35 @@ console.log('=== 4. THE SERVICE TABLE STATES ITS OWN SCOPE INSTEAD OF IMPLYING C
     'and it states the real number, so a reader can tell how incomplete the naming is', { registered: services.length })
 }
 
+console.log('=== 5. THE CAPABILITY VOCABULARY: DOC TABLE AND RUNTIME AGREE, BOTH WAYS ===')
+// Added in round 639. docs/05 section 3.2 presents the capability vocabulary as a frozen twelve-entry list, and the runtime declares the
+// same list. vmu-rules asserts that the RUNTIME's use of capabilities stays inside the vocabulary, but nothing asserted that the
+// DOCUMENT's copy still matches it - so adding a capability would leave the table silently short, which is the failure this file exists
+// to catch: a table wearing an adjective that tells the reader to stop checking. Both directions are asserted, because an index can also
+// gain an entry the runtime does not have.
+{
+  const busMod = await import('../vibe-math-vmu/kernel/bus.js')
+  const caps = busMod.CAPABILITIES
+  ok(Array.isArray(caps) && caps.length > 5, 'the runtime declares a capability vocabulary', { n: caps && caps.length })
+  const lines = doc('05-middleware.md').split('\n')
+  const h = lines.findIndex((l) => /^### 3\.2 /.test(l))
+  ok(h >= 0, 'and the middleware volume carries the vocabulary section', { at: h })
+  const named = new Set()
+  for (let i = h + 1; i < lines.length && !/^#{2,4} /.test(lines[i]); i++) {
+    if (!lines[i].trim().startsWith('|')) continue
+    for (const c of caps) if (lines[i].includes(c)) named.add(c)
+  }
+  const missing = caps.filter((c) => !named.has(c))
+  ok(missing.length === 0, 'every capability the runtime declares is named in the document table', { missing })
+  // and no capability-shaped token in the table is absent from the runtime
+  const cells = []
+  for (let i = h + 1; i < lines.length && !/^#{2,4} /.test(lines[i]); i++) {
+    if (!lines[i].trim().startsWith('|')) continue
+    for (const m of lines[i].matchAll(/`([a-z][a-z-]+)`/g)) cells.push(m[1])
+  }
+  const extra = [...new Set(cells)].filter((c) => /-/.test(c) && !caps.includes(c))
+  ok(extra.length === 0, 'and the table invents no capability the runtime does not declare', { extra })
+}
+
 console.log('=== DOC VS CODE TABLES: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }
