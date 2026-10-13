@@ -78,6 +78,9 @@ const TOOLS = [
   [{ collabTool: true }, 'collab', 'collab', { action: 'status' }],
   [{ reviewersTool: true }, 'reviewers', 'reviewers', { action: 'status' }],
   [{ clockguardTool: true }, 'clockguard', 'clockguard', { action: 'status' }],
+  [{publicationTool: true }, 'publication', 'publication', { action: 'status' }],
+  [{fairnessTool: true }, 'fairness', 'fairness', { action: 'status' }],
+  [{handoverTool: true }, 'handover', 'handover', { action: 'status' }],
   // ---- the eight that were already there ----
   [{ taskTool: true }, 'task', 'tasks', { action: 'list' }],
   [{ recordsTool: true }, 'records', 'library', { action: 'list' }],

@@ -24,7 +24,7 @@
 
 ---
 
-## 1. 工具总表（31 个 `vibe_vmu_*` ＋ 1 个继承工具）
+## 1. 工具总表（34 个 `vibe_vmu_*` ＋ 1 个继承工具）
 
 | 工具（`TOOL_NAMES` 键） | 出现条件 | 权限面 | 幂等性 | 主要 action |
 |---|---|---|---|---|
@@ -59,6 +59,9 @@
 | `vibe_vmu_collab`（`collab`） | `collabTool` 为真 | 协作：对手方/协议/交换/结算 | `agreements`/`status` ✓；其余视状态 ✗ | `status`(默认)`/addCounterparty/openAgreement/signAgreement/reviewAgreement/exchange/settle/authorship/agreements` |
 | `vibe_vmu_reviewers`（`reviewers`） | `reviewersTool` 为真 | 评审人：指派/回避/法定人数 | `acknowledgements`/`status`/`trace`/`keysUsed` ✓；其余视参数 ✗ | `status`(默认)`/register/assign/unbind/acknowledge/acknowledgements/quorumMet/reviewerView/trace/keysUsed` |
 | `vibe_vmu_clockguard`（`clockguard`） | `clockguardTool` 为真 | 时钟守卫：回退/跳变/钳制 | `now`/`skew`/`status`/`clockSource` ✓；其余视参数 ✗ | `status`(默认)`/now/observe/skew/monotonic/clockSource` |
+| `vibe_vmu_publication`（`publication`） | `publicationTool` 为真 | 出版：可得性/徽章/推广/影响 | `list`/`status` ✓；其余视状态 ✗ | `status`(默认)`/shareReplication/submitPack/advance/register/availability/badge/replication/list/outreachPack/publishOutreach/openOutreachReview/logImpact/useImpactInEvaluation` |
+| `vibe_vmu_fairness`（`fairness`） | `fairnessTool` 为真 | 公平：分配/解释/审计/再平衡 | `status`/`rebalanceDue` ✓；其余视参数 ✗ | `status`(默认)`/allocation/explain/audit/rebalance/rebalanceDue` |
+| `vibe_vmu_handover`（`handover`） | `handoverTool` 为真 | 交接：开/附/定稿/接受/拒绝 | `status` ✓；其余视状态 ✗ | `status`(默认)`/open/attach/finalize/accept/reject/pack` |
 | `math_computation` | **声明了数学意图**（`vibe-math-vmu.js:149`） | 计算面 | `probe/receipt` ✓；`run/install` ✗ | 由共享模块登记：`op=probe|run|receipt|install` |
 
 **注册面硬纪律（`host.js` 逐条）**
@@ -466,8 +469,11 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 28 | `collab` | `vibe_vmu_collab` |
 | 29 | `reviewers` | `vibe_vmu_reviewers` |
 | 30 | `clockguard` | `vibe_vmu_clockguard` |
-| 31 | `turn` | `vibe_vmu_turn` |
+| 31 | `publication` | `vibe_vmu_publication` |
+| 32 | `fairness` | `vibe_vmu_fairness` |
+| 33 | `handover` | `vibe_vmu_handover` |
+| 34 | `turn` | `vibe_vmu_turn` |
 
-> ★★ 合计 **31** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
+> ★★ 合计 **34** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
 
 <!-- END GENERATED: tool-index -->

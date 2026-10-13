@@ -154,7 +154,7 @@
 
 ## 11. 交接（Handover & Context Package）
 
-- **交接单（handover）** ｜ 目的：换人/换会话时**责任不悬空** ｜ 面向谁：交出方→接手方 ｜ 接口形状：规划 `kernel.handover.open/accept/close`（⛔ 未实现）；工具面规划 `vibe_vmu_handover`（⛔ 未实现）＋**07 在途台账**（`vmu.work.start/settle/interrupt/recover` ✓） ｜ 可调控：`vmu.handover.*` ｜ 错误码：`VMU_HANDOVER_INCOMPLETE`（拟增）／`VMU_HANDOVER_NOT_ACCEPTED`（拟增）／`VMU_NO_SUCH_OBJECT` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：交接单必含 **①现状 ②未决项 ③指针（不是全文）④风险 ⑤验收标准**；未接受前原负责人**仍担责** ✓ ｜ 依赖：07 台账 ✓＋08 任务 ✓ ｜ 成熟度：**部分 ✓**（台账中断/恢复 ✓）／交接单 ✗ ｜ 优先级：P0
+- **交接单（handover）** ｜ 目的：换人/换会话时**责任不悬空** ｜ 面向谁：交出方→接手方 ｜ 接口形状：规划 `kernel.handover.open/accept/close`（**✓ 已实现（round 542）** 已实现）；工具面 **✓ 已实现**（round 542）`vibe_vmu_handover`（**✓ 已实现（round 542）** 已实现）＋**07 在途台账**（`vmu.work.start/settle/interrupt/recover` ✓） ｜ 可调控：`vmu.handover.*` ｜ 错误码：`VMU_HANDOVER_INCOMPLETE`（拟增）／`VMU_HANDOVER_NOT_ACCEPTED`（拟增）／`VMU_NO_SUCH_OBJECT` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：交接单必含 **①现状 ②未决项 ③指针（不是全文）④风险 ⑤验收标准**；未接受前原负责人**仍担责** ✓ ｜ 依赖：07 台账 ✓＋08 任务 ✓ ｜ 成熟度：**部分 ✓**（台账中断/恢复 ✓）／交接单 ✗ ｜ 优先级：P0
 - **上下文压缩包（context package）** ｜ 目的：把"必要的上下文"打包成**有界、可引用**的一束 ｜ 面向谁：接手方 ｜ 接口形状：规划 `kernel.handover.pack({scopes[],budgetBytes})`（⛔ 未实现）＋**复用 07** 的头部列表与指纹（`vmu.records.headListAt` ✓／`pointerPropagation` ✓） ｜ 可调控：`vmu.handover.packBudgetBytes`／`includeKinds`／`requireFingerprint` ｜ 错误码：`VMU_HANDOVER_PACK_TOO_BIG`（拟增）／`VMU_IO_FAILED`（✓） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**指针优先**（对齐 S21／07 纪律 ✓）；超预算 ⇒ **截断并计数**（不静默 ✗）；每项带稳定 id ＋指纹 ✓ ｜ 依赖：07 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
 - **待续标记（pending work）** ｜ 目的：重启后知道"谁还有活" ｜ 面向谁：接手方／管理者 ｜ 接口形状：**已实现 ✓**（07/08：`pendingWork`／`interrupted()`／`recover()` ✓） ｜ 可调控：08 族 ✓ ｜ 错误码：`VMU_STATE`（✓） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：交接**不得**清掉未结算的待续标记（只有 `settle` 才清 ✓） ｜ 依赖：07 ✓ ｜ 成熟度：**已实现 ✓** ｜ 优先级：P0
 - **交接的失败与回退（failed handover）** ｜ 目的：接手方跑路了怎么办 ｜ 面向谁：机构 ｜ 接口形状：规划 `society.handoverFallback` 判定点（⛔ 未实现） ｜ 可调控：`vmu.handover.acceptTimeoutMs`／`onTimeout(return｜reassign｜escalate)` ｜ 错误码：`VMU_HANDOVER_TIMEOUT`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：超时**默认退回原负责人**（最保守 ✓）＋升级（§6） ｜ 依赖：§6 升级 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
@@ -549,7 +549,6 @@
 | `vibe_vmu_trust` | **未实现 ⛔（规划）** | 评分/申诉/串谋扫描（只报告） |
 | `vibe_vmu_skills` | **未实现 ⛔（规划）** | 能力声明/目录/协商 |
 | `vibe_vmu_auction` | **未实现 ⛔（规划）** | 开标/报价/结标 |
-| `vibe_vmu_handover` | **未实现 ⛔（规划）** | 交接单/压缩包/验收 |
 | `vibe_vmu_charter` | **未实现 ⛔（规划）** | 宪章/创设/裂变/解散 |
 | `vibe_vmu_identity` | **未实现 ⛔（规划）** | 主体绑定/归属/化名 |
 | `vibe_vmu_explain` | **✓ 已实现（轮 530）** | 可解释报告/导出（★ 工具已落地：`vibe_vmu_explain` ✓） |
