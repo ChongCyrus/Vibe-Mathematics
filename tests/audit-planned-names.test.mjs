@@ -86,7 +86,14 @@ function defects(rows, tools, actions, file) {
       // ROUND 522: WHOLE-WORD match, not a substring one. `setWip` contains "ip", so a substring test read vibe_vmu_ip's
   // row as if its capability were the setWip action - a false positive manufactured by an unrelated new action name.
   const asAction = [...actions.keys()].filter((a) => a.toLowerCase() === short || a.toLowerCase().split(/[^a-z0-9]+/).includes(short))
-      if (asAction.length) found.push(where + 'its capability is the action ' + asAction.join('/') + ' and the row does not say so')
+  if (asAction.length) {
+    // ROUND 536: the comment above always claimed "while the row does not say so", and the code never read the row - so a
+    // row that DID state the capability was still reported. The row object carries its raw line as `l`; a resolution cell
+    // that names the capability (the marker 其能力 plus the action) counts as saying so.
+    const rowText = String(r.l || "")
+    const saysIt = /其能力|能力＝|capability/.test(rowText) && asAction.some((a) => rowText.includes(a))
+    if (!saysIt) found.push(where + "its capability is the action " + asAction.join("/") + " and the row does not say so")
+  }
     }
   }
   return found

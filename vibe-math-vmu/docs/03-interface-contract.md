@@ -93,7 +93,7 @@
 
 > ★★ **两处内核工厂（★ 轮 503 补 ✓）**：★ **`kernel/identity.js` 的 `createIdentity({ … })`** ✓ —— ★ **成员身份与假名面工厂** ✓；★ **`kernel/notify.js` 的 `createNotify({ … })`** ✓ —— ★ **通知面工厂** ✓（★ 它 emit 的是**自己命名空间**的 `notify/emit` ✓ —— ★ 中间件要挂它必须**先 `declareTopic`** ✓，★ 这是**刻意**的 ✓）。
 
-### 3.1 已实现（★ **13 个**：minutes／board／budget／citations／discipline／governance／ratelimit／explain／projmigrate／bridge／external／mathtools／auditchain ✓）
+### 3.1 已实现（★ **数目见 `docs/18` 的生成式工具索引** ✓ —— ★ 本表是手写的已实现清单，★ **它不写数**，★ 因为"已实现"随多轮增长而快照会过期 ✗）
 
 > ★★★ **计数口径（★ 轮 494 实测修正 ✓）**：★ 本标题原先写 **"真机已验证的 5 个 ＋ 本轮新增 1 个"** ✗ —— ★ **那是写下时的快照，之后每加一个工具都没回头改** ✓ ⇒ ★★ **现在写"本表列 N 个"，且 N 由表本身决定** ✓；★★ **真机验证状态另见 `11-§9.6`，不要在这里凭记忆写** ✓。
 
@@ -122,6 +122,7 @@
 | `vibe_vmu_external` | 外部面：`action=fetchOne\|fetchMany\|normalize\|cache\|receipts\|status` ✓ —— **只做寻址与调用** ✓（★ **六个调用全部 await** ✓ —— ★ 该服务的 `fetchOne`/`fetchMany` 是**真异步** ✓） | `action`(必填，枚举)、`source`、`id`、`query`、`by`、`cacheDir`、`refs`、`results`、`raw`、`enforced` | `externalTool` 为真 | **服务自己的码原样透传** ✓（`VMU_EXTERNAL_UNAVAILABLE` ＋ 已声明来源清单 ✓） |
 | `vibe_vmu_mathtools` | **数学工具面**：`action=plan\|run\|cacheMarkCorrupt\|cacheView\|receiptsView\|status` ✓ —— **只做寻址与调用** ✓ | `action`(必填，枚举)、`op`、`args`、`cacheKey` | `mathtoolsTool` 为真 | **服务自己的码原样透传** ✓（`VMU_MATH_INVALID_INPUT` ＋ 可用的调用示例 ✓） |
 | `vibe_vmu_auditchain` | **审计链面**：`action=append\|verifyChain\|link\|checkpoint\|status\|refresh` ✓ —— **只做寻址与调用** ✓（★ 一条**真哈希链**：`prevHash`／`hash`／`GENESIS` ✓） | `action`(必填，枚举)、`entry`、`seq`、`note`、`key` | `auditchainTool` 为真 | **服务自己的码原样透传** ✓ |
+| `vibe_vmu_notify` | **通知面**：`action=watch\|unwatch\|emit\|flush\|list\|status` ✓ —— **只做寻址与调用** ✓（★ **默认关**：零配置下 `defaultOff:true`／`enabled:false` ✓） | `action`(必填，枚举)、`subject`、`id`、`event`、`payload`、`channel` | `notifyTool` 为真 | **服务自己的码原样透传** ✓（缺参数 ⇒ `VMU_INVALID_ARGUMENT` ＋ 可用调用示例 ✓） |
 
 > **活对象登记（本节新增面所需 ✓）**：内核持有**会话内**的会议/表决实例表（`kernel.liveMeeting(id)`／`liveBallot(id)` ✓，`status().live = {meetings[],ballots[],cap,evicted}` ✓）；**上限 50，超出按最旧逐出并计数** ✓（`evicted` 绝不静默 ✓）。它**不是新策略** ✓：同一批原语，只是**可按 id 寻址** ✓（docs/08 §2 的"逐对象原语" ✓）。
 

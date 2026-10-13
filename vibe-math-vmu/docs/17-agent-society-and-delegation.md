@@ -556,8 +556,8 @@
 | `vibe_vmu_memory` | **未实现 ⛔（规划）** | 经验卡/技能库/压缩 |
 | `vibe_vmu_course` | **未实现 ⛔（规划）** | 课程/单元/作业/提交（§28） |
 | `vibe_vmu_grade` | **未实现 ⛔（规划）** | 评审/发布/追加改分（§28） |
-| `vibe_vmu_notify` | **未实现 ⛔（规划）** | 投递/摘要/信噪比查询（§29） |
-| `vibe_vmu_watch` | **未实现 ⛔（规划）** | 订阅/退订/列举（§29） |
+| `vibe_vmu_notify` | **✓ 已实现（轮 536）** | 投递/摘要/信噪比查询（§29） |
+| `vibe_vmu_watch` | **未实现 ⛔（规划）** | 订阅/退订/列举（§29）  ★ **其能力＝ `watch` 动作** ✓（★ 不是独立工具 ✓）|
 
 ### 22.3 钩子
 
@@ -824,7 +824,7 @@
 
 > **定位**：多代理协作最大的隐性成本是**噪声**（谁都@所有人、重复告警、半夜打扰）✗。本节定义"**发给谁／订阅什么／怎么合并／什么时候别打扰**" ✓。
 > **零机制**：`vmu.notify.enabled=false`（默认 ✓）⇒ 不声明就**没有订阅、没有投递、没有摘要** ✓。
-> **成熟度**：本节**全部为规划 ✗**（`vmu.notify.*` 均为 `planned` 键 ✓；`vibe_vmu_notify` 等工具 **⛔ 未实现**）；已实现底座只有 05 的钩子总线 ✓＋07 的审计留痕 ✓。
+> **成熟度**：本节**全部为规划 ✗**（`vmu.notify.*` 均为 `planned` 键 ✓；`vibe_vmu_notify` **✓ 已实现（轮 536）**）；已实现底座只有 05 的钩子总线 ✓＋07 的审计留痕 ✓。
 
 ### 29.1 订阅模型（`watchers[]`）
 
@@ -844,8 +844,8 @@ watchers: [{
 
 ### 29.2 条目（11 字段）
 
-- **订阅（watch）** ｜ 目的：把"我想知道什么"变成声明 ｜ 面向谁：成员／机构 ｜ 接口形状：规划 `kernel.watch.subscribe/unsubscribe/list`（⛔ 未实现）；工具面规划 `vibe_vmu_watch`（⛔ 未实现） ｜ 可调控：`vmu.notify.*` ｜ 错误码：`VMU_NOTIFY_DISABLED`（拟增）／`VMU_WATCH_LIMIT`（拟增）／`VMU_WATCH_SUBJECT_UNKNOWN`（拟增）／`VMU_WATCH_EVENT_UNKNOWN`（拟增）／`VMU_WATCH_DUPLICATE`（拟增）／`VMU_WATCH_VISIBILITY_DENIED`（拟增）／`VMU_WATCH_CROSS_INSTITUTION_DENIED`（拟增）／`VMU_NOTIFY_REASON_REQUIRED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：订阅**不改权限**（只影响"被告知"，不影响"能做什么" ✓ S-3 同族）；未注册事件**具名拒** ✓ ｜ 依赖：05 钩子 ✓／§16 身份／§18 审计 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
-- **投递通道（channel）** ｜ 目的：同一事件按不同紧迫度走不同通道 ｜ 面向谁：订阅者 ｜ 接口形状：规划 `kernel.notify.deliver`（⛔ 未实现）；工具面规划 `vibe_vmu_notify`（⛔ 未实现） ｜ 可调控：`vmu.notify.channels`（`inbox｜digest｜hook｜file`）／`vmu.notify.defaultChannel` ｜ 错误码：`VMU_WATCH_CHANNEL_UNSUPPORTED`（拟增）／`VMU_NOTIFY_CHANNEL_FAILED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：`hook` 通道＝**复用 05 的总线**（不新造通道语义 ✓）；`file` 通道走 07 归档 ✓ ｜ 依赖：05 ✓／07 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
+- **订阅（watch）** ｜ 目的：把"我想知道什么"变成声明 ｜ 面向谁：成员／机构 ｜ 接口形状：规划 `kernel.watch.subscribe/unsubscribe/list`（⛔ 未实现）；工具面规划 `vibe_vmu_watch` ★（**其能力＝ `vibe_vmu_notify` 的 `watch` 动作** ✓ —— ★ 它【不是一个独立工具**]✓，★ 见 `docs/18` ✓）（⛔ 未实现） ｜ 可调控：`vmu.notify.*` ｜ 错误码：`VMU_NOTIFY_DISABLED`（拟增）／`VMU_WATCH_LIMIT`（拟增）／`VMU_WATCH_SUBJECT_UNKNOWN`（拟增）／`VMU_WATCH_EVENT_UNKNOWN`（拟增）／`VMU_WATCH_DUPLICATE`（拟增）／`VMU_WATCH_VISIBILITY_DENIED`（拟增）／`VMU_WATCH_CROSS_INSTITUTION_DENIED`（拟增）／`VMU_NOTIFY_REASON_REQUIRED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：订阅**不改权限**（只影响"被告知"，不影响"能做什么" ✓ S-3 同族）；未注册事件**具名拒** ✓ ｜ 依赖：05 钩子 ✓／§16 身份／§18 审计 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
+- **投递通道（channel）** ｜ 目的：同一事件按不同紧迫度走不同通道 ｜ 面向谁：订阅者 ｜ 接口形状：规划 `kernel.notify.deliver`（⛔ 未实现）；工具面**已落地** `vibe_vmu_notify`（✓ 轮 536） ｜ 可调控：`vmu.notify.channels`（`inbox｜digest｜hook｜file`）／`vmu.notify.defaultChannel` ｜ 错误码：`VMU_WATCH_CHANNEL_UNSUPPORTED`（拟增）／`VMU_NOTIFY_CHANNEL_FAILED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：`hook` 通道＝**复用 05 的总线**（不新造通道语义 ✓）；`file` 通道走 07 归档 ✓ ｜ 依赖：05 ✓／07 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
 - **去重（notification-level dedup）** ｜ 目的：同一件事不重复打扰 ｜ 面向谁：订阅者 ｜ 接口形状：规划（判定点 `society.notifyDedup` ⛔ 未实现） ｜ 可调控：`vmu.notify.dedupWindowMs`（默认 60000 ✓）／`vmu.notify.maxSubjectsPerWatcher` ｜ 错误码：`VMU_NOTIFY_DEDUPED`（拟增，**是正常回执不是错误** ✓ 但仍需可观测） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**通知级指纹＝watcher＋事件＋对象**（与 **21 的告警级指纹**＝指标＋对象＋码**不同层** ✗ 见 §29.5 ✓）；去重**必须计数**（"合并了多少" ✓ 21 同纪律） ｜ 依赖：05 事件 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
 - **合并与摘要（merge / digest）** ｜ 目的：把 N 条小事件变成 1 份摘要 ｜ 面向谁：订阅者 ｜ 接口形状：规划 `kernel.notify.digest`（⛔ 未实现） ｜ 可调控：`vmu.notify.mergeWindowMs`／`mergeMaxPerDigest`／`digestDefaultMs` ｜ 错误码：`VMU_NOTIFY_DIGEST_PENDING`（拟增）／`VMU_NOTIFY_TRUNCATED`（拟增） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：摘要**不得丢事实**：被截断的必须给 `kept/dropped` 计数（与 07/21 的截断纪律一致 ✓） ｜ 依赖：§29.3 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
 - **静默窗口（personal quiet hours）** ｜ 目的：人有下班时间 ｜ 面向谁：订阅者 ｜ 接口形状：规划（`watcher.quiet` ✗） ｜ 可调控：`vmu.notify.quietDefault`／`vmu.notify.quietTimezone` ｜ 错误码：`VMU_NOTIFY_QUIET_SUPPRESSED`（拟增，正常回执 ✓） ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：静默期**不投递但必须留痕并计数** ✓；恢复后**补一份摘要**（与 **21 的维护静默**同纪律 ✓）；**静默不等于丢弃** ✗ ｜ 依赖：§29.3／21 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P1
@@ -901,7 +901,7 @@ watchers: [{
 
 ### 29.6 拟增工具与钩子（**全部未实现** ✗）
 
-- 工具（⛔ 未实现）：`vibe_vmu_notify`（投递/摘要/信噪比查询）、`vibe_vmu_watch`（订阅/退订/列举）。
+- 工具（✓ `vibe_vmu_notify` 已实现，轮 536）：`vibe_vmu_notify`（投递/摘要/信噪比查询）、`vibe_vmu_watch` ★（**其能力＝ `vibe_vmu_notify` 的 `watch` 动作** ✓ —— ★ 它【不是一个独立工具**]✓，★ 见 `docs/18` ✓）（订阅/退订/列举）。
 - 钩子（**未注册 ✗，规划**）：`notify/queued`、`notify/merged`、`notify/suppressed`、`notify/sent`、`notify/failed`、`notify/digest-ready`、`watch/subscribed`、`watch/unsubscribed`。
 
 ### 29.7 配方（新增 4 条，接 §23 的编号）

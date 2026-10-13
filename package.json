@@ -125,6 +125,7 @@
     "tests/vmu-external-tool.test.mjs",
     "tests/vmu-mathtools-tool.test.mjs",
     "tests/vmu-auditchain-tool.test.mjs",
+    "tests/vmu-notify-tool.test.mjs",
     "tests/audit-planned-names.test.mjs",
     "tests/audit-math-computation-contract.mjs",
     "tests/audit-math-computation-contract.mutants.mjs",

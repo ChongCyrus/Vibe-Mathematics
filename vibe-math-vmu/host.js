@@ -51,6 +51,7 @@ export const TOOL_NAMES = Object.freeze({
   external: 'vibe_vmu_external',
   mathtools: 'vibe_vmu_mathtools',
   auditchain: 'vibe_vmu_auditchain',
+  notify: 'vibe_vmu_notify',
   // ROUND 349: the turn loop needs a real entry point. Without it the framework could run a round only from a test,
   // which is not the same as a host being able to run one - and the objective is the latter.
   turn: 'vibe_vmu_turn',
@@ -126,7 +127,7 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * adapter turns it into the host shape (`execute` returning JSON). Filtering by what actually exists keeps
  * the surface honest (docs/04 §11 ownership: mechanism only).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false, budgetTool = false, citationsTool = false, disciplineTool = false, governanceTool = false, ratelimitTool = false, explainTool = false, projmigrateTool = false, bridgeTool = false, externalTool = false, mathtoolsTool = false, auditchainTool = false }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false, budgetTool = false, citationsTool = false, disciplineTool = false, governanceTool = false, ratelimitTool = false, explainTool = false, projmigrateTool = false, bridgeTool = false, externalTool = false, mathtoolsTool = false, auditchainTool = false, notifyTool = false }) {
   // A refusal carries the four documented fields, plus - when the caller has them - host-side DIAGNOSTICS
   // (the host's own stack and the exact request shape we passed). They are added ONLY when present, so no
   // existing refusal changes shape. Without this the live M3 diagnosis died at the tool boundary: the seam
@@ -992,6 +993,37 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           if (action === 'checkpoint') return Object.assign({ ok: true, action }, await auditchain.checkpoint({ seq, note }))
           if (action === 'status') return Object.assign({ ok: true, action }, await auditchain.status())
           if (action === 'refresh') return Object.assign({ ok: true, action }, await auditchain.refresh({ key }))
+          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
+        } catch (e) {
+          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
+        }
+      },
+    })
+  }
+
+  if (notifyTool) {
+    specs.push({
+      name: TOOL_NAMES.notify,
+      description: 'vmu 通知面：action=watch|unwatch|emit|flush|list|status。' +
+        '★ **默认【关】**（零配置下 `enabled:false`／`defaultOff:true` ✓）；订阅、去重、抑制与投递都由内核服务强制；本工具只做**寻址与调用**，不复制任何策略。',
+      parameters: {
+        action: param('string', 'watch｜unwatch｜emit｜flush｜list｜status', { required: true,
+          enum: ['watch', 'unwatch', 'emit', 'flush', 'list', 'status'] }),
+        subject: param('string', '订阅主体（watch 必填）'),
+        id: param('string', '订阅 id（unwatch 必填）'),
+        event: param('string', '事件名（emit 必填）'),
+        payload: param('object', '事件负载（emit 可选）'),
+        channel: param('string', '通道（可选；★ 由服务决定可用值 ✓）'),
+      },
+      run: async ({ action, subject, id, event, payload, channel } = {}) => {
+        try {
+          const notify = kernel.notify
+          if (action === 'watch') return Object.assign({ ok: true, action }, await notify.watch({ subject, channel }))
+          if (action === 'unwatch') return Object.assign({ ok: true, action }, await notify.unwatch({ id }))
+          if (action === 'emit') return Object.assign({ ok: true, action }, await notify.emit({ event, payload }))
+          if (action === 'flush') return Object.assign({ ok: true, action }, await notify.flush())
+          if (action === 'list') return Object.assign({ ok: true, action }, await notify.list())
+          if (action === 'status') return Object.assign({ ok: true, action }, await notify.status())
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)

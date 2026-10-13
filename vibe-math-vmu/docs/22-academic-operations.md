@@ -962,3 +962,16 @@
 2. **评分标准的分值锚点**是否要求机器可解析 **未核** ✗（与 `12` 卷写作规范的交界，见 `14-§2` ✓）；
 3. **认证机构差异**（不同认证体的证据清单）**未做** ✗ —— 需 `pack` 承载，本卷**只给形状** ✓；
 4. **学员（临时席）材料的保留期**与 `20` 卷的合规边界**未对齐** ✗（见 `14-§2` ✓）。
+
+### 0.3 ★★★ §0.2「三族真实缺口」的更正（★ 轮 536 实测 ✓）
+
+> ★★★ **为什么必须更正**：★ §0.2 是**轮 266 的实测** ✓，★ 而**它把"没有承载面"当结论** ✗ —— ★★ **实测发现第一族【早就有承载面**]** ✓。★ 这比一个过期的**数字**更坏：★ **它把一个【已有的能力**]说成缺口** ✗。
+
+| 族 | §0.2 说（轮 266） | 轮 536 实测 |
+|---|---|---|
+| **`vmu.partnership`** | ★ "`legalentity`／`jurisdiction`／`taxId`／`crossBorder` **在内核全无**" ✗；★ 协议 `LegalEntity`／`TaxFieldSlots` **仍标 ⛔ 待实现** ✗ | ★★★ **已有承载面** ✓：**`kernel/partnership.js`（132 行 ✓，头部写明 ROUND 276 ✓）** 实现了 ★ 协议 `LegalEntity { entityId, jurisdiction, taxIdRef, currency? }` ✓ 与 `TaxFieldSlots { slot, required, source }` ✓；★ **6 个键**（`registryDir`／`requireEntity`／`taxIdStyle`／`invoiceTaxSlots`／`crossBorderGate`／`crossBorderApproverRoles` ✓）；★ **5 个码**（`VMU_ENTITY_UNKNOWN`／`VMU_ENTITY_ACCOUNT_UNBOUND`／`VMU_TAX_FIELD_MISSING`／`VMU_CROSSBORDER_GATE_REQUIRED`／`VMU_CROSSBORDER_CURRENCY_MISMATCH` ✓）；★ 方法 `validateInvoice()` ✓（★ 只检**字段位是否存在**，**不判税率对错** ✓，★ 税号存**不透明引用** ✓） |
+| **`vmu.license`** | ★ "`licen[cs]e`／`attribution`／`incompatible` 命中处**都不是许可证面**" ✓ | ★ **仍成立** ✓（★ 待本轮以外的复核 ✓） |
+| **`vmu.review`** | ★ "`rebuttal`（答辩）在内核**全无**" ✗；★ `quorum` 在四处有对应概念 ✓ | ★ **§0.2 自己已给出部分更正** ✓（★ 见其下"状态更正（轮 61）" ✓） |
+
+> ★★★ **由此得出的纪律（★ 第四次的同类 ✓）**：★ **"未决清单落后于代码"本会话已四遇** ✓（★ 轮 524 O3／O4／O7／O9 ✓、★ 轮 529 O6 ✓、★ 轮 531 O8 ✓、★ 轮 536 `partnership` ✓）⇒ ★★ **核"缺口"时读代码，★ 且【间隔久了要重测**]** ✓（★ 本节是**轮 266 的实测**，★ 已过 **270 轮** ✗）。
+> ★★ **并记一条口径** ✓：★ **本族的存废【不因本轮而改**]** ✓ —— ★ 它**已有实现、键与码、且有守卫** ✓ ⇒ ★ **现在降级它只会制造搬迁churn** ✗；★ **真正的错误是【文档**]，★ 已更正** ✓。
