@@ -47,6 +47,7 @@ export const TOOL_NAMES = Object.freeze({
   ratelimit: 'vibe_vmu_ratelimit',
   explain: 'vibe_vmu_explain',
   projmigrate: 'vibe_vmu_projmigrate',
+  bridge: 'vibe_vmu_bridge',
   // ROUND 349: the turn loop needs a real entry point. Without it the framework could run a round only from a test,
   // which is not the same as a host being able to run one - and the objective is the latter.
   turn: 'vibe_vmu_turn',
@@ -122,7 +123,7 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * adapter turns it into the host shape (`execute` returning JSON). Filtering by what actually exists keeps
  * the surface honest (docs/04 §11 ownership: mechanism only).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false, budgetTool = false, citationsTool = false, disciplineTool = false, governanceTool = false, ratelimitTool = false, explainTool = false, projmigrateTool = false }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false, budgetTool = false, citationsTool = false, disciplineTool = false, governanceTool = false, ratelimitTool = false, explainTool = false, projmigrateTool = false, bridgeTool = false }) {
   // A refusal carries the four documented fields, plus - when the caller has them - host-side DIAGNOSTICS
   // (the host's own stack and the exact request shape we passed). They are added ONLY when present, so no
   // existing refusal changes shape. Without this the live M3 diagnosis died at the tool boundary: the seam
@@ -868,6 +869,32 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           if (action === 'read') return Object.assign({ ok: true, action }, projmigrate.read({ kind, doc }))
           if (action === 'upgrade') return Object.assign({ ok: true, action }, projmigrate.upgrade({ kind, doc, to }))
           if (action === 'status') return Object.assign({ ok: true, action }, projmigrate.status())
+          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
+        } catch (e) {
+          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
+        }
+      },
+    })
+  }
+
+  if (bridgeTool) {
+    specs.push({
+      name: TOOL_NAMES.bridge,
+      description: 'vmu 脚本面（M3）：action=validate|plan|run|status|history。' +
+        '请求形状（`file` 与 `inline` 互斥等）由内核服务校验，★ **本工具把 `request` 对象【原样转发**]，**不解释它的字段** ✓；干跑真的不执行 ✓。',
+      parameters: {
+        action: param('string', 'validate｜plan｜run｜status｜history', { required: true,
+          enum: ['validate', 'plan', 'run', 'status', 'history'] }),
+        request: param('object', '脚本请求（★ 形状见 `docs/05 §6.2` ✓；`validate`/`plan`/`run` 用；★ 本工具不解释其字段 ✓）'),
+      },
+      run: async ({ action, request } = {}) => {
+        try {
+          const bridge = kernel.bridge
+          if (action === 'validate') return Object.assign({ ok: true, action }, { problems: bridge.validate(request) })
+          if (action === 'plan') return Object.assign({ ok: true, action }, await bridge.plan(request))
+          if (action === 'run') return Object.assign({ ok: true, action }, await bridge.run(request))
+          if (action === 'status') return Object.assign({ ok: true, action }, await bridge.status())
+          if (action === 'history') return Object.assign({ ok: true, action }, { history: bridge.history() })
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
