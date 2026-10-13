@@ -592,6 +592,7 @@
     "tests/vmu-admission-tool.test.mjs",
     "tests/vmu-refusals-guide.test.mjs",
     "tests/vmu-no-engine-leaks.test.mjs",
+    "tests/vmu-refusal-examples.test.mjs",
     "docs/COMPAT-AUDIT-ROUND3.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.en.md",
