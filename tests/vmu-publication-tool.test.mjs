@@ -39,9 +39,13 @@ ok(JSON.stringify(spec.parameters.action.enum) === JSON.stringify(ACTIONS),
 console.log('=== 3. THE TOOL DELEGATES RATHER THAN REIMPLEMENTS ===')
 {
   const calls = []
+  const received = {}
   const spy = {}
   for (const a of ACTIONS) {
-    spy[a] = async (arg) => { calls.push(a); return Object.keys(arg || {}).length ? { ok: true, [a]: arg } : { ok: true, echo: a } }
+    // ROUND 581: record WHAT THE SERVICE RECEIVED, not merely that it received something non-empty. Once request forwarding was
+  // corrected, an action may legitimately pass only what the caller gave, including nothing. The property that matters is that
+  // a field the caller supplies ARRIVES - which is what this now records and what the later assertion checks.
+  spy[a] = async (arg) => { calls.push(a); received[a] = arg; return { ok: true, [a]: arg } }
   }
   const s = specOf({ publication: spy }, { publicationTool: true })
   const seen = []
