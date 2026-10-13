@@ -24,7 +24,7 @@
 
 ---
 
-## 1. 工具总表（13 个 `vibe_vmu_*` ＋ 1 个继承工具）
+## 1. 工具总表（14 个 `vibe_vmu_*` ＋ 1 个继承工具）
 
 | 工具（`TOOL_NAMES` 键） | 出现条件 | 权限面 | 幂等性 | 主要 action |
 |---|---|---|---|---|
@@ -41,6 +41,7 @@
 | `vibe_vmu_minutes`（`minutes`） | `minutesTool` 为真 | 纪要读写 | `list/actions/status` ✓；`draft/confirm/append` ✗ | `list`(默认)`/draft/confirm/append/actions/status` |
 | `vibe_vmu_board`（`board`） | `boardTool` 为真 | 看板读写 | `columns`/`swimlanes`/`aging`/`status` ✓；`addColumn`/`move`/`setWip` ✗ | `columns`(默认)`/addColumn/move/setWip/swimlanes/aging/status` |
 | `vibe_vmu_budget`（`budget`） | `budgetTool` 为真 | 配额读写 | `remaining`/`status`/`list`/`totals`/`perTaskShare` ✓；`open`/`charge`/`reserve` ✗ | `status`(默认)`/open/charge/reserve/remaining/list/totals/perTaskShare` |
+| `vibe_vmu_citations`（`citations`） | `citationsTool` 为真 | 引用识别/校验/渲染 | `identify`/`status` ✓；`validate`/`render` 状态取决于条目 ✗ | `status`(默认)`/identify/validate/render` |
 | `math_computation` | **声明了数学意图**（`vibe-math-vmu.js:149`） | 计算面 | `probe/receipt` ✓；`run/install` ✗ | 由共享模块登记：`op=probe|run|receipt|install` |
 
 **注册面硬纪律（`host.js` 逐条）**
@@ -430,8 +431,9 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 10 | `minutes` | `vibe_vmu_minutes` |
 | 11 | `board` | `vibe_vmu_board` |
 | 12 | `budget` | `vibe_vmu_budget` |
-| 13 | `turn` | `vibe_vmu_turn` |
+| 13 | `citations` | `vibe_vmu_citations` |
+| 14 | `turn` | `vibe_vmu_turn` |
 
-> ★★ 合计 **13** 个工具 ✓；★ **action 枚举 **12** 组／**61** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload` ｜ `status/pause/resume/stop/beat/roster/hire/fire` ｜ `list/open/speak/silent/close/ballot/vote/tally/reopen` ｜ `decisive/advisory` ｜ `list/create/assign/transition/stage/advance/brief/history` ｜ `list/draft/confirm/append/actions/status` ｜ `columns/move/swimlanes/aging/status` ｜ `open/charge/reserve/remaining/status/list/totals`。
+> ★★ 合计 **14** 个工具 ✓；★ **action 枚举 **13** 组／**65** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload` ｜ `status/pause/resume/stop/beat/roster/hire/fire` ｜ `list/open/speak/silent/close/ballot/vote/tally/reopen` ｜ `decisive/advisory` ｜ `list/create/assign/transition/stage/advance/brief/history` ｜ `list/draft/confirm/append/actions/status` ｜ `columns/move/swimlanes/aging/status` ｜ `open/charge/reserve/remaining/status/list/totals` ｜ `identify/validate/render/status`。
 
 <!-- END GENERATED: tool-index -->
