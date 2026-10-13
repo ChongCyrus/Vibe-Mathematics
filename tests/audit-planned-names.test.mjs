@@ -58,9 +58,18 @@ function plannedRows(lines) {
     const l = lines[i]
     if (!l.trim().startsWith('|')) continue
     const c = l.split('|')
-    if (!/⛔/.test(c.slice(1, 4).join('|'))) continue
-    if (RESOLVED.test(l)) continue
-    const names = [...(c[1] || '').matchAll(/`(vibe_vmu_[a-z_]+)`/g)].map((m) => m[1])
+    const head = c.slice(1, 4).join('|')
+    if (!/⛔/.test(head)) continue
+    // SYMMETRY: the resolution conclusion is read from the HEAD as well. Reading it from the whole row silently excluded
+    // rows whose DESCRIPTION happened to contain a word like 覆盖 or 库面 - which is how two volumes vanished unnoticed.
+    if (RESOLVED.test(head)) continue
+    // The name cell is the FIRST of the head cells that carries a backticked name: some volumes put a category in cell 1
+    // (接口形状, 工具（计划）) and the tool name after it, and those rows were invisible to an earlier version.
+    let names = []
+    for (const cell of c.slice(1, 4)) {
+      names = [...(cell || '').matchAll(/`(vibe_vmu_[a-z_]+)`/g)].map((m) => m[1])
+      if (names.length) break
+    }
     if (names.length) rows.push({ line: i + 1, l, names })
   }
   return rows
