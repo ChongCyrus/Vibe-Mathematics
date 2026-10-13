@@ -244,7 +244,7 @@ vmu 是**插件**：配置来自**该插件在 profile 里的那一行**（`conf
 
 | 项 | 可跑检查 |
 |---|---|
-| ★ 全量门禁 | ★ `GATE_SCOPE=vmu node tests/run-tests.mjs` ✓ —— ★ 当前 **243／243 PASS（210 套件 ＋ 33 探针）** ✓ |
+| ★ 全量门禁（★ 平时按需跑，★ 发布前跑全量 ✓） | ★ `GATE_SCOPE=vmu node tests/run-tests.mjs` ✓ —— ★ **轮 616 实测：256／256 PASS（223 套件 ＋ 33 探针）** ✓ |
 | ★ 无遗留临时物 | ★ `tests/audit-stale-markers.test.mjs`（★ 报告型 ✓）、★ `tests/audit-table-integrity.test.mjs`（★ 硬门禁 ✓） |
 
 ### 7.2 目标 ②：运行机制 ＝ 框架 ＋ 整合包文件夹
@@ -285,7 +285,7 @@ vmu 是**插件**：配置来自**该插件在 profile 里的那一行**（`conf
 | ★★ **十面【能成功**]** | ★ 同上 ✓ | ★ 十面 ✓ |
 | ★★ **十面【有写路径**]** | ★ 同上 ✓ | ★ 十面 ✓（32／32 ✓） |
 | ★★★ **十面【可调控**]** | ★ `tests/vmu-ten-faces-tunable.test.mjs` ✓ | ★ **十面无空缺**，★ **1152 键** ✓ |
-| ★ 代理可执行命令 | ★ `tests/audit-tool-table.test.mjs` ✓ | ★ **44 命令** ✓ |
+| ★ 代理可执行命令 | ★ `tests/audit-tool-table.test.mjs` ✓ | ★ **45 命令** ✓（★ 轮 616 实测；★ **真源是 `host.js` 的 `TOOL_NAMES`** ✓） |
 | ★ 接口/插件 | ★ `tests/vmu-middleware-hooks-declared.test.mjs` ✓ | ★ **总线 22 ＋ 宿主 14，★ 不相交** ✓ |
 | ★★ **脚本与协议** | ★ `tests/vmu-script-and-protocol.test.mjs` ✓ | ★ **脚本 seam 与协议版本** ✓ |
 | ★★★ **每个流水线面走完** | ★ `vmu-admission-tool`／`vmu-budget-pipeline`／`vmu-collab-pipeline`／`vmu-publication-pipeline`／`vmu-formal-pipeline` ✓ | ★ **五个面各 11–18 条断言，★ 全绿** ✓（★ `recruit` 由 `admission` 覆盖 ✓ —— ★ 同一个服务 ✓） |
