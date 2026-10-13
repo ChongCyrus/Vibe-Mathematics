@@ -29,7 +29,7 @@ const walk = (d) => readdirSync(join(REPO, d), { withFileTypes: true }).flatMap(
 })
 const bus = readFileSync(join(VMU, 'kernel', 'bus.js'), 'utf8')
 const hm = /VU_HOOKS = Object\.freeze\(\[([\s\S]{0,2400}?)\]\)/.exec(bus)
-const frozen = hm ? [...hm[1].matchAll(/'([a-z][a-z0-9/-]+)'/g)].map((m) => m[1]) : []
+const frozen = hm ? [...hm[1].matchAll(/['\`]([a-z][a-z0-9/-]+)['\`]/g)].map((m) => m[1]) : []
 const vn = /const VU_NAMESPACE = (\/\^?[^\n]+)/.exec(bus)
 const sources = walk('vibe-math-vmu').filter((f) => /\.js$/.test(f)).map((f) => ({ f: f.replace(/\\/g, '/'), t: readFileSync(join(REPO, f), 'utf8') }))
 
@@ -38,7 +38,7 @@ ok(frozen.length >= 20, 'the kernel publishes its frozen hook names', { frozen: 
 ok(!!vn, 'and the namespace rule that decides which emits the bus validates', { rule: vn && vn[1].slice(0, 60) })
 
 console.log('=== 2. EVERY FROZEN HOOK IS EMITTED SOMEWHERE ===')
-const neverEmitted = frozen.filter((h) => !sources.some((s) => new RegExp("emit\\(\\s*'" + h + "'").test(s.t)))
+const neverEmitted = frozen.filter((h) => !sources.some((s) => new RegExp("emit\\(\\s*['\`]" + h).test(s.t)))
 ok(neverEmitted.length === 0,
   'no frozen hook is a paper capability: each one is emitted by some module, so middleware can actually attach to it',
   { neverEmitted })
@@ -48,7 +48,7 @@ console.log('=== 3. EVERY EMIT INSIDE A VMU NAMESPACE IS FROZEN ===')
 const regex = vn ? new RegExp(vn[1].replace(/^\/\^?/, '').replace(/\/$/, '')) : null
 const unfrozen = new Set()
 for (const s of sources) {
-  for (const m of s.t.matchAll(/emit\(\s*'([^']+)'/g)) {
+  for (const m of s.t.matchAll(/emit\(\s*['\`]([^'\`]+)['\`]/g)) {
     const h = m[1]
     if (frozen.includes(h)) continue
     if (regex && !regex.test(h)) continue // a foreign namespace belongs to the substrate and is passed through
