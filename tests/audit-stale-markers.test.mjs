@@ -41,15 +41,15 @@ for (const f of files) {
     scanned += 1
     if (CORRECTION.test(line)) continue                  // a correction, not a claim
     if (/✓ 已实现|✅/.test(line)) continue                // already marked implemented on the same line
-    const t = /`(vibe_vmu_[a-z_]+)`/.exec(line)
-    const p = /`(?:vmu|kernel)\.([a-z][a-z0-9]*)\.([a-z][a-z0-9_]*)`/.exec(line)
-    let hit = null
-    if (t && tools.has(t[1])) hit = t[1]
-    else if (p) { const s = svcOf(p[1]); if (s && typeof s[p[2]] === 'function') hit = p[1] + '.' + p[2] }
+    const names = []
+    for (const m of line.matchAll(/`(vibe_vmu_[a-z_]+)`/g)) names.push({ name: m[1], exists: tools.has(m[1]) })
+    for (const m of line.matchAll(/`(?:vmu|kernel)\.([a-z][a-z0-9]*)\.([a-z][a-z0-9_]*)`/g)) { const s2 = svcOf(m[1]); names.push({ name: m[1] + '.' + m[2], exists: !!(s2 && typeof s2[m[2]] === 'function') }) }
+    const hit = names.filter((n) => n.exists).map((n) => n.name).join('+') || null
+    const absent = names.filter((n) => !n.exists).map((n) => n.name).join('+')
     // Name the MATCHED TOKEN and the kind of line, because nine reported lines turned out to hold zero stale claims: four were
     // already fixed (stale line numbers) and five merely MENTIONED a name - a rule, a count, or a claim about another object.
     const kind = /纪律|规则|必须写在|计数|行 .⛔.|\\b\\d+ 行/.test(line) ? 'mention' : 'claim?'
-    if (hit) report.push(f + ':' + (i + 1) + ' [' + kind + '] matched=' + hit + ' :: ' + line.trim().slice(0, 70))
+    if (hit) report.push(f + ':' + (i + 1) + ' [' + kind + '] 存在=' + hit + ' 主张的=' + (absent || '(无可判对象)') + ' :: ' + line.trim().slice(0, 60))
   }
 }
 ok(scanned > 500, 'the marker scan saw the whole surface, so a small report is not an empty scan', { scanned })

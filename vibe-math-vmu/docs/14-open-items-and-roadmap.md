@@ -128,7 +128,6 @@
 | `vibe_vmu_agreements` | `docs/22` | — ⛔ 规划/未实现 | **✓** | ★ **其能力＝ `vibe_vmu_collab` 的 `agreements` 动作** ✓（★ 本轮已落地 ✓）
 | `vibe_vmu_attendance` | `docs/08` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_auction` | `docs/17` | — ⛔ 规划/未实现 | — |
-| `vibe_vmu_audit` | `docs/08` | **✓** ⛔ 规划/未实现 | **✓** | **capability: the `audit` action of `vibe_vmu_fairness`** (round 542)
 
 | `vibe_vmu_committee` | `docs/08` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_compliance` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |

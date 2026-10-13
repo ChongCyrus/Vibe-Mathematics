@@ -534,7 +534,7 @@ v5r 的 `s8-freeze-say` 真回归：**"本轮是否完成"的判据被写死在�
 | `vibe_vmu_budget`（，roadmap） | `action:'status'\|'reserve'\|'release'`、`scope`、`amount` | 预算与配额公平 |
 | `vibe_vmu_scheduler`（⛔ 未实现，roadmap） | `action:'at'\|'on'\|'list'\|'cancel'`、`at`、`event`、`action` | 自动触发 |
 | `vibe_vmu_metrics`（⛔ 未实现，roadmap） | `action:'window'\|'throughput'\|'cycle'\|'backlog'`、`windowMs` | 度量 |
-| `vibe_vmu_audit`（⛔ 未实现，roadmap） | `action:'trace'\|'recount'\|'export'`、`id`、`from`、`to` | 审计与复算 | **capability: the `audit` action of `vibe_vmu_fairness`** ✓ (round 542)
+| `vibe_vmu_audit`（**✓ 已实现（轮 554）**） | `action:'trace'\|'recount'\|'export'`、`id`、`from`、`to` | 审计与复算 | **capability: the `audit` action of `vibe_vmu_fairness`** ✓ (round 542)
 
 ### 11.4 钩子 payload 草案（✓＝已注册；✗＝规划）
 
@@ -1175,7 +1175,6 @@ recount(ballotId):
 | `vibe_vmu_budget` | ****✓ 已实现（轮 523）**** | 预算状态/预留/释放 |
 | `vibe_vmu_scheduler` | **未实现 ✗（规划）** | 触发器 |
 | `vibe_vmu_metrics` | **未实现 ✗（规划）** | 度量窗口/指标 |
-| `vibe_vmu_audit` | **未实现 ✗（规划）** | 追踪/复算/导出 | **capability: the `audit` action of `vibe_vmu_fairness`** ✓ (round 542)
 
 ### 21.3 钩子（`VU_HOOKS`）
 
