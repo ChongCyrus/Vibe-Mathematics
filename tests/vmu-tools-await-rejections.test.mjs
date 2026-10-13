@@ -91,6 +91,7 @@ const TOOLS = [
   [{ idempotencyTool: true }, 'idempotency', 'idempotency', { action: 'status' }],
   [{ auditTool: true }, 'audit', 'audit', { action: 'status' }],
   [{ ipTool: true }, 'ip', 'ip', { action: 'status' }],
+  [{ biddingTool: true }, 'bidding', 'bidding', { action: 'status' }],
   [{conferenceTool: true }, 'conference', 'conference', { action: 'status' }],
   [{arbitrationTool: true }, 'arbitration', 'arbitration', { action: 'status' }],
   [{charterTool: true }, 'charter', 'charter', { action: 'status' }],
