@@ -5,6 +5,8 @@
 > 邻卷：`07-durability-library.md`（归档轨）、`08-primitives-meeting-ballot-workflow.md`（会议与表决）、`09`／`15`（数学计算与形式化）、`12-user-guide.md`（使用者手册）、`14-open-items-and-roadmap.md`（未决项与路线图）
 > 读者：**研究者本人**（要把"一项研究从选题做到长期保存"跑在 vmu 上）＋ **机制作者**（要为新阶段写规则/模块/脚本/包）。
 
+> ★★★ **本卷要教的 API（★ 轮 511 实测补 ✓）**：★ **`createConference({ … })`** ✓（★ 会议组织：轨道、投稿、程序委员会、日程 ✓）；★ **`createExternal({ … })`** ✓ 与它的四张词表** ✓：`PIPELINE`** ✓（★ 五步顺序：解析→抓取→规范化→合并→回执 ✓）、`STALE_POLICIES`** ✓、`CONFLICT_POLICIES`** ✓、`MERGE_POLICIES`** ✓ ＋ **`fingerprintOf`** ✓（★ 抓来材料的内容身份 ✓ —— ★ 于是"同一份材料再抓一次"是**可识别的**、不是重复的 ✓）。
+
 ---
 
 ## 0. 心智模型：生命周期是"可挂点的流水线"

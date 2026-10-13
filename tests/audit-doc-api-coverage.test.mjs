@@ -5,7 +5,7 @@
 // ballot.js at a quarter, pack.js at two fifths, turn/index.js at half, and three others at one missing name each. The guard
 // requires the names that matter for each pair rather than a percentage, because a threshold invites renaming a public API
 // to dodge it, while a named list states exactly which surfaces a reader is entitled to find.
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -39,13 +39,21 @@ const PAIRS = [
   { vol: '21-observability-and-operations.md', mod: 'kernel/audit.js', must: ['createAudit', 'WHAT_VOCAB', 'DEFAULT_REDACT_KEYS', 'ENFORCED_SCOPE', 'redactRow'] },
   { vol: '21-observability-and-operations.md', mod: 'kernel/metrics.js', must: ['createMetrics', 'METRIC_CATALOGUE', 'NEVER_SAMPLED_KINDS'] },
   { vol: '21-observability-and-operations.md', mod: 'kernel/alerts.js', must: ['OPS', 'SLO_STATES', 'ERROR_BUDGET_ACTIONS', 'ALERT_CODES', 'RUNBOOK', 'fingerprintOf'] },
+  // Round 511: five more volumes that named NONE of their module's exports.
+  { vol: '09-math-formalization.md', mod: 'kernel/formal.js', must: ['createFormal', 'FORMAL_KEYS'] },
+  { vol: '15-math-computation-toolbox.md', mod: 'math-computation.js', must: ['MATH_TOOL_NAME', 'MATH_PARAM_NAMES', 'MATH_CAPS', 'registerMathComputation'] },
+  { vol: '16-research-lifecycle.md', mod: 'kernel/external.js', must: ['createExternal', 'PIPELINE', 'fingerprintOf'] },
+  { vol: '17-agent-society-and-delegation.md', mod: 'kernel/trust.js', must: ['createTrust', 'AUTHORITY_REFUSAL'] },
+  { vol: '20-security-privacy-and-compliance.md', mod: 'kernel/crypto.js', must: ['createCrypto', 'publicView', 'VERIFY_FAILURES'] },
   { vol: '21-observability-and-operations.md', mod: 'kernel/auditchain.js', must: ['GENESIS', 'CHAIN_FAILURES', 'rowPreimage', 'createAuditChain'] },
 ]
 
 console.log('=== 1. EVERY PAIR RESOLVES, AND THE NAMES ARE REAL EXPORTS ===')
 const invented = []
 for (const p of PAIRS) {
-  const src = readFileSync(join(VMU, p.mod), 'utf8')
+  // the shared math module lives at the REPOSITORY root, not under vibe-math-vmu - resolve both placements
+  const modPath = existsSync(join(VMU, p.mod)) ? join(VMU, p.mod) : join(REPO, p.mod)
+  const src = readFileSync(modPath, 'utf8')
   const exports = new Set([...src.matchAll(/^export (?:function|const) (\w+)/gm)].map((m) => m[1]))
   for (const n of p.must) if (!exports.has(n)) invented.push(p.mod + ':' + n)
 }

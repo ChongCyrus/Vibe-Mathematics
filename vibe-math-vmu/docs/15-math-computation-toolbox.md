@@ -9,6 +9,14 @@
 > 3. **已实现**的事实按代码如实写 ✓（工具 `math_computation` 的 4 个 op、8 个 P1 引擎、回执与归档、Lean 作业队列、caps 与预算闸门、`classifyOutcome` 永不反驳）。
 > 4. 键全表见 **§21.6**，码全表见 **§21.7**，工具/服务/协议/适配器清单见 **§21.8**；**§18 未核项**逐条列出"没实测/没定"的东西；**§19** 给与其它卷的接线；**§20** 给可核门禁判据。
 
+> ★★★ **本卷要教的 API（★ 轮 511 实测补 ✓）**：★ **`math-computation.js` 有 **31** 个公开导出，而本卷原先【一个都没点名**]✗** ✓ —— ★★ **本会话发现的**最大的**一处零覆盖** ✓。★ **按面点名** ✓：
+> - ★ **身份与参数**：★ `MATH_TOOL_NAME` ✓（★ 注册的工具名，★ 实测是 `math_computation` ✓，★ 见 `docs/01` D14 ✓）、`MATH_PARAM_NAMES` ✓、`MATH_PARAM_DEFAULTS` ✓、`MATH_TOOL_SCHEMA` ✓、`MATH_TOOL_DESCRIPTION` ✓；
+> - ★ **参数处理**：★ `normalizeMathParams` ✓、`effectiveMathParams` ✓、`validateMathArgs` ✓、`mathInstallRoots` ✓、`parsePackageSpec` ✓；
+> - ★ **能力与失败**：★ `MATH_CAPS` ✓、`MATH_FAILURE_CODES` ✓、`MATH_BAD_ARGV_HINT` ✓、`mathAvailabilityLine` ✓；
+> - ★ **归档预算**：★ `MATH_ARCHIVE_MAX_ATTEMPTS_PER_RUN` ✓、`MATH_ARCHIVE_MAX_RUNS` ✓、`MATH_ARCHIVE_WARNING` ✓；
+> - ★ **注入的语料行**：★ `MATH_PERSONA_TOOL_LINE` ✓、`MATH_ARCHIVE_WORKFLOW_LINE` ✓ 与 `MATH_ARCHIVE_WORKFLOW_LINE_EN` ✓、`MATH_SUBSTITUTION_RULE_LINE` ✓ 与 `MATH_SUBSTITUTION_RULE_LINE_EN` ✓、`MATH_SHELL_RULE_LINE` ✓ 与 `MATH_SHELL_RULE_LINE_EN` ✓、`MATH_RULE_LINES` ✓ 与 `MATH_RULE_LINES_EN` ✓、`MATH_SCRIPT_CHANGED_WARNING` ✓、`MATH_SCRIPT_CHANGED_DURING_RUN_WARNING` ✓、`MATH_SHELL_FALLBACK_MARK` ✓ 与 `MATH_SHELL_FALLBACK_MARK_EN` ✓（＋ `_EN` ✓）；
+> - ★ **注册入口**：★ `registerMathComputation` ✓ —— ★ **把工具挂到宿主上的那一步** ✓。
+
 ---
 
 > ★★★ **共享模块的 parity：逐字节相同（★ 轮 510 实测 ✓，并由门禁守着 ✓）**：

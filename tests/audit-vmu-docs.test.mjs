@@ -117,8 +117,28 @@ ok(generatedRegions >= 1,
   'the generated region this check skips is really present, so the exemption above rests on a declaration rather than on hope',
   { generatedRegions })
 
+// API NAMES ARE NOT CODES. Every non-boilerplate export of every kernel module and of the shared math module is collected
+// here; a SCREAMING_SNAKE name in a volume that is one of them is the module's public API, which the volumes are REQUIRED to
+// name (tests/audit-doc-api-coverage.test.mjs enforces that). The set is derived, not listed, so it cannot go stale, and the
+// count assertion below keeps it from being empty.
+const apiNames = new Set()
+{
+  const files = [join(VMU, 'math-computation.js')]
+  for (const d of ['kernel', 'kernel/prompt']) {
+    try {
+      for (const e of readdirSync(join(VMU, d), { withFileTypes: true })) if (e.name.endsWith('.js')) files.push(join(VMU, d, e.name))
+    } catch { /* an optional directory */ }
+  }
+  for (const f of files) {
+    let src = ''
+    try { src = readFileSync(f, 'utf8') } catch { continue }
+    for (const m of src.matchAll(/^export (?:function|const) ([A-Z][A-Z0-9_]{2,})/gm)) apiNames.add(m[1])
+  }
+}
+ok(apiNames.size >= 20, 'the public API names are read from the modules, so the exemption below rests on derived data', { apiNames: apiNames.size })
+
 const unregisteredInDocs = [...codeUse.entries()]
-  .filter(([code]) => !registered.has(code))
+  .filter(([code]) => !registered.has(code) && !apiNames.has(code))
   .map(([code, docs]) => code + ' (' + [...docs].join(',') + ')')
 ok(unregisteredInDocs.length === 0, 'every VMU_* code used in the docs is registered in 03-§8',
   unregisteredInDocs.slice(0, 8).join(' | '))
