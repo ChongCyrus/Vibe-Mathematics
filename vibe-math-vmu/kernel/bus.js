@@ -42,6 +42,8 @@ const DECISION_CAPABILITY = Object.freeze({
 
 /** vmu-internal hook names (docs/05 §4.2). The host substrate names live in docs/05 §4.1. */
 export const VU_HOOKS = Object.freeze([
+  'member/self-report',
+  'budget/warn',
   'member/wake-before', 'member/wake-after', 'turn/reply-parsed',
   'meeting/round-start', 'meeting/round-end', 'ballot/cast', 'ballot/tally',
   'record/append-before', 'record/appended', 'task/assign', 'task/transition',
@@ -66,6 +68,13 @@ export const DEFAULT_FAILURE = Object.freeze({
   'task/assign': 'closed', 'task/transition': 'closed',
   'prompt/section-assembled': 'open',
   'budget/exceeded': 'abort',
+  // ROUND 496: budget/warn was EMITTED (kernel/budget.js) inside VMU's own namespace while not being frozen, so the
+  // membership check REFUSED it - a live bug on the ordinary budget-warning path. A warning is OBSERVATION, so its policy
+  // is open, exactly like control/*: a broken listener must not turn a warning into a failure.
+  'budget/warn': 'open',
+  // ROUND 496: found by the same scan as budget/warn - members.js emitted this inside VMU's namespace while it was NOT
+  // frozen, so the bus refused it. A self-report is observation, hence open.
+  'member/self-report': 'open',
   'pack/loading': 'closed', 'pack/loaded': 'closed',
   'settle/before': 'closed', 'settle/after': 'closed',
   // Control flow is OBSERVATION for middleware (a watcher may react), so the framework keeps running when a

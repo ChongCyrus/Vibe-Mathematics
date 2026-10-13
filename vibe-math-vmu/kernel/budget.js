@@ -109,7 +109,13 @@ export function createBudget({ clock = () => Date.now(), log = () => {}, setting
     if (lim !== Infinity && lim > 0 && next / lim >= c.warnAtRatio) {
       s.warnings += 1
       log('budget warnAtRatio: ' + scope + '/' + kind + ' at ' + Math.round((next / lim) * 100) + '% (ratio=' + c.warnAtRatio + ')')
-      if (bus && typeof bus.emit === 'function') bus.emit('budget/warn', { scope, kind, used: next, limit: lim })
+      // ROUND 496: this used to be a bare, un-awaited emit. Even with the name now frozen, a LISTENER can throw, and a
+        // warning must never break the caller that merely crossed a ratio - so the rejection is caught and the warning is
+        // recorded rather than propagated.
+        if (bus && typeof bus.emit === 'function') {
+          const emitted = bus.emit('budget/warn', { scope, kind, used: next, limit: lim })
+          if (emitted && typeof emitted.catch === 'function') emitted.catch((e) => log('budget/warn listener failed: ' + String(e && e.message)))
+        }
     }
     return snapshot(s)
   }

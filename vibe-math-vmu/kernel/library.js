@@ -54,6 +54,9 @@ export function createLibrary({
   truncateMode = 'keepChars',
   fingerprintPolicy = 'content-only',
   bodyCapBytes = BODY_CAP_BYTES,
+  // ROUND 496: OPTIONAL, so every existing caller keeps working. It exists so the archival write can announce itself to
+  // middleware BEFORE anything is created on disk - the point of a `before` hook, and the shape the volume promises.
+  bus = null,
   // ROUND 228: the fingerprint family (`vmu.fingerprint.*`), read here because this face computes content identity.
   fingerprintAlgo = (settings && settings['vmu.fingerprint.algo']) || 'sha256',
   fingerprintTruncate = (() => { const v = Number(settings && settings['vmu.fingerprint.truncate']); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0 })(),
@@ -323,6 +326,12 @@ export function createLibrary({
 
     /** Append a card. Same substantive content twice => same id (idempotent), never a silent duplicate. */
     async append(record = {}, opts = {}) {
+      // ROUND 496: `record/append-before` was frozen WITH a default policy and nothing emitted it. It fires HERE, before any
+      // validator runs and before anything touches disk, so a middleware can refuse an archival write by name.
+      if (bus && typeof bus.emit === 'function') {
+        const seen = await bus.emit('record/append-before', { kind: record && record.kind, track: record && record.track, member: (opts && opts.member) || null }, { member: (opts && opts.member) || undefined })
+        if (seen && seen.ok === false) throw refuse((seen.refused && seen.refused.code) || 'VMU_MIDDLEWARE_FAILED', (seen.refused && seen.refused.message) || 'a middleware refused record/append-before', (seen.refused && seen.refused.hint) || null)
+      }
       if (record.tags !== undefined) checkTags({ tags: record.tags })   // ROUND 230: a validator nobody calls is inert
     const refCheck = record.references !== undefined ? checkReferences({ references: record.references }) : null   // ROUND 231
     const metaCheck = checkMetadata({ record })   // ROUND 232: a custom field must be prefixed, and the strictness decides what

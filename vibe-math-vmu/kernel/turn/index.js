@@ -194,6 +194,10 @@ export function createTurnOrchestrator({
   // Renders this member's queued notices as the pack writes them (header, indented lines, blank line). Null means
   // the notices join the status block as before, which keeps the framework usable with no pack at all.
   noticeBlock = null,
+  // ROUND 496: OPTIONAL, so every existing caller keeps working. It exists so `turn/reply-parsed` - frozen with a default
+  // policy and previously emitted by nobody - can actually fire, at the one point where inspecting a parsed reply can still
+  // change the outcome: after parsing, before dispatch.
+  bus = null,
   // Phases the PACK declares, beyond the framework's own. See PHASES: which phases exist is institution
   // vocabulary, so the framework validates and the pack names.
   extraPhases = null,
@@ -462,6 +466,12 @@ export function createTurnOrchestrator({
     const asm = await assemble(turn)
     const raw = await deliverTurn(turn, asm.text)
     const parsed = parse(raw)
+    // ROUND 496: `turn/reply-parsed` was frozen with a default policy and NOTHING emitted it, so middleware could not see
+    // a parsed reply. Emitted BEFORE dispatch, which is the only point where inspecting it can still change the outcome.
+    if (bus && typeof bus.emit === 'function') {
+      const seen = await bus.emit('turn/reply-parsed', { turn: turn.id, member: turn.member, phase: turn.phase, fields: parsed.fields, reply: parsed.reply }, { member: turn.member, role: turn.role, phase: turn.phase })
+      if (seen && seen.ok === false) fail((seen.refused && seen.refused.code) || 'VMU_MIDDLEWARE_FAILED', (seen.refused && seen.refused.message) || 'a middleware refused turn/reply-parsed', (seen.refused && seen.refused.hint) || null)
+    }
     const out = await apply(parsed.reply)
     // ROUND 396: a REFUSED dispatch becomes a notice for this member's NEXT prompt, which is the shape the original's
     // own corpus shows - "【研究所提示】task_update 未生效（V5_TASK_STALE_REVISION）：…". A refusal that lives only in the

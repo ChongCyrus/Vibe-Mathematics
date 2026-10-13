@@ -405,10 +405,14 @@ ok(unregisteredInCode.length === 0,
   // producer in kernel/fairness.js (the doc-side row in 05 was corrected in the same change).
   // `record/appended` LEFT this list in round 32: kernel/compliance.js:89 really emits it (so do domaingate,
   // handover and minutes), which made this list stale - and a stale exemption is exactly the kind of "the checker
-  // stopped seeing it" state this suite exists to catch. Removing it TIGHTENS the audit; the remaining three have
-  // no producer anywhere.
-  const KNOWN_UNEMITTED = new Set(['turn/reply-parsed', 'record/append-before',
-    'pack/loading', 'pack/loaded'])
+  // stopped seeing it" state this suite exists to catch. Removing it TIGHTENS the audit.
+  //
+  // ROUND 496: the last four LEFT it too, all at once, because a scan of the OTHER direction (is every EMITTED name
+  // frozen?) found the reverse defect as well: budget/warn and member/self-report were emitted inside VMU's namespace
+  // without being frozen, so the bus refused them and two live paths threw. Fixing that led to producers for all four of
+  // these, at the points where intervention is still possible. The list is now EMPTY, which is the state it should reach -
+  // and an empty set makes the assertion below stricter, not weaker: any registered hook without a producer now fails.
+  const KNOWN_UNEMITTED = new Set([])
   const missing = registered.filter((h) => !emitted.has(h) && !KNOWN_UNEMITTED.has(h))
   ok(missing.length === 0,
     'every registered vmu hook is either EMITTED or explicitly listed as not-yet-emitted',

@@ -290,6 +290,14 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
      * receipt records what was changed so `unload` can reverse exactly that.
      */
     async apply(manifest) {
+      // ROUND 496: pack/loading and pack/loaded were frozen WITH default policies and nothing emitted them, so "pack-loading
+      // intervention" was a paper capability. loading fires before any change is made and MAY refuse; loaded fires after.
+      const busOf = () => (kernel && kernel.bus && typeof kernel.bus.emit === 'function' ? kernel.bus : null)
+      const bus = busOf()
+      if (bus) {
+        const pre = await bus.emit('pack/loading', { id: manifest && manifest.id, manifest }, {})
+        if (pre && pre.ok === false) throw refuse((pre.refused && pre.refused.code) || pre.code || 'VMU_PACK_CONFLICT', (pre.refused && pre.refused.message) || pre.message || 'a middleware refused pack/loading', (pre.refused && pre.refused.hint) || null)
+      }
       const plan = buildPlan(manifest)
       if (!plan.ok) {
         throw refuse('VMU_PACK_MISSING', 'pack ' + String(manifest && manifest.id) + ' cannot be applied: ' + plan.problems.join('; '),
@@ -357,6 +365,8 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
       // ATOMIC: a pack that fails halfway is rolled back, so a failed apply never leaves a half-institution.
       try {
         await runAll()
+      // ROUND 496: the other half of the paper capability - pack/loaded fires once every manifest is in place.
+      if (bus) await bus.emit('pack/loaded', { id: manifest && manifest.id, applied: plan.count }, {})
       } catch (e) {
         for (const undoOne of undo.slice().reverse()) { try { undoOne() } catch { /* best effort during rollback */ } }
         throw e
