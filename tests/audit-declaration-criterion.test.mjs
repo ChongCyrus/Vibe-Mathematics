@@ -17,6 +17,7 @@ import { spawnSync } from 'node:child_process'
 import { join, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
+import { TOOL_NAMES } from '../vibe-math-vmu/host.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -583,7 +584,7 @@ console.log('  RULE D documented names=' + ruleD.coverage.length + ' hits=' + ru
   for (const v of ruleD.violations) { const f = v.split(':')[0]; byFile[f] = (byFile[f] || 0) + 1 }
   console.log('  RULE D hits by volume: ' + JSON.stringify(byFile))
 }
-ok(implementedTools.size >= 9, 'the implemented tool set was really parsed from host.js TOOL_NAMES (' + implementedTools.size + ' names)')
+  ok(implementedTools.size === Object.keys(TOOL_NAMES).length, 'the parsed count EQUALS the imported TOOL_NAMES (' + implementedTools.size + ' names), so a narrowing parse cannot pass on a low bound')
 red(ruleD.violations, 'RULE D (every documented vibe_vmu_* tool is implemented or explicitly marked 规划/未实现)')
 
 // ── 3c) RULE E on the real tree: assertions that can pass vacuously ──────────────────────────────────

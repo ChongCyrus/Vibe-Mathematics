@@ -24,7 +24,7 @@
 
 ---
 
-## 1. 工具总表（26 个 `vibe_vmu_*` ＋ 1 个继承工具）
+## 1. 工具总表（27 个 `vibe_vmu_*` ＋ 1 个继承工具）
 
 | 工具（`TOOL_NAMES` 键） | 出现条件 | 权限面 | 幂等性 | 主要 action |
 |---|---|---|---|---|
@@ -54,6 +54,7 @@
 | `vibe_vmu_notify`（`notify`） | `notifyTool` 为真 | 订阅/投递/摘要 | `flush`/`list`/`status` ✓；`watch`/`unwatch`/`emit` 视参数 ✗ | `status`(默认)`/watch/unwatch/emit/flush/list` |
 | `vibe_vmu_transaction`（`transaction`） | `transactionTool` 为真 | 事务与补偿 | `status`/`list`/`history` ✓；`begin`/`run`/`compensate` 视状态 ✗ | `status`(默认)`/begin/run/list/history/compensate` |
 | `vibe_vmu_custody`（`custody`） | `custodyTool` 为真 | 保管链与销毁 | `status` ✓；其余视条目状态 ✗ | `status`(默认)`/registerEntry/transfer/storageCycle/destroy/chainOf` |
+| `vibe_vmu_topology`（`topology`） | `topologyTool` 为真 | 组织拓扑（自组织） | `list`/`status` ✓；`select`/`describe`/`route`/`assert` 视状态 ✗ | `status`(默认)`/select/describe/route/assert/list` |
 | `math_computation` | **声明了数学意图**（`vibe-math-vmu.js:149`） | 计算面 | `probe/receipt` ✓；`run/install` ✗ | 由共享模块登记：`op=probe|run|receipt|install` |
 
 **注册面硬纪律（`host.js` 逐条）**
@@ -456,8 +457,9 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 23 | `notify` | `vibe_vmu_notify` |
 | 24 | `transaction` | `vibe_vmu_transaction` |
 | 25 | `custody` | `vibe_vmu_custody` |
-| 26 | `turn` | `vibe_vmu_turn` |
+| 26 | `topology` | `vibe_vmu_topology` |
+| 27 | `turn` | `vibe_vmu_turn` |
 
-> ★★ 合计 **26** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
+> ★★ 合计 **27** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
 
 <!-- END GENERATED: tool-index -->

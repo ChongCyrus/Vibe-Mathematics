@@ -73,6 +73,7 @@ const TOOLS = [
   [{ notifyTool: true }, 'notify', 'notify', { action: 'status' }],
   [{ transactionTool: true }, 'transaction', 'transaction', { action: 'status' }],
   [{ custodyTool: true }, 'custody', 'custody', { action: 'status' }],
+  [{ topologyTool: true }, 'topology', 'topology', { action: 'status' }],
   // ---- the eight that were already there ----
   [{ taskTool: true }, 'task', 'tasks', { action: 'list' }],
   [{ recordsTool: true }, 'records', 'library', { action: 'list' }],

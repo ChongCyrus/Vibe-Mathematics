@@ -18,6 +18,7 @@ import { hasConsumer } from '../scripts/generate-vmu-settings-table.mjs'
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { TOOL_NAMES } from '../vibe-math-vmu/host.js'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -258,7 +259,7 @@ ok(unregisteredInCode.length === 0,
   const from = hostSrc.indexOf('export const TOOL_NAMES')
   const block = hostSrc.slice(from, hostSrc.indexOf('})', from))
   const implemented = new Set([...block.matchAll(/'(vibe_vmu_[a-z_]+)'/g)].map((m) => m[1]))
-  ok(implemented.size >= 5, 'TOOL_NAMES was read out of host.js', [...implemented].join(','))
+  ok(implemented.size === Object.keys(TOOL_NAMES).length, 'the parse out of host.js equals the imported TOOL_NAMES exactly, so a narrowing parse cannot pass', [...implemented].join(','))
 
   const documented = new Map()
   for (const [name, text] of docText) {

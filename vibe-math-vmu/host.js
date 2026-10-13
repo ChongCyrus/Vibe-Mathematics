@@ -19,6 +19,7 @@ import { makeMathtoolsSpec } from './tools/mathtools.js'
 import { makeAuditchainSpec } from './tools/auditchain.js'
 import { makeNotifySpec } from './tools/notify.js'
 import { makeCustodySpec } from './tools/custody.js'
+import { makeTopologySpec } from './tools/topology.js'
 //
 // TOOL SHAPE (learned from the REAL HOST, not from our own assumptions): the first scripted live run
 // (SLV) showed the preset active but NO vmu tools in the agent's tool list. The cause was this file: the
@@ -74,6 +75,7 @@ export const TOOL_NAMES = Object.freeze({
   notify: 'vibe_vmu_notify',
   transaction: 'vibe_vmu_transaction',
   custody: 'vibe_vmu_custody',
+  topology: 'vibe_vmu_topology',
   // ROUND 349: the turn loop needs a real entry point. Without it the framework could run a round only from a test,
   // which is not the same as a host being able to run one - and the objective is the latter.
   turn: 'vibe_vmu_turn',
@@ -149,7 +151,7 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * adapter turns it into the host shape (`execute` returning JSON). Filtering by what actually exists keeps
  * the surface honest (docs/04 §11 ownership: mechanism only).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false, budgetTool = false, citationsTool = false, disciplineTool = false, governanceTool = false, ratelimitTool = false, explainTool = false, projmigrateTool = false, bridgeTool = false, externalTool = false, mathtoolsTool = false, auditchainTool = false, notifyTool = false, transactionTool = false, custodyTool = false }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false, budgetTool = false, citationsTool = false, disciplineTool = false, governanceTool = false, ratelimitTool = false, explainTool = false, projmigrateTool = false, bridgeTool = false, externalTool = false, mathtoolsTool = false, auditchainTool = false, notifyTool = false, transactionTool = false, custodyTool = false, topologyTool = false }) {
   // A refusal carries the four documented fields, plus - when the caller has them - host-side DIAGNOSTICS
   // (the host's own stack and the exact request shape we passed). They are added ONLY when present, so no
   // existing refusal changes shape. Without this the live M3 diagnosis died at the tool boundary: the seam
@@ -453,6 +455,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
 
   if (transactionTool) specs.push(makeTransactionSpec({ param, refused, TOOL_NAMES, kernel }))
   if (custodyTool) specs.push(makeCustodySpec({ param, refused, TOOL_NAMES, kernel }))
+  if (topologyTool) specs.push(makeTopologySpec({ param, refused, TOOL_NAMES, kernel }))
 
   // ROUND 538: the tool specs live in tools/<key>.js so this file stays inside the decided 1200-line limit. The CONDITIONS
   // stay here: which intent declares a tool is policy, and policy belongs with the host.
