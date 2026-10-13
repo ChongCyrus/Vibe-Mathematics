@@ -253,8 +253,13 @@ export function collect() {
     let schemaSrc = readFileSync(SCHEMA, 'utf8')
     const b = schemaSrc.indexOf(BEGIN)
     if (b !== -1) { const e = schemaSrc.indexOf(END, b); if (e !== -1) schemaSrc = schemaSrc.slice(0, b) + schemaSrc.slice(e + END.length) }
-    for (const m of schemaSrc.matchAll(/key:\s*'([^']+)'/g)) already.add(m[1])
-    for (const m of schemaSrc.matchAll(/key:\s*"([^"]+)"/g)) already.add(m[1])
+    // ROUND 606 — THE SAME BUG AS ROUND 604, IN TWO MORE PLACES. `key: '([^']+)'` matches ANY `key: '...'` in the file, including a
+    // source line whose template expression happens to contain one: measured here as 1039 captures of which one is the fragment
+    // `" + key,\n      "`. A settings key is a dotted `vmu.*` path, so the declaration's own shape is the criterion - anything else is
+    // code. Left unfiltered, a bogus "already declared" entry can make a real key look pre-existing and be skipped.
+    const KEY_SHAPE = /^vmu\.[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*$/
+    for (const m of schemaSrc.matchAll(/key:\s*'([^']+)'/g)) if (KEY_SHAPE.test(m[1])) already.add(m[1])
+    for (const m of schemaSrc.matchAll(/key:\s*"([^"]+)"/g)) if (KEY_SHAPE.test(m[1])) already.add(m[1])
   } catch (e) { /* no schema yet: nothing is declared */ }
   const out = []
   const perModule = []
@@ -359,7 +364,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     let without = next
     const b = without.indexOf(BEGIN)
     if (b !== -1) { const e = without.indexOf(END, b); if (e !== -1) without = without.slice(0, b) + without.slice(e + END.length) }
-    for (const m of without.matchAll(/key:\s*['"]([^'"]+)['"]/g)) preexisting.add(m[1])
+    // ROUND 606: same shape filter as above - a capture that is not a dotted `vmu.*` path is code, not a declaration.
+    for (const m of without.matchAll(/key:\s*['"]([^'"]+)['"]/g)) if (/^vmu\.[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*$/.test(m[1])) preexisting.add(m[1])
   }
   for (const d of defs) {
     // The doc rule is checked against the FILE, not against this script's own output: `render([d])` would always
