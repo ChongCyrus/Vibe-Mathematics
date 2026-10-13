@@ -7,6 +7,13 @@
 //
 // Round 598 named each pack's OWN manifest export: v5r/index.js exports BOTH PACK (which belongs to v5r-core) and V5R_PACK, so
 // `m.PACK || m.V5R_PACK` silently audited the wrong object and reported v5r as carrying bus middleware it does not carry.
+//
+// ROUND 599 CHECKED WHETHER THAT WAS A TRAP AND FOUND IT IS NOT - IT IS DELIBERATE AND DOCUMENTED. v5r/index.js says in as many words
+// that the folder-level record is "deliberately NOT named PACK ... naming this one PACK silently replaced the real manifest and the
+// roster disappeared - a lesson kept in the name", and that the loaded manifest is imported explicitly because a star re-export does
+// not put a name in the module's own scope. So PACK means "the manifest the LOADER consumes" and V5R_PACK means "this folder's record",
+// both consistently, and the only thing that got it wrong was my probe. The note below records the distinction where a reader will meet
+// it, and section 2 asserts it, so the next reader does not have to open the pack file to learn it.
 import { readdirSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -50,6 +57,14 @@ for (const d of dirs) {
   if (man) read.push({ dir: d, manifest: man })
 }
 ok(read.length > 0, 'and each was read, so what follows is measured on real manifests', { n: read.length })
+// ROUND 599: the distinction that caught my own probe, asserted so a reader meets it here rather than by getting it wrong.
+{
+  const v5rMod = await import(pathToFileURL(join(PACKS, 'v5r', 'index.js')).href)
+  ok(v5rMod.PACK && v5rMod.PACK.id === 'v5r-core',
+    'v5r/index.js exports PACK meaning the manifest the LOADER consumes, which is v5r-core - not this folder\'s own record', { id: v5rMod.PACK && v5rMod.PACK.id })
+  ok(v5rMod.V5R_PACK && v5rMod.V5R_PACK.id === 'v5r',
+    'and V5R_PACK is the folder-level record whose id is the folder name; taking PACK for it audits the wrong object', { id: v5rMod.V5R_PACK && v5rMod.V5R_PACK.id })
+}
 
 console.log('=== 3. NO PACK DECLARES A BUS-REFUSED ENTRY AS MIDDLEWARE ===')
 const refusals = []
