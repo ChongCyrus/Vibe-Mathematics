@@ -138,7 +138,7 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数** | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 134 / suites 68 / probes 66`** ✓（R-6b 拆分后 **132→134** ✓：`v5-institute-fixes.mutants.mjs` 由 1 个作业变为 3 个分片 ✓） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 176 / suites 112 / probes 64`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 177 / suites 113 / probes 64`** ✓ |
 
 **134 的推导链（逐行可核 ✓）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 134 ✓；`.test.mjs` 裸作业 68 = suites；`134−68=66` = probes ✓。
 **vmu 子集**：`GATE_SCOPE=vmu` ⇒ ★★★ **这里有两个不同的量，而且【没有一个机器模式能报出子集那个**]✗**：★ **请求的作用域与生效的作用域是【两个变量**]✓ —— ★ `run-tests.mjs` 在 `--counts`／`--self-check`／`--only` 下【**强制生效作用域为 `full`**]✓（★ **有意为之，且有事故记录** ✓：★ vmu 作用域第一次运行时，子进程继承了作用域 ⇒ **`run-tests.mutants.mjs` 的超时正例看到 **0 个作业** ✗、`--self-check` 基线发散 ✗、`audit-readme-counts` 读到 **27 而不是 110** ✗**）⇒ ★★ **所以 `--counts` 报的是【仓库作业计数 236**]✓（★ 基础 ＋ 变体 ✓），**不是子集计数** ✓。★★ **而 T1 【执行**]的 `TOTAL` 是 **137（114 套件 + 23 探针）** ✓ ⇒ ★ **这一行只能由运行实报，不能由生成器产出** ✓；★★ **表头现在把"请求的"与"生效的"都印出来** ✓（★ 此前只印前者，**读起来像"作用域没生效"** ✗ —— ★ **它误导了三轮排查** ✓）

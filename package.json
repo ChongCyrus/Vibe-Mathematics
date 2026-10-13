@@ -91,6 +91,7 @@
     "tests/audit-dependency-cycles.test.mjs",
     "tests/vmu-tools-filter.test.mjs",
     "tests/vmu-control-roster.test.mjs",
+    "tests/vmu-notice-block.test.mjs",
     "tests/audit-planned-names.test.mjs",
     "tests/audit-math-computation-contract.mjs",
     "tests/audit-math-computation-contract.mutants.mjs",
