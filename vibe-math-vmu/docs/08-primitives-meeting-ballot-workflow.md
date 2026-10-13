@@ -551,7 +551,8 @@ v5r 的 `s8-freeze-say` 真回归：**"本轮是否完成"的判据被写死在�
 | `meeting/convened`／`meeting/opened`／`meeting/speech-requested`／`meeting/speech-granted`／`meeting/interrupted`／`meeting/motion`／`meeting/seconded`／`meeting/amendment`／`meeting/recess`／`meeting/resumed`／`meeting/adjourned`／`meeting/minutes-drafted` | 见 §10 字段（✗ 规划） | 视点而定 | ✗ |
 | `ballot/opened`／`ballot/frozen`／`ballot/unfrozen`／`ballot/closed`／`ballot/reopened`／`ballot/audited` | 见 §10.4 | 部分可拒绝 | ✗ |
 | `task/created`／`task/deps-changed`／`task/gate-check`／`task/retry`／`task/checkpoint`／`task/escalated` | 见 §10.5 | 部分可拒绝 | ✗ |
-| `board/wip-exceeded`／`budget/warn`／`trigger/fired`／`committee/formed`／`committee/reported` | 见 §10.5 | 观测型 | ✗ |
+| `budget/warn` | 见 §10.5 | 观测型 | **✓**（★ 轮 496 冻结 ✓：它【在 VU 命名空间里**]，未冻结时总线会拒 ✗） |
+| `board/wip-exceeded`／`trigger/fired`／`committee/formed`／`committee/reported` | 见 §10.5 | 观测型 | ✗（★ **域事件**：★ 在自己的命名空间里 emit ✓ ⇒ **中间件要挂它必须先 `declareTopic`** ✓） |
 
 **钩子纪律**：① 未注册的钩子**不得**写成"已生效" ✗（05-§4 是登记处）；② 拒绝型钩子必须**具名**（`VMU_MIDDLEWARE_REJECTED` ＋ 中间件 id ✓）；③ 观测型钩子**不得**返回"拒绝"来偷偷改变流程 ✗（要改就换判定点）。
 
@@ -1186,7 +1187,7 @@ recount(ballotId):
 | `meeting/convened`／`meeting/opened`／`meeting/speech-requested`／`meeting/speech-granted`／`meeting/interrupted`／`meeting/motion`／`meeting/seconded`／`meeting/amendment`／`meeting/recess`／`meeting/resumed`／`meeting/adjourned`／`meeting/minutes-drafted` | **未注册 ✗（规划）** | 见 §11.4 |
 | `ballot/opened`／`ballot/frozen`／`ballot/unfrozen`／`ballot/closed`／`ballot/reopened`／`ballot/audited` | **未注册 ✗（规划）** | 部分可拒 |
 | `task/created`／`task/deps-changed`／`task/gate-check`／`task/retry`／`task/checkpoint`／`task/escalated` | **未注册 ✗（规划）** | 部分可拒 |
-| `board/wip-exceeded`／`budget/warn`／`trigger/fired`／`committee/formed`／`committee/reported` | **未注册 ✗（规划）** | 观测型 |
+| `board/wip-exceeded`／`trigger/fired`／`committee/formed`／`committee/reported` | **未注册 ✓（规划；★ 域事件，需 `declareTopic` ✓）** | 观测型 |
 | `budget/exceeded` | **已注册但无生产者** ✗（05-§4.3 已声明 ✓） | 观测型 |
 
 ### 21.4 协议/接缝（不是新工具）

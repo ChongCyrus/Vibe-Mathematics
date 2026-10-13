@@ -105,7 +105,6 @@
     "tests/audit-kernel-index.test.mjs",
     "tests/audit-surface-index.test.mjs",
     "tests/audit-generators-current.test.mjs",
-    "tests/audit-measured-claims.test.mjs",
     "tests/audit-shared-module-parity.test.mjs",
     "tests/audit-module-coverage.test.mjs",
     "tests/audit-verbatim-claims.test.mjs",

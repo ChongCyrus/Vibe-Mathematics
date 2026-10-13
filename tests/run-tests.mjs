@@ -311,16 +311,34 @@ const QUICK_EXPECTED_JOBS = 35
 // every preset-INTERNAL behavioural family: a vmu change never touches another preset's plugin source,
 // so those families are reached at full scope by `GATE_INCREMENTAL` (target-derived) and by the
 // non-incremental release sweep, which stays REQUIRED at every milestone (see the same note above).
-const VMU_ONLY = ['vmu-', 'run-tests.mutants',
-  'audit-preset-rows', 'audit-preset-mechanism', 'audit-preset-declaration-group',
-  'audit-installer-compat', 'audit-installer-policy', 'audit-installer-assertions.mutants',
-  'audit-package-membership', 'audit-readme-counts', 'audit-path-discipline',
-  'audit-artifact-docs', 'audit-math-computation-parity', 'audit-math-computation-contract',
-  'audit-registration', 'temp-hygiene']
+// VMU scope = DEFAULT-INCLUDE, with an explicit EXCLUDE list (round 519).
+//
+// WHY THIS IS INVERTED. This scope used to be an ALLOW-LIST (`VMU_ONLY`). An allow-list silently drops every suite that
+// did not exist when it was written: measured in round 519, it covered 139 of the 254 files in tests/ and left 115 unrun -
+// including `audit-zpolicy` (the R1 zero-policy gate), `audit-code-size` (the R14 size gate), `audit-dependency-cycles`,
+// `audit-prompt-invariants`, `audit-planned-names`, and EVERY guard added during the round-500s. The scoped run was then
+// cited as gate evidence, which is exactly the paper-capability failure this repository keeps finding elsewhere: a check
+// that exists, passes when run by hand, and is never executed by the thing that is supposed to run it.
+//
+// The EXCLUDE list names only what is genuinely outside this preset: the acceptance and end-to-end suites for v2..v5r, the
+// long sensitivity probes, and the mutant families (the FULL sweep runs those). What is NOT listed is included, so a new
+// guard is in scope from the moment it is written. The classification is asserted by
+// `tests/audit-scope-classification.test.mjs`, so a file can never be dropped silently in either direction.
+const VMU_EXCLUDE = [
+  // acceptance / end-to-end suites for the other presets
+  'accept-', 'e2e-', 'selfdrive-', 'formal-verify', 'v2-fix', 'v3-fix', 'v4-final', 'roundC-fix', 'prompt-v5',
+  // the other presets' own math-computation suites (the parity and contract gates stay IN scope)
+  'math-computation-v', 'math-computation-a', 'math-computation-b',
+  // long sensitivity probes
+  'audit-math-computation-sensitivity', 'audit-formal-sensitivity', 'audit-persona-sensitivity',
+  // mutant families: the FULL sweep runs these, the iteration scope does not
+  'mutants',
+]
 /** Apply a scope's curated filter. `full` is the identity (byte-for-byte the old behaviour). */
 function applyScope(list, scope) {
   if (scope !== 'quick' && scope !== 'vmu') return list
-  const only = scope === 'vmu' ? VMU_ONLY : QUICK_ONLY
+  if (scope === 'vmu') return list.filter((j) => !VMU_EXCLUDE.some((x) => label(j).includes(x)))
+  const only = QUICK_ONLY
   const filtered = list.filter((j) => only.some((x) => label(j).includes(x)))
   return scope === 'quick'
     ? filtered.filter((j) => !QUICK_EXCLUDE.some((x) => label(j).includes(x)))
