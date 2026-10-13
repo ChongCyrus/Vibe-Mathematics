@@ -34,7 +34,7 @@
 | `vibe_vmu_records`（`records`） | `kernel.library` 存在（有 `root`） | 记录读写 | `list/expand` ✓；`append` ✗（内容指纹去重） | `list`(默认)`/expand/append` |
 | `vibe_vmu_script`（`script`） | 本次运行**声明了脚本** | 执行 M3 脚本 | `list` ✓；`run` ✗ | `list`(默认)`/run` |
 | `vibe_vmu_pack`（`pack`） | 传入 `packLoader` | 包装载 | `list/plan` ✓；`apply/unload` ✗ | `list`(默认)`/plan/apply/unload` |
-| `vibe_vmu_control`（`control`） | `controlTool` 为真 | 控制面 | `status` ✓；`pause/resume/stop/beat` ✗ | `status`(默认)`/pause/resume/stop/beat` |
+| `vibe_vmu_control`（`control`） | `controlTool` 为真 | 控制面 | `status` ✓；`pause/resume/stop/beat` ✗ | `status`(默认)`/pause/resume/stop/beat/roster/hire/fire` |
 | `vibe_vmu_meeting`（`meeting`） | `meetingTool` 为真 | 会议/表决原语 | `list` ✓；写动作 ✗ | `list/open/speak/silent/close/ballot/vote/tally/reopen` |
 | `vibe_vmu_task`（`task`） | `taskTool` 为真 | 任务台账 | `list/stage/brief/history` ✓；写动作 ✗ | `list/create/assign/transition/stage/advance/brief/history` |
 | `vibe_vmu_turn`（`turn`） | `turnTool` 为真 | 回合执行 | `status` ✓；`step/drive` ✗ | `status`(默认)`/step/drive` |

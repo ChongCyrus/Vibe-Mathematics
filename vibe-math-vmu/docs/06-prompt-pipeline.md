@@ -15,6 +15,8 @@
 
 ---
 
+> ★★ **本卷要教的 API（★ 轮 501 补 ✓）**：★ **`createPromptPipeline({ sections, bindings, readFile, clock, … })`** ✓ —— ★ **管线工厂**；★ **它返回 §3–§10 描述的那些面**（`register`／`bind`／`disable`／`enable`／`assemble`／`overrides` ✓）。
+
 ## 1. 为什么是"管线"而不是字符串拼接
 
 | 拼接式（反面） | 管线式（vmu，实现已落实） |

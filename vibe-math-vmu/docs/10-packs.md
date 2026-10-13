@@ -7,6 +7,8 @@
 
 ---
 
+> ★★ **本章要教的 API（★ 轮 501 补 ✓）**：★ **`createPackLoader({ kernel, registry, allowOverride, clock })`** ✓ —— ★ **装载器工厂**（★ `plan()` 纯函数、`apply()` 冲突即具名拒、`unload()` 逐个回滚 ✓）；★ **`validatePack(manifest)`** ✓ —— ★ **清单形状校验**；★ **`collectPackSections(manifests)`** ✓ —— ★ **从若干清单里收集段**（★ 多个包共存时用 ✓）。★★ **另有 `compressText`／`decompressText`** ✓ —— ★ **文本压缩对**（★ 归档与传输用 ✓）。
+
 ## 1. pack 是什么 / 不是什么
 
 > ★★★ **分界的总原则（内核零策略，D5）** ✓✓：**框架【只提供机制与判据】，领域常量【由 pack 定义】** ✓ —— **实例：角色槽位在内核、实例与权限在 pack（§5.2 ✓）；阶段机在内核、阶段列表在 pack（§5.2 ✓）；票数上限在内核（`vmu.meetings.quorumCap` ✓，契约 `min(cap, 参与人数)` ✓）、而**复议门槛的另两项常量在 pack**（见下 ✓）**）** ✓。**判据** ✓：**凡是【随领域／辖区／机构而变】的常量，本仓【不臆造】** ✓ —— **它要么由 pack 给，要么作为一个【已记录的缺口】留着** ✓。

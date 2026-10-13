@@ -11,6 +11,8 @@
 - **解析**按**字段目录**严格校验（围栏 JSON ✓，未知字段具名拒 ✓）；
 - **分派**把每个字段交回**拥有它的内核面**（同一字段永不由两个面处理 ✓）。
 
+> ★★ **本卷要教的 API（★ 轮 501 补 ✓）**：★ **`createTurnOrchestrator({ sectionPolicy, noticeBlock, bus, … })`** ✓ —— ★ **回合编排器工厂**；★ **它返回的正是 §2 那五步**（`open`／`assemble`／`deliverTurn`／`parse`／`apply` ✓）。★★ **另有 `extractFence`** ✓（★ 从回复里取出围栏 JSON ✓）、**`FIELD_OWNERS`** 与 **`resolveOwners`** ✓（★ 每个字段归哪个面所有 ✓ —— ★ 这就是"面表"的真源 ✓）。
+
 ## 1. 为什么"编排"必须也在框架里（而不是留在原预设）
 
 ★★ 原预设的运行机制**自带一套循环** ✓（`charterFor`／`briefBlock`／`replySpec`／`initialPrompt` ＋ 逐成员逐轮推进 ✓）。**只搬工具、不搬循环**的结果是：**能力面覆盖了，但"谁来跑"仍是原代码** ✗ ⇒ **一旦宿主只装 vmu，研究所跑不起来** ✗。
