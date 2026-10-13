@@ -685,6 +685,7 @@
 | 类别 | 名称 | 现状 |
 |---|---|---|
 | 工具 | `vibe_vmu_resource` ⛔ 未实现、`vibe_vmu_funding` ⛔ 未实现、`vibe_vmu_ip` ⛔ 未实现、`vibe_vmu_conference` ⛔ 未实现、`vibe_vmu_outreach` ⛔ 未实现、`vibe_vmu_collab` ⛔ 未实现、`vibe_vmu_compliance` ⛔ 未实现、`vibe_vmu_capacity` ⛔ 未实现、`vibe_vmu_hr` ⛔ 未实现 | ✗ |
+| 工具 | `vibe_vmu_minutes` ✓ **已实现（轮 517）** |
 | 工具（复用） | `vibe_vmu_records` ✓、`vibe_vmu_task` ✓、`vibe_vmu_meeting` ✓、`vibe_vmu_set` ✓、`vibe_vmu_middleware` ✓、`vibe_vmu_pack` ✓、`vibe_vmu_script` ✓、`vibe_vmu_status` ✓、`vibe_vmu_control` ✓ | ✓ |
 | 服务 | `vmu.resource`／`vmu.funding`／`vmu.ip`／`vmu.conference`／`vmu.dissemination`／`vmu.collab`／`vmu.compliance`／`vmu.capacity`／`vmu.tenure`（计划 `kernel/ops/*`） | ✗ |
 | 钩子 | `ops/expense-requested` ⛔ 提案、`ops/expense-approved` ⛔ 提案、`ops/receipt-recorded` ⛔ 提案、`ops/reservation-requested` ⛔ 提案、`ops/reservation-conflict` ⛔ 提案、`ops/calibration-due` ⛔ 提案、`ip/disclosure-before` ⛔ 提案、`ip/publication-hold` ⛔ 提案、`conference/cfp-open` ⛔ 提案、`conference/decision` ⛔ 提案、`outreach/draft-before` ⛔ 提案、`compliance/calendar-due` ⛔ 提案、`capacity/pool-low` ⛔ 提案、`hr/review-season-open` ⛔ 提案 | ✗ |

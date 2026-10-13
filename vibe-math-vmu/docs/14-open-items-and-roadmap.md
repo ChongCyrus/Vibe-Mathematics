@@ -196,7 +196,7 @@
 | `vibe_vmu_memory` | `docs/17` | **✓** | **✓** |
 | `vibe_vmu_metrics` | `docs/08` | **✓** | **✓** |
 | `vibe_vmu_middleware` | `docs/03` | **✓** | **✓** |
-| `vibe_vmu_minutes` | `docs/08` | **✓** | **✓** |
+| `vibe_vmu_minutes` ✓ **已实现（轮 517）** | `docs/08` | **✓** | **✓** |
 | `vibe_vmu_motion` | `docs/08` | — | **✓** |
 | `vibe_vmu_notify` | `docs/17` | **✓** | **✓** |
 | `vibe_vmu_outreach` | `docs/22` | — | — |

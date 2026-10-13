@@ -38,6 +38,7 @@
 | `vibe_vmu_meeting`（`meeting`） | `meetingTool` 为真 | 会议/表决原语 | `list` ✓；写动作 ✗ | `list/open/speak/silent/close/ballot/vote/tally/reopen` |
 | `vibe_vmu_task`（`task`） | `taskTool` 为真 | 任务台账 | `list/stage/brief/history` ✓；写动作 ✗ | `list/create/assign/transition/stage/advance/brief/history` |
 | `vibe_vmu_turn`（`turn`） | `turnTool` 为真 | 回合执行 | `status` ✓；`step/drive` ✗ | `status`(默认)`/step/drive` |
+| `vibe_vmu_minutes`（`minutes`） | `minutesTool` 为真 | 纪要读写 | `list/actions/status` ✓；`draft/confirm/append` ✗ | `list`(默认)`/draft/confirm/append/actions/status` |
 | `math_computation` | **声明了数学意图**（`vibe-math-vmu.js:149`） | 计算面 | `probe/receipt` ✓；`run/install` ✗ | 由共享模块登记：`op=probe|run|receipt|install` |
 
 **注册面硬纪律（`host.js` 逐条）**
@@ -424,8 +425,9 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 7 | `control` | `vibe_vmu_control` |
 | 8 | `meeting` | `vibe_vmu_meeting` |
 | 9 | `task` | `vibe_vmu_task` |
-| 10 | `turn` | `vibe_vmu_turn` |
+| 10 | `minutes` | `vibe_vmu_minutes` |
+| 11 | `turn` | `vibe_vmu_turn` |
 
-> ★★ 合计 **10** 个工具 ✓；★ **action 枚举 **9** 组／**43** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload` ｜ `status/pause/resume/stop/beat/roster/hire/fire` ｜ `list/open/speak/silent/close/ballot/vote/tally/reopen` ｜ `decisive/advisory` ｜ `list/create/assign/transition/stage/advance/brief/history`。
+> ★★ 合计 **11** 个工具 ✓；★ **action 枚举 **10** 组／**49** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload` ｜ `status/pause/resume/stop/beat/roster/hire/fire` ｜ `list/open/speak/silent/close/ballot/vote/tally/reopen` ｜ `decisive/advisory` ｜ `list/create/assign/transition/stage/advance/brief/history` ｜ `list/draft/confirm/append/actions/status`。
 
 <!-- END GENERATED: tool-index -->
