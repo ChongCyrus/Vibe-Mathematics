@@ -443,7 +443,6 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 
 | `vibe_vmu_conference`（`conference`） | `conferenceTool` 为真 | 会议：投稿/指派/评审/决议 | `list`/`status` ✓；其余视状态 ✗ | `status`(默认)`/open/submit/assign/review/decide/register/planAgenda/viewSubmission/list/receiptsView` |
 | `vibe_vmu_arbitration`（`arbitration`） | `arbitrationTool` 为真 | 裁决：回避/听证/裁定/上诉 | `list`/`history`/`status` ✓；其余视状态 ✗ | `status`(默认)`/open/appoint/pick/declareConflict/recuse/hear/rule/appeal/escalate/effective/list/history` |
-
 | `vibe_vmu_charter`（`charter`） | `charterTool` 为真 | 章程：提议/修订/批准/生效 | `articles`/`children`/`list`/`history`/`status` ✓；其余视状态 ✗ | `status`(默认)`/propose/amend/ratify/inForce/cite/dissolve/articles/children/list/history` |
 | `vibe_vmu_recruit`（`recruit`） | `recruitTool` 为真 | 招募：任期/晋升/试用/招聘 | `postings`/`status`/`aggregate` ✓；其余视状态 ✗ | `status`(默认)`/renewTerm/recall/actAsChair/promote/openPosting/apply/score/offer/accept/reject/probation/confirm/postings/aggregate` |
 

@@ -216,8 +216,8 @@ v2/v3/v4/v5 是**同构实现**（同一份契约、四份独立代码，刻意�
       ② 建一个 `git worktree` 拿改动前的检出，同一套件在两种布局各跑一遍，归一化路径/临时目录/耗时后
       **逐行比对**（`_oneoff/layout-invariance.mjs`）；③ 相对链接扫描 0 失效（`_oneoff/scan-links.mjs`）。
 - [ ] 讲"全套件 / 门禁 / 多少次全绿"时，是否区分了**随包发布面**与**仓库**？`package.json` 的 `files`
-      只发 `tests/` 的 **233** 项（**文件计数**；其中 `.test.mjs` **169** 个），完整门禁（`node tests/run-tests.mjs`，
-      当前 **303 项作业（job count）= 231 套件 + 72 探针/变体**，由 `node tests/run-tests.mjs --counts` 派生）只在开发检出里成立。两边的清单见
+      只发 `tests/` 的 **234** 项（**文件计数**；其中 `.test.mjs` **170** 个），完整门禁（`node tests/run-tests.mjs`，
+      当前 **304 项作业（job count）= 232 套件 + 72 探针/变体**，由 `node tests/run-tests.mjs --counts` 派生）只在开发检出里成立。两边的清单见
       `docs/test-timing.md` §1.1；发布物里的 runner 会把缺失/跳过项**打印出来**（不会静默少跑），
       所以"安装用户照文档跑得到全套件"这类说法必须避免。
 - [ ] **runner 本身也要跑一遍**：直接跑套件通过 ≠ 并行 runner 通过（2.3.13 就出现过
@@ -541,13 +541,10 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | `tests/audit-installer-policy.test.mjs`（**A8 + 动作/语言约定**） | ① 措辞类断言换成**报告级**：`failedLog(logs).length === 0`（不是"日志里没有『备份失败』四个字"）；② **一个动作一行**：restore / cleanup 各**恰好一次**（`EXACTLY ONCE`）；③ **一个动作一种语言**：任何面向用户的日志**标签**（`[dsh-vibe-math] ` 之后、首个 `：`/`:` 之前）**不得是纯 ASCII**（英文领域词夹在中文标签里、如 `preset 声明方式`，是合规的）——**源码扫描 + 运行期捕获日志两侧都查**；只保留**一条**明确标注的 `[wording smoke check — the ONE allowed]` | **随包** `tests/audit-installer-assertions.mutants.mjs`（**5/5** 具名红：A8-failure ⇒ policy 86/9、DL-label ⇒ 93/2、DL-duplicate ⇒ 94/1） |
 | `tests/audit-persona-surface.test.mjs`（允许清单） | 新注册的工具必须**被提及或显式入允许清单**；允许清单项必须是真实工具 | **随包** `tests/audit-persona-surface.mutants.mjs`（**3/3**：真实树基线绿 + **`PERSONA_ROOT` 副本树基线绿**（证明该缝忠实、变异才是红因）+ 注册一个未被提及的工具 ⇒ 守卫**具名红**）；另见本就随包的 `tests/audit-persona-sensitivity.mjs`（多探针，同一 `PERSONA_ROOT` 机制，含 `v2-phantom-tool-mentioned` 等） |
 | `tests/audit-persona-sensitivity.mjs`（并发/原子写） | 语料写入**原子**（临时文件 + rename），并发读者不会读到撕裂文件；敏感度运行前先"预热"语料 | **随包**：① 原子写的不变量在 `tests/audit-persona-surface.test.mjs` 的 `writeAtomic`（`renameSync`）与 `tests/audit-installer-policy.test.mjs` §10「preset writes are ATOMIC」（失败写不得触碰目标）里被断言；② 敏感度守卫自己在 `:75` 记录"surface 的写入是原子的（临时文件 + rename），并发写者无法撕裂"；③ 多探针 harness = `tests/audit-persona-sensitivity.mjs` 本身（`PERSONA_ROOT` 双方向 + SETUP-FAIL ≠ detection）。原 `_oneoff/auditR2/concurrency-proof.mjs` 的撕裂演示属**机制证据**（旧写法 100 撕裂 → 原子 0），已被上述断言取代 |
-
 | **中断语义（SLV P3，task-14）** | "**宿主拒绝中断**"这条 `catch` 分支必须保持**具名失败**与**可行动指引**：`code='VIBE_MATH_INTERRUPT_FAILED'` ＋ `next{tool='vibe_math_abort',hint}`（§19/D1 此前只覆盖"未知 child／空 childId／决策诊断"）| **随包** `node tests/v2v3-interrupt.mutants.mjs`（**2/2** 具名红：v2/v3 各把产品里的 `VIBE_MATH_INTERRUPT_FAILED` 改名 ⇒ 对应 `★ [P3/v2]`／`★ [P3/v3]` 断言按名变红，实测 `"code":"VIBE_MATH_INTERRUPT_RENAMED"`）；两套件各自 `node tests/math-computation-v2.test.mjs`／`-v3` 绿。**已知未覆盖**：P3 的"**调用方被丢弃**（中断后不再重试该调用）"属**宿主层行为**，随包套件不可观测 ⇒ 记为需真机 |
 | **临时目录卫生（task-12）** | 被杀死的套件会泄漏临时目录（实测 `%TEMP%` 顶层 24 万项、其中我们 24.5 万项）⇒ 门禁启动时清扫**陈旧**目录：仅 `os.tmpdir()` **顶层** ＋ 前缀**从套件自动提取**（88 个）＋ `mtime` 早于阈值（默认 6 h）；并把临时根**优先指向 `D:\_tmp`**（`os.tmpdir()` 自动跟随 ⇒ 零产品改动）| **随包** `node scripts/clean-temp.mjs --self-test`（四条：新鲜目录绝不清理／陈旧且前缀匹配才清理／只匹配精确前缀／前缀表来自套件）＋ `node tests/temp-hygiene.mutants.mjs`（**2/2** 具名红：去掉年龄阈值 ⇒"新鲜目录不得被删"按名红、去掉前缀判断 ⇒"只匹配精确前缀"按名红）；`--dry-run` 实测"扫 160,923 项 ⇒ 计划 144,404 项" |
-
 | **发布前检查（可执行化）** | 版本**三处一致**（`package.json`／lock 顶层／`packages[""]`）、当前版本的中英两份发布说明存在且**章节顺序符合模板**、两份都登记进 `files[]`、`compatNote` 提到当前版本、tarball **声明了但缺失 = 0**、开发专用文件（`.gitattributes`）**不随包**、包内**无 CRLF** | **随包** `node scripts/release-check.mjs`（对 2.8.0 实跑 `ALL CHECKS PASSED`，扫 179 个文本文件）＋ `--self-test`（**15** 条）＋ `node tests/release-check.mutants.mjs`（**4/4** 具名红：分别去掉版本一致性／章节数量／章节顺序／CRLF 扫描 ⇒ 对应自检**按名**变红）。发布后加 `--registry` 比对线上 `dist.shasum` 与本地 tarball |
 | **v4 交付物必须说明编译结果** | 论文正文在**编译之前**组装，因此"局限与未决"里那两条依赖 `ps.compile` 的 bullet 只在**重入**时才有值 ⇒ 交付的 `paper.md`／`paper.tex` 必须**各自写明**"未检测到引擎（只产出 tex+md）"或"PDF 编译失败"，且**恰好一次**（finalize 可重入 ⇒ 幂等；`.tex` 以注释插在 `\end{document}` 之前）| **随包** `node tests/v4-final-paper.test.mjs`（`★ [deliverable/v4] … (once each; md=1 tex=1)`）＋ `node tests/v4-final-paper.mutants.mjs`（**3/3** 具名红：把中文说明置空 ⇒ 该断言按名红，实测 `md=0 tex=0`）|
-
 | **维护方针（文档）** | `vibe-math-v4`／`vibe-math-v5` 是**主要维护方向**（新能力、新守卫、提示词强化、重构只落这两套）；`vibe-math-v2`／`vibe-math-v3` 已**成熟定型**，只接受**适配兼容**改动：宿主适配、共享模块的正确性/安全修复、行为不变的回归修复。共享模块（`vibe-math-v{2,3,4,5}/math-computation.js` 等）是**四份复制型** ⇒ 修复必须**同批传播**且四份**字节一致**，否则 v2/v3 会在宿主升级后腐坏；**明显的正确性/安全缺陷无论落在哪套都修**（"冻结"= 停止功能投资，不是放任缺陷）| **随包文档** `docs/maintenance-policy.md`（中英同页）＋ `README.md`／`README.en.md` 各一行指引；`node scripts/release-check.mjs` 核对随包清单与 `files[]` 一致（声明了但缺失 = 0）|
 
 > **运行方式（本轮核实）**：`tests/run-tests.mjs:93-110` 收集 `tests/` 下**每一个** `.mjs`（仅跳过自身、`NEEDS_ARGS` 清单与 `replacedBare` 变体），因此 `audit-path-discipline.mjs` 是**门禁内的 probe**，不是"只能手动跑"；未随包发布的守卫（见 `package.json#files` 的 tests 子集）在安装树里不可运行。
@@ -726,7 +723,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 ### README/计数一致性（D1）：数字必须**派生**，不许手打
 
 - **权威来源**：`node tests/run-tests.mjs --counts`（门禁自己那份 job 列表）+ `package.json#files`（随包 `tests/*.mjs` 数）。文档里的数字由 **`node scripts/update-doc-counts.mjs`** 生成（`--check` 只检查不改）；新增测试文件会让守卫变红，**修法是跑一次 updater**，因此数字再也不可能被手打。
-- **计数（实测）**：`TOTAL 303`（231 套件 + 72 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 233（**文件计数**：169 个套件 + 64 个探针/脚本）。
+- **计数（实测）**：`TOTAL 304`（232 套件 + 72 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 234（**文件计数**：170 个套件 + 64 个探针/脚本）。
 - **怎么让它红一次（in-repo）**：`tests/audit-readme-counts.mutants.mjs` —— 基线：守卫绿；**★ 篡改 README 里被引用的派生总数**（走 `COUNTS_README` seam，指向**绝对路径**的副本）⇒ 守卫**具名红**（"README.md quotes the DERIVED totals"）。守卫本体：`tests/audit-readme-counts.mjs`（**19+** 条断言：README/EN/test-timing/checklist 的派生形状、旧读数的消失，以及 **F-C 的全 `docs/**`（live 文档）`TOTAL <n>` 扫描** —— 每个 occurrence 必须等于 `--counts` 的派生值，冻结的 `docs/release-notes/**` 按名排除并在输出里报数）。
 - **touch-anchor（claim-vs-tree 用）**：`--counts`、`update-doc-counts.mjs`、`README COUNTS:`、`README.md quotes the DERIVED totals`。
 

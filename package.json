@@ -543,6 +543,7 @@
     "preset-declaration.js",
     "tests/audit-preset-rows.test.mjs",
     "tests/audit-stale-markers.test.mjs",
+    "tests/audit-table-integrity.test.mjs",
     "tests/vmu-setting-rename.test.mjs",
     "tests/vmu-notice-shapes.test.mjs",
     "tests/vmu-prompt-type-coverage.test.mjs",

@@ -1171,7 +1171,6 @@
 
 | `vibe_vmu_conference` | **会议面**（11 动作）：投稿/指派/评审/决议 ✓ —— **只做寻址与调用**（整对象透传 ✓） | `action`(必填，枚举)、`request`、`id` | `conferenceTool` 为真 | 服务的码原样透传 ✓ |
 | `vibe_vmu_arbitration` | **裁决面**（13 动作）：回避/听证/裁定/上诉 ✓ —— **只做寻址与调用**（整对象透传 ✓） | `action`(必填，枚举)、`request`、`id` | `arbitrationTool` 为真 | 服务的码原样透传 ✓ |
-
 | `vibe_vmu_charter` | **章程面**（11 动作）：提议/修订/批准/生效 ✓ | `action`(必填，枚举)、`request`、`id` | `charterTool` 为真 | 服务的码原样透传 ✓ |
 | `vibe_vmu_recruit` | **招募面**（15 动作）：任期/晋升/试用/招聘 ✓ | `action`(必填，枚举)、`request`、`id` | `recruitTool` 为真 | 服务的码原样透传 ✓ |
 

@@ -138,7 +138,7 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数** | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 134 / suites 68 / probes 66`** ✓（R-6b 拆分后 **132→134** ✓：`v5-institute-fixes.mutants.mjs` 由 1 个作业变为 3 个分片 ✓） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 233 / suites 169 / probes 64`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 234 / suites 170 / probes 64`** ✓ |
 
 **134 的推导链（逐行可核 ✓）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 134 ✓；`.test.mjs` 裸作业 68 = suites；`134−68=66` = probes ✓。
 **vmu 子集**：`GATE_SCOPE=vmu` ⇒ ★★★ **这里有两个不同的量，而且【没有一个机器模式能报出子集那个**]✗**：★ **请求的作用域与生效的作用域是【两个变量**]✓ —— ★ `run-tests.mjs` 在 `--counts`／`--self-check`／`--only` 下【**强制生效作用域为 `full`**]✓（★ **有意为之，且有事故记录** ✓：★ vmu 作用域第一次运行时，子进程继承了作用域 ⇒ **`run-tests.mutants.mjs` 的超时正例看到 **0 个作业** ✗、`--self-check` 基线发散 ✗、`audit-readme-counts` 读到 **27 而不是 110** ✗**）⇒ ★★ **所以 `--counts` 报的是【仓库作业计数 **249**（**177 套件 ＋ 72 探针**）**]✓（★ 基础 ＋ 变体 ✓），**不是子集计数** ✓。★★ **而 T1 【执行**]的 `TOTAL` 是 **142（119 套件 + 23 探针）** ✓（★ 2026-10-10 复测 ✓ —— ★ 本行原先写 **236** 与 **137／114** ✓，★ 两处都已过期 ✗ ⇒ ★★ **本行由此【再次证明**]它上面那句"必须手工同步"是真的** ✓）。★★★ **根因**：★ `scripts/update-doc-counts.mjs` **只覆盖 4 处** ✓、**不含 `vibe-math-vmu/docs/**`** ✗ ⇒ ★★ **所以这一行是【唯一**]必须手改的计数行** ✓ ⇒ ★ **要么它带日期（现在带了 ✓），要么把更新器扩到它** ✓ ⇒ ★ **这一行只能由运行实报，不能由生成器产出** ✓；★★ **表头现在把"请求的"与"生效的"都印出来** ✓（★ 此前只印前者，**读起来像"作用域没生效"** ✗ —— ★ **它误导了三轮排查** ✓）
@@ -340,7 +340,6 @@ _oneoff/vmu/live/<YYYY-MM-DD>/<scenario>/
 |---|---|---|---|
 | 2026-10-09 19:55–20:26（31 min） | `GATE_RELEASE=1 node tests/run-tests.mjs`（前置 `preflight.mjs --for-t3` **PASS** ✓，工作树干净 ✓） | `TOTAL 132 PASS 131 FAIL 1` ✗ | 唯一红：`v5-institute-fixes.mutants.mjs`（1512.7 s ✓） |
 | 2026-10-09 20:32–21:03（31 min） | 同上（修复红因之后 ✓，HEAD `ea81436` ✓、`dirty=0` ✓） | **`TOTAL 132 PASS 132 FAIL 0`** ✓✓ | **全仓非增量门禁全绿** ✓（含全部 vmu 工作 ✓） |
-
 | 2026-10-09 22:57–23:28（31 min） | 同上（HEAD `45ec07c` ✓、`dirty=0` ✓；此前已补 V5 包、B1–B6、V7、V9、审计落盘、台账 ✓） | `TOTAL 132 PASS 131 FAIL 1` ✗ | 唯一红：**`v5-institute-fixes.mutants.mjs`**（1483.6 s ✓）—— **v5 的族，与 vmu 无关** ✓ |
 
 **该红的定位（2026-10-09 第二次，同类 ✓）**：**定向运行**（`MUTANTS_ONLY='S25A'` ✓，8 s ✓）给出 **`4/4 具名红` ＋ `ALL MUTANTS RED AS REQUIRED`** ✓ ⇒ **该族在隔离下健康** ✓ ⇒ 本次红是 `14-§1` **R-6b 已记录的"全量负载下正向对照偶发"** ✗（同一族在两次 T3 之间曾 **132/132 全绿** ✓），**不是** vmu 缺陷、**也不是** v5 行为回归 ✓（我从未改动 v5 ✓）。
