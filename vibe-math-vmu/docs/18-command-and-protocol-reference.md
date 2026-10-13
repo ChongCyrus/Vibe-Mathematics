@@ -24,7 +24,7 @@
 
 ---
 
-## 1. 工具总表（9 个 `vibe_vmu_*` ＋ 1 个继承工具）
+## 1. 工具总表（10 个 `vibe_vmu_*` ＋ 1 个继承工具）
 
 | 工具（`TOOL_NAMES` 键） | 出现条件 | 权限面 | 幂等性 | 主要 action |
 |---|---|---|---|---|
@@ -37,6 +37,7 @@
 | `vibe_vmu_control`（`control`） | `controlTool` 为真 | 控制面 | `status` ✓；`pause/resume/stop/beat` ✗ | `status`(默认)`/pause/resume/stop/beat` |
 | `vibe_vmu_meeting`（`meeting`） | `meetingTool` 为真 | 会议/表决原语 | `list` ✓；写动作 ✗ | `list/open/speak/silent/close/ballot/vote/tally/reopen` |
 | `vibe_vmu_task`（`task`） | `taskTool` 为真 | 任务台账 | `list/stage/brief/history` ✓；写动作 ✗ | `list/create/assign/transition/stage/advance/brief/history` |
+| `vibe_vmu_turn`（`turn`） | `turnTool` 为真 | 回合执行 | `status` ✓；`step/drive` ✗ | `status`(默认)`/step/drive` |
 | `math_computation` | **声明了数学意图**（`vibe-math-vmu.js:149`） | 计算面 | `probe/receipt` ✓；`run/install` ✗ | 由共享模块登记：`op=probe|run|receipt|install` |
 
 **注册面硬纪律（`host.js` 逐条）**

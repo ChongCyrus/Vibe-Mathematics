@@ -94,6 +94,7 @@
     "tests/vmu-notice-block.test.mjs",
     "tests/vmu-turn-contracts.test.mjs",
     "tests/vmu-charter-contracts.test.mjs",
+    "tests/audit-tool-table.test.mjs",
     "tests/audit-planned-names.test.mjs",
     "tests/audit-math-computation-contract.mjs",
     "tests/audit-math-computation-contract.mutants.mjs",
