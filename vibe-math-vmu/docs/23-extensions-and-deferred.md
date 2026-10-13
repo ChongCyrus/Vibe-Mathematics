@@ -103,7 +103,7 @@
 | **D-9** | **course** | **24** | `course.js` 413 行 | "**教学面**（22 卷 N13）" | ★★ **裁决：降级 ✗（轮 300）** —— 键面是**教学行政**（选课/作业/迟交罚分/评分），**而其中真正机制性的那半【与既有面重复】**：`blindReview`／`reviewersPerSubmission`／`reviewRounds`／`rubric`／`peerWeight` 已由 **`review`／`reviewers`／`conference`** 实现 ⇒ 按本仓先例"**重复 ⇒ 复用既有面，不新建一族**" |
 | **D-10** | ~~recruit~~ | 12 | `recruit.js` 317 行 | 不变量 S-1："**the kernel does NOT know job titles**；a title must be mapped **EXPLICITLY** to a role slot… refused BY NAME" | ★★ **裁决：保留 ✓（轮 300）** —— 见 §1d |
 | **D-11** | ~~capacity~~ | 12 | `capacity.js` 437 行 | 方法面 `reserve/release/admit/forecast/storage/waitlist` | ★★ **裁决：保留 ✓（轮 300）** —— 见 §1d |
-| D-12 | mentor | 0/4 | 无面 | 卷 17：`pair/review/graduate`（⛔ 未实现） | 带教＝教学附属 |
+| D-12 | mentor | 0/4 | 无面 | 卷 17：`pair/review/graduate`（⛔ 未实现） | 带教＝教学附属  ★★ **轮 525 实测核对 ✓**：★ `vibe_vmu_mentor`／`vmu.mentor`／`vmu.graduate` **在 `host.js` 与 `kernel/index.js` 里【都不存在**]✓ ⇒ ★ **本行的"无面"与实际一致，无需改动** ✓（★ 而 `vmu.reviewers` **存在** ✓ ⇒ **"review 有载体、只缺工具"** ✓） |
 | D-13 | attendance | 0/3 | 无面 | 仅计划 | 若用于**会议出席**则属研究向（会议），若用于考勤则否 |
 | D-14 | committees | 0/3 | 无面 | 仅计划 | 委员会＝学术治理，**可能与 meetings 重复** |
 | D-15 | consensus | 0/3 | 无面 | 仅计划 | **可能与 meetings/ballot 重复**（重复即应合并，不是新增） |

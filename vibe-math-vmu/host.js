@@ -42,6 +42,7 @@ export const TOOL_NAMES = Object.freeze({
   board: 'vibe_vmu_board',
   budget: 'vibe_vmu_budget',
   citations: 'vibe_vmu_citations',
+  discipline: 'vibe_vmu_discipline',
   // ROUND 349: the turn loop needs a real entry point. Without it the framework could run a round only from a test,
   // which is not the same as a host being able to run one - and the objective is the latter.
   turn: 'vibe_vmu_turn',
@@ -117,7 +118,7 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * adapter turns it into the host shape (`execute` returning JSON). Filtering by what actually exists keeps
  * the surface honest (docs/04 §11 ownership: mechanism only).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false, budgetTool = false, citationsTool = false }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false, budgetTool = false, citationsTool = false, disciplineTool = false }) {
   // A refusal carries the four documented fields, plus - when the caller has them - host-side DIAGNOSTICS
   // (the host's own stack and the exact request shape we passed). They are added ONLY when present, so no
   // existing refusal changes shape. Without this the live M3 diagnosis died at the tool boundary: the seam
@@ -715,6 +716,38 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           if (action === 'validate') return Object.assign({ ok: true, action }, citations.validate({ title, authors, year, ids, freeText }))
           if (action === 'render') return Object.assign({ ok: true, action }, citations.render({ title, authors, year, ids, freeText, style }))
           if (action === 'status') return Object.assign({ ok: true, action }, citations.status())
+          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
+        } catch (e) {
+          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
+        }
+      },
+    })
+  }
+
+  if (disciplineTool) {
+    specs.push({
+      name: TOOL_NAMES.discipline,
+      description: 'vmu 纪律面：action=recordFailure|mayAct|suspend|restore|status。' +
+        '断路器窗口、暂停上限与「恢复必须由人决定」都由内核服务强制；本工具只做**寻址与调用**，不复制任何策略。',
+      parameters: {
+        action: param('string', 'recordFailure｜mayAct｜suspend｜restore｜status', { required: true,
+          enum: ['recordFailure', 'mayAct', 'suspend', 'restore', 'status'] }),
+        subject: param('string', '主体（成员/角色；recordFailure/mayAct/suspend/restore 需要）'),
+        kind: param('string', '失败类别（recordFailure 可选）'),
+        detail: param('string', '失败细节（recordFailure 可选）'),
+        ms: param('number', '暂停时长毫秒（suspend 可选；★ 会被服务的 suspendMaxMs 夹住 ✓）'),
+        reason: param('string', '暂停原因（suspend 可选）'),
+        byHuman: param('boolean', '是否已由人决定（restore 用；★ 服务的 restoreNeedsHuman 会强制它 ✓）'),
+        postmortem: param('string', '复盘记录（restore 可选）'),
+      },
+      run: async ({ action, subject, kind, detail, ms, reason, byHuman, postmortem } = {}) => {
+        try {
+          const discipline = kernel.discipline
+          if (action === 'recordFailure') return Object.assign({ ok: true, action }, discipline.recordFailure({ subject, kind, detail }))
+          if (action === 'mayAct') return Object.assign({ ok: true, action }, discipline.mayAct({ subject }))
+          if (action === 'suspend') return Object.assign({ ok: true, action }, discipline.suspend({ subject, ms, reason }))
+          if (action === 'restore') return Object.assign({ ok: true, action }, discipline.restore({ subject, byHuman, postmortem }))
+          if (action === 'status') return Object.assign({ ok: true, action }, discipline.status())
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
