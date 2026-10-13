@@ -1,3 +1,6 @@
+// vmu kernel · meetings — the meetings service: convening, the agenda, the floor and the minutes, as distinct from the
+// meeting/ballot primitives in meeting.js. Spec: docs/08 (primitives, meeting and ballot) and docs/03 (the interface
+// contract) for the service name a pack may require.
 import { SETTING_DEFS } from '../settings/schema.js'
 // vmu kernel · meetings — the POLICY + GUARD layer that finally READS the `vmu.meetings.*` knobs.
 //

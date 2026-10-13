@@ -1,3 +1,6 @@
+// vmu kernel · ip — intellectual property: disclosures, ownership shares, licences and the ip-side gate.
+// Spec: docs/22 §8 (academic operations) and docs/20 (compliance). Exports three key vocabularies — `DECLARED_KEYS`,
+// `SERVICE_KEYS`, `KNOB_KEYS` — plus the wired/unwired split, so "declared but not wired" is visible here too.
 import { SETTING_DEFS } from '../settings/schema.js'
 // vmu kernel · ip — the intellectual-property surface: dossiers, disclosure duties, publication holds,
 // confidentiality windows, prior-art searches, authorship/ownership, transfers/licences and revenue splits.

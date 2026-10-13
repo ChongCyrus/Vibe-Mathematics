@@ -1,3 +1,6 @@
+// vmu kernel · mathtools — the mathematical toolbox surface: registered tools, their receipts and their snapshots.
+// Spec: docs/09 (mathematical formalisation) and the toolbox volume docs/15. Content identity is hashed with
+// node:crypto and paths are resolved strictly, because a tool result is evidence and must be reproducible.
 import { SETTING_DEFS } from '../settings/schema.js'
 // vmu kernel · mathtools — the POLICY + GUARD layer that finally READS the `vmu.math.*` knobs.
 //

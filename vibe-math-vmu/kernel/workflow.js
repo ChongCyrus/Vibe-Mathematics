@@ -1,3 +1,6 @@
+// vmu kernel · workflow — declared workflows: steps, gates, retries and escalation. Spec: docs/08 (workflow
+// primitives). Carries the full declared/wired/extra-wired split, so a workflow key that was declared but never
+// wired shows up as a named gap instead of an absence.
 import { SETTING_DEFS } from '../settings/schema.js'
 // vmu kernel workflow — stage whitelist, transition gates, dependencies, retries, checkpoints, escalation,
 // handover, templates and the arbitration SWITCH. It reads the whole `vmu.workflow.*` family so that every

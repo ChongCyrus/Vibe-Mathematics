@@ -1,3 +1,7 @@
+// vmu kernel · external — retrieving material from outside the institute: resolve, fetch, normalize, merge, receipt.
+// Spec: docs/16 §8. `PIPELINE` is the five-step order and is frozen, `STALE_POLICIES` / `CONFLICT_POLICIES` /
+// `MERGE_POLICIES` are the declared vocabularies, and `fingerprintOf` gives each fetched item a content identity so
+// re-fetching the same material is recognisable rather than duplicated.
 import { SETTING_DEFS } from '../settings/schema.js'
 // vmu kernel external — the N11 external-fetch adapter (docs/16 §8).
 // `fetchFn` is an INJECTED seam: without it every fetch refuses BY NAME (VMU_EXTERNAL_UNAVAILABLE) and

@@ -1,3 +1,7 @@
+// vmu kernel · capacity — the capacity and utilisation ledger: what an instrument or a roster can take on, and when
+// it is full. Spec: docs/22 §3 (academic operations) with the gate shapes of docs/20 §5 (compliance) and the
+// extended-domain markers of docs/23. Refusals carry the D3 scope marker `ENFORCED_SCOPE`, so a reviewer can see
+// what had been evaluated at the moment of refusal rather than the whole declared set.
 import { SETTING_DEFS } from '../settings/schema.js'
 //
 // ★ 范围基准（2026-10-11）**复核结论：保留 ✓**（判据与依据见 docs/23-§1d）—— **它命中的是"机制"而非"领域实例"**：

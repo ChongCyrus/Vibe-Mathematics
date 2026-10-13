@@ -1,3 +1,6 @@
+// vmu kernel · migration — moving an institute between versions and layouts: what must move, what may be dropped and
+// what each gate forbids. Spec: docs/13 (migration) and docs/07 §2 (versions and rollback). `GATE_SCENARIOS` names
+// the acceptance scenarios one by one, so "a gate passed" is a named fact rather than a claim.
 import { SETTING_DEFS } from '../settings/schema.js'
 // vmu kernel · migration — the VERSION/ARCHIVE MIGRATION face (docs/07, docs/13).
 //

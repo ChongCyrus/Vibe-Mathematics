@@ -1,3 +1,6 @@
+// vmu kernel · conference — organising a conference: tracks, submissions, the programme committee and the schedule.
+// Spec: docs/16 (research lifecycle) and docs/08 (primitives). The same D3 scope marker as capacity: a refusal
+// reports `evaluated-so-far`, never the whole declared surface.
 import { SETTING_DEFS } from '../settings/schema.js'
 // vmu kernel · conference — the CROSS-SESSION conference-organiser face (docs/08, docs/16 §8).
 //

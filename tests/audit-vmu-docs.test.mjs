@@ -90,8 +90,21 @@ const isPlaceholder = (code) => code.endsWith('_')
 const CODE_RE = /\b((?:VMU|MATH|ARCHIVE|SCRIPT)_[A-Z0-9_]{3,})\b/g
 const CODE_LITERAL_RE = /['"`]((?:VMU|MATH|ARCHIVE|SCRIPT)_[A-Z0-9_]{3,})['"`]/g
 const codeUse = new Map()
-for (const [name, text] of docText) {
+// GENERATED REGIONS ARE NOT PROSE. The kernel index in docs/02 is generated from the modules' headers and lists their EXPORT
+// names beside their purpose; ARCHIVE_KINDS and MATH_KEYS are exports, not the refusal codes this check is about. The
+// exemption is asserted below, so it cannot outlive the delimiters it depends on.
+const GEN_BEGIN = '<!-- BEGIN GENERATED: kernel-index -->'
+const GEN_END = '<!-- END GENERATED: kernel-index -->'
+let generatedRegions = 0
+for (const [name, rawText] of docText) {
       if (LEDGER_PREFIXES.some((p) => name.startsWith(p))) continue   // ROUND 224: a changelog is not a declaration source
+  let text = rawText
+  while (text.includes(GEN_BEGIN) && text.indexOf(GEN_END) > text.indexOf(GEN_BEGIN)) {
+    const a = text.indexOf(GEN_BEGIN)
+    const b = text.indexOf(GEN_END)
+    text = text.slice(0, a) + text.slice(b + GEN_END.length)
+    generatedRegions += 1
+  }
 
   for (const m of text.matchAll(CODE_RE)) {
     const code = m[1]
@@ -100,6 +113,10 @@ for (const [name, text] of docText) {
     codeUse.get(code).add(name)
   }
 }
+ok(generatedRegions >= 1,
+  'the generated region this check skips is really present, so the exemption above rests on a declaration rather than on hope',
+  { generatedRegions })
+
 const unregisteredInDocs = [...codeUse.entries()]
   .filter(([code]) => !registered.has(code))
   .map(([code, docs]) => code + ' (' + [...docs].join(',') + ')')

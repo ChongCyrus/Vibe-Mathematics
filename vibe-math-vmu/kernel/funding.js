@@ -1,3 +1,6 @@
+// vmu kernel · funding — grants and money: budgets, cost sharing, receipts and the reconciliation tolerance.
+// Spec: docs/22 (academic operations) and docs/13 (migration) for the carried-over records. Like capacity it
+// reports the D3 scope marker on refusal.
 import { SETTING_DEFS } from '../settings/schema.js'
 // vmu kernel · funding — the RESEARCH-FUNDING face (docs/13, docs/22 §2/§8).
 //
