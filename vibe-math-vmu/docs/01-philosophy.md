@@ -101,6 +101,26 @@
 | **O7** 总线深度 | **只暴露 vmu 钩子名**；提供**默认关闭**的"原生 DSH 事件透传"逃生舱（文档化、需显式开启） | 中间件作者不必懂 DSH 细节；同时保留极端场景的出路 |
 | **D14** | **继承工具名的命名策略**（团队自裁，2026-10-09） | **`vibe_vmu_*` 只用于 vmu 自建的工具**；**继承自共享模块的工具保留原名**（实测：共享数学模块注册的工具名是 `math_computation` ✓）；旧名↔新名的映射由 **pack 别名层**（D6）承担 | 理由：① 改继承名会破坏共享模块的**字节一致性**（`audit-math-computation-parity` 强制 ✓，v2–v5r 全部使用该名 ✓）；② 该模块是清点员判定的"**原样复用**"项 ⇒ 改名为**无收益的破坏性变更** ✗。影响面：03-§3 增"继承工具面"一行并标注别名来源 ✓ |
 
+### D 系列的落地状态（★ 轮 523 逐条核对 ✓）
+
+> ★★★ **为什么要这一节**：★ **上表是【裁定**]（谁定的、影响什么 ✓），★ 而**读者更常问的是「这条裁到现在落地了没有」** ✓ —— ★ 两件事不同，★ **此前只有裁定、没有状态** ✗。
+
+| 裁定 | 落地状态（★ 轮 523 实测 ✓） | 证据 |
+|---|---|---|
+| D1 命名 `vibe-math-unify`／预设 id `vibe-math-vmu` | **已落地** ✓ | `vibe-math-vmu/package.json` ＋ `preset-declaration.js` ✓ |
+| D2 文档落点 `vibe-math-vmu/docs/` | **已落地** ✓ | 该目录 **29** 卷，★ 由 `tests/audit-doc-index.test.mjs` 守全 ✓ |
+| D3 中间件四形态 | **已落地** ✓ | 规则／代码模块／脚本・工作流／外部插件四种都有实测路径 ✓（`docs/05` §1–§4 ✓） |
+| D4 v5r 降为整合包示例 | **已落地** ✓ | `packs/v5r/` 是**一个文件夹**（★ `middleware`／`prompts`／`settings`／`index.js`／`notices.js` ✓） |
+| D5 内核只给角色槽位 | **已落地** ✓ | 内核**没有任何**角色名 ✓（★ `audit-zpolicy` 的 R1 守卫 ✓） |
+| D6 命名空间 `vibe_vmu_*` ＋ 别名层 | **已落地** ✓ | `vibe-vmu-cases.js` 的旧名→新名映射 ＋ `audit-vmu-docs` 的双向码登记 ✓ |
+| D7 抽象 `Store` 端口先行 | **已落地** ✓ | `kernel/store.js` 端口 ＋ JSON fold 默认实现 ✓（`docs/07` ✓） |
+| D8 行为包含对照 | **部分** ✓ | `vmu-ab-v5r-meetings.test.mjs` 等 A/B 套件 **122** 条通过 ✓；★ **「差异逐条报裁定」的清单仍在做** ✓ |
+| D9 预设声明通道 | **已落地** ✓ | `preset-declaration.js` ＋ `cordis.patch.yml` ✓ |
+| D10 Schemastery ＋ JSON Schema 投影 | **已落地** ✓ | `settings/schema.js` 的 `SETTING_DEFS` **1151** 项 ✓；两向投影有生成器 ✓ |
+| D14 工具命名只用于自建工具 | **已落地** ✓ | 继承的共享模块注册名仍是 `math_computation` ✓（★ `audit-math-computation-parity` ✓） |
+
+> ★★ **其余编号（D11–D13）** ✓：★ 它们是**引用自 DSH 基座的指南编号** ✓（见 `docs/00` 的附录 ✓），★ **不是 vmu 自己的裁定** ⇒ **不在此表** ✓。
+
 ---
 
 ## 6. 待裁（Open）

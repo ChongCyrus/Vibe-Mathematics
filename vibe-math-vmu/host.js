@@ -40,6 +40,7 @@ export const TOOL_NAMES = Object.freeze({
   task: 'vibe_vmu_task',
   minutes: 'vibe_vmu_minutes',
   board: 'vibe_vmu_board',
+  budget: 'vibe_vmu_budget',
   // ROUND 349: the turn loop needs a real entry point. Without it the framework could run a round only from a test,
   // which is not the same as a host being able to run one - and the objective is the latter.
   turn: 'vibe_vmu_turn',
@@ -115,7 +116,7 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * adapter turns it into the host shape (`execute` returning JSON). Filtering by what actually exists keeps
  * the surface honest (docs/04 §11 ownership: mechanism only).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false, budgetTool = false }) {
   // A refusal carries the four documented fields, plus - when the caller has them - host-side DIAGNOSTICS
   // (the host's own stack and the exact request shape we passed). They are added ONLY when present, so no
   // existing refusal changes shape. Without this the live M3 diagnosis died at the tool boundary: the seam
@@ -648,6 +649,41 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           if (action === 'swimlanes') return Object.assign({ ok: true, action }, board.swimlanes())
           if (action === 'aging') return Object.assign({ ok: true, action }, board.aging({ warnMs, limit }))
           if (action === 'status') return Object.assign({ ok: true, action }, board.status())
+          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
+        } catch (e) {
+          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
+        }
+      },
+    })
+  }
+
+  if (budgetTool) {
+    specs.push({
+      name: TOOL_NAMES.budget,
+      description: 'vmu 预算面：action=open|charge|reserve|remaining|status|list|totals|perTaskShare。' +
+        '配额四类（tokens/turns/toolCalls/subagents）、预留、公平与越界动作都由内核服务强制；本工具只做**寻址与调用**，不复制任何策略。',
+      parameters: {
+        action: param('string', 'open｜charge｜reserve｜remaining｜status｜list｜totals｜perTaskShare', { required: true,
+          enum: ['open', 'charge', 'reserve', 'remaining', 'status', 'list', 'totals', 'perTaskShare'] }),
+        scope: param('string', '作用域名（open/charge/reserve/remaining 需要）'),
+        kind: param('string', '配额类别（charge/remaining 用；★ 四类见服务自己的 kinds ✓）'),
+        amount: param('number', 'charge 的数量（默认 0）'),
+        taskId: param('string', 'charge 归属的任务（可选；★ 与 perTaskShare 一起作用 ✓）'),
+        limits: param('object', 'open 的初始上限（可选）'),
+        perTaskShare: param('number', 'open 的单任务占比（可选，0..1）'),
+        ratio: param('number', 'reserve 的比例'),
+      },
+      run: async ({ action, scope, kind, amount, taskId, limits, perTaskShare, ratio } = {}) => {
+        try {
+          const budget = kernel.budget
+          if (action === 'open') return Object.assign({ ok: true, action }, budget.open({ scope, limits: limits || {}, perTaskShare }))
+          if (action === 'charge') return Object.assign({ ok: true, action }, budget.charge({ scope, kind, amount, taskId }))
+          if (action === 'reserve') return Object.assign({ ok: true, action }, budget.reserve({ scope, ratio }))
+          if (action === 'remaining') return Object.assign({ ok: true, action }, budget.remaining({ scope, kind }))
+          if (action === 'status') return Object.assign({ ok: true, action }, budget.status())
+          if (action === 'list') return Object.assign({ ok: true, action }, budget.list())
+          if (action === 'totals') return Object.assign({ ok: true, action }, { totals: budget.totals() })
+          if (action === 'perTaskShare') return Object.assign({ ok: true, action }, { perTaskShare: budget.perTaskShare() })
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)

@@ -129,7 +129,6 @@
 | `vibe_vmu_attendance` | `docs/08` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_auction` | `docs/17` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_audit` | `docs/08` | **✓** ⛔ 规划/未实现 | **✓** |
-| `vibe_vmu_budget` | `docs/08` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_capacity` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_charter` | `docs/17` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_collab` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |

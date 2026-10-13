@@ -531,7 +531,7 @@ v5r 的 `s8-freeze-say` 真回归：**"本轮是否完成"的判据被写死在�
 | `vibe_vmu_committee`（⛔ 未实现，roadmap） | `action:'spawn'\|'report'\|'list'`、`parentId`、`roster`、`agenda` | 委员会/子会/全体委员会 |
 | `vibe_vmu_board`（，roadmap） | `action:'columns'\|'wip'\|'move'\|'metrics'`、`column`、`limit` | 看板列与 WIP |
 | `vibe_vmu_workflow`（⛔ 未实现，roadmap） | `action:'deps'\|'gate'\|'retry'\|'checkpoint'\|'compensate'`、`id`、`to`、`reason` | DAG/门/重试/检查点 |
-| `vibe_vmu_budget`（⛔ 未实现，roadmap） | `action:'status'\|'reserve'\|'release'`、`scope`、`amount` | 预算与配额公平 |
+| `vibe_vmu_budget`（，roadmap） | `action:'status'\|'reserve'\|'release'`、`scope`、`amount` | 预算与配额公平 |
 | `vibe_vmu_scheduler`（⛔ 未实现，roadmap） | `action:'at'\|'on'\|'list'\|'cancel'`、`at`、`event`、`action` | 自动触发 |
 | `vibe_vmu_metrics`（⛔ 未实现，roadmap） | `action:'window'\|'throughput'\|'cycle'\|'backlog'`、`windowMs` | 度量 |
 | `vibe_vmu_audit`（⛔ 未实现，roadmap） | `action:'trace'\|'recount'\|'export'`、`id`、`from`、`to` | 审计与复算 |
@@ -1172,7 +1172,7 @@ recount(ballotId):
 | `vibe_vmu_committee` | **未实现 ✗（规划）** | 子会/报告 |
 | `vibe_vmu_board` | ****✓ 已实现（轮 522）**** | 列/WIP/度量 |
 | `vibe_vmu_workflow` | **未实现 ✗（规划）** | 依赖/门/重试/检查点/补偿 |
-| `vibe_vmu_budget` | **未实现 ✗（规划）** | 预算状态/预留/释放 |
+| `vibe_vmu_budget` | ****✓ 已实现（轮 523）**** | 预算状态/预留/释放 |
 | `vibe_vmu_scheduler` | **未实现 ✗（规划）** | 触发器 |
 | `vibe_vmu_metrics` | **未实现 ✗（规划）** | 度量窗口/指标 |
 | `vibe_vmu_audit` | **未实现 ✗（规划）** | 追踪/复算/导出 |
