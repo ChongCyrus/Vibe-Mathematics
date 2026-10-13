@@ -51,7 +51,7 @@
 | **U10** | `agent-experience/SKILL.md`（第 4 套 skill）与 `templates/mcp/*` | **未读**（C′ 终版确认其存在并给了 SHA256） |
 | **U11** | 活跃 profile 已装 bundle 清单 | **已枚举 ✓**：本机隔离装置与真实 profile 的插件行均已列出（vmu 一期只依赖 `tools` 服务 ＋ 机会性 `subprocess`／`fs` ✓，见 11-§8 ✓）；**跨机器**仍需重核 ✗ |
 | **U12** | `架构图.md`（693 行）/`agent.cordis.yml`（460 行）/`math-computation.js` 内部/`docs/00..12` 标题以下内容 | **未读**（B′ 明确登记）⇒ 影响 09/10 的细节深度 |
-**陈旧副本警告** ✗✓：`_oneoff/vm-verify/p-agent-preset-0.1.7-rc.2/package/skills/` **不可再用**（与归档内文件 SHA256 **DIFF**、缺 2 个文件）；归档实际版本＝**`0.2.0-rc.2`** ⇒ 设计依据一律取归档（`design/02-…md`，SHA256 前缀 `C588398BF9054076`）。
+**陈旧副本警告** ✗✓：`_oneoff/vm-verify/p-agent-preset-0.1.7-rc.2/package/skills/` **不可再用**（与归档内文件 SHA256 **DIFF**、缺 2 个文件）；归档实际版本＝**`0.2.0-rc.2`** ⇒ 设计依据一律取归档（`design/02-…md`，SHA256 前缀 `C588398BF9054076`）。★ **轮 644 实测复核** ✓：★ `_oneoff/vmu/design/02-dsh-official-guidelines.md`（138210 B ✓）的 SHA256 前缀 **＝ `C588398BF9054076`** ✓✓ ⇒ **该 pin 准确** ✓；★★ **而它是【仓外文件**]，★ 故仓内门禁【守不到它**]✗ ⇒ ★ **只能靠人复核** ✓ ⇒ ★★ **故此 pin 的核验方式与日期写在这里：★ "算 `Get-FileHash -Algorithm SHA256` 的前 16 位、★ 与上行比"** ✓（★ 任何人几秒可复核 ✓）。
 ---
 ## 3. 风险登记
 | # | 风险 | 影响 | 缓解 |
