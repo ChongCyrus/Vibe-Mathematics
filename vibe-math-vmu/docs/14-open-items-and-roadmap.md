@@ -545,7 +545,8 @@
 
 | 量 | 值（★ 实测 ✓） |
 |---|---|
-| ★ 宿主【桥接**]的钩子（`BRIDGED_HOOKS`） | ★ **14** ✓：`tools/pre-execute`／`post-execute`／`execute`／`result`／`agent/pre-step`／`turn-stopping`／`created`／`subagent/start`／`end`／`session/event`／`system-prompt/assemble`／`prompt/assemble`／`settings/changed`／`fs/write-intent` ✓ |
+| ★★★ **两个清单，★ 而且【完全不相交**]**（★ 更正：★ 轮 562 只报了宿主那一个 ✗） | ★ **总线 `VU_HOOKS` 22** ＋ ★ **宿主 `BRIDGED_HOOKS` 14** ✓，★ **重合 0** ✓ —— ★ **22 个是 VMU 内部机制点**（★ `member/*`／`meeting/*`／`ballot/*`／`task/*`／`settle/*`／`control/*`／`pack/*`／`prompt/section-assembled`／`record/*`／`budget/*`／`turn/reply-parsed` ✓），★ **14 个是宿主事件映射**（★ `tools/*`／`agent/*`／`subagent/*`／`settings/changed`／`fs/write-intent`／`prompt/assemble`／`system-prompt/assemble`／`session/event` ✓） |
+| ★ 旧的（★ 保留为对照 ✗） | ★ **14** ✓：`tools/pre-execute`／`post-execute`／`execute`／`result`／`agent/pre-step`／`turn-stopping`／`created`／`subagent/start`／`end`／`session/event`／`system-prompt/assemble`／`prompt/assemble`／`settings/changed`／`fs/write-intent` ✓ |
 | ★ 各 pack 声明的中间件钩子 | ★ **3** ✓（`v3-core` 2 个、`v5r` 1 个 ✓） |
 | ★★ **其中【两个清单都不在**]的** | ★★★ **0** ✓（★ **更正**：★ 轮 562 曾在此记 1，★ 是判据用错了清单 ✓） |
 | ★ 宿主发布的可执行命令 | ★ **44** ✓ |

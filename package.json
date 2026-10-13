@@ -587,6 +587,7 @@
     "tests/vmu-bidding-tool.test.mjs",
     "tests/vmu-middleware-hooks-declared.test.mjs",
     "tests/vmu-action-arity-spellings.test.mjs",
+    "tests/vmu-script-and-protocol.test.mjs",
     "docs/COMPAT-AUDIT-ROUND3.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.en.md",
