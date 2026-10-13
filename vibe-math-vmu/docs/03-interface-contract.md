@@ -93,7 +93,7 @@
 
 > ★★ **两处内核工厂（★ 轮 503 补 ✓）**：★ **`kernel/identity.js` 的 `createIdentity({ … })`** ✓ —— ★ **成员身份与假名面工厂** ✓；★ **`kernel/notify.js` 的 `createNotify({ … })`** ✓ —— ★ **通知面工厂** ✓（★ 它 emit 的是**自己命名空间**的 `notify/emit` ✓ —— ★ 中间件要挂它必须**先 `declareTopic`** ✓，★ 这是**刻意**的 ✓）。
 
-### 3.1 已实现（★ **10 个**：minutes／board／budget／citations／discipline／governance／ratelimit／explain／projmigrate／bridge ✓）
+### 3.1 已实现（★ **11 个**：minutes／board／budget／citations／discipline／governance／ratelimit／explain／projmigrate／bridge／external ✓）
 
 > ★★★ **计数口径（★ 轮 494 实测修正 ✓）**：★ 本标题原先写 **"真机已验证的 5 个 ＋ 本轮新增 1 个"** ✗ —— ★ **那是写下时的快照，之后每加一个工具都没回头改** ✓ ⇒ ★★ **现在写"本表列 N 个"，且 N 由表本身决定** ✓；★★ **真机验证状态另见 `11-§9.6`，不要在这里凭记忆写** ✓。
 
@@ -119,6 +119,7 @@
 | `vibe_vmu_explain` | 解释面：`action=checkReason\|correlate\|build\|render\|status` ✓ —— **只做寻址与调用** ✓ | `action`(必填，枚举)、`reason`、`targetAction`(**转交给服务的 `action` ✓**)、`traceId`、`taskId`、`chains`、`scores`、`fields`、`report`、`format` | `explainTool` 为真 | **服务自己的码原样透传** ✓（`VMU_EXPLAIN_REASON_REQUIRED`／`VMU_EXPLAIN_CORRELATION_UNKNOWN` ✓） |
 | `vibe_vmu_projmigrate` | 迁移面：`action=register\|read\|upgrade\|status` ✓ —— **只做寻址与调用** ✓ | `action`(必填，枚举)、`kind`、`version`、`migrate`、`doc`、`to` | `projmigrateTool` 为真 | **服务自己的码原样透传** ✓（缺 `kind` ⇒ `VMU_INVALID_ARGUMENT` ＋ 调用样例 hint ✓） |
 | `vibe_vmu_bridge` | 脚本面（M3）：`action=validate\|plan\|run\|status\|history` ✓ —— **只做寻址与调用** ✓（★ **`request` 对象原样转发、不解释字段** ✓） | `action`(必填，枚举)、`request`(对象；★ 形状见 `docs/05 §6.2` ✓) | `bridgeTool` 为真 | **服务自己的码原样透传** ✓（`VMU_ENGINE_UNAVAILABLE`／`VMU_INVALID_ARGUMENT` ✓） |
+| `vibe_vmu_external` | 外部面：`action=fetchOne\|fetchMany\|normalize\|cache\|receipts\|status` ✓ —— **只做寻址与调用** ✓（★ **六个调用全部 await** ✓ —— ★ 该服务的 `fetchOne`/`fetchMany` 是**真异步** ✓） | `action`(必填，枚举)、`source`、`id`、`query`、`by`、`cacheDir`、`refs`、`results`、`raw`、`enforced` | `externalTool` 为真 | **服务自己的码原样透传** ✓（`VMU_EXTERNAL_UNAVAILABLE` ＋ 已声明来源清单 ✓） |
 
 > **活对象登记（本节新增面所需 ✓）**：内核持有**会话内**的会议/表决实例表（`kernel.liveMeeting(id)`／`liveBallot(id)` ✓，`status().live = {meetings[],ballots[],cap,evicted}` ✓）；**上限 50，超出按最旧逐出并计数** ✓（`evicted` 绝不静默 ✓）。它**不是新策略** ✓：同一批原语，只是**可按 id 寻址** ✓（docs/08 §2 的"逐对象原语" ✓）。
 

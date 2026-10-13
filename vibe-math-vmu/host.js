@@ -48,6 +48,7 @@ export const TOOL_NAMES = Object.freeze({
   explain: 'vibe_vmu_explain',
   projmigrate: 'vibe_vmu_projmigrate',
   bridge: 'vibe_vmu_bridge',
+  external: 'vibe_vmu_external',
   // ROUND 349: the turn loop needs a real entry point. Without it the framework could run a round only from a test,
   // which is not the same as a host being able to run one - and the objective is the latter.
   turn: 'vibe_vmu_turn',
@@ -123,7 +124,7 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * adapter turns it into the host shape (`execute` returning JSON). Filtering by what actually exists keeps
  * the surface honest (docs/04 §11 ownership: mechanism only).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false, budgetTool = false, citationsTool = false, disciplineTool = false, governanceTool = false, ratelimitTool = false, explainTool = false, projmigrateTool = false, bridgeTool = false }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false, budgetTool = false, citationsTool = false, disciplineTool = false, governanceTool = false, ratelimitTool = false, explainTool = false, projmigrateTool = false, bridgeTool = false, externalTool = false }) {
   // A refusal carries the four documented fields, plus - when the caller has them - host-side DIAGNOSTICS
   // (the host's own stack and the exact request shape we passed). They are added ONLY when present, so no
   // existing refusal changes shape. Without this the live M3 diagnosis died at the tool boundary: the seam
@@ -513,7 +514,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           if (action === 'silent') {
             const meeting = kernel.liveMeeting(need(id, 'id'))
             if (!meeting) return refused('VMU_NO_SUCH_OBJECT', 'no live meeting with id ' + String(id), 'use action=list')
-            return Object.assign({ ok: true, action, id }, meeting.markSilent(need(member, 'member'), reason || 'no input'))
+            return Object.assign({ ok: true, action, id }, await meeting.markSilent(need(member, 'member'), reason || 'no input'))
           }
           if (action === 'close') {
             const meeting = kernel.liveMeeting(need(id, 'id'))
@@ -548,7 +549,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           if (action === 'reopen') {
             const ballot = kernel.liveBallot(need(ballotId, 'ballotId'))
             if (!ballot) return refused('VMU_NO_SUCH_OBJECT', 'no live ballot with id ' + String(ballotId), 'use action=list')
-            return Object.assign({ ok: true, action, ballotId }, ballot.reopen ? ballot.reopen(reason || 'reopened') : { reopened: false })
+            return Object.assign({ ok: true, action, ballotId }, ballot.reopen ? await ballot.reopen(reason || 'reopened') : { reopened: false })
           }
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
@@ -578,14 +579,14 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
         try {
           const tasks = kernel.tasks
-          if (action === 'list') return Object.assign({ ok: true, action }, { tasks: tasks.list() })
+          if (action === 'list') return Object.assign({ ok: true, action }, { tasks: await tasks.list() })
           if (action === 'create') return Object.assign({ ok: true, action }, await tasks.create({ title: need(title, 'title'), objective: objective || null, owner: owner || null, deps: Array.isArray(deps) ? deps : null }))
           if (action === 'assign') return Object.assign({ ok: true, action }, await tasks.assign(need(id, 'id'), need(owner, 'owner')))
           if (action === 'transition') return Object.assign({ ok: true, action }, await tasks.transition(need(id, 'id'), need(to, 'to'), { reason: reason || null }))
-          if (action === 'stage') return Object.assign({ ok: true, action }, tasks.stage())
+          if (action === 'stage') return Object.assign({ ok: true, action }, await tasks.stage())
           if (action === 'advance') return Object.assign({ ok: true, action }, await tasks.advance({ to: to || null, reason: reason || null }))
-          if (action === 'brief') return Object.assign({ ok: true, action }, tasks.brief(need(id, 'id')))
-          if (action === 'history') return Object.assign({ ok: true, action }, { history: tasks.history(id || null) })
+          if (action === 'brief') return Object.assign({ ok: true, action }, await tasks.brief(need(id, 'id')))
+          if (action === 'history') return Object.assign({ ok: true, action }, { history: await tasks.history(id || null) })
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
@@ -612,12 +613,12 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }) }
         try {
           const minutes = kernel.minutes
-          if (action === 'list') return Object.assign({ ok: true, action }, { minutes: minutes.list() })
+          if (action === 'list') return Object.assign({ ok: true, action }, { minutes: await minutes.list() })
           if (action === 'draft') return Object.assign({ ok: true, action }, await minutes.draft({ id: need(id, 'id'), kind: kind || null, text: need(text, 'text'), member: member || null, session: session || null }))
           if (action === 'confirm') return Object.assign({ ok: true, action }, await minutes.confirm(need(id, 'id')))
           if (action === 'append') return Object.assign({ ok: true, action }, await minutes.append(need(id, 'id'), need(text, 'text')))
-          if (action === 'actions') return Object.assign({ ok: true, action }, { actions: minutes.actions(id || null) })
-          if (action === 'status') return Object.assign({ ok: true, action }, minutes.status())
+          if (action === 'actions') return Object.assign({ ok: true, action }, { actions: await minutes.actions(id || null) })
+          if (action === 'status') return Object.assign({ ok: true, action }, await minutes.status())
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
@@ -649,13 +650,13 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
       run: async ({ action, id, name, wipLimit, order, taskId, toColumn, by, transition, column, limit, warnMs } = {}) => {
         try {
           const board = kernel.board
-          if (action === 'columns') return Object.assign({ ok: true, action }, board.columns())
-          if (action === 'addColumn') return Object.assign({ ok: true, action }, board.addColumn({ id, name, wipLimit, order }))
-          if (action === 'move') return Object.assign({ ok: true, action }, board.move({ taskId, toColumn, by, transition }))
-          if (action === 'setWip') return Object.assign({ ok: true, action }, board.setWip({ column, limit }))
-          if (action === 'swimlanes') return Object.assign({ ok: true, action }, board.swimlanes())
-          if (action === 'aging') return Object.assign({ ok: true, action }, board.aging({ warnMs, limit }))
-          if (action === 'status') return Object.assign({ ok: true, action }, board.status())
+          if (action === 'columns') return Object.assign({ ok: true, action }, await board.columns())
+          if (action === 'addColumn') return Object.assign({ ok: true, action }, await board.addColumn({ id, name, wipLimit, order }))
+          if (action === 'move') return Object.assign({ ok: true, action }, await board.move({ taskId, toColumn, by, transition }))
+          if (action === 'setWip') return Object.assign({ ok: true, action }, await board.setWip({ column, limit }))
+          if (action === 'swimlanes') return Object.assign({ ok: true, action }, await board.swimlanes())
+          if (action === 'aging') return Object.assign({ ok: true, action }, await board.aging({ warnMs, limit }))
+          if (action === 'status') return Object.assign({ ok: true, action }, await board.status())
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
@@ -683,14 +684,14 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
       run: async ({ action, scope, kind, amount, taskId, limits, perTaskShare, ratio } = {}) => {
         try {
           const budget = kernel.budget
-          if (action === 'open') return Object.assign({ ok: true, action }, budget.open({ scope, limits: limits || {}, perTaskShare }))
-          if (action === 'charge') return Object.assign({ ok: true, action }, budget.charge({ scope, kind, amount, taskId }))
-          if (action === 'reserve') return Object.assign({ ok: true, action }, budget.reserve({ scope, ratio }))
-          if (action === 'remaining') return Object.assign({ ok: true, action }, budget.remaining({ scope, kind }))
-          if (action === 'status') return Object.assign({ ok: true, action }, budget.status())
-          if (action === 'list') return Object.assign({ ok: true, action }, budget.list())
-          if (action === 'totals') return Object.assign({ ok: true, action }, { totals: budget.totals() })
-          if (action === 'perTaskShare') return Object.assign({ ok: true, action }, { perTaskShare: budget.perTaskShare() })
+          if (action === 'open') return Object.assign({ ok: true, action }, await budget.open({ scope, limits: limits || {}, perTaskShare }))
+          if (action === 'charge') return Object.assign({ ok: true, action }, await budget.charge({ scope, kind, amount, taskId }))
+          if (action === 'reserve') return Object.assign({ ok: true, action }, await budget.reserve({ scope, ratio }))
+          if (action === 'remaining') return Object.assign({ ok: true, action }, await budget.remaining({ scope, kind }))
+          if (action === 'status') return Object.assign({ ok: true, action }, await budget.status())
+          if (action === 'list') return Object.assign({ ok: true, action }, await budget.list())
+          if (action === 'totals') return Object.assign({ ok: true, action }, { totals: await budget.totals() })
+          if (action === 'perTaskShare') return Object.assign({ ok: true, action }, { perTaskShare: await budget.perTaskShare() })
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
@@ -717,10 +718,10 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
       run: async ({ action, ids, title, authors, year, freeText, style } = {}) => {
         try {
           const citations = kernel.citations
-          if (action === 'identify') return Object.assign({ ok: true, action }, citations.identify({ ids }))
-          if (action === 'validate') return Object.assign({ ok: true, action }, citations.validate({ title, authors, year, ids, freeText }))
-          if (action === 'render') return Object.assign({ ok: true, action }, citations.render({ title, authors, year, ids, freeText, style }))
-          if (action === 'status') return Object.assign({ ok: true, action }, citations.status())
+          if (action === 'identify') return Object.assign({ ok: true, action }, await citations.identify({ ids }))
+          if (action === 'validate') return Object.assign({ ok: true, action }, await citations.validate({ title, authors, year, ids, freeText }))
+          if (action === 'render') return Object.assign({ ok: true, action }, await citations.render({ title, authors, year, ids, freeText, style }))
+          if (action === 'status') return Object.assign({ ok: true, action }, await citations.status())
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
@@ -748,11 +749,11 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
       run: async ({ action, subject, kind, detail, ms, reason, byHuman, postmortem } = {}) => {
         try {
           const discipline = kernel.discipline
-          if (action === 'recordFailure') return Object.assign({ ok: true, action }, discipline.recordFailure({ subject, kind, detail }))
-          if (action === 'mayAct') return Object.assign({ ok: true, action }, discipline.mayAct({ subject }))
-          if (action === 'suspend') return Object.assign({ ok: true, action }, discipline.suspend({ subject, ms, reason }))
-          if (action === 'restore') return Object.assign({ ok: true, action }, discipline.restore({ subject, byHuman, postmortem }))
-          if (action === 'status') return Object.assign({ ok: true, action }, discipline.status())
+          if (action === 'recordFailure') return Object.assign({ ok: true, action }, await discipline.recordFailure({ subject, kind, detail }))
+          if (action === 'mayAct') return Object.assign({ ok: true, action }, await discipline.mayAct({ subject }))
+          if (action === 'suspend') return Object.assign({ ok: true, action }, await discipline.suspend({ subject, ms, reason }))
+          if (action === 'restore') return Object.assign({ ok: true, action }, await discipline.restore({ subject, byHuman, postmortem }))
+          if (action === 'status') return Object.assign({ ok: true, action }, await discipline.status())
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
@@ -773,9 +774,9 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
       run: async ({ action } = {}) => {
         try {
           const governance = kernel.governance
-          if (action === 'keysUsed') return Object.assign({ ok: true, action }, { keysUsed: governance.keysUsed() })
-          if (action === 'config') return Object.assign({ ok: true, action }, { config: governance.config() })
-          if (action === 'droppedEvents') return Object.assign({ ok: true, action }, { droppedEvents: governance.droppedEvents() })
+          if (action === 'keysUsed') return Object.assign({ ok: true, action }, { keysUsed: await governance.keysUsed() })
+          if (action === 'config') return Object.assign({ ok: true, action }, { config: await governance.config() })
+          if (action === 'droppedEvents') return Object.assign({ ok: true, action }, { droppedEvents: await governance.droppedEvents() })
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
@@ -801,11 +802,11 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
       run: async ({ action, key, cost, scope, reason, by } = {}) => {
         try {
           const ratelimit = kernel.ratelimit
-          if (action === 'take') return Object.assign({ ok: true, action }, ratelimit.take({ key, cost, scope }))
-          if (action === 'peek') return Object.assign({ ok: true, action }, ratelimit.peek({ key }))
-          if (action === 'reset') return Object.assign({ ok: true, action }, ratelimit.reset({ key, reason, by }))
-          if (action === 'bucket') return Object.assign({ ok: true, action }, ratelimit.bucket({ key }))
-          if (action === 'status') return Object.assign({ ok: true, action }, ratelimit.status())
+          if (action === 'take') return Object.assign({ ok: true, action }, await ratelimit.take({ key, cost, scope }))
+          if (action === 'peek') return Object.assign({ ok: true, action }, await ratelimit.peek({ key }))
+          if (action === 'reset') return Object.assign({ ok: true, action }, await ratelimit.reset({ key, reason, by }))
+          if (action === 'bucket') return Object.assign({ ok: true, action }, await ratelimit.bucket({ key }))
+          if (action === 'status') return Object.assign({ ok: true, action }, await ratelimit.status())
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
@@ -835,11 +836,11 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
       run: async ({ action, reason, targetAction, traceId, taskId, chains, scores, fields, report, format } = {}) => {
         try {
           const explain = kernel.explain
-          if (action === 'checkReason') return Object.assign({ ok: true, action }, explain.checkReason({ reason, action: targetAction || null }))
-          if (action === 'correlate') return Object.assign({ ok: true, action }, explain.correlate({ traceId, taskId }))
-          if (action === 'build') return Object.assign({ ok: true, action }, explain.build({ action: targetAction || null, reason, traceId, taskId, chains, scores, fields }))
-          if (action === 'render') return Object.assign({ ok: true, action }, explain.render({ report, format }))
-          if (action === 'status') return Object.assign({ ok: true, action }, explain.status())
+          if (action === 'checkReason') return Object.assign({ ok: true, action }, await explain.checkReason({ reason, action: targetAction || null }))
+          if (action === 'correlate') return Object.assign({ ok: true, action }, await explain.correlate({ traceId, taskId }))
+          if (action === 'build') return Object.assign({ ok: true, action }, await explain.build({ action: targetAction || null, reason, traceId, taskId, chains, scores, fields }))
+          if (action === 'render') return Object.assign({ ok: true, action }, await explain.render({ report, format }))
+          if (action === 'status') return Object.assign({ ok: true, action }, await explain.status())
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
@@ -865,10 +866,10 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
       run: async ({ action, kind, version, migrate, doc, to } = {}) => {
         try {
           const projmigrate = kernel.projmigrate
-          if (action === 'register') return Object.assign({ ok: true, action }, projmigrate.register({ kind, version, migrate }))
-          if (action === 'read') return Object.assign({ ok: true, action }, projmigrate.read({ kind, doc }))
-          if (action === 'upgrade') return Object.assign({ ok: true, action }, projmigrate.upgrade({ kind, doc, to }))
-          if (action === 'status') return Object.assign({ ok: true, action }, projmigrate.status())
+          if (action === 'register') return Object.assign({ ok: true, action }, await projmigrate.register({ kind, version, migrate }))
+          if (action === 'read') return Object.assign({ ok: true, action }, await projmigrate.read({ kind, doc }))
+          if (action === 'upgrade') return Object.assign({ ok: true, action }, await projmigrate.upgrade({ kind, doc, to }))
+          if (action === 'status') return Object.assign({ ok: true, action }, await projmigrate.status())
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
@@ -890,11 +891,46 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
       run: async ({ action, request } = {}) => {
         try {
           const bridge = kernel.bridge
-          if (action === 'validate') return Object.assign({ ok: true, action }, { problems: bridge.validate(request) })
+          if (action === 'validate') return Object.assign({ ok: true, action }, { problems: await bridge.validate(request) })
           if (action === 'plan') return Object.assign({ ok: true, action }, await bridge.plan(request))
           if (action === 'run') return Object.assign({ ok: true, action }, await bridge.run(request))
           if (action === 'status') return Object.assign({ ok: true, action }, await bridge.status())
-          if (action === 'history') return Object.assign({ ok: true, action }, { history: bridge.history() })
+          if (action === 'history') return Object.assign({ ok: true, action }, { history: await bridge.history() })
+          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
+        } catch (e) {
+          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
+        }
+      },
+    })
+  }
+
+  if (externalTool) {
+    specs.push({
+      name: TOOL_NAMES.external,
+      description: 'vmu 外部面：action=fetchOne|fetchMany|normalize|cache|receipts|status。' +
+        '★ **没声明就没有网络**（零配置下 `enabled:false`、`seam:none` ✓）；来源、策略与字节上限都由内核服务强制；本工具只做**寻址与调用**，不复制任何策略。',
+      parameters: {
+        action: param('string', 'fetchOne｜fetchMany｜normalize｜cache｜receipts｜status', { required: true,
+          enum: ['fetchOne', 'fetchMany', 'normalize', 'cache', 'receipts', 'status'] }),
+        source: param('string', '来源名（★ 由声明决定；★ 服务会回「已声明来源」清单 ✓）'),
+        id: param('string', 'fetchOne 的条目 id（可选）'),
+        query: param('string', 'fetchOne 的查询（可选）'),
+        by: param('string', '发起者（可选）'),
+        cacheDir: param('string', '缓存目录（可选）'),
+        refs: param('array', 'fetchMany 的引用列表'),
+        results: param('array', 'normalize 的原始结果（可选）'),
+        raw: param('string', 'normalize 的原文（可选）'),
+        enforced: param('array', 'normalize 的已求值键（可选）'),
+      },
+      run: async ({ action, source, id, query, by, cacheDir, refs, results, raw, enforced } = {}) => {
+        try {
+          const external = kernel.external
+          if (action === 'fetchOne') return Object.assign({ ok: true, action }, await external.fetchOne({ source, id, query, by, cacheDir }))
+          if (action === 'fetchMany') return Object.assign({ ok: true, action }, await external.fetchMany({ refs, by }))
+          if (action === 'normalize') return Object.assign({ ok: true, action }, await external.normalize({ results, source, enforced, raw }))
+          if (action === 'cache') return Object.assign({ ok: true, action }, await external.cache({ source }))
+          if (action === 'receipts') return Object.assign({ ok: true, action }, await external.receipts({ source }))
+          if (action === 'status') return Object.assign({ ok: true, action }, await external.status())
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)

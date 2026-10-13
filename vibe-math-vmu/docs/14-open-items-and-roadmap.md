@@ -41,11 +41,11 @@
 |---|---|---|
 | U1 | `apply[Symbol.for('cordis.group')] = true` 是否为官方要求 | **否** ✓（8 份官方文档零命中）⇒ 已降级为"源码层细节＋本仓实测必需" |
 | U2 | `restrict` 的"四类输入抛错" | **查无此表述** ✗ ⇒ 已降级为"只能减（逐字）＋ 四类未核" |
-| U3 | 工具 `output` 是否**文档级**强制 | 官方文档未明文；**源码级**证据充分（`dsh-tools/lib/index.js:842`） |
-| U4 | "带 Client 的 patch 不多加行" | 模板对比**推论**（非逐字官方陈述） |
-| U5 | Schemastery 是否有官方文档 | **无**（官方 skill 零命中）⇒ 只能以真实包源码为准 |
-| U6 | `mcp-bundle.md`／`templates/mcp/*` | 未读（与 vmu 一期无关） |
-| U7 | `packages.md`（38 KB 可装插件清单） | 未通读（按官方建议按需 grep） |
+| U3 | 工具 `output` 是否**文档级**强制 | 官方文档未明文；**源码级**证据充分（`dsh-tools/lib/index.js:842`） | ★★ **轮 533 复核** ✓：★ **状态与代码/证据一致，无需改** ✓（★ U3–U5 已是"源码级／推论／以包源码为准"的诚实定性 ✓；★ U6／U7 是**按官方建议未通读** ✓）
+| U4 | "带 Client 的 patch 不多加行" | 模板对比**推论**（非逐字官方陈述） | ★★ **轮 533 复核** ✓：★ **状态与代码/证据一致，无需改** ✓（★ U3–U5 已是"源码级／推论／以包源码为准"的诚实定性 ✓；★ U6／U7 是**按官方建议未通读** ✓）
+| U5 | Schemastery 是否有官方文档 | **无**（官方 skill 零命中）⇒ 只能以真实包源码为准 | ★★ **轮 533 复核** ✓：★ **状态与代码/证据一致，无需改** ✓（★ U3–U5 已是"源码级／推论／以包源码为准"的诚实定性 ✓；★ U6／U7 是**按官方建议未通读** ✓）
+| U6 | `mcp-bundle.md`／`templates/mcp/*` | 未读（与 vmu 一期无关） | ★★ **轮 533 复核** ✓：★ **状态与代码/证据一致，无需改** ✓（★ U3–U5 已是"源码级／推论／以包源码为准"的诚实定性 ✓；★ U6／U7 是**按官方建议未通读** ✓）
+| U7 | `packages.md`（38 KB 可装插件清单） | 未通读（按官方建议按需 grep） | ★★ **轮 533 复核** ✓：★ **状态与代码/证据一致，无需改** ✓（★ U3–U5 已是"源码级／推论／以包源码为准"的诚实定性 ✓；★ U6／U7 是**按官方建议未通读** ✓）
 | **U8** | 本仓 `package.json` 的 `dsh.minVersion`/`testedVersion`/`compatibility` **是否被本仓工具链读取** | **已核 ✓**：无任何 `*.js`／`*.mjs` 读 `minVersion`／`testedVersion` ✗；`installer.js` 只读 `dsh.engines.dsh` 与 `compatibility.dshReleases` ✓，`release-check.mjs` 读 `compatNote` ✓ ⇒ **它们是元数据，不是门禁输入**（已在 11-§9 说明 ✓） |
 | **U9** | 上游 DSH 是否仍提供 **任务板 CAS DAG / 调度 / TeamActivity**（v5r 的 S10/S17 自述 *ported from* DSH agent-teams / v4 §25） | **未核**（只读到 v5r 注释）⇒ **优先补核**：若上游仍有，vmu 应**直接依赖上游**而非搬第三份副本 ✗ |
 | **U10** | `agent-experience/SKILL.md`（第 4 套 skill）与 `templates/mcp/*` | **未读**（C′ 终版确认其存在并给了 SHA256） |
