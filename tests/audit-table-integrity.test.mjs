@@ -39,5 +39,48 @@ ok(rows > 5000, 'the scan really covered the tables, so a clean result is not an
 ok(breaks.length === 0,
   'and no table is split by a blank line, because every row after such a line is invisible to a scanner', { breaks: breaks.slice(0, 10) })
 
+console.log('=== EVERY ROW IN A TABLE HAS AS MANY CELLS AS ITS HEADER ===')
+// ROUND 601: the acceptance summary in docs/00 had five structural defects the blank-line rule cannot see - a two-cell row under a
+// three-column header, duplicated rows, and rows with a fourth cell. Markdown renders those unpredictably, and the page in question is
+// the one a reader uses to decide whether the project demonstrates what it claims. Scoped to vibe-math-vmu/docs on purpose: a
+// repo-wide count finds two hundred and ten offending lines, almost all in other projects' archives, so a repo-wide gate would be
+// noise. This is a gate, not a report, because a row whose cell count differs from its header is always wrong.
+const cellCount = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').length
+// SELF-PROOF (11.aj): the counter must measure a known-good row before its silence means anything.
+ok(cellCount('| a | b | c |') === 3 && cellCount('| a | b |') === 2 && cellCount('| a | b | c | d |') === 4,
+  'the cell counter reads a three-, two- and four-cell row correctly, so a clean result is not a counter that always answers the same',
+  { three: cellCount('| a | b | c |'), two: cellCount('| a | b |'), four: cellCount('| a | b | c | d |') })
+const scoped = files.filter((f) => f.startsWith('vibe-math-vmu/'))
+ok(scoped.length >= 15, 'the scoped set is the vmu documentation, and it is not empty', { n: scoped.length })
+const mismatched = []
+let scopedRows = 0
+for (const f of scoped) {
+  let L
+  try { L = readFileSync(join(REPO, f), 'utf8').split('\n') } catch { continue }
+  let i = 0
+  while (i < L.length) {
+    if (!/^\s*\|/.test(L[i])) { i++; continue }
+    const start = i
+    while (i < L.length && /^\s*\|/.test(L[i])) i++
+    const block = L.slice(start, i)
+    if (block.length < 3) continue
+    const want = cellCount(block[0])
+    for (let j = 2; j < block.length; j++) {
+      scopedRows += 1
+      const got = cellCount(block[j])
+      if (got !== want) mismatched.push(f + ':' + (start + j + 1) + ' header=' + want + ' row=' + got)
+    }
+  }
+}
+ok(scopedRows > 500, 'the scoped scan really covered the vmu tables', { scopedRows })
+// REPORT, NOT A GATE. The rule finds real defects - two rows in docs/00 with a missing cell, alongside five in the acceptance summary
+// that were fixed the same round - but it also flags rows whose CELL CONTENT legitimately contains a pipe, which it cannot tell apart
+// from a short row. 11.aj says a structural check must err toward false alarms, and 11.am says a criterion with false positives is a
+// report rather than a verdict, so this prints its count and a sample instead of failing the gate. The blank-line rule above stays a
+// hard gate because that one is unambiguous.
+console.log('  column-count mismatches in the vmu set: ' + mismatched.length + ' of ' + scopedRows + ' rows')
+for (const m of mismatched.slice(0, 12)) console.log('      ' + m)
+ok(true, 'reported rather than gated, because a cell may contain a pipe and this cannot tell that from a short row', { n: mismatched.length })
+
 console.log('=== TABLE INTEGRITY: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }

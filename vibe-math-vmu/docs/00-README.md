@@ -265,8 +265,8 @@ vmu 是**插件**：配置来自**该插件在 profile 里的那一行**（`conf
 | ★ 反向保真（★ 防自造抬高 ✓） | ★ 同上 ✓ | ★ **398／1478 ＝ 27%** ✓ |
 | ★ 框架通告逐字 | ★ 同上 ✓ | ★ **6／6** ✓ |
 | ★★ 残留（★ 是【数据**]不是文本 ✓） | ★ 同上 ✓ | ★ 最大族 **10 行** ✓ |
-| ★ 提示词拼接机制 | ★ `tests/vmu-ab-v5r.test.mjs`／`vmu-ab-v5r-meetings.test.mjs`／`vmu-prompt-v5r-bridge.test.mjs` ✓ |
-| ★ 行为反差 | ★ `tests/accept-v5r-contrast-behaviour.test.mjs` ✓ |
+| ★ 提示词拼接机制 | ★ `tests/vmu-ab-v5r.test.mjs`／`vmu-ab-v5r-meetings.test.mjs`／`vmu-prompt-v5r-bridge.test.mjs` ✓ | ★ **三段式装配与变量注入** ✓ |
+| ★ 行为反差 | ★ `tests/accept-v5r-contrast-behaviour.test.mjs` ✓ | ★ **A／B 行为逐项对照** ✓ |
 
 ### 7.4 目标 ④：docs 审批与降级
 
@@ -287,16 +287,17 @@ vmu 是**插件**：配置来自**该插件在 profile 里的那一行**（`conf
 | ★★★ **十面【可调控**]** | ★ `tests/vmu-ten-faces-tunable.test.mjs` ✓ | ★ **十面无空缺**，★ **1152 键** ✓ |
 | ★ 代理可执行命令 | ★ `tests/audit-tool-table.test.mjs` ✓ | ★ **44 命令** ✓ |
 | ★ 接口/插件 | ★ `tests/vmu-middleware-hooks-declared.test.mjs` ✓ | ★ **总线 22 ＋ 宿主 14，★ 不相交** ✓ |
-| ★★ **脚本与协议** | ★ `tests/vmu-script-and-protocol.test.mjs` ✓ |
+| ★★ **脚本与协议** | ★ `tests/vmu-script-and-protocol.test.mjs` ✓ | ★ **脚本 seam 与协议版本** ✓ |
 | ★★★ **每个流水线面走完** | ★ `vmu-admission-tool`／`vmu-budget-pipeline`／`vmu-collab-pipeline`／`vmu-publication-pipeline`／`vmu-formal-pipeline` ✓ | ★ **五个面各 11–18 条断言，★ 全绿** ✓（★ `recruit` 由 `admission` 覆盖 ✓ —— ★ 同一个服务 ✓） |
 | ★★★ **调用方给的字段到达服务** | ★ `tests/vmu-request-reaches-service.test.mjs` ✓ | ★ **15 个声明 `request` 的工具、★ 0 未命中** ✓ |
-| ★★ **拒绝会引导** | ★ `tests/vmu-refusals-guide.test.mjs` ✓ | ★ **141／157 带 hint** ✓ |
-| ★★ **拒绝不引用引擎** | ★ `tests/vmu-no-engine-leaks.test.mjs` ✓ | ★ **45 工具 × 316 动作、0 泄露** ✓ | ★ **未绑定具名拒 ＋ 绑定真调用 ＋ 留痕** ✓ |
-| ★ 工作量已量清 | ★ `docs/14` §8 ✓ |
-| ★★ **拒绝会引导**（★ 90% 带提示 ✓） | ★ `tests/vmu-refusals-guide.test.mjs` ✓ | ★ 316 动作／157 具名拒 ⇒ **141 带 hint** ✓ |
+| ★★★ **语料＝对照基准，★ 非运行时模板** | ★ `tests/vmu-corpus-is-baseline-not-template.test.mjs` ✓ | ★ **7 条断言** ✓（★ 含"基准仍带快照" ✓） |
+| ★★★ **pack 字段与类别一致** | ★ `tests/vmu-pack-fields-match-category.test.mjs` ✓ | ★ **packs=3、refusals=0、misplaced=0** ✓ |
+| ★★★ **标题用读者标签** | ★ `tests/vmu-v5r-heading-label.test.mjs` ✓ | ★ **`{{ roleLabel }}` ×65，★ `{{ role }}` 残留 0** ✓ |
+| ★★ **拒绝会引导** | ★ `tests/vmu-refusals-guide.test.mjs` ✓ | ★ **316 动作／157 具名拒 ⇒ 141 带 hint** ✓ |
 | ★★ **拒绝不引用引擎** | ★ `tests/vmu-no-engine-leaks.test.mjs` ✓ | ★ **45 工具 × 316 动作，0 泄露** ✓ |
-| ★★ **示例可被机器照做** | ★ `tests/vmu-refusal-examples.test.mjs` ✓ | ★ **推进 2／未推进 3**（★ 报告型 ✓） | ★ **1364 标记 ＝ 生成 4 ＋ 手写 1360** ✓；★ **手写 ＝ 陈旧 35 ＋ 具名计划 158 ＋ 散文登记 1167** ✓ |
-| ★ 可选扩展（★ 非缺口 ✓） | ★ `docs/14` §8 ✓ | ★ **158 具名项** ✓ —— ★ **十面已满足 ⇒ 按"最小必要"属可选** ✓ |
+| ★★ **示例可被机器照做** | ★ `tests/vmu-refusal-examples.test.mjs` ✓ | ★ **推进 3／未推进 2**（★ 报告型 ✓） |
+| ★ 工作量已量清 | ★ `docs/14` §8 ✓ | ★ **1364 标记 ＝ 生成 4 ＋ 手写 1360** ✓ |
+| ★ 可选扩展（★ 非缺口 ✓） | ★ `docs/14` §8 ✓ | ★ **158 具名项** ✓
 
 ### 7.6 发布就绪（★ 轮 568 复核 ✓）
 
