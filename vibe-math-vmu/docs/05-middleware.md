@@ -183,14 +183,21 @@
 2. **`open` 默认＝观测类**（`record/appended`、`prompt/section-assembled`、`control/paused|resumed|heartbeat`）⇒ 观测者崩溃**不阻断业务**；**`abort` 默认只有一个**（`budget/exceeded`）⇒ 预算失守必须上报。
 3. **没有任何钩子允许改票权/门槛/结算口径**：即便声明了 `rewriteResult`，在 §7 红线下也不被允许（能力声明 + 内核不提供对应写路径，双重约束）。
 
-### 5.2 **已核实的真实不一致（必须修）** ✗
-- `kernel/prompt/index.js:231` 与 `host-hooks.js`／`kernel/loader.js` 里 **emit 的钩子名是 `prompt/assemble`**，而**冻结集里是 `prompt/section-assembled`**。总线**不校验 emit 的钩子名** ⇒ 这三处 emit **匹配不到任何条目**（静默空跑）。
-- 后果：**中间件无法介入提示词装配**（本卷与 `06` 的核心承诺在这条路径上不成立）。
-- 处置（二选一，见 §13-2）：① 把 `prompt/assemble` 登记进 `VU_HOOKS`（并给默认失败策略）；② 把三处 emit 改为 `prompt/section-assembled`。**本卷建议 ②**（`06` 的目标是"逐段接管"，整篇粒度太粗）。
-- 另：`pack/loading|loaded` **有冻结名与默认策略却无人 emit** ⇒ "包装载介入"目前是**纸面能力 ✗**；`prompt/index.js` 的 `truncation[]` 只进 `status()`，**没有**触发 `budget/exceeded`（**但 `budget/exceeded` 本身已有生产者** ✓：`kernel/fairness.js` 在守恒分配不可能时 emit ✓）。
+### 5.2 **已核实的真实不一致：一半已闭环、一半仍开**（★ 轮 495 重写 ✓）✗→✓
 
----
+> ★★★ **本节曾把【已经修好的**]那一半也列在"必须修"里 ✗ —— ★ **一个标题写着"必须修"的小节，如果一半已经修好，是最糟的一种：★ 读者会去修【已经修好的东西**]✓。
 
+- ★★ **① `prompt/assemble` 的那处【已闭环**]✓（★ 用的正是本节自己建议的方案 ② ✓）：★ **`kernel/prompt/index.js:400` 现在 emit 的是 `prompt/section-assembled`** ✓，★ **与冻结集里的名字一致** ✓ ⇒ ★ **中间件【可以**]逐段介入提示词装配** ✓。★★ **本节原先引用的 `host-hooks.js` 【不存在**]✗（★ 实测 ✓），★ 实际相关的文件是 `kernel/loader.js` ✓。
+- ★★★ **② `pack/loading`／`pack/loaded` 【仍然无人 emit**]✗：★ **冻结集里有名字、也有默认失败策略** ✓，★ **但框架里没有任何 emit 点** ✓ ⇒ ★★ **"包装载介入"至今是【纸面能力**]✗**。★★ **判定**：★ **这是【框架该补的能力**]✓（★ 目标 ③："框架能力足够强大" ✓），★ **不是该删的名字** ✗ —— ★ **`kernel/pack.js` 持有 `kernel.bus`** ✓（★ L172／L339 ✓），**要 emit 它只是几行** ✓；★ **本轮未完成，如实登记** ✓。
+- ★ **③ `truncation[]` 只进 `status()`、不触发 `budget/exceeded`** ✓：★ **未复核，保持"待核"** ✓。
+
+
+> ★★★ **轮 495 实测【把缺口数清楚了**]✓（★ 一次机械扫描：冻结集的每个名字去找 emit 点 ✓）：
+> - ★★ **纸面钩子【四个**]✗，不是两个：★ **`pack/loading`** ✓、**`pack/loaded`** ✓、**`turn/reply-parsed`** ✓、**`record/append-before`** ✓ —— ★ **前两个本卷已知** ✓，**后两个是这次扫描【新发现的**]✗**；
+> - ★★★ **而反向的偏差【更大**]✗：★ **框架 emit 了一族【不在冻结集里**]的钩子名** ✓ —— **`audit/rotate`** ✓、**`auditchain/appended`** ✓、**`auditchain/checkpoint-failed`** ✓、**`auditchain/partial-verify`** ✓ **等** ⇒ ★★ **这与原案 `prompt/assemble` 是【同一个缺陷**]，**只是规模从一处变成一族** ✓；
+> - ★★★ **为什么这比"少了几个名字"严重**：★ **中间件只能声明【冻结集里**]的钩子** ✓ ⇒ **一个没人冻结的 emit 点，等于一个永远无法被介入的能力** ✗ —— ★ **而它【看起来**]是正常的：★ 代码在跑、事件在发、只是没人能挂上去** ✓。
+> ★★ **处置（下一轮）**：★ **① 把那一族 emit 名登记进 `VU_HOOKS`（并给默认失败策略 ✓）**，**或** **② 把 emit 改为冻结名** ✓ —— ★ **与本节 ① 的处置同一套二选一** ✓；★ **纸面钩子则补 emit 点** ✓（★ `kernel/pack.js` 持有 `kernel.bus` ✓）。★ **守卫 `tests/audit-hook-coverage.test.mjs` 已写好并【当场证明它会失败**]✓，**但【未出荷**]✗ —— ★★ **"一个在当前树上失败的守卫不能出荷；★ 而一个不会失败的守卫什么都证明不了"** ✓ ⇒ **两者都记在这里，等缺口补完再上线** ✓。
+> ★★ **并由 `tests/audit-hook-coverage.test.mjs` 守着**：★ **冻结集里的每个钩子【要么在框架里有 emit 点、要么在本节里被明确标为纸面能力**]✓ ⇒ **一个名字不可能再静静地留在冻结集里、暗示一个没人提供的能力** ✓。
 ## 6. 插件、协议与边界
 
 ### 6.1 三类扩展物的装载顺序
