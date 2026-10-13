@@ -99,11 +99,11 @@ const roster = await call('vibe_v5_members', {})
 for (const m of (roster.members || [])) if (m.childId) { seats.set(m.id, m.childId); agents.set(m.childId, seat(m.id)) }
 ok(seats.size >= 2 && seats.has('acad') && seats.has('r-1'), 'V2. the roster publishes the childIds that seat an acting member', [...seats.keys()])
 
-const rec = await call('vibe_v5_record_proposition', { id: 'q-1', title: 'L2', statement: 'L2 holds', value: 0.7, motive: 'step', p: 0.5 }, seat('r-1'))
+const rec = await call('vibe_v5_record_proposition', { id: 'p-lean-a', title: 'L2', statement: 'L2 holds', value: 0.7, motive: 'step', p: 0.5 }, seat('r-1'))
 ok(rec.ok === true && typeof rec.fingerprint === 'string' && rec.owner === 'r-1',
   'V3. ★★ a recorded proposition is a card with a FINGERPRINT and an owner', { file: rec.file, owner: rec.owner })
 
-const arch = await call('vibe_v5_lean_archive', { kind: 'proof', target: 'q-1', name: 'L2', content: 'theorem L2 : True := trivial', run: true }, seat('r-1'))
+const arch = await call('vibe_v5_lean_archive', { kind: 'proof', target: 'p-lean-a', name: 'L2', content: 'theorem L2 : True := trivial', run: true }, seat('r-1'))
 ok(arch.ok === true && typeof arch.jobId === 'string' && arch.status === 'attempted',
   'V4. ★★ the proof is written AND QUEUED for background compilation', { jobId: arch.jobId, status: arch.status })
 ok(arch.async && arch.async.state === 'queued',
@@ -119,25 +119,25 @@ ok(typeof job.proof === 'string' && /Verified/.test(job.proof),
   'V8. ★★★ and the file is PROMOTED into the verified tree', { proof: job.proof })
 
 // before the formal ledger entry exists, the debate is refused
-const early = await call('vibe_v5_propose_verify', { target: 'q-1', kind: 'proposition', reason: 'too early' }, seat('acad'))
+const early = await call('vibe_v5_propose_verify', { target: 'p-lean-a', kind: 'proposition', reason: 'too early' }, seat('acad'))
 ok(early.ok === false && /locked|定稿/.test(String(early.message)),
   'V9. ★★★ ORDER ENFORCED: a proof that has not been REGISTERED cannot open the debate', { message: String(early.message).slice(0, 70) })
 
-const registered = await call('vibe_v5_end_verify', { target: 'q-1', op: 'formal_proof', status: 'proved', reason: 'lean passed' }, seat('acad'))
+const registered = await call('vibe_v5_end_verify', { target: 'p-lean-a', op: 'formal_proof', status: 'proved', reason: 'lean passed' }, seat('acad'))
 ok(registered.ok === true && registered.formalProof && registered.formalProof.locked === true && registered.formalProof.status === 'proved',
   'V10. ★★★ registering with op=formal_proof writes the institute formal ledger entry LOCKED (the door the refusal kept naming)',
   registered.formalProof)
 
-const unlocked = await call('vibe_v5_propose_verify', { target: 'q-1', kind: 'proposition', reason: 'now debatable' }, seat('acad'))
-ok(unlocked.ok === true && unlocked.queued === 'q-1',
+const unlocked = await call('vibe_v5_propose_verify', { target: 'p-lean-a', kind: 'proposition', reason: 'now debatable' }, seat('acad'))
+ok(unlocked.ok === true && unlocked.queued === 'p-lean-a',
   'V11. ★★★ THE DEBATE UNLOCKS ONLY NOW: proof first, consensus second, enforced by the same record that carries the evidence', unlocked)
 
-const v1 = await call('vibe_v5_verdict', { target: 'q-1', verdict: 1, reason: 'holds' }, seat('r-1'))
-const v2 = await call('vibe_v5_verdict', { target: 'q-1', verdict: 0, reason: 'doubt' }, seat('r-2'))
+const v1 = await call('vibe_v5_verdict', { target: 'p-lean-a', verdict: 1, reason: 'holds' }, seat('r-1'))
+const v2 = await call('vibe_v5_verdict', { target: 'p-lean-a', verdict: 0, reason: 'doubt' }, seat('r-2'))
 ok(v1.ok === true && v2.ok === true,
   'V12. ★★ two seated members cast OPPOSITE boolean verdicts on the object under verification', { first: v1.verdict, second: v2.verdict })
 
-const closed = await call('vibe_v5_end_verify', { target: 'q-1' }, seat('acad'))
+const closed = await call('vibe_v5_end_verify', { target: 'p-lean-a' }, seat('acad'))
 ok(closed !== null && typeof closed === 'object',
   'V13. ★★ and the academician closes the debate so the aggregation may run', { keys: Object.keys(closed || {}).slice(0, 8) })
 console.log('  (observed aggregation: ' + JSON.stringify(closed).slice(0, 220) + ')')
@@ -157,11 +157,11 @@ const lateProbe = await call('vibe_v5_minutes', {}, seat('acad'))
 ok(lateProbe.ok === false && /NO_OPEN_MEETING/.test(String(lateProbe.code)),
   'V17. ★★ minutes answer "no meeting in progress" when none is open: they are filed WITH the meeting that held them',
   { code: lateProbe.code })
-const byChair = await call('vibe_v5_reconsider', { target: 'q-1', why: 'reopen' }, seat('acad'))
+const byChair = await call('vibe_v5_reconsider', { target: 'p-lean-a', why: 'reopen' }, seat('acad'))
 ok(byChair.ok === false && byChair.code === 'V5_NOT_VOTER' && /participant|参与者/.test(String(byChair.message)),
   'V18. ★★★ D5a MEASURED (first half): a NON-participant cannot file a reconsideration, and the refusal names the rule',
   { code: byChair.code, message: String(byChair.message).slice(0, 70) })
-const byParticipant = await call('vibe_v5_reconsider', { target: 'q-1', why: 'new counterexample' }, seat('r-1'))
+const byParticipant = await call('vibe_v5_reconsider', { target: 'p-lean-a', why: 'new counterexample' }, seat('r-1'))
 ok(byParticipant.ok === true && byParticipant.reconsideration && byParticipant.reconsideration.eligibility === 'any-participant',
   'V19. ★★★ D5a MEASURED (second half): a PARTICIPANT may, and the payload states the rule that admitted it',
   byParticipant.reconsideration)
@@ -169,7 +169,7 @@ ok(byParticipant.reconsideration && byParticipant.reconsideration.onlyUp === tru
   byParticipant.reconsideration.thresholdAfter >= byParticipant.reconsideration.thresholdBefore,
   'V20. ★★★ and the threshold only ever RISES across a reconsideration (onlyUp true), so reopening cannot soften the bar',
   { before: byParticipant.reconsideration && byParticipant.reconsideration.thresholdBefore, after: byParticipant.reconsideration && byParticipant.reconsideration.thresholdAfter })
-const noWhy = await call('vibe_v5_reconsider', { target: 'q-1' }, seat('r-1'))
+const noWhy = await call('vibe_v5_reconsider', { target: 'p-lean-a' }, seat('r-1'))
 ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   'V21. ★ a reconsideration without a stated reason is refused, and the refusal cites D5', { message: String(noWhy.message).slice(0, 60) })
 
@@ -504,7 +504,7 @@ const phaseOf = (kind, text) => {
   }
   const pctAB = Math.round(100 * hitAB / totalAB)
   ok(totalAB > 800 && hitAB > 0,
-    "V66. **** ACCEPTANCE (2), MEASURED: our assembly reproduces " + hitAB + " of the " + totalAB + " fixed lines in the prompts the original really delivered (" + pctAB + "%). OF THE PROSE ALONE - excluding lines that name an object, a task or a status, which no scenario can reproduce whatever it does - " + proseHitAB + " of " + proseTotalAB + " (" + Math.round(100 * proseHitAB / Math.max(1, proseTotalAB)) + "%), which is the figure comparable to the per-type table",
+    "V66. **** ACCEPTANCE (2), MEASURED (ROUND 550 DECLARED REFORM: the harness now uses the corpus s own object name p-lean-a instead of inventing q-1, a deliberate change declared rather than folded in - and MEASURED TO CHANGE NOTHING, because this comparison reads a SYNTHETIC assembly rather than the harness run, so the residual below is scenario DATA (vote payloads, formal decisions) that no assembly can produce): our assembly reproduces " + hitAB + " of the " + totalAB + " fixed lines in the prompts the original really delivered (" + pctAB + "%). OF THE PROSE ALONE - excluding lines that name an object, a task or a status, which no scenario can reproduce whatever it does - " + proseHitAB + " of " + proseTotalAB + " (" + Math.round(100 * proseHitAB / Math.max(1, proseTotalAB)) + "%), which is the figure comparable to the per-type table",
     { hit: hitAB, total: totalAB, percent: pctAB })
   // THE OTHER DIRECTION, which the first number cannot see. A line-by-line comparison against the original
   // under-counts whatever the source holds as several entries but renders as one line, so it can report a gap that

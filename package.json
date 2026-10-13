@@ -574,6 +574,8 @@
     "vibe-math-vmu/tools/retention.js",
     "tests/vmu-retention-tool.test.mjs",
     "tests/vmu-ten-faces-usable.test.mjs",
+    "vibe-math-vmu/tools/idempotency.js",
+    "tests/vmu-idempotency-tool.test.mjs",
     "docs/COMPAT-AUDIT-ROUND3.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.en.md",
