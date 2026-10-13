@@ -39,6 +39,7 @@ export const TOOL_NAMES = Object.freeze({
   meeting: 'vibe_vmu_meeting',
   task: 'vibe_vmu_task',
   minutes: 'vibe_vmu_minutes',
+  board: 'vibe_vmu_board',
   // ROUND 349: the turn loop needs a real entry point. Without it the framework could run a round only from a test,
   // which is not the same as a host being able to run one - and the objective is the latter.
   turn: 'vibe_vmu_turn',
@@ -114,7 +115,7 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * adapter turns it into the host shape (`execute` returning JSON). Filtering by what actually exists keeps
  * the surface honest (docs/04 §11 ownership: mechanism only).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false }) {
   // A refusal carries the four documented fields, plus - when the caller has them - host-side DIAGNOSTICS
   // (the host's own stack and the exact request shape we passed). They are added ONLY when present, so no
   // existing refusal changes shape. Without this the live M3 diagnosis died at the tool boundary: the seam
@@ -609,6 +610,44 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           if (action === 'append') return Object.assign({ ok: true, action }, await minutes.append(need(id, 'id'), need(text, 'text')))
           if (action === 'actions') return Object.assign({ ok: true, action }, { actions: minutes.actions(id || null) })
           if (action === 'status') return Object.assign({ ok: true, action }, minutes.status())
+          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
+        } catch (e) {
+          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
+        }
+      },
+    })
+  }
+
+  if (boardTool) {
+    specs.push({
+      name: TOOL_NAMES.board,
+      description: 'vmu 看板面：action=columns|addColumn|move|setWip|swimlanes|aging|status。' +
+        '看板由内核服务保管（列、WIP 上限、泳道、老化都由它强制）；本工具只做**寻址与调用**，不复制任何策略。',
+      parameters: {
+        action: param('string', 'columns｜addColumn｜move｜setWip｜swimlanes｜aging｜status', { required: true,
+          enum: ['columns', 'addColumn', 'move', 'setWip', 'swimlanes', 'aging', 'status'] }),
+        id: param('string', 'addColumn 的列 id'),
+        name: param('string', 'addColumn 的列名'),
+        wipLimit: param('number', 'addColumn 的 WIP 上限（可选）'),
+        order: param('number', 'addColumn 的次序（可选）'),
+        taskId: param('string', 'move 的任务 id'),
+        toColumn: param('string', 'move 的目标列'),
+        by: param('string', 'move 的执行者（可选）'),
+        transition: param('string', 'move 的迁移标签（可选）'),
+        column: param('string', 'setWip 的列 id'),
+        limit: param('number', 'setWip 的上限（aging 时是返回条数上限）'),
+        warnMs: param('number', 'aging 的告警阈值毫秒（可选）'),
+      },
+      run: async ({ action, id, name, wipLimit, order, taskId, toColumn, by, transition, column, limit, warnMs } = {}) => {
+        try {
+          const board = kernel.board
+          if (action === 'columns') return Object.assign({ ok: true, action }, board.columns())
+          if (action === 'addColumn') return Object.assign({ ok: true, action }, board.addColumn({ id, name, wipLimit, order }))
+          if (action === 'move') return Object.assign({ ok: true, action }, board.move({ taskId, toColumn, by, transition }))
+          if (action === 'setWip') return Object.assign({ ok: true, action }, board.setWip({ column, limit }))
+          if (action === 'swimlanes') return Object.assign({ ok: true, action }, board.swimlanes())
+          if (action === 'aging') return Object.assign({ ok: true, action }, board.aging({ warnMs, limit }))
+          if (action === 'status') return Object.assign({ ok: true, action }, board.status())
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)

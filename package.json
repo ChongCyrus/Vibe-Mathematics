@@ -110,6 +110,7 @@
     "tests/audit-verbatim-claims.test.mjs",
     "tests/audit-planned-tools-inventory.test.mjs",
     "tests/vmu-minutes-tool.test.mjs",
+    "tests/vmu-board-tool.test.mjs",
     "tests/audit-planned-names.test.mjs",
     "tests/audit-math-computation-contract.mjs",
     "tests/audit-math-computation-contract.mutants.mjs",

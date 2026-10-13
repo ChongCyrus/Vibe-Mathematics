@@ -92,7 +92,7 @@
 
 > ★★ **两处内核工厂（★ 轮 503 补 ✓）**：★ **`kernel/identity.js` 的 `createIdentity({ … })`** ✓ —— ★ **成员身份与假名面工厂** ✓；★ **`kernel/notify.js` 的 `createNotify({ … })`** ✓ —— ★ **通知面工厂** ✓（★ 它 emit 的是**自己命名空间**的 `notify/emit` ✓ —— ★ 中间件要挂它必须**先 `declareTopic`** ✓，★ 这是**刻意**的 ✓）。
 
-### 3.1 已实现（★ 并含轮 517 新增的 `vibe_vmu_minutes` ✓）（★ 本表列 **10** 个 ✓；★★ **零配置时只有第 1 个** ✓）
+### 3.1 已实现（★ 含轮 517 的 `vibe_vmu_minutes` ✓ 与轮 522 的 `vibe_vmu_board` ✓）（★ 本表列 **10** 个 ✓；★★ **零配置时只有第 1 个** ✓）
 
 > ★★★ **计数口径（★ 轮 494 实测修正 ✓）**：★ 本标题原先写 **"真机已验证的 5 个 ＋ 本轮新增 1 个"** ✗ —— ★ **那是写下时的快照，之后每加一个工具都没回头改** ✓ ⇒ ★★ **现在写"本表列 N 个"，且 N 由表本身决定** ✓；★★ **真机验证状态另见 `11-§9.6`，不要在这里凭记忆写** ✓。
 
@@ -109,6 +109,7 @@
 | `vibe_vmu_turn` | **轮次编排面**（`26-§3.4` ✓）：`op=step\|drive\|status` ✓ —— **`step` 精确跑一轮**（**谁**由 `vmu.turn.wakeupPolicy` 定 ✓、**什么提示词**由 `vmu.prompt` 管线装配 ✓），**`drive` 连跑有界若干轮**，**`status` 读数**（策略／已唤醒计数／各阶段计数 ✓）。★ **语义照 `26-§3.3`**：**无成员 ⇒ 合法空转**（`stopped:"no-members"` ✓，**不是错误** ✓）；**缺投递缝 ⇒ 该轮【返回 `ok:false`**】✓（**工具绝不假装跑过** ✗）；★ **一轮失败是运行结果（返回）**，**参数不合法是编程错误（抛）** ✓ | `op`(必填，枚举)、`members`、`rounds`、`phase`、`why`、`next_step` | 声明 `turn:` 时 ✓（无声明 ⇒ 不出现 ✓，**零机制不被破坏** ✓） | `VMU_ENGINE_UNAVAILABLE`、`VMU_INVALID_ARGUMENT`、`VMU_TURN_*` ✓ |
 | `vibe_vmu_task` | 任务面：`action=list\|create\|assign\|transition\|stage\|advance\|brief\|history` ✓ —— **依赖/阶段门/暂停门仍由内核强制** ✓（本面只寻址与调用，不复制策略 ✓） | `action`(必填，枚举)、`id`、`title`、`objective`、`owner`、`deps`、`to`、`reason` | 声明 `tasks:` **或**声明了非空 `vmu.tasks.stages` ✓（无声明 ⇒ 不出现 ✓） | `VMU_STATE`、`VMU_NO_SUCH_OBJECT`、`VMU_RESOURCE_BUDGET`、`VMU_INVALID_ARGUMENT` |
 | `vibe_vmu_minutes` | 纪要面：`action=list\|draft\|confirm\|append\|actions\|status` ✓ —— **只做寻址与调用** | `action`(必填，枚举)、`id`、`kind`、`text`、`member`、`session` | `minutesTool` 为真 | `VMU_INVALID_ARGUMENT`（缺必填／未知 action）、**服务自己的码原样透传** ✓ |
+| `vibe_vmu_board` | 看板面：`action=columns\|addColumn\|move\|setWpi\|swimlanes\|aging\|status` ✓ —— **只做寻址与调用** ✓ | `action`(必填，枚举)、`id`/`name`/`wipLimit`/`order`、`taskId`/`toColumn`/`by`/`transition`、`column`/`limit`、`warnMs` | `boardTool` 为真 | **服务自己的码原样透传** ✓（如 `move` 缺参 ⇒ `VMU_INVALID_ARGUMENT` ＋ hint ✓） |
 
 > **活对象登记（本节新增面所需 ✓）**：内核持有**会话内**的会议/表决实例表（`kernel.liveMeeting(id)`／`liveBallot(id)` ✓，`status().live = {meetings[],ballots[],cap,evicted}` ✓）；**上限 50，超出按最旧逐出并计数** ✓（`evicted` 绝不静默 ✓）。它**不是新策略** ✓：同一批原语，只是**可按 id 寻址** ✓（docs/08 §2 的"逐对象原语" ✓）。
 

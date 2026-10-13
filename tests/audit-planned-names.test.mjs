@@ -83,7 +83,9 @@ function defects(rows, tools, actions, file) {
       const where = (file ? file + ' ' : '') + 'L' + r.line + ' ' + n + ': '
       if (tools.has(n)) { found.push(where + 'IS a registered tool, so the row must not mark it'); continue }
       const short = n.replace('vibe_vmu_', '')
-      const asAction = [...actions.keys()].filter((a) => a.toLowerCase().includes(short))
+      // ROUND 522: WHOLE-WORD match, not a substring one. `setWip` contains "ip", so a substring test read vibe_vmu_ip's
+  // row as if its capability were the setWip action - a false positive manufactured by an unrelated new action name.
+  const asAction = [...actions.keys()].filter((a) => a.toLowerCase() === short || a.toLowerCase().split(/[^a-z0-9]+/).includes(short))
       if (asAction.length) found.push(where + 'its capability is the action ' + asAction.join('/') + ' and the row does not say so')
     }
   }
