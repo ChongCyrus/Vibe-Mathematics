@@ -99,5 +99,20 @@ console.log('=== 5. A REFUSED DISPATCH IS QUEUED FOR THE NEXT PROMPT, NOT THIS O
   ok(!/未生效|V5_TASK_STALE_REVISION/.test(firstText), 'the turn that triggered a refusal does not announce its own failure in its own prompt')
 }
 
+console.log('=== 6. THE DOCUMENTED VARIABLE WHITELIST IS THE CODE ===')
+{
+  const src = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'prompt', 'index.js'), 'utf8')
+  const wm = /VARIABLE_WHITELIST = Object\.freeze\(\[([^\]]+)\]/.exec(src)
+  const whitelist = wm ? wm[1].split(',').map((s) => s.trim().replace(/'/g, '')).filter(Boolean) : []
+  ok(whitelist.length >= 8, 'the pipeline publishes a whitelist', { size: whitelist.length })
+  const docSrc = readFileSync(join(REPO, 'vibe-math-vmu', 'docs', '06-prompt-pipeline.md'), 'utf8')
+  const line = docSrc.split('\n').find((l) => l.includes('白名单（逐字')) || ''
+  ok(line.length > 0, 'and the volume states it as verbatim, which is a promise the reader relies on')
+  const missing = whitelist.filter((v) => !line.includes('\`' + v + '\`'))
+  ok(missing.length === 0,
+    'so every whitelisted variable appears in that line - a template variable usable in code but absent from the volume is a gap for whoever writes a preset',
+    { missing })
+}
+
 console.log('=== TURN CONTRACTS: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }

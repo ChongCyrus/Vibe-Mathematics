@@ -125,7 +125,8 @@ assemble(ctx = { settings, member, role, phase, task, ... })
 ## 7. 变量注入（白名单＋值转义）
 
 - **语法**：`{{ key }}`（正则允许 `:`/`.`/`_`/`-`）。
-- **白名单（逐字）**：`member`、`role`、`phase`、`time`、`pack`、`task`、`setting:`（带参）、`count:`（带参）。
+- **白名单（逐字取自 `kernel/prompt/index.js` 的 `VARIABLE_WHITELIST`）**：`member`、`role`、`roleLabel`、`phase`、`time`、`pack`、`task`、`roster`、`round`、`quorum`、`statusBlock`、`setting:`（带参）、`count:`（带参）。
+  - ★★★ **本行曾【只列 8 项却写着"逐字"**]✗（★ 轮 489 修正 ✓：漏了 `roleLabel`／`roster`／`round`／`quorum`／`statusBlock` ✓）—— ★★ **"声称逐字、却不是逐字"比单纯遗漏更糟，因为读者会因此不再核对** ✓；★ **现在由 `tests/vmu-turn-contracts.test.mjs` 的双向断言守着** ✓。
 - **取值**：`setting:<k>` ⇒ `ctx.settings[k]`；`count:<k>` ⇒ `counts[k]`；其它 ⇒ `ctx[key]`；`undefined`/`null` ⇒ **空串**（不报错）。
 - **未登记变量 ⇒ `VMU_INVALID_ARGUMENT`**（消息含整个占位符，hint 列出白名单）——**绝不原样保留 `{{...}}`**（否则用户看到的提示词会带垃圾）。
 - **防注入（关键）**：替换值经 `escapeTemplate` ⇒ `{{` 变 `{ {`、`}}` 变 `} }` ⇒ **值里的模板语法不会被二次展开**（一次替换，不做递归展开）。
