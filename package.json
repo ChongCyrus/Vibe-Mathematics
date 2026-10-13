@@ -597,6 +597,7 @@
     "tests/vmu-collab-pipeline.test.mjs",
     "tests/vmu-undefined-refusals.test.mjs",
     "tests/vmu-request-reaches-service.test.mjs",
+    "tests/vmu-publication-pipeline.test.mjs",
     "docs/COMPAT-AUDIT-ROUND3.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.en.md",
