@@ -22,7 +22,7 @@
  */
 
 /** The three blocks the source gates. Absent settings mean ON. */
-const OFF_SWITCHES = Object.freeze([
+export const OFF_SWITCHES = Object.freeze([
   ['vmu.pointer.propagation', 'v5r-pointer-contract'],
   ['vmu.turn.selfCheck', 'v5r-turn-resources'],
   ['vmu.turn.feedback', 'v5r-feedback-line'],
@@ -39,7 +39,7 @@ export const MEETING_STATES = Object.freeze([
 ])
 
 /** The formalisation status line: four branches, exactly one shown, and it is ALWAYS shown. */
-const FORMAL_STATUSES = Object.freeze([
+export const FORMAL_STATUSES = Object.freeze([
   ['passed', 'v5r-formal-status-passed'],
   ['blocked', 'v5r-formal-status-blocked'],
   ['attempted', 'v5r-formal-status-attempted'],
