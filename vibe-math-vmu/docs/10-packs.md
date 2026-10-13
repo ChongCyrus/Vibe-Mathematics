@@ -28,6 +28,12 @@
 ```
 vibe-math-vmu/packs/<id>/index.js     # 有行为的 pack：清单在这里（`export const PACK = { … }`）或 star 再导出它 ✓
 vibe-math-vmu/packs/<id>/settings/      # 该 pack 想让旋钮取什么值（纯数据 defaults.json ＋ 可选代码视图 defaults.js ✓）
+> ★★★ **本卷的目录图是【通用形态**]，★ 而【具体某个 pack 的实际文件】在 `docs/27`** ✓（★ 轮 518 实测 ✓ —— 本项在台账上结转 12 轮 ✗）：
+> - ★★ **本卷给的是【形态**]：`packs/<id>/prompts/`、`packs/<id>/middleware/` 等**泛化路径** ✓ ⇒ ★ **它的职责是"一个 pack 文件夹可以长成什么样"** ✓，★ **不是"v5r 现在有哪几个文件"** ✓；
+> - ★★ **`docs/27` 才【枚举 v5r 的实际文件**]✓（★ `index.js`／`notices.js`／`middleware/`／`prompts/`／`settings/` ✓，★ 且由 `tests/audit-pack-face.test.mjs` **双向**守着：★ **目录里每个文件必须被点名、被点名的必须存在** ✓）。
+> - ★★★ **实测四包顶层**（★ 轮 518 ✓）：★ **`example-data` 只有 `prompts`** ✓、**`institute-min` 与 `v3-core` 只有 `index.js`** ✓、**`v5r` 有五项** ✓ ⇒ ★★ **所以【包可以只有一个目录或一个文件**]✓ —— ★ 这正是"目录形态是约定、不是要求"的落点 ✓。
+> ★★ **结论**：★ **两卷职责不同、不构成缺口** ✓ ⇒ ★ **把 `notices.js` 塞进本卷的【通用模板**]反而是错的** ✗（★ 它是 v5r 的实现细节，不是形态本身 ✓）。
+
 vibe-math-vmu/packs/<id>/prompts/       # 提示词正文与段（纯数据 sections.json ✓ 或代码模块 ✓）
 vibe-math-vmu/packs/<id>/middleware/    # 该 pack 在框架扩展点上加的策略 ✓
 ```

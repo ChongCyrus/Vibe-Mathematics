@@ -161,7 +161,7 @@ v5r 的 `s8-freeze-say` 真回归：**"本轮是否完成"的判据被写死在�
 
 - **已实现钩子 ✓**：`meeting/round-start`、`meeting/round-end`（`bus.emit` 真生产者 ✓）。
 - **已实现工具 ✓**：`vibe_vmu_meeting`（`list|open|speak|silent|close|ballot|vote|tally|reopen` ✓）。
-- **规划工具 ✗**：`vibe_vmu_motion`（动议/附议/修正/搁置）、`vibe_vmu_agenda`（议程条目）、`vibe_vmu_minutes`（纪要/确认）、`vibe_vmu_committee`（委员会/子会）、`vibe_vmu_attendance`（在场/法定人数）—— **以上均未实现**（roadmap 见 §9）。
+- **规划工具 ✗**：`vibe_vmu_motion`（动议/附议/修正/搁置）、`vibe_vmu_agenda`（议程条目）、`vibe_vmu_committee`（委员会/子会）、`vibe_vmu_attendance`（在场/法定人数）—— **以上均未实现**（roadmap 见 §9）。
 
 ---
 
@@ -527,7 +527,7 @@ v5r 的 `s8-freeze-say` 真回归：**"本轮是否完成"的判据被写死在�
 | `vibe_vmu_motion`（⛔ 未实现，roadmap） | `action:'propose'\|'second'\|'withdraw'\|'table'\|'untable'\|'amend'\|'list'`、`id`、`kind`、`text`、`why` | 动议/附议/撤回/搁置/修正案 |
 | `vibe_vmu_agenda`（⛔ 未实现，roadmap） | `action:'add'\|'update'\|'remove'\|'reorder'\|'split'\|'merge'\|'list'`、`id`、`title`、`text`、`owner`、`timeboxMs`、`order` | 议程条目与拆分合并 |
 | `vibe_vmu_attendance`（⛔ 未实现，roadmap） | `action:'mark'\|'list'\|'quorum'`、`member`、`status` | 在场/法定人数/流失后处理 |
-| `vibe_vmu_minutes`（⛔ 未实现，roadmap） | `action:'draft'\|'confirm'\|'expand'\|'list'`、`id`、`detail` | 纪要与上次确认 |
+| `vibe_vmu_minutes`（**✓ 已实现，轮 517**） | `action:'list'\|'draft'\|'confirm'\|'append'\|'actions'\|'status'`、`id`、`kind`、`text`、`member`、`session` | 纪要与确认（★ 工具只做寻址与调用 ✓） |
 | `vibe_vmu_committee`（⛔ 未实现，roadmap） | `action:'spawn'\|'report'\|'list'`、`parentId`、`roster`、`agenda` | 委员会/子会/全体委员会 |
 | `vibe_vmu_board`（⛔ 未实现，roadmap） | `action:'columns'\|'wip'\|'move'\|'metrics'`、`column`、`limit` | 看板列与 WIP |
 | `vibe_vmu_workflow`（⛔ 未实现，roadmap） | `action:'deps'\|'gate'\|'retry'\|'checkpoint'\|'compensate'`、`id`、`to`、`reason` | DAG/门/重试/检查点 |
@@ -1167,7 +1167,7 @@ recount(ballotId):
 | `vibe_vmu_motion` | **未实现 ✗（规划）** | 动议/附议/撤回/搁置/修正 |
 | `vibe_vmu_agenda` | **未实现 ✗（规划）** | 议程条目 CRUD/拆分合并 |
 | `vibe_vmu_attendance` | **未实现 ✗（规划）** | 在场/法定人数 |
-| `vibe_vmu_minutes` | **未实现 ✗（规划）** | 纪要/确认/展开 |
+| `vibe_vmu_minutes` | **✓ 已实现（轮 517）** | 纪要/确认/追加/动作/列表/状态 |
 | `vibe_vmu_committee` | **未实现 ✗（规划）** | 子会/报告 |
 | `vibe_vmu_board` | **未实现 ✗（规划）** | 列/WIP/度量 |
 | `vibe_vmu_workflow` | **未实现 ✗（规划）** | 依赖/门/重试/检查点/补偿 |
