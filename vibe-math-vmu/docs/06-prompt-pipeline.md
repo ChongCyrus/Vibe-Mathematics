@@ -70,6 +70,9 @@ assemble(ctx = { settings, member, role, phase, task, ... })
 | `template` | string | `null` | 模板文件路径（需注入 `readFile`） |
 | `vars` | string[] | `[]` | 该段声明的变量（登记用） |
 | `truncate` | object | `null` | `{mode, keepChars}`（§8） |
+| `lang` | string | `null` | ★ **段文本的语言**（★ 轮 241 加 ✓）—— ★ **`vmu.prompts.locale.onMissing` 据此决定是否回退** ✓；★★ **本行原先【漏了它**]✗，而本节自称"逐字来自 `register()`" ✓（★ 轮 493 补 ✓） |
+| `terms` | string[] | `[]` | ★ **该段涉及的术语**（★ 与 `glossary.json` 的机读本体对齐用 ✓）—— ★★ **本行同样是轮 493 【由守卫抓出来的**]✓（★ 与此同时还抓出 `lang` ✓）：★ **本节自称"逐字来自 `register()`"，★ 而漏了两个字段** ✗ |
+| `range` | string | **由 `order` 推出** | ★ **不是入参**：`register()` 用 `inRange(order, name)` 算出区间名（`facts`／`charter`／`contract`／`pack`／`override` ✓）并【记进条目**]✓ ⇒ ★ **它在 `entry` 里、不在入参里** ✓ |
 
 **重名规则（实现）**：重名时——
 - 目标是 `state` 或已存在段 `mutable === false` ⇒ **`VMU_NOT_PERMITTED`**（不可变段不得再注册）；
