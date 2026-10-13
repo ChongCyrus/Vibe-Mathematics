@@ -87,6 +87,7 @@ const TOOLS = [
   // script: `list` only reads the declared scripts array, so `run` is the action that calls the bridge.
   [{ scriptingTool: true }, 'script', 'bridge', { action: 'run', id: 'x' }],
   [{ capacityTool: true }, 'capacity', 'capacity', { action: 'status' }],
+  [{ retentionTool: true }, 'retention', 'retention', { action: 'status' }],
   [{conferenceTool: true }, 'conference', 'conference', { action: 'status' }],
   [{arbitrationTool: true }, 'arbitration', 'arbitration', { action: 'status' }],
   [{charterTool: true }, 'charter', 'charter', { action: 'status' }],
