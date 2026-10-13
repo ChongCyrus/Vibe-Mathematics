@@ -525,7 +525,7 @@
 | **名称** | 合作协议（Agreement & DSA） |
 | **目的** | 与外部机构合作前**必须**有备忘（MoU）与数据共享协议（DSA）的记录；交换范围/期限/责任显式 ✓ |
 | **面向谁** | PI、法务、数据管理、代理 |
-| **接口形状** | 服务 `vmu.collab`（⚠️ **部分接线**（实测 7/10，见 §0.1））：`registerAgreement()`／`attachDsa()`／`status()`；工具 `vibe_vmu_collab` ⛔ 未实现 |
+| **接口形状** | 服务 `vmu.collab`（⚠️ **部分接线**（实测 7/10，见 §0.1））：`registerAgreement()`／`attachDsa()`／`status()`；工具  未实现 | ★ **其能力＝ `vibe_vmu_collab` 的九个动作** ✓（★ 本轮已落地 ✓）
 | **可调控参数** | `vmu.collab.agreementRequired`（默认 `true`）、`vmu.collab.dataSharingTemplate`（默认 `standard`）、`vmu.collab.counterpartyRegistry`（默认 `Ops/Partners`）、`vmu.collab.expiryWarnDays`（默认 `30`） |
 | **相关错误码** | `VMU_COLLAB_AGREEMENT_MISSING` ⛔／`VMU_COLLAB_DSA_EXPIRED` ⛔ |
 | **四条哲学** | F：不登记＝无跨机构交换 ✓｜T：模板/预警期可配 ✓｜D：交换范围由 pack ✓｜X：新合作形态只加字段 ✓ |
@@ -558,7 +558,7 @@
 | **名称** | 协议本体与共享闸（Agreement Registry & Sharing Gate） |
 | **目的** | **共享/转移前必须有已签协议** ✗✓（机器可判定）；协议**范围与限制**可核；**到期⇒复审**（机制**引用 21** ✓，本卷不重定义通知/日历） |
 | **面向谁** | PI、法务、数据管理、样本管理员、代理 |
-| **接口形状** | 协议 `Agreement` ⛔ 待实现：`{ agreementId, kind: 'dua'|'mta', parties[], scope, expiresAt, restrictions[], signatureRef }`；服务 `vmu.agreements`（★ **已接线 ✓**（实测 7/7，见 §0.1））：`register(agreement)`／`sign(agreementId, {signatureRef})`／`check(agreementId, {action, targetRef})`／`expiring(windowDays)`；工具 `vibe_vmu_agreements` ⛔ 未实现；钩子 `agreement/check-before` ⛔ 提案 |
+| **接口形状** | 协议 `Agreement` ⛔ 待实现：`{ agreementId, kind: 'dua'|'mta', parties[], scope, expiresAt, restrictions[], signatureRef }`；服务 `vmu.agreements`（★ **已接线 ✓**（实测 7/7，见 §0.1））：`register(agreement)`／`sign(agreementId, {signatureRef})`／`check(agreementId, {action, targetRef})`／`expiring(windowDays)`；工具 `vibe_vmu_agreements` ⛔ 未实现；钩子 `agreement/check-before` ⛔ 提案 | ★ **其能力＝ `vibe_vmu_collab` 的 `agreements` 动作** ✓（★ 本轮已落地 ✓）
 | **可调控参数** | `vmu.agreements.registryDir`（默认 `Ops/Agreements`）、`vmu.agreements.kinds`（默认 `["dua","mta"]`）、`vmu.agreements.unsignedPolicy`（默认 **`block`** ✗✓）、`vmu.agreements.signatureRefRequired`（默认 `true`）、`vmu.agreements.expiryWarnDays`（默认 `30`）、`vmu.agreements.reviewCadenceDays`（默认 `365`）、`vmu.agreements.scopeEnforcement`（默认 `block`） |
 | **相关错误码** | `VMU_AGREEMENT_MISSING` ⛔／`VMU_AGREEMENT_UNSIGNED` ⛔／`VMU_AGREEMENT_EXPIRED` ⛔／`VMU_AGREEMENT_SCOPE_VIOLATION` ⛔／`VMU_AGREEMENT_SIGNATURE_MISSING` ⛔ |
 | **四条哲学** | F：不登记协议＝无共享闸（自由共享）✓｜T：是否阻断/预警期/复审周期可配 ✓｜D：**协议种类与限制项由 pack 声明** ✓｜X：新协议类型只加 `kind` 与字段 ✓ |
@@ -684,7 +684,7 @@
 
 | 类别 | 名称 | 现状 |
 |---|---|---|
-| 工具 | `vibe_vmu_resource` ⛔ 未实现、`vibe_vmu_funding` ⛔ 未实现、`vibe_vmu_ip` ⛔ 未实现、`vibe_vmu_conference` ⛔ 未实现、`vibe_vmu_outreach` ⛔ 未实现、`vibe_vmu_collab` ⛔ 未实现、`vibe_vmu_compliance` ⛔ 未实现、`vibe_vmu_capacity` ⛔ 未实现、`vibe_vmu_hr` ⛔ 未实现 | ✗ |
+| 工具 | `vibe_vmu_resource` ⛔ 未实现、`vibe_vmu_funding` ⛔ 未实现、`vibe_vmu_ip` ⛔ 未实现、`vibe_vmu_conference` ⛔ 未实现、`vibe_vmu_outreach` ⛔ 未实现、 未实现、`vibe_vmu_compliance` ⛔ 未实现、`vibe_vmu_capacity` ⛔ 未实现、`vibe_vmu_hr` ⛔ 未实现 | ✗ | ★ **其能力＝ `vibe_vmu_collab` 的九个动作** ✓（★ 本轮已落地 ✓）
 | 工具 | `vibe_vmu_minutes` ✓ **已实现（轮 517）** |
 | 工具（复用） | `vibe_vmu_records` ✓、`vibe_vmu_task` ✓、`vibe_vmu_meeting` ✓、`vibe_vmu_set` ✓、`vibe_vmu_middleware` ✓、`vibe_vmu_pack` ✓、`vibe_vmu_script` ✓、`vibe_vmu_status` ✓、`vibe_vmu_control` ✓ | ✓ |
 | 服务 | `vmu.resource`／`vmu.funding`／`vmu.ip`／`vmu.conference`／`vmu.dissemination`／`vmu.collab`／`vmu.compliance`／`vmu.capacity`／`vmu.tenure`（计划 `kernel/ops/*`） | ✗ |

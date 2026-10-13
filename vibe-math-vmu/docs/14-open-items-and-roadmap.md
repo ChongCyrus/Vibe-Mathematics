@@ -125,13 +125,13 @@
 | 计划工具（★ **均带 ⛔ 规划标记** ✓） | 首见卷 | 服务载体 | settings 家族 |
 |---|---|---|---|
 | `vibe_vmu_agenda` | `docs/08` | — ⛔ 规划/未实现 | **✓** |
-| `vibe_vmu_agreements` | `docs/22` | — ⛔ 规划/未实现 | **✓** |
+| `vibe_vmu_agreements` | `docs/22` | — ⛔ 规划/未实现 | **✓** | ★ **其能力＝ `vibe_vmu_collab` 的 `agreements` 动作** ✓（★ 本轮已落地 ✓）
 | `vibe_vmu_attendance` | `docs/08` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_auction` | `docs/17` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_audit` | `docs/08` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_capacity` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_charter` | `docs/17` | **✓** ⛔ 规划/未实现 | **✓** |
-| `vibe_vmu_collab` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |
+
 | `vibe_vmu_committee` | `docs/08` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_compliance` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_conference` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |
@@ -440,11 +440,11 @@
 > | **(b) 形式化** | ★★ **`formal`（10 方法 ✓：`check`／`axioms`／`sorryReport`／`artifacts`／`reproduce`… ✓，★ 硬不变式见模块头 ✓）** | ★ **有**（轮 540 ✓） |
 > | **(c) 计算与工具** | ★ `mathtools`／`mathjobs`／`bridge`（子进程接缝 ✓） | ★ **有** ✓ |
 > | **(d) 代理通信与会议** | ★ `meeting`／`ballotbox`／`notify`（★ **默认关** ✓） | ★ **有** ✓ |
-> | **(e) 代理间协作** | ★ `collab`（9 ✓：`addCounterparty`／`openAgreement`／`signAgreement`／`exchange`／`settle`… ✓）／`delegation`（9 ✓）／`handover`（7 ✓） | ★ **无**（★ **最薄的一面** ✗） |
+> | **(e) 代理间协作** | ★★ **`collab`（9 方法 ✓，轮 541 ✓）** ＋ `delegation`（9 ✓）／`handover`（7 ✓） | ★★ **有**（★ **轮 541 补上最后一个空面** ✓）；★ `delegation`／`handover` 仍无工具 ✓ |
 > | **(f) 工作流** | ★ `task`／`board`／`minutes`／`transaction`（★ 失败走补偿 ✓） | ★ **有** ✓ |
-> | **(g) 控制流** | ★ `control`／`turn`／`clockguard`／`ratelimit` | ★ **有**（★ `clockguard` 无工具 ✓） |
+> | **(g) 控制流** | ★ `control`／`turn`／**`clockguard`（6 方法 ✓，轮 541 ✓）**／`ratelimit` | ★★ **有**（★ **本面已齐** ✓） |
 > | **(h) 文件归档** | ★ `custody`／`records`／`library`／`retention` | ★ **有** ✓ |
-> | **(i) 评审与出版** | ★ `auditchain`（★ 真哈希链 ✓）／`citations`／`reviewers`／`publication` | ★ **有**（★ `reviewers`／`publication` 无工具 ✗） |
+> | **(i) 评审与出版** | ★ `auditchain`（★ 真哈希链 ✓）／`citations`／**`reviewers`（10 方法 ✓，轮 541 ✓）**／`publication` | ★★ **有**（★ `publication` 仍无工具 ✓） |
 > | **(j) 代理自组织** | ★ `topology`（★ 取向 `flat`／`star`／`committee`／`market`／`pipeline`／`swarm` ✓）／`charter`／`recruit` | ★ **有**（轮 539 ✓） |
 >
 > ★★★ **结论（★ 决定下一步 ✓）**：★ **`(e) 代理间协作` 是【唯一完全没有工具面**]的一面** ✗ ⇒ ★★ **下一个工具对准 `collab`** ✓（★ 9 方法 ✓，★ 且它是"多智能体协作数学研究"的**直接承载** ✓）；★ 其次是 **`(i)` 的 `reviewers`／`publication`** ✓ 与 **`(g)` 的 `clockguard`** ✓。

@@ -75,6 +75,9 @@ const TOOLS = [
   [{ custodyTool: true }, 'custody', 'custody', { action: 'status' }],
   [{ topologyTool: true }, 'topology', 'topology', { action: 'status' }],
   [{ formalTool: true }, 'formal', 'formal', { action: 'status' }],
+  [{ collabTool: true }, 'collab', 'collab', { action: 'status' }],
+  [{ reviewersTool: true }, 'reviewers', 'reviewers', { action: 'status' }],
+  [{ clockguardTool: true }, 'clockguard', 'clockguard', { action: 'status' }],
   // ---- the eight that were already there ----
   [{ taskTool: true }, 'task', 'tasks', { action: 'list' }],
   [{ recordsTool: true }, 'records', 'library', { action: 'list' }],

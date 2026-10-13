@@ -24,7 +24,7 @@
 
 ---
 
-## 1. 工具总表（28 个 `vibe_vmu_*` ＋ 1 个继承工具）
+## 1. 工具总表（31 个 `vibe_vmu_*` ＋ 1 个继承工具）
 
 | 工具（`TOOL_NAMES` 键） | 出现条件 | 权限面 | 幂等性 | 主要 action |
 |---|---|---|---|---|
@@ -56,6 +56,9 @@
 | `vibe_vmu_custody`（`custody`） | `custodyTool` 为真 | 保管链与销毁 | `status` ✓；其余视条目状态 ✗ | `status`(默认)`/registerEntry/transfer/storageCycle/destroy/chainOf` |
 | `vibe_vmu_topology`（`topology`） | `topologyTool` 为真 | 组织拓扑（自组织） | `list`/`status` ✓；`select`/`describe`/`route`/`assert` 视状态 ✗ | `status`(默认)`/select/describe/route/assert/list` |
 | `vibe_vmu_formal`（`formal`） | `formalTool` 为真 | 形式化检查/公理/缺口 | `sorryReport`/`list`/`status`/`keysUsed`/`config`/`trail` ✓；`check`/`axioms`/`artifacts`/`reproduce` 视请求 ✗ | `status`(默认)`/check/axioms/sorryReport/artifacts/reproduce/list/keysUsed/config/trail` |
+| `vibe_vmu_collab`（`collab`） | `collabTool` 为真 | 协作：对手方/协议/交换/结算 | `agreements`/`status` ✓；其余视状态 ✗ | `status`(默认)`/addCounterparty/openAgreement/signAgreement/reviewAgreement/exchange/settle/authorship/agreements` |
+| `vibe_vmu_reviewers`（`reviewers`） | `reviewersTool` 为真 | 评审人：指派/回避/法定人数 | `acknowledgements`/`status`/`trace`/`keysUsed` ✓；其余视参数 ✗ | `status`(默认)`/register/assign/unbind/acknowledge/acknowledgements/quorumMet/reviewerView/trace/keysUsed` |
+| `vibe_vmu_clockguard`（`clockguard`） | `clockguardTool` 为真 | 时钟守卫：回退/跳变/钳制 | `now`/`skew`/`status`/`clockSource` ✓；其余视参数 ✗ | `status`(默认)`/now/observe/skew/monotonic/clockSource` |
 | `math_computation` | **声明了数学意图**（`vibe-math-vmu.js:149`） | 计算面 | `probe/receipt` ✓；`run/install` ✗ | 由共享模块登记：`op=probe|run|receipt|install` |
 
 **注册面硬纪律（`host.js` 逐条）**
@@ -460,8 +463,11 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 25 | `custody` | `vibe_vmu_custody` |
 | 26 | `topology` | `vibe_vmu_topology` |
 | 27 | `formal` | `vibe_vmu_formal` |
-| 28 | `turn` | `vibe_vmu_turn` |
+| 28 | `collab` | `vibe_vmu_collab` |
+| 29 | `reviewers` | `vibe_vmu_reviewers` |
+| 30 | `clockguard` | `vibe_vmu_clockguard` |
+| 31 | `turn` | `vibe_vmu_turn` |
 
-> ★★ 合计 **28** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
+> ★★ 合计 **31** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
 
 <!-- END GENERATED: tool-index -->
