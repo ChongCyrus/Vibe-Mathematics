@@ -74,6 +74,29 @@ console.log('  not advanced: ' + JSON.stringify(notAdvanced))
 ok(advanced.length >= 2, 'following the example moved the caller forward in a majority of the cases it could', { advanced })
 ok(notAdvanced.length + advanced.length === examples.length, 'and every example was actually tried, so the report covers all of them', { tried: advanced.length + notAdvanced.length, of: examples.length })
 
+console.log('=== 4. A TOOL MUST BE ABLE TO EXPRESS THE CALL ITS OWN SERVICE PRINTS ===')
+// ROUND 576. Budget's service printed `e.g. open({scope:"meeting:mt-1"})` while the tool's parameters were scattered at the top
+// level, so the framework documented a call it could not make - and both halves were individually correct, so no structural
+// check could see it. This is the check that would have: a hint that prints a COMPLETE CALL names fields, and the tool must be
+// able to supply them, either as declared parameters or through a request object. Enumeration hints (`allowed: a, b, c`) do not
+// print a call and are not affected - the distinction that made a first attempt at this report twenty-three false positives.
+const canExpress = []
+const cannotExpress = []
+for (const e of examples) {
+  const spec = specs.find((s) => s.name === e.tool)
+  const params = new Set(Object.keys(spec.parameters || {}))
+  const viaRequest = params.has('request')
+  for (const f of [...Object.keys(e.ex.args), ...(e.ex.named || [])]) {
+    const expressible = params.has(f) || viaRequest
+    const where = e.tool.replace('vibe_vmu_', '') + '.' + e.action + ' needs `' + f + '`'
+    if (expressible) canExpress.push(where); else cannotExpress.push(where)
+  }
+}
+ok(cannotExpress.length === 0,
+  'every field named by a printed example can be supplied through the tool, as a declared parameter or inside request, so the framework never documents a call it cannot make',
+  { cannotExpress: cannotExpress.slice(0, 8), canExpress: canExpress.length })
+ok(canExpress.length > 0, 'and the check examined real fields rather than passing on an empty set', { canExpress: canExpress.length })
+
 console.log('=== 4. THE REPORT IS PRODUCED, NOT A VERDICT ===')
 // A non-advancing example may still be correct: an example cannot name real data. The value is the list, for a human to read.
 ok(Array.isArray(notAdvanced), 'the non-advancing cases are listed rather than judged, because some are unavoidable', { notAdvanced })
