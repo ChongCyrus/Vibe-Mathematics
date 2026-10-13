@@ -163,5 +163,44 @@ ok(unexplained.length === 0,
   'every volume carrying a mark is either selected by the check, or its rows state a resolution, or they mark something that is not a tool - so no volume falls out of the check unexplained',
   { unexplained: unexplained.slice(0, 6) })
 
+console.log('=== 5. THE MIRROR DIRECTION: IMPLEMENTED CLAIMS FOR UNREGISTERED NAMES ===')
+// A row may say "implemented" about a name the host does not register PROVIDED it says how - that the name is unregistered,
+// what the real name is, or which action carries it. A row that simply claims implementation for a name nobody published is
+// the error this section exists for.
+const claimsImplementation = /已实现|✅/
+const explainsItself = /未注册|真名|动作|action=|库面|已由|覆盖|能力已/
+function falseClaims(rows, tools) {
+  const bad = []
+  for (const r of rows) {
+    if (!claimsImplementation.test(r.l)) continue
+    const missing = r.names.filter((n) => !tools.has(n))
+    if (!missing.length) continue
+    if (explainsItself.test(r.l)) continue
+    bad.push('L' + r.line + ' claims implementation for ' + missing.join(', ') + ' which the host does not register, without saying how')
+  }
+  return bad
+}
+const syntheticClaim = [
+  '| `vibe_vmu_ghost` | 说明 | ✅ 已实现 |',
+  '| `vibe_vmu_ghost2` | 说明 | ✅ 已实现（真名 vibe_vmu_status ✓） |',
+]
+const claimRows = syntheticClaim.map((l, i) => ({ line: i + 1, l, names: [...l.matchAll(/`(vibe_vmu_[a-z_]+)`/g)].map((m) => m[1]) }))
+const synthBad = falseClaims(claimRows, tools)
+ok(synthBad.length === 1, 'the mirror check fires on an unexplained implementation claim and stays quiet on an explained one', { bad: synthBad.length })
+
+const claimRowsReal = []
+for (const f of allDocs) {
+  const lines = readFileSync(join(DOCS, f), 'utf8').split('\n')
+  lines.forEach((l, i) => {
+    if (!l.trim().startsWith('|')) return
+    const names = [...l.matchAll(/`(vibe_vmu_[a-z_]+)`/g)].map((m) => m[1])
+    if (names.length) claimRowsReal.push({ line: i + 1, l, names, file: f })
+  })
+}
+const claimBad = falseClaims(claimRowsReal, tools)
+ok(claimBad.length === 0,
+  'and across every volume no row claims an unregistered tool name is implemented without saying that the name is unregistered or which action carries it',
+  { bad: claimBad.slice(0, 6) })
+
 console.log('=== PLANNED NAMES: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }
