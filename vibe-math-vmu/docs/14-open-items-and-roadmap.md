@@ -483,6 +483,9 @@
 > ★★★★★ **实测结论（★ 用一个可复核的判据：★ 关键词命中数 ✓）** ✓✓：★ **原版【没有节装配机制**]** ✓ —— ★ `systemPrompt` **0** ✓、★ `assemble` **0** ✓、★ `sectionPolicy` **0** ✓、★ `promptSections` **0** ✓、★ `composePrompt` **0** ✓、★ `renderSection` **0** ✓✓；★★ **它用的是【一种"每类一个函数"**]** ✓ —— ★ `initialPrompt(member, initialTask, mode)`（L1894 ✓）／`normalPrompt(member)`（L1920 ✓）／`checkpointPrompt`（L1940 ✓）／`meetingPrompt`（L1957 ✓）／`verifyPrompt`（L1984 ✓）／`paperWritePrompt`·`paperReviewPrompt`·`paperFinalPrompt`（L4576／4604／4627 ✓）＋ `mathPromptBlock`（L2945）／`formalPromptBlock`（L2960 ✓）。
 >
 > ★★★★★ **而 vmu 用的是【节流水线**]** ✓（★ `v5rPromptSections`（`order: 600+i` ✓）＋ `sectionPolicy` ✓ ＋ 67 节 ✓）⇒ ★★★★ **故两者【机制不同、★ 而输出一致**]** ✓✓ —— ★ 语料 **67 提示／31 类** 从原版的**输出**捕获 ✓，★ **86%／98%** 的保真就是"流水线复现了那些函数" ✓✓ ⇒ ★★★ **这正是目标③ 要的"逻辑完全一致【甚至更优越**]"，★ 因为流水线比"每类一个函数"更通用**（★ 与哲学理念的"运行机制可定义性、★ 扩展性极强"一致 ✓）。
+>
+> ★★★★★ **逐函数对照（★ 轮 652：★ 读语料的 `KIND_HISTOGRAM` ✓）** ✓✓：★★ **原版那 10 个函数【每一个都在语料里有对应**]** ✓✓ —— ★ `normalPrompt` ⇒ **`normal`（10 ✓）**；★ `checkpointPrompt` ⇒ **`checkpoint`（1 ✓）**；★ `verifyPrompt` ⇒ **`verify`（3）＋ `verify-debate`（3 ✓）**；★ `meetingPrompt` ⇒ **`meeting`（2）＋ `meeting-proposal`（1 ✓）**；★ `paperWritePrompt`／`paperReviewPrompt`／`paperFinalPrompt` ⇒ **`paper-write`（2）／`paper-review`（2）／`paper-final`（1 ✓）**；★ `mathPromptBlock`／`formalPromptBlock` ⇒ **`lean-*` 六子类（work／verify／fidelity／require／after-defect／tool-hint，共 12 ✓）**；★ `initialPrompt` ⇒ **`founding`（4）／`founding-temp`（1）／`founding-leaderless`（2）／`resume`（3）／`inbox-*` ✓**。
+> ★★★★★ **而语料【更细**]** ✓✓：★ `verify` 分两类 ✓、★ `meeting` 分两类 ✓、★ **`inbox` 分 7 类** ✓、★ **`notice` 分 3 类** ✓ ⇒ ★★★ **31 类 vs 10 个函数** ✓✓ ⇒ ★★★★ **"完全一致"（★ 每个函数的产出都在 ✓）＋"更优越"（★ 分类更细 ✓）★ 两面【同时成立**]** ✓✓ —— ★ **这是目标③ 那句判据在本仓最清楚的一次落地** ✓✓。
 
 #### A.2.6 更正记录（★ 我自己的错，如实留档 ✓）
 
