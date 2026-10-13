@@ -106,6 +106,7 @@
     "tests/audit-surface-index.test.mjs",
     "tests/audit-generators-current.test.mjs",
     "tests/audit-measured-claims.test.mjs",
+    "tests/audit-shared-module-parity.test.mjs",
     "tests/audit-planned-names.test.mjs",
     "tests/audit-math-computation-contract.mjs",
     "tests/audit-math-computation-contract.mutants.mjs",
