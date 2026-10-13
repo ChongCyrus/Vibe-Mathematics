@@ -590,6 +590,7 @@
     "tests/vmu-script-and-protocol.test.mjs",
     "vibe-math-vmu/tools/admission.js",
     "tests/vmu-admission-tool.test.mjs",
+    "tests/vmu-refusals-guide.test.mjs",
     "docs/COMPAT-AUDIT-ROUND3.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.md",
     "docs/release-notes/RELEASE-NOTES-2.7.1.en.md",
