@@ -43,6 +43,7 @@ export const TOOL_NAMES = Object.freeze({
   budget: 'vibe_vmu_budget',
   citations: 'vibe_vmu_citations',
   discipline: 'vibe_vmu_discipline',
+  governance: 'vibe_vmu_governance',
   // ROUND 349: the turn loop needs a real entry point. Without it the framework could run a round only from a test,
   // which is not the same as a host being able to run one - and the objective is the latter.
   turn: 'vibe_vmu_turn',
@@ -118,7 +119,7 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * adapter turns it into the host shape (`execute` returning JSON). Filtering by what actually exists keeps
  * the surface honest (docs/04 §11 ownership: mechanism only).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false, budgetTool = false, citationsTool = false, disciplineTool = false }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false, budgetTool = false, citationsTool = false, disciplineTool = false, governanceTool = false }) {
   // A refusal carries the four documented fields, plus - when the caller has them - host-side DIAGNOSTICS
   // (the host's own stack and the exact request shape we passed). They are added ONLY when present, so no
   // existing refusal changes shape. Without this the live M3 diagnosis died at the tool boundary: the seam
@@ -748,6 +749,29 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           if (action === 'suspend') return Object.assign({ ok: true, action }, discipline.suspend({ subject, ms, reason }))
           if (action === 'restore') return Object.assign({ ok: true, action }, discipline.restore({ subject, byHuman, postmortem }))
           if (action === 'status') return Object.assign({ ok: true, action }, discipline.status())
+          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
+        } catch (e) {
+          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
+        }
+      },
+    })
+  }
+
+  if (governanceTool) {
+    specs.push({
+      name: TOOL_NAMES.governance,
+      description: 'vmu 治理面：action=keysUsed|config|droppedEvents。' +
+        '议程/动议读了哪些设置、解析出来的配置是什么、有多少事件因未声明而被丢弃，全部由内核服务回答；本工具只做**寻址与调用**，不复制任何策略。',
+      parameters: {
+        action: param('string', 'keysUsed｜config｜droppedEvents', { required: true,
+          enum: ['keysUsed', 'config', 'droppedEvents'] }),
+      },
+      run: async ({ action } = {}) => {
+        try {
+          const governance = kernel.governance
+          if (action === 'keysUsed') return Object.assign({ ok: true, action }, { keysUsed: governance.keysUsed() })
+          if (action === 'config') return Object.assign({ ok: true, action }, { config: governance.config() })
+          if (action === 'droppedEvents') return Object.assign({ ok: true, action }, { droppedEvents: governance.droppedEvents() })
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
