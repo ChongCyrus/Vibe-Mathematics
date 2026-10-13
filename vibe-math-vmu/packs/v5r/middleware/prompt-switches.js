@@ -32,7 +32,7 @@ const OFF_SWITCHES = Object.freeze([
 const CATALOGUES = Object.freeze({ compact: 'v5r-reply-compact', full: 'v5r-reply-spec' })
 
 /** The meeting prompt's three mutually exclusive speaker states. */
-const MEETING_STATES = Object.freeze([
+export const MEETING_STATES = Object.freeze([
   ['invited', 'v5r-meeting-invited'],
   ['others', 'v5r-meeting-others'],
   ['first', 'v5r-meeting-first'],
