@@ -299,7 +299,7 @@
 ### G1 评审人市场（审稿人库 · COI · 盲评映射 · 负载均衡）
 - **本体/字段 schema**：`reviewers[{ id, expertise[], load, conflicts[] }]`；`reviewAssignment{ reviewerId, submissionId, mode, blind, assignedAt, dueAt, status }`；`coiRecord{ reviewerId, subjectId, kind, evidence }`。
 - **接口形状**：`vibe_vmu_records {action:'append', kind:'reviewer'|'reviewAssignment'|'coi'}`（已实现 ✓ 的记录面）；
-  **规划 ✗（未实现）**：`vibe_vmu_reviewers`（**规划/未接线**：库查询与负载均衡）。
+  **✓ 已实现（轮 552 复核）**：`vibe_vmu_reviewers`（★ 轮 541 落地，10 个动作 ✓；★ 本行原写"规划/未接线"，★ 已过时 ✓）。
 - **字段级规则**：① **COI 校验**——`conflicts[]` 命中被审对象 ⇒ **必须回避**，否则**具名拒**；② **盲评映射**——单盲/双盲/公开由 `vmu.review.mode` 决定；映射表与解绑**必须有留痕**（谁在何时解绑）；③ **负载均衡**——同一审稿人并发分配上限可配。
 - **参数键**：`vmu.reviewers.maxLoad`（整数，默认 `3`）｜`vmu.reviewers.coiPolicy`（`"deny"|"ask"`，默认 `"deny"`）｜`vmu.reviewers.blindUnbindRequiresReason`（布尔，默认 `true`）｜`vmu.reviewers.acknowledgement`（布尔，默认 `false`，可选"致谢/报酬"登记）。
 - **错误码**：`VMU_COI_VIOLATION`（未回避）｜`VMU_REVIEWER_OVERLOADED`（超负载）｜`VMU_BLIND_UNBIND_DENIED`（无理由解绑）。
@@ -352,7 +352,7 @@
 | G20 | 负结果与复现失败 | ✗ 规划 | P0 | `vmu.replication.*` | `VMU_INVALID_ARGUMENT` |
 
 > **验收** ✓（机器可判定）：① **具名**——COI 未回避／"应要求提供"／无回执／盲评无理由解绑 ⇒ **具名拒**；② **断言**——`availability` 缺 URL 必拒、`registration` 声明已注册但无 `receipt` 必拒、`replication` 缺 `evidence` 必拒；③ **场景**——各条至少一条可复跑**场景**；④ **红**——反向变异（放开策略）必须产出**具名红**。
-> **未核项**：五条的外部系统（Zenodo/OSF/SWH/JATS）**字段级对齐未做** ✗；`vibe_vmu_reviewers`／`vibe_vmu_register`／`vibe_vmu_availability`／`vibe_vmu_replication` 均为**规划/未实现** ⇒ 照抄会失败；编号登记见 **14-§2**（建议新增主题 **T11「出版与外部对接」**）。
+> **未核项**：五条的外部系统（Zenodo/OSF/SWH/JATS）**字段级对齐未做** ✗；`vibe_vmu_register`／`vibe_vmu_availability`／`vibe_vmu_replication` 仍为**规划/未实现** ✓（★ 而 **`vibe_vmu_reviewers` 已实现** ✓，轮 541 ✓） ⇒ 照抄会失败；编号登记见 **14-§2**（建议新增主题 **T11「出版与外部对接」**）。
 > ★ **轮 165 核验** ✓：**这句话成立** ✓ —— **全仓 86 个 JS 文件里，这四个名字（含 `vibe_vmu_replication`）与本节另外两个名字，命中全为 0** ✓（**判据只是按名 grep** ✓ ⇒ 任何人几秒可复核 ✓）。★ 而且**再加一个工具时不会静默漂移** ✓：既有的 docs 审计已经强制"**文档点名但未注册的工具必须带 ⛔ 标记**" ✓✓。
 
 ---
