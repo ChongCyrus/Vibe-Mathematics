@@ -24,7 +24,7 @@
 
 ---
 
-## 1. 工具总表（16 个 `vibe_vmu_*` ＋ 1 个继承工具）
+## 1. 工具总表（17 个 `vibe_vmu_*` ＋ 1 个继承工具）
 
 | 工具（`TOOL_NAMES` 键） | 出现条件 | 权限面 | 幂等性 | 主要 action |
 |---|---|---|---|---|
@@ -44,6 +44,7 @@
 | `vibe_vmu_citations`（`citations`） | `citationsTool` 为真 | 引用识别/校验/渲染 | `identify`/`status` ✓；`validate`/`render` 状态取决于条目 ✗ | `status`(默认)`/identify/validate/render` |
 | `vibe_vmu_discipline`（`discipline`） | `disciplineTool` 为真 | 断路器与暂停 | `mayAct`/`status` ✓；`recordFailure`/`suspend`/`restore` ✗ | `status`(默认)`/recordFailure/mayAct/suspend/restore` |
 | `vibe_vmu_governance`（`governance`） | `governanceTool` 为真 | 治理面可观测 | `keysUsed`/`config`/`droppedEvents` ✓（★ **全为只读** ✓） | `keysUsed`(默认)`/config/droppedEvents` |
+| `vibe_vmu_ratelimit`（`ratelimit`） | `ratelimitTool` 为真 | 速率取用/查看/重置 | `take`/`peek`/`bucket`/`status` ✓；`reset` ✗（★ 服务强制要理由 ✓） | `status`(默认)`/take/peek/reset/bucket` |
 | `math_computation` | **声明了数学意图**（`vibe-math-vmu.js:149`） | 计算面 | `probe/receipt` ✓；`run/install` ✗ | 由共享模块登记：`op=probe|run|receipt|install` |
 
 **注册面硬纪律（`host.js` 逐条）**
@@ -436,8 +437,9 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 13 | `citations` | `vibe_vmu_citations` |
 | 14 | `discipline` | `vibe_vmu_discipline` |
 | 15 | `governance` | `vibe_vmu_governance` |
-| 16 | `turn` | `vibe_vmu_turn` |
+| 16 | `ratelimit` | `vibe_vmu_ratelimit` |
+| 17 | `turn` | `vibe_vmu_turn` |
 
-> ★★ 合计 **16** 个工具 ✓；★ **action 枚举 **15** 组／**69** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload` ｜ `status/pause/resume/stop/beat/roster/hire/fire` ｜ `list/open/speak/silent/close/ballot/vote/tally/reopen` ｜ `decisive/advisory` ｜ `list/create/assign/transition/stage/advance/brief/history` ｜ `list/draft/confirm/append/actions/status` ｜ `columns/move/swimlanes/aging/status` ｜ `open/charge/reserve/remaining/status/list/totals` ｜ `identify/validate/render/status` ｜ `suspend/restore/status` ｜ `config`。
+> ★★ 合计 **17** 个工具 ✓；★ **action 枚举 **16** 组／**74** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload` ｜ `status/pause/resume/stop/beat/roster/hire/fire` ｜ `list/open/speak/silent/close/ballot/vote/tally/reopen` ｜ `decisive/advisory` ｜ `list/create/assign/transition/stage/advance/brief/history` ｜ `list/draft/confirm/append/actions/status` ｜ `columns/move/swimlanes/aging/status` ｜ `open/charge/reserve/remaining/status/list/totals` ｜ `identify/validate/render/status` ｜ `suspend/restore/status` ｜ `config` ｜ `take/peek/reset/bucket/status`。
 
 <!-- END GENERATED: tool-index -->
