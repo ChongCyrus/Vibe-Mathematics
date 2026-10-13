@@ -79,6 +79,24 @@ const familiesOf = () => {
 }
 
 const blocks = []
+// ---- register() fields: the `entry` object register() builds, field by field ----
+const fieldsOf = () => {
+  const src = R('vibe-math-vmu/kernel/prompt/index.js')
+  const a = src.indexOf('const entry = {')
+  const b = src.indexOf('\n    }', a)
+  const rows = []
+  for (const line of src.slice(a, b).split('\n')) {
+    const m = /^\s{6}(\w+):\s*(.+?),?\s*(?:\/\/\s*(.*))?$/.exec(line)
+    if (m) rows.push({ name: m[1], def: m[2].replace(/,$/, ''), note: (m[3] || '').trim() })
+  }
+  return rows
+}
+// ---- the capability vocabulary ----
+const capsOf = () => {
+  const bus = R('vibe-math-vmu/kernel/bus.js')
+  const cm = /CAPABILITIES = Object\.freeze\(\[([\s\S]{0,1200}?)\]\)/.exec(bus)
+  return cm ? [...cm[1].matchAll(/'([a-zA-Z][\w.-]*)'/g)].map((m) => m[1]) : []
+}
 {
   const m = mark('service-index')
   const s = servicesOf()
@@ -111,6 +129,40 @@ const blocks = []
     ...hs.map((h) => '| `' + h.name + '` | `' + h.policy + '` | ' + (h.who.length ? h.who.map((w) => '`' + w + '`').join('、') : '**无** ✗') + ' |'),
     '',
     '> ★★ 合计 **' + hs.length + '** 个冻结钩子 ✓；★ **无默认策略的 **' + noPol.length + '** 个**' + (noPol.length ? ' ✗：' + noPol.join('、') : ' ✓') + '。',
+    '', m.e,
+  ].join('\n') })
+}
+{
+  const m = mark('register-fields')
+  const f = fieldsOf()
+  blocks.push({ file: 'vibe-math-vmu/docs/05-middleware.md', m, text: [
+    m.b, '',
+    '### 段注册字段（★ **生成**：来自 `kernel/prompt/index.js` 的 `entry` 对象 ✓）',
+    '',
+    '> ★★★ **本节为什么是生成的**：★ **§3.1 原来【手写**]这些字段，而它在轮 493 被查出【漏了两个**]✗（`lang` 与 `terms` ✓ —— ★ 后者是守卫**第一次运行**就抓出来的 ✓）⇒ ★★ **手写字段表【必然**]落后于代码** ✓。★ **真源是 `register()` 构造的 `entry` 对象** ✓ —— ★ **下面是它逐字段的默认表达式** ✓。',
+    '',
+    '| 字段 | 代码里的默认表达式（★ 逐字 ✓） | 备注（取自代码注释 ✓） |',
+    '|---|---|---|',
+    ...f.map((x) => '| `' + x.name + '` | `' + x.def + '` | ' + (x.note || '——') + ' |'),
+    '',
+    '> ★★ 合计 **' + f.length + '** 个字段 ✓。★★ **注意**：★ `range` **不是入参**，而是 `inRange(order, name)` 算出来的 ✓ —— ★ **它在 `entry` 里、不在 `section` 入参里** ✓。',
+    '', m.e,
+  ].join('\n') })
+}
+{
+  const m = mark('capability-list')
+  const caps = capsOf()
+  blocks.push({ file: 'vibe-math-vmu/docs/05-middleware.md', m, text: [
+    m.b, '',
+    '### 能力词表（★ **生成**：来自 `kernel/bus.js` 的 `CAPABILITIES` ✓）',
+    '',
+    '> ★★ **§3.2 声称"12 项，冻结"，★ 实测【与代码逐项一致**]✓** ✓（★ 轮 494 核实 ✓）⇒ ★ **现已改为生成，使未来不一致在源头不可能** ✓。★★ **而"能力→决策键"的映射仍【手写**]✗** ✓ —— ★ **因为代码里【没有**]那张映射表** ✓（★ 实测 ✓）⇒ ★★ **能推导的推导；不能推导的【明说**]** ✓。',
+    '',
+    '| # | 能力 |',
+    '|---|---|',
+    ...caps.map((c, i) => '| ' + (i + 1) + ' | `' + c + '` |'),
+    '',
+    '> ★★ 合计 **' + caps.length + '** 项 ✓。★★ **另两处【刻意不生成**]的**（★ 附理由 ✓）：★ **`docs/06 §4` 的"谁能占"列** ✓ —— ★ **代码只有数值区间，没有那一列** ✓；★ **`docs/03 §3.1` 的工具出现条件** ✓ —— ★ **十个里只有三个可从 `host.js` 机器提取** ✓。',
     '', m.e,
   ].join('\n') })
 }

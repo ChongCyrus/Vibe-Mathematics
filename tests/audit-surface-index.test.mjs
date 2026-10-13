@@ -33,6 +33,8 @@ const TARGETS = [
   ['05-middleware.md', 'hook-index'],
   ['18-command-and-protocol-reference.md', 'tool-index'],
   ['04-settings.md', 'settings-index'],
+  ['05-middleware.md', 'register-fields'],
+  ['05-middleware.md', 'capability-list'],
 ]
 for (const [f] of TARGETS) ok(existsSync(join(VMU, 'docs', f)), 'the volume exists: ' + f)
 

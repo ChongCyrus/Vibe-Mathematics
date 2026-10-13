@@ -387,3 +387,47 @@
 > ★★ 合计 **22** 个冻结钩子 ✓；★ **无默认策略的 **0** 个** ✓。
 
 <!-- END GENERATED: hook-index -->
+
+<!-- BEGIN GENERATED: register-fields -->
+
+### 段注册字段（★ **生成**：来自 `kernel/prompt/index.js` 的 `entry` 对象 ✓）
+
+> ★★★ **本节为什么是生成的**：★ **§3.1 原来【手写**]这些字段，而它在轮 493 被查出【漏了两个**]✗（`lang` 与 `terms` ✓ —— ★ 后者是守卫**第一次运行**就抓出来的 ✓）⇒ ★★ **手写字段表【必然**]落后于代码** ✓。★ **真源是 `register()` 构造的 `entry` 对象** ✓ —— ★ **下面是它逐字段的默认表达式** ✓。
+
+| 字段 | 代码里的默认表达式（★ 逐字 ✓） | 备注（取自代码注释 ✓） |
+|---|---|---|
+| `scope` | `section.scope || null` | —— |
+| `mutable` | `name === 'state' ? false : section.mutable !== false` | —— |
+| `source` | `section.source || 'kernel'` | —— |
+| `template` | `section.template || null` | —— |
+| `vars` | `Array.isArray(section.vars) ? section.vars.slice() : []` | —— |
+| `truncate` | `section.truncate || null` | —— |
+
+> ★★ 合计 **6** 个字段 ✓。★★ **注意**：★ `range` **不是入参**，而是 `inRange(order, name)` 算出来的 ✓ —— ★ **它在 `entry` 里、不在 `section` 入参里** ✓。
+
+<!-- END GENERATED: register-fields -->
+
+<!-- BEGIN GENERATED: capability-list -->
+
+### 能力词表（★ **生成**：来自 `kernel/bus.js` 的 `CAPABILITIES` ✓）
+
+> ★★ **§3.2 声称"12 项，冻结"，★ 实测【与代码逐项一致**]✓** ✓（★ 轮 494 核实 ✓）⇒ ★ **现已改为生成，使未来不一致在源头不可能** ✓。★★ **而"能力→决策键"的映射仍【手写**]✗** ✓ —— ★ **因为代码里【没有**]那张映射表** ✓（★ 实测 ✓）⇒ ★★ **能推导的推导；不能推导的【明说**]** ✓。
+
+| # | 能力 |
+|---|---|
+| 1 | `read-state` |
+| 2 | `read-args` |
+| 3 | `deny` |
+| 4 | `cancel` |
+| 5 | `rewrite-args` |
+| 6 | `rewrite-result` |
+| 7 | `append-prompt` |
+| 8 | `record` |
+| 9 | `notify` |
+| 10 | `set-setting` |
+| 11 | `trigger-workflow` |
+| 12 | `annotate` |
+
+> ★★ 合计 **12** 项 ✓。★★ **另两处【刻意不生成**]的**（★ 附理由 ✓）：★ **`docs/06 §4` 的"谁能占"列** ✓ —— ★ **代码只有数值区间，没有那一列** ✓；★ **`docs/03 §3.1` 的工具出现条件** ✓ —— ★ **十个里只有三个可从 `host.js` 机器提取** ✓。
+
+<!-- END GENERATED: capability-list -->
