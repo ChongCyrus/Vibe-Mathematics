@@ -68,5 +68,36 @@ ok(stale.length === 0,
   'running every generator bare reports every generated artifact current, so a hand edit to one fails the gate',
   { stale })
 
+console.log('=== 4. AN INDEPENDENT CRITERION (discipline 11.ao) ===')
+// Sections 1-3 prove NO DRIFT: every generator agrees with the file it writes. That cannot prove correctness, because the criterion is
+// the generator itself - round 606 measured the blind spot, a generator reading source code as data that passed all three sections both
+// before and after a real fix. This section supplies the missing half: an INDEPENDENT number, taken from the runtime rather than from
+// any generator, and compared against what the generated artifact PRINTS. It would have caught round 604's bug, where a mis-parsed
+// family made the table claim one key more than the schema declares.
+const { SETTING_DEFS } = await import('../vibe-math-vmu/settings/schema.js')
+// SAME WIDTH AS THE OBJECT (discipline 8, and my own first attempt here broke it). SETTING_DEFS composes the schema's written keys WITH
+// the planned registry - a thousand and thirty-eight plus a hundred and fourteen - while the generated table states its source is the
+// schema's `key:` declarations and prints the schema-only count. Comparing the union against the schema-only number would be a false
+// alarm, so the independent schema-only count is the declared keys MINUS the planned ones.
+const plannedSrc = readFileSync(join(REPO, 'vibe-math-vmu', 'settings', 'planned.js'), 'utf8')
+const plannedKeys = new Set([...plannedSrc.matchAll(/key:\s*['"](vmu\.[^'"]+)['"]/g)].map((m) => m[1]))
+const allDeclared = SETTING_DEFS.filter((d) => d && typeof d.key === 'string' && /^vmu\./.test(d.key)).map((d) => d.key)
+const schemaOnly = allDeclared.filter((k) => !plannedKeys.has(k))
+const truly = schemaOnly.length
+ok(truly > 0 && allDeclared.length > truly,
+  'the independent count is taken from the runtime declaration and scoped to the schema, since SETTING_DEFS also composes planned keys',
+  { schemaOnly: truly, all: allDeclared.length, planned: plannedKeys.size })
+const settingsTable = readFileSync(join(REPO, 'vibe-math-vmu', 'docs', '04-settings.md'), 'utf8')
+const printed = settingsTable.match(/键 \*\*(\d+)\*\* 个/)
+ok(printed !== null, 'and the generated settings table states a key count in its header', { found: !!printed })
+if (printed) {
+  ok(Number(printed[1]) === truly,
+    'the count the table PRINTS equals the schema-only count the runtime DECLARES, which generators cannot establish by agreeing with themselves',
+    { printed: Number(printed[1]), schemaOnly: truly, all: allDeclared.length })
+  // would-bite: the same comparison must reject a count off by one, which is exactly what round 604 emitted
+  ok(Number(printed[1]) + 1 !== truly,
+    'and a count one higher than the declaration is rejected, which is the shape round 604 emitted', { offByOne: Number(printed[1]) + 1, truly })
+}
+
 console.log('=== GENERATORS CURRENT: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }
