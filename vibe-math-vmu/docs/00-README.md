@@ -192,7 +192,7 @@ vmu 是**插件**：配置来自**该插件在 profile 里的那一行**（`conf
 
 **零配置也能跑** ✓（那时只注册 `vibe_vmu_status` 一个只读工具 ✓）。
 
-> ★★★ **想自己写一个整合包？**（★ 新用户视角，轮 556 ✓）：★ **照抄 `vibe-math-vmu/packs/institute-min/`** ✓ —— ★ 它是**最小可用的一例** ✓（★ `index.js` ＋ `settings/defaults.js` ＋ 需要时加 `middleware/` 与 `prompts/` ✓）；★★ **写法与"两份清单"的区别见 `docs/10-packs.md`** ✓；★ **登记的最后一里是 `installer.js`** ✓。工具面的**唯一真值**是 `host.js` 的 `TOOL_NAMES`（★ **不再写个数** ✗ —— ★ 本处原先写 **5 个** ✓，而实测已是 **11 个** ✓，★ 轮 521 更正 ✓ ⇒ ★★ **要当前清单读 `docs/18` 的生成式工具索引** ✓；★ 见 03-§3 ✓）。
+> ★★★ **想自己写一个整合包？**（★ 新用户视角，轮 556／**更正 560** ✓）：★ **两个范例，各看各的** ✓ —— ★★ **① 最小可用**：`vibe-math-vmu/packs/institute-min/` ✓（★ **实测：只有 `index.js` 一个文件** ✓ —— ★ 它把 `settings`／`rules`／`slots`／`tracks` **全部内联** ✓ ⇒ **这是"最小"的形态** ✓）；★★★ **② 文件夹形状（★ 哲学理念要的那种 ✓）**：`vibe-math-vmu/packs/v5r/` ✓（★ `index.js` ＋ `middleware/` ＋ `prompts/` ＋ `settings/` ＋ `notices.js` ✓）。★ **写法与"两份清单"的区别见 `docs/10-packs.md`** ✓；★ **登记的最后一里是 `installer.js`** ✓。工具面的**唯一真值**是 `host.js` 的 `TOOL_NAMES`（★ **不再写个数** ✗ —— ★ 本处原先写 **5 个** ✓，而实测已是 **11 个** ✓，★ 轮 521 更正 ✓ ⇒ ★★ **要当前清单读 `docs/18` 的生成式工具索引** ✓；★ 见 03-§3 ✓）。
 
 ---
 

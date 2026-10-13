@@ -46,6 +46,21 @@ for (const [face, key, action] of FACES) {
   ok(r && r.ok === true, face + ': ' + TOOL_NAMES[key] + ' SUCCEEDS at action ' + action + ' against the real kernel', { r })
 }
 
+console.log('=== EVERY FACE ALSO EXPOSES A WRITE PATH ===')
+// ROUND 560: read the real enum off each spec rather than guessing action names - guessing has failed six times this session.
+// A face whose only action is a read-only view is not a face you can run an institution on.
+const READ_ONLY = /^(status|list|get|view|cacheView|tail|history|show|peek|inspect|query|dump|summary|overview)$/
+for (const [face, key] of FACES) {
+  const specs = toolSpecs({ kernel: k, settings: {}, [key + "Tool"]: true })
+  const spec = specs.find((s) => s.name === TOOL_NAMES[key])
+  if (!spec) continue
+  const en = (spec.parameters && spec.parameters.action && spec.parameters.action.enum) || []
+  const writes = en.filter((a) => !READ_ONLY.test(a))
+  ok(writes.length > 0,
+    face + ": " + TOOL_NAMES[key] + " exposes a write action beyond its read-only views, so the face can change state and not only look at it",
+    { enumSize: en.length, writes: writes.slice(0, 6) })
+}
+
 console.log('=== AND THE COUNT IS NOT VACUOUS ===')
 ok(FACES.length === 10, 'all ten faces are listed, so this check cannot pass by covering a subset', { n: FACES.length })
 ok(new Set(FACES.map((f) => f[1])).size >= 8, 'and they are carried by distinct tools rather than one tool claiming everything', { distinct: new Set(FACES.map((f) => f[1])).size })
