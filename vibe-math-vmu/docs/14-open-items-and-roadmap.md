@@ -137,7 +137,6 @@
 | `vibe_vmu_conference` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_course` | `docs/17` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_delegate` | `docs/17` | — ⛔ 规划/未实现 | — |
-| `vibe_vmu_formal` | `docs/15` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_formal_search` | `docs/15` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_funding` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_grade` | `docs/17` | — ⛔ 规划/未实现 | — |
@@ -431,3 +430,21 @@
 | **清单剩余计划行** | ★ **40** ✓ | ★ 数本卷 4k 节里的行 ✓ |
 | **两向一致** | ★ 由 `audit-planned-tools-inventory` ＋ `audit-planned-names` 保证 ✓ | 两个守卫都跑 ✓ |
 
+### 4t. ★★★ 十大功能面的承载表（★ 轮 540 实测 ✓ —— ★ 用运行时枚举，不用散文）
+
+> ★★★ **做法** ✓：★ **不用"文档说谁管哪一面"** ✗ —— ★★ **而是枚举【服务与工具**]，★ 再按面归类** ✓（★ 本会话反复见效的方法 ✓）。
+>
+> | 面 | 承载（★ 轮 540 实测 ✓） | 工具有无 |
+> |---|---|---|
+> | **(a) 数学研究** | ★ `mathtools`（沙箱 ＋ 缓存 ＋ 回执 ✓）／`mathjobs`／`formal` | ★ **有** ✓ |
+> | **(b) 形式化** | ★★ **`formal`（10 方法 ✓：`check`／`axioms`／`sorryReport`／`artifacts`／`reproduce`… ✓，★ 硬不变式见模块头 ✓）** | ★ **有**（轮 540 ✓） |
+> | **(c) 计算与工具** | ★ `mathtools`／`mathjobs`／`bridge`（子进程接缝 ✓） | ★ **有** ✓ |
+> | **(d) 代理通信与会议** | ★ `meeting`／`ballotbox`／`notify`（★ **默认关** ✓） | ★ **有** ✓ |
+> | **(e) 代理间协作** | ★ `collab`（9 ✓：`addCounterparty`／`openAgreement`／`signAgreement`／`exchange`／`settle`… ✓）／`delegation`（9 ✓）／`handover`（7 ✓） | ★ **无**（★ **最薄的一面** ✗） |
+> | **(f) 工作流** | ★ `task`／`board`／`minutes`／`transaction`（★ 失败走补偿 ✓） | ★ **有** ✓ |
+> | **(g) 控制流** | ★ `control`／`turn`／`clockguard`／`ratelimit` | ★ **有**（★ `clockguard` 无工具 ✓） |
+> | **(h) 文件归档** | ★ `custody`／`records`／`library`／`retention` | ★ **有** ✓ |
+> | **(i) 评审与出版** | ★ `auditchain`（★ 真哈希链 ✓）／`citations`／`reviewers`／`publication` | ★ **有**（★ `reviewers`／`publication` 无工具 ✗） |
+> | **(j) 代理自组织** | ★ `topology`（★ 取向 `flat`／`star`／`committee`／`market`／`pipeline`／`swarm` ✓）／`charter`／`recruit` | ★ **有**（轮 539 ✓） |
+>
+> ★★★ **结论（★ 决定下一步 ✓）**：★ **`(e) 代理间协作` 是【唯一完全没有工具面**]的一面** ✗ ⇒ ★★ **下一个工具对准 `collab`** ✓（★ 9 方法 ✓，★ 且它是"多智能体协作数学研究"的**直接承载** ✓）；★ 其次是 **`(i)` 的 `reviewers`／`publication`** ✓ 与 **`(g)` 的 `clockguard`** ✓。

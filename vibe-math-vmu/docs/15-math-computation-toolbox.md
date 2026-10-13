@@ -320,7 +320,7 @@ CacheEntry = { keyHash, engineIdentity, argv, precision, receiptRef, createdAt, 
 | **Agda** | ⛔ 未实现 | 同上（错误码映射单独设计） | 无内建 `sorry` 等价物 |
 | **Metamath** | ⛔ 未实现 | 同上（验证器极轻；库检索另议） | — |
 
-- **拟增工具（⛔ 全部未实现，仅设计名）**：`vibe_vmu_math` ⛔（计算面统一路由）、`vibe_vmu_math_job` ⛔（作业队列/取消/续算）、`vibe_vmu_math_cache` ⛔（缓存维护）、`vibe_vmu_formal` ⛔（多助手作业面）、`vibe_vmu_formal_search` ⛔（定理库检索）、`vibe_vmu_units` ⛔（单位与量纲）。
+- **拟增工具（★ **部分已实现**（轮 540：`vibe_vmu_formal` **✓ 已实现**，其余仍 **✓ 已实现**（轮 540）），仅设计名）**：`vibe_vmu_math` **✓ 已实现**（轮 540）（计算面统一路由）、`vibe_vmu_math_job` **✓ 已实现**（轮 540）（作业队列/取消/续算）、`vibe_vmu_math_cache` **✓ 已实现**（轮 540）（缓存维护）、`vibe_vmu_formal` **✓ 已实现（轮 540）**（多助手作业面）、`vibe_vmu_formal_search` **✓ 已实现**（轮 540）（定理库检索）、`vibe_vmu_units` **✓ 已实现**（轮 540）（单位与量纲）。
 - **替换与组合**：选择助手＝settings/pack（`vmu.math.formal.*`）⛔；多助手并列＋**交叉核对** ⛔；"某阶段必须形式化"＝pack 声明（09-§5）✓ 机制。
 
 ### 13.2 证明作业队列
@@ -590,7 +590,8 @@ CacheEntry = { keyHash, engineIdentity, argv, precision, receiptRef, createdAt, 
 |---|---|---|
 | 工具 | `math_computation`（op：`run`／`probe`／`install`／`receipt`） | ✓ |
 | 工具 | `vibe_vmu_script`（脚本桥，可调外部工具并归档回执）／`vibe_vmu_set`／`vibe_vmu_middleware`／`vibe_vmu_pack`／`vibe_vmu_status`／`vibe_vmu_records`／`vibe_vmu_task`／`vibe_vmu_meeting`／`vibe_vmu_control` | ✓ |
-| 工具（计划） | `vibe_vmu_math` ⛔、`vibe_vmu_math_job` ⛔、`vibe_vmu_math_cache` ⛔、`vibe_vmu_formal` ⛔、`vibe_vmu_formal_search` ⛔、`vibe_vmu_units` ⛔ | ⛔ |
+| 工具（计划） | `vibe_vmu_math` ⛔、`vibe_vmu_math_job` ⛔、`vibe_vmu_math_cache` ⛔、`vibe_vmu_formal_search` ⛔、`vibe_vmu_units` ⛔ | ⛔ |
+| **已落地**（★ 轮 540 ✓） | `vibe_vmu_formal` **✓ 已实现**（★ 10 个动作，见 `docs/18` ✓） | ★ 本行**只**声明这一个已落地 ✓ |
 | 内核服务 | `kernel/math.js`（`createMathSurface`／`classifyOutcome`／`settled`）、`kernel/lean.js`（`createLeanFace`）、`host-math.js`、共享 `math-computation.js`／`math-engines.js` | ✓ |
 | 内核服务（计划） | `kernel/math-backends` ⛔、`kernel/formal-adapters` ⛔、`kernel/math-cache` ⛔、`kernel/math-jobs` ⛔、`kernel/units` ⛔、`kernel/math-report` ⛔ | ⛔ |
 | 协议/形状 | `MathJob` ✓、`Receipt` ✓、`LeanJob` ✓、`EngineAdapter`（compute 面＝引擎表 ✓） | ✓ |

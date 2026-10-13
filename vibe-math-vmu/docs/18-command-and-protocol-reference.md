@@ -24,7 +24,7 @@
 
 ---
 
-## 1. 工具总表（27 个 `vibe_vmu_*` ＋ 1 个继承工具）
+## 1. 工具总表（28 个 `vibe_vmu_*` ＋ 1 个继承工具）
 
 | 工具（`TOOL_NAMES` 键） | 出现条件 | 权限面 | 幂等性 | 主要 action |
 |---|---|---|---|---|
@@ -55,6 +55,7 @@
 | `vibe_vmu_transaction`（`transaction`） | `transactionTool` 为真 | 事务与补偿 | `status`/`list`/`history` ✓；`begin`/`run`/`compensate` 视状态 ✗ | `status`(默认)`/begin/run/list/history/compensate` |
 | `vibe_vmu_custody`（`custody`） | `custodyTool` 为真 | 保管链与销毁 | `status` ✓；其余视条目状态 ✗ | `status`(默认)`/registerEntry/transfer/storageCycle/destroy/chainOf` |
 | `vibe_vmu_topology`（`topology`） | `topologyTool` 为真 | 组织拓扑（自组织） | `list`/`status` ✓；`select`/`describe`/`route`/`assert` 视状态 ✗ | `status`(默认)`/select/describe/route/assert/list` |
+| `vibe_vmu_formal`（`formal`） | `formalTool` 为真 | 形式化检查/公理/缺口 | `sorryReport`/`list`/`status`/`keysUsed`/`config`/`trail` ✓；`check`/`axioms`/`artifacts`/`reproduce` 视请求 ✗ | `status`(默认)`/check/axioms/sorryReport/artifacts/reproduce/list/keysUsed/config/trail` |
 | `math_computation` | **声明了数学意图**（`vibe-math-vmu.js:149`） | 计算面 | `probe/receipt` ✓；`run/install` ✗ | 由共享模块登记：`op=probe|run|receipt|install` |
 
 **注册面硬纪律（`host.js` 逐条）**
@@ -170,7 +171,7 @@
 | `vibe_vmu_metrics`（计划） | `snapshot`/`series` | 观测面扩展 | P2 |
 | `vibe_vmu_audit`（计划） | `tail`/`query`/`verify` | 审计落盘（`VMU_AUDIT_WRITE_FAILED` 面） | P1 |
 | `vibe_vmu_math`（计划） | `probe`/`run`/`receipt`（**与 `math_computation` 的关系待裁决**） | 数学面 | P2 |
-| `vibe_vmu_formal`（计划） | `submit`/`status`/`verify` | `kernel/lean.js` 形式化面 | P1 |
+| `vibe_vmu_formal` **✓ 已实现**（轮 540） | `submit`/`status`/`verify` | `kernel/lean.js` 形式化面 | P1 |
 | `vibe_vmu_units`（计划） | `check`/`convert` | 数学/量纲面（`VMU_MATH_DIMENSION_MISMATCH`） | P2 |
 | `vibe_vmu_prompts_preview`（计划） | 干跑：给解析计划与差异 | 提示词管线 + **钩子名修复**（§5.4） | P1 |
 | `vibe_vmu_prompts_snapshot`（计划） | 快照与逐字对比 | `snapshot(scopes)` | P1 |
@@ -458,8 +459,9 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 24 | `transaction` | `vibe_vmu_transaction` |
 | 25 | `custody` | `vibe_vmu_custody` |
 | 26 | `topology` | `vibe_vmu_topology` |
-| 27 | `turn` | `vibe_vmu_turn` |
+| 27 | `formal` | `vibe_vmu_formal` |
+| 28 | `turn` | `vibe_vmu_turn` |
 
-> ★★ 合计 **27** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
+> ★★ 合计 **28** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
 
 <!-- END GENERATED: tool-index -->

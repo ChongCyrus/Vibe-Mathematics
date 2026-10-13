@@ -74,6 +74,7 @@ const TOOLS = [
   [{ transactionTool: true }, 'transaction', 'transaction', { action: 'status' }],
   [{ custodyTool: true }, 'custody', 'custody', { action: 'status' }],
   [{ topologyTool: true }, 'topology', 'topology', { action: 'status' }],
+  [{ formalTool: true }, 'formal', 'formal', { action: 'status' }],
   // ---- the eight that were already there ----
   [{ taskTool: true }, 'task', 'tasks', { action: 'list' }],
   [{ recordsTool: true }, 'records', 'library', { action: 'list' }],
