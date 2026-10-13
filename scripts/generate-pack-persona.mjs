@@ -21,7 +21,11 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const SOURCE_REL = 'prompt-corpus-v5/persona-corpus-v5.json'
 const OUT = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-persona.js')
-const CHECK = process.argv.includes('--check')
+// CHECK BY DEFAULT (round 507): this used to write unless `--check` was passed, the reverse of every other generator in
+// scripts/. A default that overwrites a generated file is the wrong default, so --write is now the opt-in and --check
+// remains an accepted alias so any existing call site keeps working.
+const WRITE = process.argv.includes('--write')
+const CHECK = !WRITE
 
 const raw = readFileSync(join(REPO, SOURCE_REL))
 const sha = createHash('sha256').update(raw).digest('hex')

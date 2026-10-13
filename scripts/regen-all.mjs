@@ -39,6 +39,11 @@ const STEPS = [
   ['wiring index (docs/00-§3.2)', 'scripts/generate-wiring-index.mjs'],
   ['documented counts (README / checklist)', 'scripts/update-doc-counts.mjs'],
   ['zero-mechanism matrix (docs/11-§) ', 'scripts/generate-zero-mechanism-matrix.mjs', '--write'],
+  ['kernel index (docs/02)', 'scripts/generate-kernel-index.mjs', '--write'],
+  ['surface indexes (docs/03/04/05/18)', 'scripts/generate-surface-index.mjs', '--write'],
+  // these two now check by default, so they are safe to run as part of regen-all's bare passes too
+  ['pack prompts (packs/v5r-prompts.js) [check]', 'scripts/generate-pack-prompts.mjs'],
+  ['pack persona (packs/v5r-persona.js) [check]', 'scripts/generate-pack-persona.mjs'],
 ]
 
 let failed = 0
