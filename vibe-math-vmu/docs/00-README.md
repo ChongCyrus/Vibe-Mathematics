@@ -287,7 +287,11 @@ vmu 是**插件**：配置来自**该插件在 profile 里的那一行**（`conf
 | ★★★ **十面【可调控**]** | ★ `tests/vmu-ten-faces-tunable.test.mjs` ✓ | ★ **十面无空缺**，★ **1152 键** ✓ |
 | ★ 代理可执行命令 | ★ `tests/audit-tool-table.test.mjs` ✓ | ★ **44 命令** ✓ |
 | ★ 接口/插件 | ★ `tests/vmu-middleware-hooks-declared.test.mjs` ✓ | ★ **总线 22 ＋ 宿主 14，★ 不相交** ✓ |
-| ★★ **脚本与协议** | ★ `tests/vmu-script-and-protocol.test.mjs` ✓ | ★ **未绑定具名拒 ＋ 绑定真调用 ＋ 留痕** ✓ |
+| ★★ **脚本与协议** | ★ `tests/vmu-script-and-protocol.test.mjs` ✓ |
+| ★★★ **每个流水线面走完** | ★ `vmu-admission-tool`／`vmu-budget-pipeline`／`vmu-collab-pipeline`／`vmu-publication-pipeline`／`vmu-formal-pipeline` ✓ | ★ **五个面各 11–18 条断言，★ 全绿** ✓（★ `recruit` 由 `admission` 覆盖 ✓ —— ★ 同一个服务 ✓） |
+| ★★★ **调用方给的字段到达服务** | ★ `tests/vmu-request-reaches-service.test.mjs` ✓ | ★ **15 个声明 `request` 的工具、★ 0 未命中** ✓ |
+| ★★ **拒绝会引导** | ★ `tests/vmu-refusals-guide.test.mjs` ✓ | ★ **141／157 带 hint** ✓ |
+| ★★ **拒绝不引用引擎** | ★ `tests/vmu-no-engine-leaks.test.mjs` ✓ | ★ **45 工具 × 316 动作、0 泄露** ✓ | ★ **未绑定具名拒 ＋ 绑定真调用 ＋ 留痕** ✓ |
 | ★ 工作量已量清 | ★ `docs/14` §8 ✓ |
 | ★★ **拒绝会引导**（★ 90% 带提示 ✓） | ★ `tests/vmu-refusals-guide.test.mjs` ✓ | ★ 316 动作／157 具名拒 ⇒ **141 带 hint** ✓ |
 | ★★ **拒绝不引用引擎** | ★ `tests/vmu-no-engine-leaks.test.mjs` ✓ | ★ **45 工具 × 316 动作，0 泄露** ✓ |
