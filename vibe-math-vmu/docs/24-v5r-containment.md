@@ -515,6 +515,8 @@
 | **位置** | ★ **`vibe-math-vmu/packs/v5r/prompts/v5r-prompts.js`**（**不在** `vibe-math-v5r/` 里 ✗）✓ |
 | **性质** | ★ **生成物**（文件头："**GENERATED FILE, do not edit by hand**" ✓），由 **`scripts/generate-pack-prompts.mjs`**（97 行 ✓）从 **`prompt-corpus-v5/prompt-corpus-v5.json`** 写出 ✓ |
 | **内容规模** | **`COUNTS = {total: 67, kinds: 31, chars: 76503}`** ✓ ＋ **`KIND_HISTOGRAM`**（`founding`／`resume`／`normal`／`verify`／`verify-debate`／`meeting`／`inbox-*` … ✓）＋ **`PROMPTS`** ✓ |
+> ★★ **可追溯性（★ 轮 497 实测 ✓）**：★ **本卷的 A1／A2 主张【没有任何测试行可追**]✗ —— ★ `tests/vmu-containment.test.mjs` 有 **31** 条断言，**但一次也没有提到 A1／A2** ✓ ⇒ ★ **两种可能**：★ 要么它们由**别的**测试或生成器覆盖（★ 需要逐条找出 ✓），★ 要么它们目前**只是文字主张** ✗。★★ **在查清之前，本节的主张【不要当作"已核**]读** ✓。
+
 | **防漂移** | ★★ **把语料 `sha256` 写进模块**（`SOURCE_SHA256 = d889776b…` ✓）⇒ **日后任何差异是【检查失败】而非静默分歧** ✓；生成器自带 **`--check`** 模式 ✓ |
 | **被谁消费** | ★ **`packs/v5r/prompts/v5r-core.js` L20 导入它**（`SOURCE_REL`／`SOURCE_SHA256`／`COUNTS` ✓）⇒ **不是无人使用的孤儿** ✓ |
 | **登记与门禁** | **`package.json` ✓ ＋ `installer.js` ✓ 双清单**；**在 `scripts/regen-all.mjs` 的生成链里** ✓；**`tests/vmu-pack-prompts.test.mjs`（87 行）逐字比对** ✓ |
