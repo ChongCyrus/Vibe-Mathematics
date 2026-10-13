@@ -34,9 +34,9 @@ export function makeBudgetSpec({ param, refused, TOOL_NAMES, kernel }) {
         try {
           const budget = kernel.budget
           if (action === 'open') return Object.assign({ ok: true, action }, await budget.open({ ...request, scope, limits: limits || {}, perTaskShare }))
-          if (action === 'charge') return Object.assign({ ok: true, action }, await budget.charge({ ...request, scope, kind, amount, taskId }))
-          if (action === 'reserve') return Object.assign({ ok: true, action }, await budget.reserve({ ...request, scope, ratio }))
-          if (action === 'remaining') return Object.assign({ ok: true, action }, await budget.remaining({ ...request, scope, kind }))
+          if (action === 'charge') return Object.assign({ ok: true, action }, await budget.charge({ ...(request || {}), ...(scope !== undefined && scope !== null ? { scope } : {}), ...(kind !== undefined && kind !== null ? { kind } : {}), ...(amount !== undefined && amount !== null ? { amount } : {}), ...(taskId !== undefined && taskId !== null ? { taskId } : {}) }))
+          if (action === 'reserve') return Object.assign({ ok: true, action }, await budget.reserve({ ...(request || {}), ...(scope !== undefined && scope !== null ? { scope } : {}), ...(ratio !== undefined && ratio !== null ? { ratio } : {}) }))
+          if (action === 'remaining') return Object.assign({ ok: true, action }, await budget.remaining({ ...(request || {}), ...(scope !== undefined && scope !== null ? { scope } : {}), ...(kind !== undefined && kind !== null ? { kind } : {}) }))
           if (action === 'status') return Object.assign({ ok: true, action }, await budget.status())
           if (action === 'list') return Object.assign({ ok: true, action }, await budget.list())
           if (action === 'totals') return Object.assign({ ok: true, action }, { totals: await budget.totals() })

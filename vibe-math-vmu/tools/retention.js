@@ -13,14 +13,14 @@ export function makeRetentionSpec({ param, refused, TOOL_NAMES, kernel }) {
       try {
         const retention = kernel.retention
         if (action === 'apply') return Object.assign({ ok: true, action }, await retention.apply(request))
-        if (action === 'gc') return Object.assign({ ok: true, action }, await retention.gc({ ...request, request }))
-        if (action === 'plan') return Object.assign({ ok: true, action }, await retention.plan({ ...request, request }))
-        if (action === 'purge') return Object.assign({ ok: true, action }, await retention.purge({ ...request, request }))
-        if (action === 'quota') return Object.assign({ ok: true, action }, await retention.quota({ ...request, request }))
-        if (action === 'refuse') return Object.assign({ ok: true, action }, await retention.refuse({ ...request, request }))
-        if (action === 'restore') return Object.assign({ ok: true, action }, await retention.restore({ ...request, id }))
-        if (action === 'status') return Object.assign({ ok: true, action }, await retention.status({ ...request, request }))
-        if (action === 'trash') return Object.assign({ ok: true, action }, await retention.trash({ ...request, id }))
+        if (action === 'gc') return Object.assign({ ok: true, action }, await retention.gc(request || {}))
+        if (action === 'plan') return Object.assign({ ok: true, action }, await retention.plan(request || {}))
+        if (action === 'purge') return Object.assign({ ok: true, action }, await retention.purge(request || {}))
+        if (action === 'quota') return Object.assign({ ok: true, action }, await retention.quota(request || {}))
+        if (action === 'refuse') return Object.assign({ ok: true, action }, await retention.refuse(request || {}))
+        if (action === 'restore') return Object.assign({ ok: true, action }, await retention.restore({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
+        if (action === 'status') return Object.assign({ ok: true, action }, await retention.status(request || {}))
+        if (action === 'trash') return Object.assign({ ok: true, action }, await retention.trash({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
         return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
       } catch (e) {
         return refused(e.code || 'VMU_STATE', String(e.message), e.hint)

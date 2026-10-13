@@ -14,15 +14,15 @@ export function makeAuditSpec({ param, refused, TOOL_NAMES, kernel }) {
       try {
         const audit = kernel.audit
         if (action === 'append') return Object.assign({ ok: true, action }, await audit.append(request))
-        if (action === 'expire') return Object.assign({ ok: true, action }, await audit.expire({ ...request, request, id }))
-        if (action === 'export') return Object.assign({ ok: true, action }, await audit.export({ ...request, request }))
-        if (action === 'exportScoped') return Object.assign({ ok: true, action }, await audit.exportScoped({ ...request, request }))
-        if (action === 'query') return Object.assign({ ok: true, action }, await audit.query({ ...request, request, id }))
+        if (action === 'expire') return Object.assign({ ok: true, action }, await audit.expire({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
+        if (action === 'export') return Object.assign({ ok: true, action }, await audit.export({ ...(request || {}) }))
+        if (action === 'exportScoped') return Object.assign({ ok: true, action }, await audit.exportScoped({ ...(request || {}) }))
+        if (action === 'query') return Object.assign({ ok: true, action }, await audit.query({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
         if (action === 'recount') return Object.assign({ ok: true, action }, await audit.recount(request))
         if (action === 'rotate') return Object.assign({ ok: true, action }, await audit.rotate(request))
-        if (action === 'status') return Object.assign({ ok: true, action }, await audit.status({ ...request, request, id }))
-        if (action === 'tail') return Object.assign({ ok: true, action }, await audit.tail({ ...request, request, id }))
-        if (action === 'verify') return Object.assign({ ok: true, action }, await audit.verify({ ...request, request, id }))
+        if (action === 'status') return Object.assign({ ok: true, action }, await audit.status({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
+        if (action === 'tail') return Object.assign({ ok: true, action }, await audit.tail({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
+        if (action === 'verify') return Object.assign({ ok: true, action }, await audit.verify({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
         return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
       } catch (e) {
         return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
