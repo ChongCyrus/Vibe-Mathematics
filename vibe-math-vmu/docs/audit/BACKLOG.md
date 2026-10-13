@@ -124,6 +124,33 @@
 - ★ **轮 517 承诺 16 项，实际完成 1–5 项**（★ 工具落地 ＋ 13 条验收 ＋ 五处同行 ✓）；
 - ★★ **未做：第 6–16 项** ✓ —— ★ 其中 **6 项**（第 7／9／13 项除外）**已被结转 6–12 轮** ✓ ⇒ ★★ **下一轮【必须先清它们**]，**不得再列新清单而不动它们** ✓。
 
+## 二之十一、★★★ 轮 526：【降级做对了，但发行管道没跟上 —— 按纪律回滚**]✓，代价已实测成清单 ✓
+
+| # | 承诺项 | 结果 |
+|---|---|---|
+| ★★★ 1 | 把 clinical／animal 移出内核 | ★★ **做成过、验证成功、然后按纪律【回滚**]** ✓ —— ★ 详见下 ✓。**净产出：一次高价值实测 ＋ 一份精确的代价清单** ✓ |
+| ★ 2 | 第六个薄工具 | ★ **未做 ✗（结转 1）** |
+| ★ 3 | `docs/23` 的 D-1 行 | ★ **未做 ✗（结转，与第 1 项同源 ✓）** |
+| ★ 4 | `docs/20` §9.2／§9.3 | ★ **未做 ✗（同源）** |
+| ★ 5 | `docs/14` 清单同步 | ★ **未做 ✗（同源）** |
+
+### ★★★ 本轮的实测（★ 这是可用于下一轮的资产 ✓）
+
+> ★★★ **关键发现：这不是"移出 18 键"，而是【整支服务的降级**]** ✓。实测：★ `kernel/domaincompliance.js` 与 `kernel/domaingate.js` **都是临床/动物专用引擎** ✗ —— `DOMAINS` **硬编码 `['clinical','animal']`** ✗、判据体 `clinicalChecks`／`animalChecks` ✗、码族 SAE/AE／IACUC／3R／麻醉／揭盲 ✗ ⇒ ★★ **对数学研究无消费者** ✓（★ 与 `docs/25` 的裁定一致 ✓）。★ 而 **通用机制【早就在别处**]** ✓：`domaingate.declare({domain,pack})` ＋ **"未声明 ⇒ gate 报无闸"** ✓。
+
+**试过的做法与它的完整代价** ✓（★ 下一轮照单执行即可 ✓）：
+
+| 步骤 | 命令／改动 | 结果 |
+|---|---|---|
+| ★ 迁文件 | `git mv kernel/domaincompliance.js extensions/domain-compliance/index.js`、`git mv kernel/domaingate.js extensions/domain-compliance/gate.js` | ★ **成功** ✓（★ gate.js 唯一相对 import 改为 `../../kernel/timevalue.js` ✓） |
+| ★ 改内核 | `kernel/index.js` **删 9 处**（import×2／实例化×2／注册×2／getter×2／api 列表×1 ✓） | ★ **成功** ✓ |
+| ★★ 运行时验证 | —— | ★★★ **`vmu.domaincompliance: false` ✓、`vmu.domaingate: false` ✓、`vmu.compliance: true`** ✓；★ **扩展可独立装载** ✓ |
+| ★ 测试 import | 3 个测试文件指向扩展目录 | ★ 成功 ✓ |
+| ★★★ **发行管道（★ 这 7 处是回滚的原因 ✗）** | —— | ★ `audit-package-membership`（**2 条**：`package.json#files` 要含 `extensions/` ✗）；★ `audit-preset-mechanism`／`audit-enforced-consistency`（★ **ENOENT `kernel/domaincompliance.js`** ✗ —— ★ 后者是豁免表仍点名该模块 ✓）；★ `audit-installer-policy`／`audit-installer-compat`（★ `installer.js` 的 `files:` 扁平表 ✗）；★ `audit-doc-vs-code-tables`（★ **服务数 72 → 70** ✗ ⇒ 文档的数字要跟着改 ✓）；★ `audit-declaration-criterion`（★ **A 类指纹基线** ＋ **`regen-all --check`** ✗ —— ★ `generate-zero-mechanism-matrix.mjs` 枚举内核服务，其产物（`docs/04`）与文档登记会跟着变 ✓） | ★★ **7 个守卫／管道点** ✗ |
+
+> ★★★ **为什么回滚** ✓：★ **本轮预算已不足以把 7 处管道改动做完并验证** ✗ ⇒ ★★ **"半迁移的发行管道"比"没迁移"更坏** ✓（★ 这正是本会话反复钉住的纪律 ✓）。★ 回滚后**树回到已验证的绿 HEAD：T1 `200 作业／167 套件 ⇒ 200 PASS／0 FAIL`** ✓，★ **本地＝远端** ✓，★ **工作区干净** ✓。
+> ★★ **下一轮首项即按上表执行** ✓ —— ★ **且已知道代价与每一处的名字** ✓，★ 而不是重新摸索 ✓。
+
 ## 二之十、★★★ 轮 525：5 项全部完成 ⇒ **T1 200/200** ✓，第五个薄工具落地，并发现一条【活的张力**]✗
 
 | # | 承诺项 | 结果 |
