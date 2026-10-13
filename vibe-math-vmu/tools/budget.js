@@ -16,8 +16,21 @@ export function makeBudgetSpec({ param, refused, TOOL_NAMES, kernel }) {
         limits: param('object', 'open 的初始上限（可选）'),
         perTaskShare: param('number', 'open 的单任务占比（可选，0..1）'),
         ratio: param('number', 'reserve 的比例'),
+      request: param('object', '★ 也可整对象传入（★ 与服务的提示示例一致 ✓；★ 与顶层参数等价 ✓）'),
       },
-      run: async ({ action, scope, kind, amount, taskId, limits, perTaskShare, ratio } = {}) => {
+      run: async ({ action, scope, kind, amount, taskId, limits, perTaskShare, ratio, request } = {}) => {
+      // ROUND 575: ALSO accept a `request` object. The service's own refusal hint teaches `open({scope:"meeting:mt-1"})`, and
+      // that call could not be made through this tool because its parameters were scattered at the top level - so the hint
+      // and the tool disagreed and the documented example failed with "open needs a string scope". Merging the request keeps
+      // every existing call working (additive) and makes the tool agree with every other tool face built this session.
+      const rq = request && typeof request === 'object' ? request : {}
+      scope = scope !== undefined ? scope : rq.scope
+      kind = kind !== undefined ? kind : rq.kind
+      amount = amount !== undefined ? amount : rq.amount
+      taskId = taskId !== undefined ? taskId : rq.taskId
+      limits = limits !== undefined ? limits : rq.limits
+      perTaskShare = perTaskShare !== undefined ? perTaskShare : rq.perTaskShare
+      ratio = ratio !== undefined ? ratio : rq.ratio
         try {
           const budget = kernel.budget
           if (action === 'open') return Object.assign({ ok: true, action }, await budget.open({ scope, limits: limits || {}, perTaskShare }))
