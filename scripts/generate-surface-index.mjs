@@ -67,9 +67,14 @@ const toolsOf = () => {
   return { names, enums }
 }
 // ---- settings families ----
+// ROUND 604 — THE FAMILY EXTRACTOR READ CODE AS DATA. `key: '([^']+)'` matches ANY `key: '...'` in the file, including a source line
+// whose template expression happens to contain one; the value it captured there spanned a newline, so the emitted table row broke across
+// two lines - and because `--write` re-derives it the same way, hand-fixing the document only held until the next regeneration. A
+// declaration's own SHAPE is the criterion: a settings key is a dotted `vmu.*` path, so anything else is code, not a key.
+const SETTING_KEY_SHAPE = /^vmu\.[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*$/
 const familiesOf = () => {
   const s = R('vibe-math-vmu/settings/schema.js')
-  const keys = [...new Set([...s.matchAll(/key: '([^']+)'/g)].map((m) => m[1]))]
+  const keys = [...new Set([...s.matchAll(/key: '([^']+)'/g)].map((m) => m[1]).filter((k) => SETTING_KEY_SHAPE.test(k)))]
   const fam = new Map()
   for (const k of keys) {
     const f = k.split('.').slice(0, 2).join('.')
