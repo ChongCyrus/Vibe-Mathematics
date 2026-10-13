@@ -7,7 +7,7 @@
 //   3. docs/08 section 11.4's hook table, which marks each group ✓ registered or ✗ planned - checkable against VU_HOOKS.
 // A fourth, docs/03 section 2's service table, CANNOT be checked this way: it names 8 of 72 registered services on purpose
 // once its heading is honest, so the assertion there is that it SAYS so rather than that it is complete.
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -118,6 +118,29 @@ console.log('=== 5. THE CAPABILITY VOCABULARY: DOC TABLE AND RUNTIME AGREE, BOTH
   }
   const extra = [...new Set(cells)].filter((c) => /-/.test(c) && !caps.includes(c))
   ok(extra.length === 0, 'and the table invents no capability the runtime does not declare', { extra })
+}
+
+console.log('=== 6. THE TRACEABILITY TABLE NAMES SUITES THAT EXIST, AND COVERS EVERY REQUIREMENT ===')
+// Added in round 640, from the same question round 639 asked: a table that mirrors something can be guarded on one side only. The gates
+// volume's section 2.1 says its rows are one per requirement and that the real family names live there, so both halves are checkable -
+// every requirement has a row, and every suite a row names is a file. Round 637 verified this by hand with a one-off probe, which is
+// exactly what does NOT stop the next drift.
+{
+  const lines = doc('11-gates-and-development.md').split('\n')
+  const h = lines.findIndex((l) => /^#{2,4} 2\.1 /.test(l))
+  ok(h >= 0, 'the gates volume carries the traceability section', { at: h })
+  let end = lines.length
+  for (let i = h + 1; i < lines.length; i++) if (/^#{2,4} 2\.2 |^## /.test(lines[i])) { end = i; break }
+  const body = lines.slice(h, end)
+  const named = new Set()
+  for (const l of body) for (const m of l.matchAll(/\bR(\d+)\b/g)) named.add(Number(m[1]))
+  const missingR = []
+  for (let i = 1; i <= 15; i++) if (!named.has(i)) missingR.push('R' + i)
+  ok(missingR.length === 0, 'every requirement R1 through R15 has a row, which is the property the section claims', { missingR })
+  const suites = [...new Set([...body.join('\n').matchAll(/tests\/([a-z0-9-]+)\.test\.mjs/g)].map((m) => m[1]))]
+  ok(suites.length > 10, 'and the rows name a substantial set of suites', { n: suites.length })
+  const gone = suites.filter((s) => !existsSync(join(REPO, 'tests', s + '.test.mjs')))
+  ok(gone.length === 0, 'and every suite it names is a file that exists, so a rename cannot leave a dead pointer here', { gone })
 }
 
 console.log('=== DOC VS CODE TABLES: ' + passed + ' passed, ' + failed + ' failed ===')
