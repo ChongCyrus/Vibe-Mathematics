@@ -6,6 +6,8 @@
 
 ---
 
+> ★★ **工具面的完整清单（★ 轮 513 补 ✓）**：★ **共 **10** 个工具** ✓ ⇒ ★ **本卷原先点名了 9 个，漏了 `vibe_vmu_turn`** ✗ ⇒ ★ **现在点名** ✓：★ `vibe_vmu_status`／`vibe_vmu_set`／`vibe_vmu_middleware`／`vibe_vmu_records`／`vibe_vmu_script`／`vibe_vmu_pack`／`vibe_vmu_control`／`vibe_vmu_meeting`／`vibe_vmu_task` ✓ ＋ **`vibe_vmu_turn`** ✓（★ **回合编排：精确跑一轮** ✓ —— ★ 这是"宿主真的能驱动一个回合"的入口 ✓）。★★ **完整清单与出现条件见 `docs/18` 的生成式索引** ✓。
+
 ## 1. 心智模型（先懂这三句话）
 
 1. **vmu 本身不做研究机制**，它给你**能力**（开会、表决、归档、计算…）和**挂点**（在哪介入）；
