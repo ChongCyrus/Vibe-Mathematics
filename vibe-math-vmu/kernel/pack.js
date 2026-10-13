@@ -119,6 +119,10 @@ export function validatePack(manifest) {
     else if (!Array.isArray(r.on) || r.on.length === 0) problems.push('rule ' + r.id + ': on is required')
   }
   for (const m of manifest.middleware || []) if (!m || typeof m.id !== 'string') problems.push('a middleware entry needs an id')
+  // ROUND 596 — PROMPT-PIPELINE POLICIES ARE NOT BUS ENTRIES. `prompt/assemble` is not a registered bus hook, so an entry like
+  // v5r.prompt-switches cannot be added to the bus at all: it belongs to the prompt pipeline, where `sectionPolicy` consumes it.
+  // Recognised and validated here so a deployment can see it and a typo is refused by name; deliberately NOT handed to bus.add below.
+  for (const pp of manifest.promptPolicies || []) if (!pp || typeof pp.id !== 'string') problems.push('a prompt policy entry needs an id')
   for (const a of manifest.aliases || []) {
     if (!a || typeof a.from !== 'string' || typeof a.to !== 'string') problems.push('an alias needs { from, to }')
   }
@@ -243,6 +247,7 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
     for (const t of m.tracks || []) actions.push({ kind: 'track', name: t })
     for (const r of m.rules || []) actions.push({ kind: 'rule', id: r.id })
     for (const mm of m.middleware || []) actions.push({ kind: 'middleware', id: mm.id, form: mm.kind || 'module' })
+    for (const pp of m.promptPolicies || []) actions.push({ kind: 'prompt-policy', id: pp.id, form: 'pipeline' })
     for (const a of m.aliases || []) actions.push({ kind: 'alias', from: a.from, to: a.to })
     for (const c of m.codes || []) actions.push({ kind: 'code', code: c })
     /**

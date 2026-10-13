@@ -68,12 +68,16 @@ export const V5R_PACK = Object.freeze({
   version: '1.0.0',
   title: 'vibe-math-v5r institution',
   // The framework consumes these; see kernel/pack.js validatePack for the accepted fields.
-  middleware: Object.freeze([v5rPromptSwitchMiddleware]),
+  // ROUND 596 — NOT MIDDLEWARE. This is a PROMPT-PIPELINE policy: its `on` is `prompt/assemble`, which is not a registered bus hook,
+  // and its consumer is `sectionPolicy`, handed to createKernel. Declared under `middleware` it made pack.js give the entry to the bus,
+  // which refuses anything that is not a rules entry without a handler or a file — so the whole pack's apply threw there, and the
+  // policy was unreachable as a bus entry while being live as a pipeline policy. Its own field says which category it is.
+  promptPolicies: Object.freeze([v5rPromptSwitchMiddleware]),
   defaults: V5R_SETTING_DEFAULTS,
   // Declarative, for a reader and for a deployment that wants to diff: what this pack contributes.
   contributes: Object.freeze({
     settings: V5R_SETTING_KEYS,
-    middleware: Object.freeze([v5rPromptSwitchMiddleware.id]),
+    promptPolicies: Object.freeze([v5rPromptSwitchMiddleware.id]),
     switchStates: V5R_PROMPT_SWITCH_STATES,
   }),
 })
@@ -97,7 +101,7 @@ export function describeV5rPack() {
     id: V5R_PACK.id,
     version: V5R_PACK.version,
     title: V5R_PACK.title,
-    middleware: V5R_PACK.middleware.map((m) => m.id),
+    promptPolicies: V5R_PACK.promptPolicies.map((m) => m.id),
     // WHAT THIS FOLDER CARRIES AND WHERE, which is the question a deployment asks before activating it. The loaded
     // manifest cannot see these, so this is their consumer rather than a place for them to sit unnoticed.
     loadedManifestId: PACK.id,
