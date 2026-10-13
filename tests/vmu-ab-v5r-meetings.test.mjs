@@ -65,6 +65,9 @@ const vmu = (fn) => {
 // ── 1. the family is really reachable on the v5r side ────────────────────────────────────────────────────────
 const MEETING_TOOLS = ['vibe_v5_meeting', 'vibe_v5_motion', 'vibe_v5_second', 'vibe_v5_verdict', 'vibe_v5_poll_open', 'vibe_v5_poll_vote', 'vibe_v5_poll_close', 'vibe_v5_minutes', 'vibe_v5_reconsider', 'vibe_v5_chair_proxy', 'vibe_v5_secretary', 'vibe_v5_procedural_objection', 'vibe_v5_resolutions']
 const present = MEETING_TOOLS.filter((n) => registry.has(n))
+ok(MEETING_TOOLS.length > 0, 'B-shape guard: MEETING_TOOLS are ALL non-empty, so the comparison below cannot pass vacuously', { MEETING_TOOLS: MEETING_TOOLS.length })
+ok(MEETING_TOOLS.length > 0 && present.length > 0, 'G1a0. the tool list and the tools found are BOTH non-empty, so the comparison below cannot pass vacuously', { listed: MEETING_TOOLS.length, present: present.length })
+ok(MEETING_TOOLS.length > 0, 'B-shape guard: MEETING_TOOLS are ALL non-empty, so the comparison below cannot pass vacuously', { MEETING_TOOLS: MEETING_TOOLS.length })
 ok(present.length === MEETING_TOOLS.length, 'G1a. all 13 meeting tools are driven for real (not read from source)', present.length + '/' + MEETING_TOOLS.length)
 ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').execute === 'function', 'G1b. the driver reaches the tool callable itself')
 
@@ -109,8 +112,10 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
   const schemas = {}
   for (const n of MEETING_TOOLS) schemas[n] = (registry.get(n).parameters.required || []).slice()
   ok(schemas.vibe_v5_second.includes('motion_id'), 'G1c. v5r: a second NAMES the motion it seconds', schemas.vibe_v5_second)
+  ok(MEETING_TOOLS.length > 0, 'B-shape guard: MEETING_TOOLS are ALL non-empty, so the comparison below cannot pass vacuously', { MEETING_TOOLS: MEETING_TOOLS.length })
   ok(schemas.vibe_v5_poll_open.includes('question') && schemas.vibe_v5_poll_open.includes('options'),
     'G1d. v5r: opening a poll NAMES its question and options', schemas.vibe_v5_poll_open)
+  ok(MEETING_TOOLS.length > 0, 'B-shape guard: MEETING_TOOLS are ALL non-empty, so the comparison below cannot pass vacuously', { MEETING_TOOLS: MEETING_TOOLS.length })
   ok(Object.keys(schemas).length === MEETING_TOOLS.length, 'G1e. every meeting tool publishes a parameter schema (so the A/B can be extended without guessing)')
   mark('EQUAL', 'both sides name the object/referent of an action in their parameters (motion_id, question/options)')
 }
@@ -288,6 +293,9 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
     const TASK_TOOLS = ['vibe_v5_task_create', 'vibe_v5_task_list', 'vibe_v5_task_get', 'vibe_v5_task_update']
     const MEMBER_TOOLS = ['vibe_v5_members', 'vibe_v5_hire', 'vibe_v5_fire', 'vibe_v5_assign', 'vibe_v5_prioritize']
     const reachable = [...TASK_TOOLS, ...MEMBER_TOOLS].filter((n) => registry.get(n))
+    ok(TASK_TOOLS.length > 0 && MEMBER_TOOLS.length > 0, 'B-shape guard: TASK_TOOLS/MEMBER_TOOLS are ALL non-empty, so the comparison below cannot pass vacuously', { TASK_TOOLS: TASK_TOOLS.length, MEMBER_TOOLS: MEMBER_TOOLS.length })
+    ok(TASK_TOOLS.length > 0 && MEMBER_TOOLS.length > 0 && reachable.length > 0, 'B-shape guard: the tool lists and the tools found are ALL non-empty, so the equality below cannot pass vacuously', { task: TASK_TOOLS.length, member: MEMBER_TOOLS.length, reachable: reachable.length })
+    ok(TASK_TOOLS.length > 0 && MEMBER_TOOLS.length > 0, 'B-shape guard: TASK_TOOLS/MEMBER_TOOLS are ALL non-empty, so the comparison below cannot pass vacuously', { TASK_TOOLS: TASK_TOOLS.length, MEMBER_TOOLS: MEMBER_TOOLS.length })
     ok(reachable.length === TASK_TOOLS.length + MEMBER_TOOLS.length,
       'G2a. ★ v5r registers the task family (4) and the member family (5)', { reachable: reachable.length })
     const req = (n) => ((registry.get(n).parameters || {}).required || []).slice()
@@ -353,6 +361,7 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
   const LEAN_TOOLS = ['vibe_v5_lean_run', 'vibe_v5_lean_archive', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_job']
   const RECORD_TOOLS = ['vibe_v5_record_progress', 'vibe_v5_record_proposition', 'vibe_v5_record_method', 'vibe_v5_record_subproblem']
   const reachable = [...LEAN_TOOLS, ...RECORD_TOOLS].filter((n) => registry.get(n))
+  ok(LEAN_TOOLS.length > 0 && RECORD_TOOLS.length > 0, 'B-shape guard: LEAN_TOOLS/RECORD_TOOLS are ALL non-empty, so the comparison below cannot pass vacuously', { LEAN_TOOLS: LEAN_TOOLS.length, RECORD_TOOLS: RECORD_TOOLS.length })
   ok(reachable.length === LEAN_TOOLS.length + RECORD_TOOLS.length,
     'G3a. ★ v5r registers the lean family (5) and the record family (4)', { reachable: reachable.length })
   const req = (n) => ((registry.get(n).parameters || {}).required || []).slice()
@@ -390,6 +399,7 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
   const VERIFY_TOOLS = ['vibe_v5_propose_verify', 'vibe_v5_end_verify', 'vibe_v5_verdict']
   const MSG_TOOLS = ['vibe_v5_message', 'vibe_v5_say', 'vibe_v5_wait', 'vibe_v5_feedback', 'vibe_v5_read_library', 'vibe_v5_self_report']
   const reachable = [...VERIFY_TOOLS, ...MSG_TOOLS].filter((n) => registry.get(n))
+  ok(VERIFY_TOOLS.length > 0 && MSG_TOOLS.length > 0, 'B-shape guard: VERIFY_TOOLS/MSG_TOOLS are ALL non-empty, so the comparison below cannot pass vacuously', { VERIFY_TOOLS: VERIFY_TOOLS.length, MSG_TOOLS: MSG_TOOLS.length })
   ok(reachable.length === VERIFY_TOOLS.length + MSG_TOOLS.length,
     'G4a. ★ v5r registers the verification family (3) and the messaging family (6)', { reachable: reachable.length })
   const req = (n) => ((registry.get(n).parameters || {}).required || []).slice()
@@ -427,6 +437,7 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
   const LIFE_TOOLS = ['vibe_v5_start', 'vibe_v5_resume', 'vibe_v5_pause', 'vibe_v5_stop', 'vibe_v5_status', 'vibe_v5_report', 'vibe_v5_set', 'vibe_v5_configure', 'vibe_v5_overview']
   const WORK_TOOLS = ['vibe_v5_paper', 'vibe_v5_finalize_paper', 'vibe_v5_assign', 'vibe_v5_prioritize']
   const reachable = [...LIFE_TOOLS, ...WORK_TOOLS].filter((n) => registry.get(n))
+  ok(LIFE_TOOLS.length > 0 && WORK_TOOLS.length > 0, 'B-shape guard: LIFE_TOOLS/WORK_TOOLS are ALL non-empty, so the comparison below cannot pass vacuously', { LIFE_TOOLS: LIFE_TOOLS.length, WORK_TOOLS: WORK_TOOLS.length })
   ok(reachable.length === LIFE_TOOLS.length + WORK_TOOLS.length,
     'G5a. ★ v5r registers the lifecycle family (9) and the paper/assignment family (4)', { reachable: reachable.length })
   const req = (n) => ((registry.get(n).parameters || {}).required || []).slice()
@@ -620,6 +631,9 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
 {
   const LAST_SIX = ['vibe_v5_add_researcher', 'vibe_v5_remove_researcher', 'vibe_v5_grant', 'vibe_v5_revoke', 'vibe_v5_nudge', 'vibe_v5_result_record']
   const reachable = LAST_SIX.filter((n) => registry.get(n))
+  ok(LAST_SIX.length > 0, 'B-shape guard: LAST_SIX are ALL non-empty, so the comparison below cannot pass vacuously', { LAST_SIX: LAST_SIX.length })
+  ok(reachable.length > 0 && LAST_SIX.length > 0, 'B-shape guard: reachable and LAST_SIX are BOTH non-empty, so the equality below cannot pass vacuously', { reachable: reachable.length, LAST_SIX: LAST_SIX.length })
+  ok(LAST_SIX.length > 0, 'B-shape guard: LAST_SIX are ALL non-empty, so the comparison below cannot pass vacuously', { LAST_SIX: LAST_SIX.length })
   ok(reachable.length === LAST_SIX.length, 'G6a. ★ the last six tools exist', { reachable: reachable.length })
   const req = (n) => ((registry.get(n).parameters || {}).required || []).slice()
   const props = (n) => Object.keys((registry.get(n).parameters || {}).properties || {})

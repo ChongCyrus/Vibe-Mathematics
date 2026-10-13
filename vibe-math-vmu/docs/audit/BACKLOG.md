@@ -37,6 +37,12 @@
 | ★ 3 | **110 条匿名"逐字"宣称** | ★ 已分类未改 | ★★ 是**写作**工作，不是机械工作 ✓（轮 513 已定论 ✓） |
 | ★ 4 | ★ **`docs/08` 里 `vibe_vmu_minutes` 的 ⛔ 仍未被改为 ✓** | ★ 轮 517 的尾巴 | ★ 三处同名，替换器要求唯一 ⇒ 需按行定位 ✓ |
 
+## 二之三、★★★ 轮 520 结果：4 个红里 3 个转绿，第 4 个降为【一个仓库级类**]（★ 需独立任务 ✓）
+
+> - ★★ **已转绿 3 个** ✓：`audit-cross-volume-refs`（★ **911 条引用、0 未解析** ✓ —— ★ 真源在 **`kernel/governance.js` 的头部注释** ✓，★ 我曾误改 `docs/02` 的【生成区**]✗，被 `regen-all --check` 当场抓出 ✓）；`audit-doc-vs-code-tables`（★ 成熟度格必须**恰好** `✓`，我把说明写进去了 ✗）；`audit-shared-module-parity`（★ **我自己**写的那条守卫有"两边可空"形状 ✗ —— ★ 已加"两边非空"断言 ✓）。
+> - ★ **`audit-declaration-criterion` 从 5 条失败降到 1 条** ✓：★ 已修 `droppedIsCounted`（★ 声明表缺一个**机械发现**的字段 ✓）、`regen-all --check`（★ 生成区真源 ✓）、以及 `vmu-ab-v5r-meetings` 里**一族**空洞形状（★ 类级清扫加了 **11** 条前置非空守卫 ✓，该套件 111 → **122 通过** ✓）。
+> - ★★★ **而剩下那 1 条是【跨文件的仓库级类**]✗** ✓：★ 检测器报 `[B] both sides (X, Y) may be empty`，★ 修完一个文件就露下一个（★ ab-meetings → `vmu-prompt-v5r-bridge.test.mjs` ✓…）⇒ ★★ **逐个追不会收敛** ✓ ⇒ **应作为独立任务做一次仓库级清扫** ✓。
+> - ★★★ **独立任务的精确做法（下一步 ✓）**：★ 对**全部** `tests/*.mjs`，凡 `ok()` 条件里出现 `<数组字面量名>.length` 的比较，**在其前插一条"各数组非空"断言** ✓（★ 我在 `vmu-ab-v5r-meetings` 上验证过这个手法有效 ✓：11 条即消除整族 ✓）；★★ **做完后重生成 A 类指纹基线**（`node tests/audit-declaration-criterion.test.mjs --write-baseline` ✓）。
 ## 二之二、★★★ 轮 519 发现的【门禁洞】与它暴露的四个失败（★ 最高优先 ✓）
 
 > ★★★ **轮 519 发现：`vmu` 作用域是一份【允许名单**]✗** ⇒ ★ **实测它覆盖 **139／254** 个测试文件，**115 个从未在 T1 里跑过** ✗ —— ★ 包括 `audit-zpolicy`（R1 零策略）／`audit-code-size`（R14）／`audit-dependency-cycles`／`audit-prompt-invariants`／`audit-planned-names`** ✓ ⇒ ★★ **而我一直拿 T1 的"143/143"当证据** ✗。

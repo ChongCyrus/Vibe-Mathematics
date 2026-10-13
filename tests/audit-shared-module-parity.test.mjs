@@ -28,6 +28,7 @@ const sha = (p) => createHash('sha256').update(readFileSync(p)).digest('hex')
 
 console.log('=== 1. EVERY COPY EXISTS ===')
 const present = VERSIONS.filter((v) => existsSync(join(REPO, v, 'math-computation.js')))
+ok(VERSIONS.length > 0 && present.length > 0, 'the module list and the copies found are BOTH non-empty, so the comparison below cannot pass vacuously', { versions: VERSIONS.length, present: present.length })
 ok(present.length === VERSIONS.length, 'all six copies of the shared module are present', { present: present.length, of: VERSIONS.length })
 
 console.log('=== 2. AND THEY ARE ALL THE SAME BYTES ===')

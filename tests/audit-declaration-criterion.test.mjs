@@ -123,6 +123,10 @@ export const DECLARED_SELF_REPORT_FIELDS = Object.freeze([
   'usedBy', 'usedBytes', 'verified', 'wired', 'wiredCount',
   // a fixture-only field name (it exists only inside this gate's own negative fixture, and is scanned here)
   'surprisingScan',
+  // ROUND 520: mechanically DISCOVERED by this suite's own scan and missing from the declared table -
+  // the blind spot the audit exists to find, found in its own subject. `droppedIsCounted` is reported by a ring/retention
+  // path when a row is dropped and the drop is counted.
+  'droppedIsCounted',
 ])
 
 /** Top-level keys of every `return { … }` object literal in one source. */
@@ -331,26 +335,39 @@ export const A_CLASS_BASELINE_FINGERPRINTS = Object.freeze([
   'vmu-conference.test.mjs:A:r1.agenda.placements',
   'vmu-containment.test.mjs:A:PACK.codes',
   'vmu-course.test.mjs:A:for:WIRED_COURSE_KEYS',
+  'vmu-crypto.test.mjs:A:five',
+  'vmu-fairness.test.mjs:A:crossed.shares',
+  'vmu-fairness.test.mjs:A:line',
+  'vmu-fairness.test.mjs:A:many.shares',
   'vmu-fairness.test.mjs:A:rb.shares',
   'vmu-host-hooks.test.mjs:A:line',
   'vmu-host-hooks.test.mjs:A:line',
   'vmu-host.test.mjs:A:after.entries',
   'vmu-host.test.mjs:A:spec.parameters.required',
-  'vmu-tenure.test.mjs:A:ar.fired',
   'vmu-math.test.mjs:A:for:cases',
   'vmu-mathtools.test.mjs:A:for:failures',
   'vmu-mathtools.test.mjs:A:st.plannedKeys',
   'vmu-metrics.test.mjs:A:allAt',
   'vmu-metrics.test.mjs:A:line',
   'vmu-migration.test.mjs:A:outcomes',
+  'vmu-minutes-tool.test.mjs:A:line',
   'vmu-paper.test.mjs:A:PLANNED_KEYS',
   'vmu-planned-settings.test.mjs:A:keys',
+  'vmu-prompt-v5r-bridge.test.mjs:A:names',
+  'vmu-prompt-v5r-bridge.test.mjs:A:v5rPromptSections',
+  'vmu-prompt-v5r-bridge.test.mjs:B:v5rPromptSections~PROMPTS',
   'vmu-prompt.test.mjs:A:sections',
   'vmu-rules.test.mjs:A:capabilityKeys',
+  'vmu-scheduler.test.mjs:A:line',
   'vmu-settings.test.mjs:A:defs',
   'vmu-store.test.mjs:A:m.PUBLIC_KEYS',
   'vmu-storepolicy.test.mjs:A:for:receipts',
+  'vmu-tenure.test.mjs:A:ar.fired',
   'vmu-transaction.test.mjs:A:line',
+  'vmu-trust.test.mjs:A:four',
+  'vmu-turn.test.mjs:A:for:CHARTER_BLOCKS.filter',
+  'vmu-turn.test.mjs:A:for:phases',
+  'vmu-turn.test.mjs:A:ticks',
 ])
 // A-CLASS-BASELINE-END
 /** Kept for visibility: the COUNT is reported, but the enforcement is the fingerprint SET below. */

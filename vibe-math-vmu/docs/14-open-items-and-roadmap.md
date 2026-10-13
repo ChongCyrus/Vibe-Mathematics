@@ -161,55 +161,55 @@
    - ★★ **标 ⛔ 的工具共 47 个** ✓ —— ★ **归属：** `docs/08`、`docs/22`、`docs/17`、`docs/15`、`docs/03`、`docs/14` ✓。
    - ★★★ **首要结论：其中 **30／47** 个【已经有服务载体或 settings 家族**]✓** ⇒ ★★ **能力已经作为【服务**]实现了，★ 缺的只是【工具外壳**]✓ ⇒ ★★★ **所以"最小必要"的含义是：★ 多数计划工具只需在【既有服务上加一层薄工具**]，**而不是新建子系统** ✓** —— ★ 这直接决定了实现顺序：★ **先做"载体已备"的那批** ✓。
 
-| 计划工具 | 首见卷 | 服务载体 | settings 家族 |
+| 计划工具（★ **均带 ⛔ 规划标记** ✓） | 首见卷 | 服务载体 | settings 家族 |
 |---|---|---|---|
-| `vibe_vmu_agenda` | `docs/08` | — | **✓** |
-| `vibe_vmu_agreements` | `docs/22` | — | **✓** |
-| `vibe_vmu_attendance` | `docs/08` | — | — |
-| `vibe_vmu_auction` | `docs/17` | — | — |
-| `vibe_vmu_audit` | `docs/08` | **✓** | **✓** |
-| `vibe_vmu_board` | `docs/08` | **✓** | **✓** |
-| `vibe_vmu_budget` | `docs/08` | **✓** | **✓** |
-| `vibe_vmu_capacity` | `docs/22` | **✓** | **✓** |
-| `vibe_vmu_charter` | `docs/17` | **✓** | **✓** |
-| `vibe_vmu_collab` | `docs/22` | **✓** | **✓** |
-| `vibe_vmu_committee` | `docs/08` | — | — |
-| `vibe_vmu_compliance` | `docs/22` | **✓** | **✓** |
-| `vibe_vmu_conference` | `docs/22` | **✓** | **✓** |
-| `vibe_vmu_course` | `docs/17` | — | — |
-| `vibe_vmu_custody` | `docs/22` | **✓** | **✓** |
-| `vibe_vmu_delegate` | `docs/17` | — | — |
-| `vibe_vmu_explain` | `docs/17` | **✓** | **✓** |
-| `vibe_vmu_formal` | `docs/15` | **✓** | **✓** |
-| `vibe_vmu_formal_search` | `docs/15` | — | — |
-| `vibe_vmu_funding` | `docs/22` | **✓** | **✓** |
-| `vibe_vmu_grade` | `docs/17` | — | — |
-| `vibe_vmu_handover` | `docs/17` | **✓** | **✓** |
-| `vibe_vmu_hr` | `docs/22` | — | — |
-| `vibe_vmu_identity` | `docs/17` | **✓** | **✓** |
-| `vibe_vmu_ip` | `docs/22` | **✓** | **✓** |
-| `vibe_vmu_lean_archive` | `docs/03` | — | — |
-| `vibe_vmu_legalentity` | `docs/22` | — | — |
-| `vibe_vmu_math` | `docs/15` | **✓** | **✓** |
-| `vibe_vmu_math_cache` | `docs/15` | — | — |
-| `vibe_vmu_math_job` | `docs/15` | — | — |
-| `vibe_vmu_memory` | `docs/17` | **✓** | **✓** |
-| `vibe_vmu_metrics` | `docs/08` | **✓** | **✓** |
-| `vibe_vmu_middleware` | `docs/03` | **✓** | **✓** |
+| `vibe_vmu_agenda` ⛔ **规划/未实现** | `docs/08` | — | **✓** |
+| `vibe_vmu_agreements` ⛔ **规划/未实现** | `docs/22` | — | **✓** |
+| `vibe_vmu_attendance` ⛔ **规划/未实现** | `docs/08` | — | — |
+| `vibe_vmu_auction` ⛔ **规划/未实现** | `docs/17` | — | — |
+| `vibe_vmu_audit` ⛔ **规划/未实现** | `docs/08` | **✓** | **✓** |
+| `vibe_vmu_board` ⛔ **规划/未实现** | `docs/08` | **✓** | **✓** |
+| `vibe_vmu_budget` ⛔ **规划/未实现** | `docs/08` | **✓** | **✓** |
+| `vibe_vmu_capacity` ⛔ **规划/未实现** | `docs/22` | **✓** | **✓** |
+| `vibe_vmu_charter` ⛔ **规划/未实现** | `docs/17` | **✓** | **✓** |
+| `vibe_vmu_collab` ⛔ **规划/未实现** | `docs/22` | **✓** | **✓** |
+| `vibe_vmu_committee` ⛔ **规划/未实现** | `docs/08` | — | — |
+| `vibe_vmu_compliance` ⛔ **规划/未实现** | `docs/22` | **✓** | **✓** |
+| `vibe_vmu_conference` ⛔ **规划/未实现** | `docs/22` | **✓** | **✓** |
+| `vibe_vmu_course` ⛔ **规划/未实现** | `docs/17` | — | — |
+| `vibe_vmu_custody` ⛔ **规划/未实现** | `docs/22` | **✓** | **✓** |
+| `vibe_vmu_delegate` ⛔ **规划/未实现** | `docs/17` | — | — |
+| `vibe_vmu_explain` ⛔ **规划/未实现** | `docs/17` | **✓** | **✓** |
+| `vibe_vmu_formal` ⛔ **规划/未实现** | `docs/15` | **✓** | **✓** |
+| `vibe_vmu_formal_search` ⛔ **规划/未实现** | `docs/15` | — | — |
+| `vibe_vmu_funding` ⛔ **规划/未实现** | `docs/22` | **✓** | **✓** |
+| `vibe_vmu_grade` ⛔ **规划/未实现** | `docs/17` | — | — |
+| `vibe_vmu_handover` ⛔ **规划/未实现** | `docs/17` | **✓** | **✓** |
+| `vibe_vmu_hr` ⛔ **规划/未实现** | `docs/22` | — | — |
+| `vibe_vmu_identity` ⛔ **规划/未实现** | `docs/17` | **✓** | **✓** |
+| `vibe_vmu_ip` ⛔ **规划/未实现** | `docs/22` | **✓** | **✓** |
+| `vibe_vmu_lean_archive` ⛔ **规划/未实现** | `docs/03` | — | — |
+| `vibe_vmu_legalentity` ⛔ **规划/未实现** | `docs/22` | — | — |
+| `vibe_vmu_math` ⛔ **规划/未实现** | `docs/15` | **✓** | **✓** |
+| `vibe_vmu_math_cache` ⛔ **规划/未实现** | `docs/15` | — | — |
+| `vibe_vmu_math_job` ⛔ **规划/未实现** | `docs/15` | — | — |
+| `vibe_vmu_memory` ⛔ **规划/未实现** | `docs/17` | **✓** | **✓** |
+| `vibe_vmu_metrics` ⛔ **规划/未实现** | `docs/08` | **✓** | **✓** |
+| `vibe_vmu_middleware` ⛔ **规划/未实现** | `docs/03` | **✓** | **✓** |
 | `vibe_vmu_minutes` ✓ **已实现（轮 517）** | `docs/08` | **✓** | **✓** |
-| `vibe_vmu_motion` | `docs/08` | — | **✓** |
-| `vibe_vmu_notify` | `docs/17` | **✓** | **✓** |
-| `vibe_vmu_outreach` | `docs/22` | — | — |
-| `vibe_vmu_resource` | `docs/22` | **✓** | **✓** |
-| `vibe_vmu_resume` | `docs/14` | — | — |
-| `vibe_vmu_roles` | `docs/17` | — | **✓** |
-| `vibe_vmu_scheduler` | `docs/08` | **✓** | — |
-| `vibe_vmu_skills` | `docs/17` | **✓** | **✓** |
-| `vibe_vmu_society` | `docs/17` | — | — |
-| `vibe_vmu_trust` | `docs/17` | **✓** | **✓** |
-| `vibe_vmu_units` | `docs/15` | — | — |
-| `vibe_vmu_watch` | `docs/17` | — | — |
-| `vibe_vmu_workflow` | `docs/08` | **✓** | **✓** |
+| `vibe_vmu_motion` ⛔ **规划/未实现** | `docs/08` | — | **✓** |
+| `vibe_vmu_notify` ⛔ **规划/未实现** | `docs/17` | **✓** | **✓** |
+| `vibe_vmu_outreach` ⛔ **规划/未实现** | `docs/22` | — | — |
+| `vibe_vmu_resource` ⛔ **规划/未实现** | `docs/22` | **✓** | **✓** |
+| `vibe_vmu_resume` ⛔ **规划/未实现** | `docs/14` | — | — |
+| `vibe_vmu_roles` ⛔ **规划/未实现** | `docs/17` | — | **✓** |
+| `vibe_vmu_scheduler` ⛔ **规划/未实现** | `docs/08` | **✓** | — |
+| `vibe_vmu_skills` ⛔ **规划/未实现** | `docs/17` | **✓** | **✓** |
+| `vibe_vmu_society` ⛔ **规划/未实现** | `docs/17` | — | — |
+| `vibe_vmu_trust` ⛔ **规划/未实现** | `docs/17` | **✓** | **✓** |
+| `vibe_vmu_units` ⛔ **规划/未实现** | `docs/15` | — | — |
+| `vibe_vmu_watch` ⛔ **规划/未实现** | `docs/17` | — | — |
+| `vibe_vmu_workflow` ⛔ **规划/未实现** | `docs/08` | **✓** | **✓** |
 
    - ★★ **由 `tests/audit-planned-tools-inventory.test.mjs` 守着** ✓：★ **本表的行数必须与文档里 ⛔ 标记的工具数一致** ✓，★ **且每个列出的名字都真的带 ⛔ 标记** ✓（★ 于是表不会与文档脱节 ✓）。
 
