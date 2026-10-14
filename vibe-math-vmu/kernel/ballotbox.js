@@ -183,7 +183,7 @@ export function createBallotBox(opts) {
     return { ok: true, boxId: id, round: box.round, sealed: box.sealed, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
-  const cast = (a) => {
+  const castBody = (a) => {
     const args = a || {}
     const box = boxes.get(String(args.boxId || ''))
     if (!box) return deny('VMU_NOT_FOUND', '找不到票箱 ' + String(args.boxId || ''), '先 open() 取 id')
@@ -232,6 +232,25 @@ export function createBallotBox(opts) {
     if (c.proxyMode === 'on' && args.proxyFor) { mark(enforced, 'vmu.ballot.proxyMode'); if (c.proxyChainMaxDepth > 0) mark(enforced, 'vmu.ballot.proxyChainMaxDepth') }
     if (c.quadraticCreditCap > 0 && Number(args.credits) > c.quadraticCreditCap) { return deny('VMU_CONFLICT', 'credits 超上限 ' + c.quadraticCreditCap + '（`vmu.ballot.quadraticCreditCap`）', '调小 credits', ['vmu.ballot.quadraticCreditCap']) }
     return { ok: true, boxId: box.id, kind: 'vote', sealed: box.sealed, enforced, enforcedScope: ENFORCED_SCOPE }
+  }
+
+  /**
+   * G7 (Round 8) — the BOARD's cast commits through the SAME durable log the ballot face uses
+   * (`createDurableCommitLog`, `kernel/ballot.js`): intent reserved, body run, outcome recorded. With no queue bound
+   * (`o.durableQueue` absent) the body runs unchanged and nothing pretends to be durable.
+   */
+  const cast = (a) => {
+    const q = o.durableQueue
+    if (!q || q.durable !== true) return castBody(a)
+    const rec = q.reserve({ kind: 'ballotbox-cast', boxId: a && a.boxId, by: a && a.by })
+    try {
+      const r = castBody(a)
+      q.complete(rec, r && r.ok === false ? 'refused' : 'accepted')
+      return r
+    } catch (e) {
+      q.complete(rec, 'refused')
+      throw e
+    }
   }
 
   /** 缺席/未到（**与弃权分开计数** ✗✓）。A SETTLED box refuses attendance marks for the same reason it refuses votes. */

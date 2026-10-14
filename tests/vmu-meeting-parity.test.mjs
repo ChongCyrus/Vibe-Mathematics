@@ -604,6 +604,43 @@ const roster = ['r-1', 'r-2']
   ok(M.status().liveMeetings.indexOf(opened.meeting) !== -1, 'the meeting itself is untouched by the chat-level mute (the composition is one-way)')
 }
 
+// ---- 20. Round 8 (A): the hand-queue MANAGEMENT face (chair-only, audited, scoped) ----------------------
+{
+  const meetingMod = await import(pathToFileURL(K('meeting.js')).href)
+  const grab20 = (fn) => { try { fn(); return null } catch (e) { return e && e.code } }
+  const M = meetingMod.createMeeting({ id: 'hands-1', roster, chair: 'acad', clock })
+  await M.convene({ roster })
+  await M.openRound({ members: roster })
+  M.handUp('r-1')
+  M.handUp('r-2')
+  ok(M.hands({ op: 'list' }).count === 2, 'the queue can be READ without being the chair (list)')
+  ok(grab20(() => M.hands({ op: 'clear', by: 'r-1', why: 'x' })) === 'VMU_NOT_PERMITTED',
+    'a NON-CHAIR edit is refused BY NAME (the authority is declared, never assumed)')
+  ok(grab20(() => M.hands({ op: 'clear', by: 'acad' })) === 'VMU_REASON_REQUIRED',
+    'and a removal without a why is refused (silent queue surgery is unauditable)')
+  ok(grab20(() => M.hands({ op: 'clear', by: 'acad', why: 'x', scope: 'topic' })) === 'VMU_INVALID_ARGUMENT',
+    'an unknown clear scope is refused (scope is all|round, never invented)')
+  const granted = M.hands({ op: 'grant', member: 'r-9', by: 'acad', why: 'invited' })
+  ok(granted.ok === true && granted.count === 3, 'the chair can GRANT a place (appended, not a jump ahead)')
+  ok(M.hands({ op: 'grant', member: 'r-9', by: 'acad' }).deduped === true, 'granting twice is idempotent')
+  ok(M.hands({ op: 'revoke', member: 'r-1', by: 'acad', why: 'withdrawn' }).revoked === 1, 'revoke withdraws the place and reports how many')
+  ok(M.hands({ op: 'clear', by: 'acad', why: 'round over', scope: 'round' }).cleared === 2, 'clear is SCOPED (round = only this round\'s hands)')
+  const rows = M.history().filter((h) => String(h.what).indexOf('hands-') === 0).map((h) => h.what)
+  ok(rows.indexOf('hands-grant') !== -1 && rows.indexOf('hands-revoke') !== -1 && rows.indexOf('hands-clear') !== -1 && rows.indexOf('hands-refused') !== -1,
+    'every operation (including the refusals) is recorded append-only in history')
+  const noChair = meetingMod.createMeeting({ id: 'hands-2', roster, clock })
+  await noChair.convene({ roster })
+  await noChair.openRound({ members: roster })
+  ok(grab20(() => noChair.hands({ op: 'clear', by: 'r-1', why: 'x' })) === 'VMU_ENGINE_UNAVAILABLE',
+    'with NO chair declared the management face refuses by name (zero mechanism, no invented authority)')
+  const seamed = meetingMod.createMeeting({ id: 'hands-3', roster, isChair: ({ member }) => member === 'boss', clock })
+  await seamed.convene({ roster })
+  await seamed.openRound({ members: roster })
+  ok(seamed.hands({ op: 'grant', member: 'r-2', by: 'boss' }).ok === true
+    && grab20(() => seamed.hands({ op: 'grant', member: 'r-1', by: 'r-1' })) === 'VMU_NOT_PERMITTED',
+  'an injected isChair seam decides who may manage (and it is still refusable)')
+}
+
 console.log('vmu-meeting-parity: ' + passed + ' passed, ' + failed + ' failed')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

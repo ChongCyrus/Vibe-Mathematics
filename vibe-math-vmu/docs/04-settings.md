@@ -989,11 +989,13 @@ vmu.packs.active: [v5r]
 | `vmu.paper.officeConsultTimeoutMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 等待咨询答复的时限（0＝无限等／挂起）。超时处置见 `vmu.paper.officeConsultOnTimeout`，**绝不默认放行**。 |
 | `vmu.paper.officeConsultOnTimeout` | enum | `hold` | `hold`∣`refuse` | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 咨询超时处置：`hold`＝挂起等待（默认，与 human 面同口径）；`refuse`＝具名拒。**没有 default-allow 这一档**。 |
 | `vmu.paper.officeConsultExemptRoles` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 豁免角色：**默认为空＝不豁免任何人**（Lead F4 裁决：v5r 的 C-30 原场景正是"office 自己定稿前也必须先咨询所内"，把 office 默认豁免掉等于没实现那条；"默认不豁免"是保守侧，与 `hold` 同一纪律）。部署要豁免就显式声明角色。 |
+| `vmu.paper.finalizer` | enum | `editor` | `editor`∣`contributor`∣`any` | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 定稿权限**规则**（不是角色名！v5r 的 `paperEditor:'academician'` 是**机构角色**；本键是**规则**，v5r 等价＝`editor` ＋创建时把 paper 的 `editor` 指定为主持人）。★ 轮 8：域外值 ⇒ **具名拒** `VMU_INVALID_ARGUMENT`（列出声明的域），**绝不静默回落** ✗✓；读者＝`kernel/paper.js` 的 `cfg()`。 |
 | `vmu.math.jobs.logMax` | int ≥0 | `200` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 作业日志保留条数（溢出必计数）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`（两者默认一致：200）。 |
 | `vmu.math.jobs.persist` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | 作业持久化：false＝只留回执详情；true＝额外写 `Math/Jobs` 镜像并允许恢复（`vmu.math.jobs.recover` 决定何时恢复）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`。 |
 | `vmu.meetings.tier` | enum | `formal` | `formal`∣`light` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 会议级别：light＝简流程，**不得产出实体定论**（派生谓词，不是阶段）。读者：`kernel/meetings.js` 的 `K.tier`＋`tier()`／`truthWriteRefusal()`，唯一判定点在 `close()` 的收束路径（reader-c 的 GAP-MTG-02）。 |
 | `vmu.meetings.allowLight` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 是否允许 light（简流程）会议：false ⇒ 内核在开会/收束处以具名拒挡住 light（与 `tier` 共用同一派生判定点）。读者：`kernel/meetings.js` 的 `K.allowLight`。 |
 | `vmu.ballot.reopenFloor` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ballotbox.js` | 投票板重开门槛（0＝不设门槛；>0 时 reopen 需要达到该支持数）。读者：`kernel/ballotbox.js` 的 `reopen()`（reader-c 的 GAP-MTG-10；该面自有实现，不并存第二份）。 |
+| `vmu.meetings.leaveApprover` | enum | `chair` | `chair`∣`office` | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 请假/休会的批准人：chair＝主席批准，office＝办公室兜底。★ 本轮**只声明键**（B② 的 requestLeave/approveLeave 未落）；键被读时必须按此值域判定，未落前读取具名降级。 |
 | `vmu.allocation.dirtyWorkQuota` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.allocation.fairnessPolicy` | string | `equal` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.allocation.rotationWindow` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
@@ -1216,7 +1218,6 @@ vmu.packs.active: [v5r]
 | `vmu.migration.rollbackPointDensity` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |
 | `vmu.migration.stepBatch` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |
 | `vmu.notify.crossInstitution` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 已接线（notify.js 读取）；默认值取自模块源码 |
-| `vmu.paper.finalizer` | string | `editor` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
 | `vmu.paper.maxRounds` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
 | `vmu.paper.maxSections` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
 | `vmu.paper.requireAllSections` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
@@ -1461,7 +1462,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1106** 个，前缀家族 **113** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1107** 个，前缀家族 **113** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1521,7 +1522,7 @@ vmu.packs.active: [v5r]
 | `vmu.limits.*` | 5 |
 | `vmu.mailbox.*` | 6 |
 | `vmu.math.*` | 105 |
-| `vmu.meetings.*` | 57 |
+| `vmu.meetings.*` | 58 |
 | `vmu.memory.*` | 16 |
 | `vmu.metadata.*` | 2 |
 | `vmu.metrics.*` | 7 |

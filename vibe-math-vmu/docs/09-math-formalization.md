@@ -451,6 +451,13 @@ LeanJobMirror  = { schema:'vmu/lean-job@1',  jobId, statement, file, state, atte
   取消**落镜像**，恢复扫描把它当终态**不重排**（不静默复活）；`dispose()` 同步升级为"能杀就杀并**计数** `killed`"，
   `canTerminateChild` 由"声明 seam 或运行时见过句柄"决定（不再无条件 false）。拒绝复用已登记码
   （`VMU_NOT_FOUND`／`VMU_JOB_CANCELLED`）。
+- **取消是终态 / 信号死亡 ≠ 成功（Round 8 端到端演练抓出并修掉的两个缺陷）**：① `cancel()` 之后，被
+  `terminate()` 杀掉的子进程触发的 `close` 事件**曾**让执行路径继续写盘，把 Lean 作业从 `interrupted` 改写成
+  `settled`/`failed`（**取消被抹掉**）⇒ 现在 `runOne` **先判取消**：`interrupted`＋`reason:'cancelled'` 粘住、
+  `passed=false`、回执 `VMU_JOB_CANCELLED`、落镜像后直接返回（计算面 `mathjobs.js` 同修）；② 被信号杀掉的子进程
+  `exitCode === null`，旧代码 `Number(null) === 0` 会把它记成**成功** ⇒ 现在"没有退出码"记 `failed` 并具名拒
+  （消息含 `signal`），回执带 **`signal` 字段**。两条都有回归测试（`tests/vmu-job-cancel.test.mjs` 9/0）；
+  端到端读数见 `_handoff/vmu/13-goal5-e2e.md`。
 - **定时器必须可清理（F15，Round 4 ✓ 修）**：`createChildBudget` 的默认 `timer` seam 现在返回**真 disposer**
   （`() => clearTimeout(h)`）；注入的 seam 若返回平台 `Timeout` 对象则**显式 `clearTimeout`**；**清理失败**
   返回 `cleanupFailed` ＋ 通过 `onNote('timer-cleanup-failed', …)` 上报，**绝不**再被 `catch` 吞掉（这正是

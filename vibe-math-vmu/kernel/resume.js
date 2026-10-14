@@ -173,9 +173,18 @@ export function createProjection({ key, mode = 'journal', snapshot = null, resto
     /** Record one journal entry. `args` are cloned: a projection owns its own copy of history. */
     record(method, args, result, replayable = true) {
       if (mode !== 'journal') return null
-      seq += 1
+      // ROUND 8 (task-62, measured by the e2e drill): the sequence must CONTINUE from what was ADOPTED. `seq` is the
+      // closure counter while `adopt()` only assigned `this.seq`, so the first command recorded AFTER a restart was
+      // numbered 1 again: it collided with the adopted entry 1 and the NEXT restart refused the entire journal as
+      // `{ kind: 'hole', at: 1, expected: 3 }` — i.e. "record one command after resuming" silently cost the whole
+      // journal. The durable sequence is the max of both, so a replayed-then-appended journal stays contiguous.
+      seq = Math.max(seq, natural(this.seq, 0)) + 1
       const clonedArgs = clone(Array.isArray(args) ? args : [])
-      entries.push({ seq, method: String(method), args: clonedArgs === undefined ? null : clonedArgs, unserializable: clonedArgs === undefined, replayable: replayable !== false, result: clone(result) === undefined ? null : clone(result), at: null })
+      // A command that FAILED changed nothing, so replaying it would only re-throw (measured in the round-8 e2e: a
+      // refused `tasks.create` aborted the whole key's hydration). Failed entries are recorded — they are audit
+      // history — but the replay SKIPS them, and says how many it skipped.
+      const failure = !!(result && typeof result === 'object' && (result.ok === false || typeof result.error === 'string'))
+      entries.push({ seq, method: String(method), args: clonedArgs === undefined ? null : clonedArgs, unserializable: clonedArgs === undefined, replayable: replayable !== false, failed: failure, result: clone(result) === undefined ? null : clone(result), at: null })
       if (entries.length > cap) { const drop = entries.length - cap; entries.splice(0, drop); dropped += drop; this.incomplete = true }
       this.seq = seq
       this.dropped = dropped
@@ -280,14 +289,18 @@ export function attachProjection({ target, methods = [], projection, onError = n
     async replayAll(seam) {
       replaying = true
       const applied = []
+      let skippedFailed = 0
       try {
         for (const entry of projection.entries()) {
+          // A recorded FAILURE is audit history, not a state transition: replaying it would re-throw and (before
+          // this fix) mark the whole key unhydrated.
+          if (entry.failed === true) { skippedFailed += 1; continue }
           if (typeof seam !== 'function') { applied.push({ seq: entry.seq, applied: false, reason: 'no replay seam' }); continue }
           await seam(entry)
           applied.push({ seq: entry.seq, applied: true, method: entry.method })
         }
       } finally { replaying = false }
-      return applied
+      return Object.assign(applied, { skippedFailed })
     },
     unwrap() {
       for (const [name, original] of originals) target[name] = original
@@ -568,7 +581,19 @@ export function createResume({ store = null, work = null, control = null, identi
    */
   async function hydrate({ keys = null } = {}) {
     requireRead('hydrate')
-    const wanted = Array.isArray(keys) && keys.length ? keys.map(String) : [...projections.keys()]
+    const asked = Array.isArray(keys) && keys.length ? keys.map(String) : [...projections.keys()]
+    /**
+     * ROUND 8 (task-62, measured by the e2e drill): STATE projections are restored BEFORE any journal is replayed.
+     * A replay RE-EXECUTES commands against the live faces — a replayed `tasks.create` goes through the approval
+     * gate, which consults the human ledger — so replaying in attach order re-ran history against an EMPTY
+     * institute, and the side effects WRITE THROUGH, overwriting the snapshot that had not been restored yet.
+     * Measured on boot 3 of the drill: the journal was attached first, the gate queued a brand-new request, its
+     * write-through clobbered the durable human ledger (3 requests → 1), and the journal was then reported
+     * unhydrated (`VMU_HUMAN_APPROVAL_PENDING`) with the restarted institute holding one bogus request.
+     * The order is intrinsic: rebuild the world first, then replay the commands that changed it.
+     */
+    const modeOf = (k) => { const h = projections.get(k); return h && h.projection ? h.projection.mode : 'journal' }
+    const wanted = [...asked.filter((k) => modeOf(k) === 'state'), ...asked.filter((k) => modeOf(k) !== 'state')]
     const hydrated = []
     const unhydrated = []
     for (const k of wanted) {
@@ -576,7 +601,18 @@ export function createResume({ store = null, work = null, control = null, identi
       const a = holder ? (holder.adapter || {}) : {}
       if (!holder) { unhydrated.push({ key: k, code: CODE.noAdapter, reason: 'no projection adapter is registered for this key' }); continue }
       const env = store.read(k)
-      if (env === undefined || env === null) { hydrated.push({ key: k, hydrated: false, reason: 'nothing was projected (a first run)' }); continue }
+      // ROUND 8 (task-62, measured by the e2e drill): a store SEEDS its fold with harmless defaults, and
+      // `kernel/store.js defaultKeys()` gives the array-ish keys (`tasks`, `members`, `meetings`, `ballots`, `work`)
+      // `[]` rather than `null` — that is the host-level default for "a fresh institute lists no tasks". Every one
+      // of those keys, when the assembly also attaches a projection to it, therefore made a CLEAN FIRST recovery
+      // report `VMU_RESUME_PROJECTION_GAP` and `recover()` return `ok:false` (measured: `unhydrated:["tasks"]` on
+      // boot 1 of a brand-new store). An EMPTY array holds no entries, so it cannot be "a ledger that actually
+      // holds unfinished work" — it is read as the first run it is. A NON-empty bare array still falls through to
+      // the named gap below, which is the case that check exists for.
+      if (env === undefined || env === null || (Array.isArray(env) && env.length === 0)) {
+        hydrated.push({ key: k, hydrated: false, reason: 'nothing was projected (a first run)', seeded: Array.isArray(env) ? 'empty-array' : 'null' })
+        continue
+      }
       if (env.mode === 'state') {
         if (typeof a.restore !== 'function') { unhydrated.push({ key: k, code: CODE.noAdapter, reason: 'state projection needs a restore(value) seam on the face' }); continue }
         let r
@@ -625,7 +661,7 @@ export function createResume({ store = null, work = null, control = null, identi
       if (typeof a.list === 'function') {
         try { reconciled = observeIds(k === 'tasks' ? 'task' : k, (a.list() || []).map((x) => x && x.id)) } catch (e) { reconciled = { ok: false, reason: String((e && e.message) || e) } }
       }
-      hydrated.push({ key: k, hydrated: true, mode: 'journal', entries: applied.length, incomplete: false, reconciled })
+      hydrated.push({ key: k, hydrated: true, mode: 'journal', entries: applied.length, skippedFailed: applied.skippedFailed || 0, incomplete: false, reconciled })
     }
     // The result is also the face's observable state: a standalone hydrate() must be visible in status(), not
     // only a hydrate() that ran inside recover().
@@ -635,8 +671,12 @@ export function createResume({ store = null, work = null, control = null, identi
   }
   async function replayEntries(entries, seam) {
     const applied = []
-    for (const entry of entries) { await seam(entry); applied.push(entry.seq) }
-    return applied
+    let skippedFailed = 0
+    for (const entry of entries) {
+      if (entry && entry.failed === true) { skippedFailed += 1; continue }
+      await seam(entry); applied.push(entry.seq)
+    }
+    return Object.assign(applied, { skippedFailed })
   }
 
   // ── read-back consistency (invariant ④) ─────────────────────────────────────────────────────────────────────
@@ -827,7 +867,8 @@ export function createResume({ store = null, work = null, control = null, identi
         let heldRows = []
         let source = 'none'
         if (typeof roster === 'function') { const r = await roster(); if (Array.isArray(r)) { heldRows = r; source = 'roster-port' } }
-        else if (rosterRows && Array.isArray(rosterRows)) { heldRows = rosterRows; source = 'identity-seam' }        if (source === 'none' || !heldRows.some((m) => m && m.childId)) {
+        else if (rosterRows && Array.isArray(rosterRows)) { heldRows = rosterRows; source = 'identity-seam' }
+        if (source === 'none' || !heldRows.some((m) => m && m.childId)) {
           const h = projections.get('members')
           try {
             const l = h && h.adapter && typeof h.adapter.list === 'function' ? h.adapter.list() : null

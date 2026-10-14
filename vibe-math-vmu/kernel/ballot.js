@@ -224,6 +224,13 @@ export function createBallot({
   // F31+ (Round 6): the durable commit log (`createDurableCommitLog`). Injected because the STORE is the host's;
   // this face supplies the protocol. Absent ⇒ `status().gate.durable === false`, named rather than assumed.
   durableQueue = null,
+  // ROUND 8 / task-58 (G6): THE ALLOCATING STORE, one level lower than `durableQueue`. The host owns a store whose
+  // `append(record)` answers `{ ticket }` (an O_APPEND file, a SQLite sequence, a locked journal); when one is handed
+  // in, THIS face builds the commit log from it (`createDurableCommitLog`), so the protocol is the face's and the
+  // numbering is the host's. An explicit `durableQueue` still wins (back-compat), and a function is resolved AT CALL
+  // TIME (a plugin's `apply` can run before the host service mounts). No store ⇒ `durable:false` BY NAME, never
+  // pretended.
+  commitStore = null,
   bus = null,
   clock = () => new Date().toISOString(),
   isPaused = () => false,
@@ -251,6 +258,13 @@ export function createBallot({
     history.push(row)
     return row
   }
+
+  // ROUND 8 / task-58 (G6): resolve the allocating store AT CALL TIME and build the one commit log this ballot uses.
+  // `durableQueue` (an already-built log) still takes precedence, so every existing caller keeps its exact behaviour.
+  const resolvedCommitStore = (() => {
+    try { return typeof commitStore === 'function' ? commitStore() : commitStore } catch (e) { record('commit-store-failed', { code: 'VMU_COMMIT_STORE_FAILED', message: String((e && e.message) || e) }); return null }
+  })()
+  const queue = durableQueue || createDurableCommitLog({ store: resolvedCommitStore, clock, name: 'ballot' })
 
   /**
    * The cast BODY (the critical section the gate below serializes). Kept as a closure so the public `cast` can be
@@ -406,10 +420,10 @@ export function createBallot({
       gatePending += 1
       // F31+: with a durable log the INTENT is on record BEFORE the effect, and the outcome right after it —
       // so a crash in between is recoverable (`reconcile()`), never a lost or doubled vote.
-      const rec = durableQueue ? durableQueue.reserve({ member, value, kind, target }) : null
+      const rec = queue ? queue.reserve({ member, value, kind, target }) : null
       const run = () => castNow(member, value, { kind }).then(
-        (r) => { if (durableQueue) durableQueue.complete(rec, r && r.ok === false ? 'refused' : 'accepted'); return r },
-        (e) => { if (durableQueue) durableQueue.complete(rec, 'refused'); throw e })
+        (r) => { if (queue) queue.complete(rec, r && r.ok === false ? 'refused' : 'accepted'); return r },
+        (e) => { if (queue) queue.complete(rec, 'refused'); throw e })
       const ticket = gate.then(run, run)
       gate = ticket.then(
         () => { gatePending -= 1; gateCommits += 1 },
@@ -497,22 +511,22 @@ export function createBallot({
      * reports `durable:false` — it does not pretend to have recovered anything.
      */
     reconcile() {
-      if (!durableQueue || !durableQueue.durable) {
+      if (!queue || !queue.durable) {
         return { ok: true, durable: false, pending: 0, replayed: 0,
           reason: 'no durable commit log is bound: there is nothing to reconcile (the seam is absent, not pretended)' }
       }
-      const r = durableQueue.recover()
+      const r = queue.recover()
       let replayed = 0
       for (const rec of r.pending) {
         const op = rec.op || {}
         if (op.member === undefined || op.member === null || votes.has(String(op.member))) {
-          durableQueue.complete(rec, 'skipped-duplicate')
+          queue.complete(rec, 'skipped-duplicate')
           continue
         }
         votes.set(String(op.member), { value: op.value, kind: classifyVote(op.value, op.kind) || 'abstain',
           at: rec.at, recovered: true, ticket: rec.ticket })
         record('cast-recovered', { member: String(op.member), ticket: rec.ticket, value: op.value })
-        durableQueue.complete(rec, 'recovered')
+        queue.complete(rec, 'recovered')
         replayed += 1
       }
       return { ok: true, durable: true, tickets: r.tickets, pending: r.pending.length, replayed, reason: r.reason }
@@ -534,7 +548,7 @@ export function createBallot({
         // F31: the commit gate is observable state (how deep its queue currently is, how much it committed) and
         // F31+ says whether that gate is DURABLE (a store-backed log) or in-process only.
         gate: { serialized: true, pending: gatePending, commits: gateCommits,
-          durable: !!(durableQueue && durableQueue.durable), log: durableQueue ? durableQueue.status() : null },
+          durable: !!(queue && queue.durable), log: queue ? queue.status() : null },
         // F32: the dedup window and how many duplicate settlements it folded.
         dedup: { windowMs: dedupMs, foldedVerdicts: dedupedVerdicts, lastClose: lastClose ? Object.assign({}, lastClose) : null },
         // F34: the opening criterion, before anyone hits it.

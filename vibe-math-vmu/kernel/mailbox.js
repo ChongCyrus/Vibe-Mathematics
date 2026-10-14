@@ -90,6 +90,9 @@ export function createMailbox({
   store = null,
   deliver = null,
   resolveAudience = null,
+  // G7 (Round 8): the durable commit log (`createDurableCommitLog`, `kernel/ballot.js`). Injected by the host;
+  // absent ⇒ every send runs unchanged and nothing pretends to be durable.
+  durableQueue = null,
 } = {}) {
   if (typeof clock !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'createMailbox needs a clock function', 'pass { clock }')
 
@@ -197,7 +200,26 @@ export function createMailbox({
      * Queue one message for each named recipient. A group send is N queued entries with N ids (one per
      * recipient), which is what makes per-recipient acknowledgement meaningful.
      */
-    send(from, { to = null, text = '', kind = 'dm', replyTo = null } = {}) {
+    /**
+     * G7 (Round 8) — the SEND is committed through the SAME durable log the ballot face uses
+     * (`createDurableCommitLog`, `kernel/ballot.js`): the INTENT is reserved before the body runs and the OUTCOME
+     * right after it, so a crash in between is recoverable instead of a silently lost (or doubled) delivery.
+     * No queue bound (`opts.durableQueue` absent) ⇒ the body runs unchanged and nothing pretends to be durable.
+     */
+    send(from, args = {}) {
+      const q = durableQueue
+      if (!q || q.durable !== true) return mailbox.sendBody(from, args)
+      const rec = q.reserve({ kind: 'mailbox-send', from: String(from), to: args && args.to })
+      try {
+        const r = mailbox.sendBody(from, args)
+        q.complete(rec, r && r.ok === false ? 'refused' : 'accepted')
+        return r
+      } catch (e) {
+        q.complete(rec, 'refused')
+        throw e
+      }
+    },
+    sendBody(from, { to = null, text = '', kind = 'dm', replyTo = null } = {}) {
       const who = String(from === undefined || from === null ? '' : from)
       if (!who) throw refuse('VMU_INVALID_ARGUMENT', 'a message needs a non-empty `from`', 'pass the sending member id')
       const body = String(text === undefined || text === null ? '' : text)

@@ -104,7 +104,19 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
   const cfg = () => {
     const requireAllSections = readKey('vmu.paper.requireAllSections') === false ? false : true
     const finalizerRaw = String(readKey('vmu.paper.finalizer') || 'editor')
-    const finalizer = FINALIZERS.indexOf(finalizerRaw) === -1 ? 'editor' : finalizerRaw
+    // ROUND 8 (vmu-pack's fidelity audit, Lead-confirmed defect): this used to be `indexOf(...) === -1 ? 'editor' : raw`
+    // - a SILENT fallback. Measured: `vmu.paper.finalizer = <an INSTITUTION ROLE name from v5r's paperEditor>` made
+    // `finalize` answer `VMU_NOT_PERMITTED "only the editor (acad) may finalise"`, i.e. the 'editor' RULE ran with no
+    // "your value is invalid" anywhere. Two paths could inject it (a pack's data layer bypassing the settings boundary,
+    // and `vibe_vmu_set` while the schema said `type:'string'`). The value domain is now a CLOSED SET and an out-of-domain
+    // value is refused BY NAME with the declared domain - never silently downgraded. v5r's equivalent is expressed as
+    // `finalizer='editor'` plus choosing the paper's `editor` at creation (D5: the kernel never learns role names).
+    if (FINALIZERS.indexOf(finalizerRaw) === -1) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'vmu.paper.finalizer must be one of ' + FINALIZERS.join('|') + ': ' + finalizerRaw,
+        "v5r's paperEditor names an institution ROLE (a pack-supplied title, never a kernel concept); in vmu the equivalent is finalizer='editor' plus the paper's editor chosen at creation",
+        { enforced: ['vmu.paper.finalizer'], declared: FINALIZERS.slice(), value: finalizerRaw })
+    }
+    const finalizer = finalizerRaw
     // ROUND 145: written in the `|| <literal>` shape on purpose - the schema generator recovers the default from
     // that shape (readKey('k') || 0), so this key is declared with its REAL default rather than an honest null.
     const rawMax = Number(readKey('vmu.paper.maxSections') || 0)

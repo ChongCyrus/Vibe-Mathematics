@@ -59,6 +59,9 @@ const MAX_TOKENS = Number(argOf('max-tokens', '60000'))
 const EXPECT_SETTINGS = String(argOf('expect-settings', '') || '').split(',').map((s) => s.trim()).filter(Boolean)
 // OFFLINE GRADING: `--session <id>` re-grades a RECORDED session log with the same assertions (no session spent).
 const OFFLINE_SESSION = argOf('session', null)
+// `--expect-delivery`: this deployment HAS injected a transport, so a fired report must come back `delivered:true`
+// (and NOT `VMU_REPORT_NO_TRANSPORT`). Without the flag the harness only REPORTS what the receipt said.
+const EXPECT_DELIVERY = process.argv.includes('--expect-delivery')
 // Filled by the live path (where the driver's dumps land); null when grading a recorded session offline.
 let outDir = null
 const PRINT = process.argv.includes('--print')
@@ -221,15 +224,25 @@ function gradeSession(sess, transcript, driveStatus, sessionId) {
   ok(!!setReceipt && /"ok":true/.test(setReceipt) && /"hot":"H\d"/.test(setReceipt),
     'HOST: the parameter face wrote through the kernel and disclosed its class/attribution (hot/appliesAt/ownerCheck)',
     { setReceipt: setReceipt.slice(0, 300) })
-  ok(/(office|所办)/i.test(personaText) && /(do not vote|not vote|不投票|不参与研究)/i.test(personaText),
+  ok(/(office|所办)/i.test(personaText) && /(do not|don'?t|does not|doesn'?t|not)\s+vote|不投票|不参与研究/i.test(personaText),
     'HOST: the SYSTEM PROMPT channel reached the model (it answers AS the office and says it does not vote)',
     { persona: personaText.replace(/\s+/g, ' ').slice(-260) })
   console.log('  RECEIPT FACTS: ' + JSON.stringify({
     tickFired: /"fired":\[\{/.test(tickReceipt), tickDrives: /"drives":false/.test(tickReceipt),
+    tickDelivered: /"delivered":true/.test(tickReceipt),
+    tickRefusedCode: (tickReceipt.match(/"refused":\{"code":"([^"]+)"/) || [])[1] || null,
+    tickDeliveredCount: (tickReceipt.match(/"delivered":(\d+)/) || [])[1] || null,
+    tickFailures: (tickReceipt.match(/"failures":(\d+)/) || [])[1] || null,
     setOk: /"ok":true/.test(setReceipt), setHot: (setReceipt.match(/"hot":"(H\d)"/) || [])[1] || null,
     setOwnerCheck: (setReceipt.match(/"ownerCheck":"([^"]*)"/) || [])[1] || null,
-    personaOffice: /(office|所办)/i.test(personaText), personaNoVote: /(do not vote|not vote|不投票|不参与研究)/i.test(personaText),
+    personaOffice: /(office|所办)/i.test(personaText), personaNoVote: /(do not|don'?t|does not|doesn'?t|not)\s+vote|不投票|不参与研究/i.test(personaText),
   }))
+  // DELIVERY (the F2 positive half): only asserted when the deployment says a transport is injected.
+  if (EXPECT_DELIVERY) {
+    ok(/"delivered":true/.test(tickReceipt) && !/"refused":\{"code":"VMU_REPORT_NO_TRANSPORT"/.test(tickReceipt),
+      'HOST: the fired report was really DELIVERED through the injected transport (delivered:true, no named refusal)',
+      { delivered: /"delivered":true/.test(tickReceipt), refused: (tickReceipt.match(/"refused":\{"code":"([^"]+)"/) || [])[1] || null })
+  }
   console.log('  PUBLISHED TOOLS (' + sess.publishedTools.length + '): ' + JSON.stringify(sess.publishedTools))
   console.log('  PUBLISHED vmu FACES: ' + JSON.stringify(publishedFaces))
   console.log('  FACES CALLED: ' + JSON.stringify(calledFaces))

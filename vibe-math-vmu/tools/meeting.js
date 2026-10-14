@@ -17,8 +17,8 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         '**选项式投票板**是另一层（`kernel/ballotbox.js`：选项/门槛/记名/弃权，**已裁定的板不再收票**）：boxopen/boxcast/boxclose/boxreopen，' +
         '其中 **boxreopen 需理由**且受 `vmu.ballot.reopenFloor` 约束（门槛只升不降）；若构造时声明了 `openMaxMs`，则 **boxlapse/boxrevokelapse** 对它提供同一套有界兜底。',
       parameters: {
-        action: param('string', 'list｜open｜speak｜silent｜hand｜refuse｜invite｜invitedspeak｜end｜aggregation｜complete｜phase｜status｜summary｜snapshot｜close｜extend｜lapse｜revokelapse｜ballot｜vote｜tally｜reopen｜freeze｜unfreeze｜boxopen｜boxcast｜boxclose｜boxreopen｜boxlapse｜boxrevokelapse', { required: true,
-          enum: ['list', 'open', 'speak', 'silent', 'hand', 'refuse', 'invite', 'invitedspeak', 'end', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse'] }),
+        action: param('string', 'list｜open｜speak｜silent｜hand｜hands｜refuse｜invite｜invitedspeak｜end｜aggregation｜complete｜phase｜status｜summary｜snapshot｜close｜extend｜lapse｜revokelapse｜ballot｜vote｜tally｜reopen｜freeze｜unfreeze｜boxopen｜boxcast｜boxclose｜boxreopen｜boxlapse｜boxrevokelapse', { required: true,
+          enum: ['list', 'open', 'speak', 'silent', 'hand', 'hands', 'refuse', 'invite', 'invitedspeak', 'end', 'agendaclose', 'agendaitems', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse'] }),
         id: param('string', '会议 id（speak/silent/hand/refuse/invite/invitedspeak/end/aggregation/complete/phase/status/summary/snapshot/close/extend/lapse/revokelapse 必填；open 可指定）'),
         ballotId: param('string', '表决/票箱 id（vote/tally/reopen/freeze/unfreeze/boxcast/boxclose/boxreopen/boxlapse/boxrevokelapse 必填）'),
         member: param('string', '成员 id（speak/silent/hand/refuse/invitedspeak/extend/vote/boxcast 必填）'),
@@ -31,10 +31,13 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         target: param('string', 'ballot 的标的（必填）'),
         value: param('string', 'vote 的票值（必填）'),
         kind: param('string', 'vote 的票型（默认 decisive）', { enum: ['decisive', 'advisory'] }),
+        // Round 8 (A): the hand-queue management face (chair-only, audited; clear/revoke need a reason).
+        op: param('string', 'hands：grant｜revoke｜clear｜list', { enum: ['grant', 'revoke', 'clear', 'list'] }),
+        scope: param('string', 'hands clear/revoke 的作用域（all｜round）', { enum: ['all', 'round'] }),
         why: param('string', 'invite 的理由（必填：邀请必须可审计，v5r meeting_invite 的口径）'),
         by: param('string', 'invite/invitedspeak/end 的执行人（审计事实）'),
       },
-      run: async ({ action, id, ballotId, member, text, reason, agenda, roster, target, value, kind, why, by, options, ms } = {}) => {
+      run: async ({ action, id, ballotId, member, text, reason, agenda, roster, target, value, kind, why, by, options, ms, op, scope } = {}) => {
         const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
         const live = (what) => {
           const meeting = kernel.liveMeeting(need(id, 'id'))
@@ -61,6 +64,11 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
           if (action === 'invite') return Object.assign({ ok: true, action, id }, live().invite(need(member, 'member'), { by: by || null, why: need(why, 'why') }))
           if (action === 'invitedspeak') return Object.assign({ ok: true, action, id }, live().speakInvited(need(member, 'member'), need(text, 'text'), { by: by || null }))
           if (action === 'end') return Object.assign({ ok: true, action, id }, live().endDebate({ by: by || null, reason: need(reason, 'reason') }))
+          // Round 8 (B①): the agenda is closed, never deleted (target names the item; reason is mandatory).
+          if (action === 'agendaclose') {
+            return Object.assign({ ok: true, action, id }, live().agendaClose({ id: need(target, 'target'), by: by || null, why: reason || '' }))
+          }
+          if (action === 'agendaitems') return Object.assign({ ok: true, action, id }, { agendaItems: live().agendaItems() })
           if (action === 'aggregation') return Object.assign({ ok: true, action, id }, live().aggregationAllowed())
           if (action === 'complete') return Object.assign({ ok: true, action, id }, live().roundComplete())
           if (action === 'phase') return { ok: true, action, id: need(id, 'id'), phase: live().phase }
@@ -69,6 +77,10 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
           if (action === 'snapshot') return Object.assign({ ok: true, action }, live().snapshot())
           if (action === 'close') return Object.assign({ ok: true, action, id }, await live().close(reason || 'closed'))
           // F28: the bounded fallback (named + revocable) and the declared extension step (GAP-MTG-05).
+          if (action === 'hands') {
+            return Object.assign({ ok: true, action, id }, live().hands({ op: need(op, 'op'), member: member || null,
+              by: by || null, why: reason || '', scope: scope || 'all' }))
+          }
           if (action === 'extend') {
             return Object.assign({ ok: true, action, id }, live().extend({ meeting: need(id, 'id'), member: need(member, 'member'), ms: ms === undefined ? null : ms, by: by || null }))
           }

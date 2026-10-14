@@ -203,6 +203,24 @@ pack 默认  <  预设 Config  <  会话 settings  <  运行时 set
 
 **③ 具名（v5r 有、vmu 无键，或有意分歧）**：`compactThreshold/compactAfterRounds`（`:1078/1079`）、`finalPaper/paperFormat/paperLanguage/paperCompilePdf`（`:1163-1166`）、`paperEditor:'academician'`（`:1167`，而 `vmu.paper.finalizer` 的值域只有 `['editor','contributor','any']`）、`maxTempPerMember`（`:1075`）、`memberMayRejectAssign`（`:1066`）；**有意分歧**：`stallAutoMeetingMs`（`:1083`，v5r 静止即自动开会；vmu 的 `idleAction` 默认 `'notice'`＝只提示，R1）。
 
+### 4.6 **`paperEditor` 的静默回落**：一个"声明了没生效"的真缺陷（轮 8，优先项）
+
+**缺陷（已实测复现）**：`settings/schema.js` 把 `vmu.paper.finalizer` 声明成 `type:'string'`，而 `kernel/paper.js:104-107` 对域外值**静默回落**成 `'editor'`。探针 `D:\_tmp\vmu-finalizer-fallback-probe.mjs`（仓库外一次性·实测）：
+```
+vmu.paper.finalizer = 'academician'（v5r :1167 的值）
+→ finalize 被拒：VMU_NOT_PERMITTED "only the editor (acad) may finalise, not someone-else"
+（若域外值被具名拒，应看到 VMU_INVALID_ARGUMENT 并列出 ['editor','contributor','any']）
+```
+⇒ **声明 `'academician'` 既没生效、也没报错**——正是"声明了没生效"这一类。
+
+**为什么不用"把 `academician` 加进值域"**：v5r 的 `paperEditor` 命名的是**机构角色**（院士），而本键是**权限规则**（editor／contributor／any）。让内核认识 "academician" 会**违反 D5**（内核永不学习机构角色名——角色是不透明 slot）。
+
+**修法（交 vmu-core 落两处；pack 侧不声明该键）**：
+1. `settings/schema.js`：`vmu.paper.finalizer` 改成闭集 `type:'enum', domain:['editor','contributor','any']` ⇒ 运行期 `vibe_vmu_set` 域外值**具名拒**；
+2. `kernel/paper.js:104-107`：把回落改成**具名拒**（列出声明的域）⇒ 连 **pack data 层**注入的域外值也拦得住。
+
+**v5r 的等价表达（pack 侧结论）**：`finalizer='editor'`（**框架默认**，无需声明）＋ **创建时把 paper 的 `editor` 设为主持人**（v5r 的"院士终稿"＝院士就是 editor）。⇒ **本 pack 不声明任何 `finalizer`**，值域门禁（`D:\_tmp\vmu-pack-value-domain.mjs`，仓库外一次性·实测）证：pack 声明的 9 个 enum 键值**全在各自域内**，且未声明 `finalizer`。
+
 ---
 
 ## 5. v5r-pack：行为包含对照方案（D8）

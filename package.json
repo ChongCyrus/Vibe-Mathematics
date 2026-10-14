@@ -488,6 +488,8 @@
     "tests/audit-declaration-publishes-face.test.mjs",
     "tests/audit-declaration-publishes-face.mutants.mjs",
     "tests/audit-fs-purpose.test.mjs",
+    "tests/vmu-set-attribution.test.mjs",
+    "tests/vmu-turn-notice-source.test.mjs",
     "tests/_lib/falsify.mjs",
     "tests/_lib/strip-comments.mjs",
     "vibe-math-vmu/kernel/report.js",

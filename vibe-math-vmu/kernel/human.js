@@ -382,7 +382,11 @@ export function createHuman({ clock = () => 0, log = null, settings = {}, bus = 
 
   /** The drop-in form used at call sites: throws the named refusal unless the action may proceed. */
   function gate(req) {
-    const d = approvalDecision(req)
+    // ROUND 8 (task-62, measured by the e2e drill): `gate()` must reach `approvalDecision` through the PUBLIC
+    // property, not the closure. `attachProjection` wraps the property, so the internal path used to create the
+    // queue entry WITHOUT being recorded — and after a restart the most important event (a waiting request) was
+    // simply gone. Calling `api.approvalDecision` makes any wrapper see it, regardless of attach order.
+    const d = api.approvalDecision(req)
     if (d.ok === true) return d
     const hint = d.hint || (d.queued ? 'a human calls decide({ requestId: "' + d.requestId + '", allow: true }) - the action is NOT executed until then' : 'a human vetoed this action; lift it by name (liftVeto) after reviewing it')
     throw refuse(d.code, d.message || ('the action may not proceed: ' + d.code), hint, d)
@@ -508,9 +512,12 @@ export function createHuman({ clock = () => 0, log = null, settings = {}, bus = 
     listCap,
   })
 
-  return { apiVersion, veto, explainVeto, explainDecision, liftVeto, observerView, openApproval, approvalState,
+  // `api` is the ONE public shape; `gate()` reaches `approvalDecision` through it so a projection wrapper (which
+  // replaces the property) also sees the internal call path. See the note in `gate`.
+  const api = { apiVersion, veto, explainVeto, explainDecision, liftVeto, observerView, openApproval, approvalState,
     decide, queue, approvalDecision, gate, dashboard, snapshot, restore,
     /** Adapter convenience: the rows a projection reconciles ids against. */
     list: () => queue().requests,
     status }
+  return api
 }

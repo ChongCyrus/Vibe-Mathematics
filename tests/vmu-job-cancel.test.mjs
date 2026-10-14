@@ -211,6 +211,58 @@ test('lean: dispose() terminates live handles and counts them honestly', async (
   passed += 1
 })
 
+// ── 8. ROUND 8（端到端演练抓出的两个缺陷）：取消**粘住**；被信号杀掉的子进程**不是** settled ─────────
+test('math: cancel is STICKY — a dying child must not re-state a cancelled job as settled/failed', async () => {
+  const t = mkTimer()
+  const fs = memFs()
+  // a handle whose `terminate()` REALLY ends the child (its `done` resolves with a signal) — this is what a real
+  // SIGKILL looks like, and it used to let the execution path overwrite the cancel with `settled`/`failed`.
+  const spawn = () => {
+    let resolveDone
+    const done = new Promise((r) => { resolveDone = r })
+    return {
+      terminate() { resolveDone({ exitCode: null, signal: 'SIGKILL' }) },
+      done,
+      collected: { stdout: { readFrom: () => ({ text: '', lossy: false }) }, stderr: { readFrom: () => ({ text: '', lossy: false }) } },
+    }
+  }
+  const mj = createMathJobs({ settings: mathSettings(), clock: () => 0, spawn, fs, timer: t.timer })
+  const spawnsBefore = 0
+  const sub = await mj.submit({ engine: 'sympy', argv: ['-c', '1'], jobId: 'mj-sticky', async: true })
+  assert.equal(sub.ok, true, JSON.stringify(sub))
+  await until(() => t.pending() > 0, 'budget armed (sticky)')
+  const c = mj.cancel({ jobId: 'mj-sticky', reason: 'sticky test' })
+  assert.equal(c.ok, true)
+  assert.equal(c.terminated, true)
+  await sleep(30)
+  assert.equal(mj.status({ jobId: 'mj-sticky' }).job.state, 'cancelled', '★ 取消是终态：子进程的 close 事件不许把它改写成 settled/failed')
+  const mirror = [...fs.store.entries()].map(([, v]) => v).join('\n')
+  assert.ok(mirror.indexOf('"state": "cancelled"') !== -1, '★ 磁盘上必须仍是 cancelled：' + mirror.slice(0, 200))
+  // and the receipt says WHY (not a fake success)
+  const r = mj.receipt({ jobId: 'mj-sticky' })
+  assert.equal(r.ok, true)
+  assert.equal(r.receipt.code, 'VMU_JOB_CANCELLED')
+  assert.equal(spawnsBefore, 0)
+  passed += 1
+})
+
+test('math: a child with NO exit code (killed by a signal) is failed, never settled/exit-0', async () => {
+  const t = mkTimer()
+  const spawn = () => ({
+    terminate() {},
+    done: Promise.resolve({ exitCode: null, signal: 'SIGKILL' }),   // `Number(null) === 0` used to fake success
+    collected: { stdout: { readFrom: () => ({ text: 'partial output', lossy: false }) }, stderr: { readFrom: () => ({ text: '', lossy: false }) } },
+  })
+  const mj = createMathJobs({ settings: mathSettings(), clock: () => 0, spawn, fs: memFs(), timer: t.timer })
+  const r = await mj.submit({ engine: 'sympy', argv: ['-c', '1'], jobId: 'mj-signal' })
+  assert.equal(r.ok, false, '★ 没有退出码 ⇒ 不许报 settled：' + JSON.stringify(r).slice(0, 200))
+  assert.equal(r.code, 'VMU_MATH_HARNESS_FAILED')
+  assert.equal(r.receipt.exitCode, null)
+  assert.equal(r.receipt.signal, 'SIGKILL', '信号必须进回执（是谁杀了它）')
+  assert.equal(mj.status({ jobId: 'mj-signal' }).job.state, 'failed')
+  passed += 1
+})
+
 for (const c of cases) {
   try { await c.f(); console.log('ok - ' + c.n) } catch (e) { failed += 1; console.log('FAIL - ' + c.n + ' :: ' + String((e && e.message) || e)) }
 }

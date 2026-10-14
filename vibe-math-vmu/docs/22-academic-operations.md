@@ -1169,23 +1169,35 @@
     - **三条为何仍未建立**：**`tick` 与 `vibe_vmu_set` 根本没被调用**（会话在第 4 步后被上限切断），故"阈值真触发／参数面留痕／两通道自述"**无观测**；**根因是我的提示词成本**——`vibe_vmu_status` 的 49,929 字符回执被后续每步从缓存重读（cacheRead 110,976），在 root+child 合计口径下 120k 上限提前触顶 ✗✓。
     - **修法（下一轮若再跑）**：提示词**不要**把 `vibe_vmu_status` 放最前（或只取一个短 action），省掉这 5 万字符；`--max-tokens` 保持有界即可 ✓。
     ⇒ **终态（Round 6）**：**多面点亮【建立】✅（52 面发布＋4 面真调用）／助手面可达【建立】✅／声明到达入口【建立】✅**；**阈值真触发、参数面留痕、两通道＝【未建立/未行使】（`tokenCapHit:true` ⇒ 按 §8 NON-RESULT，不写成通过）** ⇒ **具名收口** ✓。
+13. **★★ 第 7 次真机会话（Round 8 · task-64）——"投递真的送达"＝真机已证 ✅ ＋ 部署侧可复制配方（目标 6 最后一格闭合）**：实例 `--port 7804`（补丁＝provider ＋ **`vmu-overlay-v5-transport.yml`**＝报告声明与 transport **合成一份**）。
+    - **为什么先否掉"声明式 transport 名"**：全仓唯一来源是 `config.deliver`（`vibe-math-vmu.js:475`），入口**故意不从宿主猜**（`vibe-math-vmu.js:470-474`：*"We do NOT invent one from `ctx.get('subagents')` … guessing a shape would be exactly the 'pretend it was delivered' failure"*）⇒ **Lead ① 的字面形态不存在**；**但** core 的 `preset-declaration.js:70-78` `deepMerge` **对非对象叶子原样返回**，而 profile patch **支持 `!!js`** ⇒ **部署可以在 overlay 里携带函数**（免费 `--dump-config` 已见 `deliver: !!js >- …` 落在 overlay 行 config、preset 行整块不变）✓。
+    - **配方（部署侧，一份 patch）**：`- id: vibe-math-vmu-overlay` → `config: { overlayFor: 'vibe-math-vmu', rows: { 'vibe-math-vmu': { deliver: !!js '(report) => console.log("[vmu-report-sink] " + …)', vmu: { tools:{faces:['*']}, packs:{active:['v5r']}, report:{ enabled:true, minIntervalMs:0, reports:[{name:'artifacts-threshold', trigger:{kind:'threshold',metric:'artifacts',op:'gte',value:5}, channel:'log', template:'【成果阈值】…'}] } } } } }` ✓。
+    - **边界（三条分开写、不混）**：① **声明式名解析＝不存在**；② **overlay 携带 scope-free 函数＝已验证**（`!!js` 在 **overlay 行自己的 realm** 求值 ⇒ 只能用不依赖宿主服务的 sink，如 `console`／`fetch`；本次实测的就是 `console`，与 `channel:'log'` 语义相配）；③ **服务型 transport（写 inbox／`subagents.sendMessage`／需 `ctx` 的 webhook）＝仍需宿主代码注入**（在配置 vmu 那一行的宿主代码里给 `deliver:` 一个函数，例：`deliver: (report) => ctx.get('subagents').sendMessage({ to: report.to, text: report.text, payload: report.payload })`）——**overlay 里不要试**（realm 不对，正是 core 警告的那类静默错）✗✓。
+    - **真机读数**（`session-8c105c47…`，50 events）：首条 user message **L10 seq8**；调用 `report`(status) **L19 seq17**／**`report`(tick) L24 seq22**／**`vibe_vmu_set` L29 seq27**／`status` **L34 seq32**（`settingsMerge.sources` 5 键含 `vmu.report.reports`）／`pwsh`×2；发布 **78／52**；tokens in 43900／out 2799／cacheRead 203264、**`tokenCapHit:false`** ✓。
+    - **★ 投递证据**：tick 回执 **`"fired":[{…,"delivered":true,"drives":false,"error":null,"refused":null}], "delivered":1, "failures":0, "audit":{"appended":true}`** ⇒ **`delivered:true` 且无 `VMU_REPORT_NO_TRANSPORT`**（与 R7 两态对照）⇒ **F2 两半均为真机已证** ✓✓。**独立旁证（第三方，已到）**：vmu-verify 从**其 7804 服务 stdout**读到**恰好一条** `[vmu-report-sink] {"name":"artifacts-threshold","to":[],"channel":"log","text":"【成果阈值】artifacts=9 已达阈值 5","drives":false}` ⇒ 与回执 `name`/`channel`/`text`/`drives` **逐字一致、且只一条**（无重复投递）✓✓。
+    - **顺带闭合**：`vibe_vmu_set` 回执本轮为 `…,"ownerCheck":"identified","by":"office","reason":"scripted slice"` ⇒ **R7 的"schema 只收 {key,value}"已由 core 修掉** ✓；人设原话本轮为 **"…not a voting member; I don't vote."**（断言正则原先不认缩写 ⇒ 已修为 `(do not|don'?t|does not|doesn'?t|not)\s+vote`）✓。
+    - **离线复评**：`--session 8c105c47… --expect-delivery` ⇒ **16 passed, 0 failed, 0 not-run, exit=0**（实跑首过 16/1 的唯一红是上述正则假阴性）✓。
 1. 助手面在**装配级／单元级全绿**：`vmu-assistant-e2e` **55/0**（`--strict-findings` 亦 **55/0**）、`-report` 93/0、`-assembly` 39/0、`-systemprompt` 15/0、`vmu-paper-consult` 40/0，`check-docs` PASS ✓（见 §19.10 读数）。
 2. **F2 关闭**：真机入口 ＋ `config.deliver` ⇒ 触发即 `delivered:true`／note 带 `drives:false`／部署侧**恰一条 note/次**；**无 transport ⇒ 具名拒 `VMU_REPORT_NO_TRANSPORT` 且仍留痕**（边界硬钉）✓。
 3. **F1／F3／F5 关闭**（见 §19.10 表）：面解析在 pack settings 之后；活读键**不得低报也不得高报**；周期时钟判据＝**面已发布**且在 `install()` 之后 ⇒ pack-only 也挂 ✓。
 4. **工具已就位且自证**：`tests/vmu-assistant-host-slice.test.mjs` ⇒ **6/0/5 not-run exit=0**，`--require-host` ⇒ **exit=1**（"未跑"不是悄悄通过）；并已按 `docs/slv-playbook.md` §2/§4 备好（首行"模拟测试"标记 ＋ 显式 `--max-tokens`）✓。
 
 **不支持（**未**建立，不许当通过）**
-1. **【Round 7 已关闭】阈值真触发／参数面留痕／两通道**：观测 10 因部署未声明报告（`declared:0`）、观测 11 因回合被 120k 上限切断 ⇒ 当时均"未建立"；**观测 12 用重排提示词＋400k 上限一次钉上三条**（`fired[]` 非空且 `drives:false`／`vibe_vmu_set` 回执 `hot:H2`＋`source:"runtime"`／模型自述"I am the institute office … I do not vote"）⇒ **现为【实测具备】✅**；其中"投递"仍为**具名拒 `VMU_REPORT_NO_TRANSPORT`**（scratch 未注入 transport）＝**F2 边界如实分列** ✓。
-2. **"上限"性质（历史）**：观测 10/11 两轮 `tokenCapHit:true`（40k／120k，`turn/end.reason=aborted/user`）⇒ 按 `docs/slv-playbook.md` §8 **触上限本身不算通过**；观测 12 已 `tokenCapHit:false`（cap 400k）✓。
-3. **历史教训（保留为判据纪律）**：U14 第一版设计是实测缺陷（patch 声明行 ⇒ 覆盖 preset 本体 ⇒ `agent-preset/not-found`）；第二版设计**注册期合并**已被 verify 独立复核（21/0 常驻测试）而**入口侧**由 core task-41 修好（观测 10/11/12 端到端验证）；**`--dump-config` 是 loader 树不是运行时定义**，且**不得用全文计数**当判据（本卷两次假阳性都源于此）✗✓。
-4. **成本教训（已落地为修法）**：`vibe_vmu_status` 回执 **49,929 字符**被后续步骤从缓存重读（cacheRead 110,976）⇒ 观测 11 触顶；**修法＝提示词别把 `status` 放最前**（观测 12 已照此做并成功）✓。
-5. **★ 判据纪律（Round 7 新增，最有价值）**：**工具回执只在会话日志里，驱动 stdout 不回声结果** ⇒ 把断言写在驱动输出上会产生**假阴性**（观测 12 首跑 3 红、复核全绿）。⇒ **断言必须读 `sess.rawResults`／`sess.assistant`**，并提供 **`--session <id>` 离线复评**（同一套断言复评已录会话、不花会话）✓。
+1. **【Round 7 已关闭】阈值真触发／参数面留痕／两通道**：观测 10 因部署未声明报告（`declared:0`）、观测 11 因回合被 120k 上限切断 ⇒ 当时均"未建立"；**观测 12 用重排提示词＋400k 上限一次钉上三条**（`fired[]` 非空且 `drives:false`／`vibe_vmu_set` 回执 `hot:H2`＋`source:"runtime"`／模型自述"I am the institute office … I do not vote"）⇒ **现为【实测具备】✅**。
+2. **【Round 8 已关闭】"投递"**：观测 10/11/12 里投递都是**具名拒 `VMU_REPORT_NO_TRANSPORT`**（F2 边界、非缺陷）；**观测 13 用 overlay `!!js` 注入 scope-free transport（`console` log sink）⇒ `delivered:true`、`refused:null`、`delivered:1`、`failures:0` ＝真机已证 ✅**。**仍不支持的两条要分清**：① **"声明式 transport 名由 pack/宿主解析"＝不存在**（无读者）；② **overlay 携带"服务型" transport（需 `ctx`／inbox／subagents）＝未验证且不建议**（`!!js` 在 overlay 行自己的 realm 求值）⇒ 那一类**仍必须宿主代码注入**（示例见报告 §2.3）✗✓。
+3. **"上限"性质（历史）**：观测 10/11 两轮 `tokenCapHit:true`（40k／120k，`turn/end.reason=aborted/user`）⇒ 按 `docs/slv-playbook.md` §8 **触上限本身不算通过**；观测 12/13 均 `tokenCapHit:false`（cap 400k）✓。
+4. **历史教训（保留为判据纪律）**：U14 第一版设计是实测缺陷（patch 声明行 ⇒ 覆盖 preset 本体 ⇒ `agent-preset/not-found`）；第二版设计**注册期合并**已被 verify 独立复核（21/0 常驻测试）而**入口侧**由 core task-41 修好（观测 10–13 端到端验证）；**`--dump-config` 是 loader 树不是运行时定义**，且**不得用全文计数**当判据（本卷两次假阳性都源于此）✗✓。
+5. **成本教训（已落地为修法）**：`vibe_vmu_status` 回执 **49,929 字符**被后续步骤从缓存重读（cacheRead 110,976）⇒ 观测 11 触顶；**修法＝提示词别把 `status` 放最前**（观测 12/13 均照此做并成功）✓。
+6. **★ 判据纪律（Round 7 新增，最有价值）**：**工具回执只在会话日志里，驱动 stdout 不回声结果** ⇒ 把断言写在驱动输出上会产生**假阴性**（观测 12 首跑 3 红、复核全绿；观测 13 首跑 1 红＝正则不认 `don't vote` 缩写）⇒ **断言必须读 `sess.rawResults`／`sess.assistant`**，并提供 **`--session <id>` 离线复评**（同一套断言复评已录会话、不花会话）✓。
 
-**已建立（目标 6 的正面终态）**
-1. **多面点亮 ✅**：真机发布的 `vibe_vmu_*` 面 **52 个**（Round 5 是 1 个），**4 个不同面真被调用**（`status`／`chat`／`panel`／`report`），5 对 `tool/call`+`tool/result` 全部带 `seq`＋行号 ✓。
-2. **助手面可达 ✅**：`vibe_vmu_report` 发布 ＋ 真调用（status L24 seq22／result L25 seq23；tick L29 seq27／result L30 seq28）＋ 回执完整（`enforced` 11 键、`whoMayChange:['office']`）✓。
-3. **入口两形态 ✅**（core task-41）：`settingsMerge.sources` 出现 4 个 `source:"config"` 的点号键、`settings.keys=4`、`vmu.tools.faces=["*"]`／`vmu.packs.active=["v5r"]` ✓。
-4. **零机制红线 ✅**：无声明 ⇒ 恰 1 个工具（verify 的 16/0 断言 ＋ 本卷 §2 对照断言）；本轮**声明后**才 52 面 ✓。
+**已建立（目标 6 的正面终态——**四条维度 ＋ 投递，全部真机**）**
+1. **多面点亮 ✅**：真机发布的 `vibe_vmu_*` 面 **52 个**（Round 5 是 1 个），**4 个不同面真被调用**（`status`／`chat`／`panel`／`report`），每对 `tool/call`+`tool/result` 全部带 `seq`＋行号 ✓（观测 10/12/13）。
+2. **助手面可达 ＋ 阈值真开火 ✅**：`vibe_vmu_report` 发布＋真调用（status／tick 各一对）；tick 回执 `"fired":[{…"text":"【成果阈值】artifacts=9 已达阈值 5","drives":false}]`、`audit.appended:true` ✓（观测 12/13）。
+3. **参数面留痕 ✅**：`vibe_vmu_set` 回执 `ok:true, hot:"H2", who:"office", ownerCheck:"identified", by:"office", reason:"scripted slice", source:"runtime"` ✓（观测 12/13；R7 的 schema 限制已由 core 修掉）。
+4. **人设两通道 ✅**：模型自述 **"I am the institute office (assistant/external interface), not a voting member; I don't vote."** ⇒ system prompt 面真的到达模型 ✓（观测 12/13）。
+5. **★ 投递真的送达 ✅（Round 8 闭合）**：tick 回执 **`"delivered":true, "refused":null, "delivered":1, "failures":0`** ⇒ **F2 两半均为真机已证**；配方与三条边界见观测 13 ✓。
+6. **入口两形态 ✅**（core task-41）：`settingsMerge.sources` 5 个 `source:"config"` 的点号键（含 `vmu.report.reports`）、`settings.keys=5/6` ✓。
+7. **零机制红线 ✅**：无声明 ⇒ 恰 1 个工具（verify 的 16/0 断言 ＋ 本卷 §2 对照断言）；**声明后**才 52 面 ✓。
 
 **非结果（**不是通过**）**
 1. **助手面会话：跑了 1 次，但一个面都没被调用 ⇒ 五条事实仍"未建立"** ✗✓：Round 4 曾按降本裁决不跑；Round 5 在 U14 机制进仓后，我用**非破坏性绕行 patch** 起了一个 scratch `dsh web`（隔离 `DSH_HOME`；**仓库外，实测用**的工作区：`--cwd D:\_tmp\smoke-ws`；提示词首行含「**模拟测试**」、`--max-tokens 40000`），**`session/create` ok、回合真跑**（6s、`transcriptEvents:22`），但 **`toolCalls:0`／`tools:[]`** ⇒ **`vibe_vmu_report` 可达／阈值触发／参数留痕／两通道到达模型 一条都未建立** ✗。**"未跑成"不是"通过"，也不是"失败"**：它是**未建立**，原因见观测 7 的两条候选 ✗✓。

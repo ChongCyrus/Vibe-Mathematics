@@ -464,6 +464,17 @@ export function apply(ctx, config = {}) {
     // host's handle to the caller BEFORE the outcome is awaited, which is what makes `cancel({jobId})` a real
     // `terminate()` instead of a named "this seam cannot kill".
     spawnHandle: spawnSeam,
+    // ROUND 8 / task-58 (G6): THE ALLOCATING STORE, resolved AT CALL TIME (the same lesson as every other seam here:
+    // a plugin's `apply` can run before the host service mounts). A store qualifies only if it can ALLOCATE a sequence
+    // number - `append(record) -> { ticket }` plus `readAll()` - because that is what makes two processes sharing it
+    // get distinct, monotonic tickets. Two sources, in order: the deployment's `config.commitStore`, then the host's
+    // `ctx.get('store')`. Absent ⇒ the ballot reports `status().gate.durable === false` BY NAME (never pretended).
+    commitStore: () => {
+      const ok = (s) => !!(s && typeof s.append === 'function' && typeof s.readAll === 'function')
+      if (ok(config.commitStore)) return config.commitStore
+      try { const s = ctx && typeof ctx.get === 'function' ? ctx.get('store') : null; if (ok(s)) return s } catch { /* a ctx that cannot answer is reported as "no store" */ }
+      return null
+    },
     // ROUND 3 / task-20 F2: the MEMBER/MEETING/NOTIFY/REPORT delivery seam. The entry never injected one, so
     // `status().seams.deliver` was false and every report that had something to say left its trace but carried a named
     // refusal (`VMU_REPORT_NO_TRANSPORT`) - honest, but only half of "end-to-end automatic reporting".

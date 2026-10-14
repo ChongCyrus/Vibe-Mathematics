@@ -546,12 +546,37 @@ export function createMathJobs(opts) {
       lastSpawnHadHandle = b.hadHandle
       if (b.timedOut) childrenTimedOut += 1
       if (b.terminated) childrenTerminated += 1
+      // ── ROUND 8 (缺陷由端到端演练抓出) ─────────────────────────────────────────────────────────────
+      // A cancelled job must STAY cancelled: `cancel()` writes `cancelled`, but the dying child's `close` event
+      // used to resume this very path and re-state the job as `settled`/`failed` (last writer wins) ⇒ the DISK
+      // said `settled` for a job the operator had cancelled. Cancel is terminal; the execution path yields to it.
+      if (job.cancelled === true || job.state === 'cancelled') {
+        job.state = 'cancelled'
+        job.cancelled = true
+        job.settledAt = clock()
+        job.exitCode = null
+        job.timedOut = false
+        job.run = { ok: false, cancelled: true, terminated: job.terminated === true, hadHandle: !!job.hadHandle, ms: job.settledAt - job.startedAt }
+        job.receipt = Object.assign(refuse('VMU_JOB_CANCELLED',
+          '作业已被取消（mid-flight）：取消是**终态**，不因进程结束而改写成 settled/failed',
+          '要重跑请用新的 jobId 重新 submit（镜像里保留取消事实，恢复扫描不会重排它）',
+          []), { cancelled: true, terminated: job.terminated === true, partial: { stdout: tail(out && out.stdout, c.captureStdoutBytes).text.slice(-2000), stderr: tail(out && out.stderr, c.captureStdoutBytes).text.slice(-2000) } })
+        receipts.set(job.id, job.receipt)
+        await writeMirror(job)
+        emit('math/job-cancelled', { jobId: job.id, cancelled: true, terminated: job.terminated === true })
+        return { ok: false, code: 'VMU_JOB_CANCELLED', jobId: job.id, state: 'cancelled', cancelled: true, isRefutation: false, receipt: job.receipt }
+      }
       const r = out || {}
       job.settledAt = clock()
       const so = tail(r.stdout, c.captureStdoutBytes)
       const se = tail(r.stderr, c.captureStdoutBytes)
       const timedOut = r.timedOut === true || b.timedOut
-      const exitCode = timedOut ? null : Number(r.exitCode)
+      // ROUND 8（端到端演练抓出的第二个缺陷）：退出码缺失（子进程被信号杀掉 / spawn 异常结束）**不是**
+      // "exit 0"。旧代码 `Number(null) === 0` ⇒ 一个被 SIGKILL 的子进程会被记成 **settled / exit 0**。
+      const rawExit = r.exitCode
+      const noExit = rawExit === null || rawExit === undefined
+      const signaled = r.signal !== null && r.signal !== undefined && r.signal !== ''
+      const exitCode = timedOut ? null : (noExit ? null : Number(rawExit))
       const stderrTail = se.text.split('\n').slice(-5).join('\n')
       const receipt = {
         jobId: job.id, engine: job.engine, argvFingerprint: fp(job.argv || []), inputFingerprint: job.inputHash, outputFingerprint: fp({ stdout: so.text, stderr: se.text }),
@@ -560,6 +585,8 @@ export function createMathJobs(opts) {
         // F17 facts: the budget is local; killing needs a handle; the host may also report its own loss.
         terminated: !!b.terminated, hadHandle: !!b.hadHandle,
         hostLossy: !!((r.stdoutLossy) || (r.stderrLossy)), spillPath: (r.stdoutSpill || r.stderrSpill) || null,
+        // ROUND 8: the signal that ended the child (null when it exited normally) — a fact the receipt must carry.
+        signal: signaled ? String(r.signal) : null,
       }
       job.exitCode = exitCode
       job.timedOut = timedOut
@@ -587,6 +614,21 @@ export function createMathJobs(opts) {
           b.terminated ? '见 receipt.stdout/stderr 尾部；丢弃字节已计数 ' + receipt.droppedBytes
             : '注入宿主原生 spawn（同步返回带 terminate 的 handle）或 spawnHandle 接缝才能真正终止；见 docs/09 §4.3',
           ['vmu.math.timeoutMs']), { receipt })
+      }
+      if (exitCode === null) {
+        // ROUND 8: **no exit code at all** (the child was signalled / ended abnormally) is not a clean exit. The
+        // receipt says so by name instead of inheriting `Number(null) === 0` (which used to make a SIGKILLed
+        // process look like a successful `settled` job).
+        job.state = 'failed'
+        job.reason = 'no-exit-code'
+        job.exitCode = null
+        job.signal = receipt.signal
+        note('math.no-exit-code', job.id, { signal: receipt.signal })
+        await writeMirror(job)
+        emit('math/job-failed', { jobId: job.id, engine: job.engine, exitCode: null, signal: receipt.signal, code: 'VMU_MATH_HARNESS_FAILED' })
+        return Object.assign(refuse('VMU_MATH_HARNESS_FAILED',
+          '子进程没有给出退出码（signal=' + String(receipt.signal || 'unknown') + '）⇒ **不算 settled / exit 0**',
+          '被外部杀掉的子进程只能记成 failed（要"取消"请走 cancel({jobId})，它会把作业标成 cancelled 并保留在镜像里）'), { receipt })
       }
       if (exitCode !== 0) {
         job.state = 'failed'

@@ -1507,6 +1507,30 @@ for (const m of roster) chat.mute(m, { by: chair, reason: 'meeting in progress' 
 
 ---
 
+### 25.14 Round 8：举手管理面（已落）＋ 四个裁决的落地形状（★ 本轮**未落**，具名）
+
+**A · 举手管理面 `hands({op, member, by, why, scope})` —— 已落 ✓**（`kernel/meeting.js`；工具面 `vibe_vmu_meeting` 新增 `hands` 动作＋`op`/`scope` 参数）
+| 维度 | 语义（实测） |
+|---|---|
+| **谁可管理** | **仅主席**（`createMeeting({chair})` 或注入 `isChair` 接缝）；**两者都未声明 ⇒ 具名拒 `VMU_ENGINE_UNAVAILABLE`**（"没人声明过的权威"本仓不发明＝零机制）；非主席 ⇒ `VMU_NOT_PERMITTED`（回执点出已声明的主席） |
+| **是否留痕** | **全部留痕**：`history` append-only 记 `hands-grant`／`hands-revoke`／`hands-clear`／**`hands-refused`**（连拒绝也记），行内带 `{op, member, by, why, scope, revoked/cleared}` |
+| **理由** | `revoke`／`clear` **必须给 `why`**（否则 `VMU_REASON_REQUIRED`）——**静默移除他人的发言位**正是这条要防的；`grant` 的 `why` 可选但给了就记 |
+| **`clear` 作用域** | `scope:'all'`（默认）／`'round'`（只清**本轮**举手；举手项自带 `round`）；**其他值 ⇒ `VMU_INVALID_ARGUMENT`**（作用域不发明）；回执给 `cleared` 计数 |
+| **`grant` 不加塞** | 授权人在队列**末尾**取位（`position` 回报）；"插到最前"是另一条裁决（B③ 的发言序覆盖），不在这里偷偷做 |
+| **读面** | `op:'list'` 无需主席即可读（`{member, round, at, granted}`） |
+
+**B①–④：Lead 裁决原文（不再另选）＋ 落地形状（★ 本轮未落，原因见末行）**
+1. **议程条目不能硬删，只能关闭/归档** —— 形状：`open()` 支持条目数组 `{id, text, owner?, timebox?}`（受**已声明**的 `vmu.agenda.maxItems`／`ownerRequired`／`timeboxRequired` 约束）＋ `agendaClose({meeting, id, by, why})`：置 `closed/closedBy/why`，**原条目保留**；未知 id／无 `why` 具名拒。**代价 ≈ 90 行＋12 断言**；`vmu.agenda.*` 六键**已在 schema**（本项无需 core）。★ **未落**。
+2. **请假/休会批准人＝chair，office 兜底，且必须可声明** —— 形状：`requestLeave({meeting, by, why})`＋`approveLeave({meeting, member, by, why})`，批准人读 `vmu.meetings.leaveApprover`（默认 `'chair'`，值域 `chair|office`）。**该键尚未在 schema**（需 core 声明）；键落地前读取必须**具名降级**（不臆造）。★ **未落（依赖 core 的键）**。
+3. **随机发言序可被 chair 覆盖，但必须留痕；未声明 ⇒ 不可覆盖** —— 形状：`vmu.meetings.orderMode` 增 `random` 值（现 `fifo|round-robin|chair`）＋ `overrideOrder({meeting, by, why, mode})`：**仅 chair**、**必须 `why`**、写审计行、`enforced[]` **点名 `vmu.meetings.orderMode`**（`vmu.agenda.reorderAudit` 同步点名）；**未声明（settings 无该键）⇒ 具名拒**。★ **未落**。
+4. **6 种 flow mode 的"可观察差异"裁决** —— **当场合并两项**：`single` 与 `hands` **不可区分**（都是"一次一人、按举手先后"，差别只在名字）⇒ **合并为 `hands`**；`directed` 与 `call_on` **不可区分**（都是"主席点名"，"是否附带问题"是 `call_on` 的**参数**而非另一个模式）⇒ **合并为 `call_on`**。**保留四种，各自可观察差异**：`open`（**无队列**：任何成员可即刻发言）、`hands`（一次一人，**按举手时间**）、`round_robin`（一次一人，**按已发言次数升序**——`queue()` 的 `round-robin` 分支已接线）、`call_on`（一次一人，**位置由主席指定**——`queue()` 的 `chair` 分支已接线）。★ **本轮只落裁决文本**；把四种 mode 暴露成 `flow({mode})` 并与 `orderMode` 收敛（~80 行）**未落**。
+
+**C · 其余（★ 本轮未落，逐条代价）**：**G2** `invite` 正文/expect/timebox（~40 行，复用 `speechMaxMs`）；**G3** 会期板 `origin`＋`claim_pending`（~70 行，**跨面**，需任务板配合）；**G4** 议程增删/流程/点名/停步（见 B①④；`stop{scope:'step'}` 需 core 先声明"步"键）；**G7** `ballotbox`＋`mailbox` 接同一份耐用日志（**各 ≈ 6 行**：`durableQueue.reserve/complete` 包住 `cast`／`send` 的唯一写入点；协议已在 `kernel/ballot.js` 就绪）。★ **未落**。
+
+**为什么 B/C 未落（如实登记，不改裁决）**：本轮把预算用在 A 的**实现＋11 条断言**（含"无主席 ⇒ 零机制"与"拒绝也留痕"两条硬约束）；B①–④ 与 C 的**裁决与形状已固化在上一表**，逐条带代价与依赖（B② 缺键、B④ 需收敛实现、C 四条各自可独立排期）。⇒ **凡未落地者一律标"未落"，不以文档代替实现。**
+
+---
+
 ## 26. Round 3 · 目标 2 缺口：一次性 future-only 活动等待器（F52 / C-56）
 > **判据**：`_handoff/vmu/03-v5r-full-inventory.md` 分片 A **§6 原语 F52**（"必须是未来一次性语义"）、**C-56**（`vibe_v5_wait`／`waitForActivity`／`notifyActivity`，`vibe-math-v5r.js:3424-3466`、工具 `:11142-11151`）。
 > **缺口实测**：Round 3 之前 vmu 全树对 `waitFor`／`notifyActivity`／`vibe_v5_wait`／`activityWaiter` **零命中** ⇒ 成员只能轮询（烧 token）或永远等；这条直接落在"利于多智能体协作"的反面，故本轮补为内核原语。

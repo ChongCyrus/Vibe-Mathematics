@@ -256,6 +256,12 @@ export function createKernel({
   // caller before awaiting the outcome, so `cancel({jobId})` terminates immediately; without it the job faces can only
   // refuse by name ("this seam cannot kill"). Same implementation as `spawn`, one extra argument.
   spawnHandle = null,
+  // ROUND 8 / task-58 (G6): THE ALLOCATING STORE. `kernel/ballot.js` owns the commit PROTOCOL (ticket from the store,
+  // intent before effect, idempotent `reconcile()`), but a protocol needs a store that can ALLOCATE a sequence number:
+  // `append(record) -> { ticket }` plus `readAll()`. The host owns that (an O_APPEND file, a SQLite sequence, a locked
+  // journal), so it is a SEAM here. A function is resolved AT CALL TIME (a plugin's `apply` can run before the host
+  // service mounts); absent ⇒ the ballot reports `status().gate.durable === false` BY NAME, never pretended.
+  commitStore = null,
   deliver = null,
   // ROUND 1 / K3: the TURN loop's own delivery seam (`async ({ turn, text }) => reply`). Kept separate from
   // `deliver` (the member/meeting wake seam, whose shape is an envelope) so one adapter can never be silently
@@ -1393,6 +1399,10 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     /** Per-object primitives: the kernel supplies the factory, the pack supplies the policy. */
     ballot: (opts = {}) => {
       const made = createBallot(Object.assign({ quorumRule: settings['vmu.meetings.quorumRule'], bus, clock,
+        // ROUND 8 / task-58 (G6): hand the host's allocating store to the face, which builds its own commit log from it
+        // (`createDurableCommitLog`) - the protocol stays the face's, the numbering stays the host's. Resolved at CALL
+        // time inside the face, so a store that mounts after boot is still picked up.
+        commitStore,
         isPaused: () => controlState.state === 'paused',
         // ROUND 3 / task-20 (reader-c's task-17): the C-45 ENFORCEMENT seam. `ballot.cast()` is the single point where
         // a registered member's boolean vote is rewritten to 0.5; without this seam the face reports
@@ -1864,7 +1874,14 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
           timerInjected: scheduler.status().timerInjected,
           timerNote: scheduler.status().timerShape === null
             ? 'timer seam NOT usable: the scheduler accepts one of four OBJECT shapes — {arm,disarm} | {schedule,cancel} | {set,clear} | {setTimeout,clearTimeout} (kernel/scheduler.js owns this contract); a bare function or any other shape is refused by name (VMU_CONTROL_NO_TIMER)'
-            : null },
+            : null,
+          // ROUND 8 / task-58 (G6): the ALLOCATING STORE behind the ballot's durable commit log. Reported from the
+          // value the kernel was ACTUALLY given (a construction fact): with one, two processes sharing it get
+          // distinct monotonic tickets; without one the ballot's own `status().gate.durable` is false BY NAME.
+          commitStore: typeof commitStore === 'function' ? 'call-time resolver' : (commitStore ? 'object' : false),
+          commitStoreNote: commitStore
+            ? 'the host supplies a store whose append(record) answers {ticket} and readAll() reads the log back; the ballot builds its commit log from it at call time (kernel/ballot.js createDurableCommitLog)'
+            : 'no allocating store: the ballot reports status().gate.durable === false and reserve() returns null - the seam is ABSENT, never pretended (pass { commitStore } = a store with append()->{ticket} and readAll(), or config.commitStore)' },
         // TASK-170: the guard faces report HOW FAR THEY ACTUALLY REACH. A face that no production path calls
         // is marked `kind:'diagnostic'` with its reason, so `status()` can never imply a guard is a live
         // production rail while it is not (the eighth case: implemented + tested + never effective).

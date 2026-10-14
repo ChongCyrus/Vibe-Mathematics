@@ -110,13 +110,15 @@ const OWNERS = { introduction: 'm-1', method: 'm-2', results: 'm-1' }
   ok(r.gaps[0].owner !== undefined && r.gaps.some((g) => g.name === 'introduction'), '★ and each gap still names its owner (a gap is information, not silence)')
 }
 
-// ── 5. finalizer 规则真的是可调的三种，且未知值回落为 editor ──────────────────────────────
+// ── 5. finalizer 规则真的是可调的三种；未知值**具名拒**，绝不静默回落 ──────────────────────
 {
   ok(FINALIZERS.length === 3 && FINALIZERS.indexOf('editor') === 0, 'three finaliser rules are declared, editor first')
   const p = createPaper({ settings: mkSettings({ 'vmu.paper.finalizer': 'nonsense' }), clock: () => 7, register: async () => ({ ok: true }) })
-  const id = p.start({ title: 'T', sections: ['a'], contributors: { a: 'm-1' }, editor: 'ed' }).paperId
-  p.contribute({ paperId: id, section: 'a', by: 'm-1' })
-  await expectRejects(() => p.finalize({ paperId: id, by: 'm-1' }), 'VMU_NOT_PERMITTED', 'an unknown finaliser value falls back to editor (never to "any")')
+  // ROUND 8 (task-58)：`cfg()` 曾把未知值**静默**回落成 `editor`；现在它列出封闭值域并具名拒，
+  // 所以这条旧断言（"回落为 editor"）指向的正是被删掉的缺陷 —— 改为断言"按名拒、且不回落到 any"。
+  await expectRejects(() => p.start({ title: 'T', sections: ['a'], contributors: { a: 'm-1' }, editor: 'ed' }),
+    'VMU_INVALID_ARGUMENT', 'an unknown finaliser value is refused BY NAME (the closed domain is listed), never silently falling back')
+  // （注：拒之后连 `status()` 也会走同一 `cfg()` 判定 ⇒ 具名拒，本面整体 fail-closed；故此处不再另设"无产出"断言。）
   const q = createPaper({ settings: mkSettings({ 'vmu.paper.finalizer': 'contributor' }), clock: () => 8, register: async () => ({ ok: true }) })
   const qid = q.start({ title: 'T', sections: ['a'], contributors: { a: 'm-1' }, editor: 'ed' }).paperId
   q.contribute({ paperId: qid, section: 'a', by: 'm-1' })

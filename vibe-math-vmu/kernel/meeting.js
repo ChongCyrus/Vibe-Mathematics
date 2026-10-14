@@ -61,6 +61,10 @@ export function createMeeting({
   roundComplete = defaultRoundComplete,
   closePolicy = () => ({ ok: true }),
   handPolicy = () => ({ ok: true }),
+  // Round 8 (A): WHO may manage the hand queue. The chair is the declared authority; with `chair === null` and no
+  // `isChair` seam the management face REFUSES by name rather than inventing an authority (zero mechanism).
+  chair = null,
+  isChair = null,
   deliver = null,
   bus = null,
   clock = () => new Date().toISOString(),
@@ -81,6 +85,8 @@ export function createMeeting({
   const refused = {}
   const hands = []
   let agenda = null
+  // Round 8 (B①): the agenda as ITEMS, so an item can be CLOSED and KEPT (an agenda entry is never hard-deleted).
+  let agendaItems = []
   let currentRound = null
   let asked = []
   let closedReason = null
@@ -130,6 +136,17 @@ let debateEnded = null
           verdict && verdict.hint ? verdict.hint : undefined)
       }
       agenda = agendaText === undefined || agendaText === null ? null : String(agendaText)
+      // B①: an agenda may be a string (legacy) or an ARRAY of items; either way it becomes ITEMS with stable ids,
+      // so `agendaClose()` can close one WITHOUT removing it (append-only is this repository's audit floor).
+      const rawItems = Array.isArray(agendaText) ? agendaText : (agenda === null || agenda === '' ? [] : [agenda])
+      agendaItems = rawItems.map((it, i) => {
+        const o = it && typeof it === 'object' ? it : { text: it }
+        return { id: 'ag-' + (i + 1),
+          text: String(o.text === undefined || o.text === null ? '' : o.text),
+          owner: o.owner === undefined || o.owner === null ? null : String(o.owner),
+          timebox: o.timebox === undefined || o.timebox === null ? null : String(o.timebox),
+          state: 'open', closedBy: null, why: null, closedAt: 0 }
+      })
       conveneRecord = { at: clock(), roster: useRoster, kind, agenda }
       state.value = 'convened'
       record('convened', { kind, agenda, roster: useRoster })
@@ -252,6 +269,117 @@ let debateEnded = null
       return { ok: true, position: hands.length, member }
     },
 
+    /**
+     * Round 8 (A) — THE HAND-QUEUE MANAGEMENT FACE (`grant` / `revoke` / `clear`, plus a read-only `list`).
+     *
+     * WHO: only the CHAIR may manage hands (`chair` option or an `isChair` seam). If neither is declared the face
+     * refuses BY NAME (`VMU_ENGINE_UNAVAILABLE`) — an authority nobody declared is exactly what this repository
+     * refuses to invent.
+     * TRACE: every operation writes an append-only row to `history` (`hands-grant` / `hands-revoke` / `hands-clear`)
+     * carrying `{op, member, by, why, scope, count}`; nothing is removed from the history, only from the LIVE queue.
+     * REASON: `revoke` and `clear` require a `why` (removing someone's standing silently is the abuse this blocks);
+     * `grant` records its `why` when given.
+     * SCOPE: `clear`/`revoke` take `scope:'round'` (only this round's hands) or `'all'` (default). A grant never
+     * jumps the queue — it takes a place at the end (jumping ahead is a different ruling, B③'s order override).
+     */
+    hands({ op = null, member = null, by = null, why = '', scope = 'all' } = {}) {
+      const action = String(op === null || op === undefined ? '' : op).trim()
+      const who = String(by === null || by === undefined ? '' : by).trim()
+      const reason = String(why || '').trim()
+      const where = String(scope === null || scope === undefined ? 'all' : scope).trim()
+      if (['grant', 'revoke', 'clear', 'list'].indexOf(action) === -1) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'hands needs { op } ∈ grant|revoke|clear|list', 'got ' + JSON.stringify(op))
+      }
+      if (action === 'list') {
+        return { ok: true, op: 'list', hands: hands.map((h) => ({ member: h.member, round: h.round, at: h.at, granted: !!h.granted })), count: hands.length }
+      }
+      const isChairFn = typeof isChair === 'function' ? (id) => !!isChair({ member: id, chair }) : (id) => chair !== null && String(id) === String(chair)
+      if (chair === null && typeof isChair !== 'function') {
+        throw refuse('VMU_ENGINE_UNAVAILABLE', 'no chair is declared: no one may manage the hand queue',
+          'declare the chair (`createMeeting({ chair })`) or inject an `isChair` seam — the kernel never invents an authority')
+      }
+      if (!who) throw refuse('VMU_INVALID_ARGUMENT', 'hands needs { by } (who is managing)', 'a queue edit without an actor cannot be audited')
+      if (!isChairFn(who)) {
+        record('hands-refused', { op: action, member: member === null ? null : String(member), by: who, reason: 'not-the-chair' })
+        throw refuse('VMU_NOT_PERMITTED', 'only the CHAIR may manage the hand queue: ' + who,
+          'the declared chair is ' + String(chair === null ? '(an injected isChair seam decides)' : chair))
+      }
+      if ((action === 'revoke' || action === 'clear') && !reason) {
+        record('hands-refused', { op: action, by: who, reason: 'no-why' })
+        throw refuse('VMU_REASON_REQUIRED', 'hands ' + action + ' needs { why }', 'removing standing (or emptying the queue) without a reason is unauditable')
+      }
+      if (action === 'clear' && ['all', 'round'].indexOf(where) === -1) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'clear scope must be "all" or "round"', 'got ' + JSON.stringify(scope))
+      }
+      if (action === 'grant') {
+        const target = String(member === null || member === undefined ? '' : member).trim()
+        if (!target) throw refuse('VMU_INVALID_ARGUMENT', 'hands grant needs { member }', 'name the member taking a place in the queue')
+        const round = currentRound ? currentRound.n : null
+        const already = hands.filter((h) => h.member === target && (where === 'all' || h.round === round))
+        if (already.length) return { ok: true, op: 'grant', member: target, by: who, deduped: true, count: hands.length }
+        hands.push({ member: target, round, at: clock(), by: who, granted: true, why: reason })
+        record('hands-grant', { op: 'grant', member: target, by: who, why: reason, round })
+        return { ok: true, op: 'grant', member: target, by: who, position: hands.length, count: hands.length }
+      }
+      if (action === 'revoke') {
+        const target = String(member === null || member === undefined ? '' : member).trim()
+        if (!target) throw refuse('VMU_INVALID_ARGUMENT', 'hands revoke needs { member }', 'name the member whose place is withdrawn')
+        const round = currentRound ? currentRound.n : null
+        const keep = hands.filter((h) => !(h.member === target && (where === 'all' || h.round === round)))
+        const revoked = hands.length - keep.length
+        hands.length = 0
+        for (const h of keep) hands.push(h)
+        record('hands-revoke', { op: 'revoke', member: target, by: who, why: reason, scope: where, count: revoked })
+        return { ok: true, op: 'revoke', member: target, by: who, scope: where, revoked, count: hands.length }
+      }
+      // clear
+      const round = currentRound ? currentRound.n : null
+      const keep = where === 'all' ? [] : hands.filter((h) => h.round !== round)
+      const cleared = hands.length - keep.length
+      hands.length = 0
+      for (const h of keep) hands.push(h)
+      record('hands-clear', { op: 'clear', by: who, why: reason, scope: where, count: cleared })
+      return { ok: true, op: 'clear', by: who, scope: where, cleared, count: hands.length }
+    },
+
+    /**
+     * Round 8 (B①) — THE AGENDA AS ITEMS: close one, KEEP it.
+     *
+     * THE RULING: an agenda entry that has been discussed may not be hard-deleted; it is CLOSED with a reason
+     * (`state:'closed'` + `closedBy` + `why` + `closedAt`) and the ORIGINAL ENTRY REMAINS readable forever. That
+     * is why there is no `agendaRemove()` here: the audit trail is the point of an agenda, and a delete would
+     * erase the only evidence of what the meeting was convened to decide.
+     * A reason is mandatory, an unknown id is refused BY NAME, and closing twice is idempotent (append-only).
+     */
+    agendaClose({ id = null, by = null, why = '' } = {}) {
+      const want = String(id === null || id === undefined ? '' : id).trim()
+      if (!want) throw refuse('VMU_INVALID_ARGUMENT', 'agendaClose needs { id }', 'name the agenda item being closed')
+      const item = agendaItems.filter((it) => it.id === want)[0]
+      if (!item) {
+        record('agenda-refused', { id: want, by: by === null ? null : String(by), reason: 'no-such-item' })
+        throw refuse('VMU_NO_SUCH_OBJECT', 'no such agenda item: ' + want,
+          'known items: ' + (agendaItems.map((it) => it.id).join(', ') || '(none — this meeting has no agenda items)'))
+      }
+      const reason = String(why || '').trim()
+      if (item.state === 'closed') {
+        return { ok: true, deduped: true, item: Object.assign({}, item) }
+      }
+      if (!reason) {
+        record('agenda-refused', { id: want, by: by === null ? null : String(by), reason: 'no-why' })
+        throw refuse('VMU_REASON_REQUIRED', 'closing an agenda item needs { why }',
+          'an unexplained closure is indistinguishable from a silent deletion — which is exactly what this refuses')
+      }
+      item.state = 'closed'
+      item.closedBy = by === null || by === undefined ? null : String(by)
+      item.why = reason
+      item.closedAt = clock()
+      record('agenda-closed', { id: item.id, by: item.closedBy, why: reason })
+      return { ok: true, item: Object.assign({}, item), open: agendaItems.filter((it) => it.state === 'open').length }
+    },
+
+    /** The agenda items, closed ones included (read-only: the point is that nothing disappears). */
+    agendaItems() { return agendaItems.map((it) => Object.assign({}, it)) },
+
     /** ASK the pluggable predicate. Never cached, never inferred (I-2). */
     roundComplete() {
       if (!currentRound) return { complete: false, reason: 'no round is open', pending: asked.slice() }
@@ -339,6 +467,9 @@ let debateEnded = null
     status() {
       return {
         id, kind, state: state.value, agenda, rounds: rounds.length,
+        // B①: the agenda as items (closed ones included) — a reader can always see what was discussed and why.
+        agendaItems: agendaItems.length,
+        agendaOpen: agendaItems.filter((it) => it.state === 'open').length,
         asked: asked.slice(),
         answered: Object.keys(inputs).length,
         silent: Object.keys(silent).length,

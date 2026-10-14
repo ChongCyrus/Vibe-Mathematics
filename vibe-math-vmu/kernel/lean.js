@@ -394,6 +394,25 @@ export function createLeanFace(opts) {
       j.receipt = refuse('VMU_LEAN_SPAWN_FAILED', 'Lean 起不来：' + String((e && e.message) || e), '检查 `' + cmd.command + '` 是否在 PATH（Host 负责真机探测）')
       note(j.id, 'failed:spawn'); await writeMirror(j); return
     }
+    // ── ROUND 8（同一类缺陷，与计算面同修）─────────────────────────────────────────────────────────
+    // `cancel()` 把作业标成 `interrupted`（reason:'cancelled'）后，被终止的子进程的 `close` 事件会让本路径继续
+    // 往下走，把状态**改写成** `settled`/`failed`（后写者赢）⇒ 取消被抹掉。取消是终态：本路径必须让位。
+    if (j.cancelled === true || j.reason === 'cancelled' || String(j.reason || '').indexOf('cancelled') === 0) {
+      j.state = 'interrupted'
+      j.endedAt = clock()
+      j.terminated = !!budgetInfo.terminated
+      j.hadHandle = !!budgetInfo.hadHandle
+      j.passed = false
+      j.receipt = Object.assign(refuse('VMU_JOB_CANCELLED',
+        'Lean 作业已被取消（mid-flight）：取消是**终态**，不因子进程结束而改写成 settled/failed',
+        '要重跑请用新的 jobId 重新 submit；镜像保留取消事实，恢复扫描不重排它', []),
+        { cancelled: true, terminated: !!budgetInfo.terminated })
+      note(j.id, 'interrupted:cancelled:sticky', { terminated: !!budgetInfo.terminated })
+      await writeMirror(j)
+      emit('lean/job-cancelled', { jobId: j.id, terminated: !!budgetInfo.terminated, sticky: true })
+      Promise.resolve().then(pump)
+      return
+    }
     j.terminated = !!budgetInfo.terminated
     j.hadHandle = !!budgetInfo.hadHandle
     lastSpawnHadHandle = !!budgetInfo.hadHandle
