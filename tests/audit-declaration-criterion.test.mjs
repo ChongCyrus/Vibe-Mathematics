@@ -566,6 +566,13 @@ const cleanRun = runSelfProof('clean-temp.mjs', '--self-test')
 ok(cleanRun && cleanRun.status === 0, 'clean-temp --self-test really runs green (declared self-proof flag #2)')
 const releaseRun = runSelfProof('release-check.mjs', '--self-test')
 ok(releaseRun && releaseRun.status === 0, 'release-check --self-test really runs green (declared self-proof flag #3)')
+// ROUND 9: `scripts/audit-pack-value-domain.mjs` (vmu-pack's value-domain gate, D-05) grew a `--selftest` that
+// PROVES the checker bites: it plants an out-of-domain value and requires the checker to report it. A self-proof
+// mode with no execution point is the very case this rule exists for, so it is RUN here.
+const valueDomainRun = runSelfProof('audit-pack-value-domain.mjs', '--selftest')
+ok(valueDomainRun && valueDomainRun.status === 0,
+  'the pack value-domain --selftest really runs green (round 9: it plants an out-of-domain value and requires the checker to report it - and it caught a REAL instance on its first day)',
+  valueDomainRun ? 'exit=' + valueDomainRun.status : 'not run')
 const regenRun = runSelfProof('regen-all.mjs', '--check')
 ok(regenRun && regenRun.status === 0, 'regen-all --check really runs green (the aggregate chain now has an execution point)')
 

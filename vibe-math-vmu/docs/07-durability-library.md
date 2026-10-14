@@ -516,6 +516,22 @@ interface VmuStore {
 
 **证据**：`node tests/vmu-resume-e2e.test.mjs` ⇒ `=== VMU GOAL1 E2E: 63 passed, 0 failed ===`，exit 0（逐条读数见 `_handoff/vmu/12-goal1-e2e.md`）；回归面 exit 0：`vmu-resume-recovery` 73/0、`vmu-resume-lock-and-marks` 67/0、`vmu-resume-falsify` 9/0、`vmu-human-gate` 75/0、`vmu-human-falsify` 12/0、`vmu-replay` 66/0、`vmu-kernel` 175/0、`vmu-entry` 150/0、`vmu-work` 19/0、`vmu-scheduler` 111/0、`vmu-tasks*` 92/0、`vmu-store` 27/0、`vmu-stateversion` 16/0、`vmu-storepolicy` 11/0、`vmu-storepolicy-falsify` 9/0、`vmu-round1-seams` 40/0、`vmu-round2-seams` 12/0、`vmu-projmigrate` 107/0、`vmu-activity-kernel` 141/0、`vmu-turn-contracts` 12/0、`vmu-tools-await-rejections` 114/0（命令与退出码见 `_handoff/vmu/resume-round8-report.md`）。
 
+## 17. 退出契约与"声明≠有人写"：Round 9 的两条实测（task-70）
+
+> 两条都在钻取里**真跑**（Round 9 后：`tests/vmu-resume-e2e.test.mjs` ⇒ **81/0, exit 0**；逐条读数见 `_handoff/vmu/12-goal1-e2e.md` §2.3／§2.4）。
+
+**① 退出＝两半边，各自可断言、失败不 throw**（引擎原语，装配接线由 core 的 `kernel/index.js shutdown()` 调用）：
+- **模块边界（Round 9 拆分）**：退出契约的实现在 **`kernel/resumeflush.js`**（`createExitContract({...})`）；值标识原语（`stableStringify`/`contentDigest`/`clone`/`idSuffix`）在 **`kernel/contentvalue.js`**。边界是**单向**的：`resume.js` 拥有**投影**（哪些键、什么模式、何时记录、写穿注册、读前写闩、耐久的 `snapshot({key})`），退出模块只拥有**"干净退出"的语义**（排空×flush、`ok` 取 AND、失败只回报不抛）；它拿到的是**活视图**（同一个 `pendingWrites` Set、计数器、读门、码表），所以"哪些键存在"改在 resume.js，"干净退出是什么意思"改在 resumeflush.js。拆完后 `resume.js` 1267 → **1179** 行（`audit-code-size` **9/0**，`KNOWN` 仍是 3 条、未新增名字），公开面不变（`contentDigest`/`idSuffix` 由 resume.js **再导出**）。
+- `recovery.settle()`：排空"本引擎发起过"的**写穿 promise**（在 `attachProjectionTo` 里**同步注册** ⇒ `status().pendingWrites` 同一 tick 即真相）。一次 `await` 之后"已耐久"是**事实**，不需要 sleep／轮询；`writeThroughFailures > 0` ⇒ `ok:false`。时钟不可解释 ⇒ `msStrict` 具名、`waitedMs:null`＋`clockNote`，**绝不传播 `NaN`**（RULE F）。
+- `recovery.flushAll()`：只刷 `mode==='journal'`；**state 键进 `skipped[]` 并具名"it is already durable and needs no flush"**；**没有 store 端口 ⇒ `ok:true` ＋ 具名 skip**（"the seam is absent, not pretended"，与 `createDurableCommitLog` 同款）；**未 read ⇒ `ok:false` ＋ `failed:[{key:null, code:'VMU_RESUME_WRITE_BEFORE_READ'}]`，不 throw**（退出路径在宿主 dispose 上，抛出去更容易被吞）。
+- `recovery.exit({reason})`：`ok === (writeThrough.ok && journal.ok)` —— **不是"至少一半成功"**。钻取断言：**另一个 store 实例（下一位读者）能在文件里看到已 flush 的 journal**（`10i`），且 `settle()` 之后 journal **仍**是种子（`10g`：settle ≠ flush）。
+
+**② 集合面就是多实例注册表；缺的是装配的【方法列表】**：
+- 事实：`kernel/index.js` 的 `methodsOf` 只列了 `tasks`，其余声明为投影的面拿到的是 `[]`；而写穿 `after` **只在被包裹的方法里**被调用 ⇒ `members/meetings/ballotbox/budget/chat/panel/minutes` **声明为投影却从未被写过**（钻取 `11c`：开两个会、`settle()` 之后 `meetings` 键仍是 store 的 `[]` 种子）。
+- **退出 flush 救不了它**：state 键按契约进 `skipped[]`（`11d`）⇒ "退出 flush 已落地" ≠ "这些面耐久"。
+- **修法（证据在 `11e`/`11f`）**：同一面、同一套接缝，**只把方法列表填上**（如 `['open','close','attend','motion']`）⇒ 写穿落地、重启后**两个会一起回来**。⇒ Round 6 的"多实例注册表未做"**改判**：机制不需要（集合面 `meetings`/`ballotbox` 自带 `snapshot()/restore()`），缺的是 `methodsOf` 的条目。
+- 观察形态：`11c`/`11d` 是**自适应探针**（修好后同一次 boot 自动翻成 "CLOSED: …now DOES write through"），所以修复不会留下一条误导的红。
+
 ---
 
 # 附录 A · 归档基础设施（可照抄规格）

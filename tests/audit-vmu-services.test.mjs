@@ -74,13 +74,37 @@ const SURFACES = {
   'vmu.ids': 'ids',                   // round 2 (the ONE id minter; bound via bindIds, not createX)
   'vmu.activity': 'activity',         // round 3 (one-shot future-only activity waiter; createActivity)
   'vmu.fidelity': 'fidelity',         // round 3 (C-45 faithful-abstention predicate; createFidelityRegistry)
+  'vmu.commitlog': 'sharedCommitLog', // round 9 / task-66 A (G7): the ONE commit log shared by the board + mailbox
 }
 
-const registered = new Set([...src.matchAll(/registry\.register\('([a-z_]+\.[a-z]+)'/g)].map((m) => m[1]))
+// ROUND 9 (Lead's gate-shape requirement): the scan must NOT depend on the NAME'S SHAPE. The old pattern
+// `([a-z_]+\.[a-z]+)` could not see `vmu.sharedCommitLog` (camelCase) or a 3-segment name, so such a service
+// SILENTLY escaped three of this audit's four checks - core had to RENAME a service to be seen, which is a gate
+// dictating a product name. Take the full quoted name instead, and prove the old pattern's blindness below.
+const SCAN = /registry\.register\(\s*'([^']+)'/g
+const registered = new Set([...src.matchAll(SCAN)].map((m) => m[1]))
 ok(registered.size >= 20, 'the registry scan found the registered services', registered.size)
+// NOT EVERY REGISTRATION IS A SERVICE, and the exclusion must be PRINCIPLED: `math_computation` is registered with
+// `kind:'tool'` (`kernel/index.js:1325`). The old shape-restricted pattern happened to exclude it because it has no
+// dot - a lucky exclusion, not a rule (and the same blindness hid camelCase service names). So: take the full names,
+// then set TOOL registrations aside BY KIND.
+// One line at a time, so the pattern cannot bridge from one registration into the NEXT one's `kind:` (it did:
+// a lazy 300-char window tagged the preceding service as a tool as well).
+const TOOL_SCAN = /registry\.register\(\s*'([^']+)'[^\n]*?kind:\s*'tool'/g
+const toolNames = new Set([...src.matchAll(TOOL_SCAN)].map((m) => m[1]))
+const serviceNames = new Set([...registered].filter((n) => !toolNames.has(n)))
+{
+  const probeSrc = "registry.register('vmu.sharedCommitLog', {}, { kind: 'service' });\nregistry.register('math_computation', { apiVersion: 1 }, { kind: 'tool' })"
+  const wide = [...probeSrc.matchAll(SCAN)].map((m) => m[1])
+  const tools = new Set([...probeSrc.matchAll(TOOL_SCAN)].map((m) => m[1]))
+  const narrow = [...probeSrc.matchAll(/registry\.register\('([a-z_]+\.[a-z]+)'/g)].map((m) => m[1])
+  ok(wide.length === 2 && tools.size === 1 && tools.has('math_computation') && narrow.length === 0,
+    '★ SELF-PROBE: names come from the registry IN FULL (camelCase included) and tool registrations are excluded BY KIND, not by spelling - the old pattern saw NEITHER name, and its exclusion of the tool was an accident',
+    { wide, tools: [...tools], oldPatternSaw: narrow })
+}
 
-// (1) every registered service has a known constructed identifier...
-const unknown = [...registered].filter((s) => !SURFACES[s])
+// (1) every registered SERVICE (a tool registration is not a service) has a known constructed identifier...
+const unknown = [...serviceNames].filter((s) => !SURFACES[s])
 ok(unknown.length === 0, 'every registered service is mapped to a constructor in this audit', unknown.join(','))
 
 // (2) the factory calls themselves, used by the reverse check below

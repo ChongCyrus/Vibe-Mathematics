@@ -507,9 +507,12 @@ export function createBallotBox(opts) {
       if (!box) return deny('VMU_NOT_FOUND', '找不到票箱', '先 open()')
       return { ok: true, boxId: box.id, round: box.round, sealed: box.sealed, state: box.state, reopenCount: Number(box.reopenCount || 0), votes: box.votes.size, abstain: box.abstain.size, absent: box.absent.length,
         // F28: the fallback state is observable state, not an inference from a missing board.
-        openMaxMs, lapse: box.lapse ? Object.assign({}, box.lapse) : null, droppedAudit }
+        openMaxMs, lapse: box.lapse ? Object.assign({}, box.lapse) : null, droppedAudit,
+        // G7 self-report (Round 9): "no durable log is bound ⇒ this commit is IN-PROCESS ONLY" must be READABLE
+        // here, never inferred (mirrors `ballot.status().gate.durable`).
+        durableLog: { bound: !!(o.durableQueue && o.durableQueue.durable === true) } }
     }
-    return { ok: true, boxes: boxes.size, droppedAudit, refusals: Object.fromEntries(refusals), partition: partition(), method: c.method, tieRule: c.tieRule, secrecy: c.secrecy }
+    return { ok: true, boxes: boxes.size, droppedAudit, refusals: Object.fromEntries(refusals), partition: partition(), method: c.method, tieRule: c.tieRule, secrecy: c.secrecy, durableLog: { bound: !!(o.durableQueue && o.durableQueue.durable === true) } }
   }
 
   /**

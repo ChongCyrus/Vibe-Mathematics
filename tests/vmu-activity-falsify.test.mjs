@@ -1,20 +1,41 @@
-// tests/vmu-activity-falsify.test.mjs — FAMILY 8: `kernel/activity.js`, the FUTURE-ONLY one-shot waiter.
+// tests/vmu-activity-falsify.test.mjs — FAMILY 8: `kernel/activity.js`, in TWO cases.
 // Run: node tests/vmu-activity-falsify.test.mjs
 //
 // ROUND 8: this file used to carry its own hand-rolled mutation plumbing (copy → splice → import → probe, plus an
 // in-file mutant). The family form now does that through `tests/_lib/falsify.mjs`, so the file states only the
 // INVARIANT and the DEFECTS. The in-file/laboratory self-proofs live in `tests/vmu-activity-falsify-lib.test.mjs`.
 //
-// ONE probe, three invariants (each with a control direction):
+// CASE 1 — the FUTURE-ONLY one-shot waiter (one probe, three invariants, each with a control direction):
 //   · FUTURE-ONLY — a notification from BEFORE the wait never wakes it; the wait ends on its own timeout;
 //   · ONE-SHOT    — after the wake the waiter is unregistered, so a second notification wakes NOBODY (0, not 1);
 //   · DISPOSER    — the wake branch ran the timer disposer exactly once (the "disposer in both outcomes" rule).
+//
+// CASE 2 — the ROUND-9 surface, i.e. the promises `docs/08 §26` makes about this face, each one an implementation
+// line that can be cut. The DOCUMENT IS READ BY THE PROBE: every rule below is a control field extracted from the
+// volume, so a citation that rots (or is quietly softened) takes the family down with it — the promise is only
+// checked while it is still written down.
+//   · `docs/08:1563` — the wake listener RETURNS `undefined`, so a broken observer can never block the write it
+//     observes (`bus.emit(...).decisions` must be empty);
+//   · `docs/08:1557` — a peer seam that throws or answers with a non-list is a NAMED refusal
+//     (`VMU_ACTIVITY_PEER_SEAM_FAILED`), never read as "nobody is running";
+//   · `docs/08:1543/1572` — `vmu.activity.maxWaiters` is a real cap (`VMU_ACTIVITY_WAITER_LIMIT`);
+//   · `docs/08:1575` — the two self-disclosure rules: (①) `vmu.activity.wakeOn` is a CONSTRUCTION-time key and must
+//     never appear in a call receipt's `enforced[]`; (②) `vmu.activity.timeoutMs` is named ONLY when the caller
+//     omitted the timeout (and a seam-bearing call necessarily names `vmu.activity.noPeerShortCircuit`).
 import { falsifyFamily, formatFamilyReport } from './_lib/falsify.mjs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
+import { readFileSync } from 'node:fs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ACTIVITY = join(HERE, '..', 'vibe-math-vmu', 'kernel', 'activity.js')
+const DOC08 = join(HERE, '..', 'vibe-math-vmu', 'docs', '08-primitives-meeting-ballot-workflow.md')
+
+// The REAL bus, so "the observer contributes no decision" is read from an actual `emit`, not from a stub's opinion.
+const { createBus } = await import(pathToFileURL(join(HERE, '..', 'vibe-math-vmu', 'kernel', 'bus.js')).href)
+// The volume is read once: the probe extracts the five rules from it and reports each as a control field.
+const DOC = readFileSync(DOC08, 'utf8')
+const docRule = (re) => re.test(DOC)
 
 let passed = 0
 let failed = 0
@@ -78,10 +99,76 @@ async function activityProbe(mod) {
   }
 }
 
+/** A manual timer: nothing ever fires by itself, so an unenforced cap shows up as "still pending", never as a hang. */
+function manualTimer() {
+  const timers = new Map()
+  let seq = 0
+  return {
+    timeout(cb) { const id = ++seq; timers.set(id, cb); return () => timers.delete(id) },
+    size: () => timers.size,
+  }
+}
+/** The NAMED outcome of a synchronous call: its `code`, else its error name — an unnamed throw is a finding too. */
+function codeOf(fn) {
+  try { const r = fn(); return r && r.code ? r.code : 'NO-THROW' } catch (e) { return (e && e.code) || (e && e.name) || 'THREW' }
+}
+
+async function activityPromisesProbe(mod) {
+  // (a) THE WAKE LISTENER OBSERVES: a declared hook, a live waiter, a real `emit` — the emit must carry NO decision.
+  const bus = createBus({ entries: [], settings: { 'vmu.middleware.hookTimeoutMs': 0 }, clock: () => 0 })
+  const a1 = mod.createActivity({ clock: () => 0, log: () => {}, timer: manualTimer(), bus,
+    settings: { 'vmu.activity.wakeOn': ['chat/sent'] } })
+  const woken = a1.wait({ timeoutMs: 20000, member: 'm1' })
+  const emitted = await bus.emit('chat/sent', { by: 'm2' })
+  const got = await woken
+  const wakeSilent = emitted.ok === true && Array.isArray(emitted.decisions) && emitted.decisions.length === 0
+  const wakeStillWoke = got.timedOut === false && got.notified && got.notified.what === 'hook:chat/sent'
+  // (b) A PEER SEAM THAT ANSWERS WITH A NON-LIST is a NAMED refusal, never "nobody is running".
+  const a2 = mod.createActivity({ clock: () => 0, log: () => {}, timer: manualTimer(), settings: {}, activePeers: () => null })
+  const peerSeamCode = codeOf(() => a2.wait({ timeoutMs: 20000 }))
+  const peerSeamPending = a2.status().waiters
+  // (c) THE WAITER CAP IS REAL: with maxWaiters=1 the second wait is refused BY NAME, the first one stays live.
+  const a3 = mod.createActivity({ clock: () => 0, log: () => {}, timer: manualTimer(), settings: { 'vmu.activity.maxWaiters': 1 } })
+  a3.wait({ timeoutMs: 20000 })
+  const limitCode = codeOf(() => a3.wait({ timeoutMs: 20000 }))
+  const waitersAtLimit = a3.status().waiters
+  // (d) THE TWO DISCLOSURE RULES: a seam-bearing call must name the peer key (and never the construction-time key).
+  const seamSettings = { 'vmu.activity.wakeOn': ['chat/sent'] }
+  const a4 = mod.createActivity({ clock: () => 0, log: () => {}, timer: manualTimer(), settings: seamSettings,
+    activePeers: () => ['m2'] })
+  const p4 = a4.wait({ timeoutMs: 20000, member: 'm1' })
+  a4.notify({ what: 'n' })
+  const r4 = await p4
+  const enforced4 = Array.isArray(r4.enforced) ? r4.enforced : []
+  // (e) the omitted-vs-explicit timeout: the default key is named ONLY when the caller omitted the timeout.
+  const a5 = mod.createActivity({ clock: () => 0, log: () => {}, timer: manualTimer(), settings: {} })
+  const p5 = a5.wait({ timeoutMs: 20000 })          // EXPLICIT ⇒ the default key was never read
+  a5.notify({ what: 'x' })
+  const explicitKeys = (await p5).enforced || []
+  const a6 = mod.createActivity({ clock: () => 0, log: () => {}, timer: manualTimer(), settings: {} })
+  const p6 = a6.wait({})                            // OMITTED ⇒ the declared default really was read
+  a6.notify({ what: 'y' })
+  const omittedKeys = (await p6).enforced || []
+  return {
+    // the four citations this case is built on (a rotted citation removes a control field ⇒ the family goes red)
+    docRuleWakeSilent: docRule(/返回 `undefined`\*\*（不产生任何 decision）/),
+    docRulePeerSeamNamed: docRule(/VMU_ACTIVITY_PEER_SEAM_FAILED/),
+    docRuleWakeOnConstruction: docRule(/wakeOn` 是\*\*构造期\*\*键/),
+    docRuleTimeoutOmittedOnly: docRule(/timeoutMs` 只在\*\*调用方省略超时\*\*时进入/),
+    wakeSilent, wakeStillWoke,
+    peerSeamCode, peerSeamPending,
+    limitCode, waitersAtLimit,
+    seamKeyNamed: enforced4.includes('vmu.activity.noPeerShortCircuit'),
+    constructionKeyLeaked: enforced4.includes('vmu.activity.wakeOn'),
+    omittedNamesDefaultKey: omittedKeys.includes('vmu.activity.timeoutMs'),
+    explicitClaimsDefaultKey: explicitKeys.includes('vmu.activity.timeoutMs'),
+  }
+}
+
 const family = await falsifyFamily({
-  name: 'activity — future-only, one-shot, and the disposer runs on the wake branch',
+  name: 'activity — future-only one-shot, and the promises docs/08 §26 makes about the face',
   cases: [{
-    name: 'activity.js',
+    name: 'activity.js — the waiter',
     module: ACTIVITY,
     probe: activityProbe,
     controlFields: ['timedOut', 'wokenTimedOut', 'disposersCalled'],
@@ -100,6 +187,29 @@ const family = await falsifyFamily({
       { label: 'the timer disposer is disabled on every branch', name: 'activity-disposer',
         find: '          if (timerDisposer) {', replace: '          if (false && timerDisposer) {   // MUTANT: no cleanup' },
     ],
+  }, {
+    name: 'activity.js — the documented surface',
+    module: ACTIVITY,
+    probe: activityPromisesProbe,
+    controlFields: ['docRuleWakeSilent', 'docRulePeerSeamNamed', 'docRuleWakeOnConstruction', 'docRuleTimeoutOmittedOnly',
+      'wakeSilent', 'peerSeamCode', 'limitCode', 'seamKeyNamed', 'omittedNamesDefaultKey'],
+    mutations: [
+      { label: 'the wake listener blocks the write it observes', name: 'activity-wake-blocks',
+        find: "source: 'bus' }); return undefined }",
+        replace: "source: 'bus' }); return { deny: { code: 'VMU_ACTIVITY_MUTANT_WAKE', message: 'the wake listener blocked the write it observes' } } }" },
+      { label: 'a peer seam answer that is not a list is read as "nobody"', name: 'activity-peer-seam-unnamed',
+        find: '          if (!Array.isArray(peers)) {',
+        replace: '          if (false) {   // MUTANT: a missing peer answer is no longer refused by name' },
+      { label: 'the waiter cap is declared but not enforced', name: 'activity-cap-unenforced',
+        find: '      if (p.maxWaiters > 0 && waiters.size >= p.maxWaiters) {',
+        replace: '      if (false) {   // MUTANT: the declared cap does not bound anything' },
+      { label: 'the construction-time key is disclosed as a call-time one', name: 'activity-wakeon-leak',
+        find: "        keys.push('vmu.activity.noPeerShortCircuit')",
+        replace: "        keys.push('vmu.activity.wakeOn')   // MUTANT: a construction-time key inside a call receipt" },
+      { label: 'an explicit timeout claims to have read the default', name: 'activity-timeout-overclaim',
+        find: '} else { ms = Number(timeoutMs) }',
+        replace: '} else { ms = Number(timeoutMs); keys.push(\'vmu.activity.timeoutMs\') }' },
+    ],
   }],
 })
 
@@ -112,8 +222,23 @@ ok(family.cases[0].real.timedOutWaitOk === true && family.cases[0].real.waitersA
   '★ a TIMED-OUT waiter is spent as well: a later notification reports ZERO woken (nothing is reusable)', family.cases[0].real)
 ok(family.cases[0].real.disposersCalled === 1, 'and the wake branch ran the timer disposer exactly once (control direction)', family.cases[0].real)
 
-console.log('=== FALSIFICATION: replay history, keep the waiter, or drop the disposer ===')
-ok(family.ok, '★ all three activity mutations are caught (control green + each mutant red)', formatFamilyReport(family))
+console.log('=== CONTROL GROUP: the documented surface (docs/08 §26) is really wired, and the citations are still there ===')
+const d = family.cases[1].real
+ok(d.docRuleWakeSilent === true && d.docRulePeerSeamNamed === true && d.docRuleWakeOnConstruction === true && d.docRuleTimeoutOmittedOnly === true,
+  '★ the volume still states all four rules this case is built on (a rotted citation removes a control field)', d)
+ok(d.wakeSilent === true && d.wakeStillWoke === true,
+  '★ a real `bus.emit` on the declared hook carries ZERO decisions — and still wakes the waiter end to end', d)
+ok(d.peerSeamCode === 'VMU_ACTIVITY_PEER_SEAM_FAILED' && d.peerSeamPending === 0,
+  '★ a peer seam answering with a non-list is refused BY NAME and registers no waiter (never read as "nobody")', d)
+ok(d.limitCode === 'VMU_ACTIVITY_WAITER_LIMIT' && d.waitersAtLimit === 1,
+  '★ `vmu.activity.maxWaiters` really caps the live set, and the refusal is NAMED', d)
+ok(d.seamKeyNamed === true && d.constructionKeyLeaked === false,
+  '★ a seam-bearing receipt names `vmu.activity.noPeerShortCircuit` — and NOT the construction-time `wakeOn`', d)
+ok(d.omittedNamesDefaultKey === true && d.explicitClaimsDefaultKey === false,
+  'and `vmu.activity.timeoutMs` is named only when the caller omitted the timeout (both directions present)', d)
+
+console.log('=== FALSIFICATION: replay history, keep the waiter, drop the disposer, cut a documented promise ===')
+ok(family.ok, '★ all eight activity mutations are caught (control green + each mutant red)', formatFamilyReport(family))
 const byLabel = (needle) => family.results.find((r) => r.label.includes(needle))
 const historyRed = byLabel('history is replayed') && byLabel('history is replayed').red
 const reuseRed = byLabel('never unregistered') && byLabel('never unregistered').red
@@ -122,9 +247,25 @@ ok(!!historyRed && historyRed.wokeOnHistory === true, '★ "history replayed": t
 ok(!!reuseRed && reuseRed.lateNotified === 1 && reuseRed.secondNotified === 0,
   '★ "never unregistered": a spent (timed-out) waiter is still counted as woken by the next notification — while the WOKEN path is unaffected (the mutation is narrow)', reuseRed)
 ok(!!disposerRed && disposerRed.disposersCalled === 0, '★ "disposer disabled": the wake branch leaves the timer uncleaned', disposerRed)
+const blocksRed = byLabel('wake listener blocks') && byLabel('wake listener blocks').red
+const unnamedRed = byLabel('not a list is read') && byLabel('not a list is read').red
+const capRed = byLabel('cap is declared but not enforced') && byLabel('cap is declared but not enforced').red
+const leakRed = byLabel('construction-time key is disclosed') && byLabel('construction-time key is disclosed').red
+const overclaimRed = byLabel('explicit timeout claims') && byLabel('explicit timeout claims').red
+ok(!!blocksRed && blocksRed.wakeSilent === false && blocksRed.docRuleWakeSilent === true,
+  '★ "the observer blocks": the write that should be observed now carries a decision (and the citation is still intact, so the doc promise is what broke)', blocksRed)
+ok(!!unnamedRed && unnamedRed.peerSeamCode !== 'VMU_ACTIVITY_PEER_SEAM_FAILED',
+  '★ "unnamed seam failure": an unanswerable peer check becomes an UNNAMED throw instead of the named refusal', unnamedRed)
+ok(!!capRed && capRed.limitCode === 'NO-THROW' && capRed.waitersAtLimit === 2,
+  '★ "cap not enforced": a second waiter is admitted while `maxWaiters` says one (and both stay pending, not hanging)', capRed)
+ok(!!leakRed && leakRed.seamKeyNamed === false && leakRed.constructionKeyLeaked === true,
+  '★ "wakeOn leaked": a construction-time key appears in a call receipt — the exact thing docs/08:1575 forbids', leakRed)
+ok(!!overclaimRed && overclaimRed.explicitClaimsDefaultKey === true && overclaimRed.omittedNamesDefaultKey === true,
+  '★ "over-claim": an explicit timeout is now reported as having evaluated the declared default', overclaimRed)
 ok(family.results.length > 0 && family.results.every((r) => r.applied && r.importable && r.falsified),
   'and every mutation applied to a unique anchor, imported, and produced a DIFFERENT reading (non-vacuous)', family.results.map((r) => ({ label: r.label, applied: r.applied, importable: r.importable })))
-ok(family.cases[0].leftovers.length === 0, 'the mutated copies were written to D:\\_tmp and deleted again', family.cases[0].leftovers)
+ok(family.cases.length > 0 && family.cases.every((c) => c.leftovers.length === 0),
+  'the mutated copies were written to D:\\_tmp and deleted again', family.cases.map((c) => c.leftovers))
 
 console.log('')
 console.log('=== VMU ACTIVITY FALSIFY: ' + passed + ' passed, ' + failed + ' failed ===')

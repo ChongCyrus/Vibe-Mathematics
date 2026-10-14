@@ -32,8 +32,8 @@
 
 **① 【核心**]服务（★ 下面是**值得逐个点名**的那些 ✓；括号内为出现条件 ✓）**
 
-> ★★ **轮 527 更正** ✓：★ 本处原写 **72** ✗ —— ★★ **域合规两支服务已【降级出内核**]✓（★ 见 `docs/25` 的执行记录 ✓）⇒ **`registry.register` 实测注册 **79** 个服务** ✓（★ 轮 3／task-20 更新：轮 2 的 77 ＋ `vmu.activity`／`vmu.fidelity` 两个新面 ✓；★ 计数口径＝**静态注册点数**（含 5 个条件注册），与 `tests/audit-doc-vs-code-tables.test.mjs` 的判据一致 ✓）。
-> ★★★ **口径（★ 轮 493 实测修正 ✓；轮 2/3 复核 ✓）**：★ **本表【不是**]发布面的全集** ✗ —— ★ **`kernel/index.js` 的 `registry.register` 实际注册了 **79** 个服务** ✓（★ 本表点名 **8** 个 ✓）。★★ **真源只有一个**：★ **`registry.register` 的调用点** ✓ ⇒ ★★ **要"发布面全集"就读代码，不要读这张表** ✓。★★★ **本行原先写"真正**发布**的服务"，★ 那会让读者以为发布面就是这 8 个** ✗ —— ★ **而漏掉的 71 个同样在契约里、同样可被 pack 的 `requires` 引用** ✓。
+> ★★ **轮 527 更正** ✓：★ 本处原写 **72** ✗ —— ★★ **域合规两支服务已【降级出内核**]✓（★ 见 `docs/25` 的执行记录 ✓）⇒ **`registry.register` 实测注册 **80** 个服务** ✓（★ 轮 3／task-20 更新：轮 2 的 77 ＋ `vmu.activity`／`vmu.fidelity` 两个新面 ✓；★ 计数口径＝**静态注册点数**（含 5 个条件注册），与 `tests/audit-doc-vs-code-tables.test.mjs` 的判据一致 ✓）。
+> ★★★ **口径（★ 轮 493 实测修正 ✓；轮 2/3 复核 ✓）**：★ **本表【不是**]发布面的全集** ✗ —— ★ **`kernel/index.js` 的 `registry.register` 实际注册了 **80** 个服务** ✓（★ 本表点名 **8** 个 ✓）。★★ **真源只有一个**：★ **`registry.register` 的调用点** ✓ ⇒ ★★ **要"发布面全集"就读代码，不要读这张表** ✓。★★★ **本行原先写"真正**发布**的服务"，★ 那会让读者以为发布面就是这 8 个** ✗ —— ★ **而漏掉的 72 个同样在契约里、同样可被 pack 的 `requires` 引用** ✓。
 
 | 服务键 | 职责 | 主要方法（**与代码一致** ✓） | apiVersion |
 |---|---|---|---|
@@ -46,7 +46,7 @@
 | `vmu.work`（有 `root` ✓） | **在途工作台账** | `start({owner,kind,objective})`、`settle(id,{outcome})`、`interrupt(id,reason)`、`recover({reason})`、`list()`、`pending()`、`interrupted()`、`status()` | 1 |
 | `math_computation`（声明了数学意图 ✓） | 继承的数学工具（D14 原名 ✓） | 由共享模块注册（`op=probe\|run\|receipt\|install` ✓） | 1 |
 
-> ★★★ **其余服务的清单（★ 轮 502 实测补 ✓；轮 2/3 复核 ✓）**：★ **`registry.register` 共注册 **79** 个服务，其中 **18** 个原先【在任何文档里都查不到名字**]✗** ✓ ⇒ ★★ **一个 pack 可以 `requires` 一个读者【无从查证**]的服务名** ✓。★ **现列于此** ✓（★ 轮 2 的七个新服务与轮 3 的 `vmu.activity`／`vmu.fidelity` 另见 §2 上文与 `docs/18` 的工具面说明 ✓）：
+> ★★★ **其余服务的清单（★ 轮 502 实测补 ✓；轮 2/3 复核 ✓）**：★ **`registry.register` 共注册 **80** 个服务，其中 **18** 个原先【在任何文档里都查不到名字**]✗** ✓ ⇒ ★★ **一个 pack 可以 `requires` 一个读者【无从查证**]的服务名** ✓。★ **现列于此** ✓（★ 轮 2 的七个新服务与轮 3 的 `vmu.activity`／`vmu.fidelity` 另见 §2 上文与 `docs/18` 的工具面说明 ✓）：
 > 
 > ★ `vmu.alerts` ✓ ｜ `vmu.retention` ✓ ｜ `vmu.repropack` ✓ ｜ `vmu.bidding` ✓ ｜ `vmu.publication` ✓ ｜ `vmu.external` ✓ ｜ `vmu.crypto` ✓ ｜ `vmu.idempotency` ✓ ｜ `vmu.replay` ✓ ｜ `vmu.transaction` ✓ ｜ `vmu.ratelimit` ✓ ｜ `vmu.auditchain` ✓ ｜ `vmu.stateversion` ✓ ｜ `vmu.clockguard` ✓ ｜ `vmu.mathtools` ✓ ｜ `vmu.projmigrate` ✓ ｜ `vmu.storepolicy` ✓ ｜ `vmu.migration` ✓。
 > 
@@ -77,6 +77,7 @@
 | `vmu.prompt` | `register(s)→entry`／`bind(binding)→{section,dim,total}`／`disable(name)→{ok,disabled}`／`enable(name)`／`assemble(ctx)→{ok,text,sources[],truncation[],at}`／`override(section,text,by)→{ok,previous}`／`rollback(section)`／`snapshot(scopes)`／`bindToHost(adapter)`／`setState(text)`／`status()→{sections[],bindings,truncation[],middlewareAppends[]}` | `VMU_NOT_PERMITTED`／`VMU_INVALID_ARGUMENT`／`VMU_NO_SUCH_OBJECT`／`VMU_ENGINE_UNAVAILABLE` |
 | `vmu.middleware` | `status()→{dryRun,hookTimeoutMs,breakerThreshold,entries[],hooks[]}`／`entries()`／`disable(id,reason)`／`enable(id)`／**`declareTopic(name)→{ok,topic,existing}`（协议扩展点：冻结集之外的新钩子主题必须先声明才可 emit ✓，名字非法即具名拒 `VMU_INVALID_ARGUMENT` ✓）**／`setDryRun(v)`／`isDryRun()`／`emit(hook,payload,{scope?,traceId?,member?,role?,phase?,bridge?})→{ok,decisions[],traceId,refused?,aborted?,decision}`（**命名空间感知的成员校验** ✓：`member/turn/meeting/ballot/record/task/prompt/budget/pack/settle/control` 这 11 个 **vmu 命名空间**里的未知名**具名拒** ✓；**宿主命名空间**（如 `tools/pre-execute`／`fs/write-intent`）**放行** ✓ —— 那是基座的词汇 ✓；注意 `prompt/assemble` **属宿主词表** ⇒ 这正是为何**不能整表放行** ✗（放行就等于把已修的漂移 bug 放回 ✗）；`bridge:true` 只用于宿主瀑布桥 ✓）／`on(entry,handler)→id`／`add(entry)→entry`／`trace(traceId)→Trace[]`／`wrapHostWaterfall(next)→async(payload)` | `VMU_MIDDLEWARE_FAILED`／`VMU_MIDDLEWARE_REJECTED`／`VMU_INVALID_ARGUMENT` |
 | `vmu.store` | `open(expected)→{opened,version,migration?}`／`read(key)→Value`（**克隆** ✓）／`write(key,value)→{ok,key,version,changed}`／`patch(key,fn)→同左`（**fold 内函数式** ✓）／`subscribe(key,fn)→Disposer`／`migrate()`／`export()→Snapshot`／`import(snapshot)`／`stats()` | `VMU_STORE_FAILED`／`VMU_STORE_MIGRATION`／`VMU_INVALID_ARGUMENT`（未登记键 ✓） |
+| `vmu.commitlog` ✓（轮 9／**G7**） | `durable`（**getter**，布尔：有合格 store 才真）／`reserve(op)→rec\|null`（**意图先于生效**，返回带 ticket 的记录；无 store ⇒ `null`）／`complete(rec,outcome)→ticket\|null`（结果落在**意图的 ticket** 上）／`status()→{shared,name,durable,tickets,appended,done,recoveredAt}`／`resolveState()→{durable,bound,failure}`（**观测**：`failure` 把"解析器抛错"与"没给 store"**分开**） | 无（**缺席不是拒绝**：`durable===false` 且 `reserve()` 返回 `null` —— 具名降级，两个面照常工作）。解析器抛错 ⇒ `failure.code === 'VMU_COMMIT_STORE_FAILED'` |
 | `vmu.work` | `start({owner,kind,objective})→{ok,entry}`／`settle(id,{outcome})→{ok,settled,remaining}`／`interrupt(id,reason)`／`recover({reason})→{ok,recovered,entries[]}`／`list()`／`pending()`／`interrupted()`／`status()` | `VMU_STATE`（**暂停中** ✓）／`VMU_NO_SUCH_OBJECT`／`VMU_INVALID_ARGUMENT`／`VMU_STORE_FAILED`（store 未 open ✓） |
 
 **三条接口纪律**：① **能力缺失用 `ok:false` ＋ 具名码**，不得抛裸异常给上层 ✗（框架内部异常按中间件失败策略处置 ✓）；② **返回对象一律可 JSON 序列化**（便于审计与场景比对 ✓）；③ **幂等性**：`read/list/status/tally` 幂等；`set/append/cast` 等写操作**必须能被审计去重**（同一 `traceId` 不重复生效 ✓——沿用 v5r 的幂等纪律 ✓）。
@@ -105,6 +106,19 @@
 > - **`append` 的返回契约**：`append(record) → { ticket }`；★ **两条载荷语义（缺一不可，实测踩过）**：① **没有 `ticket` 的记录由 store 分配**（两个进程共享同一 store ⇒ **互不相同且单调**：实测 1、2 ✓）；② **已带 `ticket` 的记录必须【保留】**——`complete()` 用**意图的 ticket** 写结果行，而 `recover()` **按 ticket 配对** `done` 行与意图 ⇒ 若 store 给结果行另发一个号，意图会**永远重放**（探针第一版就是这样暴露的）✗✓。`readAll()` 回读全部行。
 > - **缺席口径**（与既有 `durable:false` 一致，**不静默**）：无 store ⇒ `ballot.status().gate.durable === false`、`reserve()` 返回 `null`、`recover()` 明说无可恢复；`status().seams.commitStore === false` ＋ `commitStoreNote` **具名**说明该缝缺席与注入方式 ✓。
 > - **断言（探针 `D:/_tmp/vmu-r8/commit-store.mjs` 14/0）**：两个内核实例共享同一 store ⇒ ticket **1、2**（互不相同且单调）；**崩溃在意图与生效之间** ⇒ 下一个进程 `recover().pending` **恰 1 条**、**再问一次仍 1 条**（幂等）、完成后第三个进程 `pending` **0 条**（不双花）且结果行**与意图同 ticket**；无 store ⇒ 具名降级；**调用时解析** ⇒ store 后挂载下一次生效。
+
+> ★★★ **共享耐用日志（G7，轮 9 落地 ✓✓）**：**一份日志，两个面** —— 核侧建**一个**共享提交日志（`kernel/index.js` 的 `createSharedCommitQueue`，注册为服务 **`vmu.commitlog`**，内核面 `kernel.commitlog`）并**同时**交给 `createBallotBox({durableQueue})` 与 `createMailbox({durableQueue})`，于是 `cast` 与 `send` 的行**交错在同一条 ticket 序列**里（各自发号无法合流 ✗）。
+> - **迟到绑定**：每次调用都解析宿主 store（`append()`＋`readAll()` 才合格），**调用时**才建真日志 ⇒ **开机后挂载的 store** 下一次 `cast`/`send` 即生效 ✓；store **换了对象** ⇒ 新日志先 `recover()` 再继续，号**不回退** ✓。
+> - **观测**：`status().seams.sharedCommitLog` 给 `{bound, durable, failure, status, consumedBy}`；★ `failure` 把**"解析器抛错"**（`VMU_COMMIT_STORE_FAILED`）与**"根本没给 store"**分开 —— 两者都不假装耐用，但不是同一件事 ✓。
+> - ★ **缺席口径**：无 store ⇒ 两个面**都**走内存路径且 `status().durableLog.bound === false`／`gate.durable === false`（具名降级，不是坏面）✓。
+> - **断言（探针 `D:/_tmp/vmu-r9/g7-shared.mjs` 17/0）**：交错序列 `ballotbox-cast, mailbox-send, ballotbox-cast, mailbox-send` ⇒ ticket **1,2,3,4**（**一条**共享计数器）；结果行与意图同号；无 store／解析抛错／后挂载三种形状各自具名。
+
+> ★★★ **退出冲刷（轮 9 落地 ✓✓）＝ 两件事，不是一个（★ 不许糊）**：
+> - **state 面【每次变更自动写穿】**（`vmu.resume.writeThrough` 默认开）⇒ 退出只需**等**在途写落地（`recovery.settle()`）；**journal 面（如 `tasks`）只追加、【不写穿】** ⇒ 退出**必须显式刷**（`recovery.flushAll()`）。
+> - **装配侧唯一入口**：`kernel.shutdown({reason})`（`kernel/index.js`）＝ 先 `settle()` 再 `flushAll()`，回执**分别**给 `writeThrough`／`journal` 两半边，`ok` 是二者的**与**（**不是**"至少一半成功" ✗），结果留在 **`status().shutdown`**（退出后仍可查；**从未退出过 ⇒ `null`，不等于成功** ✓）。**并发**多次调用**共用一次**冲刷；**再次**调用会**重跑**（宿主可能 uninstall→install 产生新 journal 尾巴，永久"已刷"标记会静默丢尾巴 ✗）。
+> - **谁调**：`host.js` 的 `adapter.uninstall()`（回执带 `exitFlush`）与入口 `vibe-math-vmu.js` 的 effect cleanup；入口**返回该 Promise**（宿主若 await disposer 就会等），并把失败**具名**（`ctx.logger.warn` ＋ stderr ＋ `status().shutdown`），**绝不静默** ✓。
+> - ★ **写前必读约束同样管辖退出**：**从未成功读过 fold** 的进程在退出时被 `flushAll()` **具名拒**（`VMU_RESUME_WRITE_BEFORE_READ`，`failed:[{key:null,…}]`）⇒ `shutdown().ok === false`，**不会**谎报"已刷"。正常装配在**开机链**里已 `recover()`，故退出必然成功；两种形状都有断言 ✓。
+> - **断言（探针 `D:/_tmp/vmu-r9/exit-flush.mjs` 27/0）**：未读 ⇒ 具名拒；正常路径 ⇒ journal 真落盘（下一位读者在文件里看得到）＋ state 键出现在 `skipped[]` 并写明"writes through on every mutation"；幂等/并发；**无 durable root ⇒ 具名 skip（`ok:true`，不是失败也不是谎）** ✓。
 
 ## 3. Tools（`vibe_vmu_*`）
 
@@ -484,6 +498,9 @@
 | `VMU_RECOUNT_MISMATCH` | **复算与结论不一致** | 表决 | ✅（须给**两次计数**） |
 | `VMU_RECOUNT_SCOPE_DENIED` | 无权复算/导出 | 表决 | ✅ |
 | `VMU_COMMIT_STORE_FAILED` | **注入的 `commitStore` 在**调用时**解析抛出** ⇒ 具名降级：记 `commit-store-failed` 并把日志转**非耐用**（`gate.durable===false`），**不静默吞** | G6 耐用日志 | ✅（`status().seams.commitStore`／`commitStoreNote` 点名缺席与注入方式） |
+| `VMU_EXIT_FLUSH_UNAVAILABLE` | 退出时**装配没有可调用的 `shutdown()` 接缝**（内核面缺 `recovery.exit()`）⇒ 具名缺口：既不声称"等到了写穿"，也不声称"刷了 journal" | 退出冲刷（§2） | ✅（`status().shutdown.code`＋适配器 receipt＋`ctx.logger.warn`） |
+| `VMU_EXIT_FLUSH_FAILED` | `recovery.exit()` **抛了**（契约要求它把失败装进回执，不抛）⇒ 照实记下，不吞 | 退出冲刷（§2） | ✅（`status().shutdown.message`） |
+| `VMU_EXIT_FLUSH_INCOMPLETE` | 退出冲刷**回执 `ok:false` 且没有更具体的码** ⇒ 用这个兜底码，失败键在 `failed[]` 里具名 | 退出冲刷（§2） | ✅（`status().shutdown.failed[]`） |
 | **工作流·看板·预算·控制·触发·度量（卷 08 ✓）** | | | |
 | `VMU_WORKFLOW_DEP_TYPE_UNSUPPORTED` | 依赖类型未声明 | 工作流 | ✅ |
 | `VMU_WORKFLOW_GATE_NOT_MET` | 门未达成 | 工作流 | ✅（须给**缺哪一项**） |
@@ -966,7 +983,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **387** 个码，**逐行**给出状态 ✓：其中 **348** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **390** 个码，**逐行**给出状态 ✓：其中 **351** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1041,7 +1058,7 @@
 | `VMU_COLLAB_RECONCILIATION_OFF` | **已实现 ✓** | `vibe-math-vmu/kernel/collab.js` | 代码里有该码字符串 ✓ |
 | `VMU_COLLAB_SETTLEMENT_PREMATURE` | **已实现 ✓** | `vibe-math-vmu/kernel/collab.js` | 代码里有该码字符串 ✓ |
 | `VMU_COLLAB_TEMPLATE_UNKNOWN` | **已实现 ✓** | `vibe-math-vmu/kernel/collab.js` | 代码里有该码字符串 ✓ |
-| `VMU_COMMIT_STORE_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/ballot.js` | 代码里有该码字符串 ✓ |
+| `VMU_COMMIT_STORE_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/ballot.js`、`vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_COMPAT_UNKNOWN_COMBO` | **已实现 ✓** | `vibe-math-vmu/kernel/migration.js`、`vibe-math-vmu/kernel/projmigrate.js`、`vibe-math-vmu/kernel/stateversion.js`、`vibe-math-vmu/kernel/storepolicy.js` | 代码里有该码字符串 ✓ |
 | `VMU_CONFLICT` | **已实现 ✓** | `vibe-math-vmu/kernel/alerts.js`、`vibe-math-vmu/kernel/ballotbox.js`、`vibe-math-vmu/kernel/bidding.js`、`vibe-math-vmu/kernel/course.js`、`vibe-math-vmu/kernel/governance.js`、`vibe-math-vmu/kernel/library.js`、`vibe-math-vmu/kernel/minutes.js`、`vibe-math-vmu/kernel/resource.js`、`vibe-math-vmu/kernel/storepolicy.js` | 代码里有该码字符串 ✓ |
 | `VMU_CONTROL_DEGRADE_STEP` | **已实现 ✓** | `vibe-math-vmu/kernel/control.js` | 代码里有该码字符串 ✓ |
@@ -1072,6 +1089,9 @@
 | `VMU_DISCIPLINE_RESTORE_NEEDS_HUMAN` | **已实现 ✓** | `vibe-math-vmu/kernel/discipline.js` | 代码里有该码字符串 ✓ |
 | `VMU_DISCIPLINE_SUSPEND_OVER_CAP` | **已实现 ✓** | `vibe-math-vmu/kernel/discipline.js` | 代码里有该码字符串 ✓ |
 | `VMU_ENGINE_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/host-hooks.js`、`vibe-math-vmu/host-math.js`、`vibe-math-vmu/host-spawn.js`、`vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/loader.js`、`vibe-math-vmu/kernel/mailbox.js`、`vibe-math-vmu/kernel/math.js`、`vibe-math-vmu/kernel/mathtools.js`、`vibe-math-vmu/kernel/meeting.js`、`vibe-math-vmu/kernel/meetings.js`、`vibe-math-vmu/kernel/members.js`、`vibe-math-vmu/kernel/minutes.js`、`vibe-math-vmu/kernel/pack.js`、`vibe-math-vmu/kernel/paper.js`、`vibe-math-vmu/kernel/prompt/index.js`、`vibe-math-vmu/kernel/resource.js`、`vibe-math-vmu/kernel/script-bridge.js`、`vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/kernel/work.js`、`vibe-math-vmu/settings/schema.js`、`vibe-math-vmu/tools/activity.js`、`vibe-math-vmu/tools/chat.js`、`vibe-math-vmu/tools/control.js`、`vibe-math-vmu/tools/fidelity.js`、`vibe-math-vmu/tools/human.js`、`vibe-math-vmu/tools/mailbox.js`、`vibe-math-vmu/tools/mathadapters.js`、`vibe-math-vmu/tools/mathjobs.js`、`vibe-math-vmu/tools/meeting.js`、`vibe-math-vmu/tools/panel.js`、`vibe-math-vmu/tools/report.js`、`vibe-math-vmu/tools/turn.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
+| `VMU_EXIT_FLUSH_FAILED` | **已实现 ✓** | `vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
+| `VMU_EXIT_FLUSH_INCOMPLETE` | **已实现 ✓** | `vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
+| `VMU_EXIT_FLUSH_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_EXPLAIN_CORRELATION_UNKNOWN` | **已实现 ✓** | `vibe-math-vmu/kernel/explain.js` | 代码里有该码字符串 ✓ |
 | `VMU_EXPLAIN_REASON_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/explain.js` | 代码里有该码字符串 ✓ |
 | `VMU_EXPLAIN_REASON_TOO_LONG` | **已实现 ✓** | `vibe-math-vmu/kernel/explain.js` | 代码里有该码字符串 ✓ |
@@ -1292,7 +1312,7 @@
 | `VMU_RESUME_BAD_STEP` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_BUSY` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_CHILDREN_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
-| `VMU_RESUME_CLOCK_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
+| `VMU_RESUME_CLOCK_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js`、`vibe-math-vmu/kernel/resumeflush.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_INTERRUPTED_NOT_PASSED` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_MAILBOX_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_NO_ADAPTER` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
@@ -1302,8 +1322,8 @@
 | `VMU_RESUME_RESTORE_CONFLICT` | **已实现 ✓** | `vibe-math-vmu/kernel/budget.js`、`vibe-math-vmu/kernel/human.js`、`vibe-math-vmu/kernel/members.js`、`vibe-math-vmu/kernel/resume.js`、`vibe-math-vmu/kernel/tasks.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_SNAPSHOT_INCOMPLETE` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_SNAPSHOT_VERSION` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
-| `VMU_RESUME_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
-| `VMU_RESUME_WRITE_BEFORE_READ` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
+| `VMU_RESUME_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js`、`vibe-math-vmu/kernel/resumeflush.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
+| `VMU_RESUME_WRITE_BEFORE_READ` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js`、`vibe-math-vmu/kernel/resumeflush.js` | 代码里有该码字符串 ✓ |
 | `VMU_RETENTION_TRUNCATED` | **已实现 ✓** | `vibe-math-vmu/kernel/retention.js` | 代码里有该码字符串 ✓ |
 | `VMU_ROLE_EVIDENCE_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |
 | `VMU_ROLE_RECALL_COOLDOWN` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |
@@ -1375,6 +1395,16 @@
 
 ---
 
+### 8.2 env 缝（部署接口；**手写登记** ✓）
+
+> ★ 这一节登记**部署必须设置的环境变量**：它们**不是错误码**，故不进上表；但"宿主必须设的一个名字"属于**部署接口**，必须在契约卷里有位置（doc-lint 对文档里出现的 `VMU_*` 名**逐名**比对，**环境缝不例外**）。三列是硬要求：**谁设／何时设**、**缺席时行为（具名降级）**、**出处**。
+
+| 名称 | 谁设／何时设 | 缺席时行为（具名降级，**不是错误**） | 出处 |
+|---|---|---|---|
+| `VMU_RESUME_FROM` | **内核在派生数学作业子进程时**写进子进程 env：值＝`submit({resumeFrom})` 收到的**引擎自有不透明令牌**（内核只负责"带着它"：request → 子进程 env → 镜像 → 恢复重发） | 不设（`resumeFrom` 为空）⇒ 子进程**从头计算**；回执 `resumedFrom` 为 `null`，**不假装续算** | `kernel/mathjobs.js:602`（写）／`:649`（回执 `resumedFrom`）／`:738`（令牌形状，且**进请求指纹** `inputHash`） |
+
+---
+
 ## 9. Settings keys（索引）
 
 全表在 `04-settings.md` §4（命名空间 `vmu.*`）。**登记规则**：新增键必须同时更新 04 与 §6 的公开键清单（如涉及耐久）⇒ 否则门禁红。
@@ -1437,6 +1467,7 @@
 | `vmu.citations` | citations: the declared style, the required fields, the identifier priority that decides the key, and free text that is off by default (docs/07) |
 | `vmu.clockguard` | monotonic clock guard, consumed by every TTL-sensitive service (N3) |
 | `vmu.collab` | collab: counterparty register, agreements with expiry warning, data-sharing template, joint authorship and the settlement cycle with reconciliation tolerance (docs/22 §协作) |
+| `vmu.commitlog` | the ONE durable commit log shared by the board (kernel/ballotbox.js cast) and the mailbox (kernel/mailbox.js send): a late-bound facade over the host allocating store, one ticket sequence, absent store degrades by name (docs/03 §2) |
 | `vmu.compliance` | research compliance: IRB and consent approvals, retention windows, COI disclosure and evidence packs (docs/20, 22; export control stays with domaingate) |
 | `vmu.conference` | conference hosting: calls for papers, review quorum, anonymity, registration cap and agenda fit (docs/08; layered on the single-session face) |
 | `vmu.control` | control: what may be paused and by which role, the watchdog interval (zero means no timer), what counts as idle and the notice-only default, the degradation ladder, and whether stopping clears the registry (docs/08) |
@@ -1500,6 +1531,6 @@
 | `vmu.work` | durable in-flight ledger (recover after restart) |
 | `vmu.workflow` | stage whitelist, gates and escalation, no stage skipping (docs/08 搂4) |
 
-> ★★ 合计 **79** 个服务 ✓。
+> ★★ 合计 **80** 个服务 ✓。
 
 <!-- END GENERATED: service-index -->

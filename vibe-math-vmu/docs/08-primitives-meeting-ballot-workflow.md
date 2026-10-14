@@ -1580,7 +1580,7 @@ for (const m of roster) chat.mute(m, { by: chair, reason: 'meeting in progress' 
 | 命令 | 读数 |
 |---|---|
 | `node tests/vmu-activity-kernel.test.mjs` | `=== VMU ACTIVITY: 141 passed, 0 failed ===` |
-| `node tests/vmu-activity-falsify.test.mjs` | `=== VMU ACTIVITY FALSIFICATION: 14 passed, 0 failed ===` |
+| `node tests/vmu-activity-falsify.test.mjs` | `=== VMU ACTIVITY FALSIFY: 21 passed, 0 failed ===` |
 | `node tests/vmu-activity-tool.test.mjs` | `=== VMU ACTIVITY TOOL: 58 passed, 0 failed ===` |
 
 真机装配证据（`tests/vmu-activity-tool.test.mjs` §4）：声明 `vmu.activity.wakeOn:['chat/sent']` 的**真 kernel** 上，`k.activity.wait(...)` 被 `k.bus.emit('chat/sent', …)` **真的**唤醒（`notified.what==='hook:chat/sent'`）；同一装配下 `vmu.activity.noPeerShortCircuit=false` 的第 2 个 kernel **真的**超时（平台定时器）且 disposer 已跑；空名册时 `wait()` 立即 `noProgress:'no-active-peer'`。

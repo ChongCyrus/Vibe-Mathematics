@@ -925,6 +925,33 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     return { ok: failures.length === 0, installed: registered.length, names: registered.slice(), ownedByHost, failures: failures.map((f) => Object.assign({}, f)) }
   }
 
+  /**
+   * ROUND 9 / task-66 B — THE EXIT FLUSH, called from `uninstall()` (the adapter's own teardown) and therefore from
+   * the entry's effect cleanup. `kernel.shutdown()` is the assembly side of the contract in docs/03 §2: wait for the
+   * in-flight STATE writes, then flush every JOURNAL projection, reporting both halves separately.
+   *
+   * A failure is NAMED on the adapter's log and carried in the uninstall receipt - the host may well ignore the
+   * receipt, so the same fact is also permanently readable from `kernel.status().shutdown`. It never throws: a
+   * teardown that throws can abort the rest of the host's disposal and make the failure LESS visible.
+   */
+  const flushOnExit = async (reason) => {
+    if (!kernel || typeof kernel.shutdown !== 'function') {
+      const out = { ok: false, code: 'VMU_EXIT_FLUSH_UNAVAILABLE', reason: String(reason), message: 'the kernel face exposes no shutdown() seam', failed: [] }
+      log('vmu: exit flush unavailable: ' + out.message)
+      return out
+    }
+    let r = null
+    try { r = await kernel.shutdown({ reason: String(reason) }) } catch (e) {
+      r = { ok: false, code: (e && e.code) || 'VMU_EXIT_FLUSH_FAILED', reason: String(reason), message: String((e && e.message) || e), failed: [] }
+    }
+    if (!r || r.ok !== true) {
+      const code = (r && r.code) || 'VMU_EXIT_FLUSH_INCOMPLETE'
+      const failed = (r && Array.isArray(r.failed)) ? r.failed : []
+      log('vmu: exit flush FAILED (' + code + '): ' + JSON.stringify(failed))
+    }
+    return r
+  }
+
   return {
     /** What WOULD be registered (pure: no host calls) - the host-side zero-mechanism proof. */
     plan() {
@@ -949,16 +976,21 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     },
 
     async uninstall() {
+      // ROUND 9 / task-66 B — THE EXIT FLUSH COMES FIRST. Deregistering tools is not durability: the journal tail
+      // and the in-flight state writes must be settled BEFORE the faces go away, because after uninstall there may
+      // be no observable path left to ask. `kernel.shutdown()` waits for the write-through and flushes the journals;
+      // a failure is NAMED here (log + receipt) and never turns into a silent success.
+      const exitFlush = await flushOnExit('host-uninstall')
       if (ownedByHost) {
         registered.length = 0
         installed = false
-        return { ok: true, ownedByHost: true, note: 'the host unwinds these registrations through ctx.effect' }
+        return { ok: exitFlush.ok !== false, ownedByHost: true, exitFlush, note: 'the host unwinds these registrations through ctx.effect' }
       }
       const failures2 = []
       for (const d of disposers.splice(0)) { try { d() } catch (e) { failures2.push(String(e && e.message)) } }
       registered.length = 0
       installed = false
-      return { ok: failures2.length === 0, failures: failures2 }
+      return { ok: failures2.length === 0 && exitFlush.ok !== false, failures: failures2, exitFlush }
     },
 
     status() {

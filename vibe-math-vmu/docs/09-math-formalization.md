@@ -458,6 +458,14 @@ LeanJobMirror  = { schema:'vmu/lean-job@1',  jobId, statement, file, state, atte
   `exitCode === null`，旧代码 `Number(null) === 0` 会把它记成**成功** ⇒ 现在"没有退出码"记 `failed` 并具名拒
   （消息含 `signal`），回执带 **`signal` 字段**。两条都有回归测试（`tests/vmu-job-cancel.test.mjs` 9/0）；
   端到端读数见 `_handoff/vmu/13-goal5-e2e.md`。
+- **Lean 崩溃续算的哈希顺序（Round 9 端到端抓出的缺陷 ③）**：`runOne` 原先**先写 `running` 镜像、后读内容哈希**
+  ⇒ 磁盘记录 `hashBefore:null` ⇒ 崩溃恢复时"当前内容 vs null"永不匹配 ⇒ **恒走分支 ③（不重跑）**，即 Lean 的崩溃
+  续算实际上是坏的。现在**先读哈希、再写 `running` 镜像**。计算面不受影响：它的恢复依据是**请求指纹**
+  （argv/stdin/seed），一直在镜像里。
+- **恢复租约（Round 9 ✓，与计算面共用 `createJobMirror.takeLease`）**：重排崩溃作业前取 `<jobId>.lease`；未过期
+  ⇒ 本实例让位（具名 `lease-held`）；陈旧可抢；恢复完释放。TTL ＝ `max(120 s, 作业预算 + 30 s)`。**实测**：两个
+  实例同时恢复同一个崩溃作业时，修前**双跑**（3 个 pid），修后**恰好一次**（2 个 pid）。非共识锁；无
+  `writeTextExclusive` ⇒ 具名 `unenforced`。
 - **定时器必须可清理（F15，Round 4 ✓ 修）**：`createChildBudget` 的默认 `timer` seam 现在返回**真 disposer**
   （`() => clearTimeout(h)`）；注入的 seam 若返回平台 `Timeout` 对象则**显式 `clearTimeout`**；**清理失败**
   返回 `cleanupFailed` ＋ 通过 `onNote('timer-cleanup-failed', …)` 上报，**绝不**再被 `catch` 吞掉（这正是

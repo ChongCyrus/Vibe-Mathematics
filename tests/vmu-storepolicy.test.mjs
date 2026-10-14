@@ -148,7 +148,12 @@ test('fired ⊆ enforced everywhere; read paths pure; zero-config; clock-determi
   assert.equal(zero.status().ok, true)
   assert.equal(zero.capabilities().ok, true)
   const s = sp({ 'vmu.store.autoBackup': true }, () => 7)
-  const receipts = [s.capabilities(), s.acquire({ name: 'z' }), s.write({ id: 'w' }), s.read({ foundVersion: 1, currentVersion: 2 })]
+  // ROUND 9 (vmu-activity's F1): the receipt list must ALSO include a policy that DECLARES `vmu.store.tmpDir`,
+  // otherwise the subset assertion never reaches that branch and passes **vacuously** for the key - measured:
+  // `fired` carries `vmu.store.tmpDir` while `enforced` does not, i.e. `fired ⊄ enforced` on a branch this test
+  // never asked about. (docs/11 §4.2 requirement ⑥: an observable must really vary between the cases we compare.)
+  const withTmp = createStorePolicy({ settings: { 'vmu.store.backend': 'file', 'vmu.store.root': '/vault', 'vmu.store.tmpDir': '/vault/tmp' }, clock: () => 0, log: () => {}, bus: { emit: () => {} } })
+  const receipts = [s.capabilities(), s.acquire({ name: 'z' }), s.write({ id: 'w' }), s.read({ foundVersion: 1, currentVersion: 2 }), withTmp.write({ id: 'w-tmp' })]
   for (const r of receipts) {
     assert.ok(Array.isArray(r.enforced) && Array.isArray(r.fired), 'enforced/fired 必须是数组')
     for (const k of r.fired) assert.ok(r.enforced.indexOf(k) !== -1, '**fired ⊆ enforced**（越界：' + k + '）')

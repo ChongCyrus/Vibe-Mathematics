@@ -570,6 +570,8 @@ export function createMailbox({
         pending: Object.values(per).reduce((a, b) => a + b.pending, 0),
         acked: Object.values(per).reduce((a, b) => a + b.acked, 0),
         seq, durable,
+        // G7 self-report (Round 9): whether a durable commit log is bound is READABLE, never inferred.
+        durableLog: { bound: !!(durableQueue && durableQueue.durable === true) },
         policy: { digestWindowMs: digestWindowOf(), digestMax: digestMaxOf(), urgentKinds: urgentKindsOf(),
           ackedLedgerCap: ackedCapOf(), wakeBudget: wakeBudgetOf(), deliverTimeoutMs: deliverTimeoutOf(), boxCap: MAILBOX_BOX_CAP },
         mechanism: { hasDeliverSeam: typeof deliver === 'function', hasAudienceSeam: typeof resolveAudience === 'function',

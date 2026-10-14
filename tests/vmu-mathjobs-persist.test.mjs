@@ -346,6 +346,109 @@ test('events reach the bus NAME-first (a single object would be refused and swal
   passed += 1
 })
 
+// ── 9b. ROUND 9 · C：**恢复租约**——两个实例同时扫到同一个 `running` 镜像 ⇒ 只许一个恢复（实测过双跑）────
+function memFsExclusive(files = {}) {
+  const fs = memFs(files)
+  fs.writeTextExclusive = async (rel, text) => {
+    const k = String(rel).replace(/\\/g, '/')
+    if (fs.store.has(k)) { const e = new Error('EEXIST: file already exists'); e.code = 'EEXIST'; throw e }
+    fs.store.set(k, String(text)); return true
+  }
+  return fs
+}
+test('recovery lease — two instances recovering ONE crashed job: exactly one re-runs, the other says lease-held', async () => {
+  const fs = memFsExclusive()
+  const spawns = []
+  const mkFace = () => createMathJobs({ settings: mkSettings().settings, clock: () => 1000, spawn: fakeSpawn(async () => { await new Promise((r) => setTimeout(r, 30)); return OK }, spawns), fs })
+  const seed = mkFace()
+  await seed.submit({ engine: 'sympy', argv: ['-c', 'lease'], jobId: 'mj-lease' })
+  const rel = 'Math/Jobs/mj-lease.json'
+  const rec = JSON.parse(fs.store.get(rel))
+  Object.assign(rec, { state: 'running', settledAt: 0, receipt: null, attempts: 1 })
+  fs.store.set(rel, JSON.stringify(rec))
+  const spawnsBefore = spawns.length
+  const [rA, rB] = await Promise.all([mkFace().recover(), mkFace().recover()])
+  const rows = [...(rA.results || []), ...(rB.results || [])].filter((r) => r.jobId === 'mj-lease')
+  const requeued = rows.filter((r) => r.action === 'interrupted-then-requeued')
+  const held = rows.filter((r) => r.action === 'lease-held')
+  assert.equal(requeued.length, 1, 'exactly one instance may requeue the crashed job: ' + JSON.stringify(rows))
+  assert.equal(held.length, 1, 'the other must be told the lease is held: ' + JSON.stringify(rows))
+  assert.equal(held[0].enforced, true, 'the lease must be ENFORCED (writeTextExclusive is available)')
+  assert.equal(spawns.length, spawnsBefore + 1, '★★ only ONE child may run for one crashed job (the doubled run is the defect): ' + (spawns.length - spawnsBefore))
+  passed += 1
+})
+
+test('recovery lease — a STALE lease is stolen (a dead recoverer must not block recovery forever)', async () => {
+  const fs = memFsExclusive()
+  const spawns = []
+  const gov = createMathJobs({ settings: mkSettings().settings, clock: () => 500000, spawn: fakeSpawn(OK, spawns), fs })
+  await gov.submit({ engine: 'sympy', argv: ['-c', 'stale'], jobId: 'mj-stale' })
+  const rel = 'Math/Jobs/mj-stale.json'
+  const rec = JSON.parse(fs.store.get(rel))
+  Object.assign(rec, { state: 'running', settledAt: 0, receipt: null, attempts: 1 })
+  fs.store.set(rel, JSON.stringify(rec))
+  fs.store.set('Math/Jobs/mj-stale.lease', JSON.stringify({ owner: 'dead-instance', at: 0 }))   // ancient lease
+  const spawnsBefore = spawns.length
+  const rep = await gov.recover()
+  const row = (rep.results || []).find((r) => r.jobId === 'mj-stale')
+  assert.equal(row.action, 'interrupted-then-requeued', JSON.stringify(row))
+  assert.equal(row.lease, 'stolen-stale', 'the stale lease must be STOLEN and named: ' + JSON.stringify(row))
+  assert.equal(spawns.length, spawnsBefore + 1, 'the stale lease must not block the re-run')
+  passed += 1
+})
+
+test('recovery lease — without the exclusive primitive the lease is UNENFORCED and says so by name', async () => {
+  const fs = memFs()                       // no writeTextExclusive
+  const spawns = []
+  const gov = createMathJobs({ settings: mkSettings().settings, clock: () => 0, spawn: fakeSpawn(OK, spawns), fs })
+  await gov.submit({ engine: 'sympy', argv: ['-c', 'noex'], jobId: 'mj-noex' })
+  const rel = 'Math/Jobs/mj-noex.json'
+  const rec = JSON.parse(fs.store.get(rel))
+  Object.assign(rec, { state: 'running', settledAt: 0, receipt: null, attempts: 1 })
+  fs.store.set(rel, JSON.stringify(rec))
+  const rep = await gov.recover()
+  const row = (rep.results || []).find((r) => r.jobId === 'mj-noex')
+  assert.equal(row.action, 'interrupted-then-requeued')
+  assert.equal(row.lease, 'unenforced', 'no exclusive seam ⇒ the lease cannot exclude, and must SAY so: ' + JSON.stringify(row))
+  const adm = gov.admission()
+  assert.equal(adm.recoveryLease.indexOf('not-enforced'), 0, 'admission must name the unenforced lease: ' + adm.recoveryLease)
+  passed += 1
+})
+
+// ── 9c. ROUND 9 · B：`resumeFrom` 是**引擎的不透明令牌**——内核只携带（request → env → 镜像 → 恢复重发）────
+test('resumeFrom is CARRIED, never interpreted: mirror + env + recovery re-issue, and a different token is refused', async () => {
+  const fs = memFs()
+  const specs = []
+  const gov = createMathJobs({ settings: mkSettings().settings, clock: () => 100, spawn: fakeSpawn(OK, specs), fs })
+  const sub = await gov.submit({ engine: 'sympy', argv: ['-c', 'work'], jobId: 'mj-seg', resumeFrom: 'seg-7' })
+  assert.equal(sub.ok, true)
+  assert.equal(sub.receipt.resumedFrom, 'seg-7', '回执必须记录"这次是续算"')
+  assert.equal(specs[0].env.VMU_RESUME_FROM, 'seg-7', '子进程必须**真看到**令牌（env）')
+  const rel = 'Math/Jobs/mj-seg.json'
+  const rec = JSON.parse(fs.store.get(rel))
+  assert.equal(rec.request.resumeFrom, 'seg-7', '镜像必须带令牌（否则恢复无从重发）')
+  // crash ⇒ recovery must re-issue the SAME token
+  Object.assign(rec, { state: 'running', settledAt: 0, receipt: null, attempts: 1 })
+  fs.store.set(rel, JSON.stringify(rec))
+  const before = specs.length
+  const rep = await gov.recover()
+  const row = (rep.results || []).find((r) => r.jobId === 'mj-seg')
+  assert.equal(row.action, 'interrupted-then-requeued', JSON.stringify(row))
+  assert.equal(specs.length, before + 1)
+  assert.equal(specs[specs.length - 1].env.VMU_RESUME_FROM, 'seg-7', '恢复必须原样重发**同一个**令牌')
+  // a DIFFERENT token must NOT match the old request fingerprint ⇒ branch ③（绝不静默续算）
+  const r2 = JSON.parse(fs.store.get(rel))
+  Object.assign(r2, { state: 'running', settledAt: 0, receipt: null, inputHash: 'fp:other-token' })
+  fs.store.set(rel, JSON.stringify(r2))
+  const rep2 = await gov.recover()
+  const row2 = (rep2.results || []).find((r) => r.jobId === 'mj-seg')
+  assert.equal(row2.action, 'interrupted-no-rerun', JSON.stringify(row2))
+  assert.equal(row2.why, 'fingerprint-mismatch')
+  // the boundary is NAMED in admission (the kernel does not claim checkpoint semantics)
+  assert.ok(gov.admission().checkpointing.indexOf('not-implemented') === 0, 'admission 必须具名"未实现中间检查点"：' + gov.admission().checkpointing)
+  passed += 1
+})
+
 for (const c of cases) {
   try { await c.f(); console.log('ok - ' + c.n) } catch (e) { failed += 1; console.log('FAIL - ' + c.n + ' :: ' + String((e && e.message) || e)) }
 }

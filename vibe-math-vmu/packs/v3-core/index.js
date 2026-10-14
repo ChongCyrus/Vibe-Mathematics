@@ -41,7 +41,15 @@ export const PACK = Object.freeze({
   settings: {
     'vmu.limits.maxLiveMembers': 4,        // <- v3 `maxParallelThreshold: 4` (a real concurrency gate)
     'vmu.meetings.verdictMaxRounds': 5,    // <- v3 `debateMaxRounds: 5` (the analogue, not an identity)
-    'vmu.meetings.quorumRule': 'majority', // <- v3 collects independent verdicts and aggregates them
+    // ROUND 9 (found by scripts/audit-pack-value-domain.mjs): this said `'majority'`, which is OUTSIDE the
+    // schema's domain `['m-unanimous','all-unanimous']` (settings/schema.js). `vibe_vmu_set` would refuse it by
+    // name, but a PACK value bypasses the settings boundary - and the ballot face records `quorumRule` as a
+    // context LABEL while its default tally (`ballot.js`'s `defaultTally`) is unanimous-for/against regardless.
+    // So `'majority'` was a declaration that could not do what it said. v3's "independent verdicts are
+    // aggregated" is approximated by `m-unanimous` with the cap below (`quorumCap` is not set here, so v3's own
+    // `verifierCount` module does the counting); TRUE majority aggregation is a PLUGGABLE predicate in this
+    // framework (R1: `createBallot`'s `tally` seam) and would need an injected `tally` - named, not faked.
+    'vmu.meetings.quorumRule': 'm-unanimous',
     'vmu.records.tracks': ['propos', 'problems', 'directions', 'journal', 'verified'],
     // PACK-OWNED keys, read by the two modules below (`setting()` sees them like any other).
     // ★ ROUND 5: THEY ARE DECLARED IN `settings/schema.js` (there, right after v5r's

@@ -46,7 +46,7 @@
 
 import { readFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
-import { createJobMirror, safeRelDir, ENFORCED_SCOPE, createChildBudget } from './mathjobs.js'
+import { createJobMirror, safeRelDir, ENFORCED_SCOPE, createChildBudget, RECOVERY_LEASE_TTL_MS, defaultTimer } from './mathjobs.js'
 import { mint as mintId, observeIds } from './ids.js'
 
 export const LEAN_KEYS = Object.freeze([
@@ -126,6 +126,28 @@ export function createLeanFace(opts) {
   const spawnHandle = typeof o.spawnHandle === 'function' ? o.spawnHandle : null
   const budget = createChildBudget({ timer: o.timer })
   const root = String(o.root || '.')
+  /** ROUND 9 · C: this face's identity for the recovery lease (process + random; never an id-counter consumer). */
+  const faceOwner = 'lf-' + String(typeof process !== 'undefined' && process.pid ? process.pid : 'x') + '-' + Math.random().toString(36).slice(2, 8)
+  const leaseTtlFor = (jobTimeoutMs) => Math.max(RECOVERY_LEASE_TTL_MS, (Number(jobTimeoutMs) || 0) + 30000)
+  /**
+   * Wait until a job reaches a terminal state (used to release the recovery lease exactly once).
+   * ROUND 9-fix (F15): the polling sleep goes through the **INJECTED** timer seam and falls back to the framework's
+   * only global-timer site (`defaultTimer` in `kernel/mathjobs.js`). A kernel face must not own an un-injectable
+   * real sleep: `tests/vmu-activity-timers.test.mjs` classifies global timer sites, and a second site in this file
+   * was exactly the "unclassified timer" it refused. Cadence and cap are unchanged (4000 × 50 ms).
+   */
+  const sleepMs = (ms) => new Promise((resolve) => {
+    const arm = typeof o.timer === 'function' ? o.timer : defaultTimer
+    try { const dispose = arm(resolve, ms); if (typeof dispose === 'function') { /* the caller owns completion */ } } catch (e) { resolve() }
+  })
+  const waitForJob = async (id) => {
+    for (let i = 0; i < 4000; i += 1) {
+      const j = jobs.get(id)
+      if (!j || LEAN_TERMINAL_STATES.indexOf(j.state) !== -1) return true
+      await sleepMs(50)
+    }
+    return false
+  }
   const clock = typeof o.clock === 'function' ? o.clock : () => Date.now()
   const log = typeof o.log === 'function' ? o.log : () => {}
   const fsSeam = (o.fs && typeof o.fs.writeText === 'function' && typeof o.fs.readText === 'function') ? o.fs : null
@@ -339,10 +361,14 @@ export function createLeanFace(opts) {
     j.state = 'running'
     j.startedAt = clock()
     j.attempts = (Number(j.attempts) || 0) + 1
-    note(j.id, 'running', { attempts: j.attempts })
-    await writeMirror(j)
+    // ── ROUND 9（端到端演练抓出的缺陷 ③）────────────────────────────────────────────────────────────
+    // The hash is read BEFORE the durable `running` write. It used to be read AFTER, so the on-disk `running`
+    // record carried `hashBefore: null`; after a crash the recovery compared the (unchanged) file against that
+    // null ⇒ `contentMatches === false` ⇒ **branch ③ ("file changed") — a crashed Lean job could never resume.**
     const before = await readHash(j.file)
     j.hashBefore = before === undefined ? null : before
+    note(j.id, 'running', { attempts: j.attempts, hashBefore: j.hashBefore })
+    await writeMirror(j)
     if (before === undefined) {
       j.state = 'failed'; j.endedAt = clock(); j.reason = 'file-unreadable'
       j.receipt = refuse('VMU_LEAN_FILE_UNREADABLE', '读不到 Lean 产物文件：' + j.file, '先写出 .lean 文件；本面只编译既有文件')
@@ -493,10 +519,12 @@ export function createLeanFace(opts) {
     if (!statement) return refuse('VMU_LEAN_STATEMENT_REQUIRED', 'submit 需要 statement（要形式化的命题原文）', 'statement 必填：它是回执与审计的对象')
     if (!file) return refuse('VMU_LEAN_FILE_REQUIRED', 'submit 需要 file（.lean 文件路径）', 'file 必填：本面只编译既有文件，不替你写证明')
     const c = cfg()
-    // NOTE (F45): the dedupe check lives in `runOne`, NOT here — `submit` must stay synchronous up to the
-    // enqueue (the queue is observable immediately), and the key needs the file's CURRENT content hash, which
-    // `runOne` already reads. It also keeps dedupe and settle computed from the SAME facts.
-    const id = mintJobId()
+    // ROUND 9: a caller-chosen `jobId` is honoured (the computation face has always accepted one, and the
+    // crash/cancel drills need to address a job across processes). A chosen id is OBSERVED so the counter can
+    // never re-mint it later (ids are never reused, D-15).
+    const requestedId = String(args.jobId || '').trim()
+    const id = requestedId || mintJobId()
+    if (requestedId) observeJobIds([requestedId])
     const j = {
       id, statement, file, member: String(args.member || ''), dedupeKey: null, state: 'queued', attempts: 0, enqueuedAt: clock(),
       exitCode: undefined, hashBefore: undefined, hashAfter: undefined, hashUnchanged: undefined,
@@ -651,6 +679,14 @@ export function createLeanFace(opts) {
       if (rec.state === 'running') {
         if (contentMatches) {
           // ② running ＋ 文件内容哈希仍等于记录值 ⇒ interrupted 后**重新入队**（attempts+1）
+          // ROUND 9 · C：恢复租约（与计算面同一原语）。两个实例同时扫到同一个 `running` 镜像会各编译一遍；
+          // 未过期的租约 ⇒ 本实例让位（具名 `lease-held`），陈旧租约可被抢（避免死实例永久阻塞恢复）。
+          const lease = await mirrorFor().takeLease(rec.jobId, faceOwner, leaseTtlFor(Number(rec.request && rec.request.timeoutMs) || cfg().leanTimeoutMs))
+          if (lease && lease.ok === true && lease.held === false) {
+            results.push({ jobId: rec.jobId, action: 'lease-held', owner: lease.owner, ageMs: lease.ageMs, enforced: lease.enforced !== false })
+            note(rec.jobId, 'recover:lease-held', { owner: lease.owner })
+            continue
+          }
           const j = mk('interrupted', { reason: 'crash: previous run never reported (file content unchanged)', interrupted: true })
           jobs.set(j.id, j)
           interrupted += 1
@@ -658,8 +694,10 @@ export function createLeanFace(opts) {
           j.state = 'queued'            // …and only then re-enqueue it (pump only picks `queued`)
           order.push(j.id)
           requeued += 1
-          results.push({ jobId: j.id, action: 'interrupted-then-requeued' })
+          results.push({ jobId: j.id, action: 'interrupted-then-requeued', lease: lease && lease.stole ? 'stolen-stale' : (lease && lease.enforced === false ? 'unenforced' : 'acquired') })
           note(j.id, 'recover:requeued', { from: 'running', attempts: j.attempts })
+          // the lease must not outlive the recovery it guards: release it once the re-run is done
+          Promise.resolve().then(async () => { try { await waitForJob(j.id); await mirrorFor().releaseLease(j.id) } catch (e) { /* TTL is the backstop */ } })
         } else {
           // ③ running ＋ 哈希不一致/读不到 ⇒ **只标 interrupted，绝不重跑旧内容**
           const why = hashNow === undefined ? 'crash: the compiled file is unreadable now — not re-run' : 'crash: the compiled file changed — not re-run'

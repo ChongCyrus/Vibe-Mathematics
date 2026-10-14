@@ -651,7 +651,28 @@ export function apply(ctx, config = {}) {
   if (!switchedOff) {
     effect(() => {
       const installing = adapter.install()
-      const cleanup = () => { try { adapter.uninstall() } catch { /* the host is going away anyway */ } }
+      const cleanup = () => {
+        // ROUND 9 / task-66 B — THE EXIT FLUSH ON THE DISPOSE PATH. `adapter.uninstall()` performs it (it awaits
+        // `kernel.shutdown()`, which waits for the in-flight state writes and then flushes the journals - the two
+        // different promises in docs/03 §2). The PROMISE IS RETURNED so a host that awaits its disposers actually
+        // waits for the flush; a host that does not still runs it, and `status().shutdown` records what happened
+        // either way (so "did the journals get flushed" is answerable after the fact, not assumed).
+        let pending = null
+        try { pending = adapter.uninstall() } catch (e) {
+          const detail = 'vmu: exit flush threw during uninstall: ' + String((e && e.message) || e)
+          try { process.stderr.write(detail + '\n') } catch { /* stderr may be gone */ }
+          return null
+        }
+        if (!pending || typeof pending.then !== 'function') return pending
+        return pending.then((r) => {
+          if (r && r.exitFlush && r.exitFlush.ok !== true) {
+            const detail = 'vmu: exit flush FAILED: ' + (r.exitFlush.code || 'unknown') + ' ' + JSON.stringify(r.exitFlush.failed || [])
+            try { process.stderr.write(detail + '\n') } catch { /* stderr may be gone */ }
+            try { if (ctx && ctx.logger && typeof ctx.logger.warn === 'function') ctx.logger.warn(detail) } catch { /* logging never breaks the teardown */ }
+          }
+          return r
+        })
+      }
       cleanups.push(cleanup)
       // F5: the report clock is attached AFTER the tools are registered, because its gate IS the registration list
       // (`vibe_vmu_report` published ⇔ the face is declared). This is the initial install; the entry re-installs after

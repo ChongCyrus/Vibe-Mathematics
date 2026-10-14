@@ -184,7 +184,12 @@ export function createStorePolicy(opts) {
   const write = (a) => {
     const args = a || {}
     const c = cfg()
-    const enforcement = ['vmu.store.backend', 'vmu.store.root', 'vmu.store.fsync', 'vmu.store.autoBackup',
+    // ROUND 9 / task-66 F1 (vmu-activity's task-69 pin): `vmu.store.tmpDir` was pushed into `fired` below but was
+    // ABSENT from this list, so the receipt violated the face's own header invariant (`fired ⊆ enforced`) whenever a
+    // tmpDir was declared. The path check ONE line below already treats the key as part of the enforcement set
+    // (`checkPath(c.tmpDir, ['vmu.store.tmpDir', 'vmu.store.root'], would)`), so the omission is a list bug, not a
+    // policy decision: the key belongs here.
+    const enforcement = ['vmu.store.backend', 'vmu.store.root', 'vmu.store.tmpDir', 'vmu.store.fsync', 'vmu.store.autoBackup',
       'vmu.store.remote', 'vmu.store.remote.url', 'vmu.store.remote.consistency', 'vmu.store.remote.offlinePolicy']
     const would = enforcement.slice()
     const fired = []

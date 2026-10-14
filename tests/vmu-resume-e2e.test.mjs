@@ -25,12 +25,13 @@
 //     before using it, so "the journal survived the restart" is never mistaken for "recording is durable".
 //
 // Last line: === VMU GOAL1 E2E: N passed, M failed ===
-import { rmSync, mkdirSync } from 'node:fs'
+import { rmSync, mkdirSync, readFileSync } from 'node:fs'
 import { createStore } from '../vibe-math-vmu/kernel/store.js'
 import { createWorkLedger } from '../vibe-math-vmu/kernel/work.js'
 import { createMailbox } from '../vibe-math-vmu/kernel/mailbox.js'
 import { createHuman, attachApprovalGate, CODE as HU } from '../vibe-math-vmu/kernel/human.js'
 import { createTasks } from '../vibe-math-vmu/kernel/tasks.js'
+import { createMeetings } from '../vibe-math-vmu/kernel/meetings.js'
 import { createControl } from '../vibe-math-vmu/kernel/control.js'
 import { createStorePolicy } from '../vibe-math-vmu/kernel/storepolicy.js'
 import { createResume } from '../vibe-math-vmu/kernel/resume.js'
@@ -78,11 +79,28 @@ function makeCommitStore() {
 }
 
 /**
- * Wait until every write-through that was STARTED has settled (succeeded or failed). The count is a real
- * observable (`status().writesThrough` / `.writeThroughFailures`); the loop never guesses a duration, it just
- * refuses to read the store while a durable write is still in flight.
+ * §⑨'s reader for a collection face's live-instance count. `meetings.snapshot()` serialises its LIVE MAP with a
+ * Map/Set-aware replacer (so plain JSON could not flatten it to `{}` in silence), which means the durable form is
+ * `{"__map":[[id, row], …]}`; a bare array is accepted too. Returns -1 when nothing parseable is there.
+ */
+function liveMeetingsIn(envOrSnapshot) {
+  const snap = envOrSnapshot && envOrSnapshot.value ? envOrSnapshot.value : envOrSnapshot
+  try {
+    const parsed = JSON.parse((snap && snap.data && snap.data.live) || '[]')
+    if (Array.isArray(parsed)) return parsed.length
+    if (parsed && Array.isArray(parsed.__map)) return parsed.__map.length
+    return -1
+  } catch (e) { return -1 }
+}
+
+/**
+ * Wait until every write-through that was STARTED has settled (succeeded or failed).
+ * ROUND 9 / task-70 A: the engine now exposes the primitive that does this for real (`resume.settle()`, which
+ * drains the promises it started), so the drill no longer guesses a duration at all. The polling path is kept ONLY
+ * as a fallback for an engine without the primitive, so no assertion here depends on a sleep being long enough.
  */
 async function settle(resume, floor = 0) {
+  if (typeof resume.settle === 'function') { await resume.settle(); return resume.status() }
   for (let i = 0; i < 250; i += 1) {
     const s = resume.status()
     if (s.writesThrough + s.writeThroughFailures >= floor) return s
@@ -124,6 +142,14 @@ async function boot(tag, opts = {}) {
   // the mailbox face self-persists on `persist()`; wiring it as a state projection makes every mutation write through
   // (without this row, mail sent and not explicitly persisted dies with the process — measured in this drill).
   resume.attachProjection({ target: mailbox, methods: ['send', 'ack'], key: 'mailbox', mode: 'state', snapshot: () => mailbox.snapshot(), restore: (v) => mailbox.hydrate(v), list: () => [] })
+  // §⑨ (task-70 B): a MULTI-INSTANCE collection face, attached EXACTLY the way the shipped assembly attaches it
+  // (`kernel/index.js`: `methodsOf[face] || []`). `opts.meetings.methods` is what that list is — `[]` reproduces the
+  // assembly, a filled list reproduces the fix. The face is real (`kernel/meetings.js`), not a stub.
+  const meetingsFace = opts.meetings ? createMeetings({ clock, log: () => {}, settings: {}, bus }) : null
+  if (meetingsFace) {
+    resume.attachProjection({ target: meetingsFace, methods: (opts.meetings && opts.meetings.methods) || [], key: 'meetings', mode: 'state',
+      snapshot: () => meetingsFace.snapshot(), restore: (v) => meetingsFace.restore(v), list: () => [] })
+  }
   const recovery = await resume.recover({ reason: 'kernel-start' })
   const humanTool = makeHumanSpec({
     param: (t, d, o) => Object.assign({ type: t, description: d }, o || {}),
@@ -131,7 +157,7 @@ async function boot(tag, opts = {}) {
     TOOL_NAMES: { human: 'vibe_vmu_human' },
     kernel: { human, mailbox, chat: { send: () => ({ ok: false, code: 'VMU_CHAT_NOT_IN_THIS_DRILL' }) }, recovery: resume },
   })
-  return { tag, store, work, mailbox, human, ctrl, tasks, lock, resume, humanTool, recovery }
+  return { tag, store, work, mailbox, human, ctrl, tasks, lock, resume, humanTool, recovery, meetings: meetingsFace }
 }
 
 /**
@@ -376,6 +402,138 @@ ok(Q2.recovery.ok === true && qin.unackedMail === 1 && qin.unackedMailSource ===
 ok(qlog2.recover().pending.length === 0 && qin.unackedMail === 1,
   '9k the two durabilities are DIFFERENT things: the commit log says "settled" while 1 mail is still UNREAD',
   { log: qlog2.recover(), unackedMail: qin.unackedMail })
+
+// ── ⑧ THE EXIT CONTRACT (task-70 A): settle() then flushAll(), and the NEXT READER must see it ─────────────
+// The engine primitive (`settle`/`flushAll`/`exit`) is new in round 9; the SHIPPED assembly does not call it yet —
+// core is wiring `kernel/index.js` `shutdown()` ← `host.js` `uninstall()`. So this section asserts the half that IS
+// ready (drain × flush × a second reader sees it) and REPORTS the assembly half as a NAMED gap: a source probe that
+// flips to a positive contract the moment the call site lands. Nothing here claims the assembly flushes until then.
+console.log('\n[8] the exit contract — settle() + flushAll(): the next reader must see it')
+const EROOT = 'D:/_tmp/vmu-goal1-e2e-exit'
+rmSync(EROOT, { recursive: true, force: true })
+mkdirSync(EROOT, { recursive: true })
+const E = await boot('boot-e1', { root: EROOT })
+ok(E.recovery.ok === true, '10a a fresh boot for the exit drill recovers cleanly', E.recovery.unhydrated)
+
+E.mailbox.send('office', { to: 'r-1', text: 'the exit contract', kind: 'notice' })
+const inFlight = E.resume.status().pendingWrites
+ok(inFlight >= 1, '10b the write-through is IN FLIGHT in the SAME tick as the mutation (registered synchronously: nothing slept, nothing polled)',
+  { pendingWrites: inFlight })
+const foldBefore = E.store.export().keys
+ok(!(foldBefore.mailbox && foldBefore.mailbox.mode === 'state'),
+  '10c …and the fold does NOT hold it yet — so the next assertion is about settle(), not about luck', foldBefore.mailbox)
+
+await refuses(HU.approvalPending, '10d a gated action is refused (this also records a JOURNAL entry)',
+  () => E.tasks.create({ title: 'exit paper' }))
+const st = await E.resume.settle()
+ok(st.ok === true && st.settled === true && st.pending === 0 && st.writeThroughFailures === 0,
+  '10e settle() drains them: ONE await, no sleep, no polling — "is it durable now?" is a FACT', st)
+const foldAfter = E.store.export().keys
+ok(foldAfter.mailbox && foldAfter.mailbox.mode === 'state' && foldAfter.human && foldAfter.human.mode === 'state',
+  '10f and the two STATE envelopes are on disk right after that single await',
+  { mailbox: foldAfter.mailbox && foldAfter.mailbox.mode, human: foldAfter.human && foldAfter.human.mode })
+ok(Array.isArray(foldAfter.tasks) && foldAfter.tasks.length === 0,
+  '10g settle() is NOT a flush: the journal key is still the empty seed (the two halves are different work)', foldAfter.tasks)
+
+const fl = await E.resume.flushAll()
+ok(fl.ok === true && fl.failed.length === 0 && fl.flushed.some((f) => f.key === 'tasks' && f.entries === 1) &&
+  fl.skipped.some((s) => s.key === 'human' && /writes through/.test(String(s.reason))),
+  '10h flushAll() writes the JOURNAL and NAMES why the state keys need no flush', fl)
+
+// THE NEXT READER: a brand-new store instance over the same file (not this process's in-memory fold).
+const reader = createStore({ root: EROOT, clock })
+await reader.open()
+const seenTasks = reader.read('tasks')
+const seenMail = reader.read('mailbox')
+ok(!!seenTasks && seenTasks.mode === 'journal' && seenTasks.entries.length === 1 && seenTasks.entries[0].failed === true,
+  '10i the NEXT READER sees the flushed journal in the file (a second store instance, not our fold)',
+  seenTasks && { mode: seenTasks.mode, entries: seenTasks.entries.map((e) => e.method + ':' + e.failed) })
+ok(!!seenMail && seenMail.mode === 'state' && seenMail.value.data.boxes['r-1'] && seenMail.value.data.boxes['r-1'].length === 1,
+  '10j …and the mail that was only write-through is there for the next reader too', seenMail && { mode: seenMail.mode })
+if (typeof reader.close === 'function') await reader.close()
+
+const ex = await E.resume.exit({ reason: 'drill-exit' })
+ok(ex.ok === true && ex.writeThrough.settled === true && ex.writeThrough.pending === 0 && ex.journal.failed.length === 0 &&
+  typeof ex.writeThrough.waitedMs === 'number' && ex.reason === 'drill-exit',
+  '10k exit() reports BOTH halves and its `ok` is their AND (never "at least one worked")', ex)
+
+// THE SHIPPED-ASSEMBLY HALF. A SOURCE PROBE (weaker than a behaviour assertion, and labelled as such): core owns
+// the call site; a future round should replace this with a behavioural assertion (`kernel.shutdown()` ⇒
+// `status().shutdown.ok`). Until it lands, the gap is PRINTED, not silently passed.
+const seamSources = [['kernel/index.js', 'vibe-math-vmu/kernel/index.js'], ['host.js', 'vibe-math-vmu/host.js'], ['vibe-math-vmu.js', 'vibe-math-vmu/vibe-math-vmu.js']]
+  .map(([name, rel]) => [name, readFileSync(new URL('../' + rel, import.meta.url), 'utf8')])
+const exitCallers = seamSources.filter(([, src]) => /recovery\.(exit|flushAll|settle)\(|resumeService\.(exit|flushAll|settle)\(/.test(src)).map(([n]) => n)
+if (exitCallers.length > 0) {
+  ok(true, '10l the SHIPPED assembly CALLS the exit seam (' + exitCallers.join(', ') + '): the engine primitive is wired')
+} else {
+  line('NAMED GAP (an observation, NOT an assertion, and NOT "verified"): the SHIPPED assembly does not call the exit seam yet.')
+  line('  probe: ' + seamSources.map(([n]) => n).join(' / ') + ' ⇒ 0 call sites for recovery.{exit,flushAll,settle}(); core owns this wiring.')
+  line('  proven here: the engine primitive exists, drains and flushes, and the NEXT READER sees its result (10a–10k).')
+}
+
+// ── ⑨ MULTI-INSTANCE FACES (task-70 B): the COLLECTION is the registry — the METHOD LIST is what is missing ──
+// Round 6 named "multi-instance `meeting`/`ballot` cannot be projected". The truth is sharper, and this section
+// measures it on the REAL `kernel/meetings.js` face: the collection IS the registry (one `open()` per meeting, one
+// `snapshot()/restore()` for all of them), and the assembly's `methodsOf[face] || []` leaves that collection with
+// NO WRAPPED METHOD ⇒ the write-through never fires ⇒ the declared projection is never written. No new registry
+// mechanism is needed; the method list is. (a) proves the defect, (b) proves the fix with the same code path.
+console.log('\n[9] multi-instance faces — the collection IS the registry; the method list is what is missing')
+const MROOT = 'D:/_tmp/vmu-goal1-e2e-meetings'
+rmSync(MROOT, { recursive: true, force: true })
+mkdirSync(MROOT, { recursive: true })
+const M1 = await boot('boot-m1', { root: MROOT, meetings: { methods: [] } })
+ok(M1.recovery.ok === true, '11a a boot that attaches `meetings` the way the SHIPPED assembly does still recovers cleanly', M1.recovery.unhydrated)
+const mA = M1.meetings.open({ type: 'ordinary', chair: 'm-1', roster: ['m-1', 'm-2'] })
+const mB = M1.meetings.open({ type: 'ordinary', chair: 'm-3', roster: ['m-3', 'm-4'] })
+ok(mA.ok === true && mB.ok === true && mA.meeting === 'm1' && mB.meeting === 'm2',
+  '11b TWO live meetings exist at once (multi-instance: the collection is the registry)', { a: mA.meeting, b: mB.meeting })
+await M1.resume.settle()
+const mfold1 = M1.store.export().keys
+// ADAPTIVE DEFECT PROBE (not a desired invariant): it asserts the shape that is THERE. Today the assembly-shape
+// attachment writes nothing; the moment core fills `methodsOf`, THIS SAME BOOT starts writing through and the
+// probe flips to the closed form by itself — so a fix never leaves a misleading red behind.
+const shippedShapeWrote = !!mfold1.meetings && mfold1.meetings.mode === 'state'
+if (shippedShapeWrote) {
+  ok(liveMeetingsIn(mfold1.meetings) === 2,
+    '11c CLOSED: the assembly-shape attachment now DOES write through (methodsOf carries the face) — both meetings are in the envelope',
+    { key: mfold1.meetings && mfold1.meetings.mode, live: liveMeetingsIn(mfold1.meetings) })
+} else {
+  ok(Array.isArray(mfold1.meetings) && mfold1.meetings.length === 0,
+    '11c DEFECT MEASURED: the durable `meetings` key is still the store SEED — a DECLARED projection that was never written',
+    { key: mfold1.meetings })
+}
+const mex1 = await M1.resume.exit({ reason: 'drill-exit-1' })
+const reader1 = createStore({ root: MROOT, clock })
+await reader1.open()
+const seenMeetings1 = reader1.read('meetings')
+if (shippedShapeWrote) {
+  ok(mex1.ok === true && liveMeetingsIn(seenMeetings1) === 2,
+    '11d CLOSED: the exit flush finds the collection already durable and the next reader sees both meetings',
+    { nextReader: liveMeetingsIn(seenMeetings1) })
+} else {
+  ok(mex1.ok === true && Array.isArray(seenMeetings1) && seenMeetings1.length === 0,
+    '11d the EXIT FLUSH does not save it either: state keys land in `skipped[]` by contract, so "core landed the exit flush" ≠ "this face is durable"',
+    { skipped: mex1.journal.skipped.filter((s) => s.key === 'meetings'), nextReader: seenMeetings1 })
+}
+if (typeof reader1.close === 'function') await reader1.close()
+
+// (b) THE FIX: same face, same seams, only the method list filled in — what `methodsOf` must carry.
+const MMETHODS = ['open', 'close', 'attend', 'motion']
+const M2 = await boot('boot-m2', { root: MROOT, meetings: { methods: MMETHODS } })
+M2.meetings.open({ type: 'ordinary', chair: 'm-1', roster: ['m-1', 'm-2'] })
+M2.meetings.open({ type: 'ordinary', chair: 'm-3', roster: ['m-3', 'm-4'] })
+await M2.resume.settle()
+const mfold2 = M2.store.export().keys
+ok(!!mfold2.meetings && mfold2.meetings.mode === 'state' && liveMeetingsIn(mfold2.meetings) === 2,
+  '11e FIX MEASURED: with the method list filled in, the write-through lands and BOTH meetings are in the envelope',
+  mfold2.meetings && { mode: mfold2.meetings.mode, live: liveMeetingsIn(mfold2.meetings) })
+await M2.resume.exit({ reason: 'drill-exit-2' })
+const M3 = await boot('boot-m3', { root: MROOT, meetings: { methods: MMETHODS } })
+const ledgers3 = M3.recovery.steps.filter((s) => s.step === 'ledgers')[0]
+const mRow = ledgers3.hydrated.filter((h) => h.key === 'meetings')[0]
+ok(M3.recovery.ok === true && !!mRow && mRow.hydrated === true && liveMeetingsIn(M3.meetings.snapshot()) === 2,
+  '11f …and after a RESTART the collection hydrates BOTH meetings ⇒ multi-instance durability needs NO registry mechanism, only the method list',
+  { ok: M3.recovery.ok, row: mRow, live: liveMeetingsIn(M3.meetings.snapshot()) })
 
 console.log('\n  boundaries (what this drill does NOT prove): no host/subagents ⇒ re-dispatch is a recorded callback;')
 console.log('  no real child spawn; `inject` used the mailbox path (chat was present but refusing); time is the injected clock;')

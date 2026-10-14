@@ -63,6 +63,12 @@ export const TERMINAL_STATES = Object.freeze(['settled', 'failed', 'timeout', 'i
 export const JOB_SCHEMA = 'vmu/math-job@1'
 
 /**
+ * ROUND 9 · C：崩溃恢复的**租约**默认 TTL（毫秒）。见 `createJobMirror.takeLease`：TTL 只是"多久算陈旧"的
+ * 猜测，所以调用方按 **job 自己的预算 + 30 s** 取上界，避免把**正在跑**的恢复当陈旧而抢走。
+ */
+export const RECOVERY_LEASE_TTL_MS = 120000
+
+/**
  * THE scope marker every receipt AND every refusal carries (repo D3: a result is never scope-less).
  * Defined ONCE here; the Lean face and the adapter face import it ⇒ one meaning, one name.
  */
@@ -92,6 +98,17 @@ export function safeRelDir(rel) {
     parts.push(seg)
   }
   return parts.length ? parts.join('/') : DEFAULT_JOBS_DIR
+}
+
+/**
+ * THE ONE default timer seam (`(cb, ms) => disposer`). It is exported because it is the framework's **single**
+ * global-timer site: every other module that needs "wait ms" goes through an INJECTED seam and falls back to
+ * THIS function, so no second module ever grows its own `setTimeout` (F15's inventory stays 1 site + 1 row).
+ * Returns a real disposer: handing back the platform `Timeout` object was the F15 defect.
+ */
+export function defaultTimer(cb, ms) {
+  const h = setTimeout(cb, ms)
+  return () => clearTimeout(h)
 }
 
 /**
@@ -125,10 +142,8 @@ export function createChildBudget({ timer = null, onNote = null, onHandle = null
     try { handleSeen(h) } catch (e) { note('onhandle-failed', { detail: String((e && e.message) || e) }) }
   }
   // The default seam ALWAYS returns a callable disposer (see the header: returning the Timeout itself is the bug).
-  const setT = typeof timer === 'function' ? timer : (cb, ms) => {
-    const h = setTimeout(cb, ms)
-    return () => clearTimeout(h)
-  }
+  // It IS the exported `defaultTimer` — one global-timer site for the whole framework (F15 inventory).
+  const setT = typeof timer === 'function' ? timer : defaultTimer
   /** Dispose whatever the timer seam returned; a non-disposable is a NAMED failure (never a silent catch). */
   const disposeTimer = (d) => {
     if (d === null || d === undefined) return null
@@ -249,7 +264,7 @@ export function createChildBudget({ timer = null, onNote = null, onHandle = null
  */
 export function createJobMirror({ fs = null, dir = null, keep = 0, clock = () => 0, onNote = () => {}, schema = null } = {}) {
   const records = new Map()
-  const stats = { written: 0, failed: 0, skipped: 0, evicted: 0, listed: 0, corrupt: 0, idTaken: 0, exclusiveWrites: 0 }
+  const stats = { written: 0, failed: 0, skipped: 0, evicted: 0, listed: 0, corrupt: 0, idTaken: 0, exclusiveWrites: 0, leases: 0, leasesHeld: 0, leasesStolen: 0, leasesUnenforced: 0 }
   const enabled = () => !!(fs && typeof fs.writeText === 'function' && typeof fs.readText === 'function' && dir)
   const exclusiveCreate = () => !!(enabled() && typeof fs.writeTextExclusive === 'function')
   const relOf = (jobId) => String(dir).replace(/\/+$/, '') + '/' + String(jobId) + '.json'
@@ -313,6 +328,56 @@ export function createJobMirror({ fs = null, dir = null, keep = 0, clock = () =>
     }
   }
 
+  /**
+   * ROUND 9 · C — RECOVERY LEASE. The claim (`writeTextExclusive`) makes a jobId OURS at submit; it says nothing
+   * about two instances that both find a crashed `running` mirror and both re-run it (measured: the same job was
+   * executed twice, last mirror write wins). The same host primitive can lease the RECOVERY: a fresh
+   * `<id>.lease` blocks the others, a STALE one is stolen.
+   *
+   * Honest limits (do not read this as a consensus lock):
+   *   · it needs the host's exclusive create; without it, `enforced:false` is returned BY NAME;
+   *   · the TTL is a clock guess — the caller passes `ttlMs` (≥ the job's own budget), so an ACTIVE run is not
+   *     stolen, but a suspended machine can still lose its lease;
+   *   · a recovering instance that dies mid-recovery still leaves an at-least-once run (inherent to crash
+   *     recovery without a quorum).
+   */
+  const leaseRel = (jobId) => String(dir).replace(/\/+$/, '') + '/' + String(jobId) + '.lease'
+  async function takeLease(jobId, owner, ttlMs) {
+    if (!enabled()) return { ok: false, code: 'VMU_MATH_JOBS_MIRROR_UNWIRED' }
+    const rel = leaseRel(jobId)
+    const body = JSON.stringify({ owner: String(owner || ''), at: clock() })
+    if (!exclusiveCreate()) {
+      stats.leasesUnenforced += 1
+      return { ok: true, held: true, stole: false, enforced: false, reason: 'no writeTextExclusive seam: no exclusion is possible' }
+    }
+    try {
+      await fs.writeTextExclusive(rel, body)
+      stats.leases += 1
+      return { ok: true, held: true, stole: false, enforced: true }
+    } catch (e) {
+      const exists = !!(e && (e.code === 'EEXIST' || /exist/i.test(String(e && e.message))))
+      if (!exists) return { ok: false, code: 'VMU_MATH_JOBS_MIRROR_UNWIRED', error: String((e && e.message) || e) }
+    }
+    let cur = null
+    try { cur = JSON.parse(await fs.readText(rel)) } catch (e2) { cur = null }
+    const age = cur && Number(cur.at) ? (clock() - Number(cur.at)) : Infinity
+    if (age <= Math.max(0, Number(ttlMs) || 0)) {
+      stats.leasesHeld += 1
+      return { ok: true, held: false, enforced: true, owner: (cur && cur.owner) || '', ageMs: age }
+    }
+    try {
+      await fs.writeText(rel, body)
+      stats.leasesStolen += 1
+      return { ok: true, held: true, stole: true, enforced: true, ageMs: age }
+    } catch (e3) {
+      return { ok: false, code: 'VMU_MATH_JOBS_MIRROR_UNWIRED', error: String((e3 && e3.message) || e3) }
+    }
+  }
+  async function releaseLease(jobId) {
+    if (!enabled() || typeof fs.removeText !== 'function') return false
+    try { await fs.removeText(leaseRel(jobId)); return true } catch (e) { return false }
+  }
+
   async function read(jobId) {
     if (!enabled()) return null
     try { return JSON.parse((await fs.readText(relOf(jobId))) || 'null') } catch (e) { return null }
@@ -346,9 +411,10 @@ export function createJobMirror({ fs = null, dir = null, keep = 0, clock = () =>
     written: stats.written, failed: stats.failed, skipped: stats.skipped, evicted: stats.evicted,
     listed: stats.listed, corrupt: stats.corrupt,
     idTaken: stats.idTaken, exclusiveWrites: stats.exclusiveWrites,
+    leases: stats.leases, leasesHeld: stats.leasesHeld, leasesStolen: stats.leasesStolen, leasesUnenforced: stats.leasesUnenforced,
   })
 
-  return { write, read, list, remove, status, enabled, exclusiveCreate, relOf, records }
+  return { write, read, list, remove, status, enabled, exclusiveCreate, relOf, records, takeLease, releaseLease }
 }
 
 export function createMathJobs(opts) {
@@ -366,6 +432,10 @@ export function createMathJobs(opts) {
     } catch (e) { /* 广播不改结果 */ }
   }
   const spawn = o.spawn
+  /** ROUND 9 · C: this face's identity for the recovery lease (process + random, never an id-counter consumer). */
+  const faceOwner = 'jf-' + String(typeof process !== 'undefined' && process.pid ? process.pid : 'x') + '-' + Math.random().toString(36).slice(2, 8)
+  /** The lease TTL is ceil(job budget) + slack, so an ACTIVE run is never stolen; callers override per job. */
+  const leaseTtlFor = (jobTimeoutMs) => Math.max(RECOVERY_LEASE_TTL_MS, (Number(jobTimeoutMs) || 0) + 30000)
   const fsSeam = (o.fs && typeof o.fs.writeText === 'function' && typeof o.fs.readText === 'function') ? o.fs : null
   const root = String(o.root || '.')
 
@@ -499,8 +569,8 @@ export function createMathJobs(opts) {
       exitCode: job.exitCode === undefined ? null : job.exitCode,
       timedOut: !!job.timedOut, interrupted: !!job.interrupted, cancelled: !!job.cancelled,
       seed: job.seed || '', random: !!job.random,
-      argvHash: fp(job.argv || []), inputHash: job.inputHash || fp({ argv: job.argv || [], stdin: job.stdin || '', seed: job.seed || '' }),
-      request: { engine: job.engine, argv: (job.argv || []).slice(), stdin: job.stdin || '', timeoutMs: job.timeoutMs || 0, seed: job.seed || '', random: !!job.random },
+      argvHash: fp(job.argv || []), inputHash: job.inputHash || fp({ argv: job.argv || [], stdin: job.stdin || '', seed: job.seed || '', resumeFrom: job.resumeFrom || '' }),
+      request: { engine: job.engine, argv: (job.argv || []).slice(), stdin: job.stdin || '', timeoutMs: job.timeoutMs || 0, seed: job.seed || '', random: !!job.random, resumeFrom: job.resumeFrom || '' },
       run: job.run || null,
       receipt: receipts.has(job.id) ? receipts.get(job.id) : null,
       reason: job.reason || '',
@@ -537,7 +607,8 @@ export function createMathJobs(opts) {
         // (`terminated:true`); without a handle the cancel is still recorded and NAMED as unable-to-kill.
         onHandle: (h) => { job.handle = h; sawHandle = true },
         call: (onHandle) => {
-          const spec = { engine: job.engine, argv: (job.argv || []).slice(), stdin: job.stdin || '', timeoutMs: job.timeoutMs, graceMs: job.timeoutMs, env: env() }
+          const spec = { engine: job.engine, argv: (job.argv || []).slice(), stdin: job.stdin || '', timeoutMs: job.timeoutMs, graceMs: job.timeoutMs,
+            env: job.resumeFrom ? Object.assign(env(), { VMU_RESUME_FROM: String(job.resumeFrom) }) : env() }
           return spawnHandle ? spawnHandle(spec, onHandle) : spawn(spec)
         },
       })
@@ -584,6 +655,7 @@ export function createMathJobs(opts) {
         stdout: so.text, stderr: se.text, stderrTail, droppedBytes: so.droppedBytes + se.droppedBytes,
         // F17 facts: the budget is local; killing needs a handle; the host may also report its own loss.
         terminated: !!b.terminated, hadHandle: !!b.hadHandle,
+        resumedFrom: job.resumeFrom || null,
         hostLossy: !!((r.stdoutLossy) || (r.stderrLossy)), spillPath: (r.stdoutSpill || r.stderrSpill) || null,
         // ROUND 8: the signal that ended the child (null when it exited normally) — a fact the receipt must carry.
         signal: signaled ? String(r.signal) : null,
@@ -670,14 +742,17 @@ export function createMathJobs(opts) {
     if (typeof spawn !== 'function') return refuse('VMU_EXTERNAL_UNAVAILABLE', 'spawn 接缝未注入（本机未接真引擎）', '由宿主注入 spawn；本面绝不假跑 ✗', [])
 
     const argv = Array.isArray(args.argv) ? args.argv.map(String) : []
+    // ROUND 9 · B（最小形状）：`resumeFrom` 是**引擎自己的不透明令牌**——内核只负责"带着它"（request → 子进程 env
+    // → 镜像 → 恢复时原样重发），**不解释**它的含义，也**不声称**它能保证计算可续。见 admission().checkpointing。
+    const resumeFrom = args.resumeFrom === undefined || args.resumeFrom === null ? '' : String(args.resumeFrom)
     const stdin = String(args.stdin === undefined ? '' : args.stdin)
     const timeoutMs = Number(args.timeoutMs) > 0 ? Math.floor(Number(args.timeoutMs)) : c.timeoutMs
     const id = String(args.jobId || mintJobId())
     const job = {
-      id, engine, argv: argv.slice(), stdin, seed, random: isRandom, state: 'queued', attempts: 0,
+      id, engine, argv: argv.slice(), stdin, seed, resumeFrom, random: isRandom, state: 'queued', attempts: 0,
       startedAt: 0, settledAt: 0, queueWaitMs: 0, timeoutMs, reason: '',
       enqueuedAt: clock(),
-      inputHash: fp({ argv, stdin, seed }),
+      inputHash: fp({ argv, stdin, seed, resumeFrom }),
     }
     jobs.set(id, job)
     note('math.submit', id)
@@ -800,14 +875,14 @@ export function createMathJobs(opts) {
       if (!rec) { corrupt += 1; results.push({ jobId: row.jobId, action: 'corrupt-ignored' }); continue }
       scanned += 1
       const req = rec.request || {}
-      const recomputed = fp({ argv: req.argv || [], stdin: req.stdin || '', seed: req.seed || '' })
+      const recomputed = fp({ argv: req.argv || [], stdin: req.stdin || '', seed: req.seed || '', resumeFrom: req.resumeFrom || '' })
       const intact = recomputed === rec.inputHash
       const mk = (state, extra) => Object.assign({
         id: rec.jobId, engine: rec.engine, argv: (req.argv || []).slice(), stdin: req.stdin || '', seed: req.seed || '',
         random: !!rec.random, timeoutMs: Number(req.timeoutMs) || c.timeoutMs, state,
         attempts: Number(rec.attempts) || 0, enqueuedAt: rec.enqueuedAt || 0, startedAt: rec.startedAt || 0,
         settledAt: rec.settledAt || 0, exitCode: rec.exitCode, timedOut: !!rec.timedOut,
-        inputHash: rec.inputHash, reason: rec.reason || '', mirror: rec,
+        inputHash: rec.inputHash, reason: rec.reason || '', resumeFrom: req.resumeFrom || '', mirror: rec,
       }, extra || {})
       if (rec.state === 'queued') {
         // ① 从未开始 ⇒ 重新入队并真的重跑（attempts 不变）
@@ -825,6 +900,14 @@ export function createMathJobs(opts) {
       if (rec.state === 'running') {
         if (intact) {
           // ② running ＋ 指纹一致 ⇒ interrupted 后重排（attempts+1）
+          // ROUND 9 · C：先取**恢复租约**。两个实例同时扫到同一个 `running` 镜像时会**各跑一遍**（实测），
+          // 租约把"恢复权"也变成排他的：有人持有**未过期**的租约 ⇒ 本实例不动它（具名 `lease-held`）。
+          const lease = await mirrorFor().takeLease(rec.jobId, faceOwner, leaseTtlFor(Number(req.timeoutMs) || c.timeoutMs))
+          if (lease && lease.ok === true && lease.held === false) {
+            results.push({ jobId: rec.jobId, action: 'lease-held', owner: lease.owner, ageMs: lease.ageMs, enforced: lease.enforced !== false })
+            note('math.recover.lease-held', rec.jobId, { owner: lease.owner })
+            continue
+          }
           const j = mk('interrupted', { interrupted: true, reason: 'crash-recovery: previous run never reported (request intact)' })
           jobs.set(j.id, j)
           interrupted += 1
@@ -833,8 +916,9 @@ export function createMathJobs(opts) {
           await writeMirror(j)
           note('math.recover.requeue', j.id, { from: 'running' })
           requeued += 1
-          results.push({ jobId: j.id, action: 'interrupted-then-requeued', attempts: j.attempts })
+          results.push({ jobId: j.id, action: 'interrupted-then-requeued', attempts: j.attempts, lease: lease && lease.stole ? 'stolen-stale' : (lease && lease.enforced === false ? 'unenforced' : 'acquired') })
           await execute(j)
+          await mirrorFor().releaseLease(j.id)     // the recovery is done: the lease must not outlive it
         } else {
           // ③ running ＋ 指纹不一致 ⇒ **只标 interrupted，不自动重排**
           const j = mk('interrupted', { interrupted: true, reason: 'crash-recovery: request fingerprint mismatch — not auto-rerun' })
@@ -905,8 +989,15 @@ export function createMathJobs(opts) {
       canTerminateChild: !!(spawnHandle || sawHandle || lastSpawnHadHandle === true),
       subprocess: { budget: 'local-timer', declaredKillableSeam: !!spawnHandle, lastSpawnHadHandle, childrenTerminated, childrenTimedOut, graceMsSent: true,
         hostContract: 'subprocess.spawn → SubprocessHandle{terminate, done, collected}' },
+      // ROUND 9 · B：中间检查点的**边界**——内核只携带不透明令牌，续算语义属引擎。
+      checkpointing: 'not-implemented: resumeFrom is CARRIED (request → env → mirror → recovery re-issue) but never interpreted; segment/checkpoint semantics are the ENGINE\'s (cost/design in docs/15 §14.4)',
       mirrors: ms.count,
       droppedMirrors, mirrorSkipped, mirrorFailures,
+      // ROUND 9 · C: the recovery lease's own counters (0/0/0/0 when no crash-recovery happened).
+      leases: { acquired: ms.leases || 0, heldByOther: ms.leasesHeld || 0, stolenStale: ms.leasesStolen || 0, unenforced: ms.leasesUnenforced || 0 },
+      recoveryLease: (fsSeam && typeof fsSeam.writeTextExclusive === 'function')
+        ? 'enforced-by-exclusive-create (TTL = max(' + RECOVERY_LEASE_TTL_MS + 'ms, job budget + 30s); stale leases are stolen)'
+        : 'not-enforced (no writeTextExclusive seam ⇒ two instances may recover the same crashed job and run it twice)',
       lastRecovery,
       notes,
       next: { kind: 'note', hint: '需要真正的作业队列/断点续算 ⇒ 宿主需提供独占创建与删除原语；本面不假装有' },

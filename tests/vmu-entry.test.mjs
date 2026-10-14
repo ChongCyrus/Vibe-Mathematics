@@ -742,7 +742,13 @@ if (SELF_PROBE) {
     await new Promise((res) => setTimeout(res, 220))
     const snap = handle.kernel.settingsSnapshot() || {}
     const val = (k) => (snap[k] && typeof snap[k] === 'object' && snap[k].value !== undefined ? snap[k].value : snap[k])
-    const out = { errors: handle.packErrors() || [], applied: (handle.appliedPacks() || []).map((a) => a.id), quorum: val('vmu.meetings.quorumRule') }
+    // ROUND 9: the observable for "the ORDER decides the overlap" is `verdictMaxRounds`, NOT `quorumRule`.
+    // Both packs declare `vmu.meetings.quorumRule: 'm-unanimous'`, so comparing it can never show which pack won -
+    // and the only reason it ever did was that v3-core used to declare `'majority'`, an OUT-OF-DOMAIN value the
+    // pack value-domain gate caught (its domain is ['m-unanimous','all-unanimous'], and `ballot.js`'s default tally
+    // only records it as a label). Asserting on it again would mean propping a gate up with an illegal value.
+    // `verdictMaxRounds` really differs (v3-core 5, institute-min 3), so the order is visible.
+    const out = { errors: handle.packErrors() || [], applied: (handle.appliedPacks() || []).map((a) => a.id), quorum: val('vmu.meetings.quorumRule'), rounds: val('vmu.meetings.verdictMaxRounds') }
     await rm(r, { recursive: true, force: true })
     return out
   }
@@ -755,9 +761,14 @@ if (SELF_PROBE) {
     'E-17(甲) the DOCUMENTED name alone is enough: both doors open, both institutions apply, no error - it used to open only the loaders',
     JSON.stringify(on))
   const reversed = await boot(['v3-core', 'institute-min'], { vmu: { 'vmu.packs.allowKernelOverride': true } })
-  ok(reversed.errors.length === 0 && reversed.applied.length === 2 && reversed.quorum !== on.quorum,
-    'E-17(乙) and the ORDER decides the overlapping settings: the last pack applied wins, so config.packs is not a set but a sequence - a fact the documents never stated',
-    { forward: on.quorum, reversed: reversed.quorum })
+  // ROUND 9: the observable is `verdictMaxRounds` (v3-core 5 / institute-min 3), NOT `quorumRule` - BOTH packs
+  // declare `vmu.meetings.quorumRule: 'm-unanimous'`, so comparing it can never show which one won. It only ever
+  // "worked" because v3-core used to declare `'majority'`, an OUT-OF-DOMAIN value the pack value-domain gate caught
+  // (domain = ['m-unanimous','all-unanimous']; `ballot.js`'s default tally records it as a label only). Re-asserting
+  // on it would mean propping the gate up with an illegal value. See docs/11 §4.2 requirement ⑥ (semantic vacuity).
+  ok(reversed.errors.length === 0 && reversed.applied.length === 2 && reversed.rounds !== on.rounds,
+    'E-17(乙) and the ORDER decides the overlapping settings: the last pack applied wins, so config.packs is not a set but a sequence (observed on `verdictMaxRounds`, because both packs declare the SAME `quorumRule`)',
+    { forward: on.rounds, reversed: reversed.rounds })
 }
 
 // ---- 15. the data-only branch must NOT make a missing pack look like a success ------------------------

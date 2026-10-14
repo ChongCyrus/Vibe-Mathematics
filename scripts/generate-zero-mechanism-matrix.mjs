@@ -142,6 +142,10 @@ const EXPECT = {
   // the same measured reason as `guard` rather than given an invented expectation. It exists because compliance
   // and the domain gate each had their own copy of the same normaliser, and two copies drift.
   timevalue: G('EXPECT_NA', '纯函数工具模块（**无 `create*` 工厂** ⇒ 矩阵不适用 ✓）；它存在的原因是 `ms()` 曾在 `compliance`／`domaingate` **各有一份**（**两份实现会漂移** ✗✓ ⇒ 已抽为单一真源 ✓）'),
+  // Round 9: the same measured reason as `timevalue` - `contentvalue` is a pure-function module (no `create*` factory,
+  // no service, nothing to probe), extracted out of `resume.js` when the file crossed the 1200-line rule. It is
+  // registered EXPECT_NA rather than given an invented expectation.
+  contentvalue: G('EXPECT_NA', '纯函数工具模块（**无 `create*` 工厂** ⇒ 矩阵不适用 ✓）；轮 9 从 `resume.js` 抽出（该文件越过 1200 行 ⇒ 拆分，未往 `KNOWN` 加名字 ✓）：值标识原语 `stableStringify/contentDigest/clone/idSuffix`，纯函数零依赖 ✓'),
 }
 
 const shape = (v) => {

@@ -215,11 +215,29 @@ vmu.paper.finalizer = 'academician'（v5r :1167 的值）
 
 **为什么不用"把 `academician` 加进值域"**：v5r 的 `paperEditor` 命名的是**机构角色**（院士），而本键是**权限规则**（editor／contributor／any）。让内核认识 "academician" 会**违反 D5**（内核永不学习机构角色名——角色是不透明 slot）。
 
-**修法（交 vmu-core 落两处；pack 侧不声明该键）**：
-1. `settings/schema.js`：`vmu.paper.finalizer` 改成闭集 `type:'enum', domain:['editor','contributor','any']` ⇒ 运行期 `vibe_vmu_set` 域外值**具名拒**；
-2. `kernel/paper.js:104-107`：把回落改成**具名拒**（列出声明的域）⇒ 连 **pack data 层**注入的域外值也拦得住。
+**修法（vmu-core 已落，轮 9 复核）**：
+1. `settings/schema.js`：`vmu.paper.finalizer` 已改成闭集 `type:'enum', domain:['editor','contributor','any']` ⇒ 运行期 `vibe_vmu_set` 域外值**具名拒**；
+2. `kernel/paper.js:114-115`：回落已改成**具名拒**——`refuse('VMU_INVALID_ARGUMENT', 'vmu.paper.finalizer must be one of editor|contributor|any: …', …, { declared: FINALIZERS.slice(), value })` ⇒ 连 **pack data 层**注入的域外值也拦得住。
+   实测（`node scripts/audit-pack-value-domain.mjs` §2）：域外值 ⇒ **`VMU_INVALID_ARGUMENT` 且回执里列出 `declared:['editor','contributor','any']`**，**静默回落已消除**。
 
-**v5r 的等价表达（pack 侧结论）**：`finalizer='editor'`（**框架默认**，无需声明）＋ **创建时把 paper 的 `editor` 设为主持人**（v5r 的"院士终稿"＝院士就是 editor）。⇒ **本 pack 不声明任何 `finalizer`**，值域门禁（`D:\_tmp\vmu-pack-value-domain.mjs`，仓库外一次性·实测）证：pack 声明的 9 个 enum 键值**全在各自域内**，且未声明 `finalizer`。
+**v5r 的等价表达（pack 侧结论）**：`finalizer='editor'`（**框架默认**，无需声明）＋ **创建时把 paper 的 `editor` 设为主持人**（v5r 的"院士终稿"＝院士就是 editor）。⇒ **本 pack 不声明任何 `finalizer`**；值域门禁（见 §4.7）证：pack 声明的 130 处值**全在各自域内**，且未声明 `finalizer`。
+
+### 4.7 **值域门禁**（轮 9：常驻，`scripts/audit-pack-value-domain.mjs`）
+
+> 这是 §4.6 那类"**声明了没生效**"的**通用守卫**（D-05：门禁工具在仓内，干净 clone 可复现）。一条命令：
+> ```bash
+> node scripts/audit-pack-value-domain.mjs            # 常驻门禁
+> node scripts/audit-pack-value-domain.mjs --selftest # 只跑"门禁非空洞"自探针
+> ```
+> **三段**：**§1 静态**——从**真模块**（各 pack 的 `index.js` 导出 ＋ `settings/defaults.json`）读全部声明，逐个对照 `settings/schema.js` 的 `enum` 域；**§2 实测**——对"schema 是自由 `string`、但读者有闭集"的键（当前＝`vmu.paper.finalizer` → `kernel/paper.js` 的 `FINALIZERS`）**注入一个域外值**，要求它**具名拒**而不是静默降级；**§3 自探针**——把种下的域外值喂给检查器，**必须报红**（否则门禁本身空洞，本次判失败），并验证**域内值不会误报**。
+> 当前读数：**5 passed / 0 failed**（`enum` 键 108 个；闭集读者键 1 个）。
+
+★ **门禁上岗第一天就抓到第二个真实例**（并已修）：`packs/v3-core/index.js` 曾声明
+`'vmu.meetings.quorumRule': 'majority'`，而 schema 的域是 `['m-unanimous','all-unanimous']` ⇒ **域外**。后果与 `finalizer` 同类：`vibe_vmu_set` 会具名拒它，但**pack 值绕过设置边界**；而 `ballot.js` 的默认 tally 把 `quorumRule` 当**上下文标签**记录（默认一致性口径），**并不按 "majority" 聚合** ⇒ 这条声明做不到它写的事。**已改为 `'m-unanimous'`**。
+
+**"真多数聚合"的裁定（Lead，轮 9）：不是缺口，是【能力】＋改判条件。** 框架**已经提供可插拔接缝**（R1：`createBallot` 的 `tally` 谓词），缺的只是**某个具体聚合实现**——而"某机构用什么聚合"按哲学**本就该由 pack／中间件提供，不进内核**。⇒ `m-unanimous` 下的计票**自洽**，v3 的"独立判定再聚合"以 `m-unanimous` 近似即可；真要 `majority`，由 pack 注入 `tally`（≈60 行＋断言）单独排期。★ **不要把 `quorumRule` 做成"聚合算法注册表"**——那是另一个设计问题。
+
+★ **一条通用教训（Lead 已转 verify 写进 `docs/11`）**：**断言所选观测量必须在被测的两档之间真的不同**——否则它是**语义级的空过**，而语法级门禁（如"集合是否可能为空"）**看不见**。轮 9 的 E-17(乙) 正是实例：它用 `vmu.meetings.quorumRule` 观测"顺序决定重叠值"，而两个机构**都声明 `'m-unanimous'`** ⇒ `!==` 永不成立（它以前能过，只因 v3-core 当时写了**域外值** `'majority'`）。修法＝改用两包**确实分歧**的 `vmu.meetings.verdictMaxRounds`（v3-core 5／institute-min 3）。
 
 ---
 

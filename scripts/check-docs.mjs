@@ -68,7 +68,11 @@ for (const [k, f] of byNum) texts.set(k, fs.readFileSync(path.join(DOCS, f), 'ut
 // 归属**必须被断言、不许静默**：盘上每个 `NN-*.md` 必须**恰好**落在一类里。新卷不能"自动落进"某一类而不被看见——
 // 这正是 Lead 要求的"不许静默增长"。D2/D3/D8/D15 只对**设计卷**生效；D1/D4/D5/D9… 仍对**全部**卷生效。
 const DESIGN_VOLUMES = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13',
-  '15', '16', '17', '18', '19', '20', '21', '22']
+  '15', '16', '17', '18', '19', '20', '21', '22',
+  // ROUND 9: `29-build-your-own-preset.md` is a DESIGN volume (the `12-user-guide` precedent): it carries `> 上位`,
+  // a `> 状态` line, an acceptance section and an unverified-items section - I verified all four by hand before
+  // listing it here, because "unclassified" must be a decision someone makes, never an accident (the D0 rule's point).
+  '29']
 const APPENDIX_VOLUMES = ['14', '23', '24', '25', '26', '27', '28']
 {
   const dup = DESIGN_VOLUMES.filter((k) => APPENDIX_VOLUMES.includes(k))

@@ -127,6 +127,10 @@
 
 **⇒ 第四条硬要求（★ R7 新增，源于 F53 从"只有文档规则"到"有门禁"）**：**新门禁必须证明自己有牙**——不能只写"某某必须如此"，要**当场种一个违规再证明它变红**，删掉再证明它变绿。范式（`tests/audit-fs-purpose.test.mjs`）：① 规则**窄而准**（真实 `node:fs` 导入**且**在语句位置，注释/数据字符串里的同名字符串**不算**）；② **不是"存在即通过"**——断言**导入者集合 == 已登记集合 ∪ 带合规注释者**（**集合相等**，还查"登记过期"）；③ **自探针**覆盖误报族（注释里/数据字符串里的 `node:fs` 不算导入；裸导入读不出用途）；④ **种违规证明**：往包内临时种一个**裸导入**文件 ⇒ 门禁 **EXIT=1**（两条断言同时点红），删除 ⇒ **EXIT=0**。⇒ 判据升级：**"有规则"不算覆盖，"能拒绝一个真实违规"才算。**
 
+**⇒ 第五条硬要求（★ R8 新增，源于一次**假阴性**）**：**证据源必须与事实所在处一致** —— 断言要在**事实真正落地的那个通道**上读。实例：vmu-assistant 的首跑报 13 passed/3 failed，**三红是假的**——那三条实质断言读的是**驱动 stdout**，而**工具回执只落在会话日志里**（驱动不回声结果）；改为读 `sess.rawResults`／`sess.assistant` 并新增 **`--session <id>` 离线复评**（同一套断言复评**已录会话**、**不花会话**）⇒ **15/0**。★ 与第三条（`--dump-config` 不是运行时定义）同族：**判据与环境错配会产生假阳性或假阴性两个方向的错误**。⇒ 纪律：写断言前先问"**这个事实到底写在哪儿**"；长回执/大对象优先走**离线复评**，而不是把判据压在摘要输出上。
+
+**⇒ 第六条硬要求（★ R9 新增，源于 `vmu-entry` E-17(乙)）**：**断言所选的"观测量"必须在被测的两档之间【真的不同】** —— 否则它是**语义级的空过**，而**语法级的 RULE E 看不见**（RULE E 只问"某个集合是否可能为空"，不问"这个量在两档之间是否有差异"）。实例（本轮实测）：那条断言说的是"`config.packs` 的顺序决定重叠设置 ⇒ 后应用者胜"，观测量却取了 **`vmu.meetings.quorumRule`**；而**两个包现在都声明 `'m-unanimous'`** ⇒ `reversed.quorum === on.quorum`，`!==` **永不成立**。★ **双重教训**：它当年"能区分"**只因为 v3-core 声明的是域外值 `'majority'`**，而那个域外值正是本轮**值域门禁**抓到的真实缺陷（域＝`['m-unanimous','all-unanimous']`，且 `ballot.js` 的默认 tally 只把它当标签）⇒ **不准为救一条断言把非法值写回去**。**正例**：观测 `vmu.meetings.verdictMaxRounds`（v3-core **5** / institute-min **3**，顺序可见）⇒ `vmu-entry` 回 **150/0**。⇒ 纪律：**先证明"这个量真的随被测条件变化"**（把两档实测值对一下）再写进断言；"同值也能过"属**语义空过**，与 RULE E 拦的**语法空过**是两回事、要分别防。
+
 **清单（当前，2026-10-09 第 18 轮）**
 
 | 守卫面 | 语义 | 生产是否调用 | 理由／生产调用点 |
@@ -147,7 +151,7 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 322 / suites 250 / probes 72`** ✓（旧值 134／68／66 已在扩卷与增件后过期 ✗；本轮树新增 1 个作业：`tests/audit-scope-classification.test.mjs` ✓） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 270 / suites 200 / probes 70`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 271 / suites 201 / probes 70`** ✓ |
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 258 / suites 225 / probes 33`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。
@@ -692,6 +696,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `collab` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（counterparties: 0、agreements: 0 自曝 ✓）；agreementRequired 默认 true 但无对手方⇒无可交换对象，**不拒** ✓） |
 | `compliance` · `status()` | ok | — | enforcedScope=evaluated-so-far | ok 或 object（实测 `status()` ⇒ **ok**（`enforcedScope=evaluated-so-far` ⇒ 状态可读、**不拒**）。**ROUND 153 更正** ✗✓：本行原先还写"`exportControlCheck` 归 domaingate ✓" —— **实测 `domaingate` 并没有该检查** ✓（`grep export|control` 只命中 `apiVersion` 与注释 ✓），那是**愿望**不是**承载者** ✗；该能力是**全仓缺口** ✓，归属面与复活条件写在 `compliance.js` 的 `PLANNED_REASONS` 里 ✓） |
 | `conference` · `open()` | ok | — | enforced=[2] fired=[2] enforcedScope=evaluated-so-far | ok 或 object（实测 `open()` ⇒ **ok**（`enforced=[2] fired=[2]` ⇒ 零机制**按默认阶梯开成、放行** ✓，与 `meetings` 同口径 ✓）） |
+| `contentvalue` | （无 create* 工厂） | — | — | EXPECT_NA（纯函数工具模块（**无 `create*` 工厂** ⇒ 矩阵不适用 ✓）；轮 9 从 `resume.js` 抽出（该文件越过 1200 行 ⇒ 拆分，未往 `KNOWN` 加名字 ✓）：值标识原语 `stableStringify/contentDigest/clone/idSuffix`，纯函数零依赖 ✓） |
 | `control` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（paused: []、registrySize: 0；archivingNeverPausedByItself 与 idleNeverRecessesByItself 自曝两条不变式 ✓）） |
 | `course` · `open()` | refusal | VMU_INVALID_ARGUMENT | enforced=[1] enforcedScope=evaluated-so-far | 具名拒或 ok（task-214 实测：`open()` ⇒ 具名拒 **VMU_INVALID_ARGUMENT**（带口径 `enforced=[1]`）⇒ 零机制＝缺课程参数 ⇒ 具名拒 ✓） |
 | `crypto` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
@@ -748,6 +753,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `repropack` · `build()` | refusal | VMU_MATH_SEED_REQUIRED | — | 具名拒（带 code）（task-214 实测：`build()` ⇒ 具名拒 **VMU_MATH_SEED_REQUIRED** ⇒ 零机制＝无复现种子 ⇒ 具名拒即真实形状 ✓） |
 | `resource` · `status()` | ok | — | — | ok 或 object（仪器面：零机制 ⇒ **台账可读、不拒**（`status()` 返回 `ok:true` ＋ `partition` ✓）；**键数由本生成器实测输出** ✓（note 只写形状与理由 ✗）） |
 | `resume` · `status()` | ok | — | — | PROBE_NEEDS_ARGS（缺：`store`／`work`／`control`／`identity` 注入（工厂需要真实接缝才返回实例）；补参后应按实测形状裁定 ✓） |
+| `resumeflush` | create 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
 | `retention` · `plan()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `reviewers` · `status()` | ok | — | — | ok 或 object（实测（轮 279）：零声明下 status() ⇒ ok（reviewers=0、zeroMechanism=true 自曝 ✓）；assign() 对【已声明冲突】具名拒（VMU_COI_VIOLATION）、对【达并发上限】具名拒（VMU_REVIEWER_OVERLOADED）；盲评解绑无理由拒（VMU_BLIND_UNBIND_DENIED）✓） |
 | `rules` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
@@ -766,7 +772,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
 | `workflow` · `advance()` | refusal | VMU_WORKFLOW_TRANSITION_REQUIRED | enforced=[7] enforcedScope=evaluated-so-far | 具名拒或 ok（**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 `advance()` 缺参 ⇒ **task-214 实测：具名拒 `VMU_WORKFLOW_TRANSITION_REQUIRED`（带口径 `enforced=[7]`）** ⇒ 具名拒即真实形状 ✓（旧 note 曾写 `op 抛出` ✗ / "缺参 ⇒ 具名拒" 混述 ✗，均已按实测改写 ✓）） |
 
-=== ZERO-MECHANISM MATRIX: 92 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 7 probe-errors, 3 n/a ===
+=== ZERO-MECHANISM MATRIX: 94 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 8 probe-errors, 4 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->
 
 ### 11.x 改文档的标准手法（★ 轮 524 补 ✓ —— ★ 本节在台账上结转了 6 轮 ✗）

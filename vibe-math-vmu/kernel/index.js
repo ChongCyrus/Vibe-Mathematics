@@ -29,7 +29,7 @@ import { createPromptPipeline } from './prompt/index.js'
 import { createTurnOrchestrator, facesFrom } from './turn/index.js'
 import { createLibrary } from './library.js'
 import { createMembers } from './members.js'
-import { createBallot } from './ballot.js'
+import { createBallot, createDurableCommitLog } from './ballot.js'
 import { createMeeting } from './meeting.js'
 import { createTasks } from './tasks.js'
 import { createMathSurface } from './math.js'
@@ -219,6 +219,56 @@ export function settingWriter(settings, key) {
  */
 export function liveMemberCapOf(source = {}) {
   return Number(source['vmu.limits.maxLiveMembers']) || Number(source['vmu.limits.maxParallel']) || 0
+}
+
+/**
+ * ROUND 9 / task-66 A (G7) — ONE durable commit log for the board (`kernel/ballotbox.js`) AND the mailbox
+ * (`kernel/mailbox.js`). Two faces with two logs allocate two independent ticket sequences, so the rows cannot be
+ * merged or replayed in one order; the log is therefore built HERE, once, and both faces are handed the SAME object.
+ *
+ * WHY A LATE-BOUND FAÇADE INSTEAD OF A PLAIN LOG. The allocating store is the HOST's and may mount after this
+ * assembly is built (the entry's `commitStore` is a call-time resolver for exactly that reason), so the real log
+ * cannot exist at construction time. This object resolves the store on EVERY call and memoises one log per
+ * resolved store — the faces get identity-stable behaviour (`q.durable === true` means the same thing to both),
+ * and a store that appears later is picked up by the next call. A store is only usable with `append()` +
+ * `readAll()`; anything else is ABSENT BY NAME (`durable === false`), never pretended, and `reserve()` returns
+ * null exactly like the ballot's own log does in that state.
+ */
+export function createSharedCommitQueue({ resolveStore = null, clock = () => Date.now(), name = 'shared' } = {}) {
+  let log = null
+  let bound = null
+  let failure = null
+  const current = () => {
+    let store = null
+    try { store = typeof resolveStore === 'function' ? resolveStore() : resolveStore } catch (e) {
+      // The resolver itself threw: a NAMED degradation (the same code the ballot face records), never a silent
+      // "not durable" that hides a broken host seam.
+      failure = { code: 'VMU_COMMIT_STORE_FAILED', message: String((e && e.message) || e) }
+      return null
+    }
+    if (!store || typeof store.append !== 'function' || typeof store.readAll !== 'function') return null
+    failure = null
+    if (log && bound === store) return log
+    bound = store
+    // `createDurableCommitLog` reads the log back at construction, so a NEW store resumes the ticket counter
+    // from its rows instead of restarting at 1 (that is what keeps the numbering monotonic across a remount).
+    log = createDurableCommitLog({ store, clock, name })
+    return log
+  }
+  return {
+    name,
+    get durable() { const l = current(); return !!(l && l.durable) },
+    reserve: (op) => { const l = current(); return l ? l.reserve(op) : null },
+    complete: (rec, outcome) => { const l = current(); return l ? l.complete(rec, outcome) : null },
+    status: () => {
+      const l = current()
+      if (l) return Object.assign({ shared: true, name }, l.status())
+      return { shared: true, name, durable: false, tickets: 0, appended: 0, done: 0, recoveredAt: null,
+        reason: 'no allocating store is bound: the shared commit log is absent, not pretended' }
+    },
+    // Observability only: WHY the log is absent (a throwing resolver is not the same fact as no store at all).
+    resolveState: () => { const l = current(); return { durable: !!(l && l.durable), bound: !!l, failure } },
+  }
 }
 
 export function createKernel({
@@ -688,7 +738,13 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // ROUND 2 (task-14): the durable per-recipient mailbox and the member state panel. `resolveAudience` is a REAL
   // seam only for `to:'all'` (the roster); `to:'voters'` has no ballot context in this assembly, so it REFUSES by
   // name instead of quietly handing back the roster (a voter set that is not the voter set is worse than a refusal).
+  // ROUND 9 / task-66 A (G7): the ONE durable commit log the board and the mailbox SHARE (see
+  // `createSharedCommitQueue` above for why it is a late-bound façade). Built from the host's allocating store,
+  // resolved at call time; without a store both faces degrade BY NAME (`durableQueue.durable === false`) and
+  // nothing pretends to be durable.
+  const sharedCommitLog = createSharedCommitQueue({ resolveStore: commitStore, clock, name: 'g7-shared' })
   const mailbox = createMailbox({ clock: guardedClock, log, settings: settingsView, bus, store, deliver,
+    durableQueue: sharedCommitLog,
     resolveAudience: members ? ({ to } = {}) => {
       if (to === 'voters') {
         const e = new Error('this assembly has no ballot context, so the voter set cannot be resolved')
@@ -878,11 +934,39 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // below `records`), because `meetings`/`ballotbox` are constructed after the resume block - running it here measured as
   // `Cannot access 'meetings' before initialization`. The adapter lambdas above are late-bound, so the call site is the
   // only thing that had to move.
+  // ROUND 9 / task-66 (Lead's 11c/11d finding, reader-a's drill) — WHY THIS TABLE EXISTS AT ALL.
+  // MEASURED DEFECT: `methodsOf` listed only `tasks`, and the attach loop handed every other face `[]`. With no
+  // method wrapped there is no `after` hook, and the `after` hook is the ONLY thing that writes a `mode:'state'`
+  // projection through — so `members`/`meetings`/`ballotbox`/`minutes`/`chat`/`panel`/`budget` could be declared in
+  // `vmu.resume.projections`, report `attached:true`, and NEVER reach the store (reader-a's probe: two meetings
+  // opened, `settle()` called, and the durable `meetings` key was still the store's `[]` seed). "A projection was
+  // attached" is NOT "the projection is durable" — the second fact needs the wrapped methods.
+  //
+  // THE RULE. `tasks` is a JOURNAL: its list is the set of COMMANDS to record (a reader must never be recorded,
+  // because hydrate REPLAYS the recorded calls). Every other face here is a STATE projection, where the wrapper
+  // snapshots after the call — so the safe default is INVERTED: wrap every public method EXCEPT the read-only set
+  // below. A read wrapped by mistake costs one snapshot; a MUTATOR left out loses the mutation, which is the
+  // failure that was measured. Both the set and the per-face wrapped lists are printed by `status()`.
+  const PROJECTION_READ_ONLY = new Set([
+    'status', 'snapshot', 'restore', 'list', 'view', 'get', 'board', 'audit', 'history',
+    'keysUsed', 'partition', 'config', 'refusals', 'policy', 'quotaState', 'speakCount', 'maySpeak',
+    'roles', 'roster', 'may', 'selfReports', 'selfReportHistory', 'fieldsOf', 'timesOf',
+    'remaining', 'totals', 'perTaskShare', 'quorum', 'receiptsView', 'tier', 'isLight',
+    'truthWriteRefusal', 'lapseDue', 'gaps', 'zones', 'resolutions', 'supplements', 'supplementOf',
+    'minutes', 'verbatim', 'queue',
+  ])
+  // The JOURNAL command lists (explicit on purpose: an over-broad list would record reads as commands).
+  const PROJECTION_COMMANDS = { tasks: ['create', 'assign', 'transition', 'brief', 'clearBrief', 'advance', 'rollback'], work: [] }
+  const projectionMethods = (face, target) => {
+    const explicit = PROJECTION_COMMANDS[face]
+    if (Array.isArray(explicit) && explicit.length) return explicit
+    if (!target || typeof target !== 'object') return []
+    return Object.keys(target).filter((k) => typeof target[k] === 'function' && !PROJECTION_READ_ONLY.has(k) && k.charAt(0) !== '_')
+  }
   const attachDeclaredProjections = () => {
     const declaredProjections = Array.isArray(settings['vmu.resume.projections']) ? settings['vmu.resume.projections'] : []
     // The live instances each adapter wraps. `meeting`/`ballot` are excluded on purpose (per-session factories).
     const targets = { tasks, members, meetings, ballotbox, minutes, chat, panel, budget }
-    const methodsOf = { tasks: ['create', 'assign', 'transition', 'brief', 'clearBrief', 'advance', 'rollback'], work: [] }
     for (const key of declaredProjections) {
       const face = String(key)
       // `human` is attached by its own dedicated block above (it exists unconditionally and is not in the adapter
@@ -894,9 +978,9 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
         const adapter = make()
         // The INSTANCE method registers the projection so `hydrate()`/`snapshot()` can find it; the module-level
         // `attachProjection` would wrap the methods but leave the instance unaware of the key.
-        const out = resume.attachProjection({ target: targets[face], methods: methodsOf[face] || [], key: adapter.key, mode: adapter.mode,
+        const out = resume.attachProjection({ target: targets[face], methods: projectionMethods(face, targets[face]), key: adapter.key, mode: adapter.mode,
           list: adapter.list || null, snapshot: adapter.snapshot || null, restore: adapter.restore || null, replay: adapter.replay || null })
-        attachedProjections.push({ face, attached: true, mode: adapter.mode, key: adapter.key, wrapped: out.wrapped, missing: out.missing })
+        attachedProjections.push({ face, attached: true, mode: adapter.mode, key: adapter.key, methods: projectionMethods(face, targets[face]), wrapped: out.wrapped, missing: out.missing })
       } catch (e) {
         attachedProjections.push({ face, attached: false, reason: String((e && e.message) || e), code: (e && e.code) || null })
       }
@@ -925,6 +1009,11 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     declared: Array.isArray(settings['vmu.resume.projections']) ? settings['vmu.resume.projections'].slice() : [],
     attached: attachedProjections.filter((a) => a.attached).map((a) => a.face),
     notAttached: attachedProjections.filter((a) => !a.attached).map((a) => ({ face: a.face, reason: a.reason, code: a.code || null })),
+    // ROUND 9 / task-66: WHICH methods were wrapped, per attached face. This is the fact that makes a projection
+    // durable (the wrapper's after-hook is what writes through), so it is reported rather than inferred from
+    // `attached:true` - the two were confused before and the projections silently never reached the store.
+    wrappedMethods: attachedProjections.filter((a) => a.attached).map((a) => ({ face: a.face, mode: a.mode, methods: (a.methods || []).slice(), wrapped: a.wrapped === undefined ? null : a.wrapped })),
+    readOnly: [...PROJECTION_READ_ONLY].sort(),
     known: PROJECTION_KEYS.slice(),
     unwiredKnown: PROJECTION_KEYS.filter((k) => !attachedProjections.some((a) => a.face === k && a.attached)),
   })
@@ -947,7 +1036,10 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // of this file is unchanged. No `const`→`let` double declaration, and no early access can hit the TDZ.
   meetingsRef.current = createMeetings({ settings: settingsView, bus, clock: guardedClock, log })
   const meetings = meetingsRef.current
-  const ballotbox = createBallotBox({ settings: settingsView, bus, clock: guardedClock, log })
+  // ROUND 9 / task-66 A (G7): the board's cast/settle commits through the SAME durable log as the mailbox — one
+  // instance, one ticket sequence, so a recovery replay has a single order to follow. Absent store ⇒ the board's
+  // `cast` runs unchanged (named degradation, no pretend durability).
+  const ballotbox = createBallotBox({ settings: settingsView, bus, clock: guardedClock, log, durableQueue: sharedCommitLog })
   const records = createRecords({ settings: settingsView, bus, clock: guardedClock, log })
   // ── ROUND 2 (task-14): THE APPROVAL GATE, ATTACHED TO THE REAL FACES ──────────────────────────────────
   // Lead's requirement: an undeclared action runs; a GATED action may only QUEUE until a human decides (a real gate,
@@ -1171,6 +1263,10 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // ---- ROUND 2 (task-14): the four new faces' registrations ----------------------------------------------
   registry.register('vmu.ids', { apiVersion: 1 }, { kind: 'service', description: 'ids: the one id minter - monotonic across restarts, counters projected durably, never reuses a name (docs/07)' })
   registry.register('vmu.resume', { apiVersion: 1 }, { kind: 'service', description: 'resume: session recovery primitives - read-before-write gate, durable projections with id never reused, named interrupted outcomes (never silently passed), unacked-mail and watchdog refresh seams (docs/07)' })
+  // ROUND 9 / task-66 A (G7): the ONE durable commit log the board and the mailbox share. Registered because it is a
+  // CONSTRUCTED kernel service handed to two faces (the gate `audit-vmu-services` requires every constructed service
+  // to be in the registry) - and because "which log do the two faces commit into" must be answerable by name.
+  registry.register('vmu.commitlog', { apiVersion: 1 }, { kind: 'service', description: 'the ONE durable commit log shared by the board (kernel/ballotbox.js cast) and the mailbox (kernel/mailbox.js send): a late-bound facade over the host allocating store, one ticket sequence, absent store degrades by name (docs/03 §2)' })
   registry.register('vmu.chat', { apiVersion: 1 }, { kind: 'service', description: 'group chat: admin list, speech quota and mute are declared, hot-changed and audited (docs/17)' })
   registry.register('vmu.mathadapters', { apiVersion: 1 }, { kind: 'service', description: '数学库适配面：numpy/scipy/pandas/sympy 的会话级环境绑定、结果形状契约与具名拒（docs/09·15）' })
   registry.register('vmu.mailbox', { apiVersion: 1 }, { kind: 'service', description: 'durable per-recipient mailbox: ack only after a successful delivery, unacked remains redeliverable (docs/17)' })
@@ -1282,6 +1378,16 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     return createMathSurface({ host, settings })
   }
 
+  // ROUND 9 / task-66 B — THE EXIT FLUSH. The two durability contracts must NOT be blurred (docs/03 §2):
+  //   · a STATE projection WRITES THROUGH on every mutation, so exiting owes it nothing but "wait until the
+  //     in-flight writes have landed" (`settle()`);
+  //   · a JOURNAL projection is APPEND-ONLY and is NOT written through, so exiting MUST flush it explicitly
+  //     (`flushAll()`), or the tail of the journal is simply lost.
+  // `recovery.exit()` (kernel/resume.js) is the engine's single call that does both and reports the two halves
+  // SEPARATELY; this file is the ASSEMBLY side of that contract and records the outcome in `status().shutdown`.
+  // Idempotent: the host may dispose more than once, and a second dispose must not re-run a flush.
+  let exitFlushRecord = null
+  let exitFlushInFlight = null
   const kernel = {
     enabled: true,
     bus,
@@ -1338,6 +1444,8 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     get mathadapters() { return mathadapters },
     get chat() { return chat },
     get mailbox() { return mailbox },
+  /** ROUND 9 / task-66 A (G7): the shared commit log, reachable by name (`vmu.commitlog`). */
+  get commitlog() { return sharedCommitLog },
     get panel() { return panel },
     get report() { return report },
     // ROUND 3 / task-24: the activity waiter, reachable like every other service.
@@ -1724,6 +1832,60 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
       return { ok: true, beats: controlState.beats, at: controlState.lastBeatAt,
         middleware: decided && decided.decisions ? decided.decisions.length : 0 }
     },
+
+    /**
+     * ROUND 9 / task-66 B — THE EXIT PATH (`docs/03 §2`). Called by the host adapter's `uninstall()` and by the
+     * entry's effect cleanup: waits for the in-flight STATE writes to land, then FLUSHES every journal projection.
+     * The two halves are reported separately because they are two different promises (see the comment above
+     * `const kernel`), and `ok` is their AND - never "at least one half worked".
+     *
+     * It does NOT throw: a shutdown path that throws can abort the rest of the host's teardown, and the host may
+     * well swallow the throw - which would make a failed flush LESS visible, not more. Instead every failure is in
+     * the receipt, on the kernel's own log, and in `status().shutdown` (and the assembly warns by name).
+     */
+    async shutdown({ reason = null } = {}) {
+      // CONCURRENT calls share ONE flush; a LATER call RUNS AGAIN, because a host may uninstall/reinstall and
+      // produce a NEW journal tail - a permanent "already flushed" flag would silently lose that tail. Re-flushing
+      // is safe: `flushAll()` appends the same envelope for an unchanged journal, and `settle()` waits for whatever
+      // is in flight right now.
+      if (exitFlushInFlight) return exitFlushInFlight
+      const run = (async () => {
+        const at = clock()
+        const recReason = reason === null ? null : String(reason)
+        const finish = (out) => {
+          exitFlushRecord = out
+          try {
+            if (log && typeof log.append === 'function') log.append({ type: 'vmu/exit-flush', at, reason: recReason, ok: out.ok, code: out.code || null, failed: out.failed || [] })
+          } catch (e) { /* the log is the host's; a broken log never changes the receipt */ }
+          return out
+        }
+        if (!resume || typeof resume.exit !== 'function') {
+          return finish({ ok: false, at, reason: recReason, code: 'VMU_EXIT_FLUSH_UNAVAILABLE',
+            writeThrough: null, journal: null, failed: [],
+            message: 'this assembly has no recovery face exposing exit(): the exit flush cannot be performed',
+            note: 'the engine half is kernel/resume.js; without it neither "wait for write-through" nor "flush the journals" is claimed (docs/03 §2)' })
+        }
+        let detail = null
+        try { detail = await resume.exit({ reason: recReason }) } catch (e) {
+          return finish({ ok: false, at, reason: recReason, code: (e && e.code) || 'VMU_EXIT_FLUSH_FAILED',
+            writeThrough: null, journal: null, failed: [],
+            message: String((e && e.message) || e),
+            note: 'exit() threw even though its contract is to RETURN failures in the receipt - recorded rather than swallowed' })
+        }
+        const wt = (detail && detail.writeThrough) || null
+        const jn = (detail && detail.journal) || null
+        const failed = (jn && Array.isArray(jn.failed)) ? jn.failed.slice() : []
+        return finish({ ok: !!(detail && detail.ok === true), at, reason: recReason,
+          writeThrough: wt, journal: jn, failed,
+          code: (detail && detail.ok === true) ? null : ((failed[0] && failed[0].code) || 'VMU_EXIT_FLUSH_INCOMPLETE'),
+          note: (detail && detail.note) || null })
+      })()
+      exitFlushInFlight = run
+      try { return await run } finally { exitFlushInFlight = null }
+    },
+
+    /** The last exit flush (null before any shutdown): the assembly's own record, readable after the fact. */
+    exitFlush: () => (exitFlushRecord ? Object.assign({}, exitFlushRecord) : null),
     /** The control surface: state, history and whether the heartbeat went stale (docs/04 搂11 wallClockMs). */
     control: () => controlView(),
 
@@ -1836,6 +1998,9 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
           note: 'session-scoped live primitives addressable by id from the tool faces; evicted is COUNTED, never silent' },
         rules: rules.status(),
         control: controlView(),
+        // ROUND 9 / task-66 B: the exit flush, as it actually happened. `null` means no shutdown was performed in
+        // this process - which is NOT the same as a successful one, so it is never reported as ok:true.
+        shutdown: exitFlushRecord ? Object.assign({}, exitFlushRecord) : null,
         loader: loader.status(),
         bridge: bridge.status(),
         registry: registry.status(),
@@ -1881,7 +2046,14 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
           commitStore: typeof commitStore === 'function' ? 'call-time resolver' : (commitStore ? 'object' : false),
           commitStoreNote: commitStore
             ? 'the host supplies a store whose append(record) answers {ticket} and readAll() reads the log back; the ballot builds its commit log from it at call time (kernel/ballot.js createDurableCommitLog)'
-            : 'no allocating store: the ballot reports status().gate.durable === false and reserve() returns null - the seam is ABSENT, never pretended (pass { commitStore } = a store with append()->{ticket} and readAll(), or config.commitStore)' },
+            : 'no allocating store: the ballot reports status().gate.durable === false and reserve() returns null - the seam is ABSENT, never pretended (pass { commitStore } = a store with append()->{ticket} and readAll(), or config.commitStore)',
+          // ROUND 9 / task-66 A (G7): the ONE commit log the BOARD and the MAILBOX share, reported from the
+          // façade's own resolution state. `bound:false` + `failure` names a THROWING resolver, which is a
+          // different fact from "no store was supplied" - the two must not be reported as the same thing.
+          sharedCommitLog: Object.assign(
+            { consumedBy: ['kernel/ballotbox.js (cast)', 'kernel/mailbox.js (send)'] },
+            sharedCommitLog.resolveState(),
+            { status: sharedCommitLog.status() }) },
         // TASK-170: the guard faces report HOW FAR THEY ACTUALLY REACH. A face that no production path calls
         // is marked `kind:'diagnostic'` with its reason, so `status()` can never imply a guard is a live
         // production rail while it is not (the eighth case: implemented + tested + never effective).

@@ -41,6 +41,11 @@ export function refuse(code, message, hint, extra) {
 // The injected clock may be numeric (the kernel's guarded clock is) or an ISO string; both must name the same
 // instant (the lesson `kernel/work.js:76-83` paid for).
 import { ms as toMs } from './timevalue.js'
+import { createExitContract } from './resumeflush.js'
+// The VALUE IDENTITY primitives moved out (round 9, second cut — see the boundary note in that module); they are
+// re-exported below so callers that import those two names from THIS module keep working exactly as before.
+import { clone, contentDigest, idSuffix } from './contentvalue.js'
+export { contentDigest, idSuffix } from './contentvalue.js'
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '')
 const boolOr = (v, d) => (typeof v === 'boolean' ? v : d)
@@ -116,33 +121,8 @@ export function checkSnapshot(face, snap, required = []) {
   return { ok: true, face: String(face), counters: snap.counters && typeof snap.counters === 'object' ? snap.counters : {}, skipped: Array.isArray(snap.skipped) ? snap.skipped.slice() : [] }
 }
 
-/** Deterministic JSON: key order must never decide whether two snapshots compare equal. */
-function stableStringify(value) {
-  if (value === undefined) return 'undefined'
-  if (value === null || typeof value !== 'object') return JSON.stringify(value)
-  if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']'
-  return '{' + Object.keys(value).sort().map((k) => JSON.stringify(k) + ':' + stableStringify(value[k])).join(',') + '}'
-}
-
-/** A cheap, dependency-free content identity (FNV-1a + length). It only has to detect DRIFT, not resist forgery. */
-export function contentDigest(value) {
-  const s = stableStringify(value)
-  let h = 2166136261 >>> 0
-  for (let i = 0; i < s.length; i += 1) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0 }
-  return h.toString(16).padStart(8, '0') + ':' + s.length
-}
-
-/** Deep, JSON-safe copy: a projection must never keep a live reference into the face it snapshotted. */
-function clone(value) {
-  if (value === undefined) return undefined
-  try { return JSON.parse(JSON.stringify(value)) } catch (e) { return undefined }
-}
-
-/** The last `N` suffix of an id (`t-12` ⇒ 12), or null. Used to reconcile a durable counter with reality. */
-export function idSuffix(id) {
-  const m = /(\d+)\s*$/.exec(String(id === undefined || id === null ? '' : id))
-  return m ? Number(m[1]) : null
-}
+/** Deterministic JSON, content identity, JSON-safe clone and the id suffix now live in `kernel/contentvalue.js`
+ *  (they are pure and have no engine dependency; `contentDigest`/`idSuffix` are re-exported above). */
 
 /**
  * The pure part of a projection wrapper (no store, so it is unit-testable on its own).
@@ -348,6 +328,15 @@ export function createResume({ store = null, work = null, control = null, identi
   let writes = 0
   let writesThrough = 0
   let writeThroughFailures = 0
+  /**
+   * ROUND 9 / task-70 A: THE IN-FLIGHT WRITE-THROUGH SET. A write-through is a PROMISE (it ends in real file I/O),
+   * so "the state is durable now" was previously only true *eventually* — a caller that wanted to be sure had to
+   * poll `status().writesThrough` or sleep a guessed duration (the round-8 drill did exactly that, and said so).
+   * Tracking the promises is what lets `settle()` make it a GUARANTEE: after `await settle()` the mutations that
+   * have already returned are on disk, with no sleep and no polling. An exit path that does not do this can lose
+   * the last write-through silently, which is the failure this set exists to prevent.
+   */
+  const pendingWrites = new Set()
   let readBacks = 0
   let readBackFailures = 0
   let lastDrift = null
@@ -366,6 +355,8 @@ export function createResume({ store = null, work = null, control = null, identi
     return ms
   }
 
+  // The exit contract (`settle`/`flushAll`/`exit`) lives in `kernel/resumeflush.js`; its guarded clock read moved
+  // with it, because `settle()` is its only consumer. See the boundary note at the factory call site below.
   const projections = new Map()   // key -> { projection, target?, wrapper? }
 
   const projectionFor = (key, adapter) => {
@@ -531,7 +522,15 @@ export function createResume({ store = null, work = null, control = null, identi
     // WITHOUT editing it — every wrapped mutation is followed by one state write. Without this, a state face
     // wired only through `faces{}` would be hydratable but never written, i.e. durable in appearance only.
     const after = (mode === 'state' && typeof snapshotSeam === 'function' && cfg().writeThrough)
-      ? (name) => snapshot({ key }).then((r) => { writesThrough += 1; return r }, (e) => { writeThroughFailures += 1; onProjectionError(e) })
+      ? (name) => {
+        // The promise is REGISTERED SYNCHRONOUSLY (before the first await), so `status().pendingWrites` tells the
+        // truth in the same tick as the mutation, and `settle()` can drain exactly what was started.
+        const p = snapshot({ key }).then(
+          (r) => { writesThrough += 1; pendingWrites.delete(p); return r },
+          (e) => { writeThroughFailures += 1; pendingWrites.delete(p); onProjectionError(e) })
+        pendingWrites.add(p)
+        return p
+      }
       : null
     const w = attachProjection({ target, methods, projection: p, nonReplayable, after, onError: onProjectionError })
     if (!replay && target && mode === 'journal') {
@@ -565,6 +564,29 @@ export function createResume({ store = null, work = null, control = null, identi
     await write(k, env)
     return { ok: true, key: k, mode: 'journal', seq: env.seq, entries: env.entries.length, incomplete: env.incomplete }
   }
+
+  /**
+   * ROUND 9 / task-70 — THE EXIT CONTRACT LIVES IN `kernel/resumeflush.js`. The boundary is one-way and is written
+   * out at the top of that module: `resume.js` owns the projections (which keys exist, their modes, the
+   * write-through registration, the read-before-write latch, the durable writer), and the exit module owns what a
+   * clean exit MEANS (drain × flush, `ok` is their AND, failures are returned and never thrown). It is handed live
+   * views — the same `pendingWrites` Set the write-through fills, the counters, the read gate — so nothing about
+   * the projections moved with it.
+   */
+  const exitContract = createExitContract({
+    clock, stamp, snapshot,
+    keyList: () => [...projections.keys()],
+    keyExists: (k) => projections.has(k),
+    modeOf: (k) => { const h = projections.get(k); return h && h.projection ? h.projection.mode : 'journal' },
+    pendingWrites,
+    counters: () => ({ writesThrough, writeThroughFailures }),
+    storeReady: () => !!(store && typeof store.patch === 'function' && typeof store.read === 'function'),
+    requireRead,
+    codes: CODE,
+  })
+  const settle = exitContract.settle
+  const flushAll = exitContract.flushAll
+  const exit = exitContract.exit
 
   /** Read the durable envelope for a key WITHOUT hydrating (a read-only view for the report). */
   function projectionOf({ key } = {}) {
@@ -1114,6 +1136,8 @@ export function createResume({ store = null, work = null, control = null, identi
       lock: Object.assign({}, lockState),
       restart: restartMarker(),
       writes, writesThrough, writeThroughFailures, writeRefusals, readBacks, readBackFailures, lastDrift,
+      // task-70 A: how many write-throughs are IN FLIGHT right now (the same-tick truth `settle()` drains).
+      pendingWrites: pendingWrites.size,
       policy: cfg(),
       neverWritesBeforeRead: true,
       interruptedNeverPassesSilently: true,
@@ -1131,6 +1155,10 @@ export function createResume({ store = null, work = null, control = null, identi
     recover,
     recoverPlan,
     snapshot,
+    // task-70 A (agreed with vmu-core): the exit contract, two halves separately observable + the one assembly call.
+    settle,
+    flushAll,
+    exit,
     hydrate,
     projectionOf,
     attachProjection: attachProjectionTo,

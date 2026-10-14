@@ -65,6 +65,15 @@ export const PUBLIC_KEYS = Object.freeze([
   'human',
   'chat',
   'panel',
+  // ROUND 9 / task-66 B (found while verifying the exit flush): the assembly's projection adapter table
+  // (`kernel/index.js` RESUME_PROJECTION_ADAPTERS) declares TWO keys that were NOT in this whitelist -
+  // `ballotbox` (the board face) and `minutes`. Both expose `snapshot()/restore()` and are attachable, so
+  // declaring either in `vmu.resume.projections` made `hydrate()` call `store.read('<key>')` and the store
+  // REFUSED it (`VMU_INVALID_ARGUMENT: undeclared durable key`), which crashed the whole `recover()` -
+  // the same class as K2's `idempotency`: a writer exists, the whitelist does not know it. Measured:
+  // `createKernel({ settings: { 'vmu.resume.projections': ['ballotbox'] } })` + `recover()` threw before this line.
+  'ballotbox',
+  'minutes',
 ])
 
 /** Named refusal (codes are registered in docs/03 §8). */
@@ -83,7 +92,7 @@ function defaultKeys() {
   // whole `recover()` returns `ok:false` ON A CLEAN FIRST RUN (measured: the `human` key, whose projection I attach in
   // the assembly, made every first recovery report a failure). `null` is read as "nothing was projected (a first
   // run)" - the honest state - which is why `phase` was already seeded that way.
-  const NULL_SEEDED = new Set(['phase', 'human', 'resume', 'ids', 'mailbox', 'chat', 'panel'])
+  const NULL_SEEDED = new Set(['phase', 'human', 'resume', 'ids', 'mailbox', 'chat', 'panel', 'ballotbox', 'minutes'])
   for (const k of PUBLIC_KEYS) keys[k] = NULL_SEEDED.has(k) ? null : (k === 'settings.resolved' || k === 'budget' ? {} : [])
   return keys
 }

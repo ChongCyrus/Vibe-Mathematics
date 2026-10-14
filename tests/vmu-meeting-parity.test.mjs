@@ -641,6 +641,84 @@ const roster = ['r-1', 'r-2']
   'an injected isChair seam decides who may manage (and it is still refusable)')
 }
 
+// ---- 21. Round 8/9: B① the agenda is CLOSED (never deleted) + G7 the durable log reaches both write faces -----
+//
+// CROSS-FACE POSITIVE CONTROL (reader-a's drill, `_handoff/vmu/12-goal1-e2e.md` §2.2/§5.4):
+//   `node tests/vmu-resume-e2e.test.mjs` ⇒ 63 passed, 0 failed, exit 0 — §⑦ `9a`–`9k` proves that BINDING this
+//   durable log changes neither existing contract: (CONTRACT 1) the state face still writes through with no
+//   `snapshot()` call (`9f`/`9g`), and (CONTRACT 2) the journal face still needs an EXPLICIT `snapshot({key})`
+//   (`9h`/`9i`). It also pins the two durabilities apart: `9j` a message is still unacked after a restart (state
+//   projection) while `9k` the commit log is already settled (`pending === 0`).
+//
+// THREE TRAPS baked into the assertions below (each one was hit for real in Round 6/8):
+//   ① a same-instance `recover()` merely rescans ⇒ "survives a restart" needs a SECOND log over the same store;
+//   ② a new instance's `status().appended` is 0 ⇒ never use `appended` for post-restart claims (use tickets/pending);
+//   ③ `pending` means "this ticket has no `done:true` row" ⇒ the result row must REUSE the intent's ticket.
+{
+  const meetingMod = await import(pathToFileURL(K('meeting.js')).href)
+  const mbMod = await import(pathToFileURL(K('mailbox.js')).href)
+  const grab21 = (fn) => { try { fn(); return null } catch (e) { return e && e.code } }
+  const mkStore21 = () => { const rows = []; let t = 0; return { rows, append(r) { if (r.done === true) { rows.push(r); return r } t += 1; r.ticket = t; rows.push(r); return r }, readAll: () => rows.slice() } }
+
+  // B① — an agenda entry is closed with a reason and KEPT (six assertions)
+  const M = meetingMod.createMeeting({ id: 'agenda-1', roster, clock })
+  await M.convene(['item one', { text: 'item two', owner: 'r-1' }])
+  const items = M.agendaItems()
+  ok(items.length === 2 && items[0].id === 'ag-1' && items[1].owner === 'r-1',
+    'B①: the agenda is stored as ITEMS with stable ids (a legacy string becomes one item)')
+  ok(grab21(() => M.agendaClose({ id: 'ag-1' })) === 'VMU_REASON_REQUIRED', 'B①: closing without a why is refused')
+  ok(grab21(() => M.agendaClose({ id: 'ag-99', by: 'acad', why: 'x' })) === 'VMU_NO_SUCH_OBJECT', 'B①: an unknown item is refused BY NAME')
+  const closedItem = M.agendaClose({ id: 'ag-1', by: 'acad', why: 'decided' })
+  ok(closedItem.ok === true && closedItem.item.state === 'closed' && closedItem.item.closedBy === 'acad'
+    && closedItem.item.why === 'decided' && closedItem.item.closedAt === NOW,
+  'B①: a close records state/closedBy/why/closedAt')
+  ok(M.agendaItems().length === 2 && M.agendaItems()[0].text === 'item one' && M.agendaItems()[0].owner === null,
+    'B①: the ORIGINAL ENTRY REMAINS (a close adds fields; it never deletes or rewrites the item)')
+  ok(M.agendaClose({ id: 'ag-1', by: 'acad', why: 'again' }).deduped === true
+    && M.status().agendaOpen === 1 && M.status().agendaItems === 2
+    && M.history().filter((h) => h.what === 'agenda-closed').length === 1,
+  'B①: a second close is idempotent, status() reports open/total, and the closure is recorded exactly once')
+  // The ruled boundary "no motion on a closed item" cannot be asserted here because this face has no PER-ITEM
+  // motions (a motion carries its own `target`); the honest boundary is the immutability asserted above.
+
+  // G7 — the durable commit log reaches the BOARD and the MAILBOX (reserve → body → complete)
+  const storeShared = mkStore21()
+  const logBoard = ballotMod.createDurableCommitLog({ store: storeShared, clock })
+  const box = boxMod.createBallotBox({ clock, settings: { 'vmu.ballot.minVotes': 1 }, durableQueue: logBoard })
+  ok(box.status().durableLog.bound === true, 'G7/B: a bound board SELF-REPORTS its durable log (status().durableLog.bound)')
+  const opened = box.open({ question: 'q?', options: ['yes', 'no'] })
+  box.cast({ boxId: opened.boxId, by: 'r-1', choice: 'yes' })
+  ok(logBoard.status().done === 1 && logBoard.recover().pending.length === 0,
+    'G7: a board cast reserves its intent and completes it (the log is settled)')
+  const refusedCast = box.cast({ boxId: opened.boxId, by: 'r-1', choice: 'no' })
+  ok(refusedCast && refusedCast.ok === false && logBoard.recover().pending.length === 0,
+    'G7: even a REFUSED board cast completes its intent (recovery must not replay refusals)')
+  const logMail = ballotMod.createDurableCommitLog({ store: storeShared, clock })
+  const mb2 = mbMod.createMailbox({ clock, settings: {}, store: { read: () => null, write: () => {} }, deliver: async () => true, durableQueue: logMail })
+  ok(mb2.status().durableLog.bound === true, 'G7/B: a bound mailbox SELF-REPORTS its durable log too')
+  mb2.send('r-1', { to: 'r-2', text: 'hello' })
+  const rows21 = storeShared.rows.filter((r) => r.op && r.op.kind === 'mailbox-send')
+  ok(rows21.length === 1 && logMail.status().appended === 1 && logMail.recover().pending.length === 0,
+    'G7: a mailbox send is reserved+completed through the SAME protocol (one intent row appended by THIS instance, and the log is settled)')
+  ok(logBoard.status().tickets < logMail.status().tickets && storeShared.rows.length >= 3,
+    'G7: two faces sharing ONE store get DISTINCT monotonic tickets (the store allocates, not the process)')
+  const restarted = ballotMod.createDurableCommitLog({ store: storeShared, clock })
+  ok(restarted.recover().pending.length === 0 && restarted.status().appended === 0
+    && restarted.recover().tickets === logMail.status().tickets,
+  'G7: after a "restart" (a SECOND log over the same store) the log is settled — appended resets to 0, so the claim rests on tickets/pending, never on appended')
+  const interrupted = ballotMod.createDurableCommitLog({ store: storeShared, clock })
+  interrupted.reserve({ kind: 'mailbox-send', from: 'r-1', to: 'r-9' })
+  ok(interrupted.recover().pending.length === 1,
+    'G7: an interrupted send leaves exactly ONE pending intent (the crash window is visible, not silent)')
+  const plain = boxMod.createBallotBox({ clock, settings: { 'vmu.ballot.minVotes': 1 } })
+  const plainMail = mbMod.createMailbox({ clock, settings: {}, store: { read: () => null, write: () => {} }, deliver: async () => true })
+  ok(plain.status().durableLog.bound === false && plainMail.status().durableLog.bound === false,
+    'G7/B: UNBOUND faces self-report bound:false — the in-process fallback is readable, never silent')
+  const plainBox = plain.open({ question: 'p?', options: ['a', 'b'] })
+  ok(plain.cast({ boxId: plainBox.boxId, by: 'r-2', choice: 'a' }).ok === true && plainMail.send('r-1', { to: 'r-2', text: 'x' }).ok === true,
+    'G7: with no queue bound both faces still work unchanged (the body is the same code path)')
+}
+
 console.log('vmu-meeting-parity: ' + passed + ' passed, ' + failed + ' failed')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
