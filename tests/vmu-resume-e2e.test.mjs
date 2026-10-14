@@ -25,7 +25,7 @@
 //     before using it, so "the journal survived the restart" is never mistaken for "recording is durable".
 //
 // Last line: === VMU GOAL1 E2E: N passed, M failed ===
-import { rmSync, mkdirSync, readFileSync } from 'node:fs'
+import { rmSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createStore } from '../vibe-math-vmu/kernel/store.js'
 import { createWorkLedger } from '../vibe-math-vmu/kernel/work.js'
 import { createMailbox } from '../vibe-math-vmu/kernel/mailbox.js'
@@ -152,6 +152,16 @@ async function boot(tag, opts = {}) {
   // the mailbox face self-persists on `persist()`; wiring it as a state projection makes every mutation write through
   // (without this row, mail sent and not explicitly persisted dies with the process — measured in this drill).
   resume.attachProjection({ target: mailbox, methods: ['send', 'ack'], key: 'mailbox', mode: 'state', snapshot: () => mailbox.snapshot(), restore: (v) => mailbox.hydrate(v), list: () => [] })
+  // §⑪ (task-87 C): the SEED CENSUS needs a projection attached for an arbitrary `PROJECTION_KEYS` entry so a
+  // FRESH store can be asked "what does your initial seed look like to hydrate()?". The stub is deliberately
+  // tiny and honest: a state projection with a real snapshot/restore seam, and NO method for `phase` (the engine
+  // already registers `phase` as its own journal projection, so wrapping a method there would be a lie).
+  for (const key of (Array.isArray(opts.extraProjections) ? opts.extraProjections : [])) {
+    if (key === 'tasks' || key === 'human' || key === 'mailbox') continue
+    const stub = { touched: 0, touch() { stub.touched += 1; return { ok: true } } }
+    resume.attachProjection({ target: stub, methods: key === 'phase' ? [] : ['touch'], key, mode: 'state',
+      snapshot: () => ({ touched: stub.touched }), restore: () => ({ ok: true, restored: [] }), list: () => [] })
+  }
   // §⑨ (task-70 B): a MULTI-INSTANCE collection face, attached EXACTLY the way the shipped assembly attaches it
   // (`kernel/index.js`: `methodsOf[face] || []`). `opts.meetings.methods` is what that list is — `[]` reproduces the
   // assembly, a filled list reproduces the fix. The face is real (`kernel/meetings.js`), not a stub.
@@ -645,6 +655,142 @@ const k2rows = K2.kernel.recovery.status().hydrated.filter((h) => h.key === 'mee
 ok(k2rows.length === 1 && k2rows[0].hydrated === true && k2rows[0].mode === 'state' && K2.kernel.recovery.status().unhydrated.length === 0,
   '12i the meetings collection is reported HYDRATED in the second kernel (named, not inferred)',
   { rows: k2rows.map((h) => h.key + ':' + h.mode + ':' + h.hydrated), unhydrated: K2.kernel.recovery.status().unhydrated })
+ok(liveBoxesIn(K2.kernel.ballotbox.snapshot()) === 2,
+  '12j …and the TWO BALLOT BOXES come back in the second kernel too (the pack now declares `ballotbox`, so 12f takes the CLOSED branch)',
+  { boxes: liveBoxesIn(K2.kernel.ballotbox.snapshot()) })
+
+// ── ⑪ SEED CENSUS (task-87 C): EVERY projection key on a FRESH store must report a clean first run ──────────
+// Round 8 fixed the `[]`-seeded keys and Round 10 fixed the `{}`-seeded one; this census asks the question ONCE for
+// every key in `PROJECTION_KEYS`, so that class cannot survive in a shape nobody happened to test. It also proves
+// the tolerance is NARROW: a NON-empty foreign value under the same keys must still be a NAMED gap.
+console.log('\n[11] seed census — every PROJECTION_KEY on a FRESH store must report a clean first run (task-87 C)')
+const SEED_ROOT = 'D:/_tmp/vmu-goal1-e2e-seeds'
+const seedKeys = ['members', 'tasks', 'meetings', 'ballotbox', 'budget', 'phase', 'work', 'chat', 'panel', 'human']
+const seedRows = []
+for (const key of seedKeys) {
+  const root = SEED_ROOT + '/' + key
+  rmSync(root, { recursive: true, force: true })
+  mkdirSync(root, { recursive: true })
+  const S = await boot('seed-' + key, { root, extraProjections: [key] })
+  const led = S.recovery.steps.filter((s) => s.step === 'ledgers')[0]
+  const row = (led.hydrated || []).filter((h) => h.key === key)[0]
+  const bad = (led.unhydrated || []).filter((u) => u.key === key)[0]
+  seedRows.push({ key, ok: S.recovery.ok, hydrated: row && row.hydrated, seeded: row && row.seeded, gap: bad && bad.code })
+}
+ok(seedRows.length > 0 && seedRows.length === seedKeys.length && seedRows.every((r) => r.ok === true && r.hydrated === false && ['null', 'empty-array', 'empty-object'].includes(r.seeded) && !r.gap),
+  '13a ALL ' + seedKeys.length + ' projection keys report a CLEAN FIRST RUN on a fresh store (no initial container is read as a projection gap): ' + seedKeys.join(','),
+  seedRows)
+
+/** The counter-case helper: write a NON-empty foreign value under a key, then boot and read what hydrate() says. */
+const foreignUnder = async (label, key, value) => {
+  const root = SEED_ROOT + '/foreign-' + label
+  rmSync(root, { recursive: true, force: true })
+  mkdirSync(root, { recursive: true })
+  const raw = createStore({ root, clock })
+  await raw.open()
+  await raw.patch(key, () => value)
+  if (typeof raw.close === 'function') await raw.close()
+  const F = await boot('seed-foreign-' + label, { root, extraProjections: [key] })
+  const led = F.recovery.steps.filter((s) => s.step === 'ledgers')[0]
+  return { ok: F.recovery.ok, gap: (led.unhydrated || []).filter((u) => u.key === key)[0] }
+}
+const fTasks = await foreignUnder('array', 'tasks', [{ id: 't-99' }])
+ok(fTasks.ok === false && !!fTasks.gap && fTasks.gap.code === 'VMU_RESUME_PROJECTION_GAP' && /array\[1\]/.test(String(fTasks.gap.value)),
+  '13b a NON-empty bare ARRAY under `tasks` is still a NAMED gap (the tolerance did not become "exists ⇒ pass")', fTasks)
+const fBudget = await foreignUnder('object', 'budget', { spent: 5 })
+ok(fBudget.ok === false && !!fBudget.gap && fBudget.gap.code === 'VMU_RESUME_PROJECTION_GAP',
+  '13c a NON-empty plain OBJECT under `budget` is still a NAMED gap (only an EMPTY container counts as a first run)', fBudget)
+
+// ── ⑫ F51: WHICH MEETING IS STILL OPEN, ACROSS A RESTART (task-89) ─────────────────────────────────────────
+// The face now keeps a DOMAIN marker (`open|lapsed|closed`) written by ONE function (`markState`) at every state
+// transition, and reads it back through a declarative domain seam (`{read(), write(rows)}`). The shipped kernel
+// does not wire the seam yet (that is one line in `kernel/index.js`), so this section wires it with a REAL FILE —
+// which is exactly the contract the face declares, and the reason the assertions below are about the SEAM, not
+// about a mock: a second face instance with no live meetings reads the states from disk.
+console.log('\n[12] F51 domain marker — which meeting is still open, across a restart (task-89)')
+const F51_ROOT = 'D:/_tmp/vmu-goal1-e2e-f51'
+rmSync(F51_ROOT, { recursive: true, force: true })
+mkdirSync(F51_ROOT, { recursive: true })
+const markerFile = F51_ROOT + '/domain-marker.json'
+const durableSeam = {
+  read: () => { try { return JSON.parse(readFileSync(markerFile, 'utf8')) } catch (e) { return [] } },
+  write: (rows) => { writeFileSync(markerFile, JSON.stringify(rows), 'utf8') },
+}
+const F = createMeetings({ clock, log: () => {}, settings: { 'vmu.meetings.hardLimitMs': 1000 }, bus, durable: durableSeam })
+const fOpen = F.open({ type: 'ordinary', chair: 'r-1', roster: ['r-1'] })
+const fLapse = F.open({ type: 'ordinary', chair: 'r-2', roster: ['r-2'] })
+const BIG = 1750000000000 + 10000000
+const due = F.lapseDue({ meeting: fLapse.meeting, at: BIG })
+const lapsed = due.due === true ? F.lapse({ meeting: fLapse.meeting, at: BIG }) : null
+ok(fOpen.ok === true && fLapse.ok === true && !!lapsed && lapsed.ok === true,
+  '14a the face opens two meetings and the bounded fallback really lapses one of them',
+  { open: fOpen.meeting, lapse: fLapse.meeting, due: due.due, lapsed: lapsed && lapsed.settlement })
+
+const afterLapse = F.openMeetings()
+const rowLapsed = afterLapse.meetings.filter((m) => m.id === fLapse.meeting)[0]
+const rowOpen = afterLapse.meetings.filter((m) => m.id === fOpen.meeting)[0]
+ok(afterLapse.ok === true && afterLapse.durableMarker === true && !!rowLapsed && rowLapsed.state === 'lapsed' && !!rowOpen && rowOpen.state === 'open',
+  '14b `lapsed` and `open` are DISTINGUISHABLE in the durable marker (the meeting that lapsed is not reported as open)',
+  { meetings: afterLapse.meetings, bound: F.status().durableMarker })
+
+const revived = F.revokeLapse({ meeting: fLapse.meeting, by: 'r-2', reason: 'the bound was reviewed' })
+const rowRevived = F.openMeetings().meetings.filter((m) => m.id === fLapse.meeting)[0]
+ok(revived.ok === true && !!rowRevived && rowRevived.state === 'open',
+  '14c `revokeLapse` returns the meeting to `open` in the marker (the fallback stays revocable by name)',
+  { revoked: revived.ok, row: rowRevived })
+
+// ① CROSS-RESTART: a NEW face instance, no live meetings at all, reads the states from the same store.
+const F2 = createMeetings({ clock, log: () => {}, settings: { 'vmu.meetings.hardLimitMs': 1000 }, bus, durable: durableSeam })
+const crossRestart = F2.openMeetings()
+ok(crossRestart.ok === true && crossRestart.durableMarker === true &&
+  crossRestart.meetings.some((m) => m.id === fOpen.meeting && m.state === 'open') &&
+  crossRestart.meetings.some((m) => m.id === fLapse.meeting && m.state === 'open') &&
+  F2.status().durableMarker.bound === true,
+  '14d CROSS-RESTART: a second face instance (no live meetings) reads both meetings back from the durable seam',
+  { meetings: crossRestart.meetings, source: crossRestart.source })
+
+// ④ AN EMPTY READ MUST NOT INVENT A MEETING, and an UNBOUND seam must self-disclose (never a silent claim).
+const emptyFace = createMeetings({ clock, log: () => {}, settings: {}, bus, durable: { read: () => [], write: () => {} } })
+const e0 = emptyFace.openMeetings()
+const unboundFace = createMeetings({ clock, log: () => {}, settings: {}, bus })
+const u0 = unboundFace.openMeetings()
+ok(e0.ok === true && e0.durableMarker === true && e0.meetings.length === 0 && /no meeting at all/.test(String(e0.note)) &&
+  u0.ok === true && u0.durableMarker === false && u0.meetings.length === 0 && unboundFace.status().durableMarker.bound === false,
+  '14e an EMPTY durable read is an empty institute (no meeting is invented as "still open") and an UNBOUND seam says so (durableMarker:false)',
+  { empty: { meetings: e0.meetings, note: e0.note }, unbound: { bound: unboundFace.status().durableMarker.bound, note: u0.note } })
+
+// ── ⑬ THE BALLOT MIRROR MUST BE VISIBLE (round 11 fix; the defect reader-b's e2e found) ────────────────────
+// `vote()` mirrors the vote into an injected `ballot` seam. It used to `catch {}` a refusal, so a vote that never
+// reached a box still came back `ok:true` — "the receipt says success while nothing was done". The mirror outcome
+// is now NAMED in the receipt (and counted) in all four shapes: refused / threw / no seam / worked.
+console.log('\n[13] the ballot mirror must be VISIBLE — a refusing seam is not swallowed (round 11 fix)')
+const ballotFace = (ballot) => createMeetings({ clock, log: () => {}, settings: {}, bus, ballot })
+const openOne = (face) => face.open({ type: 'ordinary', chair: 'r-1', roster: ['r-1', 'r-2'] })
+const refusingFace = ballotFace({ cast: () => ({ ok: false, code: 'NO_BOX_FOR_MOTION' }) })
+const refusingVote = refusingFace.vote({ meeting: openOne(refusingFace).meeting, member: 'r-2', value: 1 })
+ok(refusingVote.ok === true && refusingVote.receipt.ballot.mirrored === false && refusingVote.receipt.ballot.reason === 'refused' &&
+  refusingVote.receipt.ballot.code === 'NO_BOX_FOR_MOTION',
+  '15a a REFUSING ballot seam is NAMED in the receipt (mirrored:false + the seam\'s own code) instead of being swallowed',
+  refusingVote.receipt.ballot)
+
+const throwingFace = ballotFace({ cast: () => { const e = new Error('no box for this motion'); e.code = 'NO_BOX_FOR_MOTION'; throw e } })
+const throwingVote = throwingFace.vote({ meeting: openOne(throwingFace).meeting, member: 'r-2', value: 1 })
+ok(throwingVote.ok === true && throwingVote.receipt.ballot.mirrored === false && throwingVote.receipt.ballot.reason === 'threw' &&
+  throwingVote.receipt.ballot.code === 'NO_BOX_FOR_MOTION',
+  '15b a THROWING ballot seam is disclosed too (reason:threw + the code) — the old `catch {}` swallowed exactly this',
+  throwingVote.receipt.ballot)
+
+const noSeamFace = ballotFace(null)
+const noSeamVote = noSeamFace.vote({ meeting: openOne(noSeamFace).meeting, member: 'r-2', value: 1 })
+ok(noSeamVote.ok === true && noSeamVote.receipt.ballot.mirrored === false && noSeamVote.receipt.ballot.reason === 'no-seam',
+  '15c with NO seam the meeting still counts the vote, but the receipt discloses `mirrored:false (no-seam)`',
+  noSeamVote.receipt.ballot)
+
+const workingFace = ballotFace({ cast: () => ({ ok: true }) })
+const workingVote = workingFace.vote({ meeting: openOne(workingFace).meeting, member: 'r-2', value: 1 })
+ok(workingVote.ok === true && workingVote.receipt.ballot.mirrored === true && workingVote.receipt.ballot.reason === 'cast-without-motion',
+  '15d POSITIVE: a working seam reports `mirrored:true` (the disclosure does not cry wolf)',
+  workingVote.receipt.ballot)
 
 console.log('\n  boundaries (what this drill does NOT prove): no host/subagents ⇒ re-dispatch is a recorded callback;')
 console.log('  no real child spawn; `inject` used the mailbox path (chat was present but refusing); time is the injected clock;')

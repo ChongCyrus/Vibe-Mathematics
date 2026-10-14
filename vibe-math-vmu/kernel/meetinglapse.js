@@ -139,7 +139,12 @@ export function extensionPlan({ requestedMs = null, declaredStepMs = 0, defaultS
 export function createMeetingControls({
   requireMeeting, clock, limits, counters = {}, say = () => {}, deny, capIn,
   numbers = (v) => Number(v),
+  // F51 / task-89: the ONE state writer, injected by the face that owns the meeting objects (`kernel/meetings.js`).
+  // It is what makes the DOMAIN marker (open|lapsed|closed) durable. A caller that does not inject it gets a
+  // label-only fallback — and therefore NO durable marker — which is self-disclosed by `openMeetings()`.
+  markState = null,
 } = {}) {
+  const setState = typeof markState === 'function' ? markState : (m, state) => { m.state = String(state); return 'open' }
   const limitOf = () => Number(limits().hardLimitMs)
 
   const lapseDue = (a) => {
@@ -166,7 +171,7 @@ export function createMeetingControls({
     }
     const rec = makeLapseRecord(decision, { by: args.by })
     m.lapse = rec
-    m.state = 'lapsed'
+    setState(m, 'lapsed')
     m.minutes.entries.push({ at: rec.at, kind: 'lapse', name: rec.name, why: rec.why, revocable: true, limitMs: rec.limitMs, elapsedMs: rec.elapsedMs })
     counters.lapses = (counters.lapses || 0) + 1
     say({ type: 'meetings/lapse', at: rec.at, meeting: m.id, name: rec.name, revocable: true, limitMs: rec.limitMs, elapsedMs: rec.elapsedMs })
@@ -182,7 +187,7 @@ export function createMeetingControls({
     if (verdict.ok !== true) throw deny(verdict.code, verdict.message, verdict.hint, verdict.keys || [])
     if (verdict.deduped) return { ok: true, deduped: true, meeting: m.id, lapse: Object.assign({}, m.lapse) }
     m.lapse = verdict.record
-    m.state = 'open'
+    setState(m, 'open')
     m.minutes.entries.push({ at: m.lapse.revokedAt, kind: 'lapse-revoked', name: m.lapse.name, by: m.lapse.revokedBy, why: m.lapse.revokeReason })
     counters.lapseRevocations = (counters.lapseRevocations || 0) + 1
     say({ type: 'meetings/lapse-revoked', at: m.lapse.revokedAt, meeting: m.id, name: m.lapse.name, by: m.lapse.revokedBy })

@@ -4,7 +4,7 @@
 > 本卷回答用户定位那一句：**"很容易通过那些中间件等开发出一个自己想要的运行逻辑、agent preset，具备相应的物质基础，并可极其容易地高自由度地控制、调控"** —— 机制都在（`kernel/` ＋ `packs/`），本卷给的是**一条照着做就能造出来的路径**。
 >
 > **可核性纪律**：本卷每段都带**命令**与**期望输出**；标 **【实测】** 的是本轮真跑过的（输出原样抄录），标 **【未实测】** 的明确说明为什么没跑（**绝不写成"已验证"**）。
-> 状态：**走查 v1.1 ✓**（**四形态全部实测**：M1／M2／M3 探针 + **M4 最小外部插件已装载并被调用**；`plan().actions` 的形状已查明为设计如此；`script`/`plugin` 具名拒已跑三层探针；**未核项只剩一条**（M4 里消费 vmu 自身服务，需一次会话）见 §8）。
+> 状态：**走查 v1.2 ✓**（**四形态全部实测**：M1／M2（**两种形状**，含 `flat.api.services` 三条具名拒）／M3／**M4 最小外部插件已装载并被调用**；`plan().actions` 形状已查明为设计如此；`script`/`plugin` 具名拒三层探针；**未核项只剩一条**（M4 里消费 vmu 自身服务，需一次会话）见 §8）。
 
 ---
 
@@ -44,7 +44,7 @@
 | `PACK.settings` | **L2 默认层** | `{ 'vmu.<已存在键>': <值> }` —— **只写机制开关** | 装载器合成进内核设置（来源层 `pack`） | `packs/v5r/settings/defaults.js` |
 | `settings/defaults.json` | L2（纯数据视图） | 与上面同值的 JSON | **插件在建内核之前**按目录名读 | `packs/v5r/settings/defaults.json` |
 | `PACK.rules[]` | **L3-M1 声明式** | `{ id, kind:'rules', on:['<已登记钩子>'], when, then }` | vmu 总线（`kernel/bus.js`） | `institute-min` 的 `institute-min-locked-vote` |
-| `PACK.middleware[]` | **L3-M2 代码模块** | `{ id, kind:'module', on:[…], handler }` —— **handler 必须是函数** | 总线；**装载器不读文件** | `packs/v5r/middleware/prompt-switches.js`（作为 policy 的纯函数） |
+| `PACK.middleware[]` | **L3-M2 代码模块** | **两种形状**（`kernel/pack.js:129-135`）：① **inline** `{ id, kind:'module', on:[…], handler: fn }` —— 直上总线，**只看得到总线信封**；② **`module:`**（`{meta:{apiVersion},capabilities,hooks}`）或 **`file:`** —— 经 `kernel/loader.js` 的 `toBusEntries()`（校验 apiVersion／capabilities／hooks ＋ 附加 `api`） | ① 由 `pack.js` 直接 `bus.add`；② 由 loader 装载（**无 loader ⇒ 具名拒 `VMU_ENGINE_UNAVAILABLE`**，`pack.js:471`） | ② 的真实例子：`packs/v5r/middleware/stall-meeting.js` ＋ 清单条目 `v5r.stall-meeting` |
 | `PACK.promptPolicies[]` | L3（**管线策略，不是总线条目**） | `{ id, apply({settings,turn}) -> {decisions,errors} }` | `createKernel` 的 `sectionPolicy` 注入点 | `packs/v5r/index.js` 的 `promptPolicies`（**踩过坑：误放 `middleware` 会让整包 apply 抛**） |
 | `PACK.codes[]` | L4 | `VMU_PACK_<ID大写>_…`（**前缀不符即拒**） | `validatePack` | `institute-min` |
 | `PACK.slots[]` / `PACK.tracks[]` | L4 | 纯标签数据（内核不解释语义） | pack 应用 | `institute-min` |
@@ -92,9 +92,9 @@ node <临时目录>/own-pack/probe.mjs        # 见 §0 的探针：装包 → �
 ```
 **仓内门禁（可复现，本轮读数）**：`node tests/vmu-middleware-hooks-declared.test.mjs` ⇒ **8 passed, 0 failed**（exit=0）；钩子名的登记与分类由 `node scripts/audit-hook-emit-classification.mjs` 守（**7 passed, 0 failed**，exit=0）。
 
-### M2 代码模块（总线条目 `kind:'module'`，**必须 handler 函数**）
+### M2 代码模块（总线条目 `kind:'module'`；**两种形状**，`kernel/pack.js:129-135`）
 
-**文件**：同一 `index.js` 里加：
+**形状① inline `handler`（够不到 `api`）**：同一 `index.js` 里加：
 ```js
 export const __fired = []
 export const PACK = Object.freeze({
@@ -103,7 +103,7 @@ export const PACK = Object.freeze({
     id: 'own-demo-counter',
     kind: 'module',
     on: ['prompt/section-assembled'],                 // 已有生产者的 vmu 钩子
-    handler: () => { __fired.push(Date.now()) },      // 函数！装载器只接收函数，不去读文件
+    handler: () => { __fired.push(Date.now()) },      // ★ 形状①：内联函数，直上总线（只看得到总线信封）
   }],
 })
 ```
@@ -113,7 +113,38 @@ export const PACK = Object.freeze({
    busEntriesAfterApply=["own-demo-counter:module","own-demo-forbid-one-tool:rules"]   ← 条目真的上了总线
 ④ M2 handler fired delta=1                                                             ← handler 真的被调用
 ```
-**真实锚点**：`packs/v5r/middleware/prompt-switches.js`（纯函数：只吃 `settings`／`turn`，返回 `{decisions,errors}`，不碰管线/内核/IO）。
+
+**形状② `module:`（经 loader，**才拿得到 `api`**）**：
+```js
+// 你自己的模块文件，例如 middleware/my-policy.js
+export const meta = { apiVersion: 1, id: 'my-policy' }
+export const capabilities = ['read-state', 'trigger-workflow', 'record']   // 要 services 缝就必须有 trigger-workflow
+export const hooks = {
+  'control/idle': async (flat) => {                 // ★ 签名是 fn(flat)：单个"拍平后的事件"，api 在 flat.api 里
+    const svc = flat.api.services.get('vmu.meetings')   // 能力门控；未声明 ⇒ VMU_NOT_PERMITTED
+    ...
+  },
+}
+```
+```js
+// 清单里用 module:（或 file:）而不是 handler:
+{ id: 'my-policy', kind: 'module', on: ['control/idle'], failure: 'open',
+  capabilities: ['read-state', 'trigger-workflow', 'record'], module: MY_POLICY }
+```
+**怎么证明它生效了**【实测】（`probe-api.mjs`／`probe-module.mjs`）：
+```
+HOOK SIGNATURE (flat keys) = ["api","hook","idleMs","member","phase","raw","role"]      ← api 在第一个（也是唯一）参数里
+API FACADE KEYS            = ["dryRun","hook","kernel","log","services","setting","traceId"]   （`kernel/loader.js:32` 的 API_KEYS）
+PUBLISHED SERVICES         = ["vmu.activity","vmu.ballotbox","vmu.budget","vmu.chat","vmu.commitlog","vmu.human",
+                              "vmu.library","vmu.mailbox","vmu.meetings","vmu.minutes","vmu.panel","vmu.records","vmu.tasks"]
+POSITIVE  get('vmu.activity')            ⇒ {"asked":"vmu.activity","got":true}                  ✓
+REFUSAL   get('vmu.no-such-service')     ⇒ VMU_NO_SUCH_OBJECT  ＋ hint「published: vmu.activity, …」（**列已发布清单**）
+REFUSAL   get('')                        ⇒ VMU_INVALID_ARGUMENT ＋ hint「e.g. services.get("vmu.meetings")」
+REFUSAL   未声明 trigger-workflow        ⇒ VMU_NOT_PERMITTED   ＋ enforced:["capabilities.trigger-workflow"]
+```
+**什么时候用哪种形状（一句话判据）**：**只要够不到服务就够用 ⇒ 形状①（inline `handler`，最短）**；**只要必须"做点什么"（读设置／调用 `vmu.*` 服务／触发工作流）⇒ 形状②（`module:`，让 loader 附加 `api`）**。
+**两条硬边界**：① **裸路径不接受**（两种形状之外的 `'./foo.js'` 字符串会被 `validatePack` 拒，`pack.js:129-135`）；② **内核没有 loader 时声明形状② ⇒ 具名拒 `VMU_ENGINE_UNAVAILABLE`**（`pack.js:471`：*"declares an M2 module … but this kernel has no loader"*）——**不是静默丢弃**。
+**真实锚点**：形状②的仓内实例 `packs/v5r/middleware/stall-meeting.js`（清单条目 `v5r.stall-meeting`，`on:['control/idle']`，`capabilities:['trigger-workflow','record']`）；形状①的纯函数实例 `packs/v5r/middleware/prompt-switches.js`（只吃 `settings`／`turn`，返回 `{decisions,errors}`，不碰管线/内核/IO）。
 **★ 头号坑（真实踩过）**：它是 **`promptPolicies`（管线策略）**，**不是** `middleware`。`packs/v5r/index.js:71-74` 记着：**误放到 `middleware` 会让 `pack.js` 把条目交给总线、总线拒绝 ⇒ 整个 pack 的 apply 抛**。判据：`on` 的钩子**在 `VU_HOOKS` 里吗**？`prompt/section-assembled` 在；管线策略的消费点是 `sectionPolicy`。
 
 ### M3 脚本 / 工作流（**不在总线上**：`kernel/script-bridge.js` ＋ `vibe_vmu_script`）
@@ -268,6 +299,9 @@ dsh --profile <你的 profile> --dump-config --patch <临时目录>\vmu-overlay-
 | **2** | **清单值被当成"读取"** | pack／schema 里**列了**键，但**没有任何读者** ⇒ 它只是清单 | `node scripts/generate-wired-schema.mjs --check`（键是否真被读到）＋ `node tests/vmu-planned-settings.test.mjs`（未接线登记 vs 真读者） | wired-schema **exit=0**："schema already in sync (1554 -> 1554)"；planned-settings **ALL GREEN（planned=113, docs=27, passed=39/0）**【实测】 |
 | **3** | **dump ≠ 运行时** | `--dump-config` 看着对，运行时没生效（或反之） | **判据必须在运行时**：`settingsMerge.sources`（顶层来源是不是 `config`／`pack`）、`request/header.tools`（宿主真发给模型的工具清单）、会话日志事件；`--session <id>` 离线复评 | 本卷 §3 的 dump 只用来**看 patch 落地**；**"是否生效"另由运行时断言判**（`--expect-settings`／`--expect-delivery`）【实测】 |
 | **4** | **读者未落地就写默认值** | 先给某个键写了默认值，而读者还没做 ⇒ "有默认值"被误读成"已接线" | `node tests/vmu-planned-settings.test.mjs`（planned 与读者对齐）＋ `docs/04 §11` 的 ownership rule；真例：`vmu.meetings.` ＋ `reconsiderFloor`（**原键**）**全仓零读者** ⇒ R6 三处清单值删除＋schema 删除 | planned-settings **ALL GREEN**；该原键已删（`packs/v5r/prompts/v5r-core.js` 零命中）【实测】 |
+| **5** | **用 inline `handler` 却以为能消费服务** | 形状①拿不到 `api` ⇒ `flat.api`／`api.services` 是 `undefined`（不是具名拒，是**你自己的 JS 崩**） | **改形状②**（`module:`／`file:`）＋ 声明 `capabilities:['trigger-workflow',…]`；判据是**三条具名拒**真的出现（`VMU_NOT_PERMITTED`／`VMU_NO_SUCH_OBJECT`／`VMU_INVALID_ARGUMENT`），**不是** `undefined`／`Cannot read properties of undefined` | `probe-api.mjs`：`fn(flat)` ⇒ `flat.api.services` 可用；⚠ 我 Round 10 就踩过（把 `api` 当第二参 ⇒ `undefined`）【实测】 |
+
+> **形状②的 hook 签名是 `fn(flat)`**：`kernel/loader.js:192-208` 把总线信封**拍平成一个对象**并把 `api` 挂在 `flat.api` 上（`flat.raw` 保留原始信封）—— **所以 `api` 不是第二个参数**。
 
 **★ 判据纪律（三轮踩出来的，最值钱）**：
 - **回执只在会话日志里，驱动 stdout 不回声结果** ⇒ 断言必须读 `sess.rawResults`（R7 的 3 个假阴性）。
@@ -309,10 +343,10 @@ B2 actions=[{"kind":"setting","key":"vmu.records.headListAt","value":9},{"kind":
 
 ---
 
-## 7. 验收判据（**跑这 10 条，全绿即本走查成立**）
+## 7. 验收判据（**跑这 11 条，全绿即本走查成立**）
 
 > **每行都是一条机器可判定的断言**：命令 → 期望值即判据；**任一行红 ⇒ 走查不成立**（判据只认**具名**输出：条数／`problems=[]`／拒码名／`exit=0`，不认"看起来对"）。
-> **负面场景**也已具名：§5 的四个坑各配一条门禁（坑 1/2/4 的**红**条件＝键的值域不合、键无读者、planned 未对齐；坑 3 的**红**条件＝只凭 dump 下结论）。
+> **负面场景**也已具名：§5 的**五个**坑各配一条门禁（坑 1/2/4 的**红**条件＝键的值域不合、键无读者、planned 未对齐；坑 3 的**红**条件＝只凭 dump 下结论；坑 5 的**红**条件＝用 inline `handler` 去够 `api` ⇒ `undefined`）。
 
 | # | 命令 | 期望 | 本轮读数 |
 |---|---|---|---|
@@ -326,13 +360,15 @@ B2 actions=[{"kind":"setting","key":"vmu.records.headListAt","value":9},{"kind":
 | 8 | `node scripts/audit-hook-emit-classification.mjs` | emit 名已分类 | **7/0** |
 | 9 | `node scripts/check-docs.mjs`；`node tests/audit-doc-index.test.mjs`；`node tests/audit-vmu-docs.test.mjs` | 引用可解析／本卷被索引收录 | **PASS**；**5/0**；**84/0** |
 | 10 | §2 M4 的三步（建 profile → `plugin add` → boot）+ 查 marker；§2 kind 拒的 `probe-kinds.mjs` | 外部插件装载＋`apply` 真执行；`script`/`plugin` 具名拒 | **【实测】**（marker 时间戳／`VMU_MIDDLEWARE_KIND_UNSUPPORTED`） |
+| 11 | `node <临时目录>/own-pack/probe-api.mjs`（形状②） | 签名 `fn(flat)` ＋ `flat.api.services` 三条具名拒 | **【实测】**：`VMU_NO_SUCH_OBJECT`／`VMU_INVALID_ARGUMENT`／`VMU_NOT_PERMITTED` ＋ 正向 `get('vmu.activity')` 成功 |
 
 ## 8. 未核项（编号登记见 `14-§2`）
 
 1. **M4 里"消费 vmu 自己的服务"** ✗（**U15**，Round 9 登记的那条已收窄）：**外部插件被装载并被调用**、以及**消费宿主服务**（`inject:['tools']` ⇒ `tools.present=true`）都**已实测** ✓；**仍差**的是"在 M4 里拿到 `vmu.middleware`／`vmu.tasks`／`vmu.report`"——profile boot 时它们是 `false`，因为**vmu 内核按会话创建**。⇒ **前置条件具名**：需要**一次模型会话**（或在会话作用域里 `inject` 对应 vmu 服务名）才能实测这一条；本卷**未实测**，不写成已验证。
 2. **`script`/`plugin` kind 的具名拒** ✅ **已实测**（Round 10）：`probe-kinds.mjs` 三层证据 —— `validatePack` ⇒ `kind must be rules|module (got "script")`；`loader.apply` ⇒ `VMU_PACK_MISSING`（同一条 message）；`kernel.bus.add` ⇒ **`VMU_MIDDLEWARE_KIND_UNSUPPORTED`**（hint 指向 `docs/05 §2` 的真实载体）（**U16 可关**）。
 3. **本卷的"设计卷"归类** ✅ **已解**（Round 9 收尾）：`scripts/check-docs.mjs` 的 `DESIGN_VOLUMES` 已含 `'29'`（由 vmu-verify 手核四要件后加入）⇒ `check-docs` **PASS（issues=0）**（**U17 可关**）。
-4. **M4 的"外部插件消费 vmu 服务"若要进 CI 门禁**：本卷给的是**可跑的 boot 配方**（无模型开销）；要不要把它固化成常驻测试，属 vmu-verify 的测试面（见 `_handoff/vmu/assistant-round10-report.md` 的转办项）。
+4. **M2 形状② 的 `api` 传参位置** ✅ **已钉准（Round 11）**：签名是 **`fn(flat)`**（`kernel/loader.js:192-208`：总线信封被**拍平成单个对象**，`api` 挂在 `flat.api`，原信封留在 `flat.raw`）——**不是 `(payload, api)`**（我 Round 10 按两参写，第二参 `undefined`）。三条具名拒 ＋ 正向控制均已实测（见 §2 与 §7 第 11 行）：`get('vmu.activity')` 成功；`get('vmu.no-such-service')` ⇒ `VMU_NO_SUCH_OBJECT`（hint 列已发布清单）；`get('')` ⇒ `VMU_INVALID_ARGUMENT`；未声明 `trigger-workflow` ⇒ `VMU_NOT_PERMITTED`（＋`enforced:["capabilities.trigger-workflow"]`）。
+5. **M4 的"外部插件消费 vmu 服务"若要进 CI 门禁**：本卷给的是**可跑的 boot 配方**（无模型开销）；要不要把它固化成常驻测试，属 vmu-verify 的测试面（见 `_handoff/vmu/assistant-round10-report.md` 的转办项）。
 
 ## 9. 收尾：一句话把"物质基础"落地
 

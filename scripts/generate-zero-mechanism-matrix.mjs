@@ -142,6 +142,7 @@ const EXPECT = {
   // the same measured reason as `guard` rather than given an invented expectation. It exists because compliance
   // and the domain gate each had their own copy of the same normaliser, and two copies drift.
   timevalue: G('EXPECT_NA', '纯函数工具模块（**无 `create*` 工厂** ⇒ 矩阵不适用 ✓）；它存在的原因是 `ms()` 曾在 `compliance`／`domaingate` **各有一份**（**两份实现会漂移** ✗✓ ⇒ 已抽为单一真源 ✓）'),
+  meetingmarker: G('ok 或 object', '轮 11 从 `meetings.js` 抽出（F51 标记族：域派生/耐久接缝/读面/自曝；`meetings.js` 1244→1198 ✓）。**实测零机制形状**：工厂 `createMeetingMarker({clock})`（**不注入 `durable`**）⇒ 首个零参操作 `status()` 回 **object**，其中 **`bound:false`／`durableMarker:false`** 自曝、**不声称任何"开着"的会** ✓ ⇒ 零机制＝"**没有域接缝就明说自己没有**"，而不是假装有 ✓（有 `create*` 工厂 ⇒ 不适用 EXPECT_NA）。★ 期望词表是**闭集**：我先写裸 `object` 被判 mismatch（fail-closed ✓），必须用词表里的 `ok 或 object`。'),
   // Round 9: the same measured reason as `timevalue` - `contentvalue` is a pure-function module (no `create*` factory,
   // no service, nothing to probe), extracted out of `resume.js` when the file crossed the 1200-line rule. It is
   // registered EXPECT_NA rather than given an invented expectation.

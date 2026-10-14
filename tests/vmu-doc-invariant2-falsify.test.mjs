@@ -29,11 +29,14 @@ import { falsifyFamily, falsify, formatFamilyReport } from './_lib/falsify.mjs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 import { readFileSync } from 'node:fs'
+// The REAL kernel is the assembly the host publishes faces from; the module UNDER TEST for case 3 is `host.js`.
+import { createKernel } from '../vibe-math-vmu/kernel/index.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const VMU = join(HERE, '..', 'vibe-math-vmu')
 const TOOL_ACTIVITY = join(VMU, 'tools', 'activity.js')
 const STOREPOLICY = join(VMU, 'kernel', 'storepolicy.js')
+const HOST = join(VMU, 'host.js')
 const DOC03 = join(VMU, 'docs', '03-interface-contract.md')
 const DOC02 = join(VMU, 'docs', '02-architecture.md')
 const DOC11 = join(VMU, 'docs', '11-gates-and-development.md')
@@ -65,6 +68,10 @@ function parseWaitRow(text) {
     tool: (/(vibe_vmu_[a-z_]+)/.exec(cells[1] || '') || [])[1] || '',
     actions: m ? m[1].split('｜').map((s) => s.trim()).filter(Boolean) : [],
     params: [...paramCell.matchAll(/`([A-Za-z][A-Za-z0-9]*)`/g)].map((x) => x[1]),
+    // the 4th cell: the row's OCCURRENCE CONDITION (`` `activityTool` 为真（`vmu.activity.*`） ``) - case 3 reads it
+    gate: cells[4] || '',
+    gateName: (/`([a-zA-Z][A-Za-z0-9]*)`/.exec(cells[4] || '') || [])[1] || '',
+    gateFamily: (/`(vmu\.[a-z0-9.]+)\*`/.exec(cells[4] || '') || [])[1] || '',
   }
 }
 const ROW = parseWaitRow(DOC03_TEXT)
@@ -138,6 +145,41 @@ function receiptDisciplineProbe(mod) {
   }
 }
 
+/**
+ * CASE 3 (round 11, ruled by vmu-verify): the row's SECOND HALF — the OCCURRENCE CONDITION. `docs/03:1412` prints
+ * `` `activityTool` 为真（`vmu.activity.*`） `` for `vibe_vmu_wait`, i.e. the face is published when a `vmu.activity.*`
+ * key is declared. The judgement is the PUBLICATION side (`toolSpecs`), NOT the declaration-side table
+ * (`TOOL_FACES`/`resolveFaces`): "declared" and "published" are different facts, and the gap between them is exactly
+ * what a silently non-mounting face hides in (the round-10 `ballots` lesson). D-01 is excluded from the NEGATIVE case
+ * on purpose — a bus entry is also a declaration — so that scenario declares an unrelated prefix and requires the bus
+ * to be free of any entry. The disclosure report (`disabled`/`unknownDisabled`) is read as well, because "not
+ * published" and "silently vanished" are indistinguishable without it.
+ */
+async function occurrenceConditionProbe(mod) {
+  const build = (settings) => {
+    const k = createKernel({ clock: () => 0, settings })
+    return { k, specs: mod.toolSpecs({ kernel: k, settings }) }
+  }
+  const names = (list) => (Array.isArray(list) ? list.map((s) => (s && s.name) || String(s)) : [])
+  const has = (list, name) => names(list).indexOf(name) !== -1
+  const dec = build({ 'vmu.activity.timeoutMs': 10000 })
+  const unr = build({ 'vmu.chat.quota': 5 })
+  const off = build({ 'vmu.activity.timeoutMs': 10000, 'vmu.core.facesDisabled': ['activity'] })
+  const busStatus = unr.k.bus && typeof unr.k.bus.status === 'function' ? unr.k.bus.status() : null
+  const offFaces = mod.resolveFaces({ settings: { 'vmu.activity.timeoutMs': 10000, 'vmu.core.facesDisabled': ['activity'] } })
+  const typoFaces = mod.resolveFaces({ settings: { 'vmu.core.facesDisabled': ['no-such-face'] } })
+  return {
+    // the citation itself: the row still names the gate AND the family prefix it claims
+    citationPresent: /activityTool/.test(ROW.gate) && ROW.gateName === 'activityTool' && ROW.gateFamily === 'vmu.activity.',
+    busFree: !!busStatus && Array.isArray(busStatus.entries) && busStatus.entries.length === 0,
+    declaredPublishes: has(dec.specs, 'vibe_vmu_wait'),
+    unrelatedDoesNotPublish: !has(unr.specs, 'vibe_vmu_wait') && names(unr.specs).length > 0,
+    disabledDoesNotPublish: !has(off.specs, 'vibe_vmu_wait'),
+    disabledIsNamed: Array.isArray(offFaces.disabled) && offFaces.disabled.some((d) => d.face === 'activity' && d.code === 'VMU_NOT_PERMITTED'),
+    unknownDisableIsNamed: Array.isArray(typoFaces.unknownDisabled) && typoFaces.unknownDisabled.indexOf('no-such-face') !== -1,
+  }
+}
+
 const family = await falsifyFamily({
   name: 'documented promises — the docs/03 tool-table row, and `fired ⊆ enforced`',
   cases: [{
@@ -171,6 +213,19 @@ const family = await falsifyFamily({
         find: "const enforcement = ['vmu.store.backend', 'vmu.store.root', 'vmu.store.tmpDir', 'vmu.store.fsync', 'vmu.store.autoBackup',",
         replace: "const enforcement = ['vmu.store.backend', 'vmu.store.root', 'vmu.store.fsync', 'vmu.store.autoBackup',   // MUTANT: the F1 regression, restored" },
     ],
+  }, {
+    name: 'docs/03:1412 occurrence condition (`activityTool` ⇔ `vmu.activity.*`) ↔ host.js',
+    module: HOST,
+    probe: occurrenceConditionProbe,
+    controlFields: ['citationPresent', 'busFree', 'declaredPublishes', 'unrelatedDoesNotPublish', 'disabledIsNamed', 'unknownDisableIsNamed'],
+    mutations: [
+      { label: 'the documented declaration no longer publishes the face', name: 'occurrence-family-renamed',
+        find: "families: ['vmu.activity.']", replace: "families: ['vmu.activityX.']" },
+      { label: 'the face is published with NO declaration at all (zero-mechanism broken)', name: 'occurrence-always',
+        find: "families: ['vmu.activity.']", replace: "families: ['vmu.activity.'], always: true" },
+      { label: 'a face disabled BY NAME is published anyway (the disclosure lies)', name: 'occurrence-disable-ignored',
+        find: 'if (disabledKeys.has(row.face)) {', replace: 'if (false) {' },
+    ],
   }],
 })
 
@@ -189,9 +244,16 @@ ok(r.subsetOk === true && r.firedCount === 1 && r.rogue === '',
   '★ the real `capabilities()` receipt satisfies the discipline (a fired key was necessarily evaluated)', r)
 ok(r.writeFiresTmpDir === true && r.writeSubsetOk === true && r.writeRogue === '',
   '★ and the WRITE receipt — the `tmpDir` branch the older guard never reached — really fires the key AND discloses it (the round-9 finding, now a live guard)', r)
+const o = family.cases[2].real
+ok(ROW.gate !== '' && o.citationPresent === true,
+  '★ the row\'s 4th cell still states the occurrence condition (`activityTool` ⇔ `vmu.activity.*`) — read from the volume, not assumed', { gate: ROW.gate, gateName: ROW.gateName, gateFamily: ROW.gateFamily })
+ok(o.busFree === true && o.declaredPublishes === true && o.unrelatedDoesNotPublish === true,
+  '★ declaring the documented prefix PUBLISHES `vibe_vmu_wait`; declaring an unrelated prefix (with the bus free of entries, so D-01 cannot mask it) does NOT', o)
+ok(o.disabledIsNamed === true && o.unknownDisableIsNamed === true && o.disabledDoesNotPublish === true,
+  'and the disclosure does not lie: a face disabled BY NAME is reported as `disabled` with `VMU_NOT_PERMITTED` and is NOT published, and a typo lands in `unknownDisabled`', o)
 
-console.log('=== FALSIFICATION: cut a row clause, or break the subset discipline ===')
-ok(family.ok, '★ all five documented-promise mutations are caught (control green + each mutant red)', formatFamilyReport(family))
+console.log('=== FALSIFICATION: cut a row clause, break the subset discipline, or break the occurrence condition ===')
+ok(family.ok, '★ all eight documented-promise mutations are caught (control green + each mutant red)', formatFamilyReport(family))
 const byLabel = (needle) => family.results.find((x) => x.label.includes(needle))
 const statusRed = byLabel('documented `status` action is unreachable') && byLabel('documented `status` action is unreachable').red
 const paramRed = byLabel('`timeoutMs` parameter is no longer declared') && byLabel('`timeoutMs` parameter is no longer declared').red
@@ -208,6 +270,15 @@ ok(!!firedRed && firedRed.subsetOk === false && firedRed.rogue === 'vmu.store.lo
 const writeRegRed = byLabel('write receipt fires a key') && byLabel('write receipt fires a key').red
 ok(!!writeRegRed && writeRegRed.writeSubsetOk === false && writeRegRed.writeRogue === 'vmu.store.tmpDir' && writeRegRed.subsetOk === true,
   '★ "the F1 regression restored": only the WRITE receipt breaks — the `capabilities()` receipt is untouched, so the guard is narrow and aimed at that branch', writeRegRed)
+const famRed = byLabel('documented declaration no longer publishes') && byLabel('documented declaration no longer publishes').red
+const alwaysRed = byLabel('published with NO declaration') && byLabel('published with NO declaration').red
+const disableRed = byLabel('disabled BY NAME is published anyway') && byLabel('disabled BY NAME is published anyway').red
+ok(!!famRed && famRed.declaredPublishes === false && famRed.unrelatedDoesNotPublish === true,
+  '★ "prefix renamed": the declaration the volume prints stops publishing the face — while the unrelated prefix still publishes nothing (the mutation is narrow)', famRed)
+ok(!!alwaysRed && alwaysRed.unrelatedDoesNotPublish === false && alwaysRed.declaredPublishes === true && alwaysRed.disabledDoesNotPublish === true,
+  '★ "published always": a deployment that declared only `vmu.chat.quota` now gets `vibe_vmu_wait` — the zero-mechanism default is gone (the named-disable branch still wins, so the mutation is aimed)', alwaysRed)
+ok(!!disableRed && disableRed.disabledDoesNotPublish === false && disableRed.disabledIsNamed === false,
+  '★ "disable ignored": `vmu.core.facesDisabled: [\'activity\']` no longer stops the face AND no longer reports it as disabled — the disclosure lies in the same breath', disableRed)
 
 console.log('=== CLOSED FINDING (the pin became a guard) ===')
 // HISTORY, because a pin that silently disappears is worse than one that never existed: while building case 2 this

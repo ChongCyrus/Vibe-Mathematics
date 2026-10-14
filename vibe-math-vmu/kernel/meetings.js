@@ -10,6 +10,7 @@ import { createLeaveControls } from './meetingleave.js'
 // decided 1200-line budget (docs/02 §L174) — see `kernel/meetinglapse.js`: it holds the pure rules, this file
 // holds the state (live records, minutes, counters, broadcasts) and the D3 receipt vocabulary.
 import { MEETING_LAPSE_NAME, createMeetingControls } from './meetinglapse.js'
+import { createMeetingMarker, mirrorVote } from './meetingmarker.js'
 // vmu kernel · meetings — the POLICY + GUARD layer that finally READS the `vmu.meetings.*` knobs.
 //
 // WHY: 08-academic-... (docs/08-primitives-meeting-ballot-workflow.md) declares **47 `vmu.meetings.*` keys**
@@ -96,7 +97,7 @@ const DEFAULTS = Object.freeze({
 
 const RING = 200
 
-export function createMeetings({ clock = () => 0, log = null, settings = {}, bus = null, members = null, ballot = null, wake = null } = {}) {
+export function createMeetings({ clock = () => 0, log = null, settings = {}, bus = null, members = null, ballot = null, wake = null, durable = null } = {}) {
   if (typeof clock !== 'function') {
     // No key has been consulted at construction time: the list is explicitly EMPTY (never undefined).
     throw Object.assign(refuse('VMU_INVALID_ARGUMENT', 'createMeetings needs a clock function', 'pass { clock: () => ms } — the only time source is the injected clock'), { enforced: [], evaluated: [] })
@@ -342,8 +343,13 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
    * The RULES and the four methods live in `kernel/meetinglapse.js` (extracted to keep this file inside the
    * decided 1200-line budget, docs/02 §L174); this face injects its STATE seams and keeps the D3 vocabulary.
    */
+  // F51 / task-89: the marker family (domain derivation, durable seam, read-back view, self-disclosure) lives in
+  // `kernel/meetingmarker.js` — the boundary is written out there; this face only owns the objects and the calls.
+  const marker = createMeetingMarker({ clock, live, archive, durable })
+  const markState = marker.markState
+  const openMeetings = marker.openMeetings
   const controls = createMeetingControls({
-    requireMeeting, clock, limits: () => K, counters, say, deny, capIn, numbers: n,
+    requireMeeting, clock, limits: () => K, counters, say, deny, capIn, numbers: n, markState,
   })
   /**
    * The RECEIPT vocabulary stays in this face (the rules module reports only the `keys` it read): every control
@@ -365,6 +371,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   const extend = (a) => withScope(controls.extend(a))
 
   const api = {
+    openMeetings,
     apiVersion,
     WIRED_KEYS, UNWIRED_REASONS,
 
@@ -405,6 +412,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         committeeReport: null, dissent: [],
       }
       live.set(id, m)
+      markState(m, 'open')
       counters.opened += 1
       const receipt = { at: ms, action: 'open', meeting: id, type: m.type, confidentiality: m.confidentiality, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
@@ -454,8 +462,8 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       if (!q.met && K.quorumLossPolicy !== 'continue') {
         mark(enforced, 'vmu.meetings.quorumLossPolicy')
         policy = K.quorumLossPolicy
-        if (policy === 'suspend') m.state = 'suspended'
-        if (policy === 'recess') { m.state = 'recess'; m.recess = { since: ms, initial: false } }
+        if (policy === 'suspend') markState(m, 'suspended')
+        if (policy === 'recess') { markState(m, 'recess'); m.recess = { since: ms, initial: false } }
       }
       if (K.quorumRecountMs > 0 && !q.met) {
         mark(enforced, 'vmu.meetings.quorumRecountMs')
@@ -683,9 +691,9 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       counters.votes += 1
       const tally = target ? { for: [...target.votes.values()].filter((v) => v === 1).length, against: [...target.votes.values()].filter((v) => v === 0).length, abstain: target.abstain.size } : { for: 0, against: 0, abstain: 0 }
       m.minutes.entries.push({ at: now, kind: 'vote', motion: target ? target.id : null, member: String(member), value: value === 0 ? 0 : 1 })
-      const receipt = { at: now, action: 'vote', meeting: m.id, motion: target ? target.id : null, member: String(member), tally, quorum: q, enforced, enforcedScope: ENFORCED_SCOPE }
+      const ballotMirror = mirrorVote({ ballot, counters, meeting: m.id, motionId: target ? target.id : null, member, value })
+      const receipt = { at: now, action: 'vote', meeting: m.id, motion: target ? target.id : null, member: String(member), tally, quorum: q, enforced, enforcedScope: ENFORCED_SCOPE, ballot: ballotMirror }
       pushReceipt(receipt)
-      if (ballot && typeof ballot.cast === 'function') { try { ballot.cast({ meeting: m.id, motion: target ? target.id : null, member, value }) } catch (e) { /* the ballot seam is advisory here */ } }
       return { ok: true, tally, quorum: q, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
@@ -734,7 +742,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         if (n(ms) > K.recessMaxMs) cap('VMU_MEETING_RECESS_LIMIT', 'recess (ms)', n(ms), K.recessMaxMs, 'vmu.meetings.recessMaxMs', enforced)
       }
       if (m.state === 'recess') throw deny('VMU_STATE', 'already in recess: ' + m.id, 'resume() first', [])
-      m.state = 'recess'
+      markState(m, 'recess')
       m.recess = { since: now, until: now + n(ms), motion: null, initial: true }
       m.minutes.entries.push({ at: now, kind: 'recess', ms: n(ms) })
       const receipt = { at: now, action: 'recess', meeting: m.id, until: m.recess.until, enforced, enforcedScope: ENFORCED_SCOPE }
@@ -756,7 +764,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         if (!motion) throw deny('VMU_STATE', 'vmu.meetings.recessResumeRequiresMotion=true: resuming needs a motion',
           'pass { motion: "<id>" } — a recess does not end by itself', enforced)
       }
-      m.state = 'open'
+      markState(m, 'open')
       m.recess = null
       m.minutes.entries.push({ at: now, kind: 'resume', motion: motion === null ? null : String(motion) })
       const receipt = { at: now, action: 'resume', meeting: m.id, motion, enforced, enforcedScope: ENFORCED_SCOPE }
@@ -980,7 +988,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       }
       if (Array.isArray(actions)) m.minutes.actions = actions.slice()
       if (report) m.committeeReport = report
-      m.state = 'closed'
+      markState(m, 'closed')
       m.closedAt = now
       m.wallMs = now - m.wallStartMs
       live.delete(m.id)
@@ -1035,6 +1043,9 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         liveMeetings: [...live.keys()].sort(), archived: archive.length,
         // F28: a lapse is a first-class state an operator must be able to SEE (not infer from a missing meeting).
         lapsedMeetings: [...live.values()].filter((m) => m.lapse && !m.lapse.revokedAt).map((m) => m.id).sort(),
+        // F51 (task-89): the durable-domain-marker SELF-DISCLOSURE, owned by `kernel/meetingmarker.js` —
+        // `bound:false` means nothing is claimed about a previous process (the G7 `durableLog.bound` shape).
+        durableMarker: marker.status(),
         lapses: Number(counters.lapses || 0), lapseRevocations: Number(counters.lapseRevocations || 0),
         // GAP-MTG-02 (D7): the tier is part of the observable state, and a contradictory declaration is visible
         // here BEFORE anyone hits the refusal (an operator must be able to see why a close would be refused).

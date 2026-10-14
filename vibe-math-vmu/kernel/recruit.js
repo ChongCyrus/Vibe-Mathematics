@@ -183,6 +183,9 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
     }
     staff.set(a.candidate, { memberId: a.candidate, slot: o.slot, hiredAt: nowAccept, probationUntil, confirmedAt: null, by: by || null, termUntil, termClamped, recalls: 0 })
     return { memberId: a.candidate, slot: o.slot, probationUntil, confirmed: false, termUntil, termClamped,
+      // ROUND 11 / task-86 (C): the receipt names the key at TOP LEVEL too - the face-level convention is
+      // `enforced[]` on the receipt (not only inside a sub-object), so a reader never has to know where to look.
+      enforced: ['vmu.members.maxTempPerMember'],
       // The cap that was evaluated travels in the receipt, so "may this hirer take another temp?" is answerable.
       tempCap: { limit: c.maxTempPerMember, held: mine, after: mine + 1, enforced: ['vmu.members.maxTempPerMember'] } }
   }

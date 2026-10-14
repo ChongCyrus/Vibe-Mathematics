@@ -261,7 +261,56 @@
 │   └── Profile.md
 └── Shared/                       # 所级共享（会议纪要/决议/形式化/论文…）
 ```
-**公开键（**实测**：`kernel/store.js` 的 `PUBLIC_KEYS` ✓）**：`phase`、`members[]`（含角色槽位与待续标记）、`tasks[]`、`meetings[]`、`ballots[]`、`records[]`（含指纹）、`budget`、`settings.resolved`、`middleware[]`、`packs[]`、**`work`（在途台账 ✓）**、**`idempotency`（K6 幂等投影 ✓ —— 轮 1 补登：它曾在白名单外，导致 `patch('idempotency',…)` 恒抛 `VMU_INVALID_ARGUMENT`、台账永不耐久 ✗）**。
+### 6.1 公开键（**逐键**：写者 → 读者；`kernel/store.js` 的 `PUBLIC_KEYS` 是**唯一白名单** ✓）
+
+> **口径**：本节**只列公开面**（有读者、语义稳定、pack/preset 可依赖）。白名单里**没有写者的键单列**并标 **未定/保留**——不让部署依赖一个没人写的名字。任何 `patch/read` 都要过白名单（`kernel/store.js:119` 的 `assertKey`；越界 ⇒ 具名拒 `VMU_INVALID_ARGUMENT`，K2 的教训）。**完整键（1228）见 `docs/04`**；这里是**耐久键**（`PUBLIC_KEYS` 20 个，逐一有出处）。
+>
+> ★ **两张表互补，别只信一张**：**本表**保证"**每个键都有写者→读者**"（文档侧真相源）；**`scripts/audit-projection-census.mjs`**（常驻门禁，读**真装配**）保证"**每条声明真的生效、或具名地不生效**"（`declared` → `attached`／`viaAlias`／`notAttached` 逐条具名，例如面为 null 时的 `VMU_RESUME_NO_TARGET`）。文档说"谁写谁读"，门禁说"这条声明今天到底挂上没有"——两者都要看。
+
+**族 ① · 投影键（耐久；由 `vmu.resume.projections` 声明后**写穿/重放**）**
+
+| 键 | 模式 | 写者（声明后） | 读者（恢复时） |
+|---|---|---|---|
+| `tasks` | **journal**（记命令 ⇒ hydrate **重放**） | `kernel/index.js:870` 适配行；命令表在 `:965` 一带（`PROJECTION_COMMANDS`，读者不入表） | `kernel/resume.js` `hydrate()`（用**同一批公开方法**重放） |
+| `members` | state | `kernel/index.js:881`（`snapshot()/restore()` 对） | 同上（**面为 null 时**报 `VMU_RESUME_NO_TARGET`，不假装） |
+| `meetings` | state | `kernel/index.js:882` | 同上 |
+| `ballotbox` | state | `kernel/index.js:883` | 同上（旧拼写 `ballots` 是**具名容忍**的 deprecated 别名：`:980-990` 的 `PROJECTION_ALIASES` ＋ **告警**，不静默） |
+| `minutes` | state | `kernel/index.js:884` | 同上 |
+| `chat` | state | `kernel/index.js:885` | 同上 |
+| `panel` | state | `kernel/index.js:886` | 同上 |
+| `budget` | state | `kernel/index.js:889` | 同上 |
+| `human` | state | **无条件**挂（`kernel/index.js:998` 一带：审批队列＋否决台账） | 同上 |
+| `phase` | state（单键） | `kernel/index.js:928` 的 `writePhase()`（调用点 `:1614/:1625/:1862/:1874`） | `kernel/resume.js` 的 `phase()` |
+| `resume` | state（引擎自有） | `kernel/resume.js:439/:451`（`patch(key,…)`） | 同面 `hydrate()` |
+| `ids` | state（计数器投影） | `kernel/ids.js:104`（`patch(IDS_KEY,…)`） | 同面读回（**号不重用**） |
+
+**族 ② · 自持久面（面自己写自己的键，不经投影表）**
+
+| 键 | 写者 | 读者 | **缺席时（具名）** |
+|---|---|---|---|
+| `mailbox` | `kernel/mailbox.js:497`（`persist()` → `patch(MAILBOX_STORE_KEY,…)`） | 同面 `restore()`（`:513` 一带） | `status().durable === false`：内存态，**不假装耐久** |
+| `idempotency` | `kernel/idempotency.js:323`（`patch(LEDGER_KEY,…)`） | 同面（去重台账） | 只在本进程去重 |
+| `work` | `kernel/work.js:64`（`patch(WORK_KEY,…)`） | 同面 ＋ 恢复的 `work` 接缝（`interrupted` 具名） | 无在途台账 |
+
+**族 ③ · 白名单内但【未落盘】：只在 `status()` 视图里（**不要依赖文件**）**
+`settings.resolved`（`status().settings.resolved`；白名单只为种子 `{}`）、`packs`（`status().packs` ＋ `packNotes()`）、`middleware`（`status().middleware`／`bus.status()`）。
+
+**族 ④ · 保留/未定（白名单里有、**但没有写者**）** —— ★ 任何部署**不要依赖**这两个名字：
+- `ballots`（`kernel/store.js:39`）：R10 起适配表与 store 键都叫 **`ballotbox`**，`ballots` 只剩白名单与旧注释 ⇒ **无写者、无读者**。**未定**：是留给旧 `ballot` 面还是应删——**删除属破坏性变更**（§7），故此处**具名保留**。
+- `records`（`kernel/store.js:40`）：`kernel/records.js` 是**内存投影**，持久化**委托给 library 面**（该文件头 `:16`：「this module is an in-memory projection whose records can be handed to it」）⇒ **本键无写者**。**未定**：是否需要内核侧写者，取决于 library 面是否接管。
+
+### 6.2 零机制 ⇒ 声明后才由谁读（可调控性的边界，**同一节**）
+
+| 维度 | **无声明时**（零机制） | **声明后（谁读）** |
+|---|---|---|
+| 工具面 | **恰好 1 个**：`vibe_vmu_status`（D-01 红线） | `host.js` 的 `TOOL_FACES`＋`resolveFaces`（声明 ⇒ 面被发布） |
+| 投影耐久 | **不写穿**：键停在 store 种子（state→`null`／journal→`[]`） | `kernel/index.js` 的 attach 循环（`:975` 一带）＋ `kernel/resume.js` `hydrate()` |
+| 空闲策略 | `idleAfterMs=0` ⇒ **空闲未定义，什么都不发生** | `kernel/control.js` `idleState()`；轮询点＝`kernel/index.js` 的 `beat()` |
+| 上下文压缩 | 无 usage 信号 ⇒ **不注入** `[CONTEXT COMPACT]` | `kernel/prompt/index.js` `assemble()`（读 `ctx.contextPct`／`ctx.round`） |
+| 自动论文 | `finalPaper=false` ⇒ 自动路径**具名拒**（手动仍可用） | `kernel/paper.js` `finalize({auto})` |
+| 中间件权限 | 未声明 `trigger-workflow` ⇒ `api.services.get` **具名拒** | `kernel/loader.js` `makeApi().services.get`（发布清单来自 `kernel/index.js` 的目录） |
+| 权威 | **不发明权威**（例：`idleAction` 默认 `notice`，本面永不自行休会；无主席 ⇒ 具名拒） | 各面按声明判定；**政策在 pack/中间件**（R1） |
+
 **纪律**：① **绝不**把自有状态写进 DSH 会话日志（硬限制）；② 键的增删属**破坏性变更** ⇒ 走 §7；③ 截断一律**计数**（见 07 号）。
 
 ---
@@ -462,6 +511,7 @@
 | `VMU_MEETING_INTERRUPT_DENIED` | 打断不允许/超配额 | 会议 | ✅ |
 | `VMU_MEETING_CONFIDENTIAL_DENIED` | 保密级别不允许读/引用 | 会议 | ✅ |
 | `VMU_MEETING_RECESS_LIMIT` | 休会超上限 | 会议 | ✅ |
+| `VMU_MEETINGS_MARKER_UNREADABLE` | 耐久域标记**读不到** ⇒ **具名降级：不猜哪个会还开着**（F51 的域读面，出处 `kernel/meetings.js` 的 `openMeetings()`；未绑定接缝时是 `durableMarker:false`，同样不发明） | 会议 | ✅ |
 | `VMU_MEETING_APPEAL_OUT_OF_SCOPE` | 申诉不在受理范围 | 会议 | ✅（须给**受理范围**） |
 | `VMU_MEETING_DISCIPLINE_DENIED` | 纪律动作不允许 | 会议 | ✅ |
 | `VMU_MEETING_EMERGENCY_NOT_ALLOWED` | 紧急程序不适用 | 会议 | ✅ |
@@ -474,6 +524,7 @@
 | `VMU_MOTION_TABLE_LIMIT` | 搁置超上限 | 动议 | ✅ |
 | `VMU_AMENDMENT_REJECTED` | 修正案不被接受 | 动议 | ✅ |
 | `VMU_MINUTES_NOT_CONFIRMED` | 上次纪要未确认 | 纪要 | ✅ |
+| `VMU_MEETINGS_MARKER_UNREADABLE` | 耐久**会议域接缝**读不到（`durable.read()` 抛）⇒ **拒绝猜**"哪个会还开着" | 会议域标记 F51（`kernel/meetingmarker.js` 的 `openMeetings()`；轮 11 拆分后该码随标记族迁出 `meetings.js`） | ✅（`openMeetings()` 回 `{ok:false, durableMarker:true, source:'seam-error', code, message}`；`status().durableMarker.{failures,lastError}` 自曝，`kernel/index.js` 的域接缝把 `meetings` 投影键的域行喂给它） |
 | `VMU_MINUTES_ACTION_REQUIRED` | 决议缺行动项 | 纪要 | ✅ |
 | **表决（卷 08 ✓）** | | | |
 | `VMU_BALLOT_METHOD_UNSUPPORTED` | 计票方法未实现/未声明 | 表决 | ✅（须给**可用方法**） |
@@ -986,7 +1037,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **392** 个码，**逐行**给出状态 ✓：其中 **353** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **393** 个码，**逐行**给出状态 ✓：其中 **354** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1201,6 +1252,7 @@
 | `VMU_MATH_SHAPE_UNKNOWN` | **已实现 ✓** | `vibe-math-vmu/kernel/mathadapters.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_SINGULAR_MATRIX` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_MATH_UNSUPPORTED_OP` | **已实现 ✓** | `vibe-math-vmu/kernel/mathadapters.js`、`vibe-math-vmu/kernel/mathjobs.js`、`vibe-math-vmu/kernel/mathtools.js` | 代码里有该码字符串 ✓ |
+| `VMU_MEETINGS_MARKER_UNREADABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/meetingmarker.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEETING_APPEAL_OUT_OF_SCOPE` | **已实现 ✓** | `vibe-math-vmu/kernel/meetings.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEETING_CONFIDENTIAL_DENIED` | **已实现 ✓** | `vibe-math-vmu/kernel/meetings.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEETING_DISCIPLINE_DENIED` | **已实现 ✓** | `vibe-math-vmu/kernel/meetings.js` | 代码里有该码字符串 ✓ |

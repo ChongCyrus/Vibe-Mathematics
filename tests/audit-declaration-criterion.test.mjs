@@ -573,6 +573,22 @@ const valueDomainRun = runSelfProof('audit-pack-value-domain.mjs', '--selftest')
 ok(valueDomainRun && valueDomainRun.status === 0,
   'the pack value-domain --selftest really runs green (round 9: it plants an out-of-domain value and requires the checker to report it - and it caught a REAL instance on its first day)',
   valueDomainRun ? 'exit=' + valueDomainRun.status : 'not run')
+// ROUND 11 / task-88: `scripts/audit-pack-middleware-shape.mjs` proves the two middleware SHAPES are told apart
+// (an inline handler must not reach for `api` or claim `trigger-workflow`; a module shape must declare the
+// capabilities it really uses). Its `--selftest` plants four malformed entries and requires each to be refused.
+// A self-proof with no execution point is exactly what this rule exists for, so it is RUN here.
+const middlewareShapeRun = runSelfProof('audit-pack-middleware-shape.mjs', '--selftest')
+ok(middlewareShapeRun && middlewareShapeRun.status === 0,
+  'the pack middleware-shape --selftest really runs green (round 11: it plants four malformed entries and requires each to be refused - so a declared shape cannot be silently unhonoured)',
+  middlewareShapeRun ? 'exit=' + middlewareShapeRun.status : 'not run')
+// ROUND 11 / task-83: `scripts/audit-projection-census.mjs` is SELF-PROVING - it files every declared projection
+// face into attached/viaAlias/notAttached and then PLANTS a non-existent face to require that the census reports
+// it. A self-proof with no execution point is the very case this rule exists for, so it is RUN here (with no flag:
+// the probe is inline, not behind `--selftest`).
+const censusRun = runSelfProof('audit-projection-census.mjs', '')
+ok(censusRun && censusRun.status === 0,
+  'the projection census really runs green (round 11: it files every declared face with a code+reason and proves it would report a planted face - so no declaration can go missing silently)',
+  censusRun ? 'exit=' + censusRun.status : 'not run')
 const regenRun = runSelfProof('regen-all.mjs', '--check')
 ok(regenRun && regenRun.status === 0, 'regen-all --check really runs green (the aggregate chain now has an execution point)')
 

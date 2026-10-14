@@ -132,6 +132,11 @@ vibe-math-vmu/
 
 ★ **改 `package.json` 的方式**：★★ **按锚点插行** ✓ —— **不要**用 `JSON.stringify` 整体重写 ✗（★ 会打乱格式、并触红安装器策略审计 ✓）。
 
+★★ **与本卷相关的新门禁/常驻断言（轮 11）**：
+- **`scripts/audit-pack-middleware-shape.mjs`** —— **清单中间件"形状与能力匹配"门禁**：inline `handler` **不得**伸手要 `api`（总线上没有 `api`），也不得声明只有 loader 路径才能兑现的 `trigger-workflow`；**module 形状**（`module:`／`file:`）**必须**声明它真需要的 `capabilities`（用 `api.services` ⇒ 必须 `trigger-workflow`）；**裸路径 ⇒ 红**；带 `--selftest`（种四类坏条目必红、两条干净条目不误报）。
+- **`tests/vmu-stall-meeting.test.mjs`** —— R10 那条"静止 ⇒ 开会"三步探针的**仓内常驻版**（真控制面报出空闲**边沿** ⇒ `control/idle` 上**恰一条**带 `trigger-workflow` 的条目 ⇒ **`vmu.meetings.open()` 真被调用**；＋ 反向与"阈值不硬编码"）。
+- 两者都已进 `package.json` 的 `files`（**shipped 名册**）；`tests/**` 与 `scripts/**` 按本卷口径**不进托管名册**（`installer.js` 的 `PRESETS[].files` 只列随预设出货的运行时文件 —— 实测两份安装器门禁 `ALL GREEN`）。
+
 ---
 
 ## 7. 状态：**已完成 ✓ 与 未做 ✗**（轮 405 复核）

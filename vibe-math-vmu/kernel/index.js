@@ -1069,7 +1069,53 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // receipt lists the keys it actually enforced, and anything unwired is named rather than silently ignored).
   // P0 (Lead): the real instance lands in the HOLDER the late-bound seam reads, and the local name is kept so the rest
   // of this file is unchanged. No `const`→`let` double declaration, and no early access can hit the TDZ.
-  meetingsRef.current = createMeetings({ settings: settingsView, bus, clock: guardedClock, log })
+  // ── F51 (task-89) / Lead ruling: THE DURABLE MEETING-DOMAIN MARKER, ON THE EXISTING `meetings` KEY ──────────
+  // `kernel/meetings.js` owns the domain vocabulary and asks for `durable: { read(), write(rows) }` with
+  // `rows = [{id, state}]`, `state ∈ open|lapsed|closed`. ★ NO NEW KEY (the ruling): the rows live INSIDE the
+  // existing `meetings` projection envelope.
+  // ★★ MEASURED (this is the part that matters): the DURABLE CARRIER is `domainState`, which `markState()` sets on
+  // the meeting object BEFORE the projection wrapper snapshots it - so the wrapper's own envelope
+  // (`value.data.live`) carries the marker. The `domainRows` field this seam stamps in `write()` is a CONVENIENCE
+  // only: the wrapper's next `patch` REPLACES `value` and drops it (measured: after a mutation the envelope's
+  // `value` is the fresh snapshot again). `read()` therefore falls back to deriving the rows from `value.data.live`
+  // and is exact either way - which is why a restart answers "which meeting is still open" without a second key.
+  // NO STORE ⇒ `durable: null`, and the face then reports `status().durableMarker.bound === false` (named, never
+  // faked) with `openMeetings()` claiming NOTHING about a previous process.
+  const domainRowsOf = (env) => {
+    const pick = (rows) => (Array.isArray(rows) ? rows : [])
+      .filter((m) => m && typeof m.id === 'string')
+      .map((m) => {
+        const raw = m.domainState !== undefined ? m.domainState : m.state
+        return { id: String(m.id), state: raw === 'closed' ? 'closed' : (raw === 'lapsed' ? 'lapsed' : 'open') }
+      })
+    if (!env || typeof env !== 'object') return []
+    const value = env.value && typeof env.value === 'object' ? env.value : null
+    if (!value) return []
+    if (Array.isArray(value.domainRows)) return pick(value.domainRows)   // the field this seam stamps (below)
+    const data = value.data && typeof value.data === 'object' ? value.data : {}
+    const rows = []
+    for (const bag of [data.live, data.archive]) {
+      if (Array.isArray(bag)) { rows.push(...pick(bag)); continue }
+      // `ser()` writes a Map as {__map:[[k,obj], …]} and may hand it back as a JSON STRING; an unreadable bag
+      // contributes nothing (a read ERROR is what the face turns into its named refusal).
+      if (typeof bag === 'string') {
+        try { const p = JSON.parse(bag); if (p && Array.isArray(p.__map)) rows.push(...pick(p.__map.map((e) => e[1]))); else if (Array.isArray(p)) rows.push(...pick(p)) } catch (e) { /* unreadable: contributes nothing */ }
+        continue
+      }
+      if (bag && typeof bag === 'object') rows.push(...pick(Object.values(bag)))
+    }
+    return rows
+  }
+  const meetingsDomainSeam = store ? {
+    read: () => domainRowsOf(store.read('meetings')),
+    write: (rows) => store.patch('meetings', (env) => {
+      if (!env || typeof env !== 'object') return env
+      const value = env.value && typeof env.value === 'object' ? env.value : {}
+      const stamped = (Array.isArray(rows) ? rows : []).map((r) => ({ id: String(r && r.id), state: r && r.state }))
+      return Object.assign({}, env, { value: Object.assign({}, value, { domainRows: stamped }) })
+    }),
+  } : null
+  meetingsRef.current = createMeetings({ settings: settingsView, bus, clock: guardedClock, log, durable: meetingsDomainSeam })
   const meetings = meetingsRef.current
   // ROUND 9 / task-66 A (G7): the board's cast/settle commits through the SAME durable log as the mailbox — one
   // instance, one ticket sequence, so a recovery replay has a single order to follow. Absent store ⇒ the board's
