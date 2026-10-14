@@ -46,6 +46,10 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
 
   const cfg = () => ({
     probationMs: intOr(settings['vmu.admission.probationMs'], 0),
+    // ROUND 10 / task-74 (A4): v5r's per-hirer cap on SIMULTANEOUSLY employed temps (v5r :8920:
+    // `perCap = Math.max(1, Math.floor(Number(params.maxTempPerMember) || 3))` - the floor and the `|| 3` are v5r's,
+    // so a 0/absent value means 3 and a value below 1 is raised to 1). The reader is `accept()` below.
+    maxTempPerMember: Math.max(1, Math.floor(Number(settings['vmu.members.maxTempPerMember']) || 3)),
     // ROUND 267 (volume 17 §L266-271): the four remaining declarations. Every one is read here and enforced or reported below.
     policy: ['closed', 'claim', 'nominate', 'open'].includes(settings['vmu.admission.policy']) ? settings['vmu.admission.policy'] : 'closed',
     decideBy: ['manager', 'vote', 'allocation', 'human'].includes(settings['vmu.admission.decideBy']) ? settings['vmu.admission.decideBy'] : 'manager',
@@ -166,8 +170,21 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
     let termUntil = c.termDefaultMs > 0 ? nowAccept + c.termDefaultMs : null
     let termClamped = false
     if (termUntil !== null && c.termMaxMs > 0 && termUntil - nowAccept > c.termMaxMs) { termUntil = nowAccept + c.termMaxMs; termClamped = true }
+    // ROUND 10 / task-74 (A4): `vmu.members.maxTempPerMember` — v5r caps how many TEMPS one hirer may hold at once
+    // (v5r :8920-8924: group by `hiredBy`, refuse with current/limit and the code V5_MEMBER_LIMIT, telling the caller
+    // to release one first). vmu has no member kind, so the faithful mapping is a member still ON PROBATION
+    // (`confirmedAt === null`, the state `accept()` creates below) grouped by the accepting actor `by` = v5r's
+    // `hiredBy`. `confirm()` graduates a member out of the count; nothing else silently does.
+    const mine = [...staff.values()].filter((s) => (s.by || null) === (by || null) && !s.confirmedAt).length
+    if (mine >= c.maxTempPerMember) {
+      throw refuse('VMU_MEMBER_LIMIT', 'per-member temp limit reached: ' + String(by || '(none)') + ' already holds ' + mine + ' unconfirmed member(s)',
+        'confirm or release one first, or raise vmu.members.maxTempPerMember',
+        { scope: 'per-member', current: mine, limit: c.maxTempPerMember, by: by || null, enforced: ['vmu.members.maxTempPerMember'] })
+    }
     staff.set(a.candidate, { memberId: a.candidate, slot: o.slot, hiredAt: nowAccept, probationUntil, confirmedAt: null, by: by || null, termUntil, termClamped, recalls: 0 })
-    return { memberId: a.candidate, slot: o.slot, probationUntil, confirmed: false, termUntil, termClamped }
+    return { memberId: a.candidate, slot: o.slot, probationUntil, confirmed: false, termUntil, termClamped,
+      // The cap that was evaluated travels in the receipt, so "may this hirer take another temp?" is answerable.
+      tempCap: { limit: c.maxTempPerMember, held: mine, after: mine + 1, enforced: ['vmu.members.maxTempPerMember'] } }
   }
 
   function reject({ offerId, reason = '' } = {}) {

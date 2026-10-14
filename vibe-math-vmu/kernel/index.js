@@ -664,6 +664,9 @@ export function createKernel({
     isPaused: () => controlState.state === 'paused',
     bus,
     clock,
+    // ROUND 10 / task-74 (A5): the LIVE settings view, so `vmu.tasks.memberMayRejectAssign` is read per call
+    // (a runtime `vibe_vmu_set` must reach the next `objectAssign()`/`assign()`, not the next boot).
+    settings: settingsView,
   })
 
   // IMPLEMENTATION PHASE, batch 1 (docs/11 搂9.8): the governance primitives (docs/08 搂2 agenda + motions),
@@ -957,6 +960,9 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   ])
   // The JOURNAL command lists (explicit on purpose: an over-broad list would record reads as commands).
   const PROJECTION_COMMANDS = { tasks: ['create', 'assign', 'transition', 'brief', 'clearBrief', 'advance', 'rollback'], work: [] }
+  // ROUND 10 / task-74: declared-name aliases for the projection table. ONE entry, named and reported - the pack
+  // declares `ballots`, this assembly's adapter (and the durable key) is `ballotbox`.
+  const PROJECTION_ALIASES = { ballots: 'ballotbox' }
   const projectionMethods = (face, target) => {
     const explicit = PROJECTION_COMMANDS[face]
     if (Array.isArray(explicit) && explicit.length) return explicit
@@ -971,16 +977,41 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
       const face = String(key)
       // `human` is attached by its own dedicated block above (it exists unconditionally and is not in the adapter
       // table), so the declared list must not re-report it as "not attached".
-      if (attachedProjections.some((a) => a.face === face && a.attached)) continue
-      const make = RESUME_PROJECTION_ADAPTERS[face]
+      // ROUND 10 / task-74 (reader-a's 12f, measured on a REAL assembly): the v5r pack declares `ballots` while this
+      // adapter table names the SAME face `ballotbox`. The declaration therefore produced
+      // `notAttached: [{face:'ballots', reason:'no adapter in this assembly'}]` and the board was NEVER projected
+      // (two real boxes opened, `shutdown()`, the durable key still the store's seed). The alias below maps the
+      // declared name onto the ONE adapter - the store key stays `ballotbox`, both names are reported, and a
+      // declaration that names BOTH simply attaches once (`ballotbox` wins; attaching the same key twice would
+      // double-wrap the face). A NAMED mapping, not a second silent spelling.
+      const canonical = PROJECTION_ALIASES[face] || face
+      const viaAlias = canonical === face ? null : face
+      // NAMED TOLERANCE, NEVER SILENT (Lead ruling, round 10): the OLD spelling still attaches - an existing
+      // deployment must not lose its board because of a rename - but the operator is TOLD, on the kernel's log and in
+      // `status().projections`, instead of the name quietly attaching nothing (which is what it did before).
+      if (viaAlias) {
+        try { log({ type: 'vmu/deprecated-projection-name', declared: viaAlias, attached: canonical, at: clock(),
+          note: 'the adapter and the durable key are ' + canonical + '; the declared name ' + viaAlias + ' is a deprecated alias' }) } catch (e) { /* logging never breaks the attach */ }
+      }
+      if (attachedProjections.some((a) => (a.face === canonical || a.face === face) && a.attached)) continue
+      // ROUND 10 / task-74 (vmu-pack's probe): a declared face whose service is NULL gets a DEPLOYMENT-readable
+      // reason instead of the internal-sounding "attachProjection needs a target object". `members` is the live case:
+      // `createMembers` returns null unless slots/maxLiveMembers are declared (zero-mechanism), so there is genuinely
+      // nothing to wrap - and saying that is different from reporting an internal refusal code.
+      if (!targets[canonical] || typeof targets[canonical] !== 'object') {
+        attachedProjections.push({ face, attached: false, code: 'VMU_RESUME_NO_TARGET',
+          reason: 'this assembly has no ' + canonical + ' face to project: the service is null because nothing declared it (zero-mechanism - e.g. members needs slots/maxLiveMembers), so there is no target object to wrap; the key stays unwired rather than pretending' })
+        continue
+      }
+      const make = RESUME_PROJECTION_ADAPTERS[canonical]
       if (typeof make !== 'function') { attachedProjections.push({ face, attached: false, reason: 'no adapter in this assembly (the service does not expose a journal/snapshot seam yet)' }); continue }
       try {
         const adapter = make()
         // The INSTANCE method registers the projection so `hydrate()`/`snapshot()` can find it; the module-level
         // `attachProjection` would wrap the methods but leave the instance unaware of the key.
-        const out = resume.attachProjection({ target: targets[face], methods: projectionMethods(face, targets[face]), key: adapter.key, mode: adapter.mode,
+        const out = resume.attachProjection({ target: targets[canonical], methods: projectionMethods(canonical, targets[canonical]), key: adapter.key, mode: adapter.mode,
           list: adapter.list || null, snapshot: adapter.snapshot || null, restore: adapter.restore || null, replay: adapter.replay || null })
-        attachedProjections.push({ face, attached: true, mode: adapter.mode, key: adapter.key, methods: projectionMethods(face, targets[face]), wrapped: out.wrapped, missing: out.missing })
+        attachedProjections.push({ face: canonical, viaAlias, attached: true, mode: adapter.mode, key: adapter.key, methods: projectionMethods(canonical, targets[canonical]), wrapped: out.wrapped, missing: out.missing })
       } catch (e) {
         attachedProjections.push({ face, attached: false, reason: String((e && e.message) || e), code: (e && e.code) || null })
       }
@@ -1013,6 +1044,10 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     // durable (the wrapper's after-hook is what writes through), so it is reported rather than inferred from
     // `attached:true` - the two were confused before and the projections silently never reached the store.
     wrappedMethods: attachedProjections.filter((a) => a.attached).map((a) => ({ face: a.face, mode: a.mode, methods: (a.methods || []).slice(), wrapped: a.wrapped === undefined ? null : a.wrapped })),
+    // ROUND 10 / task-74: the declared-name → adapter mappings that were in force, and which faces were attached
+    // THROUGH one (`viaAlias`), so `attached:['ballotbox']` next to `declared:['ballots']` is never confusing.
+    aliases: Object.assign({}, PROJECTION_ALIASES),
+    viaAlias: attachedProjections.filter((a) => a.attached && a.viaAlias).map((a) => ({ declared: a.viaAlias, attached: a.face, key: a.key })),
     readOnly: [...PROJECTION_READ_ONLY].sort(),
     known: PROJECTION_KEYS.slice(),
     unwiredKnown: PROJECTION_KEYS.filter((k) => !attachedProjections.some((a) => a.face === k && a.attached)),
@@ -1216,11 +1251,27 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     },
   })
   const rules = createRulesEngine({ subjects: Object.assign({}, DEFAULT_SUBJECTS, subjects), counters, settings, clock })
+  // ROUND 10 / task-74 (Lead ruling (a)): THE SERVICE CATALOG a capability-gated middleware module may reach through
+  // `api.services.get(name)`. It is a FUNCTION, not a snapshot, for two reasons: the faces below are `const`s declared
+  // before AND after this point (a snapshot would hit the TDZ), and a lazy read can never report a face that was
+  // never built. Only faces this assembly really holds answer; the CAPABILITY gate itself lives in the loader, so
+  // this port answers "is it published?", not "may you have it?".
+  const middlewareServiceCatalog = () => ({
+    'vmu.tasks': tasks, 'vmu.meetings': meetings, 'vmu.chat': chat, 'vmu.mailbox': mailbox,
+    'vmu.panel': panel, 'vmu.minutes': minutes, 'vmu.ballotbox': ballotbox, 'vmu.members': members,
+    'vmu.commitlog': sharedCommitLog, 'vmu.library': library, 'vmu.records': records, 'vmu.human': human,
+    'vmu.budget': budget, 'vmu.activity': activity,
+  })
   const loader = createLoader({
     // (甲) PRODUCTION GOES THROUGH THE GUARD: this facade used to answer `null` when there was no durable root,
     // which is exactly the "silent fake" `requireStore()` exists to refuse. A module calling `kernel.read()`
     // with no root now gets the NAMED refusal (and with a root, the same state as before).
-    services: { kernel: Object.freeze({ read: () => mustStore().read() }), setting: (k) => settings[k] },
+    services: {
+      kernel: Object.freeze({ read: () => mustStore().read() }),
+      setting: (k) => settings[k],
+      get: (name) => { const id = String(name === undefined || name === null ? '' : name); return middlewareServiceCatalog()[id] || null },
+      names: () => { const cat = middlewareServiceCatalog(); return Object.keys(cat).filter((k) => cat[k]).sort() },
+    },
     log,
     dryRun,
     clock,
@@ -1826,12 +1877,30 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
         middleware: decided && decided.decisions ? decided.decisions.length : 0 }
     },
     async beat(note = null) {
+      // ROUND 10 / task-74 (B): THE EXISTING TICK IS THE POLLING POINT. `beat()` is what answers "is anyone actually
+      // working", so idleness is evaluated HERE — BEFORE the beat resets the activity clock, using the PREVIOUS beat's
+      // timestamp. That is what makes the poll meaningful: a beat after a long silent gap is exactly the moment the
+      // institute resumed, and `idleState()` then publishes the registered `control/idle` hook (once per episode) so
+      // middleware can implement "a stalled institute convenes" itself. COST: one synchronous predicate per beat and
+      // NO timer — a stalled system with nobody beating cannot wake itself, which is stated in docs/03 §2.
+      const prevBeatAt = controlState.lastBeatAt
+      const idle = control.idleState({ lastActivityAt: prevBeatAt, at: clock() })
       controlState.beats += 1
       controlState.lastBeatAt = clock()
       const decided = await bus.emit('control/heartbeat', { beats: controlState.beats, at: controlState.lastBeatAt, note: note ? String(note) : null }, {})
       return { ok: true, beats: controlState.beats, at: controlState.lastBeatAt,
+        // The idle verdict travels in the beat receipt, so a caller can see WHY middleware was (or was not) woken.
+        idle: { idle: idle.idle, action: idle.action, elapsedMs: idle.elapsedMs === undefined ? null : idle.elapsedMs,
+          afterMs: idle.afterMs === undefined ? null : idle.afterMs, emitted: idle.emitted === true, note: idle.note || null },
         middleware: decided && decided.decisions ? decided.decisions.length : 0 }
     },
+
+    /**
+     * ROUND 10 / task-74 (B): the documented READ of the same decision, for a monitor or a host that polls on its own
+     * schedule. It publishes `control/idle` on the SAME edge as `beat()` (the edge lives in the control face, so the
+     * two callers cannot each fire it).
+     */
+    idleState: ({ lastActivityAt = null, at = null } = {}) => control.idleState({ lastActivityAt, at }),
 
     /**
      * ROUND 9 / task-66 B — THE EXIT PATH (`docs/03 §2`). Called by the host adapter's `uninstall()` and by the

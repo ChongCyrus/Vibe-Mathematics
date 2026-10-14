@@ -9,6 +9,10 @@
     "vmu.turn.feedback": true,
     "vmu.turn.protocolPath": "Shared/Protocol.md",
     "vmu.control.idleAfterMs": 120000,
+    "vmu.prompt.compactThreshold": 66,
+    "vmu.prompt.compactAfterRounds": 8,
+    "vmu.members.maxTempPerMember": 3,
+    "vmu.tasks.memberMayRejectAssign": true,
 
     "vmu.chat.admins": ["acad"],
     "vmu.chat.speakQuota": 0,
@@ -20,7 +24,7 @@
 
     "vmu.panel.deviationPolicy": "record",
 
-    "vmu.resume.projections": ["members", "tasks", "meetings", "ballots", "budget", "phase", "work", "chat", "panel", "human"],
+    "vmu.resume.projections": ["members", "tasks", "meetings", "ballotbox", "budget", "phase", "work", "chat", "panel", "human"],
     "vmu.resume.autoRecover": true,
     "vmu.resume.readBack": true,
     "vmu.resume.writeThrough": true,
@@ -43,6 +47,10 @@
     "vmu.paper.officeConsultOnTimeout": "hold",
     "vmu.paper.officeConsultExemptRoles": [],
     "vmu.paper.maxRounds": 3,
+    "vmu.paper.finalPaper": true,
+    "vmu.paper.format": "both",
+    "vmu.paper.language": "zh",
+    "vmu.paper.compilePdf": true,
 
     "vmu.meetings.quoteDepthMax": 3,
     "vmu.meetings.quotesPerMessageMax": 2,

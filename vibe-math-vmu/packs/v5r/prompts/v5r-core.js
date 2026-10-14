@@ -18,6 +18,12 @@
 // prompt TEXT and not only its policy. `tests/vmu-pack-prompts.test.mjs` asserts the text equals the corpus
 // VERBATIM (not a paraphrase, not a second copy nobody checks).
 import { SOURCE_REL as PROMPT_SOURCE_REL, SOURCE_SHA256 as PROMPT_SOURCE_SHA256, COUNTS as PROMPT_COUNTS, PROMPTS as PROMPT_ENTRIES } from './v5r-prompts.js'
+// ROUND 10 (task-76, Lead ruling (a)): v5r's `stallAutoMeetingMs` (vibe-math-v5r.js:1083) is the one v5r behaviour
+// that needs the pack to ACT, not just to declare: the kernel reports idleness (`control/idle`), and THIS module
+// decides to convene. It is a MODULE (not an inline handler) because only the loader attaches `api` - including
+// the capability-gated `api.services.get(name)` seam that lets it reach the meetings face. `kernel/pack.js`
+// routes module-shaped manifest entries through the loader for exactly this reason.
+import { V5R_STALL_MEETING } from '../middleware/stall-meeting.js'
 
 /**
  * ROUND 336 — THE BRIDGE FROM TEXT TO PIPELINE. Until now the v5r prompt corpus was carried as DATA: hash-locked,
@@ -196,6 +202,20 @@ export const PACK = Object.freeze({
           },
         }
       },
+    },
+    // ROUND 10: v5r's STALL ⇒ CONVENE policy. Module-shaped on purpose (`module:` instead of `handler:`) so
+    // `kernel/pack.js` routes it through `kernel/loader.js`, which validates it AND attaches `api` - the only way
+    // a middleware can reach a service (`api.services.get`, capability-gated by `trigger-workflow`). The decision
+    // itself is pure and lives in `../middleware/stall-meeting.js`: `3 × vmu.control.idleAfterMs` = v5r's 360000
+    // (vibe-math-v5r.js:1082/:1083), never hard-coded.
+    {
+      id: 'v5r.stall-meeting',
+      kind: 'module',
+      order: 300,
+      on: ['control/idle'],
+      failure: 'open',
+      capabilities: ['trigger-workflow', 'record'],
+      module: V5R_STALL_MEETING,
     },
   ],
 

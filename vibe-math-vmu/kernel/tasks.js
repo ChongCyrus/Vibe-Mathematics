@@ -107,7 +107,17 @@ export function createTasks({
   isPaused = () => false,
   bus = null,
   clock = () => new Date().toISOString(),
+  // ROUND 10 / task-74 (A5): the LIVE settings view (or a plain object in tests). The one key this face reads is
+  // `vmu.tasks.memberMayRejectAssign`, and it is read HERE rather than passed as a boolean snapshot for the same
+  // reason every other face reads live: a runtime `vibe_vmu_set` must be visible to the next call, not next boot.
+  settings = null,
 } = {}) {
+  const sget = (k, d) => {
+    const s = settings
+    if (!s || typeof s !== 'object') return d
+    const v = typeof s.get === 'function' ? s.get(k) : s[k]
+    return v === undefined ? d : v
+  }
   const tasks = new Map()
   const history = []
   const briefs = new Map()
@@ -266,7 +276,59 @@ export function createTasks({
       t.transitions.push({ at: clock(), from, to: t.state, reason: 'assigned to ' + t.owner })
       bump(t)
       record('task-assigned', { id, who: t.owner, state: t.state })
-      return { ok: true, id, owner: t.owner, state: t.state }
+      // ROUND 10 / task-74 (A5): the receipt says whether the assignee may OBJECT (v5r :9555-9562 records and
+      // broadcasts an objection, and the task still runs). The declaration is read here as well as in
+      // `objectAssign()` so a caller never has to guess which door is open.
+      return { ok: true, id, owner: t.owner, state: t.state,
+        mayObject: sget('vmu.tasks.memberMayRejectAssign', true) !== false,
+        enforced: ['vmu.tasks.memberMayRejectAssign'] }
+    },
+
+    /**
+     * ROUND 10 / task-74 (A5) — OBJECT TO AN ASSIGNMENT. v5r's `reject_assign` reply field (v5r :9555-9562): the
+     * member says "I object to task X because …", the objection is recorded and broadcast to the voters, and the
+     * task STILL RUNS (v5r's own wording: 任务仍会执行). This is NOT a refusal of the assignment - it is a voiced,
+     * attributable dissent, which is why it is a separate verb rather than a `transition`.
+     *
+     * THE DECLARATION is `vmu.tasks.memberMayRejectAssign` (v5r :1066, default true). ★ MEASURED DIFFERENCE: v5r
+     * DROPS the field silently when the declaration is false; here it is refused BY NAME - "the members may not
+     * object" is a decision, and a silently swallowed objection is the state this repository forbids.
+     *
+     * The objection goes through the face's OWN append-only ledger (`record`), so it survives restart with the rest
+     * of the history and is readable via `history()`. v5r ALSO broadcasts it, so the registered hook
+     * `task/assign-objected` (kernel/bus.js: `failure:'open'`, NOT blockable - a broken listener cannot stop the
+     * task) is emitted here; the middleware decides the audience.
+     */
+    async objectAssign(id, { by = null, why = null } = {}) {
+      const t = task(id)
+      const who = String(by || '').trim()
+      if (!who) throw refuse('VMU_INVALID_ARGUMENT', 'objectAssign needs by', 'the objecting member is recorded')
+      if (sget('vmu.tasks.memberMayRejectAssign', true) === false) {
+        throw refuse('VMU_NOT_PERMITTED', 'vmu.tasks.memberMayRejectAssign=false: members may not object to an assignment',
+          'the declaration closes this door on purpose; the assignment stands as made',
+          { enforced: ['vmu.tasks.memberMayRejectAssign'], id, by: who })
+      }
+      const reason = String(why === null || why === undefined ? '' : why)
+      const at = clock()
+      record('assign-objected', { id, by: who, why: reason, state: t.state, owner: t.owner })
+      // ROUND 10 / task-74 (the broadcast half, Lead-assigned): v5r RECORDED and BROADCAST the objection while the
+      // task still ran (v5r :9560). `task/assign-objected` is registered in kernel/bus.js with `failure:'open'` and
+      // NOT blockable, so a broken listener cannot stop the task - and the middleware, not this face, decides the
+      // audience (v5r broadcast to voters; a ledger face has no roster, so it does not invent a recipient list).
+      const hasBus = !!(bus && typeof bus.emit === 'function')
+      let decided = null
+      if (hasBus) {
+        try { decided = await bus.emit('task/assign-objected', { at, id, by: who, why: reason, state: t.state, owner: t.owner }, { member: who }) } catch (e) { decided = null }
+      }
+      return { ok: true, id, state: t.state, owner: t.owner, objection: { by: who, why: reason, at },
+        broadcast: hasBus
+          ? { attempted: true, hook: 'task/assign-objected', emitted: true,
+            middleware: decided && decided.decisions ? decided.decisions.length : 0,
+            audience: 'the middleware decides the audience (v5r broadcast to voters; this face has no roster, so it invents no recipient list)' }
+          : { attempted: false, hook: 'task/assign-objected', emitted: false,
+            reason: 'no bus seam is bound on this tasks face: the objection is on the ledger (history()) but nothing was broadcast' },
+        enforced: ['vmu.tasks.memberMayRejectAssign'], fired: ['vmu.tasks.memberMayRejectAssign'],
+        note: 'the task still runs (v5r :9560)' }
     },
 
     /** Transition. Dependencies are enforced when work STARTS, not when it is created. */

@@ -51,6 +51,14 @@ export const WIRED_KEYS = Object.freeze([
   'vmu.paper.officeConsultTimeoutMs',
   'vmu.paper.officeConsultOnTimeout',
   'vmu.paper.officeConsultExemptRoles',
+  // ROUND 10 / task-74 (A3): the four v5r paper-output parameters. Each is read in cfg() on every call and carried
+  // into the register() request as `artifact`, so the value changes what the host is asked to produce (not a label).
+  // NOTE: no quoted identifiers in the comments inside this array - the schema generator reads every single-quoted
+  // string between these brackets and a stray one becomes a phantom setting key.
+  'vmu.paper.finalPaper',
+  'vmu.paper.format',
+  'vmu.paper.language',
+  'vmu.paper.compilePdf',
 ])
 
 /** Declared but deliberately NOT wired (the audit criterion: named, with a reason, and a revival condition). */
@@ -67,6 +75,10 @@ export const PLANNED_KEYS = Object.freeze([
 ])
 
 export const FINALIZERS = Object.freeze(['editor', 'contributor', 'any'])
+// ROUND 10 / task-74 (A3): the two CLOSED domains v5r uses for the paper output (v5r :1164/:1165). Out-of-domain
+// values are refused BY NAME below - the same defect class the round-8 finalizer fix closed.
+export const PAPER_FORMATS = Object.freeze(['both', 'md', 'tex'])
+export const PAPER_LANGUAGES = Object.freeze(['zh', 'en'])
 
 /** C-30: when the office-consultation gate applies. Anything unknown falls back to `finalize` (the narrow case). */
 export const CONSULT_POINTS = Object.freeze(['finalize', 'finalize-or-submit'])
@@ -146,7 +158,33 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
     // the schema generator recovers the REAL default from it (the same convention `maxSections` uses above).
     const rawRounds = Number(readKey('vmu.paper.maxRounds') || 0)
     const maxRounds = Number.isFinite(rawRounds) && rawRounds > 0 ? Math.floor(rawRounds) : 0
-    return { requireAllSections, finalizer, maxSections, maxRounds, officeConsult, consultOn, consultTimeoutMs, consultOnTimeout, consultExemptRoles }
+    // ROUND 10 / task-74 (A3): the v5r paper-OUTPUT parameters (v5r :1163-1166, one line each, all four read here so
+    // that keysUsed() and the behaviour cannot disagree). Defaults are v5r's own values; the two enumerations are
+    // CLOSED SETS and an out-of-domain value is refused BY NAME rather than silently downgraded to the default.
+    const finalPaper = readKey('vmu.paper.finalPaper') !== false
+    const formatRaw = String(readKey('vmu.paper.format') || 'both')
+    if (PAPER_FORMATS.indexOf(formatRaw) === -1) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'vmu.paper.format must be one of ' + PAPER_FORMATS.join('|') + ': ' + formatRaw,
+        'v5r paperFormat is one of both|md|tex (v5r :1164)',
+        { enforced: ['vmu.paper.format'], declared: PAPER_FORMATS.slice(), value: formatRaw })
+    }
+    const languageRaw = String(readKey('vmu.paper.language') || 'zh')
+    if (PAPER_LANGUAGES.indexOf(languageRaw) === -1) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'vmu.paper.language must be one of ' + PAPER_LANGUAGES.join('|') + ': ' + languageRaw,
+        'v5r paperLanguage is one of zh|en (v5r :1165)',
+        { enforced: ['vmu.paper.language'], declared: PAPER_LANGUAGES.slice(), value: languageRaw })
+    }
+    const compilePdf = readKey('vmu.paper.compilePdf') !== false
+    // v5r :8258 asks for a PDF with `pdf: params.paperCompilePdf !== false`, and v5r :8820 states the rule that goes
+    // with it: format=md with compilePdf on must NOT warn about a missing tex engine, because no PDF can be built from
+    // markdown alone. `pdf` is therefore compilePdf AND a format that can carry one.
+    const artifact = {
+      auto: finalPaper, format: formatRaw, language: languageRaw, pdf: compilePdf && formatRaw !== 'md',
+      note: formatRaw === 'md' && compilePdf
+        ? 'vmu.paper.compilePdf is on but vmu.paper.format=md: no PDF is requested (v5r :8820 - and no missing-tex warning)'
+        : null,
+    }
+    return { requireAllSections, finalizer, maxSections, maxRounds, officeConsult, consultOn, consultTimeoutMs, consultOnTimeout, consultExemptRoles, artifact }
   }
 
   const keysUsed = () => WIRED_KEYS.slice()
@@ -415,12 +453,21 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
      *      office has consulted the institute, unless the caller is exempt or the pack switched the gate off;
      *   ④ registration goes through the injected seam or is refused by name.
      */
-    async finalize({ paperId, by } = {}) {
+    async finalize({ paperId, by, auto = false } = {}) {
       const p = find(paperId)
       if (p.state !== 'open') throw refuse('VMU_STATE', 'paper ' + p.id + ' is already ' + p.state, 'finalise once; a revision is a new manuscript')
       const c = cfg()
       const who = String(by || '').trim()
       if (!who) throw refuse('VMU_INVALID_ARGUMENT', 'finalize needs by', 'the finaliser is recorded')
+      // ROUND 10 / task-74 (A3): vmu.paper.finalPaper gates the AUTOMATIC path (v5r :7867 `if (params.finalPaper !==
+      // false)` decides whether the run concludes by writing the paper). An automation passes `auto:true`; with the
+      // declaration off that is refused BY NAME instead of being silently downgraded to a manual finalisation - the
+      // exact shape of the round-8 finalizer defect, which is why it is refused rather than absorbed.
+      if (auto === true && c.artifact.auto !== true) {
+        throw refuse('VMU_NOT_PERMITTED', 'automatic finalisation is not declared: vmu.paper.finalPaper=false',
+          'call finalize() without auto:true (a manual finalisation is still allowed), or declare vmu.paper.finalPaper=true',
+          { enforced: ['vmu.paper.finalPaper'], paperId: p.id, caller: who })
+      }
       if (c.finalizer === 'editor' && who !== p.editor) {
         throw refuse('VMU_NOT_PERMITTED', 'only the editor (' + p.editor + ') may finalise, not ' + who,
           'vmu.paper.finalizer=editor; set it to contributor/any if the pack wants a different rule',
@@ -450,16 +497,22 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
         title: p.title, editor: p.editor, at: clock(),
         sections: p.sections.map((s) => ({ name: s.name, owner: s.owner, by: s.by, artifact: s.artifact })),
         gaps: p.gaps.slice(),
+        // ROUND 10 / task-74 (A3): the DECLARED shape of the artifact travels with the request, so the host's
+        // registration seam builds what the declaration asks for instead of guessing (v5r :8251-8258 does this inline).
+        artifact: Object.assign({}, c.artifact),
       })
       p.state = 'finalized'
       p.finalizedAt = clock()
       p.receipt = receipt === undefined ? null : receipt
       note(p.id, 'finalized' + (p.gaps.length ? ':with-gaps' : ''))
       return { ok: true, paperId: p.id, state: p.state, by: who, gaps: p.gaps.slice(), receipt: p.receipt, droppedTrail,
+        // ROUND 10 / task-74 (A3): what the face ASKED the seam to produce, in the receipt (the four v5r output keys).
+        artifact: Object.assign({}, c.artifact),
         // The gate that ran travels in the receipt, so "was the office consulted?" is answerable for THIS finalisation.
         consult: { required: gate.required, reason: gate.reason, count: gate.count || 0, kinds: gate.kinds || [],
           exemptRole: gate.exemptRole || null },
-        enforced: ['vmu.paper.finalizer', 'vmu.paper.requireAllSections', 'vmu.paper.officeConsult'], fired: [] }
+        enforced: ['vmu.paper.finalizer', 'vmu.paper.requireAllSections', 'vmu.paper.officeConsult',
+          'vmu.paper.finalPaper', 'vmu.paper.format', 'vmu.paper.language', 'vmu.paper.compilePdf'], fired: [] }
     },
 
     /**

@@ -78,6 +78,9 @@ export function createControl({ clock = () => 0, log = null, settings = {}, bus 
   let degradedTo = 0
   let stops = 0
   let dropped = 0
+  // ROUND 10 / task-74 (B): the idle EPISODE's edge — `armed` means this idle episode has already been published, so
+  // the hook fires once per episode rather than on every poll (see `idleState()` below).
+  const idleEdge = { armed: false, since: null }
 
   /** Pause a surface. `canPauseRoles` decides who may, `pauseScope` decides what may be paused at all. */
   function pause({ scope = null, byRole = null, reason = null } = {}) {
@@ -200,19 +203,46 @@ export function createControl({ clock = () => 0, log = null, settings = {}, bus 
   /**
    * The idle decision. `idleAfterMs: 0` means idleness is not defined, so nothing happens. `idleAction` decides what is
    * REPORTED - and the default `notice` never recesses anything: this face has no power to end a meeting by itself.
+   *
+   * ROUND 10 / task-74 (B): THE IDLE EDGE IS PUBLISHED. Until this round `idleState()` had ZERO callers anywhere in
+   * the tree, so nothing could react to idleness; it now emits the registered hook `control/idle` when idleness
+   * CROSSES the threshold, which is how a pack implements "a stalled institute convenes" itself (the kernel still
+   * invents no policy - `idleAction` stays notice-only and this face never ends a meeting).
+   *
+   * EDGE-TRIGGERED, ON PURPOSE: the hook fires ONCE per idle episode (`emitted:true` on that receipt, `false` while
+   * the same episode continues; `emittedAt` carries the episode's start). Any non-idle observation clears the edge,
+   * so the next episode fires again. A polled predicate that re-fired on every call would ask middleware to convene
+   * a meeting over and over.
+   *
+   * COST / HONEST LIMIT: this is a POLLED producer - it fires only when something asks. `kernel.beat()` evaluates it
+   * BEFORE resetting the activity clock, and `kernel.idleState()` is a documented read. A stalled system with nobody
+   * observing it cannot wake itself, which is deliberate: this face owns no timer (a watchdog interval of zero means
+   * no timer, and timers belong to the scheduler).
    */
   function idleState({ lastActivityAt = null, at = null } = {}) {
     const c = cfg()
     const enforced = ['vmu.control.idleAfterMs', 'vmu.control.idleAction']
     if (c.idleAfterMs === 0) {
-      return { ok: true, idle: false, action: 'none', note: 'vmu.control.idleAfterMs=0: idleness is not defined', enforced, fired: ['vmu.control.idleAfterMs'] }
+      idleEdge.armed = false
+      return { ok: true, idle: false, action: 'none', note: 'vmu.control.idleAfterMs=0: idleness is not defined', enforced, fired: ['vmu.control.idleAfterMs'], emitted: false }
     }
     const now = Number.isFinite(at) ? Number(at) : clock()
     const elapsed = lastActivityAt === null || !Number.isFinite(Number(lastActivityAt)) ? null : now - Number(lastActivityAt)
     const isIdle = elapsed !== null && elapsed >= c.idleAfterMs
-    if (!isIdle) return { ok: true, idle: false, elapsedMs: elapsed, afterMs: c.idleAfterMs, action: 'none', enforced, fired: [] }
+    if (!isIdle) {
+      idleEdge.armed = false
+      return { ok: true, idle: false, elapsedMs: elapsed, afterMs: c.idleAfterMs, action: 'none', enforced, fired: [], emitted: false }
+    }
     const act = c.idleAction
+    let emitted = false
+    if (!idleEdge.armed) {
+      idleEdge.armed = true
+      idleEdge.since = now
+      emitted = true
+      emit('control/idle', { at: now, elapsedMs: elapsed, afterMs: c.idleAfterMs, action: act })
+    }
     return { ok: true, idle: true, elapsedMs: elapsed, afterMs: c.idleAfterMs, action: act,
+      emitted, emittedAt: idleEdge.since,
       notice: act === 'notice' ? 'idle for ' + elapsed + 'ms; this is a NOTICE only - nothing is recessed automatically (vmu.control.idleAction)' : null,
       recessed: false,
       note: act === 'recess' ? 'the declaration asks for a recess, but this face RECORDS the decision and does not end a meeting: that belongs to the meeting face' : (act === 'none' ? 'the declaration asks for nothing' : 'notice only'),

@@ -995,7 +995,15 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.tier` | enum | `formal` | `formal`∣`light` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 会议级别：light＝简流程，**不得产出实体定论**（派生谓词，不是阶段）。读者：`kernel/meetings.js` 的 `K.tier`＋`tier()`／`truthWriteRefusal()`，唯一判定点在 `close()` 的收束路径（reader-c 的 GAP-MTG-02）。 |
 | `vmu.meetings.allowLight` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 是否允许 light（简流程）会议：false ⇒ 内核在开会/收束处以具名拒挡住 light（与 `tier` 共用同一派生判定点）。读者：`kernel/meetings.js` 的 `K.allowLight`。 |
 | `vmu.ballot.reopenFloor` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ballotbox.js` | 投票板重开门槛（0＝不设门槛；>0 时 reopen 需要达到该支持数）。读者：`kernel/ballotbox.js` 的 `reopen()`（reader-c 的 GAP-MTG-10；该面自有实现，不并存第二份）。 |
-| `vmu.meetings.leaveApprover` | enum | `chair` | `chair`∣`office` | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 请假/休会的批准人：chair＝主席批准，office＝办公室兜底。★ 本轮**只声明键**（B② 的 requestLeave/approveLeave 未落）；键被读时必须按此值域判定，未落前读取具名降级。 |
+| `vmu.meetings.leaveApprover` | enum | `chair` | `chair`∣`office` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingleave.js` | 请假/休会的批准人：chair＝主席批准，office＝办公室兜底。★ 本轮**只声明键**（B② 的 requestLeave/approveLeave 未落）；键被读时必须按此值域判定，未落前读取具名降级。 |
+| `vmu.prompt.compactThreshold` | int ≥0 | `66` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 上下文占比达到该值 ⇒ 组装时注入 [CONTEXT COMPACT] 指示。**百分数 0–100，不是 0–1**。v5r `compactThreshold:66`（`:1078`；`:449` 明写 never clamp to 0-1；`:9869` 拒 ≤0）。读者：`kernel/prompt/index.js` 的 `assemble()`（读 `ctx.contextPct`）。 |
+| `vmu.prompt.compactAfterRounds` | int ≥0 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 距上次压缩的轮数达到该值 ⇒ 同上注入（与阈值是**或**关系）。v5r `compactAfterRounds:8`（`:1079`；`soft` 判定 `:3902-3903`）。读者：`kernel/prompt/index.js` 的 `assemble()`（读 `ctx.round`）。 |
+| `vmu.paper.finalPaper` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 运行结束时**自动**写最终论文。v5r `finalPaper:true`（`:1163`；消费点 `:7867` `if (params.finalPaper !== false)`）。读者：`kernel/paper.js` 的 `finalize({auto:true})`（false ⇒ 具名拒，不静默改成手动）。 |
+| `vmu.paper.format` | enum | `both` | `both`∣`md`∣`tex` | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 成品形态（both|md|tex）。v5r `paperFormat:'both'`（`:1164`；消费点 `:8252`）。读者：`kernel/paper.js` 的 `cfg()`＋`finalize()`（进 `artifact` 与 `register` 请求）。 |
+| `vmu.paper.language` | enum | `zh` | `zh`∣`en` | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 成品语言（zh|en）。v5r `paperLanguage:'zh'`（`:1165`；消费点 `:8251`）。读者：与 `vmu.paper.format` 同一处。 |
+| `vmu.paper.compilePdf` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 检测到 LaTeX 引擎时编译 PDF。v5r `paperCompilePdf:true`（`:1166`；消费点 `:8258`；`:8820` 明写 format=md 时**不得**因缺 tex 报警 ⇒ `pdf = compilePdf && format !== 'md'`）。读者：与 `vmu.paper.format` 同一处。 |
+| `vmu.members.maxTempPerMember` | int ≥0 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 同一雇佣者名下**同时在册**的临时成员上限。v5r `maxTempPerMember:3`（`:1075`；消费点 `:8920-8924`：`perCap = max(1, floor(value||3))`、按 `hiredBy` 计数、超限 `V5_MEMBER_LIMIT` 并回报 current/limit）。vmu 映射（vmu 无 kind:temp）：**仍在试用期**（`confirmedAt === null`）的成员按接纳人 `by` 分组。读者：`kernel/recruit.js` 的 `accept()`。 |
+| `vmu.tasks.memberMayRejectAssign` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tasks.js` | 成员可否对被分派**表示异议**（记录＋广播，**任务仍执行**）。v5r `memberMayRejectAssign:true`（`:1066`；消费点 `:9555-9562`：``reject_assign && params.memberMayRejectAssign`` ⇒ 广播给 voters，原文"任务仍会执行"）。读者：`kernel/tasks.js` 的 `objectAssign()`；★ false 时 vmu **具名拒**（v5r 是静默忽略该字段 —— 刻意更严，不许静默）。 |
 | `vmu.allocation.dirtyWorkQuota` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.allocation.fairnessPolicy` | string | `equal` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.allocation.rotationWindow` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
@@ -1403,6 +1411,7 @@ vmu.packs.active: [v5r]
 | `vmu.math.formal.coqCommand` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.network` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/mathtools.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.proof` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/mathtools.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
+| `vmu.meetings.open` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 10（共见 1 卷：10），尚未实现（元数据以各卷为准） |
 | `vmu.mentor.graduationNeedsHuman` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.mentor.maxMenteesPerMentor` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
 | `vmu.mentor.requireReviewBeforeGraduation` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 17（共见 1 卷：17），尚未实现（元数据以各卷为准） |
@@ -1462,7 +1471,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1107** 个，前缀家族 **113** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1115** 个，前缀家族 **115** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1523,6 +1532,7 @@ vmu.packs.active: [v5r]
 | `vmu.mailbox.*` | 6 |
 | `vmu.math.*` | 105 |
 | `vmu.meetings.*` | 58 |
+| `vmu.members.*` | 1 |
 | `vmu.memory.*` | 16 |
 | `vmu.metadata.*` | 2 |
 | `vmu.metrics.*` | 7 |
@@ -1535,12 +1545,13 @@ vmu.packs.active: [v5r]
 | `vmu.pack.*` | 4 |
 | `vmu.packs.*` | 5 |
 | `vmu.panel.*` | 4 |
-| `vmu.paper.*` | 10 |
+| `vmu.paper.*` | 14 |
 | `vmu.partnership.*` | 6 |
 | `vmu.paths.*` | 2 |
 | `vmu.pointer.*` | 1 |
 | `vmu.privacy.*` | 6 |
 | `vmu.projection.*` | 1 |
+| `vmu.prompt.*` | 2 |
 | `vmu.prompts.*` | 13 |
 | `vmu.provenance.*` | 2 |
 | `vmu.prune.*` | 4 |
@@ -1566,7 +1577,7 @@ vmu.packs.active: [v5r]
 | `vmu.state.*` | 6 |
 | `vmu.store.*` | 15 |
 | `vmu.tags.*` | 3 |
-| `vmu.tasks.*` | 3 |
+| `vmu.tasks.*` | 4 |
 | `vmu.teaching.*` | 24 |
 | `vmu.tenure.*` | 11 |
 | `vmu.tools.*` | 2 |

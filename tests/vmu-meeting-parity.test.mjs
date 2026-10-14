@@ -719,6 +719,52 @@ const roster = ['r-1', 'r-2']
     'G7: with no queue bound both faces still work unchanged (the body is the same code path)')
 }
 
+// ---- 22. Round 10 (F/B②): leave requests are decided by the DECLARED approver (chair, office as fallback) -------
+{
+  const grab22 = (fn) => { try { fn(); return null } catch (e) { return e && e.code } }
+  const M = meetingsMod.createMeetings({ clock, settings: {} })
+  const opened = M.open({ type: 'ordinary', chair: 'acad', roster, size: 2, at: NOW })
+  const mid = opened.meeting
+  ok(grab22(() => M.requestLeave({ meeting: mid, member: 'r-1' })) === 'VMU_REASON_REQUIRED',
+    'F: a leave request without a why is refused (an unexplained absence cannot be judged)')
+  // A non-member check needs a ROSTER SEAM (without one `isMember` accepts everyone — the face invents nothing),
+  // so it runs on its own instance and cannot disturb the request list below.
+  const S = meetingsMod.createMeetings({ clock, settings: {}, members: { has: (id) => roster.includes(id) } })
+  const s1 = S.open({ type: 'ordinary', chair: 'acad', roster, size: 2, at: NOW })
+  ok(grab22(() => S.requestLeave({ meeting: s1.meeting, member: 'nobody', why: 'x' })) === 'VMU_NOT_MEMBER',
+    'F: with a roster seam a non-member cannot request leave (and without a seam the face claims no roster)')
+  const asked = M.requestLeave({ meeting: mid, member: 'r-1', why: 'family matter' })
+  ok(asked.ok === true && asked.state === 'pending' && asked.approver === 'chair' && asked.enforced.includes('vmu.meetings.leaveApprover'),
+    'F: asking is recorded as pending and the DECLARED approver (chair by default) is named in enforced[]')
+  ok(grab22(() => M.approveLeave({ meeting: mid, member: 'r-1', by: 'r-2', why: 'ok' })) === 'VMU_NOT_PERMITTED',
+    'F: a NON-CHAIR cannot decide the request (the authority is declared, not assumed)')
+  ok(grab22(() => M.approveLeave({ meeting: mid, member: 'r-1', by: 'acad' })) === 'VMU_REASON_REQUIRED',
+    'F: the DECISION also needs a why (an unexplained approval is unauditable)')
+  const decided = M.approveLeave({ meeting: mid, member: 'r-1', by: 'acad', why: 'granted' })
+  ok(decided.ok === true && decided.state === 'approved' && decided.decidedBy === 'acad' && decided.approver === 'chair',
+    'F: the chair decides, and the receipt says who decided')
+  const list = M.leaveRequests({ meeting: mid })
+  ok(list.ok === true && list.requests.length === 1 && list.pending === 0 && list.approver === 'chair',
+    'F: the request list is readable (and reports how many are still pending)')
+  ok(M.approveLeave({ meeting: mid, member: 'r-1', by: 'acad', why: 'again' }).deduped === true,
+    'F: deciding twice is idempotent')
+  ok(M.leaveRequests({ meeting: mid }).requests[0].state === 'approved' && M.leaveRequests({ meeting: mid }).requests.length === 1,
+    'F: a decided request is not silently duplicated or re-opened by asking again (the prior decision stands)')
+  // THE KEY REALLY DECIDES: with the declared fallback, the chair is refused and the office may decide.
+  const O = meetingsMod.createMeetings({ clock, settings: { 'vmu.meetings.leaveApprover': 'office' } })
+  const o2 = O.open({ type: 'ordinary', chair: 'acad', roster, size: 2, at: NOW })
+  O.requestLeave({ meeting: o2.meeting, member: 'r-2', why: 'errand' })
+  ok(grab22(() => O.approveLeave({ meeting: o2.meeting, member: 'r-2', by: 'acad', why: 'x' })) === 'VMU_NOT_PERMITTED',
+    'F: with leaveApprover=office the CHAIR is refused (the key really decides, it is not a label)')
+  ok(O.approveLeave({ meeting: o2.meeting, member: 'r-2', by: 'office', why: 'granted by the office' }).state === 'approved',
+    'F: and the declared fallback identity ("office") may decide')
+  const R = meetingsMod.createMeetings({ clock, settings: {} })
+  const r3 = R.open({ type: 'ordinary', chair: 'acad', roster, size: 2, at: NOW })
+  R.requestLeave({ meeting: r3.meeting, member: 'r-1', why: 'x' })
+  ok(R.approveLeave({ meeting: r3.meeting, member: 'r-1', by: 'acad', why: 'no', approve: false }).state === 'refused',
+    'F: a refusal is a first-class decision (refused, not silently pending)')
+}
+
 console.log('vmu-meeting-parity: ' + passed + ' passed, ' + failed + ' failed')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

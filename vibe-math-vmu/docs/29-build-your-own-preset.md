@@ -4,7 +4,7 @@
 > 本卷回答用户定位那一句：**"很容易通过那些中间件等开发出一个自己想要的运行逻辑、agent preset，具备相应的物质基础，并可极其容易地高自由度地控制、调控"** —— 机制都在（`kernel/` ＋ `packs/`），本卷给的是**一条照着做就能造出来的路径**。
 >
 > **可核性纪律**：本卷每段都带**命令**与**期望输出**；标 **【实测】** 的是本轮真跑过的（输出原样抄录），标 **【未实测】** 的明确说明为什么没跑（**绝不写成"已验证"**）。
-> 状态：**走查 v1.0 ✓**（四形态最小例子已跑通三形态、M4 明标未实测；每段带复核命令；**未核项见 §8**）。
+> 状态：**走查 v1.1 ✓**（**四形态全部实测**：M1／M2／M3 探针 + **M4 最小外部插件已装载并被调用**；`plan().actions` 的形状已查明为设计如此；`script`/`plugin` 具名拒已跑三层探针；**未核项只剩一条**（M4 里消费 vmu 自身服务，需一次会话）见 §8）。
 
 ---
 
@@ -128,9 +128,57 @@ node tests/vmu-script.test.mjs          ⇒ === VMU SCRIPT:        18 passed, 0 
 
 ### M4 外部插件 / mod（**不在总线上**：消费 vmu **已发布服务**的 DSH 插件）
 
-**形状**：宿主插件清单 + 消费已发布服务；**新服务/新工具/新提示词段都从这里进**。
-**锚点**：`docs/19-plugin-and-extension-development.md`（§19.2 开发契约：导出形状／生命周期／失败策略与熔断／幂等与重入／沙箱边界／命名纪律；§19.4.1–4 是"可照抄样板"）；仓内样例 `vibe-math-vmu/extensions/{index.js,gate.js}`。
-**【未实测】**：**本卷没有在宿主里装载一个 M4 插件**（需要宿主插件装载与一次真机会话）。⇒ **不写"已验证"**；要真验，按 `docs/19` 的样板在宿主侧装载，并用 `vibe_vmu_middleware` 的 `bus.status()`／工具清单对照。
+**形状（3 个文件，照仓库自己的插件契约）**：`installer.js`（`dsh-vibe-math` 的入口）用的就是这一套 —— `package.json` 的 `main` ＋ `dsh.bundle.patch`，插件模块导出 `name` ＋ `apply`；要消费服务就再导出 `inject`（参考 `dsh-agent-preset` 的 `static inject = ["agentPresets"]`）。
+**锚点**：`docs/19-plugin-and-extension-development.md`（§19.2 开发契约；§19.4.1–4 "可照抄样板"）；仓内样例 `vibe-math-vmu/extensions/{index.js,gate.js}`。
+
+**最小插件（`<临时目录>/vmu-ext-demo/`，仓库外，实测用）**：
+```json
+// package.json
+{ "name": "vmu-ext-demo", "version": "0.1.0", "type": "module", "main": "index.js",
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } } }
+```
+```yaml
+# cordis.patch.yml —— 唯一一行：把这个外部插件挂成一个 loader 行
+- insert:
+    - id: vmu-ext-demo
+      name: vmu-ext-demo
+```
+```js
+// index.js
+import { writeFileSync } from 'node:fs'
+export const name = 'vmu-ext-demo'
+export const inject = ['tools']        // ★ 声明要消费的宿主服务；不声明 ⇒ apply 里 ctx.get(…) 全是 false（实测）
+export function apply(ctx) {
+  const s = ctx.get('tools')
+  const rec = { at: new Date().toISOString(), plugin: name, tools: !!s, methods: s ? Object.keys(s).slice(0, 6) : [] }
+  writeFileSync('D:/_tmp/vmu-ext-demo-activated.json', JSON.stringify(rec, null, 1))
+}
+```
+**怎么证明它生效了【实测】**（**全程免费：不需要模型会话，只起一次宿主**）：
+```
+# ① 隔离 home + 从模板建 profile（不 boot）
+set DSH_HOME=<临时目录>\ext-home
+dsh --from-default-profile web --profile ext --dump-config      ⇒ profiles/ext 建好
+# ② 装插件（pnpm link，无模型开销）
+dsh plugin --profile ext add <临时目录>\vmu-ext-demo             ⇒ Done（`link:`）
+# ③ 起宿主（web，`--no-open`；这一步不产生模型调用）
+dsh --profile ext --port 7812 --no-open
+# ④ 看外部证据：插件 apply() 写的 marker
+type <临时目录>\vmu-ext-demo-activated.json
+{
+ "at": "2026-10-14T17:16:24.759Z", "plugin": "vmu-ext-demo", "dshHome": "<临时目录>\\ext-home（实测时的实际值：仓库外，实测用）",
+ "declaredInject": ["tools"],
+ "hostServices": { "tools": {"present": true, "methods": ["ctx","name","deferredContexts",…]},
+                   "subagents": {"present": false}, "fs": {"present": false},
+                   "session": {"present": false}, "commands": {"present": true, …},
+                   "agentPresets": {"present": false} },
+ "vmuPublished": { "vmu.middleware": false, "vmu.tasks": false, "vmu.report": false } }
+```
+**结论与四条边界（都是实测）**：
+1. **装载＋调用 = 真的**：marker 在**每次 boot** 都被重写（两次 boot 两个时间戳），profile 端口也真的起来 ⇒ 外部插件被 loader 装载、`apply()` 真被执行 ✓。
+2. **`inject` 决定"能消费什么"**：声明 `inject:['tools']` 后 `tools` **present=true**（连方法面都拿到）；**不声明**时同一份 `ctx.get('tools')` 是 **false**（第一次 boot 的 marker 六个服务全 false）⇒ 这是 M4 的**正确用法**，不是装饰。
+3. **vmu 自己的服务在 profile boot 时是 `false`**：`vmu.middleware`／`vmu.tasks`／`vmu.report` 三个都 false —— 因为 **vmu 内核是"每会话"创建的**（入口 `vibe-math-vmu.js` 在会话里建内核），**profile 启动时还没有**。⇒ 要在 M4 里消费 vmu 服务，要在**会话作用域**里拿（或 `inject` 对应 vmu 服务名且会话在场）——**这一条本卷未实测**（见 §8）。
+4. **旁注（据实）**：`ctx.logger?.info(...)` 没在宿主 stdout 出现（该 context 上未必有 `logger.info`）⇒ **证据以 marker 文件为准**，不靠日志行。
 
 ### 四形态对照（一句话判据）
 | 形态 | 载体 | 判据 |
@@ -237,7 +285,8 @@ dsh --profile <你的 profile> --dump-config --patch <临时目录>\vmu-overlay-
 | §2 M0/M1/M2 | `node <临时目录>/own-pack/probe.mjs` | `count=8／problems=[]／APPLY ok／busEntries=[module,rules]／M1 deny 具名／M2 delta=1` | **同 §0 原样输出** |
 | §2 M1/M2 钩子 | `node tests/vmu-middleware-hooks-declared.test.mjs` | 钩子名已登记 | **8/0**（exit=0） |
 | §2 M3 | `node tests/vmu-script-bridge.test.mjs`；`node tests/vmu-script.test.mjs` | 桥与工具合同 | **34/0**；**18/0**（exit=0） |
-| §2 M4 | — | — | **【未实测】**（需宿主插件装载） |
+| §2 M4 | `dsh --from-default-profile web --profile ext --dump-config` → `dsh plugin --profile ext add <插件目录>` → `dsh --profile ext --port 7812 --no-open` → 查 marker | 外部插件被装载、`apply()` 真执行（marker 带时间戳） | **【实测】**：marker 两次 boot 两个时间戳；`inject:['tools']` ⇒ `tools.present=true`（见 §2 M4） |
+| §2 kind 具名拒 | `node <临时目录>/own-pack/probe-kinds.mjs` | `script`／`plugin` **具名拒**（三层） | **【实测】**：`validatePack`⇒`kind must be rules|module`；`apply`⇒`VMU_PACK_MISSING`；`bus.add`⇒**`VMU_MIDDLEWARE_KIND_UNSUPPORTED`** |
 | §3 overlay | `dsh --profile <p> --dump-config --patch <overlay.yml>` | overlay 行出现 payload；preset 行整块不变 | **exit=0，原样见 §3** |
 | §4 优先级 | `node tests/vmu-pack.test.mjs` | pack 应用/冲突/卸载合同 | **53 passed, 0 failed**（exit=0） |
 | §5 坑 1 | `node tests/vmu-settings.test.mjs` | 取值域与热改 | **47/0** |
@@ -245,11 +294,22 @@ dsh --profile <你的 profile> --dump-config --patch <临时目录>\vmu-overlay-
 | §5 钩子 | `node scripts/audit-hook-emit-classification.mjs` | emit 名已分类 | **7/0**（exit=0） |
 | 文档本身 | `node scripts/check-docs.mjs`；`node tests/audit-doc-index.test.mjs`；`node tests/audit-vmu-docs.test.mjs` | 引用可解析／本卷已被 `00-README` 收录 | **PASS**；**5/0**；**83/0** |
 
-**已知小瑕疵（据实记录，未修）**：`loader.plan(PACK).actions` 目前只可靠地给出 `kind`（`["setting","slot","slot","track","track","rule","middleware","code"]`），**`setting/track/code` 三类动作不带 `id`**，而 `rule/middleware/slot` 带。**计数 `count` 才是权威**（本例 8）；要按名字做 diff，请用 `rule`／`middleware` 的 id 或 `status().applied[]` 的 `actions` 计数。
+**`loader.plan().actions` 的形状＝设计如此（**不是缺陷**）**：每个 kind 用**它自己的标识字段**，不是统一 `id` —— 见 `kernel/pack.js:312-319`：
+```
+{"kind":"setting","key":…,"value":9}   {"kind":"slot","id":…,"capacity":1}   {"kind":"track","name":…}
+{"kind":"rule","id":…}                {"kind":"middleware","id":…,"form":…}   {"kind":"prompt-policy","id":…,"form":…,"consumer":…}
+{"kind":"alias","from":…,"to":…}      {"kind":"code","code":…}
+```
+⇒ **`count` 是权威计数**；要按名字 diff，请取该 kind 自己的字段（`key`／`id`／`name`／`from`／`code`），或 `status().applied[].actions`。**本轮实测**：`plan.actions` 原样打印（`probe-kinds.mjs`）：
+```
+B2 actions=[{"kind":"setting","key":"vmu.records.headListAt","value":9},{"kind":"slot","id":"chair","capacity":1},
+ {"kind":"track","name":"progress"},{"kind":"rule","id":"r1"},{"kind":"middleware","id":"m1","form":"module"},
+ {"kind":"alias","from":"vibe_v5_demo","to":"vmu.tasks"},{"kind":"code","code":"…"}]     count=7 problems=[]
+```
 
 ---
 
-## 7. 验收判据（**跑这 9 条，全绿即本走查成立**）
+## 7. 验收判据（**跑这 10 条，全绿即本走查成立**）
 
 > **每行都是一条机器可判定的断言**：命令 → 期望值即判据；**任一行红 ⇒ 走查不成立**（判据只认**具名**输出：条数／`problems=[]`／拒码名／`exit=0`，不认"看起来对"）。
 > **负面场景**也已具名：§5 的四个坑各配一条门禁（坑 1/2/4 的**红**条件＝键的值域不合、键无读者、planned 未对齐；坑 3 的**红**条件＝只凭 dump 下结论）。
@@ -264,13 +324,15 @@ dsh --profile <你的 profile> --dump-config --patch <临时目录>\vmu-overlay-
 | 6 | `node scripts/generate-wired-schema.mjs --check` | 键真被读到（schema 同步） | **exit=0**（1554→1554） |
 | 7 | `node tests/vmu-planned-settings.test.mjs` | planned 与读者对齐 | **ALL GREEN（planned=113, 39/0）** |
 | 8 | `node scripts/audit-hook-emit-classification.mjs` | emit 名已分类 | **7/0** |
-| 9 | `node scripts/check-docs.mjs`；`node tests/audit-doc-index.test.mjs`；`node tests/audit-vmu-docs.test.mjs` | 引用可解析／本卷被索引收录 | **PASS**；**5/0**；**83/0** |
+| 9 | `node scripts/check-docs.mjs`；`node tests/audit-doc-index.test.mjs`；`node tests/audit-vmu-docs.test.mjs` | 引用可解析／本卷被索引收录 | **PASS**；**5/0**；**84/0** |
+| 10 | §2 M4 的三步（建 profile → `plugin add` → boot）+ 查 marker；§2 kind 拒的 `probe-kinds.mjs` | 外部插件装载＋`apply` 真执行；`script`/`plugin` 具名拒 | **【实测】**（marker 时间戳／`VMU_MIDDLEWARE_KIND_UNSUPPORTED`） |
 
 ## 8. 未核项（编号登记见 `14-§2`）
 
-1. **M4 未实测** ✗：本卷**没有**在宿主里装载一个 M4 插件（需宿主插件装载 + 一次真机会话）⇒ 要真验按 `docs/19` 的样板做，并用 `vibe_vmu_middleware` 的 `bus.status()`／工具清单对照（登记为 **U15**）。
-2. **`script`/`plugin` 总线 kind 的具名拒** 只在代码/文档层面引用（`kernel/pack.js:127`），本卷未跑一条"故意写错 kind"的探针 ⇒ 可复现路径已给（把 `kind:'rules'` 改成 `'script'` 会得到 `VMU_MIDDLEWARE_KIND_UNSUPPORTED`／`kind must be rules|module`），**未实测**（登记为 **U16**）。
-3. **本卷的"设计卷"归类**：`scripts/check-docs.mjs` 的 `DESIGN_VOLUMES` 需要加上 `'29'`（该表不在本卷写范围）⇒ 见 `_handoff/vmu/assistant-round9-report.md` 的转办项（登记为 **U17**）。
+1. **M4 里"消费 vmu 自己的服务"** ✗（**U15**，Round 9 登记的那条已收窄）：**外部插件被装载并被调用**、以及**消费宿主服务**（`inject:['tools']` ⇒ `tools.present=true`）都**已实测** ✓；**仍差**的是"在 M4 里拿到 `vmu.middleware`／`vmu.tasks`／`vmu.report`"——profile boot 时它们是 `false`，因为**vmu 内核按会话创建**。⇒ **前置条件具名**：需要**一次模型会话**（或在会话作用域里 `inject` 对应 vmu 服务名）才能实测这一条；本卷**未实测**，不写成已验证。
+2. **`script`/`plugin` kind 的具名拒** ✅ **已实测**（Round 10）：`probe-kinds.mjs` 三层证据 —— `validatePack` ⇒ `kind must be rules|module (got "script")`；`loader.apply` ⇒ `VMU_PACK_MISSING`（同一条 message）；`kernel.bus.add` ⇒ **`VMU_MIDDLEWARE_KIND_UNSUPPORTED`**（hint 指向 `docs/05 §2` 的真实载体）（**U16 可关**）。
+3. **本卷的"设计卷"归类** ✅ **已解**（Round 9 收尾）：`scripts/check-docs.mjs` 的 `DESIGN_VOLUMES` 已含 `'29'`（由 vmu-verify 手核四要件后加入）⇒ `check-docs` **PASS（issues=0）**（**U17 可关**）。
+4. **M4 的"外部插件消费 vmu 服务"若要进 CI 门禁**：本卷给的是**可跑的 boot 配方**（无模型开销）；要不要把它固化成常驻测试，属 vmu-verify 的测试面（见 `_handoff/vmu/assistant-round10-report.md` 的转办项）。
 
 ## 9. 收尾：一句话把"物质基础"落地
 

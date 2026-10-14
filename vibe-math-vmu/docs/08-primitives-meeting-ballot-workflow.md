@@ -1531,6 +1531,20 @@ for (const m of roster) chat.mute(m, { by: chair, reason: 'meeting in progress' 
 
 ---
 
+### 25.15 拆分：`kernel/meetingleave.js`（请假/休会请求的规则）↔ `kernel/meetings.js`（状态）
+
+**为什么拆**：F（请假批准人）落地后 `kernel/meetings.js` 达 **1244** 行 > `docs/02 §L174` 的 1200 行决议线。它**不是**"文本本身就是契约"的文件 ⇒ **不**往 `KNOWN` 加名字，按**规则/状态缝**拆开：
+
+| 半边 | 文件 | 内容 |
+|---|---|---|
+| **规则** | **`kernel/meetingleave.js`** | 导出 **`createLeaveControls`**（返回 `requestLeave`／`approveLeave`／`leaveRequests`）：谁可**请求**（`isMember` 接缝）／谁可**决定**（`vmu.meetings.leaveApprover`：`chair` 比对主席、`office` 为声明兜底）／**两侧都必须 `why`**／决定**幂等**／**拒绝是一等决定**。回执只报 `keys`，不写回执词汇 |
+| **状态** | `kernel/meetings.js` | 注入 `requireMeeting`／`isMember`／`clock`／`limits()`／`deny`／`pushReceipt`；把模块回的 `keys` 经 **`withScope()`** 映射为 `enforced[]`＋`enforcedScope`；持有活记录、`m.minutes.entries`、receipt 台账 |
+
+**行为不变（实测）**：parity **§22 的 13 条断言逐条保持**（`vmu-meeting-parity` **206/0**）；`vmu-meetings`（加载内核）**161/0**。
+**结果**：`meetings.js` **1244 → 1188 行**（≤1200）；`audit-code-size` **9/0**，`KNOWN` 仍为 **3**（未增名）；新模块 **0 个 `enforced` 令牌** ⇒ 不制造"未被门禁覆盖的新模块"。
+
+---
+
 ## 26. Round 3 · 目标 2 缺口：一次性 future-only 活动等待器（F52 / C-56）
 > **判据**：`_handoff/vmu/03-v5r-full-inventory.md` 分片 A **§6 原语 F52**（"必须是未来一次性语义"）、**C-56**（`vibe_v5_wait`／`waitForActivity`／`notifyActivity`，`vibe-math-v5r.js:3424-3466`、工具 `:11142-11151`）。
 > **缺口实测**：Round 3 之前 vmu 全树对 `waitFor`／`notifyActivity`／`vibe_v5_wait`／`activityWaiter` **零命中** ⇒ 成员只能轮询（烧 token）或永远等；这条直接落在"利于多智能体协作"的反面，故本轮补为内核原语。

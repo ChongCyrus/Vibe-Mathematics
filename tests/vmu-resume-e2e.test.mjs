@@ -84,9 +84,19 @@ function makeCommitStore() {
  * `{"__map":[[id, row], …]}`; a bare array is accepted too. Returns -1 when nothing parseable is there.
  */
 function liveMeetingsIn(envOrSnapshot) {
+  return liveCountIn(envOrSnapshot, 'live')
+}
+
+/** The same reader for a ballot box collection: `ballotbox.snapshot().data.boxes` (also a serialised Map). */
+function liveBoxesIn(envOrSnapshot) {
+  return liveCountIn(envOrSnapshot, 'boxes')
+}
+
+/** Shared reader for a collection face whose snapshot serialises its Map with the Map/Set-aware replacer. */
+function liveCountIn(envOrSnapshot, field) {
   const snap = envOrSnapshot && envOrSnapshot.value ? envOrSnapshot.value : envOrSnapshot
   try {
-    const parsed = JSON.parse((snap && snap.data && snap.data.live) || '[]')
+    const parsed = JSON.parse((snap && snap.data && snap.data[field]) || '[]')
     if (Array.isArray(parsed)) return parsed.length
     if (parsed && Array.isArray(parsed.__map)) return parsed.__map.length
     return -1
@@ -534,6 +544,107 @@ const mRow = ledgers3.hydrated.filter((h) => h.key === 'meetings')[0]
 ok(M3.recovery.ok === true && !!mRow && mRow.hydrated === true && liveMeetingsIn(M3.meetings.snapshot()) === 2,
   '11f …and after a RESTART the collection hydrates BOTH meetings ⇒ multi-instance durability needs NO registry mechanism, only the method list',
   { ok: M3.recovery.ok, row: mRow, live: liveMeetingsIn(M3.meetings.snapshot()) })
+
+// ── ⑩ THE REAL ASSEMBLY, TWO KERNELS, ONE STORE (task-78 B): is multi-instance recovery truly there? ────────
+// Rounds 8/9 built the faces by hand. This section uses the SHIPPED ENTRY (`vibe-math-vmu.js apply(ctx, config)`)
+// with a minimal fake host ctx — the same shape `vmu-entry.test.mjs` uses — and boots TWO kernel instances over ONE
+// real store root: the first opens two meetings and two ballot boxes, calls the shipped `kernel.shutdown()`, and
+// the second is asserted to find all of them. That also replaces the round-9 SOURCE PROBE for the exit seam with a
+// BEHAVIOURAL assertion: `shutdown()` really runs, and the next reader really sees the result.
+console.log('\n[10] the REAL assembly — two kernel instances over one store (task-78 B)')
+const entryMod = await import(new URL('../vibe-math-vmu/vibe-math-vmu.js', import.meta.url).href)
+const fakeCtx = (extra = {}) => {
+  const state = { specs: [], disposed: 0, effects: [], listeners: {} }
+  return {
+    state,
+    ctx: Object.assign({
+      effect(fn, label) { state.effects.push(label); return fn() },
+      on(event, handler) { (state.listeners[event] = state.listeners[event] || []).push(handler); return () => {} },
+      tools: { register: async (spec) => { state.specs.push(spec); return () => { state.disposed += 1 } } },
+    }, extra),
+  }
+}
+const KROOT = 'D:/_tmp/vmu-goal1-e2e-kernel'
+rmSync(KROOT, { recursive: true, force: true })
+mkdirSync(KROOT, { recursive: true })
+/**
+ * WAIT FOR THE ENTRY'S STARTUP CHAIN. `apply()` returns synchronously, but the chain it starts is
+ * `store.open()` (real fs) → `hydrateIds()` → `recovery.recover()` (vibe-math-vmu.js:562-595). A single
+ * `setTimeout(0)` is NOT enough: the fold is still unread, the read-before-write latch is armed only by
+ * `recover()`, and every write-through is then refused by name (`VMU_RESUME_WRITE_BEFORE_READ`) — measured here
+ * as `generation: 0` plus a `store is not open` crash. So readiness is POLLED on two real observables.
+ */
+const readyKernel = async (K) => {
+  for (let i = 0; i < 300; i += 1) {
+    const stats = K.kernel.store && typeof K.kernel.store.stats === 'function' ? K.kernel.store.stats() : null
+    if (stats && stats.open === true && K.kernel.recovery.status().restart.generation >= 1) return true
+    await sleep(5)
+  }
+  return false
+}
+const k1host = fakeCtx()
+const K1 = entryMod.apply(k1host.ctx, { clock, root: KROOT, packs: ['v5r'] })
+ok(await readyKernel(K1), '12a the SHIPPED entry assembles a real kernel whose startup chain finishes (store open ⇒ recover ⇒ generation 1)',
+  { generation: K1.kernel.recovery.status().restart.generation, unhydrated: K1.kernel.recovery.status().unhydrated })
+
+// THE ROUND-9 DEFECT, CHECKED BEHAVIOURALLY: a declared state face must have WRAPPED methods (the wrapper's
+// after-hook is the only thing that writes a state projection through).
+const wrappedOf = (k, face) => ((k.status().projections || {}).wrappedMethods || []).filter((w) => w.face === face)[0]
+const wMeetings = wrappedOf(K1.kernel, 'meetings')
+ok(!!wMeetings && Array.isArray(wMeetings.methods) && wMeetings.methods.length > 0,
+  '12b the assembly WRAPS real methods for `meetings` (the `methodsOf[face] || []` defect is gone)',
+  wMeetings && { face: wMeetings.face, mode: wMeetings.mode, methods: wMeetings.methods.slice(0, 8), wrapped: wMeetings.wrapped })
+
+const km1 = K1.kernel.meetings.open({ type: 'ordinary', chair: 'r-1', roster: ['r-1', 'r-2'] })
+const km2 = K1.kernel.meetings.open({ type: 'ordinary', chair: 'r-3', roster: ['r-3'] })
+const kb1 = K1.kernel.ballotbox.open({ question: 'adopt the roadmap?', options: ['for', 'against'] })
+const kb2 = K1.kernel.ballotbox.open({ question: 'extend the deadline?', options: ['yes', 'no'] })
+ok(km1.ok === true && km2.ok === true && kb1.ok === true && kb2.ok === true,
+  '12c TWO meetings and TWO ballot boxes are live in the first kernel (multi-instance)',
+  { meetings: [km1.meeting, km2.meeting], boxes: [kb1.id, kb2.id] })
+
+const k1shutdown = await K1.kernel.shutdown({ reason: 'drill-exit-kernel-1' })
+ok(k1shutdown.ok === true && K1.kernel.status().shutdown && K1.kernel.status().shutdown.ok === true &&
+  K1.kernel.recovery.status().pendingWrites === 0,
+  '12d BEHAVIOURAL (not a source probe): the shipped `kernel.shutdown()` runs, reports ok, and left no write-through in flight',
+  { receipt: { ok: k1shutdown.ok, failed: (k1shutdown.failed || []).length }, pendingWrites: K1.kernel.recovery.status().pendingWrites })
+
+const kreader = createStore({ root: KROOT, clock })
+await kreader.open()
+const kSeenMeetings = kreader.read('meetings')
+const kSeenBoxes = kreader.read('ballotbox')
+ok(!!kSeenMeetings && kSeenMeetings.mode === 'state' && liveMeetingsIn(kSeenMeetings) === 2,
+  '12e the NEXT READER (a raw store over the same root) sees BOTH MEETINGS as a written state envelope',
+  { meetings: liveMeetingsIn(kSeenMeetings), mode: kSeenMeetings && kSeenMeetings.mode })
+if (typeof kreader.close === 'function') await kreader.close()
+
+// ADAPTIVE DEFECT PROBE (like 11c/11d): the v5r pack DECLARES `ballots` while the assembly's adapter table keys
+// `ballotbox`; if that is still so, the two live boxes above are never projected. It asserts the shape that is
+// THERE, so it flips to the closed form by itself once the key is aligned.
+const kProj = K1.kernel.status().projections || {}
+const boxAttached = (kProj.attached || []).includes('ballotbox')
+if (boxAttached) {
+  ok(!!kSeenBoxes && kSeenBoxes.mode === 'state' && liveBoxesIn(kSeenBoxes) === 2,
+    '12f CLOSED: `ballotbox` is attached and its envelope carries BOTH boxes across the shutdown',
+    { boxes: liveBoxesIn(kSeenBoxes) })
+} else {
+  const named = (kProj.notAttached || []).filter((n) => n.face === 'ballots')[0]
+  ok((kProj.declared || []).includes('ballots') && !!named && !boxAttached && (!kSeenBoxes || liveBoxesIn(kSeenBoxes) === 0),
+    '12f DEFECT MEASURED: the pack declares `ballots` but the adapter table keys `ballotbox` ⇒ the two live boxes are NEVER projected (declared, not attached)',
+    { declared: kProj.declared, notAttached: named, nextReader: kSeenBoxes })
+}
+
+const k2host = fakeCtx()
+const K2 = entryMod.apply(k2host.ctx, { clock, root: KROOT, packs: ['v5r'] })
+ok(await readyKernel(K2), '12g a SECOND kernel instance over the same store finishes its startup chain (generation 2)',
+  { generation: K2.kernel.recovery.status().restart.generation, unhydrated: K2.kernel.recovery.status().unhydrated })
+ok(liveMeetingsIn(K2.kernel.meetings.snapshot()) === 2,
+  '12h CROSS-INSTANCE RECOVERY HOLDS for the meetings collection: both meetings are there in the second kernel ⇒ "the collection face IS the registry" is confirmed on the REAL assembly (no new registry mechanism needed)',
+  { meetings: liveMeetingsIn(K2.kernel.meetings.snapshot()) })
+const k2rows = K2.kernel.recovery.status().hydrated.filter((h) => h.key === 'meetings')
+ok(k2rows.length === 1 && k2rows[0].hydrated === true && k2rows[0].mode === 'state' && K2.kernel.recovery.status().unhydrated.length === 0,
+  '12i the meetings collection is reported HYDRATED in the second kernel (named, not inferred)',
+  { rows: k2rows.map((h) => h.key + ':' + h.mode + ':' + h.hydrated), unhydrated: K2.kernel.recovery.status().unhydrated })
 
 console.log('\n  boundaries (what this drill does NOT prove): no host/subagents ⇒ re-dispatch is a recorded callback;')
 console.log('  no real child spawn; `inject` used the mailbox path (chat was present but refusing); time is the injected clock;')

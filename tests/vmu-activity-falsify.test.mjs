@@ -165,8 +165,65 @@ async function activityPromisesProbe(mod) {
   }
 }
 
+/**
+ * The face's GOVERNANCE surface: the three things `docs/08 §26` promises about *not lying* — the clamp (a declared
+ * policy that must name the value it really armed), the dispose (a pending wait ends NAMED, never dropped) and the
+ * notification ring (bounded WITH the drops counted). Each part is read from the face's own counters, and the timer
+ * seam records the milliseconds that were really armed, so "claims clamped, arms the raw value" is visible.
+ */
+async function activityGovernanceProbe(mod) {
+  // (a) CLAMP: 5 ms against declared bounds [10000, 20000] ⇒ the armed timeout must be the bound, and the receipt
+  //     must self-disclose `clamped:true`. The timer is a hand-fired one: the clamped wait is never awaited before
+  //     the value it armed is known (and a policy that REFUSES instead of clamping throws synchronously).
+  const armedA = []
+  let fireA = null
+  const timerA = { timeout(cb, ms) { armedA.push(ms); fireA = cb; return () => {} } }
+  const a1 = mod.createActivity({ clock: () => 0, log: () => {}, timer: timerA,
+    settings: { 'vmu.activity.timeoutPolicy': 'clamp', 'vmu.activity.timeoutMinMs': 10000, 'vmu.activity.timeoutMaxMs': 20000 } })
+  let clampCode = null, clampReceipt = null, clampWait = null
+  try { clampWait = a1.wait({ timeoutMs: 5 }) } catch (e) { clampCode = (e && e.code) || (e && e.name) || 'THREW' }
+  if (clampWait) { if (typeof fireA === 'function') fireA(); clampReceipt = await clampWait }
+  // (b) DISPOSE: a pending wait must end with the NAMED code (a wait that ends because its owner left is not a
+  //     satisfied wait), the disposer must run, and the set must be empty.
+  const a2 = mod.createActivity({ clock: () => 0, log: () => {}, timer: manualTimer(), settings: {} })
+  let disposeOutcome = 'pending'
+  const p2 = a2.wait({ timeoutMs: 20000, member: 'm1' })
+    .then(() => { disposeOutcome = 'resolved' }, (e) => { disposeOutcome = (e && e.code) || 'unnamed' })
+  const disposed = a2.dispose({ reason: 'owner-left' })
+  await tick()
+  const disposeStatus = a2.status()
+  // (c) THE RING: past its bound the face must RETIRE old notifications and COUNT every retirement. The bound itself
+  //     is NOT exposed by `status()` (the view is always the newest five), so the reading is deliberately BOUND-FREE:
+  //     two different totals are sent, and the drop counter must advance one-for-one with the notifications past the
+  //     bound. That is what "bounded, and the drops are counted" means observably — a hardcoded N would be a
+  //     re-statement of the implementation rather than a check of it.
+  const send = (n) => {
+    const a = mod.createActivity({ clock: () => 0, log: () => {}, timer: manualTimer(), settings: {} })
+    for (let i = 0; i < n; i += 1) a.notify({ what: 'n' + i })
+    return a.status()
+  }
+  const s60 = send(60)
+  const s80 = send(80)
+  const tail = Array.isArray(s60.notificationRing) ? s60.notificationRing : []
+  return {
+    clampClamped: !!(clampReceipt && clampReceipt.clamped === true),
+    clampMs: clampReceipt ? clampReceipt.timeoutMs : -1,
+    armedMs: armedA.length ? armedA[0] : -1,
+    clampCode,
+    clampCounted: a1.status().clamped,
+    disposeOutcome, disposeClosed: disposed.closedWaiters,
+    disposersAfterDispose: disposeStatus.disposersCalled, waitersAfterDispose: disposeStatus.waiters,
+    secondDisposeAlready: a2.dispose({ reason: 'again' }).alreadyDisposed === true,
+    ringSent: 60, ringViewSize: tail.length, ringDroppedAt60: s60.ringDropped,
+    ringTailNewest: tail.length > 0 && tail[tail.length - 1].what === 'n59',
+    ringDropsStarted: s60.ringDropped > 0,
+    ringDropsAdvance: (s80.ringDropped - s60.ringDropped) === 20,
+    ringViewBounded: tail.length <= 5,
+  }
+}
+
 const family = await falsifyFamily({
-  name: 'activity — future-only one-shot, and the promises docs/08 §26 makes about the face',
+  name: 'activity — future-only one-shot, the documented surface, and the governance counters',
   cases: [{
     name: 'activity.js — the waiter',
     module: ACTIVITY,
@@ -210,6 +267,29 @@ const family = await falsifyFamily({
         find: '} else { ms = Number(timeoutMs) }',
         replace: '} else { ms = Number(timeoutMs); keys.push(\'vmu.activity.timeoutMs\') }' },
     ],
+  }, {
+    name: 'activity.js — the governance counters',
+    module: ACTIVITY,
+    probe: activityGovernanceProbe,
+    controlFields: ['clampClamped', 'disposeOutcome', 'disposeClosed', 'disposersAfterDispose', 'secondDisposeAlready',
+      'ringDropsStarted', 'ringDropsAdvance', 'ringTailNewest'],
+    mutations: [
+      // NOTE: the mid-line MUTANT markers are deliberately absent here. A `//` inside a one-line statement would
+      // comment out the rest of that statement (braces included) and the library would report the unhelpful
+      // `MUTANT-UNIMPORTABLE` instead of a reading. The label is the documentation; the replacement stays surgical.
+      { label: 'the declared clamp policy refuses instead of clamping', name: 'activity-clamp-refuses',
+        find: "        if (p.timeoutPolicy === 'clamp') { ms = Math.min(Math.max(ms, p.timeoutMinMs), p.timeoutMaxMs); clamped = true; clampedCount += 1 }",
+        replace: "        if (false && p.timeoutPolicy === 'clamp') { ms = Math.min(Math.max(ms, p.timeoutMinMs), p.timeoutMaxMs); clamped = true; clampedCount += 1 }   // MUTANT: the declared policy is ignored" },
+      { label: 'the clamp claims to have applied but arms the raw value', name: 'activity-clamp-wrong-direction',
+        find: 'ms = Math.min(Math.max(ms, p.timeoutMinMs), p.timeoutMaxMs)',
+        replace: 'ms = Math.max(Math.min(ms, p.timeoutMaxMs), 0)' },
+      { label: 'dispose claims to close the waiter and leaves it hanging', name: 'activity-dispose-drops',
+        find: "if (typeof w.fail === 'function') w.fail(refuse(CODE.disposed,",
+        replace: 'if (false) w.fail(refuse(CODE.disposed,' },
+      { label: 'the notification ring is bounded but the drops are not counted', name: 'activity-ring-uncounted',
+        find: 'notes.splice(0, over); ringDropped += over',
+        replace: 'notes.splice(0, over)' },
+    ],
   }],
 })
 
@@ -237,8 +317,18 @@ ok(d.seamKeyNamed === true && d.constructionKeyLeaked === false,
 ok(d.omittedNamesDefaultKey === true && d.explicitClaimsDefaultKey === false,
   'and `vmu.activity.timeoutMs` is named only when the caller omitted the timeout (both directions present)', d)
 
-console.log('=== FALSIFICATION: replay history, keep the waiter, drop the disposer, cut a documented promise ===')
-ok(family.ok, '★ all eight activity mutations are caught (control green + each mutant red)', formatFamilyReport(family))
+console.log('=== CONTROL GROUP: the governance counters tell the truth about what they did ===')
+const g = family.cases[2].real
+ok(g.clampClamped === true && g.clampMs === 10000 && g.armedMs === 10000 && g.clampCounted === 1,
+  '★ the declared `clamp` policy really clamps: the receipt AND the armed timer both carry the lower bound, and the clamp is counted', g)
+ok(g.disposeOutcome === 'VMU_ACTIVITY_DISPOSED' && g.disposeClosed === 1 && g.waitersAfterDispose === 0 && g.disposersAfterDispose === 1,
+  '★ a pending wait ends NAMED on dispose, the disposer runs, and the live set is empty (a dropped waiter would leave a hanging promise)', g)
+ok(g.secondDisposeAlready === true, 'and a second dispose is idempotent (`alreadyDisposed`) rather than closing anything twice', g)
+ok(g.ringDropsStarted === true && g.ringDropsAdvance === true && g.ringTailNewest === true && g.ringViewBounded === true,
+  '★ the ring retires old notifications one-for-one and COUNTS every retirement (bound-free reading: 80 sent drops exactly 20 more than 60), and the visible tail is the newest', g)
+
+console.log('=== FALSIFICATION: replay history, keep the waiter, drop the disposer, cut a documented promise, lie in a counter ===')
+ok(family.ok, '★ all twelve activity mutations are caught (control green + each mutant red)', formatFamilyReport(family))
 const byLabel = (needle) => family.results.find((r) => r.label.includes(needle))
 const historyRed = byLabel('history is replayed') && byLabel('history is replayed').red
 const reuseRed = byLabel('never unregistered') && byLabel('never unregistered').red
@@ -262,6 +352,18 @@ ok(!!leakRed && leakRed.seamKeyNamed === false && leakRed.constructionKeyLeaked 
   '★ "wakeOn leaked": a construction-time key appears in a call receipt — the exact thing docs/08:1575 forbids', leakRed)
 ok(!!overclaimRed && overclaimRed.explicitClaimsDefaultKey === true && overclaimRed.omittedNamesDefaultKey === true,
   '★ "over-claim": an explicit timeout is now reported as having evaluated the declared default', overclaimRed)
+const clampRefuseRed = byLabel('clamp policy refuses') && byLabel('clamp policy refuses').red
+const clampWrongRed = byLabel('clamp claims to have applied') && byLabel('clamp claims to have applied').red
+const disposeRed = byLabel('dispose claims to close') && byLabel('dispose claims to close').red
+const ringUncountedRed = byLabel('drops are not counted') && byLabel('drops are not counted').red
+ok(!!clampRefuseRed && clampRefuseRed.clampCode === 'VMU_ACTIVITY_INVALID_TIMEOUT' && clampRefuseRed.armedMs === -1 && clampRefuseRed.clampClamped === false,
+  '★ "clamp ignored": a value the declared policy says to clamp is now REFUSED instead, and nothing is armed', clampRefuseRed)
+ok(!!clampWrongRed && clampWrongRed.clampClamped === true && clampWrongRed.clampMs === 5 && clampWrongRed.armedMs === 5,
+  '★ "clamp in the wrong direction": the receipt claims `clamped:true` while the timer is armed with the RAW value — below the declared lower bound (a lie about the value, not about the flag)', clampWrongRed)
+ok(!!disposeRed && disposeRed.disposeOutcome === 'pending' && disposeRed.disposeClosed === 1 && disposeRed.disposersAfterDispose === 0,
+  '★ "dispose drops the waiter": the receipt claims it closed 1 waiter while the promise NEVER settles and the disposer never runs', disposeRed)
+ok(!!ringUncountedRed && ringUncountedRed.ringDropsStarted === false && ringUncountedRed.ringDropsAdvance === false && ringUncountedRed.ringTailNewest === true,
+  '★ "the drop is silent": the tail still rotates (the ring works) but the counter never moves — the entries thrown away are recounted nowhere', ringUncountedRed)
 ok(family.results.length > 0 && family.results.every((r) => r.applied && r.importable && r.falsified),
   'and every mutation applied to a unique anchor, imported, and produced a DIFFERENT reading (non-vacuous)', family.results.map((r) => ({ label: r.label, applied: r.applied, importable: r.importable })))
 ok(family.cases.length > 0 && family.cases.every((c) => c.leftovers.length === 0),

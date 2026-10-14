@@ -126,8 +126,13 @@ export function validatePack(manifest) {
     const kind = m.kind === undefined ? 'module' : m.kind
     if (kind !== 'rules' && kind !== 'module') {
       problems.push('middleware ' + m.id + ': kind must be rules|module (got ' + JSON.stringify(m.kind) + '); script/plugin are not bus kinds (D-03)')
-    } else if (kind !== 'rules' && typeof m.handler !== 'function') {
-      problems.push('middleware ' + m.id + ': a non-rules entry needs a handler function; the bus does not load files (a module file is loaded by kernel/loader.js, which attaches the handler)')
+    } else if (kind !== 'rules' && typeof m.handler !== 'function' && m.module === undefined && typeof m.file !== 'string') {
+      // ROUND 10: TWO accepted shapes. An INLINE `handler` is added to the bus as-is (its handler sees the bus
+      // envelope only). A MODULE (`module: { meta, capabilities, hooks }`) or a `file` is routed through
+      // `kernel/loader.js` in apply(), which validates it AND attaches `api` - the only way a middleware can
+      // reach a service (`api.services.get`, capability-gated). Neither shape may be a bare path: the bus never
+      // loads files itself.
+      problems.push('middleware ' + m.id + ': a non-rules entry needs a handler function, or a module object / file for kernel/loader.js to load (the bus itself does not load files)')
     }
   }
   // ROUND 596 — PROMPT-PIPELINE POLICIES ARE NOT BUS ENTRIES. `prompt/assemble` is not a registered bus hook, so an entry like
@@ -450,6 +455,29 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         }
       }
       for (const m of manifest.middleware || []) {
+        // ROUND 10 (Lead ruling (a), core's `api.services` seam): a manifest middleware entry comes in TWO shapes.
+        //   · INLINE (`{ on, handler }`) - the historical shape: the bus gets the handler as-is. Its handler sees
+        //     the bus envelope only (`{ hook, payload, ctx, dryRun, traceId, setting }`), so it can DECIDE but
+        //     cannot reach a service.
+        //   · MODULE (`{ module: { meta, capabilities, hooks } }`, or a `file` with an importer) - must go through
+        //     `kernel/loader`, which validates apiVersion/capabilities/hooks AND hands the handler `api` -
+        //     including the capability-gated `api.services.get(name)` seam. Adding such an entry straight to the
+        //     bus would give it no `api` at all (and `bus.add` would refuse it for lacking a handler), so a pack
+        //     could never implement an institution policy that has to ACT (e.g. "a stalled institute convenes").
+        // The entry keeps its own `order`/`failure`; the loader turns one module into one bus entry per hook.
+        const isModuleShape = m && typeof m === 'object' && !m.handler && (m.module !== undefined || typeof m.file === 'string')
+        if (isModuleShape) {
+          if (!kernel.loader || typeof kernel.loader.toBusEntries !== 'function') {
+            throw refuse('VMU_ENGINE_UNAVAILABLE', 'pack ' + manifest.id + ' declares an M2 module (' + String(m.id) + ') but this kernel has no loader',
+              'an inline { on, handler } entry needs no loader; a module-shaped entry does, because only the loader attaches `api` (and the service seam)')
+          }
+          const entries = await kernel.loader.toBusEntries([m])
+          for (const e of entries) {
+            kernel.bus.add(e)
+            undo.push(() => removeEntry(kernel.bus, e.id))
+          }
+          continue
+        }
         const entry = Object.assign({}, m)
         kernel.bus.add(entry)
         undo.push(() => removeEntry(kernel.bus, entry.id))

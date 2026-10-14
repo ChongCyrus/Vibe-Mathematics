@@ -102,7 +102,7 @@
 | `vmu.collab` | **9** | **7** | `collab.js`(7) | ⚠️ **部分（余 2 条契约薄，见 §L234；原 10 含 1 个服务名，轮 270 剔除）** |
 | `vmu.dissemination` | **12** | **10** | `publication.js`(9) | ⚠️ **部分（10/12）**（★ 轮 530 更正：**声明 12／已接线 10** ✓ —— ★ 新增 `exaggerationWords` 所致 ✓） —— 9 条**已接线 ✓**；另 2 条（`impact`／`mediaRequest`）**经审计确认内核无读取者 ⇒ 真实待办 ✗**（见 §0.1 与 `04` 的 `planned` 行 ✓） |
 | `vmu.admission` | 12 | **12** | `recruit.js`(12) | ★ **已接线 ✓（轮 267 接了余下 4 条，当时漏更此表 ✗，轮 271 修正）** |
-| `vmu.tasks` | **3** | **3** | `index.js`(3) | ★ **已接线 ✓（轮 270 剔除 1 个服务名后，分母由 3 修正为 2 ✓）** |
+| `vmu.tasks` | **4** | **4** | `tasks.js`+`index.js`(4) | ★ **已接线 ✓（轮 270 剔除 1 个服务名后分母修正为 2 ✓；★ 轮 10 重新实测：core 落 `vmu.tasks.memberMayRejectAssign`（`kernel/tasks.js:111` ＋ `kernel/index.js:667` 的 `objectAssign()`）⇒ 分母与分子同为 **4** ✓）** |
 | `vmu.partnership` | 6 | **6** | `partnership.js`(6) | ★ **已接线 ✓（轮 276 建面：`registerEntity`／`bindAccount`／`validateInvoice`，五码齐 ✓）** |
 | `vmu.license` | 4 | **4** | `publication.js`(4) | ★ **已接线 ✓（轮 274 接线：`default`／`incompatiblePolicy` 执法，`codeDefault`／`attributionRequired` 报出）** |
 | `vmu.review` | 4 | **4** | `records.js`(1) ＋ `reviewers.js`(3) | ★ **已接线 ✓（轮 278 `rebuttalRequired` ＋ 轮 279 `mode`／`conflictPolicy`／`quorum`）** |

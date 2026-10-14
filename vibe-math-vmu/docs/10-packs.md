@@ -239,6 +239,46 @@ vmu.paper.finalizer = 'academician'（v5r :1167 的值）
 
 ★ **一条通用教训（Lead 已转 verify 写进 `docs/11`）**：**断言所选观测量必须在被测的两档之间真的不同**——否则它是**语义级的空过**，而语法级门禁（如"集合是否可能为空"）**看不见**。轮 9 的 E-17(乙) 正是实例：它用 `vmu.meetings.quorumRule` 观测"顺序决定重叠值"，而两个机构**都声明 `'m-unanimous'`** ⇒ `!==` 永不成立（它以前能过，只因 v3-core 当时写了**域外值** `'majority'`）。修法＝改用两包**确实分歧**的 `vmu.meetings.verdictMaxRounds`（v3-core 5／institute-min 3）。
 
+### 4.8 轮 10：**8 键已声明（B1–B4）／ `control/idle` 仍具名保留**
+
+> **纪律**：**读者未落地不写默认值**（写了就是"声明了没人读"）。本轮 core（task-74）落了 8 个键＋真读者后，我**逐键核对"键在 schema ∧ 有真读者 ∧ 值在域内"**（探针 `pack-readiness`）再声明 ⇒ **8/8 已落**；`control/idle` 钩子**仍未登记**（`grep -rn "control/idle" kernel/` → 0）⇒ **具名保留**。
+
+| 已声明（v5r 值，出处） | 键 | **真读者** | 类别 |
+|---|---|---|---|
+| 上下文压缩 **66**／**8**（`:1078/1079`） | `vmu.prompt.compactThreshold`／`compactAfterRounds` | `kernel/prompt/index.js:118,121`／`:125,128` | **复述默认**（schema def 也是 66／8，取自 v5r） |
+| 终稿交付 **true**／**'both'**／**'zh'**／**true**（`:1163-1166`） | `vmu.paper.finalPaper`／`format`／`language`／`compilePdf` | `kernel/paper.js:58-61`（WIRED_KEYS）＋`:164-177` | **复述默认**（def 同 v5r） |
+| 临时工编制 **3**（`:1075`） | `vmu.members.maxTempPerMember` | `kernel/recruit.js:52,173`（`accept()`） | **复述默认**（def 3） |
+| 拒派权 **true**（`:1066`） | `vmu.tasks.memberMayRejectAssign` | `kernel/tasks.js:111`（`objectAssign()`）＋`kernel/index.js:667` | **复述默认**（def true） |
+
+★ **诚实口径（与 `vmu.math.maxParallel` 同一条纪律）**：这 8 个键的**框架默认值都是从 v5r 抄的**（schema doc 里逐条引了 v5r 的 `file:line`）⇒ 它们是**"复述默认"**，**可读、可调**，但**不得**当作"v5r 行为已复现"的证据。★ 其中 `vmu.tasks.memberMayRejectAssign` 有一处**刻意的更严**：`false` 时 vmu **具名拒**，而 v5r 是**静默忽略该字段**（schema doc 明写）——分歧方向是安全侧，已登记。
+
+★ **`control/idle` 仍具名保留**：`kernel/loader.js` 按登记表校验 `on`，**未登记钩子⇒具名拒**，整个 pack 的 apply 都会失败 ⇒ 先写＝把 pack 弄坏。模块内容已**暂存**（**仓库外临时目录，实测暂存用**：`<临时目录>/staged-stall-meeting.js`，含纯函数 `stallDecision()`：**阈值不硬编码**，用 `3 × vmu.control.idleAfterMs`＝v5r 的 360000），钩子一落即可复制进仓并配"钩子 emit ⇒ handler 被调 ⇒ 会议真被开"的探针。
+
+### 4.9 轮 10 追加：**投影面名不一致**（`ballots` → `ballotbox`）——"声明了一个不存在的面"
+
+> **缺陷（reader-a 在真装配上实测）**：pack 的 `vmu.resume.projections` 写 **`'ballots'`**，而**投影适配表与耐久 store 键都是 `ballotbox`**（`kernel/index.js:883`、`kernel/store.js:75`）⇒ 结果是 `notAttached:[{face:'ballots', reason:'no adapter in this assembly'}]`：**开两个真票箱、`shutdown()` 之后耐久键仍是种子**——票箱**从未被投影**。这正是"声明了没生效"那一类。
+> **修法（Lead 裁决，pack 侧一行）**：声明改成适配表自己的名字 **`ballotbox`**（"一个键一个语义"）；core 同时保留**具名容忍**（`kernel/index.js:965` 的 `PROJECTION_ALIASES = { ballots: 'ballotbox' }`，经 `status().projections.viaAlias` **具名回显**）⇒ 老部署写旧拼写会**被告知**，而不是悄悄不挂。
+> **实测（`<临时目录>/projection-packlist-probe.mjs`，仓库外一次性·实测）**：改后 pack 的 10 面里 `attached` 含 **`ballotbox`**、**`viaAlias: []`**（**直接**声明，不再走别名）；reader-a 的自适应探针 **12f 已翻正为 `CLOSED`**："`ballotbox` is attached and its envelope carries BOTH boxes across the shutdown"。
+> ★ **同一类里另有两处具名项（非 pack，已报 core）**：① `notAttached:[{face:'members', reason:'attachProjection needs a target object'}]`——pack 声明 `members` 但**未挂上**（**具名**报告，非静默）；② `PROJECTION_KEYS`（`kernel/resume.js:59`）仍写 **`ballots`**，与适配表/store 键的 `ballotbox` 不一致 ⇒ `status().projections.known`/`unwiredKnown` 会报一个**没人能挂的名字**。
+
+### 4.10 轮 10 追加：**`control/idle` 的消费侧缺口**——M2 能"判定"但**无法"行动"**
+
+> `control/idle` 已由 core 登记并可接线（边沿触发：越过 `vmu.control.idleAfterMs` 的那一次发一次；`beat()` 是轮询点；**零机制**＝未声明 `idleAfterMs` 则什么都不发）。但"静止 ⇒ 开会"要**调会议面**，而 **M2 中间件够不到任何服务**：
+> - 实测（`<临时目录>/stall-m2-feasibility.mjs`，仓库外一次性·实测）：一个声明 `on:['control/idle']` 的 M2 模块**确实被调用**（STEP 1 ✓），但它收到的 `api` 只有 **`{dryRun, hook, kernel:{read}, log, setting, traceId}`**，`ctx` 只有 `{member, role, phase}`，**没有服务、也没有总线句柄** ⇒ **STEP 3（会议真被开）做不到**。
+> - ⇒ **不落半接线的模块**（否则正是"声明了没生效"）。模块与纯函数 `stallDecision()`（阈值 `3 × idleAfterMs`＝v5r 的 360000，**不硬编码**）已就绪，**只差一条具名的服务访问缝**。候选（推荐 a）：
+>   a. **给 M2 加能力门控的服务访问缝**（如 `api.services.get('vmu.meetings')`，由声明 `trigger-workflow` 能力解锁；服务未发布 ⇒ **具名拒**）；
+>   b. 让 `control/idle` 变成**可决策**（handler 返回 `{convene:{topic}}`，内核代为转交）——但这会把机构策略塞进控制面，与 R1 相冲；
+>   c. 在 M1 规则的动作集里加 `convene`——同 b 的顾虑。
+>
+> ★ **同轮另一件（v5r 的"异议广播给 voters"）· 已闭合**：v5r 的 `memberMayRejectAssign` 不只记录异议，还**广播给投票人**（原文"任务仍会执行"）；vmu 曾只记录并如实报 `broadcast:{attempted:false, hook:'task/assign-objected'}`（**没有那个钩子**）。按 Lead 指示**先登记**（`kernel/bus.js` 的 `HOOK_REGISTRY`：`task/assign-objected`，`failure:'open'`、不可阻断，producer `kernel/tasks.js`），core 随即在 `kernel/tasks.js:321` **接上 emit** ⇒ **实测闭合**（`<临时目录>/assign-objected-probe.mjs`，仓库外一次性·实测）：`objectAssign()` 回执 `broadcast:{attempted:true, emitted:true, audience:'the middleware decides the audience (v5r broadcast to voters; this face has no roster, so it invents no recipient list)'}`，探针监听器**观测到 1 次 emit**（载荷 `{at,id,by,why,state,owner}`）⇒ **听众由中间件决定**（R1）。两条钩子门禁（`audit-hook-coverage`、`scripts/audit-hook-emit-classification.mjs`）随之**回绿**（4/0、7/0）。
+> ★ **消费侧缝已落（core 的 `api.services`）＋ pack 侧已接线 · 已闭合**：
+> - **缝（core 落）**：`kernel/loader.js` 的 `API_KEYS` 加 `services`；`api.services.get(name)`／`names()` **能力门控**（声明 `trigger-workflow` 才可；未声明 ⇒ `VMU_NOT_PERMITTED`；未发布 ⇒ `VMU_NO_SUCH_OBJECT` 并列出已发布清单）——**没有静默 null**。
+> - **接线（本 pack 落）**：新增 `packs/v5r/middleware/stall-meeting.js`（纯函数 `stallDecision()`：阈值＝**`3 × vmu.control.idleAfterMs`**＝v5r 的 **360000**（`:1082/:1083`），**不硬编码**；M2 模块 `V5R_STALL_MEETING`：`capabilities:['trigger-workflow','record']`、`hooks:{'control/idle': …}` ⇒ `api.services.get('vmu.meetings').open({kind:'stall'})`）；清单 `prompts/v5r-core.js` 新增 **module 形状**的条目 `{id:'v5r.stall-meeting', kind:'module', on:['control/idle'], failure:'open', capabilities:[…], module: V5R_STALL_MEETING}`；`docs/27` 已点名该文件。
+> - ★ **框架侧一处必要修正（`kernel/pack.js`，本 pack 的卷）**：清单中间件过去**一律直接 `bus.add`**（只认 inline `handler`，且 handler 看不到 `api`）⇒ module 形状的条目既过不了校验也拿不到服务缝。现改为：**inline `handler` 走原路；module 形状（`module:`／`file:`）经 `kernel/loader.js` 的 `toBusEntries()`**（校验 apiVersion/capabilities/hooks ＋ 附加 `api`）；无 loader 时**具名拒** `VMU_ENGINE_UNAVAILABLE`；`validatePack` 同步接受两种形状。
+> - **三步探针（`<临时目录>/stall-three-step.mjs`，仓库外一次性·实测，11/0 exit 0）**：**STEP 1** 真控制面报出**空闲边沿**（`emitted:true`，同一 episode **不重发**）；**STEP 2** 模块成为 `control/idle` 上**恰一条**总线条目且带 `trigger-workflow`；**STEP 3** `vmu.meetings.open()` **真被调用**（调用形状 `kind:'stall'`）；**反向**：130000ms < 360000ms **什么也不开**。
+>
+> ★ **同轮另一件（v5r 的"异议广播给 voters"）· 已闭合**：v5r 的 `memberMayRejectAssign` 不只记录异议，还**广播给投票人**（原文"任务仍会执行"）；vmu 曾只记录并如实报 `broadcast:{attempted:false, hook:'task/assign-objected'}`（**没有那个钩子**）。按 Lead 指示**先登记**（`kernel/bus.js` 的 `HOOK_REGISTRY`：`task/assign-objected`，`failure:'open'`、不可阻断，producer `kernel/tasks.js`），core 随即在 `kernel/tasks.js:321` **接上 emit** ⇒ **实测闭合**（`<临时目录>/assign-objected-probe.mjs`，仓库外一次性·实测）：`objectAssign()` 回执 `broadcast:{attempted:true, emitted:true, audience:'the middleware decides the audience (v5r broadcast to voters; this face has no roster, so it invents no recipient list)'}`，探针监听器**观测到 1 次 emit**（载荷 `{at,id,by,why,state,owner}`）⇒ **听众由中间件决定**（R1）。两条钩子门禁（`audit-hook-coverage`、`scripts/audit-hook-emit-classification.mjs`）随之**回绿**（4/0、7/0）。
+
 ---
 
 ## 5. v5r-pack：行为包含对照方案（D8）

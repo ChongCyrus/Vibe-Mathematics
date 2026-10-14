@@ -131,6 +131,8 @@
 
 **⇒ 第六条硬要求（★ R9 新增，源于 `vmu-entry` E-17(乙)）**：**断言所选的"观测量"必须在被测的两档之间【真的不同】** —— 否则它是**语义级的空过**，而**语法级的 RULE E 看不见**（RULE E 只问"某个集合是否可能为空"，不问"这个量在两档之间是否有差异"）。实例（本轮实测）：那条断言说的是"`config.packs` 的顺序决定重叠设置 ⇒ 后应用者胜"，观测量却取了 **`vmu.meetings.quorumRule`**；而**两个包现在都声明 `'m-unanimous'`** ⇒ `reversed.quorum === on.quorum`，`!==` **永不成立**。★ **双重教训**：它当年"能区分"**只因为 v3-core 声明的是域外值 `'majority'`**，而那个域外值正是本轮**值域门禁**抓到的真实缺陷（域＝`['m-unanimous','all-unanimous']`，且 `ballot.js` 的默认 tally 只把它当标签）⇒ **不准为救一条断言把非法值写回去**。**正例**：观测 `vmu.meetings.verdictMaxRounds`（v3-core **5** / institute-min **3**，顺序可见）⇒ `vmu-entry` 回 **150/0**。⇒ 纪律：**先证明"这个量真的随被测条件变化"**（把两档实测值对一下）再写进断言；"同值也能过"属**语义空过**，与 RULE E 拦的**语法空过**是两回事、要分别防。
 
+**⇒ 第七条硬要求（★ R10 新增，源于 `audit-dependency-cycles`）**：**门禁必须读"事实所在的那种文本"** —— 静态门扫源码时，**注释与数据字符串不是代码**。实例：依赖环门禁原先直接对**原文**跑 `(?:import|export)[^'"\n]*from '…'`，于是 `resume.js` **注释里**为解释一个摘要助手而写的一句 `import { contentDigest } from './resume.js'` 被当成真 import ⇒ 报出**自环**；当时的修法是**改写注释**——**门禁在指挥文档措辞**，这是判据与环境错配的又一方向。**正解**（与 `audit-package-membership` 同一做法）：**先去注释**（`tests/_lib/strip-comments.mjs`）**再要求语句位置**（`^[ \t]*(?:import|export)\b[^;]*?from '…'` ＋ 副作用导入），并配**自探针**：注释（行/块）与数据字符串里的 import 形状**不得**被计入，而**四种真拼法**（单行、**多行**、副作用、re-export）**必须**仍被找到。★ **附带收获**：换成语句位置判据后，同一棵树上的内部边由 **245 → 246** —— 旧模式连**多行 import** 都看不见（`[^'"\n]*` 不跨行），所以这次既**去掉假边**又**补回一条真边**。⇒ 纪律：静态门的输入要先"降到代码"，再用**双向自探针**证明"假的不算、真的不漏"；只证一头会留下另一头的错。
+
 **清单（当前，2026-10-09 第 18 轮）**
 
 | 守卫面 | 语义 | 生产是否调用 | 理由／生产调用点 |
@@ -151,7 +153,7 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 322 / suites 250 / probes 72`** ✓（旧值 134／68／66 已在扩卷与增件后过期 ✗；本轮树新增 1 个作业：`tests/audit-scope-classification.test.mjs` ✓） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 271 / suites 201 / probes 70`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 284 / suites 214 / probes 70`** ✓ |
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 258 / suites 225 / probes 33`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。
@@ -731,6 +733,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `mathtools` · `plan()` | refusal | VMU_MATH_INVALID_INPUT | enforced=[0] enforcedScope=evaluated-so-far | 具名拒（带 code）（task-214 实测：`plan()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT**（带口径 `enforced=[0] enforcedScope=evaluated-so-far`）⇒ 零机制＝无计划入参 ⇒ 具名拒即真实形状 ✓（补参后应见 `ok + enforced:[]`，届时改"具名拒或 ok" ✓）） |
 | `meeting` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `meetinglapse` · `lapseDue()` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `meetingleave` · `requestLeave()` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
 | `meetings` · `open()` | ok | — | enforced=[0] enforcedScope=evaluated-so-far | 按声明默认开成（零机制＝按声明默认值开成（不拒）✓） |
 | `members` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `memory` · `record()` | ok | — | — | ok 或 object（task-204 实测（形状取自测试 vmu-memory.test.mjs:63）：`record({kind,text,by,evidence})` ⇒ **ok**（零机制＝有默认 scope、放行 ✓）） |
@@ -772,7 +775,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
 | `workflow` · `advance()` | refusal | VMU_WORKFLOW_TRANSITION_REQUIRED | enforced=[7] enforcedScope=evaluated-so-far | 具名拒或 ok（**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 `advance()` 缺参 ⇒ **task-214 实测：具名拒 `VMU_WORKFLOW_TRANSITION_REQUIRED`（带口径 `enforced=[7]`）** ⇒ 具名拒即真实形状 ✓（旧 note 曾写 `op 抛出` ✗ / "缺参 ⇒ 具名拒" 混述 ✗，均已按实测改写 ✓）） |
 
-=== ZERO-MECHANISM MATRIX: 94 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 8 probe-errors, 4 n/a ===
+=== ZERO-MECHANISM MATRIX: 95 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 9 probe-errors, 4 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->
 
 ### 11.x 改文档的标准手法（★ 轮 524 补 ✓ —— ★ 本节在台账上结转了 6 轮 ✗）

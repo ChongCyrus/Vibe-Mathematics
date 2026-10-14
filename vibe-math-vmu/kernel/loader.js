@@ -29,7 +29,7 @@ export const apiVersion = 1
 export const DSH_HOOKS = BUS_DSH_HOOKS
 
 /** The api keys a module may rely on, and nothing else. */
-export const API_KEYS = Object.freeze(['log', 'setting', 'kernel', 'dryRun', 'traceId', 'hook'])
+export const API_KEYS = Object.freeze(['log', 'setting', 'kernel', 'dryRun', 'traceId', 'hook', 'services'])
 
 const CAPABILITIES = Object.freeze(['read-state', 'read-args', 'deny', 'cancel', 'rewrite-args', 'rewrite-result',
   'append-prompt', 'record', 'notify', 'set-setting', 'trigger-workflow', 'annotate'])
@@ -105,14 +105,44 @@ export function createLoader({ services = {}, log = () => {}, dryRun = false, cl
   const loaded = new Map()
   const stats = { loads: 0, refusals: 0, dryRuns: 0 }
 
-  /** The frozen facade: exactly API_KEYS, nothing else, and not rewritable by the module. */
-  const makeApi = (entry, hook, traceId) => Object.freeze({
+  /**
+   * The frozen facade: exactly API_KEYS, nothing else, and not rewritable by the module.
+   *
+   * ROUND 10 / task-74 (Lead ruling (a)): `services` is the CAPABILITY-GATED door to the assembled services.
+   * Measured gap it closes (vmu-pack): an M2 module could see `api:[log,setting,kernel,dryRun,traceId,hook]` and
+   * `kernel:{read}` only, so a middleware that must IMPLEMENT AN INSTITUTION POLICY ("a stalled institute
+   * convenes") could not reach any service - and the alternatives (putting the policy in the control face, or a
+   * `convene` action in M1) would move policy into the kernel, which R1 forbids. The gate is the module's own
+   * declaration: `trigger-workflow` (a capability that already existed and had no consumer) is what unlocks it.
+   * ★ BOTH directions are NAMED: a module without the capability gets `VMU_NOT_PERMITTED`; a capability-holding
+   * module asking for a service this assembly does not publish gets `VMU_NO_SUCH_OBJECT`. Neither is a silent null.
+   */
+  const makeApi = (entry, hook, traceId, caps = []) => Object.freeze({
     hook,
     traceId,
     dryRun,
     log: (msg) => log('[' + entry.id + '] ' + String(msg)),
     setting: (key) => services.setting ? services.setting(key) : undefined,
     kernel: services.kernel || Object.freeze({}),
+    services: Object.freeze({
+      get: (name) => {
+        const wanted = String(name === undefined || name === null ? '' : name).trim()
+        if (!wanted) throw refuse('VMU_INVALID_ARGUMENT', 'services.get needs a service name', 'e.g. services.get("vmu.meetings")')
+        if (!Array.isArray(caps) || caps.indexOf('trigger-workflow') === -1) {
+          throw Object.assign(refuse('VMU_NOT_PERMITTED', 'this module may not reach services: it did not declare the trigger-workflow capability',
+            'declare capabilities: ["trigger-workflow", …] in the module meta (docs/05 §6.1)'),
+          { enforced: ['capabilities.trigger-workflow'], enforcedScope: 'evaluated-so-far', service: wanted })
+        }
+        const svc = typeof services.get === 'function' ? services.get(wanted) : null
+        if (!svc) {
+          throw Object.assign(refuse('VMU_NO_SUCH_OBJECT', 'no service is published under that name in this assembly: ' + wanted,
+            'published: ' + (typeof services.names === 'function' ? services.names().join(', ') : '(none)')),
+          { enforced: ['capabilities.trigger-workflow'], enforcedScope: 'evaluated-so-far', service: wanted })
+        }
+        return svc
+      },
+      names: () => (typeof services.names === 'function' ? services.names().slice() : []),
+    }),
   })
 
   const loader = {
@@ -174,7 +204,7 @@ export function createLoader({ services = {}, log = () => {}, dryRun = false, cl
           if (flat.phase === undefined) flat.phase = envelope.phase !== undefined ? envelope.phase : ctx.phase
           flat.hook = envelope.hook !== undefined ? envelope.hook : hook
           flat.raw = envelope
-          flat.api = makeApi(entry, hook, traceId)
+          flat.api = makeApi(entry, hook, traceId, Array.isArray(module.capabilities) ? module.capabilities : [])
           return fn(flat)
         }
       }

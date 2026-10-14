@@ -87,6 +87,35 @@ function storepolicyLaneProbe(mod) {
   }
 }
 
+/**
+ * The REMOTE policy surface: the four combinations `docs/07` promises to decide, plus the url precondition. Every
+ * branch is read as a NAMED outcome (a code, or the `queued` flag), and the control direction is the online write
+ * that must NOT be queued — so "refused" and "queued" cannot be confused with "the face never ran".
+ */
+function storepolicyRemoteProbe(mod) {
+  const mk = (over) => mod.createStorePolicy({
+    clock: () => 0, log: () => {},
+    settings: Object.assign({ 'vmu.store.backend': 'memory', 'vmu.store.remote': 'on', 'vmu.store.remote.url': 'https://r.example' }, over || {}),
+  })
+  const online = mk().write({ id: 'a' })
+  const noUrl = mk({ 'vmu.store.remote.url': '' }).write({ id: 'a' })
+  const offlineRefuse = mk({ 'vmu.store.remote.offlinePolicy': 'refuse' }).write({ id: 'a', online: false })
+  const queueBox = mk({ 'vmu.store.remote.offlinePolicy': 'queue' })
+  const queued = queueBox.write({ id: 'a', online: false })
+  const strong = mk({ 'vmu.store.remote.consistency': 'strong', 'vmu.store.remote.offlinePolicy': 'queue' }).write({ id: 'a', online: false })
+  return {
+    onlineOk: online.ok === true && online.queued === false,
+    remoteFired: Array.isArray(online.fired) && online.fired.indexOf('vmu.store.remote') !== -1,
+    noUrlCode: noUrl.ok === false ? noUrl.code : 'allowed',
+    offlineRefuseCode: offlineRefuse.ok === false ? offlineRefuse.code : 'allowed',
+    queuedOk: queued.ok === true && queued.queued === true,
+    queueCounted: queueBox.status().counters.queued,
+    // `strong` cannot defer a write, so it must refuse BEFORE the offline policy is ever asked
+    strongCode: strong.ok === false ? strong.code : 'allowed',
+    strongQueued: strong.queued === true,
+  }
+}
+
 const family = await falsifyFamily({
   name: 'storepolicy — the lock is exclusive, a release really frees it, one lane means one lane',
   cases: [{
@@ -117,6 +146,25 @@ const family = await falsifyFamily({
         find: 'waited += c.lockBackoffMs',
         replace: 'waited += 0   // MUTANT: the reported wait does not come from the declared backoff' },
     ],
+  }, {
+    name: 'storepolicy.js — the remote policy really decides',
+    module: STOREPOLICY,
+    probe: storepolicyRemoteProbe,
+    controlFields: ['onlineOk', 'remoteFired', 'noUrlCode', 'offlineRefuseCode', 'queuedOk', 'queueCounted', 'strongCode'],
+    mutations: [
+      { label: 'the declared offline policy stops deciding (refuse is queued instead)', name: 'storepolicy-offline-policy-ignored',
+        find: "        if (c.remoteOfflinePolicy === 'refuse') return deny('VMU_NOT_PERMITTED', '远端离线且 offlinePolicy=refuse ⇒ 拒', '改为 queue 或等联网', ['vmu.store.remote.offlinePolicy', 'vmu.store.remote.consistency'], would)",
+        replace: '        if (false) return deny(\'VMU_NOT_PERMITTED\', \'MUTANT: the offline policy no longer refuses\', \'x\', [\'vmu.store.remote.offlinePolicy\'], would)' },
+      { label: 'strong consistency queues a deferred write', name: 'storepolicy-strong-queues',
+        find: "        if (c.remoteConsistency === 'strong') {",
+        replace: "        if (false) {   // MUTANT: a strong-consistency write is deferred" },
+      { label: 'offline is never noticed (the caller said offline and we wrote anyway)', name: 'storepolicy-offline-ignored',
+        find: '      if (args.online === false) {',
+        replace: '      if (false) {   // MUTANT: the offline signal from the caller is ignored' },
+      { label: 'remote=on without a url is accepted', name: 'storepolicy-remote-url-unchecked',
+        find: '      if (!c.remoteUrl) return deny(',
+        replace: '      if (false) return deny(' },
+    ],
   }],
 })
 
@@ -141,8 +189,17 @@ ok(lane.distinctLanesCoexist === true,
 ok(lane.waitCode === 'VMU_CONFLICT' && lane.attempts === 3 && lane.waitedMs === 75 && lane.timeoutMs === 1000 && lane.lockWaits === 1 && lane.stillHeld === 1,
   '★ a held lock refuses with attempts capped by `retries` and waitedMs advanced by `backoffMs` (25×3=75) on the injected clock', lane)
 
-console.log('=== FALSIFICATION: keep the lock on release, never take it, or make the knobs decorative ===')
-ok(family.ok, '★ all five storepolicy mutations are caught (control green + each mutant red)', formatFamilyReport(family))
+console.log('=== CONTROL GROUP: the remote policy decides every combination, and says which one it took ===')
+const rem = family.cases[2].real
+ok(rem.onlineOk === true && rem.remoteFired === true,
+  '★ an ONLINE remote write is a normal write (not queued) and the receipt names `vmu.store.remote` as fired', rem)
+ok(rem.noUrlCode === 'VMU_INVALID_ARGUMENT' && rem.offlineRefuseCode === 'VMU_NOT_PERMITTED' && rem.strongCode === 'VMU_NOT_PERMITTED',
+  '★ remote=on without a url, offline+refuse, and offline+STRONG each refuse BY NAME — three different branches, three named refusals', rem)
+ok(rem.queuedOk === true && rem.queueCounted === 1 && rem.strongQueued === false,
+  '★ only offline+queue is accepted and counted, and `strong` never queues (it cannot defer a write)', rem)
+
+console.log('=== FALSIFICATION: keep the lock on release, never take it, make the knobs decorative, or let offline through ===')
+ok(family.ok, '★ all nine storepolicy mutations are caught (control green + each mutant red)', formatFamilyReport(family))
 const byLabel = (needle) => family.results.find((r) => r.label.includes(needle))
 const keepRed = byLabel('release reports the lock') && byLabel('release reports the lock').red
 const noopRed = byLabel('never records the holder') && byLabel('never records the holder').red
@@ -159,6 +216,18 @@ ok(!!capRed && capRed.attempts === 40 && capRed.waitedMs === 1000 && capRed.time
   '★ "the cap is decorative": the wait is now bounded by the timeout alone — 40 backoffs where `retries` declared 3', capRed)
 ok(!!backoffRed && backoffRed.waitedMs === 0 && backoffRed.attempts === 3,
   '★ "the clock never advances": the refusal claims a wait while the backoff it names added nothing', backoffRed)
+const offlinePolicyRed = byLabel('offline policy stops deciding') && byLabel('offline policy stops deciding').red
+const strongRed = byLabel('strong consistency queues') && byLabel('strong consistency queues').red
+const offlineIgnoredRed = byLabel('offline is never noticed') && byLabel('offline is never noticed').red
+const urlRed = byLabel('without a url is accepted') && byLabel('without a url is accepted').red
+ok(!!offlinePolicyRed && offlinePolicyRed.offlineRefuseCode === 'allowed' && offlinePolicyRed.queuedOk === true && offlinePolicyRed.strongCode === 'VMU_NOT_PERMITTED',
+  '★ "offline policy ignored": the declared `refuse` becomes a queue — while the STRONG branch still refuses (the mutation is narrow)', offlinePolicyRed)
+ok(!!strongRed && strongRed.strongCode === 'allowed' && strongRed.strongQueued === true && strongRed.offlineRefuseCode === 'VMU_NOT_PERMITTED',
+  '★ "strong queues": a strong-consistency write is now DEFERRED, the exact silent contradiction the branch exists to stop (and `refuse` still decides on its own)', strongRed)
+ok(!!offlineIgnoredRed && offlineIgnoredRed.offlineRefuseCode === 'allowed' && offlineIgnoredRed.strongCode === 'allowed' && offlineIgnoredRed.queueCounted === 0,
+  '★ "offline ignored": the caller said offline and BOTH policies stopped being consulted — nothing is refused and nothing is queued', offlineIgnoredRed)
+ok(!!urlRed && urlRed.noUrlCode === 'allowed' && urlRed.onlineOk === true,
+  '★ "url unchecked": remote=on without a url writes happily (the precondition is gone, the other branches are untouched)', urlRed)
 ok(family.results.length > 0 && family.results.every((r) => r.applied && r.importable && r.falsified),
   'and every mutation applied to a unique anchor, imported, and produced a DIFFERENT reading (non-vacuous)', family.results.map((r) => ({ label: r.label, applied: r.applied, importable: r.importable })))
 ok(family.cases.length > 0 && family.cases.every((c) => c.leftovers.length === 0),

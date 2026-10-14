@@ -87,6 +87,12 @@ export const HOOK_REGISTRY = Object.freeze([
   { name: 'record/appended', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a record was appended', producer: 'kernel/compliance.js, kernel/handover.js, kernel/minutes.js, kernel/tenure.js' },
   { name: 'task/assign', kind: 'vmu', failure: 'closed', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'a task is assigned', producer: 'kernel/members.js, kernel/tasks.js' },
   { name: 'task/transition', kind: 'vmu', failure: 'closed', blockable: true, rewritable: false, scope: VU_SCOPE, timing: 'a task changes state', producer: 'kernel/tasks.js' },
+  // ROUND 10 (v5r fidelity, named by vmu-core): v5r's `memberMayRejectAssign` did not just record the objection,
+  // it BROADCAST it to the voters ("任务仍会执行", the task still runs). vmu recorded it and reported
+  // `broadcast:{attempted:false, hook:'task/assign-objected'}` because no such hook existed. Registered here
+  // (the hook registry is vmu-pack's file) so core can emit it: an OBSERVATION (failure 'open', not blockable),
+  // because the objection never stops the task.
+  { name: 'task/assign-objected', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a member objected to an assignment (v5r broadcast this to the voters; the task still runs)', producer: 'kernel/tasks.js' },
   { name: 'prompt/section-assembled', kind: 'vmu', failure: 'open', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'a prompt assembly asks for section decisions', producer: 'kernel/prompt/index.js' },
   { name: 'budget/exceeded', kind: 'vmu', failure: 'abort', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'a conserving allocation fails', producer: 'kernel/fairness.js' },
   { name: 'pack/loading', kind: 'vmu', failure: 'closed', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'before a pack changes anything (may refuse)', producer: 'kernel/pack.js' },
@@ -121,6 +127,11 @@ export const HOOK_REGISTRY = Object.freeze([
   { name: 'control/scope-resumed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a scope was resumed', producer: 'kernel/control.js' },
   { name: 'control/param-set', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a declared parameter was changed', producer: 'kernel/control.js' },
   { name: 'control/param-refused', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a parameter change was refused', producer: 'kernel/control.js' },
+  // ROUND 10 / task-74 (B): THE IDLE EDGE. `control/idleState()` publishes it when idleness CROSSES the declared
+  // threshold (`vmu.control.idleAfterMs`), so middleware can implement a policy ("a stalled institute convenes")
+  // without the kernel inventing one. `failure:'open'` on purpose: a broken listener must not stop the idle report -
+  // and the face itself RECESSES NOTHING (`idleAction` defaults to `notice`).
+  { name: 'control/idle', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'idleness crossed vmu.control.idleAfterMs (edge-triggered: once per idle episode)', producer: 'kernel/control.js' },
   { name: 'chat/send-before', kind: 'vmu', failure: 'closed', blockable: true, rewritable: false, scope: VU_SCOPE, timing: 'before a chat message is accepted (quota/mute/freeze policy)', producer: 'kernel/chat.js' },
   { name: 'chat/sent', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a chat message was accepted', producer: 'kernel/chat.js' },
   { name: 'chat/refused', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a chat message was refused by policy', producer: 'kernel/chat.js' },

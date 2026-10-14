@@ -56,7 +56,12 @@ const natural = (v, d) => { const n = Number(v); return Number.isInteger(n) && n
 export const RESUME_KEY = 'resume'
 
 /** The keys a projection may write. They are ALL already in the store white-list; this is not a new one. */
-export const PROJECTION_KEYS = Object.freeze(['members', 'tasks', 'meetings', 'ballots', 'budget', 'phase', 'work', 'chat', 'panel', 'human'])
+// ROUND 10 / task-74 (Lead ruling, "one key one meaning"): `ballots` -> `ballotbox`. The assembly's adapter table and
+// the store key are BOTH `ballotbox` (kernel/index.js, kernel/store.js), so the old spelling named a key nobody could
+// ever attach and it sat in `status().projections.unwiredKnown` forever. Old deployments that still declare `ballots`
+// are tolerated by name (kernel/index.js PROJECTION_ALIASES + a named log line), which is where the compatibility lives
+// - not in this list, whose job is to say what CAN be attached.
+export const PROJECTION_KEYS = Object.freeze(['members', 'tasks', 'meetings', 'ballotbox', 'budget', 'phase', 'work', 'chat', 'panel', 'human'])
 
 /** The steps of a recovery, in the order the v5r `resume()` used (docs/07 §4: one code path for both restarts). */
 export const RECOVERY_STEPS = Object.freeze([
@@ -631,8 +636,18 @@ export function createResume({ store = null, work = null, control = null, identi
       // boot 1 of a brand-new store). An EMPTY array holds no entries, so it cannot be "a ledger that actually
       // holds unfinished work" — it is read as the first run it is. A NON-empty bare array still falls through to
       // the named gap below, which is the case that check exists for.
-      if (env === undefined || env === null || (Array.isArray(env) && env.length === 0)) {
-        hydrated.push({ key: k, hydrated: false, reason: 'nothing was projected (a first run)', seeded: Array.isArray(env) ? 'empty-array' : 'null' })
+      // ROUND 10 (task-78, measured on the REAL assembly): the SAME failure has a second seed shape. `budget` (and
+      // `settings.resolved`) are seeded `{}`, so a shipped kernel's very first recovery reported
+      // `unhydrated:[{key:'budget', code:'VMU_RESUME_PROJECTION_GAP', value:''}]` and `recover().ok === false` on
+      // every boot — the declaration "budget is durable" was indistinguishable from a real gap. An EMPTY object
+      // carries no data either (a real envelope always has v/mode/key), so it is the first run too; anything with
+      // keys still falls through to the named gap.
+      const emptySeed = env === undefined || env === null ||
+        (Array.isArray(env) && env.length === 0) ||
+        (typeof env === 'object' && !Array.isArray(env) && Object.keys(env).length === 0)
+      if (emptySeed) {
+        const seeded = env === undefined || env === null ? 'null' : (Array.isArray(env) ? 'empty-array' : 'empty-object')
+        hydrated.push({ key: k, hydrated: false, reason: 'nothing was projected (a first run)', seeded })
         continue
       }
       if (env.mode === 'state') {

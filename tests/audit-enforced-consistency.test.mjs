@@ -47,6 +47,9 @@ import { createMathJobs } from '../vibe-math-vmu/kernel/mathjobs.js'
 import { createLeanFace } from '../vibe-math-vmu/kernel/lean.js'
 import { createFormal } from '../vibe-math-vmu/kernel/formal.js'
 import { createFidelityRegistry, FIDELITY_ABSTENTION_VOTE } from '../vibe-math-vmu/kernel/fidelity.js'
+import { createRecruit } from '../vibe-math-vmu/kernel/recruit.js'
+import { createTasks } from '../vibe-math-vmu/kernel/tasks.js'
+import { createLoader } from '../vibe-math-vmu/kernel/loader.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -661,6 +664,51 @@ const REFUSAL_SCENARIOS = [
     settings: { 'vmu.activity.timeoutPolicy': 'refuse' },
     make: (settings) => mkActivity(settings),
     run: (a) => a.wait({ timeoutMs: 5 }) },
+
+  // ROUND 10 / task-74 (A4) · recruit: `vmu.members.maxTempPerMember` caps how many TEMPs ONE hirer may hold at
+  // once (vmu has no member kind, so the faithful mapping is "still on probation", grouped by the accepting `by`).
+  // The second acceptance by the SAME hirer is refused BY NAME. ★ MEASURED: this face's `refuse()` is
+  // `Object.assign(err, extra)`, so `enforced` sits at the ERROR'S TOP LEVEL - unlike tasks.js, which carries it
+  // under `detail`. The chain is minimal AND complete: posting -> apply -> offer -> accept (the first accept
+  // creates the temp the second one collides with, so the refusal is not an artefact of a missing precondition).
+  { module: 'recruit', call: 'accept(second temp for the same hirer)',
+    settings: { 'vmu.members.maxTempPerMember': 1 },
+    make: (settings) => createRecruit({ clock: CLOCK, log: () => {}, settings }),
+    run: (r) => {
+      const p = r.openPosting({ slot: 'researcher', seats: 1 })
+      const a1 = r.apply({ postingId: p.id, candidate: 'c-1' })
+      r.accept({ offerId: r.offer({ applicationId: a1.id }).id, by: 'hirer' })
+      const a2 = r.apply({ postingId: p.id, candidate: 'c-2' })
+      return r.accept({ offerId: r.offer({ applicationId: a2.id }).id, by: 'hirer' })
+    } },
+
+  // ROUND 10 / task-74 (A5) · tasks: with `vmu.tasks.memberMayRejectAssign=false` a member may NOT voice dissent
+  // on an assignment - v5r DROPPED that field silently; here it is refused BY NAME, because "the members may not
+  // object" is a decision. ★ This face's `refuse()` puts the extra object under `err.detail`, so the token lives at
+  // `detail.enforced` (the runner's depth-limited walk finds it; the two faces really do differ in shape).
+  { module: 'tasks', call: 'objectAssign(vmu.tasks.memberMayRejectAssign=false)',
+    settings: { 'vmu.tasks.memberMayRejectAssign': false },
+    make: (settings) => createTasks({ clock: CLOCK, settings }),
+    run: async (t) => {
+      const created = await t.create({ title: 'objection probe' })
+      return t.objectAssign(created.id, { by: 'm-1', why: 'the assignment ignores my declared write scope' })
+    } },
+
+  // ROUND 10 · loader (this file is the only instrument that can cover it): a module handler that reaches for a
+  // service without declaring the `trigger-workflow` capability is refused BY NAME, and the refusal names the
+  // capability token. ★ MEASURED: the token is attached to the THROWN error via `Object.assign(refuse(...), {...})`
+  // (loader.js:132-134 and :138-140) - this is REAL enforcement, not a receipt envelope.
+  { module: 'loader', call: 'handler reaches services without the trigger-workflow capability',
+    settings: {},
+    make: () => createLoader({ services: { get: () => null }, log: () => {}, clock: CLOCK }),
+    run: async (l) => {
+      await l.load({ id: 'no-cap', kind: 'module', module: {
+        meta: { id: 'no-cap', apiVersion: 1 },
+        capabilities: ['deny'],
+        hooks: { 'meeting/round-start': async (ev) => ev.api.services.get('vmu.meetings') },
+      } })
+      return l.get('no-cap').handlers['meeting/round-start']({ payload: { roster: ['a'] }, hook: 'meeting/round-start' })
+    } },
 ]
 
 // ---------------------------------------------------------------------------------------------------------

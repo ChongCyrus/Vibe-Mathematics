@@ -12,9 +12,28 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
+import { stripComments } from './_lib/strip-comments.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
+
+/**
+ * ROUND 10 (Lead's report: this gate treated a COMMENT as an import). The detector used to run
+ * `(?:import|export)[^'"\n]*from '…'` over RAW text, so a line inside a comment - `resume.js` carried
+ * `//   import { contentDigest } from './resume.js'` while explaining a digest helper - was read as a real edge
+ * and produced a SELF-CYCLE `resume.js -> resume.js`. The gate was right to fire, its INPUT was wrong, and the
+ * repair at the time was to reword the comment: a gate dictating prose. Real imports are STATEMENTS, so the same
+ * criterion `audit-package-membership` uses applies here: strip comments first, then require statement position.
+ */
+const IMPORT_STATEMENT = /^[ \t]*(?:import|export)\b[^;]*?from\s+['"]([^'"]+)['"]/gm
+const SIDE_EFFECT_IMPORT = /^[ \t]*import\s+['"]([^'"]+)['"]/gm
+export function relativeImportsOf(source) {
+  const clean = stripComments(String(source))
+  const out = new Set()
+  for (const m of clean.matchAll(IMPORT_STATEMENT)) if (m[1].startsWith('.')) out.add(m[1])
+  for (const m of clean.matchAll(SIDE_EFFECT_IMPORT)) if (m[1].startsWith('.')) out.add(m[1])
+  return [...out]
+}
 
 let passed = 0
 let failed = 0
@@ -38,9 +57,8 @@ function graphOf(files) {
   for (const f of files) {
     const t = readFileSync(join(REPO, f), 'utf8')
     const deps = new Set()
-    for (const m of t.matchAll(/(?:import|export)[^'"\n]*from\s+['"]([^'"]+)['"]/g)) {
-      if (!m[1].startsWith('.')) continue
-      let p = resolve(join(REPO, dirname(f)), m[1])
+    for (const spec of relativeImportsOf(t)) {
+      let p = resolve(join(REPO, dirname(f)), spec)
       if (!p.endsWith('.js')) p += '.js'
       const rel = p.replace(/\\/g, '/').replace(REPO.replace(/\\/g, '/') + '/', '')
       if (files.includes(rel)) deps.add(rel)
@@ -73,6 +91,31 @@ const cyc = new Map([['a', ['b']], ['b', ['c']], ['c', ['a']]])
 const acyc = new Map([['a', ['b']], ['b', ['c']], ['c', []]])
 ok(cyclesOf(['a', 'b', 'c'], cyc).length === 1, 'a graph shaped a -> b -> c -> a has exactly one cycle, so the detector fires')
 ok(cyclesOf(['a', 'b', 'c'], acyc).length === 0, 'and the same shape without the last edge has none, so it discriminates rather than always firing')
+
+console.log('=== 1b. SELF-PROBE: the criterion reads STATEMENTS, not prose ===')
+{
+  const OLD = /(?:import|export)[^'"\n]*from\s+['"]([^'"]+)['"]/g
+  const samples = {
+    commented: "//   import { contentDigest } from './resume.js'\nconst x = 1\n",
+    blockComment: "/*\nimport { a } from './a.js'\n*/\nconst y = 2\n",
+    dataString: "const s = \"import { z } from './z.js'\"\n",
+    realSingle: "import { a } from './a.js'\n",
+    realMulti: "import {\n  b,\n  c,\n} from './b.js'\n",
+    realSideEffect: "import './side.js'\n",
+    realReexport: "export { d } from './d.js'\n",
+  }
+  const mine = Object.fromEntries(Object.entries(samples).map(([k, v]) => [k, relativeImportsOf(v)]))
+  const old = (s) => [...String(s).matchAll(OLD)].map((m) => m[1]).filter((x) => x.startsWith('.'))
+  ok(mine.commented.length === 0 && mine.blockComment.length === 0 && mine.dataString.length === 0,
+    '★ SELF-PROBE: an import SHAPE inside a line comment, a block comment or a DATA STRING is NOT an import - the exact false positive that reported `resume.js -> resume.js`',
+    mine)
+  ok(mine.realSingle.length === 1 && mine.realMulti.length === 1 && mine.realSideEffect.length === 1 && mine.realReexport.length === 1,
+    '★ and every REAL spelling is still found: single-line, MULTI-LINE, side-effect, and re-export',
+    mine)
+  ok(old(samples.commented).length === 1 || old(samples.blockComment).length === 1,
+    '★ and the OLD pattern really did count the commented shape (so this criterion fixes a live blind spot, not a hypothetical one)',
+    { oldOnCommented: old(samples.commented), oldOnBlock: old(samples.blockComment) })
+}
 
 console.log('=== 2. THE FRAMEWORK HAS NO DEPENDENCY CYCLE ===')
 const files = walk('vibe-math-vmu').filter((f) => f.endsWith('.js')).map((f) => f.replace(/\\/g, '/'))

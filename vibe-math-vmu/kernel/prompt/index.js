@@ -96,6 +96,70 @@ export function createPromptPipeline({
     return Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : ['zh-Hans', 'zh', 'en']
   }
   const localeOnMissingOf = () => (sget('vmu.prompts.locale.onMissing') === 'refuse' ? 'refuse' : 'warn')
+  // ROUND 10 / task-74 (A1/A2): THE CONTEXT-COMPACTION GATE — v5r's two keys (v5r :1078/:1079). v5r computes
+  // `soft = contextPct >= compactThreshold || roundsSinceCompact >= compactAfterRounds` (:3902-3903) and, when soft,
+  // PREFIXES the member's prompt with a directive asking for a condensed self-report (:3905-3907). Same mechanism,
+  // same inputs: the CALLER supplies the usage signal (`ctx.contextPct`, in PERCENT 0-100 — v5r :449 warns never to
+  // treat it as a 0-1 fraction — and `ctx.round`). NO SIGNAL ⇒ no directive and `due:false`, so the host-section
+  // assembly (which passes neither) stays byte-identical: the zero-mechanism default holds.
+  // The values are validated ONLY when a signal is present: a deployment that never asks for compaction must not have
+  // every assembly refused by a key it does not use — but once the gate IS evaluated, an out-of-domain value is
+  // refused BY NAME rather than silently disabled (the round-8 finalizer defect class).
+  const COMPACT_WAKES = ['normal', 'checkpoint']   // v5r :3899-3901 (meeting/verify replies are a different shape)
+  const compactionOf = (ctx) => {
+    const rawPct = ctx ? Number(ctx.contextPct) : NaN
+    const contextPct = Number.isFinite(rawPct) ? rawPct : null
+    const rawRound = ctx ? Number(ctx.round) : NaN
+    const round = Number.isFinite(rawRound) ? rawRound : null
+    if (contextPct === null && round === null) {
+      return { due: false, reason: 'no usage signal (ctx.contextPct / ctx.round absent): the zero-mechanism default',
+        contextPct: null, round: null, threshold: null, afterRounds: null, enforced: [], directive: null }
+    }
+    // UNDECLARED means v5r's DEFAULT (66 / 8), not "invalid": the pipeline may be handed a plain settings object
+    // (tests, a pack that declares nothing), and refusing there would break every assembly the moment a caller
+    // supplied a usage signal. Only a DECLARED-but-unusable value is refused (below).
+    const rawThresholdValue = sget('vmu.prompt.compactThreshold')
+    const rawThreshold = rawThresholdValue === undefined || rawThresholdValue === null || rawThresholdValue === ''
+      ? 66 : Number(rawThresholdValue)
+    const threshold = Number.isFinite(rawThreshold) && rawThreshold > 0 && rawThreshold <= 100 ? rawThreshold : null
+    if (threshold === null) {
+      // This module's `refuse()` takes (code, message, hint) only, so the evidence is attached explicitly - the
+      // same `enforced`/`declared`/`value` shape the settings-refusal convention uses (and inside `detail` too, so
+      // both readers of a refusal find it).
+      const detail = { enforced: ['vmu.prompt.compactThreshold'], declared: ['(0,100]'], value: rawThresholdValue, enforcedScope: 'evaluated-so-far' }
+      throw Object.assign(refuse('VMU_INVALID_ARGUMENT', 'vmu.prompt.compactThreshold must be a percent in (0, 100]: ' + String(rawThresholdValue),
+        'v5r compactThreshold is a PERCENT 0-100 (v5r :449) and v5r :9869 refuses values <= 0'), detail, { detail })
+    }
+    const rawAfterValue = sget('vmu.prompt.compactAfterRounds')
+    const rawAfter = rawAfterValue === undefined || rawAfterValue === null || rawAfterValue === '' ? 8 : Number(rawAfterValue)
+    const afterRounds = Number.isFinite(rawAfter) && rawAfter > 0 ? Math.floor(rawAfter) : null
+    if (afterRounds === null) {
+      const detail = { enforced: ['vmu.prompt.compactAfterRounds'], declared: ['integer >= 1'], value: rawAfterValue, enforcedScope: 'evaluated-so-far' }
+      throw Object.assign(refuse('VMU_INVALID_ARGUMENT', 'vmu.prompt.compactAfterRounds must be a positive integer: ' + String(rawAfterValue),
+        'v5r compactAfterRounds is 8 (v5r :1079)'), detail, { detail })
+    }
+    const wake = ctx && typeof ctx.wake === 'string' && ctx.wake ? ctx.wake : 'normal'
+    const wakeEligible = COMPACT_WAKES.indexOf(wake) !== -1
+    const byPct = contextPct !== null && contextPct >= threshold
+    const byRounds = round !== null && round >= afterRounds
+    const enforced = []
+    if (byPct) enforced.push('vmu.prompt.compactThreshold')
+    if (byRounds) enforced.push('vmu.prompt.compactAfterRounds')
+    const due = wakeEligible && (byPct || byRounds)
+    return {
+      due, threshold, afterRounds, contextPct, round, wake, enforced,
+      reason: !wakeEligible
+        ? ('wake=' + wake + ' cannot acknowledge a compaction directive (v5r :3901)')
+        : (due ? (byPct ? 'contextPct ' + contextPct + ' >= ' + threshold : 'round ' + round + ' >= ' + afterRounds) : 'below both thresholds'),
+      // The directive TEXT mirrors v5r :3905-3907, MINUS the two reply fields it asks for: vmu's turn parser has a
+      // CLOSED field catalogue (kernel/turn/index.js, not this face), so requiring new reply fields here would make
+      // every turn fail with VMU_TURN_UNKNOWN_FIELD. The member is asked for a condensed self-report instead, which
+      // the panel/selfReport primitive already accepts.
+      directive: due
+        ? '[CONTEXT COMPACT — 你的对话已接近上限。不要重新推导历史。请把当前工作状态浓缩成一段自述（已有发现、当前方向、已记录的关键成果、下一步具体动作、未决问题），然后照常以 JSON 回答本轮。]'
+        : null,
+    }
+  }
   const overridesByLangOf = () => {
     const v = sget('vmu.prompts.overridesByLang')
     return v && typeof v === 'object' ? v : {}
@@ -579,7 +643,13 @@ export function createPromptPipeline({
         sources.push({ section: a.section, source: a.source })
       }
 
-      return { ok: true, text: parts.length === 0 ? '' : trimTrailing(parts.join('\n\n')), sources, truncation: truncation.slice(),
+      // ROUND 10 / task-74 (A1/A2): the compaction gate runs HERE, on the same call as the assembly, so the directive
+      // and the text it prefixes can never disagree; v5r prefixes the prompt the same way (v5r :3905).
+      const compaction = compactionOf(ctx)
+      const assembled = parts.length === 0 ? '' : trimTrailing(parts.join('\n\n'))
+      return { ok: true, text: compaction.directive ? compaction.directive + '\n\n' + assembled : assembled, sources, truncation: truncation.slice(),
+        // ROUND 10: whether a compaction directive was injected, WHY, and which of the two keys fired (or would have).
+        compaction,
         // ROUND 374: the auditable record of every placeholder nobody supplied. A missing value is a fact about the
         // assembly, so it is reported rather than swallowed.
         variableMisses: variableMisses.slice(),

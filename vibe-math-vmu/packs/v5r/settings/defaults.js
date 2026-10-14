@@ -33,6 +33,27 @@ export const V5R_SETTING_DEFAULTS = Object.freeze({
   // (360000, :1083); vmu's `vmu.control.idleAction` defaults to 'notice' — "只提示，绝不自动散会" (R1: the
   // framework recommends, it does not drive). The pack keeps that stance.
   'vmu.control.idleAfterMs': 120000,
+  // ROUND 10 (B1/B3, core landed the keys + readers in task-74). ★ SAME HONEST CATEGORY as the four paper keys:
+  // these are a **RESTATEMENT OF THE FRAMEWORK DEFAULT** (the schema declares `compactThreshold` def 66,
+  // `compactAfterRounds` def 8, `maxTempPerMember` def 3 — all taken FROM v5r's own `DEFAULT_PARAMS`), so they
+  // are NOT fidelity evidence; they are declared so this institution is readable and tunable.
+  //   · `compactThreshold: 66`     - v5r :1078 (percent, 0-100: when the context share reaches it, the assembly
+  //     injects [CONTEXT COMPACT]); reader `kernel/prompt/index.js:118,121` (reads ctx.contextPct).
+  //   · `compactAfterRounds: 8`    - v5r :1079 (the OR-twin: rounds since the last compaction); reader
+  //     `kernel/prompt/index.js:125,128` (reads ctx.round).
+  //   · `maxTempPerMember: 3`      - v5r :1075 (how many temp members one hirer may have in force at once; v5r
+  //     counted by `hiredBy` and refused with V5_MEMBER_LIMIT). Reader `kernel/recruit.js:52,173` (`accept()`);
+  //     vmu has no `kind:temp`, so the mapping counts members still on probation (`confirmedAt === null`).
+  'vmu.prompt.compactThreshold': 66,
+  'vmu.prompt.compactAfterRounds': 8,
+  'vmu.members.maxTempPerMember': 3,
+  // ROUND 10 (B4): a member may OBJECT to an assignment. v5r `memberMayRejectAssign: true` (:1066; its consumer
+  // `:9555-9562` broadcast the objection to the voters and the original text says "任务仍会执行"). Reader:
+  // `kernel/tasks.js:111` (`objectAssign()`), wired at `kernel/index.js:667`. Framework default is also `true`
+  // (core took it from v5r), so this is a restatement - declared for readability, not fidelity evidence.
+  // ★ The framework is deliberately STRICTER than v5r here: with `false` vmu REFUSES BY NAME, where v5r silently
+  // ignored the field (the schema doc says so) - a divergence in the safe direction, recorded in docs/10 §4.8.
+  'vmu.tasks.memberMayRejectAssign': true,
 
   // ── ROUND 2 (D-08): the institution's preferences for the new primitives ────────────────────────────
   // These are STRATEGY, not mechanism: kernel/chat.js, kernel/mailbox.js, kernel/panel.js, kernel/resume.js,
@@ -58,7 +79,16 @@ export const V5R_SETTING_DEFAULTS = Object.freeze({
   // Resume: v5r's `resume()` rebuilt these projection faces, and checked what it wrote. ROUND 3 adds the three
   // faces the round-3 seams made durable (chat / panel / human) — a restart must not lose the group chat, the
   // self-report panels or the approval queue.
-  'vmu.resume.projections': ['members', 'tasks', 'meetings', 'ballots', 'budget', 'phase', 'work', 'chat', 'panel', 'human'],
+  // ★ ROUND 10 (Lead ruling; reader-a measured it on a REAL assembly): this list used to say `'ballots'`, while
+  // the assembly's projection adapter table keys the face **`ballotbox`** (`kernel/index.js:883`, and the durable
+  // store key is `ballotbox` too, `kernel/store.js:75`). A declaration that names a face the adapter table does
+  // not have is a declaration of something that does not exist: reader-a opened TWO real boxes, called
+  // `shutdown()`, and the durable key was still the store's seed — the board was NEVER projected
+  // (`notAttached:[{face:'ballots', reason:'no adapter in this assembly'}]`). The name is now the adapter's own,
+  // so the declaration is DIRECT (`viaAlias: []`). core keeps a NAMED, reported alias for the old spelling
+  // (`kernel/index.js:965 PROJECTION_ALIASES`) so an older deployment that still writes `ballots` is told rather
+  // than silently unprojected — tolerance and naming must come in pairs.
+  'vmu.resume.projections': ['members', 'tasks', 'meetings', 'ballotbox', 'budget', 'phase', 'work', 'chat', 'panel', 'human'],
   'vmu.resume.autoRecover': true,
   'vmu.resume.readBack': true,
   // ROUND 3: a state-type projection writes through on every wrapped call, so "an unapproved action is still
@@ -136,6 +166,19 @@ export const V5R_SETTING_DEFAULTS = Object.freeze({
   // `:135` (`readKey('vmu.paper.maxRounds') || 0`). v5r's value is 3; the framework default is 0 = no cap, so
   // WITHOUT this line the institution would lose its bound - which is exactly why it is declared here.
   'vmu.paper.maxRounds': 3,
+  // ROUND 10 (B2, core landed the keys + readers in task-74): THE FINAL PAPER.
+  // ★ HONEST CATEGORY (the same one as `vmu.math.maxParallel` below): these four are a **RESTATEMENT OF THE
+  // FRAMEWORK DEFAULT**, not fidelity evidence. The schema declares `vmu.paper.finalPaper` def **true**,
+  // `format` def **'both'**, `language` def **'zh'**, `compilePdf` def **true** — i.e. core set the defaults
+  // FROM v5r's own `DEFAULT_PARAMS`, and the schema docs say so (`vibe-math-v5r.js:1163-1166`, plus the
+  // consumption sites `:7867` / `:8251` / `:8252` / `:8258`). They are declared here because an integration pack
+  // should be READABLE and TUNABLE (a deployment sees what this institution ships), and they must never be cited
+  // as proof that v5r's behaviour was reproduced.
+  // Readers: `kernel/paper.js:58-61` (WIRED_KEYS) and `:164-177` (cfg() reads all four unconditionally).
+  'vmu.paper.finalPaper': true,
+  'vmu.paper.format': 'both',
+  'vmu.paper.language': 'zh',
+  'vmu.paper.compilePdf': true,
   'vmu.meetings.quoteDepthMax': 3,
   'vmu.meetings.quotesPerMessageMax': 2,
   'vmu.meetings.unansweredInDenominator': false,

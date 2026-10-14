@@ -3,6 +3,9 @@
 // contract) for the service name a pack may require.
 import { SETTING_DEFS } from '../settings/schema.js'
 import { CODE as RESUME_CODE } from './resume.js'
+// The leave/recess request family was extracted at the 1200-line boundary (docs/02 §L174): `kernel/meetingleave.js`
+// owns the RULES, this file owns the state (records, minutes, receipts) and the receipt vocabulary.
+import { createLeaveControls } from './meetingleave.js'
 // F28's bounded-fallback RULES and the extension-step resolution were extracted to keep this file inside the
 // decided 1200-line budget (docs/02 §L174) — see `kernel/meetinglapse.js`: it holds the pure rules, this file
 // holds the state (live records, minutes, counters, broadcasts) and the D3 receipt vocabulary.
@@ -43,6 +46,7 @@ export const WIRED_KEYS = Object.freeze([
   'vmu.meetings.typeCatalog', 'vmu.meetings.tier', 'vmu.meetings.allowLight', 'vmu.meetings.attendanceMode', 'vmu.meetings.liveCap',
   'vmu.meetings.quorumMin', 'vmu.meetings.quorumRatio', 'vmu.meetings.quorumLossPolicy', 'vmu.meetings.quorumRecountMs',
   'vmu.meetings.quorumCap',
+  'vmu.meetings.leaveApprover',
   'vmu.meetings.unansweredInDenominator', 'vmu.meetings.emergencyQuorumRatio', 'vmu.meetings.emergencyKinds',
   'vmu.meetings.chairNeutral', 'vmu.meetings.chairTransferAudit', 'vmu.meetings.committeeMax', 'vmu.meetings.committeeReportRequired',
   'vmu.meetings.budgetTurns', 'vmu.meetings.budgetTokens', 'vmu.meetings.budgetWallMs', 'vmu.meetings.budgetOnExceed',
@@ -165,6 +169,9 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     disciplineWarnMax: n(sget('vmu.meetings.disciplineWarnMax')), disciplineMuteMs: n(sget('vmu.meetings.disciplineMuteMs')),
     disciplineExpelAllowed: sget('vmu.meetings.disciplineExpelAllowed') !== false,
     recessMaxMs: n(sget('vmu.meetings.recessMaxMs')), recessResumeRequiresMotion: sget('vmu.meetings.recessResumeRequiresMotion') === true,
+    // B② (Round 10): WHO decides a leave/recess request — a DECLARED authority (chair, office as the declared
+    // fallback). Read here; the decision point below names the key in `enforced[]`.
+    leaveApprover: oneOf(sget('vmu.meetings.leaveApprover'), ['chair', 'office'], 'chair'),
     confidentialityDefault: oneOf(sget('vmu.meetings.confidentialityDefault'), ['public', 'internal', 'restricted'], 'internal'),
     confidentialityQuotePolicy: oneOf(sget('vmu.meetings.confidentialityQuotePolicy'), ['allow', 'redact', 'deny'], 'allow'),
     verbatimEnabled: sget('vmu.meetings.verbatimEnabled') !== false, verbatimRetentionMs: n(sget('vmu.meetings.verbatimRetentionMs')),
@@ -349,6 +356,9 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     out.enforcedScope = ENFORCED_SCOPE
     return out
   }
+  // B② (Round 10 split): the leave RULES live in `kernel/meetingleave.js`; this face injects its state seams, and
+  // `withScope` below attaches the receipt vocabulary to whatever that module reports as `keys`.
+  const leaveControls = createLeaveControls({ requireMeeting, isMember, clock, limits: () => K, deny, pushReceipt })
   const lapseDue = (a) => withScope(controls.lapseDue(a))
   const lapse = (a) => withScope(controls.lapse(a))
   const revokeLapse = (a) => withScope(controls.revokeLapse(a))
@@ -702,6 +712,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     },
 
     /** Recess. `recessMaxMs` bounds it (and `recessResumeRequiresMotion` governs resuming). */
+    // B② (Round 10): the leave/recess family is implemented in `kernel/meetingleave.js` (rules); the face keeps
+    // the state seams and the receipt vocabulary, so each call leaves here scope-carrying like every other receipt.
+    requestLeave: (a) => withScope(leaveControls.requestLeave(a)),
+    approveLeave: (a) => withScope(leaveControls.approveLeave(a)),
+    leaveRequests: (a) => withScope(leaveControls.leaveRequests(a)),
+
     recess({ meeting, ms = 0, by = null, at = null } = {}) {
       const m = requireMeeting(meeting)
       // ROUND 315: recess changes the process for everyone, so it is an ACT, not a read: with a roster seam in force
@@ -1164,6 +1180,7 @@ function keysSnapshot(K) {
     'vmu.meetings.disciplineWarnMax': K.disciplineWarnMax, 'vmu.meetings.disciplineMuteMs': K.disciplineMuteMs,
     'vmu.meetings.disciplineExpelAllowed': K.disciplineExpelAllowed,
     'vmu.meetings.recessMaxMs': K.recessMaxMs, 'vmu.meetings.recessResumeRequiresMotion': K.recessResumeRequiresMotion,
+    'vmu.meetings.leaveApprover': K.leaveApprover,
     'vmu.meetings.confidentialityDefault': K.confidentialityDefault, 'vmu.meetings.confidentialityQuotePolicy': K.confidentialityQuotePolicy,
     'vmu.meetings.verbatimEnabled': K.verbatimEnabled, 'vmu.meetings.verbatimRetentionMs': K.verbatimRetentionMs,
     'vmu.meetings.wakeFailurePolicy': K.wakeFailurePolicy,

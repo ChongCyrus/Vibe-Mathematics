@@ -31,6 +31,7 @@ vibe-math-vmu/
       notices.js              ← 这个包的通知措辞（四种形态）
       middleware/             ← ★ 这个包贡献的策略（纯函数，可读可测可替换）
         prompt-switches.js    ← 哪些可选段开关、发哪份回复目录、会议三态、形式化四分支
+        stall-meeting.js      ← ★ 轮 10：v5r 的"静止⇒开会"（`control/idle` 的 M2 模块；阈值＝3 × `vmu.control.idleAfterMs`＝v5r 的 360000；经 `api.services.get('vmu.meetings')` 真开会）
       prompts/                ← 提示词内容：语料转写模块 + 章程 + 人设 + 助手面（轮 2）
         v5r-core.js           ← 被装载清单 PACK（席位/轨道/规则/段 getter/别名/提示词正文轴）
         v5r-charter.js        ← 章程转写（按 role/phase 分支的段与绑定）
