@@ -155,7 +155,7 @@ v5r 的 `s8-freeze-say` 真回归：**"本轮是否完成"的判据被写死在�
 - **纪要 / 逐字稿（minutes / verbatim）** ｜ 目的：组织记忆 ｜ 面向谁：全体／上级 ｜ 接口形状：**部分实现 ✓**＝`summary()`（结构化：轮次/被问/回答/沉默/拒绝/未达/举手/收束原因 ✓）；落盘纪要＝规划 ✗；逐字稿＝规划 ✗ ｜ 可调控族：`vmu.minutes.*`／`vmu.verbatim.*`（规划） ｜ 错误码：`VMU_IO_FAILED`／`VMU_NO_SUCH_OBJECT` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：纪要**必须包含被拒项**（拒绝也留痕 ✓）；逐字稿默认关闭（成本）且必须可引用 ｜ 依赖：`vmu.library` ✓ ｜ 成熟度：**部分实现 ✓** ｜ 优先级：P1
 - **会议预算（回合/令牌/墙钟/子代理）** ｜ 目的：让"开会很贵"可计量、可限制 ｜ 面向谁：主持人／框架 ｜ 接口形状：**部分实现 ✓**＝`vmu.limits.*`（`maxParallel`／`toolCallsPerTurnCap`／`memoryCeilingMb`／`wallClockMs` ✓）＋轮次超时 ✓；会议级令牌/回合预算＝规划 ✗ ｜ 可调控族：`vmu.meetings.*`／`vmu.budget.*`（规划） ｜ 错误码：`VMU_RESOURCE_BUDGET` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：触界**必须具名广播**（当前 `status().control.stale` 即此思路 ✓）；**触界不得自动散会**（R10 同族 ✗） ｜ 依赖：`vmu.limits` ✓ ｜ 成熟度：**部分实现 ✓** ｜ 优先级：P1
 - **闭门与保密级别** ｜ 目的：敏感议题的可见性 ｜ 面向谁：主持人／框架 ｜ 接口形状：规划＝`meeting.confidentiality` 判定点＋`level(open|closed|sealed)` ⛔ 未实现 ｜ 可调控族：`vmu.meetings.*`（规划） ｜ 错误码：`VMU_NOT_PERMITTED` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：闭门条目**不得**进库/提示词（与 S21 头部列表纪律一致 ✗）；引用须折叠 ｜ 依赖：库面 ✓ ｜ 成熟度：**未实现 ✗** ｜ 优先级：P2
-- **会议生命周期钩子** ｜ 目的：让中间件在"关键时刻"介入 ｜ 面向谁：M1/M2 中间件 ｜ 接口形状：**已注册 ✓**＝`meeting/round-start`／`meeting/round-end`；**规划 ✗**＝`meeting/convened`／`opened`／`speech-requested`／`speech-granted`／`motion`／`seconded`／`amendment`／`recess`／`resumed`／`adjourned`／`minutes-drafted` ｜ 可调控族：`vmu.middleware.*` ｜ 错误码：`VMU_MIDDLEWARE_REJECTED`／`VMU_MIDDLEWARE_FAILED` ｜ 哲学：F✓T✓D✓X（新钩子＝可扩展点 ✓） ｜ 实现要点：**钩子必须先注册再发**（05 号全表）；未实现的钩子不得写成"已生效" ✗ ｜ 依赖：`kernel/bus.js` ✓ ｜ 成熟度：**部分实现 ✓** ｜ 优先级：P1
+- **会议生命周期钩子** ｜ 目的：让中间件在"关键时刻"介入 ｜ 面向谁：M1/M2 中间件 ｜ 接口形状：**已注册 ✓**＝`meeting/round-start`／`meeting/round-end`／`meeting/motion`；**规划 ✗**＝`meeting/convened`／`opened`／`speech-requested`／`speech-granted`／`seconded`／`amendment`／`recess`／`resumed`／`adjourned`／`minutes-drafted` ｜ 可调控族：`vmu.middleware.*` ｜ 错误码：`VMU_MIDDLEWARE_REJECTED`／`VMU_MIDDLEWARE_FAILED` ｜ 哲学：F✓T✓D✓X（新钩子＝可扩展点 ✓） ｜ 实现要点：**钩子必须先注册再发**（05 号全表）；未实现的钩子不得写成"已生效" ✗ ｜ 依赖：`kernel/bus.js` ✓ ｜ 成熟度：**部分实现 ✓** ｜ 优先级：P1
 
 ### 2.3 会议钩子与工具的成熟度小结
 
@@ -548,7 +548,7 @@ v5r 的 `s8-freeze-say` 真回归：**"本轮是否完成"的判据被写死在�
 | `task/transition` | `{task,from,to,reason}` | 可拒绝 | ✓ |
 | `settle/before` / `settle/after` | `{reason,entries}` | 观测型 | ✓ |
 | `control/paused` / `control/resumed` / `control/heartbeat` | `{reason,state,beats}` | 观测型 | ✓ |
-| `meeting/convened`／`meeting/opened`／`meeting/speech-requested`／`meeting/speech-granted`／`meeting/interrupted`／`meeting/motion`／`meeting/seconded`／`meeting/amendment`／`meeting/recess`／`meeting/resumed`／`meeting/adjourned`／`meeting/minutes-drafted` | 见 §10 字段（✗ 规划） | 视点而定 | ✗ |
+| `meeting/convened`／`meeting/opened`／`meeting/speech-requested`／`meeting/speech-granted`／`meeting/interrupted`／`meeting/seconded`／`meeting/amendment`／`meeting/recess`／`meeting/resumed`／`meeting/adjourned`／`meeting/minutes-drafted` | 见 §10 字段（✗ 规划；`meeting/motion` 已注册 ✓） | 视点而定 | ✗ |
 | `ballot/opened`／`ballot/frozen`／`ballot/unfrozen`／`ballot/closed`／`ballot/reopened`／`ballot/audited` | 见 §10.4 | 部分可拒绝 | ✗ |
 | `task/created`／`task/deps-changed`／`task/gate-check`／`task/retry`／`task/checkpoint`／`task/escalated` | 见 §10.5 | 部分可拒绝 | ✗ |
 | `budget/warn` | 见 §10.5 | 观测型 | ✓ |
@@ -1183,7 +1183,7 @@ recount(ballotId):
 | `meeting/round-start`／`meeting/round-end` | **已注册 ✓** | 前者可拒 ✓ |
 | `ballot/cast`／`ballot/tally` | **已注册 ✓** | 前者可拒 ✓／后者可覆盖计票 ✓ |
 | `task/assign`／`task/transition`／`settle/before`／`settle/after`／`control/paused`／`control/resumed`／`control/heartbeat` | **已注册 ✓** | 视点而定 ✓ |
-| `meeting/convened`／`meeting/opened`／`meeting/speech-requested`／`meeting/speech-granted`／`meeting/interrupted`／`meeting/motion`／`meeting/seconded`／`meeting/amendment`／`meeting/recess`／`meeting/resumed`／`meeting/adjourned`／`meeting/minutes-drafted` | **未注册 ✗（规划）** | 见 §11.4 |
+| `meeting/convened`／`meeting/opened`／`meeting/speech-requested`／`meeting/speech-granted`／`meeting/interrupted`／`meeting/seconded`／`meeting/amendment`／`meeting/recess`／`meeting/resumed`／`meeting/adjourned`／`meeting/minutes-drafted` | **未注册 ✗（规划）**（`meeting/motion` 已注册 ✓） | 见 §11.4 |
 | `ballot/opened`／`ballot/frozen`／`ballot/unfrozen`／`ballot/closed`／`ballot/reopened`／`ballot/audited` | **未注册 ✗（规划）** | 部分可拒 |
 | `task/created`／`task/deps-changed`／`task/gate-check`／`task/retry`／`task/checkpoint`／`task/escalated` | **未注册 ✗（规划）** | 部分可拒 |
 | `board/wip-exceeded`／`trigger/fired`／`committee/formed`／`committee/reported` | **未注册 ✓（规划；★ 域事件，需 `declareTopic` ✓）** | 观测型 |

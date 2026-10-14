@@ -10,7 +10,7 @@ import { createLeaveControls } from './meetingleave.js'
 // decided 1200-line budget (docs/02 §L174) — see `kernel/meetinglapse.js`: it holds the pure rules, this file
 // holds the state (live records, minutes, counters, broadcasts) and the D3 receipt vocabulary.
 import { MEETING_LAPSE_NAME, createMeetingControls } from './meetinglapse.js'
-import { createMeetingMarker, mirrorVote } from './meetingmarker.js'
+import { createMeetingMarker, mirrorVote, budgetVerdictOf, createBoxBinding, meetingKeysSnapshot as keysSnapshot } from './meetingmarker.js'
 // vmu kernel · meetings — the POLICY + GUARD layer that finally READS the `vmu.meetings.*` knobs.
 //
 // WHY: 08-academic-... (docs/08-primitives-meeting-ballot-workflow.md) declares **47 `vmu.meetings.*` keys**
@@ -97,7 +97,7 @@ const DEFAULTS = Object.freeze({
 
 const RING = 200
 
-export function createMeetings({ clock = () => 0, log = null, settings = {}, bus = null, members = null, ballot = null, wake = null, durable = null } = {}) {
+export function createMeetings({ clock = () => 0, log = null, settings = {}, bus = null, members = null, ballot = null, wake = null, durable = null, boxFor = null } = {}) {
   if (typeof clock !== 'function') {
     // No key has been consulted at construction time: the list is explicitly EMPTY (never undefined).
     throw Object.assign(refuse('VMU_INVALID_ARGUMENT', 'createMeetings needs a clock function', 'pass { clock: () => ms } — the only time source is the injected clock'), { enforced: [], evaluated: [] })
@@ -108,14 +108,18 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     return DEFAULTS[key]
   }
   const say = (event) => { if (log && typeof log.append === 'function') { try { log.append(event) } catch (e) { /* advisory */ } } }
-  const emit = (event) => {
-  // ROUND 4 / task-25 (Lead's audit): the bus takes a STRING NAME first. Forwarding the event OBJECT meant every
-  // emission here threw and was swallowed. Split the name out, and NAME the refusal in this module's own log.
-  if (!bus || typeof bus.emit !== 'function') return
-  const name = event && typeof event.type === 'string' ? event.type : null
-  if (name === null) return say({ type: 'bus/emit-failed', at: clock(), name: null, code: 'VMU_BUS_NAME_REQUIRED', message: 'a bus event needs a string name (got an object without .type)' })
-  try { bus.emit(name, event) } catch (e) { say({ type: 'bus/emit-failed', at: clock(), name, code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) }
-}
+  // ROUND 4 / task-25: the bus takes a STRING NAME first (forwarding the event OBJECT made every emission throw and be
+  // swallowed). ROUND 12 / task-97: the name-first form is what the hook audits SEE and what a pack can SUBSCRIBE to,
+  // so this helper accepts BOTH - `emit('meeting/motion', {...})` (preferred) and legacy `emit({ type: '…' })`; the
+  // remaining legacy call sites are part of the round-13 sweep (docs/11 §6.1's producer rules), not a silent exemption.
+  const emit = (ev, payload) => {
+    if (!bus || typeof bus.emit !== 'function') return
+    const nameFirst = typeof ev === 'string' && ev ? ev : null
+    const name = nameFirst !== null ? nameFirst : (ev && typeof ev.type === 'string' ? ev.type : null)
+    const event = nameFirst !== null ? Object.assign({ type: nameFirst }, payload || {}) : ev
+    if (name === null) return say({ type: 'bus/emit-failed', at: clock(), name: null, code: 'VMU_BUS_NAME_REQUIRED', message: 'a bus event needs a string name (got an object without .type)' })
+    try { bus.emit(name, event) } catch (e) { say({ type: 'bus/emit-failed', at: clock(), name, code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) }
+  }
   const n = (v, def = 0) => (Number.isFinite(v) ? v : def)
   const arr = (v) => (Array.isArray(v) ? v.slice() : [])
   const oneOf = (v, set, def) => (set.includes(v) ? v : def)
@@ -370,8 +374,14 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   const revokeLapse = (a) => withScope(controls.revokeLapse(a))
   const extend = (a) => withScope(controls.extend(a))
 
+  // ── ROUND 12: THE `motion → box` BINDING (method, not manifest field) now lives in `kernel/meetingmarker.js` ──
+  // `createBoxBinding` owns the state, the self-reported view and the named refusals; this face only CALLS it.
+  const boxBinding = createBoxBinding({ clock, initial: boxFor, refuse })
+
   const api = {
     openMeetings,
+    bindBox: boxBinding.bind,
+    boxBinding: boxBinding.view,
     apiVersion,
     WIRED_KEYS, UNWIRED_REASONS,
 
@@ -645,6 +655,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const receipt = { at: now, action: 'motion', meeting: m.id, motion: motion.id, kind: motion.kind, quorumRequired: need, quorum: q, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
       say({ type: 'meetings/motion', at: now, meeting: m.id, motion: motion.id, kind: motion.kind, enforced, enforcedScope: ENFORCED_SCOPE })
+      // ROUND 12 / task-97 (vmu-pack's ⑤): A MID-MEETING MOTION IS OBSERVABLE. This site used to only write the local
+      // log, so no middleware could react to "someone moved a motion in THIS meeting" - and the id the mirror asks
+      // `boxFor` about is THIS meeting-scoped id (`mo1`), not the governance face's institute-wide `mo-1`. The event
+      // therefore carries both ids a policy needs; registered in bus.js as `meeting/motion` (`failure:'open'`, so a
+      // broken listener cannot stop a motion), which is what makes the pack's "propose ⇒ open a box" policy possible.
+      emit('meeting/motion', { at: now, meeting: m.id, motion: motion.id, kind: motion.kind, emergency: emergency === true })
       return { ok: true, motion: motion.id, quorumRequired: need, quorum: q, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
@@ -691,7 +707,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       counters.votes += 1
       const tally = target ? { for: [...target.votes.values()].filter((v) => v === 1).length, against: [...target.votes.values()].filter((v) => v === 0).length, abstain: target.abstain.size } : { for: 0, against: 0, abstain: 0 }
       m.minutes.entries.push({ at: now, kind: 'vote', motion: target ? target.id : null, member: String(member), value: value === 0 ? 0 : 1 })
-      const ballotMirror = mirrorVote({ ballot, counters, meeting: m.id, motionId: target ? target.id : null, member, value })
+      const ballotMirror = mirrorVote({ ballot, boxFor: boxBinding.resolve(), counters, meeting: m.id, motionId: target ? target.id : null, member, value })
       const receipt = { at: now, action: 'vote', meeting: m.id, motion: target ? target.id : null, member: String(member), tally, quorum: q, enforced, enforcedScope: ENFORCED_SCOPE, ballot: ballotMirror }
       pushReceipt(receipt)
       return { ok: true, tally, quorum: q, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
@@ -1046,6 +1062,9 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         // F51 (task-89): the durable-domain-marker SELF-DISCLOSURE, owned by `kernel/meetingmarker.js` —
         // `bound:false` means nothing is claimed about a previous process (the G7 `durableLog.bound` shape).
         durableMarker: marker.status(),
+      // ROUND 12 / task-97: the `motion → box` binding is READABLE here (bound? who set it? when? how many changes?) -
+      // unbound must be visible, exactly like `durableMarker.bound === false`.
+      boxBinding: boxBinding.view(),
         lapses: Number(counters.lapses || 0), lapseRevocations: Number(counters.lapseRevocations || 0),
         // GAP-MTG-02 (D7): the tier is part of the observable state, and a contradictory declaration is visible
         // here BEFORE anyone hits the refusal (an operator must be able to see why a close would be refused).
@@ -1140,14 +1159,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   }
 
   function budgetVerdict(m, label, value, limit, evaluated) {
-    if (K.budgetOnExceed === 'refuse') capIn(m, 'VMU_RESOURCE_BUDGET', label, value, limit, 'vmu.meetings.' + label, evaluated)
-    if (K.budgetOnExceed === 'warn') {
-      counters.softBudget += 1
-      say({ type: 'meetings/budget-soft', at: clock(), label, value, limit })
-      return { code: 'VMU_QUOTA_SOFT_EXCEEDED', label, value, limit, policy: 'warn' }
-    }
-    counters.softBudget += 1
-    return { code: null, label, value, limit, policy: 'extend' }
+    return budgetVerdictOf({ K, capIn, counters, say, clock }, m, label, value, limit, evaluated)
   }
   function pushReceipt(receipt) {
     receipts.push(receipt)
@@ -1165,35 +1177,4 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   }
 
   return api
-}
-
-/** The value record for every wired key (explicit map; a name-derived lookup silently produced nulls). */
-function keysSnapshot(K) {
-  return {
-    'vmu.meetings.wakeRetries': K.wakeRetries, 'vmu.meetings.verdictMaxRounds': K.verdictMaxRounds, 'vmu.meetings.hardLimitMs': K.hardLimitMs,
-    'vmu.meetings.tier': K.tier, 'vmu.meetings.allowLight': K.allowLight,
-    'vmu.meetings.typeCatalog': K.typeCatalog, 'vmu.meetings.attendanceMode': K.attendanceMode, 'vmu.meetings.liveCap': K.liveCap,
-    'vmu.meetings.quorumMin': K.quorumMin, 'vmu.meetings.quorumRatio': K.quorumRatio, 'vmu.meetings.quorumLossPolicy': K.quorumLossPolicy, 'vmu.meetings.quorumCap': K.quorumCap,
-    'vmu.meetings.quorumRecountMs': K.quorumRecountMs, 'vmu.meetings.unansweredInDenominator': K.unansweredInDenominator,
-    'vmu.meetings.emergencyQuorumRatio': K.emergencyQuorumRatio, 'vmu.meetings.emergencyKinds': K.emergencyKinds,
-    'vmu.meetings.chairNeutral': K.chairNeutral, 'vmu.meetings.chairTransferAudit': K.chairTransferAudit,
-    'vmu.meetings.committeeMax': K.committeeMax, 'vmu.meetings.committeeReportRequired': K.committeeReportRequired,
-    'vmu.meetings.budgetTurns': K.budgetTurns, 'vmu.meetings.budgetTokens': K.budgetTokens, 'vmu.meetings.budgetWallMs': K.budgetWallMs,
-    'vmu.meetings.budgetOnExceed': K.budgetOnExceed,
-    'vmu.meetings.speechDefaultMs': K.speechDefaultMs, 'vmu.meetings.speechMaxMs': K.speechMaxMs, 'vmu.meetings.speechExtendMs': K.speechExtendMs,
-    'vmu.meetings.speechExtendMax': K.speechExtendMax, 'vmu.meetings.speechQuotaPerMember': K.speechQuotaPerMember,
-    'vmu.meetings.interruptAllow': K.interruptAllow, 'vmu.meetings.interruptQuota': K.interruptQuota, 'vmu.meetings.orderMode': K.orderMode,
-    'vmu.meetings.lateAfterMs': K.lateAfterMs, 'vmu.meetings.leaveEarlyPolicy': K.leaveEarlyPolicy, 'vmu.meetings.materialsRequired': K.materialsRequired,
-    'vmu.meetings.minutesDetail': K.minutesDetail, 'vmu.meetings.minutesIncludeRefused': K.minutesIncludeRefused,
-    'vmu.meetings.minutesActionsRequired': K.minutesActionsRequired, 'vmu.meetings.minutesRetentionMs': K.minutesRetentionMs,
-    'vmu.meetings.confirmPreviousMinutes': K.confirmPreviousMinutes,
-    'vmu.meetings.appealDeadlineMs': K.appealDeadlineMs, 'vmu.meetings.appealReasonRequired': K.appealReasonRequired, 'vmu.meetings.appealScope': K.appealScope,
-    'vmu.meetings.disciplineWarnMax': K.disciplineWarnMax, 'vmu.meetings.disciplineMuteMs': K.disciplineMuteMs,
-    'vmu.meetings.disciplineExpelAllowed': K.disciplineExpelAllowed,
-    'vmu.meetings.recessMaxMs': K.recessMaxMs, 'vmu.meetings.recessResumeRequiresMotion': K.recessResumeRequiresMotion,
-    'vmu.meetings.leaveApprover': K.leaveApprover,
-    'vmu.meetings.confidentialityDefault': K.confidentialityDefault, 'vmu.meetings.confidentialityQuotePolicy': K.confidentialityQuotePolicy,
-    'vmu.meetings.verbatimEnabled': K.verbatimEnabled, 'vmu.meetings.verbatimRetentionMs': K.verbatimRetentionMs,
-    'vmu.meetings.wakeFailurePolicy': K.wakeFailurePolicy,
-  }
 }

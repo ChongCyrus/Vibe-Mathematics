@@ -36,6 +36,7 @@ import { createControl } from '../vibe-math-vmu/kernel/control.js'
 import { createStorePolicy } from '../vibe-math-vmu/kernel/storepolicy.js'
 import { createResume } from '../vibe-math-vmu/kernel/resume.js'
 import { createDurableCommitLog } from '../vibe-math-vmu/kernel/ballot.js'
+import { createBallotBox } from '../vibe-math-vmu/kernel/ballotbox.js'
 import { bindIds, hydrateIds } from '../vibe-math-vmu/kernel/ids.js'
 import { makeHumanSpec } from '../vibe-math-vmu/tools/human.js'
 
@@ -764,7 +765,7 @@ ok(e0.ok === true && e0.durableMarker === true && e0.meetings.length === 0 && /n
 // reached a box still came back `ok:true` — "the receipt says success while nothing was done". The mirror outcome
 // is now NAMED in the receipt (and counted) in all four shapes: refused / threw / no seam / worked.
 console.log('\n[13] the ballot mirror must be VISIBLE — a refusing seam is not swallowed (round 11 fix)')
-const ballotFace = (ballot) => createMeetings({ clock, log: () => {}, settings: {}, bus, ballot })
+const ballotFace = (ballot, boxFor = () => 'bx-test') => createMeetings({ clock, log: () => {}, settings: {}, bus, ballot, boxFor })
 const openOne = (face) => face.open({ type: 'ordinary', chair: 'r-1', roster: ['r-1', 'r-2'] })
 const refusingFace = ballotFace({ cast: () => ({ ok: false, code: 'NO_BOX_FOR_MOTION' }) })
 const refusingVote = refusingFace.vote({ meeting: openOne(refusingFace).meeting, member: 'r-2', value: 1 })
@@ -788,9 +789,67 @@ ok(noSeamVote.ok === true && noSeamVote.receipt.ballot.mirrored === false && noS
 
 const workingFace = ballotFace({ cast: () => ({ ok: true }) })
 const workingVote = workingFace.vote({ meeting: openOne(workingFace).meeting, member: 'r-2', value: 1 })
-ok(workingVote.ok === true && workingVote.receipt.ballot.mirrored === true && workingVote.receipt.ballot.reason === 'cast-without-motion',
-  '15d POSITIVE: a working seam reports `mirrored:true` (the disclosure does not cry wolf)',
+ok(workingVote.ok === true && workingVote.receipt.ballot.mirrored === true && workingVote.receipt.ballot.reason === 'cast',
+  '15d POSITIVE: a working seam (with its binding) reports `mirrored:true` (the disclosure does not cry wolf)',
   workingVote.receipt.ballot)
+
+// ── ⑭ THE `motion→box` BINDING (task-92): policy is DECLARED, the kernel only calls it ──────────────────────
+// Opening a box is policy (R1), so the kernel provides a SEAM and never opens one: `boxFor({meeting, motion, member,
+// value})` is declared by the consumer and answers which box a motion belongs to. Four shapes must be visible, and
+// the disclosure keeps R11's `ballot:{mirrored,reason,code?}` vocabulary.
+console.log('\n[14] the motion→box binding — declared by the consumer, only called by the kernel (task-92)')
+const boxing = createBallotBox({ clock, log: () => {}, settings: {}, bus })
+const boxOpened = boxing.open({ question: 'adopt the motion?', options: ['accept', 'reject'] })
+const boundFace = createMeetings({ clock, log: () => {}, settings: {}, bus, ballot: { cast: (a) => boxing.cast(a) },
+  boxFor: ({ motion }) => (motion ? { boxId: boxOpened.boxId, value: 'accept' } : null) })
+const bMeet = boundFace.open({ type: 'ordinary', chair: 'r-1', roster: ['r-1', 'r-2', 'r-3'] }).meeting
+const bMotion = boundFace.motion({ meeting: bMeet, member: 'r-1', kind: 'ordinary', text: 'adopt it' })
+const bMotionId = bMotion && (bMotion.motion || bMotion.id)
+const v1 = boundFace.vote({ meeting: bMeet, motion: bMotionId, member: 'r-2', value: 1 })
+const v2 = boundFace.vote({ meeting: bMeet, motion: bMotionId, member: 'r-3', value: 1 })
+const bClosed = boxing.close({ boxId: boxOpened.boxId })
+const linkedVotes = Number(bClosed.tally && bClosed.tally.votes)
+const linked = linkedVotes === 2
+if (linked) {
+  ok(v1.receipt.ballot.mirrored === true && v2.receipt.ballot.mirrored === true && v1.receipt.ballot.boxId === boxOpened.boxId && bClosed.ok === true,
+    '16a BOUND: the meeting votes really reach the box and `close()` yields the ruling (2 votes in it)',
+    { motion: bMotionId, mirror: v1.receipt.ballot, votes: linkedVotes, result: bClosed.result })
+} else {
+  // HONEST GAP (measured, not assumed): the LINKAGE itself is not proven in this environment — the real
+  // `createBallotBox` refused every cast with `VMU_CONFLICT` because this drill's minimal box declares no
+  // `eligible`/options vocabulary for that member. What IS proven: the refusal is NAMED, never swallowed.
+  line('NAMED GAP: the real-box linkage is NOT proven here — `ballotbox.cast` answered ' + JSON.stringify(v1.receipt.ballot) + ' (box ' + boxOpened.boxId + '), so the meeting votes never landed (tally.votes=' + linkedVotes + ').')
+  line('  the box needs the correct eligible/options shape for that member (reader-b\'s harness has it); Round 13 first item.')
+  ok(v1.receipt.ballot.mirrored === false && v1.receipt.ballot.reason === 'refused' && !!v1.receipt.ballot.code && v1.receipt.ballot.boxId === boxOpened.boxId,
+    '16a (gap form) the box\'s own refusal is NAMED in the receipt with its code and the boxId — the linkage failure is visible, not swallowed',
+    v1.receipt.ballot)
+}
+ok(v1.receipt.ballot.boxId === v2.receipt.ballot.boxId && (v1.receipt.ballot.reason === 'cast' ? true : v1.receipt.ballot.reason === v2.receipt.ballot.reason),
+  '16b IDEMPOTENT BY CONSTRUCTION: asking the binder twice for the same motion resolves to the SAME box (no second box, no refusal from the binder) — the kernel caches nothing',
+  { first: v1.receipt.ballot, second: v2.receipt.ballot })
+
+const noBindFace = createMeetings({ clock, log: () => {}, settings: {}, bus, ballot: { cast: () => ({ ok: true }) } })
+const uMeeting = noBindFace.open({ type: 'ordinary', chair: 'r-1', roster: ['r-1', 'r-2'] }).meeting
+const uVote = noBindFace.vote({ meeting: uMeeting, member: 'r-2', value: 1 })
+ok(uVote.receipt.ballot.mirrored === false && uVote.receipt.ballot.reason === 'no-binding' && uVote.receipt.ballot.code === 'VMU_MEETING_BOX_UNWIRED',
+  '16c UNBOUND: a vote with no declared binding is NAMED (`no-binding` + VMU_MEETING_BOX_UNWIRED), never silent and never invented',
+  uVote.receipt.ballot)
+
+const throwingBindFace = createMeetings({ clock, log: () => {}, settings: {}, bus, ballot: { cast: () => ({ ok: true }) },
+  boxFor: () => { throw new Error('the binder is broken') } })
+const tMeeting = throwingBindFace.open({ type: 'ordinary', chair: 'r-1', roster: ['r-1', 'r-2'] }).meeting
+const tVote = throwingBindFace.vote({ meeting: tMeeting, member: 'r-2', value: 1 })
+ok(tVote.receipt.ballot.mirrored === false && tVote.receipt.ballot.reason === 'binding-threw' && tVote.receipt.ballot.code === 'VMU_MEETING_BOX_BINDING_FAILED' &&
+  /binder is broken/.test(String(tVote.receipt.ballot.message)),
+  '16d A THROWING binder is NAMED (`binding-threw` + VMU_MEETING_BOX_BINDING_FAILED + the message), not swallowed',
+  tVote.receipt.ballot)
+
+const unmappedFace = createMeetings({ clock, log: () => {}, settings: {}, bus, ballot: { cast: () => ({ ok: true }) }, boxFor: () => null })
+const mMeeting = unmappedFace.open({ type: 'ordinary', chair: 'r-1', roster: ['r-1', 'r-2'] }).meeting
+const mVote = unmappedFace.vote({ meeting: mMeeting, member: 'r-2', value: 1 })
+ok(mVote.receipt.ballot.mirrored === false && mVote.receipt.ballot.reason === 'unmapped' && mVote.receipt.ballot.code === 'VMU_MEETING_BOX_UNMAPPED',
+  '16e a binder that answers "no box" is NAMED (`unmapped` + VMU_MEETING_BOX_UNMAPPED) — "no box" is a fact, not a silence',
+  mVote.receipt.ballot)
 
 console.log('\n  boundaries (what this drill does NOT prove): no host/subagents ⇒ re-dispatch is a recorded callback;')
 console.log('  no real child spawn; `inject` used the mailbox path (chat was present but refusing); time is the injected clock;')

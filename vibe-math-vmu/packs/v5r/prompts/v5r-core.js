@@ -24,6 +24,11 @@ import { SOURCE_REL as PROMPT_SOURCE_REL, SOURCE_SHA256 as PROMPT_SOURCE_SHA256,
 // the capability-gated `api.services.get(name)` seam that lets it reach the meetings face. `kernel/pack.js`
 // routes module-shaped manifest entries through the loader for exactly this reason.
 import { V5R_STALL_MEETING } from '../middleware/stall-meeting.js'
+// ROUND 13 (task-97 close-out): v5r's motion ⇒ box policy. It hangs on `meeting/motion` (the MEETING's own motion,
+// `mo1` - the id the vote mirror asks `boxFor` about), NOT on the institute-wide `motion/propose` (`mo-1`): those are
+// two different objects, and subscribing to the wrong one yields boxes that can never match. Module shape for the
+// same reason as above (only the loader attaches `api`, and only the kernel's own loader carries the service catalog).
+import { V5R_MOTION_BOX } from '../middleware/motion-box.js'
 
 /**
  * ROUND 336 — THE BRIDGE FROM TEXT TO PIPELINE. Until now the v5r prompt corpus was carried as DATA: hash-locked,
@@ -216,6 +221,18 @@ export const PACK = Object.freeze({
       failure: 'open',
       capabilities: ['trigger-workflow', 'record'],
       module: V5R_STALL_MEETING,
+    },
+    // ROUND 13: v5r's motion ⇒ box policy (a motion moved in a meeting gets a box, and the meeting's votes are
+    // mirrored into it). Module-shaped for the same reason; the policy (which box, which vocabulary) lives entirely
+    // in `../middleware/motion-box.js` - the kernel only offers the `bindBox` seam.
+    {
+      id: 'v5r.motion-box',
+      kind: 'module',
+      order: 310,
+      on: ['meeting/motion'],
+      failure: 'open',
+      capabilities: ['trigger-workflow', 'record'],
+      module: V5R_MOTION_BOX,
     },
   ],
 

@@ -1115,7 +1115,19 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
       return Object.assign({}, env, { value: Object.assign({}, value, { domainRows: stamped }) })
     }),
   } : null
-  meetingsRef.current = createMeetings({ settings: settingsView, bus, clock: guardedClock, log, durable: meetingsDomainSeam })
+  // ROUND 12 / task-97 (vmu-pack's ④): THE MEETING FACE'S BALLOT SEAM. Without it `mirrorVote()` returns
+  // `reason:'no-seam'` BEFORE it ever asks `boxFor`, so a bound policy could never be observed working. The board
+  // (`ballotbox`) is constructed a few lines BELOW, so this seam is LATE-BOUND (an arrow reading the later `const`):
+  // `cast` only runs at vote time, never during construction. THE POLICY STAYS OUT: `boxFor` decides WHICH box and
+  // the option vocabulary (`kernel/meetingmarker.js`), this adapter only performs the cast it was handed.
+  const meetingBallot = {
+    cast: (a) => {
+      const args = a || {}
+      if (!args.boxId) return { ok: false, code: 'VMU_MEETING_BOX_UNMAPPED', message: 'the ballot mirror needs a boxId (boxFor answered none)' }
+      return ballotbox.cast({ boxId: String(args.boxId), by: String(args.by || args.member || ''), choice: args.value })
+    },
+  }
+  meetingsRef.current = createMeetings({ settings: settingsView, bus, clock: guardedClock, log, durable: meetingsDomainSeam, ballot: meetingBallot })
   const meetings = meetingsRef.current
   // ROUND 9 / task-66 A (G7): the board's cast/settle commits through the SAME durable log as the mailbox — one
   // instance, one ticket sequence, so a recovery replay has a single order to follow. Absent store ⇒ the board's

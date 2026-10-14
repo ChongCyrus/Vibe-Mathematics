@@ -280,6 +280,32 @@ vmu.paper.finalizer = 'academician'（v5r :1167 的值）
 >
 > ★ **同轮另一件（v5r 的"异议广播给 voters"）· 已闭合**：v5r 的 `memberMayRejectAssign` 不只记录异议，还**广播给投票人**（原文"任务仍会执行"）；vmu 曾只记录并如实报 `broadcast:{attempted:false, hook:'task/assign-objected'}`（**没有那个钩子**）。按 Lead 指示**先登记**（`kernel/bus.js` 的 `HOOK_REGISTRY`：`task/assign-objected`，`failure:'open'`、不可阻断，producer `kernel/tasks.js`），core 随即在 `kernel/tasks.js:321` **接上 emit** ⇒ **实测闭合**（`<临时目录>/assign-objected-probe.mjs`，仓库外一次性·实测）：`objectAssign()` 回执 `broadcast:{attempted:true, emitted:true, audience:'the middleware decides the audience (v5r broadcast to voters; this face has no roster, so it invents no recipient list)'}`，探针监听器**观测到 1 次 emit**（载荷 `{at,id,by,why,state,owner}`）⇒ **听众由中间件决定**（R1）。两条钩子门禁（`audit-hook-coverage`、`scripts/audit-hook-emit-classification.mjs`）随之**回绿**（4/0、7/0）。
 
+### 4.11 轮 12：**motion→box 政策＝具名保留**（三项依赖，未落半接线模块）
+
+> 任务（R1 分工的另一半）：**"动议被提出时为它开箱／绑定"是政策 ⇒ 由 pack 声明**；内核只提供接缝。**实测结论：今天还不具备可挂的条件 ⇒ 具名保留**（按 R10 `ballots` 的教训，**不落半接线模块**）。
+
+**政策的正确形状（已勘定，落地即用）**：**M2 模块**（`capabilities:['trigger-workflow','record']`，`hooks:{'motion/propose': …}` ⇒ `api.services.get('vmu.ballotbox').open({…})`）。**不是** M1 规则（动作集不含调服务）、**不是** inline handler（总线路径没有 `api`——R11 的形状门禁会拒）。
+
+**依赖状态（逐条带 file:line；轮 12 收尾时 core 已落 ①②③）**：
+| # | 项 | 状态 | 实测 |
+|---|---|---|---|
+| ① | **`boxFor` 的消费点** | ✅ **已落** | `kernel/meetings.js:730` `mirrorVote({ ballot, boxFor: boxBinding, … })` |
+| ② | **pack 的投递路径**（Lead 裁决 (i)：注册方法） | ✅ **已落** | `vmu.meetings` 的 `bindBox(fn\|null)`（注册／换绑／解绑）＋ `boxBinding()`＋`status().boxBinding` 自曝；**懒绑**（装载期工厂拿不到 `api`，所以在 `motion/propose` 处理器里 `if (!boxBinding().bound) bindBox(fn)`） |
+| ③ | **动议事件可挂** | ✅ **已落** | core 把 `kernel/governance.js` 的 8 个事件改成**名首字面量 ＋ 斜杠名**（`motion/propose|second|withdraw|table|amend`、`agenda/add|reorder|split`）并**登记进 `HOOK_REGISTRY`**＋`motion\|agenda` 进 `VU_NAMESPACE`；实测 `isRegisteredHook('motion/propose') === true`，一个真被 loader 装载的 M2 模块**收到恰一次** |
+| ④ | ★ **镜像的 `ballot` 缝没装配** | ❌ **待 core** | `kernel/index.js:1118` `createMeetings({ settings, bus, clock, log, durable })` **没传 `ballot`** ⇒ `mirrorVote` 在 `no-seam` **就返回了**（实测 `receipt.ballot = {"mirrored":false,"reason":"no-seam"}`），**根本走不到 `boxFor`** |
+| ⑤ | ★ **"会议动议"不可观测 ＋ 两个动议面的 id 不同** | ❌ **待 core** | `kernel/meetings.js` **总线 emit 数 = 0**（只用本地 `say()` 日志）⇒ pack **无法观测"会议里有人提出动议"**；且**会议动议 id ＝ `mo1`**（`:677` `'mo' + (m.motions.length+1)`）而**治理动议 id ＝ `mo-1`**（`newId('mo')`）⇒ 挂 `motion/propose` 开的箱，与投票镜像问的 `boxFor({motion:'mo1'})` **对不上**（⇒ `VMU_MEETING_BOX_UNMAPPED`） |
+
+**⇒ 轮 13 收尾：④⑤ 已由 core 落，政策模块已进仓并被常驻守住（本轮结论从"具名保留"改判为"已闭合"）**
+- **④ 已落**：`kernel/index.js:1118` 一带 `createMeetings({ …, ballot: meetingBallot })`（迟到绑定适配器，`cast` 只在投票时调用）⇒ 真装配里未绑时回执是 **`no-binding`**（不再是 `no-seam`）。
+- **⑤ 已落**：`kernel/meetings.js` 动议落账处新增 **`emit('meeting/motion', { at, meeting, motion, kind, emergency })`**（名首字面量），core 已**登记** `meeting/motion`（`failure:'open'`、不可阻断）⇒ **pack 直接订阅即可**（★ 我**没有**再登记，避免上次那种"两人各加一份 ⇒ 8 条 duplicate"）。
+- **★ 我落的（进仓）**：`packs/v5r/middleware/motion-box.js`（挂 **`meeting/motion`**，不是 `motion/propose`——后者是**全所**动议 `mo-1`，而镜像问的是**会议内**动议 `mo1`）；清单 `prompts/v5r-core.js` 新增 module 形状条目 `{id:'v5r.motion-box', on:['meeting/motion'], capabilities:['trigger-workflow','record'], module: V5R_MOTION_BOX}`；`docs/27` 已点名；`package.json files[]` ＋ `installer.js` **双登记**（`audit-installer-policy` 的"每个 shipped 文件必须被托管或豁免"要求）。
+- **★ 常驻断言（新文件）**：`tests/vmu-motion-box.test.mjs` —— **22 passed / 0 failed**：纯政策（选项词表／问题文案／查表）＋ **真 pack 装载**：会议里提动议 ⇒ **箱子真的存在**（`ballotbox.status().boxes === 1`）＋ **绑定真被设上**（`boxBinding().source === 'method'`）＋ 投票 ⇒ **真的镜像进政策选的那个箱**（`receipt.receipt.ballot.mirrored === true`）＋ 治理动议**不**开箱（两个面确实不同）＋ 反向（**解绑 ⇒ 具名 `VMU_MEETING_BOX_UNWIRED`**；下一条动议**再武装**＝懒绑的设计；**未装政策的装配 ⇒ 不开箱、也不假装**）。
+- **政策口径（不臆造）**：选项词表 **`['1','0']`**（＝会议侧自己的 `value` 1/0 词表）**是本 pack 政策**，文件里写明"v5r 的动议面是**附议**、无 v5r 出处"；问题文案在动议文本可达前用**动议 id**（`motionBoxQuestion()` 有 `text` 用 `text`、没有用 id，**不会**是 `undefined`）——reader-a 的 R13 透传落地后自动升级为动议原文。
+
+**反向今天已成立（B 的负向）**：`<临时目录>/motion-box-hold-probe.mjs`（仓库外一次性·实测，exit 0）—— 提出一个动议后 **票箱数 0 → 0（不开箱）**，且当时 `isRegisteredHook('motion.propose') === false`（**没人能挂、也没假装**）；接缝**被供给**时三种回执都正确（`no-binding`／`unmapped`／真投进去）。另 `<临时目录>/motion-hook-fire-probe.mjs`（exit 0，**6/0**）证：钩子登记后，一个真被 loader 装载的 M2 模块**确实收到 `motion/propose`**、且**能经能力门控缝够到 `vmu.ballotbox`** ⇒ **③ 已闭合**。
+
+★ **未落地的两点恰好是"会臆造"的地方**：v5r 的动议面是**附议**、不是选项投票（选项集无 v5r 出处）；且 `governance.motion` 只有 `{propose, second, withdraw}`（**无读方法**）⇒ 模块拿不到动议文本。⇒ 这两点必须由 ①/② 的接缝给出**可核**输入，否则就是臆造。
+
 ---
 
 ## 5. v5r-pack：行为包含对照方案（D8）

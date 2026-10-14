@@ -37,6 +37,21 @@ const EXPECT = {
   board: OK_READ, bus: OK_READ, clockguard: G('ok 或 null', '时钟守卫：无声明 ⇒ 不拦（返回 null 亦合规）'),
   crypto: OK_READ, domaingate: OK_READ, external: OK_READ, fairness: OK_READ, index: OK_READ,
   loader: OK_READ, meeting: OK_READ, members: OK_READ, metrics: OK_READ, minutes: OK_READ,
+  // ROUND 12 / task-95 (vmu-core's finding): the two modules split out in R10/R11 appeared with `op 抛出` and NO
+  // verdict row - and the throw-skip below ran BEFORE the "no row ⇒ red" check, so they were counted as probe
+  // errors and never named (the matrix printed "设计未定 ✗" while `--check` said `0 unregistered`). Their real
+  // exports are `createMeetingControls` / `createLeaveControls` (the matrix's `lapseDue()` / `requestLeave()` are
+  // operations that need arguments - measured: the factory builds, the op throws without them) ⇒ the honest shape
+  // is PROBE_NEEDS_ARGS, i.e. "the probe cannot call this without arguments", NOT "no verdict needed".
+  meetingleave: G('PROBE_NEEDS_ARGS', 'R12 拆出（`createLeaveControls`）；`requestLeave()` 缺参数即抛 ⇒ 探针需要参数才能裁定（登记为待补参数，而不是"无需裁定"）'),
+  meetinglapse: G('PROBE_NEEDS_ARGS', 'R12 拆出（`createMeetingControls`）；`lapseDue()` 缺参数即抛 ⇒ 探针需要参数才能裁定（同上）'),
+  // ROUND 12 / task-95 · THE THIRD INSTANCE, caught BY the reorder above within one minute of applying it:
+  // `kernel/resumeflush.js` (split out in R10, 150 lines, `createExitContract`) had NO verdict row and a THROWING
+  // probe ⇒ it was invisible for two rounds (`0 unregistered`). Measured: `createExitContract({})` throws
+  // "createExitContract needs a snapshot({key}) writer" - the factory needs its seam injected ⇒ PROBE_NEEDS_ARGS.
+  // This is the self-proof the fix was required to carry: an unregistered + throwing module now REDS, and this one
+  // did - found in the wild rather than planted.
+  resumeflush: G('PROBE_NEEDS_ARGS', 'R10 拆出（`createExitContract`）；实测 `createExitContract({})` 抛 "needs a snapshot({key}) writer" ⇒ 工厂需要注入接缝，探针需参数才能裁定（由 R12 的顺序修正当场抓出）'),
   notify: OK_READ, projmigrate: OK_READ, ratelimit: OK_READ, recruit: OK_READ, registry: OK_READ,
   replay: OK_READ, retention: OK_READ, rules: OK_READ, scheduler: OK_READ, skills: OK_READ,
   tasks: G('array', '任务板：零机制 ⇒ 空列表（放行）'), topology: OK_READ, trust: OK_READ,
@@ -262,16 +277,20 @@ function judge(rows) {
     // **先看登记**（显式待办/不适用 ⇒ 明确计数，不红 ✓）；再判"无名拒"与形状 ✓
     if (e0 && e0.shape === 'EXPECT_NA') { na += 1; continue }
     if (e0 && e0.shape === 'EXPECT_UNDECIDED') { undecided += 1; continue }
-    if (/抛出|import 失败|create 抛出/.test(r.shape)) { probeErrors += 1; continue }
-    if (e0 && e0.shape === 'PROBE_NEEDS_ARGS') { probeErrors += 1; continue }
-    if (r.refusal === '（无名）✗') { mism.push(r.module + ': 拒绝**没有具名码** ✗'); continue }
     // **规则收紧（第 33 轮）** ✗✓✓：**"模块出现了却没有裁定行" ⇒ 必须红**（**每个模块都必须被裁定** ✓）；
     //   `EXPECT_UNDECIDED` 仍是"**显式待办**、只计数不判红" ✓✓ —— **"未定"与"漏了"必须分开** ✗✓。
+    // ★ ROUND 12 / task-95（vmu-core 定位、我修）：**这道检查必须排在"探针抛出就跳过"之前**。原来抛出先
+    //   `continue`，于是"**没有裁定行 + 探针抛出**"的模块两个计数器都不进（`0 unregistered`），而矩阵却把它
+    //   印成"设计未定 ✗" ⇒ **打印与计数互相矛盾**，R10/R11 拆出的两个模块就这样悬了两轮。现在的顺序保证：
+    //   **未登记 ⇒ 红（无论探针是否抛出）**；登记了 `PROBE_NEEDS_ARGS`／`EXPECT_*` 的仍按各自的语义计数 ✓。
     if (!e0) {
       unregistered += 1
       mism.push(r.module + ': **出现了却没有裁定行** ✗（给期望，或显式登记 `EXPECT_UNDECIDED` ✓）')
       continue
     }
+    if (/抛出|import 失败|create 抛出/.test(r.shape)) { probeErrors += 1; continue }
+    if (e0 && e0.shape === 'PROBE_NEEDS_ARGS') { probeErrors += 1; continue }
+    if (r.refusal === '（无名）✗') { mism.push(r.module + ': 拒绝**没有具名码** ✗'); continue }
     const s = r.shape
     const okShape = (e0.shape === '具名拒或 ok') ? (s === 'refusal' || s === 'ok')
       : (e0.shape === 'ok 或 object') ? (s === 'ok' || s === 'object')

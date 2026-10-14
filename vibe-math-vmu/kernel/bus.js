@@ -81,6 +81,12 @@ export const HOOK_REGISTRY = Object.freeze([
   { name: 'turn/reply-parsed', kind: 'vmu', failure: 'closed', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'a turn reply was parsed, before dispatch', producer: 'kernel/turn/index.js' },
   { name: 'meeting/round-start', kind: 'vmu', failure: 'closed', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'a meeting round opens', producer: 'kernel/meeting.js' },
   { name: 'meeting/round-end', kind: 'vmu', failure: 'closed', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a meeting round closes', producer: 'kernel/meeting.js, kernel/minutes.js' },
+  // ROUND 12 / task-97 (vmu-pack's ⑤): A MID-MEETING MOTION. The site used to write only the module's own log, so no
+  // middleware could react to "someone moved a motion in THIS meeting", and the id the vote mirror asks `boxFor` about
+  // is this meeting-scoped one (`mo1`), not the governance face's institute-wide `mo-1`. `failure:'open'` and NOT
+  // blockable: the motion has happened, and the audience/policy belongs to middleware (R1) - exactly the door the
+  // pack's "propose ⇒ open a box" policy needs.
+  { name: 'meeting/motion', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a motion was moved inside a meeting (meeting-scoped motion id)', producer: 'kernel/meetings.js' },
   { name: 'ballot/cast', kind: 'vmu', failure: 'closed', blockable: true, rewritable: false, scope: VU_SCOPE, timing: 'a vote is cast', producer: 'kernel/ballot.js' },
   { name: 'ballot/tally', kind: 'vmu', failure: 'closed', blockable: true, rewritable: false, scope: VU_SCOPE, timing: 'a ballot is tallied', producer: 'kernel/ballot.js, packs/v3-core' },
   { name: 'record/append-before', kind: 'vmu', failure: 'closed', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'before any record is validated or written', producer: 'kernel/library.js' },
@@ -93,6 +99,19 @@ export const HOOK_REGISTRY = Object.freeze([
   // (the hook registry is vmu-pack's file) so core can emit it: an OBSERVATION (failure 'open', not blockable),
   // because the objection never stops the task.
   { name: 'task/assign-objected', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a member objected to an assignment (v5r broadcast this to the voters; the task still runs)', producer: 'kernel/tasks.js' },
+  // ROUND 12 (task-97; core landed the name-first SLASH form at kernel/governance.js:114-210, and its own comment
+  // says these belong here): the agenda/motion family. Before this registration a middleware could NEVER subscribe
+  // to a motion - the names were emitted but absent from the registry (and `declareTopic` cannot take them until
+  // they are declared here). All are OBSERVATIONS (failure 'open', not blockable): they report that the agenda or a
+  // motion changed state; nothing about them may be blocked or rewritten by a listener.
+  { name: 'agenda/add', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'an item was added to the agenda', producer: 'kernel/governance.js' },
+  { name: 'agenda/reorder', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'the agenda was reordered', producer: 'kernel/governance.js' },
+  { name: 'agenda/split', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'an agenda item was split into a child', producer: 'kernel/governance.js' },
+  { name: 'motion/propose', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a motion was proposed (the event a pack policy may react to, e.g. opening a ballot box)', producer: 'kernel/governance.js' },
+  { name: 'motion/second', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a motion was seconded', producer: 'kernel/governance.js' },
+  { name: 'motion/withdraw', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a motion was withdrawn', producer: 'kernel/governance.js' },
+  { name: 'motion/table', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a motion was tabled', producer: 'kernel/governance.js' },
+  { name: 'motion/amend', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a motion was amended', producer: 'kernel/governance.js' },
   { name: 'prompt/section-assembled', kind: 'vmu', failure: 'open', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'a prompt assembly asks for section decisions', producer: 'kernel/prompt/index.js' },
   { name: 'budget/exceeded', kind: 'vmu', failure: 'abort', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'a conserving allocation fails', producer: 'kernel/fairness.js' },
   { name: 'pack/loading', kind: 'vmu', failure: 'closed', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'before a pack changes anything (may refuse)', producer: 'kernel/pack.js' },
@@ -578,7 +597,7 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
       // with `declareTopic` is refused - the "declare before emit" rule. The three LOG-ONLY namespaces
       // (`audit`, `auditchain`, `retention`) are deliberately NOT listed: their rows are not hooks, so their
       // emits stay in the foreign-namespace pass-through path (documented in docs/05 §5.4).
-      const VU_NAMESPACE = /^(member|turn|meeting|ballot|record|task|prompt|budget|pack|settle|control|resume|ids|human|chat|mailbox|panel|math|lifecycle|paper|publication|notify|crypto|external|legalentity|ratelimit|recruit|reviewers|workflow|formal|lean|board|projmigrate|skills|topology|trust)\//
+      const VU_NAMESPACE = /^(member|turn|meeting|ballot|record|task|prompt|budget|pack|settle|control|resume|ids|human|chat|mailbox|panel|math|lifecycle|paper|publication|notify|crypto|external|legalentity|ratelimit|recruit|reviewers|workflow|formal|lean|board|projmigrate|skills|topology|trust|motion|agenda)\//
       const bridged = opts && opts.bridge === true
       const isVmuName = typeof hook === 'string' && VU_NAMESPACE.test(hook)
       if (!bridged && isVmuName && !(VU_HOOKS.includes(hook) || customTopics.has(hook))) {

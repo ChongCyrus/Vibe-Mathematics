@@ -36,7 +36,17 @@ export const PUBLIC_KEYS = Object.freeze([
   'members',
   'tasks',
   'meetings',
-  'ballots',
+  // ROUND 12 / task-95 — **`ballots` DELETED** (breaking change, registered in docs/03 §7): nothing in the tree ever
+  // wrote or read it. Its concept moved to `ballotbox` (the adapter table's key AND this whitelist's key), so the old
+  // name could only mislead a deployment into depending on a key no writer can produce. `patch('ballots', …)` now
+  // refuses BY NAME (`VMU_INVALID_ARGUMENT: undeclared durable key`) - which is the honest answer, and exactly the
+  // answer it effectively always gave, since no reader ever consumed it. NOTE the unrelated `'ballots'` strings
+  // elsewhere are different namespaces: `vmu.control.pauseScope`'s scope name, the minutes record's `ballots`
+  // field, and v5r's own fold ledger.
+  // RESERVED, NO WRITER (kept with a named condition rather than deleted): `records` names a face that EXISTS
+  // (`kernel/records.js`) whose persistence is deliberately delegated to the library surface. Deleting it now would be
+  // a second breaking change with no gain; if that face still has no store writer at the next architecture review,
+  // delete it the same way `ballots` was deleted (same §7 process).
   'records',
   'budget',
   'phase',

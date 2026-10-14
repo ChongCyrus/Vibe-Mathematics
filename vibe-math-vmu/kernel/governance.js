@@ -44,16 +44,25 @@ export function createGovernance(opts) {
   const readKey = (k) => (o.settings && typeof o.settings.get === 'function' ? o.settings.get(k) : (o.settings || {})[k])
   const clock = typeof o.clock === 'function' ? o.clock : () => 0
   const log = typeof o.log === 'function' ? o.log : () => {}
-  const emit = (ev) => {
   // ROUND 4 / task-25 (Lead's independent audit): the bus takes a STRING NAME as its first argument. This helper used
   // to forward the event OBJECT, so every emission from this module threw and was swallowed - the module LOOKED wired
   // and emitted nothing. The name is split out here, and a failure (unregistered name, blocking middleware) is NAMED.
-  if (!o.bus || typeof o.bus.emit !== 'function') return
-  const name = ev && typeof ev.type === 'string' ? ev.type : null
-  const note = (code, message) => { try { if (o.log && typeof o.log.append === 'function') o.log.append({ type: 'bus/emit-failed', at: (o.clock ? o.clock() : Date.now()), name, code, message }) } catch { /* the log itself may be gone */ } }
-  if (name === null) return note('VMU_BUS_NAME_REQUIRED', 'a bus event needs a string name (got an object without .type)')
-  try { o.bus.emit(name, ev) } catch (e) { note((e && e.code) || 'VMU_BUS_EMIT_FAILED', String((e && e.message) || e)) }
-}
+  // ROUND 12 / task-97 (vmu-pack's measured finding): the names were DOTTED. A dotted name can be neither registered
+  // in HOOK_REGISTRY nor declared as a topic (the shape check needs slash form), and the hook audits' literal scan
+  // cannot see it - so a middleware could NEVER subscribe to a motion. The call sites now pass NAME-FIRST SLASH names
+  // (registered in kernel/bus.js, and inside VU_NAMESPACE so a typo is a NAMED refusal); the payload keeps a type
+  // field for readers of the event body.
+  // ★ KEEP THE BODY SHORT: `tests/audit-vmu-docs.test.mjs` §I accepts a local `emit` helper only when a
+  // `bus.emit(` call appears within 700 characters of its declaration, so long prose belongs ABOVE this line
+  // (measured: in-body prose pushed the call past the window and the eight hooks looked unemitted).
+  const emit = (name, payload) => {
+    if (!o.bus || typeof o.bus.emit !== 'function') return
+    const evName = typeof name === 'string' && name ? name : null
+    const body = Object.assign({ type: evName }, payload || {})
+    const note = (code, message) => { try { if (o.log && typeof o.log.append === 'function') o.log.append({ type: 'bus/emit-failed', at: (o.clock ? o.clock() : Date.now()), name: evName, code, message }) } catch { /* the log itself may be gone */ } }
+    if (evName === null) return note('VMU_BUS_NAME_REQUIRED', 'a bus event needs a string name')
+    try { o.bus.emit(evName, body) } catch (e) { note((e && e.code) || 'VMU_BUS_EMIT_FAILED', String((e && e.message) || e)) }
+  }
 
   // ── 设置（唯一口径；缺省＝最小且不崩）──────────────────────────────────────
   const cfg = () => {
@@ -105,7 +114,7 @@ export function createGovernance(opts) {
       }
       const it = { id: newId('ag'), title, owner, kind: String((a && a.kind) || 'topic'), timeboxMs: Number((a && a.timeboxMs) || 0), depth: 0, parent: '', state: 'pending' }
       items.set(it.id, it); order.push(it.id)
-      note('agenda.add', it.id); emit({ type: 'agenda.add', id: it.id })
+      note('agenda.add', it.id); emit('agenda/add', { id: it.id })
       return { ok: true, item: view(it) }
     },
     list() {
@@ -121,7 +130,7 @@ export function createGovernance(opts) {
       }
       order.length = 0; for (const id of want) order.push(id)
       if (cfg().reorderAudit) note('agenda.reorder', want.join(','))
-      emit({ type: 'agenda.reorder', ids: want.slice() })
+      emit('agenda/reorder', { ids: want.slice() })
       return { ok: true, order: want.slice() }
     },
     split(id) {
@@ -132,7 +141,7 @@ export function createGovernance(opts) {
       const child = { id: newId('ag'), title: it.title + '（拆分）', owner: it.owner, kind: it.kind, timeboxMs: 0, depth: it.depth + 1, parent: it.id, state: 'pending' }
       items.set(child.id, child); order.splice(order.indexOf(it.id) + 1, 0, child.id)
       it.state = 'split'
-      note('agenda.split', child.id); emit({ type: 'agenda.split', id: child.id, parent: it.id })
+      note('agenda.split', child.id); emit('agenda/split', { id: child.id, parent: it.id })
       return { ok: true, item: view(child) }
     },
     status() {
@@ -163,7 +172,7 @@ export function createGovernance(opts) {
       }
       const m = { id: newId('mo'), kind, text, by, state: 'open', at: clock(), seconds: [] }
       motions.set(m.id, m)
-      note('motion.propose', m.id); emit({ type: 'motion.propose', id: m.id })
+      note('motion.propose', m.id); emit('motion/propose', { id: m.id })
       return { ok: true, motion: view(m), needed: c.secondThreshold }
     },
     second(id, by) {
@@ -179,7 +188,7 @@ export function createGovernance(opts) {
       if (m.seconds.indexOf(who) !== -1) return { ok: true, deduped: true, motion: view(m) }
       m.seconds.push(who)
       if (m.seconds.length >= c.secondThreshold) m.state = 'seconded'
-      note('motion.second', m.id); emit({ type: 'motion.second', id: m.id, by: who })
+      note('motion.second', m.id); emit('motion/second', { id: m.id, by: who })
       return { ok: true, motion: view(m), deduped: false }
     },
     withdraw(id, by) {
@@ -190,7 +199,7 @@ export function createGovernance(opts) {
       if (!c.withdrawable) return refuse('VMU_CONFLICT', '该配置不允许撤回（vmu.motions.withdrawable=false）', '打开它，或让动议自然结束')
       if (String(by || '').trim() !== m.by) return refuse('VMU_NOT_MEMBER', '只有提出者可以撤回（by 不匹配）', '由 ' + m.by + ' 撤回')
       m.state = 'withdrawn'
-      note('motion.withdraw', m.id); emit({ type: 'motion.withdraw', id: m.id })
+      note('motion.withdraw', m.id); emit('motion/withdraw', { id: m.id })
       return { ok: true, motion: view(m) }
     },
     table(id) {
@@ -201,7 +210,7 @@ export function createGovernance(opts) {
       if (c.tabledMax > 0 && tabled >= c.tabledMax) return refuse('VMU_MOTION_TABLE_LIMIT', '搁置数已达上限 ' + c.tabledMax, '先取回/结束旧搁置，或调大 vmu.motions.tabledMax')
       if (m.state === 'withdrawn') return refuse('VMU_MOTION_WITHDRAWN', '已撤回的动议不能搁置', '重新 propose')
       m.state = 'tabled'
-      note('motion.table', m.id); emit({ type: 'motion.table', id: m.id })
+      note('motion.table', m.id); emit('motion/table', { id: m.id })
       return { ok: true, motion: view(m) }
     },
     amend(id, patch, by) {
@@ -219,7 +228,7 @@ export function createGovernance(opts) {
       }
       if (p.text !== undefined) m.text = String(p.text)
       if (p.kind !== undefined) m.kind = String(p.kind)
-      note('motion.amend', m.id); emit({ type: 'motion.amend', id: m.id, by: String(by || '') })
+      note('motion.amend', m.id); emit('motion/amend', { id: m.id, by: String(by || '') })
       return { ok: true, motion: view(m) }
     },
     list() {

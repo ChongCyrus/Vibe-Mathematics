@@ -28,15 +28,18 @@
 //   is DEFENSIVE. Moving the release onto the success path therefore produces an IDENTICAL reading on every reachable
 //   input, and the library says so by name (`PROBE-DOES-NOT-DISCRIMINATE`). That expectation is pinned: if a later
 //   refactor lets a throw escape `executeInner`, this pin goes red and the honest mutation becomes available.
-import { falsifyFamily, falsify, formatFamilyReport } from './_lib/falsify.mjs'
+import { falsifyFamily, falsify, formatFamilyReport, mutateOnce } from './_lib/falsify.mjs'
+import { stripComments } from './_lib/strip-comments.mjs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
+import { readFileSync } from 'node:fs'
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
 import { createMathJobs } from '../vibe-math-vmu/kernel/mathjobs.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const KERNEL = join(HERE, '..', 'vibe-math-vmu', 'kernel', 'index.js')
 const MATHJOBS = join(HERE, '..', 'vibe-math-vmu', 'kernel', 'mathjobs.js')
+const KERNEL_DIR = join(HERE, '..', 'vibe-math-vmu', 'kernel')
 
 let passed = 0
 let failed = 0
@@ -193,6 +196,86 @@ ok(defensive.ok === false && defensive.problems.some((p) => p.startsWith('PROBE-
   defensive.problems)
 ok(defensive.real && defensive.real.parkedJobStarted === true,
   'and the probe itself is green on the real module (so the non-finding is about the mutation, not a broken probe)', defensive.real)
+
+console.log('=== TRIPWIRE (self-proving): a resource inside records/store would owe a `finally` ===')
+// THE CRITERION, AS AN ASSERTION (rounds 11/12): a `finally` is owed only where a function ACQUIRES something that
+// must be returned even when the body throws — a lock, a timer, a listener. These three faces hold only in-memory
+// state today, so they owe nothing; the tripwire fires the moment one of them grows an acquisition WITHOUT the
+// `finally` that would have to come with it. Two granularities, because the criterion names both:
+//   · FILE level  — any acquisition/timer/listener anywhere in the file requires a `finally` in that file;
+//   · CALL level  — `storepolicy.write()`'s own body must acquire nothing (the Lead's exact wording: "若 write() 体内
+//                  出现 acquire()"), which a file-level scan cannot see when a `finally` exists elsewhere.
+const ACQUIRE = /\.acquire\s*\(|\bacquire\s*\(|\bacquireLock\s*\(|(?<![\w$.])setTimeout\s*\(|(?<![\w$.])setInterval\s*\(|addEventListener\s*\(/g
+/** CODE ONLY (comments and string/regex contents blanked): a doc line or a string cannot fake an acquisition. */
+const tripwireScan = (source) => {
+  const code = stripComments(String(source), { strings: true })
+  const acquisitions = [...code.matchAll(ACQUIRE)].map((m) => m[0].trim())
+  const hasFinally = /\bfinally\b/.test(code)
+  return { acquisitions, hasFinally, needsFinally: acquisitions.length > 0 && !hasFinally }
+}
+/** The brace-matched body of a function, so "inside `write()`" means inside `write()` and not "somewhere in the file". */
+function bodyOf(code, marker) {
+  const at = code.indexOf(marker)
+  if (at === -1) return null
+  const open = code.indexOf('{', at)
+  if (open === -1) return null
+  let depth = 0
+  for (let i = open; i < code.length; i += 1) {
+    if (code[i] === '{') depth += 1
+    else if (code[i] === '}') { depth -= 1; if (depth === 0) return code.slice(open, i + 1) }
+  }
+  return null
+}
+
+// SELF-PROOF: the predicate must FIRE on the shape it claims to catch, and stay QUIET on the shapes it must not.
+const SYNTH = {
+  acquiredNoFinally: 'function f(s) { const l = s.acquire({ name: "x" }); return l }',
+  acquiredWithFinally: 'function f(s) { const l = s.acquire({ name: "x" }); try { return l } finally { s.release({ name: "x" }) } }',
+  timerNoFinally: 'function f() { setTimeout(() => {}, 10) }',
+  commentOnly: '// an example: s.acquire({name:"x"}) with no finally\nfunction f() { return 1 }',
+  stringOnly: 'function f() { return "setTimeout(" }',
+}
+const scan = (k) => tripwireScan(SYNTH[k])
+ok(scan('acquiredNoFinally').needsFinally === true && scan('timerNoFinally').needsFinally === true,
+  '★ self-proof: an acquisition (or a timer) with NO `finally` fires the tripwire', { acq: scan('acquiredNoFinally'), timer: scan('timerNoFinally') })
+ok(scan('acquiredWithFinally').needsFinally === false,
+  '★ self-proof: the SAME acquisition WITH a `finally` is clean — the rule is not "any acquire is red"', scan('acquiredWithFinally'))
+ok(scan('commentOnly').needsFinally === false && scan('stringOnly').needsFinally === false,
+  '★ self-proof (D7): a comment and a string are not code — `installer.js`-style proof that a statistic must read the text where the fact lives', { comment: scan('commentOnly'), string: scan('stringOnly') })
+
+// POSITIVE CONTROL: on a face that DOES acquire across calls, the scanner sees BOTH halves, so a green live reading
+// cannot be the scanner being blind.
+const resumeScan = tripwireScan(readFileSync(join(KERNEL_DIR, 'resume.js'), 'utf8'))
+ok(resumeScan.acquisitions.length > 0 && resumeScan.hasFinally === true && resumeScan.needsFinally === false,
+  'control: `resume.js` really acquires across calls and carries a `finally` — the scanner sees both (so "clean" below is a finding about these faces, not about the scanner)', resumeScan)
+
+// LIVE: the three faces named in the round-11 criterion.
+const TRIPWIRE_FACES = ['records.js', 'storepolicy.js', 'store.js']
+const live = TRIPWIRE_FACES.map((f) => {
+  const src = readFileSync(join(KERNEL_DIR, f), 'utf8')
+  return Object.assign({ file: f, stripped: stripComments(src, { strings: true }) }, tripwireScan(src))
+})
+ok(live.length > 0 && live.every((r) => r.acquisitions.length === 0),
+  '★ TRIPWIRE: no lock/timer/listener site exists in `records.js`／`storepolicy.js`／`store.js` today ⇒ these faces owe no `finally` (a reading, not an opinion)', live.map((r) => ({ file: r.file, acquisitions: r.acquisitions })))
+ok(live.length > 0 && live.every((r) => r.needsFinally === false),
+  '★ and none of them acquires without a `finally` ⇒ GREEN; the day one does, THIS line goes red naming the file (that is the tripwire, not a preference)',
+  live.filter((r) => r.needsFinally).map((r) => r.file))
+const writeBody = bodyOf(live.filter((r) => r.file === 'storepolicy.js')[0].stripped, 'const write = (a) => {')
+ok(!!writeBody && writeBody.length > 0,
+  'control: the `write()` body was really extracted (a failed extraction must not read as "nothing acquired")', { extracted: !!writeBody, length: writeBody ? writeBody.length : -1 })
+ok(!!writeBody && tripwireScan(writeBody).acquisitions.length === 0,
+  '★ TRIPWIRE (call level): `storepolicy.write()` itself acquires nothing — the exact condition the criterion names ("若 write() 体内出现 acquire()"), checked INSIDE the body rather than somewhere in the file', writeBody ? tripwireScan(writeBody) : null)
+// THE DECISIVE ONE: inject the condition into the REAL file's `write()` body (TEXT only — the tripwire is a text
+// scan, so this needs no import) and require BOTH granularities to fire. This is what makes the green above a
+// finding about the faces rather than a finding about the scanner's aim.
+const spSource = readFileSync(join(KERNEL_DIR, 'storepolicy.js'), 'utf8')
+const injected = mutateOnce(spSource, { find: 'const write = (a) => {',
+  replace: "const write = (a) => {\n    if (lock) lock.acquire({ name: 'w' })   // MUTANT: the write path acquires now" })
+const injectedStripped = stripComments(injected.text, { strings: true })
+const injectedBody = bodyOf(injectedStripped, 'const write = (a) => {')
+ok(tripwireScan(injected.text).needsFinally === true && !!injectedBody && tripwireScan(injectedBody).acquisitions.length > 0,
+  '★ the tripwire FIRES on the real file with ONE injected line: file level (`needsFinally`) and call level (`write()` body) both red — so the green above is aimed, not blind',
+  { fileLevel: tripwireScan(injected.text), callLevel: injectedBody ? tripwireScan(injectedBody) : null })
 
 console.log('')
 console.log('=== VMU FINALLY FALSIFY: ' + passed + ' passed, ' + failed + ' failed ===')

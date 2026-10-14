@@ -85,27 +85,154 @@ export function createMeetingMarker({ clock = () => 0, live = new Map(), archive
 }
 
 /**
- * ROUND 11 FIX (the defect reader-b's e2e found): mirror one vote into the injected `ballot` seam and RETURN what
- * actually happened — `{ mirrored, reason, code? }`. The call site used to be `try { … } catch {}`, so a refused or
- * throwing seam left `vote()` reporting success while nothing reached a box. A seam that refuses is not an error of
- * the MEETING (the vote is the face's own record, so `ok` stays true), but it must never be INVISIBLE: it is named
- * here and counted (`counters.ballotMirrorFailed` / `ballotMirrorSkipped`).
+ * ROUND 11 FIX (reader-b's e2e) + ROUND 12 (task-92): mirror one vote into the injected `ballot` seam and RETURN
+ * what actually happened — `{ mirrored, reason, code? }`. The call site used to be `try { … } catch {}`, so a refused
+ * or throwing seam left `vote()` reporting success while nothing reached a box. A seam that refuses is not an error
+ * of the MEETING (the vote is the face's own record, so `ok` stays true), but it must never be INVISIBLE.
+ *
+ * ── THE `motion→box` BINDING (R1: OPENING A BOX IS POLICY, NOT KERNEL MECHANISM) ────────────────────────────────
+ * `boxFor({meeting, motion, member, value})` is a DECLARED callback (pack/consumer) answering which box a motion
+ * belongs to: a `boxId`, or `{boxId, value, by}` when the box's option vocabulary differs from the meeting's 0/1.
+ * This module only CALLS it — it never opens a box, never invents a mapping, never caches one. ⇒ Asking twice for
+ * the same motion is IDEMPOTENT BY CONSTRUCTION: same answer, same box, the vote lands once and no second box
+ * appears. Every failure is a NAMED code: `VMU_MEETING_BOX_UNWIRED` (nothing declared),
+ * `VMU_MEETING_BOX_UNMAPPED` (declared, answered "no box"), `VMU_MEETING_BOX_BINDING_FAILED` (the callback threw;
+ * its own `code` wins when it carries one).
  */
-export function mirrorVote({ ballot = null, counters = {}, meeting = null, motionId = null, member = null, value = 1 } = {}) {
+export function mirrorVote({ ballot = null, boxFor = null, counters = {}, meeting = null, motionId = null, member = null, value = 1 } = {}) {
   if (!ballot || typeof ballot.cast !== 'function') {
     counters.ballotMirrorSkipped = (counters.ballotMirrorSkipped || 0) + 1
     return { mirrored: false, reason: 'no-seam' }
   }
+  if (typeof boxFor !== 'function') {
+    counters.ballotMirrorFailed = (counters.ballotMirrorFailed || 0) + 1
+    return { mirrored: false, reason: 'no-binding', code: 'VMU_MEETING_BOX_UNWIRED' }
+  }
+  let boxId = null
+  let wire = { value, by: null }
   try {
-    const r = ballot.cast({ meeting, motion: motionId, member, value })
-    if (r && r.ok === false) {
+    const bound = boxFor({ meeting, motion: motionId, member, value })
+    if (bound === null || bound === undefined) {
       counters.ballotMirrorFailed = (counters.ballotMirrorFailed || 0) + 1
-      return { mirrored: false, reason: 'refused', code: r.code || null }
+      return { mirrored: false, reason: 'unmapped', code: 'VMU_MEETING_BOX_UNMAPPED' }
     }
-    return { mirrored: true, reason: motionId ? 'cast' : 'cast-without-motion', code: null }
+    if (typeof bound === 'string') boxId = bound
+    else if (bound && typeof bound === 'object') {
+      boxId = bound.boxId === undefined || bound.boxId === null ? null : String(bound.boxId)
+      wire = { value: bound.value === undefined ? value : bound.value, by: bound.by === undefined ? null : bound.by }
+    }
+    if (!boxId) {
+      counters.ballotMirrorFailed = (counters.ballotMirrorFailed || 0) + 1
+      return { mirrored: false, reason: 'unmapped', code: 'VMU_MEETING_BOX_UNMAPPED' }
+    }
   } catch (e) {
     counters.ballotMirrorFailed = (counters.ballotMirrorFailed || 0) + 1
-    return { mirrored: false, reason: 'threw', code: (e && e.code) || null, message: String((e && e.message) || e) }
+    return { mirrored: false, reason: 'binding-threw', code: (e && e.code) || 'VMU_MEETING_BOX_BINDING_FAILED', message: String((e && e.message) || e) }
+  }
+  try {
+    const r = ballot.cast({ meeting, motion: motionId, member, value: wire.value, by: wire.by, boxId })
+    if (r && r.ok === false) {
+      counters.ballotMirrorFailed = (counters.ballotMirrorFailed || 0) + 1
+      return { mirrored: false, reason: 'refused', code: r.code || null, boxId }
+    }
+    return { mirrored: true, reason: 'cast', boxId, code: null }
+  } catch (e) {
+    counters.ballotMirrorFailed = (counters.ballotMirrorFailed || 0) + 1
+    return { mirrored: false, reason: 'threw', code: (e && e.code) || null, boxId, message: String((e && e.message) || e) }
+  }
+}
+
+/**
+ * `budgetVerdictOf(env, m, label, value, limit, evaluated)` — the per-meeting budget decision, moved here in round 12
+ * when `kernel/meetings.js` crossed 1200 lines again (it was 1207 after the `meeting/motion` emit). The rule is the
+ * same one that produced this module in round 11: a cohesive decision that needs only ports lives in its own module
+ * rather than pushing the face over the limit. `env` carries the face's own closures so NOTHING is re-implemented:
+ * `{ K, capIn, counters, say, clock }`. Refusals stay named (`VMU_RESOURCE_BUDGET` through `capIn`) and the warn /
+ * extend branches keep their exact former shape.
+ */
+export function budgetVerdictOf(env, m, label, value, limit, evaluated) {
+  const { K, capIn, counters, say, clock } = env
+  if (K.budgetOnExceed === 'refuse') capIn(m, 'VMU_RESOURCE_BUDGET', label, value, limit, 'vmu.meetings.' + label, evaluated)
+  if (K.budgetOnExceed === 'warn') {
+    counters.softBudget += 1
+    say({ type: 'meetings/budget-soft', at: clock(), label, value, limit })
+    return { code: 'VMU_QUOTA_SOFT_EXCEEDED', label, value, limit, policy: 'warn' }
+  }
+  counters.softBudget += 1
+  return { code: null, label, value, limit, policy: 'extend' }
+}
+
+/**
+ * `createBoxBinding({ clock, initial, refuse })` ⇒ `{ bind, view, resolve }` — the `motion → box` binding family,
+ * moved here in round 12 when `kernel/meetings.js` crossed 1200 lines again (1245). It belongs with `mirrorVote`:
+ * "who supplies the box for a mirrored vote" is the same concern as "what happens when they cannot".
+ *
+ * THE BINDING IS A METHOD, NOT A MANIFEST FIELD (Lead ruling (i)): every seam in this repo is a capability-gated
+ * service method (R10's `api.services.get`), and a manifest field would be a SECOND parallel channel; a method can
+ * also be REVOKED, SELF-REPORTED and asserted - the same discipline as G7's `durableLog.bound` and F51's
+ * `durableMarker` ("if it is not wired, that must be READABLE"). THE POLICY STAYS OUTSIDE: the face only CALLS the
+ * callback; opening/closing a box is the caller's act (`mirrorVote`, whose three named outcomes are
+ * `VMU_MEETING_BOX_UNWIRED` / `VMU_MEETING_BOX_UNMAPPED` / `VMU_MEETING_BOX_BINDING_FAILED`).
+ *
+ * Bind, replace or CLEAR the callback. Unbound is a first-class, NAMED state (`VMU_MEETING_BOX_UNWIRED` at vote
+ * time, `status().boxBinding.bound === false`), never a silent no-op; a non-callable argument is refused BY NAME,
+ * because a binding that cannot answer is exactly the silence this method exists to prevent. `refuse` is injected
+ * by the face so the code literal stays single-sourced.
+ */
+export function createBoxBinding({ clock, initial = null, refuse }) {
+  let binding = typeof initial === 'function' ? initial : null
+  let source = typeof initial === 'function' ? 'injected' : null
+  let at = null
+  let changes = 0
+  const view = () => ({ bound: typeof binding === 'function', source, at, changes })
+  const resolve = () => binding
+  const bind = (fn = null) => {
+    if (fn !== null && fn !== undefined && typeof fn !== 'function') {
+      throw refuse('VMU_INVALID_ARGUMENT', 'bindBox needs a function (or null to unbind)',
+        'pass ({meeting, motion, member, value}) => boxId | {boxId, value, by} | null')
+    }
+    const next = typeof fn === 'function' ? fn : null
+    const had = typeof binding === 'function'
+    binding = next
+    source = next === null ? null : 'method'
+    at = clock()
+    changes += 1
+    return { ok: true, bound: next !== null, replaced: had && next !== null, at, changes,
+      note: next === null
+        ? 'unbound: the next vote reports VMU_MEETING_BOX_UNWIRED (named, not silent)'
+        : 'bound by method: this face only CALLS the callback (opening a box is the caller\'s act)' }
+  }
+  return { bind, view, resolve }
+}
+
+/** The value record for every wired key (explicit map; a name-derived lookup silently produced nulls). */
+export function meetingKeysSnapshot(K) {
+  return {
+    'vmu.meetings.wakeRetries': K.wakeRetries, 'vmu.meetings.verdictMaxRounds': K.verdictMaxRounds, 'vmu.meetings.hardLimitMs': K.hardLimitMs,
+    'vmu.meetings.tier': K.tier, 'vmu.meetings.allowLight': K.allowLight,
+    'vmu.meetings.typeCatalog': K.typeCatalog, 'vmu.meetings.attendanceMode': K.attendanceMode, 'vmu.meetings.liveCap': K.liveCap,
+    'vmu.meetings.quorumMin': K.quorumMin, 'vmu.meetings.quorumRatio': K.quorumRatio, 'vmu.meetings.quorumLossPolicy': K.quorumLossPolicy, 'vmu.meetings.quorumCap': K.quorumCap,
+    'vmu.meetings.quorumRecountMs': K.quorumRecountMs, 'vmu.meetings.unansweredInDenominator': K.unansweredInDenominator,
+    'vmu.meetings.emergencyQuorumRatio': K.emergencyQuorumRatio, 'vmu.meetings.emergencyKinds': K.emergencyKinds,
+    'vmu.meetings.chairNeutral': K.chairNeutral, 'vmu.meetings.chairTransferAudit': K.chairTransferAudit,
+    'vmu.meetings.committeeMax': K.committeeMax, 'vmu.meetings.committeeReportRequired': K.committeeReportRequired,
+    'vmu.meetings.budgetTurns': K.budgetTurns, 'vmu.meetings.budgetTokens': K.budgetTokens, 'vmu.meetings.budgetWallMs': K.budgetWallMs,
+    'vmu.meetings.budgetOnExceed': K.budgetOnExceed,
+    'vmu.meetings.speechDefaultMs': K.speechDefaultMs, 'vmu.meetings.speechMaxMs': K.speechMaxMs, 'vmu.meetings.speechExtendMs': K.speechExtendMs,
+    'vmu.meetings.speechExtendMax': K.speechExtendMax, 'vmu.meetings.speechQuotaPerMember': K.speechQuotaPerMember,
+    'vmu.meetings.interruptAllow': K.interruptAllow, 'vmu.meetings.interruptQuota': K.interruptQuota, 'vmu.meetings.orderMode': K.orderMode,
+    'vmu.meetings.lateAfterMs': K.lateAfterMs, 'vmu.meetings.leaveEarlyPolicy': K.leaveEarlyPolicy, 'vmu.meetings.materialsRequired': K.materialsRequired,
+    'vmu.meetings.minutesDetail': K.minutesDetail, 'vmu.meetings.minutesIncludeRefused': K.minutesIncludeRefused,
+    'vmu.meetings.minutesActionsRequired': K.minutesActionsRequired, 'vmu.meetings.minutesRetentionMs': K.minutesRetentionMs,
+    'vmu.meetings.confirmPreviousMinutes': K.confirmPreviousMinutes,
+    'vmu.meetings.appealDeadlineMs': K.appealDeadlineMs, 'vmu.meetings.appealReasonRequired': K.appealReasonRequired, 'vmu.meetings.appealScope': K.appealScope,
+    'vmu.meetings.disciplineWarnMax': K.disciplineWarnMax, 'vmu.meetings.disciplineMuteMs': K.disciplineMuteMs,
+    'vmu.meetings.disciplineExpelAllowed': K.disciplineExpelAllowed,
+    'vmu.meetings.recessMaxMs': K.recessMaxMs, 'vmu.meetings.recessResumeRequiresMotion': K.recessResumeRequiresMotion,
+    'vmu.meetings.leaveApprover': K.leaveApprover,
+    'vmu.meetings.confidentialityDefault': K.confidentialityDefault, 'vmu.meetings.confidentialityQuotePolicy': K.confidentialityQuotePolicy,
+    'vmu.meetings.verbatimEnabled': K.verbatimEnabled, 'vmu.meetings.verbatimRetentionMs': K.verbatimRetentionMs,
+    'vmu.meetings.wakeFailurePolicy': K.wakeFailurePolicy,
   }
 }
 

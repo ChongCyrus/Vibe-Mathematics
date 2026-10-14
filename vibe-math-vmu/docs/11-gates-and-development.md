@@ -135,6 +135,8 @@
 
 **⇒ 第八条硬要求（★ R11 新增，**用两次血换来的**：R10 的 `contentvalue.js` 漏搜 ＋ R11 的 `seedKeys` 截断误判）**：**"我没找到／我只读到 N 个" 不是"它不存在"** —— **负证据（absence claim）必须先说清搜索范围与观察完整性**，否则报出去的就是错的。两个实例（都发生在我身上，因此按实测记）：① 我用 `-Filter 'resume*'` **按文件名前缀**找 `resume.js` 的拆分，漏掉了名字里没有 `resume` 的 **`contentvalue.js`**，却写成"**第三块未找到**"；② 我用 `Select-String` 的**截断输出**读一份 10 项清单，读到 9 项就断言"**缺 `human`**"，实际清单是 10 项——**我把"我读到的"当成了"文件里写的"**。⇒ 纪律（三条，缺一不可）：**(a) 断言"不存在"之前，换成按语义关键词全仓搜**（不用名字前缀）；**(b) 任何"只有 N 个／没有 X"的读数，必须来自完整读取**（读全文或整段，不用摘要/截断输出）；**(c) 报告里把"我搜了什么、范围多大"与结论一起写**，让读者能判断这条负证据的有效性。★ 它与第五条（证据源必须与事实所在处一致）**互补但不同**：第五条管"**去哪儿读**"，本条管"**读全了没有**"——**假阴性的两个来源**。
 
+**⇒ 第九条硬要求（★ R12 新增；由 vmu-assistant 提出、我按本轮实例判定它够格）**：**每一个"跳过／豁免／not-run"分支，都必须有一个相反的开关或自探针能把它变成红** —— 否则**豁免越多、门越假绿**（门在"主路径"上有牙**不等于**没被自己的逃生口掏空）。★ **与第四条的分工**：第四条说"**门要能咬人**"（种违规⇒红），本条说"**门的每个逃生口本身要可审**"（跳过必须能被反证为红）。**本条是这一整轮最反复的失败形态**，实测实例（都是本轮/近两轮踩到的）：① `generate-zero-mechanism-matrix.mjs` 的 `judge()` 把"探针抛出"**排在**"无裁定行⇒红"**之前** ⇒ **"无裁定行＋探针抛出"两个计数器都不进**，R10/R11 拆出的两个模块悬了两轮，**修正顺序后当场抓出第三个 `resumeflush`**（§9.20）；② 同门的 `EXPECT_NA`／`EXPECT_UNDECIDED` 是**显式记账**的跳过 ⇒ 必须有"漏了 vs 未定"的区分（已有）；③ `vmu-assistant` 的 `--require-host`：把 **`not-run` 直接变红**，否则"5 条 not-run"永远看着像绿的（**其自证**）；④ 我自己的普查门：`notAttached` 可能整类**缺席而不报** ⇒ 因此加了"**种一个不存在的面 ⇒ 必须被归档并具名**"的自探针；⑤ 更早的 `fired ⊆ enforced` 空过：分支**从未被触发**＝一种隐性跳过，修法是把"**真的 fire 了**"做成字段。⇒ 纪律：**写门时先把所有 `continue`／豁免表／`EXPECT_*`／not-run 列出来，逐条问"它变红要什么条件"**；能加**反向开关**（如 `--require-host`、`--strict`）就加，不能加就配**自探针**。★ **自探针的排序**（vmu-assistant 建议、我采纳）：**先证既有豁免没被误伤，再证新豁免生效** —— 落"调用形豁免"时，先证**家族形/命名空间仍不报**，再证**调用形不报、裸键仍报** ⇒ **豁免之间会互相掩护**（本轮已在"两个计数器各自为 0"上吃过一次）。
+
 **清单（当前，2026-10-09 第 18 轮）**
 
 | 守卫面 | 语义 | 生产是否调用 | 理由／生产调用点 |
@@ -155,7 +157,7 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 322 / suites 250 / probes 72`** ✓（旧值 134／68／66 已在扩卷与增件后过期 ✗；本轮树新增 1 个作业：`tests/audit-scope-classification.test.mjs` ✓） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 286 / suites 216 / probes 70`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 287 / suites 217 / probes 70`** ✓ |
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 258 / suites 225 / probes 33`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。
@@ -206,6 +208,21 @@
 11. **扫描期间不得改变作业集合**（2026-10-09 实证 ✗✓）：`tests/run-tests.mjs` 会**扫描 `tests/` 顶层**来派生作业 ✓，因此在**任何全量扫描进行中**新建/删除/改名 `tests/*.mjs` 会让"文档计数守护"看到**不同的派生值**而与本次扫描的作业表冲突（实测：扫描起始 117，守护重算 118 ⇒ `audit-readme-counts` 红 ✗）。我先前"未列入 `files[]` 的新文件对门禁不可见"的推断是**错的** ✗。⇒ **纪律**：长扫描期间**只允许改不参与作业派生的文件**；新建测试必须**在 T0/T3 之外**做，并由 **T0 `--for-t3` 的工作树干净检查**兜底 ✓✓。
 12. **源码级断言必须写成"语法形状"，且源码散文不得含同形字面量**（2026-10-09 **三次**实证 ✗✓）：我三次被自己的**注释/字符串**绊倒 —— ① `math.js` 注释里的"必须形式化"字样触发零策略检查 ✗；② `members.js` 注释里列出角色名触发 D5 检查 ✗；③ `script-bridge.js` 的 `status().note` 里写出 `appendPrompt` 触发"无提示词写路径"检查 ✗。⇒ **纪律**：① 断言一律锚定**代码形状**（如 `\bname\s*\(` 调用、行首属性键、`= true` 赋值），**不锚定裸词** ✗；② 被检查文件里的**注释与文案不得包含该形状的字面量** ✓（用"prompt action"这类描述替代 ✓）；③ 新写一个"源码不得含 X"的断言时，**先想一遍哪些散文会命中它** ✓✓。
 13. **不得用 shell 字符串手术改结构化文件**（2026-10-09 实证 ✗✓）：我曾在 PowerShell 里用 `Get-Content -Raw` ＋ `.Replace(...)` ＋ `[IO.File]::WriteAllText` 改 `package.json`，**编码往返把非 ASCII 破坏成了非法 JSON** ✗（`Bad control character in string literal` ✓），当场被 `node -e "require('./package.json')"` 与计数脚本抓住 ✓。⇒ **纪律**：① `package.json`／生成物／任何结构化文件一律用**编辑工具或生成器**改 ✓，**绝不**用 shell 字符串替换 ✗；② 改完**立即**用解析器验证（`require`／`JSON.parse`／生成器 `--check` ✓）；③ 弄坏即 **git 恢复**再重做 ✓（本次即如此 ✓）。
+
+### 6.1 拆出一个新模块的清单（★ 2026-10-15 立；R10 `meetingleave.js`、R11 `meetingmarker.js` **连续两轮**同型遗漏）
+
+**背景（实测）**：两轮各从大文件里拆出一个新模块（`meetingleave.js` 抽会议请假规则；`meetingmarker.js` 抽 F51 域标记族），两轮都只做到"**文件能跑**"就收工，**对外登记漏了**——而**没有任何一个门禁同时抓两面**（见 ③／⑤ 的"只抓一半"）。**完成判据不是"文件分出来了"，而是下面 ①–⑤ 五条全绿。**
+
+| # | 步骤 | 判据（怎么算做完） | 现状与"只抓一半"的证据 |
+|---|---|---|---|
+| ① | 新模块进 **`package.json` 的 `files[]`** | `node tests/audit-package-membership.mjs` 绿 **＋ 正面自查**：`node -e "console.log(require('./package.json').files.includes('vibe-math-vmu/kernel/<名>.js'))"` 必须 `true` | ★ 该门**只抓** `tests/*.mutants.mjs` 与"守卫索引引用的测试文件"，**不扫 `vibe-math-vmu/kernel/*.js`** ⇒ 新内核模块漏登记**它不会红**（R10／R11 正是这样过去的）⇒ 必须用上面的正面自查补判 |
+| ② | 新模块进 **`installer.js` 的 preset 管理清单**（`PRESETS[].files` 那一长串） | 装机后文件真的落到 `<profile>/vibe-math-vmu/kernel/` | 现清单在 `installer.js:93` 一行内（已含 `meetinglapse/meetingleave/meetingmarker` ✓）；`tests/audit-installer-*.test.mjs` 覆盖清单的**格式与策略**，"新模块是否进清单"仍要靠 ① 的同类自查 |
+| ③ | **zero-mechanism 矩阵加裁定行**（`scripts/generate-zero-mechanism-matrix.mjs` 枚举 `kernel/*.js`，每模块一行） | `node scripts/generate-zero-mechanism-matrix.mjs --check` 绿，且该行**期望**取自**实测形状**（生成器不带参跑一次即可读到"零机制下的返回形状"列） | ★★ **实测的洞**：`judge()` 里"探针抛出"的跳过（`:265`）**排在**"出现了却没有裁定行 ⇒ 红"（`:270-274`）**之前** ⇒ **无码抛出**的模块被算成 probe-error **且不记名**：`meetingleave`／`meetinglapse` 今天在生成矩阵里仍是「（**设计未定** ✗：本模块未登记期望）」，而 `--check` 依旧报 **0 unregistered** ⇒ 必须**人眼读生成矩阵**或先给它一行 |
+| ③′ | **期望词表是闭集**（写错＝mismatch 红） | 只能写：`具名拒（带 code）`／`具名拒或 ok`／`ok 或 object`／`ok 或 null`／`array 或 object`／`array`／`ok（显式 absent）`／`按声明默认开成`；或登记为 `PROBE_NEEDS_ARGS`（缺参待补）／`EXPECT_UNDECIDED`（**显式待办**，只计数不红）／`EXPECT_NA`（非服务模块） | 轮 12 实测：**裸 `object` 不是词表值** ⇒ `okShape=false` ⇒ **mismatch 红**（对象面要写 **`ok 或 object`** ✗✓） |
+| ④ | **边界写进文件头**（三行内） | 文件头说明：本模块**拥有**什么／**不拥有**什么（消费谁、委托给谁）／**零机制下的形状** | 例：`records.js:16`（"in-memory projection whose records can be handed to it"）、`meetingleave.js:5-10`（"owns the RULES；state seams are injected"）、`meetingmarker.js` 的"域派生／接缝／读面"三句 |
+| ⑤ | **每步跑一个"加载内核"的套件** | `node tests/vmu-kernel.test.mjs` ＋ 该模块自己的套件；**拆完后**再跑 `node tests/vmu-entry.test.mjs`（真入口装载） | 理由：拆文件最容易坏的是**装配**（import／构造顺序／新接缝），不是被抽出的纯逻辑 ⇒ 只跑"该模块的单测"会**漏掉装配面**（R11 拆分后真正的红恰好出现在 `vmu-resume-e2e`／`vmu-meetings` 这类装配级套件 ✓） |
+
+> **记号**：本清单的 ①／② 是**对外发布面**，③／③′ 是**零机制裁定面**，④ 是**可读性契约**，⑤ 是**装配回归**。缺任一条，代码"能跑"但**不算拆完**。
 
 ---
 
@@ -734,8 +751,8 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `mathjobs` · `list()` | ok | — | dropped=0 | ok 或 object（**两侧都写清** ✓（★ 轮 4 更正读数 ✗✓）：**状态/列表面 `list()` ⇒ `{ok:true,count:0,dropped:0,jobs:[]}`（object 信封；零机制＝无作业 ⇒ 空列表放行 ✓）**；`submit()` 缺参 ⇒ 具名拒 **VMU_MATH_INVALID_INPUT**（task-214 实测，保留 ✓）。★★ 为什么改：轮 2 这行写"`list()` ⇒ array[0]"，而**当时探针没有固定 op**（`mathjobs` 同时有 `submit`/`list`，谁先匹配谁被调）⇒ 那个形状可能来自另一个方法、也可能是模块自身的形状变化 ✗ ⇒ 本轮**固定探针 op＝`list`**（见 `PROBE_ARGS.mathjobs`）后按**实测**改写；`submit` 的具名拒仍由既有 task-214 断言守着 ✓） |
 | `mathtools` · `plan()` | refusal | VMU_MATH_INVALID_INPUT | enforced=[0] enforcedScope=evaluated-so-far | 具名拒（带 code）（task-214 实测：`plan()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT**（带口径 `enforced=[0] enforcedScope=evaluated-so-far`）⇒ 零机制＝无计划入参 ⇒ 具名拒即真实形状 ✓（补参后应见 `ok + enforced:[]`，届时改"具名拒或 ok" ✓）） |
 | `meeting` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
-| `meetinglapse` · `lapseDue()` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
-| `meetingleave` · `requestLeave()` | op 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `meetinglapse` · `lapseDue()` | op 抛出 | — | — | PROBE_NEEDS_ARGS（R12 拆出（`createMeetingControls`）；`lapseDue()` 缺参数即抛 ⇒ 探针需要参数才能裁定（同上）） |
+| `meetingleave` · `requestLeave()` | op 抛出 | — | — | PROBE_NEEDS_ARGS（R12 拆出（`createLeaveControls`）；`requestLeave()` 缺参数即抛 ⇒ 探针需要参数才能裁定（登记为待补参数，而不是"无需裁定"）） |
 | `meetingmarker` · `status()` | object | — | — | ok 或 object（轮 11 从 `meetings.js` 抽出（F51 标记族：域派生/耐久接缝/读面/自曝；`meetings.js` 1244→1198 ✓）。**实测零机制形状**：工厂 `createMeetingMarker({clock})`（**不注入 `durable`**）⇒ 首个零参操作 `status()` 回 **object**，其中 **`bound:false`／`durableMarker:false`** 自曝、**不声称任何"开着"的会** ✓ ⇒ 零机制＝"**没有域接缝就明说自己没有**"，而不是假装有 ✓（有 `create*` 工厂 ⇒ 不适用 EXPECT_NA）。★ 期望词表是**闭集**：我先写裸 `object` 被判 mismatch（fail-closed ✓），必须用词表里的 `ok 或 object`。） |
 | `meetings` · `open()` | ok | — | enforced=[0] enforcedScope=evaluated-so-far | 按声明默认开成（零机制＝按声明默认值开成（不拒）✓） |
 | `members` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
@@ -759,7 +776,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `repropack` · `build()` | refusal | VMU_MATH_SEED_REQUIRED | — | 具名拒（带 code）（task-214 实测：`build()` ⇒ 具名拒 **VMU_MATH_SEED_REQUIRED** ⇒ 零机制＝无复现种子 ⇒ 具名拒即真实形状 ✓） |
 | `resource` · `status()` | ok | — | — | ok 或 object（仪器面：零机制 ⇒ **台账可读、不拒**（`status()` 返回 `ok:true` ＋ `partition` ✓）；**键数由本生成器实测输出** ✓（note 只写形状与理由 ✗）） |
 | `resume` · `status()` | ok | — | — | PROBE_NEEDS_ARGS（缺：`store`／`work`／`control`／`identity` 注入（工厂需要真实接缝才返回实例）；补参后应按实测形状裁定 ✓） |
-| `resumeflush` | create 抛出 | — | — | （**设计未定** ✗：本模块未登记期望） |
+| `resumeflush` | create 抛出 | — | — | PROBE_NEEDS_ARGS（R10 拆出（`createExitContract`）；实测 `createExitContract({})` 抛 "needs a snapshot({key}) writer" ⇒ 工厂需要注入接缝，探针需参数才能裁定（由 R12 的顺序修正当场抓出）） |
 | `retention` · `plan()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `reviewers` · `status()` | ok | — | — | ok 或 object（实测（轮 279）：零声明下 status() ⇒ ok（reviewers=0、zeroMechanism=true 自曝 ✓）；assign() 对【已声明冲突】具名拒（VMU_COI_VIOLATION）、对【达并发上限】具名拒（VMU_REVIEWER_OVERLOADED）；盲评解绑无理由拒（VMU_BLIND_UNBIND_DENIED）✓） |
 | `rules` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |

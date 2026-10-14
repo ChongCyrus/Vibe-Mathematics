@@ -210,6 +210,28 @@ type <临时目录>\vmu-ext-demo-activated.json
 2. **`inject` 决定"能消费什么"**：声明 `inject:['tools']` 后 `tools` **present=true**（连方法面都拿到）；**不声明**时同一份 `ctx.get('tools')` 是 **false**（第一次 boot 的 marker 六个服务全 false）⇒ 这是 M4 的**正确用法**，不是装饰。
 3. **vmu 自己的服务在 profile boot 时是 `false`**：`vmu.middleware`／`vmu.tasks`／`vmu.report` 三个都 false —— 因为 **vmu 内核是"每会话"创建的**（入口 `vibe-math-vmu.js` 在会话里建内核），**profile 启动时还没有**。⇒ 要在 M4 里消费 vmu 服务，要在**会话作用域**里拿（或 `inject` 对应 vmu 服务名且会话在场）——**这一条本卷未实测**（见 §8）。
 4. **旁注（据实）**：`ctx.logger?.info(...)` 没在宿主 stdout 出现（该 context 上未必有 `logger.info`）⇒ **证据以 marker 文件为准**，不靠日志行。
+5. **★ 注册工具是硬契约（Round 12 实测，任何人都要踩）**：M4 插件若在 `apply()` 里 `tools.register({…})`，**必须声明 `output`，且 `output.render` 必须是函数** —— 否则插件**整条激活失败**并给**具名**错误：
+   ```
+   vmu-ext-demo (vmu-ext-demo): TypeError: tool "ext_demo_probe" must declare output { schema, render, presentationMeta? }
+   ```
+   正确形状（照 vmu 自己的 `host.js:61/372`）：
+   ```js
+   output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: String(value) }] }
+   ```
+   并且 **`ctx.effect(...)` 要包 try/catch**：注册在 `apply()` 里抛会把整条插件激活打红（我第一次就没写 `output`，连 boot marker 都没留下——现在改成**先写 marker 再注册**，失败也会留 `stage:"register-failed"`）✓。
+6. **★ 让 M4 真能跑到"被调用"的前置：provider 账户层（Round 12 实测；缺了它每次都 `NO_ADAPTER`）**：scratch profile 里只装 `dsh-opencode-go` 还不够 —— 插件的适配器在**构造期**解析凭据，凭据按 **ref 名**从凭据服务取（`ACCOUNT_REF_PREFIX = 'DSH_OPENCODE_GO_ACCOUNT_'`；`provider id = 'dsh-opencode-go'`），**不看环境变量**。可复制的层（形状取自操作者自己的 profile 补丁；**值只是 ref 名，不是密钥**）：
+   ```yaml
+   - id: opencode-go
+     name: dsh-opencode-go
+     config:
+       accounts: [{ id: <32位十六进制账号 id>, name: DSH, apiKeyEnv: DSH_OPENCODE_GO_ACCOUNT_<ID大写> }]
+       apiKeyEnv: DSH_OPENCODE_GO_ACCOUNT_<ID大写>
+   - id: agent-default-model
+     name: '@deepseek-ai/dsh-agent-default-model'
+     config: { provider: dsh-opencode-go, model: deepseek-v4.1-flash }
+   ```
+   ＋ 把凭据库（`.credentials.yaml`）**按同名 ref 原样**复制到该 profile 的 `DSH_HOME`（**用完即删**）。**实测对照**：缺这一层 ⇒ `turn/end: error NO_ADAPTER`（4 次，**0 token**，因为失败发生在模型调用之前）；补上这一层 ⇒ **同一插件、同一条会话跑通**（`turn/end: completed`、`toolCalls:1`、tokens 15578）。
+7. **★ M4 行看不到 vmu 的会话级服务（实测，见 §8 第 1 条）**：插件行活在 **profile 作用域**（同 marker 里 `tools.present=true`），而 vmu 服务发布在**每会话作用域** ⇒ `ctx.get('vmu.tasks')` 恒为 `false`；要消费 vmu 服务请走 **M2 模块 + `trigger-workflow` 的 `api.services.get`**（R11 实测）。
 
 ### 四形态对照（一句话判据）
 | 形态 | 载体 | 判据 |
@@ -364,7 +386,18 @@ B2 actions=[{"kind":"setting","key":"vmu.records.headListAt","value":9},{"kind":
 
 ## 8. 未核项（编号登记见 `14-§2`）
 
-1. **M4 里"消费 vmu 自己的服务"** ✗（**U15**，Round 9 登记的那条已收窄）：**外部插件被装载并被调用**、以及**消费宿主服务**（`inject:['tools']` ⇒ `tools.present=true`）都**已实测** ✓；**仍差**的是"在 M4 里拿到 `vmu.middleware`／`vmu.tasks`／`vmu.report`"——profile boot 时它们是 `false`，因为**vmu 内核按会话创建**。⇒ **前置条件具名**：需要**一次模型会话**（或在会话作用域里 `inject` 对应 vmu 服务名）才能实测这一条；本卷**未实测**，不写成已验证。
+1. **M4 里"消费 vmu 自己的服务"** ✅ **已实测（Round 12，结论＝从插件行 `ctx` 不可达；正确路径在会话作用域）**：
+   - **怎么测的**：隔离 profile（`vmu-ext-demo` ＋ `dsh-vibe-math` ＋ `dsh-opencode-go` ＋ **provider 账户层**，见下面第 6 条）→ 插件在 `apply()` 里注册探针工具 `ext_demo_probe` → 起宿主 → **一次真机会话**（`turn/end: completed`，`toolCalls:1`，tokens 15578，cap 未触）。
+   - **实测读数**（会话 `session-f828e05a…`，工具调用 `ext_demo_probe` @L18 seq16 → 结果 @L19 seq17）：
+     ```
+     sessionScopedLookup: { vmu.tasks:{present:false}, vmu.middleware:{present:false}, vmu.report:{present:false},
+                            vmu.records:{present:false}, vmu.meetings:{present:false} }
+     call: { method:'（服务 `vmu.tasks` 的方法）status()', ok:false, reason:'the service is not reachable from this plugin context' }
+     ```
+     ⇒ **会话正跑着、工具真被调用，但插件行的 `ctx` 里五个 vmu 服务全部 `present:false`**。
+   - **机制解释（两条实测并置）**：**M4 插件行活在 profile 作用域**，能看到的只有**宿主级**服务（同一 marker 里 `tools.present=true`）；而 **vmu 的服务发布在"每会话"作用域**——R11 已实测：**预设/会话作用域**里的 M2 模块用 `api.services.get('vmu.activity')` 能拿到，且一次列出 **13 个已发布服务**（`vmu.tasks` 在其中）。⇒ **"在 M4 行里 `ctx.get('vmu.tasks')`"这条路本身不成立**（不是配错了、也不是时序问题）。
+   - **正确做法（要消费 vmu 服务时）**：把逻辑放到**会话作用域**——① **M2 模块 + `capabilities:['trigger-workflow']`** 用 `api.services.get(name)`（R11 已实测三条具名拒与正向控制）；② 或让 **pack/预设**里的条目去做；③ M4 适合"新服务/新工具/新提示词段"这类**宿主级**扩展。
+   - **口径**：这一条**已实测**（原"未实测"关闭）＝**从 M4 插件行不可达**；**不写成"已验证可达"** ✓。
 2. **`script`/`plugin` kind 的具名拒** ✅ **已实测**（Round 10）：`probe-kinds.mjs` 三层证据 —— `validatePack` ⇒ `kind must be rules|module (got "script")`；`loader.apply` ⇒ `VMU_PACK_MISSING`（同一条 message）；`kernel.bus.add` ⇒ **`VMU_MIDDLEWARE_KIND_UNSUPPORTED`**（hint 指向 `docs/05 §2` 的真实载体）（**U16 可关**）。
 3. **本卷的"设计卷"归类** ✅ **已解**（Round 9 收尾）：`scripts/check-docs.mjs` 的 `DESIGN_VOLUMES` 已含 `'29'`（由 vmu-verify 手核四要件后加入）⇒ `check-docs` **PASS（issues=0）**（**U17 可关**）。
 4. **M2 形状② 的 `api` 传参位置** ✅ **已钉准（Round 11）**：签名是 **`fn(flat)`**（`kernel/loader.js:192-208`：总线信封被**拍平成单个对象**，`api` 挂在 `flat.api`，原信封留在 `flat.raw`）——**不是 `(payload, api)`**（我 Round 10 按两参写，第二参 `undefined`）。三条具名拒 ＋ 正向控制均已实测（见 §2 与 §7 第 11 行）：`get('vmu.activity')` 成功；`get('vmu.no-such-service')` ⇒ `VMU_NO_SUCH_OBJECT`（hint 列已发布清单）；`get('')` ⇒ `VMU_INVALID_ARGUMENT`；未声明 `trigger-workflow` ⇒ `VMU_NOT_PERMITTED`（＋`enforced:["capabilities.trigger-workflow"]`）。
