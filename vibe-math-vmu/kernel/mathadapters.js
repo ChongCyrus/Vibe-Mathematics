@@ -40,6 +40,7 @@
 
 import { createHash } from 'node:crypto'
 import { mint as mintId } from './ids.js'
+import { createChildBudget } from './mathjobs.js'
 
 /** Public-interface version of this module's surfaces. */
 export const apiVersion = 1
@@ -357,6 +358,12 @@ export function createMathAdapters(opts) {
   }
   const spawn = typeof o.spawn === 'function' ? o.spawn : null
   const resolveExecutable = typeof o.resolveExecutable === 'function' ? o.resolveExecutable : null
+  // F17: the shared child budget (local timer + real terminate) and the runtime facts it produces.
+  const spawnHandle = typeof o.spawnHandle === 'function' ? o.spawnHandle : null
+  const budget = createChildBudget({ timer: o.timer })
+  let lastSpawnHadHandle = null
+  let childrenTerminated = 0
+  let childrenTimedOut = 0
   const root = String(o.root || '.')
 
   let binding = null            // { engine, argv0, at, libs: { name: {installed, version} } }
@@ -426,13 +433,38 @@ export function createMathAdapters(opts) {
     const started = clock()
     const env = { denyNetwork: true, workspaceOnly: true, adapter: 'python' }
     let out
+    let b = { timedOut: false, terminated: false, hadHandle: false }
     try {
-      out = await spawn({ engine: 'adapters-python', argv: argv.slice(), stdin: stdin === undefined ? '' : String(stdin), timeoutMs, env })
+      // F17: the budget is LOCAL and `terminate()` is real when the seam gives us a handle (host-native
+      // `spawn` returns one synchronously; `spawnHandle` is the explicit form).
+      const res = await budget({
+        timeoutMs,
+        label: 'adapter ' + argv.join(' ').slice(0, 60),
+        call: (onHandle) => {
+          const spec = { engine: 'adapters-python', argv: argv.slice(), stdin: stdin === undefined ? '' : String(stdin), timeoutMs, graceMs: timeoutMs, env }
+          return spawnHandle ? spawnHandle(spec, onHandle) : spawn(spec)
+        },
+      })
+      out = res.result
+      b = { timedOut: res.timedOut, terminated: res.terminated, hadHandle: res.hadHandle }
+      lastSpawnHadHandle = res.hadHandle
+      if (b.terminated) childrenTerminated += 1
+      if (b.timedOut) childrenTimedOut += 1
     } catch (e) {
       return refuse('VMU_MATH_HARNESS_FAILED', '解释器起不来：' + String((e && e.message) || e), '检查注入的 spawn 接缝', undefined, [])
     }
     const r = out || {}
-    return { ok: true, run: { exitCode: r.timedOut === true ? null : Number(r.exitCode), timedOut: r.timedOut === true, stdout: String(r.stdout || ''), stderr: String(r.stderr || ''), ms: clock() - started } }
+    return {
+      ok: true,
+      run: {
+        exitCode: (r.timedOut === true || b.timedOut) ? null : Number(r.exitCode),
+        timedOut: r.timedOut === true || b.timedOut,
+        terminated: !!b.terminated, hadHandle: !!b.hadHandle,
+        stdout: String(r.stdout || ''), stderr: String(r.stderr || ''),
+        hostLossy: !!((r.stdoutLossy) || (r.stderrLossy)), spillPath: (r.stdoutSpill || r.stderrSpill) || null,
+        ms: clock() - started,
+      },
+    }
   }
 
   /** Probe the environment ONCE (or per call when asked) and remember the binding. */
@@ -703,7 +735,15 @@ export function createMathAdapters(opts) {
       caps: { maxArrayElements: c.maxArrayElements, maxStringBytes: c.maxStringBytes },
       packageAllowlist: c.packageAllowlist.slice(),
       binding: binding ? { interpreter: binding.interpreter, via: binding.via, at: binding.at, libs: binding.libs, missing: binding.missing.slice() } : null,
-      seam: { resolveExecutable: !!resolveExecutable, spawn: !!spawn },
+      seam: { resolveExecutable: !!resolveExecutable, spawn: !!spawn, spawnHandle: !!spawnHandle },
+      // F17: the budget is LOCAL (no hang); terminating needs a handle ⇒ report the declared seam AND the
+      // runtime fact (a host-native spawn returns a SubprocessHandle synchronously).
+      subprocess: {
+        budget: 'local-timer', declaredKillableSeam: !!spawnHandle, lastSpawnHadHandle,
+        canTerminateChild: !!(spawnHandle || lastSpawnHadHandle === true),
+        childrenTerminated, childrenTimedOut, graceMsSent: true,
+        hostContract: 'subprocess.spawn → SubprocessHandle{terminate, done, collected}',
+      },
       probeCalls, calls: calls.length,
       wiredKeys: WIRED_KEYS.length,
       neverRefutes: true,

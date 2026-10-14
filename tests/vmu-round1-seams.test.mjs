@@ -201,9 +201,23 @@ console.log('== K3: turn delivery seam ==')
     'a REAL round delivers through the seam and dispatches', JSON.stringify(step).slice(0, 220))
   ok(deliveredHere.length === 1 && deliveredHere[0].label === 'vmu-turn-' + (step.receipt && step.receipt.turn),
     'the bridge sent the ASSEMBLED text under a traceable turn label', JSON.stringify(deliveredHere[0] && deliveredHere[0].label))
-  const reply = await deliverViaSubagents(subagents)({ turn: { id: 't9' }, text: 'x' })
-  ok(typeof reply === 'string' && reply.includes('task_create'),
-    'deliverViaSubagents returns the host reply')
+  // ROUND 4 / F11: the host contract now carries the LIFECYCLE fields, so this seam answers an OBJECT
+  // ({ reply, childId, stopReason, attribution }) instead of a bare string. The old shape assertion went STALE,
+  // not wrong: `reply` is still the host's text, and the two fields Round 3 could not obtain (childId, stopReason)
+  // are now reported together with an `attribution` saying where they came from - or why they are absent. A turn
+  // that cannot be attributed says so instead of passing for an anonymous reply.
+  const delivered = await deliverViaSubagents(subagents)({ turn: { id: 't9' }, text: 'x' })
+  ok(delivered && typeof delivered === 'object' && typeof delivered.reply === 'string' && delivered.reply.includes('task_create'),
+    'deliverViaSubagents returns the host reply (as `reply` on the lifecycle envelope)', JSON.stringify(delivered))
+  ok('childId' in delivered && 'stopReason' in delivered && typeof delivered.attribution === 'string' && delivered.attribution.length > 0,
+    '★ and the envelope reports childId/stopReason WITH an attribution saying where they came from (F11)',
+    JSON.stringify({ childId: delivered.childId, stopReason: delivered.stopReason, attribution: delivered.attribution }))
+  // NEGATIVE HALF (kept, as the Lead requires): no seam ⇒ a NAMED refusal, never a silent pass-through.
+  let noSeamErr = null
+  try { await deliverViaSubagents(null)({ turn: { id: 't9' }, text: 'x' }) } catch (e) { noSeamErr = e }
+  ok(!!noSeamErr && noSeamErr.code === 'VMU_ENGINE_UNAVAILABLE',
+    '★ and with NO subagents seam the bridge refuses BY NAME (VMU_ENGINE_UNAVAILABLE) instead of returning nothing',
+    noSeamErr && { code: noSeamErr.code, message: String(noSeamErr.message).slice(0, 80) })
 }
 
 console.log('== K4: prompt settings on the REAL construction path ==')

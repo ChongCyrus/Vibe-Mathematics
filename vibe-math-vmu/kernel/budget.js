@@ -68,7 +68,7 @@ export function createBudget({ clock = () => Date.now(), log = () => {}, setting
     if (share !== null && (share < 0 || share > 1)) throw refuse('VMU_BUDGET_SCOPE_UNKNOWN', 'perTaskShare must be between 0 and 1: ' + String(share), 'pass a ratio (vmu.budget.perTaskShare)')
     const s = { scope, limits: l, used: Object.fromEntries(KINDS.map((k) => [k, 0])), reserved: Object.fromEntries(KINDS.map((k) => [k, 0])), warnings: 0, perTaskShare: share === null ? 0 : share, tasks: new Map(), openedAt: clock(), paused: false }
     scopes.set(scope, s)
-    return snapshot(s)
+    return viewOf(s)
   }
 
   /** Charge one kind. Named refusal on exhaustion; `onExceed` decides refuse|warn|pause. */
@@ -98,7 +98,7 @@ export function createBudget({ clock = () => Date.now(), log = () => {}, setting
     const spendable = lim === Infinity ? Infinity : Math.max(0, lim - s.reserved[kind])
     if (s.reserved[kind] > 0 && next > spendable && lim !== Infinity) {
       const code = 'VMU_BUDGET_RESERVE_EXHAUSTED'
-      if (c.onExceed === 'warn') { s.used[kind] = next; s.warnings += 1; log('budget warn (reserve): ' + scope + '/' + kind + ' used=' + next + ' limit=' + lim + ' reserved=' + s.reserved[kind]); return snapshot(s) }
+      if (c.onExceed === 'warn') { s.used[kind] = next; s.warnings += 1; log('budget warn (reserve): ' + scope + '/' + kind + ' used=' + next + ' limit=' + lim + ' reserved=' + s.reserved[kind]); return viewOf(s) }
       if (c.onExceed === 'pause') s.paused = true
       throw refuse(code, 'reserve exhausted for ' + scope + '/' + kind + ': used=' + next + ' spendable=' + spendable + ' limit=' + lim,
         'reserveRatio=' + c.reserveRatio + ' holds back ' + s.reserved[kind] + '; raise the limit or release the reserve', { scope, kind, used: next, limit: lim, reserved: s.reserved[kind] })
@@ -122,7 +122,7 @@ export function createBudget({ clock = () => Date.now(), log = () => {}, setting
           if (emitted && typeof emitted.catch === 'function') emitted.catch((e) => log('budget/warn listener failed: ' + String(e && e.message)))
         }
     }
-    return snapshot(s)
+    return viewOf(s)
   }
 
   /** Reserve a slice of every limited kind (fairness policy reserve). */
@@ -131,7 +131,7 @@ export function createBudget({ clock = () => Date.now(), log = () => {}, setting
     const r = num(ratio) ?? cfg().reserveRatio
     if (r < 0 || r > 1) throw refuse('VMU_RESOURCE_BUDGET', 'reserve ratio must be in 0..1: ' + String(r), 'reserveRatio is a fraction of the limit', { scope })
     for (const k of KINDS) { const lim = limitOf(s, k); s.reserved[k] = lim === Infinity ? 0 : Math.floor(lim * r) }
-    return snapshot(s)
+    return viewOf(s)
   }
 
   /** Read-only views (must never mutate). */
@@ -142,9 +142,74 @@ export function createBudget({ clock = () => Date.now(), log = () => {}, setting
     for (const k of KINDS) { const lim = limitOf(s, k); out[k] = lim === Infinity ? Infinity : Math.max(0, lim - s.used[k]) }
     return out
   }
-  const snapshot = (s) => ({ scope: s.scope, limits: { ...s.limits }, used: { ...s.used }, reserved: { ...s.reserved }, warnings: s.warnings, paused: s.paused, perTaskShare: s.perTaskShare, openedAt: s.openedAt })
+  const viewOf = (s) => ({ scope: s.scope, limits: { ...s.limits }, used: { ...s.used }, reserved: { ...s.reserved }, warnings: s.warnings, paused: s.paused, perTaskShare: s.perTaskShare, openedAt: s.openedAt })
   const status = () => ({ scopes: scopes.size, kinds: KINDS.slice(), policy: cfg(), paused: [...scopes.values()].filter((s) => s.paused).map((s) => s.scope) })
-  const list = () => { const all = [...scopes.values()].map(snapshot); const kept = all.slice(0, listCap); return { items: kept, total: all.length, dropped: all.length - kept.length } }
+  const list = () => { const all = [...scopes.values()].map(viewOf); const kept = all.slice(0, listCap); return { items: kept, total: all.length, dropped: all.length - kept.length } }
 
-  return { apiVersion, open, charge, reserve, remaining, status, list, kinds: KINDS.slice(), totals: () => cfg().totals, perTaskShare: () => cfg().perTaskShare }
+  /**
+   * ROUND 4 (task-28 C): the public projection seam. The DECLARATION (`totals`, `reserveRatio`, `fairnessPolicy`…)
+   * is re-resolved from settings at startup and is deliberately absent here; what is projected is what was SPENT,
+   * because that is the fact a restart cannot recompute. The internal formatter that used to be called `snapshot`
+   * is now `viewOf`, so the projection contract's name is free (the collision is why this seam was missing).
+   */
+  function snapshot() {
+    return {
+      apiVersion: 1, face: 'budget', v: 1, at: clock(),
+      data: {
+        scopes: [...scopes.entries()].map(([key, s]) => [key, {
+          scope: s.scope, limits: Object.assign({}, s.limits), used: Object.assign({}, s.used),
+          reserved: Object.assign({}, s.reserved), warnings: s.warnings, perTaskShare: s.perTaskShare,
+          openedAt: s.openedAt, paused: s.paused, tasks: [...s.tasks.entries()],
+        }]),
+      },
+      counters: {},
+      skipped: [],
+    }
+  }
+
+  /** Put the spending back. Idempotent for the same snapshot; a different one needs `{ replace: true }`. */
+  function restore(snap, { replace = false } = {}) {
+    checkSnapshot('budget', snap, ['scopes'])
+    const incoming = Array.isArray(snap.data.scopes) ? snap.data.scopes : []
+    if (scopes.size > 0 && !replace) {
+      const same = JSON.stringify([...scopes.entries()].map(([k, s]) => [k, viewOf(s)])) === JSON.stringify(incoming.map(([k, s]) => [k, viewOf(s)]))
+      if (same) return { ok: true, restored: [], skipped: [], idempotent: true }
+      throw refuse('VMU_RESUME_RESTORE_CONFLICT', 'this ledger already tracks ' + scopes.size + ' scope(s): restoring a different snapshot needs { replace: true }',
+        'stop/clear the scopes first, or pass { replace: true } deliberately - losing recorded spending silently is refused by name')
+    }
+    const skipped = []
+    scopes.clear()
+    for (const pair of incoming) {
+      if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== 'string' || !pair[1] || typeof pair[1] !== 'object') {
+        skipped.push({ what: 'scopes[]', why: 'not a [scope, record] pair' }); continue
+      }
+      const key = pair[0]
+      const raw = pair[1]
+      const limits = {}
+      for (const k of KINDS) { const v = num((raw.limits || {})[k]); if (v !== null) limits[k] = v }
+      const used = {}
+      const reserved = {}
+      for (const k of KINDS) {
+        const u = num((raw.used || {})[k]); used[k] = u === null ? 0 : u
+        const rv = num((raw.reserved || {})[k]); reserved[k] = rv === null ? 0 : rv
+      }
+      const tasks = new Map()
+      for (const row of (Array.isArray(raw.tasks) ? raw.tasks : [])) {
+        if (!Array.isArray(row) || row.length !== 2) { skipped.push({ what: 'scopes[' + key + '].tasks[]', why: 'not a [key, amount] pair' }); continue }
+        const amount = num(row[1]); tasks.set(String(row[0]), amount === null ? 0 : amount)
+      }
+      scopes.set(key, {
+        scope: String(raw.scope || key), limits, used, reserved,
+        warnings: Number(raw.warnings) || 0,
+        perTaskShare: num(raw.perTaskShare) === null ? 0 : num(raw.perTaskShare),
+        openedAt: raw.openedAt === undefined ? clock() : raw.openedAt,
+        paused: raw.paused === true,
+        tasks,
+      })
+    }
+    return { ok: true, restored: ['scopes'], skipped, counters: {} }
+  }
+
+  return { apiVersion, open, charge, reserve, remaining, status, list, snapshot, restore,
+    kinds: KINDS.slice(), totals: () => cfg().totals, perTaskShare: () => cfg().perTaskShare }
 }

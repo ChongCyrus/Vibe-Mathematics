@@ -460,7 +460,10 @@ interface VmuStore {
 - `kernel/ids.js` —— **唯一 id 铸造原语**：`mint(kind, prefix)`／`observe(kind, ids)`／`hydrate()`／`flush()`／`status()`（模块级单例 `bindIds`）。
 - `kernel/tasks.js` / `kernel/members.js` —— 各加一对 `snapshot()`/`restore(snap)`；**会议/表决/纪要五面（`meeting.js`／`meetings.js`／`ballot.js`／`ballotbox.js`／`minutes.js`）＋ `chat.js`／`panel.js` 已由 v5r-reader-c 按同一形状加 seam** ✓，并统一 `import { CODE as RESUME_CODE } from './resume.js'`（三个共享码**单源**，不写字面量）。
 - `kernel/human.js` —— **审批队列与否决台账的耐久 seam**（Round 3 / task-18 A）：`snapshot()`/`restore(snap)`（含 `gateIndex` 重建、`seq` 取 max+1、`pendingReason` 保留），经装配期 `resume.attachProjection({target:human, key:'human', mode:'state', …})` 落 **`human`** 键；`kernel/control.js`（`tune`、暂停/恢复留痕、`approval` 缝）。
-- **两处具名缺口（不静默）**：`kernel/budget.js` **没有** `snapshot()/restore()` —— 该文件内部已有 `const snapshot = (s) => …` 格式化器（`budget.js:145`），公共 seam 需改名或包一层，**本轮不在写范围**（同理：`mailbox.js:479` 有 `snapshot()` 但**无 `restore()`** ⇒ 不能作 state 适配器）。
+- **F18 · 恢复＝独占段（Round 4）**：`createResume({lock})` 接受仓库自己的锁原语（`kernel/storepolicy.js:138` `acquire`／`:168` `release`）；`recover()` 在 `try` 前取锁、**在 `finally` 释放**（成功／早返回"无 store"／任何抛错三条路径都释放），第二个并发恢复 ⇒ 具名拒 **`VMU_RESUME_BUSY`**；`vmu.store.lock` 未声明时是零机制透传（`locked:false`，仍走 `finally`）。`status().lock` 自曝 `attached/held/acquisitions/releases/busyRefusals/lastError`。
+- **F51 · 重启标记（Round 4）**：`status().restart`／`resume.restart()` = `{generation, restarted, at, reason, interrupted, unhydrated, readBack, phase}`，**从耐久 `resume` 键的 `recoveries[]` 派生** ⇒ "这个进程是同一机构第 N 代续跑、以及重启付出了什么代价"是**耐久事实**，不是会话内存。相邻标记：`work`（在途＋`interruptedReason`，= v5r 的 `pendingWork`）、`ids` 计数器、`human` 未批队列、Lean/mathjobs 的 `Formal/Jobs/<id>.json` 作业镜像；**v5r 的 `meetingOpen` 在 vmu 无等价物（具名缺口：需要 `meetings`/`meeting` 投影里带"已开未收束"标记）**；`kernel/activity.js` 的 generation 是**一次性等待器**的（本该会话内），**有意不持久**。
+- **一处更正（Round 4）**：`kernel/budget.js` 的公共 `snapshot()/restore(snap,{replace})` 已就位（内部格式化器改名 `viewOf`），只投影**已花费**，声明（totals/reserveRatio…）由 settings 重解析 ⇒ Round 3 记的"无 seam"缺口**闭合**。
+- **不用挂／不能挂（具名）**：`kernel/mailbox.js` **自持久**（构造时拿 `store` 写自己的 `mailbox` 键，另有 `snapshot()/restore(snap)`）⇒ 无需投影行；`kernel/meeting.js`／`kernel/ballot.js` 是**每实例工厂**（`kernel/index.js:1287/1301`）⇒ **单例投影不适用**（会把"最后一场/最后一张"当全部），要跨重启挂单例 `meetings`／`ballotbox`，多实例需注册表（未做，具名）。
 - **`phase` 由引擎拥有**：`resume.setPhase(value,{why})`／`resume.phase()` 经写前必读闸写 `phase` 键；**装配侧仍需在相位变化点各接一行**（未接 ⇒ 空投影、`present:false`，不报错、不假装）。
 - 装配（`registry`／`TOOL_FACES`／settings 键／白名单键／`RESUME_PROJECTION_ADAPTERS`）由 vmu-core 落（`kernel/index.js:740-796`）。
 
@@ -482,16 +485,18 @@ interface VmuStore {
 
 **耐久键**：新增 `resume`（恢复记录＋计数器＋journal 索引）、`ids`（id 计数器）与 **`human`**（审批队列＋否决台账，Round 3）；投影复用既有 `members/tasks/meetings/ballots/budget/phase/work`（`chat`／`panel` 已在 `PROJECTION_KEYS` 声明域内，seam 已由 reader-c 落地、**装配适配器待接**）。**未登记的键由 `store.patch` 具名拒**（round 1 的 `idempotency` 就是这么静默降级的）。
 
-**逐模块耐久状态**（完整表＋理由见 `_handoff/vmu/resume-round3-report.md`）：`work`/`idempotency` **真持久**；`tasks`（journal）／`members`／`human`（state + 写穿）**已接**；`meetings/ballots/ballotbox/minutes/meeting/chat/panel` **面侧 seam 已就绪 ✓，装配适配器待 vmu-core 补**（`status().projection.unhydrated[]` 会具名）；`phase` **引擎可写、装配侧调用待接**；`budget` **无 seam（具名：内部 `snapshot(s)` 命名冲突）**；`mailbox` **有 snapshot 无 restore（具名）**；**任何未水合的面在 `resume.status()` 里以 `unhydrated[]` 具名出现**，**不写成"已恢复"**。
+**逐模块耐久状态**（完整表＋理由见 `_handoff/vmu/resume-round4-report.md`）：`work`/`idempotency` **真持久**；`tasks`（journal）／`members`／`human`（state + 写穿）**已接**；`budget` **本轮补齐公共 seam ✓（可挂）**；`meetings/ballots/ballotbox/minutes/chat/panel` **面侧 seam 已就绪 ✓，装配适配器待 vmu-core 补**（`status().projection.unhydrated[]` 会具名）；`meeting`/`ballot` **每实例工厂 ⇒ 单例投影不适用（具名结论）**；`mailbox` **自持久（无需投影）**；`phase` **引擎可写、装配侧调用待接**；**任何未水合的面在 `resume.status()` 里以 `unhydrated[]` 具名出现**，**不写成"已恢复"**。
 
-**验收**：`tests/vmu-resume-recovery.test.mjs` **73 passed / 0 failed**（exit 0）；`tests/vmu-human-gate.test.mjs` **67 passed / 0 failed**（exit 0）。命令与退出码见报告。
+**验收**：`tests/vmu-resume-recovery.test.mjs` **73 passed / 0 failed**（exit 0）；`tests/vmu-human-gate.test.mjs` **67 passed / 0 failed**（exit 0）；`tests/vmu-resume-lock-and-marks.test.mjs` **39 passed / 0 failed**（exit 0，F18 全分支 finally＋F51 标记＋faces 结论）。
 
-## 15. 判定留痕（Round 2／Round 3）
+## 15. 判定留痕（Round 2／Round 3／Round 4）
 
-- **[实现·证据面]** `kernel/resume.js`、`kernel/ids.js`、`kernel/tasks.js`（`snapshot`/`restore`）、`kernel/members.js`、`kernel/human.js`（gate／耐久 seam）、`kernel/control.js`（tune/approval）、`tools/human.js`。
+- **[实现·证据面]** `kernel/resume.js`、`kernel/ids.js`、`kernel/tasks.js`（`snapshot`/`restore`）、`kernel/members.js`、`kernel/budget.js`（Round 4 公共 seam）、`kernel/human.js`（gate／耐久 seam）、`kernel/control.js`（tune/approval）、`tools/human.js`。
 - **[诚实边界]** `mode:'journal'` 的**重放依赖确定性**且对不可重放命令具名拒；此限制**不接受**"看起来恢复了"的替代说法。
-- **[键名]** 白名单键名为 `resume`／`ids`／`human`（＋reader-c 的 `chat`／`panel`）；投影键见 `PROJECTION_KEYS`。
-- **[Round 3 更正]** Round 2 报告曾把 `kernel/budget.js` 写成"已加 seam"——**实测该文件没有公共 `snapshot()/restore()`**（内部格式化器同名）；本轮已把该行更正为具名缺口，并给出改名/包一层的修法要点。
+- **[键名]** 白名单键名为 `resume`／`ids`／`human`（＋reader-c 的 `chat`／`panel`／`mailbox`）；投影键见 `PROJECTION_KEYS`。
+- **[Round 3 更正]** Round 2 报告曾把 `kernel/budget.js` 写成"已加 seam"——实测该文件当时没有公共 `snapshot()/restore()`（内部格式化器同名）。
+- **[Round 4 闭合]** 该缺口**已实现**（内部 `snapshot(s)`→`viewOf(s)`，公共 seam 就位），并在 `tests/vmu-resume-lock-and-marks.test.mjs` 里跨"进程"断言"重启后记住 45/100 tokens 已花"。
+- **[Round 4 F18/F51]** 锁的真实使用者＝`recover()`（`finally` 全分支释放，含抛错路径，用仓库自己的 `createStorePolicy` 断言）；重启标记＝`status().restart`（耐久派生）。`kernel/scheduler.js` 的 F15/F16（句柄释放＋trampoline）为中断前半成品，**已复核完整**（`vmu-scheduler` 111/0）。
 
 ---
 

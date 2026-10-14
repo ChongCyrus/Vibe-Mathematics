@@ -44,7 +44,16 @@ export function createGovernance(opts) {
   const readKey = (k) => (o.settings && typeof o.settings.get === 'function' ? o.settings.get(k) : (o.settings || {})[k])
   const clock = typeof o.clock === 'function' ? o.clock : () => 0
   const log = typeof o.log === 'function' ? o.log : () => {}
-  const emit = (ev) => { try { if (o.bus && typeof o.bus.emit === 'function') o.bus.emit(ev) } catch (e) { /* 广播绝不改变结果 */ } }
+  const emit = (ev) => {
+  // ROUND 4 / task-25 (Lead's independent audit): the bus takes a STRING NAME as its first argument. This helper used
+  // to forward the event OBJECT, so every emission from this module threw and was swallowed - the module LOOKED wired
+  // and emitted nothing. The name is split out here, and a failure (unregistered name, blocking middleware) is NAMED.
+  if (!o.bus || typeof o.bus.emit !== 'function') return
+  const name = ev && typeof ev.type === 'string' ? ev.type : null
+  const note = (code, message) => { try { if (o.log && typeof o.log.append === 'function') o.log.append({ type: 'bus/emit-failed', at: (o.clock ? o.clock() : Date.now()), name, code, message }) } catch { /* the log itself may be gone */ } }
+  if (name === null) return note('VMU_BUS_NAME_REQUIRED', 'a bus event needs a string name (got an object without .type)')
+  try { o.bus.emit(name, ev) } catch (e) { note((e && e.code) || 'VMU_BUS_EMIT_FAILED', String((e && e.message) || e)) }
+}
 
   // ── 设置（唯一口径；缺省＝最小且不崩）──────────────────────────────────────
   const cfg = () => {

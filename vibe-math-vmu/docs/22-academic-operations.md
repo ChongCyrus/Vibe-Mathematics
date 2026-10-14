@@ -1069,17 +1069,18 @@
 
 ### 19.9 未核项（**编号登记见 `14-§2`**）
 
-1. **回合结束钩子** ⚠ **Round 3 实测：一半已接线** —— 部署**声明**了 `vmu.report.*`（或 `config.report`／`vmu.tools.faces` 点名该面）时，入口会挂 `agent/turn-stopping` 周期时钟 ✓；但**只装载 pack**（清单声明、构造期看不见）时**不挂**（**F5**，见 §19.10）✗ ⇒ 建议 `14-§2` 登记 **T14「自动汇报的宿主驱动」**（含"按 pack 之后解析的面/声明再决定是否挂"的口径）✓。
+1. **回合结束钩子** ✅ **Round 3 实测的 F5 已修，Round 4 结清** —— 判据改成"**面已发布**"并在 `install()` **之后**挂载 ⇒ **只装载 pack 也挂**（硬断言 ✓）；挂载仍**由声明驱动**（未声明 ⇒ 不挂，零机制 ✓）。
 2. **`vmu.report.*` 的 schema 行与 `04-§11` 生成表**：由内核管线加键、`regen-all` 出表 ✓（本卷不手写表 ✗）。
 3. **助手人设的"语气与篇幅"未定** ✗：本节只保证**必须说什么**（身份/职责/边界），措辞与长度属 pack 编辑范畴 ✓。
 4. **参数域的"谁能改"只有一条 owner 口径** ✗：目前是**字符串匹配**（`whoMayChange` 列表 ✓），没有"角色槽位"级解析（与 `vmu.safety.delegableKeys` 的交界未定 ✓）。
 5. **汇报与人类审批的联动未做** ✗：汇报**不触发**任何审批流（`vmu.safety.approvalRequired` 与它正交 ✓），是否需要"高危参数改动的审批"未决 ✓。
-6. **投递（transport）在裸预设上缺席** ⚠（**F2**，§19.10）：语义与 `03-§8` 的登记一致（先留痕、再具名拒），但"端到端自动汇报"因此只走完触发与留痕那一半 ⇒ `14-§2` 登记 **T15「宿主 transport 注入」** ✓。
-7. **活读键的回执评分** ⚠（**F3**，§19.10）：披露半已落（`liveReadBy` ＋ note ✓），**评分半未落**（活读键仍报 `requiresRestart:true`）✗ ⇒ `14-§2` 登记 **T16「活读键不得报 requiresRestart」** ✓。
+6. **投递（transport）** ✅ **Round 4 结清（F2 关闭）**：部署可用 **`config.deliver`** 交进**宿主自己的投递函数**；有 ⇒ `delivered:true` 且注带 `drives:false`（**真机入口**实测 ✓），无 ⇒ **具名拒 `VMU_REPORT_NO_TRANSPORT` 且**仍留痕（边界硬钉 ✓）。**不做**的事：入口不自己从 `ctx.get('subagents')` **猜**一个 envelope（report/member 的信封与 turn 的 `{turn,text}` 不同形 ⇒ 猜就是"假装发出"✗）。
+7. **活读键的回执评分** ✅ **Round 4 结清（F3 关闭）**：`liveReadBy` ＋ `appliesAt` 双披露 ＋ 活读键 `requiresRestart:false`／`applied:'immediate'` ⇒ 硬断言"**不得低报也不得高报**" ✓。
+8. **真宿主切片** ⚠（**Round 4 B；最终口径：路由已证／多面点亮未建立／未跑第二会话**）：测试已就位 `tests/vmu-assistant-host-slice.test.mjs`（**6 passed, 0 failed, 5 not-run, exit=0**；`--require-host` ⇒ **exit=1**，证明 skip 是真的）。**观测**：`dsh headless` 按设计**拒绝带 agent preset 的会话**（安装件 `dsh-headless/lib/index.js` 的 `assertAdoptable`：`if (preset !== void 0) throw … "which the one-shot runner does not compose"`），而助手面**就是**一个 preset；把插件当**顶层行**挂载也不行（实测 `Error: cannot get property "systemPrompt" without inject`，该注入由 preset 作用域提供）；provider 侧装了 `dsh-opencode-go` 且凭据已复制进隔离 home 仍 `NO_ADAPTER`（插件 README 对无头流程要求 `OPENCODE_API_KEY`）。⇒ **唯一可行路由＝跑着的 scratch `dsh web` ＋ `scripts/dsh-drive.mjs --preset vibe-math-vmu`**。**不支持**：真宿主上"多面点亮"（`vibe_vmu_report` 可达／阈值真触发／参数面留痕／两条人设通道到达真模型）**未建立**——零声明下只发布 `vibe_vmu_status`（**机制正确、非缺陷**，verify 同实例实测 `tool/call`@seq16 L134）。**非结果**：**未跑第二会话**（Lead 裁决降本；且"声明能否打到 `preset-vibe-math-vmu` 的 `config.plugins` 内层行"未确认，`--dump-config` 不显现内层 config）——**"未跑"不是"通过"** ⇒ `14-§2` **U14「Round 5 用可声明 overlay 再跑一次助手面真机切片」**（复跑须按 `docs/slv-playbook.md` §2/§4：首条 user message 写"模拟测试"、驱动显式传 `--max-tokens`；结论按 §7/§8 分"观测（带 `seq`/行号）／支持／不支持／非结果"）✓。
 
-### 19.10 Round 3 真机验收（**端到端**；命令与读数）
+### 19.10 Round 3–4 真机验收（**端到端**；命令与读数）
 
-> 判据：task-22（Round 3）——A 三类触发被**真事件**驱动一次（**不直接调 `tick()` 当证据**）、B 参数面**真生效**、C 两道闸**可关且零注入**、D 两通道**逐字**。全部经**真机入口**（`entry.apply(ctx, { packs:['v5r'] })`）与**宿主注册的工具面**，不由手工装配代替 ✓。
+> 判据：task-22（Round 3）——A 三类触发被**真事件**驱动一次（**不直接调 `tick()` 当证据**）、B 参数面**真生效**、C 两道闸**可关且零注入**、D 两通道**逐字**；task-29（Round 4）——**F2 关闭**（有 transport ⇒ 真的发出）。全部经**真机入口**（`entry.apply(ctx, { packs:['v5r'] })`）与**宿主注册的工具面**，不由手工装配代替 ✓。
 
 | 项 | 驱动者（**真机路径**） | 证据 |
 |---|---|---|
@@ -1091,18 +1092,19 @@
 | **C 汇报开关** | 工具 `set vmu.report.enabled=false`（该键在域内） | 真实回合边界**零触发零留痕** ✓；`problems` 具名 `VMU_REPORT_NOT_ENABLED` ✓；`emit` 同码拒 ✓；开回后**下一回合立刻**恢复 ✓ |
 | **C 人设段开关** | 提示词管线 `disable/enable` | 文本＋标题**整段消失**（零注入）✓；`enable` 后 **13056 字符逐字节复原** ✓ |
 | **D 两通道逐字** | `node tests/vmu-assistant-e2e.test.mjs --print` | system prompt 含所办三段人设（1453 字符）＋ 回合面含 `【汇报纪律：本所「institute」】` 与 `sources.section='v5r-report-duty'` ✓ |
+| **D＋F2 投递（Round 4）** | **真机入口 ＋ `config.deliver`**（宿主自己的投递函数） | 真实回合边界触发的**每一条**报送 `delivered:true`、`refused:null`，部署侧**恰好一条 note/次**；note 带 `to:['office']`／`channel`／渲染正文／`drives:false` ✓；`status().transportInjected===true` 且 `seams.deliver===true`（一个事实一个家）✓；**抛错的 transport** ⇒ note 记 `error.code` 并计 `failures`（不丢、不谎称已发）✓ |
 
-**命令与读数** ✓：`node tests/vmu-assistant-e2e.test.mjs` ⇒ **46 passed, 0 failed, exit=0**；`--strict-findings` ⇒ **46 passed, 2 failed**（把下面两条"待落项"变成红，证明 NOTE 不是把断言悄悄降级）✓；`node tests/vmu-assistant-report.test.mjs`／`-assembly`／`-systemprompt` ⇒ 84／39／15 全绿 ✓；`node tests/vmu-paper-consult.test.mjs` ⇒ 40／0 ✓。
+**命令与读数** ✓：`node tests/vmu-assistant-e2e.test.mjs` ⇒ **55 passed, 0 failed, exit=0**；`--strict-findings` ⇒ **55 passed, 0 failed, exit=0**（**全绿**：Round 3 的两条待落项已关闭，机制保留 ⇒ 将来一有"待落项"就会具名红）✓；`node tests/vmu-assistant-report.test.mjs`／`-assembly`／`-systemprompt` ⇒ 93／39／15 全绿 ✓；`node tests/vmu-paper-consult.test.mjs` ⇒ 40／0 ✓；`node tests/vmu-assistant-host-slice.test.mjs` ⇒ **5 passed, 0 failed, 5 not-run, exit=0**（`--require-host` ⇒ exit=1，证明"未跑"不是悄悄通过 ✓）。
 
-**Round 3 发现（F1–F5；三条已修／两条待落，逐个点名）**：
+**Round 3 发现（F1–F5）→ Round 4 最终口径（**五条全部结清**）**：
 
-| 编号 | 事实 | 处置 |
+| 编号 | 事实（实测） | 最终处置 |
 |---|---|---|
-| **F1** ✅ | 工具面在**构造期**解析，而 pack **清单** settings 在装载时才施加 ⇒ 只装载 pack 时 `vibe_vmu_report` **不被发布**（汇报却被武装）✗ | core **按根因修**（面解析移到 pack settings 之后）；本卷已升级为**硬断言** ✓ —— **最终口径：面解析在 pack settings 之后**（不是"pack 要往 `defaults.json` 塞家族键"）✓ |
-| **F2** ⚠ | 入口**不注入**内核级 `deliver` ⇒ 报送触发并留痕，但每条具名拒 `VMU_REPORT_NO_TRANSPORT`（与 `03-§8` 登记一致，**不是缺陷**） | 本卷**钉住诚实边界**：无 transport ⇒ 具名拒＋仍留痕（断言 ✓）；并另证"注入 transport 时真的发出"（真内核工厂＋注入缝，`delivered:true`、note 带 `drives:false` ✓）；宿主注入由 core 落 ⇒ `14-§2` T15 |
-| **F3** ⚠ | 回执按**声明档位**打分：活读键仍报 `requiresRestart:true`／`appliesAt:"next session (restart required)"`，而同会话真实回合已读到新值 ✗ | core 已落**披露半**（`liveReadBy` ＋ note"MEASURED: it also has LIVE readers"，本卷硬断言 ✓）；**评分半**差一行（`requiresRestart = hot==='H2' && liveReadBy.length===0`）⇒ `14-§2` T16 |
-| **F4** ✅ | v5r 的 C-30 卡的是 **office 自己定稿前必须先咨询所内**；而 `vmu.paper.officeConsultExemptRoles` 默认 `['office']` 恰好豁免了原场景 | Lead 裁决：默认改 `[]`（**不豁免**，与 `hold` 同一条保守纪律）；本卷 §19.11 按此断言（"没声明 ⇒ office 也被卡" ✓） |
-| **F5** ⚠ | 与 F1 同型更深一层：宿主 `agent/turn-stopping` 周期时钟的挂载判据是**构造期** `settings` ⇒ **只装载 pack 时时钟不挂**，pack 自己的周期汇报永不被宿主驱动 ✗ | core 待落（把判据移到 pack settings 之后／按已解析的面判定）；本卷记 **NOTE F5**（`--strict-findings` 下红）✓ |
+| **F1** ✅ | 工具面在**构造期**解析，而 pack **清单** settings 在装载时才施加 ⇒ 只装载 pack 时 `vibe_vmu_report` **不被发布**（汇报却被武装）✗ | core **按根因修**（面解析移到 pack settings 之后）；本卷**硬断言** ✓ —— **最终口径：面解析在 pack settings 之后**（不是"pack 要往 `defaults.json` 塞家族键"）✓ |
+| **F2** ✅ | 入口**不注入**内核级 `deliver` ⇒ 报送触发并留痕，但每条具名拒 `VMU_REPORT_NO_TRANSPORT`（与 `03-§8` 一致，**不是缺陷**） | **Round 4 结清**：入口放行 **`config.deliver`**（宿主自给投递函数）⇒ 真机入口实测"有 transport ⇒ `delivered:true`、note 带 `drives:false`、一条 note/次"；**无 ⇒ 具名拒＋仍留痕**（边界硬钉 ✓）；抛错的 transport 记码计数 ✓ |
+| **F3** ✅ | 回执按**声明档位**打分：活读键报 `requiresRestart:true`，而同会话真实回合已读到新值 ✗ | **Round 4 结清**：core 落 `liveReadBy` ＋ `appliesAt` 双披露 ＋ 活读键 `requiresRestart:false`／`applied:'immediate'` ⇒ **硬断言"不得低报也不得高报"** ✓ |
+| **F4** ✅ | v5r 的 C-30 卡的是 **office 自己定稿前必须先咨询所内**；而 `officeConsultExemptRoles` 默认 `['office']` 恰好豁免了原场景 | Lead 裁决：默认改 `[]`（**不豁免**，与 `hold` 同一条保守纪律）；schema 与 pack defaults **都已改为 `[]`** ✓；本卷按此断言（"没声明 ⇒ office 也被卡" ✓） |
+| **F5** ✅ | 与 F1 同型更深一层：宿主 `agent/turn-stopping` 周期时钟的挂载判据是**构造期** `settings` ⇒ 只装载 pack 时时钟不挂 ✗ | **Round 4 结清**：判据改成"**面已发布**"且在 `install()` 之后挂 ⇒ pack-only 也挂（**硬断言** ✓）；未声明仍不挂（零机制 ✓） |
 
 ### 19.11 C-30 所办定稿咨询门（`kernel/paper.js`；**读者已落**）
 
@@ -1110,10 +1112,10 @@
 
 - **读者**：`kernel/paper.js` 的定稿路径（`createPaper` 的 `finalize`）按序过 ①finalizer 规则 ②完整性 ③**C-30 咨询门** ④`register` 缝；`WIRED_KEYS` 因此 3→8 ✓。**导出面**（本卷点名，供 `02` 的模块面核对 ✓）：`createPaper`（工厂）／`refuse`（具名拒）／`apiVersion`／`ENFORCED_SCOPE`（D3 作用域标记）／`WIRED_KEYS`／`PLANNED_KEYS`／`FINALIZERS`／`CONSULT_POINTS`／`CONSULT_TIMEOUT_ACTIONS`（后两个是"何时必须咨询"与"超时怎么办"的**声明式词表** ✓）。
 - **台账记的是动作**：`consult({paperId, kind, by, ref})` 追加一条（`kind` 是自由词表：`message`／`meeting`／机构自定 ✓）；`requestConsult()` 可显式开请求（幂等 ✓）；`consultState()` **只读**（`auto:false`，不改变稿件 ✓）。**意图不算数** ✗✓（对齐 v5r）✓。
-- **拒法**：未咨询即定稿 ⇒ **`VMU_OFFICE_CONSULT_*`**（`REQUIRED`），带 `enforced[]`（5 键）＋ `enforcedScope='evaluated-so-far'` ＋ 算术细节（`reason`／`timeoutMs`／`elapsedMs`／`remainingMs`／`heldOnTimeout`／`timedOut`／`requestCleared`）；`hint` 给三条出路（先 `consult`／声明豁免／`officeConsult=off`）✓。
+- **拒法**：未咨询即定稿 ⇒ **`VMU_OFFICE_CONSULT_REQUIRED`**（已登记 `03-§8` ✓），带 `enforced[]`（5 键）＋ `enforcedScope='evaluated-so-far'` ＋ 算术细节（`reason`／`timeoutMs`／`elapsedMs`／`remainingMs`／`heldOnTimeout`／`timedOut`／`requestCleared`）；`hint` 给三条出路（先 `consult`／声明豁免／`officeConsult=off`）✓。
 - **留痕**：审计行 `what:'auth'`（`subject:'paper:<id>'`，带 `enforced`＋scope ✓）＋ 总线事件 `paper/office-consult-required`（经 `bus.declareTopic` 的扩展点 ✓）＋ 模块内 trail；**接缝缺失时具名上报**（`trace.audit.code`／`trace.bus.note` ✓），绝不假装写过 ✓。
 - **超时**：`hold`（默认）保持请求且**仍然拒**；`refuse` 清请求且**仍然拒**；`0`＝无限等；**无法识别的值按 `hold`** ⇒ **没有 `default-allow` 这一档，连拼写都进不来** ✗✓。
 - **豁免（F4）**：**默认 `[]`（不豁免）** ✓；`consult({...})` 记录一次咨询即可开门；**没有任何/关掉** ⇒ `officeConsult='off'` 是零机制 ✓。
-- **验收（机器可判定）**：① **具名**：未咨询定稿 ⇒ `VMU_OFFICE_CONSULT_*` ＋ `enforced` 是 5 元数组 ＋ `enforcedScope` 存在 ✓；② **断言**：空豁免名单下 `office` 定稿被拒、声明 `['office']` 后同一路径通过 ✓；③ **场景**：`hold` 超时后**任意久**都不放行，`consult` 后才通过 ✓；④ **红**：把 `default-allow` 写进 `OnTimeout` ⇒ 回执 `onTimeout:'hold'` 且**仍拒** ✓；⑤ 与 `22-§19` 的汇报面同一条纪律：**只提示/只记账，绝不越权驱动** ✓。
-- **测试**：`tests/vmu-paper-consult.test.mjs`（40 项 ✓）；**新码登记**：`VMU_OFFICE_CONSULT_*` 的 `REQUIRED` 已报 Lead/core 登记 `03-§8`（本卷登记前只用家族前缀，D14 家族豁免 ✓）。
+- **验收（机器可判定）**：① **具名**：未咨询定稿 ⇒ `VMU_OFFICE_CONSULT_REQUIRED` ＋ `enforced` 是 5 元数组 ＋ `enforcedScope` 存在 ✓；② **断言**：空豁免名单下 `office` 定稿被拒、声明 `['office']` 后同一路径通过 ✓；③ **场景**：`hold` 超时后**任意久**都不放行，`consult` 后才通过 ✓；④ **红**：把 `default-allow` 写进 `OnTimeout` ⇒ 回执 `onTimeout:'hold'` 且**仍拒** ✓；⑤ 与 `22-§19` 的汇报面同一条纪律：**只提示/只记账，绝不越权驱动** ✓。
+- **测试**：`tests/vmu-paper-consult.test.mjs`（40 项 ✓）；**码登记**：`VMU_OFFICE_CONSULT_REQUIRED` 已登记 `03-§8` ✓；**策略值**：5 个键已由 pack 在 `packs/v5r/settings/defaults.json` 声明（`ExemptRoles: []`，F4 口径 ✓）。
 - **未核项（见 `14-§2`）**：① `finalize-or-submit` 的 **submit 那一半**不在本面（归出版/投稿面）✗；② v5r 的**双计数**（消息＋会议都要）在 vmu 是"任意一次咨询即可"——要恢复双计数需**再声明白名单**（属 pack 扩展点）✓；③ 豁免按**字符串**匹配角色（无槽位解析，同 §19.9-4）✓。

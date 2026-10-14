@@ -17,6 +17,8 @@
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
 
+import { createChildBudget } from './mathjobs.js'
+
 /** The failure policies an M3 entry may declare (docs/05 §7). */
 export const FAILURE = Object.freeze({ OPEN: 'open', CLOSED: 'closed', ABORT: 'abort' })
 
@@ -52,10 +54,15 @@ export function validateRequest(request) {
 /**
  * Create the bridge. `spawn` is the injected subprocess seam and must return
  * `{ code, stdout, stderr, timedOut?, ms? }`; `defaultTimeoutMs` applies when a request omits one.
+ * F17: the seam may ALSO be handle-shaped (the DSH `subprocess.spawn` returns a `SubprocessHandle`
+ * synchronously) or be paired with `spawnHandle(spec, onHandle)` — then the local budget really terminates
+ * the child. `timer` is injectable so the budget can be driven deterministically in tests.
  */
-export function createScriptBridge({ spawn = null, defaultTimeoutMs = 60_000, dryRun = false, clock = () => new Date().toISOString() } = {}) {
-  const stats = { runs: 0, failures: 0, timeouts: 0, refusals: 0, dryRuns: 0 }
+export function createScriptBridge({ spawn = null, spawnHandle = null, timer = null, defaultTimeoutMs = 60_000, dryRun = false, clock = () => new Date().toISOString() } = {}) {
+  const stats = { runs: 0, failures: 0, timeouts: 0, refusals: 0, dryRuns: 0, terminated: 0, notTerminated: 0 }
   const history = []
+  const childBudget = createChildBudget({ timer })
+  let lastSpawnHadHandle = null
 
   const record = (row) => {
     const entry = Object.assign({ at: clock() }, row)
@@ -127,9 +134,23 @@ export function createScriptBridge({ spawn = null, defaultTimeoutMs = 60_000, dr
       const timeoutMs = request.timeoutMs || defaultTimeoutMs
       const failure = request.failure || FAILURE.OPEN
       let raw
+      let budgetInfo = { timedOut: false, terminated: false, hadHandle: false }
       try {
-        raw = await spawn({ file: request.file || null, inline: request.inline || null, args: (request.args || []).slice(),
-          cwd: request.cwd || null, env: Object.assign({}, request.env || {}), timeoutMs })
+        // F17: a LOCAL budget, so a host that ignores `graceMs` can never hang the bridge — and when the seam
+        // gives a handle (host-native `spawn` returns one synchronously, or the explicit `spawnHandle`), the
+        // budget **really terminates** the child.
+        const res = await childBudget({
+          timeoutMs,
+          label,
+          call: (onHandle) => {
+            const spec = { file: request.file || null, inline: request.inline || null, args: (request.args || []).slice(),
+              cwd: request.cwd || null, env: Object.assign({}, request.env || {}), timeoutMs, graceMs: timeoutMs }
+            return spawnHandle ? spawnHandle(spec, onHandle) : spawn(spec)
+          },
+        })
+        raw = res.result
+        budgetInfo = { timedOut: res.timedOut, terminated: res.terminated, hadHandle: res.hadHandle }
+        lastSpawnHadHandle = res.hadHandle
       } catch (e) {
         stats.failures++
         record({ what: 'script-threw', label, error: String(e && e.message) })
@@ -144,11 +165,21 @@ export function createScriptBridge({ spawn = null, defaultTimeoutMs = 60_000, dr
         throw err
       }
       stats.runs++
-      if (!raw || raw.timedOut === true) {
+      if (budgetInfo.timedOut || !raw || raw.timedOut === true) {
         stats.timeouts++
-        record({ what: 'script-timeout', label, timeoutMs })
-        throw refuse('VMU_JOB_TIMEOUT', label + ' exceeded ' + timeoutMs + 'ms and was terminated',
-          'raise timeoutMs or make the script resumable')
+        const terminated = !!budgetInfo.terminated
+        record({ what: 'script-timeout', label, timeoutMs, terminated })
+        // HONESTY (F17): the old message claimed "was terminated" unconditionally. Say what actually happened.
+        const err = refuse('VMU_JOB_TIMEOUT',
+          label + ' exceeded ' + timeoutMs + 'ms' + (terminated
+            ? ' and was terminated'
+            : ' and could NOT be terminated (the spawn seam exposes no handle)'),
+          terminated
+            ? 'raise timeoutMs or make the script resumable'
+            : 'inject a spawn that returns a handle (or spawnHandle) so the budget can really kill it — see docs/09 §4.3')
+        err.terminated = terminated
+        err.hadHandle = !!budgetInfo.hadHandle
+        throw err
       }
       const exit = Number.isInteger(raw.code) ? raw.code : null
       if (exit !== 0) {

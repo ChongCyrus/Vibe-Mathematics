@@ -376,7 +376,8 @@ MathJob = { id, kind, engine, input, timeoutMs, budget?, async?, createdAt, stat
 - **事件日志上限** ✓：Lean 作业事件日志有常量上限（超出计数丢弃、不静默）；
 - **隔离** ✓：作业在受控目录内运行；路径策略与写保护由 `vmu.safety.*` 决定（越界 ⇒ `VMU_NOT_PERMITTED`）；
 - **审计** ✓：作业起止、命令摘要、结果摘要入审计（**不落全文**，正文放文件）；
-- **持久化/断点续算**：**计算面 ✓**（`kernel/mathjobs.js`：耐久镜像 ＋ 状态全集 ＋ 恢复四分支，见 §4.1）与 **Lean 作业面 ✓**（`kernel/lean.js` 接**同一套原语** `createJobMirror`：镜像 `Formal/Jobs/<jobId>.json`，与 v5r 的路径拼写一致；状态 `queued|running|settled|failed|timeout|interrupted`；恢复四分支同 §4.1）。限制**具名**：Lean 面的 `spawn` 是 **promise 接缝（无 handle）** ⇒ `dispose()` 只能把在跑作业标 `interrupted`，**无法 terminate 子进程**（`admission().canTerminateChild=false`，不假装）。
+- **持久化/断点续算**：**计算面 ✓**（`kernel/mathjobs.js`：耐久镜像 ＋ 状态全集 ＋ 恢复四分支，见 §4.1）与 **Lean 作业面 ✓**（`kernel/lean.js` 接**同一套原语** `createJobMirror`：镜像 `Formal/Jobs/<jobId>.json`，与 v5r 的路径拼写一致；状态 `queued|running|settled|failed|timeout|interrupted`；恢复四分支同 §4.1）。
+- **子进程可终止（F17，Round 4 ✓）**：见 §4.3 —— 本地预算 ＋ `SubprocessHandle.terminate()`，接缝形状自动识别，不可终止时**具名**说明。
 - **跨进程独占创建（Round 3 ✓ 已实现，宿主可降级）**：注入的 fs 接缝若提供 `writeTextExclusive(rel, text)`（宿主用 `{flag:'wx'}` / `O_EXCL` 实现，Windows 即 `CREATE_NEW`），**作业镜像的首次写入就是一次原子占号**：两个进程铸出同一个 `jobId` 时，后来者得到具名拒 `VMU_MATH_JOB_ID_TAKEN`，**绝不覆盖**前者的镜像（`admission().exclusiveCreate=true`、`crossProcess:'enforced-by-exclusive-create'`）。没有该接缝时**降级但仍具名**：`exclusiveCreate:false`、`crossProcess:'not-enforced'`，并在 `notes` 里写清"缺了会怎样（后写者覆盖）＋ 谁需要它（多进程/多会话共用一个研究所目录的部署）"。
 - **大结果引用** ⛔ **未做（具名登记）**：超过 `captureStdoutBytes` 的输出目前只有**计数式截断**（`receipt.droppedBytes`），没有内容寻址的 `Math/Results/<sha256>` 引用面。缺了会怎样：被截断的完整输出只能在归档文件里找，**回执引用不到它**；谁需要它：要在**另一台机器/另一次会话**复核大输出的读者（复现包与审计链）。
 
@@ -410,6 +411,48 @@ LeanJobMirror  = { schema:'vmu/lean-job@1',  jobId, statement, file, state, atte
 - **留痕**：marker `{markerId:'fd-N', target, by, note, at, enforcedVote:0.5, passedWithdrawn:true}`，**append-only**（同一对象第二个缺陷追加 history，绝不抹掉第一个人）。注入 fs 接缝时落 `Formal/Defects/<target>.json` 并可 `loadDefects()` 跨实例重载；没有 fs ⇒ `durable:false` **具名**，不假装持久。
 - **语义边界**：不忠实**永远不是反证**——所有返回 `isRefutation:false`；`passed` 只在"退出 0 且内容哈希未变"时成立，缺陷声明把它**撤回**（`passedWithdrawn:true`），把审查对象变回"形式化需重做"。
 - **closed-by（唯一需要外部一行）**：**表决面计票时必须把布尔票路由过 `applyAbstention`**（`kernel/ballotbox.js` 等）。本面已把强制点做好并可测；未接线的部分**具名**在这里，不在别处重复实现。
+
+### 4.3 子进程**真的可终止**（F17，Round 4 ✓；`maxBytes` 同轮核）
+
+**结论先说**：这不是宿主能力缺口——**宿主本来就给 handle**。Host Inspect 的 `subprocess` 契约写明
+`spawn(spec): SubprocessHandle`（同步返回），handle 带 `terminate()` / `waitForExit()` / `done`，输出用
+`collected.{stdout,stderr}.readFrom(fromByte)` 做**非消耗式**读取并在截断时给 `lossy` ＋ `spillPath`。
+缺的只是 vmu 的**接缝形状**：旧 `spawn` 被当成 promise 用，于是超时只能"报超时"、不能真的杀进程。
+
+- **唯一原语**：`kernel/mathjobs.js` 的 `createChildBudget({timer})`（导出名就是它；三个面共用：Lean、
+  计算作业、脚本桥）。`timer` 可注入（`(cb,ms)=>disposer`，同 `ctx.timeout`；缺省用全局 `setTimeout`），
+  所以"到点"在测试里是**被控制的**而不是等出来的。
+- **三种调用形状自动识别**（无开关可接错）：① 宿主原生 handle（同步返回、有 `done`）⇒ 用它的 `done`
+  与 `collected`，`terminated:true` 是**事实**；② 显式 `spawnHandle(spec, onHandle)`；③ 旧 promise 接缝
+  ⇒ 预算照样到点（**绝不挂死**），但结果诚实写 `terminated:false` / `hadHandle:false`。
+- **`graceMs`**：作为**请求**随 spec 一起传给宿主；真正的约束力来自本地预算（两者同时存在才既"可请求"
+  又"可控"）。
+- **`maxBytes`（输出上限）**：`kernel/lean.js` 读 **`vmu.math.captureStdoutBytes`**（与计算面同一个键，
+  默认 65536；0/缺省 ⇒ 常量 `LEAN_OUTPUT_MAX_BYTES = 64*1024`），本地截断用 `tailBytes()` 且**计数**
+  （`receipt.stdoutDroppedBytes` / `stderrDroppedBytes`）；宿主自己的 `lossy` / `spillPath` 原样带进回执
+  （**大结果的可达引用**由此至少有一半：spill 路径）。
+- **可观测**：`admission().subprocess = {budget, declaredKillableSeam, lastSpawnHadHandle, childrenTerminated,
+  childrenTimedOut, graceMsSent, hostContract}`；`admission().canTerminateChild` ＝ 声明的 killable 接缝
+  **或**运行时已证明（`lastSpawnHadHandle === true`）；作业视图带 `terminated` / `hadHandle` /
+  `outputDroppedBytes` / `outputLossy` / `outputSpill`。
+- **一次性公告（F44，Round 4 ✓）**：终止结算会 push 一条公告 → `takeNoticesFor(member)`（**取一次就没了**，
+  队列上限 `LEAN_NOTICE_MAX = 20`，丢弃计数 `droppedNotices`）；**长期查询路径另有其人**：`status(jobId)`、
+  `mirrors()`、磁盘上的 `Formal/Jobs/<jobId>.json`。把公告**注入下一次提示词**是转回合管线的事（core），
+  本面只提供可取的队列。
+- **去重与 settle 同源（F45，Round 4 ✓）**：`dedupeKey` ＝ **内容哈希 ＋ 构建上下文**，与 settle 复核的两个
+  事实（`hashUnchanged`、`contextHash`）由**同一个函数**产出 ⇒ 去重不可能与 settle 漂移；同 key 且已有
+  `passed` 时新作业直接以 `deduped:true`（`dedupedOf`）落定、**不重编译**；改内容或改构建上下文即重跑。
+  计算面**故意不做**内容去重（每次运行要有自己的回执）——这是**具名差异**，不是漏做。
+- **定时器必须可清理（F15，Round 4 ✓ 修）**：`createChildBudget` 的默认 `timer` seam 现在返回**真 disposer**
+  （`() => clearTimeout(h)`）；注入的 seam 若返回平台 `Timeout` 对象则**显式 `clearTimeout`**；**清理失败**
+  返回 `cleanupFailed` ＋ 通过 `onNote('timer-cleanup-failed', …)` 上报，**绝不**再被 `catch` 吞掉（这正是
+  F15 抓到的形态：默认部署的定时器从未被清理，而失败被"already settled"掩盖）。
+- **共享模块的两处 sleep 为何不需要句柄（F15 具名豁免）**：`math-computation.js` 的两处
+  `await new Promise(r => setTimeout(r, 250 + i*400))` 是**版本探测 / 包预检的退避重试**（最多 3 次，
+  250/650ms，合计 ≈1.8 s/引擎），**不持锁、不持进程、不跨调用**；共享模块的宿主契约里**没有 timer seam**，
+  而它是**四份逐字节相同的副本**之一（D-10）⇒ 给它加 seam 属**跨预设接口变更**、超出本面写范围。
+  因此按门规**具名豁免**（不是漏改）：代价上界可算、无资源泄漏、且任何"取消"需求都发生在调用方那一层
+  （`createChildBudget` 已提供）。要真加 seam，需与 4 份副本一起改（下一轮工单）。
 
 ---
 
@@ -697,7 +740,7 @@ LeanJobMirror  = { schema:'vmu/lean-job@1',  jobId, statement, file, state, atte
 ### B.8 工程面：作业／缓存／复现／沙箱／报告（⛔）
 | 键 | 类型 | 默认 | 域 | 谁改 | 说明 |
 |---|---|---|---|---|---|
-| `vmu.math.jobs.maxParallel` | integer | `1` | ≥1 | 院士 | 作业并发（Lean 面已实现同名语义 ✓） |
+| 旧名（已移除，**不复写键名**） | — | — | — | — | 已由 **`vmu.math.maxParallel` 单值化**（＝数学运行并发，对齐 v5r 的 `leanJobsMaxParallel:1`，即后台编译串行）；策略层与作业服务都读规范名，旧名的读点已退役、不再登记。**成员上限不走这里**，走 `vmu.limits.maxLiveMembers`（默认 0＝不设）。 |
 | `vmu.math.jobs.persist` | boolean | `false` | — | 院士 | 作业持久化 ⛔ |
 | `vmu.math.jobs.dir` | string | `State/math-jobs` | 相对项目根 | 院士 | 持久化目录 ⛔ |
 | `vmu.math.jobs.logMax` | integer | `200` | ≥1 | 院士 | 事件日志上限 ⛔ |

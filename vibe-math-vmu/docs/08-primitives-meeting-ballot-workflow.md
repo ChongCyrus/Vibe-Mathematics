@@ -1356,7 +1356,7 @@ recount(ballotId):
 | **GAP-MTG-02** | 会议分级的「简流程不得产出实体定论」硬闸（`truthWriteRefusal`） | **已落**：新增 `vmu.meetings.tier`（`formal\|light`，默认 formal）＋ `vmu.meetings.allowLight`（默认 true）；`kernel/meetings.js` 的 `tier()/isLight()/truthWriteRefusal()` 是**派生谓词**，**唯一判定点**在 `close()` 的收束路径（带 `report` ⇒ `VMU_MEETING_LIGHT_NO_TRUTH`，next 说明如何升级为 formal），并被 resolution 动议与 `minutes.resolve()` 复用；`tier=light` ＋ `allowLight=false` ⇒ `VMU_MEETING_TIER_CONFLICT`（`open()` 前即拒） | **已落**（`kernel/meetings.js` 的 `tier/allowLight/truthWriteRefusal` ＋ `close()`/`motion()` 判定点；键由 core 声明） |
 | **GAP-MTG-03** | 决议实体：稳定 id（`res-<n>`）／公告即生效 `effectiveAt`／`supersededBy` 取代链 | **已落**：`kernel/minutes.js` 的 `resolve()`／`resolutions()`／`supersede()` —— 框架分配的全所单调 `res-<n>`、`effectiveAt === at`、`retroactive` 只记 `declaredAt`（**不移动生效时点**）、取代链单向只增、只读检索（任何 `…At/…Ms` 过滤**具名拒**）；**light 会议经同一个 tier 判定点具名拒**，缺 `meetings` 接缝 ⇒ `VMU_ENGINE_UNAVAILABLE`（不猜 tier）；决议随 minutes 快照跨重启（计数 max+1） | **已落**（`kernel/minutes.js` `resolve/resolutions/supersede`；`createMinutes({ meetings })` 装配由 core 落） |
 | **GAP-MTG-04** | 议程增删改／点名出席表／发言顺序设定／点名发言（`agenda_set`／`roll_call`／`speak_order_set`／`speak_next`） | `meetings.js` 有 `attend/leave/queue/orderMode` 与 `materialsRequired`，**没有** agenda 条目对象、没有 attendance 状态表、没有"主席点谁"的命令 | `meetings.js`（议程对象 + 出席表 + `orderMode:'chair'` 的点名入口） |
-| **GAP-MTG-05** | 休会／**延长**／**停步**（`recess` 已有；`extend`／`stop` 无） | `meetings.recess/resume` 存在；`speechExtendMs/speechExtendMax` 是**声明键**、无延长命令；无 `stop{scope}` | `meetings.js`（在既有 `speechExtend*` 键上实现 `extend`；`stop` 需新键） |
+| **GAP-MTG-05** | 休会／**延长**／**停步**（`recess` 已有；`extend`／`stop` 无） | **`extend` 已落**（Round 4）：`meetings.extend({meeting, member, ms?, by})` 把**声明步长** `vmu.meetings.speechExtendMs` 变成真命令（省略 `ms` 时读它，并**点名进 `enforced[]`**），受 `speechExtendMax`（每人次数）与 `speechMaxMs`（单次上限）约束，越界具名拒 `VMU_MEETING_SPEECH_TIMEBOUND`；**未声明步长 ⇒ `VMU_INVALID_ARGUMENT`（不发明时长）**。**`stop` 两半**：`scope:'meeting'` 由 `close()` 承担（SPEC K8 的收敛口径，无需新命令）；`scope:'step'` 仍缺 —— 本面没有"步（step）"这一概念，**键名待定（此处不点未登记的键名，避免文档留下悬空名）** | **extend 已落**（`kernel/meetinglapse.js` 的 `extensionPlan` ＋ `kernel/meetings.js` 的 `extend()`，工具面 `extend`）；`stop{scope:'step'}` 需先有"步"概念，届时由 core 先声明键再落地 |
 | **GAP-MTG-06** | 发言机制切换（`single`／`open`／`round_robin`／`hands`／`call_on`／`directed`）与单次发言版群聊 | `chat.js` 提供"说话"原语与配额；`meeting.js` 提供机会位与举手；**没有 mode 切换命令** | `meeting.js`（在 `openRound` 上做 mode 判定点）＋`tools/meeting.js` |
 | **GAP-MTG-07** | 材料提交（`material_submit`，挂到议程条目） | `meetings.materialsRequired` 只做"是否要求材料"的判定；无材料对象、无提交入口 | `meetings.js`（材料对象 + 议程挂钩） |
 | **GAP-MTG-08** | 定向质询／回答（`challenge`／`answer_challenge`） | `meeting.interrupt`（`interruptAllow/interruptQuota`）是**打断**，不是"必须回答的质询" | `meeting.js`（质询对象 + 待答状态） |
@@ -1402,8 +1402,38 @@ recount(ballotId):
 
 ---
 
-## 26. Round 3 · 目标 2 缺口：一次性 future-only 活动等待器（F52 / C-56）
+### 25.9 F28 · 有界兜底：**有界、具名、可撤销**（Round 4）
 
+**缺口（Round 3 证据）**：`vmu.meetings.hardLimitMs` 已被读取（`speak`/`motion`/`vote` 越界即 `VMU_RESOURCE_BUDGET`），但**拒绝不是收束** —— 会议永远停在 `open`，记录里只有"你不许动"。v5r 的硬界只做了"放弃并写全明细"的一半；F28 要求另一半：兜底必须产出**决定**，且该决定**具名**（`name`）、**有理由**（`why`）、**有时间戳**（`at`）、**可撤销**。
+
+| 维度 | 落点与语义 |
+|---|---|
+| **有界（bound）** | **复用已声明的 `vmu.meetings.hardLimitMs`**（钳 [300000, 7200000]）——本面只有这一个墙钟界，**不发明第二个上限**；投票板侧的界由**构造参数** `openMaxMs` 声明（默认 0＝零机制）：该界属于**一个箱子的一生**，所以**刻意不设设置键**（键要么只在构造时读、要么会把正在投票的箱子的界限热改掉，两者都更差）——策略由**构造箱子的 pack** 拥有 |
+| **派生谓词（唯一判定）** | `meetings.lapseDue({meeting, at?})` → `{due:false,…}`／`{due:true, name:'meeting-lapse', why, at, revocable:true, elapsedMs, limitMs, enforced:['vmu.meetings.hardLimitMs']}` |
+| **具名收束** | `meetings.lapse({meeting, by?})` → 未到期**具名拒** `VMU_STATE`（带当前/上限）；到期则置 `state='lapsed'`、把 `{name, why, at, revocable}` 写进 `m.lapse` **与纪要**、计数 `lapses`、广播 `meetings/lapse`；重复调用幂等 |
+| **fail-closed** | 收束后**动作面**（speak/motion/vote/…）在**唯一入口 `requireMeeting`** 处按 `state==='lapsed'` 具名拒 —— 一个判定点，不散落；**读面**（`minutes`/`verbatim`/`quorum`/`status`）以 `{readOnly:true}` 显式放行（记录仍可审计） |
+| **可撤销** | `meetings.revokeLapse({meeting, by?, reason})` → **必须给理由**（否则 `VMU_REASON_REQUIRED`）；恢复 `state='open'`，**原 lapse 记录保留**（append-only）并记 `revokedAt/revokedBy/revokeReason`，计数 `lapseRevocations` |
+| **可观测** | `status()` 增 `lapsedMeetings`／`lapses`／`lapseRevocations`；投票板 `status({boxId})` 增 `openMaxMs`／`lapse` |
+| **表决侧同形** | `ballotbox.lapseDue/lapse/revokeLapse`：到期把板置 `lapsed`（**票保留、不发明结论** `outcome:null`），`cast`/`markAbsent` 在非 `open` 态本就具名拒；撤销需理由并回到 `open` |
+
+**工具面（可达性）**：`vibe_vmu_meeting` 新增 `extend`／`lapse`／`revokelapse`／`boxlapse`／`boxrevokelapse`（**不新增面**）。**零机制**：未声明板界（`openMaxMs=0`）时兜底**不存在**，行为与本轮之前逐字一致；会议侧始终有 `hardLimitMs` 这个已声明界（钳制下界 5 分钟）。
+
+---
+
+### 25.10 拆分：`kernel/meetinglapse.js`（规则）↔ `kernel/meetings.js`（状态）
+
+**为什么拆**：`kernel/meetings.js` 因 Round 3/4 的 tier／lapse／extend 等**自然增长**越过 `docs/02 §L174` 的 1200 行决议线（1245 行）。它不是"文本本身就是契约"的文件，所以**不**进 `KNOWN` 名单，而是按**规则/状态缝**拆开：
+
+| 半边 | 文件 | 内容 |
+|---|---|---|
+| **规则（纯规则 + 一个注入接缝的工厂）** | `kernel/meetinglapse.js` | 导出面逐字：`apiVersion`、`MEETING_LAPSE_NAME`、`BALLOT_LAPSE_NAME`、`lapseDueOf`、`makeLapseRecord`、`revokeLapseRecord`、`extensionPlan`、**`createMeetingControls`**。纯函数部分无时钟、无状态、无总线；工厂把四个方法（`lapseDue`/`lapse`/`revokeLapse`/`extend`）与面注入的状态接缝（`requireMeeting`／`limits()`／`counters`／`say`／`deny`／`capIn`／数值归一）组合起来 |
+| **状态（面）** | `kernel/meetings.js` | 持活记录／纪要／计数／广播，并**独家**把规则回执的 `keys` 映射为 D3 的 `enforced[]`＋`enforcedScope`（`withScope()`）——因此新模块**不出现**该词汇，不制造"未被门禁覆盖的新模块" |
+
+**行为不变**：`tests/vmu-meeting-parity.test.mjs` §16 的 17 条 F28/extend 断言**逐条保持**（130/0）；`vmu-meetings` 161/0。**结果**：`meetings.js` **1164 行**（≤1200，余量 36）；`audit-code-size` **9/0** 且 `KNOWN` 名单仍为 **3**（未新增名字）；`audit-enforced-consistency` **findings=0**。
+
+---
+
+## 26. Round 3 · 目标 2 缺口：一次性 future-only 活动等待器（F52 / C-56）
 > **判据**：`_handoff/vmu/03-v5r-full-inventory.md` 分片 A **§6 原语 F52**（"必须是未来一次性语义"）、**C-56**（`vibe_v5_wait`／`waitForActivity`／`notifyActivity`，`vibe-math-v5r.js:3424-3466`、工具 `:11142-11151`）。
 > **缺口实测**：Round 3 之前 vmu 全树对 `waitFor`／`notifyActivity`／`vibe_v5_wait`／`activityWaiter` **零命中** ⇒ 成员只能轮询（烧 token）或永远等；这条直接落在"利于多智能体协作"的反面，故本轮补为内核原语。
 > **本节由 `vmu-activity` 撰写（task-24）、由本节所有者插入**；标识符逐字保留，供 `tests/audit-module-coverage.test.mjs` 认领该模块。

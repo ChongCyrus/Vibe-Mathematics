@@ -88,13 +88,43 @@ ok(unlistedVolumes.length === 0, 'every design volume on disk is listed in packa
   for (const f of readdirSync(join(REPO, 'tests'))) {
     if (/^vmu-.*\.test\.mjs$/.test(f)) jsFiles.push(join(REPO, 'tests', f))
   }
-  const relRe = /(?:from|import)\s+['"](\.[^'"]+)['"]/g
+  // SHAPE CRITERION (round 4): an import is a STATEMENT, so `import`/`export` must START a line (indentation
+  // allowed, `[^;]` keeps the match inside one statement) - that is what separates code from DATA and from PROSE.
+  // Round 3 hit this class twice: `kernel/paper.js` quoted a settings key inside a COMMENT and the wired-schema
+  // generator read it as a key, and `tests/vmu-activity-falsify.test.mjs` holds `"from './bus.js'"` as a STRING it
+  // uses to rewrite a mutated copy - the previous text-only regex reported that string as a missing import. A gate
+  // that reads prose as code is not a gate, and "narrow the needle" is not a fix: the guard must have the shape.
+  const IMPORT_STATEMENT = /^[ \t]*(?:import|export)\b[^;]*?from\s+['"](\.[^'"]+)['"]/gm   // import … from '…'
+  const SIDE_EFFECT_IMPORT = /^[ \t]*import\s+['"](\.[^'"]+)['"]/gm                        // import '…'
+  const relativeImportsOf = (src) => {
+    const out = []
+    for (const re of [IMPORT_STATEMENT, SIDE_EFFECT_IMPORT]) for (const m of src.matchAll(re)) out.push(m[1])
+    return out
+  }
+  // SELF-PROBE: the criterion must IGNORE a data string and a commented-out import while still finding the real
+  // ones. Without this, "the gate stopped seeing imports" would look exactly like "no import is missing".
+  {
+    const probe = [
+      'const data = "from \'./nope-data.js\'"',            // data, not an import
+      "const fn = (s) => s.replace(\"from './nope-arg.js'\", 'x')",  // data inside a call
+      "// import x from './nope-comment.js'",              // prose
+      "import { a } from './real-statement.js'",           // REAL
+      "import './real-side-effect.js'",                    // REAL (bare)
+      "export * from './real-reexport.js'",                // REAL (re-export)
+    ].join('\n')
+    const got = relativeImportsOf(probe)
+    ok(got.length === 3
+      && got.includes('./real-statement.js') && got.includes('./real-side-effect.js') && got.includes('./real-reexport.js')
+      && !got.some((x) => x.includes('nope')),
+      '★ SELF-PROBE: the import criterion counts STATEMENT-POSITION imports (3 found) and ignores the data strings and the commented-out import that the old text-only regex reported',
+      JSON.stringify(got))
+  }
   const missing = []
   for (const f of jsFiles) {
-    for (const m of readFileSync(f, 'utf8').matchAll(relRe)) {
-      const target = resolve(dirname(f), m[1])
+    for (const spec of relativeImportsOf(readFileSync(f, 'utf8'))) {
+      const target = resolve(dirname(f), spec)
       const rel = relative(REPO, target).replace(/\\/g, '/')
-      if (!listed.has(rel)) missing.push(f.replace(REPO + '\\', '') + ' -> ' + m[1])
+      if (!listed.has(rel)) missing.push(f.replace(REPO + '\\', '') + ' -> ' + spec)
     }
   }
   ok(missing.length === 0, 'every relative import inside the vmu package is shipped (no MODULE_NOT_FOUND class)',

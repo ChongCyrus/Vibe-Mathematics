@@ -923,3 +923,14 @@ watchers: [{
 
 **与"真值不越界"一致**：不忠实**永远不是反证**（`isRefutation:false`）；这里强制的是**弃权**，不是结论。**装配**：`createBallot({ …, fidelity })`（由 `kernel/index.js` 落）；未注入 ⇒ 该接缝缺失**自曝**，不静默。
 
+---
+
+## 31. F28 · 有界兜底（Round 4；`kernel/meetings.js`／`kernel/ballotbox.js`）
+
+**为什么这条属于"协作层"**：一个**永远不被收束**的会议/表决会把整所拖在同一个议题上（成员只能空等或轮询），这正是"不利于多智能体协作"的形态。F28 的判据是三角：**有界**（界必须已声明）、**具名**（兜底产出的是一条有名字的决定，不是一次静默超时）、**可撤销**（人能把它收回，且收回要写理由）。
+
+- **会议侧**：界＝已声明的 `vmu.meetings.hardLimitMs`（钳 [300000, 7200000]，**不发明第二个上限**）；`lapseDue({meeting})` 是**派生谓词**；`lapse({meeting, by})` 产出 `{name:'meeting-lapse', why, at, revocable:true}` 并写入纪要；**未到期即具名拒**（`VMU_STATE`，带当前/上限）。收束后**动作面 fail-closed**（唯一入口 `requireMeeting` 判定 `state==='lapsed'`），**读面显式放行**（`minutes/verbatim/quorum/status` 仍可审计）。`revokeLapse({meeting, by, reason})` **必须给理由**，恢复 `open` 且**原记录保留**。
+- **表决侧**：同一形状落在 `kernel/ballotbox.js`（`lapseDue/lapse/revokeLapse`）；界由**构造参数** `openMaxMs` 声明（**0＝零机制**：兜底不存在）；到期置 `lapsed`（**票保留、`outcome:null` 不发明结论**），非 `open` 态的投片/缺席本就具名拒。
+- **与 §30 的关系**：C-45 管"一张票能不能被当作断言"，F28 管"一轮无界的等待由谁、以什么名字、在什么界限上收束"——两者都遵守同一条纪律：**框架只做有名字的决定，并把它留在记录里**。
+- **工具面**：`vibe_vmu_meeting` 新增 `extend`／`lapse`／`revokelapse`／`boxlapse`／`boxrevokelapse`（不新增面）。
+

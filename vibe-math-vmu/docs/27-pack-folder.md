@@ -103,6 +103,14 @@ vibe-math-vmu/
 - **office 定稿咨询门（C-30，已闭合）**：`vmu.paper.officeConsult='required'`／`On='finalize'`／`TimeoutMs=0`／`OnTimeout='hold'`／**`ExemptRoles=[]`** 由 pack 声明；判定点在 `kernel/paper.js:45-49,111-114`（WIRED_KEYS 3→8，`cfg()` 无条件读全五键）——未咨询即定稿 ⇒ 具名拒 `VMU_OFFICE_CONSULT_REQUIRED`＋审计 `what:'auth'`＋总线事件 `paper/office-consult-required`（经 `declareTopic` 扩展点）。★ **豁免默认空**（Lead F4）：本门存在的场景正是"office 自己定稿"，默认豁免 `office` 会恰好豁免掉它。
 - **不归 pack 的一条**：**C-45（忠实性缺陷强制弃权）**＝内核谓词、**强制且不可配置**（reader-b：不忠实者的 0/1 被改写为 0.5 弃权并留耐久 marker）⇒ pack **不提供**关闭开关。
 
+### 4.4 轮 4：**面解析与两个声明层的最终口径**（写一次，别再当 workaround 用）
+
+> ★★★ **结论**：**面解析在 pack settings 之后**；**清单声明即发布**；**`defaults.json` 只在"需要构造前可见"时用**。
+- 机制：适配器解析"哪些面被声明"读的是**内核的活设置视图**（`vibe-math-vmu.js:365-371`），而清单 `settings` 由 `applyPackSettings()` 写进内核设置；入口在 packs 之后**重新 install**（`:636`，模块后 `:682`）⇒ 清单声明的家族键**一定会**点亮对应面（`host.js:166-250` 的 `TOOL_FACES`：`families` × `config`）。
+- 因此：**要发布自己的工具面，就在被装载清单里声明该家族至少一个键**（如 `vmu.report.*` ⇒ `report` 面）；`defaults.json` 的用途只剩"**构造期就被读取**的值"与"用户设置缺失时的兜底偏好"（判断口径：读点在构造期 ⇒ 必须构造前可见；读点在调用期 ⇒ 清单够用）。
+- ★ **轮 3 的"必须在 `defaults.json` 放一个家族键才能发布自己的面"是缺陷（F1）的**workaround**，已从根因修掉**（`vibe-math-vmu.js:360-367` 的注释原文：**"No defaults.json workaround"**）。**不要**把它写进任何指南。
+- **并发上限（轮 4 裁决：两个策略各归其名）**：`vmu.math.maxParallel=1`（数学作业/编译并发＝v5r 的 `leanJobsMaxParallel: 1`，读者 `kernel/mathjobs.js`＋`kernel/mathtools.js`）＋ `vmu.limits.maxLiveMembers=3`（成员唤醒并发＝v5r 的 `maxParallel: 3` 原义，读者 `kernel/index.js:221` 的 `liveMemberCapOf` ⇒ `declareSlots`）。★ **"镜像成一个值"已被 Lead 推翻**（两个不同策略不得强行相等）；旧名（`math.jobs.maxParallel`）**已从 schema 移除**，pack 不声明它；`kernel/mathtools.js` 仍读旧名 ⇒ **读点退役归 reader-b**（退役前 docs/04 报"已接线但未声明"）。详见 `_handoff/vmu/pack-round4-report.md §G`。
+
 ---
 
 ## 5. 加载：文件夹优先

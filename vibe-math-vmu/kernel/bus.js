@@ -107,6 +107,11 @@ export const HOOK_REGISTRY = Object.freeze([
   { name: 'ids/minted', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a durable id was minted', producer: 'kernel/resume.js' },
   { name: 'ids/hydrated', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'the id counter was hydrated from the fold', producer: 'kernel/resume.js' },
   { name: 'ids/persist-failed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'persisting the id counter failed', producer: 'kernel/resume.js' },
+  // ROUND 4 (reader-a's F18): emitted by kernel/resume.js:749 through its NAME-first helper. Before this
+  // registration the name was inside `VU_NAMESPACE` but NOT frozen, so the bus REFUSED it and the helper's
+  // catch swallowed the refusal - the "budget/warn" class of bug, one round later (measured by
+  // tests/audit-hook-coverage.test.mjs, which went red the moment the emit landed).
+  { name: 'resume/lock-release-failed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'releasing the recovery lock failed (warning: the lock may outlive the attempt)', producer: 'kernel/resume.js' },
   { name: 'human/vetoed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a human veto was recorded', producer: 'kernel/human.js' },
   { name: 'human/veto-lifted', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a human veto was lifted', producer: 'kernel/human.js' },
   { name: 'human/approval-asked', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'an approval was requested', producer: 'kernel/human.js' },
@@ -138,6 +143,44 @@ export const HOOK_REGISTRY = Object.freeze([
   // name-first form in round 2, so they are registered here rather than left as a paper capability.
   { name: 'lifecycle/prereg', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a study was pre-registered', producer: 'kernel/lifecycle.js' },
   { name: 'lifecycle/advance', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a study advanced a stage', producer: 'kernel/lifecycle.js' },
+
+  // ── ROUND 4 (Lead adjudication ①): the names that were already emitted through `bus.emit('<name>', …)` but
+  // were NOT in this registry. Each one is now either REGISTERED here (a behavior that happened and an
+  // extension may legitimately react to) or listed in `LOG_ONLY_EMITS` (an accounting/observability row that
+  // is NOT a subscribable hook). Nothing is left in between - see `docs/05 §5.4` and the classification gate
+  // `D:\_tmp\vmu-hook-emit-census.mjs` (仓库外临时探针).
+  { name: 'paper/office-consult-required', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'finalisation was refused because the office was not consulted', producer: 'kernel/paper.js' },
+  { name: 'publication/advance', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a paper advanced a publication stage', producer: 'kernel/publication.js' },
+  { name: 'publication/replication-failed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a replication attempt failed', producer: 'kernel/publication.js' },
+  { name: 'notify/emit', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a notification was emitted to the delivery seam', producer: 'kernel/notify.js' },
+  { name: 'crypto/signed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a payload was signed', producer: 'kernel/crypto.js' },
+  { name: 'crypto/rotated', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'key material was rotated', producer: 'kernel/crypto.js' },
+  { name: 'external/stale-served', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a stale external result was served (degraded mode)', producer: 'kernel/external.js' },
+  { name: 'legalentity/registered', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a legal entity was registered', producer: 'kernel/partnership.js' },
+  { name: 'ratelimit/queued', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a call was queued by the rate limiter', producer: 'kernel/ratelimit.js' },
+  { name: 'ratelimit/degraded', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'the rate limiter degraded a call', producer: 'kernel/ratelimit.js' },
+  { name: 'recruit/confirmed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a recruitment was confirmed into a slot', producer: 'kernel/recruit.js' },
+  { name: 'reviewers/registered', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a reviewer was registered', producer: 'kernel/reviewers.js' },
+  { name: 'workflow/advance', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a workflow advanced a state', producer: 'kernel/workflow.js' },
+  { name: 'workflow/retry', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a workflow step was retried', producer: 'kernel/workflow.js' },
+  { name: 'workflow/escalate', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a workflow escalated', producer: 'kernel/workflow.js' },
+  { name: 'formal/checked', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a formalisation check completed', producer: 'kernel/formal.js' },
+  { name: 'formal/fidelity-defect', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a fidelity defect was declared for a target', producer: 'kernel/fidelity.js' },
+  { name: 'formal/abstention-enforced', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'the framework forced an abstention (C-45)', producer: 'kernel/fidelity.js' },
+  { name: 'formal/defects-loaded', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'the durable defect markers were loaded', producer: 'kernel/fidelity.js' },
+  { name: 'lean/job-submitted', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a Lean compilation job was submitted', producer: 'kernel/lean.js' },
+  { name: 'lean/job-settled', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a Lean compilation job finished', producer: 'kernel/lean.js' },
+  { name: 'lean/job-timeout', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a Lean compilation job exceeded its budget', producer: 'kernel/lean.js' },
+  { name: 'lean/job-recovered', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'Lean jobs were recovered from the mirror', producer: 'kernel/lean.js' },
+  { name: 'lean/jobs-disposed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'Lean job handles were disposed', producer: 'kernel/lean.js' },
+  // The in-repo classification gate (scripts/audit-hook-emit-classification.mjs) found five MORE string-form
+  // emits the earlier out-of-repo census missed: each is marked "advisory" in its module, so nobody could
+  // subscribe to it and nothing had classified it.
+  { name: 'board/moved', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a task moved between board columns', producer: 'kernel/board.js' },
+  { name: 'projmigrate/migrated', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'an on-disk projection was migrated', producer: 'kernel/projmigrate.js' },
+  { name: 'skills/declare', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a member declared a skill', producer: 'kernel/skills.js' },
+  { name: 'topology/select', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a collaboration topology was selected', producer: 'kernel/topology.js' },
+  { name: 'trust/signal', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a trust signal was recorded', producer: 'kernel/trust.js' },
 
   // ── host-substrate hooks (docs/05 §4.1): the vocabulary belongs to DSH, not to vmu ─────────────────
   { name: 'tools/pre-execute', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: true, rewritable: false, timing: 'before a tool call runs (input rewriting is refused by the host)' },
@@ -180,6 +223,42 @@ export const BRIDGED_HOOKS = Object.freeze(HOOK_REGISTRY.filter((h) => h.kind ==
 
 /** Hook namespaces a module may subscribe to by PREFIX (a workflow topic is named by its own pack). */
 export const HOOK_PREFIXES = Object.freeze(['workflow/'])
+
+/**
+ * ROUND 4 (Lead adjudication ①): the emits that are DELIBERATELY NOT hooks.
+ *
+ * `bus.emit('<name>', …)` is used for two different intents, and the difference matters to a middleware
+ * author: an EVENT ("a behaviour happened, an extension may react") belongs in `HOOK_REGISTRY`, while an
+ * ACCOUNTING ROW ("this is a line in the audit/observability ledger") does not - nobody should be able to
+ * subscribe to it, and registering it would promise a lifecycle it does not have. The names below are the
+ * second kind, each with the reason it is NOT a hook. The classification gate
+ * (`D:\_tmp\vmu-hook-emit-census.mjs`, 仓库外临时探针) requires EVERY emitted name to be either registered
+ * or listed here - "neither" is the silent state this list exists to forbid.
+ */
+export const LOG_ONLY_EMITS = Object.freeze({
+  'audit/rotate': 'the audit ring rotated (a ledger maintenance row, not a behaviour to react to)',
+  'auditchain/appended': 'a row was appended to the tamper-evident chain (ledger write)',
+  'auditchain/checkpoint-failed': 'a chain checkpoint failed to write (ledger failure row)',
+  'auditchain/partial-verify': 'a chain verify returned partial (ledger verification row)',
+  'auditchain/anchored': 'a chain anchor was written (ledger maintenance row)',
+  'retention/truncated': 'retention dropped rows and counted them (quota accounting row)',
+})
+
+/**
+ * ROUND 4 (Lead adjudication ②): the bus-side view of DECLARED TOPICS, so a declared topic is not merely
+ * emittable but SUBSCRIBABLE. `bus.declareTopic(name)` adds the name here; `kernel/loader.js`'s
+ * `isRegisteredHook()` consults it (alongside `VU_HOOKS`/`DSH_HOOKS`/`HOOK_PREFIXES`), which is what lets an
+ * M2 module declare a topic that a face registered at run time. It is deliberately PROCESS-WIDE: a declared
+ * topic is a protocol extension point of this process, and every bus instance must agree on it.
+ */
+const DECLARED_TOPICS = new Set()
+
+/** The declared custom topics, in declaration order (observability + the loader's subscription check). */
+export function declaredTopics() { return [...DECLARED_TOPICS] }
+
+/** Is this name a topic some face declared with `bus.declareTopic`? */
+export function isDeclaredTopic(name) { return typeof name === 'string' && DECLARED_TOPICS.has(name) }
+
 
 /**
  * The D-04/D-12 invariant, as a function a gate can call: the registry's DATA must be complete and
@@ -445,6 +524,10 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
       }
       const existing = VU_HOOKS.includes(name) || customTopics.has(name)
       customTopics.add(name)
+      // ROUND 4 (Lead adjudication ②): the SAME declaration makes the topic SUBSCRIBABLE, not merely
+      // emittable - `kernel/loader.js`'s isRegisteredHook() consults this process-wide set. A topic that can
+      // be emitted but not subscribed to was "declared but unusable", the class this project keeps catching.
+      DECLARED_TOPICS.add(name)
       return { ok: true, topic: name, existing }
     },
 
@@ -474,7 +557,13 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
       //     check exists to catch. The host-waterfall bridge (`opts.bridge`) is exempt for the same reason.
       // ROUND 2: the new primitives own their own namespaces too, so a typo in them is a NAMED refusal
       // rather than an emit that reaches nobody (the same rule the original eleven prefixes follow).
-      const VU_NAMESPACE = /^(member|turn|meeting|ballot|record|task|prompt|budget|pack|settle|control|resume|ids|human|chat|mailbox|panel|math|lifecycle)\//
+      // ROUND 2 + ROUND 4: the new primitives own their own namespaces too, so a typo in them is a NAMED
+      // refusal rather than an emit that reaches nobody. ROUND 4 added the namespaces whose emitted names are
+      // now REGISTERED (Lead adjudication ①): a name in one of these that is neither registered nor declared
+      // with `declareTopic` is refused - the "declare before emit" rule. The three LOG-ONLY namespaces
+      // (`audit`, `auditchain`, `retention`) are deliberately NOT listed: their rows are not hooks, so their
+      // emits stay in the foreign-namespace pass-through path (documented in docs/05 §5.4).
+      const VU_NAMESPACE = /^(member|turn|meeting|ballot|record|task|prompt|budget|pack|settle|control|resume|ids|human|chat|mailbox|panel|math|lifecycle|paper|publication|notify|crypto|external|legalentity|ratelimit|recruit|reviewers|workflow|formal|lean|board|projmigrate|skills|topology|trust)\//
       const bridged = opts && opts.bridge === true
       const isVmuName = typeof hook === 'string' && VU_NAMESPACE.test(hook)
       if (!bridged && isVmuName && !(VU_HOOKS.includes(hook) || customTopics.has(hook))) {

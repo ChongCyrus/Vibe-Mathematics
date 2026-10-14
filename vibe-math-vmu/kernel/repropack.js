@@ -31,7 +31,16 @@ export function createReproPack(opts) {
   const readKey = (k) => (o.settings && typeof o.settings.get === 'function' ? o.settings.get(k) : (o.settings || {})[k])
   const clock = typeof o.clock === 'function' ? o.clock : () => 0
   const log = typeof o.log === 'function' ? o.log : () => {}
-  const emit = (ev) => { try { if (o.bus && typeof o.bus.emit === 'function') o.bus.emit(ev) } catch (e) { /* 广播不改结果 */ } }
+  const emit = (ev) => {
+  // ROUND 4 / task-25 (Lead's audit, extended to this module): the bus takes a STRING NAME as its first argument. This
+  // helper forwarded the event OBJECT, so every emission from this module threw and was swallowed - the module LOOKED
+  // wired and emitted nothing. The name is split out here, and a refusal (unregistered name, blocking middleware) is
+  // NAMED through this module's own log instead of vanishing.
+  if (!o.bus || typeof o.bus.emit !== 'function') return
+  const name = ev && typeof ev.type === 'string' ? ev.type : null
+  if (name === null) return log({ type: 'bus/emit-failed', at: clock(), name: null, code: 'VMU_BUS_NAME_REQUIRED', message: 'a bus event needs a string name (got an object without .type)' })
+  try { o.bus.emit(name, ev) } catch (e) { log({ type: 'bus/emit-failed', at: clock(), name, code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) }
+}
   const lib = o.library || {}
 
   const cfg = () => {

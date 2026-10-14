@@ -40,9 +40,21 @@ ok(JSON.stringify(spec.parameters.action.enum) === JSON.stringify(ACTIONS),
   'the enum is exactly the eight methods the service exposes', { enum: spec.parameters.action.enum })
 ok(spec.parameters.action.required === true, 'and action is required')
 {
+  // PROJECTION SEAMS ARE NOT AGENT ACTIONS (Lead ruling; the `ids`/`bindIds` precedent). `resume` projects this
+  // ledger across restarts through `snapshot()/restore()`, so they are public service methods that NO agent should
+  // be able to invoke as an action - the fix is to exclude them by name here, never to widen the tool enum.
+  // The exclusion cannot rot: (a) the list must be non-empty AND every name on it must really exist on the service
+  // (so a rename cannot silently turn this into a no-op), and (b) everything OUTSIDE the list must still match the
+  // enum EXACTLY - this stays a one-for-one criterion, not "the enum is contained in the service".
+  const PROJECTION_SEAMS = ['restore', 'snapshot']
   const serviceMethods = Object.keys(k.budget).filter((n) => typeof k.budget[n] === 'function').sort()
-  ok(JSON.stringify([...ACTIONS].sort()) === JSON.stringify(serviceMethods),
-    'and the enum matches the service s own method list one for one, so neither can drift', { enum: [...ACTIONS].sort(), serviceMethods })
+  ok(PROJECTION_SEAMS.length > 0 && PROJECTION_SEAMS.every((n) => serviceMethods.includes(n)),
+    'the projection-seam list is NON-EMPTY and every name on it really exists on the service (non-vacuous: it excludes something real)',
+    { seams: PROJECTION_SEAMS, serviceMethods })
+  const actionsInService = serviceMethods.filter((n) => !PROJECTION_SEAMS.includes(n))
+  ok(JSON.stringify([...ACTIONS].sort()) === JSON.stringify(actionsInService),
+    'and OUTSIDE those seams the enum matches the service s own method list one for one, so neither can drift',
+    { enum: [...ACTIONS].sort(), actionsInService })
 }
 
 console.log('=== 3. THE TOOL DELEGATES RATHER THAN REIMPLEMENTS ===')

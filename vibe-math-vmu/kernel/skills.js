@@ -111,7 +111,7 @@ export function createSkills({ clock = () => 0, log = null, settings = {}, bus =
       const rec = { id, memberId, skill, level, evidence: ev, declaredAt: at, verifiedAt: null, verifiedBy: null, status: 'unverified', retiredAt: null }
       decls.push(rec)
       say({ type: 'skills/declare', at, memberId, skill, level, id, status: 'unverified' })
-      if (bus && typeof bus.emit === 'function') { try { bus.emit({ type: 'skills/declare', at, memberId, skill, level }) } catch (e) { /* advisory */ } }
+      if (bus && typeof bus.emit === 'function') { try { bus.emit('skills/declare', { at, memberId, skill, level }) } catch (e) { try { if (log && typeof log.append === 'function') log.append({ type: 'bus/emit-failed', at: clock(), name: 'skills/declare', code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) } catch { /* the log itself may be gone */ } } }
       return { ok: true, id, memberId, skill, level, status: 'unverified', note: 'awaiting an attestation by another member (self-appointment is forbidden)', evidence: ev.length }
     },
 

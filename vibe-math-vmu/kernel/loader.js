@@ -16,7 +16,7 @@
 // dry-run can only promise that the loader passes `dryRun: true` and reports what the module returned;
 // a module that ignores the flag is a module bug, and the loader says so in its status.
 
-import { VU_HOOKS, DSH_HOOKS as BUS_DSH_HOOKS, HOOK_PREFIXES } from './bus.js'
+import { VU_HOOKS, DSH_HOOKS as BUS_DSH_HOOKS, HOOK_PREFIXES, isDeclaredTopic } from './bus.js'
 
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
@@ -43,12 +43,20 @@ export function refuse(code, message, hint) {
   return err
 }
 
-/** Is this a hook the framework knows how to fire? (docs/05 §4) */
+/**
+ * Is this a hook the framework knows how to fire? (docs/05 §4)
+ *
+ * ROUND 4 (Lead adjudication ②): a topic DECLARED with `bus.declareTopic(name)` is also a hook a module may
+ * subscribe to. Before this, a declared topic could be emitted but a module declaring it was refused by this
+ * very function ("unregistered hook") - declared but unusable, the class this repository keeps catching. The
+ * set lives in kernel/bus.js and is process-wide, so every bus instance agrees on it.
+ */
 export function isRegisteredHook(hook) {
   if (typeof hook !== 'string' || hook.length === 0) return false
   if (VU_HOOKS.includes(hook)) return true
   if (DSH_HOOKS.includes(hook)) return true
   if (HOOK_PREFIXES.some((p) => hook.startsWith(p))) return true
+  if (isDeclaredTopic(hook)) return true
   return false
 }
 

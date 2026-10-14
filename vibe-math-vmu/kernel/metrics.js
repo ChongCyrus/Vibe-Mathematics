@@ -64,7 +64,11 @@ export function createMetrics({ clock = () => 0, log = null, settings = {}, bus 
     if (log && typeof log.append === 'function') { try { log.append(event) } catch (e) { /* logging must never break the metric being logged */ } }
   }
   const emit = (event) => {
-    if (bus && typeof bus.emit === 'function') { try { bus.emit(event) } catch (e) { /* the bus is advisory */ } }
+    // ROUND 4 / task-25 (Lead's audit): STRING NAME first (see the other modules) - and the refusal is NAMED.
+    if (!bus || typeof bus.emit !== 'function') return
+    const name = event && typeof event.type === 'string' ? event.type : null
+    if (name === null) return say({ type: 'bus/emit-failed', at: clock(), name: null, code: 'VMU_BUS_NAME_REQUIRED', message: 'a bus event needs a string name (got an object without .type)' })
+    try { bus.emit(name, event) } catch (e) { say({ type: 'bus/emit-failed', at: clock(), name, code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) }
   }
 
   const asPositiveInt = (v, def) => (Number.isInteger(v) && v > 0 ? v : def)

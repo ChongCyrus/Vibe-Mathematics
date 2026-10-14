@@ -138,6 +138,12 @@ export const DECLARED_SELF_REPORT_FIELDS = Object.freeze([
   //   · `wiredKeys`          - kernel/mathadapters.js:708 - status() reports how many settings keys the adapter
   //     face actually wired.
   'countsTowardsRound', 'unwired', 'wiredKeys',
+  // ROUND 4: discovered by this suite's own mechanical scan. `checked` is the RESUME READBACK's count of the
+  // expectations it actually compared (`kernel/resume.js:649` returns `{ consistent, checked: expectations.size,
+  // drift, code }`, and `:889` forwards it into the recovery report's `readback` step) - the number that turns
+  // "we verified it" into a measurement instead of a claim. NOTE `host.js:326` also uses `checked:false` (the
+  // tool-filter passthrough): same word, different surface, which is exactly why the source is written here.
+  'checked',
 ])
 
 /** Top-level keys of every `return { … }` object literal in one source. */

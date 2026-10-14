@@ -44,6 +44,9 @@ export function shapeSummary(shape, cap = 400) {
 }
 
 export const DEFAULT_STDOUT_CAP = 1 << 20 // 1 MiB
+// ROUND 4 / task-25: the module's OWN delay, so the budget race can tell "the default (cancellable here)" from "an
+// injected delay (driven by the caller, as the timer tests do)".
+export const DEFAULT_DELAY = (ms) => new Promise((r) => setTimeout(r, ms))
 export const DEFAULT_STDERR_CAP = 1 << 20
 
 /** Is the host able to spawn at all? (pure - the caller decides whether to bind the seam) */
@@ -63,7 +66,7 @@ export function createHostSpawn({
   stdoutCapBytes = DEFAULT_STDOUT_CAP,
   stderrCapBytes = DEFAULT_STDERR_CAP,
   clock = () => Date.now(),
-  delay = (ms) => new Promise((r) => setTimeout(r, ms)),
+  delay = DEFAULT_DELAY,
   // The path policy needs its two inputs to reach the spawn surface (docs/04 §11). Both default to absent, and
   // the guard is only consulted when a root is known - so a seam built without them behaves exactly as before.
   settings = {},
@@ -75,8 +78,10 @@ export function createHostSpawn({
   const subprocessOf = () => {
     try { return ctx && typeof ctx.get === 'function' ? ctx.get('subprocess') : null } catch { return null }
   }
+  // ROUND 4: the budget-timer cleanup ledger (see the race below). Named errors, not swallowed ones.
+  const timerCleanupErrors = []
 
-  return async function spawnSeam(request = {}) {
+  const spawnSeam = async function spawnSeam(request = {}) {
     const sub = subprocessOf()
     if (!sub || typeof sub.spawn !== 'function') {
       throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host exposes no subprocess service, so no spawn seam is bound',
@@ -175,22 +180,51 @@ export function createHostSpawn({
       throw err
     }
 
-    const outcome = await Promise.race([
-      Promise.resolve(handle.done).then((v) => ({ settled: true, value: v }), (e) => ({ settled: false, error: e })),
-      budget !== null ? delay(budget).then(() => ({ settled: false, timeout: true })) : new Promise(() => {}),
-    ])
-    const ms = clock() - started
-    const text = (side) => { try { const c = handle.collected && handle.collected[side]; return c ? c.readFrom(0).text : '' } catch { return '' } }
-    if (outcome.timeout) {
-      // Return the shape the bridge turns into VMU_JOB_TIMEOUT; the host's graceMs terminates the process.
-      return { code: null, stdout: text('stdout'), stderr: text('stderr'), timedOut: true, ms }
+    // ROUND 4 / task-25 (vmu-activity's F15 measurement): the budget timer used to stay ARMED after the process settled
+    // first (measured: armed Timeout +1), because `Promise.race` cannot cancel the loser. The DEFAULT timer is created
+    // here with its own handle so the settle path can clear it in `finally`; an INJECTED `delay` keeps driving the
+    // timeout path exactly as before (the tests use it), and a cancellation failure is NAMED rather than swallowed.
+    let budgetTimer = null
+    const timeoutOutcome = () => {
+      if (delay === DEFAULT_DELAY) {
+        return new Promise((resolve) => {
+          budgetTimer = setTimeout(() => resolve({ settled: false, timeout: true }), budget)
+          if (budgetTimer && typeof budgetTimer.unref === 'function') budgetTimer.unref()
+        })
+      }
+      return Promise.resolve(delay(budget)).then(() => ({ settled: false, timeout: true }))
     }
-    if (!outcome.settled) {
-      throw refuse('VMU_MIDDLEWARE_FAILED', 'the spawn failed: ' + String(outcome.error && outcome.error.message),
-        'the host reported an error instead of an outcome')
+    try {
+      const outcome = await Promise.race([
+        Promise.resolve(handle.done).then((v) => ({ settled: true, value: v }), (e) => ({ settled: false, error: e })),
+        budget !== null ? timeoutOutcome() : new Promise(() => {}),
+      ])
+      const ms = clock() - started
+      const text = (side) => { try { const c = handle.collected && handle.collected[side]; return c ? c.readFrom(0).text : '' } catch { return '' } }
+      if (outcome.timeout) {
+        // Return the shape the bridge turns into VMU_JOB_TIMEOUT; the host's graceMs terminates the process.
+        return { code: null, stdout: text('stdout'), stderr: text('stderr'), timedOut: true, ms }
+      }
+      if (!outcome.settled) {
+        throw refuse('VMU_MIDDLEWARE_FAILED', 'the spawn failed: ' + String(outcome.error && outcome.error.message),
+          'the host reported an error instead of an outcome')
+      }
+      return { code: outcome.value && Number.isInteger(outcome.value.exitCode) ? outcome.value.exitCode : null,
+        stdout: text('stdout'), stderr: text('stderr'), timedOut: false, ms,
+        signal: (outcome.value && outcome.value.signal) || null }
+    } finally {
+      if (budgetTimer !== null) {
+        const t = budgetTimer
+        budgetTimer = null
+        try { clearTimeout(t) } catch (e) {
+          // NAMED, not swallowed: a timer that could not be cleared is a real leak and the caller can see it.
+          timerCleanupErrors.push({ code: 'VMU_SPAWN_TIMER_CLEANUP', message: String((e && e.message) || e), at: clock() })
+          try { process.stderr.write('vmu: spawn budget timer could not be cleared (VMU_SPAWN_TIMER_CLEANUP): ' + String((e && e.message) || e) + '\n') } catch { /* stderr may be gone */ }
+        }
+      }
     }
-    return { code: outcome.value && Number.isInteger(outcome.value.exitCode) ? outcome.value.exitCode : null,
-      stdout: text('stdout'), stderr: text('stderr'), timedOut: false, ms,
-      signal: (outcome.value && outcome.value.signal) || null }
   }
+  // The cleanup ledger travels on the seam, so "was the budget timer ever leaked" is answerable from outside.
+  spawnSeam.timerCleanupErrors = timerCleanupErrors
+  return spawnSeam
 }

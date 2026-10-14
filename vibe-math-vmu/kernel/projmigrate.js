@@ -109,7 +109,7 @@ export function createProjectionMigrator({ clock = () => 0, log = null, settings
     const nextChecksum = checksumFor(e, work)
     history.push({ type: 'migrated', at: clock(), kind, from, to: target, steps: applied.length })
     say({ type: 'projmigrate/migrated', at: clock(), kind, from, to: target, steps: applied.length })
-    if (bus && typeof bus.emit === 'function') { try { bus.emit({ type: 'projmigrate/migrated', kind, from, to: target }) } catch (e) { /* advisory */ } }
+    if (bus && typeof bus.emit === 'function') { try { bus.emit('projmigrate/migrated', { kind, from, to: target }) } catch (e) { try { if (log && typeof log.append === 'function') log.append({ type: 'bus/emit-failed', at: clock(), name: 'projmigrate/migrated', code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) } catch { /* the log itself may be gone */ } } }
     return {
       ok: true, kind, migrated: true, from, to: target, steps: applied, doc: work,
       checksum: nextChecksum, previousChecksum: prevChecksum, checksumChanged: prevChecksum !== nextChecksum,

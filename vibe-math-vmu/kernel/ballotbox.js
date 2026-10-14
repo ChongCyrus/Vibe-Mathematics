@@ -75,9 +75,29 @@ const refuse = (code, message, hint) => ({ ok: false, code, message, hint })
 export function createBallotBox(opts) {
   const o = opts || {}
   const readKey = (k) => (o.settings && typeof o.settings.get === 'function' ? o.settings.get(k) : (o.settings || {})[k])
+  // F28 (the "表决" half): a board left open forever gets the same bounded, NAMED and REVOCABLE fallback as a
+  // meeting. The bound is DECLARED BY THE CONSTRUCTOR (`openMaxMs`, 0 = zero-mechanism = no fallback at all).
+  //
+  // WHY THERE IS DELIBERATELY NO SETTINGS KEY FOR IT (decided after the read-side audit flagged an earlier comment
+  // that merely NAMED one): the bound belongs to ONE BOARD's lifetime. A settings key would be read either at
+  // construction (so a hot change silently applies only to future boards) or per call (so a hot change could move
+  // the bound of a board that is already being voted on) — both are worse than "the constructor declares it,
+  // visibly, in the same place that creates the board". The pack that builds the box owns the policy; this face
+  // reads no settings key here, so nothing is declared that no reader consumes.
+  const openMaxMs = Number.isFinite(Number(o.openMaxMs)) && Number(o.openMaxMs) > 0 ? Math.floor(Number(o.openMaxMs)) : 0
+  const LAPSE_NAME = 'ballot-lapse'
   const clock = typeof o.clock === 'function' ? o.clock : () => 0
   const log = typeof o.log === 'function' ? o.log : () => {}
-  const emit = (ev) => { try { if (o.bus && typeof o.bus.emit === 'function') o.bus.emit(ev) } catch (e) { /* 广播不改结果 */ } }
+  const emit = (ev) => {
+  // ROUND 4 / task-25 (Lead's audit, extended to this module): the bus takes a STRING NAME as its first argument. This
+  // helper forwarded the event OBJECT, so every emission from this module threw and was swallowed - the module LOOKED
+  // wired and emitted nothing. The name is split out here, and a refusal (unregistered name, blocking middleware) is
+  // NAMED through this module's own log instead of vanishing.
+  if (!o.bus || typeof o.bus.emit !== 'function') return
+  const name = ev && typeof ev.type === 'string' ? ev.type : null
+  if (name === null) return log({ type: 'bus/emit-failed', at: clock(), name: null, code: 'VMU_BUS_NAME_REQUIRED', message: 'a bus event needs a string name (got an object without .type)' })
+  try { o.bus.emit(name, ev) } catch (e) { log({ type: 'bus/emit-failed', at: clock(), name, code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) }
+}
 
   const refusals = new Map()
   const bumpRefusal = (code) => { refusals.set(code, (refusals.get(code) || 0) + 1) }
@@ -407,12 +427,68 @@ export function createBallotBox(opts) {
       enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
   }
 
+  /**
+   * F28 — the bounded fallback for an OPEN board: settle it by NAME once the declared bound has passed, and let
+   * that fallback be revoked with a reason. Nothing settles silently: before the bound `lapse()` refuses with the
+   * current/limit pair, and the lapse record carries `{name, why, at, revocable}`. Votes cast so far are KEPT
+   * (the outcome stays `null` = not-established) and revoking returns the board to `open`, so the fallback is a
+   * decision about the ROUND, never a rewrite of the ballots.
+   */
+  const lapseDue = (a) => {
+    const args = a || {}
+    const box = boxes.get(String(args.boxId || ''))
+    if (!box) return deny('VMU_NOT_FOUND', '找不到票箱 ' + String(args.boxId || ''), '先 open() 取 id')
+    const now = args.at === undefined || args.at === null ? clock() : args.at
+    const elapsed = now - box.at
+    const enforced = openMaxMs > 0 ? ['openMaxMs (constructor-declared)'] : []
+    if (openMaxMs <= 0) return { ok: true, due: false, name: LAPSE_NAME, boxId: box.id, reason: 'no bound is declared (openMaxMs=0 ⇒ zero mechanism)', enforced }
+    if (box.state !== 'open') return { ok: true, due: false, name: LAPSE_NAME, boxId: box.id, reason: 'the board is ' + box.state, elapsedMs: elapsed, limitMs: openMaxMs, enforced }
+    if (elapsed <= openMaxMs) return { ok: true, due: false, name: LAPSE_NAME, boxId: box.id, elapsedMs: elapsed, limitMs: openMaxMs, enforced }
+    return { ok: true, due: true, name: LAPSE_NAME, boxId: box.id, at: now, revocable: true,
+      why: 'the board stayed open past its declared bound: ' + elapsed + ' / ' + openMaxMs + ' ms',
+      elapsedMs: elapsed, limitMs: openMaxMs, enforced }
+  }
+  const lapse = (a) => {
+    const args = a || {}
+    const d = lapseDue(args)
+    if (d.ok === false) return d
+    if (!d.due) return Object.assign(deny('VMU_STATE', 'the bounded fallback is NOT due: ' + String(d.reason || (d.elapsedMs + ' / ' + d.limitMs + ' ms')),
+      'keep collecting, close() it explicitly, or declare openMaxMs > 0 on the constructor', d.enforced), { due: false })
+    const box = boxes.get(String(args.boxId))
+    if (box.lapse && !box.lapse.revokedAt) return { ok: true, deduped: true, boxId: box.id, lapse: Object.assign({}, box.lapse) }
+    const rec = { name: d.name, why: d.why, at: d.at, revocable: true, elapsedMs: d.elapsedMs, limitMs: d.limitMs,
+      by: args.by === undefined || args.by === null ? null : String(args.by), revokedAt: 0, revokedBy: null, revokeReason: null }
+    box.lapse = rec
+    box.state = 'lapsed'
+    emit({ type: 'ballot.lapse', boxId: box.id, name: rec.name, limitMs: rec.limitMs, elapsedMs: rec.elapsedMs })
+    return { ok: true, boxId: box.id, lapse: Object.assign({}, rec), settlement: 'lapsed-by-declared-bound',
+      outcome: null, votes: box.votes.size, enforced: d.enforced.slice(), enforcedScope: ENFORCED_SCOPE }
+  }
+  const revokeLapse = (a) => {
+    const args = a || {}
+    const box = boxes.get(String(args.boxId || ''))
+    if (!box) return deny('VMU_NOT_FOUND', '找不到票箱 ' + String(args.boxId || ''), '先 open() 取 id')
+    if (!box.lapse) return deny('VMU_STATE', 'this board has no lapse to revoke', 'lapse() first', [])
+    if (box.lapse.revocable !== true) return deny('VMU_NOT_PERMITTED', 'this lapse was declared NOT revocable', 'a non-revocable fallback is final', [])
+    const reason = String(args.reason || '').trim()
+    if (!reason) return deny('VMU_REASON_REQUIRED', 'revoking a bounded fallback needs a reason', 'say why the board may continue: an unexplained revocation is unauditable', [])
+    if (box.lapse.revokedAt) return { ok: true, deduped: true, boxId: box.id, lapse: Object.assign({}, box.lapse) }
+    box.lapse.revokedAt = args.at === undefined || args.at === null ? clock() : args.at
+    box.lapse.revokedBy = args.by === undefined || args.by === null ? null : String(args.by)
+    box.lapse.revokeReason = reason
+    box.state = 'open'
+    emit({ type: 'ballot.lapse-revoked', boxId: box.id, name: box.lapse.name, by: box.lapse.revokedBy })
+    return { ok: true, boxId: box.id, lapse: Object.assign({}, box.lapse), enforced: [], enforcedScope: ENFORCED_SCOPE }
+  }
+
   const status = (a) => {
     const box = a && a.boxId ? boxes.get(String(a.boxId)) : null
     const c = cfg()
     if (a && a.boxId) {
       if (!box) return deny('VMU_NOT_FOUND', '找不到票箱', '先 open()')
-      return { ok: true, boxId: box.id, round: box.round, sealed: box.sealed, state: box.state, reopenCount: Number(box.reopenCount || 0), votes: box.votes.size, abstain: box.abstain.size, absent: box.absent.length, droppedAudit }
+      return { ok: true, boxId: box.id, round: box.round, sealed: box.sealed, state: box.state, reopenCount: Number(box.reopenCount || 0), votes: box.votes.size, abstain: box.abstain.size, absent: box.absent.length,
+        // F28: the fallback state is observable state, not an inference from a missing board.
+        openMaxMs, lapse: box.lapse ? Object.assign({}, box.lapse) : null, droppedAudit }
     }
     return { ok: true, boxes: boxes.size, droppedAudit, refusals: Object.fromEntries(refusals), partition: partition(), method: c.method, tieRule: c.tieRule, secrecy: c.secrecy }
   }
@@ -465,7 +541,7 @@ export function createBallotBox(opts) {
     return { ok: true, restored: true, restored_items: ['boxes'], counters: { ballotbox: seq }, skipped: (snap.skipped || []).slice(), boxes: boxes.size }
   }
 
-  return { open, cast, markAbsent, close, reopen, status, keysUsed, partition, config: cfg, refusals: () => Object.fromEntries(refusals), snapshot, restore }
+  return { open, cast, markAbsent, close, reopen, lapseDue, lapse, revokeLapse, status, keysUsed, partition, config: cfg, refusals: () => Object.fromEntries(refusals), snapshot, restore }
 }
 
 export default createBallotBox

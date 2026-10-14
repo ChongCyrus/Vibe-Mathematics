@@ -476,7 +476,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.collusion.minEvidence', type: 'natural', def: 2, hot: HOT.H1, who: 'office', doc: '判定嫌疑所需最少证据数' },
   { key: 'vmu.collusion.onSuspect', type: 'enum', domain: ['report', 'freeze-review'], def: 'report', hot: HOT.H1, who: 'office', doc: '嫌疑处理（默认只报告；冻结审查须显式开启）' },
   // batch-4 slice 1 (mathjobs): the job-face knobs the module really reads.
-  { key: 'vmu.math.maxParallel', type: 'positiveInteger', def: 1, hot: HOT.H1, who: 'office', doc: '并行作业上限（超限 ⇒ 具名拒，不自旋等待 ✗）。★ 轮 3 语义边界（task-20 A）：本键是**作业服务**的并发上限，读者＝`kernel/mathjobs.js:213`（`maxParallel`）。★ `vmu.math.jobs.maxParallel`（读者＝`kernel/mathtools.js:194/565` 的**策略层** active-runs 上限）**意图相同、读者不同、当前互不驱动**（设一个不动另一个）⇒ 要限并发请**两个都设**；**收敛方向**：下一轮让 mathtools 读本键、`vmu.math.jobs.maxParallel` 降为待删别名（两个读点都在 reader-b 的文件里，未擅自改）。' },
+  { key: 'vmu.math.maxParallel', type: 'positiveInteger', def: 1, hot: HOT.H1, who: 'office', doc: '**数学运行**并发上限（作业/编译；超限 ⇒ 具名拒，不自旋等待 ✗）。★ 轮 4 Lead 裁决：本键**只**管数学运行并发（对齐 v5r 的 `leanJobsMaxParallel:1`）；**不要**拿它当"每轮唤醒几名成员"——那是**成员策略**，由 `vmu.limits.maxLiveMembers` 表达（v5r 写 3）。**两个不同策略不许强行相等**（轮 4 撤销过一次错误的镜像；那个旧的 jobs 作用域名字已从 schema 移除，此处不复写键名）。' },
   { key: 'vmu.math.maxJobs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '作业总量上限（0＝不限）' },
   { key: 'vmu.math.keepReceipts', type: 'natural', def: 200, hot: HOT.H1, who: 'office', doc: '回执保留条数（溢出必计数）' },
   { key: 'vmu.math.requireSeedForRandom', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '随机作业必须有种子' },
@@ -986,7 +986,11 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.math.jobs.persist', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '作业持久化：false＝只留回执详情；true＝额外写 `Math/Jobs` 镜像并允许恢复（`vmu.math.jobs.recover` 决定何时恢复）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`。' },
   // ROUND 3 / task-20 A: the SECOND half of the maxParallel pair, under the hand-written table so the boundary is
   // stated ONCE (the generator treats it as pre-existing and emits no duplicate row).
-  { key: 'vmu.math.jobs.maxParallel', type: 'natural', def: 1, hot: HOT.H1, who: 'office', doc: '**策略层**的 active-runs 上限（`kernel/mathtools.js:194/565` 读取，超限按 `VMU_RESOURCE_BUDGET` 具名拒）。★ 与 `vmu.math.maxParallel`（**作业服务**并发上限，`kernel/mathjobs.js:213`）意图相同、读者不同、当前互不驱动 ⇒ 要限并发请**两个都设**；收敛方向见 `vmu.math.maxParallel` 的 doc。' },
+  // ROUND 4 / task-25 D — **REMOVED BY LEAD RULING**: the old `math.jobs.*` second name for math-run
+  // concurrency. It is gone from the schema (not kept as an alias: two different policies must not be forced equal,
+  // and a silently-diverging duplicate name is worse than none). `kernel/mathtools.js` still reads it - its own
+  // `WIRED_KEYS` declares it - so that read point is reader-b's to retire; until then the key is simply UNDECLARED,
+  // which `docs/04` reports as a wired-but-undeclared read (visible, not silent).
   // ROUND 3 / task-20 D (v5r-reader-c 的 task-17 接线单): two keys whose readers already exist.
   { key: 'vmu.meetings.tier', type: 'enum', domain: ['formal', 'light'], def: 'formal', hot: HOT.H1, who: 'office', doc: '会议级别：light＝简流程，**不得产出实体定论**（派生谓词，不是阶段）。读者：`kernel/meetings.js` 的 `K.tier`＋`tier()`／`truthWriteRefusal()`，唯一判定点在 `close()` 的收束路径（reader-c 的 GAP-MTG-02）。' },
   // ROUND 3 / task-20 D（reader-c 的接线单增补）：只有一个 `tier` 键表达不了"本机构不允许简流程"，所以"是否允许"

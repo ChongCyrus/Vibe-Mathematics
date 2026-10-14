@@ -46,7 +46,7 @@
 
 import { readFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
-import { createJobMirror, safeRelDir, ENFORCED_SCOPE } from './mathjobs.js'
+import { createJobMirror, safeRelDir, ENFORCED_SCOPE, createChildBudget } from './mathjobs.js'
 import { mint as mintId, observeIds } from './ids.js'
 
 export const LEAN_KEYS = Object.freeze([
@@ -63,9 +63,15 @@ export const LEAN_KEYS = Object.freeze([
   'vmu.math.jobs.dir',
   'vmu.math.jobs.recover',
   'vmu.math.jobs.keepMirrors',
+  // F17: the per-stream output cap (same key the computation face uses ⇒ one meaning, one knob).
+  'vmu.math.captureStdoutBytes',
 ])
 
 export const LEAN_JOB_LOG_MAX = 200 // 事件日志上限；超出即 count 丢弃（不静默）
+/** 一次性公告队列的上限（超出即 count 丢弃：F44 的"一键公告"不许无界增长）。 */
+export const LEAN_NOTICE_MAX = 20
+/** 子进程输出的硬上限（每个流）：超出即**计数**截断（F17 的 `maxBytes` 面）。 */
+export const LEAN_OUTPUT_MAX_BYTES = 64 * 1024
 
 /** The durable-job states. **There is no `passed` state**: `passed` is a conclusion, `settled` is a state. */
 export const LEAN_JOB_STATES = Object.freeze(['queued', 'running', 'settled', 'failed', 'timeout', 'interrupted'])
@@ -85,6 +91,19 @@ export const ARCHIVE_KINDS = Object.freeze(['def', 'lemma', 'theorem', 'assumpti
 export const ARCHIVE_READ_MAX = 200000
 
 /**
+ * F17: byte-capped truncation that COUNTS what it dropped (a silent cut would hide the very output a
+ * failed compile needs). Keeps the TAIL, because compiler errors are at the end.
+ */
+export function tailBytes(s, cap) {
+  const str = String(s === undefined || s === null ? '' : s)
+  const bytes = Buffer.byteLength(str, 'utf8')
+  if (!(cap > 0) || bytes <= cap) return { text: str, droppedBytes: 0 }
+  let cut = str
+  while (Buffer.byteLength(cut, 'utf8') > cap && cut.length > 0) cut = cut.slice(1)
+  return { text: cut, droppedBytes: bytes - Buffer.byteLength(cut, 'utf8') }
+}
+
+/**
  * A named refusal. `enforced` lists the SETTINGS KEYS whose value took part in this refusal — an empty
  * array when the decision came from the arguments/file/the injected seam (the honest answer, not a
  * missing one). `enforcedScope` says how far the evaluation got (repo D3: a result is never scope-less).
@@ -101,6 +120,11 @@ export function createLeanFace(opts) {
   const o = opts || {}
   const readKey = (k) => (o.settings && typeof o.settings.get === 'function' ? o.settings.get(k) : (o.settings || {})[k])
   const spawn = o.spawn
+  // F17: the KILLABLE seam. `spawnHandle(opts, onHandle)` must hand us the handle synchronously; then the
+  // budget can really terminate the child (and `terminated:true` is a fact, not a claim). Absent ⇒ we keep the
+  // promise seam, still time out (never hang) and report `canTerminateChild:false` BY NAME.
+  const spawnHandle = typeof o.spawnHandle === 'function' ? o.spawnHandle : null
+  const budget = createChildBudget({ timer: o.timer })
   const root = String(o.root || '.')
   const clock = typeof o.clock === 'function' ? o.clock : () => Date.now()
   const log = typeof o.log === 'function' ? o.log : () => {}
@@ -138,12 +162,16 @@ export function createLeanFace(opts) {
     const jobsDir = rawDir ? safeRelDir(rawDir) : LEAN_JOBS_DIR_DEFAULT
     const nKeep = Number(readKey('vmu.math.jobs.keepMirrors'))
     const rm = String(readKey('vmu.math.jobs.recover') || 'on-load')
+    // F17: the per-stream output cap (the shared key; 0/absent ⇒ the documented 64KB constant).
+    const nOut = Number(readKey('vmu.math.captureStdoutBytes'))
+    const outputMaxBytes = Number.isFinite(nOut) && nOut > 0 ? Math.floor(nOut) : LEAN_OUTPUT_MAX_BYTES
     return {
       formalVerify, leanCommand, leanArgs, leanTimeoutMs, leanAsync, leanInitiative, leanJobsMaxParallel, searchPaths,
       persist: readKey('vmu.math.jobs.persist') === true,
       jobsDir, jobsDirRaw: rawDir,
       keepMirrors: Number.isFinite(nKeep) && nKeep >= 0 ? Math.floor(nKeep) : 200,
       recoverMode: ['on-load', 'manual', 'off'].indexOf(rm) === -1 ? 'on-load' : rm,
+      outputMaxBytes,
     }
   }
 
@@ -177,6 +205,26 @@ export function createLeanFace(opts) {
   const order = []
   let droppedEvents = 0
   const events = []
+  // F44: ONE-SHOT announcements. A settled job announces itself EXACTLY ONCE, in the initiator's next
+  // prompt; the queue is capped (drops counted) and the durable paths (mirror file / status(jobId) /
+  // mirrors()) remain the LONG-TERM query face — "announcement is not the only way to learn the outcome".
+  const notices = []
+  let droppedNotices = 0
+  /** F17: the runtime fact — did the LAST spawn hand us a handle? (admission() reports the declared seam too.) */
+  let lastSpawnHadHandle = null
+  const pushNotice = (j, line) => {
+    notices.push({ member: String(j.member || ''), jobId: j.id, line, at: clock() })
+    while (notices.length > LEAN_NOTICE_MAX) { notices.shift(); droppedNotices += 1 }
+  }
+  const takeNoticesFor = (memberId) => {
+    const me = String(memberId || '')
+    if (!me) return []
+    const mine = notices.filter((n) => n.member === me)
+    if (!mine.length) return []
+    for (const n of mine) { const i = notices.indexOf(n); if (i !== -1) notices.splice(i, 1) }
+    return mine.map((n) => n.line)
+  }
+  const noticesView = () => ({ ok: true, count: notices.length, droppedNotices, cap: LEAN_NOTICE_MAX, notices: notices.map((n) => ({ member: n.member, jobId: n.jobId, at: n.at, line: n.line })) })
   const note = (id, what, extra) => {
     events.push(Object.assign({ at: clock(), id, what }, extra || {}))
     if (events.length > LEAN_JOB_LOG_MAX) { events.shift(); droppedEvents += 1 }
@@ -207,6 +255,11 @@ export function createLeanFace(opts) {
     exitCode: j.exitCode, hashUnchanged: j.hashUnchanged, passed: j.passed === true,
     startedAt: j.startedAt, endedAt: j.endedAt,
     attempts: Number(j.attempts) || 0,
+    // F17 facts a reader must be able to see without reading the mirror.
+    terminated: j.terminated === true, hadHandle: j.hadHandle === true,
+    outputDroppedBytes: Number(j.outputDroppedBytes) || 0, outputLossy: j.outputLossy === true, outputSpill: j.outputSpill || null,
+    // F45 fact: this job reused an earlier PASSED compile (same content + build context).
+    dedupedOf: j.dedupedOf || null,
     dropped: { events: droppedEvents }, // 截断/丢弃必计数（纪律）
   })
 
@@ -247,8 +300,15 @@ export function createLeanFace(opts) {
     // The build context v5r checks is "engine + args + search paths" — NOT the file (the file is the job).
     return 'ctx:' + createHash('sha256').update(JSON.stringify([cmd.command, cmd.args.slice(0, -1), cmd.cwd])).digest('hex').slice(0, 24)
   }
+  /**
+   * F45: THE dedupe key — content identity + build context, i.e. exactly the two facts the settle decision
+   * re-checks (`hashUnchanged` and `contextHash`). Dedupe therefore CANNOT drift from settle: one function.
+   */
+  const dedupeKeyOf = (file, contentHash) => (contentHash
+    ? 'dk:' + createHash('sha256').update(String(contentHash) + '|' + contextHashOf(file)).digest('hex').slice(0, 32)
+    : null)
   const mirrorRecord = (j) => ({
-    schema: LEAN_JOB_SCHEMA, jobId: j.id, statement: j.statement, file: j.file,
+    schema: LEAN_JOB_SCHEMA, jobId: j.id, statement: j.statement, file: j.file, member: j.member || '',
     state: j.state, attempts: Number(j.attempts) || 0,
     enqueuedAt: j.enqueuedAt || 0, startedAt: j.startedAt || 0, settledAt: j.endedAt || 0,
     exitCode: j.exitCode === undefined ? null : j.exitCode,
@@ -257,6 +317,12 @@ export function createLeanFace(opts) {
     hashUnchanged: j.hashUnchanged === undefined ? null : j.hashUnchanged,
     passed: j.passed === true,
     contextHash: contextHashOf(j.file),
+    // F45: the SAME key the settle decision uses (content hash + build context) — dedupe and settle are one
+    // source by construction, not two rules that happen to agree today.
+    dedupeKey: dedupeKeyOf(j.file, j.hashBefore === undefined ? null : j.hashBefore),
+    // F17: the kill facts travel with the record (was a handle available; was the child really terminated).
+    terminated: j.terminated === true, hadHandle: j.hadHandle === true,
+    outputDroppedBytes: Number(j.outputDroppedBytes) || 0,
     receipt: j.receipt === undefined ? null : j.receipt,
     reason: j.reason || '',
     recovered: j.recovered === true,
@@ -280,20 +346,75 @@ export function createLeanFace(opts) {
       j.receipt = refuse('VMU_LEAN_FILE_UNREADABLE', '读不到 Lean 产物文件：' + j.file, '先写出 .lean 文件；本面只编译既有文件')
       note(j.id, 'failed:unreadable'); await writeMirror(j); return
     }
+    // ── F45 去重：与 settle **同源**（dedupeKey ＝ 内容哈希 ＋ 构建上下文，即 settle 要复核的那两个事实）。
+    // 同内容同上下文已有一次「通过」⇒ 不重编译；改内容或改构建上下文才会重跑。
+    j.dedupeKey = dedupeKeyOf(j.file, before)
+    if (j.dedupeKey) {
+      const memHit = [...jobs.values()].filter((x) => x.id !== j.id && x.passed === true && x.dedupeKey === j.dedupeKey)[0]
+      let ofId = memHit ? memHit.id : ''
+      if (!ofId) {
+        try {
+          const rows = await mirrorFor().list()
+          const mHit = rows.filter((r) => !r.corrupt && r.rec.passed === true && r.rec.dedupeKey === j.dedupeKey && r.jobId !== j.id)[0]
+          if (mHit) ofId = mHit.jobId
+        } catch (e) { /* no mirror ⇒ no dedupe */ }
+      }
+      if (ofId) {
+        j.state = 'settled'; j.passed = true; j.exitCode = 0; j.hashUnchanged = true
+        j.hashAfter = before; j.endedAt = clock(); j.dedupedOf = ofId; j.reason = 'deduped'
+        j.receipt = { ok: true, passed: true, deduped: true, of: ofId, exitCode: 0, hashUnchanged: true, isRefutation: false }
+        note(j.id, 'settled:deduped', { of: ofId })
+        await writeMirror(j)
+        emit('lean/job-settled', { jobId: j.id, exitCode: 0, hashUnchanged: true, deduped: true, of: ofId })
+        pushNotice(j, '【形式化结果】' + j.id + '：同内容同构建上下文已有通过（' + ofId + '）⇒ 去重，未重编译')
+        Promise.resolve().then(pump)
+        return
+      }
+    }
     const cmd = commandFor(j.file)
+    // `graceMs` is passed as a REQUEST to the host; the local budget is what makes the timeout binding.
+    const cmd2 = Object.assign({}, cmd, { graceMs: cmd.timeoutMs })
     let out
+    let budgetInfo = { timedOut: false, terminated: false, hadHandle: false }
     try {
-      out = await spawn(cmd)
+      const r = await budget({
+        timeoutMs: cmd.timeoutMs,
+        label: 'lean ' + j.id,
+        call: (onHandle) => (spawnHandle ? spawnHandle(cmd2, onHandle) : spawn(cmd2)),
+      })
+      out = r.result
+      budgetInfo = { timedOut: r.timedOut, terminated: r.terminated, hadHandle: r.hadHandle }
     } catch (e) {
       j.state = 'failed'; j.endedAt = clock(); j.reason = 'spawn-threw'
       j.receipt = refuse('VMU_LEAN_SPAWN_FAILED', 'Lean 起不来：' + String((e && e.message) || e), '检查 `' + cmd.command + '` 是否在 PATH（Host 负责真机探测）')
       note(j.id, 'failed:spawn'); await writeMirror(j); return
     }
+    j.terminated = !!budgetInfo.terminated
+    j.hadHandle = !!budgetInfo.hadHandle
+    lastSpawnHadHandle = !!budgetInfo.hadHandle
+    const cRun = cfg()
+    const capOut = tailBytes(String((out && out.stdout) || ''), cRun.outputMaxBytes)
+    const capErr = tailBytes(String((out && out.stderr) || ''), cRun.outputMaxBytes)
+    j.outputDroppedBytes = capOut.droppedBytes + capErr.droppedBytes
+    // The HOST's own truncation report (offset reader): authoritative when present.
+    const hostLossy = !!((out && out.stdoutLossy) || (out && out.stderrLossy))
+    const hostSpill = (out && (out.stdoutSpill || out.stderrSpill)) || null
+    j.outputLossy = hostLossy
+    j.outputSpill = hostSpill
     const r = out || {}
-    if (r.timedOut) {
-      j.state = 'timeout'; j.endedAt = clock(); j.reason = 'timeout'
-      j.receipt = refuse('VMU_LEAN_TIMEOUT', 'Lean 超过单次预算 ' + cmd.timeoutMs + ' ms', '调大 vmu.math.leanTimeoutMs 或切小目标', ['vmu.math.leanTimeoutMs'])
-      note(j.id, 'timeout'); await writeMirror(j); emit('lean/job-timeout', { jobId: j.id, timeoutMs: cmd.timeoutMs })
+    if (budgetInfo.timedOut || r.timedOut) {
+      j.state = 'timeout'; j.endedAt = clock(); j.reason = budgetInfo.terminated ? 'timeout:terminated' : 'timeout:not-terminated'
+      j.receipt = Object.assign(refuse('VMU_LEAN_TIMEOUT',
+        'Lean 超过单次预算 ' + cmd.timeoutMs + ' ms' + (budgetInfo.terminated
+          ? '（已 **terminate** 子进程）'
+          : '（宿主未提供 handle 接缝 ⇒ **无法 terminate**，只把作业结算为 timeout；进程可能仍在跑）'),
+        budgetInfo.terminated ? '调大 vmu.math.leanTimeoutMs 或切小目标' : '注入 spawnHandle 接缝（带 handle）才能真正终止；见 docs/09 §4.3',
+        ['vmu.math.leanTimeoutMs']),
+        { terminated: !!budgetInfo.terminated, hadHandle: !!budgetInfo.hadHandle, stdoutTail: capOut.text.slice(-2000), stderrTail: capErr.text.slice(-2000), droppedBytes: j.outputDroppedBytes })
+      note(j.id, 'timeout', { terminated: !!budgetInfo.terminated })
+      await writeMirror(j)
+      emit('lean/job-timeout', { jobId: j.id, timeoutMs: cmd.timeoutMs, terminated: !!budgetInfo.terminated })
+      pushNotice(j, '【形式化结果】' + j.id + '：超时（' + cmd.timeoutMs + 'ms，' + (budgetInfo.terminated ? '已 terminate' : '无法 terminate（无 handle 接缝）') + '）')
       Promise.resolve().then(pump)
       return
     }
@@ -308,14 +429,20 @@ export function createLeanFace(opts) {
     j.state = j.passed ? 'settled' : 'failed'
     j.endedAt = clock()
     j.receipt = j.passed
-      ? { ok: true, passed: true, isRefutation: false, exitCode, hashUnchanged: true, stdout: String(r.stdout || '').slice(0, 4000) }
-      : refuse(exitCode === 0 ? 'VMU_LEAN_HASH_CHANGED' : 'VMU_LEAN_EXIT_NONZERO',
+      ? { ok: true, passed: true, isRefutation: false, exitCode, hashUnchanged: true, stdout: capOut.text.slice(0, 4000),
+          stdoutDroppedBytes: capOut.droppedBytes, stderrDroppedBytes: capErr.droppedBytes, hostLossy, spillPath: hostSpill }
+      : Object.assign(refuse(exitCode === 0 ? 'VMU_LEAN_HASH_CHANGED' : 'VMU_LEAN_EXIT_NONZERO',
         exitCode === 0 ? '编译期间文件内容已变 ⇒ 结果不算 passed（hash 变了）' : 'Lean 退出码 ' + exitCode,
-        exitCode === 0 ? '编译后不要再改文件；重跑一次' : '看 stdout/stderr 修证明；本面不猜结论')
+        exitCode === 0 ? '编译后不要再改文件；重跑一次' : '看 stdout/stderr 修证明；本面不猜结论'),
+        { stdoutDroppedBytes: capOut.droppedBytes, stderrDroppedBytes: capErr.droppedBytes, hostLossy, spillPath: hostSpill,
+          stdoutTail: capOut.text.slice(-2000), stderrTail: capErr.text.slice(-2000) })
     note(j.id, j.passed ? 'settled:passed' : 'failed:' + (j.receipt && j.receipt.code))
     await writeMirror(j)
     emit(j.passed ? 'lean/job-settled' : 'lean/job-failed',
       { jobId: j.id, exitCode, hashUnchanged, code: j.passed ? null : (j.receipt && j.receipt.code) || null })
+    pushNotice(j, j.passed
+      ? '【形式化结果】' + j.id + '：通过（exit 0，哈希未变' + (j.terminated ? '' : '') + '）'
+      : '【形式化结果】' + j.id + '：' + (j.receipt && j.receipt.code) + '（' + String((j.receipt && j.receipt.message) || '').slice(0, 120) + '）')
     // 一个作业结束后**必须再 pump**：否则 leanJobsMaxParallel=1 时队列停在第一个作业之后（实测缺陷）。
     Promise.resolve().then(pump)
   }
@@ -342,9 +469,12 @@ export function createLeanFace(opts) {
     if (!statement) return refuse('VMU_LEAN_STATEMENT_REQUIRED', 'submit 需要 statement（要形式化的命题原文）', 'statement 必填：它是回执与审计的对象')
     if (!file) return refuse('VMU_LEAN_FILE_REQUIRED', 'submit 需要 file（.lean 文件路径）', 'file 必填：本面只编译既有文件，不替你写证明')
     const c = cfg()
+    // NOTE (F45): the dedupe check lives in `runOne`, NOT here — `submit` must stay synchronous up to the
+    // enqueue (the queue is observable immediately), and the key needs the file's CURRENT content hash, which
+    // `runOne` already reads. It also keeps dedupe and settle computed from the SAME facts.
     const id = mintJobId()
     const j = {
-      id, statement, file, state: 'queued', attempts: 0, enqueuedAt: clock(),
+      id, statement, file, member: String(args.member || ''), dedupeKey: null, state: 'queued', attempts: 0, enqueuedAt: clock(),
       exitCode: undefined, hashBefore: undefined, hashAfter: undefined, hashUnchanged: undefined,
       passed: undefined, startedAt: 0, endedAt: 0, receipt: undefined, promise: undefined, reason: '',
     }
@@ -403,10 +533,25 @@ export function createLeanFace(opts) {
       ? '跨进程独占创建：宿主提供 fs.writeTextExclusive（wx/O_EXCL）⇒ 首个镜像写入**原子占号**，同号并发写盘被具名拒（VMU_MATH_JOB_ID_TAKEN）'
       : '跨进程独占创建：宿主未暴露 writeTextExclusive ⇒ crossProcess=not-enforced（同名 jobId 的并发写盘不保证唯一，后写者覆盖）；需要它的是"多进程/多会话共用一个研究所目录"的部署')
     notes.push('dispose() 只能把在跑作业标 interrupted：注入的 spawn 是 promise 接缝，没有 handle ⇒ **无法 terminate 子进程**（具名限制，不假装）')
+    // F17: the subprocess budget is LOCAL (a timer) and killing needs a handle ⇒ report exactly that.
+    notes.push(spawnHandle
+      ? '子进程预算：本地 timer 到点后调用 handle.terminate()（**真的终止**），结果带 terminated:true；graceMs 同时作为请求传给宿主'
+      : '子进程预算：本地 timer 到点会把作业结算为 timeout（**不会挂死**）；能否**真的终止**取决于 seam 形状——宿主原生 spawn 同步返回 SubprocessHandle（有 terminate）时本面会自动使用它并记 terminated:true；只给 promise 接缝 ⇒ terminated:false、canTerminateChild:false，谁需要它：超时后要立刻释放 CPU、不留孤儿进程的部署')
     return {
       ok: true,
       persist: c.persist === true,
       fileMirror: mirrorAllowed(),
+      outputMaxBytes: c.outputMaxBytes,
+      subprocess: {
+        budget: 'local-timer',
+        declaredKillableSeam: !!spawnHandle,
+        lastSpawnHadHandle,
+        // Ground truth: the DSH `subprocess` service documents `spawn(spec): SubprocessHandle` with
+        // `terminate()`/`waitForExit()`/`done`/`collected.*.readFrom(offset)` — so a host-native spawn is
+        // ALREADY killable; passing it through is all that is needed (no new host capability).
+        hostContract: 'subprocess.spawn → SubprocessHandle{terminate, done, collected}',
+        graceMsSent: true,
+      },
       jobsDir: c.jobsDir,
       keepMirrors: c.keepMirrors,
       removeText: !!(fsSeam && typeof fsSeam.removeText === 'function'),
@@ -419,7 +564,7 @@ export function createLeanFace(opts) {
       jobStates: LEAN_JOB_STATES.slice(),
       exclusiveCreate: xc,
       crossProcess: xc ? 'enforced-by-exclusive-create' : 'not-enforced',
-      canTerminateChild: false,          // honest: the promise seam exposes no handle
+      canTerminateChild: !!(spawnHandle || lastSpawnHadHandle === true),   // declared seam OR runtime-proven
       mirrors: ms.count,
       mirrorSkipped: mirrorSkipped + (ms.skipped || 0),
       mirrorEvicted: mirrorEvicted + (ms.evicted || 0),
@@ -614,7 +759,9 @@ export function createLeanFace(opts) {
     jobsMaxParallel: () => cfg().leanJobsMaxParallel,
     // ROUND 2 (target 5 B): durable jobs
     recover, listMirrors, admission, dispose,
-    mirrors: () => ({ ok: true, count: mirrorInst ? mirrorInst.records.size : 0, jobs: [...(mirrorInst ? mirrorInst.records.values() : [])].map((m) => ({ jobId: m.jobId, state: m.state, attempts: m.attempts, passed: m.passed === true })) }),
+    mirrors: () => ({ ok: true, count: mirrorInst ? mirrorInst.records.size : 0, jobs: [...(mirrorInst ? mirrorInst.records.values() : [])].map((m) => ({ jobId: m.jobId, state: m.state, attempts: m.attempts, passed: m.passed === true, terminated: m.terminated === true, dedupeKey: m.dedupeKey || null })) }),
+    // ROUND 4 · F44: the one-shot announcement queue (long-term query stays: status(jobId) / mirrors() / the mirror file)
+    takeNoticesFor, notices: noticesView,
   }
 }
 

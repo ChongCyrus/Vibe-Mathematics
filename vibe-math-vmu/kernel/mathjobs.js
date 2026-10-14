@@ -95,6 +95,114 @@ export function safeRelDir(rel) {
 }
 
 /**
+ * THE ONE CHILD-BUDGET primitive (Round 4 · F17): give every spawned child a HARD budget, and **really
+ * terminate** it when the budget fires — the host's `graceMs` is only a request, so relying on it alone
+ * leaves a runaway process alive while we report a timeout.
+ *
+ * THREE CALL SHAPES, all auto-detected (no flag to get wrong):
+ *   · a **host-native handle** — `spawn(spec)` returns `SubprocessHandle` SYNCHRONOUSLY (this is what the DSH
+ *     `subprocess` service documents: `spawn(spec): SubprocessHandle` with `terminate()`, `waitForExit()`,
+ *     `done`, and offset-based non-consuming `collected.{stdout,stderr}.readFrom(fromByte)`). Then
+ *     `terminate()` is real and `lossy`/`spillPath` from a reader are the HOST's own truncation report.
+ *   · `spawnHandle(spec, onHandle)` — an explicit killable seam; it must call `onHandle(h)` synchronously.
+ *   · a promise seam `spawn(spec) => Promise<result>` — legacy: the budget still fires (the caller never
+ *     hangs) but nothing can be killed, so the result says `terminated:false`/`hadHandle:false` instead of
+ *     pretending (that lie is exactly what F17 caught).
+ *   · `timer` — optional `(cb, ms) => disposer` seam (same shape as `ctx.timeout`). The DEFAULT returns a real
+ *     disposer (`() => clearTimeout(h)`), because the platform's `setTimeout` hands back a `Timeout` object and
+ *     calling THAT is a TypeError — the F15 defect peer-measured here (the armed timer was never cleared and
+ *     the failure was swallowed by a `catch`). An injected seam may still return a `Timeout`/immediate-shaped
+ *     object; it is cleared explicitly. A cleanup failure is **reported**, never swallowed.
+ *   · `onNote(what, detail)` — optional; receives `timer-cleanup-failed`.
+ *
+ * Returns `{ result, timedOut, terminated, hadHandle, cleanupFailed }`. It never throws for a timeout; it
+ * throws only when the call itself throws (the caller keeps its own error handling).
+ */
+export function createChildBudget({ timer = null, onNote = null } = {}) {
+  const note = typeof onNote === 'function' ? onNote : () => {}
+  // The default seam ALWAYS returns a callable disposer (see the header: returning the Timeout itself is the bug).
+  const setT = typeof timer === 'function' ? timer : (cb, ms) => {
+    const h = setTimeout(cb, ms)
+    return () => clearTimeout(h)
+  }
+  /** Dispose whatever the timer seam returned; a non-disposable is a NAMED failure (never a silent catch). */
+  const disposeTimer = (d) => {
+    if (d === null || d === undefined) return null
+    if (typeof d === 'function') { d(); return null }
+    // A platform `Timeout`/`Immediate` (or any object clearTimeout accepts): clear it explicitly.
+    if (typeof d === 'object' && typeof clearTimeout === 'function') { clearTimeout(d); return null }
+    return 'timer seam returned a non-disposable (' + typeof d + ')'
+  }
+  /** Read one collected stream non-consumingly; `lossy`/`spillPath` are the host's own report. */
+  const readCollected = (handle, stream) => {
+    try {
+      const reader = handle && handle.collected && handle.collected[stream]
+      if (!reader || typeof reader.readFrom !== 'function') return { text: '', lossy: false, spillPath: null }
+      const r = reader.readFrom(0) || {}
+      return { text: String(r.text === undefined ? '' : r.text), lossy: !!r.lossy, spillPath: r.spillPath || null }
+    } catch (e) { return { text: '', lossy: false, spillPath: null } }
+  }
+  return async function runWithBudget({ call, timeoutMs, label = 'child' }) {
+    let handle = null
+    let timedOut = false
+    let terminated = false
+    let timerDisposer = null
+    let cleanupFailed = null
+    const done = Promise.resolve()
+      .then(() => call((h) => { handle = h }))
+      .then((out) => {
+        // Host-native handle: `spawn` answered synchronously with something that has `done`.
+        if (out && typeof out.then !== 'function' && out.done && typeof out.done.then === 'function') {
+          handle = out
+          return Promise.resolve(out.done).then((o) => {
+            const so = readCollected(out, 'stdout')
+            const se = readCollected(out, 'stderr')
+            return {
+              exitCode: o && o.exitCode !== undefined ? o.exitCode : null,
+              signal: (o && o.signal) || null,
+              stdout: so.text, stderr: se.text,
+              stdoutLossy: so.lossy, stderrLossy: se.lossy,
+              stdoutSpill: so.spillPath, stderrSpill: se.spillPath,
+            }
+          })
+        }
+        return out
+      })
+      .then((v) => ({ settled: true, value: v }), (e) => ({ settled: false, error: e }))
+    const budget = new Promise((resolve) => {
+      timerDisposer = setT(() => {
+        timedOut = true
+        try {
+          if (handle && typeof handle.terminate === 'function') { handle.terminate(); terminated = true }
+          else if (handle && typeof handle.kill === 'function') { handle.kill(); terminated = true }
+        } catch (e) { /* the race result is the report */ }
+        resolve({ settled: true, value: { exitCode: null, signal: 'SIGTERM', timedOut: true, terminated } })
+      }, Math.max(1, Number(timeoutMs) || 1))
+    })
+    let r
+    try {
+      r = await Promise.race([done, budget])
+    } finally {
+      // `done`/error wins ⇒ the timer must not fire later. When the TIMEOUT won, the timer already fired and
+      // disposing it is a no-op, so this is safe in either order. A CLEANUP FAILURE IS REPORTED (F15): the old
+      // shape swallowed a TypeError here, so the default deployment never cleared its timer and nobody knew.
+      try {
+        cleanupFailed = disposeTimer(timerDisposer)
+        if (cleanupFailed) note('timer-cleanup-failed', { label, detail: cleanupFailed })
+      } catch (e) {
+        cleanupFailed = String((e && e.message) || e)
+        note('timer-cleanup-failed', { label, detail: cleanupFailed })
+      }
+    }
+    if (r.settled) {
+      const value = r.value || {}
+      return { result: value, timedOut: !!(value.timedOut || timedOut), terminated: !!(value.terminated || terminated), hadHandle: !!handle, cleanupFailed }
+    }
+    throw r.error
+  }
+}
+
+/**
  * THE ONE JOB-MIRROR primitive (Round 2 · target 5): the durable `<dir>/<jobId>.json` ledger shared by the
  * computation face (`createMathJobs`) and the Lean face (`kernel/lean.js`). Extracted so retention and the
  * honest capability report exist ONCE (a second copy would be two authorities for one rule).
@@ -300,6 +408,13 @@ export function createMathJobs(opts) {
     } catch (e) { /* hydration is best-effort: a failure must not break recovery */ }
   }
 
+  // ── F17：子进程预算（本地 timer ＋ 真 terminate）── 与 Lean/脚本面共用 `createChildBudget` ─────────
+  const spawnHandle = typeof o.spawnHandle === 'function' ? o.spawnHandle : null
+  const budget = createChildBudget({ timer: o.timer })
+  let lastSpawnHadHandle = null
+  let childrenTerminated = 0
+  let childrenTimedOut = 0
+
   // ── 镜像面（ROUND 2）：实现在 `createJobMirror`（本文件顶部，Lean 面共用同一原语）──────────────
   // The helper is (re)built when the dir/keep policy changes, and the counters are folded so the reported
   // totals stay monotonic across a hot re-configuration.
@@ -373,22 +488,38 @@ export function createMathJobs(opts) {
       job.state = 'running'
       job.startedAt = clock()
       await writeMirror(job)
-      const out = await spawn({ engine: job.engine, argv: (job.argv || []).slice(), stdin: job.stdin || '', timeoutMs: job.timeoutMs, env: env() })
+      const b = await budget({
+        timeoutMs: job.timeoutMs,
+        label: 'math ' + job.id,
+        call: (onHandle) => {
+          const spec = { engine: job.engine, argv: (job.argv || []).slice(), stdin: job.stdin || '', timeoutMs: job.timeoutMs, graceMs: job.timeoutMs, env: env() }
+          return spawnHandle ? spawnHandle(spec, onHandle) : spawn(spec)
+        },
+      })
+      const out = b.result
+      lastSpawnHadHandle = b.hadHandle
+      if (b.timedOut) childrenTimedOut += 1
+      if (b.terminated) childrenTerminated += 1
       const r = out || {}
       job.settledAt = clock()
       const so = tail(r.stdout, c.captureStdoutBytes)
       const se = tail(r.stderr, c.captureStdoutBytes)
-      const timedOut = r.timedOut === true
+      const timedOut = r.timedOut === true || b.timedOut
       const exitCode = timedOut ? null : Number(r.exitCode)
       const stderrTail = se.text.split('\n').slice(-5).join('\n')
       const receipt = {
         jobId: job.id, engine: job.engine, argvFingerprint: fp(job.argv || []), inputFingerprint: job.inputHash, outputFingerprint: fp({ stdout: so.text, stderr: se.text }),
         exitCode, durationMs: job.settledAt - job.startedAt, timedOut, seed: job.seed || '',
         stdout: so.text, stderr: se.text, stderrTail, droppedBytes: so.droppedBytes + se.droppedBytes,
+        // F17 facts: the budget is local; killing needs a handle; the host may also report its own loss.
+        terminated: !!b.terminated, hadHandle: !!b.hadHandle,
+        hostLossy: !!((r.stdoutLossy) || (r.stderrLossy)), spillPath: (r.stdoutSpill || r.stderrSpill) || null,
       }
       job.exitCode = exitCode
       job.timedOut = timedOut
-      job.run = { ok: !timedOut && exitCode === 0, exitCode, timedOut, ms: receipt.durationMs, stderrTail, droppedBytes: receipt.droppedBytes }
+      job.terminated = !!b.terminated
+      job.hadHandle = !!b.hadHandle
+      job.run = { ok: !timedOut && exitCode === 0, exitCode, timedOut, terminated: !!b.terminated, hadHandle: !!b.hadHandle, ms: receipt.durationMs, stderrTail, droppedBytes: receipt.droppedBytes }
       const missing = ['engine', 'argvFingerprint', 'inputFingerprint', 'exitCode', 'durationMs', 'outputFingerprint'].filter((k) => receipt[k] === undefined || receipt[k] === '')
       if (missing.length) {
         job.state = 'failed'
@@ -405,7 +536,11 @@ export function createMathJobs(opts) {
         emit('math/job-timeout', { jobId: job.id, engine: job.engine, timeoutMs: job.timeoutMs, droppedBytes: receipt.droppedBytes })
         // INTEGRATOR RULING: the SHARED module code is the one already registered in 03-§8 (`MATH_TIMEOUT`,
         // no VMU_ prefix). One meaning, one name.
-        return Object.assign(refuse('MATH_TIMEOUT', '作业超时（>' + job.timeoutMs + ' ms）：已保留部分输出', '见 receipt.stdout/stderr 尾部；丢弃字节已计数 ' + receipt.droppedBytes, ['vmu.math.timeoutMs']), { receipt })
+        return Object.assign(refuse('MATH_TIMEOUT', '作业超时（>' + job.timeoutMs + ' ms）：已保留部分输出'
+          + (b.terminated ? '（已 **terminate** 子进程）' : '（宿主未给 handle ⇒ **无法 terminate**，进程可能仍在跑）'),
+          b.terminated ? '见 receipt.stdout/stderr 尾部；丢弃字节已计数 ' + receipt.droppedBytes
+            : '注入宿主原生 spawn（同步返回带 terminate 的 handle）或 spawnHandle 接缝才能真正终止；见 docs/09 §4.3',
+          ['vmu.math.timeoutMs']), { receipt })
       }
       if (exitCode !== 0) {
         job.state = 'failed'
@@ -654,6 +789,11 @@ export function createMathJobs(opts) {
       recoverMode: c.recoverMode,
       exclusiveCreate: xc,
       crossProcess: xc ? 'enforced-by-exclusive-create' : 'not-enforced',
+      // F17: the budget is local ALWAYS (no hang); killing needs a handle — declared seam, or proven at runtime
+      // by a host-native `spawn` that returns a SubprocessHandle.
+      canTerminateChild: !!(spawnHandle || lastSpawnHadHandle === true),
+      subprocess: { budget: 'local-timer', declaredKillableSeam: !!spawnHandle, lastSpawnHadHandle, childrenTerminated, childrenTimedOut, graceMsSent: true,
+        hostContract: 'subprocess.spawn → SubprocessHandle{terminate, done, collected}' },
       mirrors: ms.count,
       droppedMirrors, mirrorSkipped, mirrorFailures,
       lastRecovery,

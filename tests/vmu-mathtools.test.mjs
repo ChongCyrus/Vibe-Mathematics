@@ -62,12 +62,12 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
 {
   // maxParallel: a nested plan during an active run sees `active >= cap`
   const nested = []
-  const one = mk({ settings: { 'vmu.math.jobs.maxParallel': 1 }, seam: () => { try { nested.push(one.t.plan({ op: 'x' }).ok) } catch (e) { nested.push(e.code) }; return { ok: true, result: { value: 1 } } } })
+  const one = mk({ settings: { 'vmu.math.maxParallel': 1 }, seam: () => { try { nested.push(one.t.plan({ op: 'x' }).ok) } catch (e) { nested.push(e.code) }; return { ok: true, result: { value: 1 } } } })
   one.t.run({ op: 'stats/mean' })
-  ok(nested[0] === 'VMU_RESOURCE_BUDGET', 'jobs.maxParallel[-]: a nested run at cap 1 is refused', JSON.stringify(nested))
-  const three = mk({ settings: { 'vmu.math.jobs.maxParallel': 3 }, seam: () => { try { nested.push(three.t.plan({ op: 'x' }).ok) } catch (e) { nested.push(e.code) }; return { ok: true, result: { value: 1 } } } })
+  ok(nested[0] === 'VMU_RESOURCE_BUDGET', 'maxParallel[-]: a nested run at cap 1 is refused', JSON.stringify(nested))
+  const three = mk({ settings: { 'vmu.math.maxParallel': 3 }, seam: () => { try { nested.push(three.t.plan({ op: 'x' }).ok) } catch (e) { nested.push(e.code) }; return { ok: true, result: { value: 1 } } } })
   three.t.run({ op: 'stats/mean' })
-  ok(nested[1] === true, 'jobs.maxParallel[+]: at cap 3 the nested plan passes')
+  ok(nested[1] === true, 'maxParallel[+]: at cap 3 the nested plan passes')
   // dir
   const root = process.cwd()
   const dirs = mk({ settings: { 'vmu.math.jobs.dir': root } })
@@ -367,8 +367,8 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
   reqKey({ 'vmu.math.sandbox.memoryMb': 128 }, { op: 'stats/mean', memoryMb: 64 }, 'vmu.math.sandbox.memoryMb', 'sandbox.memoryMb')
   reqKey({ 'vmu.math.sandbox.wallMs': 5000 }, { op: 'stats/mean', wallMs: 100 }, 'vmu.math.sandbox.wallMs', 'sandbox.wallMs')
   reqKey({ 'vmu.math.sandbox.cpuMs': 5000 }, { op: 'stats/mean', cpuMs: 100 }, 'vmu.math.sandbox.cpuMs', 'sandbox.cpuMs')
-  ok(mkRing({ 'vmu.math.jobs.maxParallel': 3 }).plan({ op: 'stats/mean' }).enforced.includes('vmu.math.jobs.maxParallel'),
-    'jobs.maxParallel[+]: the concurrency rail runs on every plan and says so')
+  ok(mkRing({ 'vmu.math.maxParallel': 3 }).plan({ op: 'stats/mean' }).enforced.includes('vmu.math.maxParallel'),
+    'maxParallel[+]: the concurrency rail runs on every plan and says so (canonical name; the legacy `vmu.math.jobs.maxParallel` is mirrored at the kernel settings boundary)')
   ok(mkRing({ 'vmu.math.repro.seed': 99 }).plan({ op: 'stats/mean' }).enforced.includes('vmu.math.repro.seed'),
     'repro.seed[+]: a configured seed that fills in the request seed is listed')
   // M8: the REFUSAL path carries the same proof (the reviewer saw `enforced: null`)
@@ -422,7 +422,7 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
   const forbidden = ['vmu.math.units.enabled', 'vmu.math.units.strictDimensions', 'vmu.math.interval.enabled',
     'vmu.math.optim.timeLimitMs', 'vmu.math.artifacts.maxAttemptsPerRun'].filter((k) => quiet.enforced.includes(k))
   ok(forbidden.length === 0, 'keys that were NOT evaluated do not appear in enforced[]', JSON.stringify(forbidden))
-  ok(quiet.enforced.includes('vmu.math.jobs.maxParallel'),
+  ok(quiet.enforced.includes('vmu.math.maxParallel'),
     'the concurrency rail (always evaluated) IS present, so the reverse check is meaningful')
   // M12: the SHAPING rails are listed too (self-audit: the same defect class existed here)
   const sig = (over = {}) => {

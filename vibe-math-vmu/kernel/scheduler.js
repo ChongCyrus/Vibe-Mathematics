@@ -16,6 +16,14 @@
 //   ④ PENDING ITEMS HAVE A CAP: exceeding it is a NAMED refusal (`VMU_SCHEDULE_LIMIT`) that states current/limit.
 //   ⑤ CANCELLING IS AUDITED (who / why / when) and an unknown id is refused by name; `tick()` reports
 //      `fired / reported / dropped / skipped` — an overdue item is never silently discarded.
+//   ⑥ (ROUND 4 / F15–F16) EVERY TIMER BRANCH RELEASES ITS HANDLE, and `tick()` IS A TRAMPOLINE:
+//      · the timer callback releases its own handle and counts it (`status().timerFired`) — before this, a fired
+//        handle stayed in the map, which both leaked the count and made `arm()` skip the item forever (a recurring
+//        item fired once and went quiet);
+//      · a RE-ENTRANT `tick()` (a hook handler that ticks from inside `fire`) is DEFERRED to another pass of the
+//        running tick instead of nesting — before this it recursed until the stack blew, because the outer pass
+//        advances the item only AFTER `fire` returns;
+//      · `passes` / `reentrantDeferred` / `tickPasses` are reported, so deferral is visible rather than assumed.
 // Invariants shared with the rest of the kernel (board.js / metrics.js / delegation.js / arbitration.js / …):
 //   · every refusal is NAMED (VMU_* + hint) — never a bare exception
 //   · every upper bound reports how many items were DROPPED — never silent (due/list/history)
@@ -118,6 +126,17 @@ export function createScheduler({ clock = () => 0, log = null, settings = {}, bu
   const handles = new Map()   // itemId -> timer handle
 
   const counts = { fired: 0, reported: 0, dropped: 0, skipped: 0, coalesced: 0 }
+  // F15/F16 (round 4) — the two readings that make the timer discipline and the trampoline OBSERVABLE rather than
+  // promised:
+  //   · `firedByTimer`  — how many times an injected timer actually fired and RELEASED its own handle (F15: the
+  //     success branch cleans up like every other branch);
+  //   · `reentrantDeferred` / `passesTotal` — how many re-entrant `tick()` calls were DEFERRED into a next pass of
+  //     the running tick instead of nesting, and how many passes ran overall (F16: "not lost, not doubled").
+  let firedByTimer = 0
+  let reentrantDeferred = 0
+  let passesTotal = 0
+  let ticking = false          // the trampoline guard: one tick is in progress
+  let rerunRequested = false   // a re-entrant request asked for another pass
 
   const bump = (map, key, by = 1) => map.set(key, (map.get(key) || 0) + by)
   const objOf = (map) => { const o = {}; for (const k of [...map.keys()].sort()) o[k] = map.get(k); return o }
@@ -222,6 +241,86 @@ export function createScheduler({ clock = () => 0, log = null, settings = {}, bu
       : 'absolute instant: unaffected by daylight-saving transitions (07 §L368)',
   })
 
+  /**
+   * ONE PASS of the scheduler: process everything due at `when`. Pure with respect to re-entrancy (it never calls
+   * itself); `tick()` below is the trampoline that drives it, so a re-entrant request becomes another pass.
+   */
+  function tickPass(when) {
+    const paused = typeof isPaused === 'function' ? !!isPaused() : false
+    const fired = []
+    const reported = []
+    const dropped = []
+    const skipped = []
+    let coalesced = 0
+    const dueList = pendingItems().filter((it) => it.atMs <= when)
+    for (const it of dueList) {
+      if (paused) {
+        counts.skipped += 1
+        skipped.push({ id: it.id, why: 'kernel-paused' })
+        record_({ type: 'schedule/skipped', id: it.id, why: 'kernel-paused', at: when })
+        continue
+      }
+      const overdueMs = when - it.atMs
+      if (overdueGraceMs > 0 && overdueMs > overdueGraceMs) {
+        it.state = 'cancelled'
+        it.cancelledAt = when
+        it.cancelledBy = 'scheduler'
+        it.cancelReason = 'overdue by ' + overdueMs + 'ms > ' + overdueGraceMs + 'ms (vmu.schedule.overdueGraceMs)'
+        counts.dropped += 1
+        dropped.push({ id: it.id, what: it.what, overdueMs, reason: it.cancelReason })
+        record_({ type: 'schedule/dropped', id: it.id, overdueMs, why: it.cancelReason, at: when })
+        say({ type: 'schedule/dropped', at: when, id: it.id, code: 'VMU_SCHEDULE_OVERDUE_REPORT', why: it.cancelReason })
+        continue
+      }
+      // How many intervals were missed (a recurring item coalesces them into ONE run, and says so).
+      let missed = 0
+      if (it.kind === 'every' && it.intervalMs > 0 && overdueMs >= it.intervalMs) {
+        missed = Math.floor(overdueMs / it.intervalMs)
+        if (coalesceMissed) coalesced += missed
+      }
+      it.runs += 1
+      const event = {
+        type: 'schedule/due', at: when, id: it.id, what: it.what, kind: it.kind, runs: it.runs,
+        triggerVia, missed, payload: it.payload,
+      }
+      if (triggerVia === 'none') {
+        counts.reported += 1
+        reported.push({ id: it.id, what: it.what, overdueMs, runs: it.runs, missed, code: 'VMU_SCHEDULE_OVERDUE_REPORT' })
+        say(Object.assign({ code: 'VMU_SCHEDULE_OVERDUE_REPORT' }, event))
+      } else {
+        const delivered = fire(it.what, { scheduleId: it.id, what: it.what, kind: it.kind, runs: it.runs, missed, triggerVia, payload: it.payload })
+        if (delivered) {
+          counts.fired += 1
+          fired.push({ id: it.id, what: it.what, runs: it.runs, missed, via: triggerVia })
+        } else {
+          counts.skipped += 1
+          skipped.push({ id: it.id, what: it.what, why: 'bus-unsupported-or-failed' })
+          say({ type: 'schedule/skipped', at: when, id: it.id, why: 'bus-unsupported-or-failed' })
+        }
+      }
+      const done = it.kind === 'once' || (it.maxRuns > 0 && it.runs >= it.maxRuns)
+      if (done) {
+        it.state = 'completed'
+        it.completedAt = when
+        it.completedReason = it.kind === 'once'
+          ? (triggerVia === 'none' ? 'one-shot reported (triggerVia=none: nothing was triggered)' : 'one-shot fired')
+          : 'maxRuns reached (' + it.maxRuns + ')'
+      } else {
+        it.atMs = it.atMs + it.intervalMs * (coalesceMissed && missed > 0 ? missed + 1 : 1)
+      }
+      record_({ type: 'schedule/tick', id: it.id, runs: it.runs, at: when, delivered: triggerVia !== 'none' && fired.some((x) => x.id === it.id), missed })
+    }
+    return {
+      ok: true, at: when, paused,
+      fired, reported, dropped, skipped,
+      firedCount: fired.length, reportedCount: reported.length, droppedCount: dropped.length, skippedCount: skipped.length,
+      coalesced, pending: pendingItems().length, triggerVia,
+      note: triggerVia === 'none'
+        ? 'triggerVia=none: due items were REPORTED, not triggered (set vmu.schedule.triggerVia to middleware|script to emit hooks)'
+        : 'due items were emitted through the bus (' + fired.length + ' fired, ' + skipped.length + ' skipped)',
+    }
+  }
+
   const api = {
     // ROUND 264: the scheduling declarations.
     scheduleDeclarations,
@@ -285,83 +384,59 @@ export function createScheduler({ clock = () => 0, log = null, settings = {}, bu
     },
 
     /**
-     * Advance to `at` (defaults to the injected clock) and process what is due. The ONLY advancing call:
-     * with no timer seam this is how time moves. Reports fired / reported / dropped / skipped — never silent.
+     * Advance to `at` (defaults to the injected clock) and process what is due. The ONLY advancing call: with no
+     * timer seam this is how time moves. Reports fired / reported / dropped / skipped — never silent.
+     *
+     * F16 (round 4) — this IS the trampoline, and now it is one in the strict sense: a RE-ENTRANT call does not
+     * nest and cannot recurse. The realistic shape is a hook handler that runs synchronously inside `fire` and
+     * calls `tick()` back — before this guard that recursed until the stack blew, because the outer pass had not yet
+     * advanced the item (`it.runs`/`it.atMs` are written AFTER `fire` returns). A re-entrant call now sets
+     * `rerunRequested` and returns a DEFERRED receipt; the OUTER tick runs another pass with the same `when`, so the
+     * missed trigger is picked up by the very next pass instead of being lost or double-fired. Every receipt reports
+     * `passes` and `reentrantDeferred`, so a deployment can see that deferral happened.
      */
     tick({ at = null } = {}) {
       const when = at === null ? now() : normalizeAt(at, 'at')
-      const paused = typeof isPaused === 'function' ? !!isPaused() : false
-      const fired = []
-      const reported = []
-      const dropped = []
-      const skipped = []
-      let coalesced = 0
-      const dueList = pendingItems().filter((it) => it.atMs <= when)
-      for (const it of dueList) {
-        if (paused) {
-          counts.skipped += 1
-          skipped.push({ id: it.id, why: 'kernel-paused' })
-          record_({ type: 'schedule/skipped', id: it.id, why: 'kernel-paused', at: when })
-          continue
+      if (ticking) {
+        rerunRequested = true
+        reentrantDeferred += 1
+        say({ type: 'schedule/tick-deferred', at: when, deferred: reentrantDeferred })
+        return {
+          ok: true, at: when, paused: typeof isPaused === 'function' ? !!isPaused() : false,
+          fired: [], reported: [], dropped: [], skipped: [],
+          firedCount: 0, reportedCount: 0, droppedCount: 0, skippedCount: 0,
+          coalesced: 0, pending: pendingItems().length, triggerVia,
+          passes: 0, reentrantDeferred, deferred: true,
+          note: 'a tick is already in progress: this request is DEFERRED to the next pass of that tick (no nesting, nothing lost)',
         }
-        const overdueMs = when - it.atMs
-        if (overdueGraceMs > 0 && overdueMs > overdueGraceMs) {
-          it.state = 'cancelled'
-          it.cancelledAt = when
-          it.cancelledBy = 'scheduler'
-          it.cancelReason = 'overdue by ' + overdueMs + 'ms > ' + overdueGraceMs + 'ms (vmu.schedule.overdueGraceMs)'
-          counts.dropped += 1
-          dropped.push({ id: it.id, what: it.what, overdueMs, reason: it.cancelReason })
-          record_({ type: 'schedule/dropped', id: it.id, overdueMs, why: it.cancelReason, at: when })
-          say({ type: 'schedule/dropped', at: when, id: it.id, code: 'VMU_SCHEDULE_OVERDUE_REPORT', why: it.cancelReason })
-          continue
-        }
-        // How many intervals were missed (a recurring item coalesces them into ONE run, and says so).
-        let missed = 0
-        if (it.kind === 'every' && it.intervalMs > 0 && overdueMs >= it.intervalMs) {
-          missed = Math.floor(overdueMs / it.intervalMs)
-          if (coalesceMissed) coalesced += missed
-        }
-        it.runs += 1
-        const event = {
-          type: 'schedule/due', at: when, id: it.id, what: it.what, kind: it.kind, runs: it.runs,
-          triggerVia, missed, payload: it.payload,
-        }
-        if (triggerVia === 'none') {
-          counts.reported += 1
-          reported.push({ id: it.id, what: it.what, overdueMs, runs: it.runs, missed, code: 'VMU_SCHEDULE_OVERDUE_REPORT' })
-          say(Object.assign({ code: 'VMU_SCHEDULE_OVERDUE_REPORT' }, event))
-        } else {
-          const delivered = fire(it.what, { scheduleId: it.id, what: it.what, kind: it.kind, runs: it.runs, missed, triggerVia, payload: it.payload })
-          if (delivered) {
-            counts.fired += 1
-            fired.push({ id: it.id, what: it.what, runs: it.runs, missed, via: triggerVia })
-          } else {
-            counts.skipped += 1
-            skipped.push({ id: it.id, what: it.what, why: 'bus-unsupported-or-failed' })
-            say({ type: 'schedule/skipped', at: when, id: it.id, why: 'bus-unsupported-or-failed' })
-          }
-        }
-        const done = it.kind === 'once' || (it.maxRuns > 0 && it.runs >= it.maxRuns)
-        if (done) {
-          it.state = 'completed'
-          it.completedAt = when
-          it.completedReason = it.kind === 'once'
-            ? (triggerVia === 'none' ? 'one-shot reported (triggerVia=none: nothing was triggered)' : 'one-shot fired')
-            : 'maxRuns reached (' + it.maxRuns + ')'
-        } else {
-          it.atMs = it.atMs + it.intervalMs * (coalesceMissed && missed > 0 ? missed + 1 : 1)
-        }
-        record_({ type: 'schedule/tick', id: it.id, runs: it.runs, at: when, delivered: triggerVia !== 'none' && fired.some((x) => x.id === it.id), missed })
       }
+      ticking = true
+      const agg = { fired: [], reported: [], dropped: [], skipped: [], coalesced: 0, passes: 0 }
+      let last = null
+      try {
+        do {
+          rerunRequested = false
+          last = tickPass(when)
+          agg.passes += 1
+          passesTotal += 1
+          for (const row of last.fired) agg.fired.push(row)
+          for (const row of last.reported) agg.reported.push(row)
+          for (const row of last.dropped) agg.dropped.push(row)
+          for (const row of last.skipped) agg.skipped.push(row)
+          agg.coalesced += last.coalesced
+        } while (rerunRequested)
+      } finally {
+        ticking = false
+        rerunRequested = false
+      }
+      const note = last.note + (agg.passes > 1 ? ' — ' + agg.passes + ' passes ran because a re-entrant tick() was deferred instead of nested' : '')
       return {
-        ok: true, at: when, paused,
-        fired, reported, dropped, skipped,
-        firedCount: fired.length, reportedCount: reported.length, droppedCount: dropped.length, skippedCount: skipped.length,
-        coalesced, pending: pendingItems().length, triggerVia,
-        note: triggerVia === 'none'
-          ? 'triggerVia=none: due items were REPORTED, not triggered (set vmu.schedule.triggerVia to middleware|script to emit hooks)'
-          : 'due items were emitted through the bus (' + fired.length + ' fired, ' + skipped.length + ' skipped)',
+        ok: true, at: when, paused: last.paused,
+        fired: agg.fired, reported: agg.reported, dropped: agg.dropped, skipped: agg.skipped,
+        firedCount: agg.fired.length, reportedCount: agg.reported.length, droppedCount: agg.dropped.length, skippedCount: agg.skipped.length,
+        coalesced: agg.coalesced, pending: pendingItems().length, triggerVia,
+        passes: agg.passes, reentrantDeferred, deferred: false,
+        note,
       }
     },
 
@@ -407,14 +482,38 @@ export function createScheduler({ clock = () => 0, log = null, settings = {}, bu
       for (const it of targets) {
         if (it.state !== 'pending') continue
         let handle = null
+        let released = false
+        // F15 (round 4): the SUCCESS branch releases its own handle. Before this, the handle stayed in `handles`
+        // after the timer fired, which had two measured consequences: `arm()` skips items that already hold a handle,
+        // so a RECURRING item was never re-armed (it fired once and went quiet), and `status().items.armed` kept
+        // counting a spent handle. Releasing here is the same "the disposer runs in both outcomes" discipline the
+        // other sites follow, and it is counted (`status().timerFired`).
+        const onFire = () => {
+          released = true
+          if (handle !== null && handles.get(it.id) === handle) {
+            const cleared = timerClear(handle)
+            handles.delete(it.id)
+            firedByTimer += 1
+            record_({ type: 'schedule/timer-fired', id: it.id, at: now(), handleReleased: cleared })
+            say({ type: 'schedule/timer-fired', at: now(), id: it.id, handleReleased: cleared })
+          }
+          try { api.tick({ at: null }) } catch (e) { /* a throw here must not escape the host timer */ }
+        }
         try {
-          handle = timerCall(it.atMs, () => { try { api.tick({ at: null }) } catch (e) { /* a throw here must not escape the host timer */ } })
+          handle = timerCall(it.atMs, onFire)
         } catch (e) {
           bump(unwired, 'timer-seam', 1)
           say({ type: 'schedule/timer-unwired', at: now(), id: it.id, why: String((e && e.message) || e) })
           continue
         }
         if (handle === null || handle === undefined) { bump(unwired, 'timer-seam', 1); continue }
+        // A seam that fires DURING arming has already run the callback: nothing is left to hold (and nothing to
+        // arm), so it is counted and skipped rather than recorded as an armed handle that no longer exists.
+        if (released) {
+          firedByTimer += 1
+          record_({ type: 'schedule/timer-fired', id: it.id, at: now(), handleReleased: false, synchronous: true })
+          continue
+        }
         handles.set(it.id, handle)
         armedList.push(it.id)
         record_({ type: 'schedule/armed', id: it.id, at: it.atMs, shape })
@@ -467,6 +566,8 @@ export function createScheduler({ clock = () => 0, log = null, settings = {}, bu
         triggerVia, timeSource, maxPending, actionsAllowed: actionsAllowed.slice(),
         overdueGraceMs, coalesceMissed, maxRecurrences, minIntervalMs, maxHorizonMs, cancelNeedsReason,
         timerInjected: !!timer, timerShape: timerShape(), timerHandles: handles.size,
+        // F15/F16 (round 4): the timer-discipline and trampoline readings, so neither is a promise.
+        timerFired: firedByTimer, tickPasses: passesTotal, reentrantDeferred,
         items: {
           total: all.length, pending: all.filter((it) => it.state === 'pending').length,
           cancelled: all.filter((it) => it.state === 'cancelled').length,

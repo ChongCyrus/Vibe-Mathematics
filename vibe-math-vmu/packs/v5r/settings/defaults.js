@@ -64,16 +64,19 @@ export const V5R_SETTING_DEFAULTS = Object.freeze({
   // Math jobs: a research institute keeps its computation mirrors across restarts (goal 5).
   'vmu.math.jobs.persist': true,
   'vmu.math.jobs.recover': 'on-load',
-  // ROUND 3 (Lead adjudication): concurrency caps are POLICY, so the pack declares both, with v5r's factory
-  // numbers. v5r's own semantics were: `maxParallel: 3` = the framework wakes at most 3 members at once
-  // (vibe-math-v5r.js:1081; wording at :2073-2076) and `leanJobsMaxParallel: 1` = background compilation is
-  // SERIAL by default (:1118-1119). ★ HONEST BOUNDARY: in the CURRENT vmu wiring `vmu.math.maxParallel` is read
-  // by `kernel/mathjobs.js:41,249` (the math-JOB service's active-runs cap) and `vmu.math.jobs.maxParallel` by
-  // `kernel/mathtools.js:56,200,571-572` (the strategy-layer active-runs cap) — two readers that do NOT drive
-  // each other today, so a deployment that wants to cap concurrency sets BOTH. core's convergence direction is
-  // to make mathtools read the former; when that lands this pack drops one line.
-  'vmu.math.maxParallel': 3,
-  'vmu.math.jobs.maxParallel': 1,
+  // ROUND 4 (Lead ruling on §G): THE TWO CONCURRENCY STRATEGIES KEEP THEIR OWN NAMES. Mirroring them into one
+  // number was wrong - they are different policies:
+  //   · `vmu.math.maxParallel` = MATH-JOB / compilation concurrency. Its two readers are `kernel/mathjobs.js`
+  //     and `kernel/mathtools.js`, both about running maths, so v5r's value is its `leanJobsMaxParallel: 1`
+  //     = background compilation is SERIAL (vibe-math-v5r.js:1118-1119).
+  //   · `vmu.limits.maxLiveMembers` = MEMBER concurrency. v5r's `maxParallel: 3` meant "wake at most 3 members
+  //     at once" (:1081; wording :2073-2076) and belongs to the member cap (`kernel/index.js:221`'s
+  //     `liveMemberCapOf`, read by `declareSlots`), NOT under `vmu.math.*`.
+  // The legacy `vmu.math.jobs.maxParallel` is NOT declared here (and core removes/deprecates it in the schema):
+  // its value is derived from the canonical name, so a pack-level declaration would be a declaration with no
+  // effect - the shape this repository refuses.
+  'vmu.math.maxParallel': 1,
+  'vmu.limits.maxLiveMembers': 3,
   // Meeting parameters measured from v5r: quote depth 3, at most 2 quotes per message, and an unanswered member
   // stays OUT of the denominator (v5r's D3: "未答不计分母、不算反对、名单必列").
   // ROUND 3 (GAP-MTG-02): the meeting TIER is the pack's policy. v5r had ONE meeting protocol (the full one), so

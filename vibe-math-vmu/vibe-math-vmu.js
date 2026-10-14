@@ -21,7 +21,7 @@ import { decideSections as V5R_DECIDE_SECTIONS } from './packs/v5r/middleware/pr
 import { inboxBlock as V5R_INBOX_BLOCK } from './packs/v5r/notices.js'
 import { V5R_PHASES } from './packs/v5r/index.js'
 import { createKernel } from './kernel/index.js'
-import { deliverViaSubagents } from './kernel/turn/index.js'
+import { deliverViaSubagents, sendViaSubagents, interruptViaSubagents } from './kernel/turn/index.js'
 import { createHostAdapter } from './host.js'
 import { attachHostHooks } from './host-hooks.js'
 import { createPackLoader } from './kernel/pack.js'
@@ -286,6 +286,14 @@ export function apply(ctx, config = {}) {
   const settingsSources = {}
   for (const k of Object.keys(packDefaults)) if (!Object.prototype.hasOwnProperty.call(settings, k)) settingsSources[k] = 'pack:' + packDefaultSource[k]
   for (const k of Object.keys(settings)) settingsSources[k] = 'config'
+  // ROUND 4 / task-25 D — **REVERTED BY LEAD RULING**: an earlier version of this block MIRRORED the two
+  // `math*maxParallel` spellings into one value. That was WRONG: they are two DIFFERENT policies.
+  // `vmu.math.maxParallel` is the MATH-RUN concurrency (jobs/compilation; v5r's `leanJobsMaxParallel: 1`), while
+  // "wake at most 3 members per round" is a MEMBER policy that belongs to `vmu.limits.maxLiveMembers`. Forcing two
+  // different policies to be equal would silently move the member limit with a math knob. The two names therefore stay
+  // SEPARATE, and the older jobs-scoped spelling is gone from the schema rather than kept as a silently-diverging alias
+  // (the key name is deliberately NOT repeated here: a runtime-read audit scans this file as TEXT, and a comment that
+  // spells a removed key would look like a read).
   // ROUND 1 / K3: THE TURN DELIVERY SEAM IS ASSEMBLED HERE, because "capability in the kernel, assembly in the host"
   // is the boundary this file already owns (see the spawn seam above). `kernel/turn/index.js` ships the real bridge
   // `deliverViaSubagents`, and this was the missing line: `createKernel` was handed `host: mathHost`, whose adapter
@@ -303,6 +311,58 @@ export function apply(ctx, config = {}) {
     }
     const extract = typeof config.deliverReply === 'function' ? config.deliverReply : null
     return deliverViaSubagents(subs, extract)({ turn, text })
+  }
+  // ROUND 4 / F9+F10 (docs/26 §3.22): THE ONGOING-COMMAND SEAMS, assembled exactly like the turn-delivery one above -
+  // the capability is the host's (`subagents.sendMessage` / `subagents.interrupt`), the bridge is
+  // `kernel/turn/index.js`'s, and the service is resolved AT CALL TIME (a plugin's `apply` can run before the
+  // subagents service mounts, and binding "absent" now would refuse every command forever). A host without the verb
+  // produces the bridge's NAMED refusal; the kernel reports the seam as absent in `status().seams.sendMessage/interrupt`.
+  const resolveSubagents = () => {
+    try { return ctx && typeof ctx.get === 'function' ? ctx.get('subagents') : null } catch { return null }
+  }
+  const sendMessage = async (args = {}) => {
+    const subs = resolveSubagents()
+    if (!subs || typeof subs.sendMessage !== 'function') {
+      const err = new Error('the host exposes no subagents.sendMessage, so a running member cannot be reached')
+      err.code = 'VMU_ENGINE_UNAVAILABLE'
+      err.hint = 'the loop refuses by name rather than pretending the message was delivered (docs/26 §3.22)'
+      throw err
+    }
+    return sendViaSubagents(subs)(args)
+  }
+  const interrupt = (args = {}) => {
+    const subs = resolveSubagents()
+    if (!subs || typeof subs.interrupt !== 'function') {
+      const err = new Error('the host exposes no subagents.interrupt, so a running member cannot be stopped')
+      err.code = 'VMU_ENGINE_UNAVAILABLE'
+      err.hint = 'the loop refuses by name rather than pretending the member stopped (docs/26 §3.22)'
+      throw err
+    }
+    return interruptViaSubagents(subs)(args)
+  }
+  // ROUND 4 / task-25 (reader-a's 5②): the recovery CHILDREN port. The host's `listChildren(parentSessionId)` is its own
+  // durable direct-child directory (it does NOT load or resume an Agent), which is exactly what "reconcile the members
+  // that hold a childId against reality after a restart" needs. A host without it yields the NAMED
+  // `VMU_RESUME_CHILDREN_UNAVAILABLE`; recovery still succeeds - it just says the roster could not be checked.
+  const children = {
+    parentId: () => {
+      try {
+        if (ctx && typeof ctx.sessionId === 'string' && ctx.sessionId) return ctx.sessionId
+        if (ctx && typeof ctx.get === 'function') { const s = ctx.get('session'); if (s && typeof s.id === 'string' && s.id) return s.id }
+      } catch { /* a ctx that cannot answer is reported as "no parent id" */ }
+      return null
+    },
+    list: async (parentId) => {
+      const subs = resolveSubagents()
+      if (!subs || typeof subs.listChildren !== 'function') {
+        const err = new Error('the host exposes no subagents.listChildren, so live children cannot be reconciled')
+        err.code = 'VMU_RESUME_CHILDREN_UNAVAILABLE'
+        err.hint = 'the recovery port NAMES the gap instead of guessing the roster (docs/26 §3.22)'
+        throw err
+      }
+      const rows = await subs.listChildren(parentId)
+      return (Array.isArray(rows) ? rows : []).map((r) => (typeof r === 'string' ? r : (r && (r.id || r.sessionId || r.childId)) || null)).filter(Boolean)
+    },
   }
   // ROUND 1 / K5 + P6 (D-02, vmu-pack interface): A PACK'S PROMPT MACHINERY IS DECLARED, NOT HARD-WIRED. The v5r
   // prompt switches / notice block / phases used to be injected unconditionally, so the framework's own policy ran in
@@ -332,6 +392,11 @@ export function apply(ctx, config = {}) {
     // "pretend it was delivered" failure the framework refuses. With no `config.deliver`, the seam stays absent and the
     // named refusal remains the honest answer.
     deliver: typeof config.deliver === 'function' ? config.deliver : null,
+    // ROUND 4 / F9+F10: the two ongoing-command seams (see their assembly above). Both are always functions here, so
+    // `status().seams.sendMessage/interrupt` reads true; the NAMED refusal happens when the host lacks the verb.
+    sendMessage,
+    interrupt,
+    children,
     // ROUND 1 / K5 (D-02): the entry is the only layer that knows a folded pack default from a deployment value, so it
     // hands the layer map in. The named overlap report travels to the HOST face instead (`mergeReport` below), because
     // the kernel never acts on it and a kernel seam read by one file only is exactly what the seam gate forbids.

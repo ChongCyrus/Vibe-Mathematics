@@ -169,7 +169,7 @@ export function createTopology({ clock = () => 0, log = null, settings = {}, bus
       history.push({ kind, params: params || null, at })
       if (history.length > HISTORY_CAP) { const over = history.length - HISTORY_CAP; history.splice(0, over); dropped += over }
       say({ type: 'topology/select', at, kind })
-      if (bus && typeof bus.emit === 'function') { try { bus.emit({ type: 'topology/select', at, kind }) } catch (e) { /* advisory */ } }
+      if (bus && typeof bus.emit === 'function') { try { bus.emit('topology/select', { at, kind }) } catch (e) { try { if (log && typeof log.append === 'function') log.append({ type: 'bus/emit-failed', at: clock(), name: 'topology/select', code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) } catch { /* the log itself may be gone */ } } }
       return { ok: true, kind, at, history: history.length, dropped }
     },
 

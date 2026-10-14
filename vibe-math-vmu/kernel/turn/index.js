@@ -160,13 +160,97 @@ export function deliverViaSubagents(subagents, extract = null) {
     const handle = await subagents.startContinuable(spec)
     if (typeof extract === 'function') {
       const got = extract(handle)
-      if (typeof got === 'string') return got
+      if (typeof got === 'string') {
+        return { reply: got, childId: childIdOf(handle), stopReason: null,
+          attribution: 'extractor returned a bare string: no stopReason was read (docs/26 §3.22)' }
+      }
+      if (got && typeof got === 'object' && typeof got.reply === 'string') {
+        return { reply: got.reply, childId: got.childId || childIdOf(handle), stopReason: got.stopReason || null, attribution: 'extractor' }
+      }
       throw refuse('VMU_ENGINE_UNAVAILABLE', 'the extractor returned no reply text for this turn')
     }
-    if (handle && typeof handle.reply === 'string') return handle.reply
-    if (handle && typeof handle.text === 'string') return handle.text
+    // ROUND 4 / F11 (Lead's authoritative host contract): the handle carries the LIFECYCLE fields too, and a turn that
+    // cannot be attributed is reported as such rather than silently treated as an anonymous reply.
+    const childId = childIdOf(handle)
+    let stopReason = null
+    if (handle && typeof handle.stopReason === 'string') stopReason = handle.stopReason
+    else if (handle && typeof handle.reason === 'string') stopReason = handle.reason
+    else if (handle && handle.result && typeof handle.result.then === 'function') {
+      try { const res = await handle.result; if (res && typeof res.stopReason === 'string') stopReason = res.stopReason } catch { /* the run's own failure is named below */ }
+    }
+    const attribution = childId && stopReason
+      ? 'childId+stopReason from the host handle'
+      : (childId ? 'childId only: the host handle carried no stopReason (SubagentRun.result was unavailable)' : 'unavailable: the host handle carried no childId (docs/26 §3.22) - the turn is NOT attributed')
+    if (handle && typeof handle.reply === 'string') return { reply: handle.reply, childId, stopReason, attribution }
+    if (handle && typeof handle.text === 'string') return { reply: handle.text, childId, stopReason, attribution }
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host accepted the turn but handed back no reply',
       'give the loop an extractor, or deliver the reply through the loop as a later turn')
+  }
+}
+
+/** The child/session id of a host handle, in the order the authoritative contract names the fields. */
+function childIdOf(handle) {
+  if (!handle || typeof handle !== 'object') return null
+  const direct = [handle.childId, handle.sessionId, handle.id]
+  for (const v of direct) if (typeof v === 'string' && v) return v
+  const nested = [handle.localAgent, handle.agent]
+  for (const a of nested) {
+    if (!a || typeof a !== 'object') continue
+    for (const v of [a.id, a.sessionId]) if (typeof v === 'string' && v) return v
+  }
+  return null
+}
+
+/**
+ * ROUND 4 / F9 - THE ONGOING-COMMAND BRIDGE (docs/26 §3.22). `deliverViaSubagents` can only START a member turn and
+ * read its reply back; a framework that supervises a running member also needs to TALK TO it. The host's
+ * `sendMessage(sender, targetId, content, { signal })` does exactly that (a running target receives at its nearest step
+ * boundary, an idle one starts a turn, an absent direct child cold-resumes from persistence), and the sender must be
+ * the EXACT live Agent - so the caller passes it and a missing sender is refused by name instead of guessed.
+ */
+export function sendViaSubagents(subagents) {
+  if (!subagents || typeof subagents.sendMessage !== 'function') {
+    throw refuse('VMU_ENGINE_UNAVAILABLE', 'the subagents seam cannot send a message to a running member',
+      'inject { sendMessage } yourself, or give the seam a host with sendMessage (docs/26 §3.22)')
+  }
+  return async ({ sender, targetId, content, signal } = {}) => {
+    if (!sender) {
+      throw refuse('VMU_ENGINE_UNAVAILABLE', 'sendMessage needs the EXACT live sender Agent (the host derives durable sender attribution from it)',
+        'pass sender:<the live Agent>, not an id: the host refuses a reconstructed sender')
+    }
+    if (typeof targetId !== 'string' || !targetId) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'sendMessage needs the target session id', 'pass targetId:"<child session id>" (listChildren lists them)')
+    }
+    const blocks = Array.isArray(content) ? content : [{ type: 'text', text: String(content === undefined ? '' : content) }]
+    return subagents.sendMessage(sender, targetId, blocks, signal ? { signal } : {})
+  }
+}
+
+/**
+ * ROUND 4 / F10 - THE INTERRUPT BRIDGE (docs/26 §3.22). `interrupt(targetSessionId, authority)` is fire-and-return: the
+ * cancel signal goes out first and the target may stop at its next observation point. It is NOT a disposal: unclaimed
+ * inbox work, activations and published descendants all survive, and an absent target is an accepted no-op - so the
+ * bridge reports which of those happened instead of pretending the member is gone.
+ */
+export function interruptViaSubagents(subagents) {
+  if (!subagents || typeof subagents.interrupt !== 'function') {
+    throw refuse('VMU_ENGINE_UNAVAILABLE', 'the subagents seam cannot interrupt a member',
+      'inject { interrupt } yourself, or give the seam a host with interrupt (docs/26 §3.22)')
+  }
+  return ({ targetSessionId, authority, agent } = {}) => {
+    if (typeof targetSessionId !== 'string' || !targetSessionId) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'interrupt needs the target session id', 'pass targetSessionId:"<child session id>"')
+    }
+    // The authority is REQUIRED by the host and must be well-formed: `{kind:'user', parentSessionId}` or
+    // `{kind:'ancestor', agent}`. A missing/misshaped authority would make the host throw UNAUTHORIZED, so it is
+    // refused HERE by name, before the call, with the two accepted shapes spelled out.
+    const auth = authority || (agent ? { kind: 'ancestor', agent } : null)
+    if (!auth || (auth.kind === 'user' ? typeof auth.parentSessionId !== 'string' : (auth.kind === 'ancestor' ? !auth.agent : true))) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'interrupt needs a well-formed authority',
+        "pass authority:{kind:'user',parentSessionId} or authority:{kind:'ancestor',agent} (the host answers UNAUTHORIZED otherwise)")
+    }
+    subagents.interrupt(targetSessionId, auth)
+    return { ok: true, targetSessionId, authorityKind: auth.kind, semantics: 'fire-and-return: the target may stop at its next observation point; unclaimed work and descendants survive' }
   }
 }
 
@@ -201,7 +285,10 @@ export function createTurnOrchestrator({
   // Phases the PACK declares, beyond the framework's own. See PHASES: which phases exist is institution
   // vocabulary, so the framework validates and the pack names.
   extraPhases = null,
-  prompt = null, deliver = null, faces = {}, bindings = null, wakeupPolicy = 'round-robin', settings = null, clock = () => new Date().toISOString() } = {}) {
+  prompt = null, deliver = null, faces = {}, bindings = null, wakeupPolicy = 'round-robin', settings = null, clock = () => new Date().toISOString(),
+  // ROUND 4 / F9+F10 (docs/26 §3.22): the ONGOING-COMMAND seams. Both are optional; a loop without them can still
+  // START turns, and a caller that asks for the missing verb gets a NAMED refusal rather than a silent no-op.
+  sendMessage = null, interrupt = null } = {}) {
   const owners = resolveOwners(bindings)
   const known = Object.keys(owners)
   // ROUND 347: the wakeup POLICY (docs/26 section 3.2). The original preset recorded only WHO should be woken and
@@ -213,6 +300,9 @@ export function createTurnOrchestrator({
   const turns = new Map()
   const counts = { opened: 0, assembled: 0, delivered: 0, parsed: 0, refused: 0, dispatched: 0, notExecuted: 0 }
   const lastRefusal = { code: null, message: null }
+  // ROUND 4 / F11: the attribution of the MOST RECENT delivery (`childId` + `stopReason`), so a caller can ask who a
+  // receipt belongs to without re-reading the host handle.
+  let lastAttribution = { childId: null, stopReason: null, attribution: 'no turn has been delivered yet' }
   let seq = 0
 
   const fail = (code, message, hint) => { counts.refused += 1; lastRefusal.code = code; lastRefusal.message = message; throw refuse(code, message, hint) }
@@ -295,9 +385,57 @@ export function createTurnOrchestrator({
       fail('VMU_ENGINE_UNAVAILABLE', 'no delivery adapter is wired: refusing rather than pretending the member answered',
         'inject { deliver: async ({ turn, text }) => reply } (docs/26 §2 stage 3)')
     }
-    const reply = await deliver({ turn, text })
+    const delivered = await deliver({ turn, text })
     counts.delivered += 1
+    // ROUND 4 / F11: the adapter may hand back a BARE STRING (the pre-round-4 contract) or the attributed envelope
+    // `{ reply, childId, stopReason, attribution }` that `deliverViaSubagents` now produces. A bare string is accepted
+    // and NAMED as unattributed - the loop never invents a child id or a stop reason.
+    if (typeof delivered === 'string') {
+      lastAttribution = { childId: null, stopReason: null, attribution: 'the delivery adapter returned a bare string: no childId/stopReason (docs/26 §3.22)' }
+      return delivered
+    }
+    const reply = delivered && typeof delivered.reply === 'string' ? delivered.reply : null
+    lastAttribution = {
+      childId: (delivered && delivered.childId) || null,
+      stopReason: (delivered && delivered.stopReason) || null,
+      attribution: (delivered && delivered.attribution) || 'the delivery adapter returned an envelope without an attribution note',
+    }
+    if (reply === null) {
+      fail('VMU_ENGINE_UNAVAILABLE', 'the delivery adapter returned no reply text',
+        'return a string, or { reply, childId, stopReason } (docs/26 §3.22)')
+    }
     return reply
+  }
+
+  /**
+   * ROUND 4 / F9: talk to a member that is ALREADY running. The host semantics are the reason this is a seam and not a
+   * loop feature: a running target receives at its nearest step boundary, an idle one starts a turn, an absent direct
+   * child cold-resumes - none of which the loop can do by itself. Missing seam ⇒ named refusal.
+   */
+  const sendToMember = async ({ sender, targetId, content, signal } = {}) => {
+    if (typeof sendMessage !== 'function') {
+      fail('VMU_ENGINE_UNAVAILABLE', 'this loop has no sendMessage seam: a running member cannot be reached',
+        'assemble the loop with { sendMessage: sendViaSubagents(ctx.get("subagents")) } (docs/26 §3.22)')
+    }
+    const id = await sendMessage({ sender, targetId, content, signal })
+    counts.sent = (counts.sent || 0) + 1
+    return { ok: true, messageId: id === undefined ? null : id, targetId, attribution: 'the host derived durable sender attribution from the live sender' }
+  }
+
+  /**
+   * ROUND 4 / F10: interrupt a member. Fire-and-return by contract - the cancel signal is out, and the target may stop
+   * at its next observation point; unclaimed inbox work, activations and published descendants all survive. The seam
+   * enforces the authority SHAPE, so a caller without one is refused by name instead of collecting the host's
+   * UNAUTHORIZED.
+   */
+  const interruptMember = ({ targetSessionId, authority, agent } = {}) => {
+    if (typeof interrupt !== 'function') {
+      fail('VMU_ENGINE_UNAVAILABLE', 'this loop has no interrupt seam: a running member cannot be stopped',
+        'assemble the loop with { interrupt: interruptViaSubagents(ctx.get("subagents")) } (docs/26 §3.22)')
+    }
+    const out = interrupt({ targetSessionId, authority, agent })
+    counts.interrupted = (counts.interrupted || 0) + 1
+    return out
   }
 
   /**
@@ -486,7 +624,7 @@ export function createTurnOrchestrator({
       queueNotice(turn.member, line)
       refused.push({ field: e.field, code: r.code === undefined ? null : r.code })
     }
-    return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, fields: parsed.fields, refused, ...out }
+    return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, fields: parsed.fields, refused, attribution: Object.assign({}, lastAttribution), ...out }
   }
 
   /**
@@ -553,6 +691,10 @@ export function createTurnOrchestrator({
 
   return {
     open, assemble, deliver: deliverTurn, parse, plan, apply, run, nextTurn, drive, step,
+    // ROUND 4 / F9+F10: the ongoing-command verbs, plus the observable state behind them.
+    sendToMember, interruptMember,
+    attribution: () => Object.assign({}, lastAttribution),
+    seams: () => ({ deliver: typeof deliver === 'function', sendMessage: typeof sendMessage === 'function', interrupt: typeof interrupt === 'function' }),
     /**
      * ROUND 384 - a ONE-SHOT notice for a member (docs/26 section 3.25). Queued here, drained by the next assembly
      * addressed to them, so it is announced exactly once: not repeated every round and never dropped. The charter

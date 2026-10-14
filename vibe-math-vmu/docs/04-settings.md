@@ -248,7 +248,7 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.quorumCap` | int ≥0 | `3` | — | 会话 | H1 | role:chair | ✅ 已接线 | `kernel/meetings.js` | P3：法定数上限 m = min(cap, 参与人数)；0＝不设上限 |
 | `vmu.meetings.reconsiderFloor` | int ≥0 | `0` | — | 会话 | H1 | role:chair | ⚠️ 未接线（改了不会有行为变化） | `packs/institute-min/index.js` | 复议门槛下限（★ 轮 286：这不是【缺口】而是【分工】—— 生效门槛 = max(对象标准, 它, 上限)，其中「对象标准」与「上限」是【领域常量】，依 docs/10 §1 的 D5【内核零策略】由 pack 定义，本仓不臆造 ✓）。0＝只保证「不降」✓。机制侧判据：docs/08-§L217 的就地说明 ＋ kernel/ballotbox.js L60-68 的受控声明（阈值的另一键 reopenFloor 有意不重复它 ✓） |
 | `vmu.meetings.verdictMaxRounds` | int ≥1 | `3` | — | 会话 | H1 | role:chair | ✅ 已接线 | `kernel/meetings.js` | P3：同一对象的复算轮次上限（不得无限复算） |
-| `vmu.meetings.hardLimitMs` | int ≥0 | `1800000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | P3：会议墙钟硬界（唯一兜底）＝1800000；钳制 [300000, 7200000]；**不存在"无界"** |
+| `vmu.meetings.hardLimitMs` | int ≥0 | `1800000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | P3：会议墙钟硬界（唯一兜底）＝1800000；钳制 [300000, 7200000]；**不存在"无界"** |
 | `vmu.meetings.wakeRetries` | int ≥0 | `5` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | P3：同一成员同阶段的唤醒重试上限（钳制 [0,10]）；耗尽记 unreached 并视为"已获机会" |
 | `vmu.meetings.roundTimeoutMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 单轮超时；0＝不限 |
 | `vmu.meetings.quotesPerMessageMax` | int ≥0 | `2` | — | 会话 | H1 | role:chair | ✅ 已接线 | `kernel/index.js` | P3：每条发言最多引用几条；超限 ⇒ 具名拒 |
@@ -554,13 +554,13 @@ vmu.packs.active: [v5r]
 | `vmu.collusion.maxMutualShare` | ratio | `0.8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 互投/雷同份额阈值 |
 | `vmu.collusion.minEvidence` | int ≥0 | `2` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 判定嫌疑所需最少证据数 |
 | `vmu.collusion.onSuspect` | enum | `report` | `report`∣`freeze-review` | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 嫌疑处理（默认只报告；冻结审查须显式开启） |
-| `vmu.math.maxParallel` | int ≥1 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 并行作业上限（超限 ⇒ 具名拒，不自旋等待 ✗）。★ 轮 3 语义边界（task-20 A）：本键是**作业服务**的并发上限，读者＝`kernel/mathjobs.js:213`（`maxParallel`）。★ `vmu.math.jobs.maxParallel`（读者＝`kernel/mathtools.js:194/565` 的**策略层** active-runs 上限）**意图相同、读者不同、当前互不驱动**（设一个不动另一个）⇒ 要限并发请**两个都设**；**收敛方向**：下一轮让 mathtools 读本键、`vmu.math.jobs.maxParallel` 降为待删别名（两个读点都在 reader-b 的文件里，未擅自改）。 |
+| `vmu.math.maxParallel` | int ≥1 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | **数学运行**并发上限（作业/编译；超限 ⇒ 具名拒，不自旋等待 ✗）。★ 轮 4 Lead 裁决：本键**只**管数学运行并发（对齐 v5r 的 `leanJobsMaxParallel:1`）；**不要**拿它当"每轮唤醒几名成员"——那是**成员策略**，由 `vmu.limits.maxLiveMembers` 表达（v5r 写 3）。**两个不同策略不许强行相等**（轮 4 撤销过一次错误的镜像；那个旧的 jobs 作用域名字已从 schema 移除，此处不复写键名）。 |
 | `vmu.math.maxJobs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 作业总量上限（0＝不限） |
 | `vmu.math.keepReceipts` | int ≥0 | `200` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 回执保留条数（溢出必计数） |
 | `vmu.math.requireSeedForRandom` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 随机作业必须有种子 |
 | `vmu.math.denyNetwork` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 默认禁网（作为 env 传给 spawn；真正拦截在宿主 ✗） |
 | `vmu.math.workspaceOnly` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 默认限工作区（同上，拦截在宿主 ✗） |
-| `vmu.math.captureStdoutBytes` | int ≥0 | `65536` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | stdout 捕获上限（触界报丢弃字节 ✗） |
+| `vmu.math.captureStdoutBytes` | int ≥0 | `65536` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | stdout 捕获上限（触界报丢弃字节 ✗） |
 | `vmu.formal.axiomWhitelist` | string[] | `[propext,Classical.choice,Quot.sound]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | 受信公理白名单（白名单外 ⇒ 具名拒并点名 ✓） |
 | `vmu.formal.allowSorry` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | 是否允许 sorry（默认 false：出现即拒并点名位置 ✗✓） |
 | `vmu.formal.requireArtifacts` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | 是否必须有产物（当前只读入未强制 ✗） |
@@ -982,7 +982,6 @@ vmu.packs.active: [v5r]
 | `vmu.paper.officeConsultExemptRoles` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 豁免角色：**默认为空＝不豁免任何人**（Lead F4 裁决：v5r 的 C-30 原场景正是"office 自己定稿前也必须先咨询所内"，把 office 默认豁免掉等于没实现那条；"默认不豁免"是保守侧，与 `hold` 同一纪律）。部署要豁免就显式声明角色。 |
 | `vmu.math.jobs.logMax` | int ≥0 | `200` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 作业日志保留条数（溢出必计数）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`（两者默认一致：200）。 |
 | `vmu.math.jobs.persist` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | 作业持久化：false＝只留回执详情；true＝额外写 `Math/Jobs` 镜像并允许恢复（`vmu.math.jobs.recover` 决定何时恢复）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`。 |
-| `vmu.math.jobs.maxParallel` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | **策略层**的 active-runs 上限（`kernel/mathtools.js:194/565` 读取，超限按 `VMU_RESOURCE_BUDGET` 具名拒）。★ 与 `vmu.math.maxParallel`（**作业服务**并发上限，`kernel/mathjobs.js:213`）意图相同、读者不同、当前互不驱动 ⇒ 要限并发请**两个都设**；收敛方向见 `vmu.math.maxParallel` 的 doc。 |
 | `vmu.meetings.tier` | enum | `formal` | `formal`∣`light` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 会议级别：light＝简流程，**不得产出实体定论**（派生谓词，不是阶段）。读者：`kernel/meetings.js` 的 `K.tier`＋`tier()`／`truthWriteRefusal()`，唯一判定点在 `close()` 的收束路径（reader-c 的 GAP-MTG-02）。 |
 | `vmu.meetings.allowLight` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 是否允许 light（简流程）会议：false ⇒ 内核在开会/收束处以具名拒挡住 light（与 `tier` 共用同一派生判定点）。读者：`kernel/meetings.js` 的 `K.allowLight`。 |
 | `vmu.ballot.reopenFloor` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ballotbox.js` | 投票板重开门槛（0＝不设门槛；>0 时 reopen 需要达到该支持数）。读者：`kernel/ballotbox.js` 的 `reopen()`（reader-c 的 GAP-MTG-10；该面自有实现，不并存第二份）。 |
@@ -1186,10 +1185,10 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.quorumRecountMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.recessMaxMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.recessResumeRequiresMotion` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.speechDefaultMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.speechExtendMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.speechExtendMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.speechMaxMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
+| `vmu.meetings.speechDefaultMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
+| `vmu.meetings.speechExtendMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
+| `vmu.meetings.speechExtendMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
+| `vmu.meetings.speechMaxMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.speechQuotaPerMember` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.typeCatalog` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.unansweredInDenominator` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
@@ -1452,7 +1451,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1105** 个，前缀家族 **112** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1104** 个，前缀家族 **112** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1511,7 +1510,7 @@ vmu.packs.active: [v5r]
 | `vmu.lifecycle.*` | 11 |
 | `vmu.limits.*` | 5 |
 | `vmu.mailbox.*` | 6 |
-| `vmu.math.*` | 106 |
+| `vmu.math.*` | 105 |
 | `vmu.meetings.*` | 58 |
 | `vmu.memory.*` | 16 |
 | `vmu.metadata.*` | 2 |

@@ -379,6 +379,67 @@ const roster = ['r-1', 'r-2']
     'without the seam the face reports it and changes nothing (no hidden enforcement)')
 }
 
+// ---- 16. F28: the bounded fallback — bounded, NAMED, REVOCABLE -----------------------------------
+{
+  const grab = (fn) => { try { return { ok: true, v: fn() } } catch (e) { return { ok: false, code: e && e.code, msg: String(e && e.message), enforced: e && e.enforced } } }
+  const M = meetingsMod.createMeetings({ clock, settings: { 'vmu.meetings.hardLimitMs': 300000 } })
+  const opened = M.open({ type: 'ordinary', chair: 'acad', roster, size: 2 })
+  const mid = opened.meeting
+  const pred = M.lapseDue({ meeting: mid })
+  ok(pred.due === false && pred.limitMs === 300000 && pred.enforced.includes('vmu.meetings.hardLimitMs'),
+    'the fallback is a PREDICATE over the declared bound (nothing settles before it)')
+  ok(grab(() => M.lapse({ meeting: mid })).code === 'VMU_STATE', 'and settling early is refused BY NAME')
+  NOW += 300001
+  const rec = M.lapse({ meeting: mid, by: 'acad' })
+  ok(rec.ok === true && rec.lapse.name === 'meeting-lapse' && rec.lapse.revocable === true && rec.lapse.at === NOW,
+    'past the bound the settlement is NAMED, timestamped and revocable')
+  ok(M.lapse({ meeting: mid }).deduped === true, 'settling twice is idempotent')
+  ok(grab(() => M.speak({ meeting: mid, member: 'r-1', text: 'x' })).code === 'VMU_STATE'
+    && grab(() => M.motion({ meeting: mid, member: 'r-1', text: 'm' })).code === 'VMU_STATE'
+    && grab(() => M.vote({ meeting: mid, member: 'r-1', value: 1 })).code === 'VMU_STATE',
+  'a lapsed meeting FAILS CLOSED on its acting surface (speak/motion/vote)')
+  ok(M.minutes({ meeting: mid }).ok === true && M.quorum({ meeting: mid }).ok === true && M.verbatim({ meeting: mid }).ok === true,
+    'while the READ surface stays open (the record must remain auditable)')
+  ok(M.status().lapsedMeetings.indexOf(mid) !== -1 && M.status().lapses === 1, 'and the lapse is visible in status()')
+  ok(grab(() => M.revokeLapse({ meeting: mid, by: 'acad' })).code === 'VMU_REASON_REQUIRED', 'revoking the fallback needs a reason')
+  const rev = M.revokeLapse({ meeting: mid, by: 'acad', reason: 'the missing member arrived' })
+  ok(rev.ok === true && rev.lapse.revokedAt === NOW && rev.lapse.revokeReason === 'the missing member arrived' && M.status().lapseRevocations === 1,
+    'a reasoned revocation restores the meeting and keeps the original lapse record')
+
+  // GAP-MTG-05 (the extend half): the DECLARED step becomes a command, with the declared ceilings.
+  const M2 = meetingsMod.createMeetings({ clock, settings: { 'vmu.meetings.speechExtendMs': 60000, 'vmu.meetings.speechExtendMax': 1 } })
+  const o2 = M2.open({ type: 'ordinary', chair: 'acad', roster, size: 2 })
+  const e1 = M2.extend({ meeting: o2.meeting, member: 'r-1', by: 'acad' })
+  ok(e1.ok === true && e1.ms === 60000 && e1.enforced.includes('vmu.meetings.speechExtendMs'),
+    'extend uses the DECLARED step and names it in enforced[]')
+  ok(grab(() => M2.extend({ meeting: o2.meeting, member: 'r-1' })).code === 'VMU_MEETING_SPEECH_TIMEBOUND',
+    'and the declared extension ceiling refuses BY NAME')
+  const M3 = meetingsMod.createMeetings({ clock, settings: {} })
+  const o3 = M3.open({ type: 'ordinary', chair: 'acad', roster, size: 2 })
+  ok(grab(() => M3.extend({ meeting: o3.meeting, member: 'r-1' })).code === 'VMU_INVALID_ARGUMENT',
+    'with no declared step, extend refuses instead of inventing a duration')
+
+  // F28 (the board half): the bound is declared at construction; 0 = zero mechanism.
+  const B = boxMod.createBallotBox({ clock, settings: {}, openMaxMs: 120000 })
+  const ob = B.open({ question: 'ship?', options: ['yes', 'no'] })
+  B.cast({ boxId: ob.boxId, by: 'r-1', choice: 'yes' })
+  ok(B.lapse({ boxId: ob.boxId }).code === 'VMU_STATE', 'a board settles early only by name (refused before the bound)')
+  NOW += 120001
+  const bl = B.lapse({ boxId: ob.boxId, by: 'acad' })
+  ok(bl.ok === true && bl.lapse.name === 'ballot-lapse' && bl.lapse.revocable === true && bl.outcome === null && bl.votes === 1,
+    'past the bound the board is settled by name, its ballots kept and no outcome invented')
+  ok(B.cast({ boxId: ob.boxId, by: 'r-2', choice: 'no' }).code === 'VMU_STATE', 'a lapsed board accepts no votes')
+  ok(B.revokeLapse({ boxId: ob.boxId }).code === 'VMU_REASON_REQUIRED'
+    && B.revokeLapse({ boxId: ob.boxId, by: 'acad', reason: 'quorum arrived' }).ok === true
+    && B.status({ boxId: ob.boxId }).state === 'open',
+  'and a reasoned revocation reopens it')
+  const Z = boxMod.createBallotBox({ clock, settings: {} })
+  const oz = Z.open({ question: 'x?', options: ['a', 'b'] })
+  NOW += 9999999
+  ok(Z.lapse({ boxId: oz.boxId }).code === 'VMU_STATE' && Z.status({ boxId: oz.boxId }).openMaxMs === 0,
+    'no declared bound ⇒ ZERO MECHANISM (the fallback simply does not exist)')
+}
+
 console.log('vmu-meeting-parity: ' + passed + ' passed, ' + failed + ' failed')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

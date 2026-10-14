@@ -175,7 +175,7 @@ export function createTrust({ clock = () => 0, log = null, settings = {}, bus = 
         droppedNow = excess
       }
       say({ type: 'trust/signal', at: rec.at, subject, kind, weight: w, flags, dropped: droppedNow })
-      if (bus && typeof bus.emit === 'function') { try { bus.emit({ type: 'trust/signal', at: rec.at, subject, kind }) } catch (e) { /* advisory */ } }
+      if (bus && typeof bus.emit === 'function') { try { bus.emit('trust/signal', { at: rec.at, subject, kind }) } catch (e) { try { if (log && typeof log.append === 'function') log.append({ type: 'bus/emit-failed', at: clock(), name: 'trust/signal', code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) } catch { /* the log itself may be gone */ } } }
       return { ok: true, id, subject, weight: w, flags, dropped: droppedNow, truncated: droppedNow > 0, samples: forSubject(subject).length }
     },
 

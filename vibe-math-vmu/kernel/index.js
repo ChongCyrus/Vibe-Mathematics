@@ -257,6 +257,14 @@ export function createKernel({
   // `deliver` (the member/meeting wake seam, whose shape is an envelope) so one adapter can never be silently
   // handed to the other. `null` keeps the documented named refusal.
   deliverTurn = null,
+  // ROUND 4 / F9+F10 (docs/26 §3.22): the two ONGOING-COMMAND seams. The entry assembles them from the host's
+  // `subagents` service (`sendViaSubagents`/`interruptViaSubagents` in kernel/turn/index.js); both are optional, and a
+  // caller that asks for a missing verb gets `VMU_ENGINE_UNAVAILABLE` from the loop instead of a silent no-op.
+  sendMessage = null, interrupt = null,
+  // ROUND 4 / task-25 (reader-a's 5②): the recovery CHILDREN port `{ parentId: () => id, list: async (parentId) => [ids] }`.
+  // Optional: without it `resume` reports `children.attached:false` + `VMU_RESUME_CHILDREN_UNAVAILABLE` and recovery
+  // still succeeds (a named gap, not a failure).
+  children = null,
   // ROUND 1 / K5 (D-02): the ENTRY is the only layer that knows a folded pack default from a deployment value (it
   // merges them before construction), so it hands the layer map in and the resolved view reports it instead of
   // guessing `config`. The named overlap report itself is NOT a kernel seam: the kernel never acts on it (the entry
@@ -783,8 +791,13 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     // `VMU_INVALID_ARGUMENT`. The instance's own `replaySeam` does `fn.apply(target, entry.args)` (correct), so the
     // custom seam is DELETED rather than reimplemented.
     tasks: () => ({ key: 'tasks', mode: 'journal', list: () => (typeof tasks.list === 'function' ? tasks.list() : []) }),
-    // `work` is the in-flight ledger and is already durable; the projection keeps it visible to recovery.
-    work: () => ({ key: 'work', mode: 'journal', list: () => (workLedger && typeof workLedger.list === 'function' ? workLedger.list() : []) }),
+    // `work` NO LONGER HAS A PROJECTION ROW (Round 4 / task-25, reader-a's measured finding). `kernel/work.js` persists
+    // the `work` key as a BARE ARRAY (`store.patch('work', () => list)`), not as a projection envelope
+    // `{v,mode,key,seq,entries|value}` - so `hydrate()` refuses to adopt it and now NAMES it
+    // (`VMU_RESUME_PROJECTION_GAP`), which made every `recover()` report `ok:false` on a CLEAN FIRST RUN. `work` is
+    // already durable and `resume` reads it through the `work` SEAM (which names `interrupted`), so the projection row
+    // bought nothing and cost a false failure. Declaring `work` in `vmu.resume.projections` now gets the named
+    // "no adapter in this assembly" report instead - honest, and no longer a phantom failure.
     // ROUND 3 / task-20 (reader-a's completion list): the eight faces that NOW expose `snapshot()/restore()`.
     // `mode:'state'` + a snapshot/restore pair ⇒ `attachProjection` also WRITES THROUGH after each wrapped mutation
     // (reader-a's after-hook, gated by `vmu.resume.writeThrough`), so these are durable as soon as they are declared.
@@ -794,19 +807,55 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     minutes: () => ({ key: 'minutes', mode: 'state', snapshot: () => minutes.snapshot(), restore: (v) => minutes.restore(v), list: () => [] }),
     chat: () => ({ key: 'chat', mode: 'state', snapshot: () => chat.snapshot(), restore: (v) => chat.restore(v), list: () => [] }),
     panel: () => ({ key: 'panel', mode: 'state', snapshot: () => panel.snapshot(), restore: (v) => panel.restore(v), list: () => [] }),
-    // NAMED as NOT attachable in this round (reader-a's review): `budget.js` exposes no public snapshot/restore pair
-    // (its internal `snapshot` is a formatter), and `mailbox.js` has `snapshot()` but no `restore()` ⇒ a `state`
-    // projection would be a one-way write. They are absent rather than faked, and `status().projections.notAttached`
-    // names them with this reason. `meeting`/`ballot` are PER-SESSION factories (no single live instance is owned
-    // here), so wrapping "the" instance would be a guess - their owner decides (reader-a: "不要由我猜").
+    // ROUND 4 / task-25 (reader-a's task-28): `budget` grew a PUBLIC `snapshot()/restore()` pair this round (its
+    // internal formatter was renamed `viewOf`), so it is durable now instead of "hydratable but never written".
+    budget: () => ({ key: 'budget', mode: 'state', snapshot: () => budget.snapshot(), restore: (v) => budget.restore(v), list: () => budget.list().items }),
+    // NAMED as NOT attachable (reader-a's review): `mailbox.js` is SELF-PERSISTING (it takes the store at construction
+    // and owns its `mailbox` key) so it needs no projection row; `meeting`/`ballot` are PER-SESSION factories with no
+    // single live instance owned here (wrapping "the" one would silently drop the others) - their owners decide.
+    // `members` is a SINGLETON that can be null (no declared slots): it stays in the table and the attach loop reports
+    // it as `notAttached` with the reason, which is the named mechanism - never a hard-wired null seam.
   }
+  // ROUND 4 / task-25 (reader-a's task-28, F18): recovery must be EXCLUSIVE. The engine acquires the store lock around
+  // `recover()` and releases it in `finally` on every path; a second concurrent recovery is refused by name
+  // (`VMU_RESUME_BUSY`). The policy object is constructed LATER than this line, so the seam is the same late-bound
+  // holder pattern used for `meetings` (an access before it exists yields `undefined`, never a TDZ throw); a deployment
+  // that does not declare `vmu.store.lock` gets the engine's zero-mechanism passthrough (`locked:false`).
+  const storepolicyRef = { current: null }
+  const storepolicySeam = new Proxy({}, {
+    get: (t, k) => { const s = storepolicyRef.current; return s && typeof s[k] === 'function' ? s[k].bind(s) : (s ? s[k] : undefined) },
+    has: (t, k) => !!(storepolicyRef.current && k in storepolicyRef.current),
+  })
+  // ROUND 4 / task-25 (reader-a's 5②): the CHILDREN port, resolved BEFORE `createResume` (which consumes it) - naming
+  // it later measured as `Cannot access 'childrenSeam' before initialization`.
+  const childrenSeam = children && typeof children.parentId === 'function' && typeof children.list === 'function' ? children : null
   const resume = createResume({ store, work: workLedger, control, identity, settings: settingsView, bus,
+    lock: storepolicySeam,
+    // ROUND 4 / task-25 (reader-a's 5②): the CHILDREN port. It reconciles "members that hold a childId" against the
+    // host's LIVE direct children and names every one that is missing (`restart.missingChildren`); the engine never
+    // creates or re-dispatches a member (that is assembly policy). Absent port ⇒ `attached:false` +
+    // `VMU_RESUME_CHILDREN_UNAVAILABLE`, which does NOT fail recovery.
+    children: childrenSeam,
     // CLOCK: the RAW clock, not `guardedClock` - measured: the monotonic guard refuses a caller-supplied ISO-string
     // clock (`VMU_CLOCK_UNGUARDED: … NaN`), and `recover()` reads it, so the whole startup recovery was reported as
     // failed under a string clock. Recovery timestamps are informational; the elapsed-time guard belongs to the
     // TTL-sensitive services (the same reasoning already applied to `bindIds` and `createReport`).
     clock, log, faces: {} })
   const attachedProjections = []
+  /**
+   * ROUND 4 / task-25 D: ONE phase writer for the four control transitions. `resume.setPhase()` sits behind the
+   * read-before-write gate (`VMU_RESUME_WRITE_BEFORE_READ`), and the entry's recovery chain is what normally performs
+   * that first read - so a control transition that happens BEFORE recovery would silently leave the projection empty.
+   * Reading here is idempotent, and a store-less kernel still fails by name (logged, projection stays `present:false`).
+   */
+  const writePhase = async (value, why) => {
+    try {
+      if (typeof resume.read === 'function') await resume.read()
+      await resume.setPhase(value, { why })
+    } catch (e) {
+      log('resume.setPhase(' + value + ') not applied: ' + String((e && e.message) || e))
+    }
+  }
   // ROUND 3 / task-20: the attach loop is a FUNCTION called at the END of this factory (see `attachDeclaredProjections()`
   // below `records`), because `meetings`/`ballotbox` are constructed after the resume block - running it here measured as
   // `Cannot access 'meetings' before initialization`. The adapter lambdas above are late-bound, so the call site is the
@@ -814,7 +863,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   const attachDeclaredProjections = () => {
     const declaredProjections = Array.isArray(settings['vmu.resume.projections']) ? settings['vmu.resume.projections'] : []
     // The live instances each adapter wraps. `meeting`/`ballot` are excluded on purpose (per-session factories).
-    const targets = { tasks, work: workLedger, members, meetings, ballotbox, minutes, chat, panel }
+    const targets = { tasks, members, meetings, ballotbox, minutes, chat, panel, budget }
     const methodsOf = { tasks: ['create', 'assign', 'transition', 'brief', 'clearBrief', 'advance', 'rollback'], work: [] }
     for (const key of declaredProjections) {
       const face = String(key)
@@ -889,7 +938,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // ungated. `vmu.human.gatedActions` decides which actions are gated (empty ⇒ none). Placed HERE, after
   // meetings/ballotbox exist: an earlier position measured as a TDZ error (`Cannot access 'ballotbox' before
   // initialization`) because those two faces are constructed after the turn block.
-  {
+  const attachApprovalGates = () => {
     const gateMethods = (target, names) => names.filter((n) => target && typeof target[n] === 'function')
     const gateReport = []
     if (typeof human.gate === 'function') {
@@ -902,6 +951,28 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
       attach('vmu.tasks', tasks, ['create', 'assign', 'transition', 'brief', 'clearBrief', 'advance', 'rollback'], (m, a) => (a && (a.title || a.id)) || null)
       attach('vmu.ballotbox', ballotbox, ['open', 'freeze', 'unfreeze', 'cast', 'close', 'reopen'], (m, a) => (a && a.target) || null)
       attach('vmu.meetings', meetings, ['convene', 'open', 'speak', 'vote', 'close', 'recess'], (m, a) => (a && (a.topic || a.id)) || null)
+      // ROUND 4 / task-25 E — COVERAGE ASSESSMENT, ANSWERED BY EXTENDING WHERE IT IS SOUND.
+      // The gate is ZERO-MECHANISM by default (`vmu.human.gatedActions` empty ⇒ nothing queues), so wrapping a face
+      // costs nothing until a deployment names an action - which makes "cover every authority face" the right default.
+      // Added below: the institutional faces whose methods ARE authority acts (a human may legitimately have to approve
+      // them). Every name is filtered by `gateMethods`, so a wrong name shows up in `missing` instead of silently
+      // leaving a method ungated.
+      attach('vmu.records', records, ['datasetRegister', 'put', 'supersede', 'remove', 'purge', 'rebuttal'], (m, a) => (a && (a.kind || a.id || a.dataset)) || null)
+      attach('vmu.library', library, ['append', 'retract', 'supersede', 'publish'], (m, a) => (a && (a.kind || a.statement)) || null)
+      attach('vmu.publication', publication, ['publish', 'retract', 'register', 'release'], (m, a) => (a && (a.title || a.id)) || null)
+      attach('vmu.trust', trust, ['signal', 'dispute', 'endEngagement'], (m, a) => (a && (a.subject || a.member)) || null)
+      attach('vmu.custody', custody, ['hold', 'release', 'transfer', 'seal'], (m, a) => (a && (a.artifact || a.id)) || null)
+      attach('vmu.ip', ip, ['disclose', 'dispute', 'transfer', 'hold', 'release'], (m, a) => (a && (a.claim || a.id)) || null)
+      attach('vmu.resource', resource, ['allocate', 'release', 'reserve', 'revoke'], (m, a) => (a && (a.resource || a.id)) || null)
+      // DELIBERATELY NOT GATED, named rather than left to look like an oversight:
+      //  · `budget`/`metrics`/`audit`/`idempotency`/`stateversion`/`work` are ACCOUNTING, not authority: an approval
+      //    gate there would let a human block the ledger from recording what ALREADY happened, which is the one thing a
+      //    truthful ledger may never do.
+      //  · `members` is roster ADMINISTRATION: gating it would let a pending approval lock the institution out of its
+      //    own roster changes (the pack's own `requires`/roles are the right place for that policy).
+      //  · `paper` has NO instance in this assembly (nothing constructs it here), so there is nothing to wrap.
+      //  · `meeting`/`ballot` are PER-SESSION factories: the gate wraps the SINGLE live instance this kernel owns
+      //    (`meetings`/`ballotbox` above); wrapping "the last one created" would gate an arbitrary instance.
     } else {
       gateReport.push({ face: '(all)', attached: false, reason: 'this kernel has no approval gate (kernel/human.js exposes none)' })
     }
@@ -918,6 +989,9 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // from (the E2 lesson: a seam report rebuilt by inference can claim a seam the consumer never received).
   const turnDeliverSeam = typeof deliverTurn === 'function' ? deliverTurn
     : (host && typeof host.deliverTurn === 'function' ? host.deliverTurn : null)
+  // ROUND 4: named, not inferred - the same lesson as `turnDeliverSeam` above.
+  const sendMessageSeam = typeof sendMessage === 'function' ? sendMessage : null
+  const interruptSeam = typeof interrupt === 'function' ? interrupt : null
   const turn = createTurnOrchestrator({
     sectionPolicy: sectionPolicy || null,
     noticeBlock: noticeBlock || null,
@@ -935,6 +1009,10 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     // ROUND 366: the whole resolved settings map travels with the loop, so `{{ setting:... }}` inside a section is
     // filled from configuration during a REAL round and not only in a hand-made assembly call.
     settings,
+    // ROUND 4 / F9+F10 (docs/26 §3.22): the ONGOING-COMMAND seams. `kernel/turn/index.js` is their REAL READER (it
+    // turns them into `sendToMember`/`interruptMember` and counts the calls); a missing one is refused there by name.
+    sendMessage: sendMessageSeam,
+    interrupt: interruptSeam,
   })
   // ROUND 24: the teaching face the N13 volume declared (19 of its 24 knobs change behaviour; the five that need
   // a library, records or ontology seam are named rather than silently accepted).
@@ -946,7 +1024,19 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   const ip = createIp({ settings: settingsView, bus, clock: guardedClock, log })
   const funding = createFunding({ settings: settingsView, bus, clock: guardedClock, log })
   const compliance = createCompliance({ settings: settingsView, bus, clock: guardedClock, log })
-  const storepolicy = createStorePolicy({ settings: settingsView, bus, clock: guardedClock, log })
+  // ROUND 4 / task-25 (reader-a's F18): the store policy implements the recovery LOCK, and `acquire` reads the clock
+  // (`kernel/storepolicy.js:163`). `guardedClock` REFUSES a caller-supplied ISO-string clock (a deployment/test idiom),
+  // which turned every recovery into a refusal - measured: `vmu: recovery failed: VMU_RESUME_BUSY ... NaN`. The policy's
+  // clock is informational (lock `at`, waitedMs), so it gets a NORMALIZING clock: a finite number passes through
+  // unchanged, anything else is parsed as a timestamp. This is the same reasoning already applied to ids/report/resume.
+  const storePolicyClock = () => {
+    const v = clock ? clock() : Date.now()
+    if (typeof v === 'number' && Number.isFinite(v)) return v
+    const parsed = Date.parse(String(v))
+    return Number.isFinite(parsed) ? parsed : Date.now()
+  }
+  storepolicyRef.current = createStorePolicy({ settings: settingsView, bus, clock: storePolicyClock, log })
+  const storepolicy = storepolicyRef.current
   const capacity = createCapacity({ settings: settingsView, bus, clock: guardedClock, log })
   const tenure = createHr({ settings: settingsView, bus, clock: guardedClock, log })
   const migration = createMigration({ settings: settingsView, bus, clock: guardedClock, log })
@@ -1334,6 +1424,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
         }
         registrations.push(entry.id)
       }
+      await writePhase('running', 'start')
       return { ok: true, enabled: true, registered: registrations.slice(), dryRun,
         note: registrations.length === 0 ? 'no middleware declared: the kernel registered nothing' : undefined }
     },
@@ -1344,6 +1435,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
       controlState.stoppedReason = reason ? String(reason) : null
       started = false
       registrations.length = 0
+      await writePhase('stopped', controlState.stoppedReason || 'stop')
       const decided = await bus.emit('control/paused', { reason: 'stopped', at: clock() }, {})
       return { ok: true, stopped: true, state: controlState.state, reason: controlState.stoppedReason,
         middleware: decided && decided.decisions ? decided.decisions.length : 0 }
@@ -1576,6 +1668,10 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
       controlState.state = 'paused'
       controlState.pausedAt = clock()
       controlState.pausedReason = String(reason)
+      // ROUND 4 / task-25 D (reader-a's task-18): the PHASE projection. `resume.setPhase` writes the `phase` key through
+      // the read-before-write gate, so a restart can read `resume.phase()` directly. A store-less kernel (or a refusal)
+      // is NAMED on the log rather than swallowed - and the projection simply stays empty (`present:false`).
+      await writePhase('paused', controlState.pausedReason)
       const decided = await bus.emit('control/paused', { reason: controlState.pausedReason, at: controlState.pausedAt }, {})
       return { ok: true, state: controlState.state, reason: controlState.pausedReason, at: controlState.pausedAt,
         middleware: decided && decided.decisions ? decided.decisions.length : 0 }
@@ -1587,6 +1683,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
       const wasReason = controlState.pausedReason
       controlState.pausedAt = null
       controlState.pausedReason = null
+      await writePhase('running', reason ? String(reason) : 'resumed')
       const decided = await bus.emit('control/resumed', { pausedFor: wasReason, reason: reason ? String(reason) : null, at: clock() }, {})
       return { ok: true, state: controlState.state, resumedFrom: wasReason,
         middleware: decided && decided.decisions ? decided.decisions.length : 0 }
@@ -1726,6 +1823,17 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
             : (host && typeof host.deliverTurn === 'function' ? 'host.deliverTurn' : null),
           turnDeliverNote: turnDeliverSeam ? null
             : 'the turn loop has no delivery seam: `vibe_vmu_turn` step/drive refuse by name (VMU_ENGINE_UNAVAILABLE); pass { deliverTurn } (the entry assembles it from ctx.get(\'subagents\') via kernel/turn/index.js deliverViaSubagents)',
+          // ROUND 4 / F9+F10 (docs/26 §3.22): the ONGOING-COMMAND seams, reported from the values the loop was
+          // ACTUALLY built with. `consumedBy` is the real reader (`kernel/turn/index.js` turns them into
+          // `sendToMember`/`interruptMember`), so status can never claim a verb nobody can call.
+          sendMessage: !!sendMessageSeam,
+          sendMessageConsumedBy: sendMessageSeam ? ['kernel/turn/index.js (sendToMember)'] : [],
+          sendMessageNote: sendMessageSeam ? null
+            : 'no sendMessage seam: a RUNNING member cannot be reached (kernel/turn sendToMember refuses by name, VMU_ENGINE_UNAVAILABLE); the entry assembles it from ctx.get(\'subagents\') via sendViaSubagents (docs/26 §3.22)',
+          interrupt: !!interruptSeam,
+          interruptConsumedBy: interruptSeam ? ['kernel/turn/index.js (interruptMember)'] : [],
+          interruptNote: interruptSeam ? null
+            : 'no interrupt seam: a running member cannot be stopped (kernel/turn interruptMember refuses by name, VMU_ENGINE_UNAVAILABLE); the entry assembles it from ctx.get(\'subagents\') via interruptViaSubagents (docs/26 §3.22)',
           signer: !!signer, fetchFn: !!fetchFn,
           // ROUND 2 (task-14): the new faces' seams, reported as CONSTRUCTION facts (E2 discipline): the id minter,
           // the recovery face, chat, the math adapters, and whether the math-job FILE MIRROR really has its `fs` seam
@@ -1753,6 +1861,11 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
       }
     },
   }
+
+  // ROUND 4 / task-25 E: THE APPROVAL GATE IS ATTACHED LAST, once every face it may wrap exists. The earlier position
+  // (beside the projections) measured as `Cannot access 'ip' before initialization`, because `ip`/`resource` are
+  // constructed below it. The gate is zero-mechanism until a deployment declares `vmu.human.gatedActions`.
+  attachApprovalGates()
 
   return kernel
 }

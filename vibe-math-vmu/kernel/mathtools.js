@@ -53,7 +53,10 @@ export function refuse(code, message, hint) {
 /** Every key this BATCH actually honours (each one changes an observable result — see the test). */
 export const WIRED_KEYS = Object.freeze([
   'vmu.math.sandbox.network', 'vmu.math.sandbox.memoryMb', 'vmu.math.sandbox.cpuMs', 'vmu.math.sandbox.wallMs', 'vmu.math.sandbox.threads',
-  'vmu.math.jobs.maxParallel', 'vmu.math.jobs.dir', 'vmu.math.jobs.logMax', 'vmu.math.jobs.persist',
+  // Round 4 convergence: read the CANONICAL name. The legacy name (`math.jobs.maxParallel`, removed from the
+  // schema in R4) is mirrored onto it at the settings boundary (`alias-of` bookkeeping in vibe-math-vmu.js)
+  // ⇒ one value, one reader here.
+  'vmu.math.maxParallel', 'vmu.math.jobs.dir', 'vmu.math.jobs.logMax', 'vmu.math.jobs.persist',
   'vmu.math.repro.requireSeed', 'vmu.math.repro.seed', 'vmu.math.repro.deterministic', 'vmu.math.repro.packOnSuccess',
   'vmu.math.cache.enabled', 'vmu.math.cache.maxEntries', 'vmu.math.cache.onCorrupt', 'vmu.math.cache.crossProject',
   'vmu.math.precision.digits', 'vmu.math.precision.mode', 'vmu.math.precision.rounding', 'vmu.math.precision.tolerance',
@@ -121,7 +124,7 @@ const reasonFor = (key) => {
 const DEFAULTS = Object.freeze({
   'vmu.math.sandbox.network': 'deny', 'vmu.math.sandbox.memoryMb': 0, 'vmu.math.sandbox.cpuMs': 0,
   'vmu.math.sandbox.wallMs': 0, 'vmu.math.sandbox.threads': 0,
-  'vmu.math.jobs.maxParallel': 1, 'vmu.math.jobs.dir': '', 'vmu.math.jobs.logMax': 200, 'vmu.math.jobs.persist': false,
+  'vmu.math.maxParallel': 1, 'vmu.math.jobs.dir': '', 'vmu.math.jobs.logMax': 200, 'vmu.math.jobs.persist': false,
   'vmu.math.repro.requireSeed': false, 'vmu.math.repro.seed': null, 'vmu.math.repro.deterministic': false,
   'vmu.math.repro.packOnSuccess': false,
   'vmu.math.cache.enabled': false, 'vmu.math.cache.maxEntries': 100, 'vmu.math.cache.onCorrupt': 'recompute',
@@ -191,13 +194,20 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
     return DEFAULTS[key]
   }
   const say = (event) => { if (log && typeof log.append === 'function') { try { log.append(event) } catch (e) { /* advisory */ } } }
-  const emit = (event) => { if (bus && typeof bus.emit === 'function') { try { bus.emit(event) } catch (e) { /* advisory */ } } }
+  const emit = (event) => {
+  // ROUND 4 / task-25 (Lead's audit): the bus takes a STRING NAME first. Forwarding the event OBJECT meant every
+  // emission here threw and was swallowed. Split the name out, and NAME the refusal in this module's own log.
+  if (!bus || typeof bus.emit !== 'function') return
+  const name = event && typeof event.type === 'string' ? event.type : null
+  if (name === null) return say({ type: 'bus/emit-failed', at: clock(), name: null, code: 'VMU_BUS_NAME_REQUIRED', message: 'a bus event needs a string name (got an object without .type)' })
+  try { bus.emit(name, event) } catch (e) { say({ type: 'bus/emit-failed', at: clock(), name, code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) }
+}
 
   // ── the wired values (read as plain literals; H1 ⇒ they apply from the next turn) ────────────────────
   const K = {
     network: sget('vmu.math.sandbox.network'), memoryMb: num(sget('vmu.math.sandbox.memoryMb')), cpuMs: num(sget('vmu.math.sandbox.cpuMs')),
     wallMs: num(sget('vmu.math.sandbox.wallMs')), threads: num(sget('vmu.math.sandbox.threads')),
-    maxParallel: num(sget('vmu.math.jobs.maxParallel'), 1), jobsDir: str(sget('vmu.math.jobs.dir')), logMax: num(sget('vmu.math.jobs.logMax'), 200),
+    maxParallel: num(sget('vmu.math.maxParallel'), 1), jobsDir: str(sget('vmu.math.jobs.dir')), logMax: num(sget('vmu.math.jobs.logMax'), 200),
     persist: sget('vmu.math.jobs.persist') === true,
     requireSeed: sget('vmu.math.repro.requireSeed') === true, seed: sget('vmu.math.repro.seed'), deterministic: sget('vmu.math.repro.deterministic') === true,
     packOnSuccess: sget('vmu.math.repro.packOnSuccess') === true,
@@ -301,7 +311,7 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
   const keysSnapshot = () => ({
     'vmu.math.sandbox.network': K.network, 'vmu.math.sandbox.memoryMb': K.memoryMb, 'vmu.math.sandbox.cpuMs': K.cpuMs,
     'vmu.math.sandbox.wallMs': K.wallMs, 'vmu.math.sandbox.threads': K.threads,
-    'vmu.math.jobs.maxParallel': K.maxParallel, 'vmu.math.jobs.dir': K.jobsDir, 'vmu.math.jobs.logMax': K.logMax, 'vmu.math.jobs.persist': K.persist,
+    'vmu.math.maxParallel': K.maxParallel, 'vmu.math.jobs.dir': K.jobsDir, 'vmu.math.jobs.logMax': K.logMax, 'vmu.math.jobs.persist': K.persist,
     'vmu.math.repro.requireSeed': K.requireSeed, 'vmu.math.repro.seed': K.seed, 'vmu.math.repro.deterministic': K.deterministic, 'vmu.math.repro.packOnSuccess': K.packOnSuccess,
     'vmu.math.cache.enabled': K.cacheEnabled, 'vmu.math.cache.maxEntries': K.cacheMax, 'vmu.math.cache.onCorrupt': K.cacheOnCorrupt, 'vmu.math.cache.crossProject': K.crossProject,
     'vmu.math.precision.digits': K.digits, 'vmu.math.precision.mode': K.pMode, 'vmu.math.precision.rounding': K.rounding, 'vmu.math.precision.tolerance': K.pTolerance,
@@ -567,9 +577,10 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
         evalKey('vmu.math.artifacts.maxAttemptsPerRun')
         if (num(req.retries) > K.maxAttempts) capRefusal('VMU_RESOURCE_BUDGET', 'retries', num(req.retries), K.maxAttempts, 'vmu.math.artifacts.maxAttemptsPerRun', enforced)
       }
-      // ⑩ CONCURRENCY (jobs.maxParallel) — the comparison runs on EVERY plan, so the key is always listed.
-      evalKey('vmu.math.jobs.maxParallel')
-      if (active >= K.maxParallel) capRefusal('VMU_RESOURCE_BUDGET', 'active runs', active, K.maxParallel, 'vmu.math.jobs.maxParallel', enforced)
+      // ⑩ CONCURRENCY (vmu.math.maxParallel — the CANONICAL name; the legacy name (`math.jobs.maxParallel`,
+      // removed from the schema in R4) is mirrored onto it by the kernel, so this is one value, one reader).
+      evalKey('vmu.math.maxParallel')
+      if (active >= K.maxParallel) capRefusal('VMU_RESOURCE_BUDGET', 'active runs', active, K.maxParallel, 'vmu.math.maxParallel', enforced)
       // ⑪ SPARSE POLICY (linalg.sparse)
       if (K.sparse && req.dense !== undefined) evalKey('vmu.math.linalg.sparse')
       if (K.sparse && req.dense === true && num(req.size) > DENSE_SIZE_SOFT_CAP) {

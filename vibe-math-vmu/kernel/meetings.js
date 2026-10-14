@@ -3,6 +3,10 @@
 // contract) for the service name a pack may require.
 import { SETTING_DEFS } from '../settings/schema.js'
 import { CODE as RESUME_CODE } from './resume.js'
+// F28's bounded-fallback RULES and the extension-step resolution were extracted to keep this file inside the
+// decided 1200-line budget (docs/02 §L174) — see `kernel/meetinglapse.js`: it holds the pure rules, this file
+// holds the state (live records, minutes, counters, broadcasts) and the D3 receipt vocabulary.
+import { MEETING_LAPSE_NAME, createMeetingControls } from './meetinglapse.js'
 // vmu kernel · meetings — the POLICY + GUARD layer that finally READS the `vmu.meetings.*` knobs.
 //
 // WHY: 08-academic-... (docs/08-primitives-meeting-ballot-workflow.md) declares **47 `vmu.meetings.*` keys**
@@ -99,7 +103,14 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     return DEFAULTS[key]
   }
   const say = (event) => { if (log && typeof log.append === 'function') { try { log.append(event) } catch (e) { /* advisory */ } } }
-  const emit = (event) => { if (bus && typeof bus.emit === 'function') { try { bus.emit(event) } catch (e) { /* advisory */ } } }
+  const emit = (event) => {
+  // ROUND 4 / task-25 (Lead's audit): the bus takes a STRING NAME first. Forwarding the event OBJECT meant every
+  // emission here threw and was swallowed. Split the name out, and NAME the refusal in this module's own log.
+  if (!bus || typeof bus.emit !== 'function') return
+  const name = event && typeof event.type === 'string' ? event.type : null
+  if (name === null) return say({ type: 'bus/emit-failed', at: clock(), name: null, code: 'VMU_BUS_NAME_REQUIRED', message: 'a bus event needs a string name (got an object without .type)' })
+  try { bus.emit(name, event) } catch (e) { say({ type: 'bus/emit-failed', at: clock(), name, code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) }
+}
   const n = (v, def = 0) => (Number.isFinite(v) ? v : def)
   const arr = (v) => (Array.isArray(v) ? v.slice() : [])
   const oneOf = (v, set, def) => (set.includes(v) ? v : def)
@@ -223,11 +234,20 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     throw deny(code, label + ' exceeds ' + key + ': ' + value + ' > ' + limit, hint, keys)
   }
   const meetingOf = (id) => live.get(String(id))
-  const requireMeeting = (id) => {
+  /**
+   * `opts.readOnly` opts a caller into the READ surface (and into the fallback's own methods). Everything else
+   * FAILS CLOSED once a meeting is lapsed: F28's fallback only means something if it actually stops the meeting,
+   * and ONE guard here keeps that from having to be repeated (and forgotten) on every acting rail.
+   */
+  const requireMeeting = (id, opts = {}) => {
     const m = meetingOf(id)
     if (!m) {
       if (live.size === 0) throw deny('VMU_NO_OPEN_MEETING', 'no meeting is open (id: ' + String(id) + ')', 'open() a meeting first — this layer refuses rather than inventing one', [])
       throw deny('VMU_NO_SUCH_OBJECT', 'no such meeting: ' + String(id), 'open: ' + [...live.keys()].sort().join(', '), [])
+    }
+    if (opts.readOnly !== true && m.state === 'lapsed') {
+      throw deny('VMU_STATE', 'the meeting is LAPSED by its declared bound (' + MEETING_LAPSE_NAME + '): ' + String(opts.what || 'this act') + ' is refused',
+        'revokeLapse({ meeting, by, reason }) restores it (a reason is required); the record itself stays readable via minutes()/verbatim()/status()/quorum()', [])
     }
     return m
   }
@@ -304,6 +324,35 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       'this is a LIGHT-procedure meeting (vmu.meetings.tier=light): ' + what + ' would be an entity conclusion, which a light meeting may not produce (D7/GAPS 22)',
       'record it as PROCESS instead (agenda, rounds and action items are always allowed), or upgrade the meeting with vmu.meetings.tier="formal" (read live, so the chair may do it at any time)', e)
   }
+
+  /**
+   * F28 — THE BOUNDED FALLBACK: bounded, NAMED and REVOCABLE.
+   *
+   * WHY THIS EXISTS. `vmu.meetings.hardLimitMs` was already consulted (speak/motion/vote throw
+   * `VMU_RESOURCE_BUDGET` past it), but a REFUSAL is not a SETTLEMENT: the meeting stayed open forever. F28 asks
+   * for the other half — a fallback that is bounded (`hardLimitMs`), NAMED, EXPLAINED, TIMESTAMPED and REVOCABLE.
+   *
+   * The RULES and the four methods live in `kernel/meetinglapse.js` (extracted to keep this file inside the
+   * decided 1200-line budget, docs/02 §L174); this face injects its STATE seams and keeps the D3 vocabulary.
+   */
+  const controls = createMeetingControls({
+    requireMeeting, clock, limits: () => K, counters, say, deny, capIn, numbers: n,
+  })
+  /**
+   * The RECEIPT vocabulary stays in this face (the rules module reports only the `keys` it read): every control
+   * receipt therefore leaves here with its evaluated scope attached, exactly like the face's other receipts.
+   */
+  const withScope = (r) => {
+    const out = Object.assign({}, r)
+    out.enforced = Array.isArray(r && r.keys) ? r.keys.slice() : []
+    delete out.keys
+    out.enforcedScope = ENFORCED_SCOPE
+    return out
+  }
+  const lapseDue = (a) => withScope(controls.lapseDue(a))
+  const lapse = (a) => withScope(controls.lapse(a))
+  const revokeLapse = (a) => withScope(controls.revokeLapse(a))
+  const extend = (a) => withScope(controls.extend(a))
 
   const api = {
     apiVersion,
@@ -464,8 +513,10 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // below may refuse, warn or extend. A pack can set this key and it now changes behaviour.
       if (now - m.wallStartMs > K.hardLimitMs) {
         mark(enforced, 'vmu.meetings.hardLimitMs')
+        // F28: past the declared bound this is no longer only a refusal — the meeting can be SETTLED BY NAME
+        // (`lapse()`), which produces `{name, why, at, revocable}` and can be revoked with a reason.
         throw deny('VMU_RESOURCE_BUDGET', 'the meeting wall-clock HARD limit is exceeded: ' + (now - m.wallStartMs) + ' / ' + K.hardLimitMs,
-          'close this meeting; the hard limit has no off switch (vmu.meetings.hardLimitMs, clamped [300000, 7200000])', enforced)
+          'settle it by name with lapse() (bounded fallback, revocable), or close() it explicitly; the hard limit has no off switch (vmu.meetings.hardLimitMs, clamped [300000, 7200000])', enforced)
       }
       if (K.budgetWallMs > 0 && now - m.wallStartMs > K.budgetWallMs) {
         mark(enforced, 'vmu.meetings.budgetWallMs')
@@ -812,7 +863,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
 
     /** Minutes (READ-ONLY): shaped by `minutesDetail`, `minutesIncludeRefused`, pruned by `minutesRetentionMs`. */
     minutes({ meeting, by = null, at = null } = {}) {
-      const m = requireMeeting(meeting)
+      const m = requireMeeting(meeting, { readOnly: true })
       assertCanReadRecord(m, 'minutes', by)
       const now = at === null ? clock() : at
       const refused = m.minutes.refused.filter(() => K.minutesIncludeRefused)
@@ -828,7 +879,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
 
     /** Verbatim transcript (READ-ONLY; pruned by `verbatimRetentionMs`, drops counted). */
     verbatim({ meeting, by = null, at = null } = {}) {
-      const m = requireMeeting(meeting)
+      const m = requireMeeting(meeting, { readOnly: true })
       assertCanReadRecord(m, 'verbatim', by)
       if (!K.verbatimEnabled) return { ok: true, enabled: false, lines: [], dropped: counters.prunedVerbatim, note: 'vmu.meetings.verbatimEnabled=false: nothing is captured' }
       const now = at === null ? clock() : at
@@ -934,7 +985,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
 
     /** READ-ONLY quorum view (never mutates). */
     quorum({ meeting, at = null } = {}) {
-      const m = requireMeeting(meeting)
+      const m = requireMeeting(meeting, { readOnly: true })
       const enforced = ['vmu.meetings.attendanceMode']
       if (K.unansweredInDenominator) mark(enforced, 'vmu.meetings.unansweredInDenominator')
       if (K.quorumMin > 0) mark(enforced, 'vmu.meetings.quorumMin')
@@ -966,6 +1017,9 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         wiredNotDeclared: declared.count > 0 ? wired.filter((k) => !declared.keys.includes(k)) : [],
         complementOk: plannedKeys.length + wired.length === declared.count && plannedKeys.filter((k) => wired.includes(k)).length === 0,
         liveMeetings: [...live.keys()].sort(), archived: archive.length,
+        // F28: a lapse is a first-class state an operator must be able to SEE (not infer from a missing meeting).
+        lapsedMeetings: [...live.values()].filter((m) => m.lapse && !m.lapse.revokedAt).map((m) => m.id).sort(),
+        lapses: Number(counters.lapses || 0), lapseRevocations: Number(counters.lapseRevocations || 0),
         // GAP-MTG-02 (D7): the tier is part of the observable state, and a contradictory declaration is visible
         // here BEFORE anyone hits the refusal (an operator must be able to see why a close would be refused).
         tier: K.tier, allowLight: K.allowLight, isLight: isLight(),
@@ -1050,6 +1104,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     tier,
     isLight,
     truthWriteRefusal,
+    /** F28: the bounded fallback — predicate, settle-by-name, revoke-with-a-reason (see the block above). */
+    lapseDue,
+    lapse,
+    revokeLapse,
+    /** GAP-MTG-05: the declared extension step, as a command rather than an implicit arithmetic branch. */
+    extend,
   }
 
   function budgetVerdict(m, label, value, limit, evaluated) {

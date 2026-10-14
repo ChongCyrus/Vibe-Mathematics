@@ -16,7 +16,7 @@ function throwsNamed(fn, code, label) {
 }
 function fakeClock(start = 1000) { let t = start; return { now: () => t, advance: (ms) => { t += ms }, clock: () => t } }
 function fakeLog() { const rows = []; return { rows, append: (e) => { rows.push(e) } } }
-function fakeBus() { const rows = []; return { rows, emit: (e) => { rows.push(e) } } }
+function fakeBus() { const rows = []; return { rows, emit: (name, payload) => { rows.push({ name, payload }) } } }
 const DECLARED = { 'vmu.metrics.indicators': ['throughput', 'refusalRate'] }
 
 // ── 1. zero mechanism (unconfigured ⇒ empty, non-throwing, and the skip is COUNTED) ───────────────
@@ -146,7 +146,13 @@ const DECLARED = { 'vmu.metrics.indicators': ['throughput', 'refusalRate'] }
   const before = JSON.stringify(m.status()) + '|' + JSON.stringify(m.counters()) + '|' + JSON.stringify(m.snapshot())
   const r = m.trigger({ name: 'kpi/slo-breach', payload: { indicator: 'refusalRate' } })
   ok(r.ok === true && r.triggered === true && r.hook.type === 'metrics/trigger', 'allowTrigger=true: the trigger returns an advisory hook')
-  ok(bus.rows.length === 1 && bus.rows[0].payload.indicator === 'refusalRate', 'allowTrigger=true: the hook reached the (advisory) bus')
+  // ROUND 4 (Lead ruling): the fake bus used to take ONE argument (`emit: (e) => …`), i.e. it simulated a bus
+  // contract that does NOT exist - the real bus takes the STRING hook name first and throws on an object topic
+  // (the defect class fixed this round). So the assertion was green against a fiction. The module emits the whole
+  // hook as the SECOND argument, like every other face, and that is what is asserted now.
+  ok(bus.rows.length === 1 && bus.rows[0].name === 'metrics/trigger' && bus.rows[0].payload.payload.indicator === 'refusalRate',
+    'allowTrigger=true: the hook reached the (advisory) bus under its STRING name, with the hook body as the payload',
+    JSON.stringify(bus.rows[0]))
   const after = JSON.stringify(m.status()) + '|' + JSON.stringify(m.counters()) + '|' + JSON.stringify(m.snapshot())
   ok(before === after, 'allowTrigger=true: triggering mutated NO metric state (status/counters/snapshot identical)')
 }

@@ -8,18 +8,14 @@
 //   · the `vibe_vmu_report` TOOL the host registers (the reachable face a session actually has),
 // and the parameter face is exercised through that same tool.
 //
-// TWO FACTS THIS SUITE MEASURED ON THE WAY, both reported to the Lead rather than fixed here (they live in files this
-// task does not own):
-//   F1 `vibe_vmu_report` is NOT registered when the ONLY declaration is the pack's manifest settings: the tool faces are
-//      resolved when the entry builds the host adapter, and a pack's manifest `settings` are applied by the pack loader
-//      AFTERWARDS. A deployment that declares a `vmu.report.*` key in its own config (which this suite does, as a
-//      deployment legitimately would) gets the face. Consequence: the pack's policy alone is enough to ARM reporting,
-//      but not enough to PUBLISH the tool.
-//   F2 the preset entry injects no kernel-wide `deliver` transport, so a report FIRES, is TRACED and is REFUSED BY NAME
-//      (`VMU_REPORT_NO_TRANSPORT`) instead of being delivered. That is the documented contract ("record first, then refuse
-//      by name; never pretend it was sent") - but it means automatic reporting is half-delivered on a bare preset.
+// TWO FACTS THIS SUITE MEASURED ON THE WAY. F1 (the tool face of a manifest-declared intent was never published) and F5
+// (the periodic clock was gated on a construction-time settings check) were both fixed at the ROOT by vmu-core and are
+// HARD ASSERTIONS below. F2 - the preset injecting no delivery transport - is CLOSED the same way: the deployment may now
+// hand the host's own transport in as `config.deliver` (round 4), so this suite proves BOTH halves against the real
+// entry: with a transport the report is really SENT, and with none it is TRACED and refused by name (`VMU_REPORT_NO_TRANSPORT`).
 //
 // Run: node tests/vmu-assistant-e2e.test.mjs          (add --print for the verbatim prompt excerpts)
+//      node tests/vmu-assistant-e2e.test.mjs --strict-findings   (a pending measurement becomes a failure)
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -67,10 +63,13 @@ const DEPLOYER_REPORTS = [
  * Boot the REAL preset entry against a host context that only RECORDS what the host would do:
  * `agent/turn-stopping` listeners (the entry registers one for the period clock), registered tool specs (the host's own
  * registration path), and `systemPrompt.section` calls. Nothing is stubbed inside the framework.
+ *
+ * `transport` is the HOST'S OWN delivery function, handed in the way a deployment does it (round 4: `config.deliver`).
+ * With one, a fired report must really leave the framework; without one, the named refusal is the honest answer.
  */
-async function boot(extraConfig = {}, { withDeploymentReportPolicy = true } = {}) {
+async function boot(extraConfig = {}, { withDeploymentReportPolicy = true, transport = null } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'vmu-assistant-e2e-'))
-  const state = { listeners: {}, specs: [], sections: [], effects: [] }
+  const state = { listeners: {}, specs: [], sections: [], effects: [], sent: [] }
   const ctx = {
     effect(fn, label) { state.effects.push(label); return fn() },
     on(ev, h) { (state.listeners[ev] = state.listeners[ev] || []).push(h); return () => { state.listeners[ev] = state.listeners[ev].filter((x) => x !== h) } },
@@ -78,11 +77,12 @@ async function boot(extraConfig = {}, { withDeploymentReportPolicy = true } = {}
     systemPrompt: { section: (s) => { state.sections.push(s); return () => {} }, getSectionOrder: () => 500 },
     get: () => null,
   }
+  const deliver = typeof transport === 'function' ? (note) => { state.sent.push(note); return transport(note) } : null
   const policy = withDeploymentReportPolicy
     ? { 'vmu.report.enabled': true, 'vmu.report.minIntervalMs': 0, 'vmu.report.reports': DEPLOYER_REPORTS,
       'vmu.turn.instituteName': 'institute' }
     : {}
-  const handle = entry.apply(ctx, Object.assign({ clock: () => Date.now(), root, packs: ['v5r'], vmu: policy }, extraConfig))
+  const handle = entry.apply(ctx, Object.assign({ clock: () => Date.now(), root, packs: ['v5r'], vmu: policy, deliver }, extraConfig))
   await sleep(220)
   const tool = (name) => {
     const spec = state.specs.find((s) => s.name === name)
@@ -200,8 +200,13 @@ stage('4. A-PERIOD (PATH 2, TOOL FALLBACK) AND A-THRESHOLD: DRIVEN THROUGH `vibe
   const below = await reportTool({ action: 'tick', metrics: JSON.stringify({ artifacts: 2 }) })
   ok(below.fired.length === 0, 'and does NOT fire below the line (it is a line, not a trigger-happy event)', below.fired.map((f) => f.name))
   const st = a.report().status()
-  ok(st.fires === 3 && trace(a.report()).length === 3, 'three firings, three trace rows, all three kinds exercised',
-    { fires: st.fires, kinds: trace(a.report()).map((r) => r.trigger).sort() })
+  // COVERAGE, not a count: `everyMs=5` means a second tool call a few milliseconds later may legitimately fire the
+  // period again, so asserting an exact total would make this a timing test. What matters is that all three kinds fired
+  // and that every firing left a row.
+  const kinds = [...new Set(trace(a.report()).map((r) => r.trigger))].sort()
+  ok(kinds.join(',') === 'event,period,threshold' && st.fires >= 3 && trace(a.report()).length === st.fires,
+    'all three trigger kinds fired through reachable paths, and every firing left exactly one trace row',
+    { fires: st.fires, rows: trace(a.report()).length, kinds })
   await a.cleanup()
 }
 
@@ -312,27 +317,57 @@ stage('7. D-BOTH CHANNELS, VERBATIM (run with --print for the excerpts)')
     console.log(String(turn.text).slice(at, at + 420))
     console.log('----- end excerpts · system prompt ' + host.length + ' chars · round prompt ' + String(turn.text).length + ' chars -----')
   }
-  // THE DELIVERY HALF, HONESTLY: the preset injects no transport, so every fired report carries the named refusal while
-  // the trace still holds the row. The CONTRACT is asserted hard below; the WIRING is reported as F2 (pending on the
-  // kernel side), so `--strict-findings` names it rather than letting "triggered" read as "delivered".
+  // THE DELIVERY HALF, HONESTLY: with NO transport injected the report is TRACED and refused BY NAME. That is the
+  // documented contract (docs/03 §8), and it stays asserted here; the positive half (a transport really sends) is §8.
   await a.endTurn()
   const row = trace(a.report()).slice(-1)[0]
   ok(a.report().status().transportInjected === false && row.delivered === false && row.refused && row.refused.code === 'VMU_REPORT_NO_TRANSPORT',
-    'F2: with no injected transport the report is TRACED and refused BY NAME (`VMU_REPORT_NO_TRANSPORT`) — never silently "sent"', { row: row && row.refused })
+    'F2 (boundary): with no injected transport the report is TRACED and refused BY NAME (`VMU_REPORT_NO_TRANSPORT`) — never silently "sent"', { row: row && row.refused })
   ok(a.handle.kernel.status().seams.deliver === false,
     'and the kernel\'s own seam report agrees that no delivery transport exists in this assembly (one fact, one home)',
     a.handle.kernel.status().seams && { deliver: a.handle.kernel.status().seams.deliver })
-  if (!a.report().status().transportInjected) {
-    finding('F2', 'the preset entry injects no kernel-wide `deliver` transport, so a fired report stops at a named refusal (trigger + trace are real; delivery is not)',
-      { seamsDeliver: a.handle.kernel.status().seams.deliver })
-  }
+  ok(a.state.sent.length === 0, 'nothing reached any transport, because there is none (no note was fabricated)')
   await a.cleanup()
 }
 
-stage('8. THE DELIVERY HALF WITH A REAL TRANSPORT (kernel-level, because the preset injects none: finding F2)')
+stage('8. F2 CLOSED: A TRANSPORT HANDED IN BY THE DEPLOYMENT REALLY SENDS (through the REAL ENTRY)')
 {
-  // Same kernel factory the entry uses, plus the transport a host is supposed to inject. This proves the emission really
-  // leaves the framework when a transport exists - the half F2 says the bare preset cannot do.
+  // THE POSITIVE HALF, ON THE REAL ENTRY. `config.deliver` is where a deployment hands in the host's own transport
+  // (round 4). Everything else is the ordinary pack + deployment policy, and the trigger is the HOST's turn boundary -
+  // so this is the same path §2/§3 use, with delivery switched from "named refusal" to "sent".
+  const shipped = []
+  const b = await boot({}, { transport: (note) => { shipped.push(note); return { ok: true } } })
+  ok(b.report().status().transportInjected === true && b.handle.kernel.status().seams.deliver === true,
+    'the injected transport is visible to the face AND to the kernel seam report (one fact, one home)',
+    { face: b.report().status().transportInjected, seams: b.handle.kernel.status().seams.deliver })
+  await b.endTurn()
+  await sleep(40)
+  await b.endTurn()
+  const rows = trace(b.report())
+  ok(rows.length >= 2 && rows.every((r) => r.delivered === true && r.refused === null),
+    'every report fired by the REAL host turn boundary is DELIVERED (`delivered:true`, no refusal)', rows.map((r) => ({ n: r.name, d: r.delivered })))
+  ok(b.state.sent.length === rows.length && shipped.length === rows.length,
+    'and exactly one note per firing reached the deployment transport (nothing dropped, nothing invented)',
+    { trace: rows.length, sent: shipped.length })
+  const evt = shipped.find((n) => /事件汇报/.test(n.text)) || shipped[0]
+  ok(evt.drives === false && Array.isArray(evt.to) && evt.to.includes('office') && typeof evt.channel === 'string' && /【/.test(evt.text),
+    'the delivered note carries the report name, its recipients, its channel, the rendered text and drives:false',
+    { to: evt.to, channel: evt.channel, text: evt.text, drives: evt.drives })
+  ok(b.report().status().delivered === rows.length && b.report().status().failures === 0,
+    'and the status face counts them as delivered, with no failures', { delivered: b.report().status().delivered, failures: b.report().status().failures })
+  // A transport that THROWS must be recorded and counted - never retried silently, never called "sent".
+  const broken = await boot({}, { transport: () => { const e = new Error('inbox is closed'); e.code = 'SLICE_INBOX_CLOSED'; throw e } })
+  await broken.endTurn()
+  const badRow = trace(broken.report()).slice(-1)[0]
+  ok(badRow.delivered === false && badRow.error && badRow.error.code === 'SLICE_INBOX_CLOSED' && broken.report().status().failures === 1,
+    'a transport that refuses is recorded with its own code and counted as a failure (the report is not lost)',
+    { error: badRow && badRow.error, failures: broken.report().status().failures })
+  // A transport that is injected but does NOT deliver is the only remaining way F2 could regress - a FINDING, not a pass.
+  if (rows.some((r) => !r.delivered)) finding('F2', 'a transport is injected but a fired report was not delivered', rows.map((r) => ({ n: r.name, d: r.delivered })))
+  await b.cleanup()
+  await broken.cleanup()
+
+  // THE SAME FACT AT THE KERNEL FACTORY, with no entry in the way: the smallest possible reproduction.
   const { createKernel } = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kernel', 'index.js')).href)
   const sent = []
   const k = createKernel({
@@ -344,7 +379,7 @@ stage('8. THE DELIVERY HALF WITH A REAL TRANSPORT (kernel-level, because the pre
   await k.start()
   const r = k.report.tick({ at: Date.now(), event: 'turn-end' })
   ok(r.fired.length === 1 && r.fired[0].delivered === true && sent.length === 1,
-    'with a transport injected, the SAME report is really delivered (one call, one note)', { fired: r.fired.length, sent: sent.length })
+    'kernel-level: with a transport injected, the report is really delivered (one call, one note)', { fired: r.fired.length, sent: sent.length })
   ok(sent[0].drives === false && sent[0].to.includes('office') && /S \d+/.test(sent[0].text),
     'and the delivered note carries the report name, the recipients, the rendered text and drives:false', { to: sent[0].to, text: sent[0].text })
   await k.stop()

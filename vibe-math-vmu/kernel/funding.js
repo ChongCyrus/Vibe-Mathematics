@@ -89,7 +89,21 @@ export function createFunding({ clock = () => 0, log = null, settings = {}, bus 
     return DEFAULTS[key]
   }
   const say = (ev) => { if (log && typeof log.append === 'function') { try { log.append(ev) } catch (e) { /* advisory */ } } }
-  const emit = (ev) => { if (bus && typeof bus.emit === 'function') { try { bus.emit(ev) } catch (e) { /* advisory */ } } }
+  const emit = (ev) => {
+  // ROUND 4 / task-25 (Lead's independent audit): the bus takes a STRING NAME as its first argument. This helper used
+  // to forward the event OBJECT (bus.emit(object)), so every emission from this module threw and was swallowed by the
+  // catch below - the module LOOKED wired and emitted nothing. The name is now split out, and a failure (unregistered
+  // name, a blocking middleware, a bad shape) is NAMED in the log instead of vanishing.
+  if (!bus || typeof bus.emit !== 'function') return
+  const name = ev && typeof ev.type === 'string' ? ev.type : null
+  if (name === null) {
+    try { if (log && typeof log.append === 'function') log.append({ type: 'bus/emit-failed', at: clock(), code: 'VMU_BUS_NAME_REQUIRED', message: 'a bus event needs a string name (got an object without .type)' }) } catch { /* the log itself may be gone */ }
+    return
+  }
+  try { bus.emit(name, ev) } catch (e) {
+    try { if (log && typeof log.append === 'function') log.append({ type: 'bus/emit-failed', at: clock(), name, code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) } catch { /* the log itself may be gone */ }
+  }
+}
 
   const K = {
     accountsDir: str(sget('vmu.funding.accountsDir')),

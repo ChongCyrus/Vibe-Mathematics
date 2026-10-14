@@ -9,20 +9,22 @@
 export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
   return {
       name: TOOL_NAMES.meeting,
-      description: 'vmu 会议/表决面：action=list|open|speak|silent|hand|refuse|invite|invitedspeak|end|aggregation|complete|phase|status|summary|snapshot|close|ballot|vote|tally|reopen|freeze|unfreeze|boxopen|boxcast|boxclose|boxreopen。' +
+      description: 'vmu 会议/表决面：action=list|open|speak|silent|hand|refuse|invite|invitedspeak|end|aggregation|complete|phase|status|summary|snapshot|close|extend|lapse|revokelapse|ballot|vote|tally|reopen|freeze|unfreeze|boxopen|boxcast|boxclose|boxreopen|boxlapse|boxrevokelapse。' +
         '会议与表决是**逐对象原语**（内核给工厂、pack 给政策）；本工具只用**内核已登记的实例 id** 寻址（未知 id 具名拒）。' +
         '要点：**被拒输入不推进轮次**（refuse）；**受邀发言只记、不计票、不阻塞收束**（invite/invitedspeak）；' +
         '**聚合必须先显式结束辩论**（end ⇒ aggregation.allowed=true，R10-2a）；**表决期冻结**由逐场票箱原语承载（freeze/unfreeze）。' +
-        '**选项式投票板**是另一层（`kernel/ballotbox.js`：选项/门槛/记名/弃权，且**已裁定的板不再收票**）：boxopen/boxcast/boxclose/boxreopen，' +
-        '其中 **boxreopen 需理由**且受 `vmu.ballot.reopenFloor` 约束（门槛只升不降）。',
+        '**F28 有界兜底**：超过声明的墙钟上限（`vmu.meetings.hardLimitMs`）后可用 **lapse** 具名收束（回执带 `{name,why,at,revocable}`），**未到上限会具名拒**，收束后可用 **revokelapse（必须给理由）**恢复；`extend` 是**声明步长**的延长命令（读 `speechExtendMs/Max`）。' +
+        '**选项式投票板**是另一层（`kernel/ballotbox.js`：选项/门槛/记名/弃权，**已裁定的板不再收票**）：boxopen/boxcast/boxclose/boxreopen，' +
+        '其中 **boxreopen 需理由**且受 `vmu.ballot.reopenFloor` 约束（门槛只升不降）；若构造时声明了 `openMaxMs`，则 **boxlapse/boxrevokelapse** 对它提供同一套有界兜底。',
       parameters: {
-        action: param('string', 'list｜open｜speak｜silent｜hand｜refuse｜invite｜invitedspeak｜end｜aggregation｜complete｜phase｜status｜summary｜snapshot｜close｜ballot｜vote｜tally｜reopen｜freeze｜unfreeze｜boxopen｜boxcast｜boxclose｜boxreopen', { required: true,
-          enum: ['list', 'open', 'speak', 'silent', 'hand', 'refuse', 'invite', 'invitedspeak', 'end', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'close', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen'] }),
-        id: param('string', '会议 id（speak/silent/hand/refuse/invite/invitedspeak/end/aggregation/complete/phase/status/summary/snapshot/close 必填；open 可指定）'),
-        ballotId: param('string', '表决 id（vote/tally/reopen/freeze/unfreeze 必填）'),
-        member: param('string', '成员 id（speak/silent/hand/refuse/invitedspeak/vote 必填）'),
+        action: param('string', 'list｜open｜speak｜silent｜hand｜refuse｜invite｜invitedspeak｜end｜aggregation｜complete｜phase｜status｜summary｜snapshot｜close｜extend｜lapse｜revokelapse｜ballot｜vote｜tally｜reopen｜freeze｜unfreeze｜boxopen｜boxcast｜boxclose｜boxreopen｜boxlapse｜boxrevokelapse', { required: true,
+          enum: ['list', 'open', 'speak', 'silent', 'hand', 'refuse', 'invite', 'invitedspeak', 'end', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse'] }),
+        id: param('string', '会议 id（speak/silent/hand/refuse/invite/invitedspeak/end/aggregation/complete/phase/status/summary/snapshot/close/extend/lapse/revokelapse 必填；open 可指定）'),
+        ballotId: param('string', '表决/票箱 id（vote/tally/reopen/freeze/unfreeze/boxcast/boxclose/boxreopen/boxlapse/boxrevokelapse 必填）'),
+        member: param('string', '成员 id（speak/silent/hand/refuse/invitedspeak/extend/vote/boxcast 必填）'),
         text: param('string', '发言内容（speak/refuse/invitedspeak 必填）'),
-        reason: param('string', 'silent/close/reopen/refuse/end/freeze/unfreeze 的原因（end 必填：无理由的结束正是这条规则要防的静默停止）'),
+        reason: param('string', 'silent/close/reopen/refuse/end/freeze/unfreeze/boxreopen/**revokelapse/boxrevokelapse** 的原因（end 与两个撤销必填：无理由的结束/撤销正是这条规则要防的静默动作）'),
+        ms: param('number', 'extend 的延长毫秒数（缺省读 vmu.meetings.speechExtendMs，仍为 0 ⇒ 具名拒）'),
         agenda: param('string', 'open 的议程文本'),
         roster: param('array', 'open 的成员清单（默认取该会议的既定语料）'),
         options: param('array', 'boxopen 的选项清单（≥2；也可用 roster 传）'),
@@ -32,7 +34,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         why: param('string', 'invite 的理由（必填：邀请必须可审计，v5r meeting_invite 的口径）'),
         by: param('string', 'invite/invitedspeak/end 的执行人（审计事实）'),
       },
-      run: async ({ action, id, ballotId, member, text, reason, agenda, roster, target, value, kind, why, by, options } = {}) => {
+      run: async ({ action, id, ballotId, member, text, reason, agenda, roster, target, value, kind, why, by, options, ms } = {}) => {
         const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
         const live = (what) => {
           const meeting = kernel.liveMeeting(need(id, 'id'))
@@ -66,6 +68,14 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
           if (action === 'summary') return Object.assign({ ok: true, action }, live().summary())
           if (action === 'snapshot') return Object.assign({ ok: true, action }, live().snapshot())
           if (action === 'close') return Object.assign({ ok: true, action, id }, await live().close(reason || 'closed'))
+          // F28: the bounded fallback (named + revocable) and the declared extension step (GAP-MTG-05).
+          if (action === 'extend') {
+            return Object.assign({ ok: true, action, id }, live().extend({ meeting: need(id, 'id'), member: need(member, 'member'), ms: ms === undefined ? null : ms, by: by || null }))
+          }
+          if (action === 'lapse') return Object.assign({ ok: true, action, id }, live().lapse({ meeting: need(id, 'id'), by: by || null }))
+          if (action === 'revokelapse') {
+            return Object.assign({ ok: true, action, id }, live().revokeLapse({ meeting: need(id, 'id'), by: by || null, reason: need(reason, 'reason') }))
+          }
           if (action === 'ballot') {
             const bid = ballotId || ('b-' + (kernel.liveList().ballots.length + 1) + '-' + Date.now().toString(36))
             const ballot = kernel.ballot({ id: bid })
@@ -94,7 +104,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
           // GAP-MTG-10: the OPTION-BOARD layer (`kernel/ballotbox.js`) is a different, richer object than the
           // per-ballot primitive above (options, min_votes, secrecy, abstention, and now a life cycle with
           // reopen). These four actions make it REACHABLE from a face instead of service-only.
-          if (action === 'boxopen' || action === 'boxcast' || action === 'boxclose' || action === 'boxreopen') {
+          if (action === 'boxopen' || action === 'boxcast' || action === 'boxclose' || action === 'boxreopen' || action === 'boxlapse' || action === 'boxrevokelapse') {
             const bb = kernel.ballotbox
             if (!bb) return refused('VMU_ENGINE_UNAVAILABLE', 'the option-board layer (kernel/ballotbox.js) is not mounted in this kernel',
               'declare vmu.ballot.* (or config.meeting) so the face is wired')
@@ -106,6 +116,11 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
               return Object.assign({ ok: true, action }, bb.cast({ boxId: need(ballotId, 'ballotId'), by: need(member, 'member'), choice: raw, abstain: raw === 'abstain' }))
             }
             if (action === 'boxclose') return Object.assign({ ok: true, action }, bb.close({ boxId: need(ballotId, 'ballotId') }))
+            // F28 (board half): same bounded fallback, same named/revocable shape (bound declared at construction).
+            if (action === 'boxlapse') return Object.assign({ ok: true, action }, bb.lapse({ boxId: need(ballotId, 'ballotId'), by: by || null }))
+            if (action === 'boxrevokelapse') {
+              return Object.assign({ ok: true, action }, bb.revokeLapse({ boxId: need(ballotId, 'ballotId'), by: by || null, reason: need(reason, 'reason') }))
+            }
             return Object.assign({ ok: true, action }, bb.reopen({ boxId: need(ballotId, 'ballotId'), by: by || null, reason: need(reason, 'reason') }))
           }
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))

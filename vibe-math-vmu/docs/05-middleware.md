@@ -230,6 +230,25 @@
 ★★★ **命名空间规则同步扩展**（`bus.emit` 的 `VU_NAMESPACE`）：`resume|ids|human|chat|mailbox|panel|math` 已加入 ⇒ 这七个命名空间里**未登记的名字会被具名拒**，不再"看起来正常、其实没人能挂"（与轮 496 修 `budget/warn`／`member/self-report` 同一条规则）。
 ★★ **emit 形态是硬要求**：`bus.emit('<名>', payload, {member,role,phase})`。`emit({type:'x'})` 这种**单对象调用**会被总线以 `VMU_INVALID_ARGUMENT` 拒绝（`kernel/lifecycle.js:39` 曾是活样例，其两条广播因此**从未到达总线**）；且门禁只认字面量 `bus.emit('<名>'` ⇒ 对象形态**不算生产者**。
 
+### 5.4 三类"名字"的边界：**登记钩子 / 声明主题 / 仅日志**（轮 4 定稿：逐个分类 + 门禁）
+
+> 一个名字出现在代码里，**不等于**中间件能挂上去。轮 4 把全仓 **86** 个 emit 名**逐个分类**（Lead 裁决①），**不允许"既没登记也没分类"**——那正是静默。
+
+| 类别 | 真源 | 能否 `bus.emit` | M1 规则可挂 | **M2 模块可挂** | 拼错会怎样 |
+|---|---|---|---|---|---|
+| **登记钩子**（**80** vmu ＋ 19 host） | `HOOK_REGISTRY`（§6.1.1） | ✓ | ✓ | ✓（`loader.js` 按登记表校验） | 在 vmu 命名空间内 ⇒ **具名拒** |
+| **声明主题** | `bus.declareTopic('<domain>/<name>')` | ✓（`customTopics` 放行） | ✓ | ✓（**轮 4 统一**：`isRegisteredHook()` 现在同时认 `HOOK_REGISTRY` 与 bus 已声明主题） | 未声明且不在登记表：vmu 命名空间内**具名拒**；**外来命名空间直通**（`workflow/*` 见下） |
+| **仅日志**（`LOG_ONLY_EMITS`，**6** 个） | `kernel/bus.js` 的 `LOG_ONLY_EMITS`（名字→理由） | ✓（仍是总线调用，但**没有登记 ⇒ 不是钩子**） | ✗ | ✗ | 命名空间不在 `VU_NAMESPACE` ⇒ 直通；**它们是被显式分类为"账目行"的**，不是遗漏 |
+| `workflow/*`（特例） | `HOOK_PREFIXES` 前缀规则 ＋ 三个具名钩子已登记 | 未登记的 `workflow/<新名>` 现在会**具名拒**（`workflow` 已进 `VU_NAMESPACE`） | ✓ | ✓（前缀仍放行） | 新主题须 `declareTopic`（声明后即可被 M2 订阅） |
+
+**轮 4 的分类结果（`kernel/bus.js`）**：
+- **登记为钩子（29 个，都有真实 emit 点，扩展方应当能反应）**：`paper/office-consult-required`；`publication/{advance,replication-failed}`；`notify/emit`；`crypto/{signed,rotated}`；`external/stale-served`；`legalentity/registered`；`ratelimit/{queued,degraded}`；`recruit/confirmed`；`reviewers/registered`；`workflow/{advance,retry,escalate}`；`formal/{checked,fidelity-defect,abstention-enforced,defects-loaded}`；`lean/{job-submitted,job-settled,job-timeout,job-recovered,jobs-disposed}`；**`board/moved`、`projmigrate/migrated`、`skills/declare`、`topology/select`、`trust/signal`**（这 5 个是**仓内门禁**抓出来的：它们写在自己的模块里、注释自称 "advisory"，此前既没登记也没分类）。
+- **显式 log-only（6 个，只是账目/审计行，**不应**可订阅）**：`audit/rotate`、`auditchain/{appended,checkpoint-failed,partial-verify,anchored}`、`retention/truncated`——理由逐条写在 `LOG_ONLY_EMITS` 里（如"审计环轮转"、"链上追加"、"保留策略丢弃行"）。
+- **命名空间同步**：`paper|publication|notify|crypto|external|legalentity|ratelimit|recruit|reviewers|workflow|formal|lean|board|projmigrate|skills|topology|trust` 已加入 `VU_NAMESPACE`（这些名字现在都是登记钩子 ⇒ 未登记名**具名拒**）；`audit|auditchain|retention` **故意不加**（它们的行不是钩子，直通即其语义）。
+
+**门禁（**仓内**，干净 clone 可复现）**：`node scripts/audit-hook-emit-classification.mjs` → 三段：① 每个 emit 名**已分类**（登记 ∪ log-only，`unclassified` 必须为 0）；② 每个登记钩子**都有 emit 点**（无纸面能力）；③ `declareTopic` **对称**（声明 ⇒ 可被 M2 订阅；未声明/拼错 ⇒ 仍拒）。当前 **7 passed / 0 failed**（exit 0）。该脚本已按 D-05 双登记口径进 `package.json` 的 `files[]`（`scripts/**` 只登记 files[]）。
+- 早先的对称性/普查探针（**仓库外一次性副本，已被上面的仓内门禁取代**）曾显示"声明后 `bus.emit` 成功但 `isRegisteredHook` 仍为 false"（**声明了却挂不上**）；统一后两向断言并入门禁 §3。
+
 ## 6. 插件、协议与边界
 
 ### 6.1 三类扩展物的装载顺序（**轮 1 按 D-03 更正：只有 M1/M2 进总线**）
@@ -395,7 +414,7 @@
 
 ### 钩子索引（★ **生成**：来自 `VU_HOOKS` ＋ `DEFAULT_FAILURE` ＋ 实仓 emit 扫描 ✓）
 
-> ★★★ **本节的数字【曾经手写、并因此过期**]✗** ✓：★ **§5 的标题写着"**20** 个冻结名"，而 `VU_HOOKS` 在轮 496 已增至 **55**（★ 新增 `budget/warn` 与 `member/self-report` ✓ —— ★ 两个都是**修活 bug 时**加上的 ✓）⇒ ★★ **手写计数【必然**]落后于代码** ✓ ⇒ **这张表改为生成** ✓。
+> ★★★ **本节的数字【曾经手写、并因此过期**]✗** ✓：★ **§5 的标题写着"**20** 个冻结名"，而 `VU_HOOKS` 在轮 496 已增至 **85**（★ 新增 `budget/warn` 与 `member/self-report` ✓ —— ★ 两个都是**修活 bug 时**加上的 ✓）⇒ ★★ **手写计数【必然**]落后于代码** ✓ ⇒ **这张表改为生成** ✓。
 
 | 钩子 | 默认失败策略 | 生产者 |
 |---|---|---|
@@ -427,6 +446,7 @@
 | `ids/minted` | `open` | `ids.js` |
 | `ids/hydrated` | `open` | `ids.js` |
 | `ids/persist-failed` | `open` | `ids.js` |
+| `resume/lock-release-failed` | `open` | `resume.js` |
 | `human/vetoed` | `open` | `human.js` |
 | `human/veto-lifted` | `open` | `human.js` |
 | `human/approval-asked` | `open` | `human.js` |
@@ -454,8 +474,37 @@
 | `math/adapters-ran` | `open` | `mathadapters.js` |
 | `lifecycle/prereg` | `open` | `lifecycle.js` |
 | `lifecycle/advance` | `open` | `lifecycle.js` |
+| `paper/office-consult-required` | `open` | `paper.js` |
+| `publication/advance` | `open` | `publication.js` |
+| `publication/replication-failed` | `open` | `publication.js` |
+| `notify/emit` | `open` | `notify.js` |
+| `crypto/signed` | `open` | `crypto.js` |
+| `crypto/rotated` | `open` | `crypto.js` |
+| `external/stale-served` | `open` | `external.js` |
+| `legalentity/registered` | `open` | `partnership.js` |
+| `ratelimit/queued` | `open` | `ratelimit.js` |
+| `ratelimit/degraded` | `open` | `ratelimit.js` |
+| `recruit/confirmed` | `open` | `recruit.js` |
+| `reviewers/registered` | `open` | `reviewers.js` |
+| `workflow/advance` | `open` | `workflow.js` |
+| `workflow/retry` | `open` | `workflow.js` |
+| `workflow/escalate` | `open` | `workflow.js` |
+| `formal/checked` | `open` | `formal.js` |
+| `formal/fidelity-defect` | `open` | `fidelity.js` |
+| `formal/abstention-enforced` | `open` | `fidelity.js` |
+| `formal/defects-loaded` | `open` | `fidelity.js` |
+| `lean/job-submitted` | `open` | `lean.js` |
+| `lean/job-settled` | `open` | `lean.js` |
+| `lean/job-timeout` | `open` | `lean.js` |
+| `lean/job-recovered` | `open` | `lean.js` |
+| `lean/jobs-disposed` | `open` | `lean.js` |
+| `board/moved` | `open` | `board.js` |
+| `projmigrate/migrated` | `open` | `projmigrate.js` |
+| `skills/declare` | `open` | `skills.js` |
+| `topology/select` | `open` | `topology.js` |
+| `trust/signal` | `open` | `trust.js` |
 
-> ★★ 合计 **55** 个冻结钩子 ✓；★ **无默认策略的 **0** 个** ✓。
+> ★★ 合计 **85** 个冻结钩子 ✓；★ **无默认策略的 **0** 个** ✓。
 
 <!-- END GENERATED: hook-index -->
 

@@ -90,7 +90,14 @@ export function createMigration({ clock = () => 0, log = null, settings = {}, bu
     return DEFAULTS[key]
   }
   const say = (ev) => { if (log && typeof log.append === 'function') { try { log.append(ev) } catch (e) { /* advisory */ } } }
-  const emit = (ev) => { if (bus && typeof bus.emit === 'function') { try { bus.emit(ev) } catch (e) { /* advisory */ } } }
+  const emit = (ev) => {
+  // ROUND 4 / task-25 (Lead's audit): the bus takes a STRING NAME first. Forwarding the event OBJECT meant every
+  // emission here threw and was swallowed. Split the name out, and NAME the refusal in this module's own log.
+  if (!bus || typeof bus.emit !== 'function') return
+  const name = ev && typeof ev.type === 'string' ? ev.type : null
+  if (name === null) return say({ type: 'bus/emit-failed', at: clock(), name: null, code: 'VMU_BUS_NAME_REQUIRED', message: 'a bus event needs a string name (got an object without .type)' })
+  try { bus.emit(name, ev) } catch (e) { say({ type: 'bus/emit-failed', at: clock(), name, code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) }
+}
 
   const K = {
     // ROUND 257 (13 §9): the compatibility declarations.

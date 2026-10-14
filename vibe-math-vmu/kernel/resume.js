@@ -84,6 +84,12 @@ export const CODE = Object.freeze({
   snapshotVersion: 'VMU_RESUME_SNAPSHOT_VERSION',
   snapshotIncomplete: 'VMU_RESUME_SNAPSHOT_INCOMPLETE',
   restoreConflict: 'VMU_RESUME_RESTORE_CONFLICT',
+  // F18 (Round 4): a recovery is an EXCLUSIVE section. When a lock seam is injected (the repository's own
+  // `vmu.store.lock` primitive), a second concurrent recovery is refused BY NAME instead of interleaving.
+  busy: 'VMU_RESUME_BUSY',
+  // F51 (Round 4): the live-child reconciliation needs the host to say which continuable children still exist.
+  // With no such port the recovery still runs and REPORTS that it could not check (never guesses).
+  childrenUnavailable: 'VMU_RESUME_CHILDREN_UNAVAILABLE',
 })
 
 /**
@@ -291,7 +297,7 @@ export function attachProjection({ target, methods = [], projection, onError = n
 }
 
 export function createResume({ store = null, work = null, control = null, identity = null, mailbox = null, watchdogs = null,
-  faces = {}, settings = {}, bus = null, clock = () => 0, log = null, listCap = 100 } = {}) {
+  lock = null, children = null, faces = {}, settings = {}, bus = null, clock = () => 0, log = null, listCap = 100 } = {}) {
   const sget = (key, def) => {
     if (settings && typeof settings.get === 'function') { const v = settings.get(key); return v === undefined ? def : v }
     if (settings && Object.prototype.hasOwnProperty.call(settings, key)) return settings[key]
@@ -585,7 +591,14 @@ export function createResume({ store = null, work = null, control = null, identi
           restored: r && r.restored !== undefined ? r.restored : null, skipped: (r && Array.isArray(r.skipped)) ? r.skipped : [] })
         continue
       }
-      holder.projection.adopt(env)
+      // A key written by SOMEBODY ELSE (e.g. `work.js` writes a bare array under `work`) is not a projection
+      // envelope. `adopt()` refuses it, and that refusal must be NAMED here: silently treating a foreign value as
+      // an empty journal would report "hydrated, 0 entries" for a ledger that actually holds unfinished work.
+      const adopted = holder.projection.adopt(env)
+      if (adopted && adopted.ok === false) {
+        unhydrated.push({ key: k, code: CODE.projectionGap, reason: 'the durable value under this key is not a projection envelope: ' + String(adopted.reason || 'unrecognised shape'), value: env && typeof env === 'object' ? (Array.isArray(env) ? 'array[' + env.length + ']' : Object.keys(env).slice(0, 6).join(',')) : typeof env })
+        continue
+      }
       const gap = holder.projection.gap()
       if (gap) { unhydrated.push({ key: k, code: CODE.projectionGap, reason: 'the journal cannot be replayed: ' + JSON.stringify(gap), gap }); continue }
       const seam = typeof a.replay === 'function' ? a.replay : (holder.wrapper && holder.wrapper.replaySeam ? holder.wrapper.replaySeam : null)
@@ -646,6 +659,7 @@ export function createResume({ store = null, work = null, control = null, identi
     unhydrated: [],
     mailbox: null,
     watchdogs: null,
+    children: null,
     flags: null,
     readBack: null,
   }
@@ -680,8 +694,88 @@ export function createResume({ store = null, work = null, control = null, identi
     return plan
   }
 
-  /** The session recovery: read → rebuild → mark interrupted BY NAME → hydrate → refresh → read back. */
-  async function recover({ reason = 'host-ended', steps = null } = {}) {
+  // ── F18: the recovery is an EXCLUSIVE section ────────────────────────────────────────────────────────────────
+  // A real user for the repository's lock primitive (`kernel/storepolicy.js:138` acquire / `:168` release), and a
+  // `finally` that covers EVERY exit: the happy path, every early return, and every throw. With `vmu.store.lock`
+  // undeclared the primitive is a zero-mechanism pass-through (`locked:false`) and the release is still called,
+  // which is exactly what makes "one shape, always released" checkable rather than argued.
+  const lockState = { attached: false, name: 'recovery', held: false, acquisitions: 0, releases: 0, busyRefusals: 0, lastError: null }
+  function acquireRecoveryLock() {
+    if (!lock || typeof lock.acquire !== 'function') return null
+    lockState.attached = true
+    let r
+    try {
+      r = lock.acquire({ name: lockState.name, by: 'resume' })
+    } catch (e) {
+      lockState.busyRefusals += 1
+      lockState.lastError = String((e && e.message) || e)
+      throw refuse(CODE.busy, 'the recovery lock could not be taken: ' + lockState.lastError,
+        'inspect the lock seam; refusing to run a recovery without the exclusivity it was asked to provide')
+    }
+    if (!r || r.ok === false) {
+      lockState.busyRefusals += 1
+      lockState.lastError = String((r && r.message) || 'lock refused')
+      throw refuse(CODE.busy, 'another recovery holds the lock: ' + lockState.lastError,
+        'wait for the in-flight recovery to finish, or raise vmu.store.lock.timeoutMs',
+        { holder: (r && r.holder) || null, attempts: (r && r.attempts) || null, waitedMs: (r && r.waitedMs) || null, lockCode: (r && r.code) || null })
+    }
+    lockState.acquisitions += 1
+    lockState.held = r.locked === true     // `false` = the primitive is a declared no-op (vmu.store.lock off)
+    return r
+  }
+
+  /**
+   * F51: the ONE restart marker, read from the DURABLE record — "this session continued an institute that was
+   * already running, this is generation N, and here is what the restart cost (interrupted work, unhydrated faces)".
+   * It is derived from `recoveries[]` under the `resume` key, so it survives the restart it describes.
+   */
+  function restartMarker() {
+    const last = state.recoveries.length ? state.recoveries[state.recoveries.length - 1] : null
+    return {
+      durableKey: RESUME_KEY,
+      generation: state.recoveries.length,
+      restarted: state.recoveries.length > 0,
+      at: last ? last.at : null,
+      reason: last ? last.reason : null,
+      interrupted: last ? Number(last.interrupted) || 0 : 0,
+      unhydrated: last && Array.isArray(last.unhydrated) ? last.unhydrated.slice() : [],
+      missingChildren: state.children && Array.isArray(state.children.missing) ? state.children.missing.slice() : [],
+      readBack: last && last.readBack !== undefined ? last.readBack : null,
+      phase: phaseValue,
+      note: last
+        ? 'this process resumed an existing institute; the marker itself is durable under the "' + RESUME_KEY + '" key'
+        : 'no recovery has run in this process (a first start, not a resume)',
+    }
+  }
+  function releaseRecoveryLock() {
+    if (!lock || typeof lock.release !== 'function') return
+    try {
+      lock.release({ name: lockState.name })
+      lockState.releases += 1
+      lockState.held = false
+    } catch (e) {
+      // A release that throws must be VISIBLE: a stuck lock is worse than a missing one, and swallowing it here
+      // would make the next recovery look like a deadlock with no explanation.
+      lockState.lastError = String((e && e.message) || e)
+      say({ type: 'resume/lock-release-failed', at: stamp(), error: lockState.lastError })
+      emit('resume/lock-release-failed', { at: stamp(), error: lockState.lastError })
+    }
+  }
+
+  /**
+   * The session recovery: read → rebuild → mark interrupted BY NAME → hydrate → refresh → read back.
+   * Wrapped so the lock is released on EVERY exit (return or throw). The body is `recoverUnlocked`.
+   */
+  async function recover(args = {}) {
+    const acquired = acquireRecoveryLock()
+    try {
+      return await recoverUnlocked(args)
+    } finally {
+      if (acquired !== null) releaseRecoveryLock()
+    }
+  }
+
+  async function recoverUnlocked({ reason = 'host-ended', steps = null } = {}) {
     const want = Array.isArray(steps) && steps.length ? steps.map(String) : RECOVERY_STEPS.slice()
     for (const s of want) if (!RECOVERY_STEPS.includes(s)) throw refuse(CODE.badStep, 'unknown recovery step: ' + s, 'known: ' + RECOVERY_STEPS.join(', '))
     const report = { ok: true, id: 'rec-' + (++state.seq), at: stamp(), reason: String(reason), storeAttached: !!store, steps: [], wrote: [] }
@@ -705,6 +799,27 @@ export function createResume({ store = null, work = null, control = null, identi
     const membersEnv = store.read('members')
     report.steps.push({ step: 'roster', ok: true, viaSeam: roster !== null, seamCount: roster ? roster.length : null,
       projected: membersEnv !== undefined && membersEnv !== null, note: roster === null && (membersEnv === undefined || membersEnv === null) ? 'no roster seam AND no members projection: the roster cannot be restored (reported, not faked)' : null })
+
+    // ②b live-child reconciliation (F51-adjacent): the host is asked which continuable children STILL EXIST, and
+    // every roster member holding a childId the host no longer lists is NAMED. The engine never spawns — that is
+    // the assembly's policy — so this step turns "restart" into an actionable, auditable fact instead of a guess.
+    let childReport = { attached: false, code: CODE.childrenUnavailable, parentId: null, live: 0, checked: 0, missing: [], note: 'no children port: which member children survived a restart cannot be checked (reported, never guessed)' }
+    if (children && typeof children.list === 'function') {
+      try {
+        const heldRows = Array.isArray(roster) ? roster
+          : (() => { const h = projections.get('members'); try { const l = h && h.adapter && typeof h.adapter.list === 'function' ? h.adapter.list() : null; return Array.isArray(l) ? l : [] } catch (e) { return [] } })()
+        const parentId = typeof children.parentId === 'function' ? children.parentId() : null
+        const live = listOf(await children.list(parentId))
+        const held = heldRows.filter((m) => m && m.childId)
+        const missing = held.filter((m) => live.indexOf(String(m.childId)) === -1).map((m) => ({ member: String(m.id), childId: String(m.childId) }))
+        childReport = { attached: true, code: null, parentId: parentId === undefined ? null : parentId, live: live.length, checked: held.length, missing,
+          note: missing.length ? 'these members hold a childId the host no longer lists: the assembly must re-provision them (the engine does NOT spawn)' : (held.length ? 'every roster child is still live' : 'no roster member holds a childId yet') }
+      } catch (e) {
+        childReport = { attached: false, code: (e && e.code) || CODE.childrenUnavailable, parentId: null, live: 0, checked: 0, missing: [], note: 'the children port failed: ' + String((e && e.message) || e) }
+      }
+    }
+    state.children = childReport
+    report.steps.push({ step: 'children', ok: true, ...childReport })
 
     // ③ in-flight work — named interruption, never silently passed
     let interrupted = []
@@ -847,8 +962,11 @@ export function createResume({ store = null, work = null, control = null, identi
       undeclaredProjections: projectionsView.map((p) => p.key).filter((k) => declared.length > 0 && declared.indexOf(k) === -1),
       hydrated: state.hydrated, unhydrated: state.unhydrated,
       projection: { degraded: state.unhydrated.length > 0, unhydratedKeys: state.unhydrated.map((u) => u.key) },
-      mailbox: state.mailbox, watchdogs: state.watchdogs, flags: state.flags,
+      mailbox: state.mailbox, watchdogs: state.watchdogs, children: state.children, flags: state.flags,
       phase: phaseValue,
+      // F18/F51: the exclusivity the recovery ran under, and the durable marker that says this session is a resume.
+      lock: Object.assign({}, lockState),
+      restart: restartMarker(),
       writes, writesThrough, writeThroughFailures, writeRefusals, readBacks, readBackFailures, lastDrift,
       policy: cfg(),
       neverWritesBeforeRead: true,
@@ -874,6 +992,7 @@ export function createResume({ store = null, work = null, control = null, identi
     observeIds,
     setPhase,
     phase,
+    restart: restartMarker,
     settleOutcome,
     interrupted,
     readBack,

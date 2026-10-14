@@ -127,7 +127,7 @@ export function createBoard({ clock = () => 0, log = null, settings = {}, bus = 
       where.set(taskId, col.id)
       movedAt.set(taskId, at)
       say({ type: 'board/moved', at, task: taskId, from, to: col.id, by })
-      if (bus && typeof bus.emit === 'function') { try { bus.emit({ type: 'board/moved', at, task: taskId, from, to: col.id }) } catch (e) { /* bus is advisory */ } }
+      if (bus && typeof bus.emit === 'function') { try { bus.emit('board/moved', { at, task: taskId, from, to: col.id, by }) } catch (e) { try { if (log && typeof log.append === 'function') log.append({ type: 'bus/emit-failed', at: clock(), name: 'board/moved', code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) } catch { /* the log itself may be gone */ } } }
       return { ok: true, task: taskId, from, to: col.id, occupants: occupants.length + 1, wip: wip }
     },
 

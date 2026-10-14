@@ -78,7 +78,13 @@ export function refuse(code, message, hint) {
 /** Harmless defaults: an empty fold that enables nothing (docs/01 R1, docs/04 §3). */
 function defaultKeys() {
   const keys = {}
-  for (const k of PUBLIC_KEYS) keys[k] = k === 'phase' ? null : (k === 'settings.resolved' || k === 'budget' ? {} : [])
+  // ROUND 4 / task-25: the keys the RESUME ENGINE owns are seeded `null`, not `[]`. A `[]` under a projection key is
+  // "a durable value that is not a projection envelope" ⇒ `hydrate()` reports `VMU_RESUME_PROJECTION_GAP` and the
+  // whole `recover()` returns `ok:false` ON A CLEAN FIRST RUN (measured: the `human` key, whose projection I attach in
+  // the assembly, made every first recovery report a failure). `null` is read as "nothing was projected (a first
+  // run)" - the honest state - which is why `phase` was already seeded that way.
+  const NULL_SEEDED = new Set(['phase', 'human', 'resume', 'ids', 'mailbox', 'chat', 'panel'])
+  for (const k of PUBLIC_KEYS) keys[k] = NULL_SEEDED.has(k) ? null : (k === 'settings.resolved' || k === 'budget' ? {} : [])
   return keys
 }
 

@@ -29,8 +29,8 @@
 
     "vmu.math.jobs.persist": true,
     "vmu.math.jobs.recover": "on-load",
-    "vmu.math.maxParallel": 3,
-    "vmu.math.jobs.maxParallel": 1,
+    "vmu.math.maxParallel": 1,
+    "vmu.limits.maxLiveMembers": 3,
 
     "vmu.meetings.tier": "formal",
     "vmu.meetings.allowLight": false,
