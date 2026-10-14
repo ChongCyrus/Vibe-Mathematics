@@ -747,7 +747,9 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 // visible to tests and invisible to a real round. The pipeline now accepts late sections AND late bindings; this
 // asserts both, because a late section without its binding would assemble with another role's baseline.
 {
-  const late = createPromptPipeline({ sections: [{ name: 'seed-block', order: 10, range: 'pack', text: 'SEED' }], clock: () => '2026-01-01T00:00:00.000Z' })
+  // ROUND 1 (P3): the stale `range: 'pack'` was removed - `range` is derived from `order` (docs/06 §3),
+  // and order 10 does not lie in the pack interval.
+  const late = createPromptPipeline({ sections: [{ name: 'seed-block', order: 10, text: 'SEED' }], clock: () => '2026-01-01T00:00:00.000Z' })
   for (const s of CHARTER_SECTIONS) late.register(s)
   for (const b of CHARTER_BINDINGS) late.bind(b)
   const asmL = await late.assemble({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal', round: 4, roster: 'acad、r-1', quorum: 2, statusBlock: '[状态] x' })

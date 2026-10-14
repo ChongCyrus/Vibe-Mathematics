@@ -137,12 +137,13 @@
 
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
-| `derived.*`＝**作业计数** | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 134 / suites 68 / probes 66`** ✓（R-6b 拆分后 **132→134** ✓：`v5-institute-fixes.mutants.mjs` 由 1 个作业变为 3 个分片 ✓） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 252 / suites 188 / probes 64`** ✓ |
+| `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 322 / suites 250 / probes 72`** ✓（旧值 134／68／66 已在扩卷与增件后过期 ✗；本轮树新增 1 个作业：`tests/audit-scope-classification.test.mjs` ✓） |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 254 / suites 190 / probes 64`** ✓ |
+| `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 258 / suites 225 / probes 33`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
-**134 的推导链（逐行可核 ✓）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 134 ✓；`.test.mjs` 裸作业 68 = suites；`134−68=66` = probes ✓。
-**vmu 子集**：`GATE_SCOPE=vmu` ⇒ ★★★ **这里有两个不同的量，而且【没有一个机器模式能报出子集那个**]✗**：★ **请求的作用域与生效的作用域是【两个变量**]✓ —— ★ `run-tests.mjs` 在 `--counts`／`--self-check`／`--only` 下【**强制生效作用域为 `full`**]✓（★ **有意为之，且有事故记录** ✓：★ vmu 作用域第一次运行时，子进程继承了作用域 ⇒ **`run-tests.mutants.mjs` 的超时正例看到 **0 个作业** ✗、`--self-check` 基线发散 ✗、`audit-readme-counts` 读到 **27 而不是 110** ✗**）⇒ ★★ **所以 `--counts` 报的是【仓库作业计数 **249**（**177 套件 ＋ 72 探针**）**]✓（★ 基础 ＋ 变体 ✓），**不是子集计数** ✓。★★ **而 T1 【执行**]的 `TOTAL` 是 **142（119 套件 + 23 探针）** ✓（★ 2026-10-10 复测 ✓ —— ★ 本行原先写 **236** 与 **137／114** ✓，★ 两处都已过期 ✗ ⇒ ★★ **本行由此【再次证明**]它上面那句"必须手工同步"是真的** ✓）。★★★ **根因**：★ `scripts/update-doc-counts.mjs` **只覆盖 4 处** ✓、**不含 `vibe-math-vmu/docs/**`** ✗ ⇒ ★★ **所以这一行是【唯一**]必须手改的计数行** ✓ ⇒ ★ **要么它带日期（现在带了 ✓），要么把更新器扩到它** ✓ ⇒ ★ **这一行只能由运行实报，不能由生成器产出** ✓；★★ **表头现在把"请求的"与"生效的"都印出来** ✓（★ 此前只印前者，**读起来像"作用域没生效"** ✗ —— ★ **它误导了三轮排查** ✓）
-**更新方式（诚实 ✗）**：`scripts/update-doc-counts.mjs` 只**整行重写 4 处**（两个 README、`docs/test-timing.md`、`docs/AUDIT-CHECKLIST.md` ✓）—— **不含** `vibe-math-vmu/docs/**` ✗ ⇒ 本节数字**必须手工同步**（因此必须带日期 ✓）；若再次漂移，以 `--check` 的输出为准 ✓。
+**322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。
+**vmu 子集**：`GATE_SCOPE=vmu` ⇒ ★★★ **这里有两个不同的量**（**2026-10-14 按 D-06 改写：旧文写"没有一个机器模式能报出子集那个"，那已不再成立** ✗✓）：★ **请求的作用域与生效的作用域是【两个变量**]✓ —— ★ `run-tests.mjs` 在 `--counts`／`--self-check` 下【**强制生效作用域为 `full`**]✓（★ **有意为之，且有事故记录** ✓：★ vmu 作用域第一次运行时，子进程继承了作用域 ⇒ **`run-tests.mutants.mjs` 的超时正例看到 **0 个作业** ✗、`--self-check` 基线发散 ✗、`audit-readme-counts` 读到 **27 而不是 110** ✗**）⇒ ★★ **所以 `--counts` 报的是【仓库作业计数 **322**（**250 套件 ＋ 72 探针**）**]✓（★ 基础 ＋ 变体 ✓），**不是子集计数** ✓。★★ **而 T1 【执行**]的 `TOTAL` 是 **258（225 套件 + 33 探针）** ✓（★ 2026-10-14 用 **`--scope-report`** 复测 ✓ —— ★ 本行原先写 **236** 与 **142／119／23** ✓，★ 两处都已过期 ✗）。★★★ **本轮的三项修正** ✓：① **子集计数现在有机器面** —— `node tests/run-tests.mjs --scope-report` 打印三个作用域各自的 `{total,suites,probes}` ✓；② **`--only`／`--exclude` 改为与【请求的作用域】求交**，不再把作用域静默降级为 `full` ✓；③ 表头**同时**打印 `requested-scope`／`effective-scope`／`final-jobs` ✓（★ 此前只印请求值，**读起来像"作用域没生效"** ✗ —— ★ **它误导了三轮排查** ✓）。
+**更新方式（2026-10-14 更正 ✗✓）**：旧文写"`scripts/update-doc-counts.mjs` 只**整行重写 4 处**……**不含** `vibe-math-vmu/docs/**`" —— **该说法已过期** ✗。实读该脚本（`scripts/update-doc-counts.mjs:81-86`）：它覆盖 **5 处**（两个 README、`docs/test-timing.md`、`docs/AUDIT-CHECKLIST.md`、**本卷**），本卷的 `shipped.*` 行由 `MARKERS.v11Shipped` 整行重写（**不要手改** ✓）。**唯一的限制**是本表上面那行"vmu 子集"（`MARKERS.v11Scoped`）：`--counts` **按设计**只报仓库计数，脚本据此**拒绝**把仓库数当成子集数写入（`update-doc-counts.mjs:42-43` 打印具名原因），所以该行**仍由人工同步、必须带日期** ✓；子集数可随时用 `node tests/run-tests.mjs --scope-report` 现取 ✓。若 `--check` 与本表不一致，**以 `--check` 的输出为准** ✓。
 
 ### 5.2 可原样复用的**通用基础设施** ✓
 
@@ -204,18 +205,20 @@ node scripts/release-check.mjs             # 发布前清单
 
 ### 7.1 三档门禁（**成本纪律**；用户 2026-10-09 指出全量太贵 ⇒ 制度化 ✓）
 
-全量非增量 = **117 作业 ≈ 25 分钟**（其中 v5r 一条变异族 ≈ 24 分钟 ✗）⇒ **不能每次改动都付** ✗。改为**三档**，每档都保留"发布级诚实"：
+全量非增量 = **322 作业**（**2026-10-14 由 `node tests/run-tests.mjs --counts` 派生** ✓；旧文写 **117 作业 ≈ 25 分钟** ✗ 已过期）。**成本必须现场量，不要引用单一数字** ✗✓：仓库里同时存在**三个互斥**的说法 —— `docs/test-timing.md` 的「≈121–200 s」、`tests/run-tests.mjs` 文件头的 **1447.6 s（自述为"模拟值"）**、以及本卷 §9.7 记录的 2026-10-09 三次 T3 实测 **各 ≈31 min**（当时 132 作业）⇒ **以现量现报为准** ✓。⇒ **不能每次改动都付** ✗。改为**三档**，每档都保留"发布级诚实"：
 
 | 档 | 触发时机 | 命令 | 实测成本 | 覆盖什么 |
 |---|---|---|---|---|
-| **T0 预检**（**新增，硬前置** ✓） | **任何 T2/T3 之前**（用户 2026-10-09 要求："先全面自查无误再跑，避免跑半天才发现问题" ✓） | `_oneoff/vmu/tools/preflight.mjs [--for-t3]` | **≈1 min** ✓ | ① `--counts` 与文档计数一致 ✓；② `build-preset-rows --check` 无漂移 ✓；③ 预设/installer/包成员/计数/路径/数学契约/产物文档 等**共享面门禁全跑** ✓；④ **`files[] ↔ installer PRESETS ↔ 工作树` 三方一致性**（**上一轮 T3 才发现的那类漏登记** ✗✓，已被固化为预检项 ✓）；⑤ vmu 文档 linter（17 关 ✓）；⑥ `run-tests --self-check` ✓；⑦ `--for-t3` 额外要求**工作树干净**（无未接线的未跟踪件 ✗） |
-| **T1 迭代档** | **每一次改动**（默认档） | `GATE_SCOPE=vmu` | **实测墙钟 ≈132 s** ✓（★ 轮 452 实测 **132.2 s** ✓；★ 原写"≈60–100 s" ✗ —— ★ **耗时主张与计数一样会飘** ✓，**除非有人去量** ✓） | vmu 全部作业 ＋ **所有共享面门禁**（预设行/生成物、installer、包成员、文档计数、路径纪律、产物文档、共享数学模块与契约、runner 自测、临时卫生 ✓） |
-| **T2 共享编排档** | 改动 **`tests/run-tests.mjs`／`tests/helpers/**`／`scripts/build-preset-rows.mjs`／`cordis.patch.yml`／`installer.js`／`package.json`** 时 | `GATE_INCREMENTAL=1`（**全量**，按 `FAMILY_TARGETS` 跳过"目标文件没变"的族 ✓，未登记者**照跑** ✓） | 通常 **≈2–5 min** ✓ | T1 ＋ **受影响的跨预设族**（含 v2–v5r 的行为面 ✓）；跳过的是**我根本没碰**的目标族 ✓ |
-| **T3 发布/阶段档** | **每 2–3 个阶段**（如 P2+P3 合并一次）＋ **任何发布/推送发布物之前** ＋ 收尾 | `GATE_RELEASE=1`（**非增量全量** ✓） | **≈25 min** ✓ | 全部 117 作业，含 24 分钟那条 v5r 族 ✓ |
+| **T0 预检**（**新增，硬前置** ✓） | **任何 T2/T3 之前**（用户 2026-10-09 要求："先全面自查无误再跑，避免跑半天才发现问题" ✓） | `node scripts/preflight.mjs [--for-t3]`（**2026-10-14 按 D-05 进仓** ✓ —— 旧路径 `_oneoff/vmu/tools/preflight.mjs` 在仓库外、干净 clone 跑不到 ✗） | **≈1 min** ✓ | ① `--counts` 与文档计数一致 ✓；② `build-preset-rows --check` 无漂移 ✓；③ 预设/installer/包成员/计数/路径/数学契约/产物文档 等**共享面门禁全跑** ✓；④ **`files[] ↔ installer PRESETS ↔ 工作树` 三方一致性**（**上一轮 T3 才发现的那类漏登记** ✗✓，已被固化为预检项 ✓）；⑤ vmu 文档 linter（`scripts/check-docs.mjs`，**D1–D16 ＋ notes**；旧文写"17 关"是手打数字 ✗，linter 从不报这个数 ✓）；⑥ `run-tests --self-check` ✓；⑦ `--for-t3` 额外要求**工作树干净**（无未接线的未跟踪件 ✗） |
+| **T1 迭代档** | **每一次改动**（默认档） | `GATE_SCOPE=vmu` | **覆盖 258 作业**（**2026-10-14 由 `--scope-report` 派生** ✓）；**成本本轮未量** ✓（旧文"≈132 s／117 作业" ✗ 已过期 —— 耗时主张与计数一样会飘 ✓，**除非有人去量** ✓） | vmu 全部作业 ＋ **所有共享面门禁**（预设行/生成物、installer、包成员、文档计数、路径纪律、产物文档、共享数学模块与契约、runner 自测、临时卫生 ✓） |
+| **T2 共享编排档** | 改动 **`tests/run-tests.mjs`／`tests/helpers/**`／`scripts/build-preset-rows.mjs`／`cordis.patch.yml`／`installer.js`／`package.json`** 时 | `GATE_INCREMENTAL=1`（**全量**，按 `FAMILY_TARGETS` 跳过"目标文件没变"的族 ✓，未登记者**照跑** ✓） | 通常 **≈2–5 min** ✓（未在 2026-10-14 复核） | T1 ＋ **受影响的跨预设族**（含 v2–v5r 的行为面 ✓）；跳过的是**我根本没碰**的目标族 ✓ |
+| **T3 发布/阶段档** | **每 2–3 个阶段**（如 P2+P3 合并一次）＋ **任何发布/推送发布物之前** ＋ 收尾 | `GATE_RELEASE=1`（**非增量全量** ✓） | **未在本轮实测** ✓（§9.7 的历史记录：132 作业时 3 次 T3 **各 ≈31 min**，其中 2 次红，唯一红因是 v5 的变异族 ✓） | 全部 **322** 作业，含最重的那条 v5r 变异族 ✓ |
 
 **纪律**：① T1 红必停 ✗；② T2/T3 的结果必须**写明是增量和非增量** ✓（避免"隔离跑 vs 全量"误判 ✓）；③ **发布前必须有一次 T3** ✓（这是"发布验收"的硬条件，不因省时而免除 ✓）；④ 任何"共享面"缺陷若只在 T3 才能发现（如上一轮的 installer 漏登记 ✗），**必须在同一轮内补进 T1 的覆盖清单** ✓✓ —— 否则 T1 会长期漏网 ✗。
 
 > **本档位制度的第一批实证** ✓：T1 已在 34 作业 / **62.9 s** 内抓到过多起问题（installer 漏登记、计数漂移、scope 与机器模式冲突 ✓）；T3 已两次产出发布级绿（`P0: 111/111` ✓、`P1 里程碑在跑中` ✓）。
+>
+> ★ **2026-10-14（交接轮）T0 状态 = FAIL，两处具名原因** ✓：① **vmu 文档 linter 24 issues**（`scripts/check-docs.mjs`；分布 D2×5／D3×2／D4×5／D5×2／D8×5／D9×3／D15×2；**移交前就已红** —— 把仓库外那份 `_oneoff/vmu/tools/check-docs.mjs` 原样跑出**字节级相同**的输出（`docs=29 issues=24 notes=24`），⇒ **与本轮"搬进仓库"无关** ✓）；② **文档计数未收敛**（本轮新增 1 个作业 ⇒ `scripts/update-doc-counts.mjs --check` 报 WOULD CHANGE；按 D-07 由 Lead 在全员停写后统一 `--write` ✓）。★ 上面的"34 作业 / 62.9 s"是**当时的规模**（现为 **258** 作业）✗，保留为历史 ✓。
 
 ---
 
@@ -224,6 +227,8 @@ node scripts/release-check.mjs             # 发布前清单
 - **官方验证的完整清单**已抽成 G1–G13（来自 C′ 对 `references/verification.md` 的提炼）；其中"**无浏览器控制时的上限**"（只允许 JS 语法 ＋ manifest 校验 ＋ 活 Client slot 注册）是**文档级**逐字结论 ✓；
 - **Client 侧活读数未核**（本机 `Slots.listSubTree` 超时）⇒ GUI 相关门禁暂缺，见 14-§1（O2）；
 - **`app.asar` 直读不可用**（本 agent `read` 工具 BigInt 缺陷）⇒ 读官方材料需自写 asar 解析＋SHA256 校验，见 14-§3（R-5）。
+- **`math-computation.js` 的 canonical 快照与随包副本的一致性：未核／未修** ✗✓（**2026-10-14 登记；不得写成"已核"** ✗）：该快照（`_oneoff/mc-P1-ready/{canonical,tool-schema.json}`）在**版本控制外**（与 D-05 同病）⇒ **干净 clone 无法复现这次对照**；且 `tests/audit-math-computation-parity.mjs` 的**默认路径**指向**仓内不存在**的 `<_repo>/_oneoff/mc-P1-ready/` ⇒ **"多份副本 == canonical"与"失败码/参数名 == tool-schema.json"这两条最强断言在本检出里长期空过**（旧实现只打一行 `note`；本轮已改为**具名 SKIP**，原因里给出 dev 副本路径与 `MATH_CANON_DIR`／`MATH_SCHEMA_FILE` seam ✓）。**把 seam 指向真实快照后的实测**：先 `127 passed / 2 failed` ⇒ ① **哈希不符**（canonical `6c9c9f13…` vs 随包 `def90af7…`；canonical mtime **2026-10-03** 早于随包副本 **2026-10-05**）**只登记不修** ✓；② 失败码**顺序**差异已按裁决 **D-10** 改为**集合 ＋ 可达性比较** ⇒ 现 `130 passed / 1 failed`（唯一剩余即 ①）✓。**Round 2 计划（已裁）**：canonical **vendored 进仓** ＋ 重定义为**语义级对照**（目标 5 要重构 `math-computation.js`，字节级快照必然失效）。**详见 14-§2（U13）** ✓。
+- **两个 env 注入缝：`MATH_CANON_DIR` 与 `MATH_SCHEMA_FILE`** ✓（**2026-10-14 登记** ✓）：它们**只**用于把 `tests/audit-math-computation-parity.mjs` 的第 4 节指向**仓库外**的 canonical 快照与 tool-schema；**默认不设** ⇒ 该守卫走**具名 SKIP**（打印原因并给出 dev 副本所在位置），因此日常门禁**不依赖**它们 ✓。★ **它们不是错误码** ✗：`MATH_*` 这个记号前缀被**共享模块的拒绝码**与**这两个环境变量**同时使用 ⇒ `tests/audit-vmu-docs.test.mjs` 的"文档里出现的每个 `MATH_*` 记号都必须在 03-§8 登记"一度把这两个 env 名**误报**为未登记错误码 ✗✓；该守卫的豁免现已改为**从代码派生**（凡被本仓 `process.env.<NAME>` 读取的同前缀记号，即视为 env 缝 ✓），并断言该豁免**非空且真被用到**。★ **与 U13 同源**：**详见 14-§2（U13）** ✓。
 
 ### 8.1 真机实测新增（2026-10-09，证据在 `_oneoff/vmu/live/2026-10-09/` ✓）
 

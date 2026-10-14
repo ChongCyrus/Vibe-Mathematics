@@ -134,6 +134,12 @@ const CORE_DEFS = Object.freeze([
   // stay configurable - the point of the whole settings surface.
   { key: 'vmu.turn.maxParallel', was: ['vmu.agentBudget.maxParallel', 'vmu.resources.maxParallel'], was: ['vmu.resources.maxParallel'], type: 'number', def: 3, hot: HOT.H2, who: 'office', doc: '每轮最多同时唤醒的成员数（原线默认 3；非法值回落 3）' },
   { key: 'vmu.tools.enabled', type: 'stringList', def: null, hot: HOT.H2, who: 'office', doc: "已接线（host.js 的 install 读取）：宿主注册哪些 vmu 工具。空/缺省（null）＝不限制；显式空表 [] ＝一个都不注册；未知名会被具名拒绝而不是静默放开（docs/03 §7）。" },
+  // ROUND 1 / K1 (D-01): the DECLARED-INTENT surface of the tool map. `vmu.tools.faces` names the faces to publish
+  // (face keys like `minutes`, tool names like `vibe_vmu_minutes`, or `*` for every face); `vmu.core.facesDisabled`
+  // removes faces BY NAME with a reason. They exist so every published face has at least one declaration path even when
+  // its own settings family declares no keys - and so "this face is off" is always a named decision, never an absence.
+  { key: 'vmu.tools.faces', type: 'stringList', def: null, hot: HOT.H1, who: 'office', doc: "已接线（host.js resolveFaces 读取）：要发布的工具面清单（面键如 `minutes`／工具名 `vibe_vmu_minutes`／`*` 全部）。缺省 null＝不额外声明任何面（仍遵守各面自己的 config／vmu.<族>.* 声明）；显式空表 []＝不靠本键声明任何面。" },
+  { key: 'vmu.core.facesDisabled', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: "已接线（host.js resolveFaces 读取）：按名关闭的工具面（面键或工具名）。被关的面在 status().faces.disabled 里带 VMU_NOT_PERMITTED 具名上报；名字写错会出现在 unknownDisabled 而不是被忽略。" },
   { key: 'vmu.turn.toolCallsPerTurnCap', was: ['vmu.agentBudget.toolCallsPerTurnCap', 'vmu.resources.toolCallsPerTurnCap'], was: ['vmu.resources.toolCallsPerTurnCap'], type: 'number', def: 0, hot: HOT.H2, who: 'office', doc: '本回合工具调用上限；0＝未设上限（仍请克制）' },
   { key: 'vmu.turn.memoryCeilingMb', was: ['vmu.agentBudget.memoryCeilingMb', 'vmu.resources.memoryCeilingMb'], was: ['vmu.resources.memoryCeilingMb'], type: 'number', def: 0, hot: HOT.H2, who: 'office', doc: '内存上限（MB）；0＝只提醒"压力明显增大"而不给数字' },
   { key: 'vmu.turn.selfCheck', was: ['vmu.agentBudget.selfCheck', 'vmu.resources.selfCheck'], was: ['vmu.resources.selfCheck'], type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '是否向成员展示资源纪律段（关掉＝零注入，提示词回到该段之前，注入点逐字不变）' },

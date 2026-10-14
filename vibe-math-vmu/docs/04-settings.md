@@ -236,7 +236,7 @@ vmu.packs.active: [v5r]
 | `vmu.pack.format` | enum | `tar` | `tar`∣`zip` | 会话 | H2 | office | ✅ 已接线 | `kernel/library.js` | package 导出所用容器（未知容器 ⇒ 具名拒；仅在 export.format=package 时有意义 ✓） |
 | `vmu.pack.includeBody` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/library.js` | package 导出是否含正文（回执里报出 ✓） |
 | `vmu.pack.includeTrash` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/library.js` | package 导出是否含回收站（默认否 ✓） |
-| `vmu.packs.allowKernelOverride` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | pack 的设置与现有值【重叠】时是否允许覆盖（false ⇒ 具名拒 `VMU_PACK_CONFLICT`，即 10 卷 O4：绝不静默覆盖 ✓；调用方显式传 allowOverride 仍然优先 ✓） |
+| `vmu.packs.allowKernelOverride` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | pack 的设置与现有值【重叠】时是否允许覆盖（false ⇒ 具名拒 `VMU_PACK_CONFLICT`，即 10 卷 O4：绝不静默覆盖 ✓；调用方显式传 allowOverride 仍然优先 ✓） |
 | `vmu.packs.priority` | integer | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/pack.js` | pack 优先级（越大越先；★ 仅用于 status().applied 的排序，manifest 自身的 priority 优先 ✓） |
 | `vmu.work.keepEntries` | integer | `200` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/work.js` | 在途台账保留条数（超过即裁掉【最旧】的，使仍未完成的工作保持可见 ✓） |
 | `vmu.work.autoSettle` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/work.js` | 重启后 recover() 是否【自动标记】残留项为中断（false ⇒ 只报告不改写，即'仅安全动作' ✓） |
@@ -255,11 +255,13 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.quoteDepthMax` | int ≥0 | `3` | — | 会话 | H1 | role:chair | ✅ 已接线 | `kernel/index.js` | P3：引用链深度上限；超深 ⇒ 折叠标注（不拒） |
 | `vmu.tasks.maxOpenTasks` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 未完成任务上限；0＝不限 |
 | `vmu.tasks.requireExpectedRevision` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 任务变更必须声明所见版本（防丢更新；关＝仅在声明时校验） |
-| `vmu.tasks.stages` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | 阶段列表；默认空＝不假装有流程 |
+| `vmu.tasks.stages` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | 阶段列表；默认空＝不假装有流程 |
 | `vmu.turn.wakeupPolicy` | enum | `round-robin` | `round-robin`∣`least-recent` | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | 下一轮唤醒谁：round-robin＝按在册次序轮转；least-recent＝最少被唤醒者优先（同票按在册次序，确定性） |
 | `vmu.turn.objective` | string | `（尚未设定）` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 本所研究对象（原问题）；默认值与原线未设定时的输出一字不差，绝不留空括号 |
 | `vmu.turn.maxParallel` | number | `3` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 每轮最多同时唤醒的成员数（原线默认 3；非法值回落 3） |
 | `vmu.tools.enabled` | string[] | `null` | — | 会话 | H2 | office | ✅ 已接线 | `host.js` | 已接线（host.js 的 install 读取）：宿主注册哪些 vmu 工具。空/缺省（null）＝不限制；显式空表 [] ＝一个都不注册；未知名会被具名拒绝而不是静默放开（docs/03 §7）。 |
+| `vmu.tools.faces` | string[] | `null` | — | 会话 | H1 | office | ✅ 已接线 | `host.js` | 已接线（host.js resolveFaces 读取）：要发布的工具面清单（面键如 `minutes`／工具名 `vibe_vmu_minutes`／`*` 全部）。缺省 null＝不额外声明任何面（仍遵守各面自己的 config／vmu.<族>.* 声明）；显式空表 []＝不靠本键声明任何面。 |
+| `vmu.core.facesDisabled` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `host.js` | 已接线（host.js resolveFaces 读取）：按名关闭的工具面（面键或工具名）。被关的面在 status().faces.disabled 里带 VMU_NOT_PERMITTED 具名上报；名字写错会出现在 unknownDisabled 而不是被忽略。 |
 | `vmu.turn.toolCallsPerTurnCap` | number | `0` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 本回合工具调用上限；0＝未设上限（仍请克制） |
 | `vmu.turn.memoryCeilingMb` | number | `0` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 内存上限（MB）；0＝只提醒"压力明显增大"而不给数字 |
 | `vmu.turn.selfCheck` | bool | `true` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | `packs/v5r/middleware/prompt-switches.js` | 是否向成员展示资源纪律段（关掉＝零注入，提示词回到该段之前，注入点逐字不变） |
@@ -310,8 +312,8 @@ vmu.packs.active: [v5r]
 | `vmu.middleware.onFailure` | enum | `closed` | `closed`∣`open`∣`skip` | 会话 | H2 | office | ✅ 已接线 | `kernel/bus.js` | 条目未声明 failure 时的默认失败策略（★ 条目自身优先，其次本键，再次按钩子的内置默认 ✓） |
 | `vmu.middleware.dryRun` | bool | `false` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/index.js` | 干跑（只报不做） |
 | `vmu.packs.active` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | 生效整合包（冲突按 O4 报错） |
-| `vmu.packs.allowOverride` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 是否允许 pack 间显式覆盖 |
-| `vmu.packs.activeOverrides` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 显式覆盖声明（不声明即报错） |
+| `vmu.packs.allowOverride` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 是否允许 pack 间显式覆盖 |
+| `vmu.packs.activeOverrides` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 显式覆盖声明（不声明即报错） |
 | `vmu.agenda.maxItems` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/governance.js` | 议程条目上限（0＝不限；超限具名拒） |
 | `vmu.agenda.ownerRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/governance.js` | 议程条目必须带负责人 |
 | `vmu.agenda.timeboxRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/governance.js` | 议程条目必须带时间箱 |
@@ -1335,7 +1337,7 @@ vmu.packs.active: [v5r]
 | `vmu.names.strict` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
 | `vmu.names.warn` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准） |
 | `vmu.notes.linkKinds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
-| `vmu.packs.searchPaths` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 3 卷：07、10、13），尚未实现（元数据以各卷为准） |
+| `vmu.packs.searchPaths` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
 | `vmu.paper.retentionMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/paper.js` | ★ **已穷尽**：`paper.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.preserve.migrateAfterYears` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.preserve.pdfProfile` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
@@ -1386,7 +1388,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1038** 个，前缀家族 **105** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1040** 个，前缀家族 **105** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1414,7 +1416,7 @@ vmu.packs.active: [v5r]
 | `vmu.conference.*` | 18 |
 | `vmu.conflict.*` | 8 |
 | `vmu.control.*` | 7 |
-| `vmu.core.*` | 3 |
+| `vmu.core.*` | 4 |
 | `vmu.crypto.*` | 10 |
 | `vmu.custody.*` | 5 |
 | `vmu.data.*` | 2 |
@@ -1486,7 +1488,7 @@ vmu.packs.active: [v5r]
 | `vmu.tasks.*` | 3 |
 | `vmu.teaching.*` | 24 |
 | `vmu.tenure.*` | 11 |
-| `vmu.tools.*` | 1 |
+| `vmu.tools.*` | 2 |
 | `vmu.topology.*` | 12 |
 | `vmu.trust.*` | 16 |
 | `vmu.turn.*` | 24 |

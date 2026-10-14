@@ -3,11 +3,11 @@
 > ★ **轮 209 实测（仓内可执行对照已落地 ✓）**：`tests/accept-v5r-contrast-behaviour.test.mjs` 按 §5.1 的方法，**把 v5r 一侧读它的源码**（`v5r/DEFAULT_PARAMS` ＋ 键旁契约 ✓ —— **内容锚点、不用行号** ✓）、**把 vmu 一侧【驱动】起来问** ✓，逐对分类 ⇒ **当前 4 等价 / 1 未覆盖** ✓✓：`quorumCap` ✓／`verdictMaxRounds` ✓／`meetingWakeRetries` ✓／`meetingHardLimitMs` ✓ 为**等价**（★ `wakeRetries` 与 `hardLimitMs` 两键，**v5r 键旁的契约与我方实现逐字一致** ✓✓）；`reconsiderFloor` 为**未覆盖** ✗（vmu 的会议面无该模型 ✓，schema 的 `doc` 已如实写明 ✓）。★ **真机复跑仍待做** ✗，且它的两项前置已具名：**A 侧需"未装 vmu 插件且 CLI 同代"的 profile** ✗（`design/05-p3-ab-report.md` 已记：本环境不可得 ✓）、**B 侧必须【声明 pack】** ✗（2026-10-10 那次真机 A/B 的 B 侧 `packs: []` ⇒ **零机制得到验证** ✓）。
 > 状态：**草案 v0.1**（"v5r 机制清单"待 B′ 侦察 §2/§5 合并后补全并逐条映射）
 > 上位：`01-philosophy.md`（R15 可迁移 / D4 v5r 降为整合包 / D8 行为包含对照）、`02-architecture.md`（L4）
-> 定义：**pack ＝ 一份完整「运行机制」的声明组合**（settings 默认 ＋ 中间件 ＋ 提示词包 ＋ 可选脚本 ＋ 迁移），**装在一个文件夹 `packs/<id>/` 里** ✓ —— ★★ **它不是代码分支** ✗，**但【目录形态确实是约定**]✓：**插件按目录名读两个纯数据文件**（`settings/defaults.json` ✓、`prompts/sections.json` ✓）—— ★ 因为清单里那些东西**必须在建内核【之前**]就位** ✓，**而插件顶层不能 await 动态 import** ✓ ⇒ **目录约定是【机制的载体**]，不是风格选择** ✓。
+> 定义：**pack ＝ 一份完整「运行机制」的声明组合**（settings 默认 ＋ 中间件 ＋ 提示词包 ＋ 可选脚本 ＋ 迁移），**装在一个文件夹 `packs/<id>/` 里** ✓ —— ★★ **它不是代码分支** ✗，**但【目录形态确实是约定**]✓：**插件按目录名读两个纯数据文件**（`settings/defaults.json` ✓、`prompts/sections.json` ✓）—— ★ 因为清单里那些东西**必须在建内核【之前**]就位** ✓，**而插件顶层不能 await 动态 import** ✓ ⇒ **目录约定是【机制的载体**]，不是风格选择** ✓。★★★ **轮 1（D-03）**：**pack 是 L4（自成一档），不是中间件四形态里的 M4** —— M4 是**消费 vmu 已发布服务的 DSH 外部插件**，`kind:'plugin'` **不是总线 kind**（`bus.add` 具名拒 `VMU_MIDDLEWARE_KIND_UNSUPPORTED`）。pack 能携带的是 M1 规则（`rules`）、M2 模块（`middleware`）、L4 自己的槽位/轨道/别名/设置，以及**提示词管线策略**（`promptPolicies`）。
 
 ---
 
-> ★★ **本章要教的 API（★ 轮 501 补 ✓）**：★ **`createPackLoader({ kernel, registry, allowOverride, clock })`** ✓ —— ★ **装载器工厂**（★ `plan()` 纯函数、`apply()` 冲突即具名拒、`unload()` 逐个回滚 ✓）；★ **`validatePack(manifest)`** ✓ —— ★ **清单形状校验**；★ **`collectPackSections(manifests)`** ✓ —— ★ **从若干清单里收集段**（★ 多个包共存时用 ✓）。★★ **另有 `compressText`／`decompressText`** ✓ —— ★ **文本压缩对**（★ 归档与传输用 ✓）。
+> ★★ **本章要教的 API（★ 轮 501 补 ✓，轮 1 增补）**：★ **`createPackLoader({ kernel, registry, allowOverride, clock, settingSource?, onPromptPolicy? })`** ✓ —— ★ **装载器工厂**（★ `plan()` 纯函数、`apply()` 冲突即具名拒、`unload()` 逐个回滚 ✓；`settingSource` ⇒ D-02 分层与逐键来源回显，`onPromptPolicy` ⇒ `promptPolicies` 的真消费者）；★ **`validatePack(manifest)`** ✓ —— ★ **清单形状校验**；★ **`collectPackSections(manifests)`** ✓ —— ★ **从若干清单里收集段**（★ 多个包共存时用 ✓）；★ **`composePromptPolicies(policies)`** ✓ —— ★ **把若干策略合成一个 `sectionPolicy`**（★ 接受 `{id,apply}` 条目或裸策略函数；空列表 ⇒ `null`，保持零机制 ✓）。★★ **另有 `compressText`／`decompressText`** ✓ —— ★ **文本压缩对**（★ 归档与传输用 ✓）。
 
 ## 1. pack 是什么 / 不是什么
 
@@ -48,10 +48,11 @@ vibe-math-vmu/packs/<id>/middleware/    # 该 pack 在框架扩展点上加的�
 | `slots` | `[{id, capacity?}]` ✓ | kebab id＋整数容量 ✓ |
 | `tracks` | `string[]` ✓ | 归档分轨名 ✓ |
 | `rules` | `[{id, on, when, then, …}]` ✓ | **M1 规则体内联** ✓（`on` 必填 ✓） |
-| `middleware` | `[{id, …}]` ✓ | **追加到总线的条目** ✓（注意：`kind:'rules'` 的条目**不会**被编译 ⇒ 规则要放 `rules:` ✗✓） |
+| `middleware` | `[{id, kind?, handler, …}]` ✓ | **追加到总线的条目** ✓。**轮 1（D-03）**：`kind` 只能是 `rules`／`module`，且非 `rules` **必须带 `handler` 函数**（总线不装载文件）；`script`／`plugin` ⇒ 计划期即报 `kind must be rules\|module`，`apply` 期由总线具名拒 `VMU_MIDDLEWARE_KIND_UNSUPPORTED` ✓（注意：`kind:'rules'` 的条目**不会**被编译 ⇒ 规则要放 `rules:` ✗✓） |
 | `aliases` | `[{from, to}]` ✓ | 旧名 → 新名映射 ✓（D6 ✓） |
-| `settings` | **键→值映射** ✓（如 `{'vmu.meetings.quorumCap': 3}` ✓） | 作为**一层**在装载期施加 ✓（与现有值冲突且未声明 `vmu.packs.allowKernelOverride` ⇒ **具名拒** O4 ✓） |
+| `settings` | **键→值映射** ✓（如 `{'vmu.meetings.quorumCap': 3}` ✓） | 作为**最低的一层**在装载期施加 ✓（**D-02 唯一优先级**：`pack 默认 < 预设 Config < 会话 settings < 运行时 set`）。**轮 1 落地**：loader 收 `settingSource(key)` 后——更高层已拥有该键 ⇒ **该键被"遮蔽"（shadowed）**：高层的值胜出、**不覆盖**、不报错，并在 `status().settings` 里逐键给出 `{value, source, rank}`；**另一个 pack 拥有该键** ⇒ **具名拒** `VMU_PACK_CONFLICT`（O4：不静默覆盖）。未提供 `settingSource` 时保持旧的保守行为（任何重叠都具名拒，除非声明 `vmu.packs.allowKernelOverride`）✓ |
 | `prompts` ✓（**轮 136 新增：正文轴**） | **`{ module, source, count, chars?, sourceSha256? }`** ✓ | **包里承载该 line 的【提示词正文】** ✓。`module` 指向**生成物**（`scripts/generate-pack-prompts.mjs` 从 `prompt-corpus-v5/prompt-corpus-v5.json` 生成 ✓，并在生成物内记下**语料的 sha256** ✓）；★ **它的消费者是 `plan()`** ✓ —— 装载计划里会出现一条 **`kind:'prompts'`** 的动作 ✓（**因此它不是"静默字段"** ✗，docs/10 下面那句警告对它不成立 ✓）；字段非法 ⇒ **`problems` 逐条点名** ✓（`prompts.module`／`prompts.source`／`prompts.count` ✓）。**"内容完全一致"由 `tests/vmu-pack-prompts.test.mjs` 逐条逐字证明** ✓✓（不是同义改写 ✗） |
+| `promptPolicies` ✓（**轮 1：真消费**） | **`[{ id, apply({settings,turn}) -> {decisions,errors} }]`** ✓ | **提示词管线策略**（**不是总线条目**：它的钩子名 `prompt/assemble` 不在冻结集内 ✓）。**轮 1（D-03/P1）**：`apply()` 现在**真的消费**它——每个策略交给 loader 的 `onPromptPolicy` sink；**没有 sink ⇒ 具名拒 `VMU_PACK_PROMPT_POLICY_UNCONSUMED`**（`plan()` 的 `warnings` 会提前说明）；卸载时调用 sink 返回的 `dispose`（无残留）。入口侧用 `kernel/pack.js` 的 `composePromptPolicies()` 把收集到的策略合成**一个** `sectionPolicy` 交给回合循环 ✓。缺 `apply` ⇒ `problems` 点名 ✓ |
 
 > **未知字段会被静默忽略** ✗✓（`validatePack` 不校验额外键 ✓）⇒ 写错字段名**不会报错**，只会"什么都没发生" ✗ —— 因此**以本表为准**，并在计划里核对 `actions` 是否出现你期望的条目 ✓。
 > ★★★ **一个 pack 文件夹里可能有【两份清单**]，而且它们是【不同的对象**]✓（★ 实测 ✓）：**加载器消费的是 `loaded.PACK`** ✓（★ 插件装载点自己写着 ✓）—— 对 v5r 而言它是 `prompts/v5r-core.js` 导出的 `PACK`，`id = 'v5r-core'` ✓，**带 `slots`／`rules`／`codes`／`tracks`／`aliases`／`prompts`** ✓；**而文件夹自己那份记录叫 `V5R_PACK`** ✓，`id = 'v5r'` ✓，**带 `sectionModule`／`policyModule`／`noticeModule`／`phases`** ✓。
@@ -88,20 +89,21 @@ export const PACK = {
 **装载规则（真实现 ✓）**
 - **`requires` 不满足** ⇒ 计划里具名列出（`missing`／`tooOld`／契约版本 ✓）并**拒绝 apply** ✓；
 - **冲突** ⇒ 三类：**已应用**、**设置重叠**（需 `vmu.packs.allowKernelOverride` ✓）、**总线 id 重复** ⇒ 一律**具名拒** `VMU_PACK_CONFLICT` ✓（O4：**不静默覆盖** ✓）；文档草案里的 `conflicts:` 字段**不被读取** ✗；
-> ★ **接线前提（轮 287 实测）** ✓：**这三键（`vmu.packs.searchPaths`／`priority`／`allowKernelOverride` ✓，契约见 07-§ 与 13-§ 的键表 ✓）的承载面是 `kernel/pack.js`** ✓，**而它的工厂 `createPackLoader({ kernel, registry, allowOverride, clock })` 【没有 `settings` 接缝** ✗ —— **`allowOverride` 现在是【调用方传参】而非【读设置】** ✓ ⇒ **接线的第一步是给它加设置接缝** ✓（**同面已有先例：`vmu.pack.compression` 就是【每次调用从设置层真读】✓，照它即可** ✓）。**在此之前三键保持未接线** ✓。
+> ★ **接线现状（轮 1 更新）** ✓：`vmu.packs.allowKernelOverride`／`vmu.packs.allowOverride`／`vmu.packs.priority`／`vmu.pack.compression` 都是**每次调用从设置层真读** ✓（`settingsNow()`／`overrideAllowed()`／`priorityOf()`）。**轮 1 新增两个工厂接缝**：`settingSource(key)`（逐键来源层 ⇒ D-02 分层与 `status().settings.resolved`）与 `onPromptPolicy(policy)`（`promptPolicies` 的真消费者）。**未传接缝时行为与旧版一致**（保守拒重叠）✓。
 - **`plan` 是纯报告** ✓（报告"会改什么"，连续两次不改变任何状态 ✓）⇒ 工具面 `vibe_vmu_pack {action:'plan'}` ✓；
 - **`apply` 原子** ✓：中途失败 ⇒ 回滚已施加的动作 ✓（`unload` 用**禁用**而非删除总线条目 ⇒ "加过再禁用"在审计里可见 ✓）；
 - **`unload`** ⇒ 逐项回滚设置/条目/别名，并报告**残留**（`residueFree` ✓）；**迁移**（`migrations`）**未被读取** ✗ ⇒ 不承诺回退迁移 ✓。
 
 ---
 
-## 4. 优先级与冲突（与 04-§4 一致）
+## 4. 优先级与冲突（与 04-§4 一致；**轮 1 = D-02 唯一优先级**）
 
 ```
 pack 默认  <  预设 Config  <  会话 settings  <  运行时 set
 ```
 - **中间件顺序**：`order` 升序 → 同 `order` 按 `id`；**pack 之间不隐式覆盖** ✗；
 - **提示词**：作用域优先级（角色<阶段<成员<任务）＋ 后装载者可覆盖前者，但**必须声明**（不声明即冲突报错）；
+- **设置（轮 1 落地）**：三处旧行为已收敛到**一条实现**（`createPackLoader.apply` + `settingSource`）——**更高层已拥有该键 ⇒ 遮蔽（高层胜、不覆盖、不报错）**；**同一层（另一个 pack／pack 默认层）⇒ `VMU_PACK_CONFLICT`**；显式 `vmu.packs.allowKernelOverride`／`vmu.packs.activeOverrides` 放行。`status().settings.resolved` 逐键回显 `{value, source, rank}`，`status().layers` 回显这条优先级。**禁止静默覆盖**（O4）；
 - **冲突策略（自裁 O4）**：**默认"检测即报错，不静默覆盖"**；若确需覆盖 ⇒ pack 显式声明 `overrides: [<pack>:<id>]`（可审计、可 diff）。
 
 ---

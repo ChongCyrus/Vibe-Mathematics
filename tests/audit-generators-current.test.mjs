@@ -16,8 +16,9 @@
 // two had the OPPOSITE default - they wrote unless passed --check - so running them to test them would have overwritten the
 // file being tested. Round 507 made --write the opt-in everywhere, and this guard reads regen-all's own table and runs each
 // generator bare, so a generator added there is covered the moment it is listed and can never be silently bypassed.
-import { readFileSync, existsSync } from 'node:fs'
-import { execFileSync } from 'node:child_process'
+import { readFileSync, existsSync, mkdtempSync, copyFileSync, rmSync } from 'node:fs'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -97,6 +98,103 @@ if (printed) {
   // would-bite: the same comparison must reject a count off by one, which is exactly what round 604 emitted
   ok(Number(printed[1]) + 1 !== truly,
     'and a count one higher than the declaration is rejected, which is the shape round 604 emitted', { offByOne: Number(printed[1]) + 1, truly })
+}
+
+console.log('=== 5. THE TWO WRITERS OF docs/00-README.md ARE INDEPENDENT, AND WRITING TWICE IS A NO-OP ===')
+// WHY THIS SECTION EXISTS (round-1 handover, MEASURED): `regen-all` reported every generator written, yet the
+// bare check that follows reported the readiness figures STALE, and the first hypothesis was a read-modify-write
+// race between the two generators that write this page (`generate-wiring-index` writes its §3.2 block,
+// `generate-readiness-figures` writes its §7.6 blocks). Measured answer: there is NO race - both patch only
+// their own delimited block and both are idempotent. The staleness had a different cause, named in the last
+// assertion below: the readiness figures include the LINE COUNT OF docs/14, a volume other tasks keep editing,
+// so any edit to it invalidates docs/00-§7.6 until the generator is re-run. This section turns "they cannot
+// disturb each other" from an assumption into an assertion, exercised on a COPY through the generators' own
+// seams so the real page is never touched.
+const markerPairs = (rel) => {
+  const src = readFileSync(join(REPO, rel), 'utf8')
+  return [...src.matchAll(/(?:export\s+)?const\s+\w*BEGIN\s*=\s*'([^']+)'[\s\S]{0,240}?(?:export\s+)?const\s+\w*END\s*=\s*'([^']+)'/g)]
+    .map((m) => ({ begin: m[1], end: m[2] }))
+}
+const blockOf = (text, p) => {
+  const i = text.indexOf(p.begin)
+  if (i === -1) return null
+  const j = text.indexOf(p.end, i)
+  return j === -1 ? null : text.slice(i, j + p.end.length)
+}
+const stripBlocks = (text, pairs) => {
+  let t = text
+  for (const p of pairs) {
+    const i = t.indexOf(p.begin)
+    if (i === -1) continue
+    const j = t.indexOf(p.end, i)
+    if (j !== -1) t = t.slice(0, i) + t.slice(j + p.end.length)
+  }
+  return t
+}
+const RD = 'scripts/generate-readiness-figures.mjs'
+const WI = 'scripts/generate-wiring-index.mjs'
+const rdPairs = markerPairs(RD)
+const wiPairs = markerPairs(WI)
+ok(rdPairs.length >= 2 && wiPairs.length >= 1,
+  'both writers declare their marked blocks in their own source, so the comparison below uses DERIVED markers',
+  { readinessBlocks: rdPairs.length, wiringBlocks: wiPairs.length })
+const runGen = (script, args, env) => spawnSync(process.execPath, [join(REPO, script), ...args], {
+  cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, env),
+})
+const scratch = mkdtempSync(join(tmpdir(), 'gen-writers-'))
+try {
+  const copy = join(scratch, '00-README.md')
+  copyFileSync(join(REPO, 'vibe-math-vmu', 'docs', '00-README.md'), copy)
+  const original = readFileSync(copy, 'utf8')
+  // (a) readiness, twice: the second run must change NOTHING.
+  const rdWrite1 = runGen(RD, ['--write'], { VMU_READINESS_DOC: copy })
+  const afterRd1 = readFileSync(copy, 'utf8')
+  const rdWrite2 = runGen(RD, ['--write'], { VMU_READINESS_DOC: copy })
+  const afterRd2 = readFileSync(copy, 'utf8')
+  ok(rdWrite1.status === 0 && rdWrite2.status === 0,
+    'readiness --write exits 0 through an ABSOLUTE-path seam (its seam resolves like its sibling now)',
+    { first: rdWrite1.status, second: rdWrite2.status })
+  ok(afterRd1 === afterRd2, '★ readiness: re-running --write is byte-for-byte a no-op (idempotent)',
+    { bytes1: afterRd1.length, bytes2: afterRd2.length })
+  const rdBlocks = rdPairs.map((p) => blockOf(afterRd2, p))
+  ok(rdBlocks.length > 0 && rdBlocks.length === rdPairs.length && rdBlocks.every((b) => typeof b === 'string' && b.length > 0),
+    '★ readiness really wrote its marked blocks, so the preservation check below is not comparing two nulls',
+    { blockBytes: rdBlocks.map((b) => (b === null ? null : b.length)) })
+  // (b) wiring writes ITS block: the readiness blocks must come through byte-identical.
+  const wiWrite1 = runGen(WI, ['--write'], { VMU_WIRING_DOC: copy })
+  const afterWi1 = readFileSync(copy, 'utf8')
+  ok(wiWrite1.status === 0, 'wiring --write exits 0 through its seam', { exit: wiWrite1.status })
+  ok(JSON.stringify(rdBlocks) === JSON.stringify(rdPairs.map((p) => blockOf(afterWi1, p))),
+    '★ writing the WIRING block leaves the READINESS blocks byte-identical: each writer owns exactly one block')
+  const wiBlocks = wiPairs.map((p) => blockOf(afterWi1, p))
+  ok(wiBlocks.length > 0 && wiBlocks.length === wiPairs.length && wiBlocks.every((b) => typeof b === 'string' && b.length > 0),
+    '★ wiring really wrote its marked block (the cross-preservation check above is load-bearing)',
+    { blockBytes: wiBlocks.map((b) => (b === null ? null : b.length)) })
+  // (c) wiring, twice: the second run must change NOTHING.
+  const wiWrite2 = runGen(WI, ['--write'], { VMU_WIRING_DOC: copy })
+  const afterWi2 = readFileSync(copy, 'utf8')
+  ok(wiWrite2.status === 0 && afterWi1 === afterWi2,
+    '★ wiring: re-running --write is byte-for-byte a no-op (idempotent)', { bytes: afterWi2.length })
+  // (d) NOTHING outside the two writers' blocks was touched.
+  const allPairs = rdPairs.concat(wiPairs)
+  ok(stripBlocks(afterWi2, allPairs) === stripBlocks(original, allPairs),
+    '★ everything outside the two generated blocks is preserved byte-for-byte (a writer cannot rewrite the page)')
+  // (e) afterwards each generator still checks its own block as current.
+  const rdCheck = runGen(RD, [], { VMU_READINESS_DOC: copy })
+  const wiCheck = runGen(WI, [], { VMU_WIRING_DOC: copy })
+  ok(rdCheck.status === 0 && wiCheck.status === 0,
+    'and after both writers ran, each generator reports its own block current',
+    { readinessExit: rdCheck.status, wiringExit: wiCheck.status, readinessOut: String(rdCheck.stdout || '').trim().slice(0, 80) })
+} finally {
+  rmSync(scratch, { recursive: true, force: true })
+}
+// THE MEASURED CAUSE of the staleness that motivated this section, asserted so it stays documented rather than
+// re-diagnosed as a race: the readiness block contains a figure derived from ANOTHER editable volume.
+{
+  const rdSrc = readFileSync(join(REPO, RD), 'utf8')
+  ok(/14-open-items-and-roadmap\.md/.test(rdSrc) && /lines:\s*road\.split/.test(rdSrc),
+    'the readiness figure coupled to another editable volume is named here: edit docs/14 ⇒ re-run this generator (NOT a cross-writer race)',
+    { coupling: 'docs/14 line count -> docs/00 §7.6' })
 }
 
 console.log('=== GENERATORS CURRENT: ' + passed + ' passed, ' + failed + ' failed ===')

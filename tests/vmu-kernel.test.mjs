@@ -34,8 +34,16 @@ const expectThrow = (fn, code, name) => {
   try { fn(); failed++; failures.push(name + ' (did not throw)') }
   catch (e) { ok(e && e.code === code, name, e && e.code) }
 }
+// The ONE pack implementation is ASYNC (`createPackLoader.apply` awaits the pack's own load), so a refusal on that
+// path arrives as a rejected promise. The named-code contract is the same; only the observation differs.
+const expectReject = async (promise, code, name) => {
+  try { await promise; failed++; failures.push(name + ' (did not refuse)') }
+  catch (e) { ok(e && e.code === code, name, e && e.code) }
+}
 
 const m = await import(pathToFileURL(MODULE).href)
+// ROUND 1 / K5: the pack path's ONE implementation, injected the way the entry injects it.
+const { createPackLoader } = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'kernel', 'pack.js')).href)
 const clock = () => '2026-10-09T00:00:00.000Z'
 
 // ---- 1. ZERO MECHANISM: an assembly with no declarations is inert ------------------------------
@@ -107,26 +115,46 @@ const clock = () => '2026-10-09T00:00:00.000Z'
   await rm(root, { recursive: true, force: true })
 }
 
-// ---- 5. packs: conflicts are refused, and codes follow the R-d rule ----------------------------
+// ---- 5. packs: ONE implementation (the loader), and its refusals are named -----------------------
+// ROUND 1 / K5 (D-02, Lead 裁决 = 硬拒). `usePack()` used to carry a SECOND pack loader inside the kernel (id, code
+// prefix, alias, settings conflicts) that ran whenever no loader was injected - two semantics for one verb. The
+// first block asserts the replacement contract (no loader ⇒ a NAMED refusal, never a quiet second path); the case
+// list that used to sit here is preserved below, re-pointed at the ONE implementation (`kernel/pack.js`) so the
+// coverage is the same or wider, not smaller.
 {
-  const k = m.createKernel({ clock, settings: { 'vmu.records.tracks': ['progress'] } })
-  expectThrow(() => k.usePack({}), 'VMU_INVALID_ARGUMENT', 'a pack without an id is refused')
-  const good = k.usePack({ id: 'institute-x', codes: ['VMU_PACK_INSTITUTE_X_NO_QUORUM'], aliases: [{ from: 'vibe_v5_task_board', to: 'vmu.tasks' }] })
-  ok(good.ok === true && good.active.join(',') === 'institute-x', 'a clean pack activates')
+  const k0 = m.createKernel({ clock })
+  expectThrow(() => k0.usePack({}), 'VMU_PACK_LOADER_UNAVAILABLE',
+    'with no pack loader injected, usePack() refuses BY NAME instead of loading through a second implementation')
+  expectThrow(() => k0.usePack({ id: 'institute-x' }), 'VMU_PACK_LOADER_UNAVAILABLE',
+    'an id does not open a hidden path: the loader is the only one')
+  ok(k0.status().packPath === 'none', 'status().packPath names the path as ABSENT rather than implying a hidden one', k0.status().packPath)
+
+  // The entry's shape: a LATE-BOUND applier, because the loader needs the kernel and the kernel needs the applier.
+  const withLoader = (settings = {}) => {
+    let loader = null
+    const kernel = m.createKernel({ clock, settings, packApplier: (manifest) => loader.apply(manifest) })
+    loader = createPackLoader({ kernel, registry: kernel.registry })
+    return kernel
+  }
+  const k = withLoader({ 'vmu.records.tracks': ['progress'] })
+  ok(k.status().packPath === 'loader', 'status().packPath reports the ONE path when the loader is injected')
+  await expectReject(k.usePack({}), 'VMU_PACK_MISSING', 'a pack without an id is refused (by the loader that owns the rule)')
+  const good = await k.usePack({ id: 'institute-x', codes: ['VMU_PACK_INSTITUTE_X_NO_QUORUM'], aliases: [{ from: 'vibe_v5_task_board', to: 'vmu.tasks' }] })
+  ok(good && good.id === 'institute-x' && k.activePacks().includes('institute-x'), 'a clean pack activates through the loader', JSON.stringify(good).slice(0, 120))
   ok(k.registry.resolve('vibe_v5_task_board').name === 'vmu.tasks', 'the pack alias resolves to the published service')
-  expectThrow(() => k.usePack({ id: 'bad-alias', aliases: [{ from: 'vibe_v5_members', to: 'vmu.members' }] }), 'VMU_NO_SUCH_OBJECT',
+  await expectReject(k.usePack({ id: 'bad-alias', aliases: [{ from: 'vibe_v5_members', to: 'vmu.members' }] }), 'VMU_NO_SUCH_OBJECT',
     'an alias to a service this assembly does not publish is refused by name (nothing is faked)')
-  expectThrow(() => k.usePack({ id: 'institute-x' }), 'VMU_PACK_CONFLICT', 'applying the same pack twice is refused (O4)')
-  // The pack code namespace rule (R-d): the alias target must exist for the alias half to be checked too.
-  const k2 = m.createKernel({ clock })
-  expectThrow(() => k2.usePack({ id: 'rogue', codes: ['VMU_INVALID_ARGUMENT'] }), 'VMU_PACK_CONFLICT',
+  await expectReject(k.usePack({ id: 'institute-x' }), 'VMU_PACK_CONFLICT', 'applying the same pack twice is refused (O4)')
+  // The pack code namespace rule (R-d) still holds, now enforced by the loader's own validation.
+  const k2 = withLoader()
+  await expectReject(k2.usePack({ id: 'rogue', codes: ['VMU_INVALID_ARGUMENT'] }), 'VMU_PACK_MISSING',
     'a pack claiming a framework code is refused: pack codes must be VMU_PACK_<ID>_<REASON>')
-  const k3 = m.createKernel({ clock, settings: { 'vmu.records.tracks': ['progress'] } })
-  expectThrow(() => k3.usePack({ id: 'clash', settings: { 'vmu.records.tracks': ['other'] } }), 'VMU_PACK_CONFLICT',
+  const k3 = withLoader({ 'vmu.records.tracks': ['progress'] })
+  await expectReject(k3.usePack({ id: 'clash', settings: { 'vmu.records.tracks': ['other'] } }), 'VMU_PACK_CONFLICT',
     'a pack that would overwrite an active setting is refused unless overrides are declared (O4)')
-  const k4 = m.createKernel({ clock, settings: { 'vmu.records.tracks': ['progress'], 'vmu.packs.allowOverride': true } })
-  ok(k4.usePack({ id: 'clash', settings: { 'vmu.records.tracks': ['other'] } }).ok === true,
-    'with vmu.packs.allowOverride the same clash is accepted as an EXPLICIT override (O4)')
+  const k4 = withLoader({ 'vmu.records.tracks': ['progress'], 'vmu.packs.allowOverride': true })
+  const explicit = await k4.usePack({ id: 'clash', settings: { 'vmu.records.tracks': ['other'] } })
+  ok(explicit && explicit.ok !== false, 'with vmu.packs.allowOverride the same clash is accepted as an EXPLICIT override (O4)')
 }
 
 // ---- 6. status() composes every part -----------------------------------------------------------

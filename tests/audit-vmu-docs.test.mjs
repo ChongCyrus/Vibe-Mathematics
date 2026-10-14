@@ -138,11 +138,45 @@ const apiNames = new Set()
 }
 ok(apiNames.size >= 20, 'the public API names are read from the modules, so the exemption below rests on derived data', { apiNames: apiNames.size })
 
+// ENV SEAMS ARE NOT CODES. The `MATH_*` token namespace is shared by the shared module's refusal codes and by
+// the env seams that point a dev-checkout guard at an out-of-repo asset (`MATH_CANON_DIR`, `MATH_SCHEMA_FILE`,
+// registered in 11-§8 so a reader knows they only feed the canonical comparison - unset by default, in which
+// case that guard reports a NAMED SKIP). Naming those seams used to be reported as "an unregistered error
+// code". The exemption is DERIVED, not listed - a name is an env seam when the repository's own code READS it
+// (`process.env.<NAME>`) - so it cannot go stale and a new seam is exempt the moment it is used. The set is
+// asserted non-empty AND asserted to be load-bearing (each exempted name really is named by a volume), so the
+// exemption cannot quietly become a dumping ground.
+const envSeams = new Set()
+{
+  const walkEnv = (rel) => {
+    let ents = []
+    try { ents = readdirSync(join(REPO, rel), { withFileTypes: true }) } catch { return }
+    for (const e of ents) {
+      if (e.name === 'node_modules' || e.name === '.git') continue
+      const p = rel + '/' + e.name
+      if (e.isDirectory()) { walkEnv(p); continue }
+      if (!/\.(mjs|js|cjs)$/.test(e.name)) continue
+      let src = ''
+      try { src = readFileSync(join(REPO, p), 'utf8') } catch { continue }
+      for (const m of src.matchAll(/process\.env\.((?:VMU|MATH|ARCHIVE|SCRIPT)_[A-Z0-9_]{3,})/g)) envSeams.add(m[1])
+    }
+  }
+  for (const rel of ['tests', 'scripts', 'vibe-math-vmu']) walkEnv(rel)
+}
+ok(envSeams.size > 0 && envSeams.has('MATH_CANON_DIR') && envSeams.has('MATH_SCHEMA_FILE'),
+  'the env seams a volume names are DERIVED from the code that reads them (process.env.<NAME>)',
+  [...envSeams].sort().join(','))
+
 const unregisteredInDocs = [...codeUse.entries()]
-  .filter(([code]) => !registered.has(code) && !apiNames.has(code))
+  .filter(([code]) => !registered.has(code) && !apiNames.has(code) && !envSeams.has(code))
   .map(([code, docs]) => code + ' (' + [...docs].join(',') + ')')
-ok(unregisteredInDocs.length === 0, 'every VMU_* code used in the docs is registered in 03-§8',
+ok(unregisteredInDocs.length === 0,
+  'every VMU_* code used in the docs is registered in 03-§8 (a module export, or a name the code reads from process.env, is exempt: see the derived env-seam set above)',
   unregisteredInDocs.slice(0, 8).join(' | '))
+const exemptedInDocs = [...codeUse.keys()].filter((c) => envSeams.has(c) && !registered.has(c) && !apiNames.has(c))
+ok(exemptedInDocs.length > 0,
+  'the env-seam exemption is LOAD-BEARING (a documented seam really is exempted, so the branch above is exercised)',
+  JSON.stringify(exemptedInDocs.sort()))
 
 // ---- C. codes used in the CODE are registered too -------------------------------------------------
 const codeFiles = []

@@ -204,6 +204,10 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
   let durableReason = store && typeof store.read === 'function' ? 'not loaded yet' : 'no store seam was injected'
   let lastPersistAt = null
   let lastPersistError = null
+  // ROUND 1 / K2: how many `store.patch` promises have been issued but not yet settled. The store serialises writes
+  // through one chain, so a receipt can be read before the write lands; `pending`/`writeInFlight` publish that fact
+  // instead of letting `durable:true` mean "a write was issued".
+  const inFlight = new Set()
   let loadError = null
   // ── round 10 / task-123: monotonic sequence + writer identity (DETECTION of concurrent overwrites) ──
   let knownSeq = 0            // the highest seq this instance has written or read
@@ -309,23 +313,46 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
     const nextSeq = knownSeq + 1
     const doc = projection(nextSeq)
     try {
-      store.patch(LEDGER_KEY, () => doc)
+      // ROUND 1 / K2 (measured, Lead 裁决 ④): `store.patch` returns a PROMISE (kernel/store.js serialises writes
+      // through one chain). The old code called it and never awaited it, so (a) a REFUSED write produced an unhandled
+      // rejection the surrounding try/catch could never see - the shape the whitelist defect took - and (b) the
+      // `durable` verdict was computed BEFORE the write landed, so it could claim durability for a write that never
+      // happened. Now: the ledger's own bookkeeping (seq / lastWrite) is assigned synchronously, but `lastPatchOk` and
+      // the reason are set ONLY by the promise's settlement, and the in-flight receipt says `pending:true` with
+      // `durable:false`. `whenDurable()` lets a caller await the aggregate of every write issued so far.
+      const write = Promise.resolve(store.patch(LEDGER_KEY, () => doc))
+      inFlight.add(write)
       knownSeq = nextSeq
       lastWrite = { seq: nextSeq, writerId: writer, at: now() }
       lastSeen = { seq: nextSeq, writerId: writer, at: now() }
       lastPersistAt = now()
       lastPersistError = null
-      lastPatchOk = true
-      // M3: a successful WRITE alone must never be read as "we have durability" — the degraded verdict is
-      // cleared ONLY when the store has also been read back successfully in this lifetime (loadOk).
-      if (loadOk) {
-        durableDegraded = false
-        durableReason = 'persisted and verified through the injected store (seq ' + nextSeq + ', writer ' + writer + ')'
-      } else {
-        durableReason = 'the write succeeded, but the store was never read back successfully'
-          + (loadError ? ' (' + loadError + ')' : '') + ' — durability is NOT established'
-      }
-      return { ok: true, durable: isDurable(), rows: rows().length, at: lastPersistAt, seq: nextSeq, writerId: writer }
+      lastPatchOk = null
+      durableReason = 'write IN FLIGHT: seq ' + nextSeq + ' was issued through the injected store and has not settled'
+        + ' - the verdict is not durable yet (await whenDurable() for the settled answer)'
+      const settled = () => { inFlight.delete(write) }
+      write.then(() => {
+        settled()
+        lastPatchOk = true
+        // M3: a successful WRITE alone must never be read as "we have durability" — the degraded verdict is
+        // cleared ONLY when the store has also been read back successfully in this lifetime (loadOk).
+        if (loadOk) {
+          durableDegraded = false
+          durableReason = 'persisted and verified through the injected store (seq ' + nextSeq + ', writer ' + writer + ')'
+        } else {
+          durableReason = 'the write succeeded, but the store was never read back successfully'
+            + (loadError ? ' (' + loadError + ')' : '') + ' — durability is NOT established'
+        }
+      }, (e) => {
+        settled()
+        durableDegraded = true
+        lastPatchOk = false
+        lastPersistError = String((e && e.message) || e)
+        durableReason = 'the store refused the projection: ' + lastPersistError
+        bump(unwired, 'store-seam', 1)
+        say({ type: 'idempotency/store-unwired', at: now(), why: lastPersistError })
+      })
+      return { ok: true, durable: isDurable(), pending: true, writeInFlight: inFlight.size, rows: rows().length, at: lastPersistAt, seq: nextSeq, writerId: writer }
     } catch (e) {
       durableDegraded = true
       lastPatchOk = false
@@ -556,10 +583,34 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
       ensureLoaded()
       return {
         ok: true, durable: isDurable(), loaded: loadOk, loadAttempted, lastPatchOk,
+        // ROUND 1 / K2 (Lead 裁决 ④): a write issued but not yet settled. `durable:false` + `pending:true` is the
+        // honest reading while a write is in flight; it is NOT "the store refused it".
+        pending: inFlight.size > 0,
+        writeInFlight: inFlight.size,
         degraded: durableDegraded, reason: durableReason, loadError,
         lastWriteAt: lastPersistAt, lastError: lastPersistError, at: now(),
         seq: knownSeq, writerId: writer, staleWrites, lastLoadStale: lastLoadStale ? Object.assign({}, lastLoadStale) : null,
       }
+    },
+
+    /**
+     * ROUND 1 / K2 (Lead 裁决 ④) — THE SETTLED ANSWER. Every `store.patch` this ledger issued is tracked; this
+     * returns a promise that resolves once ALL of them have settled (including writes issued while waiting), with the
+     * same facts `durable()` reports. Callers that must know the verdict await this instead of reading a receipt that
+     * is still in flight. The synchronous API is untouched: `begin/commit/abort` still return immediately.
+     */
+    whenDurable() {
+      ensureLoaded()
+      const step = () => {
+        const list = [...inFlight]
+        if (list.length === 0) {
+          return Promise.resolve({ ok: true, durable: isDurable(), pending: false, writeInFlight: 0,
+            loaded: loadOk, loadAttempted, lastPatchOk, degraded: durableDegraded, reason: durableReason,
+            loadError, lastError: lastPersistError, seq: knownSeq, writerId: writer })
+        }
+        return Promise.allSettled(list).then(step)
+      }
+      return step()
     },
 
     /** Explicitly write the projection (also happens automatically after every mutation). */
@@ -800,6 +851,8 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
         loaded: loadOk,
         loadAttempted,
         lastPatchOk,
+        pending: inFlight.size > 0,
+        writeInFlight: inFlight.size,
         durableBackend: store ? 'store' : null,
         durableLoaded: loadOk,
         durableDegraded,

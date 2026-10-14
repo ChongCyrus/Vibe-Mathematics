@@ -41,6 +41,12 @@ export const PUBLIC_KEYS = Object.freeze([
   'budget',
   'phase',
   'work',
+  // ROUND 1 / K2: the K6 idempotency ledger (kernel/idempotency.js `LEDGER_KEY`) writes here. It was MISSING, so
+  // `patch('idempotency', …)` and `read('idempotency')` both threw `VMU_INVALID_ARGUMENT: undeclared durable key`;
+  // the ledger's own persist() caught that and stayed `durable:false` for the whole session, in silence, because
+  // the only test that touches the projection injects a FAKE store. Measured against the real createStore before
+  // this line existed: `work` ⇒ ok, `idempotency` ⇒ refused. The whitelist and docs/03 §6 move together.
+  'idempotency',
 ])
 
 /** Named refusal (codes are registered in docs/03 §8). */

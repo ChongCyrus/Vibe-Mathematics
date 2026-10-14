@@ -9,13 +9,13 @@
 
 ## 0. 一页速览
 
-**内核给"能在哪介入"（20 个冻结钩子）＋"能做什么"（12 项能力）；中间件声明"我在哪个钩子、对谁、按什么失败策略、用哪些能力、做什么"。**
+**内核给"能在哪介入"（22 个冻结钩子，见 §5 末生成索引）＋"能做什么"（12 项能力）；中间件声明"我在哪个钩子、对谁、按什么失败策略、用哪些能力、做什么"。**
 
 | 概念 | 实现事实（`kernel/bus.js`） |
 |---|---|
-| 条目形态 | `kind ∈ {rules, module, script, plugin}`（＝M1/M2/M3/M4） |
+| 条目形态 | `kind ∈ {rules, module}`（＝**M1/M2 是总线条目**）；`script`／`plugin` **不是总线 kind** ⇒ `bus.add` 具名拒 `VMU_MIDDLEWARE_KIND_UNSUPPORTED` 并在 hint 里点名真实载体（**D-03：没有纸面形态**） |
 | 必需字段 | `id`（非空字符串）、`kind`、`on`（≥1 个钩子） |
-| 非规则条目 | 必须给 `handler`（函数）或 `file`（脚本路径） |
+| 非规则条目 | **必须给 `handler`（函数）**；`file` **不是**处理器的替代品（总线不装载文件——模块文件由 `kernel/loader.js` 装载并带上 handler 后才进总线） |
 | 默认顺序 | `order` 缺省＝**1000**；排序＝`order` 升序，再按 `id` 字典序（**确定性**） |
 | 默认失败策略 | 取自 `DEFAULT_FAILURE[on[0]]`（§5 表），缺省兜底 `closed` |
 | 能力 | 12 项（§3.2）；**用了没声明的能力＝配置缺陷，恒按 closed 处理并计入熔断** |
@@ -51,16 +51,19 @@
 
 ---
 
-## 2. 四形态总表（M1–M4 ＝ 实现里的 `kind`）
+## 2. 四形态总表（**总线只跑 M1/M2**；M3/M4 各有真实载体，**不是总线 `kind`**）
 
-| 形态 | 实现 `kind` | 载体 | 必需 | 表达力 | 隔离 | 热改 | 典型用途 |
+> ★★★ **轮 1 更正（D-03）**：本节原先把 `kind ∈ {rules, module, script, plugin}` 写成"＝M1/M2/M3/M4"，而 `bus.add` 只认 `rules`／`module`——`script`／`plugin` 曾经**校验通过、`emit` 时被静默跳过**（`middleware/skipped`）。现在二者在 `add` 处**具名拒** `VMU_MIDDLEWARE_KIND_UNSUPPORTED`，hint 点名真实载体。**M4 不是 pack**：整合包是 **L4**（`kernel/pack.js`，自成一档），M4 是**消费 vmu 公开服务的 DSH 插件**。
+
+| 形态 | 实现落点 | 载体 | 必需 | 表达力 | 隔离 | 热改 | 典型用途 |
 |---|---|---|---|---|---|---|---|
-| **M1 规则（声明式）** | `rules` | 设置/声明里的条目（**无需 handler**） | `id`,`kind`,`on` | 低（选钩子/顺序/作用域/失败策略/能力声明） | 最高 | ✓ | 团队约定、合规开关、只做"启用/禁用/排序"的机制 |
-| **M2 代码模块（函数式）** | `module` | 同进程模块，`handler` 函数 | ＋`handler` | 高（任意逻辑） | 低 | 需重载 | 复杂决策合并、外部系统对接 |
-| **M3 脚本（子进程桥）** | `script` | `file`（经 `kernel/script-bridge.js`） | ＋`file` | 中（受协议限制） | 高（进程＋超时） | ✓ | 任意语言写策略、复用既有工具链 |
-| **M4 整合包（组合）** | `plugin` | 包（`kernel/pack.js`）携带的条目集合 | ＋包清单 | 组合级（依赖/覆盖/别名/服务） | 取决于内含 | △ | 分发整套流程（教学/团队/合规模板） |
+| **M1 规则（声明式）** | 总线条目 `kind:'rules'` | 设置/声明里的条目（**无需 handler**） | `id`,`kind`,`on` | 低（选钩子/顺序/作用域/失败策略/能力声明） | 最高 | ✓ | 团队约定、合规开关、只做"启用/禁用/排序"的机制 |
+| **M2 代码模块（函数式）** | 总线条目 `kind:'module'` | 同进程模块，**必须** `handler` 函数（模块文件经 `kernel/loader.js` 装载后带上 handler） | ＋`handler` | 高（任意逻辑） | 低 | 需重载 | 复杂决策合并、外部系统对接 |
+| **M3 脚本／工作流（子进程桥）** | **不在总线上** | `kernel/script-bridge.js` ＋ `vibe_vmu_script` 工具（`config.scripts` 声明） | `file`／`inline`（进程协议） | 中（受协议限制） | 高（进程＋超时） | ✓ | 任意语言写策略、复用既有工具链 |
+| **M4 外部插件／mod** | **不在总线上** | 消费 vmu **已发布服务**的 DSH 插件（宿主插件声明） | 宿主插件清单 | 组合级（服务/工具/提示词段） | 取决于宿主 | △ | 新服务、新工具、新提示词段 |
+| **L4 整合包（组合，自成一档）** | `kernel/pack.js` | `packs/<id>/`（settings/ ＋ middleware/ ＋ prompts/ ＋ index.js） | 包清单 | 组合级（依赖/覆盖/别名/槽位/轨道） | 取决于内含 | △ | 分发整套制度（教学/团队/合规模板） |
 
-> **统一形状**：四形态最终都产出**同一形状的条目**（`id/kind/on/order/failure/capabilities/scope/source/handler|file`）⇒ §3–§5 的语义对四形态**完全通用**；差别只在"处理器从哪来"。
+> **统一形状**：**总线上的两种形态**最终都产出同一形状的条目（`id/kind/on/order/failure/capabilities/scope/source/handler`）⇒ §3–§5 的语义对它们**完全通用**；差别只在"处理器从哪来"。M3/M4/L4 各有自己的契约（`script-bridge` / 宿主插件 / `pack.js`），**不套用总线条目语义**。
 
 ---
 
@@ -70,10 +73,10 @@
 | 字段 | 类型 | 必需 | 默认 | 说明 |
 |---|---|---|---|---|
 | `id` | string（非空） | ✓ | —— | **全局唯一**；重名 ⇒ `VMU_MIDDLEWARE_FAILED`（"冲突从不静默解决"） |
-| `kind` | `rules`｜`module`｜`script`｜`plugin` | ✓ | —— | 非法值 ⇒ 校验失败 |
+| `kind` | `rules`｜`module` | ✓ | —— | **总线只跑这两种**；`script`／`plugin` ⇒ 具名拒 `VMU_MIDDLEWARE_KIND_UNSUPPORTED`（真实载体见 §2）；其它值 ⇒ 校验失败 |
 | `on` | string ｜ string[] | ✓ | —— | ≥1 个钩子名；**不得为空** |
-| `handler` | function | 非 `rules` 必给（或给 `file`） | —— | 函数式挂点 |
-| `file` | string | 非 `rules` 可替代 `handler` | —— | 脚本路径（M3） |
+| `handler` | function | **非 `rules` 必给** | —— | 函数式挂点；总线**不装载文件**（模块文件先经 `kernel/loader.js`，由它带上 handler） |
+| `file` | string | ✗ | —— | **只是装载线索，不是总线处理器**：给总线一个只有 `file` 的条目会被拒（`VMU_MIDDLEWARE_FAILED`） |
 | `order` | integer | ✗ | **1000** | 排序键（升序），同级按 `id` |
 | `failure` | `open`｜`closed`｜`abort` | ✗ | `DEFAULT_FAILURE[on[0]]`，兜底 `closed` | 失败策略（§4.3） |
 | `capabilities` | string[] | ✗ | `[]` | **必须声明才能用**（§3.2）；未知能力 ⇒ 校验失败 |
@@ -150,7 +153,7 @@
 
 ---
 
-## 5. 钩子全景表（20 个冻结名，逐字来自 `VU_HOOKS`）
+## 5. 钩子全景表（**22 个冻结名**，逐字来自 `VU_HOOKS`；计数以 §5 末生成索引为准）
 
 > **生产者列取自实仓 grep**（`kernel/*.js`、`kernel/prompt/*.js`、`host*.js`、`vibe-math-vmu.js`、`packs/*.js`）：✓＝有 `emit(` 生产者；✗＝**今天无人 emit**（只出现在 `bus.js` 的冻结表/默认表）。
 > **默认失败策略**＝`DEFAULT_FAILURE` 逐字。
@@ -159,19 +162,19 @@
 |---|---|---|---|---|---|---|---|---|
 | 1 | `member/wake-before` | `closed` | **✓** `members.js` | 目标成员、唤醒类型、上下文摘要 | `deny`／`rewriteArgs`／`appendPrompt`／`annotate` | ✓ | ✓ | 用户可定义（"未拒绝才唤醒"） |
 | 2 | `member/wake-after` | `closed` | **✓** `members.js` | 成员、唤醒结果、耗时 | `record`／`notify`／`annotate` | ✗ | ✗ | 用户可定义（观测） |
-| 3 | `turn/reply-parsed` | `closed` | **✗ 无生产者** | 成员、回合解析结果 | `deny`／`rewriteResult`／`annotate` | ✓ | ✓ | 用户可定义（**不得**改票权语义） |
+| 3 | `turn/reply-parsed` | `closed` | **✓** `kernel/turn/index.js`（轮 496 已接线） | 成员、回合解析结果 | `deny`／`rewriteResult`／`annotate` | ✓ | ✓ | 用户可定义（**不得**改票权语义） |
 | 4 | `meeting/round-start` | `closed` | **✓** `meeting.js` | 会议 id、轮次、参与集、议程 | `deny`／`rewriteArgs`／`notify` | ✓ | ✓ | 用户可定义（可否开会） |
 | 5 | `meeting/round-end` | `closed` | **✓** `meeting.js` | 会议 id、轮次、产出摘要 | `record`／`notify`／`annotate` | ✗ | ✗ | 用户可定义 |
 | 6 | `ballot/cast` | `closed` | **✓** `ballot.js` | 投票人、选项、时间 | `deny`（**唯一**） | ✓ | ✗ | **内核强制**（票面不可改写） |
 | 7 | `ballot/tally` | `closed` | **✓** `ballot.js` ＋ `packs/v3-core/index.js` | 票集、门槛、汇总 | `deny`／`annotate`（**不得** rewrite） | ✓ | ✗ | **内核强制**（计票不可改写） |
-| 8 | `record/append-before` | `closed` | **✗ 无生产者** | 记录种类、内容、目标 | `deny`／`rewriteArgs`／`record` | ✓ | ✓ | 用户可定义（**不得**删既有记录） |
-| 9 | `record/appended` | **`open`** | **✗ 无生产者** | 记录摘要、哈希 | `record`／`annotate`／`notify` | ✗ | ✗ | 用户可定义（观测；失败放行） |
+| 8 | `record/append-before` | `closed` | **✓** `kernel/library.js`（轮 496 已接线） | 记录种类、内容、目标 | `deny`／`rewriteArgs`／`record` | ✓ | ✓ | 用户可定义（**不得**删既有记录） |
+| 9 | `record/appended` | **`open`** | **✓** `compliance.js`／`handover.js`／`minutes.js`／`tenure.js` | 记录摘要、哈希 | `record`／`annotate`／`notify` | ✗ | ✗ | 用户可定义（观测；失败放行） |
 | 10 | `task/assign` | `closed` | **✓** `members.js`／`tasks.js` | 任务、被指派者、验收 | `deny`／`rewriteArgs`／`notify` | ✓ | ✓ | 用户可定义 |
 | 11 | `task/transition` | `closed` | **✓** `tasks.js` | 任务、原/目标状态 | `deny`／`record` | ✓ | ✗ | 用户可定义（状态机仍内核校验） |
 | 12 | `prompt/section-assembled` | **`open`** | **✓ 已有生产者**（装配路径 emit ✓；曾漂移为 `prompt/assemble` ✗ ⇒ 本会话已修 ✓ 见 §5.2） | 段名、段文本、来源、顺序、剩余预算 | `deny`／`appendPrompt`／`rewriteResult`／`annotate` | ✓ | ✓ | 用户可定义（**见 06**） |
 | 13 | `budget/exceeded` | **`abort`** | **✓ 已有生产者**（`kernel/fairness.js` 在守恒分配失败时 emit ✓；独立复核者第 6 轮指出本表曾写"无生产者"✗ ⇒ 已更正 ✓） | 超预算对象、已用/上限、候选 | `deny`／`annotate` | ✓ | ✓ | 用户可定义（截断协商） |
-| 14 | `pack/loading` | `closed` | **✗ 无生产者** | 包 id、声明、计划 | `deny`／`rewriteArgs` | ✓ | ✓ | 用户可定义 |
-| 15 | `pack/loaded` | `closed` | **✗ 无生产者** | 包 id、条目数、服务、耗时 | `record`／`notify` | ✗ | ✗ | 用户可定义 |
+| 14 | `pack/loading` | `closed` | **✓** `kernel/pack.js`（轮 496 已接线：应用前、可否决） | 包 id、声明、计划 | `deny`／`rewriteArgs` | ✓ | ✓ | 用户可定义 |
+| 15 | `pack/loaded` | `closed` | **✓** `kernel/pack.js`（轮 496 已接线：全部就位后） | 包 id、条目数、服务、耗时 | `record`／`notify` | ✗ | ✗ | 用户可定义 |
 | 16 | `settle/before` | `closed` | **✓** `tasks.js` | 结算对象、口径、参与集 | `deny`（**唯一**） | ✓ | ✗ | **内核强制**（口径不可改写） |
 | 17 | `settle/after` | `closed` | **✓** `tasks.js` | 结算结果、留痕引用 | `record`／`annotate`／`notify` | ✗ | ✗ | 用户可定义（观测） |
 | 18 | `control/paused` | **`open`** | **✓** `kernel/index.js` | 暂停原因、作用域、发起者 | `notify`／`annotate` | ✗ | ✗ | 用户可定义（提示面） |
@@ -188,7 +191,7 @@
 > ★★★ **本节曾把【已经修好的**]那一半也列在"必须修"里 ✗ —— ★ **一个标题写着"必须修"的小节，如果一半已经修好，是最糟的一种：★ 读者会去修【已经修好的东西**]✓。
 
 - ★★ **① `prompt/assemble` 的那处【已闭环**]✓（★ 用的正是本节自己建议的方案 ② ✓）：★ **`kernel/prompt/index.js:400` 现在 emit 的是 `prompt/section-assembled`** ✓，★ **与冻结集里的名字一致** ✓ ⇒ ★ **中间件【可以**]逐段介入提示词装配** ✓。★★ **本节原先引用的 `host-hooks.js` 【不存在**]✗（★ 实测 ✓），★ 实际相关的文件是 `kernel/loader.js` ✓。
-- ★★★ **② `pack/loading`／`pack/loaded` 【仍然无人 emit**]✗：★ **冻结集里有名字、也有默认失败策略** ✓，★ **但框架里没有任何 emit 点** ✓ ⇒ ★★ **"包装载介入"至今是【纸面能力**]✗**。★★ **判定**：★ **这是【框架该补的能力**]✓（★ 目标 ③："框架能力足够强大" ✓），★ **不是该删的名字** ✗ —— ★ **`kernel/pack.js` 持有 `kernel.bus`** ✓（★ L172／L339 ✓），**要 emit 它只是几行** ✓；★ **本轮未完成，如实登记** ✓。
+- ★★★ **② `pack/loading`／`pack/loaded` 【已闭环**]✓（★ **轮 1 更正**）：★ 本行原先写"仍然无人 emit、纸面能力" ✗，而 **`kernel/pack.js:303`（应用前、可否决）与 `kernel/pack.js:374`（全部就位后）已经 emit** ✓ —— ★ **同卷生成索引（§5 末）早已写明 `pack.js` 是生产者** ✓ ⇒ ★ **本条与生成索引的自相矛盾就此消除** ✓；★ 断言由 `tests/audit-hook-coverage.test.mjs`（冻结名必有 emit 点）与 `tests/audit-vmu-docs.test.mjs`（`KNOWN_UNEMITTED` 已清空）双向守着 ✓。
 - ★ **③ `truncation[]` 只进 `status()`、不触发 `budget/exceeded`** ✓：★ **未复核，保持"待核"** ✓。
 
 
@@ -207,11 +210,16 @@
 
 ## 6. 插件、协议与边界
 
-### 6.1 三类扩展物的装载顺序
-1. **包（plugin/M4）先**：`kernel/pack.js` 解析依赖 → 装载包内 `rules/module/script` 条目与资源；包冲突**必须显式声明**（重名 id 直接拒绝）。
-2. **模块（module/M2）次之**：`bus.on(entry, handler)` 把处理器挂到条目上（测试也用这条路注入）。
-3. **脚本（script/M3）最后**：经 `kernel/script-bridge.js` 建立调用；`file` 必填。
-> **同 order 内**按 `id` 字典序 ⇒ 三种载体的相对顺序**确定可复现**。
+### 6.1 三类扩展物的装载顺序（**轮 1 按 D-03 更正：只有 M1/M2 进总线**）
+1. **整合包（L4）先**：`kernel/pack.js` 解析依赖 → 施加包内 `settings`／`slots`／`tracks`／`rules`（M1）／`middleware`（M2）／`aliases`／`promptPolicies`；包冲突**必须显式声明**（重名 id／设置重叠直接拒绝）。**包不是 M4**：它是自成一档的 L4 组合。
+2. **模块（M2）次之**：`kernel/loader.js` 校验 `meta.apiVersion`／`capabilities`／**已注册钩子**并挂上 `handler`，再由 `bus.add` 进总线（测试也用 `bus.on(entry, handler)` 注入）。
+3. **脚本（M3）不在总线上**：经 `kernel/script-bridge.js` ＋ `vibe_vmu_script` 工具（`config.scripts`）建立调用；`file`／`inline` 二选一。**外部插件（M4）同样不在总线上**：它是消费 vmu 已发布服务的 DSH 插件。
+> **同 order 内**按 `id` 字典序 ⇒ 总线上的条目顺序**确定可复现**。
+
+### 6.1.1 钩子只有一份登记（**轮 1，D-04**）
+- **单一真源**＝`kernel/bus.js` 的 `HOOK_REGISTRY`：每个钩子记 `name`／`kind`(vmu|host)／`failure`／可否阻断／可否改写／作用域／时机／真实生产者／是否桥接（`bridged` ＋ `bridgeSite`）。
+- **派生**：`DSH_HOOKS`（模块可订阅的宿主名，`loader.js` 再导出）与 `BRIDGED_HOOKS`（宿主桥真能挂的，`host-hooks.js` 再导出）都由它过滤而来；`workflow/*` 前缀在 `HOOK_PREFIXES`。
+- **断言**：`hookRegistryProblems()` 校验「无重名、`VU_HOOKS` 与登记表逐名一致、`DEFAULT_FAILURE` 与登记表一致、**桥接 ⊆ 可订阅**、每个桥接项都写明注册点」；`VU_HOOKS`／`DEFAULT_FAILURE` 仍以字面量保留（三处既有门禁按源码文本解析它们），一致性由该断言保证。
 
 ### 6.2 与 DSH 原生能力的边界（实现事实）
 - `bus.wrapHostWaterfall(next)` 是**唯一**接触宿主 `next()` 的地方：把宿主 waterfall 包成一次 `emit`，**条目返回 `undefined` 即放行**，`emit` 返回 `ok:false` 时**短路**（不调 `next`）。
@@ -298,7 +306,7 @@
 - `06-prompt-pipeline.md`：`prompt/section-assembled`（**注意 §5.2 命名缺陷**）与 `budget/exceeded` 的具体化。
 - `10-packs.md`：包冲突与覆盖的**显式声明**规则（本章 §6.1 只定装载顺序）。
 - `11-gates-and-development.md`：把 §3.1/§3.2/§4.3/§7.2 逐条变门（缺一条即红）。
-- `14-open-items-and-roadmap.md`：本章标 ✗ 者（`remove()`、**6 个**无生产者钩子、`budget/exceeded` 未接线；`prompt/assemble` 命名**已修** ✓）。
+- `14-open-items-and-roadmap.md`：本章标 ✗ 者（`remove()`、`budget/exceeded` 未接线；`prompt/assemble` 命名**已修** ✓；**纸面钩子已于轮 496 清零** ✓ ⇒ 本行原先的"6 个无生产者钩子"是过期计数，已删）。
 
 ---
 
@@ -320,7 +328,7 @@
 ## 13. 待裁决
 1. **作用域维度统一**：总线三维 vs 管线四维（§6.4）——统一为四维，还是管线独有？
 2. **`prompt/assemble` vs `prompt/section-assembled`**（§5.2）：登记新名，还是改 emit 为逐段名（本卷建议后者）？
-3. **6 个无生产者钩子**：哪些**本阶段必须接线**（本卷建议优先：`budget/exceeded`＋`record/*`；`prompt/section-assembled` **已接线** ✓）？
+3. **无生产者钩子：已清零** ✓（轮 496 补上 `pack/loading`／`pack/loaded`／`turn/reply-parsed`／`record/append-before`，`prompt/section-assembled` 与 `budget/exceeded` 更早已接线）⇒ 由 `tests/audit-hook-coverage.test.mjs` 双向守着；**残余待办**只剩 `budget/exceeded` 的触发点协商（截断是否触发它，见 §13-2 与 06 §17.2）。
 4. **卸载语义**：`remove()` 的依赖检查与"幽灵注册"防护规格（今日只有 `disable`）。
 5. **熔断后可观测性**：是否要求 `control/heartbeat` 的 payload **常驻**携带"当前被熔断条目清单"（本卷倾向"是"）。
 6. **能力扩展**：新增能力（如 `rewrite-state`）是否需要"内核先提供写路径"——本卷建议**永不提供**（保持 §7.2 红线）。
@@ -340,6 +348,9 @@
 | 8 | 未提追踪/干跑/审计行 | 新增 **§4.5/§7.3/§8** | `emit()`／`remember()`／`audit()` |
 | 9 | 未提钩子生产者 | 新增 **§5 生产者列（13 ✓ / 7 ✗）＋§5.2 命名不一致缺陷** | 实仓 grep |
 | 10 | 未提卸载缺口 | 明确 **无 `remove()`**（只有 `disable`）⇒ 卸载/回滚为计划 ✗ | `bus` 公开面 |
+| 11 | **轮 1**：`kind ∈ {rules,module,script,plugin}`＝M1–M4 | **总线只跑 `rules`／`module`**；`script`／`plugin` 在 `add` 处**具名拒** `VMU_MIDDLEWARE_KIND_UNSUPPORTED`（hint 点名真实载体）；**M4 是 DSH 外部插件，pack 是 L4** | `bus.js` `SUPPORTED_KINDS`／`add()` |
+| 12 | **轮 1**：非规则条目"给 `handler` 或 `file`" | **必须给 `handler`**；`file` 只是装载线索（总线不装载文件，`loader.js` 装载后带上 handler） | `bus.js` `validateEntry()`／`emit()` 的 skipped 分支已不再可达 |
+| 13 | **轮 1**：三份钩子表各自维护 | **一份登记 `HOOK_REGISTRY` ＋ 派生 ＋ 断言**（§6.1.1） | `bus.js` `hookRegistryProblems()`；`loader.js`／`host-hooks.js` 再导出派生表 |
 
 ---
 
@@ -347,7 +358,7 @@
 
 > **判据（机器可判定 ✓）**：本节缺失即 T0 预检 `[D8]` **红** ✓（"缺少未核项小节" ✓）⇒ 它是**断言**不是装饰 ✓；每条的失败都必须是**具名**拒绝而不是静默 ✓。
 
-1. **5 个"注册但无生产者"的钩子仍未接线** ✗：`turn/reply-parsed`／`record/append-before`／`record/appended`／`pack/loading`／`pack/loaded`（`prompt/section-assembled` ✓ 与 `budget/exceeded` ✓ **均已接线**，本会话修 ✓）⇒ 挂上它们**今天不会触发** ✓；**场景**：接线后逐个补"生产者存在"的断言 ✓。
+1. **无生产者钩子：0 个** ✓（轮 496 已接线四个；`prompt/section-assembled` 与 `budget/exceeded` 更早已接线）⇒ **原先的"5 个仍未接线"已过期删除**；`tests/audit-hook-coverage.test.mjs` 与 `tests/audit-vmu-docs.test.mjs`（`KNOWN_UNEMITTED` 空集）双向守着，新增冻结名若无 emit 点即红 ✓。
 2. **`prompt/assemble` 命名漂移已修** ✓（代码改为冻结名 `prompt/section-assembled` ✓，总线加了名字校验 ✓）—— 但**逐段触发粒度**未定 ✗（每段一次 vs 一次带清单 ✓）。
 3. **无 `remove()`** ✗：条目只能 `disable`，**卸载/回滚**为计划 ✓；`disable` 与"卸载"的语义差别未实证 ✗。
 4. **脚本桥沙箱边界未定** ✗：M3 脚本能否调用外部命令（本卷建议**默认否** ✓）尚未由代码强制 ✗。

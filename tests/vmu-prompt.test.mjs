@@ -115,7 +115,9 @@ const baseSections = [
   // class of bug the append was (docs/03 section 8: VMU_PROMPT_BINDING_CONFLICT).
   {
 
-    const p2 = m.createPromptPipeline({ sections: [{ name: 'tie-sec', order: 10, range: 'pack', text: 'BASE' }], bindings: [
+    // ROUND 1 (P3): `range` is DERIVED from `order` (docs/06 §3), so the stale `range: 'pack'` on an
+    // order-10 section was removed - it contradicted the partition the pipeline actually enforces.
+    const p2 = m.createPromptPipeline({ sections: [{ name: 'tie-sec', order: 10, text: 'BASE' }], bindings: [
       { section: 'tie-sec', role: 'solver', text: 'ONE' },
       { section: 'tie-sec', role: 'solver', text: 'TWO' },
     ], clock: () => '2026-01-01T00:00:00.000Z' })

@@ -7,7 +7,7 @@
   "sections": [
     {
       "name": "example-data-opening",
-      "order": 10,
+      "order": 600,
       "range": "pack",
       "text": "【示例数据包】这一段提示词来自 pack 文件夹里的纯数据，而不是来自任何代码。"
     }

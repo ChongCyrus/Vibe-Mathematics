@@ -10,6 +10,7 @@
 
 ★★ **vmu 的实际运行机制 ＝ `kernel/`（框架）＋ `packs/<名字>/`（整合包文件夹）** ✓。
 ★★★ **框架只提供【机制】，整合包提供【机构】** ✓ —— ★ **凡是"换一家研究所就不对"的东西，都不许待在 `kernel/`** ✗，**必须待在整合包里** ✓。
+★★★ **轮 1（D-03/D-06）**：**pack 是 L4，自成一档；它不是中间件四形态里的 M4** —— M4 是**消费 vmu 已发布服务的 DSH 外部插件**；总线只跑 M1（`rules`）与 M2（`module`），`kind:'script'|'plugin'` 由 `bus.add` **具名拒** `VMU_MIDDLEWARE_KIND_UNSUPPORTED`。pack 的机构策略（段开关、通知措辞、相位）**由 `config.packs` 声明驱动注入**（见 §4.1），不再由入口无条件带上。
 
 ---
 
@@ -66,6 +67,17 @@ vibe-math-vmu/
 
 ★★★ **一个值得记住的静默失败**：★ 第一版把 `sectionPolicy` 加到了 **`open()`** 的参数表、而不是**工厂**的参数表 ✓ ⇒ ★ **`typeof` 对"未声明标识符"不抛错、只返回 `"undefined"`** ✓ ⇒ **策略静默不执行、外观完全正常** ✗。★ 抓出它的是**探针里那句 `policy calls: 0`** ✓ —— ★ **"看着对"与"被调用"是两件事** ✓。
 
+### 4.1 机构策略由 **pack 声明驱动注入**（★ 轮 1，D-03/D-06）
+
+★★★ **症状（轮 1 侦察实测）**：入口 `vibe-math-vmu.js` 顶层**静态 import** v5r 的 `prompt-switches.js`／`notices.js`／`index.js`，并在 `createKernel` 处**无条件**注入 `sectionPolicy`／`noticeBlock`／`extraPhases` ⇒ ★ **`config.packs` 为空时，v5r 的机构策略照样生效** ✗ —— R1/D5「框架不认识机构」只在 `kernel/**` 成立。
+
+★★★ **本轮落地的形状**（入口侧由 vmu-core 落，机制侧由 `kernel/pack.js` 提供）：
+1. **声明驱动**：入口按 `config.packs` 的 id 从**本地数据映射**（`PACK_RUNTIME`）取该包的 `sectionPolicy`／`noticeBlock`／`phases`；**一个包都没声明 ⇒ 三者皆为 `null`** ⇒ 回到「框架一个段都不动」的零机制 ✓。
+2. **提示词策略经 loader 真消费**：`promptPolicies` 由 `createPackLoader({ onPromptPolicy })` 收集，入口用 `composePromptPolicies()` 合成**一个** `sectionPolicy`；**声明了策略却没有 sink ⇒ 具名拒** `VMU_PACK_PROMPT_POLICY_UNCONSUMED` ✓。
+3. **包默认值的层级与来源**：`settings/defaults.json` 在建内核前折在用户设置之下（**用户永远赢** ✓）；`createPackLoader({ settingSource })` 让 `apply()` 知道每个键属于哪一层 ⇒ **更高层遮蔽、同层冲突具名拒**（D-02，见 docs/10 §4）。
+
+★★ **残余边界（如实标注）**：★ `extraPhases` 仍是**构造期取值**（回合循环在建内核时捕获）⇒ **第三方 pack 若要走"声明驱动"，其相位必须由它自己的插件在构造前传入**（本轮的 `PACK_RUNTIME` 是同步映射，正是为此）；★ 若将来把"装配前"也做成可挂载点，这条边界才消失。
+
 ---
 
 ## 5. 加载：文件夹优先
@@ -105,7 +117,7 @@ vibe-math-vmu/
 | ★★★ **会议协议已真正接通** | `v5r-meeting-{invited,others,first,ask}`（**四个互斥发言者状态** ✓）＋ `v5r-turn-meeting-agenda`（★ **不属于状态命名空间** ✓） | ★★ **机制是"该轮点名状态才注入"** ✓ ⇒ ★ **两套件原先【都没点名**]✗ ⇒ **四个段贡献为零** ✓（★ 这就是"转写 40 行、复现率 +0"的真因 ✓）；★ 现在**逐条断言全部规则** ✓（邀请一次而不强制／举手／可再举手／无人举手才收束／沉默不触发截止／纪要具名记录谁选择未发言／**缺 `vote_solved` 阻止结题** ✓） |
 | ★★ **复原（`resume`）提示入包** | `v5r-resume-core` ✓（★ `resume` 相位 ✓） | ★★ **语料里最好的一句** ✓：**"先读取完整研究日志与自己的成果卡；不要以恢复导航替代完整证明"** ✓；★ **prose 97%（29/30）** ✓ |
 | ★★★ **按提示类型逐一度量（可看见总比率看不见的东西）** | `tests/vmu-prompt-type-coverage.test.mjs` ✓ | ★★ **九个类型各自出分，其中【七个 100% prose**]✓（★ `resume`／`heartbeat` 96%、`meeting` 97%、`founding` 98%、`normal` 99% ✓）；★★★ **并断言【全语料只剩 1 条不同的未复现行**]✓ —— ★ **它是紧凑目录的【另一版本**]✓（★ 语料跨原版一次改版 ⇒ 印两版就印了原版那一轮没印的行，印一版就匹配不上另一版 ✓）⇒ **设计上不可闭合** ✓；★★ **并含视图守卫**：**流水线视图 81% ≥ 编写形态 38%** ✓（★ 挡住的正是"把承重视图当有损派生去简化"这个【我自己写反过的结论**]✓）。★★★ **口径说明（重要）**：★ 度量按**【调用者应当变化的输入取并集**]✓（★ 成员 ✓、审阅者 ✓）—— **因为"一次调用产出了什么"是关于 harness 的陈述，不是关于 pack 的** ✓；★ 而 **fidelity 数字（`V68`）必须用【单变体**]装配** ✓，**否则并集会让分母虚增而不增加任何新行** ✓ |
-| ★★★ **pack 可用【纯数据**]贡献提示词段与相位** | `packs/<id>/prompts/sections.json` ✓ ＋ 插件在建内核前**按纯数据读它** ✓（★ 与 `settings/defaults.json` 同一循环、同一种方式 ✓）；示例包 `packs/example-data/` ✓ | ★★ **数据形态＝流水线自己的形状**：`{ sections: [{name,order,text}], bindings: [{section, role\|phase\|member\|task, text}] }` ✓ ⇒ **只需要文字的 pack，就只需要数据** ✓；★★ **插件里【没有任何 pack 的名字**]✓，**由测试 grep 插件、要求不出现示例包名来守住** ✓；★ 验收：`tests/vmu-pack-data-sections.test.mjs` **9/9** ✓ —— ★ **含"绑定命名的相位出现、其它相位不出现"** ✓；★ **v5r 仍用手写模块**（★ 它承载按角色／相位选择的逻辑 ✓） |
+| ★★★ **pack 可用【纯数据**]贡献提示词段与相位** | `packs/<id>/prompts/sections.json` ✓ ＋ 插件在建内核前**按纯数据读它** ✓（★ 与 `settings/defaults.json` 同一循环、同一种方式 ✓）；示例包 `packs/example-data/` ✓ | ★★ **数据形态＝流水线自己的形状**：`{ sections: [{name,order,text}], bindings: [{section, role\|phase\|member\|task, text}] }` ✓ ⇒ **只需要文字的 pack，就只需要数据** ✓；★★ **插件里【没有任何 pack 的名字**]✓，**由测试 grep 插件、要求不出现示例包名来守住** ✓（★ **轮 1 边界**：数据循环本身仍不认任何包名 ✓；而**代码类 pack 的机构策略**（段策略/通知/相位）改由 `config.packs` 声明的**本地数据映射**驱动 —— 映射里出现包名是**声明驱动**的代价，**不在 `config.packs` 里的包一律不注入** ✓，见 §4.1）；★ 验收：`tests/vmu-pack-data-sections.test.mjs` **9/9** ✓ —— ★ **含"绑定命名的相位出现、其它相位不出现"** ✓；★ **v5r 仍用手写模块**（★ 它承载按角色／相位选择的逻辑 ✓） |
 | ★★★ **四个 pack【全部是文件夹**]✓ | `packs/{v5r,example-data,institute-min,v3-core}/` ✓ —— ★ **`packs/` 下【零散文件**]✓ | ★★ 加载器**优先 `<id>/index.js`** ✓，**仅在该 import 失败时回退 `<id>.js`** ✓ ⇒ ★ **散装形态走的是"兼容路径"，而"pack 即文件夹"此前【只对恰好是文件夹的那几个成立**]✗；★ 现在**四个都是文件夹且 id 不变** ✓；★★ **并删除 213 KB 的【字节重复**]✓（`v5r-prompts.js`／**`v5r-blocks-a.js`**／**`v5r-blocks-b.js`**／`v5r-persona.js` 各存两份 ✓）—— ★★ **成因是两个生成器写到了【没人读的那份**]✗ ⇒ **`regen-all` 一直在忠实重生成一个没有消费者的文件，而 `--check` 校验的也是它** ✓ |
 | ★★★ **一个 pack 文件夹里可能有【两份清单**]✓，且是**不同对象** ✓ | ① **加载器消费的 `loaded.PACK`** ✓（★ 插件装载点自己写着 ✓）＝ v5r 的 `prompts/v5r-core.js` 导出物 ✓，`id = 'v5r-core'` ✓，**带 `slots`／`rules`／`codes`／`tracks`／`aliases`／`prompts`** ✓；② **文件夹自己的记录 `V5R_PACK`** ✓，`id = 'v5r'` ✓，**带 `sectionModule`／`policyModule`／`noticeModule`／`phases`／`defaults`／`contributes`** ✓ | ★★ **为什么改名而不合并** ✓：★ `export *` **不会**把名字带进本模块作用域 ✓，**而同模块再写显式 `PACK` 曾【静默替换**]星号带来的真清单** ✗ ⇒ **名册消失** ✓ ⇒ ★★ **"教训留在了名字里"** ✓；★★★ **而 `validatePack` 按设计忽略未知键** ✓ ⇒ **放在被装载清单上、没人读的字段会【静默失效**]✗ ⇒ ★ **那些字段因此由 `describeV5rPack()` 读出** ✓（★ **用【同名字段**]✓ —— ★ 改名会满足读者却让检查【不再覆盖它**]✗）—— ★★ **本轮之前它们正是"看上去被消费、其实什么都不做"** ✓。★★★ **并写成【不变量**]✓：**`V5R_PACK` 的每个键都必须【要么属于被装载清单、要么按原名出现在描述里**]✓ —— ★ **首次运行时就抓出 `defaults` 与 `contributes` 无人读** ✓（★ 于是补上读者 ✓）；★ 验收：`tests/vmu-pack-data-sections.test.mjs` **14/14** ✓，**含"两份 id 【不同**]的断言** ✓（★ 因为**那个差异才是那个事实** ✓） |
 | ★★★ **纯数据 pack 可【激活**]✓，不只是可读** | ★ `config.packs: ['example-data']` ✓ ⇒ **`packErrors()` 长度为 0** ✓、**`appliedPacks()` 含 `{ id, applied: [], dataOnly: true, carries: { promptSections, settingsDefaults } }`** ✓；★ **插件入口 `vibe-math-vmu.js` 的装载循环里那条"既无清单也无数据"的分支** ✓ | ★★★ **修复前**：★ 加载器先试 `packs/example-data/index.js` ✓、再试 `packs/example-data.js` ✓ ⇒ **两次都缺就记一条 `ERR_MODULE_NOT_FOUND`** ✗、**已应用列表为空** ✗、**还往 stderr 写警告** ✗ —— ★★ **而文本【早就在流水线里**]了** ✓ ⇒ ★★★ **"唯一错的东西就是那份报告"** ✓；★ **现在**：**承载数据的名字记为已应用（标 `dataOnly` ＋ 说明承载什么 ✓）**，**只有"既无清单也无数据"的名字才报错** ✓。★★ **验收 `tests/vmu-entry.test.mjs` 133/133** ✓，**含两端**：★ **E-14 纯数据 pack 无错且其【相位绑定文本出现在通过入口装配的回合里**]✓（★ **端到端，不是流水线级** ✓）；★★ **E-15 一个【既无清单也无数据**]的名字**仍然【具名报错、且不进已应用列表**]✓ —— ★★ **"一个放宽接受路径的修复，其价值只等于它仍然拒绝的那个情形"** ✓。★ **并实测五条路径** ✓：`v5r` ⇒ `v5r-core` ✓、`example-data` ⇒ data ✓、`no-such-pack` ⇒ 1 错 ✓、`institute-min` ✓、`v3-core` ✓ |

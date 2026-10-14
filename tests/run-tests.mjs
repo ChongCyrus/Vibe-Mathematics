@@ -32,6 +32,7 @@
  *   node tests/run-tests.mjs --only formal        # substring match on the file name (repeatable, OR)
  *   node tests/run-tests.mjs --exclude e2e-v4     # substring to skip (repeatable)
  *   node tests/run-tests.mjs --json               # machine-readable summary on stdout
+ *   node tests/run-tests.mjs --scope-report       # DERIVED scope classification as JSON; runs nothing
  *   node tests/run-tests.mjs --temp-age-hours=12  # temp hygiene: stale-scratch threshold (default 6 h)
  *   node tests/run-tests.mjs --temp-dry-run       # temp hygiene: print the plan, delete nothing
  *   node tests/run-tests.mjs --no-temp-hygiene    # skip the sweep and the roomier-drive temp root
@@ -48,6 +49,11 @@
  *   · Long jobs are started FIRST (LPT: static measured weights + file-name tiebreak, deterministic).
  *     Measured effect at concurrency 2: wall 1878.1 s -> ~1447.6 s (simulated from that run's own per-job
  *     timings), with NO change to which jobs run, no assertion removed and no semantics relaxed.
+ *   · SCOPE SEMANTICS (handover D-06, handover round 1): `--only`/`--exclude` are ORTHOGONAL to the scope -
+ *     they INTERSECT the REQUESTED scope and never override it. `--counts` and `--self-check` are
+ *     REPOSITORY-WIDE and pin the effective scope to `full`, printing that pin AND its named reason on every
+ *     run. The header always prints requested scope, effective scope and the final job count together, so a
+ *     `scope=quick` label can never again sit beside a 177-job full-list run.
  *
  * INCREMENTAL FULL (`GATE_INCREMENTAL=1`, default OFF => today's behaviour byte-for-byte):
  *   · It SKIPS a mutant family only when every source file that family reads/copies/mutates (its target
@@ -111,8 +117,10 @@ const exclude = flag('exclude')
 // because stdout is a MACHINE-READABLE channel here (`--counts`/`--json` are JSON.parsed by callers).
 // Machine modes (`--self-check`, `--counts`) must not DELETE anything: the first is a guard the mutant
 // family runs repeatedly, the second is called by scripts/update-doc-counts.mjs on every check - a sweep
-// there is a surprising side effect (and a slow one). Only a genuine test sweep cleans up.
-if (!has('no-temp-hygiene') && !has('self-check') && !has('counts')) {
+// there is a surprising side effect (and a slow one). `--scope-report` reports the derived classification
+// and must be equally side-effect free (it is the surface tests/audit-scope-classification.test.mjs reads).
+// Only a genuine test sweep cleans up.
+if (!has('no-temp-hygiene') && !has('self-check') && !has('counts') && !has('scope-report')) {
   try {
     const { suitePrefixes, sweep, preferredTempRoot, useTempRoot, listProcesses, suspectProcesses } = await import('../scripts/clean-temp.mjs')
     if (useTempRoot(preferredTempRoot())) console.error('run-tests: temp root -> ' + process.env.TEMP + ' (roomier drive preferred; D:\\_tmp when present)')
@@ -324,20 +332,47 @@ const QUICK_EXPECTED_JOBS = 36
 // long sensitivity probes, and the mutant families (the FULL sweep runs those). What is NOT listed is included, so a new
 // guard is in scope from the moment it is written. The classification is asserted by
 // `tests/audit-scope-classification.test.mjs`, so a file can never be dropped silently in either direction.
+// EVERY RULE IS EXPLICITLY ANCHORED, and it matches the FILE NAME ONLY. Substring matching was a defect
+// (round 1 of the handover): the value `prompt-v5` - meant for the OTHER presets' `prompt-v5*` suites - also
+// matched `vmu-prompt-v5r-bridge.test.mjs` (`prompt-v5` is a substring of `prompt-v5r`), so a vmu suite was
+// dropped from its own iteration scope silently. A PREFIX rule cannot reach a name that merely CONTAINS its
+// value, which is exactly the property `tests/audit-scope-classification.test.mjs` now asserts in both
+// directions (`prompt-v5-integrity.test.mjs` OUT, `vmu-prompt-v5r-bridge.test.mjs` IN).
 const VMU_EXCLUDE = [
   // acceptance / end-to-end suites for the other presets
-  'accept-', 'e2e-', 'selfdrive-', 'formal-verify', 'v2-fix', 'v3-fix', 'v4-final', 'roundC-fix', 'prompt-v5',
+  { kind: 'prefix', value: 'accept-', why: 'v2..v5r acceptance suites' },
+  { kind: 'prefix', value: 'e2e-', why: 'v2..v5r end-to-end suites' },
+  { kind: 'prefix', value: 'selfdrive-', why: 'v2..v5r self-driving mock-host suites' },
+  { kind: 'prefix', value: 'formal-verify', why: "the other presets' formal-verification suites" },
+  { kind: 'prefix', value: 'v2-fix', why: 'v2 fix probes' },
+  { kind: 'prefix', value: 'v3-fix', why: 'v3 fix probes' },
+  { kind: 'prefix', value: 'v4-final', why: 'v4 final-paper suites' },
+  { kind: 'prefix', value: 'roundC-fix', why: 'round-C fix probes' },
+  { kind: 'prefix', value: 'prompt-v5', why: "the OTHER presets' prompt-v5 suites (PREFIX-anchored on purpose: a vmu name such as vmu-prompt-v5r-bridge must stay IN scope)" },
   // the other presets' own math-computation suites (the parity and contract gates stay IN scope)
-  'math-computation-v', 'math-computation-a', 'math-computation-b',
+  { kind: 'prefix', value: 'math-computation-v', why: "the other presets' math-computation suites" },
+  { kind: 'prefix', value: 'math-computation-a', why: 'the math-computation archive-rerun family' },
+  { kind: 'prefix', value: 'math-computation-b', why: 'the math-computation b-family' },
   // long sensitivity probes
-  'audit-math-computation-sensitivity', 'audit-formal-sensitivity', 'audit-persona-sensitivity',
+  { kind: 'prefix', value: 'audit-math-computation-sensitivity', why: 'long sensitivity probe (full/incremental only)' },
+  { kind: 'prefix', value: 'audit-formal-sensitivity', why: 'long sensitivity probe (full/incremental only)' },
+  { kind: 'prefix', value: 'audit-persona-sensitivity', why: 'long sensitivity probe (full/incremental only)' },
   // mutant families: the FULL sweep runs these, the iteration scope does not
-  'mutants',
+  { kind: 'suffix', value: '.mutants.mjs', why: 'mutant families run at full/incremental scope' },
 ]
+/** The anchored matcher, per rule kind. `prefix` = startsWith (NOT includes), `suffix` = endsWith. */
+const EXCLUDE_MATCH = {
+  prefix: (name, v) => name.startsWith(v),
+  suffix: (name, v) => name.endsWith(v),
+}
+/** The FIRST anchored rule that excludes `file`, or null. Reads the FILE NAME, never the label with args. */
+function vmuExcludeRule(file) {
+  return VMU_EXCLUDE.find((r) => EXCLUDE_MATCH[r.kind](file, r.value)) || null
+}
 /** Apply a scope's curated filter. `full` is the identity (byte-for-byte the old behaviour). */
 function applyScope(list, scope) {
   if (scope !== 'quick' && scope !== 'vmu') return list
-  if (scope === 'vmu') return list.filter((j) => !VMU_EXCLUDE.some((x) => label(j).includes(x)))
+  if (scope === 'vmu') return list.filter((j) => !vmuExcludeRule(j.file))
   const only = QUICK_ONLY
   const filtered = list.filter((j) => only.some((x) => label(j).includes(x)))
   return scope === 'quick'
@@ -351,16 +386,29 @@ if (GATE_SCOPE !== 'quick' && GATE_SCOPE !== 'vmu' && GATE_SCOPE !== 'full') {
   console.error('unknown GATE_SCOPE: ' + GATE_SCOPE + ' (expected quick|vmu|full)')
   process.exit(2)
 }
-// An ITERATION scope must NEVER change machine behaviour. Diagnostics (`--self-check`), explicit
-// selection (`--only`), the documented counts (`--counts`) and baseline writing are properties of the
-// REPOSITORY, not of an edit loop: a scope that narrowed them would (a) make documented counts depend on
-// how the run was invoked, and (b) break any guard that spawns this runner as a child - exactly the two
-// failures the vmu scope produced on its first run (`run-tests.mutants.mjs` children inherited the scope,
-// so its `--only audit-prompt-invariants` timeout POSITIVE saw zero jobs and its `--self-check` baseline
-// diverged, and `audit-readme-counts` read a scoped total of 27 instead of 110). `--json` is deliberately
-// NOT in this list: a machine-readable ITERATION report is a legitimate use of a scope.
-const MACHINE_MODE = has('counts') || has('self-check') || flag('only').length > 0
+// SCOPE SEMANTICS (handover D-06). Two different things used to be one:
+//   · REPOSITORY-WIDE MODES (`--counts`, `--self-check`) report properties of the REPOSITORY, not of an edit
+//     loop, so they pin the effective scope to `full`. That pin is now EXPLICIT: the reason and both scope
+//     names are printed on every such run (see the header below). Without the pin, a guard that spawns this
+//     runner as a child inherits the scope - the incident that produced the rule: `run-tests.mutants.mjs`
+//     children inherited the vmu scope, its `--only audit-prompt-invariants` timeout POSITIVE saw ZERO jobs,
+//     its `--self-check` baseline diverged, and `audit-readme-counts` read a scoped total of 27 instead of 110.
+//   · `--only` / `--exclude` are NOT repository-wide. They are ORTHOGONAL to the scope and INTERSECT with the
+//     REQUESTED one, so `GATE_SCOPE=vmu --only <file>` runs that file iff the vmu scope contains it. They no
+//     longer downgrade the scope behind the reader's back: `GATE_SCOPE=quick --only vmu-...` is now simply a
+//     zero-job request, not a silent 177-job full-list run labelled `scope=quick`.
+// `--json` is deliberately NOT repository-wide: a machine-readable ITERATION report is a legitimate use of a scope.
+const REPO_WIDE_MODES = ['counts', 'self-check'].filter((m) => has(m))
+const MACHINE_MODE = REPO_WIDE_MODES.length > 0
 const SCOPE = MACHINE_MODE ? 'full' : GATE_SCOPE
+// The override is NAMED HERE, at the point the scope is decided, because `--self-check` exits from its own
+// block long before the job-list header is printed: a reason that only appeared in the header would be
+// invisible in exactly the mode whose override a reader most needs to understand.
+if (SCOPE !== GATE_SCOPE) {
+  console.error('run-tests: SCOPE OVERRIDE (named reason): ' + REPO_WIDE_MODES.map((m) => '--' + m).join(', ')
+    + ' report properties of the REPOSITORY, not of an edit loop => effective scope forced to full (requested '
+    + GATE_SCOPE + ', effective ' + SCOPE + '). NOTE: --only/--exclude are NOT repository-wide; they intersect with the REQUESTED scope.')
+}
 
 // ── INCREMENTAL FULL: a family's TARGETS are the repo files it reads/copies/mutates ────────────────
 // DERIVED FROM EACH HARNESS'S OWN SOURCE (never guessed): `const PRESET`/`const MAIN` fields, `editFile:`
@@ -763,23 +811,34 @@ function deriveJobs() {
   return jobs.sort((a, b) => (label(a) < label(b) ? -1 : 1))
 }
 // Scope first (curated subset), then the CLI filters, then scheduling. `full` is the identity, i.e. the
-// default behaviour is byte-for-byte what it was before this change. (GATE_SCOPE itself is parsed above,
-// beside the scope helpers, so the incremental planner and the self-check can both use it.)
+// default behaviour is byte-for-byte what it was before the scope change. (GATE_SCOPE itself is parsed
+// above, beside the scope helpers, so the incremental planner and the self-check can both use it.)
+//
+// `--only`/`--exclude` are applied to the scope-filtered list, i.e. they INTERSECT the requested scope;
+// they never widen it and never downgrade it. They match the LABEL (file name + args), so a variant can be
+// selected by its own arguments.
+const filters = []
 let suites = applyScope(deriveJobs(), SCOPE)
-if (only.length) suites = suites.filter((j) => only.some((o) => label(j).includes(o)))
-if (exclude.length) suites = suites.filter((j) => !exclude.some((o) => label(j).includes(o)))
+if (only.length) { suites = suites.filter((j) => only.some((o) => label(j).includes(o))); filters.push('--only ' + only.join('|')) }
+if (exclude.length) { suites = suites.filter((j) => !exclude.some((o) => label(j).includes(o))); filters.push('--exclude ' + exclude.join('|')) }
 suites = lptOrder(suites)
-if (!suites.length) { console.error('no suites matched'); process.exit(2) }
-// The scope/concurrency header goes to STDERR so `--counts` and `--json` keep stdout machine-readable.
-console.error('run-tests: scope=' + GATE_SCOPE + '  jobs=' + suites.length + '  concurrency=' + concurrency)
-// THE REQUESTED SCOPE AND THE EFFECTIVE ONE ARE DIFFERENT VARIABLES, and printing only the first beside a job count
-// from the second is what made `scope=vmu jobs=236` read as a scope that did nothing. Machine modes force `full` on
-// purpose (L344-345, with the incident that produced the rule), so say so whenever the two disagree. The line above is
-// left untouched because guards parse it.
-if (SCOPE !== GATE_SCOPE) {
-  console.error('run-tests: requested scope=' + GATE_SCOPE + ' but the EFFECTIVE scope is ' + SCOPE
-    + ' - machine modes (--counts / --self-check / --only) always run the full list BY DESIGN, so this job count is the repository count, not the scoped one')
+if (!suites.length) {
+  console.error('no suites matched: requested-scope=' + GATE_SCOPE + '  effective-scope=' + SCOPE
+    + (filters.length ? '  filters=[' + filters.join(' ') + ']' : '')
+    + ' => 0 jobs (the filters intersect the requested scope; nothing to run)')
+  process.exit(2)
 }
+// The scope/concurrency header goes to STDERR so `--counts` and `--json` keep stdout machine-readable.
+// THE LEGACY LINE IS KEPT BYTE-FOR-BYTE (guards parse it); the SCOPE LINE below is the authoritative one:
+// it always prints the REQUESTED scope, the EFFECTIVE scope and the FINAL job count TOGETHER, so a reader can
+// never mistake the requested scope for the one that ran. (The old header printed only the requested scope
+// beside a job count derived from the effective one - which is what made `scope=vmu jobs=236` read as a scope
+// that did nothing, and `scope=quick jobs=177` read as a scoped run.)
+console.error('run-tests: scope=' + GATE_SCOPE + '  jobs=' + suites.length + '  concurrency=' + concurrency)
+console.error('run-tests: requested-scope=' + GATE_SCOPE + '  effective-scope=' + SCOPE + '  final-jobs=' + suites.length
+  + (filters.length ? '  filters=[' + filters.join(' ') + ']' : ''))
+// The override itself was already NAMED where the scope was decided (above, so `--self-check` sees it too);
+// this header is the one line that always carries requested scope + effective scope + final job count.
 // SCOPE GUARDS (checked on EVERY run, not only under --self-check, because the gate is where a curated
 // filter would hurt): the quick subset must resolve to a FIXED number of jobs and must contain NO mutant
 // family. A drifted filter therefore REDS BY NAME instead of silently changing what the edit loop covers.
@@ -827,9 +886,52 @@ if (incremental.enabled) {
   }
 }
 
+// --scope-report: print the DERIVED classification as JSON and run NOTHING. This is the surface
+// `tests/audit-scope-classification.test.mjs` reads, so the guard asserts the runner's OWN decision instead of
+// re-implementing (and drifting from) it. It deliberately does NOT pin the scope: it reports what the
+// REQUESTED scope + filters would run, which is how the `--only` orthogonality is verified.
+if (has('scope-report')) {
+  const jobs = deriveJobs()
+  const summarize = (list) => ({
+    total: list.length,
+    suites: list.filter((j) => j.kind === 'suite').length,
+    probes: list.filter((j) => j.kind === 'probe').length,
+  })
+  const vmuJobs = jobs.filter((j) => j.file.includes('vmu'))
+  console.log(JSON.stringify({
+    requestedScope: GATE_SCOPE,
+    effectiveScope: SCOPE,
+    overrideReason: SCOPE === GATE_SCOPE ? null : REPO_WIDE_MODES.map((m) => '--' + m),
+    filters: { only, exclude },
+    final: summarize(suites),
+    scopes: {
+      full: summarize(applyScope(jobs, 'full')),
+      quick: summarize(applyScope(jobs, 'quick')),
+      vmu: summarize(applyScope(jobs, 'vmu')),
+    },
+    quickExpectedJobs: QUICK_EXPECTED_JOBS,
+    excludeRules: VMU_EXCLUDE,
+    // every vmu-NAMED job (`vmu*` and `audit-vmu-*`): in the vmu scope, or out WITH the anchored rule that
+    // excluded it. The collision victim is a `vmu*` suite and the mutant families are `audit-vmu-*`, so the
+    // question "which vmu jobs does the vmu scope drop, and why" needs BOTH shapes.
+    vmuClassification: vmuJobs.map((j) => {
+      const r = vmuExcludeRule(j.file)
+      return { file: j.file, inVmuScope: !r, excludedBy: r ? r.value : null, excludedWhy: r ? r.why : null }
+    }).sort((a, b) => (a.file < b.file ? -1 : 1)),
+    // The collision detector's raw material: what the OLD unanchored `.includes()` semantics would have
+    // dropped vs what the ANCHORED rules drop. The two must differ by exactly `collisionAllowList` below
+    // (empty when the rules are collision-free); a NEW collision shows up here by name.
+    legacySubstringDrops: jobs.filter((j) => VMU_EXCLUDE.some((r) => j.file.includes(r.value))).map((j) => j.file).sort(),
+    anchoredDrops: jobs.filter((j) => vmuExcludeRule(j.file)).map((j) => j.file).sort(),
+  }, null, 2))
+  process.exit(0)
+}
+
 // --counts: print the DERIVED suite/probe totals (the same job list the gate runs) as JSON, then
 // exit. Docs quote these numbers, so they must be derived and checked rather than typed by hand.
 // The job TOTAL never shrinks under incremental: the skipped families are reported in their own field.
+// REPOSITORY-WIDE BY DESIGN: it always reports the FULL job list (see REPO_WIDE_MODES above), so a doc count
+// never depends on how the run was invoked. The SCOPED count, if you need one, is what `--scope-report` prints.
 if (process.argv.includes('--counts')) {
   const suiteN = suites.filter((j) => j.kind === 'suite').length
   console.log(JSON.stringify({

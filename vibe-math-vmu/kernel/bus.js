@@ -82,6 +82,139 @@ export const DEFAULT_FAILURE = Object.freeze({
   'control/paused': 'open', 'control/resumed': 'open', 'control/heartbeat': 'open',
 })
 
+/**
+ * THE HOOK REGISTRY — ONE RECORD PER HOOK (decision D-04).
+ *
+ * The project carried three tables that drifted apart: `VU_HOOKS` (the vmu names the bus enforces),
+ * `DSH_HOOKS` (what a module may subscribe to, kernel/loader.js) and `BRIDGED_HOOKS` (what the host
+ * bridge can really attach, host-hooks.js). The registry below is the single record of:
+ *   name · kind (vmu|host) · failure semantics · whether it can block · whether it can rewrite ·
+ *   its scope dimensions · when it fires · its real producer · whether the host bridge attaches it
+ *     (and at which site).
+ * `DSH_HOOKS` and `BRIDGED_HOOKS` are DERIVED from it (loader.js and host-hooks.js re-export the
+ * derived arrays), and `hookRegistryProblems()` asserts that the frozen `VU_HOOKS` / `DEFAULT_FAILURE`
+ * literals still agree with it. Those two stay literals because three shipped gates parse their exact
+ * source text (tests/audit-hook-coverage.test.mjs:31, tests/audit-doc-vs-code-tables.test.mjs:59,
+ * scripts/generate-surface-index.mjs:39-41); the assertion is what keeps them from drifting.
+ */
+const VU_SCOPE = Object.freeze(['member', 'role', 'phase'])
+const BRIDGE_SITE = 'host-hooks.js attachHostHooks (ctx.effect -> ctx.on)'
+export const HOOK_REGISTRY = Object.freeze([
+  // ── vmu-internal hooks (docs/05 §4.2 / §5) ────────────────────────────────────────────────────────
+  { name: 'member/self-report', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a member reports on itself', producer: 'kernel/members.js' },
+  { name: 'budget/warn', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a budget crosses its warning line', producer: 'kernel/budget.js' },
+  { name: 'member/wake-before', kind: 'vmu', failure: 'closed', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'before a member is woken', producer: 'kernel/members.js' },
+  { name: 'member/wake-after', kind: 'vmu', failure: 'closed', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'after a member was woken', producer: 'kernel/members.js' },
+  { name: 'turn/reply-parsed', kind: 'vmu', failure: 'closed', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'a turn reply was parsed, before dispatch', producer: 'kernel/turn/index.js' },
+  { name: 'meeting/round-start', kind: 'vmu', failure: 'closed', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'a meeting round opens', producer: 'kernel/meeting.js' },
+  { name: 'meeting/round-end', kind: 'vmu', failure: 'closed', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a meeting round closes', producer: 'kernel/meeting.js, kernel/minutes.js' },
+  { name: 'ballot/cast', kind: 'vmu', failure: 'closed', blockable: true, rewritable: false, scope: VU_SCOPE, timing: 'a vote is cast', producer: 'kernel/ballot.js' },
+  { name: 'ballot/tally', kind: 'vmu', failure: 'closed', blockable: true, rewritable: false, scope: VU_SCOPE, timing: 'a ballot is tallied', producer: 'kernel/ballot.js, packs/v3-core' },
+  { name: 'record/append-before', kind: 'vmu', failure: 'closed', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'before any record is validated or written', producer: 'kernel/library.js' },
+  { name: 'record/appended', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a record was appended', producer: 'kernel/compliance.js, kernel/handover.js, kernel/minutes.js, kernel/tenure.js' },
+  { name: 'task/assign', kind: 'vmu', failure: 'closed', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'a task is assigned', producer: 'kernel/members.js, kernel/tasks.js' },
+  { name: 'task/transition', kind: 'vmu', failure: 'closed', blockable: true, rewritable: false, scope: VU_SCOPE, timing: 'a task changes state', producer: 'kernel/tasks.js' },
+  { name: 'prompt/section-assembled', kind: 'vmu', failure: 'open', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'a prompt assembly asks for section decisions', producer: 'kernel/prompt/index.js' },
+  { name: 'budget/exceeded', kind: 'vmu', failure: 'abort', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'a conserving allocation fails', producer: 'kernel/fairness.js' },
+  { name: 'pack/loading', kind: 'vmu', failure: 'closed', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'before a pack changes anything (may refuse)', producer: 'kernel/pack.js' },
+  { name: 'pack/loaded', kind: 'vmu', failure: 'closed', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'after every manifest is in place', producer: 'kernel/pack.js' },
+  { name: 'settle/before', kind: 'vmu', failure: 'closed', blockable: true, rewritable: false, scope: VU_SCOPE, timing: 'before a settlement', producer: 'kernel/tasks.js' },
+  { name: 'settle/after', kind: 'vmu', failure: 'closed', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'after a settlement', producer: 'kernel/tasks.js' },
+  { name: 'control/paused', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'the kernel is paused', producer: 'kernel/index.js' },
+  { name: 'control/resumed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'the kernel is resumed', producer: 'kernel/index.js' },
+  { name: 'control/heartbeat', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a control heartbeat', producer: 'kernel/index.js' },
+
+  // ── host-substrate hooks (docs/05 §4.1): the vocabulary belongs to DSH, not to vmu ─────────────────
+  { name: 'tools/pre-execute', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: true, rewritable: false, timing: 'before a tool call runs (input rewriting is refused by the host)' },
+  { name: 'tools/post-execute', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: true, rewritable: true, timing: 'after a tool call ran' },
+  { name: 'tools/execute', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'tool execution (observation)' },
+  { name: 'tools/result', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'a tool result exists (observation)' },
+  { name: 'prompt/assemble', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'the HOST assembles its system prompt' },
+  { name: 'prompt/section', kind: 'host', bridged: false, blockable: false, rewritable: false, timing: 'host prompt-section registration (subscribe-only)' },
+  { name: 'agent/pre-step', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: true, rewritable: false, timing: 'before an agent step' },
+  { name: 'agent/request', kind: 'host', bridged: false, blockable: false, rewritable: false, timing: 'an agent request is issued (subscribe-only)' },
+  { name: 'agent/request-error', kind: 'host', bridged: false, blockable: false, rewritable: false, timing: 'an agent request failed (subscribe-only)' },
+  { name: 'agent/turn-stopping', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'the host turn ends (the per-turn tool budget resets here)' },
+  { name: 'agent/inbox', kind: 'host', bridged: false, blockable: false, rewritable: false, timing: 'agent inbox delivery (subscribe-only)' },
+  { name: 'agent/created', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'an agent was created' },
+  { name: 'subagent/start', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'a subagent starts' },
+  { name: 'subagent/end', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'a subagent ends' },
+  { name: 'session/event', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'a session event' },
+  { name: 'session/flush', kind: 'host', bridged: false, blockable: false, rewritable: false, timing: 'a session is flushed (subscribe-only)' },
+  { name: 'fs/write-intent', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: true, rewritable: false, timing: 'a write is about to happen' },
+  { name: 'settings/changed', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'settings changed' },
+  { name: 'system-prompt/assemble', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'the host assembles its system prompt (host-side name)' },
+])
+
+/** The host-substrate names a module may subscribe to — DERIVED from the registry. */
+export const DSH_HOOKS = Object.freeze(HOOK_REGISTRY.filter((h) => h.kind === 'host').map((h) => h.name))
+
+/** The host hooks the bridge can really attach — DERIVED from the registry (`bridged: true`). */
+export const BRIDGED_HOOKS = Object.freeze(HOOK_REGISTRY.filter((h) => h.kind === 'host' && h.bridged === true).map((h) => h.name))
+
+/** Hook namespaces a module may subscribe to by PREFIX (a workflow topic is named by its own pack). */
+export const HOOK_PREFIXES = Object.freeze(['workflow/'])
+
+/**
+ * The D-04 assertion: one registry, and every derived table agrees with it. Returns a list of problems
+ * (empty means consistent). A gate can call this without re-implementing the rules; it checks:
+ *   · no duplicate names, every entry has a kind and a name;
+ *   · `VU_HOOKS` and the registry's vmu names are the same set, both directions;
+ *   · `DEFAULT_FAILURE` states exactly the registry's failure for every vmu hook;
+ *   · `DSH_HOOKS`/`BRIDGED_HOOKS` are the registry's host names and its `bridged:true` subset;
+ *   · every bridged hook NAMES its registration site (so "bridged" cannot be a claim with no code).
+ */
+export function hookRegistryProblems() {
+  const problems = []
+  const seen = new Set()
+  for (const h of HOOK_REGISTRY) {
+    if (!h || typeof h.name !== 'string' || h.name.length === 0) { problems.push('a registry entry has no name'); continue }
+    if (seen.has(h.name)) problems.push('duplicate hook in the registry: ' + h.name)
+    seen.add(h.name)
+    if (h.kind !== 'vmu' && h.kind !== 'host') problems.push(h.name + ': kind must be vmu|host')
+    if (h.kind === 'host' && h.bridged === true && (typeof h.bridgeSite !== 'string' || h.bridgeSite.length === 0)) {
+      problems.push(h.name + ': a bridged hook must name its registration site (bridgeSite)')
+    }
+    if (h.kind === 'vmu' && typeof h.failure !== 'string') problems.push(h.name + ': a vmu hook must state its failure policy')
+  }
+  const regVmu = HOOK_REGISTRY.filter((h) => h.kind === 'vmu').map((h) => h.name)
+  for (const n of VU_HOOKS) if (!regVmu.includes(n)) problems.push('VU_HOOKS names ' + n + ' but the registry does not')
+  for (const n of regVmu) if (!VU_HOOKS.includes(n)) problems.push('the registry names ' + n + ' but VU_HOOKS does not')
+  for (const h of HOOK_REGISTRY.filter((x) => x.kind === 'vmu')) {
+    if (DEFAULT_FAILURE[h.name] !== h.failure) problems.push(h.name + ': DEFAULT_FAILURE says ' + String(DEFAULT_FAILURE[h.name]) + ', the registry says ' + h.failure)
+  }
+  const regHost = HOOK_REGISTRY.filter((h) => h.kind === 'host').map((h) => h.name)
+  for (const n of DSH_HOOKS) if (!regHost.includes(n)) problems.push('DSH_HOOKS names ' + n + ' but the registry does not')
+  for (const n of BRIDGED_HOOKS) if (!DSH_HOOKS.includes(n)) problems.push('a bridged hook is not subscribable: ' + n)
+  return problems
+}
+
+/**
+ * THE KINDS THE BUS CAN ACTUALLY RUN (decision D-03: no paper forms).
+ *
+ * `script` and `plugin` used to be ACCEPTED here and then silently skipped at emit time (`emit()` logs
+ * `middleware/skipped` for an entry without a handler), so such a declaration validated clean and never
+ * fired. They are now REFUSED BY NAME (`VMU_MIDDLEWARE_KIND_UNSUPPORTED`) with the REAL carrier in the
+ * hint, because the bus owns no file loader and no plugin host:
+ *   · M3 script/workflow -> kernel/script-bridge.js + the `vibe_vmu_script` tool (config.scripts);
+ *   · M4 external plugin -> a DSH plugin consuming vmu's published services (an integration pack is L4,
+ *     kernel/pack.js, its own tier — not a bus entry).
+ */
+export const SUPPORTED_KINDS = Object.freeze(['rules', 'module'])
+
+/** kind -> why it is not a bus entry, and where it really lives (the hint a refusal carries). */
+export const UNSUPPORTED_KIND_CARRIERS = Object.freeze({
+  script: 'M3 scripts/workflows run through kernel/script-bridge.js and the `vibe_vmu_script` tool (declare them with config.scripts), not as a bus entry',
+  plugin: 'M4 external plugins are DSH plugins consuming vmu\'s published services; an integration pack is L4 (kernel/pack.js), its own tier, not a bus entry',
+})
+
+/** The unsupported kind of an entry, or null when the bus can run it. */
+export function unsupportedKind(entry) {
+  const k = entry && entry.kind
+  if (k === undefined || k === null || SUPPORTED_KINDS.includes(k)) return null
+  return String(k)
+}
+
 export function refuse(code, message, hint) {
   const err = new Error(message)
   err.code = code
@@ -94,7 +227,12 @@ export function validateEntry(entry) {
   const problems = []
   if (!entry || typeof entry !== 'object') return ['entry must be an object']
   if (typeof entry.id !== 'string' || entry.id.length === 0) problems.push('id is required')
-  if (!['rules', 'module', 'script', 'plugin'].includes(entry.kind)) problems.push('kind must be rules|module|script|plugin')
+  const badKind = unsupportedKind(entry)
+  if (badKind && UNSUPPORTED_KIND_CARRIERS[badKind]) {
+    problems.push('kind "' + badKind + '" is not a bus entry kind: ' + UNSUPPORTED_KIND_CARRIERS[badKind])
+  } else if (badKind) {
+    problems.push('kind must be rules|module (got ' + JSON.stringify(entry.kind) + ')')
+  }
   const on = Array.isArray(entry.on) ? entry.on : [entry.on]
   if (on.length === 0 || on.some((h) => typeof h !== 'string' || h.length === 0)) problems.push('on must name at least one hook')
   if (entry.failure !== undefined && !Object.values(FAILURE).includes(entry.failure)) problems.push('failure must be open|closed|abort')
@@ -103,8 +241,11 @@ export function validateEntry(entry) {
     if (!Array.isArray(entry.capabilities)) problems.push('capabilities must be a list')
     else for (const c of entry.capabilities) if (!CAPABILITIES.includes(c)) problems.push('unknown capability: ' + c)
   }
-  if (entry.kind && entry.kind !== 'rules' && typeof entry.handler !== 'function' && typeof entry.file !== 'string') {
-    problems.push('a non-rules entry needs a handler function or a file')
+  // A `file` is NOT a handler: the bus never loads files, so a file-only entry used to register clean and
+  // then be skipped at emit time. A module file is loaded by kernel/loader.js toBusEntries(), which hands the
+  // bus an entry WITH a handler; anything else must arrive here with one too.
+  if (entry.kind && entry.kind !== 'rules' && typeof entry.handler !== 'function') {
+    problems.push('a non-rules bus entry needs a handler function (the bus does not load files: load a module file with kernel/loader.js, which attaches the handler before add())')
   }
   return problems
 }
@@ -161,6 +302,14 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
   }
 
   const add = (entry) => {
+    // D-03: a kind the bus cannot run is refused BY NAME, before anything else, with its real carrier in
+    // the hint. Accepting it here and skipping it at emit time was the paper form this closes.
+    const badKind = unsupportedKind(entry)
+    if (badKind && UNSUPPORTED_KIND_CARRIERS[badKind]) {
+      throw refuse('VMU_MIDDLEWARE_KIND_UNSUPPORTED',
+        'the bus cannot run a middleware entry of kind "' + badKind + '": ' + UNSUPPORTED_KIND_CARRIERS[badKind],
+        'declare it where its carrier lives (docs/05 §2: M1 rules and M2 modules are bus entries; M3 scripts and M4 external plugins are not)')
+    }
     const problems = validateEntry(entry)
     if (problems.length > 0) {
       throw refuse('VMU_MIDDLEWARE_FAILED', 'invalid middleware entry: ' + problems.join('; '),

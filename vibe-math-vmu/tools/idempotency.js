@@ -2,10 +2,10 @@
 export function makeIdempotencySpec({ param, refused, TOOL_NAMES, kernel }) {
   return {
     name: TOOL_NAMES.idempotency,
-    description: 'vmu 幂等面（(f) 工作流）：12 个动作。★ 键、窗口与重放判定都由内核服务强制（★ 重复执行【不产生二次效果**]✓）；本工具只做寻址与调用（整对象透传 ✓）。',
+    description: 'vmu 幂等面（(f) 工作流）：13 个动作。★ 键、窗口与重放判定都由内核服务强制（★ 重复执行【不产生二次效果**]✓）；本工具只做寻址与调用（整对象透传 ✓）。',
     parameters: {
-      action: param('string', 'abort｜begin｜commit｜durable｜fingerprintOf｜history｜list｜lookup｜persist｜reap｜reload｜status', { required: true,
-        enum: ['abort','begin','commit','durable','fingerprintOf','history','list','lookup','persist','reap','reload','status'] }),
+      action: param('string', 'abort｜begin｜commit｜durable｜fingerprintOf｜history｜list｜lookup｜persist｜reap｜reload｜status｜whenDurable', { required: true,
+        enum: ['abort','begin','commit','durable','fingerprintOf','history','list','lookup','persist','reap','reload','status','whenDurable'] }),
       request: param('object', '写动作的请求（形状由服务校验 ✓）'),
       id: param('string', '目标 id（可选；★ 需要时服务会具名索要 ✓）'),
     },
@@ -24,6 +24,9 @@ export function makeIdempotencySpec({ param, refused, TOOL_NAMES, kernel }) {
         if (action === 'reap') return Object.assign({ ok: true, action }, await idempotency.reap({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
         if (action === 'reload') return Object.assign({ ok: true, action }, await idempotency.reload({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
         if (action === 'status') return Object.assign({ ok: true, action }, await idempotency.status({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
+        // ROUND 1 / K2 (Lead 裁决 ④): the read-only WAIT for the settled durability verdict. Idempotent by nature:
+        // it mutates nothing and may be called any number of times (it only aggregates the in-flight writes).
+        if (action === 'whenDurable') return Object.assign({ ok: true, action }, await idempotency.whenDurable({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
         return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
       } catch (e) {
         return refused(e.code || 'VMU_STATE', String(e.message), e.hint)

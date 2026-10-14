@@ -118,11 +118,26 @@ export function validatePack(manifest) {
     if (!r || typeof r.id !== 'string') problems.push('a rule needs an id')
     else if (!Array.isArray(r.on) || r.on.length === 0) problems.push('rule ' + r.id + ': on is required')
   }
-  for (const m of manifest.middleware || []) if (!m || typeof m.id !== 'string') problems.push('a middleware entry needs an id')
+  for (const m of manifest.middleware || []) {
+    if (!m || typeof m.id !== 'string') { problems.push('a middleware entry needs an id'); continue }
+    // D-03: the bus runs `rules` and `module` only. `script`/`plugin` have real carriers OUTSIDE the bus
+    // (kernel/script-bridge.js + `vibe_vmu_script`; a DSH plugin consuming published services), and the bus
+    // itself does not load files - so a pack entry must bring a handler, not a path.
+    const kind = m.kind === undefined ? 'module' : m.kind
+    if (kind !== 'rules' && kind !== 'module') {
+      problems.push('middleware ' + m.id + ': kind must be rules|module (got ' + JSON.stringify(m.kind) + '); script/plugin are not bus kinds (D-03)')
+    } else if (kind !== 'rules' && typeof m.handler !== 'function') {
+      problems.push('middleware ' + m.id + ': a non-rules entry needs a handler function; the bus does not load files (a module file is loaded by kernel/loader.js, which attaches the handler)')
+    }
+  }
   // ROUND 596 — PROMPT-PIPELINE POLICIES ARE NOT BUS ENTRIES. `prompt/assemble` is not a registered bus hook, so an entry like
   // v5r.prompt-switches cannot be added to the bus at all: it belongs to the prompt pipeline, where `sectionPolicy` consumes it.
-  // Recognised and validated here so a deployment can see it and a typo is refused by name; deliberately NOT handed to bus.add below.
-  for (const pp of manifest.promptPolicies || []) if (!pp || typeof pp.id !== 'string') problems.push('a prompt policy entry needs an id')
+  // ROUND 1 (D-03/P1): a declared policy is now CONSUMED BY apply() through the loader's `onPromptPolicy` sink, so it must carry
+  // the function that will be registered - `apply` - and not merely an id. A policy nobody can consume is a named refusal.
+  for (const pp of manifest.promptPolicies || []) {
+    if (!pp || typeof pp.id !== 'string') { problems.push('a prompt policy entry needs an id'); continue }
+    if (typeof pp.apply !== 'function') problems.push('prompt policy ' + pp.id + ': needs an apply({settings,turn}) function; the loader hands it to onPromptPolicy')
+  }
   for (const a of manifest.aliases || []) {
     if (!a || typeof a.from !== 'string' || typeof a.to !== 'string') problems.push('an alias needs { from, to }')
   }
@@ -168,8 +183,60 @@ export function collectPackSections(manifests = []) {
   return out
 }
 
-export function createPackLoader({ kernel, registry = null, allowOverride = false, clock = () => new Date().toISOString() } = {}) {
+/**
+ * D-02 — THE ONE PRIORITY, low to high: `pack 默认 < preset Config < 会话 settings < 运行时 set`.
+ * A pack's own `settings` are therefore the LOWEST layer: a key already owned by a higher layer is
+ * SHADOWED (the higher layer wins — no silent overwrite, so O4 is not violated), while a key owned by
+ * another pack (or by the pack-defaults layer) is a REAL conflict and is refused by name.
+ */
+export const SETTING_LAYERS = Object.freeze(['schema', 'pack', 'preset', 'session', 'runtime'])
+
+/** The rank of a per-key source string, or null when the source is unknown (then the conservative path runs). */
+export function settingLayerRank(source) {
+  const s = String(source === undefined || source === null ? '' : source)
+  if (s === 'schema' || s === 'default') return 0
+  if (s === 'pack' || s.startsWith('pack:')) return 1
+  if (s === 'preset' || s === 'config') return 2
+  if (s === 'session') return 3
+  if (s === 'runtime') return 4
+  return null
+}
+
+/**
+ * COMPOSE PACK PROMPT POLICIES INTO ONE `sectionPolicy` (D-03 / P1).
+ *
+ * A pack declares `promptPolicies: [{ id, apply({settings,turn}) -> {decisions,errors} }]`; the loader
+ * hands each one to its `onPromptPolicy` sink, and the ENTRY composes them into the single function the
+ * turn loop consults. Pure, no kernel, no pipeline: the same shape `decideSections` returns, merged —
+ * a later policy wins for the same section NAME, and every policy's errors are kept.
+ * An empty list returns null, so "no pack declares a policy" stays the framework's zero mechanism
+ * (the turn loop only asks when `typeof sectionPolicy === 'function'`).
+ */
+export function composePromptPolicies(policies = []) {
+  // TWO DECLARED SHAPES, ONE INTENT: a policy ENTRY (`{ id, apply }`, what a manifest declares) and a bare
+  // policy FUNCTION (what a folder record's `policyModule` exports, e.g. v5r's `decideSections`). A bare
+  // function must be wrapped, because `fn.apply` is Function.prototype.apply and calling it with one argument
+  // would invoke the policy with NO settings at all - a silent no-op dressed as a policy.
+  const list = (Array.isArray(policies) ? policies : [policies])
+    .map((p) => (typeof p === 'function' ? { id: p.name || 'policy', apply: p } : p))
+    .filter((p) => p && typeof p.apply === 'function')
+  if (list.length === 0) return null
+  return ({ settings = {}, turn = {} } = {}) => {
+    const byName = new Map()
+    const errors = []
+    for (const p of list) {
+      const out = p.apply({ settings, turn }) || {}
+      for (const d of out.decisions || []) byName.set(d.name, d)
+      for (const e of out.errors || []) errors.push(e)
+    }
+    return { decisions: [...byName.values()], errors }
+  }
+}
+
+export function createPackLoader({ kernel, registry = null, allowOverride = false, clock = () => new Date().toISOString(), onPromptPolicy = null, settingSource = null } = {}) {
   const applied = new Map()
+  // Per-pack record of what the settings layer did: applied keys, and keys SHADOWED by a higher layer (D-02).
+  const settingsResolution = new Map()
 
   const snapshot = () => JSON.stringify({
     settings: Object.keys(kernel.settingsSnapshot ? kernel.settingsSnapshot() : {}).sort(),
@@ -247,9 +314,16 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
     for (const t of m.tracks || []) actions.push({ kind: 'track', name: t })
     for (const r of m.rules || []) actions.push({ kind: 'rule', id: r.id })
     for (const mm of m.middleware || []) actions.push({ kind: 'middleware', id: mm.id, form: mm.kind || 'module' })
-    for (const pp of m.promptPolicies || []) actions.push({ kind: 'prompt-policy', id: pp.id, form: 'pipeline' })
+    for (const pp of m.promptPolicies || []) actions.push({ kind: 'prompt-policy', id: pp.id, form: 'pipeline', consumer: typeof onPromptPolicy === 'function' ? 'onPromptPolicy' : null })
     for (const a of m.aliases || []) actions.push({ kind: 'alias', from: a.from, to: a.to })
     for (const c of m.codes || []) actions.push({ kind: 'code', code: c })
+    // D-03/P1: a declared prompt policy needs a CONSUMER. `plan()` says so rather than letting apply() be the
+    // first place the gap appears; it stays a warning (not a problem) because the manifest is well-formed —
+    // what is missing is the assembly's sink, which the caller may add before applying.
+    const warnings = []
+    if ((m.promptPolicies || []).length > 0 && typeof onPromptPolicy !== 'function') {
+      warnings.push('this loader has no onPromptPolicy sink, so applying would refuse by name (VMU_PACK_PROMPT_POLICY_UNCONSUMED); pass onPromptPolicy(policy) when constructing the pack loader')
+    }
     /**
      * ROUND 136: a pack may carry the prompt TEXT it needs - the v5r pack does - and until this block existed the
      * field would have been dropped IN SILENCE, because `validatePack` does not police extra keys and docs/10 §
@@ -279,7 +353,7 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
     return {
       ok, code: ok ? null : 'VMU_PACK_MISSING', message, hint,
       refused: ok ? null : { code: 'VMU_PACK_MISSING', message, hint },
-      id: m.id, version: m.version || null, problems, requires, actions,
+      id: m.id, version: m.version || null, problems, warnings, requires, actions,
       count: actions.length, wouldTouch: actions.map((a) => a.kind).filter((v, i, arr) => arr.indexOf(v) === i),
     }
   }
@@ -316,24 +390,46 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
       // Settings are a LAYER, not a mutation: if this assembly gives no way to apply a pack's settings,
       // the pack is refused rather than silently losing them (a silently dropped setting is a lie).
       if (Object.keys(manifest.settings || {}).length > 0) {
-      // ROUND 296 (docs/10 §L80): a settings OVERLAP is a named refusal unless the override is declared. Checked before
-      // anything is written, so a refusal leaves no partial institution behind.
+      // D-02 — ONE PRIORITY (`pack 默认 < preset Config < 会话 settings < 运行时 set`). With a per-key source
+      // seam (`settingSource`) a key already owned by a HIGHER layer is SHADOWED: that layer wins, nothing is
+      // silently overwritten (so O4 stays intact), and status() reports it. A key owned by ANOTHER pack (or by
+      // the pack-defaults layer) is a REAL conflict and is refused by name. Without the seam the previous
+      // conservative behaviour is kept unchanged: any overlap is a named refusal unless overrides are declared.
       const snapBefore = settingsNow()
       const overlapping = Object.keys(manifest.settings).filter((k) => Object.prototype.hasOwnProperty.call(snapBefore, k))
-      if (overlapping.length > 0 && !overrideAllowed()) {
-        throw refuse('VMU_PACK_CONFLICT', 'pack ' + manifest.id + ' overlaps existing settings: ' + overlapping.join(', '),
+      const force = overrideAllowed()
+      const shadowed = []
+      const conflicts = []
+      if (!force) {
+        for (const key of overlapping) {
+          const rank = settingLayerRank(typeof settingSource === 'function' ? settingSource(key) : null)
+          if (rank !== null && rank > 1) shadowed.push({ key, value: snapBefore[key], source: String(settingSource(key)) })
+          else if (rank === 0) { /* schema default: the pack layer sits ABOVE it, so the pack value applies */ }
+          else conflicts.push(key)
+        }
+      }
+      if (conflicts.length > 0 && !force) {
+        throw refuse('VMU_PACK_CONFLICT', 'pack ' + manifest.id + ' overlaps existing settings: ' + conflicts.join(', '),
           'declare vmu.packs.allowKernelOverride=true (or pass { allowOverride: true }) to allow the override (O4: never silently)')
       }
         if (typeof kernel.applyPackSettings !== 'function') {
           throw refuse('VMU_ENGINE_UNAVAILABLE', 'pack ' + manifest.id + ' declares settings but this kernel has no settings layer for packs',
             'construct the kernel with a pack-settings layer, or move the values into the pack manifest\'s slots/tracks/rules')
         }
-        const res = kernel.applyPackSettings(manifest.settings, { by: manifest.id })
-        undo.push(() => {
-          for (const key of res.applied) {
-            if (Object.prototype.hasOwnProperty.call(res.previous, key) && kernel.setSettingsValue) kernel.setSettingsValue(key, res.previous[key])
-            else if (kernel.unsetSettingsValue) kernel.unsetSettingsValue(key)
-          }
+        const shadowedKeys = new Set(shadowed.map((s) => s.key))
+        const toApply = Object.fromEntries(Object.entries(manifest.settings).filter(([k]) => !shadowedKeys.has(k)))
+        if (Object.keys(toApply).length > 0) {
+          const res = kernel.applyPackSettings(toApply, { by: manifest.id })
+          undo.push(() => {
+            for (const key of res.applied) {
+              if (Object.prototype.hasOwnProperty.call(res.previous, key) && kernel.setSettingsValue) kernel.setSettingsValue(key, res.previous[key])
+              else if (kernel.unsetSettingsValue) kernel.unsetSettingsValue(key)
+            }
+          })
+        }
+        settingsResolution.set(manifest.id, {
+          applied: Object.keys(toApply).map((k) => ({ key: k, value: toApply[k], source: 'pack:' + manifest.id })),
+          shadowed: shadowed.slice(),
         })
       }
       for (const s of manifest.slots || []) {
@@ -358,6 +454,22 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         kernel.bus.add(entry)
         undo.push(() => removeEntry(kernel.bus, entry.id))
       }
+      // D-03/P1 — A DECLARED PROMPT POLICY IS CONSUMED, OR THE PACK IS REFUSED BY NAME. These entries are not
+      // bus entries (their hook is the prompt pipeline's `prompt/section-assembled` path, not a bus hook); the
+      // loader hands each one to the assembly's `onPromptPolicy` sink, which registers it into the section
+      // policy the turn loop consults. A sink-less loader refusing is what keeps this from being a paper form.
+      const promptPolicies = Array.isArray(manifest.promptPolicies) ? manifest.promptPolicies : []
+      if (promptPolicies.length > 0) {
+        if (typeof onPromptPolicy !== 'function') {
+          throw refuse('VMU_PACK_PROMPT_POLICY_UNCONSUMED',
+            'pack ' + manifest.id + ' declares prompt policies (' + promptPolicies.map((p) => p.id).join(', ') + ') but this loader has no prompt-policy consumer',
+            'pass onPromptPolicy(policy) when constructing the pack loader, and compose the collected policies into the section policy the turn loop consults (kernel/pack.js composePromptPolicies)')
+        }
+        for (const policy of promptPolicies) {
+          const dispose = onPromptPolicy(policy)
+          undo.push(() => { if (typeof dispose === 'function') dispose() })
+        }
+      }
       // Aliases LAST: a pack may alias a service that its own slot/track declarations bring into
       // existence, and publication follows declaration (kernel/index.js declareSlots).
       for (const a of manifest.aliases || []) {
@@ -376,10 +488,13 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         for (const undoOne of undo.slice().reverse()) { try { undoOne() } catch { /* best effort during rollback */ } }
         throw e
       }
-      const record = { id: manifest.id, version: manifest.version || null, appliedAt: clock(), actions: plan.actions, undo, priority: priorityOf(manifest) }
+      const resolution = settingsResolution.get(manifest.id) || { applied: [], shadowed: [] }
+      const record = { id: manifest.id, version: manifest.version || null, appliedAt: clock(), actions: plan.actions, undo, priority: priorityOf(manifest), resolution }
       applied.set(manifest.id, record)
       if (kernel.notePackApplied) kernel.notePackApplied(manifest.id)
-      return { ok: true, id: manifest.id, applied: plan.count, actions: plan.actions, requires: plan.requires }
+      return { ok: true, id: manifest.id, applied: plan.count, actions: plan.actions, requires: plan.requires,
+        settings: { applied: resolution.applied.length, shadowed: resolution.shadowed.slice() },
+        promptPolicies: (Array.isArray(manifest.promptPolicies) ? manifest.promptPolicies : []).map((p) => p.id) }
     },
 
     /** Unload: reverse exactly what was applied, newest first, and report whether the state is restored. */
@@ -391,21 +506,32 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         try { undoOne() } catch (e) { failures.push(String(e && e.message)) }
       }
       applied.delete(id)
+      settingsResolution.delete(id)
       if (kernel.notePackUnloaded) kernel.notePackUnloaded(id)
       return { ok: failures.length === 0, id, reversed: record.actions.length, failures, residueFree: failures.length === 0 }
     },
 
-    /** Observability (R11): what is applied, and what each pack changed. */
+    /** Observability (R11): what is applied, what each pack changed, and every key's SOURCE LAYER (D-02). */
     status() {
+      const snap = settingsNow()
+      const resolved = {}
+      for (const key of Object.keys(snap).sort()) {
+        const source = typeof settingSource === 'function' ? settingSource(key) : null
+        resolved[key] = { value: snap[key], source: source === null || source === undefined ? 'unreported' : String(source), rank: settingLayerRank(source) }
+      }
       return {
         // ROUND 296: ordered by the declared priority (higher first), then by id, so the report is deterministic.
       applied: [...applied.values()]
-        .map((r) => ({ id: r.id, version: r.version, at: r.appliedAt, actions: r.actions.length, priority: r.priority }))
+        .map((r) => ({ id: r.id, version: r.version, at: r.appliedAt, actions: r.actions.length, priority: r.priority,
+          settingsApplied: r.resolution ? r.resolution.applied.length : 0, settingsShadowed: r.resolution ? r.resolution.shadowed.length : 0 }))
         .sort((a, b) => (b.priority - a.priority) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
       allowKernelOverride: overrideAllowed(),
         allowOverride,
+        // D-02: the ONE priority, and the per-key view a reader can diff. `layers` is low -> high.
+        layers: SETTING_LAYERS.slice(),
+        settings: { resolved, shadowed: [...settingsResolution.values()].flatMap((r) => r.shadowed) },
         snapshot: snapshotPacked(),
-        note: 'plan() is pure; apply() refuses conflicts; unload() reverses the applied actions and reports residue; `snapshot.compression` reports vmu.pack.compression (LZSS-12/4, exact)',
+        note: 'plan() is pure; apply() refuses conflicts; unload() reverses the applied actions and reports residue; `snapshot.compression` reports vmu.pack.compression (LZSS-12/4, exact); `settings.resolved` reports each key\'s source layer (D-02)',
       }
     },
 

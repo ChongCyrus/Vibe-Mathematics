@@ -118,6 +118,150 @@ export const TOOL_NAMES = Object.freeze({
 })
 
 /**
+ * ROUND 1 / K1 (D-01) — THE ONE declared-intent → tool-face MAP.
+ *
+ * WHY THIS EXISTS. Forty-five faces were published while thirty-five of them could never be registered on a real
+ * host: `vibe-math-vmu.js` handed `createHostAdapter` four hard-coded booleans, this file forwarded those four, and
+ * every other gate below defaulted to `false`. The faces existed, were documented in docs/03 §3.1 and had their own
+ * `tests/vmu-*-tool.test.mjs` - and were dead on the wire.
+ *
+ * The fix is DATA, not more booleans: one row per face, each row naming WHERE that face's intent may come from
+ * (docs/03 §3.1 ∩ the `vmu.<family>.*` settings families ∩ the preset row's `config` keys). `resolveFaces()` reads the
+ * three sources; `toolSpecs()` asks it; `status().faces` reports the outcome, INCLUDING the faces that were declared
+ * but unavailable and the faces disabled by name - so nothing silently vanishes.
+ *
+ * ZERO MECHANISM IS UNCHANGED: with no config and no settings only `status` resolves, hence exactly ONE tool (R1).
+ *
+ * Row fields: `face` (key; also the legacy `<face>Tool` flag), `name` (published tool name), `families` (declared
+ * `vmu.<family>.` prefixes that count as an intent), `config` (preset-row config keys that count as an intent),
+ * `always` (only `status`), `extraIntent(ctx)` / `surface(ctx)` for the faces whose declaration or precondition is not
+ * a plain family, and `make(ctx)` for the domain faces.
+ */
+export const TOOL_FACES = Object.freeze([
+  { face: 'status', name: TOOL_NAMES.status, always: true, families: [], config: [] },
+  { face: 'set', name: TOOL_NAMES.set, families: [], config: [],
+    extraIntent: (c) => (c.declaredKeys > 0 ? 'declared-keys' : null) },
+  { face: 'middleware', name: TOOL_NAMES.middleware, families: ['vmu.middleware.'], config: ['middleware'],
+    // D-01 + the bus: an entry that is ALREADY ON THE BUS is a declaration too (a pack or an M2 module can add one
+    // after the kernel is built, and the management face must follow reality, not only the config key).
+    extraIntent: (c) => {
+      const entries = c.kernel && c.kernel.bus && typeof c.kernel.bus.status === 'function' ? (c.kernel.bus.status().entries || []) : []
+      return entries.length > 0 ? 'surface:bus-entries' : null
+    } },
+  { face: 'records', name: TOOL_NAMES.records, families: ['vmu.records.'], config: ['records'],
+    extraIntent: (c) => (c.kernel && c.kernel.library ? 'surface:library' : null),
+    surface: (c) => (!c.kernel || !c.kernel.library ? 'this kernel has no durable root, so it has no library to list or expand (docs/03 §3.1)' : null) },
+  { face: 'script', name: TOOL_NAMES.script, families: [], config: ['scripts'],
+    extraIntent: (c) => (c.scripts.length > 0 ? 'config:scripts' : null),
+    surface: (c) => (c.scripts.length > 0 ? null : 'no scripts were declared in this profile row') },
+  { face: 'pack', name: TOOL_NAMES.pack, families: ['vmu.packs.'], config: ['packs'],
+    extraIntent: (c) => (c.packLoader ? 'surface:packLoader' : null),
+    surface: (c) => (c.packLoader ? null : 'the entry did not hand this adapter a pack loader') },
+  { face: 'control', name: TOOL_NAMES.control, families: ['vmu.limits.', 'vmu.control.'], config: ['control'], make: makeControlSpec },
+  { face: 'turn', name: TOOL_NAMES.turn, families: ['vmu.turn.'], config: ['turn'], make: makeTurnSpec },
+  { face: 'meeting', name: TOOL_NAMES.meeting, families: ['vmu.meetings.', 'vmu.ballot.'], config: ['meetings', 'ballot'], make: makeMeetingSpec },
+  { face: 'task', name: TOOL_NAMES.task, families: ['vmu.tasks.'], config: ['tasks'], make: makeTaskSpec },
+  { face: 'minutes', name: TOOL_NAMES.minutes, families: ['vmu.minutes.'], config: ['minutes'], make: makeMinutesSpec },
+  { face: 'board', name: TOOL_NAMES.board, families: ['vmu.board.'], config: ['board'], make: makeBoardSpec },
+  { face: 'budget', name: TOOL_NAMES.budget, families: ['vmu.budget.'], config: ['budget'], make: makeBudgetSpec },
+  { face: 'citations', name: TOOL_NAMES.citations, families: ['vmu.citations.', 'vmu.cite.'], config: ['citations'], make: makeCitationsSpec },
+  { face: 'discipline', name: TOOL_NAMES.discipline, families: ['vmu.discipline.'], config: ['discipline'], make: makeDisciplineSpec },
+  { face: 'governance', name: TOOL_NAMES.governance, families: ['vmu.agenda.', 'vmu.motions.'], config: ['governance'], make: makeGovernanceSpec },
+  { face: 'ratelimit', name: TOOL_NAMES.ratelimit, families: ['vmu.ratelimit.'], config: ['ratelimit'], make: makeRatelimitSpec },
+  { face: 'explain', name: TOOL_NAMES.explain, families: ['vmu.explain.'], config: ['explain'], make: makeExplainSpec },
+  { face: 'projmigrate', name: TOOL_NAMES.projmigrate, families: ['vmu.state.', 'vmu.projmigrate.'], config: ['projmigrate'], make: makeProjmigrateSpec },
+  { face: 'bridge', name: TOOL_NAMES.bridge, families: ['vmu.script.', 'vmu.bridge.'], config: ['bridge'], make: makeBridgeSpec },
+  { face: 'external', name: TOOL_NAMES.external, families: ['vmu.external.'], config: ['external'], make: makeExternalSpec },
+  { face: 'mathtools', name: TOOL_NAMES.mathtools, families: ['vmu.math.'], config: ['mathtools'], make: makeMathtoolsSpec },
+  { face: 'auditchain', name: TOOL_NAMES.auditchain, families: ['vmu.audit.chain.', 'vmu.audit.chain'], config: ['auditchain'], make: makeAuditchainSpec },
+  { face: 'notify', name: TOOL_NAMES.notify, families: ['vmu.notify.'], config: ['notify'], make: makeNotifySpec },
+  { face: 'transaction', name: TOOL_NAMES.transaction, families: ['vmu.transaction.'], config: ['transaction'], make: makeTransactionSpec },
+  { face: 'custody', name: TOOL_NAMES.custody, families: ['vmu.custody.', 'vmu.anonymity.'], config: ['custody'], make: makeCustodySpec },
+  { face: 'topology', name: TOOL_NAMES.topology, families: ['vmu.topology.'], config: ['topology'], make: makeTopologySpec },
+  { face: 'formal', name: TOOL_NAMES.formal, families: ['vmu.formal.'], config: ['formal'], make: makeFormalSpec },
+  { face: 'collab', name: TOOL_NAMES.collab, families: ['vmu.collab.', 'vmu.agreements.'], config: ['collab'], make: makeCollabSpec },
+  { face: 'reviewers', name: TOOL_NAMES.reviewers, families: ['vmu.review.', 'vmu.reviewers.'], config: ['reviewers'], make: makeReviewersSpec },
+  { face: 'clockguard', name: TOOL_NAMES.clockguard, families: ['vmu.clock.'], config: ['clockguard'], make: makeClockguardSpec },
+  { face: 'publication', name: TOOL_NAMES.publication, families: ['vmu.publication.', 'vmu.outreach.', 'vmu.dissemination.'], config: ['publication'], make: makePublicationSpec },
+  { face: 'fairness', name: TOOL_NAMES.fairness, families: ['vmu.fairness.'], config: ['fairness'], make: makeFairnessSpec },
+  { face: 'handover', name: TOOL_NAMES.handover, families: ['vmu.handover.'], config: ['handover'], make: makeHandoverSpec },
+  { face: 'conference', name: TOOL_NAMES.conference, families: ['vmu.conference.'], config: ['conference'], make: makeConferenceSpec },
+  { face: 'arbitration', name: TOOL_NAMES.arbitration, families: ['vmu.arbitration.', 'vmu.conflict.'], config: ['arbitration'], make: makeArbitrationSpec },
+  { face: 'charter', name: TOOL_NAMES.charter, families: ['vmu.charter.'], config: ['charter'], make: makeCharterSpec },
+  { face: 'recruit', name: TOOL_NAMES.recruit, families: ['vmu.admission.', 'vmu.recruit.'], config: ['recruit'], make: makeRecruitSpec },
+  { face: 'capacity', name: TOOL_NAMES.capacity, families: ['vmu.capacity.'], config: ['capacity'], make: makeCapacitySpec },
+  { face: 'retention', name: TOOL_NAMES.retention, families: ['vmu.records.retention.', 'vmu.quota.', 'vmu.prune.'], config: ['retention'], make: makeRetentionSpec },
+  { face: 'idempotency', name: TOOL_NAMES.idempotency, families: ['vmu.idempotency.'], config: ['idempotency'], make: makeIdempotencySpec },
+  { face: 'audit', name: TOOL_NAMES.audit, families: ['vmu.audit.'], config: ['audit'], make: makeAuditSpec },
+  { face: 'ip', name: TOOL_NAMES.ip, families: ['vmu.ip.'], config: ['ip'], make: makeIpSpec },
+  { face: 'bidding', name: TOOL_NAMES.bidding, families: ['vmu.auction.', 'vmu.bidding.'], config: ['bidding'], make: makeBiddingSpec },
+  { face: 'admission', name: TOOL_NAMES.admission, families: ['vmu.admission.'], config: ['admission'], make: makeAdmissionSpec },
+])
+
+/** Every published face key, in publication order: the ONE list a caller (or a gate) can iterate. */
+export const FACE_KEYS = Object.freeze(TOOL_FACES.map((f) => f.face))
+
+/** Resolve a requested face name (`minutes`, `vibe_vmu_minutes`, `minutesTool`) to its canonical key, or null. */
+export function faceKeyOf(requested) {
+  const raw = String(requested === undefined || requested === null ? '' : requested).trim()
+  if (!raw) return null
+  const bare = raw.endsWith('Tool') ? raw.slice(0, -4) : raw
+  const row = TOOL_FACES.find((f) => f.face === bare || f.name === raw || f.name === bare)
+  return row ? row.face : null
+}
+
+/**
+ * ROUND 1 / K1 — which faces are DECLARED, which are AVAILABLE, and which a deployment DISABLED BY NAME.
+ *
+ * Returns `{ enabled, disabled, unavailable, unknownDisabled, sources }`:
+ *   · `enabled`     - what `toolSpecs()` may publish;
+ *   · `disabled`    - `vmu.core.facesDisabled` at work (named, never silent);
+ *   · `unavailable` - DECLARED but the runtime precondition is absent (e.g. `records` without a durable root);
+ *   · `unknownDisabled` - a name in `facesDisabled` that matches no face (reported, so a typo is visible).
+ */
+export function resolveFaces({ config = {}, settings = {}, kernel = null, explicit = {}, declaredKeys = 0, scripts = [], packLoader = null } = {}) {
+  const cfg = config && typeof config === 'object' ? config : {}
+  const disableList = Array.isArray(settings['vmu.core.facesDisabled']) ? settings['vmu.core.facesDisabled'] : []
+  const disabledKeys = new Set(disableList.map(faceKeyOf).filter(Boolean))
+  const unknownDisabled = disableList.filter((d) => !faceKeyOf(d))
+  // `vmu.tools.faces`: the universal door (face keys, tool names, or `*`), so every published face has at least one
+  // declaration path even when its family happens to declare no keys of its own.
+  const listedFaces = Array.isArray(settings['vmu.tools.faces']) ? settings['vmu.tools.faces'] : null
+  const listedKeys = listedFaces ? new Set(listedFaces.map(faceKeyOf).filter(Boolean)) : null
+  const listedAll = !!(listedFaces && listedFaces.includes('*'))
+  const declaredSettingKeys = Object.keys(settings || {})
+  const cfgFaces = Array.isArray(cfg.faces) ? new Set(cfg.faces.map(faceKeyOf).filter(Boolean)) : null
+  const c = { config: cfg, settings, kernel, declaredKeys, declaredSettingKeys, scripts: Array.isArray(scripts) ? scripts : [], packLoader, listedAll, listedKeys, cfgFaces }
+  const enabled = []
+  const disabled = []
+  const unavailable = []
+  const sources = {}
+  for (const row of TOOL_FACES) {
+    if (disabledKeys.has(row.face)) {
+      disabled.push({ face: row.face, name: row.name, code: 'VMU_NOT_PERMITTED', reason: 'disabled by vmu.core.facesDisabled' })
+      continue
+    }
+    // 1) an explicit flag wins (a caller can ask for ONE face with no declaration; the unit tests do exactly that).
+    if (explicit && explicit[row.face] === true) { enabled.push(row.face); sources[row.face] = 'explicit-flag'; continue }
+    // 2) a declaration, in the order D-01 names its sources: setting list > config list > config key > settings family.
+    let why = null
+    if (row.always) why = 'always (the inert default must be observable)'
+    else if (listedAll || (listedKeys && listedKeys.has(row.face))) why = 'setting:vmu.tools.faces'
+    else if (cfgFaces && cfgFaces.has(row.face)) why = 'config.faces'
+    else if ((row.config || []).some((k) => cfg[k] !== undefined)) why = 'config:' + (row.config || []).filter((k) => cfg[k] !== undefined).join('|')
+    else if ((row.families || []).some((p) => declaredSettingKeys.some((k) => k.startsWith(p)))) why = 'setting:' + (row.families || []).find((p) => declaredSettingKeys.some((k) => k.startsWith(p))) + '*'
+    else if (typeof row.extraIntent === 'function') why = row.extraIntent(c)
+    if (!why) continue
+    // 3) a declared face whose runtime precondition is absent is REPORTED, never silently dropped.
+    const missing = typeof row.surface === 'function' ? row.surface(c) : null
+    if (missing) { unavailable.push({ face: row.face, name: row.name, code: 'VMU_ENGINE_UNAVAILABLE', reason: missing, declaredBy: why }); continue }
+    enabled.push(row.face)
+    sources[row.face] = why
+  }
+  return { enabled, disabled, unavailable, unknownDisabled, sources }
+}
+
+/**
  * ROUND 142 — normalise a requested tool filter against the published surface.
  *
  * WHY IT EXISTS: the A/B verdict table recorded this as a SPECIFIED GAP (vmu published the tool NAMES while the
@@ -186,8 +330,14 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * The tool catalogue. Each entry carries an internal `run(args, exec)` returning a plain object; the
  * adapter turns it into the host shape (`execute` returning JSON). Filtering by what actually exists keeps
  * the surface honest (docs/04 §11 ownership: mechanism only).
+ *
+ * ROUND 1 / K1 (D-01): which faces appear is resolved from DECLARATIONS by `resolveFaces()` (above), not from forty
+ * hand-passed booleans. The legacy `<face>Tool: true` flags are still accepted (they land in `...faceFlags`) because a
+ * caller that wants ONE face with no declaration is a legitimate case - and the per-face unit tests rely on it. The
+ * `faces` option lets a caller hand in an already-resolved set (the adapter resolves once and passes it down, so
+ * install() and plan() cannot disagree).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false, minutesTool = false, boardTool = false, budgetTool = false, citationsTool = false, disciplineTool = false, governanceTool = false, ratelimitTool = false, explainTool = false, projmigrateTool = false, bridgeTool = false, externalTool = false, mathtoolsTool = false, auditchainTool = false, notifyTool = false, transactionTool = false, custodyTool = false, topologyTool = false, formalTool = false, collabTool = false, reviewersTool = false, clockguardTool = false, publicationTool = false, fairnessTool = false, handoverTool = false, conferenceTool = false, arbitrationTool = false, charterTool = false, recruitTool = false, capacityTool = false, retentionTool = false, idempotencyTool = false, auditTool = false, ipTool = false, biddingTool = false, admissionTool = false }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, config = {}, faces = null, mergeReport = null, ...faceFlags }) {
   // A refusal carries the four documented fields, plus - when the caller has them - host-side DIAGNOSTICS
   // (the host's own stack and the exact request shape we passed). They are added ONLY when present, so no
   // existing refusal changes shape. Without this the live M3 diagnosis died at the tool boundary: the seam
@@ -199,17 +349,38 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         extra.shape ? { shape: extra.shape } : {})
       : {})
   const specs = []
+  // D-01: ONE resolution, computed here and handed to every gate below as `on(face)`. `faceFlags` carries the legacy
+  // `<face>Tool` booleans; `faces` is an already-resolved set from the adapter (so install() and plan() agree).
+  const explicit = {}
+  for (const row of TOOL_FACES) if (faceFlags[row.face + 'Tool'] === true) explicit[row.face] = true
+  // The settings face's declaration is the DECLARED-KEY GUARD itself: the entry passes `assertDeclared` exactly when a
+  // deployment declared settings, and a caller that passes it is asking for the face (this is the pre-existing contract).
+  if (typeof assertDeclared === 'function') explicit.set = true
+  const faceResolution = faces || resolveFaces({ config, settings, kernel, explicit, declaredKeys: Object.keys(settings || {}).length, scripts, packLoader })
+  const enabledFaces = new Set(faceResolution.enabled)
+  const on = (face) => enabledFaces.has(face)
 
   // 1) status — ALWAYS available when the kernel is enabled: it is how the inert default is observable.
   // It also PROVES WHICH INSTANCE answered: a profile can hold two vmu rows (the preset's and a standalone
   // one), the host keeps one registration per name, and without an identity the receipts look contradictory.
-  specs.push({
+  if (on('status')) specs.push({
     name: TOOL_NAMES.status,
     description: 'vmu 内核状态：装配了哪些服务/接缝、注册了哪些中间件、生效的整合包、实例身份、以及是否"零机制惰性"。只读。',
     parameters: {},
     run: async () => {
       try {
-        return Object.assign({ ok: true, instance }, kernel.status())
+        const out = Object.assign({ ok: true, instance }, kernel.status())
+        // ROUND 1 / K1 (D-01): WHICH faces exist and WHY the other ones do not. A face that silently disappears is
+        // exactly the failure this map exists to end, so the answer travels with the status receipt.
+        out.faces = { enabled: faceResolution.enabled, disabled: faceResolution.disabled, unavailable: faceResolution.unavailable,
+          unknownDisabled: faceResolution.unknownDisabled, sources: faceResolution.sources,
+          published: specs.map((s) => s.name) }
+        // ROUND 1 / K5 (D-02): the ENTRY's pack-merge report - the priority ladder, the per-key layer, the NAMED
+        // conflicts and the declared overrides. It is surfaced HERE, by the host face, because the kernel never acts on
+        // it: the entry refused/shadowed at merge time, and `tests/vmu-seam-params-consumed.test.mjs` forbids a kernel
+        // seam that only `kernel/index.js` reads.
+        if (typeof mergeReport === 'function') out.settingsMerge = mergeReport()
+        return out
       } catch (e) {
         return refused('VMU_MIDDLEWARE_FAILED', 'status() failed: ' + String(e && e.message))
       }
@@ -217,7 +388,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   })
 
   // 2) set — only with a declared-key guard (an undeclared key is a defect, never a default: R4).
-  if (typeof assertDeclared === 'function') {
+  if (on('set') && typeof assertDeclared === 'function') {
     specs.push({
       name: TOOL_NAMES.set,
       description: '改一个 vmu 设置。未声明的键一律具名拒；回执含热改等级与可改者。',
@@ -281,7 +452,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   // observability must follow reality, not only the declaration).
   const declaredEntries = Array.isArray(settings['vmu.middleware.entries']) ? settings['vmu.middleware.entries'] : []
   const busEntries = kernel.bus && kernel.bus.status ? (kernel.bus.status().entries || []) : []
-  if ((declaredEntries.length > 0 || busEntries.length > 0) && kernel.bus) {
+  if (on('middleware') && kernel.bus) {
     specs.push({
       name: TOOL_NAMES.middleware,
       description: 'vmu 中间件：action=list|disable|enable|validate|dryRun（四形态共用一条总线）。validate/dryRun 只读、无副作用。',
@@ -340,7 +511,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   }
 
   // 4) records — only when a durable library exists (no root ⇒ no records tool at all, see the header).
-  if (kernel.library) {
+  if (on('records') && kernel.library) {
     specs.push({
       name: TOOL_NAMES.records,
       description: 'vmu 记录面：list（头部列表，不含正文）｜expand（按 id 取正文，超限计数）｜append（写入并回指纹）。',
@@ -366,7 +537,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
 
   // 5) scripts (M3) — only when the configuration DECLARES scripts. Results go back to the caller and
   // nowhere else: this tool has no prompt path at all (docs/06 §5).
-  if (Array.isArray(scripts) && scripts.length > 0) {
+  if (on('script') && Array.isArray(scripts) && scripts.length > 0) {
     specs.push({
       name: TOOL_NAMES.script,
       description: '列出或运行本次运行声明的 M3 脚本。action=list|run；结果只回给调用方，**绝不自动进入提示词**。',
@@ -423,7 +594,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   // 6) packs (M4) — only when the entry handed us a loader. `plan` is PURE (it reports exactly what would
   // change), `apply` refuses conflicts (O4) and `unload` reverses what was applied, so the promote flow the
   // pack manual describes ("plan ⇒ apply") finally has a callable surface instead of a library-only one.
-  if (typeof packLoader === 'function') {
+  if (on('pack') && typeof packLoader === 'function') {
     specs.push({
       name: TOOL_NAMES.pack,
       description: 'vmu 整合包：action=list|plan|apply|unload。plan 只读（报告会改什么），apply 冲突即具名拒，unload 逐个回滚。',
@@ -489,48 +660,48 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
 
 
 
-  if (transactionTool) specs.push(makeTransactionSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (custodyTool) specs.push(makeCustodySpec({ param, refused, TOOL_NAMES, kernel }))
-  if (topologyTool) specs.push(makeTopologySpec({ param, refused, TOOL_NAMES, kernel }))
-  if (formalTool) specs.push(makeFormalSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('transaction')) specs.push(makeTransactionSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('custody')) specs.push(makeCustodySpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('topology')) specs.push(makeTopologySpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('formal')) specs.push(makeFormalSpec({ param, refused, TOOL_NAMES, kernel }))
 
   // ROUND 538: the tool specs live in tools/<key>.js so this file stays inside the decided 1200-line limit. The CONDITIONS
   // stay here: which intent declares a tool is policy, and policy belongs with the host.
-  if (turnTool) specs.push(makeTurnSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (controlTool) specs.push(makeControlSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (meetingTool) specs.push(makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (taskTool) specs.push(makeTaskSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (minutesTool) specs.push(makeMinutesSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (boardTool) specs.push(makeBoardSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (budgetTool) specs.push(makeBudgetSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (citationsTool) specs.push(makeCitationsSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (disciplineTool) specs.push(makeDisciplineSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (governanceTool) specs.push(makeGovernanceSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (ratelimitTool) specs.push(makeRatelimitSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (explainTool) specs.push(makeExplainSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (projmigrateTool) specs.push(makeProjmigrateSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (bridgeTool) specs.push(makeBridgeSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (externalTool) specs.push(makeExternalSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (mathtoolsTool) specs.push(makeMathtoolsSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (auditchainTool) specs.push(makeAuditchainSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (notifyTool) specs.push(makeNotifySpec({ param, refused, TOOL_NAMES, kernel }))
-  if (collabTool) specs.push(makeCollabSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (reviewersTool) specs.push(makeReviewersSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (clockguardTool) specs.push(makeClockguardSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (publicationTool) specs.push(makePublicationSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (fairnessTool) specs.push(makeFairnessSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (handoverTool) specs.push(makeHandoverSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (conferenceTool) specs.push(makeConferenceSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (arbitrationTool) specs.push(makeArbitrationSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (charterTool) specs.push(makeCharterSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (recruitTool) specs.push(makeRecruitSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (capacityTool) specs.push(makeCapacitySpec({ param, refused, TOOL_NAMES, kernel }))
-  if (retentionTool) specs.push(makeRetentionSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (idempotencyTool) specs.push(makeIdempotencySpec({ param, refused, TOOL_NAMES, kernel }))
-  if (auditTool) specs.push(makeAuditSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (ipTool) specs.push(makeIpSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (biddingTool) specs.push(makeBiddingSpec({ param, refused, TOOL_NAMES, kernel }))
-  if (admissionTool) specs.push(makeAdmissionSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('turn')) specs.push(makeTurnSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('control')) specs.push(makeControlSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('meeting')) specs.push(makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('task')) specs.push(makeTaskSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('minutes')) specs.push(makeMinutesSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('board')) specs.push(makeBoardSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('budget')) specs.push(makeBudgetSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('citations')) specs.push(makeCitationsSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('discipline')) specs.push(makeDisciplineSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('governance')) specs.push(makeGovernanceSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('ratelimit')) specs.push(makeRatelimitSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('explain')) specs.push(makeExplainSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('projmigrate')) specs.push(makeProjmigrateSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('bridge')) specs.push(makeBridgeSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('external')) specs.push(makeExternalSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('mathtools')) specs.push(makeMathtoolsSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('auditchain')) specs.push(makeAuditchainSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('notify')) specs.push(makeNotifySpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('collab')) specs.push(makeCollabSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('reviewers')) specs.push(makeReviewersSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('clockguard')) specs.push(makeClockguardSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('publication')) specs.push(makePublicationSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('fairness')) specs.push(makeFairnessSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('handover')) specs.push(makeHandoverSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('conference')) specs.push(makeConferenceSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('arbitration')) specs.push(makeArbitrationSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('charter')) specs.push(makeCharterSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('recruit')) specs.push(makeRecruitSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('capacity')) specs.push(makeCapacitySpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('retention')) specs.push(makeRetentionSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('idempotency')) specs.push(makeIdempotencySpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('audit')) specs.push(makeAuditSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('ip')) specs.push(makeIpSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('bidding')) specs.push(makeBiddingSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('admission')) specs.push(makeAdmissionSpec({ param, refused, TOOL_NAMES, kernel }))
 
   return specs
 }
@@ -578,7 +749,7 @@ export function toHostSpec(spec) {
  * offers it - the host's own guidance requires that, and it is what unwinds them on subtree unload - and
  * fall back to keeping the returned disposers otherwise.
  */
-export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null, scripts = [], packLoader = null, controlTool = false, meetingTool = false, taskTool = false, turnTool = false } = {}) {
+export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null, scripts = [], packLoader = null, config = {}, faces = null, mergeReport = null, ...faceFlags } = {}) {
   const disposers = []
   const registered = []
   const failures = []
@@ -586,7 +757,23 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   let ownedByHost = false
   let chain = Promise.resolve()
 
-  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance, scripts, packLoader, controlTool, meetingTool, taskTool, turnTool }))
+  // ROUND 1 / K1 (D-01): the face set is resolved ONCE here and handed to `toolSpecs`, so what `plan()` promises and
+  // what `install()` registers can never disagree (the same "one fact, one source" rule the seams follow). The legacy
+  // `<face>Tool` flags still travel through `...faceFlags`, so an existing caller (and the unit tests) keeps working.
+  const resolveFaceSet = () => (faces || resolveFaces({
+    config, settings, kernel, explicit: (() => {
+      const e = {}
+      for (const row of TOOL_FACES) if (faceFlags[row.face + 'Tool'] === true) e[row.face] = true
+      // The `set` face is declared by the presence of the declared-key guard (see toolSpecs), so plan() and install()
+      // agree on it instead of one of them dropping it.
+      if (typeof assertDeclared === 'function') e.set = true
+      return e
+    })(),
+    declaredKeys: Object.keys(settings || {}).length, scripts, packLoader,
+  }))
+  const enabledFaceSet = () => { const r = resolveFaceSet(); return r.enabled }
+
+  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance, scripts, packLoader, config, mergeReport, ...faceFlags, faces: (() => { const r = resolveFaceSet(); return r })() }))
 
   const doInstall = async () => {
     if (!ctx || !ctx.tools || typeof ctx.tools.register !== 'function') {
@@ -656,7 +843,11 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     plan() {
       const disabled = settings['vmu.core.enabled'] === false
       const list = specs()
+      const r = resolveFaceSet()
       return { enabled: !disabled, names: list.map((s) => s.name), count: list.length,
+        // ROUND 1 / K1 (D-01): the faces that are enabled, the ones DISABLED BY NAME and the ones declared but
+        // UNAVAILABLE (with the reason). `enabledFaceSet()` is the resolved list; `list` is what was published.
+        faces: { enabled: enabledFaceSet(), disabled: r.disabled, unavailable: r.unavailable, unknownDisabled: r.unknownDisabled, sources: r.sources },
         reason: disabled ? 'vmu.core.enabled = false: the adapter registers nothing' : undefined }
     },
 

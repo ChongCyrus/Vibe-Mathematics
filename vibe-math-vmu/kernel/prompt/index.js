@@ -198,6 +198,32 @@ export function createPromptPipeline({
     }
     const order = Number.isInteger(section.order) ? section.order : 600
     const range = inRange(order, name)
+    // ROUND 1 (P3) — `range` IS NOT AN INPUT (docs/06 §3: it is DERIVED from `order`). Callers used to pass
+    // one anyway and the pipeline silently ignored it, which let a data pack declare `range:'pack'` with an
+    // order that actually lands in a KERNEL interval (`facts`/`charter`/`contract`) - the exact claim docs/06
+    // §4 rule 2 forbids. Two checks now make the declaration real:
+    //   · a declared range must be a KNOWN name and must MATCH the range its order produces (a mismatch is a
+    //     refusal, because otherwise the declaration is decorative data that a reader would trust);
+    //   · `facts` is FRAMEWORK-OWNED (docs/06 §4): a section that labels itself as a pack's (`source`
+    //     'pack:<id>') may not land there, and the hint names the interval to move into.
+    const declaredRange = typeof section.range === 'string' && section.range.trim() ? section.range.trim() : null
+    const declaredSource = typeof section.source === 'string' && section.source.trim() ? section.source.trim() : 'kernel'
+    if (declaredRange !== null) {
+      if (!Object.prototype.hasOwnProperty.call(ORDER_RANGES, declaredRange)) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'section ' + name + ': unknown range "' + declaredRange + '"',
+          'the declared ranges are ' + Object.keys(ORDER_RANGES).join(', '))
+      }
+      if (declaredRange !== range) {
+        throw refuse('VMU_INVALID_ARGUMENT',
+          'section ' + name + ': declares range "' + declaredRange + '" but order ' + order + ' lies in "' + range + '"',
+          'range is derived from order (docs/06 §3), so the two must agree: set order inside ' + declaredRange + '=[' + ORDER_RANGES[declaredRange].join(',') + '] or drop the declaration')
+      }
+    }
+    if (range === 'facts' && declaredSource.startsWith('pack')) {
+      throw refuse('VMU_NOT_PERMITTED',
+        'section ' + name + ': a pack section (source ' + declaredSource + ') may not occupy the framework-owned facts interval (order ' + order + ')',
+        'facts is framework-owned (docs/06 §4 rule 2): move the order into the pack interval [600,899]')
+    }
     const existing = registry.get(keyOf(name, section.lang))
     if (existing) {
       if (name === 'state' || existing.mutable === false) {

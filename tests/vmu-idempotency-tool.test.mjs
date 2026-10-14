@@ -27,7 +27,9 @@ console.log('=== 2. THE ACTION ENUM IS COMPLETE ===')
 const k = createKernel({ clock: () => 0, settings: {} })
 const spec = specOf(k, { idempotencyTool: true })
 ok(!!spec, 'the idempotency tool has a spec')
-const ACTIONS = ["abort","begin","commit","durable","fingerprintOf","history","list","lookup","persist","reap","reload","status"]
+// ROUND 1 / K2 (Lead 裁决 ④): the service gained `whenDurable` (the read-only WAIT for the settled durability
+// verdict), so the expected list is the service's real method set - 13, compared ONE FOR ONE, not relaxed.
+const ACTIONS = ["abort","begin","commit","durable","fingerprintOf","history","list","lookup","persist","reap","reload","status","whenDurable"]
 ok(JSON.stringify(spec.parameters.action.enum) === JSON.stringify(ACTIONS),
   'the enum is exactly the ' + ACTIONS.length + ' methods the service exposes', { enum: spec.parameters.action.enum })
 {

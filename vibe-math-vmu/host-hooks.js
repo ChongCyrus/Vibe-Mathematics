@@ -20,16 +20,17 @@
 // Zero mechanism holds here too: with no declared middleware entry on a host hook, NO listener is
 // registered at all.
 
+import { BRIDGED_HOOKS as BUS_BRIDGED_HOOKS } from './kernel/bus.js'
+
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
 
-/** The host hooks this bridge knows how to map (docs/05 §4.1). */
-export const BRIDGED_HOOKS = Object.freeze([
-  'tools/pre-execute', 'tools/post-execute', 'tools/execute', 'tools/result',
-  'agent/pre-step', 'agent/turn-stopping', 'agent/created',
-  'subagent/start', 'subagent/end',
-  'session/event', 'system-prompt/assemble', 'prompt/assemble', 'settings/changed', 'fs/write-intent',
-])
+/**
+ * The host hooks this bridge knows how to map (docs/05 §4.1), DERIVED from the single hook registry in
+ * kernel/bus.js (decision D-04: `BRIDGED_HOOKS` is the registry's `kind:'host' && bridged:true` subset, so
+ * "bridged" cannot drift from the registry, and every bridged entry names its registration site there).
+ */
+export const BRIDGED_HOOKS = BUS_BRIDGED_HOOKS
 
 export function refuse(code, message, hint) {
   const err = new Error(message)

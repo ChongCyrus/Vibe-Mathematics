@@ -19,9 +19,14 @@ export function claims(derived, shipped, scoped) {
     : null
   const v11Shipped = '| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total ' + shipped.total
     + ' / suites ' + shipped.suites + ' / probes ' + shipped.probes + '`** ✓ |'
+  // The cost columns used to carry `≈ 121 s` / `≈ 200 s, 并发 4`, which contradicted BOTH the code
+  // (`tests/run-tests.mjs:161`: concurrency is min(2, cpus)) and the runner's own header. A count nobody
+  // derives will drift; so will a TIMING nobody re-measures. The honest shape is therefore: mark the cost
+  // columns UNVERIFIED and name the three mutually contradictory figures that exist in the tree, so a
+  // reader re-measures instead of quoting (§5.1 of the gate volume has the same discipline).
   const ttRow = '| `tests/run-tests.mjs`（**' + derived.total + ' 项作业**（job count）= ' + derived.suites + ' 套件 + '
-    + derived.probes + ' 探针/变体；**由 `--counts` 派生**） | ≈ 424 s（历史基线） | **≈ 121 s**（历史基线；当前实测墙钟 ≈ 200 s，并发 4） | `TOTAL '
-    + derived.total + '  PASS ' + derived.total + '  FAIL 0  (suites ' + derived.suites + ' · probes ' + derived.probes + ')`；实测 `wall 120.7s · sum 424.2s`，关键路径 = `e2e-v4-fixes`（≈ 98 s） |'
+    + derived.probes + ' 探针/变体；**由 `--counts` 派生**） | ≈ 424 s（历史基线，未复核） | **未复核**（**2026-10-14**：并发 = `min(2, CPU 核数)`，旧文"并发 4" ✗ 已过期；全量成本仓库内有**三个互斥**说法 —— `≈121–200 s`／`1447.6 s`（runner 自述**模拟值**）／132 作业时 `31 min` 实测 ⇒ **以现量现报为准**） | `TOTAL '
+    + derived.total + '  PASS ' + derived.total + '  FAIL 0  (suites ' + derived.suites + ' · probes ' + derived.probes + ')`（输出形状；数字现取） |'
   const ttOutput = '`TOTAL ' + derived.total + '  PASS ' + derived.total + '  FAIL 0  (suites ' + derived.suites + ' · probes ' + derived.probes + ')`'
   const ckClaim = derived.total + ' 项作业（job count）= ' + derived.suites + ' 套件 + ' + derived.probes + ' 探针/变体'
   const ckShipped = '只发 `tests/` 的 **' + shipped.total + '** 项（**文件计数**；其中 `.test.mjs` **' + shipped.suites + '** 个）'

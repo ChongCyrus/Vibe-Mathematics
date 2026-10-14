@@ -6,10 +6,13 @@
 // command instead of copying its result - a copy of a run's output is the most perishable number of all.
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
-const DOC = process.env.VMU_READINESS_DOC ? join(REPO, process.env.VMU_READINESS_DOC) : join(REPO, 'vibe-math-vmu', 'docs', '00-README.md')
+// The seam takes a RELATIVE path or an ABSOLUTE one: `resolve` handles both, while `join(REPO, x)` silently
+// produced a broken path for an absolute `x` (spotted while a guard tried to point the writer at a temp copy
+// outside the repository). Its sibling `generate-wiring-index.mjs` already resolves its seam this way.
+const DOC = process.env.VMU_READINESS_DOC ? resolve(REPO, process.env.VMU_READINESS_DOC) : join(REPO, 'vibe-math-vmu', 'docs', '00-README.md')
 const BEGIN = '<!-- BEGIN GENERATED: readiness-figures (scripts/generate-readiness-figures.mjs) -->'
 const END = '<!-- END GENERATED: readiness-figures -->'
 const V = join(REPO, 'vibe-math-vmu')

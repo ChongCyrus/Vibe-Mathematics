@@ -16,19 +16,17 @@
 // dry-run can only promise that the loader passes `dryRun: true` and reports what the module returned;
 // a module that ignores the flag is a module bug, and the loader says so in its status.
 
-import { VU_HOOKS } from './bus.js'
+import { VU_HOOKS, DSH_HOOKS as BUS_DSH_HOOKS, HOOK_PREFIXES } from './bus.js'
 
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
 
-/** Host-substrate hooks a module may subscribe to (docs/05 §4.1). `workflow/*` is accepted by prefix. */
-export const DSH_HOOKS = Object.freeze([
-  'tools/pre-execute', 'tools/post-execute', 'tools/execute', 'tools/result',
-  'prompt/assemble', 'prompt/section',
-  'agent/pre-step', 'agent/request', 'agent/request-error', 'agent/turn-stopping', 'agent/inbox',
-  'subagent/start', 'subagent/end',
-  'session/event', 'session/flush', 'fs/write-intent', 'settings/changed',
-])
+/**
+ * Host-substrate hooks a module may subscribe to (docs/05 §4.1), DERIVED from the single hook registry
+ * in kernel/bus.js (decision D-04). `workflow/*` is accepted by prefix (`HOOK_PREFIXES`).
+ * Re-exported here because this is the list a MODULE author reads (docs/19 names `DSH_HOOKS`).
+ */
+export const DSH_HOOKS = BUS_DSH_HOOKS
 
 /** The api keys a module may rely on, and nothing else. */
 export const API_KEYS = Object.freeze(['log', 'setting', 'kernel', 'dryRun', 'traceId', 'hook'])
@@ -50,7 +48,7 @@ export function isRegisteredHook(hook) {
   if (typeof hook !== 'string' || hook.length === 0) return false
   if (VU_HOOKS.includes(hook)) return true
   if (DSH_HOOKS.includes(hook)) return true
-  if (hook.startsWith('workflow/')) return true
+  if (HOOK_PREFIXES.some((p) => hook.startsWith(p))) return true
   return false
 }
 

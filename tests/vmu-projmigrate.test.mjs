@@ -188,7 +188,16 @@ const v1Projection = (entries) => ({ version: 1, entries, checksum: 'v1-checksum
   ok(st.migrateSeam === true && st.migrateSeamKind === 'projmigrate', 'A3[+]: the migrate seam is disclosed in status()')
   ok(st.lastMigration && st.lastMigration.checksumChanged === true && typeof st.lastMigration.checksum === 'string', 'A3[+]: the checksum was really RECOMPUTED (checksumChanged:true)', JSON.stringify(st.lastMigration))
   ok(st.canonicalVersion === CANONICAL_VERSION && st.lastMigration.to === CANONICAL_VERSION, 'A3[]: the migration targets the canonical version')
-  ledger.persist()
+  const inFlight = ledger.persist()
+  // ROUND 1 / K2 (Lead 裁决 ④): the durable verdict is only claimed once the store's write has SETTLED; while it is in
+  // flight the receipt must say so instead of claiming durability. Both layers are asserted - no early claim, then the
+  // settled truth after `whenDurable()`.
+  ok(inFlight.pending === true && inFlight.durable === false,
+    'A3[+]: the persist receipt reports the write as IN FLIGHT rather than claiming durability it has not verified',
+    JSON.stringify({ pending: inFlight.pending, durable: inFlight.durable, reason: inFlight.reason }))
+  const settled = await ledger.whenDurable()
+  ok(settled.durable === true && settled.pending === false,
+    'A3[+]: after whenDurable() the same ledger reports durable:true (the settled answer)', JSON.stringify({ durable: settled.durable, pending: settled.pending }))
   ok(ledger.status().durable === true, 'A3[+]: after the migration + a verified write the ledger is durable again (was permanently degraded)', JSON.stringify({ durable: ledger.status().durable, reason: ledger.status().durableReason }))
   ok(store.peek().version === CANONICAL_VERSION, 'A3[+]: the write-back persists the CURRENT version (store patch(key, fn) contract)')
   let readRefused = false

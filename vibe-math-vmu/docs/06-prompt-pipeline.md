@@ -39,19 +39,20 @@
 
 ```
 assemble(ctx = { settings, member, role, phase, task, ... })
- ① （可选）中间件钩子：bus.emit('prompt/assemble', …)     ← 见 §17.1 命名缺陷
+ ① （可选）中间件钩子：bus.emit('prompt/section-assembled', …)  ← 冻结名；见 §17.1
        └─ decisions[].appendPrompt ⇒ 收集为“中间件追加段”
  ② 过滤：registry 中 scopeMatches(entry.scope, ctx) 的段
  ③ 排序：order 升序 → name 字典序（确定性）
  ④ 逐段取内容：
        · state / mutable:false  ⇒ 只用自身 text（忽略 override/binding/append）
-       · 其它：binding.text|binding.file → overrides[name] → entry.text → entry.template(readFile)
- ⑤ 叠加：按绑定优先级 role<phase<member<task 逐条追加其内容（source 记为 binding:<dim>）
+       · 其它：胜出的 binding.text|binding.file → overrides[name] → entry.text → entry.template(readFile)
+ ⑤ 绑定：**一个赢家**——匹配绑定中优先级最高（role<phase<member<task）的那条**替换**该段文本；
+      同一维度并列 ⇒ `VMU_PROMPT_BINDING_CONFLICT`（不静默挑一条）
  ⑥ 叠加：同段名的中间件追加段（source 记为 middleware:<id>）
  ⑦ 截断：按段的 truncate 策略裁剪（**不可变段不做截断**），并把告知写进正文
- ⑧ 变量：renderVariables（白名单＋值转义）
+ ⑧ 变量：renderVariables（白名单＋值转义；缺值记 `variableMisses`，`vmu.prompts.missingVariable=refuse` 时具名拒）
  ⑨ 组装：每段渲染为 "# <name>\n<text>"，用 "\n\n" 连接 → trimTrailing ⇒ 结尾单换行
- ⑩ 返回：{ ok:true, text, sources[], truncation[], at }
+ ⑩ 返回：{ ok:true, text, sources[], truncation[], variableMisses[], locale{}, glossary{}, at }
      （被拒绝时返回 { ok:false, refused:{code,message}, traceId }）
 ```
 
@@ -74,7 +75,7 @@ assemble(ctx = { settings, member, role, phase, task, ... })
 | `truncate` | object | `null` | `{mode, keepChars}`（§8） |
 | `lang` | string | `null` | ★ **段文本的语言**（★ 轮 241 加 ✓）—— ★ **`vmu.prompts.locale.onMissing` 据此决定是否回退** ✓；★★ **本行原先【漏了它**]✗，而本节自称"逐字来自 `register()`" ✓（★ 轮 493 补 ✓） |
 | `terms` | string[] | `[]` | ★ **该段涉及的术语**（★ 与 `glossary.json` 的机读本体对齐用 ✓）—— ★★ **本行同样是轮 493 【由守卫抓出来的**]✓（★ 与此同时还抓出 `lang` ✓）：★ **本节自称"逐字来自 `register()`"，★ 而漏了两个字段** ✗ |
-| `range` | string | **由 `order` 推出** | ★ **不是入参**：`register()` 用 `inRange(order, name)` 算出区间名（`facts`／`charter`／`contract`／`pack`／`override` ✓）并【记进条目**]✓ ⇒ ★ **它在 `entry` 里、不在入参里** ✓ |
+| `range` | string | **由 `order` 推出** | ★ **不是入参**：`register()` 用 `inRange(order, name)` 算出区间名（`facts`／`charter`／`contract`／`pack`／`override` ✓）并【记进条目**]✓ ⇒ ★ **它在 `entry` 里、不在入参里** ✓；★★ **轮 1（P3）**：若调用方**仍然**传了 `range`，它会被**校验**——未知名 ⇒ `VMU_INVALID_ARGUMENT`；与 `order` 推出的区间不一致 ⇒ `VMU_INVALID_ARGUMENT`（声明不再是装饰数据）；`source` 标为 `pack:*` 的段若落在 **`facts`**（框架所有）⇒ `VMU_NOT_PERMITTED` |
 
 **重名规则（实现）**：重名时——
 - 目标是 `state` 或已存在段 `mutable === false` ⇒ **`VMU_NOT_PERMITTED`**（不可变段不得再注册）；
@@ -97,7 +98,7 @@ assemble(ctx = { settings, member, role, phase, task, ... })
 
 **规则**
 1. **越界即拒绝**（`VMU_INVALID_ARGUMENT`，消息含段名与 order）——不得"就近归位"；
-2. **pack 不得占用内核区间**（`facts`/`charter`/`contract`）——这是"机制在场性"的落点；
+2. **pack 不得占用内核区间**（`facts`/`charter`/`contract`）——这是"机制在场性"的落点。**轮 1（P3）落地**：`facts` 由框架独占，`source` 标为 `pack:*` 的段落进 `facts` ⇒ **`VMU_NOT_PERMITTED`**；并且**传了 `range` 就必须与 `order` 推出的区间一致**（否则具名拒），因此"声明 `range:'pack'` 而 order 落在内核区间"这种静默错配不可能再发生（`packs/example-data` 的声明已在同一轮修正为 `order:600`）；
 3. **同区间内**按 `name` 字典序（**确定性**）；
 4. 覆盖与中间件追加落在 `override` 区间 ⇒ 用户/中间件意图**最后生效**，但**改不了 `facts` 内容**（§3 的 `mutable:false` 路径）。
 
@@ -108,8 +109,8 @@ assemble(ctx = { settings, member, role, phase, task, ... })
 - **绑定形状**：`{ section, role|phase|member|task, text|file, owner? }`
 - **必须指向已注册段**：未知 section ⇒ **`VMU_NO_SUCH_OBJECT`**（"打错字等于悄悄关掉一条规则"是不可接受的）。
 - **维度选取（实现）**：每条绑定**只取一个维度**，判定顺序为 `task` → `member` → `phase` → `role`（取**最先匹配的高优先级维度**）。
-- **固定优先级**：`BINDING_PRIORITY = ['role','phase','member','task']`（**低→高**）；同一段的多条匹配绑定按此排序后**依次追加**（后者的内容在后）。
-- **内容来源**：`binding.text` 优先，其次 `binding.file`（需 `readFile`）；两者都无 ⇒ 该绑定不贡献内容（跳过）。
+- **固定优先级**：`BINDING_PRIORITY = ['role','phase','member','task']`（**低→高**）。**轮 1 更正**：同一段的多条匹配绑定**不是依次追加**——只有优先级最高的一条**替换**该段文本（`sources[]` 记 `binding:<dim>`）；**同一维度上并列多条 ⇒ `VMU_PROMPT_BINDING_CONFLICT`**（具名拒，绝不静默挑一条）。理由：追加曾让一名研究员在同一份章程里同时拿到三个身份与三个法定数（18.5k 字符的自相矛盾文本）。
+- **内容来源**：胜出绑定的 `text` 优先，其次 `file`（需 `readFile`）；两者都无 ⇒ 该绑定不贡献内容（跳过）。
 - **落痕**：`sources[]` 记 `{section, source:'binding:<dim>', by: owner}`。
 
 ---
@@ -132,7 +133,7 @@ assemble(ctx = { settings, member, role, phase, task, ... })
 - **语法**：`{{ key }}`（正则允许 `:`/`.`/`_`/`-`）。
 - **白名单（逐字取自 `kernel/prompt/index.js` 的 `VARIABLE_WHITELIST`）**：`member`、`role`、`roleLabel`、`phase`、`time`、`pack`、`task`、`roster`、`round`、`quorum`、`statusBlock`、`setting:`（带参）、`count:`（带参）。
   - ★★★ **本行曾【只列 8 项却写着"逐字"**]✗（★ 轮 489 修正 ✓：漏了 `roleLabel`／`roster`／`round`／`quorum`／`statusBlock` ✓）—— ★★ **"声称逐字、却不是逐字"比单纯遗漏更糟，因为读者会因此不再核对** ✓；★ **现在由 `tests/vmu-turn-contracts.test.mjs` 的双向断言守着** ✓。
-- **取值**：`setting:<k>` ⇒ `ctx.settings[k]`；`count:<k>` ⇒ `counts[k]`；其它 ⇒ `ctx[key]`；`undefined`/`null` ⇒ **空串**（不报错）。
+- **取值**：`setting:<k>` ⇒ `ctx.settings[k]`；`count:<k>` ⇒ `counts[k]`；其它 ⇒ `ctx[key]`。**轮 1 更正**：`undefined`/`null` **不是静默空串**——每一次缺值都记进 `assemble().variableMisses[]`，并由 `vmu.prompts.missingVariable` 决定：`report`（默认）记录后渲染空串；`refuse` ⇒ 具名拒 **`VMU_PROMPT_VARIABLE_MISSING`**（该策略从 `ctx.settings` 读，属于调用方设置而非工厂快照）。
 - **未登记变量 ⇒ `VMU_INVALID_ARGUMENT`**（消息含整个占位符，hint 列出白名单）——**绝不原样保留 `{{...}}`**（否则用户看到的提示词会带垃圾）。
 - **防注入（关键）**：替换值经 `escapeTemplate` ⇒ `{{` 变 `{ {`、`}}` 变 `} }` ⇒ **值里的模板语法不会被二次展开**（一次替换，不做递归展开）。
 - **七类上下文**（`ctx` 的语义面）：设置、状态、资源、会议、任务、数学面、实例身份 —— 其中**状态/时间/预算**由 `facts` 区间与 `state` 段承载（只读）。

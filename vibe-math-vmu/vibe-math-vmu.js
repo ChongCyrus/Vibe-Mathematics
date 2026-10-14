@@ -21,9 +21,14 @@ import { decideSections as V5R_DECIDE_SECTIONS } from './packs/v5r/middleware/pr
 import { inboxBlock as V5R_INBOX_BLOCK } from './packs/v5r/notices.js'
 import { V5R_PHASES } from './packs/v5r/index.js'
 import { createKernel } from './kernel/index.js'
+import { deliverViaSubagents } from './kernel/turn/index.js'
 import { createHostAdapter } from './host.js'
 import { attachHostHooks } from './host-hooks.js'
 import { createPackLoader } from './kernel/pack.js'
+// ROUND 1 / K5 (D-02): a NAMESPACE import as well, so `composePromptPolicies` can be feature-detected. A named import
+// of an export that does not exist yet throws at MODULE LOAD time, which would take the whole preset down; the
+// namespace form degrades to the per-pack first-wins fallback below instead.
+import * as packModule from './kernel/pack.js'
 import { createHostSpawn, hasHostSpawn } from './host-spawn.js'
 import { createHostMath } from './host-math.js'
 import { assertDeclared } from './settings/schema.js'
@@ -167,6 +172,12 @@ export function apply(ctx, config = {}) {
   // merged object is used ONLY for the kernel: `declared` below still counts the USER's keys, so a deployment that
   // configured nothing keeps the documented "zero mechanism" behaviour rather than becoming declared by its pack.
   const packDefaults = {}
+  // ROUND 1 / K5: the merge bookkeeping. `packDefaultSource` names WHICH pack stated a default (so a collision has two
+  // names, never "the pack"), and the two arrays are the auditable outcome of the D-02 priority rule (conflicts are
+  // refusals-by-name, `shadowed` is a declared override the deployment asked for).
+  const packDefaultSource = {}
+  const packMergeConflicts = []
+  const packDefaultShadowed = []
   // A PACK CONTRIBUTES PROMPT TEXT AS DATA. Sections and bindings must exist when the kernel is constructed, and this
   // top level cannot await a dynamic import - so a pack that wants to contribute prompt material declares it as DATA in
   // its own folder, exactly the way it already declares settings defaults. `sections.json` holds the pipeline's own
@@ -209,7 +220,13 @@ export function apply(ctx, config = {}) {
       try {
         const parsed = JSON.parse(readFileSync(join(here, 'packs', name, 'settings', 'defaults.json'), 'utf8'))
         const d = parsed && typeof parsed.defaults === 'object' && parsed.defaults ? parsed.defaults : {}
-        for (const [k, v] of Object.entries(d)) if (packDefaults[k] === undefined) packDefaults[k] = v
+        for (const [k, v] of Object.entries(d)) {
+          if (packDefaults[k] === undefined) { packDefaults[k] = v; packDefaultSource[k] = name; continue }
+          // TWO PACKS WANT DIFFERENT DEFAULTS FOR ONE KEY: that is a declaration conflict, not a coin toss (D-02).
+          if (JSON.stringify(packDefaults[k]) !== JSON.stringify(v)) {
+            packMergeConflicts.push({ key: k, pack: name, otherPack: packDefaultSource[k], packValue: v, otherValue: packDefaults[k], code: 'VMU_PACK_CONFLICT' })
+          }
+        }
       } catch (e) {
         // Only a MISSING file is expected (a flat pack has no settings folder). Anything else is a real error and
         // must not be swallowed: a malformed defaults file would otherwise silently contribute no defaults at all.
@@ -218,8 +235,72 @@ export function apply(ctx, config = {}) {
       }
     }
   }
+  // ROUND 1 / K5 (D-02): ONE PRIORITY, AND AN OVERLAP IS NAMED. The order is `pack 默认 < preset Config／会话 settings
+  // < 运行时 set` - so the session's value always wins and a pack default is only a preference. What this used to do
+  // was `Object.assign({}, packDefaults, settings)`, which let a pack's default and a deployment's explicit value
+  // COLLIDE IN SILENCE (the pack default simply disappeared). The collision is now reported by name, and only the two
+  // declared doors (`vmu.packs.allowKernelOverride` / `allowOverride`, or naming the key in
+  // `vmu.packs.activeOverrides`) open it - exactly the rule `kernel/pack.js` applies to its own settings layer (O4).
+  /** The declared doors, as one predicate: the same three the loader honours. */
+  const packOverrideDeclared = (key) => settings['vmu.packs.allowKernelOverride'] === true
+    || settings['vmu.packs.allowOverride'] === true
+    || (Array.isArray(settings['vmu.packs.activeOverrides']) && settings['vmu.packs.activeOverrides'].includes(key))
+  for (const k of Object.keys(packDefaults)) {
+    if (!Object.prototype.hasOwnProperty.call(settings, k)) continue
+    if (JSON.stringify(settings[k]) === JSON.stringify(packDefaults[k])) continue
+    if (packOverrideDeclared(k)) { packDefaultShadowed.push({ key: k, pack: packDefaultSource[k], packValue: packDefaults[k], sessionValue: settings[k], door: 'declared' }); continue }
+    packMergeConflicts.push({ key: k, pack: packDefaultSource[k], packValue: packDefaults[k], sessionValue: settings[k], code: 'VMU_PACK_CONFLICT',
+      hint: 'the session value WINS (pack 默认 < preset Config／会话 settings); to accept the pack value on purpose, list "' + k + '" in vmu.packs.activeOverrides (or set vmu.packs.allowKernelOverride) - O4 forbids a silent collision' })
+  }
   const settingsWithPackDefaults = Object.assign({}, packDefaults, settings)
-  const kernel = createKernel(Object.assign({ sectionPolicy: V5R_DECIDE_SECTIONS, noticeBlock: V5R_INBOX_BLOCK, extraPhases: V5R_PHASES, settings: settingsWithPackDefaults, root, spawn: spawnSeam, host: mathHost,
+  // Where each merged key CAME FROM, so the resolved view never calls a pack default "config" (the entry is the only
+  // layer that knows this; the kernel sees one flat object). Consumed by kernel.status().settings.resolved.
+  const settingsSources = {}
+  for (const k of Object.keys(packDefaults)) if (!Object.prototype.hasOwnProperty.call(settings, k)) settingsSources[k] = 'pack:' + packDefaultSource[k]
+  for (const k of Object.keys(settings)) settingsSources[k] = 'config'
+  // ROUND 1 / K3: THE TURN DELIVERY SEAM IS ASSEMBLED HERE, because "capability in the kernel, assembly in the host"
+  // is the boundary this file already owns (see the spawn seam above). `kernel/turn/index.js` ships the real bridge
+  // `deliverViaSubagents`, and this was the missing line: `createKernel` was handed `host: mathHost`, whose adapter
+  // has no `deliverTurn`, so `vibe_vmu_turn` step/drive refused by name on every real host.
+  // The service is resolved AT CALL TIME (the same lesson the spawn seam records at :72): a plugin's `apply` can run
+  // before the subagents service mounts, and binding "absent" at this instant would refuse every turn forever.
+  const turnDeliver = async ({ turn, text } = {}) => {
+    let subs = null
+    try { subs = ctx && typeof ctx.get === 'function' ? ctx.get('subagents') : null } catch { subs = null }
+    if (!subs || typeof subs.startContinuable !== 'function') {
+      const err = new Error('the host exposes no subagents service (ctx.get(\'subagents\')), so no member turn can be delivered')
+      err.code = 'VMU_ENGINE_UNAVAILABLE'
+      err.hint = 'the turn loop refuses by name rather than pretending a member answered (docs/26 stage 3); pass config.deliverReply to extract the reply from a non-standard handle'
+      throw err
+    }
+    const extract = typeof config.deliverReply === 'function' ? config.deliverReply : null
+    return deliverViaSubagents(subs, extract)({ turn, text })
+  }
+  // ROUND 1 / K5 + P6 (D-02, vmu-pack interface): A PACK'S PROMPT MACHINERY IS DECLARED, NOT HARD-WIRED. The v5r
+  // prompt switches / notice block / phases used to be injected unconditionally, so the framework's own policy ran in
+  // a deployment that declared NO pack - the opposite of "零机制". They are now keyed by the pack ids this row
+  // declares (`config.packs`), which is the same switch that folds in a pack's settings and prompt text.
+  const PACK_RUNTIME = Object.freeze({
+    v5r: { sectionPolicy: V5R_DECIDE_SECTIONS, noticeBlock: V5R_INBOX_BLOCK, phases: V5R_PHASES },
+  })
+  const wantedPackIds = Array.isArray(config.packs) ? config.packs.filter((p) => typeof p === 'string') : []
+  const packRuntime = wantedPackIds.map((id) => PACK_RUNTIME[id]).filter(Boolean)
+  const packSectionPolicies = packRuntime.map((r) => r.sectionPolicy).filter(Boolean)
+  const composePromptPolicies = typeof packModule.composePromptPolicies === 'function' ? packModule.composePromptPolicies : null
+  // With the composer available, several packs' policies combine; without it (not landed yet) the first wins, which is
+  // the same behaviour a single-pack deployment gets. NO packs ⇒ null, so nothing switches a section (zero mechanism).
+  const sectionPolicy = packSectionPolicies.length === 0 ? null
+    : (composePromptPolicies ? composePromptPolicies(packSectionPolicies) : packSectionPolicies[0])
+  const noticeBlock = (packRuntime.find((r) => r.noticeBlock) || {}).noticeBlock || null
+  const extraPhases = packRuntime.length ? [...new Set(packRuntime.flatMap((r) => r.phases || []))] : null
+  const promptPolicies = []   // the sink a pack's manifest.promptPolicies arrives through (vmu-pack's side)
+  const kernel = createKernel(Object.assign({ sectionPolicy, noticeBlock, extraPhases, settings: settingsWithPackDefaults, root, spawn: spawnSeam, host: mathHost, deliverTurn: turnDeliver,
+    // ROUND 1 / K5 (D-02): the entry is the only layer that knows a folded pack default from a deployment value, so it
+    // hands the layer map in. The named overlap report travels to the HOST face instead (`mergeReport` below), because
+    // the kernel never acts on it and a kernel seam read by one file only is exactly what the seam gate forbids.
+    settingsSources,
+    // ROUND 1 / K5: ONE pack implementation. `kernel.usePack()` delegates to the same loader the pack tool drives.
+    packApplier: (manifest) => packLoaderRef.apply(manifest),
     // a packs DATA-declared prompt text joins what the configuration supplies; the pipelines own `order` places it
     sections: [...packSections, ...promptSections], bindings: [...packBindings, ...promptBindings], overrides: promptOverrides, whoMayOverride, readFile: readRel },
   clock ? { clock } : {}))
@@ -241,15 +322,24 @@ export function apply(ctx, config = {}) {
     (Array.isArray(settings['vmu.packs.active']) && settings['vmu.packs.active'].length > 0)
   const adapter = createHostAdapter(Object.assign({ ctx, kernel, settings, instance, scripts: Array.isArray(config.scripts) ? config.scripts : [],
     packLoader: packsDeclared ? () => packLoaderRef : null,
-    controlTool: config.control !== undefined,
-    // ROUND 349: the turn loop gets an entry point, gated the same way every other face is - declared intent only, so
-    // with nothing declared the preset still registers exactly one tool (R1 zero mechanism).
-    turnTool: config.turn !== undefined,
-    // Per-domain tool faces (docs/03 §3.1) - declared intent, exactly like control: a meeting face needs a
-    // declared meeting/ballot intent, a task face needs a declared task board or declared stages.
-    meetingTool: config.meetings !== undefined || config.ballot !== undefined,
-    taskTool: config.tasks !== undefined ||
-      (Array.isArray(settings['vmu.tasks.stages']) && settings['vmu.tasks.stages'].length > 0) },
+    // ROUND 1 / K1 (D-01): `config` is handed over so `host.js` resolves WHICH faces are declared from the one map
+    // (`resolveFaces`) instead of from four booleans assembled here. Every face now has a declaration path:
+    // `config.<face>`, `config.faces`, `vmu.tools.faces`, or a `vmu.<family>.*` settings key.
+    config,
+    // ROUND 1 / K5 (D-02): ONE pack implementation. The adapter's pack face and `kernel.usePack()` both reach the
+    // SAME loader (`kernel/pack.js`); without it `kernel.usePack()` refuses by name instead of applying through a
+    // second, quietly-different path.
+    packApplier: (manifest) => packLoaderRef.apply(manifest),
+    // ROUND 1 / K5: the entry-side merge report, printed by `vibe_vmu_status` (the host face reads it, so the fact
+    // travels to the model/operator instead of sitting in a seam nobody consumes).
+    mergeReport: () => ({
+      priority: 'pack 默认 < preset Config／会话 settings < 运行时 set',
+      packs: wantedPackIds.slice(),
+      defaults: Object.keys(packDefaults).length,
+      sources: Object.assign({}, settingsSources),
+      conflicts: packMergeConflicts.map((c) => Object.assign({}, c)),
+      shadowed: packDefaultShadowed.map((s) => Object.assign({}, s)),
+    }) },
   declared ? { assertDeclared } : {}))
   const started = kernel.start().catch((e) => ({ ok: false, error: String(e && e.message) }))
   // The math surface is LAZY (kernel/math.js), so the shared module registers its tool only when asked. The
@@ -332,7 +422,13 @@ export function apply(ctx, config = {}) {
   // A PACK is where an institution lives (slots, tracks, rules, aliases). `config.packs` accepts either a
   // shipped pack id (resolved from packs/<id>.js) or an inline manifest; conflicts are refused (O4) and the
   // failure is visible instead of swallowed.
-  const packLoader = createPackLoader({ kernel, registry: kernel.registry })
+  // ROUND 1 / K5 (D-02, vmu-pack interface): `settingSource` lets the loader tell "this key belongs to a HIGHER
+  // layer ⇒ my default is shadowed" from "it belongs to ANOTHER pack ⇒ named conflict"; `onPromptPolicy` is the sink
+  // for a manifest's own `promptPolicies`, which is what makes a pack's prompt machinery pack-owned instead of
+  // hard-wired here. Both are optional to the loader, so this call is safe before vmu-pack's side lands.
+  const packLoader = createPackLoader({ kernel, registry: kernel.registry,
+    settingSource: (key) => kernel.settingSource(key),
+    onPromptPolicy: (p) => { promptPolicies.push(p) } })
   packLoaderRef = packLoader
   const packsWanted = Array.isArray(config.packs) ? config.packs : []
   const appliedPacks = []
@@ -511,6 +607,19 @@ export function apply(ctx, config = {}) {
     packLoader: () => packLoader,
     appliedPacks: () => appliedPacks.slice(),
     packErrors: () => packErrors.slice(),
+    // ROUND 1 / K5 (D-02): the entry-side merge, in full - the priority ladder, the per-key layer, the named
+    // conflicts and the overrides a deployment asked for. `vibe_vmu_status` reads the kernel's `settingsMerge`, which
+    // carries the same two arrays; this accessor is for tests and for a host that wants the fact before kernel build.
+    packMerge: () => ({
+      priority: 'pack 默认 < preset Config／会话 settings < 运行时 set',
+      packs: wantedPackIds.slice(),
+      defaults: Object.keys(packDefaults).length,
+      sources: Object.assign({}, settingsSources),
+      conflicts: packMergeConflicts.map((c) => Object.assign({}, c)),
+      shadowed: packDefaultShadowed.map((s) => Object.assign({}, s)),
+      promptPolicies: promptPolicies.slice(),
+    }),
+    promptPolicies: () => promptPolicies.slice(),
     hooks,
     hooksResult: () => hooksResult,
     hooksError: () => hooksError,

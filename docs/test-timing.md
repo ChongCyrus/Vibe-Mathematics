@@ -8,7 +8,7 @@
 ## 1. 怎么跑（并行是默认）
 
 ```bash
-node tests/run-tests.mjs                     # 全部套件 + 全部探针（tests/ 下每个 .mjs），并行（并发 = min(4, CPU 核数)；命令都从**仓库根**执行）
+node tests/run-tests.mjs                     # 全部套件 + 全部探针（tests/ 下每个 .mjs），并行（**并发 = min(2, CPU 核数)**，见 `tests/run-tests.mjs:161`；命令都从**仓库根**执行）
 node tests/run-tests.mjs --only formal       # 只跑名字含 formal 的项（套件与探针一起筛）
 node tests/run-tests.mjs --concurrency=6     # 手动指定并发
 node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedNeedsArgs / devCheckout）
@@ -48,10 +48,12 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
 ## 2. 基线（本机：4 核 / Windows，实测）
 
 > **最后一次复核：`167b52d`**。表中"串行/并行"是**该次复核**的实测值：套件行在**重测前**视为"上次复核值"，引用前请重测或写明复核点；**变异族行**一律引用族自己打印的 `TOTAL WALL TIME` 行（不估算、不跨运行拼接）。这与 §1.1/runner 计数由 `--counts` 派生的口径一致。
+>
+> ★ **2026-10-14（交接轮）三处更正** ✓：① **并发 = `min(2, CPU 核数)`**，不是 `min(4, CPU)`（`tests/run-tests.mjs:161`；§1 的命令注释已同步 ✓ —— 代码注释记录了原因：`min(4)` 会过订阅，重作业被拖慢 1.3–4.5×）；② 表中 `run-tests.mjs` 行原写"**≈121 s，并发 4**"，与 runner 文件头的 `1447.6 s`（**自述为"模拟值"**，来自 **106 作业**那次）以及 `vibe-math-vmu/docs/11-§9.7` 记录的 2026-10-09 三次 T3（**132 作业，各 ≈31 min**）**三者互斥** ⇒ 该行成本列已改为 **"未复核"** 并列出三者 ✓，**引用前必须现量**；③ 表中作业计数由 `--counts` 派生（现 **322 = 250 套件 + 72 探针/变体**，2026-10-14 实测 ✓）；**vmu 子集 = 258**，由本轮新增的 `node tests/run-tests.mjs --scope-report` 派生 ✓（该表下面的历史段落保留原样，其规模数字属当时口径）。
 
 | 脚本 | 串行（sum） | 并行（wall） | 实测输出 |
 |---|---|---|---|
-| `tests/run-tests.mjs`（**321 项作业**（job count）= 249 套件 + 72 探针/变体；**由 `--counts` 派生**） | ≈ 424 s（历史基线） | **≈ 121 s**（历史基线；当前实测墙钟 ≈ 200 s，并发 4） | `TOTAL 321  PASS 321  FAIL 0  (suites 249 · probes 72)`；实测 `wall 120.7s · sum 424.2s`，关键路径 = `e2e-v4-fixes`（≈ 98 s） |
+| `tests/run-tests.mjs`（**323 项作业**（job count）= 251 套件 + 72 探针/变体；**由 `--counts` 派生**） | ≈ 424 s（历史基线，未复核） | **未复核**（**2026-10-14**：并发 = `min(2, CPU 核数)`，旧文"并发 4" ✗ 已过期；全量成本仓库内有**三个互斥**说法 —— `≈121–200 s`／`1447.6 s`（runner 自述**模拟值**）／132 作业时 `31 min` 实测 ⇒ **以现量现报为准**） | `TOTAL 323  PASS 323  FAIL 0  (suites 251 · probes 72)`（输出形状；数字现取） |
 | `tests/audit-formal-sensitivity.mjs`（49 探针，自带并发 4；v2 12 / v3 12 / v4 12 / v5 13） | ≈ 1035 s | **260.7 s**（实测，x3.97） | 关键路径 = v2/v3 的 `require` 探针（各 ≈75 s）；全 49 条按预期变红、0 问题 |
 | `tests/audit-v5-sensitivity.mjs`（39 探针，串行） | ≈ 101 s | — | 每条 = 一次被测套件重跑 |
 | `tests/audit-persona-sensitivity.mjs`（16 探针） | ≈ 4.4 s | — | 本身很快，不需要并行 |

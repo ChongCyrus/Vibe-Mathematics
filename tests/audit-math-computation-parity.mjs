@@ -23,16 +23,37 @@ const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
 const PRESETS = ['vibe-math-v2', 'vibe-math-v3', 'vibe-math-v4', 'vibe-math-v5', 'vibe-math-v5r', 'vibe-math-vmu']
 const MODULES = ['math-engines.js', 'math-computation.js']
-const CANON = join(REPO, '_oneoff', 'mc-P1-ready', 'canonical')
-const SCHEMA = join(REPO, '_oneoff', 'mc-P1-ready', 'tool-schema.json')
+// The two OUT-OF-REPO assets, each with an INJECTABLE seam (docs/11 §4.1): pointing the seam at a missing
+// path is how the named-SKIP branch below is PROVEN to fire (a branch that can never run proves nothing).
+// The DEFAULT stays the IN-REPO location, because a SHIPPED guard must not depend on an out-of-repo asset
+// (handover D-05); `DEV_*` is named in the SKIP reason so a reader of a dev checkout knows where the copy
+// actually is and which env var makes the strongest comparison run.
+const CANON = process.env.MATH_CANON_DIR ? resolve(process.env.MATH_CANON_DIR) : join(REPO, '_oneoff', 'mc-P1-ready', 'canonical')
+const SCHEMA = process.env.MATH_SCHEMA_FILE ? resolve(process.env.MATH_SCHEMA_FILE) : join(REPO, '_oneoff', 'mc-P1-ready', 'tool-schema.json')
+const DEV_CANON = resolve(REPO, '..', '_oneoff', 'mc-P1-ready', 'canonical')
+const DEV_SCHEMA = resolve(REPO, '..', '_oneoff', 'mc-P1-ready', 'tool-schema.json')
 
-let passed = 0, failed = 0
+let passed = 0, failed = 0, skipped = 0
 const failures = []
+const skips = []
 function ok(cond, label, detail) {
   if (cond) { passed++; console.log('  ok   ' + label); return true }
   failed++; failures.push(label + (detail ? ' — ' + detail : ''))
   console.error('  FAIL ' + label + (detail ? ' — ' + detail : ''))
   return false
+}
+/**
+ * A NAMED SKIP, never a silent note (handover round 1, V6). Two of this guard's strongest checks read assets
+ * that live OUTSIDE the repository (`_oneoff/mc-P1-ready/{canonical,tool-schema.json}`), so on a clean clone
+ * they cannot run. Degrading them to a `console.log` note meant a reader saw "N passed" with no indication
+ * that the canonical comparison had vanished - vacuity by silence. A skip is NOT a red (the repo's own
+ * convention for absent engines, `tests/audit-engine-faces.mjs`), but it MUST be named and counted, so the
+ * summary line says how much of the guard actually ran.
+ */
+function skip(label, reason) {
+  skipped++
+  skips.push({ label, reason })
+  console.log('  SKIP ' + label + ' — ' + reason)
 }
 const sha = (p) => createHash('sha256').update(readFileSync(p)).digest('hex')
 const read = (rel) => readFileSync(join(REPO, rel), 'utf8')
@@ -149,7 +170,10 @@ for (const p of PRESETS) {
   ok(distinct.length === 1 && hashes[distinct[0]].length === PRESETS.length, PRESETS.length + ' copies of ' + f + ' are byte-identical', distinct.length + ' distinct hash(es)')
   const canon = join(CANON, f)
   if (existsSync(canon)) ok(sha(canon) === distinct[0], f + ' matches the canonical source', sha(canon).slice(0, 16) + ' vs ' + String(distinct[0]).slice(0, 16))
-  else console.log('  note canonical source absent (published tree) - ' + PRESETS.length + '-way comparison only')
+  else skip(f + ' matches the canonical source',
+    'the canonical source is OUTSIDE the repository (D-05) and absent at ' + CANON
+    + (existsSync(DEV_CANON) ? '; a dev-checkout copy IS present at ' + DEV_CANON + ' — set MATH_CANON_DIR to that path to run this comparison' : '; no dev-checkout copy either')
+    + ' (the ' + PRESETS.length + '-way byte comparison above still ran)')
 }
 
 // ---- 3. both install lines ship the module ----
@@ -181,14 +205,52 @@ for (const p of PRESETS) {
   const mod = await import(new URL('../vibe-math-v2/math-computation.js', import.meta.url).href)
   if (existsSync(SCHEMA)) {
     const s = JSON.parse(readFileSync(SCHEMA, 'utf8'))
-    const codes = s.failureCodes.map((c) => c.code)
-    ok(JSON.stringify(mod.MATH_FAILURE_CODES) === JSON.stringify(codes), 'failure codes match tool-schema.json', JSON.stringify(mod.MATH_FAILURE_CODES))
+    const schemaCodes = s.failureCodes.map((c) => c.code)
+    const modCodes = mod.MATH_FAILURE_CODES
+    // SET COMPARISON (handover ruling D-10, round 1). The assertion here used to be an ORDER-SENSITIVE
+    // `JSON.stringify(a) === JSON.stringify(b)`: it reddened on a pure permutation (tool-schema.json listed
+    // `MATH_REFUSED` / `MATH_ENGINE_BAD_ARGV` in the other order than the module) while telling us nothing
+    // more about capability. The replacement is deliberately NOT "ignore the list": it compares MEMBERSHIP,
+    // CARDINALITY and DUPLICATES in BOTH directions, and it pins REACHABILITY from the module's own source -
+    // so a superset (an extra code), a subset (a code the contract promises but nothing can emit), a
+    // duplicate, and a length change are ALL red. Only POSITION is not compared, because position is not a
+    // capability (and the module's array is also its aggregate order, i.e. a different statement).
+    const dups = (a) => a.filter((x, i) => a.indexOf(x) !== i)
+    const modSet = new Set(modCodes), schemaSet = new Set(schemaCodes)
+    const missingFromModule = schemaCodes.filter((c) => !modSet.has(c))
+    const extraInModule = modCodes.filter((c) => !schemaSet.has(c))
+    ok(missingFromModule.length === 0 && extraInModule.length === 0,
+      '★ the exported failure-code SET matches tool-schema.json (no missing, no extra)',
+      JSON.stringify({ missing: missingFromModule, extra: extraInModule }))
+    // NON-EMPTY FIRST (RULE E shape B). Every comparison below is between two collections, and two EMPTY
+    // collections agree about everything - the assertion would pass while proving nothing. Both sides must
+    // carry codes, and the counts are printed so a shrink-to-nothing cannot disguise itself as agreement.
+    ok(modCodes.length > 0 && schemaCodes.length > 0,
+      'both failure-code lists are NON-EMPTY, so the set/count comparisons below are not two empty sets agreeing',
+      JSON.stringify({ module: modCodes.length, schema: schemaCodes.length }))
+    ok(dups(modCodes).length === 0 && dups(schemaCodes).length === 0
+      && modCodes.length > 0 && schemaCodes.length > 0 && modCodes.length === schemaCodes.length,
+      '★ the failure-code COUNT matches and neither list repeats a code (a set comparison must not hide an add/remove)',
+      JSON.stringify({ module: modCodes.length, schema: schemaCodes.length, dupModule: dups(modCodes), dupSchema: dups(schemaCodes) }))
+    // REACHABILITY: every code the contract promises must have an EMIT SITE in the shipped module (and every
+    // emit site must be declared). This is what makes "no missing / no extra" mean something about the
+    // product rather than about two literals agreeing with each other.
+    const emittedSrc = readFileSync(join(REPO, 'vibe-math-v2', 'math-computation.js'), 'utf8')
+    const emitted = new Set([...emittedSrc.matchAll(/fail\('(MATH_[A-Z_]+)'/g)].map((m) => m[1]))
+    const unreachable = schemaCodes.filter((c) => !emitted.has(c))
+    const undocumented = [...emitted].filter((c) => !schemaSet.has(c))
+    ok(unreachable.length === 0 && undocumented.length === 0,
+      '★ every schema failure code is REACHABLE from vibe-math-v2/math-computation.js and every emit site is declared',
+      JSON.stringify({ unreachable, undocumented, emittedSites: emitted.size }))
     ok(JSON.stringify(mod.MATH_PARAM_NAMES) === JSON.stringify(s.paramNamesFrozen.names), 'param names match tool-schema.json#paramNamesFrozen')
     ok(s.paramNamesFrozen.value === true, 'param names are frozen in the schema')
     ok(!!s.returnShell.argv && s.returnShell.argv.length > 0, 'return shell declares argv (ruling 4: echo)')
     ok(s.failureCodes.some((c) => c.code === 'MATH_ENGINE_BAD_ARGV' && /engine-override/.test(c.next)), 'MATH_ENGINE_BAD_ARGV carries the engine-override next')
   } else {
-    console.log('  note tool-schema.json absent (published tree) - freeze compared against the module only')
+    skip('failure codes / param names match tool-schema.json',
+      'tool-schema.json is OUTSIDE the repository (D-05) and absent at ' + SCHEMA
+      + (existsSync(DEV_SCHEMA) ? '; a dev-checkout copy IS present at ' + DEV_SCHEMA + ' — set MATH_SCHEMA_FILE to that path to run this comparison' : '; no dev-checkout copy either')
+      + ' (the module-only freeze checks below still ran)')
   }
   ok(mod.MATH_FAILURE_CODES.length === 11, 'eleven failure codes exported')
   ok(mod.MATH_PARAM_NAMES.length === 6, 'six param names exported')
@@ -357,6 +419,8 @@ for (const p of PRESETS) {
   ok(/MATH_MISSING_PACKAGES[\s\S]{0,120}MATH_VERSION_POLICY_CLAUSE/.test(mc), 'S6: the missing-package detail derives the clause')
 }
 
-console.log('=== MATH COMPUTATION PARITY: ' + passed + ' passed, ' + failed + ' failed ===')
+console.log('=== MATH COMPUTATION PARITY: ' + passed + ' passed, ' + failed + ' failed'
+  + (skipped ? ', ' + skipped + ' SKIPPED' : '') + ' ===')
+for (const s of skips) console.error('  SKIP ' + s.label + ' — ' + s.reason)
 if (failures.length) for (const f of failures) console.error('  - ' + f)
 process.exit(failed === 0 ? 0 : 1)

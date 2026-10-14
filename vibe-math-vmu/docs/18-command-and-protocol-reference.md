@@ -26,6 +26,8 @@
 
 ## 1. 工具总表（45 个 `vibe_vmu_*` ＋ 1 个继承工具）
 
+> ★★★★ **轮 1／K1（D-01）**：★ **本表的"出现条件"列与 `host.js` 的 `TOOL_FACES` 是同一条真源** ✓ —— ★ 名称表由 `TOOL_NAMES` 生成（见本卷生成块 ✓），★ **是否出现由 `resolveFaces()` 按声明解析** ✓（`settings['vmu.tools.faces']`／`config.faces`／`config.<face>`／`vmu.<族>.*`／少数面的前置 ✓）。★ **无声明 ⇒ 恰好 `vibe_vmu_status` 一个** ✓；★ **被关／前置缺失的面在 `vibe_vmu_status` 回执的 `faces.disabled`／`faces.unavailable` 里具名上报** ✓（★ 轮 1 实测：修复前真实入口下 **45 面只有 10 面可注册** ✗，修复后按声明可达全部 45 面 ✓）。★ 详表见 `docs/03 §3.1` 的同一说明 ✓。
+
 | 工具（`TOOL_NAMES` 键） | 出现条件 | 权限面 | 幂等性 | 主要 action |
 |---|---|---|---|---|
 | `vibe_vmu_status`（`status`） | **内核启用即恒有** | 只读 | ✓ | （无 action；纯读） |

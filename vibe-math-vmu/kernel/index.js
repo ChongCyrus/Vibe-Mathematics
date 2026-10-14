@@ -219,6 +219,20 @@ export function createKernel({
   middleware = [],
   spawn = null,
   deliver = null,
+  // ROUND 1 / K3: the TURN loop's own delivery seam (`async ({ turn, text }) => reply`). Kept separate from
+  // `deliver` (the member/meeting wake seam, whose shape is an envelope) so one adapter can never be silently
+  // handed to the other. `null` keeps the documented named refusal.
+  deliverTurn = null,
+  // ROUND 1 / K5 (D-02): the ENTRY is the only layer that knows a folded pack default from a deployment value (it
+  // merges them before construction), so it hands the layer map in and the resolved view reports it instead of
+  // guessing `config`. The named overlap report itself is NOT a kernel seam: the kernel never acts on it (the entry
+  // already refused/shadowed at merge time), and a seam that only this file reads is exactly what
+  // `tests/vmu-seam-params-consumed.test.mjs` forbids - so it is surfaced by the HOST face instead
+  // (`createHostAdapter({ mergeReport })`, which `vibe_vmu_status` prints).
+  settingsSources = null,
+  // ROUND 1 / K5: the pack loader is injected by the entry, so `usePack()` has ONE implementation to delegate to
+  // (kernel/pack.js). With none injected the call REFUSES by name - there is no second, quietly-different pack path.
+  packApplier = null,
   // Capability seams the HOST owns. They default to null (the modules then refuse by name), but they are real
   // options now: an absent seam is a deployment fact, not something this file decided. A review proved that
   // `deliver` was reaching members and meetings while notify was pinned to null, and that status().seams
@@ -449,7 +463,12 @@ export function createKernel({
     },
   })
 
-  const prompt = createPromptPipeline({ sections, bindings, overrides, whoMayOverride, bus, readFile, clock })
+  // ROUND 1 / K4: the pipeline ACCEPTS a settings handle (kernel/prompt/index.js reads the `vmu.prompts.*` family),
+  // and this call site simply never gave it one - so on the real path every prompt setting (declared sections,
+  // overrides, overridesByLang, locale.*, glossary.*) was inert while docs/04 marked them wired. The LIVE VIEW is
+  // passed, not the raw object: these keys are declared H1 ("next turn"), and the pipeline now reads the read-time
+  // policy through this handle on every assemble, so a runtime `vibe_vmu_set` really does reach the next turn.
+  const prompt = createPromptPipeline({ sections, bindings, overrides, whoMayOverride, bus, readFile, clock, settings: settingsView })
 
   let library = root
     ? createLibrary({
@@ -618,13 +637,22 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // ROUND 339: the TURN LOOP as a service (docs/26). Constructed here, once the faces it dispatches into exist,
   // so a host that installs only the framework can run a member turn. Delivery goes through the host seam; with no
   // seam it refuses by name rather than pretending a member answered.
+  // ROUND 1 / K3: the seam is RESOLVED ONCE here, so `status().seams` reports the same fact the loop was built
+  // from (the E2 lesson: a seam report rebuilt by inference can claim a seam the consumer never received).
+  const turnDeliverSeam = typeof deliverTurn === 'function' ? deliverTurn
+    : (host && typeof host.deliverTurn === 'function' ? host.deliverTurn : null)
   const turn = createTurnOrchestrator({
     sectionPolicy: sectionPolicy || null,
     noticeBlock: noticeBlock || null,
     extraPhases: extraPhases || null,
     prompt,
     faces: facesFrom({ tasks, records, library, meetings, ballotbox, formal, mathjobs }),
-    deliver: host && typeof host.deliverTurn === 'function' ? host.deliverTurn : null,
+    // ROUND 1 / K3: the TURN delivery seam is its own kernel option (`deliverTurn`), because the wake envelope a
+    // MEMBER gets from `deliver` (kernel/members.js:193 `deliver(envelope)`) is a different shape from a turn's
+    // `{ turn, text }`. Before this, the only accepted source was `host.deliverTurn`, and the real host object is
+    // `host-math.js`'s adapter, which has no such method - so `vibe_vmu_turn` could never deliver. The legacy
+    // `host.deliverTurn` path is kept for compatibility; with neither, the loop refuses by name (VMU_ENGINE_UNAVAILABLE).
+    deliver: turnDeliverSeam,
     // ROUND 347: the wakeup policy is a DECLARED setting, so the framework — not the host — decides who is woken next.
     wakeupPolicy: settings['vmu.turn.wakeupPolicy'],
     // ROUND 366: the whole resolved settings map travels with the loop, so `{{ setting:... }}` inside a section is
@@ -1015,31 +1043,15 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
      * is a configuration defect, and the message names both sides.
      */
     usePack(pack = {}) {
-      const id = pack.id
-      if (typeof id !== 'string' || id.length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'a pack needs an id')
-      if (packs.includes(id)) throw refuse('VMU_PACK_CONFLICT', 'pack ' + id + ' is already active', 'unload it first (O4: no silent re-application)')
-      const conflicts = []
-      for (const key of Object.keys(pack.settings || {})) {
-        if (Object.prototype.hasOwnProperty.call(settings, key)) conflicts.push({ key, already: 'settings' })
+      if (typeof packApplier !== 'function') {
+        throw refuse('VMU_PACK_LOADER_UNAVAILABLE', 'this kernel has no pack loader, so usePack() refuses rather than applying a pack through a second implementation',
+          'construct the kernel with { packApplier } (the entry injects it: `packApplier: (manifest) => packLoader.apply(manifest)` from kernel/pack.js) and load packs through that one path (vibe_vmu_pack / createPackLoader) - D-02 forbids two semantics for one verb')
       }
-      const codePrefix = 'VMU_PACK_' + String(id).toUpperCase().replace(/[^A-Z0-9]/g, '_') + '_'
-      for (const code of pack.codes || []) {
-        if (!String(code).startsWith(codePrefix)) {
-          conflicts.push({ key: code, already: 'pack codes must be ' + codePrefix + '<REASON> (R-d)' })
-        }
-      }
-      // THE DOCUMENTED NAME OPENS THIS DOOR TOO. The pack handbook tells a deployment to declare
-      // `vmu.packs.allowKernelOverride`; this layer used to read only `vmu.packs.allowOverride`, so the documented key
-      // opened the loader's door and left the kernel's shut - the escape hatch was documented under a name that worked
-      // halfway. Both names are honoured here now.
-      const overrideDeclared = settings['vmu.packs.allowOverride'] === true || settings['vmu.packs.allowKernelOverride'] === true
-      if (conflicts.length > 0 && !overrideDeclared) {
-        throw refuse('VMU_PACK_CONFLICT', 'pack ' + id + ' conflicts with the active configuration',
-          JSON.stringify(conflicts))
-      }
-      packs.push(id)
-      for (const alias of pack.aliases || []) registry.alias(alias.from, alias.to, { reason: 'pack ' + id })
-      return { ok: true, id, active: packs.slice(), declaredCodes: (pack.codes || []).length }
+      const result = packApplier(pack)
+      // The ACTIVE list is bookkeeping this face still owns (a pack that applied must appear in activePacks()/status()).
+      const id = (pack && typeof pack.id === 'string' && pack.id) || (result && typeof result.id === 'string' ? result.id : null)
+      if (id && !packs.includes(id)) packs.push(id)
+      return result
     },
 
     activePacks() { return packs.slice() },
@@ -1123,10 +1135,23 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
         }
         if (existed) previous[key] = settings[key]
         settings[key] = value
+        // ROUND 1 / K5 (D-02, vmu-pack interface): the WRITER is recorded, so `kernel.settingSource(key)` can tell a
+        // pack's layer from the session's - which is exactly what `kernel/pack.js` needs to decide "this key belongs to
+        // a HIGHER layer ⇒ my default is shadowed, say so" versus "it belongs to ANOTHER pack ⇒ named VMU_PACK_CONFLICT".
+        markSettingWriter(settings, key, 'pack:' + String(by || 'pack'))
         applied.push(key)
       }
       packNotesLog.push({ id: by, at: clock(), what: 'settings-applied', keys: applied.slice() })
       return { ok: true, applied, previous }
+    },
+    /**
+     * ROUND 1 / K5: WHERE a key came from, in one call. `pack:<id>` for a pack's settings layer, `runtime` for a
+     * `setSettingsValue`, the entry's own layer label (e.g. `pack:v5r` for a pack default folded in before construction,
+     * `config` for a deployment value) and `null` for a key nobody wrote. It is the accessor the pack loader asks,
+     * because the alternative - reading `settings[key]` - cannot distinguish the layers that D-02 orders.
+     */
+    settingSource(key) {
+      return settingWriter(settings, key) || (settingsSources && settingsSources[key]) || (Object.prototype.hasOwnProperty.call(settings, key) ? 'unknown' : null)
     },
 
     /**
@@ -1265,7 +1290,11 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
       const resolved = {}
       for (const def of SETTING_DEFS) {
         const has = Object.prototype.hasOwnProperty.call(settings, def.key)
-        const source = packSource[def.key] || settingWriter(settings, def.key) || (has ? 'config' : 'default')
+        // ROUND 1 / K5: the source ladder is `runtime pack layer > entry-side layer label > config > default`. Without
+        // the entry-provided `settingsSources`, a pack DEFAULT folded in before construction is indistinguishable from a
+        // deployment value and was reported as `config` - a resolved view that misnames the layer is worse than none.
+        const source = packSource[def.key] || settingWriter(settings, def.key)
+          || (settingsSources && settingsSources[def.key]) || (has ? 'config' : 'default')
         const overridden = packApplied.filter((n) => n.id !== (packSource[def.key] || '').replace('pack:', '') && (n.keys || []).includes(def.key)).map((n) => 'pack:' + n.id)
         resolved[def.key] = {
           value: has ? settings[def.key] : def.def,
@@ -1278,6 +1307,19 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
       return {
         enabled: true,
         active: started,
+        // ROUND 1 / K5: the ONE pack path, stated rather than implied. `loader` means `kernel/pack.js` via the injected
+        // `packApplier` (the entry's path); `none` means `usePack()` refuses by name. There is no third value, because a
+        // legacy in-kernel loader no longer exists (D-02).
+        packPath: typeof packApplier === 'function' ? 'loader' : 'none',
+        settingsMerge: {
+          // The D-02 priority ladder, printed so a reader never has to reconstruct it from the code.
+          priority: 'pack 默认 < preset Config／会话 settings < 运行时 set',
+          sources: settingsSources ? Object.assign({}, settingsSources) : null,
+          // The named OVERLAP REPORT is surfaced by the host face (`createHostAdapter({ mergeReport })`, printed by
+          // `vibe_vmu_status`), because the entry - which computed it - owns it and the kernel never acts on it.
+          conflictsView: 'vibe_vmu_status → settingsMerge.conflicts (the entry\'s mergeReport)',
+          note: 'a conflict is a pack default that collided with a higher layer: the higher layer WINS and the collision is named (O4); open the door with vmu.packs.activeOverrides / allowKernelOverride',
+        },
         settings: { keys: Object.keys(settings).length, engineEnabled: enabled, dryRun, resolved,
           // TASK-163: the hot-grading promise is SELF-DISCLOSED here, and the last runtime write is shown with
           // what it really applied — the receipt and this line are the same fact, not two opinions.
@@ -1332,6 +1374,13 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
           // scheduler's OWN contract shape — the single source of truth — so status can never claim a timer
           // the consumer would refuse (`VMU_CONTROL_NO_TIMER`). `timerNote` names the expected shapes.
           deliver: !!deliver, deliverConsumedBy: seamReceipts.deliver.slice().sort(),
+          // ROUND 1 / K3: the TURN seam is reported from the value the loop was ACTUALLY built with, so a host that
+          // injects `deliverTurn` can see it took, and a host that does not can see the named refusal coming.
+          turnDeliver: !!turnDeliverSeam,
+          turnDeliverSource: typeof deliverTurn === 'function' ? 'kernel-deliverTurn'
+            : (host && typeof host.deliverTurn === 'function' ? 'host.deliverTurn' : null),
+          turnDeliverNote: turnDeliverSeam ? null
+            : 'the turn loop has no delivery seam: `vibe_vmu_turn` step/drive refuse by name (VMU_ENGINE_UNAVAILABLE); pass { deliverTurn } (the entry assembles it from ctx.get(\'subagents\') via kernel/turn/index.js deliverViaSubagents)',
           signer: !!signer, fetchFn: !!fetchFn,
           timer: scheduler.status().timerShape !== null,
           timerShape: scheduler.status().timerShape,
