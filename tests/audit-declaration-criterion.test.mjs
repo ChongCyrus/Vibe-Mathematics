@@ -128,6 +128,16 @@ export const DECLARED_SELF_REPORT_FIELDS = Object.freeze([
   // the blind spot the audit exists to find, found in its own subject. `droppedIsCounted` is reported by a ring/retention
   // path when a row is dropped and the drop is counted.
   'droppedIsCounted',
+  // ROUND 2 (handover): three fields this suite's own mechanical extraction discovered in the round's new/rewritten
+  // modules. Each is declared WITH its meaning and its source file, because an undeclared discovery is exactly the
+  // blind spot this rule exists to find (and the fix is to declare it here, never to stop discovering it):
+  //   · `countsTowardsRound` - kernel/meeting.js:392 - a speech receipt says whether the speech counts toward the
+  //     round, so a caller can never mistake a recorded-but-not-counted speech for a delivered one.
+  //   · `unwired`            - kernel/arbitration.js:110 - counts wiring gaps (bus topics / the minutes seam) and
+  //     publishes them on the `arbitration/hook-unwired` rail.
+  //   · `wiredKeys`          - kernel/mathadapters.js:708 - status() reports how many settings keys the adapter
+  //     face actually wired.
+  'countsTowardsRound', 'unwired', 'wiredKeys',
 ])
 
 /** Top-level keys of every `return { … }` object literal in one source. */

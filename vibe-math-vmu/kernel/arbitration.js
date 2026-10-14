@@ -21,6 +21,7 @@
 //   · READ paths (list/history/effective/status/panelOf) never mutate the cases
 // SETTINGS READ CONVENTION (kernel/guard.js): every key is read as a PLAIN LITERAL, because the settings
 // table and the docs audit both discover "wired" keys by scanning file text for the literal.
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const apiVersion = 1
 
 export function refuse(code, message, hint) {
@@ -109,7 +110,6 @@ export function createArbitration({ clock = () => 0, log = null, settings = {}, 
   const unwired = new Map()      // counted wiring gaps (bus topics / minutes seam)
   const declaredTopics = new Set()
   const escalationsBySubject = new Map()
-  let seq = 0
 
   function nonNegInt(v, def) { return Number.isInteger(v) && v >= 0 ? v : def }
   const bump = (map, key, by = 1) => map.set(key, (map.get(key) || 0) + by)
@@ -225,7 +225,7 @@ export function createArbitration({ clock = () => 0, log = null, settings = {}, 
           if (typeof c.arbiter === 'string' && typeof c.withParty === 'string') requireRecusal.push({ arbiter: c.arbiter, withParty: c.withParty, since: now() })
         }
       }
-      const id = 'c-' + (++seq)
+      const id = mint('collision', 'c-')
       const c = {
         id, subject: String(subject), kind: String(kind), conflictClass: String(kind),
         parties: list, arbiters: [], recused: [], recuseRequired: requireRecusal,

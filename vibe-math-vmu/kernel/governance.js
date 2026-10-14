@@ -15,6 +15,7 @@
 //
 // 已登记的键（`settings/planned.js`）与码（`docs/03` §8）都在 `KEYS`／拒绝函数里逐条出现 ✓。
 
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const AGENDA_KEYS = Object.freeze([
   'vmu.agenda.maxItems',
   'vmu.agenda.ownerRequired',
@@ -72,14 +73,14 @@ export function createGovernance(opts) {
   const items = new Map()
   const order = []
   const motions = new Map()
-  let seq = 0
+
   let droppedEvents = 0
   const events = []
   const note = (what, id) => {
     events.push({ at: clock(), what, id: String(id || '') })
     if (events.length > AUDIT_MAX) { events.shift(); droppedEvents += 1 }
   }
-  const newId = (p) => p + '-' + (++seq)
+  const newId = (p) => mint('governance', p + '-')
 
   // ── 议程 ──────────────────────────────────────────────────────────────────
   const agenda = {

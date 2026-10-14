@@ -47,6 +47,21 @@ export const PUBLIC_KEYS = Object.freeze([
   // the only test that touches the projection injects a FAKE store. Measured against the real createStore before
   // this line existed: `work` ⇒ ok, `idempotency` ⇒ refused. The whitelist and docs/03 §6 move together.
   'idempotency',
+  // ROUND 2 (task-14): the two keys this round's faces actually write.
+  //   · `mailbox`  - kernel/mailbox.js: durable per-recipient mail (ack only after a successful delivery);
+  //   · `resume`   - kernel/resume.js: recovery records + per-face id counters + journal index (the id-reuse fix).
+  // The OTHER projection keys (`members`/`tasks`/`meetings`/`ballots`/`budget`/`phase`) were already listed but had
+  // NO writer or hydrator - Round 2 wires them (Lead's durable-projection item); they are not renamed.
+  'mailbox',
+  'resume',
+  //   · `ids`      - kernel/ids.js: the ONE id minter's counters (monotonic across restarts; a counter that is lost
+  //                  is still recovered from the max suffix seen in the projections, so a name is never reused).
+  'ids',
+  // ROUND 2 (reader-a's follow-up): `chat` and `panel` are the durable sources for "unacked messages" and the member
+  // state panel, so they join the whitelist. Their `snapshot()/restore()` seams land with v5r-reader-c; until then
+  // `resume.status().unhydrated[]` NAMES them rather than pretending they were restored.
+  'chat',
+  'panel',
 ])
 
 /** Named refusal (codes are registered in docs/03 §8). */

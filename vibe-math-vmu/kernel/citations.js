@@ -8,6 +8,7 @@
 //
 // FACE CONVENTIONS: literal key reads; receipts carry enforced[] and fired[]; limits refused BY NAME; nothing declared means
 // nothing happens; injected clock; read-only surfaces never mutate.
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const apiVersion = 1
 
 export function refuse(code, message, hint, extra) {
@@ -53,7 +54,6 @@ export function createCitations({ clock = () => 0, log = null, settings = {}, bu
 
   const entries = []
   let dropped = 0
-  let seq = 0
 
   /** The identifier to key on, chosen by the DECLARED priority - never by whichever key appears first. */
   function identify({ ids = null } = {}) {
@@ -111,11 +111,11 @@ export function createCitations({ clock = () => 0, log = null, settings = {}, bu
       text = '@article{' + key + ',\n  title = {' + entry.title + '},\n  author = {' + authorList.join(' and ') + '},\n  year = {' + entry.year + '}' +
         (v.idType ? ',\n  ' + v.idType + ' = {' + v.id + '}' : '') + '\n}'
     } else if (wanted === 'csl-json') {
-      text = JSON.stringify([{ id: v.id || ('free-' + (++seq)), type: 'article-journal', title: entry.title, author: authorList.map((a) => ({ literal: a })), issued: { 'date-parts': [[Number(entry.year) || entry.year]] }, DOI: entry.ids.doi || undefined, URL: entry.ids.url || undefined }])
+      text = JSON.stringify([{ id: v.id || (mint('cite-free', 'free-')), type: 'article-journal', title: entry.title, author: authorList.map((a) => ({ literal: a })), issued: { 'date-parts': [[Number(entry.year) || entry.year]] }, DOI: entry.ids.doi || undefined, URL: entry.ids.url || undefined }])
     } else {
-      text = '- id: ' + (v.id || ('free-' + (++seq))) + '\n  title: ' + entry.title + '\n  author: [' + authorList.join(', ') + ']\n  issued: ' + entry.year
+      text = '- id: ' + (v.id || (mint('cite-free', 'free-'))) + '\n  title: ' + entry.title + '\n  author: [' + authorList.join(', ') + ']\n  issued: ' + entry.year
     }
-    const rec = { id: 'cite-' + (++seq), style: wanted, text, idType: v.idType, id: v.id, title: entry.title, at: clock() }
+    const rec = { id: mint('cite', 'cite-'), style: wanted, text, idType: v.idType, id: v.id, title: entry.title, at: clock() }
     entries.push(rec)
     while (entries.length > 300) { entries.shift(); dropped += 1 }
     say({ type: 'citations/rendered', at: rec.at, id: rec.id, style: wanted, idType: v.idType })

@@ -80,39 +80,67 @@ export function createPromptPipeline({
   settings = {},
   clock = () => new Date().toISOString(),
 } = {}) {
-  const localeDefault = typeof settings['vmu.prompts.locale.default'] === 'string' ? settings['vmu.prompts.locale.default'] : null
-  const localeChain = Array.isArray(settings['vmu.prompts.locale.fallbackChain'])
-    ? settings['vmu.prompts.locale.fallbackChain'].filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim())
-    : ['zh-Hans', 'zh', 'en']
-  const localeOnMissing = settings['vmu.prompts.locale.onMissing'] === 'refuse' ? 'refuse' : 'warn'
-  const overridesByLang = settings['vmu.prompts.overridesByLang'] && typeof settings['vmu.prompts.overridesByLang'] === 'object'
-    ? settings['vmu.prompts.overridesByLang'] : {}
+  // D-13 — THE SETTINGS ARE READ LIVE, NOT SNAPSHOTTED AT CONSTRUCTION. The kernel hands this factory a
+  // LIVE settings view (`settings.get(k)`), and every key below is declared hot class H1 ("next turn"):
+  // snapshotting them here made a runtime `vibe_vmu_set` invisible to the prompt face while the receipt
+  // claimed "every consumer reads this key live". The rule: only STRUCTURAL derivations may be cached
+  // (the declared sections are REGISTERED once, below — a registration is not a value); values are read
+  // per call. `settings` may be a plain object (tests) or the kernel's view, so the accessor handles both.
+  const sget = (k) => {
+    if (!settings || typeof settings !== 'object') return undefined
+    return typeof settings.get === 'function' ? settings.get(k) : settings[k]
+  }
+  const localeDefaultOf = () => (typeof sget('vmu.prompts.locale.default') === 'string' ? sget('vmu.prompts.locale.default') : null)
+  const localeChainOf = () => {
+    const v = sget('vmu.prompts.locale.fallbackChain')
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : ['zh-Hans', 'zh', 'en']
+  }
+  const localeOnMissingOf = () => (sget('vmu.prompts.locale.onMissing') === 'refuse' ? 'refuse' : 'warn')
+  const overridesByLangOf = () => {
+    const v = sget('vmu.prompts.overridesByLang')
+    return v && typeof v === 'object' ? v : {}
+  }
   // ROUND 244: the glossary family.
-  const glossaryMode = ['enforce', 'warn', 'off'].includes(settings['vmu.prompts.glossary.mode']) ? settings['vmu.prompts.glossary.mode'] : 'enforce'
-  const glossaryPath = typeof settings['vmu.prompts.glossary.ontology'] === 'string' && settings['vmu.prompts.glossary.ontology'].trim()
-    ? settings['vmu.prompts.glossary.ontology'].trim() : 'vibe-math-vmu/glossary.json'
+  const glossaryModeOf = () => {
+    const v = sget('vmu.prompts.glossary.mode')
+    return ['enforce', 'warn', 'off'].includes(v) ? v : 'enforce'
+  }
+  const glossaryPathOf = () => {
+    const v = sget('vmu.prompts.glossary.ontology')
+    return typeof v === 'string' && v.trim() ? v.trim() : 'vibe-math-vmu/glossary.json'
+  }
   const glossaryTraces = []
   let ontologyIds = null   // null means NOT LOADED, which §21.4 insists is different from empty
   // ROUND 242 (verified half): the declared sections and overrides.
   if (overrides === null || typeof overrides !== 'object') overrides = {}   // the kernel passes null EXPLICITLY, so the default never applied
-  const declaredSections = Array.isArray(settings['vmu.prompts.sections']) ? settings['vmu.prompts.sections'] : []
-  const declaredOverrides = settings['vmu.prompts.overrides'] && typeof settings['vmu.prompts.overrides'] === 'object'
-    ? settings['vmu.prompts.overrides'] : {}
-  /** The languages to try, in order, with the reason the list looks like it does. */
+  // STRUCTURAL: registered once below. `declaredOverrides` is kept only for the RECEIPT (`overrideMerge`);
+  // the text itself is read live by `declaredOverrideOf`, so a runtime change takes effect next assembly.
+  const declaredSections = Array.isArray(sget('vmu.prompts.sections')) ? sget('vmu.prompts.sections') : []
+  const declaredOverridesAtConstruction = sget('vmu.prompts.overrides')
+  const declaredOverrides = declaredOverridesAtConstruction && typeof declaredOverridesAtConstruction === 'object'
+    ? declaredOverridesAtConstruction : {}
+  const declaredOverrideOf = (name) => {
+    const m = sget('vmu.prompts.overrides')
+    return m && typeof m === 'object' && typeof m[name] === 'string' ? m[name] : undefined
+  }
+  /** The languages to try, in order, with the reason the list looks like it does. Read LIVE (D-13). */
   const langOrder = (asked) => {
     const list = []
     if (typeof asked === 'string' && asked.trim()) list.push(asked.trim())
-    if (localeDefault && !list.includes(localeDefault)) list.push(localeDefault)
-    for (const l of localeChain) if (!list.includes(l)) list.push(l)
+    const fallbackDefault = localeDefaultOf()
+    if (fallbackDefault && !list.includes(fallbackDefault)) list.push(fallbackDefault)
+    for (const l of localeChainOf()) if (!list.includes(l)) list.push(l)
     return list
   }
-  /** The override in force for one section under one language: the language-level one wins, then the plain one. */
+  /** The override in force for one section under one language: language-level wins, then the caller's, then the declared (all LIVE). */
   const overrideFor = (name, lang) => {
-    const perLang = overridesByLang[name]
+    const perLang = overridesByLangOf()[name]
     if (perLang && typeof perLang === 'object') {
       for (const l of langOrder(lang)) if (typeof perLang[l] === 'string') return { text: perLang[l], source: 'byLang:' + l }
     }
     if (typeof overrides[name] === 'string') return { text: overrides[name], source: 'plain' }
+    const declared = declaredOverrideOf(name)
+    if (typeof declared === 'string') return { text: declared, source: 'plain:settings' }
     return { text: null, source: null }
   }
   const registry = new Map()
@@ -132,7 +160,7 @@ export function createPromptPipeline({
     // ROUND 243: entries exist for this name but none is in the resolved order - THIS is where on-missing belongs now, because
     // picking the best entry means a mismatched section would otherwise never be looked at.
     const langs = all.map((e) => e.lang).filter(Boolean)
-    if (localeOnMissing === 'refuse') {
+    if (localeOnMissingOf() === 'refuse') {
       throw refuse('VMU_NO_SUCH_OBJECT', 'no text for this section in the resolved languages: ' + name + ' exists as ' + langs.join(', '),
         'asked=' + String(lang || '') + ', tried=' + langOrder(lang).join(' > ') + ' (vmu.prompts.locale.onMissing=refuse)')
     }
@@ -259,8 +287,9 @@ export function createPromptPipeline({
   for (const s of sections) register(s)
   // ROUND 242: a section DECLARED in settings is registered too - "settings inline" is the highest-scoring source in §11.
   for (const s of declaredSections) register(s)
-  // The CALLER wins: a declared override only fills a key the caller left empty.
-  for (const [k, v] of Object.entries(declaredOverrides)) if (typeof v === 'string' && overrides[k] === undefined) overrides[k] = v
+  // D-13: the declared overrides are NOT copied into the caller's map any more (that froze their TEXT at
+  // construction). `overrideFor` reads `vmu.prompts.overrides` live, and the caller's own map still wins.
+  // The receipt keeps the two counts so a deployment can see what was declared vs what the caller set.
   const overrideMerge = { declared: Object.keys(declaredOverrides).length, fromCaller: Object.keys(overrides).length }
 
   // A binding that names an unknown section is a configuration defect, not a no-op: silently ignoring it
@@ -318,7 +347,7 @@ export function createPromptPipeline({
     // ROUND 241: and the SAME round closes the gap it would otherwise leave: a section that declares the language of its text
     // is checked against the resolved order, and the declaration decides what a mismatch means.
     if (typeof entry.lang === 'string' && entry.lang.trim() && !langOrder(ctx && ctx.lang).includes(entry.lang.trim())) {
-      if (localeOnMissing === 'refuse') {
+      if (localeOnMissingOf() === 'refuse') {
         throw refuse('VMU_NO_SUCH_OBJECT', 'no text for this section in the resolved languages: ' + entry.name + ' is ' + entry.lang.trim(),
           'asked=' + String((ctx && ctx.lang) || '') + ', tried=' + langOrder(ctx && ctx.lang).join(' > ') + ' (vmu.prompts.locale.onMissing=refuse)')
       }
@@ -446,6 +475,10 @@ export function createPromptPipeline({
 
   // ROUND 244: §21.4. Placed after the pick deliberately: these are the sections that will actually render.
   let glossaryRefusal = null
+  // D-13: read the glossary knobs LIVE for THIS assembly (once per call, so the run is internally stable but
+  // a runtime `vibe_vmu_set` is honoured by the very next assembly).
+  const glossaryMode = glossaryModeOf()
+  const glossaryPath = glossaryPathOf()
   if (glossaryMode !== 'off') {
     if (ontologyIds === null && !readFile) {
       // A CAPABILITY GAP, not a broken declaration: traced, and assembly continues. Refusing here would make the glossary
@@ -552,7 +585,7 @@ export function createPromptPipeline({
         variableMisses: variableMisses.slice(),
         missingVariable: (ctx && ctx.settings && ctx.settings['vmu.prompts.missingVariable'] === 'refuse') ? 'refuse' : 'report',
         // ROUND 241: a language decision that cannot be audited is not a decision.
-        locale: { asked: (ctx && ctx.lang) || null, tried: langOrder(ctx && ctx.lang), default: localeDefault, chain: localeChain, onMissing: localeOnMissing,
+        locale: { asked: (ctx && ctx.lang) || null, tried: langOrder(ctx && ctx.lang), default: localeDefaultOf(), chain: localeChainOf(), onMissing: localeOnMissingOf(),
           overrideSources: [...new Set([...registry.values()].map((e) => e.name))].map((n) => ({ section: n, source: overrideFor(n, ctx && ctx.lang).source })).filter((e) => e.source !== null) },
           localeMisses: localeMisses.slice(),
         glossary: { mode: glossaryMode, path: glossaryPath, loaded: ontologyIds !== null, traces: glossaryTraces.slice() },
@@ -613,7 +646,7 @@ export function createPromptPipeline({
         sections: [...registry.values()]
           .sort((a, b) => (a.order - b.order) || (a.name < b.name ? -1 : 1))
           .map((e) => ({ name: e.name, order: e.order, range: e.range, scope: e.scope, mutable: e.mutable,
-            source: e.source, overridden: typeof overrides[e.name] === 'string' })),
+            source: e.source, overridden: typeof overrides[e.name] === 'string' || typeof declaredOverrideOf(e.name) === 'string' })),
         bindings: bindings.length,
         truncation: truncation.map((t) => ({ section: t.section, kept: t.kept, dropped: t.dropped, mode: t.mode })),
         middlewareAppends: lastAppends.map((a) => ({ section: a.section, source: a.source })),

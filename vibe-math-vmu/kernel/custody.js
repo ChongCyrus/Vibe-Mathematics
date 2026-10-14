@@ -21,6 +21,7 @@
 //
 // FACE CONVENTIONS: literal key reads; receipts carry enforced[] and fired[]; limits refused BY NAME; nothing declared
 // means nothing happens; injected clock; read-only surfaces never mutate; every truncation is counted.
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const apiVersion = 1
 
 export function refuse(code, message, hint, extra) {
@@ -68,7 +69,6 @@ export function createCustody({ clock = () => 0, log = null, settings = {}, bus 
 
   const entries = new Map()   // id -> { id, ref, kind, chain[], storageCycles, destroyedAt, destroyReason, warnings[] }
   let dropped = 0
-  let seq = 0
 
   const entryOf = (id) => {
     const s = entries.get(String(id))
@@ -99,7 +99,7 @@ export function createCustody({ clock = () => 0, log = null, settings = {}, bus 
       throw refuse(CODE.reversibleMapping, 'vmu.anonymity.mappingIrreversible=true: a mapping from subject to reference may not be stored here',
         'keep the mapping outside this ledger, or set the key to false deliberately and record that decision', { ref, enforced, fired })
     }
-    const realId = str(id) || ('entry-' + (++seq))
+    const realId = str(id) || (mint('custody-entry', 'entry-'))
     const at = clock()
     const rec = { id: realId, ref, kind: str(kind) || null, chain: [], storageCycles: 0, destroyedAt: null, destroyReason: null, warnings: [], mapping: mapping === null || mapping === undefined ? null : Object.assign({}, mapping), at }
     // requireChain: a registered entry must OPEN its chain with a holder, so the chain can never start empty.

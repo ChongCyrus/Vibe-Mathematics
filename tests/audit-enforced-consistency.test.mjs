@@ -38,6 +38,10 @@ import { createCapacity } from '../vibe-math-vmu/kernel/capacity.js'
 import { createHr } from '../vibe-math-vmu/kernel/tenure.js'
 import { createMigration } from '../vibe-math-vmu/kernel/migration.js'
 import { createGrant } from '../vibe-math-vmu/kernel/grant.js'
+import { createChat } from '../vibe-math-vmu/kernel/chat.js'
+import { createMathAdapters } from '../vibe-math-vmu/kernel/mathadapters.js'
+import { createMathJobs } from '../vibe-math-vmu/kernel/mathjobs.js'
+import { createLeanFace } from '../vibe-math-vmu/kernel/lean.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -577,6 +581,29 @@ const REFUSAL_SCENARIOS = [
   { module: 'grant', call: 'check(no grant)', settings: { 'vmu.grant.enabled': true },
     make: (settings) => createGrant({ clock: CLOCK, log: () => {}, settings }),
     run: (g) => g.check({ member: 'a', command: 'convene' }) },
+  // ROUND 2 (handover): the two new faces that carry REAL enforcement logic (their `enforced` mentions are
+  // pushes, not only receipt envelopes - measured, which is why they are scenarios and not envelope exemptions).
+  // Both refusals are MEASURED, never guessed:
+  //   · chat.mute with no acting member ⇒ VMU_CHAT_NOT_ADMIN ("anonymous policy changes are refused")
+  //   · mathadapters.plan() built WITHOUT settings/seams ⇒ VMU_MATH_INVALID_INPUT (the zero-mechanism matrix
+  //     measures the same call, so the two gates agree on one measured shape)
+  { module: 'chat', call: 'mute(no acting member)', settings: {},
+    make: (settings) => createChat({ clock: CLOCK, log: () => {}, settings }),
+    run: (c) => c.mute({ member: 'm1', reason: 'x' }) },
+  { module: 'mathadapters', call: 'plan(no settings/seams)', settings: {},
+    make: () => createMathAdapters({ clock: CLOCK, log: () => {} }),
+    run: (a) => a.plan() },
+  // ROUND 2 (target 5, N2): the durable-job faces carry REAL enforcement too — a declared setting decides
+  // whether a submit is accepted, so they are scenarios (measured), not envelope exemptions:
+  //   · mathjobs.submit with vmu.math.computation='off'  ⇒ VMU_MATH_UNSUPPORTED_OP, enforced=[vmu.math.computation]
+  //   · lean.recover with job persistence declared but NO fs seam ⇒ VMU_LEAN_JOBS_MIRROR_UNWIRED,
+  //     enforced=[vmu.math.jobs.persist, vmu.math.jobs.dir]
+  { module: 'mathjobs', call: 'submit(computation=off)', settings: { 'vmu.math.computation': 'off', 'vmu.math.engines': ['sympy'] },
+    make: (settings) => createMathJobs({ clock: CLOCK, log: () => {}, settings, spawn: async () => ({ exitCode: 0 }) }),
+    run: (mj) => mj.submit({ engine: 'sympy', argv: ['-c', '1'] }) },
+  { module: 'lean', call: 'recover(no fs seam)', settings: { 'vmu.math.jobs.persist': true, 'vmu.math.jobs.recover': 'on-load' },
+    make: (settings) => createLeanFace({ clock: CLOCK, log: () => {}, settings }),
+    run: (lf) => lf.recover() },
 ]
 
 // ---------------------------------------------------------------------------------------------------------
@@ -719,6 +746,14 @@ for (const [mod, m] of [...byModule].sort()) {
     'partnership.js': 'receipts carry enforced[]; partnership refusals asserted in its own suite',
     'publication.js': 'receipts carry enforced[]; publication refusals asserted in its own suite',
     'trust.js': 'receipts carry enforced[]; the authority refusals are asserted in its own suite',
+    // ROUND 2 (handover): the new faces whose `enforced` mentions are ONLY receipt envelopes. The check below
+    // mechanically verifies every occurrence is envelope-shaped - one `enforced.push(...)` would void the
+    // exemption and put the module back on the uncovered list, which is what happened to chat.js/mathadapters.js
+    // (they carry real enforcement logic, so they got SCENARIOS instead of an exemption).
+    'mailbox.js': 'receipts carry enforced[] (durable delivery + ack); the delivery/ack refusals are asserted in tests/vmu-mailbox.test.mjs',
+    'panel.js': 'receipts carry enforced[] (member state panel); the panel refusals are asserted in tests/vmu-panel.test.mjs',
+    'report.js': 'receipts carry enforced[] (declared reporting); the zero-mechanism matrix measures its status() as ok, and the report refusals are asserted in tests/vmu-assistant-*.test.mjs',
+    'resume.js': 'receipts carry enforced[] (resume/recovery projections); its refusal path is asserted in tests/vmu-resume-recovery.test.mjs',
   }
   // the exemption is only valid if it is literally true: every occurrence must be an envelope key
   const envelopeViolations = []

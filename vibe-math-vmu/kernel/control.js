@@ -26,14 +26,21 @@ const listOf = (v, fallback) => (Array.isArray(v) && v.length ? v.filter((x) => 
 const msOr = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0 }
 
 const DEGRADE_STEPS = Object.freeze(['read-only', 'report-only', 'no-spawn'])
+const LOG_MAX = 200
 
 export const CODE = Object.freeze({
   pauseScope: 'VMU_CONTROL_PAUSE_SCOPE',
   pauseRole: 'VMU_CONTROL_PAUSE_ROLE',
   degradeStep: 'VMU_CONTROL_DEGRADE_STEP',
+  // ROUND 2 — the human may retune a DECLARED knob in mid-flight (task C). A key that is not in the declared
+  // list, a role that may not tune, or a kernel with no settings-write seam each get their own named refusal;
+  // none of them is silently ignored.
+  paramUndeclared: 'VMU_CONTROL_PARAM_UNDECLARED',
+  paramRole: 'VMU_CONTROL_PARAM_ROLE',
+  paramUnavailable: 'VMU_CONTROL_PARAM_UNAVAILABLE',
 })
 
-export function createControl({ clock = () => 0, log = null, settings = {}, bus = null, listCap = 100 } = {}) {
+export function createControl({ clock = () => 0, log = null, settings = {}, bus = null, listCap = 100, approval = null, setSetting = null } = {}) {
   if (typeof clock !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'createControl needs a clock function', 'pass { clock: () => ms }')
   const sget = (key, def) => {
     if (settings && typeof settings.get === 'function') { const v = settings.get(key); return v === undefined ? def : v }
@@ -41,6 +48,16 @@ export function createControl({ clock = () => 0, log = null, settings = {}, bus 
     return def
   }
   const say = (ev) => { if (log && typeof log.append === 'function') { try { log.append(ev) } catch (e) { /* logging never breaks the face */ } } }
+  // Hook producers pass the NAME first (`kernel/bus.js` refuses a non-string hook) and catch the async rejection
+  // on the promise: an object-shaped emit is swallowed by the bus and never reaches any middleware.
+  const emit = (name, payload) => {
+    if (!bus || typeof bus.emit !== 'function') return null
+    try {
+      const r = bus.emit(name, payload)
+      if (r && typeof r.catch === 'function') r.catch(() => {})
+      return r
+    } catch (e) { return null }
+  }
 
   const cfg = () => ({
     pauseScope: listOf(sget('vmu.control.pauseScope'), ['tasks', 'meetings', 'ballots', 'work']),
@@ -50,10 +67,14 @@ export function createControl({ clock = () => 0, log = null, settings = {}, bus 
     degradeSteps: Array.isArray(sget('vmu.control.degradeSteps')) ? sget('vmu.control.degradeSteps').filter((x) => DEGRADE_STEPS.includes(x)) : [],
     canPauseRoles: listOf(sget('vmu.control.canPauseRoles'), ['office', 'chair']),
     stopClearsRegistry: sget('vmu.control.stopClearsRegistry') !== false,
+    // ROUND 2 (task C): who may retune a declared knob, and WHICH knobs exist as tunable at all.
+    canSetRoles: listOf(sget('vmu.control.canSetRoles'), ['office']),
+    tunableKeys: listOf(sget('vmu.control.tunableKeys'), []),
   })
 
   const paused = new Map()    // scope -> { scope, byRole, reason, at }
   const registry = new Set()  // what stop() would clear, when it is declared to
+  const trail = []            // the tune audit trail (bounded), so "who changed what, from what" survives the call
   let degradedTo = 0
   let stops = 0
   let dropped = 0
@@ -80,6 +101,7 @@ export function createControl({ clock = () => 0, log = null, settings = {}, bus 
     const rec = { scope: sc, byRole: role, reason: reason === null ? null : String(reason), at }
     paused.set(sc, rec)
     say({ type: 'control/paused', at, scope: sc, byRole: role })
+    emit('control/scope-paused', { at, scope: sc, byRole: role, reason: rec.reason })
     return { ok: true, scope: sc, byRole: role, reason: rec.reason, at, enforced, fired }
   }
 
@@ -93,8 +115,54 @@ export function createControl({ clock = () => 0, log = null, settings = {}, bus 
       throw refuse(CODE.pauseRole, 'this role may not resume: ' + (role || '(none)'),
         'may pause/resume: ' + c.canPauseRoles.join(', ') + ' (vmu.control.canPauseRoles)', { byRole: role || null, enforced: ['vmu.control.canPauseRoles'], fired: ['vmu.control.canPauseRoles'] })
     }
+    const rec = paused.get(sc)
     paused.delete(sc)
-    return { ok: true, scope: sc, resumed: true, byRole: role, enforced: ['vmu.control.canPauseRoles'], fired: [] }
+    // The resume is as auditable as the pause: who lifted what, and how long it was held (task C: 留痕).
+    const at = clock()
+    say({ type: 'control/resumed', at, scope: sc, byRole: role, pausedAt: rec ? rec.at : null })
+    emit('control/scope-resumed', { at, scope: sc, byRole: role, pausedAt: rec ? rec.at : null })
+    return { ok: true, scope: sc, resumed: true, byRole: role, pausedAt: rec ? rec.at : null, heldMs: rec ? at - rec.at : null, enforced: ['vmu.control.canPauseRoles'], fired: [] }
+  }
+
+  /**
+   * Mid-flight retune of a DECLARED knob (task C). Three refusals, all named: the key must be in the declared
+   * `vmu.control.tunableKeys` (an empty list means "no tuning"), the role must be in `vmu.control.canSetRoles`,
+   * and the kernel must have been given a settings-write seam — a face that cannot write must not pretend it did.
+   */
+  function tune({ key = null, value = undefined, byRole = null } = {}) {
+    const c = cfg()
+    const k = str(key)
+    const role = str(byRole)
+    if (!k) throw refuse('VMU_INVALID_ARGUMENT', 'tune needs a key', 'e.g. tune({ key: "vmu.control.idleAfterMs", value: 60000, byRole: "office" })')
+    if (!c.tunableKeys.length || !c.tunableKeys.includes(k)) {
+      say({ type: 'control/param-refused', at: clock(), key: k, code: CODE.paramUndeclared, byRole: role || null })
+      emit('control/param-refused', { at: clock(), key: k, code: CODE.paramUndeclared, byRole: role || null })
+      throw refuse(CODE.paramUndeclared, 'the key is not in vmu.control.tunableKeys: ' + k,
+        c.tunableKeys.length ? 'tunable: ' + c.tunableKeys.join(', ') : 'the declared list is EMPTY, so no parameter may be changed at all',
+        { key: k, declared: c.tunableKeys.slice(), enforced: ['vmu.control.tunableKeys'], fired: [CODE.paramUndeclared] })
+    }
+    if (!role || !c.canSetRoles.includes(role)) {
+      say({ type: 'control/param-refused', at: clock(), key: k, code: CODE.paramRole, byRole: role || null })
+      emit('control/param-refused', { at: clock(), key: k, code: CODE.paramRole, byRole: role || null })
+      throw refuse(CODE.paramRole, 'this role may not change parameters: ' + (role || '(none)'),
+        'may tune: ' + c.canSetRoles.join(', ') + ' (vmu.control.canSetRoles)', { byRole: role || null, declared: c.canSetRoles.slice(), enforced: ['vmu.control.canSetRoles'], fired: [CODE.paramRole] })
+    }
+    if (typeof setSetting !== 'function') {
+      throw refuse(CODE.paramUnavailable, 'this kernel has no settings-write seam, so ' + k + ' cannot be changed',
+        'the kernel passes setSetting when it builds the control face; a face that cannot write must say so')
+    }
+    const before = sget(k, undefined)
+    let outcome
+    try { outcome = setSetting(k, value) } catch (e) {
+      throw refuse(CODE.paramUnavailable, 'the settings-write seam refused ' + k + ': ' + String((e && e.message) || e),
+        'the key may be frozen (H0) or unknown to the schema', { key: k, error: String((e && e.code) || '') })
+    }
+    const rec = { key: k, from: before === undefined ? null : before, to: value, byRole: role, at: clock() }
+    trail.push(rec)
+    if (trail.length > LOG_MAX) { trail.shift(); dropped += 1 }
+    say({ type: 'control/param-set', at: rec.at, key: k, byRole: role })
+    emit('control/param-set', { at: rec.at, key: k, value, byRole: role })
+    return { ok: true, key: k, from: rec.from, to: value, byRole: role, at: rec.at, seam: outcome === undefined ? 'set' : outcome, enforced: ['vmu.control.tunableKeys', 'vmu.control.canSetRoles'], fired: [] }
   }
 
   /** May this scope act? A paused surface says so by name, and the refusal names who paused it. */
@@ -105,6 +173,9 @@ export function createControl({ clock = () => 0, log = null, settings = {}, bus 
       throw refuse('VMU_CONTROL_PAUSED', 'scope is paused: ' + sc + ' (by ' + rec.byRole + ')',
         'resume it with resume({ scope, byRole })', { scope: sc, byRole: rec.byRole, pausedAt: rec.at })
     }
+    // The human approval gate, when the kernel wired one: a paused scope is the control face's own gate, and a
+    // gated action is the human's. Both are consulted here so a caller has ONE question to ask ("may I act?").
+    if (typeof approval === 'function') approval({ action: 'control.' + (sc || 'scope'), subject: sc || null })
     return { ok: true, scope: sc, paused: false, enforced: [], fired: [] }
   }
 
@@ -190,6 +261,11 @@ export function createControl({ clock = () => 0, log = null, settings = {}, bus 
     ok: true,
     paused: [...paused.values()].map((x) => Object.assign({}, x)),
     registrySize: registry.size, degradedLevel: degradedTo, stops, dropped,
+    // ROUND 2: the tune surface, so an operator sees both the declaration and what was actually changed.
+    tunableKeys: cfg().tunableKeys.slice(), canSetRoles: cfg().canSetRoles.slice(),
+    tuned: trail.length, lastTune: trail.length ? Object.assign({}, trail[trail.length - 1]) : null,
+    approvalGateAttached: typeof approval === 'function',
+    settingsWriteSeam: typeof setSetting === 'function',
     policy: cfg(),
     archivingNeverPausedByDefault: !cfg().pauseScope.includes('archive'),
     idleNeverRecessesByItself: true,
@@ -198,5 +274,5 @@ export function createControl({ clock = () => 0, log = null, settings = {}, bus 
     listCap,
   })
 
-  return { apiVersion, pause, resume, mayAct, watchdog, idleState, degrade, stop, register, status }
+  return { apiVersion, pause, resume, mayAct, watchdog, idleState, degrade, stop, register, tune, tuneTrail: () => trail.map((t) => Object.assign({}, t)), status }
 }

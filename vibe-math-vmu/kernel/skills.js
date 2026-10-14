@@ -6,6 +6,7 @@
 //   · expiry is ALWAYS self-disclosed and downgraded — a stale level never passes as valid
 //   · a controlled level vocabulary is enforced by name; truncation always reports the dropped count
 //   · zero mechanism: level() answers "unknown" — never the lowest level; the clock is injected; reads never mutate
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const apiVersion = 1
 
 /** D3 (round 26): every refusal states its EVALUATION SCOPE — `enforcedScope:'evaluated-so-far'` says in words
@@ -64,7 +65,7 @@ export function createSkills({ clock = () => 0, log = null, settings = {}, bus =
   const decls = []          // append-only: { id, memberId, skill, level, evidence[], declaredAt, verifiedAt, verifiedBy, status, retiredAt }
   const attests = []        // append-only: { id, declId, by, note, at }
   let dropped = 0
-  let seq = 0
+
   const key = (m, s) => m + '\u0000' + s
   const forMemberSkill = (memberId, skill) => decls.filter((d) => d.memberId === memberId && d.skill === skill && d.retiredAt == null)
   const levelIndex = (levels, lv) => levels.indexOf(lv)
@@ -106,7 +107,7 @@ export function createSkills({ clock = () => 0, log = null, settings = {}, bus =
       const mine = decls.filter((d) => d.memberId === memberId && d.retiredAt == null)
       if (mine.length >= c.maxSkillsPerMember) throw refuse(CODE.limit, 'member ' + memberId + ' already holds ' + mine.length + '/' + c.maxSkillsPerMember + ' live declarations', 'retire one, or raise vmu.skills.maxSkillsPerMember')
       const at = clock()
-      const id = 'sk-' + (++seq)
+      const id = mint('skill', 'sk-')
       const rec = { id, memberId, skill, level, evidence: ev, declaredAt: at, verifiedAt: null, verifiedBy: null, status: 'unverified', retiredAt: null }
       decls.push(rec)
       say({ type: 'skills/declare', at, memberId, skill, level, id, status: 'unverified' })
@@ -127,7 +128,7 @@ export function createSkills({ clock = () => 0, log = null, settings = {}, bus =
       if (!rows.length) throw refuse(CODE.unknown, 'no live declaration for ' + memberId + '/' + skill, 'declare first (declare()), then attest it')
       const target = rows.slice().sort((a, b) => (b.declaredAt - a.declaredAt) || (a.id < b.id ? -1 : 1))[0]
       const at = clock()
-      const id = 'at-' + (++seq)
+      const id = mint('attestation', 'at-')
       attests.push({ id, declId: target.id, by, note, at })
       target.verifiedAt = at
       target.verifiedBy = by

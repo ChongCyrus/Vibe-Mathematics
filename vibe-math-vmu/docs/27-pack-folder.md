@@ -27,8 +27,18 @@ vibe-math-vmu/
     v5r/                      ← ★★★ 整合包文件夹（一个机构一个文件夹）
       index.js                ← 清单：id / version / middleware / defaults / contributes
       settings/defaults.js    ← ★ 这个包【想要的】默认值（用户设置优先）
+      settings/defaults.json  ← 同一份默认值的【纯数据视图】（插件在建内核前按目录名读）
+      notices.js              ← 这个包的通知措辞（四种形态）
       middleware/             ← ★ 这个包贡献的策略（纯函数，可读可测可替换）
         prompt-switches.js    ← 哪些可选段开关、发哪份回复目录、会议三态、形式化四分支
+      prompts/                ← 提示词内容：语料转写模块 + 章程 + 人设 + 助手面（轮 2）
+        v5r-core.js           ← 被装载清单 PACK（席位/轨道/规则/段 getter/别名/提示词正文轴）
+        v5r-charter.js        ← 章程转写（按 role/phase 分支的段与绑定）
+        v5r-prompts.js        ← 语料转写（生成物，哈希锁定）
+        v5r-blocks-a.js / v5r-blocks-b.js ← 章程块（R14 尺寸门禁拆分的两半）
+        v5r-persona.js        ← 捕获的人设块
+        v5r-assistant.js      ← ★ 轮 2：助手面【逐轮】段（被装载清单再导出，注册进管线）
+        assistant.json        ← ★ 轮 2：助手面【宿主 system prompt】数据（hostPrompt:true 段）
       README.md               ← 这个文件夹是什么
       …（提示词内容模块将陆续移入 prompts/）
     v5r-core.js 等            ← 迁移期的旧位置；文件夹已是唯一入口，物理搬入是内部细节
@@ -78,6 +88,13 @@ vibe-math-vmu/
 
 ★★ **残余边界（如实标注）**：★ `extraPhases` 仍是**构造期取值**（回合循环在建内核时捕获）⇒ **第三方 pack 若要走"声明驱动"，其相位必须由它自己的插件在构造前传入**（本轮的 `PACK_RUNTIME` 是同步映射，正是为此）；★ 若将来把"装配前"也做成可挂载点，这条边界才消失。
 
+### 4.2 轮 2 的声明层与两处收口（D-08 / D-12 / D-13）
+
+- **声明层**（D-08：能力进内核、策略进 pack）：v5r 用 `settings/defaults.json`（19 个新键：chat/mailbox/panel/resume/human/math-jobs/meeting 参数）声明这家所的偏好；**报告策略**在被装载清单（`packs/v5r/prompts/v5r-core.js`）上声明。**同一键不得两处都写**——defaults 先折进内核设置，清单再声明同键会被 `applyPackSettings` 判为重叠冲突（O4）。详见 `docs/10 §4.1`。
+- **D-12 钩子单一真源收口**：`kernel/bus.js` 的 `HOOK_REGISTRY` 是唯一写钩子的地方；`VU_HOOKS`/`DEFAULT_FAILURE`/`DSH_HOOKS`/`BRIDGED_HOOKS` **全部派生**（不再有字面量第二份），4 处按源码文本解析的门禁同轮改为**读运行时导出**。轮 2 新增 33 个原语钩子（`resume/`、`ids/`、`human/`、`control/`、`chat/`、`mailbox/`、`panel/`、`math/`、`lifecycle/`），命名空间规则同步扩展 ⇒ 未登记名**具名拒**。详见 `docs/05 §5.3/§6.1.1`。
+- **D-13 提示词活读**：`kernel/prompt/index.js` 的七个设置值（locale 三项、`overridesByLang`、glossary 两项、`overrides`）改为**每次调用经 `settings.get()` 现读**，构造期只缓存**结构性**派生（段的注册）⇒ 运行期改键后**同回合装配即生效**，不需重建管线。详见 `docs/06 §11.1`。
+- **pack 与内核的依赖方向**：`kernel/**` 仍然**零 import `packs/**`**（轮 2 未变）；pack 只声明、内核只读取。
+
 ---
 
 ## 5. 加载：文件夹优先
@@ -121,9 +138,9 @@ vibe-math-vmu/
 | ★★★ **四个 pack【全部是文件夹**]✓ | `packs/{v5r,example-data,institute-min,v3-core}/` ✓ —— ★ **`packs/` 下【零散文件**]✓ | ★★ 加载器**优先 `<id>/index.js`** ✓，**仅在该 import 失败时回退 `<id>.js`** ✓ ⇒ ★ **散装形态走的是"兼容路径"，而"pack 即文件夹"此前【只对恰好是文件夹的那几个成立**]✗；★ 现在**四个都是文件夹且 id 不变** ✓；★★ **并删除 213 KB 的【字节重复**]✓（`v5r-prompts.js`／**`v5r-blocks-a.js`**／**`v5r-blocks-b.js`**／`v5r-persona.js` 各存两份 ✓）—— ★★ **成因是两个生成器写到了【没人读的那份**]✗ ⇒ **`regen-all` 一直在忠实重生成一个没有消费者的文件，而 `--check` 校验的也是它** ✓ |
 | ★★★ **一个 pack 文件夹里可能有【两份清单**]✓，且是**不同对象** ✓ | ① **加载器消费的 `loaded.PACK`** ✓（★ 插件装载点自己写着 ✓）＝ v5r 的 `prompts/v5r-core.js` 导出物 ✓，`id = 'v5r-core'` ✓，**带 `slots`／`rules`／`codes`／`tracks`／`aliases`／`prompts`** ✓；② **文件夹自己的记录 `V5R_PACK`** ✓，`id = 'v5r'` ✓，**带 `sectionModule`／`policyModule`／`noticeModule`／`phases`／`defaults`／`contributes`** ✓ | ★★ **为什么改名而不合并** ✓：★ `export *` **不会**把名字带进本模块作用域 ✓，**而同模块再写显式 `PACK` 曾【静默替换**]星号带来的真清单** ✗ ⇒ **名册消失** ✓ ⇒ ★★ **"教训留在了名字里"** ✓；★★★ **而 `validatePack` 按设计忽略未知键** ✓ ⇒ **放在被装载清单上、没人读的字段会【静默失效**]✗ ⇒ ★ **那些字段因此由 `describeV5rPack()` 读出** ✓（★ **用【同名字段**]✓ —— ★ 改名会满足读者却让检查【不再覆盖它**]✗）—— ★★ **本轮之前它们正是"看上去被消费、其实什么都不做"** ✓。★★★ **并写成【不变量**]✓：**`V5R_PACK` 的每个键都必须【要么属于被装载清单、要么按原名出现在描述里**]✓ —— ★ **首次运行时就抓出 `defaults` 与 `contributes` 无人读** ✓（★ 于是补上读者 ✓）；★ 验收：`tests/vmu-pack-data-sections.test.mjs` **14/14** ✓，**含"两份 id 【不同**]的断言** ✓（★ 因为**那个差异才是那个事实** ✓） |
 | ★★★ **纯数据 pack 可【激活**]✓，不只是可读** | ★ `config.packs: ['example-data']` ✓ ⇒ **`packErrors()` 长度为 0** ✓、**`appliedPacks()` 含 `{ id, applied: [], dataOnly: true, carries: { promptSections, settingsDefaults } }`** ✓；★ **插件入口 `vibe-math-vmu.js` 的装载循环里那条"既无清单也无数据"的分支** ✓ | ★★★ **修复前**：★ 加载器先试 `packs/example-data/index.js` ✓、再试 `packs/example-data.js` ✓ ⇒ **两次都缺就记一条 `ERR_MODULE_NOT_FOUND`** ✗、**已应用列表为空** ✗、**还往 stderr 写警告** ✗ —— ★★ **而文本【早就在流水线里**]了** ✓ ⇒ ★★★ **"唯一错的东西就是那份报告"** ✓；★ **现在**：**承载数据的名字记为已应用（标 `dataOnly` ＋ 说明承载什么 ✓）**，**只有"既无清单也无数据"的名字才报错** ✓。★★ **验收 `tests/vmu-entry.test.mjs` 133/133** ✓，**含两端**：★ **E-14 纯数据 pack 无错且其【相位绑定文本出现在通过入口装配的回合里**]✓（★ **端到端，不是流水线级** ✓）；★★ **E-15 一个【既无清单也无数据**]的名字**仍然【具名报错、且不进已应用列表**]✓ —— ★★ **"一个放宽接受路径的修复，其价值只等于它仍然拒绝的那个情形"** ✓。★ **并实测五条路径** ✓：`v5r` ⇒ `v5r-core` ✓、`example-data` ⇒ data ✓、`no-such-pack` ⇒ 1 错 ✓、`institute-min` ✓、`v3-core` ✓ |
+| ★★★ **助手面入包（轮 2，D-09）＝两个读者、两份文件** | `packs/v5r/prompts/assistant.json`（**纯数据**：带 `"hostPrompt": true` 的段，入口按目录名读 ⇒ 进**根会话的 system prompt**）＋ `packs/v5r/prompts/v5r-assistant.js`（**模块**：被装载清单 `v5r-core.js` 再导出 ⇒ 由 pack apply **注册进管线**，走**逐轮**通道） | ★ **为什么不是一个文件**：宿主 system prompt 的文本必须是**数据**（插件在建内核前按目录名读、且永不知道包名 ✓），而逐轮段必须随**被装载清单**进管线 ✓ ⇒ 两者**读者不同**，且**互不复制对方的文本**（无第二份会漂移 ✓）。★ `hostPrompt:true` 是入口读取的契约：**没有这个标记的段就是"没人消费的数据"** ✓（本文件里每一段都带它，逐轮那一半在 `v5r-assistant.js` 里） |
 
 ### 未做／不做的裁定（**三分：设计如此 ✓｜已裁定不做 ✗｜真待做 ✗**）
-
 > ★★ **为什么要分栏** ✓：★ 下面三条**没有一条是债** ✓，**但列在"未做（明写 ✗）"下面就会【被读成债**]✗ ⇒ ★ **与目标⑤"无误无歧义"冲突** ✓。**三分之后**：★ **"设计如此"是机制** ✓、**"已裁定不做"是决策** ✓、**"真待做"才是待办** ✓。
 
 **① 设计如此（不是债 ✓）**

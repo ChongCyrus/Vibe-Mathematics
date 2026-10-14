@@ -98,16 +98,25 @@ test('zero-configuration: minimal and does not crash', () => {
 })
 
 // ④ 确定性：注入时钟 + 同输入 ⇒ 两次运行逐字同输出
-test('determinism: identical inputs produce identical outputs (injected clock only)', () => {
+test('determinism: identical inputs produce identical COUNTS and disjoint ids (injected clock only)', () => {
+  // ROUND 2 (global durable minter): two runs no longer carry the SAME ids, so JSON equality is replaced by the
+  // properties that hold - both runs produce the same SHAPE/counts, and the two id sets are DISJOINT.
   const run = () => {
     const o = mk({ 'vmu.motions.secondThreshold': 2 }, () => 42)
     const gov = g(o, () => 42)
     const a = gov.agenda.add({ title: 'A', owner: 'r-1' })
     const m = gov.motion.propose({ kind: 'topic', text: 'T', by: 'r-1' })
     gov.motion.second(m.motion.id, 'r-2')
-    return JSON.stringify({ a: a.item, ag: gov.agenda.list(), m: gov.motion.list(), st: gov.motion.status() })
+    return { itemId: a.item.id, motionId: m.motion.id, agenda: gov.agenda.list(), motions: gov.motion.list(), status: gov.motion.status() }
   }
-  assert.equal(run(), run())
+  const r1 = run(); const r2 = run()
+  assert.equal(r1.agenda.count, r2.agenda.count, 'two runs report the same agenda count')
+  assert.equal(r1.motions.count, r2.motions.count, 'two runs report the same motion count')
+  assert.equal(r1.status.state, r2.status.state, 'two runs reach the same motion state')
+  assert.notEqual(r1.itemId, r2.itemId, 'two runs in one process NEVER share an agenda-item id (global minter)')
+  assert.notEqual(r1.motionId, r2.motionId, 'two runs in one process NEVER share a motion id (global minter)')
+  const num = (id) => Number(String(id).split('-').pop())
+  assert.ok(num(r2.itemId) > num(r1.itemId) && num(r2.motionId) > num(r1.motionId), 'the id suffixes are STRICTLY INCREASING across runs')
   passed += 1
 })
 

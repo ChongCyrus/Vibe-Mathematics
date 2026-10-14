@@ -446,11 +446,11 @@ ok(unregisteredInCode.length === 0,
 // §2 used to hide (it listed hook domains that nothing emits). The check is two-sided on purpose: a hook
 // that has no producer must be declared, AND a declared hook that HAS gained a producer must leave the list.
 {
-  const busSrc = readFileSync(join(VMU, 'kernel', 'bus.js'), 'utf8')
-  const from = busSrc.indexOf('export const VU_HOOKS')
-  const block = busSrc.slice(from, busSrc.indexOf('])', from))
-  const registered = [...new Set([...block.matchAll(/'([a-z0-9-]+\/[a-z0-9-]+)'/g)].map((m) => m[1]))]
-  ok(registered.length >= 15, 'the registered vmu hooks were read out of bus.js', registered.length)
+  // D-12: read the runtime EXPORT (bus.js derives VU_HOOKS from HOOK_REGISTRY now); a source-text slice would
+  // be coupled to the derivation's shape rather than to the hook vocabulary it publishes.
+  const { VU_HOOKS } = await import('../vibe-math-vmu/kernel/bus.js')
+  const registered = [...new Set(VU_HOOKS)]
+  ok(registered.length >= 15, 'the registered vmu hooks were read from the runtime export, not sliced out of the source', registered.length)
 
   const emitted = new Set()
   const kernelFiles = [join(VMU, 'vibe-math-vmu.js'), join(VMU, 'host-hooks.js')]
@@ -465,11 +465,51 @@ ok(unregisteredInCode.length === 0,
       } else if (entry.name.endsWith('.js') && entry.name !== 'bus.js') kernelFiles.push(join(abs, entry.name))
     }
   }
+  // PRODUCER SHAPES (handover round 2, measured) - the scan must accept the shapes the code REALLY uses, and
+  // EACH shape must be PROVEN to reach the bus, so this cannot be loosened into "naming the hook is enough":
+  //   (a) `.bus.emit('NAME', …)`                                  - direct (incl. `o.bus.emit('NAME'`)
+  //   (b) a LOCAL helper named emit/publish whose body calls `.bus.emit(` - then its call sites count:
+  //         `emit('NAME', …)` AND `emit({ name: 'NAME', … })`
+  //   (c) a LOCAL `say` helper whose body calls `.bus.emit(`       - then `say({ type: 'NAME', … })`
+  // The lookbehind `(?<![.\w])` keeps `bus.emit(`/`o.bus.emit(`/`_vmu_emit(` out of the call-site collection, so
+  // a chained call and a Python helper name inside a template string can never be mistaken for a producer.
+  let helperFiles = 0
+  ok(kernelFiles.length > 0,
+    'the producer scan has files to scan (a non-empty file set is what makes the collection below meaningful)',
+    String(kernelFiles.length))
   for (const file of kernelFiles) {
-    const emits = [...readFileSync(file, 'utf8').matchAll(/bus\.emit\('([^']+)'/g)]
+    const src = readFileSync(file, 'utf8')
     // EMPTY_ALLOWED: 有些 kernel 文件本来就不发起 bus 事件（本扫描是"收集全体发射者"），空集即合规；
-    // 全体规模由下面的 `emitted.size >= 10` 把关，不会被空集掩盖。
-    for (const m of emits) emitted.add(m[1])
+    // 全体规模由后面的 `emitted.size >= 10`（以及 `helperFiles > 0`）把关，不会被空集掩盖。
+    for (const m of src.matchAll(/\bbus\.emit\(\s*['"]([^'"]+)['"]/g)) emitted.add(m[1])   // EMPTY_ALLOWED: 单文件可零直接发射；
+    const helperReachesBus = /(?:const|let|var|function)\s+(?:emit|publish|say)\s*[=(][\s\S]{0,700}?\bbus\.emit\(/.test(src)
+    if (!helperReachesBus) continue
+    helperFiles += 1
+    for (const m of src.matchAll(/(?<![.\w])emit\(\s*['"]([^'"]+)['"]/g)) emitted.add(m[1])   // EMPTY_ALLOWED: 该文件可以没有位置参调用点；
+    for (const m of src.matchAll(/(?<![.\w])emit\(\s*\{\s*name:\s*['"]([^'"]+)['"]/g)) emitted.add(m[1])   // EMPTY_ALLOWED: 同上（对象参变体）；
+    for (const m of src.matchAll(/(?<![.\w])say\(\s*\{\s*type:\s*['"]([^'"]+)['"]/g)) emitted.add(m[1])   // EMPTY_ALLOWED: 该文件可以不用 say 通道；
+  }
+  ok(helperFiles > 0,
+    '★ the scan really exercised at least one LOCAL emit/say helper shape, so the (b)/(c) acceptance is load-bearing rather than dead code',
+    String(helperFiles) + ' file(s)')
+  // SELF-PROBE: the helper acceptance must be falsifiable - a helper that does NOT call the bus contributes NOTHING.
+  {
+    const reaches = (s) => /(?:const|let|var|function)\s+(?:emit|publish|say)\s*[=(][\s\S]{0,700}?\bbus\.emit\(/.test(s)
+    const names = (s) => {
+      const out = []
+      // EMPTY_ALLOWED: this helper is deliberately GENERIC (it is run on both a gutted and a real fixture), so an
+      // empty result is legitimate for one of its inputs - and the probe's own assertion right below pins the exact
+      // expected sizes (`names(real)` contains 'real/hook', `names(gutted).length === 2`), so nothing is hidden.
+      for (const m of s.matchAll(/(?<![.\w])emit\(\s*['"]([^'"]+)['"]/g)) out.push(m[1])   // EMPTY_ALLOWED: 见上（同一助手跑两种夹具）；
+      for (const m of s.matchAll(/(?<![.\w])emit\(\s*\{\s*name:\s*['"]([^'"]+)['"]/g)) out.push(m[1])   // EMPTY_ALLOWED: 对象参变体，同上；
+      for (const m of s.matchAll(/(?<![.\w])say\(\s*\{\s*type:\s*['"]([^'"]+)['"]/g)) out.push(m[1])   // EMPTY_ALLOWED: say 通道，同上；
+      return out
+    }
+    const gutted = 'const emit = (n) => { log(n); return null }\nemit("fake/hook", {})\nconst say = (e) => log(e)\nsay({ type: "fake/other" })'
+    const real = 'const emit = (n) => bus.emit(n, {})\nemit("real/hook", {})'
+    ok(!reaches(gutted) && reaches(real) && names(real).includes('real/hook') && names(gutted).length === 2,
+      '★ SELF-PROBE: a local emit/say helper that does NOT call the bus is NOT accepted, while one that does contributes its literals',
+      JSON.stringify({ guttedReaches: reaches(gutted), realReaches: reaches(real), realNames: names(real) }))
   }
   ok(emitted.size >= 10, 'the emitter scan found the real producers', [...emitted].sort().join(','))
 

@@ -111,12 +111,19 @@ ok(tools.size >= 8, 'the published tool registry is read', { tools: tools.size }
 ok(actions.size >= 20, 'and the ACTION enums too - the column that was missed for three rounds', { actions: actions.size })
 
 console.log('=== 2. BOTH DEFECTS AND THE QUIET CASES ARE EXERCISED ON A SYNTHETIC TABLE ===')
-// mirrors the real shape: the mark sits in cell 1, and one row states a resolution
+// mirrors the real shape: the mark sits in cell 1, and one row states a resolution.
+// THE NAMES ARE DERIVED FROM THE LIVE SURFACE (round 2): the fixture used to hard-code `vibe_vmu_ballot`, which
+// stopped being an ACTION once the surface moved, so "defect 2 fires" went red while the predicate was fine -
+// a fixture that pins a name ages exactly like a hard-coded count. Deriving keeps the self-probe firing.
+const synthTool = [...tools][0]
+const synthAction = 'vibe_vmu_' + ([...actions.keys()].find((k) => /^[a-z_]+$/.test(k) && !tools.has('vibe_vmu_' + k)) || '')
+ok(!!synthTool && tools.has(synthTool) && actions.size > 0 && !!synthAction && actions.has(synthAction.replace('vibe_vmu_', '')),
+  'the synthetic fixture is DERIVED from the live surface (one registered tool + one real action), so it keeps exercising both defects: ' + synthTool + ' / ' + synthAction)
 const synthetic = [
   '| 工具（规划，⛔ 未实现） | 参数草案 | 覆盖的广度项 |',
   '|---|---|---|',
-  '| `vibe_vmu_status`（⛔ 未实现） | `x` | 已注册的工具 |',
-  '| `vibe_vmu_ballot`（⛔ 未实现） | `x` | 表决 |',
+  '| `' + synthTool + '`（⛔ 未实现） | `x` | 已注册的工具 |',
+  '| `' + synthAction + '`（⛔ 未实现） | `x` | 表决 |',
   '| `vibe_vmu_imaginary`（⛔ 未实现） | `x` | 谁也没有 |',
   '| `vibe_vmu_finished`（⛔ 未实现） | `x` | ✅ 已实现并已注册 |',
 ]

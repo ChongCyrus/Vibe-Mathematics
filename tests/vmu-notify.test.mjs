@@ -222,8 +222,29 @@ function collector() { const sent = []; return { sent, deliver: (n) => { sent.pu
 {
   const mk = () => { const c = fakeClock(500); const { deliver } = collector(); const t = createNotify({ clock: c.clock, deliver, settings: on() }); t.watch({ subject: 'm1', events: ['e'], reason: 'determinism probe' }); t.emit({ event: 'e', object: 'O' }); return t }
   const a = mk(); const b = mk()
+  // ID SEMANTICS (round 2, core's migration): ids come from the ONE process-wide minter, so two instances are
+  // NOT expected to agree on list() any more - that equality only held while every instance restarted its
+  // counters. The stronger pair replaces it: each instance must be READABLE, their id SETS must be DISJOINT, and
+  // the second instance's numeric suffixes must be STRICTLY greater than the first's.
+  const idSets = (t) => { const l = t.list(); return [...(l.watchers || []), ...(l.registered || [])].map((x) => x.id) }
+  const aIds = idSets(a); const bIds = idSets(b)
+  const suffix = (x) => Number((String(x).match(/(\d+)$/) || [])[1])
+  ok(aIds.length > 0 && bIds.length > 0,
+    'determinism: both instances are READABLE (non-empty id lists) a=' + JSON.stringify(aIds) + ' b=' + JSON.stringify(bIds))
+  ok(aIds.every((x) => !bIds.includes(x)),
+    '★ two instances in one process have DISJOINT id sets (the id minter is process-wide) a=' + JSON.stringify(aIds) + ' b=' + JSON.stringify(bIds))
+  // The id families (watchers `w-`, notifications `n-`) advance INDEPENDENTLY, so a single global min/max would
+  // compare one family against another; the claim is per-family monotonicity ACROSS instances.
+  const famOf = (x) => String(x).replace(/\d+$/, '')
+  const families = [...new Set(aIds.concat(bIds).map(famOf))]
+  const perFamily = families.map((f) => ({
+    family: f,
+    a: aIds.filter((x) => famOf(x) === f).map(suffix),
+    b: bIds.filter((x) => famOf(x) === f).map(suffix),
+  }))
+  ok(families.length > 0 && perFamily.every((r) => r.a.length > 0 && r.b.length > 0 && Math.min(...r.b) > Math.max(...r.a)),
+    '★ and WITHIN EACH id family the numeric suffix STRICTLY increases across instances ' + JSON.stringify(perFamily))
   ok(JSON.stringify(a.status()) === JSON.stringify(b.status()), 'determinism: two instances agree on status()')
-  ok(JSON.stringify(a.list()) === JSON.stringify(b.list()), 'determinism: two instances agree on list()')
 }
 
 // ── 11. THE REAL BUS (round 15): the forward must be a legal STRING hook, and it must not crash ────────────

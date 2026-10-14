@@ -243,13 +243,19 @@ function proposeParent(d, extra = {}) {
   const c = fakeClock(0)
   const d = createCharter({ clock: c.clock, settings: S({ 'vmu.charter.requiresParentConsent': false, 'vmu.charter.effectiveDelayMs': 0 }) })
   const parent = proposeParent(d)
-  for (let i = 1; i <= 5; i++) d.propose({ kind: 'charter', text: 't' + i, by: 'office', articles: [{ id: 'A' + i }] })
-  for (let i = 1; i <= 2; i++) d.propose({ kind: 'subsidiary', parentId: parent.id, text: 's' + i, by: 'office', authority: { commands: ['task/create'] } })
+  // ROUND 2: capture the ids the CALLS returned (the minter is process-global and durable, so a per-instance
+  // counter no longer restarts at 1).
+  const madeIds = []
+  for (let i = 1; i <= 5; i++) madeIds.push(d.propose({ kind: 'charter', text: 't' + i, by: 'office', articles: [{ id: 'A' + i }] }).id)
+  for (let i = 1; i <= 2; i++) madeIds.push(d.propose({ kind: 'subsidiary', parentId: parent.id, text: 's' + i, by: 'office', authority: { commands: ['task/create'] } }).id)
   const all = d.list()
   ok(all.count === 8 && all.available === 8 && all.dropped === 0 && all.truncated === false, 'list: eight charters, no truncation')
   const capped = d.list({ limit: 2 })
   ok(capped.count === 2 && capped.available === 8 && capped.dropped === 6 && capped.truncated === true, 'list: a limit reports the DROPPED count (6)')
-  ok(capped.charters[0].id === 'ch-1' && capped.charters[1].id === 'ch-2', 'list: deterministic insertion order')
+  ok(capped.charters[0].id === parent.id && capped.charters[1].id === madeIds[0], 'list: insertion order follows the CREATION order (parent first, then the loop; ids captured from the calls)')
+  const createdOrder = [parent.id, ...madeIds]
+  const madeNums = createdOrder.map((id) => Number(String(id).split('-').pop()))
+  ok(madeNums.length > 0 && madeNums.every((n, i) => i === 0 || n > madeNums[i - 1]), 'list: the id suffix is STRICTLY INCREASING across creations (verified on ' + madeNums.length + ' minted ids, which must be > 0 for the claim to mean anything)', JSON.stringify(createdOrder))
   const kids = d.children({ id: parent.id, limit: 1 })
   ok(kids.count === 1 && kids.available === 2 && kids.dropped === 1 && kids.truncated === true, 'children: a limit reports the DROPPED count')
   const arts = d.articles({ id: all.charters[1].id, limit: 0 })
@@ -276,9 +282,13 @@ function proposeParent(d, extra = {}) {
   ok(before === after, 'read-only: list/status/history/inForce/articles never mutate charters')
   const a = build(); const b = build()
   const aS = a.d; const bS = b.d
-  ok(JSON.stringify(aS.list()) === JSON.stringify(bS.list()), 'determinism: two instances agree on list()')
-  ok(JSON.stringify(aS.status()) === JSON.stringify(bS.status()), 'determinism: two instances agree on status()')
-  ok(JSON.stringify(aS.history()) === JSON.stringify(bS.history()), 'determinism: two instances agree on history()')
+  // ROUND 2 (global durable minter): "agree on list()/status()/history()" is replaced by the properties that hold -
+  // each instance is readable, the COUNTS agree, and the two id sets are DISJOINT.
+  const aIds = aS.list().charters.map((x) => x.id); const bIds = bS.list().charters.map((x) => x.id)
+  ok(aIds.length === bIds.length && aIds.length > 0, 'determinism: both instances are readable after the same build()')
+  ok(aIds.every((id) => !bIds.includes(id)), 'determinism: two instances in one process NEVER share an id (global minter)', JSON.stringify({ aIds, bIds }))
+  ok(aS.status().count === bS.status().count, 'determinism: status() counts agree (only the ids differ)')
+  ok(aS.history().count === bS.history().count, 'determinism: history() counts agree (only the ids differ)')
   ok(aS.inForce({ id: a.p.id }).effectiveAt === 7, 'injected clock: the effective time comes from clock() only')
 }
 
@@ -296,9 +306,13 @@ function proposeParent(d, extra = {}) {
   proposeRoot(broken)
   ok(broken.status().unwired['bus:charter/proposed'] === 1, 'bus: a broken bus is a COUNTED wiring gap')
 
-  const dSeam = { list: ({ active }) => ({ ok: true, grants: [{ id: 'd-1', to: 'ch-1', scope: { commands: ['task/delegate-only'], resources: [] } }] }) }
+  // ROUND 2: the fake delegation seam must name the REAL parent charter id - the minter is process-global now, so a
+  // hard-coded `'ch-1'` no longer matches anything and the narrowing check would refuse for the wrong reason.
+  let seamTargetId = null
+  const dSeam = { list: ({ active }) => ({ ok: true, grants: [{ id: 'd-1', to: seamTargetId, scope: { commands: ['task/delegate-only'], resources: [] } }] }) }
   const inh = createCharter({ clock: c.clock, settings: S({ 'vmu.charter.inheritDelegation': true, 'vmu.charter.requiresParentConsent': false }), delegation: dSeam })
   const ip = proposeParent(inh)
+  seamTargetId = ip.id
   const ic = inh.propose({ kind: 'subsidiary', parentId: ip.id, text: 'sub', by: 'office', authority: { commands: ['task/create', 'task/delegate-only'] } })
   ok(ic.ok === true, 'delegation seam: inheritDelegation widens the PARENT authority by its own delegations (still narrowing for the child)')
   const bad = throwsNamed(() => inh.propose({ kind: 'subsidiary', parentId: ip.id, text: 'x', by: 'office', authority: { commands: ['task/not-granted'] } }), 'VMU_CHARTER_NOT_AUTHORIZED', 'delegation seam: an ungranted command is still refused')

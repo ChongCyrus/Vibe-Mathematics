@@ -369,9 +369,27 @@ CacheEntry = { keyHash, engineIdentity, argv, precision, receiptRef, createdAt, 
 - **设计**：`vmu.math.sandbox.*` 声明式限制（CPU/内存/墙钟/线程/网络/文件句柄），越限具名；**默认无网络**且不可被 pack 打开 ⛔（需内核闸门）。
 
 ### 14.4 作业队列、持久化与大结果
-- **现状** ✓：Lean 队列（并发上限、状态、事件日志上限）；
-- **现状 ✗**：持久化/断点续算 ⛔；**大结果存储与引用**（内容寻址令牌）⛔；跨会话作业列表 ⛔；
-- **设计**：`vmu.math.jobs.*`（持久化目录/保留策略/恢复语义）；大结果一律落文件＋回执给引用，**审计不落全文** ✓（现状已如此）。
+- **现状** ✓：Lean 队列（并发上限、状态、事件日志上限）；**计算作业面与 Lean 作业面都新增耐久镜像与断点续算**（目标 5 · 共用 `createJobMirror`）：计算面镜像 `Math/Jobs/<jobId>.json`（`schema:'vmu/math-job@1'`），**Lean 面镜像 `Formal/Jobs/<jobId>.json`**（`schema:'vmu/lean-job@1'`，与 v5r 的路径拼写一致），两面都含**原始请求/产物事实**（计算面＝argv/输入指纹；Lean 面＝运行前后内容哈希＋构建上下文指纹）⇒ 重排与"是否可采纳"都有据；状态全集计算面 `queued|running|settled|failed|timeout|interrupted|cancelled`、Lean 面 `queued|running|settled|failed|timeout|interrupted`（**两面都没有 `passed` 状态**）；**恢复四分支**（见 §14.9）、jobId 级查询/取消（计算面 `cancel`；Lean 面 `dispose` 只能标 `interrupted`）、能力自述 `admission()`；id 计数器经 `kernel/ids.js`（恢复时水合取 max+1，**重启不复用编号**）；
+- **现状 ✗**：**大结果存储与引用**（内容寻址令牌）⛔；**跨进程独占创建** ⛔（宿主未暴露 ⇒ `admission().exclusiveCreate=false`、`crossProcess:'not-enforced'`，**如实登记**不假装）；**Lean 子进程无法 terminate** ⛔（promise 接缝无 handle ⇒ `canTerminateChild:false`）；
+- **设计**：`vmu.math.jobs.*`（持久化目录/保留策略/恢复语义）——`persist`／`dir`／`recover`／`keepMirrors`／`logMax` 已接线 ✓，其余作业编排项仍 ⛔；大结果一律落文件＋回执给引用，**审计不落全文** ✓（现状已如此）。
+
+### 14.9 科学计算库专用适配面（目标 5 落地 ✓）
+- **服务**：`kernel/mathadapters.js`（`createMathAdapters`）／服务键 `vmu.mathadapters`；工具动作（`vibe_vmu_mathtools`）：`adaptersProbe`｜`adaptersPlan`｜`adaptersRun`｜`shapeContract`；作业面：`kernel/mathjobs.js`（计算）与 `kernel/lean.js`（Lean）**共用** `createJobMirror`。
+- **会话级解释器/环境绑定**：解释器解析顺序＝**显式 `vmu.math.adapters.python`（只用它，绝不回退）** → `python3`→`python`→`py`（PATH，经注入的 `resolveExecutable`）；绑定一次性探测 `vmu.math.adapters.libs` 的**安装状态与版本**，按 `probeCache` 缓存（`session` 默认／`call` 逐次／`refresh:true` 强制）。**未安装 ⇒ `VMU_MATH_LIB_UNAVAILABLE` ＋ `next.kind:'agent-install'` ＋ 安装命令**——绝不假装算过，也绝不替用户安装。
+- **结果形状契约**（`shapeContract()`，`schema:'vmu/math-adapter-result@1'`）：统一信封
+  `{ ok, lib, version, kind, …payload, truncated:{droppedElements,droppedBytes}, enforced[], receipt{jobId,engine,interpreter,lib,mode,argv,exitCode,durationMs,timedOut,inputFingerprint,outputFingerprint,bindingAt}, isRefutation:false }`；
+  `kind ∈ scalar | array | frame | expr | result | mapping`：
+  | 库 | 典型 kind | payload |
+  |---|---|---|
+  | `numpy` | `array` / `scalar` | `values`（嵌套列表）＋`shape`＋`dtype`；numpy 标量 ⇒ `scalar`（`dtype` 保留） |
+  | `pandas` | `frame` | `columns` / `index` / `dtypes` / `rows`（DataFrame 与 Series 同型） |
+  | `sympy` | `expr` | `sympy`（srepr，可比对）＋`latex`＋`freeSymbols` |
+  | `scipy` | `result` | `fields`（`OptimizeResult`／`OdeResult`／`RootResults` 等按**类名**归一，ndarray 字段转列表） |
+  | 其它 | `mapping` / `scalar` / `array` | dict → `mapping`；无法归类 ⇒ **`VMU_MATH_SHAPE_UNKNOWN` 具名拒**（不 stringify 成"看起来像数据"） |
+- **可注入接缝**：`resolveExecutable` 与 `spawn` **都必须注入**；未注入 ⇒ `probe/run` 具名拒 `VMU_EXTERNAL_UNAVAILABLE`，而 `plan()` 仍回答"会跑什么"（`argvTemplate`／`needs`／`caps`／`enforced`）。**测试绝不把"本机有没有 numpy"当前提**（`tests/vmu-math-adapters.test.mjs` 全程假接缝；真机 smoke 另计）。
+- **失败语义**：超时 ⇒ `MATH_TIMEOUT`（**保留部分输出**＋`droppedBytes` 计数）；非零退出 ⇒ `MATH_NONZERO_EXIT`（保留退出码与 stderr 尾部）；被调用代码报错 ⇒ `VMU_MATH_HARNESS_FAILED`；信封缺失/不可解析 ⇒ `VMU_MATH_RESULT_UNPARSEABLE`；随机作业缺种子 ⇒ `VMU_MATH_SEED_REQUIRED`；包越白名单 ⇒ `VMU_MATH_INVALID_INPUT`。**全部 `isRefutation:false`**：计算缺陷永远不是对命题的反驳。
+- **恢复四分支**（`mathjobs.recover()`，与 Lean `Formal/Jobs/*.json` 同形）：①`queued` ⇒ 重排并真跑；②`running`＋请求指纹一致 ⇒ 标 `interrupted` 后重排（attempts+1）；③`running`＋指纹不一致 ⇒ 只标 `interrupted`，**不自动重排**；④`settled`＋exit 0＋指纹一致＋**带回执** ⇒ 采纳；其余（含 `settled` 无回执）⇒ 原样保留＋具名 why。**任何分支都不会"静默 passed"**（本面根本没有 `passed`；`settled` 只是工具事实）。
+- **真机验证（本轮实测，非文档声称）**：本机 `python 3.12.10` ＋ `numpy 2.5.3`／`scipy 1.18.1`／`pandas 3.0.6`／`sympy 1.14.0`，用**真实 subprocess 接缝**跑通：`numpy.linalg.det([[1,2],[3,4]])` ⇒ `scalar -2.0000000000000004`；`np.arange(6).reshape(2,3)` ⇒ `array`＋`shape [2,3]`＋`dtype int64`；`pd.DataFrame` ⇒ `frame`（columns a,b）；`sp.simplify(sp.sqrt(8))` ⇒ `expr`＋`latex "2 \\sqrt{2}"`；`scipy.optimize.minimize` ⇒ `result`（`x`/`jac`/`hess_inv` 已由 ndarray 转列表，`success:true`）。**假接缝仍是主力**（`tests/vmu-math-adapters.test.mjs` 全绿且不依赖本机装了什么）。
 
 ### 14.5 错误、警告与不收敛
 - **现状** ✓：11 个 `MATH_*`、9 个 `VMU_LEAN_*`、通用闸门码；引擎 stderr 原样回显（含 argv 与 `mathEngineOverride` 提示）；商业引擎许可具名；
@@ -557,7 +575,7 @@ CacheEntry = { keyHash, engineIdentity, argv, precision, receiptRef, createdAt, 
 | ◐ | 部分：靠引擎能力可用，族语义/策略未建 |
 | ⛔ | 未实现（仅设计；同行出现的能力/工具/协议名都是计划） |
 
-### 21.6 键全表（**已实现 14 个**在此；**拟增全表见 09 附录 B**，两卷共用同一份登记）
+### 21.6 键全表（**已实现 23 个**在此；**拟增全表见 09 附录 B**，两卷共用同一份登记）
 | 键 | 类型 | 默认 | 现状 |
 |---|---|---|---|
 | `vmu.math.computation` | string | `auto` | ✓ |
@@ -574,6 +592,17 @@ CacheEntry = { keyHash, engineIdentity, argv, precision, receiptRef, createdAt, 
 | `vmu.math.leanSearchPaths` | string[] | `[]` | ✓ |
 | `vmu.math.leanJobsMaxParallel` | integer | `1` | ✓ |
 | `vmu.math.compileTimeoutMs` | integer | 未消费 | ✓ 接线／⛔ 消费 |
+| `vmu.math.adapters.enabled` | boolean | `true` | ✓（目标 5 · `kernel/mathadapters.js`） |
+| `vmu.math.adapters.libs` | string[] | `['numpy','scipy','pandas','sympy']` | ✓ |
+| `vmu.math.adapters.python` | string | `''` | ✓（显式解释器；非空则只用它） |
+| `vmu.math.adapters.packageAllowlist` | string[] | `[]` | ✓ |
+| `vmu.math.adapters.probeCache` | enum | `session` | ✓（`session`｜`call`） |
+| `vmu.math.adapters.maxArrayElements` | natural | `10000` | ✓（超限计数截断） |
+| `vmu.math.adapters.maxStringBytes` | natural | `65536` | ✓（超限计数截断） |
+| `vmu.math.jobs.recover` | enum | `on-load` | ✓（目标 5 · `kernel/mathjobs.js`） |
+| `vmu.math.jobs.keepMirrors` | natural | `200` | ✓（淘汰/停写都计数） |
+
+> 另有三个**既有**键在本轮获得新消费方（未计入上面的"已实现"总数）：`vmu.math.jobs.persist`（语义扩展为"写 `Math/Jobs` 镜像并允许恢复"）、`vmu.math.jobs.dir`（＝镜像目录，空 ⇒ `Math/Jobs`）、`vmu.math.jobs.logMax`（事件轨迹上限）。新增 9 键的权威定义在 `settings/schema.js`（vmu-core 登记）；本表与 README 的计数由 `scripts/update-doc-counts.mjs` 统一刷新。
 
 **拟增键族（具体键名与类型/默认/域见 09 附录 B）**：`vmu.math.precision.*`、`vmu.math.interval.*`、`vmu.math.numeric.warnings`、`vmu.math.symbolic.*`、`vmu.math.stats.*`、`vmu.math.bayes.*`、`vmu.math.optim.*`、`vmu.math.discrete.*`、`vmu.math.nt.*`、`vmu.math.geom.*`、`vmu.math.linalg.*`、`vmu.math.ode.*`、`vmu.math.convergence.*`、`vmu.math.ad.*`、`vmu.math.tensor.*`、`vmu.math.units.*`、`vmu.math.formal.*`、`vmu.math.jobs.*`、`vmu.math.cache.*`、`vmu.math.repro.*`、`vmu.math.sandbox.*`、`vmu.math.artifacts.*`、`vmu.math.report.*` ⛔。
 
@@ -582,6 +611,8 @@ CacheEntry = { keyHash, engineIdentity, argv, precision, receiptRef, createdAt, 
 |---|---|---|
 | 计算面（共享模块 11 个） | `MATH_NOT_AVAILABLE`、`MATH_ENGINE_NOT_FOUND`、`MATH_ENGINE_LICENSE_REQUIRED`、`MATH_ENGINE_UNUSABLE`、`MATH_MISSING_PACKAGES`、`MATH_TIMEOUT`、`MATH_NONZERO_EXIT`、`MATH_ENGINE_BAD_ARGV`、`MATH_REFUSED`、`MATH_INVALID_ARGUMENT`、`MATH_NO_SUBPROCESS` | ✓ |
 | vmu 归类 | `VMU_ENGINE_UNAVAILABLE` | ✓ |
+| 适配面（目标 5 新增 10 个） | `VMU_MATH_LIB_UNAVAILABLE`、`VMU_MATH_LIB_NOT_DECLARED`、`VMU_MATH_SHAPE_UNKNOWN`、`VMU_MATH_HARNESS_FAILED`、`VMU_MATH_RESULT_UNPARSEABLE`、`VMU_MATH_EXPR_REQUIRED`、`VMU_MATH_ADAPTER_OP_UNKNOWN` | ✓ |
+| 作业面（目标 5 新增） | `VMU_MATH_JOBS_MIRROR_UNWIRED`、`VMU_MATH_JOBS_DIR_UNSAFE`、`VMU_MATH_JOB_INVALID_STATE` | ✓（登记进 03-§8） |
 | Lean 面（9 个） | `VMU_LEAN_NOT_FOUND`、`VMU_LEAN_EXIT_NONZERO`、`VMU_LEAN_TIMEOUT`、`VMU_LEAN_SPAWN_FAILED`、`VMU_LEAN_FILE_REQUIRED`、`VMU_LEAN_FILE_UNREADABLE`、`VMU_LEAN_STATEMENT_REQUIRED`、`VMU_LEAN_HASH_CHANGED`、`VMU_LEAN_NOT_SETTLED` | ✓ |
 | 通用闸门 | `VMU_RESOURCE_BUDGET`、`VMU_NOT_PERMITTED`、`VMU_INVALID_ARGUMENT`、`VMU_JOB_TIMEOUT` | ✓ |
 | 警告常量（非错误码） | `ARCHIVE_RETENTION_EXCEEDED`、`SCRIPT_CHANGED_SINCE_LAST_RECEIPT`、`SCRIPT_CHANGED_DURING_RUN` | ✓ |
@@ -593,12 +624,14 @@ CacheEntry = { keyHash, engineIdentity, argv, precision, receiptRef, createdAt, 
 | 工具 | `vibe_vmu_script`（脚本桥，可调外部工具并归档回执）／`vibe_vmu_set`／`vibe_vmu_middleware`／`vibe_vmu_pack`／`vibe_vmu_status`／`vibe_vmu_records`／`vibe_vmu_task`／`vibe_vmu_meeting`／`vibe_vmu_control` | ✓ |
 | 工具（计划） | `vibe_vmu_math` ⛔、`vibe_vmu_math_job` ⛔、`vibe_vmu_math_cache` ⛔、`vibe_vmu_formal_search` ⛔、`vibe_vmu_units` ⛔ | ⛔ |
 | **已落地**（★ 轮 540 ✓） | `vibe_vmu_formal` **✓ 已实现**（★ 10 个动作，见 `docs/18` ✓） | ★ 本行**只**声明这一个已落地 ✓ |
-| 内核服务 | `kernel/math.js`（`createMathSurface`／`classifyOutcome`／`settled`）、`kernel/lean.js`（`createLeanFace`）、`host-math.js`、共享 `math-computation.js`／`math-engines.js` | ✓ |
-| 内核服务（计划） | `kernel/math-backends` ⛔、`kernel/formal-adapters` ⛔、`kernel/math-cache` ⛔、`kernel/math-jobs` ⛔、`kernel/units` ⛔、`kernel/math-report` ⛔ | ⛔ |
+| 内核服务 | `kernel/math.js`（`createMathSurface`／`classifyOutcome`／`settled`）、`kernel/lean.js`（`createLeanFace`）、`kernel/mathjobs.js`（**✓ 作业台账＋镜像＋恢复**）、`kernel/mathadapters.js`（**✓ 科学计算库适配面**）、`host-math.js`、共享 `math-computation.js`／`math-engines.js` | ✓ |
+| 内核服务（计划） | `kernel/math-backends` ⛔、`kernel/formal-adapters` ⛔、`kernel/math-cache` ⛔、`kernel/units` ⛔、`kernel/math-report` ⛔ | ⛔ |
 | 协议/形状 | `MathJob` ✓、`Receipt` ✓、`LeanJob` ✓、`EngineAdapter`（compute 面＝引擎表 ✓） | ✓ |
 | 协议/形状（计划） | `FormalAdapter` ⛔、`ReproPack` ⛔、`ConvReport` ⛔、`DimValue` ⛔、`CacheEntry` ⛔、`EngineCapability` ⛔ | ⛔ |
 | 引擎适配器 | P1：`python`／`r`／`octave`／`julia`／`matlab`／`maple`／`wolfram`／`cli` | ✓ |
 | 引擎适配器 | P2：`sage` | ⛔（已登记、未进 P1 顺序） |
-| 引擎适配器（计划） | `sympy` ⛔、`maxima` ⛔、`gap` ⛔、`pari/gp` ⛔、`numpy` ⛔、`scipy` ⛔、`statsmodels` ⛔、`pandas` ⛔、`pymc` ⛔、`stan` ⛔、`cvxpy` ⛔、`highs` ⛔、`ortools` ⛔、`networkx` ⛔、`igraph` ⛔、`shapely` ⛔、`sundials` ⛔、`jax` ⛔、`pytorch` ⛔、`tensorflow` ⛔、`unitful` ⛔、`astropy.units` ⛔、`pint` ⛔、`codata` ⛔ | ⛔ |
+| 引擎适配器（计划） | `maxima` ⛔、`gap` ⛔、`pari/gp` ⛔、`statsmodels` ⛔、`pymc` ⛔、`stan` ⛔、`cvxpy` ⛔、`highs` ⛔、`ortools` ⛔、`networkx` ⛔、`igraph` ⛔、`shapely` ⛔、`sundials` ⛔、`jax` ⛔、`pytorch` ⛔、`tensorflow` ⛔、`unitful` ⛔、`astropy.units` ⛔、`pint` ⛔、`codata` ⛔ | ⛔ |
+| 库适配器（目标 5 ✓） | `numpy`／`scipy`／`pandas`／`sympy` —— 经 **python 解释器**（不新增引擎表条目），有**专用结果形状契约**与**会话级环境绑定**（`kernel/mathadapters.js`；探测/执行全走注入接缝） | ✓ 适配／◐ 计算（形状归一，非逐族数值算法） |
+| 协议/形状（目标 5 ✓） | `MathJobMirror`（`schema:'vmu/math-job@1'`）、`MathAdapterResult`（`schema:'vmu/math-adapter-result@1'`）、`admission()`（跨进程/保留的能力自述） | ✓ |
 | 助手适配器 | `lean` | ✓ |
 | 助手适配器（计划） | `coq`/`rocq` ⛔、`isabelle` ⛔、`agda` ⛔、`metamath` ⛔ | ⛔ |

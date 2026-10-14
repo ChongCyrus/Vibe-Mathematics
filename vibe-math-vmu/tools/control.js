@@ -4,17 +4,21 @@
 export function makeControlSpec({ param, refused, TOOL_NAMES, kernel }) {
   return {
       name: TOOL_NAMES.control,
-      description: 'vmu 控制流：action=status|pause|resume|stop|beat|roster|hire|fire。暂停是**真门禁**（任务变更会被具名拒）；' +
-        'beat 是心跳（观察，供 wallClockMs 判定 stale）；roster 只读花名册（带上限），hire/fire 是成员加入与离开（走内核槽位，docs/17）。',
+      description: 'vmu 控制流：action=status|pause|resume|stop|beat|roster|hire|fire|tune。暂停是**真门禁**（任务变更会被具名拒）；' +
+        'beat 是心跳（观察，供 wallClockMs 判定 stale）；roster 只读花名册（带上限），hire/fire 是成员加入与离开（走内核槽位，docs/17）；' +
+        'tune 是**中途改一个已声明参数**（键必须在 vmu.control.tunableKeys 内、角色必须在 vmu.control.canSetRoles 内，否则具名拒；改动留痕）。',
       parameters: {
-        action: param('string', 'status（默认）｜pause｜resume｜stop｜beat｜roster｜hire｜fire', { required: true, enum: ['status', 'pause', 'resume', 'stop', 'beat', 'roster', 'hire', 'fire'] }),
+        action: param('string', 'status（默认）｜pause｜resume｜stop｜beat｜roster｜hire｜fire｜tune', { required: true, enum: ['status', 'pause', 'resume', 'stop', 'beat', 'roster', 'hire', 'fire', 'tune'] }),
         member_id: param('string', 'roster 可省；hire/fire 必填的成员 id'),
         institution: param('string', 'hire 的所属机构（缺省时由内核决定）'),
         since: param('string', 'hire 的加入时间戳（可省）'),
         reason: param('string', 'pause/stop 的原因（写入控制面与审计）'),
         note: param('string', 'beat 的备注（可选）'),
+        key: param('string', 'tune：要改的设置键（必须在 vmu.control.tunableKeys 内）'),
+        value: param('string', 'tune：新值（按声明的类型解析）'),
+        byRole: param('string', 'tune：改参者角色（必须在 vmu.control.canSetRoles 内）'),
       },
-      run: async ({ action = 'status', reason, note, member_id, institution, since } = {}) => {
+      run: async ({ action = 'status', reason, note, member_id, institution, since, key, value, byRole } = {}) => {
         try {
           if (action === 'status') return Object.assign({ ok: true, action }, kernel.control())
           if (action === 'pause') return Object.assign({ ok: true, action }, await kernel.pause(reason || 'paused by tool'))
@@ -24,6 +28,14 @@ export function makeControlSpec({ param, refused, TOOL_NAMES, kernel }) {
           if (action === 'roster') return Object.assign({ ok: true, action }, kernel.identity ? kernel.identity.list() : refused('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no identity surface'))
           if (action === 'hire') return Object.assign({ ok: true, action }, kernel.identity.addMembership({ memberId: member_id, institution: institution === undefined ? null : institution, since: since === undefined ? null : since }))
           if (action === 'fire') return Object.assign({ ok: true, action }, kernel.identity.endMembership({ memberId: member_id, reason: reason === undefined ? null : reason }))
+          // ROUND 2 (task-14): the mid-flight retune face. The CONTROL SERVICE is `kernel.controlService` (the name
+          // `kernel.control` has been the control VIEW function since round 1); a missing service is refused by name
+          // rather than silently doing nothing.
+          if (action === 'tune') {
+            const svc = kernel.controlService
+            if (!svc || typeof svc.tune !== 'function') return refused('VMU_ENGINE_UNAVAILABLE', 'this assembly has no control service to tune (kernel.controlService.tune is missing)')
+            return Object.assign({ ok: true, action }, svc.tune({ key, value, byRole }))
+          }
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)

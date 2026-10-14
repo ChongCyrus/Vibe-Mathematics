@@ -21,7 +21,7 @@
 //   · without a subprocess service every engine is unavailable and the module reports that itself
 //     (MATH_NO_SUBPROCESS / MATH_ENGINE_NOT_FOUND) instead of pretending.
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, normalize, relative } from 'node:path'
 import { createHostSpawn } from './host-spawn.js'
 import { guardWrite } from './kernel/guard.js'
@@ -135,6 +135,11 @@ export function createHostMath({ ctx, settings = {}, projectRoot = null, log = (
           .map((e) => ({ name: e.name, type: e.isDirectory() ? 'directory' : 'file' }))
       } catch { return [] }
     },
+    // ROUND 2 (task-14, reader-b's correction 2): the math-job MIRROR's eviction seam. Without `removeText` the job
+    // face can only STOP writing at `keepMirrors` and count (`mirrorSkipped`) - which is honest but leaves the mirror
+    // growing until that cap. With it, the declared cap really evicts the oldest (`droppedMirrors` counts it). The path
+    // goes through the same `under()` policy as every other file access here, so a mirror can never escape the root.
+    removeText: async (rel) => { try { rmSync(under(rel), { force: true }); return true } catch { return false } },
     hasSubprocess: () => !!subprocessOf(),
     resolveExecutable: async (cmd) => {
       // Resolved AT CALL time through the host's service (a plugin can apply before it mounts: docs/11 §8).

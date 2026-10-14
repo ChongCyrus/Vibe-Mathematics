@@ -4,6 +4,11 @@
 // Invariants: named refusals WITH current value and limit; counted truncation on list(); zero-config is
 // unlimited and never throws; deterministic (only the injected clock); remaining/status/list never mutate.
 
+// ROUND 2 (task-10 A): the durable projection seam (docs/07 §4). The DECLARATION (totals, reserveRatio,
+// fairnessPolicy …) is re-resolved from settings at startup and is deliberately not part of the snapshot; only
+// what was SPENT is restored, because that is the fact a restart cannot recompute.
+import { checkSnapshot } from './resume.js'
+
 export const apiVersion = 1
 
 /** The four quota classes (§12.5). */

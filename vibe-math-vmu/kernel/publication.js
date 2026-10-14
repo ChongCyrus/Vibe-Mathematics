@@ -9,6 +9,7 @@
 // (an offline run still produces a *pending* pack); a badge must match its fields; `failed` replication is
 // recorded normally (never an error); injected clock; zero-config never crashes; reads never mutate.
 
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const apiVersion = 1
 
 /** The version chain of a publication (16 §7 G2). */
@@ -107,7 +108,7 @@ export function createPublication({ clock = () => Date.now(), log = () => {}, se
     } else {
       if (p.version !== version) throw refuse('VMU_VERSION_CHAIN_BROKEN', 'pack version ' + version + ' does not match the current version ' + p.version + ' of ' + paperId, 'current: ' + p.version + '; legal next: ' + String(nextInChain(p.version)), { paperId, to: version, current: p.version, legalNext: nextInChain(p.version) })
     }
-    const id = 'pack-' + (++seq)
+    const id = mint('publication-pack', 'pack-')
     const pack = { id, paperId, venue, version, jatsVersion: c.jatsVersion, jats: jats || null, checklist: { paperId: true, venue: !!venue, jats: !!jats }, at: clock(), status: 'ready' }
     if (c.requireChecklist && !pack.checklist.venue) throw refuse('VMU_SUBMISSION_INCOMPLETE', 'submission pack is incomplete for ' + paperId + ': missing venue', 'pass venue:<name> (vmu.publish.requireChecklist=true)', { paperId, missing: ['venue'] })
     papers.get(paperId).packs.push(pack)
@@ -163,7 +164,7 @@ export function createPublication({ clock = () => Date.now(), log = () => {}, se
       throw refuse('VMU_ARCHIVE_RECEIPT_MISSING', 'cannot claim a registration without a receipt for ' + paperId,
         'offline-first: record status:"pending" now and add the receipt when the network returns (vmu.archive.receiptRequired=true)', { paperId, target })
     }
-    const reg = { id: 'reg-' + (++seq), paperId, target, status: wanted, receipt: receipt || null, at: clock(), offline: !receipt,
+    const reg = { id: mint('publication-registration', 'reg-'), paperId, target, status: wanted, receipt: receipt || null, at: clock(), offline: !receipt,
       packageStyle: style, environment: env, includeEnvironment: c0.includeEnvironment }
     p.registrations.push(reg)
     return { ...reg }

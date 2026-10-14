@@ -9,7 +9,7 @@
 
 ## 0. 一页速览
 
-**内核给"能在哪介入"（22 个冻结钩子，见 §5 末生成索引）＋"能做什么"（12 项能力）；中间件声明"我在哪个钩子、对谁、按什么失败策略、用哪些能力、做什么"。**
+**内核给"能在哪介入"（53 个冻结钩子，见 §5.3 与 §5 末生成索引）＋"能做什么"（12 项能力）；中间件声明"我在哪个钩子、对谁、按什么失败策略、用哪些能力、做什么"。**
 
 | 概念 | 实现事实（`kernel/bus.js`） |
 |---|---|
@@ -153,7 +153,7 @@
 
 ---
 
-## 5. 钩子全景表（**22 个冻结名**，逐字来自 `VU_HOOKS`；计数以 §5 末生成索引为准）
+## 5. 钩子全景表（**轮 1 的 22 个契约名**；完整 53 个以 §5.3 与 §5 末生成索引为准）
 
 > **生产者列取自实仓 grep**（`kernel/*.js`、`kernel/prompt/*.js`、`host*.js`、`vibe-math-vmu.js`、`packs/*.js`）：✓＝有 `emit(` 生产者；✗＝**今天无人 emit**（只出现在 `bus.js` 的冻结表/默认表）。
 > **默认失败策略**＝`DEFAULT_FAILURE` 逐字。
@@ -208,6 +208,28 @@
 > - ★★★ **守卫 `tests/audit-hook-coverage.test.mjs` 现已出荷** ✓（★ 四断言，**两个方向** ✓）：★ **① 每个冻结钩子都必须有 emit 点** ✓；★ **② 每个【VU 命名空间内**]的 emit 必须已冻结** ✓（★ 这一条正是两次活 bug 的成因 ✓）；★ **它当场抓出第二个 bug**，★ 而这正是"守卫第一次运行就为自己付账"的又一例 ✓。
 > ★★ **并由 `tests/audit-hook-coverage.test.mjs` 守着**：★ **冻结集里的每个钩子【要么在框架里有 emit 点、要么在本节里被明确标为纸面能力**]✓ ⇒ **一个名字不可能再静静地留在冻结集里、暗示一个没人提供的能力** ✓。
 
+### 5.3 轮 2 新原语的钩子（31 个，**全部已有真实 emit 点**）✓
+
+> 本节的 22 个是**轮 1 的契约集**（§5 表逐条列出）；轮 2 的四个新实现面各自新增了钩子，**已全部登记进 `HOOK_REGISTRY`**（单一真源，§6.1.1），并由 `tests/audit-hook-coverage.test.mjs` 双向守着（每个登记名都有 `bus.emit('<名>'` 落点；每个 vmu 命名空间内的 emit 都已登记）。**权威清单是 §5 末的生成索引**（53 个），下表给出语义面。
+
+| 组（命名空间） | 钩子 | 默认失败 | 可否阻断 | 语义 |
+|---|---|---|---|---|
+| 恢复（`resume/`，`kernel/resume.js`） | `recovered`／`degraded`／`projection-error` | `open` | ✗ | 恢复完成／带未水合投影降级／单面水合失败 |
+| 标识（`ids/`，`kernel/ids.js`） | `minted`／`hydrated`／`persist-failed` | `open` | ✗ | 铸号／从 fold 水合计数／持久化失败 |
+| 人类在环（`human/`，`kernel/human.js`） | `vetoed`／`veto-lifted`／`approval-asked`／`approval-decided` | `open` | ✗ | 否决已记录／已解除／请求审批／审批已决 |
+| 同上 | **`gate-pending`** | **`closed`** | **✓** | 动作被审批闸挂起——**闸门语义必须有人接**：监听者坏掉不得等于放行 |
+| 控制（`control/`，`kernel/control.js`） | `scope-paused`／`scope-resumed`／`param-set`／`param-refused` | `open` | ✗ | 范围暂停/恢复、参数已改/被拒（观测，与既有 `control/paused|resumed|heartbeat` 同策略） |
+| 群聊（`chat/`，`kernel/chat.js`） | **`send-before`** | **`closed`** | **✓** | 配额/禁言/表决冻结策略的执行点 |
+| 同上 | `sent`／`refused` | `open` | ✗ | 已接受／被策略拒（观测） |
+| 信箱（`mailbox/`，`kernel/mailbox.js`） | **`deliver-before`** | **`closed`** | **✓** | 一批投递 flush 之前的策略点 |
+| 同上 | `delivered` | `open` | ✗ | 一批已投递并 ack |
+| 面板（`panel/`，`kernel/panel.js`） | **`write-before`** | **`closed`** | **✓** | 自述面板写入前的策略点（他人改 `overall` 的处置在此可见） |
+| 同上 | `written`／`viewed` | `open` | ✗ | 写入落地／被查看（查看留痕） |
+| 数学作业（`math/`，`kernel/mathjobs.js`、`kernel/mathadapters.js`） | `job-submitted`／`job-settled`／`job-failed`／`job-timeout`／`job-cancelled`／`job-recovered`／`adapters-probed`／`adapters-ran` | `open` | ✗ | 作业生命周期与适配面探测/运行（观测；失败不因监听者坏掉而升级） |
+
+★★★ **命名空间规则同步扩展**（`bus.emit` 的 `VU_NAMESPACE`）：`resume|ids|human|chat|mailbox|panel|math` 已加入 ⇒ 这七个命名空间里**未登记的名字会被具名拒**，不再"看起来正常、其实没人能挂"（与轮 496 修 `budget/warn`／`member/self-report` 同一条规则）。
+★★ **emit 形态是硬要求**：`bus.emit('<名>', payload, {member,role,phase})`。`emit({type:'x'})` 这种**单对象调用**会被总线以 `VMU_INVALID_ARGUMENT` 拒绝（`kernel/lifecycle.js:39` 曾是活样例，其两条广播因此**从未到达总线**）；且门禁只认字面量 `bus.emit('<名>'` ⇒ 对象形态**不算生产者**。
+
 ## 6. 插件、协议与边界
 
 ### 6.1 三类扩展物的装载顺序（**轮 1 按 D-03 更正：只有 M1/M2 进总线**）
@@ -216,10 +238,12 @@
 3. **脚本（M3）不在总线上**：经 `kernel/script-bridge.js` ＋ `vibe_vmu_script` 工具（`config.scripts`）建立调用；`file`／`inline` 二选一。**外部插件（M4）同样不在总线上**：它是消费 vmu 已发布服务的 DSH 插件。
 > **同 order 内**按 `id` 字典序 ⇒ 总线上的条目顺序**确定可复现**。
 
-### 6.1.1 钩子只有一份登记（**轮 1，D-04**）
+### 6.1.1 钩子只有一份登记（**轮 1 立，轮 2 收口 = D-12**）
 - **单一真源**＝`kernel/bus.js` 的 `HOOK_REGISTRY`：每个钩子记 `name`／`kind`(vmu|host)／`failure`／可否阻断／可否改写／作用域／时机／真实生产者／是否桥接（`bridged` ＋ `bridgeSite`）。
-- **派生**：`DSH_HOOKS`（模块可订阅的宿主名，`loader.js` 再导出）与 `BRIDGED_HOOKS`（宿主桥真能挂的，`host-hooks.js` 再导出）都由它过滤而来；`workflow/*` 前缀在 `HOOK_PREFIXES`。
-- **断言**：`hookRegistryProblems()` 校验「无重名、`VU_HOOKS` 与登记表逐名一致、`DEFAULT_FAILURE` 与登记表一致、**桥接 ⊆ 可订阅**、每个桥接项都写明注册点」；`VU_HOOKS`／`DEFAULT_FAILURE` 仍以字面量保留（三处既有门禁按源码文本解析它们），一致性由该断言保证。
+- **全部派生**（轮 2 起**没有第二份字面量**）：`VU_HOOKS`＝登记的 `kind:'vmu'` 名（登记序）、`DEFAULT_FAILURE`＝各 vmu 钩子的 `failure`、`DSH_HOOKS`（模块可订阅的宿主名，`loader.js` 再导出）＝`kind:'host'` 名、`BRIDGED_HOOKS`（宿主桥真能挂的，`host-hooks.js` 再导出）＝`bridged:true` 子集；`workflow/*` 前缀在 `HOOK_PREFIXES`。
+- **断言**：`hookRegistryProblems()` 校验**登记数据本身**——名字形状 `domain/name`、唯一、vmu 必有 `failure`/`scope`/`producer`、host 必有 `bridged` 且 `bridged ⇒ bridgeSite`、未桥接不得声称注册点、两张派生表覆盖数与登记一致；「桥接 ⊆ 可订阅」由 `BRIDGED_HOOKS` 的派生方式结构性成立，而**每个桥接项都有真实注册点**由 `bridgeSite` 字段具名。
+- **门禁改读运行时导出**（D-12 同轮两侧改动）：`tests/audit-hook-coverage.test.mjs`、`tests/audit-doc-vs-code-tables.test.mjs`、`tests/audit-vmu-docs.test.mjs`、`scripts/generate-surface-index.mjs` 不再按源码文本正则解析这两张表 ⇒ 派生的形状可以自由演进。
+- **命名空间**：`VU_NAMESPACE` 覆盖 `member|turn|meeting|ballot|record|task|prompt|budget|pack|settle|control|resume|ids|human|chat|mailbox|panel|math`；这些命名空间内未登记的名字**具名拒**（`declareTopic` 可显式声明新主题）。
 
 ### 6.2 与 DSH 原生能力的边界（实现事实）
 - `bus.wrapHostWaterfall(next)` 是**唯一**接触宿主 `next()` 的地方：把宿主 waterfall 包成一次 `emit`，**条目返回 `undefined` 即放行**，`emit` 返回 `ok:false` 时**短路**（不调 `next`）。
@@ -351,6 +375,8 @@
 | 11 | **轮 1**：`kind ∈ {rules,module,script,plugin}`＝M1–M4 | **总线只跑 `rules`／`module`**；`script`／`plugin` 在 `add` 处**具名拒** `VMU_MIDDLEWARE_KIND_UNSUPPORTED`（hint 点名真实载体）；**M4 是 DSH 外部插件，pack 是 L4** | `bus.js` `SUPPORTED_KINDS`／`add()` |
 | 12 | **轮 1**：非规则条目"给 `handler` 或 `file`" | **必须给 `handler`**；`file` 只是装载线索（总线不装载文件，`loader.js` 装载后带上 handler） | `bus.js` `validateEntry()`／`emit()` 的 skipped 分支已不再可达 |
 | 13 | **轮 1**：三份钩子表各自维护 | **一份登记 `HOOK_REGISTRY` ＋ 派生 ＋ 断言**（§6.1.1） | `bus.js` `hookRegistryProblems()`；`loader.js`／`host-hooks.js` 再导出派生表 |
+| 14 | **轮 2**：`VU_HOOKS`／`DEFAULT_FAILURE` 仍是字面量（靠断言绑定） | **完全派生**（D-12）：两张表都由 `HOOK_REGISTRY` 生成，4 处按源码文本解析的门禁同轮改为**读运行时导出** | `bus.js` `VU_HOOKS`／`DEFAULT_FAILURE`；`tests/audit-hook-coverage.test.mjs`／`audit-doc-vs-code-tables.test.mjs`／`audit-vmu-docs.test.mjs`／`scripts/generate-surface-index.mjs` |
+| 15 | **轮 2**：`emit({type:'x'})` 单对象广播（`kernel/lifecycle.js:39`） | **活 bug**：`bus.emit` 只收**字符串名** ⇒ 该调用抛 `VMU_INVALID_ARGUMENT` 且被 try/catch 吞掉 ⇒ **广播从未到达总线**。正确形态 `bus.emit('<名>', payload, opts)`；门禁也只认这一形态 | `kernel/lifecycle.js:39`；§5.3 末的形态硬要求 |
 
 ---
 
@@ -369,11 +395,11 @@
 
 ### 钩子索引（★ **生成**：来自 `VU_HOOKS` ＋ `DEFAULT_FAILURE` ＋ 实仓 emit 扫描 ✓）
 
-> ★★★ **本节的数字【曾经手写、并因此过期**]✗** ✓：★ **§5 的标题写着"**20** 个冻结名"，而 `VU_HOOKS` 在轮 496 已增至 **22**（★ 新增 `budget/warn` 与 `member/self-report` ✓ —— ★ 两个都是**修活 bug 时**加上的 ✓）⇒ ★★ **手写计数【必然**]落后于代码** ✓ ⇒ **这张表改为生成** ✓。
+> ★★★ **本节的数字【曾经手写、并因此过期**]✗** ✓：★ **§5 的标题写着"**20** 个冻结名"，而 `VU_HOOKS` 在轮 496 已增至 **55**（★ 新增 `budget/warn` 与 `member/self-report` ✓ —— ★ 两个都是**修活 bug 时**加上的 ✓）⇒ ★★ **手写计数【必然**]落后于代码** ✓ ⇒ **这张表改为生成** ✓。
 
 | 钩子 | 默认失败策略 | 生产者 |
 |---|---|---|
-| `member/self-report` | `open` | `members.js` |
+| `member/self-report` | `open` | `members.js`、`panel.js` |
 | `budget/warn` | `open` | `budget.js` |
 | `member/wake-before` | `closed` | `members.js` |
 | `member/wake-after` | `closed` | `members.js` |
@@ -395,8 +421,41 @@
 | `control/paused` | `open` | `index.js` |
 | `control/resumed` | `open` | `index.js` |
 | `control/heartbeat` | `open` | `index.js` |
+| `resume/recovered` | `open` | `resume.js` |
+| `resume/degraded` | `open` | `resume.js` |
+| `resume/projection-error` | `open` | `resume.js` |
+| `ids/minted` | `open` | `ids.js` |
+| `ids/hydrated` | `open` | `ids.js` |
+| `ids/persist-failed` | `open` | `ids.js` |
+| `human/vetoed` | `open` | `human.js` |
+| `human/veto-lifted` | `open` | `human.js` |
+| `human/approval-asked` | `open` | `human.js` |
+| `human/gate-pending` | `closed` | `human.js` |
+| `human/approval-decided` | `open` | `human.js` |
+| `control/scope-paused` | `open` | `control.js` |
+| `control/scope-resumed` | `open` | `control.js` |
+| `control/param-set` | `open` | `control.js` |
+| `control/param-refused` | `open` | `control.js` |
+| `chat/send-before` | `closed` | `chat.js` |
+| `chat/sent` | `open` | `chat.js` |
+| `chat/refused` | `open` | `chat.js` |
+| `mailbox/deliver-before` | `closed` | `mailbox.js` |
+| `mailbox/delivered` | `open` | `mailbox.js` |
+| `panel/write-before` | `closed` | `panel.js` |
+| `panel/written` | `open` | `panel.js` |
+| `panel/viewed` | `open` | `panel.js` |
+| `math/job-submitted` | `open` | `mathjobs.js` |
+| `math/job-settled` | `open` | `mathjobs.js` |
+| `math/job-failed` | `open` | `mathjobs.js` |
+| `math/job-timeout` | `open` | `mathjobs.js` |
+| `math/job-cancelled` | `open` | `mathjobs.js` |
+| `math/job-recovered` | `open` | `mathjobs.js` |
+| `math/adapters-probed` | `open` | `mathadapters.js` |
+| `math/adapters-ran` | `open` | `mathadapters.js` |
+| `lifecycle/prereg` | `open` | `lifecycle.js` |
+| `lifecycle/advance` | `open` | `lifecycle.js` |
 
-> ★★ 合计 **22** 个冻结钩子 ✓；★ **无默认策略的 **0** 个** ✓。
+> ★★ 合计 **55** 个冻结钩子 ✓；★ **无默认策略的 **0** 个** ✓。
 
 <!-- END GENERATED: hook-index -->
 

@@ -3,6 +3,7 @@
 // 三条硬不变式：① 拒绝必须具名（`VMU_*` ＋ hint），绝不裸异常；② 任何上限触界都要**报丢弃计数**，
 // 绝不静默；③ **不读真实时间**（只用注入的 `clock`）——同一输入在任何时刻都得到同一结果。
 import { createHash } from 'node:crypto'
+import { CODE as RESUME_CODE } from './resume.js'
 
 export const apiVersion = 1
 
@@ -11,6 +12,9 @@ export const DETAIL_LEVELS = Object.freeze(['brief', 'normal', 'full'])
 
 /** 正文/逐字稿的默认上限（字节）；触界必报丢弃量。 */
 export const VERBATIM_CAP_BYTES = 32 * 1024
+
+/** 快照里逐字稿的上限（字节）：超出**计数上报**，绝不静默裁（kernel/resume.js 接口约定的透明度）。 */
+export const SNAPSHOT_VERBATIM_CAP = 64 * 1024
 
 /** 具名拒绝（形状照 kernel/meeting.js／tasks.js）。 */
 export function refuse(code, message, hint) {
@@ -140,8 +144,7 @@ export function createMinutes({ clock = () => new Date(0).toISOString(), log = (
   }
 
   /** actions：列出行动项（只读，深拷贝，不得改状态）。 */
-  function actions(input = {}) {
-  // A DEFAULT PARAMETER DOES NOT PROTECT AGAINST null: `{ id } = {}` throws when called with null, which is how this
+  function actions(input = {}) {  // A DEFAULT PARAMETER DOES NOT PROTECT AGAINST null: `{ id } = {}` throws when called with null, which is how this
   // method once leaked a V8 message. Normalise first, so an imperfect caller is refused rather than crashed.
   const { id } = input || {}
   if (!id) throw refuse('VMU_INVALID_ARGUMENT', 'actions needs { id }', 'pass { id: "<minutes id>" }; list() shows the ids')
@@ -219,5 +222,106 @@ export function createMinutes({ clock = () => new Date(0).toISOString(), log = (
     }
   }
 
-  return { draft, confirm, append, actions, list, status }
+  /**
+   * TASK-11 (v5r S8/R3/K12): the minutes in TWO ZONES — the speech zone (what was said, refusals included) and
+   * the vote zone (every board of this meeting). v5r split them because a mixed transcript made "who voted what"
+   * unauditable; the split is preserved here, and an EMPTY zone says so instead of silently disappearing.
+   */
+  function zones(input = {}) {
+    const { id, ballotIds = [] } = input || {}
+    const rec = need(id)
+    const slot = verbatim.get(rec.meetingId) || { entries: [], storedBytes: 0, droppedBytes: 0, capBytes: capBytes() }
+    const speech = slot.entries.filter((e) => e.kind !== 'ballot' && e.kind !== 'vote')
+    const voteEntries = slot.entries.filter((e) => e.kind === 'ballot' || e.kind === 'vote')
+    const voteZone = (rec.ballots || []).map((b) => Object.assign({}, b))
+      .concat((rec.resolutions || []).map((r) => ({ kind: 'resolution', text: String(r.text || r) })))
+      .concat(voteEntries.map((e) => ({ kind: e.kind, text: e.text, at: e.at })))
+    dirty.reads += 1
+    return {
+      ok: true, id: rec.id, meetingId: rec.meetingId, detail: rec.detail,
+      speechZone: { entries: speech.map((e) => ({ at: e.at, kind: e.kind, text: e.text, quotes: (e.quotes || []).length, folded: (e.folded || []).length })),
+        count: speech.length, empty: speech.length === 0, note: speech.length === 0 ? '发言区为空（本场尚无逐字稿条目）' : '' },
+      voteZone: { entries: voteZone, count: voteZone.length, empty: voteZone.length === 0, ballotIds: ballotIds.slice(),
+        note: voteZone.length === 0 ? '投票区为空（本场未使用投票板，也无决议）' : '' },
+      // The zones are derived, never written: a read cannot change the record (§R7 只增不改).
+      derivedFrom: { verbatimEntries: slot.entries.length, droppedBytes: slot.droppedBytes, capBytes: slot.capBytes },
+    }
+  }
+
+  /**
+   * TASK-11 (v5r #54 "无 entry ⇒ 只报缺口"): report what the minutes are MISSING and never fill it in.
+   * A silent auto-completion would fabricate a record, which is the failure mode this report exists to prevent.
+   */
+  function gaps(input = {}) {
+    const { id } = input || {}
+    const rec = need(id)
+    const slot = verbatim.get(rec.meetingId) || { entries: [] }
+    const gaps = []
+    if (!(rec.agendaOutcomes || []).length) gaps.push({ what: 'agendaOutcomes', why: '议程结果为空：谁讨论了哪一条没有落进纪要' })
+    if (!Object.keys(rec.attendance || {}).length) gaps.push({ what: 'attendance', why: '出席表为空：点名/出席没有被记录' })
+    if (!(rec.motions || []).length) gaps.push({ what: 'motions', why: '动议节为空：本场没有动议（或没有记录）' })
+    if (!(rec.ballots || []).length) gaps.push({ what: 'ballots', why: '投票区为空：本场未使用投票板' })
+    if (!(rec.resolutions || []).length) gaps.push({ what: 'resolutions', why: '决议区为空：没有落决议' })
+    if (!(rec.actions || []).length) gaps.push({ what: 'actions', why: '行动项为空：没有责任人/期限' })
+    if (!(rec.dissent || []).length) gaps.push({ what: 'dissent', why: '少数意见节为空（若政策要求则必须在 confirm 时补齐）' })
+    if (!slot.entries.length) gaps.push({ what: 'verbatim', why: '逐字稿为空：本场没有 append 任何条目' })
+    dirty.reads += 1
+    return { ok: true, id: rec.id, meetingId: rec.meetingId, gaps, count: gaps.length,
+      note: '只报缺口，**不自动补全**（R7）；补齐走 append/confirm，责任人是记录人或院士' }
+  }
+
+  return { draft, confirm, append, actions, list, status, zones, gaps, snapshot, restore }
+
+  /**
+   * PERSISTENCE SEAM v1 (kernel/resume.js interface). Two things are deliberate here:
+   *   · the VERBATIM transcript is a large text body, so the snapshot carries a declared cap and reports the
+   *     truncation (`truncated` + a `skipped` entry) instead of silently clipping it;
+   *   · the id counter is `max(seq, highest existing mn-<n>)`, so a restored session never re-mints an id that
+   *     already exists in the archives ("names are immortal", the v5r invariant).
+   */
+  function snapshot() {
+    const cap = SNAPSHOT_VERBATIM_CAP
+    const verbatimOut = {}
+    let verbatimBytes = 0
+    let droppedBytes = 0
+    for (const [mid, slot] of verbatim.entries()) {
+      const text = JSON.stringify(slot)
+      if (verbatimBytes + text.length > cap) { droppedBytes += text.length; continue }
+      verbatimOut[mid] = clone(slot)
+      verbatimBytes += text.length
+    }
+    const maxId = [...records.keys()].reduce((mx, id) => Math.max(mx, Number(String(id).replace(/^mn-/, '')) || 0), 0)
+    return { apiVersion, face: 'minutes', v: 1, at: clock(),
+      data: { records: Object.fromEntries([...records.entries()].map(([k, v]) => [k, clone(v)])), verbatim: verbatimOut,
+        verbatimBytes, verbatimCapBytes: cap, droppedVerbatimBytes: droppedBytes },
+      counters: { minutes: Math.max(seq.n, maxId) },
+      skipped: (droppedBytes > 0 ? [{ what: 'verbatim', why: 'snapshot cap ' + cap + ' bytes reached: ' + droppedBytes + ' byte(s) omitted (counted in droppedVerbatimBytes)' }] : [])
+        .concat([{ what: 'meeting', why: 'the injected meeting seam is re-bound by the host, never serialised' }]) }
+  }
+
+  /** Hydrate a `snapshot()`. Merge-safe while empty, idempotent on the same snapshot, named conflict otherwise. */
+  function restore(snap) {
+    if (!snap || typeof snap !== 'object') return { ok: false, restored: false, code: RESUME_CODE.snapshotIncomplete, message: 'no snapshot to restore', missing: ['snapshot'] }
+    if (snap.face !== 'minutes') return { ok: false, restored: false, code: RESUME_CODE.snapshotVersion, message: 'not a minutes snapshot (face=' + String(snap.face) + ')' }
+    if (Number(snap.v) !== 1) return { ok: false, restored: false, code: RESUME_CODE.snapshotVersion, message: 'unsupported snapshot version ' + String(snap.v) }
+    const d = snap.data
+    const missing = ['records'].filter((k) => !d || d[k] === undefined)
+    if (missing.length) return { ok: false, restored: false, code: RESUME_CODE.snapshotIncomplete, message: 'snapshot is missing ' + missing.join(', '), missing }
+    if (records.size > 0) {
+      const same = JSON.stringify(d) === JSON.stringify(snapshot().data)
+      if (!same) return { ok: false, restored: false, code: RESUME_CODE.restoreConflict,
+        message: 'this minutes service already holds ' + records.size + ' record(s): refusing to half-overwrite them',
+        hint: 'restore into a fresh service, or restore the snapshot matching the live state' }
+    }
+    records.clear()
+    for (const [k, v] of Object.entries(d.records || {})) records.set(k, clone(v))
+    verbatim.clear()
+    for (const [k, v] of Object.entries(d.verbatim || {})) verbatim.set(k, clone(v))
+    const fromSnap = Number((snap.counters && snap.counters.minutes) || 0)
+    const maxId = [...records.keys()].reduce((mx, id) => Math.max(mx, Number(String(id).replace(/^mn-/, '')) || 0), 0)
+    seq.n = Math.max(seq.n, fromSnap, maxId)
+    return { ok: true, restored: true, restored_items: ['records', 'verbatim'], counters: { minutes: seq.n },
+      truncated: d.droppedVerbatimBytes ? { what: 'verbatim', bytes: d.droppedVerbatimBytes } : null,
+      skipped: (snap.skipped || []).slice() }
+  }
 }

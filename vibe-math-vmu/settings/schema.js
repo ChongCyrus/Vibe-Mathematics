@@ -476,7 +476,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.collusion.minEvidence', type: 'natural', def: 2, hot: HOT.H1, who: 'office', doc: '判定嫌疑所需最少证据数' },
   { key: 'vmu.collusion.onSuspect', type: 'enum', domain: ['report', 'freeze-review'], def: 'report', hot: HOT.H1, who: 'office', doc: '嫌疑处理（默认只报告；冻结审查须显式开启）' },
   // batch-4 slice 1 (mathjobs): the job-face knobs the module really reads.
-  { key: 'vmu.math.maxParallel', type: 'positiveInteger', def: 1, hot: HOT.H1, who: 'office', doc: '并行作业上限（超限 ⇒ 具名拒，不自旋等待 ✗）' },
+  { key: 'vmu.math.maxParallel', type: 'positiveInteger', def: 1, hot: HOT.H1, who: 'office', doc: '并行作业上限（超限 ⇒ 具名拒，不自旋等待 ✗）。★ 轮 2 语义边界（Lead 点名的收敛项）：本键与 `vmu.math.jobs.maxParallel` **语义相同**（都是数学作业的并发上限），只是当前读者不同——本键由 `kernel/mathjobs.js:195` 读，`vmu.math.jobs.maxParallel` 由 `kernel/mathtools.js:194/565` 读。**收敛方向：以本键为唯一真源**，`vmu.math.jobs.maxParallel` 降为待删别名；两个读点都在 reader-b 的文件里，改动已在 `_handoff/vmu/core-round2-report.md` 具名，未擅自改他人文件。' },
   { key: 'vmu.math.maxJobs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '作业总量上限（0＝不限）' },
   { key: 'vmu.math.keepReceipts', type: 'natural', def: 200, hot: HOT.H1, who: 'office', doc: '回执保留条数（溢出必计数）' },
   { key: 'vmu.math.requireSeedForRandom', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '随机作业必须有种子' },
@@ -889,6 +889,82 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.prompts.overridesByLang', type: 'object', def: {}, hot: HOT.H1, who: 'office', doc: "语言级覆盖 {section:{lang:text}}；解析出的语言命中时【优先于语言无关覆盖】" },
   { key: 'vmu.naming.conflictPolicy', type: 'enum', domain: ['refuse', 'suffix'], def: 'refuse', hot: HOT.H1, who: 'office', doc: "命名冲突策略（★ 只对【显式传入 record.id】生效：显式点名才是对名字的主张；由标题派生的名字不算冲突，因为同标题不同内容正是本面的内容身份语义 ✓）" },
   // ROUND 226: bayes / ode / stats / symbolic（docs/09 声明；现由 kernel/mathtools.js 读取）.
+
+  // ---- ROUND 2 (task-14 · 内核管线): the keys the four new faces declare ------------------------
+  // Declared HERE (hand-written) because the framework owns the vocabulary; each key names the module that
+  // reads it, and a key whose module has not landed yet is visible as declared-but-unwired in docs/04 §11
+  // (never silently "working"). Families: vmu.chat.* / vmu.mailbox.* / vmu.panel.* / vmu.resume.* / vmu.human.*
+  // / vmu.control.* / vmu.math.adapters.* / vmu.math.jobs.*.
+  // chat (v5r-reader-c · kernel/chat.js) — 管理员/发言配额/禁言/冻结豁免/审计环形上限
+  { key: 'vmu.chat.admins', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '群聊管理员名单；未列者执行管理动作 ⇒ 具名拒 VMU_CHAT_NOT_ADMIN' },
+  { key: 'vmu.chat.speakQuota', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '每人发言次数上限（0＝不限；超限具名拒 VMU_CHAT_QUOTA_EXCEEDED）' },
+  { key: 'vmu.chat.speakQuotaWindowMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '配额窗口（0＝整场不重置）' },
+  { key: 'vmu.chat.muteDefaultMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '默认禁言时长（0＝无到期，需显式解除）' },
+  { key: 'vmu.chat.freezeExemptAdmins', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '表决冻结期管理员可否发言（v5r 的 chair-first；false ⇒ 冻结对管理员同样生效）' },
+  { key: 'vmu.chat.historyCap', type: 'natural', def: 200, hot: HOT.H1, who: 'office', doc: '聊天审计环形上限（触界计数丢弃，绝不静默）' },
+  // mailbox (v5r-reader-c · kernel/mailbox.js) — 私信耐久 + ack 语义
+  { key: 'vmu.mailbox.digestWindowMs', type: 'natural', def: 45000, hot: HOT.H1, who: 'office', doc: '摘要合并窗口（同窗内多条合并投递）' },
+  { key: 'vmu.mailbox.digestMax', type: 'natural', def: 12, hot: HOT.H1, who: 'office', doc: '单次摘要最多合并条数（超出计数丢弃并留在待投递队列）' },
+  { key: 'vmu.mailbox.urgentKinds', type: 'stringList', def: ['dm', 'office', 'assign', 'nudge', 'notice', 'meeting', 'verify'], hot: HOT.H1, who: 'office', doc: '立即投递（不并入摘要）的消息种类' },
+  { key: 'vmu.mailbox.ackedLedgerCap', type: 'natural', def: 500, hot: HOT.H1, who: 'office', doc: '已 ack 台账保留条数（ack 后正文即删，只留 {id,from,at,kind,bytes}）' },
+  { key: 'vmu.mailbox.wakeBudget', type: 'natural', def: 1, hot: HOT.H1, who: 'office', doc: '每轮唤醒预算（一次 flush 最多唤醒几个收件人）' },
+  { key: 'vmu.mailbox.deliverTimeoutMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '投递超时（0＝沿用调用方/宿主默认；超时不算投递成功 ⇒ 不 ack）' },
+  // panel (v5r-reader-c · kernel/panel.js) — 成员状态面板（总目标/计划/正在执行的子任务）
+  { key: 'vmu.panel.auditCap', type: 'natural', def: 200, hot: HOT.H1, who: 'office', doc: '面板查看留痕上限（谁在何时看了谁的面板）' },
+  { key: 'vmu.panel.subtasksMax', type: 'natural', def: 32, hot: HOT.H1, who: 'office', doc: 'subtasks 字段条数上限（超出计数丢弃）' },
+  { key: 'vmu.panel.deviationPolicy', type: 'enum', domain: ['record', 'refuse'], def: 'record', hot: HOT.H1, who: 'office', doc: '他人改 overall 时的处置：record＝留痕可回取；refuse＝具名拒 VMU_PANEL_DEVIATION' },
+  { key: 'vmu.panel.historyCap', type: 'natural', def: 200, hot: HOT.H1, who: 'office', doc: '面板历史条数上限（超出计数丢弃）' },
+  // resume + human + control (v5r-reader-a · kernel/resume.js · human.js · control.js)
+  { key: 'vmu.resume.autoRecover', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: 'store.open() 后是否自动跑 recover()（无 store ⇒ 具名 no-op，不假装恢复）' },
+  { key: 'vmu.resume.projections', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '装配期挂写穿投影的面键（members/tasks/meetings/ballots/budget/phase/work）；空＝不挂任何投影' },
+  { key: 'vmu.resume.keepRecoveries', type: 'natural', def: 20, hot: HOT.H2, who: 'office', doc: '恢复记录保留条数（裁最旧）' },
+  { key: 'vmu.resume.readBack', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '写后是否回读校验（不一致 ⇒ 具名 drift VMU_RESUME_READBACK_DRIFT）' },
+  { key: 'vmu.resume.journalCap', type: 'natural', def: 5000, hot: HOT.H2, who: 'office', doc: '每面 journal 条数上限（超出计数并裁最旧；缺口 ⇒ 具名拒水合 VMU_RESUME_PROJECTION_GAP）' },
+  { key: 'vmu.human.gatedActions', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '需要人工审批的动作名；空＝不闸任何动作（零机制）' },
+  { key: 'vmu.human.approvalQueueCap', type: 'natural', def: 100, hot: HOT.H2, who: 'office', doc: '待批队列上限（超出即具名拒，不静默丢）' },
+  { key: 'vmu.human.defaultAllowAcknowledged', type: 'boolean', def: false, hot: HOT.H0, who: 'office', doc: '仅当为 true 时 onTimeout=default-allow 才生效；否则超时具名拒（绝不静默放行）' },
+  { key: 'vmu.human.dashboardDomains', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '仪表盘可见域；空＝仅聚合计数；private/dm 永不可见' },
+  { key: 'vmu.human.vetoLiftRoles', type: 'stringList', def: ['office'], hot: HOT.H1, who: 'office', doc: '谁可解除否决（未列角色具名拒）' },
+  { key: 'vmu.control.canSetRoles', type: 'stringList', def: ['office'], hot: HOT.H1, who: 'office', doc: '谁可中途改参数（未列角色具名拒 VMU_CONTROL_PARAM_ROLE）' },
+  { key: 'vmu.control.tunableKeys', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '可改参数键白名单；空＝不许改（未声明键具名拒 VMU_CONTROL_PARAM_UNDECLARED）' },
+  // math adapters + job mirrors (v5r-reader-b · kernel/mathadapters.js · mathjobs.js)
+  { key: 'vmu.math.adapters.enabled', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '数学库专用适配面总开关（off ⇒ 具名拒 VMU_MATH_UNSUPPORTED_OP）' },
+  { key: 'vmu.math.adapters.libs', type: 'stringList', def: ['numpy', 'scipy', 'pandas', 'sympy'], hot: HOT.H2, who: 'office', doc: '已声明可用的科学计算库（请求未声明者 ⇒ 具名拒 VMU_MATH_LIB_NOT_DECLARED；零机制不允许猜）' },
+  { key: 'vmu.math.adapters.python', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: '显式解释器命令（非空则只用它、绝不猜；空＝走 vmu.math.engines/python 候选与 PATH）' },
+  { key: 'vmu.math.adapters.packageAllowlist', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '包白名单（空＝不限制；非空时请求的 packages 必须为其子集，否则具名拒）' },
+  { key: 'vmu.math.adapters.probeCache', type: 'enum', domain: ['session', 'call'], def: 'session', hot: HOT.H2, who: 'office', doc: '环境绑定探测缓存口径（session＝每会话一次；call＝每次调用重探）' },
+  { key: 'vmu.math.adapters.maxArrayElements', type: 'natural', def: 10000, hot: HOT.H1, who: 'office', doc: '数组/DataFrame 元素上限（超限计数式截断，dropped 必报）' },
+  { key: 'vmu.math.adapters.maxStringBytes', type: 'natural', def: 65536, hot: HOT.H1, who: 'office', doc: '符号/字符串结果字节上限（超限计数式截断）' },
+  { key: 'vmu.math.jobs.recover', type: 'enum', domain: ['on-load', 'manual', 'off'], def: 'on-load', hot: HOT.H1, who: 'office', doc: '作业镜像启动恢复口径（on-load＝构造时扫镜像；manual＝只由 jobsRecover 触发；off＝不恢复）' },
+  { key: 'vmu.math.jobs.keepMirrors', type: 'natural', def: 200, hot: HOT.H1, who: 'office', doc: '作业镜像保留条数（溢出计数式驱逐 droppedMirrors）' },
+  // report (vmu-assistant · kernel/report.js) — 自动汇报 + 参数配置面（人设装配走 pack 数据面，不在此）
+  { key: 'vmu.report.enabled', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '自动汇报总开关；默认 false＝零机制（另有 vmu.report.reports 默认空表，两道闸）；false ⇒ 已声明的汇报全部停发，但仍在 status().reporting 里具名报出 disabled' },
+  { key: 'vmu.report.reports', type: 'objectList', def: [], hot: HOT.H2, who: 'office', doc: '汇报声明清单；每项 {name, trigger:{kind:event|period|threshold, …}, template, to:[], channel, enabled?}；空＝零机制（不声明就什么都不发生）' },
+  { key: 'vmu.report.channels', type: 'stringList', def: ['inbox', 'digest', 'log'], hot: HOT.H1, who: 'office', doc: '允许的汇报通道；不在集合内具名拒 VMU_REPORT_CHANNEL_UNKNOWN' },
+  { key: 'vmu.report.recipients', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '允许的收件人白名单；空＝不限制（空收件人＋非 log 通道即具名拒）' },
+  { key: 'vmu.report.minIntervalMs', type: 'natural', def: 60000, hot: HOT.H1, who: 'office', doc: '周期汇报的最小周期；低于即钳到此值并在回执里报出（钳制不静默）' },
+  { key: 'vmu.report.traceCap', type: 'positiveInteger', def: 64, hot: HOT.H1, who: 'office', doc: '汇报留痕环上限；溢出必计数' },
+  { key: 'vmu.report.templateMaxChars', type: 'positiveInteger', def: 4000, hot: HOT.H1, who: 'office', doc: '模板渲染结果上限；超限截断＋计数并把省略字数写回正文' },
+  { key: 'vmu.report.params', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '主代理可查看/修改的参数域（设置键清单）；空＝参数面为空（改任何键都具名拒，不猜）' },
+  { key: 'vmu.report.whoMayChange', type: 'stringList', def: ['office'], hot: HOT.H1, who: 'office', doc: '谁可改上列参数（对齐 v5r「参数只能 office 改」，但由声明给出）' },
+  { key: 'vmu.report.requireReason', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '改参是否必须给理由；true ⇒ 无理由具名拒 VMU_REPORT_PARAM_REASON_REQUIRED' },
+  { key: 'vmu.report.auditChanges', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '参数改动是否写入审计（默认写；无 audit 接缝时具名上报 VMU_REPORT_AUDIT_UNAVAILABLE）' },
+  // ids (v5r-reader-a · kernel/ids.js) — the ONE id minter (Round 2 id-reuse fix)
+  { key: 'vmu.ids.persistEvery', type: 'natural', def: 1, hot: HOT.H2, who: 'office', doc: 'id 计数器写穿频率（1＝每次 mint；写穿丢几次也由 observeIds 的"已观测最大后缀"兜底 ⇒ 复用不可能）' },
+  // ROUND 2 (Lead 点名收敛项 ②): ONE declaration for a key THREE modules really read. `lean.js:128`／
+  // `mathjobs.js:192`／`mathtools.js:194` all read `vmu.math.jobs.dir` as a ROOT-RELATIVE STRING (empty ⇒ `Math/Jobs`),
+  // so the wired-schema generator emitted THREE rows for it (one per reader), two of which collided
+  // (`string ''` vs `object null`) and one of which had no recoverable default. Declaring it HERE makes the generator
+  // treat it as pre-existing (`collect()` skips `already.has(key)`) ⇒ it emits no row for it and both invariants
+  // ("declares a key twice" / "no default AND the file does not say so") hold — and the fix SURVIVES `regen-all`,
+  // unlike hand-editing the generated block.
+  { key: 'vmu.math.jobs.dir', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: '作业镜像目录（root 相对；空 ⇒ `Math/Jobs`）。三个真读者：`kernel/lean.js:128`、`kernel/mathjobs.js:192`、`kernel/mathtools.js:194` —— 三者都按**字符串路径**处理（非字符串即归一；越界 ⇒ `VMU_LEAN_JOBS_DIR_UNSAFE`／`VMU_MATH_JOBS_DIR_UNSAFE`）。' },
+  // The SAME convergence for the other two keys the generator was emitting twice (measured: the block carried
+  // `vmu.math.jobs.logMax` and `vmu.math.jobs.persist` twice as well, because `mathjobs.js` AND `mathtools.js` both
+  // read them). One declaration each, with the readers named.
+  { key: 'vmu.math.jobs.logMax', type: 'natural', def: 200, hot: HOT.H1, who: 'office', doc: '作业日志保留条数（溢出必计数）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`（两者默认一致：200）。' },
+  { key: 'vmu.math.jobs.persist', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '作业持久化：false＝只留回执详情；true＝额外写 `Math/Jobs` 镜像并允许恢复（`vmu.math.jobs.recover` 决定何时恢复）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`。' },
+
   // WIRED-SCHEMA:BEGIN (generated by scripts/generate-wired-schema.mjs - do not hand-edit)
   { key: 'vmu.allocation.dirtyWorkQuota', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（bidding.js 读取）；默认值取自模块源码" },
   { key: 'vmu.allocation.fairnessPolicy', type: 'string', def: 'equal', hot: HOT.H1, who: 'office', doc: "已接线（bidding.js 读取）；默认值取自模块源码" },
@@ -1025,10 +1101,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.math.formal.requireAll', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.formal.sorryPolicy', type: 'string', def: 'deny', hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.interval.enabled', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
-  { key: 'vmu.math.jobs.dir', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
-  { key: 'vmu.math.jobs.logMax', type: 'natural', def: 200, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.jobs.maxParallel', type: 'natural', def: 1, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
-  { key: 'vmu.math.jobs.persist', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.linalg.backend', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.linalg.requireResidual', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.linalg.sparse', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },

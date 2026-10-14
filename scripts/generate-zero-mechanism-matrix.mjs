@@ -44,7 +44,7 @@ const EXPECT = {
   // ── 具名拒面：缺参数/未声明 ⇒ 具名拒 ✓
   ballotbox: G('具名拒或 ok', 'task-214 实测：`open()` ⇒ 具名拒 **VMU_CONFLICT**（带口径 `enforced=[0]`）⇒ 零机制＝无票面参数 ⇒ 具名拒；有默认 ⇒ ok ✓'),
   course: G('具名拒或 ok', 'task-214 实测：`open()` ⇒ 具名拒 **VMU_INVALID_ARGUMENT**（带口径 `enforced=[1]`）⇒ 零机制＝缺课程参数 ⇒ 具名拒 ✓'),
-  formal: G('具名拒（带 code）', 'task-214 实测：`check()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT** ⇒ 零机制＝无形式化请求 ⇒ 具名拒即真实形状 ✓'), mathjobs: G('具名拒（带 code）', 'task-214 实测：`submit()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT** ⇒ 零机制＝无作业请求 ⇒ 具名拒即真实形状 ✓'), lean: G('具名拒（带 code）', 'task-214 实测：`submit()` ⇒ 具名拒 **VMU_LEAN_STATEMENT_REQUIRED** ⇒ 零机制＝无命题文本 ⇒ 具名拒即真实形状 ✓'), lifecycle: G('具名拒（带 code）', 'task-214 实测：`stages()` ⇒ 具名拒 **VMU_LIFECYCLE_NOT_DECLARED** ⇒ 零机制＝未声明生命周期 ⇒ 具名拒即真实形状 ✓'), stateversion: G('具名拒（带 code）', 'task-214 实测：`check()` ⇒ 具名拒 **VMU_COMPAT_UNKNOWN_COMBO** ⇒ 零机制＝无版本声明 ⇒ 具名拒即真实形状 ✓'), repropack: G('具名拒（带 code）', 'task-214 实测：`build()` ⇒ 具名拒 **VMU_MATH_SEED_REQUIRED** ⇒ 零机制＝无复现种子 ⇒ 具名拒即真实形状 ✓'),
+  formal: G('具名拒（带 code）', 'task-214 实测：`check()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT** ⇒ 零机制＝无形式化请求 ⇒ 具名拒即真实形状 ✓'), mathjobs: G('array 或 object', '**两侧都写清**（轮 2 实测）：`list()`（状态/列表面）⇒ **array[0]**（零机制＝无作业 ⇒ 空列表放行 ✓）；`submit()` 缺参 ⇒ 具名拒 **VMU_MATH_INVALID_INPUT**（task-214 实测，保留 ✓）'), lean: G('具名拒（带 code）', 'task-214 实测：`submit()` ⇒ 具名拒 **VMU_LEAN_STATEMENT_REQUIRED** ⇒ 零机制＝无命题文本 ⇒ 具名拒即真实形状 ✓'), lifecycle: G('具名拒（带 code）', 'task-214 实测：`stages()` ⇒ 具名拒 **VMU_LIFECYCLE_NOT_DECLARED** ⇒ 零机制＝未声明生命周期 ⇒ 具名拒即真实形状 ✓'), stateversion: G('具名拒（带 code）', 'task-214 实测：`check()` ⇒ 具名拒 **VMU_COMPAT_UNKNOWN_COMBO** ⇒ 零机制＝无版本声明 ⇒ 具名拒即真实形状 ✓'), repropack: G('具名拒（带 code）', 'task-214 实测：`build()` ⇒ 具名拒 **VMU_MATH_SEED_REQUIRED** ⇒ 零机制＝无复现种子 ⇒ 具名拒即真实形状 ✓'),
   idempotency: G('ok 或 object', '列表/状态面放行 ✓；**显式 `absent` 只在去重操作上**（该操作需参数 ⇒ 探针见 NEEDS_ARGS ✓）'),
   meetings: G('按声明默认开成', '零机制＝按声明默认值开成（不拒）✓'),
   // ── 探针缺参（**显式登记**，不算 mismatch ✓）：需显式探针或补参数
@@ -107,6 +107,19 @@ const EXPECT = {
   explain: G('具名拒（带 code）', '实测（轮 224）：矩阵的**探针**调用在零声明下【具名拒】 ✓——render() 无报告可渲染时以 VMU_INVALID_ARGUMENT 具名拒（status() 本身仍是 ok ✓，但探针走的是调用路径 ⇒ 期望取实测的拒 ✓）。**不假装成功** ✗'),
   control: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（paused: []、registrySize: 0；archivingNeverPausedByItself 与 idleNeverRecessesByItself 自曝两条不变式 ✓）'),
   citations: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（entries: 0；freeTextIsOffByDefault: true 自曝 ✓）；无条目⇒无可渲染对象，**不拒** ✓'),
+  // ROUND 2 (handover): the faces the round added. EVERY row here is MEASURED by this generator first (run it without
+  // flags and read the 返回形状/自曝字段 columns), never guessed - that is the rule this table exists to enforce.
+  // note 只写形状与理由：键数由本生成器的实测输出给出，不手写 ✓。
+  chat: G('ok 或 object', '实测（轮 2）：零声明下 list() ⇒ **ok**（自曝 dropped=0、truncated=false ⇒ 零机制＝无群聊/无收件人 ⇒ 清单可读、**不拒** ✓）'),
+  ids: G('ok 或 object', '实测（轮 2）：零声明下 status() ⇒ **ok**（唯一 id 分配面：无声明仍可读状态，**不拒** ✓）'),
+  mailbox: G('ok 或 object', '实测（轮 2）：零声明下 plan() ⇒ **ok**（自曝 enforced=[1] ⇒ 投递计划可读、**不拒** ✓）；无收件人⇒无可投递对象 ✓'),
+  mathadapters: G('具名拒（带 code）', '实测（轮 2）：零声明下 plan() ⇒ 具名拒 **VMU_MATH_INVALID_INPUT**（零机制＝无适配请求 ⇒ **具名拒即真实形状** ✓；不假装成功 ✗）'),
+  panel: G('ok 或 object', '实测（轮 2）：零声明下 status() ⇒ **ok**（自曝 dropped 列表 ⇒ 零机制＝无成员面板可报 ⇒ 状态可读、**不拒** ✓）'),
+  report: G('ok 或 object', '实测（轮 2）：零声明下 status() ⇒ **ok**（自曝 enforced=[11]、truncated=0 ⇒ 汇报面可读、**不拒** ✓）；无可汇报内容时仍给形状而非拒 ✓'),
+  // `resume` needs a REAL store/work/control/identity injection before its factory returns at all, so the probe
+  // records `create 抛出` and this row follows the convention used by `store` / `work` / `library` / `math`:
+  // a named missing-inputs row, counted under probe-errors, NOT an invented expectation.
+  resume: G('PROBE_NEEDS_ARGS', '缺：`store`／`work`／`control`／`identity` 注入（工厂需要真实接缝才返回实例）；补参后应按实测形状裁定 ✓'),
   // ROUND 235: the extracted policy checkers. Measured: `createLibraryPolicy` answers an object of six checker functions
   // and has NO `status()` at all, so the matrix does not apply to it - the same form used for other utility modules. Its
   // behaviour is covered where it is USED, by the library suites that call every one of the six.

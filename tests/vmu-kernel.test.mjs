@@ -433,8 +433,20 @@ if (SELF_PROBE) {
   const withSeam = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z', spawn: seam })
   ok(withSeam.lean && typeof withSeam.lean.submit === 'function' && typeof withSeam.lean.keysUsed === 'function',
     'and with a seam the face appears (submit/keysUsed present)', JSON.stringify(Object.keys(withSeam.lean || {})))
-  ok(Array.isArray(withSeam.lean.keysUsed()) && withSeam.lean.keysUsed().length === 8,
-    'the face reads exactly the eight Lean keys', JSON.stringify(withSeam.lean.keysUsed()))
+  // THE EXPECTED KEYS ARE LISTED, THE COUNT IS DERIVED. Round 2 added the job-ledger keys, so "exactly 8" became
+  // a stale number: the face legitimately reads the 8 Lean keys AND the 4 `vmu.math.jobs.*` keys. Two named lists
+  // plus a derived total keep the claim precise without re-typing a number that will drift again.
+  const LEAN_KEYS = ['vmu.math.formalVerify', 'vmu.math.leanCommand', 'vmu.math.leanArgs', 'vmu.math.leanTimeoutMs',
+    'vmu.math.leanAsync', 'vmu.math.leanInitiative', 'vmu.math.leanSearchPaths', 'vmu.math.leanJobsMaxParallel']
+  const JOBS_KEYS = ['vmu.math.jobs.persist', 'vmu.math.jobs.dir', 'vmu.math.jobs.recover', 'vmu.math.jobs.keepMirrors']
+  const expectedKeys = LEAN_KEYS.concat(JOBS_KEYS)
+  const usedKeys = withSeam.lean.keysUsed()
+  ok(Array.isArray(usedKeys) && expectedKeys.length > 0 && expectedKeys.every((k) => usedKeys.includes(k)),
+    'the face reads EVERY key it declares: the Lean keys AND the job-ledger keys (count derived from those two lists)',
+    JSON.stringify(usedKeys))
+  ok(usedKeys.length === expectedKeys.length && new Set(usedKeys).size === usedKeys.length,
+    'and it reads EXACTLY those (' + LEAN_KEYS.length + ' Lean + ' + JOBS_KEYS.length + ' jobs) with no duplicate',
+    usedKeys.length + ' keys')
 }
 
 // ---- E2 (task-154): `status().seams` is a CONSTRUCTION FACT, never an inference -----------------------

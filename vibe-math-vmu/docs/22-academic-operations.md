@@ -987,3 +987,90 @@
 | **`vmu.license`** | ★ "命中处都不是许可证面" ✓ | ★ **实测含 license 语义的方法数 ＝ 0** ✓ | ★ **成立** ✓ |
 
 > ★★★ **由此得出的纪律（★ 本会话第五到第八次同类 ✓）** ✓：★ **本节是【轮 266 的实测**]，★ 迄今已过 **270 余轮** ✗ ⇒ ★★ **凡"实测"结论都带【保质期**]** ✓ —— ★ **尤其"某事不存在"这类断言** ✓（★ **它随代码增长而【自动失效**]，★ 而没有任何守卫会发现 ✓）⇒ ★★★ **做法：① 间隔久了重测** ✓；★ **② "不存在"型断言要【写明它是哪一轮的实测**]** ✓（★ 便于判断新鲜度 ✓）。
+
+---
+
+## 19. 主代理＝助手：汇报原语与参数配置面（目标 6 · D-09）
+
+> 状态：**实现稿 v0.1（本卷新增节）** —— 判据＝Lead 裁决 **D-09**：v5r 的主代理是**两层**（`office`＝会话根＝助手/外部接口，**不研究、不投票、无座**，`agent.cordis.yml:74-86`；`academician`＝所内领头人，charter 入职冻结）；**参数只能 office 改**（v5r 的 `withOffice` 对其他人具名拒 `V5_NOT_OFFICE`）；而 v5r **没有任何定时/自动汇报机制** ✗（只有人设文字 ＋ `Progress/` ＋ 院士主动 `overview` ＋ 所办手动 `report()`）。本节把这四件事落成**框架原语 ＋ pack 声明** ✓。
+> 上位：本卷头部 `> 上位：`；`01-philosophy.md`（R1 内核零策略／R2 能力与挂点／R11 可观测）｜`06-prompt-pipeline.md`（段装配）｜`03-interface-contract.md`（服务/工具/错误码唯一登记 `§8`）｜`04-settings.md`（键与 H0–H3）｜`10-packs.md`（整合包＝组织政策）｜`16-§9`（汇报的**相位**接口 ✓）。
+> 读者：**机制作者**（要扩展汇报原语）｜**pack 作者**（要声明某机构的助手人设与汇报策略）｜**代理**（要知道自己能改什么、不能改什么）。
+
+### 19.1 能力进内核：`vibe-math-vmu/kernel/report.js`
+
+一句话：**汇报原语是框架能力，汇报策略是 pack 声明** ✓（D-09＋`01` 的 R1）。工厂与导出面：
+
+| 导出 | 是什么 | 语义要点 |
+|---|---|---|
+| `createReport({ clock, log, settings, deliver, audit, describeSetting })` | 工厂 | `clock` 必须注入；`deliver` 是唯一出站接缝；`audit` 写审计；`describeSetting` 是**只读**设置描述接缝（拿 hot/who，**不自己造第二个真源**）✓ |
+| `CODE` | 具名拒的码表 | 见 §19.5 ✓ |
+| `TRIGGER_KINDS` | `['event','period','threshold']` | 三类触发；**闭集** ✗✓ |
+| `EVENT_VOCAB` | 8 个事件名 | **闭集**：写词表外的名字 ⇒ 声明期具名红 ✓ |
+| `THRESHOLD_OPS` | `['gte','gt','lte','lt','eq']` | 阈值比较只认这五个 ✓ |
+| `DRIVING_FIELDS` | `['action','then','run','drive','decide','execute']` | 声明里出现任一 ⇒ **具名拒**（`VMU_REPORT_ACTION_NOT_ALLOWED`）✓ |
+| `TEMPLATE_VARS` | 模板变量白名单 | `at`／`event`／`name`／`count`／`value` ＋ `metric:`／`setting:` ✓ |
+
+返回面：`declarations()`／`status()`／`tick()`／`emit()`／`preview()`／`trace()`／`paramDomain()`／`guardParam()`／`noteParamChange()` ✓。
+
+### 19.2 工具面：`vibe_vmu_report`（`vibe-math-vmu/tools/report.js`）
+
+八个 action ✓：`status`（服务状态：`enabled`／`declared`／`armed`／`problems`／`fires`／`trace`／`params` ✓）｜`declarations`（声明清单＋**逐条问题** ✓）｜`params`（**参数域：键 → 值／类型／hot／who** ✓）｜`set`（改参：**唯一写者＝内核 `setSettingsValue`** ✓）｜`preview`（渲染不发）｜`emit`（强制发一条）｜`tick`（推进周期/阈值评估 ✓）｜`trace`（留痕）✓。
+**工具面不自己写设置** ✗：它先过 `guardParam()`（域／owner／理由），再由内核的设置守卫执行（H3 只读、具名 owner）✓ —— 这样"工具面"与"内核 API"是**同一个契约**，不是两份 ✓。
+
+### 19.3 策略进 pack：三份声明，三个消费者
+
+| 声明 | 位置 | 谁读它 | 说什么 |
+|---|---|---|---|
+| **汇报策略** | `packs/v5r/prompts/v5r-core.js` 的 `PACK.settings`（`vmu.report.enabled`／`reports`／`params`／`whoMayChange`／`requireReason`） | **pack 装载器**（`kernel/pack.js` 作为 pack 设置层应用 ✓） | 三触发各一条（周期/事件/阈值）、参数域 8 键、owner＝`office` ✓ |
+| **回合面人设** | `packs/v5r/prompts/v5r-assistant.js`（`V5R_ASSISTANT_TURN_SECTIONS`，由 `PACK.sections` 带出 ✓） | **提示词管线**（每个成员每一轮 ✓） | 成员的汇报义务、对外出口是所办、参数面属于所办 ✓ |
+| **system prompt 面人设** | `packs/v5r/prompts/assistant.json`（`hostPrompt:true` ✓） | **预设入口**（按文件夹名读取，插件**不认识 pack 名字** ✓） | office 的助手身份、汇报职责、参数面职责 ✓ |
+
+**为什么分成两份文件**：两个**消费者**不是同一个 —— 回合面由**已装载清单**进管线；system prompt 面必须在**内核存在之前**、由插件**按 pack 文件夹名**作为**数据**读取（插件不能静态 import 某一个 pack 的模块 ✗，否则框架就认识了那一个 pack ✓）。两份文本**不重叠** ✓，所以没有第二个副本会漂移 ✓。
+**为什么 `vmu.report.*` 只在一处声明**：同一个键被本 pack 的两个记录（清单 `settings` 与 `settings/defaults.json`）同时声明 ⇒ 具名 `VMU_PACK_CONFLICT`（D-02／O4）✗✓ —— 所以汇报策略归**清单**，`settings/defaults.json` 明确写"不在此处" ✓。
+
+### 19.4 零机制 ＋ 可关（**两道闸，都可见**）
+
+- **不声明 ⇒ 什么都不发生** ✓：`vmu.report.enabled` 的 schema 默认是 `false`（`settings/schema.js` ✓），`vmu.report.reports` 默认是**空表** ✓；无 pack 的装配 `status().declared === 0` 且 `tick()` 的 `note` 写"zero mechanism" ✓。
+- **可关且关得可见** ✓：置 `vmu.report.enabled=false` ⇒ 已声明的汇报**全部停发**，但 `status().problems` **具名**报出 `VMU_REPORT_NOT_ENABLED`（**"已声明但已停用"与"从未声明"是两件事** ✗✓）；`emit()` 同码具名拒 ✓。
+- **单条也能关**：声明里的 `enabled:false` 让那一条不触发 ✓。
+
+### 19.5 绝不越权驱动（**结构性不变量** ✗✓）
+
+- 每一份回执、每一行留痕、每一次投递都带 `drives:false` ✓；`status().neverDrives === true` ✓。
+- 声明里挂动作 ⇒ `VMU_REPORT_ACTION_NOT_ALLOWED`，**具名拒而不是悄悄摘掉** ✓。
+- 结构证明：`kernel/report.js` **没有任何 import** ✗✓ —— 它连一个决策服务都够不到（由 `tests/vmu-assistant-report.test.mjs` 断言源码这一事实 ✓）。
+- 一句话：**汇报只提示，决策属于读到汇报的人** ✓。
+
+### 19.6 真机装配证据（**不是"文档里写了"** ✓）
+
+| 通道 | 证据 | 命令 |
+|---|---|---|
+| **回合注入**（成员每轮） | `PACK.sections` 含 `v5r-report-duty` ⇒ **已装载清单**把它注册进真实管线 ⇒ `assemble()` 的文本里**逐字出现**，`sources` 点名它是贡献者 ✓ | `node tests/vmu-assistant-assembly.test.mjs` ✓ |
+| **system prompt**（人类对话的那个会话） | 真机 `entry.apply(ctx, { packs:['v5r'] })` ⇒ 入口注册的 host 段里含**助手人设三段**（身份/汇报/参数）✓ | `node tests/vmu-assistant-systemprompt.test.mjs` ✓ |
+| **汇报可声明可关** | 三类触发各一条且 `problems` 为空；关掉开关 ⇒ 已声明**不触发**且问题清单具名 ✓ | `node tests/vmu-assistant-report.test.mjs` ✓ |
+| **参数入口可改并留痕** | `guardParam()` 域外拒／owner 外拒／无理由拒；`set` 走内核写者 ⇒ 审计出现 `what:'update'` ＋ `subject:'setting:<键>'` ✓ | 同上 ✓ |
+
+### 19.7 键、服务与接缝（**唯一登记在 `04`／`03`** ✓）
+
+- **服务**：`vmu.report`（注册处与描述由内核管线落 ✓，本节只登记语义 ✓）。
+- **键族**：`vmu.report.enabled`｜`reports`｜`channels`｜`recipients`｜`minIntervalMs`｜`traceCap`｜`templateMaxChars`｜`params`｜`whoMayChange`｜`requireReason`｜`auditChanges` ✓（逐键类型/hot/who 登记在 `04-§11`，本节**不重复** ✗）。
+- **接缝**：`settings.get()`（活读 ✓）、`clock`、`deliver`（缺 ⇒ **先留痕再具名拒** `VMU_REPORT_NO_TRANSPORT` ✓）、`audit`（缺 ⇒ **具名上报** `VMU_REPORT_AUDIT_UNAVAILABLE`，不假装写过 ✓）、`describeSetting`（缺 ⇒ hot/who **报 UNKNOWN 而不臆造** ✓）。
+- **不穿**：`store`（**不留耐久键** ⇒ `PUBLIC_KEYS` 不变 ✓）、`members`、`timer`、`bus`（**不发新钩子** ⇒ D-12 的钩子单一真源不动 ✓）。
+- **周期由谁推进**：`tick()` 是**纯评估**，需外部驱动 —— 宿主回合结束钩子（`agent/turn-stopping` ✓）或工具面 `action:'tick'` ✓；**换接口＝零策略**（框架不自己起定时器 ✗✓）。
+- **装配接线**：`assistant.json` 的 host 段由入口读入并登记为 host 段 —— **接线单（服务名/工具名/意图键/file:line）已交内核管线** ✓。
+
+### 19.8 验收（机器可判定 ✓）
+
+1. **具名**：域外键 ⇒ `VMU_REPORT_PARAM_NOT_DECLARED`；owner 外 ⇒ `VMU_REPORT_PARAM_NOT_ALLOWED`；无理由（`requireReason=true`）⇒ `VMU_REPORT_PARAM_REASON_REQUIRED`；无传输 ⇒ `VMU_REPORT_NO_TRANSPORT` ✓。
+2. **断言**：`declarations().problems` 为空是"pack 策略有效"的判据；`status().armed` 与 `problems` 必须**互相一致**（有问题的报告绝不在 `armed` 里 ✓）。
+3. **场景**：关开关 ⇒ `fires` 不涨 ＋ `problems` 出现 `VMU_REPORT_NOT_ENABLED`；开开关 ⇒ 同一条声明**在同一个实例里**立刻可触发（**不重建** ✓，即 H1 活读 ✓）。
+4. **红**：反向变异（删掉域检查／owner 检查／`drives:false`／错拼一个模板变量）⇒ `tests/vmu-assistant-*.test.mjs` **具名红** ✓。
+5. **留痕**：每次汇报一条 `what:'create'`、每次改参一条 `what:'update'`（带 `subject`／`from`／`to`／`by`／`reason` ✓）。
+
+### 19.9 未核项（**编号登记见 `14-§2`**）
+
+1. **回合结束钩子未接线** ✗：`tick()` 的宿主驱动那一半由内核管线落；在它落地前，周期汇报只能由工具面 `action:'tick'` 或测试驱动 ✓ ⇒ 建议 `14-§2` 登记 **T14「自动汇报的宿主驱动」** ✓。
+2. **`vmu.report.*` 的 schema 行与 `04-§11` 生成表**：由内核管线加键、`regen-all` 出表 ✓（本卷不手写表 ✗）。
+3. **助手人设的"语气与篇幅"未定** ✗：本节只保证**必须说什么**（身份/职责/边界），措辞与长度属 pack 编辑范畴 ✓。
+4. **参数域的"谁能改"只有一条 owner 口径** ✗：目前是**字符串匹配**（`whoMayChange` 列表 ✓），没有"角色槽位"级解析（与 `vmu.safety.delegableKeys` 的交界未定 ✓）。
+5. **汇报与人类审批的联动未做** ✗：汇报**不触发**任何审批流（`vmu.safety.approvalRequired` 与它正交 ✓），是否需要"高危参数改动的审批"未决 ✓。

@@ -106,6 +106,19 @@ pack 默认  <  预设 Config  <  会话 settings  <  运行时 set
 - **设置（轮 1 落地）**：三处旧行为已收敛到**一条实现**（`createPackLoader.apply` + `settingSource`）——**更高层已拥有该键 ⇒ 遮蔽（高层胜、不覆盖、不报错）**；**同一层（另一个 pack／pack 默认层）⇒ `VMU_PACK_CONFLICT`**；显式 `vmu.packs.allowKernelOverride`／`vmu.packs.activeOverrides` 放行。`status().settings.resolved` 逐键回显 `{value, source, rank}`，`status().layers` 回显这条优先级。**禁止静默覆盖**（O4）；
 - **冲突策略（自裁 O4）**：**默认"检测即报错，不静默覆盖"**；若确需覆盖 ⇒ pack 显式声明 `overrides: [<pack>:<id>]`（可审计、可 diff）。
 
+### 4.1 v5r pack 的**声明层**（轮 2：新原语只用 settings＋提示词包声明，不复制内核实现）
+
+> 原则（D-08）：**能力进内核，策略进 settings/pack**。轮 2 的四个新实现面（恢复/人类在环、通信/会议、数学作业、助手汇报）把**机制**放进 `kernel/`；v5r 的**偏好**由本 pack 声明。**pack 里没有一行复制内核逻辑**，也没有让内核 import pack。
+
+| 声明在哪 | 内容 | 为什么在这一层 |
+|---|---|---|
+| `packs/v5r/settings/defaults.json`（＋ `defaults.js` 同值的代码视图） | 19 个新键：`vmu.chat.admins/speakQuota/muteDefaultMs/freezeExemptAdmins`；`vmu.mailbox.urgentKinds/wakeBudget`；`vmu.panel.deviationPolicy`；`vmu.resume.projections/autoRecover/readBack`；`vmu.human.onTimeout/vetoLiftRoles/gatedActions`；`vmu.math.jobs.persist/recover`；`vmu.meetings.quoteDepthMax/quotesPerMessageMax/unansweredInDenominator` | 这些键**由内核原语真读**（chat/mailbox/panel/resume/human/mathjobs/meeting），值就是 v5r 这家所的偏好；插件在建内核**之前**把 `defaults.json` 折在**用户设置之下**（用户永远赢） |
+| `packs/v5r/prompts/v5r-core.js` 的清单 `settings`（**助手面**） | `vmu.report.enabled/reports/params/whoMayChange/requireReason` ＋ 会议机制默认 | **报告策略**在**被装载清单**上声明、由 `apply()` 施加。**不得**与 `defaults.json` 重复同一键：defaults 已折进内核设置 ⇒ 清单再声明同键会被 `applyPackSettings` 判为**重叠冲突**（O4） |
+| `packs/v5r/prompts/**`（助手面） | 人设/汇报/会议等**文本** | 内容归 pack；管线只负责装配（docs/06） |
+| `packs/v5r/middleware/prompt-switches.js` | 段开关**纯函数**（经 `sectionPolicy`） | 轮 1 已落；策略可读可测可替换 |
+
+**边界（诚实 ✗）**：① `vmu.human.gatedActions` 在本 pack 里**故意为空**（零机制：不声明就不闸任何动作；v5r 侧 office 审批的等价物是 `withOffice`，闸门清单待 v5r-reader-a 冻结动作名后由部署声明）；② `vmu.report.params` 的 v5r 白名单由助手面给出（见上表），不在本 pack 的 defaults 里重复；③ `vmu.chat.admins` 取**成员 id**（v5r 的院士 `acad`），若部署改用别的成员 id 需覆盖，或由宿主注入 `isAdmin` 接缝（slot 语义不在名单里）。
+
 ---
 
 ## 5. v5r-pack：行为包含对照方案（D8）

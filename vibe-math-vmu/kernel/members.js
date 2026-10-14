@@ -35,6 +35,12 @@ const MEMBER_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 /** ROUND 132: the field vocabulary of a self-report. `overall` is required; the rest are optional. */
 const SELF_REPORT_FIELDS = Object.freeze(['overall', 'subgoal', 'plan', 'status'])
 
+// ROUND 2 (task-10 A): the durable projection seam. The declared SLOTS are deliberately NOT part of the
+// snapshot: they come from the pack/settings and are re-resolved at startup, and restoring a stale declaration
+// over a new configuration would silently undo a deployment change (docs/07 §4).
+import { observeIds, idNumber } from './ids.js'
+import { checkSnapshot } from './resume.js'
+
 /**
  * Create the roster. `slots` are pack-declared role slots; `maxLiveMembers` and per-slot `capacity` are
  * the machine-enforced limits; `deliver` is the wake seam.
@@ -253,6 +259,45 @@ export function createMembers({
     selfReportHistory(id) {
       member(id)
       return (reportLog.get(id) || []).map((r) => ({ at: r.at, by: r.by, fields: Object.assign({}, r.fields) }))
+    },
+
+    /** A pure snapshot of the roster and the self-report log (the declared slots are re-resolved, not restored). */
+    snapshot() {
+      const ids = [...members.keys()]
+      return {
+        apiVersion: 1, face: 'members', v: 1, at: clock(),
+        data: {
+          members: [...members.values()].map((m) => JSON.parse(JSON.stringify(m))),
+          reportLog: [...reportLog.entries()].map(([id, rows]) => [id, rows.map((r) => JSON.parse(JSON.stringify(r)))]),
+        },
+        counters: { member: ids.reduce((mx, id) => Math.max(mx, idNumber(id) || 0), 0) },
+        skipped: [],
+      }
+    },
+
+    /** Put the roster back. Idempotent for the same snapshot; a different one needs { replace: true }. */
+    restore(snap, { replace = false } = {}) {
+      checkSnapshot('members', snap, ['members', 'reportLog'])
+      const incoming = Array.isArray(snap.data.members) ? snap.data.members : []
+      if (members.size > 0 && !replace) {
+        const same = JSON.stringify([...members.values()]) === JSON.stringify(incoming)
+        if (same) return { ok: true, restored: [], skipped: [], idempotent: true }
+        throw refuse('VMU_RESUME_RESTORE_CONFLICT', 'this roster already holds ' + members.size + ' member(s): restoring a different snapshot needs { replace: true }',
+          'stop/clear the roster first, or pass { replace: true } deliberately - a silent half-overwrite is refused by name')
+      }
+      const skipped = []
+      members.clear()
+      for (const m of incoming) {
+        if (!m || typeof m.id !== 'string' || !MEMBER_ID.test(m.id)) { skipped.push({ what: 'members[]', why: 'an entry with a missing or invalid id' }); continue }
+        members.set(m.id, JSON.parse(JSON.stringify(m)))
+      }
+      reportLog.clear()
+      for (const pair of (Array.isArray(snap.data.reportLog) ? snap.data.reportLog : [])) {
+        if (!Array.isArray(pair) || pair.length !== 2) { skipped.push({ what: 'reportLog[]', why: 'not an [id, rows] pair' }); continue }
+        reportLog.set(String(pair[0]), (Array.isArray(pair[1]) ? pair[1] : []).map((r) => JSON.parse(JSON.stringify(r))))
+      }
+      observeIds('member', [...members.keys()])
+      return { ok: true, restored: ['members', 'reportLog'], skipped, counters: { member: [...members.keys()].reduce((mx, id) => Math.max(mx, idNumber(id) || 0), 0) } }
     },
 
     /** Observability (R11): slots with occupancy, live count, and the caps actually in force. */

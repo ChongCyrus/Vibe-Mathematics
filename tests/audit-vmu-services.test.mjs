@@ -65,6 +65,13 @@ const SURFACES = {
   'vmu.migration': 'migration',     // round 34 (migration orchestration; backends stay with storepolicy)
   'vmu.store': 'store', 'vmu.work': 'workLedger',
   'vmu.idempotency': 'idempotency',   // K6 (round 16): the unified idempotency ledger
+  'vmu.report': 'report',             // round 2 (assistant: declared reporting + auto-report face)
+  'vmu.resume': 'resume',             // round 2 (session resume/recovery projection)
+  'vmu.chat': 'chat',                 // round 2 (group chat + management)
+  'vmu.mailbox': 'mailbox',           // round 2 (durable per-recipient mailbox)
+  'vmu.panel': 'panel',               // round 2 (member state panel)
+  'vmu.mathadapters': 'mathadapters', // round 2 (numpy/scipy/pandas/sympy adapters)
+  'vmu.ids': 'ids',                   // round 2 (the ONE id minter; bound via bindIds, not createX)
 }
 
 const registered = new Set([...src.matchAll(/registry\.register\('([a-z_]+\.[a-z]+)'/g)].map((m) => m[1]))

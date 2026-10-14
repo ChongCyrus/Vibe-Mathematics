@@ -13,6 +13,7 @@
 //   ③ a limit the machine cannot enforce is refused BY NAME rather than warned about;
 //   ④ zero declarations ⇒ zero mechanism: nothing is refused and nothing is pretended;
 //   ⑤ injected clock only; read-only surfaces never mutate; every truncation is counted.
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const apiVersion = 1
 
 export function refuse(code, message, hint, extra) {
@@ -71,9 +72,9 @@ export function createCollab({ clock = () => 0, log = null, settings = {}, bus =
 
   const counterparties = new Map()   // id -> { id, name, institution, templates[], at }
   const agreements = new Map()       // id -> { id, counterparty, template, scope, startsAt, expiresAt, settlement{}, authors[], at }
-  let seq = 0
+
   let dropped = 0
-  const nextId = (p) => p + '-' + (++seq)
+  const nextId = (p) => mint('collab', p + '-')
 
   /** Register a counterparty. The registry directory is a SETTING (`counterpartyRegistry`) and is reported, not touched. */
   function addCounterparty({ id = null, name = null, institution = null, templates = null } = {}) {

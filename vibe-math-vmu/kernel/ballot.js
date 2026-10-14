@@ -14,6 +14,7 @@
 
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
+import { CODE as RESUME_CODE } from './resume.js'
 
 /** Vote shapes the default validity check accepts: the boolean 1/0 of the m-vote rule. */
 export const DECISIVE_VOTE = Object.freeze({ FOR: 1, AGAINST: 0 })
@@ -265,6 +266,47 @@ export function createBallot({
 
     /** The full history, including refusals: what was refused is as auditable as what was accepted. */
     history() { return history.map((h) => Object.assign({}, h)) },
+
+    /**
+     * PERSISTENCE SEAM v1 (kernel/resume.js interface). JSON-safe state, the id counter at max+1 (the ballot
+     * has no minted id of its own — the caller names it — so the counter is reported as 0 unless a `target`
+     * carries a suffix), and the injected seams NAMED as skipped rather than silently absent.
+     */
+    snapshot() {
+      return { apiVersion, face: 'ballot', v: 1, at: clock(),
+        data: { target, quorumRule, eligible: eligible.slice(), frozen, state, outcome: outcome ? JSON.parse(JSON.stringify(outcome)) : null,
+          openedAt, closedAt, votes: Object.fromEntries([...votes.entries()].map(([k, v]) => [k, JSON.parse(JSON.stringify(v))])),
+          history: history.map((h) => JSON.parse(JSON.stringify(h))) },
+        counters: { ballot: (/(\d+)\s*$/.exec(String(target || '')) || [])[1] ? Number(/(\d+)\s*$/.exec(String(target))[1]) : 0 },
+        skipped: [{ what: 'bus', why: 'an injected bus is re-bound by the host, never serialised' },
+          { what: 'decision-points', why: 'canOpen/isEligible/isFrozen/castValid/tally are injected predicates, re-bound by the host' }] }
+    },
+
+    /** Hydrate a `snapshot()`. Idle-safe merge, idempotent on the same snapshot, named conflict otherwise. */
+    restore(snap) {
+      if (!snap || typeof snap !== 'object') return { ok: false, restored: false, code: RESUME_CODE.snapshotIncomplete, message: 'no snapshot to restore', missing: ['snapshot'] }
+      if (snap.face !== 'ballot') return { ok: false, restored: false, code: RESUME_CODE.snapshotVersion, message: 'not a ballot snapshot (face=' + String(snap.face) + ')' }
+      if (Number(snap.v) !== 1) return { ok: false, restored: false, code: RESUME_CODE.snapshotVersion, message: 'unsupported snapshot version ' + String(snap.v) }
+      const d = snap.data
+      const missing = ['state', 'votes'].filter((k) => !d || d[k] === undefined)
+      if (missing.length) return { ok: false, restored: false, code: RESUME_CODE.snapshotIncomplete, message: 'snapshot is missing ' + missing.join(', '), missing }
+      const same = JSON.stringify(d) === JSON.stringify(ballot.snapshot().data)
+      if (!same && votes.size > 0) {
+        return { ok: false, restored: false, code: RESUME_CODE.restoreConflict,
+          message: 'this ballot already holds ' + votes.size + ' live vote(s): refusing to half-overwrite it',
+          hint: 'use a fresh ballot instance, or restore the snapshot that matches the live state' }
+      }
+      state = String(d.state)
+      frozen = !!d.frozen
+      outcome = d.outcome ? JSON.parse(JSON.stringify(d.outcome)) : null
+      openedAt = d.openedAt === undefined ? null : d.openedAt
+      closedAt = d.closedAt === undefined ? null : d.closedAt
+      votes.clear()
+      for (const [k, v] of Object.entries(d.votes || {})) votes.set(k, JSON.parse(JSON.stringify(v)))
+      history.length = 0
+      for (const h of (d.history || [])) history.push(JSON.parse(JSON.stringify(h)))
+      return { ok: true, restored: true, restored_items: ['state', 'votes', 'history', 'outcome'], counters: { ballot: 0 }, skipped: (snap.skipped || []).slice(), state }
+    },
 
     /** Process readings never decide (I-1). Exposed so a caller can see the separation explicitly. */
     processReadings() {

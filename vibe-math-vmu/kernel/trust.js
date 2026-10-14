@@ -4,6 +4,7 @@
 //   Every score must be explainable; a strong weight without evidence is downweighted AND self-disclosed;
 //   truncation always reports how many were dropped; decay uses only the injected clock; read-only surfaces
 //   never mutate; zero mechanism returns "no data" — never a fake 0.
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const apiVersion = 1
 
 /** D3（第 26 轮）：拒绝**随证明同行** —— `enforcedScope:'evaluated-so-far'` 明写"到此为止"的已求值集合，
@@ -71,7 +72,6 @@ export function createTrust({ clock = () => 0, log = null, settings = {}, bus = 
   const signals = []           // append-only: { id, subject, kind, weight, source, evidence, at, flags[] }
   const disputes = []          // append-only: { id, scoreId, subject, reason, at, status }
   let dropped = 0
-  let seq = 0
 
   const forSubject = (subject) => signals.filter((s) => s.subject === subject)
   const decayedWeight = (s, at) => {
@@ -160,7 +160,7 @@ export function createTrust({ clock = () => 0, log = null, settings = {}, bus = 
       const hasEvidence = Array.isArray(evidence) ? evidence.length > 0 : (typeof evidence === 'string' && evidence.length > 0)
       if (!hasEvidence && w >= strong) { w = Math.min(w, DEFAULT_WEAK_CAP); flags.push('downgraded:no-evidence') }
 
-      const id = 'sig-' + (++seq)
+      const id = mint('trust-signal', 'sig-')
       const rec = { id, subject, kind, weight: w, requestedWeight: weight === null ? 1 : weight, source: source || null, evidence: evidence || null, at: clock(), flags }
       signals.push(rec)
 
@@ -237,7 +237,7 @@ export function createTrust({ clock = () => 0, log = null, settings = {}, bus = 
       throw refuse('VMU_TRUST_EVIDENCE_REQUIRED', 'vmu.trust.appealNeedsEvidence=true and this appeal carries no evidence',
         'attach the evidence reference, or clear vmu.trust.appealNeedsEvidence')
     }
-    const id = 'disp-' + (++seq)
+    const id = mint('trust-dispute', 'disp-')
       disputes.push({ id, scoreId, subject: subj, reason, at, status: 'open' })
       say({ type: 'trust/dispute', at, scoreId, reason })
       return { ok: true, id, scoreId, status: 'open', at, open: disputes.filter((d) => d.status === 'open').length }

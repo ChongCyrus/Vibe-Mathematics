@@ -95,14 +95,19 @@ test('caps are counted, never silent (maxJobs refuses; keepReceipts drops + coun
   passed += 1
 })
 
-// ⑦ 注入时钟 ⇒ 时长确定；假 spawn ⇒ 同输入同输出
-test('determinism: injected clock + fake spawn give identical results', async () => {
+// ⑦ 注入时钟 ⇒ 时长确定；假 spawn ⇒ 同输入同输出；**id 由 kernel/ids.js 铸号 ⇒ 绝不复用**（D-15）
+test('determinism: injected clock + fake spawn give identical results (ids are unique by design)', async () => {
   const run = async () => {
     const gov = createMathJobs({ settings: mk({}).settings, clock: () => 9, spawn: fakeSpawn(OK) })
     const r = await gov.submit({ engine: 'sympy', argv: ['x'], seed: '1' })
-    return JSON.stringify(r.receipt)
+    // The job id is minted by kernel/ids.js (D-15: an id is a name that is never reused), so it is the ONE
+    // field that legitimately differs between two runs of the same request; every other field must be equal.
+    return { id: r.jobId, receipt: JSON.stringify(Object.assign({}, r.receipt, { jobId: '<id>' })) }
   }
-  assert.equal(await run(), await run())
+  const a = await run()
+  const b = await run()
+  assert.equal(a.receipt, b.receipt)
+  assert.notEqual(a.id, b.id, 'the counter must never reuse an id: ' + a.id + ' vs ' + b.id)
   passed += 1
 })
 

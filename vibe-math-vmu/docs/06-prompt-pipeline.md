@@ -193,6 +193,14 @@ assemble(ctx = { settings, member, role, phase, task, ... })
 - **覆盖只改内容**（§6）；**排序只由 order/name 决定**（§4）；
 - 解析失败（键非法/段名非 kebab-case/order 越界/绑定指向未知段/变量未登记）⇒ **该次注册/装配拒绝并具名**（不做"部分生效"）。
 
+### 11.1 **活读**（轮 2 = D-13）：值不进构造期快照，同回合装配即生效
+- **构造期只许缓存"结构性"派生**：段的**注册**（`sections`）是一次性的结构动作；**值**一律**每次调用现读**。
+- **七个键**经 `settings.get(k)`（kernel 传的是活视图 `settingsView`）/属性现读：`vmu.prompts.locale.default`、`locale.fallbackChain`、`locale.onMissing`、`overridesByLang`、`glossary.mode`、`glossary.ontology`、`overrides`。
+  - `vmu.prompts.overrides` 尤其重要：它**不再在构造期并进调用方的 `overrides` 映射**（那是值快照），改由 `overrideFor()` 现读；**调用方 `overrides`（API `override()`）仍胜出**，`sources[]` 记 `plain:settings`。
+  - `status().sections[].overridden` 现在也认"settings 声明的覆盖"。
+- **可观测**：`assemble()` 回执的 `locale`/`glossary` 反映的是**本次**读取的值；`overrideMerge.declared` 仍是构造期计数（供回执对照）。
+- **验收**：建**一个** pipeline，运行期 `setSettingsValue(...)` 后**不重建**、下一次 `assemble()` 即生效（轮 2 的定向断言与探针；不是"重建才生效"）。
+
 ---
 
 ## 12. 与整合包（M4）的关系

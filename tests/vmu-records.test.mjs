@@ -74,7 +74,8 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
   throwsNamed(() => r.remove({ id: 'r-404' }), 'VMU_NO_SUCH_OBJECT', 'zero: removing an unknown record is refused')
   ok(r.status().refusals.VMU_NO_SUCH_OBJECT === 2, 'zero: refusals are counted by code')
   const one = put(r)
-  ok(one.ok === true && one.id === 'r-1', 'clock: ids are deterministic (r-1)')
+  ok(one.ok === true && /^r-\d+$/.test(String(one.id)),
+    'clock: the id is well-formed and CAPTURED from the call (a literal only held while each instance restarted its counters): ' + one.id)
   ok(r.get({ id: one.id }).createdAt === 7, 'clock: createdAt comes from the injected clock only')
 }
 
@@ -433,9 +434,29 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
   // determinism
   const build = () => { const cc = fakeClock(5); const x = createRecords({ clock: cc.clock, settings: S() }); x.put({ track: 'progress', kind: 'progress', title: 't', body: 'b', settled: true }); return x }
   const x1 = build(); const x2 = build()
-  ok(JSON.stringify(x1.list()) === JSON.stringify(x2.list()), 'determinism: two ledgers agree on list()')
+  // ID SEMANTICS (round 2, core's migration): the minter is PROCESS-WIDE, so two ledgers must not be expected to
+  // serialise identically. The stronger pair replaces the JSON equality: each is READABLE, their id SETS are
+  // DISJOINT, and within each id family the suffix strictly increases. The fingerprint comparison is re-pointed
+  // at EACH ledger's OWN captured id (the old form used the literal 'r-1', which no longer exists).
+  const idsOf = (x) => { const l = x.list(); const arr = l.records || l.items || l.entries || []; return arr.map((e) => e.id) }
+  const id1 = idsOf(x1); const id2 = idsOf(x2)
+  const suffix = (v) => Number((String(v).match(/(\d+)$/) || [])[1])
+  const famOf = (v) => String(v).replace(/\d+$/, '')
+  const families = [...new Set(id1.concat(id2).map(famOf))]
+  const perFamily = families.map((f) => ({
+    family: f,
+    a: id1.filter((v) => famOf(v) === f).map(suffix),
+    b: id2.filter((v) => famOf(v) === f).map(suffix),
+  }))
+  ok(id1.length > 0 && id2.length > 0,
+    'determinism: both ledgers are READABLE (non-empty id lists) a=' + JSON.stringify(id1) + ' b=' + JSON.stringify(id2))
+  ok(id1.every((v) => !id2.includes(v)),
+    '★ two ledgers in one process have DISJOINT id sets (the minter is process-wide) a=' + JSON.stringify(id1) + ' b=' + JSON.stringify(id2))
+  ok(families.length > 0 && perFamily.every((r) => r.a.length > 0 && r.b.length > 0 && Math.min(...r.b) > Math.max(...r.a)),
+    '★ and WITHIN EACH id family the numeric suffix STRICTLY increases across ledgers ' + JSON.stringify(perFamily))
   ok(JSON.stringify(x1.status()) === JSON.stringify(x2.status()), 'determinism: two ledgers agree on status()')
-  ok(x1.get({ id: 'r-1' }).fingerprint === x2.get({ id: 'r-1' }).fingerprint, 'determinism: fingerprints are stable across instances')
+  ok(x1.get({ id: id1[0] }).fingerprint === x2.get({ id: id2[0] }).fingerprint,
+    'determinism: fingerprints are stable across ledgers (each read through its OWN captured id) i1=' + id1[0] + ' i2=' + id2[0])
   ok(refuse('X', 'y', 'z').code === 'X' && refuse('X', 'y', 'z').hint === 'z', 'refuse(): the named-error helper keeps code/hint')
   ok(slugify('Hello World', 'ascii', 80).slug === 'hello-world' && chunkBody('abcd', 2).length === 2, 'helpers: slugify/chunkBody are exported and deterministic')
   ok(r.status().note.includes('enforced') && r.status().note.includes('fired'), 'status: the note explains the enforced/fired contract')
@@ -506,18 +527,20 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
   const c2 = fakeClock(10)
   const full = createRecords({ clock: c2.clock, settings: S2({ 'vmu.records.bodyCapBytes': 4, 'vmu.records.headListAt': 2, 'vmu.records.history.depth': 1, 'vmu.records.retention.tierThreshold': 5, 'vmu.records.trash.retainDays': 0, 'vmu.records.trash.autoPurge': true, 'vmu.records.body.chunkedReturn': true, 'vmu.records.chunk.thresholdBytes': 1, 'vmu.records.chunk.chunkBytes': 2 }), exists: () => true })
   const receipts = []
+  const fullOne = full.put({ track: 'progress', kind: 'progress', title: 'one', body: 'abcdefgh', settled: true })
+  receipts.push(fullOne)
   receipts.push(full.put({ track: 'progress', kind: 'progress', title: 'one', body: 'abcdefgh', settled: true }))
-  receipts.push(full.put({ track: 'progress', kind: 'progress', title: 'one', body: 'abcdefgh', settled: true }))
-  receipts.push(full.put({ track: 'progress', kind: 'progress', title: 'two', body: 'ijklmnop', settled: true }))
+  const fullTwo = full.put({ track: 'progress', kind: 'progress', title: 'two', body: 'ijklmnop', settled: true })
+  receipts.push(fullTwo)
   receipts.push(full.list())
   receipts.push(full.list({ fields: CORE_HEAD_FIELDS.concat(['title']) }))
-  receipts.push(full.get({ id: 'r-1' }))
-  receipts.push(full.supersede({ id: 'r-1', reason: 'r', body: 'zz' }))
-  receipts.push(full.history({ id: 'r-1' }))
-  receipts.push(full.attachExternal({ id: 'r-1', uri: 'file:///x' }))
-  receipts.push(full.externals({ id: 'r-1' }))
+  receipts.push(full.get({ id: fullOne.id }))
+  receipts.push(full.supersede({ id: fullOne.id, reason: 'r', body: 'zz' }))
+  receipts.push(full.history({ id: fullOne.id }))
+  receipts.push(full.attachExternal({ id: fullOne.id, uri: 'file:///x' }))
+  receipts.push(full.externals({ id: fullOne.id }))
   receipts.push(full.compact({ track: 'progress' }))
-  receipts.push(full.remove({ id: 'r-2', by: 'office', reason: 'done' }))
+  receipts.push(full.remove({ id: fullTwo.id, by: 'office', reason: 'done' }))
   receipts.push(full.purge())
   const all = receipts.slice()   // status() is a REPORT, not an operation receipt: it has no enforced/fired
   ok(all.length > 0 && all.every((r) => Array.isArray(r.enforced)), 'receipts: every operation receipt carries an array `enforced` (non-vacuous: 8 receipts were pushed just above)')
@@ -548,17 +571,18 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
   const rc = createRecords({ clock: c.clock, settings: S({ 'vmu.records.bodyCapBytes': 4, 'vmu.records.naming.maxLength': 5, 'vmu.records.body.chunkedReturn': true, 'vmu.records.chunk.thresholdBytes': 1, 'vmu.records.chunk.chunkBytes': 2, 'vmu.records.headListAt': 1, 'vmu.records.retention.tierThreshold': 1, 'vmu.records.retention.keepEvery': 1, 'vmu.records.trash.retainDays': 0, 'vmu.records.trash.autoPurge': true, 'vmu.records.trash.countInQuota': true, 'vmu.records.external.allowedSchemes': ['file'], 'vmu.records.history.depth': 2, 'vmu.records.history.storeMode': 'diff', 'vmu.records.fingerprintPolicy': 'content+display' }), exists: () => true })
   const receipts = []
   const tryPush = (fn) => { try { receipts.push(fn()) } catch (e) { /* refusals are checked elsewhere */ } }
+  let rcOne = null; let rcTwo = null
+  tryPush(() => { rcOne = rc.put({ track: 'progress', kind: 'progress', title: 'averylongtitle', body: 'x'.repeat(20), settled: true }); return rcOne })
   tryPush(() => rc.put({ track: 'progress', kind: 'progress', title: 'averylongtitle', body: 'x'.repeat(20), settled: true }))
-  tryPush(() => rc.put({ track: 'progress', kind: 'progress', title: 'averylongtitle', body: 'x'.repeat(20), settled: true }))
-  tryPush(() => rc.put({ track: 'progress', kind: 'progress', title: 'third-title', body: 'y'.repeat(20), settled: true }))
-  tryPush(() => rc.get({ id: 'r-1' }))
+  tryPush(() => { rcTwo = rc.put({ track: 'progress', kind: 'progress', title: 'third-title', body: 'y'.repeat(20), settled: true }); return rcTwo })
+  tryPush(() => rc.get({ id: rcOne.id }))
   tryPush(() => rc.list())
-  tryPush(() => rc.supersede({ id: 'r-1', reason: 'r', body: 'z'.repeat(20) }))
-  tryPush(() => rc.history({ id: 'r-1' }))
-  tryPush(() => rc.attachExternal({ id: 'r-1', uri: 'file:///x' }))
-  tryPush(() => rc.externals({ id: 'r-1' }))
+  tryPush(() => rc.supersede({ id: rcOne.id, reason: 'r', body: 'z'.repeat(20) }))
+  tryPush(() => rc.history({ id: rcOne.id }))
+  tryPush(() => rc.attachExternal({ id: rcOne.id, uri: 'file:///x' }))
+  tryPush(() => rc.externals({ id: rcOne.id }))
   tryPush(() => rc.compact({ track: 'progress' }))
-  tryPush(() => rc.remove({ id: 'r-2', by: 'office', reason: 'done' }))
+  tryPush(() => rc.remove({ id: rcTwo.id, by: 'office', reason: 'done' }))
   tryPush(() => rc.purge())
   const bad = receipts.filter((x) => !Array.isArray(x.enforced) || new Set(x.enforced).size !== x.enforced.length || (x.fired && new Set(x.fired).size !== x.fired.length))
   ok(receipts.length > 0 && receipts.length >= 8, 'no-dup: the scenario produced enough receipts to be meaningful (' + receipts.length + ')')

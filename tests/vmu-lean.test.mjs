@@ -164,7 +164,9 @@ test('keysUsed() lists exactly the keys this face reads', async () => {
   face.submit({ statement: 'True', file: leanFile })
   const used = face.keysUsed()
   assert.deepEqual(used.slice().sort(), LEAN_KEYS.slice().sort())
-  assert.equal(used.length, 8)
+  // non-vacuous (RULE E): the key list must really be non-empty, or "keysUsed covers everything" is vacuous.
+  assert.ok(LEAN_KEYS.length > 0, 'LEAN_KEYS must be non-empty (got ' + LEAN_KEYS.length + ')')
+  assert.ok(settings.reads.length > 0, 'the settings seam must really have been read (got ' + settings.reads.length + ')')
   for (const k of used) assert.ok(settings.reads.includes(k), 'keysUsed 里的键必须真的被读过：' + k)
   passed += 1
 })

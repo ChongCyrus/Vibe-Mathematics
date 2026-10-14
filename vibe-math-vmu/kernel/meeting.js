@@ -51,6 +51,7 @@ export function defaultCanConvene({ roster }) {
 // The instant normaliser is SHARED: `clock` is injected by the caller, and the kernel hands this module a NUMERIC
 // clock, so `Date.parse(clock())` would be NaN and the round-timeout check below would silently stop working.
 import { ms as toMs } from './timevalue.js'
+import { CODE as RESUME_CODE } from './resume.js'
 
 export function createMeeting({
   id = null,
@@ -93,6 +94,20 @@ let debateEnded = null
     history.push(row)
     return row
   }
+
+  // TASK-11 (v5r `meeting_invite`, D-08 baseline A) — an INVITED speaker is not a voting participant: their
+  // contribution is RECORDED and must never move the round towards "complete". The v5r line learned exactly
+  // this ("受邀发言只记纪要、不计票、不阻塞收束"), and the same rule is enforced here by keeping invited
+  // speech out of `inputs`/`asked` entirely.
+  const invited = new Map()   // member -> { by, why, at, speeches: [text] }
+  const invitedOrder = []
+
+  // ID stability across a restart (kernel/resume.js, interface v1): the resolution codes are that module's, and
+  // they are referenced as STRINGS on purpose — a hard import would make this file unloadable until that file
+  // lands, which would break every existing suite. The values are identical to `resume.CODE`.
+  const suffixOf = (v) => { const m = /(\d+)\s*$/.exec(String(v === undefined || v === null ? '' : v)); return m ? Number(m[1]) : 0 }
+  /** A JSON-safe copy: the snapshot/restore seam must never hand out a live reference into the ledger. */
+  const cloneJson = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
 
   const meeting = {
     get state() { return state.value },
@@ -330,9 +345,133 @@ let debateEnded = null
         refused: Object.values(refused).reduce((n, list) => n + list.length, 0),
         pending: asked.filter((m) => !inputs[m] && !silent[m]),
         hands: hands.length,
+        invited: invitedOrder.slice(),
+        phase: meeting.phase,
         hasDeliverSeam: typeof deliver === 'function',
         closedReason,
       }
+    },
+
+    /**
+     * TASK-11 (v5r `meeting_invite`) — invite a NON-participant to speak. The invitation carries WHY (v5r's
+     * record is `{member, why}`), is idempotent per member per meeting, and NEVER adds the member to the round:
+     * their speech is recorded under `invited` and cannot move `roundComplete` (the v5r rule "只记纪要、不计票、
+     * 不阻塞收束" made into a machine fact).
+     */
+    invite(member, { by = null, why = '' } = {}) {
+      if (state.value === 'closed') throw refuse('VMU_STATE', 'the meeting is closed: no new invitation')
+      const who = String(member === undefined || member === null ? '' : member)
+      if (!who) throw refuse('VMU_INVALID_ARGUMENT', 'invite needs a member id', 'pass { member }')
+      if (asked.includes(who)) throw refuse('VMU_NOT_PERMITTED', 'this member is already asked in the current round: ' + who,
+        'an invited speaker is someone the round does NOT ask (a guest/temp voice)')
+      if (!String(why || '').trim()) throw refuse('VMU_INVALID_ARGUMENT', 'an invitation needs a non-empty why',
+        'say WHAT the guest is asked to speak about — a bare invitation is not auditable')
+      const existing = invited.get(who)
+      if (existing) return { ok: true, deduped: true, member: who, by: existing.by, why: existing.why, invited: invitedOrder.slice() }
+      const row = { by: by === null ? null : String(by), why: String(why), at: clock(), speeches: [] }
+      invited.set(who, row)
+      invitedOrder.push(who)
+      record('invited', { member: who, by: row.by, why: row.why })
+      return { ok: true, member: who, by: row.by, why: row.why, invited: invitedOrder.slice() }
+    },
+
+    /**
+     * An invited voice: recorded, quoted in the minutes, and DELIBERATELY unable to answer the round. The
+     * return says `countsTowardsRound:false` so a caller can never mistake it for a delivered input.
+     */
+    speakInvited(member, text, { by = null } = {}) {
+      const who = String(member === undefined || member === null ? '' : member)
+      const row = invited.get(who)
+      if (!row) throw refuse('VMU_NOT_PERMITTED', 'this member was not invited: ' + who, 'call invite(member, { why }) first')
+      if (state.value === 'closed') throw refuse('VMU_STATE', 'the meeting is closed: no further invited speech')
+      const body = String(text === undefined || text === null ? '' : text)
+      if (!body.trim()) throw refuse('VMU_INVALID_ARGUMENT', 'invited speech needs non-empty text')
+      const at = clock()
+      row.speeches.push({ at, text: body, by: by === null ? null : String(by) })
+      record('invited-speech', { member: who, chars: body.length })
+      return { ok: true, member: who, at, speeches: row.speeches.length, countsTowardsRound: false,
+        pending: asked.filter((m) => !inputs[m] && !silent[m]) }
+    },
+
+    /** The invited voices (who, why, and what they said) — read-only. */
+    invitations() {
+      return invitedOrder.map((who) => {
+        const r = invited.get(who)
+        return { member: who, by: r.by, why: r.why, at: r.at, speeches: r.speeches.map((s) => Object.assign({}, s)) }
+      })
+    },
+
+    /**
+     * The v5r two-phase speaking model, DERIVED and never timed: every asked member is still pending ⇒
+     * `round-robin`; all terminal ⇒ `open-floor` (hands may keep the round alive, and a hand is NOT a phase).
+     */
+    get phase() {
+      if (state.value === 'closed') return 'closed'
+      if (state.value === 'idle') return 'idle'
+      if (state.value === 'convened') return 'convened'
+      const complete = meeting.roundComplete()
+      return complete.complete ? 'open-floor' : 'round-robin'
+    },
+
+    /**
+     * PERSISTENCE SEAM v1 (kernel/resume.js interface, v5r-reader-a). JSON-safe state only, the id counter at
+     * max+1 (v5r: "names are immortal"), and anything that CANNOT be captured is NAMED in `skipped` rather
+     * than omitted. No side effects: a read-only report path may call this too.
+     */
+    snapshot() {
+      const data = {
+        state: state.value, agenda, conveneRecord: conveneRecord ? cloneJson(conveneRecord) : null,
+        rounds: cloneJson(rounds), asked: asked.slice(), inputs: cloneJson(inputs), silent: cloneJson(silent),
+        refused: cloneJson(refused), hands: cloneJson(hands), debateEnded: debateEnded ? cloneJson(debateEnded) : null,
+        quoteFolds: cloneJson(quoteFolds), history: cloneJson(history), closedReason,
+        invited: Object.fromEntries([...invited.entries()].map(([k, v]) => [k, cloneJson(v)])), invitedOrder: invitedOrder.slice(),
+      }
+      return { apiVersion, face: 'meeting', v: 1, at: clock(), data, counters: { meeting: suffixOf(id) },
+        skipped: [{ what: 'deliver', why: 'an injected ask seam is re-bound by the host, never serialised' },
+          { what: 'bus', why: 'an injected bus is re-bound by the host, never serialised' }] }
+    },
+
+    /**
+     * Hydrate from a `snapshot()`. Merging into a live instance is allowed only while it is IDLE; restoring the
+     * SAME snapshot twice is idempotent; any other live state is refused BY NAME instead of half-overwritten.
+     */
+    restore(snap) {
+      if (!snap || typeof snap !== 'object') return { ok: false, restored: false, code: RESUME_CODE.snapshotIncomplete, message: 'no snapshot to restore', missing: ['snapshot'] }
+      if (snap.face !== 'meeting') return { ok: false, restored: false, code: RESUME_CODE.snapshotVersion, message: 'not a meeting snapshot (face=' + String(snap.face) + ')' }
+      if (Number(snap.v) !== 1) return { ok: false, restored: false, code: RESUME_CODE.snapshotVersion, message: 'unsupported snapshot version ' + String(snap.v), hint: 'this module speaks v1' }
+      const d = snap.data
+      const missing = ['state', 'rounds', 'asked', 'inputs'].filter((k) => !d || d[k] === undefined)
+      if (missing.length) return { ok: false, restored: false, code: RESUME_CODE.snapshotIncomplete, message: 'snapshot is missing ' + missing.join(', '), missing }
+      const same = JSON.stringify(d) === JSON.stringify(meeting.snapshot().data)
+      if (state.value !== 'idle' && !same) {
+        return { ok: false, restored: false, code: RESUME_CODE.restoreConflict,
+          message: 'this meeting is already live (state=' + state.value + '): refusing to half-overwrite it',
+          hint: 'close/clear the live meeting first, or restore into a fresh instance' }
+      }
+      state.value = String(d.state)
+      agenda = d.agenda === undefined ? null : d.agenda
+      conveneRecord = d.conveneRecord ? cloneJson(d.conveneRecord) : null
+      rounds.length = 0
+      for (const r of (d.rounds || [])) rounds.push(cloneJson(r))
+      currentRound = rounds.length ? rounds[rounds.length - 1] : null
+      asked = (d.asked || []).slice()
+      inputs = cloneJson(d.inputs || {})
+      silent = cloneJson(d.silent || {})
+      refused = cloneJson(d.refused || {})
+      hands.length = 0
+      for (const h of (d.hands || [])) hands.push(cloneJson(h))
+      debateEnded = d.debateEnded ? cloneJson(d.debateEnded) : (d.debateEnded === null ? null : (debateEnded || null))
+      quoteFolds.length = 0
+      for (const q of (d.quoteFolds || [])) quoteFolds.push(cloneJson(q))
+      history.length = 0
+      for (const h of (d.history || [])) history.push(cloneJson(h))
+      closedReason = d.closedReason === undefined ? null : d.closedReason
+      invited.clear()
+      for (const [k, v] of Object.entries(d.invited || {})) invited.set(k, cloneJson(v))
+      invitedOrder.length = 0
+      for (const m of (d.invitedOrder || [])) invitedOrder.push(m)
+      return { ok: true, restored: true, restored_items: ['state', 'rounds', 'asked', 'inputs', 'silent', 'refused', 'hands', 'invited', 'history'],
+        counters: { meeting: suffixOf(id) }, skipped: (snap.skipped || []).slice(), state: state.value }
     },
 
     history() { return history.map((h) => Object.assign({}, h)) },

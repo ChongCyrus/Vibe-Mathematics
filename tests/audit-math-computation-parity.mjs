@@ -23,13 +23,15 @@ const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
 const PRESETS = ['vibe-math-v2', 'vibe-math-v3', 'vibe-math-v4', 'vibe-math-v5', 'vibe-math-v5r', 'vibe-math-vmu']
 const MODULES = ['math-engines.js', 'math-computation.js']
-// The two OUT-OF-REPO assets, each with an INJECTABLE seam (docs/11 §4.1): pointing the seam at a missing
-// path is how the named-SKIP branch below is PROVEN to fire (a branch that can never run proves nothing).
-// The DEFAULT stays the IN-REPO location, because a SHIPPED guard must not depend on an out-of-repo asset
-// (handover D-05); `DEV_*` is named in the SKIP reason so a reader of a dev checkout knows where the copy
-// actually is and which env var makes the strongest comparison run.
-const CANON = process.env.MATH_CANON_DIR ? resolve(process.env.MATH_CANON_DIR) : join(REPO, '_oneoff', 'mc-P1-ready', 'canonical')
-const SCHEMA = process.env.MATH_SCHEMA_FILE ? resolve(process.env.MATH_SCHEMA_FILE) : join(REPO, '_oneoff', 'mc-P1-ready', 'tool-schema.json')
+// THE REFERENCE IS VENDORED IN-REPO (handover D-10(1), Round 2). It used to live OUTSIDE version control at
+// `_oneoff/mc-P1-ready/`, which made these comparisons unreproducible in a clean clone AND silently vacuous
+// here (the default path did not even exist); it now ships as a fixture under `tests/fixtures/mc-P1-ready/`.
+// The two env seams remain as OVERRIDES (docs/11 §4.1): pointing one at a missing path is how the named-SKIP
+// branch is PROVEN to fire.
+const FIXTURES = join(HERE, 'fixtures', 'mc-P1-ready')
+const CANON = process.env.MATH_CANON_DIR ? resolve(process.env.MATH_CANON_DIR) : FIXTURES
+const SCHEMA = process.env.MATH_SCHEMA_FILE ? resolve(process.env.MATH_SCHEMA_FILE) : join(FIXTURES, 'tool-schema.json')
+// The historical out-of-repo copy, named only in a SKIP reason so a dev checkout can still point at it.
 const DEV_CANON = resolve(REPO, '..', '_oneoff', 'mc-P1-ready', 'canonical')
 const DEV_SCHEMA = resolve(REPO, '..', '_oneoff', 'mc-P1-ready', 'tool-schema.json')
 
@@ -171,8 +173,8 @@ for (const p of PRESETS) {
   const canon = join(CANON, f)
   if (existsSync(canon)) ok(sha(canon) === distinct[0], f + ' matches the canonical source', sha(canon).slice(0, 16) + ' vs ' + String(distinct[0]).slice(0, 16))
   else skip(f + ' matches the canonical source',
-    'the canonical source is OUTSIDE the repository (D-05) and absent at ' + CANON
-    + (existsSync(DEV_CANON) ? '; a dev-checkout copy IS present at ' + DEV_CANON + ' — set MATH_CANON_DIR to that path to run this comparison' : '; no dev-checkout copy either')
+    'the VENDORED reference is absent at ' + CANON + ' (it ships in-repo as a fixture now, D-10(1))'
+    + (existsSync(DEV_CANON) ? '; the historical dev-checkout copy still exists at ' + DEV_CANON + ' — set MATH_CANON_DIR to point there' : '')
     + ' (the ' + PRESETS.length + '-way byte comparison above still ran)')
 }
 
@@ -248,13 +250,127 @@ for (const p of PRESETS) {
     ok(s.failureCodes.some((c) => c.code === 'MATH_ENGINE_BAD_ARGV' && /engine-override/.test(c.next)), 'MATH_ENGINE_BAD_ARGV carries the engine-override next')
   } else {
     skip('failure codes / param names match tool-schema.json',
-      'tool-schema.json is OUTSIDE the repository (D-05) and absent at ' + SCHEMA
-      + (existsSync(DEV_SCHEMA) ? '; a dev-checkout copy IS present at ' + DEV_SCHEMA + ' — set MATH_SCHEMA_FILE to that path to run this comparison' : '; no dev-checkout copy either')
+      'the VENDORED tool-schema.json is absent at ' + SCHEMA + ' (it ships in-repo as a fixture now, D-10(1))'
+      + (existsSync(DEV_SCHEMA) ? '; the historical dev-checkout copy still exists at ' + DEV_SCHEMA + ' — set MATH_SCHEMA_FILE to point there' : '')
       + ' (the module-only freeze checks below still ran)')
   }
   ok(mod.MATH_FAILURE_CODES.length === 11, 'eleven failure codes exported')
   ok(mod.MATH_PARAM_NAMES.length === 6, 'six param names exported')
   ok(JSON.stringify(mod.MATH_PARAM_DEFAULTS.mathEngines) === JSON.stringify(['python', 'r', 'octave', 'julia', 'matlab', 'maple', 'wolfram', 'cli']), 'default engine order is the frozen P1 set')
+}
+
+// ---- 4b. SEMANTIC PARITY: the SURFACE, not the bytes (handover D-10(1)) ---------------------------
+// WHY THIS EXISTS. The byte comparison above freezes a SNAPSHOT: it says nothing about the capability the six
+// presets must share, and it reddens on any refactor even when every contract is intact - exactly the false
+// red D-10(1) rules out, because Round 2+ will refactor `math-computation.js`. So the C R I T E R I O N is now
+// the semantic surface, compared between the vendored REFERENCE and the SHIPPED module: exported names and
+// kinds, code/param SETS, defaults, the tool schema's structure, the engine descriptors, and the frozen
+// prompt-contract lines. Only the prompt-contract lines are compared VERBATIM - they are the text injected
+// into a model's context, so their bytes ARE the contract. Everything else is order-insensitive where order
+// carries no meaning, and ordered where it does (`MATH_ENGINE_ORDER`, per-engine `candidates`).
+{
+  const REF_MC = join(CANON, 'math-computation.js')
+  const REF_ME = join(CANON, 'math-engines.js')
+  if (!existsSync(REF_MC) || !existsSync(REF_ME)) {
+    skip('semantic parity (vendored reference vs shipped module)',
+      'the vendored reference is incomplete at ' + CANON + ' (expected math-computation.js AND math-engines.js)')
+  } else {
+    const ref = await import(pathToFileURL(REF_MC).href)
+    const refE = await import(pathToFileURL(REF_ME).href)
+    // The shipped side honours the mutant seam, so every assertion below can be PROVEN to fail.
+    const ship = await import(process.env.MATH_COMPUTATION_MODULE
+      ? pathToFileURL(process.env.MATH_COMPUTATION_MODULE).href
+      : new URL('../vibe-math-v2/math-computation.js', import.meta.url).href)
+    const shipE = await import(process.env.MATH_ENGINES_MODULE
+      ? new URL('file:///' + String(process.env.MATH_ENGINES_MODULE).replace(/\\/g, '/')).href
+      : new URL('../vibe-math-v2/math-engines.js', import.meta.url).href)
+
+    // (1) the exported SURFACE: the reference carries every name of the frozen list, and the shipped module
+    //     exposes the same set with the same KINDS. The list is a constant here, so it cannot silently shrink
+    //     (a name that leaves the reference reddens `missingRef`, not this comment).
+    const MC_SURFACE = ['MATH_TOOL_NAME', 'MATH_PARAM_NAMES', 'MATH_PARAM_DEFAULTS', 'MATH_FAILURE_CODES', 'MATH_CAPS',
+      'MATH_TOOL_SCHEMA', 'MATH_TOOL_DESCRIPTION', 'MATH_PERSONA_TOOL_LINE', 'MATH_ARCHIVE_WORKFLOW_LINE',
+      'MATH_ARCHIVE_WORKFLOW_LINE_EN', 'MATH_SUBSTITUTION_RULE_LINE', 'MATH_SUBSTITUTION_RULE_LINE_EN',
+      'MATH_RULE_LINES', 'MATH_RULE_LINES_EN', 'MATH_SHELL_RULE_LINE', 'MATH_SHELL_RULE_LINE_EN',
+      'MATH_ARCHIVE_MAX_ATTEMPTS_PER_RUN', 'MATH_ARCHIVE_MAX_RUNS', 'MATH_ARCHIVE_WARNING',
+      'MATH_SCRIPT_CHANGED_WARNING', 'MATH_SCRIPT_CHANGED_DURING_RUN_WARNING', 'MATH_SHELL_FALLBACK_MARK',
+      'MATH_SHELL_FALLBACK_MARK_EN', 'MATH_BAD_ARGV_HINT', 'parsePackageSpec', 'normalizeMathParams',
+      'effectiveMathParams', 'validateMathArgs', 'probeMathEngines', 'mathInstallRoots', 'registerMathComputation',
+      'mathAvailabilityLine']
+    const ME_SURFACE = ['MATH_ENGINES', 'MATH_ENGINE_ORDER', 'MATH_P2_ENGINES', 'isKnownMathEngine',
+      'mathEngineArgErrorHints', 'mathEngineCandidates']
+    const missingRef = MC_SURFACE.filter((k) => ref[k] === undefined).concat(ME_SURFACE.filter((k) => refE[k] === undefined))
+    ok(missingRef.length === 0,
+      'the vendored reference exposes every name of the frozen surface (the list is checked, so it cannot silently shrink)',
+      JSON.stringify(missingRef))
+    const kindMismatch = MC_SURFACE.filter((k) => ref[k] !== undefined && typeof ship[k] !== typeof ref[k])
+      .concat(ME_SURFACE.filter((k) => refE[k] !== undefined && typeof shipE[k] !== typeof refE[k]))
+    ok(kindMismatch.length === 0,
+      '★ the shipped module exposes the same NAME SET with the same KINDS (typeof) as the reference',
+      JSON.stringify(kindMismatch.map((k) => k + ': ' + typeof ship[k] + ' vs ' + typeof ref[k])))
+
+    // (2)-(4) sets and defaults. `sameSet` also rejects a duplicate, so "少一个 / 多一个 / 写两遍" are all red.
+    const sameSet = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length
+      && new Set(a).size === a.length && [...a].sort().join('\u0000') === [...b].sort().join('\u0000')
+    ok(sameSet(ship.MATH_FAILURE_CODES, ref.MATH_FAILURE_CODES),
+      '★ failure codes: same SET as the reference (order carries no meaning; duplicates/omissions are red)',
+      JSON.stringify({ shipped: ship.MATH_FAILURE_CODES.length, reference: ref.MATH_FAILURE_CODES.length }))
+    ok(sameSet(ship.MATH_PARAM_NAMES, ref.MATH_PARAM_NAMES),
+      '★ param names: same SET as the reference',
+      JSON.stringify({ shipped: ship.MATH_PARAM_NAMES, reference: ref.MATH_PARAM_NAMES }))
+    const dKeys = Object.keys(ref.MATH_PARAM_DEFAULTS)
+    const dDiff = dKeys.filter((k) => JSON.stringify(ship.MATH_PARAM_DEFAULTS[k]) !== JSON.stringify(ref.MATH_PARAM_DEFAULTS[k]))
+    ok(dKeys.length > 0 && Object.keys(ship.MATH_PARAM_DEFAULTS).length === dKeys.length && dDiff.length === 0,
+      '★ param defaults: same key set and same values (`mathEngines` compared as an ORDERED array: dispatch order is a contract)',
+      JSON.stringify(dDiff))
+
+    // (5) the tool schema's STRUCTURE (not its formatting).
+    const schemaDiff = []
+    if (JSON.stringify(ship.MATH_TOOL_SCHEMA.required) !== JSON.stringify(ref.MATH_TOOL_SCHEMA.required)) schemaDiff.push('required')
+    const pk = Object.keys(ref.MATH_TOOL_SCHEMA.properties || {})
+    if (JSON.stringify(Object.keys(ship.MATH_TOOL_SCHEMA.properties || {}).sort()) !== JSON.stringify([...pk].sort())) schemaDiff.push('property key set')
+    for (const k of pk) {
+      const a = (ship.MATH_TOOL_SCHEMA.properties || {})[k] || {}
+      const b = ref.MATH_TOOL_SCHEMA.properties[k] || {}
+      if (a.type !== b.type) schemaDiff.push(k + '.type')
+      if (JSON.stringify(a.enum) !== JSON.stringify(b.enum)) schemaDiff.push(k + '.enum')
+    }
+    ok(pk.length > 0 && schemaDiff.length === 0,
+      '★ MATH_TOOL_SCHEMA: required + property key set + every property type/enum agree with the reference',
+      JSON.stringify(schemaDiff))
+
+    // (6) engine descriptors: order matters (dispatch priority + per-engine candidate order).
+    const engDiff = []
+    if (JSON.stringify(shipE.MATH_ENGINE_ORDER) !== JSON.stringify(refE.MATH_ENGINE_ORDER)) engDiff.push('MATH_ENGINE_ORDER')
+    const ek = Object.keys(refE.MATH_ENGINES || {})
+    if (JSON.stringify(Object.keys(shipE.MATH_ENGINES || {}).sort()) !== JSON.stringify([...ek].sort())) engDiff.push('engine key set')
+    for (const k of ek) {
+      const a = (shipE.MATH_ENGINES || {})[k] || {}
+      const b = refE.MATH_ENGINES[k] || {}
+      if (JSON.stringify(Object.keys(a).sort()) !== JSON.stringify(Object.keys(b).sort())) engDiff.push(k + '.keys')
+      if (JSON.stringify(a.candidates) !== JSON.stringify(b.candidates)) engDiff.push(k + '.candidates')
+      if (a.ext !== b.ext) engDiff.push(k + '.ext')
+      if (a.license !== b.license) engDiff.push(k + '.license')
+    }
+    ok(ek.length > 0 && engDiff.length === 0,
+      '★ engine descriptors: dispatch order + per-engine key set + candidates ORDER + ext + license agree with the reference',
+      JSON.stringify(engDiff))
+
+    // (7) THE ONE VERBATIM CONTRACT: the frozen prompt lines must actually be IN the injected text, and must be
+    //     byte-equal to the reference. This is the only place where "逐字" is the right criterion.
+    for (const [lang, ruleKey, archiveKey, substKey] of [
+      ['zh', 'MATH_RULE_LINES', 'MATH_ARCHIVE_WORKFLOW_LINE', 'MATH_SUBSTITUTION_RULE_LINE'],
+      ['en', 'MATH_RULE_LINES_EN', 'MATH_ARCHIVE_WORKFLOW_LINE_EN', 'MATH_SUBSTITUTION_RULE_LINE_EN'],
+    ]) {
+      const injected = String(ship.mathAvailabilityLine({}, lang, 'run'))
+      const lines = [ship[ruleKey][0], ship[archiveKey], ship[substKey]]
+      const absent = lines.filter((l) => typeof l !== 'string' || l.length === 0 || !injected.includes(l))
+      const drifted = [ruleKey, archiveKey, substKey].filter((k) => JSON.stringify(ship[k]) !== JSON.stringify(ref[k]))
+      ok(absent.length === 0 && drifted.length === 0,
+        '★ (' + lang + ') the frozen prompt-contract lines are VERBATIM inside the injected availability line AND byte-equal to the reference',
+        JSON.stringify({ absent: absent.length, drifted }))
+    }
+  }
 }
 
 // ---- 5. descriptor invariants ----

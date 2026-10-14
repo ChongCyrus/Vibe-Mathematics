@@ -164,12 +164,30 @@ test('refusals are counted by code and always carry enforced + enforcedScope', (
 test('determinism (injected clock), pure read paths, zero-config', () => {
   const zero = createResource({ clock: () => 0 })
   assert.equal(zero.status().ok, true)
-  const run = () => {
+  const runOnce = () => {
     const i = ins({}, () => 5)
     i.register({ id: 'd', owner: 'l' })
-    return JSON.stringify({ u: i.use({ id: 'd', by: 'p', purpose: 'x', capture: 'lib/ref' }), r: i.reserve({ id: 'd', by: 'p', from: 0, hours: 1 }) })
+    return { u: i.use({ id: 'd', by: 'p', purpose: 'x', capture: 'lib/ref' }), r: i.reserve({ id: 'd', by: 'p', from: 0, hours: 1 }) }
   }
-  assert.equal(run(), run())
+  const one = runOnce(); const two = runOnce()
+  // ID SEMANTICS (round 2, core's migration): ids are minted PROCESS-WIDE, so two instances can no longer be
+  // JSON-equal. Stronger replacement: the receipts agree on their NON-ID shape, the id sets are DISJOINT, and
+  // within each id family (usage `ur-` / reservation `rs-`) the suffix strictly increases across instances.
+  const stripIds = (o) => JSON.stringify(o, (k, v) => (k === 'usageId' || k === 'reservationId' || k === 'fingerprint') ? '<derived>' : v)
+  assert.equal(stripIds(one.u) + stripIds(one.r), stripIds(two.u) + stripIds(two.r),
+    '两实例的**非 id**回执形状一致（id 由进程级 minter 铸造 ⇒ 不能再逐字比整个回执）')
+  const idFields = (rec) => [rec && rec.usageId, rec && rec.reservationId].filter((v) => typeof v === 'string')
+  const i1 = idFields(one.u).concat(idFields(one.r)); const i2 = idFields(two.u).concat(idFields(two.r))
+  assert.ok(i1.length > 0 && i2.length > 0, '两实例都真的铸了 id: ' + JSON.stringify([i1, i2]))
+  assert.deepEqual(i1.filter((x) => i2.includes(x)), [],
+    '★ 两实例的 id 集合不相交（进程级 minter）: ' + JSON.stringify([i1, i2]))
+  const suffix = (v) => Number((String(v).match(/(\d+)$/) || [])[1])
+  const famOf = (v) => String(v).replace(/\d+$/, '')
+  const fams = [...new Set(i1.concat(i2).map(famOf))]
+  assert.ok(fams.length > 0 && fams.every((f) => {
+    const A = i1.filter((x) => famOf(x) === f).map(suffix); const B = i2.filter((x) => famOf(x) === f).map(suffix)
+    return A.length > 0 && B.length > 0 && Math.min(...B) > Math.max(...A)
+  }), '★ 每个 id 族内后缀跨实例严格递增: ' + JSON.stringify({ i1, i2 }))
   const i = ins({}, () => 5)
   i.register({ id: 'd', owner: 'l' })
   const a = JSON.stringify({ s: i.status(), s2: i.status({ id: 'd' }), k: i.keysUsed() })
@@ -287,10 +305,10 @@ test('the ledger lands through the injected seam, and memory advances only after
   const good = withSeam(base, (w) => { seen.push(w); return { ok: true, path: w.dir + '/' + w.name } })
   const r3 = call(good)
   assert.equal(r3.ok, true, '接缝成功 ⇒ 通过')
-  assert.equal(r3.persisted, 'D:/_tmp/instr-ledger/ur-1.json', '回执给出落盘路径')
+  assert.equal(r3.persisted, 'D:/_tmp/instr-ledger/' + r3.usageId + '.json', '回执给出落盘路径（路径含 CAPTURED id，不写死 ur-1）')
   assert.equal(seen.length, 1, '接缝恰好被调用一次')
-  assert.ok(seen[0].text.indexOf('ur-1') !== -1 && seen[0].text.indexOf('lib/x') !== -1,
-    '★ 落盘内容含记录 id 与捕获引用（引用随记录走 ✓）')
+  assert.ok(seen[0].text.indexOf(r3.usageId) !== -1 && seen[0].text.indexOf('lib/x') !== -1,
+    '★ 落盘内容含记录 id（捕获值）与捕获引用（引用随记录走 ✓）')
   assert.equal(good.status().ledger, 1, '★ 写成功之后才发布到内存台账')
 
   const noDir = createResource({

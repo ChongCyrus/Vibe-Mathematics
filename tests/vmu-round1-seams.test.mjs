@@ -10,7 +10,9 @@
 //   · assertions are named, counted and reported in the house style, with a non-zero exit on any failure.
 //
 // WHAT IT PINS (five seams, each through the REAL assembly rather than a re-implementation):
-//   K1 tool-face reachability  - zero declaration ⇒ exactly one tool; the declaration map reaches 45/45 faces.
+//   K1 tool-face reachability  - zero declaration ⇒ exactly one tool; the declaration map reaches EVERY face
+//                                the table declares (the count is DERIVED from FACE_KEYS/TOOL_FACES, never typed:
+//                                Round 2 added five faces and a hard-coded number became four stale assertions).
 //   K2 durable key             - the idempotency ledger writes and reads back through a REAL store.
 //   K3 turn delivery seam      - `deliverTurn` is accepted, reported, and actually used by a real round.
 //   K4 prompt settings         - a section declared in SETTINGS reaches the real kernel pipeline.
@@ -23,7 +25,7 @@
 //      DISPOSER, so this suite does NOT cover unregistration/teardown.
 //   3. `ctx.tools.register` records specs and returns a no-op disposer; `ctx.systemPrompt.section` is a no-op.
 //      Tool PRESENCE is covered; tool presentation/ordering on a real prompt is not.
-//   4. The 45/45 check satisfies the `library` surface with a read-through Proxy, because that kernel member
+//   4. The all-faces check satisfies the `library` surface with a read-through Proxy, because that kernel member
 //      is a getter with no setter. On a real host the surface comes from real services.
 //   5. K2 waits for the store's async projection with a BOUNDED POLL, not the probe's fixed 25 ms sleep: the
 //      fixed sleep was load-sensitive (the very flake class this repository keeps recording).
@@ -79,8 +81,16 @@ console.log('== K1: tool-face reachability ==')
     'no declaration through the REAL entry registers exactly ONE tool (vibe_vmu_status)', JSON.stringify(names))
 }
 
-// (b) the declaration map can reach every face, and all 45 tools build.
+// (b) the declaration map can reach every face, and every published tool builds.
+// THE EXPECTED COUNT IS DERIVED FROM THE FACE TABLE, never typed: Round 2 added five faces (chat/human/
+// mailbox/panel/report), which turned a hard-coded `45` into four stale assertions - the exact class of
+// number this repository keeps paying for. `FACE_KEYS`/`TOOL_FACES` are the same source the host uses.
 {
+  const FACES = FACE_KEYS.length
+  const TOOLS = TOOL_FACES.length
+  ok(FACES > 0 && TOOLS > 0 && FACES === TOOLS,
+    'the face table is readable and has one key per published tool (the derived count below is not vacuous)',
+    JSON.stringify({ faceKeys: FACES, toolFaces: TOOLS }))
   const kernel = createKernel({ settings: {} })
   const none = resolveFaces({ config: {}, settings: {}, kernel })
   ok(none.enabled.length === 1 && none.enabled[0] === 'status',
@@ -91,16 +101,17 @@ console.log('== K1: tool-face reachability ==')
   // `library` is a read-only getter on the kernel, so the surface it represents is supplied read-through.
   const kernelWithLibrary = new Proxy(kernel, { get: (t, k) => (k === 'library' ? { list: async () => [] } : t[k]) })
   const all = resolveFaces({ config: {}, settings: { 'vmu.tools.faces': ['*'] }, kernel: kernelWithLibrary, scripts: [{}], packLoader: () => ({}) })
-  ok(all.enabled.length === 45,
-    'vmu.tools.faces=[*] enables ALL 45 faces when their surfaces are satisfied',
-    all.enabled.length + ' enabled; unavailable=' + JSON.stringify(all.unavailable))
+  ok(all.enabled.length === FACES,
+    'vmu.tools.faces=[*] enables ALL faces the table declares when their surfaces are satisfied',
+    all.enabled.length + '/' + FACES + ' enabled; unavailable=' + JSON.stringify(all.unavailable))
   const specsAll = toolSpecs({ kernel: kernelWithLibrary, settings: {}, assertDeclared: () => {}, scripts: [{ id: 's1', file: 'x.js' }], packLoader: () => ({}), faces: all })
   const got = specsAll.map((s) => s.name).sort()
   const want = TOOL_FACES.map((f) => f.name).sort()
-  ok(got.length === 45 && want.every((n) => got.includes(n)),
-    'toolSpecs builds ALL 45 published tools from the map', got.length + ' built')
-  ok(FACE_KEYS.length === 45 && new Set(FACE_KEYS).size === 45,
-    'the face table has 45 unique keys', String(FACE_KEYS.length))
+  ok(want.length > 0 && got.length === TOOLS && want.every((n) => got.includes(n)),
+    'toolSpecs builds EVERY published tool from the map (and the table really names tools)', got.length + '/' + TOOLS + ' built')
+  ok(new Set(FACE_KEYS).size === FACES && new Set(want).size === TOOLS,
+    'the face table keys and the tool names are each UNIQUE (a duplicate would otherwise hide a missing face)',
+    String(FACES))
 }
 
 // (c) each of the three declaration sources lights its own face; refusals are NAMED.
@@ -134,8 +145,9 @@ console.log('== K1: tool-face reachability ==')
   const app = entry.apply(h.ctx, { root: mkroot('vmu-seams-root-'), packs: ['institute-min'], scripts: [{ id: 's1', file: 's1.js' }], 'vmu.tools.faces': ['*'] })
   await app.ready()
   const names = h.tools.map((t) => t.name).sort()
-  ok(names.length === 45,
-    'REAL entry + all-faces declaration registers all 45 tools', names.length + ': ' + names.join(','))
+  ok(TOOL_FACES.length > 0 && names.length === TOOL_FACES.length,
+    'REAL entry + all-faces declaration registers EVERY published tool (count derived from the face table, and that table is non-empty)',
+    names.length + '/' + TOOL_FACES.length + ': ' + names.join(','))
   ok(app.kernel.status().packPath === 'loader',
     'status().packPath reports the ONE pack path', String(app.kernel.status().packPath))
 }

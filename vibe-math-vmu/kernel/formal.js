@@ -9,8 +9,11 @@
 //   ⑥ 截断必计数（`droppedBytes`／`droppedLog`／`droppedArtifacts` ✓）；⑦ 注入时钟（不读真实时间 ✗）；
 //   ⑧ 零机制不崩；⑨ `list/status/axioms/sorryReport/artifacts` **只读** ✓。
 //
-// 注入：`createFormal({ clock, log, settings, bus, spawn, library })`
+// 注入：`createFormal({ clock, log, settings, bus, spawn, library, ids })`
 //   · spawn —— `({ command, args, cwd, stdin, timeoutMs }) => { exitCode, stdout, stderr, timedOut? }`
+//   · ids   —— 可选：`kernel/ids.js` 的实例（缺省用模块级单例）⇒ 记录号经**唯一铸号者**（D-15）
+
+import { mint as mintId } from './ids.js'
 
 export const FORMAL_KEYS = Object.freeze([
   'vmu.math.leanCommand',
@@ -33,7 +36,15 @@ export function createFormal(opts) {
   const readKey = (k) => (o.settings && typeof o.settings.get === 'function' ? o.settings.get(k) : (o.settings || {})[k])
   const clock = typeof o.clock === 'function' ? o.clock : () => 0
   const log = typeof o.log === 'function' ? o.log : () => {}
-  const emit = (ev) => { try { if (o.bus && typeof o.bus.emit === 'function') o.bus.emit(ev) } catch (e) { /* 广播不改结果 */ } }
+  // bus.emit takes (NAME, payload): the single-object shape was refused by the bus and silently swallowed.
+  const emit = (name, payload) => {
+    try {
+      if (!o.bus || typeof o.bus.emit !== 'function') return
+      const r = o.bus.emit(String(name), payload || {})
+      if (r && typeof r.catch === 'function') r.catch(() => {})
+    } catch (e) { /* 广播不改结果 */ }
+  }
+  const mintRecordId = () => (o.ids && typeof o.ids.mint === 'function' ? o.ids.mint('formal', 'fm-') : mintId('formal', 'fm-'))
   const spawn = o.spawn
 
   const cfg = () => {
@@ -59,7 +70,6 @@ export function createFormal(opts) {
 
   const notes = new Map()
   const artifacts = new Map()
-  let seq = 0
   let droppedLog = 0
   let droppedArtifacts = 0
   const trail = []
@@ -133,7 +143,7 @@ export function createFormal(opts) {
     const timedOut = r.timedOut === true
     const exitCode = timedOut ? null : Number(r.exitCode)
     const receipt = {
-      id: 'fm-' + (++seq), statement, engine: c.leanCommand, argvFingerprint, inputFingerprint,
+      id: mintRecordId(), statement, engine: c.leanCommand, argvFingerprint, inputFingerprint,
       exitCode, durationMs: endedAt - startedAt, timedOut,
       outputFingerprint: fp({ stdout: String(r.stdout || ''), stderr: String(r.stderr || '') }),
       compileOk: !timedOut && exitCode === 0,
@@ -151,7 +161,7 @@ export function createFormal(opts) {
     artifacts.set(receipt.id, arts)
     if (artifacts.size > c.maxArtifacts) { const oldest = [...artifacts.keys()][0]; artifacts.delete(oldest); droppedArtifacts += 1 }
     note('formal.check', receipt.id, { compileOk: receipt.compileOk, droppedBytes })
-    emit({ type: 'formal.check', id: receipt.id, compileOk: receipt.compileOk })
+    emit('formal/checked', { id: receipt.id, compileOk: receipt.compileOk, verdict: receipt.verdict })
     // INTEGRATOR RULING: the shared module code is MATH_TIMEOUT (no VMU_ prefix) - that is the name 03-§8
     // registers, and a VMU_-prefixed twin would be two names for one meaning.
     if (timedOut) return Object.assign(refuse('MATH_TIMEOUT', 'Lean 编译超时（>' + c.timeoutMs + ' ms）⇒ **未判定真假**', '调大 compileTimeoutMs'), { receipt })

@@ -138,7 +138,7 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 322 / suites 250 / probes 72`** ✓（旧值 134／68／66 已在扩卷与增件后过期 ✗；本轮树新增 1 个作业：`tests/audit-scope-classification.test.mjs` ✓） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 254 / suites 190 / probes 64`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 258 / suites 194 / probes 64`** ✓ |
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 258 / suites 225 / probes 33`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。
@@ -227,8 +227,8 @@ node scripts/release-check.mjs             # 发布前清单
 - **官方验证的完整清单**已抽成 G1–G13（来自 C′ 对 `references/verification.md` 的提炼）；其中"**无浏览器控制时的上限**"（只允许 JS 语法 ＋ manifest 校验 ＋ 活 Client slot 注册）是**文档级**逐字结论 ✓；
 - **Client 侧活读数未核**（本机 `Slots.listSubTree` 超时）⇒ GUI 相关门禁暂缺，见 14-§1（O2）；
 - **`app.asar` 直读不可用**（本 agent `read` 工具 BigInt 缺陷）⇒ 读官方材料需自写 asar 解析＋SHA256 校验，见 14-§3（R-5）。
-- **`math-computation.js` 的 canonical 快照与随包副本的一致性：未核／未修** ✗✓（**2026-10-14 登记；不得写成"已核"** ✗）：该快照（`_oneoff/mc-P1-ready/{canonical,tool-schema.json}`）在**版本控制外**（与 D-05 同病）⇒ **干净 clone 无法复现这次对照**；且 `tests/audit-math-computation-parity.mjs` 的**默认路径**指向**仓内不存在**的 `<_repo>/_oneoff/mc-P1-ready/` ⇒ **"多份副本 == canonical"与"失败码/参数名 == tool-schema.json"这两条最强断言在本检出里长期空过**（旧实现只打一行 `note`；本轮已改为**具名 SKIP**，原因里给出 dev 副本路径与 `MATH_CANON_DIR`／`MATH_SCHEMA_FILE` seam ✓）。**把 seam 指向真实快照后的实测**：先 `127 passed / 2 failed` ⇒ ① **哈希不符**（canonical `6c9c9f13…` vs 随包 `def90af7…`；canonical mtime **2026-10-03** 早于随包副本 **2026-10-05**）**只登记不修** ✓；② 失败码**顺序**差异已按裁决 **D-10** 改为**集合 ＋ 可达性比较** ⇒ 现 `130 passed / 1 failed`（唯一剩余即 ①）✓。**Round 2 计划（已裁）**：canonical **vendored 进仓** ＋ 重定义为**语义级对照**（目标 5 要重构 `math-computation.js`，字节级快照必然失效）。**详见 14-§2（U13）** ✓。
-- **两个 env 注入缝：`MATH_CANON_DIR` 与 `MATH_SCHEMA_FILE`** ✓（**2026-10-14 登记** ✓）：它们**只**用于把 `tests/audit-math-computation-parity.mjs` 的第 4 节指向**仓库外**的 canonical 快照与 tool-schema；**默认不设** ⇒ 该守卫走**具名 SKIP**（打印原因并给出 dev 副本所在位置），因此日常门禁**不依赖**它们 ✓。★ **它们不是错误码** ✗：`MATH_*` 这个记号前缀被**共享模块的拒绝码**与**这两个环境变量**同时使用 ⇒ `tests/audit-vmu-docs.test.mjs` 的"文档里出现的每个 `MATH_*` 记号都必须在 03-§8 登记"一度把这两个 env 名**误报**为未登记错误码 ✗✓；该守卫的豁免现已改为**从代码派生**（凡被本仓 `process.env.<NAME>` 读取的同前缀记号，即视为 env 缝 ✓），并断言该豁免**非空且真被用到**。★ **与 U13 同源**：**详见 14-§2（U13）** ✓。
+- **`math-computation.js` 的 canonical 快照：Round 2 已收口（vendored ＋ 语义级对照）** ✓（2026-10-14）：① 引用**已进仓**为 `tests/fixtures/mc-P1-ready/{math-computation.js,math-engines.js,tool-schema.json}`（登记 `package.json#files`；D-05 修订口径＝仓库级/夹具只登记 `files[]`）⇒ **干净 clone 可复现** ✓；② `tests/audit-math-computation-parity.mjs` 的判据**已按 D-10(1) 改为语义面**（导出名与 typeof、失败码/参数名**集合**＋可达性、参数默认值、`MATH_TOOL_SCHEMA` 结构、引擎描述符与 `candidates` 顺序、**唯一逐字项**＝注入模型的合同文本），**字节对照降为一条具名断言**（冻结标记）✓；③ 实测 **141 passed / 0 failed（EXIT=0）**，并用 `MATH_COMPUTATION_MODULE` seam 注入"改名一个失败码 ＋ 改一个默认值"**证明两条具名断言会红** ✓。★ **必须记明**：vendored 的 canonical **是按当前随包副本刷新的**（旧快照 `6c9c9f13…` 2026-10-03 早于随包副本 `def90af7…` 2026-10-05；`math-engines.js` 本就一致 `a4891a03…`；`tests/fixtures/mc-P1-ready/tool-schema.json` 原样 `0552e61f…`）⇒ 本行只声称"引用进仓、判据语义化、断言可真红"，**不**声称共享模块在语义上绝对正确。**详见 14-§2（U13）** ✓。
+- **两个 env 注入缝：`MATH_CANON_DIR` 与 `MATH_SCHEMA_FILE`** ✓（**2026-10-14 登记** ✓）：**默认已不指向仓外** —— 语义级对照用的是仓内夹具 `tests/fixtures/mc-P1-ready/` ✓；这两个 seam 现在只用于**备用/变异副本**（dev 检出里的历史副本、或 `MATH_COMPUTATION_MODULE` 式的变异证明）；**把 seam 指向不存在的路径** ⇒ 该守卫走**具名 SKIP**（打印原因），因此日常门禁**不依赖**它们 ✓。★ **它们不是错误码** ✗：`MATH_*` 这个记号前缀被**共享模块的拒绝码**与**这两个环境变量**同时使用 ⇒ `tests/audit-vmu-docs.test.mjs` 的"文档里出现的每个 `MATH_*` 记号都必须在 03-§8 登记"一度把这两个 env 名**误报**为未登记错误码 ✗✓；该守卫的豁免现已改为**从代码派生**（凡被本仓 `process.env.<NAME>` 读取的同前缀记号，即视为 env 缝 ✓），并断言该豁免**非空且真被用到**。★ **与 U13 同源**：**详见 14-§2（U13）** ✓。
 
 ### 8.1 真机实测新增（2026-10-09，证据在 `_oneoff/vmu/live/2026-10-09/` ✓）
 
@@ -608,7 +608,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 
 **五个阶段（每阶段一条"闸点"，判据委托、不自造 ✗）** ✓：
 
-> ★★ **读法提示（避免把它当待办清单 ✗）**：下表最后一列是**【闸点未过时的处置**】✓，**不是"我们还没做这件事"** ✗ —— ★ 例如"需求"行的 `未做 ✗` 意思是**验收口径若不可核对，就把该条目标记为未做** ✓（★ 这是**动作** ✓），而"实现"行的 `未做 ✗` 意思是**变更若缺作者与理由，就标未做** ✓。★★ **本卷没有把"需求/变更集机制"列为未做** ✓ —— ★ **它们已经存在** ✓：**变更的作者、时刻与理由由 git 提交信息承担** ✓，**逐轮的判断与取舍记在 `14-decision-history.md`（历史卷）** ✓，★ **本节要求的是"每条变更都得能追溯到作者与理由"，而不是另建一套台账** ✗。★ **同类误读的另一个实例见 `04` 卷的 `⚠️ 未接线`（那是"预留旋钮"，不是欠账 ✓）。**
+> ★★ **读法提示（避免把它当待办清单 ✗）**：下表最后一列是**【闸点未过时的处置**】✓，**不是"我们还没做这件事"** ✗ —— ★ 例如"需求"行的 `未做 ✗` 意思是**验收口径若不可核对，就把该条目标记为未做** ✓（★ 这是**动作** ✓），而"实现"行的 `未做 ✗` 意思是**变更若缺作者与理由，就标未做** ✓。★★ **本卷没有把"需求/变更集机制"列为未做** ✓ —— ★ **它们已经存在** ✓：**变更的作者、时刻与理由由 git 提交信息承担** ✓，**逐轮的判断与取舍记在 `28-decision-history.md`（历史卷）** ✓，★ **本节要求的是"每条变更都得能追溯到作者与理由"，而不是另建一套台账** ✗。★ **同类误读的另一个实例见 `04` 卷的 `⚠️ 未接线`（那是"预留旋钮"，不是欠账 ✓）。**
 
 | 阶段 | 入口产物 | 闸点（委托） | 未过 ⇒ |
 |---|---|---|---|
@@ -679,6 +679,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `bus` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `capacity` · `list()` | ok | — | enforced=[0] fired=[0] enforcedScope=evaluated-so-far | ok 或 object（实测 `list()` ⇒ **ok**（`enforced=[0] fired=[0] enforcedScope=evaluated-so-far` ⇒ 零机制**清单可读、不拒** ✓；**键数由本生成器实测输出** ✓）） |
 | `charter` · `propose()` | refusal | VMU_CHARTER_NOT_AUTHORIZED | — | 具名拒或 ok（task-214 批 3 补参（形状取自测试 vmu-charter.test.mjs:236 `propose({kind:"charter",text,by,articles:[{id}]})`）：补参前实测具名拒 **VMU_CHARTER_NOT_AUTHORIZED** ⇒ 补参后若放行 ⇒ ok ✓；若仍具名拒 ⇒ 写明"缺参即其零机制形状" ✓） |
+| `chat` · `list()` | ok | — | dropped=0 truncated=false | ok 或 object（实测（轮 2）：零声明下 list() ⇒ **ok**（自曝 dropped=0、truncated=false ⇒ 零机制＝无群聊/无收件人 ⇒ 清单可读、**不拒** ✓）） |
 | `citations` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（entries: 0；freeTextIsOffByDefault: true 自曝 ✓）；无条目⇒无可渲染对象，**不拒** ✓） |
 | `clockguard` · `status()` | null | — | — | ok 或 null（时钟守卫：无声明 ⇒ 不拦（返回 null 亦合规）） |
 | `collab` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（counterparties: 0、agreements: 0 自曝 ✓）；agreementRequired 默认 true 但无对手方⇒无可交换对象，**不拒** ✓） |
@@ -702,15 +703,18 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `human` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（vetoes: 0、approvals: 0 ✓；neverAllowsBySilence: true 自曝「onTimeout 默认 hold ⇒ 沉默绝不变成批准」 ✓）） |
 | `idempotency` · `list()` | ok | — | dropped=0 truncated=false | ok 或 object（列表/状态面放行 ✓；**显式 `absent` 只在去重操作上**（该操作需参数 ⇒ 探针见 NEEDS_ARGS ✓）） |
 | `identity` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ **ok**（noIssuerListMeansNoCheck: true 自曝「空 issuer 列表＝完全不做校验」 ✓）；bindPrincipal ⇒ ok 且 binding: off（记录而不耦合 ✓）。**不拒** ⇒ 形状为 ok，而非具名拒 ✓） |
+| `ids` · `status()` | ok | — | — | ok 或 object（实测（轮 2）：零声明下 status() ⇒ **ok**（唯一 id 分配面：无声明仍可读状态，**不拒** ✓）） |
 | `index` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `ip` · `list()` | ok | — | enforced=[1] fired=[0] dropped=0 enforcedScope=evaluated-so-far truncated=false | ok 或 object（实测 `list()` ⇒ **ok**（`enforced=[1] fired=[0] dropped=0` ⇒ 清单可读、**不拒** ✓）） |
-| `lean` · `submit()` | refusal | VMU_LEAN_STATEMENT_REQUIRED | — | 具名拒（带 code）（task-214 实测：`submit()` ⇒ 具名拒 **VMU_LEAN_STATEMENT_REQUIRED** ⇒ 零机制＝无命题文本 ⇒ 具名拒即真实形状 ✓） |
+| `lean` · `submit()` | refusal | VMU_LEAN_STATEMENT_REQUIRED | enforced=[0] enforcedScope=evaluated-so-far | 具名拒（带 code）（task-214 实测：`submit()` ⇒ 具名拒 **VMU_LEAN_STATEMENT_REQUIRED** ⇒ 零机制＝无命题文本 ⇒ 具名拒即真实形状 ✓） |
 | `library-policy` · `registerVocabulary()` | ok | — | enforced=[2] fired=[0] | EXPECT_NA（非服务模块（无 `status()`；返回六个纯检查器 ✓）—— 行为由调用它的 library 套件覆盖 ✓） |
 | `library` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：库引用（ref/uri）） |
 | `lifecycle` · `stages()` | refusal | VMU_LIFECYCLE_NOT_DECLARED | — | 具名拒（带 code）（task-214 实测：`stages()` ⇒ 具名拒 **VMU_LIFECYCLE_NOT_DECLARED** ⇒ 零机制＝未声明生命周期 ⇒ 具名拒即真实形状 ✓） |
 | `loader` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `mailbox` · `plan()` | ok | — | enforced=[1] | ok 或 object（实测（轮 2）：零声明下 plan() ⇒ **ok**（自曝 enforced=[1] ⇒ 投递计划可读、**不拒** ✓）；无收件人⇒无可投递对象 ✓） |
 | `math` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：数学请求体） |
-| `mathjobs` · `submit()` | refusal | VMU_MATH_INVALID_INPUT | — | 具名拒（带 code）（task-214 实测：`submit()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT** ⇒ 零机制＝无作业请求 ⇒ 具名拒即真实形状 ✓） |
+| `mathadapters` · `plan()` | refusal | VMU_MATH_INVALID_INPUT | enforced=[2] enforcedScope=evaluated-so-far | 具名拒（带 code）（实测（轮 2）：零声明下 plan() ⇒ 具名拒 **VMU_MATH_INVALID_INPUT**（零机制＝无适配请求 ⇒ **具名拒即真实形状** ✓；不假装成功 ✗）） |
+| `mathjobs` · `list()` | array[0] | — | — | array 或 object（**两侧都写清**（轮 2 实测）：`list()`（状态/列表面）⇒ **array[0]**（零机制＝无作业 ⇒ 空列表放行 ✓）；`submit()` 缺参 ⇒ 具名拒 **VMU_MATH_INVALID_INPUT**（task-214 实测，保留 ✓）） |
 | `mathtools` · `plan()` | refusal | VMU_MATH_INVALID_INPUT | enforced=[0] enforcedScope=evaluated-so-far | 具名拒（带 code）（task-214 实测：`plan()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT**（带口径 `enforced=[0] enforcedScope=evaluated-so-far`）⇒ 零机制＝无计划入参 ⇒ 具名拒即真实形状 ✓（补参后应见 `ok + enforced:[]`，届时改"具名拒或 ok" ✓）） |
 | `meeting` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `meetings` · `open()` | ok | — | enforced=[0] enforcedScope=evaluated-so-far | 按声明默认开成（零机制＝按声明默认值开成（不拒）✓） |
@@ -721,6 +725,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `minutes` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `notify` · `list()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `pack` · `plan()` | refusal | VMU_PACK_MISSING | — | 具名拒（带 code）（第 26 轮已修 ✓：实测拒绝带 **`VMU_PACK_MISSING`**（曾误标"不带 code" ✗）） |
+| `panel` · `status()` | ok | — | dropped=[object Object] | ok 或 object（实测（轮 2）：零声明下 status() ⇒ **ok**（自曝 dropped 列表 ⇒ 零机制＝无成员面板可报 ⇒ 状态可读、**不拒** ✓）） |
 | `paper` · `start()` | ok | — | — | 具名拒或 ok（轮 135 实测：`start()` 无参 ⇒ 具名拒 **VMU_INVALID_ARGUMENT**（缺标题／章节／**无主章节**／编辑 ✓ —— 缺参即其零机制真实形状 ✓）；`PROBE_ARGS.paper` 带参后应见 **ok**（开篇不需要任何设置 ✓）⇒ 两态皆合规 ✓） |
 | `partnership` · `list()` | object | — | — | ok 或 object（实测（轮 276）：零声明下 status() ⇒ ok（entities=0、zeroMechanism=true 自曝 ✓）；validateInvoice() 对**缺声明的税务字段位【逐位点名】**并拒（VMU_TAX_FIELD_MISSING）；绑定未登记实体拒（VMU_ENTITY_UNKNOWN）✓） |
 | `projmigrate` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
@@ -730,8 +735,10 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `recruit` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `registry` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `replay` · `plan()` | ok | — | truncated=[object Object] | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `report` · `status()` | ok | — | enforced=[11] truncated=0 | ok 或 object（实测（轮 2）：零声明下 status() ⇒ **ok**（自曝 enforced=[11]、truncated=0 ⇒ 汇报面可读、**不拒** ✓）；无可汇报内容时仍给形状而非拒 ✓） |
 | `repropack` · `build()` | refusal | VMU_MATH_SEED_REQUIRED | — | 具名拒（带 code）（task-214 实测：`build()` ⇒ 具名拒 **VMU_MATH_SEED_REQUIRED** ⇒ 零机制＝无复现种子 ⇒ 具名拒即真实形状 ✓） |
 | `resource` · `status()` | ok | — | — | ok 或 object（仪器面：零机制 ⇒ **台账可读、不拒**（`status()` 返回 `ok:true` ＋ `partition` ✓）；**键数由本生成器实测输出** ✓（note 只写形状与理由 ✗）） |
+| `resume` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：`store`／`work`／`control`／`identity` 注入（工厂需要真实接缝才返回实例）；补参后应按实测形状裁定 ✓） |
 | `retention` · `plan()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `reviewers` · `status()` | ok | — | — | ok 或 object（实测（轮 279）：零声明下 status() ⇒ ok（reviewers=0、zeroMechanism=true 自曝 ✓）；assign() 对【已声明冲突】具名拒（VMU_COI_VIOLATION）、对【达并发上限】具名拒（VMU_REVIEWER_OVERLOADED）；盲评解绑无理由拒（VMU_BLIND_UNBIND_DENIED）✓） |
 | `rules` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
@@ -750,7 +757,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
 | `workflow` · `advance()` | refusal | VMU_WORKFLOW_TRANSITION_REQUIRED | enforced=[7] enforcedScope=evaluated-so-far | 具名拒或 ok（**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 `advance()` 缺参 ⇒ **task-214 实测：具名拒 `VMU_WORKFLOW_TRANSITION_REQUIRED`（带口径 `enforced=[7]`）** ⇒ 具名拒即真实形状 ✓（旧 note 曾写 `op 抛出` ✗ / "缺参 ⇒ 具名拒" 混述 ✗，均已按实测改写 ✓）） |
 
-=== ZERO-MECHANISM MATRIX: 82 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 5 probe-errors, 3 n/a ===
+=== ZERO-MECHANISM MATRIX: 89 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 6 probe-errors, 3 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->
 
 ### 11.x 改文档的标准手法（★ 轮 524 补 ✓ —— ★ 本节在台账上结转了 6 轮 ✗）

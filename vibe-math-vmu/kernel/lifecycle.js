@@ -36,7 +36,18 @@ export function createLifecycle(opts) {
   const readKey = (k) => (o.settings && typeof o.settings.get === 'function' ? o.settings.get(k) : (o.settings || {})[k])
   const clock = typeof o.clock === 'function' ? o.clock : () => 0
   const log = typeof o.log === 'function' ? o.log : () => {}
-  const emit = (ev) => { try { if (o.bus && typeof o.bus.emit === 'function') o.bus.emit(ev) } catch (e) { /* 广播不改结果 */ } }
+  // MEASURED BUG (fixed in round 2, reported by vmu-pack): this used to be `o.bus.emit(ev)` with an OBJECT,
+  // which `kernel/bus.js` refuses by name ("bus.emit needs a NON-EMPTY STRING hook") - and the try/catch around
+  // it swallowed the refusal, so BOTH lifecycle broadcasts never reached the bus at all. Producers pass the hook
+  // NAME first and catch the async rejection on the promise.
+  const emit = (name, payload) => {
+    if (!o.bus || typeof o.bus.emit !== 'function') return null
+    try {
+      const r = o.bus.emit(name, payload)
+      if (r && typeof r.catch === 'function') r.catch(() => {})
+      return r
+    } catch (e) { return null }
+  }
   const domaingate = o.domaingate
   const publication = o.publication
 
@@ -156,7 +167,7 @@ export function createLifecycle(opts) {
     const keys = args.keys && typeof args.keys === 'object' ? args.keys : {}
     preregs.set(studyId, { studyId, at: clock(), keys, topic, searches, variables })
     note('lifecycle.prereg', studyId, { searches: searches.length, variables: variables.length })
-    emit({ type: 'lifecycle.prereg', studyId })
+    emit('lifecycle/prereg', { studyId })
     return { ok: true, studyId, at: clock(), locked: c.preregLock, topicRequiredFields: c.topicRequiredFields.slice(), searchSources: c.searchSources.slice(), enforced: ['vmu.lifecycle.preregLock', 'vmu.lifecycle.topicRequiredFields', 'vmu.lifecycle.searchSources', 'vmu.lifecycle.variableRoles', 'vmu.lifecycle.dedupeKeys'] }
   }
 
@@ -234,7 +245,7 @@ export function createLifecycle(opts) {
     artifacts.set(studyId, arts)
     if (arts.length > c.maxArtifacts) { const drop = arts.length - c.maxArtifacts; artifacts.set(studyId, arts.slice(drop)); droppedArtifacts += drop }
     note('lifecycle.advance', studyId, { to })
-    emit({ type: 'lifecycle.advance', studyId, to })
+    emit('lifecycle/advance', { studyId, to })
     return { ok: true, studyId, stage: to, at: st.at, index: t.table.findIndex((s) => s.id === to) }
   }
 

@@ -55,10 +55,11 @@ console.log('=== 2. THE register() FIELD LIST IS COMPLETE ===')
 
 console.log('=== 3. THE HOOK TABLE S MARKS AGREE WITH VU_HOOKS ===')
 {
-  const bus = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'bus.js'), 'utf8')
-  const hm = /VU_HOOKS = Object\.freeze\(\[([\s\S]{0,1500}?)\]\)/.exec(bus)
-  const hooks = new Set(hm ? [...hm[1].matchAll(/'([a-z][a-z0-9/-]+)'/g)].map((m) => m[1]) : [])
-  ok(hooks.size >= 10, 'the kernel publishes the hook list', { n: hooks.size })
+  // D-12: read the runtime EXPORT instead of parsing the source text. `bus.js` now DERIVES `VU_HOOKS` from
+  // `HOOK_REGISTRY`, so a text pattern would bind this table check to the derivation's shape, not its value.
+  const { VU_HOOKS } = await import('../vibe-math-vmu/kernel/bus.js')
+  const hooks = new Set(VU_HOOKS)
+  ok(hooks.size >= 10, 'the kernel publishes the hook list (from the runtime export)', { n: hooks.size })
   const lines = doc('08-primitives-meeting-ballot-workflow.md').split('\n')
   const h = lines.findIndex((l) => /11\.4/.test(l) && /^#/.test(l))
   const wrong = []

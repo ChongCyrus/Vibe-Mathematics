@@ -22,6 +22,7 @@
 //   · READ paths (inForce/articles/children/list/history/status/cite-with-valid-input) never mutate charters
 // SETTINGS READ CONVENTION (kernel/guard.js): every key is read as a PLAIN LITERAL — the settings table and
 // the docs audit both discover "wired" keys by scanning file text for the literal.
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const apiVersion = 1
 
 export function refuse(code, message, hint) {
@@ -105,7 +106,6 @@ export function createCharter({ clock = () => 0, log = null, settings = {}, bus 
   const refusals = new Map()
   const unwired = new Map()
   const declaredTopics = new Set()
-  let seq = 0
 
   const bump = (map, key, by = 1) => map.set(key, (map.get(key) || 0) + by)
   const objOf = (map) => { const o = {}; for (const k of [...map.keys()].sort()) o[k] = map.get(k); return o }
@@ -273,7 +273,7 @@ export function createCharter({ clock = () => 0, log = null, settings = {}, bus 
       } else if (parentId !== null) {
         throw deny('VMU_INVALID_ARGUMENT', 'only kind="subsidiary" may declare a parentId', 'drop parentId, or use kind: "subsidiary"')
       }
-      const id = 'ch-' + (++seq)
+      const id = mint('charter', 'ch-')
       const c = {
         id, kind, parentId: parent ? parent.id : null, depth: parent ? parent.depth + 1 : 0,
         text: String(text), articles: arts, authority: scope,

@@ -1295,5 +1295,102 @@ recount(ballotId):
 - §12.4 的 `vmu.budget.*` 行由"机器强制原则"改为"设计原则（当前仅 `vmu.limits.*` 已实现 ✓）"；
 - §4 的"仲裁与冲突解决"与"交接与升级"两行**改为引用 17-§6／§17-§11** ✓。
 
+---
+
+## 25. Round 2 · 目标 2 对齐台账（task-11：通信 / 协作 / 会议）
+
+> 判据：`_handoff/vmu/00-decisions.md` **D-08 三层基线**；事实来源：`_handoff/vmu/v5r-inventory-c.md` §③（会议系统全清单）、§④（群聊与状态面板）、§⑦（设计↔实现落差）。
+> 分层铁律照旧：**能力进内核**（消息、信箱、面板、会议状态机），**策略进 settings/pack**；v5r pack 只声明策略，不复刻内核实现。
+
+### 25.1 新增内核原语（Round 2）
+
+| 原语 | 文件 | 工厂 | 工具面 | 设置键（全部真读） | 新错误码 |
+|---|---|---|---|---|---|
+| 群聊 | `kernel/chat.js` | `createChat({clock,log,settings,bus,isFrozen,freezeExempt,isAdmin})` | `vibe_vmu_chat`（`tools/chat.js`） | `vmu.chat.admins`／`speakQuota`／`speakQuotaWindowMs`／`muteDefaultMs`／`freezeExemptAdmins`／`historyCap` | `VMU_CHAT_MUTED`／`_QUOTA_EXCEEDED`／`_FROZEN`／`_NOT_ADMIN`／`_ANCHOR_DANGLING`／`_CAP_REACHED` |
+| 耐久信箱 | `kernel/mailbox.js` | `createMailbox({clock,log,settings,bus,store,deliver,resolveAudience})` | `vibe_vmu_mailbox`（`tools/mailbox.js`） | `vmu.mailbox.digestWindowMs`／`digestMax`／`urgentKinds`／`ackedLedgerCap`／`wakeBudget`／`deliverTimeoutMs` | `VMU_MAILBOX_NO_SUCH_RECIPIENT`／`_ACK_UNKNOWN`／`_DELIVERY_FAILED`／`_ANCHOR_DANGLING`／`_CAP_REACHED` |
+| 状态面板 | `kernel/panel.js` | `createPanel({clock,log,settings,bus,members})` | `vibe_vmu_panel`（`tools/panel.js`） | `vmu.panel.auditCap`／`subtasksMax`／`deviationPolicy`／`historyCap` | `VMU_PANEL_UNKNOWN_FIELD`／`_TIME_KEY`／`_NO_SUCH_MEMBER`／`_DEVIATION`／`_CAP_REACHED` |
+
+**不变式（与 v5r 的对应关系）**
+- 群聊：消息 `{id:'msg-N', seq, from, at, text, replyTo, quotes[], kind}` —— **id／发言人／时间／回复目标**四件齐全；被拒发言**不追加**（"拒绝不是一条消息"）；禁言**到期即自动解除并留痕**；配额 `0＝不限`、窗口 `0＝整场`；**表决期禁言由注入的 `isFrozen()` 派生**（与 `ballot.freeze` 同源，无定时器），`freezeExemptAdmins` 保留 v5r 的 chair-first 豁免开关。
+- 信箱：**每收件人一份**（群发＝N 条 N 个 id）；**ack 只在投递成功之后**（返回 `false`／抛异常／无 transport ⇒ 一条都不 ack，队列原样可重投）；**ack 后正文即删**，指向它的引用锚**具名悬空拒**；`freshOnly`＋`markInjected/clearInjected` ＝ **每提示一次去重**；urgent（默认 `dm/office/assign/nudge/notice/meeting/verify`）立即投，其余按 `digestMax`／`digestWindowMs` 合批；`plan()` 受 `wakeBudget` 约束且**具名列出被推迟者与原因**。
+- 状态面板：字段 `overall`（总目标）／`subgoal`／`plan[]`／`status`／**`subtasks[]`（正在执行的子任务，v5r 缺的独立字段）**，`state ∈ planned|running|blocked|done`；**只追加**历史；时间**由框架写**（自带 `…At/…Ms` 具名拒）；同值幂等；他人改 `overall` ⇒ 记 `deviation`（保留原作者与原值）或按 `deviationPolicy:"refuse"` **具名拒**；`view()` **留痕**且上限触界**计数上报**；有 `members` 接缝时镜像 `overall/subgoal/plan/status`（**不镜像 `subtasks`**，那个面不认识它）。
+
+### 25.2 基线 A（v5r 实际实现）覆盖表
+
+| v5r 能力（分片 C §⑦-A） | vmu 承载 | 判定 |
+|---|---|---|
+| 召集（`meeting_open`；只有院士/所办可开，其余只提议） | `meeting.convene`＋`meetings.open`＋`canConvene` 判定点；默认"≥2 人" | ✅ |
+| 两阶段发言（轮流→举手，沉默不触发截止） | `meeting.roundComplete/phase`（派生：全部终态 ⇒ `open-floor`）＋`handUp`＋`asked/silent/refused` | ✅ |
+| 发言／沉默／拒绝输入（拒绝不推进轮次） | `meeting.speak/markSilent/refuseInput`（"REFUSED INPUT IS NOT AN INPUT"） | ✅ |
+| 邀请临时工发言（只记纪要、不计票、不阻塞收束） | **新增** `meeting.invite/speakInvited/invitations`（`countsTowardsRound:false`） | ✅ |
+| 显式结束辩论（R10-2a）＋聚合闸 | `meeting.endDebate/aggregationAllowed` | ✅ |
+| 收束（不完整轮次具名拒，强制收束留痕） | `meeting.close(reason,{force})` | ✅ |
+| 投票板（选项式：minVotes／记名／弃权／多轮） | `ballotbox.js`（`method/minVotes/minVotesRatio/abstainAllowed/abstainCountsForFloor/secrecy/tieRule/roundsMax`）＋`ballot.js`（布尔票、三值结果、IC 冻结） | ✅ |
+| 复议／重开 | `ballot.reopen(reason)`（原语层）；投票板层 **GAP-MTG-10** | ✅／部分 |
+| 动议＋附议 | `governance.js`（`MOTION_KEYS`；动议状态机由该面持有） | ✅ |
+| 程序异议／申诉留痕 | `meetings.fileAppeal`（`appealScope/appealReasonRequired/appealDeadlineMs`） | ✅（变形） |
+| 纪要（起草／确认／逐字稿／行动项） | `minutes.js`（`draft/confirm/append/actions/list/status`；`dissentMandatory/actionsOwnerRequired/dueRequired`） | ✅ |
+| 上次纪要确认 | `minutes.confirm` + `confirmPreviousRequired` + `meetings.confirmPreviousMinutes` | ✅ |
+| 临时授权（4 命令 × 3 事件型范围） | `grant.js`：`GRANTABLE_COMMANDS=['assign','prioritize','nudge','convene']`、`GRANT_SCOPES=['meeting','verify','once']`（与 v5r 逐字一致） | ✅（**工具面缺，见 GAP-MTG-12**） |
+| 会议参数与上下界（硬界／唤醒重试／引用上限／轮次） | `meetings.hardLimitMs`（默认 1800000，钳 [300000,7200000]）、`wakeRetries`（钳 [0,10]）、`verdictMaxRounds`（≥1）；`meeting.roundTimeoutMs`／`quotesPerMessageMax`（默认 2，超限拒）／`quoteDepthMax`（默认 3，超深折叠计数） | ✅ |
+| 会议分级（formal/light，简流程不得产出实体定论） | `meetings.confidentiality*`（public/internal/restricted）承载"级别＋引用策略"，**不含"定论闸"** | ⚠ **GAP-MTG-02** |
+
+### 25.3 基线 B（用户点名，v5r 只在设计文档里有）覆盖表
+
+| 用户点名项 | 承载 | 判定 |
+|---|---|---|
+| 群聊消息 `{id, 发言人, 时间, 回复目标}` | `chat.send` 的 `{id, from, at, replyTo, quotes}`（悬空回复锚具名拒） | ✅ |
+| **管理员** | `chat.admins`（成员 id）／`isAdmin` 注入接缝；授予/撤销与改策均**要求具名 `by`**（匿名改策具名拒） | ✅ |
+| **发言次数限制（指定次数／不限）** | `chat.speakQuota`＋`speakQuotaWindowMs`（`0＝不限`；超限 `VMU_CHAT_QUOTA_EXCEEDED` 带当前值/上限） | ✅ |
+| **禁言（含到期）** | `chat.mute/unmute`（`durationMs` 相对时长，绝对时点由框架写；到期自动解除并记 `mute-expired`） | ✅ |
+| 私发信息（耐久、逐收件人、ack 语义） | `mailbox.js`（见 25.1） | ✅ |
+| 成员状态面板（**总目标／计划规划／正在执行的子任务**） | `panel.js`（`overall`／`plan[]`／**`subtasks[]`**；查看留痕；历史与偏离） | ✅ |
+
+### 25.4 **具名扩展登记**（基线 C：设计有、v5r 未实现；**不许静默缺失**）
+
+> 每条给出：缺口／现状证据（源码级）／**由哪一层补**。未落地者一律在此登记；评审可据此逐条销账。
+
+| id | 缺口（分片 C 对照） | 现状证据 | 由哪一层补（closed-by） |
+|---|---|---|---|
+| **GAP-MTG-01** | 显式「散会／结束会议」命令（v5r 无工具，只有判据自动收束；D2/R4/K8 假定存在） | `meeting.close` 是**原语**且只能由调用方触发；`tools/meeting.js` 的 `close` 是唯一显式入口，**没有"仅院士可散会"的授权面** | `host.js` 工具面 + `pack` 权限声明（chair 槽位）；内核原语已就绪 |
+| **GAP-MTG-02** | 会议分级的「简流程不得产出实体定论」硬闸（`truthWriteRefusal`） | `meetings.confidentiality*` 管**保密级别与引用**，与"实体定论"无关；无 `formal/light` 判定点 | `meetings.js` 策略层（新增 `formal/light` 键族 + 单一判定点）；键名需 Lead 裁决 |
+| **GAP-MTG-03** | 决议实体：稳定 id（`res-<n>`）／公告即生效 `effectiveAt`／`supersededBy` 取代链 | `minutes.js` 的 `resolutions[]` 只是记录数组；无稳定 id/生效时点/取代链；`governance.js` 只有动议 | `governance.js` 或新增决议原语（**建议 governance**，避免第二份台账） |
+| **GAP-MTG-04** | 议程增删改／点名出席表／发言顺序设定／点名发言（`agenda_set`／`roll_call`／`speak_order_set`／`speak_next`） | `meetings.js` 有 `attend/leave/queue/orderMode` 与 `materialsRequired`，**没有** agenda 条目对象、没有 attendance 状态表、没有"主席点谁"的命令 | `meetings.js`（议程对象 + 出席表 + `orderMode:'chair'` 的点名入口） |
+| **GAP-MTG-05** | 休会／**延长**／**停步**（`recess` 已有；`extend`／`stop` 无） | `meetings.recess/resume` 存在；`speechExtendMs/speechExtendMax` 是**声明键**、无延长命令；无 `stop{scope}` | `meetings.js`（在既有 `speechExtend*` 键上实现 `extend`；`stop` 需新键） |
+| **GAP-MTG-06** | 发言机制切换（`single`／`open`／`round_robin`／`hands`／`call_on`／`directed`）与单次发言版群聊 | `chat.js` 提供"说话"原语与配额；`meeting.js` 提供机会位与举手；**没有 mode 切换命令** | `meeting.js`（在 `openRound` 上做 mode 判定点）＋`tools/meeting.js` |
+| **GAP-MTG-07** | 材料提交（`material_submit`，挂到议程条目） | `meetings.materialsRequired` 只做"是否要求材料"的判定；无材料对象、无提交入口 | `meetings.js`（材料对象 + 议程挂钩） |
+| **GAP-MTG-08** | 定向质询／回答（`challenge`／`answer_challenge`） | `meeting.interrupt`（`interruptAllow/interruptQuota`）是**打断**，不是"必须回答的质询" | `meeting.js`（质询对象 + 待答状态） |
+| **GAP-MTG-09** | 会中任务的「请求认领 → 批准」批准点（`claim_pending`） | 任务面 `tasks.js`/`board.js` 的认领是**直接**的；无 `claim_pending` 状态 | `board.js`／`tasks.js`（v5r 的 `meeting_task_claim` 语义） |
+| **GAP-MTG-10** | 投票板层的 `reopen`（复议门槛只升不降） | `ballot.js` 有 `reopen(reason)`；`ballotbox.js` **没有** reopen（其 `PLANNED_BALLOT_KEYS` 已具名登记 `reopen*` 三键与复活条件） | `ballotbox.js`（**委托**原语的 `reopen`，不得并存第二份实现） |
+| **GAP-MTG-11** | 会后异步补票窗口（`vote_window`；窗口只延长时间、不得重定义分母） | `mailbox.js` 提供耐久投递与 ack；投票侧无窗口概念（`minVotes` 是成立门槛） | `ballotbox.js`（窗口键 + 截止策略）；分母语义由 `meetings.unansweredInDenominator` 持有 |
+| **GAP-MTG-12** | 临时授权／动议／纪要的**工具面**（`vibe_vmu_grant` 等；**工具面未实现 ✗**——**能力已在内核 ✓、工具缺 ✗**，两者要分清） | 内核有 `grant.js`／`governance.js`／`minutes.js`，`TOOL_FACES` 里**没有 grant 面**（动议/纪要已有各自工具面） | `host.js`（加 `grant` 面：families `vmu.grant.`，config `grant`）＋`tools/grant.js` |
+
+### 25.5 持久化（投影缝）· Round 2
+
+| 面 | `snapshot()`／`restore()` | 可跨重启？ | 具名不可恢复项 |
+|---|---|---|---|
+| `kernel/meeting.js` | ✅ v1 信封（`face:'meeting'`） | **是**（轮次/机会位/拒绝记录/举手/邀请/历史） | `deliver`、`bus`（注入接缝，宿主重绑） |
+| `kernel/ballot.js` | ✅（`face:'ballot'`） | **是**（票面/状态/冻结/结果/历史） | `bus`、五个判定谓词（`canOpen/isEligible/isFrozen/castValid/tally`） |
+| `kernel/minutes.js` | ✅（`face:'minutes'`） | **是**（记录＋逐字稿；逐字稿超 64KB **计数截断**） | `meeting` 接缝；超限字节数在 `truncated`／`skipped` 上报 |
+| `kernel/meetings.js` | ✅（`face:'meetings'`） | **是**（live 会议 + 归档 + 回执环；Map/Set 感知序列化） | `policy`（47 键来自 settings，恢复时重解析，**绝不用旧声明覆盖新配置**）、`members/ballot/wake/bus`、`refusals` 计数 |
+| `kernel/ballotbox.js` | ✅（`face:'ballotbox'`） | **是**（票箱 + 票面 Map） | `policy`（26 键重解析）、`bus` |
+| `kernel/mailbox.js` | ✅ `snapshot/hydrate` ＋ `store.patch('mailbox')` | **是**（**配 `store` 端口时**；无端口则 `durable:false` 自曝） | `deliver`／`resolveAudience`（宿主重绑）；无 store 时快照仅内存 |
+| `kernel/chat.js`／`kernel/panel.js` | **本轮无 seam** | **否** | 内存账本未做投影 ⇒ 由 `resume` 或后续切片补 `chat`/`panel` seam（策略值来自 settings，会重解析） |
+
+> 接口形状（v5r-reader-a 定稿 v1）：实例方法 `snapshot()`／`restore(snap)`；信封 `{apiVersion, face, v:1, at, data, counters, skipped}`；`restore` 回执 `{ok, restored:[…], skipped:[{what,why}], counters}`；版本/缺字段/冲突分别 `VMU_RESUME_SNAPSHOT_VERSION`／`VMU_RESUME_SNAPSHOT_INCOMPLETE`／`VMU_RESUME_RESTORE_CONFLICT`（注册在 `kernel/resume.js`；本卷以**同值字面量**引用，避免在 `resume.js` 落盘前形成硬依赖）。
+
+### 25.6 工具面与钩子生产者
+
+- 新工具面：`vibe_vmu_chat`（send/list/policy/setpolicy/mute/unmute/quota/admin/status）、`vibe_vmu_mailbox`（send/pending/flush/ack/plan/anchor/unread/status）、`vibe_vmu_panel`（set/get/view/board/history/audit/status）。
+- 新钩子（**字符串首参**形态；对象形态会被总线拒且被 catch 吞掉，等于没广播）：`chat/send-before`(可阻断)｜`chat/sent`｜`chat/refused`｜`mailbox/deliver-before`(可阻断)｜`mailbox/delivered`｜`panel/write-before`(可阻断)｜`panel/written`｜`panel/viewed`。三条 BEFORE 钩子的拒绝都会**具名**落到调用方（chat ⇒ 抛出该码且不追加；mailbox ⇒ 返回 `ok:false` 且**一条都不 ack**；panel ⇒ 抛出该码且行不变）。
+
+### 25.7 本轮验证
+
+- `node tests/vmu-chat.test.mjs` ⇒ 43 passed / 0 failed
+- `node tests/vmu-mailbox.test.mjs` ⇒ 44 passed / 0 failed
+- `node tests/vmu-panel.test.mjs` ⇒ 31 passed / 0 failed
+- `node tests/vmu-meeting-parity.test.mjs` ⇒ 基线 A 逐项驱动 + §25.4 登记的机械校验（见该套件输出）
+- 既有套件回归：`vmu-meeting` 50/0、`vmu-meetings` 160/0、`vmu-ballot` 41/0、`vmu-ballotbox` 13/0、`vmu-minutes` 20/0
+
 
 

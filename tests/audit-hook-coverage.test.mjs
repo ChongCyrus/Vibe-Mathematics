@@ -27,9 +27,11 @@ const walk = (d) => readdirSync(join(REPO, d), { withFileTypes: true }).flatMap(
   if (e.isDirectory()) return /(^|\/)(\.git|node_modules)$/.test(r) ? [] : walk(r)
   return [r]
 })
-const bus = readFileSync(join(VMU, 'kernel', 'bus.js'), 'utf8')
-const hm = /VU_HOOKS = Object\.freeze\(\[([\s\S]{0,2400}?)\]\)/.exec(bus)
-const frozen = hm ? [...hm[1].matchAll(/['\`]([a-z][a-z0-9/-]+)['\`]/g)].map((m) => m[1]) : []
+const bus = readFileSync(join(VMU, 'kernel', 'bus.js'), 'utf8')   // still the source of the NAMESPACE rule below
+// D-12: the hook NAMES come from the runtime EXPORT, never from a source-text pattern. `bus.js` DERIVES VU_HOOKS
+// from HOOK_REGISTRY now, so a regex would be coupled to the derivation's shape instead of to its value.
+const { VU_HOOKS } = await import('../vibe-math-vmu/kernel/bus.js')
+const frozen = [...VU_HOOKS]
 const vn = /const VU_NAMESPACE = (\/\^?[^\n]+)/.exec(bus)
 const sources = walk('vibe-math-vmu').filter((f) => /\.js$/.test(f)).map((f) => ({ f: f.replace(/\\/g, '/'), t: readFileSync(join(REPO, f), 'utf8') }))
 

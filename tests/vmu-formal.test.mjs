@@ -111,13 +111,19 @@ test('source truncation is counted (droppedBytes)', () => {
   passed += 1
 })
 
-// ⑦ 注入时钟 ⇒ 时长确定；假 spawn ⇒ 同输入同输出
-test('determinism: injected clock + fake spawn give identical receipts', () => {
+// ⑦ 注入时钟 ⇒ 时长确定；假 spawn ⇒ 同输入同输出；**记录号经 kernel/ids.js ⇒ 绝不复用**（D-15）
+test('determinism: injected clock + fake spawn give identical receipts (ids are unique by design)', () => {
   const run = () => {
     const f = createFormal({ settings: mk({}).settings, clock: () => 11, spawn: sp(GOOD) })
-    return JSON.stringify(f.check({ statement: 'True', proof: proofOk }).receipt)
+    const r = f.check({ statement: 'True', proof: proofOk }).receipt
+    // The record id is minted by kernel/ids.js (an id is a name that is never reused), so it is the ONE field
+    // that legitimately differs between two runs; every other field must be byte-identical.
+    return { id: r.id, receipt: JSON.stringify(Object.assign({}, r, { id: '<id>' })) }
   }
-  assert.equal(run(), run())
+  const a = run()
+  const b = run()
+  assert.equal(a.receipt, b.receipt)
+  assert.notEqual(a.id, b.id, 'the counter must never reuse a record id: ' + a.id + ' vs ' + b.id)
   passed += 1
 })
 

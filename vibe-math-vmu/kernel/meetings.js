@@ -2,6 +2,7 @@
 // meeting/ballot primitives in meeting.js. Spec: docs/08 (primitives, meeting and ballot) and docs/03 (the interface
 // contract) for the service name a pack may require.
 import { SETTING_DEFS } from '../settings/schema.js'
+import { CODE as RESUME_CODE } from './resume.js'
 // vmu kernel · meetings — the POLICY + GUARD layer that finally READS the `vmu.meetings.*` knobs.
 //
 // WHY: 08-academic-... (docs/08-primitives-meeting-ballot-workflow.md) declares **47 `vmu.meetings.*` keys**
@@ -920,6 +921,69 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         at: clock(),
         note: 'every key in `wired` changes an observable result (tests/vmu-meetings.test.mjs); `enforced[]` on each receipt lists only the keys that actually fired',
       }
+    },
+
+    /**
+     * PERSISTENCE SEAM v1 (kernel/resume.js interface). TWO deliberate choices:
+     *   · the DECLARED KEYS (`WIRED_KEYS` / the 47 `vmu.meetings.*` values in `K`) are NOT snapshotted — they
+     *     come from settings/pack and are re-resolved on restore, so an old declaration can never overwrite a
+     *     newer configuration (v5r-reader-a's rule for this layer);
+     *   · the live meetings are serialised through a Map/Set-aware replacer, because their queues, mutes,
+     *     warnings, interrupts and motion votes are Maps/Sets that plain JSON would flatten to `{}` in silence.
+     */
+    snapshot() {
+      const ser = (v) => JSON.stringify(v, (k, val) => {
+        if (val instanceof Map) return { __map: [...val.entries()] }
+        if (val instanceof Set) return { __set: [...val.values()] }
+        return val
+      })
+      const maxId = [...live.keys()].reduce((mx, id) => Math.max(mx, Number(String(id).replace(/[^0-9]/g, '')) || 0), 0)
+      return { apiVersion, face: 'meetings', v: 1, at: clock(),
+        data: { live: ser(live), archive: ser(archive), receipts: ser(receipts) },
+        counters: { meeting: maxId },
+        session: { counters: Object.assign({}, counters), receiptDropped: receiptDropped.n },
+        skipped: [{ what: 'policy', why: 'the 47 declared vmu.meetings.* values come from settings/pack and are re-resolved on restore (a snapshot must not pin them)' },
+          { what: 'members/ballot/wake/bus', why: 'injected seams are re-bound by the host, never serialised' },
+          { what: 'refusals', why: 'the refusal counter map is a session-scoped diagnostic and is rebuilt from new refusals' }] }
+    },
+
+    /** Hydrate a `snapshot()`. Merge-safe while nothing is live, idempotent on the same snapshot, else named conflict. */
+    restore(snap) {
+      if (!snap || typeof snap !== 'object') return { ok: false, restored: false, code: RESUME_CODE.snapshotIncomplete, message: 'no snapshot to restore', missing: ['snapshot'] }
+      if (snap.face !== 'meetings') return { ok: false, restored: false, code: RESUME_CODE.snapshotVersion, message: 'not a meetings snapshot (face=' + String(snap.face) + ')' }
+      if (Number(snap.v) !== 1) return { ok: false, restored: false, code: RESUME_CODE.snapshotVersion, message: 'unsupported snapshot version ' + String(snap.v) }
+      const d = snap.data
+      const missing = ['live'].filter((k) => !d || d[k] === undefined)
+      if (missing.length) return { ok: false, restored: false, code: RESUME_CODE.snapshotIncomplete, message: 'snapshot is missing ' + missing.join(', '), missing }
+      if (live.size > 0) {
+        const same = JSON.stringify(d) === JSON.stringify(api.snapshot().data)
+        if (!same) return { ok: false, restored: false, code: RESUME_CODE.restoreConflict,
+          message: 'this policy layer already holds ' + live.size + ' live meeting(s): refusing to half-overwrite them',
+          hint: 'close them first, or restore into a fresh instance' }
+      }
+      const de = (s) => JSON.parse(String(s || '[]'), (k, val) => {
+        if (val && typeof val === 'object') {
+          if (Array.isArray(val.__map)) return new Map(val.__map)
+          if (Array.isArray(val.__set)) return new Set(val.__set)
+        }
+        return val
+      })
+      live.clear()
+      for (const [k, v] of de(d.live)) live.set(String(k), v)
+      archive.length = 0
+      const arch = de(d.archive)
+      if (Array.isArray(arch)) for (const a of arch) archive.push(a)
+      receipts.length = 0
+      const rec = de(d.receipts)
+      if (Array.isArray(rec)) for (const r of rec) receipts.push(r)
+      const fromSnap = Number((snap.counters && snap.counters.meeting) || 0)
+      const maxId = [...live.keys()].reduce((mx, id) => Math.max(mx, Number(String(id).replace(/[^0-9]/g, '')) || 0), 0)
+      const countersIn = (snap.session && snap.session.counters) || {}
+      for (const k of Object.keys(counters)) counters[k] = Number(countersIn[k] !== undefined ? countersIn[k] : counters[k]) || 0
+      receiptDropped.n = Number((snap.session && snap.session.receiptDropped) || 0) || 0
+      return { ok: true, restored: true, restored_items: ['live', 'archive', 'receipts'],
+        counters: { meeting: Math.max(fromSnap, maxId) }, skipped: (snap.skipped || []).slice(),
+        liveMeetings: [...live.keys()].sort() }
     },
   }
 

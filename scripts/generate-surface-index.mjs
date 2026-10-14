@@ -13,11 +13,15 @@
 //   node scripts/generate-surface-index.mjs --write
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const VMU = join(REPO, 'vibe-math-vmu')
 const R = (p) => readFileSync(join(REPO, p), 'utf8')
+// D-12: the hook vocabulary and its default policies come from the runtime EXPORTS of bus.js, which now DERIVES
+// both from `HOOK_REGISTRY`. Parsing them out of the source would bind this generator to the derivation's shape;
+// the rendered block is unchanged, because the derivations preserve the registered ORDER and the policy values.
+const { VU_HOOKS, DEFAULT_FAILURE } = await import(pathToFileURL(join(VMU, 'kernel', 'bus.js')).href)
 
 const mark = (id) => ({ b: '<!-- BEGIN GENERATED: ' + id + ' -->', e: '<!-- END GENERATED: ' + id + ' -->' })
 
@@ -35,12 +39,8 @@ const servicesOf = () => {
 }
 // ---- hooks ----
 const hooksOf = () => {
-  const bus = R('vibe-math-vmu/kernel/bus.js')
-  const hm = /VU_HOOKS = Object\.freeze\(\[([\s\S]{0,3000}?)\]\)/.exec(bus)
-  const names = [...new Set((hm ? hm[1] : '').matchAll(/'([a-z][a-z0-9/-]+)'/g).map((m) => m[1]))]
-  const fm = /DEFAULT_FAILURE = Object\.freeze\(\{([\s\S]*?)\n\s*\}\)/.exec(bus)
-  const pol = {}
-  for (const m of (fm ? fm[1] : '').matchAll(/'([a-z][a-z0-9/-]+)':\s*'(\w+)'/g)) pol[m[1]] = m[2]
+  const names = [...VU_HOOKS]                                  // D-12: runtime export, registered order
+  const pol = { ...DEFAULT_FAILURE }                          // D-12: runtime export, same 22-key set
   const producers = new Map()
   const walk = (d) => {
     for (const e of readdirSyncSafe(join(VMU, d))) {

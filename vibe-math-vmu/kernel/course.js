@@ -21,6 +21,7 @@
 // 码：本面**不新增码** ✗✓，一律用已登记共享码（`VMU_NOT_PERMITTED`／`VMU_META_VALIDATION_FAILED`／
 //   `VMU_RESOURCE_BUDGET`／`VMU_CONFLICT`／`VMU_NOT_FOUND`／`VMU_INVALID_ARGUMENT`）。
 
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const COURSE_KEYS = Object.freeze([
   'vmu.teaching.enabled', 'vmu.teaching.visibility', 'vmu.teaching.allowAuditors', 'vmu.teaching.cohortMax',
   'vmu.teaching.enrollmentNeedsApproval', 'vmu.teaching.submitMode', 'vmu.teaching.maxAttempts',
@@ -149,7 +150,6 @@ export function createCourse(opts) {
 
   const enrolled = new Map()
   const submissions = new Map()
-  let seq = 0
 
   const openCourse = (a) => {
     const args = a || {}
@@ -171,7 +171,7 @@ export function createCourse(opts) {
     }
     const title = String(args.title || '').trim()
     if (!title) return deny('VMU_INVALID_ARGUMENT', 'open 需要 title', '给课程标题', enforced)
-    const id = 'co-' + (++seq)
+    const id = mint('course', 'co-')
     // `maxUnits` 未接 ⇒ 不参与
     const course = { id, title, at: clock(), cohort: [], submissions: 0, outcomes: [], visibility: c.visibility, auditors: [], attempts: new Map(),
       // ROUND 124: the ontology version is stamped when the course opens, which is what makes it a MIGRATION key

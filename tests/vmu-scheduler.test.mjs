@@ -283,9 +283,24 @@ const S = (extra = {}) => Object.assign({ 'vmu.schedule.maxPending': 8 }, extra)
   ok(before === after, 'read-only: list/status/due/history never mutate the schedule')
   const build = () => { const cc = fakeClock(7); const x = createScheduler({ clock: cc.clock, settings: S() }); x.once({ inMs: 10, what: 'lab/a' }); x.every({ intervalMs: 20, what: 'lab/b' }); return x }
   const a = build(); const b = build()
-  ok(JSON.stringify(a.list()) === JSON.stringify(b.list()), 'determinism: two instances agree on list()')
+  // ID SEMANTICS (round 2, core's migration): the minter is PROCESS-WIDE, so two instances must not be expected
+  // to serialise identically. The stronger pair replaces the JSON equality: each is READABLE, the id sets are
+  // DISJOINT, and the second instance's suffixes are STRICTLY greater. `history()`'s determinism is kept as a
+  // SHAPE comparison (its counts carry no minted ids), so the assertion is re-pointed rather than deleted.
+  const idsOf = (s) => (s.list().items || []).map((x) => x.id)
+  const aIds = idsOf(a); const bIds = idsOf(b)
+  const suffix = (x) => Number((String(x).match(/(\d+)$/) || [])[1])
+  ok(aIds.length > 0 && bIds.length > 0,
+    'determinism: both instances are READABLE (non-empty id lists)', JSON.stringify({ a: aIds, b: bIds }))
+  ok(aIds.every((x) => !bIds.includes(x)),
+    '★ two instances in one process have DISJOINT id sets (the id minter is process-wide)', JSON.stringify({ a: aIds, b: bIds }))
+  ok(Math.min(...bIds.map(suffix)) > Math.max(...aIds.map(suffix)),
+    '★ and the numeric suffix STRICTLY increases across instances',
+    JSON.stringify({ aMax: Math.max(...aIds.map(suffix)), bMin: Math.min(...bIds.map(suffix)) }))
   ok(JSON.stringify(a.status()) === JSON.stringify(b.status()), 'determinism: two instances agree on status()')
-  ok(JSON.stringify(a.history()) === JSON.stringify(b.history()), 'determinism: two instances agree on history()')
+  const hShape = (h) => ({ count: h.count, available: h.available, dropped: h.dropped })
+  ok(JSON.stringify(hShape(a.history())) === JSON.stringify(hShape(b.history())),
+    'determinism: two instances agree on the history SHAPE (counts), which carries no minted ids')
   ok(createScheduler({ clock: fakeClock(3).clock, settings: S() }).once({ inMs: 1, what: 'lab/x' }).now === 3, 'injected clock: registration time comes from clock() only')
   ok(refuse('X', 'y', 'z').code === 'X' && refuse('X', 'y', 'z').hint === 'z', 'refuse(): the named-error helper keeps code/hint')
 }

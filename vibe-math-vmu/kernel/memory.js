@@ -19,6 +19,7 @@
 //   · READ paths (recall/contradictions/list/history/status/may) never mutate the ledger
 // SETTINGS READ CONVENTION (kernel/guard.js): every key is read as a PLAIN LITERAL — the settings table and the
 // docs audit both discover "wired" keys by scanning file text for the literal.
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const apiVersion = 1
 
 export function refuse(code, message, hint) {
@@ -98,7 +99,6 @@ export function createMemory({ clock = () => 0, log = null, settings = {}, bus =
   const refusals = new Map()
   const unwired = new Map()
   const declaredTopics = new Set()
-  let seq = 0
 
   const bump = (map, key, by = 1) => map.set(key, (map.get(key) || 0) + by)
   const objOf = (map) => { const o = {}; for (const k of [...map.keys()].sort()) o[k] = map.get(k); return o }
@@ -232,7 +232,7 @@ export function createMemory({ clock = () => 0, log = null, settings = {}, bus =
           'supersede or expire stale cards, or raise the cap — forgetting must be explicit (never a silent eviction)')
       }
       const t = now()
-      const id = 'm-' + (++seq)
+      const id = mint('memory', 'm-')
       const e = {
         id, kind: String(kind), text: String(text), by: String(by), scope: sc, visibility: vis,
         tags: strList(tags), evidence: ev, recordedAt: t,

@@ -32,7 +32,59 @@ export const CODE = Object.freeze({
   observerScope: 'VMU_HUMAN_OBSERVER_SCOPE',
   approvalTimeout: 'VMU_HUMAN_APPROVAL_TIMEOUT',
   dashboardScope: 'VMU_HUMAN_DASHBOARD_SCOPE',
+  // ROUND 2 — the approval GATE (docs/17 §19): an undeclared action runs; a gated action queues until a human
+  // decides. These codes are what makes the queue a real interception instead of a label.
+  approvalPending: 'VMU_HUMAN_APPROVAL_PENDING',
+  approvalDenied: 'VMU_HUMAN_APPROVAL_DENIED',
+  vetoed: 'VMU_HUMAN_VETOED',
+  defaultAllowNotAcknowledged: 'VMU_HUMAN_DEFAULT_ALLOW_NOT_ACKNOWLEDGED',
+  queueFull: 'VMU_HUMAN_QUEUE_FULL',
+  liftRole: 'VMU_HUMAN_LIFT_ROLE',
+  liftReason: 'VMU_HUMAN_LIFT_REASON_REQUIRED',
+  dashboardDomain: 'VMU_HUMAN_DASHBOARD_DOMAIN',
 })
+
+/** Domains that may NEVER be shown, whatever is declared: the private face stays private (G5/D6). */
+export const PRIVATE_DOMAINS = Object.freeze(['private', 'dm', 'direct-message', 'secret'])
+
+/**
+ * Wrap the named mutating methods of a service so every call first passes through the human approval gate.
+ * The gate THROWS its named refusal (`VMU_HUMAN_APPROVAL_PENDING` with `detail.queued=true`), so the wrapped
+ * action does NOT run — it is queued, which is what "the human decides" has to mean (S-5).
+ *
+ * Returns `{ wrapped, missing, unwrap }`: a method name that does not exist is REPORTED, never silently skipped.
+ */
+export function attachApprovalGate({ target, methods = [], gate, subjectOf = null, byRoleOf = null, face = null } = {}) {
+  if (!target || typeof target !== 'object') throw refuse('VMU_INVALID_ARGUMENT', 'attachApprovalGate needs a target object')
+  if (typeof gate !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'attachApprovalGate needs the gate function', 'pass gate: human.gate')
+  // The action name is QUALIFIED (`tasks.create`), because `open`/`close`/`cast` exist on several faces and an
+  // unqualified name would make `vmu.human.gatedActions` ambiguous.
+  const qualifier = str(face) ? str(face) + '.' : ''
+  const wrapped = []
+  const missing = []
+  const originals = new Map()
+  for (const name of (Array.isArray(methods) ? methods : []).filter((m) => typeof m === 'string' && m.trim())) {
+    const original = target[name]
+    if (typeof original !== 'function') { missing.push(name); continue }
+    originals.set(name, original)
+    target[name] = function gatedMethod(...args) {
+      const req = {
+        action: qualifier + name,
+        subject: typeof subjectOf === 'function' ? subjectOf(name, args[0]) : (args[0] && args[0].id ? String(args[0].id) : null),
+        byRole: typeof byRoleOf === 'function' ? byRoleOf(name, args) : null,
+      }
+      gate(req)   // throws the named refusal when the action may not proceed
+      return original.apply(this, args)
+    }
+    wrapped.push(name)
+  }
+  return {
+    wrapped,
+    missing,
+    qualified: wrapped.map((n) => qualifier + n),
+    unwrap() { for (const [name, original] of originals) target[name] = original; return wrapped.slice() },
+  }
+}
 
 export function createHuman({ clock = () => 0, log = null, settings = {}, bus = null, listCap = 100 } = {}) {
   if (typeof clock !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'createHuman needs a clock function', 'pass { clock: () => ms }')
@@ -42,6 +94,17 @@ export function createHuman({ clock = () => 0, log = null, settings = {}, bus = 
     return def
   }
   const say = (ev) => { if (log && typeof log.append === 'function') { try { log.append(ev) } catch (e) { /* logging never breaks the face */ } } }
+  // A broadcast is what makes "the veto is in force NOW" observable to middleware, not only readable from a log.
+  // Hook producers pass the NAME first (`kernel/bus.js` refuses a non-string hook) and catch the async rejection
+  // on the promise: an object-shaped emit is swallowed by the bus and never reaches any middleware.
+  const emit = (name, payload) => {
+    if (!bus || typeof bus.emit !== 'function') return null
+    try {
+      const r = bus.emit(name, payload)
+      if (r && typeof r.catch === 'function') r.catch(() => {})
+      return r
+    } catch (e) { return null }
+  }
 
   const cfg = () => ({
     vetoScope: ['global', 'institution', 'task'].includes(sget('vmu.human.vetoScope')) ? sget('vmu.human.vetoScope') : 'institution',
@@ -50,12 +113,25 @@ export function createHuman({ clock = () => 0, log = null, settings = {}, bus = 
     approvalTimeoutMs: (() => { const v = sget('vmu.human.approvalTimeoutMs'); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0 })(),
     onTimeout: TIMEOUT_ACTIONS.includes(sget('vmu.human.onTimeout')) ? sget('vmu.human.onTimeout') : 'hold',
     dashboardScope: ['global', 'institution'].includes(sget('vmu.human.dashboardScope')) ? sget('vmu.human.dashboardScope') : 'institution',
+    // ROUND 2 (the gate). `gatedActions: []` is the zero-mechanism default: with nothing declared, NO action is
+    // gated and every caller behaves exactly as before.
+    gatedActions: listOf(sget('vmu.human.gatedActions')),
+    queueCap: (() => { const v = Number(sget('vmu.human.approvalQueueCap')); return Number.isInteger(v) && v > 0 ? v : 100 })(),
+    defaultAllowAcknowledged: boolOr(sget('vmu.human.defaultAllowAcknowledged'), false),
+    dashboardDomains: listOf(sget('vmu.human.dashboardDomains')),
+    vetoLiftRoles: listOf(sget('vmu.human.vetoLiftRoles')).length ? listOf(sget('vmu.human.vetoLiftRoles')) : ['office'],
   })
 
   const vetoes = []
   const approvals = new Map()   // requestId -> { id, subject, askedAt, decidedAt, decision, reason, pendingReason }
+  const gateIndex = new Map()    // action + '\u0000' + subject -> requestId (so repeated attempts queue ONCE)
   let dropped = 0
   let seq = 0
+  let queueDropped = 0
+  let gateAttempts = 0
+  let gateQueued = 0
+  let gateAllowed = 0
+  let gateDenied = 0
 
   /**
    * Record a human veto. `vetoScope` bounds what it may cover, and `vetoNeedsReason` demands a reason - with the declared
@@ -86,6 +162,7 @@ export function createHuman({ clock = () => 0, log = null, settings = {}, bus = 
     vetoes.push(rec)
     while (vetoes.length > 200) { vetoes.shift(); dropped += 1 }
     say({ type: 'human/veto', at: rec.at, id: rec.id, scope: asked, target: rec.target, pendingReason })
+    emit('human/vetoed', { at: rec.at, id: rec.id, scope: asked, target: rec.target, by: rec.by, pendingReason })
     return { ok: true, veto: Object.assign({}, rec), enforced, fired }
   }
 
@@ -147,40 +224,219 @@ export function createHuman({ clock = () => 0, log = null, settings = {}, bus = 
     return { ok: true, id: rec.id, state: 'allowed-on-timeout', expired: true, onTimeout: 'default-allow', enforced, fired }
   }
 
-  /** A human decides. */
-  function decide({ requestId, allow, reason = null } = {}) {
+  /** A human decides. A denial takes effect IMMEDIATELY, is broadcast, and may carry its reason later. */
+  function decide({ requestId, allow, reason = null, by = null } = {}) {
     const rec = approvals.get(String(requestId))
     if (!rec) throw refuse('VMU_INVALID_ARGUMENT', 'unknown approval: ' + String(requestId), 'openApproval returns its id', { requestId: String(requestId) })
     rec.decidedAt = clock()
     rec.decision = allow === true ? 'allowed' : 'denied'
     rec.reason = reason === null ? null : String(reason)
-    return { ok: true, id: rec.id, decision: rec.decision, decidedAt: rec.decidedAt, enforced: ['vmu.human.approvalTimeoutMs'], fired: [] }
+    rec.decidedBy = by === null ? null : String(by)
+    // A denial with no reason is recorded as PENDING, exactly like an emergency veto: a decision that must be
+    // justified later is written down as unjustified, never dressed up as complete.
+    if (rec.decision === 'denied' && !str(rec.reason)) rec.pendingReason = true
+    say({ type: 'human/decided', at: rec.decidedAt, id: rec.id, decision: rec.decision, by: rec.decidedBy, pendingReason: !!rec.pendingReason })
+    emit('human/approval-decided', { at: rec.decidedAt, id: rec.id, decision: rec.decision, by: rec.decidedBy })
+    return { ok: true, id: rec.id, decision: rec.decision, decidedAt: rec.decidedAt, decidedBy: rec.decidedBy, pendingReason: !!rec.pendingReason, enforced: ['vmu.human.approvalTimeoutMs'], fired: [] }
+  }
+
+  /** Fill in a reason that was promised afterwards — for an emergency veto OR a denial. */
+  function explainDecision({ vetoId = null, requestId = null, reason = null } = {}) {
+    const why = str(reason)
+    if (!why) throw refuse('VMU_INVALID_ARGUMENT', 'explaining a decision needs a reason', 'pass { reason }')
+    if (vetoId !== null && vetoId !== undefined && vetoId !== '') {
+      const rec = vetoes.find((x) => x.id === String(vetoId))
+      if (!rec) throw refuse('VMU_INVALID_ARGUMENT', 'unknown veto: ' + String(vetoId), 'veto() returns its id', { vetoId: String(vetoId) })
+      rec.reason = why
+      rec.pendingReason = false
+      return { ok: true, vetoId: rec.id, reason: why, enforced: ['vmu.human.vetoNeedsReason'], fired: [] }
+    }
+    const rec = approvals.get(String(requestId))
+    if (!rec) throw refuse('VMU_INVALID_ARGUMENT', 'unknown approval: ' + String(requestId), 'openApproval returns its id', { requestId: String(requestId) })
+    rec.reason = why
+    rec.pendingReason = false
+    return { ok: true, requestId: rec.id, reason: why, enforced: ['vmu.human.approvalTimeoutMs'], fired: [] }
+  }
+
+  /**
+   * Lift a veto. A veto that can never be lifted would be a permanent, unreviewed block; lifting is therefore a
+   * named, reasoned, logged act restricted to `vmu.human.vetoLiftRoles`.
+   */
+  function liftVeto({ vetoId, by = null, reason = null } = {}) {
+    const c = cfg()
+    const rec = vetoes.find((x) => x.id === String(vetoId))
+    if (!rec) throw refuse('VMU_INVALID_ARGUMENT', 'unknown veto: ' + String(vetoId), 'veto() returns its id', { vetoId: String(vetoId) })
+    if (rec.liftedAt) return { ok: true, vetoId: rec.id, alreadyLifted: true, liftedAt: rec.liftedAt }
+    const role = str(by)
+    if (!role || !c.vetoLiftRoles.includes(role)) {
+      throw refuse(CODE.liftRole, 'this role may not lift a veto: ' + (role || '(none)'),
+        'may lift: ' + c.vetoLiftRoles.join(', ') + ' (vmu.human.vetoLiftRoles)', { byRole: role || null, declared: c.vetoLiftRoles.slice() })
+    }
+    const why = str(reason)
+    if (!why) throw refuse(CODE.liftReason, 'lifting a veto needs a reason', 'pass { reason } - the lift is auditable')
+    rec.liftedAt = clock()
+    rec.liftedBy = role
+    rec.liftReason = why
+    say({ type: 'human/veto-lifted', at: rec.liftedAt, id: rec.id, by: role })
+    emit('human/veto-lifted', { at: rec.liftedAt, id: rec.id, by: role })
+    return { ok: true, vetoId: rec.id, liftedAt: rec.liftedAt, liftedBy: role, enforced: ['vmu.human.vetoLiftRoles'], fired: [] }
+  }
+
+  // ── the approval GATE (ROUND 2 / docs/17 §19) ──────────────────────────────────────────────────────────────
+  // What makes the human table a MECHANISM instead of a label: a gated action does not run while no human has
+  // approved it. The gate returns a DECISION object, and `gate()` turns the same decision into a thrown refusal,
+  // so any call site can use whichever shape it needs.
+  function approvalDecision({ action = null, subject = null, byRole = null, scope = null, at = null } = {}) {
+    const c = cfg()
+    const act = str(action)
+    if (!act) throw refuse('VMU_INVALID_ARGUMENT', 'the gate needs an action name', 'e.g. gate({ action: "task.create" })')
+    const subj = subject === null || subject === undefined ? null : String(subject)
+    const reqScope = SCOPE_RANK[str(scope)] !== undefined ? str(scope) : 'institution'
+    const standing = vetoes.filter((x) => !x.liftedAt && SCOPE_RANK[x.scope] >= SCOPE_RANK[reqScope]
+      && (x.target === null || String(x.target) === subj))[0]
+    if (standing) {
+      gateDenied += 1
+      return { ok: false, code: CODE.vetoed, gated: true, action: act, subject: subj,
+        veto: { id: standing.id, by: standing.by, scope: standing.scope, target: standing.target, reason: standing.reason, pendingReason: !!standing.pendingReason, at: standing.at },
+        message: 'the action is vetoed by ' + standing.id + (standing.pendingReason ? ' (its reason is still pending)' : ''), enforced: ['vmu.human.vetoScope'], fired: [CODE.vetoed] }
+    }
+    if (c.gatedActions.indexOf(act) === -1) {
+      gateAllowed += 1
+      return { ok: true, allowed: true, gated: false, action: act, subject: subj,
+        note: 'this action is not in vmu.human.gatedActions: nothing is gated (zero mechanism)', enforced: [], fired: [] }
+    }
+    const key = act + '\u0000' + String(subj)
+    let id = gateIndex.get(key)
+    let rec = id ? approvals.get(id) : null
+    if (!rec) {
+      if (approvals.size >= c.queueCap) {
+        gateDenied += 1
+        queueDropped += 1
+        return { ok: false, code: CODE.queueFull, gated: true, action: act, subject: subj,
+          message: 'the approval queue is full (' + c.queueCap + '): the action is NOT queued and NOT run',
+          hint: 'decide() or liftVeto() the pending requests first (vmu.human.approvalQueueCap)', enforced: ['vmu.human.approvalQueueCap'], fired: [CODE.queueFull] }
+      }
+      id = 'approval-' + (++seq)
+      rec = { id, action: act, subject: subj, askedAt: Number.isFinite(at) ? Number(at) : clock(), decidedAt: null, decision: null, reason: null, pendingReason: null, attempts: 0, decidedBy: null }
+      approvals.set(id, rec)
+      gateIndex.set(key, id)
+      say({ type: 'human/approval-asked', at: rec.askedAt, id, action: act, subject: subj })
+      emit('human/approval-asked', { at: rec.askedAt, id, action: act, subject: subj })
+      emit('human/gate-pending', { at: rec.askedAt, id, action: act, subject: subj })
+    }
+    rec.attempts += 1
+    gateAttempts += 1
+    const base = { gated: true, action: act, subject: subj, requestId: id, attempts: rec.attempts, timeoutMs: c.approvalTimeoutMs, onTimeout: c.onTimeout,
+      enforced: ['vmu.human.gatedActions', 'vmu.human.approvalTimeoutMs', 'vmu.human.onTimeout'], fired: [] }
+    if (rec.decidedAt !== null && rec.decision === 'allowed') { gateAllowed += 1; return Object.assign({ ok: true, allowed: true, state: 'allowed', decidedAt: rec.decidedAt }, base) }
+    if (rec.decidedAt !== null) {
+      gateDenied += 1
+      return Object.assign({ ok: false, code: CODE.approvalDenied, state: 'denied', reason: rec.reason, pendingReason: !!rec.pendingReason,
+        message: 'a human DENIED this action' + (rec.reason ? ': ' + rec.reason : ' (reason still pending)') }, base)
+    }
+    const nowMs = Number.isFinite(at) ? Number(at) : clock()
+    if (c.approvalTimeoutMs === 0) {
+      gateQueued += 1
+      return Object.assign({ ok: false, code: CODE.approvalPending, queued: true, state: 'pending', waitsForever: true,
+        message: 'the action is QUEUED: no human has approved it, and the wait is declared as indefinite',
+        hint: 'a human calls decide({ requestId, allow: true }); the action is not executed until then' }, base)
+    }
+    const expired = (nowMs - rec.askedAt) >= c.approvalTimeoutMs
+    if (!expired) {
+      gateQueued += 1
+      return Object.assign({ ok: false, code: CODE.approvalPending, queued: true, state: 'pending', expiresInMs: c.approvalTimeoutMs - (nowMs - rec.askedAt),
+        message: 'the action is QUEUED: no human has approved it yet',
+        hint: 'a human calls decide({ requestId, allow: true }); the action is not executed until then' }, base)
+    }
+    if (c.onTimeout === 'default-deny') {
+      gateDenied += 1
+      return Object.assign({ ok: false, code: CODE.approvalTimeout, expired: true, state: 'denied',
+        message: 'the approval wait expired and vmu.human.onTimeout=default-deny',
+        hint: 'decide it explicitly, or change the declared action' }, base)
+    }
+    if (c.onTimeout === 'default-allow' && c.defaultAllowAcknowledged === true) {
+      gateAllowed += 1
+      return Object.assign({ ok: true, allowed: true, state: 'allowed-on-timeout', expired: true,
+        note: 'the declared timeout action allows, and vmu.human.defaultAllowAcknowledged=true acknowledges it' }, base)
+    }
+    if (c.onTimeout === 'default-allow') {
+      gateDenied += 1
+      return Object.assign({ ok: false, code: CODE.defaultAllowNotAcknowledged, expired: true, queued: true, state: 'pending', heldOnTimeout: true,
+        message: 'vmu.human.onTimeout=default-allow but vmu.human.defaultAllowAcknowledged is false: the action stays QUEUED (silence never allows)',
+        hint: 'set vmu.human.defaultAllowAcknowledged=true deliberately, or decide it explicitly' }, base)
+    }
+    gateQueued += 1
+    return Object.assign({ ok: false, code: CODE.approvalPending, queued: true, state: 'pending', expired: true, heldOnTimeout: true,
+      message: 'the wait expired and the declared timeout action is hold: it stays QUEUED (never silently allowed)',
+      hint: 'a human calls decide({ requestId, allow: true })' }, base)
+  }
+
+  /** The drop-in form used at call sites: throws the named refusal unless the action may proceed. */
+  function gate(req) {
+    const d = approvalDecision(req)
+    if (d.ok === true) return d
+    const hint = d.hint || (d.queued ? 'a human calls decide({ requestId: "' + d.requestId + '", allow: true }) - the action is NOT executed until then' : 'a human vetoed this action; lift it by name (liftVeto) after reviewing it')
+    throw refuse(d.code, d.message || ('the action may not proceed: ' + d.code), hint, d)
+  }
+
+  /** The queue a human sees: what is waiting, who asked, how long, and how many attempts it took. */
+  function queue() {
+    const rows = [...approvals.values()].map((r) => ({
+      requestId: r.id, action: r.action || null, subject: r.subject === undefined ? null : r.subject,
+      askedAt: r.askedAt, attempts: r.attempts || 0, state: r.decidedAt === null ? 'pending' : r.decision,
+      decidedAt: r.decidedAt, decidedBy: r.decidedBy || null, reason: r.reason, pendingReason: !!r.pendingReason,
+    }))
+    const shown = rows.slice(-listCap)
+    return { ok: true, total: rows.length, pending: rows.filter((r) => r.state === 'pending').length, shown: shown.length,
+      dropped: rows.length - shown.length, queueCap: cfg().queueCap, requests: shown, enforced: ['vmu.human.gatedActions', 'vmu.human.approvalQueueCap'], fired: [] }
   }
 
   /** How wide the dashboard is. Asking for more than `dashboardScope` allows is refused by name. */
-  function dashboard({ scope = null } = {}) {
+  function dashboard({ scope = null, domains = null } = {}) {
     const c = cfg()
-    const enforced = ['vmu.human.dashboardScope']
+    const enforced = ['vmu.human.dashboardScope', 'vmu.human.dashboardDomains']
     const asked = str(scope) || c.dashboardScope
     if (SCOPE_RANK[asked] === undefined || SCOPE_RANK[asked] < 2) throw refuse('VMU_INVALID_ARGUMENT', 'dashboard scope must be global or institution: ' + asked, 'one of global, institution', { asked })
     if (SCOPE_RANK[asked] > SCOPE_RANK[c.dashboardScope]) {
       throw refuse(CODE.dashboardScope, 'the dashboard scope exceeds vmu.human.dashboardScope: ' + asked + ' > ' + c.dashboardScope,
         'narrow it to ' + c.dashboardScope + ', or raise the key deliberately', { asked, allowed: c.dashboardScope, enforced, fired: ['vmu.human.dashboardScope'] })
     }
-    return { ok: true, scope: asked, allowed: c.dashboardScope, enforced, fired: [] }
+    const wanted = Array.isArray(domains) ? domains.map(String).filter(Boolean) : []
+    const privateAsked = wanted.filter((d) => PRIVATE_DOMAINS.includes(d.toLowerCase()))
+    if (privateAsked.length) {
+      throw refuse(CODE.dashboardDomain, 'the private face is never visible on the dashboard: ' + privateAsked.join(', '),
+        'private/dm/secret domains are excluded by construction (G5/D6); ask the parties to record it publicly instead',
+        { asked: privateAsked, enforced, fired: [CODE.dashboardDomain] })
+    }
+    const undeclared = wanted.filter((d) => !c.dashboardDomains.includes(d))
+    if (undeclared.length) {
+      throw refuse(CODE.dashboardDomain, 'dashboard domain(s) are not declared: ' + undeclared.join(', '),
+        'declared: ' + (c.dashboardDomains.join(', ') || '(none: aggregate counts only)') + ' (vmu.human.dashboardDomains)',
+        { undeclared, declared: c.dashboardDomains.slice(), enforced, fired: [CODE.dashboardDomain] })
+    }
+    return { ok: true, scope: asked, allowed: c.dashboardScope, domains: wanted, declared: c.dashboardDomains.slice(), enforced, fired: [] }
   }
 
   const status = () => ({
     ok: true,
     vetoes: vetoes.length, pendingReasons: vetoes.filter((v) => v.pendingReason).length,
+    activeVetoes: vetoes.filter((v) => !v.liftedAt).length, liftedVetoes: vetoes.filter((v) => !!v.liftedAt).length,
     approvals: approvals.size, dropped,
+    // ROUND 2 — the gate's observable surface. `queue` is what a human actually reads before deciding.
+    queue: queue(),
+    gatedActions: cfg().gatedActions.slice(),
+    gateAttempts, gateQueued, gateAllowed, gateDenied, queueDropped, queueCap: cfg().queueCap,
     policy: cfg(),
     neverAllowsBySilence: cfg().onTimeout !== 'default-allow',
+    // The GATE is stricter than the display: default-allow only applies to a gated action when it was
+    // acknowledged deliberately (`vmu.human.defaultAllowAcknowledged=true`).
+    gateNeverAllowsBySilence: cfg().onTimeout !== 'default-allow' || cfg().defaultAllowAcknowledged !== true,
     timeoutIsExplicit: true,
     readsArePure: true,
     at: clock(),
     listCap,
   })
 
-  return { apiVersion, veto, explainVeto, observerView, openApproval, approvalState, decide, dashboard, status }
+  return { apiVersion, veto, explainVeto, explainDecision, liftVeto, observerView, openApproval, approvalState,
+    decide, queue, approvalDecision, gate, dashboard, status }
 }

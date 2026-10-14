@@ -11,6 +11,7 @@
 // 注入：`createReproPack({ clock, log, settings, bus, library })`
 //   · library —— 可选 `{ fingerprint?(ref) => string }`（内容寻址/指纹来自 07 卷，本面**只引用不重定义** ✓）
 
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const REPRO_KEYS = Object.freeze([
   'vmu.repro.requiredMembers',
   'vmu.repro.hashAlgo',
@@ -50,7 +51,7 @@ export function createReproPack(opts) {
   const keysUsed = () => REPRO_KEYS.slice()
 
   const packs = new Map()
-  let seq = 0
+
   let droppedLog = 0
   const trail = [] // 复制留痕 ＋ 事件（**有上限 ⇒ 丢弃必计数** ✓）
   const LOG_MAX = 200
@@ -129,7 +130,7 @@ export function createReproPack(opts) {
       }
       if (Buffer.byteLength(JSON.stringify(kept), 'utf8') > c.maxPackBytes) { kept = {}; dropped = Object.keys(body).length }
     }
-    const id = 'rp-' + (++seq)
+    const id = mint('repropack', 'rp-')
     const rawBytes = Buffer.byteLength(JSON.stringify(kept), 'utf8')
     // 预算必须被遵守：即使只剩成员骨架也超限 ⇒ 报上限值（**丢弃已计数** ⇒ 不是静默截断 ✓）
     const finalBytes = c.maxPackBytes > 0 ? Math.min(rawBytes, c.maxPackBytes) : rawBytes

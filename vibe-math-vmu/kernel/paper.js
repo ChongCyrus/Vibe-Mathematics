@@ -20,6 +20,7 @@
 // Zero policy check (asserted by tests/vmu-paper.test.mjs): no role name, section name or title from the v5r line
 // appears in this file; every name here comes from the caller or from settings.
 
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
 
@@ -87,7 +88,7 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
   })
 
   const papers = new Map()
-  let seq = 0
+
   const trail = []
   let droppedTrail = 0
   const note = (id, what) => {
@@ -138,7 +139,7 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
       }
       const ed = String(editor || '').trim()
       if (!ed) throw refuse('VMU_INVALID_ARGUMENT', 'start needs an editor', 'the editor is who may finalise by default')
-      const id = 'paper-' + (++seq)
+      const id = mint('paper', 'paper-')
       const p = {
         id, title: t, at: clock(), editor: ed, state: 'open', finalizedAt: null, gaps: null, receipt: undefined,
         sections: names.map((n) => ({ name: n, owner: String(map[n]).trim(), by: null, at: null, artifact: null })),

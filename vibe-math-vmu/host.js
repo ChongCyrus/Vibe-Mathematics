@@ -38,6 +38,14 @@ import { makeAuditSpec } from './tools/audit.js'
 import { makeIpSpec } from './tools/ip.js'
 import { makeBiddingSpec } from './tools/bidding.js'
 import { makeAdmissionSpec } from './tools/admission.js'
+// ROUND 2 (task-14): the four new faces' tool specs.
+import { makeHumanSpec } from './tools/human.js'
+import { makeChatSpec } from './tools/chat.js'
+import { makeMailboxSpec } from './tools/mailbox.js'
+import { makePanelSpec } from './tools/panel.js'
+import { makeReportSpec } from './tools/report.js'
+import { makeMathadaptersSpec } from './tools/mathadapters.js'
+import { makeMathjobsSpec } from './tools/mathjobs.js'
 //
 // TOOL SHAPE (learned from the REAL HOST, not from our own assumptions): the first scripted live run
 // (SLV) showed the preset active but NO vmu tools in the agent's tool list. The cause was this file: the
@@ -115,6 +123,16 @@ export const TOOL_NAMES = Object.freeze({
   // ROUND 349: the turn loop needs a real entry point. Without it the framework could run a round only from a test,
   // which is not the same as a host being able to run one - and the objective is the latter.
   turn: 'vibe_vmu_turn',
+  // ROUND 2 (task-14): the four new implementation faces' tools (human/chat/mailbox/panel/report).
+  human: 'vibe_vmu_human',
+  chat: 'vibe_vmu_chat',
+  mailbox: 'vibe_vmu_mailbox',
+  panel: 'vibe_vmu_panel',
+  report: 'vibe_vmu_report',
+  // ROUND 2 (task-14, Lead 裁决 B): one tool per service - the math adapters and the math jobs each get their OWN
+  // thin face, because `vibe_vmu_mathtools`'s action enum must stay exactly `kernel.mathtools`'s method set.
+  mathadapters: 'vibe_vmu_mathadapters',
+  mathjobs: 'vibe_vmu_mathjobs',
 })
 
 /**
@@ -196,6 +214,16 @@ export const TOOL_FACES = Object.freeze([
   { face: 'ip', name: TOOL_NAMES.ip, families: ['vmu.ip.'], config: ['ip'], make: makeIpSpec },
   { face: 'bidding', name: TOOL_NAMES.bidding, families: ['vmu.auction.', 'vmu.bidding.'], config: ['bidding'], make: makeBiddingSpec },
   { face: 'admission', name: TOOL_NAMES.admission, families: ['vmu.admission.'], config: ['admission'], make: makeAdmissionSpec },
+  // ---- ROUND 2 (task-14): the four new faces --------------------------------------------------------------
+  // Intent sources follow D-01 (a `vmu.<family>.*` declaration, a `config.<face>` key, `vmu.tools.faces`, or an
+  // explicit flag). `human` also lights on `vmu.resume.*` because the SAME tool face carries the recovery verbs.
+  { face: 'human', name: TOOL_NAMES.human, families: ['vmu.human.', 'vmu.resume.'], config: ['human', 'resume'], make: makeHumanSpec },
+  { face: 'chat', name: TOOL_NAMES.chat, families: ['vmu.chat.'], config: ['chat'], make: makeChatSpec },
+  { face: 'mailbox', name: TOOL_NAMES.mailbox, families: ['vmu.mailbox.'], config: ['mailbox'], make: makeMailboxSpec },
+  { face: 'panel', name: TOOL_NAMES.panel, families: ['vmu.panel.'], config: ['panel'], make: makePanelSpec },
+  { face: 'report', name: TOOL_NAMES.report, families: ['vmu.report.'], config: ['report'], make: makeReportSpec },
+  { face: 'mathadapters', name: TOOL_NAMES.mathadapters, families: ['vmu.math.adapters.'], config: ['mathadapters'], make: makeMathadaptersSpec },
+  { face: 'mathjobs', name: TOOL_NAMES.mathjobs, families: ['vmu.math.jobs.'], config: ['mathjobs'], make: makeMathjobsSpec },
 ])
 
 /** Every published face key, in publication order: the ONE list a caller (or a gate) can iterate. */
@@ -342,7 +370,18 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   // (the host's own stack and the exact request shape we passed). They are added ONLY when present, so no
   // existing refusal changes shape. Without this the live M3 diagnosis died at the tool boundary: the seam
   // carried `hostStack`/`shape`, the tool face dropped them (task-33's finding).
-  const refused = (code, message, hint, extra = null) => Object.assign({ ok: false, code, message, hint: hint || null },
+  // ROUND 2 (Lead, `vmu-refusals-guide` ≥80%): A REFUSAL MUST CARRY A NEXT STEP. Forty-six of the forty-nine
+  // hint-less refusals measured by that guide were `VMU_INVALID_ARGUMENT` raised on the ONE parameter-validation path
+  // (a caller that passes only `{ action }`), and that path forwarded `hint: null`. The defaults below are the
+  // ACTIONABLE next step for the code in question - not placeholder strings - and an explicit hint always wins. The
+  // measurement and its threshold are untouched (the probe was not edited).
+  const DEFAULT_HINTS = Object.freeze({
+    VMU_INVALID_ARGUMENT: 'pass `action` PLUS the parameters docs/18 §1 lists for that action (this face refuses by name rather than guessing a default)',
+    VMU_HUMAN_VETOED: 'the veto must be lifted first: vibe_vmu_human { action:"liftVeto", id:"<vetoId>", reason:"…" } — the lifting role must be listed in vmu.human.vetoLiftRoles',
+    VMU_RESUME_UNAVAILABLE: 'construct the kernel with { store } (a durable root): the recovery face cannot exist without one (docs/07 §3)',
+    VMU_MEETING_TOO_SMALL: 'add participants until the declared quorum is met — the threshold is policy (pack/middleware), the code is registered by the kernel (docs/08 §3)',
+  })
+  const refused = (code, message, hint, extra = null) => Object.assign({ ok: false, code, message, hint: hint || DEFAULT_HINTS[code] || null },
     extra && typeof extra === 'object'
       ? Object.assign({},
         extra.hostStack ? { hostStack: String(extra.hostStack).slice(0, 2000) } : {},
@@ -702,6 +741,15 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   if (on('ip')) specs.push(makeIpSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('bidding')) specs.push(makeBiddingSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('admission')) specs.push(makeAdmissionSpec({ param, refused, TOOL_NAMES, kernel }))
+  // ROUND 2 (task-14): the four new faces.
+  if (on('human')) specs.push(makeHumanSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('chat')) specs.push(makeChatSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('mailbox')) specs.push(makeMailboxSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('panel')) specs.push(makePanelSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('report')) specs.push(makeReportSpec({ param, refused, TOOL_NAMES, kernel }))
+  // ROUND 2 (task-14, Lead 裁决 B): one tool per service - adapters and jobs are separate faces on purpose.
+  if (on('mathadapters')) specs.push(makeMathadaptersSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('mathjobs')) specs.push(makeMathjobsSpec({ param, refused, TOOL_NAMES, kernel }))
 
   return specs
 }

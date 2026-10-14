@@ -15,6 +15,7 @@
 //   **未培训人员操作 ⇒ 拒** ✓；**借用冲突（同时段同台）⇒ 拒并点名冲突时段** ✓✓；
 //   **预约超时长上限 ⇒ 给当前/上限** ✓；**维护窗口内预约 ⇒ 拒** ✓；**使用记录缺目的 ⇒ 拒** ✓。
 
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const RESOURCE_KEYS = Object.freeze([
   'vmu.resource.requireCalibration', 'vmu.resource.calibrationDueDays', 'vmu.resource.blockOnOverdue',
   'vmu.resource.requireOwner', 'vmu.resource.capabilityTags', 'vmu.resource.reserve',
@@ -73,7 +74,6 @@ export function createResource(opts) {
   const reservations = []
   const maintenance = []
   const ledger = []
-  let seq = 0
 
   /** 拒绝：**必带 `enforced`（数组、可空）＋ `enforcedScope`** ✓✓。 */
   const deny = (code, msg, hint, enforced) => {
@@ -256,7 +256,7 @@ export function createResource(opts) {
       mark('vmu.resource.dataCaptureRef')
     }
     const at = clock()
-    const record = { id: 'ur-' + (++seq), unit: u.id, by, purpose, at, capture: capture || null, degraded, fingerprint: fp({ unit: u.id, by, purpose, at, capture: capture || null, degraded }) }
+    const record = { id: mint('resource-usage', 'ur-'), unit: u.id, by, purpose, at, capture: capture || null, degraded, fingerprint: fp({ unit: u.id, by, purpose, at, capture: capture || null, degraded }) }
     // ROUND 148: durable FIRST, memory second (a failed write must not leave memory advanced).
     const landed = landLedger(record)
     if (landed && landed.ok === false) return Object.assign({ enforced, enforcedScope: ENFORCED_SCOPE }, landed)
@@ -343,7 +343,7 @@ export function createResource(opts) {
         }
       }
     }
-    const rec = { id: 'rs-' + (++seq), unit: u.id, by, from, to, hours, priority: c.priorityPolicy, waitlist: '' }
+    const rec = { id: mint('resource-reservation', 'rs-'), unit: u.id, by, from, to, hours, priority: c.priorityPolicy, waitlist: '' }
     if (clash.length && c.waitlistPolicy === 'queue') { mark('vmu.resource.waitlistPolicy'); rec.waitlist = 'queued' }
     reservations.push(rec)
     emit({ type: 'resource.reserve', unit: u.id })

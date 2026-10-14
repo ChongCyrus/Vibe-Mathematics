@@ -120,6 +120,21 @@ import { createReproPack } from './repropack.js'
 import { createLegalEntity } from './partnership.js'
 import { createReviewers } from './reviewers.js'
 import { SETTING_DEFS } from '../settings/schema.js'
+// ROUND 2 (task-14): the four new faces' factories + the ONE id minter (D: "id 不可复用").
+//   · ids.js      - reader-a's primitive; `bindIds` binds the module-level singleton the ~20 id-minting modules import;
+//   · resume.js   - recovery primitives + the projection wrapper this file attaches;
+//   · chat.js     - group chat policy (admin/quota/mute/freeze);
+//   · mathadapters.js - numpy/scipy/pandas/sympy adapters (the job mirrors ride on mathjobs' new `fs`/`root`).
+import { bindIds, idsStatus } from './ids.js'
+import { createResume, createProjection, attachProjection, PROJECTION_KEYS } from './resume.js'
+import { createChat } from './chat.js'
+import { createMailbox } from './mailbox.js'
+import { createPanel } from './panel.js'
+import { createReport } from './report.js'
+import { createMathAdapters } from './mathadapters.js'
+// ROUND 2: the approval GATE wrapper (module-level export of kernel/human.js) - it wraps the named mutating methods
+// of a face so a gated action QUEUES instead of running (Lead's "审批未批 ⇒ 动作只能排队" requirement).
+import { attachApprovalGate } from './human.js'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -286,6 +301,8 @@ export function createKernel({
   // setSettingsValue() pushes the new value into the bus (bus.setDryRun) as well as into this variable.
   let dryRun = settings['vmu.middleware.dryRun'] === true
   const runtimeWrites = []
+  // ROUND 2 (task-14): what the approval gate was attached to (filled in once the faces exist, reported by status()).
+  let approvalGateReport = []
 
   /**
    * THE ONE SETTINGS GUARD (task-166, "the seventh case"): declared key · H3 read-only · declared owner.
@@ -323,6 +340,19 @@ export function createKernel({
       ownerCheck = 'delegated (listed in vmu.safety.delegableKeys)'
     }
     return { def, hot: def.hot ? String(def.hot) : null, who: def.who || null, ownerCheck }
+  }
+  /**
+   * ROUND 2 (task-14, vmu-assistant's §2): the READ-ONLY half of the settings guard, as a seam. `settingsGuard`
+   * above answers "may this caller write this key" and REFUSES; this answers "what IS this key" and refuses nothing -
+   * an undeclared key comes back as `{ key, declared:false }` instead of an exception. It exists so `vmu.report`'s
+   * parameter face can describe a key's hot class and declared owner WITHOUT inventing them, and it is deliberately
+   * the SAME table lookup (`SETTING_DEFS`) rather than a second source of truth.
+   */
+  const settingDescription = (key) => {
+    const def = SETTING_DEFS.find((d) => d.key === key) || null
+    if (!def) return { key: String(key), declared: false, hot: null, who: null, type: null, def: null, doc: null }
+    return { key: def.key, declared: true, hot: def.hot ? String(def.hot) : null, who: def.who || null,
+      type: def.type || null, def: def.def === undefined ? null : def.def, doc: def.doc || null }
   }
 
   if (!enabled) {
@@ -463,6 +493,24 @@ export function createKernel({
     },
   })
 
+  // ROUND 2 (task-14): BIND THE ONE ID MINTER before any service is constructed, so a factory that mints on
+  // construction already goes through it. `bindIds` is idempotent; with no durable root it still mints
+  // process-uniquely and `idsStatus().durable=false` says so (never a silent pretence of durability). The counters
+  // live under the `ids` key (kernel/store.js PUBLIC_KEYS) and the projection's max suffix is the fallback, so a
+  // lost write can never cause a name to be reused (Lead's id-reuse requirement). The DURABLE half is read after the
+  // entry opens the store: `await hydrateIds()` (kernel/ids.js) runs in the entry's startup chain.
+  // MEASURED (reported to reader-a, not patched here - ids.js is theirs): `ids.js:135` calls `emit({type:'ids/minted',…})`
+  // where its own helper does `bus.emit(ev)` - so the HOOK NAME is an object. `bus.emit` is async, so the helper's
+  // try/catch cannot catch the refusal and every mint produced an UNHANDLED REJECTION (a process-killer, and it would
+  // have reddened my gates through no fault of the wiring). Until that line is fixed the minter is bound WITHOUT the
+  // bus (it still mints process-uniquely and still persists counters - only the broadcast is missing, and `status().ids`
+  // does not claim one). `log` is shaped as `{ append }` because that is the seam `ids.js` reads.
+  // CLOCK: the RAW clock, deliberately NOT `guardedClock`. `ids.js` calls `clock()` inside its own `status()`, and the
+  // monotonic guard REFUSES a caller-supplied ISO-string clock (measured: `VMU_... non-finite` from clockguard.js:84),
+  // which took `kernel.status()` - and therefore the whole status tool - down with it. Id timestamps are informational;
+  // they do not need the elapsed-time guard.
+  const ids = bindIds({ store, clock, log: { append: (ev) => log('ids ' + JSON.stringify(ev)) }, bus: null, settings: settingsView })
+
   // ROUND 1 / K4: the pipeline ACCEPTS a settings handle (kernel/prompt/index.js reads the `vmu.prompts.*` family),
   // and this call site simply never gave it one - so on the real path every prompt setting (declared sections,
   // overrides, overridesByLang, locale.*, glossary.*) was inert while docs/04 marked them wired. The LIVE VIEW is
@@ -576,16 +624,56 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   const collab = createCollab({ settings: settingsView, bus, clock, log })
   const identity = createIdentity({ settings: settingsView, bus, clock, log })
   const human = createHuman({ settings: settingsView, bus, clock, log })
+  // ROUND 2 (task-14): the group-chat policy face. The freeze predicate is LEFT to the module's documented default
+  // ("a kernel with no ballot has no freeze") rather than faked here; `isAdmin` likewise falls back to the declared
+  // `vmu.chat.admins`. A real freeze source is wired only when a ballot face exposes one (named in the report).
+  const chat = createChat({ clock: guardedClock, log, settings: settingsView, bus })
+  // ROUND 2 (task-14): the durable per-recipient mailbox and the member state panel. `resolveAudience` is a REAL
+  // seam only for `to:'all'` (the roster); `to:'voters'` has no ballot context in this assembly, so it REFUSES by
+  // name instead of quietly handing back the roster (a voter set that is not the voter set is worse than a refusal).
+  const mailbox = createMailbox({ clock: guardedClock, log, settings: settingsView, bus, store, deliver,
+    resolveAudience: members ? ({ to } = {}) => {
+      if (to === 'voters') {
+        const e = new Error('this assembly has no ballot context, so the voter set cannot be resolved')
+        e.code = 'VMU_MAILBOX_NO_SUCH_RECIPIENT'
+        e.hint = 'send to a named recipient, or to "all" (the roster); a voter set needs a ballot face'
+        throw e
+      }
+      const roster = typeof members.roster === 'function' ? members.roster() : []
+      return roster.map((m) => (m && (m.id || m.member)) || m).filter(Boolean).map(String)
+    } : null })
+  const panel = createPanel({ clock: guardedClock, log, settings: settingsView, bus, members })
   const discipline = createDiscipline({ settings: settingsView, bus, clock, log })
   const custody = createCustody({ settings: settingsView, bus, clock, log })
   const explain = createExplain({ settings: settingsView, bus, clock, log })
-  const control = createControl({ settings: settingsView, bus, clock, log })
+  const control = createControl({ settings: settingsView, bus, clock, log,
+    // ROUND 2 (task-14, reader-a's contract C): the human approval GATE reaches `control.mayAct`, so a gated control
+    // action queues for a human instead of running. Wired only when the gate really exists - a null seam would be a
+    // silent bypass of the very gate this line is for.
+    approval: typeof human.gate === 'function' ? (req) => human.gate(req) : null })
   const citations = createCitations({ settings: settingsView, bus, clock, log })
   const formal = createFormal({ settings: settingsView, bus, clock, log, spawn, library })
   // INTEGRATOR FIX: `vmu.mathjobs` was REGISTERED but never CREATED - the registry advertised a service the
   // kernel did not build. Both job faces now receive the kernel's real spawn seam (the host injects it), so a
   // missing engine surfaces as a named refusal rather than a silent no-op.
-  const mathjobs = createMathJobs({ settings: settingsView, bus, clock, log, spawn })
+  const mathjobs = createMathJobs({ settings: settingsView, bus, clock, log, spawn,
+    // ROUND 2 (task-14, reader-b's contract): the job MIRROR seam. `fs` is the host's file face (host-math.js
+    // exposes readText/writeText/listDir/exists/removeText), `root` is the durable root. A missing `fs` does NOT
+    // silently disable the mirror: `admission().fileMirror=false` reports it by name.
+    fs: host && typeof host.readText === 'function' && typeof host.writeText === 'function' ? host : null,
+    root: root || null })
+  // CORRECTION from reader-b: `createMathJobs` is a SYNCHRONOUS constructor and cannot scan the disk itself, so the
+  // declared `on-load` recovery is an EXPLICIT best-effort call here (it must not block construction). `manual` and
+  // `off` are left alone - the tool action `jobsRecover` is the manual trigger.
+  if (settings['vmu.math.jobs.recover'] === 'on-load' && mathjobs && typeof mathjobs.recover === 'function') {
+    Promise.resolve().then(() => mathjobs.recover()).catch((e) => log('mathjobs on-load recover failed: ' + String((e && e.message) || e)))
+  }
+  // ROUND 2 (task-14): the scientific-library adapter face (numpy/scipy/pandas/sympy). `resolveExecutable` comes from
+  // the host math seam; without it `probe()` refuses by name (`VMU_EXTERNAL_UNAVAILABLE`) instead of guessing whether
+  // the machine has python.
+  const mathadapters = createMathAdapters({ settings: settingsView, clock: guardedClock, log, bus, spawn,
+    resolveExecutable: host && typeof host.resolveExecutable === 'function' ? host.resolveExecutable : null,
+    root: root || null })
   // Batch-3/5 tails: external fetching (N11) and the clinical/animal approval gates. Both are inert by default
   // (`vmu.external.enabled=false`, no domain pack declared), and both refuse by name rather than inventing data.
   const external = createExternal({ settings: settingsView, bus, clock, log, fetchFn })
@@ -599,6 +687,18 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   const crypto = createCrypto({ settings: settingsView, bus, clock: guardedClock, log, signer })
   const notify = createNotify({ settings: settingsView, bus, clock: guardedClock, log, deliver })
   noteSeam('deliver', 'notify', notify ? deliver : null)
+  // ROUND 2 (task-14, vmu-assistant's contract): the REPORTING face. It has NO internal timer by design ("a report
+  // never drives anything"), so the entry advances it at the turn boundary; `deliver` is the transport (a missing one
+  // is a NAMED refusal, not a silent drop) and `audit` is where parameter changes are recorded.
+  // CLOCK: the RAW clock, not `guardedClock` - MEASURED: `createReport` reads `clock()` during CONSTRUCTION
+  // (kernel/report.js:121), and the monotonic guard refuses a caller-supplied ISO-string clock, which crashed
+  // `createKernel` outright in tests/vmu-kernel.test.mjs and tests/vmu-entry.test.mjs (a process error, not a failed
+  // assertion). Report timestamps are informational; the elapsed-time guard belongs to the TTL-sensitive services.
+  // (Reported to vmu-assistant as well: reading the clock at construction is itself worth deferring, so that a caller
+  // who does pass a guarded clock is not punished for it.)
+  const report = createReport({ settings: settingsView, clock, log, deliver, audit,
+    describeSetting: settingDescription })
+  noteSeam('deliver', 'report', report ? deliver : null)
   const lifecycle = createLifecycle({ settings: settingsView, bus, clock, log, workflow,
     publication, collab, identity, human, discipline, custody, explain, control, citations })
   // K6 (round 16): the unified idempotency ledger that a replay/retry path can consult before doing work again.
@@ -617,6 +717,58 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // newer code. (The chain is built earlier now - see the N1 consumer-wiring comment above the bus.)
   const stateversion = createStateVersion({ settings: settingsView, bus, clock, log })
 
+  // ── ROUND 2 (task-14): THE RECOVERY FACE + THE DURABLE PROJECTIONS ────────────────────────────────────
+  // Lead's durable-projection item, split with reader-a: IT owns the recovery semantics and the projection
+  // wrapper (`kernel/resume.js`), THIS file owns which faces are projected, when they are attached, and the
+  // startup hydration order. The `vmu.resume.projections` list is the declaration: a face that is NOT declared is
+  // not attached, and a face that IS declared but has no usable adapter is reported `unhydrated` BY NAME by
+  // `resume.status()` - never "looks restored, is actually empty".
+  //
+  // Adapter shape (`attachProjection`): `{ target, methods, projection: createProjection({ key, mode, list|snapshot+restore, replay, cap }) }`.
+  // `mode:'journal'` records the COMMANDS and replays them through the PUBLIC methods on hydrate (so a real counter
+  // advances to max+1 and an id is never reused); `mode:'state'` needs a snapshot/restore pair on the service, which
+  // the owning teammate adds. Faces whose service does not expose the pair yet are simply absent here - named.
+  const RESUME_PROJECTION_ADAPTERS = {
+    // `tasks` already exposes `list()`; its journal replays through the same public methods it records.
+    tasks: () => ({ key: 'tasks', mode: 'journal', list: () => (typeof tasks.list === 'function' ? tasks.list() : []),
+      replay: (entry) => (entry && typeof entry.method === 'string' && typeof tasks[entry.method] === 'function'
+        ? tasks[entry.method](entry.args || {}) : undefined) }),
+    // `work` is the in-flight ledger and is already durable; the projection keeps it visible to recovery.
+    work: () => ({ key: 'work', mode: 'journal', list: () => (workLedger && typeof workLedger.list === 'function' ? workLedger.list() : []) }),
+  }
+  const resume = createResume({ store, work: workLedger, control, identity, settings: settingsView, bus,
+    clock: guardedClock, log, faces: {} })
+  const attachedProjections = []
+  {
+    const declaredProjections = Array.isArray(settings['vmu.resume.projections']) ? settings['vmu.resume.projections'] : []
+    const targets = { tasks, work: workLedger }
+    const methodsOf = { tasks: ['create', 'assign', 'transition', 'brief', 'clearBrief', 'advance', 'rollback'], work: [] }
+    for (const key of declaredProjections) {
+      const face = String(key)
+      const make = RESUME_PROJECTION_ADAPTERS[face]
+      if (typeof make !== 'function') { attachedProjections.push({ face, attached: false, reason: 'no adapter in this assembly (the service does not expose a journal/snapshot seam yet)' }); continue }
+      try {
+        const adapter = make()
+        // The INSTANCE method registers the projection so `hydrate()`/`snapshot()` can find it; the module-level
+        // `attachProjection` would wrap the methods but leave the instance unaware of the key.
+        const out = resume.attachProjection({ target: targets[face], methods: methodsOf[face] || [], key: adapter.key, mode: adapter.mode,
+          list: adapter.list || null, snapshot: adapter.snapshot || null, restore: adapter.restore || null, replay: adapter.replay || null })
+        attachedProjections.push({ face, attached: true, mode: adapter.mode, key: adapter.key, wrapped: out.wrapped, missing: out.missing })
+      } catch (e) {
+        attachedProjections.push({ face, attached: false, reason: String((e && e.message) || e), code: (e && e.code) || null })
+      }
+    }
+  }
+  // `PROJECTION_KEYS` is the framework's full list; the difference between it and what this assembly attached is
+  // reported (named), so "which durable keys actually have a writer" is answerable from status().
+  const projectionReport = () => ({
+    declared: Array.isArray(settings['vmu.resume.projections']) ? settings['vmu.resume.projections'].slice() : [],
+    attached: attachedProjections.filter((a) => a.attached).map((a) => a.face),
+    notAttached: attachedProjections.filter((a) => !a.attached).map((a) => ({ face: a.face, reason: a.reason, code: a.code || null })),
+    known: PROJECTION_KEYS.slice(),
+    unwiredKnown: PROJECTION_KEYS.filter((k) => !attachedProjections.some((a) => a.face === k && a.attached)),
+  })
+
   // CONSUMER WIRING (round 19, the point an independent reviewer made): a clock guard that nobody uses changes
   // nothing - a backwards clock would still silently extend every TTL and keep every pending idempotency entry
   // alive forever. The guard is therefore built FIRST and its `now()` is handed to every module whose semantics
@@ -634,6 +786,31 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   const meetings = createMeetings({ settings: settingsView, bus, clock: guardedClock, log })
   const ballotbox = createBallotBox({ settings: settingsView, bus, clock: guardedClock, log })
   const records = createRecords({ settings: settingsView, bus, clock: guardedClock, log })
+  // ── ROUND 2 (task-14): THE APPROVAL GATE, ATTACHED TO THE REAL FACES ──────────────────────────────────
+  // Lead's requirement: an undeclared action runs; a GATED action may only QUEUE until a human decides (a real gate,
+  // not a label). `attachApprovalGate` wraps the named mutating methods, so the WRAP is what enforces it - and only
+  // methods that REALLY EXIST are wrapped (`gateMethods`), because a typo in this list would silently leave a method
+  // ungated. `vmu.human.gatedActions` decides which actions are gated (empty ⇒ none). Placed HERE, after
+  // meetings/ballotbox exist: an earlier position measured as a TDZ error (`Cannot access 'ballotbox' before
+  // initialization`) because those two faces are constructed after the turn block.
+  {
+    const gateMethods = (target, names) => names.filter((n) => target && typeof target[n] === 'function')
+    const gateReport = []
+    if (typeof human.gate === 'function') {
+      const attach = (label, target, names, subjectOf) => {
+        const methods = gateMethods(target, names)
+        if (!target || methods.length === 0) { gateReport.push({ face: label, attached: false, reason: 'no such face or no matching methods' }); return }
+        const out = attachApprovalGate({ target, methods, gate: human.gate, subjectOf, face: label })
+        gateReport.push({ face: label, attached: true, methods, missing: (out && out.missing) || [] })
+      }
+      attach('vmu.tasks', tasks, ['create', 'assign', 'transition', 'brief', 'clearBrief', 'advance', 'rollback'], (m, a) => (a && (a.title || a.id)) || null)
+      attach('vmu.ballotbox', ballotbox, ['open', 'freeze', 'unfreeze', 'cast', 'close', 'reopen'], (m, a) => (a && a.target) || null)
+      attach('vmu.meetings', meetings, ['convene', 'open', 'speak', 'vote', 'close', 'recess'], (m, a) => (a && (a.topic || a.id)) || null)
+    } else {
+      gateReport.push({ face: '(all)', attached: false, reason: 'this kernel has no approval gate (kernel/human.js exposes none)' })
+    }
+    approvalGateReport = gateReport   // exposed through status() so "which face is gated" is answerable
+  }
   // ROUND 339: the TURN LOOP as a service (docs/26). Constructed here, once the faces it dispatches into exist,
   // so a host that installs only the framework can run a member turn. Delivery goes through the host seam; with no
   // seam it refuses by name rather than pretending a member answered.
@@ -777,6 +954,14 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   registry.register('vmu.memory', { apiVersion: 1 }, { kind: 'service', description: 'institutional memory that NEVER authorizes (S-3), contradictions visible (docs/17 搂9)' })
   registry.register('vmu.bidding', { apiVersion: 1 }, { kind: 'service', description: 'auctions: deadline, rationale, reputation never prices, collusion surfaced (docs/17 搂10)' })
   registry.register('vmu.mathjobs', { apiVersion: 1 }, { kind: 'service', description: 'math jobs: timeout with partial output, complete receipts, seed required (docs/09路15)' })
+  // ---- ROUND 2 (task-14): the four new faces' registrations ----------------------------------------------
+  registry.register('vmu.ids', { apiVersion: 1 }, { kind: 'service', description: 'ids: the one id minter - monotonic across restarts, counters projected durably, never reuses a name (docs/07)' })
+  registry.register('vmu.resume', { apiVersion: 1 }, { kind: 'service', description: 'resume: session recovery primitives - read-before-write gate, durable projections with id never reused, named interrupted outcomes (never silently passed), unacked-mail and watchdog refresh seams (docs/07)' })
+  registry.register('vmu.chat', { apiVersion: 1 }, { kind: 'service', description: 'group chat: admin list, speech quota and mute are declared, hot-changed and audited (docs/17)' })
+  registry.register('vmu.mathadapters', { apiVersion: 1 }, { kind: 'service', description: '数学库适配面：numpy/scipy/pandas/sympy 的会话级环境绑定、结果形状契约与具名拒（docs/09·15）' })
+  registry.register('vmu.mailbox', { apiVersion: 1 }, { kind: 'service', description: 'durable per-recipient mailbox: ack only after a successful delivery, unacked remains redeliverable (docs/17)' })
+  registry.register('vmu.panel', { apiVersion: 1 }, { kind: 'service', description: 'member state panel: overall goal, plan and running subtasks, append-only with a view audit (docs/17)' })
+  registry.register('vmu.report', { apiVersion: 1 }, { kind: 'service', description: 'reporting: declarable report triggers (event/period/threshold), content templates, recipients and channels, an off switch whose default declares nothing, an append-only trace, and a parameter-config face whose domain and owners come from settings rather than from the kernel (docs/22 §reporting)' })
   registry.register('vmu.skills', { apiVersion: 1 }, { kind: 'service', description: 'skills: never self-appointed, expiry degrades and says so (docs/17 搂8)' })
   registry.register('vmu.publication', { apiVersion: 1 }, { kind: 'service', description: 'publication: unbroken version chain, offline archive registration, availability that refuses on-request-only (docs/16 搂7)' })
   registry.register('vmu.collab', { apiVersion: 1 }, { kind: 'service', description: 'collab: counterparty register, agreements with expiry warning, data-sharing template, joint authorship and the settlement cycle with reconciliation tolerance (docs/22 §协作)' })
@@ -928,6 +1113,25 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     get citations() { return citations },
     get formal() { return formal },
     get mathjobs() { return mathjobs },
+    // ROUND 2 (task-14): the four new faces, reachable like every other service.
+    get mathadapters() { return mathadapters },
+    get chat() { return chat },
+    get mailbox() { return mailbox },
+    get panel() { return panel },
+    get report() { return report },
+    /** The control SERVICE (`createControl`), distinct from `kernel.control()` - the control VIEW function that has
+     *  occupied that name since round 1. `tune()` (the mid-flight retune face) lives on the service. */
+    get controlService() { return control },
+    // ⚠ NAME COLLISION, measured: `kernel.resume` ALREADY exists as the CONTROL-FLOW method (`resume(reason)`, the
+    // counterpart of `pause()`), and an object literal's later method wins over an earlier getter - so a
+    // `get resume()` here would be silently shadowed (the smoke test read a FUNCTION, not the recovery face).
+    // The recovery face is therefore `kernel.recovery`; `resumeService` is an explicit alias for callers that
+    // prefer the service name. `vmu.resume` stays the REGISTRY name.
+    get recovery() { return resume },
+    get resumeService() { return resume },
+    /** The ONE id minter (`kernel/ids.js`) as bound by this kernel - the same singleton the id-minting modules import. */
+    get ids() { return ids },
+    idsStatus() { return idsStatus() },
     get external() { return external },
     get scheduler() { return scheduler },
     get crypto() { return crypto },
@@ -1328,6 +1532,15 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
           runtimeWrites: runtimeWrites.length,
           lastRuntimeWrite: runtimeWrites.length ? Object.assign({}, runtimeWrites[runtimeWrites.length - 1]) : null },
         auditTail: auditRing.slice(-20),
+        // ROUND 2 (task-14): the id minter's own verdict (durable counters / process-only) and WHICH durable
+        // projections this assembly actually attached. Both are stated, so "which durable key has a writer" is
+        // answerable without reading the source - the Lead's "no silently unwired key" requirement.
+        ids: idsStatus(),
+        projections: projectionReport(),
+        // ROUND 2: the approval gate's reach, and the reporting face's own verdict (vmu-assistant's §8 receipt:
+        // `reporting.declared`/`enabled`/`fires`/`trace`/`params` - the fields its assertions read).
+        approvalGate: approvalGateReport,
+        reporting: report && typeof report.status === 'function' ? report.status() : null,
         /** N1 consumer (round 20): verify the LIVE ring against the tamper-evident chain, row by row.
          *  Round 24: it uses the anchor when one exists - an unanchored verification must not be able to look
          *  like an anchored one, and a truncated tail is only detectable against an anchor. */
@@ -1382,6 +1595,11 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
           turnDeliverNote: turnDeliverSeam ? null
             : 'the turn loop has no delivery seam: `vibe_vmu_turn` step/drive refuse by name (VMU_ENGINE_UNAVAILABLE); pass { deliverTurn } (the entry assembles it from ctx.get(\'subagents\') via kernel/turn/index.js deliverViaSubagents)',
           signer: !!signer, fetchFn: !!fetchFn,
+          // ROUND 2 (task-14): the new faces' seams, reported as CONSTRUCTION facts (E2 discipline): the id minter,
+          // the recovery face, chat, the math adapters, and whether the math-job FILE MIRROR really has its `fs` seam
+          // (`admission().fileMirror` is the module's own answer, so status cannot claim a mirror the job face refuses).
+          ids: !!ids, resume: !!resume, chat: !!chat, mathadapters: !!mathadapters,
+          mathjobsFileMirror: mathjobs && typeof mathjobs.admission === 'function' ? !!mathjobs.admission().fileMirror : null,
           timer: scheduler.status().timerShape !== null,
           timerShape: scheduler.status().timerShape,
           timerInjected: scheduler.status().timerInjected,

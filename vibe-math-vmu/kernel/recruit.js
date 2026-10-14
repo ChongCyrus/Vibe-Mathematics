@@ -11,6 +11,7 @@
 // rejection needs a reason; every truncation is counted; injected clock; zero-config never crashes;
 // read-only views never mutate.
 
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const apiVersion = 1
 
 export function refuse(code, message, hint, extra) {
@@ -39,9 +40,9 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
   const applications = new Map()  // applicationId -> { id, postingId, candidate, evidence, scores[], status }
   const offers = new Map()        // offerId -> { id, applicationId, expiresAt, status }
   const staff = new Map()         // memberId -> { memberId, slot, hiredAt, probationUntil, confirmedAt, by }
-  let seq = 0
+
   let dropped = 0
-  const nextId = (p) => p + '-' + (++seq)
+  const nextId = (p) => mint('recruit', p + '-')
 
   const cfg = () => ({
     probationMs: intOr(settings['vmu.admission.probationMs'], 0),

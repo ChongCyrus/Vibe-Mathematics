@@ -9,6 +9,7 @@
 //
 // FACE CONVENTIONS: literal key reads; receipts carry enforced[] and fired[]; limits refused BY NAME; nothing declared means
 // nothing happens; injected clock; read-only surfaces never mutate.
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const apiVersion = 1
 
 export function refuse(code, message, hint, extra) {
@@ -50,7 +51,6 @@ export function createExplain({ clock = () => 0, log = null, settings = {}, bus 
 
   const reports = []
   let dropped = 0
-  let seq = 0
 
   /**
    * Check the reason an action carries. `reasonRequired` demands one; `reasonMaxChars` refuses an over-long one rather than
@@ -115,7 +115,7 @@ export function createExplain({ clock = () => 0, log = null, settings = {}, bus 
     const base = Object.assign({}, fields && typeof fields === 'object' ? fields : {})
     if (c.detail === 'summary') { for (const k of Object.keys(base)) { if (String(base[k]).length > 200) { base[k] = String(base[k]).slice(0, 200) + '…'; omitted.push('long-field:' + k) } } }
     const report = {
-      id: 'explain-' + (++seq), action: action === null ? null : String(action), reason: checked.reason,
+      id: mint('explain', 'explain-'), action: action === null ? null : String(action), reason: checked.reason,
       correlation: { by: corr.by, value: corr.value, correlated: corr.correlated },
       chains: chainList, scores: scoreList, fields: base,
       detail: c.detail, format: c.reportFormat, omitted: omitted.slice(), at: clock(),

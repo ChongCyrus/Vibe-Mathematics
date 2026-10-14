@@ -82,6 +82,63 @@ export const PACK = Object.freeze({
     'vmu.records.pointerPropagation': true,
     // PACK-LAYER key (not in docs/04 §11 - the pack owns it, and `setting()` reads it like any other):
     'vmu.records.requireSettledRecords': true,
+
+    // ── THE ASSISTANT'S REPORTING POLICY (goal 6, ruling D-09) ─────────────────────────────────────────
+    // v5r had NO automatic reporting mechanism: only persona prose ("主动向院士汇报"), the Progress/ files, an
+    // academician-initiated overview and the office's manual report(). The framework provides the PRIMITIVE
+    // (kernel/report.js: triggers, templates, recipients, channels, trace); THIS is the pack's POLICY - what gets
+    // reported, how often, at which threshold, and to whom. The kernel holds none of it.
+    //
+    // WHY HERE AND NOT IN ../settings/defaults.json: that file is the pack's VALUE layer, and it says the reporting
+    // policy deliberately lives on the loaded manifest instead - a key declared in BOTH places is a named
+    // VMU_PACK_CONFLICT by design (D-02/O4), so there is exactly one owner, and this is it.
+    //
+    // The three triggers are the three kinds the primitive declares, one each, so the whole surface is exercised by
+    // the pack rather than only by a test: a PERIOD (the office should not have to be asked), an EVENT (a closed
+    // meeting is exactly what an outside reader wants to hear about), and a THRESHOLD (enough new artefacts is
+    // progress worth reporting). Recipients use v5r's own id for the office - the pseudo-id its mailbox is addressed
+    // by - and every template placeholder is one the report renderer knows.
+    'vmu.report.enabled': true,
+    'vmu.report.reports': [
+      {
+        name: 'v5r-outward-progress',
+        trigger: { kind: 'period', everyMs: 900000 },
+        template: '【自动汇报 {{ count }}】{{ name }}（{{ at }}）：本所仍在推进，详情见所内 Progress/。',
+        to: ['office'],
+        channel: 'digest',
+      },
+      {
+        name: 'v5r-meeting-closed',
+        trigger: { kind: 'event', event: 'meeting-closed' },
+        template: '【会议结束】{{ name }}（{{ at }}）：有一场会议收束，请复核纪要是否已确认。',
+        to: ['office'],
+        channel: 'inbox',
+      },
+      {
+        name: 'v5r-artifact-threshold',
+        trigger: { kind: 'threshold', metric: 'artifacts', op: 'gte', value: 5 },
+        template: '【成果阈值】{{ name }}（{{ at }}）：已累计 {{ metric:artifacts }} 件成果，达到汇报线。',
+        to: ['office'],
+        channel: 'inbox',
+      },
+    ],
+    // THE PARAMETER DOMAIN the assistant may see and change, and WHO may change it. v5r's boundary was "only the
+    // office may change parameters" (withOffice refused everything else with V5_NOT_OFFICE); in vmu that boundary is
+    // a DECLARATION, not a rule inside the kernel - the kernel only knows "the domain is these keys and the owners
+    // are these names". The domain is deliberately narrow: the reporting knobs themselves plus the three settings
+    // that decide what the institute IS (its name, its objective, and whether members get pointer propagation).
+    'vmu.report.params': [
+      'vmu.report.enabled',
+      'vmu.report.reports',
+      'vmu.report.minIntervalMs',
+      'vmu.report.traceCap',
+      'vmu.report.templateMaxChars',
+      'vmu.turn.instituteName',
+      'vmu.turn.objective',
+      'vmu.records.pointerPropagation',
+    ],
+    'vmu.report.whoMayChange': ['office'],
+    'vmu.report.requireReason': false,
   },
 
   // v5r's institute roster, as OPAQUE SLOTS (D5: the kernel never learns what "academician" means).
@@ -210,13 +267,18 @@ const v5rPersonaBindingsGlobal = () => PERSONA_BINDINGS
 // manifest's `sections` getter. Both persona helpers stay exported because a consumer may still want the raw capture;
 // only the charter is declared. The import is hoisted like the persona one above, so the getters resolve at access time.
 import { CHARTER_SECTIONS, CHARTER_BINDINGS } from './v5r-charter.js'
+// GOAL 6 (ruling D-09): the assistant's PER-ROUND surface. The root/system-prompt half of the same assistant surface is
+// `./assistant.json`, which the plugin reads by folder name before the kernel exists; this half is registered through
+// the manifest because it is rendered by the prompt pipeline on every member round. Two readers, two files, no copy.
+import { V5R_ASSISTANT_TURN_SECTIONS } from './v5r-assistant.js'
 
 /**
  * The runtime sections: the charter transcribed from the original source (docs/26 sections 3.10-3.18), PLUS the authored
  * per-member role block. That block is not a snapshot - it is written by hand and driven by member/role/phase - and it is
- * the one section that simply NAMES the phase, which the charter headings do not.
+ * the one section that simply NAMES the phase, which the charter headings do not. PLUS the assistant's reporting duty,
+ * which is what turns "主动向院士汇报" from persona prose into a duty a member is told every round.
  */
-const v5rCharterSectionsGlobal = () => [...CHARTER_SECTIONS, v5rRoleSection]
+const v5rCharterSectionsGlobal = () => [...CHARTER_SECTIONS, v5rRoleSection, ...V5R_ASSISTANT_TURN_SECTIONS]
 
 /** Its role and phase bindings - one winner per section per assembly is the pipeline's job (docs/26 section 3.20). */
 const v5rCharterBindingsGlobal = () => CHARTER_BINDINGS

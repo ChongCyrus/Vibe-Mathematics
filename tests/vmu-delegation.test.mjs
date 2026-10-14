@@ -56,10 +56,10 @@ const SCOPE_TASK = { commands: ['task/create'], resources: ['task/1'] }
   const c = fakeClock(0)
   const d = createDelegation({ clock: c.clock, roots: ROOT_ALICE })
   const g = d.grant({ from: 'alice', to: 'bob', scope: SCOPE_TASK, reason: 'help with the task', ttlMs: 0 })
-  ok(g.ok === true && g.id === 'd-1' && g.depth === 1, 'subset: the delegation is created with a deterministic id and depth 1')
-  ok(g.chain.join(',') === 'd-1' && g.parentId === null, 'subset: the chain has one hop (auditChains=true)')
+  ok(g.ok === true && /^d-\d+$/.test(String(g.id)) && g.depth === 1, 'subset: the delegation is created with an id from the ONE minter and depth 1 (Round 2)')
+  ok(g.chain.join(',') === g.id && g.parentId === null, 'subset: the chain has one hop, named by the id the CALL returned (auditChains=true)')
   const r = d.check({ actor: 'bob', action: 'task/create' })
-  ok(r.allowed === true && r.source === 'delegation' && r.grantId === 'd-1', 'subset: check() allows via the delegation')
+  ok(r.allowed === true && r.source === 'delegation' && r.grantId === g.id, 'subset: check() allows via the delegation (the same captured id)')
   const no = d.check({ actor: 'bob', action: 'meeting/close' })
   ok(no.allowed === false && no.source === 'none', 'subset: an action outside the scope is NOT allowed (and does not throw)')
   const noOne = d.check({ actor: 'carol', action: 'task/create' })
@@ -89,10 +89,11 @@ const SCOPE_TASK = { commands: ['task/create'], resources: ['task/1'] }
 {
   const c = fakeClock(0)
   const d = createDelegation({ clock: c.clock, roots: ROOT_ALICE })
-  d.grant({ from: 'alice', to: 'bob', scope: SCOPE_TASK, reason: 'r' })
+  const firstGrant = d.grant({ from: 'alice', to: 'bob', scope: SCOPE_TASK, reason: 'r' })
   const e = throwsNamed(() => d.grant({ from: 'bob', to: 'carol', scope: SCOPE_TASK, reason: 'r' }), 'VMU_DELEGATION_DEPTH', 'sub-delegation: refused by default')
   ok(!!e && /subdelegateAllowed/.test(String(e.hint)), 'sub-delegation: the refusal explains the setting')
-  ok(!!e && /d-1/.test(e.message), 'sub-delegation: the refusal names the CURRENT CHAIN')
+  // ROUND 2: the refusal must name the chain THAT EXISTS - asserted against the id the CALL returned, not a literal.
+  ok(!!e && e.message.includes(String(firstGrant.id)), 'sub-delegation: the refusal names the CURRENT CHAIN (the captured id)', String(e && e.message))
   ok(d.list().count === 1, 'sub-delegation: nothing was created')
 
   const allowed = createDelegation({ clock: c.clock, roots: ROOT_ALICE, settings: { 'vmu.delegation.subdelegateAllowed': true, 'vmu.delegation.maxDepth': 2 } })
@@ -166,12 +167,15 @@ const SCOPE_TASK = { commands: ['task/create'], resources: ['task/1'] }
 {
   const c = fakeClock(0)
   const d = createDelegation({ clock: c.clock, roots: { alice: { commands: ['c1', 'c2', 'c3', 'c4', 'c5'] } } })
-  for (let i = 1; i <= 5; i++) d.grant({ from: 'alice', to: 'm' + i, scope: { commands: ['c' + i] }, reason: 'r' })
+  const madeIds = []
+  for (let i = 1; i <= 5; i++) madeIds.push(d.grant({ from: 'alice', to: 'm' + i, scope: { commands: ['c' + i] }, reason: 'r' }).id)
   const all = d.list()
   ok(all.count === 5 && all.available === 5 && all.dropped === 0 && all.truncated === false, 'list: five grants, no truncation')
   const capped = d.list({ limit: 2 })
   ok(capped.count === 2 && capped.available === 5 && capped.dropped === 3 && capped.truncated === true, 'list: a limit reports the DROPPED count (3)')
-  ok(capped.grants[0].id === 'd-1' && capped.grants[1].id === 'd-2', 'list: deterministic order (insertion order)')
+  ok(capped.grants[0].id === madeIds[0] && capped.grants[1].id === madeIds[1], 'list: insertion order follows the CREATION order (ids captured from the calls)')
+  const madeNums = madeIds.map((id) => Number(String(id).split('-').pop()))
+  ok(madeNums.length > 0 && madeNums.every((n, i) => i === 0 || n > madeNums[i - 1]), 'list: the id suffix is STRICTLY INCREASING across creations (verified on ' + madeNums.length + ' minted ids, which must be > 0 for the claim to mean anything)', JSON.stringify(madeIds))
   const h = d.history({ limit: 2 })
   ok(h.count === 2 && h.dropped === 3 && h.available === 5, 'history: the ring also reports drops')
   ok(h.rows[0].type === 'delegation/granted' && typeof h.rows[0].at === 'number', 'history: rows carry the type and the injected time')
@@ -237,9 +241,13 @@ const SCOPE_TASK = { commands: ['task/create'], resources: ['task/1'] }
   const after = JSON.stringify(d.list()) + '|' + JSON.stringify(d.status()) + '|' + JSON.stringify(d.history())
   ok(before === after, 'read-only: check/chain/list/status/history never mutate the grants')
   const a = build(); const b = build()
-  ok(JSON.stringify(a.list()) === JSON.stringify(b.list()), 'determinism: two instances agree on list()')
-  ok(JSON.stringify(a.status()) === JSON.stringify(b.status()), 'determinism: two instances agree on status()')
-  ok(JSON.stringify(a.history()) === JSON.stringify(b.history()), 'determinism: two instances agree on history()')
+  // ROUND 2 (global durable minter): two instances no longer produce the SAME ids, so "agree on list()/status()/
+  // history()" is replaced by the properties that hold - each is readable, the COUNTS agree, the id sets are DISJOINT.
+  const aIds = a.list().grants.map((x) => x.id); const bIds = b.list().grants.map((x) => x.id)
+  ok(aIds.length === bIds.length && aIds.length > 0, 'determinism: both instances are readable after the same build()')
+  ok(aIds.every((id) => !bIds.includes(id)), 'determinism: two instances in one process NEVER share a grant id (global minter)', JSON.stringify({ aIds, bIds }))
+  ok(a.status().count === b.status().count, 'determinism: status() counts agree (only the ids differ)')
+  ok(a.history().count === b.history().count, 'determinism: history() counts agree (only the ids differ)')
 }
 
 // ── 15. hooks reach the bus (or the wiring gap is COUNTED) ─────────────────────────────────────────

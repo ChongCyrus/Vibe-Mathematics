@@ -4,14 +4,16 @@
 // 干净 clone 跑不到；进仓后由 `scripts/preflight.mjs`（T0）第 5 项调用）。
 // 用法：node scripts/check-docs.mjs [--json]
 // 检查项：
+//   D0 卷的两类归属：每个 NN-*.md 必须**恰好**归入"设计卷"或"附录·登记卷"（显式列表 + 断言，不许静默增长）；
+//      新增卷必须显式归类，两类都非空，且不得同时出现在两类里
 //   D1 编号完整性：00..14 齐全、无缺口、无重复
-//   D2 必需头部：01..13 必须有"上位"引用行（除 00/14）
-//   D3 验收判据：每篇必须有"验收"字样（门禁/验收判据）
+//   D2 必需头部：**设计卷**（除 00/14）必须有"上位"引用行
+//   D3 验收判据：**设计卷**（除 00）必须有"验收"字样（门禁/验收判据）
 //   D4 交叉引用：形如 `NN-§…` / `NN 号文档` 的引用，目标文档必须存在
 //   D5 章节引用：形如 `NN-§X` 且 X 形如数字/数字.数字 ⇒ 目标文档存在形如 `## X`/`### X` 的标题
 //   D6 命名一致：03/12 必须出现 `vibe_vmu_`；不得把 `vibe_v5_` 当"选定命名"（仅允许出现在迁移/兼容/别名字样附近）
 //   D7 未核登记：出现"未核"字样的文档必须在 14 号（U1..U7）或自身有"未核项"字样
-//   D8 每篇必备结构：状态行（00 除外）＋ 未核项小节（01..13）
+//   D8 **设计卷**必备结构：状态行（00 除外）＋ 未核项小节
 //   D9 仓库安全：文档不得含未标注的盘符绝对路径字面量
 //   D10 R↔门禁映射无空缺；D11 公开面登记一致性；D12 命名契约（无第二套前缀）
 //   D13 验收判据机器可判定；D14 错误码必须在 03-§8 登记；D15 未核项可追溯
@@ -57,14 +59,38 @@ for (const f of files) if (!/^\d\d-/.test(f)) add('D1', '文件名不符合 NN- 
 const texts = new Map()
 for (const [k, f] of byNum) texts.set(k, fs.readFileSync(path.join(DOCS, f), 'utf8'))
 
-// D2 必需头部
+// ── D0 卷的两类归属（Round 2 · Lead 的 D 项）────────────────────────────────────────────────────
+// 设计集已长成两类卷，它们的义务不同：
+//   · **设计卷**（design）：**定义能力**的卷 —— 必须带 上位 / 状态 / 验收 / 未核项，且未核项小节要指向 14 的编号登记；
+//   · **附录·登记卷**（appendix/registry）：**记录**用的卷（历史、被降级域、containment、目录形态、未决台账、roadmap）——
+//     它仍然必须是"卷"（存在、与编号连续、非平凡），但"设计结构"那几条**不描述它**：强套只会永远红，
+//     或者逼出没有意义的样板头（这正是它们此前红着的原因）。
+// 归属**必须被断言、不许静默**：盘上每个 `NN-*.md` 必须**恰好**落在一类里。新卷不能"自动落进"某一类而不被看见——
+// 这正是 Lead 要求的"不许静默增长"。D2/D3/D8/D15 只对**设计卷**生效；D1/D4/D5/D9… 仍对**全部**卷生效。
+const DESIGN_VOLUMES = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13',
+  '15', '16', '17', '18', '19', '20', '21', '22']
+const APPENDIX_VOLUMES = ['14', '23', '24', '25', '26', '27', '28']
+{
+  const dup = DESIGN_VOLUMES.filter((k) => APPENDIX_VOLUMES.includes(k))
+  if (dup.length) add('D0', '同一个编号同时出现在两类里: ' + dup.join(','))
+  const unclassified = [...byNum.keys()].filter((k) => !DESIGN_VOLUMES.includes(k) && !APPENDIX_VOLUMES.includes(k))
+  if (unclassified.length) add('D0', '这些卷没有归类（新卷必须显式归入"设计卷"或"附录·登记卷"）: ' + unclassified.join(','))
+  const phantom = [...DESIGN_VOLUMES, ...APPENDIX_VOLUMES].filter((k) => !byNum.has(k))
+  if (phantom.length) add('D0', '分类表里点名了盘上不存在的卷: ' + phantom.join(','))
+  if (DESIGN_VOLUMES.length === 0 || APPENDIX_VOLUMES.length === 0) add('D0', '两类都必须非空，否则"分类"退化成"全都不查"')
+}
+const DESIGN = new Set(DESIGN_VOLUMES)
+
+// D2 必需头部（**只对设计卷**）
 for (const [k, t] of texts) {
+  if (!DESIGN.has(k)) continue
   if (k === '00' || k === '14') continue
   if (!/^> 上位/m.test(t)) add('D2', k + ' 缺少 "> 上位" 行')
 }
 
-// D3 验收判据
+// D3 验收判据（**只对设计卷**）
 for (const [k, t] of texts) {
+  if (!DESIGN.has(k)) continue
   if (k === '00') continue
   if (!/验收/.test(t)) add('D3', k + ' 全文没有"验收"字样（缺验收判据）')
 }
@@ -139,8 +165,9 @@ for (const [k, t] of texts) {
   }
 }
 
-// D8 每篇必备结构：状态行（00 除外）＋ 未核项小节（01..13）
+// D8 每篇必备结构：状态行（00 除外）＋ 未核项小节（**只对设计卷**）
 for (const [k, t] of texts) {
+  if (!DESIGN.has(k)) continue
   if (k !== '00' && !/^> 状态/m.test(t)) add('D8', k + ' 缺少 "> 状态" 行')
   if (k !== '00' && k !== '14' && !/^#{2,3} .*未核项/m.test(t)) add('D8', k + ' 缺少"未核项"小节')
 }
@@ -215,8 +242,9 @@ for (const [k, t] of texts) {
   if (unreg.length) add('D14', '未在 03-§8 登记的错误码: ' + unreg.sort().join(', '))
 }
 
-// D15 未核项必须可追溯：01..13 的"未核项"小节需指向 14-§1/§2（编号登记处）
+// D15 未核项必须可追溯：设计卷的"未核项"小节需指向 14-§1/§2（编号登记处）
 for (const [k, t] of texts) {
+  if (!DESIGN.has(k)) continue
   if (k === '00' || k === '14') continue
   const m = t.match(/^#{2,3} .*未核项[\s\S]*$/m)
   if (!m) continue

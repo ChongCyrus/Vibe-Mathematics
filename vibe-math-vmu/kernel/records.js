@@ -22,6 +22,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync, existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 
 export const apiVersion = 1
 
@@ -238,7 +239,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     versions: 0, versionsPruned: 0, compacted: 0, trashed: 0, purged: 0, restored: 0, tieredCold: 0,
     chunked: 0, lazyExpanded: 0, lists: 0, listTruncated: 0, listSuppressed: 0, headFieldTrimmed: 0, externalAttached: 0, externalVerified: 0,
   }
-  let seq = 0
+
   /**
    * THE ONE WAY A KEY ENTERS `enforced`/`fired`: check-before-insert. Duplicates are structurally impossible,
    * so a receipt never has to be cleaned up at the boundary (the same idiom as kernel/meetings.js).
@@ -520,7 +521,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         fire('records/deduplicated', { id: existing.id, track, fingerprint: fp })
         return { ok: true, deduplicated: true, id: existing.id, slug: existing.slug, fingerprint: fp, bytes: existing.bytes, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), note: 'the same content is already recorded in this track (fingerprintPolicy=' + fingerprintPolicy + '): nothing was added, the duplicate is COUNTED' }
       }
-      const id = 'r-' + (++seq)
+      const id = mint('record', 'r-')
       const at = now()
       const rec = {
         id, track, kind: String(kind), title: candidate.title, slug, body: bodyText, tags: candidate.tags, bytes,

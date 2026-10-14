@@ -12,6 +12,15 @@
 // What is NOT here: any idea of what a stage MEANS, or what should be true before leaving one. The
 // kernel asks; the pack answers (R1).
 
+// ROUND 2 (task-10 A): the durable projection seam. `snapshot()`/`restore()` are what make a restart keep the
+// board, and the id counter is reconciled with `observeIds` so a restart can never mint `t-1` twice.
+// NOTE (named reason, not an omission): this face keeps its own PER-INSTANCE counter instead of the shared
+// `kernel/ids.js` minter, because two ledgers built in one process must each start at `t-1` (existing suites and
+// the A/B harness depend on it). The counter is persisted per instance through `snapshot()` and restored through
+// `restore()`, and the shared durable counter is fed with `observeIds` as a floor for any other face.
+import { observeIds, idNumber } from './ids.js'
+import { checkSnapshot } from './resume.js'
+
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
 
@@ -120,6 +129,9 @@ export function createTasks({
           'vmu.tasks.maxOpenTasks is machine-enforced (docs/04 §11)')
       }
       const id = 't-' + (++seq)
+      // The durable counter tracks the highest id this process ever minted, so a restart that hydrates from the
+      // projection can reconcile it with reality (never reusing a name).
+      observeIds('task', [id])
       const t = { id, title: String(title), objective: objective === null ? null : String(objective),
         owner: owner === null ? null : String(owner), deps: Array.isArray(deps) ? deps.map(String) : [],
         priority, state: owner ? 'assigned' : 'open', createdAt: clock(), transitions: [], revision: 1 }
@@ -284,5 +296,62 @@ export function createTasks({
     },
 
     history() { return history.map((h) => Object.assign({}, h)) },
+
+    /**
+     * A pure snapshot of the board (docs/07 §4). It carries NO host seam (bus/clock/isPaused are injected) and
+     * nothing derived from settings: those are re-established by the kernel, not restored from disk.
+     */
+    snapshot() {
+      const ids = [...tasks.keys()]
+      return {
+        apiVersion: 1, face: 'tasks', v: 1, at: clock(),
+        data: {
+          tasks: [...tasks.values()].map((t) => JSON.parse(JSON.stringify(t))),
+          history: history.map((h) => Object.assign({}, h)),
+          briefs: [...briefs.entries()].map(([id, b]) => [id, JSON.parse(JSON.stringify(b))]),
+          stageIndex,
+          stages: stages.slice(),
+        },
+        counters: { task: ids.reduce((mx, id) => Math.max(mx, idNumber(id) || 0), seq) },
+        skipped: [],
+      }
+    },
+
+    /**
+     * Put a board back. Idempotent for the same snapshot; a DIFFERENT snapshot is refused while this ledger
+     * already holds tasks unless the caller asks for a replace — a silent half-overwrite is the failure this
+     * refusal exists to prevent.
+     */
+    restore(snap, { replace = false } = {}) {
+      const checked = checkSnapshot('tasks', snap, ['tasks', 'history', 'briefs'])
+      const incoming = Array.isArray(snap.data.tasks) ? snap.data.tasks : []
+      if (tasks.size > 0 && !replace) {
+        const same = JSON.stringify([...tasks.values()]) === JSON.stringify(incoming)
+        if (same) return { ok: true, restored: [], skipped: [], idempotent: true, counters: { task: seq } }
+        throw refuse('VMU_RESUME_RESTORE_CONFLICT', 'this ledger already holds ' + tasks.size + ' task(s): restoring a different snapshot needs { replace: true }',
+          'stop/clear the ledger first, or pass { replace: true } deliberately - a silent half-overwrite is refused by name')
+      }
+      const skipped = []
+      tasks.clear()
+      for (const t of incoming) {
+        if (!t || typeof t.id !== 'string') { skipped.push({ what: 'tasks[]', why: 'an entry without a string id' }); continue }
+        tasks.set(t.id, JSON.parse(JSON.stringify(t)))
+      }
+      history.length = 0
+      for (const h of (Array.isArray(snap.data.history) ? snap.data.history : [])) history.push(Object.assign({}, h))
+      briefs.clear()
+      for (const pair of (Array.isArray(snap.data.briefs) ? snap.data.briefs : [])) {
+        if (!Array.isArray(pair) || pair.length !== 2) { skipped.push({ what: 'briefs[]', why: 'not a [id, brief] pair' }); continue }
+        briefs.set(String(pair[0]), JSON.parse(JSON.stringify(pair[1])))
+      }
+      if (Number.isInteger(snap.data.stageIndex) && snap.data.stageIndex >= -1 && snap.data.stageIndex < stages.length) stageIndex = snap.data.stageIndex
+      else if (snap.data.stageIndex !== undefined) skipped.push({ what: 'stageIndex', why: 'out of range for the declared stage list (' + snap.data.stageIndex + ')' })
+      // The id counter takes the MAX of the snapshot's counter and the ids that actually exist: this is what makes
+      // "names are immortal" true across a restart.
+      const declared = Number((checked.counters || {}).task)
+      seq = Math.max(Number.isInteger(declared) ? declared : 0, [...tasks.keys()].reduce((mx, id) => Math.max(mx, idNumber(id) || 0), 0))
+      observeIds('task', [...tasks.keys()])
+      return { ok: true, restored: ['tasks', 'history', 'briefs', 'stageIndex'], skipped, counters: { task: seq } }
+    },
   }
 }

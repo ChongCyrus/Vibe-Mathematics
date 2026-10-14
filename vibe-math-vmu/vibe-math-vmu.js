@@ -31,6 +31,8 @@ import { createPackLoader } from './kernel/pack.js'
 import * as packModule from './kernel/pack.js'
 import { createHostSpawn, hasHostSpawn } from './host-spawn.js'
 import { createHostMath } from './host-math.js'
+// ROUND 2 (task-14): the id counters are read back AFTER the store opens (the minter itself is bound inside the kernel).
+import { hydrateIds } from './kernel/ids.js'
 import { assertDeclared } from './settings/schema.js'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { basename, isAbsolute, join, dirname } from 'node:path'
@@ -145,6 +147,32 @@ export function apply(ctx, config = {}) {
       source: overridden ? 'override' : (fromFile ? 'file' : 'inline'),
     }
   }).filter((s) => s.text.length > 0)
+
+  // ROUND 2 (task-14, vmu-assistant's §5.2): THE ROOT PERSONA AS PACK DATA. `packs/<name>/prompts/assistant.json`
+  // carries sections meant for the ROOT system prompt (`hostPrompt: true`); they are read the same way the turn-side
+  // `sections.json` is read - as DATA, before the kernel exists - but they join `effectivePrompts` (the host section)
+  // rather than the pipeline's section list, which is what makes the assistant persona really appear in a session.
+  // Deliberately NOT `prompts/sections.json`: `tests/vmu-corpus-is-baseline-not-template.test.mjs` asserts v5r has no
+  // such file (the corpus is a baseline, not a runtime template), and that boundary is not mine to move.
+  {
+    const here = dirname(fileURLToPath(import.meta.url))
+    const wanted = Array.isArray(config.packs) ? config.packs.filter((p) => typeof p === 'string') : []
+    for (const name of wanted) {
+      try {
+        const parsed = JSON.parse(readFileSync(join(here, 'packs', name, 'prompts', 'assistant.json'), 'utf8'))
+        for (const s of (parsed && Array.isArray(parsed.sections) ? parsed.sections : [])) {
+          if (!s || typeof s.name !== 'string' || typeof s.text !== 'string') continue
+          if (s.hostPrompt !== true) continue
+          effectivePrompts.push({ name: s.name, order: Number.isFinite(s.order) ? s.order : 500, text: s.text, source: 'pack:' + name })
+        }
+      } catch (e) {
+        // ONLY a missing file is expected (a pack with no root-persona data). Anything else is a real error and must
+        // not be swallowed - the same discipline the `sections.json` reader above follows.
+        const missing = e && (e.code === 'ENOENT' || e.code === 'ERR_MODULE_NOT_FOUND')
+        if (!missing) throw e
+      }
+    }
+  }
 
   // V9 MATH: the shared `math_computation` module reaches the host through an injected seam. Until now only a
   // TEST fake provided one, so the math domain and its settings were unreachable in a real session. The
@@ -367,6 +395,26 @@ export function apply(ctx, config = {}) {
       return detail
     }
   })
+  // ROUND 2 (task-14, Lead's durable-projection item): THE STARTUP HYDRATION CHAIN, in the one order that is honest:
+  //   ① the store is open (above) ② the ID COUNTERS are read back (`hydrateIds`) so the next mint continues past the
+  //   durable counter ③ the RECOVERY FACE runs (`vmu.resume.autoRecover`, default true) so interrupted work, unacked
+  //   mail and every declared projection are restored - or NAMED as unhydrated. Each step is a separate promise so a
+  //   failure in one is reported without pretending the next one happened.
+  const idsHydrated = opened.then(async () => {
+    try { return await hydrateIds() } catch (e) {
+      return { ok: false, code: (e && e.code) || 'VMU_IDS_UNAVAILABLE', message: String((e && e.message) || e) }
+    }
+  })
+  const resumed = idsHydrated.then(async () => {
+    const recovery = kernel.recovery
+    if (!recovery || typeof recovery.recover !== 'function') return { ok: true, skipped: 'this assembly has no recovery face' }
+    if (settings['vmu.resume.autoRecover'] === false) return { ok: true, skipped: 'vmu.resume.autoRecover = false (manual recover only)' }
+    try { return await recovery.recover({ reason: 'kernel-start' }) } catch (e) {
+      const detail = { ok: false, code: (e && e.code) || 'VMU_RESUME_UNAVAILABLE', message: String((e && e.message) || e) }
+      try { process.stderr.write('vmu: recovery failed: ' + detail.code + ' ' + detail.message + '\n') } catch { /* stderr may be gone */ }
+      return detail
+    }
+  })
 
   const effect = (fn, label) => {
     if (ctx && typeof ctx.effect === 'function') return ctx.effect(fn, label)
@@ -391,6 +439,19 @@ export function apply(ctx, config = {}) {
       }
       return () => { try { hooks.detach() } catch { /* the host is going away anyway */ } }
     }, 'vmu:hooks')
+  }
+  // ROUND 2 (task-14, vmu-assistant's §5): THE PERIODIC-REPORT CLOCK. `kernel/report.js` has NO internal timer by
+  // design ("a report never drives anything"), so the turn boundary is what advances it: the host's own
+  // `agent/turn-stopping` event is bridged HERE (the entry owns its effects) rather than inside `host-hooks.js`
+  // (which belongs to vmu-pack this round). A report must never break a turn, so a failure is swallowed - the
+  // report face's own `status().reporting.failures` is where it is counted.
+  if (!switchedOff && kernel.report) {
+    effect(() => {
+      if (!ctx || typeof ctx.on !== 'function') return () => {}
+      const listener = async () => { try { kernel.report.tick({ at: Date.now(), event: 'turn-end' }) } catch { /* never break the turn */ } }
+      const dispose = typeof ctx.effect === 'function' ? ctx.effect(() => ctx.on('agent/turn-stopping', listener), 'vmu:report-tick') : ctx.on('agent/turn-stopping', listener)
+      return typeof dispose === 'function' ? dispose : () => {}
+    }, 'vmu:report-tick')
   }
   if (!switchedOff) {
     effect(() => {
@@ -598,6 +659,11 @@ export function apply(ctx, config = {}) {
     mathHost: () => mathHost,
     mathReady: () => mathReady,
     workRecovered: () => workRecovered,
+    // ROUND 2 (task-14): the two startup steps after the store opens - the id counters read back, then the recovery
+    // face. Both are promises a caller (or a test) can await; `ready()` waits for them too, so "the session is up"
+    // never means "the durable state was not restored yet".
+    idsHydrated: () => idsHydrated,
+    resumed: () => resumed,
     // The entry's own prompt view: WHICH declaration produced each section's effective text (inline / file /
     // override). The kernel pipeline reports the declaring LAYER plus an `overridden` flag, which is a
     // different (and complementary) question - docs/06 §7 states both so the two are never conflated.
@@ -624,7 +690,7 @@ export function apply(ctx, config = {}) {
     hooksResult: () => hooksResult,
     hooksError: () => hooksError,
     /** Resolves once the tools are registered and the declared middleware is activated. */
-    ready: () => Promise.all([started, opened, Promise.resolve(adapter.status())]).then(([, , st]) => st),
+    ready: () => Promise.all([started, opened, Promise.resolve(adapter.status()), idsHydrated, resumed]).then(([, , st]) => st),
     started: () => started,
     storeOpened: () => opened,
     status: () => Object.assign(adapter.status(), { installError }),

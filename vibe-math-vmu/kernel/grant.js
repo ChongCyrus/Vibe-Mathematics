@@ -13,6 +13,7 @@
 // The framework's shape: settings may declare the allowlist and the default window, middleware may observe the
 // decisions, and a pack may declare which commands its line grants. The kernel only keeps the ledger and the gate.
 
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 /** Refusal/success receipts carry the key set this call evaluated, so "so far" is never presented as "all". */
 export const ENFORCED_SCOPE = 'evaluated-so-far'
 
@@ -61,7 +62,6 @@ export function createGrant({ clock = () => 0, log = null, settings = {}, bus = 
 
   const counters = { granted: 0, refused: 0, used: 0, revoked: 0, expired: 0 }
   const grants = new Map()
-  let seq = 0
 
   const deny = (code, message, hint, enforced = [], extra = null, fired = []) => {
     counters.refused += 1
@@ -157,7 +157,7 @@ export function createGrant({ clock = () => 0, log = null, settings = {}, bus = 
           'vmu.grant.maxOpenGrants=' + K.maxOpen + ' is reached: revoke or let some expire - an unbounded grant ledger is an unbounded permission', enforced, { openNow, maxOpen: K.maxOpen }, fired)
       }
       const when = at === null ? clock() : at
-      const g = { id: 'gr-' + (++seq), to: String(to), command, grantScope: sc, expiresOn: expiresOn === null ? null : Number(expiresOn),
+      const g = { id: mint('grant', 'gr-'), to: String(to), command, grantScope: sc, expiresOn: expiresOn === null ? null : Number(expiresOn),
         meetingId: meetingId === null ? null : String(meetingId), verifyTarget: verifyTarget === null ? null : String(verifyTarget),
         why: why === null ? null : String(why), by: by === null ? null : String(by), at: when, usedAt: 0, usedFor: null, revokedAt: null }
       if (g.expiresOn !== null && !Number.isFinite(g.expiresOn)) {

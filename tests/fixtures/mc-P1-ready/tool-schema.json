@@ -1,0 +1,420 @@
+{
+  "schemaVersion": "mc-p1-ready/1",
+  "toolName": "math_computation",
+  "registeredPerPreset": true,
+  "presetPrefixes": {
+    "vibe-math-v2": "math_computation",
+    "vibe-math-v3": "math_computation",
+    "vibe-math-v4": "math_computation",
+    "vibe-math-v5": "math_computation"
+  },
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "op": {
+        "type": "string",
+        "enum": [
+          "probe",
+          "run",
+          "receipt",
+          "install"
+        ],
+        "description": "probe = only detect engines/packages/licences (never runs user code); run = execute; receipt = re-render/complete an existing receipt idempotently; install = two-step plan/confirm package installation"
+      },
+      "engine": {
+        "type": "string",
+        "description": "engine name (python|r|octave|julia|matlab|maple|wolfram|sage|cli) or 'auto'"
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "code",
+          "file",
+          "expr"
+        ],
+        "description": "op=run feeding mode; 'expr' is refused for engine=cli"
+      },
+      "code": {
+        "type": "string",
+        "description": "mode=code: source text; the tool writes it to Computation/<runId>/script.<ext> before executing"
+      },
+      "file": {
+        "type": "string",
+        "description": "mode=file: project-relative script path (path-guarded); op=receipt: a receipt id or script path"
+      },
+      "expr": {
+        "type": "string",
+        "description": "mode=expr: a single expression, substituted into ONE argv element by the assembler (never shell-concatenated)"
+      },
+      "packages": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "packages/toolboxes that must exist; ['refresh'] forces a re-probe in op=probe"
+      },
+      "timeoutMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "description": "per-run budget; defaults to params.mathTimeoutMs (60000), clamped to >= 1000"
+      },
+      "captureFiles": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "project-relative files copied into the receipt after the run (read-only copy; must stay inside the project)"
+      },
+      "record": {
+        "type": "boolean",
+        "description": "default true: write Computation/<runId>/ (script, outputs, receipt.json/.md)"
+      },
+      "cli": {
+        "type": "object",
+        "description": "required when engine='cli': { command, argv[], stdin? }",
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "argv": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "stdin": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "additionalProperties": false
+      },
+      "scope": {
+        "type": "string",
+        "enum": [
+          "user",
+          "system"
+        ],
+        "description": "op=install only. Defaults to params.mathInstallScope ('user'). 'system' must be given on EVERY call and is never remembered."
+      },
+      "dryRun": {
+        "type": "boolean",
+        "description": "op=install: default true -> return the plan + planToken without executing"
+      },
+      "confirm": {
+        "type": "string",
+        "description": "op=install: the planToken returned by the dry run, echoed verbatim; executing with a mismatched/expired token is REFUSED"
+      }
+    },
+    "required": [
+      "op"
+    ],
+    "additionalProperties": false
+  },
+  "runtimeValidation": {
+    "required": true,
+    "reason": "v2/v3/v4 register tools bare (additionalProperties:false is NOT enforced at runtime on v4 - v4:3034), so the module validates args itself and returns MATH_INVALID_ARGUMENT (never throws)"
+  },
+  "ops": {
+    "probe": {
+      "runsUserCode": false,
+      "returns": "engines[] (available, path, version, licence), packages{}, cached:boolean",
+      "notes": "cache is per process; 'refresh' in packages forces a re-probe; missing engines come back with the user-install guide (§3.1 of the spec)"
+    },
+    "run": {
+      "modes": {
+        "code": "write code to Computation/<runId>/script.<ext>, then execute",
+        "file": "path-guard the project-relative file, copy it into Computation/<runId>/script.<ext>, then execute",
+        "expr": "substitute expr into the engine eval template as ONE argv element; refused for engine=cli"
+      },
+      "limits": {
+        "timeoutMs": "params.mathTimeoutMs or the call's timeoutMs",
+        "stdoutCapBytes": 65536,
+        "stderrCapBytes": 65536
+      },
+      "cwd": "<projectRoot>",
+      "guard": "script path must normalise inside <projectRoot> (same containment rule as leanAbsPath, vibe-math-v2.js:635-644)"
+    },
+    "receipt": {
+      "executes": false,
+      "behaviour": "re-render receipt.md and fill missing artefacts for an existing Computation/<runId>/ (idempotent, same semantics as the paper receipt: vibe-math-v2.js:2707-2725)"
+    },
+    "install": {
+      "twoStep": true,
+      "defaultScope": "user",
+      "systemScope": "explicit per call, never remembered, never defaulted",
+      "commercialEngines": "REFUSED{reason:'commercial'} - vendor guidance only, never installed",
+      "planToken": "sha256(engine|packages|scope|commands|planVersion) - content-derived, no wall clock; TTL = params.mathPlanTtlMs (900000)",
+      "audit": "Computation/installs/<planToken>.json + .md: plan, scope, manager, commands, exit, before/after versions, installed[], uninstall commands, network:'not-enforced-by-plugin'",
+      "rollback": "no general rollback; the audit records the exact commands + before/after versions so an uninstall is verifiable"
+    }
+  },
+  "returnShell": {
+    "ok": true,
+    "op": "run",
+    "engine": "octave",
+    "mode": "code",
+    "code": null,
+    "message": "human-readable one-liner (safe to show the model)",
+    "engineInfo": {
+      "name": "octave",
+      "path": "<resolved>",
+      "version": "<probe>",
+      "source": "path|descriptor-override|cli"
+    },
+    "argv": [
+      "<resolved>",
+      "--no-gui",
+      "--quiet",
+      "Computation/<runId>/script.m"
+    ],
+    "scriptPath": "Computation/<runId>/script.m",
+    "scriptHash": "<sha256 of the script bytes>",
+    "attempt": 1,
+    "attemptDir": "Computation/<runId>",
+    "baseRunDir": "Computation/<runId>",
+    "sourceFile": "Problems/calc.m",
+    "scriptChanged": false,
+    "scriptChangedDuringRun": false,
+    "packages": {
+      "symbolic": false
+    },
+    "exit": 0,
+    "timedOut": false,
+    "ms": 412,
+    "stdout": "<= 64KB",
+    "stderr": "",
+    "truncated": {
+      "stdout": false,
+      "stderr": false
+    },
+    "artifacts": [
+      {
+        "path": "Computation/<runId>/stdout.txt",
+        "sha256": "<hex>",
+        "bytes": 1024
+      }
+    ],
+    "receipt": {
+      "dir": "Computation/<runId>",
+      "json": "Computation/<runId>/receipt.json",
+      "md": "Computation/<runId>/receipt.md",
+      "sha256": "<hex>"
+    },
+    "warnings": [
+      {
+        "code": "OUTPUT_TRUNCATED",
+        "message": "stdout exceeded 64KB; full text in .../stdout.txt"
+      }
+    ],
+    "next": {
+      "kind": "user-install|agent-install|vendor|enable|note",
+      "detail": "present on every environment-missing failure"
+    }
+  },
+  "failureCodes": [
+    {
+      "code": "MATH_NOT_AVAILABLE",
+      "when": "params.mathComputation === 'off'",
+      "next": "enable hint: mathComputation=auto"
+    },
+    {
+      "code": "MATH_ENGINE_NOT_FOUND",
+      "when": "no allowed engine resolvable",
+      "next": "per-OS user-install guide + agent install plan hint"
+    },
+    {
+      "code": "MATH_ENGINE_LICENSE_REQUIRED",
+      "when": "engine found but its licence probe fails (commercial engines)",
+      "next": "vendor link + activation instructions; NEVER an install plan"
+    },
+    {
+      "code": "MATH_ENGINE_UNUSABLE",
+      "when": "engine found but the version probe fails and it is not commercial",
+      "next": "user-install guide (repair hint)"
+    },
+    {
+      "code": "MATH_MISSING_PACKAGES",
+      "when": "requested packages import/probe as absent",
+      "next": "agent install plan (dry run) with the missing names"
+    },
+    {
+      "code": "MATH_TIMEOUT",
+      "when": "run exceeded timeoutMs (process terminated)",
+      "next": "narrow the computation; the partial output is recorded"
+    },
+    {
+      "code": "MATH_NONZERO_EXIT",
+      "when": "engine exit code != 0",
+      "next": "stderr tail is returned; no automatic retry"
+    },
+    {
+      "code": "MATH_REFUSED",
+      "when": "path escape, policy conflict (cli/shell with mathMode='typed', engine not in mathEngines), cli without command, expr on cli, or install without a matching confirm token | op:'receipt' with no archive on disk (next.reason='archive-missing')",
+      "next": "reason field names the rule"
+    },
+    {
+      "code": "MATH_ENGINE_BAD_ARGV",
+      "when": "the engine exited with a usage/option error (stderr matches unknown option|invalid option|unrecognized|usage:, or non-zero exit with usage-like output) - typical for a version-mismatched commercial template",
+      "next": "{ kind: 'engine-override', engine, argv: [<the exact argv used>], hint: 'mathEngineOverride' } - never a bare NONZERO_EXIT"
+    },
+    {
+      "code": "MATH_INVALID_ARGUMENT",
+      "when": "schema/enum/range validation failed | op:'receipt' with an unparsable receipt.json (next.reason='receipt-unparsable')",
+      "next": "the validator's reason"
+    },
+    {
+      "code": "MATH_NO_SUBPROCESS",
+      "when": "the host exposes no subprocess service",
+      "next": "note: record the conclusion without execution"
+    }
+  ],
+  "warnings": [
+    {
+      "code": "OUTPUT_TRUNCATED",
+      "severity": "warning",
+      "meaning": "ok:true plus truncated flags; re-run with a narrower output rather than treating it as a failure"
+    },
+    {
+      "code": "SCRIPT_CHANGED_SINCE_LAST_RECEIPT",
+      "severity": "warning",
+      "meaning": "mode:'file': the source file's current hash differs from the previous receipt's scriptHash - the old receipt does NOT represent the current code; the run was written as a new attempt"
+    },
+    {
+      "code": "SCRIPT_CHANGED_DURING_RUN",
+      "severity": "warning",
+      "meaning": "mode:'file': the source file changed between the pre-run and post-run hash (another member edited it); re-run before citing this receipt"
+    },
+    {
+      "code": "ARCHIVE_RETENTION_EXCEEDED",
+      "severity": "warning",
+      "meaning": "Computation/ has passed the documented cap (20 attempts per archive id, 200 run dirs per project); the tool only warns and NEVER deletes"
+    }
+  ],
+  "archiveSemantics": {
+    "discoverability": "every run returns and records scriptPath + scriptHash; mode:'code' writes the script to Computation/<runId>/script.<ext> and the agent may open/edit it with normal file tools",
+    "rerunRule": "after editing, re-run with mode:'file' to produce a NEW receipt; an old receipt must not be cited as evidence for edited code (the prompt text says this explicitly)",
+    "runId": "runId = <preset>-<projectSlug>-<sha256(engine|mode|KEY|sorted(packages))[0:12]>; KEY is the SOURCE PATH for mode:'file' (file:<rel>) and the canonical script text otherwise; no wall clock",
+    "appendOnly": "attempt 1 lives in Computation/<id>/ and is never rewritten; attempt n>=2 lives in Computation/<id>/attempts/<n>/ (first free n); existing files are never overwritten",
+    "reconciliation": "mode:'file' runs and op:'receipt' compare the recorded scriptHash with the current hash and report scriptChanged; a file run additionally hashes before and after the run and reports scriptChangedDuringRun",
+    "receiptOp": "op:'receipt' is read-only: it re-checks the hash, returns the recorded + current hashes, and only writes a MISSING receipt.md - it never rewrites existing receipt files",
+    "retention": "cap = MATH_ARCHIVE_MAX_ATTEMPTS_PER_RUN (20) and MATH_ARCHIVE_MAX_RUNS (200, checked only when the host exposes the optional listDir); over the cap = warn only, never auto-delete",
+    "concurrency": "same-archive-id allocation + the claiming receipt.json write are serialised by an in-process per-id promise chain, so two concurrent runs of one id take attempt 1 and attempt 2 and never share a directory; cross-process concurrency still needs an exclusive-create primitive from the host (docs §6)",
+    "failClosed": "a source file that disappears mid-run sets scriptChangedDuringRun:true (null !== before hash); op:receipt reports scriptChanged:true when the archived script cannot be read",
+    "pathGuard": "projectRel is LEXICAL only (rejects absolute/drive/.. escapes) and does not resolve symlinks/junctions; real containment belongs to the host fs (resolve/contains)",
+    "verificationBoundary": "engine execution, real argv/version/licence paths and installers are verified ONLY through the fake subprocess seam, never against real engines",
+    "receiptOpMissingArchive": "op:receipt for a missing archive directory/receipt.json returns MATH_REFUSED with next:{kind:reason, reason:archive-missing}; an unparsable receipt.json stays MATH_INVALID_ARGUMENT (receipt-unparsable)",
+    "hashLimits": "scriptChanged/scriptChangedDuringRun are CONTENT hashes by design: a same-content replacement (different inode/mtime) and a truncate-then-restore are indistinguishable and cannot be reported",
+    "instanceLifetime": "per-session module instances live exactly as long as their session object (pre-existing preset lifecycle, not introduced by P2a or the audit fixes)"
+  },
+  "paramNamesFrozen": {
+    "value": true,
+    "names": [
+      "mathComputation",
+      "mathMode",
+      "mathEngines",
+      "mathTimeoutMs",
+      "mathPackages",
+      "mathInstallScope"
+    ],
+    "convention": "camelCase, mirroring the existing leanCommand/leanArgs/leanTimeoutMs (docs/formal-verification.md:31-34)",
+    "costOfRenamingLater": "4 presets x 5-6 wiring sites + v5 closed-set vibe_v5_set + visibleParams + both persona blocks + prompt-corpus-persona/* + prompt-corpus-vN/* + bilingual README tables + docs/math-computation.md"
+  },
+  "params": {
+    "mathComputation": {
+      "type": "enum",
+      "values": [
+        "off",
+        "auto",
+        "on"
+      ],
+      "default": "auto"
+    },
+    "mathMode": {
+      "type": "enum",
+      "values": [
+        "typed",
+        "typed+shell"
+      ],
+      "default": "typed+shell",
+      "meaning": "prompt policy ONLY (the plugin cannot enforce it: subprocess.spawn has no policy slot). With 'typed+shell' the prompt may suggest the host shell as a fallback, but shell runs carry no receipt and no limit guarantees and MUST be marked 'not tool-archived'; 'typed' never mentions the shell and also refuses engine='cli'"
+    },
+    "mathEngines": {
+      "type": "array",
+      "default": [
+        "python",
+        "r",
+        "octave",
+        "julia",
+        "matlab",
+        "maple",
+        "wolfram",
+        "cli"
+      ],
+      "meaning": "SageMath is P2. 'cli' is ON BY DEFAULT (ruling 2): it is no broader than the host shell the model already has and still goes through limits/cwd/receipts. Disable it by removing 'cli' here or by setting mathMode='typed' (then engine='cli' returns REFUSED{reason:'policy'})"
+    },
+    "mathTimeoutMs": {
+      "type": "integer",
+      "default": 60000,
+      "minimum": 1000
+    },
+    "mathPackages": {
+      "type": "array",
+      "default": []
+    },
+    "mathInstallScope": {
+      "type": "enum",
+      "values": [
+        "user",
+        "system"
+      ],
+      "default": "user",
+      "meaning": "'system' is per call only and is never persisted"
+    },
+    "mathPlanTtlMs": {
+      "type": "integer",
+      "default": 900000
+    },
+    "mathEngineOverride": {
+      "type": "object",
+      "default": {},
+      "meaning": "per-engine overrides of versionArgv/scriptArgv/evalArgv/packageProbe - the supported escape hatch for commercial CLI drift (Maple templates ship flagged VERIFY)"
+    }
+  },
+  "policyInteractions": {
+    "shellFallback": "not enforceable by the plugin (subprocess.spawn has no policy slot, vibe-math-v5.js:2096-2100); mathMode only decides what the prompt advertises. Real enforcement needs host sandbox/policy support - recorded as a pending upstream requirement (spec R9), out of scope for this round",
+    "cliEscapeHatch": "engine='cli' is a TOOL path: it goes through the same cwd/timeout/output-cap/receipt pipeline and is recorded as 'cli:<command>'. It is ON BY DEFAULT because the model already has a host shell under mathMode='typed+shell'; cli is therefore no broader, but it does leave a receipt and respects limits. Disable via mathMode='typed' or by omitting 'cli' from mathEngines; it is NOT the raw host shell",
+    "evidence": "only tool-routed runs produce Computation/<runId>/ receipts; raw shell runs produce nothing and must be labelled un-archived",
+    "argvEcho": "every run writes the exact argv into receipt.argv and echoes it in the return shell, so a version-mismatched template is diagnosable; a usage/option error returns MATH_ENGINE_BAD_ARGV with next.kind='engine-override'"
+  },
+  "refusalVocabulary": {
+    "note": "EXHAUSTIVE (guarded by tests/audit-math-computation-parity.mjs): every literal the module can emit, and every literal must be written as a STRING LITERAL so the vocabulary stays machine-extractable. Renaming/adding one without updating here turns the parity guard red.",
+    "failureCodes": 11,
+    "nextKinds": [
+      "agent-install",
+      "enable",
+      "engine-override",
+      "note",
+      "reason",
+      "user-install",
+      "vendor"
+    ],
+    "reasons": [
+      "archive-missing",
+      "engine-not-allowed",
+      "expr-not-supported",
+      "file-not-found",
+      "missing-cli-command",
+      "mode-not-supported",
+      "no-subprocess",
+      "path-outside-project",
+      "plan-token-mismatch",
+      "policy",
+      "receipt-unparsable",
+      "system-scope-unsupported",
+      "unsupported-version-syntax"
+    ]
+  }
+}

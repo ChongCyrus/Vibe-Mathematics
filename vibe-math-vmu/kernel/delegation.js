@@ -25,6 +25,7 @@
 // child entry `task/1`. `status().scopeMatch` says so at runtime; the refusal names the offending item.
 // SETTINGS READ CONVENTION (kernel/guard.js): the key is read as a PLAIN LITERAL, because the settings table
 // and the docs audit both discover "wired" keys by scanning file text for the literal.
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const apiVersion = 1
 
 export function refuse(code, message, hint) {
@@ -92,7 +93,6 @@ export function createDelegation({ clock = () => 0, log = null, settings = {}, b
   const unwiredHooks = new Map() // hook name -> times the bus could not take it (a counted wiring gap)
   const declaredTopics = new Set()
   const rootAuthority = new Map() // actor -> {commands:[], resources:[]}
-  let seq = 0
 
   if (roots && typeof roots === 'object') {
     for (const actor of Object.keys(roots)) {
@@ -275,7 +275,7 @@ export function createDelegation({ clock = () => 0, log = null, settings = {}, b
 
       // ── budget (sub-delegation may only pass on a SHARE of what remains) ────────────────────────────
       const childBudget = normalizeBudget(budget, { parent, from })
-      const id = 'd-' + (++seq)
+      const id = mint('delegation', 'd-')
       const g = {
         id, from, to,
         scope: sc,

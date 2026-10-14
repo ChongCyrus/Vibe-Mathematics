@@ -174,12 +174,22 @@ test('determinism (injected clock), pure read paths, and zero-config', () => {
   const a = JSON.stringify({ s: zero.status(), s2: zero.status({ courseId: z.courseId }), k: zero.keysUsed() })
   const b = JSON.stringify({ s: zero.status(), s2: zero.status({ courseId: z.courseId }), k: zero.keysUsed() })
   assert.equal(a, b, 'status() 不得改状态')
+  // ROUND 2 (global durable minter): two runs no longer carry the SAME submission id, so the JSON equality is replaced
+  // by the properties that hold - both succeed, the ids are DISJOINT and the numeric suffix is STRICTLY INCREASING.
   const run = () => {
     const c = co({}, () => 7)
     const o = c.open({ title: 'T' })
-    return JSON.stringify(c.submit({ courseId: o.courseId, who: 'a', artifact: 'lib/x', rubric: 'r' }))
+    const s = c.submit({ courseId: o.courseId, who: 'a', artifact: 'lib/x', rubric: 'r' })
+    return { courseId: o.courseId, submissionId: s.submissionId, ok: s.ok }
   }
-  assert.equal(run(), run())
+  const r1 = run(); const r2 = run()
+  assert.equal(r1.ok, true, 'submit() succeeds in both runs')
+  // The SUBMISSION id is DERIVED from the course id (`co-1-s1`), so the minted-id property is asserted on the COURSE
+  // id; the derived submission ids differ because their prefix differs.
+  assert.notEqual(r1.courseId, r2.courseId, 'two instances in one process NEVER share a course id (global minter)')
+  const idNum = (id) => Number(String(id).split('-').pop())
+  assert.ok(idNum(r2.courseId) > idNum(r1.courseId), 'the course-id suffix is STRICTLY INCREASING across instances')
+  assert.notEqual(r1.submissionId, r2.submissionId, 'the derived submission ids differ too (their prefix differs)')
   passed += 1
 })
 

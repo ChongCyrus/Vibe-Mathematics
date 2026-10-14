@@ -117,8 +117,15 @@ const mk = (settings = {}) => createCollab({ clock: () => now, settings: Object.
 // ── 8. determinism + purity ──────────────────────────────────────────────────────────────────────────────────
 {
   now = 500
-  const mkRun = () => { const c = mk(); c.addCounterparty({ name: 'Same' }); const a = c.openAgreement({ counterparty: 'same' }); return c.status() }
-  ok(JSON.stringify(mkRun()) === JSON.stringify(mkRun()), 'determinism: two instances agree on status()')
+  // ROUND 2 (global durable minter): two runs no longer carry the SAME ids, so "agree on status()" is replaced by the
+  // properties that hold - each run is readable, the COUNTS agree, and the two agreement-id sets are DISJOINT.
+  const mkRun = () => { const c = mk(); c.addCounterparty({ name: 'Same' }); const a = c.openAgreement({ counterparty: 'same' }); return { status: c.status(), agreementId: a.id } }
+  const run1 = mkRun(); const run2 = mkRun()
+  ok(run1.status.ok !== false && run2.status.ok !== false, 'determinism: both runs are readable after the same build()')
+  ok(run1.agreementId !== run2.agreementId, 'determinism: two instances in one process NEVER share an agreement id (global minter)', JSON.stringify({ a: run1.agreementId, b: run2.agreementId }))
+  const idNum = (id) => Number(String(id).split('-').pop())
+  ok(idNum(run2.agreementId) > idNum(run1.agreementId), 'determinism: the id suffix is STRICTLY INCREASING across instances', JSON.stringify({ a: run1.agreementId, b: run2.agreementId }))
+  ok(JSON.stringify(run1.status.counters) === JSON.stringify(run2.status.counters), 'determinism: the COUNTERS agree (only the ids differ)')
   const c = mk()
   c.addCounterparty({ name: 'Reader' })
   const before = JSON.stringify(c.status())

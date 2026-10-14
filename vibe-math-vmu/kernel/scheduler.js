@@ -23,6 +23,7 @@
 //   · READ paths (due/list/history/status) never mutate the schedule
 // SETTINGS READ CONVENTION (kernel/guard.js): every key is read as a PLAIN LITERAL — the settings table and
 // the docs audit both discover "wired" keys by scanning file text for the literal.
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const apiVersion = 1
 
 export function refuse(code, message, hint) {
@@ -115,7 +116,7 @@ export function createScheduler({ clock = () => 0, log = null, settings = {}, bu
   const unwired = new Map()
   const declaredTopics = new Set()
   const handles = new Map()   // itemId -> timer handle
-  let seq = 0
+
   const counts = { fired: 0, reported: 0, dropped: 0, skipped: 0, coalesced: 0 }
 
   const bump = (map, key, by = 1) => map.set(key, (map.get(key) || 0) + by)
@@ -197,7 +198,7 @@ export function createScheduler({ clock = () => 0, log = null, settings = {}, bu
       throw deny('VMU_SCHEDULE_LIMIT', 'too many pending triggers: ' + pendingItems().length + '/' + maxPending + ' (vmu.schedule.maxPending / vmu.scheduler.maxTriggers)',
         'cancel a pending trigger, or raise the cap — the kernel never silently drops a scheduled item')
     }
-    const id = 's-' + (++seq)
+    const id = mint('schedule', 's-')
     const it = {
       id, kind, what: String(what), payload: payload && typeof payload === 'object' ? Object.assign({}, payload) : null,
       atMs, intervalMs: intervalMs === null ? null : intervalMs, runs: 0, maxRuns,

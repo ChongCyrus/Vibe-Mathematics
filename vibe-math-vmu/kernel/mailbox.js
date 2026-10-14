@@ -1,0 +1,553 @@
+// vmu mailbox — the DURABLE PER-RECIPIENT MAIL primitive (docs/08 §2, docs/17).
+//
+// The v5r line got four things right about mail, and this module keeps all four as INVARIANTS rather than
+// as habits:
+//   1. ONE COPY PER RECIPIENT. Every message is queued for exactly the recipients it names, so one member's
+//      acknowledgement can never consume another member's copy (its `say` minted one `msg-N` per recipient
+//      in a single transaction — a group message is N messages, not one shared one);
+//   2. ACK ONLY AFTER A SUCCESSFUL DELIVERY. The prompt is built, the send is attempted, and only a send
+//      that really happened acknowledges the entries; a failed attempt leaves EVERYTHING pending, so
+//      "not acked ⇒ still redeliverable" holds by construction;
+//   3. THE BODY IS DROPPED AT ACK. Once delivered, only the envelope is kept (`id/from/at/kind/bytes`), so a
+//      quote anchor that points at delivered mail is REFUSED BY NAME rather than quoting text that no
+//      longer exists;
+//   4. INJECT ONCE PER PROMPT. A second prompt build before the wake must not repeat the inbox block; the
+//      injection mark is dropped on every CONCLUDED attempt, so a failed wake re-prepends what is pending.
+//
+// On top of that, delivery is GRADED (urgent vs digest) and budgeted (how many members one pass may wake),
+// because the v5r lesson was that a chatty institute otherwise wakes everyone for every line.
+//
+// The kernel never calls the host itself: the transport is an INJECTED `deliver` seam, and a missing seam is
+// returned as a named `VMU_ENGINE_UNAVAILABLE` result (never a silent success, never a thrown crash path for
+// a runtime gap). Durability is an OPTIONAL injected `store` port; without it the mailbox is honest about
+// being memory-only (`status().durable === false`).
+
+/** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
+export const apiVersion = 1
+
+/** Kinds that are delivered the moment the recipient runs, instead of waiting for the digest window. */
+export const MAILBOX_URGENT_KINDS = Object.freeze(['dm', 'office', 'assign', 'nudge', 'notice', 'meeting', 'verify'])
+
+/** Advisory per-box cap. Over it a send is REFUSED by name with the count — a limit the machine enforces. */
+export const MAILBOX_BOX_CAP = 500
+
+/** Every `vmu.mailbox.*` key this module reads (docs/04). */
+export const MAILBOX_KEYS = Object.freeze([
+  'vmu.mailbox.digestWindowMs',
+  'vmu.mailbox.digestMax',
+  'vmu.mailbox.urgentKinds',
+  'vmu.mailbox.ackedLedgerCap',
+  'vmu.mailbox.wakeBudget',
+  'vmu.mailbox.deliverTimeoutMs',
+])
+
+/**
+ * WIRED = read AND able to change an outcome: the window and the max decide when a digest is due, the urgent
+ * kinds decide which entries skip the window, the acked cap decides counted drops, the wake budget decides
+ * how many members one plan may wake, and the deliver timeout is written into the envelope the host sees.
+ */
+export const WIRED_MAILBOX_KEYS = Object.freeze(MAILBOX_KEYS.slice())
+export const PLANNED_MAILBOX_KEYS = Object.freeze([])
+
+/** The durable key (kernel/store.js PUBLIC_KEYS). */
+export const MAILBOX_STORE_KEY = 'mailbox'
+
+/**
+ * Named refusal (codes are registered in docs/03 §8). Like `kernel/chat.js`, EVERY refusal states its
+ * evaluated scope (D3): `enforced[]` (empty when this decision read no settings key, never `undefined`)
+ * plus `enforcedScope`.
+ */
+export function refuse(code, message, hint, enforced) {
+  const err = new Error(message)
+  err.code = code
+  if (hint) err.hint = hint
+  err.enforced = Array.isArray(enforced) ? enforced.slice() : []
+  err.enforcedScope = 'evaluated-so-far'
+  return err
+}
+
+import { ms as toMs, msStrict } from './timevalue.js'
+
+const INSTANT_KEY = /(At)$/i
+const INSTANT_NAMES = Object.freeze(['until', 'expires', 'expiresAt', 'expiresOn', 'deadline'])
+const clone = (v) => JSON.parse(JSON.stringify(v))
+const bytesOf = (s) => Buffer.byteLength(String(s === undefined || s === null ? '' : s), 'utf8')
+
+/**
+ * `createMailbox({ clock, log, settings, store, deliver, resolveAudience })`.
+ *
+ *   · `deliver(envelope)` — the transport seam. The envelope is `{member, entries, urgent, count, timeoutMs}`;
+ *     returning `false` (or throwing) means NOTHING was delivered and NOTHING is acked;
+ *   · `resolveAudience({to, from})` — the roster seam. Without it, a single member id is accepted as-is and
+ *     `all`/`voters` are refused by name (the kernel does not guess a roster);
+ *   · `store` — the durable port; absent ⇒ memory-only and `status().durable === false`.
+ */
+export function createMailbox({
+  clock = () => new Date(0).toISOString(),
+  log = () => {},
+  settings = {},
+  bus = null,
+  store = null,
+  deliver = null,
+  resolveAudience = null,
+} = {}) {
+  if (typeof clock !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'createMailbox needs a clock function', 'pass { clock }')
+
+  const readKey = (k) => {
+    if (settings && typeof settings.get === 'function') {
+      const v = settings.get(k)
+      if (v !== undefined) return v
+    }
+    if (settings && Object.prototype.hasOwnProperty.call(settings, k)) return settings[k]
+    const short = k.split('.').pop()
+    const nested = (settings && (settings.mailbox || settings)) || {}
+    if (nested && Object.prototype.hasOwnProperty.call(nested, short)) return nested[short]
+    return undefined
+  }
+  const numKey = (k, d) => { const n = Number(readKey(k)); return Number.isFinite(n) && n >= 0 ? Math.floor(n) : d }
+  const listKey = (k, d) => { const v = readKey(k); return Array.isArray(v) ? v.map(String) : d }
+
+  const digestWindowOf = () => numKey('vmu.mailbox.digestWindowMs', 45000)
+  const digestMaxOf = () => numKey('vmu.mailbox.digestMax', 12)
+  const urgentKindsOf = () => listKey('vmu.mailbox.urgentKinds', MAILBOX_URGENT_KINDS)
+  const ackedCapOf = () => numKey('vmu.mailbox.ackedLedgerCap', 500)
+  const wakeBudgetOf = () => numKey('vmu.mailbox.wakeBudget', 1)
+  const deliverTimeoutOf = () => numKey('vmu.mailbox.deliverTimeoutMs', 0)
+
+  const boxes = new Map()          // member -> [entry]
+  const acked = new Map()          // member -> [{id, from, at, kind, bytes}]
+  const injected = new Map()       // member -> Set(ids)  ("already put in a prompt, not yet acked")
+  const audit = []
+  const dropped = { acked: 0, audit: 0, injectedMarks: 0 }
+  const refusals = new Map()
+  let seq = 0
+  let durable = false
+
+  /**
+   * The framework owns the clock, so an uninterpretable one is a NAMED refusal (never coerced to 0, which would
+   * make every entry look infinitely old and wake everyone). `msStrict` attaches `enforced: []` + scope.
+   */
+  const nowMs = () => msStrict(clock(), 'the injected mailbox clock')
+
+  /**
+   * RULE F: a stored stamp that cannot be interpreted is HANDLED, never silently coerced. Every stamp here was
+   * written from the same injected clock `nowMs()` validates, so this cannot occur in practice — but if a
+   * durable/hand-edited entry ever carries one, it is reported ONCE by name and excluded from the waiting-time
+   * computation (`null` = "no interpretable arrival"), which is the conservative side: unreadable mail never
+   * makes itself look "due now", and it is never silently dropped either.
+   */
+  let uninterpretableStamps = 0
+  const finiteStamp = (v) => { const t = toMs(v); return Number.isFinite(t) ? t : null }
+  const oldestStamp = (rows) => {
+    const stamps = []
+    for (const e of rows) {
+      const t = finiteStamp(e.at)
+      if (t === null) {
+        uninterpretableStamps += 1
+        if (uninterpretableStamps === 1 || uninterpretableStamps % 100 === 0) {
+          record('stamp-uninterpretable', { id: e.id, at: e.at, total: uninterpretableStamps,
+            reason: 'the arrival instant is not interpretable: EXCLUDED from the digest window and reported here (never coerced to 0)' })
+        }
+        continue
+      }
+      stamps.push(t)
+    }
+    return stamps.length ? Math.min(...stamps) : null
+  }
+  /**
+   * The ONE hook helper (string topic FIRST — an object-shaped emit is rejected and then swallowed, so it would
+   * never reach a subscriber). Registered names: `mailbox/deliver-before` (blockable), `mailbox/delivered`.
+   */
+  const emitHook = (topic, payload, scope) => {
+    if (!bus || typeof bus.emit !== 'function') return null
+    try {
+      // Topic LITERALS: the hook-coverage gate reads `bus.emit('<name>'` from the source (see kernel/chat.js).
+      if (topic === 'mailbox/deliver-before') return bus.emit('mailbox/deliver-before', payload, scope || {})
+      if (topic === 'mailbox/delivered') return bus.emit('mailbox/delivered', payload, scope || {})
+      return null
+    } catch (e) { return null }
+  }
+  const note = (code) => { refusals.set(code, (refusals.get(code) || 0) + 1); return code }
+
+  const record = (what, detail) => {
+    const row = Object.assign({ at: clock(), what }, detail)
+    audit.push(row)
+    if (audit.length > 500) { const over = audit.length - 500; dropped.audit += over; audit.splice(0, over) }
+    return row
+  }
+
+  const boxOf = (member) => {
+    const id = String(member)
+    if (!boxes.has(id)) boxes.set(id, [])
+    return boxes.get(id)
+  }
+  const urgentOf = (kind) => urgentKindsOf().includes(String(kind))
+
+  const rejectInstants = (args, what) => {
+    const keys = Object.keys(args || {}).filter((k) => INSTANT_KEY.test(String(k)) || INSTANT_NAMES.includes(String(k)))
+    if (!keys.length) return
+    note('VMU_INVALID_ARGUMENT')
+    record('instant-refused', { what, keys })
+    throw refuse('VMU_INVALID_ARGUMENT', 'a delivery timestamp is not the caller\'s to set: ' + what + ' does not accept ' + keys.join(', '),
+      'the framework stamps `at` from the injected clock')
+  }
+
+  const mailbox = {
+    /**
+     * Queue one message for each named recipient. A group send is N queued entries with N ids (one per
+     * recipient), which is what makes per-recipient acknowledgement meaningful.
+     */
+    send(from, { to = null, text = '', kind = 'dm', replyTo = null } = {}) {
+      const who = String(from === undefined || from === null ? '' : from)
+      if (!who) throw refuse('VMU_INVALID_ARGUMENT', 'a message needs a non-empty `from`', 'pass the sending member id')
+      const body = String(text === undefined || text === null ? '' : text)
+      if (!body.trim()) throw refuse('VMU_INVALID_ARGUMENT', 'a message needs non-empty text', 'pass { text }')
+      rejectInstants({ replyTo }, 'send')
+      const raw = to === null || to === undefined ? '' : to
+      let targets = []
+      if (Array.isArray(raw)) targets = raw.map(String).filter(Boolean)
+      else if (String(raw) === '' ) targets = []
+      else if (String(raw) === 'all' || String(raw) === 'voters') {
+        if (typeof resolveAudience !== 'function') {
+          note('VMU_ENGINE_UNAVAILABLE')
+          record('send-refused', { from: who, reason: 'audience-seam-missing', to: String(raw) })
+          return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', code: 'VMU_ENGINE_UNAVAILABLE',
+            message: 'cannot resolve "' + String(raw) + '": no audience seam is bound',
+            hint: 'inject { resolveAudience } — the kernel never guesses a roster (docs/11 §4.1)' }
+        }
+        targets = resolveAudience({ to: String(raw), from: who }) || []
+        targets = (Array.isArray(targets) ? targets : []).map(String).filter(Boolean)
+      } else targets = [String(raw)]
+      if (!targets.length) {
+        note('VMU_MAILBOX_NO_SUCH_RECIPIENT')
+        record('send-refused', { from: who, reason: 'no-recipient', to: String(raw) })
+        throw refuse('VMU_MAILBOX_NO_SUCH_RECIPIENT', 'no recipient: ' + JSON.stringify(raw),
+          'pass a member id, an array of ids, or bind an audience seam for all/voters')
+      }
+
+      // A reply/quote anchor must still be LIVE: delivered bodies are gone, and quoting them would be a lie.
+      let anchorRef = null
+      if (replyTo !== null && replyTo !== undefined && String(replyTo) !== '') anchorRef = mailbox.anchor(replyTo).id
+
+      const made = []
+      for (const t of targets) {
+        const box = boxOf(t)
+        if (box.length >= MAILBOX_BOX_CAP) {
+          note('VMU_MAILBOX_CAP_REACHED')
+          record('send-refused', { from: who, to: t, reason: 'box-cap', held: box.length, cap: MAILBOX_BOX_CAP })
+          throw refuse('VMU_MAILBOX_CAP_REACHED',
+            'the mailbox of ' + t + ' already holds ' + box.length + ' undelivered entries (cap ' + MAILBOX_BOX_CAP + ')',
+            'deliver and acknowledge with flush(member), then retry — undelivered mail is never discarded for you')
+        }
+        seq += 1
+        const entry = { id: 'ml-' + String(seq), seq, from: who, to: t, at: clock(), kind: String(kind || 'dm'),
+          text: body, replyTo: anchorRef, urgent: urgentOf(kind) }
+        box.push(entry)
+        made.push({ id: entry.id, to: t, urgent: entry.urgent })
+      }
+      record('sent', { from: who, ids: made.map((m) => m.id), to: targets, kind: String(kind || 'dm'), urgent: urgentOf(kind) })
+      return { ok: true, ids: made.map((m) => m.id), to: targets, delivered: 0, queued: made.length,
+        urgent: urgentOf(kind), enforced: ['vmu.mailbox.urgentKinds'] }
+    },
+
+    /** Pending = queued and NOT acked. `freshOnly` also excludes what a prompt already carried. */
+    pending(member, { freshOnly = false } = {}) {
+      const id = String(member)
+      const box = boxes.get(id) || []
+      const seen = injected.get(id) || new Set()
+      const rows = box.filter((e) => !freshOnly || !seen.has(e.id))
+      // RULE F: the comparator never sees NaN (which would make the order implementation-defined); an
+      // uninterpretable arrival sorts LAST, deterministically.
+      return rows.slice().sort((a, b) => {
+        const ta = finiteStamp(a.at); const tb = finiteStamp(b.at)
+        return (ta === null ? Number.POSITIVE_INFINITY : ta) - (tb === null ? Number.POSITIVE_INFINITY : tb)
+      }).map((e) => clone(e))
+    },
+
+    /** Mark entries as "already put in a prompt" (the once-per-prompt rule). Idempotent. */
+    markInjected(member, ids) {
+      const id = String(member)
+      const set = injected.get(id) || new Set()
+      const list = (Array.isArray(ids) ? ids : [ids]).map(String).filter(Boolean)
+      for (const x of list) set.add(x)
+      injected.set(id, set)
+      return { ok: true, member: id, marked: list.length, injected: set.size }
+    },
+
+    /** Drop the injection marks: called on EVERY concluded attempt, so a failed wake re-prepends. */
+    clearInjected(member) {
+      const id = String(member === undefined || member === null ? '' : member)
+      if (id === '') { injected.clear(); return { ok: true, cleared: 'all' } }
+      const had = injected.get(id) ? injected.get(id).size : 0
+      injected.delete(id)
+      return { ok: true, member: id, cleared: had }
+    },
+
+    /**
+     * Deliver, then acknowledge — IN THAT ORDER. A transport that fails (returns false or throws) acks
+     * NOTHING, and the receipt says how much is still pending.
+     */
+    async flush(member, { send = null } = {}) {
+      const id = String(member === undefined || member === null ? '' : member)
+      if (!id) throw refuse('VMU_INVALID_ARGUMENT', 'flush needs a member id', 'pass { member }')
+      const entries = mailbox.pending(id)
+      if (!entries.length) {
+        mailbox.clearInjected(id)
+        return { ok: true, member: id, delivered: 0, acked: [], remaining: 0, reason: 'nothing-pending' }
+      }
+      const tx = typeof send === 'function' ? send : deliver
+      if (typeof tx !== 'function') {
+        note('VMU_ENGINE_UNAVAILABLE')
+        record('flush-refused', { member: id, reason: 'no-deliver-seam', pending: entries.length })
+        return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', code: 'VMU_ENGINE_UNAVAILABLE',
+          message: 'cannot deliver to ' + id + ': no deliver seam is bound (' + entries.length + ' entr(y/ies) still pending)',
+          hint: 'inject { deliver } or pass { send } — a mail that was never sent is never acked' }
+      }
+      const urgent = entries.some((e) => e.urgent)
+      const envelope = { member: id, entries, count: entries.length, urgent, at: clock(), timeoutMs: deliverTimeoutOf() }
+      // The BEFORE hook: a middleware may stop this delivery by name. A refusal acks NOTHING.
+      const blocked = emitHook('mailbox/deliver-before', { member: id, count: entries.length, urgent }, { member: id })
+      if (blocked && blocked.ok === false) {
+        const code = (blocked.refused && blocked.refused.code) || blocked.code || 'VMU_MAILBOX_DELIVERY_FAILED'
+        const msg = (blocked.refused && blocked.refused.message) || blocked.message || 'a middleware refused this delivery'
+        note(code)
+        record('flush-refused', { member: id, reason: 'middleware', code, pending: entries.length })
+        return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', code, message: msg, remaining: entries.length,
+          hint: 'the mailbox/deliver-before hook refused it; nothing was acknowledged (docs/05 §5)' }
+      }
+      let result
+      try {
+        result = await tx(envelope)
+      } catch (e) {
+        note('VMU_MAILBOX_DELIVERY_FAILED')
+        record('flush-failed', { member: id, reason: 'transport-threw', error: String((e && e.message) || e), pending: entries.length })
+        return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', code: 'VMU_MAILBOX_DELIVERY_FAILED', message: 'delivery to ' + id + ' failed: ' + String((e && e.message) || e),
+          remaining: entries.length, hint: 'nothing was acknowledged: the same entries are still pending' }
+      }
+      if (result === false || (result && result.ok === false)) {
+        note('VMU_MAILBOX_DELIVERY_FAILED')
+        record('flush-failed', { member: id, reason: 'transport-refused', pending: entries.length })
+        return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', code: 'VMU_MAILBOX_DELIVERY_FAILED', message: 'the transport refused delivery to ' + id,
+          remaining: entries.length, hint: 'nothing was acknowledged: the same entries are still pending' }
+      }
+      // Success: NOW acknowledge, and only now.
+      const ids = mailbox.ack(id, entries.map((e) => e.id))
+      mailbox.clearInjected(id)
+      record('flushed', { member: id, acked: ids.acked.length, urgent })
+      emitHook('mailbox/delivered', { member: id, acked: ids.acked.length, remaining: mailbox.pending(id).length, urgent }, { member: id })
+      return { ok: true, member: id, delivered: entries.length, acked: ids.acked, remaining: mailbox.pending(id).length,
+        urgent, timeoutMs: envelope.timeoutMs, enforced: ['vmu.mailbox.deliverTimeoutMs'] }
+    },
+
+    /**
+     * Acknowledge entries: the body is DROPPED here and only the envelope stays. An unknown id is refused by
+     * name (an ack for mail that does not exist is a defect, not a no-op).
+     */
+    ack(member, ids) {
+      const id = String(member)
+      const box = boxOf(id)
+      const list = (Array.isArray(ids) ? ids : [ids]).map(String).filter(Boolean)
+      if (!list.length) throw refuse('VMU_INVALID_ARGUMENT', 'ack needs at least one entry id', 'pass ids from pending()')
+      const ackedIds = []
+      for (const wanted of list) {
+        const i = box.findIndex((e) => e.id === wanted)
+        if (i === -1) {
+          const wasAcked = (acked.get(id) || []).some((a) => a.id === wanted)
+          note('VMU_MAILBOX_ACK_UNKNOWN')
+          record('ack-refused', { member: id, id: wanted, alreadyAcked: wasAcked })
+          throw refuse('VMU_MAILBOX_ACK_UNKNOWN',
+            wasAcked ? (wanted + ' was already acknowledged (its body is gone)') : ('no pending entry ' + wanted + ' for ' + id),
+            'pending() lists what can still be acknowledged')
+        }
+        const e = box[i]
+        box.splice(i, 1)
+        const ledger = acked.get(id) || []
+        ledger.push({ id: e.id, from: e.from, at: e.at, kind: e.kind, bytes: bytesOf(e.text) })
+        const cap = ackedCapOf()
+        if (cap > 0 && ledger.length > cap) {
+          const over = ledger.length - cap
+          dropped.acked += over
+          ledger.splice(0, over)
+        }
+        acked.set(id, ledger)
+        ackedIds.push(e.id)
+      }
+      return { ok: true, member: id, acked: ackedIds, remaining: box.length, ackedLedger: (acked.get(id) || []).length, enforced: ['vmu.mailbox.ackedLedgerCap'] }
+    },
+
+    /**
+     * Resolve a quote anchor. LIVE mail resolves; delivered or unknown mail is a NAMED refusal — the body is
+     * not retained, so pretending to quote it would fabricate evidence.
+     */
+    anchor(id) {
+      const want = String(id === undefined || id === null ? '' : id)
+      for (const [, box] of boxes) {
+        const hit = box.filter((e) => e.id === want)[0]
+        if (hit) return clone(hit)
+      }
+      const ackedSomewhere = [...acked.values()].some((rows) => rows.some((r) => r.id === want))
+      note('VMU_MAILBOX_ANCHOR_DANGLING')
+      record('anchor-refused', { id: want, acked: ackedSomewhere })
+      throw refuse('VMU_MAILBOX_ANCHOR_DANGLING',
+        ackedSomewhere ? (want + ' was delivered and acknowledged: its body is no longer retained')
+          : ('no such message: ' + (want || '(empty)')),
+        'quote live mail only; use a durable record (library/minutes) for anything already delivered')
+    },
+
+    /** The v5r delivery decision: urgent kinds go now, plain chat waits for the digest window or the max. */
+    deliverable(member) {
+      const id = String(member)
+      const rows = mailbox.pending(id)
+      if (!rows.length) return { ok: true, member: id, deliver: false, urgent: false, count: 0, reason: 'nothing-pending' }
+      const urgent = rows.filter((e) => e.urgent)
+      if (urgent.length) return { ok: true, member: id, deliver: true, urgent: true, count: rows.length, urgentCount: urgent.length,
+        reason: 'urgent-kind', enforced: ['vmu.mailbox.urgentKinds'] }
+      const max = digestMaxOf()
+      const window = digestWindowOf()
+      const oldest = oldestStamp(rows)
+      const waitedMs = oldest === null ? 0 : nowMs() - oldest
+      const due = (max > 0 && rows.length >= max) || (window > 0 && oldest !== null && (nowMs() - oldest) >= window)
+      return { ok: true, member: id, deliver: due, urgent: false, count: rows.length,
+        waitedMs, uninterpretableStamps, max, windowMs: window,
+        reason: due ? (max > 0 && rows.length >= max ? 'digest-max' : 'digest-window') : 'not-due-yet',
+        enforced: ['vmu.mailbox.digestMax', 'vmu.mailbox.digestWindowMs'] }
+    },
+
+    /**
+     * Which members one scheduling pass may wake, urgent first, bounded by the budget. The deferred ones are
+     * named WITH the reason (the plan never silently drops a member).
+     */
+    plan({ members = null, budget = null } = {}) {
+      const b = budget === null || budget === undefined ? wakeBudgetOf() : Math.max(0, Math.floor(Number(budget) || 0))
+      const ids = Array.isArray(members) && members.length ? members.map(String)
+        : [...new Set([...boxes.keys()])].sort()
+      const candidates = []
+      for (const id of ids) {
+        const d = mailbox.deliverable(id)
+        if (d.deliver) candidates.push({ member: id, urgent: d.urgent, count: d.count, reason: d.reason })
+      }
+      candidates.sort((a, c) => (a.urgent === c.urgent ? 0 : (a.urgent ? -1 : 1)))
+      const wake = candidates.slice(0, b)
+      const deferred = candidates.slice(b).map((c) => ({ member: c.member, why: 'wake-budget', count: c.count }))
+      for (const id of ids) if (!candidates.some((c) => c.member === id)) {
+        const d = mailbox.deliverable(id)
+        if (d.count > 0) deferred.push({ member: id, why: d.reason, count: d.count })
+      }
+      return { ok: true, budget: b, wake, deferred, enforced: ['vmu.mailbox.wakeBudget'] }
+    },
+
+    unread(member) {
+      const id = String(member === undefined || member === null ? '' : member)
+      if (id === '') {
+        const per = Object.fromEntries([...boxes.keys()].map((k) => [k, mailbox.pending(k).length]))
+        return { ok: true, total: Object.values(per).reduce((a, b) => a + b, 0), per }
+      }
+      return { ok: true, member: id, unread: mailbox.pending(id).length, injected: (injected.get(id) || new Set()).size }
+    },
+
+    boxes() {
+      return Object.fromEntries([...boxes.keys()].sort().map((k) => [k, { pending: mailbox.pending(k).length, acked: (acked.get(k) || []).length }]))
+    },
+
+    /** Durability is OPTIONAL and never faked: without a store the snapshot stays in memory and says so. */
+    async persist() {
+      const snap = mailbox.snapshot()
+      if (!store || typeof store.patch !== 'function') {
+        durable = false
+        return { ok: true, persisted: false, durable: false, reason: 'no store port is bound', entries: Object.keys(snap.data.boxes).length }
+      }
+      try {
+        await store.patch(MAILBOX_STORE_KEY, () => snap)
+        durable = true
+        return { ok: true, persisted: true, durable: true, key: MAILBOX_STORE_KEY, seq: snap.counters.seq }
+      } catch (e) {
+        durable = false
+        return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', persisted: false, durable: false, code: 'VMU_STORE_FAILED', message: String((e && e.message) || e) }
+      }
+    },
+
+    async restore() {
+      if (!store || typeof store.read !== 'function') {
+        return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', restored: false, durable: false, code: 'VMU_ENGINE_UNAVAILABLE',
+          message: 'no store port is bound: the mailbox cannot be restored', hint: 'inject { store }' }
+      }
+      const snap = await store.read(MAILBOX_STORE_KEY)
+      return mailbox.hydrate(snap)
+    },
+
+    /** The seam v5r-reader-a asked for: JSON-safe state, id counter at max+1, skipped items NAMED. */
+    snapshot() {
+      const data = { boxes: {}, acked: {}, injected: {} }
+      for (const [k, v] of boxes) data.boxes[k] = clone(v)
+      for (const [k, v] of acked) data.acked[k] = clone(v)
+      for (const [k, v] of injected) data.injected[k] = [...v]
+      const maxSeq = Math.max(0, ...[...boxes.values()].flat().map((e) => Number(e.seq) || Number(String(e.id).replace(/^ml-/, '')) || 0))
+      return { apiVersion, face: 'mailbox', v: 1, at: clock(), counters: { seq: Math.max(seq, maxSeq) }, data,
+        skipped: [{ what: 'deliver-seam', why: 'an injected seam is re-bound by the host, never serialised' },
+          ...(store ? [] : [{ what: 'store-port', why: 'no durable port: the snapshot is memory-only' }])] }
+    },
+
+    /** Hydrate from a snapshot. Idempotent; the id counter only ever moves FORWARD. */
+    hydrate(snap) {
+      if (!snap || typeof snap !== 'object') return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', restored: false, code: 'VMU_INVALID_ARGUMENT', message: 'no snapshot to restore' }
+      if (snap.face !== 'mailbox') return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', restored: false, code: 'VMU_INVALID_ARGUMENT', message: 'this snapshot is not a mailbox snapshot (face=' + String(snap.face) + ')' }
+      const restored = []
+      const skipped = []
+      const data = snap.data || {}
+      try {
+        boxes.clear()
+        for (const [k, rows] of Object.entries(data.boxes || {})) { boxes.set(String(k), clone(rows)); restored.push('boxes.' + k) }
+        acked.clear()
+        for (const [k, rows] of Object.entries(data.acked || {})) { acked.set(String(k), clone(rows)); restored.push('acked.' + k) }
+        injected.clear()
+        for (const [k, ids] of Object.entries(data.injected || {})) { injected.set(String(k), new Set((ids || []).map(String))); restored.push('injected.' + k) }
+      } catch (e) {
+        skipped.push({ what: 'data', why: 'hydration threw: ' + String((e && e.message) || e) })
+      }
+      const fromSnap = Number((snap.counters && snap.counters.seq) || 0)
+      const maxSeq = Math.max(0, ...[...boxes.values()].flat().map((e) => Number(e.seq) || 0))
+      const before = seq
+      seq = Math.max(seq, fromSnap, maxSeq)          // names are immortal: the counter never goes backwards
+      durable = !!(store && typeof store.patch === 'function')
+      const dims = { ackedLedgerCap: ackedCapOf(), digestWindowMs: digestWindowOf(), digestMax: digestMaxOf(), wakeBudget: wakeBudgetOf() }
+      return { ok: true, restored: true, restored_items: restored, seqBefore: before, seqAfter: seq,
+        counters: { seq }, skipped: skipped.concat(snap.skipped || []), policy: dims, durable }
+    },
+
+    history() { return audit.map((a) => Object.assign({}, a)) },
+
+    status() {
+      const per = mailbox.boxes()
+      return { ok: true, apiVersion,
+        boxes: per, members: Object.keys(per).length,
+        pending: Object.values(per).reduce((a, b) => a + b.pending, 0),
+        acked: Object.values(per).reduce((a, b) => a + b.acked, 0),
+        seq, durable,
+        policy: { digestWindowMs: digestWindowOf(), digestMax: digestMaxOf(), urgentKinds: urgentKindsOf(),
+          ackedLedgerCap: ackedCapOf(), wakeBudget: wakeBudgetOf(), deliverTimeoutMs: deliverTimeoutOf(), boxCap: MAILBOX_BOX_CAP },
+        mechanism: { hasDeliverSeam: typeof deliver === 'function', hasAudienceSeam: typeof resolveAudience === 'function',
+          hasStore: !!(store && typeof store.patch === 'function'), clockInjected: true },
+        dropped: Object.assign({}, dropped), refusals: Object.fromEntries(refusals) }
+    },
+
+    keysUsed() {
+      return { 'vmu.mailbox.digestWindowMs': true, 'vmu.mailbox.digestMax': true, 'vmu.mailbox.urgentKinds': true,
+        'vmu.mailbox.ackedLedgerCap': true, 'vmu.mailbox.wakeBudget': true, 'vmu.mailbox.deliverTimeoutMs': true }
+    },
+
+    partition() {
+      return { wired: WIRED_MAILBOX_KEYS.slice(), planned: PLANNED_MAILBOX_KEYS.map((x) => (Array.isArray(x) ? x[0] : x)), unwired: [] }
+    },
+
+    config() {
+      return { digestWindowMs: digestWindowOf(), digestMax: digestMaxOf(), urgentKinds: urgentKindsOf(),
+        ackedLedgerCap: ackedCapOf(), wakeBudget: wakeBudgetOf(), deliverTimeoutMs: deliverTimeoutOf() }
+    },
+
+    refusals: () => Object.fromEntries(refusals),
+  }
+
+  return mailbox
+}
+
+export default createMailbox

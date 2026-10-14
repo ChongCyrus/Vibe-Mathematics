@@ -61,7 +61,10 @@ const CARD = { kind: 'lesson', text: 'the freeze path double-counts refusals', b
   const c = fakeClock(0)
   const m = createMemory({ clock: c.clock, settings: S() })
   const r = m.record({ kind: 'lesson', text: 'rebase before the long run', by: 'alpha', evidence: ['lib-1'], scope: 'team', tags: ['process'] })
-  ok(r.ok === true && r.id === 'm-1' && r.scope === 'team', 'record: a card is stored with a deterministic id')
+  // ID SEMANTICS (round 2, core's migration): the id is CAPTURED from the call and its SHAPE asserted - the
+  // literal 'm-1' only held while every instance restarted its counters; ids are minted process-wide now.
+  ok(r.ok === true && /^m-\d+$/.test(String(r.id)) && r.scope === 'team',
+    'record: a card is stored with a well-formed id (captured from the call, not a literal): ' + r.id)
   ok(r.expiresAt === null, 'record: with no TTL the card never expires')
   const kinds = ['lesson', 'antipattern', 'fact', 'preference']
   for (const k of kinds.slice(1)) m.record({ kind: k, text: 'text for ' + k, by: 'beta', evidence: ['lib-1'] })
@@ -241,9 +244,29 @@ const CARD = { kind: 'lesson', text: 'the freeze path double-counts refusals', b
   const after = JSON.stringify(m.recall()) + '|' + JSON.stringify(m.status()) + '|' + JSON.stringify(m.history()) + '|' + JSON.stringify(m.contradictions()) + '|' + JSON.stringify(m.list())
   ok(before === after, 'read-only: recall/status/history/contradictions/list never mutate the ledger')
   const a = build(); const b = build()
-  ok(JSON.stringify(a.recall()) === JSON.stringify(b.recall()), 'determinism: two instances agree on recall()')
+  // ID SEMANTICS (round 2): ids are minted PROCESS-WIDE, so two instances must not be expected to serialise
+  // identically. The replacement is stronger: each instance is READABLE, their id SETS are DISJOINT, and within
+  // each id family the numeric suffix strictly increases across instances. `status()` carries no minted ids, so
+  // its equality stays; `history()`'s determinism is re-pointed at its SHAPE (keys + count) instead of deleted.
+  const idsOf = (o) => Object.values(o || {}).filter(Array.isArray).flat().map((x) => x && x.id).filter((x) => typeof x === 'string')
+  const aIds = idsOf(a.recall()); const bIds = idsOf(b.recall())
+  const suffix = (x) => Number((String(x).match(/(\d+)$/) || [])[1])
+  const famOf = (x) => String(x).replace(/\d+$/, '')
+  const families = [...new Set(aIds.concat(bIds).map(famOf))]
+  const perFamily = families.map((f) => ({
+    family: f,
+    a: aIds.filter((x) => famOf(x) === f).map(suffix),
+    b: bIds.filter((x) => famOf(x) === f).map(suffix),
+  }))
+  ok(aIds.length > 0 && bIds.length > 0,
+    'determinism: both instances are READABLE (non-empty id lists) a=' + JSON.stringify(aIds) + ' b=' + JSON.stringify(bIds))
+  ok(aIds.every((x) => !bIds.includes(x)),
+    '★ two instances in one process have DISJOINT id sets (the minter is process-wide) a=' + JSON.stringify(aIds) + ' b=' + JSON.stringify(bIds))
+  ok(families.length > 0 && perFamily.every((r) => r.a.length > 0 && r.b.length > 0 && Math.min(...r.b) > Math.max(...r.a)),
+    '★ and WITHIN EACH id family the numeric suffix STRICTLY increases across instances ' + JSON.stringify(perFamily))
   ok(JSON.stringify(a.status()) === JSON.stringify(b.status()), 'determinism: two instances agree on status()')
-  ok(JSON.stringify(a.history()) === JSON.stringify(b.history()), 'determinism: two instances agree on history()')
+  ok(JSON.stringify(Object.keys(a.history()).sort()) === JSON.stringify(Object.keys(b.history()).sort()) && a.history().count === b.history().count,
+    'determinism: two instances agree on the history SHAPE (keys + count), which carries no minted ids')
   ok(m.recall().entries[0].recordedAt === 7, 'injected clock: recordedAt comes from clock() only')
 }
 

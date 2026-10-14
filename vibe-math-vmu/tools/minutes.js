@@ -4,12 +4,13 @@
 export function makeMinutesSpec({ param, refused, TOOL_NAMES, kernel }) {
   return {
       name: TOOL_NAMES.minutes,
-      description: 'vmu 纪要面：action=list|draft|confirm|append|actions|status。' +
-        '纪要由内核服务保管（谁记、何时定稿、哪些动作被记下都由它强制）；本工具只做**寻址与调用**，不复制任何策略。',
+      description: 'vmu 纪要面：action=list|draft|confirm|append|actions|zones|gaps|status。' +
+        '纪要由内核服务保管（谁记、何时定稿、哪些动作被记下都由它强制）；本工具只做**寻址与调用**，不复制任何策略。' +
+        '**zones** 给出 v5r 的**发言区/投票区**两区（空区明写，不静默消失）；**gaps** 只报缺口、**绝不自动补全**（R7）。',
       parameters: {
-        action: param('string', 'list｜draft｜confirm｜append｜actions｜status', { required: true,
-          enum: ['list', 'draft', 'confirm', 'append', 'actions', 'status'] }),
-        id: param('string', '纪要 id（draft/confirm/append 必填）'),
+        action: param('string', 'list｜draft｜confirm｜append｜actions｜zones｜gaps｜status', { required: true,
+          enum: ['list', 'draft', 'confirm', 'append', 'actions', 'zones', 'gaps', 'status'] }),
+        id: param('string', '纪要 id（draft/confirm/append/actions/zones/gaps 必填）'),
         kind: param('string', 'draft 的类别（可选）'),
         text: param('string', 'draft/append 的正文（必填）'),
         member: param('string', '记录归属的成员（可选）'),
@@ -24,6 +25,8 @@ export function makeMinutesSpec({ param, refused, TOOL_NAMES, kernel }) {
           if (action === 'confirm') return Object.assign({ ok: true, action }, await minutes.confirm(need(id, 'id')))
           if (action === 'append') return Object.assign({ ok: true, action }, await minutes.append(need(id, 'id'), need(text, 'text')))
           if (action === 'actions') return Object.assign({ ok: true, action }, { actions: await minutes.actions(id || null) })
+          if (action === 'zones') return Object.assign({ ok: true, action }, minutes.zones({ id: need(id, 'id') }))
+          if (action === 'gaps') return Object.assign({ ok: true, action }, minutes.gaps({ id: need(id, 'id') }))
           if (action === 'status') return Object.assign({ ok: true, action }, await minutes.status())
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {

@@ -44,7 +44,7 @@ function openCase(d, extra = {}) { return d.open(Object.assign({ parties: ['alph
   const c = fakeClock(0)
   const d = createArbitration({ clock: c.clock, settings: S() })
   const o = openCase(d)
-  ok(o.ok === true && o.caseId === 'c-1' && o.state === 'open', 'open: the case exists with a deterministic id')
+  ok(o.ok === true && /^c-\d+$/.test(String(o.caseId)) && o.state === 'open', 'open: the case exists with an id from the ONE minter (Round 2: never a per-instance hard-coded counter)')
   const e = throwsNamed(() => d.appoint({ caseId: o.caseId, arbiter: 'alpha' }), 'VMU_ARBITER_IS_PARTY', '①: a party is refused as arbiter')
   ok(!!e && /party alpha/.test(e.message), '①: the refusal NAMES the conflicting party')
   ok(!!e && /arbiterMustDiffer/.test(String(e.hint)), '①: the refusal points at the setting')
@@ -258,12 +258,17 @@ function openCase(d, extra = {}) { return d.open(Object.assign({ parties: ['alph
 {
   const c = fakeClock(0)
   const d = createArbitration({ clock: c.clock, settings: S({ 'vmu.conflict.maxOpen': 0 }) })
-  for (let i = 1; i <= 5; i++) d.open({ parties: ['p' + i, 'q' + i], subject: 's' + i })
+  // ROUND 2: capture the ids the CALLS returned instead of assuming a per-instance counter restarts at 1.
+  const openedIds = []
+  for (let i = 1; i <= 5; i++) openedIds.push(d.open({ parties: ['p' + i, 'q' + i], subject: 's' + i }).caseId)
   const all = d.list()
   ok(all.count === 5 && all.available === 5 && all.dropped === 0 && all.truncated === false, 'list: five cases, no truncation')
   const capped = d.list({ limit: 2 })
   ok(capped.count === 2 && capped.available === 5 && capped.dropped === 3 && capped.truncated === true, 'list: a limit reports the DROPPED count (3)')
-  ok(capped.cases[0].caseId === 'c-1' && capped.cases[1].caseId === 'c-2', 'list: deterministic insertion order')
+  ok(capped.cases[0].caseId === openedIds[0] && capped.cases[1].caseId === openedIds[1], 'list: insertion order follows the CREATION order (ids captured from the calls)')
+  // STRONGER (the property the global durable minter buys): the numeric suffix is strictly increasing.
+  const openedNums = openedIds.map((id) => Number(String(id).split('-').pop()))
+  ok(openedNums.length > 0 && openedNums.every((n, i) => i === 0 || n > openedNums[i - 1]), 'list: the id suffix is STRICTLY INCREASING across creations (verified on ' + openedNums.length + ' minted ids, which must be > 0 for the claim to mean anything)', JSON.stringify(openedIds))
   const h = d.history({ limit: 2 })
   ok(h.count === 2 && h.available === 5 && h.dropped === 3 && h.truncated === true, 'history: the ring also reports drops')
   ok(d.list({ state: 'open' }).count === 5 && d.list({ state: 'decided' }).count === 0, 'list: state filter works')
@@ -282,15 +287,20 @@ function openCase(d, extra = {}) { return d.open(Object.assign({ parties: ['alph
     return d
   }
   const d = build()
-  const before = JSON.stringify(d.list()) + '|' + JSON.stringify(d.status()) + '|' + JSON.stringify(d.history()) + '|' + JSON.stringify(d.effective({ caseId: 'c-1' }))
-  for (let i = 0; i < 3; i++) { d.list(); d.status(); d.history(); d.effective({ caseId: 'c-1' }) }
-  const after = JSON.stringify(d.list()) + '|' + JSON.stringify(d.status()) + '|' + JSON.stringify(d.history()) + '|' + JSON.stringify(d.effective({ caseId: 'c-1' }))
+  const firstCase = d.list().cases[0].caseId   // ROUND 2: capture, never a literal id
+  const before = JSON.stringify(d.list()) + '|' + JSON.stringify(d.status()) + '|' + JSON.stringify(d.history()) + '|' + JSON.stringify(d.effective({ caseId: firstCase }))
+  for (let i = 0; i < 3; i++) { d.list(); d.status(); d.history(); d.effective({ caseId: firstCase }) }
+  const after = JSON.stringify(d.list()) + '|' + JSON.stringify(d.status()) + '|' + JSON.stringify(d.history()) + '|' + JSON.stringify(d.effective({ caseId: firstCase }))
   ok(before === after, 'read-only: list/status/history/effective never mutate the cases')
   const a = build(); const b = build()
-  ok(JSON.stringify(a.list()) === JSON.stringify(b.list()), 'determinism: two instances agree on list()')
-  ok(JSON.stringify(a.status()) === JSON.stringify(b.status()), 'determinism: two instances agree on status()')
-  ok(JSON.stringify(a.history()) === JSON.stringify(b.history()), 'determinism: two instances agree on history()')
-  ok(a.effective({ caseId: 'c-1' }).decidedAt === 9, 'injected clock: timestamps come from clock() only')
+  // ROUND 2 (global durable minter): two instances no longer produce the SAME ids, so "agree on list()" is replaced by
+  // the properties that DO hold: each instance is readable, the COUNTS agree, and the two id sets are DISJOINT.
+  const aIds = a.list().cases.map((x) => x.caseId); const bIds = b.list().cases.map((x) => x.caseId)
+  ok(aIds.length === bIds.length && aIds.length > 0, 'determinism: both instances are readable after the same build()')
+  ok(aIds.every((id) => !bIds.includes(id)), 'determinism: two instances in one process NEVER share an id (global minter)', JSON.stringify({ aIds, bIds }))
+  ok(a.status().count === b.status().count, 'determinism: status() counts agree (only the ids differ)')
+  ok(a.history().count === b.history().count, 'determinism: history() counts agree (only the ids differ)')
+  ok(a.effective({ caseId: aIds[0] }).decidedAt === 9, 'injected clock: timestamps come from clock() only')
 }
 
 // ── 13. minutes seam (recordInMinutes) and bus hooks — gaps are COUNTED, never silent ─────────────────

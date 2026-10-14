@@ -34,6 +34,7 @@ export const apiVersion = 1
 // ROUND 60: an AGREEMENT's expiry may be given as an ISO string or as epoch-ms, so it goes through the shared
 // normaliser. `at()` below is a different rule on purpose (an absent instant means "now"), and it stays.
 import { ms as toMs } from './timevalue.js'
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 
 export function refuse(code, message, hint) {
   const e = new Error(message)
@@ -128,7 +129,6 @@ export function createIp({ clock = () => 0, log = null, settings = {}, bus = nul
   const exemptRoles = listOr(sget('vmu.ip.exemptRoles'), [])
   const transferPolicy = TRANSFER_POLICIES.includes(sget('vmu.ip.transferPolicy')) ? sget('vmu.ip.transferPolicy') : DEFAULTS['vmu.ip.transferPolicy']
   const revenueSharePolicy = strOr(sget('vmu.ip.revenueSharePolicy'), DEFAULTS['vmu.ip.revenueSharePolicy'])
-  let seq = 0
 
   function intOr(v, def) { return Number.isInteger(v) && v >= 0 ? v : def }
   function clamp01(v, def) { const n = Number(v); return Number.isFinite(n) && n >= 0 && n <= 1 ? n : def }
@@ -283,7 +283,7 @@ export function createIp({ clock = () => 0, log = null, settings = {}, bus = nul
       const counted = cleanContributors.filter((c) => c.share >= contributorThreshold)
       counters.belowThreshold += cleanContributors.length - counted.length
       const evidenceMissing = counted.filter((c) => c.evidence.length === 0)
-      const cid = id === null ? 'ip-' + (++seq) : String(id)
+      const cid = id === null ? mint('ip-dossier', 'ip-') : String(id)
       const dossier = {
         id: cid, kind, title: cleanTitle, inventors: inventors.map(String), contributors: cleanContributors,
         evidenceRefs: (Array.isArray(evidenceRefs) ? evidenceRefs : []).map(String),
@@ -296,7 +296,7 @@ export function createIp({ clock = () => 0, log = null, settings = {}, bus = nul
         status: 'draft', lastSweepAt: null, transfers: [], priorArt: null, createdAt: now(),
       }
       if (inlinePriorArt) {
-        dossier.priorArt = { id: 'pa-' + (++seq), dossierId: cid, query: inlinePriorArt.query || null, db: inlinePriorArt.db || null, hits: Array.isArray(inlinePriorArt.hits) ? inlinePriorArt.hits.length : 0, conclusion: inlinePriorArt.conclusion === undefined ? null : String(inlinePriorArt.conclusion), depth: DEPTHS.includes(inlinePriorArt.depth) ? inlinePriorArt.depth : priorArtDepth, at: now() }
+        dossier.priorArt = { id: mint('ip-prior-art', 'pa-'), dossierId: cid, query: inlinePriorArt.query || null, db: inlinePriorArt.db || null, hits: Array.isArray(inlinePriorArt.hits) ? inlinePriorArt.hits.length : 0, conclusion: inlinePriorArt.conclusion === undefined ? null : String(inlinePriorArt.conclusion), depth: DEPTHS.includes(inlinePriorArt.depth) ? inlinePriorArt.depth : priorArtDepth, at: now() }
         counters.priorArtSearches += 1
         mark(fired, 'vmu.ip.priorArtRequired')
       }
@@ -376,7 +376,7 @@ export function createIp({ clock = () => 0, log = null, settings = {}, bus = nul
         return deny('VMU_IP_PRIORART_MISSING', 'depth=deep requires at least one hit AND a written conclusion (vmu.ip.priorArtSearchDepth)',
           'a deep search must state its hits and its conclusion', enforced, { depth: chosen, hits: found.length, hasConclusion: typeof conclusion === 'string' && !!conclusion.trim() })
       }
-      const search = { id: 'pa-' + (++seq), dossierId: d.id, query, db, hits: found.length, conclusion: conclusion === null ? null : String(conclusion), depth: chosen, at: now() }
+      const search = { id: mint('ip-prior-art', 'pa-'), dossierId: d.id, query, db, hits: found.length, conclusion: conclusion === null ? null : String(conclusion), depth: chosen, at: now() }
       d.priorArt = search
       counters.priorArtSearches += 1
       mark(fired, 'vmu.ip.priorArtSearchDepth')
@@ -396,7 +396,7 @@ export function createIp({ clock = () => 0, log = null, settings = {}, bus = nul
       if (!d) return deny('VMU_NO_SUCH_OBJECT', 'unknown dossier: ' + String(id), 'file() it first', enforced)
       if (typeof reason !== 'string' || !reason.trim()) return deny('VMU_REASON_REQUIRED', 'a publication hold needs a reason', 'say why the dossier is held (the reason is audited)', enforced)
       const until = Number.isFinite(untilMs) ? untilMs : now() + publicationHoldDays * DAY_MS
-      const h = { id: 'hold-' + (++seq), dossierId: d.id, reason: String(reason), at: now(), untilMs: until, releasedAt: null, releasedBy: null, exemptionEvidence: null }
+      const h = { id: mint('ip-hold', 'hold-'), dossierId: d.id, reason: String(reason), at: now(), untilMs: until, releasedAt: null, releasedBy: null, exemptionEvidence: null }
       holds.set(h.id, h)
       counters.holds += 1
       mark(fired, 'vmu.ip.publicationHoldDays')
@@ -543,7 +543,7 @@ export function createIp({ clock = () => 0, log = null, settings = {}, bus = nul
         return deny('VMU_LICENSE_INCOMPATIBLE', 'the requested licence is incompatible with the licences already granted on ' + d.id,
           'licence terms live in docs/20 (`vmu.license.*`); pick a compatible grant', enforced, { to, licence })
       }
-      const t = { id: 'tr-' + (++seq), dossierId: d.id, to: String(to), terms: terms === null ? null : terms, signedRef: signedRef === null ? null : String(signedRef), licence, at: at(when), by: by === null ? null : String(by), policy: transferPolicy, agreementRef: agreement && typeof agreement === 'object' && agreement.ref !== undefined ? String(agreement.ref) : null }
+      const t = { id: mint('ip-transfer', 'tr-'), dossierId: d.id, to: String(to), terms: terms === null ? null : terms, signedRef: signedRef === null ? null : String(signedRef), licence, at: at(when), by: by === null ? null : String(by), policy: transferPolicy, agreementRef: agreement && typeof agreement === 'object' && agreement.ref !== undefined ? String(agreement.ref) : null }
       d.transfers.push(t)
       d.ownership = 'joint'
       counters.transfers += 1
@@ -614,7 +614,7 @@ export function createIp({ clock = () => 0, log = null, settings = {}, bus = nul
         return deny('VMU_IP_OWNERSHIP_CONFLICT', 'dossier ' + d.id + ' already has an open dispute (' + open[0].id + ')',
           'resolve or appeal the open dispute first', enforced, { openDisputeId: open[0].id })
       }
-      const disp = { id: 'dp-' + (++seq), dossierId: d.id, by: by === null ? null : String(by), reason: String(reason), at: at(when), appealedAt: null, closedAt: null }
+      const disp = { id: mint('ip-disclosure', 'dp-'), dossierId: d.id, by: by === null ? null : String(by), reason: String(reason), at: at(when), appealedAt: null, closedAt: null }
       disputes.set(disp.id, disp)
       counters.disputes += 1
       record_({ type: 'ip/dispute', id: d.id, disputeId: disp.id })

@@ -40,6 +40,7 @@ export const WIRED_BALLOT_KEYS = Object.freeze([
 // ROUND 157: the IRV counter lives in `ballot.js` beside `defaultTally` - the single tally source - and is imported
 // here rather than reimplemented (cite, never copy).
 import { instantRunoffTally } from './ballot.js'
+import { CODE as RESUME_CODE } from './resume.js'
 
 /** 未接：**逐个点名＋原因** ✗✓（不得静默 ✗）。 */
 export const PLANNED_BALLOT_KEYS = Object.freeze([
@@ -358,7 +359,55 @@ export function createBallotBox(opts) {
     return { ok: true, boxes: boxes.size, droppedAudit, refusals: Object.fromEntries(refusals), partition: partition(), method: c.method, tieRule: c.tieRule, secrecy: c.secrecy }
   }
 
-  return { open, cast, markAbsent, close, status, keysUsed, partition, config: cfg, refusals: () => Object.fromEntries(refusals) }
+  /**
+   * PERSISTENCE SEAM v1 (kernel/resume.js interface). The boxes hold Maps (`votes`, `abstain`) that plain JSON
+   * would flatten to `{}` in silence, so they are serialised through a Map/Set-aware replacer and revived as
+   * Maps. The 26 declared `vmu.ballot.*` values are NOT snapshotted (they come from settings/pack and are
+   * re-resolved on restore, so an old declaration cannot overwrite newer configuration).
+   */
+  const snapshot = () => {
+    const ser = (v) => JSON.stringify(v, (k, val) => {
+      if (val instanceof Map) return { __map: [...val.entries()] }
+      if (val instanceof Set) return { __set: [...val.values()] }
+      return val
+    })
+    const maxId = [...boxes.keys()].reduce((mx, id) => Math.max(mx, Number(String(id).replace(/[^0-9]/g, '')) || 0), 0)
+    return { apiVersion: 1, face: 'ballotbox', v: 1, at: clock(), data: { boxes: ser(boxes) },
+      counters: { ballotbox: Math.max(seq, maxId) },
+      skipped: [{ what: 'policy', why: 'the declared vmu.ballot.* values come from settings/pack and are re-resolved on restore' },
+        { what: 'bus', why: 'the injected bus is re-bound by the host, never serialised' }] }
+  }
+
+  /** Hydrate a `snapshot()`. Merge-safe while empty, idempotent on the same snapshot, else named conflict. */
+  const restore = (snap) => {
+    if (!snap || typeof snap !== 'object') return { ok: false, restored: false, code: RESUME_CODE.snapshotIncomplete, message: 'no snapshot to restore', missing: ['snapshot'] }
+    if (snap.face !== 'ballotbox') return { ok: false, restored: false, code: RESUME_CODE.snapshotVersion, message: 'not a ballotbox snapshot (face=' + String(snap.face) + ')' }
+    if (Number(snap.v) !== 1) return { ok: false, restored: false, code: RESUME_CODE.snapshotVersion, message: 'unsupported snapshot version ' + String(snap.v) }
+    const d = snap.data
+    const missing = ['boxes'].filter((k) => !d || d[k] === undefined)
+    if (missing.length) return { ok: false, restored: false, code: RESUME_CODE.snapshotIncomplete, message: 'snapshot is missing ' + missing.join(', '), missing }
+    if (boxes.size > 0) {
+      const same = JSON.stringify(d) === JSON.stringify(snapshot().data)
+      if (!same) return { ok: false, restored: false, code: RESUME_CODE.restoreConflict,
+        message: 'this ballot box already holds ' + boxes.size + ' live box(es): refusing to half-overwrite them',
+        hint: 'restore into a fresh instance, or restore the snapshot matching the live state' }
+    }
+    const revived = JSON.parse(String(d.boxes || '[]'), (k, val) => {
+      if (val && typeof val === 'object') {
+        if (Array.isArray(val.__map)) return new Map(val.__map)
+        if (Array.isArray(val.__set)) return new Set(val.__set)
+      }
+      return val
+    })
+    boxes.clear()
+    for (const [k, v] of revived) boxes.set(String(k), v)
+    const fromSnap = Number((snap.counters && snap.counters.ballotbox) || 0)
+    const maxId = [...boxes.keys()].reduce((mx, id) => Math.max(mx, Number(String(id).replace(/[^0-9]/g, '')) || 0), 0)
+    seq = Math.max(seq, fromSnap, maxId)
+    return { ok: true, restored: true, restored_items: ['boxes'], counters: { ballotbox: seq }, skipped: (snap.skipped || []).slice(), boxes: boxes.size }
+  }
+
+  return { open, cast, markAbsent, close, status, keysUsed, partition, config: cfg, refusals: () => Object.fromEntries(refusals), snapshot, restore }
 }
 
 export default createBallotBox

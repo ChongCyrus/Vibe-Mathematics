@@ -157,11 +157,23 @@ function fakeClock(start = 1000) { let t = start; return { clock: () => t, advan
 
 // ── 9. determinism (injected clock only) + members validation ────────────────────────────────
 {
-  const mk = () => { const c = fakeClock(500); const s = createSkills({ clock: c.clock }); s.declare({ memberId: 'm1', skill: 'lean', level: 'capable', evidence: ['e'] }); s.attest({ memberId: 'm1', skill: 'lean', by: 'm2' }); return s }
+  // ROUND 2 (global durable minter): capture BOTH id families the calls return (`sk-` claims, `at-` attestations) and
+  // assert the properties that hold - each instance readable, counts equal, ids DISJOINT, and each family's numeric
+  // suffix STRICTLY INCREASING **within its own family** (comparing across families would compare unrelated counters).
+  const mk = () => {
+    const c = fakeClock(500); const s = createSkills({ clock: c.clock })
+    const d = s.declare({ memberId: 'm1', skill: 'lean', level: 'capable', evidence: ['e'] })
+    const t = s.attest({ memberId: 'm1', skill: 'lean', by: 'm2' })
+    return { s, claimId: d.id, attestationId: t.id }
+  }
   const a = mk(); const b = mk()
-  ok(JSON.stringify(a.status()) === JSON.stringify(b.status()), 'determinism: two instances agree on status()')
-  ok(JSON.stringify(a.list()) === JSON.stringify(b.list()), 'determinism: two instances agree on list()')
-  ok(a.level({ memberId: 'm1', skill: 'lean' }).level === b.level({ memberId: 'm1', skill: 'lean' }).level, 'determinism: same level() result')
+  ok(a.s.status().count === b.s.status().count, 'determinism: status() COUNTS agree (only the ids differ)')
+  ok(a.s.list().count === b.s.list().count, 'determinism: list() COUNTS agree (only the ids differ)')
+  ok(a.claimId !== b.claimId && a.attestationId !== b.attestationId, 'determinism: two instances in one process NEVER share an id (per family)', JSON.stringify({ a: [a.claimId, a.attestationId], b: [b.claimId, b.attestationId] }))
+  const idNum = (id) => Number(String(id).split('-').pop())
+  ok(idNum(b.claimId) > idNum(a.claimId), 'determinism: the `sk-` suffix is STRICTLY INCREASING across instances')
+  ok(idNum(b.attestationId) > idNum(a.attestationId), 'determinism: the `at-` suffix is STRICTLY INCREASING across instances (compared WITHIN its family)')
+  ok(a.s.level({ memberId: 'm1', skill: 'lean' }).level === b.s.level({ memberId: 'm1', skill: 'lean' }).level, 'determinism: same level() result')
   const c = fakeClock()
   const strict = createSkills({ clock: c.clock, members: ['m1', 'm2'] })
   strict.declare({ memberId: 'm1', skill: 'lean', level: 'capable', evidence: ['e'] })

@@ -24,9 +24,9 @@
 
 ---
 
-## 1. 工具总表（45 个 `vibe_vmu_*` ＋ 1 个继承工具）
+## 1. 工具总表（52 个 `vibe_vmu_*` ＋ 1 个继承工具）
 
-> ★★★★ **轮 1／K1（D-01）**：★ **本表的"出现条件"列与 `host.js` 的 `TOOL_FACES` 是同一条真源** ✓ —— ★ 名称表由 `TOOL_NAMES` 生成（见本卷生成块 ✓），★ **是否出现由 `resolveFaces()` 按声明解析** ✓（`settings['vmu.tools.faces']`／`config.faces`／`config.<face>`／`vmu.<族>.*`／少数面的前置 ✓）。★ **无声明 ⇒ 恰好 `vibe_vmu_status` 一个** ✓；★ **被关／前置缺失的面在 `vibe_vmu_status` 回执的 `faces.disabled`／`faces.unavailable` 里具名上报** ✓（★ 轮 1 实测：修复前真实入口下 **45 面只有 10 面可注册** ✗，修复后按声明可达全部 45 面 ✓）。★ 详表见 `docs/03 §3.1` 的同一说明 ✓。
+> ★★★★ **轮 1／K1（D-01）＋ 轮 2／task-14**：★ **本表的"出现条件"列与 `host.js` 的 `TOOL_FACES` 是同一条真源** ✓ —— ★ 名称表由 `TOOL_NAMES` 生成（见本卷生成块 ✓），★ **是否出现由 `resolveFaces()` 按声明解析** ✓（`settings['vmu.tools.faces']`／`config.faces`／`config.<face>`／`vmu.<族>.*`／少数面的前置 ✓）。★ **无声明 ⇒ 恰好 `vibe_vmu_status` 一个** ✓；★ **被关／前置缺失的面在 `vibe_vmu_status` 回执的 `faces.disabled`／`faces.unavailable` 里具名上报** ✓（★ 轮 1 实测：修复前真实入口下 **45 面只有 10 面可注册** ✗，修复后按声明可达全部面 ✓）。★★ **轮 2 新增七个面** ✓：`vibe_vmu_human`（审批闸 + 恢复动词）、`vibe_vmu_chat`、`vibe_vmu_mailbox`、`vibe_vmu_panel`、`vibe_vmu_report`、`vibe_vmu_mathadapters`、`vibe_vmu_mathjobs`（后两者按"一工具一服务"单开 —— `vibe_vmu_mathtools` 的 6 个 action **不变** ✓）。★ 详表见 `docs/03 §3.1` 的同一说明 ✓。
 
 | 工具（`TOOL_NAMES` 键） | 出现条件 | 权限面 | 幂等性 | 主要 action |
 |---|---|---|---|---|
@@ -85,6 +85,13 @@
 | `vibe_vmu_ip`（`ip`） | `ipTool` 为真 | 知识产权：归属/披露/争议 | `list`/`status`/`get`/`history`/`contributors`/`ownership`/`priorArt`/`disclose` ✓；写动作视请求 ✗ | `status`(默认)`/appeal/complete/contributors/disclose/dispute/exportDossier/file/get/history/hold/list/ownership/priorArt/recordSearch/release/revenue/status/sweep/transfer` |
 | `vibe_vmu_bidding`（`bidding`） | `biddingTool` 为真 | 竞标：竞标/围标检测 | `list`/`status`/`candidates`/`collusion`/`fingerprintOf`/`normalizePlan` ✓；写动作视请求 ✗ | `status`(默认)`/award/bid/cancel/candidates/close/collusion/fingerprintOf/list/normalizePlan/post/status` |
 | `vibe_vmu_admission`（`admission`） | `admissionTool` 为真 | 招募/准入流水线 | `postings`/`status`/`aggregate` ✓；写动作视前置步骤 ✗ | `status`(默认)`/accept/actAsChair/aggregate/apply/confirm/offer/openPosting/postings/probation/promote/recall/reject/renewTerm/score` |
+| `vibe_vmu_human`（`human`）★轮 2 | `vmu.human.*`／`vmu.resume.*` 任一声明 | 人工干预 + 审批闸 + 恢复动词 | `status`/`explainVeto`/`observerView`/`approvalState`/`queue`/`dashboard`/`recoverStatus`/`readBack` ✓；写动作视闸门 ✗ | `status`(默认)`/approvalState/dashboard/decide/explainVeto/gate/liftVeto/observerView/openApproval/queue/readBack/recover/recoverStatus/veto` |
+| `vibe_vmu_chat`（`chat`）★轮 2 | `vmu.chat.*` 任一声明 | 群聊：管理员/配额/禁言/冻结 | `list`/`policy`/`quota`/`status` ✓；写动作视角色 ✗ | `status`(默认)`/admin/list/mute/policy/quota/send/setpolicy/unmute` |
+| `vibe_vmu_mailbox`（`mailbox`）★轮 2 | `vmu.mailbox.*` 任一声明 | 私信：耐久 + ack 语义 | `pending`/`plan`/`unread`/`status` ✓；写动作视投递缝 ✗ | `status`(默认)`/ack/anchor/flush/pending/plan/send/unread` |
+| `vibe_vmu_panel`（`panel`）★轮 2 | `vmu.panel.*` 任一声明 | 成员状态面板：总目标/计划/子任务 | `get`/`view`/`board`/`history`/`audit`/`status` ✓；`set` 视来源 ✗ | `status`(默认)`/audit/board/get/history/set/view` |
+| `vibe_vmu_report`（`report`）★轮 2 | `vmu.report.*` 任一声明 | 自动汇报 + 参数配置面 | `status`/`declarations`/`params`/`preview`/`trace` ✓；`emit`/`tick` 视开关与投递缝 ✗ | `status`(默认)`/declarations/emit/params/preview/set/tick/trace` |
+| `vibe_vmu_mathadapters`（`mathadapters`）★轮 2 | `vmu.math.adapters.*` 任一声明 | 数学库适配：环境绑定/形状契约 | `status`/`keysUsed`/`config`/`shapeContract`/`probe` ✓；`plan`/`run` 视解释器缝 ✗ | `status`(默认)`/clearBinding/config/keysUsed/plan/probe/run/shapeContract` |
+| `vibe_vmu_mathjobs`（`mathjobs`）★轮 2 | `vmu.math.jobs.*` 任一声明 | 数学作业：回执/镜像/四态恢复 | `status`/`list`/`statusAll`/`receipt`/`checkReceipt`/`mirrors`/`listMirrors`/`mirrorRel`/`admission`/`jobsDir`/`config`/`keysUsed`/`trail` ✓；`submit`/`cancel`/`recover` 视引擎缝 ✗ | `status`(默认)`/admission/cancel/checkReceipt/config/jobsDir/keysUsed/list/listMirrors/mirrorRel/mirrors/receipt/recover/status/statusAll/submit/trail` |
 
 ## 2. 逐工具参考（可照抄）
 
@@ -503,7 +510,14 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 43 | `bidding` | `vibe_vmu_bidding` |
 | 44 | `admission` | `vibe_vmu_admission` |
 | 45 | `turn` | `vibe_vmu_turn` |
+| 46 | `human` | `vibe_vmu_human` |
+| 47 | `chat` | `vibe_vmu_chat` |
+| 48 | `mailbox` | `vibe_vmu_mailbox` |
+| 49 | `panel` | `vibe_vmu_panel` |
+| 50 | `report` | `vibe_vmu_report` |
+| 51 | `mathadapters` | `vibe_vmu_mathadapters` |
+| 52 | `mathjobs` | `vibe_vmu_mathjobs` |
 
-> ★★ 合计 **45** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
+> ★★ 合计 **52** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
 
 <!-- END GENERATED: tool-index -->

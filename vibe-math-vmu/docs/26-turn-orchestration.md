@@ -583,3 +583,16 @@
 - 提示词管线：`06` ✓；**语料桥**：`24-§2.2.33` ✓。
 - 服务面登记：`03` ✓；架构表：`02` ✓。
 - 台账：`14` 的轮 337 条目 ✓。
+
+## 7. 会话恢复对本卷的约束（Round 2 落地 ✓，task-10）
+
+> 一整轮编排要能"睡一觉再继续"，前提是**外部的"进行到哪"能被恢复**。Round 2 把这条打通：`kernel/resume.js` 提供**会话级恢复原语**，`kernel/ids.js` 提供**唯一 id 铸造原语**，装配由 vmu-core 落（`store.open()` → `work.recover()` → `resume.recover({reason:'kernel-start'})`）。
+
+对本卷（整轮编排）的四条接口约束：
+
+1. **一轮的"在途"必须落在耐久台账里，才有可恢复的语义**：`kernel/work.js` 的 `work` 键是"谁还有活没干完"的唯一真相；启动后幸存项被标 `interrupted`＋具名理由，`resume.settleOutcome({outcome:'passed'})` 对它们**具名拒**（`VMU_RESUME_INTERRUPTED_NOT_PASSED`），除非**显式＋带理由**地覆盖。⇒ **框架绝不能把"上次那轮没回"读成"成员答过了"**。
+2. **id 不复用**：`turn` 的逐轮记账若引用 `t-N`/`mt-N` 之类的 id，恢复后必须仍然指向同一个对象。id 一律经 `kernel/ids.js` 的 `mint(kind, prefix)` 铸造（计数器耐久、恢复取 `max(已观测)+1`）；**不许**再新造 `let seq = 0`（内核约 30 处已由 vmu-core 批量替换；`tasks.js` 有意保留**每实例**计数并靠 `snapshot()/restore()` 恢复——理由见报告）。
+3. **快照只装状态，不装接缝**：面侧 `snapshot()` 的 `data` **不得**包含注入的宿主接缝（`deliver`/`wake`/`bus`/`clock`/`timer`/`spawn`/`fetch`）；`restore()` 必须把它们列回 `skipped[]` **或在接口里明确不算**（本仓采用后者：**接缝由内核重新注入，不算 skipped**）。
+4. **可观测的诚实**：恢复后若某个面**没水合**（无 adapter／无 restore seam／journal 有洞），`resume.status().projection.degraded=true` 且 `unhydrated[]` 具名 —— **"重启后空名册"与"真的恢复了"必须可区分**，编排面不得据此继续当作正常轮次。
+
+**验收**：`tests/vmu-resume-recovery.test.mjs`（50/0，exit 0）＋ `tests/vmu-human-gate.test.mjs`（51/0，exit 0）；命令与退出码见 `_handoff/vmu/resume-round2-report.md`。**边界**：`mode:'journal'` 的重放依赖被重放方法的确定性，含外部副作用/依赖时钟的命令以 `nonReplayable` **具名拒**（绝不静默少一条）。

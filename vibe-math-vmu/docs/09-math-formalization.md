@@ -376,7 +376,28 @@ MathJob = { id, kind, engine, input, timeoutMs, budget?, async?, createdAt, stat
 - **事件日志上限** ✓：Lean 作业事件日志有常量上限（超出计数丢弃、不静默）；
 - **隔离** ✓：作业在受控目录内运行；路径策略与写保护由 `vmu.safety.*` 决定（越界 ⇒ `VMU_NOT_PERMITTED`）；
 - **审计** ✓：作业起止、命令摘要、结果摘要入审计（**不落全文**，正文放文件）；
-- **持久化/断点续算** ⛔ 未实现（现状：作业只存在于本次会话内存）。
+- **持久化/断点续算**：**计算面 ✓**（`kernel/mathjobs.js`：耐久镜像 ＋ 状态全集 ＋ 恢复四分支，见 §4.1）与 **Lean 作业面 ✓**（`kernel/lean.js` 接**同一套原语** `createJobMirror`：镜像 `Formal/Jobs/<jobId>.json`，与 v5r 的路径拼写一致；状态 `queued|running|settled|failed|timeout|interrupted`；恢复四分支同 §4.1）。两条**具名限制**：① 宿主未暴露跨进程独占创建 ⇒ `admission().exclusiveCreate=false`、`crossProcess:'not-enforced'`；② Lean 面的 `spawn` 是 **promise 接缝（无 handle）** ⇒ `dispose()` 只能把在跑作业标 `interrupted`，**无法 terminate 子进程**（`admission().canTerminateChild=false`，不假装）。
+
+### 4.1 作业镜像与恢复（**计算面 ＋ Lean 面均 ✓ 已实现**）
+
+```
+MathJobMirror  = { schema:'vmu/math-job@1',  jobId, engine, state, attempts, enqueuedAt/startedAt/settledAt,
+                   exitCode, timedOut, interrupted, cancelled, seed, random, argvHash, inputHash,
+                   request:{engine,argv,stdin,timeoutMs,seed,random}, run, receipt, reason }
+LeanJobMirror  = { schema:'vmu/lean-job@1',  jobId, statement, file, state, attempts, enqueuedAt/startedAt/settledAt,
+                   exitCode, hashBefore, hashAfter, hashUnchanged, passed, contextHash, receipt, reason }
+```
+
+- **镜像位置**：计算面 `<root>/<vmu.math.jobs.dir || 'Math/Jobs'>/<jobId>.json`；**Lean 面 `<root>/<vmu.math.jobs.dir || 'Formal/Jobs'>/<jobId>.json`**（v5r 的拼写）。写点：提交、结算、取消/dispose、恢复转移 —— **每次状态变化都写**；写失败**计数**并具名报告。目录越界 ⇒ `VMU_MATH_JOBS_DIR_UNSAFE`（Lean 面为 `VMU_LEAN_JOBS_DIR_UNSAFE`），**不静默换目录**。
+- **状态全集**：计算面 `queued|running|settled|failed|timeout|interrupted|cancelled`（**无 `passed`**）；Lean 面 `queued|running|settled|failed|timeout|interrupted`（**同样无 `passed`**：`settled` 是状态，`passed` 是"退出 0 且哈希未变"的**结论**）。两面的任何返回值都带 `isRefutation:false`。
+- **恢复四分支**（`recover()`；`vmu.math.jobs.recover` = `on-load`|`manual`|`off`）：
+  1. `queued` ⇒ 重新入队并**真的重跑**（attempts 不变：从未开始 ⇒ 仍记为第 1 次）；
+  2. `running` ＋ 输入指纹（计算面）/ **文件内容哈希**（Lean 面）**一致** ⇒ 标 `interrupted` 后**重排**（attempts+1）；
+  3. 同上但指纹/哈希**不一致** ⇒ 只标 `interrupted`，**不自动重排**（具名 `fingerprint-mismatch` / `hash-mismatch` / `file-unreadable`）；
+  4. `settled` ＋ `exitCode===0` ＋ 指纹/哈希一致 ＋ **带回执**（Lean 面另需**构建上下文一致**）⇒ **采纳**；其余（含 `settled` 但**无回执**、上下文变了、文件已被改）⇒ **保持原状、不自动重跑**，逐条具名 `why`，且**绝不把 `passed` 从镜像里复活**（内存与磁盘不一致时，磁盘记录同步降级）。
+  返回逐类计数 `{scanned,requeued,adopted,interrupted,left,corrupt,results}` ⇒ 恢复行为可断言、非空过。
+- **id 计数器**：两面都经 `kernel/ids.js`（唯一铸号者，D-15；`lean-` / `mj-` 前缀保留），恢复时 `observe()` 既有 id ⇒ 计数取 **max+1**，**重启后不复用编号**（模块自带 `let seq` 已删除）。
+- **能力边界（`admission()` 如实登记）**：`exclusiveCreate:false`、`crossProcess:'not-enforced'`；保留上限 `keepMirrors` 在有 `fs.removeText` 时**淘汰最旧＋计数**，没有该接缝时**到上限停写＋计数**。
 
 ---
 
@@ -539,9 +560,9 @@ MathJob = { id, kind, engine, input, timeoutMs, budget?, async?, createdAt, stat
 
 ---
 
-## 附录 A：**已实现键面**（14 个；逐键口径）
+## 附录 A：**已实现键面**（23 个；逐键口径）
 
-> 说明：Compute 6 键由 `host-math.js` 接线 ✓；Lean 8 键由 `kernel/lean.js` 接线 ✓（该文件是**唯一口径**：每个键只在一处被读 ⇒ `keysUsed()` 与实现必然一致 ✓）。
+> 说明：Compute 6 键由 `host-math.js` 接线 ✓；Lean 8 键由 `kernel/lean.js` 接线 ✓（该文件是**唯一口径**：每个键只在一处被读 ⇒ `keysUsed()` 与实现必然一致；A7–A14 之后另有 4 个 `vmu.math.jobs.*` 也由该面真读，见下）；A15–A23 为目标 5（Round 2）新增，由 `kernel/mathadapters.js`（A15–A21）与 `kernel/mathjobs.js`（A22–A23）**以字面量真读** ✓。新增 9 键的权威定义在 `settings/schema.js`（由 vmu-core 登记）；本表的计数与 README 口径由 `scripts/update-doc-counts.mjs` 统一刷新。
 
 | # | 键 | 类型 | 默认 | 域/枚举 | 谁改 | 热改 | 说明 |
 |---|---|---|---|---|---|---|---|
@@ -559,6 +580,17 @@ MathJob = { id, kind, engine, input, timeoutMs, budget?, async?, createdAt, stat
 | A12 | `vmu.math.leanSearchPaths` | string[] | `[]` | 路径数组 | 院士 | 热改 | 去重后注入在自动根**之前** ✓ |
 | A13 | `vmu.math.leanJobsMaxParallel` | integer | `1` | ≥1 | 院士 | 热改 | 并发上限（1＝串行） ✓ |
 | A14 | `vmu.math.compileTimeoutMs` | integer | 未消费 | ≥1000 | 数学宿主接线 ✓ | 热改 | 编译超时（本面未消费 ⛔ 见 §16） |
+| A15 | `vmu.math.adapters.enabled` | boolean | `true` | true/false | 院士/pack | 热改 | 科学计算库适配面总开关（`off` ⇒ `VMU_MATH_UNSUPPORTED_OP`） ✓ |
+| A16 | `vmu.math.adapters.libs` | string[] | `['numpy','scipy','pandas','sympy']` | 库名数组 | 院士/pack | 热改 | **已声明可用库**；请求未声明者 ⇒ `VMU_MATH_LIB_NOT_DECLARED`（零机制不猜库） ✓ |
+| A17 | `vmu.math.adapters.python` | string | `''` | 命令名/绝对路径 | 院士 | 热改 | 显式解释器；**非空则只用它**，解析不到 ⇒ `VMU_MATH_LIB_UNAVAILABLE`（**绝不回退猜测**） ✓ |
+| A18 | `vmu.math.adapters.packageAllowlist` | string[] | `[]` | 包名 | 院士/pack | 热改 | 空＝不限制；非空 ⇒ 请求的 `packages` 必须是其子集，否则 `VMU_MATH_INVALID_INPUT`（hint 点名本键） ✓ |
+| A19 | `vmu.math.adapters.probeCache` | enum | `session` | `session`｜`call` | 院士 | 热改 | 环境绑定探测缓存口径（`call`＝每次重探；`probe({refresh:true})` 亦强制重探） ✓ |
+| A20 | `vmu.math.adapters.maxArrayElements` | natural | `10000` | ≥0（0＝不限） | 院士 | 热改 | 数组/DataFrame **叶子元素**上限；超限**计数**截断（`truncated.droppedElements`） ✓ |
+| A21 | `vmu.math.adapters.maxStringBytes` | natural | `65536` | ≥0（0＝不限） | 院士 | 热改 | 符号/字符串结果字节上限；超限**计数**截断（`truncated.droppedBytes`） ✓ |
+| A22 | `vmu.math.jobs.recover` | enum | `on-load` | `on-load`｜`manual`｜`off` | 院士 | 热改 | 启动恢复口径（`off` ⇒ `recover()` 返回 `{disabled:true}`，**不是"扫了个空"**） ✓ |
+| A23 | `vmu.math.jobs.keepMirrors` | natural | `200` | ≥0 | 院士 | 热改 | 作业镜像保留条数（淘汰或停写都**计数**：`droppedMirrors`／`mirrorSkipped`） ✓ |
+
+> 另有两个**既有**键在本轮获得新消费方（不在新增计数内）：`vmu.math.jobs.persist`（语义扩展为"写 `Math/Jobs` 镜像并允许恢复"，仍是超集）、`vmu.math.jobs.dir`（语义固定为镜像目录，空 ⇒ `Math/Jobs`）、`vmu.math.jobs.logMax`（事件轨迹上限）。
 
 **纪律**：A1–A14 都在**设置层**；内核里**没有**"必须形式化/形式化权重"字样（R1 静态门 ✓）。
 

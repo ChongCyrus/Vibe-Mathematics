@@ -9,6 +9,7 @@
 //   · a failed delivery never blocks the caller, but it is recorded and counted (onFailure policy)
 //   · subscriptions must name a registered hook; unknown events are refused WITH the registered list
 //   · dedup, truncation and suppression are all counted; the clock is injected; default is off; reads never mutate
+import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const apiVersion = 1
 
 export function refuse(code, message, hint) {
@@ -80,7 +81,6 @@ export function createNotify({ clock = () => 0, log = null, settings = {}, bus =
   let suppressed = 0
   let delivered = 0
   let failures = 0
-  let seq = 0
 
   // ROUND 216: `quietDefault` is a HH:MM-HH:MM window in `quietTimezone`; a window that crosses midnight is honoured.
   const inDefaultQuiet = (c, at) => {
@@ -142,7 +142,7 @@ export function createNotify({ clock = () => 0, log = null, settings = {}, bus =
       if (typeof channel !== 'string' || !channel) throw refuse('VMU_INVALID_ARGUMENT', 'channel must be a non-empty string', 'e.g. channel: "default"')
       if (priorityFloor !== null && !Number.isInteger(priorityFloor)) throw refuse('VMU_INVALID_ARGUMENT', 'priorityFloor must be an integer when given', 'omit it to inherit vmu.notify.priorityFloor')
       const at = clock()
-      const id = 'w-' + (++seq)
+      const id = mint('notify-watcher', 'w-')
       const w = { id, subject, events: events.slice(), channel: resolvedChannel, quiet: quiet === true, digest: digest === true, priorityFloor: Number.isInteger(priorityFloor) ? priorityFloor : c.priorityFloor, reason: typeof reason === 'string' ? reason.trim() : null, createdAt: at }
       watchers.push(w)
       say({ type: 'notify/watch', at, subject, events: w.events, channel })
@@ -192,7 +192,7 @@ export function createNotify({ clock = () => 0, log = null, settings = {}, bus =
         const selfEvent = c.suppressSelfEvents && actor !== null && actor === w.subject
         const snr = payload && Number.isFinite(payload.snr) ? payload.snr : null
         const hintOnly = c.snrFloor > 0 && snr !== null && snr < c.snrFloor
-        const rec = { id: 'n-' + (++seq), watcherId: w.id, subject: w.subject, event, object, fingerprint: fp, at, delivered: false, suppressed: quiet || isDup || selfEvent, reason: quiet ? 'quiet' : (isDup ? 'dedup' : (selfEvent ? 'self-event' : null)), hintOnly, snr }
+        const rec = { id: mint('notify', 'n-'), watcherId: w.id, subject: w.subject, event, object, fingerprint: fp, at, delivered: false, suppressed: quiet || isDup || selfEvent, reason: quiet ? 'quiet' : (isDup ? 'dedup' : (selfEvent ? 'self-event' : null)), hintOnly, snr }
         register.push(rec)
         recordedNow += 1
         if (register.length > c.maxRegister) { const over = register.length - c.maxRegister; register.splice(0, over); dropped += over }
@@ -251,7 +251,7 @@ export function createNotify({ clock = () => 0, log = null, settings = {}, bus =
         const w = watchers.find((x) => x.id === d.watcherId)
         if (!w) { continue }
         const total = Object.values(d.counts).reduce((a, b) => a + b, 0)
-        const note = { id: 'd-' + (++seq), channel: w.channel, subject: w.subject, kind: 'digest', since: d.since, at: when, counts: Object.assign({}, d.counts), total }
+        const note = { id: mint('notify-digest', 'd-'), channel: w.channel, subject: w.subject, kind: 'digest', since: d.since, at: when, counts: Object.assign({}, d.counts), total }
         try { deliver(note); deliveredNow += 1; out.push({ watcherId: w.id, subject: w.subject, total, counts: note.counts }) }
         catch (err) {
           failuresNow += 1

@@ -40,18 +40,6 @@ const DECISION_CAPABILITY = Object.freeze({
   annotate: 'annotate',
 })
 
-/** vmu-internal hook names (docs/05 §4.2). The host substrate names live in docs/05 §4.1. */
-export const VU_HOOKS = Object.freeze([
-  'member/self-report',
-  'budget/warn',
-  'member/wake-before', 'member/wake-after', 'turn/reply-parsed',
-  'meeting/round-start', 'meeting/round-end', 'ballot/cast', 'ballot/tally',
-  'record/append-before', 'record/appended', 'task/assign', 'task/transition',
-  'prompt/section-assembled', 'budget/exceeded', 'pack/loading', 'pack/loaded',
-  'settle/before', 'settle/after',
-  'control/paused', 'control/resumed', 'control/heartbeat',
-])
-
 /**
  * Bus topics that are NOT vmu hooks: the host-waterfall bridge publishes the DSH waterfall under this name (and
  * passes the host's own hook name through) so middleware can observe/steer it. Kept SEPARATE from `VU_HOOKS`
@@ -59,43 +47,28 @@ export const VU_HOOKS = Object.freeze([
  */
 export const BRIDGE_TOPICS = Object.freeze(['host/waterfall'])
 
-/** Default failure policy per hook, so an entry that omits one still behaves safely (docs/05 §4.3). */
-export const DEFAULT_FAILURE = Object.freeze({
-  'member/wake-before': 'closed', 'member/wake-after': 'closed', 'turn/reply-parsed': 'closed',
-  'meeting/round-start': 'closed', 'meeting/round-end': 'closed',
-  'ballot/cast': 'closed', 'ballot/tally': 'closed',
-  'record/append-before': 'closed', 'record/appended': 'open',
-  'task/assign': 'closed', 'task/transition': 'closed',
-  'prompt/section-assembled': 'open',
-  'budget/exceeded': 'abort',
-  // ROUND 496: budget/warn was EMITTED (kernel/budget.js) inside VMU's own namespace while not being frozen, so the
-  // membership check REFUSED it - a live bug on the ordinary budget-warning path. A warning is OBSERVATION, so its policy
-  // is open, exactly like control/*: a broken listener must not turn a warning into a failure.
-  'budget/warn': 'open',
-  // ROUND 496: found by the same scan as budget/warn - members.js emitted this inside VMU's namespace while it was NOT
-  // frozen, so the bus refused it. A self-report is observation, hence open.
-  'member/self-report': 'open',
-  'pack/loading': 'closed', 'pack/loaded': 'closed',
-  'settle/before': 'closed', 'settle/after': 'closed',
-  // Control flow is OBSERVATION for middleware (a watcher may react), so the framework keeps running when a
-  // listener fails: an open policy here is what stops a broken watcher from freezing the whole run.
-  'control/paused': 'open', 'control/resumed': 'open', 'control/heartbeat': 'open',
-})
+// `VU_HOOKS` and `DEFAULT_FAILURE` are DERIVED from `HOOK_REGISTRY` below (decision D-12: one source, no
+// second copy). They used to be literals kept in sync by assertion; the registry is now the only place a
+// hook name or its failure policy is written down.
 
 /**
- * THE HOOK REGISTRY — ONE RECORD PER HOOK (decision D-04).
+ * THE HOOK REGISTRY — THE SINGLE SOURCE FOR EVERY HOOK (decision D-04, closed by D-12).
  *
  * The project carried three tables that drifted apart: `VU_HOOKS` (the vmu names the bus enforces),
  * `DSH_HOOKS` (what a module may subscribe to, kernel/loader.js) and `BRIDGED_HOOKS` (what the host
- * bridge can really attach, host-hooks.js). The registry below is the single record of:
+ * bridge can really attach, host-hooks.js). The registry below is the ONLY place a hook is written
+ * down, recording:
  *   name · kind (vmu|host) · failure semantics · whether it can block · whether it can rewrite ·
  *   its scope dimensions · when it fires · its real producer · whether the host bridge attaches it
  *     (and at which site).
- * `DSH_HOOKS` and `BRIDGED_HOOKS` are DERIVED from it (loader.js and host-hooks.js re-export the
- * derived arrays), and `hookRegistryProblems()` asserts that the frozen `VU_HOOKS` / `DEFAULT_FAILURE`
- * literals still agree with it. Those two stay literals because three shipped gates parse their exact
- * source text (tests/audit-hook-coverage.test.mjs:31, tests/audit-doc-vs-code-tables.test.mjs:59,
- * scripts/generate-surface-index.mjs:39-41); the assertion is what keeps them from drifting.
+ * EVERY published table is derived from it:
+ *   · `VU_HOOKS`        = the `kind:'vmu'` names, in registry order;
+ *   · `DEFAULT_FAILURE` = each vmu hook's `failure`;
+ *   · `DSH_HOOKS`       = the `kind:'host'` names (re-exported by kernel/loader.js);
+ *   · `BRIDGED_HOOKS`   = the host hooks with `bridged:true` (re-exported by host-hooks.js).
+ * `hookRegistryProblems()` then checks the DATA (names, kinds, policies, bridge sites, producers) —
+ * the checks that used to compare the registry against a second literal are gone because there is no
+ * second copy left to compare against.
  */
 const VU_SCOPE = Object.freeze(['member', 'role', 'phase'])
 const BRIDGE_SITE = 'host-hooks.js attachHostHooks (ctx.effect -> ctx.on)'
@@ -124,6 +97,48 @@ export const HOOK_REGISTRY = Object.freeze([
   { name: 'control/resumed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'the kernel is resumed', producer: 'kernel/index.js' },
   { name: 'control/heartbeat', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a control heartbeat', producer: 'kernel/index.js' },
 
+  // ── ROUND 2 primitives (goal 1/2): registered so middleware can attach AND so a typo is refused ──────
+  // reader-a (kernel/resume.js, kernel/human.js, kernel/control.js) and reader-c (kernel/chat.js,
+  // kernel/mailbox.js, kernel/panel.js) emit these with `bus.emit('<name>', payload, opts)`; the namespaces
+  // are added to VU_NAMESPACE below, so an UNREGISTERED name in them is a named refusal rather than silence.
+  { name: 'resume/recovered', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a recovery completed', producer: 'kernel/resume.js' },
+  { name: 'resume/degraded', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a recovery finished with unhydrated projections', producer: 'kernel/resume.js' },
+  { name: 'resume/projection-error', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'one projection failed to hydrate', producer: 'kernel/resume.js' },
+  { name: 'ids/minted', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a durable id was minted', producer: 'kernel/resume.js' },
+  { name: 'ids/hydrated', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'the id counter was hydrated from the fold', producer: 'kernel/resume.js' },
+  { name: 'ids/persist-failed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'persisting the id counter failed', producer: 'kernel/resume.js' },
+  { name: 'human/vetoed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a human veto was recorded', producer: 'kernel/human.js' },
+  { name: 'human/veto-lifted', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a human veto was lifted', producer: 'kernel/human.js' },
+  { name: 'human/approval-asked', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'an approval was requested', producer: 'kernel/human.js' },
+  { name: 'human/gate-pending', kind: 'vmu', failure: 'closed', blockable: true, rewritable: false, scope: VU_SCOPE, timing: 'an action is held at the approval gate (a broken listener must NOT open the gate)', producer: 'kernel/human.js' },
+  { name: 'human/approval-decided', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'an approval was decided', producer: 'kernel/human.js' },
+  { name: 'control/scope-paused', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a scope was paused', producer: 'kernel/control.js' },
+  { name: 'control/scope-resumed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a scope was resumed', producer: 'kernel/control.js' },
+  { name: 'control/param-set', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a declared parameter was changed', producer: 'kernel/control.js' },
+  { name: 'control/param-refused', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a parameter change was refused', producer: 'kernel/control.js' },
+  { name: 'chat/send-before', kind: 'vmu', failure: 'closed', blockable: true, rewritable: false, scope: VU_SCOPE, timing: 'before a chat message is accepted (quota/mute/freeze policy)', producer: 'kernel/chat.js' },
+  { name: 'chat/sent', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a chat message was accepted', producer: 'kernel/chat.js' },
+  { name: 'chat/refused', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a chat message was refused by policy', producer: 'kernel/chat.js' },
+  { name: 'mailbox/deliver-before', kind: 'vmu', failure: 'closed', blockable: true, rewritable: false, scope: VU_SCOPE, timing: 'before a delivery batch is flushed', producer: 'kernel/mailbox.js' },
+  { name: 'mailbox/delivered', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a delivery batch was acked', producer: 'kernel/mailbox.js' },
+  { name: 'panel/write-before', kind: 'vmu', failure: 'closed', blockable: true, rewritable: false, scope: VU_SCOPE, timing: 'before a self-report panel write', producer: 'kernel/panel.js' },
+  { name: 'panel/written', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a self-report panel write landed', producer: 'kernel/panel.js' },
+  { name: 'panel/viewed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a panel was viewed (view audit)', producer: 'kernel/panel.js' },
+  // reader-b (kernel/mathjobs.js, kernel/mathadapters.js): the math-job face emits these (NAME-first form).
+  { name: 'math/job-submitted', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a math job was submitted', producer: 'kernel/mathjobs.js' },
+  { name: 'math/job-settled', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a math job exited cleanly', producer: 'kernel/mathjobs.js' },
+  { name: 'math/job-failed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a math job exited non-zero', producer: 'kernel/mathjobs.js' },
+  { name: 'math/job-timeout', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a math job exceeded its budget', producer: 'kernel/mathjobs.js' },
+  { name: 'math/job-cancelled', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a math job was cancelled', producer: 'kernel/mathjobs.js' },
+  { name: 'math/job-recovered', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'the job mirror was scanned at start-up', producer: 'kernel/mathjobs.js' },
+  { name: 'math/adapters-probed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'the scientific-library environment was probed', producer: 'kernel/mathadapters.js' },
+  { name: 'math/adapters-ran', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a library-adapted computation ran', producer: 'kernel/mathadapters.js' },
+  // reader-a (kernel/lifecycle.js): the two broadcasts that used to be a SILENT no-op because they were sent as
+  // `emit({type:...})` - a single object, which `bus.emit` refuses (it needs a string name). Fixed to the
+  // name-first form in round 2, so they are registered here rather than left as a paper capability.
+  { name: 'lifecycle/prereg', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a study was pre-registered', producer: 'kernel/lifecycle.js' },
+  { name: 'lifecycle/advance', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a study advanced a stage', producer: 'kernel/lifecycle.js' },
+
   // ── host-substrate hooks (docs/05 §4.1): the vocabulary belongs to DSH, not to vmu ─────────────────
   { name: 'tools/pre-execute', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: true, rewritable: false, timing: 'before a tool call runs (input rewriting is refused by the host)' },
   { name: 'tools/post-execute', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: true, rewritable: true, timing: 'after a tool call ran' },
@@ -146,6 +161,17 @@ export const HOOK_REGISTRY = Object.freeze([
   { name: 'system-prompt/assemble', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'the host assembles its system prompt (host-side name)' },
 ])
 
+/** The vmu-internal hook names the bus enforces (docs/05 §4.2) — DERIVED from the registry, in its order. */
+export const VU_HOOKS = Object.freeze(HOOK_REGISTRY.filter((h) => h.kind === 'vmu').map((h) => h.name))
+
+/**
+ * The default failure policy per vmu hook, so an entry that omits one still behaves safely (docs/05 §4.3)
+ * — DERIVED from the registry. The observations stay `open` and `budget/exceeded` stays the only `abort`;
+ * that reasoning now lives beside each hook in the registry above.
+ */
+export const DEFAULT_FAILURE = Object.freeze(Object.fromEntries(
+  HOOK_REGISTRY.filter((h) => h.kind === 'vmu').map((h) => [h.name, h.failure])))
+
 /** The host-substrate names a module may subscribe to — DERIVED from the registry. */
 export const DSH_HOOKS = Object.freeze(HOOK_REGISTRY.filter((h) => h.kind === 'host').map((h) => h.name))
 
@@ -156,36 +182,48 @@ export const BRIDGED_HOOKS = Object.freeze(HOOK_REGISTRY.filter((h) => h.kind ==
 export const HOOK_PREFIXES = Object.freeze(['workflow/'])
 
 /**
- * The D-04 assertion: one registry, and every derived table agrees with it. Returns a list of problems
- * (empty means consistent). A gate can call this without re-implementing the rules; it checks:
- *   · no duplicate names, every entry has a kind and a name;
- *   · `VU_HOOKS` and the registry's vmu names are the same set, both directions;
- *   · `DEFAULT_FAILURE` states exactly the registry's failure for every vmu hook;
- *   · `DSH_HOOKS`/`BRIDGED_HOOKS` are the registry's host names and its `bridged:true` subset;
- *   · every bridged hook NAMES its registration site (so "bridged" cannot be a claim with no code).
+ * The D-04/D-12 invariant, as a function a gate can call: the registry's DATA must be complete and
+ * self-consistent. Since every published table is now derived from the registry, the old
+ * "table == registry" comparisons would be tautologies; what remains genuinely checkable here is the
+ * data itself:
+ *   · names are unique and shaped like `domain/name`;
+ *   · every vmu hook states a failure policy from `FAILURE` and non-empty scope dimensions;
+ *   · every hook states when it fires and who produces it (a hook nobody produces is a paper capability);
+ *   · a bridged host hook names its registration site, and an unbridged one does not claim one.
  */
 export function hookRegistryProblems() {
   const problems = []
   const seen = new Set()
+  const SHAPE = /^[a-z0-9-]+\/[a-z0-9-]+$/
   for (const h of HOOK_REGISTRY) {
     if (!h || typeof h.name !== 'string' || h.name.length === 0) { problems.push('a registry entry has no name'); continue }
+    if (!SHAPE.test(h.name)) problems.push(h.name + ': a hook name must look like domain/name')
     if (seen.has(h.name)) problems.push('duplicate hook in the registry: ' + h.name)
     seen.add(h.name)
     if (h.kind !== 'vmu' && h.kind !== 'host') problems.push(h.name + ': kind must be vmu|host')
-    if (h.kind === 'host' && h.bridged === true && (typeof h.bridgeSite !== 'string' || h.bridgeSite.length === 0)) {
-      problems.push(h.name + ': a bridged hook must name its registration site (bridgeSite)')
+    if (typeof h.timing !== 'string' || h.timing.length === 0) problems.push(h.name + ': every hook states when it fires')
+    if (h.kind === 'vmu') {
+      if (!Object.values(FAILURE).includes(h.failure)) problems.push(h.name + ': failure must be open|closed|abort (got ' + JSON.stringify(h.failure) + ')')
+      if (!Array.isArray(h.scope) || h.scope.length === 0) problems.push(h.name + ': a vmu hook states its scope dimensions')
+      if (typeof h.producer !== 'string' || h.producer.length === 0) problems.push(h.name + ': a vmu hook names its real producer (a hook nobody emits is a paper capability)')
+      if (h.bridged !== undefined) problems.push(h.name + ': only host hooks carry `bridged`')
+    } else {
+      if (typeof h.bridged !== 'boolean') problems.push(h.name + ': a host hook states `bridged: true|false`')
+      if (h.bridged === true && (typeof h.bridgeSite !== 'string' || h.bridgeSite.length === 0)) {
+        problems.push(h.name + ': a bridged hook must name its registration site (bridgeSite)')
+      }
+      if (h.bridged === false && h.bridgeSite !== undefined) problems.push(h.name + ': an unbridged hook must not claim a registration site')
+      if (h.failure !== undefined) problems.push(h.name + ': only vmu hooks carry `failure` (the host owns its own policies)')
     }
-    if (h.kind === 'vmu' && typeof h.failure !== 'string') problems.push(h.name + ': a vmu hook must state its failure policy')
   }
-  const regVmu = HOOK_REGISTRY.filter((h) => h.kind === 'vmu').map((h) => h.name)
-  for (const n of VU_HOOKS) if (!regVmu.includes(n)) problems.push('VU_HOOKS names ' + n + ' but the registry does not')
-  for (const n of regVmu) if (!VU_HOOKS.includes(n)) problems.push('the registry names ' + n + ' but VU_HOOKS does not')
-  for (const h of HOOK_REGISTRY.filter((x) => x.kind === 'vmu')) {
-    if (DEFAULT_FAILURE[h.name] !== h.failure) problems.push(h.name + ': DEFAULT_FAILURE says ' + String(DEFAULT_FAILURE[h.name]) + ', the registry says ' + h.failure)
-  }
-  const regHost = HOOK_REGISTRY.filter((h) => h.kind === 'host').map((h) => h.name)
-  for (const n of DSH_HOOKS) if (!regHost.includes(n)) problems.push('DSH_HOOKS names ' + n + ' but the registry does not')
-  for (const n of BRIDGED_HOOKS) if (!DSH_HOOKS.includes(n)) problems.push('a bridged hook is not subscribable: ' + n)
+  // Non-vacuous completeness: the derived tables must be the registry's own sets (asserted on the SETS,
+  // so an accidental filter change is caught even though the arrays are built from them).
+  const vmu = new Set(HOOK_REGISTRY.filter((h) => h.kind === 'vmu').map((h) => h.name))
+  const host = new Set(HOOK_REGISTRY.filter((h) => h.kind === 'host').map((h) => h.name))
+  if (VU_HOOKS.length !== vmu.size) problems.push('VU_HOOKS does not cover the registry exactly (' + VU_HOOKS.length + ' vs ' + vmu.size + ')')
+  if (Object.keys(DEFAULT_FAILURE).length !== vmu.size) problems.push('DEFAULT_FAILURE does not cover every vmu hook')
+  if (DSH_HOOKS.length !== host.size) problems.push('DSH_HOOKS does not cover the registry host hooks exactly')
+  for (const n of BRIDGED_HOOKS) if (!host.has(n)) problems.push('a bridged hook is not a registry host hook: ' + n)
   return problems
 }
 
@@ -434,7 +472,9 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
       //     is passed through, because that vocabulary belongs to the substrate - and note that `prompt/assemble`
       //     is a HOST name, so allowing all host names wholesale would have re-admitted exactly the drift this
       //     check exists to catch. The host-waterfall bridge (`opts.bridge`) is exempt for the same reason.
-      const VU_NAMESPACE = /^(member|turn|meeting|ballot|record|task|prompt|budget|pack|settle|control)\//
+      // ROUND 2: the new primitives own their own namespaces too, so a typo in them is a NAMED refusal
+      // rather than an emit that reaches nobody (the same rule the original eleven prefixes follow).
+      const VU_NAMESPACE = /^(member|turn|meeting|ballot|record|task|prompt|budget|pack|settle|control|resume|ids|human|chat|mailbox|panel|math|lifecycle)\//
       const bridged = opts && opts.bridge === true
       const isVmuName = typeof hook === 'string' && VU_NAMESPACE.test(hook)
       if (!bridged && isVmuName && !(VU_HOOKS.includes(hook) || customTopics.has(hook))) {
