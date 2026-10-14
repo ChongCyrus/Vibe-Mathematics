@@ -42,22 +42,101 @@
 
 export const name = 'vibe-math-preset-declaration'
 
+/**
+ * U14 (Round 5) — THE DECLARABLE OVERLAY, SECOND DESIGN (the first one was measured BROKEN).
+ *
+ * THE MEASURED FACT: a loader PATCH REPLACES a row's `config` — it does not merge into it. Measured with
+ * `dsh --profile vmsmoke --dump-config --patch <file>`: patching THIS declaration row with
+ * `config: { overlay: {...} }` turned the whole preset config into that payload (dump 1932 → 1562 lines,
+ * `plugins:` gone, inner `id: vibe-math-vmu` 0 occurrences) ⇒ the preset lost its identity and
+ * `session/create {agentPreset:'vibe-math-vmu'}` answered `agent-preset/not-found`. A patch that lands is NOT a
+ * patch that merges. (The first design put the overlay in this row's config; it destroyed the preset.)
+ *
+ * THE FIX: the overlay travels in a SEPARATE ROW whose config IS the payload, so replacement is exactly right:
+ *
+ *   - id: vibe-math-vmu-overlay        # shipped with config: {} (zero mechanism); the DEPLOYMENT patches this row
+ *     name: dsh-vibe-math/preset-declaration
+ *     config:
+ *       overlayFor: vibe-math-vmu      # which preset id this overlay belongs to
+ *       rows:                          # id-keyed partial configs, merged into that preset's `config.plugins` rows
+ *         vibe-math-vmu: { vmu: { tools: { faces: ['*'] }, packs: { active: ['v5r'] } } }
+ *
+ * The preset row's own config is never touched, so its identity and `plugins` survive. The overlay is read at REGISTER
+ * time (inside the `agentPresets` injection callback), by which point every row of the layer has been applied.
+ * An overlay key that matches no row is a typo: it is warned about by id and CHANGES NOTHING.
+ */
+const OVERLAYS = new Map()
+
+function deepMerge(base, add) {
+  if (add === null || typeof add !== 'object' || Array.isArray(add)) return add === undefined ? base : add
+  const out = Object.assign({}, base && typeof base === 'object' && !Array.isArray(base) ? base : {})
+  for (const k of Object.keys(add)) {
+    const b = out[k]
+    const a = add[k]
+    out[k] = (a && typeof a === 'object' && !Array.isArray(a) && b && typeof b === 'object' && !Array.isArray(b))
+      ? deepMerge(b, a) : a
+  }
+  return out
+}
+
+/** Merge an id-keyed overlay into the declared rows. Returns the ORIGINAL array when there is nothing to do. */
+export function applyOverlay(plugins, overlay, warn = null) {
+  if (!Array.isArray(plugins)) return plugins
+  if (overlay === null || typeof overlay !== 'object' || Array.isArray(overlay)) return plugins
+  const keys = Object.keys(overlay)
+  if (keys.length === 0) return plugins
+  const used = new Set()
+  const merged = plugins.map((row) => {
+    if (!row || typeof row !== 'object') return row
+    const add = overlay[row.id]
+    if (add === undefined) return row
+    used.add(row.id)
+    return Object.assign({}, row, { config: deepMerge(row.config || {}, add) })
+  })
+  if (typeof warn === 'function') for (const k of keys) if (!used.has(k)) warn(k)
+  return merged
+}
+
+/** Read the overlay registered for a preset id (empty object when none was declared). Exported for tests. */
+export function overlayForPreset(id) {
+  const got = OVERLAYS.get(String(id))
+  return got && typeof got === 'object' ? got : {}
+}
+
 /** Register one declaration and own its disposer for the lifetime of this fiber. */
 function registerDeclaration(ctx, config) {
   const presets = ctx.get('agentPresets')
   if (presets === undefined || typeof presets.register !== 'function') return
-  const definition = {
+  const warn = (key) => {
+    ctx.logger?.warn?.('[dsh-vibe-math] preset "' + String(config.id) + '" overlay names a row that does not exist: ' + String(key))
+  }
+  // ★ THE IDENTITY GUARD (U14, second design): a preset row whose `plugins` is not an array has had its config
+  // REPLACED by a patch - which is exactly the failure the first design caused (`agent-preset/not-found`). Name it,
+  // and name the fix, instead of registering a preset with no identity.
+  if (!Array.isArray(config.plugins) || typeof config.id !== 'string' || config.id === '') {
+    ctx.logger?.warn?.('[dsh-vibe-math] this row has no preset identity (id/plugins missing): its `config` was most likely '
+      + 'REPLACED by a patch. A loader patch replaces a row\'s config; patch the OVERLAY row (`id: vibe-math-vmu-overlay`) '
+      + 'instead of the preset row. Nothing was registered.')
+    return
+  }
+  const base = {
     id: config.id,
     name: config.name,
     description: config.description,
     order: config.order,
-    plugins: config.plugins,
   }
   ctx.effect(() => {
     let dispose
     let retired = false
     Promise.resolve()
-      .then(() => presets.register(definition))
+      // ★ U14 / THE EVALUATION-TIMING FIX (Lead's finding): the overlay must be read HERE, at REGISTER time, not when
+      // this declaration is applied. Row order is not a contract the bundle controls (the preset row can be applied
+      // before the overlay row), and an `applyOverlay` evaluated at apply time read an EMPTY overlay map - which is why
+      // the first version merged nothing, and why an unmatched key produced no warning (an empty overlay has no keys to
+      // test). Deferring the read to this microtask means every row of the layer has been applied by the time it runs.
+      .then(() => presets.register(Object.assign({}, base, {
+        plugins: applyOverlay(config.plugins, overlayForPreset(config.id), warn),
+      })))
       .then((unregister) => {
         // Unregistering runs the preset's whole scope disposer, so it can reject. An unhandled
         // rejection terminates the process on Node >= 15: a teardown must never kill the host.
@@ -70,7 +149,11 @@ function registerDeclaration(ctx, config) {
         // profile layers are applied AFTER every bundle layer (dsh-app-boot/lib/types/profile.d.ts:
         // "then the profile's own patches"), so the winner is an earlier or peer layer — never
         // "theirs wins by being applied later". One line instead of a failed boot.
-        ctx.logger?.warn?.('[dsh-vibe-math] agent preset "' + definition.id + '" 未由本包注册：' + message)
+        // ★ FIX (measured by `tests/audit-preset-rows.test.mjs`): this branch used to read `definition.id`, a variable
+        // that no longer exists after the register call moved into this chain ⇒ the CATCH ITSELF threw
+        // (`ReferenceError: definition is not defined`) and turned "a named warning" into a crash. The id comes from
+        // `base`, which is in scope here, and the whole warn is guarded so a broken logger cannot crash the boot either.
+        try { ctx.logger?.warn?.('[dsh-vibe-math] agent preset "' + String(base.id) + '" 未由本包注册：' + message) } catch { /* a failed warning must never fail the boot */ }
       })
     return () => {
       retired = true
@@ -82,6 +165,15 @@ function registerDeclaration(ctx, config) {
 /** @param ctx host context @param config the row's declaration config */
 export function apply(ctx, config) {
   if (config === undefined || config === null || typeof config !== 'object') return
+  // ★ THE OVERLAY ROW (U14, second design): its config IS the overlay payload, so a patch REPLACING this row's config
+  // is exactly right (a patch replaces, it does not merge - measured). It registers the payload and declares no preset.
+  if (typeof config.overlayFor === 'string' && config.overlayFor !== '') {
+    const rows = config.rows && typeof config.rows === 'object' && !Array.isArray(config.rows) ? config.rows : {}
+    OVERLAYS.set(config.overlayFor, rows)
+    const n = Object.keys(rows).length
+    if (n > 0) ctx.logger?.info?.('[dsh-vibe-math] overlay row declared ' + n + ' row override(s) for preset "' + config.overlayFor + '"')
+    return
+  }
   if (typeof ctx.inject === 'function') ctx.inject(['agentPresets'], (child) => registerDeclaration(child, config))
   else registerDeclaration(ctx, config)
 }

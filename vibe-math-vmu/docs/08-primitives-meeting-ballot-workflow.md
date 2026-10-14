@@ -1433,6 +1433,21 @@ recount(ballotId):
 
 ---
 
+### 25.11 F26／F31／F32／F34：票型词汇、提交闸门、刚刚定论窗口、开辩资格（Round 5）
+
+四条"部分"项的收口，全部落在 `kernel/ballot.js`（**无新增设置键**：界与窗口由**构造参数**声明，策略留在造票的 pack 手里）。
+
+| 条目 | 原判（差在哪） | 落点与语义 |
+|---|---|---|
+| **F26 五种票型分离** | 票带自由 `kind`，**票型由设置而非固定词汇定义** ⇒ "这一票是哪一种"没有唯一答案 | **固定枚举 `VOTE_KINDS = ['for','against','abstain','unable','estimate']`** ＋ 纯函数 **`classifyVote(value, kind)`**：1/0 ⇒ for/against；`{kind:'abstain'}` ⇒ abstain；`{kind:'unable'}` ⇒ unable；`{kind:'estimate'}`＋严格介于 0 与 1 ⇒ estimate；`kind:'process'` ⇒ **不是第六种票**（I-1/F27：过程读数不是票，单独一条通道）。**m-vote 仍只由 for/against 决定**（`DECISIVE_KINDS`）；`status().byKind` 五种分开计数、`status().voteKinds` 报词汇；**未声明为 estimate 的 0.4 仍按 m-vote 规则具名拒**（不悄悄改判） |
+| **F31 原子队列** | "原子"由单线程同步写**结构性**保证，**无显式队列/串行化** | **显式提交闸门**：`cast` 会 await 中间件，因此**并发两票可能在"查重"与 `votes.set` 之间交错**（真实隐患）⇒ 一张票的全部真值变更走**同一条 FIFO 链**（`castNow` 是唯一临界区，`cast` 只是带闸门的包装）。**断言**：同一成员两票并发 ⇒ **恰好一票被接受**、`voteCount===1`、`gate.commits===2`；不同成员并发不受影响（串行化不丢票） |
+| **F32 "刚刚定论"去重窗口** | 只有"重复举手"去重，**没有定论时间窗去重** | 构造参数 `dedupWindowMs`（0＝零机制）：窗口内**同一结论**的重复收束被**折叠**（计数 `dedup.foldedVerdicts`、历史记 `close-deduped`、回执 `deduped:true` 带 `previousAt/windowMs`）。**三条诚信边界**：① **只有同结论才折叠**——窗口内的**不同结论**永远照常宣布；② 折叠**仍必须收束**（`state='tallied'`＋`outcome` 落在面里），否则票面会停在 `open` 继续收票——这正是本轮自查抓到并修掉的一处；③ 有中间件 tally（`bus`）时**不猜**：直接跳过折叠，公告权仍归中间件 |
+| **F34 开启辩论的资格判据** | 只有"谁有资格投票"，**"谁有资格开启辩论"未见** | 三个**已声明**条件（`openers`／`minEligible`／`requiresTarget`），在**唯一开辩点 `open({by})`** 具名拒：非开启人 ⇒ `VMU_NOT_PERMITTED`；选民团小于下限 ⇒ `VMU_STATE`；无标的而声明必须有标的 ⇒ `VMU_INVALID_ARGUMENT`。三者形状由 `status().openCriterion` 在**撞上之前**可见（含 `satisfied`）；默认仍宽松（`openers=null`、无下限）＝零机制 |
+
+**顺带修掉的一处语义暗礁**：`close()` 之后 `open()` 会**带着旧票**重开（下一次投片被判"已投票"，而旧结论静静留着）⇒ 现在 `open()` 对 `state==='tallied'` **具名拒**并指向 `reopen()`（清票重辩）。快照：`lastClose`／`dedupedVerdicts` **随快照走**（重启后窗口仍生效，实测 `restored_items` 含 `dedup`）；在飞行的闸门队列**不持久**并如实列入 `skipped`（`commit-gate`）。
+
+---
+
 ## 26. Round 3 · 目标 2 缺口：一次性 future-only 活动等待器（F52 / C-56）
 > **判据**：`_handoff/vmu/03-v5r-full-inventory.md` 分片 A **§6 原语 F52**（"必须是未来一次性语义"）、**C-56**（`vibe_v5_wait`／`waitForActivity`／`notifyActivity`，`vibe-math-v5r.js:3424-3466`、工具 `:11142-11151`）。
 > **缺口实测**：Round 3 之前 vmu 全树对 `waitFor`／`notifyActivity`／`vibe_v5_wait`／`activityWaiter` **零命中** ⇒ 成员只能轮询（烧 token）或永远等；这条直接落在"利于多智能体协作"的反面，故本轮补为内核原语。

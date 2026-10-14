@@ -23,9 +23,10 @@
 //      node tests/vmu-assistant-host-slice.test.mjs --web-port 7791 --web-token <t> [--preset vibe-math-vmu]
 //      node tests/vmu-assistant-host-slice.test.mjs --require-host       (exit ≠0 while the slice cannot run)
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
+import zlib from 'node:zlib'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -39,6 +40,9 @@ const PRESET = argOf('preset', 'vibe-math-vmu')
 // host-side and fails ENOENT). Kept separate from DSH_HOME so the slice's own workspace is obvious in the dump.
 const WS_DIR = argOf('cwd', process.env.DSH_SLICE_WS || join(process.env.TEMP || '/tmp', 'vmu-slice-ws'))
 const TIMEOUT_S = Number(argOf('timeout', '300'))
+// PLAYBOOK §4: a scripted run MUST carry an explicit token cap. The default is a small, deliberate number rather than
+// "no cap" (0 means uncapped in the driver): a slice that runs away must be cancelled, and the cap hit is reported.
+const MAX_TOKENS = Number(argOf('max-tokens', '60000'))
 const PRINT = process.argv.includes('--print')
 
 let passed = 0
@@ -71,6 +75,54 @@ const locateCli = () => {
 const CLI = locateCli()
 const dsh = (args) => (CLI && CLI.bin ? run(process.execPath, [CLI.bin].concat(args)) : run('dsh', args, { shell: true }))
 const readText = (p) => { try { return readFileSync(p, 'utf8') } catch { return '' } }
+/**
+ * THE SESSION LOG IS THE EVIDENCE THE ACCOUNTING DEMANDS (seq + line for every tool/call & tool/result, plus the
+ * assistant's own words). It is a MULTI-FRAME zstd file, so it must be split on the zstd magic before each frame is
+ * decoded - exactly the technique `scripts/dsh-drive.mjs:213-215` uses (`zstdDecompressSync` alone stops at frame 1 and
+ * yields only the session header, which is how a plain decode produced a misleadingly tiny result once).
+ */
+const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd])
+function decodeZstdFrames(buf) {
+  const parts = []; let off = 0
+  while (off < buf.length) {
+    const n = buf.indexOf(ZSTD_MAGIC, off + 4)
+    const slice = n === -1 ? buf.subarray(off) : buf.subarray(off, n)
+    try { parts.push(zlib.zstdDecompressSync(slice)) } catch { /* skip an undecodable frame */ }
+    if (n === -1) break
+    off = n
+  }
+  return Buffer.concat(parts).toString('utf8')
+}
+function findSessionLog(home, sessionId) {
+  const root = join(home, 'sessions')
+  const walk = (d, out = []) => { try { for (const e of readdirSync(d, { withFileTypes: true })) { const p = join(d, e.name); if (e.isDirectory()) walk(p, out); else out.push(p) } } catch { /* none */ } return out }
+  return walk(root).find((p) => p.includes(sessionId) && /session.*jsonl/.test(p)) || null
+}
+/** { file, lines, events, toolCalls[{line,seq,name}], toolResults[{line,seq}], assistant[] } - all with line numbers. */
+function readSessionLog(home, sessionId) {
+  // THE LOG IS FLUSHED AT TURN END, so a read taken the instant the driver exits can MISS it (measured: an earlier
+  // version reported `sessionLog:null` and silently produced an empty accounting, which reads like "no tool calls").
+  // Retry briefly by sleeping in a child process (this script is synchronous), then give up by NAME.
+  let file = null
+  for (let attempt = 0; attempt < 15 && !file; attempt++) {
+    file = findSessionLog(home, sessionId)
+    if (!file) spawnSync(process.execPath, ['-e', 'setTimeout(()=>{},200)'], { timeout: 2000 })
+  }
+  if (!file) { console.log('  NOT-FOUND: session log for ' + sessionId + ' under ' + join(home, 'sessions') + ' (accounting unavailable, stated by name)'); return { file: null, lines: 0, events: [], toolCalls: [], toolResults: [], assistant: [] } }
+  const text = decodeZstdFrames(readFileSync(file))
+  const raw = text.split('\n').filter(Boolean)
+  const events = []; const toolCalls = []; const toolResults = []; const assistant = []
+  raw.forEach((l, i) => {
+    let e; try { e = JSON.parse(l) } catch { return }
+    events.push(e)
+    const seq = e.seq ?? e.data?.seq ?? '?'
+    if (e.type === 'tool/call') toolCalls.push({ line: i + 1, seq, name: e.data?.name })
+    if (e.type === 'tool/result') toolResults.push({ line: i + 1, seq })
+    if (e.type === 'assistant/message') { const t = (e.data?.message?.content ?? []).map((c) => c.text ?? '').join(''); if (t.trim()) assistant.push(t) }
+  })
+  return { file, lines: raw.length, events, toolCalls, toolResults, assistant }
+}
+const lineOf = (events, typeFilters) => { const i = events.findIndex((e) => typeFilters.some((f) => String(e.type).includes(f))); return i === -1 ? null : i + 1 }
 
 // ── 1. THE ENVIRONMENT, ASSERTED (this part always runs) ─────────────────────────────────────────────────────────
 stage('1. THE HOST PRECONDITIONS, MEASURED (named, never assumed)')
@@ -112,18 +164,32 @@ console.log('  NOTE: ' + providerNote)
 stage('3. THE SLICE ITSELF: REPORT TRIGGERS / PARAMETER FACE / BOTH PERSONA CHANNELS, IN A REAL HOST')
 const DRIVER = join(REPO, 'scripts', 'dsh-drive.mjs')
 const SLICE_TASK = [
-  'Scripted acceptance slice. Do EXACTLY this and nothing else:',
-  'call `vibe_vmu_report` with {"action":"status"} and quote the first 200 characters of the JSON result verbatim;',
-  'then call it with {"action":"tick","metrics":"{\\"artifacts\\":9}"} and quote the first 200 characters verbatim;',
-  'then answer in ONE sentence: are you the institute office (assistant/external interface) or a member, and do you vote?',
+  // PLAYBOOK §2: the FIRST user message must say this is a SIMULATED TEST (its `user/message` seq + line number are
+  // part of the evidence). The tools are NAMED EXPLICITLY (round-5 lesson: a vague prompt produced `toolCalls:0`, which
+  // cannot be told apart from "the faces were never published").
+  '【模拟测试 / SIMULATED TEST】This is a scripted acceptance slice for the vmu assistant face, NOT a research task.',
+  'Call these tools IN ORDER and print the first 80 characters of each JSON result verbatim (if one is missing or refuses, say so and continue):',
+  '1. `vibe_vmu_status`',
+  '2. `vibe_vmu_chat` with {"action":"list"}',
+  '3. `vibe_vmu_panel` with {"action":"status"}',
+  '4. `vibe_vmu_report` with {"action":"status"}',
+  '5. `vibe_vmu_report` with {"action":"tick","metrics":"{\\"artifacts\\":9}"}',
+  'Then answer in ONE sentence: are you the institute office (assistant/external interface) or a member, and do you vote?',
 ].join('\n')
 if (WEB_PORT && WEB_TOKEN && existsSync(DRIVER)) {
   // THE ROUTE THAT CAN COMPOSE THE PRESET: a running scratch `dsh web` instance, driven by the in-repo driver with an
   // explicit `--preset`. The server is NOT started here (that belongs to the operator / verify's smoke).
   try { mkdirSync(WS_DIR, { recursive: true }) } catch (e) { /* reported by the driver if it matters */ }
   const outDir = join(process.env.TEMP || '/tmp', 'vmu-host-slice-' + Date.now())
+  // THE DRIVER APPENDS TO `<out>/transcript.jsonl` AS ITS FIRST ACT (the auth step is already logged), so the directory
+  // must exist BEFORE it starts - measured: without this it dies with `ENOENT ... transcript.jsonl` right after auth,
+  // i.e. before any model turn (a free failure, but a wasted attempt).
+  try { mkdirSync(outDir, { recursive: true }) } catch (e) { /* the driver will report it if it matters */ }
   const drive = spawnSync(process.execPath, [DRIVER, '--port', String(WEB_PORT), '--token', String(WEB_TOKEN), '--cwd', WS_DIR,
-    '--preset', PRESET, '--task', SLICE_TASK, '--out', outDir, '--timeout', String(TIMEOUT_S)],
+    '--preset', PRESET, '--task', SLICE_TASK, '--out', outDir, '--timeout', String(TIMEOUT_S),
+    // PLAYBOOK §4: the driver must be given an explicit token cap on every run (0 would mean "no cap").
+    '--max-tokens', String(MAX_TOKENS),
+    '--jsonl', join(outDir, 'transcript.jsonl')],
   { cwd: REPO, encoding: 'utf8', timeout: (TIMEOUT_S + 60) * 1000 })
   const dump = readText(join(outDir, 'transcript.jsonl'))
   const summary = readText(join(outDir, 'summary.json'))
@@ -136,13 +202,41 @@ if (WEB_PORT && WEB_TOKEN && existsSync(DRIVER)) {
     'HOST: the parameter face went through the kernel writer and left an audit row')
   ok(/office|所办/.test(transcript) && /不投票|no vote|不参与研究/.test(transcript),
     'HOST: the SYSTEM PROMPT channel reached the model (it answers as the office, not as a voting member)')
+  // MULTI-FACE LIT (the fact vmu-verify needs for its matrix) - read from the SESSION LOG, which is the authoritative
+  // record with `seq` + line numbers. Prose mentions are NOT calls: only `tool/call` events count.
+  const sessionId = (transcript.match(/"sessionId"\s*:\s*"([^"]+)"/) || [])[1] || null
+  const sess = sessionId ? readSessionLog(DSH_HOME, sessionId) : { file: null, lines: 0, events: [], toolCalls: [], toolResults: [], assistant: [] }
+  const calledFaces = [...new Set(sess.toolCalls.map((t) => t.name).filter(Boolean))].sort()
+  const vmuFaces = calledFaces.filter((n) => /^vibe_vmu_/.test(n))
+  ok(vmuFaces.length >= 3, 'HOST: at least three vmu faces were really CALLED in the session (multi-face lit)', { called: calledFaces })
+  ok(calledFaces.indexOf('vibe_vmu_report') !== -1 && sess.toolResults.length > 0,
+    'HOST: the report face was really CALLED and produced a tool/result', { called: calledFaces, results: sess.toolResults.length })
+  console.log('  FACES CALLED: ' + JSON.stringify(calledFaces))
+  // THE ACCOUNTING THE LEAD ASKED FOR: every tool/call & tool/result with its seq + line number.
+  console.log('  TOOL EVIDENCE: ' + JSON.stringify({
+    sessionLog: sess.file, lines: sess.lines, events: sess.events.length,
+    calls: sess.toolCalls.map((t) => ({ name: t.name, seq: t.seq, line: t.line })),
+    results: sess.toolResults.map((r) => ({ seq: r.seq, line: r.line })),
+    firstUserMessage: (() => { const i = sess.events.findIndex((e) => e.type === 'user/message'); return i === -1 ? null : { line: i + 1, seq: sess.events[i].seq ?? sess.events[i].data?.seq ?? '?' } })(),
+  }))
+  // WHEN NOTHING WAS CALLED, THE MODEL'S OWN WORDS ARE THE FINDING (and they distinguish the two possible causes:
+  // "the faces are in the tool list but the model would not call them" vs "the faces were never published").
+  if (sess.toolCalls.length === 0) {
+    const words = sess.assistant.join('\n').trim()
+    console.log('  FINDING (no tool call): the model said: ' + JSON.stringify(words.slice(0, 700)))
+    ok(/vibe_vmu_report/.test(words) && /(not available|no such tool|unavailable|未提供|不可用|没有)/i.test(words) === false && words.length > 0,
+      'HOST: with zero tool calls, the model\'s OWN WORDS are recorded as the finding (not silently passed)', { chars: words.length })
+  }
   // THE EVIDENCE DIGEST: provider/model, the session, and the token readings the host emitted (whatever it emits - the
   // absence of a field is reported as absent, never invented).
   const pick = (re) => { const m = transcript.match(re); return m ? m[0] : null }
   const digest = {
-    preset: PRESET, port: WEB_PORT, sessionId: pick(/"sessionId"\s*:\s*"[^"]+"/),
+    preset: PRESET, port: WEB_PORT, sessionId,
     model: pick(/"model"\s*:\s*"[^"]+"/), provider: pick(/"provider"\s*:\s*"[^"]+"/),
-    usage: pick(/"usage"\s*:\s*\{[^}]*\}/), turns: pick(/"rounds?"\s*:\s*\d+/),
+    usage: pick(/"tokens"\s*:\s*\{[^}]*\}/), turns: pick(/"rounds?"\s*:\s*\d+/),
+    tokenCap: MAX_TOKENS, tokenCapHit: /"tokenCapHit"\s*:\s*true/.test(transcript),
+    toolCalls: sess.toolCalls.length, facesCalled: calledFaces,
+    transcriptEvents: pick(/"transcriptEvents"\s*:\s*\d+/),
     dumpDir: outDir, ws: WS_DIR,
   }
   console.log('  EVIDENCE: ' + JSON.stringify(digest))

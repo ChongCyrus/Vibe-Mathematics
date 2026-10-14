@@ -131,6 +131,49 @@ pack 默认  <  预设 Config  <  会话 settings  <  运行时 set
 ⑧ **`vmu.store.lock` 故意不声明**：schema 默认 `true` 且 `kernel/storepolicy.js:95` 真读 ⇒ v5r 想要的"恢复即独占"（reader-a 的 F18）**默认就成立**；声明它等于把"默认已成立的事"再写一遍。
 ⑨ **`vmu.meetings.speechExtendMs` 故意不声明**：v5r 的会议**没有"延长"机制**（D4："只有有界、没有可延长"）⇒ schema 默认 `0`（零机制）下，`extend` 请求被**具名拒**，**这正是 v5r 的忠实语义**；把它调成非 0 反而是新增制度。
 ⑩ **表决板的"箱界"不设设置键**：它由**构造参数**声明（`kernel/ballotbox.js:82` 的 `openMaxMs`，默认 0＝零机制）——界属于一个箱子的一生，做成设置键要么只在构造时读、要么会热改正在投票的箱子的界，两者都比"构造处显式声明"更差（reader-c 的实测理由，见 `docs/08 §25.9`）⇒ **本 pack 不声明任何 `vmu.ballot.open*` 键**（此前文档里出现的建议键名已撤回，避免留下"文档里有、schema 里没有"的悬空名）。
+⑪ **v5r 提示词里的 `write_scopes` 字段：轮 5 起已被内核消费（advisory）**——`packs/v5r/prompts/v5r-blocks-a.js` 的 `task_create` 示例早就发 `write_scopes`，此前 vmu 侧**丢弃**它；现在 `tasks.create()` 收下并作为**只报告不阻断**的 advisory 落库（`status().writeScopeConflicts`／`list()` 行可见，重叠即报）。⇒ 该字段**不再是"未接"**，docs 与 pack 注释不必再标缺口。
+
+### 4.2 v3-core 的**包私有键处置**（轮 5 裁决：**有读者者进 schema** ＋ 无读者者具名退役）
+
+> 症状（轮 5 实测）：`packs/v3-core/index.js` 曾声明 5 个**包私有键（前缀 `vmu.v3.`）**，它们**都不在 `settings/schema.js`** ⇒ 包内模块能经 `setting()` 读到，但 `vibe_vmu_set` 会以"未声明键"**具名拒**；更糟的是其中 **3 个全仓零读者**（唯一出现处就是自己的声明）。**"能读但设置面拒绝"与"声明了没人读"两种状态都不许留。**
+
+**① 选定的分支：两个有读者的键＝进 schema（`settings/schema.js:85-86`，与 v5r 的 `vmu.records.requireSettledRecords` 同待遇）**
+
+| 键 | 读者 | 为什么进 schema |
+|---|---|---|
+| `vmu.v3.verifierCount`（natural，def 3，H1，office） | `packs/v3-core/index.js:80` 的 quorum 中间件 | 它**是真被读的键**，而"能读、却永远不能在运行期 `set`"是本系统里最坏的半边不对称：`vibe_vmu_set` 会**具名拒**它，部署只能改 config/清单（装载期那一层）。声明进 schema 后两条路都通，且与"包私有键也进 schema"的既有先例一致。 |
+| `vmu.v3.mode`（enum `auto｜manual`，def `auto`，H1，office） | `packs/v3-core/index.js:105` 的 manual-gate 中间件 | 同上。 |
+
+**② 三个**无读者**的键：移除声明 + 具名登记为扩展点**（**故意不写 `vmu.` 前缀**：它们不再是键，只是 v3 的参数名；写全名会让"文档里有、schema 里没有"的门禁再红一次）
+
+| v3 参数名 | 处置 | 理由 |
+|---|---|---|
+| `solverMaxRounds`（v3 值 3） | **移除声明 + 具名登记为扩展点** | **全仓零读者**；v3 的 solver 轮次机制本框架尚不具备 ⇒ 保留 v3 值作为**设计意图**记录在此，不再假装可配置 |
+| `planningHorizon`（v3 值 3） | **移除声明 + 具名登记为扩展点** | 同上（v3 的 planner/scheduler 未实现） |
+| `promoteValueThreshold`（v3 值 0.7） | **移除声明 + 具名登记为扩展点** | 同上（v3 的晋升阈值机制未实现） |
+
+### 4.3 心跳 / 周期的**声明点**（pack 侧，轮 5：core 判定后的最终口径）
+
+> **结论（core 判定）**：**不需要新键**，但 pack 侧有**一个既有声明点**；而**内核不自动启用心跳**。
+> 1. **声明点存在且被真读**：`vmu.schedule.triggers`（声明式触发器种子）由 `kernel/scheduler.js:594-607` 在构造时逐条转成 `api.every`／`api.once`；坏种子**计数 + 报 `schedule/seed-rejected`**（不静默）。策略面：`vmu.schedule.triggerVia`（`none｜middleware｜script`，默认 `none`＝只报告）、`timeSource`（默认 `tick-only`）、`coalesceMissed`、`overdueGraceMs`、`maxPending`（`settings/schema.js:508-515`）。
+> 2. ★ **声明 ≠ 会跑**：内核**不会**替 pack 自动 `arm()`（自启会让"完全没声明的部署"也跑定时器 ⇒ 违反零机制）。要周期推进，pack／中间件必须**自己 `arm()` 并按自己的时钟 `tick()`**（或 `timeSource:'host-timer'` ＋ 注入 timer 接缝）；否则种子只是被登记，`status()` 自曝其状态。core 已把这条"调度的边界"写进 `docs/03`，并给出**改判条件**：若真机验收要求"声明即心跳"，入口加一行 `arm()` 且必须自曝 `status().scheduler.armed`。
+
+**可复制片段**（给**需要**周期推进的 pack；放进 `PACK.settings` 或 `settings/defaults.json`）：
+```js
+'vmu.schedule.triggers': [
+  { kind: 'every', intervalMs: /* 周期 */, what: 'heartbeat', payload: { phase: 'heartbeat' }, by: 'settings' },
+],
+'vmu.schedule.triggerVia': 'none',      // 与 schema 默认一致：报告不驱动（R1：框架只推荐）
+'vmu.schedule.coalesceMissed': true,    // 漏跑合并，但仍报 missed（不静默）
+```
+配套（pack 侧）：`scheduler.arm()` ＋ 自己的 `tick()`（例如在回合边界或宿主定时器上推进）。
+
+★ **v5r 的结论：不声明心跳**（最终口径）。理由两条：
+1. **v5r 没有可核的"心跳周期"出厂值**——`activityTimeoutMs`／`recoverStallMs` 是**论文阶段的静止阈值**（判定"没进展"），不是周期；写一个 900000 就是**臆造常量**（本仓明令禁止）。
+2. v5r 的静止提示在原文里是**框架侧推荐**（R1："only RECOMMENDS"），而 vmu 把"是否周期推进"交给了**部署**（声明种子 + 自己 arm/tick）⇒ 保持零机制：无声明 ⇒ 一个定时器都不跑。
+⇒ `packs/v5r/settings/defaults.json` **不新增任何 `vmu.schedule.*` 键**；需要心跳的部署照上面的片段声明（并在自己的入口 arm/tick）。
+
+**③ 判据（可复核）**：`grep -rn "vmu.v3." vibe-math-vmu` 只命中 **`packs/v3-core/index.js`**（两个键的声明 + 两处读取）与 **`settings/schema.js:85-86`**（两个键的声明）；**没有第三个地方**。文档里不再出现"点了名却不在 schema/planned"的全名形态（三个退役参数名不带前缀）。
 
 ---
 

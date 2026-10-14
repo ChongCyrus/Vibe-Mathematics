@@ -61,8 +61,22 @@ ok(/^ {4}- id: vibe-math-preset-installer$/m.test(patch)
 const declarationRows = [...patch.matchAll(/^ {4}- id: preset-vibe-math-(v\d+r?|vmu)$/gm)].map((m) => m[1])
 ok(declarationRows.join(',') === VERSIONS.join(','),
   'one declaration row per preset, in order', declarationRows.join(','))
-ok((patch.match(/name: dsh-vibe-math\/preset-declaration/g) || []).length === VERSIONS.length,
-  'every declaration names this package\'s own preset-declaration module')
+// ROUND 5 (U14): the patch now also carries ONE overlay TARGET row (`- id: vibe-math-vmu-overlay`, `config: {}`),
+// consumed by the very same `preset-declaration` module at registration time. Counting the module name and
+// expecting `VERSIONS.length` therefore went stale - but the fix is NOT "+1": a bare increment would also admit a
+// row that came from nowhere. The stronger shape is SET EQUALITY over the rows this patch is allowed to carry,
+// with the overlay row admitted BY NAME, plus the original intent kept: every declaration row - and the overlay
+// target row, since it is consumed by the same module - names THIS bundle's own declaration module.
+const rowIds = [...patch.matchAll(/^ {4}- id: ([A-Za-z0-9-]+)$/gm)].map((m) => m[1])
+const expectedRowIds = ['vibe-math-preset-installer', 'vibe-math-vmu-overlay',
+  ...VERSIONS.map((v) => 'preset-vibe-math-' + v)].sort()
+ok(JSON.stringify([...rowIds].sort()) === JSON.stringify(expectedRowIds),
+  'the patch carries EXACTLY the expected rows: the installer + one declaration per preset + the overlay target row (set equality - a row from nowhere is RED)',
+  { rowIds, expectedRowIds })
+const declarationLikeRows = rowIds.filter((id) => id.startsWith('preset-vibe-math-') || id === 'vibe-math-vmu-overlay')
+ok((patch.match(/name: dsh-vibe-math\/preset-declaration/g) || []).length === declarationLikeRows.length,
+  'every declaration row AND the overlay target row name this package\'s own preset-declaration module',
+  { names: (patch.match(/name: dsh-vibe-math\/preset-declaration/g) || []).length, declarationLikeRows })
 ok(!patch.includes("name: '@deepseek-ai/dsh-agent-preset'"),
   'no row names @deepseek-ai/dsh-agent-preset (that package does not exist on DSH <= 0.1.6)')
 ok(!/^ {4,6}disabled:/m.test(patch),

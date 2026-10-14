@@ -427,10 +427,12 @@ LeanJobMirror  = { schema:'vmu/lean-job@1',  jobId, statement, file, state, atte
   ⇒ 预算照样到点（**绝不挂死**），但结果诚实写 `terminated:false` / `hadHandle:false`。
 - **`graceMs`**：作为**请求**随 spec 一起传给宿主；真正的约束力来自本地预算（两者同时存在才既"可请求"
   又"可控"）。
-- **`maxBytes`（输出上限）**：`kernel/lean.js` 读 **`vmu.math.captureStdoutBytes`**（与计算面同一个键，
-  默认 65536；0/缺省 ⇒ 常量 `LEAN_OUTPUT_MAX_BYTES = 64*1024`），本地截断用 `tailBytes()` 且**计数**
-  （`receipt.stdoutDroppedBytes` / `stderrDroppedBytes`）；宿主自己的 `lossy` / `spillPath` 原样带进回执
-  （**大结果的可达引用**由此至少有一半：spill 路径）。
+- **`maxBytes`（输出上限）**：**同一个键 `vmu.math.captureStdoutBytes` 有两个读者、一个默认**——
+  `kernel/mathjobs.js:363`（作业面：`tail()` 截断 stdout/stderr，`:505/:506`）与 `kernel/lean.js:166`
+  （F17 的 per-stream 上限）；**两面的缺席值都是 65536**（＝schema 的 `def`，Lean 侧的常量名是
+  `LEAN_OUTPUT_MAX_BYTES = 64*1024`）——本轮把 mathjobs 的老默认 20000 对齐掉，否则"一个键两个默认"。
+  截断**计数**（`stdoutDroppedBytes` / `stderrDroppedBytes`，计算面为 `receipt.droppedBytes`）；宿主自己的
+  `lossy` / `spillPath` 原样带进回执（**大结果的可达引用**由此至少有一半：spill 路径）。
 - **可观测**：`admission().subprocess = {budget, declaredKillableSeam, lastSpawnHadHandle, childrenTerminated,
   childrenTimedOut, graceMsSent, hostContract}`；`admission().canTerminateChild` ＝ 声明的 killable 接缝
   **或**运行时已证明（`lastSpawnHadHandle === true`）；作业视图带 `terminated` / `hadHandle` /
@@ -447,12 +449,13 @@ LeanJobMirror  = { schema:'vmu/lean-job@1',  jobId, statement, file, state, atte
   （`() => clearTimeout(h)`）；注入的 seam 若返回平台 `Timeout` 对象则**显式 `clearTimeout`**；**清理失败**
   返回 `cleanupFailed` ＋ 通过 `onNote('timer-cleanup-failed', …)` 上报，**绝不**再被 `catch` 吞掉（这正是
   F15 抓到的形态：默认部署的定时器从未被清理，而失败被"already settled"掩盖）。
-- **共享模块的两处 sleep 为何不需要句柄（F15 具名豁免）**：`math-computation.js` 的两处
-  `await new Promise(r => setTimeout(r, 250 + i*400))` 是**版本探测 / 包预检的退避重试**（最多 3 次，
-  250/650ms，合计 ≈1.8 s/引擎），**不持锁、不持进程、不跨调用**；共享模块的宿主契约里**没有 timer seam**，
-  而它是**四份逐字节相同的副本**之一（D-10）⇒ 给它加 seam 属**跨预设接口变更**、超出本面写范围。
-  因此按门规**具名豁免**（不是漏改）：代价上界可算、无资源泄漏、且任何"取消"需求都发生在调用方那一层
-  （`createChildBudget` 已提供）。要真加 seam，需与 4 份副本一起改（下一轮工单）。
+- **共享模块的两处 sleep 为何不需要句柄（F15 具名豁免 → 权威登记 `docs/11 §11.ap`）**：`math-computation.js` 的两处
+  `await new Promise(r => setTimeout(r, 250 + i*400))`（`:616` 版本探测 / `:727` 包预检）是**有界退避重试**（最多 3 次，
+  单站点 ≤650ms，整段 ≈1.8 s/引擎），**不持锁、不持进程、不跨调用**，且只在 spawn 已失败后走到；共享模块的宿主
+  契约里**没有 timer seam**，而它是**四份逐字节相同的副本**之一（D-10）＋ parity 的冻结哈希断言 ⇒ 给它加 seam 属
+  **跨预设接口变更**、超出本面写范围。因此**按门规具名豁免**（不是漏改）：权威登记在 **`docs/11 §11.ap`**（含上界
+  与重测命令），可证伪面＝`tests/vmu-activity-timers.test.mjs` §1 的分类行与 §5 探针（**故意保持红**以记录该边界）。
+  要真加 seam，需与 4 份副本一起改（下一轮协调项）。
 
 ---
 

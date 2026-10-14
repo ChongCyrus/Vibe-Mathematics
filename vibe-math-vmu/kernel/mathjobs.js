@@ -360,7 +360,9 @@ export function createMathJobs(opts) {
       requireSeedForRandom: readKey('vmu.math.requireSeedForRandom') !== false,
       denyNetwork: readKey('vmu.math.denyNetwork') !== false,
       workspaceOnly: readKey('vmu.math.workspaceOnly') !== false,
-      captureStdoutBytes: n('vmu.math.captureStdoutBytes', 20000),
+      // Same key AND same absent-value answer as the schema (`def: 65536`) and as the Lean face's
+      // `LEAN_OUTPUT_MAX_BYTES` — one meaning, one default (the old local 20000 disagreed with both).
+      captureStdoutBytes: n('vmu.math.captureStdoutBytes', 65536),
       // ROUND 2
       persist: readKey('vmu.math.jobs.persist') === true,
       jobsDir: safeRelDir(String(dirRaw == null ? '' : dirRaw)),

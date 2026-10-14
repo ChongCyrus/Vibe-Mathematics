@@ -205,3 +205,43 @@ export function formatReport(report) {
   if (report.leftovers.length) lines.push('  LEFTOVER: ' + report.leftovers.join(', '))
   return lines.join('\n')
 }
+
+/**
+ * THE FAMILY FORM (round 5): one call for several modules/probes, each with its own CONTROL reading and its own
+ * single-point mutations. This is what makes "add a falsify family" a ~30-line job instead of a plumbing exercise:
+ *
+ *   const family = await falsifyFamily({ name: 'mailbox/chat/panel', cases: [
+ *     { name: 'mailbox ack-after-delivery', module: MAILBOX, probe: mailboxProbe,
+ *       mutations: [{ label: 'ack before delivery', find: '…', replace: '…' }] },
+ *     …
+ *   ] })
+ *   ok(family.ok, 'every family member is falsified', formatFamilyReport(family))
+ *
+ * `ok` is true only when EVERY case is ok — i.e. for each one: the unmutated module passed the probe (control), every
+ * mutation applied, imported, and produced a DIFFERENT reading. A case that silently did nothing cannot hide behind
+ * its siblings: the per-case problems are aggregated WITH the case name.
+ */
+export async function falsifyFamily({ name = 'falsify-family', cases = [], tmpDir = DEFAULT_TMP_DIR, keepOnFailure = false } = {}) {
+  if (!Array.isArray(cases) || cases.length === 0) throw problem(FALSIFY_PROBLEM.notApplied, 'falsifyFamily() needs at least one case')
+  const reports = []
+  for (const c of cases) {
+    reports.push(await falsify({
+      name: c.name || name, module: c.module, mutations: c.mutations, probe: c.probe,
+      expectGreen: c.expectGreen, expectRed: c.expectRed, tmpDir, keepOnFailure,
+    }))
+  }
+  const problems = reports.flatMap((r) => r.problems.map((p) => r.name + ': ' + p))
+  return {
+    ok: reports.length > 0 && reports.every((r) => r.ok),
+    name, cases: reports, problems,
+    results: reports.flatMap((r) => r.results.map((x) => Object.assign({ case: r.name }, x))),
+  }
+}
+
+/** The family rendering: every case's control + every mutation, then the aggregated problems. */
+export function formatFamilyReport(family) {
+  const lines = ['falsify family: ' + family.name + ' — ' + family.cases.length + ' case(s), ok=' + family.ok]
+  for (const c of family.cases) lines.push(formatReport(c).split('\n').map((l) => '  ' + l).join('\n'))
+  if (family.problems.length) lines.push('  FAMILY PROBLEMS: ' + family.problems.join(' | '))
+  return lines.join('\n')
+}

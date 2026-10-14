@@ -365,9 +365,9 @@ const roster = ['r-1', 'r-2']
   ok(c1.byFidelity === true && c1.value === 0.5 && c1.kind === 'abstain' && c1.declared === 1,
     'the registered member\'s 1 is rewritten to an ABSTENTION, and the receipt says so (declared stays visible)')
   const c2 = await b.cast('r-2', 1)
-  ok(c2.byFidelity === false && c2.value === 1 && c2.kind === 'decisive', 'an unregistered member is untouched')
+  ok(c2.byFidelity === false && c2.value === 1 && c2.kind === 'for', 'an unregistered member is untouched (and carries the F26 kind `for`)')
   const st = b.status()
-  ok(st.fidelitySeam === true && st.byKind.decisive === 1 && st.byKind.abstain === 1, 'the abstention is counted APART from the decisive votes')
+  ok(st.fidelitySeam === true && st.byKind.for === 1 && st.byKind.abstain === 1, 'the abstention is counted APART from the decisive votes (F26 vocabulary)')
   ok(st.byFidelity.length === 1 && st.byFidelity[0].declared === 1 && st.byFidelity[0].markerId,
     'status() names the rewritten ballot and its marker (nothing silent)')
   const tally = await b.close('tally')
@@ -438,6 +438,89 @@ const roster = ['r-1', 'r-2']
   NOW += 9999999
   ok(Z.lapse({ boxId: oz.boxId }).code === 'VMU_STATE' && Z.status({ boxId: oz.boxId }).openMaxMs === 0,
     'no declared bound ⇒ ZERO MECHANISM (the fallback simply does not exist)')
+}
+
+// ---- 17. F26/F31/F32/F34: five kinds, commit gate, "just decided" window, opening criterion -------------
+{
+  const grab = async (p) => { try { const v = await p; return { ok: true, v } } catch (e) { return { ok: false, code: e && e.code } } }
+
+  // F26 — ONE fixed vocabulary, and every stored ballot carries exactly one of its members.
+  ok(ballotMod.VOTE_KINDS.join(',') === 'for,against,abstain,unable,estimate', 'the five kinds are a FIXED enum (not a settings artefact)')
+  ok(ballotMod.classifyVote(1) === 'for' && ballotMod.classifyVote(0) === 'against'
+    && ballotMod.classifyVote(0.4, 'estimate') === 'estimate' && ballotMod.classifyVote(1, 'abstain') === 'abstain'
+    && ballotMod.classifyVote(0, 'unable') === 'unable' && ballotMod.classifyVote(1, 'process') === 'process'
+    && ballotMod.classifyVote('nonsense') === null,
+  'classifyVote answers "which kind is this cast?" for every case, and null when it is none of them')
+  const k = ballotMod.createBallot({ target: 'k-1', eligible: ['a', 'b', 'c', 'd', 'e'], clock })
+  await k.open()
+  await k.cast('a', 1)
+  await k.cast('b', 0)
+  await k.cast('c', 1, { kind: 'abstain' })
+  await k.cast('d', 1, { kind: 'unable' })
+  await k.cast('e', 0.4, { kind: 'estimate' })
+  const ks = k.status()
+  ok(ks.byKind.for === 1 && ks.byKind.against === 1 && ks.byKind.abstain === 1 && ks.byKind.unable === 1 && ks.byKind.estimate === 1,
+    'the five kinds are COUNTED APART (an estimate is not quietly an abstention, an `unable` is not an `against`)')
+  ok((await k.close('tally')).outcome === 'undecided', 'and only for/against can settle an m-vote')
+  ok((await grab(ballotMod.createBallot({ target: 'k-2', eligible: ['z'], clock }).cast('z', 1))).code === 'VMU_STATE',
+    'a cast into a ballot that was never opened is still refused by name')
+
+  // F31 — the explicit commit gate: a concurrent pair cannot interleave check-and-set.
+  const g = ballotMod.createBallot({ target: 'g-1', eligible: ['x'], clock })
+  await g.open()
+  const pair = await Promise.allSettled([g.cast('x', 1), g.cast('x', 0)])
+  const accepted = pair.filter((r) => r.status === 'fulfilled' && r.value && r.value.ok === true).length
+  ok(accepted === 1 && g.status().voteCount === 1,
+    'two CONCURRENT casts by one member: exactly one is accepted (the gate serializes check-and-set — a mechanism, not a comment)')
+  ok(g.status().gate.serialized === true && g.status().gate.commits === 2, 'and the gate reports itself (serialized, depth, commits)')
+  const g2 = ballotMod.createBallot({ target: 'g-2', eligible: ['x', 'y'], clock })
+  await g2.open()
+  await Promise.all([g2.cast('x', 1), g2.cast('y', 1)])
+  ok(g2.status().voteCount === 2, 'a concurrent pair of DIFFERENT members is unaffected (the gate serializes, it does not drop)')
+
+  // F32 — the "just decided" window folds a duplicate settlement (and never hides a change).
+  const d = ballotMod.createBallot({ target: 'd-1', eligible: ['x'], clock, dedupWindowMs: 5000 })
+  await d.open()
+  await d.cast('x', 1)
+  const first = await d.close('first')
+  await d.reopen('again')
+  await d.cast('x', 1)
+  const second = await d.close('second')
+  ok(first.deduped === undefined && second.deduped === true && second.windowMs === 5000 && d.status().dedup.foldedVerdicts === 1,
+    'a settlement repeating the SAME outcome inside the window is folded (and counted)')
+  ok(second.state === 'tallied' && d.status().state === 'tallied', 'a folded settlement is STILL a settlement (the ballot ends tallied)')
+  NOW += 6000
+  await d.reopen('again')
+  await d.cast('x', 1)
+  ok((await d.close('third')).deduped === undefined, 'outside the window the announcement is made again')
+  const d2 = ballotMod.createBallot({ target: 'd-2', eligible: ['x'], clock, dedupWindowMs: 5000 })
+  await d2.open(); await d2.cast('x', 1); await d2.close('a')
+  await d2.reopen('b'); await d2.cast('x', 0)
+  ok((await d2.close('b')).deduped === undefined && d2.status().outcome.outcome === false,
+    'a DIFFERENT outcome inside the window is never folded (a change must be announced)')
+  const d3 = ballotMod.createBallot({ target: 'd-3', eligible: ['x'], clock })
+  await d3.open(); await d3.cast('x', 1); await d3.close('a')
+  await d3.reopen('b'); await d3.cast('x', 1)
+  ok((await d3.close('b')).deduped === undefined && d3.status().dedup.windowMs === 0,
+    'no declared window ⇒ ZERO MECHANISM (nothing is ever folded)')
+
+  // F34 — the opening criterion, declared and observable.
+  const f = ballotMod.createBallot({ target: 'f-1', eligible: ['x', 'y'], clock, openers: ['chair'], minEligible: 3, requiresTarget: true })
+  ok(f.status().openCriterion.openers.join(',') === 'chair' && f.status().openCriterion.minEligible === 3 && f.status().openCriterion.satisfied === false,
+    'the criterion is observable BEFORE anyone hits it')
+  ok((await grab(f.open({ by: 'x' }))).code === 'VMU_NOT_PERMITTED', 'a non-opener may not convene the debate')
+  ok((await grab(f.open({ by: 'chair' }))).code === 'VMU_STATE', 'an opener still cannot convene an electorate below the declared minimum')
+  const f2 = ballotMod.createBallot({ target: 'f-2', eligible: ['x', 'y', 'z'], clock, openers: ['chair'], minEligible: 3 })
+  ok((await f2.open({ by: 'chair' })).ok === true, 'with the criterion satisfied the declared opener convenes it')
+  const f3 = ballotMod.createBallot({ target: null, eligible: ['x'], clock, requiresTarget: true })
+  ok((await grab(f3.open({ by: 'x' }))).code === 'VMU_INVALID_ARGUMENT', 'a targetless debate refuses to START when it is declared unopenable')
+  const f4 = ballotMod.createBallot({ target: 'f-4', eligible: ['x'], clock })
+  ok((await f4.open()).ok === true && f4.status().openCriterion.openers === null,
+    'the defaults stay permissive (null openers, no minimum) — a declared criterion is opt-in')
+  await f4.cast('x', 1)
+  await f4.close('done')
+  ok((await grab(f4.open({ by: 'x' }))).code === 'VMU_STATE',
+    'and a SETTLED ballot is reopened, never re-opened (re-opening would keep the previous votes)')
 }
 
 console.log('vmu-meeting-parity: ' + passed + ' passed, ' + failed + ' failed')

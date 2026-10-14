@@ -1094,9 +1094,9 @@
 | **D 两通道逐字** | `node tests/vmu-assistant-e2e.test.mjs --print` | system prompt 含所办三段人设（1453 字符）＋ 回合面含 `【汇报纪律：本所「institute」】` 与 `sources.section='v5r-report-duty'` ✓ |
 | **D＋F2 投递（Round 4）** | **真机入口 ＋ `config.deliver`**（宿主自己的投递函数） | 真实回合边界触发的**每一条**报送 `delivered:true`、`refused:null`，部署侧**恰好一条 note/次**；note 带 `to:['office']`／`channel`／渲染正文／`drives:false` ✓；`status().transportInjected===true` 且 `seams.deliver===true`（一个事实一个家）✓；**抛错的 transport** ⇒ note 记 `error.code` 并计 `failures`（不丢、不谎称已发）✓ |
 
-**命令与读数** ✓：`node tests/vmu-assistant-e2e.test.mjs` ⇒ **55 passed, 0 failed, exit=0**；`--strict-findings` ⇒ **55 passed, 0 failed, exit=0**（**全绿**：Round 3 的两条待落项已关闭，机制保留 ⇒ 将来一有"待落项"就会具名红）✓；`node tests/vmu-assistant-report.test.mjs`／`-assembly`／`-systemprompt` ⇒ 93／39／15 全绿 ✓；`node tests/vmu-paper-consult.test.mjs` ⇒ 40／0 ✓；`node tests/vmu-assistant-host-slice.test.mjs` ⇒ **5 passed, 0 failed, 5 not-run, exit=0**（`--require-host` ⇒ exit=1，证明"未跑"不是悄悄通过 ✓）。
+**命令与读数** ✓：`node tests/vmu-assistant-e2e.test.mjs` ⇒ **55 passed, 0 failed, exit=0**；`--strict-findings` ⇒ **55 passed, 0 failed, exit=0**（**全绿**：Round 3 的两条待落项已关闭，机制保留 ⇒ 将来一有"待落项"就会具名红）✓；`node tests/vmu-assistant-report.test.mjs`／`-assembly`／`-systemprompt` ⇒ 93／39／15 全绿 ✓；`node tests/vmu-paper-consult.test.mjs` ⇒ 40／0 ✓；`node tests/vmu-assistant-host-slice.test.mjs` ⇒ **6 passed, 0 failed, 5 not-run, exit=0**（`--require-host` ⇒ exit=1，证明"未跑"不是悄悄通过 ✓）。
 
-**Round 3 发现（F1–F5）→ Round 4 最终口径（**五条全部结清**）**：
+**Round 3 发现（F1–F5）→ 最终口径（**五条全部结清，Round 5 冻结**）**：
 
 | 编号 | 事实（实测） | 最终处置 |
 |---|---|---|
@@ -1105,6 +1105,71 @@
 | **F3** ✅ | 回执按**声明档位**打分：活读键报 `requiresRestart:true`，而同会话真实回合已读到新值 ✗ | **Round 4 结清**：core 落 `liveReadBy` ＋ `appliesAt` 双披露 ＋ 活读键 `requiresRestart:false`／`applied:'immediate'` ⇒ **硬断言"不得低报也不得高报"** ✓ |
 | **F4** ✅ | v5r 的 C-30 卡的是 **office 自己定稿前必须先咨询所内**；而 `officeConsultExemptRoles` 默认 `['office']` 恰好豁免了原场景 | Lead 裁决：默认改 `[]`（**不豁免**，与 `hold` 同一条保守纪律）；schema 与 pack defaults **都已改为 `[]`** ✓；本卷按此断言（"没声明 ⇒ office 也被卡" ✓） |
 | **F5** ✅ | 与 F1 同型更深一层：宿主 `agent/turn-stopping` 周期时钟的挂载判据是**构造期** `settings` ⇒ 只装载 pack 时时钟不挂 ✗ | **Round 4 结清**：判据改成"**面已发布**"且在 `install()` 之后挂 ⇒ pack-only 也挂（**硬断言** ✓）；未声明仍不挂（零机制 ✓） |
+
+### 19.12 真宿主助手面（**Round 5 冻结口径：观测／支持／不支持／非结果**）
+
+> 为什么单独一节：真机结论**必须按四段分开写**（`docs/slv-playbook.md` §7/§8 同一条纪律）——"看到的"、"立住的"、"没立住的"、"根本没跑"是四件事，混写就会把"未跑"读成"通过" ✗✓。
+
+**观测（可复核，逐条带出处）**
+1. `dsh` **0.2.0-rc.2** 在 PATH；`headless` 模板可组合；隔离 `DSH_HOME` 可建且**不是**操作者的 ✓。
+2. **`dsh headless` 拒绝带 agent preset 的会话**：安装件 `…/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-headless/lib/index.js` 的 `assertAdoptable`：`if (preset !== void 0) throw … "which the one-shot runner does not compose"`。⇒ 无头一次性 runner **不能**承载助手面（助手面就是 preset）✗✓。
+3. 把 vmu 插件当**顶层行 `insert`** 可被挂载，但运行时报 `Error: cannot get property "systemPrompt" without inject`（该注入由 **preset 作用域**提供）⇒ 顶层行**不是**可用路由 ✗✓。
+4. provider 侧：装好 `dsh-opencode-go`（0.1.22）、凭据已复制进隔离 home，仍 `NO_ADAPTER: no adapter registered for provider "dsh-opencode-go"`；插件 README 对**无头**流程要求 `OPENCODE_API_KEY` 在环境（凭据库那条给 **web** profile）✗✓。
+5. **零机制在真机被确认**（verify，同实例）：零声明时一次真实回合里 `tool/call`@**seq16 L134** 只有 `name:"vibe_vmu_status"`、`tool/result`@**seq17 L135**；provider/model＝`dsh-opencode-go`／`deepseek-v4.1-flash`；一回合 in 23006／out 993／total 31807、21s ✓。
+5b. **Round 5 复测（SLV §2/§4 合规，同一路由）**：`user/message`@**seq 8 / L12** 含原句「**模拟测试**」✓；`tool/call`@**seq 16 / L163** `name:vibe_vmu_status` ＋ `tool/result`@**seq 17 / L164** ✓；模型自述 `vibe_vmu_wait` **不在工具清单**（**多面未点亮**，具名）；`--timeout 300 --max-tokens 40000` ⇒ `tokenCap:40000`、`tokenCapHit:false`；tokens in 29508／out 719／total **31379**、15s ✓。**注意**：这条是 verify 的**框架面**会话；我的**助手面**会话本轮**未跑**（见"非结果"）✓。
+6. **唯一可行路由**＝跑着的 scratch `dsh web` ＋ `scripts/dsh-drive.mjs --preset vibe-math-vmu`（本卷测试只**驱动**、不起服务）✓。
+7. **U14（多面点亮）机制已进仓，但实测【会覆盖 preset 本体】⇒ 多面点亮仍【未建立】** ✗：`docs/02 §10` 记载 `preset-declaration` 的声明行新增 **`overlay`**（id 键控局部 config，默认缺省＝零机制）。**本卷两次实测（免费 `--dump-config`，计数可比）**：
+   - **纯配方（照 docs/02 抄：只给 `config.overlay`）⇒ 覆盖** ✗：带该 patch 时 `^- id: preset-vibe-math-vmu` 行数 1，但**载荷 `id: vibe-math-vmu` 行数 1→0**（`name`／`description`／`order: 25`／`plugins:` 全消失）⇒ 真机会话报
+     ```
+     session/create → ok:false  error:{code:"agent-preset/not-found", message:"Unknown agent preset: vibe-math-vmu",
+       available:["vibe-math-v2","vibe-math-v3","vibe-math-v4","vibe-math-v5","vibe-math-v5r","standard","ptc","minimal","cordis"]}
+     ```
+     （**该转录即本缺陷的实证**：`available` 里**没有 vmu**）✗。**先前"dump 里出现 `faces`"是假阳性** —— 那是 **patch 原文被打印**，不是合并结果 ✗✓。
+   - **本卷的非破坏性绕行（仅测试侧，未改任何仓内文件）⇒ 身份保住 ＋ 回合真的跑起来** ✓：把声明行**逐字重述**（`id/name/description/order/plugins` 全带上）再追加 `overlay`，程序化生成 patch（**仓库外，实测用**：`D:\_tmp\build-overlay-full.mjs`，已随临时目录清理；当年从包内 `cordis.patch.yml` 抽取该条目）：dump ⇒ 载荷 `id` 行数 **1** ＋ `overlay:` 行数 **1** ＋ `plugins:` 行数 10 ✓；`session/create` ⇒ **`ok:true`** ✓。
+   - **但这次真机会话里一个面都没被调用**：`{"step":"done","sessionId":"session-edb4dd16-60b9-47bd-86a9-60ca5f5c080d","preset":"vibe-math-vmu","durationSec":6,"tokens":{"uncachedInputTokens":6756,"outputTokens":449,"cacheReadTokens":1024},"tokenTotal":8229,"tokenCap":40000,"tokenCapHit":false,"transcriptEvents":22,"toolCalls":0,"tools":[]}` ⇒ **`toolCalls:0`／`tools:[]`**，即宿主侧五条事实**一条都没建立** ✗。原因未定（两条候选：① overlay 的**嵌套形态** `vmu.tools.faces` 不是入口 `readSettings` 读的**点号键**，声明没到达；② 模型行为）——**预算内未定**，据实记为未定 ✗✓。
+   - **据实披露**：该会话实际落在 **`deepseek-official`／`deepseek-flash`**（本卷起服务时只带了 overlay patch、**漏了** provider/model 补丁），**不是** opencode-go；token **in 6756／out 449／total 8229**（cap 40000 未触）✓。
+   ⇒ **口径：机制已进仓但实测会覆盖 preset 本体 ⇒ 多面点亮仍【未建立】**；该缺陷**已被第二设计取代**（见观测 8：独立 overlay 行，preset 行永不被动）✓。
+8. **U14 第二设计（独立行 `vibe-math-vmu-overlay`）：状态＝复核中（既不是"可用"也不是"失效"）** ⚠：Lead 落地第二设计（该行随包 `config: {}`＝零机制；deployment 打**这一行**，preset 行的 config **永不被动**）。
+   - **身份** ✓（实测事实）：带 deployment patch 后**载荷 `id: vibe-math-vmu` 仍在**、`plugins:` 仍 10 条、**第一设计的 `agent-preset/not-found` 不复现** ✓。
+   - **观测（事实）**：`--dump-config` 下**三种情况**（不带 patch／带 overlay2／带 bogus key）**内层行 `- id: vibe-math-vmu` 的 config 块逐行相同**；带 patch 多出的 15 行**全是 overlay 行自己的 payload**；未匹配 key 在 stderr 上**无告警** ✓。
+   - **⚠ 判据更正（重要）**：**`--dump-config` 是 loader 树，不是运行时定义**——第二设计的合并发生在 `preset-declaration` 的**注册期**，**dump 照不出来** ⇒ **不得由"dump 里内层块没变"推出"机制不工作"**（本卷先前那次"dump 出现 `faces` ⇒ 已合并"是假阳性；用同一条 dump 反推"未合并"**同样不成立**）✗✓。
+   - **core 的运行时证据（verify 正在独立复核）**：无 overlay ⇒ 注册定义与随包**逐字节一致**；有 overlay ⇒ 内层行**真的合并** `tools.faces`／`packs.active` 且**保留原字段**、其它行不动、定义里**不残留** `overlay`／`overlayFor`；未匹配 ⇒ **具名告警且定义不变**；被覆盖 ⇒ **具名告警且不注册**。verify 已索取探针，将**落成仓内常驻测试**并独立复跑（不只看 core 的 16/0）⇒ **在它独立复核通过之前，本卷只写"复核中"** ✓。
+   - **core 的免费读数（供对照，本卷未独立复算）**：A（不带 patch）**3407 行** / B（带 patch）**3422 行**；**preset 行整块 203 行 A vs B 逐字节相同** ✓（身份与 `plugins` 完好）；差异只在 overlay 行（`config: {}` → payload）；**运行时探针 16/0**（含"不利行序"）✓。
+   - **更正后的部署配方**（本卷据此准备，等 verify 发 port/token）：`docs/02 §10` / core 的更正版——**只打 overlay 行**，`preset` 行**永远不要打**：
+     ```yaml
+     # <你的临时目录>/vmu-overlay.yml   （仓库外，实测用）
+     - id: vibe-math-vmu-overlay
+       config:
+         overlayFor: vibe-math-vmu
+         rows:
+           vibe-math-vmu: { vmu: { tools: { faces: ['*'] }, packs: { active: ['v5r'] }, report: { enabled: true, minIntervalMs: 0 } } }
+     ```
+   - **待办**：复核通过后，用 Lead 追加授权的**那一次**会话跑助手面（**务必同时带 overlay ＋ provider/model 两补丁**，提示词**显式点名** `vibe_vmu_status`／`vibe_vmu_chat(action:"list")`／`vibe_vmu_panel(action:"status")`／`vibe_vmu_report(action:"status")`，并把每条 `tool/call`／`tool/result` 的 **`seq`＋行号**回报 verify 以回填矩阵 §9.1／证据 §8）✓。
+9. **★ Round 5 最终真机读数（verify 独立复核"机制可用"后、Lead 追加授权的那一次会话；本轮决定性证据）**：实例由 verify 起（`--port 7798`，启动补丁＝provider default-model ＋ **仓库外，实测用**的两份 patch：`D:\_tmp\opencode-go.patch.yml` ＋ `D:\_tmp\vmu-overlay-v2.yml`＝**只打 overlay 行**）；我按 SLV §2/§4 跑**一次**（首行「模拟测试」、`--max-tokens 40000`、提示词**显式点名**各面）。**证据在会话日志里，不在 `--dump-config` 里**（多帧 zstd 解码）：
+   - **provider/model ＝ `dsh-opencode-go`／`deepseek-v4.1-flash`** ✓（上次漏 provider 补丁的问题已修复）；
+   - `user/message`@**L10 seq=8**（首行即「模拟测试」✓ §2 落点）；`assistant/message`@L17 seq=15；**`tool/call`@L18 seq=16 `name=vibe_vmu_status`**；**`tool/result`@L19 seq=17**；`assistant/message`@L22 seq=20；
+   - **日志里出现过的 `vibe_vmu_*` 名（声明／调用）只有 `vibe_vmu_status`** ✗；`toolCalls=1`（**不是 0**——先前"0"是驱动汇总口径＋我读日志过早所致）；
+   - **模型原话（决定性）**：**"I only have vibe_vmu_status. … These tools are not in my available toolset. … The others don't exist."** ⇒ **这是"发布问题"，不是"提示词问题"**（Lead 要求的区分，由模型自述直接定性）✓；
+   - tokens in 23077／out 1400／cacheRead 7680（总 ≈ **32,157**），`tokenCap 40000` 未触 ✓。
+   ⇒ **结论（具名，不写"已验证"）**：① **`vibe_vmu_status` 真的可达且被调用**（L18 seq16／结果 L19 seq17）——**零机制面在真机成立** ✓；② **`vibe_vmu_report`／`chat`／`panel` 未被发布** ⇒ **助手面【未建立】、多面点亮【未建立】** ✗；③ **根因定位到"入口侧读取"**：overlay 携带的是**嵌套形态** `vmu: { tools: { faces: ['*'] }, packs: { active: ['v5r'] }, report: {…} }`（即 `config.vmu.tools.faces`），而入口 `readSettings` 只保留**以 `vmu.` 开头的点号键**（`'vmu.tools.faces'`）⇒ **声明到达了内层行、却没被入口认出来**（"注册期合并 ✓"与"入口读取 ✗"是两件事）⇒ **给 core 的下一步：入口侧兼容"嵌套/点号"两形态，或让 overlay 直接产出点号键；并补一条"注册后入口真的发布该面"的运行时断言**（比注册期合并断言更靠后一环）✓。
+
+**支持（本轮真正立住的）**
+1. 助手面在**装配级／单元级全绿**：`vmu-assistant-e2e` **55/0**（`--strict-findings` 亦 **55/0**）、`-report` 93/0、`-assembly` 39/0、`-systemprompt` 15/0、`vmu-paper-consult` 40/0，`check-docs` PASS ✓（见 §19.10 读数）。
+2. **F2 关闭**：真机入口 ＋ `config.deliver` ⇒ 触发即 `delivered:true`／note 带 `drives:false`／部署侧**恰一条 note/次**；**无 transport ⇒ 具名拒 `VMU_REPORT_NO_TRANSPORT` 且仍留痕**（边界硬钉）✓。
+3. **F1／F3／F5 关闭**（见 §19.10 表）：面解析在 pack settings 之后；活读键**不得低报也不得高报**；周期时钟判据＝**面已发布**且在 `install()` 之后 ⇒ pack-only 也挂 ✓。
+4. **工具已就位且自证**：`tests/vmu-assistant-host-slice.test.mjs` ⇒ **6/0/5 not-run exit=0**，`--require-host` ⇒ **exit=1**（"未跑"不是悄悄通过）；并已按 `docs/slv-playbook.md` §2/§4 备好（首行"模拟测试"标记 ＋ 显式 `--max-tokens`）✓。
+
+**不支持（**未**建立，不许当通过）**
+1. 真宿主上"**多面点亮**"（`vibe_vmu_report` 可达）**未建立**——**最终真机读数**（观测 9）：日志里只有 `vibe_vmu_status`（`tool/call`@L18 seq16／`tool/result`@L19 seq17），`report`／`chat`／`panel` **未被发布**，**模型自述"only have vibe_vmu_status… The others don't exist"** ⇒ **发布问题**（不是提示词问题）✗。零声明下只发布 `vibe_vmu_status`（**机制正确、非缺陷**）；U14 第一版设计是实测缺陷（覆盖 preset 本体 ⇒ `agent-preset/not-found`）；第二版设计**注册期合并已被 verify 独立复核为可用**（21/0 常驻测试＋free pre-check），**但入口侧仍没认出这些声明**（观测 9 的根因）✗。
+2. 真会话里**阈值报送真触发**、**参数面留痕**、**回合面／system prompt 面到达模型**这四条**均无观测**（`vibe_vmu_report` 根本没被发布，故无法触发）✗。
+3. "**声明真能点亮面**"**未建立**：判据链是"注册期定义 → **入口发布** → 真机 `tool/call`"——前两环已有证据/断言，**第三环实测为否** ✗。
+
+**非结果（**不是通过**）**
+1. **助手面会话：跑了 1 次，但一个面都没被调用 ⇒ 五条事实仍"未建立"** ✗✓：Round 4 曾按降本裁决不跑；Round 5 在 U14 机制进仓后，我用**非破坏性绕行 patch** 起了一个 scratch `dsh web`（隔离 `DSH_HOME`；**仓库外，实测用**的工作区：`--cwd D:\_tmp\smoke-ws`；提示词首行含「**模拟测试**」、`--max-tokens 40000`），**`session/create` ok、回合真跑**（6s、`transcriptEvents:22`），但 **`toolCalls:0`／`tools:[]`** ⇒ **`vibe_vmu_report` 可达／阈值触发／参数留痕／两通道到达模型 一条都未建立** ✗。**"未跑成"不是"通过"，也不是"失败"**：它是**未建立**，原因见观测 7 的两条候选 ✗✓。
+2. **会话记账（≤2 纪律）**：verify 1 次（框架面，SLV 合规，见观测 5b）＋ 我 **1 次**（上面那次，SLV §2/§4 合规：首行"模拟测试"标记 ✓、显式 `--max-tokens 40000` ⇒ `tokenCapHit:false` ✓）＝ **2/2**。Lead 又按"决定性证据"**追加授权 1 次**；该次**尚未使用**——第一版设计是缺陷、第二版设计**仍在复核中**，因此在 verify 独立复核通过并发出 port/token 之前不跑（避免白花）✓。**已用总量 ≈ 40k tokens**（verify 31.4k ＋ 我 8.2k），远低于手册上限 ✓。
+3. **据实披露（不写成"已验证"）** ✗✓：① 我那次会话实际落在 **`deepseek-official`／`deepseek-flash`**（起服务时只带了 overlay、**漏了 provider/model 补丁**），**不是** opencode-go；token in 6756／out 449／total **8229**；② 使用的是**测试侧绕行**（把声明行逐字重述＋追加 `overlay`；**仓库外，实测用**的脚本 `D:\_tmp\build-overlay-full.mjs`，已随临时目录清理），**不是** docs/02 的纯配方（纯配方会 `agent-preset/not-found`，见观测 7）；③ 未匹配键的**具名告警**、未匹配**不改动**这两条回归断言**未验**（等 core 的修复读数与 verify 的仓内常驻测试）。
+4. **复跑清单（等 core 修复＋A/B dump 后执行）**：① 用**修好的** overlay（只按 id 深合并进 `config.plugins[]`，保 preset 身份；未匹配只告警不改动）；② 起服务时**同时**带 provider/model 补丁（opencode-go／`deepseek-v4.1-flash`，经操作者授权）；③ 驱动显式 `--max-tokens` ＋首行"模拟测试"并记 `user/message` 的 `seq`＋行号（§2）；④ dump 落 `_oneoff/vmu/live/**`；⑤ 结论按 §7/§8 四段写；⑥ 跑完删凭据副本、停服务 ✓。
+5. **纪律**：全程**未使用**任何未授权凭据（我复制的临时凭据副本按纪律删除；verify 那份由其收尾）；**同一时刻只起一个服务**；未改任何仓内别人文件 ✓。
 
 ### 19.11 C-30 所办定稿咨询门（`kernel/paper.js`；**读者已落**）
 

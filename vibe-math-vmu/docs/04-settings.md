@@ -229,6 +229,8 @@ vmu.packs.active: [v5r]
 | `vmu.data.requireParent` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/records.js` | 数据集必须有 parent（§L128：路径＋指纹＋参数＋parent；true ⇒ 无 parent 即具名拒） |
 | `vmu.data.versionScheme` | enum | `semver` | `semver`∣`date`∣`free` | 会话 | H1 | office | ✅ 已接线 | `kernel/records.js` | 数据集版本方案（§L10：可引用到版本；semver ⇒ 版本须形如 MAJOR.MINOR.PATCH） |
 | `vmu.records.requireSettledRecords` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/records.js` | 只允许写入已结算记录（v5r 机制；由包携带默认 true） |
+| `vmu.v3.verifierCount` | int ≥0 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3-core/index.js` | v3-core 包私有：裁定需要多少名独立验证者表态（v3 `verifierCount`）。读者＝`packs/v3-core/index.js:80` 的 quorum 中间件（`setting("vmu.v3.verifierCount")`）。 |
+| `vmu.v3.mode` | enum | `auto` | `auto`∣`manual` | 会话 | H1 | office | ✅ 已接线 | `packs/v3-core/index.js` | v3-core 包私有：`manual` ⇒ 未经人工放行不得派发/运行（v3 `mode`）。读者＝`packs/v3-core/index.js:105` 的 manual-gate 中间件。 |
 | `vmu.records.pointerPropagation` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/records.js` | P3/S21：头部列表为默认信息通道；关＝零注入且提示词逐字回退 |
 | `vmu.records.meetingKeepEvery` | int ≥1 | `5` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/records.js` | P3：每 N 场会议保留一次归档（v5r 的 meetingKeepEvery） |
 | `vmu.audit.retentionDays` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/audit.js` | 审计按天老化（天）；0 或负＝禁用老化（kernel/audit.js 的回落语义，禁用时不删任何行） |
@@ -1451,7 +1453,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1104** 个，前缀家族 **112** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1106** 个，前缀家族 **113** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1563,6 +1565,7 @@ vmu.packs.active: [v5r]
 | `vmu.trust.*` | 16 |
 | `vmu.turn.*` | 24 |
 | `vmu.tx.*` | 6 |
+| `vmu.v3.*` | 2 |
 | `vmu.visibility.*` | 1 |
 | `vmu.work.*` | 2 |
 | `vmu.workflow.*` | 27 |

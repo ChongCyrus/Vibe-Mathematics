@@ -37,18 +37,28 @@ export const PACK = Object.freeze({
   ],
 
   // Mechanisms only (docs/04 §11 ownership rule). The declared keys are ones the framework ALREADY enforces
-  // (so they really do something); the `vmu.v3.*` keys are pack-owned and are read by the modules below.
+  // (so they really do something).
   settings: {
     'vmu.limits.maxLiveMembers': 4,        // <- v3 `maxParallelThreshold: 4` (a real concurrency gate)
     'vmu.meetings.verdictMaxRounds': 5,    // <- v3 `debateMaxRounds: 5` (the analogue, not an identity)
     'vmu.meetings.quorumRule': 'majority', // <- v3 collects independent verdicts and aggregates them
     'vmu.records.tracks': ['propos', 'problems', 'directions', 'journal', 'verified'],
-    // PACK-OWNED keys (read by the modules in this file; `setting()` sees them like any other):
+    // PACK-OWNED keys, read by the two modules below (`setting()` sees them like any other).
+    // ★ ROUND 5: THEY ARE DECLARED IN `settings/schema.js` (there, right after v5r's
+    //   `vmu.records.requireSettledRecords`), so a deployment can tune them at runtime with `vibe_vmu_set`
+    //   instead of hitting a named "undeclared key" refusal. The framework declares them even though the readers
+    //   are this pack's own modules: the alternative - leaving them undeclared - made the pack's two real knobs
+    //   the only keys in the system that could be READ but never SET, which is a worse asymmetry than a
+    //   pack-owned declaration (the same treatment v5r's report policy keys get on the loaded manifest).
     'vmu.v3.verifierCount': 3,             // v3 `verifierCount: 3` - who must report before a verdict counts
-    'vmu.v3.solverMaxRounds': 3,           // v3 `solverMaxRounds: 3`
-    'vmu.v3.planningHorizon': 3,           // v3 `planningHorizon: 3`
-    'vmu.v3.promoteValueThreshold': 0.7,   // v3 `promoteValueThreshold: 0.7`
     'vmu.v3.mode': 'auto',                 // v3 `mode: auto | manual`
+    // ROUND 5 — THREE KEYS REMOVED, AND WHY. `vmu.v3.solverMaxRounds` / `vmu.v3.planningHorizon` /
+    // `vmu.v3.promoteValueThreshold` used to be declared here and were read by NOTHING (measured: their only
+    // occurrence in the whole repository was this declaration). A declaration with no consumer is exactly the
+    // silent lie this project refuses, and inventing a decorative reader to justify them would be worse. v3's
+    // planner/scheduler and its promotion threshold are mechanisms this framework does not have yet, so they are
+    // registered as NAMED EXTENSION POINTS in `docs/10 §4.2` (with the v3 values preserved there as the design
+    // intent) rather than left looking configurable.
   },
 
   // v3's roster, as OPAQUE SLOTS (D5: the kernel never learns what a "solver" is).

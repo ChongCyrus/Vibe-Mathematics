@@ -79,6 +79,11 @@ const CORE_DEFS = Object.freeze([
   // (`packs/v5r-core.js:48/97`), yet it had never been in the schema - a real knob with a real consumer living
   // entirely outside the registry. Registering it is exactly what the gate demands.
   { key: 'vmu.records.requireSettledRecords', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '只允许写入已结算记录（v5r 机制；由包携带默认 true）' },
+  // ROUND 5 / task-39 A (vmu-pack): TWO package-private keys that really have readers. The precedent is the row above
+  // (a v5r package key declared here); the other three `vmu.v3.*` names vmu-pack found had ZERO readers and were
+  // REMOVED from the pack rather than declared (declaring a key nobody reads is the "声明了没人读" defect).
+  { key: 'vmu.v3.verifierCount', type: 'natural', def: 3, hot: HOT.H1, who: 'office', doc: 'v3-core 包私有：裁定需要多少名独立验证者表态（v3 `verifierCount`）。读者＝`packs/v3-core/index.js:80` 的 quorum 中间件（`setting("vmu.v3.verifierCount")`）。' },
+  { key: 'vmu.v3.mode', type: 'enum', domain: ['auto', 'manual'], def: 'auto', hot: HOT.H1, who: 'office', doc: 'v3-core 包私有：`manual` ⇒ 未经人工放行不得派发/运行（v3 `mode`）。读者＝`packs/v3-core/index.js:105` 的 manual-gate 中间件。' },
   { key: 'vmu.records.pointerPropagation', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: 'P3/S21：头部列表为默认信息通道；关＝零注入且提示词逐字回退' },
   { key: 'vmu.records.meetingKeepEvery', type: 'positiveInteger', def: 5, hot: HOT.H1, who: 'office', doc: 'P3：每 N 场会议保留一次归档（v5r 的 meetingKeepEvery）' },
   // task-196 REGISTRATION ALIGNMENT: both keys were WIRED for real (audit age-out; deterministic LZSS packing)

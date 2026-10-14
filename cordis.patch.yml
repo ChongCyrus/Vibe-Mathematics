@@ -1651,6 +1651,10 @@
 
 # ── Vibe Math Unify ──────────────────────────────────────────────────────────────
 - insert:
+    # U14: the overlay target. Empty config ⇒ zero mechanism; a deployment patches THIS row, never the preset row.
+    - id: vibe-math-vmu-overlay
+      name: dsh-vibe-math/preset-declaration
+      config: {}
     - id: preset-vibe-math-vmu
       name: dsh-vibe-math/preset-declaration
       config:

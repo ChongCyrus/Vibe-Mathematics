@@ -15,9 +15,46 @@
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
 import { CODE as RESUME_CODE } from './resume.js'
+import { msStrict } from './timevalue.js'
 
 /** Vote shapes the default validity check accepts: the boolean 1/0 of the m-vote rule. */
 export const DECISIVE_VOTE = Object.freeze({ FOR: 1, AGAINST: 0 })
+
+/**
+ * F26 — THE FIVE VOTE KINDS, as a FIXED enum.
+ *
+ * WHAT WAS MISSING. This face let the SEPARATION of vote kinds be an artefact of settings (`abstainAllowed`,
+ * `abstainCountsForFloor`, `recusePublic`, `vetoMode`, `tieRule`): each cast carried a free-form `kind`, but
+ * "which of the kinds IS this cast?" had no single, fixed answer, so two deployments could classify the same
+ * ballot differently and neither could point at a vocabulary. `classifyVote` is that single answer, and every
+ * stored ballot now carries exactly one of these five:
+ *   · `for` / `against`      — the decisive booleans (1 / 0), the only kinds that can settle an m-vote;
+ *   · `abstain`              — an explicit abstention (also what C-45's enforced rewrite produces);
+ *   · `unable`               — the member cannot judge (v5r's distinct state; NOT a quiet `against`);
+ *   · `estimate`             — a probability strictly between 0 and 1 (v5r: counted for the average, never for m).
+ * `process` is deliberately NOT a sixth kind: a process READING is not a vote at all (I-1 / F27) and stays its
+ * own channel, so it can never be confused with "someone voted something".
+ */
+export const VOTE_KINDS = Object.freeze(['for', 'against', 'abstain', 'unable', 'estimate'])
+
+/** Classify one cast into exactly ONE of the five kinds (or `process`, or null when it is none of them). PURE. */
+export function classifyVote(value, kind = 'decisive') {
+  if (kind === 'process') return 'process'
+  if (kind === 'abstain') return 'abstain'
+  if (kind === 'unable') return 'unable'
+  if (kind === 'estimate') {
+    // An estimate must be DECLARED (`{ kind: 'estimate' }`) and must be strictly between the booleans: a sloppy
+    // `0.4` sent as a decisive vote keeps failing the m-vote rule rather than being silently reclassified.
+    const e = Number(value)
+    return Number.isFinite(e) && e > 0 && e < 1 ? 'estimate' : null
+  }
+  if (value === DECISIVE_VOTE.FOR) return 'for'
+  if (value === DECISIVE_VOTE.AGAINST) return 'against'
+  return null
+}
+
+/** The kinds that may settle an m-vote (everything else is recorded, reported, and never decisive). */
+export const DECISIVE_KINDS = Object.freeze(['for', 'against', 'decisive'])
 
 export function refuse(code, message, hint) {
   const err = new Error(message)
@@ -28,7 +65,9 @@ export function refuse(code, message, hint) {
 
 /** The default tally: unanimous booleans decide, anything else stays undecided WITH a reason. */
 export function defaultTally({ votes, eligible, quorumRule }) {
-  const decisive = Object.values(votes).filter((v) => v && v.kind === 'decisive')
+  // F26: the decisive set is defined by the FIXED kind vocabulary (`for`/`against`), with the legacy `decisive`
+  // label still honoured so a snapshot written before the vocabulary existed restores to the same tally.
+  const decisive = Object.values(votes).filter((v) => v && DECISIVE_KINDS.indexOf(v.kind) !== -1)
   if (decisive.length === 0) {
     return { outcome: 'undecided', reason: 'no decisive vote was cast', detail: { decisive: 0, eligible: eligible.length } }
   }
@@ -106,6 +145,15 @@ export function createBallot({
   // C-45 (L2 option A): the fidelity registry (`kernel/fidelity.js`). Injected because the DECISION lives there;
   // this face only routes a decisive cast through it (the single enforcement point, see `cast` below).
   fidelity = null,
+  // F32 (the "just decided" window): a SECOND settlement carrying the SAME outcome inside this window is folded
+  // into the previous one instead of being announced twice. 0 = off (zero mechanism, the default).
+  dedupWindowMs = 0,
+  // F34 (who may open a debate, and over what): `openers` names the members allowed to open (null = anyone),
+  // `minEligible` is the smallest electorate that may be convened (0 = no minimum), and `requiresTarget` makes a
+  // targetless debate unopenable. All three are DECLARED here and reported by `status().openCriterion`.
+  openers = null,
+  minEligible = 0,
+  requiresTarget = false,
   bus = null,
   clock = () => new Date().toISOString(),
   isPaused = () => false,
@@ -117,11 +165,89 @@ export function createBallot({
   let outcome = null
   let openedAt = null
   let closedAt = null
+  // F31: the explicit commit gate (one FIFO chain per ballot) and its observable depth.
+  let gate = Promise.resolve()
+  let gatePending = 0
+  let gateCommits = 0
+  // F32: the previous settlement, so a duplicate inside the window can be folded.
+  let lastClose = null
+  let dedupedVerdicts = 0
+  const dedupMs = Number.isFinite(Number(dedupWindowMs)) && Number(dedupWindowMs) > 0 ? Math.floor(Number(dedupWindowMs)) : 0
+  const openerList = Array.isArray(openers) ? openers.map((x) => String(x)) : null
+  const minElectorate = Number.isFinite(Number(minEligible)) && Number(minEligible) > 0 ? Math.floor(Number(minEligible)) : 0
 
   const record = (what, detail) => {
     const row = Object.assign({ at: clock(), what }, detail)
     history.push(row)
     return row
+  }
+
+  /**
+   * The cast BODY (the critical section the gate below serializes). Kept as a closure so the public `cast` can be
+   * a one-line gated wrapper: the body must never be reachable without the gate.
+   */
+  const castNow = async (member, value, { kind = 'decisive' } = {}) => {
+    // A pause also freezes CASTING: a ballot whose voters can keep voting is not frozen at all (§5).
+    if (isPaused()) throw refuse('VMU_STATE', 'the kernel is paused: this ballot cannot be voted in',
+      'resume() first (vibe_vmu_control {action:"resume"})')
+    if (state !== 'open' && state !== 'frozen') {
+      record('cast-refused', { member, reason: 'ballot is not open', state })
+      throw refuse('VMU_STATE', 'the ballot is not open', 'state=' + state)
+    }
+    if (bus) {
+      const dec = await bus.emit('ballot/cast', { target, member, value, kind }, { member })
+      if (dec && dec.ok === false) {
+        record('cast-refused', { member, reason: 'middleware', entry: dec.entry })
+        return { ok: false, refused: dec.refused || { code: dec.code, message: dec.message } }
+      }
+    }
+    // Frozen means "cast refused, nothing counted" - the policy decides when to freeze.
+    if (frozen || isFrozen({ member, target })) {
+      record('cast-refused', { member, value, reason: 'in-frozen-ballot' })
+      throw refuse('VMU_STATE', 'the ballot is frozen: the cast was refused and is NOT counted',
+        'unfreeze before casting (docs/08 §3.1)')
+    }
+    if (!isEligible(member)) {
+      record('cast-refused', { member, reason: 'not-eligible' })
+      throw refuse('VMU_NOT_PERMITTED', 'not eligible to vote in this ballot: ' + String(member))
+    }
+    if (votes.has(member)) {
+      record('cast-refused', { member, reason: 'duplicate' })
+      throw refuse('VMU_STATE', 'this member already voted: ' + String(member), 'one vote per member per ballot')
+    }
+    if (kind === 'decisive' && !castValid(member, value)) {
+      record('cast-refused', { member, value, reason: 'invalid-value' })
+      throw refuse('VMU_INVALID_ARGUMENT', 'a decisive vote must be the boolean 1 or 0',
+        'got ' + JSON.stringify(value) + ' (the m-vote rule)')
+    }
+    // F26: every stored ballot carries EXACTLY ONE of the five fixed kinds — never a free-form label.
+    const voteKind = classifyVote(value, kind)
+    if (voteKind === null) {
+      record('cast-refused', { member, value, kind, reason: 'unclassifiable' })
+      throw refuse('VMU_INVALID_ARGUMENT', 'a cast must be one of the declared kinds: ' + VOTE_KINDS.join('/') + ' (or a process reading)',
+        'got ' + JSON.stringify(value) + ' as ' + JSON.stringify(kind) + ' — 1/0 are for/against, a number strictly between them is an estimate, and abstain/unable/process are named kinds')
+    }
+    /**
+     * C-45 — THE SINGLE FIDELITY ENFORCEMENT POINT (v5r L2 option A / Adv-verify F1). A member who DECLARED a
+     * fidelity defect on this object cannot assert 1 or 0 on it: the registry (`kernel/fidelity.js`) rewrites
+     * the ballot to 0.5 AND the rewrite is a first-class ABSTENTION here (`kind:'abstain'`, so it is excluded
+     * from the decisive count exactly as an abstention is), while the declared value and the marker id are
+     * kept for the audit. Nothing is silent: the receipt says `byFidelity`, the row keeps `declared`, and the
+     * registry's own trail/bus event names the marker.
+     */
+    let stored = { value, kind: voteKind, at: clock() }
+    if (fidelity && kind === 'decisive' && typeof fidelity.applyAbstention === 'function') {
+      const enforce = fidelity.applyAbstention({ target, by: member, declared: value })
+      if (enforce && enforce.enforced === true) {
+        stored = { value: enforce.vote, kind: 'abstain', at: clock(), declared: value,
+          byFidelity: true, markerId: enforce.marker === undefined ? null : enforce.marker, reason: enforce.reason || 'fidelity-defect' }
+      }
+    }
+    votes.set(member, stored)
+    record('cast', { member, value: stored.value, kind: stored.kind, declared: value, byFidelity: !!stored.byFidelity })
+    return { ok: true, accepted: true, member, value: stored.value, voteKind: stored.kind, declared: value, kind: stored.kind,
+      byFidelity: !!stored.byFidelity, markerId: stored.markerId || null, votes: votes.size,
+      note: stored.byFidelity ? 'the declared value was rewritten to an abstention by C-45 (declared fidelity defect)' : undefined }
   }
 
   const ballot = {
@@ -130,14 +256,44 @@ export function createBallot({
     get target() { return target },
 
     /** Open the ballot. A refusal here does not change any state. */
-    async open() {
+    async open({ by = null } = {}) {
       // A pause freezes new ballots (docs/08 §5): the ledger is not the only thing control flow gates.
       if (isPaused()) throw refuse('VMU_STATE', 'the kernel is paused: no ballot can be opened',
         'resume() first (vibe_vmu_control {action:"resume"})')
       if (state === 'open' || state === 'frozen') {
         throw refuse('VMU_STATE', 'the ballot is already open', 'state=' + state)
       }
-      const allowed = await canOpen({ target, eligible: eligible.slice(), quorumRule })
+      // A SETTLED ballot is reopened (`reopen()`), never re-opened: `open()` keeps the previous votes, so the next
+      // cast would be refused as a duplicate while the old tally silently stayed in place. Named here instead.
+      if (state === 'tallied') {
+        record('open-refused', { target, by, reason: 'already-settled', previous: outcome ? outcome.outcome : null })
+        throw refuse('VMU_STATE', 'this ballot was already settled: re-opening would keep the previous votes',
+          'call reopen() to clear the votes and debate again, or start a fresh ballot')
+      }
+      /**
+       * F34 — THE OPENING CRITERION, enforced where a debate STARTS (the evidence's gap: this face judged who may
+       * VOTE but never who may CONVENE). Three declared conditions, each refused by name and recorded in history:
+       *   · `openers`      — null = anyone; an array names the members who may open;
+       *   · `minEligible`  — > 0 = the smallest electorate that may be convened (0 = no minimum);
+       *   · `requiresTarget` — a targetless debate can settle nothing, so it cannot start.
+       * `status().openCriterion` reports the same shape, so the criterion is observable before anyone hits it.
+       */
+      if (openerList && openerList.indexOf(String(by)) === -1) {
+        record('open-refused', { target, by, reason: 'not-an-opener' })
+        throw refuse('VMU_NOT_PERMITTED', 'this member may not OPEN this debate: ' + String(by),
+          'opening is a gate: the declared openers are ' + openerList.join(', '))
+      }
+      if (requiresTarget === true && !target) {
+        record('open-refused', { target, by, reason: 'no-target' })
+        throw refuse('VMU_INVALID_ARGUMENT', 'this debate may not be opened without a TARGET',
+          'a targetless debate cannot settle anything, so it cannot start (requiresTarget)')
+      }
+      if (minElectorate > 0 && eligible.length < minElectorate) {
+        record('open-refused', { target, by, reason: 'electorate-too-small', eligible: eligible.length, minEligible: minElectorate })
+        throw refuse('VMU_STATE', 'the electorate is too small to convene this debate: ' + eligible.length + ' / ' + minElectorate,
+          'declare at least ' + minElectorate + ' eligible voters (minEligible)')
+      }
+      const allowed = await canOpen({ target, eligible: eligible.slice(), quorumRule, by })
       if (allowed !== true) {
         record('open-refused', { target, reason: allowed && allowed.message ? allowed.message : 'canOpen said no' })
         throw refuse('VMU_NOT_PERMITTED', 'this ballot may not be opened',
@@ -169,64 +325,21 @@ export function createBallot({
     },
 
     /**
-     * Cast a vote. Returns { ok: true, accepted: true } when the vote counts, or a NAMED refusal whose
-     * record in history explains what was refused - and which never enters the tally.
+     * Cast a vote. Returns { ok: true, accepted: true } when the vote counts, or a NAMED refusal whose record in
+     * history explains what was refused - and which never enters the tally.
+     *
+     * F31: EVERY cast of this ballot goes through the ONE FIFO commit gate below (`castNow` is the critical
+     * section), because `cast` awaits the middleware and a concurrent pair could otherwise interleave between the
+     * duplicate check and `votes.set`. The gate is a mechanism, not a comment about single-threadedness.
      */
     async cast(member, value, { kind = 'decisive' } = {}) {
-      // A pause also freezes CASTING: a ballot whose voters can keep voting is not frozen at all (§5).
-      if (isPaused()) throw refuse('VMU_STATE', 'the kernel is paused: this ballot cannot be voted in',
-        'resume() first (vibe_vmu_control {action:"resume"})')
-      if (state !== 'open' && state !== 'frozen') {
-        record('cast-refused', { member, reason: 'ballot is not open', state })
-        throw refuse('VMU_STATE', 'the ballot is not open', 'state=' + state)
-      }
-      if (bus) {
-        const dec = await bus.emit('ballot/cast', { target, member, value, kind }, { member })
-        if (dec && dec.ok === false) {
-          record('cast-refused', { member, reason: 'middleware', entry: dec.entry })
-          return { ok: false, refused: dec.refused || { code: dec.code, message: dec.message } }
-        }
-      }
-      // Frozen means "cast refused, nothing counted" - the policy decides when to freeze.
-      if (frozen || isFrozen({ member, target })) {
-        record('cast-refused', { member, value, reason: 'in-frozen-ballot' })
-        throw refuse('VMU_STATE', 'the ballot is frozen: the cast was refused and is NOT counted',
-          'unfreeze before casting (docs/08 §3.1)')
-      }
-      if (!isEligible(member)) {
-        record('cast-refused', { member, reason: 'not-eligible' })
-        throw refuse('VMU_NOT_PERMITTED', 'not eligible to vote in this ballot: ' + String(member))
-      }
-      if (votes.has(member)) {
-        record('cast-refused', { member, reason: 'duplicate' })
-        throw refuse('VMU_STATE', 'this member already voted: ' + String(member), 'one vote per member per ballot')
-      }
-      if (kind === 'decisive' && !castValid(member, value)) {
-        record('cast-refused', { member, value, reason: 'invalid-value' })
-        throw refuse('VMU_INVALID_ARGUMENT', 'a decisive vote must be the boolean 1 or 0',
-          'got ' + JSON.stringify(value) + ' (the m-vote rule)')
-      }
-      /**
-       * C-45 — THE SINGLE FIDELITY ENFORCEMENT POINT (v5r L2 option A / Adv-verify F1). A member who DECLARED a
-       * fidelity defect on this object cannot assert 1 or 0 on it: the registry (`kernel/fidelity.js`) rewrites
-       * the ballot to 0.5 AND the rewrite is a first-class ABSTENTION here (`kind:'abstain'`, so it is excluded
-       * from the decisive count exactly as an abstention is), while the declared value and the marker id are
-       * kept for the audit. Nothing is silent: the receipt says `byFidelity`, the row keeps `declared`, and the
-       * registry's own trail/bus event names the marker.
-       */
-      let stored = { value, kind, at: clock() }
-      if (fidelity && kind === 'decisive' && typeof fidelity.applyAbstention === 'function') {
-        const gate = fidelity.applyAbstention({ target, by: member, declared: value })
-        if (gate && gate.enforced === true) {
-          stored = { value: gate.vote, kind: 'abstain', at: clock(), declared: value,
-            byFidelity: true, markerId: gate.marker === undefined ? null : gate.marker, reason: gate.reason || 'fidelity-defect' }
-        }
-      }
-      votes.set(member, stored)
-      record('cast', { member, value: stored.value, kind: stored.kind, declared: value, byFidelity: !!stored.byFidelity })
-      return { ok: true, accepted: true, member, value: stored.value, declared: value, kind: stored.kind,
-        byFidelity: !!stored.byFidelity, markerId: stored.markerId || null, votes: votes.size,
-        note: stored.byFidelity ? 'the declared value was rewritten to an abstention by C-45 (declared fidelity defect)' : undefined }
+      gatePending += 1
+      const run = () => castNow(member, value, { kind })
+      const ticket = gate.then(run, run)
+      gate = ticket.then(
+        () => { gatePending -= 1; gateCommits += 1 },
+        () => { gatePending -= 1; gateCommits += 1 })
+      return ticket
     },
 
     /**
@@ -235,6 +348,38 @@ export function createBallot({
      */
     async close(reason = 'closed') {
       if (state !== 'open' && state !== 'frozen') throw refuse('VMU_STATE', 'the ballot is not open')
+      /**
+       * F32 — THE "JUST DECIDED" WINDOW. A settlement that repeats the SAME outcome inside `dedupWindowMs` is
+       * FOLDED into the previous announcement instead of being announced twice (the mechanism v5r needed when a
+       * late duplicate close re-announced a verdict the room had already heard). Two honest limits, both stated:
+       *   · only the SAME outcome folds — a different outcome inside the window is a real change and is never hidden;
+       *   · with a middleware tally (`bus`) the face cannot know the next outcome without emitting, so it does not
+       *     guess: the fold is skipped entirely and the middleware keeps owning announcements.
+       * 0 = off (zero mechanism), which is the default.
+       */
+      const atNow = clock()
+      const atMs = dedupMs > 0 ? msStrict(atNow, 'the ballot clock') : null
+      if (dedupMs > 0 && !bus && lastClose && (atMs - lastClose.atMs) <= dedupMs) {
+        const probe = tally({ votes: Object.fromEntries([...votes.entries()].map(([k, v]) => [k, v])), eligible: eligible.slice(), quorumRule })
+        if (probe && probe.outcome === lastClose.outcome) {
+          const previousAt = lastClose.at
+          const previousMs = lastClose.atMs
+          dedupedVerdicts += 1
+          // A FOLDED settlement is still a settlement: the ballot must END UP tallied (otherwise it would stay
+          // open and quietly keep accepting votes — the opposite of what a settlement is for). Only the
+          // ANNOUNCEMENT is folded, never the state transition.
+          state = 'tallied'
+          frozen = false
+          outcome = { outcome: probe.outcome, reason: 'folded into the previous settlement (F32 window ' + dedupMs + ' ms)',
+            detail: probe.detail || null, at: atNow, folded: true }
+          closedAt = atNow
+          lastClose = { at: atNow, atMs, outcome: outcome.outcome }
+          record('close-deduped', { at: atNow, windowMs: dedupMs, outcome: probe.outcome, previousAt })
+          return { ok: true, deduped: true, state, outcome: outcome.outcome,
+            reason: 'duplicate settlement folded: the same outcome was announced ' + (atMs - previousMs) + ' ms ago (window ' + dedupMs + ' ms)',
+            windowMs: dedupMs, at: atNow, previousAt, tally: Object.assign({}, outcome) }
+        }
+      }
       const voteObject = Object.fromEntries([...votes.entries()].map(([k, v]) => [k, v]))
       let result
       if (bus) {
@@ -255,6 +400,7 @@ export function createBallot({
       frozen = false
       outcome = { outcome: result.outcome, reason: result.reason || null, detail: result.detail || null, at: clock() }
       closedAt = clock()
+      lastClose = { at: atNow, atMs, outcome: outcome.outcome }
       record('closed', { reason: String(reason), outcome: outcome.outcome, tallyReason: outcome.reason })
       return { ok: true, state, outcome: outcome.outcome, tally: outcome }
     },
@@ -271,7 +417,9 @@ export function createBallot({
 
     /** Observability (R11): the votes as counted, the tally state, and the full refusal-inclusive history. */
     status() {
-      const byKind = { decisive: 0, process: 0 }
+      // F26: the counts are keyed by the FIXED vocabulary (for/against/abstain/unable/estimate), with `process`
+      // kept apart because a process reading is not a vote at all.
+      const byKind = { for: 0, against: 0, abstain: 0, unable: 0, estimate: 0, process: 0 }
       for (const v of votes.values()) byKind[v.kind] = (byKind[v.kind] || 0) + 1
       return {
         target, state, frozen, quorumRule,
@@ -279,6 +427,18 @@ export function createBallot({
         votes: Object.fromEntries([...votes.entries()].map(([k, v]) => [k, { value: v.value, kind: v.kind }])),
         voteCount: votes.size,
         byKind,
+        voteKinds: VOTE_KINDS.slice(),
+        // F31: the commit gate is observable state (how deep its queue currently is, and how much it has committed).
+        gate: { serialized: true, pending: gatePending, commits: gateCommits },
+        // F32: the dedup window and how many duplicate settlements it folded.
+        dedup: { windowMs: dedupMs, foldedVerdicts: dedupedVerdicts, lastClose: lastClose ? Object.assign({}, lastClose) : null },
+        // F34: the opening criterion, before anyone hits it.
+        openCriterion: {
+          openers: openerList ? openerList.slice() : null,
+          minEligible: minElectorate,
+          requiresTarget: requiresTarget === true,
+          satisfied: (minElectorate === 0 || eligible.length >= minElectorate) && (requiresTarget !== true || !!target),
+        },
         // C-45 observability: which votes were rewritten to an abstention because a fidelity defect was declared,
         // and whether the enforcement seam is even bound (an unbound seam is visible, never assumed).
         fidelitySeam: !!fidelity,
@@ -302,9 +462,12 @@ export function createBallot({
       return { apiVersion, face: 'ballot', v: 1, at: clock(),
         data: { target, quorumRule, eligible: eligible.slice(), frozen, state, outcome: outcome ? JSON.parse(JSON.stringify(outcome)) : null,
           openedAt, closedAt, votes: Object.fromEntries([...votes.entries()].map(([k, v]) => [k, JSON.parse(JSON.stringify(v))])),
+          // F32: the previous settlement travels, so the fold window survives a restart instead of re-announcing.
+          lastClose: lastClose ? JSON.parse(JSON.stringify(lastClose)) : null, dedupedVerdicts,
           history: history.map((h) => JSON.parse(JSON.stringify(h))) },
         counters: { ballot: (/(\d+)\s*$/.exec(String(target || '')) || [])[1] ? Number(/(\d+)\s*$/.exec(String(target))[1]) : 0 },
         skipped: [{ what: 'bus', why: 'an injected bus is re-bound by the host, never serialised' },
+          { what: 'commit-gate', why: 'F31: an in-flight queue is execution state, not truth — a restore starts with an empty gate' },
           { what: 'decision-points', why: 'canOpen/isEligible/isFrozen/castValid/tally are injected predicates, re-bound by the host' }] }
     },
 
@@ -331,7 +494,11 @@ export function createBallot({
       for (const [k, v] of Object.entries(d.votes || {})) votes.set(k, JSON.parse(JSON.stringify(v)))
       history.length = 0
       for (const h of (d.history || [])) history.push(JSON.parse(JSON.stringify(h)))
-      return { ok: true, restored: true, restored_items: ['state', 'votes', 'history', 'outcome'], counters: { ballot: 0 }, skipped: (snap.skipped || []).slice(), state }
+      lastClose = d.lastClose ? JSON.parse(JSON.stringify(d.lastClose)) : null
+      dedupedVerdicts = Number(d.dedupedVerdicts || 0)
+      gate = Promise.resolve()
+      gatePending = 0
+      return { ok: true, restored: true, restored_items: ['state', 'votes', 'history', 'outcome', 'dedup'], counters: { ballot: 0 }, skipped: (snap.skipped || []).slice(), state }
     },
 
     /** Process readings never decide (I-1). Exposed so a caller can see the separation explicitly. */

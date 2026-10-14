@@ -497,6 +497,7 @@ interface VmuStore {
 - **[Round 3 更正]** Round 2 报告曾把 `kernel/budget.js` 写成"已加 seam"——实测该文件当时没有公共 `snapshot()/restore()`（内部格式化器同名）。
 - **[Round 4 闭合]** 该缺口**已实现**（内部 `snapshot(s)`→`viewOf(s)`，公共 seam 就位），并在 `tests/vmu-resume-lock-and-marks.test.mjs` 里跨"进程"断言"重启后记住 45/100 tokens 已花"。
 - **[Round 4 F18/F51]** 锁的真实使用者＝`recover()`（`finally` 全分支释放，含抛错路径，用仓库自己的 `createStorePolicy` 断言）；重启标记＝`status().restart`（耐久派生）。`kernel/scheduler.js` 的 F15/F16（句柄释放＋trampoline）为中断前半成品，**已复核完整**（`vmu-scheduler` 111/0）。
+- **[Round 5 F35/F39 · 与恢复的关系]** 任务板的两条图保证**在持久化面同样成立**：① **DAG**——每条依赖边的写入（`create()` 的 `deps` 与 `setDependencies()`）都过环检测，具名拒 `VMU_TASK_DEPENDENCY_CYCLE` 并回**环路径**；因此 `restore()` 出来的板**不可能含环**（旧文件若含环只能来自绕过本面直写 store，属**具名**越界写法）。② **写域 advisory**——`writeScopes` 是任务对象的一部分，`tasks.snapshot()`/`restore()` 自动携带，且**永不阻断** claim/transition，只在 `status().writeScopeConflicts` 与 `list()` 行里报重叠。③ 新增只读诊断：`tasks.status().dag` / `.writeScopes` / `.writeScopeConflicts`（`tests/vmu-tasks-dag-and-scopes.test.mjs` 41/0）。
 
 ---
 

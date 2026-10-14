@@ -603,7 +603,12 @@
 1. **一轮的"在途"必须落在耐久台账里，才有可恢复的语义**：`kernel/work.js` 的 `work` 键是"谁还有活没干完"的唯一真相；启动后幸存项被标 `interrupted`＋具名理由，`resume.settleOutcome({outcome:'passed'})` 对它们**具名拒**（`VMU_RESUME_INTERRUPTED_NOT_PASSED`），除非**显式＋带理由**地覆盖。⇒ **框架绝不能把"上次那轮没回"读成"成员答过了"**。Round 3 加了**跨两次重启**的端到端断言（理由仍在、仍拒 passed、显式覆盖只作用于那一个 id）。
 2. **id 不复用**：`turn` 的逐轮记账若引用 `t-N`/`mt-N` 之类的 id，恢复后必须仍然指向同一个对象。id 一律经 `kernel/ids.js` 的 `mint(kind, prefix)` 铸造（计数器耐久、恢复取 `max(已观测)+1`）；**不许**再新造 `let seq = 0`（内核约 30 处已由 vmu-core 批量替换；`tasks.js` 有意保留**每实例**计数并靠 `snapshot()/restore()` 恢复——理由见报告）。
 3. **快照只装状态，不装接缝**：面侧 `snapshot()` 的 `data` **不得**包含注入的宿主接缝（`deliver`/`wake`/`bus`/`clock`/`timer`/`spawn`/`fetch`）；`restore()` 必须把它们列回 `skipped[]` **或在接口里明确不算**（本仓采用后者：**接缝由内核重新注入，不算 skipped**）。
-4. **可观测的诚实**：恢复后若某个面**没水合**（无 adapter／无 restore seam／journal 有洞／**回放抛错**／面返回 `{ok:false}`），`resume.status().projection.degraded=true` 且 `unhydrated[]` 具名 —— **"重启后空名册"与"真的恢复了"必须可区分**，编排面不得据此继续当作正常轮次。
+4. **可观测的诚实**：恢复后若某个面**没水合**（无 adapter／无 restore seam／journal 有洞／**回放抛错**／面返回 `{ok:false}`／**键下不是投影信封**），`resume.status().projection.degraded=true` 且 `unhydrated[]` 具名 —— **"重启后空名册"与"真的恢复了"必须可区分**，编排面不得据此继续当作正常轮次。
+
+**Round 5 增补（任务板的两条图保证也在恢复面成立）**：
+- **DAG 在写入时强制 ⇒ 恢复出的板必然无环**：依赖边只经 `tasks.create()` 的 `deps` 与 `tasks.setDependencies()` 落库，两条路都过环检测，自环/整图环**具名拒** `VMU_TASK_DEPENDENCY_CYCLE` 并把**环路径**放进 `detail.cycle` 与 hint（编排面据此知道该删哪条边）。`unmetDeps` 的"开工时校验"语义**不变**。
+- **写域 advisory 不是约束**：`writeScopes` 由任务创建者声明，规范化后随任务对象**一起投影**（`tasks.snapshot()/restore()` 自动携带），重叠只出现在 `status().writeScopeConflicts` 与 `list()` 行里；**永不阻断** claim/transition。⇒ 一轮编排看到一个重叠时，应把它当作"去和同事对一下"的信号，而不是一个错误。
+- **诊断面**：`tasks.status()` 新增 `dag` / `writeScopes` / `writeScopeConflicts` 三个只读字段（F35/F39 的可观测面）。
 
 **Round 3 增补（与人相关的"在途"也在耐久范围内）**：
 - **人工审批的"在途"＝存取 `human` 键**：审批队列、否决台账、`pendingReason`（已承诺但尚未写下的理由）跨重启保留；`gate()` 重启后**仍拒**且复用**同一个** `requestId`（不会为同一动作开出第二个请求），id 计数器取 max+1。未接装配时，该面在 `unhydrated[]` 中具名。

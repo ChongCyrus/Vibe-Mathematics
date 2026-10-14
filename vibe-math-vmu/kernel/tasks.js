@@ -40,12 +40,59 @@ export const TRANSITIONS = Object.freeze({
  *  that any key list travelling with it is "what was consulted SO FAR", never the operation's full key set. */
 export const ENFORCED_SCOPE = 'evaluated-so-far'
 
-export function refuse(code, message, hint) {
+export function refuse(code, message, hint, extra) {
   const err = new Error(message)
   if (hint) err.hint = hint
   err.code = code
+  if (extra !== undefined) err.detail = extra
   err.enforcedScope = ENFORCED_SCOPE
   return err
+}
+
+/**
+ * F35 (Round 5): the dependency graph must stay a DAG. `unmetDeps` only answers "is this dependency finished
+ * yet" at start time, so a cycle used to be constructible and simply never became ready — a silent deadlock.
+ *
+ * Pure and EXPORTED (another face may reuse the same rule): returns the CYCLE PATH (`['t-2','t-1','t-2']`) that
+ * would be created by adding the edges `startId -> deps`, or null when the addition keeps the graph acyclic.
+ * `getDeps(id)` supplies the existing edges, so the search needs no ledger.
+ */
+export function findDependencyCycle(startId, deps, getDeps) {
+  const start = String(startId)
+  const walk = (from, seen) => {
+    const node = String(from)
+    if (node === start) return [start]
+    if (seen.has(node)) return null
+    seen.add(node)
+    const next = typeof getDeps === 'function' ? getDeps(node) : null
+    for (const d of (Array.isArray(next) ? next : [])) {
+      const sub = walk(d, seen)
+      if (sub) return [node].concat(sub)
+    }
+    return null
+  }
+  for (const d of (Array.isArray(deps) ? deps : [])) {
+    if (String(d) === start) return [start, start]          // self-loop is a cycle of length 1
+    const sub = walk(d, new Set())
+    if (sub) return [start].concat(sub)
+  }
+  return null
+}
+
+/** F39 (Round 5): the team-board scope contract, shared by the creator's declaration and the advisory view. */
+export function normalizeWriteScope(raw) {
+  const t = String(raw === undefined || raw === null ? '' : raw).trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '')
+  if (!t) return undefined
+  if (t.startsWith('/') || /^[a-z]:/i.test(t)) return undefined
+  for (const seg of t.split('/')) if (seg === '' || seg === '.' || seg === '..') return undefined
+  return t
+}
+export function scopesOverlap(a, b) {
+  const ap = String(a).split('/')
+  const bp = String(b).split('/')
+  const n = Math.min(ap.length, bp.length)
+  for (let i = 0; i < n; i += 1) if (ap[i] !== bp[i]) return false
+  return true
 }
 
 /**
@@ -110,6 +157,40 @@ export function createTasks({
     return !dep || dep.state !== 'done'
   })
 
+  /**
+   * F35: refuse a dependency edge set that would close a cycle. `findDependencyCycle` (module scope, exported)
+   * does the walk; this only turns its answer into the face's named refusal.
+   */
+  const cycleRefusal = (id, cycle) => refuse('VMU_TASK_DEPENDENCY_CYCLE',
+    'dependency cycle: ' + cycle.join(' -> '),
+    'remove one of these edges so the graph stays a DAG; the cycle is ' + JSON.stringify(cycle),
+    { id: String(id), cycle })
+
+  /** Normalise a caller's list, REPORTING what was dropped (a silently dropped scope is a silent policy change). */
+  function normalizeScopes(raw) {
+    const kept = []
+    const skipped = []
+    for (const item of (Array.isArray(raw) ? raw : [])) {
+      const n = normalizeWriteScope(item)
+      if (n === undefined) { skipped.push({ what: String(item), why: 'empty, absolute, drive-lettered or containing a . or .. segment' }); continue }
+      if (kept.indexOf(n) === -1) kept.push(n)
+    }
+    return { scopes: kept, skipped }
+  }
+  /** The ADVISORY view: which live tasks declare overlapping write scopes. Never refuses anything. */
+  function writeScopeConflicts() {
+    const live = [...tasks.values()].filter((t) => t.state !== 'done' && t.state !== 'cancelled' && Array.isArray(t.writeScopes) && t.writeScopes.length)
+    const out = []
+    for (let i = 0; i < live.length; i += 1) {
+      for (let j = i + 1; j < live.length; j += 1) {
+        for (const a of live[i].writeScopes) for (const b of live[j].writeScopes) {
+          if (scopesOverlap(a, b)) out.push({ a: live[i].id, b: live[j].id, scopeA: a, scopeB: b })
+        }
+      }
+    }
+    return out
+  }
+
   return {
     /** Declared stages (possibly none) and where the run stands. */
     stage() {
@@ -117,7 +198,7 @@ export function createTasks({
     },
 
     /** Create a task. Dependencies may name tasks that do not exist yet (they are checked at start). */
-    async create({ title, objective = null, owner = null, deps = [], priority = 0 } = {}) {
+    async create({ title, objective = null, owner = null, deps = [], priority = 0, writeScopes = [] } = {}) {
       if (typeof title !== 'string' || title.trim().length === 0) {
         throw refuse('VMU_INVALID_ARGUMENT', 'a task needs a non-empty title')
       }
@@ -132,13 +213,40 @@ export function createTasks({
       // The durable counter tracks the highest id this process ever minted, so a restart that hydrates from the
       // projection can reconcile it with reality (never reusing a name).
       observeIds('task', [id])
+      const depList = Array.isArray(deps) ? deps.map(String) : []
+      // F35: a self-loop is constructible at creation (a caller may name the id it is about to get), so the same
+      // DAG guard runs here as in setDependencies.
+      const cycle = findDependencyCycle(id, depList, (x) => { const known = tasks.get(String(x)); return known ? known.deps : null })
+      if (cycle) throw cycleRefusal(id, cycle)
+      const scopeNorm = normalizeScopes(writeScopes)
       const t = { id, title: String(title), objective: objective === null ? null : String(objective),
-        owner: owner === null ? null : String(owner), deps: Array.isArray(deps) ? deps.map(String) : [],
+        owner: owner === null ? null : String(owner), deps: depList, writeScopes: scopeNorm.scopes,
         priority, state: owner ? 'assigned' : 'open', createdAt: clock(), transitions: [], revision: 1 }
       tasks.set(id, t)
-      record('task-created', { id, title: t.title, deps: t.deps.slice(), owner: t.owner })
-      return { ok: true, id, state: t.state }
+      record('task-created', { id, title: t.title, deps: t.deps.slice(), owner: t.owner, writeScopes: t.writeScopes.slice() })
+      return { ok: true, id, state: t.state, deps: t.deps.slice(), writeScopes: t.writeScopes.slice(), skippedScopes: scopeNorm.skipped }
     },
+
+    /**
+     * F35 (Round 5): replace a task's dependency edges. This is the mutation path where a REAL cycle can be
+     * introduced (t-1 -> t-2 while t-2 -> t-1), so the DAG guard runs here with the live graph and refuses BY
+     * NAME with the cycle path. Compare-and-set like every other mutation: a stale revision is refused.
+     */
+    async setDependencies(id, deps, { expectedRevision = null } = {}) {
+      const t = task(id)
+      requireFresh(t, expectedRevision)
+      const nextDeps = (Array.isArray(deps) ? deps : []).map(String)
+      const cycle = findDependencyCycle(t.id, nextDeps, (x) => { const known = tasks.get(String(x)); return known ? known.deps : null })
+      if (cycle) throw cycleRefusal(t.id, cycle)
+      const before = t.deps.slice()
+      t.deps = nextDeps
+      bump(t)
+      record('task-deps-set', { id: t.id, from: before, to: t.deps.slice() })
+      return { ok: true, id: t.id, deps: t.deps.slice(), revision: t.revision }
+    },
+
+    /** F39: the advisory overlap view (read-only; never refuses anything). Read by `status().writeScopeConflicts`. */
+    writeScopeConflicts,
 
     /** Assign (or reassign) an owner. Being assigned is a state, so it follows the transition table. */
     async assign(id, who, { expectedRevision = null } = {}) {
@@ -200,7 +308,9 @@ export function createTasks({
           (filter.ready === undefined || (filter.ready ? (t.state === 'open' || t.state === 'assigned') && unmetDeps(t).length === 0 : true)))
         .sort((a, b) => (b.priority - a.priority) || a.id.localeCompare(b.id))
         .map((t) => ({ id: t.id, title: t.title, state: t.state, owner: t.owner, revision: t.revision, deps: t.deps.slice(),
-          ready: unmetDeps(t).length === 0, hasBrief: briefs.has(t.id) }))
+          ready: unmetDeps(t).length === 0, hasBrief: briefs.has(t.id),
+          // F39: advisory only - visible so a colleague can see what someone else says they will touch.
+          writeScopes: Array.isArray(t.writeScopes) ? t.writeScopes.slice() : [] }))
     },
 
     /** Attach a task brief: the prompt fragment injected when the OWNER is woken (docs/08; the fragment side is docs/06). */
@@ -292,6 +402,10 @@ export function createTasks({
         stage: this.stage(),
         ready: this.list({ ready: true }).map((t) => t.id),
         blocked: [...tasks.values()].filter((t) => unmetDeps(t).length > 0).map((t) => ({ id: t.id, missing: unmetDeps(t) })),
+        // F35/F39 (Round 5): the two graph guarantees, stated as facts an operator can read.
+        dag: 'dependency cycles are refused at create/setDependencies (VMU_TASK_DEPENDENCY_CYCLE with the cycle path)',
+        writeScopes: 'advisory only: declared by the task creator, never enforced; overlaps are listed below',
+        writeScopeConflicts: writeScopeConflicts(),
       }
     },
 

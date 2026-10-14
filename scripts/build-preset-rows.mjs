@@ -114,10 +114,31 @@ ${TRANSFORMS.map((t) => '#   · ' + t.why).join('\n')}
 `
   const sections = VERSIONS.map((v) => {
     const meta = readPresetMeta(v)
+    // U14 (Round 5): the vmu preset ships ONE extra row — the DECLARATION OVERLAY target. It carries an EMPTY config,
+    // so a deployment that declares nothing gets exactly the previous zero-mechanism behaviour; a deployment points a
+    // `--patch` at this row to declare faces/packs for the preset's inner rows:
+    //
+    //   - id: vibe-math-vmu-overlay
+    //     config:
+    //       overlayFor: vibe-math-vmu
+    //       rows: { vibe-math-vmu: { vmu: { tools: { faces: ['*'] }, packs: { active: ['v5r'] } } } }
+    //
+    // WHY A SEPARATE ROW (measured, not assumed): a loader patch REPLACES a row's `config` - it does not merge into it.
+    // Patching the preset row itself with `config: {overlay: …}` overwrote `id/name/description/order/plugins` and made
+    // the preset disappear (`agent-preset/not-found`). Here the payload IS the whole config, so replacement is right.
+    // The overlay row is listed BEFORE the preset row; the merge itself is evaluated at REGISTER time inside
+    // preset-declaration.js, so it does not depend on this order (docs/02 "部署 / 测试：可声明的 overlay").
+    const overlay = v === 'vmu'
+      ? `    # U14: the overlay target. Empty config ⇒ zero mechanism; a deployment patches THIS row, never the preset row.
+    - id: vibe-math-vmu-overlay
+      name: dsh-vibe-math/preset-declaration
+      config: {}
+`
+      : ''
     return `
 # ── ${meta.name} ──────────────────────────────────────────────────────────────
 - insert:
-    - id: preset-vibe-math-${v}
+${overlay}    - id: preset-vibe-math-${v}
       name: dsh-vibe-math/preset-declaration
       config:
         id: vibe-math-${v}
