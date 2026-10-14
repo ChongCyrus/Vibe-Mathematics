@@ -913,3 +913,13 @@ watchers: [{
 | S15 | **通知降噪（合并＋免打扰）** | `vmu.notify.mergeWindowMs`＋`vmu.notify.quietDefault`＋`vmu.notify.priorityFloor` | 窗口内 N 条 ⇒ **1 份摘要**且 `dropped/kept` 计数（断言）；静默期 ⇒ `VMU_NOTIFY_QUIET_SUPPRESSED` 且**记录仍在**（断言） | 半夜刷屏／静默期真丢事件 | 规划 ✗ |
 | S16 | **通知坏了业务照跑** | `vmu.notify.dropOnFailure=true` ＋ §29.5 失败语义 | 通道失败 ⇒ 业务回执 `ok:true, notified:false`（断言）＋ `VMU_NOTIFY_CHANNEL_FAILED` 留痕（具名红） | 通知故障让任务/表决连锁失败 | 规划 ✗ |
 
+---
+
+## 30. C-45 · 忠实性缺陷 ⇒ 强制弃权（Round 3；**closed-by ＝ `kernel/fidelity.js`**）
+
+**判定点归属**：**判定（"这份形式化不忠实"）在策略层**（`declareDefect({target, by, note})`，缺 target/by/note **具名拒**）；**"能不能把它变成一张 1 或 0 的票"由内核回答，答案永远是"不能"** —— `kernel/fidelity.js` 的 `applyAbstention({target, by, declared})` 是**唯一强制点**，被登记者声明 1/0 一律改写为 **0.5（弃权）**。
+
+**表决面只做一件事（唯一调用点）**：`kernel/ballot.js` 的 `cast()` 在 `castValid` 之后、落票之前，把**布尔**票路由过 `applyAbstention`；改写后的票以 `kind:'abstain'` 落账（**不计入 decisive/m**，与"弃权"同义），同时保留 `declared`（原声明值）、`byFidelity:true`、`markerId`。**可观测**：回执带 `byFidelity/declared/markerId/note`；`ballot.status()` 回显 `fidelitySeam` 与 `byFidelity[]`；`fidelity.view()` 有 `abstentionsEnforced` ＋ `Formal/Defects/<target>.json` 耐久 marker。**无接缝** ⇒ `fidelitySeam:false` 且**不改写任何票**（不假装强制）。
+
+**与"真值不越界"一致**：不忠实**永远不是反证**（`isRefutation:false`）；这里强制的是**弃权**，不是结论。**装配**：`createBallot({ …, fidelity })`（由 `kernel/index.js` 落）；未注入 ⇒ 该接缝缺失**自曝**，不静默。
+

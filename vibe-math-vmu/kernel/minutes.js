@@ -50,7 +50,7 @@ const clone = (v) => JSON.parse(JSON.stringify(v))
 /**
  * `createMinutes({ clock, log, settings, bus, meeting })` —— `meeting` 可选注入（零机制时不注入 ⇒ 具名拒）。
  */
-export function createMinutes({ clock = () => new Date(0).toISOString(), log = () => {}, settings = {}, bus = null, meeting = null } = {}) {
+export function createMinutes({ clock = () => new Date(0).toISOString(), log = () => {}, settings = {}, bus = null, meeting = null, meetings = null } = {}) {
   if (typeof clock !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'createMinutes needs a clock function', 'pass { clock }')
   const records = new Map()       // id -> minutes 记录
   const verbatim = new Map()      // meetingId -> { entries: [], droppedBytes: 0, capBytes }
@@ -270,7 +270,104 @@ export function createMinutes({ clock = () => new Date(0).toISOString(), log = (
       note: '只报缺口，**不自动补全**（R7）；补齐走 append/confirm，责任人是记录人或院士' }
   }
 
-  return { draft, confirm, append, actions, list, status, zones, gaps, snapshot, restore }
+  /**
+   * GAP-MTG-03 — THE RESOLUTION ENTITY (v5r `result_record`/`resolutions` #55/#56, S13/G2).
+   *
+   * v5r's three decisions, kept: the id is ALLOCATED BY THE FRAMEWORK (`res-<n>`, institute-monotonic, never
+   * taken from the caller) so a resolution can be quoted across meetings; it takes effect ON ANNOUNCEMENT
+   * (`effectiveAt === at`), and a `retroactive` declaration is recorded (`declaredAt`) WITHOUT moving
+   * `effectiveAt`; and superseding is a one-way, append-only link (`supersededBy`) rather than a rewrite.
+   *
+   * THE TIER GATE is the SAME single decision point as the meeting layer's: `meetings.truthWriteRefusal(…)`
+   * (GAP-MTG-02/D7). This face does not re-implement "may this meeting conclude?" — without the seam it refuses
+   * BY NAME instead of guessing the tier (a light meeting must never acquire an entity conclusion by omission).
+   */
+  const RESOLUTION_TEXT_MAX = 1000
+  const RESOLUTION_KINDS = Object.freeze(['resolution', 'solve', 'org', 'procedure'])
+  const resolutions = []
+  const resolutionSeq = { n: 0 }
+
+  const tierGate = (what) => {
+    if (!meetings || typeof meetings.truthWriteRefusal !== 'function') {
+      throw refuse('VMU_ENGINE_UNAVAILABLE', 'recording a resolution needs the meeting policy layer (the tier predicate) to be injected',
+        'construct createMinutes({ meetings }) — a resolution may only be recorded inside a FORMAL meeting (D7), and this face will not guess the tier')
+    }
+    const r = meetings.truthWriteRefusal(what)
+    if (r) throw refuse(r.code || 'VMU_MEETING_LIGHT_NO_TRUTH', String(r.message), r.hint)
+  }
+
+  function resolve(input = {}) {
+    const a = input || {}
+    const text = String(a.text === undefined || a.text === null ? '' : a.text).trim()
+    if (!text) throw refuse('VMU_INVALID_ARGUMENT', 'a resolution needs non-empty text', 'pass { text }')
+    if (text.length > RESOLUTION_TEXT_MAX) throw refuse('VMU_INVALID_ARGUMENT', 'the resolution text is over ' + RESOLUTION_TEXT_MAX + ' characters', 'split it into two resolutions')
+    const kind = String(a.kind || 'resolution')
+    if (!RESOLUTION_KINDS.includes(kind)) throw refuse('VMU_INVALID_ARGUMENT', 'unknown resolution kind: ' + kind, 'one of ' + RESOLUTION_KINDS.join(', '))
+    const stampKeys = Object.keys(a).filter((k) => /(At|Ms)$/i.test(String(k)))
+    if (stampKeys.length) throw refuse('VMU_INVALID_ARGUMENT', 'time is set by the framework: ' + stampKeys.join(', ') + ' is refused', 'the announcement instant is written by the framework; use `due_in` for relative deadlines')
+    tierGate('recording a resolution')
+    const meetingId = a.meeting === undefined || a.meeting === null ? '' : String(a.meeting)
+    const target = a.target === undefined || a.target === null ? '' : String(a.target)
+    const actions = Array.isArray(a.actions) ? a.actions.map((x) => {
+      const who = String((x && (x.who || x.member)) || '').trim()
+      if (!who) throw refuse('VMU_INVALID_ARGUMENT', 'actions[].who is required (the owner)', 'every action item needs an owner')
+      const bad = Object.keys(x || {}).filter((k) => /(At|Ms)$/i.test(String(k)))
+      if (bad.length) throw refuse('VMU_INVALID_ARGUMENT', 'an action item takes a RELATIVE due_in, not ' + bad.join(', '), 'pass { due_in: "next meeting" }')
+      return { who, due_in: String((x && (x.due_in || x.dueIn)) || ''), state: 'open' }
+    }) : []
+    const same = resolutions.filter((r) => r.meetingId === meetingId && r.target === target && r.text === text)[0]
+    if (same) return { ok: true, deduped: true, resolution: clone(same), message: 'the same resolution already exists (idempotent): not recorded twice' }
+    const at = clock()
+    const rec = { id: 'res-' + (resolutionSeq.n + 1), by: a.by === undefined || a.by === null ? null : String(a.by),
+      at, meetingId, target, kind, text, actions, effectiveAt: at,
+      retroactive: a.retroactive === true, declaredAt: a.retroactive === true ? at : 0, supersededBy: '' }
+    resolutionSeq.n += 1
+    resolutions.push(rec)
+    // Also hang it on this meeting's minutes record when one exists (the human-readable side), append-only.
+    const recRow = [...records.values()].filter((r) => String(r.meetingId || '') === meetingId)[0]
+    if (recRow) { if (!Array.isArray(recRow.resolutions)) recRow.resolutions = []; recRow.resolutions.push({ id: rec.id, kind: rec.kind, text: rec.text, effectiveAt: rec.effectiveAt }) }
+    dirty.writes += 1
+    emit('record/appended', { at, kind: 'resolution', id: rec.id, meetingId })
+    return { ok: true, resolution: clone(rec), tierKeys: ['vmu.meetings.tier'],
+      note: 'announcement IS the effect (G2); the stable id is quotable across meetings (res:' + rec.id + ')' }
+  }
+
+  /** Read-only search. Time is display/order only: any `…At`/`…Ms` FILTER is refused by name. */
+  function resolutions_(input = {}) {
+    const a = input || {}
+    const bad = Object.keys(a).filter((k) => /(At|Ms)$/i.test(String(k)))
+    if (bad.length) throw refuse('VMU_INVALID_ARGUMENT', 'time is display-only here: a ' + bad.join(', ') + ' filter is refused', 'filter by id/target/meetingId/kind instead')
+    let list = resolutions.slice()
+    if (a.id) { const want = String(a.id).trim(); const id = /^\d+$/.test(want) ? ('res-' + want) : want; list = list.filter((r) => r.id === id) }
+    if (a.target) list = list.filter((r) => r.target === String(a.target))
+    if (a.meetingId) list = list.filter((r) => r.meetingId === String(a.meetingId))
+    if (a.kind) list = list.filter((r) => r.kind === String(a.kind))
+    const limit = Math.max(1, Math.min(50, Number(a.limit || 10) || 10))
+    const rows = list.slice(-limit).reverse().map((r) => ({ id: r.id, kind: r.kind, text: r.text, effectiveAt: r.effectiveAt,
+      meetingId: r.meetingId, target: r.target, supersededBy: r.supersededBy, actions_count: r.actions.length }))
+    dirty.reads += 1
+    return { ok: true, count: list.length, resolutions: rows,
+      latest_id: (list.filter((r) => !r.supersededBy).slice(-1)[0] || {}).id || null }
+  }
+
+  /** Mark an older resolution as superseded by a newer one: ONE-WAY and append-only (the old text stays). */
+  function supersede(input = {}) {
+    const a = input || {}
+    const of = String(a.of || a.id || '').trim()
+    const by = String(a.by || '').trim()
+    if (!of || !by) throw refuse('VMU_INVALID_ARGUMENT', 'supersede needs { of, by }', 'name the superseded resolution and the superseding one')
+    const old = resolutions.filter((r) => r.id === of)[0]
+    const next = resolutions.filter((r) => r.id === by)[0]
+    if (!old) throw refuse('VMU_NO_SUCH_OBJECT', 'no such resolution: ' + of, 'resolutions({ … }) lists the ids')
+    if (!next) throw refuse('VMU_NO_SUCH_OBJECT', 'no such resolution: ' + by, 'resolutions({ … }) lists the ids')
+    if (old.supersededBy === by) return { ok: true, deduped: true, id: old.id, supersededBy: by }
+    if (old.supersededBy) throw refuse('VMU_CONFLICT', old.id + ' is already superseded by ' + old.supersededBy, 'a supersede link is one-way; supersede the newer one instead')
+    old.supersededBy = by
+    dirty.writes += 1
+    return { ok: true, id: old.id, supersededBy: by, note: 'the old text is preserved (append-only)' }
+  }
+
+  return { draft, confirm, append, actions, list, status, zones, gaps, resolve, resolutions: resolutions_, supersede, snapshot, restore }
 
   /**
    * PERSISTENCE SEAM v1 (kernel/resume.js interface). Two things are deliberate here:
@@ -293,8 +390,9 @@ export function createMinutes({ clock = () => new Date(0).toISOString(), log = (
     const maxId = [...records.keys()].reduce((mx, id) => Math.max(mx, Number(String(id).replace(/^mn-/, '')) || 0), 0)
     return { apiVersion, face: 'minutes', v: 1, at: clock(),
       data: { records: Object.fromEntries([...records.entries()].map(([k, v]) => [k, clone(v)])), verbatim: verbatimOut,
+        resolutions: resolutions.map((r) => clone(r)),
         verbatimBytes, verbatimCapBytes: cap, droppedVerbatimBytes: droppedBytes },
-      counters: { minutes: Math.max(seq.n, maxId) },
+      counters: { minutes: Math.max(seq.n, maxId), resolution: resolutionSeq.n },
       skipped: (droppedBytes > 0 ? [{ what: 'verbatim', why: 'snapshot cap ' + cap + ' bytes reached: ' + droppedBytes + ' byte(s) omitted (counted in droppedVerbatimBytes)' }] : [])
         .concat([{ what: 'meeting', why: 'the injected meeting seam is re-bound by the host, never serialised' }]) }
   }
@@ -317,10 +415,18 @@ export function createMinutes({ clock = () => new Date(0).toISOString(), log = (
     for (const [k, v] of Object.entries(d.records || {})) records.set(k, clone(v))
     verbatim.clear()
     for (const [k, v] of Object.entries(d.verbatim || {})) verbatim.set(k, clone(v))
+    // GAP-MTG-03: the resolution LEDGER travels with the minutes (it is the same face's record), and its id
+    // counter only ever moves FORWARD — a restored service never re-mints `res-<n>`.
+    resolutions.length = 0
+    for (const r of (d.resolutions || [])) resolutions.push(clone(r))
     const fromSnap = Number((snap.counters && snap.counters.minutes) || 0)
+    const fromRes = Number((snap.counters && snap.counters.resolution) || 0)
     const maxId = [...records.keys()].reduce((mx, id) => Math.max(mx, Number(String(id).replace(/^mn-/, '')) || 0), 0)
+    const maxRes = resolutions.reduce((mx, r) => Math.max(mx, Number(String(r.id || '').replace(/^res-/, '')) || 0), 0)
     seq.n = Math.max(seq.n, fromSnap, maxId)
-    return { ok: true, restored: true, restored_items: ['records', 'verbatim'], counters: { minutes: seq.n },
+    resolutionSeq.n = Math.max(resolutionSeq.n, fromRes, maxRes)
+    return { ok: true, restored: true, restored_items: ['records', 'verbatim', 'resolutions'],
+      counters: { minutes: seq.n, resolution: resolutionSeq.n },
       truncated: d.droppedVerbatimBytes ? { what: 'verbatim', bytes: d.droppedVerbatimBytes } : null,
       skipped: (snap.skipped || []).slice() }
   }

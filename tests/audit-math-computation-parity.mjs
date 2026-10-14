@@ -15,8 +15,10 @@
 // Usage: node tests/audit-math-computation-parity.mjs
 // ============================================================================================
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
+import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
@@ -29,6 +31,14 @@ const MODULES = ['math-engines.js', 'math-computation.js']
 // The two env seams remain as OVERRIDES (docs/11 §4.1): pointing one at a missing path is how the named-SKIP
 // branch is PROVEN to fire.
 const FIXTURES = join(HERE, 'fixtures', 'mc-P1-ready')
+// ── THE CANONICAL MUTANT FAMILY (`--mutants`), handover C / Round 3 ──────────────────────────────────────────
+// The semantic comparison below is worth exactly what it can CATCH, and until now that was proved only by a
+// throwaway manual mutant. This mode makes the proof PERMANENT: it re-runs THIS FILE in four child processes,
+// three of them pointed (through the documented env seams) at a copy of the vendored canonical carrying exactly
+// ONE semantic change, and requires each child to exit 1 with the SPECIFIC named assertion. The fourth child runs
+// an UNMUTATED copy and must stay green - without that control, "everything is red" would pass for a proof.
+// Run: node tests/audit-math-computation-parity.mjs --mutants
+if (process.argv.includes('--mutants')) process.exit(runMutantFamily())
 const CANON = process.env.MATH_CANON_DIR ? resolve(process.env.MATH_CANON_DIR) : FIXTURES
 const SCHEMA = process.env.MATH_SCHEMA_FILE ? resolve(process.env.MATH_SCHEMA_FILE) : join(FIXTURES, 'tool-schema.json')
 // The historical out-of-repo copy, named only in a SKIP reason so a dev checkout can still point at it.
@@ -540,3 +550,55 @@ console.log('=== MATH COMPUTATION PARITY: ' + passed + ' passed, ' + failed + ' 
 for (const s of skips) console.error('  SKIP ' + s.label + ' — ' + s.reason)
 if (failures.length) for (const f of failures) console.error('  - ' + f)
 process.exit(failed === 0 ? 0 : 1)
+
+/**
+ * Round 3 / handover C: the PERMANENT mutant family (entry point guarded above, so this bare declaration never
+ * runs during a normal gate pass). Each case copies the vendored canonical into a temp dir, applies exactly one
+ * semantic change, points the documented env seam at the copy and requires the child gate to exit 1 with the
+ * named assertion. A missing mutation target is a FAILURE of the family itself (the fixture changed shape), never
+ * a silent pass - an unproven mutant is worse than no mutant.
+ */
+function runMutantFamily() {
+  const tmp = mkdtempSync(join(tmpdir(), 'mc-mutants-'))
+  let bad = 0
+  const report = (name, pass, detail) => {
+    console.log('  ' + (pass ? 'ok  ' : 'FAIL') + ' ' + name + ' — ' + detail)
+    if (!pass) bad += 1
+  }
+  const CASES = [
+    { name: 'change one failure code', file: 'math-computation.js', expect: 'failure codes: same SET as the reference',
+      mutate: (s) => { const m = /(MATH_FAILURE_CODES = Object\.freeze\(\[\s*')([A-Z0-9_]+)(')/.exec(s); return m ? s.replace(m[0], m[1] + m[2] + '_MUT' + m[3]) : null } },
+    { name: 'change one default value', file: 'math-computation.js', expect: 'param defaults: same key set and same values',
+      mutate: (s) => (/mathTimeoutMs:\s*60000/.test(s) ? s.replace(/mathTimeoutMs:\s*60000/, 'mathTimeoutMs: 61001') : null) },
+    { name: 'reorder the engine candidates', file: 'math-engines.js', expect: 'engine descriptors: dispatch order',
+      mutate: (s) => (/MATH_ENGINE_ORDER = \['python', 'r'/.test(s) ? s.replace(/MATH_ENGINE_ORDER = \['python', 'r'/, "MATH_ENGINE_ORDER = ['r', 'python'") : null) },
+    { name: 'CONTROL unmutated copy', file: null, expect: null, mutate: (s) => s },
+  ]
+  for (const c of CASES) {
+    const dir = join(tmp, c.name.replace(/[^a-z0-9]+/gi, '-'))
+    mkdirSync(dir, { recursive: true })
+    const srcC = readFileSync(join(FIXTURES, 'math-computation.js'), 'utf8')
+    const srcE = readFileSync(join(FIXTURES, 'math-engines.js'), 'utf8')
+    let outC = srcC; let outE = srcE
+    if (c.file) {
+      const target = c.file === 'math-computation.js' ? srcC : srcE
+      const mutated = c.mutate(target)
+      if (mutated === null) { report(c.name, false, 'mutation target NOT FOUND in ' + c.file + ' (the fixture changed shape)'); continue }
+      if (c.file === 'math-computation.js') outC = mutated; else outE = mutated
+    }
+    writeFileSync(join(dir, 'math-computation.js'), outC)
+    writeFileSync(join(dir, 'math-engines.js'), outE)
+    const env = Object.assign({}, process.env, {
+      MATH_COMPUTATION_MODULE: join(dir, 'math-computation.js'),
+      MATH_ENGINES_MODULE: join(dir, 'math-engines.js'),
+    })
+    const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { env, encoding: 'utf8' })
+    const out = String(r.stdout || '') + String(r.stderr || '')
+    if (c.expect === null) report(c.name, r.status === 0, 'EXIT=' + r.status + ' (want 0) — the family must not redden a pristine copy')
+    else report(c.name, r.status === 1 && out.includes(c.expect),
+      'EXIT=' + r.status + ' (want 1); named assertion ' + (out.includes(c.expect) ? 'PRESENT' : 'MISSING') + ' ["' + c.expect + '"]')
+  }
+  try { rmSync(tmp, { recursive: true, force: true }) } catch { /* temp dir */ }
+  console.log('=== CANONICAL MUTANT FAMILY: ' + (CASES.length - bad) + '/' + CASES.length + ' behaved as required ===')
+  return bad === 0 ? 0 : 1
+}

@@ -15,6 +15,7 @@
 import { createHuman, attachApprovalGate, CODE as HU, PRIVATE_DOMAINS } from '../vibe-math-vmu/kernel/human.js'
 import { createControl, CODE as CT } from '../vibe-math-vmu/kernel/control.js'
 import { createTasks } from '../vibe-math-vmu/kernel/tasks.js'
+import { createResume } from '../vibe-math-vmu/kernel/resume.js'
 
 let passed = 0
 let failed = 0
@@ -184,6 +185,83 @@ const queueUp = (h, req) => { try { h.gate(req) } catch (e) { return e } return 
   const gated = createControl({ clock, settings: { 'vmu.control.pauseScope': ['tasks'] }, approval: (req) => h.gate(req) })
   throws(HU.approvalPending, 'mayAct consults the approval gate when one is wired', () => gated.mayAct({ scope: 'tasks' }))
   ok(gated.status().approvalGateAttached === true, 'status() says the gate is attached', gated.status().approvalGateAttached)
+}
+
+// ── 8. ROUND 3 (task-18 A): the approval queue and the veto ledger SURVIVE A RESTART ─────────────────────────
+// The failure this pins: "an action is still waiting for a human" and "a veto promised a reason afterwards" were
+// session memory, so a restart silently forgot both — the queue looked empty and the promise looked kept.
+{
+  const store = (() => {
+    const data = new Map()
+    const copy = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
+    return {
+      export: () => ({ version: 1, keys: Object.fromEntries(data) }),
+      read: (k) => copy(data.get(k)),
+      patch: (k, fn) => { const next = fn(copy(data.get(k))); data.set(k, next); return { ok: true, key: k } },
+      _raw: data,
+    }
+  })()
+  const settings = { 'vmu.human.gatedActions': ['tasks.create', 'tasks.delete'], 'vmu.human.approvalTimeoutMs': 1000, 'vmu.human.onTimeout': 'hold', 'vmu.human.vetoNeedsReason': true }
+
+  // PROCESS A — a human is asked, does not answer, and two other things happen.
+  const a = createHuman({ clock, settings })
+  const d1 = a.approvalDecision({ action: 'tasks.create', subject: 'the paper' })
+  ok(d1.ok === false && d1.code === HU.approvalPending && d1.queued === true, 'A: the gated action is queued', d1.code)
+  const vA = a.veto({ by: 'human-1', target: 't-9', emergency: true, reason: null })
+  a.decide({ requestId: a.approvalDecision({ action: 'tasks.delete', subject: 't-3' }).requestId, allow: false, by: 'office' })
+  const before = a.queue()
+  ok(vA.ok === true && a.status().activeVetoes === 1, 'A: a veto is in force', a.status().activeVetoes)
+
+  const resumeA = createResume({ store, clock, settings: {} })
+  await resumeA.read()
+  const attached = resumeA.attachProjection({
+    target: a, methods: ['veto', 'explainDecision', 'liftVeto', 'openApproval', 'decide', 'approvalDecision'],
+    key: 'human', mode: 'state', snapshot: () => a.snapshot(), restore: (v) => a.restore(v), list: () => a.list(),
+  })
+  ok(attached.writeThrough === true && attached.missing.length === 0, 'A: the human ledger is attached with write-through and no missing method', attached)
+  // one more mutation, then give the fire-and-forget write a tick to land
+  a.approvalDecision({ action: 'tasks.create', subject: 'the paper' })
+  await new Promise((r) => setTimeout(r, 0))
+  const written = store._raw.get('human')
+  ok(!!written && written.mode === 'state' && resumeA.status().writesThrough >= 1,
+    'A: each mutation writes the ledger through (no explicit flush needed)', resumeA.status().writesThrough)
+
+  // PROCESS B — a fresh face over the same store.
+  const b = createHuman({ clock, settings })
+  const resumeB = createResume({ store, clock, settings: {} })
+  await resumeB.read()
+  resumeB.attachProjection({
+    target: b, methods: ['veto', 'explainDecision', 'liftVeto', 'openApproval', 'decide', 'approvalDecision'],
+    key: 'human', mode: 'state', snapshot: () => b.snapshot(), restore: (v) => b.restore(v), list: () => b.list(),
+  })
+  const h = await resumeB.hydrate({ keys: ['human'] })
+  ok(h.ok === true && h.unhydrated.length === 0, 'B: the human ledger hydrates cleanly', h.unhydrated)
+  const after = b.queue()
+  ok(after.total === before.total && after.pending === before.pending,
+    'B: the queue still holds exactly what it held before the restart', { before: before.total, after: after.total })
+  const stillWaiting = after.requests.filter((r) => r.action === 'tasks.create' && r.state === 'pending')[0]
+  ok(!!stillWaiting && stillWaiting.subject === 'the paper' && stillWaiting.attempts === 2,
+    'B: the UNANSWERED action is still queued, with its subject and attempt count', stillWaiting)
+  const d2 = b.approvalDecision({ action: 'tasks.create', subject: 'the paper' })
+  ok(d2.ok === false && d2.code === HU.approvalPending && d2.requestId === stillWaiting.requestId,
+    'B: the gate still refuses and reuses the SAME request (no second request for one action)', d2)
+  const denied = after.requests.filter((r) => r.state === 'denied')[0]
+  ok(!!denied && denied.pendingReason === true, 'B: a denial whose reason is still owed reports pendingReason after the restart', denied)
+  b.explainDecision({ requestId: denied.requestId, reason: 'it was out of scope' })
+  ok(b.queue().requests.filter((r) => r.requestId === denied.requestId)[0].pendingReason === false,
+    'B: the promised reason can still be supplied after the restart', b.queue().requests.filter((r) => r.requestId === denied.requestId)[0])
+  const activeVetoes = b.status().activeVetoes
+  ok(activeVetoes === 1, 'B: the veto is still in force', activeVetoes)
+  const vetoRec = b.queue() && b.status().vetoes === 1
+  ok(vetoRec === true, 'B: the veto ledger row survived', b.status().vetoes)
+  ok(b.status().pendingReasons === 1, 'B: the veto that PROMISED a reason still reports it as owed (not pretended)', b.status().pendingReasons)
+  b.explainDecision({ vetoId: vA.veto.id, reason: 'the third party objection was reviewed' })
+  ok(b.status().pendingReasons === 0, 'B: the promised veto reason can still be supplied after the restart', b.status().pendingReasons)
+  throws(HU.vetoed, 'B: the vetoed action is still refused after the restart', () => b.gate({ action: 'tasks.delete', subject: 't-9' }))
+  // id non-reuse: the next request must not be `approval-1` again
+  const d3 = b.approvalDecision({ action: 'tasks.delete', subject: 'other' })
+  ok(d3.requestId !== d1.requestId && Number(String(d3.requestId).split('-')[1]) > 1,
+    'B: the id counter continues above the maximum it ever handed out (a name is never reused)', { first: d1.requestId, now: d3.requestId })
 }
 
 const guard = process.argv.includes('--self-probe')

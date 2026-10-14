@@ -42,10 +42,15 @@ export const V5R_SETTING_DEFAULTS = Object.freeze({
   'vmu.mailbox.wakeBudget': 1,
   // Panel: v5r kept the academician's original `overall` and recorded the deviation instead of refusing it.
   'vmu.panel.deviationPolicy': 'record',
-  // Resume: v5r's `resume()` rebuilt exactly these seven projection faces, and checked what it wrote.
-  'vmu.resume.projections': ['members', 'tasks', 'meetings', 'ballots', 'budget', 'phase', 'work'],
+  // Resume: v5r's `resume()` rebuilt these projection faces, and checked what it wrote. ROUND 3 adds the three
+  // faces the round-3 seams made durable (chat / panel / human) — a restart must not lose the group chat, the
+  // self-report panels or the approval queue.
+  'vmu.resume.projections': ['members', 'tasks', 'meetings', 'ballots', 'budget', 'phase', 'work', 'chat', 'panel', 'human'],
   'vmu.resume.autoRecover': true,
   'vmu.resume.readBack': true,
+  // ROUND 3: a state-type projection writes through on every wrapped call, so "an unapproved action is still
+  // queued after a restart" survives a crash rather than waiting for an explicit snapshot.
+  'vmu.resume.writeThrough': true,
   // Human in the loop: v5r never let a timeout allow an action by default, and only office lifted a veto.
   // `gatedActions` is deliberately EMPTY (zero mechanism: nothing is gated until a deployment declares it).
   'vmu.human.onTimeout': 'hold',
@@ -59,8 +64,42 @@ export const V5R_SETTING_DEFAULTS = Object.freeze({
   // Math jobs: a research institute keeps its computation mirrors across restarts (goal 5).
   'vmu.math.jobs.persist': true,
   'vmu.math.jobs.recover': 'on-load',
+  // ROUND 3 (Lead adjudication): concurrency caps are POLICY, so the pack declares both, with v5r's factory
+  // numbers. v5r's own semantics were: `maxParallel: 3` = the framework wakes at most 3 members at once
+  // (vibe-math-v5r.js:1081; wording at :2073-2076) and `leanJobsMaxParallel: 1` = background compilation is
+  // SERIAL by default (:1118-1119). ★ HONEST BOUNDARY: in the CURRENT vmu wiring `vmu.math.maxParallel` is read
+  // by `kernel/mathjobs.js:41,249` (the math-JOB service's active-runs cap) and `vmu.math.jobs.maxParallel` by
+  // `kernel/mathtools.js:56,200,571-572` (the strategy-layer active-runs cap) — two readers that do NOT drive
+  // each other today, so a deployment that wants to cap concurrency sets BOTH. core's convergence direction is
+  // to make mathtools read the former; when that lands this pack drops one line.
+  'vmu.math.maxParallel': 3,
+  'vmu.math.jobs.maxParallel': 1,
   // Meeting parameters measured from v5r: quote depth 3, at most 2 quotes per message, and an unanswered member
   // stays OUT of the denominator (v5r's D3: "未答不计分母、不算反对、名单必列").
+  // ROUND 3 (GAP-MTG-02): the meeting TIER is the pack's policy. v5r had ONE meeting protocol (the full one), so
+  // this institution defaults to `formal`; `light` is a new capability whose AVAILABILITY is declared by the
+  // pack, while the kernel only supplies the tier + the derived predicate (`light` must not produce substantive
+  // conclusions).
+  'vmu.meetings.tier': 'formal',
+  // ROUND 3 (GAP-MTG-02, reader-c): `allowLight=false` is v5r's answer — v5r ran ONE meeting protocol, so a
+  // "light" (simplified) meeting is refused BY NAME here (`VMU_MEETING_TIER_CONFLICT`) rather than silently
+  // producing nothing substantive. A deployment that wants light sets this true (both states are implemented).
+  'vmu.meetings.allowLight': false,
+  // ROUND 3 (GAP-MTG-10, reader-c): the ballot board's reopen threshold. v5r's rule was "the threshold only
+  // RISES and the object's own standard still applies" — so the pack adds NO extra floor (0 = none), which is
+  // the same stance the manifest declares for the meeting-side reconsideration (`vmu.meetings.reconsiderFloor`).
+  'vmu.ballot.reopenFloor': 0,
+  // ROUND 3 (C-30, CLOSED): the OFFICE CONSULT GATE before finalisation. v5r's `finalizePaperByOffice` /
+  // `notePaperConsult` asked the institute before the office finalised, so this institution declares the gate
+  // REQUIRED, on FINALIZE, with NO timeout escape (0 = wait; a timeout HOLDS and still refuses — there is no
+  // `default-allow` value at all), and — per the Lead's F4 ruling — **NOBODY is exempt by default**: the case
+  // this gate exists for IS the office finalising, so exempting `office` would exempt exactly that case.
+  // Readers: `kernel/paper.js:45-49` (WIRED_KEYS 3→8) and `:111-114` (cfg() reads all five unconditionally).
+  'vmu.paper.officeConsult': 'required',
+  'vmu.paper.officeConsultOn': 'finalize',
+  'vmu.paper.officeConsultTimeoutMs': 0,
+  'vmu.paper.officeConsultOnTimeout': 'hold',
+  'vmu.paper.officeConsultExemptRoles': [],
   'vmu.meetings.quoteDepthMax': 3,
   'vmu.meetings.quotesPerMessageMax': 2,
   'vmu.meetings.unansweredInDenominator': false,

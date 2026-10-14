@@ -36,7 +36,7 @@ export function refuse(code, message, hint) {
 
 /** The 47 `vmu.meetings.*` keys this layer wires (each one changes an observable result — see the test). */
 export const WIRED_KEYS = Object.freeze([
-  'vmu.meetings.typeCatalog', 'vmu.meetings.attendanceMode', 'vmu.meetings.liveCap',
+  'vmu.meetings.typeCatalog', 'vmu.meetings.tier', 'vmu.meetings.allowLight', 'vmu.meetings.attendanceMode', 'vmu.meetings.liveCap',
   'vmu.meetings.quorumMin', 'vmu.meetings.quorumRatio', 'vmu.meetings.quorumLossPolicy', 'vmu.meetings.quorumRecountMs',
   'vmu.meetings.quorumCap',
   'vmu.meetings.unansweredInDenominator', 'vmu.meetings.emergencyQuorumRatio', 'vmu.meetings.emergencyKinds',
@@ -106,6 +106,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
 
   const K = {
     typeCatalog: arr(sget('vmu.meetings.typeCatalog')).map(String),
+    // GAP-MTG-02 (D7/GAPS 22): the meeting TIER, and whether light procedures are allowed at all. Both are read
+    // LIVE (a hot change is honoured on the next call) and together they feed ONE derived predicate below.
+    // `tier` = the meeting's level; `allowLight=false` = this institution does not run light procedures, so a
+    // `light` tier becomes a named configuration conflict instead of a silently weakened meeting.
+    tier: oneOf(sget('vmu.meetings.tier'), ['formal', 'light'], 'formal'),
+    allowLight: sget('vmu.meetings.allowLight') !== false,
     attendanceMode: oneOf(sget('vmu.meetings.attendanceMode'), ['roster', 'signin', 'quorum-only'], 'roster'),
     liveCap: n(sget('vmu.meetings.liveCap')),
     quorumMin: n(sget('vmu.meetings.quorumMin')), quorumRatio: n(sget('vmu.meetings.quorumRatio')),
@@ -269,6 +275,36 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     }
   }
 
+  /**
+   * GAP-MTG-02 — THE tier PREDICATE (D7/GAPS 22, ported from the v5r line's S12).
+   *
+   * `light` = a LIGHT-PROCEDURE meeting: it may carry an agenda, rounds and ACTION ITEMS, but it may NOT produce
+   * an entity conclusion. This is a DERIVED PREDICATE, not a phase: the tier is read live, so switching to
+   * `formal` immediately allows the write — there is no stage machine and no timer anywhere in this rule.
+   *
+   * `truthWriteRefusal(what, enforced)` is the SINGLE decision point. It returns `null` when the write is
+   * allowed and a NAMED refusal otherwise, and EVERY face that may write an entity conclusion calls it: the
+   * `close()` rail, the resolution motion, and — through the injected `meetings` seam — `kernel/minutes.js`.
+   */
+  const tier = () => K.tier
+  const isLight = () => K.tier === 'light'
+  const truthWriteRefusal = (what, enforced = []) => {
+    const base = Array.isArray(enforced) ? enforced.slice() : []
+    if (isLight() && K.allowLight === false) {
+      // A contradictory declaration gets its own name: "light is selected but light is not allowed".
+      const e = mark(base, 'vmu.meetings.tier')
+      mark(e, 'vmu.meetings.allowLight')
+      return deny('VMU_MEETING_TIER_CONFLICT',
+        'the tier is "light" while vmu.meetings.allowLight=false: this configuration can produce no conclusion at all (' + what + ')',
+        'pick one: set vmu.meetings.tier="formal", or set vmu.meetings.allowLight=true (both are read live, so a hot change applies to the very next call)', e)
+    }
+    if (!isLight()) return null
+    const e = mark(base, 'vmu.meetings.tier')
+    return deny('VMU_MEETING_LIGHT_NO_TRUTH',
+      'this is a LIGHT-procedure meeting (vmu.meetings.tier=light): ' + what + ' would be an entity conclusion, which a light meeting may not produce (D7/GAPS 22)',
+      'record it as PROCESS instead (agenda, rounds and action items are always allowed), or upgrade the meeting with vmu.meetings.tier="formal" (read live, so the chair may do it at any time)', e)
+  }
+
   const api = {
     apiVersion,
     WIRED_KEYS, UNWIRED_REASONS,
@@ -277,6 +313,9 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     open({ type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, at = null } = {}) {
       const enforced = []
       const ms = at === null ? clock() : at
+      // GAP-MTG-02: a CONTRADICTORY tier declaration is refused BEFORE any state is created. Same predicate as
+      // the close rail — one decision point, several call sites, so the two can never disagree.
+      if (isLight() && K.allowLight === false) throw truthWriteRefusal('opening a meeting', enforced)
       if (K.typeCatalog.length) {
         mark(enforced, 'vmu.meetings.typeCatalog')
         if (!K.typeCatalog.includes(String(type))) {
@@ -500,6 +539,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       if (!isMember(String(member))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'motion() acts as or on the member moving the motion - the roster seam rejected this id; a non-member never votes (08 D-series)', [])
       const enforced = []
       const now = at === null ? clock() : at
+      // GAP-MTG-02: a RESOLUTION motion is an entity conclusion, so a light meeting refuses it through the SAME
+      // predicate the close rail uses (the v5r S12/D7 rule, now a single decision point).
+      if (String(kind) === 'resolution') {
+        const tierBlock = truthWriteRefusal('moving a resolution', enforced)
+        if (tierBlock) throw tierBlock
+      }
       const emergency = K.emergencyKinds.length > 0 && K.emergencyKinds.includes(String(kind))
       if (K.emergencyKinds.length) mark(enforced, 'vmu.meetings.emergencyKinds')
       if (String(kind) === 'emergency' && !emergency) {
@@ -836,6 +881,13 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const m = requireMeeting(meeting)
       const enforced = []
       const now = at === null ? clock() : at
+      // GAP-MTG-02 (D7): a `report` IS an entity conclusion, so a light (or light-disallowed) meeting refuses
+      // the close that carries one BY NAME. Agenda, rounds and ACTION ITEMS remain allowed — that is what a
+      // light procedure is for (v5r: 简流程＝议程＋轮询＋行动项，但不得产出实体定论).
+      if (report) {
+        const tierBlock = truthWriteRefusal('closing with an entity report', enforced)
+        if (tierBlock) throw tierBlock
+      }
       // Each rail is marked the moment its switch is CONSULTED (not only when it fires), so a refusal by a
       // LATER rail still shows that these earlier rails were active in this call.
       if (K.confirmPreviousMinutes) {
@@ -914,6 +966,10 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         wiredNotDeclared: declared.count > 0 ? wired.filter((k) => !declared.keys.includes(k)) : [],
         complementOk: plannedKeys.length + wired.length === declared.count && plannedKeys.filter((k) => wired.includes(k)).length === 0,
         liveMeetings: [...live.keys()].sort(), archived: archive.length,
+        // GAP-MTG-02 (D7): the tier is part of the observable state, and a contradictory declaration is visible
+        // here BEFORE anyone hits the refusal (an operator must be able to see why a close would be refused).
+        tier: K.tier, allowLight: K.allowLight, isLight: isLight(),
+        tierConflict: isLight() && K.allowLight === false,
         counters: Object.assign({}, counters),
         refusals: Object.fromEntries([...refusals.keys()].sort().map((k) => [k, refusals.get(k)])),
         refusalsTotal: [...refusals.values()].reduce((a, b) => a + b, 0),
@@ -985,6 +1041,15 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         counters: { meeting: Math.max(fromSnap, maxId) }, skipped: (snap.skipped || []).slice(),
         liveMeetings: [...live.keys()].sort() }
     },
+
+    /**
+     * GAP-MTG-02 (D7): the tier and its DERIVED predicate, exported so other faces can consult the SAME single
+     * decision point instead of re-implementing "may this meeting write conclusions?". `truthWriteRefusal`
+     * returns `null` when the write is allowed and a NAMED refusal otherwise (see the predicate above).
+     */
+    tier,
+    isLight,
+    truthWriteRefusal,
   }
 
   function budgetVerdict(m, label, value, limit, evaluated) {
@@ -1019,6 +1084,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
 function keysSnapshot(K) {
   return {
     'vmu.meetings.wakeRetries': K.wakeRetries, 'vmu.meetings.verdictMaxRounds': K.verdictMaxRounds, 'vmu.meetings.hardLimitMs': K.hardLimitMs,
+    'vmu.meetings.tier': K.tier, 'vmu.meetings.allowLight': K.allowLight,
     'vmu.meetings.typeCatalog': K.typeCatalog, 'vmu.meetings.attendanceMode': K.attendanceMode, 'vmu.meetings.liveCap': K.liveCap,
     'vmu.meetings.quorumMin': K.quorumMin, 'vmu.meetings.quorumRatio': K.quorumRatio, 'vmu.meetings.quorumLossPolicy': K.quorumLossPolicy, 'vmu.meetings.quorumCap': K.quorumCap,
     'vmu.meetings.quorumRecountMs': K.quorumRecountMs, 'vmu.meetings.unansweredInDenominator': K.unansweredInDenominator,

@@ -36,6 +36,9 @@ export const WIRED_BALLOT_KEYS = Object.freeze([
   // ROUND 157: implemented in close() (the irv branch) - read, and it DECIDES (an irv box without it is
   // refused by name rather than counted as something else).
   'vmu.ballot.irvInstantSingleCount',
+  // GAP-MTG-10 (round 3): `reopen()` landed in this face (own implementation, no second one anywhere), so the
+  // floor it reads is a WIRED key now — it is read AND it decides (a thin ruling is refused by name).
+  'vmu.ballot.reopenFloor',
 ])
 // ROUND 157: the IRV counter lives in `ballot.js` beside `defaultTally` - the single tally source - and is imported
 // here rather than reimplemented (cite, never copy).
@@ -58,15 +61,6 @@ export const PLANNED_BALLOT_KEYS = Object.freeze([
     + '`meeting.js` 的 4 处**全是注释** ✓（暂停会冻结会议启动 ✓、s8-freeze-say 的教训 ✓）；`meetings.js` 的 3 处是 **JS 的 `Object.freeze`** ✗（假阳性 ✓）。'
     + '⇒ ★★ **「冻结是否联动会议轮次」在任何面【都没有实现】** ✗。**复活条件**：先有**会议轮次 ↔ 票箱**的联动点（`meeting.js` 的轮次生命周期 ✓），再读本键 ✓；'
     + '`ballot.js` 只做**票箱级**冻结 ✓（暂停谓词注入 ✓）⇒ 本面不建会议状态机 ✓'],
-  ['vmu.ballot.reopenFloor', '★ **轮 190 实测更正** ✗✓：原句写「票箱层面的重开已由 `ballot.js` 的 `reopen()` 承载」✓ —— '
-    + '**这只对【原语】成立** ✓（`ballot.js` 确有 `reopen(reason)` ✓：只允许 `tallied` 重开 ✓、旧结论进历史 ✓；运行时证据＝`tests/vmu-ballot.test.mjs` L97-100 ✓）。'
-    + '★ **但本面【不调用那个原语】** ✗：`ballotbox.js` 只从 `ballot.js` 导入 `instantRunoffTally` ✓，'
-    + '**本面自己没有 `reopen()`** ✗（`reopen` 一词在本文件里只出现在键名与本条理由里 ✓）。'
-    + '⇒ ★★ **因此本键现在【不能接线】** ✗：把 `reopenFloor` 注入原语没用 ✓ —— **本面从不调用它** ✓；'
-    + '若为了接线而给本面**另写一套 reopen**，那就是**第二份重开实现** ✗ —— 与本项目「零机制／避免第二份实现」的纪律相反 ✓✓。'
-    + '**复活条件（已改正 ✓）**：① 本面先有 `reopen()`（**委托原语** ✓ 或**自有** ✓，两者择一，**不许并存** ✗）；'
-    + '② 届时在 `reopen()` 里**先读本键**、**在清空票之前**具名拒 ✓ —— 复用**已登记码** `VMU_BALLOT_MIN_VOTES_NOT_MET` ✓（`docs/03` §8 ✓，语义正是「成立门槛未达」、**须给当前与门槛** ✓）；'
-    + '③ 0（默认）**仍交给 pack 的 `reconsiderFloor`** ✓（**不成为第二意见** ✓）。'],
   ['vmu.ballot.reopenInitiatorScope', '★ **轮 193 实测更正** ✗✓：原句说发起人范围属**议程**（`board`／`meetings` ✓）—— '
     + '**实测：`initiator` 在 `board.js`／`meeting.js`／`meetings.js` 里【全部零命中】** ✗ ⇒ ★ **「防滥诉」目前是【设计意图，没有任何承载】** ✗；'
     + '票箱里确实没有「动议」这一概念 ✓ ⇒ 本面**不该**凭空造它 ✓。**复活条件**：议程面先有**动议对象**（含发起人 ✓）⇒ 再由它读本键 ✓'],
@@ -118,6 +112,9 @@ export function createBallotBox(opts) {
       secrecy: b('vmu.ballot.secrecy', false),
       secrecyRecordFact: b('vmu.ballot.secrecyRecordFact', true),
       tieRule: s('vmu.ballot.tieRule', 'unresolved'),
+      // GAP-MTG-10: the floor a SETTLED box must clear before it may be reopened (0 = no floor). It is read in
+      // `reopen()` and it DECIDES (a thin ruling is refused by name instead of being reopened silently).
+      reopenFloor: n('vmu.ballot.reopenFloor', 0),
       runoffTopN: n('vmu.ballot.runoffTopN', 0),
       roundsMax: n('vmu.ballot.roundsMax', 2),
       rollCallOrder: s('vmu.ballot.rollCallOrder', 'roster'),
@@ -157,7 +154,10 @@ export function createBallotBox(opts) {
     const options = Array.isArray(args.options) ? args.options.map(String) : []
     if (!question || options.length < 2) return deny('VMU_CONFLICT', 'open 需要 question 与 ≥2 个 options', '给出问题与选项')
     const id = 'bx-' + (++seq)
-    const box = { id, question, options, at: clock(), round: 1, votes: new Map(), abstain: new Map(), absent: [], recused: [], sealed: c.secrecy, tieUsed: '', rounds: 0, enforced }
+    const box = { id, question, options, at: clock(), round: 1, votes: new Map(), abstain: new Map(), absent: [], recused: [], sealed: c.secrecy, tieUsed: '', rounds: 0, enforced,
+      // GAP-MTG-10: a box has an explicit life cycle now, because `reopen()` has to mean something. `state` is
+      // `open` | `closed`; only a CLOSED box may be reopened, and a closed box never accepts another vote.
+      state: 'open', closedAt: 0, priorResult: null, reopenCount: 0, reopenedAt: 0, reopenHistory: [] }
     boxes.set(id, box)
     emit({ type: 'ballot.open', id })
     return { ok: true, boxId: id, round: box.round, sealed: box.sealed, enforced, enforcedScope: ENFORCED_SCOPE }
@@ -167,6 +167,9 @@ export function createBallotBox(opts) {
     const args = a || {}
     const box = boxes.get(String(args.boxId || ''))
     if (!box) return deny('VMU_NOT_FOUND', '找不到票箱 ' + String(args.boxId || ''), '先 open() 取 id')
+    // GAP-MTG-10: a SETTLED box is not a ballot any more. Without this guard `reopen()` could never mean
+    // "reconsider a closed ruling", because the ruling would still be accumulating votes.
+    if (box.state !== 'open') return deny('VMU_STATE', '该票箱已裁定（state=' + box.state + '）：不再收票', '要重开请调 reopen()（附理由；受 vmu.ballot.reopenFloor 约束）')
     const by = String(args.by || '').trim()
     if (!by) return deny('VMU_CONFLICT', 'cast 需要 by（投票人）', 'by 必填')
     if (box.votes.has(by) || box.abstain.has(by)) return deny('VMU_CONFLICT', '重复投票被拒：' + by, '一人一票；改票需先撤回（本面未实现 ✗）')
@@ -211,10 +214,11 @@ export function createBallotBox(opts) {
     return { ok: true, boxId: box.id, kind: 'vote', sealed: box.sealed, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
-  /** 缺席/未到（**与弃权分开计数** ✗✓）。 */
+  /** 缺席/未到（**与弃权分开计数** ✗✓）。A SETTLED box refuses attendance marks for the same reason it refuses votes. */
   const markAbsent = (a) => {
     const box = boxes.get(String((a && a.boxId) || ''))
     if (!box) return deny('VMU_NOT_FOUND', '找不到票箱', '先 open()')
+    if (box.state !== 'open') return deny('VMU_STATE', '该票箱已裁定（state=' + box.state + '）：不再记缺席', '要重开请调 reopen()（附理由）')
     const who = String((a && a.by) || '').trim()
     if (!who) return deny('VMU_CONFLICT', 'markAbsent 需要 by', 'by 必填')
     if (box.absent.indexOf(who) === -1) box.absent.push(who)
@@ -336,6 +340,11 @@ export function createBallotBox(opts) {
     if (c.auditRetentionMs > 0) mark(enforced, 'vmu.ballot.auditRetentionMs')
     if (c.processReadingsVisible) mark(enforced, 'vmu.ballot.processReadingsVisible')
     if (c.secrecy && c.secrecyRecordFact) mark(enforced, 'vmu.ballot.secrecyRecordFact')
+    // GAP-MTG-10: THIS is the settled ruling — the box closes here, and only here. The earlier returns are
+    // "not settled" (another runoff round, or a named refusal), so they must NOT mark it closed.
+    box.state = 'closed'
+    box.closedAt = clock()
+    box.priorResult = { outcome, round: box.round, tieUsed: box.tieUsed || '', sealed: box.sealed }
     return {
       ok: true, boxId: box.id, round: box.round, outcome,
       // **秘密表决 ⇒ 明细不可回收，但计数保留** ✓
@@ -349,12 +358,61 @@ export function createBallotBox(opts) {
     }
   }
 
+  /**
+   * REOPEN a SETTLED box (GAP-MTG-10). This face holds its own box objects and never instantiates
+   * `createBallot`, so this is the "own implementation" branch its PLANNED list named: there is deliberately NO
+   * second reopen anywhere in the kernel. Rules, all of them machine facts:
+   *   · only a CLOSED box may be reopened, and a reason is required (an unexplained reopen is unauditable);
+   *   · `vmu.ballot.reopenFloor` (0 = no floor) is read and DECIDES: a ruling with fewer valid votes than the
+   *     floor is refused BY NAME with the current count and the floor;
+   *   · the prior ruling is preserved in `reopenHistory` (append-only) before anything is cleared, so the
+   *     record can never lose what was decided.
+   */
+  const reopen = (a) => {
+    const args = a || {}
+    const box = boxes.get(String(args.boxId || ''))
+    if (!box) return deny('VMU_NOT_FOUND', '找不到票箱 ' + String(args.boxId || ''), '先 open() 取 id')
+    const reason = String(args.reason || '').trim()
+    if (!reason) return deny('VMU_REASON_REQUIRED', 'reopen 需要 reason（为什么重开）', '给理由：无理由的重开不可审计')
+    if (box.state !== 'closed') {
+      return deny('VMU_STATE', '只有已裁定的票箱可以重开（state=' + box.state + '）',
+        '先 close() 出一个结论，再 reopen()；未裁定的箱子本来就还在收票')
+    }
+    const c = cfg()
+    const enforced = []
+    const floor = c.reopenFloor
+    const valid = box.votes.size
+    if (floor > 0) {
+      mark(enforced, 'vmu.ballot.reopenFloor')
+      if (valid < floor) {
+        return deny('VMU_BALLOT_MIN_VOTES_NOT_MET',
+          '重开门槛未达：有效票 ' + valid + ' < ' + floor + '（vmu.ballot.reopenFloor）',
+          '门槛读作"这一轮至少有多少有效票才值得重开"；继续收票，或把 vmu.ballot.reopenFloor 调低', enforced)
+      }
+    }
+    box.reopenHistory.push({ at: box.closedAt, outcome: box.priorResult ? box.priorResult.outcome : null,
+      round: box.priorResult ? box.priorResult.round : box.round, tally: box.priorResult ? box.priorResult.tally : null,
+      valid, reason, by: String(args.by || '') })
+    box.votes = new Map()
+    box.abstain = new Map()
+    box.absent = []
+    box.recused = []
+    box.state = 'open'
+    box.closedAt = 0
+    box.priorResult = null
+    box.reopenCount = Number(box.reopenCount || 0) + 1
+    box.reopenedAt = clock()
+    emit({ type: 'ballot.reopen', boxId: box.id, count: box.reopenCount })
+    return { ok: true, boxId: box.id, reopened: true, reopenCount: box.reopenCount, floor,
+      enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
+  }
+
   const status = (a) => {
     const box = a && a.boxId ? boxes.get(String(a.boxId)) : null
     const c = cfg()
     if (a && a.boxId) {
       if (!box) return deny('VMU_NOT_FOUND', '找不到票箱', '先 open()')
-      return { ok: true, boxId: box.id, round: box.round, sealed: box.sealed, votes: box.votes.size, abstain: box.abstain.size, absent: box.absent.length, droppedAudit }
+      return { ok: true, boxId: box.id, round: box.round, sealed: box.sealed, state: box.state, reopenCount: Number(box.reopenCount || 0), votes: box.votes.size, abstain: box.abstain.size, absent: box.absent.length, droppedAudit }
     }
     return { ok: true, boxes: boxes.size, droppedAudit, refusals: Object.fromEntries(refusals), partition: partition(), method: c.method, tieRule: c.tieRule, secrecy: c.secrecy }
   }
@@ -407,7 +465,7 @@ export function createBallotBox(opts) {
     return { ok: true, restored: true, restored_items: ['boxes'], counters: { ballotbox: seq }, skipped: (snap.skipped || []).slice(), boxes: boxes.size }
   }
 
-  return { open, cast, markAbsent, close, status, keysUsed, partition, config: cfg, refusals: () => Object.fromEntries(refusals), snapshot, restore }
+  return { open, cast, markAbsent, close, reopen, status, keysUsed, partition, config: cfg, refusals: () => Object.fromEntries(refusals), snapshot, restore }
 }
 
 export default createBallotBox

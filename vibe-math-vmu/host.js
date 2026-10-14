@@ -44,6 +44,10 @@ import { makeChatSpec } from './tools/chat.js'
 import { makeMailboxSpec } from './tools/mailbox.js'
 import { makePanelSpec } from './tools/panel.js'
 import { makeReportSpec } from './tools/report.js'
+// ROUND 3 / task-24: the activity waiter's tool spec (vmu-activity's file).
+import { makeActivitySpec } from './tools/activity.js'
+// ROUND 3 / task-20: the C-45 fidelity face's tool spec (this file is mine; reader-b's sheet asked for it).
+import { makeFidelitySpec } from './tools/fidelity.js'
 import { makeMathadaptersSpec } from './tools/mathadapters.js'
 import { makeMathjobsSpec } from './tools/mathjobs.js'
 //
@@ -129,6 +133,10 @@ export const TOOL_NAMES = Object.freeze({
   mailbox: 'vibe_vmu_mailbox',
   panel: 'vibe_vmu_panel',
   report: 'vibe_vmu_report',
+  // ROUND 3 / task-24: the activity waiter's own thin face (`vibe_vmu_wait`).
+  activity: 'vibe_vmu_wait',
+  // ROUND 3 / task-20: the C-45 fidelity face (declared by `vmu.math.formalVerify` being on - see its TOOL_FACES row).
+  fidelity: 'vibe_vmu_fidelity',
   // ROUND 2 (task-14, Lead 裁决 B): one tool per service - the math adapters and the math jobs each get their OWN
   // thin face, because `vibe_vmu_mathtools`'s action enum must stay exactly `kernel.mathtools`'s method set.
   mathadapters: 'vibe_vmu_mathadapters',
@@ -222,6 +230,18 @@ export const TOOL_FACES = Object.freeze([
   { face: 'mailbox', name: TOOL_NAMES.mailbox, families: ['vmu.mailbox.'], config: ['mailbox'], make: makeMailboxSpec },
   { face: 'panel', name: TOOL_NAMES.panel, families: ['vmu.panel.'], config: ['panel'], make: makePanelSpec },
   { face: 'report', name: TOOL_NAMES.report, families: ['vmu.report.'], config: ['report'], make: makeReportSpec },
+  // ROUND 3 / task-24: the activity waiter. NOTE (measured interaction, not a defect): declaring
+  // `vmu.activity.wakeOn` really adds a bus entry, so the D-01 `middleware` face's bus-entries intent lights up
+  // together with this one - an honest reflection of "there is an entry on the bus".
+  { face: 'activity', name: TOOL_NAMES.activity, families: ['vmu.activity.'], config: ['activity'], make: makeActivitySpec },
+  // ROUND 3 / task-20 (reader-b's sheet): the fidelity face has NO settings family of its own - its enforcement is
+  // deliberately not configurable - so it is declared by the EXISTING formalisation policy being ON
+  // (`vmu.math.formalVerify ∈ {encourage, require}`; the default `off` publishes nothing, keeping the zero-mechanism
+  // red line). `families: []` is on purpose: listing `vmu.math.formalVerify` there would light the face even when the
+  // key says `off`.
+  { face: 'fidelity', name: TOOL_NAMES.fidelity, families: [], config: ['fidelity'],
+    extraIntent: (c) => (['encourage', 'require'].includes(c.settings['vmu.math.formalVerify']) ? 'setting:vmu.math.formalVerify=' + c.settings['vmu.math.formalVerify'] : null),
+    make: makeFidelitySpec },
   { face: 'mathadapters', name: TOOL_NAMES.mathadapters, families: ['vmu.math.adapters.'], config: ['mathadapters'], make: makeMathadaptersSpec },
   { face: 'mathjobs', name: TOOL_NAMES.mathjobs, families: ['vmu.math.jobs.'], config: ['mathjobs'], make: makeMathjobsSpec },
 ])
@@ -747,6 +767,10 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   if (on('mailbox')) specs.push(makeMailboxSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('panel')) specs.push(makePanelSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('report')) specs.push(makeReportSpec({ param, refused, TOOL_NAMES, kernel }))
+  // ROUND 3 / task-24: the activity waiter's face.
+  if (on('activity')) specs.push(makeActivitySpec({ param, refused, TOOL_NAMES, kernel }))
+  // ROUND 3 / task-20: the fidelity face (published only when the formalisation policy is on).
+  if (on('fidelity')) specs.push(makeFidelitySpec({ param, refused, TOOL_NAMES, kernel }))
   // ROUND 2 (task-14, Lead 裁决 B): one tool per service - adapters and jobs are separate faces on purpose.
   if (on('mathadapters')) specs.push(makeMathadaptersSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('mathjobs')) specs.push(makeMathjobsSpec({ param, refused, TOOL_NAMES, kernel }))

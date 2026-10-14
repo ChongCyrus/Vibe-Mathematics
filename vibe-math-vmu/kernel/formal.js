@@ -14,6 +14,7 @@
 //   · ids   —— 可选：`kernel/ids.js` 的实例（缺省用模块级单例）⇒ 记录号经**唯一铸号者**（D-15）
 
 import { mint as mintId } from './ids.js'
+import { ENFORCED_SCOPE } from './mathjobs.js'   // C-45 的口径常量（拒绝/回执都带作用域）
 
 export const FORMAL_KEYS = Object.freeze([
   'vmu.math.leanCommand',
@@ -29,7 +30,15 @@ export const FORMAL_KEYS = Object.freeze([
   'vmu.formal.maxSourceBytes',
 ])
 const LOG_MAX = 200
-const refuse = (code, message, hint) => ({ ok: false, code, message, hint })
+const refuse = (code, message, hint, enforced) => ({
+  ok: false, code, message, hint,
+  enforced: Array.isArray(enforced) ? enforced.slice() : [],
+  enforcedScope: ENFORCED_SCOPE,
+})
+/** The enforced abstention value (v5r's L2 option A): strictly between 0 and 1 ⇒ counts as an abstention. */
+export const FIDELITY_ABSTENTION_VOTE = 0.5
+/** Where the durable markers live (institute-relative; only used when an fs seam is injected). */
+export const FIDELITY_DEFECT_DIR = 'Formal/Defects'
 
 export function createFormal(opts) {
   const o = opts || {}
@@ -211,9 +220,17 @@ export function createFormal(opts) {
   }
 
   const list = () => ({ ok: true, count: notes.size, dropped: droppedLog + droppedArtifacts, records: [...notes.values()].map((r) => ({ id: r.id, compileOk: r.compileOk, verdict: r.verdict, allowedSorry: r.allowedSorry })) })
-  const status = () => ({ ok: true, count: notes.size, droppedLog, droppedArtifacts, allowSorry: cfg().allowSorry, axiomWhitelist: cfg().axiomWhitelist.slice() })
+  const status = () => ({
+    ok: true, count: notes.size, droppedLog, droppedArtifacts,
+    allowSorry: cfg().allowSorry, axiomWhitelist: cfg().axiomWhitelist.slice(),
+    // C-45 lives in its own service (`kernel/fidelity.js`): when one is injected we surface its counts here
+    // for the operator's glance, but this face exposes NO fidelity method (the tool enum must stay 10 = 10).
+    fidelity: (o.fidelity && typeof o.fidelity.status === 'function') ? o.fidelity.status() : null,
+  })
 
-  return { check, axioms, sorryReport, artifacts: artifactsOf, reproduce, list, status, keysUsed, config: cfg, trail: () => trail.slice() }
+  return {
+    check, axioms, sorryReport, artifacts: artifactsOf, reproduce, list, status, keysUsed, config: cfg, trail: () => trail.slice(),
+  }
 }
 
 export default createFormal

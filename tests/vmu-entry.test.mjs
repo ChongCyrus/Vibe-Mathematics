@@ -781,6 +781,74 @@ if (SELF_PROBE) {
   }
 }
 
+// ---- N. the `agent/turn-stopping` bridge is attached ONLY when the report face is DECLARED (task-20 B) --------
+// WHY THIS BLOCK EXISTS. The entry bridges the host's turn boundary into `kernel.report.tick()`. Attaching that
+// host listener for an UNDECLARED face is invisible work that the zero-mechanism red line forbids - and "the
+// kernel is switched on" is NOT a declaration. Both directions are asserted here, and the positive case proves the
+// listener is not merely REGISTERED but really INVOKED (the spy would stay 0 if the handler were a no-op).
+//
+// TIMING (measured twice - by core and by vmu-pack): the entry attaches the listener AFTER `adapter.install()`
+// resolves (`vibe-math-vmu.js` `attachReportTick`), so a SYNCHRONOUS read of `state.listeners` sees an empty array
+// and would turn both directions into a race - the "no listener" case would pass VACUOUSLY and the "one listener"
+// case would then call `undefined`. Every read below therefore happens after `await handle.ready()`, and the call
+// itself is guarded so a broken expectation reports a clean red instead of killing the whole process.
+{
+  const quiet = fakeCtx()
+  const quietHandle = entry.apply(quiet.ctx, { clock })
+  ok(quietHandle.kernel.report && typeof quietHandle.kernel.report.tick === 'function',
+    'the report face still EXISTS (it is inert, not absent) - the gate is about the listener, not the face')
+  await quietHandle.ready()
+  ok((quiet.state.listeners['agent/turn-stopping'] || []).length === 0,
+    '★ UNDECLARED: after the entry is READY, no `agent/turn-stopping` listener is attached (none of vmu.report.* / config.report / config.faces / vmu.tools.faces names it)',
+    JSON.stringify(Object.keys(quiet.state.listeners)))
+  ok(quiet.state.specs.length === 1,
+    '★ TDZ REGRESSION GUARD: a MINIMAL ctx assembles WITHOUT THROWING and, once ready, registers EXACTLY ONE tool (the `status` face) - the round-3 `meetings` TDZ made this exact shape throw, and core fixed it with a holder object',
+    JSON.stringify(quiet.state.specs.map((s) => s.name)))
+
+  const declared = fakeCtx()
+  const declaredHandle = entry.apply(declared.ctx, { clock, vmu: { 'vmu.report.enabled': true } })
+  await declaredHandle.ready()
+  const handlers = declared.state.listeners['agent/turn-stopping'] || []
+  ok(handlers.length === 1,
+    '★ DECLARED (`vmu.report.enabled`): after ready, exactly ONE `agent/turn-stopping` listener is attached',
+    JSON.stringify(Object.keys(declared.state.listeners)) + ' n=' + handlers.length)
+  let ticks = 0
+  const realTick = declaredHandle.kernel.report.tick.bind(declaredHandle.kernel.report)
+  declaredHandle.kernel.report.tick = (arg) => { ticks += 1; return realTick(arg) }
+  // GUARDED CALL: if the assertion above failed, this must not turn one red into a dead process.
+  if (typeof handlers[0] === 'function') await handlers[0]()
+  ok(ticks === 1,
+    '★ and the attached listener REALLY calls report.tick() when the host fires the event (a registered no-op would leave this 0)',
+    'ticks=' + ticks + ' handlerType=' + typeof handlers[0])
+}
+
+// ---- O. D-01, the EXECUTABLE DEFINITION of "declared in the pack manifest ⇒ the face is published" (round 3) --
+// WHY THIS BLOCK EXISTS. F1's root cause was an adapter that SNAPSHOTTED settings at construction, so a settings
+// key that arrived through a pack manifest (`applyPackSettings`) could never light a face. Core fixed it by reading
+// `kernel.settingsView()` live. The property is only real if it is executable: declare a key AFTER the kernel is
+// ready, run the NEXT install, and the face must appear. `before` also re-states the zero-declaration baseline.
+{
+  const h = fakeCtx()
+  const handle = entry.apply(h.ctx, { clock })
+  await handle.ready()
+  const before = h.state.specs.map((s) => s.name)
+  ok(before.length === 1 && before[0] === 'vibe_vmu_status',
+    '★ D-01 BEFORE: with nothing declared, exactly ONE tool is published (the `status` face)', JSON.stringify(before))
+  const applied = handle.kernel.applyPackSettings({ 'vmu.report.enabled': true }, { by: 'vmu-verify' })
+  ok(applied && applied.ok !== false && applied.applied.includes('vmu.report.enabled'),
+    'the pack-manifest setting is ACCEPTED (applyPackSettings is the door a pack manifest\'s settings come through)',
+    JSON.stringify(applied && applied.applied))
+  ok(h.state.specs.map((s) => s.name).join(',') === 'vibe_vmu_status',
+    '★ and the declaration alone does NOT publish the face yet - publication happens on the NEXT install (that timing is what D-01 is about, not a defect)',
+    h.state.specs.map((s) => s.name).join(','))
+  await handle.adapter.install()
+  const after = h.state.specs.map((s) => s.name)
+  // The fake registers append-only (it is a recording stub, not the host), so this asserts APPEARANCE.
+  ok(after.includes('vibe_vmu_report'),
+    '★ D-01: after the NEXT install the newly declared face IS published (`vibe_vmu_report` appears) - the executable definition of "the adapter reads settings LIVE, so a pack manifest\'s declaration reaches the tool surface"',
+    JSON.stringify(after))
+}
+
 console.log('=== VMU ENTRY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

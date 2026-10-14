@@ -466,13 +466,23 @@ export function createMailbox({
       }
     },
 
-    async restore() {
+    /**
+     * TWO CALLERS, ONE METHOD (projection seam + durable port):
+     *   · `restore(snap)` — the `attachProjection` path (reader-a's v1 contract): hydrate from the GIVEN
+     *     snapshot and return this face's own receipt;
+     *   · `restore()` — the durable-port path: read the declared `'mailbox'` key from the injected store.
+     * A missing store is a NAMED result (never a fake success), and the projection path never touches the store.
+     */
+    async restore(snap) {
+      if (snap !== undefined && snap !== null) return mailbox.hydrate(snap)
       if (!store || typeof store.read !== 'function') {
         return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', restored: false, durable: false, code: 'VMU_ENGINE_UNAVAILABLE',
-          message: 'no store port is bound: the mailbox cannot be restored', hint: 'inject { store }' }
+          message: 'no store port is bound: the mailbox cannot be restored by key', hint: 'inject { store }, or pass a snapshot: restore(snap)' }
       }
-      const snap = await store.read(MAILBOX_STORE_KEY)
-      return mailbox.hydrate(snap)
+      const fromStore = await store.read(MAILBOX_STORE_KEY)
+      if (!fromStore) return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', restored: false, durable: true, code: 'VMU_NO_SUCH_OBJECT',
+        message: 'the store holds no "' + MAILBOX_STORE_KEY + '" snapshot', hint: 'persist() first, or pass a snapshot: restore(snap)' }
+      return mailbox.hydrate(fromStore)
     },
 
     /** The seam v5r-reader-a asked for: JSON-safe state, id counter at max+1, skipped items NAMED. */

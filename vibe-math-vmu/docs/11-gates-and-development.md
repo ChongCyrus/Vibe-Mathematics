@@ -138,7 +138,7 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 322 / suites 250 / probes 72`** ✓（旧值 134／68／66 已在扩卷与增件后过期 ✗；本轮树新增 1 个作业：`tests/audit-scope-classification.test.mjs` ✓） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 258 / suites 194 / probes 64`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 259 / suites 194 / probes 65`** ✓ |
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 258 / suites 225 / probes 33`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。
@@ -667,6 +667,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 
 | 模块 | 零机制下的返回形状 | 是否具名拒（码） | 自曝字段 | 期望（设计） |
 |---|---|---|---|---|
+| `activity` · `status()` | ok | — | — | ok 或 object（**先实测后登记**（Round 3 探针）：零声明下 `status()` ⇒ **ok（object）**——等待器数为 0、无同伴接缝时 `peerCheck.seam=false` 自曝 ✓；**零机制＝没有等待者、`wait()` 会以具名拒/立即 noProgress 收场**，但 `status()` 作为状态面**放行不拒** ✓。★ 判据＝**状态面可读、不拒**；"没有等待者"**不得**被读成"等待原语没生效"（由 `falsify` 族证明 future-only 与 disposer 真会红 ✓）） |
 | `alerts` · `status()` | ok | — | dropped=[object Object] | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `arbitration` · `open()` | refusal | VMU_ARBITRATION_OFF | enforcedScope=evaluated-so-far | 具名拒或 ok（task-214 批 3 补参（形状取自测试 vmu-arbitration.test.mjs:261 `open({parties,subject})`）：补参前实测具名拒 **VMU_ARBITRATION_OFF**（带口径 `enforcedScope=evaluated-so-far`）⇒ 若补参后仍拒，则"具名拒即零机制真实形状"✓；若放行 ⇒ 亦合规 ✓） |
 | `audit` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
@@ -694,13 +695,14 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `explain` · `build()` | refusal | VMU_EXPLAIN_REASON_REQUIRED | — | 具名拒（带 code）（实测（轮 224）：矩阵的**探针**调用在零声明下【具名拒】 ✓——render() 无报告可渲染时以 VMU_INVALID_ARGUMENT 具名拒（status() 本身仍是 ok ✓，但探针走的是调用路径 ⇒ 期望取实测的拒 ✓）。**不假装成功** ✗） |
 | `external` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `fairness` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
-| `formal` · `check()` | refusal | VMU_MATH_INVALID_INPUT | — | 具名拒（带 code）（task-214 实测：`check()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT** ⇒ 零机制＝无形式化请求 ⇒ 具名拒即真实形状 ✓） |
+| `fidelity` · `status()` | ok | — | — | ok 或 object（**先实测后登记**（Round 3 探针）：零声明下 `status()` ⇒ **ok（object）**——缺陷登记数为 0、`durable:false` 在无 fs 接缝时**具名自曝** ✓；**C-45 是内核谓词、强制不可配置**（零个设置键）⇒ 零机制＝**没有已声明缺陷 ⇒ 不改写任何票**，状态面放行不拒 ✓。★ 判据＝**状态面可读、不拒**；"0 条缺陷"**不得**被读成"强制点没接线"（由 `vmu-fidelity-abstention` 的改写断言证明 ✓）） |
+| `formal` · `check()` | refusal | VMU_MATH_INVALID_INPUT | enforced=[0] enforcedScope=evaluated-so-far | 具名拒（带 code）（task-214 实测：`check()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT** ⇒ 零机制＝无形式化请求 ⇒ 具名拒即真实形状 ✓） |
 | `funding` · `list()` | ok | — | enforced=[0] fired=[0] enforcedScope=evaluated-so-far | ok 或 object（实测 `list()` ⇒ **ok**（`enforced=[0] fired=[0]` ⇒ 零机制清单可读、**不拒**；**键数由本生成器实测输出** ✓）） |
 | `governance` · `keysUsed()` | array[15] | — | — | array 或 object（治理面：只读列举（keysUsed/partition 不拒）） |
 | `grant` · `check()` | refusal | VMU_NOT_PERMITTED | enforced=[1] fired=[1] enforcedScope=evaluated-so-far | 具名拒（带 code）（零机制：`vmu.grant.enabled=false` ⇒ `grant()`／`check()` 均**具名拒 `VMU_NOT_PERMITTED`**（"this face grants nothing (zero mechanism)" ✓）；开启后 `commands` 枚举外亦具名拒 ✓；`check()` 无授予 ⇒ 具名拒 ✓） |
 | `guard` | （无 create* 工厂） | — | — | EXPECT_NA（非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）） |
 | `handover` · `open()` | ok | — | — | 具名拒或 ok（task-214 批 3 补参（形状取自测试 vmu-handover.test.mjs:27 `open({from,to})`）：补参前实测具名拒 **VMU_INVALID_ARGUMENT** ⇒ 补参后应见放行 ⇒ 已放宽为"具名拒或 ok" ✓） |
-| `human` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ ok（vetoes: 0、approvals: 0 ✓；neverAllowsBySilence: true 自曝「onTimeout 默认 hold ⇒ 沉默绝不变成批准」 ✓）） |
+| `human` · `list()` | array[0] | — | — | array 或 object（两侧都写清 ✓：**零声明下 `status()` ⇒ ok（object）**（vetoes: 0、approvals: 0 ✓；neverAllowsBySilence: true 自曝「onTimeout 默认 hold ⇒ 沉默绝不变成批准」 ✓，轮 224 实测）；**Round 3 新增 `queue()` ⇒ 零机制下返回 `array[0]`**（审批队列为空正是零机制的正确形状 ⇒ **空列表放行、不拒** ✓，与 `mathjobs.list()` 同判据）。★ 判据＝**列表面可读、不拒**；"队列为空"**不得**被读成"门已生效"（门由 `gate()` 的具名拒证明 ✓）） |
 | `idempotency` · `list()` | ok | — | dropped=0 truncated=false | ok 或 object（列表/状态面放行 ✓；**显式 `absent` 只在去重操作上**（该操作需参数 ⇒ 探针见 NEEDS_ARGS ✓）） |
 | `identity` · `status()` | ok | — | dropped=0 | ok 或 object（实测（轮 224）：零声明下 status() ⇒ **ok**（noIssuerListMeansNoCheck: true 自曝「空 issuer 列表＝完全不做校验」 ✓）；bindPrincipal ⇒ ok 且 binding: off（记录而不耦合 ✓）。**不拒** ⇒ 形状为 ok，而非具名拒 ✓） |
 | `ids` · `status()` | ok | — | — | ok 或 object（实测（轮 2）：零声明下 status() ⇒ **ok**（唯一 id 分配面：无声明仍可读状态，**不拒** ✓）） |
@@ -757,7 +759,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
 | `workflow` · `advance()` | refusal | VMU_WORKFLOW_TRANSITION_REQUIRED | enforced=[7] enforcedScope=evaluated-so-far | 具名拒或 ok（**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 `advance()` 缺参 ⇒ **task-214 实测：具名拒 `VMU_WORKFLOW_TRANSITION_REQUIRED`（带口径 `enforced=[7]`）** ⇒ 具名拒即真实形状 ✓（旧 note 曾写 `op 抛出` ✗ / "缺参 ⇒ 具名拒" 混述 ✗，均已按实测改写 ✓）） |
 
-=== ZERO-MECHANISM MATRIX: 89 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 6 probe-errors, 3 n/a ===
+=== ZERO-MECHANISM MATRIX: 91 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 6 probe-errors, 3 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->
 
 ### 11.x 改文档的标准手法（★ 轮 524 补 ✓ —— ★ 本节在台账上结转了 6 轮 ✗）

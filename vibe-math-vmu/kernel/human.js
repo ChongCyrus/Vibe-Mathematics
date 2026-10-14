@@ -10,6 +10,15 @@
 //
 // FACE CONVENTIONS (same as the other vmu faces): literal key reads; receipts carry enforced[] and fired[]; refusals are
 // named; nothing declared means nothing happens; injected clock; read-only surfaces never mutate.
+//
+// ROUND 3 (task-18 A): the face now has a DURABLE projection seam. The approval queue and the veto ledger were
+// session memory, so a restart silently lost "an action is still waiting for a human" and every veto reason that
+// was promised afterwards. `snapshot()`/`restore(snap)` put them under the `human` durable key (assembled by
+// `resume.attachProjection({target: human, key: 'human', mode: 'state', …})`), and `checkSnapshot` is the shared
+// validator — this face does not invent a second code set.
+import { checkSnapshot } from './resume.js'
+import { idNumber } from './ids.js'
+
 export const apiVersion = 1
 
 export function refuse(code, message, hint, extra) {
@@ -417,6 +426,68 @@ export function createHuman({ clock = () => 0, log = null, settings = {}, bus = 
     return { ok: true, scope: asked, allowed: c.dashboardScope, domains: wanted, declared: c.dashboardDomains.slice(), enforced, fired: [] }
   }
 
+  /**
+   * A pure snapshot of the HUMAN LEDGER: the vetoes (including a promised-but-unwritten reason), the approvals
+   * (pending, decided, attempts, `pendingReason`) and the id counter. The gate's decision counters and the
+   * declared policy are NOT here: policy comes from settings, counters are statistics.
+   */
+  function snapshot() {
+    const ids = [...approvals.keys()].map((k) => idNumber(k) || 0).concat(vetoes.map((v) => idNumber(v.id) || 0))
+    return {
+      apiVersion: 1, face: 'human', v: 1, at: clock(),
+      data: {
+        vetoes: vetoes.map((v) => JSON.parse(JSON.stringify(v))),
+        approvals: [...approvals.entries()].map(([id, rec]) => [id, JSON.parse(JSON.stringify(rec))]),
+      },
+      counters: { human: Math.max(seq, ...(ids.length ? ids : [0])) },
+      skipped: [],
+    }
+  }
+
+  /**
+   * Put the human ledger back. Idempotent for the same snapshot; a DIFFERENT snapshot against live state needs
+   * `{ replace: true }`, because a silent half-overwrite of "who is still waiting for a human" is the failure this
+   * refusal exists to prevent.
+   */
+  function restore(snap, { replace = false } = {}) {
+    checkSnapshot('human', snap, ['vetoes', 'approvals'])
+    const inVetoes = Array.isArray(snap.data.vetoes) ? snap.data.vetoes : []
+    const inApprovals = Array.isArray(snap.data.approvals) ? snap.data.approvals : []
+    if ((vetoes.length > 0 || approvals.size > 0) && !replace) {
+      const sameVetoes = JSON.stringify(vetoes) === JSON.stringify(inVetoes)
+      const sameApprovals = JSON.stringify([...approvals.entries()]) === JSON.stringify(inApprovals)
+      if (sameVetoes && sameApprovals) return { ok: true, restored: [], skipped: [], idempotent: true, counters: { human: seq } }
+      throw refuse('VMU_RESUME_RESTORE_CONFLICT', 'this human ledger already holds ' + vetoes.length + ' veto(es) and ' + approvals.size + ' request(s): restoring a different snapshot needs { replace: true }',
+        'stop/clear the ledger first, or pass { replace: true } deliberately - losing a pending approval silently is refused by name')
+    }
+    const skipped = []
+    vetoes.length = 0
+    for (const v of inVetoes) {
+      if (!v || typeof v.id !== 'string') { skipped.push({ what: 'vetoes[]', why: 'an entry without a string id' }); continue }
+      vetoes.push(JSON.parse(JSON.stringify(v)))
+    }
+    approvals.clear()
+    gateIndex.clear()
+    for (const pair of inApprovals) {
+      if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== 'string' || !pair[1] || typeof pair[1] !== 'object') {
+        skipped.push({ what: 'approvals[]', why: 'not a [requestId, record] pair' }); continue
+      }
+      const id = pair[0]
+      const rec = JSON.parse(JSON.stringify(pair[1]))
+      approvals.set(id, rec)
+      // The queue index must be rebuilt, or a restarted process would queue a SECOND request for the same action
+      // (the exact "one action, two requests" drift the gate's idempotence exists to prevent).
+      if (rec.action) gateIndex.set(String(rec.action) + '\u0000' + String(rec.subject === undefined ? null : rec.subject), id)
+      if (!rec.id) { rec.id = id; skipped.push({ what: 'approvals[' + id + '].id', why: 'rebuilt from the map key' }) }
+    }
+    // The id counter takes the MAX of the snapshot counter and the ids that actually exist, so a restart can never
+    // hand out `approval-1` / `veto-1` twice.
+    const declared = Number((snap.counters || {}).human)
+    const observed = [...approvals.keys()].concat(vetoes.map((v) => v.id)).reduce((mx, id) => Math.max(mx, idNumber(id) || 0), 0)
+    seq = Math.max(Number.isInteger(declared) ? declared : 0, observed)
+    return { ok: true, restored: ['vetoes', 'approvals'], skipped, counters: { human: seq } }
+  }
+
   const status = () => ({
     ok: true,
     vetoes: vetoes.length, pendingReasons: vetoes.filter((v) => v.pendingReason).length,
@@ -438,5 +509,8 @@ export function createHuman({ clock = () => 0, log = null, settings = {}, bus = 
   })
 
   return { apiVersion, veto, explainVeto, explainDecision, liftVeto, observerView, openApproval, approvalState,
-    decide, queue, approvalDecision, gate, dashboard, status }
+    decide, queue, approvalDecision, gate, dashboard, snapshot, restore,
+    /** Adapter convenience: the rows a projection reconciles ids against. */
+    list: () => queue().requests,
+    status }
 }

@@ -6,6 +6,7 @@
 // that actually fired, WIRED ↔ plannedKeys are complementary (47 = 47 + 0, no overlap), refusals are counted
 // BY CODE, the clock is injected, zero mechanism does not crash, and read paths never mutate.
 import { createMeetings, WIRED_KEYS, UNWIRED_REASONS } from '../vibe-math-vmu/kernel/meetings.js'
+import { SETTING_DEFS } from '../vibe-math-vmu/settings/schema.js'
 
 let passed = 0
 let failed = 0
@@ -365,18 +366,30 @@ const err = (fn) => errOf(fn)
 // ── the honesty rails ───────────────────────────────────────────────────────────────────────────────
 {
   const st = mk({}).t.status()
+  // ROUND 3 (task-23): THE COUNTS ARE NO LONGER TYPED. `WIRED_KEYS` is the service's own list and the declared
+  // universe is read from `settings/schema.js`, so the two are compared TO EACH OTHER by EQUALITY (never by
+  // "contains"): a new key makes this block fail until it is either wired or named in `plannedKeys`. The
+  // hard-coded 51/56 that three rounds of key additions kept invalidating can no longer drift.
+  const SCHEMA_MEETING_KEYS = SETTING_DEFS.map((d) => d && d.key).filter((k) => typeof k === 'string' && k.startsWith('vmu.meetings.'))
   // ROUND 198: 47 -> 48, deliberately. `vmu.meetings.wakeRetries` is now WIRED: the `retry` wake policy has its bound,
   // the key is consulted (and marked) when that policy runs, and a pack that sets it now changes behaviour.
   // ROUND 199: 48 -> 49, deliberately - `vmu.meetings.verdictMaxRounds` is now WIRED (motion ceiling).
   // ROUND 200/201: 49 -> 50, deliberately - `vmu.meetings.hardLimitMs` is now WIRED (the hard wall-clock backstop).
   // ROUND 203: 50 -> 51, deliberately - `vmu.meetings.quorumCap` is now WIRED (the quorum ceiling).
-  ok(WIRED_KEYS.length === 51, 'the layer wires all 51 declared vmu.meetings.* keys', String(WIRED_KEYS.length))
-  ok(st.declaredMeetingKeys === 56, 'the declared universe is read from settings/schema.js (core + planned)', String(st.declaredMeetingKeys))
+  ok(SCHEMA_MEETING_KEYS.length > 0 && new Set(SCHEMA_MEETING_KEYS).size === SCHEMA_MEETING_KEYS.length,
+    'settings/schema.js declares a non-empty, duplicate-free vmu.meetings.* universe', String(SCHEMA_MEETING_KEYS.length))
+  ok(new Set(WIRED_KEYS).size === WIRED_KEYS.length && WIRED_KEYS.length > 0,
+    'the service exports WIRED_KEYS as a non-empty set with no duplicates', String(WIRED_KEYS.length))
+  ok(st.declaredMeetingKeys === SCHEMA_MEETING_KEYS.length,
+    'the declared universe EQUALS what settings/schema.js declares for vmu.meetings.* (derived, not typed)',
+    JSON.stringify({ service: st.declaredMeetingKeys, schema: SCHEMA_MEETING_KEYS.length }))
   ok(st.plannedKeys.length + st.wiredCount === st.declaredMeetingKeys && st.overlapWithWired.length === 0 && st.complementOk === true,
-    'WIRED and plannedKeys are COMPLEMENTARY and partition the 56 declared keys',
+    'WIRED and plannedKeys are COMPLEMENTARY and partition the declared universe',
     JSON.stringify({ wired: st.wiredCount, planned: st.plannedCount, total: st.declaredMeetingKeys, overlap: st.overlapWithWired }))
-  ok(Object.keys(st.keys).length === 51 && !Object.values(st.keys).some((v) => v === undefined),
-    'status().keys reports a real value for all 51 wired keys (no silent nulls)')
+  ok(st.wiredCount === WIRED_KEYS.length && Object.keys(st.keys).length === WIRED_KEYS.length
+    && WIRED_KEYS.every((k) => st.keys[k] !== undefined),
+    'status().keys reports a real value for EVERY wired key (no silent nulls), and its size equals the service list',
+    JSON.stringify({ statusKeys: Object.keys(st.keys).length, wiredList: WIRED_KEYS.length }))
   ok(st.plannedKeys.every((k) => typeof st.unwiredReasons[k] === 'string'), 'any unwired key would carry a reason (mechanism present)')
   ok(typeof UNWIRED_REASONS['vmu.meetings'] === 'string', 'the reason table is exported for future keys')
   // enforced[] is precise: a call that evaluates nothing does not claim a key
@@ -401,7 +414,9 @@ const err = (fn) => errOf(fn)
   const zid = zero.open({ roster, chair: 'acad' }).meeting
   ok(zero.speak({ meeting: zid, member: 'acad' }).ok === true, 'zero mechanism[+]: the documented defaults let a plain meeting run')
   ok(codeOf(() => zero.speak({ meeting: 'nope', member: 'acad' })) === 'VMU_NO_SUCH_OBJECT', 'zero mechanism[-]: an unknown meeting is a named refusal')
-  ok(zero.status().declaredMeetingKeys === 56, 'the declared-key universe is available with no settings at all')
+  ok(zero.status().declaredMeetingKeys > 0 && zero.status().declaredMeetingKeys === SCHEMA_MEETING_KEYS.length,
+    'the declared-key universe is available with NO settings at all, and it equals what settings/schema.js declares (derived, not typed)',
+    JSON.stringify({ service: zero.status().declaredMeetingKeys, schema: SCHEMA_MEETING_KEYS.length }))
   // read-only faces
   const ro = mk({})
   const rid = ro.t.open({ roster }).meeting

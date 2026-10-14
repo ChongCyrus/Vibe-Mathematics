@@ -95,6 +95,14 @@ vibe-math-vmu/
 - **D-13 提示词活读**：`kernel/prompt/index.js` 的七个设置值（locale 三项、`overridesByLang`、glossary 两项、`overrides`）改为**每次调用经 `settings.get()` 现读**，构造期只缓存**结构性**派生（段的注册）⇒ 运行期改键后**同回合装配即生效**，不需重建管线。详见 `docs/06 §11.1`。
 - **pack 与内核的依赖方向**：`kernel/**` 仍然**零 import `packs/**`**（轮 2 未变）；pack 只声明、内核只读取。
 
+### 4.3 轮 3：分级会议与耐久投影的声明（GAP-MTG-02 / GAP-MTG-10 / D-15）
+
+- **分级会议（GAP-MTG-02）**：`vmu.meetings.tier`（`formal|light`）与 `vmu.meetings.allowLight` 由 pack 声明；v5r 取 `formal` ＋ **`allowLight:false`**（v5r 只有完整协议 ⇒ light 会议被**具名拒** `VMU_MEETING_TIER_CONFLICT`，不是静默产出）。内核只提供 tier＋派生谓词（`light` 不得产出实体定论），唯一判定点在 `kernel/meetings.js` 的收束路径。
+- **投票板重开（GAP-MTG-10）**：`vmu.ballot.reopenFloor=0`（v5r 的"门槛只升不降"⇒ 不额外加门槛），读者 `kernel/ballotbox.js` 的 `reopen()`。
+- **耐久投影（D-15）**：`vmu.resume.projections` 由 **7 面扩到 10 面**（＋`chat`/`panel`/`human`），`vmu.resume.writeThrough=true`（状态型投影每次变更后写穿 ⇒ "未批动作重启后仍在排队"）。**审批队列、群聊、自述面板的跨重启**由 `kernel/human.js`/`chat.js`/`panel.js` 的 `snapshot()/restore()` ＋ `attachProjection` 承担，**不引入 settings 键**（`store.js` 白名单＋投影接线而已）。
+- **office 定稿咨询门（C-30，已闭合）**：`vmu.paper.officeConsult='required'`／`On='finalize'`／`TimeoutMs=0`／`OnTimeout='hold'`／**`ExemptRoles=[]`** 由 pack 声明；判定点在 `kernel/paper.js:45-49,111-114`（WIRED_KEYS 3→8，`cfg()` 无条件读全五键）——未咨询即定稿 ⇒ 具名拒 `VMU_OFFICE_CONSULT_REQUIRED`＋审计 `what:'auth'`＋总线事件 `paper/office-consult-required`（经 `declareTopic` 扩展点）。★ **豁免默认空**（Lead F4）：本门存在的场景正是"office 自己定稿"，默认豁免 `office` 会恰好豁免掉它。
+- **不归 pack 的一条**：**C-45（忠实性缺陷强制弃权）**＝内核谓词、**强制且不可配置**（reader-b：不忠实者的 0/1 被改写为 0.5 弃权并留耐久 marker）⇒ pack **不提供**关闭开关。
+
 ---
 
 ## 5. 加载：文件夹优先

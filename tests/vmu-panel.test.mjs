@@ -129,6 +129,30 @@ const mk = (settings = {}, extra = {}) => p.createPanel(Object.assign({ clock, s
   ok(events[0].topic === 'panel/write-before' && events[0].payload.member === 'r-1', 'the BEFORE hook fires with the member in its payload')
 }
 
+// ---- 7. projection seam v1: rows + history + view audit cross a restart -----------------------------
+{
+  const p1 = mk()
+  await p1.set('r-1', { overall: 'goal', plan: ['a'], subtasks: [{ title: 'run', state: 'running' }] }, { by: 'r-1' })
+  p1.view({ viewer: 'acad' })
+  const snap = p1.snapshot()
+  ok(snap.face === 'panel' && snap.v === 1 && snap.counters.panel === 0 && snap.skipped.length === 0,
+    'a panel snapshot is a v1 envelope (this face mints no ids of its own)')
+  ok(!JSON.stringify(snap.data).includes('subtasksMax') && !JSON.stringify(snap.data).includes('deviationPolicy'),
+    'policy is NOT in the snapshot (settings is re-resolved on restore)')
+  const p2 = mk()
+  const r = p2.restore(snap)
+  ok(r.ok === true && r.members === 1 && p2.get('r-1').overall === 'goal' && p2.get('r-1').subtasks[0].state === 'running',
+    'restore hydrates the rows and the running sub-task')
+  ok(p2.audit().length === 1 && p2.history('r-1').entries.length === 3,
+    'the view audit and the append-only history survive too (one row per changed field: overall/plan/subtasks)')
+  ok(p2.restore(snap).ok === true, 're-restoring the same snapshot is idempotent')
+  const p3 = mk()
+  await p3.set('r-9', { overall: 'other' }, { by: 'r-9' })
+  ok(p3.restore(snap).code === 'VMU_RESUME_RESTORE_CONFLICT', 'a DIFFERENT live panel is a named conflict')
+  ok(p3.restore({ face: 'chat', v: 1, data: {} }).code === 'VMU_RESUME_SNAPSHOT_VERSION', 'a foreign face is refused by name')
+  ok(p3.restore({ face: 'panel', v: 1, data: { rows: {} } }).code === 'VMU_RESUME_SNAPSHOT_INCOMPLETE', 'a missing collection is NAMED')
+}
+
 console.log('vmu-panel: ' + passed + ' passed, ' + failed + ' failed')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

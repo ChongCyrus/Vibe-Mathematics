@@ -10,7 +10,7 @@
 //   6. `mint()` never goes backwards, across a restart, with or without the durable counter.
 //
 // Last line: === VMU RESUME: N passed, M failed ===
-import { createResume, createProjection, attachProjection, checkSnapshot, RECOVERY_STEPS } from '../vibe-math-vmu/kernel/resume.js'
+import { createResume, createProjection, attachProjection, checkSnapshot, RECOVERY_STEPS, PROJECTION_KEYS } from '../vibe-math-vmu/kernel/resume.js'
 import { createIds, createIds as mkIds, idNumber } from '../vibe-math-vmu/kernel/ids.js'
 import { createWorkLedger } from '../vibe-math-vmu/kernel/work.js'
 
@@ -278,6 +278,144 @@ const clock = () => NOW
     'a face-level REFUSAL is reported as unhydrated (a returned {ok:false} is not success)', h.unhydrated)
   ok(r.status().projection.degraded === true && r.status().projection.unhydratedKeys.includes('members'),
     'status() shows the refusal instead of pretending the face was restored', r.status().projection)
+}
+
+// ── 12. state projections are WRITTEN THROUGH (a hydratable-but-never-written face is a lie) ────────────────
+{
+  const store = mkStore({ resume: { v: 1, counters: {}, recoveries: [] } })
+  const mkFace = () => {
+    const face = { value: 0, bump() { face.value += 1; return { ok: true, value: face.value } }, list: () => [] }
+    return face
+  }
+  const faceA = mkFace()
+  const rA = createResume({ store, clock })
+  await rA.read()
+  const at = rA.attachProjection({
+    target: faceA, methods: ['bump'], key: 'demo', mode: 'state',
+    snapshot: () => ({ apiVersion: 1, face: 'demo', v: 1, at: clock(), data: { value: faceA.value }, counters: {}, skipped: [] }),
+    restore: (v) => { faceA.value = v && v.data ? v.data.value : 0; return { ok: true, restored: ['value'] } },
+  })
+  ok(at.writeThrough === true, 'a state projection with a snapshot seam is marked write-through', at)
+  faceA.bump()
+  faceA.bump()
+  await new Promise((r) => setTimeout(r, 0))
+  const written = store._raw.get('demo')
+  ok(!!written && written.value && written.value.data.value === 2, 'each mutation writes the state through (no explicit flush)', written && written.value && written.value.data)
+  ok(rA.status().writesThrough >= 2 && rA.status().writeThroughFailures === 0, 'the write-through is counted and nothing failed', rA.status().writesThrough)
+  // a restart reads the value the mutations produced
+  const faceB = mkFace()
+  const rB = createResume({ store, clock })
+  await rB.read()
+  rB.attachProjection({
+    target: faceB, methods: ['bump'], key: 'demo', mode: 'state',
+    snapshot: () => ({ apiVersion: 1, face: 'demo', v: 1, at: clock(), data: { value: faceB.value }, counters: {}, skipped: [] }),
+    restore: (v) => { faceB.value = v && v.data ? v.data.value : 0; return { ok: true, restored: ['value'] } },
+  })
+  const h = await rB.hydrate({ keys: ['demo'] })
+  ok(h.ok === true && faceB.value === 2, 'the restarted face holds the written state', { hydrated: h.ok, value: faceB.value })
+  // and with the declared switch OFF nothing is written behind the caller's back
+  const off = createResume({ store, clock, settings: { 'vmu.resume.writeThrough': false } })
+  const faceC = mkFace()
+  await off.read()
+  const at2 = off.attachProjection({
+    target: faceC, methods: ['bump'], key: 'demo2', mode: 'state',
+    snapshot: () => ({ apiVersion: 1, face: 'demo2', v: 1, at: clock(), data: { value: faceC.value }, counters: {}, skipped: [] }),
+    restore: () => ({ ok: true, restored: [] }),
+  })
+  faceC.bump()
+  await new Promise((r) => setTimeout(r, 0))
+  ok(at2.writeThrough === false && store._raw.get('demo2') === undefined && off.status().writesThrough === 0,
+    'vmu.resume.writeThrough=false: only an explicit snapshot() writes', { writeThrough: at2.writeThrough, wrote: store._raw.get('demo2') !== undefined })
+}
+
+// ── 13. the institute phase: a durable value the engine owns (it had no writer at all) ──────────────────────
+{
+  const store = mkStore({ resume: { v: 1, counters: {}, recoveries: [] } })
+  const noStore = createResume({ clock })
+  await refuses('VMU_RESUME_WRITE_BEFORE_READ', 'setting the phase before a read is refused by name', () => noStore.setPhase('active'))
+  const rA = createResume({ store, clock })
+  await rA.read()
+  const set = await rA.setPhase('active', { why: 'kernel start' })
+  ok(set.ok === true && set.from === null && set.to === 'active' && rA.phase() === 'active', 'setPhase writes and reports the transition', set)
+  ok(store._raw.get('phase') && store._raw.get('phase').value.data.phase === 'active', 'the phase lands under the `phase` key', store._raw.get('phase').value.data)
+  const rB = createResume({ store, clock })
+  await rB.read()
+  const h = await rB.hydrate({ keys: ['phase'] })
+  ok(h.ok === true && rB.phase() === 'active', 'a restarted session reads the same phase', { ok: h.ok, phase: rB.phase() })
+  const changed = await rB.setPhase('paused', { why: 'human pause' })
+  ok(changed.from === 'active' && changed.to === 'paused', 'a change reports from/to', changed)
+  ok(PROJECTION_KEYS.includes('phase') && PROJECTION_KEYS.includes('human'), 'phase and human are in the declared projection domain', PROJECTION_KEYS.slice())
+}
+
+// ── 14. interrupted work across TWO restarts: still NAMED, never passed (task-18 C) ────────────────────────
+{
+  const store = mkStore({ work: [] })
+  const w1 = createWorkLedger({ store, clock: () => '2026-02-01T00:00:00.000Z' })
+  const a1 = await w1.start({ owner: 'r-1', kind: 'proof', objective: 'lemma L' })
+  const a2 = await w1.start({ owner: 'r-2', kind: 'method', objective: 'route M' })
+  const r1 = createResume({ store, work: w1, clock })
+  const rep1 = await r1.recover({ reason: 'round3-crash-1' })
+  ok(rep1.interrupted.length === 2, 'first recovery marks both survivors', rep1.interrupted.map((x) => x.id))
+
+  // PROCESS 2 — a fresh ledger and a fresh engine over the same store
+  const w2 = createWorkLedger({ store, clock: () => '2026-02-02T00:00:00.000Z' })
+  const r2 = createResume({ store, work: w2, clock })
+  const rep2 = await r2.recover({ reason: 'round3-crash-2' })
+  const named = r2.interrupted()
+  ok(named.length === 2 && named.every((x) => typeof x.reason === 'string' && x.reason.length > 0),
+    'a SECOND restart still reports both as interrupted with a named reason', named)
+  ok(rep2.ok === true && named.every((x) => /round3-crash/.test(x.reason)), 'the reason names the recovery that marked it (no generic "unknown")', named.map((x) => x.reason))
+  ok(r2.status().interruptedIds.length === 2, 'status() lists the interrupted ids', r2.status().interruptedIds)
+  throws('VMU_RESUME_INTERRUPTED_NOT_PASSED', 'an interrupted item still cannot be passed after two restarts', () => r2.settleOutcome({ id: a1.entry.id, outcome: 'passed' }))
+  const override = r2.settleOutcome({ id: a1.entry.id, outcome: 'passed', explicit: true, reason: 're-ran the proof after restart 2; Lean exit 0' })
+  ok(override.ok === true && override.override === true && override.interrupted === true, 'the explicit, reasoned override is accepted and marked', override)
+  const stillRefused = (() => { try { r2.settleOutcome({ id: a2.entry.id, outcome: 'passed' }); return false } catch (e) { return e.code === 'VMU_RESUME_INTERRUPTED_NOT_PASSED' } })()
+  ok(stillRefused === true, 'the OTHER interrupted item is still protected (the override is per id, not global)')
+}
+
+// ── 15. a THROWING seam is named too, and it never aborts the rest of the recovery ──────────────────────────
+{
+  const store = mkStore({ resume: { v: 1, counters: {}, recoveries: [] } })
+  const good = { value: 0 }
+  const r = createResume({
+    store, clock,
+    faces: {
+      members: {
+        key: 'members', mode: 'state',
+        snapshot: () => ({ apiVersion: 1, face: 'members', v: 1, at: clock(), data: { value: good.value }, counters: {}, skipped: [] }),
+        // throws instead of returning {ok:false} — the OTHER refusal style a face may use
+        restore: () => { const e = new Error('face exploded mid-restore'); e.code = 'VMU_STATE'; throw e },
+      },
+      panel: {
+        key: 'panel', mode: 'state',
+        snapshot: () => ({ apiVersion: 1, face: 'panel', v: 1, at: clock(), data: { value: 7 }, counters: {}, skipped: [] }),
+        restore: (v) => { good.value = v.data.value; return { ok: true, restored: ['value'] } },
+      },
+    },
+  })
+  await r.read()
+  await r.snapshot({ key: 'members' })
+  await r.snapshot({ key: 'panel' })
+  const h = await r.hydrate({})
+  const bad = h.unhydrated.filter((u) => u.key === 'members')[0]
+  ok(!!bad && bad.code === 'VMU_STATE' && /exploded/.test(bad.reason), 'a THROWING restore is named, with the face\'s own code', bad)
+  ok(h.hydrated.some((x) => x.key === 'panel') && good.value === 7, 'the OTHER face still hydrates (one broken face does not abort the recovery)', good.value)
+  // and a journal whose replay throws is named, not half-applied in silence
+  const store2 = mkStore({ tasks: undefined })
+  const face = { calls: 0, boom() { face.calls += 1; return { ok: true } }, list: () => [] }
+  const r2 = createResume({ store: store2, clock })
+  await r2.read()
+  r2.attachProjection({
+    target: face, methods: ['boom'], key: 'tasks', mode: 'journal', list: () => [],
+    replay: () => { const e = new Error('replay exploded'); e.code = 'VMU_TASKS_BROKEN'; throw e },
+  })
+  face.boom()
+  face.boom()
+  await r2.snapshot({ key: 'tasks' })
+  const h2 = await r2.hydrate({ keys: ['tasks'] })
+  const bad2 = h2.unhydrated.filter((u) => u.key === 'tasks')[0]
+  ok(!!bad2 && bad2.code === 'VMU_TASKS_BROKEN' && /replay failed/.test(bad2.reason),
+    'a journal replay that throws is named unhydrated (a half-rebuilt face is not a restoration)', bad2)
 }
 
 const guard = process.argv.includes('--self-probe')

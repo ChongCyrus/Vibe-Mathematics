@@ -195,6 +195,34 @@ const mk = (settings = {}, extra = {}) => m.createChat(Object.assign({ clock, se
   // `mute-uninterpretable` (audit + chat/refused), instead of being coerced to 0 which would silently unmute.
 }
 
+// ---- 10. projection seam v1: ledger-only snapshot, max+1, named refusals ---------------------------
+{
+  const c1 = mk({ 'vmu.chat.admins': ['acad'] })
+  c1.send('r-1', 'one')
+  c1.send('r-2', 'two', { replyTo: 'msg-1' })
+  c1.mute('r-2', { durationMs: 5000, reason: 'hold', by: 'acad' })
+  const snap = c1.snapshot()
+  ok(snap.face === 'chat' && snap.v === 1 && snap.counters.chat === 2 && snap.skipped.length === 0,
+    'a chat snapshot is a v1 envelope carrying the LAST used seq (no un-capturable state is hidden)')
+  const flat = JSON.stringify(snap.data)
+  ok(!flat.includes('speakQuota') && !flat.includes('freezeExemptAdmins') && !flat.includes('"admins"'),
+    'policy is NOT in the snapshot (settings is re-resolved on restore, so an old declaration cannot win)')
+  const c2 = mk({ 'vmu.chat.admins': ['acad'] })
+  const r = c2.restore(snap)
+  ok(r.ok === true && r.counters.chat === 2 && c2.status().messages === 2 && c2.status().muted.includes('r-2'),
+    'restore hydrates the ledger AND the mutes')
+  ok(c2.anchor('msg-1').text === 'one', 'a reply anchor survives the round trip')
+  ok(c2.send('r-9', 'fresh').id === 'msg-3', 'and the next id continues at max+1 (names are immortal)')
+  ok(c2.restore(snap).ok === false && c2.restore(snap).code === 'VMU_RESUME_RESTORE_CONFLICT',
+    'a ledger that changed since the snapshot refuses a half-overwrite')
+  const c3 = mk({})
+  c3.send('x-1', 'busy')
+  ok(c3.restore(snap).code === 'VMU_RESUME_RESTORE_CONFLICT', 'a DIFFERENT live chat is a named conflict')
+  ok(c3.restore({ face: 'panel', v: 1, data: {} }).code === 'VMU_RESUME_SNAPSHOT_VERSION', 'a foreign face is refused by name')
+  ok(c3.restore({ face: 'chat', v: 2, data: {} }).code === 'VMU_RESUME_SNAPSHOT_VERSION', 'a foreign version is refused by name')
+  ok(c3.restore({ face: 'chat', v: 1, data: { messages: [] } }).code === 'VMU_RESUME_SNAPSHOT_INCOMPLETE', 'a missing collection is NAMED')
+}
+
 console.log('vmu-chat: ' + passed + ' passed, ' + failed + ' failed')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

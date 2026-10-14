@@ -18,9 +18,10 @@
 
     "vmu.panel.deviationPolicy": "record",
 
-    "vmu.resume.projections": ["members", "tasks", "meetings", "ballots", "budget", "phase", "work"],
+    "vmu.resume.projections": ["members", "tasks", "meetings", "ballots", "budget", "phase", "work", "chat", "panel", "human"],
     "vmu.resume.autoRecover": true,
     "vmu.resume.readBack": true,
+    "vmu.resume.writeThrough": true,
 
     "vmu.human.onTimeout": "hold",
     "vmu.human.vetoLiftRoles": ["office"],
@@ -28,6 +29,18 @@
 
     "vmu.math.jobs.persist": true,
     "vmu.math.jobs.recover": "on-load",
+    "vmu.math.maxParallel": 3,
+    "vmu.math.jobs.maxParallel": 1,
+
+    "vmu.meetings.tier": "formal",
+    "vmu.meetings.allowLight": false,
+    "vmu.ballot.reopenFloor": 0,
+
+    "vmu.paper.officeConsult": "required",
+    "vmu.paper.officeConsultOn": "finalize",
+    "vmu.paper.officeConsultTimeoutMs": 0,
+    "vmu.paper.officeConsultOnTimeout": "hold",
+    "vmu.paper.officeConsultExemptRoles": [],
 
     "vmu.meetings.quoteDepthMax": 3,
     "vmu.meetings.quotesPerMessageMax": 2,

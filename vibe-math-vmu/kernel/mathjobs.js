@@ -101,18 +101,25 @@ export function safeRelDir(rel) {
  *
  * Contract:
  *   · `write(jobId, rec)` — best-effort; the caller COUNTS failures. Returns
- *     `{ok:true, rel}` | `{ok:false, code:'VMU_MATH_JOBS_MIRROR_UNWIRED'}` |
+ *     `{ok:true, rel, exclusive}` | `{ok:false, code:'VMU_MATH_JOBS_MIRROR_UNWIRED'}` |
+ *     `{ok:false, code:'VMU_MATH_JOB_ID_TAKEN'}` (**a SECOND process already owns this jobId**) |
  *     `{ok:false, reason:'retention-cap-without-removeText'}` (cap reached and no `removeText` seam: stop
  *     writing rather than grow without bound — counted, never silent) and reports `evicted` when it removed
  *     the oldest entry instead.
+ *   · CROSS-PROCESS OWNERSHIP: when the host supplies `fs.writeTextExclusive(rel, text)` (implemented with
+ *     `{ flag: 'wx' }` / `O_EXCL`), the FIRST write of a job id CLAIMS it atomically; a second process that
+ *     minted the same id (ids are process-local unless the counter is durable) gets `VMU_MATH_JOB_ID_TAKEN`
+ *     instead of silently overwriting the other process's mirror. Without that seam the face stays in the
+ *     honest degraded mode (`admission().exclusiveCreate === false`, `crossProcess:'not-enforced'`).
  *   · `list()` — reads the directory; a file whose JSON is unreadable or carries a foreign `schema` is
  *     reported `corrupt:true` (never silently dropped).
  *   · `status()` — the capability facts an `admission()` can quote verbatim.
  */
 export function createJobMirror({ fs = null, dir = null, keep = 0, clock = () => 0, onNote = () => {}, schema = null } = {}) {
   const records = new Map()
-  const stats = { written: 0, failed: 0, skipped: 0, evicted: 0, listed: 0, corrupt: 0 }
+  const stats = { written: 0, failed: 0, skipped: 0, evicted: 0, listed: 0, corrupt: 0, idTaken: 0, exclusiveWrites: 0 }
   const enabled = () => !!(fs && typeof fs.writeText === 'function' && typeof fs.readText === 'function' && dir)
+  const exclusiveCreate = () => !!(enabled() && typeof fs.writeTextExclusive === 'function')
   const relOf = (jobId) => String(dir).replace(/\/+$/, '') + '/' + String(jobId) + '.json'
 
   async function remove(jobId) {
@@ -134,12 +141,39 @@ export function createJobMirror({ fs = null, dir = null, keep = 0, clock = () =>
       stats.evicted += 1
     }
     const payload = Object.assign({}, rec, { at: clock() })
+    const body = JSON.stringify(payload, null, 1) + '\n'
+    const isNew = !records.has(id)
+    // CROSS-PROCESS CLAIM: the FIRST write of a job id is exclusive when the host offers the primitive.
+    // Updates (same process, same id) keep the plain overwrite — the id is already ours.
+    if (isNew && exclusiveCreate()) {
+      let claimed
+      try {
+        claimed = await fs.writeTextExclusive(relOf(id), body)
+      } catch (e) {
+        const exists = !!(e && (e.code === 'EEXIST' || /exist/i.test(String(e && e.message))))
+        if (!exists) {
+          stats.failed += 1
+          onNote('mirror-failed', id, { error: String((e && e.message) || e) })
+          return { ok: false, code: 'VMU_MATH_JOBS_MIRROR_UNWIRED', error: String((e && e.message) || e) }
+        }
+        claimed = false
+      }
+      if (claimed === false) {
+        stats.idTaken += 1
+        onNote('job-id-taken', id, { reason: 'another process already owns this jobId (exclusive create refused)' })
+        return { ok: false, code: 'VMU_MATH_JOB_ID_TAKEN', reason: 'exclusive-create-refused', rel: relOf(id) }
+      }
+      stats.exclusiveWrites += 1
+      records.set(id, payload)
+      stats.written += 1
+      return { ok: true, rel: relOf(id), exclusive: true }
+    }
     try {
-      const okWrite = await fs.writeText(relOf(id), JSON.stringify(payload, null, 1) + '\n')
+      const okWrite = await fs.writeText(relOf(id), body)
       if (okWrite === false) throw new Error('writeText returned false')
       records.set(id, payload)
       stats.written += 1
-      return { ok: true, rel: relOf(id) }
+      return { ok: true, rel: relOf(id), exclusive: false }
     } catch (e) {
       stats.failed += 1
       onNote('mirror-failed', id, { error: String((e && e.message) || e) })
@@ -174,13 +208,15 @@ export function createJobMirror({ fs = null, dir = null, keep = 0, clock = () =>
     dir,
     keep,
     removeText: !!(fs && typeof fs.removeText === 'function'),
+    exclusiveCreate: exclusiveCreate(),
     retention: (fs && typeof fs.removeText === 'function') ? 'evict-oldest-counted' : 'append-only-refuse-after-cap',
     count: records.size,
     written: stats.written, failed: stats.failed, skipped: stats.skipped, evicted: stats.evicted,
     listed: stats.listed, corrupt: stats.corrupt,
+    idTaken: stats.idTaken, exclusiveWrites: stats.exclusiveWrites,
   })
 
-  return { write, read, list, remove, status, enabled, relOf, records }
+  return { write, read, list, remove, status, enabled, exclusiveCreate, relOf, records }
 }
 
 export function createMathJobs(opts) {
@@ -422,6 +458,16 @@ export function createMathJobs(opts) {
     }
     jobs.set(id, job)
     note('math.submit', id)
+    // CROSS-PROCESS CLAIM (N5): when the host offers exclusive create, taking the mirror is what makes this
+    // job OURS. A refusal here means another process owns the same id — refuse BY NAME and leave no job behind.
+    const claimed = await writeMirror(job)
+    if (claimed && claimed.ok === false && claimed.code === 'VMU_MATH_JOB_ID_TAKEN') {
+      jobs.delete(id)
+      note('math.submit.rejected', id, { code: 'VMU_MATH_JOB_ID_TAKEN' })
+      return refuse('VMU_MATH_JOB_ID_TAKEN', '作业号 ' + id + ' 已被另一个进程占用（独占创建拒绝）',
+        '换一个 jobId，或让 id 计数器真正持久（kernel/ids.js 绑定 store）后再提交；本面绝不覆盖别人的镜像 ✗',
+        ['vmu.math.jobs.persist', 'vmu.math.jobs.dir'])
+    }
     emit('math/job-submitted', { jobId: id, engine, argvHash: job.inputHash })
     job.attempts = 1
     return await execute(job)
@@ -465,10 +511,11 @@ export function createMathJobs(opts) {
   }
   const list = () => ({ ok: true, count: jobs.size, dropped: droppedLog + droppedReceipts, jobs: [...jobs.values()].map((j) => ({ id: j.id, engine: j.engine, state: j.state, hasReceipt: receipts.has(j.id) })) })
   const summary = () => {
-    const st = mirrorInst ? mirrorInst.status() : { count: 0 }
+    const st = mirrorInst ? mirrorInst.status() : { count: 0, idTaken: 0, exclusiveWrites: 0 }
     return {
       ok: true, count: jobs.size, running: running(), receipts: receipts.size,
       droppedReceipts, droppedLog, droppedMirrors, mirrorSkipped, mirrorFailures, mirrors: st.count,
+      idTaken: st.idTaken || 0, exclusiveWrites: st.exclusiveWrites || 0,
       engines: cfg().engines.slice(), timeoutMs: cfg().timeoutMs,
     }
   }
@@ -590,7 +637,12 @@ export function createMathJobs(opts) {
     if (c.jobsDir === null) notes.push('vmu.math.jobs.dir 不是 root 相对安全路径 ⇒ 镜像被拒（VMU_MATH_JOBS_DIR_UNSAFE）')
     if (fsSeam && typeof fsSeam.removeText !== 'function') notes.push('fs.removeText 缺失 ⇒ 淘汰不可做：到达 keepMirrors 后停止写盘并计数（mirrorSkipped），不静默无界增长')
     if (c.persist !== true) notes.push('vmu.math.jobs.persist=false ⇒ 镜像面关闭（作业只活在本次会话内存）')
-    notes.push('跨进程独占创建：宿主未暴露该原语 ⇒ crossProcess=not-enforced（同名 jobId 并发写盘不保证唯一）')
+    const xc = !!(fsSeam && typeof fsSeam.writeTextExclusive === 'function')
+    if (xc) {
+      notes.push('跨进程独占创建：宿主提供 fs.writeTextExclusive（wx/O_EXCL）⇒ 首个镜像写入**原子占号**，同号并发写盘被具名拒（VMU_MATH_JOB_ID_TAKEN）')
+    } else {
+      notes.push('跨进程独占创建：宿主未暴露 writeTextExclusive ⇒ crossProcess=not-enforced（同名 jobId 的并发写盘不保证唯一，后写者覆盖）；需要它的是"多进程/多会话共用一个研究所目录"的部署')
+    }
     return {
       ok: true,
       persist: c.persist === true,
@@ -600,8 +652,8 @@ export function createMathJobs(opts) {
       removeText: !!(fsSeam && typeof fsSeam.removeText === 'function'),
       retention: mirrorFor().status().retention,
       recoverMode: c.recoverMode,
-      exclusiveCreate: false,
-      crossProcess: 'not-enforced',
+      exclusiveCreate: xc,
+      crossProcess: xc ? 'enforced-by-exclusive-create' : 'not-enforced',
       mirrors: ms.count,
       droppedMirrors, mirrorSkipped, mirrorFailures,
       lastRecovery,

@@ -72,6 +72,8 @@ const SURFACES = {
   'vmu.panel': 'panel',               // round 2 (member state panel)
   'vmu.mathadapters': 'mathadapters', // round 2 (numpy/scipy/pandas/sympy adapters)
   'vmu.ids': 'ids',                   // round 2 (the ONE id minter; bound via bindIds, not createX)
+  'vmu.activity': 'activity',         // round 3 (one-shot future-only activity waiter; createActivity)
+  'vmu.fidelity': 'fidelity',         // round 3 (C-45 faithful-abstention predicate; createFidelityRegistry)
 }
 
 const registered = new Set([...src.matchAll(/registry\.register\('([a-z_]+\.[a-z]+)'/g)].map((m) => m[1]))

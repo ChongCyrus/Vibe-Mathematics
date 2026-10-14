@@ -197,5 +197,31 @@ try {
     { coupling: 'docs/14 line count -> docs/00 §7.6' })
 }
 
+// ── ROUND 3: the WIRED-SCHEMA key extraction must not read KEYS OUT OF PROSE ─────────────────────────────────
+// MEASURED CAUSE: `kernel/paper.js` explained the C-30 rule in a comment that QUOTED key names, and
+// `generate-wired-schema.mjs` registered those quoted strings as real settings keys (exit=1) until a human
+// rewrote the comment. A guard whose greenness depends on nobody quoting a key in prose is not a guard, so the
+// extraction now shape-checks its candidates and the probe below proves BOTH directions: pseudo-keys in comments
+// stay out, real keys stay in. (Writing the probe caught a wrong expectation of mine: `vmu.a.b` IS well-formed,
+// so the malformed list now uses genuinely malformed shapes.)
+{
+  const gen = await import(new URL('../scripts/generate-wired-schema.mjs', import.meta.url).href)
+  const p = gen.keyShapeProbe()
+  ok(p.fakeInCommentExcluded,
+    '★ KEY_SHAPE: a key-looking string inside a COMMENT is NOT registered (neither via WIRED_KEYS nor via an accessor form)',
+    JSON.stringify({ wired: p.wired, read: p.read }))
+  ok(p.realStillFound,
+    '★ and the REAL keys in the same fragment are still found (the exclusion is not a blanket ban)',
+    JSON.stringify({ wired: p.wired, read: p.read }))
+  ok(p.shapeRejectsMalformed,
+    '★ KEY_SHAPE rejects foreign/malformed shapes (`vmu.onegroup`, `vmu.Upper.key`, `other.key`, `vmu.two.`, `vmu.a..b`, `vmu.a-b.c`)',
+    String(gen.KEY_SHAPE))
+  const self = spawnSync(process.execPath, [join(REPO, 'scripts', 'generate-wired-schema.mjs'), '--selftest'],
+    { cwd: REPO, encoding: 'utf8' })
+  ok(self.status === 0,
+    '★ and running the generator\'s OWN `--selftest` exits 0 (so the probe is executable, not just asserted here)',
+    'EXIT=' + self.status + ' :: ' + String(self.stdout || '').trim().split('\n').slice(-1)[0])
+}
+
 console.log('=== GENERATORS CURRENT: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }

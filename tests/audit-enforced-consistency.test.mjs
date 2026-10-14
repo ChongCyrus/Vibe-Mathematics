@@ -40,8 +40,13 @@ import { createMigration } from '../vibe-math-vmu/kernel/migration.js'
 import { createGrant } from '../vibe-math-vmu/kernel/grant.js'
 import { createChat } from '../vibe-math-vmu/kernel/chat.js'
 import { createMathAdapters } from '../vibe-math-vmu/kernel/mathadapters.js'
+import { createActivity } from '../vibe-math-vmu/kernel/activity.js'
+import { createBallot } from '../vibe-math-vmu/kernel/ballot.js'
+import { createPaper } from '../vibe-math-vmu/kernel/paper.js'
 import { createMathJobs } from '../vibe-math-vmu/kernel/mathjobs.js'
 import { createLeanFace } from '../vibe-math-vmu/kernel/lean.js'
+import { createFormal } from '../vibe-math-vmu/kernel/formal.js'
+import { createFidelityRegistry, FIDELITY_ABSTENTION_VOTE } from '../vibe-math-vmu/kernel/fidelity.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -138,7 +143,32 @@ export function checkUnevaluatedAbsent(run, key) {
 // ---------------------------------------------------------------------------------------------------------
 const put = (rc, extra = {}) => rc.put(Object.assign({ track: 'progress', kind: 'progress', title: 't', body: 'b', settled: true }, extra))
 
+// ROUND 3 · activity (vmu-activity's MEASURED shapes). The face was ruled back to `enforced[]`/`enforcedScope`
+// (the earlier `evaluated[]` spelling kept it out of this gate's module scan - a dodge, not a design), so it is
+// driven here. `ACTIVITY_FIRED_TIMER` fires the callback immediately: an accepted wait resolves at once, so these
+// scenarios are deterministic and never hold the process open. All shapes below are copied from measurements the
+// face's own author ran (identical=false per pair); `noPeerShortCircuit` and `wakeOn` are deliberately NOT keys
+// here - the first produces an identical enforced set in both variants and the second is construction-time only.
+const ACTIVITY_FIRED_TIMER = { timeout: (cb) => { cb(); return () => {} } }
+const mkActivity = (settings, extra = {}) =>
+  createActivity(Object.assign({ clock: CLOCK, log: () => {}, settings, timer: ACTIVITY_FIRED_TIMER }, extra))
+
 const SCENARIOS = [
+  { module: 'activity', call: 'wait(timeout below min, policy=refuse|clamp)', key: 'vmu.activity.timeoutPolicy', expectDiff: true,
+    limiting: { settings: { 'vmu.activity.timeoutPolicy': 'refuse' } },
+    permissive: { settings: { 'vmu.activity.timeoutPolicy': 'clamp' } },
+    make: (settings) => mkActivity(settings),
+    run: (a) => a.wait({ timeoutMs: 5000 }) },
+  { module: 'activity', call: 'wait(timeout below the declared min)', key: 'vmu.activity.timeoutMinMs', expectDiff: true,
+    limiting: { settings: { 'vmu.activity.timeoutMinMs': 6000 } },
+    permissive: { settings: { 'vmu.activity.timeoutMinMs': 4000 } },
+    make: (settings) => mkActivity(settings),
+    run: (a) => a.wait({ timeoutMs: 5000 }) },
+  { module: 'activity', call: 'wait(omitted timeout uses the declared default)', key: 'vmu.activity.timeoutMs', expectDiff: true,
+    limiting: { settings: { 'vmu.activity.timeoutMs': 20000 }, input: { explicit: true } },
+    permissive: { settings: { 'vmu.activity.timeoutMs': 20000 }, input: { explicit: false } },
+    make: (settings) => mkActivity(settings),
+    run: (a, v) => a.wait(v.input.explicit ? { timeoutMs: 20000 } : {}) },
   { module: 'ballotbox', call: 'open', key: 'vmu.ballot.secrecy', expectDiff: true,
     limiting: { settings: { 'vmu.ballot.secrecy': false } }, permissive: { settings: { 'vmu.ballot.secrecy': true } },
     make: (settings, variant) => createBallotBox({ clock: CLOCK, log: () => {}, settings }),
@@ -593,6 +623,17 @@ const REFUSAL_SCENARIOS = [
   { module: 'mathadapters', call: 'plan(no settings/seams)', settings: {},
     make: () => createMathAdapters({ clock: CLOCK, log: () => {} }),
     run: (a) => a.plan() },
+  // ROUND 3 · C-30: `paper.js` entered the "mentions enforced in CODE" list with the office-consultation gate.
+  // It is a REAL refusal path (the gate refuses by NAME and carries the keys it evaluated), so an envelope
+  // exemption would be a false exemption - the shape below is MEASURED in tests/vmu-paper-consult.test.mjs:35-80
+  // (thrown `VMU_OFFICE_CONSULT_REQUIRED` with `enforced` = the five `vmu.paper.officeConsult*` keys).
+  { module: 'paper', call: 'finalize(no consultation)', settings: { 'vmu.paper.finalizer': 'editor' },
+    make: (settings) => createPaper({ clock: CLOCK, log: () => {}, settings }),
+    run: (p) => {
+      const started = p.start({ title: 'T', sections: ['intro'], contributors: { intro: 'm-1' }, editor: 'ed' })
+      p.contribute({ paperId: started.paperId, section: 'intro', by: 'm-1' })
+      return p.finalize({ paperId: started.paperId, by: 'ed' })
+    } },
   // ROUND 2 (target 5, N2): the durable-job faces carry REAL enforcement too — a declared setting decides
   // whether a submit is accepted, so they are scenarios (measured), not envelope exemptions:
   //   · mathjobs.submit with vmu.math.computation='off'  ⇒ VMU_MATH_UNSUPPORTED_OP, enforced=[vmu.math.computation]
@@ -604,6 +645,22 @@ const REFUSAL_SCENARIOS = [
   { module: 'lean', call: 'recover(no fs seam)', settings: { 'vmu.math.jobs.persist': true, 'vmu.math.jobs.recover': 'on-load' },
     make: (settings) => createLeanFace({ clock: CLOCK, log: () => {}, settings }),
     run: (lf) => lf.recover() },
+  // ROUND 3 · C-45: the two faces that carry the fidelity-abstention rule. Both refusals are MEASURED:
+  //   · formal.check with no proof         ⇒ VMU_MATH_INVALID_INPUT (argument-driven: enforced=[])
+  //   · fidelity.declareDefect with no note ⇒ VMU_MATH_INVALID_INPUT (an anonymous defect is unauditable)
+  { module: 'formal', call: 'check(no proof)', settings: {},
+    make: (settings) => createFormal({ clock: CLOCK, log: () => {}, settings }),
+    run: (f) => f.check({ statement: 'True' }) },
+  { module: 'fidelity', call: 'declareDefect(no note)', settings: {},
+    make: (settings) => createFidelityRegistry({ clock: CLOCK, log: () => {}, settings }),
+    run: (r) => r.declareDefect({ target: 'p-1', by: 'r-1' }) },
+  // ROUND 3 · activity: the named refusal path, MEASURED by the face's own author - a timeout outside the
+  // [10000, 3600000] interval under `timeoutPolicy=refuse` throws `VMU_ACTIVITY_INVALID_TIMEOUT` carrying
+  // `enforced` (the policy + BOTH bounds) and `enforcedScope='evaluated-so-far'`, which is what rule ⑤ requires.
+  { module: 'activity', call: 'wait(timeout outside [min,max])',
+    settings: { 'vmu.activity.timeoutPolicy': 'refuse' },
+    make: (settings) => mkActivity(settings),
+    run: (a) => a.wait({ timeoutMs: 5 }) },
 ]
 
 // ---------------------------------------------------------------------------------------------------------
@@ -704,6 +761,30 @@ for (const [mod, m] of [...byModule].sort()) {
   ok(m.diff >= 3, 'at least 3 behaviour-changing scenarios for ' + mod, 'got ' + m.diff)
 }
 
+// ---------------------------------------------------------------------------------------------------------
+// ROUND 3 · C-45, asserted DIRECTLY (not through the SCENARIOS table). `ballot.js` reads no settings key at all,
+// so the scenario table - which demands three behaviour-changing settings scenarios per module and an `enforced[]`
+// reported by every row - is structurally the wrong instrument for it. The enforcement point itself is asserted
+// here instead, which is also what makes the CONSUMER exemption above honest rather than a hiding place: a
+// declared fidelity defect must rewrite a DECISIVE cast into an abstention, keeping the declared value for audit.
+// ---------------------------------------------------------------------------------------------------------
+{
+  const reg = createFidelityRegistry({ clock: CLOCK, log: () => {} })
+  reg.declareDefect({ target: 'T-1', by: 'm-1', note: 'the formalisation drops a hypothesis the proposition needs' })
+  const b = createBallot({ clock: CLOCK, target: 'T-1', eligible: ['m-1'], fidelity: reg })
+  await b.open()
+  const r = await b.cast('m-1', 1)
+  ok(r && r.ok === true && r.kind === 'abstain' && r.byFidelity === true && r.value === FIDELITY_ABSTENTION_VOTE && r.declared === 1,
+    '★ C-45: a declared fidelity defect rewrites a DECISIVE cast into a first-class ABSTENTION at ballot.js\'s single enforcement point (`vote=${FIDELITY_ABSTENTION_VOTE}`, `declared` kept for audit)',
+    JSON.stringify(r))
+  // The rewrite must also change the OUTCOME: an abstention is excluded from the decisive count, so a ballot whose
+  // only voter was rewritten cannot report "unanimous for". `close()` is the settling call (there is no `tally()`).
+  const settled = await b.close('probe')
+  ok(settled && settled.outcome !== true,
+    '★ and the rewritten cast cannot decide the ballot (an abstention is not a `for`): outcome=' + JSON.stringify(settled && settled.outcome),
+    JSON.stringify(settled))
+}
+
 // module scan: every kernel module that mentions `enforced` IN CODE must be covered here
 {
   const files = readdirSync(KERNEL).filter((f) => f.endsWith('.js')).sort()
@@ -769,7 +850,33 @@ for (const [mod, m] of [...byModule].sort()) {
   ok(envelopeViolations.length === 0, 'every receipt-envelope exemption is VERIFIED: the word appears only as an envelope key, never as a refusal implementation', envelopeViolations.slice(0, 4).join(' | '))
   ok(Object.keys(RECEIPT_ENVELOPE_MODULES).length >= 10, 'the exemption list is substantive rather than a place to hide things', Object.keys(RECEIPT_ENVELOPE_MODULES).length)
 
-  const uncovered = inCode.filter((f) => !covered.has(alias[f]) && !covered.has(f.replace(/\.js$/, '')) && !PURE_FUNCTION_MODULES[f] && !RECEIPT_ENVELOPE_MODULES[f])
+  // CONSUMER MODULES (round 3). A module can mention `enforced` because it CONSUMES another face's decision
+  // instead of publishing an enforcement list: `kernel/ballot.js` is the case - its single C-45 enforcement point
+  // asks the fidelity registry whether the abstention is enforced (`gate.enforced === true`) and rewrites a
+  // decisive cast into an abstention. It publishes no `enforced[]` of its own (its `refuse()` carries code +
+  // message + hint, and its scenario table cannot use the SCENARIOS instrument because ballot reads NO settings
+  // key - the table demands three behaviour-changing settings scenarios per module). So it is exempt WITH A
+  // REASON, and - exactly like the envelope exemption - the reason is verified MECHANICALLY below: every
+  // occurrence must be a READ of someone else's field (`X.enforced === …`), never an array literal, an
+  // `enforced:` key, an assignment or a `push`.
+  const CONSUMER_MODULES = {
+    'ballot.js': 'consumes the C-45 registry decision (`fidelity.applyAbstention(...)` ⇒ `gate.enforced === true`) and turns the decisive cast into an abstention; it publishes no enforced[] itself. Its behaviour is asserted directly in this file (the C-45 block) and in tests/vmu-ballot.test.mjs',
+  }
+  const consumerViolations = []
+  for (const f of Object.keys(CONSUMER_MODULES)) {
+    const src = stripComments(readFileSync(join(KERNEL, f), 'utf8'), { strings: true })
+    for (const line of src.split(String.fromCharCode(10))) {
+      if (!new RegExp(String.fromCharCode(92) + 'b' + KEY + String.fromCharCode(92) + 'b').test(line)) continue
+      if (/^\s*(\/\/|\*|\/\*)/.test(line)) continue
+      if (/\.enforced\s*(===|!==|==|!=)/.test(line)) continue     // a READ of another face's decision
+      consumerViolations.push(f + ': ' + line.trim().slice(0, 60))
+    }
+  }
+  ok(consumerViolations.length === 0,
+    'every consumer exemption is VERIFIED: `enforced` appears only as a READ of another face\'s decision, never as a published list',
+    consumerViolations.slice(0, 4).join(' | '))
+
+  const uncovered = inCode.filter((f) => !covered.has(alias[f]) && !covered.has(f.replace(/\.js$/, '')) && !PURE_FUNCTION_MODULES[f] && !RECEIPT_ENVELOPE_MODULES[f] && !CONSUMER_MODULES[f])
   ok(uncovered.length === 0, 'every module mentioning enforced in CODE is covered by this gate (or exempted with a written reason)', uncovered.join(', '))
   ok(inCode.length >= 3, 'the scan found the enforced-carrying modules', inCode.join(', '))
   console.log('modules with `enforced` in code: ' + inCode.join(', '))

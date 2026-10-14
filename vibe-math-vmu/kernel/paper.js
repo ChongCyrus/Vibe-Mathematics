@@ -35,6 +35,18 @@ export const WIRED_KEYS = Object.freeze([
   // more sections than the cap is refused by name with the count and the cap, because a bound the machine cannot
   // enforce is a suggestion. 0 means unlimited, which is also the default, so nothing changes unless a pack asks.
   'vmu.paper.maxSections',
+  // ROUND 3 (C-30, the office-consultation gate). The v5r line gated finalisation on the office having consulted the
+  // institute first: both a message and a meeting had to be on record, the counts written AT THE POINT OF THE ACT (never
+  // from intent), and the door stayed shut with a named refusal otherwise. These five keys are the vmu form of that rule.
+  // They were landed in the schema first (vmu-core) and had NO READER until this gate: the "declared but nobody reads
+  // it" defect class this repository keeps finding. NOTE the prose above deliberately avoids apostrophes and quoted
+  // identifiers inside this array - the schema generator recovers keys by reading EVERY single-quoted string between the
+  // brackets (generate-wired-schema.mjs), so one stray quote in a comment becomes a phantom setting key.
+  'vmu.paper.officeConsult',
+  'vmu.paper.officeConsultOn',
+  'vmu.paper.officeConsultTimeoutMs',
+  'vmu.paper.officeConsultOnTimeout',
+  'vmu.paper.officeConsultExemptRoles',
 ])
 
 /** Declared but deliberately NOT wired (the audit criterion: named, with a reason, and a revival condition). */
@@ -52,19 +64,37 @@ export const PLANNED_KEYS = Object.freeze([
 
 export const FINALIZERS = Object.freeze(['editor', 'contributor', 'any'])
 
-export function refuse(code, message, hint) {
+/** C-30: when the office-consultation gate applies. Anything unknown falls back to `finalize` (the narrow case). */
+export const CONSULT_POINTS = Object.freeze(['finalize', 'finalize-or-submit'])
+
+/** C-30: what an expired wait does. THERE IS NO `default-allow` MEMBER, and there never will be. */
+export const CONSULT_TIMEOUT_ACTIONS = Object.freeze(['hold', 'refuse'])
+
+/**
+ * D3: a refusal states the keys it EVALUATED, and the scope that evaluation covered. The scope marker has been here
+ * since round 135; `enforced[]` joins it because a refusal that cannot name what it read is not auditable - and the
+ * D3 gate (`tests/audit-enforced-consistency.test.mjs`) reads refusals too.
+ */
+export function refuse(code, message, hint, extra) {
   const err = new Error(message)
   err.code = code
   if (hint) err.hint = hint
   err.enforcedScope = ENFORCED_SCOPE
+  if (extra && typeof extra === 'object') {
+    for (const [k, v] of Object.entries(extra)) {
+      if (k === 'enforced') { if (Array.isArray(v)) err.enforced = v.slice(); continue }
+      err[k] = v
+    }
+  }
   return err
 }
 
 const SECTION_ID = /^[A-Za-z0-9][A-Za-z0-9 ._/-]*$/
 const TRAIL_MAX = 200
 
-export function createPaper({ clock = () => Date.now(), log = () => {}, settings = {}, register = null } = {}) {
+export function createPaper({ clock = () => Date.now(), log = () => {}, settings = {}, register = null, audit = null, bus = null } = {}) {
   const readKey = (k) => (settings && typeof settings.get === 'function' ? settings.get(k) : (settings || {})[k])
+  const say = (ev) => { try { if (typeof log === 'function') log(ev) } catch (e) { /* logging never breaks the face */ } }
 
   /** Settings read in exactly ONE place, so keysUsed() and the behaviour can never disagree. */
   const cfg = () => {
@@ -75,7 +105,27 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
     // that shape (readKey('k') || 0), so this key is declared with its REAL default rather than an honest null.
     const rawMax = Number(readKey('vmu.paper.maxSections') || 0)
     const maxSections = Number.isFinite(rawMax) && rawMax > 0 ? Math.floor(rawMax) : 0
-    return { requireAllSections, finalizer, maxSections }
+    // C-30. Every one of the five is read HERE, on every call, so a recording stub sees them and `keysUsed()` cannot
+    // claim a reader that does not exist. Unknown values fall back to the CLOSED side (`required`, `finalize`,
+    // `hold`), never to the permissive one: a pack that mistypes a value must not thereby open the gate.
+    const officeConsult = readKey('vmu.paper.officeConsult') === 'off' ? 'off' : 'required'
+    const consultOnRaw = String(readKey('vmu.paper.officeConsultOn') || 'finalize')
+    const consultOn = CONSULT_POINTS.indexOf(consultOnRaw) === -1 ? 'finalize' : consultOnRaw
+    const consultTimeoutRaw = Number(readKey('vmu.paper.officeConsultTimeoutMs') || 0)
+    const consultTimeoutMs = Number.isFinite(consultTimeoutRaw) && consultTimeoutRaw > 0 ? Math.floor(consultTimeoutRaw) : 0
+    const consultOnTimeoutRaw = String(readKey('vmu.paper.officeConsultOnTimeout') || 'hold')
+    // NO default-allow, under ANY spelling: an unreadable value holds. (The schema's enum already refuses a bad value
+    // at the settings boundary; this is the second line, for a value that arrived through a pack's data layer.)
+    const consultOnTimeout = consultOnTimeoutRaw === 'refuse' ? 'refuse' : 'hold'
+    const exemptRaw = readKey('vmu.paper.officeConsultExemptRoles')
+    // F4 RULING (Lead, round 3): THE DEFAULT IS NO EXEMPTION. v5r gated the OFFICE's own finalisation (the office had
+    // to consult the institute first), so exempting `office` by default would exempt exactly the act the original
+    // checked. "Nobody is exempt until a declaration says so" is the conservative side of the same discipline the
+    // timeout follows (`hold`, never `default-allow`), and it matches the schema default after the same ruling.
+    const consultExemptRoles = Array.isArray(exemptRaw)
+      ? exemptRaw.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim())
+      : []
+    return { requireAllSections, finalizer, maxSections, officeConsult, consultOn, consultTimeoutMs, consultOnTimeout, consultExemptRoles }
   }
 
   const keysUsed = () => WIRED_KEYS.slice()
@@ -102,12 +152,118 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
     outstanding: p.sections.filter((s) => s.by === null).map((s) => ({ name: s.name, owner: s.owner })),
     gaps: p.gaps ? p.gaps.slice() : null,
     receipt: p.receipt === undefined ? null : p.receipt,
+    // C-30: the consultation ledger travels with the manuscript, so "was the office consulted?" is a fact a reader can
+    // check rather than an inference from a prose claim.
+    consult: { count: p.consult.entries.length, kinds: [...new Set(p.consult.entries.map((e) => e.kind))].sort(),
+      requestedAt: p.consult.requestedAt, requestedBy: p.consult.by, lastAt: p.consult.entries.length ? p.consult.entries[p.consult.entries.length - 1].at : null },
   })
 
   const find = (id) => {
     const p = papers.get(String(id || ''))
     if (!p) throw refuse('VMU_NO_SUCH_OBJECT', 'no paper with id ' + String(id), 'call status() for the open manuscripts')
     return p
+  }
+
+  /**
+   * C-30 · THE OFFICE-CONSULTATION GATE. Evaluates the five declared keys for ONE finalise attempt and never mutates
+   * more than the pending request. Three outcomes matter:
+   *   · NOT REQUIRED - the switch is off, or the caller is an exempt role (v5r: the office asking itself is not a
+   *     consultation);
+   *   · SATISFIED    - the ledger already holds at least one consultation recorded AT THE POINT OF THE ACT;
+   *   · BLOCKED      - nothing recorded yet: a request is opened (once) and the wait is evaluated against the declared
+   *     timeout. An expired wait does what `vmu.paper.officeConsultOnTimeout` says - `hold` keeps waiting, `refuse`
+   *     ends the request - and BOTH still refuse the finalisation. There is no `default-allow`: a manuscript nobody
+   *     consulted must never be finalised because time passed.
+   */
+  function consultGate(p, who, { now, auto = true }) {
+    const c = cfg()
+    const keys = WIRED_KEYS.filter((k) => k.indexOf('vmu.paper.officeConsult') === 0)
+    const base = { required: false, blocked: false, enforced: keys, who }
+    if (c.officeConsult === 'off') return Object.assign(base, { reason: 'off', note: 'vmu.paper.officeConsult=off: the gate is switched off (zero mechanism)' })
+    if (c.consultExemptRoles.indexOf(who) !== -1) {
+      return Object.assign(base, { reason: 'exempt', exemptRole: who,
+        note: 'vmu.paper.officeConsultExemptRoles lists ' + who + ': an exempt role need not consult (v5r: the office does not consult itself)' })
+    }
+    base.required = true
+    // `consultOn` is reported, not re-interpreted here: `finalize-or-submit` widens the gate to the SUBMISSION path too,
+    // and that path belongs to the publication face - this module only owns the `finalize` half. Reporting the declared
+    // value is what keeps a reader from thinking this face silently narrowed a wider declaration.
+    base.on = c.consultOn
+    if (p.consult.entries.length > 0) {
+      return Object.assign(base, { reason: 'consulted', count: p.consult.entries.length,
+        kinds: [...new Set(p.consult.entries.map((e) => e.kind))].sort() })
+    }
+    // Not consulted: open the request ONCE (the attempt itself is the ask), then read the declared wait. `auto:false` is
+    // the READ-ONLY path (`consultState`) - a diagnostic surface must not change the manuscript it describes.
+    if (p.consult.requestedAt === null) {
+      if (!auto) return Object.assign(base, { blocked: true, reason: 'awaiting', requestedAt: null, requestedBy: null,
+        elapsedMs: 0, timeoutMs: c.consultTimeoutMs, onTimeout: c.consultOnTimeout, remainingMs: c.consultTimeoutMs > 0 ? c.consultTimeoutMs : null,
+        heldOnTimeout: false, wouldRequest: true,
+        note: 'no request is open yet; a finalisation attempt would open one at that moment (this read opened nothing)' })
+      p.consult.requestedAt = now
+      p.consult.by = who
+    }
+    const askedAt = p.consult.requestedAt
+    const elapsedMs = Math.max(0, now - askedAt)
+    const timeoutMs = c.consultTimeoutMs
+    const out = Object.assign(base, { blocked: true, requestedAt: askedAt, requestedBy: p.consult.by, elapsedMs, timeoutMs,
+      onTimeout: c.consultOnTimeout })
+    if (timeoutMs === 0) {
+      return Object.assign(out, { reason: 'awaiting', heldOnTimeout: false, remainingMs: null,
+        note: 'vmu.paper.officeConsultTimeoutMs=0: the wait is unbounded, so the request stays open (hold)' })
+    }
+    if (elapsedMs < timeoutMs) return Object.assign(out, { reason: 'awaiting', heldOnTimeout: false, remainingMs: timeoutMs - elapsedMs })
+    if (c.consultOnTimeout === 'refuse') {
+      // The request EXPIRED: it is cleared so a later attempt asks afresh, and the refusal says so.
+      p.consult.requestedAt = null
+      p.consult.by = null
+      return Object.assign(out, { reason: 'timeout', timedOut: true, heldOnTimeout: false, requestCleared: true, remainingMs: 0 })
+    }
+    return Object.assign(out, { reason: 'timeout', timedOut: true, heldOnTimeout: true, requestCleared: false, remainingMs: 0 })
+  }
+
+  /** The named refusal + its trace. An audit row and a bus event are written BEFORE the throw, so evidence exists even
+   *  though the call failed; a missing seam is reported in the refusal instead of being silently skipped. */
+  async function refuseConsult(p, gate, c) {
+    // EVERY decision field the gate produced travels on the refusal (reason, the wait, which timeout action applied,
+    // whether the request survived) - a refusal that hides its own arithmetic cannot be audited.
+    const detail = { paperId: p.id, title: p.title, gate: 'office-consult', by: gate.who, state: p.state, enforceKeys: gate.enforced }
+    for (const [k, v] of Object.entries(gate)) {
+      if (k === 'enforced' || k === 'note' || k === 'who') continue
+      detail[k] = v
+    }
+    const trace = { audit: { appended: false, code: null, note: null }, bus: { emitted: false, hook: 'paper/office-consult-required', note: null } }
+    if (audit && typeof audit.append === 'function') {
+      try {
+        // `what:'auth'` because this IS an authorisation gate: the manuscript may not be finalised until the office has
+        // been consulted. It is the vocabulary the audit owns for "a required permission was missing".
+        audit.append({ what: 'auth', subject: 'paper:' + p.id, gate: 'office-consult', reason: gate.reason,
+          by: gate.who, onTimeout: gate.onTimeout, enforced: gate.enforced, enforceScope: ENFORCED_SCOPE })
+        trace.audit = { appended: true, code: null, note: null }
+      } catch (e) { trace.audit = { appended: false, code: (e && e.code) || 'VMU_AUDIT_WRITE_FAILED', note: String((e && e.message) || e) } }
+    } else {
+      trace.audit = { appended: false, code: 'VMU_ENGINE_UNAVAILABLE',
+        note: 'no audit seam is bound on this paper face: the refusal is in the trail below and nowhere durable (a named gap)' }
+    }
+    if (bus && typeof bus.emit === 'function') {
+      try {
+        if (typeof bus.declareTopic === 'function') bus.declareTopic('paper/office-consult-required')
+        await bus.emit('paper/office-consult-required', detail, {})
+        trace.bus = { emitted: true, hook: 'paper/office-consult-required', note: null }
+      } catch (e) { trace.bus = { emitted: false, hook: 'paper/office-consult-required', note: String((e && e.code) || (e && e.message) || e) } }
+    } else {
+      trace.bus = { emitted: false, hook: 'paper/office-consult-required', note: 'no bus seam is bound on this paper face (named, not skipped silently)' }
+    }
+    note(p.id, 'consult-required:' + gate.reason)
+    say({ type: 'paper/office-consult-required', at: clock(), paperId: p.id, reason: gate.reason, onTimeout: gate.onTimeout })
+    const msg = gate.reason === 'off'
+      ? 'unreachable: the gate is off'
+      : (gate.reason === 'awaiting'
+        ? 'cannot finalise ' + p.id + ': the office has not been consulted yet (waiting' + (gate.remainingMs === null ? ' (unbounded)' : ', ' + gate.remainingMs + 'ms left') + ')'
+        : 'cannot finalise ' + p.id + ': the office-consultation wait expired (' + gate.timeoutMs + 'ms) and vmu.paper.officeConsultOnTimeout=' + gate.onTimeout + (gate.heldOnTimeout ? ' ⇒ it stays on hold' : ' ⇒ the request was cleared, ask again'))
+    throw refuse('VMU_OFFICE_CONSULT_REQUIRED', msg,
+      'consult first: consult({ paperId: "' + p.id + '", kind: "message"|"meeting", by: "<who consulted>", ref: "<pointer>" }) - or make the caller an exempt role in vmu.paper.officeConsultExemptRoles, or switch the gate off with vmu.paper.officeConsult=off',
+      Object.assign({}, detail, { enforced: gate.enforced, trace }))
   }
 
   return {
@@ -143,6 +299,9 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
       const p = {
         id, title: t, at: clock(), editor: ed, state: 'open', finalizedAt: null, gaps: null, receipt: undefined,
         sections: names.map((n) => ({ name: n, owner: String(map[n]).trim(), by: null, at: null, artifact: null })),
+        // C-30: the consultation ledger. `requestedAt` is opened by the first BLOCKED attempt (or explicitly through
+        // requestConsult), and every `consult()` appends one entry - the evidence is the act, not a claim about it.
+        consult: { requestedAt: null, by: null, entries: [] },
       }
       papers.set(id, p)
       note(id, 'started')
@@ -174,8 +333,12 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
     },
 
     /**
-     * Finalise the manuscript. The completeness gate names every missing section AND its owner; the finaliser rule
-     * decides who may do it; and registration goes through the injected seam or is refused by name.
+     * Finalise the manuscript. The gates run in a stated order, each refusing BY NAME with what it evaluated:
+     *   ① the finaliser rule (`vmu.paper.finalizer`);
+     *   ② completeness (`vmu.paper.requireAllSections`, with the cap checked at `start`);
+     *   ③ C-30 the OFFICE-CONSULTATION gate (`vmu.paper.officeConsult*`) - the manuscript may not be finalised until the
+     *      office has consulted the institute, unless the caller is exempt or the pack switched the gate off;
+     *   ④ registration goes through the injected seam or is refused by name.
      */
     async finalize({ paperId, by } = {}) {
       const p = find(paperId)
@@ -185,18 +348,25 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
       if (!who) throw refuse('VMU_INVALID_ARGUMENT', 'finalize needs by', 'the finaliser is recorded')
       if (c.finalizer === 'editor' && who !== p.editor) {
         throw refuse('VMU_NOT_PERMITTED', 'only the editor (' + p.editor + ') may finalise, not ' + who,
-          'vmu.paper.finalizer=editor; set it to contributor/any if the pack wants a different rule')
+          'vmu.paper.finalizer=editor; set it to contributor/any if the pack wants a different rule',
+          { enforced: ['vmu.paper.finalizer'], paperId: p.id, caller: who, editor: p.editor })
       }
       if (c.finalizer === 'contributor' && who !== p.editor && !p.sections.some((s) => s.owner === who)) {
         throw refuse('VMU_NOT_PERMITTED', who + ' is neither the editor nor a contributor to ' + p.id,
-          'vmu.paper.finalizer=contributor')
+          'vmu.paper.finalizer=contributor',
+          { enforced: ['vmu.paper.finalizer'], paperId: p.id, caller: who })
       }
       const missing = p.sections.filter((s) => s.by === null)
       if (missing.length && c.requireAllSections) {
         throw refuse('VMU_STATE',
           'cannot finalise: ' + missing.length + ' section(s) outstanding - ' + missing.map((s) => '"' + s.name + '" (' + s.owner + ')').join(', '),
-          'the manuscript is finalised when what was promised is in; or set vmu.paper.requireAllSections=false to record the gaps instead')
+          'the manuscript is finalised when what was promised is in; or set vmu.paper.requireAllSections=false to record the gaps instead',
+          { enforced: ['vmu.paper.requireAllSections'], paperId: p.id, outstanding: missing.map((s) => ({ name: s.name, owner: s.owner })) })
       }
+      // ③ C-30: THE OFFICE-CONSULTATION GATE. Evaluated on the DECLARED keys, before anything is registered, and it
+      // refuses by name with `enforced[]` after writing its evidence (audit row + bus event).
+      const gate = consultGate(p, who, { now: clock() })
+      if (gate.blocked) await refuseConsult(p, gate, c)
       p.gaps = missing.map((s) => ({ name: s.name, owner: s.owner }))
       if (typeof register !== 'function') {
         throw refuse('VMU_ENGINE_UNAVAILABLE', 'no registration seam is bound', 'inject { register } - the kernel never writes the version chain itself (docs/11 §4.1)')
@@ -210,7 +380,63 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
       p.finalizedAt = clock()
       p.receipt = receipt === undefined ? null : receipt
       note(p.id, 'finalized' + (p.gaps.length ? ':with-gaps' : ''))
-      return { ok: true, paperId: p.id, state: p.state, by: who, gaps: p.gaps.slice(), receipt: p.receipt, droppedTrail }
+      return { ok: true, paperId: p.id, state: p.state, by: who, gaps: p.gaps.slice(), receipt: p.receipt, droppedTrail,
+        // The gate that ran travels in the receipt, so "was the office consulted?" is answerable for THIS finalisation.
+        consult: { required: gate.required, reason: gate.reason, count: gate.count || 0, kinds: gate.kinds || [],
+          exemptRole: gate.exemptRole || null },
+        enforced: ['vmu.paper.finalizer', 'vmu.paper.requireAllSections', 'vmu.paper.officeConsult'], fired: [] }
+    },
+
+    /**
+     * C-30 · RECORD A CONSULTATION. The evidence is the ACT: the office consulted the institute (a message sent, a
+     * meeting held), reported here by whoever owns that act - never by the finaliser asserting "I consulted". `kind`
+     * is free vocabulary ('message', 'meeting', or anything an institution names), so the face carries the mechanism
+     * while the pack decides which kinds count.
+     */
+    consult({ paperId, kind, by, ref } = {}) {
+      const p = find(paperId)
+      if (p.state !== 'open') throw refuse('VMU_STATE', 'paper ' + p.id + ' is ' + p.state, 'a finalised manuscript takes no further consultations')
+      const who = String(by || '').trim()
+      if (!who) throw refuse('VMU_INVALID_ARGUMENT', 'consult needs by', 'the consultation is attributed to who made it')
+      const k = String(kind || 'message').trim()
+      if (!k) throw refuse('VMU_INVALID_ARGUMENT', 'consult needs a non-empty kind', 'e.g. kind: "message" or "meeting"')
+      const at = clock()
+      const entry = { kind: k, by: who, at, ref: ref === undefined || ref === null || String(ref).trim() === '' ? null : String(ref) }
+      p.consult.entries.push(entry)
+      p.consult.requestedAt = null
+      p.consult.by = null
+      note(p.id, 'consult:' + k)
+      say({ type: 'paper/consulted', at, paperId: p.id, kind: k, by: who })
+      return { ok: true, paperId: p.id, consultation: entry, count: p.consult.entries.length,
+        kinds: [...new Set(p.consult.entries.map((e) => e.kind))].sort(), gate: 'satisfied',
+        enforced: WIRED_KEYS.filter((x) => x.indexOf('vmu.paper.officeConsult') === 0), fired: [] }
+    },
+
+    /** C-30 · OPEN THE REQUEST EXPLICITLY, so an institution can ask before it tries to finalise. Idempotent. */
+    requestConsult({ paperId, by, note: why } = {}) {
+      const p = find(paperId)
+      if (p.state !== 'open') throw refuse('VMU_STATE', 'paper ' + p.id + ' is ' + p.state, 'a finalised manuscript cannot ask again')
+      const who = String(by || '').trim()
+      if (!who) throw refuse('VMU_INVALID_ARGUMENT', 'requestConsult needs by', 'the request is attributed')
+      const opened = p.consult.requestedAt === null
+      if (opened) { p.consult.requestedAt = clock(); p.consult.by = who }
+      if (opened) note(p.id, 'consult-requested')
+      return { ok: true, paperId: p.id, opened, requestedAt: p.consult.requestedAt, by: p.consult.by,
+        reason: why === undefined || why === null ? null : String(why), enforced: ['vmu.paper.officeConsult'], fired: [] }
+    },
+
+    /** C-30 · READ THE GATE without changing anything: what WOULD happen if this caller finalised now. */
+    consultState({ paperId, by } = {}) {
+      const p = find(paperId)
+      const c = cfg()
+      const who = String(by === undefined || by === null ? p.editor : by).trim()
+      // `auto:false`: a read reports what WOULD happen and opens nothing (the request is opened by the attempt).
+      const gate = consultGate(p, who, { now: clock(), auto: false })
+      return { ok: true, paperId: p.id, state: p.state, caller: who, cfg: { officeConsult: c.officeConsult, consultOn: c.consultOn,
+        consultTimeoutMs: c.consultTimeoutMs, consultOnTimeout: c.consultOnTimeout, consultExemptRoles: c.consultExemptRoles },
+        gate: { required: gate.required, blocked: gate.blocked, reason: gate.reason, remainingMs: gate.remainingMs === undefined ? null : gate.remainingMs,
+          onTimeout: gate.onTimeout === undefined ? null : gate.onTimeout, heldOnTimeout: gate.heldOnTimeout === true,
+          wouldRequest: gate.wouldRequest === true, count: gate.count || 0, kinds: gate.kinds || [] } }
     },
 
     /** Read-only: every manuscript with its section states. Never a decision, only what is (docs/21 §5). */

@@ -323,6 +323,15 @@ export function apply(ctx, config = {}) {
   const extraPhases = packRuntime.length ? [...new Set(packRuntime.flatMap((r) => r.phases || []))] : null
   const promptPolicies = []   // the sink a pack's manifest.promptPolicies arrives through (vmu-pack's side)
   const kernel = createKernel(Object.assign({ sectionPolicy, noticeBlock, extraPhases, settings: settingsWithPackDefaults, root, spawn: spawnSeam, host: mathHost, deliverTurn: turnDeliver,
+    // ROUND 3 / task-20 F2: the MEMBER/MEETING/NOTIFY/REPORT delivery seam. The entry never injected one, so
+    // `status().seams.deliver` was false and every report that had something to say left its trace but carried a named
+    // refusal (`VMU_REPORT_NO_TRANSPORT`) - honest, but only half of "end-to-end automatic reporting".
+    // BOUNDARY (chosen deliberately): the deployment supplies the transport as `config.deliver` (a function the host
+    // owns: an inbox write, `subagents.sendMessage`, a webhook). We do NOT invent one from `ctx.get('subagents')` here,
+    // because the report/member envelopes differ from a turn's `{turn,text}` and guessing a shape would be exactly the
+    // "pretend it was delivered" failure the framework refuses. With no `config.deliver`, the seam stays absent and the
+    // named refusal remains the honest answer.
+    deliver: typeof config.deliver === 'function' ? config.deliver : null,
     // ROUND 1 / K5 (D-02): the entry is the only layer that knows a folded pack default from a deployment value, so it
     // hands the layer map in. The named overlap report travels to the HOST face instead (`mergeReport` below), because
     // the kernel never acts on it and a kernel seam read by one file only is exactly what the seam gate forbids.
@@ -348,7 +357,19 @@ export function apply(ctx, config = {}) {
   let packLoaderRef = null
   const packsDeclared = (Array.isArray(config.packs) && config.packs.length > 0) ||
     (Array.isArray(settings['vmu.packs.active']) && settings['vmu.packs.active'].length > 0)
-  const adapter = createHostAdapter(Object.assign({ ctx, kernel, settings, instance, scripts: Array.isArray(config.scripts) ? config.scripts : [],
+  // ROUND 3 / task-20 F1 (framework defect, measured by vmu-assistant on a real host): the adapter was handed the
+  // DEPLOYMENT's settings object, while a pack MANIFEST's settings (`packs/v5r/v5r-core.js` `PACK.settings`) are
+  // applied AFTER the kernel exists - into the KERNEL's own settings. So a family key that only a pack manifest
+  // declares was invisible to `resolveFaces()` and the face was never published (measured: pack-only load registered
+  // only status/records/pack/middleware, while `report.status()` showed the pack policy really armed).
+  // FIX AT THE ROOT: the adapter resolves intents from the KERNEL'S LIVE SETTINGS VIEW, so whatever
+  // `kernel.applyPackSettings()` writes (pack manifests, runtime `vibe_vmu_set`) is visible to the NEXT install -
+  // and the entry already re-installs after packs (see `await adapter.install()` below). No defaults.json workaround.
+  const adapter = createHostAdapter(Object.assign({ ctx, kernel,
+    // A caller may hand us a FAKE kernel (tests do): fall back to the deployment settings object when the real
+    // `settingsView()` accessor is absent, so the live-resolution fix does not require a real kernel to exist.
+    settings: typeof kernel.settingsView === 'function' ? kernel.settingsView() : settings,
+    instance, scripts: Array.isArray(config.scripts) ? config.scripts : [],
     packLoader: packsDeclared ? () => packLoaderRef : null,
     // ROUND 1 / K1 (D-01): `config` is handed over so `host.js` resolves WHICH faces are declared from the one map
     // (`resolveFaces`) instead of from four booleans assembled here. Every face now has a declaration path:
@@ -445,9 +466,26 @@ export function apply(ctx, config = {}) {
   // `agent/turn-stopping` event is bridged HERE (the entry owns its effects) rather than inside `host-hooks.js`
   // (which belongs to vmu-pack this round). A report must never break a turn, so a failure is swallowed - the
   // report face's own `status().reporting.failures` is where it is counted.
-  if (!switchedOff && kernel.report) {
+  // ROUND 3 / task-20 B: STRICT INERTNESS. The listener is attached ONLY when the report face is DECLARED (a
+  // `vmu.report.*` key, `config.report`, `config.faces`, or the universal `vmu.tools.faces` list naming it).
+  // "the kernel is enabled" is NOT a declaration: an undeclared face must not even install a host listener (the
+  // zero-mechanism red line), and with no declaration `report.tick()` would be a no-op anyway - so attaching it was
+  // invisible work with no effect, which is exactly the shape the red line forbids.
+  // F5 (Lead, measured on a real host): the SAME root cause as F1. `reportDeclared` was computed HERE (construction
+  // time), while a PACK MANIFEST's settings are applied at load time - so a pack-only deployment published
+  // `vibe_vmu_report` (F1 fixed the face resolution) but NEVER attached this listener, and the pack's own periodic
+  // reports could only be driven by the manual `action:'tick'`.
+  // FIX: the gate is evaluated AT INSTALL TIME and keyed on the F1 truth - the report face is PUBLISHED (the adapter's
+  // own registration list) - and it is re-evaluated after every install (the entry re-installs after packs/modules).
+  // The semantics are unchanged: NO declaration ⇒ the face is not published ⇒ no listener (zero-mechanism red line).
+  let reportTickAttached = false
+  const attachReportTick = () => {
+    if (switchedOff || reportTickAttached || !kernel.report) return
+    const published = typeof adapter.status === 'function' ? (adapter.status().registered || []) : []
+    if (!published.includes('vibe_vmu_report')) return   // F1's own answer: not declared ⇒ not published
+    reportTickAttached = true
     effect(() => {
-      if (!ctx || typeof ctx.on !== 'function') return () => {}
+      if (!ctx || typeof ctx.on !== 'function') { reportTickAttached = false; return () => {} }
       const listener = async () => { try { kernel.report.tick({ at: Date.now(), event: 'turn-end' }) } catch { /* never break the turn */ } }
       const dispose = typeof ctx.effect === 'function' ? ctx.effect(() => ctx.on('agent/turn-stopping', listener), 'vmu:report-tick') : ctx.on('agent/turn-stopping', listener)
       return typeof dispose === 'function' ? dispose : () => {}
@@ -458,6 +496,10 @@ export function apply(ctx, config = {}) {
       const installing = adapter.install()
       const cleanup = () => { try { adapter.uninstall() } catch { /* the host is going away anyway */ } }
       cleanups.push(cleanup)
+      // F5: the report clock is attached AFTER the tools are registered, because its gate IS the registration list
+      // (`vibe_vmu_report` published ⇔ the face is declared). This is the initial install; the entry re-installs after
+      // packs/modules and calls `attachReportTick()` again there (idempotent).
+      installing.then(() => attachReportTick(), () => {})
       // A registration that fails must SAY SO (R11: a silent failure is worse than a named one). The first
       // scripted live run found this the hard way: the tools never appeared and nothing was logged.
       installing.catch((e) => {
@@ -594,6 +636,9 @@ export function apply(ctx, config = {}) {
         try { await adapter.install() } catch (e) {
           packErrors.push({ id: '(reinstall)', code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) })
         }
+        // F5: a pack manifest may have just declared `vmu.report.*`, which is what publishes `vibe_vmu_report` - so the
+        // report clock is (re)considered HERE, where the F1 fix made the face visible.
+        attachReportTick()
         // ...and a pack can add BUS ENTRIES, whose hooks must now be bridged too (a rule that exists but is
         // not bridged is a rule that silently never fires).
         try { hooks.refresh() } catch (e) {
@@ -637,6 +682,7 @@ export function apply(ctx, config = {}) {
           try { await adapter.install() } catch (e) {
             moduleErrors.push({ id: '(reinstall)', code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) })
           }
+          attachReportTick()   // F5: a loaded module may have declared `vmu.report.*` too.
           try { hooks.refresh() } catch (e) {
             moduleErrors.push({ id: '(hooks)', code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) })
           }

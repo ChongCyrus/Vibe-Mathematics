@@ -60,6 +60,9 @@ export const PUBLIC_KEYS = Object.freeze([
   // ROUND 2 (reader-a's follow-up): `chat` and `panel` are the durable sources for "unacked messages" and the member
   // state panel, so they join the whitelist. Their `snapshot()/restore()` seams land with v5r-reader-c; until then
   // `resume.status().unhydrated[]` NAMES them rather than pretending they were restored.
+  // ROUND 3 / task-20 D (reader-a's task-18): the approval queue + veto ledger were session-memory only; this key makes
+  // them survive a restart (`kernel/human.js` via `resume.attachProjection({ key:'human', mode:'state' })`).
+  'human',
   'chat',
   'panel',
 ])

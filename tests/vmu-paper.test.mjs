@@ -32,6 +32,11 @@ const mkSettings = (over) => {
   const vals = Object.assign({
     'vmu.paper.requireAllSections': true,
     'vmu.paper.finalizer': 'editor',
+    // C-30 (round 3): the office-consult gate defaults to `required` in the schema. These scenarios finalise
+    // without declaring a policy and are NOT testing the consult gate (it has its own suite,
+    // tests/vmu-paper-consult.test.mjs), so the gate is explicitly OFF here - a minimal, semantics-preserving
+    // patch that keeps this file about what it was always about.
+    'vmu.paper.officeConsult': 'off',
   }, over || {})
   const reads = []
   return { reads, get(k) { reads.push(k); return vals[k] } }

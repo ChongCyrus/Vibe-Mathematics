@@ -27,6 +27,10 @@ export const apiVersion = 1
 /** The five fields. `subtasks` is the one the v5r line was missing (D-08 baseline B). */
 export const PANEL_FIELDS = Object.freeze(['overall', 'subgoal', 'plan', 'status', 'subtasks'])
 
+// The three resume codes are SINGLE-SOURCED in kernel/resume.js (never re-spelled here): this face returns its
+// own receipt for a refusal, which the projection engine recognises (see docs/07 §14).
+import { CODE as RESUME_CODE } from './resume.js'
+
 /** A running sub-task's state. `running` is what "正在执行的子任务" means; the others are the lifecycle. */
 export const PANEL_SUBTASK_STATES = Object.freeze(['planned', 'running', 'blocked', 'done'])
 
@@ -335,6 +339,54 @@ export function createPanel({
     },
 
     audit() { return viewAudit.map((a) => Object.assign({}, a)) },
+
+    /**
+     * PERSISTENCE SEAM v1 (kernel/resume.js interface, attached by `attachProjection`). The snapshot carries the
+     * ROWS, their history and the view audit — never the policy (`vmu.panel.auditCap`/`subtasksMax`/
+     * `deviationPolicy`/`historyCap` come from settings and are re-resolved on restore, so an old declaration can
+     * never pin a newer configuration). Injected seams (`bus`, `members`) are re-bound by the host, so they are
+     * NOT `skipped`; this face has no un-capturable state left, hence the explicit empty list.
+     */
+    snapshot() {
+      return { apiVersion, face: 'panel', v: 1, at: clock(),
+        data: {
+          rows: Object.fromEntries([...rows.entries()].map(([k, v]) => [k, clone(v)])),
+          history: Object.fromEntries([...history.entries()].map(([k, v]) => [k, v.map((e) => Object.assign({}, e))])),
+          viewAudit: viewAudit.map((a) => Object.assign({}, a)),
+          dropped: Object.assign({}, dropped),
+        },
+        // This face mints no ids of its own (rows are keyed by member id), so the counter is an explicit 0.
+        counters: { panel: 0 },
+        skipped: [] }
+    },
+
+    /**
+     * Hydrate a `snapshot()`. Merge-safe while NO row exists, idempotent on the same snapshot, and a NAMED
+     * conflict otherwise — a half-restored panel would silently show a mixture of two institutes.
+     */
+    restore(snap) {
+      if (!snap || typeof snap !== 'object') return { ok: false, restored: false, code: RESUME_CODE.snapshotIncomplete, message: 'no snapshot to restore', missing: ['snapshot'] }
+      if (snap.face !== 'panel') return { ok: false, restored: false, code: RESUME_CODE.snapshotVersion, message: 'not a panel snapshot (face=' + String(snap.face) + ')' }
+      if (Number(snap.v) !== 1) return { ok: false, restored: false, code: RESUME_CODE.snapshotVersion, message: 'unsupported snapshot version ' + String(snap.v), hint: 'this module speaks v1' }
+      const d = snap.data
+      const missing = ['rows', 'history', 'viewAudit'].filter((k) => !d || d[k] === undefined)
+      if (missing.length) return { ok: false, restored: false, code: RESUME_CODE.snapshotIncomplete, message: 'snapshot is missing ' + missing.join(', '), missing }
+      const same = JSON.stringify(d) === JSON.stringify(panel.snapshot().data)
+      if (rows.size > 0 && !same) {
+        return { ok: false, restored: false, code: RESUME_CODE.restoreConflict,
+          message: 'this panel already holds ' + rows.size + ' member row(s): refusing to half-overwrite them',
+          hint: 'restore into a fresh panel, or restore the snapshot that matches the live rows' }
+      }
+      rows.clear()
+      for (const [k, v] of Object.entries(d.rows || {})) rows.set(k, clone(v))
+      history.clear()
+      for (const [k, v] of Object.entries(d.history || {})) history.set(k, (Array.isArray(v) ? v : []).map((e) => Object.assign({}, e)))
+      viewAudit.length = 0
+      for (const a of (d.viewAudit || [])) viewAudit.push(Object.assign({}, a))
+      if (d.dropped) { dropped.history = Number(d.dropped.history || 0) || 0; dropped.audit = Number(d.dropped.audit || 0) || 0 }
+      return { ok: true, restored: true, restored_items: ['rows', 'history', 'viewAudit'],
+        counters: { panel: 0 }, members: rows.size, skipped: (snap.skipped || []).slice() }
+    },
 
     /** A dashboard row per known member: the three D-08 fields plus the v5r two, with counts. */
     board() {

@@ -376,7 +376,9 @@ MathJob = { id, kind, engine, input, timeoutMs, budget?, async?, createdAt, stat
 - **事件日志上限** ✓：Lean 作业事件日志有常量上限（超出计数丢弃、不静默）；
 - **隔离** ✓：作业在受控目录内运行；路径策略与写保护由 `vmu.safety.*` 决定（越界 ⇒ `VMU_NOT_PERMITTED`）；
 - **审计** ✓：作业起止、命令摘要、结果摘要入审计（**不落全文**，正文放文件）；
-- **持久化/断点续算**：**计算面 ✓**（`kernel/mathjobs.js`：耐久镜像 ＋ 状态全集 ＋ 恢复四分支，见 §4.1）与 **Lean 作业面 ✓**（`kernel/lean.js` 接**同一套原语** `createJobMirror`：镜像 `Formal/Jobs/<jobId>.json`，与 v5r 的路径拼写一致；状态 `queued|running|settled|failed|timeout|interrupted`；恢复四分支同 §4.1）。两条**具名限制**：① 宿主未暴露跨进程独占创建 ⇒ `admission().exclusiveCreate=false`、`crossProcess:'not-enforced'`；② Lean 面的 `spawn` 是 **promise 接缝（无 handle）** ⇒ `dispose()` 只能把在跑作业标 `interrupted`，**无法 terminate 子进程**（`admission().canTerminateChild=false`，不假装）。
+- **持久化/断点续算**：**计算面 ✓**（`kernel/mathjobs.js`：耐久镜像 ＋ 状态全集 ＋ 恢复四分支，见 §4.1）与 **Lean 作业面 ✓**（`kernel/lean.js` 接**同一套原语** `createJobMirror`：镜像 `Formal/Jobs/<jobId>.json`，与 v5r 的路径拼写一致；状态 `queued|running|settled|failed|timeout|interrupted`；恢复四分支同 §4.1）。限制**具名**：Lean 面的 `spawn` 是 **promise 接缝（无 handle）** ⇒ `dispose()` 只能把在跑作业标 `interrupted`，**无法 terminate 子进程**（`admission().canTerminateChild=false`，不假装）。
+- **跨进程独占创建（Round 3 ✓ 已实现，宿主可降级）**：注入的 fs 接缝若提供 `writeTextExclusive(rel, text)`（宿主用 `{flag:'wx'}` / `O_EXCL` 实现，Windows 即 `CREATE_NEW`），**作业镜像的首次写入就是一次原子占号**：两个进程铸出同一个 `jobId` 时，后来者得到具名拒 `VMU_MATH_JOB_ID_TAKEN`，**绝不覆盖**前者的镜像（`admission().exclusiveCreate=true`、`crossProcess:'enforced-by-exclusive-create'`）。没有该接缝时**降级但仍具名**：`exclusiveCreate:false`、`crossProcess:'not-enforced'`，并在 `notes` 里写清"缺了会怎样（后写者覆盖）＋ 谁需要它（多进程/多会话共用一个研究所目录的部署）"。
+- **大结果引用** ⛔ **未做（具名登记）**：超过 `captureStdoutBytes` 的输出目前只有**计数式截断**（`receipt.droppedBytes`），没有内容寻址的 `Math/Results/<sha256>` 引用面。缺了会怎样：被截断的完整输出只能在归档文件里找，**回执引用不到它**；谁需要它：要在**另一台机器/另一次会话**复核大输出的读者（复现包与审计链）。
 
 ### 4.1 作业镜像与恢复（**计算面 ＋ Lean 面均 ✓ 已实现**）
 
@@ -397,7 +399,17 @@ LeanJobMirror  = { schema:'vmu/lean-job@1',  jobId, statement, file, state, atte
   4. `settled` ＋ `exitCode===0` ＋ 指纹/哈希一致 ＋ **带回执**（Lean 面另需**构建上下文一致**）⇒ **采纳**；其余（含 `settled` 但**无回执**、上下文变了、文件已被改）⇒ **保持原状、不自动重跑**，逐条具名 `why`，且**绝不把 `passed` 从镜像里复活**（内存与磁盘不一致时，磁盘记录同步降级）。
   返回逐类计数 `{scanned,requeued,adopted,interrupted,left,corrupt,results}` ⇒ 恢复行为可断言、非空过。
 - **id 计数器**：两面都经 `kernel/ids.js`（唯一铸号者，D-15；`lean-` / `mj-` 前缀保留），恢复时 `observe()` 既有 id ⇒ 计数取 **max+1**，**重启后不复用编号**（模块自带 `let seq` 已删除）。
-- **能力边界（`admission()` 如实登记）**：`exclusiveCreate:false`、`crossProcess:'not-enforced'`；保留上限 `keepMirrors` 在有 `fs.removeText` 时**淘汰最旧＋计数**，没有该接缝时**到上限停写＋计数**。
+- **能力边界（`admission()` 如实登记）**：`exclusiveCreate`（有 `fs.writeTextExclusive` ⇒ true）与 `crossProcess`（`enforced-by-exclusive-create` / `not-enforced`）；保留上限 `keepMirrors` 在有 `fs.removeText` 时**淘汰最旧＋计数**，没有该接缝时**到上限停写＋计数**；占号失败计数 `idTaken`。
+
+### 4.2 C-45 忠实性缺陷 ⇒ **强制弃权**（Round 3 ✓ 已实现；判定点＝内核谓词）
+
+**落在哪一层（本轮的结论）**：**内核谓词**，不是 pack 声明。pack/代理只能**声明**"这份形式化不忠实"（且必须写明偏差，那是判断）；**能不能把它变成一张 1 或 0 的票**由内核回答，答案永远是"不能"。因此 pack 无法关掉它、成员也无法"忘记弃权"——这就是"强制"二字的落点。
+
+- **服务**：`kernel/fidelity.js`（`createFidelityRegistry`；服务键 `vmu.fidelity`）。它**刻意不挂在 `kernel/formal.js` 的方法表上**：形式化面的 10 个方法与 `vibe_vmu_formal` 的 10 个 action 必须一一对应（那条门禁要求谁都不许漂移），而忠实性弃权是**表决面消费的判定点** ⇒ 它有自己的服务键、读面与留痕目录。
+- **三个动词**：`declareDefect({target,by,note})`（缺 target/by/note ⇒ 具名拒 `VMU_MATH_INVALID_INPUT` ＋ `enforced[]`）、`abstentionFor({target,by})`（**纯谓词**，只对"该成员 × 该对象"成立）、`applyAbstention({target,by,declared})`（**唯一强制点**：被登记者声明的 `1`/`0` 一律被改写为 `0.5`；本来就是中间值则原样通过且**不重复计数**）。
+- **留痕**：marker `{markerId:'fd-N', target, by, note, at, enforcedVote:0.5, passedWithdrawn:true}`，**append-only**（同一对象第二个缺陷追加 history，绝不抹掉第一个人）。注入 fs 接缝时落 `Formal/Defects/<target>.json` 并可 `loadDefects()` 跨实例重载；没有 fs ⇒ `durable:false` **具名**，不假装持久。
+- **语义边界**：不忠实**永远不是反证**——所有返回 `isRefutation:false`；`passed` 只在"退出 0 且内容哈希未变"时成立，缺陷声明把它**撤回**（`passedWithdrawn:true`），把审查对象变回"形式化需重做"。
+- **closed-by（唯一需要外部一行）**：**表决面计票时必须把布尔票路由过 `applyAbstention`**（`kernel/ballotbox.js` 等）。本面已把强制点做好并可测；未接线的部分**具名**在这里，不在别处重复实现。
 
 ---
 

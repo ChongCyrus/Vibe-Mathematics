@@ -131,6 +131,11 @@ import { createChat } from './chat.js'
 import { createMailbox } from './mailbox.js'
 import { createPanel } from './panel.js'
 import { createReport } from './report.js'
+// ROUND 3 / task-24: the one-shot future-only activity waiter (vmu-activity's file).
+import { createActivity } from './activity.js'
+// ROUND 3 / task-20 (v5r-reader-b's task-19): the C-45 fidelity registry - `applyAbstention` is the ONE enforcement
+// point (a registered member's boolean vote is rewritten to 0.5) and it is NOT configurable, so it has no settings key.
+import { createFidelityRegistry } from './fidelity.js'
 import { createMathAdapters } from './mathadapters.js'
 // ROUND 2: the approval GATE wrapper (module-level export of kernel/human.js) - it wraps the named mutating methods
 // of a face so a gated action QUEUES instead of running (Lead's "审批未批 ⇒ 动作只能排队" requirement).
@@ -169,6 +174,20 @@ const WRITERS = Symbol('vmu.settings.writers')
  * host reads it from `status().settings.applies`), so one (key, value) pair can no longer get two
  * contradictory answers depending on which path it took.
  */
+/**
+ * ROUND 3 / task-20 F3: the faces MEASURED to read the settings handle at CALL time (not at construction). A key whose
+ * prefix matches one of these is in force in THIS session even when its declared hot class says "next start", so the
+ * receipt must neither under-report (claiming a restart) nor over-report it. Published in
+ * `status().settings.liveReaders` so the claim is AUDITABLE rather than trusted.
+ */
+export const LIVE_READERS = Object.freeze({
+  'vmu.prompts.': 'kernel/prompt (assembled per turn; the D-13 live reads)',
+  'vmu.report.': 'kernel/report (settings.get on every call)',
+  'vmu.resume.': 'kernel/resume (per call)',
+  'vmu.ids.': 'kernel/ids (per mint)',
+  'vmu.turn.': 'kernel/prompt via a {{ setting:<key> }} variable (per assembly)',
+})
+const liveReadersOf = (key) => Object.entries(LIVE_READERS).filter(([p]) => String(key).startsWith(p)).map(([, who]) => who)
 export const APPLIES = Object.freeze({
   H0: 'immediately',
   H1: 'next turn',
@@ -577,7 +596,19 @@ export function createKernel({
   // `vmu.board.*` / `vmu.minutes.*` keys literally, so the settings table derives their "wired" state by itself.
   const governance = createGovernance({ settings: settingsView, bus, clock, log })
   const board = createBoard({ settings: settingsView, bus, clock, log, tasks })
-  const minutes = createMinutes({ settings: settingsView, bus, clock, log, meeting: null })
+  // ROUND 3 / task-20 D + Lead's fix: a HOLDER object, not a direct `meetings` reference - the Proxy is created before
+  // `const meetings = …` is initialized, and touching a `const` in its TDZ throws
+  // (`Cannot access 'meetings' before initialization`), which made any early access a landmine. With a holder, an
+  // access before the real instance exists yields `undefined` instead of throwing.
+  const meetingsRef = { current: null }
+  const meetingsSeam = new Proxy({}, {
+    get: (t, k) => { const m = meetingsRef.current; return m && typeof m[k] === 'function' ? m[k].bind(m) : (m ? m[k] : undefined) },
+    has: (t, k) => !!(meetingsRef.current && k in meetingsRef.current),
+  })
+  const minutes = createMinutes({ settings: settingsView, bus, clock, log,
+    // reader-c's `resolve()` reads `tier`/`truthWriteRefusal` off this seam. BOTH spellings are handed over (`meeting`
+    // was the original option name, `meetings` is the one reader-c asked for in task-17) so neither side has to guess.
+    meeting: meetingsSeam, meetings: meetingsSeam })
   const budget = createBudget({ settings: settingsView, bus, clock, log })
   const metrics = createMetrics({ settings: settingsView, bus, clock, log })
   // The audit SERVICE reuses the kernel's EXISTING disk seam (`auditToDisk`) instead of opening a second write
@@ -687,6 +718,23 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   const crypto = createCrypto({ settings: settingsView, bus, clock: guardedClock, log, signer })
   const notify = createNotify({ settings: settingsView, bus, clock: guardedClock, log, deliver })
   noteSeam('deliver', 'notify', notify ? deliver : null)
+  // ROUND 3 / task-24 (vmu-activity's frozen contract): the ONE-SHOT future-only activity waiter. NOTE: the kernel's
+  // `timer` option is deliberately NOT forwarded - omitting it makes the face use the platform timer
+  // (`status().timer.shape === 'global-setTimeout'`), whereas `timer: null` would mean "this deployment has no timer"
+  // and refuse every `wait()` by name (`VMU_ACTIVITY_NO_TIMER`). `activePeers` is a real seam when a roster exists
+  // (v5r's "no live peer ⇒ immediate noProgress"); without it `status().peerCheck.seam` reports false.
+  // CLOCK: the RAW clock, not `guardedClock` - MEASURED: `activity.status()` reads `clock()` (activity.js:513) and the
+  // monotonic guard refuses a caller-supplied ISO-string clock, which took `kernel.status()` down with it (the same
+  // failure already fixed for `bindIds`/`createReport`/`createResume`). Waiter timestamps are informational.
+  const activity = createActivity({ clock, log, settings: settingsView, bus,
+    activePeers: members && typeof members.roster === 'function'
+      ? (me) => members.roster().filter((m) => m && m.state !== 'ended').map((m) => String(m.id)).filter((id) => id !== String(me || ''))
+      : null })
+  // ROUND 3 / task-20 (reader-b's sheet): the fidelity registry. `ids` is omitted on purpose - the module uses the
+  // module-level minter bound by `bindIds` above (so `fd-N` never restarts); `fs` is the host file face (its absence is
+  // NAMED as `durable:false` by the module, not silently ignored).
+  const fidelity = createFidelityRegistry({ clock, log, bus,
+    fs: host && typeof host.writeText === 'function' && typeof host.readText === 'function' ? host : null })
   // ROUND 2 (task-14, vmu-assistant's contract): the REPORTING face. It has NO internal timer by design ("a report
   // never drives anything"), so the entry advances it at the turn boundary; `deliver` is the transport (a missing one
   // is a NAMED refusal, not a silent drop) and `audit` is where parameter changes are recorded.
@@ -729,22 +777,50 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // advances to max+1 and an id is never reused); `mode:'state'` needs a snapshot/restore pair on the service, which
   // the owning teammate adds. Faces whose service does not expose the pair yet are simply absent here - named.
   const RESUME_PROJECTION_ADAPTERS = {
-    // `tasks` already exposes `list()`; its journal replays through the same public methods it records.
-    tasks: () => ({ key: 'tasks', mode: 'journal', list: () => (typeof tasks.list === 'function' ? tasks.list() : []),
-      replay: (entry) => (entry && typeof entry.method === 'string' && typeof tasks[entry.method] === 'function'
-        ? tasks[entry.method](entry.args || {}) : undefined) }),
+    // `tasks` already exposes `list()`; its journal replays through the SAME public methods it records.
+    // ROUND 3 / task-20 (reader-a's review): the custom `replay` was WRONG - the wrapper records `entry.args` as an
+    // ARGUMENT ARRAY, so `tasks.create([{title}])` was replayed as `create({title:undefined})` and hydrate refused
+    // `VMU_INVALID_ARGUMENT`. The instance's own `replaySeam` does `fn.apply(target, entry.args)` (correct), so the
+    // custom seam is DELETED rather than reimplemented.
+    tasks: () => ({ key: 'tasks', mode: 'journal', list: () => (typeof tasks.list === 'function' ? tasks.list() : []) }),
     // `work` is the in-flight ledger and is already durable; the projection keeps it visible to recovery.
     work: () => ({ key: 'work', mode: 'journal', list: () => (workLedger && typeof workLedger.list === 'function' ? workLedger.list() : []) }),
+    // ROUND 3 / task-20 (reader-a's completion list): the eight faces that NOW expose `snapshot()/restore()`.
+    // `mode:'state'` + a snapshot/restore pair ⇒ `attachProjection` also WRITES THROUGH after each wrapped mutation
+    // (reader-a's after-hook, gated by `vmu.resume.writeThrough`), so these are durable as soon as they are declared.
+    members: () => ({ key: 'members', mode: 'state', snapshot: () => members.snapshot(), restore: (v) => members.restore(v), list: () => (typeof members.roster === 'function' ? members.roster() : []) }),
+    meetings: () => ({ key: 'meetings', mode: 'state', snapshot: () => meetings.snapshot(), restore: (v) => meetings.restore(v), list: () => [] }),
+    ballotbox: () => ({ key: 'ballotbox', mode: 'state', snapshot: () => ballotbox.snapshot(), restore: (v) => ballotbox.restore(v), list: () => [] }),
+    minutes: () => ({ key: 'minutes', mode: 'state', snapshot: () => minutes.snapshot(), restore: (v) => minutes.restore(v), list: () => [] }),
+    chat: () => ({ key: 'chat', mode: 'state', snapshot: () => chat.snapshot(), restore: (v) => chat.restore(v), list: () => [] }),
+    panel: () => ({ key: 'panel', mode: 'state', snapshot: () => panel.snapshot(), restore: (v) => panel.restore(v), list: () => [] }),
+    // NAMED as NOT attachable in this round (reader-a's review): `budget.js` exposes no public snapshot/restore pair
+    // (its internal `snapshot` is a formatter), and `mailbox.js` has `snapshot()` but no `restore()` ⇒ a `state`
+    // projection would be a one-way write. They are absent rather than faked, and `status().projections.notAttached`
+    // names them with this reason. `meeting`/`ballot` are PER-SESSION factories (no single live instance is owned
+    // here), so wrapping "the" instance would be a guess - their owner decides (reader-a: "不要由我猜").
   }
   const resume = createResume({ store, work: workLedger, control, identity, settings: settingsView, bus,
-    clock: guardedClock, log, faces: {} })
+    // CLOCK: the RAW clock, not `guardedClock` - measured: the monotonic guard refuses a caller-supplied ISO-string
+    // clock (`VMU_CLOCK_UNGUARDED: … NaN`), and `recover()` reads it, so the whole startup recovery was reported as
+    // failed under a string clock. Recovery timestamps are informational; the elapsed-time guard belongs to the
+    // TTL-sensitive services (the same reasoning already applied to `bindIds` and `createReport`).
+    clock, log, faces: {} })
   const attachedProjections = []
-  {
+  // ROUND 3 / task-20: the attach loop is a FUNCTION called at the END of this factory (see `attachDeclaredProjections()`
+  // below `records`), because `meetings`/`ballotbox` are constructed after the resume block - running it here measured as
+  // `Cannot access 'meetings' before initialization`. The adapter lambdas above are late-bound, so the call site is the
+  // only thing that had to move.
+  const attachDeclaredProjections = () => {
     const declaredProjections = Array.isArray(settings['vmu.resume.projections']) ? settings['vmu.resume.projections'] : []
-    const targets = { tasks, work: workLedger }
+    // The live instances each adapter wraps. `meeting`/`ballot` are excluded on purpose (per-session factories).
+    const targets = { tasks, work: workLedger, members, meetings, ballotbox, minutes, chat, panel }
     const methodsOf = { tasks: ['create', 'assign', 'transition', 'brief', 'clearBrief', 'advance', 'rollback'], work: [] }
     for (const key of declaredProjections) {
       const face = String(key)
+      // `human` is attached by its own dedicated block above (it exists unconditionally and is not in the adapter
+      // table), so the declared list must not re-report it as "not attached".
+      if (attachedProjections.some((a) => a.face === face && a.attached)) continue
       const make = RESUME_PROJECTION_ADAPTERS[face]
       if (typeof make !== 'function') { attachedProjections.push({ face, attached: false, reason: 'no adapter in this assembly (the service does not expose a journal/snapshot seam yet)' }); continue }
       try {
@@ -758,6 +834,23 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
         attachedProjections.push({ face, attached: false, reason: String((e && e.message) || e), code: (e && e.code) || null })
       }
     }
+  }
+  // ROUND 3 / task-20 D (reader-a's task-18): THE APPROVAL QUEUE + VETO LEDGER ARE DURABLE. Attached
+  // UNCONDITIONALLY (the human face always exists; `vmu.resume.projections` governs only the optional faces), with the
+  // exact method list reader-a specified - `gate` is deliberately NOT listed because it calls `approvalDecision()`
+  // internally, so listing both would record the same decision twice.
+  if (human && typeof human.snapshot === 'function' && typeof human.restore === 'function') {
+    try {
+      const out = resume.attachProjection({ target: human,
+        methods: ['veto', 'explainDecision', 'liftVeto', 'openApproval', 'decide', 'approvalDecision'],
+        key: 'human', mode: 'state', snapshot: () => human.snapshot(), restore: (v) => human.restore(v),
+        list: () => (typeof human.queue === 'function' ? human.queue().requests : []) })
+      attachedProjections.push({ face: 'human', attached: true, mode: 'state', key: 'human', wrapped: out.wrapped, missing: out.missing })
+    } catch (e) {
+      attachedProjections.push({ face: 'human', attached: false, reason: String((e && e.message) || e), code: (e && e.code) || null })
+    }
+  } else {
+    attachedProjections.push({ face: 'human', attached: false, reason: 'the human face exposes no snapshot()/restore() in this assembly' })
   }
   // `PROJECTION_KEYS` is the framework's full list; the difference between it and what this assembly attached is
   // reported (named), so "which durable keys actually have a writer" is answerable from status().
@@ -783,7 +876,10 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // projection is migrated instead of silently discarded.
   // ROUND 22: three more declared-knob families become behaviour, each following the mathtools standard (the
   // receipt lists the keys it actually enforced, and anything unwired is named rather than silently ignored).
-  const meetings = createMeetings({ settings: settingsView, bus, clock: guardedClock, log })
+  // P0 (Lead): the real instance lands in the HOLDER the late-bound seam reads, and the local name is kept so the rest
+  // of this file is unchanged. No `const`→`let` double declaration, and no early access can hit the TDZ.
+  meetingsRef.current = createMeetings({ settings: settingsView, bus, clock: guardedClock, log })
+  const meetings = meetingsRef.current
   const ballotbox = createBallotBox({ settings: settingsView, bus, clock: guardedClock, log })
   const records = createRecords({ settings: settingsView, bus, clock: guardedClock, log })
   // ── ROUND 2 (task-14): THE APPROVAL GATE, ATTACHED TO THE REAL FACES ──────────────────────────────────
@@ -811,6 +907,10 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     }
     approvalGateReport = gateReport   // exposed through status() so "which face is gated" is answerable
   }
+  // ROUND 3 / task-20: EVERY FACE NOW EXISTS, so the declared durable projections are attached HERE. The loop lives
+  // here (not beside `createResume`) because `meetings`/`ballotbox` are constructed after that block - running it there
+  // measured as `Cannot access 'meetings' before initialization`.
+  attachDeclaredProjections()
   // ROUND 339: the TURN LOOP as a service (docs/26). Constructed here, once the faces it dispatches into exist,
   // so a host that installs only the framework can run a member turn. Delivery goes through the host seam; with no
   // seam it refuses by name rather than pretending a member answered.
@@ -960,7 +1060,14 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   registry.register('vmu.chat', { apiVersion: 1 }, { kind: 'service', description: 'group chat: admin list, speech quota and mute are declared, hot-changed and audited (docs/17)' })
   registry.register('vmu.mathadapters', { apiVersion: 1 }, { kind: 'service', description: '数学库适配面：numpy/scipy/pandas/sympy 的会话级环境绑定、结果形状契约与具名拒（docs/09·15）' })
   registry.register('vmu.mailbox', { apiVersion: 1 }, { kind: 'service', description: 'durable per-recipient mailbox: ack only after a successful delivery, unacked remains redeliverable (docs/17)' })
+  // ⚠ MEASURED MISTAKE, fixed here: the three registrations below were each ADDED by REPLACING the previous line
+  // (the `vmu.panel` line was overwritten by `vmu.activity`, then by `vmu.fidelity`), which silently unregistered
+  // `vmu.panel` and `vmu.activity` - a service with a factory, a tool face and settings keys but NO registry entry is
+  // exactly the "silently unreachable" shape D-01 forbids. All three are now present.
   registry.register('vmu.panel', { apiVersion: 1 }, { kind: 'service', description: 'member state panel: overall goal, plan and running subtasks, append-only with a view audit (docs/17)' })
+  registry.register('vmu.activity', { apiVersion: 1 }, { kind: 'service', description: '一次性 future-only 活动等待器：等待开始前的通知绝不唤醒、一次通知只唤醒当前一代、超时 disposer 在所有分支清理（docs/08 原语）' })
+  registry.register('vmu.fidelity', { apiVersion: 1 }, { kind: 'service',
+    description: '忠实性缺陷强制弃权（C-45，v5r 的 L2 option A）：declareDefect 留痕（append-only，可落 Formal/Defects/<target>.json 并 loadDefects 重载）；abstentionFor 是纯谓词；applyAbstention 是唯一强制点——被登记者在该对象上的布尔票 1/0 一律被改写为 0.5 弃权（不可由 pack 关闭）。' })
   registry.register('vmu.report', { apiVersion: 1 }, { kind: 'service', description: 'reporting: declarable report triggers (event/period/threshold), content templates, recipients and channels, an off switch whose default declares nothing, an append-only trace, and a parameter-config face whose domain and owners come from settings rather than from the kernel (docs/22 §reporting)' })
   registry.register('vmu.skills', { apiVersion: 1 }, { kind: 'service', description: 'skills: never self-appointed, expiry degrades and says so (docs/17 搂8)' })
   registry.register('vmu.publication', { apiVersion: 1 }, { kind: 'service', description: 'publication: unbroken version chain, offline archive registration, availability that refuses on-request-only (docs/16 搂7)' })
@@ -1119,6 +1226,10 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     get mailbox() { return mailbox },
     get panel() { return panel },
     get report() { return report },
+    // ROUND 3 / task-24: the activity waiter, reachable like every other service.
+    get activity() { return activity },
+    // ROUND 3 / task-20: the fidelity registry (the C-45 enforcement point).
+    get fidelity() { return fidelity },
     /** The control SERVICE (`createControl`), distinct from `kernel.control()` - the control VIEW function that has
      *  occupied that name since round 1. `tune()` (the mid-flight retune face) lives on the service. */
     get controlService() { return control },
@@ -1174,7 +1285,11 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     /** Per-object primitives: the kernel supplies the factory, the pack supplies the policy. */
     ballot: (opts = {}) => {
       const made = createBallot(Object.assign({ quorumRule: settings['vmu.meetings.quorumRule'], bus, clock,
-        isPaused: () => controlState.state === 'paused' }, opts))
+        isPaused: () => controlState.state === 'paused',
+        // ROUND 3 / task-20 (reader-c's task-17): the C-45 ENFORCEMENT seam. `ballot.cast()` is the single point where
+        // a registered member's boolean vote is rewritten to 0.5; without this seam the face reports
+        // `status().fidelitySeam === false` and rewrites NOTHING (self-disclosed, never a pretend enforcement).
+        fidelity }, opts))
       // LIVE OBJECTS (docs/03 搂3.1): the tool face addresses a ballot by id, so the kernel keeps the session's
       // live instances. This is not new policy - it is the SAME primitive, reachable by name. Bounded by
       // `liveCap` so a long session cannot grow it without limit (the oldest is evicted, and that is counted).
@@ -1394,18 +1509,30 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
         pendingConsumers.push('script-bridge')
       }
       if (key === 'vmu.audit.chain.checkpointEvery') liveApplied.push('auditchain (live read)')
-      const requiresRestart = hot === 'H2'
+      // ROUND 3 / task-20 F3 (measured on a real host): the receipt scored the key by its DECLARED hot class alone, so
+      // `vibe_vmu_set vmu.turn.instituteName` answered "next session (restart required)" while the value was visible on
+      // the NEXT TURN. The MEASURED live readers are now part of the verdict: an H2 key that has one is NOT a restart.
+      const liveReadBy = liveReadersOf(key)
+      const requiresRestart = hot === 'H2' && liveReadBy.length === 0
       const receipt = {
         ok: true, key, source: 'runtime', hot, who: g.who, ownerCheck: g.ownerCheck,
-        appliesAt: APPLIES[hot] || null,
+        // F3: `appliesAt` must agree with `requiresRestart` - an H2 key with a MEASURED live reader is not "next
+        // session" for that reader, so the declared class is stated alongside the measured effect.
+        appliesAt: hot === 'H2' && liveReadBy.length
+          ? 'this session for the measured live readers (' + liveReadBy.join(', ') + '); declared class H2, so construction-time readers see it next start'
+          : (APPLIES[hot] || null),
         requiresRestart,
         applied: requiresRestart ? 'next-session' : 'immediate',
         liveApplied,
         pendingConsumers,
+        // F3: WHICH live readers were measured for this key (empty ⇒ the declared class is the whole truth).
+        liveReadBy,
         value: value === undefined ? null : value,
         at: clock(),
         note: requiresRestart
-          ? 'hot class ' + hot + ': this key is read ONCE at construction, so the value is stored NOW and takes effect on the next start (requiresRestart:true — the receipt does not claim more)'
+          ? (liveReadBy.length
+            ? 'declared hot class ' + hot + ': stored now and read at construction only by the faces that captured it; MEASURED: it also has LIVE readers, so it is already in force in this session for ' + liveReadBy.join(', ') + ' (the receipt neither under- nor over-reports)'
+            : 'hot class ' + hot + ': this key is read ONCE at construction, so the value is stored NOW and takes effect on the next start (requiresRestart:true — the receipt does not claim more)')
           : (pendingConsumers.length
             ? 'applied live to ' + (liveApplied.join(', ') || '(the settings object only)') + '; NOT yet visible to ' + pendingConsumers.join(', ') + ' (they captured the option at construction — disclosed, not claimed)'
             : 'applied immediately (hot class ' + String(hot) + '): every consumer reads this key live'),
@@ -1529,6 +1656,9 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
           // what it really applied — the receipt and this line are the same fact, not two opinions.
           hotGrading: 'H0/H1 runtime writes are applied LIVE (and the receipt names the consumers); an H2 write is stored now and takes effect on the next start, and its receipt carries requiresRestart:true; H3 keys are framework-owned and REFUSED by name on BOTH paths (kernel API and tool face)',
           applies: APPLIES,
+          // ROUND 3 / task-20 F3: the AUDITABLE table behind `liveReadBy` - which faces read the settings handle at
+          // call time. Without it the receipt's live claim would be unauditable prose.
+          liveReaders: LIVE_READERS,
           runtimeWrites: runtimeWrites.length,
           lastRuntimeWrite: runtimeWrites.length ? Object.assign({}, runtimeWrites[runtimeWrites.length - 1]) : null },
         auditTail: auditRing.slice(-20),
@@ -1541,6 +1671,8 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
         // `reporting.declared`/`enabled`/`fires`/`trace`/`params` - the fields its assertions read).
         approvalGate: approvalGateReport,
         reporting: report && typeof report.status === 'function' ? report.status() : null,
+        // ROUND 3 / task-24: the waiter is observable too (waiters / generations / timer shape).
+        activity: activity && typeof activity.status === 'function' ? activity.status() : null,
         /** N1 consumer (round 20): verify the LIVE ring against the tamper-evident chain, row by row.
          *  Round 24: it uses the anchor when one exists - an unanchored verification must not be able to look
          *  like an anchored one, and a truncated tail is only detectable against an anchor. */

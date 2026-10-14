@@ -350,8 +350,17 @@ export function createLeanFace(opts) {
     }
     jobs.set(id, j); order.push(id)
     note(id, 'queued')
+    // CROSS-PROCESS CLAIM (N5): with the exclusive seam, taking the mirror is what makes this job OURS.
+    const claimed = await writeMirror(j)
+    if (claimed && claimed.ok === false && claimed.code === 'VMU_MATH_JOB_ID_TAKEN') {
+      jobs.delete(id)
+      const k = order.indexOf(id); if (k !== -1) order.splice(k, 1)
+      note(id, 'rejected:job-id-taken')
+      return refuse('VMU_MATH_JOB_ID_TAKEN', '作业号 ' + id + ' 已被另一个进程占用（独占创建拒绝）',
+        '换一个 jobId，或让 id 计数器真正持久（kernel/ids.js 绑定 store）后再提交；本面绝不覆盖别人的镜像 ✗',
+        ['vmu.math.jobs.persist', 'vmu.math.jobs.dir'])
+    }
     emit('lean/job-submitted', { jobId: id, file })
-    await writeMirror(j)
     if (c.leanAsync) { Promise.resolve().then(pump); return { ok: true, id, state: 'queued' } }
     // 同步路径：**等待本次结算**（不影响其他作业；leanAsync=false ⇒ 调用方拿到终态）
     await runOne(j)
@@ -384,12 +393,15 @@ export function createLeanFace(opts) {
     const c = cfg()
     const bad = c.jobsDir === null
     const ms = mirrorInst ? mirrorInst.status() : { count: 0, retention: 'append-only-refuse-after-cap', skipped: 0, evicted: 0, failed: 0 }
+    const xc = !!(fsSeam && typeof fsSeam.writeTextExclusive === 'function')
     const notes = []
     if (!fsSeam) notes.push('未注入 fs 接缝 ⇒ 镜像/断点续算具名不可用（admission.fileMirror=false）')
     if (bad) notes.push('vmu.math.jobs.dir 不是 root 相对安全路径 ⇒ 镜像被拒（VMU_LEAN_JOBS_DIR_UNSAFE）')
     if (c.persist !== true) notes.push('vmu.math.jobs.persist=false ⇒ 镜像面关闭（作业只活在本次会话内存）')
     if (fsSeam && typeof fsSeam.removeText !== 'function') notes.push('fs.removeText 缺失 ⇒ 淘汰不可做：到达 keepMirrors 后停止写盘并计数（mirrorSkipped）')
-    notes.push('跨进程独占创建：宿主未暴露该原语 ⇒ crossProcess=not-enforced（同名 jobId 并发写盘不保证唯一）')
+    notes.push(xc
+      ? '跨进程独占创建：宿主提供 fs.writeTextExclusive（wx/O_EXCL）⇒ 首个镜像写入**原子占号**，同号并发写盘被具名拒（VMU_MATH_JOB_ID_TAKEN）'
+      : '跨进程独占创建：宿主未暴露 writeTextExclusive ⇒ crossProcess=not-enforced（同名 jobId 的并发写盘不保证唯一，后写者覆盖）；需要它的是"多进程/多会话共用一个研究所目录"的部署')
     notes.push('dispose() 只能把在跑作业标 interrupted：注入的 spawn 是 promise 接缝，没有 handle ⇒ **无法 terminate 子进程**（具名限制，不假装）')
     return {
       ok: true,
@@ -405,8 +417,8 @@ export function createLeanFace(opts) {
       // and the module-level `LEAN_JOB_STATES` export is the one authority — the computation face exports its
       // own `JOB_STATES` the same way (one shape, not an instance-method twin).
       jobStates: LEAN_JOB_STATES.slice(),
-      exclusiveCreate: false,
-      crossProcess: 'not-enforced',
+      exclusiveCreate: xc,
+      crossProcess: xc ? 'enforced-by-exclusive-create' : 'not-enforced',
       canTerminateChild: false,          // honest: the promise seam exposes no handle
       mirrors: ms.count,
       mirrorSkipped: mirrorSkipped + (ms.skipped || 0),

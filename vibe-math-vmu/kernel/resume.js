@@ -51,7 +51,7 @@ const natural = (v, d) => { const n = Number(v); return Number.isInteger(n) && n
 export const RESUME_KEY = 'resume'
 
 /** The keys a projection may write. They are ALL already in the store white-list; this is not a new one. */
-export const PROJECTION_KEYS = Object.freeze(['members', 'tasks', 'meetings', 'ballots', 'budget', 'phase', 'work', 'chat', 'panel'])
+export const PROJECTION_KEYS = Object.freeze(['members', 'tasks', 'meetings', 'ballots', 'budget', 'phase', 'work', 'chat', 'panel', 'human'])
 
 /** The steps of a recovery, in the order the v5r `resume()` used (docs/07 §4: one code path for both restarts). */
 export const RECOVERY_STEPS = Object.freeze([
@@ -230,7 +230,7 @@ export function createProjection({ key, mode = 'journal', snapshot = null, resto
  * Returns `{ wrapped, missing, projection, unwrap }` — a method name that does not exist is REPORTED, never
  * silently skipped (a typo in the assembly list would otherwise lose durability for that method).
  */
-export function attachProjection({ target, methods = [], projection, onError = null, nonReplayable = [] } = {}) {
+export function attachProjection({ target, methods = [], projection, onError = null, nonReplayable = [], after = null } = {}) {
   if (!target || typeof target !== 'object') throw refuse('VMU_INVALID_ARGUMENT', 'attachProjection needs a target object')
   if (!projection || typeof projection.record !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'attachProjection needs a projection from createProjection()')
   const cannotReplay = new Set(listOf(nonReplayable))
@@ -238,6 +238,14 @@ export function attachProjection({ target, methods = [], projection, onError = n
   const missing = []
   const originals = new Map()
   let replaying = false
+  const runAfter = (name) => {
+    if (typeof after !== 'function' || replaying) return
+    try {
+      const r = after(name)
+      // A write-through is asynchronous by nature; a rejected promise must be REPORTED, never left unhandled.
+      if (r && typeof r.catch === 'function') r.catch((e) => { if (typeof onError === 'function') onError(e) })
+    } catch (e) { if (typeof onError === 'function') onError(e) }
+  }
   for (const name of listOf(methods)) {
     const original = target[name]
     if (typeof original !== 'function') { missing.push(name); continue }
@@ -245,6 +253,7 @@ export function attachProjection({ target, methods = [], projection, onError = n
     const record = (args, result) => {
       if (replaying) return
       try { projection.record(name, args, result, !cannotReplay.has(name)) } catch (e) { if (typeof onError === 'function') onError(e) }
+      runAfter(name)
     }
     target[name] = function wrappedMethod(...args) {
       let out
@@ -306,6 +315,9 @@ export function createResume({ store = null, work = null, control = null, identi
     keepRecoveries: natural(sget('vmu.resume.keepRecoveries'), 20),
     readBack: sget('vmu.resume.readBack') !== false,
     journalCap: natural(sget('vmu.resume.journalCap'), 5000),
+    // State projections are written after every wrapped mutation unless this is switched off (a face that is
+    // hydratable but never written is durable in appearance only).
+    writeThrough: sget('vmu.resume.writeThrough') !== false,
   })
 
   // ── the read-before-write latch (invariant ①) ───────────────────────────────────────────────────────────────
@@ -315,9 +327,12 @@ export function createResume({ store = null, work = null, control = null, identi
   let readDigest = null
   let writeRefusals = 0
   let writes = 0
+  let writesThrough = 0
+  let writeThroughFailures = 0
   let readBacks = 0
   let readBackFailures = 0
   let lastDrift = null
+  let phaseValue = null          // the institute phase this session knows about (durable under `phase`)
   const expectations = new Map()   // key -> digest of what we last wrote (read-back compares against it)
 
   const stamp = () => {
@@ -441,15 +456,58 @@ export function createResume({ store = null, work = null, control = null, identi
     return { ok: true, kind: k, counter: max, observed: seen.length, raised }
   }
 
+  // ── the institute phase: a first-class durable value this engine owns ───────────────────────────────────────
+  // `phase` is a declared white-list key that NO kernel module writes (Round 2 measured it). Rather than leave a
+  // "hydratable but never written" row, the engine owns it: `setPhase()` writes through the read gate, `phase()`
+  // reads the session value, and `read()`/`hydrate()` adopt whatever is on disk. Wiring the CALLS (kernel
+  // start/pause/stop) belongs to the assembly — the primitive exists and is testable here.
+  const PHASE_FACE = {
+    key: 'phase',
+    mode: 'state',
+    snapshot: () => ({ apiVersion: 1, face: 'phase', v: 1, at: stamp(), data: { phase: phaseValue }, counters: {}, skipped: [] }),
+    restore: (snap) => {
+      phaseValue = snap && snap.data && snap.data.phase !== undefined ? snap.data.phase : null
+      return { ok: true, restored: ['phase'], phase: phaseValue }
+    },
+    list: () => (phaseValue === null ? [] : [{ id: String(phaseValue) }]),
+  }
+  projectionFor('phase', PHASE_FACE)
+  /** Set the institute phase. Goes through the read-before-write gate; the previous value is reported back. */
+  async function setPhase(value, { why = null } = {}) {
+    requireRead('set the institute phase')
+    const prev = phaseValue
+    phaseValue = value === null || value === undefined ? null : String(value)
+    let r
+    try {
+      r = await snapshot({ key: 'phase' })
+    } catch (e) {
+      phaseValue = prev   // a refused write must not leave the in-memory value ahead of the durable one
+      throw e
+    }
+    say({ type: 'resume/phase', at: r.at, from: prev, to: phaseValue, why: why === null ? null : String(why) })
+    return { ok: true, from: prev, to: phaseValue, at: r.at, why: why === null ? null : String(why), enforced: ['phase'], fired: [] }
+  }
+  const phase = () => phaseValue
+
   // ── projection attach (used at assembly; no face module has to be edited) ───────────────────────────────────
-  function attachProjectionTo({ target, methods = [], key, mode = 'journal', snapshot = null, restore = null, list = null, replay = null, nonReplayable = [] } = {}) {
-    const p = projectionFor(key, { mode, snapshot, restore, list, replay })
+  // NOTE: the FACE seam is destructured as `snapshotSeam` — calling it `snapshot` would shadow this engine's own
+  // `snapshot({key})` writer, and the write-through would then call the face's seam (returning a value, not a
+  // promise) instead of persisting anything. That defect was measured by the round-3 durable-ledger suite.
+  function attachProjectionTo({ target, methods = [], key, mode = 'journal', snapshot: snapshotSeam = null, restore = null, list = null, replay = null, nonReplayable = [] } = {}) {
+    const p = projectionFor(key, { mode, snapshot: snapshotSeam, restore, list, replay })
     const holder = projections.get(key)
     holder.target = target || null
-    const w = attachProjection({ target, methods, projection: p, nonReplayable, onError: (e) => {
+    const onProjectionError = (e) => {
       say({ type: 'resume/projection-error', at: stamp(), key, error: String((e && e.message) || e) })
       emit('resume/projection-error', { at: stamp(), key, error: String((e && e.message) || e) })
-    } })
+    }
+    // WRITE-THROUGH for state projections: a face that hands us `snapshot()`/`restore()` seams is made durable
+    // WITHOUT editing it — every wrapped mutation is followed by one state write. Without this, a state face
+    // wired only through `faces{}` would be hydratable but never written, i.e. durable in appearance only.
+    const after = (mode === 'state' && typeof snapshotSeam === 'function' && cfg().writeThrough)
+      ? (name) => snapshot({ key }).then((r) => { writesThrough += 1; return r }, (e) => { writeThroughFailures += 1; onProjectionError(e) })
+      : null
+    const w = attachProjection({ target, methods, projection: p, nonReplayable, after, onError: onProjectionError })
     if (!replay && target && mode === 'journal') {
       // The natural replay seam: call the named method again with the recorded args.
       w.replaySeam = async (entry) => {
@@ -459,7 +517,7 @@ export function createResume({ store = null, work = null, control = null, identi
       }
     }
     holder.wrapper = w
-    return { ok: true, key, mode, wrapped: w.wrapped, missing: w.missing }
+    return { ok: true, key, mode, wrapped: w.wrapped, missing: w.missing, writeThrough: !!after }
   }
 
   // ── snapshot / hydrate ──────────────────────────────────────────────────────────────────────────────────────
@@ -508,7 +566,15 @@ export function createResume({ store = null, work = null, control = null, identi
       if (env === undefined || env === null) { hydrated.push({ key: k, hydrated: false, reason: 'nothing was projected (a first run)' }); continue }
       if (env.mode === 'state') {
         if (typeof a.restore !== 'function') { unhydrated.push({ key: k, code: CODE.noAdapter, reason: 'state projection needs a restore(value) seam on the face' }); continue }
-        const r = a.restore(env.value)
+        let r
+        try {
+          r = a.restore(env.value)
+        } catch (e) {
+          // A face that THROWS during restore is named too: one broken face must not abort the whole recovery, and
+          // it must never look restored (the two failure styles are both honoured here).
+          unhydrated.push({ key: k, code: (e && e.code) || CODE.noAdapter, reason: String((e && e.message) || e), detail: null })
+          continue
+        }
         // A face may REFUSE to restore (version/conflict/missing) and reports that by RETURNING `{ok:false, code}`.
         // Treating that as success would be exactly the "looks restored" lie this face exists to prevent.
         if (r && r.ok === false) {
@@ -524,7 +590,16 @@ export function createResume({ store = null, work = null, control = null, identi
       if (gap) { unhydrated.push({ key: k, code: CODE.projectionGap, reason: 'the journal cannot be replayed: ' + JSON.stringify(gap), gap }); continue }
       const seam = typeof a.replay === 'function' ? a.replay : (holder.wrapper && holder.wrapper.replaySeam ? holder.wrapper.replaySeam : null)
       if (typeof seam !== 'function') { unhydrated.push({ key: k, code: CODE.noAdapter, reason: 'journal projection needs a replay(entry) seam (or a wrapped target)' }); continue }
-      const applied = holder.wrapper ? await holder.wrapper.replayAll(seam) : await replayEntries(holder.projection.entries(), seam)
+      let applied
+      try {
+        applied = holder.wrapper ? await holder.wrapper.replayAll(seam) : await replayEntries(holder.projection.entries(), seam)
+      } catch (e) {
+        // A replay that throws leaves the face HALF rebuilt: that is not a restoration, so the key is named
+        // unhydrated and the recovery continues with the remaining keys (the caller decides what to do).
+        unhydrated.push({ key: k, code: (e && e.code) || CODE.projectionGap, reason: 'the journal replay failed: ' + String((e && e.message) || e),
+          replayed: holder.projection.entries().length })
+        continue
+      }
       // After a replay the face's own sequence has advanced with the commands, so the durable counter is reconciled.
       let reconciled = null
       if (typeof a.list === 'function') {
@@ -773,7 +848,8 @@ export function createResume({ store = null, work = null, control = null, identi
       hydrated: state.hydrated, unhydrated: state.unhydrated,
       projection: { degraded: state.unhydrated.length > 0, unhydratedKeys: state.unhydrated.map((u) => u.key) },
       mailbox: state.mailbox, watchdogs: state.watchdogs, flags: state.flags,
-      writes, writeRefusals, readBacks, readBackFailures, lastDrift,
+      phase: phaseValue,
+      writes, writesThrough, writeThroughFailures, writeRefusals, readBacks, readBackFailures, lastDrift,
       policy: cfg(),
       neverWritesBeforeRead: true,
       interruptedNeverPassesSilently: true,
@@ -796,12 +872,14 @@ export function createResume({ store = null, work = null, control = null, identi
     attachProjection: attachProjectionTo,
     nextId,
     observeIds,
+    setPhase,
+    phase,
     settleOutcome,
     interrupted,
     readBack,
     status,
     history: () => state.recoveries.map((r) => Object.assign({}, r)),
-    keysUsed: () => [RESUME_KEY],
+    keysUsed: () => [RESUME_KEY, 'phase'],
   }
 }
 

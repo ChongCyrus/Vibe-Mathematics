@@ -549,6 +549,13 @@ const runSelfProof = (scriptName, flag) => {
 }
 const matrixRun = runSelfProof('generate-zero-mechanism-matrix.mjs', '--selftest')
 ok(matrixRun && matrixRun.status === 0, 'the matrix --selftest really runs green (tenth case: it now HAS an execution point)')
+// ROUND 3: `generate-wired-schema.mjs` grew a `--selftest` (the KEY_SHAPE / comment-borne pseudo-key probe). A
+// self-proof mode with no execution point is exactly the eleventh case this gate exists to catch, so it is RUN
+// here rather than merely declared in the script's flag table.
+const keyShapeRun = runSelfProof('generate-wired-schema.mjs', '--selftest')
+ok(keyShapeRun && keyShapeRun.status === 0,
+  'the wired-schema KEY_SHAPE --selftest really runs green (round 3: the "a key quoted in a COMMENT is not a key" probe has an execution point)',
+  keyShapeRun ? 'exit=' + keyShapeRun.status : 'not run')
 const cleanRun = runSelfProof('clean-temp.mjs', '--self-test')
 ok(cleanRun && cleanRun.status === 0, 'clean-temp --self-test really runs green (declared self-proof flag #2)')
 const releaseRun = runSelfProof('release-check.mjs', '--self-test')

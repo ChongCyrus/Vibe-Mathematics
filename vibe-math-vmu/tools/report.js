@@ -89,10 +89,12 @@ export function makeReportSpec({ param, refused, TOOL_NAMES, kernel }) {
           // gap in the audit) rather than thrown - refusing after the fact would leave the caller thinking nothing moved.
           const ledger = r.noteParamChange({ key: guard.key, from: before ? before.value : null, to: receipt.value, by: guard.by,
             reason: reason === undefined ? null : reason, hot: receipt.hot })
-          return Object.assign({ ok: true, action, key: guard.key, value: receipt.value, hot: receipt.hot, who: receipt.who,
-            ownerCheck: receipt.ownerCheck, appliesAt: receipt.appliesAt, requiresRestart: receipt.requiresRestart === true,
-            liveApplied: receipt.liveApplied, pendingConsumers: receipt.pendingConsumers, previous: receipt.previous,
-            audit: ledger.audit, drives: false }, {})
+          // THE KERNEL'S RECEIPT IS FORWARDED WHOLE (`...receipt`), not re-typed field by field: the hot class, the real
+          // apply point, the MEASURED live readers (`liveReadBy`) and the kernel's own note about them are facts the
+          // assistant must see, and a hand-copied subset silently dropped `liveReadBy` the moment the kernel added it -
+          // found by the round-3 end-to-end suite, which asserted the field on the TOOL's receipt, not the kernel's.
+          return Object.assign({}, receipt, { ok: true, action, key: guard.key, previous: receipt.previous,
+            audit: ledger.audit, drives: false })
         }
         return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
       } catch (e) {

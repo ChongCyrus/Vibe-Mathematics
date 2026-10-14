@@ -293,7 +293,7 @@ vmu.packs.active: [v5r]
 | `vmu.math.packages` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `host-math.js` | P3：计算可要求的包/工具箱（共享模块默认） |
 | `vmu.math.installScope` | enum | `user` | `user`∣`system` | 会话 | H1 | office | ✅ 已接线 | `host-math.js` | P3：安装作用域；system 仅当次、绝不记忆 |
 | `vmu.math.compileTimeoutMs` | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/formal.js` | 编译超时；0＝作业级默认 |
-| `vmu.math.formalVerify` | enum | `off` | `off`∣`encourage`∣`require` | 会话 | H2 | office | ✅ 已接线 | `kernel/lean.js` | P3：判定时的形式化要求；默认 off＝零策略 |
+| `vmu.math.formalVerify` | enum | `off` | `off`∣`encourage`∣`require` | 会话 | H2 | office | ✅ 已接线 | `host.js` | P3：判定时的形式化要求；默认 off＝零策略 |
 | `vmu.math.leanCommand` | string | `lean` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | P3：Lean 命令名（命令模板可覆盖） |
 | `vmu.math.leanArgs` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | P3：Lean 附加参数（显式 -R/--root 优先于 searchPaths） |
 | `vmu.math.leanTimeoutMs` | int ≥0 | `120000` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/formal.js` | P3：单次 Lean 编译预算 |
@@ -554,7 +554,7 @@ vmu.packs.active: [v5r]
 | `vmu.collusion.maxMutualShare` | ratio | `0.8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 互投/雷同份额阈值 |
 | `vmu.collusion.minEvidence` | int ≥0 | `2` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 判定嫌疑所需最少证据数 |
 | `vmu.collusion.onSuspect` | enum | `report` | `report`∣`freeze-review` | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 嫌疑处理（默认只报告；冻结审查须显式开启） |
-| `vmu.math.maxParallel` | int ≥1 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 并行作业上限（超限 ⇒ 具名拒，不自旋等待 ✗）。★ 轮 2 语义边界（Lead 点名的收敛项）：本键与 `vmu.math.jobs.maxParallel` **语义相同**（都是数学作业的并发上限），只是当前读者不同——本键由 `kernel/mathjobs.js:195` 读，`vmu.math.jobs.maxParallel` 由 `kernel/mathtools.js:194/565` 读。**收敛方向：以本键为唯一真源**，`vmu.math.jobs.maxParallel` 降为待删别名；两个读点都在 reader-b 的文件里，改动已在 `_handoff/vmu/core-round2-report.md` 具名，未擅自改他人文件。 |
+| `vmu.math.maxParallel` | int ≥1 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 并行作业上限（超限 ⇒ 具名拒，不自旋等待 ✗）。★ 轮 3 语义边界（task-20 A）：本键是**作业服务**的并发上限，读者＝`kernel/mathjobs.js:213`（`maxParallel`）。★ `vmu.math.jobs.maxParallel`（读者＝`kernel/mathtools.js:194/565` 的**策略层** active-runs 上限）**意图相同、读者不同、当前互不驱动**（设一个不动另一个）⇒ 要限并发请**两个都设**；**收敛方向**：下一轮让 mathtools 读本键、`vmu.math.jobs.maxParallel` 降为待删别名（两个读点都在 reader-b 的文件里，未擅自改）。 |
 | `vmu.math.maxJobs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 作业总量上限（0＝不限） |
 | `vmu.math.keepReceipts` | int ≥0 | `200` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 回执保留条数（溢出必计数） |
 | `vmu.math.requireSeedForRandom` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 随机作业必须有种子 |
@@ -967,8 +967,25 @@ vmu.packs.active: [v5r]
 | `vmu.report.auditChanges` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 参数改动是否写入审计（默认写；无 audit 接缝时具名上报 VMU_REPORT_AUDIT_UNAVAILABLE） |
 | `vmu.ids.persistEvery` | int ≥0 | `1` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/ids.js` | id 计数器写穿频率（1＝每次 mint；写穿丢几次也由 observeIds 的"已观测最大后缀"兜底 ⇒ 复用不可能） |
 | `vmu.math.jobs.dir` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | 作业镜像目录（root 相对；空 ⇒ `Math/Jobs`）。三个真读者：`kernel/lean.js:128`、`kernel/mathjobs.js:192`、`kernel/mathtools.js:194` —— 三者都按**字符串路径**处理（非字符串即归一；越界 ⇒ `VMU_LEAN_JOBS_DIR_UNSAFE`／`VMU_MATH_JOBS_DIR_UNSAFE`）。 |
+| `vmu.resume.writeThrough` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/resume.js` | 状态型投影是否在每次被包方法返回后**写穿**一次（fire-and-forget，失败进 `resume/projection-error`）；关掉则只在显式 `snapshot()` 时写。读者：`kernel/resume.js` 的 `attachProjection`（reader-a）。 |
+| `vmu.activity.timeoutMs` | int ≥0 | `30000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/activity.js` | 活动等待的默认超时（毫秒）。读者：`kernel/activity.js` 的 `wait()`。 |
+| `vmu.activity.timeoutMinMs` | int ≥0 | `10000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/activity.js` | 超时下界（请求低于此值时按 `vmu.activity.timeoutPolicy` 处置）。 |
+| `vmu.activity.timeoutMaxMs` | int ≥0 | `3600000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/activity.js` | 超时上界（同上）。 |
+| `vmu.activity.timeoutPolicy` | enum | `refuse` | `refuse`∣`clamp` | 会话 | H1 | office | ✅ 已接线 | `kernel/activity.js` | 越界超时的处置：`refuse`＝具名拒（默认）；`clamp`＝钳到区间并自曝钳制。 |
+| `vmu.activity.wakeOn` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/activity.js` | 构造期注册的唤醒总线条目（**H2**：条目在构造时注册 ⇒ 下次会话生效，回执不得声称即时）。默认空＝不额外挂任何条目。 |
+| `vmu.activity.maxWaiters` | int ≥0 | `128` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/activity.js` | 同时等待者上限（超出具名拒）。 |
+| `vmu.activity.noPeerShortCircuit` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/activity.js` | 无活跃同伴时是否立即返回 noProgress（true＝短路，对齐 v5r）。 |
+| `vmu.paper.officeConsult` | enum | `required` | `off`∣`required` | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | office 定稿咨询门总开关（`off`＝零机制，不闸任何定稿）；`required` 时未咨询即定稿 ⇒ 具名拒 `VMU_OFFICE_CONSULT_REQUIRED`。读者：定稿路径（`kernel/paper.js`／human 面）。 |
+| `vmu.paper.officeConsultOn` | enum | `finalize` | `finalize`∣`finalize-or-submit` | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 何时必须征询：`finalize`＝只卡定稿（对齐 v5r 的 `finalizePaperByOffice`／`notePaperConsult`）；`finalize-or-submit`＝投稿前也要问。 |
+| `vmu.paper.officeConsultTimeoutMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 等待咨询答复的时限（0＝无限等／挂起）。超时处置见 `vmu.paper.officeConsultOnTimeout`，**绝不默认放行**。 |
+| `vmu.paper.officeConsultOnTimeout` | enum | `hold` | `hold`∣`refuse` | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 咨询超时处置：`hold`＝挂起等待（默认，与 human 面同口径）；`refuse`＝具名拒。**没有 default-allow 这一档**。 |
+| `vmu.paper.officeConsultExemptRoles` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 豁免角色：**默认为空＝不豁免任何人**（Lead F4 裁决：v5r 的 C-30 原场景正是"office 自己定稿前也必须先咨询所内"，把 office 默认豁免掉等于没实现那条；"默认不豁免"是保守侧，与 `hold` 同一纪律）。部署要豁免就显式声明角色。 |
 | `vmu.math.jobs.logMax` | int ≥0 | `200` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 作业日志保留条数（溢出必计数）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`（两者默认一致：200）。 |
 | `vmu.math.jobs.persist` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | 作业持久化：false＝只留回执详情；true＝额外写 `Math/Jobs` 镜像并允许恢复（`vmu.math.jobs.recover` 决定何时恢复）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`。 |
+| `vmu.math.jobs.maxParallel` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | **策略层**的 active-runs 上限（`kernel/mathtools.js:194/565` 读取，超限按 `VMU_RESOURCE_BUDGET` 具名拒）。★ 与 `vmu.math.maxParallel`（**作业服务**并发上限，`kernel/mathjobs.js:213`）意图相同、读者不同、当前互不驱动 ⇒ 要限并发请**两个都设**；收敛方向见 `vmu.math.maxParallel` 的 doc。 |
+| `vmu.meetings.tier` | enum | `formal` | `formal`∣`light` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 会议级别：light＝简流程，**不得产出实体定论**（派生谓词，不是阶段）。读者：`kernel/meetings.js` 的 `K.tier`＋`tier()`／`truthWriteRefusal()`，唯一判定点在 `close()` 的收束路径（reader-c 的 GAP-MTG-02）。 |
+| `vmu.meetings.allowLight` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 是否允许 light（简流程）会议：false ⇒ 内核在开会/收束处以具名拒挡住 light（与 `tier` 共用同一派生判定点）。读者：`kernel/meetings.js` 的 `K.allowLight`。 |
+| `vmu.ballot.reopenFloor` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ballotbox.js` | 投票板重开门槛（0＝不设门槛；>0 时 reopen 需要达到该支持数）。读者：`kernel/ballotbox.js` 的 `reopen()`（reader-c 的 GAP-MTG-10；该面自有实现，不并存第二份）。 |
 | `vmu.allocation.dirtyWorkQuota` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.allocation.fairnessPolicy` | string | `equal` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.allocation.rotationWindow` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
@@ -1104,7 +1121,6 @@ vmu.packs.active: [v5r]
 | `vmu.math.formal.requireAll` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.formal.sorryPolicy` | string | `deny` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.interval.enabled` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
-| `vmu.math.jobs.maxParallel` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.linalg.backend` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.linalg.requireResidual` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.linalg.sparse` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
@@ -1326,7 +1342,6 @@ vmu.packs.active: [v5r]
 | `vmu.authorship.requireCredit` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.freezeMeetingLinked` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/ballotbox.js` | ★ **已穷尽**：`ballotbox.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.freezeMode` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/ballotbox.js` | ★ **已穷尽**：`ballotbox.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
-| `vmu.ballot.reopenFloor` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/ballotbox.js` | ★ **已穷尽**：`ballotbox.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.reopenInitiatorScope` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/ballotbox.js` | ★ **已穷尽**：`ballotbox.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.reopenSameMeetingOnly` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/ballotbox.js` | ★ **已穷尽**：`ballotbox.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.ballotbox.minVotes` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 24（共见 1 卷：24），尚未实现（元数据以各卷为准） |
@@ -1437,10 +1452,11 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1089** 个，前缀家族 **111** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1105** 个，前缀家族 **112** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
+| `vmu.activity.*` | 7 |
 | `vmu.admission.*` | 12 |
 | `vmu.agenda.*` | 6 |
 | `vmu.agreements.*` | 7 |
@@ -1451,7 +1467,7 @@ vmu.packs.active: [v5r]
 | `vmu.archive.*` | 5 |
 | `vmu.audit.*` | 17 |
 | `vmu.avail.*` | 3 |
-| `vmu.ballot.*` | 22 |
+| `vmu.ballot.*` | 23 |
 | `vmu.board.*` | 6 |
 | `vmu.budget.*` | 9 |
 | `vmu.capacity.*` | 12 |
@@ -1496,7 +1512,7 @@ vmu.packs.active: [v5r]
 | `vmu.limits.*` | 5 |
 | `vmu.mailbox.*` | 6 |
 | `vmu.math.*` | 106 |
-| `vmu.meetings.*` | 56 |
+| `vmu.meetings.*` | 58 |
 | `vmu.memory.*` | 16 |
 | `vmu.metadata.*` | 2 |
 | `vmu.metrics.*` | 7 |
@@ -1509,7 +1525,7 @@ vmu.packs.active: [v5r]
 | `vmu.pack.*` | 4 |
 | `vmu.packs.*` | 5 |
 | `vmu.panel.*` | 4 |
-| `vmu.paper.*` | 4 |
+| `vmu.paper.*` | 9 |
 | `vmu.partnership.*` | 6 |
 | `vmu.paths.*` | 2 |
 | `vmu.pointer.*` | 1 |
@@ -1529,7 +1545,7 @@ vmu.packs.active: [v5r]
 | `vmu.report.*` | 11 |
 | `vmu.repro.*` | 7 |
 | `vmu.resource.*` | 17 |
-| `vmu.resume.*` | 5 |
+| `vmu.resume.*` | 6 |
 | `vmu.review.*` | 4 |
 | `vmu.reviewers.*` | 4 |
 | `vmu.roles.*` | 11 |

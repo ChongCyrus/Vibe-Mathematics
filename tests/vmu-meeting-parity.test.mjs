@@ -32,6 +32,7 @@ const boxMod = await import(pathToFileURL(K('ballotbox.js')).href)
 const meetingsMod = await import(pathToFileURL(K('meetings.js')).href)
 const minutesMod = await import(pathToFileURL(K('minutes.js')).href)
 const grantMod = await import(pathToFileURL(K('grant.js')).href)
+const fidelityMod = await import(pathToFileURL(K('fidelity.js')).href)
 
 let NOW = Date.parse('2026-10-09T00:00:00.000Z')
 const clock = () => NOW
@@ -259,6 +260,123 @@ const roster = ['r-1', 'r-2']
   }
   // Baseline B is documented as COVERED (not a gap): the three user-named asks must not appear as gaps.
   ok(!doc.includes('GAP-MTG-B'), 'no user-named baseline-B item is filed as a gap')
+  // ROUND 3: the three gaps this task closed must say so by name (a registry that still reads "待做" for a
+  // landed item is exactly the drift D-08 forbids: "每条要么落地、要么把 closed-by 写实").
+  for (const closed of ['GAP-MTG-02', 'GAP-MTG-03', 'GAP-MTG-10']) {
+    const row = rows.filter((l) => l.includes('**' + closed + '**'))[0] || ''
+    ok(/已落/.test(row), closed + ' is登记为已落（不是"待做"）', row.slice(0, 60))
+  }
+}
+
+// ---- 12. GAP-MTG-02: the tier gate (D7) — derived predicate, ONE decision point --------------------
+{
+  // `kernel/meetings.js` THROWS its named refusals (deny), so the tier gate is read through a grabber.
+  const grab = (fn) => { try { return { ok: true, v: fn() } } catch (e) { return { ok: false, code: e && e.code, hint: e && e.hint, enforced: Array.isArray(e && e.enforced) ? e.enforced : [] } } }
+  const formal = meetingsMod.createMeetings({ clock, settings: {} })
+  const fk = formal.status().keys
+  ok(fk['vmu.meetings.tier'] === 'formal' && fk['vmu.meetings.allowLight'] === true,
+    'the tier and the light switch are observable state with the declared defaults')
+  ok(formal.tier() === 'formal' && formal.isLight() === false, 'the tier is a live predicate, not a phase')
+  const light = meetingsMod.createMeetings({ clock, settings: { 'vmu.meetings.tier': 'light' } })
+  const lo = light.open({ type: 'ordinary', chair: 'acad', roster, size: 2 })
+  const lmid = lo.meeting
+  const blocked = grab(() => light.close({ meeting: lmid, report: 'p-1' }))
+  ok(blocked.ok === false && blocked.code === 'VMU_MEETING_LIGHT_NO_TRUTH' && blocked.enforced.includes('vmu.meetings.tier'),
+    'a LIGHT meeting refuses an entity conclusion BY NAME and names the key it read')
+  ok(/formal/.test(String(blocked.hint)), 'and the refusal says how to upgrade to formal')
+  ok(light.close({ meeting: lmid }).ok === true, 'a light meeting may still record PROCESS (agenda/rounds/action items)')
+  const light2 = meetingsMod.createMeetings({ clock, settings: { 'vmu.meetings.tier': 'light' } })
+  const l2 = light2.open({ type: 'ordinary', chair: 'acad', roster, size: 2 })
+  const resMotion = grab(() => light2.motion({ meeting: l2.meeting, member: 'r-1', kind: 'resolution', text: 'adopt X' }))
+  ok(resMotion.code === 'VMU_MEETING_LIGHT_NO_TRUTH', 'a resolution motion goes through the SAME decision point')
+  const conflict = meetingsMod.createMeetings({ clock, settings: { 'vmu.meetings.tier': 'light', 'vmu.meetings.allowLight': false } })
+  const co = grab(() => conflict.open({ type: 'ordinary', roster }))
+  ok(co.ok === false && co.code === 'VMU_MEETING_TIER_CONFLICT' && co.enforced.length === 2,
+    'a contradictory declaration (light selected, light disallowed) is refused before any state exists')
+  ok(conflict.status().tierConflict === true, 'and status() shows the conflict before anyone hits it')
+  const sealed = meetingsMod.createMeetings({ clock, settings: { 'vmu.meetings.allowLight': false } })
+  ok(sealed.open({ type: 'ordinary', roster }).ok === true, 'allowLight=false with tier=formal changes nothing')
+}
+
+// ---- 13. GAP-MTG-03: the resolution ENTITY (stable id / effectiveAt / supersede) -------------------
+{
+  const seam = { truthWriteRefusal: () => null }
+  const mins = minutesMod.createMinutes({ clock, settings: {}, meetings: seam })
+  const r1 = mins.resolve({ meeting: 'm1', text: 'adopt plan', actions: [{ who: 'r-1', due_in: 'next meeting' }], by: 'acad' })
+  ok(r1.ok === true && r1.resolution.id === 'res-1' && r1.resolution.effectiveAt === clock(),
+    'a resolution gets a framework-allocated stable id and takes effect ON ANNOUNCEMENT (G2)')
+  const r2 = mins.resolve({ meeting: 'm1', text: 'adopt plan B', retroactive: true })
+  ok(r2.resolution.declaredAt > 0 && r2.resolution.effectiveAt === clock(),
+    'a retroactive declaration is recorded WITHOUT moving effectiveAt')
+  ok(mins.resolve({ meeting: 'm1', text: 'adopt plan' }).deduped === true, 'the same resolution is idempotent')
+  ok(mins.supersede({ of: 'res-1', by: 'res-2' }).supersededBy === 'res-2'
+    && mins.resolutions({ id: '1' }).resolutions[0].supersededBy === 'res-2',
+  'supersede is a one-way, searchable link (the old text stays)')
+  const grabErr = (fn) => { try { fn(); return null } catch (e) { return e } }
+  ok(grabErr(() => mins.resolutions({ effectiveAt: 1 })).code === 'VMU_INVALID_ARGUMENT', 'a time FILTER is refused by name (time is display-only)')
+  const lightSeam = { truthWriteRefusal: () => ({ code: 'VMU_MEETING_LIGHT_NO_TRUTH', message: 'light', hint: 'upgrade' }) }
+  const ml = minutesMod.createMinutes({ clock, settings: {}, meetings: lightSeam })
+  ok(grabErr(() => ml.resolve({ meeting: 'm2', text: 'y' })).code === 'VMU_MEETING_LIGHT_NO_TRUTH',
+    'minutes reuses the SAME tier decision point (light ⇒ named refusal)')
+  const noSeam = minutesMod.createMinutes({ clock, settings: {} })
+  ok(grabErr(() => noSeam.resolve({ meeting: 'm3', text: 'z' })).code === 'VMU_ENGINE_UNAVAILABLE',
+    'without the policy seam the face refuses instead of guessing the tier')
+  const snap = mins.snapshot()
+  const fresh = minutesMod.createMinutes({ clock, settings: {}, meetings: seam })
+  const rr = fresh.restore(snap)
+  ok(rr.counters.resolution === 2 && fresh.resolve({ meeting: 'm9', text: 'third' }).resolution.id === 'res-3',
+    'the resolution counter travels with the snapshot (max+1; names are immortal)')
+}
+
+// ---- 14. GAP-MTG-10: the option board's life cycle + reopen (reopenFloor really read) --------------
+{
+  const bb = boxMod.createBallotBox({ clock, settings: { 'vmu.ballot.minVotes': 1 } })
+  const o = bb.open({ question: 'ship?', options: ['yes', 'no'] })
+  bb.cast({ boxId: o.boxId, by: 'r-1', choice: 'yes' })
+  ok(bb.close({ boxId: o.boxId }).ok === true && bb.status({ boxId: o.boxId }).state === 'closed', 'a settled board is CLOSED')
+  ok(bb.cast({ boxId: o.boxId, by: 'r-2', choice: 'no' }).code === 'VMU_STATE', 'a closed board accepts no more votes')
+  ok(bb.reopen({ boxId: o.boxId }).code === 'VMU_REASON_REQUIRED', 'a reopen needs a reason')
+  ok(bb.reopen({ boxId: o.boxId, reason: 'new evidence' }).ok === true && bb.status({ boxId: o.boxId }).state === 'open',
+    'an explained reopen preserves the prior ruling and reopens the board')
+  const floored = boxMod.createBallotBox({ clock, settings: { 'vmu.ballot.minVotes': 1, 'vmu.ballot.reopenFloor': 3 } })
+  const o2 = floored.open({ question: 'thin?', options: ['yes', 'no'] })
+  floored.cast({ boxId: o2.boxId, by: 'r-1', choice: 'yes' })
+  floored.close({ boxId: o2.boxId })
+  const thin = floored.reopen({ boxId: o2.boxId, reason: 'retry' })
+  ok(thin.ok === false && thin.code === 'VMU_BALLOT_MIN_VOTES_NOT_MET' && thin.enforced.includes('vmu.ballot.reopenFloor'),
+    'vmu.ballot.reopenFloor is READ and DECIDES (the key has a real reader)')
+  ok(boxMod.WIRED_BALLOT_KEYS.includes('vmu.ballot.reopenFloor')
+    && boxMod.PLANNED_BALLOT_KEYS.every((e) => e[0] !== 'vmu.ballot.reopenFloor'),
+  'the key moved from PLANNED to WIRED')
+  ok(boxMod.createBallotBox({ clock, settings: {} }).partition().exact === true, 'the ballot-key partition is still exact')
+}
+
+// ---- 15. C-45: the fidelity abstention is enforced at the ONE ballot cast point -------------------
+{
+  const ask = (fn) => { try { fn(); return null } catch (e) { return e } }
+  const fid = fidelityMod.createFidelityRegistry({ clock })
+  const noNote = await fid.declareDefect({ target: 'p-1', by: 'r-1' })
+  ok(noNote.ok === false && noNote.code === 'VMU_MATH_INVALID_INPUT', 'a defect without a note is refused by name')
+  const declared = await fid.declareDefect({ target: 'p-1', by: 'r-1', note: 'the formalisation drops hypothesis H' })
+  ok(declared.ok === true && declared.enforcedAbstention.vote === 0.5, 'a declared defect carries the enforced abstention shape')
+  const b = ballotMod.createBallot({ target: 'p-1', eligible: roster, clock, fidelity: fid })
+  await b.open()
+  const c1 = await b.cast('r-1', 1)
+  ok(c1.byFidelity === true && c1.value === 0.5 && c1.kind === 'abstain' && c1.declared === 1,
+    'the registered member\'s 1 is rewritten to an ABSTENTION, and the receipt says so (declared stays visible)')
+  const c2 = await b.cast('r-2', 1)
+  ok(c2.byFidelity === false && c2.value === 1 && c2.kind === 'decisive', 'an unregistered member is untouched')
+  const st = b.status()
+  ok(st.fidelitySeam === true && st.byKind.decisive === 1 && st.byKind.abstain === 1, 'the abstention is counted APART from the decisive votes')
+  ok(st.byFidelity.length === 1 && st.byFidelity[0].declared === 1 && st.byFidelity[0].markerId,
+    'status() names the rewritten ballot and its marker (nothing silent)')
+  const tally = await b.close('tally')
+  ok(tally.outcome === 'undecided', 'one abstention ⇒ the m-vote cannot be reached: the object stays undecided')
+  const noSeam = ballotMod.createBallot({ target: 'p-1', eligible: roster, clock })
+  await noSeam.open()
+  const c3 = await noSeam.cast('r-1', 1)
+  ok(c3.byFidelity === false && c3.value === 1 && noSeam.status().fidelitySeam === false,
+    'without the seam the face reports it and changes nothing (no hidden enforcement)')
 }
 
 console.log('vmu-meeting-parity: ' + passed + ' passed, ' + failed + ' failed')

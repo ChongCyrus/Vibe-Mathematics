@@ -67,6 +67,7 @@ export function refuse(code, message, hint, enforced) {
 // gate requires every loose call site to handle the NaN explicitly, and this module prefers the strict twin
 // wherever a framework-owned or caller-supplied instant must be interpretable to continue.
 import { ms as toMs, msStrict } from './timevalue.js'
+import { CODE as RESUME_CODE } from './resume.js'
 
 const INSTANT_KEY = /(At)$/i
 const INSTANT_NAMES = Object.freeze(['until', 'expires', 'expiresAt', 'expiresOn', 'deadline', 'at'])
@@ -572,6 +573,60 @@ export function createChat({
 
     /** The full audit trail (append-only under the declared cap, with counted drops). */
     history() { return audit.map((a) => Object.assign({}, a)) },
+
+    /**
+     * PERSISTENCE SEAM v1 (kernel/resume.js interface, attached by `attachProjection`). What is captured is the
+     * LEDGER, not the policy: `vmu.chat.admins`/`speakQuota`/`speakQuotaWindowMs`/`muteDefaultMs`/
+     * `freezeExemptAdmins`/`historyCap` come from settings and are re-resolved on restore, so a snapshot can
+     * never pin an old declaration over a newer configuration. The id counter travels as `counters.chat` (the
+     * LAST used seq) and the reader keeps it monotonic ("names are immortal").
+     *
+     * Injected seams (`bus`, `clock`, `isFrozen`, `freezeExempt`, `isAdmin`) are re-bound by the host and are
+     * therefore NOT listed as `skipped` (docs/07 §14): `skipped` is reserved for state this face cannot capture.
+     */
+    snapshot() {
+      return { apiVersion, face: 'chat', v: 1, at: clock(),
+        data: {
+          messages: messages.map((m) => clone(m)),
+          mutes: Object.fromEntries([...mutes.entries()].map(([k, v]) => [k, clone(v)])),
+          speaks: Object.fromEntries([...speaks.entries()].map(([k, v]) => [k, v.slice()])),
+          policyGen,
+        },
+        counters: { chat: seq },
+        skipped: [] }
+    },
+
+    /**
+     * Hydrate a `snapshot()`. Merge-safe while the ledger is EMPTY, idempotent on the same snapshot, and a NAMED
+     * conflict otherwise — a half-overwritten chat would silently lose messages.
+     */
+    restore(snap) {
+      if (!snap || typeof snap !== 'object') return { ok: false, restored: false, code: RESUME_CODE.snapshotIncomplete, message: 'no snapshot to restore', missing: ['snapshot'] }
+      if (snap.face !== 'chat') return { ok: false, restored: false, code: RESUME_CODE.snapshotVersion, message: 'not a chat snapshot (face=' + String(snap.face) + ')' }
+      if (Number(snap.v) !== 1) return { ok: false, restored: false, code: RESUME_CODE.snapshotVersion, message: 'unsupported snapshot version ' + String(snap.v), hint: 'this module speaks v1' }
+      const d = snap.data
+      const missing = ['messages', 'mutes', 'speaks'].filter((k) => !d || d[k] === undefined)
+      if (missing.length) return { ok: false, restored: false, code: RESUME_CODE.snapshotIncomplete, message: 'snapshot is missing ' + missing.join(', '), missing }
+      const same = JSON.stringify(d) === JSON.stringify(chat.snapshot().data)
+      if (messages.length > 0 && !same) {
+        return { ok: false, restored: false, code: RESUME_CODE.restoreConflict,
+          message: 'this chat already holds ' + messages.length + ' message(s): refusing to half-overwrite them',
+          hint: 'restore into a fresh chat, or restore the snapshot that matches the live ledger' }
+      }
+      messages.length = 0
+      for (const m of (d.messages || [])) messages.push(clone(m))
+      mutes.clear()
+      for (const [k, v] of Object.entries(d.mutes || {})) mutes.set(k, clone(v))
+      speaks.clear()
+      for (const [k, v] of Object.entries(d.speaks || {})) speaks.set(k, (Array.isArray(v) ? v : []).slice())
+      policyGen = Number(d.policyGen || 0) || 0
+      const fromSnap = Number((snap.counters && snap.counters.chat) || 0)
+      const maxSeq = messages.reduce((mx, m) => Math.max(mx, Number(m.seq) || Number(String(m.id || '').replace(/^msg-/, '')) || 0), 0)
+      const before = seq
+      seq = Math.max(seq, fromSnap, maxSeq)
+      return { ok: true, restored: true, restored_items: ['messages', 'mutes', 'speaks'],
+        seqBefore: before, seqAfter: seq, counters: { chat: seq }, skipped: (snap.skipped || []).slice() }
+    },
 
     status() {
       const fr = frozenNow()

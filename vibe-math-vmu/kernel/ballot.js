@@ -103,6 +103,9 @@ export function createBallot({
   isFrozen = () => false,
   castValid = (id, value) => value === DECISIVE_VOTE.FOR || value === DECISIVE_VOTE.AGAINST,
   tally = defaultTally,
+  // C-45 (L2 option A): the fidelity registry (`kernel/fidelity.js`). Injected because the DECISION lives there;
+  // this face only routes a decisive cast through it (the single enforcement point, see `cast` below).
+  fidelity = null,
   bus = null,
   clock = () => new Date().toISOString(),
   isPaused = () => false,
@@ -203,9 +206,27 @@ export function createBallot({
         throw refuse('VMU_INVALID_ARGUMENT', 'a decisive vote must be the boolean 1 or 0',
           'got ' + JSON.stringify(value) + ' (the m-vote rule)')
       }
-      votes.set(member, { value, kind, at: clock() })
-      record('cast', { member, value, kind })
-      return { ok: true, accepted: true, member, value, kind, votes: votes.size }
+      /**
+       * C-45 — THE SINGLE FIDELITY ENFORCEMENT POINT (v5r L2 option A / Adv-verify F1). A member who DECLARED a
+       * fidelity defect on this object cannot assert 1 or 0 on it: the registry (`kernel/fidelity.js`) rewrites
+       * the ballot to 0.5 AND the rewrite is a first-class ABSTENTION here (`kind:'abstain'`, so it is excluded
+       * from the decisive count exactly as an abstention is), while the declared value and the marker id are
+       * kept for the audit. Nothing is silent: the receipt says `byFidelity`, the row keeps `declared`, and the
+       * registry's own trail/bus event names the marker.
+       */
+      let stored = { value, kind, at: clock() }
+      if (fidelity && kind === 'decisive' && typeof fidelity.applyAbstention === 'function') {
+        const gate = fidelity.applyAbstention({ target, by: member, declared: value })
+        if (gate && gate.enforced === true) {
+          stored = { value: gate.vote, kind: 'abstain', at: clock(), declared: value,
+            byFidelity: true, markerId: gate.marker === undefined ? null : gate.marker, reason: gate.reason || 'fidelity-defect' }
+        }
+      }
+      votes.set(member, stored)
+      record('cast', { member, value: stored.value, kind: stored.kind, declared: value, byFidelity: !!stored.byFidelity })
+      return { ok: true, accepted: true, member, value: stored.value, declared: value, kind: stored.kind,
+        byFidelity: !!stored.byFidelity, markerId: stored.markerId || null, votes: votes.size,
+        note: stored.byFidelity ? 'the declared value was rewritten to an abstention by C-45 (declared fidelity defect)' : undefined }
     },
 
     /**
@@ -258,6 +279,11 @@ export function createBallot({
         votes: Object.fromEntries([...votes.entries()].map(([k, v]) => [k, { value: v.value, kind: v.kind }])),
         voteCount: votes.size,
         byKind,
+        // C-45 observability: which votes were rewritten to an abstention because a fidelity defect was declared,
+        // and whether the enforcement seam is even bound (an unbound seam is visible, never assumed).
+        fidelitySeam: !!fidelity,
+        byFidelity: [...votes.entries()].filter(([, v]) => v && v.byFidelity === true)
+          .map(([k, v]) => ({ member: k, declared: v.declared, vote: v.value, markerId: v.markerId || null })),
         outcome: outcome ? Object.assign({}, outcome) : null,
         refused: history.filter((h) => h.what === 'cast-refused' || h.what === 'open-refused').map((h) => Object.assign({}, h)),
         openedAt, closedAt,

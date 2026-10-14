@@ -101,8 +101,10 @@ const EXPECT = {
   // reports rather than refusing - which is the same shape `compliance` was measured to have. No ASCII quote appears in this
   // fragment: nesting quotes inside a quoted string has now cost five scripts.
   collab: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（counterparties: 0、agreements: 0 自曝 ✓）；agreementRequired 默认 true 但无对手方⇒无可交换对象，**不拒** ✓'),
-  human: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（vetoes: 0、approvals: 0 ✓；neverAllowsBySilence: true 自曝「onTimeout 默认 hold ⇒ 沉默绝不变成批准」 ✓）'),
+  human: G('array 或 object', '两侧都写清 ✓：**零声明下 `status()` ⇒ ok（object）**（vetoes: 0、approvals: 0 ✓；neverAllowsBySilence: true 自曝「onTimeout 默认 hold ⇒ 沉默绝不变成批准」 ✓，轮 224 实测）；**Round 3 新增 `queue()` ⇒ 零机制下返回 `array[0]`**（审批队列为空正是零机制的正确形状 ⇒ **空列表放行、不拒** ✓，与 `mathjobs.list()` 同判据）。★ 判据＝**列表面可读、不拒**；"队列为空"**不得**被读成"门已生效"（门由 `gate()` 的具名拒证明 ✓）'),
   discipline: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（subjects: 0；breakerOffMeansOff: true 自曝「阈值 0＝机制关，而非允许零次失败」 ✓）'),
+  activity: G('ok 或 object', '**先实测后登记**（Round 3 探针）：零声明下 `status()` ⇒ **ok（object）**——等待器数为 0、无同伴接缝时 `peerCheck.seam=false` 自曝 ✓；**零机制＝没有等待者、`wait()` 会以具名拒/立即 noProgress 收场**，但 `status()` 作为状态面**放行不拒** ✓。★ 判据＝**状态面可读、不拒**；"没有等待者"**不得**被读成"等待原语没生效"（由 `falsify` 族证明 future-only 与 disposer 真会红 ✓）'),
+  fidelity: G('ok 或 object', '**先实测后登记**（Round 3 探针）：零声明下 `status()` ⇒ **ok（object）**——缺陷登记数为 0、`durable:false` 在无 fs 接缝时**具名自曝** ✓；**C-45 是内核谓词、强制不可配置**（零个设置键）⇒ 零机制＝**没有已声明缺陷 ⇒ 不改写任何票**，状态面放行不拒 ✓。★ 判据＝**状态面可读、不拒**；"0 条缺陷"**不得**被读成"强制点没接线"（由 `vmu-fidelity-abstention` 的改写断言证明 ✓）'),
   custody: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（entries: 0；chainRequired: true 自曝 ✓）；无条目⇒无可转移对象，**不拒** ✓'),
   explain: G('具名拒（带 code）', '实测（轮 224）：矩阵的**探针**调用在零声明下【具名拒】 ✓——render() 无报告可渲染时以 VMU_INVALID_ARGUMENT 具名拒（status() 本身仍是 ok ✓，但探针走的是调用路径 ⇒ 期望取实测的拒 ✓）。**不假装成功** ✗'),
   control: G('ok 或 object', '实测（轮 224）：零声明下 status() ⇒ ok（paused: []、registrySize: 0；archivingNeverPausedByItself 与 idleNeverRecessesByItself 自曝两条不变式 ✓）'),

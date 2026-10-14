@@ -370,7 +370,8 @@ CacheEntry = { keyHash, engineIdentity, argv, precision, receiptRef, createdAt, 
 
 ### 14.4 作业队列、持久化与大结果
 - **现状** ✓：Lean 队列（并发上限、状态、事件日志上限）；**计算作业面与 Lean 作业面都新增耐久镜像与断点续算**（目标 5 · 共用 `createJobMirror`）：计算面镜像 `Math/Jobs/<jobId>.json`（`schema:'vmu/math-job@1'`），**Lean 面镜像 `Formal/Jobs/<jobId>.json`**（`schema:'vmu/lean-job@1'`，与 v5r 的路径拼写一致），两面都含**原始请求/产物事实**（计算面＝argv/输入指纹；Lean 面＝运行前后内容哈希＋构建上下文指纹）⇒ 重排与"是否可采纳"都有据；状态全集计算面 `queued|running|settled|failed|timeout|interrupted|cancelled`、Lean 面 `queued|running|settled|failed|timeout|interrupted`（**两面都没有 `passed` 状态**）；**恢复四分支**（见 §14.9）、jobId 级查询/取消（计算面 `cancel`；Lean 面 `dispose` 只能标 `interrupted`）、能力自述 `admission()`；id 计数器经 `kernel/ids.js`（恢复时水合取 max+1，**重启不复用编号**）；
-- **现状 ✗**：**大结果存储与引用**（内容寻址令牌）⛔；**跨进程独占创建** ⛔（宿主未暴露 ⇒ `admission().exclusiveCreate=false`、`crossProcess:'not-enforced'`，**如实登记**不假装）；**Lean 子进程无法 terminate** ⛔（promise 接缝无 handle ⇒ `canTerminateChild:false`）；
+- **现状 ✗**：**大结果存储与引用**（内容寻址令牌）⛔ **具名登记**——缺了会怎样：被截断的完整输出只在归档文件里，**回执引用不到**；谁需要它：要在另一台机器/另一次会话复核大输出的读者（复现包与审计链）。**Lean 子进程无法 terminate** ⛔（promise 接缝无 handle ⇒ `canTerminateChild:false`）；
+- **跨进程独占创建 ✓（Round 3 落地）**：fs 接缝提供 `writeTextExclusive(rel, text)`（宿主以 `{flag:'wx'}` / `O_EXCL`，Windows＝`CREATE_NEW`）时，**作业镜像的首次写入即一次原子占号**；同号并发 ⇒ 具名拒 `VMU_MATH_JOB_ID_TAKEN`，**绝不覆盖**别人的镜像（`admission().exclusiveCreate=true`、`crossProcess:'enforced-by-exclusive-create'`、计数 `idTaken`）。没有该接缝 ⇒ **降级但仍具名**（`exclusiveCreate:false`／`not-enforced` ＋ `notes` 写清"缺了会怎样、谁需要"）。
 - **设计**：`vmu.math.jobs.*`（持久化目录/保留策略/恢复语义）——`persist`／`dir`／`recover`／`keepMirrors`／`logMax` 已接线 ✓，其余作业编排项仍 ⛔；大结果一律落文件＋回执给引用，**审计不落全文** ✓（现状已如此）。
 
 ### 14.9 科学计算库专用适配面（目标 5 落地 ✓）
@@ -390,6 +391,8 @@ CacheEntry = { keyHash, engineIdentity, argv, precision, receiptRef, createdAt, 
 - **失败语义**：超时 ⇒ `MATH_TIMEOUT`（**保留部分输出**＋`droppedBytes` 计数）；非零退出 ⇒ `MATH_NONZERO_EXIT`（保留退出码与 stderr 尾部）；被调用代码报错 ⇒ `VMU_MATH_HARNESS_FAILED`；信封缺失/不可解析 ⇒ `VMU_MATH_RESULT_UNPARSEABLE`；随机作业缺种子 ⇒ `VMU_MATH_SEED_REQUIRED`；包越白名单 ⇒ `VMU_MATH_INVALID_INPUT`。**全部 `isRefutation:false`**：计算缺陷永远不是对命题的反驳。
 - **恢复四分支**（`mathjobs.recover()`，与 Lean `Formal/Jobs/*.json` 同形）：①`queued` ⇒ 重排并真跑；②`running`＋请求指纹一致 ⇒ 标 `interrupted` 后重排（attempts+1）；③`running`＋指纹不一致 ⇒ 只标 `interrupted`，**不自动重排**；④`settled`＋exit 0＋指纹一致＋**带回执** ⇒ 采纳；其余（含 `settled` 无回执）⇒ 原样保留＋具名 why。**任何分支都不会"静默 passed"**（本面根本没有 `passed`；`settled` 只是工具事实）。
 - **真机验证（本轮实测，非文档声称）**：本机 `python 3.12.10` ＋ `numpy 2.5.3`／`scipy 1.18.1`／`pandas 3.0.6`／`sympy 1.14.0`，用**真实 subprocess 接缝**跑通：`numpy.linalg.det([[1,2],[3,4]])` ⇒ `scalar -2.0000000000000004`；`np.arange(6).reshape(2,3)` ⇒ `array`＋`shape [2,3]`＋`dtype int64`；`pd.DataFrame` ⇒ `frame`（columns a,b）；`sp.simplify(sp.sqrt(8))` ⇒ `expr`＋`latex "2 \\sqrt{2}"`；`scipy.optimize.minimize` ⇒ `result`（`x`/`jac`/`hess_inv` 已由 ndarray 转列表，`success:true`）。**假接缝仍是主力**（`tests/vmu-math-adapters.test.mjs` 全绿且不依赖本机装了什么）。
+- **C-45 忠实性强制弃权（Round 3 ✓）**：不忠实**不是**命题为假，所以既不能投 0、也不能"记录后照常算票"。判定点是**内核谓词**（`kernel/fidelity.js`，服务键 `vmu.fidelity`）：`declareDefect` 留痕（append-only，可落 `Formal/Defects/<target>.json` 并重载）＋ `applyAbstention` **唯一强制点**（被登记者声明的 1/0 一律改写为 `0.5` 弃权）。**不由 pack 关掉**；表决面计票的唯一 closed-by＝调用 `applyAbstention`（见 `docs/09 §4.2`）。
+- **`kernel/mathtools.js` 的口径对齐（N3，Round 3 核对）**：该面的 `deny()` **本来**就带 `enforced[]` ＋ `enforcedScope:'evaluated-so-far'`（它是 `ENFORCED_SCOPE` 的最早出处）；本轮只补齐两处遗漏：`refuse()`（构造期守卫用的 Error 工厂）也带两个字段、缓存命中的成功回执补 `enforcedScope`。**键面无需改动**（它与 `mathadapters`/`mathjobs` 读的是同一批 `vmu.math.*` 键，各键都有真读取者）。
 
 ### 14.5 错误、警告与不收敛
 - **现状** ✓：11 个 `MATH_*`、9 个 `VMU_LEAN_*`、通用闸门码；引擎 stderr 原样回显（含 argv 与 `mathEngineOverride` 提示）；商业引擎许可具名；

@@ -37,10 +37,16 @@ import { resolve, join, dirname, sep } from 'node:path'
 
 export const apiVersion = 1
 
+/**
+ * The one Error factory. It carries the SAME scope fields as `deny` (D3: a result is never scope-less), so
+ * even construction-time guards are auditable; callers may overwrite both before throwing.
+ */
 export function refuse(code, message, hint) {
   const e = new Error(message)
   e.code = code
   if (hint) e.hint = hint
+  e.enforced = []
+  e.enforcedScope = ENFORCED_SCOPE
   return e
 }
 
@@ -600,7 +606,7 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
         const receipt = Object.assign({}, hit.receipt, { at, cached: true })
         pushReceipt(receipt)
         say({ type: 'mathtools/cache-hit', at, cacheKey: p.plan.cacheKey })
-        return { ok: true, cached: true, result: hit.result, receipt, enforced: p.enforced.concat(['vmu.math.cache.enabled']) }
+        return { ok: true, cached: true, result: hit.result, receipt, enforced: p.enforced.concat(['vmu.math.cache.enabled']), enforcedScope: ENFORCED_SCOPE }
       }
       if (typeof spawn !== 'function') {
         throw deny('VMU_ENGINE_UNAVAILABLE', 'no computation seam is injected: mathtools only PLAYS POLICY',

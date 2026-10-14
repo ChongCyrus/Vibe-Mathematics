@@ -127,6 +127,12 @@ export function createHostMath({ ctx, settings = {}, projectRoot = null, log = (
     projectRoot: () => root,
     designator: 'vibe-math-vmu',
     writeText: async (rel, text) => { const p = under(rel); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, String(text), 'utf8'); return true },
+    // ROUND 3 / task-20 (v5r-reader-b's task-19): the EXCLUSIVE-CREATE seam the job mirror needs so "a job id that is
+    // already taken" is never overwritten. `flag:'wx'` is O_CREAT|O_EXCL (Windows CREATE_NEW), so an existing file makes
+    // the write THROW `EEXIST` instead of replacing it - exactly what the caller maps to `VMU_MATH_JOB_ID_TAKEN` before
+    // deleting its own half-written job. The path policy is the same `under()` as every access here, so it cannot
+    // escape the root either.
+    writeTextExclusive: async (rel, text) => { const p = under(rel); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, String(text), { encoding: 'utf8', flag: 'wx' }); return true },
     readText: async (rel) => { try { return readFileSync(under(rel), 'utf8') } catch { return undefined } },
     exists: async (rel) => { try { return existsSync(under(rel)) } catch { return false } },
     listDir: async (rel) => {

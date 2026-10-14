@@ -1069,8 +1069,51 @@
 
 ### 19.9 未核项（**编号登记见 `14-§2`**）
 
-1. **回合结束钩子未接线** ✗：`tick()` 的宿主驱动那一半由内核管线落；在它落地前，周期汇报只能由工具面 `action:'tick'` 或测试驱动 ✓ ⇒ 建议 `14-§2` 登记 **T14「自动汇报的宿主驱动」** ✓。
+1. **回合结束钩子** ⚠ **Round 3 实测：一半已接线** —— 部署**声明**了 `vmu.report.*`（或 `config.report`／`vmu.tools.faces` 点名该面）时，入口会挂 `agent/turn-stopping` 周期时钟 ✓；但**只装载 pack**（清单声明、构造期看不见）时**不挂**（**F5**，见 §19.10）✗ ⇒ 建议 `14-§2` 登记 **T14「自动汇报的宿主驱动」**（含"按 pack 之后解析的面/声明再决定是否挂"的口径）✓。
 2. **`vmu.report.*` 的 schema 行与 `04-§11` 生成表**：由内核管线加键、`regen-all` 出表 ✓（本卷不手写表 ✗）。
 3. **助手人设的"语气与篇幅"未定** ✗：本节只保证**必须说什么**（身份/职责/边界），措辞与长度属 pack 编辑范畴 ✓。
 4. **参数域的"谁能改"只有一条 owner 口径** ✗：目前是**字符串匹配**（`whoMayChange` 列表 ✓），没有"角色槽位"级解析（与 `vmu.safety.delegableKeys` 的交界未定 ✓）。
 5. **汇报与人类审批的联动未做** ✗：汇报**不触发**任何审批流（`vmu.safety.approvalRequired` 与它正交 ✓），是否需要"高危参数改动的审批"未决 ✓。
+6. **投递（transport）在裸预设上缺席** ⚠（**F2**，§19.10）：语义与 `03-§8` 的登记一致（先留痕、再具名拒），但"端到端自动汇报"因此只走完触发与留痕那一半 ⇒ `14-§2` 登记 **T15「宿主 transport 注入」** ✓。
+7. **活读键的回执评分** ⚠（**F3**，§19.10）：披露半已落（`liveReadBy` ＋ note ✓），**评分半未落**（活读键仍报 `requiresRestart:true`）✗ ⇒ `14-§2` 登记 **T16「活读键不得报 requiresRestart」** ✓。
+
+### 19.10 Round 3 真机验收（**端到端**；命令与读数）
+
+> 判据：task-22（Round 3）——A 三类触发被**真事件**驱动一次（**不直接调 `tick()` 当证据**）、B 参数面**真生效**、C 两道闸**可关且零注入**、D 两通道**逐字**。全部经**真机入口**（`entry.apply(ctx, { packs:['v5r'] })`）与**宿主注册的工具面**，不由手工装配代替 ✓。
+
+| 项 | 驱动者（**真机路径**） | 证据 |
+|---|---|---|
+| **A 事件触发** | 宿主 `agent/turn-stopping`（**入口自己注册的监听器**） | 声明 `event:'turn-end'` 的报送 ⇒ `fired ×1` ＋ `trace` 行 ＋ 审计 `what:'create'`（`subject:'report:e2e-event'`，`drove:false`）✓ |
+| **A 周期触发（路径 1）** | 同一宿主钩子（两次回合边界之间**真实过了 40ms**，`everyMs=5`、`minIntervalMs=0`） | 第一次**武装**不触发、第二次触发 ⇒ `trace` 里 `trigger:'period'` ✓ |
+| **A 周期触发（路径 2 兜底）** | 工具面 `vibe_vmu_report {action:'tick'}` | 同一条声明被触发 ✓ |
+| **A 阈值触发** | 工具面 ＋ **真度量**跨线／线下不触发 | `【阈值汇报】9 件成果` 逐字进正文；线下 0 触发 ✓ |
+| **B 参数面** | 工具 `params`／`set` → **内核 `setSettingsValue`** | 下一**真实回合**（`kernel.turn.open`＋`assemble`）读到新值 ✓；审计 `what:'update'`（key／by／reason）✓；越域 ⇒ `VMU_REPORT_PARAM_NOT_DECLARED`、越权 ⇒ `VMU_REPORT_PARAM_NOT_ALLOWED`，且**零写入**（审计只有 1 行 update）✓ |
+| **C 汇报开关** | 工具 `set vmu.report.enabled=false`（该键在域内） | 真实回合边界**零触发零留痕** ✓；`problems` 具名 `VMU_REPORT_NOT_ENABLED` ✓；`emit` 同码拒 ✓；开回后**下一回合立刻**恢复 ✓ |
+| **C 人设段开关** | 提示词管线 `disable/enable` | 文本＋标题**整段消失**（零注入）✓；`enable` 后 **13056 字符逐字节复原** ✓ |
+| **D 两通道逐字** | `node tests/vmu-assistant-e2e.test.mjs --print` | system prompt 含所办三段人设（1453 字符）＋ 回合面含 `【汇报纪律：本所「institute」】` 与 `sources.section='v5r-report-duty'` ✓ |
+
+**命令与读数** ✓：`node tests/vmu-assistant-e2e.test.mjs` ⇒ **46 passed, 0 failed, exit=0**；`--strict-findings` ⇒ **46 passed, 2 failed**（把下面两条"待落项"变成红，证明 NOTE 不是把断言悄悄降级）✓；`node tests/vmu-assistant-report.test.mjs`／`-assembly`／`-systemprompt` ⇒ 84／39／15 全绿 ✓；`node tests/vmu-paper-consult.test.mjs` ⇒ 40／0 ✓。
+
+**Round 3 发现（F1–F5；三条已修／两条待落，逐个点名）**：
+
+| 编号 | 事实 | 处置 |
+|---|---|---|
+| **F1** ✅ | 工具面在**构造期**解析，而 pack **清单** settings 在装载时才施加 ⇒ 只装载 pack 时 `vibe_vmu_report` **不被发布**（汇报却被武装）✗ | core **按根因修**（面解析移到 pack settings 之后）；本卷已升级为**硬断言** ✓ —— **最终口径：面解析在 pack settings 之后**（不是"pack 要往 `defaults.json` 塞家族键"）✓ |
+| **F2** ⚠ | 入口**不注入**内核级 `deliver` ⇒ 报送触发并留痕，但每条具名拒 `VMU_REPORT_NO_TRANSPORT`（与 `03-§8` 登记一致，**不是缺陷**） | 本卷**钉住诚实边界**：无 transport ⇒ 具名拒＋仍留痕（断言 ✓）；并另证"注入 transport 时真的发出"（真内核工厂＋注入缝，`delivered:true`、note 带 `drives:false` ✓）；宿主注入由 core 落 ⇒ `14-§2` T15 |
+| **F3** ⚠ | 回执按**声明档位**打分：活读键仍报 `requiresRestart:true`／`appliesAt:"next session (restart required)"`，而同会话真实回合已读到新值 ✗ | core 已落**披露半**（`liveReadBy` ＋ note"MEASURED: it also has LIVE readers"，本卷硬断言 ✓）；**评分半**差一行（`requiresRestart = hot==='H2' && liveReadBy.length===0`）⇒ `14-§2` T16 |
+| **F4** ✅ | v5r 的 C-30 卡的是 **office 自己定稿前必须先咨询所内**；而 `vmu.paper.officeConsultExemptRoles` 默认 `['office']` 恰好豁免了原场景 | Lead 裁决：默认改 `[]`（**不豁免**，与 `hold` 同一条保守纪律）；本卷 §19.11 按此断言（"没声明 ⇒ office 也被卡" ✓） |
+| **F5** ⚠ | 与 F1 同型更深一层：宿主 `agent/turn-stopping` 周期时钟的挂载判据是**构造期** `settings` ⇒ **只装载 pack 时时钟不挂**，pack 自己的周期汇报永不被宿主驱动 ✗ | core 待落（把判据移到 pack settings 之后／按已解析的面判定）；本卷记 **NOTE F5**（`--strict-findings` 下红）✓ |
+
+### 19.11 C-30 所办定稿咨询门（`kernel/paper.js`；**读者已落**）
+
+> 为什么在本卷：这是**运营侧的定稿闸**——稿件可以定稿之前，必须按声明完成"所办咨询"。v5r 的原型在 `vibe-math-v5r.js:8349-8429`（`finalizePaperByOffice`／`notePaperConsult`：**消息与会议都要有**，且**按发生的动作计数**，意图不算；否则具名拒）。vmu 侧 5 个键先落进 schema，**一直没有读者**——本卷要点名的正是"声明了没人读"这一类 ✗✓。
+
+- **读者**：`kernel/paper.js` 的定稿路径（`createPaper` 的 `finalize`）按序过 ①finalizer 规则 ②完整性 ③**C-30 咨询门** ④`register` 缝；`WIRED_KEYS` 因此 3→8 ✓。**导出面**（本卷点名，供 `02` 的模块面核对 ✓）：`createPaper`（工厂）／`refuse`（具名拒）／`apiVersion`／`ENFORCED_SCOPE`（D3 作用域标记）／`WIRED_KEYS`／`PLANNED_KEYS`／`FINALIZERS`／`CONSULT_POINTS`／`CONSULT_TIMEOUT_ACTIONS`（后两个是"何时必须咨询"与"超时怎么办"的**声明式词表** ✓）。
+- **台账记的是动作**：`consult({paperId, kind, by, ref})` 追加一条（`kind` 是自由词表：`message`／`meeting`／机构自定 ✓）；`requestConsult()` 可显式开请求（幂等 ✓）；`consultState()` **只读**（`auto:false`，不改变稿件 ✓）。**意图不算数** ✗✓（对齐 v5r）✓。
+- **拒法**：未咨询即定稿 ⇒ **`VMU_OFFICE_CONSULT_*`**（`REQUIRED`），带 `enforced[]`（5 键）＋ `enforcedScope='evaluated-so-far'` ＋ 算术细节（`reason`／`timeoutMs`／`elapsedMs`／`remainingMs`／`heldOnTimeout`／`timedOut`／`requestCleared`）；`hint` 给三条出路（先 `consult`／声明豁免／`officeConsult=off`）✓。
+- **留痕**：审计行 `what:'auth'`（`subject:'paper:<id>'`，带 `enforced`＋scope ✓）＋ 总线事件 `paper/office-consult-required`（经 `bus.declareTopic` 的扩展点 ✓）＋ 模块内 trail；**接缝缺失时具名上报**（`trace.audit.code`／`trace.bus.note` ✓），绝不假装写过 ✓。
+- **超时**：`hold`（默认）保持请求且**仍然拒**；`refuse` 清请求且**仍然拒**；`0`＝无限等；**无法识别的值按 `hold`** ⇒ **没有 `default-allow` 这一档，连拼写都进不来** ✗✓。
+- **豁免（F4）**：**默认 `[]`（不豁免）** ✓；`consult({...})` 记录一次咨询即可开门；**没有任何/关掉** ⇒ `officeConsult='off'` 是零机制 ✓。
+- **验收（机器可判定）**：① **具名**：未咨询定稿 ⇒ `VMU_OFFICE_CONSULT_*` ＋ `enforced` 是 5 元数组 ＋ `enforcedScope` 存在 ✓；② **断言**：空豁免名单下 `office` 定稿被拒、声明 `['office']` 后同一路径通过 ✓；③ **场景**：`hold` 超时后**任意久**都不放行，`consult` 后才通过 ✓；④ **红**：把 `default-allow` 写进 `OnTimeout` ⇒ 回执 `onTimeout:'hold'` 且**仍拒** ✓；⑤ 与 `22-§19` 的汇报面同一条纪律：**只提示/只记账，绝不越权驱动** ✓。
+- **测试**：`tests/vmu-paper-consult.test.mjs`（40 项 ✓）；**新码登记**：`VMU_OFFICE_CONSULT_*` 的 `REQUIRED` 已报 Lead/core 登记 `03-§8`（本卷登记前只用家族前缀，D14 家族豁免 ✓）。
+- **未核项（见 `14-§2`）**：① `finalize-or-submit` 的 **submit 那一半**不在本面（归出版/投稿面）✗；② v5r 的**双计数**（消息＋会议都要）在 vmu 是"任意一次咨询即可"——要恢复双计数需**再声明白名单**（属 pack 扩展点）✓；③ 豁免按**字符串**匹配角色（无槽位解析，同 §19.9-4）✓。

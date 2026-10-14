@@ -476,7 +476,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.collusion.minEvidence', type: 'natural', def: 2, hot: HOT.H1, who: 'office', doc: '判定嫌疑所需最少证据数' },
   { key: 'vmu.collusion.onSuspect', type: 'enum', domain: ['report', 'freeze-review'], def: 'report', hot: HOT.H1, who: 'office', doc: '嫌疑处理（默认只报告；冻结审查须显式开启）' },
   // batch-4 slice 1 (mathjobs): the job-face knobs the module really reads.
-  { key: 'vmu.math.maxParallel', type: 'positiveInteger', def: 1, hot: HOT.H1, who: 'office', doc: '并行作业上限（超限 ⇒ 具名拒，不自旋等待 ✗）。★ 轮 2 语义边界（Lead 点名的收敛项）：本键与 `vmu.math.jobs.maxParallel` **语义相同**（都是数学作业的并发上限），只是当前读者不同——本键由 `kernel/mathjobs.js:195` 读，`vmu.math.jobs.maxParallel` 由 `kernel/mathtools.js:194/565` 读。**收敛方向：以本键为唯一真源**，`vmu.math.jobs.maxParallel` 降为待删别名；两个读点都在 reader-b 的文件里，改动已在 `_handoff/vmu/core-round2-report.md` 具名，未擅自改他人文件。' },
+  { key: 'vmu.math.maxParallel', type: 'positiveInteger', def: 1, hot: HOT.H1, who: 'office', doc: '并行作业上限（超限 ⇒ 具名拒，不自旋等待 ✗）。★ 轮 3 语义边界（task-20 A）：本键是**作业服务**的并发上限，读者＝`kernel/mathjobs.js:213`（`maxParallel`）。★ `vmu.math.jobs.maxParallel`（读者＝`kernel/mathtools.js:194/565` 的**策略层** active-runs 上限）**意图相同、读者不同、当前互不驱动**（设一个不动另一个）⇒ 要限并发请**两个都设**；**收敛方向**：下一轮让 mathtools 读本键、`vmu.math.jobs.maxParallel` 降为待删别名（两个读点都在 reader-b 的文件里，未擅自改）。' },
   { key: 'vmu.math.maxJobs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '作业总量上限（0＝不限）' },
   { key: 'vmu.math.keepReceipts', type: 'natural', def: 200, hot: HOT.H1, who: 'office', doc: '回执保留条数（溢出必计数）' },
   { key: 'vmu.math.requireSeedForRandom', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '随机作业必须有种子' },
@@ -959,11 +959,41 @@ const CORE_DEFS = Object.freeze([
   // ("declares a key twice" / "no default AND the file does not say so") hold — and the fix SURVIVES `regen-all`,
   // unlike hand-editing the generated block.
   { key: 'vmu.math.jobs.dir', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: '作业镜像目录（root 相对；空 ⇒ `Math/Jobs`）。三个真读者：`kernel/lean.js:128`、`kernel/mathjobs.js:192`、`kernel/mathtools.js:194` —— 三者都按**字符串路径**处理（非字符串即归一；越界 ⇒ `VMU_LEAN_JOBS_DIR_UNSAFE`／`VMU_MATH_JOBS_DIR_UNSAFE`）。' },
+  // ROUND 3 / task-20 D (reader-a's task-18): state projections write through after each wrapped mutation by default.
+  { key: 'vmu.resume.writeThrough', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '状态型投影是否在每次被包方法返回后**写穿**一次（fire-and-forget，失败进 `resume/projection-error`）；关掉则只在显式 `snapshot()` 时写。读者：`kernel/resume.js` 的 `attachProjection`（reader-a）。' },
+  // ROUND 3 / task-24 (vmu-activity's frozen contract): the one-shot future-only activity waiter's seven keys.
+  // `wakeOn` is H2 ON PURPOSE: its bus entry is registered at CONSTRUCTION, so it takes effect next session.
+  { key: 'vmu.activity.timeoutMs', type: 'natural', def: 30000, hot: HOT.H1, who: 'office', doc: '活动等待的默认超时（毫秒）。读者：`kernel/activity.js` 的 `wait()`。' },
+  { key: 'vmu.activity.timeoutMinMs', type: 'natural', def: 10000, hot: HOT.H1, who: 'office', doc: '超时下界（请求低于此值时按 `vmu.activity.timeoutPolicy` 处置）。' },
+  { key: 'vmu.activity.timeoutMaxMs', type: 'natural', def: 3600000, hot: HOT.H1, who: 'office', doc: '超时上界（同上）。' },
+  { key: 'vmu.activity.timeoutPolicy', type: 'enum', domain: ['refuse', 'clamp'], def: 'refuse', hot: HOT.H1, who: 'office', doc: '越界超时的处置：`refuse`＝具名拒（默认）；`clamp`＝钳到区间并自曝钳制。' },
+  { key: 'vmu.activity.wakeOn', type: 'stringList', def: [], hot: HOT.H2, who: 'office', doc: '构造期注册的唤醒总线条目（**H2**：条目在构造时注册 ⇒ 下次会话生效，回执不得声称即时）。默认空＝不额外挂任何条目。' },
+  { key: 'vmu.activity.maxWaiters', type: 'natural', def: 128, hot: HOT.H1, who: 'office', doc: '同时等待者上限（超出具名拒）。' },
+  { key: 'vmu.activity.noPeerShortCircuit', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '无活跃同伴时是否立即返回 noProgress（true＝短路，对齐 v5r）。' },
+  // ROUND 3 / task-20 C (C-30, vmu-pack 的 task-21 对齐): THE OFFICE CONSULT GATE'S DECLARATION SURFACE. vmu-pack
+  // declares policy in the pack, the JUDGING POINT is the paper/human face; the four keys below are the final set
+  // (vmu-pack's proposal, adjudicated here). `off` is the zero-mechanism switch; a timeout NEVER defaults to allow
+  // (same stance as the human face: `hold`), and `office` itself is exempt because it IS the consulting party.
+  { key: 'vmu.paper.officeConsult', type: 'enum', domain: ['off', 'required'], def: 'required', hot: HOT.H1, who: 'office', doc: 'office 定稿咨询门总开关（`off`＝零机制，不闸任何定稿）；`required` 时未咨询即定稿 ⇒ 具名拒 `VMU_OFFICE_CONSULT_REQUIRED`。读者：定稿路径（`kernel/paper.js`／human 面）。' },
+  { key: 'vmu.paper.officeConsultOn', type: 'enum', domain: ['finalize', 'finalize-or-submit'], def: 'finalize', hot: HOT.H1, who: 'office', doc: '何时必须征询：`finalize`＝只卡定稿（对齐 v5r 的 `finalizePaperByOffice`／`notePaperConsult`）；`finalize-or-submit`＝投稿前也要问。' },
+  { key: 'vmu.paper.officeConsultTimeoutMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '等待咨询答复的时限（0＝无限等／挂起）。超时处置见 `vmu.paper.officeConsultOnTimeout`，**绝不默认放行**。' },
+  { key: 'vmu.paper.officeConsultOnTimeout', type: 'enum', domain: ['hold', 'refuse'], def: 'hold', hot: HOT.H1, who: 'office', doc: '咨询超时处置：`hold`＝挂起等待（默认，与 human 面同口径）；`refuse`＝具名拒。**没有 default-allow 这一档**。' },
+  { key: 'vmu.paper.officeConsultExemptRoles', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '豁免角色：**默认为空＝不豁免任何人**（Lead F4 裁决：v5r 的 C-30 原场景正是"office 自己定稿前也必须先咨询所内"，把 office 默认豁免掉等于没实现那条；"默认不豁免"是保守侧，与 `hold` 同一纪律）。部署要豁免就显式声明角色。' },
   // The SAME convergence for the other two keys the generator was emitting twice (measured: the block carried
   // `vmu.math.jobs.logMax` and `vmu.math.jobs.persist` twice as well, because `mathjobs.js` AND `mathtools.js` both
   // read them). One declaration each, with the readers named.
   { key: 'vmu.math.jobs.logMax', type: 'natural', def: 200, hot: HOT.H1, who: 'office', doc: '作业日志保留条数（溢出必计数）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`（两者默认一致：200）。' },
   { key: 'vmu.math.jobs.persist', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '作业持久化：false＝只留回执详情；true＝额外写 `Math/Jobs` 镜像并允许恢复（`vmu.math.jobs.recover` 决定何时恢复）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`。' },
+  // ROUND 3 / task-20 A: the SECOND half of the maxParallel pair, under the hand-written table so the boundary is
+  // stated ONCE (the generator treats it as pre-existing and emits no duplicate row).
+  { key: 'vmu.math.jobs.maxParallel', type: 'natural', def: 1, hot: HOT.H1, who: 'office', doc: '**策略层**的 active-runs 上限（`kernel/mathtools.js:194/565` 读取，超限按 `VMU_RESOURCE_BUDGET` 具名拒）。★ 与 `vmu.math.maxParallel`（**作业服务**并发上限，`kernel/mathjobs.js:213`）意图相同、读者不同、当前互不驱动 ⇒ 要限并发请**两个都设**；收敛方向见 `vmu.math.maxParallel` 的 doc。' },
+  // ROUND 3 / task-20 D (v5r-reader-c 的 task-17 接线单): two keys whose readers already exist.
+  { key: 'vmu.meetings.tier', type: 'enum', domain: ['formal', 'light'], def: 'formal', hot: HOT.H1, who: 'office', doc: '会议级别：light＝简流程，**不得产出实体定论**（派生谓词，不是阶段）。读者：`kernel/meetings.js` 的 `K.tier`＋`tier()`／`truthWriteRefusal()`，唯一判定点在 `close()` 的收束路径（reader-c 的 GAP-MTG-02）。' },
+  // ROUND 3 / task-20 D（reader-c 的接线单增补）：只有一个 `tier` 键表达不了"本机构不允许简流程"，所以"是否允许"
+  // 是第二个键；两者共用**同一个派生判定点**（`open()` 与 `truthWriteRefusal()`），并都在 `WIRED_KEYS`／
+  // `keysSnapshot()` 里真读 —— 不会出现"声明了没人读"。
+  { key: 'vmu.meetings.allowLight', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '是否允许 light（简流程）会议：false ⇒ 内核在开会/收束处以具名拒挡住 light（与 `tier` 共用同一派生判定点）。读者：`kernel/meetings.js` 的 `K.allowLight`。' },
+  { key: 'vmu.ballot.reopenFloor', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '投票板重开门槛（0＝不设门槛；>0 时 reopen 需要达到该支持数）。读者：`kernel/ballotbox.js` 的 `reopen()`（reader-c 的 GAP-MTG-10；该面自有实现，不并存第二份）。' },
 
   // WIRED-SCHEMA:BEGIN (generated by scripts/generate-wired-schema.mjs - do not hand-edit)
   { key: 'vmu.allocation.dirtyWorkQuota', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（bidding.js 读取）；默认值取自模块源码" },
@@ -1101,7 +1131,6 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.math.formal.requireAll', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.formal.sorryPolicy', type: 'string', def: 'deny', hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.interval.enabled', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
-  { key: 'vmu.math.jobs.maxParallel', type: 'natural', def: 1, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.linalg.backend', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.linalg.requireResidual', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.linalg.sparse', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },

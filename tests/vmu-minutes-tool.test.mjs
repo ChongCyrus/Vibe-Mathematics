@@ -38,11 +38,12 @@ const k = createKernel({ clock: () => 0, settings: {} })
 const spec = specOf(k, { minutesTool: true })
 ok(!!spec, 'the minutes tool has a spec')
 // TASK-11: `zones` (v5r 的发言区/投票区) and `gaps` (只报缺口、不自动补全) joined the six original actions.
-const ACTIONS = ['list', 'draft', 'confirm', 'append', 'actions', 'zones', 'gaps', 'status']
+// TASK-17 (GAP-MTG-03): `resolve`/`resolutions`/`supersede` joined them — the resolution ENTITY.
+const ACTIONS = ['list', 'draft', 'confirm', 'append', 'actions', 'zones', 'gaps', 'resolve', 'resolutions', 'supersede', 'status']
 ok(JSON.stringify(spec.parameters.action.enum) === JSON.stringify(ACTIONS),
-  'the enum is exactly the eight methods the service exposes', { enum: spec.parameters.action.enum })
+  'the enum is exactly the eleven methods the service exposes', { enum: spec.parameters.action.enum })
 ok(spec.parameters.action.required === true, 'and action is required')
-ok(Object.keys(spec.parameters).every((p) => ['action', 'id', 'kind', 'text', 'member', 'session'].includes(p)),
+ok(Object.keys(spec.parameters).every((p) => ['action', 'id', 'kind', 'text', 'member', 'session', 'meeting', 'target', 'actions', 'retroactive', 'by', 'of', 'limit'].includes(p)),
   'and the parameters only forward what the service takes')
 
 console.log('=== 3. THE TOOL DELEGATES RATHER THAN REIMPLEMENTS ===')
@@ -57,6 +58,9 @@ console.log('=== 3. THE TOOL DELEGATES RATHER THAN REIMPLEMENTS ===')
     actions: (id) => { calls.push('actions'); return [{ id, what: 'spoke' }] },
     zones: () => { calls.push('zones'); return { ok: true, speechZone: { count: 1 }, voteZone: { count: 0 } } },
     gaps: () => { calls.push('gaps'); return { ok: true, gaps: [{ what: 'ballots', why: 'none' }] } },
+    resolve: (a) => { calls.push('resolve'); return { ok: true, resolution: { id: 'res-1', text: a.text } } },
+    resolutions: () => { calls.push('resolutions'); return { ok: true, count: 1, resolutions: [{ id: 'res-1' }] } },
+    supersede: (a) => { calls.push('supersede'); return { ok: true, id: a.of, supersededBy: a.by } },
     status: () => { calls.push('status'); return { ok: true, total: 7 } },
   }
   const withSpy = { minutes: spy }
@@ -70,10 +74,15 @@ console.log('=== 3. THE TOOL DELEGATES RATHER THAN REIMPLEMENTS ===')
   await s.run({ action: 'actions', id: 'm-2' })
   const rz = await s.run({ action: 'zones', id: 'm-2' })
   const rg = await s.run({ action: 'gaps', id: 'm-2' })
+  const rres = await s.run({ action: 'resolve', meeting: 'm1', text: 'adopt X', by: 'acad' })
+  const rlist = await s.run({ action: 'resolutions', meeting: 'm1' })
+  const rsup = await s.run({ action: 'supersede', of: 'res-1', by: 'res-2' })
   const r6 = await s.run({ action: 'status' })
-  ok(calls.join(',') === 'list,draft,confirm,append,actions,zones,gaps,status',
-    'every one of the eight actions reaches the service, in order, once each', { calls })
+  ok(calls.join(',') === 'list,draft,confirm,append,actions,zones,gaps,resolve,resolutions,supersede,status',
+    'every one of the eleven actions reaches the service, in order, once each', { calls })
   ok(rz.speechZone.count === 1 && rg.gaps.length === 1, 'the derived reads come back from the service unchanged')
+  ok(rres.resolution.text === 'adopt X' && rlist.count === 1 && rsup.supersededBy === 'res-2',
+    'and the resolution entity is addressed, not reimplemented at the face')
   ok(r6.total === 7, 'and the receipt carries the service s value, not a recomputed one', { r6 })
 }
 

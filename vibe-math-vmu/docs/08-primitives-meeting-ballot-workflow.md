@@ -1326,14 +1326,14 @@ recount(ballotId):
 | 显式结束辩论（R10-2a）＋聚合闸 | `meeting.endDebate/aggregationAllowed` | ✅ |
 | 收束（不完整轮次具名拒，强制收束留痕） | `meeting.close(reason,{force})` | ✅ |
 | 投票板（选项式：minVotes／记名／弃权／多轮） | `ballotbox.js`（`method/minVotes/minVotesRatio/abstainAllowed/abstainCountsForFloor/secrecy/tieRule/roundsMax`）＋`ballot.js`（布尔票、三值结果、IC 冻结） | ✅ |
-| 复议／重开 | `ballot.reopen(reason)`（原语层）；投票板层 **GAP-MTG-10** | ✅／部分 |
-| 动议＋附议 | `governance.js`（`MOTION_KEYS`；动议状态机由该面持有） | ✅ |
+| 复议／重开 | `ballot.reopen(reason)`（逐场原语层）＋ **`ballotbox.reopen({boxId, reason})`（选项板层，GAP-MTG-10 已落，读 `vmu.ballot.reopenFloor`）** | ✅ |
+| 动议＋附议 | `governance.js`（`MOTION_KEYS`；动议状态机由该面持有）；决议动议在 light 会期由 tier 谓词具名拒 | ✅ |
 | 程序异议／申诉留痕 | `meetings.fileAppeal`（`appealScope/appealReasonRequired/appealDeadlineMs`） | ✅（变形） |
 | 纪要（起草／确认／逐字稿／行动项） | `minutes.js`（`draft/confirm/append/actions/list/status`；`dissentMandatory/actionsOwnerRequired/dueRequired`） | ✅ |
 | 上次纪要确认 | `minutes.confirm` + `confirmPreviousRequired` + `meetings.confirmPreviousMinutes` | ✅ |
 | 临时授权（4 命令 × 3 事件型范围） | `grant.js`：`GRANTABLE_COMMANDS=['assign','prioritize','nudge','convene']`、`GRANT_SCOPES=['meeting','verify','once']`（与 v5r 逐字一致） | ✅（**工具面缺，见 GAP-MTG-12**） |
 | 会议参数与上下界（硬界／唤醒重试／引用上限／轮次） | `meetings.hardLimitMs`（默认 1800000，钳 [300000,7200000]）、`wakeRetries`（钳 [0,10]）、`verdictMaxRounds`（≥1）；`meeting.roundTimeoutMs`／`quotesPerMessageMax`（默认 2，超限拒）／`quoteDepthMax`（默认 3，超深折叠计数） | ✅ |
-| 会议分级（formal/light，简流程不得产出实体定论） | `meetings.confidentiality*`（public/internal/restricted）承载"级别＋引用策略"，**不含"定论闸"** | ⚠ **GAP-MTG-02** |
+| 会议分级（formal/light，简流程不得产出实体定论） | **`vmu.meetings.tier`＋`allowLight`＋`truthWriteRefusal()`（GAP-MTG-02 已落）**；`meetings.confidentiality*` 仍管保密级别与引用 | ✅ |
 
 ### 25.3 基线 B（用户点名，v5r 只在设计文档里有）覆盖表
 
@@ -1353,15 +1353,15 @@ recount(ballotId):
 | id | 缺口（分片 C 对照） | 现状证据 | 由哪一层补（closed-by） |
 |---|---|---|---|
 | **GAP-MTG-01** | 显式「散会／结束会议」命令（v5r 无工具，只有判据自动收束；D2/R4/K8 假定存在） | `meeting.close` 是**原语**且只能由调用方触发；`tools/meeting.js` 的 `close` 是唯一显式入口，**没有"仅院士可散会"的授权面** | `host.js` 工具面 + `pack` 权限声明（chair 槽位）；内核原语已就绪 |
-| **GAP-MTG-02** | 会议分级的「简流程不得产出实体定论」硬闸（`truthWriteRefusal`） | `meetings.confidentiality*` 管**保密级别与引用**，与"实体定论"无关；无 `formal/light` 判定点 | `meetings.js` 策略层（新增 `formal/light` 键族 + 单一判定点）；键名需 Lead 裁决 |
-| **GAP-MTG-03** | 决议实体：稳定 id（`res-<n>`）／公告即生效 `effectiveAt`／`supersededBy` 取代链 | `minutes.js` 的 `resolutions[]` 只是记录数组；无稳定 id/生效时点/取代链；`governance.js` 只有动议 | `governance.js` 或新增决议原语（**建议 governance**，避免第二份台账） |
+| **GAP-MTG-02** | 会议分级的「简流程不得产出实体定论」硬闸（`truthWriteRefusal`） | **已落**：新增 `vmu.meetings.tier`（`formal\|light`，默认 formal）＋ `vmu.meetings.allowLight`（默认 true）；`kernel/meetings.js` 的 `tier()/isLight()/truthWriteRefusal()` 是**派生谓词**，**唯一判定点**在 `close()` 的收束路径（带 `report` ⇒ `VMU_MEETING_LIGHT_NO_TRUTH`，next 说明如何升级为 formal），并被 resolution 动议与 `minutes.resolve()` 复用；`tier=light` ＋ `allowLight=false` ⇒ `VMU_MEETING_TIER_CONFLICT`（`open()` 前即拒） | **已落**（`kernel/meetings.js` 的 `tier/allowLight/truthWriteRefusal` ＋ `close()`/`motion()` 判定点；键由 core 声明） |
+| **GAP-MTG-03** | 决议实体：稳定 id（`res-<n>`）／公告即生效 `effectiveAt`／`supersededBy` 取代链 | **已落**：`kernel/minutes.js` 的 `resolve()`／`resolutions()`／`supersede()` —— 框架分配的全所单调 `res-<n>`、`effectiveAt === at`、`retroactive` 只记 `declaredAt`（**不移动生效时点**）、取代链单向只增、只读检索（任何 `…At/…Ms` 过滤**具名拒**）；**light 会议经同一个 tier 判定点具名拒**，缺 `meetings` 接缝 ⇒ `VMU_ENGINE_UNAVAILABLE`（不猜 tier）；决议随 minutes 快照跨重启（计数 max+1） | **已落**（`kernel/minutes.js` `resolve/resolutions/supersede`；`createMinutes({ meetings })` 装配由 core 落） |
 | **GAP-MTG-04** | 议程增删改／点名出席表／发言顺序设定／点名发言（`agenda_set`／`roll_call`／`speak_order_set`／`speak_next`） | `meetings.js` 有 `attend/leave/queue/orderMode` 与 `materialsRequired`，**没有** agenda 条目对象、没有 attendance 状态表、没有"主席点谁"的命令 | `meetings.js`（议程对象 + 出席表 + `orderMode:'chair'` 的点名入口） |
 | **GAP-MTG-05** | 休会／**延长**／**停步**（`recess` 已有；`extend`／`stop` 无） | `meetings.recess/resume` 存在；`speechExtendMs/speechExtendMax` 是**声明键**、无延长命令；无 `stop{scope}` | `meetings.js`（在既有 `speechExtend*` 键上实现 `extend`；`stop` 需新键） |
 | **GAP-MTG-06** | 发言机制切换（`single`／`open`／`round_robin`／`hands`／`call_on`／`directed`）与单次发言版群聊 | `chat.js` 提供"说话"原语与配额；`meeting.js` 提供机会位与举手；**没有 mode 切换命令** | `meeting.js`（在 `openRound` 上做 mode 判定点）＋`tools/meeting.js` |
 | **GAP-MTG-07** | 材料提交（`material_submit`，挂到议程条目） | `meetings.materialsRequired` 只做"是否要求材料"的判定；无材料对象、无提交入口 | `meetings.js`（材料对象 + 议程挂钩） |
 | **GAP-MTG-08** | 定向质询／回答（`challenge`／`answer_challenge`） | `meeting.interrupt`（`interruptAllow/interruptQuota`）是**打断**，不是"必须回答的质询" | `meeting.js`（质询对象 + 待答状态） |
 | **GAP-MTG-09** | 会中任务的「请求认领 → 批准」批准点（`claim_pending`） | 任务面 `tasks.js`/`board.js` 的认领是**直接**的；无 `claim_pending` 状态 | `board.js`／`tasks.js`（v5r 的 `meeting_task_claim` 语义） |
-| **GAP-MTG-10** | 投票板层的 `reopen`（复议门槛只升不降） | `ballot.js` 有 `reopen(reason)`；`ballotbox.js` **没有** reopen（其 `PLANNED_BALLOT_KEYS` 已具名登记 `reopen*` 三键与复活条件） | `ballotbox.js`（**委托**原语的 `reopen`，不得并存第二份实现） |
+| **GAP-MTG-10** | 投票板层的 `reopen`（复议门槛只升不降） | **已落**：`kernel/ballotbox.js` 新增显式生命周期（`open｜closed`：**裁定后的板不再收票/记缺席**，均具名拒 `VMU_STATE`）＋ **自有 `reopen()`**（要求 `reason`；**`vmu.ballot.reopenFloor` 真读并决定**——不达门槛 ⇒ `VMU_BALLOT_MIN_VOTES_NOT_MET` 带当前/门槛且 `enforced[]` 点名该键；旧结论先入 `reopenHistory` 再清票，只增不改）。该键已由 `PLANNED_BALLOT_KEYS` **移入 `WIRED_BALLOT_KEYS`**（分区 `27 = 23 + 4` 仍 exact）；工具面新增 `boxopen/boxcast/boxclose/boxreopen` 使其可达 | **已落**（`kernel/ballotbox.js` `reopen()`；**无第二份 reopen 实现**） |
 | **GAP-MTG-11** | 会后异步补票窗口（`vote_window`；窗口只延长时间、不得重定义分母） | `mailbox.js` 提供耐久投递与 ack；投票侧无窗口概念（`minVotes` 是成立门槛） | `ballotbox.js`（窗口键 + 截止策略）；分母语义由 `meetings.unansweredInDenominator` 持有 |
 | **GAP-MTG-12** | 临时授权／动议／纪要的**工具面**（`vibe_vmu_grant` 等；**工具面未实现 ✗**——**能力已在内核 ✓、工具缺 ✗**，两者要分清） | 内核有 `grant.js`／`governance.js`／`minutes.js`，`TOOL_FACES` 里**没有 grant 面**（动议/纪要已有各自工具面） | `host.js`（加 `grant` 面：families `vmu.grant.`，config `grant`）＋`tools/grant.js` |
 
@@ -1374,8 +1374,9 @@ recount(ballotId):
 | `kernel/minutes.js` | ✅（`face:'minutes'`） | **是**（记录＋逐字稿；逐字稿超 64KB **计数截断**） | `meeting` 接缝；超限字节数在 `truncated`／`skipped` 上报 |
 | `kernel/meetings.js` | ✅（`face:'meetings'`） | **是**（live 会议 + 归档 + 回执环；Map/Set 感知序列化） | `policy`（47 键来自 settings，恢复时重解析，**绝不用旧声明覆盖新配置**）、`members/ballot/wake/bus`、`refusals` 计数 |
 | `kernel/ballotbox.js` | ✅（`face:'ballotbox'`） | **是**（票箱 + 票面 Map） | `policy`（26 键重解析）、`bus` |
-| `kernel/mailbox.js` | ✅ `snapshot/hydrate` ＋ `store.patch('mailbox')` | **是**（**配 `store` 端口时**；无端口则 `durable:false` 自曝） | `deliver`／`resolveAudience`（宿主重绑）；无 store 时快照仅内存 |
-| `kernel/chat.js`／`kernel/panel.js` | **本轮无 seam** | **否** | 内存账本未做投影 ⇒ 由 `resume` 或后续切片补 `chat`/`panel` seam（策略值来自 settings，会重解析） |
+| `kernel/mailbox.js` | ✅ `snapshot/hydrate` ＋ `persist/restore(snap)` | **是**（**配 `store` 端口**真持久；`restore(snap)` 走投影引擎、`restore()` 走声明键） | `deliver`／`resolveAudience`（宿主重绑）；无 store 且未给快照 ⇒ `durable:false` 自曝 |
+| `kernel/chat.js` | ✅ **Round 3 新增** `snapshot()/restore(snap)` | **是**（消息账本＋禁言＋发言计数；**policy 不入快照**，从 settings 重解析；id 计数 max+1） | 注入接缝（`bus/clock/isFrozen/freezeExempt/isAdmin`）由宿主重绑，**不算 `skipped`** |
+| `kernel/panel.js` | ✅ **Round 3 新增** `snapshot()/restore(snap)` | **是**（行＋只追加历史＋查看留痕；**policy 不入快照**） | 注入接缝（`bus/members`）由宿主重绑，**不算 `skipped`** |
 
 > 接口形状（v5r-reader-a 定稿 v1）：实例方法 `snapshot()`／`restore(snap)`；信封 `{apiVersion, face, v:1, at, data, counters, skipped}`；`restore` 回执 `{ok, restored:[…], skipped:[{what,why}], counters}`；版本/缺字段/冲突分别 `VMU_RESUME_SNAPSHOT_VERSION`／`VMU_RESUME_SNAPSHOT_INCOMPLETE`／`VMU_RESUME_RESTORE_CONFLICT`（注册在 `kernel/resume.js`；本卷以**同值字面量**引用，避免在 `resume.js` 落盘前形成硬依赖）。
 
@@ -1391,6 +1392,70 @@ recount(ballotId):
 - `node tests/vmu-panel.test.mjs` ⇒ 31 passed / 0 failed
 - `node tests/vmu-meeting-parity.test.mjs` ⇒ 基线 A 逐项驱动 + §25.4 登记的机械校验（见该套件输出）
 - 既有套件回归：`vmu-meeting` 50/0、`vmu-meetings` 160/0、`vmu-ballot` 41/0、`vmu-ballotbox` 13/0、`vmu-minutes` 20/0
+
+### 25.8 C-45 · 忠实性缺陷 ⇒ 强制弃权（**closed-by ＝ `kernel/fidelity.js`**）
+
+- **判定在策略层、强制在内核**：`declareDefect({target,by,note})` 登记"该成员在该对象上有已声明缺陷"（缺字段具名拒）；`abstentionFor(member,target)` 是纯谓词；**`applyAbstention` 是唯一强制点**（被登记者声明的 1/0 ⇒ 0.5）。
+- **表决面唯一调用点**：`kernel/ballot.js` 的 `cast()`（`castValid` 之后、落票之前）——改写后的票以 `kind:'abstain'` 落账（**不计入 decisive/m**），并保留 `declared`／`byFidelity:true`／`markerId`。**唯一**一处，不散落。
+- **不许静默**：回执带 `byFidelity/declared/markerId/note`；`ballot.status()` 回显 `fidelitySeam` 与 `byFidelity[]`；`fidelity.view()` 有 `abstentionsEnforced` ＋ `Formal/Defects/<target>.json` 耐久 marker。**无接缝** ⇒ `fidelitySeam:false` 且不改写任何票（不假装强制）。
+- **它不越界**：不忠实**不是反证**（`isRefutation:false`）；强制的是**弃权**，不是结论（与 §3 的"R6 真值不越界"一致）。装配：`createBallot({ …, fidelity })`（由 `kernel/index.js` 落）。
+
+---
+
+## 26. Round 3 · 目标 2 缺口：一次性 future-only 活动等待器（F52 / C-56）
+
+> **判据**：`_handoff/vmu/03-v5r-full-inventory.md` 分片 A **§6 原语 F52**（"必须是未来一次性语义"）、**C-56**（`vibe_v5_wait`／`waitForActivity`／`notifyActivity`，`vibe-math-v5r.js:3424-3466`、工具 `:11142-11151`）。
+> **缺口实测**：Round 3 之前 vmu 全树对 `waitFor`／`notifyActivity`／`vibe_v5_wait`／`activityWaiter` **零命中** ⇒ 成员只能轮询（烧 token）或永远等；这条直接落在"利于多智能体协作"的反面，故本轮补为内核原语。
+> **本节由 `vmu-activity` 撰写（task-24）、由本节所有者插入**；标识符逐字保留，供 `tests/audit-module-coverage.test.mjs` 认领该模块。
+
+### 26.1 新增内核原语（Round 3）
+
+| 原语 | 文件 | 工厂 | 工具面 | 设置键（全部真读） | 新错误码 |
+|---|---|---|---|---|---|
+| 一次性 future-only 活动等待器 | `kernel/activity.js` | `createActivity({clock,log,settings,bus,timer,activePeers})` | `vibe_vmu_wait`（`tools/activity.js`，2 动作 `wait｜status`） | `vmu.activity.timeoutMs`／`timeoutMinMs`／`timeoutMaxMs`／`timeoutPolicy`／`wakeOn`／`maxWaiters`／`noPeerShortCircuit` | `VMU_ACTIVITY_INVALID_TIMEOUT`／`_NO_TIMER`／`_TIMER_INVALID`／`_BOUNDS_INVALID`／`_SIGNAL_INVALID`／`_ABORTED`／`_WAITER_LIMIT`／`_DISPOSED`／`_WAKE_HOOK_UNKNOWN`／`_WAKE_UNWIRED`／`_PEER_SEAM_FAILED` |
+
+**该模块的导出面（逐字，供读者与门禁认领整个面而不是一部分）**：模块 `activity`（`kernel/activity.js`）导出 `apiVersion`、`refuse`、**`CODE`**、**`TIMEOUT_BOUNDS`**、**`ACTIVITY_KEYS`**、**`WIRED_ACTIVITY_KEYS`**、`WAKE_ENTRY_ID`、`normalizeTimer`、`normalizeWakeOn`、**`createActivity`**；服务名 `vmu.activity`，工具名 `vibe_vmu_wait`。其中 `CODE` 是**十一**个 `VMU_ACTIVITY_*` 码的单源表（含**上报型** `VMU_ACTIVITY_WAKE_UNWIRED`：它出现在 `status().wake.problems[].code`，不是抛出的），`TIMEOUT_BOUNDS` 是默认区间（`[10000, 3600000]`，可被 `timeoutMinMs`／`timeoutMaxMs` 覆盖）；而 `ACTIVITY_KEYS` 与 `WIRED_ACTIVITY_KEYS` 是**同一个 7 键集合**——本面 7 键**全部已接线、且每个都真的改变结果**（实现里 `WIRED_ACTIVITY_KEYS` ＝ `ACTIVITY_KEYS.slice()`）⇒ `partition()` 的 `planned`／`unwired` 都是空表，不制造"未接线"的假分类。
+
+**不变式（每条都有断言，且每条断言都被证明"能红"）**
+
+- **只看未来（future-only）**：等待开始**之前**发生的通知**绝不**唤醒它。机制是**没有积压**——`notify()` 没有等待者时只记录事实（`notified:0`）并**不入队**；等待者登记时记下当时可见的通知序号（`openedSeq`），只有**更新的**通知才可能 resolve 它。v5r 的原话就是这条要求：**不能把历史活动当新活动**。
+  > 证伪：`tests/vmu-activity-falsify.test.mjs` 把 `kernel/activity.js` 复制到 `D:\_tmp` 后**注入"历史重放"缺陷**（新来者被**已发生**的最后一条通知 resolve）并导入，同一探针必须变红（实测：真模块 `wokeOnHistory=false`，变异体 `true`）；另有一个文件内变异体做探测器自证。
+- **一次性（one-shot）**：`notify()` 取走**当前这一代**等待者并清空集合，逐个 resolve **恰好一次**；第二条通知唤醒 `0`；被唤醒／超时／中止的等待者**当场注销**（`status().waiters` 归零）。
+- **超时区间**：`[10000, 3600000]` ms（v5r `vibe-math-v5r.js:3435-3439` 的区间）。越界**默认具名拒** `VMU_ACTIVITY_INVALID_TIMEOUT`（与 v5r 同义，`hint` 里点名另一条路）；`vmu.activity.timeoutPolicy="clamp"` 是**声明的另一种**处置，钳制时回执自曝 `clamped:true` 并计数。边界本身是设置键（`timeoutMinMs`／`timeoutMaxMs`），**不硬编码两次**；`timeoutMinMs > timeoutMaxMs` 这类不可用组合**具名拒** `VMU_ACTIVITY_BOUNDS_INVALID`。
+- **disposer 在所有分支清理**：成功／超时／中止三条路都汇入**同一个** `cleanup()`（摘等待者 → 调定时器 disposer → 摘 abort 监听），且幂等；连"注入的定时器在 arming 时同步触发"这种病态形状也把刚拿到的 disposer 补跑。`status().disposersCalled` 把这条纪律变成**读数**而不是承诺（实测三个分支各恰好 1 次）。
+- **没有定时器就不假装有**：`timer: null` ＝"本部署没有定时器"⇒ `wait()` **具名拒** `VMU_ACTIVITY_NO_TIMER`，绝不返回一个永远不会超时的 promise。**省略** `timer` ⇒ 用平台定时器，`status().timer.shape` 报告 `global-setTimeout`（可注入三形状：`{timeout(cb,ms)->disposer}`、`{setTimeout,clearTimeout}`、`(cb,ms)->disposer`；`normalizeTimer` 负责归一化）。
+- **可 abort**：`signal` 支持；`wait()` 在**已经 aborted** 时拒绝且**一个定时器都不 arm**。拒绝码**一律具名** `VMU_ACTIVITY_ABORTED`，signal 的 `reason` 保留在 `abortReason`／`cause`。
+  > **与 v5r 的具名偏离**：v5r 在 reason 是 `Error` 时**原样 reject**（`vibe-math-v5r.js:3449-3451`）；这里同样保留 reason，但**码始终具名**——`AbortController.abort()` 的默认 reason 是 `DOMException`，其 `code` 是**数字 20**，一个数字型无名码越过工具面正是本项目拒绝的形态。
+- **无活跃同伴立即短路（v5r parity）**：注入 `activePeers(me)` 后，没有**其他**在活成员时**立即**返回 `noProgress:{reason:'no-active-peer'}`，**不 arm 定时器、不登记等待者**——这就是"不空等、不烧 token"。接缝**抛错或返回非数组**⇒ 具名拒 `VMU_ACTIVITY_PEER_SEAM_FAILED`（**绝不**被读成"没人"）；`vmu.activity.noPeerShortCircuit=false` 是可声明的关闭开关；**没有**接缝时 `status().peerCheck.seam=false` 如实自曝（不假装查过）。
+- **可观测、可终止**：`status()` 给出等待者列表／最后一条通知／通知环（有界、丢弃**计数**）／各拒绝码计数／策略快照／定时器来源／唤醒接线状态／`enforced[]` 口径；`keysUsed()`／`partition()`／`config()`／`refusals()` 齐备。`dispose()` 把未决等待**具名**结束（`VMU_ACTIVITY_DISPOSED`，**不算"等到了"**）、跑掉 disposer、并按名停掉总线条目。
+
+### 26.2 唤醒来源（只有两个）
+
+1. **命令式**：`notify({what,at})` —— v5r 的 `notifyActivity()` 同义，给握有服务的生产者调用。
+2. **声明式**：声明 `vmu.activity.wakeOn: ['chat/sent', …]` 时，构造期在总线上注册**一个**观察条目（`id` ＝ `WAKE_ENTRY_ID` ＝ `vmu-activity-wake`，`kind:'module'`，`failure:'open'`，`order:900`），于是**真实已提交的状态变化**直接唤醒等待者，不必逐个生产者改代码。该 handler **返回 `undefined`**（不产生任何 decision）⇒ **坏掉的唤醒监听器永远不能阻断它所观察的写入**（实测：`bus.emit` 的 `decisions` 为空）。
+   - 钩子词表**读自 `kernel/bus.js` 的登记**（单一真源，经 `normalizeWakeOn` 归一化）⇒ 名字写错是 `VMU_ACTIVITY_WAKE_HOOK_UNKNOWN` **具名问题**，而不是"静默订阅了一个没人 emit 的名字"；没有总线时同样具名上报（`wired:false` ＋ problems）。
+   - 默认 `wakeOn: []` ＝ **零机制**：不注册条目、不挂监听器。
+   - **热改等级 H2 的道理**：条目在**构造期**注册 ⇒ 改键**下次会话**生效；回执不得声称即时（`settings/schema.js` 的该行 doc 已写明）。
+   - **已知相互作用（如实登记，不是缺陷）**：声明 `wakeOn` 会让总线**真的**多一个条目，于是 D-01 的 `middleware` 面"总线上已有条目即声明"这条 `extraIntent` 会随之一同点亮。
+
+### 26.3 分层与边界
+
+- **能力进内核**：等待机制（登记／一次性／future-only／disposer／abort／上限／短路）在 `kernel/activity.js`。
+- **策略进 settings/pack**：区间上下界、拒／钳、等待者上限、是否短路、唤醒哪些钩子，全部是 `vmu.activity.*`（`who: office`；`H1` 的六键**每次调用现读**，故"下回合生效"是真的）。
+- **`tools/activity.js` 只做寻址与调用**：它**不**复制区间策略（实测：低于区间的值原样交给内核，只有内核钳制），也不暴露 `notify`——**唤醒是已提交状态变化的事**，不是成员可以自己主张的事；成员想让事情发生就去产出（发言／派任务／开会）。
+- **工具参数以 `docs/03` 的行为准**：`action`（缺省 `wait`）／`timeoutMs`／`why`／`me`；v5r 拼写 `timeout_ms`／`reason`／`member` 作为**别名**接受（便于照搬 v5r 调用）。
+- **回执／拒绝的 D3 口径**：**每个**回执（被唤醒／超时／`noProgress`／`notify`／`dispose`）与**每个**拒绝都带 **`enforced[]`**（本面**这次调用**真正求值的键，数组、从不为 `undefined`）＋ **`enforcedScope:'evaluated-so-far'`**——与内核其余各面同一个名词、同一套语义。两条自曝纪律：① `vmu.activity.wakeOn` 是**构造期**键，只由 `keysUsed()` 承担，**不进**任何调用回执的 `enforced[]`（"未求值的键不得出现"）；② `vmu.activity.timeoutMs` 只在**调用方省略超时**时进入 `enforced[]`（那次调用真的读了默认值）；注入了同伴接缝时 `vmu.activity.noPeerShortCircuit` 必在列（它的值决定短路与否）。
+  > **待办（具名，不绕门）**：本面因此出现在 `tests/audit-enforced-consistency.test.mjs` 的"代码里出现 `enforced` 的 kernel 模块"名单里 ⇒ 在该门禁补上 `activity` 的场景行之前，它会报 `UNCOVERED-MODULE @ activity.js`。**这是如实登记**：口径就用内核统一的 `enforced[]`，不为过门改叫 `evaluated`；可粘贴的场景块已由 `vmu-activity` 交给门禁主人（vmu-verify）。服务名 `vmu.activity`。
+
+### 26.4 验证（原样命令与读数）
+
+| 命令 | 读数 |
+|---|---|
+| `node tests/vmu-activity-kernel.test.mjs` | `=== VMU ACTIVITY: 141 passed, 0 failed ===` |
+| `node tests/vmu-activity-falsify.test.mjs` | `=== VMU ACTIVITY FALSIFICATION: 14 passed, 0 failed ===` |
+| `node tests/vmu-activity-tool.test.mjs` | `=== VMU ACTIVITY TOOL: 58 passed, 0 failed ===` |
+
+真机装配证据（`tests/vmu-activity-tool.test.mjs` §4）：声明 `vmu.activity.wakeOn:['chat/sent']` 的**真 kernel** 上，`k.activity.wait(...)` 被 `k.bus.emit('chat/sent', …)` **真的**唤醒（`notified.what==='hook:chat/sent'`）；同一装配下 `vmu.activity.noPeerShortCircuit=false` 的第 2 个 kernel **真的**超时（平台定时器）且 disposer 已跑；空名册时 `wait()` 立即 `noProgress:'no-active-peer'`。
 
 
 
