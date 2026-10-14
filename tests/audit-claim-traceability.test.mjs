@@ -45,6 +45,11 @@ const EXTERNAL = {
   G11: '_oneoff/vmu/design/02-dsh-official-guidelines.md',
   G13: '_oneoff/vmu/design/02-dsh-official-guidelines.md',
   G17: '_oneoff/vmu/design/02-dsh-official-guidelines.md',
+  // ROUND 6: `docs/03` cites `F53` - an entry number of the v5r INVENTORY, which lives in the handoff volume
+  // outside the repo (`_handoff/vmu/03-v5r-full-inventory.md`), exactly like the design ids above. Listing it here
+  // is what this table is FOR: the citation is useful provenance, so it is recorded rather than deleted, and the
+  // discovery rule stays strict (a NEW dangling id still fails).
+  F53: '_handoff/vmu/03-v5r-full-inventory.md',
 }
 
 console.log('=== 1. THE VOLUMES AND THEIR CLAIM IDS ARE READ ===')

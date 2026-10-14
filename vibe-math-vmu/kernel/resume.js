@@ -297,7 +297,7 @@ export function attachProjection({ target, methods = [], projection, onError = n
 }
 
 export function createResume({ store = null, work = null, control = null, identity = null, mailbox = null, watchdogs = null,
-  lock = null, children = null, faces = {}, settings = {}, bus = null, clock = () => 0, log = null, listCap = 100 } = {}) {
+  lock = null, children = null, roster = null, faces = {}, settings = {}, bus = null, clock = () => 0, log = null, listCap = 100 } = {}) {
   const sget = (key, def) => {
     if (settings && typeof settings.get === 'function') { const v = settings.get(key); return v === undefined ? def : v }
     if (settings && Object.prototype.hasOwnProperty.call(settings, key)) return settings[key]
@@ -660,6 +660,7 @@ export function createResume({ store = null, work = null, control = null, identi
     mailbox: null,
     watchdogs: null,
     children: null,
+    inflight: null,
     flags: null,
     readBack: null,
   }
@@ -792,30 +793,45 @@ export function createResume({ store = null, work = null, control = null, identi
     report.steps.push({ step: 'read', ok: true, at: r.at, keys: r.keys, digest: r.digest })
 
     // ② roster
-    let roster = null
+    // ② roster — NOTE: the local is `rosterRows`, because `roster` is the PORTS' name (a shadowing bug of exactly
+    // the kind the write-through fix measured: a local variable silently replaced the injected seam).
+    let rosterRows = null
     try {
-      if (identity && typeof identity.list === 'function') { const l = identity.list(); roster = Array.isArray(l) ? l : (l && (l.members || l.roster)) || null }
-    } catch (e) { roster = null }
+      if (identity && typeof identity.list === 'function') { const l = identity.list(); rosterRows = Array.isArray(l) ? l : (l && (l.members || l.roster)) || null }
+    } catch (e) { rosterRows = null }
     const membersEnv = store.read('members')
-    report.steps.push({ step: 'roster', ok: true, viaSeam: roster !== null, seamCount: roster ? roster.length : null,
-      projected: membersEnv !== undefined && membersEnv !== null, note: roster === null && (membersEnv === undefined || membersEnv === null) ? 'no roster seam AND no members projection: the roster cannot be restored (reported, not faked)' : null })
+    report.steps.push({ step: 'roster', ok: true, viaSeam: rosterRows !== null, seamCount: rosterRows ? rosterRows.length : null,
+      projected: membersEnv !== undefined && membersEnv !== null, note: rosterRows === null && (membersEnv === undefined || membersEnv === null) ? 'no roster seam AND no members projection: the roster cannot be restored (reported, not faked)' : null })
 
     // ②b live-child reconciliation (F51-adjacent): the host is asked which continuable children STILL EXIST, and
     // every roster member holding a childId the host no longer lists is NAMED. The engine never spawns — that is
     // the assembly's policy — so this step turns "restart" into an actionable, auditable fact instead of a guess.
-    let childReport = { attached: false, code: CODE.childrenUnavailable, parentId: null, live: 0, checked: 0, missing: [], note: 'no children port: which member children survived a restart cannot be checked (reported, never guessed)' }
-    if (children && typeof children.list === 'function') {
+    //
+    // ROSTER SOURCE, in order: the explicit `roster` port (rows carry `childId`; `members.roster()` is the natural
+    // one) → the attached members projection's list() → the identity seam (which has ids but NO childId, so it can
+    // only answer "no member holds a child" — reported as `rosterSource` so the difference is visible).
+    let childReport = { attached: false, code: CODE.childrenUnavailable, parentId: null, live: 0, checked: 0, missing: [], rosterSource: null, note: 'no children port: which member children survived a restart cannot be checked (reported, never guessed)' }
+    const childrenList = typeof children === 'function' ? children : (children && typeof children.list === 'function' ? (p) => children.list(p) : null)
+    if (childrenList) {
       try {
-        const heldRows = Array.isArray(roster) ? roster
-          : (() => { const h = projections.get('members'); try { const l = h && h.adapter && typeof h.adapter.list === 'function' ? h.adapter.list() : null; return Array.isArray(l) ? l : [] } catch (e) { return [] } })()
-        const parentId = typeof children.parentId === 'function' ? children.parentId() : null
-        const live = listOf(await children.list(parentId))
+        let heldRows = []
+        let source = 'none'
+        if (typeof roster === 'function') { const r = await roster(); if (Array.isArray(r)) { heldRows = r; source = 'roster-port' } }
+        else if (rosterRows && Array.isArray(rosterRows)) { heldRows = rosterRows; source = 'identity-seam' }        if (source === 'none' || !heldRows.some((m) => m && m.childId)) {
+          const h = projections.get('members')
+          try {
+            const l = h && h.adapter && typeof h.adapter.list === 'function' ? h.adapter.list() : null
+            if (Array.isArray(l) && l.length) { heldRows = l; source = 'members-projection' }
+          } catch (e) { /* keep the previous source */ }
+        }
+        const parentId = typeof (children && children.parentId) === 'function' ? children.parentId() : null
+        const live = listOf(await childrenList(parentId))
         const held = heldRows.filter((m) => m && m.childId)
         const missing = held.filter((m) => live.indexOf(String(m.childId)) === -1).map((m) => ({ member: String(m.id), childId: String(m.childId) }))
-        childReport = { attached: true, code: null, parentId: parentId === undefined ? null : parentId, live: live.length, checked: held.length, missing,
-          note: missing.length ? 'these members hold a childId the host no longer lists: the assembly must re-provision them (the engine does NOT spawn)' : (held.length ? 'every roster child is still live' : 'no roster member holds a childId yet') }
+        childReport = { attached: true, code: null, parentId: parentId === undefined ? null : parentId, live: live.length, checked: held.length, missing, rosterSource: source,
+          note: missing.length ? 'these members hold a childId the host no longer lists: the assembly must re-provision them (the engine does NOT spawn)' : (held.length ? 'every roster child is still live' : (source === 'identity-seam' ? 'the identity seam carries no childId: wire the roster port (members.roster()) to reconcile children' : 'no roster member holds a childId yet')) }
       } catch (e) {
-        childReport = { attached: false, code: (e && e.code) || CODE.childrenUnavailable, parentId: null, live: 0, checked: 0, missing: [], note: 'the children port failed: ' + String((e && e.message) || e) }
+        childReport = { attached: false, code: (e && e.code) || CODE.childrenUnavailable, parentId: null, live: 0, checked: 0, missing: [], rosterSource: null, note: 'the children port failed: ' + String((e && e.message) || e) }
       }
     }
     state.children = childReport
@@ -837,8 +853,18 @@ export function createResume({ store = null, work = null, control = null, identi
         if (e && e.interrupted) state.interrupted.set(String(e.id), { id: String(e.id), owner: e.owner === undefined ? null : String(e.owner), reason: e.interruptedReason === undefined ? null : String(e.interruptedReason), at: e.interruptedAt === undefined ? null : e.interruptedAt })
       }
       interrupted = [...state.interrupted.values()]
+      // v5r's `pendingWork` in one readable place: WHO still has unfinished work, what the restart did to it, and
+      // (after the recovery) what is STILL pending — the three facts an operator asks for in that order.
+      const stillPending = (typeof work.list === 'function' ? work.list() : []).filter((e) => e && !e.interrupted)
+      state.inflight = {
+        pending: pending.map((e) => ({ id: String(e.id), owner: e.owner === undefined ? null : String(e.owner), kind: String(e.kind || ''), objective: e.objective === undefined ? null : e.objective })),
+        interrupted: interrupted.map((x) => ({ id: x.id, owner: x.owner, reason: x.reason })),
+        pendingNow: stillPending.length,
+        note: 'the durable in-flight ledger: `pending` is what the restart FOUND, `interrupted` is what it ended, `pendingNow` is what is still open',
+      }
       report.steps.push({ step: 'inflight', ok: true, pending: pending.length, marked: recovered, interrupted: interrupted.length, named: interrupted.map((x) => x.id + (x.reason ? '(' + x.reason + ')' : '')) })
     } else {
+      state.inflight = { pending: [], interrupted: [], note: 'no in-flight ledger seam: pending work cannot be listed (reported, never guessed)' }
       report.steps.push({ step: 'inflight', ok: false, code: CODE.unavailable, note: 'no in-flight ledger seam: interrupted work cannot be named' })
     }
 
@@ -848,11 +874,12 @@ export function createResume({ store = null, work = null, control = null, identi
     state.unhydrated = h.unhydrated
     report.steps.push({ step: 'ledgers', ok: h.ok, hydrated: h.hydrated, unhydrated: h.unhydrated })
 
-    // ⑤ mailbox
+    // ⑤ mailbox — the port may be an object with `pending()` or a bare function returning the entries.
     let mb = { attached: false, code: CODE.mailboxMissing, pending: null, ids: [] }
-    if (mailbox && typeof mailbox.pending === 'function') {
+    const mailboxPending = typeof mailbox === 'function' ? mailbox : (mailbox && typeof mailbox.pending === 'function' ? () => mailbox.pending() : null)
+    if (mailboxPending) {
       try {
-        const list = await mailbox.pending()
+        const list = await mailboxPending()
         const arr = Array.isArray(list) ? list : []
         mb = { attached: true, pending: arr.length, ids: arr.slice(0, listCap).map((m) => String(m && m.id)) }
       } catch (e) { mb = { attached: false, code: CODE.mailboxMissing, pending: null, error: String((e && e.message) || e) } }
@@ -963,6 +990,16 @@ export function createResume({ store = null, work = null, control = null, identi
       hydrated: state.hydrated, unhydrated: state.unhydrated,
       projection: { degraded: state.unhydrated.length > 0, unhydratedKeys: state.unhydrated.map((u) => u.key) },
       mailbox: state.mailbox, watchdogs: state.watchdogs, children: state.children, flags: state.flags,
+      // v5r's `pendingWork` view + which recovery ports this assembly actually wired (an UNWIRED port is visible
+      // here instead of being silently claimed by the service description).
+      inflight: state.inflight,
+      ports: {
+        store: !!store, work: !!work, control: !!control, identity: !!identity, lock: !!lock,
+        mailbox: !!(typeof mailbox === 'function' || (mailbox && typeof mailbox.pending === 'function')),
+        watchdogs: !!(watchdogs && typeof watchdogs.targets === 'function' && typeof watchdogs.touch === 'function'),
+        children: !!(typeof children === 'function' || (children && typeof children.list === 'function')),
+        roster: typeof roster === 'function' || Array.isArray(roster),
+      },
       phase: phaseValue,
       // F18/F51: the exclusivity the recovery ran under, and the durable marker that says this session is a resume.
       lock: Object.assign({}, lockState),

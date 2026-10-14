@@ -445,6 +445,12 @@ LeanJobMirror  = { schema:'vmu/lean-job@1',  jobId, statement, file, state, atte
   事实（`hashUnchanged`、`contextHash`）由**同一个函数**产出 ⇒ 去重不可能与 settle 漂移；同 key 且已有
   `passed` 时新作业直接以 `deduped:true`（`dedupedOf`）落定、**不重编译**；改内容或改构建上下文即重跑。
   计算面**故意不做**内容去重（每次运行要有自己的回执）——这是**具名差异**，不是漏做。
+- **jobId 级取消（Round 6 ✓；v5r 的 Lean 面没有取消——`dispose` 只能标 interrupted）**：`cancel({jobId,reason})`
+  在**有活动句柄**时调用 `terminate()`（回执 `terminated:true`），否则**具名**写清"无法 terminate，进程最多活到
+  单次预算"；状态映射为 **`interrupted` ＋ `reason:'cancelled'`**（**不新增状态**，保持与 v5r 的状态集一致），
+  取消**落镜像**，恢复扫描把它当终态**不重排**（不静默复活）；`dispose()` 同步升级为"能杀就杀并**计数** `killed`"，
+  `canTerminateChild` 由"声明 seam 或运行时见过句柄"决定（不再无条件 false）。拒绝复用已登记码
+  （`VMU_NOT_FOUND`／`VMU_JOB_CANCELLED`）。
 - **定时器必须可清理（F15，Round 4 ✓ 修）**：`createChildBudget` 的默认 `timer` seam 现在返回**真 disposer**
   （`() => clearTimeout(h)`）；注入的 seam 若返回平台 `Timeout` 对象则**显式 `clearTimeout`**；**清理失败**
   返回 `cleanupFailed` ＋ 通过 `onNote('timer-cleanup-failed', …)` 上报，**绝不**再被 `catch` 吞掉（这正是

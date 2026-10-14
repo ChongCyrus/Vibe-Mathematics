@@ -7,7 +7,7 @@
 //   §2 the round-3 result reproduced THROUGH the library (`kernel/activity.js` future-only rule);
 //   §3 the round-4 fixes proven LOAD-BEARING on `kernel/scheduler.js`: removing the fired-handle release (F15), the
 //      trampoline guard (F16), or the deferred-rerun flag (F16) must make the same probe go red.
-import { falsify, formatReport, mutateOnce, assertSafeTempRoot, selfContainedSource, DEFAULT_TMP_DIR, FALSIFY_PROBLEM } from './_lib/falsify.mjs'
+import { falsify, formatReport, formatFamilyReport, falsifyFamily, mutateOnce, assertSafeTempRoot, selfContainedSource, DEFAULT_TMP_DIR, FALSIFY_PROBLEM, MINIMAL_FAMILY_EXAMPLE } from './_lib/falsify.mjs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -186,6 +186,25 @@ console.log('=== 3. THE ROUND-4 FIXES ARE LOAD-BEARING (F15 release, F16 trampol
     'F16a red: without the guard the nested call is not deferred (it recursed until the probe caught the failure)', byLabel('F16a') && byLabel('F16a').red)
   ok(!!byLabel('F16b') && byLabel('F16b').red && byLabel('F16b').red.trampoline.passes === 1,
     'F16b red: without the rerun request the missed trigger is NOT picked up by a next pass (one pass only)', byLabel('F16b') && byLabel('F16b').red)
+}
+
+console.log('=== 4. THE MINIMAL 10-LINE FORM IS REAL (and stays in sync with the API) ===')
+{
+  const lines = MINIMAL_FAMILY_EXAMPLE.split('\n')
+  ok(lines.length === 10, '★ the exported recipe is exactly TEN lines (the claim is not rounded up)', lines.length)
+  ok(/falsifyFamily\(/.test(MINIMAL_FAMILY_EXAMPLE) && /formatFamilyReport\(/.test(MINIMAL_FAMILY_EXAMPLE),
+    'and it uses the family entry point + its renderer', MINIMAL_FAMILY_EXAMPLE.split('\n').filter((l) => /falsifyFamily|formatFamilyReport/.test(l)).length)
+  // Every lib symbol the recipe names must really be exported (a recipe that drifts from the API is worse than none).
+  const named = [...MINIMAL_FAMILY_EXAMPLE.matchAll(/\b(falsifyFamily|formatFamilyReport|falsify|mutateOnce)\b/g)].map((m) => m[1])
+  const api = { falsifyFamily, formatFamilyReport, falsify, mutateOnce }
+  ok(named.length >= 2 && named.every((n) => typeof api[n] === 'function'),
+    'every library symbol the recipe names is exported by this file (non-vacuous: the recipe really names some)', named)
+  ok(/probe/.test(MINIMAL_FAMILY_EXAMPLE) && /mutations/.test(MINIMAL_FAMILY_EXAMPLE) && /CONTROL/.test(MINIMAL_FAMILY_EXAMPLE),
+    'and it states the two things a family cannot omit: a probe and at least one mutation (with the CONTROL reminder)', MINIMAL_FAMILY_EXAMPLE.length)
+  // The family form is also a FUNCTION: an empty case list is refused rather than silently "ok".
+  let refused = null
+  try { await falsifyFamily({ name: 'empty', cases: [] }) } catch (e) { refused = (e && e.code) || String((e && e.message) || e) }
+  ok(refused === FALSIFY_PROBLEM.notApplied, 'and falsifyFamily refuses an empty case list by name (never a vacuous "ok")', refused)
 }
 
 console.log('')

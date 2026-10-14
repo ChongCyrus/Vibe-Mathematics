@@ -50,13 +50,77 @@ export const apiVersion = 1
  */
 export const inject = ['tools']
 
-/** Accept either `config.vmu = {...}` (namespaced) or a flat settings object, and copy it (never alias). */
+/** The shape a dotted settings key must have (a `vmu.*` path of plain identifiers). */
+const SETTING_KEY_SHAPE = /^vmu\.[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*$/
+const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype
+
+/**
+ * U14 / Round 6 — THE TWO DECLARATION SHAPES, ONE ENTRY. Measured failure that made this necessary: the overlay
+ * recipe declares the NESTED form (`config.vmu = { tools: { faces: ['*'] }, packs: { active: ['v5r'] } }`), while the
+ * reader only kept keys starting with `vmu.` ⇒ `tools`/`packs`/`report` were dropped ⇒ the declaration reached the
+ * inner row and was **silently discarded** (the Round-5 live session saw only `vibe_vmu_status`).
+ *
+ *  ① NESTED  `config.vmu = { tools: { faces: ['*'] }, packs: { active: ['v5r'] } }`  → flattened to dotted keys
+ *  ② DOTTED  `config.vmu = { 'vmu.tools.faces': ['*'], 'vmu.packs.active': ['v5r'] }` → taken as-is
+ *  A FLAT `config` (no `vmu` key) is also accepted; there only `vmu.*` keys are settings (everything else is host
+ *  config - `root`, `clock`, `scripts`, `packs`, `deliver`, … - so it must NOT be reported as unparsed).
+ *
+ * NOTHING IS DROPPED SILENTLY. Every entry that cannot become a setting is returned in `unparsed` with a reason, and
+ * a key reachable from BOTH shapes is returned in `conflicts` (the DOTTED form wins - explicit beats inferred - and
+ * the fact is named rather than quietly resolved).
+ *
+ * @returns {{ settings: object, unparsed: Array<{path: string, why: string}>, conflicts: Array<{key: string, why: string}> }}
+ */
 function readSettings(config) {
-  if (!config || typeof config !== 'object') return {}
-  const raw = config.vmu && typeof config.vmu === 'object' ? config.vmu : config
-  const out = {}
-  for (const [k, v] of Object.entries(raw)) if (k.startsWith('vmu.')) out[k] = v
-  return out
+  const settings = {}
+  const unparsed = []
+  const conflicts = []
+  if (!config || typeof config !== 'object') return { settings, unparsed, conflicts }
+  const namespace = config.vmu
+  let raw = config
+  let namespaced = false
+  if (namespace !== undefined) {
+    if (isPlainObject(namespace)) { raw = namespace; namespaced = true }
+    else unparsed.push({ path: 'vmu', why: 'not a plain object: expected a nested settings tree or dotted `vmu.*` keys' })
+  }
+  // ①/② pass one: every DOTTED key, in both shapes.
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof k !== 'string' || !k.startsWith('vmu.')) continue
+    if (!SETTING_KEY_SHAPE.test(k)) unparsed.push({ path: k, why: 'not a dotted settings key (expected vmu.<name>[.<name>…])' })
+    else settings[k] = v
+  }
+  // ① pass two: the NESTED tree (namespaced form only) → dotted keys.
+  if (namespaced) {
+    const nested = {}
+    const flatten = (node, prefix) => {
+      if (isPlainObject(node)) {
+        const keys = Object.keys(node)
+        if (keys.length === 0) { unparsed.push({ path: prefix, why: 'empty object leaf: it declares nothing (name the key you meant, e.g. ' + prefix + '.<name>)' }); return }
+        for (const k of keys) {
+          if (typeof k !== 'string' || k === '') { unparsed.push({ path: prefix + '.<empty>', why: 'empty key inside the nested tree' }); continue }
+          flatten(node[k], prefix + '.' + k)
+        }
+        return
+      }
+      if (typeof node === 'function') { unparsed.push({ path: prefix, why: 'not a settings value (function)' }); return }
+      if (node !== null && typeof node === 'object' && !Array.isArray(node)) { unparsed.push({ path: prefix, why: 'not a settings value (class instance / non-plain object)' }); return }
+      if (prefix.indexOf('vmu.') !== 0 || !SETTING_KEY_SHAPE.test(prefix)) { unparsed.push({ path: prefix, why: 'flattened to a key that is not a dotted settings path' }); return }
+      nested[prefix] = node
+    }
+    for (const [k, v] of Object.entries(raw)) {
+      if (typeof k === 'string' && k.startsWith('vmu.')) continue   // pass one already took it
+      if (typeof k !== 'string' || k === '') { unparsed.push({ path: String(k), why: 'empty key inside config.vmu' }); continue }
+      flatten(v, 'vmu.' + k)
+    }
+    for (const [k, v] of Object.entries(nested)) {
+      if (Object.prototype.hasOwnProperty.call(settings, k)) {
+        conflicts.push({ key: k, why: 'declared BOTH as a dotted key and inside the nested tree; the DOTTED key wins (explicit beats inferred) - this is named, not silently resolved' })
+        continue
+      }
+      settings[k] = v
+    }
+  }
+  return { settings, unparsed, conflicts }
 }
 
 /**
@@ -66,7 +130,20 @@ function readSettings(config) {
  * @param {object} config  The row's `config` (plain data; see the header for why there is no `Config`).
  */
 export function apply(ctx, config = {}) {
-  const settings = readSettings(config)
+  const parsed = readSettings(config)
+  const settings = parsed.settings
+  // ★ NOTHING IS DROPPED SILENTLY (Round 6 B): an entry that cannot become a setting, or a key declared twice in two
+  // shapes, is NAMED on the host logger AND on stderr, and it is self-disclosed through the handle
+  // (`settingsUnparsed` / `settingsConflicts`, and inside `status()`), so "the declaration did not take" is answerable.
+  const settingsUnparsed = parsed.unparsed.slice()
+  const settingsConflicts = parsed.conflicts.slice()
+  const warnSettings = (kind, item) => {
+    const line = '[dsh-vibe-math] ' + kind + ': ' + String(item.path === undefined ? item.key : item.path) + ' — ' + String(item.why)
+    try { ctx.logger?.warn?.(line) } catch { /* a failed warning must never fail the boot */ }
+    try { process.stderr.write('vmu: ' + line + '\n') } catch { /* stderr may be gone */ }
+  }
+  for (const u of settingsUnparsed) warnSettings('settings-unparsed', u)
+  for (const c of settingsConflicts) warnSettings('settings-conflict', c)
   const root = typeof config.root === 'string' && config.root.length > 0 ? config.root : null
   const clock = typeof config.clock === 'function' ? config.clock : undefined
 
@@ -383,6 +460,10 @@ export function apply(ctx, config = {}) {
   const extraPhases = packRuntime.length ? [...new Set(packRuntime.flatMap((r) => r.phases || []))] : null
   const promptPolicies = []   // the sink a pack's manifest.promptPolicies arrives through (vmu-pack's side)
   const kernel = createKernel(Object.assign({ sectionPolicy, noticeBlock, extraPhases, settings: settingsWithPackDefaults, root, spawn: spawnSeam, host: mathHost, deliverTurn: turnDeliver,
+    // ROUND 6 / target-5 (reader-b's ruling): the SAME seam is the killable one - `spawn(request, onHandle)` hands the
+    // host's handle to the caller BEFORE the outcome is awaited, which is what makes `cancel({jobId})` a real
+    // `terminate()` instead of a named "this seam cannot kill".
+    spawnHandle: spawnSeam,
     // ROUND 3 / task-20 F2: the MEMBER/MEETING/NOTIFY/REPORT delivery seam. The entry never injected one, so
     // `status().seams.deliver` was false and every report that had something to say left its trace but carried a named
     // refusal (`VMU_REPORT_NO_TRANSPORT`) - honest, but only half of "end-to-end automatic reporting".
@@ -804,8 +885,12 @@ export function apply(ctx, config = {}) {
     ready: () => Promise.all([started, opened, Promise.resolve(adapter.status()), idsHydrated, resumed]).then(([, , st]) => st),
     started: () => started,
     storeOpened: () => opened,
-    status: () => Object.assign(adapter.status(), { installError }),
+    status: () => Object.assign(adapter.status(), { installError, settingsUnparsed: settingsUnparsed.slice(), settingsConflicts: settingsConflicts.slice() }),
     installError: () => installError,
+    /** Round 6 B: what the entry could NOT turn into a setting, and what was declared in both shapes. */
+    settingsUnparsed: () => settingsUnparsed.slice(),
+    settingsConflicts: () => settingsConflicts.slice(),
+    settings: () => Object.assign({}, settings),
     cleanups,
   }
 }

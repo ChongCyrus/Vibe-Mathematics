@@ -17,6 +17,14 @@
 
 **判据**：如果一个量会影响"框架怎么做事"，它**必须**是设置（R3 四可）；否则就是隐藏策略（违反 R1/R3）。
 
+> ★★★ **声明怎么送进来（轮 6 / task-41）：入口接受【两种形态】，且【什么都不静默丢】✓✓**
+> ① **嵌套**：`config.vmu = { tools: { faces: ['*'] }, packs: { active: ['v5r'] }, report: { enabled: true } }` ⇒ 入口**递归展开**成点号键（`vmu.tools.faces` 等；**数组是叶子**）；
+> ② **点号**：`config.vmu = { 'vmu.tools.faces': ['*'] }` ⇒ 原样；
+> ③ **扁平**（无 `config.vmu`）：只把 `vmu.*` 当设置，`root`／`clock`／`scripts`／`packs` 等是宿主配置（**不报未解析**）。
+> ★ **同键两形态都给** ⇒ **点号胜**（显式胜过推断）＋ `settingsConflicts` **具名登记**（不许静默择一 ✗）。
+> ★★★ **未解析必具名**：空对象叶子（`{tools:{}}`）、函数／类实例、不合形状的点号键 ⇒ `ctx.logger.warn` ＋ stderr ＋ **计数自曝**（句柄 `settingsUnparsed()`／`settingsConflicts()`、`status().settingsUnparsed／settingsConflicts`）✓。
+> ★ **为什么这条必须写在设置卷** ✗✓：overlay 的配方用的是**嵌套**形态，而旧读者只收 `k.startsWith('vmu.')` ⇒ **声明到了内层行却被静默丢弃**（真机只剩 `vibe_vmu_status`）——**"声明必须真生效"是本卷的第一条判据** ✓。
+
 ---
 
 ## 2. 四可（R3）与实现约定
@@ -248,7 +256,6 @@ vmu.packs.active: [v5r]
 | `vmu.prompts.resourceSection` | bool | `false` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | P3/S25-A：默认 false＝提示词一字不改；true 才注入【资源】段 |
 | `vmu.meetings.quorumRule` | enum | `m-unanimous` | `m-unanimous`∣`all-unanimous` | 会话 | H1 | role:chair | ✅ 已接线 | `kernel/index.js` | 法定数规则（仅规则，不含"何时开会"） |
 | `vmu.meetings.quorumCap` | int ≥0 | `3` | — | 会话 | H1 | role:chair | ✅ 已接线 | `kernel/meetings.js` | P3：法定数上限 m = min(cap, 参与人数)；0＝不设上限 |
-| `vmu.meetings.reconsiderFloor` | int ≥0 | `0` | — | 会话 | H1 | role:chair | ⚠️ 未接线（改了不会有行为变化） | `packs/institute-min/index.js` | 复议门槛下限（★ 轮 286：这不是【缺口】而是【分工】—— 生效门槛 = max(对象标准, 它, 上限)，其中「对象标准」与「上限」是【领域常量】，依 docs/10 §1 的 D5【内核零策略】由 pack 定义，本仓不臆造 ✓）。0＝只保证「不降」✓。机制侧判据：docs/08-§L217 的就地说明 ＋ kernel/ballotbox.js L60-68 的受控声明（阈值的另一键 reopenFloor 有意不重复它 ✓） |
 | `vmu.meetings.verdictMaxRounds` | int ≥1 | `3` | — | 会话 | H1 | role:chair | ✅ 已接线 | `kernel/meetings.js` | P3：同一对象的复算轮次上限（不得无限复算） |
 | `vmu.meetings.hardLimitMs` | int ≥0 | `1800000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | P3：会议墙钟硬界（唯一兜底）＝1800000；钳制 [300000, 7200000]；**不存在"无界"** |
 | `vmu.meetings.wakeRetries` | int ≥0 | `5` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | P3：同一成员同阶段的唤醒重试上限（钳制 [0,10]）；耗尽记 unreached 并视为"已获机会" |
@@ -262,7 +269,7 @@ vmu.packs.active: [v5r]
 | `vmu.turn.objective` | string | `（尚未设定）` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | `packs/v5r/prompts/v5r-core.js` | 本所研究对象（原问题）；默认值与原线未设定时的输出一字不差，绝不留空括号 |
 | `vmu.turn.maxParallel` | number | `3` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 每轮最多同时唤醒的成员数（原线默认 3；非法值回落 3） |
 | `vmu.tools.enabled` | string[] | `null` | — | 会话 | H2 | office | ✅ 已接线 | `host.js` | 已接线（host.js 的 install 读取）：宿主注册哪些 vmu 工具。空/缺省（null）＝不限制；显式空表 [] ＝一个都不注册；未知名会被具名拒绝而不是静默放开（docs/03 §7）。 |
-| `vmu.tools.faces` | string[] | `null` | — | 会话 | H1 | office | ✅ 已接线 | `host.js` | 已接线（host.js resolveFaces 读取）：要发布的工具面清单（面键如 `minutes`／工具名 `vibe_vmu_minutes`／`*` 全部）。缺省 null＝不额外声明任何面（仍遵守各面自己的 config／vmu.<族>.* 声明）；显式空表 []＝不靠本键声明任何面。 |
+| `vmu.tools.faces` | string[] | `null` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 已接线（host.js resolveFaces 读取）：要发布的工具面清单（面键如 `minutes`／工具名 `vibe_vmu_minutes`／`*` 全部）。缺省 null＝不额外声明任何面（仍遵守各面自己的 config／vmu.<族>.* 声明）；显式空表 []＝不靠本键声明任何面。 |
 | `vmu.core.facesDisabled` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `host.js` | 已接线（host.js resolveFaces 读取）：按名关闭的工具面（面键或工具名）。被关的面在 status().faces.disabled 里带 VMU_NOT_PERMITTED 具名上报；名字写错会出现在 unknownDisabled 而不是被忽略。 |
 | `vmu.turn.toolCallsPerTurnCap` | number | `0` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 本回合工具调用上限；0＝未设上限（仍请克制） |
 | `vmu.turn.memoryCeilingMb` | number | `0` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 内存上限（MB）；0＝只提醒"压力明显增大"而不给数字 |
@@ -1210,6 +1217,7 @@ vmu.packs.active: [v5r]
 | `vmu.migration.stepBatch` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |
 | `vmu.notify.crossInstitution` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 已接线（notify.js 读取）；默认值取自模块源码 |
 | `vmu.paper.finalizer` | string | `editor` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
+| `vmu.paper.maxRounds` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
 | `vmu.paper.maxSections` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
 | `vmu.paper.requireAllSections` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
 | `vmu.partnership.crossBorderApproverRoles` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；默认值取自模块源码 |
@@ -1513,7 +1521,7 @@ vmu.packs.active: [v5r]
 | `vmu.limits.*` | 5 |
 | `vmu.mailbox.*` | 6 |
 | `vmu.math.*` | 105 |
-| `vmu.meetings.*` | 58 |
+| `vmu.meetings.*` | 57 |
 | `vmu.memory.*` | 16 |
 | `vmu.metadata.*` | 2 |
 | `vmu.metrics.*` | 7 |
@@ -1526,7 +1534,7 @@ vmu.packs.active: [v5r]
 | `vmu.pack.*` | 4 |
 | `vmu.packs.*` | 5 |
 | `vmu.panel.*` | 4 |
-| `vmu.paper.*` | 9 |
+| `vmu.paper.*` | 10 |
 | `vmu.partnership.*` | 6 |
 | `vmu.paths.*` | 2 |
 | `vmu.pointer.*` | 1 |

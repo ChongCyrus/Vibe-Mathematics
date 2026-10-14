@@ -118,8 +118,12 @@ export function safeRelDir(rel) {
  * Returns `{ result, timedOut, terminated, hadHandle, cleanupFailed }`. It never throws for a timeout; it
  * throws only when the call itself throws (the caller keeps its own error handling).
  */
-export function createChildBudget({ timer = null, onNote = null } = {}) {
+export function createChildBudget({ timer = null, onNote = null, onHandle = null } = {}) {
   const note = typeof onNote === 'function' ? onNote : () => {}
+  const handleSeen = typeof onHandle === 'function' ? onHandle : () => {}
+  const seeHandle = (h) => {
+    try { handleSeen(h) } catch (e) { note('onhandle-failed', { detail: String((e && e.message) || e) }) }
+  }
   // The default seam ALWAYS returns a callable disposer (see the header: returning the Timeout itself is the bug).
   const setT = typeof timer === 'function' ? timer : (cb, ms) => {
     const h = setTimeout(cb, ms)
@@ -142,18 +146,38 @@ export function createChildBudget({ timer = null, onNote = null } = {}) {
       return { text: String(r.text === undefined ? '' : r.text), lossy: !!r.lossy, spillPath: r.spillPath || null }
     } catch (e) { return { text: '', lossy: false, spillPath: null } }
   }
-  return async function runWithBudget({ call, timeoutMs, label = 'child' }) {
+  return async function runWithBudget({ call, timeoutMs, label = 'child', onHandle: callOnHandle = null }) {
     let handle = null
     let timedOut = false
     let terminated = false
     let timerDisposer = null
     let cleanupFailed = null
-    const done = Promise.resolve()
-      .then(() => call((h) => { handle = h }))
+    /** Notify BOTH the factory-level and the per-call `onHandle` consumers (the job faces pass it per call). */
+    const handleSeenNow = (h) => {
+      seeHandle(h)
+      if (typeof callOnHandle === 'function') {
+        try { callOnHandle(h) } catch (e) { note('onhandle-failed', { label, detail: String((e && e.message) || e) }) }
+      }
+    }
+    // The seam is invoked SYNCHRONOUSLY here (not inside a `.then`): the host-native `spawn` hands back a live
+    // handle in the same tick, and `onHandle` consumers (the job faces' `cancel`) must be able to see it before
+    // any await — otherwise "cancel right after submit" would race the handle into existence.
+    let outSync
+    let syncErr = null
+    try { outSync = call((h) => { handle = h; handleSeenNow(h) }) } catch (e) { syncErr = e }
+    // Host-native handle: `spawn` answered synchronously with something that has `done`. Detect it HERE (same
+    // tick) so `onHandle` consumers see the live handle before any await.
+    if (!syncErr && outSync && typeof outSync.then !== 'function' && outSync.done && typeof outSync.done.then === 'function') {
+      handle = outSync
+      handleSeenNow(outSync)
+    }
+    const done = (syncErr
+      ? Promise.reject(syncErr)
+      : Promise.resolve(outSync))
       .then((out) => {
-        // Host-native handle: `spawn` answered synchronously with something that has `done`.
         if (out && typeof out.then !== 'function' && out.done && typeof out.done.then === 'function') {
           handle = out
+          seeHandle(out)
           return Promise.resolve(out.done).then((o) => {
             const so = readCollected(out, 'stdout')
             const se = readCollected(out, 'stderr')
@@ -398,6 +422,13 @@ export function createMathJobs(opts) {
   }
 
   const running = () => [...jobs.values()].filter((j) => j.state === 'running').length
+  /**
+   * ROUND 6: a real WAIT instead of a microtask spin (`while (...) await Promise.resolve()` burned CPU while a
+   * queued job waited), and the comparison is `>=` — the old `running() > maxParallel` let `maxParallel + 1`
+   * jobs run at once (this job is still `queued` when the check runs, so `running()` never counted it).
+   */
+  const slotWaiters = []
+  const releaseSlot = () => { const w = slotWaiters.splice(0); for (const r of w) { try { r() } catch (e) { /* the waiter owns its own failure */ } } }
 
   // ── id 计数器（kernel/ids.js：唯一铸号者，D-15）───────────────────────────────────────────────
   const mintJobId = () => (o.ids && typeof o.ids.mint === 'function' ? o.ids.mint('mathjob', 'mj-') : mintId('mathjob', 'mj-'))
@@ -414,6 +445,7 @@ export function createMathJobs(opts) {
   const spawnHandle = typeof o.spawnHandle === 'function' ? o.spawnHandle : null
   const budget = createChildBudget({ timer: o.timer })
   let lastSpawnHadHandle = null
+  let sawHandle = false
   let childrenTerminated = 0
   let childrenTimedOut = 0
 
@@ -480,12 +512,20 @@ export function createMathJobs(opts) {
   }
   const env = () => ({ denyNetwork: cfg().denyNetwork, workspaceOnly: cfg().workspaceOnly })
 
-  /** 执行一个作业的请求体（提交与恢复重排共用同一条路径 —— 两条路的行为不可能漂移）。 */
+  /** Every exit path of a job releases one concurrency slot (the wrapper is why the rail is exact). */
   const execute = async (job) => {
+    try { return await executeInner(job) } finally { releaseSlot() }
+  }
+
+  /** 执行一个作业的请求体（提交与恢复重排共用同一条路径 —— 两条路的行为不可能漂移）。 */
+  const executeInner = async (job) => {
     const c = cfg()
     try {
       const waitStart = clock()
-      while (running() > c.maxParallel) await Promise.resolve()
+      while (running() >= c.maxParallel) await new Promise((resolve) => slotWaiters.push(resolve))
+      // A job cancelled (or otherwise ended) WHILE QUEUED must never start: the waiter above is released when
+      // someone else finishes, and continuing here would run a cancelled job (the "silent revival" class).
+      if (job.state !== 'queued') return { ok: false, code: 'VMU_JOB_CANCELLED', jobId: job.id, state: job.state, cancelledBeforeStart: true }
       job.queueWaitMs = clock() - waitStart
       job.state = 'running'
       job.startedAt = clock()
@@ -493,12 +533,16 @@ export function createMathJobs(opts) {
       const b = await budget({
         timeoutMs: job.timeoutMs,
         label: 'math ' + job.id,
+        // ROUND 6: the live handle is attached to the job so `cancel({jobId})` can REALLY terminate it
+        // (`terminated:true`); without a handle the cancel is still recorded and NAMED as unable-to-kill.
+        onHandle: (h) => { job.handle = h; sawHandle = true },
         call: (onHandle) => {
           const spec = { engine: job.engine, argv: (job.argv || []).slice(), stdin: job.stdin || '', timeoutMs: job.timeoutMs, graceMs: job.timeoutMs, env: env() }
           return spawnHandle ? spawnHandle(spec, onHandle) : spawn(spec)
         },
       })
       const out = b.result
+      job.handle = null                       // the child is gone (or its budget fired): drop the live handle
       lastSpawnHadHandle = b.hadHandle
       if (b.timedOut) childrenTimedOut += 1
       if (b.terminated) childrenTerminated += 1
@@ -607,6 +651,17 @@ export function createMathJobs(opts) {
     }
     emit('math/job-submitted', { jobId: id, engine, argvHash: job.inputHash })
     job.attempts = 1
+    // ROUND 6: `async:true` returns at the ENQUEUE (the default stays blocking, so no existing caller changes
+    // behaviour). This is what makes a job observable while it runs — and therefore cancellable by `cancel()`.
+    if (args.async === true) {
+      job.promise = execute(job).catch(async (e) => {
+        job.state = 'failed'; job.reason = 'job-threw'
+        job.receipt = refuse('VMU_MATH_HARNESS_FAILED', '作业异常：' + String((e && e.message) || e), '见宿主日志')
+        try { await writeMirror(job) } catch (e2) { /* the mirror failure is counted by writeMirror */ }
+      })
+      return { ok: true, jobId: id, engine, state: job.state, async: true, isRefutation: false,
+        note: '已入队（async）。查询 status({jobId})、取消 cancel({jobId})；并发上限超限时先排队，不会自旋等待' }
+    }
     return await execute(job)
   }
 
@@ -624,15 +679,27 @@ export function createMathJobs(opts) {
     const id = String((q && q.jobId) || '')
     const j = jobs.get(id)
     if (!j) return refuse('VMU_NOT_FOUND', '找不到作业 ' + id, '先 list() 取 id')
-    if (j.state !== 'running') return refuse('VMU_JOB_CANCELLED', '作业已结束，不能取消（state=' + j.state + '）', '取消只对 running 生效')
+    if (j.state !== 'running' && j.state !== 'queued') return refuse('VMU_JOB_CANCELLED', '作业已结束，不能取消（state=' + j.state + '）', '取消对 queued/running 生效')
+    // ROUND 6: a cancel that CAN kill, does. The live handle is attached by `execute` via the budget's
+    // `onHandle`, so this is a real `terminate()` rather than a bookkeeping flag — and when no handle exists
+    // the result says so BY NAME instead of implying the process died.
+    let terminated = false
+    try {
+      if (j.handle && typeof j.handle.terminate === 'function') { j.handle.terminate(); terminated = true }
+      else if (j.handle && typeof j.handle.kill === 'function') { j.handle.kill(); terminated = true }
+    } catch (e) { note('math.cancel.terminate-failed', id, { detail: String((e && e.message) || e) }) }
     j.state = 'cancelled'
     j.cancelled = true
+    j.terminated = terminated
+    j.hadHandle = !!j.handle
     j.reason = String((q && q.reason) || '')
-    note('math.cancel', id, { reason: j.reason })
+    if (terminated) childrenTerminated += 1
+    note('math.cancel', id, { reason: j.reason, terminated, hadHandle: !!j.handle })
     // 取消也必须落镜像（否则崩溃恢复会把已取消的作业当成 running 重排 —— 那是"静默复活"）
     void writeMirror(j)
-    emit('math/job-cancelled', { jobId: id, reason: j.reason })
-    return { ok: true, jobId: id, state: j.state, reason: j.reason }
+    emit('math/job-cancelled', { jobId: id, reason: j.reason, terminated })
+    return { ok: true, jobId: id, state: j.state, reason: j.reason, terminated, hadHandle: !!j.handle,
+      note: terminated ? '子进程已 terminate' : '无 handle ⇒ 无法 terminate；作业已标记 cancelled（进程最多活到它自己的单次预算）' }
   }
   const receipt = (q) => {
     const id = String((q && q.jobId) || '')
@@ -793,7 +860,7 @@ export function createMathJobs(opts) {
       crossProcess: xc ? 'enforced-by-exclusive-create' : 'not-enforced',
       // F17: the budget is local ALWAYS (no hang); killing needs a handle — declared seam, or proven at runtime
       // by a host-native `spawn` that returns a SubprocessHandle.
-      canTerminateChild: !!(spawnHandle || lastSpawnHadHandle === true),
+      canTerminateChild: !!(spawnHandle || sawHandle || lastSpawnHadHandle === true),
       subprocess: { budget: 'local-timer', declaredKillableSeam: !!spawnHandle, lastSpawnHadHandle, childrenTerminated, childrenTimedOut, graceMsSent: true,
         hostContract: 'subprocess.spawn → SubprocessHandle{terminate, done, collected}' },
       mirrors: ms.count,

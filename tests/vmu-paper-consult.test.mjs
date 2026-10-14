@@ -71,7 +71,17 @@ stage('1. THE FIVE KEYS ARE WIRED BY THIS FACE (and really read, not merely list
   ok(five.length > 0 && five.every((k) => s.reads.indexOf(k) !== -1),
     'every one of the five is READ on the normal path (cfg() reads them all, so keysUsed() cannot claim a reader that does not exist)',
     five.filter((k) => s.reads.indexOf(k) === -1))
-  ok(WIRED_KEYS.length === 8, 'and the wired list grew by exactly those five (3 → 8)', WIRED_KEYS.length)
+  // ★ NON-EXPIRING SHAPE (Round 6, per the Lead): the previous assertion pinned the TOTAL (`WIRED_KEYS.length === 8`)
+  // as a proxy for "the wired list is not a dumping ground". That proxy went stale the moment core gave
+  // `vmu.paper.maxRounds` a real reader (8 -> 9, an M-A04 fix). Assert the PROPERTY the count stood for instead:
+  // EVERY key the face declares WIRED must really be READ on an ordinary start() - so a legitimate addition just
+  // needs a reader, while a dead entry still fails. The C-30 five stay named explicitly, unpinned total and all.
+  const unreadWired = WIRED_KEYS.filter((k) => s.reads.indexOf(k) === -1)
+  // RULE E: the `.every` below needs the collection's OWN non-empty precondition (`five.length > 0`); pinning
+  // `WIRED_KEYS.length >= five.length` alone would still let an empty `five` satisfy the conjunction vacuously.
+  ok(five.length > 0 && WIRED_KEYS.length >= five.length && five.every((k) => WIRED_KEYS.indexOf(k) !== -1) && unreadWired.length === 0,
+    '★ every WIRED key is really READ on the normal path (count deliberately NOT pinned: it grew 8 -> 9 when `vmu.paper.maxRounds` gained its reader) - a wired key with no reader would fail here, so the list cannot become a dumping ground',
+    { wired: WIRED_KEYS, unread: unreadWired })
 }
 
 stage('2. THE GATE BITES: A NON-EXEMPT FINALISER WITH NO CONSULTATION IS REFUSED BY NAME')

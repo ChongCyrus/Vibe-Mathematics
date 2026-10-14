@@ -1151,18 +1151,35 @@
    - **日志里出现过的 `vibe_vmu_*` 名（声明／调用）只有 `vibe_vmu_status`** ✗；`toolCalls=1`（**不是 0**——先前"0"是驱动汇总口径＋我读日志过早所致）；
    - **模型原话（决定性）**：**"I only have vibe_vmu_status. … These tools are not in my available toolset. … The others don't exist."** ⇒ **这是"发布问题"，不是"提示词问题"**（Lead 要求的区分，由模型自述直接定性）✓；
    - tokens in 23077／out 1400／cacheRead 7680（总 ≈ **32,157**），`tokenCap 40000` 未触 ✓。
-   ⇒ **结论（具名，不写"已验证"）**：① **`vibe_vmu_status` 真的可达且被调用**（L18 seq16／结果 L19 seq17）——**零机制面在真机成立** ✓；② **`vibe_vmu_report`／`chat`／`panel` 未被发布** ⇒ **助手面【未建立】、多面点亮【未建立】** ✗；③ **根因定位到"入口侧读取"**：overlay 携带的是**嵌套形态** `vmu: { tools: { faces: ['*'] }, packs: { active: ['v5r'] }, report: {…} }`（即 `config.vmu.tools.faces`），而入口 `readSettings` 只保留**以 `vmu.` 开头的点号键**（`'vmu.tools.faces'`）⇒ **声明到达了内层行、却没被入口认出来**（"注册期合并 ✓"与"入口读取 ✗"是两件事）⇒ **给 core 的下一步：入口侧兼容"嵌套/点号"两形态，或让 overlay 直接产出点号键；并补一条"注册后入口真的发布该面"的运行时断言**（比注册期合并断言更靠后一环）✓。
+10. **★★ 目标 6 真机终态（Round 6；core 入口修复落地后）——多面点亮【建立】✅**：实例由 verify 起（`--port 7801`；补丁＝provider default-model ＋ `opencode-go.patch.yml` ＋ `vmu-overlay-v2.yml`＝**只打 overlay 行**）；我按 SLV §2/§4 跑**一次**（首行「模拟测试」、`--max-tokens 40000`、提示词**显式点名** status→chat→panel→report status→report tick）。**证据＝会话日志（多帧 zstd），不是 dump**：
+    - **provider/model ＝ `dsh-opencode-go`／`deepseek-v4.1-flash`** ✓（`request/context`@L14）；
+    - **首条 user message ＝ L10 seq8**（「模拟测试」✓）；tokens in 42778／out 1086／cacheRead 26624；**`tokenCapHit:true`**（`turn/end`@L35 `aborted/user` ＝驱动按上限取消）⇒ **按 playbook §8，触上限本身不算通过**，本结论只取事件级事实 ✓；
+    - **宿主真发给模型的工具清单（`request/header.tools`）＝ 78 个工具，其中 `vibe_vmu_*` 52 个** ✓（对照 Round 5 的 **1 个**）——含 `vibe_vmu_report`／`chat`／`panel`／`set`／`turn`／`meeting`／`mailbox`…；
+    - **5 对真实 `tool/call`＋`tool/result`**（全带 `seq`＋行号）：`status`@L18 seq16→@L19 seq17（49,929 字符回执）；`chat`@L20 seq18→@L21 seq19（`total:0`）；`panel`@L22 seq20→@L23 seq21；**`report`(status)**@L24 seq22→@L25 seq23（`enabled:true, declared:0, drives:false, neverDrives:true, auditInjected:true, enforced:[11 键], note:"no reports are declared: nothing is reported (zero mechanism)"`）；**`report`(tick, metrics={artifacts:9})**@L29 seq27→@L30 seq28（`declared:0, fired:[], drives:false`）✓；
+    - **core 的 task-41 修复端到端验证** ✓：`settingsMerge.sources = {vmu.tools.faces:"config", vmu.packs.active:"config", vmu.report.enabled:"config", vmu.report.minIntervalMs:"config"}`、`settings.keys=4`、`resolved.vmu.tools.faces=["*"]`／`vmu.packs.active=["v5r"]`（Round 5 同字段是 `sources:{}`／`keys:0`）⇒ **嵌套声明这次真的到达入口**，51 面因此发布 ✓。
+    ⇒ **终态**：**多面点亮【建立】✅**（发布 52 面 ＋ 4 个不同面真被调用）；**助手面 `vibe_vmu_report` 可达【建立】✅**（发布＋真调用＋完整回执）；**阈值真触发【未建立】——原因是部署未声明任何报告（`declared:0`，零机制正确）** ✗✓；**参数面留痕【未行使】**（`vibe_vmu_set` 已发布但本轮未点名）✗✓；**回合面／system prompt 面【本轮未行使】**（提示词未含该问；装配级双通道逐字证据仍绿）✗✓。**下一步（部署/提示词层面，非机制缺陷）**：overlay 里声明一份报告 ＋ 提示词补 `set` 与人设问句，再跑 1 次即可把"阈值/参数/两通道"三条也钉上 ✓。
 
-**支持（本轮真正立住的）**
+11. **第 5 次真机会话（Lead 追加授权；overlay v3＝带真报告声明）——具名收口，不再要第 6 次**：实例 `--port 7802`（补丁＝provider ＋ `opencode-go.patch.yml` ＋ `vmu-overlay-v3.yml`）；**免费预检先过**（驱动 `kernel/report.js`：`declared=1`；`tick({artifacts:9})` ⇒ `fired[0]`「【成果阈值】artifacts=9 已达阈值 5」`drives:false`）⇒ 声明形状与阈值语义都对。真机会话读数（`session-56523152…`，40 events）：**发布 78 工具／`vibe_vmu_*` 52 个** ✓、首条 user message **L10 seq8**、4 对调用（`status` L19 seq17→L20 seq18 **49,929 字符**；`chat` L24 seq22→L25 seq23；`panel` L29 seq27→L30 seq28；`report` **status** L34 seq32→L35 seq33）、tokens in 42699／out 409／**cacheRead 110,976**、**`tokenCapHit:true`**（`turn/end` L40＝`aborted/user`）✓。
+    - **★ 正向新事实**：status 回执自曝 **`settingsMerge.sources`＝5 键（含 `vmu.report.reports:"config"`）**、**`settings.keys=5`**、`settingsUnparsed=null`、**`report.status: declared=1`** ⇒ **阈值报告声明真的到达入口并被接受**（core 的嵌套展平连"对象数组叶子"也对）✓。
+    - **三条为何仍未建立**：**`tick` 与 `vibe_vmu_set` 根本没被调用**（会话在第 4 步后被上限切断），故"阈值真触发／参数面留痕／两通道自述"**无观测**；**根因是我的提示词成本**——`vibe_vmu_status` 的 49,929 字符回执被后续每步从缓存重读（cacheRead 110,976），在 root+child 合计口径下 120k 上限提前触顶 ✗✓。
+    - **修法（下一轮若再跑）**：提示词**不要**把 `vibe_vmu_status` 放最前（或只取一个短 action），省掉这 5 万字符；`--max-tokens` 保持有界即可 ✓。
+    ⇒ **终态（Round 6）**：**多面点亮【建立】✅（52 面发布＋4 面真调用）／助手面可达【建立】✅／声明到达入口【建立】✅**；**阈值真触发、参数面留痕、两通道＝【未建立/未行使】（`tokenCapHit:true` ⇒ 按 §8 NON-RESULT，不写成通过）** ⇒ **具名收口** ✓。
 1. 助手面在**装配级／单元级全绿**：`vmu-assistant-e2e` **55/0**（`--strict-findings` 亦 **55/0**）、`-report` 93/0、`-assembly` 39/0、`-systemprompt` 15/0、`vmu-paper-consult` 40/0，`check-docs` PASS ✓（见 §19.10 读数）。
 2. **F2 关闭**：真机入口 ＋ `config.deliver` ⇒ 触发即 `delivered:true`／note 带 `drives:false`／部署侧**恰一条 note/次**；**无 transport ⇒ 具名拒 `VMU_REPORT_NO_TRANSPORT` 且仍留痕**（边界硬钉）✓。
 3. **F1／F3／F5 关闭**（见 §19.10 表）：面解析在 pack settings 之后；活读键**不得低报也不得高报**；周期时钟判据＝**面已发布**且在 `install()` 之后 ⇒ pack-only 也挂 ✓。
 4. **工具已就位且自证**：`tests/vmu-assistant-host-slice.test.mjs` ⇒ **6/0/5 not-run exit=0**，`--require-host` ⇒ **exit=1**（"未跑"不是悄悄通过）；并已按 `docs/slv-playbook.md` §2/§4 备好（首行"模拟测试"标记 ＋ 显式 `--max-tokens`）✓。
 
 **不支持（**未**建立，不许当通过）**
-1. 真宿主上"**多面点亮**"（`vibe_vmu_report` 可达）**未建立**——**最终真机读数**（观测 9）：日志里只有 `vibe_vmu_status`（`tool/call`@L18 seq16／`tool/result`@L19 seq17），`report`／`chat`／`panel` **未被发布**，**模型自述"only have vibe_vmu_status… The others don't exist"** ⇒ **发布问题**（不是提示词问题）✗。零声明下只发布 `vibe_vmu_status`（**机制正确、非缺陷**）；U14 第一版设计是实测缺陷（覆盖 preset 本体 ⇒ `agent-preset/not-found`）；第二版设计**注册期合并已被 verify 独立复核为可用**（21/0 常驻测试＋free pre-check），**但入口侧仍没认出这些声明**（观测 9 的根因）✗。
-2. 真会话里**阈值报送真触发**、**参数面留痕**、**回合面／system prompt 面到达模型**这四条**均无观测**（`vibe_vmu_report` 根本没被发布，故无法触发）✗。
-3. "**声明真能点亮面**"**未建立**：判据链是"注册期定义 → **入口发布** → 真机 `tool/call`"——前两环已有证据/断言，**第三环实测为否** ✗。
+1. **阈值报送真触发 / 参数面留痕 / 两通道到达真模型：【未建立或未行使】**（观测 10 ＋ **观测 11**）：观测 10 里 `declared:0`（部署未声明报告，零机制正确）；**观测 11 里声明已到入口（`declared=1`）但 `tick` 与 `vibe_vmu_set` 在第 4 步后被上限切断、根本没被调用** ⇒ 三项均**无观测**；`vibe_vmu_set`／`report` 面**都已发布**（清单 52）✗✓。
+2. **"上限"性质**：两轮都 `tokenCapHit:true`（观测 11 为 120k，`turn/end.reason=aborted/user`）⇒ 按 `docs/slv-playbook.md` §8 **触上限本身不算通过**，也不是失败；结论只取事件级事实（发布清单＋每对 call/result 的 seq/行号＋回执原文）✓。
+3. **历史教训（保留为判据纪律）**：U14 第一版设计是实测缺陷（patch 声明行 ⇒ 覆盖 preset 本体 ⇒ `agent-preset/not-found`）；第二版设计**注册期合并**已被 verify 独立复核（21/0 常驻测试）而**入口侧**由 core task-41 修好（观测 10/11 端到端验证）；**`--dump-config` 是 loader 树不是运行时定义**，且**不得用全文计数**当判据（本卷两次假阳性都源于此）✗✓。
+4. **成本教训（写给下一轮，具名）**：`vibe_vmu_status` 回执 **49,929 字符**，被后续步骤从缓存重读 ⇒ cacheRead 110,976，直接把 120k 上限吃满；**提示词别把 `status` 放最前**（或只取短 action）⇒ 观测 11 的修法 ✓。
+
+**已建立（目标 6 的正面终态）**
+1. **多面点亮 ✅**：真机发布的 `vibe_vmu_*` 面 **52 个**（Round 5 是 1 个），**4 个不同面真被调用**（`status`／`chat`／`panel`／`report`），5 对 `tool/call`+`tool/result` 全部带 `seq`＋行号 ✓。
+2. **助手面可达 ✅**：`vibe_vmu_report` 发布 ＋ 真调用（status L24 seq22／result L25 seq23；tick L29 seq27／result L30 seq28）＋ 回执完整（`enforced` 11 键、`whoMayChange:['office']`）✓。
+3. **入口两形态 ✅**（core task-41）：`settingsMerge.sources` 出现 4 个 `source:"config"` 的点号键、`settings.keys=4`、`vmu.tools.faces=["*"]`／`vmu.packs.active=["v5r"]` ✓。
+4. **零机制红线 ✅**：无声明 ⇒ 恰 1 个工具（verify 的 16/0 断言 ＋ 本卷 §2 对照断言）；本轮**声明后**才 52 面 ✓。
 
 **非结果（**不是通过**）**
 1. **助手面会话：跑了 1 次，但一个面都没被调用 ⇒ 五条事实仍"未建立"** ✗✓：Round 4 曾按降本裁决不跑；Round 5 在 U14 机制进仓后，我用**非破坏性绕行 patch** 起了一个 scratch `dsh web`（隔离 `DSH_HOME`；**仓库外，实测用**的工作区：`--cwd D:\_tmp\smoke-ws`；提示词首行含「**模拟测试**」、`--max-tokens 40000`），**`session/create` ok、回合真跑**（6s、`transcriptEvents:22`），但 **`toolCalls:0`／`tools:[]`** ⇒ **`vibe_vmu_report` 可达／阈值触发／参数留痕／两通道到达模型 一条都未建立** ✗。**"未跑成"不是"通过"，也不是"失败"**：它是**未建立**，原因见观测 7 的两条候选 ✗✓。

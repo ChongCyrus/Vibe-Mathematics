@@ -19,16 +19,23 @@
 //      else, so a mutant can never be written into the repository) and every copy is removed in a `finally`, with
 //      leftovers reported as `TEMP-NOT-CLEANED`.
 //
-// HOW A FACE USES IT (a runnable example is `tests/vmu-activity-falsify-lib.test.mjs`):
+// HOW A FACE USES IT — THE MINIMAL 10-LINE FORM (round 6). Copy this; only the probe is real work:
 //
-//   import { falsify, formatReport } from './_lib/falsify.mjs'
-//   const report = await falsify({
-//     name: 'kernel/scheduler.js — the trampoline guard is load-bearing',
-//     module: SCHEDULER_PATH,
-//     mutations: [{ label: 'guard removed', find: 'if (ticking) {', replace: 'if (false) {' }],
-//     probe: async (mod) => { ...drive the module...; return { passes, deferred, fired } },
-//   })
-//   ok(report.ok, 'the probe is falsified by this mutation', formatReport(report))
+//   1  import { falsifyFamily, formatFamilyReport } from './_lib/falsify.mjs'
+//   2  import { fileURLToPath } from 'node:url'; import { dirname, join } from 'node:path'
+//   3  const MOD = join(dirname(fileURLToPath(import.meta.url)), '..', 'vibe-math-vmu/kernel/<face>.js')
+//   4  async function probe(mod) {                    // ← THE INVARIANT, with a CONTROL direction
+//   5    const a = mod.create<Face>({ clock: () => 1000, log: () => {}, settings: {} })
+//   6    return { good: /* the good path really happens */, bad: /* the bad path, NAMED */ }
+//   7  }
+//   8  const family = await falsifyFamily({ name: '<face>', cases: [{ name: '<face>.js', module: MOD, probe,
+//   9    mutations: [{ label: '<defect>', find: '<unique anchor>', replace: '<defective version>' }] }] })
+//  10  if (!family.ok) { console.error(formatFamilyReport(family)); process.exitCode = 1 }
+//
+// Line 6 is the whole craft: the reading must contain a CONTROL direction (the good path really happens) and the
+// defect must be visible as a NAMED value (a code, or a number the mutant changes). `MINIMAL_FAMILY_EXAMPLE` below is
+// the same text as a string, exported so a report or a volume can quote it without drifting from this file. A full
+// example with the control-group assertions spelled out is `tests/vmu-resume-falsify.test.mjs` (2 mutations).
 //
 // The `module` must be importable as a real ESM module from inside this checkout; relative imports in the copy are
 // rewritten to absolute `file://` URLs so the mutant is self-contained wherever `D:\_tmp` is.
@@ -38,6 +45,24 @@ import { pathToFileURL } from 'node:url'
 
 /** The one allowed temp root (project discipline: temp files live in `D:\_tmp`, never on C: and never in-repo). */
 export const DEFAULT_TMP_DIR = 'D:\\_tmp'
+
+/**
+ * The 10-line form from the header, as a STRING, so a report or a volume can quote the recipe without drifting from
+ * the file that implements it. Replace `<face>`, the factory name and the anchor/replacement; everything else is the
+ * library's contract.
+ */
+export const MINIMAL_FAMILY_EXAMPLE = [
+  "import { falsifyFamily, formatFamilyReport } from './_lib/falsify.mjs'",
+  "import { fileURLToPath } from 'node:url'; import { dirname, join } from 'node:path'",
+  "const MOD = join(dirname(fileURLToPath(import.meta.url)), '..', 'vibe-math-vmu/kernel/<face>.js')",
+  'async function probe(mod) {                    // ← THE INVARIANT, with a CONTROL direction',
+  '  const a = mod.create<Face>({ clock: () => 1000, log: () => {}, settings: {} })',
+  '  return { good: /* the good path really happens */, bad: /* the bad path, NAMED */ }',
+  '}',
+  "const family = await falsifyFamily({ name: '<face>', cases: [{ name: '<face>.js', module: MOD, probe,",
+  "  mutations: [{ label: '<defect>', find: '<unique anchor>', replace: '<defective version>' }] }] })",
+  'if (!family.ok) { console.error(formatFamilyReport(family)); process.exitCode = 1 }',
+].join('\n')
 
 /** Every way a falsification can be INVALID (as opposed to "the mutant was correctly caught"). */
 export const FALSIFY_PROBLEM = Object.freeze({

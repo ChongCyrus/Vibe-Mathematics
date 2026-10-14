@@ -216,8 +216,8 @@ v5r 的 `s8-freeze-say` 真回归：**"本轮是否完成"的判据被写死在�
 - **利害关系回避与利益冲突** ｜ 目的：研究诚信 ｜ 面向谁：成员（申报）／主持人（裁定） ｜ 接口形状：规划＝`kernel.recusals.declare(member,scope)`＋`ballot.eligible` 排除 ⛔ 未实现 ｜ 可调控族：`vmu.ballot.recuse*`（规划） ｜ 错误码：`VMU_NOT_PERMITTED` ｜ 哲学：F✓T✓D✓X ｜ 实现要点：回避**不计入该项投票的分母**；申报与裁定都留痕 ｜ 依赖：`ballot.eligible` ✓ ｜ 成熟度：**未实现 ✗**（判定点已可承载 ✓） ｜ 优先级：P1
 - **否决与保留（veto / reservation）** ｜ 目的：保护关键方 ｜ 面向谁：特定角色 ｜ 接口形状：规划＝`tally` 的特例分支 ⛔ **本卷建议默认不纳入** ✗（否决权与"少数意见可复议"的架构重复且易成单点阻塞） ｜ 可调控族：`vmu.ballot.veto*`（规划） ｜ 错误码：`VMU_NOT_PERMITTED` ｜ 哲学：F✗T✓D✓X ｜ 实现要点：若某机构确需，用"提高门槛＋必须具名理由"替代；**保留意见**（reservation）＝进纪要，不影响结论 ｜ 依赖：纪要 ｜ 成熟度：**未实现 ✗** ｜ 优先级：P3
 - **表决冻结期** ｜ 目的：防止"边说边投" ｜ 面向谁：主持人 ｜ 接口形状：**已实现 ✓**＝`freeze()`／`unfreeze()`＋`isFrozen` 判定点（冻结中投票**具名拒且不入票** ✓）；会议侧"冻结期不推进轮次"＝由 `meeting.round-complete` 判定点承担 ✓（**本仓 v5r 教训的正面答案** ✓） ｜ 可调控族：`vmu.ballot.freeze*`（规划）／`vmu.meetings.*` ｜ 错误码：`VMU_STATE` ｜ 哲学：F✓T✓D✓X ｜ 实现要点：冻结**不等于**关闭（可解冻）；冻结期间**任何**写票路径都要走同一判定点 ｜ 依赖：§3.1 ｜ 成熟度：**已实现 ✓** ｜ 优先级：P0
-- **重开与复议（reopen / reconsider）** ｜ 目的：低成本纠错 ｜ 面向谁：全体（门槛可配） ｜ 接口形状：**原语已实现 ✓**＝`reopen(reason)`（旧结论留 history ✓）；复议门槛＝规划（`vmu.meetings.reconsiderFloor` 由 pack 消费 ✓） ｜ 可调控族：`vmu.ballot.reopen*`（规划）／`vmu.meetings.*` ｜ 错误码：`VMU_STATE`／`VMU_NOT_PERMITTED` ｜ 哲学：F✓T✓D✓X ｜ 实现要点：复议须有**明确发起人＋范围**（防滥诉）；复议期间的旧结论**仍然有效**直到新结论产生 ｜ 依赖：§3.1 ｜ 成熟度：**已实现 ✓**（复议门槛部分 ✓） ｜ 优先级：P1
-> ★★★ **分工的正式表述（轮 286）** ✓✓：**"对象标准"与"上限"不是【遗忘的项】，而是【领域常量】** ⇒ **依 `docs/10` §1 的总原则（**内核零策略，D5**：角色实例／阶段列表／本处的门槛常量都由 pack 定义 ✓），本仓【只提供机制与判据】，**不臆造它们** ✓。**故 `vmu.meetings.reconsiderFloor` 的接线前提是【pack 或领域先给出这两项】** ✓；**在它们给出之前，本键【保持未接线并如实标注】** ✓ —— ★ **这是【分工】，不是【缺失】** ✓。★ **门槛的现状（轮 285，实测 ✗✓）**：**`vmu.meetings.reconsiderFloor`【由 pack 消费**（`packs/institute-min/index.js` L51 已设置 ✓**）** ✓，**而 `vmu.ballot.reopenFloor` 有意【不重复它**：`kernel/ballotbox.js` L60-68 的受控声明写着"**本键现在【不能接线】** ✗ —— 把 `reopenFloor` 注入原语没用 ✓，**本面从不调用它** ✓"，**且"0（默认）仍交给 pack 的 `reconsiderFloor` ✓（**不成为第二意见** ✓）"** ✓。★ **⇒ 因此本族若要真正生效该门槛，缺的是 `docs/04` 那句模型里的【另两项**："**生效门槛 = max(对象标准, 它, 上限)**" 中的 **"对象标准"与"上限"在本仓【任何地方都未定义** ✗**）** ✓ ⇒ **接线它＝先定义这两项** ✓（**这是本仓有意留给 pack/领域的一层，故不臆造** ✓）。
+- **重开与复议（reopen / reconsider）** ｜ 目的：低成本纠错 ｜ 面向谁：全体（门槛可配） ｜ 接口形状：**原语已实现 ✓**＝`reopen(reason)`（旧结论留 history ✓）；**复议门槛＝已落 ✓**（`vmu.ballot.reopenFloor`，读者 `kernel/ballotbox.js` 的 `reopen()`：不达门槛 ⇒ `VMU_BALLOT_MIN_VOTES_NOT_MET` 并点名该键；`reopen()` 还必须给理由） ｜ 可调控族：`vmu.ballot.reopen*` ✓ ／`vmu.meetings.*` ｜ 错误码：`VMU_STATE`／`VMU_NOT_PERMITTED`／`VMU_REASON_REQUIRED`／`VMU_BALLOT_MIN_VOTES_NOT_MET` ｜ 哲学：F✓T✓D✓X ｜ 实现要点：复议须有**明确发起人＋范围**（防滥诉）；复议期间的旧结论**仍然有效**直到新结论产生 ｜ 依赖：§3.1 ｜ 成熟度：**已实现 ✓**（复议门槛 ✓，发起人范围与会期约束仍规划） ｜ 优先级：P1
+> ★★★ **分工的正式表述（轮 286）** ✓✓：**"对象标准"与"上限"不是【遗忘的项】，而是【领域常量】** ⇒ **依 `docs/10` §1 的总原则（**内核零策略，D5**：角色实例／阶段列表／本处的门槛常量都由 pack 定义 ✓），本仓【只提供机制与判据】，**不臆造它们** ✓。**（历史注记 · 已被取代 ✓）**：本段"接线前提／保持未接线"的结论自 **Round 3** 起**不再成立**，见下方就地更正 ✓ —— ★ **当时的"这是【分工】不是【缺失】"判断是对的，但结论已由实现推进** ✓。★ **门槛的现状（Round 3 实测 ✓✓，取代轮 285 的结论）**：**复议门槛由 `vmu.ballot.reopenFloor` 承载** —— `kernel/ballotbox.js` 的 `reopen()` **真读并决定**（不达门槛 ⇒ `VMU_BALLOT_MIN_VOTES_NOT_MET` 并在回执里**点名该键**）✓，该键已由 `PLANNED_BALLOT_KEYS` **移入 `WIRED_BALLOT_KEYS`**（`partition()` 仍 exact ✓）；而原 `vmu.meetings.` 家族的 `reconsiderFloor`（**该名已删**）**全仓零读者** ✗ ⇒ 已从 `settings/schema.js` 与 pack 清单**删除** ✓（"声明必须真有读者"）。★ **⇒ 该门槛因此【已经生效** ✓，不再依赖 `docs/04` 那句 `生效门槛 = max(对象标准, 它, 上限)` 里两个从未定义的量 ✓ —— **门槛就是 `vmu.ballot.reopenFloor` 本身**（0＝不设门槛）✓。
 > ★ **就地更正（轮 284，实测 ✗✓）**：**上句说的 `reopen(reason)` 是【票箱层的原语**（`kernel/ballot.js` L241 ✓ —— **只允许 `tallied` 重开 ✓、旧结论进 history ✓**；运行时证据 `tests/vmu-ballot.test.mjs` L97-100 ✓**）** ✗ ⇒ ★★ **本卷这一面（`kernel/meetings.js`）【没有 `reopen()`** ✗ —— **在该文件里 `reopen` 只与键名无关地出现 0 次 ✓**）** ✓；**`kernel/ballotbox.js` 早已带同样结论的更正（L60-63 ✓）** ✓。**复议门槛＝规划** ✓，**且缺的【不是 pack 示例**（`packs/institute-min/index.js` L51 已设置该键 ✓**）**，而是**内核侧那个模型**（**生效门槛 = max(对象标准, 它, 上限)** ✓ —— **"对象标准"与"上限"在本面【均无定义** ✗**）**）** ✓。
 - **票数审计与复算（audit / recount）** ｜ 目的：结论可被第三方复算 ｜ 面向谁：审计者／上级 ｜ 接口形状：**部分实现 ✓**＝`history()`（含被拒项 ✓）＋`status().votes/byKind/refused` ✓；独立复算器＝规划 ✗ ｜ 可调控族：`vmu.audit.*`（规划） ｜ 错误码：`VMU_INVALID_ARGUMENT`／`VMU_NOT_PERMITTED` ｜ 哲学：F✓T✓D✓X ｜ 实现要点：复算**只读**；必须能回答"有效票集合是什么、规则是哪条、谁判的" ｜ 依赖：`history` ✓ ｜ 成熟度：**部分实现 ✓** ｜ 优先级：P1
 
@@ -856,7 +856,7 @@ recount(ballotId):
 
 ## 19. 拟增设置键全表（**具体键名**；由 Lead 登记进 `04-settings.md`＋`settings/schema.js`）
 
-> 说明：本表用**具体键名**（先前版本的"只用通配"约束已由 Lead 解除 ✓）。**既有键**（`vmu.meetings.quorumRule/quorumCap/reconsiderFloor/verdictMaxRounds/hardLimitMs/wakeRetries/roundTimeoutMs/quotesPerMessageMax/quoteDepthMax`、`vmu.tasks.stages/maxOpenTasks`、`vmu.limits.*`）**不重复登记** ✓，只在"备注"里指出被本表哪族扩写。
+> 说明：本表用**具体键名**（先前版本的"只用通配"约束已由 Lead 解除 ✓）。**既有键**（`vmu.meetings.quorumRule/quorumCap/verdictMaxRounds/hardLimitMs/wakeRetries/roundTimeoutMs/quotesPerMessageMax/quoteDepthMax`、`vmu.ballot.reopenFloor`、`vmu.tasks.stages/maxOpenTasks`、`vmu.limits.*`）**不重复登记** ✓，只在"备注"里指出被本表哪族扩写。
 > **实现状态（诚实 ✗）**：本表**除上述既有键外全部是"计划键"** ✓ —— 由生成管线写入 `settings/planned.js`（`type:'planned'`、`def:null`、**未接线** ✓）；**不得**把它们当作今天的机器保证（§0.2 纪律 ④ ✓）。
 > **跨卷**：与 17 卷共享的键（11 个）**定义在本卷**、17 只引用 ✓（逐条见 **§24 交界表** ✓）。
 > 列义：**键** ｜ **类型** ｜ **默认** ｜ **取值域** ｜ **谁可改** ｜ **热改** ｜ **说明（一句话）**。
@@ -913,7 +913,7 @@ recount(ballotId):
 | `vmu.meetings.minutesActionsRequired` | bool | false | bool | pack | 下轮 | 决议是否必须带行动项 |
 | `vmu.meetings.minutesRetentionMs` | ms | 0 | ≥0 | 所办 | 立即 | 纪要保留期 |
 
-> **备注**：`vmu.meetings.quorumRule／quorumCap／reconsiderFloor／verdictMaxRounds／hardLimitMs／wakeRetries／roundTimeoutMs／quotesPerMessageMax／quoteDepthMax` 为**既有键**（本族基线 ✓）；本表是它们的**扩写**。
+> **备注**：`vmu.meetings.quorumRule／quorumCap／verdictMaxRounds／hardLimitMs／wakeRetries／roundTimeoutMs／quotesPerMessageMax／quoteDepthMax` 与 `vmu.ballot.reopenFloor` 为**既有键**（本族基线 ✓）；本表是它们的**扩写**。
 
 ### 19.2 动议/议程（`vmu.motions.*`、`vmu.agenda.*`）
 
@@ -971,7 +971,7 @@ recount(ballotId):
 | `vmu.ballot.vetoMode` | enum | `off` | `off｜role` | 所办 | 下一次 | 否决权（**默认不纳入** ✗） |
 | `vmu.ballot.freezeMode` | enum | `manual` | `manual｜event` | 主持人 | 立即 | 冻结触发方式 |
 | `vmu.ballot.freezeMeetingLinked` | bool | true | bool | pack | 立即 | 冻结是否联动会议轮次（**不推进** ✓） |
-| `vmu.ballot.reopenFloor` | int | 0 | ≥0 | pack | 下一次 | 复议门槛（0＝用既有 `reconsiderFloor` ✓） |
+| `vmu.ballot.reopenFloor` | int | 0 | ≥0 | pack | 下一次 | **复议门槛（0＝不设门槛）**：`kernel/ballotbox.js` 的 `reopen()` **真读并决定**（不达门槛具名拒且点名本键） |
 | `vmu.ballot.reopenInitiatorScope` | enum | `winner-side` | `any｜winner-side｜chair` | pack | 下一次 | 复议发起人范围（**防滥诉** ✓） |
 | `vmu.ballot.reopenSameMeetingOnly` | bool | true | bool | pack | 下一次 | 复议是否限同一会议 ✓ |
 | `vmu.ballot.auditReadOnly` | bool | true | bool | pack | 立即 | 复算只读（**不得自动改结论** ✗） |
@@ -1445,6 +1445,24 @@ recount(ballotId):
 | **F34 开启辩论的资格判据** | 只有"谁有资格投票"，**"谁有资格开启辩论"未见** | 三个**已声明**条件（`openers`／`minEligible`／`requiresTarget`），在**唯一开辩点 `open({by})`** 具名拒：非开启人 ⇒ `VMU_NOT_PERMITTED`；选民团小于下限 ⇒ `VMU_STATE`；无标的而声明必须有标的 ⇒ `VMU_INVALID_ARGUMENT`。三者形状由 `status().openCriterion` 在**撞上之前**可见（含 `satisfied`）；默认仍宽松（`openers=null`、无下限）＝零机制 |
 
 **顺带修掉的一处语义暗礁**：`close()` 之后 `open()` 会**带着旧票**重开（下一次投片被判"已投票"，而旧结论静静留着）⇒ 现在 `open()` 对 `state==='tallied'` **具名拒**并指向 `reopen()`（清票重辩）。快照：`lastClose`／`dedupedVerdicts` **随快照走**（重启后窗口仍生效，实测 `restored_items` 含 `dedup`）；在飞行的闸门队列**不持久**并如实列入 `skipped`（`commit-gate`）。
+
+---
+
+### 25.12 F31+（Round 6）：**跨进程耐久原子** —— `createDurableCommitLog`
+
+Round 5 的提交闸门只保证**进程内**不交错。进程若在"意图"与"生效"之间死掉，或两个进程写同一场表决，闸门一无所知。本节的接缝把这件事补成**协议**（落在 `kernel/ballot.js`，**无新增设置键**）：
+
+| 维度 | 契约 |
+|---|---|
+| **ticket 由 store 分配** | `store.append(rec)` 必须回 `{ticket}`（`O_APPEND` 文件／SQLite 序列／加锁日志）⇒ **两个进程共享同一 store 即得到互不相同、单调的 ticket**；store 不回 ticket 才退回本地计数，并在 `status().numbering` **明说**是"每进程"编号 |
+| **意图先于生效** | `reserve(op)` 先落意图 → 调用方生效 → `complete(rec, outcome)` 落结果；崩溃窗口里的**意图留在日志里**，正是 `recover()` 要找的 |
+| **恢复不重放已完成** | 选票面 `reconcile()` 按 ticket 序重放**未完成**意图；已 done 的 ticket 即跳过（**按 ticket 归属排除**——初版只排除了"自身 done 的行"，会把每条已完成提交的意图也算成 pending；本轮已修）；成员一票唯一 ⇒ 重放**幂等**（第二次 `replayed=0`），恢复票带 `recovered:true` |
+| **可观测** | `ballot.status().gate = {serialized,pending,commits,durable,log}` |
+| **无 store** | `durable:false`＋`reserve()` 返回 `null`＋`reconcile()` 具名说明"无可恢复" ⇒ 接缝缺席**自曝**，不假装恢复过 |
+
+**实测**：parity §18（12 条）——两"进程"共享 store ⇒ ticket 1,2 单调互异；崩溃窗口 ⇒ 新日志 `pending=1`、新票面 `reconcile()` **恰好重放 1 次**且该票**真能定论**、第二次 **0**；正常路径 `done=1/pending=0`；**被拒的投片也完成自己的意图**（恢复不重放拒绝）。
+
+**接线待 host**：`createDurableCommitLog({ store })` 的 store 由宿主提供（vmu-core/host）；`ballotbox`／`mailbox` 可照同样三行接上（协议已成）。
 
 ---
 

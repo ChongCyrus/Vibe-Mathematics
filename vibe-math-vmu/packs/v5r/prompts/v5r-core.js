@@ -75,7 +75,6 @@ export const PACK = Object.freeze({
   settings: {
     'vmu.meetings.quorumRule': 'm-unanimous',
     'vmu.meetings.quorumCap': 3,
-    'vmu.meetings.reconsiderFloor': 0,
     'vmu.meetings.verdictMaxRounds': 3,
     'vmu.meetings.hardLimitMs': 1800000,
     'vmu.meetings.wakeRetries': 5,

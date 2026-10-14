@@ -112,7 +112,11 @@ const CORE_DEFS = Object.freeze([
   // ---- meetings (rules and mechanism only; "when to meet" and "what counts as stalled" are middleware)
   { key: 'vmu.meetings.quorumRule', type: 'enum', domain: ['m-unanimous', 'all-unanimous'], def: 'm-unanimous', hot: HOT.H1, who: 'role:chair', doc: '法定数规则（仅规则，不含"何时开会"）' },
   { key: 'vmu.meetings.quorumCap', type: 'natural', def: 3, hot: HOT.H1, who: 'role:chair', doc: 'P3：法定数上限 m = min(cap, 参与人数)；0＝不设上限' },
-  { key: 'vmu.meetings.reconsiderFloor', type: 'natural', def: 0, hot: HOT.H1, who: 'role:chair', doc: '复议门槛下限（★ 轮 286：这不是【缺口】而是【分工】—— 生效门槛 = max(对象标准, 它, 上限)，其中「对象标准」与「上限」是【领域常量】，依 docs/10 §1 的 D5【内核零策略】由 pack 定义，本仓不臆造 ✓）。0＝只保证「不降」✓。机制侧判据：docs/08-§L217 的就地说明 ＋ kernel/ballotbox.js L60-68 的受控声明（阈值的另一键 reopenFloor 有意不重复它 ✓）' },
+  // ROUND 6 / target-4 verdict: `vmu.meetings.reconsiderFloor` was a CONFIRMED ORPHAN (zero readers) and has been
+  // DELETED here (Round 6 close). The knob that actually works is `vmu.ballot.reopenFloor`; a second name with a
+  // different semantic made a deployment believe there were two knobs when only one is wired. Removal order was
+  // measured, not guessed: the pack manifest values and the volumes that spelled the full name (docs/08, docs/10,
+  // docs/12) were reworded FIRST, because the docs gates require every `vmu.*` name written in a volume to exist here.
   { key: 'vmu.meetings.verdictMaxRounds', type: 'positiveInteger', def: 3, hot: HOT.H1, who: 'role:chair', doc: 'P3：同一对象的复算轮次上限（不得无限复算）' },
   { key: 'vmu.meetings.hardLimitMs', type: 'natural', def: 1800000, hot: HOT.H1, who: 'office', doc: 'P3：会议墙钟硬界（唯一兜底）＝1800000；钳制 [300000, 7200000]；**不存在"无界"**' },
   { key: 'vmu.meetings.wakeRetries', type: 'natural', def: 5, hot: HOT.H1, who: 'office', doc: 'P3：同一成员同阶段的唤醒重试上限（钳制 [0,10]）；耗尽记 unreached 并视为"已获机会"' },
@@ -1228,6 +1232,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.migration.stepBatch', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（migration.js 读取）；默认值取自模块源码" },
   { key: 'vmu.notify.crossInstitution', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（notify.js 读取）；默认值取自模块源码" },
   { key: 'vmu.paper.finalizer', type: 'string', def: 'editor', hot: HOT.H1, who: 'office', doc: "已接线（paper.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.paper.maxRounds', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（paper.js 读取）；默认值取自模块源码" },
   { key: 'vmu.paper.maxSections', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（paper.js 读取）；默认值取自模块源码" },
   { key: 'vmu.paper.requireAllSections', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（paper.js 读取）；默认值取自模块源码" },
   { key: 'vmu.partnership.crossBorderApproverRoles', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: "已接线（partnership.js 读取）；默认值取自模块源码" },

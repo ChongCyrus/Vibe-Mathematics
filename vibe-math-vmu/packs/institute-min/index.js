@@ -6,7 +6,9 @@
 //
 // What it reproduces from v5r (see _oneoff/vmu/design/03-v5r-containment-report.md):
 //   · role slots chair/member with capacities      -> v5r `academician` + `researcherCount`, as SLOTS;
-//   · m-unanimous quorum with a cap and a floor    -> v5r `quorumMode/quorumCap/reconsiderFloor`;
+//   · m-unanimous quorum with a cap and a floor    -> v5r `quorumMode/quorumCap`; the "floor" half is carried by
+//     `vmu.ballot.reopenFloor` (the meeting-side `reconsiderFloor` name was a zero-reader orphan, deleted in
+//     Round 6 - see _handoff/vmu/09-goal4-verdict.md §3.2);
 //   · vote only on a LOCKED (settled) object       -> v5r's `V5_INVALID_ARGUMENT` gate, as an M1 rule;
 //   · no end-less verification                     -> v5r `verdictMaxRounds`, as a setting;
 //   · one wall-clock backstop, never "unbounded"   -> v5r `meetingHardLimitMs`, as a setting;
@@ -48,7 +50,6 @@ export const PACK = Object.freeze({
   settings: {
     'vmu.meetings.quorumRule': 'm-unanimous',
     'vmu.meetings.quorumCap': 3,
-    'vmu.meetings.reconsiderFloor': 0,
     'vmu.meetings.verdictMaxRounds': 3,
     'vmu.meetings.hardLimitMs': 1800000,
     'vmu.meetings.wakeRetries': 5,

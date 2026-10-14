@@ -205,7 +205,7 @@ then:
 - **已接线键**（**派生自 `docs/04-settings.md` 的 `✅ 已接线` 行**，命令见本节末；**非凭记忆** ✗），按族列出（**数量随实现推进增长 ⇒ 永远以命令输出为准** ✓）：
   - **核心/限额（7）**：`vmu.core.enabled`｜`vmu.core.logLevel`｜`vmu.limits.maxLiveMembers`｜`vmu.limits.maxParallel`｜`vmu.limits.memoryCeilingMb`｜`vmu.limits.toolCallsPerTurnCap`｜`vmu.limits.wallClockMs`
   - **任务（2）**：`vmu.tasks.maxOpenTasks`｜`vmu.tasks.stages`
-  - **会议（9）**：`vmu.meetings.hardLimitMs`｜`vmu.meetings.quorumCap`｜`vmu.meetings.quorumRule`｜`vmu.meetings.quoteDepthMax`｜`vmu.meetings.quotesPerMessageMax`｜`vmu.meetings.reconsiderFloor`｜`vmu.meetings.roundTimeoutMs`｜`vmu.meetings.verdictMaxRounds`｜`vmu.meetings.wakeRetries`
+  - **会议（8）**：`vmu.meetings.hardLimitMs`｜`vmu.meetings.quorumCap`｜`vmu.meetings.quorumRule`｜`vmu.meetings.quoteDepthMax`｜`vmu.meetings.quotesPerMessageMax`｜`vmu.meetings.roundTimeoutMs`｜`vmu.meetings.verdictMaxRounds`｜`vmu.meetings.wakeRetries`
   - **中间件（4）**：`vmu.middleware.entries`｜`vmu.middleware.dryRun`｜`vmu.middleware.breakerThreshold`｜`vmu.middleware.hookTimeoutMs`
   - **提示词（4）**：`vmu.prompts.bindings`｜`vmu.prompts.overridesDir`｜`vmu.prompts.resourceSection`｜`vmu.prompts.whoMayOverride`
   - **记录（5）**：`vmu.records.tracks`｜`vmu.records.truncateMode`｜`vmu.records.fingerprintPolicy`｜`vmu.records.headListAt`｜`vmu.records.pointerPropagation`

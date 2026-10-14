@@ -252,6 +252,10 @@ export function createKernel({
   maxOpenTasks = undefined,
   middleware = [],
   spawn = null,
+  // ROUND 6 / target-5: the KILLABLE spawn seam `(request, onHandle)`. The entry hands the host's own handle to the
+  // caller before awaiting the outcome, so `cancel({jobId})` terminates immediately; without it the job faces can only
+  // refuse by name ("this seam cannot kill"). Same implementation as `spawn`, one extra argument.
+  spawnHandle = null,
   deliver = null,
   // ROUND 1 / K3: the TURN loop's own delivery seam (`async ({ turn, text }) => reply`). Kept separate from
   // `deliver` (the member/meeting wake seam, whose shape is an envelope) so one adapter can never be silently
@@ -563,8 +567,16 @@ export function createKernel({
 
   // THE LEAN FACE (docs/09, `vmu.math.lean*`): a real subsystem, created only when a spawn seam exists. The
   // face owns the semantics the docs promise ("exit 0 AND the content hash unchanged"); the kernel only wires.
+  // ROUND 6 / target-5 (v5r-reader-b's ruling): the Lean face now gets the SAME four seams its siblings get, so its
+  // MIRROR / resume-from-mirror and its cancel path work on the PRODUCTION path too (they previously worked only where
+  // a test injected them):
+  //   · `fs`         = the host file face (host-math's readText/writeText) ⇒ the `Math/Jobs` mirror is real;
+  //   · `ids`        = the kernel's ONE minter (bound above) ⇒ job ids never restart;
+  //   · `timer`      = the kernel's declared timer (child budget; absent ⇒ the platform timer, named by the module);
+  //   · `spawnHandle`= the killable spawn seam `(opts, onHandle)` ⇒ `cancel({jobId})` can really terminate.
   const lean = spawn
-    ? createLeanFace({ settings: settingsView, spawn, root, clock, log })
+    ? createLeanFace({ settings: settingsView, spawn, spawnHandle, timer, ids, root, clock, log,
+      fs: host && typeof host.readText === 'function' && typeof host.writeText === 'function' ? host : null })
     : null
 
   // The resource gate closes the `vmu.limits.memoryCeilingMb` loop. The ceiling is the HOST PROCESS RSS (the
@@ -695,7 +707,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // INTEGRATOR FIX: `vmu.mathjobs` was REGISTERED but never CREATED - the registry advertised a service the
   // kernel did not build. Both job faces now receive the kernel's real spawn seam (the host injects it), so a
   // missing engine surfaces as a named refusal rather than a silent no-op.
-  const mathjobs = createMathJobs({ settings: settingsView, bus, clock, log, spawn,
+  const mathjobs = createMathJobs({ settings: settingsView, bus, clock, log, spawn, spawnHandle, timer, ids,
     // ROUND 2 (task-14, reader-b's contract): the job MIRROR seam. `fs` is the host's file face (host-math.js
     // exposes readText/writeText/listDir/exists/removeText), `root` is the durable root. A missing `fs` does NOT
     // silently disable the mirror: `admission().fileMirror=false` reports it by name.
@@ -710,7 +722,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // ROUND 2 (task-14): the scientific-library adapter face (numpy/scipy/pandas/sympy). `resolveExecutable` comes from
   // the host math seam; without it `probe()` refuses by name (`VMU_EXTERNAL_UNAVAILABLE`) instead of guessing whether
   // the machine has python.
-  const mathadapters = createMathAdapters({ settings: settingsView, clock: guardedClock, log, bus, spawn,
+  const mathadapters = createMathAdapters({ settings: settingsView, clock: guardedClock, log, bus, spawn, spawnHandle, timer, ids,
     resolveExecutable: host && typeof host.resolveExecutable === 'function' ? host.resolveExecutable : null,
     root: root || null })
   // Batch-3/5 tails: external fetching (N11) and the clinical/animal approval gates. Both are inert by default

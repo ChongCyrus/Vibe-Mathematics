@@ -173,6 +173,10 @@ export const HOOK_REGISTRY = Object.freeze([
   { name: 'lean/job-timeout', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a Lean compilation job exceeded its budget', producer: 'kernel/lean.js' },
   { name: 'lean/job-recovered', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'Lean jobs were recovered from the mirror', producer: 'kernel/lean.js' },
   { name: 'lean/jobs-disposed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'Lean job handles were disposed', producer: 'kernel/lean.js' },
+  // ROUND 6 (found by v5r-reader-a, the same class as `resume/lock-release-failed`): `kernel/lean.js` emits this
+  // inside the `lean/` namespace, which is in VU_NAMESPACE - unregistered, so the bus refused it and the helper's
+  // catch swallowed the refusal (a cancelled job reached no middleware).
+  { name: 'lean/job-cancelled', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a Lean compilation job was cancelled', producer: 'kernel/lean.js' },
   // The in-repo classification gate (scripts/audit-hook-emit-classification.mjs) found five MORE string-form
   // emits the earlier out-of-repo census missed: each is marked "advisory" in its module, so nobody could
   // subscribe to it and nothing had classified it.

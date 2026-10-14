@@ -89,8 +89,11 @@ export const V5R_SETTING_DEFAULTS = Object.freeze({
   // producing nothing substantive. A deployment that wants light sets this true (both states are implemented).
   'vmu.meetings.allowLight': false,
   // ROUND 3 (GAP-MTG-10, reader-c): the ballot board's reopen threshold. v5r's rule was "the threshold only
-  // RISES and the object's own standard still applies" — so the pack adds NO extra floor (0 = none), which is
-  // the same stance the manifest declares for the meeting-side reconsideration (`vmu.meetings.reconsiderFloor`).
+  // RISES and the object's own standard still applies" — so the pack adds NO extra floor (0 = none).
+  // ROUND 6 (goal-4 verdict): the meeting-side twin that used to be named here (`vmu.meetings.reconsiderFloor`,
+  // declared on the manifest and in `settings/schema.js`) turned out to be a ZERO-READER orphan: this key is the
+  // one that is actually read (`kernel/ballotbox.js`'s `reopen()`), and the orphan is being deleted from both
+  // places (schema by vmu-core, manifest by vmu-assistant). One meaning, one name.
   'vmu.ballot.reopenFloor': 0,
   // ROUND 3 (C-30, CLOSED): the OFFICE CONSULT GATE before finalisation. v5r's `finalizePaperByOffice` /
   // `notePaperConsult` asked the institute before the office finalised, so this institution declares the gate
@@ -103,6 +106,13 @@ export const V5R_SETTING_DEFAULTS = Object.freeze({
   'vmu.paper.officeConsultTimeoutMs': 0,
   'vmu.paper.officeConsultOnTimeout': 'hold',
   'vmu.paper.officeConsultExemptRoles': [],
+  // ROUND 6 (goal-4 verdict G1, now CLOSED): the PAPER ROUND CAP. v5r's `PAPER_MAX_ROUNDS = 3` bounded how many
+  // times a manuscript could be revised, and vmu now has the mechanism with a declared knob: `revise()` counts
+  // rounds and a revision that would exceed `vmu.paper.maxRounds > 0` is refused BY NAME
+  // (`VMU_PAPER_ROUNDS_EXCEEDED`) with the cap in `enforced[]`. Readers: `kernel/paper.js:41` (WIRED_KEYS) and
+  // `:135` (`readKey('vmu.paper.maxRounds') || 0`). v5r's value is 3; the framework default is 0 = no cap, so
+  // WITHOUT this line the institution would lose its bound - which is exactly why it is declared here.
+  'vmu.paper.maxRounds': 3,
   'vmu.meetings.quoteDepthMax': 3,
   'vmu.meetings.quotesPerMessageMax': 2,
   'vmu.meetings.unansweredInDenominator': false,

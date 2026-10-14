@@ -21,6 +21,8 @@
 //
 // Run: node tests/vmu-assistant-host-slice.test.mjs                      (assert the route facts; slice NOT RUN)
 //      node tests/vmu-assistant-host-slice.test.mjs --web-port 7791 --web-token <t> [--preset vibe-math-vmu]
+//           [--cwd <ASCII ws>] [--max-tokens 120000] [--dsh-home <scratch home>] [--print]
+//           [--expect-settings k1,k2,…]   <- assert EVERY declared key appears in the entry's merge self-report
 //      node tests/vmu-assistant-host-slice.test.mjs --require-host       (exit ≠0 while the slice cannot run)
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
@@ -32,7 +34,14 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
 const REQUIRE_HOST = process.argv.includes('--require-host')
 const argOf = (name, def) => { const i = process.argv.indexOf('--' + name); return i === -1 ? def : process.argv[i + 1] }
-const DSH_HOME = argOf('dsh-home', process.env.DSH_SLICE_HOME || join(process.env.TEMP || '/tmp', 'vmu-dsh-slice-home'))
+// The home to READ THE SESSION LOG from. `DSH_HOME` (the same variable the host honours) comes first, so driving against
+// someone else's scratch instance needs no extra flag - but the OPERATOR'S OWN home is explicitly rejected here, because
+// this script also runs inside a DSH session where `DSH_HOME` points at `~/.dsh` (measured: the naive fallback picked it
+// up and the "never the user's profile" guard failed, which is the guard doing its job). Measured too: without any
+// fallback the accounting silently looked in a fresh temp home and reported "sessionLog:null".
+const OPERATOR_HOME = resolve(join(process.env.USERPROFILE || process.env.HOME || '', '.dsh'))
+const envHome = process.env.DSH_HOME && resolve(process.env.DSH_HOME) !== OPERATOR_HOME ? process.env.DSH_HOME : null
+const DSH_HOME = argOf('dsh-home', process.env.DSH_SLICE_HOME || envHome || join(process.env.TEMP || '/tmp', 'vmu-dsh-slice-home'))
 const WEB_PORT = argOf('web-port', null)
 const WEB_TOKEN = argOf('web-token', null)
 const PRESET = argOf('preset', 'vibe-math-vmu')
@@ -43,6 +52,9 @@ const TIMEOUT_S = Number(argOf('timeout', '300'))
 // PLAYBOOK §4: a scripted run MUST carry an explicit token cap. The default is a small, deliberate number rather than
 // "no cap" (0 means uncapped in the driver): a slice that runs away must be cancelled, and the cap hit is reported.
 const MAX_TOKENS = Number(argOf('max-tokens', '60000'))
+// The keys THIS deployment's overlay declares, comma separated. When given, the harness asserts that every one of them
+// shows up in the entry's `settingsMerge` self-report - i.e. that the declaration reached the entry (vmu-verify's ask).
+const EXPECT_SETTINGS = String(argOf('expect-settings', '') || '').split(',').map((s) => s.trim()).filter(Boolean)
 const PRINT = process.argv.includes('--print')
 
 let passed = 0
@@ -108,19 +120,33 @@ function readSessionLog(home, sessionId) {
     file = findSessionLog(home, sessionId)
     if (!file) spawnSync(process.execPath, ['-e', 'setTimeout(()=>{},200)'], { timeout: 2000 })
   }
-  if (!file) { console.log('  NOT-FOUND: session log for ' + sessionId + ' under ' + join(home, 'sessions') + ' (accounting unavailable, stated by name)'); return { file: null, lines: 0, events: [], toolCalls: [], toolResults: [], assistant: [] } }
+  if (!file) { console.log('  NOT-FOUND: session log for ' + sessionId + ' under ' + join(home, 'sessions') + ' (accounting unavailable, stated by name)'); return { file: null, lines: 0, events: [], toolCalls: [], toolResults: [], assistant: [], publishedTools: [], statusReceipt: null } }
   const text = decodeZstdFrames(readFileSync(file))
   const raw = text.split('\n').filter(Boolean)
   const events = []; const toolCalls = []; const toolResults = []; const assistant = []
+  const publishedTools = []; let statusReceipt = null
+  const rawResults = []
   raw.forEach((l, i) => {
     let e; try { e = JSON.parse(l) } catch { return }
     events.push(e)
     const seq = e.seq ?? e.data?.seq ?? '?'
     if (e.type === 'tool/call') toolCalls.push({ line: i + 1, seq, name: e.data?.name })
-    if (e.type === 'tool/result') toolResults.push({ line: i + 1, seq })
+    if (e.type === 'tool/result') {
+      toolResults.push({ line: i + 1, seq })
+      const t = (e.data?.message?.content ?? []).map((c) => c.text ?? '').join('')
+      rawResults.push({ line: i + 1, seq, text: t })
+      if (!statusReceipt && t.trim().startsWith('{')) { try { statusReceipt = JSON.parse(t) } catch { /* elided or not JSON */ } }
+    }
     if (e.type === 'assistant/message') { const t = (e.data?.message?.content ?? []).map((c) => c.text ?? '').join(''); if (t.trim()) assistant.push(t) }
+    // THE PUBLISHED TOOL LIST: the host's OWN request payload records exactly which tools the model was offered - this
+    // is the "publication vs prompt" dividing line (prose mentions and dump greps cannot answer it).
+    if (e.type === 'request/header') {
+      const tools = e.data?.tools ?? e.data?.header?.tools
+      if (Array.isArray(tools)) for (const t of tools) { const n = typeof t === 'string' ? t : t?.name ?? t?.function?.name; if (n) publishedTools.push(String(n)) }
+      else if (tools && typeof tools === 'object') for (const n of Object.keys(tools)) publishedTools.push(n)
+    }
   })
-  return { file, lines: raw.length, events, toolCalls, toolResults, assistant }
+  return { file, lines: raw.length, events, toolCalls, toolResults, assistant, publishedTools, statusReceipt, rawResults }
 }
 const lineOf = (events, typeFilters) => { const i = events.findIndex((e) => typeFilters.some((f) => String(e.type).includes(f))); return i === -1 ? null : i + 1 }
 
@@ -173,7 +199,8 @@ const SLICE_TASK = [
   '2. `vibe_vmu_chat` with {"action":"list"}',
   '3. `vibe_vmu_panel` with {"action":"status"}',
   '4. `vibe_vmu_report` with {"action":"status"}',
-  '5. `vibe_vmu_report` with {"action":"tick","metrics":"{\\"artifacts\\":9}"}',
+  '5. `vibe_vmu_set` with {"key":"vmu.turn.instituteName","value":"Slice-Institute","by":"office","reason":"scripted slice"}',
+  '6. `vibe_vmu_report` with {"action":"tick","metrics":"{\\"artifacts\\":9}"}',
   'Then answer in ONE sentence: are you the institute office (assistant/external interface) or a member, and do you vote?',
 ].join('\n')
 if (WEB_PORT && WEB_TOKEN && existsSync(DRIVER)) {
@@ -205,13 +232,29 @@ if (WEB_PORT && WEB_TOKEN && existsSync(DRIVER)) {
   // MULTI-FACE LIT (the fact vmu-verify needs for its matrix) - read from the SESSION LOG, which is the authoritative
   // record with `seq` + line numbers. Prose mentions are NOT calls: only `tool/call` events count.
   const sessionId = (transcript.match(/"sessionId"\s*:\s*"([^"]+)"/) || [])[1] || null
-  const sess = sessionId ? readSessionLog(DSH_HOME, sessionId) : { file: null, lines: 0, events: [], toolCalls: [], toolResults: [], assistant: [] }
+  const sess = sessionId ? readSessionLog(DSH_HOME, sessionId) : { file: null, lines: 0, events: [], toolCalls: [], toolResults: [], assistant: [], publishedTools: [], statusReceipt: null }
   const calledFaces = [...new Set(sess.toolCalls.map((t) => t.name).filter(Boolean))].sort()
   const vmuFaces = calledFaces.filter((n) => /^vibe_vmu_/.test(n))
+  // THE PUBLICATION FACTS (the "publication vs prompt" dividing line the Lead asked for): what the host OFFERED the
+  // model at all, read from its own request payload - not from prose and not from a dump.
+  const publishedFaces = [...new Set(sess.publishedTools.filter((n) => /^vibe_vmu_/.test(n)))].sort()
+  ok(publishedFaces.indexOf('vibe_vmu_report') !== -1,
+    'HOST: the assistant face is PUBLISHED to the model (it appears in the request payload\'s tool list)', { publishedFaces })
   ok(vmuFaces.length >= 3, 'HOST: at least three vmu faces were really CALLED in the session (multi-face lit)', { called: calledFaces })
   ok(calledFaces.indexOf('vibe_vmu_report') !== -1 && sess.toolResults.length > 0,
     'HOST: the report face was really CALLED and produced a tool/result', { called: calledFaces, results: sess.toolResults.length })
+  console.log('  PUBLISHED TOOLS (' + sess.publishedTools.length + '): ' + JSON.stringify(sess.publishedTools))
+  console.log('  PUBLISHED vmu FACES: ' + JSON.stringify(publishedFaces))
   console.log('  FACES CALLED: ' + JSON.stringify(calledFaces))
+  if (sess.statusReceipt) {
+    const sr = sess.statusReceipt
+    console.log('  STATUS RECEIPT: ' + JSON.stringify({
+      instance: sr.instance, enabled: sr.enabled, active: sr.active, packPath: sr.packPath,
+      settingsMerge: sr.settingsMerge ? { packs: sr.settingsMerge.packs, defaults: sr.settingsMerge.defaults, sources: sr.settingsMerge.sources, conflicts: sr.settingsMerge.conflicts } : null,
+      settingsKeys: sr.settings?.keys, resolved: sr.settings?.resolved ? Object.keys(sr.settings.resolved).length : null,
+      settingsUnparsed: sr.settingsUnparsed ?? null,
+    }))
+  }
   // THE ACCOUNTING THE LEAD ASKED FOR: every tool/call & tool/result with its seq + line number.
   console.log('  TOOL EVIDENCE: ' + JSON.stringify({
     sessionLog: sess.file, lines: sess.lines, events: sess.events.length,
@@ -227,6 +270,27 @@ if (WEB_PORT && WEB_TOKEN && existsSync(DRIVER)) {
     ok(/vibe_vmu_report/.test(words) && /(not available|no such tool|unavailable|未提供|不可用|没有)/i.test(words) === false && words.length > 0,
       'HOST: with zero tool calls, the model\'s OWN WORDS are recorded as the finding (not silently passed)', { chars: words.length })
   }
+  // ★ THE DECLARATION→ENTRY CROSS-CHECK (vmu-verify's suggestion, made permanent). `settingsMerge.sources` is the
+  // strongest end-to-end判据 we have: R5 showed `{}`/`keys:0` (declaration lost), R6 showed 4-5 keys with
+  // `source:"config"` (declaration reached the entry). It distinguishes "the declaration never arrived" from "the
+  // mechanism did nothing" - and it stays readable even when a session is cut by the token cap, because it only needs
+  // the FIRST status receipt (regex on the raw text, since the 49k-char receipt can arrive elided and JSON.parse fails).
+  const receiptText = (sess.rawResults || []).map((r) => r.text).find((t) => t && t.includes('"settingsMerge"')) || ''
+  const facts = {
+    sources: (receiptText.match(/"sources":(\{[^}]*\})/) || [])[1] || null,
+    keys: Number((receiptText.match(/"keys":(\d+)/) || [])[1]),
+    unparsed: (receiptText.match(/"settingsUnparsed":(\[[^\]]*\])/) || [])[1] || null,
+    declared: (receiptText.match(/"declared":(\d+)/) || [])[1] || null,
+  }
+  ok(!!facts.sources && facts.sources !== '{}' && facts.keys > 0,
+    'HOST: the overlay DECLARATIONS reached the entry (settingsMerge.sources non-empty, settings.keys > 0)',
+    { sources: facts.sources, keys: facts.keys, unparsed: facts.unparsed })
+  if (EXPECT_SETTINGS.length) {
+    const missing = EXPECT_SETTINGS.filter((k) => !receiptText.includes('"' + k + '"'))
+    ok(missing.length === 0, 'HOST: EVERY key this deployment declares appears in the entry\'s merge self-report',
+      { expected: EXPECT_SETTINGS, missing })
+  }
+  console.log('  SETTINGS CROSS-CHECK: ' + JSON.stringify({ declaredByDeployment: EXPECT_SETTINGS, sources: facts.sources, keys: facts.keys, settingsUnparsed: facts.unparsed, reportDeclared: facts.declared }))
   // THE EVIDENCE DIGEST: provider/model, the session, and the token readings the host emitted (whatever it emits - the
   // absence of a field is reported as absent, never invented).
   const pick = (re) => { const m = transcript.match(re); return m ? m[0] : null }

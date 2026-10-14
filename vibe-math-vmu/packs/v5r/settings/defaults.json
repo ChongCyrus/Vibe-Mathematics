@@ -41,6 +41,7 @@
     "vmu.paper.officeConsultTimeoutMs": 0,
     "vmu.paper.officeConsultOnTimeout": "hold",
     "vmu.paper.officeConsultExemptRoles": [],
+    "vmu.paper.maxRounds": 3,
 
     "vmu.meetings.quoteDepthMax": 3,
     "vmu.meetings.quotesPerMessageMax": 2,

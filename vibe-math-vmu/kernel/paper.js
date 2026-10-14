@@ -35,6 +35,10 @@ export const WIRED_KEYS = Object.freeze([
   // more sections than the cap is refused by name with the count and the cap, because a bound the machine cannot
   // enforce is a suggestion. 0 means unlimited, which is also the default, so nothing changes unless a pack asks.
   'vmu.paper.maxSections',
+  // ROUND 6 / target-4 (M-A04): the REVISION-ROUND cap. v5r promised it in prose only
+  // ("decision=\"revise\" 会退回继续修订（有轮次上限）", packs/v5r/prompts/v5r-blocks-b.js:513) and neither line
+  // implemented it; this key is its ONE reader (`revise()`), 0 = unlimited (the zero-mechanism default).
+  'vmu.paper.maxRounds',
   // ROUND 3 (C-30, the office-consultation gate). The v5r line gated finalisation on the office having consulted the
   // institute first: both a message and a meeting had to be on record, the counts written AT THE POINT OF THE ACT (never
   // from intent), and the door stayed shut with a named refusal otherwise. These five keys are the vmu form of that rule.
@@ -125,7 +129,12 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
     const consultExemptRoles = Array.isArray(exemptRaw)
       ? exemptRaw.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim())
       : []
-    return { requireAllSections, finalizer, maxSections, officeConsult, consultOn, consultTimeoutMs, consultOnTimeout, consultExemptRoles }
+    // ROUND 6 / target-4 (M-A04): the revision-round cap. `0` (and any unusable value) means UNLIMITED - the
+    // zero-mechanism default, so an undeclared deployment behaves exactly as before. The `|| 0` shape is deliberate:
+    // the schema generator recovers the REAL default from it (the same convention `maxSections` uses above).
+    const rawRounds = Number(readKey('vmu.paper.maxRounds') || 0)
+    const maxRounds = Number.isFinite(rawRounds) && rawRounds > 0 ? Math.floor(rawRounds) : 0
+    return { requireAllSections, finalizer, maxSections, maxRounds, officeConsult, consultOn, consultTimeoutMs, consultOnTimeout, consultExemptRoles }
   }
 
   const keysUsed = () => WIRED_KEYS.slice()
@@ -299,6 +308,10 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
       const p = {
         id, title: t, at: clock(), editor: ed, state: 'open', finalizedAt: null, gaps: null, receipt: undefined,
         sections: names.map((n) => ({ name: n, owner: String(map[n]).trim(), by: null, at: null, artifact: null })),
+        // ROUND 6 / target-4 (M-A04): the REVISION-ROUND counter. v5r promised the cap in prose only
+        // ("decision=\"revise\" 会退回继续修订（有轮次上限）", packs/v5r/prompts/v5r-blocks-b.js:513) and neither line
+        // implemented it; `vmu.paper.maxRounds` is the declared knob and `revise()` is its ONE reader.
+        rounds: 0,
         // C-30: the consultation ledger. `requestedAt` is opened by the first BLOCKED attempt (or explicitly through
         // requestConsult), and every `consult()` appends one entry - the evidence is the act, not a claim about it.
         consult: { requestedAt: null, by: null, entries: [] },
@@ -330,6 +343,56 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
       s.artifact = artifact === undefined || artifact === null || String(artifact).trim() === '' ? null : String(artifact)
       note(p.id, 'section:' + s.name)
       return { ok: true, paperId: p.id, section: s.name, by: who, artifact: s.artifact, outstanding: view(p).outstanding }
+    },
+
+    /**
+     * ROUND 6 / target-4 (M-A04) — REVISE: the SANCTIONED overwrite path, and the ONE reader of
+     * `vmu.paper.maxRounds`. `contribute()` deliberately writes a section ONCE (a silent overwrite is the defect it
+     * prevents); the v5r corpus nevertheless promises that a `revise` decision sends the work back for another round
+     * "有轮次上限". That promise now has a mechanism:
+     *   · only the section's OWNER may revise (same machine-enforced ownership as `contribute`);
+     *   · the section must already have been handed in (there is nothing to revise before that);
+     *   · EVERY revision increments the manuscript's round counter, and with `vmu.paper.maxRounds > 0` the revision
+     *     that would exceed the cap is refused BY NAME (`VMU_PAPER_ROUNDS_EXCEEDED`) with the cap in `enforced[]`.
+     * `maxRounds = 0` means UNLIMITED - the zero-mechanism default, so an undeclared deployment keeps working exactly
+     * as before.
+     */
+    revise({ paperId, section, by, artifact, note: why = null } = {}) {
+      const p = find(paperId)
+      if (p.state !== 'open') throw refuse('VMU_STATE', 'paper ' + p.id + ' is ' + p.state, 'a finalised manuscript is closed to revisions')
+      const s = p.sections.find((x) => x.name === String(section || ''))
+      if (!s) throw refuse('VMU_NO_SUCH_OBJECT', 'no section ' + String(section) + ' in ' + p.id,
+        'declared sections: ' + p.sections.map((x) => x.name).join(', '))
+      const who = String(by || '').trim()
+      if (!who) throw refuse('VMU_INVALID_ARGUMENT', 'revise needs by', 'the revision is attributed')
+      if (who !== s.owner) {
+        throw refuse('VMU_NOT_PERMITTED', 'section "' + s.name + '" is owed by ' + s.owner + ', not by ' + who,
+          'ownership is machine-enforced; the owner revises, or the manuscript is re-started with a different owner')
+      }
+      if (s.by === null) {
+        throw refuse('VMU_STATE', 'section "' + s.name + '" has not been handed in yet, so there is nothing to revise',
+          'contribute() first; revise() is the sanctioned second pass')
+      }
+      const c = cfg()
+      const cap = Number.isFinite(Number(c.maxRounds)) && Number(c.maxRounds) > 0 ? Math.floor(Number(c.maxRounds)) : 0
+      if (cap > 0 && p.rounds >= cap) {
+        const e = refuse('VMU_PAPER_ROUNDS_EXCEEDED',
+          'manuscript ' + p.id + ' reached its revision-round cap: ' + p.rounds + ' >= ' + cap + ' (vmu.paper.maxRounds)',
+          'raise vmu.paper.maxRounds (0 = unlimited), or start a new manuscript version')
+        e.enforced = ['vmu.paper.maxRounds']
+        e.fired = ['vmu.paper.maxRounds']
+        e.enforcedScope = 'evaluated-so-far'
+        e.rounds = p.rounds
+        e.maxRounds = cap
+        throw e
+      }
+      p.rounds += 1
+      s.at = clock()
+      s.artifact = artifact === undefined || artifact === null || String(artifact).trim() === '' ? null : String(artifact)
+      note(p.id, 'revised:' + s.name)
+      return { ok: true, paperId: p.id, section: s.name, by: who, artifact: s.artifact, rounds: p.rounds, maxRounds: cap,
+        outstanding: view(p).outstanding, enforced: ['vmu.paper.maxRounds'], fired: ['vmu.paper.maxRounds'],
+        enforcedScope: 'evaluated-so-far' }
     },
 
     /**

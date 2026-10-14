@@ -81,7 +81,11 @@ export function createHostSpawn({
   // ROUND 4: the budget-timer cleanup ledger (see the race below). Named errors, not swallowed ones.
   const timerCleanupErrors = []
 
-  const spawnSeam = async function spawnSeam(request = {}) {
+  // ROUND 6 / target-5 (v5r-reader-b's ruling): THE SAME SEAM IS ALSO THE KILLABLE ONE. The job faces accept
+  // `spawnHandle(opts, onHandle)` and expect the HANDLE synchronously so `cancel({jobId})` can call `terminate()`
+  // immediately (without it they can only refuse by name: "this seam cannot kill"). One implementation, two call
+  // shapes: `spawn(request)` and `spawn(request, (handle) => …)`.
+  const spawnSeam = async function spawnSeam(request = {}, onHandle = null) {
     const sub = subprocessOf()
     if (!sub || typeof sub.spawn !== 'function') {
       throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host exposes no subprocess service, so no spawn seam is bound',
@@ -178,6 +182,14 @@ export function createHostSpawn({
       err.shape = shape
       err.cause = e
       throw err
+    }
+    // ★ THE KILLABLE HALF: hand the host's handle to the caller BEFORE waiting for it. A throw in the callback must not
+    // abort the run (the caller's bookkeeping is its own business), but it must be NAMED rather than swallowed.
+    if (typeof onHandle === 'function') {
+      try { onHandle(handle) } catch (e) {
+        timerCleanupErrors.push({ code: 'VMU_SPAWN_HANDLE_CALLBACK_FAILED', message: String((e && e.message) || e), at: clock() })
+        try { process.stderr.write('vmu: the spawn-handle callback failed (VMU_SPAWN_HANDLE_CALLBACK_FAILED): ' + String((e && e.message) || e) + '\n') } catch { /* stderr may be gone */ }
+      }
     }
 
     // ROUND 4 / task-25 (vmu-activity's F15 measurement): the budget timer used to stay ARMED after the process settled

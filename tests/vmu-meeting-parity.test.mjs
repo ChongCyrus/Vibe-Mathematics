@@ -523,6 +523,66 @@ const roster = ['r-1', 'r-2']
     'and a SETTLED ballot is reopened, never re-opened (re-opening would keep the previous votes)')
 }
 
+// ---- 18. F31+ (Round 6): the durable commit log — cross-process atomicity, recovery, idempotence ----------
+{
+  const grab18 = async (p) => { try { const v = await p; return { ok: true, v } } catch (e) { return { ok: false, code: e && e.code } } }
+  const makeStore = () => {
+    const rows = []
+    let seq = 0
+    return { rows, append(rec) { if (rec.done === true) { rows.push(rec); return rec } seq += 1; rec.ticket = seq; rows.push(rec); return rec }, readAll: () => rows.slice() }
+  }
+
+  // (1) no store ⇒ the seam is ABSENT and says so (never pretended)
+  const bare = ballotMod.createDurableCommitLog({})
+  ok(bare.durable === false && bare.reserve({ member: 'x' }) === null && /absent, not pretended/.test(bare.recover().reason),
+    'without a store the durable seam reports itself absent and reserves nothing')
+
+  // (2) THE STORE allocates the ticket ⇒ two processes sharing one log get distinct, monotonic tickets
+  const store = makeStore()
+  const pa = ballotMod.createDurableCommitLog({ store, clock })
+  const pb = ballotMod.createDurableCommitLog({ store, clock })
+  const ta = pa.reserve({ member: 'a', value: 1, kind: 'decisive' })
+  const tb = pb.reserve({ member: 'b', value: 1, kind: 'decisive' })
+  ok(ta.ticket === 1 && tb.ticket === 2 && tb.ticket > ta.ticket,
+    'two processes over one store get DISTINCT monotonic tickets (the STORE allocates, not the process)')
+
+  // (3) crash BETWEEN intent and effect ⇒ a fresh log recovers it, and reconcile() applies it EXACTLY once
+  const store2 = makeStore()
+  const log1 = ballotMod.createDurableCommitLog({ store: store2, clock })
+  const crashed = ballotMod.createBallot({ target: 'q-1', eligible: ['x'], clock, durableQueue: log1 })
+  await crashed.open()
+  log1.reserve({ member: 'x', value: 1, kind: 'decisive', target: 'q-1' })   // ← the process dies here
+  ok(log1.status().done === 0 && store2.rows.length === 1, 'the intent is on record BEFORE the effect (durable-first)')
+  const log2 = ballotMod.createDurableCommitLog({ store: store2, clock })
+  const recovered = log2.recover()
+  ok(recovered.pending.length === 1 && recovered.tickets === 1, 'a fresh log over the same store FINDS the unfinished commit')
+  const fresh = ballotMod.createBallot({ target: 'q-1', eligible: ['x'], clock, durableQueue: log2 })
+  await fresh.open()
+  const rec1 = fresh.reconcile()
+  ok(rec1.replayed === 1 && fresh.status().voteCount === 1 && fresh.status().votes.x.value === 1 && fresh.status().votes.x.recovered === true,
+    'reconcile() replays it: the vote is materialised and marked recovered')
+  ok(fresh.reconcile().replayed === 0 && fresh.status().voteCount === 1, 'and a second reconcile is a NO-OP (exactly-once)')
+  ok((await fresh.close('tally')).outcome === true, 'the recovered vote really settles the ballot')
+
+  // (4) the normal path completes its own intent — and so does a REFUSED cast
+  const store3 = makeStore()
+  const log3 = ballotMod.createDurableCommitLog({ store: store3, clock })
+  const nb = ballotMod.createBallot({ target: 'q-2', eligible: ['y'], clock, durableQueue: log3 })
+  await nb.open()
+  await nb.cast('y', 1)
+  ok(log3.status().done === 1 && log3.recover().pending.length === 0, 'a completed cast leaves NO pending intent behind')
+  ok(nb.status().gate.durable === true && nb.status().gate.log.tickets === 1, 'and the face reports the gate as durable, with its log')
+  const rb = ballotMod.createBallot({ target: 'q-3', eligible: ['z'], clock, durableQueue: log3 })
+  await rb.open()
+  ok((await grab18(rb.cast('z', 'junk'))).code === 'VMU_INVALID_ARGUMENT', 'a refused cast is still refused by name')
+  ok(log3.recover().pending.length === 0, 'even a REFUSED cast completes its intent (recovery must not replay refusals)')
+  const noLog = ballotMod.createBallot({ target: 'q-4', eligible: ['w'], clock })
+  await noLog.open()
+  await noLog.cast('w', 1)
+  ok(noLog.status().gate.durable === false && noLog.reconcile().durable === false,
+    'without the seam the in-process gate still works and reconcile() says there is nothing to reconcile')
+}
+
 console.log('vmu-meeting-parity: ' + passed + ' passed, ' + failed + ' failed')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

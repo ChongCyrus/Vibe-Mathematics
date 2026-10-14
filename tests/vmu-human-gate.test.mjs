@@ -16,6 +16,7 @@ import { createHuman, attachApprovalGate, CODE as HU, PRIVATE_DOMAINS } from '..
 import { createControl, CODE as CT } from '../vibe-math-vmu/kernel/control.js'
 import { createTasks } from '../vibe-math-vmu/kernel/tasks.js'
 import { createResume } from '../vibe-math-vmu/kernel/resume.js'
+import { makeHumanSpec } from '../vibe-math-vmu/tools/human.js'
 
 let passed = 0
 let failed = 0
@@ -262,6 +263,42 @@ const queueUp = (h, req) => { try { h.gate(req) } catch (e) { return e } return 
   const d3 = b.approvalDecision({ action: 'tasks.delete', subject: 'other' })
   ok(d3.requestId !== d1.requestId && Number(String(d3.requestId).split('-')[1]) > 1,
     'B: the id counter continues above the maximum it ever handed out (a name is never reused)', { first: d1.requestId, now: d3.requestId })
+}
+
+// ── 9. ROUND 6 (task-44): `inject` — the human's voice goes through the SAME faces, so their policy applies ──
+{
+  const param = (type, description, opts) => Object.assign({ type, description }, opts || {})
+  const refusedTool = (code, message, hint) => ({ ok: false, code, message, hint })
+  const TOOL_NAMES = { human: 'vibe_vmu_human' }
+  const calls = []
+  const spec = (kernel) => makeHumanSpec({ param, refused: refusedTool, TOOL_NAMES, kernel })
+
+  const withMail = spec({ mailbox: { send: (from, o) => { calls.push({ face: 'mailbox', from, o }); return { ok: true, queued: 1, to: o.to } } } })
+  const r1 = await withMail.run({ action: 'inject', text: 'please summarise the blockers', to: 'r-1', why: 'weekly check' })
+  ok(r1.ok === true && r1.via === 'mailbox' && r1.from === 'office' && r1.to === 'r-1',
+    'inject with a recipient goes through the mailbox face as the office', r1)
+  ok(calls.length === 1 && calls[0].face === 'mailbox' && calls[0].o.text === 'please summarise the blockers' && calls[0].o.kind === 'notice',
+    'the face received the text as a notice (the face owns the policy, not this tool)', calls[0])
+
+  const withChat = spec({ chat: { send: (from, text, opts) => { calls.push({ face: 'chat', from, text, opts }); return { ok: true, seq: 7 } } } })
+  const r2 = await withChat.run({ action: 'inject', text: 'the deadline moved to Friday' })
+  ok(r2.ok === true && r2.via === 'chat' && r2.to === '（群聊）', 'inject without a recipient goes to the group chat', r2)
+  ok(calls[calls.length - 1].opts.kind === 'announce', 'and it is framed as an announcement', calls[calls.length - 1].opts)
+
+  const none = spec({})
+  const r3 = await none.run({ action: 'inject', text: 'hello' })
+  ok(r3.ok === false && r3.code === 'VMU_ENGINE_UNAVAILABLE' && /no injection path/.test(r3.message),
+    'no mounted face ⇒ a NAMED refusal (the human is not told it was delivered)', r3)
+  const empty = await withChat.run({ action: 'inject', text: '   ' })
+  ok(empty.ok === false && empty.code === 'VMU_INVALID_ARGUMENT', 'an empty injection is refused by name', empty)
+
+  // THE DECISIVE ONE: a face refusal passes through unchanged — inject never bypasses quota/mute/freeze.
+  const blocked = spec({ mailbox: { send: () => { const e = new Error('quota exhausted for r-2'); e.code = 'VMU_MAILBOX_QUOTA'; e.hint = 'wait or raise vmu.mailbox.quota'; throw e } } })
+  const r4 = await blocked.run({ action: 'inject', text: 'one more thing', to: 'r-2' })
+  ok(r4.ok === false && r4.code === 'VMU_MAILBOX_QUOTA' && /quota exhausted/.test(r4.message),
+    'a face refusal is passed through unchanged (the human cannot bypass the face policy)', r4)
+  const forced = await withMail.run({ action: 'inject', text: 'x', via: 'nonsense' })
+  ok(forced.ok === false && forced.code === 'VMU_INVALID_ARGUMENT', 'an unknown via is refused by name', forced)
 }
 
 const guard = process.argv.includes('--self-probe')

@@ -590,6 +590,8 @@
 
 ## 6. 关联
 
+> ★★★ **部署怎么把声明送进回合面（轮 6 / task-41，具名 ✓）**：入口 `vibe-math-vmu.js` 的 `readSettings` **两形态都收** —— **嵌套**（`config.vmu = { tools: { faces: ['*'] }, packs: { active: ['v5r'] }, report: { enabled: true } }` ⇒ 递归展开成点号键）与**点号**（`'vmu.tools.faces'` ⇒ 原样）；扁平 config 里只有 `vmu.*` 是设置 ✓。★ 这直接决定**回合面**能不能被点亮：`v5r-report-duty` 段随 **pack**（`vmu.packs.active:['v5r']`）、所办人设随 **pack 的 system-prompt 段**，而两者的声明都从这两个形态进来 ✓。★ **同键两形态** ⇒ 点号胜 ＋ `settingsConflicts` 具名；**未解析**（空对象叶子／函数／坏形状键）⇒ `logger.warn` ＋ stderr ＋ `status().settingsUnparsed` 自曝 ✓。★ **零机制红线**：**无声明 ⇒ 仍恰 1 个工具** ✓（探针 20/0 覆盖）。★ 完整语义见 `docs/03 §2` 的入口注、`docs/04 §1` 的声明形态注 ✓。
+
 - 提示词管线：`06` ✓；**语料桥**：`24-§2.2.33` ✓。
 - 服务面登记：`03` ✓；架构表：`02` ✓。
 - 台账：`14` 的轮 337 条目 ✓。

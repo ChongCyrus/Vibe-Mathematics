@@ -9,6 +9,7 @@
 // FACE CONVENTIONS: the spec is a factory (host.js supplies `param`/`refused`/`TOOL_NAMES`/`kernel`); every
 // action returns NAMED structured JSON and never swallows a refusal; `refused()` carries the service's own code.
 export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
+  const k = kernel || {}
   const human = () => {
     const h = kernel && kernel.human
     if (!h) throw Object.assign(new Error('this kernel exposes no human face'), { code: 'VMU_ENGINE_UNAVAILABLE', hint: 'the human face is registered by the kernel; check vmu.tools.faces / the facesDisabled list' })
@@ -24,12 +25,13 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
   }
   return {
     name: TOOL_NAMES.human,
-    description: 'vmu 人类在环：action=status｜veto｜explainVeto｜liftVeto｜observerView｜openApproval｜approvalState｜decide｜queue｜gate｜dashboard｜recover｜recoverStatus｜readBack。' +
+    description: 'vmu 人类在环：action=status｜veto｜explainVeto｜liftVeto｜observerView｜openApproval｜approvalState｜decide｜queue｜gate｜dashboard｜inject｜recover｜recoverStatus｜readBack。' +
       '**审批是真闸门**：被闸动作在获批前**不执行、只排队**（VMU_HUMAN_APPROVAL_PENDING 带 requestId）；超时默认 hold，default-allow 必须显式确认。' +
+      '**inject＝人工中途干预**：以 `from`（默认 office）把一句话送进运行中的研究所，经群聊或私发；**该面的策略照常生效**（配额/禁言/冻结等具名拒原样透传，绝不假装已送达）。' +
       'recover/recoverStatus/readBack 是**会话级恢复原语**：写前必读（VMU_RESUME_WRITE_BEFORE_READ）、中断具名（绝不静默变 passed）、回读一致性可查。',
     parameters: {
-      action: param('string', 'status（默认）｜veto｜explainVeto｜liftVeto｜observerView｜openApproval｜approvalState｜decide｜queue｜gate｜dashboard｜recover｜recoverStatus｜readBack',
-        { required: true, enum: ['status', 'veto', 'explainVeto', 'liftVeto', 'observerView', 'openApproval', 'approvalState', 'decide', 'queue', 'gate', 'dashboard', 'recover', 'recoverStatus', 'readBack'] }),
+      action: param('string', 'status（默认）｜veto｜explainVeto｜liftVeto｜observerView｜openApproval｜approvalState｜decide｜queue｜gate｜dashboard｜inject｜recover｜recoverStatus｜readBack',
+        { required: true, enum: ['status', 'veto', 'explainVeto', 'liftVeto', 'observerView', 'openApproval', 'approvalState', 'decide', 'queue', 'gate', 'dashboard', 'inject', 'recover', 'recoverStatus', 'readBack'] }),
       scope: param('string', 'veto/observerView/dashboard/gate 的作用域；dashboard 只接受 global｜institution'),
       target: param('string', 'veto 的目标（可省＝覆盖整个作用域）'),
       reason: param('string', 'veto/decide/liftVeto 的理由（vmu.human.vetoNeedsReason=true 时否决必填；紧急可后补）'),
@@ -44,8 +46,15 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
       requestId: param('string', 'openApproval 的调用方自定义 id（可省）'),
       timeout_ms: param('number', 'gate：旁路超时判定用（可省，通常由框架时钟决定）'),
       key: param('string', '改参数：vmu.control.tunableKeys 里的键（本工具不暴露写参数，见 vibe_vmu_control）'),
+      // inject: the human's voice into the running institute
+      text: param('string', 'inject：要说的话（必填）'),
+      to: param('string', 'inject：收件人（成员 id／"all"／"voters"）；省略＝发到群聊'),
+      from: param('string', 'inject：发言人身份（默认 "office" ＝所办/人类代表）'),
+      via: param('string', 'inject：chat（群聊）｜mailbox（逐收件人私发）｜auto（按 to 自动选）', { enum: ['auto', 'chat', 'mailbox'] }),
+      why: param('string', 'inject：这次干预的理由（会写进回执，便于审计）'),
     },
-    run: async ({ action = 'status', scope, target, reason, emergency, veto_id, member_id, request_id, allow, by, subject, domains, requestId, timeout_ms } = {}) => {
+    run: async ({ action = 'status', scope, target, reason, emergency, veto_id, member_id, request_id, allow, by, subject, domains, requestId, timeout_ms,
+      text, to, from, via, why } = {}) => {
       const notEmpty = (v) => (typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined)
       try {
         if (action === 'status') return Object.assign({ ok: true, action }, human().status())
@@ -68,6 +77,32 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
           return d.ok === true ? Object.assign({ ok: true, action }, d) : Object.assign({ ok: false, action }, d)
         }
         if (action === 'dashboard') return Object.assign({ ok: true, action }, human().dashboard({ scope: notEmpty(scope) || null, domains: notEmpty(domains) ? String(domains).split(',').map((x) => x.trim()).filter(Boolean) : null }))
+        if (action === 'inject') {
+          // THE HUMAN'S VOICE, mid-run. It goes through the SAME faces the members use, so their policy still
+          // applies (quota, mute, freeze, admin) and their refusals pass through unchanged — this tool never
+          // bypasses a gate and never reports a delivery the face did not make.
+          const body = notEmpty(text)
+          if (!body) return refused('VMU_INVALID_ARGUMENT', 'inject needs text', 'pass the sentence the institute should hear')
+          const sender = notEmpty(from) || 'office'
+          const toWho = notEmpty(to)
+          const mode = notEmpty(via) || 'auto'
+          if (['auto', 'chat', 'mailbox'].indexOf(mode) === -1) return refused('VMU_INVALID_ARGUMENT', 'via must be auto/chat/mailbox', 'got ' + mode)
+          const chat = k.chat && typeof k.chat.send === 'function' ? k.chat : null
+          const mail = k.mailbox && typeof k.mailbox.send === 'function' ? k.mailbox : null
+          const useMailbox = mode === 'mailbox' || (mode === 'auto' && !!toWho && !!mail)
+          const useChat = mode === 'chat' || (mode === 'auto' && !useMailbox && !!chat)
+          if (useMailbox) {
+            const r = await mail.send(sender, { to: toWho || 'all', text: body, kind: 'notice' })
+            return Object.assign({ ok: true, action, via: 'mailbox', from: sender, to: toWho || 'all', why: notEmpty(why) || null }, r)
+          }
+          if (useChat) {
+            const r = await chat.send(sender, body, { kind: 'announce' })
+            return Object.assign({ ok: true, action, via: 'chat', from: sender, to: '（群聊）', why: notEmpty(why) || null }, r)
+          }
+          return refused('VMU_ENGINE_UNAVAILABLE',
+            'no injection path is mounted: neither kernel.chat.send nor kernel.mailbox.send exists in this assembly',
+            'declare vmu.chat.* / vmu.mailbox.* (or config.chat/config.mailbox) so the human voice has a face to go through')
+        }
         if (action === 'recover') {
           const plan = resume().recoverPlan({ reason: notEmpty(reason) || 'human-requested' })
           const report = await resume().recover({ reason: notEmpty(reason) || 'human-requested' })

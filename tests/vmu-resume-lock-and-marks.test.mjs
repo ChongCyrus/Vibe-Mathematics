@@ -262,6 +262,32 @@ const mkLock = (settings) => createStorePolicy({ settings: Object.assign({ 'vmu.
   ok(rB.status().restart.missingChildren.length === 1, 'the restart marker carries the missing children too', rB.status().restart.missingChildren)
 }
 
+// ── F51c · the v5r views in one place: `pendingWork` (inflight), which ports are wired, roster-source naming ─
+{
+  const store = mkStore({ work: [], resume: { v: 1, counters: {}, recoveries: [] } })
+  const w = createWorkLedger({ store, clock })
+  await w.start({ owner: 'r-1', kind: 'proof', objective: 'finish lemma L' })
+  const rows = [{ id: 'r-1', childId: 'c-live', slot: 'researcher' }, { id: 'r-2', childId: 'c-gone', slot: 'researcher' }]
+  const r = createResume({
+    store, work: w, clock,
+    roster: async () => rows,                                  // the natural wiring: members.roster()
+    children: { parentId: () => 'root-1', list: async () => ['c-live'] },
+    mailbox: async () => [{ id: 'ml-1' }, { id: 'ml-2' }],     // a FUNCTION-shaped mailbox port is accepted
+  })
+  const rep = await r.recover({ reason: 'f51c' })
+  const c = rep.steps.filter((s) => s.step === 'children')[0]
+  ok(c.rosterSource === 'roster-port' && c.checked === 2 && c.missing.length === 1 && c.missing[0].member === 'r-2',
+    'the roster port feeds the child reconciliation (the identity seam has no childId, so the source is NAMED)', c)
+  ok(rep.steps.filter((s) => s.step === 'mailbox')[0].pending === 2, 'a function-shaped mailbox port is accepted and counted', rep.steps.filter((s) => s.step === 'mailbox')[0])
+  const st = r.status()
+  ok(st.ports.children === true && st.ports.roster === true && st.ports.mailbox === true && st.ports.watchdogs === false && st.ports.lock === false,
+    'status().ports shows exactly which recovery ports this assembly wired', st.ports)
+  ok(st.inflight.interrupted.length === 1 && st.inflight.interrupted[0].owner === 'r-1' && st.inflight.pending.length === 1 && st.inflight.pendingNow === 0,
+    'status().inflight is the v5r `pendingWork` view: what the restart FOUND, what it ENDED, what is still open', st.inflight)
+  ok(r.restart().missingChildren.length === 1 && r.restart().missingChildren[0].childId === 'c-gone',
+    'the restart marker carries the missing child', r.restart().missingChildren)
+}
+
 // ── A key written by SOMEBODY ELSE (a bare array) is a NAMED refusal, not "hydrated, 0 entries" ──────────────
 // This is the shape `kernel/work.js` writes under `work`: an ARRAY, not a projection envelope. Before the round-4
 // fix, `adopt()` refused it and `hydrate()` reported the key as hydrated with 0 entries — a silent lie about a

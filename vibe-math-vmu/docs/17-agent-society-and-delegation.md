@@ -239,7 +239,8 @@
 
 ## 19. 人类在环（Human in the Loop）
 
-> **Round 2 落地说明（task-10）**：本节五条**全部由内核实现**：闸门与队列在 `kernel/human.js`（`gate`/`approvalDecision`/`queue`/`decide`/`veto`/`liftVeto`/`observeView`/`dashboard`），工具面 `tools/human.js`（`vibe_vmu_human`，14 个 action），装配由 `kernel/index.js` 落。**零机制**：`vmu.human.gatedActions` 为空（默认）时**不闸任何动作**（逐字回到本轮之前）。
+> **Round 2 落地说明（task-10）**：本节五条**全部由内核实现**：闸门与队列在 `kernel/human.js`（`gate`/`approvalDecision`/`queue`/`decide`/`veto`/`liftVeto`/`observeView`/`dashboard`），工具面 `tools/human.js`（`vibe_vmu_human`，15 个 action，含 Round 6 的 `inject`），装配由 `kernel/index.js` 落。**零机制**：`vmu.human.gatedActions` 为空（默认）时**不闸任何动作**（逐字回到本轮之前）。
+> **Round 3/6 落地说明**：审批队列与否决台账**已耐久**（`human` 键，跨重启仍在排队、`pendingReason` 不丢、id 不复用）；**人工中途注入**＝`vibe_vmu_human {action:'inject', text, to?, from?, via?, why?}`——经 `kernel.mailbox.send` 或 `kernel.chat.send` 转发，**面策略（配额/禁言/冻结/admins）照常生效、拒绝原样透传**（本工具不越权、不假装送达）。
 
 - **人类审批（approval gate）** ｜ 目的：关键动作必须人点头 ｜ 面向谁：人类 ｜ 接口形状：**已实现 ✓**＝`vibe_vmu_human {action:'gate'|'queue'|'openApproval'|'approvalState'|'decide'|'status'}` ✓；装配期 `attachApprovalGate({target,methods,face,gate})` 包住真实面的**变异方法**（`kernel/human.js`，动作名＝**`<面>.<方法>`**，如 `tasks.create`） ｜ 可调控：`vmu.human.gatedActions[]`（**默认空＝零机制**）／`vmu.human.approvalQueueCap`（默认 100）／`vmu.human.approvalTimeoutMs`（0＝无限等）／`vmu.human.onTimeout`／`vmu.human.defaultAllowAcknowledged`（默认 false） ｜ 错误码：`VMU_HUMAN_APPROVAL_PENDING`（带 `detail.queued=true`／`requestId`）／`VMU_HUMAN_APPROVAL_DENIED`／`VMU_HUMAN_APPROVAL_TIMEOUT`／`VMU_HUMAN_DEFAULT_ALLOW_NOT_ACKNOWLEDGED`／`VMU_HUMAN_QUEUE_FULL` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：**S-5 真闸门** ✓✓ —— 未批动作**不执行、只入队**（同一 `(action,subject)` 复用同一请求并累加 `attempts`）；**重复尝试不新开请求**；`decide({allow:true})` 后调用方重发即放行；**否决立即生效**且无理由时记 `pendingReason`（可事后补，绝不假装已给）；队列满 ⇒ **具名拒新动作**（不静默丢） ｜ 依赖：`kernel/human.js` ✓ ｜ 成熟度：**已实现 ✓**（**诚实边界**：审批队列是**会话内存**，重启后不保留未批请求；持久化审批台账为下一片） ｜ 优先级：P0
 - **人类否决（veto）** ｜ 目的：人能一票叫停 ｜ 面向谁：人类 ｜ 接口形状：**已实现 ✓**＝`vibe_vmu_human {action:'veto'|'explainVeto'|'liftVeto'}` ✓（`kernel.human.veto/explainDecision/liftVeto`） ｜ 可调控：`vmu.human.vetoScope`（`global｜institution｜task`，超范围具名拒）／`vetoNeedsReason`（默认 **false**；**紧急**时允许先停后补，记为 `pendingReason` ✓）／`vetoLiftRoles`（默认 `['office']`） ｜ 错误码：`VMU_HUMAN_VETOED`／`VMU_HUMAN_VETO_SCOPE`／`VMU_HUMAN_VETO_REASON_REQUIRED`／`VMU_HUMAN_LIFT_ROLE`／`VMU_HUMAN_LIFT_REASON_REQUIRED` ｜ 哲学：F✓T✓D✓X✓ ｜ 实现要点：否决**立即生效**（**被否决动作连队都不入**，`gate()` 直接具名拒）＋**总线广播** `human/vetoed` ✓；**解除须具名＋带理由＋角色受限**（防止"永久无人复核的封禁"）；申诉与复盘出口见 §5/§6 ✓ ｜ 依赖：§6 ✓ ｜ 成熟度：**已实现 ✓** ｜ 优先级：P1
@@ -945,4 +946,16 @@ watchers: [{
 - **F32 折叠窗口**：构造参数 `dedupWindowMs`（0＝关）；**同结论**在窗口内被折叠，**不同结论永不折叠**；折叠**仍收束**；有中间件 tally 时不猜、不折叠。
 - **F34 开辩资格**：`openers`／`minEligible`／`requiresTarget` 于唯一开辩点具名拒，`status().openCriterion` 提前可见；默认宽松＝零机制。
 - **与 §3 的关系**：这四条都不产生"新的真值来源"——它们只让**已有的**真值更难得被误读（票型不混、提交不丢不覆盖、结论不重复、辩论不空转）。
+
+---
+
+## 33. 跨进程耐久原子（Round 6；`kernel/ballot.js` 的 `createDurableCommitLog`）
+
+**为什么它是"高自由度可调控"的基础设施**：§32 的闸门只在**进程内**成立。若进程在"意图"与"生效"之间死掉，或两个进程写同一场表决，进程内链条一无所知——那样的表决只能在单进程世界里自信。
+
+- **契约**：**ticket 由 store 分配**（`append(rec) → {ticket}`；O_APPEND／SQLite／加锁日志皆可）⇒ 跨进程单调互异；store 不回 ticket 时才本地计数，并在 `status().numbering` 明说。
+- **顺序**：**意图先落盘、再生效、结果再落盘**（`reserve` → apply → `complete`）。崩溃窗口留下的意图正是 `recover()` 的输入。
+- **恢复**：`reconcile()` 按 ticket 序重放**未完成**意图，**幂等**（成员一票唯一；第二次 `replayed=0`），恢复票带 `recovered:true`；**已完成的绝不重放**。
+- **缺席自曝**：没有 store ⇒ `durable:false`、`reserve()` 返回 `null`、`reconcile()` 明说"无可恢复"——**不假装**。
+- **边界（具名）**：host 需提供分配型 store；`ballotbox`／`mailbox` 的队列可照同样三行接上。逐条缺口与改判条件见 `_handoff/vmu/08-goal2-verdict.md` §5–§6。
 

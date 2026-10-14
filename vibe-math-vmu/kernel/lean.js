@@ -212,6 +212,8 @@ export function createLeanFace(opts) {
   let droppedNotices = 0
   /** F17: the runtime fact — did the LAST spawn hand us a handle? (admission() reports the declared seam too.) */
   let lastSpawnHadHandle = null
+  /** ROUND 6: "we have SEEN a live handle at least once" — the proof that this face can terminate (dispose/cancel). */
+  let sawHandle = false
   const pushNotice = (j, line) => {
     notices.push({ member: String(j.member || ''), jobId: j.id, line, at: clock() })
     while (notices.length > LEAN_NOTICE_MAX) { notices.shift(); droppedNotices += 1 }
@@ -380,9 +382,12 @@ export function createLeanFace(opts) {
       const r = await budget({
         timeoutMs: cmd.timeoutMs,
         label: 'lean ' + j.id,
+        // ROUND 6: attach the live handle so `cancel({jobId})` can really terminate a running compile.
+        onHandle: (h) => { j.handle = h; sawHandle = true },
         call: (onHandle) => (spawnHandle ? spawnHandle(cmd2, onHandle) : spawn(cmd2)),
       })
       out = r.result
+      j.handle = null
       budgetInfo = { timedOut: r.timedOut, terminated: r.terminated, hadHandle: r.hadHandle }
     } catch (e) {
       j.state = 'failed'; j.endedAt = clock(); j.reason = 'spawn-threw'
@@ -564,7 +569,7 @@ export function createLeanFace(opts) {
       jobStates: LEAN_JOB_STATES.slice(),
       exclusiveCreate: xc,
       crossProcess: xc ? 'enforced-by-exclusive-create' : 'not-enforced',
-      canTerminateChild: !!(spawnHandle || lastSpawnHadHandle === true),   // declared seam OR runtime-proven
+      canTerminateChild: !!(spawnHandle || sawHandle || lastSpawnHadHandle === true),   // declared seam OR runtime-proven
       mirrors: ms.count,
       mirrorSkipped: mirrorSkipped + (ms.skipped || 0),
       mirrorEvicted: mirrorEvicted + (ms.evicted || 0),
@@ -682,17 +687,64 @@ export function createLeanFace(opts) {
   }
 
   /** Session teardown: a RUNNING job is ambiguous ⇒ `interrupted` (never passed). The child cannot be killed. */
+  /**
+   * ROUND 6 · jobId 级取消（v5r 的 Lean 面**没有**取消：`dispose` 只标 interrupted）。
+   * 语义边界（与 v5r 的状态集保持一致，**不新增状态**）：取消 ⇒ `interrupted` ＋ `reason:'cancelled'`。
+   * 拿到活 handle 时**真的 `terminate()`**（`terminated:true`）；拿不到就**具名**说明"无法终止，
+   * 子进程最多活到它自己的单次预算"。取消同样**落镜像**，避免崩溃恢复把它当 running 重排（静默复活）。
+   */
+  const cancel = async (a) => {
+    const args = a || {}
+    const id = String(args.jobId || '').trim()
+    const j = jobs.get(id)
+    if (!j) return refuse('VMU_NOT_FOUND', '找不到 Lean 作业 ' + id, '先 list() 取 jobId')
+    if (j.state !== 'running' && j.state !== 'queued') {
+      return refuse('VMU_JOB_CANCELLED', '作业已结束，不能取消（state=' + j.state + '）', '取消只对 queued/running 生效')
+    }
+    let terminated = false
+    const hadHandle = !!(j.handle && (typeof j.handle.terminate === 'function' || typeof j.handle.kill === 'function'))
+    try {
+      if (j.handle && typeof j.handle.terminate === 'function') { j.handle.terminate(); terminated = true }
+      else if (j.handle && typeof j.handle.kill === 'function') { j.handle.kill(); terminated = true }
+    } catch (e) { note(j.id, 'cancel:terminate-failed', { detail: String((e && e.message) || e) }) }
+    const wasRunning = j.state === 'running'
+    j.state = 'interrupted'
+    j.endedAt = clock()
+    j.reason = 'cancelled' + (args.reason ? (': ' + String(args.reason)) : '')
+    j.terminated = terminated
+    j.hadHandle = hadHandle
+    j.cancelled = true
+    note(j.id, 'interrupted:cancelled', { terminated, hadHandle })
+    await writeMirror(j)
+    emit('lean/job-cancelled', { jobId: j.id, terminated, hadHandle, wasRunning })
+    pushNotice(j, '【形式化作业】' + j.id + '：已取消（' + (terminated ? '子进程已 terminate' : '无 handle ⇒ 无法 terminate，进程最多活到单次预算') + '）')
+    Promise.resolve().then(pump)   // a queued slot just freed up
+    return { ok: true, jobId: j.id, state: j.state, reason: j.reason, terminated, hadHandle, wasRunning,
+      note: terminated ? '子进程已 terminate' : '无 handle ⇒ 无法 terminate；作业已标 interrupted（reason:cancelled）' }
+  }
+
   const dispose = async () => {
     const touched = []
+    let killed = 0
     for (const j of jobs.values()) {
       if (j.state !== 'running') continue
-      j.state = 'interrupted'; j.endedAt = clock(); j.reason = 'session disposed (child process cannot be terminated through the promise seam)'
+      // ROUND 6: a live handle is now attached during the run, so dispose CAN terminate (and counts it).
+      let terminated = false
+      try {
+        if (j.handle && typeof j.handle.terminate === 'function') { j.handle.terminate(); terminated = true }
+        else if (j.handle && typeof j.handle.kill === 'function') { j.handle.kill(); terminated = true }
+      } catch (e) { note(j.id, 'dispose:terminate-failed', { detail: String((e && e.message) || e) }) }
+      if (terminated) killed += 1
+      j.state = 'interrupted'; j.endedAt = clock(); j.terminated = terminated; j.hadHandle = !!j.handle
+      j.reason = terminated
+        ? 'session disposed (child terminated via the live handle)'
+        : 'session disposed (no live handle ⇒ the child can only be ended by its own budget)'
       touched.push(j.id)
-      note(j.id, 'interrupted:dispose')
+      note(j.id, 'interrupted:dispose', { terminated })
       await writeMirror(j)
     }
-    emit('lean/jobs-disposed', { interrupted: touched.length })
-    return { ok: true, interrupted: touched.length, killed: 0, canTerminateChild: false, jobIds: touched.slice() }
+    emit('lean/jobs-disposed', { interrupted: touched.length, killed })
+    return { ok: true, interrupted: touched.length, killed, canTerminateChild: !!(spawnHandle || sawHandle), jobIds: touched.slice() }
   }
 
   // ── 归档（ROUND 131）：v5r 的 lean_archive / lean_read / lean_lib 三个动词 ────────────────────
@@ -757,8 +809,8 @@ export function createLeanFace(opts) {
   return {
     submit, status, list, settle, archive, read, lib, keysUsed, policy, commandFor,
     jobsMaxParallel: () => cfg().leanJobsMaxParallel,
-    // ROUND 2 (target 5 B): durable jobs
-    recover, listMirrors, admission, dispose,
+    // ROUND 4 (target 5 B): durable jobs; ROUND 6: jobId-level cancel
+    recover, listMirrors, admission, dispose, cancel,
     mirrors: () => ({ ok: true, count: mirrorInst ? mirrorInst.records.size : 0, jobs: [...(mirrorInst ? mirrorInst.records.values() : [])].map((m) => ({ jobId: m.jobId, state: m.state, attempts: m.attempts, passed: m.passed === true, terminated: m.terminated === true, dedupeKey: m.dedupeKey || null })) }),
     // ROUND 4 · F44: the one-shot announcement queue (long-term query stays: status(jobId) / mirrors() / the mirror file)
     takeNoticesFor, notices: noticesView,

@@ -120,6 +120,11 @@
 
 **⇒ 第三条硬要求（★ R5 新增，源于 U14 overlay 的双向误判）**：**`dsh --dump-config` 输出的是「loader 树」，不是「运行时定义」** ⇒ **禁止**用"dump 里出现／没出现某字符串"判定"某个声明/配置**是否生效**；**凡是"合并／覆盖"类语义，必须在运行时断言**（驱动被测模块的 `apply()`／读取它真正交给下游的定义）。本轮**两个方向都误判过**：**假阳性**——patch 的原文出现在 dump 里，被当成"已合并进内层行"；**假阴性**——合并发生在**注册期**，dump **照不出来**，被当成"机制不工作"。正确判据＝**运行时深比较**（`tests/audit-preset-overlay-merge.test.mjs`：驱动 `preset-declaration.apply()` ⇒ 捕获 `agentPresets.register` 收到的定义 ⇒ 断言内层行合并且**原有字段保留**、其它行不动、定义里**不残留** overlay 键、未匹配 key **具名告警且定义不变**；★ 该测试每个用例都用**独立模块实例**，因为 overlay 注册表是**模块级**的）。dump 只可用于**身份/结构是否被破坏**（例如"带 patch 与不带 patch 的 preset 行**逐字节相同**"）。
 
+**⇒ 正例与反例并列（★ R6 补，让这条纪律可照抄）**：
+- **反例（不可作为判据）**：`--dump-config` 的字符串出现／不出现。R5 **两个方向都误判过**——**假阳性**：patch 原文出现在 dump 里 ⇒ 被当成"已合并进内层行"；**假阴性**：合并发生在**注册期**，dump **照不出来** ⇒ 被当成"机制不工作"。
+- **正例（可作为判据）**：**驱动真入口/真装配，读它交给下游的那份东西**。两个已进仓的样板：① `tests/audit-preset-overlay-merge.test.mjs`（捕获 `agentPresets.register` 收到的**定义**，断言内层行合并、原字段保留、无 overlay 残留、未匹配仅具名告警）；② `tests/audit-declaration-publishes-face.test.mjs`（**声明 ⇒ 面真的发布**：驱动真入口 `apply(ctx, config)`，读 `ctx.tools.register` 收到的**工具清单**；无声明 ⇒ 恰 1 个工具；点号与嵌套两形态**等价**；坏形状键**具名告警且不发布**）＋ `tests/audit-declaration-publishes-face.mutants.mjs`（**证明它可红**：关掉点号通道／**关掉嵌套展平**／静音告警 ⇒ 各自打红它点名的那一项）。
+- **真机侧的对应判据**：**`request/header` 事件里的 `tools` 数组**（宿主真正发给模型的载荷），比模型自述硬；`tool/result` 回执里的 `settingsMerge`／`settingsKeys`／`settingsUnparsed` 可交叉核对"声明是否到了入口"。
+
 **清单（当前，2026-10-09 第 18 轮）**
 
 | 守卫面 | 语义 | 生产是否调用 | 理由／生产调用点 |
@@ -140,7 +145,7 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 322 / suites 250 / probes 72`** ✓（旧值 134／68／66 已在扩卷与增件后过期 ✗；本轮树新增 1 个作业：`tests/audit-scope-classification.test.mjs` ✓） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 265 / suites 196 / probes 69`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 267 / suites 197 / probes 70`** ✓ |
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 258 / suites 225 / probes 33`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。

@@ -485,6 +485,8 @@
     "tests/vmu-chat-quota.mutants.mjs",
     "tests/audit-bus-emit-shape.test.mjs",
     "tests/audit-preset-overlay-merge.test.mjs",
+    "tests/audit-declaration-publishes-face.test.mjs",
+    "tests/audit-declaration-publishes-face.mutants.mjs",
     "tests/_lib/falsify.mjs",
     "tests/_lib/strip-comments.mjs",
     "vibe-math-vmu/kernel/report.js",
