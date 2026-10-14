@@ -241,7 +241,11 @@ console.log('== K4: prompt settings on the REAL construction path ==')
 console.log('== K5: pack merge (declaration-driven, conflicts NAMED) ==')
 {
   const h = fakeHost()
-  const app = entry.apply(h.ctx, { packs: ['v5r'], 'vmu.turn.selfCheck': false, 'vmu.packs.active': ['v5r'] })
+  // ROUND 7 (vmu-pack's fidelity fix): the pack default for `vmu.turn.selfCheck` is now `false`, because that is
+  // what v5r actually ran (`vibe-math-v5r.js:1122 resourceSelfCheck: false`) and the pack's own gate reads
+  // `!== false` (`packs/v5r/middleware/prompt-switches.js:27`). The SESSION value therefore has to be `true` to
+  // still be a value that DIFFERS from the default - otherwise "the session value wins" has nothing to win with.
+  const app = entry.apply(h.ctx, { packs: ['v5r'], 'vmu.turn.selfCheck': true, 'vmu.packs.active': ['v5r'] })
   const m = app.packMerge()
   ok(m.priority === 'pack 默认 < preset Config／会话 settings < 运行时 set',
     'the priority ladder is stated in the merge report')
@@ -249,9 +253,9 @@ console.log('== K5: pack merge (declaration-driven, conflicts NAMED) ==')
     'a pack default colliding with a session value is a NAMED conflict', JSON.stringify(m.conflicts.slice(0, 2)))
   ok(m.sources['vmu.turn.selfCheck'] === 'config',
     'the session value is labelled `config` (it wins), not silently replaced')
-  ok(app.kernel.status().settings.resolved['vmu.turn.selfCheck'].value === false,
+  ok(app.kernel.status().settings.resolved['vmu.turn.selfCheck'].value === true,
     'the session value WINS in the kernel resolved view')
-  const app2 = entry.apply(fakeHost().ctx, { packs: ['v5r'], 'vmu.turn.selfCheck': false, 'vmu.packs.active': ['v5r'], 'vmu.packs.activeOverrides': ['vmu.turn.selfCheck'] })
+  const app2 = entry.apply(fakeHost().ctx, { packs: ['v5r'], 'vmu.turn.selfCheck': true, 'vmu.packs.active': ['v5r'], 'vmu.packs.activeOverrides': ['vmu.turn.selfCheck'] })
   const m2 = app2.packMerge()
   ok(m2.conflicts.length === 0 && m2.shadowed.some((s) => s.key === 'vmu.turn.selfCheck'),
     'an explicitly declared override turns the conflict into a recorded `shadowed`')

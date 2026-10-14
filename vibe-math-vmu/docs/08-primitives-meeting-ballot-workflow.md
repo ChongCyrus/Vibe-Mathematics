@@ -1466,6 +1466,47 @@ Round 5 的提交闸门只保证**进程内**不交错。进程若在"意图"与
 
 ---
 
+### 25.13 Round 7：`08-goal2-verdict.md §6` 的缺口收口（G1／G5／G8／G6／GAP-MTG）
+
+**A · G1 私聊补记到公开面（已落 ✓）** —— v5r 的 `supplement_of`＋`why`，落点 `kernel/chat.js`：`supplement({of, by, why, publicRef})`／`supplements()`／`supplementOf(id)`；工具面 `vibe_vmu_chat` 新增 `supplement｜supplements｜supplementof`。
+- **正文永不搬运**（`body:'withheld'`）：公开面只记 `{of, by, at, why, publicRef}`；引用**经补记簿**解析并带 `viaSupplement:true`／`bodyWithheld:true`。
+- **只有发送者本人可补记**：注入 `privateSender:{senderOf(id)}` 接缝时**核验**（不符 ⇒ `VMU_NOT_PERMITTED`；解析不到 ⇒ `VMU_CHAT_ANCHOR_DANGLING`）；**无接缝**时记 `authorship:'claimed-unverified'` —— **自曝未核验，不假装核验过**。
+- **`why` 必填**；**append-only**（同一条第二次补记幂等）；容量受**已声明**的 `vmu.chat.historyCap` 约束并计数丢弃（`dropped.supplements`）。
+
+**B · G5 会议级 mute（判定为"组合"，已写明用法 ✓，不新增原语）** —— 会议级静默 ＝ **按人禁言（`chat.mute`）＋ 会议作用域（会期成员清单）**：
+```
+for (const m of roster) chat.mute(m, { by: chair, reason: 'meeting in progress' })   // 会期开始
+…会期结束／需要放开某人…   chat.unmute(m, { by: chair, reason: 'floor given' })
+```
+实测（parity §19）：组合后**每个会期成员**在群聊面被禁言、越席发言 ⇒ `VMU_CHAT_MUTED`（具名拒）、主席（管理员）仍可发言、`unmute` 后即恢复；**会议对象本身不受影响**（组合是单向的）。⇒ **不新增"会议作用域 mute"原语**：那会是同一判断的第二份实现（D5/D7 的反面）。
+
+**C · G8 无名册接缝时的自我发信（已落 ✓）** —— `kernel/mailbox.js` 的**唯一发送口**：
+- `to:'all'|'voters'` 且**无接缝** ⇒ 早已**具名拒** `VMU_ENGINE_UNAVAILABLE`（"kernel never guesses a roster"）；
+- **目标等于发送者** ⇒ 无论来自字面 id 还是**接缝返回**，一律**具名拒**（注册码 `VMU_INVALID_ARGUMENT`＋记录 `reason:'self-message'`，可 grep）。理由：v5r 拒它（`V5_SELF_MESSAGE`）；"我发给我自己"是无人能处置的耐久消息，接缝返回自己时更是静默回环。**未新增错误码**（新码须 core 先落 `03-§8`）——**改判条件**：core 为 mailbox 登记一个 self-message 专用码后，此处把它换上去即可（本轮刻意只复用**已注册**码，避免文档里出现未登记名——这条纪律本身就是门禁要求）。
+
+**D · G6 host 侧分配型 store 接缝（形状已定，接线待 host）**
+| 项 | 内容 |
+|---|---|
+| **谁注入** | **host／`kernel/index.js`**（vmu-core）：把宿主的 store 传给 `createDurableCommitLog({ store, clock, name })`，实例再作为 `createBallot({ durableQueue })` 注入；`ballotbox`／`mailbox` 同一形状（三行） |
+| **store 契约** | `append(record) -> {ticket}`（**必须分配**：O_APPEND 文件／SQLite 序列／加锁日志）＋ `readAll() -> record[]`；意图记录 `{ticket, at, name, op}`，完成记录 `{ticket, done:true, outcome}` |
+| **语义保证** | 意图先落盘 → 生效 → 结果落盘；`recover()` 不重放已 done 的 ticket；`reconcile()` 幂等 |
+| **缺席降级** | `durable:false`＋`reserve()`→`null`＋`reconcile()` 具名说明"无可恢复"；**进程内闸门照常工作**（Round 5 行为不变），不假装跨进程 |
+| **判定** | 本面**协议与恢复路径已完备**（Round 6 实测 12 条）；缺的只是宿主一个**分配型 store**。本轮未接：`kernel/index.js`／host 不在本任务写范围 ⇒ 形状已发 vmu-core 落 `docs/03` |
+
+**E · GAP-MTG 需新原语那几条（逐条：要什么原语／代价／是否本轮落）**
+| 条 | 要什么原语 | 代价 | 本轮 |
+|---|---|---|---|
+| GAP-MTG-04 议程增删 | `meetings.agenda({op:'add'｜'amend'｜'drop', item, by})` ＋ 议程条目 id | ~120 行＋16 断言＋1 工具 action；须先裁"已议过的条目能否删" | **未落**（判据待裁） |
+| GAP-MTG-06a 流程切换 | `meetings.flow({mode})`（`single｜open｜round_robin｜hands｜call_on｜directed`）＋ `orderMode` 收敛 | ~80 行；须定义 6 种 mode 的**可观察差异**（v5r 无实现可对照） | **未落**（design-only） |
+| GAP-MTG-06b 点名／顺序 | `speak_order_set`／`speak_next`（v5r 是 Fisher-Yates 随机序） | ~70 行；须裁"随机序是否可被覆盖" | **未落** |
+| GAP-MTG-06c 举手管理 | `hands({op:'grant'｜'revoke'｜'clear'})` | ~40 行（`hand()` 已有，只缺管理面） | **未落**（**代价最低，下一轮首选**） |
+| GAP-MTG-05 停步 | `stop({scope:'step'})`：需要"步"概念（键须 core 先声明） | ~60 行＋1 键＋1 工具 action | **未落**（键未声明） |
+| GAP-MTG-05 请假／离席请求 | `request({kind:'leave'｜'recess'｜'extend', by, why})` ＋ 批准点 | ~90 行；须裁"批准人是主席还是全体" | **未落**（判据待裁） |
+
+**总判定**：A/C **已落**；B **判为组合并写明用法**；D **形状已定＋接线待 host**；E 六条**逐条给出原语与代价**（未落原因只有两类：**判据待裁**、**键/概念未声明**）。⇒ `08-goal2-verdict.md §6` 的 **G1／G5／G8 结清**，G6 降级为"host 一行接线"，GAP-MTG 余项从"缺"变成"**待裁/待键**"。
+
+---
+
 ## 26. Round 3 · 目标 2 缺口：一次性 future-only 活动等待器（F52 / C-56）
 > **判据**：`_handoff/vmu/03-v5r-full-inventory.md` 分片 A **§6 原语 F52**（"必须是未来一次性语义"）、**C-56**（`vibe_v5_wait`／`waitForActivity`／`notifyActivity`，`vibe-math-v5r.js:3424-3466`、工具 `:11142-11151`）。
 > **缺口实测**：Round 3 之前 vmu 全树对 `waitFor`／`notifyActivity`／`vibe_v5_wait`／`activityWaiter` **零命中** ⇒ 成员只能轮询（烧 token）或永远等；这条直接落在"利于多智能体协作"的反面，故本轮补为内核原语。

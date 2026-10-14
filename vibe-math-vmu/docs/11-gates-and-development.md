@@ -125,6 +125,8 @@
 - **正例（可作为判据）**：**驱动真入口/真装配，读它交给下游的那份东西**。两个已进仓的样板：① `tests/audit-preset-overlay-merge.test.mjs`（捕获 `agentPresets.register` 收到的**定义**，断言内层行合并、原字段保留、无 overlay 残留、未匹配仅具名告警）；② `tests/audit-declaration-publishes-face.test.mjs`（**声明 ⇒ 面真的发布**：驱动真入口 `apply(ctx, config)`，读 `ctx.tools.register` 收到的**工具清单**；无声明 ⇒ 恰 1 个工具；点号与嵌套两形态**等价**；坏形状键**具名告警且不发布**）＋ `tests/audit-declaration-publishes-face.mutants.mjs`（**证明它可红**：关掉点号通道／**关掉嵌套展平**／静音告警 ⇒ 各自打红它点名的那一项）。
 - **真机侧的对应判据**：**`request/header` 事件里的 `tools` 数组**（宿主真正发给模型的载荷），比模型自述硬；`tool/result` 回执里的 `settingsMerge`／`settingsKeys`／`settingsUnparsed` 可交叉核对"声明是否到了入口"。
 
+**⇒ 第四条硬要求（★ R7 新增，源于 F53 从"只有文档规则"到"有门禁"）**：**新门禁必须证明自己有牙**——不能只写"某某必须如此"，要**当场种一个违规再证明它变红**，删掉再证明它变绿。范式（`tests/audit-fs-purpose.test.mjs`）：① 规则**窄而准**（真实 `node:fs` 导入**且**在语句位置，注释/数据字符串里的同名字符串**不算**）；② **不是"存在即通过"**——断言**导入者集合 == 已登记集合 ∪ 带合规注释者**（**集合相等**，还查"登记过期"）；③ **自探针**覆盖误报族（注释里/数据字符串里的 `node:fs` 不算导入；裸导入读不出用途）；④ **种违规证明**：往包内临时种一个**裸导入**文件 ⇒ 门禁 **EXIT=1**（两条断言同时点红），删除 ⇒ **EXIT=0**。⇒ 判据升级：**"有规则"不算覆盖，"能拒绝一个真实违规"才算。**
+
 **清单（当前，2026-10-09 第 18 轮）**
 
 | 守卫面 | 语义 | 生产是否调用 | 理由／生产调用点 |
@@ -145,7 +147,7 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 322 / suites 250 / probes 72`** ✓（旧值 134／68／66 已在扩卷与增件后过期 ✗；本轮树新增 1 个作业：`tests/audit-scope-classification.test.mjs` ✓） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 267 / suites 197 / probes 70`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 268 / suites 198 / probes 70`** ✓ |
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 258 / suites 225 / probes 33`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。

@@ -23,6 +23,8 @@
 //      node tests/vmu-assistant-host-slice.test.mjs --web-port 7791 --web-token <t> [--preset vibe-math-vmu]
 //           [--cwd <ASCII ws>] [--max-tokens 120000] [--dsh-home <scratch home>] [--print]
 //           [--expect-settings k1,k2,…]   <- assert EVERY declared key appears in the entry's merge self-report
+//      node tests/vmu-assistant-host-slice.test.mjs --session <id> [--dsh-home <home>] [--expect-settings …]
+//                                            (OFFLINE re-grade of a recorded session: same assertions, no session spent)
 //      node tests/vmu-assistant-host-slice.test.mjs --require-host       (exit ≠0 while the slice cannot run)
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
@@ -55,6 +57,10 @@ const MAX_TOKENS = Number(argOf('max-tokens', '60000'))
 // The keys THIS deployment's overlay declares, comma separated. When given, the harness asserts that every one of them
 // shows up in the entry's `settingsMerge` self-report - i.e. that the declaration reached the entry (vmu-verify's ask).
 const EXPECT_SETTINGS = String(argOf('expect-settings', '') || '').split(',').map((s) => s.trim()).filter(Boolean)
+// OFFLINE GRADING: `--session <id>` re-grades a RECORDED session log with the same assertions (no session spent).
+const OFFLINE_SESSION = argOf('session', null)
+// Filled by the live path (where the driver's dumps land); null when grading a recorded session offline.
+let outDir = null
 const PRINT = process.argv.includes('--print')
 
 let passed = 0
@@ -186,53 +192,12 @@ if (runnerSrc) {
 const providerNote = 'MEASURED: with `dsh plugin --profile <p> add dsh-opencode-go` installed and the operator\'s credentials copied into the scratch DSH_HOME, the run still reports `NO_ADAPTER: no adapter registered for provider "dsh-opencode-go"`; the plugin\'s own README documents `OPENCODE_API_KEY` in the environment for the headless flow.'
 console.log('  NOTE: ' + providerNote)
 
-// ── 3. THE SLICE (drivable only on the route that composes a preset) ──────────────────────────────────────────────
-stage('3. THE SLICE ITSELF: REPORT TRIGGERS / PARAMETER FACE / BOTH PERSONA CHANNELS, IN A REAL HOST')
-const DRIVER = join(REPO, 'scripts', 'dsh-drive.mjs')
-const SLICE_TASK = [
-  // PLAYBOOK §2: the FIRST user message must say this is a SIMULATED TEST (its `user/message` seq + line number are
-  // part of the evidence). The tools are NAMED EXPLICITLY (round-5 lesson: a vague prompt produced `toolCalls:0`, which
-  // cannot be told apart from "the faces were never published").
-  '【模拟测试 / SIMULATED TEST】This is a scripted acceptance slice for the vmu assistant face, NOT a research task.',
-  'Call these tools IN ORDER and print the first 80 characters of each JSON result verbatim (if one is missing or refuses, say so and continue):',
-  '1. `vibe_vmu_status`',
-  '2. `vibe_vmu_chat` with {"action":"list"}',
-  '3. `vibe_vmu_panel` with {"action":"status"}',
-  '4. `vibe_vmu_report` with {"action":"status"}',
-  '5. `vibe_vmu_set` with {"key":"vmu.turn.instituteName","value":"Slice-Institute","by":"office","reason":"scripted slice"}',
-  '6. `vibe_vmu_report` with {"action":"tick","metrics":"{\\"artifacts\\":9}"}',
-  'Then answer in ONE sentence: are you the institute office (assistant/external interface) or a member, and do you vote?',
-].join('\n')
-if (WEB_PORT && WEB_TOKEN && existsSync(DRIVER)) {
-  // THE ROUTE THAT CAN COMPOSE THE PRESET: a running scratch `dsh web` instance, driven by the in-repo driver with an
-  // explicit `--preset`. The server is NOT started here (that belongs to the operator / verify's smoke).
-  try { mkdirSync(WS_DIR, { recursive: true }) } catch (e) { /* reported by the driver if it matters */ }
-  const outDir = join(process.env.TEMP || '/tmp', 'vmu-host-slice-' + Date.now())
-  // THE DRIVER APPENDS TO `<out>/transcript.jsonl` AS ITS FIRST ACT (the auth step is already logged), so the directory
-  // must exist BEFORE it starts - measured: without this it dies with `ENOENT ... transcript.jsonl` right after auth,
-  // i.e. before any model turn (a free failure, but a wasted attempt).
-  try { mkdirSync(outDir, { recursive: true }) } catch (e) { /* the driver will report it if it matters */ }
-  const drive = spawnSync(process.execPath, [DRIVER, '--port', String(WEB_PORT), '--token', String(WEB_TOKEN), '--cwd', WS_DIR,
-    '--preset', PRESET, '--task', SLICE_TASK, '--out', outDir, '--timeout', String(TIMEOUT_S),
-    // PLAYBOOK §4: the driver must be given an explicit token cap on every run (0 would mean "no cap").
-    '--max-tokens', String(MAX_TOKENS),
-    '--jsonl', join(outDir, 'transcript.jsonl')],
-  { cwd: REPO, encoding: 'utf8', timeout: (TIMEOUT_S + 60) * 1000 })
-  const dump = readText(join(outDir, 'transcript.jsonl'))
-  const summary = readText(join(outDir, 'summary.json'))
-  const transcript = String(drive.stdout || '') + '\n' + String(drive.stderr || '') + '\n' + dump + '\n' + summary
-  ok(drive.status === 0, 'the driven real session finished under preset ' + PRESET, { status: drive.status, tail: transcript.trim().slice(-200) })
-  ok(/vibe_vmu_report/.test(transcript), 'HOST: the assistant face is REACHABLE in a real session (the tool was really called)')
-  ok(/v5r-artifact-threshold|【成果阈值】/.test(transcript) && /drives"?\s*:\s*false/.test(transcript),
-    'HOST: a threshold report really fired from a real metric, and its receipt says drives:false')
-  ok(/liveReadBy/.test(transcript) && /"appended"\s*:\s*true/.test(transcript),
-    'HOST: the parameter face went through the kernel writer and left an audit row')
-  ok(/office|所办/.test(transcript) && /不投票|no vote|不参与研究/.test(transcript),
-    'HOST: the SYSTEM PROMPT channel reached the model (it answers as the office, not as a voting member)')
-  // MULTI-FACE LIT (the fact vmu-verify needs for its matrix) - read from the SESSION LOG, which is the authoritative
-  // record with `seq` + line numbers. Prose mentions are NOT calls: only `tool/call` events count.
-  const sessionId = (transcript.match(/"sessionId"\s*:\s*"([^"]+)"/) || [])[1] || null
-  const sess = sessionId ? readSessionLog(DSH_HOME, sessionId) : { file: null, lines: 0, events: [], toolCalls: [], toolResults: [], assistant: [], publishedTools: [], statusReceipt: null }
+/**
+ * THE SHARED GRADING BLOCK. Used by the LIVE path (after driving a session) and by the OFFLINE path
+ * (`--session <id>`, which re-grades a recorded log without spending a session). Keep them identical on purpose:
+ * round 7 proved the assertions had been reading the wrong source, and an offline re-grade is how that gets caught.
+ */
+function gradeSession(sess, transcript, driveStatus, sessionId) {
   const calledFaces = [...new Set(sess.toolCalls.map((t) => t.name).filter(Boolean))].sort()
   const vmuFaces = calledFaces.filter((n) => /^vibe_vmu_/.test(n))
   // THE PUBLICATION FACTS (the "publication vs prompt" dividing line the Lead asked for): what the host OFFERED the
@@ -243,6 +208,28 @@ if (WEB_PORT && WEB_TOKEN && existsSync(DRIVER)) {
   ok(vmuFaces.length >= 3, 'HOST: at least three vmu faces were really CALLED in the session (multi-face lit)', { called: calledFaces })
   ok(calledFaces.indexOf('vibe_vmu_report') !== -1 && sess.toolResults.length > 0,
     'HOST: the report face was really CALLED and produced a tool/result', { called: calledFaces, results: sess.toolResults.length })
+  // ★ THE THREE SUBSTANTIVE FACTS, READ FROM THE RECEIPTS (round-7 lesson). The receipts live in the SESSION LOG, not in
+  // the driver's stdout: asserting on `transcript` produced three FALSE NEGATIVES in round 7 even though the receipts were
+  // perfect (the driver never echoes tool results). So each fact is asserted against the receipt that carries it.
+  const receipts = (sess.rawResults || []).map((r) => r.text)
+  const tickReceipt = receipts.find((t) => /"action":"tick"/.test(t)) || ''
+  const setReceipt = receipts.find((t) => /"ownerCheck"|"requiresRestart"/.test(t) && !/"action":"tick"/.test(t)) || ''
+  const personaText = (sess.assistant || []).join('\n')
+  ok(!!tickReceipt && /"fired":\[\{/.test(tickReceipt) && /"drives":false/.test(tickReceipt),
+    'HOST: a threshold report really FIRED from a real metric (receipt shows a non-empty fired[] and drives:false)',
+    { tickReceipt: tickReceipt.slice(0, 300) })
+  ok(!!setReceipt && /"ok":true/.test(setReceipt) && /"hot":"H\d"/.test(setReceipt),
+    'HOST: the parameter face wrote through the kernel and disclosed its class/attribution (hot/appliesAt/ownerCheck)',
+    { setReceipt: setReceipt.slice(0, 300) })
+  ok(/(office|所办)/i.test(personaText) && /(do not vote|not vote|不投票|不参与研究)/i.test(personaText),
+    'HOST: the SYSTEM PROMPT channel reached the model (it answers AS the office and says it does not vote)',
+    { persona: personaText.replace(/\s+/g, ' ').slice(-260) })
+  console.log('  RECEIPT FACTS: ' + JSON.stringify({
+    tickFired: /"fired":\[\{/.test(tickReceipt), tickDrives: /"drives":false/.test(tickReceipt),
+    setOk: /"ok":true/.test(setReceipt), setHot: (setReceipt.match(/"hot":"(H\d)"/) || [])[1] || null,
+    setOwnerCheck: (setReceipt.match(/"ownerCheck":"([^"]*)"/) || [])[1] || null,
+    personaOffice: /(office|所办)/i.test(personaText), personaNoVote: /(do not vote|not vote|不投票|不参与研究)/i.test(personaText),
+  }))
   console.log('  PUBLISHED TOOLS (' + sess.publishedTools.length + '): ' + JSON.stringify(sess.publishedTools))
   console.log('  PUBLISHED vmu FACES: ' + JSON.stringify(publishedFaces))
   console.log('  FACES CALLED: ' + JSON.stringify(calledFaces))
@@ -282,13 +269,20 @@ if (WEB_PORT && WEB_TOKEN && existsSync(DRIVER)) {
     unparsed: (receiptText.match(/"settingsUnparsed":(\[[^\]]*\])/) || [])[1] || null,
     declared: (receiptText.match(/"declared":(\d+)/) || [])[1] || null,
   }
-  ok(!!facts.sources && facts.sources !== '{}' && facts.keys > 0,
-    'HOST: the overlay DECLARATIONS reached the entry (settingsMerge.sources non-empty, settings.keys > 0)',
-    { sources: facts.sources, keys: facts.keys, unparsed: facts.unparsed })
-  if (EXPECT_SETTINGS.length) {
-    const missing = EXPECT_SETTINGS.filter((k) => !receiptText.includes('"' + k + '"'))
-    ok(missing.length === 0, 'HOST: EVERY key this deployment declares appears in the entry\'s merge self-report',
-      { expected: EXPECT_SETTINGS, missing })
+  const statusCalled = sess.toolCalls.some((c) => c.name === 'vibe_vmu_status')
+  if (statusCalled) {
+    ok(!!facts.sources && facts.sources !== '{}' && facts.keys > 0,
+      'HOST: the overlay DECLARATIONS reached the entry (settingsMerge.sources non-empty, settings.keys > 0)',
+      { sources: facts.sources, keys: facts.keys, unparsed: facts.unparsed })
+    if (EXPECT_SETTINGS.length) {
+      const missing = EXPECT_SETTINGS.filter((k) => !receiptText.includes('"' + k + '"'))
+      ok(missing.length === 0, 'HOST: EVERY key this deployment declares appears in the entry\'s merge self-report',
+        { expected: EXPECT_SETTINGS, missing })
+    }
+  } else {
+    // The cross-check needs one `vibe_vmu_status` call in the prompt. If a future prompt drops it, say so BY NAME
+    // instead of turning a prompt-design choice into a red.
+    pending('the declaration→entry cross-check (settingsMerge)', 'this prompt never called `vibe_vmu_status`, so no settings dump was produced')
   }
   console.log('  SETTINGS CROSS-CHECK: ' + JSON.stringify({ declaredByDeployment: EXPECT_SETTINGS, sources: facts.sources, keys: facts.keys, settingsUnparsed: facts.unparsed, reportDeclared: facts.declared }))
   // THE EVIDENCE DIGEST: provider/model, the session, and the token readings the host emitted (whatever it emits - the
@@ -309,6 +303,60 @@ if (WEB_PORT && WEB_TOKEN && existsSync(DRIVER)) {
     console.log(transcript.slice(0, 600))
     console.log('----- end excerpt · ' + transcript.length + ' chars -----')
   }
+}
+
+// ── 3. THE SLICE (drivable only on the route that composes a preset) ──────────────────────────────────────────────
+stage('3. THE SLICE ITSELF: REPORT TRIGGERS / PARAMETER FACE / BOTH PERSONA CHANNELS, IN A REAL HOST')
+const DRIVER = join(REPO, 'scripts', 'dsh-drive.mjs')
+const SLICE_TASK = [
+  // PLAYBOOK §2: the FIRST user message must say this is a SIMULATED TEST (its `user/message` seq + line number are
+  // part of the evidence). The tools are NAMED EXPLICITLY (round-5 lesson: a vague prompt produced `toolCalls:0`, which
+  // cannot be told apart from "the faces were never published").
+  // ★ ORDER MATTERS (round-7 lesson): `vibe_vmu_status` returns the WHOLE settings dump (49,929 chars), and every later
+  // step re-reads it from cache - that alone blew two 120k budgets. So the three things being proven go FIRST and the
+  // expensive dump goes LAST (still inside the run, so the declaration→entry cross-check keeps its evidence).
+  '【模拟测试 / SIMULATED TEST】This is a scripted acceptance slice for the vmu assistant face, NOT a research task.',
+  'Call these tools IN ORDER and print the first 120 characters of each JSON result verbatim (if one is missing or refuses, say so and continue):',
+  '1. `vibe_vmu_report` with {"action":"status"}',
+  '2. `vibe_vmu_report` with {"action":"tick","metrics":"{\\"artifacts\\":9}"}',
+  '3. `vibe_vmu_set` with {"key":"vmu.turn.instituteName","value":"Slice-Institute","by":"office","reason":"scripted slice"}',
+  '4. `vibe_vmu_status`',
+  'Then answer in ONE sentence: are you the institute office (assistant/external interface) or a member, and do you vote?',
+].join('\n')
+// ★ OFFLINE GRADING (`--session <id>`): grade a RECORDED session log with the same assertions, without spending a
+// session. Added because round 7 proved the assertions had been reading the wrong source - a recorded run can now be
+// re-graded whenever the assertions change, instead of paying for a new session to test the test.
+if (OFFLINE_SESSION) {
+  stage('3b. GRADING THE RECORDED SESSION ' + OFFLINE_SESSION + ' (offline: no new session is spent)')
+  const sess = readSessionLog(DSH_HOME, OFFLINE_SESSION)
+  const transcript = (sess.rawResults || []).map((r) => r.text).join('\n') + '\n' + (sess.assistant || []).join('\n')
+  ok(!!sess.file, 'the recorded session log was found under ' + join(DSH_HOME, 'sessions'), { file: sess.file, lines: sess.lines })
+  gradeSession(sess, transcript, null, OFFLINE_SESSION)
+} else if (WEB_PORT && WEB_TOKEN && existsSync(DRIVER)) {
+  // THE ROUTE THAT CAN COMPOSE THE PRESET: a running scratch `dsh web` instance, driven by the in-repo driver with an
+  // explicit `--preset`. The server is NOT started here (that belongs to the operator / verify's smoke).
+  try { mkdirSync(WS_DIR, { recursive: true }) } catch (e) { /* reported by the driver if it matters */ }
+  outDir = join(process.env.TEMP || '/tmp', 'vmu-host-slice-' + Date.now())
+  // THE DRIVER APPENDS TO `<out>/transcript.jsonl` AS ITS FIRST ACT (the auth step is already logged), so the directory
+  // must exist BEFORE it starts - measured: without this it dies with `ENOENT ... transcript.jsonl` right after auth,
+  // i.e. before any model turn (a free failure, but a wasted attempt).
+  try { mkdirSync(outDir, { recursive: true }) } catch (e) { /* the driver will report it if it matters */ }
+  const drive = spawnSync(process.execPath, [DRIVER, '--port', String(WEB_PORT), '--token', String(WEB_TOKEN), '--cwd', WS_DIR,
+    '--preset', PRESET, '--task', SLICE_TASK, '--out', outDir, '--timeout', String(TIMEOUT_S),
+    // PLAYBOOK §4: the driver must be given an explicit token cap on every run (0 would mean "no cap").
+    '--max-tokens', String(MAX_TOKENS),
+    '--jsonl', join(outDir, 'transcript.jsonl')],
+  { cwd: REPO, encoding: 'utf8', timeout: (TIMEOUT_S + 60) * 1000 })
+  const dump = readText(join(outDir, 'transcript.jsonl'))
+  const summary = readText(join(outDir, 'summary.json'))
+  const transcript = String(drive.stdout || '') + '\n' + String(drive.stderr || '') + '\n' + dump + '\n' + summary
+  ok(drive.status === 0, 'the driven real session finished under preset ' + PRESET, { status: drive.status, tail: transcript.trim().slice(-200) })
+  ok(/vibe_vmu_report/.test(transcript), 'HOST: the assistant face is REACHABLE in a real session (the tool was really called)')
+  // MULTI-FACE LIT (the fact vmu-verify needs for its matrix) - read from the SESSION LOG, which is the authoritative
+  // record with `seq` + line numbers. Prose mentions are NOT calls: only `tool/call` events count.
+  const sessionId = (transcript.match(/"sessionId"\s*:\s*"([^"]+)"/) || [])[1] || null
+  const sess = sessionId ? readSessionLog(DSH_HOME, sessionId) : { file: null, lines: 0, events: [], toolCalls: [], toolResults: [], assistant: [], publishedTools: [], statusReceipt: null }
+  gradeSession(sess, transcript, drive.status, sessionId)
 } else {
   const PRE = 'NO PRESET-CAPABLE RUNNER WAS HANDED OVER: `dsh headless` refuses any session under an agent preset (measured in §2), so the assistant face needs a RUNNING scratch `dsh web` instance driven with `--preset ' + PRESET + '` (scripts/dsh-drive.mjs). ' + providerNote
   console.log('  HOST SLICE: NOT RUN — ' + PRE)

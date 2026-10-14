@@ -179,6 +179,19 @@ const mk = (settings = {}, extra = {}) => m.createMailbox(Object.assign({ clock,
   ok(revived.hydrate(snap).ok === true && revived.hydrate(snap).ok === true, 're-hydrating the same snapshot is idempotent')
 }
 
+// ---- G8 (Round 7): SELF-MESSAGING is refused by name (v5r's V5_SELF_MESSAGE) ------------------------
+{
+  const grab = (fn) => { try { fn(); return null } catch (e) { return e && e.code } }
+  const b = mk()
+  ok(grab(() => b.send('r-1', { to: 'r-1', text: 'hello me' })) === 'VMU_INVALID_ARGUMENT',
+    'a message addressed to its own sender is refused BY NAME')
+  ok(b.send('r-1', { to: 'r-2', text: 'hello' }).ok === true, 'addressing another member still works')
+  const self = mk({}, { resolveAudience: () => ['r-1'] })
+  ok(grab(() => self.send('r-1', { to: 'all', text: 'x' })) === 'VMU_INVALID_ARGUMENT',
+    'and a seam that RETURNS the sender is refused too (the rule sits at the one send point, whatever produced the target)')
+  ok((b.refusals()['VMU_INVALID_ARGUMENT'] || 0) >= 1, 'the refusal is counted so it is greppable in the audit trail')
+}
+
 console.log('vmu-mailbox: ' + passed + ' passed, ' + failed + ' failed')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

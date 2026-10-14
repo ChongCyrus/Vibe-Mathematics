@@ -487,6 +487,7 @@
     "tests/audit-preset-overlay-merge.test.mjs",
     "tests/audit-declaration-publishes-face.test.mjs",
     "tests/audit-declaration-publishes-face.mutants.mjs",
+    "tests/audit-fs-purpose.test.mjs",
     "tests/_lib/falsify.mjs",
     "tests/_lib/strip-comments.mjs",
     "vibe-math-vmu/kernel/report.js",

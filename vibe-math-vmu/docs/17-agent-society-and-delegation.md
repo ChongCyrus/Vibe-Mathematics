@@ -959,3 +959,13 @@ watchers: [{
 - **缺席自曝**：没有 store ⇒ `durable:false`、`reserve()` 返回 `null`、`reconcile()` 明说"无可恢复"——**不假装**。
 - **边界（具名）**：host 需提供分配型 store；`ballotbox`／`mailbox` 的队列可照同样三行接上。逐条缺口与改判条件见 `_handoff/vmu/08-goal2-verdict.md` §5–§6。
 
+---
+
+## 34. 私聊→公开面的"补记"与两条通信纪律（Round 7）
+
+**为什么"私聊补记"必须有名字**：私聊的价值是**不泄露**，代价是**不可引用**。v5r 用 `supplement_of`＋`why` 让**发送者本人**把一条私信变成可引用的事实，而**不搬运正文**。vmu 落成 `kernel/chat.js` 的 `supplement()`：公开面只记 `{of, by, at, why, publicRef}`，正文标 `withheld`；引用经补记簿解析（`viaSupplement`）；**`why` 必填**；**append-only**；容量受已声明的 `vmu.chat.historyCap` 约束。**只有发送者能补记**——注入 `privateSender` 接缝时核验，**无接缝时记 `claimed-unverified` 而不假装核验过**。
+
+**会议级静默＝组合，不是新原语**：`chat.mute`（按人）× 会期成员清单 = 会议级 mute；实测越席发言 ⇒ `VMU_CHAT_MUTED`、主席仍可发言、`unmute` 即恢复、会议对象不受影响。**不新增第二个实现**。
+
+**自我发信一律具名拒**：`all`/`voters` 无接缝 ⇒ `VMU_ENGINE_UNAVAILABLE`；目标等于发送者（含接缝返回自己）⇒ 具名拒并记 `self-message`。理由不是洁癖：那是**无人能处置的耐久消息**，接缝返回自己时更是一个**静默回环**。
+

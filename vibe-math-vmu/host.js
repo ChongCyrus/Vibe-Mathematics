@@ -450,12 +450,20 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   if (on('set') && typeof assertDeclared === 'function') {
     specs.push({
       name: TOOL_NAMES.set,
-      description: '改一个 vmu 设置。未声明的键一律具名拒；回执含热改等级与可改者。',
+      description: '改一个 vmu 设置。未声明的键一律具名拒；回执含热改等级与可改者。★ 调用方可给 `by`／`reason` 声明**真实归属**（给了 `by` ⇒ 走声明所有者的真检查；不给 ⇒ office 路径，回执以 `ownerCheck` **具名披露**该豁免）。',
       parameters: {
         key: param('string', '设置键，必须已在 docs/04 §11 登记', { required: true }),
         value: param('string', '新值（按声明的类型解析：布尔/数字/JSON 数组或对象/字符串）'),
+        // ROUND 7 / task-57 (vmu-assistant's live finding): the published schema had `additionalProperties:false` and
+        // did NOT accept `by`/`reason`, so a caller could not declare WHO made the change - the receipt could only say
+        // `ownerCheck:"exempted (no \`by\` given: office path, DISCLOSED)"`. The kernel's setter has always taken
+        // `{ by }` (the declared-owner check is its single source), so the fix is to let the CALLER reach it: with
+        // `by`, the owner check is a REAL check on the declared owner; without it, the office path is unchanged and
+        // still disclosed. `reason` travels into the runtime-write ledger for the same auditability.
+        by: param('string', '谁在改（可选）。给了就走声明所有者的真检查；不给＝office 路径（回执具名披露豁免）'),
+        reason: param('string', '为什么改（可选）。进运行期写入台账，便于审计追问'),
       },
-      run: async ({ key, value } = {}) => {
+      run: async ({ key, value, by, reason } = {}) => {
         try {
           assertDeclared(key)
         } catch (e) {
@@ -474,7 +482,10 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         }
         let setReceipt = null
         try {
-          setReceipt = kernel.setSettingsValue(key, parsed)
+          // ROUND 7 / task-57: pass the caller's attribution THROUGH to the one owner-check implementation. `by`
+          // absent stays the office path (unchanged, disclosed); `by` present makes the declared-owner check real.
+          // `reason` rides along so the runtime-write ledger can answer "why", not only "who".
+          setReceipt = kernel.setSettingsValue(key, parsed, { by: by === undefined ? null : by, reason: reason === undefined ? null : reason })
         } catch (e) {
           // The kernel's code and words are preserved (it used to be flattened into VMU_PACK_CONFLICT, which
           // hid the H3/unknown-key/owner refusals behind a code that meant something else).
@@ -495,6 +506,10 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           // `ownerCheck` is copied from the kernel receipt: an absent `by` is an EXPLICIT exemption, disclosed,
           // never a silent bypass of the owner check.
           ownerCheck: setReceipt ? setReceipt.ownerCheck : null,
+          // ROUND 7 / task-57: the attribution the CALLER declared travels back on the receipt (null when it declared
+          // none - which is the disclosed office path, not a silent bypass).
+          by: by === undefined ? null : by,
+          reason: reason === undefined ? null : reason,
           requiresRestart: setReceipt ? setReceipt.requiresRestart === true : false,
           appliesFrom: planned ? 'never yet (planned key: no runtime consumer)'
             : (def ? (APPLIES[def.hot] || 'unknown hot class') : 'unknown (undeclared key)'),

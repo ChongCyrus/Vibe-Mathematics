@@ -90,6 +90,10 @@ export function createChat({
   isFrozen = null,
   freezeExempt = null,
   isAdmin = null,
+  // G1 (Round 7): the optional PRIVATE-MESSAGE seam `{ senderOf(id) }`. With it, `supplement()` verifies that the
+  // signer really sent the private message; without it the record says `authorship:'claimed-unverified'` — the
+  // face never pretends it verified something it could not.
+  privateSender = null,
 } = {}) {
   if (typeof clock !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'createChat needs a clock function', 'pass { clock }')
 
@@ -124,7 +128,19 @@ export function createChat({
   const mutes = new Map()          // member -> { until, reason, by, at }
   const speaks = new Map()         // member -> [instant]
   const admins = new Set(declaredList('vmu.chat.admins', []))
-  const dropped = { messages: 0, audit: 0 }
+  const dropped = { messages: 0, audit: 0, supplements: 0 }
+  /**
+   * G1 (Round 7) — THE SUPPLEMENT BOOK. v5r kept private messages OUT of the public face, and let the sender
+   * bring one in deliberately with `supplement_of` + a `why`; the quote then resolved through the supplement
+   * book with `viaSupplement`. That is a real need (a private agreement has to become citable WITHOUT the
+   * framework leaking it), so it is implemented here rather than registered as missing:
+   *   · the BODY IS NEVER COPIED (`body:'withheld'`) — the public face records `{of, by, at, why, publicRef}`;
+   *   · only the SENDER may supplement (verified through the optional `privateSender` seam; without a seam the
+   *     record says `authorship:'claimed-unverified'` instead of pretending it verified anything);
+   *   · a reason is mandatory, the book is append-only (a second supplement of the same message is idempotent),
+   *     and it is bounded by the DECLARED `vmu.chat.historyCap` with a drop counter.
+   */
+  const supplements = new Map()
   const refusals = new Map()
   let seq = 0
   let policyGen = 0
@@ -402,6 +418,65 @@ export function createChat({
     },
 
     /** Read the ledger. `list` is the ONLY body reader (status/history never carry message text). */
+    /**
+     * G1: bring a PRIVATE message into the public record — the sender's own act, explained, body withheld.
+     */
+    supplement({ of = null, by = null, why = '', publicRef = null } = {}) {
+      const ref = String(of === null || of === undefined ? '' : of).trim()
+      const author = String(by === null || by === undefined ? '' : by).trim()
+      const reason = String(why || '').trim()
+      if (!ref) throw refuse('VMU_INVALID_ARGUMENT', 'supplement needs { of } (the private message id)', 'name the message being brought into the public record')
+      if (!author) throw refuse('VMU_INVALID_ARGUMENT', 'supplement needs { by } (the message\'s own sender)', 'a supplement is the sender\'s own act: it must be signed')
+      if (!reason) throw refuse('VMU_INVALID_ARGUMENT', 'supplement needs { why }', 'an unexplained supplement is exactly the leak this rule prevents')
+      rejectInstants({ why }, 'supplement')
+      const prior = supplements.get(ref) || null
+      if (prior) return { ok: true, deduped: true, of: ref, supplement: Object.assign({}, prior), enforced: [] }
+      let authorship = 'claimed-unverified'
+      if (privateSender && typeof privateSender.senderOf === 'function') {
+        let real = null
+        try { real = privateSender.senderOf(ref) } catch (e) { real = null }
+        if (real === undefined || real === null) {
+          note('VMU_CHAT_ANCHOR_DANGLING', { member: author })
+          throw refuse('VMU_CHAT_ANCHOR_DANGLING', 'no such private message: ' + ref,
+            'the supplement must point at a message the private face can still resolve')
+        }
+        authorship = String(real) === author ? 'verified' : 'mismatch'
+        if (authorship === 'mismatch') {
+          note('VMU_NOT_PERMITTED', { member: author })
+          throw refuse('VMU_NOT_PERMITTED', 'only the SENDER may supplement their own private message: ' + ref,
+            'the sender is ' + String(real) + ', not ' + author)
+        }
+      }
+      const cap = capOf()
+      const rec = { of: ref, by: author, at: clock(), why: reason, authorship, body: 'withheld',
+        publicRef: publicRef === null || publicRef === undefined ? null : String(publicRef) }
+      supplements.set(ref, rec)
+      while (supplements.size > cap) {
+        const oldest = supplements.keys().next().value
+        supplements.delete(oldest)
+        dropped.supplements += 1
+      }
+      record('supplemented', { of: ref, by: author, why: reason, authorship, publicRef: rec.publicRef }, author)
+      return { ok: true, of: ref, supplement: Object.assign({}, rec), bodyWithheld: true, authorship,
+        enforced: ['vmu.chat.historyCap'] }
+    },
+
+    /** The supplement book, append-only, bodies never copied. */
+    supplements() { return [...supplements.values()].map((s) => Object.assign({}, s)) },
+
+    /** Resolve a citation THROUGH the supplement book (v5r's `viaSupplement`): the body stays withheld. */
+    supplementOf(id) {
+      const want = String(id === undefined || id === null ? '' : id)
+      const hit = supplements.get(want) || null
+      if (!hit) {
+        note('VMU_CHAT_ANCHOR_DANGLING', { member: want })
+        return { ok: false, code: 'VMU_CHAT_ANCHOR_DANGLING', of: want, enforced: [], enforcedScope: 'evaluated-so-far',
+          message: 'no public supplement was recorded for ' + (want || '(empty)'),
+          hint: 'a private message stays private until its sender supplements it with a why' }
+      }
+      return { ok: true, viaSupplement: true, bodyWithheld: true, supplement: Object.assign({}, hit), enforced: [] }
+    },
+
     list({ limit = 50, member = null, since = null } = {}) {
       const n = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.floor(Number(limit)) : 50
       let rows = messages.slice()
@@ -636,7 +711,7 @@ export function createChat({
         frozen: fr.frozen, frozenBy: fr.ballotId,
         mechanism: { hasFrozenSeam: typeof isFrozen === 'function', hasFreezeExemptSeam: typeof freezeExempt === 'function',
           hasAdminSeam: typeof isAdmin === 'function', clockInjected: true, hotSource: typeof (settings && settings.set) === 'function' ? 'settings' : 'memory' },
-        counts: { sends: messages.length, audit: audit.length },
+        counts: { sends: messages.length, audit: audit.length, supplements: supplements.size },
         dropped: Object.assign({}, dropped), refusals: Object.fromEntries(refusals) }
     },
 

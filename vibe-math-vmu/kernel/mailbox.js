@@ -224,6 +224,21 @@ export function createMailbox({
         throw refuse('VMU_MAILBOX_NO_SUCH_RECIPIENT', 'no recipient: ' + JSON.stringify(raw),
           'pass a member id, an array of ids, or bind an audience seam for all/voters')
       }
+      /**
+       * G8 (Round 7) — SELF-MESSAGING. v5r refused it (`V5_SELF_MESSAGE`); this face used to accept a literal id
+       * equal to the sender, which made "I told myself" a durable message no one else could act on (and, with an
+       * audience seam returning the sender, a quiet loop). The audience seam is asked first when it exists —
+       * `all`/`voters` are the seam's business — but a target equal to the sender is refused HERE, once, whatever
+       * produced it. The code is the registered `VMU_INVALID_ARGUMENT`, and the RECORD carries `self-message` so
+       * the refusal is greppable in the audit trail.
+       */
+      const selfAddressed = targets.filter((t) => t === who)
+      if (selfAddressed.length) {
+        note('VMU_INVALID_ARGUMENT')
+        record('send-refused', { from: who, reason: 'self-message', to: String(raw) })
+        throw refuse('VMU_INVALID_ARGUMENT', 'a message may not be addressed to its own sender: ' + who,
+          'address another member, an array without yourself, or all/voters (which already exclude you)')
+      }
 
       // A reply/quote anchor must still be LIVE: delivered bodies are gone, and quoting them would be a lie.
       let anchorRef = null

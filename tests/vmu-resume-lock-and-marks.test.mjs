@@ -308,9 +308,84 @@ const mkLock = (settings) => createStorePolicy({ settings: Object.assign({ 'vmu.
     'status() shows the degradation', r.status().projection)
 }
 
+// ── task-52 A · unacked mail is counted from the DURABLE mailbox key (no new face method, no new wiring) ─────
+{
+  const boxSnap = { apiVersion: 1, face: 'mailbox', v: 1, at: 1, counters: { seq: 3 }, data: { boxes: { 'r-1': [{ id: 'ml-1' }, { id: 'ml-2' }], 'r-2': [{ id: 'ml-3' }] }, acked: {}, injected: {} }, skipped: [] }
+  const storeA = mkStore({ work: [], mailbox: boxSnap, resume: { v: 1, counters: {}, recoveries: [] } })
+  const rA = createResume({ store: storeA, work: createWorkLedger({ store: storeA, clock }), clock })
+  const repA = await rA.recover({ reason: 'mail-durable' })
+  const mA = repA.steps.filter((s) => s.step === 'mailbox')[0]
+  ok(mA.attached === true && mA.source === 'durable-mailbox-key' && mA.pending === 3,
+    'with no port, the count comes from the durable mailbox key (the face self-persists)', mA)
+  ok(rA.status().inflight.unackedMail === 3 && rA.status().inflight.unackedMailSource === 'durable-mailbox-key',
+    'the count also lands in the v5r `pendingWork` view (inflight.unackedMail)', rA.status().inflight)
+  ok(rA.status().ports.mailbox === false, 'and status().ports still tells the truth: no PORT was wired', rA.status().ports)
+  // a state-projection envelope (the other stored shape) is accepted too
+  const storeB = mkStore({ work: [], mailbox: { v: 1, mode: 'state', key: 'mailbox', seq: 0, incomplete: false, entries: [], value: boxSnap }, resume: { v: 1, counters: {}, recoveries: [] } })
+  const rB = createResume({ store: storeB, work: createWorkLedger({ store: storeB, clock }), clock })
+  const repB = await rB.recover({ reason: 'mail-envelope' })
+  ok(repB.steps.filter((s) => s.step === 'mailbox')[0].pending === 3, 'an envelope-wrapped mailbox key is accepted as well', repB.steps.filter((s) => s.step === 'mailbox')[0])
+  // neither port nor key ⇒ named, never a fabricated zero
+  const storeC = mkStore({ work: [], resume: { v: 1, counters: {}, recoveries: [] } })
+  const rC = createResume({ store: storeC, work: createWorkLedger({ store: storeC, clock }), clock })
+  const repC = await rC.recover({ reason: 'mail-none' })
+  const mC = repC.steps.filter((s) => s.step === 'mailbox')[0]
+  ok(mC.attached === false && mC.code === 'VMU_RESUME_MAILBOX_UNAVAILABLE' && rC.status().inflight.unackedMail === null,
+    'neither port nor durable key ⇒ NAMED (null, not a fake 0)', { step: mC, inflight: rC.status().inflight.unackedMail })
+}
+
+// ── task-52 B · re-dispatch is a DECLARED policy: the engine offers, counts DURABLY, and never spawns ────────
+{
+  const rows = [{ id: 'r-2', childId: 'c-gone', slot: 'researcher' }]
+  const mkEngine = (store, reassign, applyCalls) => createResume({
+    store, work: createWorkLedger({ store, clock }), clock,
+    roster: () => rows,
+    children: { parentId: () => 'root-1', list: async () => [] },
+    reassign: reassign === null ? null : { maxAttempts: reassign.maxAttempts, apply: async (req) => { applyCalls.push(req); if (reassign.throws) { const e = new Error('spawn refused'); e.code = 'VMU_ACTIVATION_FAILED'; throw e } return { ok: true } } },
+  })
+  // (1) NO policy declared ⇒ nothing is attempted, the missing member is only NAMED
+  {
+    const store = mkStore({ work: [], resume: { v: 1, counters: {}, recoveries: [] } })
+    const calls = []
+    const r = mkEngine(store, null, calls)
+    const rep = await r.recover({ reason: 'reassign-none' })
+    const s = rep.steps.filter((x) => x.step === 'reassign')[0]
+    ok(s.attached === false && calls.length === 0 && /only NAMED/.test(s.note),
+      'no declared policy ⇒ no attempt, and the step says so', s)
+    ok(r.status().restart.reassigned === 0, 'the restart marker reports nothing re-dispatched', r.status().restart)
+  }
+  // (2) a declared policy is offered the missing member EXACTLY once, and the counter is durable
+  const store = mkStore({ work: [], resume: { v: 1, counters: {}, recoveries: [] } })
+  const calls = []
+  const r1 = mkEngine(store, { maxAttempts: 1 }, calls)
+  const rep1 = await r1.recover({ reason: 'reassign-1' })
+  const s1 = rep1.steps.filter((x) => x.step === 'reassign')[0]
+  ok(s1.attached === true && s1.applied.length === 1 && calls.length === 1 && calls[0].member === 'r-2' && calls[0].attempt === 1 && calls[0].maxAttempts === 1,
+    'the declared policy is offered the missing member once, with its attempt number', { s1, calls })
+  ok(r1.status().reassignAttempts['r-2'] === 1 && store._raw.get('resume').reassignAttempts['r-2'] === 1,
+    'the attempt counter is DURABLE (it is in the resume key)', r1.status().reassignAttempts)
+  // (3) a SECOND restart must NOT re-dispatch: the durable bound is what stops a crash loop
+  const r2 = mkEngine(store, { maxAttempts: 1 }, calls)
+  const rep2 = await r2.recover({ reason: 'reassign-2' })
+  const s2 = rep2.steps.filter((x) => x.step === 'reassign')[0]
+  ok(calls.length === 1 && s2.exhausted.length === 1 && s2.exhausted[0].member === 'r-2' && s2.applied.length === 0,
+    'the second restart finds the counter exhausted and does NOT re-dispatch (anti-crash-loop)', { calls: calls.length, s2 })
+  ok(/crash loop/.test(String(s2.exhausted[0].reason)) && r2.status().restart.reassignExhausted === 1,
+    'the exhaustion is named with its reason and shows in the restart marker', r2.status().restart)
+  // (4) a policy that THROWS is named; the attempt is still counted (no free retries)
+  const store4 = mkStore({ work: [], resume: { v: 1, counters: {}, recoveries: [] } })
+  const calls4 = []
+  const r4 = mkEngine(store4, { maxAttempts: 2, throws: true }, calls4)
+  const s4 = (await r4.recover({ reason: 'reassign-throws' })).steps.filter((x) => x.step === 'reassign')[0]
+  ok(s4.failed.length === 1 && s4.failed[0].code === 'VMU_ACTIVATION_FAILED' && s4.applied.length === 0,
+    'a throwing policy is NAMED, and the run continues', s4)
+  ok(r4.status().reassignAttempts['r-2'] === 1, 'a failed attempt still consumes the bound (no unlimited retries)', r4.status().reassignAttempts)
+}
+
 const guard = process.argv.includes('--self-probe')
 if (guard) {
   console.log('=== VMU RESUME LOCK+MARKS SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
   process.exit(failed > 0 ? 0 : 1)
-}console.log('=== VMU RESUME LOCK+MARKS: ' + passed + ' passed, ' + failed + ' failed ===')
+}
+console.log('=== VMU RESUME LOCK+MARKS: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed > 0 ? 1 : 0)

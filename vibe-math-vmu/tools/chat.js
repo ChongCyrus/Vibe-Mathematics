@@ -14,10 +14,10 @@ export function makeChatSpec({ param, refused, TOOL_NAMES, kernel }) {
       '全部由内核按声明强制、可热改、可审计（改动人 `by` 必填，不记名改动被具名拒）。' +
       '会议表决期禁言由"存在 open 投票板"**派生**（非定时器）；回复目标必须指向仍在账内的消息（悬空具名拒）。',
     parameters: {
-      action: param('string', 'send｜list｜policy｜setpolicy｜mute｜unmute｜quota｜admin｜status', { required: true,
-        enum: ['send', 'list', 'policy', 'setpolicy', 'mute', 'unmute', 'quota', 'admin', 'status'] }),
+      action: param('string', 'send｜list｜policy｜setpolicy｜mute｜unmute｜quota｜admin｜status｜supplement｜supplements｜supplementof', { required: true,
+        enum: ['send', 'list', 'policy', 'setpolicy', 'mute', 'unmute', 'quota', 'admin', 'status', 'supplement', 'supplements', 'supplementof'] }),
       member: param('string', '目标成员（mute/unmute/admin 必填；list 可作发言人过滤）'),
-      by: param('string', '执行人（mute/unmute/admin/setpolicy/quota 必填：谁做的必须可审计）'),
+      by: param('string', '执行人（mute/unmute/admin/setpolicy/quota/supplement 必填：谁做的必须可审计）'),
       text: param('string', 'send 的正文（必填）'),
       replyTo: param('string', 'send：回复目标消息 id（必须是账内消息，否则 VMU_CHAT_ANCHOR_DANGLING）'),
       quotes: param('array', 'send：引用列表（消息 id 字符串或 {ref,depth}），超上限具名拒'),
@@ -34,9 +34,14 @@ export function makeChatSpec({ param, refused, TOOL_NAMES, kernel }) {
       muteDefaultMs: param('number', 'setpolicy：默认禁言时长（0＝无到期）'),
       freezeExemptAdmins: param('boolean', 'setpolicy：表决冻结期管理员可否发言（v5r chair-first）'),
       historyCap: param('number', 'setpolicy：审计/消息环形上限（触界计数丢弃）'),
+      // G1 (Round 7): the private→public supplement path (v5r's supplement_of + why; body never copied).
+      of: param('string', 'supplement/supplementof：被补记的私信 id'),
+      why: param('string', 'supplement：补记理由（必填：无理由的补记正是这条规则要防的泄露）'),
+      publicRef: param('string', 'supplement：公开面引用锚（可选）'),
     },
     run: async ({ action, member, by, text, replyTo, quotes, kind, reason, durationMs, op, limit,
-      quota, windowMs, admins, speakQuota, speakQuotaWindowMs, muteDefaultMs, freezeExemptAdmins, historyCap } = {}) => {
+      quota, windowMs, admins, speakQuota, speakQuotaWindowMs, muteDefaultMs, freezeExemptAdmins, historyCap,
+      of, why, publicRef } = {}) => {
       const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
       try {
         const chat = kernel.chat
@@ -52,6 +57,12 @@ export function makeChatSpec({ param, refused, TOOL_NAMES, kernel }) {
         }
         if (action === 'policy') return Object.assign({ ok: true, action }, chat.policy())
         if (action === 'status') return Object.assign({ ok: true, action }, chat.status())
+        // G1 (Round 7): the private→public supplement path — reachable from the face, not kernel-only.
+        if (action === 'supplement') {
+          return Object.assign({ ok: true, action }, chat.supplement({ of: need(of, 'of'), by: need(by, 'by'), why: need(why, 'why'), publicRef: publicRef === undefined ? null : publicRef }))
+        }
+        if (action === 'supplements') return Object.assign({ ok: true, action }, { supplements: chat.supplements() })
+        if (action === 'supplementof') return Object.assign({ ok: true, action }, chat.supplementOf(need(of, 'of')))
         if (action === 'mute') {
           return Object.assign({ ok: true, action }, chat.mute(need(member, 'member'),
             { durationMs: durationMs === undefined ? null : durationMs, reason: reason || '', by: need(by, 'by'), source: 'member' }))

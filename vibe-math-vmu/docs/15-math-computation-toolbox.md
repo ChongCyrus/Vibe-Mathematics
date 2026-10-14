@@ -387,11 +387,14 @@ CacheEntry = { keyHash, engineIdentity, argv, precision, receiptRef, createdAt, 
   `kind ∈ scalar | array | frame | expr | result | mapping`：
   | 库 | 典型 kind | payload |
   |---|---|---|
-  | `numpy` | `array` / `scalar` | `values`（嵌套列表）＋`shape`＋`dtype`；numpy 标量 ⇒ `scalar`（`dtype` 保留） |
-  | `pandas` | `frame` | `columns` / `index` / `dtypes` / `rows`（DataFrame 与 Series 同型） |
-  | `sympy` | `expr` | `sympy`（srepr，可比对）＋`latex`＋`freeSymbols` |
-  | `scipy` | `result` | `fields`（`OptimizeResult`／`OdeResult`／`RootResults` 等按**类名**归一，ndarray 字段转列表） |
+  | `numpy` | `array` / `scalar` | `values`（嵌套列表）＋`shape`＋`dtype`＋**`elementKind`**；numpy 标量 ⇒ `scalar`（`dtype` 保留） |
+  | `pandas` | `frame` | `columns` / `index` / `dtypes` / `rows`（DataFrame 与 Series 同型）；**`pd.Index`／`df.columns` ⇒ `array`**（R7 补：曾整类落到 `unknown`） |
+  | `sympy` | `expr` | `sympy`（srepr，可比对）＋`latex`＋`freeSymbols`；**`sp.Matrix` ⇒ `array`＋`elementKind:'symbolic'`＋`shape`**（R7 补：矩阵曾整类落到 `unknown`） |
+  | `scipy` | `result` | `fields`（`OptimizeResult`／`OdeResult`／`RootResults` 等按**类名**归一，ndarray 字段转列表）；**`scipy.sparse` 矩阵 ⇒ `array`＋`elementKind:'numeric'`＋`sparse:true`＋`nnz`**（R7 补） |
   | 其它 | `mapping` / `scalar` / `array` | dict → `mapping`；无法归类 ⇒ **`VMU_MATH_SHAPE_UNKNOWN` 具名拒**（不 stringify 成"看起来像数据"） |
+- **第二轴 `elementKind`（Round 7 ✓）**：`kind:"array"` **只**说明"是个列表"，说不清里面是什么 —— `sympy.solve(Eq(x**2,4),x)` 与 `numpy.arange(2)` 都曾以 `values:["-2","2"]` 的形式到达。契约因此公布 **`elementKind ∈ numeric | symbolic | mapping | text | mixed | unknown`**（`ELEMENT_KINDS`，`shapeContract().elementKinds`）：**numeric**＝全数值；**symbolic**＝含 `sympy.Basic`（符号解/符号矩阵/object-dtype 数组）；**mapping**＝元素是 dict（如 `solve(..., dict=True)`）；**text**＝全字符串（如字符串 `Index`）；**mixed**＝混合；**unknown**＝空表或无法判定。**未声明的词一律归 `unknown`**（原样透传或替调用方猜都是撒谎）。真机读数（R7，四库 21 次调用全 EXIT=0）：`np.arange(6).reshape(2,3)`⇒numeric｜`np.array([sp.Integer(2),sp.sqrt(2)],dtype=object)`⇒**symbolic**｜`[1,"text"]`⇒**mixed**｜`scipy csr_matrix`⇒numeric+`sparse:true,nnz:2`｜`pd.DataFrame().values`⇒numeric｜`df.columns`⇒**text**｜`sp.solve(Eq(x²,4),x)`⇒**symbolic**｜`sp.Matrix([[1,2],[3,4]])`⇒**symbolic**｜`sp.solve(...,dict=True)`⇒**mapping**。
+  > 命名核对：v5r 的 `math-computation.js` **没有结果形状契约**（它的 `next.kind` 集是 `agent-install|enable|engine-override|note|reason|user-install|vendor`，与形状无关）⇒ `elementKind` 及其词表**不与基线冲突**，它是本品自身的第二轴。
+  > 顺带修掉一个**真机才暴露的缺陷**：数组元素若是 dict **且键不是字符串**（`solve(...,dict=True)` 的键是 `Symbol`），`json.dumps(default=str)` **不会**字符串化键 ⇒ 整个调用失败；现在数组 `values` 一律经 `_vmu_jsonable`（键显式 `str()`）。
 - **可注入接缝**：`resolveExecutable` 与 `spawn` **都必须注入**；未注入 ⇒ `probe/run` 具名拒 `VMU_EXTERNAL_UNAVAILABLE`，而 `plan()` 仍回答"会跑什么"（`argvTemplate`／`needs`／`caps`／`enforced`）。**测试绝不把"本机有没有 numpy"当前提**（`tests/vmu-math-adapters.test.mjs` 全程假接缝；真机 smoke 另计）。
 - **失败语义**：超时 ⇒ `MATH_TIMEOUT`（**保留部分输出**＋`droppedBytes` 计数）；非零退出 ⇒ `MATH_NONZERO_EXIT`（保留退出码与 stderr 尾部）；被调用代码报错 ⇒ `VMU_MATH_HARNESS_FAILED`；信封缺失/不可解析 ⇒ `VMU_MATH_RESULT_UNPARSEABLE`；随机作业缺种子 ⇒ `VMU_MATH_SEED_REQUIRED`；包越白名单 ⇒ `VMU_MATH_INVALID_INPUT`。**全部 `isRefutation:false`**：计算缺陷永远不是对命题的反驳。
 - **恢复四分支**（`mathjobs.recover()`，与 Lean `Formal/Jobs/*.json` 同形）：①`queued` ⇒ 重排并真跑；②`running`＋请求指纹一致 ⇒ 标 `interrupted` 后重排（attempts+1）；③`running`＋指纹不一致 ⇒ 只标 `interrupted`，**不自动重排**；④`settled`＋exit 0＋指纹一致＋**带回执** ⇒ 采纳；其余（含 `settled` 无回执）⇒ 原样保留＋具名 why。**任何分支都不会"静默 passed"**（本面根本没有 `passed`；`settled` 只是工具事实）。

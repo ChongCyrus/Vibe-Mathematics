@@ -7,7 +7,7 @@
 
 import assert from 'node:assert/strict'
 import {
-  createMathAdapters, SCIENTIFIC_LIBS, SHAPE_KINDS, RESULT_ENVELOPE, WIRED_KEYS,
+  createMathAdapters, SCIENTIFIC_LIBS, SHAPE_KINDS, ELEMENT_KINDS, RESULT_ENVELOPE, WIRED_KEYS,
   buildHarness, exprBody, codeBody, callBody, probeBody, fingerprint,
   RESULT_MARKER, PROBE_MARKER,
 } from '../vibe-math-vmu/kernel/mathadapters.js'
@@ -192,7 +192,41 @@ test('the six shape kinds normalise into the documented envelope', async () => {
     assert.ok(Array.isArray(r.enforced) && r.enforced.indexOf('vmu.math.adapters.maxArrayElements') !== -1, kind + ' 必须带 enforced[]（本所标准）')
     assert.equal(r.isRefutation, false)
     check(r)
+  }  passed += 1
+})
+
+// ── 8b. ROUND 7 · A：`kind:"array"` 的第二轴 `elementKind`（符号解列表 ≠ 数值数组）────────────
+test('the array second axis `elementKind` is declared, passed through, and never invented', async () => {
+  // 契约面必须公布这一轴（否则调用方无从知道可分支）
+  const { gov: g0 } = mkGov({}, { spawn: fakeSpawn({ probe: ALL }) })
+  const sc = g0.shapeContract()
+  assert.deepEqual(sc.elementKinds, ELEMENT_KINDS.slice(), 'shapeContract 必须公布 elementKinds')
+  assert.ok(sc.elementKinds.indexOf('symbolic') !== -1 && sc.elementKinds.indexOf('numeric') !== -1)
+
+  const cases = [
+    ['symbolic', { ok: true, kind: 'array', elementKind: 'symbolic', shape: [2], values: ['-2', '2'] }, 'symbolic'],
+    ['numeric', { ok: true, kind: 'array', elementKind: 'numeric', dtype: 'int64', shape: [2], values: [1, 2] }, 'numeric'],
+    ['mapping', { ok: true, kind: 'array', elementKind: 'mapping', shape: [2], values: [{ x: '-2' }, { x: '2' }] }, 'mapping'],
+    ['text', { ok: true, kind: 'array', elementKind: 'text', shape: [1], values: ['a'] }, 'text'],
+    ['mixed', { ok: true, kind: 'array', elementKind: 'mixed', shape: [2], values: [1, 'text'] }, 'mixed'],
+    // 未声明的词一律归 `unknown`（不许原样透传，也不许替调用方"猜"一个意思）
+    ['undeclared→unknown', { ok: true, kind: 'array', elementKind: 'weird-word', shape: [1], values: [1] }, 'unknown'],
+    // 缺字段 ⇒ `unknown`（默认存在，调用方不必判 undefined）
+    ['absent→unknown', { ok: true, kind: 'array', shape: [1], values: [1] }, 'unknown'],
+  ]
+  for (const [label, raw, want] of cases) {
+    const { gov } = mkGov({}, { spawn: fakeSpawn({ probe: ALL, result: resultLine(raw) }) })
+    const r = await gov.run({ lib: 'numpy', expr: 'X' })
+    assert.equal(r.ok, true, label + ' 必须成功：' + JSON.stringify(r))
+    assert.equal(r.kind, 'array')
+    assert.equal(r.elementKind, want, label + ' ⇒ elementKind 必须是 ' + want + '：' + JSON.stringify(r.elementKind))
   }
+  // 稀疏矩阵的特化事实也一起过（scipy 的 csr_matrix 曾整类落到 unknown）
+  const { gov: g2 } = mkGov({}, { spawn: fakeSpawn({ probe: ALL, result: resultLine({ ok: true, kind: 'array', elementKind: 'numeric', sparse: true, nnz: 7, shape: [2, 2], values: [[1, 0], [0, 2]] }) }) })
+  const sp = await g2.run({ lib: 'scipy', code: 'X' })
+  assert.equal(sp.ok, true)
+  assert.equal(sp.sparse, true)
+  assert.equal(sp.nnz, 7)
   passed += 1
 })
 

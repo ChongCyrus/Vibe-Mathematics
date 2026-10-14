@@ -49,6 +49,18 @@ export const apiVersion = 1
 export const SHAPE_KINDS = Object.freeze(['scalar', 'array', 'frame', 'expr', 'result', 'mapping'])
 
 /**
+ * ROUND 7 · A：`kind:"array"` alone cannot tell a **符号解列表** from a **数值数组** — `sympy.solve(Eq(x**2,4),x)`
+ * used to arrive as `values:["-2","2"]`, indistinguishable from `numpy.arange(2)`. `elementKind` is the
+ * CALLER-VISIBLE second axis (it is additive: `kind` keeps its meaning, so nothing that already branches on
+ * `kind` changes). Vocabulary check: v5r's own `next.kind` set is `agent-install|enable|engine-override|note|
+ * reason|user-install|vendor` and it has **no result-shape contract at all** ⇒ these words collide with
+ * nothing in the baseline (they are the vmu adapter contract's own axis, like `SHAPE_KINDS` above).
+ * `text` exists because a pandas string `Index`/a numpy `<U` array is neither numeric nor symbolic, and calling
+ * it `unknown` would hide a fact we DO know.
+ */
+export const ELEMENT_KINDS = Object.freeze(['numeric', 'symbolic', 'mapping', 'text', 'mixed', 'unknown'])
+
+/**
  * The descriptors. `pythonImport` is what the harness imports; `probe` needs nothing but the stdlib.
  * `needs` documents which other declared library a probe depends on (scipy/pandas build on numpy).
  */
@@ -193,12 +205,64 @@ export function buildHarness({ imports = [], seed = '', body = '' } = {}) {
     '    if isinstance(_x, (int, float, str, bool)) or _x is None:',
     '        return _x',
     '    return str(_x)',
+    // ROUND 7 (A): the CALLER-VISIBLE distinction the R6 verdict named — a list of sympy objects is NOT the same
+    // thing as a numeric vector, even though both serialize to a JSON list. `elementKind` says which one it is.
+    'def _vmu_element_kind(_v):',
+    '    _has_sym = False',
+    '    _has_num = False',
+    '    _has_map = False',
+    '    _has_text = False',
+    '    _has_other = False',
+    '    try:',
+    '        import sympy as _sp',
+    '    except Exception:',
+    '        _sp = None',
+    '    try:',
+    '        import numpy as _np',
+    '    except Exception:',
+    '        _np = None',
+    '    for _e in _v:',
+    '        if _np is not None and isinstance(_e, (_np.ndarray, _np.generic)):',
+    '            _has_num = True',
+    '            continue',
+    '        if _sp is not None and isinstance(_e, _sp.Basic):',
+    '            _has_sym = True',
+    '            continue',
+    '        if isinstance(_e, dict):',
+    '            _has_map = True',
+    '            continue',
+    '        if isinstance(_e, str):',
+    '            _has_text = True',
+    '            continue',
+    '        if isinstance(_e, bool) or isinstance(_e, (int, float, complex)) or _e is None:',
+    '            _has_num = True',
+    '            continue',
+    '        _has_other = True',
+    '    _n = (1 if _has_num else 0) + (1 if _has_sym else 0) + (1 if _has_map else 0) + (1 if _has_text else 0) + (1 if _has_other else 0)',
+    '    if _n == 0:',
+    '        return "unknown"',
+    '    if _n > 1:',
+    '        return "mixed"',
+    '    if _has_sym:',
+    '        return "symbolic"',
+    '    if _has_num:',
+    '        return "numeric"',
+    '    if _has_map:',
+    '        return "mapping"',
+    '    if _has_text:',
+    '        return "text"',
+    '    return "unknown"',
     'def _vmu_shape(_v):',
     '    _vn = type(_v).__name__',
     '    try:',
     '        import numpy as _np',
     '        if isinstance(_v, _np.ndarray):',
-    '            return {"kind": "array", "dtype": str(_v.dtype), "shape": list(_v.shape), "values": _v.tolist()}',
+    '            _ek = "numeric" if _v.dtype.kind in "biufc" else ("text" if _v.dtype.kind in "US" else "unknown")',
+    '            if _v.dtype.kind == "O":',
+    '                _ek = _vmu_element_kind(_v.ravel().tolist()[:256])',
+    // `_vmu_jsonable` (not the raw `.tolist()`): a dict ELEMENT may carry non-string keys, and `json.dumps(
+    // default=str)` does NOT stringify keys — the sympy `solve(..., dict=True)` case crashed on exactly that.
+    '            return {"kind": "array", "elementKind": _ek, "dtype": str(_v.dtype), "shape": list(_v.shape), "values": _vmu_jsonable(_v)}',
     '        if isinstance(_v, _np.generic):',
     '            return {"kind": "scalar", "value": _v.item(), "dtype": str(_v.dtype)}',
     '    except Exception:',
@@ -212,13 +276,34 @@ export function buildHarness({ imports = [], seed = '', body = '' } = {}) {
     '            _n = str(_v.name) if _v.name is not None else "value"',
     '            return {"kind": "frame", "columns": [_n], "index": [str(_i) for _i in _v.index],',
     '                    "dtypes": {_n: str(_v.dtype)}, "rows": [[_x] for _x in _v.astype(object).where(_v.notna(), None).tolist()]}',
+    // ROUND 7 (B): a pandas Index/columns object had NO path (it fell through to `unknown`) — an `index` is a
+    // first-class pandas return value (`df.columns`, `pd.Index([...])`), so it is an array by contract.
+    '        if isinstance(_v, _pd.Index):',
+    '            _dk = str(_v.dtype)',
+    '            _ik = _vmu_element_kind(_v.tolist()[:256])',
+    '            return {"kind": "array", "elementKind": _ik, "dtype": _dk, "shape": [len(_v)], "values": _vmu_jsonable([_x for _x in _v.tolist()])}',
     '    except Exception:',
     '        pass',
     '    try:',
     '        import sympy as _sp',
+        // Matrices FIRST: `sympy.Matrix` is not a scalar expression, and it used to fall through to `unknown`
+        // (a matrix is THE linear-algebra return value) — it is an array whose elements are symbolic.
+    '        if hasattr(_sp, "MatrixBase") and isinstance(_v, _sp.MatrixBase):',
+    '            return {"kind": "array", "elementKind": "symbolic", "shape": list(_v.shape),',
+    '                    "values": [[str(_v[_r, _c]) for _c in range(_v.cols)] for _r in range(_v.rows)],',
+    '                    "sympy": _sp.srepr(_v), "latex": _sp.latex(_v)}',
     '        if isinstance(_v, _sp.Basic):',
     '            return {"kind": "expr", "sympy": _sp.srepr(_v), "latex": _sp.latex(_v),',
     '                    "freeSymbols": sorted([str(_s) for _s in _v.free_symbols])}',
+    '    except Exception:',
+    '        pass',
+    // ROUND 7 (B): `scipy.sparse` matrices had no path either (they are neither ndarray nor Basic ⇒ `unknown`),
+    // yet sparse linear algebra is a core scipy use case ⇒ array + numeric + the sparsity facts.
+    '    try:',
+    '        import scipy.sparse as _sps',
+    '        if _sps.issparse(_v):',
+    '            return {"kind": "array", "elementKind": "numeric", "sparse": True, "dtype": str(_v.dtype),',
+    '                    "shape": list(_v.shape), "nnz": int(_v.nnz), "values": _vmu_jsonable(_v.toarray())}',
     '    except Exception:',
     '        pass',
     '    if _vn in ("OptimizeResult", "OdeResult", "RootResults", "TtestResult"):',
@@ -226,7 +311,7 @@ export function buildHarness({ imports = [], seed = '', body = '' } = {}) {
     '    if isinstance(_v, dict):',
     '        return {"kind": "mapping", "value": _vmu_jsonable(_v)}',
     '    if isinstance(_v, (list, tuple)):',
-    '        return {"kind": "array", "shape": [len(_v)], "values": list(_v)}',
+    '        return {"kind": "array", "elementKind": _vmu_element_kind(_v), "shape": [len(_v)], "values": _vmu_jsonable(list(_v))}',
     '    if isinstance(_v, (int, float, str, bool)) or _v is None:',
     '        return {"kind": "scalar", "value": _v}',
     '    _attrs = [ _a for _a in ("x", "fun", "success", "message", "nit", "status") if hasattr(_v, _a) ]',
@@ -558,6 +643,7 @@ export function createMathAdapters(opts) {
       argvTemplate: ['<interpreter>', '-c', '<harness: ' + lib + ' + result-shape envelope>'],
       receiptShape: Object.keys(RESULT_ENVELOPE),
       shapeKinds: SHAPE_KINDS.slice(),
+      elementKinds: ELEMENT_KINDS.slice(),
       caps: { maxArrayElements: c.maxArrayElements, maxStringBytes: c.maxStringBytes },
       probeCache: c.probeCache,
       needs: { resolveExecutable: true, spawn: true, network: false, install: false },
@@ -671,6 +757,15 @@ export function createMathAdapters(opts) {
       payload = { values: t.values, shape: Array.isArray(raw.shape) ? raw.shape.slice() : [Array.isArray(t.values) ? t.values.length : 0] }
       dropped.droppedElements = t.dropped
       if (raw.dtype !== undefined) payload.dtype = String(raw.dtype)
+      // ROUND 7 · A: the second axis. An undeclared word is normalised to `unknown` — never passed through raw.
+      if (raw.elementKind !== undefined) {
+        const ek = String(raw.elementKind)
+        payload.elementKind = ELEMENT_KINDS.indexOf(ek) === -1 ? 'unknown' : ek
+      } else {
+        payload.elementKind = 'unknown'
+      }
+      if (raw.sparse === true) { payload.sparse = true; payload.nnz = Number(raw.nnz) || 0 }
+      if (raw.sympy !== undefined) payload.sympy = String(raw.sympy)
     } else if (kind === 'frame') {
       const t = truncateElements(raw.rows === undefined ? [] : raw.rows, c.maxArrayElements)
       payload = { columns: (raw.columns || []).map(String), index: (raw.index || []).map(String), dtypes: raw.dtypes || {}, rows: t.values }
@@ -711,6 +806,7 @@ export function createMathAdapters(opts) {
     ok: true,
     schema: 'vmu/math-adapter-result@1',
     kinds: SHAPE_KINDS.slice(),
+    elementKinds: ELEMENT_KINDS.slice(),
     envelope: RESULT_ENVELOPE,
     markers: { result: RESULT_MARKER, probe: PROBE_MARKER },
     libs: Object.keys(SCIENTIFIC_LIBS).map((k) => ({
@@ -748,6 +844,7 @@ export function createMathAdapters(opts) {
       wiredKeys: WIRED_KEYS.length,
       neverRefutes: true,
       shapeKinds: SHAPE_KINDS.slice(),
+      elementKinds: ELEMENT_KINDS.slice(),
     }
   }
 

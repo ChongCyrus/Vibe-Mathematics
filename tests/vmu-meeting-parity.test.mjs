@@ -583,6 +583,27 @@ const roster = ['r-1', 'r-2']
     'without the seam the in-process gate still works and reconcile() says there is nothing to reconcile')
 }
 
+// ---- 19. G5 (Round 7): the MEETING-LEVEL mute is a COMPOSITION, not a new primitive -----------------------
+{
+  const chatMod = await import(pathToFileURL(K('chat.js')).href)
+  const meetingsMod2 = await import(pathToFileURL(K('meetings.js')).href)
+  const M = meetingsMod2.createMeetings({ clock, settings: {} })
+  const opened = M.open({ type: 'ordinary', chair: 'acad', roster, size: 2, at: NOW })
+  const chat = chatMod.createChat({ clock, settings: { 'vmu.chat.admins': ['acad'], 'vmu.chat.muteDefaultMs': 60000 } })
+  // The documented usage: the chair mutes the MEETING's members in the chat face for the meeting's duration.
+  for (const member of roster) chat.mute(member, { by: 'acad', reason: 'meeting in progress: take it to the floor' })
+  // RULE E: an `every(...)` over a possibly-EMPTY roster would be vacuously true, so the non-emptiness is part of
+  // the assertion itself (a conditional assertion that a set is non-empty is exactly what RULE E forbids).
+  ok(roster.length > 0 && roster.every((m) => chat.maySpeak(m).ok === false),
+    'the meeting roster is non-empty and every one of its members is muted in the chat face (no vacuous pass)')
+  const refusedCode = (() => { try { chat.send('r-1', 'side remark'); return null } catch (e) { return e && e.code } })()
+  ok(refusedCode === 'VMU_CHAT_MUTED', 'and a meeting member speaking out of turn is refused BY NAME (VMU_CHAT_MUTED)')
+  ok(chat.send('acad', 'the chair keeps the floor').ok === true, 'while the chair (an admin) can still speak')
+  chat.unmute('r-1', { by: 'acad', reason: 'floor given' })
+  ok(chat.maySpeak('r-1').ok === true && chat.send('r-1', 'thank you').ok === true, 'and unmuting ends the meeting-level mute for that member')
+  ok(M.status().liveMeetings.indexOf(opened.meeting) !== -1, 'the meeting itself is untouched by the chat-level mute (the composition is one-way)')
+}
+
 console.log('vmu-meeting-parity: ' + passed + ' passed, ' + failed + ' failed')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

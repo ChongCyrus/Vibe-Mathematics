@@ -187,6 +187,22 @@ pack 默认  <  预设 Config  <  会话 settings  <  运行时 set
 
 ★ **pack 侧状态**：**48 个键**全部有真读者（41 个内核读者 ＋ 5 个由本 pack 的 `middleware/prompt-switches.js` 读 ＋ 1 个孤儿在别人名下 ＋ **新增的 `vmu.paper.maxRounds`**），`vmu-pack-defaults-vs-schema.mjs` 的 `undeclared=0`。
 
+### 4.5 **保真度**：哪些声明是"改行为"，哪些只是"复述默认"（轮 7，主交付 `_handoff/vmu/11-pack-fidelity.md`）
+
+> 口径（`docs/01 R1`：**一代人的行为由它的 PACK 承载**）：**"框架能表达" ≠ "这个 preset 会那样跑"**。所以逐个核 **v5r 当年到底怎么跑**（权威源＝`vibe-math-v5r/vibe-math-v5r.js` 的 `DEFAULT_PARAMS` `:1062-1183`），再看 pack 的声明**是否真的改变了行为**。
+
+**本轮修掉的 3 处不保真**（都有 v5r 出处）：
+
+| 键 | 改动 | v5r 出处 | 为什么 |
+|---|---|---|---|
+| `vmu.turn.selfCheck` | **true → false** | `:1122` `resourceSelfCheck: false`（"false ⇒ 提示词一字不改"） | 原先声明 `true` ⇒ v5r preset 会注入一段 **v5r 从不发**的【资源】段（门控在 `middleware/prompt-switches.js:27`） |
+| `vmu.control.idleAfterMs` | **新增 120000** | `:1082` `activityTimeoutMs: 120000` | 框架默认 `0`＝不定义空闲 ⇒ 不声明则 v5r 的静止检测**根本不会发生** |
+| `vmu.limits.maxLiveMembers` | **删除**（原 3） | `:1130` `maxLiveChildren: 0`＝**不设上限** | v5r 的 `maxParallel: 3`（`:1081`）是**并发**维度，框架已在 `vmu.limits.maxParallel`/`vmu.turn.maxParallel` 默认为 3 ⇒ 把 3 当成"在活上限"会让本所拒掉 v5r 允许的第 4 名成员 |
+
+**一个有用的区分**：pack 的 48 个键里，**真正改变行为的约 8–10 个**（上表 3 个 ＋ `vmu.paper.maxRounds`／`allowLight`／`math.jobs.persist`／`chat.admins`／`resume.projections`／`report.reports` 等）；其余是**"复述框架默认"**——它们不是错误（作为机构立场可读），但**不能拿来当"v5r 行为已复现"的证据**。
+
+**③ 具名（v5r 有、vmu 无键，或有意分歧）**：`compactThreshold/compactAfterRounds`（`:1078/1079`）、`finalPaper/paperFormat/paperLanguage/paperCompilePdf`（`:1163-1166`）、`paperEditor:'academician'`（`:1167`，而 `vmu.paper.finalizer` 的值域只有 `['editor','contributor','any']`）、`maxTempPerMember`（`:1075`）、`memberMayRejectAssign`（`:1066`）；**有意分歧**：`stallAutoMeetingMs`（`:1083`，v5r 静止即自动开会；vmu 的 `idleAction` 默认 `'notice'`＝只提示，R1）。
+
 ---
 
 ## 5. v5r-pack：行为包含对照方案（D8）

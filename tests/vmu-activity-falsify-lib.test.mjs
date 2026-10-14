@@ -7,7 +7,7 @@
 //   §2 the round-3 result reproduced THROUGH the library (`kernel/activity.js` future-only rule);
 //   §3 the round-4 fixes proven LOAD-BEARING on `kernel/scheduler.js`: removing the fired-handle release (F15), the
 //      trampoline guard (F16), or the deferred-rerun flag (F16) must make the same probe go red.
-import { falsify, formatReport, formatFamilyReport, falsifyFamily, mutateOnce, assertSafeTempRoot, selfContainedSource, DEFAULT_TMP_DIR, FALSIFY_PROBLEM, MINIMAL_FAMILY_EXAMPLE } from './_lib/falsify.mjs'
+import { falsify, formatReport, formatFamilyReport, falsifyFamily, familyEligibility, mutateOnce, assertSafeTempRoot, selfContainedSource, DEFAULT_TMP_DIR, FALSIFY_PROBLEM, MINIMAL_FAMILY_EXAMPLE } from './_lib/falsify.mjs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -15,6 +15,8 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ACTIVITY = join(REPO, 'vibe-math-vmu', 'kernel', 'activity.js')
 const SCHEDULER = join(REPO, 'vibe-math-vmu', 'kernel', 'scheduler.js')
+const TASKS = join(REPO, 'vibe-math-vmu', 'kernel', 'tasks.js')
+const STRIP = join(HERE, '_lib', 'strip-comments.mjs')
 
 let passed = 0
 let failed = 0
@@ -205,6 +207,29 @@ console.log('=== 4. THE MINIMAL 10-LINE FORM IS REAL (and stays in sync with the
   let refused = null
   try { await falsifyFamily({ name: 'empty', cases: [] }) } catch (e) { refused = (e && e.code) || String((e && e.message) || e) }
   ok(refused === FALSIFY_PROBLEM.notApplied, 'and falsifyFamily refuses an empty case list by name (never a vacuous "ok")', refused)
+}
+
+console.log('=== 5. ELIGIBILITY AND THE CONTROL DIRECTION ARE CHECKED, NOT ASSUMED ===')
+{
+  const elig = familyEligibility({ module: TASKS })
+  ok(elig.ok === true && elig.factory === 'createTasks' && elig.decisionPoints > 0 && elig.refusalCodes.includes('VMU_TASK_DEPENDENCY_CYCLE'),
+    'a real face is ELIGIBLE: an exported factory, removable decision points, and named refusal codes', elig)
+  const notElig = familyEligibility({ module: STRIP })
+  ok(notElig.ok === false && notElig.reasons.length > 0,
+    '★ a module with no decision point and no factory is NOT eligible — the check refuses padding the family count', notElig)
+  ok(/no removable decision point|no exported create/.test(notElig.reasons.join(' | ')),
+    'and it says WHY, so the answer is actionable rather than a verdict', notElig.reasons)
+  const noControl = await falsify({
+    name: 'control guard', module: SCHEDULER, controlFields: ['thisFieldDoesNotExist'],
+    mutations: [{ label: 'guard removed', find: 'if (ticking) {', replace: 'if (false) {' }], probe: trampolineReading,
+  })
+  ok(noControl.ok === false && noControl.problems.some((p) => p.startsWith(FALSIFY_PROBLEM.controlAbsent)),
+    '★ a probe whose green reading has no control field is refused by name (CONTROL-FIELD-ABSENT)', noControl.problems)
+  const withControl = await falsify({
+    name: 'control present', module: SCHEDULER, controlFields: ['passes', 'fired'],
+    mutations: [{ label: 'guard removed', find: 'if (ticking) {', replace: 'if (false) {' }], probe: trampolineReading,
+  })
+  ok(withControl.ok === true, 'and the same probe WITH its real control fields passes (the guard is not always-red)', withControl.problems)
 }
 
 console.log('')

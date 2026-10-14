@@ -297,7 +297,7 @@ export function attachProjection({ target, methods = [], projection, onError = n
 }
 
 export function createResume({ store = null, work = null, control = null, identity = null, mailbox = null, watchdogs = null,
-  lock = null, children = null, roster = null, faces = {}, settings = {}, bus = null, clock = () => 0, log = null, listCap = 100 } = {}) {
+  lock = null, children = null, roster = null, reassign = null, faces = {}, settings = {}, bus = null, clock = () => 0, log = null, listCap = 100 } = {}) {
   const sget = (key, def) => {
     if (settings && typeof settings.get === 'function') { const v = settings.get(key); return v === undefined ? def : v }
     if (settings && Object.prototype.hasOwnProperty.call(settings, key)) return settings[key]
@@ -339,6 +339,9 @@ export function createResume({ store = null, work = null, control = null, identi
   let readBackFailures = 0
   let lastDrift = null
   let phaseValue = null          // the institute phase this session knows about (durable under `phase`)
+  // task-52 B: the RE-DISPATCH attempt counters, durable across restarts (that is what makes "never loop forever"
+  // a mechanism instead of a promise). The mapping lives in the `resume` key.
+  const reassignAttempts = new Map()
   const expectations = new Map()   // key -> digest of what we last wrote (read-back compares against it)
 
   const stamp = () => {
@@ -396,6 +399,10 @@ export function createResume({ store = null, work = null, control = null, identi
     // an operator may be reading (bounded by `vmu.resume.keepRecoveries`).
     if (own && typeof own === 'object' && Array.isArray(own.recoveries)) {
       state.recoveries = own.recoveries.slice(-natural(sget('vmu.resume.keepRecoveries'), 20))
+    }
+    // A re-dispatch counter that did NOT survive the restart would let a crash loop re-dispatch forever.
+    if (own && typeof own === 'object' && own.reassignAttempts && typeof own.reassignAttempts === 'object') {
+      for (const [member, n] of Object.entries(own.reassignAttempts)) if (Number.isInteger(Number(n))) reassignAttempts.set(String(member), Number(n))
     }
     for (const [key, holder] of projections) {
       const env = fold.keys[key]
@@ -661,6 +668,7 @@ export function createResume({ store = null, work = null, control = null, identi
     watchdogs: null,
     children: null,
     inflight: null,
+    reassign: null,
     flags: null,
     readBack: null,
   }
@@ -741,6 +749,8 @@ export function createResume({ store = null, work = null, control = null, identi
       interrupted: last ? Number(last.interrupted) || 0 : 0,
       unhydrated: last && Array.isArray(last.unhydrated) ? last.unhydrated.slice() : [],
       missingChildren: state.children && Array.isArray(state.children.missing) ? state.children.missing.slice() : [],
+      reassigned: state.reassign ? state.reassign.applied.length : 0,
+      reassignExhausted: state.reassign ? state.reassign.exhausted.length : 0,
       readBack: last && last.readBack !== undefined ? last.readBack : null,
       phase: phaseValue,
       note: last
@@ -837,6 +847,36 @@ export function createResume({ store = null, work = null, control = null, identi
     state.children = childReport
     report.steps.push({ step: 'children', ok: true, ...childReport })
 
+    // ②c RE-DISPATCH (task-52 B): the engine NEVER spawns. What it can do is OFFER the missing members to a
+    // policy the ASSEMBLY declared, count the attempts DURABLY (so a crash loop cannot re-dispatch forever), and
+    // report what happened. No policy declared ⇒ nothing is attempted and the step says so.
+    const reassignApply = reassign && typeof reassign.apply === 'function' ? reassign.apply : null
+    const reassignMax = (() => { const v = Number(reassign && reassign.maxAttempts); return Number.isInteger(v) && v > 0 ? v : 1 })()
+    let reReport = { attached: false, policy: reassignMax, requested: childReport.missing.length, applied: [], exhausted: [], failed: [],
+      note: 'no re-dispatch policy was declared: the missing members are only NAMED (the assembly decides whether to rebuild them)' }
+    if (reassignApply) {
+      for (const miss of childReport.missing) {
+        const used = reassignAttempts.get(String(miss.member)) || 0
+        if (used >= reassignMax) {
+          reReport.exhausted.push({ member: miss.member, childId: miss.childId, attempts: used, reason: 'the declared maxAttempts (' + reassignMax + ') is reached; the durable counter is what stops a crash loop from re-dispatching forever' })
+          continue
+        }
+        reassignAttempts.set(String(miss.member), used + 1)
+        try {
+          await reassignApply({ member: miss.member, childId: miss.childId, attempt: used + 1, maxAttempts: reassignMax, reason: 'restart-reconciliation' })
+          reReport.applied.push({ member: miss.member, childId: miss.childId, attempt: used + 1 })
+        } catch (e) {
+          reReport.failed.push({ member: miss.member, childId: miss.childId, attempt: used + 1, code: (e && e.code) || 'VMU_STATE', message: String((e && e.message) || e) })
+        }
+      }
+      reReport.attached = true
+      reReport.note = reReport.exhausted.length
+        ? 'some members are EXHAUSTED: their re-dispatch counter reached the declared bound (they stay named, never silently retried)'
+        : 'every missing member was offered to the declared policy exactly once (attempts are counted durably)'
+    }
+    state.reassign = reReport
+    report.steps.push({ step: 'reassign', ok: true, ...reReport })
+
     // ③ in-flight work — named interruption, never silently passed
     let interrupted = []
     if (work && typeof work.list === 'function') {
@@ -881,14 +921,37 @@ export function createResume({ store = null, work = null, control = null, identi
       try {
         const list = await mailboxPending()
         const arr = Array.isArray(list) ? list : []
-        mb = { attached: true, pending: arr.length, ids: arr.slice(0, listCap).map((m) => String(m && m.id)) }
-      } catch (e) { mb = { attached: false, code: CODE.mailboxMissing, pending: null, error: String((e && e.message) || e) } }
+        mb = { attached: true, source: 'port', pending: arr.length, ids: arr.slice(0, listCap).map((m) => String(m && m.id)) }
+      } catch (e) { mb = { attached: false, code: CODE.mailboxMissing, source: 'port', pending: null, error: String((e && e.message) || e) } }
+    } else {
+      // NO PORT: the mailbox face is SELF-PERSISTING (`kernel/mailbox.js:452-462` writes its own `mailbox` key, and
+      // `ack()` SPLICES entries out of `boxes` at `:363`), so the durable key itself answers "how much mail is
+      // still unacknowledged". Reading it needs no new face method and no new wiring — the count is a FACT, not a
+      // derived guess. Both stored shapes are accepted (a bare face snapshot, or a state-projection envelope).
+      let raw = null
+      try { raw = store.read('mailbox') } catch (e) { raw = null }
+      const face = raw && raw.mode === 'state' && raw.value ? raw.value : raw
+      if (face && face.face === 'mailbox' && face.data && face.data.boxes && typeof face.data.boxes === 'object') {
+        const entries = []
+        for (const [member, rows] of Object.entries(face.data.boxes)) {
+          for (const e of (Array.isArray(rows) ? rows : [])) entries.push({ id: String((e && e.id) || ''), member: String(member) })
+        }
+        mb = { attached: true, source: 'durable-mailbox-key', pending: entries.length, ids: entries.slice(0, listCap).map((e) => e.id) }
+      } else {
+        mb = { attached: false, code: CODE.mailboxMissing, source: 'durable-mailbox-key', pending: null, ids: [],
+          note: 'no mailbox port AND no durable mailbox key in this store: unacknowledged mail cannot be counted' }
+      }
     }
     state.mailbox = mb
-    // An ABSENT port is reported (named code) but does not fail the recovery: the recovery itself worked, and
+    // The unacked-mail count belongs with the other "what survived the restart" facts (task-52 A).
+    if (state.inflight) {
+      state.inflight.unackedMail = mb.attached ? mb.pending : null
+      state.inflight.unackedMailSource = mb.source || null
+    }
+    // An ABSENT count is reported (named code) but does not fail the recovery: the recovery itself worked, and
     // saying otherwise would make every store-only deployment look broken.
-    report.steps.push({ step: 'mailbox', ok: true, attached: mb.attached, pending: mb.pending, code: mb.attached ? null : CODE.mailboxMissing,
-      note: mb.attached ? 'unacknowledged mail is counted (it stays durably queued; an ack happens only after a successful delivery)' : 'no mailbox port: unacknowledged mail cannot be counted' })
+    report.steps.push({ step: 'mailbox', ok: true, attached: mb.attached, pending: mb.pending, source: mb.source || null, code: mb.attached ? null : CODE.mailboxMissing,
+      note: mb.attached ? ('unacknowledged mail is counted from ' + mb.source + ' (it stays durably queued; an ack happens only after a successful delivery)') : 'unacknowledged mail cannot be counted (no port, no durable key)' })
 
     // ⑥ watchdogs
     let wd = { attached: false, targets: 0, refreshed: [] }
@@ -930,6 +993,8 @@ export function createResume({ store = null, work = null, control = null, identi
     try {
       const env = Object.assign(counterEnvelope(), {
         recoveries: state.recoveries.concat([{ id: report.id, at: report.at, reason: report.reason, interrupted: interrupted.length, unhydrated: h.unhydrated.map((u) => u.key), readBack: rb ? rb.consistent : null }]).slice(-cfg().keepRecoveries),
+        // DURABLE re-dispatch counters (task-52 B): a crash loop must not be able to re-dispatch forever.
+        reassignAttempts: Object.fromEntries([...reassignAttempts.entries()].sort()),
       })
       await write(RESUME_KEY, env)
       state.recoveries = env.recoveries
@@ -993,6 +1058,9 @@ export function createResume({ store = null, work = null, control = null, identi
       // v5r's `pendingWork` view + which recovery ports this assembly actually wired (an UNWIRED port is visible
       // here instead of being silently claimed by the service description).
       inflight: state.inflight,
+      // task-52 B: what the declared re-dispatch policy did (or that none was declared), plus the durable counters.
+      reassign: state.reassign,
+      reassignAttempts: Object.fromEntries([...reassignAttempts.entries()].sort().slice(0, listCap)),
       ports: {
         store: !!store, work: !!work, control: !!control, identity: !!identity, lock: !!lock,
         mailbox: !!(typeof mailbox === 'function' || (mailbox && typeof mailbox.pending === 'function')),

@@ -223,6 +223,30 @@ const mk = (settings = {}, extra = {}) => m.createChat(Object.assign({ clock, se
   ok(c3.restore({ face: 'chat', v: 1, data: { messages: [] } }).code === 'VMU_RESUME_SNAPSHOT_INCOMPLETE', 'a missing collection is NAMED')
 }
 
+// ---- 11. G1 (Round 7): the private→public supplement (v5r's supplementOf + why) ---------------------
+{
+  const grab = (fn) => { try { fn(); return null } catch (e) { return e && e.code } }
+  const c = mk({ 'vmu.chat.admins': ['acad'] })
+  ok(grab(() => c.supplement({ by: 'r-1', why: 'x' })) === 'VMU_INVALID_ARGUMENT', 'a supplement without { of } is refused')
+  ok(grab(() => c.supplement({ of: 'dm-1', why: 'x' })) === 'VMU_INVALID_ARGUMENT', 'without { by } it is refused (a supplement is the sender\'s own act)')
+  ok(grab(() => c.supplement({ of: 'dm-1', by: 'r-1' })) === 'VMU_INVALID_ARGUMENT', 'and without a { why } it is refused (an unexplained supplement is the leak this prevents)')
+  const s = c.supplement({ of: 'dm-1', by: 'r-1', why: 'the room needs the agreed number' })
+  ok(s.ok === true && s.bodyWithheld === true && s.supplement.body === 'withheld',
+    'the BODY IS NEVER COPIED — the public record is {of, by, at, why}')
+  ok(s.authorship === 'claimed-unverified', 'without the private seam the face says it did NOT verify authorship (it never pretends)')
+  ok(c.supplement({ of: 'dm-1', by: 'r-1', why: 'again' }).deduped === true, 'a second supplement of the same message is idempotent (append-only)')
+  const via = c.supplementOf('dm-1')
+  ok(via.ok === true && via.viaSupplement === true && via.bodyWithheld === true, 'citations resolve THROUGH the supplement book (viaSupplement)')
+  ok(c.supplementOf('dm-404').ok === false && c.supplementOf('dm-404').code === 'VMU_CHAT_ANCHOR_DANGLING',
+    'an unsupplemented private message stays unresolvable (named, never leaked)')
+  ok(c.status().counts.supplements === 1, 'and the book is observable')
+  const seam = mk({}, { privateSender: { senderOf: (id) => (id === 'dm-2' ? 'r-1' : null) } })
+  ok(seam.supplement({ of: 'dm-2', by: 'r-1', why: 'ok' }).authorship === 'verified', 'with the seam a genuine sender is VERIFIED')
+  const seam2 = mk({}, { privateSender: { senderOf: (id) => (id === 'dm-4' ? 'r-1' : null) } })
+  ok(grab(() => seam2.supplement({ of: 'dm-4', by: 'r-9', why: 'steal' })) === 'VMU_NOT_PERMITTED', 'and only the SENDER may supplement (a mismatch is refused)')
+  ok(grab(() => seam2.supplement({ of: 'dm-404', by: 'r-1', why: 'x' })) === 'VMU_CHAT_ANCHOR_DANGLING', 'a seam that cannot resolve the id refuses by name')
+}
+
 console.log('vmu-chat: ' + passed + ' passed, ' + failed + ' failed')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

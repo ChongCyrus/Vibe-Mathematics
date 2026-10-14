@@ -1025,6 +1025,12 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     // turns them into `sendToMember`/`interruptMember` and counts the calls); a missing one is refused there by name.
     sendMessage: sendMessageSeam,
     interrupt: interruptSeam,
+    // ROUND 7 / task-54 (F44 residual closed): the Lean face owns a DURABLE notice queue (`pushNotice` /
+    // `takeNoticesFor`, bounded by `LEAN_NOTICE_MAX`, "taking removes it"), and the turn loop owns the ONE-SHOT notice
+    // channel that reaches a member's next prompt. This is the missing consumption point between them, so a
+    // formalisation announcement really arrives in that member's next assembly instead of only being readable through
+    // the face. Absent (no Lean face) ⇒ `[]`, so an assembly without Lean is byte-identical to before.
+    noticeSource: (member) => (lean && typeof lean.takeNoticesFor === 'function' ? lean.takeNoticesFor(member) : []),
   })
   // ROUND 24: the teaching face the N13 volume declared (19 of its 24 knobs change behaviour; the five that need
   // a library, records or ontology seam are named rather than silently accepted).
@@ -1586,7 +1592,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
      * would need host identity, which the harness does not hand us). It replaces a purely declarative comment
      * with something that refuses by name.
      */
-    setSettingsValue(key, value, { by = null } = {}) {
+    setSettingsValue(key, value, { by = null, reason = null } = {}) {
       // THE CONTRACT LIVES HERE (task-166): declared key, H3 read-only, declared owner. It used to live ONLY
       // in host.js, so the kernel API accepted an H3 write with `applied:'immediate'` while the tool face
       // refused the very same pair with VMU_NOT_PERMITTED — two paths, two contracts.
@@ -1641,7 +1647,8 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
             ? 'applied live to ' + (liveApplied.join(', ') || '(the settings object only)') + '; NOT yet visible to ' + pendingConsumers.join(', ') + ' (they captured the option at construction — disclosed, not claimed)'
             : 'applied immediately (hot class ' + String(hot) + '): every consumer reads this key live'),
       }
-      runtimeWrites.push({ key, hot, by, ownerCheck: g.ownerCheck, requiresRestart, liveApplied: liveApplied.slice(), pendingConsumers: pendingConsumers.slice(), at: receipt.at, action: 'set' })
+      // ROUND 7 / task-57: the caller's `reason` is part of the record (the ledger answers "why", not only "who").
+      runtimeWrites.push({ key, hot, by, reason: reason === null || reason === undefined ? null : String(reason), ownerCheck: g.ownerCheck, requiresRestart, liveApplied: liveApplied.slice(), pendingConsumers: pendingConsumers.slice(), at: receipt.at, action: 'set' })
       return receipt
     },
     /**

@@ -288,7 +288,12 @@ export function createTurnOrchestrator({
   prompt = null, deliver = null, faces = {}, bindings = null, wakeupPolicy = 'round-robin', settings = null, clock = () => new Date().toISOString(),
   // ROUND 4 / F9+F10 (docs/26 §3.22): the ONGOING-COMMAND seams. Both are optional; a loop without them can still
   // START turns, and a caller that asks for the missing verb gets a NAMED refusal rather than a silent no-op.
-  sendMessage = null, interrupt = null } = {}) {
+  sendMessage = null, interrupt = null,
+  // ROUND 7 / task-54 (F44 residual): an EXTERNAL NOTICE SOURCE. The loop already queues its own notices (a refused
+  // dispatch) and drains them exactly once at assembly; this seam lets a face that OWNS a durable notice queue (the
+  // Lean face's `takeNoticesFor(member)`) feed the SAME one-shot channel, so an announcement really reaches the
+  // member's next prompt. Absent ⇒ nothing is added (the loop's own behaviour is unchanged, byte for byte).
+  noticeSource = null } = {}) {
   const owners = resolveOwners(bindings)
   const known = Object.keys(owners)
   // ROUND 347: the wakeup POLICY (docs/26 section 3.2). The original preset recorded only WHO should be woken and
@@ -352,6 +357,18 @@ export function createTurnOrchestrator({
     // inside the per-round brief. Taking them is what makes the announcement one-shot, and it happens on the same call
     // that delivers the prompt, so a notice cannot be skipped by a phase that builds a different status block.
     const pendingNotices = drainNotices(turn.member)
+    // ROUND 7 / task-54 (F44): plus whatever an EXTERNAL source has for this member (e.g. the Lean face's durable
+    // notice queue). Both channels are drained on the SAME call that delivers the prompt, so neither can be skipped by
+    // a phase that builds a different status block; a source that throws is NAMED and does not break the assembly.
+    if (typeof noticeSource === 'function') {
+      try {
+        const extra = noticeSource(turn.member)
+        if (Array.isArray(extra)) for (const l of extra) if (typeof l === 'string' && l.trim() !== '') pendingNotices.push(l)
+      } catch (e) {
+        fail('VMU_ENGINE_UNAVAILABLE', 'the notice source failed for ' + String(turn.member) + ': ' + String((e && e.message) || e),
+          'a notice source must return an array of lines; the assembly refuses rather than dropping the announcement silently')
+      }
+    }
     // With a noticeBlock the notices are PREPENDED as their own block and kept OUT of the status block, because that
     // is what the corpus shows: a header, indented notice lines, a blank line, then the round heading. Without one
     // they join the status block, which is the framework's own fallback rather than an institution's wording.

@@ -13,13 +13,26 @@ export const V5R_SETTING_DEFAULTS = Object.freeze({
   // Which reply catalogue the original really sent: the delivered-prompt corpus carries the compact
   // form, so that is the pack's preference. The full catalogue stays available by setting.
   'vmu.turn.replyCatalogue': 'compact',
-  // The three optional blocks the source gates. On is the source's default: a deployment that never
-  // configured them gets the full prompt.
+  // The three optional blocks the source gates. ★ ROUND 7 FIDELITY CORRECTION: this used to say "on is the
+  // source's default", and for the RESOURCE block that is FALSE — the original ran with
+  // `resourceSelfCheck: false` (vibe-math-v5r.js:1122), whose own comment says "false ⇒ 提示词【一字不改】,
+  // 仅当为 true 时才注入【资源】段". The pack's policy module gates the `v5r-turn-resources` section on
+  // `settings['vmu.turn.selfCheck'] !== false` (packs/v5r/middleware/prompt-switches.js:27), so declaring
+  // `true` injected a section v5r never sent. Declared FALSE = zero injection = what v5r really ran.
+  // (`vmu.prompts.resourceSection` in the framework already defaults to false for the same reason.)
   'vmu.pointer.propagation': true,
-  'vmu.turn.selfCheck': true,
+  'vmu.turn.selfCheck': false,
   'vmu.turn.feedback': true,
   // Where the protocol lives, named by the compact catalogue. A path, not a hard-coded string.
   'vmu.turn.protocolPath': 'Shared/Protocol.md',
+  // ROUND 7 FIDELITY: v5r's `activityTimeoutMs: 120000` (vibe-math-v5r.js:1082) is "how long without activity
+  // before the institute counts as stalled". The framework's idle clock is `vmu.control.idleAfterMs` (default
+  // 0 = "no idle defined"), read by `kernel/control.js:65` and named in its `enforced[]` (`:206`). Without this
+  // line the institution never becomes idle, so v5r's stall detection cannot happen at all.
+  // NOTE (deliberate divergence, NOT a gap): v5r then AUTO-CONVENED a meeting after `stallAutoMeetingMs`
+  // (360000, :1083); vmu's `vmu.control.idleAction` defaults to 'notice' — "只提示，绝不自动散会" (R1: the
+  // framework recommends, it does not drive). The pack keeps that stance.
+  'vmu.control.idleAfterMs': 120000,
 
   // ── ROUND 2 (D-08): the institution's preferences for the new primitives ────────────────────────────
   // These are STRATEGY, not mechanism: kernel/chat.js, kernel/mailbox.js, kernel/panel.js, kernel/resume.js,
@@ -69,14 +82,24 @@ export const V5R_SETTING_DEFAULTS = Object.freeze({
   //   · `vmu.math.maxParallel` = MATH-JOB / compilation concurrency. Its two readers are `kernel/mathjobs.js`
   //     and `kernel/mathtools.js`, both about running maths, so v5r's value is its `leanJobsMaxParallel: 1`
   //     = background compilation is SERIAL (vibe-math-v5r.js:1118-1119).
-  //   · `vmu.limits.maxLiveMembers` = MEMBER concurrency. v5r's `maxParallel: 3` meant "wake at most 3 members
-  //     at once" (:1081; wording :2073-2076) and belongs to the member cap (`kernel/index.js:221`'s
-  //     `liveMemberCapOf`, read by `declareSlots`), NOT under `vmu.math.*`.
+  //   · `vmu.limits.maxParallel` / `vmu.turn.maxParallel` = MEMBER wake concurrency. v5r's `maxParallel: 3`
+  //     (:1081) is ALREADY the framework default on both keys (schema doc: "P3：吸收 v5r 的 maxParallel"), so
+  //     the pack need not declare it. The framework also carries the original's own name for the job-side cap,
+  //     `vmu.math.leanJobsMaxParallel`, whose default 1 IS v5r's `leanJobsMaxParallel: 1` (:1119).
   // The legacy `vmu.math.jobs.maxParallel` is NOT declared here (and core removes/deprecates it in the schema):
   // its value is derived from the canonical name, so a pack-level declaration would be a declaration with no
   // effect - the shape this repository refuses.
+  // ★ ROUND 7 LEAD RULING: this line is KEPT for readability/tunability, but it is a **RESTATEMENT OF THE
+  // FRAMEWORK DEFAULT** — `＝框架默认（复述）；v5r 对应参数 leanJobsMaxParallel:1（vibe-math-v5r.js:1119）；
+  // 非保真证据**. It must never be cited as evidence that v5r's behaviour was reproduced: v5r's own parameter
+  // for this is `leanJobsMaxParallel` (whose framework twin `vmu.math.leanJobsMaxParallel` already defaults to 1),
+  // and this key's schema default is 1 as well. A deployment may still tune it here.
   'vmu.math.maxParallel': 1,
-  'vmu.limits.maxLiveMembers': 3,
+  // ★ ROUND 7 FIDELITY CORRECTION: `vmu.limits.maxLiveMembers: 3` was REMOVED from this file. v5r's live-member
+  // cap was its OWN parameter `maxLiveChildren: 0` (vibe-math-v5r.js:1130) = NO cap, which is exactly why
+  // `vmu.limits.maxLiveMembers` defaults to 0. The `3` that used to sit here was taken from `maxParallel` - a
+  // different dimension, already defaulted on `vmu.limits.maxParallel`/`vmu.turn.maxParallel` - so declaring it
+  // as a LIVE cap made this institution refuse a fourth live member that v5r would have allowed.
   // Meeting parameters measured from v5r: quote depth 3, at most 2 quotes per message, and an unanswered member
   // stays OUT of the denominator (v5r's D3: "未答不计分母、不算反对、名单必列").
   // ROUND 3 (GAP-MTG-02): the meeting TIER is the pack's policy. v5r had ONE meeting protocol (the full one), so

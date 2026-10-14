@@ -622,4 +622,19 @@
 - **"我重启过"是耐久事实（F51）**：`status().restart` / `resume.restart()` = `{generation, restarted, at, reason, interrupted, unhydrated, readBack, phase}`，由耐久 `resume` 键的 `recoveries[]` 派生 ⇒ 编排面可用它区分"首跑"与"第 N 代续跑"，并看到重启代价（中断数、未水合面）。相邻标记：`work`（= v5r 的 `pendingWork`，带 `interruptedReason`）、`ids` 计数器、`human` 未批队列、Lean/mathjobs 的 `Formal/Jobs/<id>.json` 作业镜像。**v5r 的 `meetingOpen` 在 vmu 无等价物（具名缺口：需在会议投影里加"已开未收束"标记）**；`kernel/activity.js` 的 generation **有意不持久**（一次性、只对未来生效的等待器）。
 - **未挂面结论**：`members`（单例、可挂，带 null 守卫）、`budget`（Round 4 补公共 `snapshot()/restore()` ⇒ 可挂）、`tasks`（journal）＋ reader-c 的 `meetings/ballots/ballotbox/minutes/chat/panel` 可挂；**`meeting`/`ballot` 是每实例工厂 ⇒ 单例投影不适用**（要跨重启挂 `meetings`/`ballotbox`，多实例需注册表——具名未做）；`mailbox` **自持久**，无需投影行。
 
-**验收**：`tests/vmu-resume-recovery.test.mjs`（**73/0**，exit 0）＋ `tests/vmu-human-gate.test.mjs`（**67/0**，exit 0）＋ `tests/vmu-resume-lock-and-marks.test.mjs`（**39/0**，exit 0，F18 全分支 finally＋F51 标记＋faces 结论）；命令与退出码见 `_handoff/vmu/resume-round4-report.md`。**边界**：`mode:'journal'` 的重放依赖被重放方法的确定性，含外部副作用/依赖时钟的命令以 `nonReplayable` **具名拒**（绝不静默少一条）；`meeting`/`ballot` 的单例投影与多实例注册表见 docs/07 §14。
+**Round 7 增补（目标 1 最后两项收尾）**：
+- **未 ack 邮件计数（不再需要新接口）**：邮件面自持久（`kernel/mailbox.js:452-462`），`ack()` 把条目**从 boxes 摘除**（`:363`）⇒ 恢复时**直接读耐久 `mailbox` 键**即得"仍未 ack 的条数"，两种存储形状都接受；结果进 `status().inflight.unackedMail`（＋`unackedMailSource`），步 `mailbox.source` 具名。⇒ 编排面在一个视图里就能看到"**未完成的工作**（`pending`/`interrupted`）＋**还没被读的信**（`unackedMail`）"。
+- **重派缺失成员＝装配声明的策略（引擎只递名单＋计数）**：可复制配方——
+  ```js
+  createResume({
+    children: { parentId: () => rootSessionId, list: (p) => subagents.listChildren(p) },   // 谁在活（已在入口接好）
+    roster:   () => members.roster(),                                                      // 谁该有子代（带 childId）
+    reassign: { maxAttempts: 1, apply: async ({ member, childId, attempt }) => {            // 谁重派＝装配
+      await members.wake(member, { role: 'restart-recovery', phase: 'founding' })          //   何时触发＝恢复对账后
+    } },
+  })
+  ```
+  **谁声明**＝装配（`kernel/index.js`/入口）；**何时触发**＝`recover()` 的 `children` 步发现"名册里的 childId 宿主已不认"之后；**如何避免无限重派**＝尝试次数**耐久**记进 `resume` 键、达 `maxAttempts` 即标 `exhausted`（**崩溃循环不可能无限重派**），失败也**消耗**配额。**不声明 `reassign` ⇒ 零机制**：只把 `missingChildren` 具名，什么都不做。
+- **看门狗 N/A 复核仍成立**：`grep lastInputAt|lastVoteAt|watchdogAt|inflightSince` 在 `kernel/*.js` **零命中**；`kernel/meetinglapse.js` 是**纯规则**，lapse 记录 `{name,why,at,revocable}` 由 `meetings.js` 存、**朝关闭方向失败**且可 `revokeLapse`（须理由）⇒ 不需要 v5r 式"把钟往后刷"；要"重启宽限"就用 `watchdogs.targets()/touch()`（装配侧声明）。
+
+**验收**：`tests/vmu-resume-recovery.test.mjs`（**73/0**，exit 0）＋ `tests/vmu-human-gate.test.mjs`（**75/0**，exit 0）＋ `tests/vmu-resume-lock-and-marks.test.mjs`（**67/0**，exit 0，F18 全分支 finally＋F51 标记＋F51c 视图＋task-52 的未 ack 计数与重派声明面）；命令与退出码见 `_handoff/vmu/resume-round7-report.md`。**边界**：`mode:'journal'` 的重放依赖被重放方法的确定性，含外部副作用/依赖时钟的命令以 `nonReplayable` **具名拒**（绝不静默少一条）；`meeting`/`ballot` 的单例投影与多实例注册表见 docs/07 §14。

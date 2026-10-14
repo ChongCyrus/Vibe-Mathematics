@@ -42,6 +42,9 @@
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs'
 import { join, dirname, resolve, isAbsolute, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
+// The repository's own comment/string blanker (sibling lib), reused so the eligibility scan reads CODE only — a
+// `refuse(...)` inside a doc comment must not count as a decision point.
+import { stripComments } from './strip-comments.mjs'
 
 /** The one allowed temp root (project discipline: temp files live in `D:\_tmp`, never on C: and never in-repo). */
 export const DEFAULT_TMP_DIR = 'D:\\_tmp'
@@ -72,6 +75,8 @@ export const FALSIFY_PROBLEM = Object.freeze({
   realRed: 'REAL-MODULE-NOT-GREEN',
   noDiscrimination: 'PROBE-DOES-NOT-DISCRIMINATE',
   leftover: 'TEMP-NOT-CLEANED',
+  controlAbsent: 'CONTROL-FIELD-ABSENT',
+  notEligible: 'NOT-A-FALSIFY-FAMILY',
 })
 
 let counter = 0
@@ -157,6 +162,7 @@ export async function falsify({
   module: modulePath,
   mutations = [],
   probe,
+  controlFields = [],
   expectGreen = (reading) => reading !== undefined && reading !== null,
   expectRed = (red, green) => JSON.stringify(red) !== JSON.stringify(green),
   tmpDir = DEFAULT_TMP_DIR,
@@ -177,6 +183,16 @@ export async function falsify({
   report.real = await runProbe(realMod)
   if (!expectGreen(report.real)) {
     report.problems.push(FALSIFY_PROBLEM.realRed + ': the REAL module is not green on this probe — the probe is broken, not the mutant (' + JSON.stringify(report.real) + ')')
+  }
+  // ⑥ THE CONTROL DIRECTION, mechanically (round 7): a probe whose green reading has no POSITIVE observation only
+  // ever proves "the bad path did not happen", which is true of a face that was never wired at all. Every declared
+  // `controlFields` name must be present AND truthy in the green reading — the rule stops being prose.
+  if (Array.isArray(controlFields) && controlFields.length > 0) {
+    const absent = controlFields.filter((f) => !report.real || report.real[f] === undefined || report.real[f] === null || report.real[f] === false || report.real[f] === 0 || report.real[f] === '')
+    if (absent.length > 0) {
+      report.problems.push(FALSIFY_PROBLEM.controlAbsent + ': the green reading has no control direction for ' + absent.join(', ') +
+        ' — a probe that only reads "the bad path did not happen" is vacuous on an unwired face (non-vacuous: ' + JSON.stringify(controlFields) + ')')
+    }
   }
 
   for (const m of mutations) {
@@ -252,7 +268,7 @@ export async function falsifyFamily({ name = 'falsify-family', cases = [], tmpDi
   for (const c of cases) {
     reports.push(await falsify({
       name: c.name || name, module: c.module, mutations: c.mutations, probe: c.probe,
-      expectGreen: c.expectGreen, expectRed: c.expectRed, tmpDir, keepOnFailure,
+      controlFields: c.controlFields, expectGreen: c.expectGreen, expectRed: c.expectRed, tmpDir, keepOnFailure,
     }))
   }
   const problems = reports.flatMap((r) => r.problems.map((p) => r.name + ': ' + p))
@@ -269,4 +285,28 @@ export function formatFamilyReport(family) {
   for (const c of family.cases) lines.push(formatReport(c).split('\n').map((l) => '  ' + l).join('\n'))
   if (family.problems.length) lines.push('  FAMILY PROBLEMS: ' + family.problems.join(' | '))
   return lines.join('\n')
+}
+
+/**
+ * THE ELIGIBILITY CHECK (round 7, task C): "is this face worth a falsify family AT ALL?" — asked mechanically, so a
+ * later round cannot pad the count with a family that proves nothing. Three criteria, each a named reason:
+ *   · DECISION POINTS — at least `minDecisionPoints` removable ones (`throw refuse(`, a returned `{ ok:false`, or a
+ *     `return refuse(`). **No branch to remove ⇒ nothing to falsify** (a pure data shape is not a family).
+ *   · A FACTORY — an exported `create*` factory, so the probe can build the face without a host seam.
+ *   · REFUSAL VOCABULARY — at least one `VMU_*`/`MATH_*`/`ARCHIVE_*`/`SCRIPT_*` code, so the red reading is NAMED.
+ * Returns `{ ok, module, decisionPoints, refusalCodes, factory, reasons[] }`. `ok === false` is an instruction:
+ * do not add a family here (add the seam/factory or the decision point first).
+ */
+export function familyEligibility({ module: modulePath, minDecisionPoints = 1, minRefusalCodes = 1 } = {}) {
+  const src = stripComments(readFileSync(modulePath, 'utf8'))
+  const decisionPoints = (src.match(/throw\s+refuse\s*\(|return\s+\{\s*ok\s*:\s*false|return\s+refuse\s*\(/g) || []).length
+  const refusalCodes = [...new Set((src.match(/'((?:VMU|MATH|ARCHIVE|SCRIPT)_[A-Z0-9_]+)'/g) || []).map((s) => s.slice(1, -1)))].sort()
+  const factory = (/export function (create[A-Za-z0-9_]+)/.exec(src) || [])[1] || null
+  const reasons = []
+  if (decisionPoints < minDecisionPoints) {
+    reasons.push('no removable decision point: ' + decisionPoints + ' < ' + minDecisionPoints + ' — a module with no branch to remove is not a falsify family')
+  }
+  if (refusalCodes.length < minRefusalCodes) reasons.push('no named refusal code (' + minRefusalCodes + ' required): the red reading could not be NAMED')
+  if (!factory) reasons.push('no exported create* factory: the probe cannot build the face without a host seam')
+  return { ok: reasons.length === 0, module: modulePath, decisionPoints, refusalCodes, factory, reasons }
 }
