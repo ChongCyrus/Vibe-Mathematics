@@ -1,5 +1,15 @@
 # 源码完备性审计：v5r 运行时机制 → vmu 移植
 
+> ★★★★★ **陈旧横幅（★ 轮 656 加 ✓）—— 读本文前先读这一段** ✗✓：
+> ★★★ **本文是【快照**]，★ 而**它的两处头号缺口【已在轮 377／378 补上**]** ✓✓ —— ★★ **故 §2 的"owner 命中 12／无 owner ≥17"、§3 的 13 条缺口、§5 的"THE SINGLE MOST IMPORTANT GAP"** **【都已被后续轮次超越**]** ✗✓，★ **不可当作今天的结论使用** ✗。
+>
+> **实测今天的状态（★ 轮 656 ✓，★ 读代码而非读叙述 ✓）**：
+> - ★ **`kernel/turn/index.js` 的 `FIELD_OWNERS` 现有 27 个字段** ✓（★ 原为 **12** ✓）—— ★ **本文 §2 点名"无 owner"的那些，如今【全部有 owner**]** ✓：`convene_meeting`→`vmu.meetings/open` ✓、`propose_meeting`→`meetings/motion` ✓、`input`→`meetings/speak` ✓、`task_claim`／`task_done`→`tasks/transition` ✓、`assign`→`tasks/assign` ✓、`nudge`→`meetings/warn` ✓、`reject_assign`→`meetings/speak` ✓、`vote_solved`→`ballotbox/cast` ✓、`meeting_hand`→`meetings/queue` ✓、`meeting_invite`→`meetings/attend` ✓。
+> - ★ **`contextPct`／`compacted` 已有 16 处命中** ✓（`memory.js:422/423/428/429/430` ✅、`records.js:238` ✅）—— ★ **本文 §5 说"零命中"** ✗，★ **已不成立** ✓；★ 代码注释指名 **"ROUND 377 - THE BOOKKEEPING FIELDS (docs/26 section 3.21)"** ✓。
+> - ★★ **而补法是对的** ✓（★ 代码注释原文 ✓）：★ **"checked against what the kernel's services REALLY expose at runtime … nothing here is invented. Sending one of these to a face that does not implement it is visible as face-not-wired, never silent."** ✓✓
+>
+> ★★★ **并记两条通用纪律** ✓：★ **① 本卷在 `docs/audit/` 下，而跨卷引用审计【按构造不扫子目录**]**（★ `readdirSync(DOCS)` 非递归 ✓）⇒ **本卷的陈述没有任何守卫** ✗ ⇒ ★ **凡在此卷写"缺口"，必须带【测量轮次**]，★ 否则它会在缺口关闭后继续宣称缺口** ✓✓；★ **② 与轮 643／653 同形**：★ **"一行否定的陈述"会过期，★ 而它过期后【看不出过期**]** ✓。
+
 - **权威源**：`vibe-math-v5r/vibe-math-v5r.js`（约 11,597 行）
 - **被审移植**：`vibe-math-vmu/kernel/**`、`vibe-math-vmu/host.js`、`vibe-math-vmu/vibe-math-vmu.js`、`vibe-math-vmu/settings/schema.js`，以及 `tests/vmu-turn.test.mjs`、`tests/vmu-ab-v5r-verification.test.mjs`
 - **审计范围**：**回合机制**（生成/就座、唤醒/调度、回复字段派发、会议、表决链、任务板、hire/fire、暂停恢复）。**提示词措辞不在本报告范围**。
