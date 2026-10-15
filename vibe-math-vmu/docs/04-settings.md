@@ -302,7 +302,7 @@ vmu.packs.active: [v5r]
 | `vmu.tasks.requireExpectedRevision` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 任务变更必须声明所见版本（防丢更新；关＝仅在声明时校验） |
 | `vmu.tasks.stages` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | 阶段列表；默认空＝不假装有流程 |
 | `vmu.turn.wakeupPolicy` | enum | `round-robin` | `round-robin`∣`least-recent` | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | 下一轮唤醒谁：round-robin＝按在册次序轮转；least-recent＝最少被唤醒者优先（同票按在册次序，确定性） |
-| `vmu.turn.objective` | string | `（尚未设定）` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | `packs/v5r/prompts/v5r-core.js` | 本所研究对象（原问题）；默认值与原线未设定时的输出一字不差，绝不留空括号 |
+| `vmu.turn.objective` | string | `（尚未设定）` | — | 会话 | H2 | office | ❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有） | `packs/v5r/prompts/v5r-core.js` | 本所研究对象（原问题）；默认值与原线未设定时的输出一字不差，绝不留空括号 |
 | `vmu.turn.maxParallel` | number | `3` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 每轮最多同时唤醒的成员数（原线默认 3；非法值回落 3） |
 | `vmu.tools.enabled` | string[] | `null` | — | 会话 | H2 | office | ✅ 已接线 | `host.js` | 已接线（host.js 的 install 读取）：宿主注册哪些 vmu 工具。空/缺省（null）＝不限制；显式空表 [] ＝一个都不注册；未知名会被具名拒绝而不是静默放开（docs/03 §7）。 |
 | `vmu.tools.faces` | string[] | `null` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 已接线（host.js resolveFaces 读取）：要发布的工具面清单（面键如 `minutes`／工具名 `vibe_vmu_minutes`／`*` 全部）。缺省 null＝不额外声明任何面（仍遵守各面自己的 config／vmu.<族>.* 声明）；显式空表 []＝不靠本键声明任何面。 |
@@ -319,7 +319,7 @@ vmu.packs.active: [v5r]
 | `vmu.turn.feedback` | bool | `true` | — | 会话 | H2 | office | ❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有） | `packs/v5r/middleware/prompt-switches.js` | 是否注入工作反馈行（关掉＝零注入，连段标题都不出现；原线 feedbackOn 同义） |
 | `vmu.pointer.propagation` | bool | `true` | — | 会话 | H2 | office | ❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有） | `packs/v5r/middleware/prompt-switches.js` | 是否注入指针传播契约（关掉＝零注入；原线的 S21 开关同义） |
 | `vmu.prompts.missingVariable` | enum | `report` | `report`∣`refuse` | 会话 | H2 | office | ✅ 已接线 | `kernel/prompt/index.js` | 占位符无人供值时：report＝记录并在装配结果里报告（默认）；refuse＝具名拒（VMU_PROMPT_VARIABLE_MISSING） |
-| `vmu.turn.instituteName` | string | `institute` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | `packs/v5r/prompts/v5r-core.js` | 本所名（章程开头与多处句子引用） |
+| `vmu.turn.instituteName` | string | `institute` | — | 会话 | H2 | office | ❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有） | `packs/v5r/prompts/v5r-core.js` | 本所名（章程开头与多处句子引用） |
 | `vmu.turn.leaderId` | string | `` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 在册领头人的代号；空＝无领头人（原线：章程绝不可点名不在册的领头人） |
 | `vmu.turn.tempHiredBy` | string | `（未说明）` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 临时工的雇主（临时工章程开头用） |
 | `vmu.turn.tempDirection` | string | `（未说明）` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 给临时工的起点方向 |

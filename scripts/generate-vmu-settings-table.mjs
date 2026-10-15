@@ -272,6 +272,30 @@ const LIST_INDEX = (() => {
           if (k2 >= 0) { iterLine = k2 + 1; iterRel = rel; break }
         }
       }
+      // ★ R37 (task-175 ③): MINIMAL DATAFLOW for an INLINE array declared under a SETTINGS KEY (`'vmu.report.params': [ … ]`).
+      // The declared name and the name the iteration is written on DIFFER (`sget('vmu.report.params')` is stored as
+      // `params:` and iterated as `c.params.map(...)` in kernel/report.js), so name matching cannot connect them. The
+      // rule is ONE level deep and LITERAL-BOUND, which is what keeps it out of R33's loose-iteration trap (that
+      // version accepted any `.map(` in the file and invented evidence):
+      //   ① the key is READ on a line that BINDS it — `const X = … sget('KEY')` or `X: … sget('KEY')`;
+      //   ② the SAME file then iterates / membership-checks THAT BINDING (`X.map(`/`.X.map(`/`X.includes(`/…).
+      // Both halves are required and the binding name comes from the read line, never from a guess.
+      if (iterLine < 0 && /^vmu\./.test(name)) {
+        const bindRe = new RegExp("(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*[^;\\n]*sget\\(\\s*['\"]" + name + "['\"]|([A-Za-z_$][\\w$]*)\\s*:[^,;\\n]*sget\\(\\s*['\"]" + name + "['\"]")
+        for (const g of SOURCE_FILES) {
+          if (g.text.indexOf(name) < 0) continue
+          const gl = linesOf(g)
+          for (let k = 0; k < gl.length; k++) {
+            const b = bindRe.exec(gl[k])
+            if (!b) continue
+            const bound = b[1] || b[2]
+            const useRe = new RegExp('(^|[^\\w$.])' + bound + '\\.(map|forEach|filter|some|includes|indexOf)\\(|\\.' + bound + '\\.(map|forEach|filter|some|includes|indexOf)\\(')
+            const u = gl.findIndex((l) => !COMMENT_LINE.test(l) && useRe.test(l))
+            if (u >= 0) { iterLine = u + 1; iterRel = g.rel; break }
+          }
+          if (iterLine >= 0) break
+        }
+      }
       if (iterLine < 0) continue                     // not iterated here nor by an importer ⇒ no dynamic-read evidence
       const iterText = linesOf(BY_REL.get(iterRel)).at(iterLine - 1).trim().slice(0, 90)
       // ★ R34: THE LIST BOUNDARY MUST BE COUNTED, NOT GUESSED. The first one-pass version stopped only on a line

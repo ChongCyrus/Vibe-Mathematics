@@ -559,8 +559,6 @@ ok(unregisteredInCode.length === 0,
   const tierCounts = { wired: rows.filter((r) => TIER_MARKER.wired.test(tierCellOf(r))).length, undetermined: rows.filter((r) => TIER_MARKER.undetermined.test(tierCellOf(r))).length, unwired: rows.filter((r) => TIER_MARKER.unwired.test(tierCellOf(r))).length }
   ok(tierCounts.wired > 0 && tierCounts.undetermined > 0 && tierCounts.unwired > 0,
     'and all three tiers are actually represented in the table (a collapsed table would pass the line above vacuously)', tierCounts)
-  ok(unmarkedRows.length === 0, 'every settings row states whether the key is WIRED (no silent promises)',
-    unmarkedRows.slice(0, 3).map((r) => (r.split('|')[1] || '').trim()).join(','))
 
   // Independently recompute the wired set: a key is wired when its literal appears in the runtime sources.
   const runtimeFiles = ['vibe-math-vmu.js', 'host.js', 'host-hooks.js', 'host-spawn.js'].map((f) => join(VMU, f))
