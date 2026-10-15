@@ -381,8 +381,8 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   // `createBoxBinding` owns the state, the self-reported view and the named refusals; this face only CALLS it.
   const boxBinding = createBoxBinding({ clock, initial: boxFor, refuse })
 
-  // ROUND 14 (task-108) B③/B④: the RULES live in `kernel/meetingmarker.js` (this file is 1180+/1200, docs/02 §L174);
-  // the face keeps the state (`m.orderOverride`), the audit rows and the receipt ledger. `isDeclared` is the rail.
+  // R14 (task-108) B③/B④: RULES live in `kernel/meetingmarker.js` (this file is 1180+/1200, docs/02 §L174); the face
+  // keeps the state (`m.orderOverride`), the audit rows and the receipt ledger. `isDeclared` is the capability rail.
   const orderControls = createOrderControls({ requireMeeting, clock, limits: () => K, declared: isDeclared, deny, audit: (ev) => say(withScope(ev)), pushReceipt: (row) => pushReceipt(withScope(row)) })
 
   const api = {
@@ -606,11 +606,8 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       return { ok: true, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
-    /**
-     * Queue a speaker. The position comes from the EFFECTIVE order: B③/B④'s override when one is in force (then
-     * `vmu.meetings.orderMode` is not consulted again ⇒ `enforced` is empty), otherwise the setting. `call_on` puts
-     * the place in the CHAIR's hands (a non-chair is refused BY NAME); the `open` floor keeps NO queue.
-     */
+    /** Queue a speaker. The position comes from the EFFECTIVE order (B③/B④): an override in force ⇒ the setting is
+     * not consulted again (`enforced:[]`); `call_on` ⇒ chair-only; the `open` floor keeps NO queue. */
     queue({ meeting, member, at = null, by = null } = {}) {
       const m = requireMeeting(meeting)
       if (!isMember(String(member))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'queue() acts as or on the member taking a place in the queue - the roster seam rejected this id; a non-member never votes (08 D-series)', [])
@@ -719,13 +716,17 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       if (K.attendanceMode !== 'roster') mark(enforced, 'vmu.meetings.attendanceMode')
       if (target) target.votes.set(String(member), value === 0 ? 0 : 1)
       counters.votes += 1
-      const tally = target ? { for: [...target.votes.values()].filter((v) => v === 1).length, against: [...target.votes.values()].filter((v) => v === 0).length, abstain: target.abstain.size } : { for: 0, against: 0, abstain: 0 }
+      // HONESTY (R15): with NO motion there is NO box to count, so the receipt must not report a tally it cannot back
+      // (it used to answer {for:0,against:0,abstain:0} while `counters.votes` rose and the minutes row was written).
+      // The real open-ballot CONTAINER is `kernel/ballot.js` (v5r pollOpen/pollVote/pollClose ≙ action ballot/vote/tally).
+      const tallyNote = target ? null : 'no motion or box is open for this vote: it IS recorded (minutes + counters) but NOT counted, so no tally is claimed (tally:null)'
+      const tally = target ? { for: [...target.votes.values()].filter((v) => v === 1).length, against: [...target.votes.values()].filter((v) => v === 0).length, abstain: target.abstain.size } : null
       m.minutes.entries.push({ at: now, kind: 'vote', motion: target ? target.id : null, member: String(member), value: value === 0 ? 0 : 1 })
       const ballotMirror = mirrorVote({ ballot, boxFor: boxBinding.resolve(), counters, meeting: m.id, motionId: target ? target.id : null, member, value,
         motionText: target ? target.text : null, motionKind: target ? target.kind : null, motionEmergency: target ? target.emergency === true : false })
-      const receipt = { at: now, action: 'vote', meeting: m.id, motion: target ? target.id : null, member: String(member), tally, quorum: q, enforced, enforcedScope: ENFORCED_SCOPE, ballot: ballotMirror }
+      const receipt = { at: now, action: 'vote', meeting: m.id, motion: target ? target.id : null, member: String(member), tally, counted: target !== null, tallyNote, quorum: q, enforced, enforcedScope: ENFORCED_SCOPE, ballot: ballotMirror }
       pushReceipt(receipt)
-      return { ok: true, tally, quorum: q, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      return { ok: true, tally, counted: target !== null, tallyNote, quorum: q, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** Transfer the chair. `chairTransferAudit` demands a reason. */

@@ -312,9 +312,18 @@ console.log('=== §0b SELF-PROOF: the ruling vocabulary bites in all its directi
   // (`slice(0,3)`), so `verifyRuling(guarded, …)` could have returned a problem string and nothing would have said so.
   const refused = probes.slice(0, 4).every(([, r]) => (Array.isArray(r) ? r.slice(0, 3).every((x) => typeof x === 'string' && x.length > 0) : typeof r === 'string' && r.length > 0))
   const accepted = probes[5][1].every((x) => x === null) && probes[4][1][3] === null
+  // R15: the COUNTS are printed AND asserted, so the numbers a comment quotes are a reading instead of a memory.
+  // Adding a probe without updating the declared count reddens here (the "declaration ↔ implementation" drift class).
+  const strCount = (r) => (Array.isArray(r) ? r.filter((x) => typeof x === 'string' && x.length > 0).length : (typeof r === 'string' && r.length > 0 ? 1 : 0))
+  const nullCount = (r) => (Array.isArray(r) ? r.filter((x) => x === null).length : (r === null ? 1 : 0))
+  const directionCounts = { words: RULING_WORDS.length, refused: probes.reduce((n, [, r]) => n + strCount(r), 0), accepted: probes.reduce((n, [, r]) => n + nullCount(r), 0) }
+  reading('§0b refused/accepted directions', directionCounts)
   ok(refused && accepted,
     '★ five directions refused BY NAME (unknown word / tripwire / unbacked `成对-finally` / unbacked `睡式-无柄` / dead or non-guarding pointer) and four verified directions stay green (a real sleep / no-site `不涉及` / a real `finally` / a gate pointer that really guards)',
     { refused, accepted, detail: probes })
+  ok(directionCounts.words === 5 && directionCounts.refused === 7 && directionCounts.accepted === 4,
+    '★ the DECLARED counts ARE the measured ones: 5 words in the closed vocabulary, 7 refused directions, 4 accepted (the RULE A comment quotes exactly these numbers, so the declaration cannot drift from the implementation unnoticed)',
+    directionCounts)
 }
 
 // ── §0c ROUND 14: the AUTHORITY word, and the `不涉及` claim it retires ────────────────────────────────────
@@ -353,9 +362,19 @@ const AUTH_LISTENER_SRC = AUTHORITY_SRC.replace('return { acquire, release, lock
     '★ (5) the authority word without a gate pointer is refused (an exemption must name what guards it)', p)
   const realSrc = readFileSync(join(VMU, 'kernel/storepolicy.js'), 'utf8')
   const realInfo = Object.assign({ file: 'kernel/storepolicy.js' }, auditSource(realSrc))
-  reading('§0c LIVE storepolicy.js        ', { lockStore: lockStoreSites(realInfo.code), acquisitionSites: realInfo.sites.map((s) => s.kind + '@' + s.at), verdict: verifyRuling(RULINGS['kernel/storepolicy.js'], realInfo) })
-  ok(lockStoreSites(realInfo.code).length > 0 && verifyRuling(RULINGS['kernel/storepolicy.js'], realInfo) === null,
+  const liveVerdict = verifyRuling(RULINGS['kernel/storepolicy.js'], realInfo)
+  reading('§0c LIVE storepolicy.js        ', { lockStore: lockStoreSites(realInfo.code), acquisitionSites: realInfo.sites.map((s) => s.kind + '@' + s.at), verdict: liveVerdict })
+  ok(lockStoreSites(realInfo.code).length > 0 && liveVerdict === null,
     '★ (6) LIVE: the real `kernel/storepolicy.js` really holds the lock store AND the real row verifies — so the word is a reading about this file, not a fixture', { lockStore: lockStoreSites(realInfo.code) })
+  // R15: same discipline as §0b — the counts a comment quotes are printed and asserted here.
+  const authorityCounts = {
+    refused: [t, l, n, f, p].filter((x) => typeof x === 'string' && x.length > 0).length,
+    accepted: [verifyRuling(honest, authority), liveVerdict].filter((x) => x === null).length,
+  }
+  reading('§0c refused/accepted directions', authorityCounts)
+  ok(authorityCounts.refused === 5 && authorityCounts.accepted === 2,
+    '★ the DECLARED counts ARE the measured ones: the authority word refuses 5 directions (no lock store / grew a timer / grew a listener / an authority filed `不涉及` / no gate pointer) and accepts 2 (the fixture, and the LIVE file)',
+    authorityCounts)
 }
 
 // ── §0d ROUND 14: the REAL-TREE rule has teeth, proven with planted violations on the SAME function ────────
@@ -392,11 +411,12 @@ console.log('=== §0d SELF-PROOF (R14): the real-tree rule (§2/§3/§5) reddens
   reading('§0d honest fixture             ', { judged: clean.judged.map((j) => j.rel), unregistered: clean.unregistered, rulingProblems: clean.rulingProblems, fileLevel: clean.fileLevel, callLevel: clean.callLevel, tripwire: clean.tripwire, authorities: clean.authorities })
   const plantedReadings = planted.map(([label, over, key]) => ({ planted: label, list: key, hits: judgeTree(Object.assign({}, base, over))[key] }))
   for (const r of plantedReadings) reading('§0d planted ' + r.list.padEnd(16) + ' ', { planted: r.planted, hits: r.hits })
+  reading('§0d counts                     ', { planted: planted.length, honestListsEmpty: empty(clean), judged: clean.judged.length, lists: ['unregistered', 'rulingProblems', 'fileLevel', 'callLevel', 'tripwire'] })
   ok(clean.judged.length > 0 && empty(clean),
     '★ the honest fixture is GREEN in all five lists (so the planted direction below is not "everything is always red")', { judged: clean.judged.length, unregistered: clean.unregistered, rulingProblems: clean.rulingProblems, fileLevel: clean.fileLevel, callLevel: clean.callLevel, tripwire: clean.tripwire })
   const plantedOk = planted.length > 0 && planted.every(([label, over, key]) => judgeTree(Object.assign({}, base, over))[key].length > 0)
-  ok(plantedOk,
-    '★ ' + planted.length + ' planted violations each REDDEN THE LIST THEY NAME on the SAME `judgeTree()` the live run calls (a new module / a lying ruling / a tripped tripwire — three named lines from ONE condition / an acquisition inside `write()` / the authority growing a listener / an authority filed `不涉及` / a stale row)',
+  ok(plantedOk && planted.length === 9,
+    '★ the DECLARED count IS the measured one: ' + planted.length + ' planted violations each REDDEN THE LIST THEY NAME on the SAME `judgeTree()` the live run calls (a new module / a lying ruling / a tripped tripwire — three named lines from ONE condition / an acquisition inside `write()` / the authority growing a listener / an authority filed `不涉及` / a stale row)',
     plantedReadings)
 }
 

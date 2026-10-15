@@ -23,7 +23,14 @@ import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
-const SEAMS = ['clock', 'log', 'settings', 'bus', 'store', 'members', 'tasks', 'metrics', 'signer', 'deliver', 'fetchFn', 'timer', 'random', 'now', 'policy']
+// ROUND 15 (vmu-verify2, cost re-measured by vmu-pack2 on this exact version): `ballot` is a REAL
+// constructor-injection seam - `kernel/index.js:1130` builds `createMeetings({ …, ballot: meetingBallot })` -
+// but it was invisible to this gate because it was not in this list, and R12/R13/R14 each fixed a ballot/wiring
+// defect that this whitelist could not see (the whitelist IS the gate's field of view; same shape as
+// `metrics/trigger` in round 13). Measured cost of adding it: rows 112 -> 113, seams 7 -> 8, findings stay 0,
+// EXIT=0. `boxFor` has NO construction site (by ruling (i) the pack binds it lazily through `bindBox`), so it is
+// listed for the future: if it ever becomes constructor-injected, the gate sees it instead of staying blind.
+const SEAMS = ['clock', 'log', 'settings', 'bus', 'store', 'members', 'tasks', 'metrics', 'signer', 'deliver', 'fetchFn', 'timer', 'random', 'now', 'policy', 'ballot', 'boxFor']
 // Reasons for a `null` factory default. The gate refuses a null seam that has no reason HERE — the reason
 // text lives gate-side on purpose: this task must not edit kernel/** (see the task's red lines).
 const ABSENT_REASONS = {

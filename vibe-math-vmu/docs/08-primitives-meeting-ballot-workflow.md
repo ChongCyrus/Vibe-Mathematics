@@ -879,7 +879,7 @@ recount(ballotId):
 | `vmu.meetings.speechExtendMs` | ms | 60000 | ≥0 | 主持人 | 立即 | 一次延长的步长 |
 | `vmu.meetings.speechExtendMax` | int | 1 | ≥0 | 主持人 | 立即 | 延长次数上限 |
 | `vmu.meetings.speechQuotaPerMember` | int | 0 | ≥0 | 所办 | 下轮 | 每人发言次数配额（0＝不限） |
-| `vmu.meetings.orderMode` | enum | `hands` | `hands｜round-robin｜seat｜weighted｜unspoken-first` | 主持人 | 下轮 | 发言顺序模式 |
+| `vmu.meetings.orderMode` | enum | `fifo` | `fifo｜round-robin｜chair｜random` | 主持人 | 下轮 | 发言顺序模式 ★ **R14 起以实测值域为准**（本行原计划的 `hands｜round-robin｜seat｜weighted｜unspoken-first` **从未实现**；实际默认取自模块源码 `fifo`，`random`＝确定性可审计序，见 §25.16） |
 | `vmu.meetings.interruptAllow` | string[] | `[]` | 子集 `{yield,point-of-order,objection,privileged}` | 主持人 | 立即 | 允许的打断类型 |
 | `vmu.meetings.interruptQuota` | int | 0 | ≥0 | 主持人 | 立即 | 每人每轮打断配额 |
 | `vmu.meetings.typeCatalog` | string[] | `[]` | kind 白名单 | pack | 重启 | 允许的会议类型（空＝不校验） |
@@ -1579,7 +1579,17 @@ for (const m of roster) chat.mute(m, { by: chair, reason: 'meeting in progress' 
 
 **D · 工具面**：`vibe_vmu_meeting` 新增 **`flow`** 与 **`overrideorder`** 两个 action（`tools/meeting.js`）。★ **id 空间**：这两个 action 寻址 **`vmu.meetings` 服务记录**（`kernel/meetings.js` 的 `live` 表），**不是** action `open` 造的逐对象会议 id；未知 id 由服务**具名拒**（hint 列出在活记录）；服务未装配 ⇒ `VMU_ENGINE_UNAVAILABLE`（不静默）。
 
-**E · 实测与具名未做**：原样命令／退出码见 `_handoff/vmu/comms-round14-report.md` §D。**具名未做**：① `docs/04` 的 `vmu.meetings.orderMode` 行值域仍写 `—`（该卷本轮归 vmu-verify2，写范围外）；② 本节 §19.1 计划表里该键的值域（`hands｜round-robin｜seat｜weighted｜unspoken-first`）与代码实际值域不符，属计划表的既有漂移，**只登记不改计划表计数**；③ `speak_order_set`／`speak_next` 的**命令名**（GAP-MTG-06b）未落 —— 本轮落的是 `flow`／`overrideOrder`／`call_on` 三件，命名差异具名在此。
+**E · 实测与具名未做（R14 当时的登记；其后继见下条 F）**：原样命令／退出码见 `_handoff/vmu/comms-round14-report.md` §D。R14 具名未做：① `docs/04` 的 `vmu.meetings.orderMode` 行值域仍写 `—`；② 本节 §19.1 计划表里该键的值域（`hands｜round-robin｜seat｜weighted｜unspoken-first`）与代码实际值域不符（计划表既有漂移）；③ `speak_order_set`／`speak_next` 的**命令名**（GAP-MTG-06b）未落 —— R14 落的是 `flow`／`overrideOrder`／`call_on` 三件，命名差异具名在此。⇒ ① 的根因与正确修法、② 的落地结果，以及 R15 新增的两件（open ballot 回执诚实化、断言进仓），逐条见 **F**。
+
+**F · R15（task-112）· ① open ballot 的"回执伪造 tally"诚实化 ＋ ② 断言进仓 ＋ ③ 两条 docs 漂移的逐条结论**
+
+- **① 诚实化＝已落 ✓**（`kernel/meetings.js` 的 `vote()`）：`motion` 缺省（"open ballot"）时该调用**真的**写 minutes 并涨 `counters.votes`，**但没有可计数的容器** ⇒ 回执**不再声称** `tally:{for:0,against:0,abstain:0}`（那是个"看着像真的"的计数），改为 **`tally:null` ＋ `counted:false` ＋ 具名 `tallyNote`**（note 里点名真正的容器）。**两半分开断言**：`tally:null`（不许多报）与"minutes 真写＋`counters.votes` 真涨"（真的做了）各一条。
+  - **它"能红"**：`tests/vmu-meeting-order.test.mjs` §1；用 loader 钩子把旧写法还原后复跑 ⇒ **RED：59 passed / 1 failed，exit=1**（失败行正是"回执不许再回 `{for:0,against:0,abstain:0}`"）；干净树 ⇒ **60 passed / 0 failed，exit=0**。
+  - ★ **第二步（先查再定）的结论＝v5r 有该机制，且 vmu 已有等价容器 ⇒ 不在本面造第二份**：v5r 的 open ballot 是**容器**（"当前 `phase==='open'` 的板" `vibe-math-v5r.js:1764`），工具 **`vibe_v5_poll_open`／`vibe_v5_poll_vote`／`vibe_v5_poll_close`**（注册 `:11164-11166`，实现 `:1823`／`:1899`／`:1962`），关闭时**真的计票**并受 `min_votes` 门（`:1803`／`:10496-10509`）。vmu 侧的同一容器是 **`kernel/ballotbox.js`（选项板：options/min_votes/保密/弃权/reopen）＋ `kernel/ballot.js`**，经工具面 `action=boxopen→boxcast→boxclose`／`ballot→vote→tally` 可达（`docs/08 §25.14 A`／GAP-MTG-10，A/B 对照见 `tests/vmu-ab-v5r-meetings.test.mjs`）。⇒ 缺口是**回执的诚实性**，**不是**缺机制；**为对称再开一个容器会变成同一机制的第二份实现**，故不做。
+- **② 断言进仓＝已落 ✓**：新建 **`tests/vmu-meeting-order.test.mjs`**（**60 条**：§1 诚实性 7 条／§2 三道闸 14 条／§3 覆盖真变＋`enforced` 空 9 条／§4 四模式＋合并名 16 条／§5 回执 vs 真做＋`restore()` 7 条／§6 `random` 确定性 6 条／§7 变异 4 条），已登记 `package.json` 的 `files[]`（`installer.js` 的 `PRESETS[].files` **对任何测试文件都没有条目**——实测 0 条 ⇒ 测试文件的第二登记就是 `files[]` 本身）。集合断言**带非空前置** ⇒ `RULE E fingerprints current=67 = baseline=67`（**未推高**）。**变异**在**进程内**做（`data:` URL 导入变异后的 `meetingmarker.js`，该模块无 import）⇒ 测试**不依赖 `D:\_tmp`**、不写仓库。
+- **③ 两条漂移**：
+  - **落**：`docs/08 §19.1` 的 `vmu.meetings.orderMode` 行值域改为**实测值域** `fifo｜round-robin｜chair｜random`（默认 `fifo`），原计划值域保留在同行说明里 —— 计划表**行数不变**、且无任何生成器解析"值域"单元格（实测 `grep` 全树无该单元格的消费者）。
+  - **具名不落**：`docs/04 §11` 的该键行值域仍 `—`。**根因是生成链**：`scripts/generate-vmu-settings-table.mjs:119` 规定"`def.type !== 'enum'` ⇒ 值域显示 `—`"，而 `settings/schema.js` 把它声明为 `type:'string'` ⇒ 手改该单元格会被生成器覆盖、并让 `--check` 变**陈旧红**。**正确修法＝在 `settings/schema.js` 把该键声明为 `enum` ＋ `values:['fifo','round-robin','chair','random']`，再由 Lead 的 `regen-all` 重生成 docs/04**（`settings/**` **不在 task-112 写范围**，且本任务禁 `regen-all`）⇒ 交 Lead／settings 面的 owner 定夺。
 
 ---
 

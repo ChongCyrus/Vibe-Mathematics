@@ -500,7 +500,7 @@ ok(unregisteredInCode.length === 0,
       'non-vacuous: the source volumes and the planned registry are both there to compare',
       { volumes: sourceVols.length, plannedKeys: plannedKeys.length })
     ok(callOnly.length === KNOWN_CALL_ONLY.length && callOnly.join('|') === KNOWN_CALL_ONLY.slice().sort().join('|'),
-      '★ no planned key rests ONLY on a CALL-shaped mention (today: exactly the three NAMED service surfaces - a fourth is a new defect, a repair deletes its line here)',
+      '★ no planned key rests ONLY on a CALL-shaped mention (the ledger is EMPTY: the three names it used to hold were repaired - a FOURTH appearing here is a new defect, and a repair deletes its line)',
       callOnly.join(','))
     // The predicate is exercised on a SYNTHETIC volume set, so the ledger cannot be satisfied by an empty scan.
     // Two SEPARATE one-line sets: putting the bare mention in the same set would make the call-only case impossible.

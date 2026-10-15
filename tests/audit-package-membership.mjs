@@ -16,6 +16,11 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+// ROUND 15 / task-113: the preset source roots come from the installer itself (not a copy), and the exemption
+// table is the ONE place a "deliberately not shipped" path is named (shape + the six anti-drift switches: see
+// tests/_lib/package-exemptions.mjs).
+import { PRESETS } from '../installer.js'
+import { PACKAGE_EXEMPTIONS, GATE_ROUND } from './_lib/package-exemptions.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const PKG = process.env.PACKAGE_JSON || join(REPO, 'package.json')
@@ -137,6 +142,89 @@ ok(unlistedVolumes.length === 0, 'every design volume on disk is listed in packa
     missing.slice(0, 6).join(' | '))
 }
 ok(missingPaths.length === 0, 'every listed path exists', JSON.stringify(missingPaths))
+const duplicateListed = pkg.files.filter((f, i) => pkg.files.indexOf(f) !== i)
+ok(duplicateListed.length === 0, 'no path is listed twice in package.json#files (a duplicate is a silent no-op that hides which entry is load-bearing)', JSON.stringify(duplicateListed))
+
+// PRESET SOURCE-ROOT DISK CLOSURE (round 15 / task-113) ------------------------------------------------
+// THE HOLE THIS CLOSES (measured by vmu-pack2, round 14): the import-closure check above can only see a file that
+// some RELATIVE STATEMENT-POSITION import points at. Two shipped kinds are STRUCTURALLY invisible to it - the
+// loader imports packs by a COMPUTED path (`vibe-math-vmu.js:734` `await import('./packs/' + wanted + '/index.js')`)
+// and pack data is read with readFileSync by directory name - and a `docs/**` file that is neither a design volume
+// nor cited by a shipped doc is read by nothing at all. Measured on the round-14 tree: SEVEN files on disk under a
+// preset source root were in NEITHER roster, and NO gate could report them (six `vibe-math-vmu/docs/audit/` working
+// papers + `packs/example-data/README.md`).
+// THE RULE: every file on disk under a `PRESETS[].src` root must be in `package.json#files` (written
+// `<src>/<relative path>`) OR named in `tests/_lib/package-exemptions.mjs`. This is NOT the `files[] -> PRESETS`
+// edge: that one belongs to `tests/audit-installer-policy.test.mjs §8` and is green (one fact, one gate).
+// The same block proves the SIX anti-drift switches on the exemption table (criterion e/f/g + duplicate/blank/due),
+// because an exemption table that cannot redden the thing it exempts is exactly the fake-green this audit exists for.
+{
+  const srcRoots = [...new Set(PRESETS.map((p) => p.src))]
+  const ROUND = GATE_ROUND
+  // depth 6 covers packs/<id>/prompts/... and docs/audit/...; the walk is bounded so a pathological tree cannot hang it.
+  const walkRoot = (d, n, acc) => {
+    if (n > 6 || !existsSync(d)) return acc
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name === '.git') continue
+      const p = join(d, e.name)
+      if (e.isDirectory()) walkRoot(p, n + 1, acc)
+      else acc.push(relative(REPO, p).replace(/\\/g, '/'))
+    }
+    return acc
+  }
+  const diskUnderRoots = []
+  for (const src of srcRoots) walkRoot(join(REPO, src), 0, diskUnderRoots)
+  // THE PREDICATE IS PURE, so the self-probes drive it on synthetic input and never touch the repository.
+  const closureOf = ({ diskFiles, listedSet, exemptions }) => {
+    const byPath = new Map(exemptions.map((e) => [e.path, e]))
+    const seen = new Set()
+    const dup = []
+    for (const e of exemptions) { if (seen.has(e.path)) dup.push(e.path); seen.add(e.path) }
+    return {
+      missing: diskFiles.filter((f) => !listedSet.has(f) && !byPath.has(f)).sort(),
+      gone: exemptions.filter((e) => !diskFiles.includes(e.path)).map((e) => e.path),
+      redundant: exemptions.filter((e) => listedSet.has(e.path)).map((e) => e.path),
+      blank: exemptions.filter((e) => !String(e.reason || '').trim() || !String(e.approvedBy || '').trim()).map((e) => e.path),
+      due: exemptions.filter((e) => Number(e.reviewRound) <= ROUND).map((e) => e.path),
+      dup,
+    }
+  }
+  const real = closureOf({ diskFiles: diskUnderRoots, listedSet: listed, exemptions: PACKAGE_EXEMPTIONS })
+  ok(PRESETS.length >= 5 && srcRoots.length >= 5,
+    'the presets and their source roots were read FROM installer.js (not restated here)', PRESETS.length + '/' + srcRoots.length)
+  ok(diskUnderRoots.length > 0 && PACKAGE_EXEMPTIONS.length > 0,
+    'non-vacuous: the disk walk saw files and the exemption table is not empty',
+    diskUnderRoots.length + ' files / ' + PACKAGE_EXEMPTIONS.length + ' exemptions')
+  ok(real.missing.length === 0,
+    'every file on disk under a preset source root is shipped (package.json#files) or NAMED in the exemption table',
+    real.missing.slice(0, 6).join(' | '))
+  ok(real.gone.length === 0, 'no exemption outlives its file (an exemption for a path that is gone is red)', real.gone.join(','))
+  ok(real.redundant.length === 0, 'no exemption covers an already-shipped path (red: an exemption may not hide a registration)', real.redundant.join(','))
+  ok(real.dup.length === 0, 'no path appears twice in the exemption table', real.dup.join(','))
+  ok(real.blank.length === 0, 'every exemption carries a reason AND an approver', real.blank.join(','))
+  console.log('  exemptions: ' + PACKAGE_EXEMPTIONS.length + ' named; review due at round ' + ROUND + ': ' + real.due.length)
+  // SELF-PROBES (docs/11 §4.2 第四条/第九条): each switch on synthetic input, so "the rule stopped biting" and
+  // "the rule had nothing to bite" cannot look the same.
+  const shipped = new Set(['a/shipped.js'])
+  const ex = (path, over) => Object.assign({ path, reason: 'r', approvedBy: 'p', approveRound: 15, reviewRound: 25 }, over || {})
+  const clean = closureOf({ diskFiles: ['a/shipped.js', 'a/exempt.md'], listedSet: shipped, exemptions: [ex('a/exempt.md')] })
+  ok(clean.missing.length === 0 && clean.gone.length === 0 && clean.redundant.length === 0 && clean.dup.length === 0 && clean.blank.length === 0 && clean.due.length === 0,
+    '★ SELF-PROBE 0: the CLEAN synthetic case is quiet - every probe below differs from it for a reason')
+  const p1 = closureOf({ diskFiles: ['a/shipped.js', 'a/data.md'], listedSet: shipped, exemptions: [] })
+  ok(p1.missing.length === 1 && p1.missing[0] === 'a/data.md',
+    '★ SELF-PROBE 1 (criterion e): a pure-DATA file no import points at (`.md`/`.json` under packs/) that is neither shipped nor exempt IS reported BY NAME',
+    JSON.stringify(p1.missing))
+  const p2 = closureOf({ diskFiles: ['a/shipped.js'], listedSet: shipped, exemptions: [ex('a/gone.md')] })
+  ok(p2.gone.length === 1, '★ SELF-PROBE 2 (criterion f): an exemption for a path GONE from disk is reported - an exemption may not outlive its file', JSON.stringify(p2.gone))
+  const p3 = closureOf({ diskFiles: ['a/shipped.js'], listedSet: shipped, exemptions: [ex('a/shipped.js')] })
+  ok(p3.redundant.length === 1, '★ SELF-PROBE 3 (criterion g): an exemption for a path that IS shipped is reported - an exemption may not cover a registration', JSON.stringify(p3.redundant))
+  const p4 = closureOf({ diskFiles: ['a/exempt.md'], listedSet: new Set(), exemptions: [ex('a/exempt.md'), ex('a/exempt.md')] })
+  ok(p4.dup.length === 1, '★ SELF-PROBE 4: the same path twice in the exemption table is reported', JSON.stringify(p4.dup))
+  const p5 = closureOf({ diskFiles: ['a/exempt.md'], listedSet: new Set(), exemptions: [ex('a/exempt.md', { reason: '  ' })] })
+  ok(p5.blank.length === 1, '★ SELF-PROBE 5: an exemption with an empty reason (or approver) is reported', JSON.stringify(p5.blank))
+  const p6 = closureOf({ diskFiles: ['a/exempt.md'], listedSet: new Set(), exemptions: [ex('a/exempt.md', { reviewRound: ROUND })] })
+  ok(p6.due.length === 1, '★ SELF-PROBE 6: an exemption whose reviewRound has arrived is COUNTED (visibility, never a silent pass)', JSON.stringify(p6.due))
+}
 console.log('')
 console.log('=== PACKAGE MEMBERSHIP: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.error('  - ' + f)

@@ -149,7 +149,8 @@ vibe-math-vmu/
 | 宿主接缝 `host*.js` | **必进** | **必进** | 同内核 |
 | `settings/**`、`glossary.json`、`math-computation.js`、`math-engines.js` | **必进** | **必进** | 构造期按名读／被入口 import |
 | 设计卷 `docs/NN-*.md` | **必进** | **必进** | ★ 预设自带设计文档 ✓（每条机制可追到一条已交付的设计决定 ✓） |
-| 仓内工作稿 `docs/audit/**` | **不进（须逐条具名豁免）** | **不进（须逐条具名豁免）** | ★ 仓内审计稿不是产品 ✓ ⇒ **不进就是正确状态** ✓ —— ★ 但**必须具名** ✗，否则没人分得清"故意不交付"与"忘了登记" ✓ |
+| 仓内工作稿 `docs/audit/**` | **不进（须逐条具名豁免）** | **不进（须逐条具名豁免）** | ★ 仓内审计稿不是产品 ✓ ⇒ **不进就是正确状态** ✓ —— ★ 但**必须具名** ✗，否则没人分得清"故意不交付"与"忘了登记" ✓；★ **具名处＝`tests/_lib/package-exemptions.mjs`** ✓（轮 15 已落 ✓，见 §6.2） |
+| **pack 文档** `packs/<id>/README.md`（**出货的一份** ✓） | **必进** | **必进** | ★ 轮 15 实测：`packs/example-data/README.md` 一度**只进了 shipped 名册、没进托管名册** ✗ ⇒ tarball 里有、`.agent-presets/` 里没有 ⇒ ★ **这正是本卷 §6.3 那一格的现场实例** ✓（已补齐 ✓） |
 | `tests/**` | ★ **按下面两条规则进**（不是"全部必进" ✗） | ★★ **永不进** | 本卷口径：托管名册**只列随预设出货的运行时文件** ✓ |
 | `scripts/**` | ★ **按需进** | ★★ **永不进** | 同上 |
 | 仓**根** `docs/**`（如 `docs/release-notes/**`） | **必进** | **不进** | ★ 没有 `vibe-math-vmu/` 前缀 ⇒ **不属任何 `PRESETS[].src`** ✓，本表这一列不适用 |
@@ -170,6 +171,8 @@ vibe-math-vmu/
 
 ★★ **反漂移的六个开关**（★ 依据 `docs/11 §4.2` 第九条：**每个"豁免"分支都要有相反的东西能把它变红** ✓）：① **去掉一条豁免 ⇒ 红并点名** ✓；② 豁免**磁盘上已不存在**的路径 ⇒ **红**（豁免不许比事实活得久 ✓）；③ 豁免一条**同时已在 `files` 里**的路径 ⇒ **红**（★ **不许用豁免盖住登记** ✓）；④ 同一 `path` 出现两次 ⇒ **红**；⑤ `reason` 或 `approvedBy` 为空 ⇒ **红**；⑥ `reviewRound` 已过 ⇒ **摘要里报出条数** ✓（★ 非零即可见 ✓）。
 
+★ **本节已落地（轮 15 ✓）**：表＝**`tests/_lib/package-exemptions.mjs`**（导出 `PACKAGE_EXEMPTIONS` ＋ `GATE_ROUND` ✓），消费方＝**`tests/audit-package-membership.mjs` 的"预设源根磁盘闭包"**（★ 该块的注释自己写着 **"round 15, vmu-pack2 §B"** ✓）—— ★ 本节五个字段与六个开关**逐条对应实现** ✓，且六个开关**全部在该门自己的合成自探针上被证明** ✓（★ 含一条**探针 0 干净对照** ✓：干净输入必须安静，否则下面六条的"红"分不清是"规则咬了"还是"规则恒红" ✓）。★ 首轮内容＝`vibe-math-vmu/docs/audit/` 的**6 份**仓内工作稿（`approvedBy:'Lead'`／`approveRound:15`／`reviewRound:25` ⇒ 轮 15 尚未到期 ✓）。★★ **本门只判"磁盘 → `files`"这条边** ✓：`files → PRESETS` 仍归 `tests/audit-installer-policy.test.mjs` §8（★ **一个事实一个门** ✓，§6.4）。
+
 ### 6.3 ★★ `PRESETS` 是否参与（**明确回答：参与** ✓）
 
 | 归属 | 结论 | 为什么 |
@@ -180,7 +183,7 @@ vibe-math-vmu/
 
 ★ **改 `package.json` 的方式**：★★ **按锚点插行** ✓ —— **不要**用 `JSON.stringify` 整体重写 ✗（★ 会打乱格式、并触红安装器策略审计 ✓）。
 
-### 6.4 ★★ 扩展交付面时应扩在哪一层（**轮 14 结论** ✓）
+### 6.4 ★★ 扩展交付面时应扩在哪一层（**轮 14 结论／轮 15 已落地** ✓✓）
 
 ★★ **症状**：R10 `meetingleave.js`、R11 `meetingmarker.js` —— **连续两轮**同型遗漏，而**两个门禁各只抓一半** ✗✓。★ **轮 14 机械复现** ✓：**从 `files` 删一个被 import 的模块 ⇒ `audit-package-membership` 红并具名**（`who -> ./module.js` ✓）、而 §8 **绿**（它拿 `files` 过滤出输入集 ⇒ **`files` 里没有的东西永远进不了它的输入集** ✗）；★ **反向**：**只从 `PRESETS[vmu].files` 删同一个名字 ⇒ §8 红并具名**（`shipped-but-unmanaged` ✓）、而 membership **绿**（★ 它**从不读 `installer.js`** ✗）⇒ ★★ **一次修复永远不能让两个门同时变绿** ✓。
 
@@ -192,6 +195,24 @@ vibe-math-vmu/
 ★ **不要**把 `files → PRESETS` 这条边也塞进这个门 ✗：**那条边已由 `tests/audit-installer-policy.test.mjs` §8 拥有且已绿** ✓ —— ★ **一个事实一个门** ✓。
 
 ★★ **判据（扩后必须同时满足）** ✓：**(a)** 种"被 import 未登记" ⇒ **红**（★ 今天已成立 ✓）；**(b)** 删 ⇒ **绿**（★ 今天已成立 ✓）；**(c)** 豁免表**逐条带理由** ＋ §6.2 的六个开关全绿 ✓；**(d)** ★ **不把 `tests/`／`scripts/` 拖进 `PRESETS`** ✓（扩后的检查**只扫 `PRESETS[].src` 根**，这些根本身不含它们 ✓）；**(e)** ★ **种一个 `packs/<id>/` 下的纯数据文件（`.json`／`.md`，没有任何 import 指向它）而未登记 ⇒ 必须红** ✓（★ 这是今天两门都看不见的那一格 ✓）。
+
+★★★ **落地与读数（★ 轮 15 实测，写明读的是哪一版** ✓）：上面这条**已进仓** ✓ —— ★ 门＝`tests/audit-package-membership.mjs`（md5 `4a2634bac4dd32c6afbffb0893aba6a7`、17035 B、mtime 13:35:52 ✓），★ 它现在**从 `installer.js` 读 `PRESETS`**（不在此处重述 ✓）、从 `tests/_lib/package-exemptions.mjs` 读豁免表 ✓、判据是一个**纯函数** `closureOf` ✓ ⇒ ★ **六条判据（含 (e)）全部由该门自己的合成自探针证明** ✓。★ **读数**：`node tests/audit-package-membership.mjs` ⇒ **`28 passed, 0 failed`，EXIT=0** ✓（★ 轮 14 同一门是 **13/0** ⇒ **+15 条**就是这条边与它的探针 ✓）；★ 同轮读数 ✓：`audit-installer-policy` **100/0 ALL GREEN** ✓／`audit-pack-face` **5/0** ✓／`vmu-pack` **53/0** ✓。★★ **收口结果**：`vibe-math-vmu/` 下 **215** 个文件 ⇒ `files[]`(vmu 前缀) **209** ／ `PRESETS` **209**，★ **双向差集皆空** ✓（`files` 有而 `PRESETS` 无 ＝ ∅ ✓；`PRESETS` 有而 `files` 无 ＝ ∅ ✓；`PRESETS` 指向不存在的文件 ＝ ∅ ✓；`tests/`／`scripts/` 进 `PRESETS` ＝ 0 ✓；`files[]` 重复条目 ＝ ∅ ✓）。
+
+### 6.5 ★★ 一处**已知的视野外**：seam 表不覆盖 `ballot` 族（**具名，不静默** ✗✓）
+
+★★ **症状（结构性，不是漏了一次）**：`scripts/generate-seam-table.mjs:26` 的 `SEAMS` 是一张**白名单** ✓，而提取器写的是 `for (const seam of SEAMS)`（`:92` ✓）⇒ ★ **名单外的注入永远不会被提取、渲染或检查** ✗ —— ★ **不是"这次没查到"，是"这类查不到"** ✓。
+
+| 项 | 实测（★ 写明版本：`scripts/generate-seam-table.mjs` md5 `14647243395a33cbcbe0a17b0ecef3af`、9663 B、mtime 19:28:18 ✓） |
+|---|---|
+| `SEAMS` 是否含 `ballot`／`boxFor` | ★ **否** —— 该文件里这两个名字**出现 0 次** ✓（`SEAMS` 仍是 15 个名字 ✓） |
+| 但它确实是一处**真构造注入** | `vibe-math-vmu/kernel/index.js:1130` 的 `createMeetings({ …, ballot: meetingBallot })` ✓ |
+| **扩白名单的实测代价** | ★ **+1 行、0 finding、PASS** ✓ —— 基线 `rows=112 seams=7 null=1 findings=0`（PASS ✓）⇒ 加 `'ballot','boxFor'` 后 `rows=113 seams=8 null=1 findings=0`（PASS ✓）；★ 差集**恰好一行**，其四个单元依次是 `` `ballot` ``／`` `kernel/index.js:1130` (meetings) ``／`meetings`／`` `meetingBallot` `` ✓ |
+| `boxFor` 为什么加不加都一样 | ★ 它**没有构造点** ✓ —— 按裁决 (i)，`boxFor` 由 **pack 经 `bindBox` 懒绑**（不是构造期注入 ✓）⇒ 今天加它不产生行 ✓ |
+| 扩还要不要动别的 | ★ **不用** ✓ —— 该门**没有硬编码行数**（判据是 `rows.length >= 5` ✓），且**仓里没有需要 `--check` 的已提交 seam 表**（新鲜度在临时目录里自证 ✓）⇒ **扩＝`SEAMS` 一个 token** ✓ |
+| **谁在守着这一族** | ★ `tests/vmu-motion-box.test.mjs` ⇒ **`23 passed, 0 failed`，EXIT=0** ✓（md5 `9a60f319ebf74b9d11a00ee74b32315d` ✓）—— ★ 它**不靠投票回执**：B2／B3 断言"箱子真的开了（`boxes===1`）＋ `boxFor` 缝真的绑上（`source:'method'`）" ✓，**B5b（轮 14／task-107）独立回读箱子裁定**（★ **"把回执与事实分开"** ✓），R1／R2 断绑／解绑 ✓，负例断言 `VMU_MEETING_BOX_UNWIRED` ＋ `reason:'no-binding'` ✓ |
+| 现状与归属 | ★ **本轮按 Lead 指示走"具名"，不越界改 `scripts/**`** ✓（那是 `vmu-verify2` 的领地 ✓）；★ 已把"**一个 token ＋ +1 行 ＋ 0 finding**"的代价实测**具名转它** ✓ |
+
+★ 同步读数（同一轮内 ✓）：`tests/audit-seam-reachability.test.mjs` **17/0 EXIT=0** ✓；`tests/audit-gate-snapshot.test.mjs` **12/0 EXIT=0** ✓。
 
 ★★ **与本卷相关的新门禁/常驻断言（轮 11）**：
 - **`scripts/audit-pack-middleware-shape.mjs`** —— **清单中间件"形状与能力匹配"门禁**：inline `handler` **不得**伸手要 `api`（总线上没有 `api`），也不得声明只有 loader 路径才能兑现的 `trigger-workflow`；**module 形状**（`module:`／`file:`）**必须**声明它真需要的 `capabilities`（用 `api.services` ⇒ 必须 `trigger-workflow`）；**裸路径 ⇒ 红**；带 `--selftest`（种四类坏条目必红、两条干净条目不误报）。

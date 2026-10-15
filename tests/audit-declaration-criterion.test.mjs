@@ -589,15 +589,26 @@ const censusRun = runSelfProof('audit-projection-census.mjs', '')
 ok(censusRun && censusRun.status === 0,
   'the projection census really runs green (round 11: it files every declared face with a code+reason and proves it would report a planted face - so no declaration can go missing silently)',
   censusRun ? 'exit=' + censusRun.status : 'not run')
-// ROUND 13 / task-102: `scripts/audit-acquire-release.mjs` is SELF-PROVING and it proves itself BEFORE it judges a
-// real file: four predicate self-proofs (an acquisition without a `finally` fires; the SAME acquisition with one is
-// quiet; a timer/listener fires; a comment/string is not a site), five directions of the CLOSED ruling vocabulary
-// (unknown word / tripwire / unbacked `成对-finally` / unbacked `睡式-无柄` / dead-or-non-guarding gate pointer), one
-// REAL-file injection through `mutateOnce` that must redden BOTH granularities, and `resume.js` as the positive
-// control. A self-proof mode with no execution point is exactly what this rule exists for, so it is RUN here.
+// ROUND 13 / task-102, count corrected in ROUND 15 / task-114 (the declared numbers must be the MEASURED ones:
+// `--selftest` printed `14 passed, 0 failed`, and these are exactly what its §0/§0b/§0c/§0d drive). A self-proof mode
+// with no execution point is exactly what RULE A exists for, so it is RUN here.
+//   §0  four predicate cases (an acquisition without a `finally` fires; the SAME acquisition WITH one is quiet while
+//       the site is still seen; a timer AND a listener fire; a comment/string is not a site - D7);
+//   §0b  SEVEN refused directions of the FIVE-WORD closed ruling vocabulary (unknown word / tripwire / unbacked
+//       `成对-finally` / unbacked `睡式-无柄` / `他门已守` without a gate, with a DEAD gate, with a gate that never
+//       mentions the module) and FOUR accepted directions (a real sleep, a no-site `不涉及`, a real `finally`, a gate
+//       pointer that really guards);
+//   §0c  R14's authority word: FIVE refused directions (authority with no lock store / authority + timer / authority +
+//       listener / an authority filed `不涉及` / an authority without a gate pointer) and TWO accepted (a synthetic
+//       authority, and the LIVE `kernel/storepolicy.js`);
+//   §0d  the REAL-TREE rule (§2/§3/§5) as ONE pure `judgeTree()` driven by NINE planted violations that each redden
+//       the list they name, plus an honest fixture that must leave all five lists EMPTY (so the planted direction is
+//       not "everything is always red");
+//   §1   one REAL-file injection through `mutateOnce` that must redden BOTH granularities, and `resume.js` as the
+//       positive control that the scanner is not blind.
 const acquireReleaseRun = runSelfProof('audit-acquire-release.mjs', '--selftest')
 ok(acquireReleaseRun && acquireReleaseRun.status === 0,
-  'the acquire↔release --selftest really runs green (round 13: four predicate self-proofs, five refused directions of the closed ruling vocabulary, a real-file one-line injection that reddens BOTH granularities, and a positive control that the scanner is not blind)',
+  'the acquire↔release --selftest really runs green (round 13, counts corrected round 15: four predicate cases, SEVEN refused + FOUR accepted directions of the five-word closed ruling vocabulary, R14\'s authority word with FIVE refused + TWO accepted directions, NINE planted violations driving the same real-tree `judgeTree()` plus an all-empty honest fixture, a real-file one-line injection that reddens BOTH granularities, and a positive control that the scanner is not blind)',
   acquireReleaseRun ? 'exit=' + acquireReleaseRun.status : 'not run')
 const regenRun = runSelfProof('regen-all.mjs', '--check')
 ok(regenRun && regenRun.status === 0, 'regen-all --check really runs green (the aggregate chain now has an execution point)')
