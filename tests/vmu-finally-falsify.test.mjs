@@ -28,6 +28,14 @@
 //   is DEFENSIVE. Moving the release onto the success path therefore produces an IDENTICAL reading on every reachable
 //   input, and the library says so by name (`PROBE-DOES-NOT-DISCRIMINATE`). That expectation is pinned: if a later
 //   refactor lets a throw escape `executeInner`, this pin goes red and the honest mutation becomes available.
+//
+// ROUND 14 / task-110 — A CORRECTION TO THIS FILE'S OWN CLAIM (measured, not argued). Round 11 filed THREE faces under
+// "acquires nothing": `records.js`, `storepolicy.js`, `store.js`. That was WRONG for `storepolicy.js` — it is the
+// kernel's ONLY lock authority: `acquire()` calls `locks.set(...)`, `status().locks` counts the held lock, a second
+// acquire is refused `VMU_CONFLICT`, and `release()` (a SEPARATE call) deletes it. A lock really IS taken inside a
+// call; the acquire↔release gate could not see it because the `acquire` it finds there is a DEFINITION, which that
+// gate's vocabulary deliberately skips. The honest three-way reading is asserted below, and the acquire↔release gate
+// now files `storepolicy.js` under the fifth closed word `自持-取释面` instead of `不涉及`.
 import { falsifyFamily, falsify, formatFamilyReport, mutateOnce } from './_lib/falsify.mjs'
 import { stripComments } from './_lib/strip-comments.mjs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -206,12 +214,15 @@ console.log('=== TRIPWIRE (self-proving): a resource inside records/store would 
 //   · CALL level  — `storepolicy.write()`'s own body must acquire nothing (the Lead's exact wording: "若 write() 体内
 //                  出现 acquire()"), which a file-level scan cannot see when a `finally` exists elsewhere.
 const ACQUIRE = /\.acquire\s*\(|\bacquire\s*\(|\bacquireLock\s*\(|(?<![\w$.])setTimeout\s*\(|(?<![\w$.])setInterval\s*\(|addEventListener\s*\(/g
+/** NOT an acquisition — the OPPOSITE evidence: a file that really HANDS OUT locks (`locks.set`／`locks.delete`). */
+const LOCK_STORE = /\blocks\s*\.\s*(?:set|delete)\s*\(/g
 /** CODE ONLY (comments and string/regex contents blanked): a doc line or a string cannot fake an acquisition. */
 const tripwireScan = (source) => {
   const code = stripComments(String(source), { strings: true })
   const acquisitions = [...code.matchAll(ACQUIRE)].map((m) => m[0].trim())
+  const lockStore = [...code.matchAll(LOCK_STORE)].map((m) => m[0].replace(/\s+/g, ''))
   const hasFinally = /\bfinally\b/.test(code)
-  return { acquisitions, hasFinally, needsFinally: acquisitions.length > 0 && !hasFinally }
+  return { acquisitions, lockStore, hasFinally, needsFinally: acquisitions.length > 0 && !hasFinally }
 }
 /** The brace-matched body of a function, so "inside `write()`" means inside `write()` and not "somewhere in the file". */
 function bodyOf(code, marker) {
@@ -249,17 +260,31 @@ const resumeScan = tripwireScan(readFileSync(join(KERNEL_DIR, 'resume.js'), 'utf
 ok(resumeScan.acquisitions.length > 0 && resumeScan.hasFinally === true && resumeScan.needsFinally === false,
   'control: `resume.js` really acquires across calls and carries a `finally` — the scanner sees both (so "clean" below is a finding about these faces, not about the scanner)', resumeScan)
 
-// LIVE: the three faces named in the round-11 criterion.
-const TRIPWIRE_FACES = ['records.js', 'storepolicy.js', 'store.js']
-const live = TRIPWIRE_FACES.map((f) => {
+// LIVE: the ORIGINAL criterion read three faces as one class. R14 splits the class: two of them really acquire
+// nothing, and the third is the lock authority itself. All three are still read here — nothing was dropped.
+const TRIPWIRE_FACES = ['records.js', 'store.js']
+const AUTHORITY_FACE = 'storepolicy.js'
+const live = [AUTHORITY_FACE].concat(TRIPWIRE_FACES).map((f) => {
   const src = readFileSync(join(KERNEL_DIR, f), 'utf8')
   return Object.assign({ file: f, stripped: stripComments(src, { strings: true }) }, tripwireScan(src))
 })
+const faceOf = (f) => live.filter((r) => r.file === f)[0]
 ok(live.length > 0 && live.every((r) => r.acquisitions.length === 0),
-  '★ TRIPWIRE: no lock/timer/listener site exists in `records.js`／`storepolicy.js`／`store.js` today ⇒ these faces owe no `finally` (a reading, not an opinion)', live.map((r) => ({ file: r.file, acquisitions: r.acquisitions })))
+  '★ TRIPWIRE: no lock/timer/listener site exists in `records.js`／`store.js`／`storepolicy.js` today ⇒ the ACQUISITION-side predicate owes no `finally` on any of them (a reading, not an opinion) — but "no acquisition SITE" is only HALF of "acquires nothing", see the lock-store reading below', live.map((r) => ({ file: r.file, acquisitions: r.acquisitions, lockStore: r.lockStore })))
 ok(live.length > 0 && live.every((r) => r.needsFinally === false),
   '★ and none of them acquires without a `finally` ⇒ GREEN; the day one does, THIS line goes red naming the file (that is the tripwire, not a preference)',
   live.filter((r) => r.needsFinally).map((r) => r.file))
+// R14 / task-110: `不涉及` claims TWO things — no acquisition site AND no lock store to hand out. The first half is
+// green above; the second half is what the old claim got wrong. Each face is read on its own line, so the correction
+// cannot be mistaken for a blanket "the tripwire moved".
+const tripwireStores = TRIPWIRE_FACES.map((f) => ({ file: f, lockStore: faceOf(f).lockStore }))
+const authorityStore = { file: AUTHORITY_FACE, lockStore: faceOf(AUTHORITY_FACE).lockStore }
+ok(tripwireStores.length === 2 && tripwireStores.filter((r) => r.lockStore.length === 0).length === 2,
+  '★ TRIPWIRE (`不涉及`, BOTH halves): `records.js`／`store.js` neither acquire NOR hand out locks (`locks.set`／`locks.delete` absent) ⇒ "acquires nothing" holds for exactly these two files',
+  { tripwireStores, authorityStore })
+ok(authorityStore.lockStore.length === 2 && faceOf(AUTHORITY_FACE).acquisitions.length === 0 && faceOf(AUTHORITY_FACE).hasFinally === false,
+  '★ R14 CORRECTION (the reading that retires the round-11 wording): `storepolicy.js` HANDS OUT locks — `locks.set` + `locks.delete` — while carrying 0 acquisition sites and NO `finally`. It is the AUTHORITY, not a face that "acquires nothing": the release is a SEPARATE call (no single-call `finally` spans two calls) and its bounded retry is virtual-clock arithmetic (waitedMs = backoffMs × attempts), so no timer/listener handle exists to leak. The acquire↔release gate files it `自持-取释面` and reds it BY NAME the day a timer/listener appears',
+  { authorityStore, acquisitions: faceOf(AUTHORITY_FACE).acquisitions, hasFinally: faceOf(AUTHORITY_FACE).hasFinally })
 const writeBody = bodyOf(live.filter((r) => r.file === 'storepolicy.js')[0].stripped, 'const write = (a) => {')
 ok(!!writeBody && writeBody.length > 0,
   'control: the `write()` body was really extracted (a failed extraction must not read as "nothing acquired")', { extracted: !!writeBody, length: writeBody ? writeBody.length : -1 })

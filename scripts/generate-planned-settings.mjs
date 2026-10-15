@@ -81,7 +81,18 @@ export const lineAt = (text, index) => {
 export const KEY_RE = /\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b/g
 /** Broader scan: also catches two-segment namespaces so they can be COUNTED as an exclusion, not silently lost. */
 export const BROAD_RE = /\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)*\b/g
-/** SERVICE / registry names that are dotted like keys but are not settings — VERBATIM from the audit. */
+/**
+ * SERVICE / registry names that are dotted like keys but are not settings.
+ * ROUND 14 (vmu-verify2): this is now the SINGLE source - `tests/audit-vmu-docs.test.mjs` IMPORTS it instead of
+ * carrying a copy ("VERBATIM from the audit" was true when it was written and became the drift: the audit's copy said
+ * `vmu.dissemination.impact`/`mediaRequest`, this one says `vmu.outreach.*`, and ROUND 218 renamed the family between
+ * them). ★ MEASURED, and it is why the table cannot be retired yet: deleting the ten ROUND-108/ROUND-270 names makes
+ * THIS script re-mint 9 planned keys (`--check` STALE, 123 vs 114), because the collection below has no call-form rule
+ * - unlike the audit, which landed one in round 13. The same rule here is the documented next step (docs/28:1361
+ * "「后随 ( 即调用」这条更通用的规则仍未加"): with it, the ten call-shaped names fall out on their own AND the three
+ * phantom planned keys (`vmu.dissemination.impact`, `vmu.dissemination.mediaRequest`, `vmu.meetings.open`) disappear -
+ * but that also rewrites settings/planned.js, so it is an atomic change for whoever may regenerate.
+ */
 export const NON_SETTING = new Set(['vmu.prompt', 'vmu.library', 'vmu.members', 'vmu.tasks', 'vmu.store', 'vmu.bus',
   'vmu.kernel', 'vmu.settings', 'vmu.rules', 'vmu.bridge', 'vmu.loader', 'vmu.registry', 'vmu.meetings',
   'vmu.budget', 'vmu.packs', 'vmu.middleware', 'vmu.records', 'vmu.core', 'vmu.limits', 'vmu.safety',
@@ -175,7 +186,7 @@ export function collectPlannedDefs({ volumes, core, namespaces, mirrors }) {
   const mirrorList = mirrors || mirrorVolumes(volumes, core)
   const mirrorNames = new Set(mirrorList.map((m) => m.name))
   const planned = new Map()                 // key -> Set(declaring volume numbers)
-  const excluded = { existing: new Set(), wildcard: new Set(), whitelist: new Set(), twoSegment: new Set(), namespace: new Set() }
+  const excluded = { existing: new Set(), wildcard: new Set(), whitelist: new Set(), twoSegment: new Set(), namespace: new Set(), serviceCall: new Set() }
   let mentions = 0
   let mirrorMentions = 0
   for (const vol of volumes) {
@@ -196,6 +207,18 @@ export function collectPlannedDefs({ volumes, core, namespaces, mirrors }) {
       if (coreSet.has(k)) { excluded.existing.add(k); continue }                 // already declared
       if (NON_SETTING.has(k)) { excluded.whitelist.add(k); continue }            // service/registry name
       if (nsSet.has(k)) { excluded.namespace.add(k); continue }                  // derived namespace of a key
+      // ROUND 14: a dotted name IMMEDIATELY FOLLOWED BY `(` is a METHOD CALL, not a setting - settings are never
+      // called. The AUDIT gate landed this rule in round 13 (with four self-probes); WITHOUT it here the same volumes
+      // mint "planned keys" out of service calls, and the cost was MEASURED: three phantom keys
+      // (`vmu.dissemination.impact`, `vmu.dissemination.mediaRequest`, `vmu.meetings.open`) were committed as
+      // `planned:true, def:null` while EVERY mention in their source volume is call-shaped, so the settings table
+      // promised knobs that do not exist.
+      // ★ ORDER MATTERS, and it is measured: this check sits AFTER the existing/whitelist/namespace buckets so a
+      // call-shaped mention of a REAL key still counts as `existing` (the name IS declared) - placing it first made
+      // those two counts disagree with the test's independent recomputation. It sits BEFORE the minting below, which
+      // is the whole point. The lookahead is deliberately NOT folded into `BROAD_RE`: that regex also feeds the
+      // mirror-coverage count and the exclusion buckets, so changing it there would silently change those facts too.
+      if (/^[ \t]*\(/.test(vol.text.slice(m.index + k.length))) { excluded.serviceCall.add(k); continue } // a call, not a key
       const decl = planned.get(k) || new Set()
       decl.add(vol.num)                                                          // EVERY declaring volume
       planned.set(k, decl)
@@ -276,6 +299,7 @@ export function collectPlannedDefs({ volumes, core, namespaces, mirrors }) {
     whitelist: excluded.whitelist.size,
     twoSegment: excluded.twoSegment.size,
     namespace: excluded.namespace.size,
+    serviceCall: excluded.serviceCall.size,
     multiVolume: defs.filter((d) => d.volumes.length > 1).length,
     byVolume: volumes.map((v) => ({ vol: v.num, keys: countFor(v.num) })),
   }
@@ -331,7 +355,7 @@ async function main() {
       plannedKeys: defs.length, docs: volumes.length, stale,
       byVolume: stats.byVolume, mirrors: stats.mirrors, multiVolume: stats.multiVolume, excluded: {
         existing: stats.existing, wildcard: stats.wildcard, whitelist: stats.whitelist,
-        twoSegment: stats.twoSegment, namespace: stats.namespace,
+        twoSegment: stats.twoSegment, namespace: stats.namespace, serviceCall: stats.serviceCall,
       },
       mentions: stats.mentions, mirrorMentions: stats.mirrorMentions,
     }, null, 2))
@@ -346,6 +370,7 @@ async function main() {
     : 'none'))
   console.log('  excluded (distinct names): existing=' + stats.existing + ' wildcard=' + stats.wildcard
     + ' whitelist=' + stats.whitelist + ' namespace=' + stats.namespace + ' twoSegment=' + stats.twoSegment
+    + ' serviceCall=' + stats.serviceCall
     + ' (raw mentions=' + stats.mentions + ', mirror mentions=' + stats.mirrorMentions + ')')
 
   if (!stale) {

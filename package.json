@@ -497,7 +497,6 @@
     "tests/vmu-turn-notice-source.test.mjs",
     "tests/vmu-commit-store-e2e.test.mjs",
     "tests/_lib/falsify.mjs",
-    "tests/_lib/strip-comments.mjs",
     "tests/vmu-mailbox-falsify.test.mjs",
     "tests/vmu-chat-falsify.test.mjs",
     "tests/vmu-panel-falsify.test.mjs",

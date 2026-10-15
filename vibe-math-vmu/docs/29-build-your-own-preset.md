@@ -4,7 +4,8 @@
 > 本卷回答用户定位那一句：**"很容易通过那些中间件等开发出一个自己想要的运行逻辑、agent preset，具备相应的物质基础，并可极其容易地高自由度地控制、调控"** —— 机制都在（`kernel/` ＋ `packs/`），本卷给的是**一条照着做就能造出来的路径**。
 >
 > **可核性纪律**：本卷每段都带**命令**与**期望输出**；标 **【实测】** 的是本轮真跑过的（输出原样抄录），标 **【未实测】** 的明确说明为什么没跑（**绝不写成"已验证"**）。
-> 状态：**走查 v1.3 ✓**（**四形态全部实测**：M1／M2（**两种形状**，含 `flat.api.services` 三条具名拒）／M3／**M4 最小外部插件已装载并被调用**；`plan().actions` 形状已查明为设计如此；`script`/`plugin` 具名拒三层探针；**§8 未核项第 1 条（U15）已由 Round 12 实测收口（否证：M4 插件行拿不到会话级 vmu 服务）**）。
+> 状态：**走查 v1.4 ✓**（**四形态全部实测**：M1／M2（**两种形状**，含 `flat.api.services` 三条具名拒）／M3／**M4 最小外部插件已装载并被调用**；`plan().actions` 形状已查明为设计如此；`script`/`plugin` 具名拒三层探针；**§8 未核项第 1 条（U15）已由 Round 12 实测收口（否证：M4 插件行拿不到会话级 vmu 服务）**）。
+> **v1.3 → v1.4 的两处（R14）**：① **调用形写法统一** —— §8 第 1 条那处**为绕门而拆写**的回执**复原为调用形** `vmu.tasks.status()`（门的收集正则 `tests/audit-vmu-docs.test.mjs:348` 已带负向前瞻 `(?!\s*\()`：**紧跟 `(` 的点分记号＝方法调用，不是设置键**，故调用形可直接写）；§2 M4 第 3 条原来写"**本卷未实测**"且给了一条**没测过**的替代路径（`inject` 服务名且会话在场）⇒ 改为 **R12 的实测结论（否证：该路不成立）**，不再留悬置承诺。② **§6／§7 的仓内读数刷新**为 **2026-10-15 08:45（R14 复核）同一批运行**（三个数变了：wired-schema `1566 → 1566`、planned `planned=114／docs=28`、`audit-vmu-docs` `89/0`）。
 
 ---
 
@@ -208,7 +209,7 @@ type <临时目录>\vmu-ext-demo-activated.json
 **结论与四条边界（都是实测）**：
 1. **装载＋调用 = 真的**：marker 在**每次 boot** 都被重写（两次 boot 两个时间戳），profile 端口也真的起来 ⇒ 外部插件被 loader 装载、`apply()` 真被执行 ✓。
 2. **`inject` 决定"能消费什么"**：声明 `inject:['tools']` 后 `tools` **present=true**（连方法面都拿到）；**不声明**时同一份 `ctx.get('tools')` 是 **false**（第一次 boot 的 marker 六个服务全 false）⇒ 这是 M4 的**正确用法**，不是装饰。
-3. **vmu 自己的服务在 profile boot 时是 `false`**：`vmu.middleware`／`vmu.tasks`／`vmu.report` 三个都 false —— 因为 **vmu 内核是"每会话"创建的**（入口 `vibe-math-vmu.js` 在会话里建内核），**profile 启动时还没有**。⇒ 要在 M4 里消费 vmu 服务，要在**会话作用域**里拿（或 `inject` 对应 vmu 服务名且会话在场）——**这一条本卷未实测**（见 §8）。
+3. **vmu 自己的服务在 profile boot 时是 `false`**：`vmu.middleware`／`vmu.tasks`／`vmu.report` 三个都 false —— 因为 **vmu 内核是"每会话"创建的**（入口 `vibe-math-vmu.js` 在会话里建内核），**profile 启动时还没有**。⇒ **"在 M4 插件行里消费 vmu 服务"这条路不成立**（**Round 12 实测否证**：会话正跑着、插件的工具**真被调用**，同一次 boot 的 marker 里 `tools.present=true` 而五个 vmu 服务 `present:false` ⇒ 差的是**作用域**，不是配置、也不是时序）——详见 §8 第 1 条与下面第 7 条。要消费 vmu 服务请走**会话作用域**的 **M2 模块 ＋ `capabilities:['trigger-workflow']` 的 `api.services.get`**（R11 实测，13 个已发布服务）。
 4. **旁注（据实）**：`ctx.logger?.info(...)` 没在宿主 stdout 出现（该 context 上未必有 `logger.info`）⇒ **证据以 marker 文件为准**，不靠日志行。
 5. **★ 注册工具是硬契约（Round 12 实测，任何人都要踩）**：M4 插件若在 `apply()` 里 `tools.register({…})`，**必须声明 `output`，且 `output.render` 必须是函数** —— 否则插件**整条激活失败**并给**具名**错误：
    ```
@@ -318,8 +319,8 @@ dsh --profile <你的 profile> --dump-config --patch <临时目录>\vmu-overlay-
 | # | 坑 | 症状 | **怎么发现**（门禁/探针） | 本轮读数 |
 |---|---|---|---|---|
 | **1** | **值域不兼容静默回落** | 你写了不在取值域/类型不符的值，行为没变，也不报错 | `vibe_vmu_status` 的 `settings.resolved[<键>]` 看 `value` 与 `source`（不是 `default` 才说明你的值赢了）；`node tests/vmu-settings.test.mjs`（断言取值域与热改等级） | **47 passed, 0 failed**（exit=0）【实测】 |
-| **2** | **清单值被当成"读取"** | pack／schema 里**列了**键，但**没有任何读者** ⇒ 它只是清单 | `node scripts/generate-wired-schema.mjs --check`（键是否真被读到）＋ `node tests/vmu-planned-settings.test.mjs`（未接线登记 vs 真读者） | wired-schema **exit=0**："schema already in sync (1554 -> 1554)"；planned-settings **ALL GREEN（planned=113, docs=27, passed=39/0）**【实测】 |
-| **3** | **dump ≠ 运行时** | `--dump-config` 看着对，运行时没生效（或反之） | **判据必须在运行时**：`settingsMerge.sources`（顶层来源是不是 `config`／`pack`）、`request/header.tools`（宿主真发给模型的工具清单）、会话日志事件；`--session <id>` 离线复评 | 本卷 §3 的 dump 只用来**看 patch 落地**；**"是否生效"另由运行时断言判**（`--expect-settings`／`--expect-delivery`）【实测】 |
+| **2** | **清单值被当成"读取"** | pack／schema 里**列了**键，但**没有任何读者** ⇒ 它只是清单 | `node scripts/generate-wired-schema.mjs --check`（键是否真被读到）＋ `node tests/vmu-planned-settings.test.mjs`（未接线登记 vs 真读者） | wired-schema **exit=0**："schema already in sync (1566 -> 1566)"；planned-settings **ALL GREEN（planned=114, docs=28, passed=39/0）**【实测，2026-10-15 08:45 R14 复核】 |
+| **3** | **dump ≠ 运行时** | `--dump-config` 看着对，运行时没生效（或反之） | **判据必须在运行时**：`settingsMerge.sources`（顶层来源是不是 `config`／`pack`）、`request/header.tools`（宿主真发给模型的工具清单）、会话日志事件；`--session <id>` 离线复评 | 本卷 §3 的 dump 只用来**看 patch 落地**；**"是否生效"另由运行时断言判**（`--expect-settings`／`--expect-delivery` —— 这两个旗标属 **`tests/vmu-assistant-host-slice.test.mjs`**（用法行见该文件头注释），**不是** `scripts/dsh-drive.mjs` 的；R8 用 `--session … --expect-delivery` 离线复评 **16 passed / 0 failed / 0 not-run，exit=0**）【实测】 |
 | **4** | **读者未落地就写默认值** | 先给某个键写了默认值，而读者还没做 ⇒ "有默认值"被误读成"已接线" | `node tests/vmu-planned-settings.test.mjs`（planned 与读者对齐）＋ `docs/04 §11` 的 ownership rule；真例：`vmu.meetings.` ＋ `reconsiderFloor`（**原键**）**全仓零读者** ⇒ R6 三处清单值删除＋schema 删除 | planned-settings **ALL GREEN**；该原键已删（`packs/v5r/prompts/v5r-core.js` 零命中）【实测】 |
 | **5** | **用 inline `handler` 却以为能消费服务** | 形状①拿不到 `api` ⇒ `flat.api`／`api.services` 是 `undefined`（不是具名拒，是**你自己的 JS 崩**） | **改形状②**（`module:`／`file:`）＋ 声明 `capabilities:['trigger-workflow',…]`；判据是**三条具名拒**真的出现（`VMU_NOT_PERMITTED`／`VMU_NO_SUCH_OBJECT`／`VMU_INVALID_ARGUMENT`），**不是** `undefined`／`Cannot read properties of undefined` | `probe-api.mjs`：`fn(flat)` ⇒ `flat.api.services` 可用；⚠ 我 Round 10 就踩过（把 `api` 当第二参 ⇒ `undefined`）【实测】 |
 
@@ -348,7 +349,9 @@ dsh --profile <你的 profile> --dump-config --patch <临时目录>\vmu-overlay-
 | §5 坑 1 | `node tests/vmu-settings.test.mjs` | 取值域与热改 | **47/0** |
 | §5 坑 2/4 | `node scripts/generate-wired-schema.mjs --check`；`node tests/vmu-planned-settings.test.mjs` | 键真被读到／读者已落地 | **exit=0**；**ALL GREEN（39/0）** |
 | §5 钩子 | `node scripts/audit-hook-emit-classification.mjs` | emit 名已分类 | **7/0**（exit=0） |
-| 文档本身 | `node scripts/check-docs.mjs`；`node tests/audit-doc-index.test.mjs`；`node tests/audit-vmu-docs.test.mjs` | 引用可解析／本卷已被 `00-README` 收录 | **PASS**；**5/0**；**83/0** |
+| 文档本身 | `node scripts/check-docs.mjs`；`node tests/audit-doc-index.test.mjs`；`node tests/audit-vmu-docs.test.mjs` | 引用可解析／本卷已被 `00-README` 收录 | **PASS**；**5/0**；**89/0**（R14 复核） |
+
+> **★ 读数时刻（R13 的教训：引用门禁读数必须写明是哪一次运行）**：上表**仓内**命令的数值为 **2026-10-15 08:45–08:47（R14 复核，同一批）** 一次运行的原样输出；`<临时目录>/own-pack/` 的 `probe.mjs`／`probe-kinds.mjs`／`probe-api.mjs` 本轮**也重跑过**（三个探针仍在 `D:\_tmp\own-pack\`，读数与表中一致）；**§2 M4 的三步（真宿主＋模型会话）与 §3 的 `--dump-config` 本轮未重跑**，仍为 R10–R12 的历史实测（各自的读数块已带日期）。
 
 **`loader.plan().actions` 的形状＝设计如此（**不是缺陷**）**：每个 kind 用**它自己的标识字段**，不是统一 `id` —— 见 `kernel/pack.js:312-319`：
 ```
@@ -380,9 +383,11 @@ B2 actions=[{"kind":"setting","key":"vmu.records.headListAt","value":9},{"kind":
 | 6 | `node scripts/generate-wired-schema.mjs --check` | 键真被读到（schema 同步） | **exit=0**（1554→1554） |
 | 7 | `node tests/vmu-planned-settings.test.mjs` | planned 与读者对齐 | **ALL GREEN（planned=113, 39/0）** |
 | 8 | `node scripts/audit-hook-emit-classification.mjs` | emit 名已分类 | **7/0** |
-| 9 | `node scripts/check-docs.mjs`；`node tests/audit-doc-index.test.mjs`；`node tests/audit-vmu-docs.test.mjs` | 引用可解析／本卷被索引收录 | **PASS**；**5/0**；**84/0** |
+| 9 | `node scripts/check-docs.mjs`；`node tests/audit-doc-index.test.mjs`；`node tests/audit-vmu-docs.test.mjs` | 引用可解析／本卷被索引收录 | **PASS**；**5/0**；**89/0**（R14 复核） |
 | 10 | §2 M4 的三步（建 profile → `plugin add` → boot）+ 查 marker；§2 kind 拒的 `probe-kinds.mjs` | 外部插件装载＋`apply` 真执行；`script`/`plugin` 具名拒 | **【实测】**（marker 时间戳／`VMU_MIDDLEWARE_KIND_UNSUPPORTED`） |
 | 11 | `node <临时目录>/own-pack/probe-api.mjs`（形状②） | 签名 `fn(flat)` ＋ `flat.api.services` 三条具名拒 | **【实测】**：`VMU_NO_SUCH_OBJECT`／`VMU_INVALID_ARGUMENT`／`VMU_NOT_PERMITTED` ＋ 正向 `get('vmu.activity')` 成功 |
+
+> **★ 读数时刻**：第 1–8 行与第 9 行的**仓内**命令为 **2026-10-15 08:45–08:47（R14 复核，同一批）**；第 1／11 行与第 10 行的探针（`<临时目录>/own-pack/*`）本轮也重跑过；**第 10 行的 M4 三步未重跑**（需真宿主＋模型会话）⇒ 该行是 R12 的历史实测，**不是**本轮读数。
 
 ## 8. 未核项（编号登记见 `14-§2`）
 
@@ -392,9 +397,9 @@ B2 actions=[{"kind":"setting","key":"vmu.records.headListAt","value":9},{"kind":
      ```
      sessionScopedLookup: { vmu.tasks:{present:false}, vmu.middleware:{present:false}, vmu.report:{present:false},
                             vmu.records:{present:false}, vmu.meetings:{present:false} }
-     call: { method: <服务 vmu.tasks 的 status() 调用>, ok:false, reason:'the service is not reachable from this plugin context' }
+     call: { method: "vmu.tasks.status()", ok:false, reason:'the service is not reachable from this plugin context' }
      ```
-     （注：**原始回执该字段是"服务 `vmu.tasks` 的方法 `status()`"的调用形**；此处拆写**只是**为避开"文档点名的 `vmu.*` 键必须在 `settings/schema.js`"这条门的**拼写**判据——门落地调用形豁免后（见 `_handoff/vmu/assistant-round13-report.md`），本卷统一改回调用形。）
+     （注：该字段**原样**就是调用形 `vmu.tasks.status()`。**R12 曾为绕门把它拆写**成"服务 `vmu.tasks` 的方法 `status()`"；**R14 已复原**——门 `tests/audit-vmu-docs.test.mjs:348` 的收集正则带**负向前瞻** `(?!\s*\()`：**紧跟 `(` 的点分记号＝方法调用，不是设置键**，所以调用形可以直接写，且不再依赖"这个名字碰巧是 `settings/schema.js` 里的键"。）
      ⇒ **会话正跑着、工具真被调用，但插件行的 `ctx` 里五个 vmu 服务全部 `present:false`**。
    - **机制解释（两条实测并置）**：**M4 插件行活在 profile 作用域**，能看到的只有**宿主级**服务（同一 marker 里 `tools.present=true`）；而 **vmu 的服务发布在"每会话"作用域**——R11 已实测：**预设/会话作用域**里的 M2 模块用 `api.services.get('vmu.activity')` 能拿到，且一次列出 **13 个已发布服务**（`vmu.tasks` 在其中）。⇒ **"在 M4 行里 `ctx.get('vmu.tasks')`"这条路本身不成立**（不是配错了、也不是时序问题）。
    - **正确做法（要消费 vmu 服务时）**：把逻辑放到**会话作用域**——① **M2 模块 + `capabilities:['trigger-workflow']`** 用 `api.services.get(name)`（R11 已实测三条具名拒与正向控制）；② 或让 **pack/预设**里的条目去做；③ M4 适合"新服务/新工具/新提示词段"这类**宿主级**扩展。

@@ -137,6 +137,27 @@
 
 **⇒ 第九条硬要求（★ R12 新增；由 vmu-assistant 提出、我按本轮实例判定它够格）**：**每一个"跳过／豁免／not-run"分支，都必须有一个相反的开关或自探针能把它变成红** —— 否则**豁免越多、门越假绿**（门在"主路径"上有牙**不等于**没被自己的逃生口掏空）。★ **与第四条的分工**：第四条说"**门要能咬人**"（种违规⇒红），本条说"**门的每个逃生口本身要可审**"（跳过必须能被反证为红）。**本条是这一整轮最反复的失败形态**，实测实例（都是本轮/近两轮踩到的）：① `generate-zero-mechanism-matrix.mjs` 的 `judge()` 把"探针抛出"**排在**"无裁定行⇒红"**之前** ⇒ **"无裁定行＋探针抛出"两个计数器都不进**，R10/R11 拆出的两个模块悬了两轮，**修正顺序后当场抓出第三个 `resumeflush`**（§9.20）；② 同门的 `EXPECT_NA`／`EXPECT_UNDECIDED` 是**显式记账**的跳过 ⇒ 必须有"漏了 vs 未定"的区分（已有）；③ `vmu-assistant` 的 `--require-host`：把 **`not-run` 直接变红**，否则"5 条 not-run"永远看着像绿的（**其自证**）；④ 我自己的普查门：`notAttached` 可能整类**缺席而不报** ⇒ 因此加了"**种一个不存在的面 ⇒ 必须被归档并具名**"的自探针；⑤ 更早的 `fired ⊆ enforced` 空过：分支**从未被触发**＝一种隐性跳过，修法是把"**真的 fire 了**"做成字段。⇒ 纪律：**写门时先把所有 `continue`／豁免表／`EXPECT_*`／not-run 列出来，逐条问"它变红要什么条件"**；能加**反向开关**（如 `--require-host`、`--strict`）就加，不能加就配**自探针**。★ **自探针的排序**（vmu-assistant 建议、我采纳）：**先证既有豁免没被误伤，再证新豁免生效** —— 落"调用形豁免"时，先证**家族形/命名空间仍不报**，再证**调用形不报、裸键仍报** ⇒ **豁免之间会互相掩护**（本轮已在"两个计数器各自为 0"上吃过一次）。
 
+**⇒ ★ R14 补记：docs 键判据的【真来源】＝两条手写＋两条机械＋一条两阶段规则（全部实测，行号读的是 HEAD `4e5be5a`）**
+`tests/audit-vmu-docs.test.mjs` 的"文档点名的 `vmu.*` 必须是已声明键"（group G）由**五件事**共同决定，**不是"三源"** —— 我上一轮报的"③ namespaces"是**死豁免**，本轮实测纠正：
+
+| # | 来源 | 形态 | 实测 |
+|---|---|---|---|
+| ① | **`SETTING_DEFS`**（`settings/schema.js` ＝ core ＋ `PLANNED_DEFS`） | 手写＋生成物 | 1229 键（1108 已接线／121 未接线） |
+| ② | **`NON_SETTING`**（服务/注册名表） | **手写**，**现在唯一一份** | 35 名；`tests/audit-vmu-docs.test.mjs` 本轮改为**import** 它（两份拷贝**已经漂移**：审计说 `vmu.dissemination.impact(…)`／`vmu.dissemination.mediaRequest(…)`（**这两个已是真键**），生成器说 `vmu.outreach.*`（**R218 改名前的旧族名，什么都匹配不到**）） |
+| ③ | **家族形** `vmu.x.y.*` | **机械**（看 match 后一字符） | — |
+| ④ | **调用形** `vmu.<面>.<键>(` | **机械**（负向前瞻 `(?!\s*\()`，落于 `:348`／`:374`／`:399` 三处，另有"三处必须逐字相同"的漂移断言） | 设置项**永远不会被调用** ⇒ 不需要白名单 |
+| ⑤ | **两阶段"有下位名即命名空间"** | 机械（第二阶段 `:384-391`） | 这才是真正在第 3 位生效的规则 |
+| ✗ | ~~`namespaces`~~ | — | ★ **死豁免（实测）**：它的值**永远是两段**（`vmu.<面>`），而键正则**要求 ≥3 段** ⇒ 该 filter **永不成立**。自探针 ⑤b 现在**断言**这条，而不是把它当第三个来源 |
+
+**★ 调用形豁免**≠**表可退休**（我本轮**先用它去做减负，被自己的量具否证**，按第八条记）：把 R108／R270 追加的 **10 个**名字从生成器表里退掉 ⇒ `scripts/generate-planned-settings.mjs --check` **STALE，123 键 vs 114**（会**新铸 9 个** planned 键：`vmu.ip.hold`／`ownership`／`contributors`／`recordSearch`／`transfer`／`vmu.collab.authorship`／`vmu.members.may`／`vmu.tasks.create`，证据行＝`docs/22` §接口形状表里那些 `<服务>.<方法>(…)` 调用形）。**根因**：**生成器的收集没有调用形规则**（`BROAD_RE` 无前瞻）—— 这条规则**早在 R269 就设计过而没落**（`docs/28:1361`「「后随 `(` 即调用」这条更通用的规则仍未加」）⇒ 调用形豁免**只**能止住"表**继续**长大"，**不能**让表缩小；**原子下一步**＝生成器加同一条规则**并重新生成 `settings/planned.js`**（会同时消掉 3 个幽灵键，见下）—— 属于"可以重新生成的人"，不在本轮验证侧。
+★ **同一耦合当场又造出两个实例**（本轮并发文档改动）：服务 `vmu.tasks` 的 `status()`（`docs/29` 把"为绕门拆写"的调用**复原**为调用形）与 `docs/22` 的服务方法 `bindBox()` ⇒ `--check` **STALE 116/114**、`vmu-planned-settings` **RED**。**这不是谁写错了文档，而是生成器少了同一条规则**：调用形豁免落地后，**两处判据必须同改**（§9.8 ⑭ 的原话）。
+
+**★ 本轮由此抓到一类真缺陷："planned 键只靠【调用形】提及而立"**（新门 G2，`tests/audit-vmu-docs.test.mjs`）：来源卷里**每一次**提及都带 `(` ⇒ 该名字是**服务面**，却被登记成设置（行上是 `planned:true, def:null`，即"设置表承诺一个不存在的旋钮"）。**实测恰好 3 个**：`vmu.dissemination.impact(…)`、`vmu.dissemination.mediaRequest(…)`（`docs/22` 调用形）＋ `vmu.meetings.open(…)`（`docs/10`／`27` 调用形）。★ **本门自己的文档也算来源卷**：我把这三名**裸写**在本节里时，G2 **当场静默**（裸形让它们看起来像键声明）——这正是第七条的现场：**门读的那份文本就是事实所在处，写结论时也必须按门要的形状写**。**它们与生成器那两处漂移是同一件事的两半**。门以**具名台账**形式落：第四个别名 ⇒ 红；修好一个 ⇒ 必须**删掉它那一行**（否则红 ⇒ 台账不会陈旧）。谓词另配**合成自探针**（只调用形 ⇒ 抓到／键形 ⇒ 静默）。
+
+**⇒ 第九条的第 N 个实例（本轮现场）**：那"四条自探针"里的 **②** 原本**为错误的理由通过** —— 它拿一个**恰好是真键**的名字当"命名空间"样本（`keys.has` 先豁免）⇒ 它**从没碰到自己名字所指的那条规则**；本轮把探针改成**跑真正的两阶段判据**（`bogusOf`），② 改用**非键的父子样本**（父被"有下位名"豁免、**子仍被报**）；③／④ 的样本也从服务 `vmu.tasks` 的 `status(…)`（**真的会变成 planned 键**，会把探针悄悄变成"第二条第①类豁免"）换成**合成名**。★ **合成样本一律留在测试文件里，不写进任何卷**：本门扫的卷就是本门自己的输入，把 `vmu.probe.*` 这类样本明文写进本节，会让**判据扫到自己的样本**（本轮当场发生：group G 报 `vmu.probe.*` 未登记）——**"门读的那份文本"包含写结论的那份文本**（第五条＋第七条）。另加 **⑤**：手写表自身**必须能变红** —— (a) **任何 `NON_SETTING` 条目是真键 ⇒ 红**（正是它抓住审计那份拷贝里那两个过期条目的方式）；(b) `namespaces` 恒为两段 ⇒ 断言。**全部改动零成本换绿**：`audit-vmu-docs` **95 passed / 0 failed**；RULE E 指纹集 **67＝67 未动**。
+
+---
+
 **清单（当前，2026-10-09 第 18 轮）**
 
 | 守卫面 | 语义 | 生产是否调用 | 理由／生产调用点 |
@@ -157,7 +178,7 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 322 / suites 250 / probes 72`** ✓（旧值 134／68／66 已在扩卷与增件后过期 ✗；本轮树新增 1 个作业：`tests/audit-scope-classification.test.mjs` ✓） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 287 / suites 217 / probes 70`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 286 / suites 217 / probes 69`** ✓ |
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 258 / suites 225 / probes 33`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。
@@ -215,7 +236,7 @@
 
 | # | 步骤 | 判据（怎么算做完） | 现状与"只抓一半"的证据 |
 |---|---|---|---|
-| ① | 新模块进 **`package.json` 的 `files[]`** | `node tests/audit-package-membership.mjs` 绿 **＋ 正面自查**：`node -e "console.log(require('./package.json').files.includes('vibe-math-vmu/kernel/<名>.js'))"` 必须 `true` | ★ 该门**只抓** `tests/*.mutants.mjs` 与"守卫索引引用的测试文件"，**不扫 `vibe-math-vmu/kernel/*.js`** ⇒ 新内核模块漏登记**它不会红**（R10／R11 正是这样过去的）⇒ 必须用上面的正面自查补判 |
+| ① | 新模块进 **`package.json` 的 `files[]`** | `node tests/audit-package-membership.mjs` 绿 **＋ 正面自查**：`node -e "console.log(require('./package.json').files.includes('vibe-math-vmu/kernel/<名>.js'))"` 必须 `true` | ★ 该门**只抓** `tests/*.mutants.mjs` 与"守卫索引引用的测试文件"。★ **原文那句"只抓 mutants 与守卫索引引用的测试文件、不扫内核"是错的、已实测更正**（★ R14：`vmu-pack2` 用该门自带的 `PACKAGE_JSON` 接缝指向 `D:\_tmp` 副本、**只删** `vibe-math-vmu/kernel/meetingmarker.js`）⇒ **门真的红并具名**：`12 passed, 1 failed` EXIT=1，报 ``vibe-math-vmu\kernel\meetings.js -> ./meetingmarker.js``；`tests/audit-package-membership.mjs:75-84` 的 `walk(VMU, 0)` **就是扫 `vibe-math-vmu/**`（并含 `tests/`）** ⇒ **"新内核模块漏登记它不会红"这条归因不成立**（第十三条：更正一条声明就要改掉那条声明）。★ **真正剩下的洞是另一格**：**磁盘上有、却没有任何 import 指向它**的出货文件（装载器按**算出的路径**动态 import、pack 纯数据按目录名读）⇒ 实测 **7 条**在两份清单之外（`docs/audit/` 6 份 ＋ `packs/example-data/README.md`），**静态 import 闭包结构上看不见它们**；登记/豁免与这条新判据归 R14 门禁扩展，证据在 `_handoff/vmu/pack-round14-report.md` §B。正面自查仍保留（它是**成本最低的当场证据**） |
 | ② | 新模块进 **`installer.js` 的 preset 管理清单**（`PRESETS[].files` 那一长串） | 装机后文件真的落到 `<profile>/vibe-math-vmu/kernel/` | 现清单在 `installer.js:93` 一行内（已含 `meetinglapse/meetingleave/meetingmarker` ✓）；`tests/audit-installer-*.test.mjs` 覆盖清单的**格式与策略**，"新模块是否进清单"仍要靠 ① 的同类自查 |
 | ③ | **zero-mechanism 矩阵加裁定行**（`scripts/generate-zero-mechanism-matrix.mjs` 枚举 `kernel/*.js`，每模块一行） | `node scripts/generate-zero-mechanism-matrix.mjs --check` 绿，且该行**期望**取自**实测形状**（生成器不带参跑一次即可读到"零机制下的返回形状"列） | ★★ **实测的洞**：`judge()` 里"探针抛出"的跳过（`:265`）**排在**"出现了却没有裁定行 ⇒ 红"（`:270-274`）**之前** ⇒ **无码抛出**的模块被算成 probe-error **且不记名**：`meetingleave`／`meetinglapse` 今天在生成矩阵里仍是「（**设计未定** ✗：本模块未登记期望）」，而 `--check` 依旧报 **0 unregistered** ⇒ 必须**人眼读生成矩阵**或先给它一行 |
 | ③′ | **期望词表是闭集**（写错＝mismatch 红） | 只能写：`具名拒（带 code）`／`具名拒或 ok`／`ok 或 object`／`ok 或 null`／`array 或 object`／`array`／`ok（显式 absent）`／`按声明默认开成`；或登记为 `PROBE_NEEDS_ARGS`（缺参待补）／`EXPECT_UNDECIDED`（**显式待办**，只计数不红）／`EXPECT_NA`（非服务模块） | 轮 12 实测：**裸 `object` 不是词表值** ⇒ `okShape=false` ⇒ **mismatch 红**（对象面要写 **`ok 或 object`** ✗✓） |

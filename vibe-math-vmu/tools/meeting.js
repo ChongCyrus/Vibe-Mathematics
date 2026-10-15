@@ -9,16 +9,17 @@
 export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
   return {
       name: TOOL_NAMES.meeting,
-      description: 'vmu 会议/表决面：action=list|open|speak|silent|hand|refuse|invite|invitedspeak|end|aggregation|complete|phase|status|summary|snapshot|close|extend|lapse|revokelapse|ballot|vote|tally|reopen|freeze|unfreeze|boxopen|boxcast|boxclose|boxreopen|boxlapse|boxrevokelapse。' +
+      description: 'vmu 会议/表决面：action=list|open|speak|silent|hand|refuse|invite|invitedspeak|end|aggregation|complete|phase|status|summary|snapshot|close|extend|lapse|revokelapse|ballot|vote|tally|reopen|freeze|unfreeze|boxopen|boxcast|boxclose|boxreopen|boxlapse|boxrevokelapse|flow|overrideorder。' +
         '会议与表决是**逐对象原语**（内核给工厂、pack 给政策）；本工具只用**内核已登记的实例 id** 寻址（未知 id 具名拒）。' +
         '要点：**被拒输入不推进轮次**（refuse）；**受邀发言只记、不计票、不阻塞收束**（invite/invitedspeak）；' +
         '**聚合必须先显式结束辩论**（end ⇒ aggregation.allowed=true，R10-2a）；**表决期冻结**由逐场票箱原语承载（freeze/unfreeze）。' +
         '**F28 有界兜底**：超过声明的墙钟上限（`vmu.meetings.hardLimitMs`）后可用 **lapse** 具名收束（回执带 `{name,why,at,revocable}`），**未到上限会具名拒**，收束后可用 **revokelapse（必须给理由）**恢复；`extend` 是**声明步长**的延长命令（读 `speechExtendMs/Max`）。' +
         '**选项式投票板**是另一层（`kernel/ballotbox.js`：选项/门槛/记名/弃权，**已裁定的板不再收票**）：boxopen/boxcast/boxclose/boxreopen，' +
-        '其中 **boxreopen 需理由**且受 `vmu.ballot.reopenFloor` 约束（门槛只升不降）；若构造时声明了 `openMaxMs`，则 **boxlapse/boxrevokelapse** 对它提供同一套有界兜底。',
+        '其中 **boxreopen 需理由**且受 `vmu.ballot.reopenFloor` 约束（门槛只升不降）；若构造时声明了 `openMaxMs`，则 **boxlapse/boxrevokelapse** 对它提供同一套有界兜底。' +
+        '**发言序/地面（B③/B④，Round 14）**：`flow` 设**四种地面模式**（open 无队列｜hands 按举手序｜round_robin 按已发言次数｜call_on 主席指定），`overrideorder` **覆盖发言序**（fifo｜round-robin｜chair｜random，random 为**确定性**洗牌：种子与结果 order 都写进回执）。**两者都只由主席做、都必须给 reason**，且**未声明 `vmu.meetings.orderMode` 的部署一律具名拒**（默认不可覆盖）。★ 这两个 action 寻址的是 **`vmu.meetings` 服务记录**（`kernel/meetings.js`），**不是**上面 `open` 造的逐对象会议 id —— 未知 id 由服务**具名拒**（hint 列出在活记录）。',
       parameters: {
-        action: param('string', 'list｜open｜speak｜silent｜hand｜hands｜refuse｜invite｜invitedspeak｜end｜aggregation｜complete｜phase｜status｜summary｜snapshot｜close｜extend｜lapse｜revokelapse｜ballot｜vote｜tally｜reopen｜freeze｜unfreeze｜boxopen｜boxcast｜boxclose｜boxreopen｜boxlapse｜boxrevokelapse', { required: true,
-          enum: ['list', 'open', 'speak', 'silent', 'hand', 'hands', 'refuse', 'invite', 'invitedspeak', 'end', 'agendaclose', 'agendaitems', 'leaverequest', 'leaveapprove', 'leaverequests', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse'] }),
+        action: param('string', 'list｜open｜speak｜silent｜hand｜hands｜refuse｜invite｜invitedspeak｜end｜aggregation｜complete｜phase｜status｜summary｜snapshot｜close｜extend｜lapse｜revokelapse｜ballot｜vote｜tally｜reopen｜freeze｜unfreeze｜boxopen｜boxcast｜boxclose｜boxreopen｜boxlapse｜boxrevokelapse｜flow｜overrideorder', { required: true,
+          enum: ['list', 'open', 'speak', 'silent', 'hand', 'hands', 'refuse', 'invite', 'invitedspeak', 'end', 'agendaclose', 'agendaitems', 'leaverequest', 'leaveapprove', 'leaverequests', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse', 'flow', 'overrideorder'] }),
         id: param('string', '会议 id（speak/silent/hand/refuse/invite/invitedspeak/end/aggregation/complete/phase/status/summary/snapshot/close/extend/lapse/revokelapse 必填；open 可指定）'),
         ballotId: param('string', '表决/票箱 id（vote/tally/reopen/freeze/unfreeze/boxcast/boxclose/boxreopen/boxlapse/boxrevokelapse 必填）'),
         member: param('string', '成员 id（speak/silent/hand/refuse/invitedspeak/extend/vote/boxcast 必填）'),
@@ -34,10 +35,11 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         // Round 8 (A): the hand-queue management face (chair-only, audited; clear/revoke need a reason).
         op: param('string', 'hands：grant｜revoke｜clear｜list', { enum: ['grant', 'revoke', 'clear', 'list'] }),
         scope: param('string', 'hands clear/revoke 的作用域（all｜round）', { enum: ['all', 'round'] }),
-        why: param('string', 'invite 的理由（必填：邀请必须可审计，v5r meeting_invite 的口径）'),
-        by: param('string', 'invite/invitedspeak/end 的执行人（审计事实）'),
+        why: param('string', 'invite 的理由（必填：邀请必须可审计，v5r meeting_invite 的口径）；flow/overrideorder 也读 reason 作理由（必填）'),
+        by: param('string', 'invite/invitedspeak/end 的执行人（审计事实）；flow/overrideorder 必填且必须是该会议的主席'),
+        mode: param('string', 'flow/overrideorder 的模式（flow：open｜hands｜round_robin｜call_on；overrideorder：fifo｜round-robin｜chair｜random）', { enum: ['open', 'hands', 'round_robin', 'call_on', 'fifo', 'round-robin', 'chair', 'random'] }),
       },
-      run: async ({ action, id, ballotId, member, text, reason, agenda, roster, target, value, kind, why, by, options, ms, op, scope } = {}) => {
+      run: async ({ action, id, ballotId, member, text, reason, agenda, roster, target, value, kind, why, by, options, ms, op, scope, mode } = {}) => {
         const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
         const live = (what) => {
           const meeting = kernel.liveMeeting(need(id, 'id'))
@@ -142,6 +144,19 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
               return Object.assign({ ok: true, action }, bb.revokeLapse({ boxId: need(ballotId, 'ballotId'), by: by || null, reason: need(reason, 'reason') }))
             }
             return Object.assign({ ok: true, action }, bb.reopen({ boxId: need(ballotId, 'ballotId'), by: by || null, reason: need(reason, 'reason') }))
+          }
+          // ROUND 14 (task-108) B③/B④: the ORDER/FLOOR face of the `vmu.meetings` SERVICE (kernel/meetings.js). Note
+          // the id space: `id` names a SERVICE record (the service's own `live` map), NOT the per-object primitive id
+          // handed out by `action:'open'` above; the service refuses an unknown id BY NAME and lists the live ones.
+          if (action === 'flow' || action === 'overrideorder') {
+            const svc = kernel && kernel.meetings ? kernel.meetings : null
+            if (!svc) {
+              return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel has no `vmu.meetings` service face (kernel/meetings.js) mounted',
+                'declare a meeting intent (config.meeting / vmu.meetings.*) so the service is assembled — no service means no order override')
+            }
+            const args = { meeting: need(id, 'id'), mode: need(mode, 'mode'), by: need(by, 'by'), why: need(reason, 'reason') }
+            const out = action === 'flow' ? svc.flow(args) : svc.overrideOrder(args)
+            return Object.assign({ ok: true, action }, out)
           }
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {

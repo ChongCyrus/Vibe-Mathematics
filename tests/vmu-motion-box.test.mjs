@@ -71,6 +71,15 @@ ok(mirror && mirror.mirrored === true && mirror.reason === 'cast',
   'B5. STEP 3 - the vote really MIRRORED into the policy\'s box (end to end)', mirror)
 ok(mirror && mapped && mirror.boxId === mapped.boxId,
   'B6. and into THAT box (the policy\'s boxId, not a guess)', { got: mirror && mirror.boxId, want: mapped && mapped.boxId })
+// B5b (round 14 / task-107): SEPARATE THE RECEIPT FROM THE FACT. B5/B6 read only the receipt the vote returned, and a
+// receipt that says `mirrored:true` is evidence of a CLAIM, not of a vote. Read the BOX itself, through its own ruling,
+// and require the ballot to be there - the reading `vmu-core2` measured on the real machine (its probe, 18/0).
+const boxId = (mirror && mirror.boxId) || (mapped && mapped.boxId)
+const sealed = k.ballotbox.close({ boxId })
+const seats = (sealed.detail || []).filter((d) => d.by === 'm2' && String(d.choice) === '1').length
+ok(seats === 1 && sealed.tally && sealed.tally.cast === 1,
+  'B5b. the BOX ITSELF holds that vote - read from the box ruling, independently of the receipt that claimed it',
+  { boxId, detail: sealed.detail, tally: sealed.tally, code: sealed.code })
 
 // the hook must NOT be the institute-wide governance motion (that was the round-12 mismatch)
 const govSeen = []

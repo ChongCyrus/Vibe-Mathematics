@@ -1497,7 +1497,7 @@ for (const m of roster) chat.mute(m, { by: chair, reason: 'meeting in progress' 
 | 条 | 要什么原语 | 代价 | 本轮 |
 |---|---|---|---|
 | GAP-MTG-04 议程增删 | `meetings.agenda({op:'add'｜'amend'｜'drop', item, by})` ＋ 议程条目 id | ~120 行＋16 断言＋1 工具 action；须先裁"已议过的条目能否删" | **未落**（判据待裁） |
-| GAP-MTG-06a 流程切换 | `meetings.flow({mode})`（`single｜open｜round_robin｜hands｜call_on｜directed`）＋ `orderMode` 收敛 | ~80 行；须定义 6 种 mode 的**可观察差异**（v5r 无实现可对照） | **未落**（design-only） |
+| GAP-MTG-06a 流程切换 | `meetings.flow({mode})`（`single｜open｜round_robin｜hands｜call_on｜directed`）＋ `orderMode` 收敛 | ~80 行；须定义 6 种 mode 的**可观察差异**（v5r 无实现可对照） | **R14 已落 ✓**：收敛为**四模式**（`open｜hands｜round_robin｜call_on`），`single`／`directed` 按 R8 裁决**合并**并**具名拒**；形状与实测见 **§25.16** |
 | GAP-MTG-06b 点名／顺序 | `speak_order_set`／`speak_next`（v5r 是 Fisher-Yates 随机序） | ~70 行；须裁"随机序是否可被覆盖" | **未落** |
 | GAP-MTG-06c 举手管理 | `hands({op:'grant'｜'revoke'｜'clear'})` | ~40 行（`hand()` 已有，只缺管理面） | **未落**（**代价最低，下一轮首选**） |
 | GAP-MTG-05 停步 | `stop({scope:'step'})`：需要"步"概念（键须 core 先声明） | ~60 行＋1 键＋1 工具 action | **未落**（键未声明） |
@@ -1519,11 +1519,11 @@ for (const m of roster) chat.mute(m, { by: chair, reason: 'meeting in progress' 
 | **`grant` 不加塞** | 授权人在队列**末尾**取位（`position` 回报）；"插到最前"是另一条裁决（B③ 的发言序覆盖），不在这里偷偷做 |
 | **读面** | `op:'list'` 无需主席即可读（`{member, round, at, granted}`） |
 
-**B①–④：Lead 裁决原文（不再另选）＋ 落地形状（★ 本轮未落，原因见末行）**
+**B①–④：Lead 裁决原文（不再另选）＋ 落地形状（★ Round 8 当时"未落"；**B③/B④ 已由 R14 落 ✓**，见 §25.16；①/②/C 仍按各行标注）**
 1. **议程条目不能硬删，只能关闭/归档** —— 形状：`open()` 支持条目数组 `{id, text, owner?, timebox?}`（受**已声明**的 `vmu.agenda.maxItems`／`ownerRequired`／`timeboxRequired` 约束）＋ `agendaClose({meeting, id, by, why})`：置 `closed/closedBy/why`，**原条目保留**；未知 id／无 `why` 具名拒。**代价 ≈ 90 行＋12 断言**；`vmu.agenda.*` 六键**已在 schema**（本项无需 core）。★ **未落**。
 2. **请假/休会批准人＝chair，office 兜底，且必须可声明** —— 形状：`requestLeave({meeting, by, why})`＋`approveLeave({meeting, member, by, why})`，批准人读 `vmu.meetings.leaveApprover`（默认 `'chair'`，值域 `chair|office`）。**该键尚未在 schema**（需 core 声明）；键落地前读取必须**具名降级**（不臆造）。★ **未落（依赖 core 的键）**。
-3. **随机发言序可被 chair 覆盖，但必须留痕；未声明 ⇒ 不可覆盖** —— 形状：`vmu.meetings.orderMode` 增 `random` 值（现 `fifo|round-robin|chair`）＋ `overrideOrder({meeting, by, why, mode})`：**仅 chair**、**必须 `why`**、写审计行、`enforced[]` **点名 `vmu.meetings.orderMode`**（`vmu.agenda.reorderAudit` 同步点名）；**未声明（settings 无该键）⇒ 具名拒**。★ **未落**。
-4. **6 种 flow mode 的"可观察差异"裁决** —— **当场合并两项**：`single` 与 `hands` **不可区分**（都是"一次一人、按举手先后"，差别只在名字）⇒ **合并为 `hands`**；`directed` 与 `call_on` **不可区分**（都是"主席点名"，"是否附带问题"是 `call_on` 的**参数**而非另一个模式）⇒ **合并为 `call_on`**。**保留四种，各自可观察差异**：`open`（**无队列**：任何成员可即刻发言）、`hands`（一次一人，**按举手时间**）、`round_robin`（一次一人，**按已发言次数升序**——`queue()` 的 `round-robin` 分支已接线）、`call_on`（一次一人，**位置由主席指定**——`queue()` 的 `chair` 分支已接线）。★ **本轮只落裁决文本**；把四种 mode 暴露成 `flow({mode})` 并与 `orderMode` 收敛（~80 行）**未落**。
+3. **随机发言序可被 chair 覆盖，但必须留痕；未声明 ⇒ 不可覆盖** —— 形状：`vmu.meetings.orderMode` 增 `random` 值（现 `fifo|round-robin|chair`）＋ `overrideOrder({meeting, by, why, mode})`：**仅 chair**、**必须 `why`**、写审计行、`enforced[]` **点名 `vmu.meetings.orderMode`**（`vmu.agenda.reorderAudit` 同步点名）；**未声明（settings 无该键）⇒ 具名拒**。★ **R14 已落 ✓**（§25.16）—— 裁决原文逐字保留；唯一具名偏离：`vmu.agenda.reorderAudit` **未**进 `enforced[]`，理由与替代路径见 **§25.16 B**。
+4. **6 种 flow mode 的"可观察差异"裁决** —— **当场合并两项**：`single` 与 `hands` **不可区分**（都是"一次一人、按举手先后"，差别只在名字）⇒ **合并为 `hands`**；`directed` 与 `call_on` **不可区分**（都是"主席点名"，"是否附带问题"是 `call_on` 的**参数**而非另一个模式）⇒ **合并为 `call_on`**。**保留四种，各自可观察差异**：`open`（**无队列**：任何成员可即刻发言）、`hands`（一次一人，**按举手时间**）、`round_robin`（一次一人，**按已发言次数升序**——`queue()` 的 `round-robin` 分支已接线）、`call_on`（一次一人，**位置由主席指定**——`queue()` 的 `chair` 分支已接线）。★ **R14 已落 ✓**：四模式暴露为 `flow({mode})` 并与 `orderMode` 收敛，逐模式的可观察差异见 **§25.16 B**。
 
 **C · 其余（★ 本轮未落，逐条代价）**：**G2** `invite` 正文/expect/timebox（~40 行，复用 `speechMaxMs`）；**G3** 会期板 `origin`＋`claim_pending`（~70 行，**跨面**，需任务板配合）；**G4** 议程增删/流程/点名/停步（见 B①④；`stop{scope:'step'}` 需 core 先声明"步"键）；**G7** `ballotbox`＋`mailbox` 接同一份耐用日志（**各 ≈ 6 行**：`durableQueue.reserve/complete` 包住 `cast`／`send` 的唯一写入点；协议已在 `kernel/ballot.js` 就绪）。★ **未落**。
 
@@ -1542,6 +1542,44 @@ for (const m of roster) chat.mute(m, { by: chair, reason: 'meeting in progress' 
 
 **行为不变（实测）**：parity **§22 的 13 条断言逐条保持**（`vmu-meeting-parity` **206/0**）；`vmu-meetings`（加载内核）**161/0**。
 **结果**：`meetings.js` **1244 → 1188 行**（≤1200）；`audit-code-size` **9/0**，`KNOWN` 仍为 **3**（未增名）；新模块 **0 个 `enforced` 令牌** ⇒ 不制造"未被门禁覆盖的新模块"。
+
+---
+
+### 25.16 Round 14：B③ 发言序覆盖 ＋ B④ 四模式地面（★ 本轮**已落** ✓，逐条实测）
+
+> **本节由 vmu-comms2 撰写（task-108）**；形状取自 §25.14 B-3／B-4 的裁决原文。实现落在 **`kernel/meetingmarker.js`**（规则族）＋ **`kernel/meetings.js`**（状态与调用点）＋ **`tools/meeting.js`**（工具面）。实测脚本 `D:\_tmp\vmu-r14\order14.mjs` ⇒ **54 passed / 0 failed，exit=0**（九组断言，集合断言均带非空前置）。
+
+**A · B③ `overrideOrder({meeting, by, why, mode})` —— 已落 ✓**
+| 维度 | 语义（实测） |
+|---|---|
+| **值域** | `vmu.meetings.orderMode` 增 **`random`** ⇒ `fifo｜round-robin｜chair｜random`（`kernel/meetings.js` 的 `oneOf(...)`；`ORDER_MODES` 是单源常量，`docs/04` 的该行归 vmu-verify2） |
+| **仅主席** | `by` 必须是 `open({chair})` 声明的主席；**会议未声明主席** ⇒ 具名拒 `VMU_ENGINE_UNAVAILABLE`（不发明权威）；非主席 ⇒ `VMU_NOT_PERMITTED`（hint 点出已声明的主席） |
+| **必须 `why`** | 缺失或纯空白 ⇒ `VMU_REASON_REQUIRED` |
+| **未声明即拒** | 该部署**没有声明** `vmu.meetings.orderMode`（settings 缝回 `undefined`）⇒ 具名拒 `VMU_ENGINE_UNAVAILABLE`：**代码默认值不是声明**（零机制；默认＝**不可覆盖**） |
+| **生效** | 覆盖**优先于**设置：覆盖在force时 `queue()` **不再读该键**，其 `enforced[]` 为**空**、`modeSource:'override'` ⇒「读了」与「生效了」可分 |
+| **留痕** | 四件齐：`m.orderOverride`（随会议记录进 `snapshot()`／`restore()`，实测恢复后仍按覆盖排序）＋ append-only `minutes.entries` 行 `kind:'order-override'` ＋ 总线/日志行 `meetings/order-override` ＋ `pushReceipt`（`enforced:['vmu.meetings.orderMode']`＋`enforcedScope`） |
+| **`random` 可审计** | **不读任何随机源**（无 `Math.random`）：成员位次＝`orderSeedOf(seed｜member)`（djb2，同 `kernel/bidding.js#fingerprintOf` 形状）；种子＝`orderSeedOf(meeting｜kind｜mode｜by｜why｜at)`，**种子与结果 `order` 同写进回执**；同一队列两次调用**同序**；**新成员加入不重排他人**（按成员定键，不是洗牌位置） |
+
+**B · B④ `flow({meeting, mode, by, why})` —— 已落 ✓（四模式，各有一处可观察差异）**
+| mode | 可观察差异（实测） |
+|---|---|
+| `open` | **无队列**：`queue()` 回 `queued:false`／`order:[]` 且**不存任何位**；`speak()` 对**从未排队**的成员照常成功（`floor.queueOpen===false`；任何模式下 `speak()` 都从不以"未轮到"拒） |
+| `hands` | 一次一人、**举手（到达）序**；**任何成员可自助取位**（`queued:true`，`order`＝到达序） |
+| `round_robin` | 一次一人、**按已发言次数升序**（已发言者排后） |
+| `call_on` | 一次一人、**位次由主席给**：非主席自助取位 ⇒ `VMU_NOT_PERMITTED`；主席取位 ⇒ `order` 保留主席次序；**未声明主席** ⇒ `VMU_ENGINE_UNAVAILABLE` |
+
+- **合并（R8 裁决）**：`single`＝`hands`、`directed`＝`call_on` **不再作为模式存在**；传旧名 ⇒ **具名拒** `VMU_INVALID_ARGUMENT`，hint **点名替换者**（不是静默别名）。
+- **未知 mode** ⇒ `VMU_INVALID_ARGUMENT`。
+- **与 B③ 同一条闸**：`flow` 与 `overrideOrder` 写**同一个槽**（`m.orderOverride`）⇒ 同为**仅主席＋必须 `why`＋未声明即拒**；否则 `flow` 就是绕过 B③ 三道闸的洞。
+- **一条具名偏离（裁决原文要求 `vmu.agenda.reorderAudit` "同步点名"）**：该键是 **`kernel/governance.js`** 的读者（议程重排留痕），**本次调用没有读它** ⇒ 把它塞进 `enforced[]` 会让"读了"与"生效了"不可分（`audit-enforced-consistency` 正是抓这个）**故未点名**。替代且更合 R1 的路径：本面**已经发事件** `meetings/order-override`／`meetings/floor-flow` ⇒ **pack/中间件**可在该钩子上调治理面的重排留痕，**无需**内核 import 治理面。若 Lead 要求内核直连，需要一条跨面调用（本任务写范围外）。
+
+**C · 该模块的导出面（逐字，供读者与 `tests/audit-module-coverage.test.mjs` 认领整个面而不是一部分）**
+`kernel/meetingmarker.js` 导出：`createMeetingMarker`、`mirrorVote`、`budgetVerdictOf`、`createBoxBinding`、`meetingKeysSnapshot`，以及 R14 为 B③/B④ 新增的 **`ORDER_MODES`**、**`FLOW_MODES`**、**`FLOW_MERGED`**、**`FLOW_ORDER`**、**`orderSeedOf`**、**`randomOrderOf`**、**`createOrderControls`**；默认导出 `createMeetingMarker`。
+**词汇缝**（与 `kernel/meetingleave.js` 同一条）：本模块只报 `keys`（它真读的设置键），`kernel/meetings.js` 用既有的 `withScope()` 把它映射成回执/返回的 `enforced[]`＋`enforcedScope` ⇒ **回执词汇仍只在面里**，本模块不写第二份封套（它也因此在 `audit-enforced-consistency` 的"代码里提到 enforced 的模块"扫描之外）。
+
+**D · 工具面**：`vibe_vmu_meeting` 新增 **`flow`** 与 **`overrideorder`** 两个 action（`tools/meeting.js`）。★ **id 空间**：这两个 action 寻址 **`vmu.meetings` 服务记录**（`kernel/meetings.js` 的 `live` 表），**不是** action `open` 造的逐对象会议 id；未知 id 由服务**具名拒**（hint 列出在活记录）；服务未装配 ⇒ `VMU_ENGINE_UNAVAILABLE`（不静默）。
+
+**E · 实测与具名未做**：原样命令／退出码见 `_handoff/vmu/comms-round14-report.md` §D。**具名未做**：① `docs/04` 的 `vmu.meetings.orderMode` 行值域仍写 `—`（该卷本轮归 vmu-verify2，写范围外）；② 本节 §19.1 计划表里该键的值域（`hands｜round-robin｜seat｜weighted｜unspoken-first`）与代码实际值域不符，属计划表的既有漂移，**只登记不改计划表计数**；③ `speak_order_set`／`speak_next` 的**命令名**（GAP-MTG-06b）未落 —— 本轮落的是 `flow`／`overrideOrder`／`call_on` 三件，命名差异具名在此。
 
 ---
 

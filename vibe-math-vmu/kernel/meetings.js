@@ -10,7 +10,7 @@ import { createLeaveControls } from './meetingleave.js'
 // decided 1200-line budget (docs/02 §L174) — see `kernel/meetinglapse.js`: it holds the pure rules, this file
 // holds the state (live records, minutes, counters, broadcasts) and the D3 receipt vocabulary.
 import { MEETING_LAPSE_NAME, createMeetingControls } from './meetinglapse.js'
-import { createMeetingMarker, mirrorVote, budgetVerdictOf, createBoxBinding, meetingKeysSnapshot as keysSnapshot } from './meetingmarker.js'
+import { createMeetingMarker, mirrorVote, budgetVerdictOf, createBoxBinding, createOrderControls, meetingKeysSnapshot as keysSnapshot } from './meetingmarker.js'
 // vmu kernel · meetings — the POLICY + GUARD layer that finally READS the `vmu.meetings.*` knobs.
 //
 // WHY: 08-academic-... (docs/08-primitives-meeting-ballot-workflow.md) declares **47 `vmu.meetings.*` keys**
@@ -107,6 +107,9 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     if (settings && Object.prototype.hasOwnProperty.call(settings, key)) return settings[key]
     return DEFAULTS[key]
   }
+  /** B③ (Round 14): is the key *DECLARED* by this deployment? A code DEFAULT is NOT a declaration (zero mechanism). */
+  const isDeclared = (key) => (settings && typeof settings.get === 'function') ? settings.get(key) !== undefined
+    : !!(settings && Object.prototype.hasOwnProperty.call(settings, key) && settings[key] !== undefined)
   const say = (event) => { if (log && typeof log.append === 'function') { try { log.append(event) } catch (e) { /* advisory */ } } }
   // ROUND 4 / task-25: the bus takes a STRING NAME first (forwarding the event OBJECT made every emission throw and be
   // swallowed). ROUND 12 / task-97: the name-first form is what the hook audits SEE and what a pack can SUBSCRIBE to,
@@ -162,7 +165,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     speechExtendMs: n(sget('vmu.meetings.speechExtendMs')), speechExtendMax: n(sget('vmu.meetings.speechExtendMax')),
     speechQuotaPerMember: n(sget('vmu.meetings.speechQuotaPerMember')),
     interruptAllow: sget('vmu.meetings.interruptAllow') !== false, interruptQuota: n(sget('vmu.meetings.interruptQuota')),
-    orderMode: oneOf(sget('vmu.meetings.orderMode'), ['fifo', 'round-robin', 'chair'], 'fifo'),
+    orderMode: oneOf(sget('vmu.meetings.orderMode'), ['fifo', 'round-robin', 'chair', 'random'], 'fifo'),
     lateAfterMs: n(sget('vmu.meetings.lateAfterMs')), leaveEarlyPolicy: oneOf(sget('vmu.meetings.leaveEarlyPolicy'), ['allow', 'note', 'deny'], 'allow'),
     materialsRequired: sget('vmu.meetings.materialsRequired') === true,
     minutesDetail: oneOf(sget('vmu.meetings.minutesDetail'), ['brief', 'full'], 'brief'),
@@ -378,10 +381,18 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   // `createBoxBinding` owns the state, the self-reported view and the named refusals; this face only CALLS it.
   const boxBinding = createBoxBinding({ clock, initial: boxFor, refuse })
 
+  // ROUND 14 (task-108) B③/B④: the RULES live in `kernel/meetingmarker.js` (this file is 1180+/1200, docs/02 §L174);
+  // the face keeps the state (`m.orderOverride`), the audit rows and the receipt ledger. `isDeclared` is the rail.
+  const orderControls = createOrderControls({ requireMeeting, clock, limits: () => K, declared: isDeclared, deny, audit: (ev) => say(withScope(ev)), pushReceipt: (row) => pushReceipt(withScope(row)) })
+
   const api = {
     openMeetings,
     bindBox: boxBinding.bind,
     boxBinding: boxBinding.view,
+    /** B④ THE FLOOR + B③ THE ORDER OVERRIDE: chair-only, `why` required, audited; the state is readable via `orderView`. */
+    flow: (a = {}) => withScope(orderControls.flow(a)),
+    overrideOrder: (a = {}) => withScope(orderControls.overrideOrder(a)),
+    orderView: (a = {}) => withScope(orderControls.view(requireMeeting(a && a.meeting, { readOnly: true }))),
     apiVersion,
     WIRED_KEYS, UNWIRED_REASONS,
 
@@ -563,10 +574,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       counters.speeches += 1
       const entry = { at: now, kind: 'speech', member: String(member), ms: wanted, tokens: n(tokens), verbatim: !!verbatim }
       m.minutes.entries.push(entry)
-      const receipt = { at: now, action: 'speak', meeting: m.id, member: String(member), ms: wanted, turns: m.turns, tokens: m.tokens, budget: soft, enforced, enforcedScope: ENFORCED_SCOPE }
+      // B④: `floor` DISCLOSES the floor in force — the `open` floor has NO queue, so nobody can be "not their turn".
+      const floor = orderControls.floorOf(m)
+      const receipt = { at: now, action: 'speak', meeting: m.id, member: String(member), ms: wanted, turns: m.turns, tokens: m.tokens, budget: soft, floor, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
-      say({ type: 'meetings/spoke', at: now, meeting: m.id, member: String(member), enforced, enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, ms: wanted, turns: m.turns, tokens: m.tokens, budget: soft, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      say({ type: 'meetings/spoke', at: now, meeting: m.id, member: String(member), floor, enforced, enforcedScope: ENFORCED_SCOPE })
+      return { ok: true, ms: wanted, turns: m.turns, tokens: m.tokens, budget: soft, floor, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** Interrupt. `interruptAllow` + `interruptQuota` govern the floor. */
@@ -593,23 +606,24 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       return { ok: true, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
-    /** Queue a speaker; `orderMode` decides the position (observable via the returned order). */
-    queue({ meeting, member, at = null } = {}) {
+    /**
+     * Queue a speaker. The position comes from the EFFECTIVE order: B③/B④'s override when one is in force (then
+     * `vmu.meetings.orderMode` is not consulted again ⇒ `enforced` is empty), otherwise the setting. `call_on` puts
+     * the place in the CHAIR's hands (a non-chair is refused BY NAME); the `open` floor keeps NO queue.
+     */
+    queue({ meeting, member, at = null, by = null } = {}) {
       const m = requireMeeting(meeting)
       if (!isMember(String(member))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'queue() acts as or on the member taking a place in the queue - the roster seam rejected this id; a non-member never votes (08 D-series)', [])
-      const enforced = ['vmu.meetings.orderMode']
-      if (!m.queue.includes(String(member))) m.queue.push(String(member))
-      let order
-      if (K.orderMode === 'round-robin') {
-        order = m.queue.slice().sort((a, b) => ((m.speechUsed.get(a) || { count: 0 }).count - (m.speechUsed.get(b) || { count: 0 }).count) || (a < b ? -1 : 1))
-      } else if (K.orderMode === 'chair') {
-        order = m.queue.slice()          // the chair decides: the queue stays as inserted
-      } else {
-        order = m.queue.slice()          // fifo
-      }
-      const receipt = { at: at === null ? clock() : at, action: 'queue', meeting: m.id, member: String(member), mode: K.orderMode, order, enforced, enforcedScope: ENFORCED_SCOPE }
+      const eff = orderControls.effective(m)
+      const enforced = eff.source === 'setting' ? ['vmu.meetings.orderMode'] : []
+      const actor = by === null || by === undefined || by === '' ? String(member) : String(by)
+      const gate = orderControls.queueGate(m, actor)
+      if (!gate.ok) throw deny(gate.code, gate.message, gate.hint, enforced)
+      if (eff.queueOpen && !m.queue.includes(String(member))) m.queue.push(String(member))
+      const order = orderControls.orderFor(m, m.queue)          // ALWAYS a copy: a read never reorders the queue
+      const receipt = { at: at === null ? clock() : at, action: 'queue', meeting: m.id, member: String(member), by: actor, mode: eff.mode, modeSource: eff.source, queued: eff.queueOpen, seed: eff.seed, order, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
-      return { ok: true, mode: K.orderMode, order, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      return { ok: true, mode: eff.mode, modeSource: eff.source, queued: eff.queueOpen, order, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** Move a motion. `emergencyKinds`/`emergencyQuorumRatio` and `materialsRequired` apply. */

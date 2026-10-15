@@ -15,6 +15,11 @@
 // `tests/audit-vmu-docs.mutants.mjs` breaks each of these one at a time and requires the named red.
 
 import { hasConsumer } from '../scripts/generate-vmu-settings-table.mjs'
+// ROUND 14 / task-101 ④: the service-name table is a SINGLE exported source now. This audit carried its own copy and
+// the two had already drifted apart - this one said `vmu.dissemination.impact`/`mediaRequest` (both had since become
+// REAL setting keys) while the generator said `vmu.outreach.impact`/`mediaRequest` (the family as it was named BEFORE
+// ROUND 218 renamed it, so they match nothing). A duplicated invariant is a duplicated place to be wrong; one place now.
+import { NON_SETTING, MIRROR_PREFIXES as SETTINGS_MIRROR_PREFIXES } from '../scripts/generate-planned-settings.mjs'
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -327,18 +332,20 @@ ok(unregisteredInCode.length === 0,
 {
   const { SETTING_DEFS } = await import(pathToFileURL(join(VMU, 'settings', 'schema.js')).href)
   const keys = new Set(SETTING_DEFS.map((d) => d.key))
+  // ★ THE REAL SOURCES OF THIS CRITERION (round 14, MEASURED - the table docs/11 §4.2 quotes):
+  //   ① `SETTING_DEFS` (settings/schema.js = core + PLANNED_DEFS): a name that IS a declared key is not bogus.
+  //   ② `NON_SETTING`: a HAND-WRITTEN table of service/registry names dotted like keys. IMPORTED, not copied (see the
+  //      import). It is LOAD-BEARING IN THE GENERATOR and that is measured, not assumed: deleting its ten
+  //      ROUND-108/ROUND-270 names makes the generator re-mint 9 planned keys (`--check` STALE, 123 vs 114), because
+  //      the generator has NO call-form rule - this audit does. So the call-form rule does NOT let that table shrink;
+  //      what it does is stop the table GROWING every time a method is mentioned.
+  //   ③ two MECHANICAL rules, which is where that growth came from:
+  //      · a FAMILY mention (`vmu.x.y.*`) is prose about a family, not a claim about `vmu.x.y`;
+  //      · a CALL (`vmu.x.y(`) is a method invocation - nobody can SET a method, so the name is not a key.
+  //   ④ plus the two-stage forgiveness below: a name that is the PREFIX of another documented name is a namespace.
+  // ★ NOT a source, MEASURED: `namespaces` cannot fire (its values are two-segment, the key regex demands three). It
+  //   stays in the filter and is asserted unreachable (self-probe ⑤b) rather than quietly relied on as a third source.
   const namespaces = new Set([...keys].map((k) => k.split('.').slice(0, 2).join('.')))
-  // Dotted names that are SERVICE/registry names or namespaces, not setting keys.
-  const NON_SETTING = new Set(['vmu.prompt', 'vmu.library', 'vmu.members', 'vmu.tasks', 'vmu.store', 'vmu.bus',
-    'vmu.kernel', 'vmu.settings', 'vmu.rules', 'vmu.bridge', 'vmu.loader', 'vmu.registry', 'vmu.meetings',
-    'vmu.budget', 'vmu.packs', 'vmu.middleware', 'vmu.records', 'vmu.core', 'vmu.limits', 'vmu.safety',
-    'vmu.math', 'vmu.ballot', 'vmu.meeting', 'vmu.schema', 'vmu.status',
-    // ROUND 108: the five `vmu.ip.*` service surfaces (fifteen knobs and these five make the twenty the module
-    // declares). Dotted like keys, but no pack can tune a method name.
-    // ROUND 270: five more SERVICE SURFACES captured as keys (round 269 measured each appearing in its volume only as a
-    // CALL, and read by the kernel nowhere). Same rule as the `vmu.ip.*` list above: dotted like keys, but no pack can tune a method.
-    'vmu.ip.hold', 'vmu.ip.ownership', 'vmu.ip.contributors', 'vmu.ip.recordSearch', 'vmu.ip.transfer',
-    'vmu.collab.authorship',     'vmu.members.may',     'vmu.dissemination.impact',     'vmu.dissemination.mediaRequest',     'vmu.tasks.create'])
   const bogus = new Set()
   for (const [name, text] of docText) {
     // ROUND 224: the open-items ledger is a CHANGELOG. It quotes key names while narrating work, so it neither declares
@@ -392,7 +399,7 @@ ok(unregisteredInCode.length === 0,
   }
   ok(bogus.size === 0, 'every vmu.* key named in the docs exists in settings/schema.js', [...bogus].slice(0, 8).join(' | '))
 
-  // ROUND 13 / task-101 ③: FOUR self-probes on the criterion ITSELF (synthetic samples, so they do not depend on
+  // ROUND 13 / task-101 ③: self-probes on the criterion ITSELF (synthetic samples, so they do not depend on
   // any volume's content). ORDER = old exemptions FIRST, new one LAST (docs/11 §4.2 第九条: exemptions cover for
   // each other, so a new exemption must be landed without disturbing the existing ones).
   {
@@ -403,21 +410,106 @@ ok(unregisteredInCode.length === 0,
     ok(literalCount === 3,
       '★ the call-form pattern is IDENTICAL in the three places that need it (two collection sites + this probe), so the criterion cannot drift between them',
       { found: literalCount })
-    const reported = (sample) => [...sample.matchAll(DOTTED)].map((m) => m[0])
-      .filter((k) => !keys.has(k) && !NON_SETTING.has(k) && !namespaces.has(k)
-        && !/^[*…]/.test(sample.slice(sample.indexOf(k) + k.length, sample.indexOf(k) + k.length + 1)))
+    // ROUND 14: the probe runs the REAL two-stage criterion, not a one-stage replica of it. The replica forgave a name
+    // because `keys`/`NON_SETTING`/`namespaces` held it, while the gate ALSO forgives a namespace PARENT in stage 2 -
+    // so self-probe ② passed on a sample that happened to BE a real key and never touched the rule it was named after.
+    const bogusOf = (sample) => {
+      const out = new Set()
+      const stage1 = []
+      for (const m of sample.matchAll(DOTTED)) {
+        const k = m[0]
+        const after = sample.slice(m.index + k.length, m.index + k.length + 1)
+        if (after === '*' || after === '…') continue
+        if (keys.has(k) || NON_SETTING.has(k) || namespaces.has(k)) continue
+        if (/^\.\s*[*…]/.test(sample.slice(m.index + k.length, m.index + k.length + 3))) continue
+        stage1.push(k)
+      }
+      const documented = new Set([...sample.matchAll(DOTTED)].map((m) => m[0]))
+      for (const k of stage1) {
+        if ([...documented].some((o) => o !== k && (o.startsWith(k + '.') || o.startsWith(k + '.*')))) continue
+        out.add(k)
+      }
+      return [...out]
+    }
     // ① an EXISTING exemption: a family/wildcard mention is still prose, not a key.
-    ok(reported('see `vmu.math.lean.family*` for the family').length === 0,
+    ok(bogusOf('see `vmu.math.lean.family*` for the family').length === 0,
       '★ SELF-PROBE ① (old exemption intact): a FAMILY/wildcard mention is still not reported')
-    // ② an EXISTING exemption: a namespace parent is still not reported (a key lives under it).
-    ok(reported('`vmu.meetings.open` is a method of the meetings face').length === 0,
-      '★ SELF-PROBE ② (old exemption intact): a NAMESPACE-shaped name is still not reported')
-    // ③ the NEW exemption: a CALL is not a setting (the name is not even a key - `vmu.tasks.status` is not).
-    ok(reported('call `vmu.tasks.status()` to read the board').length === 0,
-      '★ SELF-PROBE ③ (new exemption): a CALL form (`vmu.tasks.status()`) is NOT reported even though the name is not a key')
+    // ② an EXISTING exemption: the namespace PARENT is forgiven while its CHILD is still judged. The sample name is
+    // deliberately NOT a key (the old sample, `vmu.meetings.open`, IS one - which is why this probe proved the key rule).
+    {
+      const two = bogusOf('write `vmu.probe.ns` and `vmu.probe.ns.child` in the volume')
+      ok(two.length === 1 && two[0] === 'vmu.probe.ns.child',
+        '★ SELF-PROBE ② (old exemption intact): a NAMESPACE parent is forgiven by the documented-child rule, and its child is still reported',
+        two.join(','))
+    }
+    // ③ the NEW exemption: a CALL is not a setting. The name is SYNTHETIC on purpose: `vmu.tasks.status` was real
+    // enough to become a planned key later, which would silently turn this probe into a second key-exemption probe.
+    ok(bogusOf('call `vmu.probe.call()` to read the board').length === 0,
+      '★ SELF-PROBE ③ (new exemption): a CALL form (`vmu.probe.call()`) is NOT reported even though the name is not a key')
     // ④ the exemption must NOT have widened into "anything goes": the same name written as a KEY still reports.
-    ok(reported('set `vmu.tasks.status` to true in your preset').length === 1,
+    ok(bogusOf('set `vmu.probe.call` to true in your preset').length === 1,
       '★ SELF-PROBE ④ (teeth kept): the SAME name written as a key (no call) is STILL reported - the criterion is not "exists ⇒ pass"')
+    // ⑤ the hand TABLE itself is audited (第九条: an exemption must be able to redden), and the claim about the third
+    // source is measured rather than repeated: (a) no entry may be a REAL key - an entry that is a key is a stale
+    // exemption, and that is exactly how this audit's own copy was caught (its `vmu.dissemination.*` pair had become
+    // real keys); (b) `namespaces` cannot fire (two-segment values against a three-segment regex), so it is not a source.
+    {
+      const staleEntries = [...NON_SETTING].filter((n) => keys.has(n))
+      ok(NON_SETTING.size > 0 && staleEntries.length === 0,
+        '★ SELF-PROBE ⑤ (the hand table earns its entries): no NON_SETTING entry is a real setting key, so none is a stale exemption',
+        staleEntries.join(',') + ' of ' + NON_SETTING.size)
+      const threeSeg = [...namespaces].filter((n) => n.split('.').length !== 2)
+      ok(namespaces.size > 0 && threeSeg.length === 0,
+        '★ SELF-PROBE ⑤b (measured, not repeated): every `namespaces` value is two-segment, so the third forgiveness is the documented-child rule - this filter can never fire',
+        threeSeg.join(','))
+    }
+  }
+
+  // ---- G2. a PLANNED key may not rest on a CALL-shaped mention -------------------------------------
+  // ROUND 14: the same key-vs-call confusion, one level up. A planned key exists because a design volume NAMED it; when
+  // EVERY mention in the source volumes is a CALL, the name is a SERVICE SURFACE that the registry captured as a
+  // setting. The row it produces says `planned:true, def:null`, so the settings table promises a knob that does not
+  // exist and will not - which is the promise this whole audit exists to prevent. THREE names are known and NAMED
+  // below: a FOURTH is a new defect, and one of the three DISAPPEARING is a repair that must delete its own line here.
+  // (Called only as `vmu.meetings.open()` in two volumes, and as the call in docs/22 for the other two.)
+  {
+    const escaped = (k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const sourceVols = [...docText].filter(([n]) => !SETTINGS_MIRROR_PREFIXES.some((p) => n.startsWith(p))
+      && !LEDGER_PREFIXES.some((p) => n.startsWith(p)))
+    const callOnlyPlanned = (vols, list) => list.filter((k) => {
+      let bare = 0, calls = 0
+      for (const [, t] of vols) {
+        for (const m of t.matchAll(new RegExp('\\b' + escaped(k) + '(?![a-zA-Z0-9_.])', 'g'))) {
+          if (/^\s*\(/.test(t.slice(m.index + k.length))) calls += 1
+          else bare += 1
+        }
+      }
+      return bare === 0 && calls > 0
+    })
+    const plannedKeys = SETTING_DEFS.filter((d) => d.planned === true).map((d) => d.key)
+    const callOnly = callOnlyPlanned(sourceVols, plannedKeys).sort()
+    // ROUND 14: the three names that lived here (`vmu.dissemination.impact`, `vmu.dissemination.mediaRequest`,
+    // `vmu.meetings.open`) were REPAIRED, not merely pardoned: the generator's collector
+    // (`scripts/generate-planned-settings.mjs`) now carries the same "a dotted name immediately followed by `(` is a
+    // CALL, not a setting" rule this audit landed in round 13, so those three stopped being planned keys at all
+    // (planned 114 -> 111) and the settings table no longer promises knobs that do not exist. This ledger is
+    // therefore EMPTY - and that is the point: it is a named list of KNOWN defects, so a repair deletes its line.
+    // A fourth name appearing here is a NEW defect.
+    const KNOWN_CALL_ONLY = []
+    ok(sourceVols.length > 0 && plannedKeys.length > 0,
+      'non-vacuous: the source volumes and the planned registry are both there to compare',
+      { volumes: sourceVols.length, plannedKeys: plannedKeys.length })
+    ok(callOnly.length === KNOWN_CALL_ONLY.length && callOnly.join('|') === KNOWN_CALL_ONLY.slice().sort().join('|'),
+      '★ no planned key rests ONLY on a CALL-shaped mention (today: exactly the three NAMED service surfaces - a fourth is a new defect, a repair deletes its line here)',
+      callOnly.join(','))
+    // The predicate is exercised on a SYNTHETIC volume set, so the ledger cannot be satisfied by an empty scan.
+    // Two SEPARATE one-line sets: putting the bare mention in the same set would make the call-only case impossible.
+    const synthCall = [['x', 'call `vmu.probe.only()` here']]
+    const synthBare = [['x', 'set `vmu.probe.real` to 1']]
+    ok(callOnlyPlanned(synthCall, ['vmu.probe.only']).length === 1,
+      '★ SELF-PROBE (G2): a key mentioned ONLY in call form IS caught by this predicate')
+    ok(callOnlyPlanned(synthBare, ['vmu.probe.real']).length === 0,
+      '★ SELF-PROBE (G2): and the same predicate stays quiet for a key that is mentioned as a KEY')
   }
 
   const settingsDoc = docText.get(DOC_FILES.find((n) => /^04-/.test(n))) || ''

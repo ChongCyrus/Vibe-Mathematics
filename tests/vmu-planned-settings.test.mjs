@@ -67,6 +67,9 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
       const afterWide = vol.text.slice(m.index + k.length, m.index + k.length + 3)
       const afterOne = vol.text.slice(m.index + k.length, m.index + k.length + 1)
       if (afterOne === '*' || afterOne === '…' || /^\.\s*[*…]/.test(afterWide)) continue   // family wildcard: prose
+      // ROUND 14: a call-shaped mention (`vmu.x.y(...)`) is a METHOD, not a settings key - same rule as the generator
+      // and the `classify` pass below. Without it, a service surface quoted in call form is reported as bogus.
+      if (/^[ \t]*\(/.test(vol.text.slice(m.index + k.length))) continue   // a call, not a key
       if (keys.has(k) || NON_SETTING.has(k) || namespaces.has(k)) continue
       bogus.add(k + ' (' + vol.name + ')')
     }
@@ -159,7 +162,7 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
   const ns = namespacesOf([...coreSet, ...PLANNED_DEFS.map((d) => d.key)])
   const mirrors = mirrorVolumes(docVolumes(DOCS), core)
   const mirrorNames = new Set(mirrors.map((m) => m.name))
-  const buckets = { planned: new Set(), existing: new Set(), wildcard: new Set(), whitelist: new Set(), namespace: new Set(), twoSegment: new Set() }
+  const buckets = { planned: new Set(), existing: new Set(), wildcard: new Set(), whitelist: new Set(), namespace: new Set(), twoSegment: new Set(), serviceCall: new Set() }
   // ROUND 225: the generator drops a NAMESPACE ROOT - a name with a known key living under it is a namespace, not a setting.
   // The two disagreed on a bare `vmu.records.body` (its children are core keys) and the generator was the correct side. The
   // rule is applied INSIDE classify, because dropping it at definition time removed nothing (the buckets were still empty).
@@ -176,6 +179,13 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
       else if (coreSet.has(k)) into.existing.add(k)                        // already declared in the schema
       else if (NON_SETTING.has(k)) into.whitelist.add(k)                   // service/registry name
       else if (ns.has(k)) into.namespace.add(k)                            // derived namespace of a key
+      // ROUND 14: a dotted name IMMEDIATELY FOLLOWED BY `(` is a METHOD CALL, not a setting - settings are never
+      // called. This test's scan is the SECOND consumer of the key predicate, so it must carry the same rule the
+      // generator's collector landed this round; without it here, a service surface quoted in call form reads as a
+      // phantom planned key and this recomputation disagrees with the generator. Order mirrors the generator:
+      // AFTER existing/whitelist/namespace (so a call-shaped mention of a REAL key still counts as `existing`),
+      // BEFORE minting into `planned` (which is the point).
+      else if (/^[ \t]*\(/.test(vol.text.slice(m.index + k.length))) into.serviceCall.add(k)  // a call, not a key
       else if (!isNamespaceRoot(k)) into.planned.add(k)      // a namespace root is not a setting
     }
   }
@@ -196,16 +206,17 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
   // The generator's own stats must agree with this independent recount (no hidden category).
   const stats = collectPlannedDefs({ volumes: docVolumes(DOCS), core, namespaces: namespacesOf(core), mirrors }).stats
   ok(stats.twoSegment === buckets.twoSegment.size && stats.wildcard === buckets.wildcard.size
-    && stats.existing === buckets.existing.size && stats.whitelist === buckets.whitelist.size,
+    && stats.existing === buckets.existing.size && stats.whitelist === buckets.whitelist.size
+    && stats.serviceCall === buckets.serviceCall.size,
     'the generator reports the same exclusion counts this test recomputes (mirrors excluded on both sides)',
-    'gen=' + [stats.existing, stats.wildcard, stats.whitelist, stats.twoSegment].join('/')
-    + ' test=' + [buckets.existing.size, buckets.wildcard.size, buckets.whitelist.size, buckets.twoSegment.size].join('/'))
+    'gen=' + [stats.existing, stats.wildcard, stats.whitelist, stats.twoSegment, stats.serviceCall].join('/')
+    + ' test=' + [buckets.existing.size, buckets.wildcard.size, buckets.whitelist.size, buckets.twoSegment.size, buckets.serviceCall.size].join('/'))
   // COVERAGE (the audit-G equivalent): over ALL volumes, INCLUDING the generated mirror, every distinct
   // name must still be covered — a mirror must never introduce a name that nothing registers.
-  const covBuckets = { planned: new Set(), existing: new Set(), wildcard: new Set(), whitelist: new Set(), namespace: new Set(), twoSegment: new Set() }
+  const covBuckets = { planned: new Set(), existing: new Set(), wildcard: new Set(), whitelist: new Set(), namespace: new Set(), twoSegment: new Set(), serviceCall: new Set() }
   for (const vol of docVolumes(DOCS)) classify(vol, covBuckets)
   const covered = new Set([...covBuckets.planned, ...covBuckets.existing, ...covBuckets.wildcard,
-    ...covBuckets.whitelist, ...covBuckets.namespace, ...covBuckets.twoSegment])
+    ...covBuckets.whitelist, ...covBuckets.namespace, ...covBuckets.twoSegment, ...covBuckets.serviceCall])
   const distinctAll = new Set()
   for (const vol of docVolumes(DOCS)) for (const m of vol.text.matchAll(genMod.BROAD_RE)) distinctAll.add(m[0])
   ok(covered.size === distinctAll.size, 'every distinct documented vmu.* name is covered by a bucket (mirror included)',

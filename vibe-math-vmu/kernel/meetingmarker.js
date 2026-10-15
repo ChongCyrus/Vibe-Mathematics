@@ -243,4 +243,249 @@ export function meetingKeysSnapshot(K) {
   }
 }
 
+/* ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+ * ROUND 14 (task-108) · B③ `overrideOrder` + B④ `flow` — THE ORDER/FLOOR RULES (the FACE keeps the state).
+ *
+ * WHY THIS FAMILY LIVES HERE. `kernel/meetings.js` was at 1180/1200 lines (docs/02 §L174, enforced by
+ * tests/audit-code-size.test.mjs) when B③/B④ landed, and this module is already the face's helper home
+ * (`mirrorVote`, `budgetVerdictOf`, `createBoxBinding`, `meetingKeysSnapshot`). The seam is the one
+ * `kernel/meetingleave.js` uses: THIS module owns the RULES; `kernel/meetings.js` owns the STATE (live records,
+ * minutes, receipts, counters) and injects its own seams. The only field written here is `m.orderOverride`, the
+ * slot this family owns — the marker slot (`m.domainState`) stays `createMeetingMarker`'s alone.
+ *
+ * ONE SLOT, ONE SET OF RAILS. `flow` and `overrideOrder` write the SAME per-meeting slot ("who decides the order"
+ * is ONE decision), so both pass ONE authority rail (the chair of THAT meeting, declared at `open({chair})` and
+ * never invented), ONE reason rail (`why` required) and ONE capability rail (`vmu.meetings.orderMode` must be
+ * DECLARED by the deployment: undeclared ⇒ the override does not exist — zero mechanism, never a silent fallback).
+ * `flow` is therefore NOT a side door around B③.
+ *
+ * B④ — THE FOUR FLOOR MODES, AND WHY ONLY FOUR (R8 ruling, docs/08 §25.14 B-4). The old vocabulary had six names;
+ * two pairs were INDISTINGUISHABLE (`single`＝`hands`, `directed`＝`call_on`: the same behaviour under two names),
+ * and a mode that cannot state an observable difference is MERGED rather than kept. Each surviving mode changes
+ * something a caller can SEE:
+ *   · `open`        — there is NO QUEUE: `queue()` reports `queued:false` + `order:[]` and stores nothing, so no
+ *                     member can be "not their turn" (the only mode in which the queue stays empty);
+ *   · `hands`       — one at a time, in HAND-RAISE order (arrival order IS the hand's time), and ANY member may
+ *                     take a place (self-service);
+ *   · `round_robin` — one at a time, by SPEECHES ALREADY GIVEN ascending (the face's existing branch): a member who
+ *                     has spoken twice sorts after one who has not, whatever the arrival order was;
+ *   · `call_on`     — one at a time, and the place is DESIGNATED BY THE CHAIR: only the chair may put a member in
+ *                     the queue (a non-chair is refused BY NAME), and the queue keeps the chair's order.
+ * The two merged names are NOT accepted as aliases: they are refused BY NAME with the merge story in the hint, so a
+ * caller of the old six-name vocabulary learns which mode replaced it instead of being quietly honoured.
+ *
+ * B③ — `random` IS DETERMINISTIC AND AUDITABLE. No randomness is read anywhere (no `Math.random`): a member's rank
+ * is a djb2 fingerprint of `seed|member` (the same dependency-free hash shape `kernel/bidding.js#fingerprintOf`
+ * uses), so (a) the same inputs produce the same order twice, (b) the receipt AND the audit row carry BOTH the
+ * `seed` and the resulting `order`, and (c) adding or removing a member does not re-shuffle anybody else's rank (a
+ * per-member key rather than a position in a shuffled list).
+ */
+
+/** B③: the VALUE DOMAIN of `vmu.meetings.orderMode` — the three legacy orders plus `random`. */
+export const ORDER_MODES = Object.freeze(['fifo', 'round-robin', 'chair', 'random'])
+
+/** B④: the FOUR floor modes that survive the R8 merge (docs/08 §25.14 B-4). */
+export const FLOW_MODES = Object.freeze(['open', 'hands', 'round_robin', 'call_on'])
+
+/** The two names the R8 ruling MERGED: each maps to the mode that replaced it (used for a NAMED refusal, not an alias). */
+export const FLOW_MERGED = Object.freeze({ single: 'hands', directed: 'call_on' })
+
+/** Which order rule a floor mode installs; `null` = NO queue at all (the `open` floor). */
+export const FLOW_ORDER = Object.freeze({ open: null, hands: 'fifo', round_robin: 'round-robin', call_on: 'chair' })
+
+/** A deterministic, dependency-free fingerprint (djb2 hex) — the seed/rank primitive of `random` (no `Math.random`). */
+export function orderSeedOf(text) {
+  let h = 5381
+  const s = String(text === null || text === undefined ? '' : text)
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0
+  return h.toString(16).padStart(8, '0')
+}
+
+/**
+ * The `random` order: sort by the member's own `fingerprint(seed|member)`. STABLE under insertion/removal (a member's
+ * rank does not move when somebody else joins), deterministic (same seed + same members ⇒ same order), and the exact
+ * order is what the caller reports — nothing here reads a clock or a random source.
+ */
+export function randomOrderOf(list, seed) {
+  const rank = (id) => parseInt(orderSeedOf(String(seed) + '|' + String(id)), 16)
+  return (Array.isArray(list) ? list.slice() : []).sort((a, b) => (rank(a) - rank(b)) || (a < b ? -1 : 1))
+}
+
+/**
+ * `createOrderControls({ requireMeeting, clock, limits, declared, deny, audit, pushReceipt })` ⇒
+ * `{ flow, overrideOrder, effective, orderFor, floorOf, queueGate, view, ORDER_KEY }`.
+ *
+ * Injected seams (all owned by the meeting face):
+ *   · `requireMeeting(id)`          — resolves the record (and fails closed on a lapsed meeting);
+ *   · `clock()`                     — the instant normaliser (the only time source);
+ *   · `limits()`                    — a GETTER over the live settings (`orderMode` is read LIVE, so a hot change is honoured);
+ *   · `declared(key)`               — is the key DECLARED by this deployment? (the capability rail; a code default is not a declaration);
+ *   · `deny(code,msg,hint,keys)`    — the face's named refusal (it attaches the evaluated scope);
+ *   · `audit(row)`                  — the face's audit log for the append-only row;
+ *   · `pushReceipt(row)`            — the face's bounded receipt ledger.
+ *
+ * VOCABULARY NOTE (the same seam `kernel/meetingleave.js` uses): everything returned here reports `keys` — the
+ * settings keys the rule actually read — and the FACADE maps that into its own `enforced[]`/`enforcedScope` fields.
+ * This module never spells that vocabulary itself, so it carries no second implementation of the receipt envelope.
+ */
+export function createOrderControls({ requireMeeting, clock = () => 0, limits = () => ({}), declared = () => false,
+  deny, audit = () => {}, pushReceipt = () => {} } = {}) {
+  const ORDER_KEY = 'vmu.meetings.orderMode'
+  const keys = () => [ORDER_KEY]
+
+  /** THE single decision point: which order rule binds THIS meeting right now, and where it came from. */
+  const effective = (m) => {
+    const o = m && m.orderOverride ? m.orderOverride : null
+    if (o) return { source: o.source, mode: o.mode, order: o.order, queueOpen: o.order !== null,
+      by: o.by === undefined ? null : o.by, why: o.why === undefined ? null : o.why, at: o.at === undefined ? null : o.at, seed: o.seed || null }
+    const setting = String((limits() || {}).orderMode || 'fifo')
+    // A setting-level `random` still needs a DERIVED seed (per meeting, deterministic) so the receipt can carry it.
+    const seed = setting === 'random' ? orderSeedOf(String(m.id) + '|setting|random') : null
+    return { source: 'setting', mode: setting, order: setting, queueOpen: true, by: null, why: null, at: null, seed }
+  }
+
+  /** The seed of a `random` order: the override's frozen seed, or (setting-level `random`) a per-meeting one. */
+  const seedOf = (m, eff) => eff.seed || orderSeedOf([String(m.id), 'setting', String(eff.order)].join('|'))
+
+  /** Order `list` under the effective rule — ALWAYS a fresh array (a read never reorders the stored queue). */
+  const orderFor = (m, list) => {
+    const eff = effective(m)
+    const base = Array.isArray(list) ? list.slice() : []
+    if (!eff.queueOpen) return []
+    if (eff.order === 'round-robin') {
+      const used = (id) => ((m.speechUsed && m.speechUsed.get(id)) || { count: 0 }).count
+      return base.sort((a, b) => (used(a) - used(b)) || (a < b ? -1 : 1))
+    }
+    if (eff.order === 'random') return randomOrderOf(base, seedOf(m, eff))
+    return base                        // fifo / chair: the arrival (hand-raise) order stands; `call_on` decides WHO arrives
+  }
+
+  /** The floor as DISCLOSED on a `speak()` receipt: what is in force, and how many wait. */
+  const floorOf = (m) => {
+    const eff = effective(m)
+    return { mode: eff.mode, source: eff.source, order: eff.order, queueOpen: eff.queueOpen,
+      waiting: Array.isArray(m.queue) ? m.queue.length : 0 }
+  }
+
+  /**
+   * THE `call_on` GATE — the observable difference of the designated-speaker floor. Only the chair puts a member in
+   * the queue; with no chair declared NOBODY may (an authority that was never declared is not invented).
+   */
+  const queueGate = (m, actor) => {
+    const eff = effective(m)
+    if (!eff.queueOpen || eff.order !== 'chair') return { ok: true }
+    if (m.chair === null || m.chair === undefined) {
+      return { ok: false, code: 'VMU_ENGINE_UNAVAILABLE',
+        message: 'the floor mode is call_on but no chair is declared for this meeting: no one may designate who speaks next',
+        hint: 'open the meeting with { chair: "<member id>" } — the kernel never invents an authority (08 §25.14 A)' }
+    }
+    if (String(m.chair) !== String(actor)) {
+      return { ok: false, code: 'VMU_NOT_PERMITTED',
+        message: 'the floor mode is call_on: only the CHAIR may put a speaker in the queue: ' + String(actor),
+        hint: 'the declared chair of this meeting is ' + String(m.chair) }
+    }
+    return { ok: true }
+  }
+
+  /** THE authority rail shared by `flow` and `overrideOrder`: named actor → the chair of THIS meeting → declaration. */
+  const rails = (m, by) => {
+    const who = String(by === null || by === undefined ? '' : by).trim()
+    if (!who) throw deny('VMU_INVALID_ARGUMENT', 'changing the order/floor needs { by } (who is deciding)',
+      'an override without an actor cannot be audited', keys())
+    if (m.chair === null || m.chair === undefined) {
+      throw deny('VMU_ENGINE_UNAVAILABLE', 'no chair is declared for this meeting: no one may decide the order of speakers',
+        'open the meeting with { chair: "<member id>" } — the kernel never invents an authority (08 §25.14 A/B-3)', keys())
+    }
+    if (String(m.chair) !== who) {
+      throw deny('VMU_NOT_PERMITTED', 'only the CHAIR may decide the order of speakers: ' + who,
+        'the declared chair of this meeting is ' + String(m.chair), keys())
+    }
+    if (!declared(ORDER_KEY)) {
+      throw deny('VMU_ENGINE_UNAVAILABLE', ORDER_KEY + ' is not declared by this deployment: the order/floor override is not enabled',
+        'declare ' + ORDER_KEY + ' (settings/pack) to enable overrides — nothing declared means the capability does not exist, and the default is NO override', keys())
+    }
+    return who
+  }
+
+  /** The ONE reason rail (both acts are procedural changes to other members' standing). */
+  const reasonOf = (why, what) => {
+    const reason = String(why === null || why === undefined ? '' : why).trim()
+    if (!reason) throw deny('VMU_REASON_REQUIRED', what + ' needs { why }',
+      'an unexplained change of who speaks when is exactly the silence the audit row exists for', keys())
+    return reason
+  }
+
+  /** Commit the override: the slot, the append-only minutes row, the audit event and the receipt — all four. */
+  const commit = (m, rec, receipt) => {
+    m.orderOverride = rec
+    if (m.minutes && Array.isArray(m.minutes.entries)) m.minutes.entries.push({ at: rec.at, kind: rec.source === 'flow' ? 'floor-flow' : 'order-override',
+      by: rec.by, why: rec.why, mode: rec.mode, order: rec.order, previous: rec.previous, seed: rec.seed })
+    audit({ type: rec.source === 'flow' ? 'meetings/floor-flow' : 'meetings/order-override', at: rec.at, meeting: String(m.id),
+      mode: rec.mode, order: rec.order, previous: rec.previous, by: rec.by, why: rec.why, seed: rec.seed, keys: keys() })
+    pushReceipt(receipt)
+  }
+
+  /**
+   * B④ `flow({ meeting, mode, by, why })` — set the FLOOR: `open` / `hands` / `round_robin` / `call_on`. An unknown
+   * mode (and a MERGED name) is `VMU_INVALID_ARGUMENT`; the merged name's hint names the mode that replaced it.
+   */
+  const flow = ({ meeting, mode = null, by = null, why = '', at = null } = {}) => {
+    const m = requireMeeting(meeting)
+    const want = String(mode === null || mode === undefined ? '' : mode).trim()
+    const merged = Object.prototype.hasOwnProperty.call(FLOW_MERGED, want) ? FLOW_MERGED[want] : null
+    if (merged) {
+      throw deny('VMU_INVALID_ARGUMENT', 'flow mode "' + want + '" does not exist: it was MERGED into "' + merged + '" (R8 ruling)',
+        want === 'single'
+          ? 'both were "one at a time, by hand-raise order", differing only in the name — pass mode:"hands"'
+          : 'both were "the chair designates who speaks next", differing only in the name — pass mode:"call_on"', keys())
+    }
+    if (!FLOW_MODES.includes(want)) {
+      throw deny('VMU_INVALID_ARGUMENT', 'flow needs { mode } ∈ ' + FLOW_MODES.join('|'), 'got ' + JSON.stringify(mode), keys())
+    }
+    const who = rails(m, by)
+    const reason = reasonOf(why, 'changing the floor mode')
+    const now = at === null ? clock() : at
+    const previous = effective(m).mode
+    const order = FLOW_ORDER[want]
+    const seed = orderSeedOf([String(m.id), 'flow', want, who, reason, String(now)].join('|'))
+    const rec = { source: 'flow', flow: want, mode: want, order, by: who, why: reason, at: now, previous, seed }
+    const receipt = { at: now, action: 'flow', meeting: String(m.id), mode: want, order, queueOpen: order !== null, previous,
+      by: who, why: reason, seed, orderNow: orderFor(m, m.queue || []), keys: keys() }
+    commit(m, rec, receipt)
+    return { ok: true, meeting: String(m.id), mode: want, order, queueOpen: order !== null, previous, by: who, why: reason,
+      seed, orderNow: receipt.orderNow, receipt, keys: keys() }
+  }
+
+  /**
+   * B③ `overrideOrder({ meeting, by, why, mode })` — override the ORDER for this meeting: `fifo` / `round-robin` /
+   * `chair` / `random`. The override WINS over `vmu.meetings.orderMode` (the setting is not consulted again until
+   * the override is replaced), and `enforced[]` names the key that was read to authorise it.
+   */
+  const overrideOrder = ({ meeting, by = null, why = '', mode = null, at = null } = {}) => {
+    const m = requireMeeting(meeting)
+    const want = String(mode === null || mode === undefined ? '' : mode).trim()
+    if (!ORDER_MODES.includes(want)) {
+      throw deny('VMU_INVALID_ARGUMENT', 'overrideOrder needs { mode } ∈ ' + ORDER_MODES.join('|'), 'got ' + JSON.stringify(mode), keys())
+    }
+    const who = rails(m, by)
+    const reason = reasonOf(why, 'overriding the speaking order')
+    const now = at === null ? clock() : at
+    const before = effective(m)
+    const seed = orderSeedOf([String(m.id), 'override', want, who, reason, String(now)].join('|'))
+    const rec = { source: 'override', mode: want, order: want, by: who, why: reason, at: now, previous: before.mode, seed }
+    const orderNow = orderFor(m, m.queue || [])
+    const receipt = { at: now, action: 'override-order', meeting: String(m.id), mode: want, previous: before.mode,
+      previousSource: before.source, by: who, why: reason, seed, order: orderNow, keys: keys() }
+    commit(m, rec, receipt)
+    return { ok: true, meeting: String(m.id), mode: want, previous: before.mode, previousSource: before.source,
+      by: who, why: reason, seed, order: orderNow, receipt, keys: keys() }
+  }
+
+  /** READ-ONLY: the effective rule + the order it produces for the current queue (nothing is written). */
+  const view = (m) => Object.assign({ ok: true, meeting: m && m.id !== undefined ? String(m.id) : null },
+    effective(m), { order: orderFor(m, (m && m.queue) || []), keys: keys() })
+
+  return { flow, overrideOrder, effective, orderFor, floorOf, queueGate, view, ORDER_KEY }
+}
+
 export default createMeetingMarker

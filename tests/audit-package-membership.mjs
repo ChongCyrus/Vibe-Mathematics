@@ -64,7 +64,13 @@ ok(unlistedVolumes.length === 0, 'every design volume on disk is listed in packa
 // gate for a defect class that shipped twice (kernel/work.js once, kernel/minutes.js again): a new module is
 // imported by index.js, the two installer audits stay green, and the tarball crashes on the user's machine with
 // MODULE_NOT_FOUND. The check is static and cheap: resolve each relative specifier, require the target file to
-// be listed in package.json#files (and, for runtime modules, in the installer's preset asset list).
+// be listed in package.json#files.
+// ROUND 14 (vmu-verify2): the sentence that used to end this comment claimed this gate ALSO checks "for runtime
+// modules, in the installer's preset asset list". MEASURED, that was false - `PRESETS` appears ZERO times in this
+// file and `:127` only compares `listed` (package.json#files). One fact, one gate: the `files[] -> PRESETS` edge
+// belongs to `tests/audit-installer-policy.test.mjs §8` (`:251-261`), which owns it and is green. Stated, not
+// duplicated - a comment that claims a check nobody wrote is the same defect as a gate that claims a fact it
+// never read (docs/11 §4.2 第十三条).
 {
   const VMU = join(REPO, 'vibe-math-vmu')
   const jsFiles = []
