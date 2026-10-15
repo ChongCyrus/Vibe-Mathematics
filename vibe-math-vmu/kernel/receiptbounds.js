@@ -1,3 +1,33 @@
+// vmu kernel · receiptbounds — THE SIZE CONTRACT FOR ONE TOOL RESULT (extracted from `host.js`, tasks 157/161/171).
+//
+// WHY THIS FILE EXISTS. `host.js` hit its 1200-line hard limit (1231 after the truncation work), and this project's
+// rule is that a file at the ceiling may only get SMALLER - the fix is extraction, never "record it in a backlog and
+// grow". The block moved here whole: it is self-contained (JSON, plain objects, `node:crypto`).
+//
+// WHAT IT OWNS:
+//   · `MAX_TOOL_RESULT_BYTES` (12000) and `boundedToolResult(value)` - the ONE place a tool result is serialized;
+//   · STRUCTURAL, PATH-LEVEL elision: only over-long STRING LEAVES are shortened in place (over `MAX_STRING_LEAF`),
+//     and each cut is recorded with EIGHT keys - `elided:[{path, from, to, bytes, keptBytes, keptHash, origHash,
+//     hash}]`. No key is dropped and no array is resized, so `packs`/`faces`/`settings` stay readable: `vmu-entry`'s
+//     `st.packs` is the consumer that proved it;
+//   · `receiptMeta`, ALWAYS present with the SAME FIVE KEYS in both states (`truncated`, `elided`, `hostElision`,
+//     `originalBytes`, `note`). State is expressed by VALUE (`truncated:false`, `elided:[]`), never by the presence
+//     of a key - a conditional key is itself a shape change, which is the defect this contract removes.
+//
+// WHAT IT DOES NOT OWN (named, not implied):
+//   · it does NOT guarantee the result fits in the budget: only cap-able leaves can be shortened, so a receipt made
+//     of many small fields stays large with `truncated:false` and a real `originalBytes`. That is reported rather
+//     than hidden (measured on real hardware: 179,826 characters with no cap-able leaf);
+//   · it does NOT remove the HOST's own later `\n\n[...]\n\n` insertion - that is a host boundary, reported
+//     SEPARATELY as `hostElision:'possible'` and never conflated with our own cuts;
+//   · it does NOT make "the kept value is a prefix of the original" re-derivable for ARBITRARY content. The hashes
+//     give tamper-evidence; prefix-ness is recomputable only when the material's generation rule is retained
+//     (`tests/vmu-elision-prefix-recomputable.test.mjs` retains one: `'ABCDEFGHIJ' × 1400`).
+//
+// ZERO MECHANISM: a pure-function module - one constant plus one function, no `create*` factory, no service, nothing
+// to probe (registered `EXPECT_NA` in the zero-mechanism matrix, like `timevalue`/`contentvalue`).
+import { createHash } from 'node:crypto'
+
 // vmu receipt bounds — the size contract for ONE tool result (extracted from host.js, round 32 task-157).
 //
 // WHY IT IS ITS OWN MODULE: `host.js` is at its 1200-line hard limit, and this project's rule is that a file at
@@ -29,6 +59,33 @@ export const MAX_TOOL_RESULT_BYTES = 12000
 const MAX_STRING_LEAF = 2000
 /** Marker text put in place of what was dropped, so the value itself says it is partial. */
 const ELISION_MARKER = '…[elided]'
+
+/**
+ * ROUND 36 / task-171 — WHAT AN ELISION RECORD MUST LET A REVIEWER RE-DERIVE, AND WHAT IT CANNOT.
+ *
+ * A reviewer of a real receipt could check `bytes === to - from`, `to`, the kept length and the tail - but NOT "the
+ * kept value is character-for-character the original's prefix", because the 14,000-character input was no longer on
+ * disk. A claim nobody can re-derive from what is retained is one revision away from unverifiable.
+ *
+ * ★ THE HONEST DECOMPOSITION (this is the design decision, made before choosing a mechanism):
+ *   · `bytes === to - from`, `from`, `to`, `keptBytes`  ->  re-derivable from the RECORD ALONE.
+ *   · "the kept value is what I hashed"                 ->  re-derivable from `keptHash` (recompute over the value
+ *                                                           that is actually in the receipt).  ← tamper-evidence
+ *   · "the original really was `to` bytes with this hash" -> NOT re-derivable; a hash is a claim about a string
+ *                                                           nobody has any more.
+ *   · ★ "the kept value is a PREFIX of the original"     -> NOT re-derivable from hashes AT ALL, not even with both
+ *                                                           `keptHash` and `origHash`: hashing is one-way and says
+ *                                                           nothing about one string being the other's prefix.
+ * ⇒ So hashes give tamper-evidence and consistency, NOT prefix-ness. Prefix-ness needs the ORIGINAL, or a RETAINED
+ *   RULE that rebuilds it - which is a property of the MATERIAL, not of this module, and therefore belongs in the
+ *   test/fixture that produced it (see `tests/vmu-elision-prefix-recomputable.test.mjs`, which retains a
+ *   deterministic rule and rebuilds the original to verify the prefix character-for-character).
+ * ★ WHAT REMAINS (named, not papered over): for arbitrary real content there is no rule to retain, so prefix-ness
+ *   stays a CLAIM there. These hashes bound the damage - they make silent alteration of the kept segment detectable -
+ *   which is strictly more than before, and strictly less than proof.
+ */
+const HASH_ALGO = 'sha256'
+const dig = (s) => createHash(HASH_ALGO).update(s).digest('hex')
 
 /**
  * Serialize a tool result. If it exceeds `MAX_TOOL_RESULT_BYTES`, shorten the LONGEST string leaves IN PLACE (never
@@ -75,7 +132,20 @@ export function boundedToolResult(value) {
     const keep = Math.max(MAX_STRING_LEAF, original.length - (JSON.stringify(value).length - MAX_TOOL_RESULT_BYTES) - ELISION_MARKER.length)
     const shortened = original.slice(0, keep) + ELISION_MARKER
     leaf.node[leaf.key] = shortened
-    elided.push({ path: leaf.path, from: keep, to: original.length, bytes: original.length - keep })
+    // ROUND 36 / task-171: the record carries BOTH hashes plus the two lengths, with the algorithm named, so a
+    // reviewer can (a) recompute `keptHash` over the value actually present - proving the kept segment is the one
+    // this record describes - and (b) compare `origHash`/`origBytes` against a re-derivable original when the
+    // material's generation rule is retained. See the block comment above for what this does NOT prove.
+    elided.push({
+      path: leaf.path,
+      from: keep,
+      to: original.length,
+      bytes: original.length - keep,
+      keptBytes: shortened.length,
+      keptHash: dig(shortened),
+      origHash: dig(original),
+      hash: HASH_ALGO,
+    })
   }
   const after = JSON.stringify(value)
   // ★★ ROUND 33 / task-161 — THE REAL-MACHINE FINDING, AND WHY THE CONTRACT FIXES IT.
