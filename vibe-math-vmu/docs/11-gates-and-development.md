@@ -180,6 +180,13 @@
 
 **⇒ ★ R15 状态更新（G2 台账已清空、生成器已补规则）**：R14 判定的"原子下一步"**已落地** —— `scripts/generate-planned-settings.mjs:221` 现在带 `后随 ( 即调用` 的跳过（＋`:189` 的 `serviceCall` 桶），因此 **planned 114 → 111**（三个"幽灵键"——两处 dissemination 服务方法＋meetings 的 open——不再被登记）。★ **本节因此改写成服务限定短写：把这三个名字裸写回正文，会让 `group G` 当场报"未登记"**（我本轮就是这样把门弄红的，见上面第 ⑧ 条；`vmu-comms2` 与 `vmu-pack2` 也各自独立抓到同一条），`--check` ⇒ **`up to date (111 planned keys)`**，`vmu-planned-settings` ⇒ **ALL GREEN (planned=111, 39/0)**。G2 的具名台账随之**清空**（`KNOWN_CALL_ONLY = []`，注释写明 **REPAIRED, not merely pardoned**）—— 这正是台账语义：**修好一个就删掉它那一行**。
 
+**⇒ ★ R21 新增硬要求：「引用前先落一行核验」的加强版 —— 报告任何真机读数之前，先证明【跑的是哪个字节】**
+**事实（实测，哈希级）**：R17–R21 期间某些真机会话的宿主，加载的是 `D:\_tmp\r17-home\profiles\ext\node_modules\dsh-vibe-math\vibe-math-vmu\` 下的**一份快照** —— entry `vibe-math-vmu.js` sha256[0:16] ＝ **`13DA3E536C9187BF`（mtime 2026-10-15 00:29:09 +0800）**，而**同刻仓库**是 **`EA836778F2197B12`（mtime 17:13:49 +0800）**。**机制**：R17 用 `Copy-Item -Recurse` 从 `ext-home` 建 scratch home，而那一层是 **SymbolicLink → 仓库** ⇒ **`Copy-Item` 把链接解引用成了一份快照**（默认行为、不可见）。**Delta（相对当时的仓库）**：**10 个文件不同**（`host.js`／`kernel/index.js`／`kernel/lean.js`／`kernel/mathjobs.js`／`kernel/meetingmarker.js`／`kernel/meetings.js`／`kernel/pack.js`／`packs/v5r/prompts/v5r-core.js`／`settings/schema.js`／`vibe-math-vmu.js`）＋ **1 个文件只在仓库**（`packs/v5r/middleware/artifact-counter.js`）。⇒ **该快照里没有 R17 之后的任何修复**（ordermode 的读取侧、`artifact-counter`、`kernel.rules.validate` 的 plan 侧、H2 守卫都不在）。
+**⇒ 两条纪律**
+1. **报告真机读数前，必须证明"宿主实际加载的 payload 哈希 ＝ 仓库哈希"**，并核**关键新文件在场**（缺一即该读数**不得**标注为"当前树"）。★ 推论：**"我改了代码 ⇒ 我的实验测到了它"是一个需要证明的假设，不是默认**。
+2. **凡依赖 payload 落地时间之后才有的修复/模块的结论，只能标注"对那份快照成立"** —— 既**不许**一刀切作废，也**不许**一刀切保留（**按 payload 分档**）。
+★ 本条与既有三条同族（**量具坏了会给出自信的错误答案**／**"读会话日志"本身是有版本的读法**（多帧解码）／**`JSON.stringify(<Promise>)＝"{}"`**）⇒ 它们合并成一节 **「测量环境的同一性」**（payload 哈希／解码帧完整性／`await` 指纹），在矩阵 v16 里成节。
+
 ---
 
 **清单（当前，2026-10-09 第 18 轮）**

@@ -728,14 +728,28 @@ export function apply(ctx, config = {}) {
       try { process.stderr.write('vmu: prompt text is declared but the host systemPrompt service is NOT reachable (not injected?): ' + promptSectionState.reason + '\n' + (promptSectionState.stack || '') + '\n') } catch { /* stderr may be gone */ }
     }
     if (!promptSectionState.code && systemPrompt && typeof systemPrompt.section === 'function') {
-      effect(() => {
-        const order = typeof systemPrompt.getSectionOrder === 'function'
-          ? systemPrompt.getSectionOrder('TEAM_POLICY') : undefined
-        const text = effectivePrompts.map((s) => s.text).join('\n\n')
-        const dispose = systemPrompt.section({ name: 'vmu', order, text })
-        return typeof dispose === 'function' ? dispose : () => {}
-      }, 'vmu:prompt')
-      promptSectionState = { registered: true, code: null, reason: null }
+      // ROUND 21 / task-129 (ARM A) — **THE CALL NEEDS THE SAME PROTECTION AS THE ACCESS.** A host that exposes
+      // the service but throws when it is USED (`section()` refusing an un-injected caller) escaped `apply()`
+      // entirely, and the catch above wrote NOTHING: the live arm-A signature is exactly "`session/create` rejected
+      // (exit 1), host stderr **0 B**", while arm D (`packs:['no-such-pack']`: our loader runs and fails BY NAME)
+      // starts fine — i.e. the crash requires a pack that loads SUCCESSFULLY and therefore reaches THIS branch.
+      // Guarded here, such a host degrades BY NAME (stderr with the stack + `status().promptSection`) instead of
+      // killing the preset assembly. NOT optional chaining (it triggers the getter too), NOT an `inject` addition,
+      // NOT a silenced error — and no new code: the registered `VMU_EXTERNAL_UNAVAILABLE` is reused with `what`.
+      try {
+        effect(() => {
+          const order = typeof systemPrompt.getSectionOrder === 'function'
+            ? systemPrompt.getSectionOrder('TEAM_POLICY') : undefined
+          const text = effectivePrompts.map((s) => s.text).join('\n\n')
+          const dispose = systemPrompt.section({ name: 'vmu', order, text })
+          return typeof dispose === 'function' ? dispose : () => {}
+        }, 'vmu:prompt')
+        promptSectionState = { registered: true, code: null, reason: null }
+      } catch (e) {
+        promptSectionState = { registered: false, code: 'VMU_EXTERNAL_UNAVAILABLE', what: 'systemPrompt.section',
+          reason: String((e && e.message) || e), stack: String((e && e.stack) || '') }
+        try { process.stderr.write('vmu: the host systemPrompt service refused this section (not injected?): ' + promptSectionState.reason + '\n' + (promptSectionState.stack || '') + '\n') } catch { /* stderr may be gone */ }
+      }
     } else if (!promptSectionState.code) {
       promptSectionState = { registered: false, code: 'VMU_EXTERNAL_UNAVAILABLE', what: 'systemPrompt.section',
         reason: 'the host exposes no systemPrompt.section() to receive ' + effectivePrompts.length + ' declared section(s)' }

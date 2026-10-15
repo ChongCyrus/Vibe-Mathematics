@@ -29,9 +29,10 @@ const ok = (cond, name, detail) => {
   failures.push(name + (detail === undefined ? '' : ' [' + JSON.stringify(detail) + ']'))
 }
 
-const run = async (config) => {
+const run = async (config, mode = 'access-throws') => {
   const root = await mkdtemp(join(tmpdir(), 'vmu-r21-guard-'))
   let touched = 0
+  let sectionCalls = 0
   const stderr = []
   const origWrite = process.stderr.write.bind(process.stderr)
   process.stderr.write = (s) => { stderr.push(String(s)); return true }
@@ -40,7 +41,19 @@ const run = async (config) => {
     on: () => () => {},
     tools: { register: async () => () => {} },
     logger: { warn: () => {}, info: () => {}, error: () => {} },
-    get systemPrompt() { touched += 1; throw new Error('cannot get property "systemPrompt" without inject') },
+    // mode models three host shapes: the service ACCESS throws (cordis, un-injected), the service is reachable and
+    // works, and the service is reachable but the CALL throws (live ARM A). All three are real host behaviours.
+    get systemPrompt() {
+      touched += 1
+      if (mode === 'access-throws') throw new Error('cannot get property "systemPrompt" without inject')
+      if (mode === 'section-throws') {
+        return {
+          getSectionOrder: () => undefined,
+          section: () => { sectionCalls += 1; throw new Error('cannot get property "systemPrompt" without inject') },
+        }
+      }
+      return { section: () => { sectionCalls += 1; return () => {} }, getSectionOrder: () => undefined }
+    },
   }
   let err = null
   let handle = null
@@ -48,7 +61,7 @@ const run = async (config) => {
   process.stderr.write = origWrite
   const state = handle && typeof handle.status === 'function' ? handle.status().promptSection : null
   try { await rm(root, { recursive: true, force: true }) } catch { /* keep */ }
-  return { touched, err, state, stderr: stderr.join('') }
+  return { touched, err, state, stderr: stderr.join(''), sectionCalls }
 }
 
 // ── A. THE REGRESSION CASE: a pack carries prompt text, the host has no reachable systemPrompt ───────────────
@@ -66,6 +79,23 @@ ok(/NOT reachable/.test(withPack.stderr) && /cannot get property/.test(withPack.
 const noPack = await run({ packs: [] })
 ok(noPack.touched === 0 && noPack.err === null,
   'P5. ★ reversal direction: with NO pack the getter is touched ZERO times and nothing throws (so P1/P2 measure the pack path, not a constant)', { touched: noPack.touched })
+
+// ── D. ★ LIVE ARM A: the service is REACHABLE but the CALL throws ────────────────────────────────────────────
+// The live four-arm experiment pinned the trigger to "our loader SUCCESSFULLY loaded a real pack ⇒ session/create
+// rejected, host stderr 0 B": arm B (`packList`, our loader not triggered) and arm D (`packs:['no-such-pack']`,
+// loader runs but fails BY NAME) both start fine. The throw therefore happens AFTER a successful read — i.e. at
+// the `systemPrompt.section({...})` CALL, which the access-guard did not cover. Locally reproduced at
+// `D:\_tmp\r21-armA-probe.mjs` (stack pointed at `vibe-math-vmu.js:735`, reached from `apply()`), and this arm
+// is the guard for it: it reddens the moment that call is left unguarded again.
+const armA = await run({ packs: ['v5r'], vmu: { 'vmu.tools.faces': ['report'] } }, 'section-throws')
+ok(armA.sectionCalls > 0,
+  'P6. (non-empty precondition) ARM A really reached the `systemPrompt.section()` CALL (otherwise P7/P8 are vacuous)', { sectionCalls: armA.sectionCalls, touched: armA.touched })
+ok(armA.err === null,
+  'P7. ★ ARM A DOES NOT KILL THE ASSEMBLY: a host whose `section()` throws no longer escapes `apply()` (that escape is what showed up live as `agent-preset/invalid` with host stderr 0 B, i.e. no degradation line from us)', armA.err && String(armA.err.message))
+ok(armA.state && armA.state.registered === false && armA.state.code === 'VMU_EXTERNAL_UNAVAILABLE' && armA.state.what === 'systemPrompt.section' && typeof armA.state.stack === 'string' && armA.state.stack.length > 0,
+  'P8. ★ and it degrades BY NAME with the STACK: `promptSection = {registered:false, code, what:"systemPrompt.section", reason, stack}`', armA.state)
+ok(/refused this section/.test(armA.stderr) && /cannot get property/.test(armA.stderr),
+  'P9. the host also gets it on stderr (guard, not silence) — this is the line whose ABSENCE characterised arm A', armA.stderr.slice(0, 200))
 
 // ── C. THE HONEST-ABSENCE CASE: a host that simply has no systemPrompt at all (plain object, no getter) ─────
 const plain = await run({ packs: ['v5r'], vmu: { 'vmu.tools.faces': ['report'] } })
