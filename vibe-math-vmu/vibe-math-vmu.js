@@ -772,7 +772,35 @@ export function apply(ctx, config = {}) {
     settingSource: (key) => kernel.settingSource(key),
     onPromptPolicy: (p) => { promptPolicies.push(p) } })
   packLoaderRef = packLoader
-  const packsWanted = Array.isArray(config.packs) ? config.packs : []
+  // ROUND 24 / task-136 — `vmu.packs.active` IS A REAL SWITCH NOW, ON THIS SAME LOADING PATH.
+  // It used to only flip `packsDeclared` (:515-516) and therefore only made the pack TOOL/loader REACHABLE
+  // (:530) while loading nothing: a settings key advertising "which packs I declared" that loaded no pack is the
+  // "declared but ineffective" class — and the SETTINGS face is the TUNABILITY face (hot, per-deployment) whereas
+  // `config.packs` is a deployment-time constant that requires editing the profile row.
+  // DECISION (named; NO second semantics — the loading loop below is byte-identical):
+  //   · the loading list is `config.packs` FIRST (deployment baseline: it keeps its order and keeps owning the
+  //     PACK_RUNTIME fold at :452), then every settings-only id in `vmu.packs.active`, deduped;
+  //   · ⇒ settings can ADD a pack without touching the profile row (the whole point of the switch), and they
+  //     CANNOT remove a deployment pack (dropping one is a deployment decision, made in the overlay);
+  //   · a pack declared by BOTH loads ONCE and its source stays `config.packs`;
+  //   · where each request came from is recorded per id (`packSourceOf` ⇒ `packRequested`) so a receipt can tell
+  //     the two sources apart instead of guessing.
+  // THE DURABLE-ROOT REQUIREMENT IS NOT RELAXED for either source: both go through the same `packLoader.apply`,
+  // so a missing `config.root` refuses BY NAME (`VMU_ENGINE_UNAVAILABLE this kernel has no library root`) and the
+  // refusal lands in `packErrors` — which the status face now carries (see host.js) instead of leaving the caller
+  // with one stderr line while `settingsMerge.packs` still advertises the pack.
+  const deploymentPacks = Array.isArray(config.packs) ? config.packs : []
+  const activeFromSettings = Array.isArray(settings['vmu.packs.active']) ? settings['vmu.packs.active'].filter((p) => typeof p === 'string') : []
+  const packSourceOf = new Map()
+  for (const w of deploymentPacks) packSourceOf.set(typeof w === 'string' ? 'id:' + w : w, 'config.packs')
+  const packsWanted = deploymentPacks.slice()
+  for (const w of activeFromSettings) {
+    const key = 'id:' + w
+    if (packSourceOf.has(key)) continue          // declared by BOTH ⇒ one load, source stays `config.packs`
+    packSourceOf.set(key, 'vmu.packs.active')
+    packsWanted.push(w)                          // SAME shape a `config.packs` entry has ⇒ the loop needs no change
+  }
+  const packRequested = packsWanted.map((w) => ({ id: typeof w === 'string' ? w : (w && w.id) || null, via: packSourceOf.get(typeof w === 'string' ? 'id:' + w : w) || null }))
   const appliedPacks = []
   const packErrors = []
   if (!switchedOff && packsWanted.length > 0) {
