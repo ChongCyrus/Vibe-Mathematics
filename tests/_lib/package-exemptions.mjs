@@ -39,5 +39,9 @@ export const PACKAGE_EXEMPTIONS = Object.freeze([
   { path: 'vibe-math-vmu/docs/audit/source-runtime-coverage.md', reason: '仓内审计工作稿（运行时来源覆盖），不是预设载荷；不随 tarball 交付是正确状态', approvedBy: 'Lead', approveRound: 15, reviewRound: 25 },
 ])
 
-/** The round this gate is running in - used only for the reviewRound expiry COUNT. */
-export const GATE_ROUND = 15
+/** The round this gate is running in - used ONLY for the reviewRound expiry COUNT (never for a red).
+ *  ROUND 16: bumped 15 -> 16 so the printed "review due at round N" tracks the round it is read in.
+ *  LEAD RULING (round 16, task-116 ③): a due exemption is REPORTED, never a red. Turning the accounting date into a
+ *  gate failure would push people to edit the DATE instead of the content - the whitelist-drift failure this repo
+ *  keeps hunting. Verified by self-probe 6b in tests/audit-package-membership.mjs. */
+export const GATE_ROUND = 16

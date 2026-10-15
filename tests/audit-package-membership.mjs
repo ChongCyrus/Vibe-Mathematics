@@ -202,7 +202,8 @@ ok(duplicateListed.length === 0, 'no path is listed twice in package.json#files 
   ok(real.redundant.length === 0, 'no exemption covers an already-shipped path (red: an exemption may not hide a registration)', real.redundant.join(','))
   ok(real.dup.length === 0, 'no path appears twice in the exemption table', real.dup.join(','))
   ok(real.blank.length === 0, 'every exemption carries a reason AND an approver', real.blank.join(','))
-  console.log('  exemptions: ' + PACKAGE_EXEMPTIONS.length + ' named; review due at round ' + ROUND + ': ' + real.due.length)
+  console.log('  exemptions: ' + PACKAGE_EXEMPTIONS.length + ' named; review due at round ' + ROUND + ': ' + real.due.length
+    + ' (REPORT-ONLY by Lead ruling, round 16: a due entry is never a red - self-probe 6b proves it)')
   // SELF-PROBES (docs/11 §4.2 第四条/第九条): each switch on synthetic input, so "the rule stopped biting" and
   // "the rule had nothing to bite" cannot look the same.
   const shipped = new Set(['a/shipped.js'])
@@ -224,6 +225,12 @@ ok(duplicateListed.length === 0, 'no path is listed twice in package.json#files 
   ok(p5.blank.length === 1, '★ SELF-PROBE 5: an exemption with an empty reason (or approver) is reported', JSON.stringify(p5.blank))
   const p6 = closureOf({ diskFiles: ['a/exempt.md'], listedSet: new Set(), exemptions: [ex('a/exempt.md', { reviewRound: ROUND })] })
   ok(p6.due.length === 1, '★ SELF-PROBE 6: an exemption whose reviewRound has arrived is COUNTED (visibility, never a silent pass)', JSON.stringify(p6.due))
+  // SELF-PROBE 6b pins the LEAD RULING itself: "due" must stay a REPORT. Without this probe, someone could later
+  // turn `due` into a red "for consistency" and no gate would notice that the ruling had been reversed.
+  const p6b = closureOf({ diskFiles: ['a/exempt.md'], listedSet: new Set(), exemptions: [ex('a/exempt.md', { reviewRound: ROUND })] })
+  ok(p6b.due.length === 1 && p6b.missing.length === 0 && p6b.gone.length === 0 && p6b.redundant.length === 0,
+    '★ SELF-PROBE 6b (LEAD RULING): a DUE exemption is COUNTED and stays visible - it NEVER becomes a red (turning the accounting date into a gate failure would push people to edit the DATE instead of the content)',
+    JSON.stringify({ due: p6b.due, missing: p6b.missing, gone: p6b.gone, redundant: p6b.redundant }))
 }
 console.log('')
 console.log('=== PACKAGE MEMBERSHIP: ' + passed + ' passed, ' + failed + ' failed ===')

@@ -75,6 +75,7 @@ test('refusals are named; zero-mechanism works; repeated probing is identical', 
   const inst = mk({})
   let refusals = 0
   let enforcedReceipts = 0
+  let probed = 0
   for (const k of Object.keys(inst)) {
     if (typeof inst[k] !== 'function') continue
     for (const args of [{}, { id: 'nope' }, { auctionId: 'nope', by: 'x' }, { auctionId: 'nope', by: 'x', amount: 1 }, { plan: {} }]) {
@@ -82,14 +83,41 @@ test('refusals are named; zero-mechanism works; repeated probing is identical', 
       try { r = inst[k](args) } catch (e) { continue }
       const isRefusal = !!(r && r.ok === false)
       if (isRefusal) refusals += 1
+      probed += 1
       assert.ok(!isRefusal || r.code, '拒绝必须具名（无 code）：' + k + '(' + JSON.stringify(args) + ')')
       if (r && Array.isArray(r.enforced)) {
         enforcedReceipts += 1
-        if (Array.isArray(r.fired)) for (const x of r.fired) assert.ok(r.enforced.indexOf(x) !== -1, '**fired ⊆ enforced** 违约：' + x)
+        // ROUND 16 (docs/11 §4.2 第九条): this used to be `if (Array.isArray(r.fired)) for … assert.ok(…)` - when the
+        // field was absent the subset claim was SKIPPED, and on this face the OUTER branch never runs either
+        // (measured: kernel/bidding.js contains `enforced` 0 times ⇒ receipts with enforced[] = 0), so the claim was
+        // dead code wearing the shape of a check. It is now written so no assertion can be skipped: the loop runs
+        // unconditionally over a normalised list, `fired`'s own shape is asserted (a malformed value cannot be
+        // normalised into "nothing to check"), and the rule itself is proved by the SELF-PROBE below - the "opposite
+        // switch" the Ninth Requirement asks for when a branch cannot be reached from the real face.
+        // EMPTY_ALLOWED (RULE E): a receipt that does not declare fired[] has nothing to be a subset OF - the empty
+        // case is intended here, and it is the self-probe, not this branch, that carries the teeth.
+        assert.ok(r.fired === undefined || Array.isArray(r.fired), 'fired[] 若存在必须是数组：' + JSON.stringify(r.fired))
+        for (const x of (Array.isArray(r.fired) ? r.fired : [])) assert.ok(r.enforced.indexOf(x) !== -1, '**fired ⊆ enforced** 违约：' + x)
       }
     }
   }
-  console.log('  · 具名拒计数=' + refusals + '；带 enforced 的回执=' + enforcedReceipts + '（0 ⇒ 该面未实现口径 ✗，已如实记录 ✓）')
+  assert.ok(probed > 0, '非空前置：这一轮真的探测过回执，否则下面的口径统计与自探针都是空过', String(probed))
+  {
+    // EMPTY_ALLOWED (RULE E): the normalised list may legitimately be empty; the try/catch around it is the evidence.
+    const subsetOf = (rec) => { for (const x of (Array.isArray(rec.fired) ? rec.fired : [])) assert.ok(rec.enforced.indexOf(x) !== -1, 'fired ⊆ enforced 违约：' + x) }
+    let caught = false
+    try { subsetOf({ enforced: ['a'], fired: ['b'] }) } catch (e) { caught = true }
+    assert.ok(caught, '★ SELF-PROBE：fired ⊄ enforced 的回执必须被抓到（本面实测 enforced 回执=0 ⇒ 规则不能只活在从不执行的分支里）')
+    let quiet = false
+    try { subsetOf({ enforced: ['a'], fired: ['a'] }); quiet = true } catch (e) { quiet = false }
+    assert.ok(quiet, '★ SELF-PROBE：合规回执必须安静（否则上一条会因为"任何输入都抛"而永远为真）')
+    // the SHAPE claim sits in the same never-taken branch, so it gets the same treatment (synthetic input).
+    const shapeOk = (rec) => rec.fired === undefined || Array.isArray(rec.fired)
+    assert.ok(!shapeOk({ fired: 'not-an-array' }) && shapeOk({}) && shapeOk({ fired: [] }),
+      '★ SELF-PROBE：形状判据把"非数组 fired[]"判红、把"缺省 fired"与"空数组 fired"判过')
+  }
+  assert.equal(enforcedReceipts, 0, '实测口径：本面回执 0 个带 enforced[]（复活条件：kernel/bidding.js 一旦产出 enforced[]，删掉这条并让上面的 fired ⊆ enforced 走真分支）')
+  console.log('  · 具名拒计数=' + refusals + '；带 enforced 的回执=' + enforcedReceipts + '（已由上面那条 assert.equal 如实断言 ✓）')
   const zero = createBidding({ clock: () => 0 })
   assert.ok(zero && typeof zero === 'object')
   assert.equal(JSON.stringify(probe(mk({}))), JSON.stringify(probe(mk({}))), '两次探测必须逐字相同')

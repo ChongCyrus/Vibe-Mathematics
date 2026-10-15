@@ -244,10 +244,29 @@ test('D3: every receipt and every refusal carries enforcedScope, with no duplica
   for (const r of receipts) {
     assert.equal(r.enforcedScope, 'evaluated-so-far')
     assert.equal(new Set(r.enforced).size, r.enforced.length)
-    if (Array.isArray(r.fired)) {
-      assert.equal(new Set(r.fired).size, r.fired.length)
-      for (const k of r.fired) assert.ok(r.enforced.includes(k), 'fired ⊆ enforced')
-    }
+    // ROUND 16 (docs/11 §4.2 第九条): the FOURTH site of this class (task-116 named three; the whole-repo keyword
+    // search found this one, and it is the same shape as tests/vmu-ballotbox.test.mjs). `if (Array.isArray(r.fired))`
+    // skipped BOTH claims below whenever the field was absent - and measured, kernel/course.js contains `fired` 0
+    // times, so the branch never ran: dead code in the shape of a check. Now unconditional over a normalised list,
+    // with `fired`'s own shape asserted, and the rule proved by the SELF-PROBE below.
+    // EMPTY_ALLOWED (RULE E): a receipt that does not declare fired[] has nothing to be a subset OF.
+    assert.ok(r.fired === undefined || Array.isArray(r.fired), 'fired[] 若存在必须是数组：' + JSON.stringify(r.fired))
+    const fired = Array.isArray(r.fired) ? r.fired : []
+    assert.equal(new Set(fired).size, fired.length)
+    for (const k of fired) assert.ok(r.enforced.includes(k), 'fired ⊆ enforced')
+  }
+  {
+    // EMPTY_ALLOWED (RULE E): the normalised list may legitimately be empty; the try/catch around it is the evidence.
+    const subsetOf = (rec) => { for (const x of (Array.isArray(rec.fired) ? rec.fired : [])) assert.ok(rec.enforced.includes(x), 'fired ⊆ enforced') }
+    let caught = false
+    try { subsetOf({ enforced: ['a'], fired: ['b'] }) } catch (e) { caught = true }
+    assert.ok(caught, '★ SELF-PROBE：fired ⊄ enforced 的回执必须被抓到（本面实测不声明 fired[] ⇒ 规则不能只活在从不执行的分支里）')
+    let quiet = false
+    try { subsetOf({ enforced: ['a'], fired: ['a'] }); quiet = true } catch (e) { quiet = false }
+    assert.ok(quiet, '★ SELF-PROBE：合规回执必须安静（否则上一条会因为"任何输入都抛"而永远为真）')
+    const shapeOk = (rec) => rec.fired === undefined || Array.isArray(rec.fired)
+    assert.ok(!shapeOk({ enforced: [], fired: 'not-an-array' }) && shapeOk({ enforced: [] }) && shapeOk({ enforced: [], fired: [] }),
+      '★ SELF-PROBE：形状判据把"非数组 fired[]"判红、把"缺省 fired"与"空数组 fired"判过')
   }
   passed += 1
 })
