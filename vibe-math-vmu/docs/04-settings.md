@@ -1004,6 +1004,7 @@ vmu.packs.active: [v5r]
 | `vmu.paper.compilePdf` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 检测到 LaTeX 引擎时编译 PDF。v5r `paperCompilePdf:true`（`:1166`；消费点 `:8258`；`:8820` 明写 format=md 时**不得**因缺 tex 报警 ⇒ `pdf = compilePdf && format !== 'md'`）。读者：与 `vmu.paper.format` 同一处。 |
 | `vmu.members.maxTempPerMember` | int ≥0 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 同一雇佣者名下**同时在册**的临时成员上限。v5r `maxTempPerMember:3`（`:1075`；消费点 `:8920-8924`：`perCap = max(1, floor(value||3))`、按 `hiredBy` 计数、超限 `V5_MEMBER_LIMIT` 并回报 current/limit）。vmu 映射（vmu 无 kind:temp）：**仍在试用期**（`confirmedAt === null`）的成员按接纳人 `by` 分组。读者：`kernel/recruit.js` 的 `accept()`。 |
 | `vmu.tasks.memberMayRejectAssign` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tasks.js` | 成员可否对被分派**表示异议**（记录＋广播，**任务仍执行**）。v5r `memberMayRejectAssign:true`（`:1066`；消费点 `:9555-9562`：``reject_assign && params.memberMayRejectAssign`` ⇒ 广播给 voters，原文"任务仍会执行"）。读者：`kernel/tasks.js` 的 `objectAssign()`；★ false 时 vmu **具名拒**（v5r 是静默忽略该字段 —— 刻意更严，不许静默）。 |
+| `vmu.meetings.orderMode` | enum | `fifo` | `fifo`∣`round-robin`∣`chair`∣`random` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 发言序模式（fifo|round-robin|chair|random）；域外值 ⇒ 读取侧具名拒（kernel/meetingmarker.js 的 strictOrderMode），不静默回落到默认值 |
 | `vmu.allocation.dirtyWorkQuota` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.allocation.fairnessPolicy` | string | `equal` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.allocation.rotationWindow` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
@@ -1197,7 +1198,6 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.minutesDetail` | string | `brief` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.minutesIncludeRefused` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.minutesRetentionMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.orderMode` | string | `fifo` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.quorumLossPolicy` | string | `suspend` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.quorumMin` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.quorumRatio` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |

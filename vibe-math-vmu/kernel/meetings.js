@@ -10,7 +10,7 @@ import { createLeaveControls } from './meetingleave.js'
 // decided 1200-line budget (docs/02 §L174) — see `kernel/meetinglapse.js`: it holds the pure rules, this file
 // holds the state (live records, minutes, counters, broadcasts) and the D3 receipt vocabulary.
 import { MEETING_LAPSE_NAME, createMeetingControls } from './meetinglapse.js'
-import { createMeetingMarker, mirrorVote, budgetVerdictOf, createBoxBinding, createOrderControls, meetingKeysSnapshot as keysSnapshot } from './meetingmarker.js'
+import { createMeetingMarker, mirrorVote, budgetVerdictOf, createBoxBinding, createOrderControls, strictOrderMode, meetingKeysSnapshot as keysSnapshot } from './meetingmarker.js'
 // vmu kernel · meetings — the POLICY + GUARD layer that finally READS the `vmu.meetings.*` knobs.
 //
 // WHY: 08-academic-... (docs/08-primitives-meeting-ballot-workflow.md) declares **47 `vmu.meetings.*` keys**
@@ -165,7 +165,9 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     speechExtendMs: n(sget('vmu.meetings.speechExtendMs')), speechExtendMax: n(sget('vmu.meetings.speechExtendMax')),
     speechQuotaPerMember: n(sget('vmu.meetings.speechQuotaPerMember')),
     interruptAllow: sget('vmu.meetings.interruptAllow') !== false, interruptQuota: n(sget('vmu.meetings.interruptQuota')),
-    orderMode: oneOf(sget('vmu.meetings.orderMode'), ['fifo', 'round-robin', 'chair', 'random'], 'fifo'),
+    // ROUND 17: NOT `oneOf` - an out-of-domain value is refused BY NAME instead of being silently replaced by `fifo`
+    // (measured: `bogus` used to read back as `fifo` everywhere, including in `status().keys`). See `strictOrderMode`.
+    orderMode: strictOrderMode(sget('vmu.meetings.orderMode'), refuse),
     lateAfterMs: n(sget('vmu.meetings.lateAfterMs')), leaveEarlyPolicy: oneOf(sget('vmu.meetings.leaveEarlyPolicy'), ['allow', 'note', 'deny'], 'allow'),
     materialsRequired: sget('vmu.meetings.materialsRequired') === true,
     minutesDetail: oneOf(sget('vmu.meetings.minutesDetail'), ['brief', 'full'], 'brief'),

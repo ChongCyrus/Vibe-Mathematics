@@ -284,6 +284,24 @@ export function meetingKeysSnapshot(K) {
 /** B③: the VALUE DOMAIN of `vmu.meetings.orderMode` — the three legacy orders plus `random`. */
 export const ORDER_MODES = Object.freeze(['fifo', 'round-robin', 'chair', 'random'])
 
+/**
+ * ROUND 17 / task-118: the STRICT reader for `vmu.meetings.orderMode` - the twin of `oneOf` (meetings.js:128), which
+ * replaced an out-of-domain value with the default SILENTLY. MEASURED before this change (D:\_tmp\v17\
+ * repro-orderMode.mjs): `bogus`, `fifo` and "key absent" all produced the SAME queue order, and `status().keys`
+ * reported `"fifo"` for a deployment that had declared `bogus` - a status field stating a value nobody declared.
+ * Same defect class the round-8 `vmu.paper.finalizer` fix closed (paper.js:118-131 refuses by name there).
+ * `refuse` is INJECTED: this stays the one place that owns the vocabulary (ORDER_MODES) while the throwing mechanism
+ * stays the face's. `undefined`/`null`/`''` mean "not declared" -> the declared code default (zero mechanism).
+ */
+export function strictOrderMode(raw, refuse) {
+  if (raw === undefined || raw === null || raw === '') return 'fifo'
+  const v = String(raw)
+  if (ORDER_MODES.indexOf(v) !== -1) return v
+  throw refuse('VMU_INVALID_ARGUMENT',
+    'vmu.meetings.orderMode=' + JSON.stringify(raw) + ' is outside the declared domain ' + ORDER_MODES.join('|'),
+    'declare one of ' + ORDER_MODES.join('|') + ' - an undecidable speaker order must not be silently replaced by the default (removing the key yields the code default fifo)')
+}
+
 /** B④: the FOUR floor modes that survive the R8 merge (docs/08 §25.14 B-4). */
 export const FLOW_MODES = Object.freeze(['open', 'hands', 'round_robin', 'call_on'])
 
@@ -318,7 +336,13 @@ export function randomOrderOf(list, seed) {
  * Injected seams (all owned by the meeting face):
  *   · `requireMeeting(id)`          — resolves the record (and fails closed on a lapsed meeting);
  *   · `clock()`                     — the instant normaliser (the only time source);
- *   · `limits()`                    — a GETTER over the live settings (`orderMode` is read LIVE, so a hot change is honoured);
+ *   · `limits()`                    — a GETTER over the live settings (`orderMode` is read from the face's config
+ *                                     object, which is built ONCE at construction). ★ ROUND 17: the previous wording
+ *                                     claimed "read LIVE, so a hot change is honoured" - MEASURED FALSE
+ *                                     (D:\_tmp\v17\repro-orderMode.mjs: a fifo instance whose settings were hot-changed
+ *                                     to `round-robin` still produced the fifo order `r-2,r-1`, while a fresh instance
+ *                                     declaring round-robin produced `r-1,r-2`). The refusal for an out-of-domain value
+ *                                     now happens at that same construction-time read (`strictOrderMode`).;
  *   · `declared(key)`               — is the key DECLARED by this deployment? (the capability rail; a code default is not a declaration);
  *   · `deny(code,msg,hint,keys)`    — the face's named refusal (it attaches the evaluated scope);
  *   · `audit(row)`                  — the face's audit log for the append-only row;

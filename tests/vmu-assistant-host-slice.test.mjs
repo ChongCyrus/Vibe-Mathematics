@@ -364,11 +364,18 @@ if (OFFLINE_SESSION) {
   const summary = readText(join(outDir, 'summary.json'))
   const transcript = String(drive.stdout || '') + '\n' + String(drive.stderr || '') + '\n' + dump + '\n' + summary
   ok(drive.status === 0, 'the driven real session finished under preset ' + PRESET, { status: drive.status, tail: transcript.trim().slice(-200) })
-  ok(/vibe_vmu_report/.test(transcript), 'HOST: the assistant face is REACHABLE in a real session (the tool was really called)')
   // MULTI-FACE LIT (the fact vmu-verify needs for its matrix) - read from the SESSION LOG, which is the authoritative
   // record with `seq` + line numbers. Prose mentions are NOT calls: only `tool/call` events count.
   const sessionId = (transcript.match(/"sessionId"\s*:\s*"([^"]+)"/) || [])[1] || null
   const sess = sessionId ? readSessionLog(DSH_HOME, sessionId) : { file: null, lines: 0, events: [], toolCalls: [], toolResults: [], assistant: [], publishedTools: [], statusReceipt: null }
+  // ROUND 17 / task-118 addendum (Lead ruling): this assertion used to test the DRIVER's stdout+JSONL for the tool
+  // name. MEASURED on a real host by vmu-assistant2: that dump contains `vibe_vmu_report` ZERO times by design (the
+  // driver does not echo tool names), while the two neighbouring assertions reading the SESSION LOG were green - i.e.
+  // a FALSE NEGATIVE of the same class as R7's "the receipt only lands in the session log, not in the driver's stdout"
+  // (docs/11 §4.2 第五条). The fact is a CALL, so it is read where this file already reads every other call fact.
+  ok(sess.toolCalls.some((c) => c.name === 'vibe_vmu_report'),
+    'HOST: the assistant face is REACHABLE in a real session (the tool was really called - read from the SESSION LOG, where the call record lives)',
+    { called: sess.toolCalls.map((t) => t.name).filter(Boolean) })
   gradeSession(sess, transcript, drive.status, sessionId)
 } else {
   const PRE = 'NO PRESET-CAPABLE RUNNER WAS HANDED OVER: `dsh headless` refuses any session under an agent preset (measured in §2), so the assistant face needs a RUNNING scratch `dsh web` instance driven with `--preset ' + PRESET + '` (scripts/dsh-drive.mjs). ' + providerNote

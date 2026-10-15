@@ -289,6 +289,19 @@ export const SERVICE_SURFACES = new Set([
   'vmu.ip.hold', 'vmu.ip.ownership', 'vmu.ip.contributors', 'vmu.ip.recordSearch', 'vmu.ip.transfer',
 ])
 
+/**
+ * ROUND 17 / task-118: keys whose TYPE + DOMAIN can only live in the HAND-WRITTEN schema, never in the generated block.
+ * The collector recovers a default LITERAL from the module's read (here: `fifo`) and emits `type:'string'`, so putting
+ * such a key in the block destroys its `domain` on every regeneration. MEASURED: `--write` restored the old
+ * `type:'string'` row character-for-character - and `vmu.meetings.orderMode` HAD been living inside the block, which is
+ * why its domain could not be declared there. `render()`'s own comment records the same lesson ("the one time it was
+ * edited by hand"). The invariant below makes the rule enforceable instead of a convention: such a key must be declared
+ * by hand, and it must NOT appear in the block.
+ */
+export const HAND_DECLARED_DOMAINS = new Set([
+  'vmu.meetings.orderMode',
+])
+
 export function collect() {
   const files = readdirSync(KERNEL).filter((f) => f.endsWith('.js'))
   // Keys already declared in the schema must NOT be added again. Measured: `records.js` distinguishes
@@ -315,6 +328,7 @@ export function collect() {
   const perModule = []
   const skipped = []
   const preexisting = []
+  const handDeclared = []
   for (const f of files) {
     const src = readFileSync(join(KERNEL, f), 'utf8')
     // A module is scanned if it EXPORTS a list or if it READS any key: the second half is the round-81 fix for
@@ -332,6 +346,13 @@ export function collect() {
     let recovered = 0
     for (const key of keys) {
       if (SERVICE_SURFACES.has(key)) { skipped.push(key); continue }
+      // ROUND 17: a hand-declared DOMAIN key is never emitted (see HAND_DECLARED_DOMAINS) - emitting it would write
+      // `type:'string'` over the domain. It must instead be declared by hand; the invariant below reddens if it is not.
+      // ★ It is therefore PRE-EXISTING BY CONSTRUCTION, and it must be recorded as such: the wired-union gate accounts
+      // a module's reads against exactly two sets (the keys emitted for THAT module, and `preexisting`), so a `continue`
+      // here made `meetings.js` read a key the union could not account for - measured: 1 violation the moment the
+      // `vmu.meetings.orderMode` row moved out of the generated block and into the hand-written schema.
+      if (HAND_DECLARED_DOMAINS.has(key)) { handDeclared.push(key); preexisting.push(key); continue }
       if (already.has(key)) { preexisting.push(key); continue }
       const lit = defaultOf(src, key)
       if (lit !== undefined) recovered++
@@ -340,7 +361,7 @@ export function collect() {
     perModule.push({ module: f, keys: keys.length, recovered })
   }
   out.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
-  return { defs: out, perModule, skipped, preexisting }
+  return { defs: out, perModule, skipped, preexisting, handDeclared }
 }
 
 /**
@@ -435,6 +456,13 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const line = next.split('\n').find((l) => l.includes("'" + d.key + "'"))
     if (d.literal === null && !(line && /未声明默认值/.test(line))) problems.push(d.key + ' has no default AND the file does not say so')
     if (preexisting.has(d.key)) problems.push(d.key + ' is declared both in the block and in the hand-written schema')
+  }
+  // ROUND 17 / task-118: a hand-declared DOMAIN key must stay OUT of the block and IN the hand-written schema. Without
+  // this, deleting the hand row and letting the generator emit the key would silently write `type:'string'` again -
+  // exactly the round-15 loss, and nothing else would report it.
+  for (const k of HAND_DECLARED_DOMAINS) {
+    if (!preexisting.has(k)) problems.push(k + " declares its DOMAIN by hand but is NOT in the hand-written schema - the generator would emit type:'string' and destroy the domain")
+    if (blockKeys.indexOf(k) !== -1) problems.push(k + ' appears in the generated block although its DOMAIN is hand-declared')
   }
   // Nothing may be silently dropped: every wired key is emitted, pre-existing, or a documented service surface.
   const emitted = new Set(blockKeys)

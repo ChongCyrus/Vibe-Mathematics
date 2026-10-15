@@ -217,6 +217,15 @@ const err = (fn) => errOf(fn)
   fifo.h.t.queue({ meeting: fifo.id, member: 'r-1' })
   fifo.h.t.queue({ meeting: fifo.id, member: 'r-2' })
   ok(fifo.h.t.queue({ meeting: fifo.id, member: 'r-3' }).order.join(',') === 'r-1,r-2,r-3', 'orderMode[-]: fifo keeps the insertion order')
+  // ROUND 17 / task-118: an out-of-domain value must be REFUSED BY NAME at the read side, never silently replaced by
+  // the default. The assertion pins the DEFECT'S SIGNATURE as well: `bogus` and `fifo` used to be indistinguishable
+  // (same queue order AND the same `status().keys` value) - so the two readings must DIFFER now, or the fix is a no-op.
+  let offDomain = null
+  try { opened({ 'vmu.meetings.orderMode': 'bogus' }) } catch (e) { offDomain = e }
+  ok(offDomain && offDomain.code === 'VMU_INVALID_ARGUMENT' && /vmu\.meetings\.orderMode/.test(String(offDomain.message)),
+    'orderMode[domain]: an out-of-domain value is REFUSED BY NAME (it used to be replaced by `fifo` in silence)', offDomain && offDomain.code)
+  ok(fifo.h.t.status().keys['vmu.meetings.orderMode'] === 'fifo' && !!offDomain,
+    'orderMode[domain]: the DECLARED default still reads back as fifo while the bogus value is refused - the two readings DIFFER (the R8 `vmu.paper.finalizer` defect was that they did not)')
 }
 
 // ── 27–29 attendance policy / materials ─────────────────────────────────────────────────────────────
