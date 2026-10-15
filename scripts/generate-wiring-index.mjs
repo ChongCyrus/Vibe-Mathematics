@@ -119,7 +119,19 @@ export function proposedCodesOf(contractText) {
  *     to the docs since the last `--write`; it cannot mis-state what the schema contains. Refusing here too
  *     would deadlock the index against a tree whose docs are being edited concurrently.
  */
-export function stalenessReport() {
+export async function stalenessReport() {
+  // ★ B1′ (goal round 2): THE TWO SUB-CHECKS RUN CONCURRENTLY. They were serial `spawnSync` calls, so the run paid
+  // their SUM (hard ≈4.97s + soft ≈1.67s); they are independent (different generators, different files) ⇒ concurrency
+  // is free. ★ CHOSEN MECHANISM: `execFile` — it BUFFERS AND DRAINS both streams itself, so the ~1750 lines the
+  // settings-table child prints cannot fill a pipe and deadlock (the failure mode a naive `spawn` without reading
+  // `stdout`/`stderr` data would hit), and there is no per-stream handler to forget. `maxBuffer` is raised to 8 MiB
+  // because the 1 MiB default is not a safe bound for that output. ★ ORDER IS DETERMINISTIC: the results are
+  // assembled by walking `checks` in its ORIGINAL order, so "whoever returned first" can never decide the output.
+  // ★ SHAPE AND MESSAGE ARE UNCHANGED: same `{hard, soft}` buckets, same last-non-empty-line `detail`, same 200-char
+  // slice — including the round-6 "misleading message" fix, which must not regress.
+  const { execFile } = await import('node:child_process')
+  const { promisify } = await import('node:util')
+  const run = promisify(execFile)
   const checks = [
     { kind: 'hard', name: 'docs/04 §11 (settings table)', script: 'generate-vmu-settings-table.mjs',
       fix: 'node scripts/generate-vmu-settings-table.mjs --write' },
@@ -127,13 +139,22 @@ export function stalenessReport() {
       fix: 'node scripts/generate-planned-settings.mjs --write' },
   ]
   const out = { hard: [], soft: [] }
-  for (const c of checks) {
-    const r = spawnSync(process.execPath, [join(REPO, 'scripts', c.script)], { cwd: REPO, encoding: 'utf8' })
+  const results = await Promise.all(checks.map(async (c) => {
+    try {
+      const { stdout, stderr } = await run(process.execPath, [join(REPO, 'scripts', c.script)],
+        { cwd: REPO, maxBuffer: 8 * 1024 * 1024, encoding: 'utf8' })
+      return { c, status: 0, stdout: String(stdout || ''), stderr: String(stderr || '') }
+    } catch (e) {
+      // A non-zero exit is DATA here, not an exception: `promisify(execFile)` rejects with the child's streams.
+      return { c, status: typeof e.code === 'number' ? e.code : 1, stdout: String(e.stdout || ''), stderr: String(e.stderr || '') }
+    }
+  }))
+  for (const r of results) {
     if (r.status !== 0) {
       // The sub-generator's OWN last diagnostic line is carried through: without it the reader only saw
       // "stale" even when the real cause was something else (round-6 reviewer's misleading-message finding).
       const detail = String(r.stderr || r.stdout || '').trim().split('\n').filter(Boolean).slice(-1)[0] || ''
-      out[c.kind].push(Object.assign({}, c, { detail: detail.slice(0, 200) }))
+      out[r.c.kind].push(Object.assign({}, r.c, { detail: detail.slice(0, 200) }))
     }
   }
   return out
@@ -290,7 +311,7 @@ async function main() {
   }
 
   // CLASS ② SETTINGS TABLE STALE (hard ⇒ 2) · CLASS ③ planned.js lagging (soft ⇒ warn, keep going, exit 0)
-  const stale = stalenessReport()
+  const stale = await stalenessReport()
   if (stale.hard.length) {
     console.error('vmu wiring index: 设置表过期 (settings table STALE) — docs/04 §11 is not what settings/schema.js yields,')
     console.error('  so the WIRED column would be wrong for every row; refusing to run:')
