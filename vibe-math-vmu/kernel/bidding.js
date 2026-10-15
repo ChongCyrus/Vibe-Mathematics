@@ -95,7 +95,8 @@ export function createBidding({ clock = () => 0, log = null, settings = {}, bus 
     return def
   }
   const say = (event) => { if (log && typeof log.append === 'function') { try { log.append(event) } catch (e) { /* logging never breaks a bid */ } } }
-  const emit = (event) => {
+  const emit = (event, payload) => {
+    if (typeof event === 'string') event = Object.assign({ type: event }, payload || {})
   // ROUND 4 / task-25 (Lead's independent audit): the bus takes a STRING NAME as its first argument. This helper used
   // to forward the event OBJECT (bus.emit(object)), so every emission from this module threw and was swallowed by the
   // catch below - the module LOOKED wired and emitted nothing. The name is now split out, and a failure (unregistered
@@ -250,7 +251,7 @@ export function createBidding({ clock = () => 0, log = null, settings = {}, bus 
       if (suspects.length >= maxSuspects) { suspectDropped.n += 1; continue }
       suspects.push(Object.assign({ at, code: 'VMU_COLLUSION_SUSPECTED' }, s))
       say({ type: 'bidding/collusion-suspected', at, code: 'VMU_COLLUSION_SUSPECTED', suspect: s })
-      emit({ type: 'bidding/collusion-suspected', at, suspect: s })
+      emit('bidding/collusion-suspected', { at, suspect: s })
       if (collusionOnSuspect === 'freeze-review' && s.post) posts.get(s.post).reviewFrozen = true
     }
     return found

@@ -414,7 +414,7 @@
 
 ### 钩子索引（★ **生成**：来自 `VU_HOOKS` ＋ `DEFAULT_FAILURE` ＋ 实仓 emit 扫描 ✓）
 
-> ★★★ **本节的数字【曾经手写、并因此过期**]✗** ✓：★ **§5 的标题写着"**20** 个冻结名"，而 `VU_HOOKS` 在轮 496 已增至 **97**（★ 新增 `budget/warn` 与 `member/self-report` ✓ —— ★ 两个都是**修活 bug 时**加上的 ✓）⇒ ★★ **手写计数【必然**]落后于代码** ✓ ⇒ **这张表改为生成** ✓。
+> ★★★ **本节的数字【曾经手写、并因此过期**]✗** ✓：★ **§5 的标题写着"**20** 个冻结名"，而 `VU_HOOKS` 在轮 496 已增至 **124**（★ 新增 `budget/warn` 与 `member/self-report` ✓ —— ★ 两个都是**修活 bug 时**加上的 ✓）⇒ ★★ **手写计数【必然**]落后于代码** ✓ ⇒ **这张表改为生成** ✓。
 
 | 钩子 | 默认失败策略 | 生产者 |
 |---|---|---|
@@ -426,8 +426,35 @@
 | `meeting/round-start` | `closed` | `meeting.js` |
 | `meeting/round-end` | `closed` | `meeting.js`、`minutes.js` |
 | `meeting/motion` | `open` | `meetings.js` |
+| `store/write` | `open` | `storepolicy.js` |
+| `course/open` | `open` | `course.js` |
+| `course/publish` | `open` | `course.js` |
+| `resource/use` | `open` | `resource.js` |
+| `resource/preempt` | `open` | `resource.js` |
+| `resource/reserve` | `open` | `resource.js` |
+| `repro/build` | `open` | `repropack.js` |
+| `stateversion/migrate` | `open` | `stateversion.js` |
+| `metrics/dropped` | `open` | `metrics.js` |
+| `metrics/trigger` | `open` | `metrics.js` |
+| `alerts/fired` | `open` | `alerts.js` |
+| `alerts/summary` | `open` | `alerts.js` |
+| `alerts/escalated` | `open` | `alerts.js` |
+| `bidding/collusion-suspected` | `open` | `bidding.js` |
+| `capacity/preempted` | `open` | `capacity.js` |
+| `conference/submitted` | `open` | `conference.js` |
+| `conference/agenda-planned` | `open` | `conference.js` |
+| `funding/account-opened` | `open` | `funding.js` |
+| `grant/granted` | `open` | `grant.js` |
+| `mathtools/ran` | `open` | `mathtools.js` |
+| `migration/applied` | `open` | `migration.js` |
 | `ballot/cast` | `closed` | `ballot.js` |
 | `ballot/tally` | `closed` | `ballot.js` |
+| `ballot/open` | `open` | `ballotbox.js` |
+| `ballot/recuse` | `open` | `ballotbox.js` |
+| `ballot/runoff` | `open` | `ballotbox.js` |
+| `ballot/reopen` | `open` | `ballotbox.js` |
+| `ballot/lapse` | `open` | `ballotbox.js` |
+| `ballot/lapse-revoked` | `open` | `ballotbox.js` |
 | `record/append-before` | `closed` | `library.js` |
 | `record/appended` | `open` | `compliance.js`、`handover.js`、`minutes.js`、`tenure.js` |
 | `task/assign` | `closed` | `members.js`、`tasks.js` |
@@ -516,7 +543,7 @@
 | `topology/select` | `open` | `topology.js` |
 | `trust/signal` | `open` | `trust.js` |
 
-> ★★ 合计 **97** 个冻结钩子 ✓；★ **无默认策略的 **0** 个** ✓。
+> ★★ 合计 **124** 个冻结钩子 ✓；★ **无默认策略的 **0** 个** ✓。
 
 <!-- END GENERATED: hook-index -->
 

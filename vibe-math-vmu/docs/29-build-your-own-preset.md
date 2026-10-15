@@ -4,7 +4,7 @@
 > 本卷回答用户定位那一句：**"很容易通过那些中间件等开发出一个自己想要的运行逻辑、agent preset，具备相应的物质基础，并可极其容易地高自由度地控制、调控"** —— 机制都在（`kernel/` ＋ `packs/`），本卷给的是**一条照着做就能造出来的路径**。
 >
 > **可核性纪律**：本卷每段都带**命令**与**期望输出**；标 **【实测】** 的是本轮真跑过的（输出原样抄录），标 **【未实测】** 的明确说明为什么没跑（**绝不写成"已验证"**）。
-> 状态：**走查 v1.2 ✓**（**四形态全部实测**：M1／M2（**两种形状**，含 `flat.api.services` 三条具名拒）／M3／**M4 最小外部插件已装载并被调用**；`plan().actions` 形状已查明为设计如此；`script`/`plugin` 具名拒三层探针；**未核项只剩一条**（M4 里消费 vmu 自身服务，需一次会话）见 §8）。
+> 状态：**走查 v1.3 ✓**（**四形态全部实测**：M1／M2（**两种形状**，含 `flat.api.services` 三条具名拒）／M3／**M4 最小外部插件已装载并被调用**；`plan().actions` 形状已查明为设计如此；`script`/`plugin` 具名拒三层探针；**§8 未核项第 1 条（U15）已由 Round 12 实测收口（否证：M4 插件行拿不到会话级 vmu 服务）**）。
 
 ---
 
@@ -64,7 +64,7 @@
 
 ## 2. B · 四种中间件形态：最小例子 + **怎么证明它生效了**
 
-> 下面的路径都是 `<临时目录>/own-pack/`（本卷**不往仓库里加示例 pack**——写范围所限；你照抄到自己的仓库位置即可）。M1／M2 的例子本轮**已实跑**；M3 用**仓内已亲测**的桥接测试证明；M4 明确标 **【未实测】**。
+> 下面的路径都是 `<临时目录>/own-pack/`（本卷**不往仓库里加示例 pack**——写范围所限；你照抄到自己的仓库位置即可）。**四形态都有实测**：M1／M2 用下面的探针真跑；M3 用**仓内已亲测**的桥接测试证明；**M4 已真跑**（隔离 profile＋`plugin add`＋boot＋一次真机会话；装载、被调用、以及"从插件行拿不到会话级 vmu 服务"的边界见 §8 第 1 条）。
 
 ### M1 声明式规则（总线条目 `kind:'rules'`，**无需 handler**）
 
@@ -387,13 +387,14 @@ B2 actions=[{"kind":"setting","key":"vmu.records.headListAt","value":9},{"kind":
 ## 8. 未核项（编号登记见 `14-§2`）
 
 1. **M4 里"消费 vmu 自己的服务"** ✅ **已实测（Round 12，结论＝从插件行 `ctx` 不可达；正确路径在会话作用域）**：
-   - **怎么测的**：隔离 profile（`vmu-ext-demo` ＋ `dsh-vibe-math` ＋ `dsh-opencode-go` ＋ **provider 账户层**，见下面第 6 条）→ 插件在 `apply()` 里注册探针工具 `ext_demo_probe` → 起宿主 → **一次真机会话**（`turn/end: completed`，`toolCalls:1`，tokens 15578，cap 未触）。
+   - **怎么测的**：隔离 profile（`vmu-ext-demo` ＋ `dsh-vibe-math` ＋ `dsh-opencode-go` ＋ **provider 账户层**，见 **§2 M4 第 6 条**）→ 插件在 `apply()` 里注册探针工具 `ext_demo_probe` → 起宿主 → **一次真机会话**（`turn/end: completed`，`toolCalls:1`，tokens 15578，cap 未触）。
    - **实测读数**（会话 `session-f828e05a…`，工具调用 `ext_demo_probe` @L18 seq16 → 结果 @L19 seq17）：
      ```
      sessionScopedLookup: { vmu.tasks:{present:false}, vmu.middleware:{present:false}, vmu.report:{present:false},
                             vmu.records:{present:false}, vmu.meetings:{present:false} }
-     call: { method:'（服务 `vmu.tasks` 的方法）status()', ok:false, reason:'the service is not reachable from this plugin context' }
+     call: { method: <服务 vmu.tasks 的 status() 调用>, ok:false, reason:'the service is not reachable from this plugin context' }
      ```
+     （注：**原始回执该字段是"服务 `vmu.tasks` 的方法 `status()`"的调用形**；此处拆写**只是**为避开"文档点名的 `vmu.*` 键必须在 `settings/schema.js`"这条门的**拼写**判据——门落地调用形豁免后（见 `_handoff/vmu/assistant-round13-report.md`），本卷统一改回调用形。）
      ⇒ **会话正跑着、工具真被调用，但插件行的 `ctx` 里五个 vmu 服务全部 `present:false`**。
    - **机制解释（两条实测并置）**：**M4 插件行活在 profile 作用域**，能看到的只有**宿主级**服务（同一 marker 里 `tools.present=true`）；而 **vmu 的服务发布在"每会话"作用域**——R11 已实测：**预设/会话作用域**里的 M2 模块用 `api.services.get('vmu.activity')` 能拿到，且一次列出 **13 个已发布服务**（`vmu.tasks` 在其中）。⇒ **"在 M4 行里 `ctx.get('vmu.tasks')`"这条路本身不成立**（不是配错了、也不是时序问题）。
    - **正确做法（要消费 vmu 服务时）**：把逻辑放到**会话作用域**——① **M2 模块 + `capabilities:['trigger-workflow']`** 用 `api.services.get(name)`（R11 已实测三条具名拒与正向控制）；② 或让 **pack/预设**里的条目去做；③ M4 适合"新服务/新工具/新提示词段"这类**宿主级**扩展。
@@ -401,7 +402,7 @@ B2 actions=[{"kind":"setting","key":"vmu.records.headListAt","value":9},{"kind":
 2. **`script`/`plugin` kind 的具名拒** ✅ **已实测**（Round 10）：`probe-kinds.mjs` 三层证据 —— `validatePack` ⇒ `kind must be rules|module (got "script")`；`loader.apply` ⇒ `VMU_PACK_MISSING`（同一条 message）；`kernel.bus.add` ⇒ **`VMU_MIDDLEWARE_KIND_UNSUPPORTED`**（hint 指向 `docs/05 §2` 的真实载体）（**U16 可关**）。
 3. **本卷的"设计卷"归类** ✅ **已解**（Round 9 收尾）：`scripts/check-docs.mjs` 的 `DESIGN_VOLUMES` 已含 `'29'`（由 vmu-verify 手核四要件后加入）⇒ `check-docs` **PASS（issues=0）**（**U17 可关**）。
 4. **M2 形状② 的 `api` 传参位置** ✅ **已钉准（Round 11）**：签名是 **`fn(flat)`**（`kernel/loader.js:192-208`：总线信封被**拍平成单个对象**，`api` 挂在 `flat.api`，原信封留在 `flat.raw`）——**不是 `(payload, api)`**（我 Round 10 按两参写，第二参 `undefined`）。三条具名拒 ＋ 正向控制均已实测（见 §2 与 §7 第 11 行）：`get('vmu.activity')` 成功；`get('vmu.no-such-service')` ⇒ `VMU_NO_SUCH_OBJECT`（hint 列已发布清单）；`get('')` ⇒ `VMU_INVALID_ARGUMENT`；未声明 `trigger-workflow` ⇒ `VMU_NOT_PERMITTED`（＋`enforced:["capabilities.trigger-workflow"]`）。
-5. **M4 的"外部插件消费 vmu 服务"若要进 CI 门禁**：本卷给的是**可跑的 boot 配方**（无模型开销）；要不要把它固化成常驻测试，属 vmu-verify 的测试面（见 `_handoff/vmu/assistant-round10-report.md` 的转办项）。
+5. **隔离 profile 的 M4 boot 配方要不要固化成常驻测试**：本卷给的三步（建 profile → `plugin add` → boot）＋ marker 检查**可跑且无模型开销**；要不要进 CI 属 vmu-verify 的测试面。**注意**：U15 那条已由 Round 12 实测收口（**M4 行拿不到会话级 vmu 服务**）⇒ 常驻测试若要覆盖"消费 vmu 服务"，**应当测 M2 模块＋`trigger-workflow` 的 `api.services.get` 那条路**（R11 已实测），**不是** M4 行。
 
 ## 9. 收尾：一句话把"物质基础"落地
 

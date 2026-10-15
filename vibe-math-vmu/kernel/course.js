@@ -77,16 +77,18 @@ export function createCourse(opts) {
   const readKey = (k) => (o.settings && typeof o.settings.get === 'function' ? o.settings.get(k) : (o.settings || {})[k])
   const clock = typeof o.clock === 'function' ? o.clock : () => 0
   const log = typeof o.log === 'function' ? o.log : () => {}
-  const emit = (ev) => {
   // ROUND 4 / task-25 (Lead's independent audit): the bus takes a STRING NAME as its first argument. This helper used
-  // to forward the event OBJECT, so every emission from this module threw and was swallowed - the module LOOKED wired
-  // and emitted nothing. The name is split out here, and a failure (unregistered name, blocking middleware) is NAMED.
-  if (!o.bus || typeof o.bus.emit !== 'function') return
-  const name = ev && typeof ev.type === 'string' ? ev.type : null
-  const note = (code, message) => { try { if (o.log && typeof o.log.append === 'function') o.log.append({ type: 'bus/emit-failed', at: (o.clock ? o.clock() : Date.now()), name, code, message }) } catch { /* the log itself may be gone */ } }
-  if (name === null) return note('VMU_BUS_NAME_REQUIRED', 'a bus event needs a string name (got an object without .type)')
-  try { o.bus.emit(name, ev) } catch (e) { note((e && e.code) || 'VMU_BUS_EMIT_FAILED', String((e && e.message) || e)) }
-}
+  // to forward the event OBJECT, so every emission threw and was swallowed. ROUND 13 / task-99: the NAME is the first
+  // parameter now (a literal at every call site - registrable AND visible to the producer scans); prose sits ABOVE the
+  // helper because that scan only reads 700 characters into its body.
+  const emit = (name, payload) => {
+    if (!o.bus || typeof o.bus.emit !== 'function') return
+    const topic = typeof name === 'string' && name ? name : null
+    const body = Object.assign({ type: topic }, payload || {})
+    const note = (code, message) => { try { if (o.log && typeof o.log.append === 'function') o.log.append({ type: 'bus/emit-failed', at: clock(), name: topic, code, message }) } catch (e) { /* advisory */ } }
+    if (topic === null) return note('VMU_BUS_NAME_REQUIRED', 'a bus event needs a string name')
+    try { o.bus.emit(topic, body) } catch (e) { note((e && e.code) || 'VMU_BUS_EMIT_FAILED', String((e && e.message) || e)) }
+  }
 
   const refusals = new Map()
   let droppedLog = 0
@@ -188,7 +190,7 @@ export function createCourse(opts) {
       ontologyVersion: c.ontologyVersion }
     enrolled.set(id, course)
     note('course.open', id)
-    emit({ type: 'course.open', id })
+    emit('course/open', { id })
     return { ok: true, courseId: id, visibility: c.visibility, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
@@ -405,7 +407,7 @@ export function createCourse(opts) {
     const material = String(args.material || '').trim()
     if (!material) return deny('VMU_INVALID_ARGUMENT', 'publish 需要 material', '给要发布到库的材料引用', enforced)
     note('course.publish', course.id)
-    emit({ type: 'course.publish', id: course.id, material })
+    emit('course/publish', { id: course.id, material })
     return { ok: true, courseId: course.id, material, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 

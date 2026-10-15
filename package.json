@@ -610,6 +610,7 @@
     "scripts/audit-pack-value-domain.mjs",
     "scripts/audit-pack-middleware-shape.mjs",
     "scripts/audit-projection-census.mjs",
+    "scripts/audit-acquire-release.mjs",
     "scripts/dsh-drive.mjs",
     "tests/temp-hygiene.mutants.mjs",
     "tests/v2v3-interrupt.mutants.mjs",

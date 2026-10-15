@@ -85,7 +85,8 @@ export function createConference({ clock = () => 0, log = null, settings = {}, b
     return DEFAULT_SETTINGS[key]
   }
   const say = (ev) => { if (log && typeof log.append === 'function') { try { log.append(ev) } catch (e) { /* advisory */ } } }
-  const emit = (ev) => {
+  const emit = (ev, payload) => {
+    if (typeof ev === 'string') ev = Object.assign({ type: ev }, payload || {})
   // ROUND 4 / task-25 (Lead's independent audit): the bus takes a STRING NAME as its first argument. This helper used
   // to forward the event OBJECT (bus.emit(object)), so every emission from this module threw and was swallowed by the
   // catch below - the module LOOKED wired and emitted nothing. The name is now split out, and a failure (unregistered
@@ -278,7 +279,7 @@ export function createConference({ clock = () => 0, log = null, settings = {}, b
         topics: sub.topics, proceedingsTrack: sub.proceedingsTrack, slotMinutes: K.slotMinutes,
       })
       pushReceipt(receipt)
-      emit({ type: 'conference/submitted', at: now, conference: conf.id, submission: sid })
+      emit('conference/submitted', { at: now, conference: conf.id, submission: sid })
       return { ok: true, submission: sid, receipt, enforced: receipt.enforced, fired: receipt.fired, enforcedScope: ENFORCED_SCOPE }
     },
 
@@ -502,7 +503,7 @@ export function createConference({ clock = () => 0, log = null, settings = {}, b
       for (const k of evaluated) if (!fired.includes(k)) fired.push(k)
       const receipt = makeReceipt(evaluated, fired, { action: 'planAgenda', conference: conf.id, mode: K.schedule, tz, tracks: K.schedule === 'parallel' ? Math.max(1, K.maxParallelTracks) : 1, items: placements.length, totalMinutes })
       pushReceipt(receipt)
-      emit({ type: 'conference/agenda-planned', at: now, conference: conf.id, items: placements.length })
+      emit('conference/agenda-planned', { at: now, conference: conf.id, items: placements.length })
       return { ok: true, agenda: conf.agenda, receipt, enforced: receipt.enforced, fired: receipt.fired, enforcedScope: ENFORCED_SCOPE }
     },
 

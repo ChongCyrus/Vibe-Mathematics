@@ -345,7 +345,7 @@ ok(unregisteredInCode.length === 0,
     // keys nor obliges anyone to register the names it mentions (it quotes `vmu.x.y` from another file's comment). The
     // generator excludes it as a source for the same reason; the two must agree.
     if (LEDGER_PREFIXES.some((p) => name.startsWith(p))) continue
-    for (const m of text.matchAll(/\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b/g)) {
+    for (const m of text.matchAll(/\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b(?!\s*\()/g)) {
       const k = m[0]
       // A FAMILY wildcard (`vmu.math.lean*`) is prose about a family, not a claim about a key.
       const after = text.slice(m.index + k.length, m.index + k.length + 1)
@@ -371,7 +371,7 @@ ok(unregisteredInCode.length === 0,
       // ROUND 224: the open-items ledger is a changelog - it quotes key names while narrating work, so it neither declares
       // keys nor creates an obligation to register the names it mentions (`vmu.x.y` comes from the generator's comments).
       if (LEDGER_PREFIXES.some((p) => name.startsWith(p))) continue
-      for (const m of text.matchAll(/\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b/g)) {
+      for (const m of text.matchAll(/\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b(?!\s*\()/g)) {
         // ROUND 224: a FAMILY mention is not a key. The key regex stops at a word boundary, so `vmu.x.y.*` matches as
         // `vmu.x.y`; the lookahead must be taken in the TEXT, not inside the collected-name set (which holds bare names
         // only, so a `k + '.*'` prefix test there could never match - the first attempt at this proved it).
@@ -391,6 +391,34 @@ ok(unregisteredInCode.length === 0,
     }
   }
   ok(bogus.size === 0, 'every vmu.* key named in the docs exists in settings/schema.js', [...bogus].slice(0, 8).join(' | '))
+
+  // ROUND 13 / task-101 ③: FOUR self-probes on the criterion ITSELF (synthetic samples, so they do not depend on
+  // any volume's content). ORDER = old exemptions FIRST, new one LAST (docs/11 §4.2 第九条: exemptions cover for
+  // each other, so a new exemption must be landed without disturbing the existing ones).
+  {
+    const DOTTED = /\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b(?!\s*\()/g
+    // The probe must exercise the SAME pattern the two collection sites use - if one drifts, this reddens.
+    const src = readFileSync(fileURLToPath(import.meta.url), 'utf8')
+    const literalCount = (src.match(/\?:\\.\[a-zA-Z0-9\]\+\)\+\\b\(\?!\\s\*\\\(\)/g) || []).length
+    ok(literalCount === 3,
+      '★ the call-form pattern is IDENTICAL in the three places that need it (two collection sites + this probe), so the criterion cannot drift between them',
+      { found: literalCount })
+    const reported = (sample) => [...sample.matchAll(DOTTED)].map((m) => m[0])
+      .filter((k) => !keys.has(k) && !NON_SETTING.has(k) && !namespaces.has(k)
+        && !/^[*…]/.test(sample.slice(sample.indexOf(k) + k.length, sample.indexOf(k) + k.length + 1)))
+    // ① an EXISTING exemption: a family/wildcard mention is still prose, not a key.
+    ok(reported('see `vmu.math.lean.family*` for the family').length === 0,
+      '★ SELF-PROBE ① (old exemption intact): a FAMILY/wildcard mention is still not reported')
+    // ② an EXISTING exemption: a namespace parent is still not reported (a key lives under it).
+    ok(reported('`vmu.meetings.open` is a method of the meetings face').length === 0,
+      '★ SELF-PROBE ② (old exemption intact): a NAMESPACE-shaped name is still not reported')
+    // ③ the NEW exemption: a CALL is not a setting (the name is not even a key - `vmu.tasks.status` is not).
+    ok(reported('call `vmu.tasks.status()` to read the board').length === 0,
+      '★ SELF-PROBE ③ (new exemption): a CALL form (`vmu.tasks.status()`) is NOT reported even though the name is not a key')
+    // ④ the exemption must NOT have widened into "anything goes": the same name written as a KEY still reports.
+    ok(reported('set `vmu.tasks.status` to true in your preset').length === 1,
+      '★ SELF-PROBE ④ (teeth kept): the SAME name written as a key (no call) is STILL reported - the criterion is not "exists ⇒ pass"')
+  }
 
   const settingsDoc = docText.get(DOC_FILES.find((n) => /^04-/.test(n))) || ''
   // Concrete key rows only: the table also carries namespace PATTERN rows (`vmu.core.*`) which describe a
@@ -474,6 +502,40 @@ ok(unregisteredInCode.length === 0,
   // The lookbehind `(?<![.\w])` keeps `bus.emit(`/`o.bus.emit(`/`_vmu_emit(` out of the call-site collection, so
   // a chained call and a Python helper name inside a template string can never be mistaken for a producer.
   let helperFiles = 0
+  // ROUND 13 / task-98 B (Lead, verify's `task-98`): the previous rule was a CHARACTER WINDOW
+  // (`[\s\S]{0,700}?bus\.emit\(`). It is brittle in the direction that matters: a long comment inside the
+  // helper body pushes `.bus.emit(` past 700 characters and a REAL producer reads as dead - measured on
+  // `kernel/ballotbox.js` (distance 856 after one added line), which made six registered hooks look unemitted.
+  // The window is replaced by a FUNCTION-BODY match: braced bodies are brace-matched; a concise arrow body
+  // (`=> bus.emit(…)`) runs to the end of its statement. A gutted helper still reaches nothing (see the probe).
+  const helperReachesBus = (s) => {
+    const re = /(?:const|let|var|function)\s+(?:emit|publish|say)\s*[=(]/g
+    let m
+    while ((m = re.exec(s)) !== null) {
+      const rest = s.slice(m.index)
+      const brace = rest.indexOf('{')
+      const arrow = rest.indexOf('=>')
+      if (arrow >= 0 && (brace < 0 || brace > arrow + 2)) {
+        const stop = rest.indexOf(';', arrow)
+        const body = stop < 0 ? rest.slice(0, 4000) : rest.slice(0, stop + 1)
+        if (/\bbus\.emit\(/.test(body)) return true
+        continue
+      }
+      if (brace < 0) continue
+      let depth = 0
+      for (let i = brace; i < rest.length; i += 1) {
+        if (rest[i] === '{') depth += 1
+        else if (rest[i] === '}') {
+          depth -= 1
+          if (depth === 0) {
+            if (/\bbus\.emit\(/.test(rest.slice(brace, i + 1))) return true
+            break
+          }
+        }
+      }
+    }
+    return false
+  }
   ok(kernelFiles.length > 0,
     'the producer scan has files to scan (a non-empty file set is what makes the collection below meaningful)',
     String(kernelFiles.length))
@@ -482,8 +544,8 @@ ok(unregisteredInCode.length === 0,
     // EMPTY_ALLOWED: 有些 kernel 文件本来就不发起 bus 事件（本扫描是"收集全体发射者"），空集即合规；
     // 全体规模由后面的 `emitted.size >= 10`（以及 `helperFiles > 0`）把关，不会被空集掩盖。
     for (const m of src.matchAll(/\bbus\.emit\(\s*['"]([^'"]+)['"]/g)) emitted.add(m[1])   // EMPTY_ALLOWED: 单文件可零直接发射；
-    const helperReachesBus = /(?:const|let|var|function)\s+(?:emit|publish|say)\s*[=(][\s\S]{0,700}?\bbus\.emit\(/.test(src)
-    if (!helperReachesBus) continue
+    const helperReachesBusHere = helperReachesBus(src)
+    if (!helperReachesBusHere) continue
     helperFiles += 1
     for (const m of src.matchAll(/(?<![.\w])emit\(\s*['"]([^'"]+)['"]/g)) emitted.add(m[1])   // EMPTY_ALLOWED: 该文件可以没有位置参调用点；
     for (const m of src.matchAll(/(?<![.\w])emit\(\s*\{\s*name:\s*['"]([^'"]+)['"]/g)) emitted.add(m[1])   // EMPTY_ALLOWED: 同上（对象参变体）；
@@ -494,7 +556,7 @@ ok(unregisteredInCode.length === 0,
     String(helperFiles) + ' file(s)')
   // SELF-PROBE: the helper acceptance must be falsifiable - a helper that does NOT call the bus contributes NOTHING.
   {
-    const reaches = (s) => /(?:const|let|var|function)\s+(?:emit|publish|say)\s*[=(][\s\S]{0,700}?\bbus\.emit\(/.test(s)
+    const reaches = helperReachesBus
     const names = (s) => {
       const out = []
       // EMPTY_ALLOWED: this helper is deliberately GENERIC (it is run on both a gutted and a real fixture), so an
@@ -507,9 +569,12 @@ ok(unregisteredInCode.length === 0,
     }
     const gutted = 'const emit = (n) => { log(n); return null }\nemit("fake/hook", {})\nconst say = (e) => log(e)\nsay({ type: "fake/other" })'
     const real = 'const emit = (n) => bus.emit(n, {})\nemit("real/hook", {})'
-    ok(!reaches(gutted) && reaches(real) && names(real).includes('real/hook') && names(gutted).length === 2,
-      '★ SELF-PROBE: a local emit/say helper that does NOT call the bus is NOT accepted, while one that does contributes its literals',
-      JSON.stringify({ guttedReaches: reaches(gutted), realReaches: reaches(real), realNames: names(real) }))
+    // ROUND 13: the brittleness that this rule replaced. A braced body whose `bus.emit(` sits MORE than 700
+    // characters in (because a long comment precedes it) is a REAL producer and must still be accepted.
+    const longBody = 'const emit = (n) => {\n' + '  // ' + 'x'.repeat(800) + '\n  bus.emit(n, {})\n}'
+    ok(!reaches(gutted) && reaches(real) && reaches(longBody) && names(real).includes('real/hook') && names(gutted).length === 2,
+      '★ SELF-PROBE: a local emit/say helper that does NOT call the bus is NOT accepted, one that does contributes its literals, and a LONG braced body (>700 chars before bus.emit) is still accepted',
+      JSON.stringify({ guttedReaches: reaches(gutted), realReaches: reaches(real), longBodyReaches: reaches(longBody), realNames: names(real) }))
   }
   ok(emitted.size >= 10, 'the emitter scan found the real producers', [...emitted].sort().join(','))
 

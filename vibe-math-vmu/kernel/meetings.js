@@ -707,7 +707,8 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       counters.votes += 1
       const tally = target ? { for: [...target.votes.values()].filter((v) => v === 1).length, against: [...target.votes.values()].filter((v) => v === 0).length, abstain: target.abstain.size } : { for: 0, against: 0, abstain: 0 }
       m.minutes.entries.push({ at: now, kind: 'vote', motion: target ? target.id : null, member: String(member), value: value === 0 ? 0 : 1 })
-      const ballotMirror = mirrorVote({ ballot, boxFor: boxBinding.resolve(), counters, meeting: m.id, motionId: target ? target.id : null, member, value })
+      const ballotMirror = mirrorVote({ ballot, boxFor: boxBinding.resolve(), counters, meeting: m.id, motionId: target ? target.id : null, member, value,
+        motionText: target ? target.text : null, motionKind: target ? target.kind : null, motionEmergency: target ? target.emergency === true : false })
       const receipt = { at: now, action: 'vote', meeting: m.id, motion: target ? target.id : null, member: String(member), tally, quorum: q, enforced, enforcedScope: ENFORCED_SCOPE, ballot: ballotMirror }
       pushReceipt(receipt)
       return { ok: true, tally, quorum: q, receipt, enforced, enforcedScope: ENFORCED_SCOPE }

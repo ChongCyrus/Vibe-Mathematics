@@ -88,7 +88,8 @@ export function createBallotBox(opts) {
   const LAPSE_NAME = 'ballot-lapse'
   const clock = typeof o.clock === 'function' ? o.clock : () => 0
   const log = typeof o.log === 'function' ? o.log : () => {}
-  const emit = (ev) => {
+  const emit = (ev, payload) => {
+    if (typeof ev === 'string') ev = Object.assign({ type: ev }, payload || {})
   // ROUND 4 / task-25 (Lead's audit, extended to this module): the bus takes a STRING NAME as its first argument. This
   // helper forwarded the event OBJECT, so every emission from this module threw and was swallowed - the module LOOKED
   // wired and emitted nothing. The name is split out here, and a refusal (unregistered name, blocking middleware) is
@@ -179,7 +180,7 @@ export function createBallotBox(opts) {
       // `open` | `closed`; only a CLOSED box may be reopened, and a closed box never accepts another vote.
       state: 'open', closedAt: 0, priorResult: null, reopenCount: 0, reopenedAt: 0, reopenHistory: [] }
     boxes.set(id, box)
-    emit({ type: 'ballot.open', id })
+    emit('ballot/open', { id })
     return { ok: true, boxId: id, round: box.round, sealed: box.sealed, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
@@ -223,7 +224,7 @@ export function createBallotBox(opts) {
     if (args.recuse === true) {
       mark(enforced, 'vmu.ballot.recusePublic')
       box.recused.push(by)
-      if (c.recusePublic) emit({ type: 'ballot.recuse', boxId: box.id, by })
+      if (c.recusePublic) emit('ballot/recuse', { boxId: box.id, by })
       return { ok: true, boxId: box.id, kind: 'recused', sealed: box.sealed, enforced, enforcedScope: ENFORCED_SCOPE }
     }
     // ROUND 158: a ranked ballot is stored AS A LIST. The scalar path keeps its exact old meaning (`String(choice)`),
@@ -347,7 +348,7 @@ export function createBallotBox(opts) {
         mark(enforced, 'vmu.ballot.runoffTopN'); mark(enforced, 'vmu.ballot.roundsMax')
         box.round += 1
         box.votes = new Map(); box.abstain = new Map()
-        emit({ type: 'ballot.runoff', boxId: box.id, round: box.round })
+        emit('ballot/runoff', { boxId: box.id, round: box.round })
         return { ok: true, boxId: box.id, round: 2, runoff: ranked.slice(0, c.runoffTopN).map((x) => x.option), tally: { cast: castN, votes: castN, abstain: 0, absent: box.absent.length, floor, floorBase }, enforced, enforcedScope: ENFORCED_SCOPE, note: '进入第二轮 ✓' }
       }
       if (c.method === 'runoff' && box.round >= c.roundsMax) {
@@ -366,7 +367,7 @@ export function createBallotBox(opts) {
       mark(enforced, 'vmu.ballot.runoffTopN'); mark(enforced, 'vmu.ballot.roundsMax')
       box.round += 1
       box.votes = new Map(); box.abstain = new Map()
-      emit({ type: 'ballot.runoff', boxId: box.id, round: box.round })
+      emit('ballot/runoff', { boxId: box.id, round: box.round })
       return { ok: true, boxId: box.id, round: 2, runoff: ranked.slice(0, c.runoffTopN).map((x) => x.option), tally: { cast: castN, votes: castN, abstain: 0, absent: box.absent.length, floor, floorBase }, enforced, enforcedScope: ENFORCED_SCOPE, note: '进入第二轮 ✓' }
     }
     if (c.method === 'runoff' && box.round >= c.roundsMax && tie) {
@@ -441,7 +442,7 @@ export function createBallotBox(opts) {
     box.priorResult = null
     box.reopenCount = Number(box.reopenCount || 0) + 1
     box.reopenedAt = clock()
-    emit({ type: 'ballot.reopen', boxId: box.id, count: box.reopenCount })
+    emit('ballot/reopen', { boxId: box.id, count: box.reopenCount })
     return { ok: true, boxId: box.id, reopened: true, reopenCount: box.reopenCount, floor,
       enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
   }
@@ -479,7 +480,7 @@ export function createBallotBox(opts) {
       by: args.by === undefined || args.by === null ? null : String(args.by), revokedAt: 0, revokedBy: null, revokeReason: null }
     box.lapse = rec
     box.state = 'lapsed'
-    emit({ type: 'ballot.lapse', boxId: box.id, name: rec.name, limitMs: rec.limitMs, elapsedMs: rec.elapsedMs })
+    emit('ballot/lapse', { boxId: box.id, name: rec.name, limitMs: rec.limitMs, elapsedMs: rec.elapsedMs })
     return { ok: true, boxId: box.id, lapse: Object.assign({}, rec), settlement: 'lapsed-by-declared-bound',
       outcome: null, votes: box.votes.size, enforced: d.enforced.slice(), enforcedScope: ENFORCED_SCOPE }
   }
@@ -496,7 +497,7 @@ export function createBallotBox(opts) {
     box.lapse.revokedBy = args.by === undefined || args.by === null ? null : String(args.by)
     box.lapse.revokeReason = reason
     box.state = 'open'
-    emit({ type: 'ballot.lapse-revoked', boxId: box.id, name: box.lapse.name, by: box.lapse.revokedBy })
+    emit('ballot/lapse-revoked', { boxId: box.id, name: box.lapse.name, by: box.lapse.revokedBy })
     return { ok: true, boxId: box.id, lapse: Object.assign({}, box.lapse), enforced: [], enforcedScope: ENFORCED_SCOPE }
   }
 

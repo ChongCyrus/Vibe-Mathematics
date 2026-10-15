@@ -799,32 +799,20 @@ ok(workingVote.ok === true && workingVote.receipt.ballot.mirrored === true && wo
 // the disclosure keeps R11's `ballot:{mirrored,reason,code?}` vocabulary.
 console.log('\n[14] the motion→box binding — declared by the consumer, only called by the kernel (task-92)')
 const boxing = createBallotBox({ clock, log: () => {}, settings: {}, bus })
-const boxOpened = boxing.open({ question: 'adopt the motion?', options: ['accept', 'reject'] })
+const boxOpened = boxing.open({ question: 'adopt the motion?', options: ['a', 'b'] })
 const boundFace = createMeetings({ clock, log: () => {}, settings: {}, bus, ballot: { cast: (a) => boxing.cast(a) },
-  boxFor: ({ motion }) => (motion ? { boxId: boxOpened.boxId, value: 'accept' } : null) })
+  boxFor: ({ motion, member }) => (motion ? { boxId: boxOpened.boxId, choice: 'a', by: member } : null) })
 const bMeet = boundFace.open({ type: 'ordinary', chair: 'r-1', roster: ['r-1', 'r-2', 'r-3'] }).meeting
 const bMotion = boundFace.motion({ meeting: bMeet, member: 'r-1', kind: 'ordinary', text: 'adopt it' })
 const bMotionId = bMotion && (bMotion.motion || bMotion.id)
 const v1 = boundFace.vote({ meeting: bMeet, motion: bMotionId, member: 'r-2', value: 1 })
 const v2 = boundFace.vote({ meeting: bMeet, motion: bMotionId, member: 'r-3', value: 1 })
 const bClosed = boxing.close({ boxId: boxOpened.boxId })
-const linkedVotes = Number(bClosed.tally && bClosed.tally.votes)
-const linked = linkedVotes === 2
-if (linked) {
-  ok(v1.receipt.ballot.mirrored === true && v2.receipt.ballot.mirrored === true && v1.receipt.ballot.boxId === boxOpened.boxId && bClosed.ok === true,
-    '16a BOUND: the meeting votes really reach the box and `close()` yields the ruling (2 votes in it)',
-    { motion: bMotionId, mirror: v1.receipt.ballot, votes: linkedVotes, result: bClosed.result })
-} else {
-  // HONEST GAP (measured, not assumed): the LINKAGE itself is not proven in this environment — the real
-  // `createBallotBox` refused every cast with `VMU_CONFLICT` because this drill's minimal box declares no
-  // `eligible`/options vocabulary for that member. What IS proven: the refusal is NAMED, never swallowed.
-  line('NAMED GAP: the real-box linkage is NOT proven here — `ballotbox.cast` answered ' + JSON.stringify(v1.receipt.ballot) + ' (box ' + boxOpened.boxId + '), so the meeting votes never landed (tally.votes=' + linkedVotes + ').')
-  line('  the box needs the correct eligible/options shape for that member (reader-b\'s harness has it); Round 13 first item.')
-  ok(v1.receipt.ballot.mirrored === false && v1.receipt.ballot.reason === 'refused' && !!v1.receipt.ballot.code && v1.receipt.ballot.boxId === boxOpened.boxId,
-    '16a (gap form) the box\'s own refusal is NAMED in the receipt with its code and the boxId — the linkage failure is visible, not swallowed',
-    v1.receipt.ballot)
-}
-ok(v1.receipt.ballot.boxId === v2.receipt.ballot.boxId && (v1.receipt.ballot.reason === 'cast' ? true : v1.receipt.ballot.reason === v2.receipt.ballot.reason),
+ok(bMotion.ok === true && !!bMotionId && v1.receipt.ballot.mirrored === true && v2.receipt.ballot.mirrored === true &&
+  v1.receipt.ballot.boxId === boxOpened.boxId && bClosed.ok === true && Number(bClosed.tally && bClosed.tally.votes) === 2,
+  '16a BOUND (POSITIVE): the meeting votes really reach the box — `choice` beats `value` — and `close()` yields the ruling with 2 votes in it',
+  { motion: bMotionId, mirror: v1.receipt.ballot, votes: bClosed.tally && bClosed.tally.votes, result: bClosed.result })
+ok(v1.receipt.ballot.reason === 'cast' && v1.receipt.ballot.boxId === v2.receipt.ballot.boxId,
   '16b IDEMPOTENT BY CONSTRUCTION: asking the binder twice for the same motion resolves to the SAME box (no second box, no refusal from the binder) — the kernel caches nothing',
   { first: v1.receipt.ballot, second: v2.receipt.ballot })
 

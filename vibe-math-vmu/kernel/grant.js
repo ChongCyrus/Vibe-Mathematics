@@ -51,7 +51,8 @@ export function createGrant({ clock = () => 0, log = null, settings = {}, bus = 
     return DEFAULTS[key]
   }
   const say = (ev) => { if (log && typeof log.append === 'function') { try { log.append(ev) } catch (e) { /* advisory */ } } }
-  const emit = (ev) => {
+  const emit = (ev, payload) => {
+    if (typeof ev === 'string') ev = Object.assign({ type: ev }, payload || {})
   // ROUND 4 / task-25 (Lead's independent audit): the bus takes a STRING NAME as its first argument. This helper used
   // to forward the event OBJECT (bus.emit(object)), so every emission from this module threw and was swallowed by the
   // catch below - the module LOOKED wired and emitted nothing. The name is now split out, and a failure (unregistered
@@ -181,7 +182,7 @@ export function createGrant({ clock = () => 0, log = null, settings = {}, bus = 
       grants.set(g.id, g)
       counters.granted += 1
       say({ type: 'grant/granted', at: when, id: g.id, to: g.to, command: g.command, scope: g.grantScope })
-      emit({ type: 'grant/granted', id: g.id, to: g.to, command: g.command, scope: g.grantScope, at: when })
+      emit('grant/granted', { id: g.id, to: g.to, command: g.command, scope: g.grantScope, at: when })
       return receipt({ grant: g.id, to: g.to, command: g.command, grantScope: g.grantScope, expiresOn: g.expiresOn, why: g.why, by: g.by, at: g.at }, enforced, fired)
     },
 

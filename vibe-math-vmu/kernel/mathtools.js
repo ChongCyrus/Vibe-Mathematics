@@ -194,7 +194,8 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
     return DEFAULTS[key]
   }
   const say = (event) => { if (log && typeof log.append === 'function') { try { log.append(event) } catch (e) { /* advisory */ } } }
-  const emit = (event) => {
+  const emit = (event, payload) => {
+    if (typeof event === 'string') event = Object.assign({ type: event }, payload || {})
   // ROUND 4 / task-25 (Lead's audit): the bus takes a STRING NAME first. Forwarding the event OBJECT meant every
   // emission here threw and was swallowed. Split the name out, and NAME the refusal in this module's own log.
   if (!bus || typeof bus.emit !== 'function') return
@@ -763,7 +764,7 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
       if (K.cacheEnabled && counters.cacheEvictions > 0) mark(enforced, 'vmu.math.cache.maxEntries')   // an eviction changed the cache
       counters.ran += 1
       pushReceipt(receipt)
-      emit({ type: 'mathtools/ran', at, op: p.plan.op, cacheKey: p.plan.cacheKey })
+      emit('mathtools/ran', { at, op: p.plan.op, cacheKey: p.plan.cacheKey })
       say({ type: 'mathtools/ran', at, op: p.plan.op, enforced, enforcedScope: ENFORCED_SCOPE })
       return { ok: true, cached: false, result: shaped, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },

@@ -589,6 +589,16 @@ const censusRun = runSelfProof('audit-projection-census.mjs', '')
 ok(censusRun && censusRun.status === 0,
   'the projection census really runs green (round 11: it files every declared face with a code+reason and proves it would report a planted face - so no declaration can go missing silently)',
   censusRun ? 'exit=' + censusRun.status : 'not run')
+// ROUND 13 / task-102: `scripts/audit-acquire-release.mjs` is SELF-PROVING and it proves itself BEFORE it judges a
+// real file: four predicate self-proofs (an acquisition without a `finally` fires; the SAME acquisition with one is
+// quiet; a timer/listener fires; a comment/string is not a site), five directions of the CLOSED ruling vocabulary
+// (unknown word / tripwire / unbacked `成对-finally` / unbacked `睡式-无柄` / dead-or-non-guarding gate pointer), one
+// REAL-file injection through `mutateOnce` that must redden BOTH granularities, and `resume.js` as the positive
+// control. A self-proof mode with no execution point is exactly what this rule exists for, so it is RUN here.
+const acquireReleaseRun = runSelfProof('audit-acquire-release.mjs', '--selftest')
+ok(acquireReleaseRun && acquireReleaseRun.status === 0,
+  'the acquire↔release --selftest really runs green (round 13: four predicate self-proofs, five refused directions of the closed ruling vocabulary, a real-file one-line injection that reddens BOTH granularities, and a positive control that the scanner is not blind)',
+  acquireReleaseRun ? 'exit=' + acquireReleaseRun.status : 'not run')
 const regenRun = runSelfProof('regen-all.mjs', '--check')
 ok(regenRun && regenRun.status === 0, 'regen-all --check really runs green (the aggregate chain now has an execution point)')
 

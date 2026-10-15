@@ -87,8 +87,55 @@ export const HOOK_REGISTRY = Object.freeze([
   // blockable: the motion has happened, and the audience/policy belongs to middleware (R1) - exactly the door the
   // pack's "propose ⇒ open a box" policy needs.
   { name: 'meeting/motion', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a motion was moved inside a meeting (meeting-scoped motion id)', producer: 'kernel/meetings.js' },
+  // ── ROUND 13 / task-99: the `emit({ type: … })` family becomes REGISTRABLE 事件 ────────────────────────────────
+  // Background (measured in round 12): 29 object-shape emit sites existed, 28 of them unregistered, and NEITHER hook
+  // audit could see them (the classification gate's regex only accepts `emit('<name>'`; `audit-vmu-docs` §I's helper
+  // rule does not accept `emit({ type: … })`). A dotted name could not even be registered, so no middleware could
+  // subscribe. This block registers every one of them; the names with a dot were RENAMED to the `domain/event` form
+  // (round 13, my files) by the same round.
+  // ★ EVERY ROW HERE HAS A REAL PRODUCER (the rule audit-hook-coverage enforces: `never` is the reverse defect). Each
+  // site was inspected for POSITION: all of them report something that ALREADY HAPPENED (the state change is the line
+  // above), so none is a pre-act gate - hence `failure:'open'` and NOT blockable, which is the opposite of this
+  // registry's deliberate gates (`task/assign`, `chat/send-before`, `mailbox/deliver-before`, `panel/write-before`,
+  // `human/gate-pending`, `meeting/round-start`, `ballot/cast`, `ballot/tally`). A broken listener must not be able to
+  // stop a recorded fact.
+  { name: 'store/write', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'the store policy accepted a write (after counters/policy ran)', producer: 'kernel/storepolicy.js' },
+  { name: 'course/open', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a course was opened (after enrolment was recorded)', producer: 'kernel/course.js' },
+  { name: 'course/publish', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'course material was published', producer: 'kernel/course.js' },
+  { name: 'resource/use', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a resource use was recorded (after the ledger push)', producer: 'kernel/resource.js' },
+  { name: 'resource/preempt', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a reservation displaced another (after the victim was marked)', producer: 'kernel/resource.js' },
+  { name: 'resource/reserve', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a reservation was recorded', producer: 'kernel/resource.js' },
+  { name: 'repro/build', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a reproducibility pack was built', producer: 'kernel/repropack.js' },
+  { name: 'stateversion/migrate', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a state version migration was applied to the draft', producer: 'kernel/stateversion.js' },
+  { name: 'metrics/dropped', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a metric series dropped its oldest sample at the cap (counted, never silent)', producer: 'kernel/metrics.js' },
+  // ROUND 13: `metrics/trigger` was emitted but NEVER REGISTERED, so the bus refused it at runtime - the same
+  // "green against a fake bus" class that made `budget/warn` throw on every budget warning. It is the ONLY
+  // action-shaped call of the metrics face, gated by `vmu.metrics.allowTrigger` and advisory by construction
+  // (metrics never mutate state), so a broken listener must not be able to stop it: `failure:'open'`.
+  { name: 'metrics/trigger', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a declared KPI fired an advisory hook (allowTrigger=true)', producer: 'kernel/metrics.js' },
+  { name: 'alerts/fired', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'an alert fired', producer: 'kernel/alerts.js' },
+  { name: 'alerts/summary', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a silenced window was summarised and delivered', producer: 'kernel/alerts.js' },
+  { name: 'alerts/escalated', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'an alert was escalated', producer: 'kernel/alerts.js' },
+  { name: 'bidding/collusion-suspected', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a collusion suspicion was recorded (the optional freeze follows it)', producer: 'kernel/bidding.js' },
+  { name: 'capacity/preempted', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a capacity reservation preempted others', producer: 'kernel/capacity.js' },
+  { name: 'conference/submitted', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a submission was recorded', producer: 'kernel/conference.js' },
+  { name: 'conference/agenda-planned', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a conference agenda was planned', producer: 'kernel/conference.js' },
+  { name: 'funding/account-opened', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a funding account was opened', producer: 'kernel/funding.js' },
+  { name: 'grant/granted', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a grant was granted', producer: 'kernel/grant.js' },
+  { name: 'mathtools/ran', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a math tool ran (after the engine returned)', producer: 'kernel/mathtools.js' },
+  { name: 'migration/applied', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a migration was applied', producer: 'kernel/migration.js' },
   { name: 'ballot/cast', kind: 'vmu', failure: 'closed', blockable: true, rewritable: false, scope: VU_SCOPE, timing: 'a vote is cast', producer: 'kernel/ballot.js' },
   { name: 'ballot/tally', kind: 'vmu', failure: 'closed', blockable: true, rewritable: false, scope: VU_SCOPE, timing: 'a ballot is tallied', producer: 'kernel/ballot.js, packs/v3-core' },
+  // ROUND 13: the ballot-box lifecycle. These six were emitted by `kernel/ballotbox.js` with DOTTED names
+  // (`ballot.open` …), which could not even be REGISTERED here (declareTopic requires `domain/name`), so a pack
+  // could never attach to them - the "29 object-form emits" census. Renamed to the slash form and registered; the
+  // box lifecycle is a policy surface, so a broken listener must not be able to stop it (`failure:'open'`).
+  { name: 'ballot/open', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a ballot box was opened', producer: 'kernel/ballotbox.js' },
+  { name: 'ballot/recuse', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a member was publicly recorded as recused', producer: 'kernel/ballotbox.js' },
+  { name: 'ballot/runoff', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a runoff round was opened', producer: 'kernel/ballotbox.js' },
+  { name: 'ballot/reopen', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a closed box was reopened', producer: 'kernel/ballotbox.js' },
+  { name: 'ballot/lapse', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a ballot lapsed', producer: 'kernel/ballotbox.js' },
+  { name: 'ballot/lapse-revoked', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a lapse was revoked', producer: 'kernel/ballotbox.js' },
   { name: 'record/append-before', kind: 'vmu', failure: 'closed', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'before any record is validated or written', producer: 'kernel/library.js' },
   { name: 'record/appended', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a record was appended', producer: 'kernel/compliance.js, kernel/handover.js, kernel/minutes.js, kernel/tenure.js' },
   { name: 'task/assign', kind: 'vmu', failure: 'closed', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'a task is assigned', producer: 'kernel/members.js, kernel/tasks.js' },
@@ -597,7 +644,7 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
       // with `declareTopic` is refused - the "declare before emit" rule. The three LOG-ONLY namespaces
       // (`audit`, `auditchain`, `retention`) are deliberately NOT listed: their rows are not hooks, so their
       // emits stay in the foreign-namespace pass-through path (documented in docs/05 §5.4).
-      const VU_NAMESPACE = /^(member|turn|meeting|ballot|record|task|prompt|budget|pack|settle|control|resume|ids|human|chat|mailbox|panel|math|lifecycle|paper|publication|notify|crypto|external|legalentity|ratelimit|recruit|reviewers|workflow|formal|lean|board|projmigrate|skills|topology|trust|motion|agenda)\//
+      const VU_NAMESPACE = /^(member|turn|meeting|ballot|record|task|prompt|budget|pack|settle|control|resume|ids|human|chat|mailbox|panel|math|lifecycle|paper|publication|notify|crypto|external|legalentity|ratelimit|recruit|reviewers|workflow|formal|lean|board|projmigrate|skills|topology|trust|motion|agenda|store|course|resource|repro|stateversion|metrics|alerts|bidding|capacity|conference|funding|grant|mathtools|migration)\//
       const bridged = opts && opts.bridge === true
       const isVmuName = typeof hook === 'string' && VU_NAMESPACE.test(hook)
       if (!bridged && isVmuName && !(VU_HOOKS.includes(hook) || customTopics.has(hook))) {

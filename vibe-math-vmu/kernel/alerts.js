@@ -106,7 +106,8 @@ export function createAlerts({ clock = () => 0, log = null, settings = {}, bus =
     return def
   }
   const say = (event) => { if (log && typeof log.append === 'function') { try { log.append(event) } catch (e) { /* logging never breaks the alert */ } } }
-  const emit = (event) => {
+  const emit = (event, payload) => {
+    if (typeof event === 'string') event = Object.assign({ type: event }, payload || {})
   // ROUND 4 / task-25 (Lead's independent audit): the bus takes a STRING NAME as its first argument. This helper used
   // to forward the event OBJECT (bus.emit(object)), so every emission from this module threw and was swallowed by the
   // catch below - the module LOOKED wired and emitted nothing. The name is now split out, and a failure (unregistered
@@ -366,7 +367,7 @@ export function createAlerts({ clock = () => 0, log = null, settings = {}, bus =
       rec.lastFiredAt = ms
       rec.open = true
       const notification = { fingerprint: fp, metric, object, code, severity: rec.severity, channels: channels.slice(), at: ms, detail: rec.detail, note: 'alert-level fingerprint (metric×object×code); DELIVERY belongs to the 17-volume notification face' }
-      emit({ type: 'alerts/fired', at: ms, notification })
+      emit('alerts/fired', { at: ms, notification })
       say({ type: 'alerts/fired', at: ms, fingerprint: fp, channels: notification.channels })
       return { ok: true, notified: true, fingerprint: fp, code, channels: notification.channels, notification, at: ms, alert: Object.assign({}, rec) }
     },
@@ -462,7 +463,7 @@ export function createAlerts({ clock = () => 0, log = null, settings = {}, bus =
       if (clock() < s.until) throw deny('VMU_STATE', 'silence window is still open until ' + s.until + ': ' + s.id, 'wait ' + (s.until - clock()) + 'ms, or flush after `until`')
       if (s.flushedAt === null) { s.flushedAt = clock(); counters.summariesDelivered += 1 }
       const out = summarizeWindow(s)
-      emit({ type: 'alerts/summary', at: clock(), summary: out })
+      emit('alerts/summary', { at: clock(), summary: out })
       say({ type: 'alerts/summary-delivered', at: clock(), id: s.id, counted: s.counted })
       return Object.assign({ delivered: true }, out)
     },
@@ -485,7 +486,7 @@ export function createAlerts({ clock = () => 0, log = null, settings = {}, bus =
       counters.escalated += 1
       const target = channel === null ? (channels.length ? channels[rec.escalations % channels.length] : null) : String(channel)
       const out = { ok: true, escalated: true, fingerprint: fp, level: rec.escalations, channel: target, at: ms }
-      emit({ type: 'alerts/escalated', at: ms, escalation: out })
+      emit('alerts/escalated', { at: ms, escalation: out })
       say({ type: 'alerts/escalated', at: ms, fingerprint: fp, level: rec.escalations, channel: target })
       return out
     },

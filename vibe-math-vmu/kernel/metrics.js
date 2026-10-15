@@ -63,12 +63,15 @@ export function createMetrics({ clock = () => 0, log = null, settings = {}, bus 
   const say = (event) => {
     if (log && typeof log.append === 'function') { try { log.append(event) } catch (e) { /* logging must never break the metric being logged */ } }
   }
-  const emit = (event) => {
-    // ROUND 4 / task-25 (Lead's audit): STRING NAME first (see the other modules) - and the refusal is NAMED.
+  // ROUND 4 / task-25 (Lead's audit): STRING NAME first (see the other modules) - and the refusal is NAMED.
+  // ROUND 13 / task-99: the NAME is the first parameter (a literal at every call site); the prose is ABOVE the helper
+  // because the producer scan only reads 700 characters into its body.
+  const emit = (name, payload) => {
     if (!bus || typeof bus.emit !== 'function') return
-    const name = event && typeof event.type === 'string' ? event.type : null
-    if (name === null) return say({ type: 'bus/emit-failed', at: clock(), name: null, code: 'VMU_BUS_NAME_REQUIRED', message: 'a bus event needs a string name (got an object without .type)' })
-    try { bus.emit(name, event) } catch (e) { say({ type: 'bus/emit-failed', at: clock(), name, code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) }
+    const topic = typeof name === 'string' && name ? name : null
+    const body = Object.assign({ type: topic }, payload || {})
+    if (topic === null) return say({ type: 'bus/emit-failed', at: clock(), name: null, code: 'VMU_BUS_NAME_REQUIRED', message: 'a bus event needs a string name' })
+    try { bus.emit(topic, body) } catch (e) { say({ type: 'bus/emit-failed', at: clock(), name: topic, code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) }
   }
 
   const asPositiveInt = (v, def) => (Number.isInteger(v) && v > 0 ? v : def)
@@ -249,7 +252,7 @@ export function createMetrics({ clock = () => 0, log = null, settings = {}, bus 
         rows.shift()
         bump(dropped, name, 1)
         say({ type: 'metrics/dropped', at: clock(), indicator: name, cap: seriesCap, reason: 'seriesCap' })
-        emit({ type: 'metrics/dropped', at: clock(), indicator: name, cap: seriesCap, reason: 'seriesCap' })
+        emit('metrics/dropped', { at: clock(), indicator: name, cap: seriesCap, reason: 'seriesCap' })
       }
       series.set(name, rows)
       observedTotal += 1
@@ -342,7 +345,9 @@ export function createMetrics({ clock = () => 0, log = null, settings = {}, bus 
           'set vmu.metrics.allowTrigger=true only if a KPI must fire a hook; metrics never mutate state (docs/21 §4)')
       }
       const hook = { type: 'metrics/trigger', at: clock(), name, payload: payload && typeof payload === 'object' ? Object.assign({}, payload) : null }
-      emit(hook)
+      // ROUND 13: the helper became NAME-FIRST (like every other face) in the object-form sweep, so the call site
+      // must pass the string name first and the hook as the payload - `emit(hook)` silently became a nameless emit.
+      emit('metrics/trigger', hook)
       say(hook)
       return { ok: true, triggered: true, name, hook: Object.assign({}, hook), note: 'advisory hook only — no state was mutated' }
     },

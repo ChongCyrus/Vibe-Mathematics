@@ -89,7 +89,8 @@ export function createFunding({ clock = () => 0, log = null, settings = {}, bus 
     return DEFAULTS[key]
   }
   const say = (ev) => { if (log && typeof log.append === 'function') { try { log.append(ev) } catch (e) { /* advisory */ } } }
-  const emit = (ev) => {
+  const emit = (ev, payload) => {
+    if (typeof ev === 'string') ev = Object.assign({ type: ev }, payload || {})
   // ROUND 4 / task-25 (Lead's independent audit): the bus takes a STRING NAME as its first argument. This helper used
   // to forward the event OBJECT (bus.emit(object)), so every emission from this module threw and was swallowed by the
   // catch below - the module LOOKED wired and emitted nothing. The name is now split out, and a failure (unregistered
@@ -340,7 +341,7 @@ export function createFunding({ clock = () => 0, log = null, settings = {}, bus 
       accounts.set(aid, account)
       counters.accounts += 1
       const r = receipt({ action: 'openAccount', account: aid, currency: cur, accountsDir: account.dir, request: K.request }, enforced, fired)
-      emit({ type: 'funding/account-opened', at: r.at, account: aid })
+      emit('funding/account-opened', { at: r.at, account: aid })
       return r
     },
 

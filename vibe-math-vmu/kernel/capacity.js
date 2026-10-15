@@ -85,7 +85,8 @@ export function createCapacity({ clock = () => 0, log = null, settings = {}, bus
     return DEFAULTS[key]
   }
   const say = (ev) => { if (log && typeof log.append === 'function') { try { log.append(ev) } catch (e) { /* advisory */ } } }
-  const emit = (ev) => {
+  const emit = (ev, payload) => {
+    if (typeof ev === 'string') ev = Object.assign({ type: ev }, payload || {})
   // ROUND 4 / task-25 (Lead's independent audit): the bus takes a STRING NAME as its first argument. This helper used
   // to forward the event OBJECT (bus.emit(object)), so every emission from this module threw and was swallowed by the
   // catch below - the module LOOKED wired and emitted nothing. The name is now split out, and a failure (unregistered
@@ -305,7 +306,7 @@ export function createCapacity({ clock = () => 0, log = null, settings = {}, bus
         limits: { seatsPerDomain: K.seatsPerDomain, usedHours: hoursUsed(), poolUsable: usableOf(), poolCeiling: ceilingOf() },
         policy: K.policy, preemptPolicy: K.preemptPolicy, overcommitRatio: K.ratio }, enforced, fired)
       if (warnings.length) say({ type: 'capacity/warned', at: now, reservation: id, codes: warnings.map((w) => w.code) })
-      if (preempted.length) emit({ type: 'capacity/preempted', at: now, reservation: id, preempted })
+      if (preempted.length) emit('capacity/preempted', { at: now, reservation: id, preempted })
       return r
     },
 

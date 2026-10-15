@@ -99,7 +99,8 @@ export function createMeetingMarker({ clock = () => 0, live = new Map(), archive
  * `VMU_MEETING_BOX_UNMAPPED` (declared, answered "no box"), `VMU_MEETING_BOX_BINDING_FAILED` (the callback threw;
  * its own `code` wins when it carries one).
  */
-export function mirrorVote({ ballot = null, boxFor = null, counters = {}, meeting = null, motionId = null, member = null, value = 1 } = {}) {
+export function mirrorVote({ ballot = null, boxFor = null, counters = {}, meeting = null, motionId = null, member = null, value = 1,
+  motionText = null, motionKind = null, motionEmergency = false } = {}) {
   if (!ballot || typeof ballot.cast !== 'function') {
     counters.ballotMirrorSkipped = (counters.ballotMirrorSkipped || 0) + 1
     return { mirrored: false, reason: 'no-seam' }
@@ -109,9 +110,10 @@ export function mirrorVote({ ballot = null, boxFor = null, counters = {}, meetin
     return { mirrored: false, reason: 'no-binding', code: 'VMU_MEETING_BOX_UNWIRED' }
   }
   let boxId = null
-  let wire = { value, by: null }
+  let wire = { value, choice: null, by: null }
   try {
-    const bound = boxFor({ meeting, motion: motionId, member, value })
+    // ROUND 13 B: the motion's OWN facts are passed through (the face already holds them) — pure data, not policy.
+    const bound = boxFor({ meeting, motion: motionId, member, value, text: motionText, kind: motionKind, emergency: motionEmergency })
     if (bound === null || bound === undefined) {
       counters.ballotMirrorFailed = (counters.ballotMirrorFailed || 0) + 1
       return { mirrored: false, reason: 'unmapped', code: 'VMU_MEETING_BOX_UNMAPPED' }
@@ -119,7 +121,9 @@ export function mirrorVote({ ballot = null, boxFor = null, counters = {}, meetin
     if (typeof bound === 'string') boxId = bound
     else if (bound && typeof bound === 'object') {
       boxId = bound.boxId === undefined || bound.boxId === null ? null : String(bound.boxId)
-      wire = { value: bound.value === undefined ? value : bound.value, by: bound.by === undefined ? null : bound.by }
+      wire = { value: bound.value === undefined ? value : bound.value,
+        choice: bound.choice === undefined ? null : bound.choice,
+        by: bound.by === undefined ? null : bound.by }
     }
     if (!boxId) {
       counters.ballotMirrorFailed = (counters.ballotMirrorFailed || 0) + 1
@@ -130,7 +134,10 @@ export function mirrorVote({ ballot = null, boxFor = null, counters = {}, meetin
     return { mirrored: false, reason: 'binding-threw', code: (e && e.code) || 'VMU_MEETING_BOX_BINDING_FAILED', message: String((e && e.message) || e) }
   }
   try {
-    const r = ballot.cast({ meeting, motion: motionId, member, value: wire.value, by: wire.by, boxId })
+    // ROUND 13 A (the root cause of `VMU_CONFLICT`): the box face reads `choice` (and requires `by`), while this
+    // face's vocabulary is `value` (0|1). The binder may answer with either: `choice` WINS, `value` is the fallback.
+    const r = ballot.cast({ meeting, motion: motionId, member, value: wire.value,
+      choice: wire.choice === null || wire.choice === undefined ? wire.value : wire.choice, by: wire.by, boxId })
     if (r && r.ok === false) {
       counters.ballotMirrorFailed = (counters.ballotMirrorFailed || 0) + 1
       return { mirrored: false, reason: 'refused', code: r.code || null, boxId }

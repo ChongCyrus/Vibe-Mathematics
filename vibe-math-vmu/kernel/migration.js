@@ -90,7 +90,8 @@ export function createMigration({ clock = () => 0, log = null, settings = {}, bu
     return DEFAULTS[key]
   }
   const say = (ev) => { if (log && typeof log.append === 'function') { try { log.append(ev) } catch (e) { /* advisory */ } } }
-  const emit = (ev) => {
+  const emit = (ev, payload) => {
+    if (typeof ev === 'string') ev = Object.assign({ type: ev }, payload || {})
   // ROUND 4 / task-25 (Lead's audit): the bus takes a STRING NAME first. Forwarding the event OBJECT meant every
   // emission here threw and was swallowed. Split the name out, and NAME the refusal in this module's own log.
   if (!bus || typeof bus.emit !== 'function') return
@@ -235,7 +236,7 @@ export function createMigration({ clock = () => 0, log = null, settings = {}, bu
         keepBackups: K.keepBackups, onFailure: K.onFailure, state: mig.state, trigger }, enforced, fired)
       const rendered = render({ id: mig.id, from: mig.from, to: mig.to, state: mig.state })
       if (rendered !== null) r.rendered = rendered
-      emit({ type: 'migration/applied', at: now, migration: mig.id })
+      emit('migration/applied', { at: now, migration: mig.id })
       return r
     } finally {
       active = null
