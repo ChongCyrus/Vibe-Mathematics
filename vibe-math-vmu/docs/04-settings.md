@@ -299,15 +299,15 @@ vmu.packs.active: [v5r]
 | `vmu.core.facesDisabled` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `host.js` | 已接线（host.js resolveFaces 读取）：按名关闭的工具面（面键或工具名）。被关的面在 status().faces.disabled 里带 VMU_NOT_PERMITTED 具名上报；名字写错会出现在 unknownDisabled 而不是被忽略。 |
 | `vmu.turn.toolCallsPerTurnCap` | number | `0` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 本回合工具调用上限；0＝未设上限（仍请克制） |
 | `vmu.turn.memoryCeilingMb` | number | `0` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 内存上限（MB）；0＝只提醒"压力明显增大"而不给数字 |
-| `vmu.turn.selfCheck` | bool | `true` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | `packs/v5r/middleware/prompt-switches.js` | 是否向成员展示资源纪律段（关掉＝零注入，提示词回到该段之前，注入点逐字不变） |
+| `vmu.turn.selfCheck` | bool | `true` | — | 会话 | H2 | office | ❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有） | `packs/v5r/middleware/prompt-switches.js` | 是否向成员展示资源纪律段（关掉＝零注入，提示词回到该段之前，注入点逐字不变） |
 | `vmu.turn.replyCatalogue` | enum | `compact` | `compact`∣`full` | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/middleware/prompt-switches.js` | which reply catalogue is injected: compact (what the delivered-prompt corpus carries) or full |
 | `vmu.turn.protocolPath` | string | `Shared/Protocol.md` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | protocol path named by the compact reply catalogue (relative to the session working directory) |
 | `vmu.turn.verifyTarget` | string | `(unspecified)` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | the object under a truth ballot (verify phase) |
 | `vmu.turn.verifyKindLabel` | string | `(unspecified)` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | the kind label shown next to the object under a truth ballot |
 | `vmu.turn.invitedBy` | string | `(unspecified)` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | who invited this temp to speak (meeting phase) |
 | `vmu.turn.invitedWhy` | string | `(unspecified)` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | why this temp was invited to speak (meeting phase) |
-| `vmu.turn.feedback` | bool | `true` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | `packs/v5r/middleware/prompt-switches.js` | 是否注入工作反馈行（关掉＝零注入，连段标题都不出现；原线 feedbackOn 同义） |
-| `vmu.pointer.propagation` | bool | `true` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | `packs/v5r/middleware/prompt-switches.js` | 是否注入指针传播契约（关掉＝零注入；原线的 S21 开关同义） |
+| `vmu.turn.feedback` | bool | `true` | — | 会话 | H2 | office | ❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有） | `packs/v5r/middleware/prompt-switches.js` | 是否注入工作反馈行（关掉＝零注入，连段标题都不出现；原线 feedbackOn 同义） |
+| `vmu.pointer.propagation` | bool | `true` | — | 会话 | H2 | office | ❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有） | `packs/v5r/middleware/prompt-switches.js` | 是否注入指针传播契约（关掉＝零注入；原线的 S21 开关同义） |
 | `vmu.prompts.missingVariable` | enum | `report` | `report`∣`refuse` | 会话 | H2 | office | ✅ 已接线 | `kernel/prompt/index.js` | 占位符无人供值时：report＝记录并在装配结果里报告（默认）；refuse＝具名拒（VMU_PROMPT_VARIABLE_MISSING） |
 | `vmu.turn.instituteName` | string | `institute` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | `packs/v5r/prompts/v5r-core.js` | 本所名（章程开头与多处句子引用） |
 | `vmu.turn.leaderId` | string | `` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 在册领头人的代号；空＝无领头人（原线：章程绝不可点名不在册的领头人） |
@@ -1444,7 +1444,7 @@ vmu.packs.active: [v5r]
 | `vmu.names.warn` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准） |
 | `vmu.notes.linkKinds` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.packs.searchPaths` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
-| `vmu.paper.retentionMs` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/paper.js` | ★ **已穷尽**：`paper.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
+| `vmu.paper.retentionMs` | planned | `null` | — | 会话 | H1 | office | ❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有） | `kernel/paper.js` | ★ **已穷尽**：`paper.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.preserve.migrateAfterYears` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.preserve.pdfProfile` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.prompt.compatMode` | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |

@@ -1,13 +1,17 @@
-// vmu: A TRUNCATED TOOL RESULT MUST DECLARE ITSELF *WITHOUT CHANGING THE RECEIPT'S SHAPE* (round 32, task-157).
+// vmu: EVERY TOOL RESULT CARRIES `receiptMeta`, AND ITS SHAPE DOES NOT DEPEND ON ITS SIZE (round 33, task-161).
 //
-// THE DEFECT THIS PINS (mine, caught by the mandated suites and proved by ablation): the first implementation
-// replaced the WHOLE receipt with `{ok, truncated, head, tail, …}` when it went over budget, so `st.packs` vanished
-// and `vmu-entry` went red at `st.packs` undefined. "A payload got heavy, so the contract changed" is not acceptable:
-//   · the elision must be STRUCTURAL - oversized STRING leaves shortened IN PLACE, no key dropped, no array resized;
-//   · `elided` must be PATH-level: {path, from, to, bytes} naming WHICH value was cut and by how much;
-//   · every other field (packs / faces / settings) stays readable - that is the consumer requirement;
-//   · a result we did NOT cut carries NO `truncated` (reverse assertion);
-//   · the HOST's own later `[...]` insertion is a separate fact (`hostElision`), never conflated with ours.
+// THE REAL-MACHINE FINDING THIS PINS (measured on hardware, then reproduced in-process): a 179,826-character receipt
+// came back with NO marker at all. Through the real seam the status face has ~4,470 string leaves whose LONGEST is
+// 378 characters - every leaf is under the per-leaf cap, so there was nothing to shorten and the previous version
+// returned the receipt RAW and SILENT. The budget was never enforced and nothing said so.
+//
+// THE CONTRACT (why this fixes it without cutting harder): `receiptMeta` is ALWAYS present, with the SAME FIVE KEYS
+// in both states - state is expressed by VALUE (`truncated:false` / `elided:[]` / a real `originalBytes`), never by
+// the presence of a key. So a consumer can always read it, and a receipt that is far over budget with nothing
+// cap-able now SAYS SO instead of being quiet.
+//   · `hostElision` is always `'possible'` - the host's own later `[...]` insertion is outside this receipt;
+//   · `originalBytes` is always the real serialized size (NOT null): that is what makes the wide-receipt case
+//     legible ("146k bytes, nothing elided"), which is exactly what was invisible before.
 //
 // ★ `execute()` on a vmu tool returns a JSON STRING, not an object - it must be parsed.
 
@@ -24,83 +28,89 @@ const ok = (cond, name, detail) => {
   if (cond) passed++
   else { failed++; failures.push(name + (detail === undefined ? '' : ' [' + JSON.stringify(detail) + ']')) }
 }
+const META_KEYS = ['truncated', 'elided', 'hostElision', 'originalBytes', 'note']
+const sameKeys = (m) => !!m && JSON.stringify(Object.keys(m).sort()) === JSON.stringify([...META_KEYS].sort())
 
 // ---------------------------------------------------------------------------------------------------------
-// A. WITHIN the budget: byte-identical, NO `truncated` (the reverse assertion)
+// A. WITHIN the budget: still carries the SAME five keys, all in their empty state
 // ---------------------------------------------------------------------------------------------------------
 {
   const small = { ok: true, hello: 'world' }
-  const raw = JSON.stringify(small)
-  const got = boundedToolResult(small)
-  ok(got === raw, 'A1. a small result is serialized byte-identically (the budget changes nothing until it binds)', { len: raw.length })
-  ok(!('truncated' in JSON.parse(got)),
-    'A2. ★ REVERSE: a receipt we did NOT cut carries no `truncated` key ("always reports truncated" cannot pass)')
+  const env = JSON.parse(boundedToolResult(small))
+  ok(env.ok === true && env.hello === 'world', 'A1. a small result keeps its own fields untouched')
+  const m = env.receiptMeta || null
+  // ★ NULL-SAFE ON PURPOSE: if a mutation removes `receiptMeta` altogether (the R32 defect), this must fail as a
+  // NAMED assertion below - not crash with a TypeError, which would read as "red" without naming the broken contract.
+  ok(sameKeys(m),
+    'A2. ★ the SAME five keys are present even when nothing was cut (shape does not depend on size)', m && Object.keys(m))
+  ok(!!m && m.truncated === false && Array.isArray(m.elided) && m.elided.length === 0 && m.hostElision === 'possible' && m.note === null,
+    'A3. ★ the empty state is expressed by VALUE (`truncated:false` / `elided:[]` / `note:null`), not by a missing key', m)
+  ok(!!m && typeof m.originalBytes === 'number' && m.originalBytes > 0,
+    'A4. `originalBytes` is a real size here too (NOT null) - the reader can always compare it to the budget', m && m.originalBytes)
 }
 
 // ---------------------------------------------------------------------------------------------------------
-// B. OVER the budget, with an oversized string: cut, declared, AND the shape survives
+// B. OVER the budget with an oversized string: cut, declared INSIDE receiptMeta, shape intact
 // ---------------------------------------------------------------------------------------------------------
 {
   const value = { ok: true, packs: ['v5r-core'], faces: { enabled: ['status'] }, blob: 'x'.repeat(MAX_TOOL_RESULT_BYTES * 4) }
   const originalBlobLen = value.blob.length
-  const got = boundedToolResult(value)
-  const env = JSON.parse(got)
-  ok(env.truncated === true, 'B1. ★ over budget the result IS declared as truncated', { max: MAX_TOOL_RESULT_BYTES })
-  // ★ THE CONSUMER CRITERION - this is the assertion `vmu-entry` exercises against the real status face.
+  const env = JSON.parse(boundedToolResult(value))
+  const m = env.receiptMeta
+  ok(sameKeys(m), 'B1. the key set is IDENTICAL to the empty state (that is the whole point of the contract)', m && Object.keys(m))
+  ok(m.truncated === true, 'B2. ★ over budget with a cap-able leaf: `truncated:true`')
+  // ★ THE CONSUMER CRITERION: this is what `vmu-entry` reads off the real status face.
   ok(env.ok === true && Array.isArray(env.packs) && env.packs[0] === 'v5r-core' && env.faces && env.faces.enabled,
-    'B2. ★★ THE SHAPE SURVIVES: `packs` and `faces` are still readable after elision (this is what broke when the whole receipt was replaced)',
-    { packs: env.packs, faces: env.faces })
-  ok(Array.isArray(env.elided) && env.elided.length > 0 && env.elided.every((r) => typeof r.path === 'string' && r.path.length > 0 && Number.isInteger(r.from) && Number.isInteger(r.to) && Number.isInteger(r.bytes)),
-    'B3. ★ `elided` is a non-empty list of PATH-level integer ranges (which value, and by how much)', env.elided)
-  // ★ NULL-SAFE ON PURPOSE: if a mutation removes the declaration entirely, these must fail as NAMED assertions on
-  // B1/B3 - not crash with a TypeError, which would read as "red" without saying which contract broke.
-  const r = Array.isArray(env.elided) ? (env.elided.find((x) => x.path === 'blob') || null) : null
-  ok(!!r, 'B4. ★ the path names the exact leaf that was cut (`blob`)', env.elided)
+    'B3. ★★ THE SHAPE SURVIVES: `packs` and `faces` are still readable after elision', { packs: env.packs })
+  const r = Array.isArray(m.elided) ? (m.elided.find((x) => x.path === 'blob') || null) : null
   ok(!!r && r.to === originalBlobLen && r.bytes === r.to - r.from && r.from > 0 && r.from < originalBlobLen,
-    'B5. ★ the range is ACCURATE against the original: `to` is its real length, `bytes === to - from`, and the kept part is a real prefix', { range: r, originalBlobLen })
-  ok(!!r && typeof env.blob === 'string' && env.blob.length === r.from + '…[elided]'.length && 'x'.repeat(r.from) === env.blob.slice(0, r.from),
-    'B6. ★ the surviving value is literally the original prefix (checkable, not asserted)', { kept: r && r.from })
-  ok(env.hostElision === 'possible',
-    'B7. ★ the HOST BOUNDARY is named separately: we do not claim to have prevented the host\'s own later `[...]`', env.hostElision)
-  ok(typeof env.originalBytes === 'number' && env.originalBytes > MAX_TOOL_RESULT_BYTES,
-    'B8. the envelope still reports the ORIGINAL size, so a reader can see how much was there', env.originalBytes)
-  ok(got.length <= MAX_TOOL_RESULT_BYTES * 2,
-    'B9. the kept result is materially smaller than the original (the elision actually binds)', { before: env.originalBytes, after: got.length })
+    'B4. ★ `elided` names the exact leaf and the range is ACCURATE against the original', { range: r, originalBlobLen })
+  ok(!!r && 'x'.repeat(r.from) === env.blob.slice(0, r.from),
+    'B5. ★ the surviving value is literally the original prefix (checkable, not asserted)', { kept: r && r.from })
+  ok(m.originalBytes > MAX_TOOL_RESULT_BYTES && typeof m.note === 'string' && m.note.length > 0,
+    'B6. the original size travels, and the state is explained in words', { originalBytes: m.originalBytes })
+  ok(m.hostElision === 'possible', 'B7. ★ the HOST boundary is named separately from our own elision', m.hostElision)
 }
 
 // ---------------------------------------------------------------------------------------------------------
-// C. LARGE but with nothing cap-able: we cut nothing (no `truncated`) yet still name the host boundary
+// C. ★★ THE REAL-MACHINE CASE: over budget and NOTHING cap-able (many small fields, no long strings)
 // ---------------------------------------------------------------------------------------------------------
 {
-  const wide = { ok: true, rows: Array.from({ length: 4000 }, (_, i) => ({ i, tag: 't' + i })) }
-  const length = JSON.stringify(wide).length
+  const wide = { ok: true, packs: ['v5r-core'] }
+  for (let i = 0; i < 2600; i++) wide['k' + i] = 'v' + i          // many SMALL strings: under every per-leaf cap
+  const before = JSON.stringify(wide).length
   const env = JSON.parse(boundedToolResult(wide))
-  ok(length > MAX_TOOL_RESULT_BYTES,
-    'C1. premise: this result IS over the budget (otherwise the case below is vacuous)', { length, max: MAX_TOOL_RESULT_BYTES })
-  ok(!('truncated' in env),
-    'C2. ★ we cut nothing (no oversized string leaf), so `truncated` must NOT appear - a claim we did not earn')
-  // ★ NAMED GAP, NOT PAPERED OVER: on this shape we also do NOT add `hostElision`, because adding keys to a receipt
-  // we did not cut broke `vmu-entry` (EXIT=1) and `vmu-host` (106/1) - consumers observe the key set, and the ruling
-  // is that the shape must not move. So the host boundary is unnamed HERE (reported as a finding) instead of
-  // re-breaking the consumers to name it.
-  ok(env.rows && env.rows.length === 4000 && !('hostElision' in env),
-    'C3. ★ the array shape is untouched (4000 rows) and NO keys were added to an uncut receipt (consumers observe the key set - see the named gap in the report)',
-    { rows: env.rows && env.rows.length, hostElision: env.hostElision })
+  const m = env.receiptMeta
+  ok(before > MAX_TOOL_RESULT_BYTES,
+    'C1. premise: this receipt IS far over the budget (measured on hardware: ~180k with a 378-char longest leaf)', { before, max: MAX_TOOL_RESULT_BYTES })
+  ok(m.truncated === false && Array.isArray(m.elided) && m.elided.length === 0,
+    'C2. ★ we cut nothing (there is nothing cap-able), so we do NOT claim we did', { truncated: m.truncated, elided: m.elided })
+  ok(m.originalBytes === before,
+    'C3. ★★ ...but the over-budget SIZE IS STATED - the exact fact that used to be invisible (the receipt came back raw and silent)', { stated: m.originalBytes, real: before })
+  ok(typeof m.note === 'string' && m.note.length > 0 && m.hostElision === 'possible',
+    'C4. ★★ and it says WHY it could not be cut, plus names the host boundary that may still cut it', { note: m.note && m.note.slice(0, 90) })
+  ok(sameKeys(m) && wide.k2599 === 'v2599',
+    'C5. the key set matches the other states and the wide content itself is untouched', { keys: m && Object.keys(m) })
 }
 
 // ---------------------------------------------------------------------------------------------------------
-// D. THROUGH THE REAL SEAM
+// D. THROUGH THE REAL SEAM, plus the NAMED non-object boundary
 // ---------------------------------------------------------------------------------------------------------
 {
   const small = { name: 'probe_small', description: 'd', parameters: {}, run: async () => ({ ok: true, n: 1 }) }
-  const rawSmall = await toHostSpec(small).execute({})
-  const parsedSmall = typeof rawSmall === 'string' ? JSON.parse(rawSmall) : rawSmall
-  ok(parsedSmall && parsedSmall.ok === true && !('truncated' in parsedSmall),
-    'D1. through `toHostSpec`, a normal tool result is unchanged and undeclared', parsedSmall)
+  const parsedSmall = JSON.parse(await toHostSpec(small).execute({}))
+  ok(parsedSmall.ok === true && sameKeys(parsedSmall.receiptMeta),
+    'D1. through `toHostSpec`, a normal tool result carries the full `receiptMeta` in its empty state', parsedSmall.receiptMeta)
   const bigSpec = { name: 'probe_big', description: 'd', parameters: {}, run: async () => ({ ok: true, packs: ['p'], blob: 'z'.repeat(MAX_TOOL_RESULT_BYTES * 4) }) }
   const parsedBig = JSON.parse(await toHostSpec(bigSpec).execute({}))
-  ok(parsedBig && parsedBig.truncated === true && parsedBig.packs && parsedBig.packs[0] === 'p' && Array.isArray(parsedBig.elided),
-    'D2. ★ through the REAL seam, an over-budget result arrives self-declared AND still shaped', { truncated: parsedBig && parsedBig.truncated, packs: parsedBig && parsedBig.packs })
+  ok(parsedBig.receiptMeta.truncated === true && parsedBig.packs && parsedBig.packs[0] === 'p',
+    'D2. ★ through the REAL seam an over-budget result is declared AND still shaped', { meta: parsedBig.receiptMeta.truncated, packs: parsedBig.packs })
+  // ★ NON-OBJECT RESULTS ARE A NAMED BOUNDARY, not a silent hole: a sub-object cannot be attached to a bare string, so
+  // those come back without `receiptMeta` - asserted here so the boundary is visible rather than assumed.
+  const strSpec = { name: 'probe_str', description: 'd', parameters: {}, run: async () => 'plain string result' }
+  const parsedStr = JSON.parse(await toHostSpec(strSpec).execute({}))
+  ok(parsedStr === 'plain string result',
+    'D3. a non-object result is returned as-is (a NAMED boundary: no sub-object can be attached to a bare value)', parsedStr)
 }
 
 console.log('=== VMU RECEIPT TRUNCATION: ' + passed + ' passed, ' + failed + ' failed ===')

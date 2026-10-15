@@ -14,7 +14,7 @@
 //
 // `tests/audit-vmu-docs.mutants.mjs` breaks each of these one at a time and requires the named red.
 
-import { hasConsumer } from '../scripts/generate-vmu-settings-table.mjs'
+import { hasConsumer, verdictOf, WIRED, UNDETERMINED, NOT_WIRED } from '../scripts/generate-vmu-settings-table.mjs'
 // ROUND 14 / task-101 ④: the service-name table is a SINGLE exported source now. This audit carried its own copy and
 // the two had already drifted apart - this one said `vmu.dissemination.impact`/`mediaRequest` (both had since become
 // REAL setting keys) while the generator said `vmu.outreach.impact`/`mediaRequest` (the family as it was named BEFORE
@@ -541,7 +541,19 @@ ok(unregisteredInCode.length === 0,
   ok(rows.length > 0 && SETTING_DEFS.length > 0, '04 §11 really has key rows and the registry really declares keys (non-vacuous comparison)',
     rows.length + ' rows / ' + SETTING_DEFS.length + ' declared')
   ok(rows.length - SETTING_DEFS.length === 0, '04 §11 has exactly one row per declared key', rows.length + '/' + SETTING_DEFS.length)
-  const unmarkedRows = rows.filter((r) => !/已接线|未接线/.test(r))
+  // ★ ROUND 33 (task-162 follow-up): THE THREE TIERS. The table gained `❓ 未判定` — "the criterion cannot decide
+  // whether anything reads this key" — which is an EXPLICIT statement, not a silent promise. This assertion used to
+  // know only two markers, so a correct table reddened here ("the gate still assumed two values"). ★ The intent is
+  // kept and sharpened: a row must land in EXACTLY ONE of the three named tiers — blank, vague or hand-written prose
+  // still reddens (that is what "no silent promises" always meant).
+  const TIER_MARKER = { wired: /✅ 已接线/, undetermined: /❓ 未判定/, unwired: /⚠️ 未接线/ }
+  const unmarkedRows = rows.filter((r) => !Object.values(TIER_MARKER).some((re) => re.test(r)))
+  ok(unmarkedRows.length === 0, 'every settings row states which of the THREE tiers the key is in (✅/❓/⚠️ — no silent promises; blank or vague still reddens)',
+    unmarkedRows.slice(0, 3).map((r) => r.slice(0, 48)).join(' | '))
+  // non-vacuity: the line above would also pass a table that had lost a whole tier
+  const tierCounts = { wired: rows.filter((r) => TIER_MARKER.wired.test(r)).length, undetermined: rows.filter((r) => TIER_MARKER.undetermined.test(r)).length, unwired: rows.filter((r) => TIER_MARKER.unwired.test(r)).length }
+  ok(tierCounts.wired > 0 && tierCounts.undetermined > 0 && tierCounts.unwired > 0,
+    'and all three tiers are actually represented in the table (a collapsed table would pass the line above vacuously)', tierCounts)
   ok(unmarkedRows.length === 0, 'every settings row states whether the key is WIRED (no silent promises)',
     unmarkedRows.slice(0, 3).map((r) => (r.split('|')[1] || '').trim()).join(','))
 
@@ -561,15 +573,28 @@ ok(unregisteredInCode.length === 0,
   // declaration table count as a reader, so `planned` rows could claim 已接线 and this audit could not see it. Note the
   // consequence, stated deliberately: the rule is evaluated against the REAL repository, not the copied code dir, so a
   // mutant that changed wiring by editing CODE would not be seen - the wiring mutants here are all docs-side.
-  const trulyUnwired = new Set(SETTING_DEFS.filter((d) => !hasConsumer(d.key)).map((d) => d.key))
-  const claimedUnwired = new Set(rows.filter((r) => /未接线/.test(r))
+  // ★ ROUND 33: THE TRUTH IS NOW THREE-VALUED, and it comes from the GENERATOR'S OWN verdict (one rule, one place —
+  // the principle stated four lines up). The two-valued version (`!hasConsumer(key)` ⇒ "unwired") had become WRONG:
+  // the three undetermined keys have no literal reader but are NOT "unwired", so a row asserting `⚠️ 未接线` for one
+  // of them would have been accepted — the audit would have blessed exactly the claim the third tier exists to stop.
+  const truth = { wired: new Set(), undetermined: new Set(), unwired: new Set() }
+  for (const d of SETTING_DEFS) {
+    const v = verdictOf(d.key)
+    truth[v === WIRED ? 'wired' : v === UNDETERMINED ? 'undetermined' : 'unwired'].add(d.key)
+  }
+  const claimedIn = (re) => new Set(rows.filter((r) => re.test(r))
     .map((r) => ((r.match(/`(vmu\.[a-zA-Z0-9.]+)`/) || [])[1])).filter(Boolean))
-  const claimedWired = new Set(rows.filter((r) => /已接线/.test(r))
-    .map((r) => ((r.match(/`(vmu\.[a-zA-Z0-9.]+)`/) || [])[1])).filter(Boolean))
-  const lyingWired = [...claimedWired].filter((k) => trulyUnwired.has(k))
-  const lyingUnwired = [...claimedUnwired].filter((k) => !trulyUnwired.has(k))
-  ok(lyingWired.length === 0, 'no key is claimed WIRED while no runtime source reads it', lyingWired.slice(0, 8).join(','))
-  ok(lyingUnwired.length === 0, 'no key is marked unwired although a runtime source reads it', lyingUnwired.slice(0, 8).join(','))
+  const claimedUnwired = claimedIn(TIER_MARKER.unwired)
+  const claimedWired = claimedIn(TIER_MARKER.wired)
+  const claimedUndetermined = claimedIn(TIER_MARKER.undetermined)
+  const lyingWired = [...claimedWired].filter((k) => !truth.wired.has(k))
+  const lyingUnwired = [...claimedUnwired].filter((k) => !truth.unwired.has(k))
+  const lyingUndetermined = [...claimedUndetermined].filter((k) => !truth.undetermined.has(k))
+  ok(lyingWired.length === 0, 'no key is claimed WIRED while the criterion does not read it', lyingWired.slice(0, 8).join(','))
+  ok(lyingUnwired.length === 0, 'no key is marked unwired although a runtime source reads it — or although the criterion cannot decide it', lyingUnwired.slice(0, 8).join(','))
+  ok(lyingUndetermined.length === 0, 'no key is claimed UNDETERMINED unless the criterion really cannot decide it (the third tier is a finding, not an escape hatch)', lyingUndetermined.slice(0, 8).join(','))
+  ok(truth.wired.size + truth.undetermined.size + truth.unwired.size === SETTING_DEFS.length,
+    'the three tiers PARTITION the declared keys (no key sits outside the model)', { wired: truth.wired.size, undetermined: truth.undetermined.size, unwired: truth.unwired.size, keys: SETTING_DEFS.length })
   ok(claimedUnwired.size > 0, 'the doc set admits which keys are declared-but-not-wired (today: ' + claimedUnwired.size + ')')
 }
 

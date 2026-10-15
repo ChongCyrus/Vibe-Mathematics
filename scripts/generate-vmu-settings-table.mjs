@@ -150,14 +150,97 @@ const HEADER = [
   '|---|---|---|---|---|---|---|---|---|---|',
 ]
 
-const WIRED = '✅ 已接线'
-const NOT_WIRED = '⚠️ 未接线（改了不会有行为变化）'
+export const WIRED = '✅ 已接线'
+// ★ exported ROUND 33 (task-162 follow-up): the audit asserts that every row lands in one of these THREE tiers, so it
+// must not carry its own copy of the vocabulary ("one rule, one place" — the principle that audit itself states).
+export const NOT_WIRED = '⚠️ 未接线（改了不会有行为变化）'
+/**
+ * ★ ROUND 33 (task-162): THE THIRD TIER — 「未判定」.
+ *
+ * WHY IT EXISTS: `vmu.turn.selfCheck` has NO literal read anywhere; its only occurrence inside its carrier is an
+ * ELEMENT OF A LIST (`packs/v5r/middleware/prompt-switches.js:27` `['vmu.turn.selfCheck', 'v5r-turn-resources'],`),
+ * and that list IS iterated twenty lines later (`:71` `for (const [key, section] of OFF_SWITCHES)` — the loop
+ * variable is literally named `key`). So the consumer almost certainly exists, reached DYNAMICALLY; the pre-R33
+ * table asserted `⚠️ 未接线（改了不会有行为变化）`, which is a claim it cannot support. Neither lie is acceptable:
+ * `已接线` would be widening (the read is not proven), `未接线` asserts "nobody reads it" (also unproven). ⇒ the
+ * honest output is a THIRD, explicitly uncertain tier: **看不见 ≠ 没有**.
+ *
+ * THE DISCRIMINATOR must be TIGHT: the iteration has to be of THE LIST THAT HOLDS THE ELEMENT (the array literal is
+ * located by walking up to its `const NAME = [`), because a loose "any `.map(` in the same file" test matched
+ * unrelated lines (measured: `kernel/ballotbox.js:175 args.options.map(String)`) and would have claimed a dynamic
+ * read for keys whose list is never iterated. When the list is located but NO iteration is found, the evidence is
+ * NOT there ⇒ the row stays `未判定` only if a list holds it, and a key with no list at all (only declarations and
+ * comments) still reports `未接线` — the criterion keeps its teeth (task-162 C).
+ */
+export const UNDETERMINED = '❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有）'
+/** A comment line can never be evidence: R32's rule (a key named in a comment is documentation, not a reader). */
+const COMMENT_LINE = /^\s*(\/\/|\*|\/\*)/
+
+/**
+ * ★ PERFORMANCE (R33 follow-up): THE LIST INDEX IS BUILT **ONCE**, not per key.
+ *
+ * The first version of `listIterationEvidence` re-read every file and re-scanned every line FOR EACH OF THE 1226
+ * KEYS (`f.text.split('\n')` sat inside the per-key path, plus a fresh `new RegExp` per candidate) ⇒ ≈ O(keys ×
+ * lines). Measured: `generate-vmu-settings-table.mjs --check` 3.1s → **14.0s** (4.5×), and because
+ * `generate-wiring-index.mjs` RUNS this script as one of its own checks (line 124), that went 5.8s → **19.4s**, so
+ * the `vmu-wiring-index` suite — which spawns both repeatedly — blew the 180s harness budget. The harness rule is to
+ * fix the LOAD, never the budget.
+ *
+ * The fix is ONE pass over the sources: for each array declaration `const NAME = [`, decide ONCE whether NAME is
+ * iterated, then index the key elements it holds. `listIterationEvidence` becomes an O(1) lookup and the SEMANTICS
+ * ARE UNCHANGED (same tight rule: the iteration must be of the array that holds the element) ⇒ the three-tier
+ * counts must stay 1108 / 3 / 115.
+ */
+const LINES_OF = new Map()
+const linesOf = (f) => {
+  if (!LINES_OF.has(f.rel)) LINES_OF.set(f.rel, f.text.split('\n'))
+  return LINES_OF.get(f.rel)
+}
+const LIST_INDEX = (() => {
+  const idx = new Map()
+  for (const f of SOURCE_FILES) {
+    const lines = linesOf(f)
+    for (let i = 0; i < lines.length; i++) {
+      const decl = /(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:Object\.freeze\()?\s*\[/.exec(lines[i])
+      if (!decl) continue
+      const name = decl[1]
+      const re = new RegExp('(for\\s*\\([^)]*\\bof\\s+' + name + '\\b|\\b' + name + '\\.(map|forEach|filter|some|reduce)\\()')
+      let iterLine = -1
+      for (let k = 0; k < lines.length; k++) {
+        if (!COMMENT_LINE.test(lines[k]) && re.test(lines[k])) { iterLine = k + 1; break }
+      }
+      if (iterLine < 0) continue                     // not iterated ⇒ no dynamic-read evidence for its elements
+      for (let j = i + 1; j < lines.length; j++) {
+        const t = lines[j].trim()
+        if (/^\];?\s*$/.test(t)) break               // the list ends here
+        if (COMMENT_LINE.test(lines[j])) continue
+        const em = /^\[?['"](vmu\.[A-Za-z0-9_.]+)['"]\s*(,|$)/.exec(t)
+        if (em && !idx.has(em[1])) {
+          idx.set(em[1], { rel: f.rel, listName: name, elemLine: j + 1, iterLine, iterText: lines[iterLine - 1].trim().slice(0, 90) })
+        }
+      }
+    }
+  }
+  return idx
+})()
+
+/** The list that holds this key as an element, and the iteration over that list — or `null` when not located. */
+export function listIterationEvidence(key) {
+  return LIST_INDEX.get(key) || null
+}
+
+/** The three-tier verdict. `已接线` ⇐ a literal READ; else `未判定` ⇐ the key is an element of a list (the dynamic
+ *  path may read it); else `未接线` ⇐ nothing but declarations/comments name it. */
+export function verdictOf(key) {
+  if (hasConsumer(key)) return WIRED
+  return listIterationEvidence(key) ? UNDETERMINED : NOT_WIRED
+}
 
 const rows = SETTING_DEFS.map((def) => {
   const carrier = carrierOf(def.key)
   return '| `' + def.key + '` | ' + (TYPE_LABEL[def.type] || def.type) + ' | ' +
     renderDefault(def) + ' | ' + renderDomain(def) + ' | 会话 | ' + renderHot(def) + ' | ' + renderWho(def) + ' | ' +
-    (hasConsumer(def.key) ? WIRED : NOT_WIRED) + ' | ' + (carrier ? '`' + carrier + '`' : '—') + ' | ' + def.doc + ' |'
+    verdictOf(def.key) + ' | ' + (carrier ? '`' + carrier + '`' : '—') + ' | ' + def.doc + ' |'
 })
 
 const generated = HEADER.concat(rows).join('\n')
@@ -176,12 +259,13 @@ const before = lines.slice(0, headerIdx)
 const after = lines.slice(end)
 const nextText = before.concat(generated.split('\n'), after).join('\n')
 
-const WIRED_COUNT = SETTING_DEFS.filter((d) => hasConsumer(d.key)).length
-const NOT_WIRED_COUNT = SETTING_DEFS.length - WIRED_COUNT
-const SUMMARY = SETTING_DEFS.length + ' keys (' + WIRED_COUNT + ' wired, ' + NOT_WIRED_COUNT + ' declared-but-not-wired)'
+const WIRED_COUNT = SETTING_DEFS.filter((d) => verdictOf(d.key) === WIRED).length
+const UNDETERMINED_COUNT = SETTING_DEFS.filter((d) => verdictOf(d.key) === UNDETERMINED).length
+const NOT_WIRED_COUNT = SETTING_DEFS.filter((d) => verdictOf(d.key) === NOT_WIRED).length
+const SUMMARY = SETTING_DEFS.length + ' keys (' + WIRED_COUNT + ' wired, ' + UNDETERMINED_COUNT + ' undetermined, ' + NOT_WIRED_COUNT + ' declared-but-not-wired)'
 
 if (JSON_OUT) {
-  console.log(JSON.stringify({ keys: SETTING_DEFS.length, wired: WIRED_COUNT, notWired: NOT_WIRED_COUNT,
+  console.log(JSON.stringify({ keys: SETTING_DEFS.length, wired: WIRED_COUNT, undetermined: UNDETERMINED_COUNT, notWired: NOT_WIRED_COUNT,
     tableLines: generated.split('\n').length, stale: nextText !== docText }, null, 2))
 } else if (nextText === docText) {
   console.log('vmu settings table: up to date (' + SUMMARY + ')')

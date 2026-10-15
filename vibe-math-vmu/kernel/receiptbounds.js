@@ -42,9 +42,16 @@ const ELISION_MARKER = '…[elided]'
  * truncated" cannot pass the assertions either.
  */
 export function boundedToolResult(value) {
+  // ★ NAMED BOUNDARY: a sub-object cannot be attached to a bare value, so non-objects come back as-is (asserted in
+  // the test rather than left as an assumption).
   if (value === null || typeof value !== 'object') return JSON.stringify(value)
   const before = JSON.stringify(value)
-  if (typeof before !== 'string' || before.length <= MAX_TOOL_RESULT_BYTES) return before
+  // ROUND 33 / task-161 STEP 1: `receiptMeta` is present EVEN WHEN NOTHING WAS CUT. Returning early here (as the
+  // previous version did) made the key set depend on the payload size - the very defect the contract removes - and it
+  // is what let a 179,826-character real receipt travel with no marker at all.
+  const emptyMeta = { truncated: false, elided: [], hostElision: 'possible', originalBytes: before.length, note: null }
+  if (typeof before !== 'string') return before
+  if (before.length <= MAX_TOOL_RESULT_BYTES) return JSON.stringify(Object.assign({}, value, { receiptMeta: emptyMeta }))
   // Collect string leaves longest-first, then shorten until the serialization fits (bounded work, deterministic).
   const leaves = []
   const seen = new WeakSet()
@@ -71,20 +78,30 @@ export function boundedToolResult(value) {
     elided.push({ path: leaf.path, from: keep, to: original.length, bytes: original.length - keep })
   }
   const after = JSON.stringify(value)
-  // ★ MEASURED, AND NAMED AS A GAP RATHER THAN SHIPPED: adding `hostElision`/`note` to a large-but-UNCUT receipt is
-  // the honest thing to do on paper (the host may still cut it), but doing so broke two mandated suites
-  // (`vmu-entry` EXIT=1, `vmu-host` 106/1) - i.e. consumers observe the receipt's KEY SET. Lead's ruling is that the
-  // shape must not move, so we do NOT add keys to a receipt we did not cut. The consequence is reported instead:
-  // for a large receipt with no oversized string leaf, the host boundary is NOT named here. That is a real gap, and
-  // it is the round's finding rather than something to paper over by re-breaking the consumers.
-  if (elided.length === 0) return after                       // nothing cap-able: no claim, no extra key
-  return JSON.stringify(Object.assign({}, value, {
-    truncated: true,
-    originalBytes: before.length,
+  // ★★ ROUND 33 / task-161 — THE REAL-MACHINE FINDING, AND WHY THE CONTRACT FIXES IT.
+  // Measured on real hardware: a 179,826-character receipt came back with NO marker of any kind. Reproduced in-process
+  // through the real seam: the status face has 4,470 string leaves whose LONGEST is 378 characters - every leaf is
+  // under the per-leaf cap, so there is NOTHING to shorten, and the previous version returned the receipt RAW and
+  // SILENT. The budget was never enforced and nobody could tell. This is not a threshold problem: on a receipt that
+  // is large because it has many SMALL fields, a budget cannot be met without dropping content, which the ruling
+  // forbids (the shape must not move).
+  // So the fix is to stop being silent, not to cut harder: `receiptMeta` is ALWAYS present and says the truth in
+  // both states. `originalBytes` is ALWAYS the serialized size (not `null`) precisely so that a reader can see
+  // "146,146 bytes, truncated:false, elided:[]" and understand that this receipt is far over the budget, nothing
+  // could be elided without changing its shape, and the host may cut it. `truncated:false` + `elided:[]` + a real
+  // size is a complete, honest answer - silence was not.
+  // ★ THE SHAPE IS CONSTANT: the same five keys exist whether or not we cut anything, so a consumer can read them
+  // without a conditional (this is why the field lives in a sub-object instead of being added at the top level).
+  const meta = {
+    truncated: elided.length > 0,
     elided,
-    // ★ HOST BOUNDARY, reported SEPARATELY from our own elisions: the host may insert its own `[...]` marker at a
-    // point we cannot observe. We say it is possible rather than claim we prevented it.
     hostElision: 'possible',
-    note: 'some string leaves were elided BY US to stay under MAX_TOOL_RESULT_BYTES (' + MAX_TOOL_RESULT_BYTES + '): `elided` gives the exact path and half-open range of each, and every other field is unchanged. A host-inserted `[...]` marker may ALSO appear (hostElision) - that one is outside this receipt.',
-  }))
+    originalBytes: before.length,
+    note: elided.length > 0
+      ? 'string leaves over ' + MAX_STRING_LEAF + ' were elided BY US to reach MAX_TOOL_RESULT_BYTES (' + MAX_TOOL_RESULT_BYTES + '): `elided` gives the exact path and half-open range of each. Every other field is unchanged. A host-inserted `[...]` marker may ALSO appear (hostElision) - that one is outside this receipt.'
+      : (before.length > MAX_TOOL_RESULT_BYTES
+        ? 'NOTHING was elided by us: this receipt is over MAX_TOOL_RESULT_BYTES (' + MAX_TOOL_RESULT_BYTES + ') but no string leaf exceeded ' + MAX_STRING_LEAF + ', and meeting the budget would require dropping content, which would change its shape. `originalBytes` is the real size. The HOST may insert its own `[...]` marker (hostElision) - that one is outside this receipt.'
+        : null),
+  }
+  return JSON.stringify(Object.assign({}, value, { receiptMeta: meta }))
 }
