@@ -155,6 +155,112 @@ const LEGAL = { id: 'p-legal', rules: [{ id: 'r-legal', on: [HOOK], when: {}, th
   try { await rm(root, { recursive: true, force: true }) } catch { /* going away */ }
 }
 
+// =========================================================================================================
+// G. THE TWO DECLARATION SHAPES: `rules[]` and `middleware[{kind:'rules'}]` MUST BEHAVE THE SAME
+// =========================================================================================================
+// A manifest may declare an M1 rule in TWO places: `manifest.rules[]`, or a `middleware` entry carrying
+// `kind:'rules'` (a shape `validatePack` explicitly allows - "the bus runs `rules` and `module` only"). Both are
+// compiled by `kernel.rules.toBusEntries` in apply(). The middleware shape used to be handed to `bus.add` RAW, and
+// `kernel/bus.js` EXEMPTS `kind:'rules'` from its "must have a handler" rule - so the entry reached the bus with NO
+// handler, `emit()` only recorded `middleware/skipped`, and the rule NEVER FIRED, even when perfectly valid
+// (measured independently by two people, two predicates x two emit modes). These assertions pin the two shapes
+// TOGETHER, so a future change that lets one of them go inert again cannot pass silently.
+{
+  const { kernel, loader, root } = await freshLoader()
+  const RULE = { id: 'r-shape', kind: 'rules', on: ['tools/pre-execute'], when: {}, then: [{ deny: { code: 'VMU_SHAPE_DENY', message: 'fired' } }] }
+  const payload = { tool: 'vibe_vmu_script', args: {}, agent: null, hook: 'tools/pre-execute' }
+
+  // Shape A (the historical, working one) - the baseline this test is measured against.
+  await loader.apply({ id: 'p-shape-a', rules: [RULE] })
+  const a = await kernel.bus.emit('tools/pre-execute', payload)   // ★ awaited: JSON.stringify(<Promise>) is "{}"
+  ok(a && a.decision && a.decision.deny && a.decision.deny.code === 'VMU_SHAPE_DENY',
+    'G1. shape A (`rules[]`): the rule FIRES (this is the baseline, and it exists so G2 means something)', a && a.decision)
+
+  // Shape B (the one that used to be a dead entry) - the SAME rule, the SAME hook, a fresh assembly.
+  const b = await freshLoader()
+  await b.loader.apply({ id: 'p-shape-b', middleware: [RULE] })
+  const entries = (b.kernel.bus.status().entries || []).map((e) => e.id)
+  // ★ non-emptiness inside the same expression: `[].every(…)` is vacuously true.
+  ok(entries.length > 0 && entries.every((id) => typeof id === 'string'),
+    'G2. shape B (`middleware[{kind:"rules"}]`): the entry really reaches the bus (it always did)', entries)
+  const bb = await b.kernel.bus.emit('tools/pre-execute', payload)
+  ok(bb && bb.decision && bb.decision.deny && bb.decision.deny.code === 'VMU_SHAPE_DENY',
+    'G3. ★ AND IT FIRES: shape B now goes through the rule engine, so it compiles into a real handler instead of landing on the bus with none', bb && bb.decision)
+
+  // Reverse: a shape-B rule with a RESTRICTIVE predicate must deny on its match and stay silent off it - so G3 is
+  // the rule deciding, not a blanket deny. (My first version of this assertion used the always-match rule above and
+  // failed: `when:{}` denies EVERY payload, so it could not have shown selectivity at all.)
+  const B_RULE_TOOL = { id: 'r-shape-tool', kind: 'rules', on: ['tools/pre-execute'], when: { all: [{ tool: ['vibe_vmu_script'] }] }, then: [{ deny: { code: 'VMU_SHAPE_TOOL', message: 'tool-matched' } }] }
+  const b2 = await freshLoader()
+  await b2.loader.apply({ id: 'p-shape-b2', middleware: [B_RULE_TOOL] })
+  const hit = await b2.kernel.bus.emit('tools/pre-execute', payload)
+  const quiet = await b2.kernel.bus.emit('tools/pre-execute', { tool: 'some_other_tool', args: {}, agent: null, hook: 'tools/pre-execute' })
+  ok(hit && hit.decision && hit.decision.deny && hit.decision.deny.code === 'VMU_SHAPE_TOOL',
+    'G4a. a shape-B rule with a RESTRICTIVE predicate denies ON its match', hit && hit.decision)
+  ok(!(quiet && quiet.decision && quiet.decision.deny),
+    'G4b. ...and stays SILENT off it: the firing is the predicate deciding, not a blanket deny', quiet && quiet.decision)
+
+  // Shape B with an INVALID rule must be refused at PLAN, like shape A.
+  const bad = await freshLoader()
+  const noWhen = { id: 'r-shape-bad', kind: 'rules', on: ['tools/pre-execute'], then: [{ deny: { code: 'VMU_X', message: 'x' } }] }
+  const plannedB = bad.loader.plan({ id: 'p-shape-bad', middleware: [noWhen] })
+  ok(plannedB.ok === false && plannedB.problems.length > 0 && plannedB.problems.some((p) => /when is required/.test(String(p))),
+    'G5. ★ shape B with an INVALID rule is named at PLAN (the same rule in `rules[]` already was - the two shapes are finally symmetric)', plannedB)
+
+  for (const rt of [root, b.root, b2.root, bad.root]) { try { await rm(rt, { recursive: true, force: true }) } catch { /* going away */ } }
+}
+
+// =========================================================================================================
+// H. ZERO REGRESSION ON EVERY SHIPPED PACK (plan + apply, on the loader the entry builds)
+// =========================================================================================================
+// The middleware-shape fix is a BEHAVIOUR CHANGE (such rules now really fire). It is only acceptable because no
+// shipped pack uses that shape - so this section runs EVERY shipped pack through the real loader, with the same
+// seams the entry passes (settingSource + onPromptPolicy). A pack that used shape B would show up here.
+{
+  const shipped = [
+    ['institute-min', 'packs/institute-min/index.js'],
+    ['v3-core', 'packs/v3-core/index.js'],
+    ['v5r', 'packs/v5r/index.js'],
+  ]
+  for (const [name, rel] of shipped) {
+    const root = await mkdtemp(join(tmpdir(), `vmu-shipped-${name}-`))
+    const kernel = kernelMod.createKernel({ root })
+    const loader = packMod.createPackLoader({
+      kernel, registry: kernel.registry,
+      settingSource: (key) => kernel.settingSource(key),
+      onPromptPolicy: () => {},
+    })
+    const mod = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', rel)).href)
+    const manifest = mod.PACK || mod.V5R_PACK || mod.default
+    const planned = loader.plan(manifest)
+    let applyErr = null
+    try { await loader.apply(manifest) } catch (e) { applyErr = e }
+    ok(planned.ok === true && Array.isArray(planned.problems) && planned.problems.length === 0,
+      'H1. shipped pack ' + name + ': still PLANS CLEAN', planned)
+    ok(applyErr === null, 'H2. shipped pack ' + name + ': still APPLIES without throwing', applyErr && applyErr.code)
+    try { await rm(root, { recursive: true, force: true }) } catch { /* going away */ }
+  }
+
+  // H3 IS DELIBERATELY NOT INSIDE THE LOOP. It used to be guarded by `if (name === 'v5r') { … }`, which the C2
+  // criterion rightly flags: an assertion inside a statement-position `if` is SKIPPED (and reported by nothing) if
+  // that branch never runs - so removing `v5r` from the list above would have made the check vanish instead of
+  // failing. It now runs unconditionally, and the premise it relies on is asserted first.
+  ok(shipped.some(([n]) => n === 'v5r'), 'H0. the shipped list really contains v5r, so H3 below is not vacuous', shipped.map(([n]) => n))
+  const v5rRoot = await mkdtemp(join(tmpdir(), 'vmu-shipped-v5r-rule-'))
+  const v5rKernel = kernelMod.createKernel({ root: v5rRoot })
+  const v5rLoader = packMod.createPackLoader({
+    kernel: v5rKernel, registry: v5rKernel.registry,
+    settingSource: (key) => v5rKernel.settingSource(key),
+    onPromptPolicy: () => {},
+  })
+  const v5rMod = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'packs/v5r/index.js')).href)
+  await v5rLoader.apply(v5rMod.PACK || v5rMod.default)
+  const fired = await v5rKernel.bus.emit('tools/pre-execute', { tool: 'vibe_vmu_script', args: {}, agent: null, hook: 'tools/pre-execute' })
+  ok(fired && fired.decision && fired.decision.deny && fired.decision.deny.code === 'VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS',
+    'H3. ★ the SHIPPED v5r rule still fires on the real assembly (no regression on the historical path; it discriminates by tool, so a blanket deny could not fake it)', fired && fired.decision)
+  try { await rm(v5rRoot, { recursive: true, force: true }) } catch { /* going away */ }
+}
+
 console.log('=== VMU PACK PLAN RULE VALIDATE: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

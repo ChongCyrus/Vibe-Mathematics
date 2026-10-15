@@ -703,14 +703,43 @@ export function apply(ctx, config = {}) {
 
   // The host section carries the EFFECTIVE text of every declared/overridden section (joined into the one
   // section name the host already accepts). No declaration ⇒ no effect at all (zero mechanism, R1).
-  if (effectivePrompts.length > 0 && ctx && ctx.systemPrompt && typeof ctx.systemPrompt.section === 'function') {
-    effect(() => {
-      const order = typeof ctx.systemPrompt.getSectionOrder === 'function'
-        ? ctx.systemPrompt.getSectionOrder('TEAM_POLICY') : undefined
-      const text = effectivePrompts.map((s) => s.text).join('\n\n')
-      const dispose = ctx.systemPrompt.section({ name: 'vmu', order, text })
-      return typeof dispose === 'function' ? dispose : () => {}
-    }, 'vmu:prompt')
+  //
+  // ROUND 21 / task-129 — **H2, CONFIRMED LOCALLY, AND IT WAS OUR LINE**: reading `ctx.systemPrompt` IS the
+  // defect when that service was never injected. cordis answers an un-injected service access with a THROWING
+  // getter (`cannot get property "systemPrompt" without inject`), so the `ctx &&` truthiness check could not
+  // guard it — and a PACK's prompt data (`:230-243` pushes into `effectivePrompts`) is exactly what makes this
+  // branch execute. ⇒ THE DOCUMENTED PACK LOADING POINT (`config.packs`) was what first ran this line and killed
+  // preset assembly with `agent-preset/invalid`. Reproduced with no DSH at all by `D:\_tmp\r21b-h2-probe.mjs`
+  // (a ctx whose `systemPrompt` is an access-counting throwing getter): `packs: []` touches it 0 times;
+  // `packs: ['v5r']` touches it once and throws exactly that message.
+  //
+  // THE GUARD IS NOT A SWALLOW: the host is TOLD by name (stderr with the stack, and `status().promptSection`),
+  // and the section is simply not registered when it cannot be. `inject` is deliberately NOT extended with
+  // `systemPrompt`: that would make this plugin REQUIRE a service a minimal host need not have, which is the
+  // opposite of the zero-mechanism default.
+  let promptSectionState = { registered: false, code: null, reason: null }
+  if (effectivePrompts.length > 0) {
+    let systemPrompt = null
+    try {
+      systemPrompt = ctx && ctx.systemPrompt ? ctx.systemPrompt : null
+    } catch (e) {
+      promptSectionState = { registered: false, code: 'VMU_EXTERNAL_UNAVAILABLE', what: 'systemPrompt',
+        reason: String((e && e.message) || e), stack: String((e && e.stack) || '') }
+      try { process.stderr.write('vmu: prompt text is declared but the host systemPrompt service is NOT reachable (not injected?): ' + promptSectionState.reason + '\n' + (promptSectionState.stack || '') + '\n') } catch { /* stderr may be gone */ }
+    }
+    if (!promptSectionState.code && systemPrompt && typeof systemPrompt.section === 'function') {
+      effect(() => {
+        const order = typeof systemPrompt.getSectionOrder === 'function'
+          ? systemPrompt.getSectionOrder('TEAM_POLICY') : undefined
+        const text = effectivePrompts.map((s) => s.text).join('\n\n')
+        const dispose = systemPrompt.section({ name: 'vmu', order, text })
+        return typeof dispose === 'function' ? dispose : () => {}
+      }, 'vmu:prompt')
+      promptSectionState = { registered: true, code: null, reason: null }
+    } else if (!promptSectionState.code) {
+      promptSectionState = { registered: false, code: 'VMU_EXTERNAL_UNAVAILABLE', what: 'systemPrompt.section',
+        reason: 'the host exposes no systemPrompt.section() to receive ' + effectivePrompts.length + ' declared section(s)' }
+    }
   }
 
   // A PACK is where an institution lives (slots, tracks, rules, aliases). `config.packs` accepts either a
@@ -957,7 +986,10 @@ export function apply(ctx, config = {}) {
     ready: () => Promise.all([started, opened, Promise.resolve(adapter.status()), idsHydrated, resumed]).then(([, , st]) => st),
     started: () => started,
     storeOpened: () => opened,
-    status: () => Object.assign(adapter.status(), { installError, settingsUnparsed: settingsUnparsed.slice(), settingsConflicts: settingsConflicts.slice() }),
+    // ROUND 21 / task-129 (H2): whether the declared prompt text reached the host — and, when it did not, the
+    // NAMED reason (this is what used to kill preset assembly instead of being readable).
+    promptSection: () => Object.assign({}, promptSectionState),
+    status: () => Object.assign(adapter.status(), { installError, promptSection: Object.assign({}, promptSectionState), settingsUnparsed: settingsUnparsed.slice(), settingsConflicts: settingsConflicts.slice() }),
     installError: () => installError,
     /** Round 6 B: what the entry could NOT turn into a setting, and what was declared in both shapes. */
     settingsUnparsed: () => settingsUnparsed.slice(),

@@ -316,7 +316,16 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
     // the pack layer kept bypassing it. The seam is OPTIONAL - a loader built without a kernel keeps the previous
     // behaviour - so this cannot turn a working assembly into a refused one.
     if (kernel && kernel.rules && typeof kernel.rules.validate === 'function') {
-      for (const r of m.rules || []) {
+      // ROUND 21 (task-130): the rules a manifest DECLARES live in TWO places - `manifest.rules[]` and a
+      // `middleware` entry carrying `kind:'rules'` (a shape `validatePack` explicitly allows: "the bus runs `rules`
+      // and `module` only"). Both are compiled by `kernel.rules.toBusEntries` in `apply()`, so BOTH must be
+      // validated here or `plan` would again promise less than `apply` delivers (and, for the middleware shape, it
+      // was worse than a plan/apply asymmetry: such an entry used to never fire at all).
+      const declaredRules = [
+        ...(m.rules || []),
+        ...(m.middleware || []).filter((x) => x && typeof x === 'object' && x.kind === 'rules'),
+      ]
+      for (const r of declaredRules) {
         if (!r || typeof r !== 'object') continue
         let found = []
         // A validator that THROWS must not be reported as "no problems": the thrown text becomes the problem, so
@@ -489,6 +498,32 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         //     bus would give it no `api` at all (and `bus.add` would refuse it for lacking a handler), so a pack
         //     could never implement an institution policy that has to ACT (e.g. "a stalled institute convenes").
         // The entry keeps its own `order`/`failure`; the loader turns one module into one bus entry per hook.
+        // ROUND 21 (task-130): A `kind:'rules'` MIDDLEWARE ENTRY IS AN M1 RULE, NOT A RAW BUS ENTRY. It used to fall
+        // through to `bus.add(rawEntry)` below - and `kernel/bus.js` EXEMPTS `kind:'rules'` from its "must have a
+        // handler" rule, so the entry landed on the bus with NO handler: at emit time the bus only recorded
+        // `audit({what:'middleware/skipped', why:'no handler attached'})` and the rule NEVER FIRED - not even when it
+        // was perfectly valid. Measured independently by two people (two predicates x two emit modes): the same rule
+        // in `rules[]` denies by name, the same rule declared here stays silent, while its entry really is on the bus.
+        // (The two deny codes that experiment used are probe FIXTURES, not codes this file can throw, so they are
+        // deliberately NOT written as literals here: a quoted code in a comment reads as "this file can throw it",
+        // and the doc gate that polices registered codes scans the whole file text. See the gate note in the report.)
+        // That is a "declared but ineffective" policy - the class this project keeps catching. It now goes
+        // through the SAME call `manifest.rules` uses above, so one route validates, compiles, and hands the bus a
+        // real handler.
+        // ★ THIS IS A BEHAVIOUR CHANGE (such rules now really fire). Accepted because NO shipped pack uses this shape:
+        // their `kind:'rules'` fields live INSIDE `rules[]` entries, and `middleware[]` has zero of them (measured).
+        if (m && typeof m === 'object' && m.kind === 'rules') {
+          if (!kernel.rules || typeof kernel.rules.toBusEntries !== 'function') {
+            throw refuse('VMU_ENGINE_UNAVAILABLE', 'pack ' + manifest.id + ' declares an M1 rule as a middleware entry (' + String(m.id) + ') but this kernel has no rules engine',
+              'the rules engine compiles a rule into its bus entry; without it the entry would reach the bus with no handler and silently never fire')
+          }
+          const entries = kernel.rules.toBusEntries([m])
+          for (const e of entries) {
+            kernel.bus.add(e)
+            undo.push(() => removeEntry(kernel.bus, e.id))
+          }
+          continue
+        }
         const isModuleShape = m && typeof m === 'object' && !m.handler && (m.module !== undefined || typeof m.file === 'string')
         if (isModuleShape) {
           if (!kernel.loader || typeof kernel.loader.toBusEntries !== 'function') {

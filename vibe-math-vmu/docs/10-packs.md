@@ -509,9 +509,10 @@ export default ({ log }) => ({
 
 ① 这套机制在做什么；② **依赖哪些内核能力**；③ **代价**（并发／预算／提示词长度）；④ **已知差异与有意放弃**（D8：逐条列出，禁静默 ✗）。
 
-### 9.5 装载（两条路，均已可用 ✓）
+### 9.5 装载（**两条路，但【能力不同**]✓ —— ★ R21 口径对齐）
 
-① **随包整合包** ⇒ profile 行的 `config.packs` 里给 `<id>`（或内联 manifest ✓）⇒ 装载期 `plan → apply`（★ 冲突即具名拒 ✓；★★ **`config.packs` 是【序列**]不是集合** ✓ —— ★ **后者对同一设置的主张会覆盖前者** ✓）；② **运行期检查/装载** ⇒ `vibe_vmu_pack`（★ **已实现** ✓：`list｜plan｜apply｜unload` ✓）。
+① **随包整合包** ⇒ profile 行的 `config.packs` 里给 `<id>`（或**内联 manifest** ✓）⇒ 装载期 `plan → apply`（★ 冲突即具名拒 ✓；★★ **`config.packs` 是【序列**]不是集合** ✓ —— ★ **后者对同一设置的主张会覆盖前者** ✓）；② **运行期检查/装载** ⇒ `vibe_vmu_pack`（★ **已实现** ✓：`list｜plan｜apply｜unload` ✓）。
+★ **两条路的能力【不一样**]，别混读**（★ 本卷 `:436` 早已写对，本节旧措辞"均已可用"会被读成"两者等价"）：**②运行期只吃【内联 manifest**]（`host.js` 的参数是**一个 JSON 文本** ＝ `manifest: "<json>"`）⇒ ★ **它【不能】按 id 装载随包 pack**，也**载不动 M2 模块**（`hooks` 是函数，活不过 `JSON.stringify`）；**随包 pack 只能走 ①**（profile 行的 `config.packs`）⇒ ★ **"运行期按 id 装载随包 pack"这个能力【不存在**]✗（`{action:'plan', id:'v5r'}` 实测被拒 `VMU_INVALID_ARGUMENT`）。★ 需要**部署侧 M2 生产者／政策真的开火**时，用 ① ＋ pack 文件（`module:` 形状走 `kernel/loader`，只有它给 `api.services`）。
 
 ---
 

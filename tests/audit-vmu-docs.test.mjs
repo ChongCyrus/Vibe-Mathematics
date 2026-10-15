@@ -24,6 +24,12 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { TOOL_NAMES } from '../vibe-math-vmu/host.js'
+// ROUND 21 / task-133: the CODE side of this audit must read CODE, not prose (docs/11 §4.2 第七条). A code named in
+// a COMMENT is not something the module can throw - measured: a comment quoting two probe codes made this gate RED
+// (`[VMU_ALWAYS | VMU_TOOL (kernel/pack.js)]`) while the committed revision was green. The repository's own blanker is
+// used, and in its DEFAULT mode (comments blanked, STRING CONTENTS KEPT) - that half is the point: a code inside a
+// string literal IS a real reference and must still be counted. Length is preserved, so line numbers survive.
+import { stripComments } from './_lib/strip-comments.mjs'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -198,13 +204,29 @@ walk(VMU, 0)
 ok(codeFiles.length >= 12, 'the vmu runtime modules were found for the code audit', codeFiles.length)
 const codeCodes = new Map()
 for (const file of codeFiles) {
-  const text = readFileSync(file, 'utf8')
+  // ROUND 21 / task-133: COMMENTS ARE BLANKED FIRST (strings kept - see the import's note). Without this, prose that
+  // merely MENTIONS a code was treated as "this module can throw it", which is the 第七条 failure: the gate was not
+  // reading the text the fact lives in. Measured现场: a single comment quoting two probe codes reddened the gate.
+  const text = stripComments(readFileSync(file, 'utf8'))
   // Only string literals that look like a code: quoted, or a `code:` field value. SHARED-MODULE prefixes are
   // included, so a new `MATH_*`/`ARCHIVE_*`/`SCRIPT_*` code the code can throw must be registered too.
   for (const m of text.matchAll(CODE_LITERAL_RE)) {
     if (!codeCodes.has(m[1])) codeCodes.set(m[1], new Set())
     codeCodes.get(m[1]).add(file.replace(VMU + '\\', '').replace(VMU + '/', ''))
   }
+}
+// ★ SELF-PROBES (docs/11 §4.2 第四条/第九条) - BOTH directions, because the dangerous half of this fix is
+// over-reach: stripping comments must not also strip the string literals that ARE the real references.
+{
+  const probe = (src) => [...stripComments(src).matchAll(CODE_LITERAL_RE)].map((m) => m[1])
+  ok(probe('// prose mentioning `VMU_PROBE_LINE` only\nconst a = 1\n').indexOf('VMU_PROBE_LINE') === -1,
+    '★ SELF-PROBE (code side ①): a code named only in a LINE comment is NOT counted (the gate reads code, not prose)')
+  ok(probe('/* block prose: `VMU_PROBE_BLOCK` */\nconst b = 2\n').indexOf('VMU_PROBE_BLOCK') === -1,
+    '★ SELF-PROBE (code side ②): a BLOCK comment is blanked too (not only `//`)')
+  ok(probe("throw refuse('VMU_PROBE_REAL', 'x')\n").indexOf('VMU_PROBE_REAL') !== -1,
+    '★ SELF-PROBE (code side ③, the load-bearing half): a code inside a STRING LITERAL is STILL counted - the fix must not blank real references')
+  ok(probe('const t = `VMU_PROBE_TPL`\n').indexOf('VMU_PROBE_TPL') !== -1,
+    '★ SELF-PROBE (code side ④): a code inside a TEMPLATE literal is still counted')
 }
 const unregisteredInCode = [...codeCodes.entries()]
   .filter(([code]) => !registered.has(code) && !code.startsWith('VMU_PACK_') && !isPlaceholder(code))

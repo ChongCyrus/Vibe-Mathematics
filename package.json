@@ -396,6 +396,7 @@
     "tests/vmu-report-boundary-metrics.test.mjs",
     "tests/vmu-resume-token-contract.test.mjs",
     "tests/vmu-pack-tool-actions.test.mjs",
+    "tests/vmu-prompt-section-guard.test.mjs",
     "tests/vmu-course.test.mjs",
     "tests/audit-vmu-services.test.mjs",
     "tests/audit-vmu-services.mutants.mjs",

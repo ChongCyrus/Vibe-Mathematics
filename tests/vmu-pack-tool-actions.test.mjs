@@ -99,8 +99,13 @@ ok(planById.ok === false && planById.code === 'VMU_INVALID_ARGUMENT' && /inline 
 const noWhen = { id: 'r20b-plan-sym', rules: [{ id: 'r-p', on: ['tools/result'], then: [{ record: { track: 'progress' } }] }] }
 const plannedNoWhen = await call({ action: 'plan', manifest: J(noWhen) })
 const plannedProblems = (Array.isArray(plannedNoWhen.problems) ? plannedNoWhen.problems : []).map(String)
-ok(plannedProblems.some((p) => /when is required/.test(p)),
-  'S1. ★ the TOOL\'s plan() NAMES the missing `when` itself — asserted on `problems`, not on `ok` (an `ok`-only check passes hollowly)', plannedNoWhen)
+// S1 pins BOTH sides: the named problem in `problems` AND the refusal. Pinning only `problems` (what this
+// assertion first did) cannot catch a "reports but does not refuse" regression: with `ok:true` + a non-empty
+// `problems` the old S1, S2 and S3 all passed (S2 because `problems.length !== 0`; S3 because both sides carried
+// the same `code`) — i.e. `plan.ok` was never pinned. `vmu-pack2` found this in review; the weaker form is named
+// in `_handoff/vmu/core-round20b-report.md` §3 as "一个只在 problems 上成立的判据，抓不到『报而不拒』".
+ok(plannedNoWhen.ok === false && plannedNoWhen.code === 'VMU_PACK_MISSING' && plannedProblems.some((p) => /when is required/.test(p)),
+  'S1. ★ the TOOL\'s plan() REFUSES *and* NAMES the missing `when` — asserted on the refusal (ok + code) AND on the named problem, not on either alone', plannedNoWhen)
 ok(!(plannedNoWhen.ok === true && plannedProblems.length === 0),
   'S2. and it is not the old hollow shape: `ok:true` with ZERO problems while apply() would refuse', plannedNoWhen)
 const appliedNoWhen = await call({ action: 'apply', manifest: J(noWhen) })
