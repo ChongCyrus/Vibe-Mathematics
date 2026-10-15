@@ -241,6 +241,11 @@ const IMPORTERS = (() => {
   // must also iterate the list there. ★ Residual, named: a computed access (`NS[key]`) cannot be resolved statically
   // ⇒ that stays "没核", never "nobody reads it".
   for (const f of SOURCE_FILES) {
+    // ★ R40 (task-182): FILE-LEVEL PRE-FILTER. This loop used to visit EVERY file and test each of its ~1000 lines
+    // with an `indexOf('import')` before anything else (~180k calls). Only a file that can possibly hold a
+    // namespace/dynamic binding is scanned at all, decided by ONE regex per file. Same forms, same names, same `add`
+    // order ⇒ no semantic change; and the `matchAll` below additionally requires the binding to be USED.
+    if (!/import\s*\*\s*as|import\s*\(/.test(f.text)) continue
     const nsNames = []
     for (const l of linesOf(f)) {
       if (l.indexOf('import') < 0) continue        // ★ cheap guard: without it, 3 regexes ran on EVERY line of every
@@ -253,6 +258,8 @@ const IMPORTERS = (() => {
     }
     if (!nsNames.length) continue
     for (const nsName of nsNames) {
+      // ★ R40: membership pre-check — a whole-file regex is pointless when the binding is never dereferenced.
+      if (f.text.indexOf(nsName + '.') < 0) continue
       const re = new RegExp('\\b' + nsName + '\\.([A-Za-z_$][\\w$]*)', 'g')
       for (const mm of f.text.matchAll(re)) add(mm[1], f.rel)
     }
