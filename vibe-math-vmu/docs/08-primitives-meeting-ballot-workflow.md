@@ -867,13 +867,13 @@ recount(ballotId):
 |---|---|---|---|---|---|---|
 | `vmu.meetings.quorumMin` | int | 0 | ≥0 | 所办 | 下轮 | 法定人数绝对下限（0＝只看比例） |
 | `vmu.meetings.quorumRatio` | number | 0 | 0..1 | 所办 | 下轮 | 法定人数比例（0＝只看绝对下限） |
-| `vmu.meetings.quorumLossPolicy` | enum | `undecided` | `recess｜defer｜lower｜undecided` | pack | 下轮 | 人数流失后的合法出路（**不得**默认通过/否决） |
+| `vmu.meetings.quorumLossPolicy` | enum | `suspend` | `suspend｜continue｜recess` | pack | 下轮 | 人数流失后的合法出路（**不得**默认通过/否决）★ **R32 起以实测值域为准**（本行原计划 `recess｜defer｜lower｜undecided`／默认 `undecided` **从未实现**；实测值域＝读取侧 `kernel/meetingdomain.js`，与 `settings/schema.js:1059` 逐元素相同，实测默认 `suspend`） |
 | `vmu.meetings.quorumRecountMs` | ms | 0 | ≥0 | 所办 | 立即 | 流失后复算法定人数的周期 |
 | `vmu.meetings.unansweredInDenominator` | bool | false | bool | 所办 | 立即 | 未答是否计入分母（默认**不计**） |
-| `vmu.meetings.attendanceMode` | enum | `auto` | `manual｜auto` | 所办 | 立即 | 在场靠点名还是被问者终态自动推断 |
+| `vmu.meetings.attendanceMode` | enum | `roster` | `roster｜signin｜quorum-only` | 所办 | 立即 | 在场靠点名还是被问者终态自动推断 ★ **R32 起以实测值域为准**（本行原计划 `manual｜auto`／默认 `auto` **从未实现**；实测值域＝`kernel/meetingdomain.js`，与 `settings/schema.js:1058` 逐元素相同，实测默认 `roster`） |
 | `vmu.meetings.lateAfterMs` | ms | 0 | ≥0 | 所办 | 立即 | 超过多久到场算迟到 |
-| `vmu.meetings.leaveEarlyPolicy` | enum | `excused` | `absent｜excused` | 所办 | 立即 | 早退如何记账 |
-| `vmu.meetings.wakeFailurePolicy` | enum | `unreached` | `unreached｜absent` | pack | 立即 | 唤醒失败 ≠ 反对（默认记未达） |
+| `vmu.meetings.leaveEarlyPolicy` | enum | `allow` | `allow｜note｜deny` | 所办 | 立即 | 早退如何记账 ★ **R32 起以实测值域为准**（本行原计划 `absent｜excused`／默认 `excused` **从未实现**；实测值域＝`kernel/meetingdomain.js`，与 `settings/schema.js:1061` 逐元素相同，实测默认 `allow`） |
+| `vmu.meetings.wakeFailurePolicy` | enum | `refuse` | `refuse｜skip｜retry` | pack | 立即 | 唤醒失败 ≠ 反对（默认记未达）★ **R32 起以实测值域为准**（本行原计划 `unreached｜absent`／默认 `unreached` **从未实现**；实测值域＝`kernel/meetingdomain.js`，与 `settings/schema.js:1066` 逐元素相同，实测默认 `refuse`） |
 | `vmu.meetings.speechDefaultMs` | ms | 300000 | ≥0 | 所办 | 立即 | 单人发言默认时间箱（0＝不限） |
 | `vmu.meetings.speechMaxMs` | ms | 600000 | ≥0 | 所办 | 立即 | 单次发言硬上限 |
 | `vmu.meetings.speechExtendMs` | ms | 60000 | ≥0 | 主持人 | 立即 | 一次延长的步长 |
@@ -889,12 +889,12 @@ recount(ballotId):
 | `vmu.meetings.budgetTurns` | int | 0 | ≥0 | 所办 | 立即 | 会议级回合预算（0＝不限） |
 | `vmu.meetings.budgetTokens` | int | 0 | ≥0 | 所办 | 立即 | 会议级令牌预算 |
 | `vmu.meetings.budgetWallMs` | ms | 0 | ≥0 | 所办 | 立即 | 会议级墙钟预算 |
-| `vmu.meetings.budgetOnExceed` | enum | `broadcast` | `broadcast｜refuse｜pause` | 所办 | 立即 | 触界行为（**默认只广播，绝不自动散会** ✗） |
+| `vmu.meetings.budgetOnExceed` | enum | `refuse` | `refuse｜warn｜extend` | 所办 | 立即 | 触界行为（**默认只广播，绝不自动散会** ✗）★ **R32 起以实测值域为准**（本行原计划 `broadcast｜refuse｜pause`／默认 `broadcast` **从未实现**；实测值域＝`kernel/meetingdomain.js`，与 `settings/schema.js:1060` 逐元素相同，实测默认 `refuse`） |
 | `vmu.meetings.verbatimEnabled` | bool | false | bool | 所办 | 立即 | 逐字稿开关（默认关，成本） |
 | `vmu.meetings.verbatimRetentionMs` | ms | 0 | ≥0 | 所办 | 立即 | 逐字稿保留期（0＝随会话） |
-| `vmu.meetings.confidentialityDefault` | enum | `open` | `open｜closed｜sealed` | 主持人 | 下轮 | 默认保密级别 |
-| `vmu.meetings.confidentialityQuotePolicy` | enum | `fold` | `allow｜fold｜deny` | 主持人 | 下轮 | 闭门内容的引用策略 |
-| `vmu.meetings.appealScope` | enum | `procedural` | `procedural｜all｜off` | pack | 下轮 | 申诉受理范围 |
+| `vmu.meetings.confidentialityDefault` | enum | `internal` | `public｜internal｜restricted` | 主持人 | 下轮 | 默认保密级别 ★ **R32 起以实测值域为准**（本行原计划 `open｜closed｜sealed`／默认 `open` **从未实现**；实测值域＝`kernel/meetingdomain.js`，与 `settings/schema.js:1064` 逐元素相同，实测默认 `internal`） |
+| `vmu.meetings.confidentialityQuotePolicy` | enum | `allow` | `allow｜redact｜deny` | 主持人 | 下轮 | 闭门内容的引用策略 ★ **R32 起以实测值域为准**（本行原计划 `allow｜fold｜deny`／默认 `fold` **从未实现**；实测值域＝`kernel/meetingdomain.js`，与 `settings/schema.js:1065` 逐元素相同，实测默认 `allow`） |
+| `vmu.meetings.appealScope` | enum | `all` | `all｜procedural｜none` | pack | 下轮 | 申诉受理范围 ★ **R32 起以实测值域为准**（本行原计划 `procedural｜all｜off`／默认 `procedural` **从未实现**；实测值域＝`kernel/meetingdomain.js`，与 `settings/schema.js:1063` 逐元素相同，实测默认 `all`） |
 | `vmu.meetings.appealDeadlineMs` | ms | 0 | ≥0 | 所办 | 立即 | 申诉时限（0＝不限） |
 | `vmu.meetings.appealReasonRequired` | bool | true | bool | pack | 立即 | 申诉必须给理由 |
 | `vmu.meetings.disciplineWarnMax` | int | 0 | ≥0 | 主持人 | 立即 | 警告上限（0＝不启用） |
@@ -908,7 +908,7 @@ recount(ballotId):
 | `vmu.meetings.committeeReportRequired` | bool | true | bool | pack | 下轮 | 委员会是否必须报告回母会 |
 | `vmu.meetings.recessMaxMs` | ms | 0 | ≥0 | 主持人 | 立即 | 单次休会上限 |
 | `vmu.meetings.recessResumeRequiresMotion` | bool | false | bool | pack | 下轮 | 复会是否需要动议 |
-| `vmu.minutes.detail` | enum | `normal` | `brief｜normal｜full` | 所办 | 下轮 | 纪要详略（**以实现名为准** ✓：`kernel/minutes.js` 真读它 ✓；原拟名 `vmu.meetings.minutesDetail` 作废 ✗ —— 独立批评者指出"同一旋钮两个名字" ✗，此处按**已接线的那一个**统一 ✓） |
+| `vmu.minutes.detail` | enum | `normal` | `brief｜normal｜full` | 所办 | 下轮 | 纪要详略（**以实现名为准** ✓：`kernel/minutes.js` 真读它 ✓；原拟名 `vmu.meetings.minutesDetail` 作废 ✗ —— 独立批评者指出"同一旋钮两个名字" ✗，此处按**已接线的那一个**统一 ✓）★★ **R32 更正（2026-10-15，读码核过）**：上面那句"`vmu.meetings.minutesDetail` **作废**"**不再成立** —— 它现在**已被声明**（`settings/schema.js:1062`：`enum`，域 `brief｜full`，默认 `brief`）且**真被读**（`kernel/meetings.js:59/87/925` 的 `K.minutesDetail`；域表在 `kernel/meetingdomain.js:25`）⇒ **两个名字是不同的旋钮**：`vmu.minutes.detail`（`kernel/minutes.js:28` 读，域 `brief｜normal｜full`）与 `vmu.meetings.minutesDetail`（`kernel/meetings.js:925` 读，域 `brief｜full`）。★ **两者的接线状态以 `docs/04 §11` 的"接线"列为准**（该列由设置表维护），**不要按本行的历史叙述推断** |
 | `vmu.meetings.minutesIncludeRefused` | bool | true | bool | pack | 下轮 | 纪要必须含被拒项（**建议恒 true** ✓） |
 | `vmu.meetings.minutesActionsRequired` | bool | false | bool | pack | 下轮 | 决议是否必须带行动项 |
 | `vmu.meetings.minutesRetentionMs` | ms | 0 | ≥0 | 所办 | 立即 | 纪要保留期 |

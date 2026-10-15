@@ -512,3 +512,18 @@ export const hooks = { 'tools/result': async (flat) => {     // ★ 用回合内
 **复算（k=1..5，同刻）**：解码该会话 ＝ **22 个 zstd 帧 → 44 events**；**5 次 `tool/call` ↔ 5 条 `tool/result` 按序 1:1**；在第 k 条 `tool/result` 完成的那一刻，`hits` 恰为 **k**（k=1..5），而边界读到的是**总数 5** ⇒ **k=5 时两者相等**（`hits=5` ＝ 边界 `tool-results=5`）。
 ★ **已被否证的假设**：**"一次 `tools/result` 事件带多条 result"** —— **不成立**：5:5 按序 1:1 已实测（若一次带多条，`tool/result` 的条数会**少于**调用数）。计数者 `packs/v5r/middleware/artifact-counter.js` 的政策行是 **`count: 1`** ⇒ **每个事件恰 1 次 `api.services.get('vmu.metrics').observe({ name, value: 1, kind:'read', source:'middleware' })`**（`:90-96`）⇒ **两个数在同一时刻、同一 artifact 上必然相等**。
 
+### 20.7 ★★ 回执的省略：**我们这侧** 与 **宿主那侧** —— **必须分开写、不可混为一件事**（R32）
+
+**① 事实（宿主那侧）**：宿主在渲染 tool result 时，会**往我们序列化【之后】的 JSON 文本中间**插入省略标记 —— **真机逐字实测**（R29 两臂会话，两臂皆然）：位置 **24846** 处是
+`…"source":"default"` + `\n\n[...]\n\n` + `":744,"range":"pack",…` ⇒ ★ **该省略发生在我们这侧序列化【之后】**（我们自己插会直接把 JSON 弄坏）。
+★ **`24846` 是一次测量，不是契约常量** —— 它会随版本／负载变化；**可以作证据引用，不可以当保证**。
+
+**② 边界定性（宿主那侧＝宿主边界）**：这是我们**看不到**、也**不声称能消除**的省略 —— 与 `systemPrompt` 那条**同形**（能力边界 ＋ 具名，不硬依赖）。★ **纪律**：**它与我们自己那侧的省略是两件事**，引用时**必须分开写**（`host.js:953` 的契约注释就是按这个口径写的：*"…cannot see it and do not claim to remove it（`hostElision:'possible'` is reported SEPARATELY, never conflated…"*）。
+★ **本卷的口径一句话**：**回执可能被宿主进一步省略；我们这侧只能保证【我们自己省略时会自述】。**
+
+**③ 我们这侧【现在能保证】什么**（实现＝`host.js` 的 `boundedToolResult(value)`，`:975`；契约注释 `:964-974`；下列三条**代码与实测一致**）：
+- **超预算时做结构内、路径级省略**：**最长的字符串叶子就地缩短**，记 **`elided:[{path, from, to, bytes}]`**，并附 **`truncated:true`／`originalBytes`／`hostElision:`（标为"可能"，与我们自己的省略**分开**）**；阈值常量 **`MAX_TOOL_RESULT_BYTES = 12000`**（`:958`）与 **`MAX_STRING_LEAF = 2000`**（`:960`）。
+- ★ **不动键、不动数组长度** ⇒ `packs`／`faces`／`settings` 等**结构在两种负载下都保留** —— 这正是"回执被省略后**仍是同一个对象形状**"的那条要求（消费者如 `vmu-entry` 的 `st.packs` 必须照常可读）。
+- ★ **未超预算 ⇒ 回执逐字节原样、且【不出现】`truncated` 键**（`:972-973`）—— 这是**反向断言**：**"总是声称截断"** 同样过不了门 ✓。
+★ **`elided` 的可核性**：每项 `{path, from, to, bytes}` 中 `from`＝**留下**的长度、`to`＝原长、`bytes === to - from`，`path` 是指回返回对象的定位符 ⇒ **可以拿原始对象复算，而不是只能相信**（`:969-971`）✓。
+

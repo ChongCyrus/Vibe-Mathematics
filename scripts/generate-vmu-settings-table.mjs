@@ -61,8 +61,30 @@ const SOURCES = runtimeSources()
  * retention face honest: it reads seventeen keys and declares no wired table at all. A literal inside `Symbol(...)`
  * is a flag name rather than a read (one occurrence, kernel/index.js), so it is filtered too.
  */
+/**
+ * ★ ROUND 33 (task-159): A LINE THAT READS IS NOT A DECLARATION — even when it starts with a quoted key.
+ *
+ * THE DEFECT THIS FIXES (measured): the two rules below filter a line whose first token is a quoted `vmu.*` key
+ * (array element / object key). That is right for the schema's `planned`/`wired` tables, but `kernel/meetingmarker.js`
+ * carries **derivation tables** with exactly that shape:
+ *     `'vmu.meetings.minutesDetail': K.minutesDetail,`        (meetingmarker.js:232)
+ *     `'vmu.meetings.budgetOnExceed': K.budgetOnExceed,`      (meetingmarker.js:227)
+ * where `K` is the settings ACCESSOR — a real read whose FIELD NAME differs from the key name ("derived-name
+ * consumption"). The filter removed those lines, `hasConsumer()` then saw only the declaration in
+ * `settings/schema.js`, and the table said `未接线` for keys that a middleware demonstrably reads. ⇒ **"I cannot see
+ * it" was being reported as "nobody reads it"** — the same shape as R28's `oneOf` input set covering half the
+ * sources. (The trigger for this task: `docs/04 §11`'s `vmu.meetings.minutesDetail` cell, corrected by hand to
+ * `已接线`, made `audit-vmu-docs` red because the generated body still said otherwise.)
+ *
+ * THE RULE NOW: if the line READS (an accessor field `K.x`, a settings getter, an index read), it is a consumer
+ * regardless of how the line begins. A pure declaration (an array element or a key with a literal/table value and no
+ * read in it) is still filtered, so a key that NOTHING reads still reports `未接线` and the criterion stays able to
+ * redden (task-159 C).
+ */
+const READ_SHAPE = /(K\.[A-Za-z_$][A-Za-z0-9_$]*|sget\(|\.get\(|readKey\(|settings\[|settingsView\(|sgetValue\()/
 const isDeclarationLine = (line) => {
   const t = line.trim()
+  if (READ_SHAPE.test(t)) return false                                  // ★ a reader, whatever it starts with
   if (/Symbol\(['"]vmu\./.test(t)) return true                          // flag name, not a read
   if (/^\[?['"]vmu\.[A-Za-z0-9_.]+['"]\s*(,|$)/.test(t)) return true   // array element
   if (/^['"]vmu\.[A-Za-z0-9_.]+['"]\s*:/.test(t)) return true          // object key (reasons map)

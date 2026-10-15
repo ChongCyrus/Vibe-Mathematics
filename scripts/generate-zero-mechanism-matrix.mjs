@@ -169,6 +169,14 @@ const EXPECT = {
   // domain for undefined"). ⇒ zero mechanism = "ask me for something I did not declare and I refuse by name",
   // never a silent `null` and never an invented default.
   meetingdomain: G('具名拒（带 code）', '轮 31 从 `meetings.js` 抽出（11 个严格域：读取侧具名拒，不再静默夹取；`meetings.js` 1199→1196，被顶满的文件**下降**）。**实测零机制形状**：工厂 `createMeetingDomains({clock})`（**不注入任何接缝**）仍能建（表是纯的、11 键回落声明默认值）⇒ 探针调 `read()`（无参 ⇒ 问一个未声明键）⇒ **具名拒 `VMU_NO_SUCH_OBJECT`**（"no declared domain for undefined"）⇒ 零机制＝"**问我没声明过的东西就具名拒**"，不静默 `null`、不臆造默认值 ✓。★ 期望词表是**闭集**：本行取闭集里的 `具名拒（带 code）`（实测 `shape=refusal` ＋ `VMU_NO_SUCH_OBJECT` 与之逐字对应；`judge()` 判"无名拒"为红）。'),
+  // ROUND 32 (task-157): `receiptbounds` was EXTRACTED out of `host.js` when that file crossed the 1200-line rule
+  // (1231 → 1151; nothing was added to `KNOWN`). CLOSED-SET EVIDENCE, VERBATIM: the registry's three values are
+  // listed at `:30` (`形状 ✓／EXPECT_UNDECIDED ✓／EXPECT_NA（非服务模块 ✓）`), and `:237` routes any module with NO
+  // `create*` factory to the non-service branch (`'跳过（非服务模块）'`). This module's actual form is a plain constant
+  // (`MAX_TOOL_RESULT_BYTES`) plus one pure function (`boundedToolResult(value)`) - NO `create*` factory, no service,
+  // nothing to probe - which corresponds verbatim to `EXPECT_NA`. Same category, and the same reason for existing, as
+  // the `contentvalue` row below (`:176`), which is also a pure-function module extracted to get under 1200.
+  receiptbounds: G('EXPECT_NA', '纯函数工具模块（**无 `create*` 工厂** ⇒ 矩阵不适用 ✓）；轮 32 从 `host.js` 抽出（该文件 **1231 行越过 1200** ⇒ 抽取，**未往 `KNOWN` 加名字** ✓，`host.js` 1231→1151）：回执尺寸契约 `MAX_TOOL_RESULT_BYTES` ＋ **结构内、路径级**省略 `boundedToolResult(value)`（**不动键、不动数组长度**；其形状与 `elided:[{path,from,to,bytes}]` 由 `tests/vmu-receipt-truncation.test.mjs` 覆盖 ✓）。'),
   meetingmarker: G('ok 或 object', '轮 11 从 `meetings.js` 抽出（F51 标记族：域派生/耐久接缝/读面/自曝；`meetings.js` 1244→1198 ✓）。**实测零机制形状**：工厂 `createMeetingMarker({clock})`（**不注入 `durable`**）⇒ 首个零参操作 `status()` 回 **object**，其中 **`bound:false`／`durableMarker:false`** 自曝、**不声称任何"开着"的会** ✓ ⇒ 零机制＝"**没有域接缝就明说自己没有**"，而不是假装有 ✓（有 `create*` 工厂 ⇒ 不适用 EXPECT_NA）。★ 期望词表是**闭集**：我先写裸 `object` 被判 mismatch（fail-closed ✓），必须用词表里的 `ok 或 object`。'),
   // Round 9: the same measured reason as `timevalue` - `contentvalue` is a pure-function module (no `create*` factory,
   // no service, nothing to probe), extracted out of `resume.js` when the file crossed the 1200-line rule. It is

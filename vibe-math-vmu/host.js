@@ -50,6 +50,7 @@ import { makeActivitySpec } from './tools/activity.js'
 import { makeFidelitySpec } from './tools/fidelity.js'
 import { makeMathadaptersSpec } from './tools/mathadapters.js'
 import { makeMathjobsSpec } from './tools/mathjobs.js'
+import { boundedToolResult, MAX_TOOL_RESULT_BYTES } from './kernel/receiptbounds.js'
 //
 // TOOL SHAPE (learned from the REAL HOST, not from our own assumptions): the first scripted live run
 // (SLV) showed the preset active but NO vmu tools in the agent's tool list. The cause was this file: the
@@ -935,6 +936,8 @@ export function toHostParameters(params = {}) {
   return { type: 'object', properties, additionalProperties: false, required }
 }
 
+
+
 /** Turn an internal spec into the HOST's shape (the one the real host accepted for v5r). */
 export function toHostSpec(spec) {
   return {
@@ -944,7 +947,7 @@ export function toHostSpec(spec) {
     output: OUTPUT,
     execute: async (args, exec) => {
       try {
-        return JSON.stringify(await spec.run(args || {}, exec))
+        return boundedToolResult(await spec.run(args || {}, exec))
       } catch (e) {
         return JSON.stringify({ ok: false, code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED',
           message: String((e && e.message) || e), hint: (e && e.hint) || null })
@@ -1142,3 +1145,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     },
   }
 }
+
+// ★ The public surface is UNCHANGED for consumers: the helpers now live in `kernel/receiptbounds.js` (the file
+// was at its 1200-line ceiling), and are re-exported here so imports of `host.js` keep working.
+export { boundedToolResult, MAX_TOOL_RESULT_BYTES }

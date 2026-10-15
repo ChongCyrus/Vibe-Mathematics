@@ -1033,9 +1033,9 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.orderMode` | enum | `fifo` | `fifo`∣`round-robin`∣`chair`∣`random` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 发言序模式（fifo|round-robin|chair|random）；域外值 ⇒ 读取侧具名拒（kernel/meetingmarker.js 的 strictOrderMode），不静默回落到默认值 |
 | `vmu.meetings.attendanceMode` | enum | `roster` | `roster`∣`signin`∣`quorum-only` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingdomain.js` | 出席模式（roster|signin|quorum-only）；域与读取侧 meetings.js:138 的 oneOf 逐字相同 |
 | `vmu.meetings.quorumLossPolicy` | enum | `suspend` | `suspend`∣`continue`∣`recess` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingdomain.js` | 失去法定人数后的处置（suspend|continue|recess）；域与 meetings.js:147 逐字相同 |
-| `vmu.meetings.budgetOnExceed` | enum | `refuse` | `refuse`∣`warn`∣`extend` | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/meetingdomain.js` | 超预算动作（refuse|warn|extend）；域与 meetings.js:154 逐字相同 |
+| `vmu.meetings.budgetOnExceed` | enum | `refuse` | `refuse`∣`warn`∣`extend` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingdomain.js` | 超预算动作（refuse|warn|extend）；域与 meetings.js:154 逐字相同 |
 | `vmu.meetings.leaveEarlyPolicy` | enum | `allow` | `allow`∣`note`∣`deny` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingdomain.js` | 提前离席政策（allow|note|deny）；域与 meetings.js:171 逐字相同 |
-| `vmu.meetings.minutesDetail` | enum | `brief` | `brief`∣`full` | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/meetingdomain.js` | 纪要详略（brief|full）；域与 meetings.js:173 逐字相同 |
+| `vmu.meetings.minutesDetail` | enum | `brief` | `brief`∣`full` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingdomain.js` | 纪要详略（brief|full）；域与 meetings.js:173 逐字相同 |
 | `vmu.meetings.appealScope` | enum | `all` | `all`∣`procedural`∣`none` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingdomain.js` | 申诉范围（all|procedural|none）；域与 meetings.js:178 逐字相同 |
 | `vmu.meetings.confidentialityDefault` | enum | `internal` | `public`∣`internal`∣`restricted` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingdomain.js` | 默认保密级（public|internal|restricted）；域与 meetings.js:185 逐字相同 |
 | `vmu.meetings.confidentialityQuotePolicy` | enum | `allow` | `allow`∣`redact`∣`deny` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingdomain.js` | 引用机密内容的政策（allow|redact|deny）；域与 meetings.js:186 逐字相同 |
@@ -1105,10 +1105,10 @@ vmu.packs.active: [v5r]
 | `vmu.external.datacite.maxRelated` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
 | `vmu.external.datacite.requireRights` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
 | `vmu.external.enabled` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
-| `vmu.external.endpoints` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
+| `vmu.external.endpoints` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码；★ 类型推断不出（具名回落 object：null-literal — 源码字面量是 `null`（未设哨兵）⇒ 无类型证据；`object` 是**具名回落**，不是断言） |
 | `vmu.external.maxBytes` | int ≥0 | `1048576` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
 | `vmu.external.maxCacheEntries` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
-| `vmu.external.mergePolicy` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；该模块未声明默认值；★ 轮 213 实测两步回退：未设或不在 `MERGE_POLICIES` ⇒ 取 `vmu.external.conflictPolicy`；仍不在 `CONFLICT_POLICIES` ⇒ `refuse-on-conflict`（external.js:131-133） |
+| `vmu.external.mergePolicy` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；该模块未声明默认值；★ 轮 213 实测两步回退：未设或不在 `MERGE_POLICIES` ⇒ 取 `vmu.external.conflictPolicy`；仍不在 `CONFLICT_POLICIES` ⇒ `refuse-on-conflict`（external.js:131-133）；★ 类型推断不出（具名回落 object：no-literal — 模块未声明默认值 ⇒ 无字面量、无类型证据（有效值见 EFFECTIVE_DEFAULTS）） |
 | `vmu.external.offlineFirst` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
 | `vmu.external.openalex.mailto` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
 | `vmu.external.openalex.maxConcepts` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 已接线（external.js 读取）；默认值取自模块源码 |
@@ -1194,7 +1194,7 @@ vmu.packs.active: [v5r]
 | `vmu.math.repro.deterministic` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.repro.packOnSuccess` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.repro.requireSeed` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
-| `vmu.math.repro.seed` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
+| `vmu.math.repro.seed` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码；★ 类型推断不出（具名回落 object：null-literal — 源码字面量是 `null`（未设哨兵）⇒ 无类型证据；种子可以是数字/字符串，`object` 仅是可解释回落） |
 | `vmu.math.sandbox.cpuMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.sandbox.memoryMb` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.sandbox.network` | string | `deny` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
@@ -1256,9 +1256,9 @@ vmu.packs.active: [v5r]
 | `vmu.paper.maxSections` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
 | `vmu.paper.requireAllSections` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
 | `vmu.partnership.crossBorderApproverRoles` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；默认值取自模块源码 |
-| `vmu.partnership.crossBorderGate` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
-| `vmu.partnership.invoiceTaxSlots` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
-| `vmu.partnership.registryDir` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.partnership.crossBorderGate` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（具名回落 object：no-literal — 模块未声明默认值 ⇒ 无字面量、无类型证据） |
+| `vmu.partnership.invoiceTaxSlots` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（具名回落 object：no-literal — 模块未声明默认值 ⇒ 无字面量、无类型证据） |
+| `vmu.partnership.registryDir` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（具名回落 object：no-literal — 模块未声明默认值 ⇒ 无字面量、无类型证据） |
 | `vmu.partnership.requireEntity` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；默认值取自模块源码 |
 | `vmu.partnership.taxIdStyle` | string | `opaque-ref` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；默认值取自模块源码 |
 | `vmu.publish.jatsVersion` | string | `JATS-1.3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
@@ -1270,7 +1270,7 @@ vmu.packs.active: [v5r]
 | `vmu.resource.attachCapture` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
 | `vmu.resource.blockOnOverdue` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
 | `vmu.resource.calibrationDueDays` | int ≥0 | `365` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
-| `vmu.resource.capabilityTags` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；该模块未声明默认值；★ 轮 213 实测有效默认 `[]`（resource.js:91 `Array.isArray(tags) ? tags.map(String) : []`） |
+| `vmu.resource.capabilityTags` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；该模块未声明默认值；★ 轮 213 实测有效默认 `[]`（resource.js:91 `Array.isArray(tags) ? tags.map(String) : []`）；★ 类型推断不出（具名回落 object：no-literal — 模块未声明默认值 ⇒ 无字面量、无类型证据（有效值见 EFFECTIVE_DEFAULTS）） |
 | `vmu.resource.dataCaptureRef` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
 | `vmu.resource.downtimePolicy` | string | `refuse` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
 | `vmu.resource.hashAlgo` | string | `sha256` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
@@ -1314,7 +1314,7 @@ vmu.packs.active: [v5r]
 | `vmu.teaching.enabled` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
 | `vmu.teaching.enrollmentNeedsApproval` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
 | `vmu.teaching.gradeChangeAdditive` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
-| `vmu.teaching.latePenaltyRatio` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；该模块未声明默认值（缺省行为见模块自身） |
+| `vmu.teaching.latePenaltyRatio` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（具名回落 object：no-literal — 模块未声明默认值 ⇒ 无字面量、无类型证据（有效值见 EFFECTIVE_DEFAULTS）） |
 | `vmu.teaching.maxAttempts` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
 | `vmu.teaching.ontologyVersion` | string | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |
 | `vmu.teaching.peerWeight` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/course.js` | 已接线（course.js 读取）；默认值取自模块源码 |

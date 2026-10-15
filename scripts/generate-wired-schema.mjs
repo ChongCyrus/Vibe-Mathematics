@@ -397,18 +397,69 @@ export const EFFECTIVE_DEFAULTS = Object.freeze({
   'vmu.resource.capabilityTags': '有效默认 `[]`（resource.js:91 `Array.isArray(tags) ? tags.map(String) : []`）',
 })
 
+/**
+ * ROUND 32 (task-156): THE TYPE FALLBACK IS NAMED. `typeOf(lit)` returns `null` when the literal form is
+ * unrecognised, and `render()` used to turn that `null` into a confident `type:'object'` — ★ an UN-INFERABLE
+ * declaration written out as a definite type. That is exactly how the two numeric tolerances (`1e-6`/`1e-9`) were
+ * emitted as `object` while their `def` was a number (fixed in R30 by teaching `typeOf` scientific notation).
+ * The two classes below are the ones that remain, and they are NOT "silently `object`": each key is named, with the
+ * reason its type is unknowable, and `unnamedFallbacks()` (asserted by the invariant below) reddens on any
+ * un-inferable row that is not named here. ★ Same discipline as `planned` (111 keys: not enforced, but named) and
+ * `settingsUnenforced` (named): **when you cannot tell, say so.**
+ */
+export const OBJECT_FALLBACKS = Object.freeze({
+  // class `null-literal`: the source literally writes `null`, which is the UNSET SENTINEL (R30 ruling) - a real
+  // default, but no evidence at all about the type.
+  'vmu.external.endpoints': { class: 'null-literal', why: '源码字面量是 `null`（未设哨兵）⇒ 无类型证据；`object` 是**具名回落**，不是断言' },
+  'vmu.math.repro.seed': { class: 'null-literal', why: '源码字面量是 `null`（未设哨兵）⇒ 无类型证据；种子可以是数字/字符串，`object` 仅是可解释回落' },
+  // class `no-literal`: the module declares no default at all (its own absent-value path runs), so there is no
+  // literal AND no type. `EFFECTIVE_DEFAULTS` may explain the effective VALUE; it says nothing about the TYPE.
+  'vmu.external.mergePolicy': { class: 'no-literal', why: '模块未声明默认值 ⇒ 无字面量、无类型证据（有效值见 EFFECTIVE_DEFAULTS）' },
+  'vmu.partnership.crossBorderGate': { class: 'no-literal', why: '模块未声明默认值 ⇒ 无字面量、无类型证据' },
+  'vmu.partnership.invoiceTaxSlots': { class: 'no-literal', why: '模块未声明默认值 ⇒ 无字面量、无类型证据' },
+  'vmu.partnership.registryDir': { class: 'no-literal', why: '模块未声明默认值 ⇒ 无字面量、无类型证据' },
+  'vmu.resource.capabilityTags': { class: 'no-literal', why: '模块未声明默认值 ⇒ 无字面量、无类型证据（有效值见 EFFECTIVE_DEFAULTS）' },
+  'vmu.teaching.latePenaltyRatio': { class: 'no-literal', why: '模块未声明默认值 ⇒ 无字面量、无类型证据（有效值见 EFFECTIVE_DEFAULTS）' },
+})
+
+/** The type rendered for an un-inferable row: NAMED ⇒ the explained fallback; UNNAMED ⇒ still `object`, but the
+ *  invariant below makes that state RED, so it cannot reach a commit by accident. */
+export function typeFor(d) {
+  if (d.type !== null) return d.type
+  return 'object'
+}
+
+/** Un-inferable rows WITH a name and a reason (the explained fallback). */
+export function namedFallbacks(defs) {
+  return defs.filter((d) => d.type === null && OBJECT_FALLBACKS[d.key] && OBJECT_FALLBACKS[d.key].why && OBJECT_FALLBACKS[d.key].why.length > 0)
+    .map((d) => ({ key: d.key, module: d.module, class: OBJECT_FALLBACKS[d.key].class, why: OBJECT_FALLBACKS[d.key].why }))
+}
+
+/** ★ Un-inferable rows WITHOUT a name ⇒ the criterion "give me an un-inferable def and it must have a name" fails
+ *  here, and `main()` reports every one of them by name (plus a red exit). */
+export function unnamedFallbacks(defs) {
+  return defs.filter((d) => d.type === null && !(OBJECT_FALLBACKS[d.key] && OBJECT_FALLBACKS[d.key].why && OBJECT_FALLBACKS[d.key].why.length > 0))
+    .map((d) => ({ key: d.key, module: d.module, literal: d.literal }))
+}
+
 export function render(defs) {
   const lines = [BEGIN]
   for (const d of defs) {
     const def = d.literal === null ? 'null' : d.literal
-    const type = d.type === null ? 'object' : d.type
+    const type = typeFor(d)
+    const named = d.type === null ? OBJECT_FALLBACKS[d.key] : null
     const doc = d.literal === null
       // Not "could not be recovered" - for these the MODULE declares no default at all (it reads the key and
       // lets its own absent-value path run). Saying "unrecovered" would blame the extractor for a property of
       // the code, so the doc states the fact instead.
       ? '已接线（' + d.module + ' 读取）；该模块未声明默认值' + (EFFECTIVE_DEFAULTS[d.key] ? '；★ 轮 213 实测' + EFFECTIVE_DEFAULTS[d.key] : '（缺省行为见模块自身）')
       : '已接线（' + d.module + ' 读取）；默认值取自模块源码'
-    lines.push("  { key: '" + d.key + "', type: '" + type + "', def: " + def + ", hot: HOT.H1, who: 'office', doc: " + JSON.stringify(doc) + ' },')
+    // ★ ROUND 32: an UN-INFERABLE type is written out WITH ITS NAME in the artifact itself (never silently), so a
+    // reader of the generated block can tell a declared `object` from an explained fallback.
+    const docOut = d.type === null
+      ? doc + '；★ 类型推断不出（' + (named ? '具名回落 object：' + named.class + ' — ' + named.why : '★ 未具名：见 OBJECT_FALLBACKS，--check 会红') + '）'
+      : doc
+    lines.push("  { key: '" + d.key + "', type: '" + type + "', def: " + def + ", hot: HOT.H1, who: 'office', doc: " + JSON.stringify(docOut) + ' },')
   }
   lines.push(END)
   return lines.join('\n')
@@ -495,6 +546,15 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       problems.push(m.module + ' reads ' + k + ' but it is neither declared nor documented as a service surface')
     }
   }
+  // ★ ROUND 32 (task-156): an UN-INFERABLE type must have a NAME. Every one is printed (逐个点名), and any row
+  // without an `OBJECT_FALLBACKS` entry is an INVARIANT violation ⇒ red. This is the mechanical form of
+  // "不确定时必须出声" (same rule as `planned` and `settingsUnenforced`).
+  const named = namedFallbacks(defs)
+  const unnamed = unnamedFallbacks(defs)
+  if (unnamed.length) for (const u of unnamed) {
+    problems.push('type could NOT be inferred for ' + u.key + ' (' + u.module + ', literal=' + JSON.stringify(u.literal) + ') and it is NOT named in OBJECT_FALLBACKS — it would be written out as a confident `object`')
+  }
+  if (named.length) for (const n of named) console.log('  NAMED type fallback: ' + n.key + ' [' + n.class + '] (' + n.module + ') — ' + n.why)
   if (problems.length) {
     for (const p of problems.slice(0, 10)) console.log('  INVARIANT VIOLATED: ' + p)
     console.log('  INVARIANTS: ' + problems.length + ' problem(s)')
