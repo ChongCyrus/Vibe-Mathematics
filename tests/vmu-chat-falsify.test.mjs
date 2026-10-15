@@ -1,7 +1,7 @@
 // tests/vmu-chat-falsify.test.mjs — FAMILY 2 of the falsify routine: `kernel/chat.js` (speech quota and mute are
 // ENFORCED, and a refusal appends nothing). Run: node tests/vmu-chat-falsify.test.mjs
 //
-// Same recipe as the mailbox family (see `_handoff/vmu/activity-round5-report.md`): one probe with a control
+// Same recipe as the mailbox family (see `docs/acceptance/activity-round5-report.md`): one probe with a control
 // direction, single-point mutations, `falsifyFamily`. The chat face has TWO independent enforcement points, so the
 // family carries one mutation per point and the probe reads both.
 import { falsifyFamily, formatFamilyReport } from './_lib/falsify.mjs'

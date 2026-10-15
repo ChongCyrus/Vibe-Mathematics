@@ -1,7 +1,7 @@
 // tests/vmu-activity-timers.test.mjs — F15 (timer cleanup on EVERY branch) and F16 (scheduling trampoline).
 // Run: node tests/vmu-activity-timers.test.mjs   Last line: === VMU TIMERS F15/F16: N passed, M failed ===
 //
-// WHY THIS FILE EXISTS. `_handoff/vmu/05-framework-strength-evidence.md` judged F15/F16 "具备" from CODE READING
+// WHY THIS FILE EXISTS. `docs/acceptance/05-framework-strength-evidence.md` judged F15/F16 "具备" from CODE READING
 // (round 3's own note says so: "F16 的'等价'判定是推理，不是探针实测"). This is the probe half:
 //   §1 a DERIVED inventory of every timer site in the framework (so a new one cannot appear unnoticed) with an
 //      explicit verdict per site;

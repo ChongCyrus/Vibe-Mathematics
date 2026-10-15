@@ -643,7 +643,7 @@ const roster = ['r-1', 'r-2']
 
 // ---- 21. Round 8/9: B① the agenda is CLOSED (never deleted) + G7 the durable log reaches both write faces -----
 //
-// CROSS-FACE POSITIVE CONTROL (reader-a's drill, `_handoff/vmu/12-goal1-e2e.md` §2.2/§5.4):
+// CROSS-FACE POSITIVE CONTROL (reader-a's drill, `docs/acceptance/12-goal1-e2e.md` §2.2/§5.4):
 //   `node tests/vmu-resume-e2e.test.mjs` ⇒ 63 passed, 0 failed, exit 0 — §⑦ `9a`–`9k` proves that BINDING this
 //   durable log changes neither existing contract: (CONTRACT 1) the state face still writes through with no
 //   `snapshot()` call (`9f`/`9g`), and (CONTRACT 2) the journal face still needs an EXPLICIT `snapshot({key})`

@@ -14,7 +14,7 @@
 // NOT COVERED HERE, DELIBERATELY: `validatePack` checks `rules[].on` but not `rules[].when` (kernel/pack.js:117-120
 // vs kernel/rules.js:53), so `plan` reports no problems while `apply` refuses — that asymmetry is in
 // `kernel/pack.js`, which is NOT in this task's write scope (`vmu-pack2` has it dirty for task-125). The fix and
-// the guard that belongs in this file are both written out in `_handoff/vmu/core-round20b-report.md` §3.
+// the guard that belongs in this file are both written out in `docs/acceptance/core-round20b-report.md` §3.
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -103,7 +103,7 @@ const plannedProblems = (Array.isArray(plannedNoWhen.problems) ? plannedNoWhen.p
 // assertion first did) cannot catch a "reports but does not refuse" regression: with `ok:true` + a non-empty
 // `problems` the old S1, S2 and S3 all passed (S2 because `problems.length !== 0`; S3 because both sides carried
 // the same `code`) — i.e. `plan.ok` was never pinned. `vmu-pack2` found this in review; the weaker form is named
-// in `_handoff/vmu/core-round20b-report.md` §3 as "一个只在 problems 上成立的判据，抓不到『报而不拒』".
+// in `docs/acceptance/core-round20b-report.md` §3 as "一个只在 problems 上成立的判据，抓不到『报而不拒』".
 ok(plannedNoWhen.ok === false && plannedNoWhen.code === 'VMU_PACK_MISSING' && plannedProblems.some((p) => /when is required/.test(p)),
   'S1. ★ the TOOL\'s plan() REFUSES *and* NAMES the missing `when` — asserted on the refusal (ok + code) AND on the named problem, not on either alone', plannedNoWhen)
 ok(!(plannedNoWhen.ok === true && plannedProblems.length === 0),

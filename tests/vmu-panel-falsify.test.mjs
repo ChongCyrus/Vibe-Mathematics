@@ -1,7 +1,7 @@
 // tests/vmu-panel-falsify.test.mjs — FAMILY 3 of the falsify routine: `kernel/panel.js` (the running sub-task field is
 // really written and its state vocabulary is really enforced). Run: node tests/vmu-panel-falsify.test.mjs
 //
-// Same recipe (see `_handoff/vmu/activity-round5-report.md`). The panel face is where D-08 baseline B lives: the
+// Same recipe (see `docs/acceptance/activity-round5-report.md`). The panel face is where D-08 baseline B lives: the
 // `subtasks` field is the ONE field the v5r line did not have, so "it is really written, and an unknown state is
 // refused by name" is exactly the kind of claim that must be shown able to fail.
 import { falsifyFamily, formatFamilyReport } from './_lib/falsify.mjs'

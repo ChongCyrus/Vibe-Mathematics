@@ -1,7 +1,7 @@
 // tests/vmu-mailbox-falsify.test.mjs — FAMILY 1 of the falsify routine: `kernel/mailbox.js` (ack only AFTER a
 // successful delivery). Run: node tests/vmu-mailbox-falsify.test.mjs
 //
-// THE RECIPE (30 lines, see `_handoff/vmu/activity-round5-report.md` for the general form):
+// THE RECIPE (30 lines, see `docs/acceptance/activity-round5-report.md` for the general form):
 //   1. import the shared library and the module under test;
 //   2. write ONE probe that returns a JSON-able reading of the invariant (here: what is still pending after a
 //      FAILING transport, and what is acked after a GOOD one — the good direction keeps the probe non-vacuous);

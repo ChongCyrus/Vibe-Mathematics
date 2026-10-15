@@ -397,7 +397,7 @@ export const A_CLASS_BASELINE_FINGERPRINTS = Object.freeze([
 // ROUND 17 / task-118 ②: the shape-C blind spot is CLOSED by seeing the multi-line form, but it is enforced the same
 // way shape A is - as a per-FILE fingerprint set - because MEASURED, this syntactic shape is overwhelmingly ordinary
 // scenario/feature control flow (125 unexcused occurrences before the baseline existed; the inventory is in
-// `_handoff/vmu/verify-round17-report.md` §2). A blanket red would be a false-positive machine and would push authors
+// `docs/acceptance/verify-round17-report.md` §2). A blanket red would be a false-positive machine and would push authors
 // to sprinkle EMPTY_ALLOWED comments everywhere - exactly the whitelist drift this repo keeps fighting. What the
 // baseline buys: a NEW file with a multi-line conditional assertion is RED, and REMOVING one is red until the list is
 // synced, so the shape can only shrink deliberately. (This comment sits OUTSIDE the generated block on purpose:

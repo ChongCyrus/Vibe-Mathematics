@@ -283,7 +283,7 @@ ok(!!disableRed && disableRed.disabledDoesNotPublish === false && disableRed.dis
 console.log('=== CLOSED FINDING (the pin became a guard) ===')
 // HISTORY, because a pin that silently disappears is worse than one that never existed: while building case 2 this
 // file MEASURED the write receipt naming `vmu.store.tmpDir` in `fired[]` while its `enforced[]` omitted it (a real
-// `fired ⊄ enforced`, reported as F1 in `_handoff/vmu/activity-round9-report.md`). It was pinned here, the gate owner
+// `fired ⊄ enforced`, reported as F1 in `docs/acceptance/activity-round9-report.md`). It was pinned here, the gate owner
 // reproduced it and task-66 repaired `kernel/storepolicy.js` (the key joined the write enforcement list), and the pin
 // was flipped to assert the PROMISE instead of the gap — plus the mutation above, so the repaired shape is what is
 // now protected. The two-sided reading is what makes the flip honest: had the fix simply stopped firing the key, the
