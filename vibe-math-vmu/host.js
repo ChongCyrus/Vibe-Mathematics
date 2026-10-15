@@ -385,7 +385,7 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * `faces` option lets a caller hand in an already-resolved set (the adapter resolves once and passes it down, so
  * install() and plan() cannot disagree).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, config = {}, faces = null, mergeReport = null, packReport = null, ...faceFlags }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, config = {}, faces = null, mergeReport = null, packReport = null, publishedSurface = null, ...faceFlags }) {
   // A refusal carries the four documented fields, plus - when the caller has them - host-side DIAGNOSTICS
   // (the host's own stack and the exact request shape we passed). They are added ONLY when present, so no
   // existing refusal changes shape. Without this the live M3 diagnosis died at the tool boundary: the seam
@@ -431,9 +431,37 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         const out = Object.assign({ ok: true, instance }, kernel.status())
         // ROUND 1 / K1 (D-01): WHICH faces exist and WHY the other ones do not. A face that silently disappears is
         // exactly the failure this map exists to end, so the answer travels with the status receipt.
+        // ROUND 26 / task-141 (the third "receipt vs fact" instance): `published` used to be THIS evaluation's tool
+        // names, so a receipt could list 13 while 15 were really registered (`vibe_vmu_middleware`/`vibe_vmu_report`
+        // came from another evaluation). It now reports the REGISTRATION SURFACE (the adapter's own cumulative
+        // `registered`, the array it skips duplicates against - i.e. first-wins, exactly like the host). Names stay
+        // strings (no consumer changes shape); the provenance is added beside them, and `evaluations` lets a reader
+        // see whether the union really merged more than one pass.
+        const surface = typeof publishedSurface === 'function' ? publishedSurface() : null
+        const surfaceNames = surface && Array.isArray(surface.names) ? surface.names : specs.map((s) => s.name)
+        const byName = new Map(specs.map((s) => [s.name, s]))
         out.faces = { enabled: faceResolution.enabled, disabled: faceResolution.disabled, unavailable: faceResolution.unavailable,
           unknownDisabled: faceResolution.unknownDisabled, sources: faceResolution.sources,
-          published: specs.map((s) => s.name) }
+          published: surfaceNames.slice(),
+          publishedDetail: surfaceNames.map((n) => {
+            const s = byName.get(n)
+            const rec = surface && surface.reasons && surface.reasons[n] ? surface.reasons[n] : null
+            return { name: n, face: (rec && rec.face) || (s && s.face) || null, reason: (rec && rec.reason) || (s && s.reason) || null }
+          }),
+          evaluations: surface && Number.isInteger(surface.evaluations) ? surface.evaluations : null }
+        // ROUND 26 / task-141 — THE MISSING FACES, NAMED. A pack added at runtime cannot fold its
+        // `settings/defaults.json` (the fold-in runs before the kernel and reads `config.packs` only), and these
+        // faces are declared by EXACTLY those keys (`resolveFaces` path 5, the `families` prefix). So the pack loads,
+        // its middleware runs, and ten of its faces - and their tools - never appear, with nothing in the receipt to
+        // say why. This names them, using the SAME prefix rule that failed to match, so it cannot drift from it.
+        {
+          const pr = typeof packReport === 'function' ? packReport() : null
+          const unfoldedKeys = ((pr && pr.defaultsUnfolded) || []).flatMap((u) => (Array.isArray(u.keys) ? u.keys : []))
+          const enabledSet = new Set(faceResolution.enabled)
+          out.faces.notPublished = unfoldedKeys.length === 0 ? [] : TOOL_FACES
+            .filter((row) => !enabledSet.has(row.face) && (row.families || []).some((p) => unfoldedKeys.some((k) => k.startsWith(p))))
+            .map((row) => ({ face: row.face, tool: row.name, reason: "its family keys live only in the pack's settings/defaults.json, which a runtime-added pack cannot fold (see packReport.defaultsUnfolded)" }))
+        }
         // ROUND 1 / K5 (D-02): the ENTRY's pack-merge report - the priority ladder, the per-key layer, the NAMED
         // conflicts and the declared overrides. It is surfaced HERE, by the host face, because the kernel never acts on
         // it: the entry refused/shadowed at merge time, and `tests/vmu-seam-params-consumed.test.mjs` forbids a kernel
@@ -812,6 +840,20 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   if (on('mathadapters')) specs.push(makeMathadaptersSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('mathjobs')) specs.push(makeMathjobsSpec({ param, refused, TOOL_NAMES, kernel }))
 
+  // ROUND 26 / task-141 — PROVENANCE ON EVERY TOOL, attached at the ONE place that has both the tool's name and the
+  // face decision. Measured defect: the receipt's `faces.published` listed the tools of THIS evaluation only, while
+  // the registration surface is the union across evaluations (a pack installed after the kernel adds faces, and the
+  // entry re-installs) - measured 15 registered vs 13 published, with `vibe_vmu_middleware`/`vibe_vmu_report`
+  // unexplained. `faceResolution.sources[face]` is the sentence that already justifies each published face, so the
+  // tool carries the SAME reason instead of a second, drift-prone copy of it.
+  {
+    const faceOfTool = new Map(TOOL_FACES.map((r) => [r.name, r.face]))
+    for (const s of specs) {
+      const face = faceOfTool.get(s.name) || null
+      s.face = face
+      s.reason = face ? (faceResolution.sources[face] || null) : null
+    }
+  }
   return specs
 }
 
@@ -862,6 +904,12 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   const disposers = []
   const registered = []
   const failures = []
+  // ROUND 26 / task-141: the two facts the receipt needs to be honest about its own coverage.
+  //   · `evaluations` - how many install passes produced tools (the union merged THIS many);
+  //   · `reasonFor`   - NAME -> the face decision that justified its FIRST (and therefore in-force) registration.
+  // Both are cleared with `registered` on uninstall, so the receipt can never advertise an unloaded surface.
+  let evaluations = 0
+  const reasonFor = {}
   let installed = false
   let ownedByHost = false
   let chain = Promise.resolve()
@@ -882,7 +930,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   }))
   const enabledFaceSet = () => { const r = resolveFaceSet(); return r.enabled }
 
-  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance, scripts, packLoader, config, mergeReport, packReport, ...faceFlags, faces: (() => { const r = resolveFaceSet(); return r })() }))
+  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance, scripts, packLoader, config, mergeReport, packReport, publishedSurface: () => ({ names: registered.slice(), reasons: reasonFor, evaluations }), ...faceFlags, faces: (() => { const r = resolveFaceSet(); return r })() }))
 
   const doInstall = async () => {
     if (!ctx || !ctx.tools || typeof ctx.tools.register !== 'function') {
@@ -919,6 +967,10 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     const hasEffect = typeof ctx.effect === 'function'
     ownedByHost = hasEffect
     failures.length = 0
+    // ROUND 26 / task-141: ONE EVALUATION per `doInstall()` that produced tools - the honest denominator for "the
+    // union merged N passes". Counted HERE, at the evaluation, NOT at push time (a single pass pushes many specs,
+    // so a push counter would overstate the number of evaluations and make the receipt's self-account a lie).
+    evaluations += 1
     for (const spec of list) {
       // IDEMPOTENT: a later call may find tools that only became available afterwards (a pack can add bus
       // entries after install), and already-registered names are skipped instead of colliding.
@@ -935,6 +987,11 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
           if (typeof dispose === 'function') disposers.push(dispose)
         }
         registered.push(spec.name)
+        // FIRST-WINS provenance, mirroring the skip above: `host.js` keeps ONE registration per name, so the reason
+        // that describes the tool in force is the one from the FIRST evaluation that registered it. Recording it
+        // here (not in the receipt) means a later evaluation can never overwrite the reason of an earlier winner -
+        // which would replace "no reason" with "a WRONG reason", the harder failure to catch.
+        if (!reasonFor[spec.name]) reasonFor[spec.name] = { face: spec.face || null, reason: spec.reason || null }
       } catch (e) {
         // ONE registration may fail without killing the rest: the host refuses a duplicate name in the same
         // layer ("duplicates within one layer fail"), and a second vmu instance is a real scenario. The
@@ -1005,12 +1062,18 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       const exitFlush = await flushOnExit('host-uninstall')
       if (ownedByHost) {
         registered.length = 0
+        // ROUND 26 / task-141: the coverage bookkeeping goes away WITH the registrations it describes - otherwise a
+        // receipt could advertise an unloaded surface (the OPPOSITE of the under-reporting this round fixes).
+        evaluations = 0
+        for (const k of Object.keys(reasonFor)) delete reasonFor[k]
         installed = false
         return { ok: exitFlush.ok !== false, ownedByHost: true, exitFlush, note: 'the host unwinds these registrations through ctx.effect' }
       }
       const failures2 = []
       for (const d of disposers.splice(0)) { try { d() } catch (e) { failures2.push(String(e && e.message)) } }
       registered.length = 0
+      evaluations = 0
+      for (const k of Object.keys(reasonFor)) delete reasonFor[k]
       installed = false
       return { ok: failures2.length === 0 && exitFlush.ok !== false, failures: failures2, exitFlush }
     },

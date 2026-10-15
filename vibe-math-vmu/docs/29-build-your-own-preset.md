@@ -260,7 +260,7 @@ type <临时目录>\vmu-ext-demo-activated.json
         deliver: !!js '(report) => console.log("[vmu-report-sink] " + JSON.stringify({ name: report.name, to: report.to, channel: report.channel, text: report.text, drives: report.drives }))'
         vmu:
           tools: { faces: ['*'] }
-          packs: { active: ['v5r'] }        # ⚠ 这一行【不装载 pack】—— 见下方「★ 装载路线」
+          packs: { active: ['v5r'] }        # ★ R25 起【真装载】—— 但【只装载 middleware/rules，不含该包的 settings/defaults.json】（见下方「★ 装载路线」）
           report:
             enabled: true
             minIntervalMs: 0
@@ -303,7 +303,7 @@ dsh --profile <你的 profile> --dump-config --patch <临时目录>\vmu-overlay-
           rows:
             vibe-math-vmu:
               deliver: !!js >- (report) => console.log("[vmu-report-sink] " + …)
-              vmu: { tools: { faces: ['*'] }, packs: { active: ['v5r'] }, report: {…} }   # ⚠ `packs.active` 只是设置键：**不装载 pack**（见上）
+              vmu: { tools: { faces: ['*'] }, packs: { active: ['v5r'] }, report: {…} }   # ★ R25 起 `packs.active`【真装载】（见上）；★ 但**不折入该包的 `settings/defaults.json`** ⇒ 靠那些键声明的面/工具**不会发布**（回执 `defaultsUnfolded`／`faces.notPublished` 会点名）
     而 preset 行【整块不变】：
       - id: preset-vibe-math-vmu
         config:

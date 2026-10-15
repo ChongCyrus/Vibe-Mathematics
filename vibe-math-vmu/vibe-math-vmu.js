@@ -277,6 +277,32 @@ export function apply(ctx, config = {}) {
   // merged object is used ONLY for the kernel: `declared` below still counts the USER's keys, so a deployment that
   // configured nothing keeps the documented "zero mechanism" behaviour rather than becoming declared by its pack.
   const packDefaults = {}
+  // ROUND 26 / task-141 — WHICH pack defaults were folded, and WHICH were NOT. Named on purpose: the fold-in runs
+  // BEFORE `createKernel` and its input set is `config.packs` ONLY, so a pack added at runtime (`vmu.packs.active`)
+  // can never have its `settings/defaults.json` folded. That is structural, not an oversight - and the receipt must
+  // SAY it, because `defaults: 0` alone is indistinguishable from "this deployment declares no defaults at all",
+  // which is how a runtime-loaded pack's faces (and therefore its tools) went unnoticed.
+  const defaultsFoldedIds = []
+  const defaultsUnfolded = []
+  {
+    const hereU = dirname(fileURLToPath(import.meta.url))
+    const activeIds = Array.isArray(settings['vmu.packs.active']) ? settings['vmu.packs.active'].filter((p) => typeof p === 'string') : []
+    const declaredStrings = Array.isArray(config.packs) ? config.packs.filter((p) => typeof p === 'string') : []
+    for (const id of activeIds) {
+      if (declaredStrings.includes(id)) continue          // declared in BOTH ⇒ the deployment route folds it
+      let keys = null
+      try {
+        const parsed = JSON.parse(readFileSync(join(hereU, 'packs', id, 'settings', 'defaults.json'), 'utf8'))
+        keys = parsed && typeof parsed.defaults === 'object' && parsed.defaults ? Object.keys(parsed.defaults) : []
+      } catch { keys = null }                             // no defaults.json ⇒ nothing to fold (NOT a miss)
+      if (keys && keys.length > 0) {
+        defaultsUnfolded.push({
+          id, keys,
+          reason: 'a pack added at runtime cannot fold its settings/defaults.json: the fold-in runs BEFORE createKernel and reads config.packs only, and the settings face is already built',
+        })
+      }
+    }
+  }
   // ROUND 1 / K5: the merge bookkeeping. `packDefaultSource` names WHICH pack stated a default (so a collision has two
   // names, never "the pack"), and the two arrays are the auditable outcome of the D-02 priority rule (conflicts are
   // refusals-by-name, `shadowed` is a declared override the deployment asked for).
@@ -332,7 +358,7 @@ export function apply(ctx, config = {}) {
             packMergeConflicts.push({ key: k, pack: name, otherPack: packDefaultSource[k], packValue: v, otherValue: packDefaults[k], code: 'VMU_PACK_CONFLICT' })
           }
         }
-      } catch (e) {
+        defaultsFoldedIds.push(name)      } catch (e) {
         // Only a MISSING file is expected (a flat pack has no settings folder). Anything else is a real error and
         // must not be swallowed: a malformed defaults file would otherwise silently contribute no defaults at all.
         const missing = e && (e.code === 'ENOENT' || e.code === 'ERR_MODULE_NOT_FOUND')
@@ -546,6 +572,10 @@ export function apply(ctx, config = {}) {
       errors: packErrors.map((e) => ({ id: e.id, code: e.code, message: e.message })),
       loading: packsLoading,
       ok: packErrors.length === 0,
+      // ROUND 26 / task-141: the KEYS a runtime-added pack could not fold. The host turns these into the FACES they
+      // would have declared (`faces.notPublished`), which is what makes "this pack's tools are missing" legible
+      // instead of an unexplained absence of ten tool names.
+      defaultsUnfolded: defaultsUnfolded.map((u) => ({ id: u.id, keys: u.keys.slice(), reason: u.reason })),
     }),
     // ROUND 1 / K1 (D-01): `config` is handed over so `host.js` resolves WHICH faces are declared from the one map
     // (`resolveFaces`) instead of from four booleans assembled here. Every face now has a declaration path:
@@ -571,6 +601,11 @@ export function apply(ctx, config = {}) {
       appliedPacks: appliedPacks.map((a) => a.id),
       errors: packErrors.map((e) => ({ id: e.id, code: e.code, message: e.message })),
       loading: packsLoading,
+      // ROUND 26 / task-141: WHICH defaults were folded, and which were NOT (with the key list, so a reader - or the
+      // host - can name the faces those keys would have declared). `defaults: 0` above stays the folded KEY COUNT
+      // (unchanged meaning); these two make the difference legible instead of leaving it looking like "no defaults".
+      defaultsFolded: defaultsFoldedIds.slice(),
+      defaultsUnfolded: defaultsUnfolded.map((u) => ({ id: u.id, keys: u.keys.slice(), reason: u.reason })),
       defaults: Object.keys(packDefaults).length,
       sources: Object.assign({}, settingsSources),
       conflicts: packMergeConflicts.map((c) => Object.assign({}, c)),
@@ -1061,6 +1096,10 @@ export function apply(ctx, config = {}) {
       errors: packErrors.map((e) => ({ id: e.id, code: e.code, message: e.message })),
       loading: packsLoading,
       ok: packErrors.length === 0,
+      // ROUND 26 / task-141: the KEYS a runtime-added pack could not fold. The host turns these into the FACES they
+      // would have declared (`faces.notPublished`), which is what makes "this pack's tools are missing" legible
+      // instead of an unexplained absence of ten tool names.
+      defaultsUnfolded: defaultsUnfolded.map((u) => ({ id: u.id, keys: u.keys.slice(), reason: u.reason })),
     }),
     // ROUND 1 / K5 (D-02): the entry-side merge, in full - the priority ladder, the per-key layer, the named
     // conflicts and the overrides a deployment asked for. `vibe_vmu_status` reads the kernel's `settingsMerge`, which
