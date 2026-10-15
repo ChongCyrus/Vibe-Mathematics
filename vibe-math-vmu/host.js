@@ -462,7 +462,48 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             .filter((row) => !enabledSet.has(row.face) && (row.families || []).some((p) => unfoldedKeys.some((k) => k.startsWith(p))))
             .map((row) => ({ face: row.face, tool: row.name, reason: "its family keys live only in the pack's settings/defaults.json, which a runtime-added pack cannot fold (see packReport.defaultsUnfolded)" }))
         }
-        // ROUND 1 / K5 (D-02): the ENTRY's pack-merge report - the priority ladder, the per-key layer, the NAMED
+        // ROUND 27 / task-143 — THE `enabled` vs `published` GAP, NAMED (measured: the deployment route reported
+        // `enabled = 14` while 15 tools were registered/published; `report` was published but not listed in
+        // `enabled`, and `sources['report']` was undefined on BOTH routes). Mechanism, read from the code: the face
+        // gate is per evaluation (`if (on(face)) specs.push(…)`) while `registered` is the FIRST-WIN union across
+        // evaluations - so a tool published by a DIFFERENT evaluation than the one whose `enabled` this receipt
+        // reports has no face entry here. The two fields are not contradicting each other; they describe two
+        // different things, and this field says which. Its evidence is DATA (`source`, `inThisEvaluation`,
+        // `evaluations`), not a hardcoded sentence, so it can be re-checked rather than believed.
+        {
+          const enabledSet2 = new Set(faceResolution.enabled)
+          const detailByName = new Map(out.faces.publishedDetail.map((d) => [d.name, d]))
+          out.faces.enabledGap = out.faces.published
+            .map((n) => detailByName.get(n))
+            .filter((d) => d && d.face && !enabledSet2.has(d.face))
+            .map((d) => ({
+              face: d.face, tool: d.name,
+              // ★ THE REVIEWABLE SOURCE is the decision that actually published it (`publishedDetail[].reason`:
+              // `"surface:bus-entries"`, `"setting:vmu.report.*"`, …). `faces.sources[face]` is NOT usable here: for
+              // exactly these faces it is `undefined`, because they were published by a rule the face-row decision
+              // does not record - `report` is pushed directly at `host.js` `if (on('report')) specs.push(makeReportSpec(…))`.
+              source: d.reason === undefined ? null : d.reason,
+              faceRowSource: faceResolution.sources[d.face] === undefined ? null : faceResolution.sources[d.face],
+              inThisEvaluation: false,
+              evaluations: out.faces.evaluations,
+              reason: 'not in this receipt\'s `enabled`: it was published by a route the face-row decision does not record (see source / faceRowSource / evaluations)',
+            }))
+        }
+        // ROUND 27 / task-143 — THE OTHER DIRECTION (measured independently by vmu-verify2): a face can be
+        // `enabled` while its TOOL never publishes - on the deployment route `enabled` lists `set` and
+        // `publishedDetail` has no `vibe_vmu_set` entry. Same class, opposite sign, so it is named here too; the
+        // asymmetry is not always "published ⊃ enabled".
+        {
+          const publishedFaces = new Set((out.faces.publishedDetail || []).map((d) => d.face).filter(Boolean))
+          out.faces.enabledNotPublished = (out.faces.enabled || [])
+            .filter((face) => !publishedFaces.has(face))
+            .map((face) => ({
+              face,
+              source: out.faces.sources[face] === undefined ? null : out.faces.sources[face],
+              evaluations: out.faces.evaluations,
+              reason: 'listed in `enabled` but no published tool carries this face in this receipt (see publishedDetail / evaluations)',
+            }))
+        }
         // conflicts and the declared overrides. It is surfaced HERE, by the host face, because the kernel never acts on
         // it: the entry refused/shadowed at merge time, and `tests/vmu-seam-params-consumed.test.mjs` forbids a kernel
         // seam that only `kernel/index.js` reads.

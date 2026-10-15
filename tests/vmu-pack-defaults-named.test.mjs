@@ -144,6 +144,39 @@ const LOST_TOOLS = ['vibe_vmu_chat', 'vibe_vmu_control', 'vibe_vmu_human', 'vibe
   }
 }
 
+// =========================================================================================================
+// E. THE `enabled` vs `published` GAP IS EXPLAINED, not left as two fields disagreeing (round 27)
+// =========================================================================================================
+// Measured: the deployment route reports `enabled = 14` while 15 tools are registered/published - `report` is
+// published but absent from `enabled`, and `sources['report']` is undefined on BOTH routes. The two fields are not
+// contradictory: the face gate is per evaluation while `published` is the first-win UNION across evaluations. The
+// receipt must say so, per entry, with DATA (source / inThisEvaluation / evaluations) rather than a sentence.
+{
+  for (const [label, build] of [['settings route', SETTINGS_ROUTE], ['deployment route', CONFIG_ROUTE]]) {
+    const { status } = await build()
+    const f = status.faces || {}
+    const enabled = new Set(f.enabled || [])
+    const detail = f.publishedDetail || []
+    const gap = [...new Set((f.published || []).map((n) => { const d = detail.find((x) => x.name === n); return d && d.face && !enabled.has(d.face) ? d.face : null }).filter(Boolean))]
+    const explained = new Set((f.enabledGap || []).map((g) => g.face))
+    const unexplained = gap.filter((face) => !explained.has(face))
+    // ★ non-emptiness is not demanded per route (a route may legitimately have no gap) - but the SETS must agree, and
+    // the deployment route's gap IS non-empty, asserted separately so this block cannot pass vacuously.
+    ok(unexplained.length === 0,
+      'E1. [' + label + '] every face published while absent from `enabled` is EXPLAINED in `faces.enabledGap` (the fourth "two fields tell different stories" instance)', { gap, explained: [...explained], unexplained })
+    // ★ same-expression non-emptiness: an empty `gap` would make the previous line true for the wrong reason.
+    ok((f.enabledGap || []).length > 0 && f.enabledGap.every((g) => typeof g.reason === 'string' && g.reason.length > 0 && typeof g.source === 'string' && g.source.length > 0 && 'inThisEvaluation' in g && 'evaluations' in g),
+      'E2. [' + label + '] every gap entry carries a reason AND a REVIEWABLE source (the decision that published it: `surface:bus-entries` / `setting:vmu.report.*`), not a bare sentence', f.enabledGap)
+  }
+  // Pin the concrete instance the round was opened for, so the block cannot pass on an empty gap alone.
+  const dep = await CONFIG_ROUTE()
+  const f2 = dep.status.faces || {}
+  ok((f2.enabledGap || []).some((g) => g.face === 'report' && g.tool === 'vibe_vmu_report'),
+    'E3. ★ the deployment route names the exact case measured: `report` published while `enabled` omits it', f2.enabledGap)
+  ok(f2.enabled.length === 14 && f2.published.length === 15,
+    'E4. ...and the two counts are still 14 / 15 (so the explanation is attached to the real asymmetry)', { enabled: f2.enabled.length, published: f2.published.length })
+}
+
 console.log('=== VMU PACK DEFAULTS NAMED: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
