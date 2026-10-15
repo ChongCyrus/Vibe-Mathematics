@@ -208,29 +208,54 @@ const BY_REL = new Map(SOURCE_FILES.map((f) => [f.rel, f]))
  */
 const IMPORTERS = (() => {
   const m = new Map()
+  const add = (name, rel) => {
+    if (!name) return
+    if (!m.has(name)) m.set(name, new Set())
+    m.get(name).add(rel)
+  }
   for (const f of SOURCE_FILES) {
     for (const l of linesOf(f)) {
-      if (l.indexOf('import') < 0) continue        // ★ cheap guard: the regex below ran on every line of every file
-      const im = /import\s*\{([^}]*)\}\s*from\s*['"][^'"]+['"]/.exec(l)
-      if (!im) continue
-      for (const part of im[1].split(',')) {
-        const name = part.trim().split(/\s+as\s+/).pop().trim()
-        if (!name) continue
-        if (!m.has(name)) m.set(name, new Set())
-        m.get(name).add(f.rel)
-      }
+      if (l.indexOf('import') < 0 && l.indexOf('export') < 0) continue
+      // ★ R35 (task-168): THE FOUR REMAINING FORMS (R34 covered only named `import { … } from`):
+      //   ① namespace `import * as N from '…'`  ② default `import D from '…'` (also `import D, {…} from '…'`)
+      //   ③ re-export `export { A, B as C } from '…'`  ④ dynamic `import('…')` — for ④ the same file later uses
+      //   `.NAME` on the module namespace, which DYNAMIC_USES records.
+      const ns = /import\s*\*\s*as\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*from/.exec(l)
+      if (ns) add(ns[1], f.rel)
+      const dflt = /^\s*import\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*(?:,|from)/.exec(l)
+      if (dflt) add(dflt[1], f.rel)
+      const named = /import\s*\{([^}]*)\}\s*from\s*['"][^'"]+['"]/.exec(l)
+      if (named) for (const part of named[1].split(',')) add(part.trim().split(/\s+as\s+/).pop().trim(), f.rel)
+      const reexp = /export\s*\{([^}]*)\}\s*from\s*['"][^'"]+['"]/.exec(l)
+      if (reexp) for (const part of reexp[1].split(',')) add(part.trim().split(/\s+as\s+/).pop().trim(), f.rel)
+      if (/export\s*\*\s*from/.test(l)) f.starReexport = true   // names unknowable from the line ⇒ a named residual
     }
   }
   return m
 })()
+/** ★ ④ dynamic import, computed PER NAME — but the "which files even contain `import(`" pass happens ONCE
+ *  (measured: calling it per name re-tested every file's full text and cost ~2s, putting `wiring-index --check` at
+ *  9.5s against a 6.65s baseline). */
+const DYNAMIC_FILES = SOURCE_FILES.filter((f) => /\bimport\s*\(/.test(f.text))
+const dynamicUsers = (name) => {
+  const out = new Set()
+  const re = new RegExp('\\.\\s*' + name + '\\b')
+  for (const f of DYNAMIC_FILES) if (re.test(f.text)) out.add(f.rel)
+  return out
+}
+const importerFiles = (name) => {
+  const set = new Set(IMPORTERS.get(name) || [])
+  for (const rel of dynamicUsers(name)) set.add(rel)
+  return set
+}
 const LIST_INDEX = (() => {
   const idx = new Map()
   for (const f of SOURCE_FILES) {
     const lines = linesOf(f)
     for (let i = 0; i < lines.length; i++) {
-      const decl = /(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:Object\.freeze\()?\s*\[/.exec(lines[i])
+      const decl = /(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:Object\.freeze\()?\s*\[|^\s*['"]([A-Za-z0-9_.]+)['"]\s*:\s*\[/.exec(lines[i])
       if (!decl) continue
-      const name = decl[1]
+      const name = decl[1] || decl[2]        // ★ R35: also an INLINE array used as an object value (`'vmu.x': [ … ]`)
       const re = new RegExp('(for\\s*\\([^)]*\\bof\\s+' + name + '\\b|\\b' + name + '\\.(map|forEach|filter|some|reduce)\\()')
       let iterLine = -1
       for (let k = 0; k < lines.length; k++) {
@@ -239,7 +264,7 @@ const LIST_INDEX = (() => {
       let iterRel = f.rel
       if (iterLine < 0) {
         // ★ CROSS-FILE: follow the import graph — who imports this export, and iterates it THERE?
-        for (const rel of IMPORTERS.get(name) || []) {
+        for (const rel of importerFiles(name)) {
           const g = BY_REL.get(rel)
           if (!g) continue
           const gl = linesOf(g)

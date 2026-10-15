@@ -546,12 +546,17 @@ ok(unregisteredInCode.length === 0,
   // know only two markers, so a correct table reddened here ("the gate still assumed two values"). ★ The intent is
   // kept and sharpened: a row must land in EXACTLY ONE of the three named tiers — blank, vague or hand-written prose
   // still reddens (that is what "no silent promises" always meant).
+  // ★ R35 (task-168): THE MARKER MUST BE IN THE *TIER CELL*, NOT ANYWHERE IN THE ROW. The R33 version tested the
+  // whole row, and that is exactly why the copy-based counterexample M1 (blanked tier cell) stayed GREEN ✗ — the
+  // row's other columns can contain the same words (the doc text does). The cell is index 8 of the `|`-split row:
+  // 键|类型|默认|域|作用域|H|谁|接线|载体|说明.
+  const tierCellOf = (r) => (r.split('|')[8] || '')
   const TIER_MARKER = { wired: /✅ 已接线/, undetermined: /❓ 未判定/, unwired: /⚠️ 未接线/ }
-  const unmarkedRows = rows.filter((r) => !Object.values(TIER_MARKER).some((re) => re.test(r)))
+  const unmarkedRows = rows.filter((r) => !Object.values(TIER_MARKER).some((re) => re.test(tierCellOf(r))))
   ok(unmarkedRows.length === 0, 'every settings row states which of the THREE tiers the key is in (✅/❓/⚠️ — no silent promises; blank or vague still reddens)',
     unmarkedRows.slice(0, 3).map((r) => r.slice(0, 48)).join(' | '))
   // non-vacuity: the line above would also pass a table that had lost a whole tier
-  const tierCounts = { wired: rows.filter((r) => TIER_MARKER.wired.test(r)).length, undetermined: rows.filter((r) => TIER_MARKER.undetermined.test(r)).length, unwired: rows.filter((r) => TIER_MARKER.unwired.test(r)).length }
+  const tierCounts = { wired: rows.filter((r) => TIER_MARKER.wired.test(tierCellOf(r))).length, undetermined: rows.filter((r) => TIER_MARKER.undetermined.test(tierCellOf(r))).length, unwired: rows.filter((r) => TIER_MARKER.unwired.test(tierCellOf(r))).length }
   ok(tierCounts.wired > 0 && tierCounts.undetermined > 0 && tierCounts.unwired > 0,
     'and all three tiers are actually represented in the table (a collapsed table would pass the line above vacuously)', tierCounts)
   ok(unmarkedRows.length === 0, 'every settings row states whether the key is WIRED (no silent promises)',
