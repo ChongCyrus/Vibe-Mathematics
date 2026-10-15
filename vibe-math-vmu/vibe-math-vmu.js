@@ -522,12 +522,31 @@ export function apply(ctx, config = {}) {
   // FIX AT THE ROOT: the adapter resolves intents from the KERNEL'S LIVE SETTINGS VIEW, so whatever
   // `kernel.applyPackSettings()` writes (pack manifests, runtime `vibe_vmu_set`) is visible to the NEXT install -
   // and the entry already re-installs after packs (see `await adapter.install()` below). No defaults.json workaround.
+  // ROUND 25 / task-138: the pack install task and its in-flight flag. Declared HERE, above the adapter, because
+  // the adapter's closure seams below (`packReport`, `mergeReport`) read them: an arrow that dereferences a `const`
+  // declared later in the same scope would throw a TDZ ReferenceError if it were ever called early, and "it happens
+  // to be called late today" is not a guarantee. `ready()` also waits on `packsInstall` (see the accessor list).
+  let packsInstall = null
+  let packsLoading = false
   const adapter = createHostAdapter(Object.assign({ ctx, kernel,
     // A caller may hand us a FAKE kernel (tests do): fall back to the deployment settings object when the real
     // `settingsView()` accessor is absent, so the live-resolution fix does not require a real kernel to exist.
     settings: typeof kernel.settingsView === 'function' ? kernel.settingsView() : settings,
     instance, scripts: Array.isArray(config.scripts) ? config.scripts : [],
     packLoader: packsDeclared ? () => packLoaderRef : null,
+    // ROUND 25 / task-138: THE RECEIPT CARRIES THE PACK REPORT. The comment further down (`packErrors` / the
+    // loading loop) has claimed since cfbd2c7 that "the status face now carries [the refusal] (see host.js)" while
+    // `host.js` had ZERO references to it - a declaration with no implementation, which is the class this project
+    // keeps catching. This is the missing half: `host.js` merges the returned object into the status receipt, so one
+    // read answers all four questions - WHAT WAS REQUESTED, FROM WHERE, WHAT ACTUALLY APPLIED, WHY ANYTHING DID NOT.
+    // Late-bound like `packLoader` above: only CALLED from the host face on a tool call, never during apply().
+    packReport: () => ({
+      requested: packRequested.map((p) => ({ id: p.id, via: p.via })),
+      applied: appliedPacks.map((a) => a.id),
+      errors: packErrors.map((e) => ({ id: e.id, code: e.code, message: e.message })),
+      loading: packsLoading,
+      ok: packErrors.length === 0,
+    }),
     // ROUND 1 / K1 (D-01): `config` is handed over so `host.js` resolves WHICH faces are declared from the one map
     // (`resolveFaces`) instead of from four booleans assembled here. Every face now has a declaration path:
     // `config.<face>`, `config.faces`, `vmu.tools.faces`, or a `vmu.<family>.*` settings key.
@@ -538,9 +557,20 @@ export function apply(ctx, config = {}) {
     packApplier: (manifest) => packLoaderRef.apply(manifest),
     // ROUND 1 / K5: the entry-side merge report, printed by `vibe_vmu_status` (the host face reads it, so the fact
     // travels to the model/operator instead of sitting in a seam nobody consumes).
+    // ROUND 25 / task-138 (core2's finding): this used to report `wantedPackIds` - the DEPLOYMENT list only - so a
+    // pack brought in by the settings switch (`vmu.packs.active`) left the receipt saying `packs: []` while its bus
+    // entries were live. That is Round 23's defect mirrored (there: settings said installed while the kernel
+    // refused; here: it really installed while the receipt said nothing). It now reports the EFFECTIVE request table
+    // with each entry's SOURCE, and the failure half in the SAME object, so "requested / from where / really
+    // applied / why not" are four facts in one read instead of two views the reader has to reconcile.
     mergeReport: () => ({
       priority: 'pack 默认 < preset Config／会话 settings < 运行时 set',
-      packs: wantedPackIds.slice(),
+      packs: packRequested.map((p) => p.id),
+      packSources: packRequested.map((p) => ({ id: p.id, via: p.via })),
+      applied: packErrors.length === 0,
+      appliedPacks: appliedPacks.map((a) => a.id),
+      errors: packErrors.map((e) => ({ id: e.id, code: e.code, message: e.message })),
+      loading: packsLoading,
       defaults: Object.keys(packDefaults).length,
       sources: Object.assign({}, settingsSources),
       conflicts: packMergeConflicts.map((c) => Object.assign({}, c)),
@@ -805,6 +835,11 @@ export function apply(ctx, config = {}) {
   const packErrors = []
   if (!switchedOff && packsWanted.length > 0) {
     effect(() => {
+      packsLoading = true
+      // ROUND 25 / task-138: the task is CAPTURED (not just started) so `ready()` can wait for it, and it is made
+      // non-rejecting on purpose: a caller awaiting `ready()` must not get a rejection because ONE pack refused -
+      // the refusal belongs in `packErrors` (a receipt), not in the readiness promise. `finally` guarantees the
+      // in-flight flag clears even on a throw, so `packsLoading` can never be stuck true.
       const run = (async () => {
         for (const wanted of packsWanted) {
           try {
@@ -934,7 +969,15 @@ export function apply(ctx, config = {}) {
           packErrors.push({ id: '(hooks)', code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) })
         }
       })()
-      void run
+      // ROUND 25 / task-138: `ready()` used to resolve WITHOUT waiting for this task, so a caller could read
+      // `packErrors` as empty simply because the loading had not settled - and a test written against that timing
+      // measures its own race (core2 hit exactly that: its C arm saw an empty `packErrors` on its first run). The
+      // promise is now both awaited by `ready()` and published as `packsLoading`, so a caller that does NOT await
+      // can still see the truth instead of sleeping.
+      packsInstall = run
+        .catch((e) => { packErrors.push({ id: '(packs)', code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) }) })
+        .finally(() => { packsLoading = false })
+      void packsInstall
       return () => {
         for (const a of appliedPacks.slice()) { try { packLoader.unload(a.id) } catch { /* going away */ } }
       }
@@ -1008,12 +1051,30 @@ export function apply(ctx, config = {}) {
     packLoader: () => packLoader,
     appliedPacks: () => appliedPacks.slice(),
     packErrors: () => packErrors.slice(),
+    // ROUND 25 / task-138: the same four facts the host receipt carries (`packReport`), readable by a caller that
+    // does NOT await `ready()` - plus the in-flight flag, so "empty because nothing refused" is distinguishable
+    // from "empty because nothing has run yet" without a sleep.
+    packsLoading: () => packsLoading,
+    packReport: () => ({
+      requested: packRequested.map((p) => ({ id: p.id, via: p.via })),
+      applied: appliedPacks.map((a) => a.id),
+      errors: packErrors.map((e) => ({ id: e.id, code: e.code, message: e.message })),
+      loading: packsLoading,
+      ok: packErrors.length === 0,
+    }),
     // ROUND 1 / K5 (D-02): the entry-side merge, in full - the priority ladder, the per-key layer, the named
     // conflicts and the overrides a deployment asked for. `vibe_vmu_status` reads the kernel's `settingsMerge`, which
     // carries the same two arrays; this accessor is for tests and for a host that wants the fact before kernel build.
     packMerge: () => ({
       priority: 'pack 默认 < preset Config／会话 settings < 运行时 set',
-      packs: wantedPackIds.slice(),
+      // ROUND 25 / task-138: the THIRD view of the same fact. It used to report `wantedPackIds` (deployment only)
+      // like `mergeReport` did - fixing one and leaving the other would have created a fresh pair of views that
+      // disagree, which is the defect being fixed. Both now report the effective request table and its sources.
+      packs: packRequested.map((p) => p.id),
+      packSources: packRequested.map((p) => ({ id: p.id, via: p.via })),
+      appliedPacks: appliedPacks.map((a) => a.id),
+      errors: packErrors.map((e) => ({ id: e.id, code: e.code, message: e.message })),
+      loading: packsLoading,
       defaults: Object.keys(packDefaults).length,
       sources: Object.assign({}, settingsSources),
       conflicts: packMergeConflicts.map((c) => Object.assign({}, c)),
@@ -1024,14 +1085,16 @@ export function apply(ctx, config = {}) {
     hooks,
     hooksResult: () => hooksResult,
     hooksError: () => hooksError,
-    /** Resolves once the tools are registered and the declared middleware is activated. */
-    ready: () => Promise.all([started, opened, Promise.resolve(adapter.status()), idsHydrated, resumed]).then(([, , st]) => st),
+    /** Resolves once the tools are registered, the declared middleware is activated AND THE PACK INSTALL HAS
+     *  SETTLED. ROUND 25 / task-138: the last clause is new - see the `packsInstall` capture in the loading block.
+     *  `packsInstall` is null when the pack path is switched off, and `Promise.all` accepts that (it resolves). */
+    ready: () => Promise.all([started, opened, Promise.resolve(adapter.status()), idsHydrated, resumed, packsInstall]).then(([, , st]) => st),
     started: () => started,
     storeOpened: () => opened,
     // ROUND 21 / task-129 (H2): whether the declared prompt text reached the host — and, when it did not, the
     // NAMED reason (this is what used to kill preset assembly instead of being readable).
     promptSection: () => Object.assign({}, promptSectionState),
-    status: () => Object.assign(adapter.status(), { installError, promptSection: Object.assign({}, promptSectionState), settingsUnparsed: settingsUnparsed.slice(), settingsConflicts: settingsConflicts.slice() }),
+    status: () => Object.assign(adapter.status(), { installError, promptSection: Object.assign({}, promptSectionState), settingsUnparsed: settingsUnparsed.slice(), settingsConflicts: settingsConflicts.slice(), packsLoading }),
     installError: () => installError,
     /** Round 6 B: what the entry could NOT turn into a setting, and what was declared in both shapes. */
     settingsUnparsed: () => settingsUnparsed.slice(),

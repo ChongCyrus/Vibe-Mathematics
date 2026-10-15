@@ -481,6 +481,7 @@
     "tests/vmu-pack.test.mjs",
     "tests/vmu-pack-inline-manifest.test.mjs",
     "tests/vmu-pack-plan-rule-validate.test.mjs",
+    "tests/vmu-packs-active-switch.test.mjs",
     "tests/vmu-stall-meeting.test.mjs",
     "tests/vmu-motion-box.test.mjs",
     "tests/vmu-metrics-counter.test.mjs",

@@ -433,7 +433,7 @@ B′ 判决：v5r 的文档层是**本仓质量最高、与数学无关度最高
 3. ★ **设置默认值**：**`packs/<id>/settings/defaults.json`** ✓（★ **插件在建内核前按纯数据读** ✓，**用户设置永远赢** ✓）；★ **"只放量"的原则不变** ✓ —— **流程进中间件** ✓；
 4. 写中间件（**优先 M1**；复杂逻辑才 M2；长流程才 M3）；
 5. 写提示词包（段模板 ＋ 绑定 ✓ —— ★ **可以纯数据** ✓：`packs/<id>/prompts/sections.json` ✓；**不要改状态块**）；
-6. **装载**：在 profile 行的 `config.packs: ['<id>']`（或内联 manifest）里声明 ⇒ 插件装载期 `plan → apply` ✓；★★ **`vibe_vmu_pack` 【已实现**]✓（`host.js` 注册 ✓，`action: list｜plan｜apply｜unload` ✓；★ **`plan` 是纯报告** ✓，★ **`apply` 冲突即具名拒** ✓）—— ★ **原文的"⛔ 未实现"是错的** ✗；库面是 `createPackLoader().plan/apply/unload` ✓）；
+6. **装载**（★ **两条路，能力不同**，R25 口径 —— 见本节末更正）：**① `config.packs`（profile 行）＝部署期声明** ✓ ⇒ 插件装载期 `plan → apply` ✓；**② 设置键 `vmu.packs.active: ['<id>']`＝真开关** ✓（★ **推荐日常调控** ✓：轮 24 起它真的装、轮 25 起**回执也如实报**）⇒ 与 ① 走**同一条装载路**。★★ **两条规则**：**同一个包被两处声明 ⇒ 只装一次，来源记为 `config.packs`**（部署期优先 ✓）；**设置只能【加】不能【减】** ✓（去掉一个包是部署决定，改 overlay）。★★ **前置键（两条路都要）**：**`config.root`（耐久根）必需** ✓ —— 没有它，pack 的 `apply()` **具名拒** `VMU_ENGINE_UNAVAILABLE this kernel has no library root`，**一条 `middleware`／`rules` 都进不了总线** ✗。★★★ **判据（R23／R25 两次教训）**：**"pack 真的装上了"不能只看 `settingsMerge`** ✗ —— 它含"按数据折入"的那一半（`packs/<id>/settings/defaults.json`，**与 `apply()` 成败无关**，★ **这一半有意保留** ✓）；要看 **`bus.entries`／`hooks` 里有该包的条目** ✓，以及回执的 **`packReport`**（`requested`／`applied`／`errors`／`loading`）＋ `settingsMerge.packSources`（**来源**）＋ `settingsMerge.applied`（**成败**）✓ ⇒ **"请求了什么／从哪来／真装上了什么／为什么没装上"四件事同一处可读** ✓。★ `vibe_vmu_pack` 工具 **已实现** ✓（`list｜plan｜apply｜unload`；★ `plan` 纯报告 ✓，★ `apply` 冲突即具名拒 ✓；**但它只吃【内联 manifest**]，**不接受随包 id** ✗ —— 原文的"⛔ 未实现"是错的 ✗）；库面是 `createPackLoader().plan/apply/unload` ✓）；
 7. 跑对照（若有历史参照）⇒ 写 README（机制、代价、取舍、已知差异）。
 
 ---

@@ -385,7 +385,7 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * `faces` option lets a caller hand in an already-resolved set (the adapter resolves once and passes it down, so
  * install() and plan() cannot disagree).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, config = {}, faces = null, mergeReport = null, ...faceFlags }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, config = {}, faces = null, mergeReport = null, packReport = null, ...faceFlags }) {
   // A refusal carries the four documented fields, plus - when the caller has them - host-side DIAGNOSTICS
   // (the host's own stack and the exact request shape we passed). They are added ONLY when present, so no
   // existing refusal changes shape. Without this the live M3 diagnosis died at the tool boundary: the seam
@@ -439,6 +439,22 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         // it: the entry refused/shadowed at merge time, and `tests/vmu-seam-params-consumed.test.mjs` forbids a kernel
         // seam that only `kernel/index.js` reads.
         if (typeof mergeReport === 'function') out.settingsMerge = mergeReport()
+        // ROUND 25 / task-138: THE OTHER HALF OF THE RECEIPT. `vibe-math-vmu.js` has said since cfbd2c7 that a
+        // pack refusal "lands in packErrors - which the status face now carries (see host.js)" - while `host.js`
+        // had no reference to it at all. This is that reference: what was REQUESTED, from WHERE, what really
+        // APPLIED, and WHY anything did not, all in one object.
+        // ★ IT IS NOT WRITTEN TO `out.packs`: `kernel.status()` already owns `packs` and documents it as "must
+        // reflect what is ACTUALLY applied - including packs applied through the pack loader" (ROUND 240). Writing
+        // this object there would silently redefine a documented kernel field. Two independent views is also
+        // STRONGER than one: `out.packs` is the kernel's own list and `out.packReport.applied` is the entry's, so a
+        // reader (or a test) can CROSS-CHECK them instead of trusting either.
+        // A reporting seam must not be able to break the status face: the call is wrapped and a failure is surfaced
+        // with an ALREADY REGISTERED code (no new public code is invented here).
+        if (typeof packReport === 'function') {
+          try { out.packReport = packReport() } catch (e) {
+            out.packReport = { requested: null, applied: null, errors: [{ id: '(packReport)', code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) }], loading: null, ok: false }
+          }
+        }
         return out
       } catch (e) {
         return refused('VMU_MIDDLEWARE_FAILED', 'status() failed: ' + String(e && e.message))
@@ -842,7 +858,7 @@ export function toHostSpec(spec) {
  * offers it - the host's own guidance requires that, and it is what unwinds them on subtree unload - and
  * fall back to keeping the returned disposers otherwise.
  */
-export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null, scripts = [], packLoader = null, config = {}, faces = null, mergeReport = null, ...faceFlags } = {}) {
+export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null, scripts = [], packLoader = null, config = {}, faces = null, mergeReport = null, packReport = null, ...faceFlags } = {}) {
   const disposers = []
   const registered = []
   const failures = []
@@ -866,7 +882,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   }))
   const enabledFaceSet = () => { const r = resolveFaceSet(); return r.enabled }
 
-  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance, scripts, packLoader, config, mergeReport, ...faceFlags, faces: (() => { const r = resolveFaceSet(); return r })() }))
+  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance, scripts, packLoader, config, mergeReport, packReport, ...faceFlags, faces: (() => { const r = resolveFaceSet(); return r })() }))
 
   const doInstall = async () => {
     if (!ctx || !ctx.tools || typeof ctx.tools.register !== 'function') {

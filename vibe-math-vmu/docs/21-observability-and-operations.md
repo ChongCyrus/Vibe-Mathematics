@@ -498,3 +498,17 @@ export const hooks = { 'tools/result': async (flat) => {     // ★ 用回合内
 
 ★ **判据（三件一起看才算成立）**：① 宿主 stdout 出现 `tool-results-met` 的 sink 行；② 会话日志里 **`report/tick` 调用数 ＝ 0**（否则就成了"被人要求才开火"）；③ 同一份 stdout 里 **`tool-results-unreached` 0 条**（否定侧也实测）。
 
+### 20.6 ★★ `hits` 是**快照**，不是"同一时刻的量"（R25 · 两人独立结案）
+
+**`hits` 与 `{{ metric:… }}` 是两个时刻、两份 artifact 的采样，可以合法不等**：
+- **`hits`** ＝ 中间件条目"**返回过 decision 的次数**"（`kernel/bus.js:474`：`const hits = new Map() // id -> times it returned a decision`）—— 它在**每次读 `status()` 的那一刻**被渲染，**读数本身不带时刻戳**；
+- **`{{ metric:… }}`** 在**投递时刻**取值：回合边界把 `kernel.metricValues()` 交给 `report.tick({ at, event:'turn-end', metrics })`（`vibe-math-vmu.js:656-657`）。
+★ **纪律「同刻同源」**：**两者可以合法不等 ⇒ 比较前必须先证明"同一时刻且同一 artifact"**；否则你比的是两个瞬间、两份渲染。
+
+**本轮实例**（会话 `session-6ca9fefd-4b10-4e3b-a795-32c70ff2a5ae`；★ 下列数字**我独立复算过**）：
+- `hits:2` 出现在**会话内第 3 次调用**（`vibe_vmu_status`，L29／seq27）的 `status()` 回执里 —— **那一刻恰好只完成了 2 次工具调用**；
+- 报告文本 `tool-results=5` 是**回合边界**渲染的（5 次工具调用**已全部完成**）⇒ **两个数不同不是缺陷**，是"同一个量在两个时刻的采样"。
+
+**复算（k=1..5，同刻）**：解码该会话 ＝ **22 个 zstd 帧 → 44 events**；**5 次 `tool/call` ↔ 5 条 `tool/result` 按序 1:1**；在第 k 条 `tool/result` 完成的那一刻，`hits` 恰为 **k**（k=1..5），而边界读到的是**总数 5** ⇒ **k=5 时两者相等**（`hits=5` ＝ 边界 `tool-results=5`）。
+★ **已被否证的假设**：**"一次 `tools/result` 事件带多条 result"** —— **不成立**：5:5 按序 1:1 已实测（若一次带多条，`tool/result` 的条数会**少于**调用数）。计数者 `packs/v5r/middleware/artifact-counter.js` 的政策行是 **`count: 1`** ⇒ **每个事件恰 1 次 `api.services.get('vmu.metrics').observe({ name, value: 1, kind:'read', source:'middleware' })`**（`:90-96`）⇒ **两个数在同一时刻、同一 artifact 上必然相等**。
+
