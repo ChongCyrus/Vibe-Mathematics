@@ -609,6 +609,21 @@ export function createLeanFace(opts) {
       removeText: !!(fsSeam && typeof fsSeam.removeText === 'function'),
       retention: ms.retention,
       recoverMode: c.recoverMode,
+      // ROUND 20 / task-122 ④ — THE RESUME DISCLOSURE (a DISCLOSURE, not an interpretation): this face had NO
+      // resume statement at all, so a caller could not tell whether a Lean job can continue where it stopped.
+      // It cannot, and the reason is named rather than implied: a Lean job here is ONE whole-file build
+      // invocation, with no in-run protocol or output stream, so there is no partial elaboration state for a
+      // checkpoint to hold — and the face's own recovery already treats a crashed build as something to re-issue
+      // from the start, never to continue (see the fingerprint branch: a changed file can never resume).
+      // The kernel's ruling (docs/15 §14.4, round 9) keeps `resumeFrom` a CARRIED opaque token and names the
+      // upgrade's precondition; until that precondition is met, this stays false BY NAME.
+      resume: {
+        supported: false,
+        reason: 'Lean cannot resume mid-run: this face invokes the engine as ONE whole-file build (no in-run protocol/stream), so there is no partial state a checkpoint could hold; a crashed Lean job is re-issued from the start, never continued',
+        engine: 'lean',
+        whatWouldHaveToExist: 'an engine-side output protocol + an in-run stream this face could read + a `checkpoint` field in the job mirror + segmented re-issue',
+        changeCondition: 'docs/15 §14.4: a real resumable engine exists AND a single job lasts >= the job budget. Only then is the upgrade "one demo per engine proving resume == one uninterrupted run" (~60-100 kernel lines) worth landing',
+      },
       // The state set is a FACT about this face and it reaches callers HERE (admission() is consumed by the
       // tool face / status readers). There is deliberately NO `jobsStates()` instance method: it had no caller,
       // and the module-level `LEAN_JOB_STATES` export is the one authority — the computation face exports its

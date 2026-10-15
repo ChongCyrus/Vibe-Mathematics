@@ -178,6 +178,7 @@ vibe-math-vmu/                     # 随包发布（package.json#files ✓）
 1. **模块规模上限与 import 白名单** ⇒ **已裁**：单文件建议 ≤1200 行（`kernel/index.js` 为大头、已拆出 `work.js` ✓）；跨模块**只经公开接口**（静态门：`audit-vmu-docs` 的服务面 ＋ 模块清单检查 ✓）。
 2. **总线封装深度** ⇒ **已裁 D13-O7**：只暴露 vmu 钩子名；"原生 DSH 事件透传"默认关闭、需显式开启 ✓。
 3. **pack 加载时机** ⇒ **已裁**：**boot 期**（`config.packs` ✓）＋ 运行期可对**内联 manifest** 做 `plan/apply/unload` ✓（`vibe_vmu_pack` 工具 ✓）。
+   ★ **轮 20 实测更正（本条的一半曾经不成立）**：① **`config.packs` 的内联 manifest 分支曾抛 `ERR_INVALID_ARG_TYPE`**（对象被当作路径段交给 `join`）⇒ 该半句**曾是假的**，**轮 20／task-125 已修**（`vibe-math-vmu.js` 的 inline 分支 ＋ `kernel/pack.js` 的 `kind` 默认）；② **工具的 `unload` 目前仍需要一个多余的 `manifest`**（`host.js` 的"缺 manifest 即拒"判断**排在** unload 分支之前）⇒ 本条里的 `unload ✓` **今天必须带上一个 manifest 才成立**，该缺陷**具名归 `vmu-verify2`**（`host.js` 不在 task-125 写范围）；③ 工具的 `manifest` 是 **JSON 文本** ⇒ **它载不动 M2 模块**（`hooks` 是函数，活不过 `JSON.stringify`；实测拒因为 `VMU_MIDDLEWARE_FAILED: hook tools/result must be a function`）⇒ **"部署侧 M2 生产者"只能走 `config.packs`**，这正是 ① 必须修的原因。判据：`tests/vmu-pack-inline-manifest.test.mjs`（35/0）。
 4. **提示词作用域模型** ⇒ **已裁 D13-O6**：固定优先级 `角色 < 阶段 < 成员 < 任务`，不做任意嵌套 ✓（`BINDING_PRIORITY` ✓）。
 
 ---

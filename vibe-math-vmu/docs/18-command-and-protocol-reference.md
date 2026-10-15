@@ -139,8 +139,10 @@
 - **反模式**：✗ 让脚本打印自由文本（会被具名拒：**必须结构化**）｜✗ 把脚本结果当提示词（**M3 结果永不自动进入提示词**）｜✗ 依赖 `cwd` 缺省（见 §6.4 宿主缺陷）。
 
 ### 2.6 `vibe_vmu_pack` ✓
-- **参数**：`action`（`list`(默认)`|plan|apply|unload`）｜`id`（unload 必填；也可给随包 id）｜`manifest`（**内联 manifest 的 JSON 文本**）。
+- **参数**：`action`（`list`(默认)`|plan|apply|unload`）｜`id`（unload 必填；**plan/apply 不接受 `id` 解析随包 id** ✗）｜`manifest`（**内联 manifest 的 JSON 文本**）。
+  ★ **轮 20 实测（两条曾与实现不符）**：① ~~**`unload` 也必须带一个 `manifest`**~~ ⇒ ★ **已在 R20／`task-127` 修复**（`host.js` 把 unload 分支移到"缺 manifest 即拒"的判断**之前**）：`{action:'unload', id}` 现在**无需** `manifest`，回 `ok:true`／`residueFree:true`；而 `{action:'plan'}`／`{action:'apply'}` 无 manifest **仍被具名拒**（上移的是分支，守卫没删）。② **`id` 只对 `unload` 生效**：`{action:'plan', id:'v5r'}` 实测被拒 `VMU_INVALID_ARGUMENT`；`host.js` 的说明已同步改成事实（随包 id 由 profile 行的 `config.packs` 装载，本工具不按 id 解析）。③ 另：`manifest` 是 **JSON 文本**，故**载不动 M2 模块**（`hooks` 是函数）—— 要部署侧 M2 生产者请用 `config.packs`（轮 20／`task-125` 已修）。
 - **返回**：`list` ⇒ 装载器状态｜`plan` ⇒ **纯**报告"将会改什么"｜`apply` ⇒ 应用结果（**冲突即具名拒**）｜`unload` ⇒ 逐个回滚结果。
+- ★ **`plan` 的覆盖边界（R20／`task-127` 裁决：具名 ＋ 改判条件）**：`plan` 覆盖 **manifest 结构 ＋ M1 规则（结构 ＋ 具名谓词）** —— `buildPlan` 调 `kernel.rules.validate(rule)`（轮 20／`task-128` 已落，`plan` 与 `apply` 连码都一致：`VMU_PACK_MISSING`）；**不覆盖 M2 模块体** —— `hook … must be a function` 这类**只在 `apply` 具名拒**（码 `VMU_MIDDLEWARE_FAILED`），`plan` 看不见（`plan(坏 module) ⇒ ok:true, problems:[]`，实测）。**改判条件**：若将来 `kernel/loader` 暴露出一个**不实例化的纯 `validateModule(manifest)`**（只做形状/函数性检查、**无副作用**），`plan` 才可以调它、**那时**才把这半提前；**当前不把 `loader` 拉进 `buildPlan`**（否则"预览"依赖"装载器"，且其校验若实例化/装载就打破"`plan` 无副作用"这条既有语义）。`kernel/pack.js:388` 的 hint 已按事实写作 "the manifest problems it can **SEE**"。
 - **错误码**：`VMU_INVALID_ARGUMENT`（未知 action／manifest 非 JSON／缺 manifest／缺 id）｜`VMU_PACK_CONFLICT`（冲突）｜`VMU_PACK_MISSING`（包缺失）｜`VMU_ENGINE_UNAVAILABLE`（无装载器）｜`VMU_PACK_KERNEL_OVERRIDE_REFUSED`（试图覆盖内核强制面）。
 - **幂等**：`list/plan` ✓；`apply` ✗（应收敛：重复 apply 同 manifest 应被冲突/去重机制挡住，**不要**靠它做重试）。
 - **可照抄**：`{"action":"plan","manifest":"{\"id\":\"demo\",\"entries\":[]}"}`

@@ -29,6 +29,14 @@ import { V5R_STALL_MEETING } from '../middleware/stall-meeting.js'
 // two different objects, and subscribing to the wrong one yields boxes that can never match. Module shape for the
 // same reason as above (only the loader attaches `api`, and only the kernel's own loader carries the service catalog).
 import { V5R_MOTION_BOX } from '../middleware/motion-box.js'
+// ROUND 20 (task-126): **the counter the threshold report was missing**. R20's real DSH session proved the boundary
+// fires `event` reports unattended while every `threshold` stayed silent — because NOTHING in the shipped deployment
+// ever observed a metric (`metricValues()` was `{}`). `vmu.middleware.entries` cannot fix that (the bus does not load
+// files, so such an entry never gets `api`); only a pack module does. Module shape for the third time, for the third
+// time the same reason: only the loader attaches the capability-gated `api.services.get(name)` seam.
+// ★ It is INTRA-turn (`tools/result`, plus the two `…/job-settled` events) on purpose: the report boundary listens on
+// `agent/turn-stopping` too, and an observation written at the reader's own instant may only be visible NEXT turn.
+import { V5R_ARTIFACT_COUNTER } from '../middleware/artifact-counter.js'
 
 /**
  * ROUND 336 — THE BRIDGE FROM TEXT TO PIPELINE. Until now the v5r prompt corpus was carried as DATA: hash-locked,
@@ -233,6 +241,20 @@ export const PACK = Object.freeze({
       failure: 'open',
       capabilities: ['trigger-workflow', 'record'],
       module: V5R_MOTION_BOX,
+    },
+    // ROUND 20 (task-126): the METRIC COUNTER. Same shape, same capabilities; it observes on the INTRA-turn hooks
+    // (`tools/result` = "a tool result exists, observation" per the host's own guidance; the two job-settled events)
+    // and writes through `api.services.get('vmu.metrics')`. Which indicators exist and when they are observed stays
+    // the deployment's + this pack's business (`vmu.metrics.indicators`): an undeclared name is a NAMED skip the
+    // module COUNTS, never a silent no-op and never a throw that breaks the work (the entry is failure:'open').
+    {
+      id: 'v5r.artifact-counter',
+      kind: 'module',
+      order: 320,
+      on: ['tools/result', 'math/job-settled', 'lean/job-settled'],
+      failure: 'open',
+      capabilities: ['trigger-workflow', 'record'],
+      module: V5R_ARTIFACT_COUNTER,
     },
   ],
 

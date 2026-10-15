@@ -996,6 +996,7 @@
 | `VMU_REGISTRATION_MISSING` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_RESOURCE_EXCEEDED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_RESUME_FROM` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 15 | ⛔ |
+| `VMU_RESUME_SEGMENT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 15 | ⛔ |
 | `VMU_RETENTION_CONFLICT` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 02 | ⛔ |
 | `VMU_REVIEWER_OVERLOADED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 02 | ⛔ |
 | `VMU_REVIEW_DUE` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
@@ -1153,7 +1154,7 @@
 | `VMU_DISCIPLINE_POSTMORTEM_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/discipline.js` | 代码里有该码字符串 ✓ |
 | `VMU_DISCIPLINE_RESTORE_NEEDS_HUMAN` | **已实现 ✓** | `vibe-math-vmu/kernel/discipline.js` | 代码里有该码字符串 ✓ |
 | `VMU_DISCIPLINE_SUSPEND_OVER_CAP` | **已实现 ✓** | `vibe-math-vmu/kernel/discipline.js` | 代码里有该码字符串 ✓ |
-| `VMU_ENGINE_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/host-hooks.js`、`vibe-math-vmu/host-math.js`、`vibe-math-vmu/host-spawn.js`、`vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/loader.js`、`vibe-math-vmu/kernel/mailbox.js`、`vibe-math-vmu/kernel/math.js`、`vibe-math-vmu/kernel/mathtools.js`、`vibe-math-vmu/kernel/meeting.js`、`vibe-math-vmu/kernel/meetingmarker.js`、`vibe-math-vmu/kernel/meetings.js`、`vibe-math-vmu/kernel/members.js`、`vibe-math-vmu/kernel/minutes.js`、`vibe-math-vmu/kernel/pack.js`、`vibe-math-vmu/kernel/paper.js`、`vibe-math-vmu/kernel/prompt/index.js`、`vibe-math-vmu/kernel/resource.js`、`vibe-math-vmu/kernel/script-bridge.js`、`vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/kernel/work.js`、`vibe-math-vmu/settings/schema.js`、`vibe-math-vmu/tools/activity.js`、`vibe-math-vmu/tools/chat.js`、`vibe-math-vmu/tools/control.js`、`vibe-math-vmu/tools/fidelity.js`、`vibe-math-vmu/tools/human.js`、`vibe-math-vmu/tools/mailbox.js`、`vibe-math-vmu/tools/mathadapters.js`、`vibe-math-vmu/tools/mathjobs.js`、`vibe-math-vmu/tools/meeting.js`、`vibe-math-vmu/tools/panel.js`、`vibe-math-vmu/tools/report.js`、`vibe-math-vmu/tools/turn.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
+| `VMU_ENGINE_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/host-hooks.js`、`vibe-math-vmu/host-math.js`、`vibe-math-vmu/host-spawn.js`、`vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/loader.js`、`vibe-math-vmu/kernel/mailbox.js`、`vibe-math-vmu/kernel/math.js`、`vibe-math-vmu/kernel/mathtools.js`、`vibe-math-vmu/kernel/meeting.js`、`vibe-math-vmu/kernel/meetingmarker.js`、`vibe-math-vmu/kernel/meetings.js`、`vibe-math-vmu/kernel/members.js`、`vibe-math-vmu/kernel/minutes.js`、`vibe-math-vmu/kernel/pack.js`、`vibe-math-vmu/kernel/paper.js`、`vibe-math-vmu/kernel/prompt/index.js`、`vibe-math-vmu/kernel/resource.js`、`vibe-math-vmu/kernel/script-bridge.js`、`vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/kernel/work.js`、`vibe-math-vmu/packs/v5r/middleware/artifact-counter.js`、`vibe-math-vmu/settings/schema.js`、`vibe-math-vmu/tools/activity.js`、`vibe-math-vmu/tools/chat.js`、`vibe-math-vmu/tools/control.js`、`vibe-math-vmu/tools/fidelity.js`、`vibe-math-vmu/tools/human.js`、`vibe-math-vmu/tools/mailbox.js`、`vibe-math-vmu/tools/mathadapters.js`、`vibe-math-vmu/tools/mathjobs.js`、`vibe-math-vmu/tools/meeting.js`、`vibe-math-vmu/tools/panel.js`、`vibe-math-vmu/tools/report.js`、`vibe-math-vmu/tools/turn.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
 | `VMU_EXIT_FLUSH_FAILED` | **已实现 ✓** | `vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_EXIT_FLUSH_INCOMPLETE` | **已实现 ✓** | `vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_EXIT_FLUSH_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
@@ -1284,7 +1285,7 @@
 | `VMU_MEMORY_NOT_AUTHORITY` | **已实现 ✓** | `vibe-math-vmu/kernel/memory.js` | 代码里有该码字符串 ✓ |
 | `VMU_META_VALIDATION_FAILED` | **已实现 ✓** | `vibe-math-vmu/extensions/domain-compliance/index.js`、`vibe-math-vmu/kernel/course.js`、`vibe-math-vmu/kernel/funding.js`、`vibe-math-vmu/kernel/ip.js`、`vibe-math-vmu/kernel/lifecycle.js`、`vibe-math-vmu/kernel/resource.js`、`vibe-math-vmu/kernel/stateversion.js`、`vibe-math-vmu/kernel/storepolicy.js` | 代码里有该码字符串 ✓ |
 | `VMU_METRICS_TRIGGER_FORBIDDEN` | **已实现 ✓** | `vibe-math-vmu/kernel/metrics.js` | 代码里有该码字符串 ✓ |
-| `VMU_METRIC_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/metrics.js` | 代码里有该码字符串 ✓ |
+| `VMU_METRIC_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/metrics.js`、`vibe-math-vmu/packs/v5r/middleware/artifact-counter.js` | 代码里有该码字符串 ✓ |
 | `VMU_MIDDLEWARE_FAILED` | **已实现 ✓** | `vibe-math-vmu/host-spawn.js`、`vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/activity.js`、`vibe-math-vmu/kernel/alerts.js`、`vibe-math-vmu/kernel/ballot.js`、`vibe-math-vmu/kernel/bus.js`、`vibe-math-vmu/kernel/library.js`、`vibe-math-vmu/kernel/loader.js`、`vibe-math-vmu/kernel/meeting.js`、`vibe-math-vmu/kernel/members.js`、`vibe-math-vmu/kernel/pack.js`、`vibe-math-vmu/kernel/prompt/index.js`、`vibe-math-vmu/kernel/registry.js`、`vibe-math-vmu/kernel/rules.js`、`vibe-math-vmu/kernel/script-bridge.js`、`vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
 | `VMU_MIDDLEWARE_KIND_UNSUPPORTED` | **已实现 ✓** | `vibe-math-vmu/kernel/bus.js` | 代码里有该码字符串 ✓ |
 | `VMU_MIDDLEWARE_REJECTED` | **已实现 ✓** | `vibe-math-vmu/kernel/alerts.js`、`vibe-math-vmu/kernel/bus.js` | 代码里有该码字符串 ✓ |
@@ -1322,7 +1323,7 @@
 | `VMU_PACK_CONFLICT` | **已实现 ✓** | `vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/pack.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_INSTITUTE_MIN_FROZEN_ROUND` | **已实现 ✓** | `vibe-math-vmu/packs/institute-min/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_INSTITUTE_MIN_NOT_LOCKED` | **已实现 ✓** | `vibe-math-vmu/packs/institute-min/index.js` | 代码里有该码字符串 ✓ |
-| `VMU_PACK_INVALID` | **已实现 ✓** | `vibe-math-vmu/kernel/pack.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_INVALID` | **已实现 ✓** | `vibe-math-vmu/kernel/pack.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_KERNEL_OVERRIDE_REFUSED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_PACK_LOADER_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_MISSING` | **已实现 ✓** | `vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/pack.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |

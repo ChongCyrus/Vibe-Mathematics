@@ -674,7 +674,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
       description: 'vmu 整合包：action=list|plan|apply|unload。plan 只读（报告会改什么），apply 冲突即具名拒，unload 逐个回滚。',
       parameters: {
         action: param('string', 'list（默认）｜plan｜apply｜unload', { required: true, enum: ['list', 'plan', 'apply', 'unload'] }),
-        id: param('string', 'unload 必填；也可给随包整合包 id（plan/apply 时按 ./packs/<id>.js 解析）'),
+        id: param('string', 'unload 必填（unload 不需要 manifest）；plan/apply 用 manifest（内联 JSON 文本）——随包整合包（./packs/<id>/index.js）由 profile 行的 config.packs 装载，本工具不按 id 解析'),
         manifest: param('string', 'plan/apply：内联 manifest 的 JSON 文本'),
       },
       run: async ({ action = 'list', id, manifest } = {}) => {
@@ -682,6 +682,16 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           const loader = packLoader()
           if (!loader) return refused('VMU_ENGINE_UNAVAILABLE', 'no pack loader in this assembly')
           if (action === 'list') return Object.assign({ ok: true, action }, loader.status())
+          // ROUND 20b / task-127 ① — UNLOAD IS DECIDED FIRST. It needs an `id` and never a `manifest`: the loader
+          // already unloads by id alone. The "no manifest ⇒ refuse" guard used to sit ABOVE this branch, so
+          // `{action:'unload', id}` was refused for lacking a manifest it never uses (measured: a redundant
+          // requirement, and a refusal whose message named plan/apply). The guard itself is right — plan/apply DO
+          // need an inline manifest — so only the ORDER changes: one decision point, evaluated before its
+          // precondition applies. A bad id still surfaces as the loader's own named refusal through the catch below.
+          if (action === 'unload') {
+            if (!id) return refused('VMU_INVALID_ARGUMENT', 'unload needs id')
+            return Object.assign({ ok: true, action }, await loader.unload(id))
+          }
           const parsed = (() => {
             if (typeof manifest === 'string' && manifest.trim().length > 0) {
               try { return JSON.parse(manifest) } catch { return refused('VMU_INVALID_ARGUMENT', 'manifest must be valid JSON') }
@@ -696,10 +706,6 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           }
           if (action === 'plan') return Object.assign({ ok: true, action }, loader.plan(resolved))
           if (action === 'apply') return Object.assign({ ok: true, action }, await loader.apply(resolved))
-          if (action === 'unload') {
-            if (!id) return refused('VMU_INVALID_ARGUMENT', 'unload needs id')
-            return Object.assign({ ok: true, action }, await loader.unload(id))
-          }
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_PACK_MISSING', String(e.message), e.hint)

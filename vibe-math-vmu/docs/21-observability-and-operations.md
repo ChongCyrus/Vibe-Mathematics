@@ -376,7 +376,7 @@
 |---|---|---|---|
 | N1 | **6 个无生产者钩子**（`turn/reply-parsed`、`record/append-before`、`record/appended`、`budget/exceeded`、`pack/loading`、`pack/loaded`） | 已核实（本卷 §6.4） | 相关介入是纸面能力；需接线或公开计数 |
 | N2 | `05`/`18` 中 **`prompt/section-assembled` "无生产者"** 的记述 | **已过期**（现已接线 ✓） | 文档漂移；需回改（非本卷写入面） |
-| N3 | 指标聚合（吞吐/失败率/拒绝率） | 无独立面 | §4.1 的 ⚠ 项；计划 `vibe_vmu_metrics`（**未实现**） |
+| N3 | 指标聚合（吞吐/失败率/拒绝率） | 无独立面 | §4.1 的 ⚠ 项；计划 `vibe_vmu_metrics`（**未实现**）。★ **R20 补**：**服务面**（`vmu.metrics`）已在 R19 进**能力门控的服务目录**（可被 M2 模块 `observe()`）且聚合快照已接到**回合边界**（§20），但**没有工具面**且**出货 pack 里没有计数者** ⇒ "指标聚合"仍**未建立**，收口条件见 **§20.4** ✗✓ |
 | N4 | 宿主钩子桥状态未暴露为工具 | 仅代码侧 `status()` | 运维者看不到 `attached/planned/refusedUnsupported` |
 | N5 | 审计/指标保留策略与导出 | 无声明面 | §2.3/§2.5 需 `vmu.retention.*`＋导出工具（**未实现**） |
 | N6 | SLO/错误预算 | 无面 | §13 全是计划项 |
@@ -397,3 +397,104 @@
 5. **采样边界**：除"变更/拒绝/结算"三类，是否还有**永不采样**的类别？
 6. **多实例联合查询**：是否允许跨工作区只读聚合（本卷倾向"允许只读、禁止跨区写"）。
 7. **`health` 的工具化**：是否把 §5.1 自检清单直接做成 `vibe_vmu_health`（**未实现**）。
+
+---
+
+## 20. 回合边界的指标交递（**R20 新增／R21 追测**：`threshold` 报告何时能自主开火 —— 交递已通，**装载出货 pack 的路线没通**）
+
+> 为什么在本卷：这是"**指标 → 判据 → 动作**"这条链上**唯一**由**回合边界**推进的一段（`§4` 指标面 ＋ `§15` 可解释性）。它同时收了 R18–R21 的实测：**没有观测 ⇒ 没有键 ⇒ 不开火**（诚实否定，不是缺陷），以及 R21 追到的更深一层：**观测者存在，但它所在的出货 pack 在这些真会话里装载不上**（§20.4）。
+
+### 20.1 机制（三个落点，逐条可核）
+
+1. **`kernel.metricValues({window,agg})`**（`kernel/index.js:715`）：**只读** `vmu.metrics` 面的快照，把指标拍平成 `{名 → 一个数}`。
+   - ★ **无观测者**：该指标**根本不进 map** —— 快照里 `count === 0` 的行被**刻意丢掉**（源码注释逐字：*"NO OBSERVATION ⇒ NO KEY … deliberately dropped here"*）⇒ **绝不伪造 `0`**。
+   - `agg` 取该指标已观测**值**的聚合：`sum`（**默认**，因为"每事件记 `value:1`"读出来就是"发生了几次"）／`count`／`avg`／`last`／`max`／`min`。
+2. **`agent/turn-stopping` 桥**（`vibe-math-vmu.js:656-657`）：回合边界把上一步的结果**交给**报告面 ——
+   `kernel.report.tick({ at: Date.now(), event: 'turn-end', metrics: kernel.metricValues() })`。
+   ★ 监听器**只在报告面已发布时**才挂（`:642`，零机制红线：无声明 ⇒ 不装监听器）。
+   ⇒ **`threshold` 报告从此与 `event`／`period` 一样，可以在回合边界自主开火**（这是 R18 之前做不到的：那时代码传的是 `tick({at, event:'turn-end'})`，**没有 `metrics`**）。
+3. **`thresholdMet()` 未放宽**（`kernel/report.js`）：`if (!metrics || typeof metrics !== 'object') return false` **原样保留** —— **"没有数据"绝不允许变成"开火"**（那是**假警报**）。修的是**交递**，不是**判据**。
+
+### 20.2 "自动汇报"必须分两层说（判据纪律）
+
+| 层 | 命题 | 判据 |
+|---|---|---|
+| **① 触发器** | "**报告会开火并真的送达**" | 回执 `fired[]` 非空 ＋ `delivered:1/failures:0` ＋ **宿主 stdout** 的 sink 行（第三方） |
+| **② 自主性** | "**无人要求也会自己开火**" | 剧本**不点 `report/tick`**、会话日志里 **`report/tick` 调用数＝0**，而 sink 行出现 |
+| **③ 触发器类型** | **哪些**能自主开火 | `event`（`turn-end`）✅／`period`（回合边界到点）✅／**`threshold` 仅当"边界能拿到非空 `metrics`"** ⛔今天拿不到（§20.3） |
+
+★ **不许把任一层写成另一层**：①成立**不等于**②成立；②成立**也不等于**③里每一类都成立。
+
+### 20.3 ★ 实测：真 DSH 会话里 `event` 自主开火、**两个 `threshold` 全程沉默**（R20 本次运行）
+
+**配方**＝R18 那套（隔离 home `D:\_tmp\r18-home`（**仓库外，实测用**）／workspace `D:\_tmp\r18-ws`／provider 层 `commandcode`／**一份 overlay 只打 overlay 行**）；**overlay 声明三份报告**：`turn-end-duty`（`kind:'event', event:'turn-end'`，**阳性对照**）＋ `artifacts-met`（`kind:'threshold', metric:'artifacts', op:'gte', value:5`，**被测项**）＋ `artifacts-unreached`（同 `op/metric`，`value:50`，**否定对照**）；并声明 `vmu.metrics.indicators: ['artifacts']`（**部署侧那一半已就位**）。**剧本里没有 `report/tick`**。
+
+| 项 | 读数 |
+|---|---|
+| 会话 | `session-f423c35d-d016-4244-b1c8-de7df83a931b`，**2026-10-15 16:07:33**，39 events，`durationSec:49`，tokens in 46178／out 3581／cacheRead 126464（cap 400k **未触**），`turn/end reason:"completed"`，**退出码 0** |
+| 调用 | 4 个 `tool/call`：`vibe_vmu_report{action:"status"}`(seq16)／`vibe_vmu_set`(seq21)／`vibe_vmu_status`(seq26)／`pwsh`(seq31)；★ **`report/tick` 调用数 ＝ 0**（逐条解析会话日志） |
+| **宿主 stdout（第三方）** | **恰一条** sink：`[vmu-report-sink] {"name":"turn-end-duty", …, "text":"【所办汇报】turn-end-duty 在 turn-end 自动开火","drives":false}` |
+| **否定侧（同一份 stdout）** | `artifacts-met` 的 sink 行 **0 条**；`artifacts-unreached` 的 sink 行 **0 条** |
+
+⇒ **结论（精确）**：**回合边界确实自主推进了报告面**（`turn-end-duty` 在无人调用 `tick` 的情况下开火并送达）；但**两个阈值报告都沉默**，因为**这次会话没有任何 `vmu.metrics` 观测** ⇒ `metricValues()` ＝ `{}` ⇒ `thresholdMet()` 如实返回 `false`（**这正是它该有的行为**，不是缺陷）。
+
+### 20.4 ★★ R21 追测：**计数者已落地，但"装载出货 pack 的路线"不通** —— 收口条件随之改写
+
+**R20 的"计数者缺席"只对了半天，R21 把它追到了更底一层**（时间线：R20 16:07:33 → R21 16:28:11 → R21b 16:31:34 → R21c 16:33:21；★ R21 之前的三条读数在 §20.3 的表里，R21 系列见下）。
+
+**(a) 计数者现在存在，且它的 in-process 断言是绿的**：`vmu-comms2`（task-126）在 **`packs/v5r/middleware/artifact-counter.js`** 落了 M2 模块（policy：`tools/result` → **`tool-results`** 每次完成的工具调用 +1；`math/job-settled`／`lean/job-settled` → **`settled-jobs`** +1），并在 `packs/v5r/prompts/v5r-core.js` 落了清单条目 **`v5r.artifact-counter`**（`kind:'module'` 显式、`capabilities:['trigger-workflow','record']`）。**我自己复跑**：`node tests/vmu-metrics-counter.test.mjs` ⇒ **26 passed / 0 failed，exit=0**；`vmu-middleware-hooks-declared` **8/0**；`audit-pack-face` **5/0**。
+
+**(b) 钩子桥也没问题**：`tools/result` **在** `BRIDGED_HOOKS` 里（实测 `kernel/bus.js` 的导出：`["tools/pre-execute","tools/post-execute","tools/execute","tools/result","prompt/assemble","agent/pre-step","agent/turn-stopping",…]`）⇒ 模块若装载，回合内真能收到该事件。模块**故意不挂 `agent/turn-stopping`**（与报告边界同刻会让单回合剧本被误判）。
+
+**(c) ⇒ 缺的其实是"装载出货 pack 的路线"。三条路线我都实测过，没有一条通**：
+
+| # | 路线 | 本次运行 | 结果 |
+|---|---|---|---|
+| 1 | **设置键** `vmu.packs.active: ['v5r']`（**R20／R21 用的、也是 `docs/29 §3`／`docs/22 §19` 配方里写的那一条**） | R21 **16:28:11**，`session-da4942a1-…`，exit=0 | **它不装载 pack**：`vibe-math-vmu.js:451` 的装载开关是 **`config.packs`**；设置键只喂 `packsDeclared`（`:516`）与状态/冲突文案（`:200`）。读数：该会话 `declared:3`（三份报告确实到达）而**两个阈值都沉默（sink 0 条）**，且 `settingsMerge.sources` 里**没有** `vmu.packs.active` 之外的 pack 证据 |
+| 2 | **配置键** `config.packs: ['v5r']`（打在**预设内那行插件**上，与 `vmu:` 同级） | R21b **16:31:34**，**exit=1** | ★ **会打断预设组装**：`session/create` 被拒 `agent-preset/invalid: vibe-math-vmu (dsh-vibe-math/vibe-math-vmu/vibe-math-vmu.js): cannot get property "systemPrompt" without inject`（＝`tests/vmu-assistant-host-slice.test.mjs` 头部记载过的同一形态） |
+| 3 | **运行时工具** `vibe_vmu_pack {action:'apply', id:'v5r'}`（该工具**已发布**：78 工具里有它） | R21c **16:33:21**，`session-d2f0e7d5-…`，exit=0 | **按设计拒绝出货 pack**：回执 **`{"ok":false,"code":"VMU_INVALID_ARGUMENT","message":"plan/apply need an inline manifest (manifest: \"<json>\")","hint":"a pack SHIPPED as ./packs/<id>.js is loaded by the profile row via config.packs; this tool inspects and loads inline manifests"}`** ⇒ 它只吃**内联 manifest** |
+
+**(d) 旁证：在这些真会话里 pack 从未被装载过** —— 每一次的 `vibe_vmu_status` 回执都是 `settingsMerge.packs: []`，而 `settingsMerge.sources` 里**没有一个键带 `source:"pack"`**（只有 `config`／`default`）。这与 (c) 的三条读数互相印证。
+
+**(c′) ★ 还有第四条路线：`config.modules`（本轮**未测**，不许当成可用）**：装载者（`vmu-comms2`，task-126）在读码时指出，`vibe-math-vmu.js:876` 的 `config.modules` 与 `:732` 的 `config.packs` **读的是同一个顶层 `config` 对象** ⇒ 它**很可能同样不可达**（预设会话里那两处都取不到手改的顶层配置）。**本轮我没有测它**（写范围与预算都只够三条路线）⇒ 如实登记为**未测**：既**不写成可用**，也**不写成不可用**；它值得与 (c) 的 ② 一起在第三次真机（`task-129` 落地后）里顺带判定。★ 另一条**口径矛盾**（转办，非本卷）：`docs/10:514` 的"② 运行期装载 ⇒ `vibe_vmu_pack`"**只对内联 manifest 成立**（与 `host.js:704-705` 的守卫不一致）⇒ 需 `docs/10` 属主收口。
+
+**(e) ★ 推论必须分两层（`vmu-verify2` 独立复核，我采纳）** —— 否则会误伤同一批既有证据：
+- **(i) 真装配（进程内）＝有效**：探针**直接传** `config.packs`（`entry.apply(ctx, {packs:['v5r']})`）时，pack 是**真装载**的。`vmu-verify2` 用**它自己写的**独立探针（不依赖计数者作者的套件）实测：总线上出现 **3 条 `v5r.artifact-counter::*` 条目**、`tools/result` 真桥接、发 3 次宿主 `tools/result` ⇒ **`metricValues() === {"tool-results":3}`**；`packs: []` 时条目 0、`metricValues() === {}` ⇒ ★ **`vmu-comms2` 的计数器证据、`vmu-core2` 的边界证据都属这一层，成立**。
+- **(ii) 真 DSH 会话 ＝未装载**：两条能设 `config.packs` 的路线都堵（(c) 的 ②③）⇒ **只有"把它当已装载"的推断作废**。
+- ⇒ **（d）那段不要读成"凡 pack 生效一律作废"**：`declared/armed`／`published faces` 这些读数来自 **`config`／`default` 层、与 pack 无关** ⇒ **它们不受影响**（(e) 这一层是 `vmu-verify2` 提出、我采纳并记录）。
+
+**⇒ 收口条件（改写版，唯一）**：**先有一条"在预设会话里装载出货 pack"的可用路线** —— 二选一：① 修路线 2（`config.packs` 在预设作用域下装配时的 `systemPrompt`/inject 失败）；② 让路线 3 接受 `id`（或**证实**"profile 行"这一装载点真的可用，`docs/10:436` 说的就是它）。**路线通了之后**，才轮到我 R21 想证的那件事：`vmu.metrics.indicators` 声明 `['tool-results','settled-jobs']` ＋ `threshold metric:'tool-results' op:'gte' value:1` ⇒ 回合边界自主开火、`value:1000` 保持沉默。**本轮这三条路线都不通，且 `packs/**` 不在本任务写范围** ⇒ 我**只记录、不改模块、不越线**，**不写成"阈值自主开火已证"** ✗✓。
+
+★ **对既有文档的影响（具名转办，不在本轮写范围）**：`docs/29 §3`（`:261`／`:282`）与 `docs/22 §19`（`:1145`）的 overlay 配方里写着 `packs: { active: ['v5r'] }`，而**装载**开关是 `config.packs`（`docs/10-packs.md:436` 写的是对的）⇒ 这两处的配方**关于"装载 pack"这一点是误导的**（它们对"报告声明＋transport"仍然正确）。**我未改那两卷**（本轮写范围只有 `docs/21`／`docs/05`），已具名报 Lead，建议由该两卷属主按上面 (c) 的三条读数改写。
+
+### 20.5 可复制配方（**R21 校正版：指标名换成出货计数者真用的那两个；并先满足 §20.4 的装载条件**）
+
+> ★ **先决条件**：必须先有一条**能装载出货 pack**的路线（§20.4(c) 三条里目前没有一条通）。**下面 ① 的声明与 ② 的计数者本体都已就位**（`packs/v5r/middleware/artifact-counter.js`，in-process 26/0），缺的只是"让它进到真会话里"。
+
+```yaml
+# overlay 行（只打 overlay 行；preset 行永远不要打）
+vmu:
+  metrics: { indicators: ['tool-results', 'settled-jobs'] }   # ① 指标白名单（空＝零机制：可记但不聚合）
+  report:
+    enabled: true
+    reports:
+      - name: 'tool-results-met'
+        trigger: { kind: 'threshold', metric: 'tool-results', op: 'gte', value: 1 }   # 阳性：任何发生过工具调用的回合都必然达到
+        channel: 'log'
+        template: '【阈值·已达】tool-results={{ metric:tool-results }} ≥ 1'
+      - name: 'tool-results-unreached'
+        trigger: { kind: 'threshold', metric: 'tool-results', op: 'gte', value: 1000 } # 阴性：高位，正常回合必然沉默
+        channel: 'log'
+        template: '【阈值·未达线】tool-results={{ metric:tool-results }} ≥ 1000'
+```
+```js
+// ② 计数者（M2 模块，经 pack 的 module:/file: 交给 loader 才会拿到 api）—— 出货版已落，形状如下
+export const meta = { apiVersion: 1, id: 'my-counter' }
+export const capabilities = ['trigger-workflow', 'record']   // 服务目录由 trigger-workflow 解锁
+export const hooks = { 'tools/result': async (flat) => {     // ★ 用回合内钩子，别用 agent/turn-stopping
+  flat.api.services.get('vmu.metrics').observe({ name: 'tool-results', value: 1, by: 'my-counter', kind: 'read' })
+} }
+```
+
+★ **判据（三件一起看才算成立）**：① 宿主 stdout 出现 `tool-results-met` 的 sink 行；② 会话日志里 **`report/tick` 调用数 ＝ 0**（否则就成了"被人要求才开火"）；③ 同一份 stdout 里 **`tool-results-unreached` 0 条**（否定侧也实测）。
+

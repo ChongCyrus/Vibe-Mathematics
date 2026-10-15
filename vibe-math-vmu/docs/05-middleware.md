@@ -590,3 +590,10 @@
 > ★★ 合计 **12** 项 ✓。★★ **另两处【刻意不生成**]的**（★ 附理由 ✓）：★ **`docs/06 §4` 的"谁能占"列** ✓ —— ★ **代码只有数值区间，没有那一列** ✓；★ **`docs/03 §3.1` 的工具出现条件** ✓ —— ★ **十个里只有三个可从 `host.js` 机器提取** ✓。
 
 <!-- END GENERATED: capability-list -->
+
+---
+
+> ★ **R20 补：中间件也能"计数"（指标）—— 但计数者只能是 pack** ✓
+> **怎么做**：M2 模块（**形状②**，经 `kernel/loader.js` 才拿到 `api`）可以 `api.services.get('vmu.metrics')`，再调 `observe({ name, value, by, kind })` 记一次观测（`kind ∈ {read, change, refusal, settlement, decision, mutation}`；**变更/拒绝/结算永不采样**）。服务目录由 **`trigger-workflow`** 解锁（未声明 ⇒ 具名拒 `VMU_NOT_PERMITTED`，`kernel/loader.js:131`）。
+> ★ **两条"不静默"**（`kernel/metrics.js:202-220`，逐字行为）：① **白名单已配置**（`vmu.metrics.indicators` 非空）而名字不在表 ⇒ **具名拒** `UNAVAILABLE_CODE`：`indicator not in vmu.metrics.indicators: <名>`（hint 列已声明清单）；② **白名单为空＝零机制** ⇒ **不记录，但这次跳过被计数**（`skips.unconfigured`）—— **绝不静默**。
+> ★ **为什么"只能是 pack"**：`vmu.middleware.entries` 虽是设置键（内核确实读它），但非 `rules` 条目走的是 `bus.add(entry)`，而总线**不加载文件**（`kernel/bus.js:446`：*"the bus does not load files: load a module file with `kernel/loader.js`, which attaches the api"*）⇒ **给模块附加 `api` 的唯一入口是 pack 的 `module:`／`file:` 形状**。★ 意义：回合边界会把 `kernel.metricValues()` 交给 `report.tick({metrics})`，于是 **`threshold` 报告可自主开火** —— 机制、实测与收口条件见 **`21-§20`** ✓。

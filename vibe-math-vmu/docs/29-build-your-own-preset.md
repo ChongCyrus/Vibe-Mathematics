@@ -258,7 +258,7 @@ type <临时目录>\vmu-ext-demo-activated.json
         deliver: !!js '(report) => console.log("[vmu-report-sink] " + JSON.stringify({ name: report.name, to: report.to, channel: report.channel, text: report.text, drives: report.drives }))'
         vmu:
           tools: { faces: ['*'] }
-          packs: { active: ['v5r'] }
+          packs: { active: ['v5r'] }        # ⚠ 这一行【不装载 pack】—— 见下方「★ 装载三条路线」
           report:
             enabled: true
             minIntervalMs: 0
@@ -268,6 +268,20 @@ type <临时目录>\vmu-ext-demo-activated.json
                 channel: 'log'
                 template: '【成果阈值】artifacts={{ metric:artifacts }} 已达阈值 5'
 ```
+
+> ★ **R21 更正（2026-10-15）：上面那行 `packs: { active: ['v5r'] }` 对"装载整合包"是误导的**。
+> **真正装载读的是 `config.packs`（profile 行的配置字段）**，见 `10-packs.md:436`（"在 **profile 行**的 `config.packs: ['<id>']` 里声明"）；`vibe-math-vmu.js:451` 的装载开关就是 `Array.isArray(config.packs)`。
+> **`vmu.packs.active` 做了什么**（三条，逐行可核）：① 与 `config.packs` 一起决定 **`packsDeclared`**（`vibe-math-vmu.js:515-516`），而它决定 **`vibe_vmu_pack` 这个管理面工具要不要暴露**（`:530`）；② 状态/冲突文案（`:200-201`）；③ `activeOverrides` 的优先级（`:352`）。★ **注意 ① 的陷阱**：**只给这个设置键 ⇒ `vibe_vmu_pack` 工具会被暴露、而 pack 并没有装载**（R21c 撞的就是这个形状）。点号形态 `config.vmu = {'vmu.packs.active': ['v5r']}`（`:64` "taken as-is"）同属**设置侧**，一样不装载。
+>
+> **★ 装载三条路线的现状（R21 三次真机实测；★ 截至 2026-10-15 三条都堵，别把没跑通的写成可用）**：
+> | 路线 | 实测 | 结果 |
+> |---|---|---|
+> | ① 设置键 `vmu.packs.active`（＝**本页配方里这一行**） | R21 `16:28:11`，`session-da4942a1-…`，exit=0 | **不装载**：报告声明确实到达（`declared:3/armed:3`）但阈值不开火；`settingsMerge.packs: []` 且 `sources` 里**无一键带 `source:"pack"`** |
+> | ② **配置字段** `config.packs: ['v5r']`（打在预设内那行插件上，与 `vmu:` 同级） | R21b `16:31:34`，**exit=1** | ★ **打断预设组装**：`session/create` 被拒 `agent-preset/invalid … cannot get property "systemPrompt" without inject`（**真缺陷**，已由 `task-129` 交 entry/loader/pack 面） |
+> | ③ 运行时工具 `vibe_vmu_pack {action:'apply', id:'v5r'}` | R21c `16:33:21`，exit=0 | **按设计拒绝随包 id**：`VMU_INVALID_ARGUMENT "plan/apply need an inline manifest (manifest: \"<json>\")"`——它只吃**内联 manifest**（`host.js:703-708` 的 manifest 守卫，从不读 `id`） |
+>
+> ⇒ **本页 §3 关于"报告声明 ＋ transport"的部分仍然正确（那是 R8 实实测过的）**；**只有"装载 pack"这一点是误导的**。要装载随包，**正确入口是 profile 行的 `config.packs`（`10-packs.md:436`）**——而该路线在 R21b 里**打断组装**，修好后本行才谈得上生效。
+
 **免费复核命令**【实测，2026-10-14 重跑】：
 ```
 set DSH_HOME=<你的隔离 home>
@@ -279,7 +293,7 @@ dsh --profile <你的 profile> --dump-config --patch <临时目录>\vmu-overlay-
           rows:
             vibe-math-vmu:
               deliver: !!js >- (report) => console.log("[vmu-report-sink] " + …)
-              vmu: { tools: { faces: ['*'] }, packs: { active: ['v5r'] }, report: {…} }
+              vmu: { tools: { faces: ['*'] }, packs: { active: ['v5r'] }, report: {…} }   # ⚠ `packs.active` 只是设置键：**不装载 pack**（见上）
     而 preset 行【整块不变】：
       - id: preset-vibe-math-vmu
         config:

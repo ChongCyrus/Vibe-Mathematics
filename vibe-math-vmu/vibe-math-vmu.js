@@ -716,6 +716,11 @@ export function apply(ctx, config = {}) {
   // A PACK is where an institution lives (slots, tracks, rules, aliases). `config.packs` accepts either a
   // shipped pack id (resolved from packs/<id>.js) or an inline manifest; conflicts are refused (O4) and the
   // failure is visible instead of swallowed.
+  // ROUND 20 (task-125): the inline half of that sentence WAS FALSE - an object entry reached the data-only probe
+  // and threw `ERR_INVALID_ARG_TYPE The "path" argument must be of type string` before `apply()` was ever called,
+  // so a deployment could not ship a pack inline at all (and with it, no M2 policy that needs `api.services`).
+  // The branch below now takes the object straight to `apply()`; `tests/vmu-pack-inline-manifest.test.mjs` holds
+  // the two directions (a good inline manifest really loads; a bad one is refused BY NAME, not by a TypeError).
   // ROUND 1 / K5 (D-02, vmu-pack interface): `settingSource` lets the loader tell "this key belongs to a HIGHER
   // layer ⇒ my default is shadowed" from "it belongs to ANOTHER pack ⇒ named conflict"; `onPromptPolicy` is the sink
   // for a manifest's own `promptPolicies`, which is what makes a pack's prompt machinery pack-owned instead of
@@ -739,6 +744,8 @@ export function apply(ctx, config = {}) {
             // index must not be mistaken for "no folder", or a broken pack would silently load the flat one instead.
 
             let loaded = null
+
+            let inlineManifest = null
 
             if (typeof wanted === 'string') {
 
@@ -771,6 +778,26 @@ export function apply(ctx, config = {}) {
 
               }
 
+            } else if (wanted && typeof wanted === 'object' && !Array.isArray(wanted)) {
+
+              // AN INLINE MANIFEST - the other half of what the comment above has always claimed. This case used to
+              // fall straight into the data-only probe below, which computes `join(dir, 'packs', wanted, rel)` with
+              // the OBJECT as a path segment and threw `ERR_INVALID_ARG_TYPE The "path" argument must be of type
+              // string. Received an instance of Object` (round 20, task-125). The declaration was true of the intent
+              // and false of the runtime, and because an M2 module reaches `api.services` ONLY through a pack
+              // manifest (kernel/pack.js: two shapes, only the module one gets `api`), the whole
+              // "deployment-side inline pack that has to ACT" path was unusable. Here there is no folder to look in
+              // and no file to import: the manifest IS the pack, and `apply()` below validates it and refuses a bad
+              // one BY NAME (VMU_PACK_MISSING + the problem list + a hint), never with a raw TypeError.
+              inlineManifest = wanted
+
+            } else {
+
+              throw packModule.refuse('VMU_PACK_INVALID',
+                'config.packs entries must be a pack id (string) or an inline manifest (object): got '
+                  + (wanted === null ? 'null' : Array.isArray(wanted) ? 'array' : typeof wanted),
+                'pass a shipped id such as "v5r", or the manifest object itself (docs/10 section 2)')
+
             }
 
             // A DATA-ONLY PACK IS ACTIVATED, NOT REFUSED. It has no manifest because it has no machinery: the plugin
@@ -778,8 +805,8 @@ export function apply(ctx, config = {}) {
             // constructed, and those are the whole of what it contributes. Reporting it as "not applied" would tell a
             // deployment that turning on a text-only pack FAILED, while the text was in fact already in the pipeline -
             // so this branch records it as applied with nothing to apply, and only a name with neither a manifest NOR
-            // data reaches the error path below.
-            if (loaded === null) {
+            // data reaches the error path below. An INLINE manifest is never probed for folder data: it has no folder.
+            if (loaded === null && inlineManifest === null) {
               const here2 = dirname(fileURLToPath(import.meta.url))
               // A GUARD MUST NOT SWALLOW ITS OWN BUG. The first version of this line wrapped `existsSync` in a try/catch
               // to tolerate a missing packs folder - and when `existsSync` was not imported at all, the ReferenceError
@@ -796,7 +823,7 @@ export function apply(ctx, config = {}) {
               throw new Error('no pack named ' + wanted + ': neither a manifest (packs/' + wanted + '/index.js or packs/' + wanted + '.js) nor data (prompts/sections.json, settings/defaults.json)')
             }
 
-            const manifest = typeof wanted === 'string' ? loaded.PACK : wanted
+            const manifest = inlineManifest !== null ? inlineManifest : loaded.PACK
             const res = await packLoader.apply(manifest)
     // ROUND 383 - THE LAST MILE. A pack is loaded AFTER the kernel, because a pack's apply may need it, but the
     // prompt pipeline is built from `config.promptSections` at kernel construction. So a pack that DECLARES sections

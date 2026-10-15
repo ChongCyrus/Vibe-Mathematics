@@ -33,6 +33,7 @@ vibe-math-vmu/
         prompt-switches.js    ← 哪些可选段开关、发哪份回复目录、会议三态、形式化四分支
         stall-meeting.js      ← ★ 轮 10：v5r 的"静止⇒开会"（`control/idle` 的 M2 模块；阈值＝3 × `vmu.control.idleAfterMs`＝v5r 的 360000；经 `api.services.get('vmu.meetings')` 真开会）
         motion-box.js         ← ★ 轮 13：v5r 的"动议⇒开箱"政策（挂 `meeting/motion`；开真箱 ＋ 懒绑 `vmu.meetings` 的 `bindBox`；选项词表＝会议侧 1/0，**本 pack 政策**）
+        artifact-counter.js   ← ★ 轮 20（task-126）：**指标计数者**（挂**回合内**的 `tools/result` ＋ 两个 `…/job-settled`；经 `api.services.get('vmu.metrics')` 的 `observe(...)` 写观测，指标名须由部署在 `vmu.metrics.indicators` 声明；未声明 ⇒ **具名跳过并被计数**）。★ 它是"`threshold` 报告能否自主开火"的**唯一收口条件**，且**故意不挂** `agent/turn-stopping`（报告边界就在那个钩子上，同刻写入要到下一轮才可见）
       prompts/                ← 提示词内容：语料转写模块 + 章程 + 人设 + 助手面（轮 2）
         v5r-core.js           ← 被装载清单 PACK（席位/轨道/规则/段 getter/别名/提示词正文轴）
         v5r-charter.js        ← 章程转写（按 role/phase 分支的段与绑定）

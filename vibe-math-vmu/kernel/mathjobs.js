@@ -991,6 +991,19 @@ export function createMathJobs(opts) {
         hostContract: 'subprocess.spawn → SubprocessHandle{terminate, done, collected}' },
       // ROUND 9 · B：中间检查点的**边界**——内核只携带不透明令牌，续算语义属引擎。
       checkpointing: 'not-implemented: resumeFrom is CARRIED (request → env → mirror → recovery re-issue) but never interpreted; segment/checkpoint semantics are the ENGINE\'s (cost/design in docs/15 §14.4)',
+      // ROUND 20 / task-122 ④ — THE SAME BOUNDARY, MACHINE-READABLE. The prose above stays EXACTLY as it is (it
+      // is the named disclosure the round-9 ruling requires, and a resident assertion guards its 'not-implemented'
+      // prefix). This sibling exists so a caller — and a test — can READ the boundary instead of matching prose,
+      // and so every engine face answers the same question the same way (`lean.js` gained its own `resume` block
+      // in this round). It is a DISCLOSURE, never an interpretation: nothing here changes what `submit()` does.
+      resume: {
+        supported: false,
+        // WHO owns the semantics: not the kernel. The framework carries and re-sends; the engine decides meaning.
+        segmentSemantics: 'the ENGINE\'s',
+        carriedNotInterpreted: ['VMU_RESUME_FROM (request → child env → mirror → re-issue)', 'the receipt\'s `resumedFrom`', 'the token is part of the request fingerprint'],
+        whatTheKernelDoesNotDo: 'it never reads, validates or advances the token: a changed token is a DIFFERENT request (fingerprint branch ③ ⇒ "interrupted, not auto-rerun"), never a silent continuation',
+        changeCondition: 'docs/15 §14.4: a real resumable engine exists AND a single job lasts >= the job budget. Only then is the upgrade "output protocol + in-run stream + a `checkpoint` field in the mirror + segmented re-issue + a per-engine `resume == one uninterrupted run` comparison" worth landing (~60-100 kernel lines + one demo per engine)',
+      },
       mirrors: ms.count,
       droppedMirrors, mirrorSkipped, mirrorFailures,
       // ROUND 9 · C: the recovery lease's own counters (0/0/0/0 when no crash-recovery happened).

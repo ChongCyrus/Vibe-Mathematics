@@ -306,6 +306,25 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
     // sibling case in the returned shape below).
     const m = manifest && typeof manifest === 'object' ? manifest : {}
     const problems = validatePack(m)
+    // ROUND 20c (task-128): THE PLAN PATH MUST RUN THE RULE VALIDATOR TOO. `validatePack` above is a PURE function
+    // that has no kernel, so for an M1 rule it can only require `on` (that line) - while `apply()` compiles every
+    // rule through `kernel.rules`, which ADDITIONALLY requires `when` and scans `when.subject` against the kernel's
+    // NAMED predicates. So `plan()` answered `problems: []` for manifests `apply()` then refused, and the refusal's
+    // own hint promised "every problem" (see the hint below). `kernel.rules.validate(rule)` is the module's own
+    // single call that already covers BOTH halves; its comment records that this exact asymmetry was fixed ONCE at
+    // the rules layer ("the predicate scan used to live only inside toBusEntries, so validate() said fine") while
+    // the pack layer kept bypassing it. The seam is OPTIONAL - a loader built without a kernel keeps the previous
+    // behaviour - so this cannot turn a working assembly into a refused one.
+    if (kernel && kernel.rules && typeof kernel.rules.validate === 'function') {
+      for (const r of m.rules || []) {
+        if (!r || typeof r !== 'object') continue
+        let found = []
+        // A validator that THROWS must not be reported as "no problems": the thrown text becomes the problem, so
+        // the failure stays visible instead of silently passing the rule.
+        try { found = kernel.rules.validate(r) || [] } catch (e) { found = ['the rule validator threw: ' + String(e && e.message)] }
+        for (const p of found) problems.push('rule ' + String(r.id === undefined ? '(no id)' : r.id) + ': ' + String(p))
+      }
+    }
     let requires = null
     if (registry && Array.isArray(m.requires) && m.requires.length > 0) {
       requires = registry.checkPack({ requires: m.requires, packContractVersion: m.packContractVersion })
@@ -385,7 +404,12 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
       const plan = buildPlan(manifest)
       if (!plan.ok) {
         throw refuse('VMU_PACK_MISSING', 'pack ' + String(manifest && manifest.id) + ' cannot be applied: ' + plan.problems.join('; '),
-          'run plan() first: it reports every problem without changing anything')
+          // ROUND 20c (task-128): this hint used to promise "it reports EVERY problem" - and that was false in
+          // both directions: before the fix `plan` did not even run the M1 rule validator (see `buildPlan`), and
+          // it still cannot see a middleware MODULE's problems, which only `kernel/loader` finds at apply time
+          // (measured: `plan` is clean while apply refuses with `invalid M2 module … hook … must be a function`).
+          // A hint that promises more than the verb can do is the same defect class as the code it explains.
+          'run plan() first: it reports the manifest problems it can SEE without changing anything (validatePack plus the M1 rule validator, kernel.rules.validate); a middleware MODULE is validated by kernel/loader at apply time, so that half can still refuse later')
       }
       if (applied.has(manifest.id)) {
         throw refuse('VMU_PACK_CONFLICT', 'pack ' + manifest.id + ' is already applied', 'unload it before applying again (O4)')
@@ -471,7 +495,15 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
             throw refuse('VMU_ENGINE_UNAVAILABLE', 'pack ' + manifest.id + ' declares an M2 module (' + String(m.id) + ') but this kernel has no loader',
               'an inline { on, handler } entry needs no loader; a module-shaped entry does, because only the loader attaches `api` (and the service seam)')
           }
-          const entries = await kernel.loader.toBusEntries([m])
+          // ROUND 20 (task-125): `kind` IS OPTIONAL AND DEFAULTS TO `module` - `validatePack` above decides the
+          // shape with `m.kind === undefined ? 'module' : m.kind`, and the manifest table documents the field as
+          // `kind?`. But the loader refuses anything that does not SAY `kind: 'module'` (kernel/loader.js), so
+          // handing the raw entry over made the documented default INEFFECTIVE: every module-shaped middleware
+          // entry that omitted `kind` was refused by name, and because a module is the only shape that ever gets
+          // `api` (and so `api.services`), an inline pack could not carry a policy that has to ACT. The entry's own
+          // `config.modules` path already normalises exactly this way, so the default is applied here too.
+          const spec = m.kind === undefined ? Object.assign({ kind: 'module' }, m) : m
+          const entries = await kernel.loader.toBusEntries([spec])
           for (const e of entries) {
             kernel.bus.add(e)
             undo.push(() => removeEntry(kernel.bus, e.id))
