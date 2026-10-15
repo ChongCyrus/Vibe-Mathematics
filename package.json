@@ -393,6 +393,7 @@
     "tests/vmu-meeting-order.test.mjs",
     "tests/vmu-ballotbox.test.mjs",
     "tests/vmu-records.test.mjs",
+    "tests/vmu-report-boundary-metrics.test.mjs",
     "tests/vmu-course.test.mjs",
     "tests/audit-vmu-services.test.mjs",
     "tests/audit-vmu-services.mutants.mjs",

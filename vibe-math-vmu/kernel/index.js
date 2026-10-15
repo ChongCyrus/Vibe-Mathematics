@@ -690,6 +690,44 @@ export function createKernel({
     meeting: meetingsSeam, meetings: meetingsSeam })
   const budget = createBudget({ settings: settingsView, bus, clock, log })
   const metrics = createMetrics({ settings: settingsView, bus, clock, log })
+  /**
+   * ROUND 19 / task-121 — **THE BOUNDARY'S REAL METRICS**, and the ONE place they are turned into the flat map
+   * `report.tick({ metrics })` has always accepted.
+   *
+   * WHY IT EXISTS (measured, R18): the entry bridges the host's `agent/turn-stopping` into
+   * `report.tick({ at, event: 'turn-end' })` — with NO `metrics`. `kernel/report.js`'s `thresholdMet()` returns
+   * false for a missing object **on purpose** ("no data" must never become a fire), so a `threshold` report could
+   * never fire autonomously while `event`/`period` reports could. The fix is NOT to widen `thresholdMet()` (that
+   * would turn "no data" into a FIRE = a fake alarm); it is to hand the boundary tick the indicators the kernel
+   * really counted.
+   *
+   * WHAT THIS DOES / DOES NOT DECIDE (R1 — the seam is here, the policy is elsewhere):
+   *   · it only READS the metrics face (`vmu.metrics`) and flattens its snapshot: indicator name → one number;
+   *   · an indicator with **no observation is ABSENT from the map** (never a fabricated 0), so the report face
+   *     keeps its own honest answer (`thresholdMet()` false) when there is nothing to read;
+   *   · WHAT to count, and WHO records it, stay outside: the deployment declares `vmu.metrics.indicators` and a
+   *     pack/policy calls `observe()` (the counting face is reachable by middleware modules — see the service
+   *     catalog below); the report declaration names the metric, the operator and the line.
+   *   · `agg` selects the aggregate of the indicator's observed VALUES (the same vocabulary `kernel/alerts.js`
+   *     uses for its own thresholds). The default is `sum`, because an indicator observed once per event with
+   *     `value: 1` then reads as "how many times it happened" — the reading the report templates already use.
+   */
+  const metricValues = ({ window = null, agg = 'sum' } = {}) => {
+    if (!metrics || typeof metrics.snapshot !== 'function') return {}
+    const snap = metrics.snapshot({ window })
+    const rows = Array.isArray(snap && snap.indicators) ? snap.indicators : []
+    const pick = (r) => (agg === 'count' ? r.count : agg === 'avg' ? r.avg : agg === 'last' ? r.last
+      : agg === 'max' ? r.max : agg === 'min' ? r.min : r.sum)
+    const out = {}
+    for (const r of rows) {
+      // NO OBSERVATION ⇒ NO KEY. `count` is the face's own "how many rows" counter; a declared-but-never-observed
+      // indicator appears in the snapshot with count 0 and is deliberately dropped here.
+      if (!r || typeof r.name !== 'string' || !(Number(r.count) > 0)) continue
+      const v = pick(r)
+      if (typeof v === 'number' && Number.isFinite(v)) out[r.name] = v
+    }
+    return out
+  }
   // The audit SERVICE reuses the kernel's EXISTING disk seam (`auditToDisk`) instead of opening a second write
   // path: the ring above stays the in-memory view, this service is the queryable/rotatable face over it.
   // ROUND 20: every module whose semantics depend on ELAPSED TIME takes the guarded clock. An independent review
@@ -1319,6 +1357,13 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     'vmu.panel': panel, 'vmu.minutes': minutes, 'vmu.ballotbox': ballotbox, 'vmu.members': members,
     'vmu.commitlog': sharedCommitLog, 'vmu.library': library, 'vmu.records': records, 'vmu.human': human,
     'vmu.budget': budget, 'vmu.activity': activity,
+    // ROUND 19 / task-121: THE COUNTER'S OWN SEAM. `metricValues()` above can only hand the boundary what has
+    // really been COUNTED, and until now nothing outside this file could count: the face was built and published,
+    // but the capability-gated catalog did not list it, so a pack/policy had no way to record an observation.
+    // Listing it here is the framework half (a capability a declared module may reach); WHICH indicators exist and
+    // WHEN they are observed stays the pack's (it must also declare them in `vmu.metrics.indicators`, or the face
+    // skips the write BY NAME — that skip is counted, never silent).
+    'vmu.metrics': metrics,
   })
   const loader = createLoader({
     // (甲) PRODUCTION GOES THROUGH THE GUARD: this facade used to answer `null` when there was no durable root,
@@ -1516,6 +1561,9 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     get minutes() { return minutes },
     get budget() { return budget },
     get metrics() { return metrics },
+    // ROUND 19 / task-121: the FLAT name→number reading the turn boundary hands to `report.tick({ metrics })`.
+    // A method (not a getter) because it takes the aggregate/window the caller wants; it reads, never writes.
+    metricValues,
     get audit() { return audit },
 
     /** ROUND 247: the domain compliance packs (docs/20 §9.1-§9.4), reachable like every other service. */

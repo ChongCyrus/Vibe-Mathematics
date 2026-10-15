@@ -643,7 +643,20 @@ export function apply(ctx, config = {}) {
     reportTickAttached = true
     effect(() => {
       if (!ctx || typeof ctx.on !== 'function') { reportTickAttached = false; return () => {} }
-      const listener = async () => { try { kernel.report.tick({ at: Date.now(), event: 'turn-end' }) } catch { /* never break the turn */ } }
+      // ROUND 19 / task-121 — THE BOUNDARY NOW CARRIES REAL METRICS. Until this change the listener called
+      // `tick({ at, event:'turn-end' })` with no `metrics`, and `kernel/report.js`'s `thresholdMet()` answers
+      // `false` for a missing object BY DESIGN ("no data" must never become a fire) — so `event`/`period` reports
+      // fired autonomously while a `threshold` report could only fire when somebody hand-fed it numbers.
+      // The fix belongs on THIS side: the framework reads what it really counted (`kernel.metricValues()`, built
+      // from the `vmu.metrics` face) and hands it over. `thresholdMet()` is UNCHANGED, so an indicator with no
+      // observation is simply absent from the map and that report stays silent. The catch stays: a report must
+      // never be able to break the turn that produced it.
+      const listener = async () => {
+        try {
+          const metricsOf = kernel && typeof kernel.metricValues === 'function' ? kernel.metricValues() : null
+          kernel.report.tick({ at: Date.now(), event: 'turn-end', metrics: metricsOf })
+        } catch { /* never break the turn */ }
+      }
       const dispose = typeof ctx.effect === 'function' ? ctx.effect(() => ctx.on('agent/turn-stopping', listener), 'vmu:report-tick') : ctx.on('agent/turn-stopping', listener)
       return typeof dispose === 'function' ? dispose : () => {}
     }, 'vmu:report-tick')
