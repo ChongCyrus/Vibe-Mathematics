@@ -27,9 +27,11 @@
 //                                            (OFFLINE re-grade of a recorded session: same assertions, no session spent)
 //      node tests/vmu-assistant-host-slice.test.mjs --require-host       (exit ≠0 while the slice cannot run)
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 import zlib from 'node:zlib'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -174,6 +176,75 @@ try { mkdirSync(DSH_HOME, { recursive: true }) } catch (e) { /* reported below *
 ok(existsSync(DSH_HOME), 'an ISOLATED `DSH_HOME` is usable, so a slice never touches the operator\'s own profile', { DSH_HOME })
 ok(resolve(DSH_HOME) !== resolve(join(process.env.USERPROFILE || process.env.HOME || '', '.dsh')),
   'and it is NOT the operator\'s own DSH_HOME (the driver\'s precondition 2: never the user\'s profile)')
+
+// ── ★ ROUND 22: "WHICH BYTES RAN" - the precondition for every real-machine claim (docs/11 §4.2; Lead-approved) ──────
+// WHY: a scratch home is built by COPYING, and `Copy-Item -Recurse` DEREFERENCES a SymbolicLink into a SNAPSHOT.
+// MEASURED: a host was grading a payload 10 files (and one whole module) behind the tree while every report called it
+// "the current tree" - and a green result was then read as evidence about code the host never loaded. So the host
+// branch below refuses to grade a session until it proves the payload it loaded IS the repository. Deliberately NOT a
+// tolerated-hash list: "allow a known-stale payload" is the one thing a precondition like this must never become.
+const sha16 = (p) => createHash('sha256').update(readFileSync(p)).digest('hex').slice(0, 16).toUpperCase()
+const treeFiles = (root, dir = root, depth = 0, acc = []) => {
+  if (depth > 6) return acc
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === 'node_modules' || e.name === '.git' || e.name === 'docs') continue
+    const p = join(dir, e.name)
+    if (e.isDirectory()) treeFiles(root, p, depth + 1, acc)
+    else acc.push(relative(root, p).replace(/\\/g, '/'))
+  }
+  return acc.sort()
+}
+/**
+ * Compare a repository tree against the tree a host actually loaded. Returns the full difference, so a RED can name
+ * every drifting file rather than saying "payload mismatch". `missing` = in the repo but not in the payload (the
+ * snapshot is OLDER), `extra` = only in the payload, `differing` = same path, different bytes.
+ */
+const payloadsAgree = (repoDir, payloadDir) => {
+  const a = treeFiles(repoDir)
+  const b = treeFiles(payloadDir)
+  const inB = new Set(b)
+  const inA = new Set(a)
+  const missing = a.filter((f) => { return !inB.has(f) })
+  const extra = b.filter((f) => { return !inA.has(f) })
+  const differing = a.filter((f) => { return inB.has(f) && sha16(join(repoDir, f)) !== sha16(join(payloadDir, f)) })
+  return { files: a.length, missing, extra, differing }
+}
+/** Every host payload under a scratch home: `<home>/**‍/node_modules/dsh-vibe-math/vibe-math-vmu` that carries an entry. */
+const findHostPayload = (home, depth = 0, acc = []) => {
+  if (depth > 7 || !existsSync(home)) return acc
+  for (const e of readdirSync(home, { withFileTypes: true })) {
+    if (!e.isDirectory()) continue
+    const p = join(home, e.name)
+    if (e.name === 'dsh-vibe-math' && existsSync(join(p, 'vibe-math-vmu', 'vibe-math-vmu.js'))) acc.push(join(p, 'vibe-math-vmu'))
+    else findHostPayload(p, depth + 1, acc)
+  }
+  return acc
+}
+// TWO-WAY SELF-PROBE (docs/11 §4.2 第四条/第九条): an EXACT copy must be quiet, and ANY drift - one changed byte, one
+// missing file, one file only in the payload - must be caught. Without both directions "the payload is the tree"
+// would be a claim this gate cannot falsify.
+{
+  const mk = (mode) => {
+    const d = mkdtempSync(join(tmpdir(), 'vmu-payload-probe-'))
+    mkdirSync(join(d, 'sub'), { recursive: true })
+    writeFileSync(join(d, 'a.js'), 'A')
+    writeFileSync(join(d, 'sub', 'b.js'), mode === 'differ' ? 'ZZ' : 'B')
+    if (mode !== 'missing') writeFileSync(join(d, 'sub', 'c.js'), 'C')
+    return d
+  }
+  const base = mk('none')
+  const exact = payloadsAgree(base, base)
+  ok(exact.files > 0 && exact.missing.length === 0 && exact.extra.length === 0 && exact.differing.length === 0,
+    '★ SELF-PROBE (payload identity): an EXACT copy of a tree is QUIET (and the tree was non-empty)', exact)
+  const differ = payloadsAgree(base, mk('differ'))
+  ok(differ.differing.length === 1, '★ SELF-PROBE (payload identity): ONE changed byte is named as a difference', differ.differing)
+  const missing = payloadsAgree(base, mk('missing'))
+  ok(missing.missing.length === 1, '★ SELF-PROBE (payload identity): a file MISSING from the payload is named (the older-snapshot shape)', missing.missing)
+  const extra = payloadsAgree(mk('missing'), base)
+  ok(extra.extra.length === 1, '★ SELF-PROBE (payload identity): a file present ONLY in the payload is named too', extra.extra)
+  const made = [base, mk('differ'), mk('missing')]
+  for (const d of made) { try { rmSync(d, { recursive: true, force: true }) } catch { /* best effort */ } }
+}
 
 // ── 2. WHICH RUNNER CAN HOST THE ASSISTANT FACE (read from the installed host code) ───────────────────────────────
 stage('2. THE ROUTE, MEASURED AGAINST THE INSTALLED HOST')
@@ -364,6 +435,16 @@ if (OFFLINE_SESSION) {
   const summary = readText(join(outDir, 'summary.json'))
   const transcript = String(drive.stdout || '') + '\n' + String(drive.stderr || '') + '\n' + dump + '\n' + summary
   ok(drive.status === 0, 'the driven real session finished under preset ' + PRESET, { status: drive.status, tail: transcript.trim().slice(-200) })
+  // ★ WHICH BYTES RAN (see the block near the top): refuse to grade a session until the payload the host loaded is
+  // proven to be THIS repository. Measured failure mode this closes: a dereferenced snapshot (10 files + one module
+  // behind) was graded as "the current tree" for four rounds.
+  const payloadDirs = findHostPayload(DSH_HOME)
+  const verdicts = payloadDirs.map((d) => payloadsAgree(join(REPO, 'vibe-math-vmu'), d))
+  const drifted = verdicts.filter((v) => v.missing.length > 0 || v.extra.length > 0 || v.differing.length > 0)
+  ok(payloadDirs.length > 0, 'the host payload under DSH_HOME was located, so "which bytes ran" is answerable', { DSH_HOME, payloadDirs })
+  ok(payloadDirs.length > 0 && drifted.length === 0,
+    '★ every host payload is BYTE-IDENTICAL to the repository (no dereferenced snapshot may be graded as "the current tree")',
+    { repo: 'vibe-math-vmu', payloads: payloadDirs, drift: drifted.slice(0, 2) })
   // MULTI-FACE LIT (the fact vmu-verify needs for its matrix) - read from the SESSION LOG, which is the authoritative
   // record with `seq` + line numbers. Prose mentions are NOT calls: only `tool/call` events count.
   const sessionId = (transcript.match(/"sessionId"\s*:\s*"([^"]+)"/) || [])[1] || null

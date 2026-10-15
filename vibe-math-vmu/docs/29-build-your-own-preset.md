@@ -255,10 +255,12 @@ type <临时目录>\vmu-ext-demo-activated.json
     overlayFor: vibe-math-vmu
     rows:
       vibe-math-vmu:
+        packs: ['v5r']                    # ★ 真正的装载开关（行级 `config.packs`）——见下方更正
+        root: <你的耐久根目录>             # ★★ 必需：`config.root`（durable root）。没有它 ⇒ pack 的 `apply()` 被具名拒（见下方「★ 缺失的前置键」）
         deliver: !!js '(report) => console.log("[vmu-report-sink] " + JSON.stringify({ name: report.name, to: report.to, channel: report.channel, text: report.text, drives: report.drives }))'
         vmu:
           tools: { faces: ['*'] }
-          packs: { active: ['v5r'] }        # ⚠ 这一行【不装载 pack】—— 见下方「★ 装载三条路线」
+          packs: { active: ['v5r'] }        # ⚠ 这一行【不装载 pack】—— 见下方「★ 装载路线」
           report:
             enabled: true
             minIntervalMs: 0
@@ -269,18 +271,24 @@ type <临时目录>\vmu-ext-demo-activated.json
                 template: '【成果阈值】artifacts={{ metric:artifacts }} 已达阈值 5'
 ```
 
-> ★ **R21 更正（2026-10-15）：上面那行 `packs: { active: ['v5r'] }` 对"装载整合包"是误导的**。
-> **真正装载读的是 `config.packs`（profile 行的配置字段）**，见 `10-packs.md:436`（"在 **profile 行**的 `config.packs: ['<id>']` 里声明"）；`vibe-math-vmu.js:451` 的装载开关就是 `Array.isArray(config.packs)`。
-> **`vmu.packs.active` 做了什么**（三条，逐行可核）：① 与 `config.packs` 一起决定 **`packsDeclared`**（`vibe-math-vmu.js:515-516`），而它决定 **`vibe_vmu_pack` 这个管理面工具要不要暴露**（`:530`）；② 状态/冲突文案（`:200-201`）；③ `activeOverrides` 的优先级（`:352`）。★ **注意 ① 的陷阱**：**只给这个设置键 ⇒ `vibe_vmu_pack` 工具会被暴露、而 pack 并没有装载**（R21c 撞的就是这个形状）。点号形态 `config.vmu = {'vmu.packs.active': ['v5r']}`（`:64` "taken as-is"）同属**设置侧**，一样不装载。
+> ★★ **R21 更正＋R21e 收口（2026-10-15，真机）**：上面那行 `packs: { active: ['v5r'] }` 对"**装载整合包**"是**误导的**；而**真正的装载开关**是**行级 `config.packs`**（`10-packs.md:436`："在 **profile 行**的 `config.packs: ['<id>']` 里声明"；`vibe-math-vmu.js:451` 就是 `Array.isArray(config.packs)`）——**但它还必须配一个耐久根**（下条）。
+> **`vmu.packs.active` 做了什么**（三条，逐行可核）：① 与 `config.packs` 一起决定 **`packsDeclared`**（`vibe-math-vmu.js:515-516`），而它决定 **`vibe_vmu_pack` 这个管理面工具要不要暴露**（`:530`）；② 状态/冲突文案（`:200-201`）；③ `activeOverrides` 的优先级（`:352`）。★ **⚠ 陷阱**：**只给这个设置键 ⇒ `vibe_vmu_pack` 工具会被暴露、而 pack 并没有装载**。点号形态 `config.vmu = {'vmu.packs.active': ['v5r']}`（`:64` "taken as-is"）同属**设置侧**，一样不装载。
 >
-> **★ 装载三条路线的现状（R21 三次真机实测；★ 截至 2026-10-15 三条都堵，别把没跑通的写成可用）**：
-> | 路线 | 实测 | 结果 |
+> **★ 装载路线（截至 2026-10-15 的终态；★ 早期"打断组装"的读数已被修复取代）**：
+> | 路线 | 结论 | 依据 |
 > |---|---|---|
-> | ① 设置键 `vmu.packs.active`（＝**本页配方里这一行**） | R21 `16:28:11`，`session-da4942a1-…`，exit=0 | **不装载**：报告声明确实到达（`declared:3/armed:3`）但阈值不开火；`settingsMerge.packs: []` 且 `sources` 里**无一键带 `source:"pack"`** |
-> | ② **配置字段** `config.packs: ['v5r']`（打在预设内那行插件上，与 `vmu:` 同级） | R21b `16:31:34`，**exit=1** | ★ **打断预设组装**：`session/create` 被拒 `agent-preset/invalid … cannot get property "systemPrompt" without inject`（**真缺陷**，已由 `task-129` 交 entry/loader/pack 面） |
-> | ③ 运行时工具 `vibe_vmu_pack {action:'apply', id:'v5r'}` | R21c `16:33:21`，exit=0 | **按设计拒绝随包 id**：`VMU_INVALID_ARGUMENT "plan/apply need an inline manifest (manifest: \"<json>\")"`——它只吃**内联 manifest**（`host.js:703-708` 的 manifest 守卫，从不读 `id`） |
+> | ① **设置键** `vmu.packs.active: ['v5r']` | **不装载** | 读码：`:451` 的开关是 `config.packs`，设置键只喂 `:515-516`；R21 会话实测 `settingsMerge.packs: []` |
+> | ② **行级 `config.packs: ['v5r']`**（＋下面的 `root:`） | ✅ **可用（推荐入口）** | **R21e 活代码实测**（`17:18:52` 会话建起来并折入 pack 设置；`17:42:42` 加 `root:` 后 apply 成功、总线有条目、阈值自主开火）。★ **早先 R21b 的"打断预设组装"（`cannot get property "systemPrompt" without inject`）是【修复前】的行为**，已由 `:735` 守卫消除（同轮由 `vmu-core2` 落） |
+> | ③ **运行时工具** `vibe_vmu_pack {action:'apply', id:'v5r'}` | ❌ **按设计拒绝随包 id** | 只吃**内联 manifest**：`VMU_INVALID_ARGUMENT "plan/apply need an inline manifest"`（`host.js:703-708` 的 manifest 守卫从不读 `id`） |
 >
-> ⇒ **本页 §3 关于"报告声明 ＋ transport"的部分仍然正确（那是 R8 实实测过的）**；**只有"装载 pack"这一点是误导的**。要装载随包，**正确入口是 profile 行的 `config.packs`（`10-packs.md:436`）**——而该路线在 R21b 里**打断组装**，修好后本行才谈得上生效。
+> **★★ 缺失的前置键：`root:`（＝ `config.root`）** —— 入口在 **`vibe-math-vmu.js:147`** 取它（`typeof config.root === 'string' && config.root.length > 0 ? config.root : null`）。**没有它 ⇒ kernel 没有 library root ⇒ pack 的 `apply()` 被【具名拒】**：
+> ```
+> vmu: pack v5r was not applied: VMU_ENGINE_UNAVAILABLE this kernel has no library root
+> ```
+> ⇒ 该 pack 的 `middleware`／`rules` **一条都不进总线** ⇒ 任何依赖该 pack 的机制（例如报告阈值）**都不可能开火**。**R21e 实测**：加上 `root:`（那一跑只加了这一行，其余与失败那跑**逐字节相同**）后该行消失、`bus` 条目在场（`v5r.artifact-counter::tools/result`、`hooks` 含 `tools/result`）、**阈值报告在回合边界自主开火**（`tool-results=5`，`report/tick` 调用 0）。
+> **★ 本体裁的"声明与实现不一致"（装载版，务必记住）**：**即使 `apply()` 被具名拒，回执里 `settingsMerge.packs` 仍显示 `["v5r"]`、`sources[<键>] = "pack:v5r"`** —— 因为**设置是按 DATA 独立折入**的（`packs/<id>/settings/defaults.json`），与 `apply()` 的成败**无关**。⇒ **判据纪律**：**要证明"pack 真的装载了"，不能只看 `settingsMerge`；要看 `bus.entries`／`hooks` 里有没有该 pack 的条目**（以及在宿主 **stderr** 里看有没有 `vmu: pack <id> was not applied: <code> <message>` 那一行）✓。★ 这条与 `docs/11` 的"声明↔实现"是同族：**回执可以说"合并了"，而事实是被拒的**。
+>
+> ⇒ **本页 §3 关于"报告声明 ＋ transport"的部分仍然正确**（R8 实测）；**"装载 pack"这一点**按上面三行与 `root:` 补齐。
 
 **免费复核命令**【实测，2026-10-14 重跑】：
 ```
