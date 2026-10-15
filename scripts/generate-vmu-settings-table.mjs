@@ -231,6 +231,32 @@ const IMPORTERS = (() => {
       if (/export\s*\*\s*from/.test(l)) f.starReexport = true   // names unknowable from the line ⇒ a named residual
     }
   }
+  // ★ R38 (task-177 ①): THE TWO REMAINING FORMS — and why they reduce to ONE rule. This criterion is NAME-based
+  // (`IMPORTERS: name → files that reach it`), so `export * from` needs no star-edge resolution and no depth bound:
+  // what matters is not where a name is EXPORTED FROM but that a file REACHES it. Both remaining forms reach a name
+  // through a MODULE NAMESPACE:
+  //   · `import * as NS from '…'` then `NS.NAME`      (the consumer of a re-export chain)
+  //   · `const { NAME } = await import('…')`          (destructuring: the LOCAL name is what gets used)
+  // The builder's iteration requirement is unchanged, so a namespace ACCESS alone is still not evidence — the file
+  // must also iterate the list there. ★ Residual, named: a computed access (`NS[key]`) cannot be resolved statically
+  // ⇒ that stays "没核", never "nobody reads it".
+  for (const f of SOURCE_FILES) {
+    const nsNames = []
+    for (const l of linesOf(f)) {
+      if (l.indexOf('import') < 0) continue        // ★ cheap guard: without it, 3 regexes ran on EVERY line of every
+      const ns = /import\s*\*\s*as\s+([A-Za-z_$][\w$]*)\s*from/.exec(l)   //   file (measured: wiring-index 6.83 → 10.17s)
+      if (ns) nsNames.push(ns[1])
+      const dyn = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?import\s*\(/.exec(l)
+      if (dyn) nsNames.push(dyn[1])
+      const destr = /(?:const|let|var)\s*\{([^}]*)\}\s*=\s*(?:await\s+)?import\s*\(/.exec(l)
+      if (destr) for (const part of destr[1].split(',')) add(part.trim().split(/\s*:\s*/).pop().trim(), f.rel)
+    }
+    if (!nsNames.length) continue
+    for (const nsName of nsNames) {
+      const re = new RegExp('\\b' + nsName + '\\.([A-Za-z_$][\\w$]*)', 'g')
+      for (const mm of f.text.matchAll(re)) add(mm[1], f.rel)
+    }
+  }
   return m
 })()
 /** ★ ④ dynamic import, computed PER NAME — but the "which files even contain `import(`" pass happens ONCE

@@ -561,4 +561,5 @@ export const hooks = { 'tools/result': async (flat) => {     // ★ 用回合内
 ★ **唯一具名的"未来可能"方向**：把原文留到**回执之外的耐久存储 ＋ 取件键** —— **仍未做、也未排期**，且它也只是"**副本可达时可推**"，**不是普遍可推** ✓。
 
 **④ 现状（可直接引用的实现口径）**：`kernel/receiptbounds.js` 的模块头 **`WHAT IT DOES NOT OWN (named, not implied)`**（`:17-23`）逐条写着：**不保证压到预算内**／**不消除宿主那次省略**／**不使任意内容的前缀性可重推**；`elided[]` 每条 **8 键**（`path`／`from`／`to`／`bytes`／`keptBytes`／`keptHash`／`origHash`／`hash`，其中 `hash:'sha256'`）；**`receiptMeta` 五键、两态同形**（`truncated`／`elided`／`hostElision`／`originalBytes`／`note`）✓。
+★★ **8 键的出处与"哪一版"（必须连读，否则会被默认成真机读到的）**：**8 键形态的依据＝`kernel/receiptbounds.js:139-148`（【代码读数】）**；★ **真机回执（R34，`session-ce7f04ec-a205-43ef-9d2c-9b02fe97aa29`）是【4 键】形态**（原样：`{"path":"settings.resolved['vmu.turn.instituteName'].value","from":2000,"to":14000,"bytes":12000}` ＝ `path`／`from`／`to`／`bytes`，那时 8 键尚未引入，8 键是 **R36** 才有的）⇒ ★ **"8 键在真机上成立"的真机确认【尚未做】**（按裁定**不专门为它开销一次会话**；将来若因别的原因跑真机，**顺带抓该形态**即可）✓。
 
