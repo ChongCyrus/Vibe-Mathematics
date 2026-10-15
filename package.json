@@ -486,6 +486,7 @@
     "tests/vmu-receipt-truncation.test.mjs",
     "tests/vmu-applies-name-unified.test.mjs",
     "tests/vmu-elision-prefix-recomputable.test.mjs",
+    "tests/vmu-prompt-clean.test.mjs",
     "tests/vmu-packs-add-not-remove.test.mjs",
     "tests/vmu-packs-add-not-remove.mutants.mjs",
     "tests/vmu-stall-meeting.test.mjs",
