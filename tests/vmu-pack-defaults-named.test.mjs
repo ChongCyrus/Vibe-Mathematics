@@ -177,6 +177,32 @@ const LOST_TOOLS = ['vibe_vmu_chat', 'vibe_vmu_control', 'vibe_vmu_human', 'vibe
     'E4. ...and the two counts are still 14 / 15 (so the explanation is attached to the real asymmetry)', { enabled: f2.enabled.length, published: f2.published.length })
 }
 
+// =========================================================================================================
+// F. THE TWO ID SETS AND THE TOOL-NAME REGISTRY (round 30, task-151 D1/D2)
+// =========================================================================================================
+// D1: a pack is REQUESTED as `v5r` and APPLIES as `v5r-core`; the cross-check between the entry receipt and the
+// kernel status is only true by eye unless the correspondence is IN the receipt. D2: the real machine receipt
+// contained the word "registered" once - as `guards.registered`, four guard names - so `published − registered`
+// could not be computed from it at all.
+{
+  const { status } = await CONFIG_ROUTE()
+  const pr = status.packReport || {}
+  const applied = pr.applied || []
+  // ★ non-emptiness in the same expression (a bare `.every` on an empty list holds vacuously).
+  ok(applied.length > 0 && applied.every((a) => a && typeof a.requestId === 'string' && typeof a.manifestId === 'string'),
+    'F1. ★ every `packReport.applied` entry carries BOTH ids (requestId AND manifestId) - the two sets are not merged, and the mapping is machine-readable', applied)
+  ok(applied.length > 0 && applied.every((a) => (status.packs || []).includes(a.manifestId)),
+    'F2. ★ ...and the cross-check now holds BY MAPPING: every applied `manifestId` is in the kernel status list', { applied, kernel: status.packs })
+  ok(pr.idMap && applied.length > 0 && applied.every((a) => pr.idMap[a.requestId] === a.manifestId),
+    'F3. ...with the same-frame `idMap` agreeing with the array (two representations of one fact must not drift)', { idMap: pr.idMap, applied })
+  const f3 = status.faces || {}
+  const toolNames = f3.registeredTools || []
+  ok(toolNames.length > 0 && toolNames.every((n) => typeof n === 'string' && /^vibe_vmu_/.test(n)),
+    'F4. ★ `faces.registeredTools` is a TOOL-NAME list (not the four guard names the other `registered` field holds)', toolNames)
+  ok(toolNames.length > 0 && JSON.stringify([...toolNames].sort()) === JSON.stringify([...(f3.published || [])].sort()),
+    'F5. ...and it agrees with `published`, so `published − registered` is computable from the receipt at all', { registeredTools: toolNames.length, published: (f3.published || []).length })
+}
+
 console.log('=== VMU PACK DEFAULTS NAMED: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

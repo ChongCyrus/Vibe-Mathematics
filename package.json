@@ -561,6 +561,7 @@
     "tests/audit-vmu-release.test.mjs",
     "tests/audit-vmu-release.mutants.mjs",
     "tests/vmu-settings.test.mjs",
+    "tests/vmu-settings-domain.test.mjs",
     "tests/vmu-store.test.mjs",
     "tests/vmu-bus.test.mjs",
     "tests/vmu-prompt.test.mjs",

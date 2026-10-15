@@ -568,7 +568,12 @@ export function apply(ctx, config = {}) {
     // Late-bound like `packLoader` above: only CALLED from the host face on a tool call, never during apply().
     packReport: () => ({
       requested: packRequested.map((p) => ({ id: p.id, via: p.via })),
-      applied: appliedPacks.map((a) => a.id),
+      // ROUND 30 / task-151 (D1): `applied` carries BOTH ids per entry (never one merged set) plus the same-frame
+      // `idMap`, so `applied[].manifestId ⊆ status().packs` is checkable by machine rather than by eye. The plain
+      // name list stays available under `appliedPacks` (the manifest-id view) - no existing field changes meaning.
+      applied: appliedIdMap.map((m) => ({ requestId: m.requestId, manifestId: m.manifestId })),
+      appliedPacks: appliedPacks.map((a) => a.id),
+      idMap: appliedIdMap.reduce((acc, m) => { if (m.requestId) acc[m.requestId] = m.manifestId; return acc }, {}),
       errors: packErrors.map((e) => ({ id: e.id, code: e.code, message: e.message })),
       loading: packsLoading,
       ok: packErrors.length === 0,
@@ -868,6 +873,12 @@ export function apply(ctx, config = {}) {
   const packRequested = packsWanted.map((w) => ({ id: typeof w === 'string' ? w : (w && w.id) || null, via: packSourceOf.get(typeof w === 'string' ? 'id:' + w : w) || null }))
   const appliedPacks = []
   const packErrors = []
+  // ROUND 30 / task-151 (D1): THE TWO ID SETS, MAPPED EXPLICITLY. A pack is REQUESTED by id (`v5r`) and APPLIES
+  // under the id its manifest declares (`v5r-core`): the loader's receipt carries the manifest id, while the request
+  // id is what the deployment wrote. Merging the two would silently change both fields' meaning, and leaving the
+  // correspondence implicit made the cross-check (`applied ⊆ status().packs`) hold only by eye and only in the same
+  // frame. This records the mapping where the manifest id first becomes known, so the check is machine-checkable.
+  const appliedIdMap = []
   if (!switchedOff && packsWanted.length > 0) {
     effect(() => {
       packsLoading = true
@@ -984,6 +995,9 @@ export function apply(ctx, config = {}) {
       }
     }
             appliedPacks.push({ id: res.id, applied: res.applied })
+            // D1: record the correspondence AT THE POINT IT BECOMES KNOWABLE (request -> manifest id). `wanted` is
+            // what the deployment/switch wrote; `res.id` is the manifest's own id.
+            appliedIdMap.push({ requestId: typeof wanted === 'string' ? wanted : (wanted && wanted.id) || null, manifestId: res.id })
           } catch (e) {
             const id = typeof wanted === 'string' ? wanted : (wanted && wanted.id)
             packErrors.push({ id, code: (e && e.code) || 'VMU_PACK_MISSING', message: String((e && e.message) || e) })
@@ -1092,7 +1106,12 @@ export function apply(ctx, config = {}) {
     packsLoading: () => packsLoading,
     packReport: () => ({
       requested: packRequested.map((p) => ({ id: p.id, via: p.via })),
-      applied: appliedPacks.map((a) => a.id),
+      // ROUND 30 / task-151 (D1): `applied` carries BOTH ids per entry (never one merged set) plus the same-frame
+      // `idMap`, so `applied[].manifestId ⊆ status().packs` is checkable by machine rather than by eye. The plain
+      // name list stays available under `appliedPacks` (the manifest-id view) - no existing field changes meaning.
+      applied: appliedIdMap.map((m) => ({ requestId: m.requestId, manifestId: m.manifestId })),
+      appliedPacks: appliedPacks.map((a) => a.id),
+      idMap: appliedIdMap.reduce((acc, m) => { if (m.requestId) acc[m.requestId] = m.manifestId; return acc }, {}),
       errors: packErrors.map((e) => ({ id: e.id, code: e.code, message: e.message })),
       loading: packsLoading,
       ok: packErrors.length === 0,

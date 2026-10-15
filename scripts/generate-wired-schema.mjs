@@ -274,6 +274,12 @@ export function typeOf(lit) {
   if (/^(true|false)$/.test(s)) return 'boolean'
   if (/^-?\d+$/.test(s)) return Number(s) >= 0 ? 'natural' : 'natural'
   if (/^-?\d*\.\d+$/.test(s)) return 'ratio'
+  // ★ ROUND 30 (task-149 ③, Lead's ruling): SCIENTIFIC NOTATION was unrecognised, so `1e-6` fell through to `null`
+  // and the emitter's fallback labelled those rows `type:'object'` while their `def` was a NUMBER — a declaration
+  // contradicting its own default (measured: `vmu.math.optim.tolerance`, `vmu.math.precision.tolerance`; the
+  // modules read them numerically, e.g. `numf(sget('vmu.math.precision.tolerance'), 1e-9)` in mathtools.js).
+  // `number` is the schema's plain-finite-number type and the honest one here.
+  if (/^-?\d+(?:\.\d+)?[eE][-+]?\d+$/.test(s)) return 'number'
   if (/^\[/.test(s)) return /\[\s*\{/.test(s) ? 'objectList' : 'stringList'
   if (/^\{/.test(s)) return 'object'
   if (/^'/.test(s) || /^"/.test(s)) return 'string'

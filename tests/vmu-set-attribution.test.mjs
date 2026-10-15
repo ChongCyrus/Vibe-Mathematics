@@ -42,7 +42,12 @@ async function boot() {
 }
 const callTool = async (set, args) => JSON.parse(await set.execute(args, {}))
 const OFFICE_KEY = 'vmu.middleware.dryRun'           // office-owned, not H3 (measured)
-const CHAIR_KEY = 'vmu.meetings.quorumRule'          // declared owner `role:chair` (measured)
+// ★ ROUND 30 (task-149 A, same class as `audit-settings-channels`'s G1.g): the probe value must be INSIDE the
+// key's declared domain (`m-unanimous | all-unanimous`). It used to be `'m-unanimous'`, which A now REFUSES by name
+// — correctly — and that turned the CONTROL arm ("the declared owner may write") into an INVALID_ARGUMENT. The
+// probe is in-domain now so every arm here tests ATTRIBUTION, not the value-domain rail (and the result no longer
+// depends on which guard happens to run first).
+const CHAIR_KEY = 'vmu.meetings.quorumRule'          // declared owner `role:chair`, domain `m-unanimous | all-unanimous`
 
 // ── ① the PUBLISHED schema accepts by/reason
 console.log('=== 1. THE PUBLISHED SCHEMA ACCEPTS by/reason ===')
@@ -81,7 +86,7 @@ console.log('=== 3. A NON-OWNER `by` IS REFUSED BY NAME (and the ledger stays un
   const { handle, set } = await boot()
   const beforeResolved = JSON.stringify(handle.kernel.status().settings.resolved[CHAIR_KEY])
   const beforeWrites = handle.kernel.status().settings.runtimeWrites
-  const r = await callTool(set, { key: CHAIR_KEY, value: 'm-majority', by: 'm-1' })
+  const r = await callTool(set, { key: CHAIR_KEY, value: 'm-unanimous', by: 'm-1' })
   ok(r.ok === false && r.code === 'VMU_NOT_PERMITTED',
     '★ the TOOL returns a NAMED refusal (ok:false + code) for a non-owner write', r)
   ok(String(r.message || '').includes('role:chair'),
@@ -94,7 +99,7 @@ console.log('=== 3. A NON-OWNER `by` IS REFUSED BY NAME (and the ledger stays un
 
   // the KERNEL API throws the same named error (two boundaries, one contract)
   let threw = null
-  try { handle.kernel.setSettingsValue(CHAIR_KEY, 'm-majority', { by: 'm-1' }) } catch (e) { threw = e }
+  try { handle.kernel.setSettingsValue(CHAIR_KEY, 'm-unanimous', { by: 'm-1' }) } catch (e) { threw = e }
   ok(!!threw && threw.code === 'VMU_NOT_PERMITTED' && String(threw.message).includes('role:chair'),
     '★ the KERNEL path THROWS the same named refusal (tool returns, kernel throws - one contract, two shapes)',
     threw && { code: threw.code, message: String(threw.message).slice(0, 80) })
@@ -104,7 +109,7 @@ console.log('=== 3. A NON-OWNER `by` IS REFUSED BY NAME (and the ledger stays un
 console.log('=== 4. CONTROL: the declared owner IS allowed ===')
 {
   const { handle, set } = await boot()
-  const r = await callTool(set, { key: CHAIR_KEY, value: 'm-majority', by: 'role:chair', reason: 'unit:owner' })
+  const r = await callTool(set, { key: CHAIR_KEY, value: 'm-unanimous', by: 'role:chair', reason: 'unit:owner' })
   ok(r.ok === true && r.ownerCheck === 'identified',
     'the declared owner (`role:chair`) may write, and the receipt says `identified`', r)
   ok(handle.kernel.status().settings.lastRuntimeWrite.reason === 'unit:owner',
@@ -117,7 +122,7 @@ console.log('=== 5. THE DECLARATION-DRIVEN DELEGATION PATH ===')
   const { handle, set } = await boot()
   const declared = await callTool(set, { key: 'vmu.safety.delegableKeys', value: JSON.stringify([CHAIR_KEY]) })
   if (declared.ok === true) {
-    const r = await callTool(set, { key: CHAIR_KEY, value: 'm-majority', by: 'm-1' })
+    const r = await callTool(set, { key: CHAIR_KEY, value: 'm-unanimous', by: 'm-1' })
     ok(r.ok === true && String(r.ownerCheck).startsWith('delegated'),
       '★ a key listed in `vmu.safety.delegableKeys` MAY be written by a non-owner ⇒ ownerCheck says `delegated`', r)
   } else {

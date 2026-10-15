@@ -443,6 +443,16 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         out.faces = { enabled: faceResolution.enabled, disabled: faceResolution.disabled, unavailable: faceResolution.unavailable,
           unknownDisabled: faceResolution.unknownDisabled, sources: faceResolution.sources,
           published: surfaceNames.slice(),
+          // ROUND 30 / task-151 (D2): A TOOL-NAME-LEVEL registration list, symmetric with `publishedDetail`. The real
+          // machine receipt contained the word "registered" exactly ONCE - as `guards.registered`, four GUARD names -
+          // so `published − registered` could not be computed from the receipt at all (only mis-guessed from a guard
+          // list). This is that missing half; the field name says WHICH list it is.
+          registeredTools: surfaceNames.slice(),
+          registeredToolDetail: surfaceNames.map((n) => {
+            const s2 = byName.get(n)
+            const rec2 = surface && surface.reasons && surface.reasons[n] ? surface.reasons[n] : null
+            return { name: n, face: (rec2 && rec2.face) || (s2 && s2.face) || null, reason: (rec2 && rec2.reason) || (s2 && s2.reason) || null }
+          }),
           publishedDetail: surfaceNames.map((n) => {
             const s = byName.get(n)
             const rec = surface && surface.reasons && surface.reasons[n] ? surface.reasons[n] : null

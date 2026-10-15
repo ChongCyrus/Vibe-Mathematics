@@ -396,7 +396,12 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.topology.matrixDimensions', type: 'stringList', def: ['business', 'topic'], hot: HOT.H1, who: 'office', doc: '矩阵维度' },
   { key: 'vmu.topology.marketBidWindowMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '市场竞价窗口（0＝不限）' },
   { key: 'vmu.topology.swarmQuorum', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '群体认领的法定数（0＝不判）' },
-  { key: 'vmu.topology.committeeSize', type: 'positiveInteger', def: 0, hot: HOT.H1, who: 'office', doc: '委员会规模上限（0＝不限）' },
+  // ★ ROUND 30 (task-149 ④, Lead's ruling: let the module's real semantics decide which side is wrong).
+  // EVIDENCE, not a guess: `kernel/topology.js:55` reads it as `Number.isInteger(v) && v > 0 ? v : 0` and `:91`
+  // guards with `params.committeeSize > 0` ⇒ **0 IS a meaningful state ("no committee-size limit")**, which this
+  // row's own doc already said ("0＝不限"). So the DECLARATION was wrong (positiveInteger forbids 0) and the
+  // default was right ⇒ the type becomes `natural`. Nothing else about the row changes.
+  { key: 'vmu.topology.committeeSize', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '委员会规模上限（0＝不限）' },
   { key: 'vmu.topology.allowCrossLane', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '矩阵是否允许跨维直连' },
   { key: 'vmu.topology.starCenterSlot', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: '星型中心席位（空＝星型不可用）' },
   { key: 'vmu.topology.autoSelect', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '拓扑是否自动选择' },
@@ -1185,11 +1190,11 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.math.optim.backend', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.optim.certificates', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.optim.timeLimitMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
-  { key: 'vmu.math.optim.tolerance', type: 'object', def: 1e-6, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.math.optim.tolerance', type: 'number', def: 1e-6, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.precision.digits', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.precision.mode', type: 'string', def: 'significant', hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.precision.rounding', type: 'string', def: 'half-even', hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
-  { key: 'vmu.math.precision.tolerance', type: 'object', def: 1e-9, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.math.precision.tolerance', type: 'number', def: 1e-9, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.report.includeRepro', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.report.language', type: 'string', def: 'zh-Hans', hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
   { key: 'vmu.math.report.style', type: 'string', def: 'plain', hot: HOT.H1, who: 'office', doc: "已接线（mathtools.js 读取）；默认值取自模块源码" },
@@ -1455,43 +1460,122 @@ export function assertNoUserTime(key) {
   }
 }
 
+/**
+ * ★ ROUND 30 STOP-THE-LINE FIX (`vmu-verify2` measured it): THE TYPES `validateValue` MAY NOT JUDGE — and why that
+ * is not a silent hole.
+ *
+ * WHAT HAPPENED: the moment A (task-149) gave `validateValue` real execution points, its `default:` branch — which
+ * had been unreachable dead code — began refusing **legal values of every declared type it has no case for**:
+ * `string` (173 keys), `planned` (111), `object` (21), `integer` (7), `number` (7) = **319 of 1226 declared keys
+ * (~26%)**, on BOTH faces. Measured: `setSettingsValue('vmu.meetings.attendanceMode', 'roster')` threw
+ * `unknown declaration type for …: string`. ⇒ an execution point that turns "this type has no definition" into
+ * "this value is illegal" is worse than no execution point at all.
+ *
+ * THE RULE NOW: every type is either JUDGED (it has a case below) or EXPLICITLY UNDECIDED (`planned` = declared but
+ * not wired, so "what is a legal value" has no answer yet ⇒ not judged, and NOT refused). A type that is neither is
+ * a DEFECT and stays LOUD (`unknown declaration type`), so a brand-new type cannot slip in quietly; the guard is the
+ * coverage assertion in `tests/vmu-settings-domain.test.mjs` §6 — **every declared key's own `def` must validate**,
+ * which reddens on a new case-less type before it can ever reach a runtime write.
+ */
+export const UNJUDGED_TYPES = Object.freeze(['planned'])
+
+/**
+ * The PURE verdict for one declaration/value pair: a string WHY it is bad, or `null` when it is acceptable.
+ * Kept separate from `validateValue` so the self-consistency check below can ask the SAME question without
+ * duplicating the switch (two copies of this table would drift, and the drift is exactly the 319-key defect).
+ */
+function whyBad(d, value) {
+  // ★ THE SETTINGS-UNSET SENTINEL (task-149 ②): `null` is not a value, so no type judges it — and because this
+  // rule lives in the PURE verdict (not only in validateValue), the exemption list uses it too: the 10 keys whose
+  // declared default is `null` stop reading as self-contradictory.
+  if (value === null) return null
+  switch (d.type) {
+    case 'boolean': return typeof value !== 'boolean' ? 'expected a boolean' : null
+    case 'enum': return !d.domain.includes(value) ? 'expected one of ' + d.domain.join(' | ') : null
+    case 'natural': return (!Number.isInteger(value) || value < 0) ? 'expected an integer >= 0' : null
+    case 'string': return typeof value !== 'string' ? 'expected a string' : null
+    case 'integer': return !Number.isInteger(value) ? 'expected an integer' : null
+    case 'number': return (typeof value !== 'number' || !Number.isFinite(value)) ? 'expected a finite number' : null
+    // `object` is TYPE-ONLY by ruling (task-149 ②): the schema declares no field shape, so judging fields would be
+    // inventing a contract. "Is it an object" is all the declaration promises.
+    case 'object': return (value === null || typeof value !== 'object' || Array.isArray(value)) ? 'expected an object' : null
+    case 'ratio': return (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) ? 'expected a number in 0..1' : null
+    case 'positiveInteger': return (!Number.isInteger(value) || value < 1) ? 'expected an integer >= 1' : null
+    case 'path':
+      if (typeof value !== 'string' || value.length === 0) return 'expected a non-empty relative path'
+      return /^([A-Za-z]:|[\\/])/.test(value) ? 'expected a workspace-relative path' : null
+    case 'stringList': return (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) ? 'expected a list of strings' : null
+    case 'objectList': return (!Array.isArray(value) || value.some((v) => v === null || typeof v !== 'object')) ? 'expected a list of objects' : null
+    default: return UNKNOWN_TYPE
+  }
+}
+
+/** Sentinel: this declaration's TYPE has no definition at all (neither judged nor explicitly undecided). */
+const UNKNOWN_TYPE = '\u0000unknown-declaration-type'
+
+/** Lazily computed: which declared keys carry a `def` that does not satisfy their OWN declaration. */
+const SELF_INCONSISTENT = new Map()
+function selfInconsistentWhy(d) {
+  if (!SELF_INCONSISTENT.has(d.key)) {
+    const why = whyBad(d, d.def)
+    SELF_INCONSISTENT.set(d.key, why === null || why === UNKNOWN_TYPE ? null : String(why))
+  }
+  return SELF_INCONSISTENT.get(d.key)
+}
+
+/**
+ * WHY THIS DECLARATION IS NOT ENFORCED (or `null` when it IS). Two NAMED, disclosed categories — the ruling for
+ * A's regression (task-149 ①): "neither silently accepted nor wrongly refused":
+ *   ① the TYPE has no defined meaning yet (`UNJUDGED_TYPES`, e.g. `planned` = declared but not wired);
+ *   ② the DECLARATION IS SELF-INCONSISTENT: its own `def` fails its own type (measured: 13 keys, e.g. a
+ *      `stringList` whose default is not a list) ⇒ a validator derived from a declaration must never refuse the
+ *      declaration's own default, so those keys are not judged and are NAMED as schema defects instead.
+ */
+export function unenforcedReason(def) {
+  if (!def) return null
+  if (UNJUDGED_TYPES.includes(def.type)) return 'no validator implemented for this declaration type yet'
+  const self = selfInconsistentWhy(def)
+  if (self) return 'declaration defect: its own default does not satisfy its declaration (' + self + ')'
+  return null
+}
+
+/** The named report a reader (and `status()`) can act on: which TYPES and which KEYS are not being enforced. */
+export function unenforcedReport(defs = SETTING_DEFS) {
+  const types = new Map()
+  const declarations = []
+  for (const d of defs) {
+    const why = unenforcedReason(d)
+    if (!why) continue
+    if (UNJUDGED_TYPES.includes(d.type)) {
+      const row = types.get(d.type) || { type: d.type, count: 0, reason: why }
+      row.count += 1
+      types.set(d.type, row)
+    } else {
+      declarations.push({ key: d.key, type: d.type, reason: why })
+    }
+  }
+  return { types: [...types.values()], declarations,
+    note: 'NEITHER silently accepted NOR wrongly refused: these are the declarations the value guard does not judge (task-149 ①)' }
+}
+
 /** Domain/shape check for one value, derived from the declaration. */
 export function validateValue(key, value) {
   const d = assertDeclared(key)
-  const bad = (why) => refuse('VMU_INVALID_ARGUMENT', d.key + ': ' + why, 'declared as ' + d.type)
-  switch (d.type) {
-    case 'boolean':
-      if (typeof value !== 'boolean') throw bad('expected a boolean')
-      break
-    case 'enum':
-      if (!d.domain.includes(value)) throw bad('expected one of ' + d.domain.join(' | '))
-      break
-    case 'natural':
-      if (!Number.isInteger(value) || value < 0) throw bad('expected an integer >= 0')
-      break
-    case 'ratio':
-      // NEW TYPE (found while integrating kernel/budget.js): the budget module reads `reserveRatio`/`warnAtRatio`
-      // as 0..1 FRACTIONS, and the schema had no non-integer numeric type - so the only honest options were to
-      // lie about the type or to add one. A ratio is 0..1 inclusive, and it is deliberately NOT a percentage
-      // (percentages invite a ×100 slip that no test would catch).
-      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) throw bad('expected a number in 0..1')
-      break
-    case 'positiveInteger':
-      if (!Number.isInteger(value) || value < 1) throw bad('expected an integer >= 1')
-      break
-    case 'path':
-      if (typeof value !== 'string' || value.length === 0) throw bad('expected a non-empty relative path')
-      if (/^([A-Za-z]:|[\\/])/.test(value)) throw bad('expected a workspace-relative path')
-      break
-    case 'stringList':
-      if (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) throw bad('expected a list of strings')
-      break
-    case 'objectList':
-      if (!Array.isArray(value) || value.some((v) => v === null || typeof v !== 'object')) throw bad('expected a list of objects')
-      break
-    default:
-      throw refuse('VMU_INVALID_ARGUMENT', 'unknown declaration type for ' + d.key + ': ' + d.type)
+  // ★ ROUND 30 (task-149 ②, Lead's ruling): `null` IS THE SETTINGS-UNSET SENTINEL, not a value. The declaration
+  // system already had the concept — the generator's own words are "an honest null default" / "emitted with a null
+  // default" (source verified by vmu-verify2) — while the VALIDATOR did not, which made 10 declared keys look
+  // self-contradictory. Semantics: unset ⇒ the declared default applies (the readers' existing fallback). So
+  // `null` is ACCEPTED for EVERY judged type, and it is never a rejection.
+  if (value === null) return value
+  // NOT JUDGED (named, disclosed): a declaration whose type has no meaning yet, or whose own default contradicts
+  // it, is left exactly as it was before A — the alternative was refusing 319 keys' legal values (~26%).
+  if (unenforcedReason(d)) return value
+  const why = whyBad(d, value)
+  if (why === UNKNOWN_TYPE) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'unknown declaration type for ' + d.key + ': ' + d.type,
+      'add a case in validateValue (and a coverage witness), or list it in UNJUDGED_TYPES with a reason')
   }
+  if (why) throw refuse('VMU_INVALID_ARGUMENT', d.key + ': ' + why, 'declared as ' + d.type)
   return value
 }
 
@@ -1518,7 +1602,12 @@ export function buildSchemastery(carrier, defs = SETTING_DEFS) {
       case 'boolean': leaf = carrier.boolean().default(d.def); break
       case 'natural': leaf = carrier.number().min(0).step(1).default(d.def); break
       // EXACTLY the shape `natural` uses (that is the proven-working numeric chain in this carrier); only the
-      // step differs. The 0..1 bound is enforced by validateValue, the path every runtime write takes.
+      // step differs. ★ ROUND 30 (task-149 A) — THIS COMMENT USED TO CLAIM *"The 0..1 bound is enforced by
+      // validateValue, the path every runtime write takes"* AND THAT WAS FALSE: `validateValue` had NO caller
+      // outside this file (`resolveSettings` was its only callee, and `resolveSettings` had none at all), so the
+      // 0..1 bound was enforced NOWHERE at runtime. It is now true — see `screenSettings` below and the two
+      // execution points it is called from (`kernel/index.js`: the construction-time config screen and
+      // `applyPackSettings`); `resolveSettings` composes layers on the same checker.
       case 'ratio': leaf = carrier.number().min(0).step(0.01).default(d.def); break
       case 'positiveInteger': leaf = carrier.number().min(1).step(1).default(d.def); break
       case 'enum': leaf = carrier.union(d.domain.map((v) => carrier.const(v))).default(d.def); break
@@ -1551,23 +1640,97 @@ export function toJsonSchema(defs = SETTING_DEFS) {
 }
 
 /**
+ * ★ ROUND 30 (task-149 A) — THE VALUE/DOMAIN GUARD'S EXECUTION POINT (config + merge face).
+ *
+ * WHY IT EXISTS. `validateValue` was dead code at runtime: its only caller was `resolveSettings`, which itself had
+ * no caller anywhere in the package. So a declared `type`/`domain` was DOCUMENTATION, and an out-of-domain value
+ * handed in through `config.vmu` was simply LOADED (`vmu.budget.onExceed`, `vmu.compat.unknownCombo`,
+ * `vmu.quota.onExceed` were all measured doing exactly that). THIS function is where such a value is screened.
+ *
+ * THE POLICY (two faces, two dispositions — both NAMED, neither silent):
+ *   · interactive write face (`set`): `kernel/index.js` calls `validateValue` directly ⇒ REFUSE by name
+ *     (`VMU_INVALID_ARGUMENT`, the code R17 already uses for the same offence);
+ *   · config/pack MERGE face (here): a value outside its declared domain is NOT ACCEPTED, is RECORDED by name and
+ *     the DECLARED DEFAULT stays in force. Hard-refusing here would turn "one key mistyped" into "the whole
+ *     session will not start" — and the record itself is the migration hint.
+ *
+ * THREE STATES, NEVER MIXED (so a reader can tell them apart):
+ *   · key absent            ⇒ declared default, silent, correct (zero mechanism, R1);
+ *   · `reason:'undeclared'` ⇒ nobody declared it: it is RECORDED and LEFT AS IS (readers ignore it; a merge face
+ *     must not silently DELETE a key it does not know, and must not break the session either);
+ *   · `reason:'outside …'`  ⇒ declared but the value is out of domain: recorded + declared default substituted.
+ */
+export function screenSettings(input = {}, { source = 'config' } = {}) {
+  const accepted = {}
+  const rejected = []
+  for (const [k, v] of Object.entries(input || {})) {
+    const decl = BY_KEY.get(resolveKey(k)) || null
+    if (!decl) {
+      rejected.push({ key: k, value: v, code: 'VMU_INVALID_ARGUMENT', reason: 'undeclared', source, default: undefined })
+      continue
+    }
+    try {
+      validateValue(decl.key, v)
+    } catch (e) {
+      rejected.push({ key: decl.key, value: v, code: (e && e.code) || 'VMU_INVALID_ARGUMENT',
+        reason: decl.domain ? 'outside the declared domain ' + decl.domain.join(' | ') : 'expected ' + decl.type,
+        domain: decl.domain || null, type: decl.type, source, default: decl.def })
+      continue
+    }
+    accepted[decl.key] = v
+  }
+  return { accepted, rejected }
+}
+
+/**
  * Layering (docs/04 §4): pack defaults < preset Config < session settings < runtime set.
  * Input is an ordered list of flat maps; later layers win. Undeclared keys are refused, never
  * merged (so a typo cannot silently become a phantom setting).
+ *
+ * ★ ROUND 30 (task-149 A): `onInvalid:'reject'` is the MERGE-face mode — a declared-but-out-of-domain value is
+ * recorded into `rejected[]` and SKIPPED (the declared default stays), instead of throwing. `onInvalid:'refuse'`
+ * is the original behaviour and remains the default. In reject mode an UNDECLARED key is recorded AND merged
+ * (a merge face must not delete a key it does not own); in refuse mode it still throws, as documented above.
+ * The per-layer maps the accepted values came from are returned as `accepted[i]` so a caller can apply ONE layer
+ * (e.g. `applyPackSettings`) without materialising every declared default into the live settings object.
  */
-export function resolveSettings(layers = []) {
+export function resolveSettings(layers = [], { onInvalid = 'refuse' } = {}) {
   const out = {}
   const provenance = {}
+  const rejected = []
+  const accepted = []
   for (const d of SETTING_DEFS) out[d.key] = d.def
   layers.forEach((layer, i) => {
+    const layerAccepted = {}
+    accepted.push(layerAccepted)
     if (!layer) return
     for (const [k, v] of Object.entries(layer)) {
       assertNoUserTime(k)
-      validateValue(k, v)
+      const decl = BY_KEY.get(resolveKey(k)) || null
+      if (!decl) {
+        if (onInvalid !== 'reject') throw refuse('VMU_INVALID_ARGUMENT', 'undeclared setting key: ' + k,
+          'declare it in vibe-math-vmu/settings/schema.js first (docs/04 R4)')
+        rejected.push({ key: k, value: v, code: 'VMU_INVALID_ARGUMENT', reason: 'undeclared', layer: i })
+        out[k] = v
+        layerAccepted[k] = v
+        provenance[k] = provenance[k] || []
+        provenance[k].push(i)
+        continue
+      }
+      try {
+        validateValue(decl.key, v)
+      } catch (e) {
+        if (onInvalid !== 'reject') throw e
+        rejected.push({ key: decl.key, value: v, code: (e && e.code) || 'VMU_INVALID_ARGUMENT',
+          reason: decl.domain ? 'outside the declared domain ' + decl.domain.join(' | ') : 'expected ' + decl.type,
+          domain: decl.domain || null, type: decl.type, layer: i, default: decl.def })
+        continue
+      }
       out[k] = v
+      layerAccepted[k] = v
       provenance[k] = provenance[k] || []
       provenance[k].push(i)
     }
   })
-  return { values: out, provenance }
+  return { values: out, accepted, provenance, rejected }
 }

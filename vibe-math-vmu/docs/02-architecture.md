@@ -156,7 +156,7 @@ vibe-math-vmu/                     # 随包发布（package.json#files ✓）
 ├── host-spawn.js                  # 子进程接缝（调用时解析可执行文件 ✓）
 ├── host-math.js                   # 共享数学模块的**真宿主接缝** ✓
 ├── math-computation.js / math-engines.js   # 共享模块（**原样复用**，字节一致门 ✓）
-├── settings/schema.js             # L2：**54 个手写核心键** ＋ 由 `settings/planned.js` 组成的**计划键**（合计 717 键 ✓；含 hot／who／doc ✓）
+├── settings/schema.js             # L2：**54 个手写核心键** ＋ 由 `settings/planned.js` 组成的**计划键**（合计 717 键 ✓；含 hot／who／doc ✓）—— ★ **键校验已接线／值（域）校验【未接线】**，且**执法点在读取侧、不在本声明**：见 `04-§6.1` ✓
 ├── settings/planned.js            # **生成物**：设计阶段声明的计划键（由 `scripts/generate-planned-settings.mjs` 从 docs 生成 ✓）
 ├── kernel/                        # L1（17 个 `.js`；含 `prompt/index.js` 共 18 ✓）
 │   ├── index.js  bus.js  store.js  work.js  library.js  members.js

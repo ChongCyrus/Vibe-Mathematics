@@ -122,7 +122,15 @@ export const SettingsJsonSchema = toJsonSchema()   // 单向派生；文档/门�
 
 > **顺带查实的一处层次差异（诚实登记 ✗）**：`settings/schema.js` 的 `resolveSettings()` 会算出 `def`（默认值 ✓，`status().settings.resolved[<key>].source === 'default'` 即它 ✓），但**入口把"原始 map"交给内核** ✗ ⇒ 运行时兜底是内核自己的 `||`（如 `maxLiveMembers || maxParallel || 0` ✓）。**后果** ✓：schema 默认值**不会**自动生效（所以本轮给 `maxParallel` 接线**没有改变任何默认行为** ✓：未设＝不限 ✓、已设才强制 ✓，有断言钉住 ✓）。**待裁决候选** ✗：是否让入口改走 `resolveSettings`（那会让 `maxParallel=3` 等默认值**真的生效** ✗＝行为变更，须批准 ✓）；或维持现状并在 §2 如实写明 ✓。
 
-> **诚实边界** ✗：域外值（类型/枚举越界）目前**只在 `assertDeclared` 一层**做检查 ✓；`config.vmu` 直通内存路径**不校验** ✗（见 12-§10）。
+> ★★ **两条校验的不对称（2026-10-15 读码核过；★ 必须与 `task-149` 的落地状态一起读）** ✗：
+> - **键校验 `assertDeclared`（`settings/schema.js:1436`）＝【已接线】✓**：`vibe-math-vmu.js:36` 导入 → `:614` 交给宿主面 → **`host.js:535` 判定 ＋ `host.js:553` 真的调用**（`set` 面）⇒ 未声明键在**交互写面**被**具名拒** `VMU_INVALID_ARGUMENT` ✓。
+> - **值/域校验 `validateValue`（`settings/schema.js:1459`）＝【未接线】✗**：它**唯一的调用者**是 **`resolveSettings`（`:1558` 定义；`:1566` 调 `validateValue`）**，而 **`resolveSettings` 在全仓（`schema.js` 之外）【零调用者】✓** ⇒ **`type`／`domain` 目前【没有运行期执行点】**，**声明只是文档** ✓。实测后果：域外值经 `config.vmu` 通道**被 LOADED、不拒绝**（`vmu.budget.onExceed`／`vmu.compat.unknownCombo`／`vmu.quota.onExceed`）；**对照**＝`vmu.meetings.orderMode` **REFUSED**，但那是因为 R17 给它加了**读取侧**严格检查 ✓ —— ★ **执法点在读取侧／接线处，不在 schema 声明本身**（`domain` 是**单一来源的声明**，执法由接线处履行）。
+> - ★★ **代码注释里的一句假话（逐字纠正）**：`settings/schema.js:1521` 写着 *"The 0..1 bound is enforced by `validateValue`, **the path every runtime write takes**"* ⇒ **这句是假的**（**没有任何运行期写入走它**）。它正是把"**声明了 `type`／`domain` ⇒ 就该在跑**"这个**误读写进了注释** —— **本卷此后以本条为准** ✓。
+>
+> ★★ **两路两种处置（设计已获批；★ 落地状态见下）** ✓：
+> - **交互写面**（`vibe_vmu_set` 等）⇒ **具名拒**，复用**已登记**的 `VMU_INVALID_ARGUMENT`（与 `assertDeclared` **同码**，R17 起即有）✓。
+> - **配置／合并面**（插件行的 `config.vmu` 等）⇒ **"不收该值 ＋ 具名记账（如 `settingsRejected`）＋ 用声明默认值"** ✓。★ **为什么这一面【不】硬拒**：在该面硬拒会把"**一个键写错**"升级成"**整个会话起不来**"，而**那条 `settingsRejected` 记账本身就是迁移提示** ✓。
+> - ★★ **落地状态（不许写成已生效）**：截至 **2026-10-15**，`task-149` 的 A 项（给 `resolveSettings`／`validateValue` 一个**真调用点**）**仍在 `in_progress`、未落地**（本轮读码：`resolveSettings` **零调用者**）⇒ 上面两条处置**是设计（未生效）**；**当前代码的实际行为**＝**键检查生效、值／域检查不生效** ✗。
 
 ---
 
@@ -476,7 +484,7 @@ vmu.packs.active: [v5r]
 | `vmu.topology.matrixDimensions` | string[] | `[business,topic]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 矩阵维度 |
 | `vmu.topology.marketBidWindowMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 市场竞价窗口（0＝不限） |
 | `vmu.topology.swarmQuorum` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 群体认领的法定数（0＝不判） |
-| `vmu.topology.committeeSize` | int ≥1 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 委员会规模上限（0＝不限） |
+| `vmu.topology.committeeSize` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 委员会规模上限（0＝不限） |
 | `vmu.topology.allowCrossLane` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 矩阵是否允许跨维直连 |
 | `vmu.topology.starCenterSlot` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 星型中心席位（空＝星型不可用） |
 | `vmu.topology.autoSelect` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/topology.js` | 拓扑是否自动选择 |
@@ -1148,11 +1156,11 @@ vmu.packs.active: [v5r]
 | `vmu.math.optim.backend` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.optim.certificates` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.optim.timeLimitMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
-| `vmu.math.optim.tolerance` | object | `0.000001` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
+| `vmu.math.optim.tolerance` | number | `0.000001` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.precision.digits` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.precision.mode` | string | `significant` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.precision.rounding` | string | `half-even` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
-| `vmu.math.precision.tolerance` | object | `1e-9` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
+| `vmu.math.precision.tolerance` | number | `1e-9` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.report.includeRepro` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.report.language` | string | `zh-Hans` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.report.style` | string | `plain` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |

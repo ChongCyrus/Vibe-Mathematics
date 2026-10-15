@@ -88,9 +88,15 @@ const cleanup = async (dir) => { if (dir) { try { await rm(dir, { recursive: tru
   ok(status.settingsMerge && Array.isArray(status.settingsMerge.packSources) && status.settingsMerge.packSources.some((p) => p.id === 'v5r' && p.via === 'vmu.packs.active'),
     'B6. ...and its SOURCE travels with it', status.settingsMerge && status.settingsMerge.packSources)
   // ★ TWO INDEPENDENT VIEWS, CROSS-CHECKED: the entry's list and the kernel's own `status().packs`.
+  // ROUND 30 / task-151 (D1): `applied` now carries BOTH ids per entry, because a pack is REQUESTED as `v5r` and
+  // APPLIES as `v5r-core` - checking literal ids across the two views was only true by eye. The check below is the
+  // explicit-mapping form, and it also asserts that the mapping itself is present (a bare name list would hide which
+  // id each side is talking about).
   const applied = (status.packReport && status.packReport.applied) || []
-  ok(applied.length > 0 && (status.packs || []).length > 0 && applied.every((id) => (status.packs || []).includes(id)),
-    'B7. ★ the entry receipt and the KERNEL status agree (two views of "what is applied", cross-checked rather than trusted)', { entry: applied, kernel: status.packs })
+  const mapped = applied.filter((a) => a && typeof a.requestId === 'string' && typeof a.manifestId === 'string')
+  ok(applied.length > 0 && mapped.length === applied.length && mapped.every((a) => (status.packs || []).includes(a.manifestId)),
+    'B7. ★ the entry receipt and the KERNEL status agree BY EXPLICIT ID MAPPING (requestId != manifestId is expected, not a disagreement)',
+    { entry: applied, kernel: status.packs, idMap: status.packReport && status.packReport.idMap })
   await cleanup(dir)
 }
 

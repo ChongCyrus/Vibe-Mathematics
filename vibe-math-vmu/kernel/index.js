@@ -119,7 +119,7 @@ import { createReproPack } from './repropack.js'
 // ROUND 247: the domain compliance face (docs/20 §9.1-§9.4) - clinical (N2) and animal (N3) packs.
 import { createLegalEntity } from './partnership.js'
 import { createReviewers } from './reviewers.js'
-import { SETTING_DEFS } from '../settings/schema.js'
+import { SETTING_DEFS, screenSettings, resolveSettings, validateValue, unenforcedReport } from '../settings/schema.js'
 // ROUND 2 (task-14): the four new faces' factories + the ONE id minter (D: "id 不可复用").
 //   · ids.js      - reader-a's primitive; `bindIds` binds the module-level singleton the ~20 id-minting modules import;
 //   · resume.js   - recovery primitives + the projection wrapper this file attaches;
@@ -354,6 +354,30 @@ export function createKernel({
   // false. A receipt that claims "applied" while a whole class of modules can never see it is worse than the
   // original defect, so the view is LIVE now - property reads fall through to the original on every access and
   // get() reads it directly. Iteration and `in` keep working through the proxy traps.
+  // ★ ROUND 30 (task-149 A) — THE VALUE/DOMAIN GUARD'S EXECUTION POINT, FIRST OF TWO.
+  //
+  // THE DEFECT (measured, then independently reproduced): `validateValue` (settings/schema.js) was runtime DEAD
+  // CODE — its only callee `resolveSettings` had no caller at all — so a declared `type`/`domain` was pure
+  // documentation and an out-of-domain value arriving through `config.vmu` (preset/overlay) was simply LOADED
+  // (`vmu.budget.onExceed`, `vmu.compat.unknownCombo`, `vmu.quota.onExceed` all did). The KEY guard
+  // (`assertDeclared`) was wired, so half of this file's own schema really ran, which is why the missing half was
+  // easy to assume: schema.js:1521 said "the path every runtime write takes" and nothing took it.
+  //
+  // WHY HERE: every consumer below receives `settings` (directly or through `settingsView`), so the LAST moment at
+  // which a bad value can still be kept out of the whole graph is before the first consumer is built. The
+  // disposition is the MERGE-FACE one (see screenSettings): NOT ACCEPTED + RECORDED BY NAME + the declared default
+  // stays. A hard refusal here would turn "one key mistyped" into "the session never starts".
+  const settingsRejected = []
+  {
+    const screened = screenSettings(settings, { source: 'config' })
+    for (const r of screened.rejected) {
+      settingsRejected.push(r)
+      // An UNDECLARED key is recorded and LEFT ALONE (readers ignore it; deleting a key this face does not own is a
+      // behaviour change nobody asked for). A DECLARED key with an out-of-domain value is replaced by its declared
+      // default — the value is not accepted, the default is what the declaration promised.
+      if (r.reason !== 'undeclared') settings[r.key] = r.default
+    }
+  }
   const settingsView = new Proxy(settings, {
     get: (target, key) => (key === 'get' ? (k) => target[k] : target[key]),
     has: (target, key) => key === 'get' || key in target,
@@ -1824,7 +1848,16 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     applyPackSettings(incoming = {}, { by = null } = {}) {
       const applied = []
       const previous = {}
-      for (const [key, value] of Object.entries(incoming)) {
+      // ★ ROUND 30 (task-149 A): the PACK layer is a MERGE layer ⇒ `resolveSettings([…], { onInvalid:'reject' })`
+      // screens it with the SAME checker the interactive face refuses with, but with the merge-face disposition:
+      // a declared-but-out-of-domain default is NOT accepted and is RECORDED (its declared default stays). This is
+      // also `resolveSettings`'s first real runtime caller — before this it was unreachable code.
+      const screened = resolveSettings([incoming], { onInvalid: 'reject' })
+      // `resolveSettings` records the numeric LAYER index in `r.layer`, so the source label is a SEPARATE field
+      // (`source`) — writing it into `layer` was silently overwritten by the record's own `layer: 0` (measured).
+      for (const r of screened.rejected) settingsRejected.push(Object.assign({}, r, { source: 'pack:' + String(by || 'pack') }))
+      const layer = screened.accepted[0] || {}
+      for (const [key, value] of Object.entries(layer)) {
         const existed = Object.prototype.hasOwnProperty.call(settings, key)
         // Two explicit doors and NO silent third one: the blunt `vmu.packs.allowOverride`, or naming THIS exact
         // key in `vmu.packs.activeOverrides` (finer-grained - docs/04 搂11). Anything else stays a named conflict,
@@ -1872,6 +1905,12 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
       // in host.js, so the kernel API accepted an H3 write with `applied:'immediate'` while the tool face
       // refused the very same pair with VMU_NOT_PERMITTED — two paths, two contracts.
       const g = settingsGuard(key, by, 'set')
+      // ★ ROUND 30 (task-149 A) — THE VALUE/DOMAIN GUARD'S EXECUTION POINT, SECOND OF TWO (the INTERACTIVE face).
+      // A write is an explicit declaration by an operator, so an out-of-domain value is REFUSED BY NAME — the code
+      // is `VMU_INVALID_ARGUMENT`, already registered and already used for this exact offence by R17's read-side
+      // `strictOrderMode`. Silence here was the defect: the value used to be stored, and every reader then fell back
+      // to a default (or clamped), so the receipt said "applied" while the declaration was never honoured.
+      validateValue(key, value)
       settings[key] = value
       markSettingWriter(settings, key, 'runtime')
       // TASK-163 (sixth "receipt lies" case): the receipt is graded by the DECLARED hot class, so it can never
@@ -2066,7 +2105,11 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
 
     /** The declaration of a setting (hot class, who may change it) - used by the host tool for its receipt. */
     settingDef(key) { return SETTING_DEFS.find((d) => d.key === key) || null },
-
+    /**
+     * ★ ROUND 30 (task-149 A): what the declared type/domain refused so far (config layer, pack layer — and the
+     * interactive face REFUSES BY NAME instead of recording). Read-only, and empty is the honest normal state.
+     */
+    settingsRejected() { return settingsRejected.map((r) => Object.assign({}, r)) },
     /** Pack bookkeeping: what was applied and unloaded is part of the audit trail, not a side note. */
     notePackApplied(id) { packNotesLog.push({ id, at: clock(), what: 'applied' }); return { ok: true } },
     notePackUnloaded(id) { packNotesLog.push({ id, at: clock(), what: 'unloaded' }); return { ok: true } },
@@ -2123,7 +2166,20 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
           // call time. Without it the receipt's live claim would be unauditable prose.
           liveReaders: LIVE_READERS,
           runtimeWrites: runtimeWrites.length,
-          lastRuntimeWrite: runtimeWrites.length ? Object.assign({}, runtimeWrites[runtimeWrites.length - 1]) : null },
+          lastRuntimeWrite: runtimeWrites.length ? Object.assign({}, runtimeWrites[runtimeWrites.length - 1]) : null,
+          // ★ ROUND 30 (task-149 A): WHAT THE DECLARATION REFUSED, IN THE OPEN. Empty is the normal, honest state
+          // ("every declared value that arrived was inside its declared type/domain"); a non-empty list NAMES each
+          // key, the value it arrived with, the domain it missed and the default that was used instead — which is
+          // also the one-time migration hint for a deployment that has been carrying an out-of-domain value.
+          // ★ THREE STATES STAY DISTINGUISHABLE: key absent (declared default, zero mechanism) ⇒ nothing here;
+          // undeclared key ⇒ an entry with reason:'undeclared'; declared-but-out-of-domain ⇒ reason:'outside …'.
+          settingsRejected: settingsRejected.map((r) => Object.assign({}, r)),
+          settingsRejectedCount: settingsRejected.length,
+          // ★ ROUND 30 STOP-THE-LINE (task-149 ①): WHAT THE VALUE GUARD DOES *NOT* JUDGE — named, counted, with a
+          // reason. Two categories: a TYPE with no validator yet (`planned` = declared but not wired) and a
+          // DECLARATION THAT CONTRADICTS ITS OWN DEFAULT (13 keys, pre-existing). Neither is silently accepted
+          // (it is visible here) and neither is wrongly refused (the guard steps aside).
+          settingsUnenforced: unenforcedReport() },
         auditTail: auditRing.slice(-20),
         // ROUND 2 (task-14): the id minter's own verdict (durable counters / process-only) and WHICH durable
         // projections this assembly actually attached. Both are stated, so "which durable key has a writer" is

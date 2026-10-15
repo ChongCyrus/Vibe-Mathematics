@@ -78,10 +78,33 @@ function channelProbe() {
     const keys = [...new Set(probe.propCalls)]
     ok(keys.length >= 5, 'G1.c: construction-time property reads reach the view (the property channel is wired, not get()-only)', 'keys=' + keys.length)
     const sampleKeys = keys.length ? keys : ['vmu.external.enabled']
+    // ★ ROUND 30 (task-149 A): a runtime write now ENFORCES the declared type/domain, so a synthetic probe value
+    // must be INSIDE the declaration — `'runtime-probe'` for an `enum` key (or `before + 1` for a `ratio`) is now
+    // refused by name, which made this gate measure `observed=0`. That refusal is the fix, not a regression: the
+    // probe below picks an in-domain alternative so the gate keeps proving what it was written to prove (both
+    // channels agree, and at least one key is really materialised — no snapshot isolation).
+    const probeValueFor = (key, before) => {
+      const def = typeof k.settingDef === 'function' ? k.settingDef(key) : null
+      if (def && def.type === 'enum' && Array.isArray(def.domain)) {
+        const other = def.domain.find((v) => v !== before)
+        return other === undefined ? before : other
+      }
+      if (def && def.type === 'ratio') return typeof before === 'number' && before < 0.5 ? 0.75 : 0.25
+      if (typeof before === 'boolean') return !before
+      if (typeof before === 'number') return before + 1
+      if (Array.isArray(before)) return before.slice()
+      if (before !== null && typeof before === 'object') return Object.assign({}, before)
+      return 'runtime-probe'
+    }
     let observed = 0
-    for (const key of sampleKeys.slice(0, 40)) {
+    // RULE E (non-vacuity): the loop below asserts per key, so the key set is pinned NON-EMPTY in the same window —
+    // otherwise an empty sample would make every assertion inside it vacuous (the declaration-criterion gate counts
+    // exactly this shape as a NEW vacuous pass).
+    const probeKeys = sampleKeys.slice(0, 40)
+    ok(probeKeys.length > 0, 'G1.g0: the sampled key set is non-empty (the per-key loop below is non-vacuous)', 'keys=' + probeKeys.length)
+    for (const key of probeKeys) {
       const before = probe.backing[key]
-      const value = typeof before === 'boolean' ? !before : (typeof before === 'number' ? before + 1 : 'runtime-probe')
+      const value = probeValueFor(key, before)
       let res = null
       try { res = k.setSettingsValue(key, value) } catch (e) { res = { error: e } }
       const viaProp = probe.backing[key]
