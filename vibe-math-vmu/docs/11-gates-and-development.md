@@ -209,7 +209,7 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 322 / suites 250 / probes 72`** ✓（旧值 134／68／66 已在扩卷与增件后过期 ✗；本轮树新增 1 个作业：`tests/audit-scope-classification.test.mjs` ✓） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 300 / suites 229 / probes 71`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 301 / suites 230 / probes 71`** ✓ |
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 258 / suites 225 / probes 33`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。
@@ -803,6 +803,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `mathjobs` · `list()` | ok | — | dropped=0 | ok 或 object（**两侧都写清** ✓（★ 轮 4 更正读数 ✗✓）：**状态/列表面 `list()` ⇒ `{ok:true,count:0,dropped:0,jobs:[]}`（object 信封；零机制＝无作业 ⇒ 空列表放行 ✓）**；`submit()` 缺参 ⇒ 具名拒 **VMU_MATH_INVALID_INPUT**（task-214 实测，保留 ✓）。★★ 为什么改：轮 2 这行写"`list()` ⇒ array[0]"，而**当时探针没有固定 op**（`mathjobs` 同时有 `submit`/`list`，谁先匹配谁被调）⇒ 那个形状可能来自另一个方法、也可能是模块自身的形状变化 ✗ ⇒ 本轮**固定探针 op＝`list`**（见 `PROBE_ARGS.mathjobs`）后按**实测**改写；`submit` 的具名拒仍由既有 task-214 断言守着 ✓） |
 | `mathtools` · `plan()` | refusal | VMU_MATH_INVALID_INPUT | enforced=[0] enforcedScope=evaluated-so-far | 具名拒（带 code）（task-214 实测：`plan()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT**（带口径 `enforced=[0] enforcedScope=evaluated-so-far`）⇒ 零机制＝无计划入参 ⇒ 具名拒即真实形状 ✓（补参后应见 `ok + enforced:[]`，届时改"具名拒或 ok" ✓）） |
 | `meeting` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
+| `meetingdomain` · `read()` | refusal | VMU_NO_SUCH_OBJECT | — | 具名拒（带 code）（轮 31 从 `meetings.js` 抽出（11 个严格域：读取侧具名拒，不再静默夹取；`meetings.js` 1199→1196，被顶满的文件**下降**）。**实测零机制形状**：工厂 `createMeetingDomains({clock})`（**不注入任何接缝**）仍能建（表是纯的、11 键回落声明默认值）⇒ 探针调 `read()`（无参 ⇒ 问一个未声明键）⇒ **具名拒 `VMU_NO_SUCH_OBJECT`**（"no declared domain for undefined"）⇒ 零机制＝"**问我没声明过的东西就具名拒**"，不静默 `null`、不臆造默认值 ✓。★ 期望词表是**闭集**：本行取闭集里的 `具名拒（带 code）`（实测 `shape=refusal` ＋ `VMU_NO_SUCH_OBJECT` 与之逐字对应；`judge()` 判"无名拒"为红）。） |
 | `meetinglapse` · `lapseDue()` | op 抛出 | — | — | PROBE_NEEDS_ARGS（R12 拆出（`createMeetingControls`）；`lapseDue()` 缺参数即抛 ⇒ 探针需要参数才能裁定（同上）） |
 | `meetingleave` · `requestLeave()` | op 抛出 | — | — | PROBE_NEEDS_ARGS（R12 拆出（`createLeaveControls`）；`requestLeave()` 缺参数即抛 ⇒ 探针需要参数才能裁定（登记为待补参数，而不是"无需裁定"）） |
 | `meetingmarker` · `status()` | object | — | — | ok 或 object（轮 11 从 `meetings.js` 抽出（F51 标记族：域派生/耐久接缝/读面/自曝；`meetings.js` 1244→1198 ✓）。**实测零机制形状**：工厂 `createMeetingMarker({clock})`（**不注入 `durable`**）⇒ 首个零参操作 `status()` 回 **object**，其中 **`bound:false`／`durableMarker:false`** 自曝、**不声称任何"开着"的会** ✓ ⇒ 零机制＝"**没有域接缝就明说自己没有**"，而不是假装有 ✓（有 `create*` 工厂 ⇒ 不适用 EXPECT_NA）。★ 期望词表是**闭集**：我先写裸 `object` 被判 mismatch（fail-closed ✓），必须用词表里的 `ok 或 object`。） |
@@ -847,7 +848,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
 | `workflow` · `advance()` | refusal | VMU_WORKFLOW_TRANSITION_REQUIRED | enforced=[7] enforcedScope=evaluated-so-far | 具名拒或 ok（**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 `advance()` 缺参 ⇒ **task-214 实测：具名拒 `VMU_WORKFLOW_TRANSITION_REQUIRED`（带口径 `enforced=[7]`）** ⇒ 具名拒即真实形状 ✓（旧 note 曾写 `op 抛出` ✗ / "缺参 ⇒ 具名拒" 混述 ✗，均已按实测改写 ✓）） |
 
-=== ZERO-MECHANISM MATRIX: 96 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 9 probe-errors, 4 n/a ===
+=== ZERO-MECHANISM MATRIX: 97 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 9 probe-errors, 4 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->
 
 ### 11.x 改文档的标准手法（★ 轮 524 补 ✓ —— ★ 本节在台账上结转了 6 轮 ✗）

@@ -157,6 +157,18 @@ const EXPECT = {
   // the same measured reason as `guard` rather than given an invented expectation. It exists because compliance
   // and the domain gate each had their own copy of the same normaliser, and two copies drift.
   timevalue: G('EXPECT_NA', '纯函数工具模块（**无 `create*` 工厂** ⇒ 矩阵不适用 ✓）；它存在的原因是 `ms()` 曾在 `compliance`／`domaingate` **各有一份**（**两份实现会漂移** ✗✓ ⇒ 已抽为单一真源 ✓）'),
+  // ROUND 31 (task-149 C③): `meetingdomain` was EXTRACTED out of `meetings.js` (the eleven strict meeting domains;
+  // `meetings.js` 1199 -> 1196, i.e. the file pinned at the 1200 limit went DOWN).
+  // ★ WHICH WORD, AND WHY (the vocabulary is a CLOSED set — read, not guessed): the generator's OWN measured row is
+  // `refusal` with code `VMU_NO_SUCH_OBJECT`, and `judge()` reddens a refusal WITHOUT a code. The word in the closed
+  // set that says exactly that is `具名拒（带 code）` (the word `grant` already uses): measured shape and allowed
+  // value agree, so nothing was forced.
+  // ZERO MECHANISM, VERBATIM: `createMeetingDomains({ clock })` with NO seams injected still BUILDS (the table is
+  // pure; all eleven keys fall back to their declared defaults), and the probe then calls `read()` with no argument
+  // — i.e. asks for a key this module never declared — which is refused BY NAME (`VMU_NO_SUCH_OBJECT`, "no declared
+  // domain for undefined"). ⇒ zero mechanism = "ask me for something I did not declare and I refuse by name",
+  // never a silent `null` and never an invented default.
+  meetingdomain: G('具名拒（带 code）', '轮 31 从 `meetings.js` 抽出（11 个严格域：读取侧具名拒，不再静默夹取；`meetings.js` 1199→1196，被顶满的文件**下降**）。**实测零机制形状**：工厂 `createMeetingDomains({clock})`（**不注入任何接缝**）仍能建（表是纯的、11 键回落声明默认值）⇒ 探针调 `read()`（无参 ⇒ 问一个未声明键）⇒ **具名拒 `VMU_NO_SUCH_OBJECT`**（"no declared domain for undefined"）⇒ 零机制＝"**问我没声明过的东西就具名拒**"，不静默 `null`、不臆造默认值 ✓。★ 期望词表是**闭集**：本行取闭集里的 `具名拒（带 code）`（实测 `shape=refusal` ＋ `VMU_NO_SUCH_OBJECT` 与之逐字对应；`judge()` 判"无名拒"为红）。'),
   meetingmarker: G('ok 或 object', '轮 11 从 `meetings.js` 抽出（F51 标记族：域派生/耐久接缝/读面/自曝；`meetings.js` 1244→1198 ✓）。**实测零机制形状**：工厂 `createMeetingMarker({clock})`（**不注入 `durable`**）⇒ 首个零参操作 `status()` 回 **object**，其中 **`bound:false`／`durableMarker:false`** 自曝、**不声称任何"开着"的会** ✓ ⇒ 零机制＝"**没有域接缝就明说自己没有**"，而不是假装有 ✓（有 `create*` 工厂 ⇒ 不适用 EXPECT_NA）。★ 期望词表是**闭集**：我先写裸 `object` 被判 mismatch（fail-closed ✓），必须用词表里的 `ok 或 object`。'),
   // Round 9: the same measured reason as `timevalue` - `contentvalue` is a pure-function module (no `create*` factory,
   // no service, nothing to probe), extracted out of `resume.js` when the file crossed the 1200-line rule. It is

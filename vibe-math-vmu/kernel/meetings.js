@@ -6,6 +6,7 @@ import { CODE as RESUME_CODE } from './resume.js'
 // The leave/recess request family was extracted at the 1200-line boundary (docs/02 §L174): `kernel/meetingleave.js`
 // owns the RULES, this file owns the state (records, minutes, receipts) and the receipt vocabulary.
 import { createLeaveControls } from './meetingleave.js'
+import { createMeetingDomains } from './meetingdomain.js'
 // F28's bounded-fallback RULES and the extension-step resolution were extracted to keep this file inside the
 // decided 1200-line budget (docs/02 §L174) — see `kernel/meetinglapse.js`: it holds the pure rules, this file
 // holds the state (live records, minutes, counters, broadcasts) and the D3 receipt vocabulary.
@@ -125,17 +126,20 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   }
   const n = (v, def = 0) => (Number.isFinite(v) ? v : def)
   const arr = (v) => (Array.isArray(v) ? v.slice() : [])
-  const oneOf = (v, set, def) => (set.includes(v) ? v : def)
 
+  // ROUND 31 (task-149 C③): the ELEVEN strict `vmu.meetings.*` domains live in
+  // `kernel/meetingdomain.js` (read side REFUSES BY NAME instead of clamping); `D.values` supplies the keys
+  // whose whole entry moved out below (tier/attendanceMode/quorumLossPolicy/minutesDetail/appealScope/
+  // leaveApprover/confidentialityDefault/confidentialityQuotePolicy/wakeFailurePolicy).
+  const D = createMeetingDomains({ sget, refuse })
   const K = {
+    ...D.values,
     typeCatalog: arr(sget('vmu.meetings.typeCatalog')).map(String),
     // GAP-MTG-02 (D7/GAPS 22): the meeting TIER, and whether light procedures are allowed at all. Both are read
     // LIVE (a hot change is honoured on the next call) and together they feed ONE derived predicate below.
     // `tier` = the meeting's level; `allowLight=false` = this institution does not run light procedures, so a
     // `light` tier becomes a named configuration conflict instead of a silently weakened meeting.
-    tier: oneOf(sget('vmu.meetings.tier'), ['formal', 'light'], 'formal'),
     allowLight: sget('vmu.meetings.allowLight') !== false,
-    attendanceMode: oneOf(sget('vmu.meetings.attendanceMode'), ['roster', 'signin', 'quorum-only'], 'roster'),
     liveCap: n(sget('vmu.meetings.liveCap')),
     quorumMin: n(sget('vmu.meetings.quorumMin')), quorumRatio: n(sget('vmu.meetings.quorumRatio')),
     // ROUND 203: the quorum ceiling (declared default 3; 0 = no ceiling). `undefined` means unset -> default 3,
@@ -144,14 +148,13 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const raw = sget('vmu.meetings.quorumCap')
       return (raw === undefined || raw === null || raw === '') ? 3 : n(raw)
     })(),
-    quorumLossPolicy: oneOf(sget('vmu.meetings.quorumLossPolicy'), ['suspend', 'continue', 'recess'], 'suspend'),
     quorumRecountMs: n(sget('vmu.meetings.quorumRecountMs')),
     unansweredInDenominator: sget('vmu.meetings.unansweredInDenominator') === true,
     emergencyQuorumRatio: n(sget('vmu.meetings.emergencyQuorumRatio')), emergencyKinds: arr(sget('vmu.meetings.emergencyKinds')).map(String),
     chairNeutral: sget('vmu.meetings.chairNeutral') === true, chairTransferAudit: sget('vmu.meetings.chairTransferAudit') === true,
     committeeMax: n(sget('vmu.meetings.committeeMax')), committeeReportRequired: sget('vmu.meetings.committeeReportRequired') === true,
     budgetTurns: n(sget('vmu.meetings.budgetTurns')), budgetTokens: n(sget('vmu.meetings.budgetTokens')),
-    budgetWallMs: n(sget('vmu.meetings.budgetWallMs')), budgetOnExceed: oneOf(sget('vmu.meetings.budgetOnExceed'), ['refuse', 'warn', 'extend'], 'refuse'),
+    budgetWallMs: n(sget('vmu.meetings.budgetWallMs')), budgetOnExceed: D.values.budgetOnExceed,
     // ROUND 200/201: the HARD wall-clock backstop, clamped [300000, 7200000] with default 1800000. Its contract says
     // there is no unbounded case, so 0 does NOT mean unlimited here (unlike `budgetWallMs`, the soft one). `undefined`
     // means unset (use the default); an explicit 0 is a VALUE and therefore clamps to the 300000 floor. Writing this as
@@ -168,24 +171,18 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     // ROUND 17: NOT `oneOf` - an out-of-domain value is refused BY NAME instead of being silently replaced by `fifo`
     // (measured: `bogus` used to read back as `fifo` everywhere, including in `status().keys`). See `strictOrderMode`.
     orderMode: strictOrderMode(sget('vmu.meetings.orderMode'), refuse),
-    lateAfterMs: n(sget('vmu.meetings.lateAfterMs')), leaveEarlyPolicy: oneOf(sget('vmu.meetings.leaveEarlyPolicy'), ['allow', 'note', 'deny'], 'allow'),
+    lateAfterMs: n(sget('vmu.meetings.lateAfterMs')), leaveEarlyPolicy: D.values.leaveEarlyPolicy,
     materialsRequired: sget('vmu.meetings.materialsRequired') === true,
-    minutesDetail: oneOf(sget('vmu.meetings.minutesDetail'), ['brief', 'full'], 'brief'),
     minutesIncludeRefused: sget('vmu.meetings.minutesIncludeRefused') !== false,
     minutesActionsRequired: sget('vmu.meetings.minutesActionsRequired') === true,
     minutesRetentionMs: n(sget('vmu.meetings.minutesRetentionMs')), confirmPreviousMinutes: sget('vmu.meetings.confirmPreviousMinutes') === true,
     appealDeadlineMs: n(sget('vmu.meetings.appealDeadlineMs')), appealReasonRequired: sget('vmu.meetings.appealReasonRequired') !== false,
-    appealScope: oneOf(sget('vmu.meetings.appealScope'), ['all', 'procedural', 'none'], 'all'),
     disciplineWarnMax: n(sget('vmu.meetings.disciplineWarnMax')), disciplineMuteMs: n(sget('vmu.meetings.disciplineMuteMs')),
     disciplineExpelAllowed: sget('vmu.meetings.disciplineExpelAllowed') !== false,
     recessMaxMs: n(sget('vmu.meetings.recessMaxMs')), recessResumeRequiresMotion: sget('vmu.meetings.recessResumeRequiresMotion') === true,
     // B② (Round 10): WHO decides a leave/recess request — a DECLARED authority (chair, office as the declared
     // fallback). Read here; the decision point below names the key in `enforced[]`.
-    leaveApprover: oneOf(sget('vmu.meetings.leaveApprover'), ['chair', 'office'], 'chair'),
-    confidentialityDefault: oneOf(sget('vmu.meetings.confidentialityDefault'), ['public', 'internal', 'restricted'], 'internal'),
-    confidentialityQuotePolicy: oneOf(sget('vmu.meetings.confidentialityQuotePolicy'), ['allow', 'redact', 'deny'], 'allow'),
     verbatimEnabled: sget('vmu.meetings.verbatimEnabled') !== false, verbatimRetentionMs: n(sget('vmu.meetings.verbatimRetentionMs')),
-    wakeFailurePolicy: oneOf(sget('vmu.meetings.wakeFailurePolicy'), ['refuse', 'skip', 'retry'], 'refuse'),
     // ROUND 198: the retry policy's bound, clamped [0,10] as the key's own contract says.
     wakeRetries: Math.min(10, Math.max(0, n(sget('vmu.meetings.wakeRetries')))),
     // ROUND 199: the motion (verdict round) ceiling. `|| 3` is explicit: an unset key reads as 0 here, and the

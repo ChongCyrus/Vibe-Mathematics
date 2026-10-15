@@ -122,15 +122,33 @@ export const SettingsJsonSchema = toJsonSchema()   // 单向派生；文档/门�
 
 > **顺带查实的一处层次差异（诚实登记 ✗）**：`settings/schema.js` 的 `resolveSettings()` 会算出 `def`（默认值 ✓，`status().settings.resolved[<key>].source === 'default'` 即它 ✓），但**入口把"原始 map"交给内核** ✗ ⇒ 运行时兜底是内核自己的 `||`（如 `maxLiveMembers || maxParallel || 0` ✓）。**后果** ✓：schema 默认值**不会**自动生效（所以本轮给 `maxParallel` 接线**没有改变任何默认行为** ✓：未设＝不限 ✓、已设才强制 ✓，有断言钉住 ✓）。**待裁决候选** ✗：是否让入口改走 `resolveSettings`（那会让 `maxParallel=3` 等默认值**真的生效** ✗＝行为变更，须批准 ✓）；或维持现状并在 §2 如实写明 ✓。
 
-> ★★ **两条校验的不对称（2026-10-15 读码核过；★ 必须与 `task-149` 的落地状态一起读）** ✗：
-> - **键校验 `assertDeclared`（`settings/schema.js:1436`）＝【已接线】✓**：`vibe-math-vmu.js:36` 导入 → `:614` 交给宿主面 → **`host.js:535` 判定 ＋ `host.js:553` 真的调用**（`set` 面）⇒ 未声明键在**交互写面**被**具名拒** `VMU_INVALID_ARGUMENT` ✓。
-> - **值/域校验 `validateValue`（`settings/schema.js:1459`）＝【未接线】✗**：它**唯一的调用者**是 **`resolveSettings`（`:1558` 定义；`:1566` 调 `validateValue`）**，而 **`resolveSettings` 在全仓（`schema.js` 之外）【零调用者】✓** ⇒ **`type`／`domain` 目前【没有运行期执行点】**，**声明只是文档** ✓。实测后果：域外值经 `config.vmu` 通道**被 LOADED、不拒绝**（`vmu.budget.onExceed`／`vmu.compat.unknownCombo`／`vmu.quota.onExceed`）；**对照**＝`vmu.meetings.orderMode` **REFUSED**，但那是因为 R17 给它加了**读取侧**严格检查 ✓ —— ★ **执法点在读取侧／接线处，不在 schema 声明本身**（`domain` 是**单一来源的声明**，执法由接线处履行）。
-> - ★★ **代码注释里的一句假话（逐字纠正）**：`settings/schema.js:1521` 写着 *"The 0..1 bound is enforced by `validateValue`, **the path every runtime write takes**"* ⇒ **这句是假的**（**没有任何运行期写入走它**）。它正是把"**声明了 `type`／`domain` ⇒ 就该在跑**"这个**误读写进了注释** —— **本卷此后以本条为准** ✓。
+> ★★ **两条校验现在【都在跑】—— 但执行点不同（2026-10-15 R31 回改；A 已落进提交 `c12556e`）** ✓：
+> - **键校验 `assertDeclared`（`settings/schema.js`）＝【已接线】** ✓：`vibe-math-vmu.js:36` 导入 → `:614` 交给宿主面 → **`host.js` 的 `set` 面真的调用** ⇒ 未声明键在**交互写面**被**具名拒** `VMU_INVALID_ARGUMENT` ✓。
+> - **值/域校验 `validateValue` ＝【已接线，2026-10-15 起；★ 三个执行点】** ✓（`task-149` 的 A 项，落进 **`c12556e`**）：
+>   1. **配置／合并面（构建期）**：`kernel/index.js:363-378` 的 `screenSettings(settings, { source:'config' })` ⇒ **不收该值 ＋ 具名记账 ＋ 用声明默认值**；
+>   2. **交互写面**：`kernel/index.js:1911` 的 `setSettingsValue()` 里的 `validateValue(key, value)` ⇒ **具名拒**；
+>   3. **pack／合并层**：`kernel/index.js:1855` 的 `applyPackSettings()` 里的 `resolveSettings([incoming], { onInvalid:'reject' })` ⇒ ★ 这**也是 `resolveSettings` 的第一个真运行期调用者**（在此之前它是**不可达代码**）。
+> - ★ **历史（保留为教训）**：`settings/schema.js` 原来那句 *"…enforced by `validateValue`, **the path every runtime write takes**"* **曾经是假的**（没有任何运行期写入走它）；**A 落地时已在源码里逐字纠正** —— 现在 `schema.js:1606` **引旧句并标注** *"AND THAT WAS FALSE"* ✓。
+> - ★★ **一处近失（值得记住）**：给 `validateValue` 接上执行点后，它**原本不可达的 `default:` 分支开始拒绝"声明了却没有 case 的类型"的【合法值】**（如 `string`）⇒ `schema.js:1467-1472` 把它记成"**把'这个类型没有定义'变成'这个值非法'的执行点，比没有执行点更糟**"（`c12556e` 提交信息里那句"差点上线 26% 回归"即此）⇒ **执行点必须与"未定义类型"的具名豁免一起设计** ✓。
 >
-> ★★ **两路两种处置（设计已获批；★ 落地状态见下）** ✓：
-> - **交互写面**（`vibe_vmu_set` 等）⇒ **具名拒**，复用**已登记**的 `VMU_INVALID_ARGUMENT`（与 `assertDeclared` **同码**，R17 起即有）✓。
-> - **配置／合并面**（插件行的 `config.vmu` 等）⇒ **"不收该值 ＋ 具名记账（如 `settingsRejected`）＋ 用声明默认值"** ✓。★ **为什么这一面【不】硬拒**：在该面硬拒会把"**一个键写错**"升级成"**整个会话起不来**"，而**那条 `settingsRejected` 记账本身就是迁移提示** ✓。
-> - ★★ **落地状态（不许写成已生效）**：截至 **2026-10-15**，`task-149` 的 A 项（给 `resolveSettings`／`validateValue` 一个**真调用点**）**仍在 `in_progress`、未落地**（本轮读码：`resolveSettings` **零调用者**）⇒ 上面两条处置**是设计（未生效）**；**当前代码的实际行为**＝**键检查生效、值／域检查不生效** ✗。
+> ★★ **两路两种处置（已生效；附当天实证读数）** ✓：
+> - **交互写面**（`vibe_vmu_set` 等）⇒ **具名拒**，复用**已登记**的 `VMU_INVALID_ARGUMENT`（与 `assertDeclared` **同码**）✓。
+> - **配置／合并面**（插件行的 `config.vmu` 等）⇒ **"不收该值 ＋ 具名记账（`settingsRejected`）＋ 用声明默认值"** ✓。★ **为什么这一面【不】硬拒**：在该面硬拒会把"**一个键写错**"升级成"**整个会话起不来**"，而**那条记账本身就是迁移提示** ✓。
+> - **★ 当天实证读数（2026-10-15 20:38:48；★ 绑定提交 `c12556e`：`settings/schema.js` sha256 前缀 `D357E4FD0D19`、`kernel/index.js` `81D7CDD40962`）**：
+>   - **交互写面**：`setSettingsValue('vmu.budget.onExceed','nonsense')` ⇒ **拒**，`code:"VMU_INVALID_ARGUMENT"`、message `"vmu.budget.onExceed: expected one of refuse | warn | pause"`、hint `"declared as enum"` ✓
+>   - **配置面**：建内核时传 `{'vmu.budget.onExceed':'nonsense'}` ⇒ `status().settings.settingsRejectedCount === 1`，记录 `{key,value,code:"VMU_INVALID_ARGUMENT",reason:"outside the declared domain refuse | warn | pause",domain:[…],type:"enum",source:"config",default:"refuse"}`，**活值 ＝ 声明默认 `"refuse"`** ✓；**同一内核里合法值 `'try'` 原样生效** ✓
+>   - **合法值不被拒**：`setSettingsValue(…,'warn')` ⇒ `{ok:true,appliesAt:"next turn",source:"runtime"}`、活值 `"warn"`、`settingsRejectedCount === 0` ✓；**`string` 型键给任意 token**（`vmu.meetings.attendanceMode:'bogus'`）⇒ **不记账、活值就是 `'bogus'`** ✓
+>   - **pack 层**：`applyPackSettings({'vmu.quota.onExceed':'sometimes'},{by:'probe-pack'})` ⇒ 记录带 `layer:0`／`default:"warn"`／`source:"pack:probe-pack"` ✓
+>   - **`null` 不是域外值**：`{'vmu.budget.onExceed':null}` ⇒ `rejectedCount === 0`、活值 `null` ✓（见下方"未设哨兵"）
+>   - **`status().settings.settingsRejected`／`settingsRejectedCount`／`settingsUnenforced` 三个字段都可读** ✓
+>   - ★ 上述读数在**已提交 `c12556e`** 的干净副本上取得；**同刻**六套件在该版本**全绿**：`vmu-settings-domain` **47/0**、`audit-settings-channels` **59/0**、`vmu-settings` **47/0**、`vmu-planned-settings` **ALL GREEN（111/28）**、`vmu-pack-defaults-named` **32/0**、`audit-enforced-consistency` **358/0** ✓
+>
+> ★★ **两条【具名】边界（有意取舍，不是疏漏）** ✓：
+> - **(a) `planned`（111 键）＝声明了但未接线** ⇒ **不执法，但【具名】**：`status().settings.settingsUnenforced.types = [{"type":"planned","count":111,"reason":"no validator implemented for this declaration type yet"}]`（实测）✓ —— **类型名＋键数＋原因都在回执里，不静默**。
+> - **(b) "声明与自身默认值矛盾"的键 ⇒ 逐键具名豁免**（`settingsUnenforced.declarations`，来源 `schema.js:1543` 的 `unenforcedReport()`）。★ **实测（`c12556e`，20:38:48）：该名单为空 `[]`（count 0）** —— 三分根已把它清空：① **`null` ＝"未设"哨兵**（已裁＝**一律接受**，不再算矛盾）／② **生成器类型推断**（已修）／③ **手写行 `committeeSize`**（已改 `natural`，`schema.js:404`）✓。
+>   ★ **口径提示**：任务书上的"13→2"是**中间态**，**我实测的这一版是 0**；两者都**不许**当成"名单永远为空"的承诺 —— **以 `settingsUnenforced` 的实时读数与 `unenforcedReport()` 为准** ✓。★ **豁免是具名的、不是静默的**：名单每项都带 `key` ＋ `reason` ✓。
+>
+> ★★ **执法点在哪里（总原则）**：**运行期执法在【接线处／读取侧】，`domain` 声明本身不是运行时保护** ✓ —— **R17 的 `vmu.meetings.orderMode`** 与 **A 的三个执行点**都是"**在读取／接线处**"才真正拦住；`schema.js` 的 `type`／`domain` 是**单一来源的声明**，**执法由接线处履行** ✓。
 
 ---
 
@@ -1000,10 +1018,10 @@ vmu.packs.active: [v5r]
 | `vmu.paper.finalizer` | enum | `editor` | `editor`∣`contributor`∣`any` | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 定稿权限**规则**（不是角色名！v5r 的 `paperEditor:'academician'` 是**机构角色**；本键是**规则**，v5r 等价＝`editor` ＋创建时把 paper 的 `editor` 指定为主持人）。★ 轮 8：域外值 ⇒ **具名拒** `VMU_INVALID_ARGUMENT`（列出声明的域），**绝不静默回落** ✗✓；读者＝`kernel/paper.js` 的 `cfg()`。 |
 | `vmu.math.jobs.logMax` | int ≥0 | `200` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 作业日志保留条数（溢出必计数）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`（两者默认一致：200）。 |
 | `vmu.math.jobs.persist` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | 作业持久化：false＝只留回执详情；true＝额外写 `Math/Jobs` 镜像并允许恢复（`vmu.math.jobs.recover` 决定何时恢复）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`。 |
-| `vmu.meetings.tier` | enum | `formal` | `formal`∣`light` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 会议级别：light＝简流程，**不得产出实体定论**（派生谓词，不是阶段）。读者：`kernel/meetings.js` 的 `K.tier`＋`tier()`／`truthWriteRefusal()`，唯一判定点在 `close()` 的收束路径（reader-c 的 GAP-MTG-02）。 |
+| `vmu.meetings.tier` | enum | `formal` | `formal`∣`light` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingdomain.js` | 会议级别：light＝简流程，**不得产出实体定论**（派生谓词，不是阶段）。读者：`kernel/meetings.js` 的 `K.tier`＋`tier()`／`truthWriteRefusal()`，唯一判定点在 `close()` 的收束路径（reader-c 的 GAP-MTG-02）。 |
 | `vmu.meetings.allowLight` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 是否允许 light（简流程）会议：false ⇒ 内核在开会/收束处以具名拒挡住 light（与 `tier` 共用同一派生判定点）。读者：`kernel/meetings.js` 的 `K.allowLight`。 |
 | `vmu.ballot.reopenFloor` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ballotbox.js` | 投票板重开门槛（0＝不设门槛；>0 时 reopen 需要达到该支持数）。读者：`kernel/ballotbox.js` 的 `reopen()`（reader-c 的 GAP-MTG-10；该面自有实现，不并存第二份）。 |
-| `vmu.meetings.leaveApprover` | enum | `chair` | `chair`∣`office` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingleave.js` | 请假/休会的批准人：chair＝主席批准，office＝办公室兜底。★ 本轮**只声明键**（B② 的 requestLeave/approveLeave 未落）；键被读时必须按此值域判定，未落前读取具名降级。 |
+| `vmu.meetings.leaveApprover` | enum | `chair` | `chair`∣`office` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingdomain.js` | 请假/休会的批准人：chair＝主席批准，office＝办公室兜底。★ 本轮**只声明键**（B② 的 requestLeave/approveLeave 未落）；键被读时必须按此值域判定，未落前读取具名降级。 |
 | `vmu.prompt.compactThreshold` | int ≥0 | `66` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 上下文占比达到该值 ⇒ 组装时注入 [CONTEXT COMPACT] 指示。**百分数 0–100，不是 0–1**。v5r `compactThreshold:66`（`:1078`；`:449` 明写 never clamp to 0-1；`:9869` 拒 ≤0）。读者：`kernel/prompt/index.js` 的 `assemble()`（读 `ctx.contextPct`）。 |
 | `vmu.prompt.compactAfterRounds` | int ≥0 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 距上次压缩的轮数达到该值 ⇒ 同上注入（与阈值是**或**关系）。v5r `compactAfterRounds:8`（`:1079`；`soft` 判定 `:3902-3903`）。读者：`kernel/prompt/index.js` 的 `assemble()`（读 `ctx.round`）。 |
 | `vmu.paper.finalPaper` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 运行结束时**自动**写最终论文。v5r `finalPaper:true`（`:1163`；消费点 `:7867` `if (params.finalPaper !== false)`）。读者：`kernel/paper.js` 的 `finalize({auto:true})`（false ⇒ 具名拒，不静默改成手动）。 |
@@ -1013,6 +1031,15 @@ vmu.packs.active: [v5r]
 | `vmu.members.maxTempPerMember` | int ≥0 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 同一雇佣者名下**同时在册**的临时成员上限。v5r `maxTempPerMember:3`（`:1075`；消费点 `:8920-8924`：`perCap = max(1, floor(value||3))`、按 `hiredBy` 计数、超限 `V5_MEMBER_LIMIT` 并回报 current/limit）。vmu 映射（vmu 无 kind:temp）：**仍在试用期**（`confirmedAt === null`）的成员按接纳人 `by` 分组。读者：`kernel/recruit.js` 的 `accept()`。 |
 | `vmu.tasks.memberMayRejectAssign` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tasks.js` | 成员可否对被分派**表示异议**（记录＋广播，**任务仍执行**）。v5r `memberMayRejectAssign:true`（`:1066`；消费点 `:9555-9562`：``reject_assign && params.memberMayRejectAssign`` ⇒ 广播给 voters，原文"任务仍会执行"）。读者：`kernel/tasks.js` 的 `objectAssign()`；★ false 时 vmu **具名拒**（v5r 是静默忽略该字段 —— 刻意更严，不许静默）。 |
 | `vmu.meetings.orderMode` | enum | `fifo` | `fifo`∣`round-robin`∣`chair`∣`random` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 发言序模式（fifo|round-robin|chair|random）；域外值 ⇒ 读取侧具名拒（kernel/meetingmarker.js 的 strictOrderMode），不静默回落到默认值 |
+| `vmu.meetings.attendanceMode` | enum | `roster` | `roster`∣`signin`∣`quorum-only` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingdomain.js` | 出席模式（roster|signin|quorum-only）；域与读取侧 meetings.js:138 的 oneOf 逐字相同 |
+| `vmu.meetings.quorumLossPolicy` | enum | `suspend` | `suspend`∣`continue`∣`recess` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingdomain.js` | 失去法定人数后的处置（suspend|continue|recess）；域与 meetings.js:147 逐字相同 |
+| `vmu.meetings.budgetOnExceed` | enum | `refuse` | `refuse`∣`warn`∣`extend` | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/meetingdomain.js` | 超预算动作（refuse|warn|extend）；域与 meetings.js:154 逐字相同 |
+| `vmu.meetings.leaveEarlyPolicy` | enum | `allow` | `allow`∣`note`∣`deny` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingdomain.js` | 提前离席政策（allow|note|deny）；域与 meetings.js:171 逐字相同 |
+| `vmu.meetings.minutesDetail` | enum | `brief` | `brief`∣`full` | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | `kernel/meetingdomain.js` | 纪要详略（brief|full）；域与 meetings.js:173 逐字相同 |
+| `vmu.meetings.appealScope` | enum | `all` | `all`∣`procedural`∣`none` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingdomain.js` | 申诉范围（all|procedural|none）；域与 meetings.js:178 逐字相同 |
+| `vmu.meetings.confidentialityDefault` | enum | `internal` | `public`∣`internal`∣`restricted` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingdomain.js` | 默认保密级（public|internal|restricted）；域与 meetings.js:185 逐字相同 |
+| `vmu.meetings.confidentialityQuotePolicy` | enum | `allow` | `allow`∣`redact`∣`deny` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingdomain.js` | 引用机密内容的政策（allow|redact|deny）；域与 meetings.js:186 逐字相同 |
+| `vmu.meetings.wakeFailurePolicy` | enum | `refuse` | `refuse`∣`skip`∣`retry` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingdomain.js` | 唤醒失败处置（refuse|skip|retry）；域与 meetings.js:188 逐字相同 |
 | `vmu.allocation.dirtyWorkQuota` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.allocation.fairnessPolicy` | string | `equal` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.allocation.rotationWindow` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
@@ -1178,9 +1205,6 @@ vmu.packs.active: [v5r]
 | `vmu.math.units.strictDimensions` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.appealDeadlineMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.appealReasonRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.appealScope` | string | `all` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.attendanceMode` | string | `roster` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.budgetOnExceed` | string | `refuse` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.budgetTokens` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.budgetTurns` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.budgetWallMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
@@ -1188,8 +1212,6 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.chairTransferAudit` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.committeeMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.committeeReportRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.confidentialityDefault` | string | `internal` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.confidentialityQuotePolicy` | string | `allow` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.confirmPreviousMinutes` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.disciplineExpelAllowed` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.disciplineMuteMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
@@ -1199,14 +1221,11 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.interruptAllow` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.interruptQuota` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.lateAfterMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.leaveEarlyPolicy` | string | `allow` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.liveCap` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.materialsRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.minutesActionsRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.minutesDetail` | string | `brief` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.minutesIncludeRefused` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.minutesRetentionMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.quorumLossPolicy` | string | `suspend` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.quorumMin` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.quorumRatio` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.quorumRecountMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
@@ -1221,7 +1240,6 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.unansweredInDenominator` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.verbatimEnabled` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.verbatimRetentionMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.wakeFailurePolicy` | string | `refuse` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.migration.auto` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |
 | `vmu.migration.dryRunDefault` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |
 | `vmu.migration.dryrun` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |

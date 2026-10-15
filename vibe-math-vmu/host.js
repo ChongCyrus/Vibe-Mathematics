@@ -385,7 +385,7 @@ const param = (type, description, extra = {}) => Object.assign({ type, required:
  * `faces` option lets a caller hand in an already-resolved set (the adapter resolves once and passes it down, so
  * install() and plan() cannot disagree).
  */
-export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, config = {}, faces = null, mergeReport = null, packReport = null, publishedSurface = null, ...faceFlags }) {
+export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = () => {}, instance = null, scripts = [], packLoader = null, config = {}, faces = null, mergeReport = null, packReport = null, publishedSurface = null, promptSection = null, ...faceFlags }) {
   // A refusal carries the four documented fields, plus - when the caller has them - host-side DIAGNOSTICS
   // (the host's own stack and the exact request shape we passed). They are added ONLY when present, so no
   // existing refusal changes shape. Without this the live M3 diagnosis died at the tool boundary: the seam
@@ -518,6 +518,13 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         // it: the entry refused/shadowed at merge time, and `tests/vmu-seam-params-consumed.test.mjs` forbids a kernel
         // seam that only `kernel/index.js` reads.
         if (typeof mergeReport === 'function') out.settingsMerge = mergeReport()
+        // ROUND 31 / task-153 (③): the prompt-section degradation, readable HERE instead of only on stderr. A caller
+        // reading the receipt could previously not tell "the prompt was injected" from "declared and silently not
+        // injected" - the degradation existed only as a `process.stderr.write` line in the entry. Guarded like the
+        // other late-bound reports: a failure to read it is NAMED with an already-registered code, never swallowed.
+        if (typeof promptSection === 'function') {
+          try { out.promptSection = promptSection() } catch (e) { out.promptSection = { registered: false, code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', reason: String((e && e.message) || e) } }
+        }
         // ROUND 25 / task-138: THE OTHER HALF OF THE RECEIPT. `vibe-math-vmu.js` has said since cfbd2c7 that a
         // pack refusal "lands in packErrors - which the status face now carries (see host.js)" - while `host.js`
         // had no reference to it at all. This is that reference: what was REQUESTED, from WHERE, what really
@@ -951,7 +958,7 @@ export function toHostSpec(spec) {
  * offers it - the host's own guidance requires that, and it is what unwinds them on subtree unload - and
  * fall back to keeping the returned disposers otherwise.
  */
-export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null, scripts = [], packLoader = null, config = {}, faces = null, mergeReport = null, packReport = null, ...faceFlags } = {}) {
+export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null, scripts = [], packLoader = null, config = {}, faces = null, mergeReport = null, packReport = null, promptSection = null, ...faceFlags } = {}) {
   const disposers = []
   const registered = []
   const failures = []
@@ -981,7 +988,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   }))
   const enabledFaceSet = () => { const r = resolveFaceSet(); return r.enabled }
 
-  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance, scripts, packLoader, config, mergeReport, packReport, publishedSurface: () => ({ names: registered.slice(), reasons: reasonFor, evaluations }), ...faceFlags, faces: (() => { const r = resolveFaceSet(); return r })() }))
+  const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance, scripts, packLoader, config, mergeReport, packReport, promptSection, publishedSurface: () => ({ names: registered.slice(), reasons: reasonFor, evaluations }), ...faceFlags, faces: (() => { const r = resolveFaceSet(); return r })() }))
 
   const doInstall = async () => {
     if (!ctx || !ctx.tools || typeof ctx.tools.register !== 'function') {

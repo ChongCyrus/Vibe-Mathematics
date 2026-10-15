@@ -203,6 +203,30 @@ const LOST_TOOLS = ['vibe_vmu_chat', 'vibe_vmu_control', 'vibe_vmu_human', 'vibe
     'F5. ...and it agrees with `published`, so `published − registered` is computable from the receipt at all', { registeredTools: toolNames.length, published: (f3.published || []).length })
 }
 
+// =========================================================================================================
+// G. WHAT THE RECEIPT OWES WHEN THINGS DEGRADE OR ARE REFUSED (round 31, task-153 ③/④)
+// =========================================================================================================
+// ③ the prompt-section degradation existed ONLY as a `process.stderr.write` line; ④ the refused/unenforced settings
+// live under `status().settings.*` (NOT top level - reading the top level yields `undefined`, which is exactly how the
+// task text and my own first probe mis-read it). Both must be readable from the ONE receipt.
+{
+  const { status } = await CONFIG_ROUTE()
+  // ③
+  ok(status.promptSection && typeof status.promptSection === 'object' && typeof status.promptSection.registered === 'boolean',
+    'G1. ★ the receipt carries `promptSection` (a degradation is readable in one place, not only on stderr)', status.promptSection)
+  // ④ the refused list is legitimately EMPTY in the normal state, so pin its SCHEMA and self-consistency rather than a
+  // non-emptiness that would be a lie.
+  const s = status.settings || {}
+  ok(Array.isArray(s.settingsRejected) && s.settingsRejectedCount === s.settingsRejected.length,
+    'G2. ★ `settings.settingsRejected` is an array whose count agrees with it (empty is the honest normal state)', { rejected: s.settingsRejected, count: s.settingsRejectedCount })
+  // ★ non-empty premise for the set assertion: `settingsUnenforced.types` IS populated on this tree (a real finding).
+  const types = (s.settingsUnenforced && s.settingsUnenforced.types) || []
+  ok(types.length > 0 && types.every((t) => typeof t.type === 'string' && typeof t.count === 'number' && typeof t.reason === 'string' && t.reason.length > 0),
+    'G3. ★ `settings.settingsUnenforced.types` is non-empty here AND every entry carries a reason (not a bare count)', types)
+  ok(Array.isArray(s.settingsUnenforced && s.settingsUnenforced.declarations),
+    'G4. ...and the per-declaration list is present, so "unenforced" can be traced to WHICH declaration', s.settingsUnenforced)
+}
+
 console.log('=== VMU PACK DEFAULTS NAMED: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

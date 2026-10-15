@@ -306,6 +306,20 @@ export const SERVICE_SURFACES = new Set([
  */
 export const HAND_DECLARED_DOMAINS = new Set([
   'vmu.meetings.orderMode',
+  // ★ ROUND 31 (task-149 C①②): the nine `vmu.meetings.*` keys whose READ SITE is a `oneOf(...)` strict domain
+  // (`meetings.js:138/147/154/171/173/178/185/186/188`). Their generated rows said `type:'string'` — "any string is
+  // legal" — while the reader REFUSED anything outside its own set: declaration and enforcement were OPPOSITE.
+  // Hand-declared here (and kept OUT of the generated block) so the generator cannot emit `type:'string'` over them
+  // again — the same mechanism R17 built for `vmu.meetings.orderMode`.
+  'vmu.meetings.attendanceMode',
+  'vmu.meetings.quorumLossPolicy',
+  'vmu.meetings.budgetOnExceed',
+  'vmu.meetings.leaveEarlyPolicy',
+  'vmu.meetings.minutesDetail',
+  'vmu.meetings.appealScope',
+  'vmu.meetings.confidentialityDefault',
+  'vmu.meetings.confidentialityQuotePolicy',
+  'vmu.meetings.wakeFailurePolicy',
 ])
 
 export function collect() {

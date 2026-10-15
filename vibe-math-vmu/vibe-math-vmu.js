@@ -582,6 +582,12 @@ export function apply(ctx, config = {}) {
       // instead of an unexplained absence of ten tool names.
       defaultsUnfolded: defaultsUnfolded.map((u) => ({ id: u.id, keys: u.keys.slice(), reason: u.reason })),
     }),
+    // ROUND 31 / task-153 (③): THE PROMPT-SECTION DEGRADATION, IN THE RECEIPT INSTEAD OF ONLY ON STDERR. Declaring
+    // `vmu.prompts.*` text and failing to inject it is a real degradation: until now the ONLY place it existed was a
+    // `process.stderr.write` line (further down), so a caller reading the receipt could not tell "the prompt was
+    // injected" from "the prompt section was declared and silently not injected". Late-bound like `packReport`
+    // above: only CALLED from the host face, never during apply().
+    promptSection: () => Object.assign({}, promptSectionState),
     // ROUND 1 / K1 (D-01): `config` is handed over so `host.js` resolves WHICH faces are declared from the one map
     // (`resolveFaces`) instead of from four booleans assembled here. Every face now has a declaration path:
     // `config.<face>`, `config.faces`, `vmu.tools.faces`, or a `vmu.<family>.*` settings key.
@@ -1120,6 +1126,12 @@ export function apply(ctx, config = {}) {
       // instead of an unexplained absence of ten tool names.
       defaultsUnfolded: defaultsUnfolded.map((u) => ({ id: u.id, keys: u.keys.slice(), reason: u.reason })),
     }),
+    // ROUND 31 / task-153 (③): THE PROMPT-SECTION DEGRADATION, IN THE RECEIPT INSTEAD OF ONLY ON STDERR. Declaring
+    // `vmu.prompts.*` text and failing to inject it is a real degradation: until now the ONLY place it existed was a
+    // `process.stderr.write` line (further down), so a caller reading the receipt could not tell "the prompt was
+    // injected" from "the prompt section was declared and silently not injected". Late-bound like `packReport`
+    // above: only CALLED from the host face, never during apply().
+    promptSection: () => Object.assign({}, promptSectionState),
     // ROUND 1 / K5 (D-02): the entry-side merge, in full - the priority ladder, the per-key layer, the named
     // conflicts and the overrides a deployment asked for. `vibe_vmu_status` reads the kernel's `settingsMerge`, which
     // carries the same two arrays; this accessor is for tests and for a host that wants the fact before kernel build.

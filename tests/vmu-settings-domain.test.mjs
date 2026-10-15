@@ -120,21 +120,38 @@ console.log('=== 5. ★ REGRESSION WITNESS (the blind spot that let the 319-key 
   // and refused every LEGAL value of the other five (`string` 173 keys, `planned` 111, `object` 21, `integer` 7,
   // `number` 7 = 319 ≈ 26%). No assertion here walked a `string` key, so the regression was INVISIBLE to this suite.
   const k = build()
+  // ★ ROUND 31 (task-149 C③) — THE REPRESENTATIVE KEY MUST NOT BE HARD-CODED. W1–W5 used to name
+  // `vmu.meetings.attendanceMode`/`minutesDetail` as "the `string` key"; C ①② promoted exactly those to
+  // `enum` + `domain`, so the assertions went stale while the BEHAVIOUR changed correctly (that key is now
+  // domain-checked). A key chosen by NAME is a claim about the SCHEMA that silently expires when the schema moves;
+  // the key is therefore PICKED FROM THE SCHEMA by type (the hard version of §5c's per-type witness), excluding H3
+  // (read-only) and C's promoted keys, and its non-emptiness is asserted before the loop.
+  const { SETTING_DEFS: STRLIST, unenforcedReport: UNENF } = await import('../vibe-math-vmu/settings/schema.js')
+  const { MEETING_DOMAIN_KEYS: PROMOTED } = await import('../vibe-math-vmu/kernel/meetingdomain.js')
+  const promoted = new Set(PROMOTED)
+  const stringKeys = STRLIST.filter((d) => d.type === 'string' && !promoted.has(d.key) && String(d.hot) !== 'H3').map((d) => d.key)
+  ok(stringKeys.length > 0, 'W0. the schema still has `string` keys outside the promoted nine (the witnesses below are non-vacuous)',
+    { stringKeys: stringKeys.length })
+  const strKey = stringKeys[0]
+  const strKey2 = stringKeys[1] || stringKeys[0]
   // (a) `string` on the INTERACTIVE face — the exact call verify2 measured as throwing.
-  ok(codeOf(() => k.setSettingsValue('vmu.meetings.attendanceMode', 'roster', { by: 'office' })) === 'NO-THROW',
-    'W1. ★ a legal value of a `string`-typed key is ACCEPTED on the interactive face (it used to throw "unknown declaration type")')
-  ok(codeOf(() => k.setSettingsValue('vmu.meetings.minutesDetail', 'brief', { by: 'office' })) === 'NO-THROW',
-    'W2. and the second measured witness (`vmu.meetings.minutesDetail`) too')
-  const wrong = errOf(() => k.setSettingsValue('vmu.meetings.attendanceMode', 42, { by: 'office' }))
+  ok(codeOf(() => k.setSettingsValue(strKey, 'probe-token', { by: 'office' })) === 'NO-THROW',
+    'W1. ★ a legal value of a `string`-typed key is ACCEPTED on the interactive face (it used to throw "unknown declaration type")',
+    { key: strKey })
+  ok(codeOf(() => k.setSettingsValue(strKey2, 'probe-token-2', { by: 'office' })) === 'NO-THROW',
+    'W2. and a second `string` key too', { key: strKey2 })
+  const wrong = errOf(() => k.setSettingsValue(strKey, 42, { by: 'office' }))
   ok(wrong !== null && wrong.code === 'VMU_INVALID_ARGUMENT' && /expected a string/.test(String(wrong.message)),
-    'W3. a WRONG type is still refused, with an ACCURATE reason (not "unknown declaration type")', wrong && wrong.message)
+    'W3. a WRONG TYPE is still refused with an ACCURATE reason (`expected a string`, never "unknown declaration type")', wrong && { key: strKey, message: wrong.message })
   // (b) `string` on the CONFIG face: any string is legal, so nothing may be recorded (the misleading
   // "expected string" record verify2 saw came from the missing case).
-  const cfg = build({ 'vmu.meetings.attendanceMode': 'bogus' })
+  const cfg = build({ [strKey]: 'probe-bogus' })
   ok(cfg.status().settings.settingsRejectedCount === 0,
-    'W4. ★ a token of a `string` key is NOT screened out on the config face (a string is a string)', cfg.status().settings.settingsRejected)
-  ok(cfg.settingsView()['vmu.meetings.attendanceMode'] === 'bogus',
-    'W5. and it is really in effect (not silently replaced by the default)')
+    'W4. ★ a token of a `string` key is NOT screened out on the config face (a string is a string; the key is picked by TYPE, not by name)',
+    { key: strKey, rejected: cfg.status().settings.settingsRejected })
+  ok(cfg.settingsView()[strKey] === 'probe-bogus',
+    'W5. and it is really in effect (not silently replaced by the default)', { key: strKey, live: cfg.settingsView()[strKey] })
+  void UNENF
   // (c) EVERY declared type gets a witness, driven from the schema (so a new type cannot arrive untested). Keys
   // that are NAMED as not-enforced (§5d) are skipped on purpose — they are the documented exception, not a witness.
   const { SETTING_DEFS: DEFS, unenforcedReport } = await import('../vibe-math-vmu/settings/schema.js')
