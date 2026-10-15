@@ -196,6 +196,33 @@ const linesOf = (f) => {
   if (!LINES_OF.has(f.rel)) LINES_OF.set(f.rel, f.text.split('\n'))
   return LINES_OF.get(f.rel)
 }
+const BY_REL = new Map(SOURCE_FILES.map((f) => [f.rel, f]))
+/**
+ * ★ R34 (task-166): THE IMPORT GRAPH. R33's locator required the iteration to be in the SAME FILE as the array
+ * declaration, which left seven rows "judged 未接线 but NOT verified": if a file EXPORTS a list and ANOTHER file
+ * imports it and iterates it, the key can be read dynamically and the same-file rule cannot see it. Here each
+ * imported name is mapped to the files that import it (one pass over the import lines), so the builder below can
+ * follow `PROMPT_ENTRIES` (declared in `packs/v5r/prompts/v5r-core.js`, iterated where it is imported) instead of
+ * giving up. ★ "I cannot see it" is still never reported as "nobody reads it": a key with NO list at all, or whose
+ * list is neither iterated here nor by any importer, keeps the `未接线` verdict.
+ */
+const IMPORTERS = (() => {
+  const m = new Map()
+  for (const f of SOURCE_FILES) {
+    for (const l of linesOf(f)) {
+      if (l.indexOf('import') < 0) continue        // ★ cheap guard: the regex below ran on every line of every file
+      const im = /import\s*\{([^}]*)\}\s*from\s*['"][^'"]+['"]/.exec(l)
+      if (!im) continue
+      for (const part of im[1].split(',')) {
+        const name = part.trim().split(/\s+as\s+/).pop().trim()
+        if (!name) continue
+        if (!m.has(name)) m.set(name, new Set())
+        m.get(name).add(f.rel)
+      }
+    }
+  }
+  return m
+})()
 const LIST_INDEX = (() => {
   const idx = new Map()
   for (const f of SOURCE_FILES) {
@@ -209,15 +236,35 @@ const LIST_INDEX = (() => {
       for (let k = 0; k < lines.length; k++) {
         if (!COMMENT_LINE.test(lines[k]) && re.test(lines[k])) { iterLine = k + 1; break }
       }
-      if (iterLine < 0) continue                     // not iterated ⇒ no dynamic-read evidence for its elements
+      let iterRel = f.rel
+      if (iterLine < 0) {
+        // ★ CROSS-FILE: follow the import graph — who imports this export, and iterates it THERE?
+        for (const rel of IMPORTERS.get(name) || []) {
+          const g = BY_REL.get(rel)
+          if (!g) continue
+          const gl = linesOf(g)
+          const k2 = gl.findIndex((l) => !COMMENT_LINE.test(l) && re.test(l))
+          if (k2 >= 0) { iterLine = k2 + 1; iterRel = rel; break }
+        }
+      }
+      if (iterLine < 0) continue                     // not iterated here nor by an importer ⇒ no dynamic-read evidence
+      const iterText = linesOf(BY_REL.get(iterRel)).at(iterLine - 1).trim().slice(0, 90)
+      // ★ R34: THE LIST BOUNDARY MUST BE COUNTED, NOT GUESSED. The first one-pass version stopped only on a line
+      // that is EXACTLY `]` (`/^\];?\s*$/`), so a list closed with `],` / `])` / `], // note` never terminated and
+      // the scan ran on into the NEXT declaration, pairing later keys with an unrelated iterated list (measured:
+      // that is how `vmu.paper.retentionMs`, an element of the never-iterated `PLANNED_KEYS`, got reported
+      // `未判定`). Depth is tracked per line with bracket characters that are outside strings/comments — the
+      // cheap approximation is enough because the only thing at stake is WHERE the list ends.
+      let depth = (lines[i].match(/\[/g) || []).length - (lines[i].match(/\]/g) || []).length
       for (let j = i + 1; j < lines.length; j++) {
         const t = lines[j].trim()
-        if (/^\];?\s*$/.test(t)) break               // the list ends here
-        if (COMMENT_LINE.test(lines[j])) continue
+        if (depth <= 0) break                        // the list really ended
+        if (COMMENT_LINE.test(lines[j])) { depth += (lines[j].match(/\[/g) || []).length - (lines[j].match(/\]/g) || []).length; continue }
         const em = /^\[?['"](vmu\.[A-Za-z0-9_.]+)['"]\s*(,|$)/.exec(t)
         if (em && !idx.has(em[1])) {
-          idx.set(em[1], { rel: f.rel, listName: name, elemLine: j + 1, iterLine, iterText: lines[iterLine - 1].trim().slice(0, 90) })
+          idx.set(em[1], { rel: f.rel, listName: name, elemLine: j + 1, iterLine, iterRel, crossFile: iterRel !== f.rel, iterText })
         }
+        depth += (lines[j].match(/\[/g) || []).length - (lines[j].match(/\]/g) || []).length
       }
     }
   }

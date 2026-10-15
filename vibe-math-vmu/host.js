@@ -605,6 +605,22 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         // The receipt must SAY so: "settable but inert" is exactly the trap the manual forbids. `noConsumer` is
         // present only for planned keys, so no other receipt changes shape.
         const planned = !!(def && def.planned === true)
+        // ★★ ROUND 34 / task-165 — ONE FACT, ONE NAME, ONE VALUE.
+        // This receipt used to compute its OWN `appliesFrom` from the shared table, while the kernel receipt said
+        // `appliesAt` - the same fact under two names, AND potentially two DIFFERENT values: the kernel can refine
+        // the H2 case from MEASURED live readers, a refinement this line could not see. A tool face that reports a
+        // less precise answer than the kernel for the same key is the "contract face is not unique" class again.
+        // So: when the kernel wrote a receipt, TAKE ITS VALUE; fall back to the table only for the cases the kernel
+        // has no receipt for (a planned key with no consumer yet, or an undeclared key). `appliesFrom` stays as a
+        // SAME-VALUE alias in the SAME frame - not a conditional key - so existing readers keep working.
+        // ★ PRECEDENCE, and the suite caught my first ordering: a PLANNED key still produces a kernel receipt, so
+        // taking the kernel value first SILENTLY REPLACED "no runtime consumer yet" with the hot-class string - the
+        // exact "settable but inert" trap this receipt exists to disclose. A planned key's disclosure is a STRONGER
+        // fact than its hot class, so it must win; the kernel's (measured) value wins for everything else.
+        const appliesAt = planned ? 'never yet (planned key: no runtime consumer)'
+          : (setReceipt && setReceipt.appliesAt !== undefined && setReceipt.appliesAt !== null)
+            ? setReceipt.appliesAt
+            : (def ? (APPLIES[def.hot] || 'unknown hot class') : 'unknown (undeclared key)')
         return { ok: true, key, value: parsed, hot: def ? def.hot : null, who: def ? def.who : null,
           // `ownerCheck` is copied from the kernel receipt: an absent `by` is an EXPLICIT exemption, disclosed,
           // never a silent bypass of the owner check.
@@ -614,8 +630,8 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           by: by === undefined ? null : by,
           reason: reason === undefined ? null : reason,
           requiresRestart: setReceipt ? setReceipt.requiresRestart === true : false,
-          appliesFrom: planned ? 'never yet (planned key: no runtime consumer)'
-            : (def ? (APPLIES[def.hot] || 'unknown hot class') : 'unknown (undeclared key)'),
+          appliesAt,
+          appliesFrom: appliesAt,
           source: resolved ? resolved.source : null,
           ...(planned ? { noConsumer: true } : {}),
           note: planned

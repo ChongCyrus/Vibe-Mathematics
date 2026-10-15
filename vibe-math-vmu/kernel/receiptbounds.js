@@ -98,7 +98,13 @@ export function boundedToolResult(value) {
     hostElision: 'possible',
     originalBytes: before.length,
     note: elided.length > 0
-      ? 'string leaves over ' + MAX_STRING_LEAF + ' were elided BY US to reach MAX_TOOL_RESULT_BYTES (' + MAX_TOOL_RESULT_BYTES + '): `elided` gives the exact path and half-open range of each. Every other field is unchanged. A host-inserted `[...]` marker may ALSO appear (hostElision) - that one is outside this receipt.'
+      // ★★ ROUND 34 / task-165 — WORDING CORRECTED AGAINST MEASUREMENT (Lead's finding, real hardware). This used to
+      // say the leaves were elided "to REACH MAX_TOOL_RESULT_BYTES", which claims the budget was MET. Measured with a
+      // 14,000-character leaf, the receipt still came back at ~181.7 kB afterwards, because every REMAINING leaf is
+      // under the per-leaf cap and cannot be shortened without dropping content (which would change the shape). So
+      // `truncated:true` means "leaves were elided per this contract", NOT "we got under the budget" - and a note
+      // that says otherwise is a declaration that disagrees with the implementation.
+      ? 'the string leaves over ' + MAX_STRING_LEAF + ' were elided BY US TOWARD MAX_TOOL_RESULT_BYTES (' + MAX_TOOL_RESULT_BYTES + '): `elided` gives the exact path and half-open range of each. ONLY cap-able leaves can be shortened, so this does NOT claim the budget was reached - `originalBytes` is the size before, and every other field is unchanged. A host-inserted `[...]` marker may ALSO appear (hostElision) - that one is outside this receipt.'
       : (before.length > MAX_TOOL_RESULT_BYTES
         ? 'NOTHING was elided by us: this receipt is over MAX_TOOL_RESULT_BYTES (' + MAX_TOOL_RESULT_BYTES + ') but no string leaf exceeded ' + MAX_STRING_LEAF + ', and meeting the budget would require dropping content, which would change its shape. `originalBytes` is the real size. The HOST may insert its own `[...]` marker (hostElision) - that one is outside this receipt.'
         : null),

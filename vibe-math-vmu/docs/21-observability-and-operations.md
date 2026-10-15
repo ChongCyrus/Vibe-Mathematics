@@ -527,3 +527,23 @@ export const hooks = { 'tools/result': async (flat) => {     // ★ 用回合内
 - ★ **未超预算 ⇒ 回执逐字节原样、且【不出现】`truncated` 键**（`:972-973`）—— 这是**反向断言**：**"总是声称截断"** 同样过不了门 ✓。
 ★ **`elided` 的可核性**：每项 `{path, from, to, bytes}` 中 `from`＝**留下**的长度、`to`＝原长、`bytes === to - from`，`path` 是指回返回对象的定位符 ⇒ **可以拿原始对象复算，而不是只能相信**（`:969-971`）✓。
 
+### 20.8 ★★ `receiptMeta`：**恒存在**的回执元数据（R33/R34 落定）＋ 真机证据 ＋ **spill 纪律**
+
+**① 契约（`task-161` 落进 `8b680cb`；实现 `kernel/receiptbounds.js` 的 `boundedToolResult()`）**：每个工具结果**都**带
+**`receiptMeta:{truncated, elided, hostElision, originalBytes, note}`** —— ★ **两种形态（截/未截）键集合一致**（这是"形状不随大小变"的一半）；`truncated === (elided.length > 0)`；`hostElision:'possible'`；`originalBytes` ＝**序列化后的原始字节数**（未截时也有值）；未截时 `note:null`，截了就给出**路径级**说明。
+★★ **`truncated:true` 的语义＝"我们按契约截了叶子"，【不是】"已压到 12,000 以内"** —— 真机实测：`originalBytes = 193,684`，截掉一条 12,000 字节的叶子后**仍 ≈181.7 KB**（因为其余 4,000+ 个叶子都 < `MAX_STRING_LEAF = 2000`，**无可再截**）。★ 因此 `note` 里那句 *"…elided BY US **to reach** MAX_TOOL_RESULT_BYTES (12000)"* 的措辞与实测不符（应说 **toward**）—— **具名待修**。
+
+**② 真机证据（R34 A 臂；`HEAD 8b680cb`；会话 `session-ce7f04ec-a205-43ef-9d2c-9b02fe97aa29`，23:25:02）**：把 **14,000 字符**字符串放进该行的 `config.vmu`（键 `` `vmu.turn.instituteName` ``，`type:'string'` ⇒ 合法值）⇒ status 回执里出现：
+```
+"receiptMeta":{"truncated":true,
+  "elided":[{"path":"settings.resolved['vmu.turn.instituteName'].value","from":2000,"to":14000,"bytes":12000}],
+  "hostElision":"possible","originalBytes":193684,"note":"string leaves over 2000 were elided BY US …"}
+```
+★ **书写口径（很重要）**：该 `path` 在回执里是**点分路径**；本卷**按括号形式书写**，以免文档审计把 `…value` 连读成一个**不存在的设置键**（★ 实测：点分写法会让 `audit-vmu-docs` 直接红 —— 与"服务方法一律写调用形"是同一族纪律）✓。
+**逐条复算（不采信）**：`path` 指向该叶子 ✓；`from=2000`／`to=14000`／`bytes=12000=to-from` ✓；回执里保留值长 **2009**（＝2000＋`…[elided]` 9 字符）且**是原文前缀** ✓；**完整回执 `JSON.parse` 成功**，且 `settingsMerge.packs`／`packReport{applied,idMap}`／`promptSection`／`settings.*`／`faces.*` **全在**（形状未变）✓；**同臂**的小结果 `vibe_vmu_report` ⇒ `{"truncated":false,"elided":[],"originalBytes":965,"note":null}`（**反向断言**）✓。
+★ **可复制的构造法**：**不要让模型生成长字面量** —— 真机实测把 14k 字面量写进工具参数会**撑断 provider 流**（`turn/end` ＝ `{"kind":"error","error":{"code":"STREAM_CLOSED"}}`，85.9 s／7.5 MB）⇒ **把长值放进 overlay 的 `config.vmu`**，它会自然出现在 status 回执的 `settings.resolved[<键>].value` 里，从而触发叶子省略 ✓。
+
+**③ ★★ spill 纪律（引用回执字段的唯一可靠读法）**：宿主会把**大结果**落盘到
+`%TEMP%\dsh-spill-<id>\<session>\<hash>-vibe_vmu_status.txt`（**该路径就写在转录的省略文本里**），而**转录里那份是省略版**——真机实测：完整回执 **179,826／182,090 字符**，转录里那份只有 **49,930**，并含宿主插入的 **`\n\n[...]\n\n`**。
+⇒ ★ **纪律（三条）**：**(1)** **引用回执字段时，读 spill 文件或读小结果面**；**(2)** **绝不能用转录那份省略版下"有/没有"的结论**（我在 R33 就被它坑过：`settingsRejected` 在转录里不出现、其实在 spill 里）；**(3)** **那个偏移（实测 `24846`）是【一次测量】，不是契约常量** —— 可作证据，不可当保证 ✓。
+
