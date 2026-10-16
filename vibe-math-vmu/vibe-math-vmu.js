@@ -23,7 +23,7 @@ import { V5R_PHASES } from './packs/v5r/index.js'
 import { createKernel } from './kernel/index.js'
 // ★ A1 step 1 · Part B: the report-feedback DELIVERY call. It lives in a module of its own (this file is at its
 // 1200-line budget, and the call carries enough reasoning to belong there); the entry passes its own `ctx`/`effect` down.
-import { deliverReportFeedback } from './kernel/reportfeedbackdelivery.js'
+import { deliverReportFeedbackFrom } from './kernel/reportfeedbackdelivery.js'
 import { deliverViaSubagents, sendViaSubagents, interruptViaSubagents } from './kernel/turn/index.js'
 import { createHostAdapter } from './host.js'
 import { attachHostHooks } from './host-hooks.js'
@@ -846,12 +846,11 @@ export function apply(ctx, config = {}) {
   // a runtime snapshot rather than policy. The entry remains the holder of the host prompt service (that is why the
   // call lives here at all), so it passes `ctx`/`effect` down, and it reads the ASSEMBLED face's status so the
   // effective values - schema defaults applied - come from the one place that already computed them.
-  // ★ THE FACE MAY NOT BE THERE. `kernel.report` is assembled with the rest of the kernel, but a construction that ends
-  // up without it must not turn "no feedback" into a CRASH - the same red line as the prompt-section guard above. A
-  // missing face is simply no delivery, and the module turns a null status into the switch-off state.
-  let reportFeedbackStatus = null
-  try { reportFeedbackStatus = kernel && kernel.report ? kernel.report.status() : null } catch (e) { /* never fatal */ }
-  reportFeedbackState = deliverReportFeedback({ ctx, effect, status: reportFeedbackStatus })
+  // ★ A1 STEP 1 · PART B: ONE LINE, BECAUSE THIS FILE'S 1200-LINE BUDGET IS COUNTED BY `split('\n')` - the same count the
+  // code-size gate uses - and the reads this call needs belong beside the call they serve. Everything that made the
+  // earlier version wrong (reading the switch off the receipt the delivery itself produces) lives in the module, with
+  // the reasoning, and is guarded there: an absent report face or settings map means NO DELIVERY, never a crash.
+  reportFeedbackState = deliverReportFeedbackFrom({ kernel, ctx, effect })
 
   // A PACK is where an institution lives (slots, tracks, rules, aliases). `config.packs` accepts either a
   // shipped pack id (resolved from packs/<id>.js) or an inline manifest; conflicts are refused (O4) and the

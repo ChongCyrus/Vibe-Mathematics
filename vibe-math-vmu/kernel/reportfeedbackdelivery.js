@@ -32,16 +32,50 @@ import { REPORT_FEEDBACK_CONTEXT_NAME, REPORT_FEEDBACK_CONTEXT_ORDER, REPORT_FEE
 const UNAVAILABLE = 'VMU_EXTERNAL_UNAVAILABLE'
 
 /**
- * Perform the delivery and return the nine-key receipt state. `status` is the report face's own status object (the
- * caller reads it once); `ctx` and `effect` are the entry's own  - the entry is the only holder of the host prompt
- * service, which is why this call lives there rather than in the report domain.
+ * ENTRY-FACING WRAPPER: read everything the delivery needs from the assembled kernel and hand back the state. The entry
+ * keeps ONE line because its 1200-line budget is measured by the same `split('\n')` the code-size gate uses, and this
+ * block was what pushed it over - so the reads belong here with the call they serve.
+ *
+ * ★ THE SWITCH COMES FROM THE KERNEL'S **RESOLVED** SETTINGS AND NEVER FROM THE REPORT FACE'S RECEIPT. That receipt is
+ * built by consulting the provider this state is handed back through, so deriving the switch from it is a CYCLE: the
+ * delivery reads a value it produced itself, concludes the switch is off, and writes "off" back - pinning it shut while
+ * every suite stays green. Two independent instruments caught exactly that (in-process and on a real machine), where the
+ * settings said true/config and the delivery said false/default, silently. The resolved map is computed from the
+ * settings chain and does not depend on the receipt at all.
  */
-export function deliverReportFeedback({ ctx = null, effect = null, status = null } = {}) {
-  const rf = status && status.reportFeedback ? status.reportFeedback : null
-  const enabled = !!(rf && rf.enabled === true)
-  const audience = (rf && rf.audience) || null
-  const source = enabled ? 'settings:vmu.report.feedback' : 'default'
-  const base = { enabled, source, audience, delivered: false, registered: false, code: null, what: null, reason: null, stack: null }
+export function deliverReportFeedbackFrom({ kernel = null, ctx = null, effect = null } = {}) {
+  let status = null
+  let resolved = {}
+  try {
+    if (kernel && kernel.report) status = kernel.report.status()
+    const st = kernel && typeof kernel.status === 'function' ? kernel.status() : null
+    resolved = (st && st.settings && st.settings.resolved) || {}
+  } catch (e) { /* never fatal: an absent face or map means the switch reads as off */ }
+  const value = (k) => { const e = resolved[k]; return e && typeof e === 'object' && 'value' in e ? e.value : undefined }
+  const audience = value('vmu.report.audience')
+  return deliverReportFeedback({ ctx, effect, status,
+    enabled: value('vmu.report.feedback') === true,
+    audience: typeof audience === 'string' ? audience : null })
+}
+
+/**
+ * ★ `enabled` AND `audience` ARRIVE AS ARGUMENTS, AND THAT IS NOT A STYLE CHOICE - IT BREAKS A CYCLE. The first version
+ * derived them from the report face's OWN receipt. But that receipt is built by consulting the provider this very state
+ * is handed back through, so the delivery was reading a value it had itself produced: it saw an empty receipt,
+ * concluded the switch was off, and wrote "off" back into the receipt - permanently pinning the switch CLOSED, with
+ * every suite still green because nothing tied "configured on" to "delivery happened". An independent reviewer
+ * localized it to that single read and reproduced it end to end (before: enabled:true, context() called; after:
+ * enabled:false, context() never called). The values are therefore read by the CALLER from the kernel's RESOLVED
+ * settings and passed in - a source that does not depend on the receipt at all.
+ *
+ * `status` is still taken, but ONLY for the snapshot's counts. `ctx` and `effect` are the entry's own: it is the only
+ * holder of the host prompt service, which is why this call lives there rather than in the report domain.
+ */
+export function deliverReportFeedback({ ctx = null, effect = null, status = null, enabled = false, audience = null } = {}) {
+  const isOn = enabled === true
+  const who = typeof audience === 'string' && audience ? audience : null
+  const source = isOn ? 'settings:vmu.report.feedback' : 'default'
+  const base = { enabled: isOn, source, audience: who, delivered: false, registered: false, code: null, what: null, reason: null, stack: null }
 
   const named = (what, reason, e) => Object.assign({}, base, {
     code: UNAVAILABLE, what, reason, stack: e ? String((e && e.stack) || '') : null,
@@ -52,8 +86,8 @@ export function deliverReportFeedback({ ctx = null, effect = null, status = null
     } catch { /* stderr may be gone; the receipt still carries the failure */ }
   }
 
-  if (!enabled) return base                                  // zero mechanism: off means nothing, not a failure
-  if (!audience) return named(REPORT_FEEDBACK_WHAT_AUDIENCE, 'feedback is on but no audience is named')
+  if (!isOn) return base                                     // zero mechanism: off means nothing, not a failure
+  if (!who) return named(REPORT_FEEDBACK_WHAT_AUDIENCE, 'feedback is on but no audience is named')
 
   let host = null
   let accessFailed = null
@@ -74,7 +108,7 @@ export function deliverReportFeedback({ ctx = null, effect = null, status = null
   try {
     const run = () => {
       const s = status || {}
-      const text = '[vmu report feedback] audience: ' + audience +
+      const text = '[vmu report feedback] audience: ' + who +
         ' · reports declared: ' + (s.declared || 0) +
         ' · recorded: ' + ((s.trace && s.trace.kept) || 0) +
         ' · delivered: ' + (s.delivered || 0) +
