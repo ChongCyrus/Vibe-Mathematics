@@ -43,13 +43,39 @@
 ★★ **结论**：★ **手册 §1 的隔离三件（克隆 profile／独立端口／`--no-open`）在本机【都可行】，且有历史先例** ✓
 ★★ **唯一新增的准备工作**：★ **把 `vibe-math-v5r`（Phase 4）与 `vmu+v5r pack`（Phase 5）装成可用的 preset** —— ★ 而后者**正是本阶段要交付的整合包**，★ 所以 Phase 5 的第一步就是**用 pack 装出一个 preset** ✓
 
-## 5. ★★ 因此的排期
+## 6. ★★ preset 的安装机制（Round 14，★ 只读查明，★ 未安装任何东西）
 
-★ **G1 是唯一的硬阻塞** ⇒ ★ **`task-240` 一绿（T1 全绿），Phase 4 即可开始** ✓
+★★ **`installer.js` 是"dsh-vibe-math merged bundle installer — VERSIONED AUTO-UPDATE"**（★ 头部逐字）：★ **当这个 bundle 被安装时**（★ 例如 `dsh plugin --profile <name> add dsh-vibe-math`，★ **或从 dsh-market**），★ **它把【四个】agent preset 从包里拷进 DSH 的 preset 根** ⇒ ★ **用户立刻在 picker 里看到四个** ✓
+★ **安装状态记在 `<presetRoot>/.vibe-math-installed.json`**：★ **version ＋ 每文件 hash ＋ provenance** ✓ —— ★ 本机该记录写着 **version `2.8.1`** ✓
+★ **本机已装的 `vibe-math-v5` 内容**：`架构图.md`／`实现方案.md`／`agent.cordis.yml`／`math-computation.js`／`math-engines.js`／`preset.yml`／`vibe-math-v5.js` ✓
+
+★★★ **因此 Phase 4 的正确动作（写死）**：
+1. ★★ **克隆一个 profile**（★ 手册 §1；★ 本机已有 `hubtest*` 先例），★ **绝不碰用户的 `.agent-presets`／`profiles/desktop`** ✓
+2. ★ 在**克隆里**装一个**包含 `vibe-math-v5r` 的 bundle 版本**（★ 本机现装 **2.8.1**，★ 而 v5r 按 release-notes 应在 **2.8.2+**）⇒ ★★ **所以 Phase 4 的第一步是"确认哪个版本含 v5r"并在克隆里装上它** ✓
+3. ★ 用**独立端口**（★ **19388／19389 空闲**；★ **19387 是用户当前 GUI，绝不碰**）＋ **`--no-open`** 启动 ✓
+4. ★ 从**纯 ASCII 的临时 cwd** 启动（★ 手册 §1）✓
+
+## 6b. ★★★ 最后一块未知已解决：**哪个版本含 `vibe-math-v5r`**
+
+| 项 | ★ 读数 |
+|---|---|
+| ★ **本仓版本** | ★★ **`2.8.5`**（包名 **`dsh-vibe-math`**） |
+| ★ **本机已装版本** | ★ **`2.8.1`**（★ 见 `.vibe-math-installed.json`）⇒ ★ **落后 4 个版本** |
+| ★ **仓内是否含 `vibe-math-v5r`** | ★★ **含**（★ 仓根有 `vibe-math-v5r/`） |
+| ★★ **installer 是否发它** | ★★ **发** —— `installer.js:80` 逐字 **`src: 'vibe-math-v5r'`**（★ 与 `:73` 的 `vibe-math-v5` 并列） |
+
+⇒ ★★★ **结论**：★ **Phase 4 在机制上【已无阻塞】** —— ★ **克隆 profile → 把 `dsh-vibe-math` 2.8.5 装进克隆 → `vibe-math-v5r` 就出现在 picker 里** ✓
+★ **且这解释了为什么本机只有 v2–v5**：★ 已装的是 **2.8.1**，★ 而 v5r 由 **2.8.5** 带上 ✓
+
+★ **G1 是唯一的硬阻塞** ⇒ ★ **`task-247` 一绿（T1 全绿），Phase 4 即可开始** ✓
 ★ **顺序**：★ **Phase 4** ＝ 原 v5／v5r 的脚本化真机（★ 按手册，★ 用**受管后台作业**）⇒ ★ 发现即**单跑复现**⇒ 真回归才修 ⇒ ★ **Phase 5** ＝ vmu+v5r 全流程 SLV（★ **带模拟声明**，★ **跑到结题/收敛**）✓
 ★★ **但 Phase 5 的"收敛"结论必须谨慎**：★ 手册 §5 明说**有界运行建立不了收敛** ⇒ ★★ **所以 Phase 5 的交付应写成"落位／可观测／提示词交互正常"＋"收敛由随包套件背书"**，★ **不能把一次有界运行写成收敛证明** ✓
 
-## 5. 没核（★ 与"核了"分开）
+## 7. ★★ 因此的排期
+
+★ **G1 是唯一的硬阻塞** ⇒ ★ **`task-247` 一绿（T1 全绿），Phase 4 即可开始** ✓
+
+## 8. 没核（★ 与"核了"分开）
 
 1. ★ **手册我读的是 §3–§8 与开头**（★ 逐字读了 §2 铁律、§3 开关表、§4 预算、§5 能力边界、§6 中止、§7 清理、§8 结论写法）⇒ ★ **§1 的隔离命令我只看了标题级**。
 2. ★ **没有核本机是否有 DSH 入口、克隆 profile 是否可行、端口是否空闲**（★ 那是 Phase 4 的第一步）。
