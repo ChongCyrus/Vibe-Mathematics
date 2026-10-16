@@ -61,3 +61,30 @@ dsh: fatal load failure: TypeError: object is not iterable (cannot read property
 
 ★★ **我此前把两次 `ECONNREFUSED` 归因为"`job_kill` 的异步 `Cleanup-Mine` 误杀了服务器"** ⇒ ★ **错了**：★ 真正原因是 **D1 的崩溃** ✓
 ★ **而它能被纠正，只是因为这一轮【保留了 `srv.err`】** ⇒ ★★ **推论：★ 在断言"某现象的原因"之前，先保留能证明它的现场** ✓
+
+---
+
+## ★★★★★ D6（★ 最深的一条）：**具名拒绝对工具面来说【仍然是服务器致命的】**
+
+### 6.1 ★★★ 证据（★ 来自保留下来的 `srv.err`，Round 35）
+```
+at spawnSeam (…/vibe-math-vmu/host-spawn.js:118:13)
+  at Object.run (…/kernel/mathtools.js:630:19)
+  at Object.run (…/tools/mathtools.js:20:92)
+  at Object.execute (…/host.js:971:45)
+  at ToolRuntime.dispatchToolBody (…/@deepseek-ai/dsh-tools/lib/index.js:3310:32)
+  hint: pass args as an array (e.g. args: ["--version"]); a malformed call is refused instead of killing the host
+  code: VMU_INVALID_ARGUMENT
+```
+★ **运行读数**：★ `exit=1 dur=0s tokens=-1`（★ 服务器死了，★ 一轮都没跑完）✓
+
+### 6.2 ★★★★ 结论：**D1 的修法【不够**，而真正的缺陷更深**
+★ **D1 的守卫【正确地】具名拒了**（★ `VMU_INVALID_ARGUMENT` ＋ 现成的 hint ✓）—— ★★ **但进程仍然死了** ✓
+⇒ ★★★★ **即：★ 在工具处理器里 `throw refuse(...)`，★ 宿主【并不会】把它变成 `{ok:false, code, message, hint}` 回执** ⇒ ★★ **它会一路冒泡成 `fatal load failure`，把服务器杀掉** ✓✓
+⇒ ★★★★★ **而这意味着：★ 框架里【每一条具名拒绝对工具面来说都可能杀死服务器**】** —— ★ **框架的"具名拒"约定【假设了一个在工具边界上并不存在的 catch】** ✓✓✓
+★ **这一条比 D1 深**：★ D1 是"某处忘了校验"，★ **D6 是"校验之后仍然致命"** ✓ —— ★ 所以**修 D1 只是把"崩溃"变成"另一种崩溃"** ✓
+
+### 6.3 ★ 修法（★ 应该只有一处）
+★ **在工具调度边界把 `refuse()` 转成回执**：★ 即 `tools/*.js` 的 `run` 包裹层（★ 例如 `tools/mathtools.js:20` 那一层）**或** `host.js` 的 `execute`（★ `:971`）**catch** 住"本框架自己的拒绝错误"（★ 用 `code` 以 `VMU_` 开头、或一个 `refuse` 标记判别 ✓），★ **并返回 `{ok:false, code, message, hint, …}`** ✓
+★ **注意**：★ **真正的意外错误不应被静默吞掉** ⇒ ★ 只吞**本框架具名拒**，★ 其余仍要冒泡（★ 否则又是"静默吞错"那一族 ✓）
+★ **判据**：★ **一个"参数非数组"的调用 ⇒ 得到 `ok:false` ＋ `VMU_INVALID_ARGUMENT`，★ 且【进程仍然活着、★ 后续调用仍可用】** ✓ —— ★ **这正是 D1 的反例测试【本该断言而没断言】的那一半**（★ 当时只断言了"得到具名拒"，★ 没断言"进程活着" ✓）✓
