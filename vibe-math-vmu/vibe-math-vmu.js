@@ -425,9 +425,16 @@ export function apply(ctx, config = {}) {
       || (settings && typeof settings['vmu.turn.deliverProvider'] === 'string' && settings['vmu.turn.deliverProvider'])
       || null
     let configuredProvider = declaredProvider
-    if (!configuredProvider && subs && typeof subs.listProviders === 'function' && typeof subs.start === 'function') {
+    if (!configuredProvider && subs && typeof subs.start === 'function' && typeof subs.list === 'function') {
+      // ★★★ ROUND 64: THE METHOD IS `list()`. Round 63's discovery asked the host for `listProviders()` - which does
+      // NOT EXIST (zero occurrences in the library) - so the condition was false, the discovery never ran, and the
+      // one-shot path was never taken on a real machine. The library's own doc comment on the method reads "List
+      // registered provider names in insertion order", and its body returns the map's keys. This is the same
+      // contract-promising-what-the-implementation-does-not-do family this phase keeps removing, and this instance was
+      // mine. `list()` is now used, and it is probed rather than assumed, so a host without it simply keeps the
+      // continuable path.
       try {
-        const names = subs.listProviders()
+        const names = subs.list()
         if (Array.isArray(names) && names.length > 0 && typeof names[0] === 'string') configuredProvider = names[0]
       } catch { configuredProvider = null }
     }
