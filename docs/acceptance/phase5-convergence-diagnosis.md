@@ -53,3 +53,68 @@ const allSolved = allSpoke && speakers.length>0 && speakers.every(iv=>iv.voteSol
 ★ **本轮【未改代码】** —— ★ **这是一份诊断**，★ **修法已按优先级列出** ✓
 ★ **仍未主张收敛**：★ **`vote_solved` 零次、★ `paper` 零次** ⇒ ★ **按铁律不主张** ✓
 ★ **而这次诊断把"活跃 ≠ 收敛"变成了"活跃 ＋ 缺一张指定字段的票"** ⇒ ★★ **剩下的是一件【明确、可修】的事** ✓
+
+---
+
+## 7. ★★★★★★★ Round 48–49：**结题谓词【不存在】，★ 而修法已完整定到行**
+
+### 7.1 ★★★★★★ 决定性证据：★ 结题那一个字段【只被记录、★ 没有被数】
+★ **`kernel/turn/index.js:70-74`** 注释逐字：
+> ★ *"ROUND 378 adds the fields the original parses that have **NO matching operation in this kernel yet**:
+> **`solved`（the member's own round judgement）**, `prioritize`, `nudge`, `reject_assign`, `hire` and `fire`.
+> They are **BOOKKEPT rather than dispatched** …… **the gap stays visible instead of hiding behind a refusal**."*
+★ **`:611`**：★ `context.set(field, r[field])` ⇒ ★★ **`solved` 记进了 turn 状态，★ 而【没有任何东西去数它】** ✓✓
+
+### 7.2 ★★★★★★ 这个区域有【三个】字段，★ 而结题那一个恰是"只记录、不派发"的
+| ★ 字段 | ★ 现状 | ★ 后果 |
+|---|---|---|
+| ★★ **`solved`**（＝成员自己的回合判断，★ **正是原版 `speakers[].voteSolved` 的语义**） | ★ **BOOKKEPT，★ 不派发** | ★★ **记了，★ 没人去数** |
+| ★★ **`vote_solved`** | ★ 派发 → `ballotbox.cast` | ★★ **缺 `by`／`boxId` ⇒ 每次必拒** |
+| ★ **`verdict`** | ★ 派发 → `ballotbox.cast` | ★ 同上 |
+⇒ ★★★★ **即：★ 就算把路由修好，★ 票也只是落进某个地方，★ 而仍然没有人去数它** ✓✓
+
+### 7.3 ★★★★★ 第三种失败模式（★ 队友发现，★ 我认为是这几轮最有价值的观察之一）
+★★ **`vote_solved` 既不是 `face-not-wired`、★ 也不是 `executed`** —— ★ **它的面接了、`op` 存在，★ 却每一次调用都必然被拒** ✓
+★ 而 **`:600` 的 `counts.dispatched += 1` 会把它记成"【已派发】"** ⇒ ★★★ **"派发了"与"起作用了"被同一个计数混在一起** ✓✓
+⇒ ★★★ **这正是"61 次会议而使用者看不出缺的就是这张票"的机制** ✓✓
+
+### 7.4 ★★★★★★ 新谓词里的【三个陷阱】（★ 落笔前必须先定，★ 否则会再造一次"修了却不收敛"）
+**① ★★★ `chair` 【没有】`vote` 权限 ⇒ `missing` 若按全体名册算，★ `cast` 永远不可能为真**
+★ 依据 v5r pack 逐字（★ `packs/v5r/prompts/v5r-core.js:163-167` ✓）：
+- ★ `chair`：`['convene','close','assign','grant','freeze']` ⇒ ★ **不含 `vote`**
+- ★ `member`：`['speak','vote','propose']` ⇒ ★ **含 `vote`**
+- ★ `temp`：`['speak']`（capacity 12）⇒ ★ **不含 `vote`**
+⇒ ★★★★ **有表决权的只有 `member` 槽位上的人**；★ **若 `missing` 用 `members.roster()`（含 `chair`／`temp`）去算，★ `chair` 会永远留在 `missing` 里 ⇒ `cast` 永远 false** ✓✓
+⇒ ★ **`missing` 必须＝"其槽位授予了结题表决权的在册成员" 减去 已表态者** ✓
+
+**② ★★★ "哪个权限名算结题表决权"本身是【部署词汇】⇒ 框架不得硬编码 `'vote'`**
+⇒ ★ 与 7.2 那条 (a)/(b) 裁定**同一个道理**（★ 票箱的选项也是部署词汇 ✓）✓
+⇒ ★ **两条一致选法**：★ **(α) 用已声明的东西** —— ★ 先查是否已有可用的声明键（★ **未查**）；★ 没有则加一个**设置键**（如 `vmu.turn.closureVotePermission`），★ **默认值由 pack 给**（`packs/v5r/settings/defaults.json` ✓）；★ **(β)** 若把 `vote` 定为框架级能力令牌，★ **必须在一处讲清** ✓ —— ★ **倾向 (α)：★ 别替部署发明词汇** ✓
+
+**③ ★★ `solved` 是【每回合】状态，★ 而结题是【每轮/每场次】判断 ⇒ 必须先定义【窗口】**
+⇒ ★ **窗口不写明，★ `missing` 与 `cast` 就没有意义**（★ 同一个字段两种读法 ⇒ 下一次"两个视图不一致" ✓）
+⇒ ★ 建议回执里**同时给出窗口标签**（★ `window:'round'|'meeting'` ✓）✓
+
+### 7.5 ★★★★ 落点表（★ 一次落完）
+| # | ★ 落点 | ★ 形状 |
+|---|---|---|
+| **1** | ★ `turn` 的 status/回执计算段 | ★ `closureVote: { window, cast, for:[ids], against:[ids], missing:[ids], reason }`；★ **`missing` 按 7.4① 算**；★ **权限名不硬编码**（7.4②）；★ `reason` 给可操作的下一步 |
+| **2** | ★ `turn/index.js:47` ＋ `:599` | ★ **`vote_solved` 改绑 `{ face:'vmu.meetings', op:'vote' }`**（★ **不是票箱** ✓）；★ 上下文补 `member` 与当前会议 id；★ **拿不到会议 ⇒ 具名拒并说明** |
+| **3** | ★ `:600` 附近 | ★ **单列 `counts.refusedByFace` ＋ 回执 `failed:[{field, code}]`** ⇒ ★ **"派发但被拒"不再冒充"已派发"** |
+| **4** | ★ `phase` 段 | ★ 带结题票状态 |
+| **5** | ★ 面描述／提示词 | ★ **一处讲清两套表决**：★ 会议级 `vote` ＝ **能结题**那条；★ `ballotbox.cast` ＝ 另一条（要 `boxId`／`by`）|
+
+### 7.6 ★★★ 为什么改绑会议级而【不是】票箱（★ 理由两条，★ 只有一条被驳倒时仍不足）
+1. ★★★ **票箱会逼框架【发明部署的词汇】**：★ `ballotbox.cast` 需 `boxId`（★ `:189-190` 缺失即 `deny('VMU_NOT_FOUND', '找不到票箱 …', '先 open() 取 id')` ✓），★ 而 `open()` 需**至少两个选项**（★ `:184` ✓）⇒ ★ **结题票的选项只能是"已解决／未解决"**，★ **而那是政策用词，★ 不是能力** ⇒ ★★ **"自动开箱"不是捷径，★ 它就是缺陷** ✓✓
+2. ★★★ **它还需要一个【凭空来的】`by`**：★ `cast` 缺 `by` 即拒（★ `:195` ✓），★ **而派发手里只有 `{field, face, op}`**（★ `:599` ✓）⇒ ★ **这条路要同时发明【箱的选项词汇】与【票的来源】** ✓；★ **而会议级 `vote({meeting, member, motion, value})` 两个都不需要** ✓
+★ **parity 也指向同一答案**：★ 原版 `voteSolved` 是**发言记录上的字段**（★ `vibe-math-v4/vibe-math-v4.js:2369` ✓），★ **不是票箱里的一张票** ✓✓
+
+### 7.7 ★★ 验收（★ 端到端最重要）
+★ **①** 多人回复 `solved:true` ⇒ ★ **`closureVote.cast === true`**；★ 有人未表态 ⇒ `false` ＋ **`missing` 点出是谁** ✓
+★ **②** `vote_solved:true` 经 `turn` 派发**不再必拒** ✓
+★ **③** "必然被拒"不再被记成"已派发" ✓
+★ **④** `vmu-turn` 148／`vmu-control` 23／`vmu-kernel` 183／`vmu-meeting` 50 仍绿 ✓
+
+### 7.8 ★ 诚实边界
+★ **本轮【未改代码】**（★ 诊断与规格，★ 落点都在行上 ✓）；★ **仍未主张收敛** ✓
+★★ **而问题已收敛到【一件**明确、可修、且陷阱已列全**的事】** ⇒ ★ **下一个完整窗口可一次落完** ✓
