@@ -258,16 +258,37 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
     // cannot be attributed is reported as such rather than silently treated as an anonymous reply.
     const childId = childIdOf(handle)
     let stopReason = null
+    let resolvedReply = null
     if (handle && typeof handle.stopReason === 'string') stopReason = handle.stopReason
     else if (handle && typeof handle.reason === 'string') stopReason = handle.reason
     else if (handle && handle.result && typeof handle.result.then === 'function') {
-      try { const res = await handle.result; if (res && typeof res.stopReason === 'string') stopReason = res.stopReason } catch { /* the run's own failure is named below */ }
+      // ★★★ ROUND 66: THE SAME AWAIT CARRIES THE REPLY, NOT ONLY THE stopReason. This block already awaited the host's
+      // run result to read `stopReason` - and then looked for the reply on the HANDLE (`handle.reply` / `handle.text`),
+      // which a one-shot run does not carry. That is precisely why the real machine reported "the host ACCEPTED the
+      // turn but handed back no reply": the host accepted it, the result resolved, and the text sitting on that result
+      // was never read. `res` is now kept, and the reply is taken from it - by the same field order the handle was read
+      // with, plus the shapes a subagent result is seen to carry in practice. The failure path is unchanged: a result
+      // with no text at all still refuses by name rather than parsing an empty string.
+      try {
+        const res = await handle.result
+        if (res && typeof res.stopReason === 'string') stopReason = res.stopReason
+        if (res) {
+          for (const field of ['reply', 'text', 'output', 'content']) {
+            const v = res[field]
+            if (typeof v === 'string' && v.trim() !== '') { resolvedReply = v; break }
+            if (v && typeof v === 'object' && typeof v.reply === 'string' && v.reply.trim() !== '') { resolvedReply = v.reply; break }
+          }
+        }
+      } catch { /* the run's own failure is named below */ }
     }
     const attribution = childId && stopReason
       ? 'childId+stopReason from the host handle'
       : (childId ? 'childId only: the host handle carried no stopReason (SubagentRun.result was unavailable)' : 'unavailable: the host handle carried no childId (docs/26 §3.22) - the turn is NOT attributed')
     if (handle && typeof handle.reply === 'string') return { reply: handle.reply, childId, stopReason, attribution }
     if (handle && typeof handle.text === 'string') return { reply: handle.text, childId, stopReason, attribution }
+    // ★ ROUND 66: AND FINALLY THE REPLY THE HOST ACTUALLY HANDED BACK, from the result the block above already awaited.
+    if (resolvedReply !== null) return { reply: resolvedReply, childId, stopReason,
+      attribution: (childId ? 'childId' : 'no childId') + '+reply from the host run result (the handle itself carried no text)' }
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host accepted the turn but handed back no reply',
       'give the loop an extractor, or deliver the reply through the loop as a later turn')
   }
