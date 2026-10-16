@@ -962,6 +962,10 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
           throw deny('VMU_STATE', 'the wake failed and vmu.meetings.wakeFailurePolicy="refuse"',
             'seam error: ' + String(out.error || 'unknown') + ' (vmu.meetings.wakeFailurePolicy)', enforced)
         }
+          // ★ task-248（Round 15）· 第 1 处【持久化】：journal 一直只写「发生过的事」（attended／left／spoke），
+          // 而"我根本没被送达"也是发生在这名成员身上的事 —— 它此前不产生任何记录，于是【被问了但沉默】与
+          // 【从未被唤醒】在持久层无法分辨（判定：DISTINGUISHED BUT NOT PERSISTED）。这里补上以【成员】为准的一条。
+          say({ type: 'meetings/skipped', at: now, member, reason: 'wake-failure-policy=skip' })
         if (K.wakeFailurePolicy === 'skip') { counters.skippedWakes += 1; return { ok: true, woken: false, skipped: true, skippedWakes: counters.skippedWakes, enforced, enforcedScope: ENFORCED_SCOPE } }
         // ROUND 198: `retry` now has its BOUND (`vmu.meetings.wakeRetries`). The face owns the loop, marks the key the
         // moment the policy consults it, and on exhaustion records the member as `unreached` - "treated as having had
@@ -975,6 +979,9 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         }
         if (last && last.ok === false) {
           counters.unreachedWakes = (counters.unreachedWakes || 0) + 1
+            // ★ task-248（Round 15）· 第 1 处【持久化】：重试用尽 ⇒ 此前只有返回值与聚合计数器知道，
+            // journal 里【没有这一名成员】。补一条以成员为准的事件，带上重试次数（对齐原版把 tries 入历史）。
+            say({ type: 'meetings/unreached', at: now, member, retries: attempts - 1, wakeRetries: K.wakeRetries, reason: 'wake-retries-exhausted' })
           return { ok: true, woken: false, unreached: true, retries: attempts - 1, wakeRetries: K.wakeRetries, unreachedWakes: counters.unreachedWakes, enforced, enforcedScope: ENFORCED_SCOPE }
         }
         return { ok: true, woken: true, retries: attempts - 1, wakeRetries: K.wakeRetries, enforced, enforcedScope: ENFORCED_SCOPE }
