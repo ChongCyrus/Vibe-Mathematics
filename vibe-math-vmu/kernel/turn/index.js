@@ -44,7 +44,6 @@ export const FIELD_OWNERS = Object.freeze({
   // below was checked against what the kernel's services REALLY expose at runtime - the meeting service carries speak,
   // motion, queue, attend and open; tasks carries assign and transition; the ballot box carries cast - so nothing here
   // is invented. Sending one of these to a face that does not implement it is visible as face-not-wired, never silent.
-  vote_solved: Object.freeze({ face: 'vmu.ballotbox', op: 'cast' }),
   meeting_hand: Object.freeze({ face: 'vmu.meetings', op: 'queue' }),
   meeting_invite: Object.freeze({ face: 'vmu.meetings', op: 'attend' }),
   input: Object.freeze({ face: 'vmu.meetings', op: 'speak' }),
@@ -122,7 +121,7 @@ export const FIELDS = Object.freeze(Object.keys(FIELD_OWNERS))
  */
 export const RECORDED_FIELDS = Object.freeze([
   'contextPct', 'compacted',
-  'solved', 'prioritize', 'hire', 'fire',
+  'solved', 'vote_solved', 'prioritize', 'hire', 'fire',
 ])
 
 // THE FRAMEWORK OWNS THE IDEA OF A PHASE, NOT THE WORDS. Round 409 added `heartbeat` here because the original has it
@@ -620,7 +619,8 @@ export function createTurnOrchestrator({
   // ★★ ROUND 50: THE CLOSURE VOTE, BY MEMBER. `solved` arrives once per turn and would otherwise overwrite a single
   // context slot, so a unanimous judgement could never be observed - which is trap 3 ("solved is per-turn state
   // while closure is a per-round judgement"). Keyed by member, the window becomes well defined.
-  const closureVotes = new Map()
+  const closureVotes = new Map()   // ★ `vote_solved` per member: the CLOSURE vote (unanimity required)
+  const solvedThisRound = new Map() // ★ `solved` per member: the per-round convergence reading, NOT closure
   const apply = async (reply, faceMap = null, memberId = null) => {
     const map = faceMap || faces
     const r = reply && typeof reply === 'object' ? reply : {}
@@ -658,8 +658,12 @@ export function createTurnOrchestrator({
     // in a default kernel, and sending a payload to an operation that does not exist would be worse than keeping it.
     for (const field of RECORDED_FIELDS) {
       if (r[field] === undefined || r[field] === null) continue
-      // ★ the member's own round judgement: the field the ORIGINAL reads for `allSolved`
-      if (field === 'solved' && memberId !== null) closureVotes.set(String(memberId), r[field] === true)
+      // ★★★ WHICH FIELD CLOSES THE INSTITUTE IS SETTLED BY THE PROMPT, NOT BY ME. Its own words: `vote_solved` is
+      // "会议/结题表决用" with a unanimity rule, while `solved` is "你这一轮的个人判断". So the CLOSURE vote is
+      // `vote_solved`, and `solved` is only the per-round convergence reading. Both are recorded; only the first is
+      // counted for closure. (The original agrees: it read `speakers[].voteSolved`.)
+      if (field === 'solved' && memberId !== null) solvedThisRound.set(String(memberId), r[field] === true)
+      if (memberId !== null && r.vote_solved !== undefined && r.vote_solved !== null) closureVotes.set(String(memberId), r.vote_solved === true)
       if (bookkeeping.some((b) => b.field === field)) continue
       context.set(field, r[field])
       bookkeeping.push({ field, kept: true })
@@ -784,6 +788,7 @@ export function createTurnOrchestrator({
       // closure and "somebody did not vote" is not actionable.
       // ★ the raw per-member judgements, so a caller that owns the roster (the kernel) can run the predicate itself
       closureVoteVotes: closureVotes,
+      solvedThisRound: Object.fromEntries(solvedThisRound),
       closureVote: closureVoteOf({ votes: closureVotes, roster, may, permission }) }),
   }
 }
