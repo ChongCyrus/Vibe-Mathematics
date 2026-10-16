@@ -537,6 +537,7 @@
     "vibe-math-vmu/kernel/meetingmarker.js",
     "vibe-math-vmu/kernel/meetingdomain.js",
     "vibe-math-vmu/kernel/receiptbounds.js",
+    "vibe-math-vmu/kernel/reportfeedback.js",
     "vibe-math-vmu/kernel/fidelity.js",
     "vibe-math-vmu/kernel/activity.js",
     "vibe-math-vmu/kernel/chat.js",

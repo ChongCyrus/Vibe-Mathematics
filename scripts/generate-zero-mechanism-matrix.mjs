@@ -182,6 +182,13 @@ const EXPECT = {
   // no service, nothing to probe), extracted out of `resume.js` when the file crossed the 1200-line rule. It is
   // registered EXPECT_NA rather than given an invented expectation.
   contentvalue: G('EXPECT_NA', '纯函数工具模块（**无 `create*` 工厂** ⇒ 矩阵不适用 ✓）；轮 9 从 `resume.js` 抽出（该文件越过 1200 行 ⇒ 拆分，未往 `KNOWN` 加名字 ✓）：值标识原语 `stableStringify/contentDigest/clone/idSuffix`，纯函数零依赖 ✓'),
+  // ROUND 8 (phase 2, A1 step 1): `reportfeedback` is a NEW kernel module rather than an extraction - written for the
+  // reporting feedback loop. It falls in the SAME category as `receiptbounds` above: pure functions, NO `create*`
+  // factory, no service, nothing to probe - which the closed value list at `:30` maps to `EXPECT_NA`. It is recorded
+  // here because the matrix treats a module that EXISTS without a row as a FINDING (`出现了却没有裁定行 ✗`), so the
+  // row was forced by the module landing, not chosen for convenience. The author's step-2 segment is expected to
+  // confirm or replace this adjudication; until then this is the Lead's reading of the module's shape.
+  reportfeedback: G('EXPECT_NA', '纯函数工具模块（**无 `create*` 工厂** ⇒ 矩阵不适用 ✓）；轮 8（第二阶段 A1 第一步）**新增**（非抽取）：报告反馈回路的纯函数 —— `REPORT_FEEDBACK_MAX_BYTES = 65536`（★ 宿主先例，非我们发明，且宿主不替我们强制）／`REPORT_FEEDBACK_CONTEXT_ORDER = 5000`（**显式有限数字**，不发明槽名）／`assertFiniteOrder`（我们补宿主缺的校验）／`reportFeedbackReceipt`（**9 键恒存在**、空态用值表达）／`reportFeedbackFailure`（复用已登记码 `VMU_EXTERNAL_UNAVAILABLE`）／`boundFeedback`（截断**自述**）。★ **本段尚未接线**（设置键／真读取／回执属第 2 段）⇒ 该行**待作者第二步复核**。'),
 }
 
 const shape = (v) => {
