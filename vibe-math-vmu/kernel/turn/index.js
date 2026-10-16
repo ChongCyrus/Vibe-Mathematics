@@ -99,7 +99,7 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
     reason: cast
       ? 'every enfranchised member judged the question solved'
       : (enfranchised.length === 0
-        ? 'no member holds the closure-vote permission, so unanimity is unreachable (check the pack slot permissions and vmu.turn.closureVotePermission)'
+        ? 'no member holds the closure-vote permission, so unanimity is unreachable - seat members with vibe_vmu_control { action: "hire", member_id, slot, institution } using a slot whose permissions include this one (the v5r pack grants it to `member` but NOT to `chair` or `temp`), then drive a turn; a deployment may rename the permission with vmu.turn.closureVotePermission. This reading appeared in a real run BEFORE any member was seated, which is why it names the PERMISSION rather than saying the roster is empty.'
         : (missing.length ? 'silence blocks closure; no judgement yet from: ' + missing.join(', ') : 'a member judged the question NOT solved: ' + against.join(', '))),
   }
 }
