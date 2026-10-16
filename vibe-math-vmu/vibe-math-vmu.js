@@ -409,17 +409,28 @@ export function apply(ctx, config = {}) {
   const turnDeliver = async ({ turn, text } = {}) => {
     let subs = null
     try { subs = ctx && typeof ctx.get === 'function' ? ctx.get('subagents') : null } catch { subs = null }
-    // ★★★ ROUND 63: THE ONE-SHOT PROVIDER, WHEN THE DEPLOYMENT NAMES ONE. `startContinuable` goes through the host's
+    // ★★★ ROUND 63: THE ONE-SHOT PROVIDER, DISCOVERED RATHER THAN DEMANDED. `startContinuable` goes through the host's
     // continuable-activation registry, which REFUSES to admit a new activation while a previous one is still being torn
     // down - measured on a real machine as `startContinuable -> assertAdmitting -> closingTeardownFor -> liveLineage`,
     // and persistent rather than transient because the SLV driver already holds the root agent as an activation. The
     // host's own comment on that manager says "foreground one-shot delegation keeps calling `ctx.subagents.start()` and
-    // NEVER ENTERS THIS LIFECYCLE". So when `config.deliverProvider` (or the declared setting) names a provider AND the
-    // seam offers `start`, delivery takes the one-shot path and the registry is never consulted. Neither is guessed: a
-    // missing provider name keeps the continuable path, which is what a host offering only that one needs.
-    const configuredProvider = (typeof config.deliverProvider === 'string' && config.deliverProvider)
+    // NEVER ENTERS THIS LIFECYCLE". So delivery prefers the one-shot path when a provider can be named.
+    //
+    // THE NAME IS CONFIGURABLE AND, FALLING BACK, DISCOVERED. A deployment may set `config.deliverProvider` or the
+    // declared setting - that stays the first choice. With neither, the host's OWN registry is asked which providers it
+    // has (`listProviders()`), and the first is used. That is a default rather than an invention: the name comes from
+    // the host that must accept it, and an empty registry simply leaves the continuable path in place, which is what a
+    // host offering only that one needs.
+    const declaredProvider = (typeof config.deliverProvider === 'string' && config.deliverProvider)
       || (settings && typeof settings['vmu.turn.deliverProvider'] === 'string' && settings['vmu.turn.deliverProvider'])
       || null
+    let configuredProvider = declaredProvider
+    if (!configuredProvider && subs && typeof subs.listProviders === 'function' && typeof subs.start === 'function') {
+      try {
+        const names = subs.listProviders()
+        if (Array.isArray(names) && names.length > 0 && typeof names[0] === 'string') configuredProvider = names[0]
+      } catch { configuredProvider = null }
+    }
     if (!subs || (typeof subs.startContinuable !== 'function' && !(configuredProvider && typeof subs.start === 'function'))) {
       const err = new Error('the host exposes no subagents service (ctx.get(\'subagents\')), so no member turn can be delivered')
       err.code = 'VMU_ENGINE_UNAVAILABLE'
