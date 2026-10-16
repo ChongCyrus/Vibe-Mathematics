@@ -10,7 +10,8 @@
 | 表面 | 数量 | 出处／复算法 |
 |---|---|---|
 | **内核模块** | **100** 个 `.js` | `vibe-math-vmu/kernel/*.js`（另有 `kernel/prompt/`、`kernel/turn/` 两个子目录） |
-| **工具面文件** | **47** 个 | `vibe-math-vmu/tools/*.js` |
+| **工具面文件** | **47** 个 | `vibe-math-vmu/tools/*.js`（★ 是**工厂文件**数，不是工具数） |
+| **代理可执行命令（真实 tool id）** | **54** 个 | ★ 权威出处＝`vibe-math-vmu/host.js:83` 的 `export const TOOL_NAMES = Object.freeze({ … })`（★ **单一真源**），命名形态 `vibe_vmu_<face>`；★ 与就绪数字 `{"tools":54}` **逐字吻合** ✓ |
 | **设置键** | **1228** 个 | `node scripts/generate-vmu-settings-table.mjs --check` 报 `1228 keys (1110 wired, 5 undetermined, 113 declared-but-not-wired)` |
 | **设置【域】**（`vmu.<域>.` 前缀） | **≈120** 个 | `grep -o "key: 'vmu\.[a-z0-9]*\." settings/schema.js` 去重计数 |
 | **pack** | **4** 个 | `packs/`：`v5r`(16 文件)、`institute-min`、`v3-core`、`example-data` |
@@ -82,8 +83,8 @@
 
 ## 5. 没核（★ 与"核了"分开）
 
-1. ★ **没有逐个读 100 个内核模块 / 47 个工具面 / 1228 个键的语义** ⇒ 本文一切"判定"**只基于命名与数量**。
-2. ★ **没有核 `tools/*.js` 真正注册给代理的命令名**（我第一次的正则零命中，**未重试**）⇒ §3"代理可执行命令"一列用的是**文件名**，★ **不是**已验证的工具 id。
+1. ★ **没有逐个读 100 个内核模块 / 54 个工具 spec / 1228 个键的语义** ⇒ 本文一切"判定"**只基于命名与数量**。
+2. ★ ~~没有核 `tools/*.js` 真正注册给代理的命令名~~ ⇒ ★ **本轮已核**：★ 真实工具 id 的**单一真源**是 `vibe-math-vmu/host.js:83` 的 **`TOOL_NAMES`**（`Object.freeze`），★ 共 **54** 个，形态 `vibe_vmu_<face>`，★ 与 `host.js:168+` 的注册表（每条带 `families`／`config`）以及就绪数字 `{"tools":54}` **一致** ✓ ⇒ ★ 本文 §3 那一列现按**工具数**记 54（★ 此前记的 47 是**文件数**，不是工具数）。
 3. ★ **没有核 `v3-core`/`institute-min` 的内容**（只数了文件数）。
 4. ★ **没有核** `extensions/domain-compliance` 的作用与它是否算 (a)–(j) 之一。
 5. ★ **没有核** 113 个未接线键里哪些是"有意留待扩展"、哪些是"半成品"。
