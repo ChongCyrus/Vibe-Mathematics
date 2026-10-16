@@ -17,8 +17,8 @@ export function makeChatSpec({ param, refused, TOOL_NAMES, kernel }) {
       action: param('string', 'send｜list｜policy｜setpolicy｜mute｜unmute｜quota｜admin｜status｜supplement｜supplements｜supplementof', { required: true,
         enum: ['send', 'list', 'policy', 'setpolicy', 'mute', 'unmute', 'quota', 'admin', 'status', 'supplement', 'supplements', 'supplementof'] }),
       member: param('string', '目标成员（mute/unmute/admin 必填；list 可作发言人过滤）'),
-      by: param('string', '执行人（mute/unmute/admin/setpolicy/quota/supplement 必填：谁做的必须可审计）'),
-      text: param('string', 'send 的正文（必填）'),
+      by: param('string', '执行人（★ **send**/mute/unmute/admin/setpolicy/quota/supplement 必填：谁做的必须可审计 —— ★ 对齐 `:51` 的 `need(by, \'by\')`；此前 `send` 漏列，面的契约与拒绝理由不一致）'),
+      text: param('string', 'send 的正文（★ send 必填，与 `:51` 的 need 一致）'),
       replyTo: param('string', 'send：回复目标消息 id（必须是账内消息，否则 VMU_CHAT_ANCHOR_DANGLING）'),
       quotes: param('array', 'send：引用列表（消息 id 字符串或 {ref,depth}），超上限具名拒'),
       kind: param('string', 'send：消息类别', { enum: ['chat', 'announce'] }),
@@ -42,7 +42,10 @@ export function makeChatSpec({ param, refused, TOOL_NAMES, kernel }) {
     run: async ({ action, member, by, text, replyTo, quotes, kind, reason, durationMs, op, limit,
       quota, windowMs, admins, speakQuota, speakQuotaWindowMs, muteDefaultMs, freezeExemptAdmins, historyCap,
       of, why, publicRef } = {}) => {
-      const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
+      // ★ Round 30: the refusal NAMES THE ACTION it belongs to, so the message and the face's contract cannot
+      // disagree again (`send` requires `by`/`text`; the description now says so too).
+      // ★ Round 30: the refusal NAMES THE ACTION, so the message and the face contract cannot disagree again.
+      const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required (action ' + String(action) + ')'), { code: 'VMU_INVALID_ARGUMENT' }) }
       try {
         const chat = kernel.chat
         if (!chat) return refused('VMU_ENGINE_UNAVAILABLE', 'the chat primitive is not mounted in this kernel',
