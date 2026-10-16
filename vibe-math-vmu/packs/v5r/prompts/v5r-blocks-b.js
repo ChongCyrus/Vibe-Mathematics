@@ -92,7 +92,8 @@ export const CHARTER_BLOCKS_B = Object.freeze([
   // member's own business and need nobody's approval.
   {
     name: 'v5r-feedback-line',
-    order: 722,
+    // ★ task-209 (P1): was 722 — the ORIGINAL emits the FEEDBACK LINE FIRST of the three.
+    order: 720,
     range: 'pack',
     kind: 'shared',
     texts: {

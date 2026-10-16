@@ -501,7 +501,9 @@ export const CHARTER_BLOCKS_A = Object.freeze([
   // the block from the kernel's own state and this section places it, keeping the pipeline in charge of assembly.
   {
     name: 'v5r-brief-status',
-    order: 720,
+    // ★ task-209 (P1): was 720 — the ORIGINAL emits the STATUS BLOCK LAST (after the feedback line and the pointer
+    // contract), so this unit takes the highest of the three. The declarative order architecture is unchanged.
+    order: 722,
     range: 'pack',
     kind: 'shared',
     texts: {

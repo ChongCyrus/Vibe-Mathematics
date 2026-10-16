@@ -81,12 +81,14 @@ export function decideSections({ settings = {}, turn = {} } = {}) {
 
   // (3) The meeting speaker states: exactly one inside the meeting phase, none outside it, and an
   // unrecognised state is refused rather than defaulted.
-    // THE CALLER MUST NAME THE MEETING STATE, AND NOTHING DEFAULTS IT. The four `v5r-meeting-*` sections are
-  // injected only when `turn.meetingState` says which one applies - absent means NONE of them, deliberately,
-  // because guessing which speaker situation a round is in would put the wrong instructions in front of a member.
-  // That makes naming it the DRIVER's job: whoever opens the turn supplies `meetingState: invited|first|others`.
-  // The tests do this and the plugin does not, which is exactly why this note exists rather than a fallback.
-const state = turn.phase === 'meeting' ? (turn.meetingState === undefined ? null : turn.meetingState) : null
+  // ★ task-209 (P4): THE MEETING STATE NEVER LEAVES THE PROMPT SILENT. It used to: an absent `turn.meetingState`
+  // disabled all `v5r-meeting-*` sections, and the ORIGINAL had no such state — it ALWAYS injected a branch, whose
+  // else case is "you are the first speaker" (`vibe-math-v5r.js:4145`). So an unset state now means exactly that
+  // else branch (`first`), which is also the safe reading: a member opening a meeting IS the first speaker until the
+  // driver says otherwise. Naming it stays the DRIVER's job for the other two states (`invited`/`others`) and an
+  // UNRECOGNISED name is still refused below rather than defaulted.
+  const named = turn.meetingState === undefined || turn.meetingState === null ? 'first' : turn.meetingState
+  const state = turn.phase === 'meeting' ? named : null
   if (state !== null && !MEETING_STATES.some(([key]) => key === state)) {
     errors.push({
       code: 'VMU_INVALID_ARGUMENT',
