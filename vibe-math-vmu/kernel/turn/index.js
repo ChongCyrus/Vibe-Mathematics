@@ -187,10 +187,21 @@ export function facesFrom(services = {}, owners = FIELD_OWNERS) {
  * `extract` lets a host whose handle carries the reply elsewhere say where it is; the built-in order is `reply`, then
  * `text`, which covers the two shapes seen in practice.
  */
-export function deliverViaSubagents(subagents, extract = null) {
-  if (!subagents || typeof subagents.startContinuable !== 'function') {
+export function deliverViaSubagents(subagents, extract = null, { provider = null } = {}) {
+  // ★★★ ROUND 63: A MEMBER TURN IS FOREGROUND ONE-SHOT DELEGATION, AND THE HOST SAYS SO ITSELF. The stack captured on
+  // a real machine came from the continuable-activation registry - startContinuable -> assertAdmitting ->
+  // closingTeardownFor -> liveLineage - which refuses to admit a NEW activation while a previous one is still being
+  // torn down. A retry proved the refusal is PERSISTENT, not transient, because the SLV driver holds the root agent as
+  // a continuable activation and a member turn was trying to nest another inside it. The host's own comment on
+  // `SubagentContinuationManager` says the answer outright: "foreground one-shot delegation keeps calling
+  // `ctx.subagents.start()` and NEVER ENTERS THIS LIFECYCLE". `start(name, request)` builds a ONE-SHOT descriptor, so
+  // admission is never consulted. A vmu turn is exactly that - one delivery, `({ turn, text }) => reply` - so when a
+  // provider name is configured AND the seam offers `start`, the one-shot path is taken. The continuable path stays as
+  // the fallback, because a host that offers only that one must still work.
+  const oneShot = typeof provider === 'string' && provider !== '' && typeof subagents.start === 'function'
+  if (!subagents || (!oneShot && typeof subagents.startContinuable !== 'function')) {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'the subagents seam cannot start a member turn',
-      'inject { deliver } yourself, or give the loop a seam with startContinuable (docs/26 stage 3)')
+      'inject { deliver } yourself, or give the loop a seam with startContinuable (docs/26 stage 3) - or pass { provider } so the ONE-SHOT start() path can be used, which never touches the continuable registry')
   }
   return async ({ turn, text }) => {
     // ROUND 346: the spec carries the SAME three elements the original's wake carries - who, why, and what next -
@@ -210,14 +221,22 @@ export function deliverViaSubagents(subagents, extract = null) {
     // TIMING condition, not a defect in the turn, and the same call normally succeeds a moment later. So it is retried
     // once, and if it still fails the refusal carries the HOST'S OWN WORDS rather than letting a bare TypeError be
     // reported as "the agent said nothing" - which is exactly how this looked undiagnosable for several rounds.
+    // ★★★ ROUND 63: ONE-SHOT FIRST. `start(provider, request)` builds a one-shot descriptor and never enters the
+    // continuable lifecycle, so the registry that refused a NESTED activation is not consulted at all. The request
+    // shape is the one-shot one: a label, the prompt, and the parent/signal the provider expects - the continuable
+    // `spec` is a DIFFERENT contract and is only used on the fallback path.
     let handle
     try {
-      handle = await subagents.startContinuable(spec)
+      handle = oneShot
+        ? await subagents.start(provider, Object.assign({ label: spec.label, prompt: spec.request.prompt }, spec.oneShotRequest || {}))
+        : await subagents.startContinuable(spec)
     } catch (e) {
       const first = String((e && e.message) || e)
       await new Promise((r) => setTimeout(r, 250))
       try {
-        handle = await subagents.startContinuable(spec)
+        handle = oneShot
+          ? await subagents.start(provider, Object.assign({ label: spec.label, prompt: spec.request.prompt }, spec.oneShotRequest || {}))
+          : await subagents.startContinuable(spec)
       } catch (e2) {
         throw refuse('VMU_ENGINE_UNAVAILABLE',
           'the host refused to start this member turn twice: ' + String((e2 && e2.message) || e2),

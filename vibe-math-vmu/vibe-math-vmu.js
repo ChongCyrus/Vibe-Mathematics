@@ -409,14 +409,25 @@ export function apply(ctx, config = {}) {
   const turnDeliver = async ({ turn, text } = {}) => {
     let subs = null
     try { subs = ctx && typeof ctx.get === 'function' ? ctx.get('subagents') : null } catch { subs = null }
-    if (!subs || typeof subs.startContinuable !== 'function') {
+    // ★★★ ROUND 63: THE ONE-SHOT PROVIDER, WHEN THE DEPLOYMENT NAMES ONE. `startContinuable` goes through the host's
+    // continuable-activation registry, which REFUSES to admit a new activation while a previous one is still being torn
+    // down - measured on a real machine as `startContinuable -> assertAdmitting -> closingTeardownFor -> liveLineage`,
+    // and persistent rather than transient because the SLV driver already holds the root agent as an activation. The
+    // host's own comment on that manager says "foreground one-shot delegation keeps calling `ctx.subagents.start()` and
+    // NEVER ENTERS THIS LIFECYCLE". So when `config.deliverProvider` (or the declared setting) names a provider AND the
+    // seam offers `start`, delivery takes the one-shot path and the registry is never consulted. Neither is guessed: a
+    // missing provider name keeps the continuable path, which is what a host offering only that one needs.
+    const configuredProvider = (typeof config.deliverProvider === 'string' && config.deliverProvider)
+      || (settings && typeof settings['vmu.turn.deliverProvider'] === 'string' && settings['vmu.turn.deliverProvider'])
+      || null
+    if (!subs || (typeof subs.startContinuable !== 'function' && !(configuredProvider && typeof subs.start === 'function'))) {
       const err = new Error('the host exposes no subagents service (ctx.get(\'subagents\')), so no member turn can be delivered')
       err.code = 'VMU_ENGINE_UNAVAILABLE'
-      err.hint = 'the turn loop refuses by name rather than pretending a member answered (docs/26 stage 3); pass config.deliverReply to extract the reply from a non-standard handle'
+      err.hint = 'the turn loop refuses by name rather than pretending a member answered (docs/26 stage 3); pass config.deliverReply to extract the reply from a non-standard handle, or config.deliverProvider to use the ONE-SHOT start() path'
       throw err
     }
     const extract = typeof config.deliverReply === 'function' ? config.deliverReply : null
-    return deliverViaSubagents(subs, extract)({ turn, text })
+    return deliverViaSubagents(subs, extract, { provider: configuredProvider })({ turn, text })
   }
   // ROUND 4 / F9+F10 (docs/26 §3.22): THE ONGOING-COMMAND SEAMS, assembled exactly like the turn-delivery one above -
   // the capability is the host's (`subagents.sendMessage` / `subagents.interrupt`), the bridge is
