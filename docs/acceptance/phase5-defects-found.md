@@ -133,3 +133,33 @@ at spawnSeam (…/vibe-math-vmu/host-spawn.js:118:13)
 ★ **在工具调度边界把 `refuse()` 转成回执**：★ 即 `tools/*.js` 的 `run` 包裹层（★ 例如 `tools/mathtools.js:20` 那一层）**或** `host.js` 的 `execute`（★ `:971`）**catch** 住"本框架自己的拒绝错误"（★ 用 `code` 以 `VMU_` 开头、或一个 `refuse` 标记判别 ✓），★ **并返回 `{ok:false, code, message, hint, …}`** ✓
 ★ **注意**：★ **真正的意外错误不应被静默吞掉** ⇒ ★ 只吞**本框架具名拒**，★ 其余仍要冒泡（★ 否则又是"静默吞错"那一族 ✓）
 ★ **判据**：★ **一个"参数非数组"的调用 ⇒ 得到 `ok:false` ＋ `VMU_INVALID_ARGUMENT`，★ 且【进程仍然活着、★ 后续调用仍可用】** ✓ —— ★ **这正是 D1 的反例测试【本该断言而没断言】的那一半**（★ 当时只断言了"得到具名拒"，★ 没断言"进程活着" ✓）✓
+
+---
+
+## ★★★★★ D7（★ 调用方缺陷）：**`--stdin` 被当成了【可执行文件】本身**
+
+### 7.1 ★★★ 证据（★ 来自本轮 `srv.err`，★ 而且拒绝【信息很丰富】）
+```
+code:   VMU_ENGINE_UNAVAILABLE
+hint:   the host resolves executables against its scrubbed PATH; an unresolvable command is a named failure
+hostStack: SubprocessExecutableNotFoundError: subprocess-local: command "--stdin" was not found on PATH
+shape:  { phase: "resolveExecutable", argv0: "--stdin", argvLen: 1 }
+cause:  SubprocessExecutableNotFoundError: command "--stdin" was not found on PATH
+```
+★★★ **注意：★ 这条拒绝带的上下文【非常完整**】** —— ★ `code`／`hint`／★ **`hostStack`**／★ **`shape`**／★ **`cause`** ✓ —— ★★ **正是框架"富拒绝"机制应有的样子** ✓✓
+
+### 7.2 ★★★ 根因：**调用方把 `--stdin` 传成了 `argv[0]`**
+★ `host-spawn.js:112` **`if (typeof request.file === "string" && request.file.length > 0) argv.push(request.file)`** ⇒ ★ **`file` 成为 `argv[0]`** ✓
+★ `:121` **`for (const a of argList) argv.push(String(a))`** ⇒ ★ **`args` 依次跟在后面** ✓
+⇒ ★★★ **而 `argv0` 实测是 `"--stdin"`** ⇒ ★★ **即调用方给了 `args: ["--stdin", …]` 而【没有给 `file`】** ⇒ ★ **于是 `--stdin` 变成了"要执行的那个程序"** ✓✓
+★ **这是【调用方】的缺陷**（★ 很可能是某个引擎/python 适配器拼 argv 时把标志放在了最前 ✓），★ **而框架的拒绝是【正确且信息充分】的** ✓
+
+### 7.3 ★★★★ 但**服务器仍然死了** —— ★ 所以 D6 的修法【不是**全部**
+★ 读数：★ **`exit=1 dur=0s tokens=-1`**（★ 又是服务器中途死掉 ✓）；★ **`srv.out` 只有 83 B**（★ 仅启动的 token 行 ⇒ 之后无输出 ✓）
+⇒ ★★ **而本轮已经修了 D6**（★ 失败分支与成功分支同形状 ✓）⇒ ★★★ **说明【还有一条独立的死亡路径】** ✓✓
+
+### 7.4 ★★ 下一步的两个候选（★ 按可能性排序）
+1. ★★★ **`err.cause = e` 的可序列化性**：★ `host-spawn.js:137-139` 设了 `err.hostStack`／`err.shape`／**`err.cause = e`**（★ `e` 是宿主抛的 `SubprocessExecutableNotFoundError` ✓）⇒ ★★ **若 `boundedToolResult` 对该对象做 `JSON.stringify`，★ 而 `cause` 链里有循环或不可序列化的东西，★ 就可能【在序列化时抛】** ✓ —— ★ **那一抛发生在 `boundedToolResult` 内部，★ 也就是【catch 之外**】，★ 于是没人接** ⇒ ★★ **致命** ✓✓✓
+   ★ **判据**：★ **直接对这样一条拒绝做 `boundedToolResult`，★ 看它是否抛** ✓
+2. ★★ **调用方缺陷 D7 本身**：★ 修好 argv 组装（★ 让真正的可执行文件回到 `argv[0]` ✓），★ **这样这条拒绝根本不会发生** ✓
+⇒ ★★★ **建议先做 1**（★ 它是**通用**的死亡路径：★ 任何富拒绝都可能踩 ✓），★ **再做 2**（★ 它是**这一条**的具体成因 ✓）✓
