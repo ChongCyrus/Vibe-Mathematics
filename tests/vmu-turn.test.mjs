@@ -742,11 +742,16 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 // checked against what the kernel services really expose, and the fields with no matching operation are BOOKKEPT so
 // that a real reply is never refused merely because a face is still to be built.
 {
-  ok(FIELDS.length + RECORDED_FIELDS.length === 29 && FIELDS.length === 23,
-    'T104. **** the reply surface now covers all 29 fields the original parses - 21 dispatched to real operations and 8 bookkept',
+  // ★★ ROUND 51: `vote_solved` MOVED FROM DISPATCHED TO BOOKKEPT, AND THE COUNTS FOLLOWED. It was routed to the ballot
+  // box, which needs a box id and a voter identity the dispatcher does not hold, so every call necessarily refused -
+  // while being counted as dispatched. The PROMPT settles which field closes the institute: its own words make
+  // `vote_solved` the closure vote (unanimity required) and `solved` merely the per-round judgement. So the closure
+  // vote is recorded and counted, and 22 fields are dispatched while 7 are bookkept.
+  ok(FIELDS.length + RECORDED_FIELDS.length === 29 && FIELDS.length === 22,
+    'T104. **** the reply surface now covers all 29 fields the original parses - 22 dispatched to real operations and 7 bookkept',
     { dispatched: FIELDS.length, bookkept: RECORDED_FIELDS.length, total: FIELDS.length + RECORDED_FIELDS.length })
-  ok(FIELD_OWNERS.vote_solved.face === 'vmu.ballotbox' && FIELD_OWNERS.meeting_hand.op === 'queue' && FIELD_OWNERS.convene_meeting.op === 'open' && FIELD_OWNERS.assign.op === 'assign',
-    'T105. **** and each new owner names an operation the kernel really exposes - nothing is invented',
+  ok(FIELD_OWNERS.vote_solved === undefined && FIELD_OWNERS.meeting_hand.op === 'queue' && FIELD_OWNERS.convene_meeting.op === 'open' && FIELD_OWNERS.assign.op === 'assign',
+    'T105. **** and each new owner names an operation the kernel really exposes - nothing is invented (and `vote_solved` is BOOKKEPT, not dispatched to a face that cannot accept it)',
     { sample: FIELD_OWNERS.vote_solved.face + '.' + FIELD_OWNERS.vote_solved.op + ' ' + FIELD_OWNERS.meeting_hand.face + '.' + FIELD_OWNERS.meeting_hand.op })
   // A loop built INSIDE this block: the earlier one lives in another block's scope, and reaching across would be a
   // dependency on declaration order that the next person would have to rediscover.
