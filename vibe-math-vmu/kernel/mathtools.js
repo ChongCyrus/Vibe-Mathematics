@@ -609,7 +609,7 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
      * Run through the injected `spawn` seam and apply the result-conditional rails + shaping.
      * Every refusal names the KEY that governs it; every drop (log lines, warnings, receipt ring) is counted.
      */
-    run(req = {}) {
+    async run(req = {}) {
       const p = api.plan(req)
       const at = clock()
       if (p.plan.cached) {
@@ -628,25 +628,13 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
       counters.rangeRuns += 1
       let raw
       try { raw = spawn({ op: p.plan.op, args: p.plan.args, seed: p.plan.seed, backend: p.plan.backend, limits: p.limits }) } finally { active -= 1 }
-      // ★★ ROUND 38 (measured): A PROMISE HERE PROVES THE WRONG SEAM WAS INJECTED. This face's computation seam is
-      // SYNCHRONOUS by design (the math surface is), so an async answer means the SCRIPT BRIDGE was wired in - it is
-      // async, it speaks {file,args} rather than {op,args,seed,backend,limits}, and it refuses by throwing. Awaiting
-      // it here would be wrong twice over: it would paper over a wiring error, and an unawaited rejection from it is
-      // exactly what the host reports as a fatal load failure (which is why the server kept dying while every
-      // refusal it produced was correct). So the mismatch is REFUSED BY NAME, with the shape explained, instead of
-      // being silently treated as a computation result.
-      if (raw && typeof raw.then === 'function') {
-        // ★★★ THE HANDLER GOES ON FIRST, AND THAT ORDER IS THE WHOLE FIX. An async seam that refuses returns an
-        // ALREADY-REJECTED promise. Node flags an unhandled rejection on the NEXT TICK, and the host turns that into a
-        // fatal load failure - so merely throwing our own refusal here (the first version of this guard) was TOO LATE:
-        // the trace still showed the seam's own rejection, and the process died anyway. Attaching a no-op handler
-        // marks the rejection as observed and removes the fatal path; only then do we refuse by name, so the caller
-        // still gets the diagnostic that matters instead of a silent or a fatal outcome.
-        if (typeof raw.catch === 'function') raw.catch(() => {})
-        throw deny('VMU_ENGINE_UNAVAILABLE',
-          'the injected computation seam is ASYNC, so it is not the math seam: it is the script bridge (which speaks {file,args} and refuses by throwing)',
-          'inject the MATH seam (math-computation); a synchronous seam is what this face requires, and an unhandled rejection from an async one takes the host process down', p.enforced)
-      }
+      // ★★★ ROUND 39 (measured, and it reverses my Round-38 reading): THE CORRECT MATH SEAM *IS* ASYNC.
+      // `createMathSurface({host}).run(args)` is declared async, so the seam this face is meant to call returns a
+      // promise - and my previous guard refused an async seam on the grounds that it proved the wrong one was
+      // wired. That was aimed at the right symptom with the wrong target: the async-ness was never the defect, the
+      // WIRING was. Now that the math seam is the one being injected, this call must AWAIT it, which is also what
+      // makes a refusal land in this function's caller instead of escaping as an unhandled rejection.
+      try { raw = await spawn({ op: p.plan.op, args: p.plan.args, seed: p.plan.seed, backend: p.plan.backend, limits: p.limits }) } finally { active -= 1 }
       if (!raw || typeof raw !== 'object') throw deny('VMU_ENGINE_UNAVAILABLE', 'the injected seam returned no result object', 'spawn must return { ok, result, … }', p.enforced)
       if (raw.ok === undefined && raw.result === undefined) {
         throw deny('VMU_ENGINE_UNAVAILABLE',

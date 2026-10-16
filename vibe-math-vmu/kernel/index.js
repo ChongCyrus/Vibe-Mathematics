@@ -1154,7 +1154,14 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // the ones that do not must not be described as if they did; see docs/11 §4.2 for the guard-surface registry),
   // and the projection migrator is what keeps an old on-disk projection from being silently dropped when the
   // kernel's own version moves.
-  const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedClock, log, spawn, library })
+  // ★★★ ROUND 39 (measured): THE MATH SEAM, NOT THE SCRIPT BRIDGE. `mathtools` speaks {op, args, seed, backend,
+// limits}; the script-bridge seam speaks {file, args}. Injecting the bridge made every computation attempt travel
+// through a seam that could not understand it - and, because that seam is async and its refusals were not awaited,
+// it also armed the unhandled rejection that took the host process down. The math surface is built from `host` and
+// is exactly the seam this face wants. It is resolved LAZILY (a kernel with no math host must still construct), and
+// `mathtools` already refuses by name when no seam is available.
+const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedClock, log, library,
+  spawn: (req) => mathSurface().run(req) })
   // `projmigrate` is built EARLIER now: the idempotency ledger needs it at construction so an old on-disk
   // projection is migrated instead of silently discarded.
   // ROUND 22: three more declared-knob families become behaviour, each following the mathtools standard (the
