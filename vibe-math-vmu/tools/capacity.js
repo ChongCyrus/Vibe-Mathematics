@@ -1,46 +1,54 @@
-// vibe-math-vmu/tools/capacity.js — the capacity tool spec (round 545).
+// vibe-math-vmu/tools/capacity.js — the capacity tool spec.
+//
+// ★★★★★★★ ROUND 83 — THE ACTION SET IS NOW DERIVED FROM THE SERVICE, NOT HAND-LISTED BESIDE IT. This face stated its own
+// contract in one line: it ADDRESSES and CALLS, and the service enforces everything ("本工具只做寻址与调用（整对象透传 ✓）").
+// The implementation had drifted away from that in four separate ways, all of them invisible while the tool merely
+// registered:
+//   * a `retire` branch called `capacity.retire`, a method the service does not have - so a real run answered with the
+//     ENGINE'S OWN message ("capacity.retire is not a function"), which is what the no-engine-leaks gate exists to catch;
+//   * `calibrate`, `available` and `blocked` had branches but were NOT reachable, because the enum never offered them;
+//   * `reserve`, `release`, `list` and `status` were each handled TWICE, the second copy dead;
+//   * the DESCRIPTION named a different action set again (register/retire/calibrate/available/blocked), and claimed ten
+//     actions while the enum listed nine.
+// A hand-written list beside a hand-written dispatch drifts by construction. Deriving both from the service removes the
+// failure mode instead of correcting one instance of it: the enum IS the service's own function-valued keys, and the
+// dispatch is one generic pass-through. There is no second list left to disagree with the first.
 export function makeCapacitySpec({ param, refused, TOOL_NAMES, kernel }) {
+  const capacity = kernel && kernel.capacity ? kernel.capacity : null
+  // Derived ONCE, at assembly: the set of things this face can actually address.
+  const ACTIONS = capacity && typeof capacity === 'object'
+    ? Object.keys(capacity).filter((k) => typeof capacity[k] === 'function').sort()
+    : []
+  const spelled = ACTIONS.length ? ACTIONS.join('｜') : '(服务未提供任何方法)'
   return {
     name: TOOL_NAMES.capacity,
-    description: 'vmu 容量面（(f) 工作流／(j) 自组织的资源侧）：10 个动作。★ 登记（admit）／退场（retire）、预约、校准与阻断都由内核服务强制（★ 到期即阻断 ✓）；本工具只做寻址与调用（整对象透传 ✓）。',
+    description: 'vmu 容量面（(f) 工作流／(j) 自组织的资源侧）：★ 动作集由【服务自身推导】，本工具只做寻址与调用'
+      + '（整对象透传 ✓，形状由服务校验），所以它无法与服务的实际能力漂移。可用：' + spelled,
     parameters: {
-      action: param('string', 'register｜retire｜reserve｜release｜calibrate｜available｜blocked｜list｜status', { required: true,
-        enum: ['admit','forecast','list','receiptsView','release','reserve','status','storage','waitlistView'] }),
+      action: param('string', '★ 取值＝服务实际暴露的方法：' + spelled, { required: true, enum: ACTIONS }),
       request: param('object', '写动作的请求（形状由服务校验 ✓）'),
-      id: param('string', 'read 动作的目标 id（可选）'),
+      id: param('string', 'read 动作要寻址的目标 id（可选；只会在需要时附加）'),
     },
     run: async ({ action, request, id } = {}) => {
       try {
-        const capacity = kernel.capacity
-        if (action === 'admit') return Object.assign({ ok: true, action }, await capacity.admit(request))
-        if (action === 'forecast') return Object.assign({ ok: true, action }, await capacity.forecast(request))
-        if (action === 'list') return Object.assign({ ok: true, action }, await capacity.list())
-        if (action === 'receiptsView') return Object.assign({ ok: true, action }, await capacity.receiptsView(request))
-        if (action === 'release') return Object.assign({ ok: true, action }, await capacity.release(request))
-        if (action === 'reserve') return Object.assign({ ok: true, action }, await capacity.reserve(request))
-        if (action === 'status') return Object.assign({ ok: true, action }, await capacity.status())
-        if (action === 'storage') return Object.assign({ ok: true, action }, await capacity.storage(request))
-        if (action === 'waitlistView') return Object.assign({ ok: true, action }, await capacity.waitlistView(request))
-        // ★★★★★★★ ROUND 80: A MISSING CAPABILITY IS REFUSED BY NAME, NEVER CALLED. The enum offered `retire` and this
-        // branch called `capacity.retire(request)` - a method the capacity service does not have. A real run reached it and
-        // the tool answered with the ENGINE'S OWN message ("capacity.retire is not a function"), which is exactly what the
-        // no-engine-leaks gate exists to catch: a refusal is the framework speaking to an operator, and an engine message is
-        // not a refusal. The branch now probes for the method and refuses by name when it is absent.
-        if (action === 'retire') {
-          if (typeof capacity.retire !== 'function') {
-            return refused('VMU_ENGINE_UNAVAILABLE', 'this capacity service has no retire: the face offers it and the service does not implement it',
-              'the service implements ' + Object.keys(capacity).filter((k) => typeof capacity[k] === 'function').slice(0, 12).join('｜') + ' - use one of those, or the deployment adds retire')
-          }
-          return Object.assign({ ok: true, action }, await capacity.retire(request))
+        if (!capacity) {
+          return refused('VMU_ENGINE_UNAVAILABLE', 'this assembly has no capacity service to address',
+            'the capacity face is registered whenever the tool is declared; a deployment that wants it must provide kernel.capacity')
         }
-        if (action === 'reserve') return Object.assign({ ok: true, action }, await capacity.reserve(request))
-        if (action === 'release') return Object.assign({ ok: true, action }, await capacity.release(request))
-        if (action === 'calibrate') return Object.assign({ ok: true, action }, await capacity.calibrate(request))
-        if (action === 'available') return Object.assign({ ok: true, action }, await capacity.available({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
-        if (action === 'blocked') return Object.assign({ ok: true, action }, await capacity.blocked({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
-        if (action === 'list') return Object.assign({ ok: true, action }, await capacity.list())
-        if (action === 'status') return Object.assign({ ok: true, action }, await capacity.status())
-        return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
+        const fn = Object.prototype.hasOwnProperty.call(capacity, action) ? capacity[action] : null
+        if (typeof fn !== 'function') {
+          // REFUSED BY NAME, and the refusal carries the enforced list - so a caller who guessed an action learns the
+          // real set here rather than from an engine error. The message keeps the repository's own wording for this
+          // case ("unknown action: …", as in tools/control.js); the FACE is named by the hint, which also lists what
+          // the service does implement.
+          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action),
+            'the capacity face addresses these: ' + spelled)
+        }
+        // The face ADDRESSES and CALLS; the service validates the request shape. `id` travels only when the caller gave
+        // one, so a read that takes no target is not handed a fabricated one.
+        const payload = Object.assign({}, request && typeof request === 'object' ? request : {},
+          id === undefined || id === null ? {} : { id })
+        return Object.assign({ ok: true, action }, await fn(payload))
       } catch (e) {
         return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
       }

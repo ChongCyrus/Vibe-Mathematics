@@ -78,7 +78,31 @@ export const FIELD_OWNERS = Object.freeze({
 export function closureVoteOf({ votes = new Map(), roster = [], may = null, permission = 'vote' } = {}) {
   const enfranchised = roster
     .map((m) => String(m && m.id !== undefined ? m.id : m))
-    .filter((id) => (typeof may === 'function' ? may(id, permission) : true))
+    .filter((id) => {
+      if (typeof may !== 'function') return true
+      const verdict = may(id, permission)
+      // ★★★★★★★ ROUND 83 — THE VERDICT IS READ, NOT ITS TRUTHINESS. The parameter is documented as returning a boolean,
+      // but the kernel's OWN service method returns an OBJECT (`{ ok, allowed, member, slot, permission }`), and an
+      // object is ALWAYS truthy. So a caller that injected `members.may` as written - the most natural thing to do, and
+      // what the parameter name invites - enfranchised EVERY member, chair and temp slots included, and those slots hold
+      // no vote in this pack. Unanimity would then depend on members who cannot vote, which is the same class of bug the
+      // docstring above warns about; it simply arrived through the parameter instead of through a hardcoded name.
+      //
+      // The kernel's own call site already unwraps `allowed`, so this changes nothing there. It closes the hole for every
+      // OTHER caller - a pack middleware, a deployment, a test - because the predicate can no longer be misused by
+      // passing the service method unchanged.
+      if (typeof verdict === 'boolean') return verdict
+      if (verdict && typeof verdict === 'object' && typeof verdict.allowed === 'boolean') return verdict.allowed
+      // Nullish means the service has no opinion on this id, which is NOT an enfranchisement; the kernel's own unwrap
+      // coalesces it to false, and this matches that deliberately rather than inventing a second answer.
+      if (verdict === undefined || verdict === null) return false
+      // Anything else (a number, a string, a function) is UNREADABLE, and it is refused by name rather than resolved:
+      // reading it as true enfranchises members who may not vote, reading it as false drops members who may, and neither
+      // is a choice this predicate is entitled to make silently.
+      throw refuse('VMU_INVALID_ARGUMENT',
+        'the closure-vote permission test answered with ' + typeof verdict + ' instead of a boolean or { allowed }',
+        'pass may as (id, permission) => boolean, or pass the members service method UNCHANGED - its result carries `allowed`, which this predicate now reads (docs/26 §3.30)')
+    })
   const forIt = []
   const against = []
   const missing = []
