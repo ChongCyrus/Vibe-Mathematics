@@ -75,6 +75,28 @@
 
 ★ **G1 是唯一的硬阻塞** ⇒ ★ **`task-247` 一绿（T1 全绿），Phase 4 即可开始** ✓
 
+## 7b. ★★ 已执行的准备（Round 15）
+
+| 步 | ★ 读数 |
+|---|---|
+| ★★ **克隆隔离 profile** | ★ **`C:\Users\admin\.dsh\profiles\slv-v5r-r15`**（★ 由 `hubtest` 拷贝，7 个条目）✓ |
+| ★★ **改名（手册 §1 第 2 步）** | ★ `dsh-profile-hubtest` → **`slv-v5r-r15`** ✓（★ 避免与用户 profile 混淆） |
+| ★ **用户自己的东西【未动】** | ★ `.agent-presets/` 仍是 `.vibe-math-backup`／`vibe-math-v2/v3/v4/v5`／`.vibe-math-installed.json` ✓ |
+| ★ 空间 | ★ C: 余 **10.6 GB**；★ 源 profile 仅 **15.4 MB** ⇒ ★ **克隆很便宜** ✓ |
+
+★ **下一步（等 T1 全绿）**：★ 把这个 **`dsh-vibe-math` 2.8.5** 装进**克隆**（★ 从而拿到 `vibe-math-v5r`）⇒ ★ 用**独立端口 19388/19389 ＋ `--no-open`**，★ **从纯 ASCII 临时 cwd** 启动 ✓
+
+### 7c. ★★ Round 15：克隆里装的是什么（★ 实读）
+
+| 项 | ★ 读数 |
+|---|---|
+| ★★ **`dsh` CLI 存在** | ★ **`C:\Users\admin\scoop\apps\nodejs-lts\current\bin\dsh.cmd`**（＋ `.ps1`）✓ |
+| ★ 运行时目录 | ★ `~/.dsh/dsh-runtimes/dsh-primary-runtime/`：★ `dependencies`／`runtime.json` ✓ |
+| ★★ **克隆里已带的 bundle** | ★★ **`dsh-vibe-math` ＝ `2.8.1`**，★ 含 preset **`vibe-math-v2/v3/v4/v5`**，★★ **不含 `vibe-math-v5r`** ✓ |
+| ★ 用户自己的记录 | ★ `.vibe-math-installed.json` 也是 **2.8.1**、★ 四preset，★ **与克隆一致** ⇒ ★ **克隆没有引入任何新东西**，★ 干净 ✓ |
+
+⇒ ★★★ **因此 Phase 4 的唯一动作就是**：★ **把 `dsh-vibe-math` 2.8.5 装进克隆**（★ 用上面那个 `dsh` CLI；★ 获 `vibe-math-v5r`）✓
+
 ## 8. 没核（★ 与"核了"分开）
 
 1. ★ **手册我读的是 §3–§8 与开头**（★ 逐字读了 §2 铁律、§3 开关表、§4 预算、§5 能力边界、§6 中止、§7 清理、§8 结论写法）⇒ ★ **§1 的隔离命令我只看了标题级**。
