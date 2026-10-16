@@ -357,15 +357,18 @@ function childIdOf(handle) {
  */
 export function deliverByReturning() {
   let pendingPrompt = null
+  let answeredFor = null
   let supplied = null
   const seam = async ({ turn, text }) => {
     if (supplied !== null) {
       const reply = supplied
       supplied = null
+      // ★ the member whose prompt this answers: the reply belongs to THAT member, not to whoever the next step picks
+      answeredFor = pendingPrompt && pendingPrompt.member ? String(pendingPrompt.member) : null
       pendingPrompt = null
-      return { reply, childId: null, stopReason: 'supplied-by-caller', attribution: 'the CALLING session played this member turn (deliverByReturning)', deliveryPath: 'caller' }
+      return { reply, forMember: answeredFor, childId: null, stopReason: 'supplied-by-caller', attribution: 'the CALLING session played this member turn (deliverByReturning)', deliveryPath: 'caller' }
     }
-    pendingPrompt = { member: turn && turn.member ? turn.member : null, turnId: turn && turn.id ? turn.id : null, text: String(text) }
+    pendingPrompt = { member: turn && turn.member ? String(turn.member) : null, turnId: turn && turn.id ? turn.id : null, text: String(text) }
     return { reply: null, awaiting: true, memberPrompt: pendingPrompt, childId: null, stopReason: null, deliveryPath: 'caller' }
   }
   seam.supply = (reply) => { supplied = typeof reply === 'string' ? reply : null; return seam }
@@ -474,6 +477,9 @@ export function createTurnOrchestrator({
   // receipt belongs to without re-reading the host handle.
   let lastAttribution = { childId: null, stopReason: null, attribution: 'no turn has been delivered yet' }
   let seq = 0
+  // ★ ROUND 79: which member the most recent caller-supplied reply answers, so the closure vote is recorded against
+  // THAT member rather than against whoever the next step happened to wake.
+  let lastReplyForMember = null
 
   const fail = (code, message, hint) => { counts.refused += 1; lastRefusal.code = code; lastRefusal.message = message; throw refuse(code, message, hint) }
 
@@ -587,6 +593,11 @@ export function createTurnOrchestrator({
       return { awaiting: true, memberPrompt: (delivered && delivered.memberPrompt) || null, reply: null }
     }
     const reply = reply0
+    // ★★★ ROUND 79: THE REPLY IS RECORDED AGAINST THE MEMBER IT ANSWERS, NOT AGAINST THIS TURN'S MEMBER. The
+    // pending prompt belonged to one member; the wakeup policy may address the NEXT step to another. Recording it
+    // against `turn.member` put a truthful vote on the wrong person and left the real voter reported missing.
+    const replyForMember = delivered && delivered.forMember ? String(delivered.forMember) : null
+    lastReplyForMember = replyForMember
     lastAttribution = {
       childId: (delivered && delivered.childId) || null,
       stopReason: (delivered && delivered.stopReason) || null,
@@ -825,13 +836,17 @@ export function createTurnOrchestrator({
         attribution: Object.assign({}, lastAttribution) }
     }
     const parsed = parse(raw)
+    // consumed once: the next turn's reply belongs to whoever it answers
+    const attributedTo = lastReplyForMember
+    lastReplyForMember = null
     // ROUND 496: `turn/reply-parsed` was frozen with a default policy and NOTHING emitted it, so middleware could not see
     // a parsed reply. Emitted BEFORE dispatch, which is the only point where inspecting it can still change the outcome.
     if (bus && typeof bus.emit === 'function') {
       const seen = await bus.emit('turn/reply-parsed', { turn: turn.id, member: turn.member, phase: turn.phase, fields: parsed.fields, reply: parsed.reply }, { member: turn.member, role: turn.role, phase: turn.phase })
       if (seen && seen.ok === false) fail((seen.refused && seen.refused.code) || 'VMU_MIDDLEWARE_FAILED', (seen.refused && seen.refused.message) || 'a middleware refused turn/reply-parsed', (seen.refused && seen.refused.hint) || null)
     }
-    const out = await apply(parsed.reply, null, turn.member)
+    // ★ ROUND 79: a caller-supplied reply is attributed to the member it ANSWERS; everything else keeps turn.member.
+    const out = await apply(parsed.reply, null, attributedTo || turn.member)
     // ROUND 396: a REFUSED dispatch becomes a notice for this member's NEXT prompt, which is the shape the original's
     // own corpus shows - "【研究所提示】task_update 未生效（V5_TASK_STALE_REVISION）：…". A refusal that lives only in the
     // receipt is invisible to the member that caused it, and the source is explicit that the announcement point is the
