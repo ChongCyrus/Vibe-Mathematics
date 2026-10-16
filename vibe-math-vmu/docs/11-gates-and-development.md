@@ -161,7 +161,7 @@
 
 | # | 来源 | 形态 | 实测 |
 |---|---|---|---|
-| ① | **`SETTING_DEFS`**（`settings/schema.js` ＝ core ＋ `PLANNED_DEFS`） | 手写＋生成物 | 1229 键（1108 已接线／121 未接线） |
+| ① | **`SETTING_DEFS`**（`settings/schema.js` ＝ core ＋ `PLANNED_DEFS`） | 手写＋生成物 | ★ **键数与接线数一律见生成器输出** —— ★ 权威值＝`node scripts/regen-all.mjs --check` 的 `settings table` 与 `readiness figure`。★ 本格原先手写 `1229 键（1108 已接线／121 未接线）`，**三个数全过期**，★ 且**违反本文件 `:671` 自己的规定**（"本节不手写这类计数"）⇒ 故改为**指针**。★ 判据口径见 `scripts/generate-vmu-settings-table.mjs` 的 `hasConsumer`／`carrierOf`（★ 含 `{{ setting:<key> }}` **模板读取**这一路消费者，★ 该路原先被漏判，已修） |
 | ② | **`NON_SETTING`**（服务/注册名表） | **手写**，**现在唯一一份** | 35 名；`tests/audit-vmu-docs.test.mjs` 本轮改为**import** 它（两份拷贝**已经漂移**：审计说 `vmu.dissemination.impact(…)`／`vmu.dissemination.mediaRequest(…)`（**这两个已是真键**），生成器说 `vmu.outreach.*`（**R218 改名前的旧族名，什么都匹配不到**）） |
 | ③ | **家族形** `vmu.x.y.*` | **机械**（看 match 后一字符） | — |
 | ④ | **调用形** `vmu.<面>.<键>(` | **机械**（负向前瞻 `(?!\s*\()`，落于 `:348`／`:374`／`:399` 三处，另有"三处必须逐字相同"的漂移断言） | 设置项**永远不会被调用** ⇒ 不需要白名单 |
@@ -211,7 +211,7 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 322 / suites 250 / probes 72`** ✓（旧值 134／68／66 已在扩卷与增件后过期 ✗；本轮树新增 1 个作业：`tests/audit-scope-classification.test.mjs` ✓） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 306 / suites 235 / probes 71`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 310 / suites 238 / probes 72`** ✓ |
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 258 / suites 225 / probes 33`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。

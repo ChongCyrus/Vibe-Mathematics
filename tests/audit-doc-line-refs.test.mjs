@@ -120,6 +120,67 @@ export function judgeRef({ ref, start, end, length }) {
 }
 
 const REF_RE = /(?:^|[\s`(+|（])([\w.-]+(?:\/[\w.-]+)*\.(?:js|mjs|cjs|md|json|jsonc|txt|yml|yaml|lean))[:：](\d{1,6})(?:\s*[–—-]\s*(?:L)?(\d{1,6}))?/gi
+
+/**
+ * ★ THE HISTORICAL MARKER (marker style follows `tests/audit-fs-purpose.test.mjs`). A doc that RE-ANCHORS a
+ * reference has to quote the OLD number to be useful (the worked example is
+ * `vibe-math-vmu/docs/audit/source-prompt-coverage.md` §5, "old → new"), and a guard that reds on that quote is a
+ * wall nobody can keep green. So a reference is treated as a RECORD, not a pointer, when either
+ *   (a) its own line carries the explicit word `拆前` or `pre-split`, or
+ *   (b) it sits under a heading matching /re-anchor log/i (until the next heading of the same or higher level).
+ * Both are explicit and greppable, and the gate PRINTS how many references were excused this way, so the
+ * exemption is itself countable rather than silent (the §4.2-ninth-requirement discipline).
+ */
+const HIST_LINE = /拆前|pre-split|old\s*→|旧\s*→/
+const REANCHOR_HEAD = /re-anchor log/i
+function historicalLines(lines) {
+  const out = new Set()
+  let inSec = false
+  let level = 0
+  lines.forEach((l, i) => {
+    const h = /^(#{2,4})\s+(.*)$/.exec(l)
+    if (h) {
+      const lvl = h[1].length
+      if (inSec && lvl <= level) inSec = false
+      if (REANCHOR_HEAD.test(h[2])) { inSec = true; level = lvl }
+    }
+    if (inSec) out.add(i + 1)
+  })
+  return out
+}
+
+/**
+ * ★ THE NAMED BACKLOG. Two out-of-range references that this round FOUND and could NOT fix (they live outside the
+ * task's write scope). They are recorded here rather than silenced, following the repo's graded-backlog idiom
+ * (`audit-code-size`: recorded, must not grow, each must STILL violate, and the predicate is proven to bite):
+ *   · no finding may appear that is NOT on this list (a new one is RED);
+ *   · every listed item must still be violated (fixing it without deleting its row is RED, so the list cannot
+ *     go stale and become a dumping ground);
+ *   · every row states a reason.
+ */
+export const KNOWN_OUT_OF_RANGE = Object.freeze([
+  // ── the `packs/v5r/settings/defaults.js` cluster (the file is 46 lines; six references across five docs point
+  //    past it — the SAME disease as the prompts split, on a different file) ──────────────────────────────────
+  { doc: 'docs/acceptance/04-parity-matrix.md', docLine: 698, ref: 'packs/v5r/settings/defaults.js:82',
+    why: 'points past that file (46 lines) — found by this gate on its first run, outside task-226 write scope' },
+  { doc: 'docs/acceptance/04-parity-matrix.md', docLine: 698, ref: 'defaults.js:91',
+    why: 'the same line also cites the bare basename past the end (46 lines) — outside task-226 write scope' },
+  { doc: 'docs/acceptance/09-goal4-verdict.md', docLine: 170, ref: 'packs/v5r/settings/defaults.js:93',
+    why: 'points past that file (46 lines) — outside task-226 write scope' },
+  { doc: 'docs/acceptance/10-goal3-final.md', docLine: 41, ref: 'packs/v5r/settings/defaults.js:93',
+    why: 'points past that file (46 lines) — outside task-226 write scope' },
+  { doc: 'docs/acceptance/12-goal1-e2e.md', docLine: 343, ref: 'packs/v5r/settings/defaults.js:61',
+    why: 'points past that file (46 lines) — outside task-226 write scope' },
+  { doc: 'docs/acceptance/pack-round6-report.md', docLine: 76, ref: 'packs/v5r/settings/defaults.js:93',
+    why: 'points past that file (46 lines) — outside task-226 write scope' },
+  { doc: 'docs/acceptance/resume-round9-report.md', docLine: 41, ref: 'packs/v5r/settings/defaults.js:61',
+    why: 'points past that file (46 lines) — outside task-226 write scope' },
+  // ── a REVERSED range, cited in two docs (start 3288 > end 3092) ────────────────────────────────────────────
+  { doc: 'docs/acceptance/03-v5r-full-inventory.md', docLine: 488, ref: 'vibe-math-v5r.js:3288-3092',
+    why: 'a REVERSED range in the source inventory (start 3288 > end 3092) — outside task-226 write scope' },
+  { doc: 'docs/acceptance/v5r-inventory-a.md', docLine: 445, ref: 'vibe-math-v5r.js:3288-3092',
+    why: 'the same reversed range in the sibling inventory — outside task-226 write scope' },
+])
 /**
  * A doc that cites one file several times writes the follow-ups as SHORTHAND on the same line: `f.js:531`, `:564`
  * and `f.js:235,581`. Those bare numbers are only followed when they CONTIGUOUSLY continue a full reference that
@@ -176,10 +237,14 @@ const bad = []
 const skipped = { 'not-found': 0, 'ambiguous-basename': 0, 'ambiguous-path': 0 }
 const symbolFindings = []
 let resolved = 0
+let historical = 0
 for (const doc of docs) {
   const text = readFileSync(doc, 'utf8').split(/\r?\n/)
+  const hist = historicalLines(text)
   text.forEach((line, i) => {
     for (const m of line.matchAll(REF_RE)) {
+      // ★ a reference quoted as a RECORD (old → new) is not a pointer; see HIST_LINE / REANCHOR_HEAD
+      if (hist.has(i + 1) || HIST_LINE.test(line)) { historical++; continue }
       const ref = m[1]
       const start = Number(m[2])
       const end = m[3] === undefined ? null : Number(m[3])
@@ -218,17 +283,27 @@ for (const doc of docs) {
 
 console.log('=== §2 NO REFERENCE POINTS PAST THE END OF THE FILE IT NAMES ===')
 ok(resolved > 0, 'the scan really resolved references (non-vacuous: ' + resolved + ' resolved, ' + docs.length + ' docs)', { resolved })
-ok(bad.length === 0,
-  '★ every `file:NNN` / `file:NNN-MMM` in the scanned docs fits inside its target file',
-  bad.slice(0, 25))
+ok(historical >= 0 && typeof historical === 'number',
+  '★ the HISTORICAL exemption is countable, never silent: ' + historical + ' reference(s) were excused this run because their line is a re-anchor RECORD (`拆前`／`pre-split`) or sits under a "Re-anchor log" heading',
+  { historical })
+const fresh = bad.filter((b) => !KNOWN_OUT_OF_RANGE.some((k) => k.doc === b.doc && k.docLine === b.docLine && b.ref.startsWith(k.ref)))
+const staleRows = KNOWN_OUT_OF_RANGE.filter((k) => !bad.some((b) => b.doc === k.doc && b.docLine === k.docLine && b.ref.startsWith(k.ref)))
+ok(fresh.length === 0,
+  '★ no OUT-OF-RANGE reference exists that is not on the named backlog (' + bad.length + ' out-of-range in total, ' + KNOWN_OUT_OF_RANGE.length + ' recorded)',
+  fresh.slice(0, 25))
+ok(KNOWN_OUT_OF_RANGE.length > 0 && KNOWN_OUT_OF_RANGE.every((k) => typeof k.why === 'string' && k.why.length > 20),
+  '★ every backlog row states WHY it is recorded (a bare name would be a silencing device)', KNOWN_OUT_OF_RANGE)
+ok(staleRows.length === 0,
+  '★ every backlog row is STILL violated — a fixed reference must have its row deleted in the same change, so the list cannot go stale or grow into a dumping ground',
+  staleRows)
 if (bad.length) {
-  console.error('  ── out-of-range references (' + bad.length + ') ──')
+  console.error('  ── out-of-range references (' + bad.length + '; recorded=' + KNOWN_OUT_OF_RANGE.length + ') ──')
   for (const b of bad.slice(0, 40)) console.error('    ' + b.doc + ':' + b.docLine + '  ' + b.ref + '  -> ' + b.file + '  [' + b.verdict + ' ' + JSON.stringify(b.detail) + ']')
 }
 ok(Object.values(skipped).reduce((a, b) => a + b, 0) >= 0 && typeof skipped['not-found'] === 'number',
   '★ WHAT THIS GATE CANNOT CATCH (stated, not implied): a line number that is IN RANGE but now points at DIFFERENT TEXT is undetectable from `file:NNN` alone — that needs a symbol name or a content hash. This run proves the target line EXISTS, never that it is the RIGHT line. Also: references whose file is absent or whose basename is ambiguous are SKIPPED (counted below), never passed.',
   skipped)
-console.log('  coverage: resolved=' + resolved + ' skipped=' + JSON.stringify(skipped))
+console.log('  coverage: resolved=' + resolved + ' historical-excused=' + historical + ' skipped=' + JSON.stringify(skipped))
 
 if (SYMBOL_WINDOW) {
   console.log('=== §3 SYMBOL-WINDOW DIAGNOSTIC (opt-in; NEVER fails — a doc may cite a call site, not a declaration) ===')

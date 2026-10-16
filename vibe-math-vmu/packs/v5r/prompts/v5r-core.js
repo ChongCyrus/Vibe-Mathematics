@@ -366,5 +366,43 @@ export const v5rRoleSection = Object.freeze({
   ].join('\n'),
 })
 
-/** The corpus sections PLUS the per-member section - what a v5r-pack host should hand the pipeline. */
+/** The corpus sections PLUS the per-member section.
+ *
+ * ★★ task-215 ① — THIS EXPORT IS **NOT** RUNTIME-SAFE, AND THAT IS THE REASON ON THE LINE: it contains the captured
+ * corpus, whose literal `轮次 N` / `有表决权者 N 人` are a RECORD of what one original run printed (the original
+ * derived both live: `rounds.get()`, `voterCount()`). Handing THIS set to the pipeline would freeze 66 round numbers
+ * and 66 voter counts into live prompts. The runtime declaration is the hand-written charter — `PACK.sections`
+ * (docs/26 §3.7, round 374: "captured snapshots must not be used as a runtime source"). A caller that really means to
+ * wire a section set must pass it through `assertRuntimeSafeSections`, which refuses this one BY NAME. */
 export const v5rTurnSections = Object.freeze([...v5rPromptSections, v5rRoleSection])
+
+/** The captured-snapshot fingerprint: a literal round number, a literal voter count, or the captured absolute path. */
+export const SNAPSHOT_VALUE_RE = /轮次\s*\d+|有表决权者\s*\d+\s*人|VibeMath\/Projects\//
+
+const refuseCorpus = (code, message, hint) => {
+  const e = new Error(message)
+  e.code = code
+  e.hint = hint
+  return e
+}
+
+/**
+ * THE NAMED DOOR between a RECORD and a RUNTIME SOURCE (task-215 ①). Refuses BY NAME when a section set carries
+ * captured snapshot values, with the reason and the offending sections in the message, and returns `{ok:true}` for a
+ * set that carries none (so "refuses everything" is impossible — `PACK.sections` passes). Pure and dependency-free:
+ * it can be called from the wiring path, from a test, or from a future loader.
+ */
+export function assertRuntimeSafeSections(sections, what = 'the runtime section set') {
+  const list = Array.isArray(sections) ? sections : []
+  const offenders = []
+  for (const s of list) {
+    const m = SNAPSHOT_VALUE_RE.exec(String((s && s.text) || ''))
+    if (m) offenders.push(((s && s.name) || '(unnamed)') + ' [' + m[0] + ']')
+  }
+  if (offenders.length) {
+    throw refuseCorpus('VMU_PACK_V5R_CORPUS_NOT_RUNTIME',
+      what + ': ' + offenders.length + ' section(s) carry CAPTURED SNAPSHOT values — a recorded run\u2019s literals (round numbers, voter counts, absolute paths) must not become live prompt text',
+      'declare the hand-written charter instead (`PACK.sections`; docs/26 §3.7 / round 374). Offenders: ' + offenders.slice(0, 4).join(', ') + (offenders.length > 4 ? ' +' + (offenders.length - 4) + ' more' : ''))
+  }
+  return { ok: true, sections: list.length, checked: list.length }
+}

@@ -94,13 +94,37 @@ const SOURCE_TEXT = SOURCES.map((f) => readFileSync(f, 'utf8').split('\n').filte
 /** Each source with its text, so the CARRIER column can name the first file that actually reads a key. */
 const SOURCE_FILES = SOURCES.map((f) => ({ rel: f.replace(VMU_DIR, '').replace(/^[\\/]/, '').replace(/\\/g, '/'), text: readFileSync(f, 'utf8') }))
 
+/**
+ * ★ ROUND 9/256 (task-227): THE TEMPLATE PATH IS A CONSUMER TOO - and this predicate was blind to it.
+ *
+ * THE DEFECT THIS FIXES (established in `docs/acceptance/phase3-inert-keys-ledger.md`): a key written in a pack as a
+ * TEMPLATE PLACEHOLDER is read at assembly time, but it is read through a shape the quoted-literal test cannot see -
+ * the pack contains `{{ setting:vmu.turn.objective }}`, i.e. the key appears WITHOUT quotes, embedded in the braces.
+ * So `hasConsumer()` answered "nobody reads it" for keys that a pack demonstrably reads, and the headline split
+ * (wired / undetermined / not-wired) was misclassified by about 21 keys.
+ *
+ * THE READ IS REAL, NOT ASSUMED - the carrier is `kernel/prompt/index.js`:
+ *     :445   if (key.startsWith('setting:')) value = ctx.settings ? ctx.settings[key.slice(8)] : undefined
+ * The `setting:` prefix resolves through `ctx.settings` (the live settings view), and the whitelist check at
+ * `:440-443` runs BEFORE it (an unregistered variable is refused by name), so a placeholder that reaches :445 is a
+ * registered one. Note the packs need no new file scan here: `runtimeSources()` (see `walk` above) already descends
+ * into `packs/` to depth 3, so the pack file that carries the placeholder is already in `SOURCE_FILES` and the
+ * CARRIER column names it for free.
+ *
+ * THE RULE NOW: the predicate is the OLD rule **plus** this one shape. Purely additive - every key that was wired
+ * stays wired, and a key that nothing reads (neither quoted nor as a placeholder) still reports `未接线`, so the
+ * criterion can still redden.
+ */
+const templateReader = (key) => new RegExp('\\{\\{[^}]*\\bsetting:' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b[^}]*\\}\\}')
+const isTemplateReader = (text, key) => templateReader(key).test(text)
+
 /** Does any runtime source read this key? (the honest meaning of "the knob works") */
 export function hasConsumer(key) {
   // NO BACKTICK BRANCH (round 32). Counting a bare `vmu.something` inside a COMMENT as a consumer made this
   // column claim 已接线 for keys that no code ever read - the audit suite flagged two of them, and the root cause
   // was exactly this third alternative. A comment that mentions a key is documentation, not a reader; the audit
   // suite has always judged by quoted literals, so the generator now matches that stricter standard.
-  return SOURCE_TEXT.includes("'" + key + "'") || SOURCE_TEXT.includes('"' + key + '"')
+  return SOURCE_TEXT.includes("'" + key + "'") || SOURCE_TEXT.includes('"' + key + '"') || isTemplateReader(SOURCE_TEXT, key)
 }
 
 /**
@@ -109,7 +133,7 @@ export function hasConsumer(key) {
  * the manual (docs/04 §7).
  */
 export function carrierOf(key) {
-  const hit = SOURCE_FILES.find((f) => f.text.includes("'" + key + "'") || f.text.includes('"' + key + '"'))
+  const hit = SOURCE_FILES.find((f) => f.text.includes("'" + key + "'") || f.text.includes('"' + key + '"') || isTemplateReader(f.text, key))
   return hit ? hit.rel : null
 }
 

@@ -302,35 +302,35 @@ vmu.packs.active: [v5r]
 | `vmu.tasks.requireExpectedRevision` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 任务变更必须声明所见版本（防丢更新；关＝仅在声明时校验） |
 | `vmu.tasks.stages` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | 阶段列表；默认空＝不假装有流程 |
 | `vmu.turn.wakeupPolicy` | enum | `round-robin` | `round-robin`∣`least-recent` | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | 下一轮唤醒谁：round-robin＝按在册次序轮转；least-recent＝最少被唤醒者优先（同票按在册次序，确定性） |
-| `vmu.turn.objective` | string | `（尚未设定）` | — | 会话 | H2 | office | ❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有） | `packs/v5r/prompts/v5r-core.js` | 本所研究对象（原问题）；默认值与原线未设定时的输出一字不差，绝不留空括号 |
-| `vmu.turn.maxParallel` | number | `3` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 每轮最多同时唤醒的成员数（原线默认 3；非法值回落 3） |
+| `vmu.turn.objective` | string | `（尚未设定）` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 本所研究对象（原问题）；默认值与原线未设定时的输出一字不差，绝不留空括号 |
+| `vmu.turn.maxParallel` | number | `3` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 每轮最多同时唤醒的成员数（原线默认 3；非法值回落 3） |
 | `vmu.tools.enabled` | string[] | `null` | — | 会话 | H2 | office | ✅ 已接线 | `host.js` | 已接线（host.js 的 install 读取）：宿主注册哪些 vmu 工具。空/缺省（null）＝不限制；显式空表 [] ＝一个都不注册；未知名会被具名拒绝而不是静默放开（docs/03 §7）。 |
 | `vmu.tools.faces` | string[] | `null` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 已接线（host.js resolveFaces 读取）：要发布的工具面清单（面键如 `minutes`／工具名 `vibe_vmu_minutes`／`*` 全部）。缺省 null＝不额外声明任何面（仍遵守各面自己的 config／vmu.<族>.* 声明）；显式空表 []＝不靠本键声明任何面。 |
 | `vmu.core.facesDisabled` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `host.js` | 已接线（host.js resolveFaces 读取）：按名关闭的工具面（面键或工具名）。被关的面在 status().faces.disabled 里带 VMU_NOT_PERMITTED 具名上报；名字写错会出现在 unknownDisabled 而不是被忽略。 |
-| `vmu.turn.toolCallsPerTurnCap` | number | `0` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 本回合工具调用上限；0＝未设上限（仍请克制） |
-| `vmu.turn.memoryCeilingMb` | number | `0` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 内存上限（MB）；0＝只提醒"压力明显增大"而不给数字 |
+| `vmu.turn.toolCallsPerTurnCap` | number | `0` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 本回合工具调用上限；0＝未设上限（仍请克制） |
+| `vmu.turn.memoryCeilingMb` | number | `0` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 内存上限（MB）；0＝只提醒"压力明显增大"而不给数字 |
 | `vmu.turn.selfCheck` | bool | `true` | — | 会话 | H2 | office | ❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有） | `packs/v5r/middleware/prompt-switches.js` | 是否向成员展示资源纪律段（关掉＝零注入，提示词回到该段之前，注入点逐字不变） |
 | `vmu.turn.replyCatalogue` | enum | `compact` | `compact`∣`full` | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/middleware/prompt-switches.js` | which reply catalogue is injected: compact (what the delivered-prompt corpus carries) or full |
-| `vmu.turn.protocolPath` | string | `Shared/Protocol.md` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | protocol path named by the compact reply catalogue (relative to the session working directory) |
-| `vmu.turn.verifyTarget` | string | `(unspecified)` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | the object under a truth ballot (verify phase) |
-| `vmu.turn.verifyKindLabel` | string | `(unspecified)` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | the kind label shown next to the object under a truth ballot |
-| `vmu.turn.invitedBy` | string | `(unspecified)` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | who invited this temp to speak (meeting phase) |
-| `vmu.turn.invitedWhy` | string | `(unspecified)` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | why this temp was invited to speak (meeting phase) |
+| `vmu.turn.protocolPath` | string | `Shared/Protocol.md` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | protocol path named by the compact reply catalogue (relative to the session working directory) |
+| `vmu.turn.verifyTarget` | string | `(unspecified)` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | the object under a truth ballot (verify phase) |
+| `vmu.turn.verifyKindLabel` | string | `(unspecified)` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | the kind label shown next to the object under a truth ballot |
+| `vmu.turn.invitedBy` | string | `(unspecified)` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | who invited this temp to speak (meeting phase) |
+| `vmu.turn.invitedWhy` | string | `(unspecified)` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | why this temp was invited to speak (meeting phase) |
 | `vmu.turn.feedback` | bool | `true` | — | 会话 | H2 | office | ❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有） | `packs/v5r/middleware/prompt-switches.js` | 是否注入工作反馈行（关掉＝零注入，连段标题都不出现；原线 feedbackOn 同义） |
 | `vmu.pointer.propagation` | bool | `true` | — | 会话 | H2 | office | ❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有） | `packs/v5r/middleware/prompt-switches.js` | 是否注入指针传播契约（关掉＝零注入；原线的 S21 开关同义） |
 | `vmu.prompts.missingVariable` | enum | `report` | `report`∣`refuse` | 会话 | H2 | office | ✅ 已接线 | `kernel/prompt/index.js` | 占位符无人供值时：report＝记录并在装配结果里报告（默认）；refuse＝具名拒（VMU_PROMPT_VARIABLE_MISSING） |
-| `vmu.turn.instituteName` | string | `institute` | — | 会话 | H2 | office | ❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有） | `packs/v5r/prompts/v5r-core.js` | 本所名（章程开头与多处句子引用） |
-| `vmu.turn.leaderId` | string | `` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 在册领头人的代号；空＝无领头人（原线：章程绝不可点名不在册的领头人） |
-| `vmu.turn.tempHiredBy` | string | `（未说明）` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 临时工的雇主（临时工章程开头用） |
-| `vmu.turn.tempDirection` | string | `（未说明）` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 给临时工的起点方向 |
-| `vmu.turn.tempTerm` | string | `雇主另行通知` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 临时工任务期（原线默认措辞） |
-| `vmu.turn.meetingId` | string | `` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 当前会议号；会议相位的标题用它 |
-| `vmu.turn.formalModeLine` | string | `鼓励：按实现难度自行决定；做了就归档，没做就写明难度判断，` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 回复目录里 Lean 形式化那一行的模式措辞（原线 require/encourage 两套） |
-| `vmu.turn.formalProof` | string | `Formal/p-x.lean` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 忠实性审查时点名的已通过证明文件（每轮按实际目标填） |
-| `vmu.turn.formalBlockedNote` | string | `未说明` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 已记录的阻塞原因（每轮按实际目标填） |
-| `vmu.paper.reviewedMember` | string | `(unspecified)` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | whose part of the paper is under peer review |
-| `vmu.turn.formalRootRel` | string | `Formal` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 形式化工作目录（相对会话工作目录）；原线为研究所根下的 Formal/ |
-| `vmu.turn.formalModeLabel` | string | `鼓励` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 顺手形式化一行的模式措辞：强制／鼓励／主动 |
+| `vmu.turn.instituteName` | string | `institute` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-assistant.js` | 本所名（章程开头与多处句子引用） |
+| `vmu.turn.leaderId` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 在册领头人的代号；空＝无领头人（原线：章程绝不可点名不在册的领头人） |
+| `vmu.turn.tempHiredBy` | string | `（未说明）` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 临时工的雇主（临时工章程开头用） |
+| `vmu.turn.tempDirection` | string | `（未说明）` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 给临时工的起点方向 |
+| `vmu.turn.tempTerm` | string | `雇主另行通知` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 临时工任务期（原线默认措辞） |
+| `vmu.turn.meetingId` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 当前会议号；会议相位的标题用它 |
+| `vmu.turn.formalModeLine` | string | `鼓励：按实现难度自行决定；做了就归档，没做就写明难度判断，` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 回复目录里 Lean 形式化那一行的模式措辞（原线 require/encourage 两套） |
+| `vmu.turn.formalProof` | string | `Formal/p-x.lean` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 忠实性审查时点名的已通过证明文件（每轮按实际目标填） |
+| `vmu.turn.formalBlockedNote` | string | `未说明` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 已记录的阻塞原因（每轮按实际目标填） |
+| `vmu.paper.reviewedMember` | string | `(unspecified)` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | whose part of the paper is under peer review |
+| `vmu.turn.formalRootRel` | string | `Formal` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 形式化工作目录（相对会话工作目录）；原线为研究所根下的 Formal/ |
+| `vmu.turn.formalModeLabel` | string | `鼓励` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 顺手形式化一行的模式措辞：强制／鼓励／主动 |
 | `vmu.math.computation` | enum | `auto` | `off`∣`auto`∣`on` | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | P3：数学工具可用性（共享模块默认 auto） |
 | `vmu.math.mode` | enum | `typed+shell` | `typed`∣`typed+shell` | 会话 | H2 | office | ✅ 已接线 | `host-math.js` | P3：typed＝绝不提 shell 且拒绝 engine=cli |
 | `vmu.math.engines` | string[] | `[python,r,octave,julia,matlab,maple,wolfram,cli]` | — | 会话 | H2 | office | ✅ 已接线 | `host-math.js` | 引擎优先级（默认取自共享模块并拷贝；空＝具名降级） |

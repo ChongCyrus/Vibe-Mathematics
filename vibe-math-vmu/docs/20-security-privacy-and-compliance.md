@@ -227,6 +227,7 @@
 
 - **本地优先**：默认不外发；出境需显式放行并留痕。
 - **键**：`vmu.sovereignty.region`（默认 `"local"`）、`vmu.sovereignty.crossBorderAllow`（数组，默认 `[]`）、`vmu.sovereignty.exportControl`（默认 `"none"`）。
+- **★ 待裁（task-229）**：本行这 3 个主权键的**撤回未执行**。★ 运行时零足迹已核实；★ 部署侧代价已实测：设一个**已不存在**的键**不崩**且**非静默** —— `status().settings.settingsRejected` 记 `{code:"VMU_INVALID_ARGUMENT", reason:"undeclared", source:"config"}`（`kernel/index.js:378/382`）；★★ **阻碍**：本行是**已登记的设计供给**（含**错误码 `VMU_CROSS_BORDER_DENIED`**、成熟度 ✗ 规划、优先级 **P1**），并被 `14-open-items-and-roadmap.md`／`28-decision-history.md` 引用 ⇒ 只改本卷会留悬空引用，且**本任务写范围不足** ⇒ 须先由 Lead 裁"撤回该供给"还是"保留为计划中"。
 - **错误码**：`VMU_CROSS_BORDER_DENIED`。
 - **成熟度** ✗ 规划。**优先级** P1。
 
@@ -245,6 +246,7 @@
 
 - **三件**：**依赖锁定**（lockfile）、**SBOM**（生成物清单）、**可复现构建**（同输入 ⇒ 同哈希）。
 - **键**：`vmu.supplychain.sbomPath`（默认 `<root>/vmu/sbom.json`）、`vmu.supplychain.requireLock`（默认 `true`）、`vmu.supplychain.reproducibleBuild`（默认 `false`）。
+- **★ 待裁（task-229）**：本行这 3 个供应链键的**撤回未执行**，且**其中一条不能删**：★ 本行自己的成熟度写着"**锁文件 ✓**；SBOM／可复现构建 ✗" ⇒ 依赖锁定**已是实现的行为**（`requireLock` 是它的旋钮）⇒ 删它＝删一个已实现行为的旋钮。★ 另两条（SBOM／可复现构建）运行时零足迹已核实；★ 部署侧代价同 §10：设已不存在的键**不崩且具名记入** `settingsRejected`（`reason:"undeclared"`）。★ 该行还被 `03-interface-contract.md`／`14`／`28` 引用 ⇒ 只改本卷会留悬空引用 ⇒ 须先由 Lead 裁。
 - **错误码**：`VMU_SUPPLYCHAIN_UNLOCKED`、`VMU_BUILD_NOT_REPRODUCIBLE`。
 - **成熟度** ⚠️（锁文件 ✓；SBOM／可复现构建 ✗）。**优先级** P1。
 
