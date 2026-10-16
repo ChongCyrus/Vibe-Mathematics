@@ -281,6 +281,11 @@ export function createKernel({
   // Renders a member queued notices the way the institution writes them; null means the framework fallback.
   noticeBlock = null,
   extraPhases = null,
+  // A1 STEP 1 · PART B: the REPORT-FEEDBACK PROVIDER, handed down by the ENTRY. It is a LATE-BOUND accessor on purpose:
+  // the kernel is constructed before the entry has performed the host `context()` call, so the provider must be able to
+  // answer later with the result of that call. `null` keeps the placeholder, which names the un-wired delivery in words
+  // that are TRUE for this build.
+  reportFeedback = null,
   settings = {},
   root = null,
   // THE FACTORY DEFAULT CLOCK IS A NUMBER OF MILLISECONDS. It used to return an ISO string, which the clock guard
@@ -902,7 +907,10 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     // `kernel/reportfeedback.js`; this is the single place that hands it down. `delivered:false` carries a TRUE reason:
     // the delivery call is Part B, and "the host does not expose it" would be FALSE - that API was read out of the
     // host's own source and verified.
-    feedback: (c) => reportFeedbackFailure({
+    // ★ A1 STEP 1 · PART B: the provider the ENTRY handed down, if any. When it is absent the placeholder below stays,
+    // and its reason says the delivery call is not wired IN THIS BUILD - which is true - rather than claiming the host
+    // lacks the ability, which would be false (the host's own source exposes it; verified in C1/R5).
+    feedback: typeof reportFeedback === 'function' ? reportFeedback : (c) => reportFeedbackFailure({
       enabled: c.feedback === true,
       source: c.feedback === true ? 'settings:vmu.report.feedback' : 'default',
       audience: c.audience || null,
