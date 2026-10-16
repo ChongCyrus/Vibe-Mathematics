@@ -338,3 +338,41 @@ const step = async ({ members = [], … } = {}) => {
 ★ **我花了太多轮在复现上**：★ 本地探针（★ 空名册、★ 有成员、★ 有空转）**都返回了【正确的具名拒】而不是这个 TypeError** ⇒ ★★ **因为本地探针没有装【交付接缝】** ✓
 ★★ **下一批的正确起点**：★ **用【真实 preset 的装配】构造 kernel**（★ 或直接给 `createTurnOrchestrator` 传 `deliver` ✓），★ **然后驱动一个回合 —— 抛出点会自己报出栈** ✓✓
 ★ **以及**：★ **转录里【没有栈】** ⇒ ★ **因为 `step` 的 catch 【吞掉了栈】** ✓ ⇒ ★★ **建议：★ catch 里保留 `e.stack` 的一段到回执里**（★ 这正是"不可诊断"的根源之一 ✓）✓
+
+---
+
+## 14. ★★★★★★★★ Round 60：**复现成功 —— ★ 而它点名了那个缺失的前置条件：★ 回合需要一场【已开的会议】**
+
+### 14.1 ★★★★★★ 先说上一轮我探针里的错（★ 这解释了为什么复现不出来）
+★ **kernel 有【两个】交付接缝，★ 形状不同** ✓：
+```js
+kernel/index.js:323   deliver = null        ← 成员/会议的【唤醒包】接缝（envelope 形状）
+kernel/index.js:327   deliverTurn = null    ← ★ 回合循环【自己的】接缝：async ({ turn, text }) => reply
+kernel/index.js:1308  deliver: turnDeliverSeam
+```
+⇒ ★★★★ **我上一轮把接缝传成了 `deliver`** ⇒ ★ **所以循环回"no delivery adapter is wired"** ✓✓
+⇒ ★★★ **换成 `deliverTurn` 之后，★ 整条路径【真的跑起来了】** ✓✓
+
+### 14.2 ★★★★★★★ 而复现的结果是一条【具名拒】，★ 不是 TypeError
+```
+{"op":"step", …}  -> {"ok":false,"code":"VMU_NO_OPEN_MEETING","message":"no meeting is open (id: undefined)","receipt":null}
+{"op":"drive", …} -> {"ok":false,"round":1,"code":"VMU_NO_OPEN_MEETING", …, "receipts":[], "roundsRun":0}
+closureVote: { cast:false, eligible:["m1"], missing:["m1"], reason:"silence blocks closure; no judgement yet from: m1" }
+```
+⇒ ★★★★★ **即：★ 一个回合【需要一场已开的会议】** ✓✓ —— ★ **因为提示词管道要读会议/名册状态** ✓✓
+⇒ ★★★★ **而真机上的 `reading 'id'` 是【比这一步更远】的地方**：★ **会议【开了】，★ 而 `meetingState`／`roster` 为 `null`，★ 某处直接读了 `.id`** ✓✓
+⇒ ★★★ **即：★ 两次复现各自给出一个具名拒，★ 而真机给的是一个【未被守卫的裸 TypeError】** ⇒ ★★ **所以缺的是 `null` 守卫，★ 而不是"少开一场会"** ✓✓
+
+### 14.3 ★★★ 于是整条链现在是（★ 每一步都有读数）
+| ★ 步 | ★ 状态 |
+|---|---|
+| ★ 结题谓词 | ★★ **正确**（★ `eligible:["m1"]`／★ `missing:["m1"]`／★ 投票后翻转 ✓）|
+| ★ 交付接缝 | ★★ **已弄清**（★ `deliverTurn`，★ 不是 `deliver` ✓）|
+| ★ 回合前置 | ★★ **需要一场已开的会议**（★ 否则具名拒 `VMU_NO_OPEN_MEETING` ✓）|
+| ★ ★ **真机的失败** | ★★★ **`meetingState`／`roster` 为 `null` 时某处裸读 `.id`** ⇒ **需要 `null` 守卫** |
+| ★ 因果 | ★★ **回合抛异常 ⇒ 无回复 ⇒ 无 `vote_solved` ⇒ `missing` 永不满** ✓✓ |
+
+### 14.4 ★★★★ 下一批（★ 具体到可做）
+1. ★★★★ **给 `run()` 路径上的 `roster`／`meetingState`／`quorum` 加 `null` 守卫**，★ **或在 `step` 的入口就【具名拒】**（★ 例如"这一回合需要一场已开的会议；★ 先 `open` 一场" ✓）—— ★★ **两者都可，★ 但必须有其一** ✓
+2. ★★★ **把栈留进回执**（★ `step` 的 catch 现在只留 `message` ✓）⇒ ★★ **"吞掉栈正是它在转录里不可诊断的原因"** ✓
+3. ★★ **然后重跑** ⇒ ★ **回合若能跑通，★ 代理的 `vote_solved` 才会真的到达谓词** ✓
