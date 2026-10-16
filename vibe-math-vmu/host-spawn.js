@@ -1,5 +1,20 @@
 // vmu host spawn — the bridge between the host's subprocess service and the vmu script bridge (M3).
 //
+// ★★ INVARIANT (Round 30, MEASURED): NO ARGUMENT A CALLER CAN PASS MAY KILL THE HOST. A tool handler runs inside
+// the host process, so an uncaught throw is not "a failed call" - it is `fatal load failure` and the server dies.
+// Measured case: `request.args` was a non-iterable object, `for (const a of request.args || [])` threw
+    // ★★ A MALFORMED ARGUMENT MUST NOT KILL THE HOST (header invariant): `request.args` is caller-fed, so a
+    // non-iterable value used to reach `for..of` and throw an UNCAUGHT TypeError (`object is not iterable`), which
+    // the host surfaced as `fatal load failure` - one bad tool argument killed the process. Refused BY NAME.
+    if (!Array.isArray(argList)) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'spawn args must be an ARRAY of arguments, got ' + (typeof argList),
+        'pass args as an array (e.g. args: ["--version"]); a malformed call is refused instead of killing the host')
+    }
+    for (const a of argList) argv.push(String(a))
+// `TypeError: object is not iterable`, and the process went down (host-spawn.js:104 via kernel/mathtools.js:630).
+// Therefore every value that arrives from a CALLER is validated before it is iterated, spread or destructured, and
+// the failure is a NAMED refusal (`VMU_INVALID_ARGUMENT` with a hint), never a raw throw.
+//
 // The script bridge takes an INJECTED spawn seam (docs/05 §6.2, docs/11 §4.1). This module builds that seam
 // from the host, using the API this repository's own working preset uses (vibe-math-v5r.js:4429-4485):
 //
@@ -101,7 +116,17 @@ export function createHostSpawn({
       throw refuse('VMU_INVALID_ARGUMENT', 'an inline script cannot be spawned by argv: give a file',
         'the host spawns executables, not evaluated text')
     }
-    for (const a of request.args || []) argv.push(String(a))
+    // ★★ A TOOL ARGUMENT MUST NEVER KILL THE SERVER (invariant, see the header). `request.args` comes from the
+    // caller, so it is UNTRUSTED: a non-iterable value (e.g. `args: {}`) used to reach `for..of` and throw an
+    // UNCAUGHT `TypeError: object is not iterable`, which the host surfaced as `fatal load failure` - the whole
+    // server died on one bad tool argument (measured, stack at host-spawn.js:104 via kernel/mathtools.js:630).
+    // It is refused BY NAME now, in the same shape as the two refusals around it.
+    const argList = request.args === undefined || request.args === null ? [] : request.args
+    if (!Array.isArray(argList)) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'spawn args must be an ARRAY of arguments, got ' + (typeof argList),
+        'pass args as an array (e.g. args: ["--version"]); a single value is not accepted, so a malformed call is refused instead of killing the host')
+    }
+    for (const a of argList) argv.push(String(a))
     if (argv.length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'a spawn needs an executable to run')
 
     // RESOLVE argv[0] FIRST: the host's own working preset does exactly this (`sub.resolveExecutable(cmd)`
