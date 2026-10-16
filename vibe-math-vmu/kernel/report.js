@@ -146,11 +146,13 @@ export function createReport({ clock = () => 0, log = null, settings = {}, deliv
       // cannot invent a second source for them.
       try { return feedback(c) } catch (e) { /* a broken provider must never kill the face */ }
     }
-    // THE FALLBACK LOOKS LIKE THE CONTRACT ON PURPOSE, AND IT IS THE ONE PLACE THE SHAPE IS WRITTEN TWICE. The real
+    // THE FALLBACK LOOKS LIKE THE CONTRACT ON PURPOSE, AND IT IS THE ONLY SECOND PLACE THE SHAPE APPEARS. The real
     // shape lives in `kernel/reportfeedback.js`; this file cannot import it (the no-import invariant above), so a BARE
-    // construction - no provider supplied - still returns the same nine keys with state carried by VALUE, which is what
-    // keeps the two states the same shape. Every assembled instance passes a provider, so this path is the degenerate
-    // one; it exists so that omitting the provider cannot silently change what a receipt looks like.
+    // construction - no provider supplied, as when a unit test builds this face directly - still returns the same nine
+    // keys with state carried by VALUE, which is what keeps the two states the same shape. Every ASSEMBLED instance
+    // passes a provider (see `kernel/index.js`), so this path is never taken in a running kernel. It is written here so
+    // that omitting the provider cannot silently change what a receipt looks like - NOT as the beginning of a second
+    // shape. If the contract ever changes, change `kernel/reportfeedback.js` and then mirror it here.
     return Object.freeze({
       enabled: c.feedback === true,
       source: c.feedback === true ? 'settings:vmu.report.feedback' : 'default',
