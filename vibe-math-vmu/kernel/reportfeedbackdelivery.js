@@ -58,10 +58,15 @@ export function deliverReportFeedbackFrom({ kernel = null, ctx = null, effect = 
     resolved = (st && st.settings && st.settings.resolved) || {}
   } catch (e) { /* never fatal: an absent face or map means the switch reads as off */ }
   const value = (k) => { const e = resolved[k]; return e && typeof e === 'object' && 'value' in e ? e.value : undefined }
+  // The layer that armed the switch, taken from the SAME resolved entry the value came from, so the receipt can never
+  // claim a layer the value did not come from. This is what makes "a pack default is genuinely folded AND its origin is
+  // visible in the receipt" checkable rather than asserted.
+  const layer = (k) => { const e = resolved[k]; return e && typeof e === 'object' && typeof e.source === 'string' ? e.source : null }
   const audience = value('vmu.report.audience')
   return deliverReportFeedback({ ctx, effect, status,
     enabled: value('vmu.report.feedback') === true,
-    audience: typeof audience === 'string' ? audience : null })
+    audience: typeof audience === 'string' ? audience : null,
+    source: layer('vmu.report.feedback') })
 }
 
 /**
@@ -77,11 +82,24 @@ export function deliverReportFeedbackFrom({ kernel = null, ctx = null, effect = 
  * `status` is still taken, but ONLY for the snapshot's counts. `ctx` and `effect` are the entry's own: it is the only
  * holder of the host prompt service, which is why this call lives there rather than in the report domain.
  */
-export function deliverReportFeedback({ ctx = null, effect = null, status = null, enabled = false, audience = null } = {}) {
+export function deliverReportFeedback({ ctx = null, effect = null, status = null, enabled = false, audience = null, source = null } = {}) {
   const isOn = enabled === true
   const who = typeof audience === 'string' && audience ? audience : null
-  const source = isOn ? 'settings:vmu.report.feedback' : 'default'
-  const base = { enabled: isOn, source, audience: who, delivered: false, registered: false, code: null, what: null, reason: null, stack: null }
+  // ★ THE SOURCE IS THE LAYER THAT ACTUALLY ARMED THE SWITCH, PASSED IN - NEVER A LITERAL. It used to read
+  // "settings:vmu.report.feedback" whenever the switch was on, and that becomes a FALSE statement the moment the value
+  // arrives from anywhere else: a pack default folded in before construction, or a deployment's config. The kernel
+  // already computes exactly this provenance - `resolved[key].source` is a pack id, a writer label, an entry-side layer
+  // label, `config`, or `default` - and its own comment says a resolved view that misnames the layer is WORSE THAN
+  // NONE, which is the same rule one layer up. `null` is what we say when no caller attributed it: the absence of a
+  // layer, not a guessed one. Note the OFF case is attributed too: "the schema default" and "config said false" are
+  // different facts, and the passed source tells them apart.
+  // ★ A NAMED LAYER ALWAYS WINS, WHETHER THE SWITCH ENDED UP ON OR OFF: config saying "false" and the schema default
+  // saying nothing are DIFFERENT FACTS, and the receipt should not flatten them. Only when no caller named a layer do we
+  // fall back: OFF is then attributed to the default layer (which really is what is in force), while an ARMED switch
+  // gets `null` (unattributed) - it was armed by SOMETHING, and borrowing the name of a layer that may not have been
+  // involved is the misnaming this project refuses.
+  const armed = (typeof source === 'string' && source) ? source : (isOn ? null : 'default')
+  const base = { enabled: isOn, source: armed, audience: who, delivered: false, registered: false, code: null, what: null, reason: null, stack: null }
 
   const named = (what, reason, e) => Object.assign({}, base, {
     code: UNAVAILABLE, what, reason, stack: e ? String((e && e.stack) || '') : null,

@@ -912,7 +912,11 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     // lacks the ability, which would be false (the host's own source exposes it; verified in C1/R5).
     feedback: typeof reportFeedback === 'function' ? reportFeedback : (c) => reportFeedbackFailure({
       enabled: c.feedback === true,
-      source: c.feedback === true ? 'settings:vmu.report.feedback' : 'default',
+      // ★ NO LAYER IS CLAIMED FOR AN ARMED SWITCH. This placeholder runs only when no provider was handed down, and in
+      // that position nothing knows which layer armed the switch - so naming one would be exactly the misnaming the
+      // kernel's own resolved view refuses to make. Off is attributed to the default layer, which IS what is in force
+      // when nobody named a layer; an assembled kernel always supplies the real layer through the provider above.
+      source: c.feedback === true ? null : 'default',
       audience: c.audience || null,
       what: REPORT_FEEDBACK_WHAT_CONTEXT,
       reason: 'the delivery call is not wired in this build (A1 step 1 Part A): the settings keys are read and reported, the systemPrompt.context() call lands in Part B',

@@ -52,6 +52,11 @@ ok(shapeFromFallback !== null && KEYS.every((k) => k in shapeFromFallback),
 // literals on the other) and reported `differing: [code, what, reason]` — the reviewer's own trap: comparing two
 // things fed differently yields ZERO information. The comparison must therefore fix the input on BOTH sides.
 if (captured && shapeFromFallback) {
+  // ★ `source` IS THE FIELD THAT CARRIES A LAYER, AND ONLY A CALLER CAN NAME ONE. The layer that armed the switch is
+  // known to whoever read it (the entry passes the kernel's resolved provenance), so the inline fallback - which has no
+  // caller - must not invent one for an ARMED switch. With the switch OFF, though, the default layer really is what is
+  // in force, so both sides legitimately say `default`; that is the shared input here, and the assertion after the pin
+  // pins the asymmetry that opens up once a layer is actually named.
   const SHARED = Object.freeze({
     enabled: false, source: 'default', audience: null, delivered: false, registered: false,
     code: 'VMU_EXTERNAL_UNAVAILABLE', what: 'systemPrompt.context',
@@ -65,6 +70,13 @@ if (captured && shapeFromFallback) {
   ok(d.length === 0,
     '★★ SHAPE PIN: with the SAME input, the real source and the inline fallback agree on ALL 9 FIELDS',
     'differing: [' + d.join(',') + '] real=' + JSON.stringify(real) + ' fallback=' + JSON.stringify(shapeFromFallback))
+  // ★ THE ASYMMETRY, PINNED SO IT CANNOT DRIFT EITHER WAY: handed a layer, the real source carries it through, while the
+  // fallback keeps stating only the layer it can know. The old code hardcoded the settings key here for ANY armed switch,
+  // which became false the moment a pack default or a deployment config supplied the value - this reds if that returns.
+  const attributed = reportFeedbackReceipt(Object.assign({}, SHARED, { source: 'pack:v5r' }))
+  ok(attributed.source === 'pack:v5r' && shapeFromFallback.source === 'default',
+    '★★ the real source carries the layer it is GIVEN, while the fallback states only the layer it can know',
+    'given=pack:v5r real=' + JSON.stringify(attributed.source) + ' fallback=' + JSON.stringify(shapeFromFallback.source))
   // and the fallback's hardcoded literals must be exactly what the real source echoes back for that input
   ok(shapeFromFallback.code === 'VMU_EXTERNAL_UNAVAILABLE' && shapeFromFallback.what === 'systemPrompt.context',
     '★ the fallback’s named-degradation literals match the house form the real source carries',

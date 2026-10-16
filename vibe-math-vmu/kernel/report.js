@@ -155,7 +155,10 @@ export function createReport({ clock = () => 0, log = null, settings = {}, deliv
     // shape. If the contract ever changes, change `kernel/reportfeedback.js` and then mirror it here.
     return Object.freeze({
       enabled: c.feedback === true,
-      source: c.feedback === true ? 'settings:vmu.report.feedback' : 'default',
+      // ★ NO LAYER IS CLAIMED FOR AN ARMED SWITCH, for the same reason as the assembly-site placeholder: nothing in this
+      // position knows who armed it, and a guessed layer would be worse than none. Off reports the default layer, which
+      // is what is in force when no layer was named.
+      source: c.feedback === true ? null : 'default',
       audience: c.audience || null,
       delivered: false,
       registered: false,
