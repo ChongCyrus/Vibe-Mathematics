@@ -1003,7 +1003,7 @@ vmu.packs.active: [v5r]
 | `vmu.report.reports` | obj[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/report.js` | 汇报声明清单；每项 {name, trigger:{kind:event|period|threshold, …}, template, to:[], channel, enabled?}；空＝零机制（不声明就什么都不发生） |
 | `vmu.report.channels` | string[] | `[inbox,digest,log]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 允许的汇报通道；不在集合内具名拒 VMU_REPORT_CHANNEL_UNKNOWN |
 | `vmu.report.recipients` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 允许的收件人白名单；空＝不限制（空收件人＋非 log 通道即具名拒） |
-| `vmu.report.feedback` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 汇报反馈回路开关（A1 第一步）：默认 false＝零机制；开＝把汇报的受众与回执经宿主动态 context 回给模型（投递调用属 Part B —— 未接线期间回执以真话具名） |
+| `vmu.report.feedback` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 汇报反馈回路开关（A1 第一步）：默认 false＝零机制；开＝把汇报的受众与回执经宿主动态 context 回给模型（投递调用已由入口在 Part B 接线（已落地）—— 未接线期间回执以真话具名） |
 | `vmu.report.audience` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 汇报的受众（谁应当收到）：默认空串；开关开而受众为空时具名失败，不静默 |
 | `vmu.report.minIntervalMs` | int ≥0 | `60000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 周期汇报的最小周期；低于即钳到此值并在回执里报出（钳制不静默） |
 | `vmu.report.traceCap` | int ≥1 | `64` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 汇报留痕环上限；溢出必计数 |

@@ -133,12 +133,14 @@ export function createReport({ clock = () => 0, log = null, settings = {}, deliv
    * the presence of a key - a conditional key is itself a shape change, and this file has already learned that once.
    *
    * ★ THE `reason` BELOW IS A TRUE STATEMENT, NOT A STAND-IN FOR "UNSUPPORTED". The delivery call
-   * (`systemPrompt.context()`) is not wired in this build YET; it lands in Part B. Writing "the host does not expose
+   * (`systemPrompt.context()`) IS WIRED in this build as of A1 step 1 Part B (a real-machine run returned `delivered:true`); what this bare fallback lacks is the PROVIDER, not the capability. Writing "the host does not expose
    * systemPrompt.context()" would be FALSE - that API was read out of the host's own source and independently
    * verified. So the placeholder names what is actually missing, which is the wiring on OUR side and nothing else.
    *
-   * `source` degrades to the literal this build can HONESTLY support: with no provenance seam reachable here, an armed
-   * switch names the key that armed it and a disabled one names the default. That is a NAMED scope, not a guess.
+   * `source` degrades to what this position can HONESTLY support: NOTHING here knows who armed the switch, so an armed
+   * switch claims NO layer (null) and a disabled one reports `default` - the layer that is in force when nobody named
+   * one. The assembly site supplies the real layer through the provider; naming a layer we cannot attribute would be
+   * the misnaming the kernel's own resolved view refuses to make.
    */
   const feedbackReceipt = (c) => {
     if (typeof feedback === 'function') {
@@ -164,7 +166,7 @@ export function createReport({ clock = () => 0, log = null, settings = {}, deliv
       registered: false,
       code: 'VMU_EXTERNAL_UNAVAILABLE',
       what: 'systemPrompt.context',
-      reason: 'the delivery call is not wired in this build (A1 step 1 Part A): the settings keys are read and reported, the systemPrompt.context() call lands in Part B',
+      reason: 'this bare construction was given no delivery provider (A1 step 1 Part B wires one at the assembly site): the settings keys are read and reported, the systemPrompt.context() call lands in Part B',
       stack: null,
     })
   }

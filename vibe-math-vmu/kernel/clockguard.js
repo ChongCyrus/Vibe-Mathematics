@@ -166,12 +166,31 @@ export function createClockGuard({ clock = null, now = null, log = () => {}, set
     return raw
   }
 
-  /** observe()：只观察，**不改状态**（不调用底层时钟、不写 skew、不加 calls）。 */
+  /**
+   * observe({ at })：只观察，**不改状态**（不调用底层时钟、不写 skew、不加 calls）。
+   *
+   * ROUND 4/256 (task-204 FIX #2): `at` IS HONOURED NOW. It used to be accepted and IGNORED — no code in this
+   * file read it, so a caller's instant silently vanished (and the tool's schema, which advertised `value`,
+   * disagreed with this signature too). `at` is the CALLER's instant: this module never reads real time (hard
+   * invariant ④), so when present it is validated and ECHOED in the receipt (the input is visibly received), and
+   * reported as `null` when absent. A non-finite `at` is refused BY NAME rather than dropped. Validation happens
+   * BEFORE the observation is counted: a refused call is not an observation.
+   */
   function observe({ at = null } = {}) {
+    let observedAt = null
+    if (at !== null && at !== undefined) {
+      const n = Number(at)
+      if (!Number.isFinite(n)) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'observe `at` must be a finite number of ms (or omitted/null)',
+          'omit it to observe the last known state, or pass a finite ms value; received: ' + JSON.stringify(at))
+      }
+      observedAt = n
+    }
     state.counts.observes += 1
     return {
       guarded: state.guarded,
       value: state.last,
+      at: observedAt,
       lastAction: state.lastAction,
       clamped: state.lastClamped,
       skews: state.skews.length,

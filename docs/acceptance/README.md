@@ -4,6 +4,10 @@ This directory holds the **evidence** behind the judgements made about the vmu f
 reading supports it, on which copy and at which moment it was taken, and what remains unproven. It is evidence, not
 design documentation — the design volumes live in [`vibe-math-vmu/docs/`](../../vibe-math-vmu/docs/).
 
+★ **This README is a CURATED ENTRY POINT, not a full index**: the directory holds hundreds of per-round
+reports (and it grows every round), so it does not list them all — treat `ls` as the complete list, and this
+file as the way in.
+
 ## Where this directory came from, and why it moved
 
 Until round 38 of the work it lived **outside the repository**, at `_handoff/vmu/` under the workspace root. That made

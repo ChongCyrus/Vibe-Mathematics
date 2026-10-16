@@ -905,10 +905,12 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     // file is import-free under an enforced invariant (it must not be able to reach a decision service even by
     // accident, and an assertion in the assistant suite fails if it gains an import). The nine-key SHAPE lives in
     // `kernel/reportfeedback.js`; this is the single place that hands it down. `delivered:false` carries a TRUE reason:
-    // the delivery call is Part B, and "the host does not expose it" would be FALSE - that API was read out of the
-    // host's own source and verified.
+    // the delivery call has LANDED (A1 step 1 Part B: the entry hands the provider down and a real-machine run returned
+    // `delivered:true`); what the placeholder below names is the absence of a provider IN THIS POSITION, never a
+    // missing host capability ("the host does not expose it" would still be FALSE - that API was read out of the
+    // host's own source and verified).
     // ★ A1 STEP 1 · PART B: the provider the ENTRY handed down, if any. When it is absent the placeholder below stays,
-    // and its reason says the delivery call is not wired IN THIS BUILD - which is true - rather than claiming the host
+    // and its reason says no provider was handed down IN THIS POSITION - which is true - rather than claiming the host
     // lacks the ability, which would be false (the host's own source exposes it; verified in C1/R5).
     feedback: typeof reportFeedback === 'function' ? reportFeedback : (c) => reportFeedbackFailure({
       enabled: c.feedback === true,
@@ -919,7 +921,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
       source: c.feedback === true ? null : 'default',
       audience: c.audience || null,
       what: REPORT_FEEDBACK_WHAT_CONTEXT,
-      reason: 'the delivery call is not wired in this build (A1 step 1 Part A): the settings keys are read and reported, the systemPrompt.context() call lands in Part B',
+      reason: 'no delivery provider was handed down to this assembly (A1 step 1 Part B wires one at the entry): the settings keys are read and reported, the systemPrompt.context() call lands in Part B',
     }) })
   noteSeam('deliver', 'report', report ? deliver : null)
   const lifecycle = createLifecycle({ settings: settingsView, bus, clock, log, workflow,

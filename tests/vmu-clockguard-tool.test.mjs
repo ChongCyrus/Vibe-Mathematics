@@ -45,7 +45,13 @@ console.log('=== 3. THE TOOL DELEGATES RATHER THAN REIMPLEMENTS ===')
   }
   const s = specOf({ clockguard: spy }, { clockguardTool: true })
   const seen = []
-  for (const a of ACTIONS) { seen.push(await s.run({ action: a })) }
+  // ★ PER-ACTION ARGUMENTS, BECAUSE A BARE CALL NO LONGER SUCCEEDS - AND NEVER HONESTLY DID. This loop used to call every
+  // action with only `{ action }`. That appeared to work for `monotonic` only because the tool was handing the kernel the
+  // WRONG parameter name, so the call "reached the service" and failed inside it: the assertion was codifying the defect.
+  // With the names corrected, `monotonic` genuinely needs `from`/`to` and `observe` takes an optional `at`, so each action
+  // is given the arguments it actually requires - and a bare call is asserted to be REFUSED BY NAME just below.
+  const ACTION_ARGS = { observe: { at: 1000 }, monotonic: { from: 1, to: 2 } }
+  for (const a of ACTIONS) { seen.push(await s.run(Object.assign({ action: a }, ACTION_ARGS[a]))) }
   ok(calls.join(',') === ACTIONS.join(','),
     'every one of the ' + ACTIONS.length + ' actions reaches the service, in order, once each', { calls })
   // The length is asserted FIRST: `seen.every` on an empty array is vacuously true, which is the shape the declaration
@@ -53,6 +59,14 @@ console.log('=== 3. THE TOOL DELEGATES RATHER THAN REIMPLEMENTS ===')
   ok(seen.length > 0 && seen.length === ACTIONS.length, 'every action produced a receipt, so the emptiness check below cannot be vacuous', { n: seen.length, actions: ACTIONS.length })
   ok(seen.length > 0 && seen.every((r) => r && r.ok === true),
     'and every receipt carries ok, so none of them is dropped on the way out', { seen: seen.map((r) => r && r.ok) })
+  // ★ AND THE CORRECTED CONTRACT IS PINNED HERE: a BARE `monotonic` must be REFUSED BY NAME, because it needs `from`/`to`.
+  // The loop above cannot express this - it is exactly the call the old version made for every action, and the old version
+  // passed because the argument name reaching the kernel was wrong. Asserting the refusal is what stops the tool from
+  // drifting back into "accept a value nobody uses".
+  const bare = await s.run({ action: 'monotonic' })
+  ok(bare && bare.ok === false && bare.code === 'VMU_INVALID_ARGUMENT',
+    '★ a BARE monotonic is refused BY NAME (it needs from/to) - the old test let it through because the argument names were wrong',
+    { bare })
 }
 
 console.log('=== 4. NAMED REFUSALS AND THE SERVICE S OWN POLICY ===')

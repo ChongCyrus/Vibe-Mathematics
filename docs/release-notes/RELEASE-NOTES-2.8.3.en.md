@@ -35,7 +35,7 @@
 
 - **TeX installed in a non-standard location is still not auto-discovered**: the default probe covers PATH and the documented common install roots; use an absolute path in `paperLatexCommand` otherwise.
 - The shipped suites **do not cover host-level behaviour** (for example "the caller is dropped after an interrupt"); that needs a real host.
-- **A root-agent question blocks the whole institute** (operational note, product unchanged): nothing else proceeds until the answer arrives — state the problem and acceptance criteria up front for unattended runs. See [`slv-playbook.md`](./slv-playbook.md) §5.
+- **A root-agent question blocks the whole institute** (operational note, product unchanged): nothing else proceeds until the answer arrives — state the problem and acceptance criteria up front for unattended runs. See [`slv-playbook.md`](../slv-playbook.md) §5.
 - After a meeting is abandoned by the watchdog, the minutes keep the abandonment marker and **all earlier speeches**; speeches that arrive later land in the "late note" section.
 
 ## Verification

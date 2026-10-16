@@ -34,7 +34,7 @@
 - The **real-host** behaviour of the meeting watchdog can only be confirmed by a real-host re-test (inside the shipped suites the heartbeat delay is not controllable, so the branch cannot be triggered deterministically; the guard is therefore a **source-level invariant**, as stated in the test comments and the commit message).
 - **TeX installed in a non-standard location is still not auto-discovered**: the default probe covers PATH and the documented common install roots.
 - The shipped suites **do not cover host-level behaviour** (for example "the caller is dropped after an interrupt").
-- **A root-agent question blocks the whole institute** (operational note, product unchanged): state the problem and acceptance criteria up front for unattended runs. See [`slv-playbook.md`](./slv-playbook.md) §5.
+- **A root-agent question blocks the whole institute** (operational note, product unchanged): state the problem and acceptance criteria up front for unattended runs. See [`slv-playbook.md`](../slv-playbook.md) §5.
 
 ## Verification
 

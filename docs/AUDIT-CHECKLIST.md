@@ -217,7 +217,7 @@ v2/v3/v4/v5 是**同构实现**（同一份契约、四份独立代码，刻意�
       **逐行比对**（`_oneoff/layout-invariance.mjs`）；③ 相对链接扫描 0 失效（`_oneoff/scan-links.mjs`）。
 - [ ] 讲"全套件 / 门禁 / 多少次全绿"时，是否区分了**随包发布面**与**仓库**？`package.json` 的 `files`
       只发 `tests/` 的 **306** 项（**文件计数**；其中 `.test.mjs` **235** 个），完整门禁（`node tests/run-tests.mjs`，
-      当前 **402 项作业（job count）= 324 套件 + 78 探针/变体**，由 `node tests/run-tests.mjs --counts` 派生）只在开发检出里成立。两边的清单见
+      当前 **403 项作业（job count）= 325 套件 + 78 探针/变体**，由 `node tests/run-tests.mjs --counts` 派生）只在开发检出里成立。两边的清单见
       `docs/test-timing.md` §1.1；发布物里的 runner 会把缺失/跳过项**打印出来**（不会静默少跑），
       所以"安装用户照文档跑得到全套件"这类说法必须避免。
 - [ ] **runner 本身也要跑一遍**：直接跑套件通过 ≠ 并行 runner 通过（2.3.13 就出现过
@@ -386,7 +386,7 @@ v2/v3/v4/v5 是**同构实现**（同一份契约、四份独立代码，刻意�
 ## 7. 中英双语 README 与英文版架构图（2.3.16 起）
 
 - **默认语言**：`README.md` 为中文（默认、GitHub 首屏），`README.en.md` 为英文；两文顶部各有一行切换器
-  （中文版 `[English](README.en.md) | 中文`，英文版 `English | [中文](README.md)`）。不建 `README.zh.md`。
+  （中文版 `[English](../README.en.md) | 中文`，英文版 `English | [中文](../README.md)`）。不建 `README.zh.md`。
 - **结构同构**：标题层级序列、表格行数、代码块数、图片数量、本地链接集合必须一一对应；
   唯一允许的差异是四张架构图各自指向 `-en` 版本（按序号配对校验）。
 - **文件与产物名不翻译**：真实目录/文件名（`示例图/…`、`docs/架构图.md`、`Verified/命题/`、`Logs/报告.md`）、
@@ -723,7 +723,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 ### README/计数一致性（D1）：数字必须**派生**，不许手打
 
 - **权威来源**：`node tests/run-tests.mjs --counts`（门禁自己那份 job 列表）+ `package.json#files`（随包 `tests/*.mjs` 数）。文档里的数字由 **`node scripts/update-doc-counts.mjs`** 生成（`--check` 只检查不改）；新增测试文件会让守卫变红，**修法是跑一次 updater**，因此数字再也不可能被手打。
-- **计数（实测）**：`TOTAL 402`（324 套件 + 78 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 306（**文件计数**：235 个套件 + 71 个探针/脚本）。
+- **计数（实测）**：`TOTAL 403`（325 套件 + 78 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 306（**文件计数**：235 个套件 + 71 个探针/脚本）。
 - **怎么让它红一次（in-repo）**：`tests/audit-readme-counts.mutants.mjs` —— 基线：守卫绿；**★ 篡改 README 里被引用的派生总数**（走 `COUNTS_README` seam，指向**绝对路径**的副本）⇒ 守卫**具名红**（"README.md quotes the DERIVED totals"）。守卫本体：`tests/audit-readme-counts.mjs`（**19+** 条断言：README/EN/test-timing/checklist 的派生形状、旧读数的消失，以及 **F-C 的全 `docs/**`（live 文档）`TOTAL <n>` 扫描** —— 每个 occurrence 必须等于 `--counts` 的派生值，冻结的 `docs/release-notes/**` 按名排除并在输出里报数）。
 - **touch-anchor（claim-vs-tree 用）**：`--counts`、`update-doc-counts.mjs`、`README COUNTS:`、`README.md quotes the DERIVED totals`。
 

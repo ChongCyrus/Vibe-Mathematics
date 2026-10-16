@@ -957,9 +957,9 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.report.channels', type: 'stringList', def: ['inbox', 'digest', 'log'], hot: HOT.H1, who: 'office', doc: '允许的汇报通道；不在集合内具名拒 VMU_REPORT_CHANNEL_UNKNOWN' },
   { key: 'vmu.report.recipients', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '允许的收件人白名单；空＝不限制（空收件人＋非 log 通道即具名拒）' },
   // ★ A1 step 1 · Part A (phase 2): the reporting FEEDBACK LOOP. ★ The framework adds the switch; it does NOT flip any
-  // pack's default. Part A reads these keys and reports them in the receipt; the delivery call
-  // (`systemPrompt.context()`) is Part B, and until it lands the receipt NAMES that fact instead of guessing.
-  { key: 'vmu.report.feedback', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '汇报反馈回路开关（A1 第一步）：默认 false＝零机制；开＝把汇报的受众与回执经宿主动态 context 回给模型（投递调用属 Part B —— 未接线期间回执以真话具名）' },
+  // pack's default. Part A reads these keys and reports them in the receipt; the delivery call itself was WIRED in Part B
+  // (`systemPrompt.context()`), so the receipt NAMES the layer that armed the switch - or claims NO layer when its position cannot know one - instead of guessing.
+  { key: 'vmu.report.feedback', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '汇报反馈回路开关（A1 第一步）：默认 false＝零机制；开＝把汇报的受众与回执经宿主动态 context 回给模型（投递调用已由入口在 Part B 接线（已落地）—— 未接线期间回执以真话具名）' },
   { key: 'vmu.report.audience', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: '汇报的受众（谁应当收到）：默认空串；开关开而受众为空时具名失败，不静默' },
   { key: 'vmu.report.minIntervalMs', type: 'natural', def: 60000, hot: HOT.H1, who: 'office', doc: '周期汇报的最小周期；低于即钳到此值并在回执里报出（钳制不静默）' },
   { key: 'vmu.report.traceCap', type: 'positiveInteger', def: 64, hot: HOT.H1, who: 'office', doc: '汇报留痕环上限；溢出必计数' },

@@ -63,7 +63,7 @@ export const PRIVATE_DOMAINS = Object.freeze(['private', 'dm', 'direct-message',
  *
  * Returns `{ wrapped, missing, unwrap }`: a method name that does not exist is REPORTED, never silently skipped.
  */
-export function attachApprovalGate({ target, methods = [], gate, subjectOf = null, byRoleOf = null, face = null } = {}) {
+export function attachApprovalGate({ target, methods = [], gate, subjectOf = null, face = null } = {}) {
   if (!target || typeof target !== 'object') throw refuse('VMU_INVALID_ARGUMENT', 'attachApprovalGate needs a target object')
   if (typeof gate !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'attachApprovalGate needs the gate function', 'pass gate: human.gate')
   // The action name is QUALIFIED (`tasks.create`), because `open`/`close`/`cast` exist on several faces and an
@@ -80,7 +80,6 @@ export function attachApprovalGate({ target, methods = [], gate, subjectOf = nul
       const req = {
         action: qualifier + name,
         subject: typeof subjectOf === 'function' ? subjectOf(name, args[0]) : (args[0] && args[0].id ? String(args[0].id) : null),
-        byRole: typeof byRoleOf === 'function' ? byRoleOf(name, args) : null,
       }
       gate(req)   // throws the named refusal when the action may not proceed
       return original.apply(this, args)
@@ -295,7 +294,12 @@ export function createHuman({ clock = () => 0, log = null, settings = {}, bus = 
   // What makes the human table a MECHANISM instead of a label: a gated action does not run while no human has
   // approved it. The gate returns a DECISION object, and `gate()` turns the same decision into a thrown refusal,
   // so any call site can use whichever shape it needs.
-  function approvalDecision({ action = null, subject = null, byRole = null, scope = null, at = null } = {}) {
+  // ★ DECIDING BY ROLE IS POLICY, SO IT LIVES OUTSIDE THIS KERNEL GATE (task-205 B). A `byRole` argument used to be
+  // computed in `attachApprovalGate` and passed in here, where it was READ AND IGNORED - a signal that silently
+  // disappeared. Both ends are now gone: this gate decides from the vetoes and the action/subject it was given, and a
+  // deployment that wants "approval depends on the caller's role" expresses that as a POLICY LAYER (a pack/middleware
+  // that raises a scoped veto) instead of handing this gate a role it must not act on.
+  function approvalDecision({ action = null, subject = null, scope = null, at = null } = {}) {
     const c = cfg()
     const act = str(action)
     if (!act) throw refuse('VMU_INVALID_ARGUMENT', 'the gate needs an action name', 'e.g. gate({ action: "task.create" })')

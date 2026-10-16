@@ -842,9 +842,9 @@ export function apply(ctx, config = {}) {
           reason: String((e && e.message) || e), stack: String((e && e.stack) || '') }
         try { process.stderr.write('vmu: the host systemPrompt service refused this section (not injected?): ' + promptSectionState.reason + '\n' + (promptSectionState.stack || '') + '\n') } catch { /* stderr may be gone */ }
       }
-    } else if (!promptSectionState.code) {
-      promptSectionState = { registered: false, code: 'VMU_EXTERNAL_UNAVAILABLE', what: 'systemPrompt.section',
-        reason: 'the host exposes no systemPrompt.section() to receive ' + effectivePrompts.length + ' declared section(s)' }
+    } else if (!promptSectionState.code) {   // ★ THREE STATES, NAMED DISTINCTLY (phase-3 audit #1; the delivery module carries the same split): nothing was OBTAINED ⇒ `systemPrompt` (never blame an interface the host may not have); obtained but no method ⇒ `systemPrompt.section`; a read that THREW is the catch above, with its stack
+      promptSectionState = { registered: false, code: 'VMU_EXTERNAL_UNAVAILABLE', what: systemPrompt === null || systemPrompt === undefined ? 'systemPrompt' : 'systemPrompt.section',
+        reason: systemPrompt === null || systemPrompt === undefined ? 'no host systemPrompt service was obtained: either none is provided, or one is provided but its providing fiber is not currently active (ctx.get cannot distinguish these)' : 'the host provided a systemPrompt service that carries no .section() to receive ' + effectivePrompts.length + ' declared section(s)' }
     }
   }
 

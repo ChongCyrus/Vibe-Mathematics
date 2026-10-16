@@ -758,7 +758,7 @@
 | ★★★★★ 2 | ★★★ **三条同族证据（★ 本会话三次 ✓）** | ★ **记** ✓ —— ★ **语料标题**（★ 错层：★ 改语料 ✗／★ 对层：★ **桥** ✓）、★ **pack 策略类别**（★ 错层：★ 改加载器 ✗／★ 对层：★ **清单** ✓）、★ **表格断行**（★ 错层：★ 改文档 ✗／★ 对层：★ **生成器** ✓）⇒ ★★★ **三次里，选错层都产出一个【看着合理、★ 却立不住**]的 diff** ✓✓ |
 | ★★★★ 3 | ★★ **可操作形态（★ 不是"要小心" ✓）** | **完成** ✓ —— ★ ① **改之前先问"这东西是【谁生产**]的"** ✓；★ ② **它回来时【不要改第二遍**]，★ 把改动**往上挪一层** ✓；★ ③ **在该层修完后重生成一次、★ 确认它【不再回来**]** ✓（★ 本轮：★ 短行 **8 → 0**，★ 且重生成后仍为 0 ✓） |
 | ★★★★ 4 | ★★★ **生成区域是否全 current** ✓ | ★ **完成** ✓ —— ★ `regen-all --check` ⇒ **14／14 in sync** ✓✓ ⇒ ★★ **没有任何手改的生成区域在存活** ✓ —— ★ 而这正是轮 604 **撞出来的那件事** ✓ |
-| ★★★★ 5 | ★★ **核陈旧数字** ✓ | ★ **完成** ✓ —— ★ 旧键数 `1039` **只剩 1 处** ✓、★ **在台账里记录本次修复的那条** ✓ ⇒ **合法** ✓；★ **`1038` 已出现在 [00-README.md:117](Vibe-Mathematics/vibe-math-vmu/docs/00-README.md#L117) 与 [04-settings.md:1389](Vibe-Mathematics/vibe-math-vmu/docs/04-settings.md#L1389)** ✓ ⇒ **数字改动正确传播** ✓（★ 因那行是生成的 ✓） |
+| ★★★★ 5 | ★★ **核陈旧数字** ✓ | ★ **完成** ✓ —— ★ 旧键数 `1039` **只剩 1 处** ✓、★ **在台账里记录本次修复的那条** ✓ ⇒ **合法** ✓；★ **`1038` 已出现在 [00-README.md:117](../../../vibe-math-vmu/docs/00-README.md#L117) 与 [04-settings.md:1389](../../../vibe-math-vmu/docs/04-settings.md#L1389)** ✓ ⇒ **数字改动正确传播** ✓（★ 因那行是生成的 ✓） |
 
 > ★★★ **本轮净结果**：★ **T1 `256 作业／223 套件` ⇒ 256 PASS／0 FAIL** ✓。
 > ★★★★★ **最值钱的** ✓：★★ **"它又回来了"被从"一次意外"提升为【一个信号**]** ✓✓ —— ★ 而**信号的价值在于：★ 它出现在【你还没意识到自己改错层**]的时候** ✓ ⇒ ★★★ **可操作形态只有三条：★ 先问谁生产 ✓、★ 回来就往上挪一层 ✓、★ 挪完重生成确认不再回来 ✓** ✓✓。
@@ -844,8 +844,8 @@
 
 | # | 承诺项 | 结果 |
 |---|---|---|
-| ★★★★★ 1 | ★★★★ **先量爆炸半径**（★ 上轮纪律 ✓） | ★ **量到** ✓ —— ★ `packs/v5r/index.js` 的导入者**只有 [vibe-math-vmu.js](Vibe-Mathematics/vibe-math-vmu/vibe-math-vmu.js#L22) 一处** ✓、★ **且它只取 `V5R_PHASES`** ✓（★ 不是 `PACK` ✓）⇒ ★★ **`index.js` 里的 `PACK` 【在树里没有消费者**]✓ |
-| ★★★★★ 2 | ★★★★ **读那段代码（★ 而非推断 ✓）** ✓✓ | ★★★★★ **结论【反了过来**]** ✓✓ —— ★ [v5r/index.js:38–40](Vibe-Mathematics/vibe-math-vmu/packs/v5r/index.js#L38)：★ **"THE FOLDER-LEVEL RECORD, deliberately NOT named PACK … naming this one PACK silently replaced the real manifest and the roster disappeared — **a lesson kept in the name**"** ✓✓；★ 而 L29–31：★ **"a star re-export does NOT put a name in this module's own scope … so the manifest is imported explicitly even though it is also re-exported"** ✓ |
+| ★★★★★ 1 | ★★★★ **先量爆炸半径**（★ 上轮纪律 ✓） | ★ **量到** ✓ —— ★ `packs/v5r/index.js` 的导入者**只有 [vibe-math-vmu.js](../../../vibe-math-vmu/vibe-math-vmu.js#L22) 一处** ✓、★ **且它只取 `V5R_PHASES`** ✓（★ 不是 `PACK` ✓）⇒ ★★ **`index.js` 里的 `PACK` 【在树里没有消费者**]✓ |
+| ★★★★★ 2 | ★★★★ **读那段代码（★ 而非推断 ✓）** ✓✓ | ★★★★★ **结论【反了过来**]** ✓✓ —— ★ [v5r/index.js:38–40](../../../vibe-math-vmu/packs/v5r/index.js#L38)：★ **"THE FOLDER-LEVEL RECORD, deliberately NOT named PACK … naming this one PACK silently replaced the real manifest and the roster disappeared — **a lesson kept in the name**"** ✓✓；★ 而 L29–31：★ **"a star re-export does NOT put a name in this module's own scope … so the manifest is imported explicitly even though it is also re-exported"** ✓ |
 | ★★★★★ 3 | ★★★ **故正确的理解是** ✓ | **查明** ✓ —— ★★ **`PACK` ＝ 加载器消费的清单（`v5r-core` ✓）；★ `V5R_PACK` ＝ 文件夹级记录（`v5r` ✓）** ✓ —— ★ **两者用法一致** ✓ ⇒ ★★★ **唯一弄错的是【我轮 598 的探针**]** ✗✓（★ 它从 `index.js` 取 `m.PACK` ✓） |
 | ★★★★ 4 | ★★ **诚实记账** ✓ | ★★ **本会话【第 8 次假警报**]** ✓ —— ★ 我断言"一个 pack 目录把别人的清单挂在通用名下，是个陷阱" ✗ ⇒ ★ **而它是**故意的、★ 有文档的、★ 且注释就在那两行上方** ✓✓ |
 | ★★★★★ 5 | ★★★★ **而值得留下的【不是修复，★ 是让那条教训可携带**]** ✓✓ | **完成** ✓ —— ★ 那条区分**只活在 pack 文件【里面**]** ✓ ⇒ ★★ **不去打开它的读者（★ 我的探针、★ 或下一个写探针的人 ✓）会重复这个错** ✗ ⇒ ★★★ **检查现在【两边都断言**]** ✓：★ `PACK.id === 'v5r-core'` ✓ ＋ ★ `V5R_PACK.id` **等于目录名** ✓ ⇒ ★ **任一条失败即表示约定变了** ✓，★ **理由写在上面注释里** ✓（★ **14／14** ✓） |
@@ -916,7 +916,7 @@
 |---|---|---|
 | ★★★★★ 1 | ★★★★ **判断该修在哪一层** ✓ | ★★★★★ **判对** ✓✓ —— ★ 语料是**逐字生成的** ✓ ⇒ **改它会红漂移检查 ✗、★ 且不再是证据** ✗ ⇒ ★★★ **正确位置是【桥**]（★ `v5r-core.js` 把语料→section 那一步 ✓，★ **那是一份录像变成运行期产物的地方** ✓） |
 | ★★★★★ 2 | ★★★ **先量、★ 不用审计的数字** ✓ | ★ **量到** ✓ —— ★ **`{{ role }}` ×65**（★ 审计说 50 ✗）、★ **`{{ roleLabel }}` ×0** ✗、★ `{{ member }}` ×142／★ `{{ quorum }}` ×66／★ `{{ roster }}` ×66／★ `{{ round }}` ×24 ✓ |
-| ★★★★★ 3 | ★★★★ **而框架【早就写下了这条区分**]** ✓✓ | ★ **找到** ✓ —— [prompt/index.js:45–47](Vibe-Mathematics/vibe-math-vmu/kernel/prompt/index.js#L45)：★ **"ROUND 364：`roleLabel` joined for the per-turn HEADINGS … `role` is the kind KEY that bindings select on, while `roleLabel` is what a reader sees, and mixing the two …"** ✓✓；★ **L50 白名单里【已有 `roleLabel`**]** ✓ ⇒ ★★★ **框架有答案、★ 是桥没用它** ✓ |
+| ★★★★★ 3 | ★★★★ **而框架【早就写下了这条区分**]** ✓✓ | ★ **找到** ✓ —— [prompt/index.js:45–47](../../../vibe-math-vmu/kernel/prompt/index.js#L45)：★ **"ROUND 364：`roleLabel` joined for the per-turn HEADINGS … `role` is the kind KEY that bindings select on, while `roleLabel` is what a reader sees, and mixing the two …"** ✓✓；★ **L50 白名单里【已有 `roleLabel`**]** ✓ ⇒ ★★★ **框架有答案、★ 是桥没用它** ✓ |
 | ★★★★ 4 | ★★★ **修法【窄而准**]** ✓ | **完成** ✓ —— ★ 只重写**标题里的那一处**（★ `—— {{ role }}` ✓）⇒ ★ **其余 `{{ role }}` 全部不动** ✓（★ 绑定仍按种类键选择 ✓）；★ **而测试把这份"窄"钉住** ✓，★ 免得日后放宽时悄悄弄坏合法用法 ✓ |
 | ★★★★★ 5 | ★★★ **验证** ✓ | ★ **`{{ roleLabel }}` 65 ✓、★ `{{ role }}` 残留 0 ✓、★ 全在标题里 ✓、★ 67 个 section 不变 ✓、★ `roleLabel` 在白名单 ✓** ✓✓ |
 | ★★★★★ 6 | ★★★★ **而它【不是新缺陷，★ 是一个漏项**]** ✓✓ | **查明** ✓ —— ★ 同一条管线的注释写着：★ **"ROUND 358：量采集文本时发现【24 个字面轮次数】和【66 个法定票数】被烘焙进去，而两者都是回合自己拥有的事实"** ✓✓，★ 且 `roster`（★ ROUND 356 ✓）、`statusBlock`（★ ROUND 362 ✓）**都因同样理由加进白名单** ✓ ⇒ ★★★ **`role` 是【唯一被落下**]的那个** ✓ |
