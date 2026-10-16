@@ -118,3 +118,35 @@ const allSolved = allSpoke && speakers.length>0 && speakers.every(iv=>iv.voteSol
 ### 7.8 ★ 诚实边界
 ★ **本轮【未改代码】**（★ 诊断与规格，★ 落点都在行上 ✓）；★ **仍未主张收敛** ✓
 ★★ **而问题已收敛到【一件**明确、可修、且陷阱已列全**的事】** ⇒ ★ **下一个完整窗口可一次落完** ✓
+---
+
+## 8. ★★★★★★★ Round 52：**谓词立刻见效 —— 它把一个【此前不可见】的阻塞点名了，★ 而代理当场对它有反应**
+
+### 8.1 ★★★ 而这正是整个序列的目的：★ 把"看不见"变成"具名"
+★ 真机（★ 232 秒／2,059,132 tokens —— **至今最多** ✓／会议 49 次／control 43／turn 43／report 25／status 25 ✓）
+★★ **`closureVote` 出现 49 次／`vote_solved` 出现 8 次／`missing` 出现 59 次** ✓✓ —— ★ **新读数【真的被返回并被查看】** ✓
+★★★ **而转录里出现了两种【各自可操作】的读数**：
+```
+closureVote: { cast:false, eligible:[], missing:[],
+               reason: "no member holds the closure-vote permission, so unanimity is unreachable
+                        (check the pack slot permissions…)" }
+closureVote: { cast:false, eligible:["m1","m2"], missing:["m1","m2"],
+               reason: "silence blocks closure; no judgement yet from: m1, m2" }
+```
+⇒ ★★★★ **两条都【点名了原因】，★ 而且第二条【点名了是谁】** ✓✓
+
+### 8.2 ★★★★★ 而代理【读到了，★ 并当场行动】
+★ 转录里逐字：★ *"**no member holds the closure-vote permission. Driving turns now.**"* ✓✓
+⇒ ★★★ **即：★ 一个此前完全不可见的条件（★ 开了 61 次会却不知道为什么结不了题）** ⇒ ★★ **现在被【具名】，★ 而使用者与代理【立刻知道该做什么】** ✓✓✓
+⇒ ★★ **这正是加这个谓词的全部理由** ✓
+
+### 8.3 ★★ 仍未收敛，★ 而原因现在是【具体且可查的】
+★ `"paper": 0`／`allSolved: 0` ⇒ ★ **仍未结题** ✓
+★★ **而原因**：★ **没有【全体】有表决权者都填 `vote_solved: true`**（★ 该字段只出现 8 次 ✓）
+⇒ ★★★ **但与上一轮的差别是决定性的**：★ **此前是"不知道为什么"；★ 现在是"m1 与 m2 还没表态"** ✓✓
+⇒ ★★ **这个差别就是"不可诊断"与"可诊断"的差别** ✓
+
+### 8.4 ★★★ 顺带：★ 早期 `eligible: []` 本身也是一个真实发现
+★ **它出现于【成员还没入册】的早期** ⇒ ★ **而提示词要求"至少放 3 个成员（1 chair ＋ 2 member）"** ✓
+⇒ ★★ **所以这条读数实际上在【教使用者怎么开始】** —— ★ **"no member holds the closure-vote permission" 比 "no-members" 更精确，★ 因为它说的是【权限】而不是【空】** ✓✓
+★ **建议（★ 下一轮可选）**：★ **`eligible: []` 时，`reason` 里直接点出操作步骤**（★ "先用 control.hire 放成员，★ 且槽位需授予 `vote`" ✓）—— ★ **与 `no-members` 那条 `next` 同一手法** ✓
