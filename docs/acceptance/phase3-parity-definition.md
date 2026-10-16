@@ -9,7 +9,15 @@
 
 | 事实 | 读数 | 出处 |
 |---|---|---|
-| ★ `vibe-math-v5r/` 下**全部 JS 只有 3 个文件** | `vibe-math-v5r.js` **11,597 行（单文件 monolith）**／`math-computation.js` 1,481／`math-engines.js` 197 | 1c-B 报告 |
+| ★ `vibe-math-v5r/` 下**全部 JS 只有 3 个文件** | `vibe-math-v5r.js` **11,598 行（单文件 monolith）**／`math-computation.js` 1,481／`math-engines.js` 197 | 1c-B 报告＋★ **Lead 实测** |
+
+★★ **行数口径更正（Round 8）**：★ 同一份文件**在三个报告里出现三个不同的行数**（**11,597／11,494／11,598**）⇒ ★ **我实测后判定：三个都对，各自量的东西不同**，★ 问题是**都没写口径**：
+| 数 | ★ 它量的是什么 | ★ 权威性 |
+|---|---|---|
+| **11,598** | ★ `readFileSync(p,'utf8').split('\n').length` ⇒ ★ **本仓 `audit-code-size` 用的就是这个口径** | ★★ **权威（引用行数请用这个）** |
+| 11,597 | LF 换行符个数（＝ 11,598 − 1） | ★ 不是"行数" |
+| **11,494** | ★ **非空行**（空白行 104 行） | ★ 只在明确说"非空行"时才可用 |
+★★ **教训（本仓第 3 次同类）**：★ **一个没有口径的数字不是数字** —— ★ 与 `phase3-audit-docs.md` 的 S1（散文计数与生成器不符）**同族** ⇒ ★ **今后凡写行数，必须写明口径** ✓
 | ★★ **"协作与状态层"在原版里是【13 份 markdown 规格】** | `MEETING-PLATFORM-SPEC.md` 375L／`A-model` 330／`PHILOSOPHY` 304／`B-protocol` 304／`EXPANSION` 252／**`GAPS` 230**／`VOTING` 220／`OVERSIGHT-TIME` 205／`RULINGS` 178／`DECISIONS` 164／`C-landing` 165 ＋ `架构图.md` 693／`设计总览.md` 56 | 同上 |
 | ★★ **关键词两侧命中（grep 计数）** | `quorum` 文档 82｜★ **代码 79**（★ 见下方更正）｜`motion` 31/0｜`roster` 31/0｜`tally` 17/0｜`abstain` 17/0｜`charter` 7/0｜`mailbox` 4/0｜`lapse` 1/0｜★ **`panel` 文档 0／代码 0**（原版连这个词都没有） | 同上 |
 
