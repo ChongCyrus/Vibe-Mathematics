@@ -28,9 +28,24 @@
 | **G3** | ★ **产物与清理纪律**：★ **只删自己的**（★ 按 sessionId，★ **绝不按时间窗批量删** —— 手册载明历史上这样做**误删过别人的投影缓存**） | ★ **满足**（★ 已读、已知） |
 | **G4** | ★ **模拟声明**：★ 用户目标 ⑤ 明确要求"**告诉代理这是一次模拟，让它们以测试各种功能为主**" ⇒ ★ 落进 `--steer-after` 或任务文本，★ **并留可检索证据** | ★ **待写**（★ 属 Phase 5 的准备工作） |
 
-## 4. ★★ 因此的排期
+## 4. ★★ 环境实测（Round 13，★ 本机读到的，不是推测）
 
-★ **G1 是唯一的硬阻塞** ⇒ ★ **`task-240` 一绿，Phase 4（v5r 脚本化真机）即可开始** ✓
+| 项 | 读数 | ★ 判定 |
+|---|---|---|
+| **DSH 主目录** | ★ **`C:\Users\admin\.dsh`** 存在（★ 内含 `.agent-presets`／`attachments`／`cache`／**`dsh-runtimes`**／`llm-deepseek`／**`profiles`**） | ★ **满足** |
+| **运行时入口** | ★ **`~/.dsh/dsh-runtimes/dsh-primary-runtime`** | ★ **满足**（★ 手册 §1 的 `node <dsh>/lib/bin.js` 按此定位） |
+| ★★ **profile 可克隆** | ★ **`~/.dsh/profiles/` 下有 `desktop`／`headless`／`hubtest` ＋ 一族 `hubtest-*`**（`hubtest-dshvibemath2`／`hubtest-dshvibemathlatest`／`hubtest-fix`／`hubtest-fix2`／`hubtest-fresh`／`hubtest2`） | ★★ **满足，且有【先例】**：★ 这些 `hubtest*` **正是手册 §1"克隆一份 profile"留下的痕迹** ⇒ ★ **这条路以前走通过** ✓ |
+| ★ **agent preset 已装** | ★ **`vibe-math-v2`／`v3`／`v4`／`v5`** ＋ `.vibe-math-backup` ＋ `.vibe-math-installed.json` | ★ **满足**（★ 手册示例用 `--preset vibe-math-v4`） |
+| ★★ **`vibe-math-v5r` 不在已装列表里** | ★ 列表只有 v2–v5 | ★ **注意**：★ Phase 4 测原 v5／v5r ⇒ ★ **v5r 需要按包安装**；★ **Phase 5 测 `vmu+v5r pack` ⇒ 正是本仓要产出的那个整合包** ⇒ ★ **"装出 v5r／vmu+v5r preset"是 Phase 4/5 的第一步工作** ✓ |
+| **端口** | ★ **19387 = 占用**（★ 就是用户当前这个 GUI）／★ **19388、19389 = 空闲** | ★ **满足**（★ SLV 用 19388／19389，★ **绝不碰 19387**） |
+| **本仓的 patch** | ★ `cordis.patch.yml` 存在于仓内 | ★ **满足**（★ 与 agent-teams 研究的 A1/C2 同形） |
+
+★★ **结论**：★ **手册 §1 的隔离三件（克隆 profile／独立端口／`--no-open`）在本机【都可行】，且有历史先例** ✓
+★★ **唯一新增的准备工作**：★ **把 `vibe-math-v5r`（Phase 4）与 `vmu+v5r pack`（Phase 5）装成可用的 preset** —— ★ 而后者**正是本阶段要交付的整合包**，★ 所以 Phase 5 的第一步就是**用 pack 装出一个 preset** ✓
+
+## 5. ★★ 因此的排期
+
+★ **G1 是唯一的硬阻塞** ⇒ ★ **`task-240` 一绿（T1 全绿），Phase 4 即可开始** ✓
 ★ **顺序**：★ **Phase 4** ＝ 原 v5／v5r 的脚本化真机（★ 按手册，★ 用**受管后台作业**）⇒ ★ 发现即**单跑复现**⇒ 真回归才修 ⇒ ★ **Phase 5** ＝ vmu+v5r 全流程 SLV（★ **带模拟声明**，★ **跑到结题/收敛**）✓
 ★★ **但 Phase 5 的"收敛"结论必须谨慎**：★ 手册 §5 明说**有界运行建立不了收敛** ⇒ ★★ **所以 Phase 5 的交付应写成"落位／可观测／提示词交互正常"＋"收敛由随包套件背书"**，★ **不能把一次有界运行写成收敛证明** ✓
 

@@ -195,15 +195,19 @@ const LOST_TOOLS = ['vibe_vmu_chat', 'vibe_vmu_control', 'vibe_vmu_human', 'vibe
   // ★ MEASURED (task-239): `enabledGap` is NOT length-1 here, so `published = enabled + gap.length` is FALSE - the
   // gap LIST and the count difference disagree. That is reported as a finding rather than asserted away; what is
   // pinned is the invariant that really holds: a gap EXISTS, the two fields agree on a subset, and E3 names the face.
-  // ★ MEASURED (task-239): `enabled` lists FACES while `published` lists TOOL NAMES, so the two must be compared as
-  // COUNTS, never by membership. And `enabledGap` lists MORE entries than the count difference (measured: gap 2 vs
-  // difference 1) - that over-report is STATED in this assertion's own text rather than asserted away, because it is
-  // the kind of unexplained surplus this phase hunts.
-  ok((f2.enabledGap || []).length > 0 && f2.published.length > f2.enabled.length,
-    'E4. ★ the asymmetry is real: published ' + f2.published.length + ' > enabled ' + f2.enabled.length +
-    ', and E3 names the face - ★ NOTE `enabledGap` lists ' + (f2.enabledGap || []).length + ' entries while the count difference is ' +
-    (f2.published.length - f2.enabled.length) + ': the LIST over-reports, reported here rather than hidden',
-    { enabled: f2.enabled.length, gap: (f2.enabledGap || []).length, published: f2.published.length })
+  // ★ task-246 · THE TRUTH, MEASURED FROM INSIDE THIS TEST (not replicated from outside): the gap LIST names TWO
+  // faces - measured `["middleware","report"]` - while the numeric difference is ONE (enabled 15 / published 16).
+  // Those two quantities are NOT the same kind: `enabled` counts FACES and `published` counts TOOL NAMES, so
+  // "the list over-reports" is the WRONG framing and is not claimed here. What IS claimed: the list is non-empty,
+  // it names this exact pair (so it cannot drift unnoticed), and E3 pins the `report` instance.
+  // ★ NOT READ: which of the two does not offset the count, i.e. how `enabledGap` is constructed - that code is
+  // outside this file, so it is named as unchecked rather than asserted.
+  const gapFaces = (f2.enabledGap || []).map((g) => g.face)
+  ok(gapFaces.length > 0 && ['middleware', 'report'].every((n) => gapFaces.includes(n)),
+    'E4. ★ the gap list names its faces explicitly (measured: ' + gapFaces.join(', ') + ') while enabled (' +
+    f2.enabled.length + ') counts FACES and published (' + f2.published.length + ') counts TOOLS - different quantities, ' +
+    'so the count difference is not the list length (the gap\'s construction is unchecked here)',
+    { enabled: f2.enabled.length, published: f2.published.length, gapFaces })
 }
 
 // =========================================================================================================

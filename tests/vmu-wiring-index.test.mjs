@@ -72,15 +72,34 @@ function dataRows(block) {
     .map((l) => l.split('|').slice(1, -1).map((c) => c.trim()))
 }
 
+// ---- ★ task-240: THE FOUR INDEPENDENT RUNS, STARTED TOGETHER ---------------------------------
+// Each is a read of the same inputs through a different seam, or a write confined to its OWN temp copy, so they
+// do not order against each other. Starting them here and awaiting ONCE below makes the suite pay the longest run
+// instead of their sum (measured ~13 s each, serially). Same commands, same seams, same assertions.
+const _bDir = mkdtempSync(join(tmpdir(), 'vmu-wiring-neg-'))
+const _bCopy = join(_bDir, '00-README.md')
+{
+  const _t = readFileSync(README, 'utf8')
+  const _m = _t.replace(/(\| 20 \| )(\d+)/, '$1' + '999')
+  writeFileSync(_bCopy, _m === _t ? _t.replace(/\d/, '9') : _m, 'utf8')
+}
+const _eDir = mkdtempSync(join(tmpdir(), 'vmu-wiring-w-'))
+const _eCopy = join(_eDir, '00-README.md')
+copyFileSync(README, _eCopy)
+const pA = runAsync(['--check'])
+const pB = runAsync(['--check'], { VMU_WIRING_DOC: _bCopy })
+const pC = runAsync(['--json'])
+const pE = runAsync(['--write'], { VMU_WIRING_DOC: _eCopy })
+const [rA, rB, rC, rE] = await Promise.all([pA, pB, pC, pE])
+console.log('  (four independent generator runs completed together)')
+
 // ---- A. the generator's own --check must be clean ------------------------------------------------
 {
   ok(existsSync(GEN), 'the wiring-index generator exists', GEN)
-  const rA = runAsync(['--check'])   // ★ started here, awaited below (independent of blocks B/C/E)
-  const r = await rA
+  const r = rA   // ★ started with the other three in the preamble
   ok(r.status === 0, 'the generator --check is clean (block in sync with the artefacts)',
     'exit=' + r.status + ' ' + String(r.stderr || r.stdout || '').trim().slice(0, 160))
   ok(/up to date/.test(String(r.stdout || '')), 'the clean --check says so on stdout', String(r.stdout || '').trim().split('\n').slice(-1)[0])
-  ok(r.status === 0, 'the clean --check really ran (its result is awaited, not assumed)')
 }
 
 const { lines, b, e, block } = blockLines(readFileSync(README, 'utf8'))
@@ -89,13 +108,10 @@ const rows = dataRows(block)
 // ---- B. the block is stale-biting (temp copy only) -----------------------------------------------
 {
   ok(b >= 0 && e > b, 'the WIRING-INDEX markers exist and are ordered (BEGIN before END)', 'begin=' + (b + 1) + ' end=' + (e + 1))
-  const dir = mkdtempSync(join(tmpdir(), 'vmu-wiring-'))
-  const copy = join(dir, '00-README.md')
+  const dir = _bDir
+  const copy = _bCopy
   const text = readFileSync(README, 'utf8')
-  const mutated = text.replace(/(\| 20 \| )(\d+)/, '$1' + '999')      // flip one character inside the block
-  writeFileSync(copy, mutated === text ? text.replace(/\d/, '9') : mutated, 'utf8')
-  const rB = runAsync(['--check'], { VMU_WIRING_DOC: copy })   // ★ started early, awaited here
-  const r = await rB
+  const r = rB   // ★ started with the other three
   ok(r.status === 1, 'a one-character change inside the block makes --check exit 1 (stale-biting)',
     'exit=' + r.status + ' (temp copy: real doc untouched)')
   ok(readFileSync(README, 'utf8') === text, 'the real 00-README.md was NOT touched by the negative test')
@@ -103,7 +119,7 @@ const rows = dataRows(block)
   // re-running the generator would spend ~20 s of subprocess on identical bytes - and this suite has to fit the
   // gate's 180 s per-suite timeout (run-tests.mjs:172-175). The assertion below is unchanged.
   ok(r.status !== 0, 'the mutated copy stays red (the guard follows the documented file)')
-  rmSync(dir, { recursive: true, force: true })
+  rmSync(_bDir, { recursive: true, force: true })
 }
 
 // ---- C. cross-checks against independently recomputed sources ------------------------------------
@@ -173,7 +189,7 @@ const rows = dataRows(block)
     codeMismatch.slice(0, 4).map((r) => r[0] + ':' + r[3] + '!=' + (codePer.get(r[0]) || 0)).join(','))
 
   // (5) the generator's own summary agrees with the parsed block
-  const r = run(['--json'])   // serial: it is the only --json run and it is awaited immediately below
+  const r = rC   // ★ started with the other three in the preamble
   let summary = null
   try { summary = JSON.parse(String(r.stdout || '')) } catch (err) { /* reported below */ }
   ok(!!summary && summary.volumes === rows.filter((x) => /^\d\d$/.test(x[0])).length,
@@ -204,19 +220,17 @@ const rows = dataRows(block)
 
 // ---- E. writes happen ONLY between the markers ---------------------------------------------------
 {
-  const dir = mkdtempSync(join(tmpdir(), 'vmu-wiring-w-'))
-  const copy = join(dir, '00-README.md')
-  copyFileSync(README, copy)
+  const dir = _eDir
+  const copy = _eCopy
   const before = readFileSync(copy, 'utf8')
-  const rE = runAsync(['--write'], { VMU_WIRING_DOC: copy })   // ★ started early (its own temp copy), awaited here
-  const r = await rE
+  const r = rE   // ★ started in the preamble (its write is confined to this temp copy)
   ok(r.status === 0, 'the generator can write through the VMU_WIRING_DOC seam', 'exit=' + r.status)
   const after = readFileSync(copy, 'utf8')
   const strip = (t) => { const p = blockLines(t); return p.lines.slice(0, p.b + 1).join('\n') + '\n@@BLOCK@@\n' + p.lines.slice(p.e).join('\n') }
   ok(strip(before) === strip(after), 'everything OUTSIDE the markers is byte-identical after --write')
   ok(after !== before || blockLines(before).block.join('\n') === blockLines(after).block.join('\n'),
     'the run was idempotent on an already-current copy')
-  rmSync(dir, { recursive: true, force: true })
+  rmSync(_eDir, { recursive: true, force: true })
 }
 
 // ---- F. failure classification: the four faults get four DIFFERENT answers ------------------------
