@@ -61,8 +61,19 @@ const KEY = declaredPackKeys[0]
   ok(same(row.value, packDefaults[KEY]),
     '★★ FOLD: the kernel\'s value for a declared v5r default IS the value the pack stated (`resolved[key].value`)',
     'key=' + KEY + ' kernel=' + JSON.stringify(row.value) + ' pack=' + JSON.stringify(packDefaults[KEY]))
+  // ★ WHERE THIS LABEL REALLY COMES FROM, AND WHY IT MATTERS THAT THE MESSAGE SAYS SO. The attribution used to read
+  // "per `packSource[k] = 'pack:' + id`" - a line in kernel/index.js - and that misdirection cost a round: a mutation of
+  // THAT line landed cleanly and changed nothing, because the kernel's `packSource` feeds a different path. The label on
+  // a fold that happens BEFORE the kernel is constructed comes from the ENTRY, which is the only layer that knows it:
+  // `vibe-math-vmu.js` sets `settingsSources[k] = 'pack:' + packDefaultSource[k]` for every folded default the user did
+  // not override, and the kernel's own comment describes exactly this ("the entry is the only layer that knows this; the
+  // kernel sees one flat object").
+  //
+  // ★ AND ITS RED-ABILITY IS PROVEN, NOT ASSUMED. Mutating that entry line in a throwaway archive turns it red here:
+  // control 7/0 green, mutant 5/2, with THIS assertion failing as `source=config` - while the FOLD assertion above stays
+  // green, which is the discrimination that matters (the value still folded; only the label was lost).
   ok(row.source === 'pack:v5r',
-    '★★ SOURCE HONESTY: `resolved[key].source === \'pack:v5r\'` (the kernel names the pack, per `packSource[k] = \'pack:\' + id`)',
+    '★★ SOURCE HONESTY: the kernel reports the pack as the layer (`resolved[key].source`), labelled by the ENTRY, which is the only layer that knows a pre-construction fold',
     'source=' + String(row.source))
 }
 // ── ARM 2 (the discriminator the Lead asked to keep): NO pack listed ⇒ the SAME key is NOT pack-sourced ─────────
