@@ -270,3 +270,47 @@
 5. ★ **关键词 0 命中不得当结论**：`journal: 0`／`quorumRule: 0` 只作线索（§1.1）；★ 且 `quorumRule` 在 vmu 侧确实存在（本会话读过 `settings/schema.js` 与 `papers`／`meetings` 面）⇒ 该格**未核**。
 6. ★ **未跑 T1／未跑全量门禁／未跑 git／未改任何代码**（本任务只读）；临时件未落仓内；**未碰 `token.txt`**。
 
+
+
+---
+
+## 7. ★★ 「被问过而沉默」 vs 「根本没被唤醒」 —— ★ vmu 侧判定（Round 12，由 Lead 作为唯一写者落地）
+
+> ★ 本节内容来自 `task-243` 的读数；★ 它的持有者**没有落盘**，因为**该文件当时有并发写者**（★ 它 `pwsh` 读到 215 行、`read` 读到 272 行 ⇒ **有人在其读取之后追加了 57 行**）⇒ ★ **它拒绝用过期锚点追加**（会插错位置或与对方段落交错）✓ —— ★ 这是本阶段**第二次**"拒绝写"保护了成果（前一次是 pack 替换的设计陷阱）。
+
+### 7.1 ★ 判定：**CAN DISTINGUISH（限定在【唤醒面】）** ＋ 半边 **UNDETERMINED**
+
+**★ 可分的那半 —— 正向证据（★ 唤醒【当时】就把四种结局分成不同具名结果）**：
+
+| # | 事实 | vmu 行 |
+|---|---|---|
+| **V1** | ★★ **重试用尽 ⇒ 具名 `unreached`**：`{ok:true, woken:false, unreached:true, retries: attempts-1, wakeRetries, unreachedWakes}`；★ 注释逐字 *"on exhaustion records the member as `unreached` - 'treated as having had its chance'"* | `kernel/meetings.js:966-978` |
+| **V2** | ★ **另一条独立分支**：策略 `skip` ⇒ `{woken:false, skipped:true, skippedWakes}` | `:965` |
+| **V3** | ★ 策略 `refuse` ⇒ **具名抛错** `VMU_STATE` | `:961-963` |
+| **V4** | ★ **四类结局各有【自己的计数名】**（不是同一个"失败"桶）：`unreachedWakes`／`skippedWakes` | `:197`／`:977`／`:965` |
+| **V5** | ★ **"发言"在事件流里是具名事件** `say({type:'meetings/spoke', …})` | `:580` |
+| **V6** | ★ **未应答者被点名而不静默略过**（注释逐字 *"unanswered members are named, never passed over silently"*）＋ 可声明键 `vmu.meetings.unansweredInDenominator` | `:308`／`:152` |
+
+**★★ 不可分／未读的那半（★ 这就是边界本身）**：★ **该区分是否被持久化成【每成员每场次的一格】**、★ **【收束/点名条件】是否读它**、★ **它是否被注入提示词** —— ★ **未读到**：`close({…})` 的其余部分（`:995-1187`）、落盘所经路径、vmu 里是否存在 `roster.every(...)` 式收束条件 ✓
+★ **`kernel/meetings.js` 共 1199/1200 行，读到的不足 5%** ⇒ ★★ **未读半边是"未读"，不是"不存在"** ✓（★ 本节**从未**做"关键词 0 命中 ⇒ 不存在"的推断）
+
+### 7.2 ★ 与原版的 P-a 对照（★ 引用第四遍读数，不重推）
+
+| 原版 | 行 | ★ P-a 结论 |
+|---|---|---|
+| `asked`／`silent`／`unreached` **三张并列的表** | `vibe-math-v5r.js:7477` | ★ **vmu 有等价三态语义（V1/V2/V3），★ 但【载体不同】**：★ vmu 在**返回值 ＋ 计数器 ＋ 事件**里，★ 原版在**会议记录的持久字段**里 ✓ |
+| 三者**都不再被问** | `:7575` | ★ vmu 侧对应语义**未读到** |
+| 收束 `roster.every(id => asked \|\| silent \|\| unreached)` | `:7606` | ★ **口径两侧一致**：★ vmu 的 `unreached` 注释同样说 *"treated as having had its chance"`（`:967`） |
+| `unreached` 带 `tries` 入历史 | `:7569`/`:7581` | ★ vmu 有 `retries: attempts-1`，★ **但在返回值里**；★ **是否入历史未读到** |
+
+⇒ ★★ **不是缺失，是【载体差异】** —— ★ 而正因为它**可能只活在返回值里**，★ "**模型看不看得见**"就取决于**那一格是否被持久化并注入** ⇒ ★ **那正是未读的部分，★ 所以本裁定【不】断言风险已发生** ✓
+
+### 7.3 ★ 下一步（★ 决定性的行范围）
+
+★ **读 `kernel/meetings.js:995-1187` 的 `close()` 体 ＋ `store`/`journal` 写入路径 ＋ 会议提示词段** ⇒ ★ **那才是"模型会不会把『没被叫到』读成『我选择不说』"的决定性范围** ✓
+
+### 7.4 没核（★ 与"核了"分开）
+
+1. ★ `close()` 体（`:995-1187`）、落盘路径、会议提示词段 —— **未读**（★ 上述未读半边）。
+2. ★ vmu 是否存在 `roster.every(...)` 式收束条件 —— **未读到**。
+3. ★ 本节由 Lead 代为落盘，**内容逐字来自 `task-243` 的读数**；★ **未跑门禁、未跑 git**。
