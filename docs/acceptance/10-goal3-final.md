@@ -38,7 +38,7 @@
 | 缺口（旧） | 闭合方式 | file:line |
 |---|---|---|
 | **M-A04**「论文轮次上限」无键无读点 | **加键＋真读者**：`vmu.paper.maxRounds`（生成行，natural，**def 0＝不限**＝零机制；v5r 的 3 由 pack 声明）＋ `kernel/paper.js` 的新方法 **`revise()`**（owner-only／必须先交过一次／每次计数／超限 ⇒ 具名拒 `VMU_PAPER_ROUNDS_EXCEEDED` ＋ `enforced:['vmu.paper.maxRounds']` ＋ `rounds/maxRounds`）；`WIRED_KEYS`＋`keysUsed()` 已含该键 | `kernel/paper.js:41`（WIRED_KEYS）、`:135`（`readKey('vmu.paper.maxRounds') || 0`）、`revise()` 方法体；探针 `D:/_tmp/vmu-r6/paper-rounds.mjs` **11/0** |
-| **孤儿键** `vmu.meetings.reconsiderFloor` | **删除**（四道前置全清后）：三处 pack 清单值（`packs/v5r/prompts/v5r-core.js:78`／`packs/institute-min/index.js:51`／`packs/v5r/settings/defaults.js:93` 注释）＋`docs/08`＋`docs/10`＋`docs/12:208` 改述 ⇒ schema 行删除、`docs/04` 重生成 | 见 `core-round6-report.md` §"孤儿键"；真生效的旋钮是 `vmu.ballot.reopenFloor` |
+| **孤儿键** `vmu.meetings.reconsiderFloor` | **删除**（四道前置全清后）：三处 pack 清单值（`packs/v5r/prompts/v5r-core.js:78`／`packs/institute-min/index.js:51`／`packs/v5r/settings/defaults.js:93` 注释，pre-split：该键已从 `defaults.json` 删除）＋`docs/08`＋`docs/10`＋`docs/12:208` 改述 ⇒ schema 行删除、`docs/04` 重生成 | 见 `core-round6-report.md` §"孤儿键"；真生效的旋钮是 `vmu.ballot.reopenFloor` |
 | **Lean 面镜像未接线**（生产路径 `admission().fileMirror=false`） | **接 `fs: host`**（＋`ids`／`timer`） | `kernel/index.js:578`（`createLeanFace({… fs: host && … ? host : null })`） |
 | **F17 面层看不到 handle** | **killable 缝贯通**：`host-spawn.js:84` 的 `spawn(request, onHandle)` ＋ 入口 `spawnHandle: spawnSeam` ＋ 内核三面传递 | `kernel/index.js:578/710/725`；`vmu-lean-killable` **7/0** |
 

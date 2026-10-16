@@ -167,7 +167,7 @@
 |---|---|---|
 | `packs/v5r/prompts/v5r-core.js:78`（清单值） | vmu-assistant（Lead 指派） | ✅ **已删** |
 | `packs/institute-min/index.js:51`（清单值）＋ 文件头注释 | **vmu-pack** | ✅ **已删／已改述** |
-| `packs/v5r/settings/defaults.js:93`（注释） | **vmu-pack** | ✅ **已改述**（改指 `vmu.ballot.reopenFloor`） |
+| `packs/v5r/settings/defaults.json:42`（pre-split `defaults.js:93` 注释） | **vmu-pack** | ✅ **已改述**（改指 `vmu.ballot.reopenFloor`） |
 | `settings/schema.js:126`（声明行）＋ 116-117／127-130 注释 | vmu-core | ⏳ 待删（**删除顺序**：清单先清，否则门禁把"清单里点名"当"运行时读取"而红） |
 
 - **顺序为什么重要**：`vmu-settings` 的判据是"运行时**读取**的键必须已声明"，而它把**清单值**也算作"读取" ⇒ 先删 schema 会让该门禁红（core 实测并回滚过一次）。

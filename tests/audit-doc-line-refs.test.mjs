@@ -159,27 +159,17 @@ function historicalLines(lines) {
  *   · every row states a reason.
  */
 export const KNOWN_OUT_OF_RANGE = Object.freeze([
-  // ── the `packs/v5r/settings/defaults.js` cluster (the file is 46 lines; six references across five docs point
-  //    past it — the SAME disease as the prompts split, on a different file) ──────────────────────────────────
-  { doc: 'docs/acceptance/04-parity-matrix.md', docLine: 698, ref: 'packs/v5r/settings/defaults.js:82',
-    why: 'points past that file (46 lines) — found by this gate on its first run, outside task-226 write scope' },
-  { doc: 'docs/acceptance/04-parity-matrix.md', docLine: 698, ref: 'defaults.js:91',
-    why: 'the same line also cites the bare basename past the end (46 lines) — outside task-226 write scope' },
-  { doc: 'docs/acceptance/09-goal4-verdict.md', docLine: 170, ref: 'packs/v5r/settings/defaults.js:93',
-    why: 'points past that file (46 lines) — outside task-226 write scope' },
-  { doc: 'docs/acceptance/10-goal3-final.md', docLine: 41, ref: 'packs/v5r/settings/defaults.js:93',
-    why: 'points past that file (46 lines) — outside task-226 write scope' },
-  { doc: 'docs/acceptance/12-goal1-e2e.md', docLine: 343, ref: 'packs/v5r/settings/defaults.js:61',
-    why: 'points past that file (46 lines) — outside task-226 write scope' },
-  { doc: 'docs/acceptance/pack-round6-report.md', docLine: 76, ref: 'packs/v5r/settings/defaults.js:93',
-    why: 'points past that file (46 lines) — outside task-226 write scope' },
-  { doc: 'docs/acceptance/resume-round9-report.md', docLine: 41, ref: 'packs/v5r/settings/defaults.js:61',
-    why: 'points past that file (46 lines) — outside task-226 write scope' },
-  // ── a REVERSED range, cited in two docs (start 3288 > end 3092) ────────────────────────────────────────────
-  { doc: 'docs/acceptance/03-v5r-full-inventory.md', docLine: 488, ref: 'vibe-math-v5r.js:3288-3092',
-    why: 'a REVERSED range in the source inventory (start 3288 > end 3092) — outside task-226 write scope' },
-  { doc: 'docs/acceptance/v5r-inventory-a.md', docLine: 445, ref: 'vibe-math-v5r.js:3288-3092',
-    why: 'the same reversed range in the sibling inventory — outside task-226 write scope' },
+  // ★ EMPTIED by task-233 (round 10). Every one of the nine rows this gate found on its first run has been
+  // re-anchored by PHRASE, not by offset:
+  //   · the `packs/v5r/settings/defaults.js` cluster (7 refs across 6 docs) - that file was SPLIT by task-201 and
+  //     now derives its 43 values from `./defaults.json`, so the old line numbers are PRE-SPLIT coordinates. Each
+  //     site now cites the modern anchor (`defaults.json:27` for the projections, `:42` for `vmu.ballot.reopenFloor`)
+  //     and carries the word `pre-split` on the line, which is the marker this gate accepts for a historical claim.
+  //     `10-goal3-final.md:41` is the one where NO modern anchor exists: the orphan key it names
+  //     (`vmu.meetings.reconsiderFloor`) was DELETED, so its coordinate stays and says so.
+  //   · the two REVERSED ranges (`vibe-math-v5r.js:3288-3092`) resolve by phrase to `:1066` (the default),
+  //     `:4018` (the sentence a member reads) and `:9555` (where the switch is judged).
+  // The marker mechanism is documented at HIST_LINE / REANCHOR_HEAD above; rows may be added again with a reason.
 ])
 /**
  * A doc that cites one file several times writes the follow-ups as SHORTHAND on the same line: `f.js:531`, `:564`
@@ -291,8 +281,14 @@ const staleRows = KNOWN_OUT_OF_RANGE.filter((k) => !bad.some((b) => b.doc === k.
 ok(fresh.length === 0,
   '★ no OUT-OF-RANGE reference exists that is not on the named backlog (' + bad.length + ' out-of-range in total, ' + KNOWN_OUT_OF_RANGE.length + ' recorded)',
   fresh.slice(0, 25))
-ok(KNOWN_OUT_OF_RANGE.length > 0 && KNOWN_OUT_OF_RANGE.every((k) => typeof k.why === 'string' && k.why.length > 20),
-  '★ every backlog row states WHY it is recorded (a bare name would be a silencing device)', KNOWN_OUT_OF_RANGE)
+// ★ task-233 (round 10): the `length > 0` clause is REMOVED. It made the success state unreachable - the assertion
+// below requires a FIXED reference to have its row deleted, so once all nine rows were re-anchored the table MUST be
+// empty, and `length > 0` then failed the very run that fixed them. An empty backlog is the goal, not a defect. What
+// this assertion still guards is that no row is ever a bare name (a silencing device), which `every` enforces for any
+// row added later; the other two assertions keep the list honest in both directions (nothing unrecorded, nothing stale).
+ok(KNOWN_OUT_OF_RANGE.every((k) => typeof k.why === 'string' && k.why.length > 20),
+  '★ every backlog row states WHY it is recorded (a bare name would be a silencing device; an EMPTY list means nothing is owed)',
+  KNOWN_OUT_OF_RANGE)
 ok(staleRows.length === 0,
   '★ every backlog row is STILL violated — a fixed reference must have its row deleted in the same change, so the list cannot go stale or grow into a dumping ground',
   staleRows)

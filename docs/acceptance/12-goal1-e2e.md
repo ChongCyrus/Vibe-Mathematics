@@ -340,7 +340,7 @@ node tests/vmu-resume-e2e.test.mjs --self-probe   # ⇒ === VMU GOAL1 E2E SELF-P
 
 ### 6.5（Round 9 / B）**"声明为投影"不等于"有人写它"**：装配的 `methodsOf` 让写穿永不触发（`kernel/index.js`）
 
-- **症状**：`packs/v5r/settings/defaults.js:61` 把 `members/tasks/meetings/ballots/budget/phase/work/chat/panel/human` 声明为投影；`human` 无条件挂、`tasks` 有方法列表，**其余 state 面在 `methodsOf` 里没有条目** ⇒ `methods: methodsOf[face] || []` 传了空数组 ⇒ `attachProjection` **一个方法都没包裹** ⇒ 写穿 `after` **永不触发** ⇒ 这些键**从未被写过**（钻取 `11c` 实测：开了两个会、`settle()` 之后 `meetings` 键仍是 store 的 `[]` 种子）。
+- **症状**：`packs/v5r/settings/defaults.json:27`（pre-split `defaults.js:61`）把 `members/tasks/meetings/ballots/budget/phase/work/chat/panel/human` 声明为投影；`human` 无条件挂、`tasks` 有方法列表，**其余 state 面在 `methodsOf` 里没有条目** ⇒ `methods: methodsOf[face] || []` 传了空数组 ⇒ `attachProjection` **一个方法都没包裹** ⇒ 写穿 `after` **永不触发** ⇒ 这些键**从未被写过**（钻取 `11c` 实测：开了两个会、`settle()` 之后 `meetings` 键仍是 store 的 `[]` 种子）。
 - **为什么"退出 flush 落地"救不了它**：`flushAll()` 按契约只刷 `mode==='journal'`，state 键具名进 `skipped[]`（`11d` 实测）。
 - **修法与证据**：同一面、同一套接缝，**只把方法列表填上**（`['open','close','attend','motion']`）⇒ 信封落地、重启后两个会一起回来（`11e`/`11f`）。⇒ **Round 6 的"多实例注册表未做"可以改判**：机制不需要（集合面就是注册表），缺的是**装配的方法列表**。
 - **观察形态**：`11c`/`11d` 是**自适应探针**——core 修好 `methodsOf` 后，同一次 boot 会自动翻成 "CLOSED: …now DOES write through"，所以修复不会留下一条误导的红。

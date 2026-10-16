@@ -102,7 +102,7 @@ export function scanSchema(text) {
 // scale of the debt honestly instead of being toothless, and it does not pretend 635 keys were reviewed one by one.
 // This number may SHRINK (fix a default, or annotate a key that really is a capability ⇒ lower it) and must NEVER
 // GROW: a new institution-shaped default arriving without the annotation raises the count and this assertion goes RED.
-const KNOWN_UNMARKED_COUNT = 635
+const KNOWN_UNMARKED_COUNT = 634
 {
   const { keyCount, nonNeutral, unmarked } = scanSchema(readFileSync(SCHEMA, 'utf8'))
   const names = unmarked.map((r) => r.key).sort()

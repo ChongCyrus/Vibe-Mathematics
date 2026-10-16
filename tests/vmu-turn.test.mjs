@@ -444,8 +444,27 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   }).join('\n')
   const acadOrig = originalOf('acad')
   const resOrig = originalOf('r-1')
+  // ★★ PREMISE FIX (round 9 · task-231): THE ORIGINAL HAS THREE ROLE OUTPUTS, NOT TWO. `charterFor` branches on
+  // `kind` three ways - temp (`vibe-math-v5r.js:3172`), academician (`:3178`), otherwise researcher (`:3188`) - and
+  // separately on whether a leader is on staff. The persona capture above models acad/r-1 ONLY, so a block derived
+  // from the TEMP branch had no baseline while the old code compared it against `acadOrig` - which by construction
+  // can never contain a temp sentence (measured: `v5r-charter-roster-temp/with-leader` was the one failure).
+  // The DELIVERED-PROMPT capture carries a charter per (kind, owner): founding(acad,r-1,r-2,r-3),
+  // founding-temp(t-1), founding-leaderless(r-1,r-2), resume(acad,r-1,r-2) - so the baseline is now the UNION of
+  // every captured original charter, and a line counts as missing only when NO captured original contains it.
+  // ★ The ONE combination the capture does not contain (temp × leaderless) is frozen in KNOWN_UNBASELINED below
+  // by exact line and asserted - named, never silently exempted (T71b reddens on any NEW gap).
+  const bcC = JSON.parse(readFileSync(new URL('../prompt-corpus-v5/baseline-context.json', import.meta.url), 'utf8'))
+  const capturedCharters = bcC.prompts.filter((p) => typeof p.charter === 'string').map((p) => p.charter)
+  const tempOrig = (bcC.prompts.find((p) => p.kind === 'founding-temp') || {}).charter || ''
+  const baselineCorpus = [acadOrig, resOrig].concat(capturedCharters)
+  ok(capturedCharters.length >= 8 && tempOrig.length > 0 && tempOrig.includes('临时雇入的协作人员'),
+    'T70b. ★★ NON-EMPTY: the capture really carries a charter per KIND (temp and leaderless included), so the third role output has a real baseline instead of the academician standing in for it',
+    { charters: capturedCharters.length, kinds: [...new Set(bcC.prompts.filter((p) => typeof p.charter === 'string').map((p) => p.kind))], tempChars: tempOrig.length })
   let total = 0
   const missing = []
+  const unbaselined = []
+  const KNOWN_UNBASELINED = ['v5r-charter-roster-temp/leaderless: · 本所当前没有在册院士：你只需向**雇主**负责（它给你派活）。']
   // Scope: the CHARTER blocks are checked against the persona the original really hands out. The reply spec is
   // deliberately EXCLUDED because measuring showed the captured prompt corpus does NOT contain it - only its opening
   // sentence and vote_solved appear - so there is no capture-side baseline for it. That gap is recorded in docs/26
@@ -476,20 +495,32 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   // honest statement remains that these blocks source parity is unverified by this check.
   const PROMPT_AXIS_PREFIXES = ['v5r-reply-', 'v5r-turn-', 'v5r-brief-', 'v5r-proof-', 'v5r-pointer-', 'v5r-feedback-', 'v5r-formal-', 'v5r-meeting-']
   for (const b of CHARTER_BLOCKS.filter((x) => x.derivedFrom !== 'corpus' && !PROMPT_AXIS_PREFIXES.some((p) => String(x.name).startsWith(p)))) {
-    const pairs = b.kind === 'shared' ? [['shared', b.texts.shared, acadOrig], ['shared', b.texts.shared, resOrig]]
-      : (b.kind === 'role' ? [['academician', b.texts.academician, acadOrig], ['researcher', b.texts.researcher, resOrig]]
-        : [['with-leader', b.texts['with-leader'], acadOrig]])
-    for (const [variant, raw, source] of pairs) {
-      if (!raw) continue
+    // Every kind the block DECLARES is checked: role blocks carry academician/researcher/temp, and a
+    // leader-conditional block carries BOTH variants (the old code checked `with-leader` only and tested it
+    // against one member's charter). Unknown kinds fall back to their own text keys, so a new kind is checked
+    // rather than skipped - and if it has no baseline it lands in KNOWN_UNBASELINED (T71b) instead of vanishing.
+    const variants = b.kind === 'shared' ? ['shared']
+      : (b.kind === 'role' ? ['academician', 'researcher', 'temp']
+        : (b.kind === 'leader-conditional' ? ['with-leader', 'leaderless'] : Object.keys(b.texts || {})))
+    for (const variant of variants) {
+      const raw = b.texts && b.texts[variant]
+      if (!raw || typeof raw !== 'string') continue
       for (const line of raw.split('\n').map((l) => l.trim()).filter((l) => l.length > 18 && !l.includes('{{'))) {
         total += 1
-        if (!source.includes(line)) missing.push(b.name + '/' + variant + ': ' + line.slice(0, 40))
+        if (!baselineCorpus.some((s) => s.includes(line))) {
+          const named = b.name + '/' + variant + ': ' + line
+          if (KNOWN_UNBASELINED.includes(named)) unbaselined.push(named)
+          else missing.push(b.name + '/' + variant + ': ' + line.slice(0, 40))
+        }
       }
     }
   }
   ok(total > 30 && missing.length === 0,
-    'T71. **** PARITY WITH THE SOURCE: every fixed prose line of the source-derived charter appears verbatim in the charter the original really hands a member',
-    { checked: total, missing: missing.slice(0, 3) })
+    'T71. **** PARITY WITH THE SOURCE: every fixed prose line of the source-derived charter appears verbatim in the charter the original really hands a member - across EVERY captured kind (temp, leaderless and the rest), not just the academician',
+    { checked: total, missing: missing.slice(0, 3), baselines: baselineCorpus.length, unbaselinedKnown: unbaselined.length })
+  ok(unbaselined.length === KNOWN_UNBASELINED.length,
+    'T71b. ★★ THE ONLY LINES WITH NO CAPTURED BASELINE ARE THE NAMED ONES: the capture has no temp×leaderless charter, so that single line is frozen here - a NEW gap reddens T71b, and a closed gap must shrink the list (no silent exemption)',
+    { found: unbaselined.length, known: KNOWN_UNBASELINED.length, foundList: unbaselined.map((x) => x.slice(0, 70)) })
   const loopC = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_ROLE_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
   const asmC = await loopC.assemble(loopC.open({ member: 'acad', role: 'academician', roleLabel: '院士', phase: 'founding', roster: 'acad、r-1', quorum: 2, round: 1 }).turn)
   ok(asmC.ok === true && asmC.text.includes('【二、通用规章（全员必读）】') && asmC.text.includes('【一、所内编制与你的同事】') && asmC.text.includes('{{') === false,

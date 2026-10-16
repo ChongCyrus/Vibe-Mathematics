@@ -73,7 +73,7 @@
 |---|---|---|
 | `packs/v5r/prompts/v5r-core.js:78`（清单值） | vmu-assistant（Lead 指派） | ✅ 已删 |
 | `packs/institute-min/index.js:51`（清单值）＋ 文件头注释 | **vmu-pack** | ✅ 已删／已改述（改指 `vmu.ballot.reopenFloor`） |
-| `packs/v5r/settings/defaults.js:93`（注释） | **vmu-pack** | ✅ 已改述 |
+| `packs/v5r/settings/defaults.json:42`（pre-split `defaults.js:93` 注释） | **vmu-pack** | ✅ 已改述 |
 | `settings/schema.js:126`（声明行） | vmu-core | ⏳ 待删（顺序：清单先清，否则 `vmu-settings` 把"清单里点名"当"运行时读取"而红） |
 
 - **原意由谁承载**：`vmu.ballot.reopenFloor`（本 pack 声明 `0`；真读者 `kernel/ballotbox.js:22,41,137` 的 `reopen()`）。

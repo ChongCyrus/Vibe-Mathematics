@@ -442,7 +442,7 @@
 - `vibe_v5_pause` **只**改调度与 `pendingWork`（不写 phase）；`vibe_v5_stop` 会中断所有子代理、清 childId、**耐久清 solve 票**、把未收束判定写成"stopped by the office"，并写 `phase:'idle'`（X-8）。
 - `vibe_v5_message`（办公室声音）会 `notePaperConsult('message')` 计入论文征询门（3564–3567）。
 - **办公室不在名册里**（`OFFICE_INBOX='office'` 是伪 id、永不被唤醒），因此"人工干预"的可见面只有 `status().officeRequests`/`report()` 与工具回执（M-A13）。
-- `memberMayRejectAssign`（默认 true）是"人工干预"的对偶：被分派者默认执行但**有权先说明理由**（`docs/01-philosophy.md:206`、`vibe-math-v5r.js:3288–3092` 章程文本）。
+- `memberMayRejectAssign`（默认 true）是"人工干预"的对偶：被分派者默认执行但**有权先说明理由**（`docs/01-philosophy.md:206`、`vibe-math-v5r.js:1066`（默认值）／`:4018`（提示里那句"有异议请填 reject_assign"）／`:9555`（该开关的判定处））。
 
 ---
 

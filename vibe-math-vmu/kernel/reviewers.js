@@ -24,7 +24,12 @@ export const COI_POLICIES = Object.freeze(['deny', 'ask'])
 
 export function createReviewers({ clock = () => 0, log = () => {}, settings = {}, bus = null } = {}) {
   const cfg = () => ({
-    mode: MODES.includes(settings['vmu.review.mode']) ? settings['vmu.review.mode'] : 'single-blind',
+    // ★ P2-01（Round 10）：未声明就是未声明 —— 回落成 `''`（＝"没有层声明它"），**不**回落成 `'single-blind'`。
+    // 那个旧回落把"某机构选择的评审方式"伪装成"没有默认值"，而本键旧 doc 自陈「默认值取自模块源码」⇒ 根本没有独立理由。
+    // ★ 这里刻意用 `''` 而【不是】`null`：`generate-wired-schema.mjs` 会【从模块的读法推断键的类型】，`null` 让它
+    //    无法判型（会把本键写成自信的 `object`，那是假话）；`''` 保持类型为 `string`，也与 schema 的中性 `def: ''` 一致。
+    // `cfg()` 仍然【不抛】（`status()` 要能如实报告"未声明"）；具名拒绝发生在真正需要它的 assign()。
+    mode: MODES.includes(settings['vmu.review.mode']) ? settings['vmu.review.mode'] : '',
     conflictPolicy: ['recuse', 'ask', 'allow'].includes(settings['vmu.review.conflictPolicy']) ? settings['vmu.review.conflictPolicy'] : 'recuse',
     quorum: Number.isInteger(settings['vmu.review.quorum']) && settings['vmu.review.quorum'] >= 0 ? settings['vmu.review.quorum'] : 0,
     maxLoad: Number.isInteger(settings['vmu.reviewers.maxLoad']) && settings['vmu.reviewers.maxLoad'] > 0 ? settings['vmu.reviewers.maxLoad'] : 3,
@@ -92,6 +97,14 @@ export function createReviewers({ clock = () => 0, log = () => {}, settings = {}
         'load=' + load + ', cap=' + c.maxLoad + ' (vmu.reviewers.maxLoad)', { reviewerId: rid, load, cap: c.maxLoad })
     }
     const id = 'ra-' + (assignments.size + 1)
+    // ★ P2-01（Round 10）：在【需要它的地方】具名拒绝。此前这里静默使用模块自带的 `'single-blind'`；
+    // 现在若没有任何层声明 `vmu.review.mode`，我们【拒绝】而不是替机构选一种评审方式。
+    // 用 v5r 的部署不受影响：v5r 在 `packs/v5r/settings/defaults.json` 里声明 `'single-blind'` ⇒ 走的仍是同一分支。
+    if (c.mode === '') {
+      return deny('VMU_REVIEW_MODE_UNDECLARED', 'no review mode is declared, and this kernel will not choose one for you',
+        'declare vmu.review.mode (one of: ' + MODES.join(', ') + ') - a pack or deployment does this; v5r declares single-blind',
+        { declared: settings['vmu.review.mode'] === undefined ? null : settings['vmu.review.mode'] })
+    }
     const blind = c.mode !== 'open'
     const row = { id, reviewerId: rid, submissionId: sid, mode: c.mode, blind, assignedAt: clock(), unboundAt: null, unbindReason: null, unboundBy: null }
     assignments.set(id, row)

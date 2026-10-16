@@ -1297,7 +1297,7 @@ vmu.packs.active: [v5r]
 | `vmu.resource.scheduleMaintenance` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
 | `vmu.resource.waitlistPolicy` | string | `queue` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
 | `vmu.review.conflictPolicy` | string | `recuse` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/reviewers.js` | 已接线（reviewers.js 读取）；默认值取自模块源码 |
-| `vmu.review.mode` | string | `single-blind` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/reviewers.js` | 已接线（reviewers.js 读取）；默认值取自模块源码 |
+| `vmu.review.mode` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/reviewers.js` | 已接线（reviewers.js 读取）；默认值取自模块源码 |
 | `vmu.review.quorum` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/reviewers.js` | 已接线（reviewers.js 读取）；默认值取自模块源码 |
 | `vmu.review.rebuttalRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/records.js` | 已接线（records.js 读取）；默认值取自模块源码 |
 | `vmu.reviewers.acknowledgement` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/reviewers.js` | 已接线（reviewers.js 读取）；默认值取自模块源码 |

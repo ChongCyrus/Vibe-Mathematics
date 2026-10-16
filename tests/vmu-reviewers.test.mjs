@@ -6,9 +6,25 @@ import { createReviewers } from '../vibe-math-vmu/kernel/reviewers.js'
 let pass = 0
 let fail = 0
 const ok = (cond, label, detail) => { if (cond) { pass += 1 } else { fail += 1; console.log('FAIL ' + label + (detail === undefined ? '' : ' -- ' + JSON.stringify(detail))) } }
-const mk = (settings = {}) => createReviewers({ clock: () => 1000, settings })
+// ★ P2-01（Round 10）：内核【不再替你选】评审方式。未声明时 config 的 mode 是 `null`，而真正需要它的 assign()
+// 会【具名拒绝】`VMU_REVIEW_MODE_UNDECLARED` —— 因为"单盲"是一种机构选择，不该由内核从沉默里替人选出来。
+// v5r 在自己的 pack 里声明它（`packs/v5r/settings/defaults.json` 的 `"vmu.review.mode": "single-blind"`），
+// 所以下面这个构造器【显式声明】它：这正是真实部署经 pack 折叠拿到的形状。
+const mk = (settings = {}) => createReviewers({ clock: () => 1000, settings: { 'vmu.review.mode': 'single-blind', ...settings } })
 const INV = { taxIdRef: 'x' }
 void INV
+
+// zero mechanism ── ★ 以及本轮新增的"未声明"真相：静默不得代表某个机构的选择
+{
+  const bare = createReviewers({ clock: () => 1000, settings: {} })
+  ok(bare.status().config.mode === '',
+    '★ 未声明 vmu.review.mode 时 config.mode 是中性空串（不再静默回落成 single-blind）', bare.status().config)
+  bare.register({ id: 'r1' })
+  const refused = bare.assign({ reviewerId: 'r1', submissionId: 's1' })
+  // ★ 本模块的惯例是【具名的 code 回执】（见上面 VMU_COI_VIOLATION 那条），不是抛异常 ⇒ 断言 code 即可。
+  ok(refused && refused.code === 'VMU_REVIEW_MODE_UNDECLARED',
+    '★ 并且真要它干活时【具名拒绝】，而不是替机构挑一种评审方式', refused)
+}
 
 // zero mechanism
 {

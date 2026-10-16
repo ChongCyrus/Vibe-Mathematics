@@ -38,7 +38,7 @@
 
 **读到的装配事实**：`kernel/index.js:941` `methodsOf = { tasks: [...], work: [] }`；`:953` `methods: methodsOf[face] || []`；
 `attachProjectionTo` 的写穿 `after` **只在被包裹的方法里被调用**（`record()` → `runAfter`），而 `flushAll()` 按契约只刷 journal。
-⇒ 对 `members / meetings / ballotbox / budget / chat / panel / minutes`：**`methods` 为空 ⇒ 一个方法都没被包裹 ⇒ 写穿永不触发 ⇒ 这些"已声明为投影"的键从未被写过**（`packs/v5r/settings/defaults.js:61` 声明了 `vmu.resume.projections: ['members','tasks','meetings','ballots','budget','phase','work','chat','panel','human']`）。
+⇒ 对 `members / meetings / ballotbox / budget / chat / panel / minutes`：**`methods` 为空 ⇒ 一个方法都没被包裹 ⇒ 写穿永不触发 ⇒ 这些"已声明为投影"的键从未被写过**（`packs/v5r/settings/defaults.json:27`／pre-split `defaults.js:61` 声明了 `vmu.resume.projections: ['members','tasks','meetings','ballots','budget','phase','work','chat','panel','human']`）。
 
 **钻取实测（§⑨，用真的 `kernel/meetings.js`）**
 - `11a` 按装配原样接上（`methods: []`）仍干净恢复；

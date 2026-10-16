@@ -54,6 +54,7 @@
 
     "vmu.meetings.quoteDepthMax": 3,
     "vmu.meetings.quotesPerMessageMax": 2,
-    "vmu.meetings.unansweredInDenominator": false
+    "vmu.meetings.unansweredInDenominator": false,
+    "vmu.review.mode": "single-blind"
   }
 }
