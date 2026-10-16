@@ -124,6 +124,22 @@ dsh plugin --profile slv-v5r-r15 add <本仓路径>        # ← 用本仓当前
 
 ★★★ **因此：机制上【再无阻塞】** —— ★ **唯一残留的门就是 `T1 全绿`**（★ 用户的目标 ④ 在 ⑤⑥ 之前）✓
 
+### 7f. ★★★ Round 18：**确切的启动命令已查明**
+
+★ **`dsh` 的 CLI 形态（实读 `dsh --help`）**：★ `dsh [--profile] <name> [options] [app-args...]` ✓
+★★ **headless 入口（★ 这就是 SLV 要用的那个）**：★ 帮助逐字 **`dsh headless "run the tests"` ⇒ "answer one task, print the result, and exit"** ✓✓
+★ 其它：★ `dsh web`（启动 web profile）／★ `dsh plugin --profile <name> add <pkg>`（★ 已用过两次）／★ `--from-default-profile <template>`（从模板建 profile）／★ `--patch <path>`（额外 overlay）／★ `--dump-config` ✓
+★ ★ **"arguments after the launcher flags reach the app"** ⇒ ★ 手册 §3 的 **23 个开关是【app 的**开关**】**，★ 放在 profile 名之后 ✓
+
+★★ **因此 Phase 4 的命令是**（★ 待 T1 全绿即执行）：
+```
+dsh --profile slv-v5r-r15 headless --preset vibe-math-v5r \
+    --task-file <任务文件> --jsonl <产物.jsonl> \
+    --timeout <ms> --max-tokens <n> --cwd <纯 ASCII 临时目录>
+```
+★ 并**从 `--no-open` 打印的那行** `dsh web: http://127.0.0.1:<端口>/?token=<TOKEN>` **取 token**（★ 认证已实测：★ `GET /?token=…` ⇒ **303 ＋ Set-Cookie**；★ 之后 `/api/*` 带 cookie **200**、不带 **401**）✓
+★★ **模拟声明**（★ 用户目标 ⑤ 明确要求）⇒ ★ **写进任务文件**（★ 或 `--steer-after` 中途注入）⇒ ★ **并留可检索证据** ✓
+
 ## 8. 没核（★ 与"核了"分开）
 
 1. ★ **手册我读的是 §3–§8 与开头**（★ 逐字读了 §2 铁律、§3 开关表、§4 预算、§5 能力边界、§6 中止、§7 清理、§8 结论写法）⇒ ★ **§1 的隔离命令我只看了标题级**。
