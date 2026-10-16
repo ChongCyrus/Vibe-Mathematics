@@ -73,6 +73,21 @@ try {
   ok(softChild.code === 0 || typeof softChild.code === 'number',
     'the soft sub-check runs independently of the hard one (its own process, its own result)',
     'soft exit=' + softChild.code + ' last=' + JSON.stringify(lastNonEmpty(softChild.err || softChild.out).slice(0, 60)))
+  // (5) ★ CRASH PATH (round 7): when the child cannot even open the file, its LAST line is `Node.js v24.21.0` — a
+  // faithfully-forwarded but USELESS `detail`. Non-empty precondition: the seam must point at a NONEXISTENT path so
+  // the child really exits non-zero. The assertion demands the USEFUL fragment (ENOENT or the path), not mere length.
+  const ghost = join(root, 'this-path-does-not-exist-' + Date.now() + '.md')
+  const crashW = run([WIRE, '--check'], ghost)
+  const crashDiag = (crashW.err.split('\n').filter((l) => /诊断:/.test(l))[0] || '').replace(/^\s*诊断: ?/, '')
+  ok(crashW.code === 2 && crashDiag.length > 0,
+    '★ crash precondition: the seam at a NONEXISTENT path really makes the hard child fail (exit 2 + a 诊断 line)',
+    'exit=' + crashW.code + ' diag=' + JSON.stringify(crashDiag.slice(0, 60)))
+  ok(/ENOENT|this-path-does-not-exist/.test(crashDiag),
+    '★★ the crash `detail` carries the USEFUL fragment (ENOENT / the path), not just the last line the child printed',
+    JSON.stringify(crashDiag.slice(0, 120)))
+  ok(!/^Node\.js v/.test(crashDiag),
+    '★ and it is NOT the useless `Node.js v…` signature line that the plain last-line rule would have forwarded',
+    JSON.stringify(crashDiag.slice(0, 60)))
 } finally {
   rmSync(root, { recursive: true, force: true })
 }

@@ -153,7 +153,14 @@ export async function stalenessReport() {
     if (r.status !== 0) {
       // The sub-generator's OWN last diagnostic line is carried through: without it the reader only saw
       // "stale" even when the real cause was something else (round-6 reviewer's misleading-message finding).
-      const detail = String(r.stderr || r.stdout || '').trim().split('\n').filter(Boolean).slice(-1)[0] || ''
+      // ★ Round 7 (crash-path fix, found by vmu-verify2's independent review): "响了 ≠ 有用". When the child
+      // CRASHES its LAST line is `Node.js v24.21.0` (Node ends a fatal trace that way), so the faithful last-line rule
+      // produced `诊断: Node.js v24.21.0` — correct per the rule, useless to a reader who needs the
+      // `Error: ENOENT … open '<path>'` line. ★ The fix prefers the FIRST `Error:` line and otherwise keeps the
+      // previous rule EXACTLY, so the STALE path's bytes do not move (its assertion pins "parent detail ≡ child's
+      // last line" and stays green). ★ Still faithful, never invented: the reported line is the child's OWN output.
+      const detailLines = String(r.stderr || r.stdout || '').trim().split('\n').filter(Boolean)
+      const detail = detailLines.find((l) => /^\s*Error:/.test(l)) || detailLines.slice(-1)[0] || ''
       out[r.c.kind].push(Object.assign({}, r.c, { detail: detail.slice(0, 200) }))
     }
   }
