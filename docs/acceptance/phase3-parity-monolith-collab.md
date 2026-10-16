@@ -66,6 +66,72 @@
 
 ★ **本轮不写"P-a parity"的结论** —— 判定"行为同不同"必须读 `:589-916`／`:1061-10928` 的**体**，而这两段本轮**未读**（§0）。★ 因此上表只给**候选**，按你的三类词表记 **P-a 候选**而非 P-a。
 
+## 4. ★★ 追加（Round 7/256 · task-222）—— 三段"体"的行级读数
+
+> ★ 本节为**追加**（未重写前文）。★ 读法：按行号切片；**打印/匹配到的行就是读到的行**，未打印的范围**记为未读**。
+
+### 4.0 覆盖更新
+
+| 行范围 | 状态 | 覆盖到的机制 |
+|---|---|---|
+| `:589–916` `applyV5Event` | ★ **部分读**（`:591 :592 :895` ＋ 关键词定界） | 守门、事件名取出、**诊断通道**；★ **事件类型清单未读** |
+| `:917–1034` `makeFileBackend` | ★ **已读**（`:917 :925-926 :940 :946 :957 :975 :976 :1003 :1012-1021`） | ★ **两条失败回调的完整语义** |
+| `:1061–10928` `makeSession` | ★ **部分读（地标）** `:1063…:1605` | **区内结构**（offices/quorum、meeting speaking model、后端装载与失败通道、`commit`） |
+| `:1061–10928` 其余（各实现体） | ★ **未读** | — |
+
+### 4.1 `applyV5Event`（`:589–916`）
+
+| # | 机制 | 单体行范围 | vmu 对应 | 行为同不同 | 判定 |
+|---|---|---|---|---|---|
+| E-1 | ★ **事件守门**：`if (!event \|\| typeof event.type !== 'string') return state` ⇒ 非字符串/缺失事件名 ⇒ **原样返回、不拒（无具名）** | **`:591`** | `kernel/bus.js`＋`kernel/stateversion.js` | ★ **不同**（原版此处静默；vmu 拒名更严） | ★ **P-a**（事件层确有）；★ **"静默 vs 具名"＝差异**（是否缺陷请你裁） |
+| E-2 | ★ **失败进诊断**：`:895` 把 `{at, type, error}` 追加进 `state.diagnostics` ⇒ 事件应用失败**落进可持久化的诊断表** | **`:895`** | `kernel/auditchain.js`／`kernel/report.js` | ★ 同族 | ★ **P-a** |
+| E-3 | ★ **投影版本**在 `initState()` **`:532`**（**不在本段**；本段内 `version/migrat` 零命中） | `:532` | `kernel/stateversion.js` | ★ 未读全 ⇒ 不能判 | ★ **P-a 候选** |
+| E-4 | ★ **事件类型清单**：按 `case '`／`.type === '`／`type: '` 扫 `:589–916` **只命中 3 行** ⇒ 派发**不是 switch/case 字面**、形式未定位 ⇒ ★ **清单未读**（不猜） | `:589–916` | — | ★ 未读 | ★ **未核** |
+
+### 4.2 ★★ `makeFileBackend`（`:917–1034`）：**失败是具名的，且曾把"吞掉"改成"可见"**
+
+| # | 机制 | 单体行范围 | vmu 对应 | 行为同不同 | 判定 |
+|---|---|---|---|---|---|
+| F-1 | ★★ **写失败 ⇒ 具名＋持久＋可见**：`:1020 onWriteFailure(pathOf())` ＋ `:1021 console.error('vibe-math-v5r: state write FAILED for …')`；★ `:1012` 注释逐字 **"MEDIUM 7 (deep review): the write used to be wrapped in `catch { /* best effort */ }`"** ⇒ ★ **原版明确修掉了 best-effort 吞掉** | **`:1012–1021`** | `kernel/stateversion.js`／`kernel/auditchain.js` | ★ **同族（拒绝静默）**；逐字等价未核 | ★★ **P-a** |
+| F-2 | ★ **加载出问题 ⇒ 具名且绝不覆盖**：`:940 'invalid JSON (truncated or corrupt)'`／`:946 'unreadable: '+e.message`；`:925-926` 注释：只有一种情况 licences a later write，**其余（throw／parse error／version mismatch）⇒ `loadOk=false` ⇒ `commit()` 拒绝覆盖** | **`:925–957`** | `kernel/resume.js`／`kernel/replay.js`／`kernel/stateversion.js` | ★ 同族 | ★★ **P-a** |
+| F-3 | ★★ **具名拒码**：`:1003 throw v5err('V5_STATE_NOT_LOADED', …)` ⇒ 未装载时**按码拒绝** | **`:1003`** | vmu 错误码表（`docs/03` 的 `VMU_*`） | ★ 同族 | ★★ **P-a** |
+| F-4 | ★ **诊断通道不反噬**：`:976`／`:1020` 的 `catch (e) { /* diagnostics must not … */ }` ⇒ 报告失败本身失败**不打断链路** | `:976`／`:1020` | `settingsRejected` 记账（本会话读过） | ★ 同族 | ★ **P-a** |
+| F-5 | ★ **"没装载" ≠ "空状态"**：`:975` 注释逐字 *"so `/v5 status` can never silently look like \"nothing here yet\""* | **`:975`** | `status()` 的显式缺失／三态不混（本会话读过） | ★ 同族 | ★ **P-a** |
+
+### 4.3 `makeSession`（`:1061–10928`）：**区内地标（命名行范围索引）**
+
+| 段名 | 起始行 |
+|---|---|
+| ★ **offices / quorum** | **`:1063`** |
+| staffing | `:1074` |
+| context | `:1077` |
+| scheduling | `:1080` |
+| ★ **meeting speaking model（2.9.0）** | **`:1087`** |
+| Lean formal verification | `:1096` |
+| 指针传播开关（S21） | `:1131` |
+| math_computation | `:1137` |
+| final paper | `:1153` |
+| methodology / collaboration feedback | `:1169` |
+| model / tools | `:1175` |
+| ★ **后端装载** | `:1354 installBackend`／`:1363 awaitBackendLoad`／`:1385 ready`／`:1408 ensureLoaded` |
+| ★ **失败汇点** | `:1443 noteLoadProblem`／`:1461 noteWriteProblem`／`:1465 drainLoadNotes` |
+| ★★ **事件提交** | `:1474 commit(type, data)`（喂 `applyV5Event`） |
+| S5／S6 | `:1539`／`:1589`（`grantActive :1605`） |
+
+| # | 机制 | 单体行范围 | vmu 对应 | 行为同不同 | 判定 |
+|---|---|---|---|---|---|
+| S-1 | ★★ **失败管线三段式**：后端回调 → `noteLoadProblem/noteWriteProblem`（`:1443/:1461`）→ `drainLoadNotes`（`:1465`）进诊断 | **`:1443–1465`** | `kernel/index.js` 的 `settingsRejected`＋`status()`（本会话读过） | ★ 同族（失败必留痕且可读） | ★★ **P-a** |
+| S-2 | ★ **事件提交入口** `commit(type, data)` | **`:1474`**（体部分读） | `kernel/bus.js`＋工具面 | ★ 同族；细项未核 | ★ **P-a（入口）/ 细项未核** |
+| S-3 | ★ **会议发言模型段** | **`:1087`**（段注释已读，体未读） | `packs/v5r/middleware/prompt-switches.js`（`MEETING_STATES`＝invited/others/first；★ R6 我刚修过其默认分支） | ★ **未读 ⇒ 不能判** | ★ **未核（下一步优先读 `:1087–1130`）** |
+
+### 4.4 本节新增"没核"
+
+1. ★ **`applyV5Event` 的事件类型清单未读**（扫 `:589–916` 只命中 3 行 ⇒ 派发形式未定位 ⇒ **不猜**）。
+2. ★ **`makeSession` 的实现体未读**（本轮只读段注释与函数签名）⇒ 会议/表决/名册/信箱/通知/恢复的**行为判定一律未做**。
+3. ★ `ballot` 命中 `:645–648`（**落在 `applyV5Event` 内**）⇒ **事件层里有表决相关事件**（存在性）；具体事件名**未核**。
+4. ★ **vmu 侧逐字对应体未读**（`kernel/resume.js`／`replay.js`／`stateversion.js` 我没读）⇒ §4.2 只到**同族**级别。
+5. ★ 只读任务：未改代码／未跑 T1 或全量／未跑 git／未碰 `token.txt`。
+
 ## 3. ★ "没核"
 
 1. ★ **`applyV5Event` 体 `:589–916` 未读** ⇒ 事件类型清单、边界处理、幂等性**全部没核**。
