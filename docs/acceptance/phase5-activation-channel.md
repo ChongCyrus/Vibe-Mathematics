@@ -129,3 +129,70 @@
 ## 9. ★★ 一条**方法论**教训（★ 本轮我自己踩的两次）
 1. ★ **`web` profile 的包是 v2.7.1** ⇒ ★ 在它上面做勘察会得出**关于 v5r/vmu 的错误结论**（★ 我因此误判过"本仓只声明 v2–v5"）⇒ ★★ **勘察必须针对【装成本仓版本的克隆】，或先核对 `compatNote`／版本** ✓
 2. ★ **用转录 grep 数工具面** 会数到**代理在报告里写下的名字**（★ 包括它列为"我没有的"）⇒ ★★ **要读【状态面的 `published`／`registeredTools`】** ✓
+
+---
+
+## 10. ★★★★★ **已证明：pack 激活成功（52 个面）—— 配方定案**
+
+### 10.1 ★★★★ **正确的落点：框架插件那一行自己的 `config`**
+
+★ 在克隆的 `node_modules/dsh-vibe-math/cordis.patch.yml` 里，★ **在 `preset-vibe-math-vmu` 声明的 `plugins:` 列表内、【框架插件那一行】的 `config`** 上写：
+```yaml
+          plugins:
+            …
+            - id: vibe-math-vmu
+              name: 'dsh-vibe-math/vibe-math-vmu/vibe-math-vmu.js'
+              config:
+                vmu:
+                  packs: { active: ['v5r'] }
+                  tools: { faces: ['*'] }
+```
+
+### 10.2 ★★★ **读数（证据）**
+```
+INJECTED vmu config onto the framework plugin row (line 1873): - id: vibe-math-vmu
+              - id: vibe-math-vmu
+                name: 'dsh-vibe-math/vibe-math-vmu/vibe-math-vmu.js'
+                config:
+                  vmu:
+                    packs: { active: ['v5r'] }
+                    tools: { faces: ['*'] }
+RESULT preset=vibe-math-vmu exit=0 done=True capHit=False timeoutOrFatal=False
+```
+★★★ **`vibe_vmu_*` 面从【1 个】变成【52 个】** —— ★ 含 `vibe_vmu_pack`／`vibe_vmu_charter`／`vibe_vmu_conference`／`vibe_vmu_meeting`／`vibe_vmu_minutes`／`vibe_vmu_board`／`vibe_vmu_task`／`vibe_vmu_bidding`／`vibe_vmu_reviewers`／`vibe_vmu_publication`／`vibe_vmu_arbitration`／`vibe_vmu_recruit`／`vibe_vmu_turn`／`vibe_vmu_wait` … ✓✓
+⇒ ★★ **即：vmu ＋ v5r 整合包的【完整面】真的被发布了** ✓ —— ★ 这是 Phase 5 的机制攻关**跨过的最大一道门槛** ✓
+
+### 10.3 ★★ 为什么前面五次都不行（★ 一句话）
+★ 入口读的是 **`apply(ctx, config)` 里那个 `config`**（`vibe-math-vmu.js:135-137`）⇒ ★★ **只有【框架插件那一行】的 `config` 会变成它** ✓；
+★ 而 preset **声明行**的 `config` 走的是 `agentPresets.register(config)`（`build-preset-rows.mjs:8-9`）⇒ ★ **永远到不了入口** ✓；
+★ 而 `vibe_vmu_pack` 的发布条件就是 `03-interface-contract.md:151`：★ **`config.packs` 或 `vmu.packs.active` 非空，否则不出现** ✓
+
+## 11. ★★★ 新的、也是最后的机械阻塞：**provider 的 adapter 没注册**
+
+★ **用户的硬性要求**：★ **真机实测必须用 `commandcode` 的 `deepseek/deepseek-v4.1-flash`，★ 不用 deepseek 官方的** ✓
+★ 我按此设了 `agent-default-model` ⇒ ★ 请求头逐字：★ `{"config":{"provider":"commandcode","model":"deepseek/deepseek-…"}` ✓
+★★★ **但每一轮都以错误收束**：
+```
+{"type":"turn/end","seq":16,"data":{"turn":1,"reason":{"kind":"error",
+ "error":{"message":"no adapter registered fo…"}}}}
+```
+★ 症状：★ **`running:false`、`totalTokens: 0` 一直持续到超时**（★ `durationSec: 1801`）⇒ ★★ **模型【从未被调用】** ✓
+
+### 11.1 ★★★ 根因（★ 两处证据互相印证）
+**（a）它是【bundle】，不是一行。** ★ 包自己的 `cordis.patch.yml` 表头逐字：
+> ★ **`# dsh-commandcode-provider bundle layer.`**
+> ★ **`# One plugin row: registers the commandcode provider route and its Models-page card.`**
+> ★ **`# name must be the FULL package specifier as installed in the profile node_modules: the loader imports it as a module and pnpm links packages by their true (scoped) name, so a bare dsh-commandcode-provider here fails to resolve (ERR_MODULE_NOT_FOUND) and crashes the app on boot.`**
+**（b）而两个 profile 的 bundle 列表不同**：
+| profile | bundles |
+|---|---|
+| **desktop** | `[…, "dsh-opencode-go", "@deepseek-ai/dsh-experimental-agent-team-profile", "@mars-sea/dsh-commandcode-provider", "dsh-ops"]` |
+| **web（★ 我的克隆源）** | `["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dshmarket", "dsh-image-gen", "dsh-vibe-math"]` |
+⇒ ★★★ **`web` profile 【没有】那个 bundle** ⇒ ★★ **provider 路由从未注册** ⇒ ★ **`no adapter registered`** ✓
+
+### 11.2 ★ 修法（★ 下一轮执行）
+★ **把 `@mars-sea/dsh-commandcode-provider` 加进【克隆的 `dsh.profile.bundles`】**（★ 克隆的 `package.json`）＋ ★ **把包放进克隆的 `node_modules`**（★ 已可从 desktop 复制；★ 但**bundle 机制**才是注册路由的那条路）✓
+★ ★ 注：★ 我此前**只加了 `llm-commandcode` 行** ⇒ ★ **不足以注册路由** ✓
+
+## 12. ★★ 一条**我自己的**量具缺陷（★ 顺带发现，需修）
+★ 我的分类器对那次 30 分钟的运行报了 **`timeoutOrFatal=False`**，★ **而 `durationSec: 1801` 明明就是【打满超时】** ⇒ ★★ **分类器漏判了"零 token 打满超时"这种情形** ✓ —— ★ **它对"运行到超时但未触发 timeout 步骤"的情况看不见** ✓ ⇒ ★ **应把 `durationSec ≈ TimeoutSec` 且 `totalTokens == 0` 也判为 NON-RESULT** ✓
