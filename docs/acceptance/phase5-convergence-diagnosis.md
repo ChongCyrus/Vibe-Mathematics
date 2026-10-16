@@ -291,3 +291,50 @@ closureVote 最终态：cast:false, for:[], against:[], missing:["m2","m3"], eli
 2. ★★★ **`deliver` seam 的 `extract`**：★ `deliverViaSubagents(subagents, extract)` 的 `extract` **决定从哪里取回复**（★ 内置顺序 `reply` → `text` ✓）⇒ ★ **若取错了位置，★ 回复就可能是空的或散文** ✓✓ —— ★ **这是最可疑的一处** ✓
 3. ★★ **成员提示词里是否真的含【字段说明】**：★ 提示词由 `vmu.prompt` 管道拼装 ⇒ ★ **应验证成员拿到的提示词文本里确实有那一段** ✓
 ★ **这三条都属于【可查的观测】**，★ 而不是猜测 ✓
+
+---
+
+## 13. ★★★★★★★★ Round 59：**不是"代理不肯投票" —— ★ 是【成员回合真的抛异常】了**
+
+### 13.1 ★★★★★★★ 决定性证据：★ turn 面的回执是 `ok:false` ＋ 一条 TypeError
+★ 转录里逐字（★ 33 次 ✓）：
+```json
+arguments: {"op": "step", "phase": "founding", "why": "zero-state walkthrough: seat exists, first round"}
+result:    {"ok":false,"message":"Cannot read properties of undefined (reading 'id')","receipt":null}
+```
+⇒ ★★★★★★ **即**：★ **成员回合【抛异常】了** ✓✓ —— ★ **所以：没有回复可解析 ⇒ 没有 `vote_solved` ⇒ `missing` 永远填不满** ✓✓✓
+★★ **而"为什么"从"代理不肯投票"变成了【一个真实的框架 bug】** ✓✓
+
+### 13.2 ★★★★★ 定位：★ 那是 `step` 自己的 catch
+★ **`kernel/turn/index.js:760-768`** 逐字：
+```js
+const step = async ({ members = [], … } = {}) => {
+  const spec = nextTurn({ members, … })
+  if (!spec) return { ok: true, receipt: null, stopped: 'no-members' }   // ← 合法的空转
+  try { const r = await run({ ...spec, round: turns.size + 1 }) … }
+  catch (e) { return { ok: false, code: e && e.code, message: String(e.message), receipt: null } }  // ← ★ 正是观测到的形状
+}
+```
+⇒ ★★★★ **回执形状（★ `receipt: null`、★ 无 `receipts`）★ 唯一匹配的就是这个 catch** ✓✓
+⇒ ★★★★★ **所以：★ `spec` 【非空】（★ 已经选出了成员）★ 而 `run(...)` 【抛了】** ✓✓ —— ★ **即：★ 人对上了，★ 而回合本身炸了** ✓✓
+★ **并且**：★ **打包的 tarball 与 HEAD 【逐字节相同】**（★ 哈希相等 ✓）⇒ ★ **运行的就是这份代码，★ 不是别的构建** ✓
+
+### 13.3 ★★★ 已排除的候选（★ 逐个自读过）
+| ★ 候选 | ★ 结论 |
+|---|---|
+| ★ `nextTurn` 的 `pick.id`（★ `:720`） | ★ **不可能**：★ `list.length === 0` 时提前 `return null`；★ `round-robin` 用下标索引非空数组；★ `least-recent` 的 `find` 在计数全为 0 时必然命中 ✓ |
+| ★ `open` 的 `turn.member`（★ `:363`） | ★ **不可能**：★ `member` 已在校验里挡掉非字符串/空串 ✓ |
+| ★ `charterMemberBindings`（★ `v5r-charter.js:63`） | ★ **已被守卫**：★ `Array.isArray` ＋ `m && m.id !== undefined` ✓ |
+| ★ `grant.js:101`／`kernel/index.js:829` | ★ **均已守卫** ✓ |
+| ★ 打包差异 | ★ **排除**：★ 哈希与 HEAD 相同 ✓ |
+⇒ ★★★ **所以抛出点落在【我已读的那些点之外】—— ★ 更可能在 `assemble`（★ 提示词管道）★ 或 `deliverTurn` 的交付接缝里** ✓✓
+
+### 13.4 ★★★ 而这也解释了此前所有"同一状态"的观测
+★ `closureVote` 一直是 `cast:false, for:[], against:[], missing:[...]` ⇒ ★★ **因为它【从来没有得到过一份回复】** ✓✓
+★★ **而谓词本身【是对的】**：★ 本地探针显示 ★ `eligible: ["m1"]`／★ `missing: ["m1"]`／★ 投票后 `cast` 会翻转 ✓✓
+⇒ ★★★ **即：★ 这一轮把整个问题从"代理行为"重新归类为【一个框架异常】** ✓✓ —— ★ **而这是可修、★ 可测、★ 可复现的** ✓✓
+
+### 13.5 ★★ 本轮未改代码（★ 如实说明）
+★ **我花了太多轮在复现上**：★ 本地探针（★ 空名册、★ 有成员、★ 有空转）**都返回了【正确的具名拒】而不是这个 TypeError** ⇒ ★★ **因为本地探针没有装【交付接缝】** ✓
+★★ **下一批的正确起点**：★ **用【真实 preset 的装配】构造 kernel**（★ 或直接给 `createTurnOrchestrator` 传 `deliver` ✓），★ **然后驱动一个回合 —— 抛出点会自己报出栈** ✓✓
+★ **以及**：★ **转录里【没有栈】** ⇒ ★ **因为 `step` 的 catch 【吞掉了栈】** ✓ ⇒ ★★ **建议：★ catch 里保留 `e.stack` 的一段到回执里**（★ 这正是"不可诊断"的根源之一 ✓）✓
