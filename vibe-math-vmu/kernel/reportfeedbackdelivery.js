@@ -15,17 +15,23 @@
 //   · otherwise                             -> `delivered:true`, `registered:true`.
 //
 // WHAT IT DOES NOT OWN (named, not implied).
-//   · it does NOT read settings. The caller passes the ASSEMBLED face's status, so the effective values (schema
-//     defaults applied) come from the one place that already computed them, rather than a second read of raw settings.
+//   · it does NOT read the settings itself. ★ THE CALLER READS THEM AND PASSES THEM IN, AND THAT IS A CORRECTION, NOT A
+//     PREFERENCE. The first version derived the switch from the report face's OWN RECEIPT - and that receipt is produced
+//     by asking the provider this very state is handed back through, so the delivery was reading a value it had itself
+//     produced: it saw an empty receipt, concluded "off", and wrote "off" back, pinning the switch shut while every
+//     suite stayed green. The caller now reads the kernel's RESOLVED settings, a source that owes nothing to the receipt.
 //   · it does NOT decide the position of the entry: the order is `REPORT_FEEDBACK_CONTEXT_ORDER`, an explicit finite
 //     number chosen in `kernel/reportfeedback.js` because the host takes the order FROM THE CALLER.
 //   · it does NOT deliver policy text. The payload is a RUNTIME SNAPSHOT - counts and the audience - and it says in
 //     words that it is a delivery notice and not an instruction. Writing feedback as policy would re-pollute the very
 //     distinction the behaviour experiments separated, which is why the dynamic-context channel was chosen at all.
-//   · it does NOT survive a `null` context: a missing host service is a named failure, never a silent no-op.
+//   · it does NOT survive a missing host service as silence: that is a NAMED failure. A service that cannot be reached
+//     and a switch that is genuinely off must never be indistinguishable.
 //
-// ZERO MECHANISM: one exported function taking its dependencies explicitly (`ctx`, `effect`, `status`) - no `create*`
-// factory, no service, nothing to probe. The zero-mechanism matrix therefore registers this module `EXPECT_NA`.
+// ZERO MECHANISM: two exported functions, both taking their dependencies explicitly - `deliverReportFeedbackFrom` (reads
+// the assembled kernel and hands back the state; the entry's one line, because its 1200-line budget is counted by
+// `split('\n')`) and `deliverReportFeedback` (the delivery itself, `{ ctx, effect, status, enabled, audience }`) - no
+// `create*` factory, no service, nothing to probe. The matrix therefore registers this module `EXPECT_NA`.
 import { REPORT_FEEDBACK_CONTEXT_NAME, REPORT_FEEDBACK_CONTEXT_ORDER, REPORT_FEEDBACK_WHAT_AUDIENCE, REPORT_FEEDBACK_WHAT_CONTEXT } from './reportfeedback.js'
 
 /** The code reused for every "the host could not take it" outcome. Already registered: nothing new is invented here. */
@@ -91,16 +97,41 @@ export function deliverReportFeedback({ ctx = null, effect = null, status = null
 
   let host = null
   let accessFailed = null
-  try { host = ctx && ctx.systemPrompt ? ctx.systemPrompt : null } catch (e) { accessFailed = e }
+  // ★ READ THE SERVICE WITHOUT REQUIRING IT (the same correction as the entry): `ctx.get(...)` is documented as reading
+  // a service WITHOUT the inject requirement and answers `undefined` when it is not provided, where a property access
+  // would THROW. The try/catch stays because the no-throw guarantee is cordis's, not every host's.
+  //
+  // ★ AND THE TWO FAILURES MUST STAY TELLABLE APART, because they mean different things to whoever reads the receipt:
+  // the service was NOT OBTAINED (nothing was provided - this branch), versus OBTAINED BUT THE CALL WAS REFUSED (the
+  // service is there and refuses this caller - the final catch below). They carry different `reason` strings for that
+  // purpose. Neither of them means "the model chose not to use the channel".
+  try {
+    // ★ BOTH HOST FORMS, `get` FIRST AND THE PROPERTY AS FALLBACK. Reading only through `get` would kill this channel on
+    // a host that exposes the service as a property and implements no `get` - measured, not hypothesised. The property
+    // form is the one that THROWS when the service was never injected, so the try/catch stays.
+    if (ctx && typeof ctx.get === 'function') host = ctx.get('systemPrompt')
+    if (!host) host = ctx && ctx.systemPrompt ? ctx.systemPrompt : null
+  } catch (e) { accessFailed = e }
   if (accessFailed) {
-    const out = named('systemPrompt.context', 'the host systemPrompt service is NOT reachable (not injected?)', accessFailed)
+    // THE READ ITSELF THREW: not the same as "no service", so it gets its own `what` and carries the stack.
+    const out = named('systemPrompt', 'the host systemPrompt service could not be READ (not injected?)', accessFailed)
     complain(out.reason, accessFailed)
     return out
   }
+  if (!host) {
+    // ★ `ctx.get` ANSWERED `undefined`, AND THAT AMBIGUITY BELONGS TO THE API: it means "never provided" OR "provided but
+    // its providing fiber is not currently active", and no caller can tell those two apart. So the reason names BOTH
+    // possibilities. Saying "the host has no systemPrompt.context()" here would be a FALSE statement about the host -
+    // and a receipt that is named but untrue is worse than one that admits it cannot tell which of two things happened.
+    const out = named('systemPrompt', 'no host systemPrompt service was obtained: either none is provided, or one is provided but its providing fiber is not currently active (ctx.get cannot distinguish these)')
+    complain(out.reason, null)
+    return out
+  }
   // The prompt-section path tests `.section` only, and the service may carry `.context` without it, so the capability
-  // this call needs is checked HERE, by name, rather than inferred from a sibling method.
-  if (!host || typeof host.context !== 'function') {
-    const out = named('systemPrompt.context', 'the host exposes no systemPrompt.context() to deliver report feedback')
+  // this call needs is checked HERE, by name, rather than inferred from a sibling method. ★ THIS IS THE ONLY BRANCH THAT
+  // MAY HONESTLY CLAIM THE HOST LACKS `.context`, because it is the only one holding a service to inspect.
+  if (typeof host.context !== 'function') {
+    const out = named('systemPrompt.context', 'the host provided a systemPrompt service that carries no .context() to deliver report feedback')
     complain(out.reason, null)
     return out
   }

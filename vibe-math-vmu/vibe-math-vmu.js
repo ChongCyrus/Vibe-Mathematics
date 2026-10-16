@@ -806,7 +806,11 @@ export function apply(ctx, config = {}) {
   if (effectivePrompts.length > 0) {
     let systemPrompt = null
     try {
-      systemPrompt = ctx && ctx.systemPrompt ? ctx.systemPrompt : null
+      // ★ TWO HOST FORMS, BOTH SUPPORTED - trying only one is a measured bug: `ctx.get` reads WITHOUT the inject
+      // requirement this plugin deliberately lacks (so the property access THROWS), but a host may expose the service as
+      // a plain property and implement no `get` - reading only through `get` silently killed this channel there (0 sections).
+      if (ctx && typeof ctx.get === 'function') systemPrompt = ctx.get('systemPrompt')
+      if (!systemPrompt) systemPrompt = ctx && ctx.systemPrompt ? ctx.systemPrompt : null
     } catch (e) {
       promptSectionState = { registered: false, code: 'VMU_EXTERNAL_UNAVAILABLE', what: 'systemPrompt',
         reason: String((e && e.message) || e), stack: String((e && e.stack) || '') }
