@@ -81,13 +81,16 @@ export function decideSections({ settings = {}, turn = {} } = {}) {
 
   // (3) The meeting speaker states: exactly one inside the meeting phase, none outside it, and an
   // unrecognised state is refused rather than defaulted.
-  // ★ task-209 (P4): THE MEETING STATE NEVER LEAVES THE PROMPT SILENT. It used to: an absent `turn.meetingState`
-  // disabled all `v5r-meeting-*` sections, and the ORIGINAL had no such state — it ALWAYS injected a branch, whose
-  // else case is "you are the first speaker" (`vibe-math-v5r.js:4145`). So an unset state now means exactly that
-  // else branch (`first`), which is also the safe reading: a member opening a meeting IS the first speaker until the
-  // driver says otherwise. Naming it stays the DRIVER's job for the other two states (`invited`/`others`) and an
-  // UNRECOGNISED name is still refused below rather than defaulted.
-  const named = turn.meetingState === undefined || turn.meetingState === null ? 'first' : turn.meetingState
+  // ★ task-209 (P4) IS REVERTED, BY LEAD RULING, AND THE REASON IS THE PHILOSOPHY RATHER THAN TASTE. It defaulted an
+  // absent `turn.meetingState` to `first`, on the grounds that the original always injected a branch. But that else case
+  // was a fallback for the ORIGINAL'S OWN caller, which always supplied a state - and in vmu the caller is a DECLARER, for
+  // whom "no state" is a legitimate declaration meaning "this is not a meeting-speaking turn". Inferring "you are the first
+  // speaker" from silence puts words in the prompt the caller never asked for, which is precisely what T124 pins and what
+  // the root philosophy forbids (no consumer, no mechanism). BEHAVIOURAL parity is preserved: a caller that means the
+  // first speaker declares `first`. What changes is WHO decides - and the declarer should. Note also that the comment
+  // directly above already stated the contract as "none outside it, and an unrecognised state is refused rather than
+  // defaulted", so the default contradicted this file's own stated rule.
+  const named = turn.meetingState
   const state = turn.phase === 'meeting' ? named : null
   if (state !== null && !MEETING_STATES.some(([key]) => key === state)) {
     errors.push({
