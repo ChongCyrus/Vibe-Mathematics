@@ -13,9 +13,9 @@
 
 | # | 方面 | 原行为（v5r） | 新行为（vmu） | 是否一致 | 判定 |
 |---|---|---|---|---|---|
-| 1 | 顺序与 order 号 | **没有 order 号这个概念**：每次唤醒一个**专用构造函数**，函数体里按固定次序 `L.push(...)`，末尾 `L.join('\n')`（`vibe-math-v5r.js:4054-4082` initial／`:4084-4106` normal／`:4108-4126` checkpoint／`:4128-…` meeting／`:4177-…` verify）；段落顺序＝**代码书写顺序**；`stateBlock`＝`briefBlock`（`:4051-4053`） | **声明式 order ＋ 保留区间**：`ORDER_RANGES`（`kernel/prompt/index.js:24-30`）；缺省 order＝**600**（`:291`）；`range` 由 order 派生（`:241-246`）；`state` 固定 order **0**（`:496`）；装配排序＝`order ↑`，同 order 用 **name 字典序**（`:538`）；运行时实际声明的是**手写 charter**（`order 690–796`，`v5r-blocks-a.js:17…`、`v5r-blocks-b.js:13…` ＋ `v5r-charter.js:72-80` 直接取 `b.order`） | **否（机制不同）** | ★ **不等价但可辩护**：docs/14:488 实测原版**没有任何节装配机制**（`systemPrompt`/`assemble`/`sectionPolicy`/`promptSections`/`composePrompt`/`renderSection` **全 0 命中**）⇒ 两者是"每类一个函数" vs "节流水线"。★ **但本任务只问逻辑，所以下面两条是要害**：见 **P1（顺序倒置）** 与 **P5（order 是手写常量）** |
+| 1 | 顺序与 order 号 | **没有 order 号这个概念**：每次唤醒一个**专用构造函数**，函数体里按固定次序 `L.push(...)`，末尾 `L.join('\n')`（`vibe-math-v5r.js:4054-4082` initial／`:4084-4106` normal／`:4108-4126` checkpoint／`:4128-…` meeting／`:4177-…` verify）；段落顺序＝**代码书写顺序**；`stateBlock`＝`briefBlock`（`:4051-4053`） | **声明式 order ＋ 保留区间**：`ORDER_RANGES`（`kernel/prompt/index.js:24-30`）；缺省 order＝**600**（`:291`）；`range` 由 order 派生（`:241-246`）；`state` 固定 order **0**（`:496`）；装配排序＝`order ↑`，同 order 用 **name 字典序**（`:538`）；运行时实际声明的是**手写 charter**（`order 690–796`，`v5r-blocks-a.js:17…`、`v5r-blocks-b.js:13…` ＋ `v5r-charter.js:108-120` 直接取 `b.order`（`order: b.order` 在 `:110`）） | **否（机制不同）** | ★ **不等价但可辩护**：docs/14:488 实测原版**没有任何节装配机制**（`systemPrompt`/`assemble`/`sectionPolicy`/`promptSections`/`composePrompt`/`renderSection` **全 0 命中**）⇒ 两者是"每类一个函数" vs "节流水线"。★ **但本任务只问逻辑，所以下面两条是要害**：见 **P1（顺序倒置）** 与 **P5（order 是手写常量）** |
 | 2 | 分隔符／拼接方式 | `L.join('\n')`（**单个 `\n`**）；段间空行靠**显式 `L.push('')`**；分隔线是**字面量 `'------------'`**（`:4077`／`:4080`／`:4101`／`:4104`／`:4121-4124`）；标题是**内联字面量**`'【第 N 轮 —— …】'`（`:4086`） | `parts.join('\n\n')`（`:649`），每部件 `'# ' + name + '\n' + text`（`:594`／`:635`／`:642`），末尾 `trimTrailing`（`:64`） | **否（机制不同）** | 见 **P7**：`trimTrailing` 会把**段内** 3+ 连续换行压成 2（`:64`）——原版对空行没有这种归一化 |
-| 3 | 选择条件（角色／阶段／任务绑定、覆盖） | 由**调用方选函数**（wake 类型 → `initialPrompt`/`normalPrompt`/…），函数内 `if` 分支：`member.kind === 'academician' && params.academicianLeads`（`:4090`）、`leanDailyOn()`（`:4095`／`:4116`）、`invited`（`:4135`）、`others.length`（`:4141`／`:4145`） | **四维 scope ＋ 绑定**：`scopeMatches`（`:369-378`）＋ `matchingBindings`（`:381-395`，role<phase<member<task，最具体者胜，同级并列 ⇒ `VMU_PROMPT_BINDING_CONFLICT` `:617-621`）；绑定**替换**段文本（`:604-628`）；覆盖次序 语言级→调用方→声明（`:199-209`）；`state` 不可覆盖（`:591-597`）；`disable`＝零注入（`:589-590`） | **否（机制不同；语义可对上）** | 原版的分支在 vmu 里变成：**charter 块的 `kind`**（`role`／`phase`／`leader-conditional`，`v5r-charter.js:40-60`）＋ **`sectionPolicy` 开关**（`prompt-switches.js:65-115`）。★ 逐维对照见 §1.2 |
+| 3 | 选择条件（角色／阶段／任务绑定、覆盖） | 由**调用方选函数**（wake 类型 → `initialPrompt`/`normalPrompt`/…），函数内 `if` 分支：`member.kind === 'academician' && params.academicianLeads`（`:4090`）、`leanDailyOn()`（`:4095`／`:4116`）、`invited`（`:4135`）、`others.length`（`:4141`／`:4145`） | **四维 scope ＋ 绑定**：`scopeMatches`（`:369-378`）＋ `matchingBindings`（`:381-395`，role<phase<member<task，最具体者胜，同级并列 ⇒ `VMU_PROMPT_BINDING_CONFLICT` `:617-621`）；绑定**替换**段文本（`:604-628`）；覆盖次序 语言级→调用方→声明（`:199-209`）；`state` 不可覆盖（`:591-597`）；`disable`＝零注入（`:589-590`） | **否（机制不同；语义可对上）** | 原版的分支在 vmu 里变成：**charter 块的 `kind`**（`role`／`phase`／`leader-conditional`，块数据见 `v5r-blocks-a.js:50`／`:137`／`:298`；派生绑定与变体见 `v5r-charter.js:40-99`）＋ **`sectionPolicy` 开关**（`prompt-switches.js:65-115`）。★ 逐维对照见 §1.2 |
 | 4 | 段策略层 `prompt-switches.js` ↔ 原版开关映射 | 开关条件**硬编码在回合循环里**（policy 文件头 `prompt-switches.js:5-10` 自陈："The framework's turn loop used to contain, hard-coded, the policy of which prompt sections…"） | **纯函数 `decideSections`**：3 个关断键（`v5r-pointer-contract`／`v5r-turn-resources`／`v5r-feedback-line`，`:25-29`）＋ **恰好一个**回复目录（`:77-80`，默认 `compact`，只有 `'full'` 才切）＋ **恰好一个**会议发言态（`:89-99`，**必须由调用方点名**，缺省＝三个都不注入）＋ **恰好一个**形式化状态行（`:102-112`，默认 `none`，**总是显示**） | **否（机制不同）** | ★ **投递路径已实测存在**：`vibe-math-vmu.js:20` 导入 → `:478` `v5r: { sectionPolicy: V5R_DECIDE_SECTIONS, … }` → `kernel/turn/index.js:386-390` 真调用；`on:` 名字 = 宿主公布的 `prompt/assemble`（`prompt-switches.js:123-128`，含 R544 的"曾用 `turn.assemble` ⇒ 真机上惰性"记录）。★ **两处需注意**：**P6**（原版**没有**这三/二/三/四类开关的一一对应证据，只有"块"）与 **P4**（缺省不点名会议态 ⇒ 三个会议段都不注入，而原版 `meetingPrompt` 必有一个分支） |
 | 5 | 快照／版本行为 | 无快照机制；提示词**每次现场构造**（每个 builder 现算） | `snapshot(scopes)` **逐字节**（`:691-695`）；装配是**纯函数**（同输入⇒同字节，`:4`／`:10`／`:503`）；宿主接缝 `bindToHost`（`:701-711`，缺件具名拒 `VMU_ENGINE_UNAVAILABLE`）；`apiVersion=1`（`:21`）；时间来自注入 `clock`（`:81`，回执 `at` `:663`） | **否（新增能力）** | vmu **多出**快照/审计面（原版没有），属**增益**不是缺口；★ 但快照的是**装配结果**，不是原版那样"每类一函数"的代码路径 |
 | 6 | 硬编码（原版派生 → 新版常量） | — | **运行时声明集：未发现**派生值被写成常量（literal `轮次 N`=0、literal `m=N`=0、literal `有表决权者 N 人`=0；`{{ round }}`=1、`{{ quorum }}`=3）；**语料快照集：66+66 处冻结值仍在**，但**该集未进运行时声明**（见 §3 的 H1／H2） | 见 §3 | 见 §3 逐条 |
@@ -25,7 +25,7 @@
 | 维度 | 原版 v5r（file:line） | 新版 vmu（file:line） |
 |---|---|---|
 | 角色（kind）→ 展示名 | `kindLabel(k)`（`vibe-math-v5r.js:3422`）：`academician→院士`、`researcher→常驻研究员`、否则`临时工` | 变量 `roleLabel`（`kernel/prompt/index.js:50` 白名单）＋ 由**调用方**传入（`kernel/turn/index.js:391`）；★ 语料里 `{{ roleLabel }}` 出现 **0** 次，因为**载入时**才把标题里的 `{{ role }}` 改写成 `{{ roleLabel }}`（`v5r-core.js:60-61`、`:68`） |
-| 起步方向（per-member） | `member.direction`（入职时写入；`initialPrompt` `:4072` 用 `member.direction`） | **按成员 id 的绑定表** `CHARTER_MEMBER_BINDINGS`（`v5r-charter.js:49-55`，键＝`acad`／`r-1`／`r-2`／`r-3`／`t-1`）⇒ **P3／H4** |
+| 起步方向（per-member） | `member.direction`（入职时写入；`initialPrompt` `:4072` 用 `member.direction`） | **按成员 id 的绑定表** `CHARTER_MEMBER_BINDINGS`（`v5r-charter.js:78`，键＝`acad`／`r-1`／`r-2`／`r-3`／`t-1`）⇒ **P3／H4** |
 | 资源/自检行 | `resourceBlock()`（`initialPrompt:4073`、`normalPrompt:4096`） | 段 `v5r-turn-resources`（`v5r-blocks-b.js:30-31`），由 `vmu.turn.selfCheck` 关断（`prompt-switches.js:27`） |
 | 数学可用行 | `mathPushLine(L)`（`:4074`／`:4097`／`:4117`） | **已核，不是缺口**：`v5r-blocks-b.js:263`／`:266`（`math_computation` 指引）、`:581`（"计算证据请引用回执路径…" 含 `{{ setting:vmu.turn.protocolPath }}`） |
 | 论文行 | `paperPushLine(L)`（`:4075`／`:4098`／`:4118`） | **已核，不是缺口**：`LATEX_ENGINE_NOTE`（定义 `v5r-blocks-a.js:1`）由 `v5r-blocks-b.js:436`／`:500` 展开 |
@@ -33,7 +33,7 @@
 | 指针契约 | `pointerContractBlock()`（`:4078`／`:4102`／`:4122`） | 段 `v5r-pointer-contract`（`v5r-blocks-b.js:72-73`，order **721**），由 `vmu.pointer.propagation` 关断（`prompt-switches.js:26`） |
 | 状态块 | `stateBlock(member)`＝`briefBlock`（`:4079`／`:4103`／`:4123`；定义 `:3376-3421`） | 段 `v5r-brief-status`（`v5r-blocks-a.js:503-504`，order **720**）＋ `{{ statusBlock }}` 由回合循环注入（`kernel/turn/index.js:391`；charter 里的引用见 `v5r-blocks-a.js:508`） |
 | 回复目录 | `replySpec(member.kind)`（`:4081`／`:4105`／`:4125`） | 段 `v5r-reply-spec`（order **795**）／`v5r-reply-formal`（**796**）／`v5r-reply-compact`（`prompt-switches.js:32`） |
-| order 值来源 | 无 | `CHARTER_SECTIONS` 取 `b.order`（`v5r-charter.js:74`），**手写常量**；语料段另用 `600 + i`（`v5r-core.js:65`） |
+| order 值来源 | 无 | `CHARTER_SECTIONS` 取 `b.order`（`v5r-charter.js:108`），**手写常量**；语料段另用 `600 + i`（`v5r-core.js:65`） |
 
 ---
 
@@ -63,10 +63,10 @@
 | 排名 | 编号 | 缺陷／差异 | 原版（file:line） | 新版（file:line） | 判定 |
 |---|---|---|---|---|---|
 | 1 | **P1** | **三段的相对次序被反转**：原版 `normalPrompt` 的次序是 **反馈行 → 指针契约 → 状态块**；新 charter 的 order 是 **状态块(720) → 指针契约(721) → 反馈行(722)** | `vibe-math-v5r.js:4099`（feedbackPushLine）→ `:4102`（pointerContractBlock）→ `:4103`（stateBlock） | `v5r-blocks-a.js:503-504`（`v5r-brief-status` order **720**）／`v5r-blocks-b.js:72-73`（`v5r-pointer-contract` **721**）／`v5r-blocks-b.js:94-95`（`v5r-feedback-line` **722**） | **真差异**（机制重写时未对齐次序）。★ 是否升级为缺陷由 Lead 定；我给出双侧 file:line 与 order 号 |
-| 2 | **P2** | **`CHARTER_LEADER_VARIANTS` 声明了但没有消费者** ⇒ `leader-conditional` 块**永远取 `with-leader`**，"本所没有院士"那一支**不可达** | 原版 `charterFor` 按 `acadId` 是否存在选整套句子（docs/audit/source-prompt-coverage.md:33/35 记原版 `:3185-3188`、`:3202-3207`） | 定义 `v5r-charter.js:59-60`；**全仓 `vibe-math-vmu`＋`tests`＋`scripts` 除文档外 0 处引用**；默认解析 `v5r-charter.js:79` `b.texts['with-leader'] \|\| b.texts.researcher` | **真缺口**（且与 `docs/audit/source-prompt-coverage.md` 的"YES (leader-conditional)"**声明不一致**——本仓抓过的同类） |
-| 3 | **P3** | **起步方向按字面成员 id 绑定**：换一套编制 id 就静默拿不到起步方向 | 原版用 `member.direction`（入职时写入）：`vibe-math-v5r.js:4072` | `v5r-charter.js:49-55`（键＝`acad`／`r-1`／`r-2`／`r-3`／`t-1`）⇒ 非匹配者落到默认分支 `v5r-charter.js:79` | **真硬编码**（原版派生 / 新版常量） |
+| 2 | **P2** | **`CHARTER_LEADER_VARIANTS` 声明了但没有消费者** ⇒ `leader-conditional` 块**永远取 `with-leader`**，"本所没有院士"那一支**不可达** | 原版 `charterFor` 按 `acadId` 是否存在选整套句子（docs/audit/source-prompt-coverage.md:33/35 记原版 `:3185-3188`、`:3202-3207`） | 定义 `v5r-charter.js:82`；**全仓 `vibe-math-vmu`＋`tests`＋`scripts` 除文档外 0 处引用**；默认解析 `v5r-charter.js:119` `b.texts['with-leader'] \|\| b.texts.researcher` | **真缺口**（且与 `docs/audit/source-prompt-coverage.md` 的"YES (leader-conditional)"**声明不一致**——本仓抓过的同类） |
+| 3 | **P3** | **起步方向按字面成员 id 绑定**：换一套编制 id 就静默拿不到起步方向 | 原版用 `member.direction`（入职时写入）：`vibe-math-v5r.js:4072` | `v5r-charter.js:78`（键＝`acad`／`r-1`／`r-2`／`r-3`／`t-1`）⇒ 非匹配者落到默认分支 `v5r-charter.js:119` | **真硬编码**（原版派生 / 新版常量） |
 | 4 | **P4** | **会议发言态缺省＝三个段都不注入**，而原版必有一个分支 | `vibe-math-v5r.js:4145`（else 分支＝"你是本次会议的第一位发言者"）；`:4135`（受邀分支） | `prompt-switches.js:89`（`turn.meetingState === undefined ⇒ null`）＋ `:97-99`（三段全 `enabled:false`）；★ 文件自己的注释承认 "the plugin does not"（`:88`） | **真差异**：新版缺省 ≠ 原版必选分支 |
-| 5 | **P5** | **order 号是手写常量、无派生依据**：语料段用 `600+i`（可复算），**charter 段取人手写的 `b.order`**（690–796） | 原版**没有 order 概念** | `v5r-charter.js:74`（`order: b.order`）；值散落于 `v5r-blocks-a.js:18/48/68/101/115/135/153/170/215/296/315/369/391/430/445/466/483/504/523/633/651/664`、`v5r-blocks-b.js:14/31/49/73/95/116/136/148` | **新引入的手写常量**（不是"派生值写成常量"）⇒ 风险＝P1 那一类只能靠人眼发现 |
+| 5 | **P5** | **order 号是手写常量、无派生依据**：语料段用 `600+i`（可复算），**charter 段取人手写的 `b.order`**（690–796） | 原版**没有 order 概念** | `v5r-charter.js:108`（`order: b.order`）；值散落于 `v5r-blocks-a.js:18/48/68/101/115/135/153/170/215/296/315/369/391/430/445/466/483/504/523/633/651/664`、`v5r-blocks-b.js:14/31/49/73/95/116/136/148` | **新引入的手写常量**（不是"派生值写成常量"）⇒ 风险＝P1 那一类只能靠人眼发现 |
 | 6 | **P6** | **段策略层是"按语义重建"而非逐条对照**：四组开关里只有 3 个关断键能对上段名 | 原版**代码证据**我只核到：`formalStatusLine`（`:4353`）＋ `formalOn()` 守卫（`:7001`）＋ `meetingPrompt` 的 `invited`／`others` 分支（`:4135`／`:4141`／`:4145`） | `prompt-switches.js:25-29`（3 关断）／`:32`（2 目录）／`:35-39`（3 会议态）／`:42-47`（4 形式化） | **映射不可逐条证实**（原版没有"节"这个概念）⇒ 记为**未核清的映射**，不是缺陷 |
 | 7 | **P7** | 段内空行被归一化 | 原版只 `join('\n')`，空行靠显式 `L.push('')` | `kernel/prompt/index.js:64` `trimTrailing`（逐行去尾空白 ＋ **3+ 连续换行→2**） | **低风险差异**（只影响捕获文本的二次加工） |
 
@@ -83,8 +83,8 @@
 | H1 | 语料 **66×** 字面 `轮次 N`（例 `轮次 6`／`轮次 10`／`轮次 12`） | `packs/v5r/prompts/v5r-prompts.js:51`（`轮次 6`）、`:52`（`轮次 10`）、`:53`（`轮次 12`）、`:54`（`轮次 11`）、`:55`（`轮次 9`）… 共 **66** 处 | `rounds.get(member.id)`（`vibe-math-v5r.js:3382`） | ★ **非运行时**：该集**未进** `PACK.sections`（`v5r-core.js:281` 取 `v5rCharterSectionsGlobal()`，`:339`；ROUND 374 注释 `:273-278`／`:324-326` 明说捕获快照不得作为运行时节）⇒ **记录型**，不算活硬编码。**但** `v5r-core.js:369-370` 仍导出 `v5rTurnSections` 作为"host 应交给管线的集合" ⇒ **接口一旦被接上，66 个冻结轮次会立即泄漏** |
 | H2 | 语料 **66×** 字面 `有表决权者 N 人` | 同上各条 | `voterCount()`（`vibe-math-v5r.js:3383`） | 同 H1（非运行时） |
 | H3 | 语料元数据 `charterChars`（797／799／794／795／746…）与 `owner`（`acad`／`r-1`／`t-1`…） | `v5r-prompts.js:50` 起每条 | 原版现场派生 | `git grep charterChars` 只命中**生成器／审计／文档** ⇒ 运行时未读；`owner` 未穷尽（见 §4） |
-| H4 | `CHARTER_MEMBER_BINDINGS` 的 **5 个字面成员 id** | `v5r-charter.js:49-55` | `member.direction`（`vibe-math-v5r.js:4072`） | ★ **真硬编码**（＝P3） |
-| H5 | charter 段的 **order 号**（690–796，含 `600+i` 之外的**全部**） | `v5r-charter.js:74` ＋ blocks 各条 | 原版无 order | ★ **新引入的手写常量**（＝P5）；语料段用 `600+i` 是**可复算**的，charter 段不是 |
+| H4 | `CHARTER_MEMBER_BINDINGS` 的 **5 个字面成员 id** | `v5r-charter.js:78` | `member.direction`（`vibe-math-v5r.js:4072`） | ★ **真硬编码**（＝P3） |
+| H5 | charter 段的 **order 号**（690–796，含 `600+i` 之外的**全部**） | `v5r-charter.js:108` ＋ blocks 各条 | 原版无 order | ★ **新引入的手写常量**（＝P5）；语料段用 `600+i` 是**可复算**的，charter 段不是 |
 | H6 | 5 处字面 `"r-2"` | `v5r-blocks-a.js:531`／`:564`／`:573`／`:575`／`:601` | — | **示例常量**（JSON 回执样例 `{"to":"r-2","text":"…"}`）⇒ 可接受，**不是**派生值 |
 | H7 | `V5R_PHASES` 四阶段字面量 `['heartbeat','paper-write','paper-review','paper-final']` | `packs/v5r/index.js:51` | 原版阶段词表 | pack 自有词汇（框架不该认识 `heartbeat`，注释如此声明）；★ 与原版**阶段集合是否一致未核**（§4） |
 | H8 | glossary 缺省路径 `'vibe-math-vmu/glossary.json'` | `kernel/prompt/index.js:174` | 原版无此概念 | **框架层缺省**，可被 `vmu.prompts.glossary.ontology` 覆盖 ⇒ 记录，不判缺陷 |
@@ -118,7 +118,7 @@
 | R3 | `git grep -n "briefBlock\|initialPrompt\|normalPrompt\|checkpointPrompt\|meetingPrompt\|verifyPrompt" -- vibe-math-v5r/vibe-math-v5r.js` | 0 | 定位原版"每类一个函数"的装配实现（`:3376`／`:4054`／`:4084`／`:4108`／`:4128`／`:4177`） |
 | R4 | 计数脚本（`Select-String -AllMatches`）on `v5r-prompts.js` | 0 | `轮次 \d+`＝**66**、`第 {{ round }} 轮`＝**24**、`{{ statusBlock }}`＝**0**、`有表决权者 \d+ 人`＝**66**、`m={{ quorum }}`＝**66**、`{{ roster }}`＝**66** |
 | R5 | 同一计数 on 运行时声明集（`v5r-charter.js`／`blocks-a`／`blocks-b`／`v5r-assistant.js`） | 0 | literalRound／literalM／literalVoterCount **全 0**；`{{round}}`＝1、`{{quorum}}`＝3 |
-| R6 | `git grep -n "CHARTER_LEADER_VARIANTS\|leader-conditional" -- vibe-math-vmu tests scripts` | 0 | 命中**仅**文档 ＋ 定义（`v5r-charter.js:59-60`）＋ blocks 的 `kind:` ⇒ **无消费者** |
+| R6 | `git grep -n "CHARTER_LEADER_VARIANTS\|leader-conditional" -- vibe-math-vmu tests scripts` | 0 | 命中**仅**文档 ＋ 定义（`v5r-charter.js:82`）＋ blocks 的 `kind:` ⇒ **无消费者** |
 | R7 | `git grep -n "setSectionEnabled" -- vibe-math-vmu` | 0 | 唯一调用点 `kernel/turn/index.js:389`（策略→管线） |
 | R8 | `git grep -n "sectionPolicy" -- vibe-math-vmu` | 0 | 投递链 `vibe-math-vmu.js:20` → `:478` → `kernel/turn/index.js:386-390` |
 
@@ -141,4 +141,33 @@
 | `vibe-math-v5r/vibe-math-v5r.js` 其余 11 000+ 行 | **未读** | 只按 grep 定位 |
 | `vibe-math-vmu/packs/v5r/prompts/v5r-persona.js` | **只计数** | 未逐条读 |
 | `vibe-math-v5r/agent.cordis.yml` | **只按 grep 看过 `persona`／`agent-instructions` 行号** | 未读完 |
+
+---
+
+## 7. Re-anchor log（phase-3, task-226 — 本文件同样被"行号随文件生长/拆分而漂"击中）
+
+BASIS: 全部按**短语/符号**在当前树重测（UTF-8 逐行索引读；未跑 `git`）。文件行数（测点）：`v5r-charter.js` **132**、`v5r-blocks-a.js` **732**、`v5r-blocks-b.js` **704**、`v5r-core.js` **371**、`v5r-persona.js` **219**。
+
+### 7.1 引用重锚（旧 → 新）
+
+| 旧 | 新 | 由什么解析 |
+|---|---|---|
+| `v5r-charter.js:49-55` | `v5r-charter.js:78` | 符号 `CHARTER_MEMBER_BINDINGS`（＝`charterMemberBindings(CHARTER_CORPUS_ROSTER)`；定义 `:63`、语料 roster `:71`） |
+| `v5r-charter.js:59-60` | `v5r-charter.js:82` | 符号 `CHARTER_LEADER_VARIANTS` |
+| `v5r-charter.js:74` | `v5r-charter.js:108` | 符号 `charterSections`（`order: b.order` 在 `:110`；`CHARTER_SECTIONS` 在 `:131`） |
+| `v5r-charter.js:79` | `v5r-charter.js:119` | 短语 `b.texts['with-leader'] \|\| b.texts.researcher`（逐字命中） |
+| `v5r-charter.js:72-80` | `v5r-charter.js:108-120` | 同上（`charterSections` 整个函数体） |
+| `v5r-charter.js:40-60` | `v5r-blocks-a.js:50`／`:137`／`:298` ＋ `v5r-charter.js:40-99` | 块数据里 `kind: 'leader-conditional'` 的三处站点 ＋ 派生绑定/变体 |
+
+### 7.2 ★ 两处**判定**必须随树一起更正（不是行号问题，是结论过期）
+
+1. **P2（`CHARTER_LEADER_VARIANTS` 无消费者 ⇒ leaderless 不可达）—— 已部分过期。** 当前树新增了 `charterSections({ hasLeader })`（`v5r-charter.js:108`）、`CHARTER_LEADERLESS_MISSING_TEXT` 与 `CHARTER_LEADERLESS_OMISSIONS`（`:98-99`）⇒ leaderless 那一支**可由显式参数取到**（不再"不可达"）；但 `charterSections` 在全树**只被调用一次**，即 `CHARTER_SECTIONS = charterSections({ hasLeader: true })`（`:131`）⇒ **没有任何随包调用方会去要 leaderless 集合**，所以"活着的无院士编制仍拿到假设有院士的文本"这半句**仍然成立**。⇒ 正确判定＝**PARTIAL**（可选取、但无随包策略选取），与 `docs/audit/source-prompt-coverage.md` 第 36 行的 PARTIAL 一致。
+2. **P3／H4（"起步方向按字面成员 id 绑定 ⇒ 换一套 id 就**静默**拿不到"）—— "静默"这半句已错。** 当前树是 `charterMemberBindings(members)`（`v5r-charter.js:63`）**读每个成员自己的 `direction`**，缺 `direction` 时给出**具名**文本 `CHARTER_DIRECTION_UNSPECIFIED`（`:62`）⇒ 不再是静默省略。仍然成立的半句：随包默认喂的是**语料 roster**（`CHARTER_CORPUS_ROSTER`，`:71`，在 `:78` 被消费），因此**部署自己的 roster 还没接进来**。⇒ 正确判定＝**PARTIAL**（机制已改为派生＋具名缺省；接线未完成），与 `source-prompt-coverage.md` 第 60 行一致。
+
+### 7.3 找不到的（写明搜过的短语）
+
+- 无新增"找不到"项：本次六个重锚全部由符号或逐字短语命中。
+
+★ 本文件是 `task-226` 修的两份之一；另一份是 `vibe-math-vmu/docs/audit/pack-content-review.md`。**新门 `tests/audit-doc-line-refs.test.mjs` 覆盖的是"行号越界"**；本文件 §7.2 那两处属于"**行号在范围内但文本/结论已变**"⇒ **那道门抓不到**，只能靠这种短语/符号复核（该门在自己的输出里明确写了这条局限）。
+
 
