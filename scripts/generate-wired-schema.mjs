@@ -395,9 +395,20 @@ export function collect() {
     for (const d of out) {
       const prev = byKey.get(d.key)
       if (!prev) { byKey.set(d.key, d); continue }
-      if ((prev.literal === null || prev.literal === undefined) && d.literal !== null && d.literal !== undefined) byKey.set(d.key, d)
-      else if (prev.literal !== null && prev.literal !== undefined && (d.literal === null || d.literal === undefined)) continue
-      else continue
+      // ★ A DUPLICATE IS FOUND. TWO THINGS MUST HAPPEN, AND THE SECOND ONE IS EASY TO FORGET.
+      // (1) The block keeps ONE row, and the row that CARRIES THE LITERAL is the one that knows the default, so it
+      //     wins; the module that only READS the key (obtaining the default by import) does not contribute a row.
+      // (2) But the reading module still READS the key, and the wired-union gate checks each module's reads against
+      //     the keys emitted FOR THAT MODULE plus `preexisting`. Dropping its row without recording it left
+      //     `meetings.js` reading keys nothing could account for - measured: a page of VIOLATION lines. So the key is
+      //     pushed into `preexisting`, the same bucket this extractor already uses for keys it deliberately does not
+      //     emit. Note this runs on EVERY duplicate path, not only the one where the earlier row wins: the branch
+      //     structure below has `continue`s, and an appended statement would have been skipped in exactly the branch
+      //     that needed it most.
+      preexisting.push(d.key)
+      const prevHas = prev.literal !== null && prev.literal !== undefined
+      const dHas = d.literal !== null && d.literal !== undefined
+      if (!prevHas && dHas) byKey.set(d.key, d)
     }
     out.length = 0
     out.push(...byKey.values())

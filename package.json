@@ -372,6 +372,7 @@
     "vibe-math-vmu/kernel/mathtools.js",
     "vibe-math-vmu/kernel/projmigrate.js",
     "vibe-math-vmu/kernel/meetings.js",
+    "vibe-math-vmu/kernel/meetings-defaults.js",
     "vibe-math-vmu/kernel/ballotbox.js",
     "vibe-math-vmu/kernel/records.js",
     "vibe-math-vmu/kernel/course.js",
