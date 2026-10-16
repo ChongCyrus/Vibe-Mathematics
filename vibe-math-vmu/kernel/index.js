@@ -2397,6 +2397,17 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       // but NOT to the chair or the temp slot), so hardcoding a name here would invent policy, and counting the whole
       // roster instead of the enfranchised members would leave the chair permanently "missing" and make unanimity
       // UNREACHABLE - which is exactly how a "fix" here could have produced another institute that never closes.
+      // ★★★★★★★ ROUND 78: WHO THE VOTE WAS RECORDED AGAINST, BESIDE WHO WAS ELIGIBLE. A real run supplied replies
+      // carrying a real boolean, and the predicate still reported the members missing - so the next thing to know is
+      // WHERE each reply was recorded. The recorded map names the members the loop holds a judgement for; eligible
+      // names the members the permission test enfranchises; and missing is the difference between them. With all
+      // three side by side, a vote recorded against the wrong member - or against a member who holds no vote - is
+      // visible at a glance instead of being inferred from a boolean.
+      // ROUND 78: the votes the loop actually holds, so WHO was recorded is visible beside who was eligible.
+      const recordedVotes = turn && typeof turn.status === 'function' ? turn.status().closureVoteVotes : null
+      view.closureVoteRecorded = recordedVotes && typeof recordedVotes.forEach === 'function'
+        ? Object.fromEntries([...recordedVotes.entries()])
+        : {}
       view.closureVote = closureVoteOf({
         votes: turn && typeof turn.status === 'function' ? turn.status().closureVoteVotes : new Map(),
         roster: members && typeof members.roster === 'function' ? members.roster() : [],
@@ -2423,4 +2434,5 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
 
   return kernel
 }
+
 
