@@ -792,7 +792,16 @@ export function createTurnOrchestrator({
       // `vote_solved`, and `solved` is only the per-round convergence reading. Both are recorded; only the first is
       // counted for closure. (The original agrees: it read `speakers[].voteSolved`.)
       if (field === 'solved' && memberId !== null) solvedThisRound.set(String(memberId), r[field] === true)
-      if (memberId !== null && r.vote_solved !== undefined && r.vote_solved !== null) closureVotes.set(String(memberId), r.vote_solved === true)
+      if (memberId !== null && r.vote_solved !== undefined && r.vote_solved !== null) {
+        // ★★★★★★★ ROUND 76: THE VALUE ARRIVES AS A STRING, AND A STRICT CHECK SILENTLY DISCARDED IT. Measured on a
+        // real machine: the model emitted "vote_solved": "true" - the word in quotes - twelve times, and a strict
+        // === true is false for the string "true". So members genuinely recorded their judgement, the receipt kept
+        // saying missing: [...], and the institute could not close. The coercion is deliberately narrow: the boolean,
+        // and the two literal words, case-insensitively trimmed. Anything else stays FALSE rather than being guessed at,
+        // because a closure vote is a judgement and inventing one is the worst outcome available here.
+        const rawVote = typeof r.vote_solved === 'string' ? r.vote_solved.trim().toLowerCase() : r.vote_solved
+        closureVotes.set(String(memberId), rawVote === true || rawVote === 'true')
+      }
       if (bookkeeping.some((b) => b.field === field)) continue
       context.set(field, r[field])
       bookkeeping.push({ field, kept: true })
@@ -959,6 +968,7 @@ export function createTurnOrchestrator({
 }
 
 export default createTurnOrchestrator
+
 
 
 
