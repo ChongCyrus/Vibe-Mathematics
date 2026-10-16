@@ -25,6 +25,14 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         : []
       const members = explicit ? args.members : inferred
       if (op === 'status') return { ok: true, status: kernel.turn.status() }
+      // ★★★ ROUND 73: THE CALLER-PLAYED TURN, SECOND HALF. When a host cannot lend an Agent, the assembled member
+      // prompt is handed back to the CALLING session instead of being delivered to a subagent, and that session
+      // returns the member's own reply here on the next call. The seam is the framework's own (`deliverByReturning`);
+      // this face is where the reply arrives. Supplying one is optional, so a deployment with a real delivery seam is
+      // unaffected.
+      if (typeof args.reply === 'string' && kernel.turn && typeof kernel.turn.supplyMemberReply === 'function') {
+        kernel.turn.supplyMemberReply(args.reply)
+      }
       if (op === 'step') return await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step })
       if (op === 'drive') return await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step })
       return refused('VMU_INVALID_ARGUMENT', 'unknown op: ' + op, 'known ops: step, drive, status')
@@ -44,6 +52,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
           rounds: param('integer', 'drive 的轮数（必须为正整数；没有无限默认）'),
           phase: param('string', '相位：founding／normal／checkpoint／verify／verify-debate／meeting／resume'),
           why: param('string', '为什么唤醒（原预设的唤醒也带这一项）'),
+          reply: param('string', '★ 由调用者扮演成员回合时：★ 上一次 step／drive 交回的成员提示词，★ 其【成员自己的回复】放在这里送回（★ 仅当交付接缝是 deliverByReturning 时需要）'),
           next_step: param('string', '下一步要做什么'),
         },
         required: ['op'],

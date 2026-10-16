@@ -339,6 +339,40 @@ function childIdOf(handle) {
  * boundary, an idle one starts a turn, an absent direct child cold-resumes from persistence), and the sender must be
  * the EXACT live Agent - so the caller passes it and a missing sender is refused by name instead of guessed.
  */
+/**
+ * ★★★ ROUND 73 — THE DELIVERY ROUTE THAT NEEDS NO HOST `Agent`. A host may type a subagent request's `parent` as an
+ * Agent and require it, while exposing only `list(): string[]` to a plugin - in which case no plugin can construct a
+ * legal parent, and every subagent-based path dies in the host's `delegationDepthOf` reading `options` off null.
+ * That is not a bug in either side; it is a boundary. `deliverTurn` is the FRAMEWORK's own seam, so the route that
+ * remains is for the CALLING session to play the member turn.
+ *
+ * HOW IT WORKS. `deliverTurn({ turn, text })` returns the assembled prompt instead of a reply, marked
+ * `awaiting: true`, and the tool face hands it to the caller. The caller then calls again passing the member's reply,
+ * which this seam returns as the turn's answer. One tool call advances one member turn - acceptable because member
+ * turns are discrete by construction.
+ *
+ * THE SEAM IS STATEFUL ON PURPOSE, AND SHALLOW. A single pending slot, replaced on each prompt; no queue and no
+ * history, because a turn that is not answered must be re-asked rather than silently remembered. `pending()` reads
+ * it (for a status receipt) and `supply(reply)` fills it.
+ */
+export function deliverByReturning() {
+  let pendingPrompt = null
+  let supplied = null
+  const seam = async ({ turn, text }) => {
+    if (supplied !== null) {
+      const reply = supplied
+      supplied = null
+      pendingPrompt = null
+      return { reply, childId: null, stopReason: 'supplied-by-caller', attribution: 'the CALLING session played this member turn (deliverByReturning)', deliveryPath: 'caller' }
+    }
+    pendingPrompt = { member: turn && turn.member ? turn.member : null, turnId: turn && turn.id ? turn.id : null, text: String(text) }
+    return { reply: null, awaiting: true, memberPrompt: pendingPrompt, childId: null, stopReason: null, deliveryPath: 'caller' }
+  }
+  seam.supply = (reply) => { supplied = typeof reply === 'string' ? reply : null; return seam }
+  seam.pending = () => pendingPrompt
+  seam.awaiting = () => supplied === null
+  return seam
+}
 export function sendViaSubagents(subagents) {
   if (!subagents || typeof subagents.sendMessage !== 'function') {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'the subagents seam cannot send a message to a running member',
@@ -542,7 +576,17 @@ export function createTurnOrchestrator({
       lastAttribution = { childId: null, stopReason: null, attribution: 'the delivery adapter returned a bare string: no childId/stopReason (docs/26 §3.22)' }
       return delivered
     }
-    const reply = delivered && typeof delivered.reply === 'string' ? delivered.reply : null
+    const reply0 = delivered && typeof delivered.reply === 'string' ? delivered.reply : null
+    // ★★★ ROUND 73: A CALLER-PLAYED TURN IS NOT A FAILURE. When the seam is `deliverByReturning`, the reply is
+    // deliberately null on the prompting call - the assembled prompt has been handed back to the calling session, which
+    // will play the member turn and return the answer on the next call. Treating that as "the adapter handed back no
+    // reply" would make the one route that needs no host Agent indistinguishable from a broken host. The awaiting
+    // envelope therefore travels through UNCHANGED, and `run` returns it rather than parsing an empty answer.
+    if (delivered && delivered.awaiting === true) {
+      lastAttribution = { childId: null, stopReason: null, attribution: 'the CALLING session plays this member turn (deliverByReturning): the assembled prompt was handed back, and the reply arrives on the next call' }
+      return { awaiting: true, memberPrompt: (delivered && delivered.memberPrompt) || null, reply: null }
+    }
+    const reply = reply0
     lastAttribution = {
       childId: (delivered && delivered.childId) || null,
       stopReason: (delivered && delivered.stopReason) || null,
@@ -762,6 +806,15 @@ export function createTurnOrchestrator({
     const { turn } = open(spec)
     const asm = await assemble(turn)
     const raw = await deliverTurn(turn, asm.text)
+    // ★★★ ROUND 73: A CALLER-PLAYED TURN RETURNS EARLY, AND THAT IS NOT A FAILED ROUND. The seam handed the assembled
+    // prompt back to the calling session and deliberately has no reply yet; parsing `null` would turn the one route that
+    // needs no host Agent into "the model said nothing". The awaiting envelope travels out with the prompt attached, so
+    // the caller can play the member turn and answer on the next call.
+    if (raw && typeof raw === 'object' && raw.awaiting === true) {
+      return { ok: true, awaiting: true, turn, memberPrompt: raw.memberPrompt || null,
+        assembled: { chars: asm.text.length, sources: asm.sources.length }, fields: [], executed: [], skipped: [], refused: [],
+        attribution: Object.assign({}, lastAttribution) }
+    }
     const parsed = parse(raw)
     // ROUND 496: `turn/reply-parsed` was frozen with a default policy and NOTHING emitted it, so middleware could not see
     // a parsed reply. Emitted BEFORE dispatch, which is the only point where inspecting it can still change the outcome.
@@ -827,6 +880,8 @@ export function createTurnOrchestrator({
         next: { kind: 'roster', tool: 'vibe_vmu_control', hint: 'no member was passed AND the kernel roster holds no live member: read it with vibe_vmu_control { action: "roster" }, seat one with { action: "hire", member_id, slot } (the pack declares the slots), then retry. Passing an explicit `members` array also works.' } }
       try {
         const r = await run({ ...spec, round: i })
+        // ★ ROUND 73: a caller-played turn ENDS the batch - the prompt goes back and the round resumes on the next call.
+        if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, receipts, roundsRun: receipts.length, round: i, member: spec.member }
         receipts.push({ round: i, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, turn: r.turn.id })
       } catch (e) {
         counts.refused += 0
@@ -847,6 +902,9 @@ export function createTurnOrchestrator({
     if (!spec) return { ok: true, receipt: null, stopped: 'no-members' }
     try {
       const r = await run({ ...spec, round: turns.size + 1 })
+      // ★★★ ROUND 73: a caller-played turn is a LEGAL outcome, not a receipt with empty fields. It is surfaced as such so
+      // the caller knows to play the member turn and answer on the next call.
+      if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, receipt: null, attribution: r.attribution || null }
       return { ok: true, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, turn: r.turn.id } }
     } catch (e) {
       // ★★★ ROUND 61: THE STACK STAYS. This catch kept only the message, and that is precisely why a real machine's
@@ -864,6 +922,19 @@ export function createTurnOrchestrator({
 
   return {
     open, assemble, deliver: deliverTurn, parse, plan, apply, run, nextTurn, drive, step,
+    // ★★★ ROUND 73: THE CALLER-PLAYED TURN. When the injected seam is `deliverByReturning`, the assembled prompt
+    // travels back to the caller and the member's reply arrives through this verb. A seam without `supply` refuses by
+    // name rather than dropping the reply, because silently discarding an answer is the one outcome this phase has
+    // ruled out everywhere else.
+    supplyMemberReply: (reply) => {
+      if (!deliver || typeof deliver.supply !== 'function') {
+        fail('VMU_ENGINE_UNAVAILABLE', 'this delivery seam does not accept a caller-supplied reply',
+          'supplyMemberReply applies only to the deliverByReturning seam; a real delivery seam answers with the reply itself')
+      }
+      deliver.supply(reply)
+      return { ok: true, supplied: true }
+    },
+    awaitingCaller: () => !!(deliver && typeof deliver.pending === 'function' && deliver.pending()),
     // ROUND 4 / F9+F10: the ongoing-command verbs, plus the observable state behind them.
     sendToMember, interruptMember,
     attribution: () => Object.assign({}, lastAttribution),
@@ -888,6 +959,7 @@ export function createTurnOrchestrator({
 }
 
 export default createTurnOrchestrator
+
 
 
 
