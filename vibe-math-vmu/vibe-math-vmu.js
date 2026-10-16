@@ -488,10 +488,13 @@ export function apply(ctx, config = {}) {
   const noticeBlock = (packRuntime.find((r) => r.noticeBlock) || {}).noticeBlock || null
   const extraPhases = packRuntime.length ? [...new Set(packRuntime.flatMap((r) => r.phases || []))] : null
   const promptPolicies = []   // the sink a pack's manifest.promptPolicies arrives through (vmu-pack's side)
-  // ★ A1 STEP 1 · PART B: LATE-BOUND FEEDBACK STATE. Declared BEFORE the kernel because the kernel takes a provider that
-  // must be able to answer later - the host `context()` call can only happen after the kernel exists (the snapshot it
-  // delivers is built from the assembled report face). `null` until that block runs, and the report face's placeholder
-  // speaks for itself until then, truthfully.
+  // ★ A1 STEP 1 · PART B: THE FEEDBACK STATE IS COMPUTED ONCE, OUTSIDE THE PROVIDER, AND BOTH HALVES OF THAT SENTENCE
+  // MATTER. OUTSIDE, because the receipt is what CALLS the provider - a provider that read `report.status()` would
+  // recurse forever, which is what happened when this was made lazy. ONCE, here, because the switch is read from the
+  // resolved settings at this moment: a pack's VALUE layer is folded before the kernel (visible here), while its MANIFEST
+  // is applied after (NOT visible) - and a pack's `vmu.report.*` keys must live on the manifest (one owner, O4). Measured:
+  // value layer armed and delivered, manifest silently stayed off. Arming from a pack therefore needs the read to happen
+  // later, which needs the face to hand its counts to the provider instead of the provider asking the face. Not done yet.
   let reportFeedbackState = null
   const kernel = createKernel(Object.assign({ sectionPolicy, noticeBlock, extraPhases, settings: settingsWithPackDefaults, root, spawn: spawnSeam, host: mathHost, deliverTurn: turnDeliver,
     reportFeedback: () => Object.assign({}, reportFeedbackState),
@@ -845,15 +848,10 @@ export function apply(ctx, config = {}) {
     }
   }
 
-  // ★ A1 STEP 1 · PART B: THE DELIVERY CALL, IN A MODULE OF ITS OWN. This file sits at its 1200-line budget, and the
-  // call carries enough reasoning to belong in a module: the four outcomes, the named failures, and why the payload is
-  // a runtime snapshot rather than policy. The entry remains the holder of the host prompt service (that is why the
-  // call lives here at all), so it passes `ctx`/`effect` down, and it reads the ASSEMBLED face's status so the
-  // effective values - schema defaults applied - come from the one place that already computed them.
-  // ★ A1 STEP 1 · PART B: ONE LINE, BECAUSE THIS FILE'S 1200-LINE BUDGET IS COUNTED BY `split('\n')` - the same count the
-  // code-size gate uses - and the reads this call needs belong beside the call they serve. Everything that made the
-  // earlier version wrong (reading the switch off the receipt the delivery itself produces) lives in the module, with
-  // the reasoning, and is guarded there: an absent report face or settings map means NO DELIVERY, never a crash.
+  // ★ A1 STEP 1 · PART B: the delivery call, made ONCE FROM OUTSIDE THE PROVIDER. It must be outside: the receipt is what
+  // CALLS the provider, so a provider that read `report.status()` to compute itself would recurse forever. Everything the
+  // call needs - the four outcomes, the named failures, why the payload is a runtime snapshot - lives in
+  // `kernel/reportfeedbackdelivery.js`.
   reportFeedbackState = deliverReportFeedbackFrom({ kernel, ctx, effect })
 
   // A PACK is where an institution lives (slots, tracks, rules, aliases). `config.packs` accepts either a
