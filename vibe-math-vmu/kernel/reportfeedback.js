@@ -81,7 +81,12 @@ export function assertFiniteOrder(order) {
 export function reportFeedbackReceipt(input = {}) {
   return {
     enabled: input.enabled === true,
-    source: typeof input.source === 'string' ? input.source : 'default',
+    // ★ A NON-STRING SOURCE IS `null`, LIKE EVERY OTHER FIELD HERE - NOT `'default'`. Inventing the default layer for a
+    // caller that never claimed one is how "the layer is unknown" became a NAMED BUT UNTRUE fact: a bare construction
+    // with the switch ARMED was reported as coming from the default layer, which is precisely the misnaming this
+    // contract exists to prevent. Callers that DO know the layer name it - `'default'` included - and the kernel's
+    // resolved view is the only place that name comes from.
+    source: typeof input.source === 'string' ? input.source : null,
     audience: typeof input.audience === 'string' && input.audience.length > 0 ? input.audience : null,
     delivered: input.delivered === true,
     registered: input.registered === true,

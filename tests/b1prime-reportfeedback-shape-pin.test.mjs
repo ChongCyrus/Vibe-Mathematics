@@ -77,6 +77,17 @@ if (captured && shapeFromFallback) {
   ok(attributed.source === 'pack:v5r' && shapeFromFallback.source === 'default',
     '★★ the real source carries the layer it is GIVEN, while the fallback states only the layer it can know',
     'given=pack:v5r real=' + JSON.stringify(attributed.source) + ' fallback=' + JSON.stringify(shapeFromFallback.source))
+  // ★ AND THE ARMED BRANCH MUST BE EXERCISED, OR THE PIN ABOVE HAS NO TEETH. The fallback used so far is an OFF face, and
+  // the OFF value is the same before and after the provenance fix - so a mutation that made the fallback invent a layer
+  // name again would sail straight through it. A reviewer measured exactly that: this assertion, as first written, stayed
+  // green under that mutation. The ARMED bare face is therefore built as well, and it must report NO layer at all.
+  const bareArmed = createReport({ clock: () => 1000, settings: { 'vmu.report.feedback': true } })
+  const shapeFromArmedFallback = feedbackOf(bareArmed)
+  ok(shapeFromArmedFallback !== null && shapeFromArmedFallback.enabled === true && shapeFromArmedFallback.source === null,
+    '★★ ARMED bare face: the fallback reports NO layer (null) - never a name it cannot know (this is the tooth)',
+    shapeFromArmedFallback
+      ? 'enabled=' + shapeFromArmedFallback.enabled + ' source=' + JSON.stringify(shapeFromArmedFallback.source)
+      : '(no receipt)')
   // and the fallback's hardcoded literals must be exactly what the real source echoes back for that input
   ok(shapeFromFallback.code === 'VMU_EXTERNAL_UNAVAILABLE' && shapeFromFallback.what === 'systemPrompt.context',
     '★ the fallback’s named-degradation literals match the house form the real source carries',
