@@ -156,12 +156,26 @@ export async function stalenessReport() {
       // ★ Round 7 (crash-path fix, found by vmu-verify2's independent review): "响了 ≠ 有用". When the child
       // CRASHES its LAST line is `Node.js v24.21.0` (Node ends a fatal trace that way), so the faithful last-line rule
       // produced `诊断: Node.js v24.21.0` — correct per the rule, useless to a reader who needs the
-      // `Error: ENOENT … open '<path>'` line. ★ The fix prefers the FIRST `Error:` line and otherwise keeps the
-      // previous rule EXACTLY, so the STALE path's bytes do not move (its assertion pins "parent detail ≡ child's
-      // last line" and stays green). ★ Still faithful, never invented: the reported line is the child's OWN output.
+      // ★ Round 11 (gaps A/B, both reproduced by the reviewer). Two fixes: the PREDICATE and the SHAPE.
+      //  (B) PREDICATE CLASSES: Node's non-`Error:` fatal signatures are now covered — `FATAL ERROR:` (OOM) and
+      //      `Assertion`. Measured before: an OOM child (status 134, 23 lines, a `FATAL ERROR: Reached heap limit …`
+      //      line, NO `^\s*Error:` line) fell through BOTH arms and the parent reported a bare native address frame
+      //      (`诊断: 15: 00000243800D9F9A`) while the useful text sat in the output.
+      //  (branch 2 — DECIDED) among SEVERAL matches: a `FATAL ERROR:`/`Assertion` banner wins (it is the single most
+      //      diagnostic line; what follows it is usually addresses), otherwise the LAST `Error:` line is used, because
+      //      for wrapped/chained errors the ROOT CAUSE is printed last (the reviewer's fixture: `Error: upstream
+      //      connection refused` then `Error: ENOENT …` ⇒ the second is the root cause). Taking the first would report
+      //      the outer wrapper and lose the cause.
+      //  (A) SHAPE: `detail`, `status` and `signal` are ALWAYS present — even when the child printed NOTHING — because
+      //      the field set must not change with the failure form (the `receiptMeta` rule: state is a VALUE, never a
+      //      key that appears and disappears).
       const detailLines = String(r.stderr || r.stdout || '').trim().split('\n').filter(Boolean)
-      const detail = detailLines.find((l) => /^\s*Error:/.test(l)) || detailLines.slice(-1)[0] || ''
-      out[r.c.kind].push(Object.assign({}, r.c, { detail: detail.slice(0, 200) }))
+      const fatal = detailLines.find((l) => /^\s*(FATAL ERROR|Assertion)/.test(l))
+      const errors = detailLines.filter((l) => /^\s*Error:/.test(l))
+      // ★ NO .trim() ON THE CHOSEN LINE: the previous rule carried the line VERBATIM (leading spaces included) and the
+      // STALE path's bytes are pinned by an assertion — my first R11 version trimmed here and broke that byte-identity.
+      const detail = fatal || errors.slice(-1)[0] || detailLines.slice(-1)[0] || ''
+      out[r.c.kind].push(Object.assign({}, r.c, { detail: detail.slice(0, 200), status: r.status, signal: r.signal || null }))
     }
   }
   return out
@@ -324,7 +338,13 @@ async function main() {
     console.error('  so the WIRED column would be wrong for every row; refusing to run:')
     for (const c of stale.hard) {
       console.error('  · ' + c.name + '  →  先跑 ' + c.fix)
+      // ★ Round 11 (gap A): the 诊断 line is ALWAYS present now. Before, a child that exited non-zero with NO output
+      // made the whole line disappear (`if (c.detail)`), so the FIELD SET changed with the failure form — the shape
+      // `receiptMeta` forbids (state must be a VALUE, not a key that comes and goes).
+      // ★ STALE PATH STAYS BYTE-IDENTICAL: when there IS a detail the line is exactly the old one (no suffix), which
+      // is why the branch below only adds the named state for the silent case.
       if (c.detail) console.error('    诊断: ' + c.detail)
+      else console.error('    诊断: （子进程无输出）status=' + c.status + ' signal=' + String(c.signal))
     }
     process.exit(2)
   }

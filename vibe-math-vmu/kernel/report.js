@@ -19,6 +19,11 @@
 // FACE CONVENTIONS (same as the other vmu faces): literal key reads through `settings.get()` on every call (so a hot
 // change lands in the same turn, D-13), receipts carry `enforced[]`/`fired[]`, refusals are named, nothing declared
 // means nothing happens, the clock is injected, and read-only surfaces never mutate.
+//
+// ★ AND THIS FILE IMPORTS NOTHING - AN ENFORCED INVARIANT, NOT A STYLE CHOICE. An assertion in the assistant suite fails
+// if this file gains even one import, because that is what makes "it cannot reach a decision service even by accident"
+// checkable instead of merely stated. So the feedback receipt is INJECTED (see `feedback` below) rather than imported:
+// the shape lives in `kernel/reportfeedback.js`, which the assembly site pulls in and hands down.
 export const apiVersion = 1
 
 export function refuse(code, message, hint, extra) {
@@ -92,7 +97,7 @@ const templateVarsOf = (text) => {
  * settings descriptor (`{ key, declared, type, hot, who }`), which is how this face reports the hot class and the
  * declared owner WITHOUT inventing a second source for either.
  */
-export function createReport({ clock = () => 0, log = null, settings = {}, deliver = null, audit = null, describeSetting = null } = {}) {
+export function createReport({ clock = () => 0, log = null, settings = {}, deliver = null, audit = null, describeSetting = null, feedback = null } = {}) {
   if (typeof clock !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'createReport needs a clock function', 'pass { clock: () => ms }')
   const sget = (key, def) => {
     if (settings && typeof settings.get === 'function') { const v = settings.get(key); return v === undefined ? def : v }
@@ -109,6 +114,11 @@ export function createReport({ clock = () => 0, log = null, settings = {}, deliv
     reports: (() => { const v = sget('vmu.report.reports'); return Array.isArray(v) ? v.filter((x) => x && typeof x === 'object') : [] })(),
     channels: (() => { const v = listOf(sget('vmu.report.channels')); return v.length ? v : ['inbox', 'digest', 'log'] })(),
     recipients: listOf(sget('vmu.report.recipients')),
+    // ★ A1 STEP 1 · PART A (phase 2): the two feedback-loop keys. ★ THESE TWO LINES ARE THE READ ITSELF - the
+    // `LIVE_READERS` entry for this key prefix only declares WHO reads at call time; what makes it true is that the
+    // read happens here, on every call, exactly like every other key in this face.
+    feedback: sget('vmu.report.feedback') === true,
+    audience: (() => { const v = sget('vmu.report.audience'); return typeof v === 'string' ? v : '' })(),
     minIntervalMs: intOr(sget('vmu.report.minIntervalMs'), 60000),
     traceCap: posOr(sget('vmu.report.traceCap'), 64),
     templateMaxChars: posOr(sget('vmu.report.templateMaxChars'), 4000),
@@ -117,6 +127,42 @@ export function createReport({ clock = () => 0, log = null, settings = {}, deliv
     requireReason: sget('vmu.report.requireReason') === true,
     auditChanges: sget('vmu.report.auditChanges') !== false,
   })
+
+  /**
+   * THE FEEDBACK RECEIPT (A1 step 1, Part A). The nine keys are ALWAYS present and state is carried by VALUE, never by
+   * the presence of a key - a conditional key is itself a shape change, and this file has already learned that once.
+   *
+   * ★ THE `reason` BELOW IS A TRUE STATEMENT, NOT A STAND-IN FOR "UNSUPPORTED". The delivery call
+   * (`systemPrompt.context()`) is not wired in this build YET; it lands in Part B. Writing "the host does not expose
+   * systemPrompt.context()" would be FALSE - that API was read out of the host's own source and independently
+   * verified. So the placeholder names what is actually missing, which is the wiring on OUR side and nothing else.
+   *
+   * `source` degrades to the literal this build can HONESTLY support: with no provenance seam reachable here, an armed
+   * switch names the key that armed it and a disabled one names the default. That is a NAMED scope, not a guess.
+   */
+  const feedbackReceipt = (c) => {
+    if (typeof feedback === 'function') {
+      // The provider receives the values THIS face already read, so the settings are read exactly once and the provider
+      // cannot invent a second source for them.
+      try { return feedback(c) } catch (e) { /* a broken provider must never kill the face */ }
+    }
+    // THE FALLBACK LOOKS LIKE THE CONTRACT ON PURPOSE, AND IT IS THE ONE PLACE THE SHAPE IS WRITTEN TWICE. The real
+    // shape lives in `kernel/reportfeedback.js`; this file cannot import it (the no-import invariant above), so a BARE
+    // construction - no provider supplied - still returns the same nine keys with state carried by VALUE, which is what
+    // keeps the two states the same shape. Every assembled instance passes a provider, so this path is the degenerate
+    // one; it exists so that omitting the provider cannot silently change what a receipt looks like.
+    return Object.freeze({
+      enabled: c.feedback === true,
+      source: c.feedback === true ? 'settings:vmu.report.feedback' : 'default',
+      audience: c.audience || null,
+      delivered: false,
+      registered: false,
+      code: 'VMU_EXTERNAL_UNAVAILABLE',
+      what: 'systemPrompt.context',
+      reason: 'the delivery call is not wired in this build (A1 step 1 Part A): the settings keys are read and reported, the systemPrompt.context() call lands in Part B',
+      stack: null,
+    })
+  }
 
   /**
    * READING THE CLOCK IS LAZY, AND IT CANNOT KILL THE SURFACE. Two measured facts drove this shape:
@@ -548,6 +594,10 @@ export function createReport({ clock = () => 0, log = null, settings = {}, deliv
       truncated: counters.truncated,
       drives: false,
       neverDrives: true,
+      // ★ A1 STEP 1 · PART A (phase 2): the feedback loop's receipt. Nine keys, ALWAYS present, state by VALUE. Until
+      // Part B wires the delivery call, this names that fact in `reason` - truthfully, on our side, not as a claim that
+      // the host lacks the ability.
+      reportFeedback: feedbackReceipt(c),
       transportInjected: typeof deliver === 'function',
       auditInjected: !!(audit && typeof audit.append === 'function'),
       descriptorInjected: typeof describeSetting === 'function',

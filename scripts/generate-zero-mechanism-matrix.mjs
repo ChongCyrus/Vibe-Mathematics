@@ -188,7 +188,7 @@ const EXPECT = {
   // here because the matrix treats a module that EXISTS without a row as a FINDING (`出现了却没有裁定行 ✗`), so the
   // row was forced by the module landing, not chosen for convenience. The author's step-2 segment is expected to
   // confirm or replace this adjudication; until then this is the Lead's reading of the module's shape.
-  reportfeedback: G('EXPECT_NA', '纯函数工具模块（**无 `create*` 工厂** ⇒ 矩阵不适用 ✓）；轮 8（第二阶段 A1 第一步）**新增**（非抽取）：报告反馈回路的纯函数 —— `REPORT_FEEDBACK_MAX_BYTES = 65536`（★ 宿主先例，非我们发明，且宿主不替我们强制）／`REPORT_FEEDBACK_CONTEXT_ORDER = 5000`（**显式有限数字**，不发明槽名）／`assertFiniteOrder`（我们补宿主缺的校验）／`reportFeedbackReceipt`（**9 键恒存在**、空态用值表达）／`reportFeedbackFailure`（复用已登记码 `VMU_EXTERNAL_UNAVAILABLE`）／`boundFeedback`（截断**自述**）。★ **本段尚未接线**（设置键／真读取／回执属第 2 段）⇒ 该行**待作者第二步复核**。'),
+  reportfeedback: G('EXPECT_NA', '纯函数工具模块（**无 `create*` 工厂** ⇒ 矩阵不适用 ✓）；轮 8（第二阶段 A1 第一步）**新增**（非抽取）：报告反馈回路的纯函数 —— `REPORT_FEEDBACK_MAX_BYTES = 65536`（★ 宿主先例，非我们发明，且宿主不替我们强制）／`REPORT_FEEDBACK_CONTEXT_ORDER = 5000`（**显式有限数字**，不发明槽名）／`assertFiniteOrder`（我们补宿主缺的校验）／`reportFeedbackReceipt`（**9 键恒存在**、空态用值表达）／`reportFeedbackFailure`（复用已登记码 `VMU_EXTERNAL_UNAVAILABLE`）／`boundFeedback`（截断**自述**）。★ **Part A 已落**：设置键已在 `settings/schema.js` 声明，并被 `kernel/report.js` 的 `cfg()` **真读**（两处 `sget` ⇒ 这才是"有人读"的证据，不是 `LIVE_READERS` 那行），回执**恒带 9 键**且以**真话**具名"投递调用尚未接线"；★★ **投递调用（`systemPrompt.context()`）属 Part B**，必须落在 `vibe-math-vmu.js:797` 那个 `if` **之外**（那个 `if` 只在有提示词文本时进入 ⇒ 放进去就会"开关开了也不生效"）。★ 本行仍**待作者第二步复核**（若模块长出服务/`status()` ⇒ 连登记值一起改）。'),
 }
 
 const shape = (v) => {

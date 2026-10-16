@@ -27,6 +27,9 @@ import { createPromptPipeline } from './prompt/index.js'
 // framework can run a member turn instead of borrowing the original preset loop. Its ownership table names REAL
 // faces and operations (read off this kernel at runtime in round 338), and delivery goes through the host seam.
 import { createTurnOrchestrator, facesFrom } from './turn/index.js'
+// A1 step 1 · Part A: the reporting feedback receipt shape, handed DOWN to `kernel/report.js` as an injected provider
+// (that file stays import-free by invariant).
+import { reportFeedbackFailure, REPORT_FEEDBACK_WHAT_CONTEXT } from './reportfeedback.js'
 import { createLibrary } from './library.js'
 import { createMembers } from './members.js'
 import { createBallot, createDurableCommitLog } from './ballot.js'
@@ -892,7 +895,20 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // (Reported to vmu-assistant as well: reading the clock at construction is itself worth deferring, so that a caller
   // who does pass a guarded clock is not punished for it.)
   const report = createReport({ settings: settingsView, clock, log, deliver, audit,
-    describeSetting: settingDescription })
+    describeSetting: settingDescription,
+    // ★ A1 STEP 1 · PART A (phase 2): the feedback receipt is INJECTED here, not imported by `kernel/report.js` - that
+    // file is import-free under an enforced invariant (it must not be able to reach a decision service even by
+    // accident, and an assertion in the assistant suite fails if it gains an import). The nine-key SHAPE lives in
+    // `kernel/reportfeedback.js`; this is the single place that hands it down. `delivered:false` carries a TRUE reason:
+    // the delivery call is Part B, and "the host does not expose it" would be FALSE - that API was read out of the
+    // host's own source and verified.
+    feedback: (c) => reportFeedbackFailure({
+      enabled: c.feedback === true,
+      source: c.feedback === true ? 'settings:vmu.report.feedback' : 'default',
+      audience: c.audience || null,
+      what: REPORT_FEEDBACK_WHAT_CONTEXT,
+      reason: 'the delivery call is not wired in this build (A1 step 1 Part A): the settings keys are read and reported, the systemPrompt.context() call lands in Part B',
+    }) })
   noteSeam('deliver', 'report', report ? deliver : null)
   const lifecycle = createLifecycle({ settings: settingsView, bus, clock, log, workflow,
     publication, collab, identity, human, discipline, custody, explain, control, citations })

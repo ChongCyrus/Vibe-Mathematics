@@ -88,6 +88,43 @@ try {
   ok(!/^Node\.js v/.test(crashDiag),
     '★ and it is NOT the useless `Node.js v…` signature line that the plain last-line rule would have forwarded',
     JSON.stringify(crashDiag.slice(0, 60)))
+  // (5b) ★ ROUND 11 GAP A + B — the two failure forms the assertions above CANNOT reach (their precondition always
+  // prints an ENOENT line). Copy-based: the CHILD script is replaced inside a copy, real tree untouched;每 arm 先证前提。
+  const armTree = (name, childBody) => {
+    const dir = join(root, name)
+    mkdirSync(dir, { recursive: true })
+    for (const p of ['scripts', 'vibe-math-vmu']) cpSync(join(REPO, p), join(dir, p), { recursive: true })
+    writeFileSync(join(dir, 'scripts', 'generate-vmu-settings-table.mjs'), childBody)
+    return dir
+  }
+  // GAP A: non-zero exit with ZERO output ⇒ the 诊断 line must STILL exist and name the state as VALUES.
+  const silentDir = armTree('silent', 'process.exit(1)\n')
+  const silentRun = run([join(silentDir, WIRE), '--check'])
+  const silentDiag = silentRun.err.split('\n').filter((l) => /诊断:/.test(l))
+  ok(silentRun.code === 2 && silentDiag.length === 1,
+    '★★ GAP A: a child exiting non-zero with NO output still yields exactly ONE 诊断 line (field set does not change with the failure form)',
+    'exit=' + silentRun.code + ' diagLines=' + silentDiag.length)
+  ok(silentDiag.length === 1 && /status=1/.test(silentDiag[0]),
+    '★ and the silent case names its state as VALUES (status=… signal=…), never by the absence of a key',
+    (silentDiag[0] || '').trim().slice(0, 90))
+  // GAP B: a fatal signature that is NOT `Error:` (Node OOM prints `FATAL ERROR: Reached heap limit …`)
+  const oomBody = "process.stderr.write('\\n<--- Last few GCs --->\\n\\n')\nprocess.stderr.write('FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory\\n')\nprocess.stderr.write(' 15: 00000243800D9F9A\\n')\nprocess.exit(134)\n"
+  const oomDir = armTree('oom', oomBody)
+  const oomRun = run([join(oomDir, WIRE), '--check'])
+  const oomDiag = (oomRun.err.split('\n').filter((l) => /诊断:/.test(l))[0] || '')
+  ok(oomRun.code === 2 && /FATAL ERROR: Reached heap limit/.test(oomDiag),
+    '★★ GAP B: a `FATAL ERROR:` fatal signature is picked up (the pre-R11 predicate reported a bare address frame here)',
+    JSON.stringify(oomDiag.trim().slice(0, 110)))
+  ok(!/\b[0-9A-F]{12,}\b/.test(oomDiag),
+    '★ and the reported diagnostic is NOT a bare native address frame', JSON.stringify(oomDiag.trim().slice(0, 60)))
+  // BRANCH 2 (decided): several `Error:` lines ⇒ the LAST (the root cause of a wrapped chain, not the wrapper).
+  const chainBody = "process.stderr.write(\"Error: upstream connection refused\\n\")\nprocess.stderr.write(\"Error: ENOENT: no such file or directory, open 'x'\\n\")\nprocess.exit(1)\n"
+  const chainDir = armTree('chain', chainBody)
+  const chainRun = run([join(chainDir, WIRE), '--check'])
+  const chainDiag = (chainRun.err.split('\n').filter((l) => /诊断:/.test(l))[0] || '')
+  ok(/ENOENT/.test(chainDiag) && !/upstream connection refused/.test(chainDiag),
+    '★ branch 2: with several `Error:` lines the LAST is reported (root cause of a wrapped chain, not the outer wrapper)',
+    JSON.stringify(chainDiag.trim().slice(0, 90)))
 } finally {
   rmSync(root, { recursive: true, force: true })
 }
