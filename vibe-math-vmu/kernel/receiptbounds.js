@@ -98,17 +98,42 @@ const dig = (s) => createHash(HASH_ALGO).update(s).digest('hex')
  * ★ A result within the budget is returned byte-identically and carries NO `truncated` key - so "always reports
  * truncated" cannot pass the assertions either.
  */
+/**
+ * ★★ ROUND 36 (measured): THE SERIALIZER MUST NEVER THROW.
+ *
+ * A rich refusal carries a `cause` - `host-spawn.js` sets `err.cause = e` - and a cause chain can contain a
+ * circular reference; a host error that refers back to its own context is enough. `JSON.stringify` then throws
+ * "Converting circular structure to JSON", and because that throw happens INSIDE the tool adapter's own catch
+ * block, nothing catches it and the whole server dies. So the one place documented as "the ONE place a tool result
+ * is serialized" was the one place that could fail to serialize at all - and the header of this very file says a
+ * receipt must never change SHAPE, which a non-return is the extreme form of.
+ *
+ * A circular edge is REPLACED BY A NAMED MARKER rather than dropped in silence, so the receipt still says what
+ * happened - the same discipline this file applies to elided text.
+ */
+export const CIRCULAR_MARKER = "[circular]"
+export function safeStringify(value) {
+  const seen = new WeakSet()
+  return JSON.stringify(value, function (key, v) {
+    if (typeof v === "object" && v !== null) {
+      if (seen.has(v)) return CIRCULAR_MARKER
+      seen.add(v)
+    }
+    return v
+  })
+}
+
 export function boundedToolResult(value) {
   // ★ NAMED BOUNDARY: a sub-object cannot be attached to a bare value, so non-objects come back as-is (asserted in
   // the test rather than left as an assumption).
-  if (value === null || typeof value !== 'object') return JSON.stringify(value)
-  const before = JSON.stringify(value)
+  if (value === null || typeof value !== 'object') return safeStringify(value)
+  const before = safeStringify(value)
   // ROUND 33 / task-161 STEP 1: `receiptMeta` is present EVEN WHEN NOTHING WAS CUT. Returning early here (as the
   // previous version did) made the key set depend on the payload size - the very defect the contract removes - and it
   // is what let a 179,826-character real receipt travel with no marker at all.
   const emptyMeta = { truncated: false, elided: [], hostElision: 'possible', originalBytes: before.length, note: null }
   if (typeof before !== 'string') return before
-  if (before.length <= MAX_TOOL_RESULT_BYTES) return JSON.stringify(Object.assign({}, value, { receiptMeta: emptyMeta }))
+  if (before.length <= MAX_TOOL_RESULT_BYTES) return safeStringify(Object.assign({}, value, { receiptMeta: emptyMeta }))
   // Collect string leaves longest-first, then shorten until the serialization fits (bounded work, deterministic).
   const leaves = []
   const seen = new WeakSet()
@@ -127,9 +152,9 @@ export function boundedToolResult(value) {
   leaves.sort((a, b) => b.len - a.len)
   const elided = []
   for (const leaf of leaves) {
-    if (JSON.stringify(value).length <= MAX_TOOL_RESULT_BYTES) break
+    if (safeStringify(value).length <= MAX_TOOL_RESULT_BYTES) break
     const original = leaf.node[leaf.key]
-    const keep = Math.max(MAX_STRING_LEAF, original.length - (JSON.stringify(value).length - MAX_TOOL_RESULT_BYTES) - ELISION_MARKER.length)
+    const keep = Math.max(MAX_STRING_LEAF, original.length - (safeStringify(value).length - MAX_TOOL_RESULT_BYTES) - ELISION_MARKER.length)
     const shortened = original.slice(0, keep) + ELISION_MARKER
     leaf.node[leaf.key] = shortened
     // ROUND 36 / task-171: the record carries BOTH hashes plus the two lengths, with the algorithm named, so a
@@ -147,7 +172,7 @@ export function boundedToolResult(value) {
       hash: HASH_ALGO,
     })
   }
-  const after = JSON.stringify(value)
+  const after = safeStringify(value)
   // ★★ ROUND 33 / task-161 — THE REAL-MACHINE FINDING, AND WHY THE CONTRACT FIXES IT.
   // Measured on real hardware: a 179,826-character receipt came back with NO marker of any kind. Reproduced in-process
   // through the real seam: the status face has 4,470 string leaves whose LONGEST is 378 characters - every leaf is
@@ -179,5 +204,5 @@ export function boundedToolResult(value) {
         ? 'NOTHING was elided by us: this receipt is over MAX_TOOL_RESULT_BYTES (' + MAX_TOOL_RESULT_BYTES + ') but no string leaf exceeded ' + MAX_STRING_LEAF + ', and meeting the budget would require dropping content, which would change its shape. `originalBytes` is the real size. The HOST may insert its own `[...]` marker (hostElision) - that one is outside this receipt.'
         : null),
   }
-  return JSON.stringify(Object.assign({}, value, { receiptMeta: meta }))
+  return safeStringify(Object.assign({}, value, { receiptMeta: meta }))
 }
