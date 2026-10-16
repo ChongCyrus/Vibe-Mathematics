@@ -281,6 +281,13 @@ export function createPromptPipeline({
   }
   const enable = (name) => { disabled.delete(name); return { ok: true, section: name, disabled: false } }
   const isDisabled = (name) => disabled.has(name)
+  // ★ phase-3 / task-235 — THE DISPLACEMENT RECORD. When a pack section REPLACES a mutable framework section the
+  // replacement is a DECLARATION and it is REPORTED: this list is what the assembly receipt publishes
+  // (`replacedSections`, next to `overrideMerge`), so "what got displaced, and by whom" is auditable.
+  // ★ It is deliberately NOT `disabled`: the render loop skips a disabled section WHOLE BY NAME (`:590`), and the
+  // displaced surface and its replacement SHARE the name - so putting the name here would suppress the replacement
+  // as well and turn a silent overwrite into a silent NON-INJECTION (measured as the trap in task-235).
+  const replacedSections = []
 
   const register = (section) => {
     if (!section || typeof section !== 'object') throw refuse('VMU_INVALID_ARGUMENT', 'a section must be an object')
@@ -317,6 +324,7 @@ export function createPromptPipeline({
         'facts is framework-owned (docs/06 §4 rule 2): move the order into the pack interval [600,899]')
     }
     const existing = registry.get(keyOf(name, section.lang))
+    let displaced = null
     if (existing) {
       if (name === 'state' || existing.mutable === false) {
         throw refuse('VMU_NOT_PERMITTED', 'section ' + name + ' is immutable and cannot be re-registered',
@@ -325,6 +333,25 @@ export function createPromptPipeline({
       if (existing.range === 'pack' && range === 'pack') {
         throw refuse('VMU_MIDDLEWARE_FAILED', 'two pack sections claim the same name: ' + name,
           'pack conflicts are declared explicitly, never resolved silently (docs/10 §4)')
+      }
+      // ★ THIRD BRANCH (task-235) - A PACK MAY REPLACE A MUTABLE FRAMEWORK SECTION, BUT ONLY BY DECLARING IT.
+      // MEASURED BEFORE THIS BRANCH EXISTED: the two guards above only cover immutable sections and pack-versus-pack,
+      // so a pack section colliding with a framework one fell straight to `registry.set` below - the framework text
+      // disappeared, the pack text rendered, and nothing was refused or reported. Replacing an existing surface is a
+      // DEPLOYMENT DECLARATION (docs/10 §4), so the pack section must name it in `replaces`:
+      //   declared   ⇒ allowed, and the receipt reports what was displaced (below);
+      //   undeclared ⇒ refused BY NAME, with the hint naming the field to add.
+      // ★ NOT `disable(name)` + register: the render loop skips a disabled section WHOLE by name (`:590`), and this
+      // replacement shares that name - it would suppress the replacement itself and inject NOTHING, silently. The
+      // record therefore lives in `replacedSections` and the section stays enabled.
+      if (range === 'pack' && existing.range !== 'pack') {
+        const declaredReplaces = Array.isArray(section.replaces) ? section.replaces.map(String) : []
+        if (!declaredReplaces.includes(name)) {
+          throw refuse('VMU_MIDDLEWARE_FAILED',
+            'a pack section would replace the framework section ' + name + ' without declaring it',
+            'replacing an existing surface is a DECLARATION (docs/10 §4): add replaces: ["' + name + '"] to this section (source ' + declaredSource + ')')
+        }
+        displaced = { section: name, displacedSource: existing.source, displacedOrder: existing.order, replacedBy: declaredSource, declaredReplaces }
       }
     }
     const entry = {
@@ -345,6 +372,7 @@ export function createPromptPipeline({
       truncate: section.truncate || null,
     }
     registry.set(keyOf(name, langOf(entry)), entry)
+    if (displaced) replacedSections.push(displaced)   // ★ task-235: the declaration is also a RECORD (see the receipt)
     return entry
   }
 
@@ -660,6 +688,10 @@ export function createPromptPipeline({
           localeMisses: localeMisses.slice(),
         glossary: { mode: glossaryMode, path: glossaryPath, loaded: ontologyIds !== null, traces: glossaryTraces.slice() },
         overrideMerge,   // ROUND 241: what onMissing=warn recorded instead of refusing
+        // ★ task-235: WHAT A PACK REPLACED, BY DECLARATION. Empty unless a pack section declared `replaces`
+        // against a mutable framework section; the record names the displaced section AND where it came from.
+        replacedSections: replacedSections.map((x) => Object.assign({}, x)),
+        replacedCount: replacedSections.length,
         enforced: ['vmu.prompts.locale.default', 'vmu.prompts.locale.fallbackChain', 'vmu.prompts.overridesByLang'], at: clock() }
     },
 

@@ -32,7 +32,9 @@ export function createReviewers({ clock = () => 0, log = () => {}, settings = {}
     mode: MODES.includes(settings['vmu.review.mode']) ? settings['vmu.review.mode'] : '',
     conflictPolicy: ['recuse', 'ask', 'allow'].includes(settings['vmu.review.conflictPolicy']) ? settings['vmu.review.conflictPolicy'] : 'recuse',
     quorum: Number.isInteger(settings['vmu.review.quorum']) && settings['vmu.review.quorum'] >= 0 ? settings['vmu.review.quorum'] : 0,
-    maxLoad: Number.isInteger(settings['vmu.reviewers.maxLoad']) && settings['vmu.reviewers.maxLoad'] > 0 ? settings['vmu.reviewers.maxLoad'] : 3,
+    // ★ P2-01（Round 11）：未声明就是未声明 —— 回落成 `0`（该类型的【中性】，与 schema 的 `def: 0` 一致），**不**回落成 `3`。
+    // 用 `0` 而【不是】`null`：wired-schema 生成器【从模块的读法推断类型】，`null` 无法判型；`0` 保持 `natural` 诚实。
+    maxLoad: Number.isInteger(settings['vmu.reviewers.maxLoad']) && settings['vmu.reviewers.maxLoad'] > 0 ? settings['vmu.reviewers.maxLoad'] : 0,
     coiPolicy: COI_POLICIES.includes(settings['vmu.reviewers.coiPolicy']) ? settings['vmu.reviewers.coiPolicy'] : 'deny',
     blindUnbindRequiresReason: settings['vmu.reviewers.blindUnbindRequiresReason'] !== false,
     // ROUND 283 (volume 16 §L302): optional acknowledgement/remuneration registration, off by default.
@@ -91,12 +93,6 @@ export function createReviewers({ clock = () => 0, log = () => {}, settings = {}
         'recusal is required (vmu.review.conflictPolicy=recuse; volume 16 §L301 rule ①)', { reviewerId: rid, conflict: hit })
     }
     // ③ load
-    const load = loadOf(rid)
-    if (load >= c.maxLoad) {
-      return deny('VMU_REVIEWER_OVERLOADED', 'reviewer ' + rid + ' is at the declared concurrent cap',
-        'load=' + load + ', cap=' + c.maxLoad + ' (vmu.reviewers.maxLoad)', { reviewerId: rid, load, cap: c.maxLoad })
-    }
-    const id = 'ra-' + (assignments.size + 1)
     // ★ P2-01（Round 10）：在【需要它的地方】具名拒绝。此前这里静默使用模块自带的 `'single-blind'`；
     // 现在若没有任何层声明 `vmu.review.mode`，我们【拒绝】而不是替机构选一种评审方式。
     // 用 v5r 的部署不受影响：v5r 在 `packs/v5r/settings/defaults.json` 里声明 `'single-blind'` ⇒ 走的仍是同一分支。
@@ -105,6 +101,21 @@ export function createReviewers({ clock = () => 0, log = () => {}, settings = {}
         'declare vmu.review.mode (one of: ' + MODES.join(', ') + ') - a pack or deployment does this; v5r declares single-blind',
         { declared: settings['vmu.review.mode'] === undefined ? null : settings['vmu.review.mode'] })
     }
+      // ★ P2-01（Round 11）：在【需要它的地方】具名拒绝。此前这里静默使用模块自带的 `3`；中性化 schema 默认后，
+      // "未声明"必须由内核说出来，而不是替机构选一个上限。用 v5r 的部署不受影响：v5r 在
+      // `packs/v5r/settings/defaults.json` 里声明 `3` ⇒ 走的仍是同一分支。
+      if (c.maxLoad === 0) {
+        return deny('VMU_REVIEWERS_CAP_UNDECLARED', 'no positive concurrent-review cap is declared, and this kernel will not choose one for you',
+          'declare vmu.reviewers.maxLoad (a positive integer) - a pack or deployment does this; v5r declares 3',
+          { declared: settings['vmu.reviewers.maxLoad'] === undefined ? null : settings['vmu.reviewers.maxLoad'] })
+      }
+    const load = loadOf(rid)
+    if (load >= c.maxLoad) {
+      return deny('VMU_REVIEWER_OVERLOADED', 'reviewer ' + rid + ' is at the declared concurrent cap',
+        'load=' + load + ', cap=' + c.maxLoad + ' (vmu.reviewers.maxLoad)', { reviewerId: rid, load, cap: c.maxLoad })
+    }
+    const id = 'ra-' + (assignments.size + 1)
+
     const blind = c.mode !== 'open'
     const row = { id, reviewerId: rid, submissionId: sid, mode: c.mode, blind, assignedAt: clock(), unboundAt: null, unbindReason: null, unboundBy: null }
     assignments.set(id, row)

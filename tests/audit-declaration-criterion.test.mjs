@@ -330,6 +330,7 @@ export const A_CLASS_BASELINE_FINGERPRINTS = Object.freeze([
   'audit-code-status.test.mjs:A:implemented',
   'audit-corrupt-file-guard.test.mjs:A:for:CASES',
   'audit-diagram-assets.test.mjs:A:want',
+  'audit-doc-line-refs.test.mjs:A:KNOWN_OUT_OF_RANGE',
   'audit-installer-assertions.mutants.mjs:A:for:CASES',
   'audit-math-computation-contract.mjs:A:for:PRESETS',
   'audit-math-computation-contract.mjs:A:for:SIX',
@@ -376,6 +377,7 @@ export const A_CLASS_BASELINE_FINGERPRINTS = Object.freeze([
   'vmu-migration.test.mjs:A:outcomes',
   'vmu-minutes-tool.test.mjs:A:line',
   'vmu-ops-cannot-decide.test.mjs:A:for:VERDICT_WRITES',
+  'vmu-pack-defaults-named.test.mjs:A:LOST_TOOLS',
   'vmu-pack-manifest-pointers.test.mjs:A:for:dirs',
   'vmu-paper.test.mjs:A:PLANNED_KEYS',
   'vmu-planned-settings.test.mjs:A:keys',
@@ -393,6 +395,7 @@ export const A_CLASS_BASELINE_FINGERPRINTS = Object.freeze([
   'vmu-trust.test.mjs:A:four',
   'vmu-turn.test.mjs:A:for:CHARTER_BLOCKS.filter',
   'vmu-turn.test.mjs:A:for:phases',
+  'vmu-turn.test.mjs:A:for:variants',
   'vmu-turn.test.mjs:A:ticks',
 ])
 // A-CLASS-BASELINE-END

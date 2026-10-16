@@ -1322,7 +1322,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.reviewers.acknowledgement', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（reviewers.js 读取）；默认值取自模块源码" },
   { key: 'vmu.reviewers.blindUnbindRequiresReason', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（reviewers.js 读取）；默认值取自模块源码" },
   { key: 'vmu.reviewers.coiPolicy', type: 'string', def: 'deny', hot: HOT.H1, who: 'office', doc: "已接线（reviewers.js 读取）；默认值取自模块源码" },
-  { key: 'vmu.reviewers.maxLoad', type: 'natural', def: 3, hot: HOT.H1, who: 'office', doc: "已接线（reviewers.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.reviewers.maxLoad', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（reviewers.js 读取）；默认值取自模块源码" },
   { key: 'vmu.store.autoBackup', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（storepolicy.js 读取）；默认值取自模块源码" },
   { key: 'vmu.store.backend', type: 'string', def: 'file', hot: HOT.H1, who: 'office', doc: "已接线（storepolicy.js 读取）；默认值取自模块源码" },
   { key: 'vmu.store.fsync', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（storepolicy.js 读取）；默认值取自模块源码" },

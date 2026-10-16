@@ -118,13 +118,78 @@ const SOURCE_FILES = SOURCES.map((f) => ({ rel: f.replace(VMU_DIR, '').replace(/
 const templateReader = (key) => new RegExp('\\{\\{[^}]*\\bsetting:' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b[^}]*\\}\\}')
 const isTemplateReader = (text, key) => templateReader(key).test(text)
 
+/**
+ * ★ ROUND 11/256 (task-237): THE SECOND BLIND SPOT - READS THROUGH AN ITERATED KEY TABLE.
+ *
+ * THE DEFECT (measured in `docs/acceptance/phase3-key-relationships.md`): a key can be read WITHOUT ever appearing
+ * beside a reader, because the reader walks a TABLE of keys and indexes with the LOOP VARIABLE:
+ *     packs/v5r/middleware/prompt-switches.js:25   export const OFF_SWITCHES = Object.freeze([['vmu.pointer.propagation', …], …])
+ *     packs/v5r/middleware/prompt-switches.js:71   for (const [key, section] of OFF_SWITCHES) { … s[key] !== false }
+ * The read is `s[key]` - the subscript is a variable, so no by-name scan sees it; the key's only quoted occurrence is
+ * its membership in the table. (The same file's `MEETING_STATES` has the same shape, but its members are state names
+ * like `'invited'`, NOT `vmu.*` keys - it yields nothing here, and this predicate must not pretend otherwise.)
+ *
+ * THE RULE - ALL THREE PARTS REQUIRED, so only what is verifiable is promoted and nothing is guessed:
+ *   ① the key appears as a quoted literal INSIDE a table literal bound to a name in that file;
+ *   ② the SAME name is the iterable of a `for (… of <name>)` loop in the same file;
+ *   ③ inside that loop's body something is indexed by the LOOP VARIABLE (`s[key]`, `settings[v]`, `[k]`).
+ * ★ WHY THE STRICTNESS: a predicate that guesses is WORSE than one that under-reports, because a false `已接线`
+ * HIDES a dead key. A key that is merely a member of a list nobody loops over is NOT promoted here; it keeps
+ * whatever the existing `listIterationEvidence()` already decided - that is exactly what the `UNDETERMINED` bucket
+ * is for (its own verdict text: "may be read dynamically; invisible is not absent").
+ */
+const TABLE_DECL = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:Object\.freeze\s*\(\s*)?[[{]/g
+const TABLE_LOOP = /for\s*\(\s*(?:const|let|var)\s*(?:\[([A-Za-z_$][\w$]*)[^\]]*\]|([A-Za-z_$][\w$]*))\s+of\s+([A-Za-z_$][\w$]*)\s*\)/g
+/** The literal body of `name = [ … ]` / `{ … }`, by bracket/brace balance from the declaration. */
+const literalBodyOf = (text, fromIdx) => {
+  const open = text.slice(fromIdx).search(/[[{]/)
+  if (open < 0) return null
+  let i = fromIdx + open
+  const openCh = text[i]
+  const closeCh = openCh === '[' ? ']' : '}'
+  let depth = 0
+  for (; i < text.length; i += 1) {
+    if (text[i] === openCh) depth += 1
+    else if (text[i] === closeCh) { depth -= 1; if (depth === 0) return text.slice(fromIdx + open, i + 1) }
+  }
+  return null
+}
+/** Carrier file for "this key is read through a loop over a table that contains it", or null. */
+export function tableIterationCarrier(key) {
+  const needle1 = "'" + key + "'"
+  const needle2 = '"' + key + '"'
+  for (const f of SOURCE_FILES) {
+    // ① every table literal in this file that CONTAINS the key as a quoted member
+    const tables = []
+    TABLE_DECL.lastIndex = 0
+    for (let m = TABLE_DECL.exec(f.text); m; m = TABLE_DECL.exec(f.text)) {
+      const body = literalBodyOf(f.text, m.index)
+      if (body && (body.includes(needle1) || body.includes(needle2))) tables.push(m[1])
+    }
+    if (tables.length === 0) continue
+    // ② a loop iterating one of those tables, and ③ an index read through the LOOP VARIABLE in its body
+    TABLE_LOOP.lastIndex = 0
+    for (let m = TABLE_LOOP.exec(f.text); m; m = TABLE_LOOP.exec(f.text)) {
+      const loopVar = m[1] || m[2]
+      const iterable = m[3]
+      if (!tables.includes(iterable)) continue
+      const bodyStart = f.text.indexOf('{', m.index)
+      if (bodyStart < 0) continue
+      const body = literalBodyOf(f.text, bodyStart)
+      if (body && new RegExp('\\[\\s*' + loopVar + '\\s*\\]').test(body)) return f.rel
+    }
+  }
+  return null
+}
+
 /** Does any runtime source read this key? (the honest meaning of "the knob works") */
 export function hasConsumer(key) {
   // NO BACKTICK BRANCH (round 32). Counting a bare `vmu.something` inside a COMMENT as a consumer made this
   // column claim 已接线 for keys that no code ever read - the audit suite flagged two of them, and the root cause
   // was exactly this third alternative. A comment that mentions a key is documentation, not a reader; the audit
   // suite has always judged by quoted literals, so the generator now matches that stricter standard.
-  return SOURCE_TEXT.includes("'" + key + "'") || SOURCE_TEXT.includes('"' + key + '"') || isTemplateReader(SOURCE_TEXT, key)
+  return SOURCE_TEXT.includes("'" + key + "'") || SOURCE_TEXT.includes('"' + key + '"') ||
+    isTemplateReader(SOURCE_TEXT, key) || tableIterationCarrier(key) !== null
 }
 
 /**
@@ -134,7 +199,7 @@ export function hasConsumer(key) {
  */
 export function carrierOf(key) {
   const hit = SOURCE_FILES.find((f) => f.text.includes("'" + key + "'") || f.text.includes('"' + key + '"') || isTemplateReader(f.text, key))
-  return hit ? hit.rel : null
+  return hit ? hit.rel : tableIterationCarrier(key)
 }
 
 const MODE_WRITE = process.argv.includes('--write')

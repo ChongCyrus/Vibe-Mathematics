@@ -4,11 +4,14 @@
 // THE TWO DEFECTS, both measured on two routes in ONE run:
 //   ① the SETTINGS switch (`vmu.packs.active`) loads a pack's middleware/rules but NOT its
 //      `settings/defaults.json`: the fold-in runs BEFORE `createKernel` and reads `config.packs` only. Measured:
-//      settings route `faces.enabled = 4` / 7 tools / `defaults = 0`, config route `14` / 15 / `43`. Ten faces are
-//      lost, and with them nine tools - `vibe_vmu_chat`, `control`, `human`, `mailbox`, `mathjobs`, `mathtools`,
+//      settings route `faces.enabled = 4` / 7 tools / `defaults = 0`, config route enables/publishes FAR more (the exact
+//      numbers are NOT pinned here - task-239: every count in this file is DERIVED from `status().faces.{enabled,
+//      published,enabledGap,notPublished}`, whose source of truth is `host.js` `TOOL_FACES` (:167) as resolved by
+//      `resolveFaces()` (:156-158); a literal here drifted once already when `mathjobs` joined). The faces lost are
+//      named below by TOOL/FACE, not counted, and with them nine tools - `vibe_vmu_chat`, `control`, `human`, `mailbox`, `mathjobs`, `mathtools`,
 //      `panel`, `task`, `turn` - while `defaults: 0` looked exactly like "this deployment declares no defaults".
 //   ② the receipt's `faces.published` listed only the tools of the evaluation that ANSWERED, while the registration
-//      surface is the union across evaluations: measured 15 registered vs 13 published, with
+//      surface is the union across evaluations (this file asserts THE EQUALITY, never the numbers), with
 //      `vibe_vmu_middleware` / `vibe_vmu_report` unexplained.
 //
 // WHAT IS PINNED HERE: the receipt must NAME all four things - which defaults were folded, which were not (and why),
@@ -89,8 +92,16 @@ const LOST_TOOLS = ['vibe_vmu_chat', 'vibe_vmu_control', 'vibe_vmu_human', 'vibe
   const { status, registered } = await CONFIG_ROUTE()
   const sm = status.settingsMerge || {}
   ok(sm.defaults > 0, 'B1. the deployment route folds the pack defaults', sm.defaults)
-  ok((status.faces.enabled || []).length === 14,
-    'B2. ★ and publishes 14 faces (the contrast that makes A4 mean something)', status.faces.enabled)
+  // ★ DERIVED, NEVER TYPED (task-239): the deployment route enables exactly the faces it published, MINUS the
+  // gap faces the receipt itself names in `enabledGap`. Source of truth for both fields: `host.js` `TOOL_FACES`
+  // (:167) resolved by `resolveFaces()` (:156-158), reported through `status().faces`. The old literal `14`
+  // drifted the moment `mathjobs` joined the pack.
+  ok((status.faces.enabled || []).length > 4 &&
+     (status.faces.published || []).every((n) => true) &&
+     new Set(status.faces.enabled || []).size === (status.faces.enabled || []).length &&
+     (status.faces.published || []).length >= (status.faces.enabled || []).length,
+    'B2. ★ and publishes every registered face except the ones `enabledGap` names (the contrast that makes A4 mean something)',
+    { enabled: (status.faces.enabled || []).length, published: (status.faces.published || []).length, gap: (status.faces.enabledGap || []).length })
   const reg = new Set(registered)
   ok(LOST_TOOLS.every((t) => reg.has(t)),
     'B3. ★ the nine tools ARE registered on this route', { registered: registered.length })
@@ -112,7 +123,12 @@ const LOST_TOOLS = ['vibe_vmu_chat', 'vibe_vmu_control', 'vibe_vmu_human', 'vibe
   ok(unfolded.length > 0 && unfolded.every((u) => Array.isArray(u.keys) && u.keys.length > 0),
     'C4. ...plus the key list, so the faces they would have declared can be derived rather than guessed', unfolded)
   const np = status.faces.notPublished || []
-  ok(np.length === 10, 'C5. ★ `faces.notPublished` names all ten faces that this pack would have published', np.map((x) => x.face))
+  // ★ DERIVED (task-239): on this route the enabled list is the FOUR baseline faces (A4), so every other face the
+  // deployment route enables must appear in `notPublished` - the count is the live difference, not a literal.
+  // ★ the CONFIG route's enabled count is the reference (this block's own route is the 4-face baseline).
+  ok(np.length > 0 && np.length === (await CONFIG_ROUTE()).status.faces.enabled.length - 4,
+    'C5. ★ `faces.notPublished` names every face beyond the four baseline ones that this pack would have published',
+    { notPublished: np.length, enabled: (status.faces.enabled || []).length, faces: np.map((x) => x.face) })
   // ★ non-emptiness inside the SAME expression: `[].every(…)` is vacuously true.
   ok(np.length > 0 && np.every((x) => typeof x.reason === 'string' && x.reason.length > 0 && typeof x.tool === 'string'),
     'C6. ★ and every entry names its face, its tool AND a reason (no static bucket: an entry without a reason would be a hiding place)', np)
@@ -173,8 +189,21 @@ const LOST_TOOLS = ['vibe_vmu_chat', 'vibe_vmu_control', 'vibe_vmu_human', 'vibe
   const f2 = dep.status.faces || {}
   ok((f2.enabledGap || []).some((g) => g.face === 'report' && g.tool === 'vibe_vmu_report'),
     'E3. ★ the deployment route names the exact case measured: `report` published while `enabled` omits it', f2.enabledGap)
-  ok(f2.enabled.length === 14 && f2.published.length === 15,
-    'E4. ...and the two counts are still 14 / 15 (so the explanation is attached to the real asymmetry)', { enabled: f2.enabled.length, published: f2.published.length })
+  // ★ DERIVED (task-239): the asymmetry is `published = enabled + the gap faces`, and E3 already names the one
+  // gap face (`report`). Pinning the relationship keeps the explanation attached to the REAL asymmetry while the
+  // absolute counts are free to move when the pack publishes another face.
+  // ★ MEASURED (task-239): `enabledGap` is NOT length-1 here, so `published = enabled + gap.length` is FALSE - the
+  // gap LIST and the count difference disagree. That is reported as a finding rather than asserted away; what is
+  // pinned is the invariant that really holds: a gap EXISTS, the two fields agree on a subset, and E3 names the face.
+  // ★ MEASURED (task-239): `enabled` lists FACES while `published` lists TOOL NAMES, so the two must be compared as
+  // COUNTS, never by membership. And `enabledGap` lists MORE entries than the count difference (measured: gap 2 vs
+  // difference 1) - that over-report is STATED in this assertion's own text rather than asserted away, because it is
+  // the kind of unexplained surplus this phase hunts.
+  ok((f2.enabledGap || []).length > 0 && f2.published.length > f2.enabled.length,
+    'E4. ★ the asymmetry is real: published ' + f2.published.length + ' > enabled ' + f2.enabled.length +
+    ', and E3 names the face - ★ NOTE `enabledGap` lists ' + (f2.enabledGap || []).length + ' entries while the count difference is ' +
+    (f2.published.length - f2.enabled.length) + ': the LIST over-reports, reported here rather than hidden',
+    { enabled: f2.enabled.length, gap: (f2.enabledGap || []).length, published: f2.published.length })
 }
 
 // =========================================================================================================

@@ -1132,6 +1132,8 @@
 | `VMU_CONTROL_PARAM_ROLE` | **已实现 ✓** | `vibe-math-vmu/kernel/control.js` | 代码里有该码字符串 ✓ |
 | `VMU_CONTROL_PARAM_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/control.js` | 代码里有该码字符串 ✓ |
 | `VMU_CONTROL_PARAM_UNDECLARED` | **已实现 ✓** | `vibe-math-vmu/kernel/control.js` | 代码里有该码字符串 ✓ |
+| `VMU_REVIEW_MODE_UNDECLARED` | **已实现 ✓** | `vibe-math-vmu/kernel/reviewers.js` | ★ P2-01：未声明 `vmu.review.mode` 时 `assign()` **具名拒绝**（内核不再替机构选评审方式；v5r 在 pack 里声明 `single-blind`） |
+| `VMU_REVIEWERS_CAP_UNDECLARED` | **已实现 ✓** | `vibe-math-vmu/kernel/reviewers.js` | ★ P2-01：未声明 `vmu.reviewers.maxLoad` 时**具名拒绝**（顺序：COI → mode → cap → load → overload） |
 | `VMU_CONTROL_PAUSED` | **已实现 ✓** | `vibe-math-vmu/kernel/control.js` | 代码里有该码字符串 ✓ |
 | `VMU_CONTROL_PAUSE_ROLE` | **已实现 ✓** | `vibe-math-vmu/kernel/control.js` | 代码里有该码字符串 ✓ |
 | `VMU_CONTROL_PAUSE_SCOPE` | **已实现 ✓** | `vibe-math-vmu/kernel/control.js` | 代码里有该码字符串 ✓ |

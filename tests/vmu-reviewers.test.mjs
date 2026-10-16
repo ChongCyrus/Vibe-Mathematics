@@ -6,11 +6,11 @@ import { createReviewers } from '../vibe-math-vmu/kernel/reviewers.js'
 let pass = 0
 let fail = 0
 const ok = (cond, label, detail) => { if (cond) { pass += 1 } else { fail += 1; console.log('FAIL ' + label + (detail === undefined ? '' : ' -- ' + JSON.stringify(detail))) } }
-// ★ P2-01（Round 10）：内核【不再替你选】评审方式。未声明时 config 的 mode 是 `null`，而真正需要它的 assign()
-// 会【具名拒绝】`VMU_REVIEW_MODE_UNDECLARED` —— 因为"单盲"是一种机构选择，不该由内核从沉默里替人选出来。
-// v5r 在自己的 pack 里声明它（`packs/v5r/settings/defaults.json` 的 `"vmu.review.mode": "single-blind"`），
-// 所以下面这个构造器【显式声明】它：这正是真实部署经 pack 折叠拿到的形状。
-const mk = (settings = {}) => createReviewers({ clock: () => 1000, settings: { 'vmu.review.mode': 'single-blind', ...settings } })
+// ★ P2-01（Round 10／11）：内核【不再替你选】评审方式，【也不再有】默认并发上限 —— 两者都是机构的选择。
+// 未声明时 config 的 mode 是中性空串、maxLoad 是中性 0，而真正需要它们的 assign() 会【具名拒绝】
+// （`VMU_REVIEW_MODE_UNDECLARED`／`VMU_REVIEWERS_CAP_UNDECLARED`）。v5r 在自己的 pack 里声明这两个值
+// （`packs/v5r/settings/defaults.json`），所以下面这个构造器【显式声明】它们：这正是真实部署经 pack 折叠拿到的形状。
+const mk = (settings = {}) => createReviewers({ clock: () => 1000, settings: { 'vmu.review.mode': 'single-blind', 'vmu.reviewers.maxLoad': 3, ...settings } })
 const INV = { taxIdRef: 'x' }
 void INV
 
