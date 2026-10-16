@@ -465,7 +465,7 @@ export function apply(ctx, config = {}) {
       }
     } catch { parent = null }
     const signal = (typeof config.deliverSignal === 'object' && config.deliverSignal) || (typeof AbortSignal !== 'undefined' && typeof AbortController !== 'undefined' ? new AbortController().signal : null)
-    return deliverViaSubagents(subs, extract, { provider: configuredProvider, parent, signal })({ turn, text })
+    return deliverViaSubagents(subs, extract, { provider: configuredProvider, parent, signal, options: (config.deliverOptions && typeof config.deliverOptions === 'object') ? config.deliverOptions : {} })({ turn, text })
   }
   // ROUND 4 / F9+F10 (docs/26 §3.22): THE ONGOING-COMMAND SEAMS, assembled exactly like the turn-delivery one above -
   // the capability is the host's (`subagents.sendMessage` / `subagents.interrupt`), the bridge is
@@ -1244,3 +1244,4 @@ export function apply(ctx, config = {}) {
     cleanups,
   }
 }
+
