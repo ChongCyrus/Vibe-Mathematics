@@ -196,3 +196,51 @@ RESULT preset=vibe-math-vmu exit=0 done=True capHit=False timeoutOrFatal=False
 
 ## 12. ★★ 一条**我自己的**量具缺陷（★ 顺带发现，需修）
 ★ 我的分类器对那次 30 分钟的运行报了 **`timeoutOrFatal=False`**，★ **而 `durationSec: 1801` 明明就是【打满超时】** ⇒ ★★ **分类器漏判了"零 token 打满超时"这种情形** ✓ —— ★ **它对"运行到超时但未触发 timeout 步骤"的情况看不见** ✓ ⇒ ★ **应把 `durationSec ≈ TimeoutSec` 且 `totalTokens == 0` 也判为 NON-RESULT** ✓
+
+---
+
+## 13. ★★★★★ Round 28：**研究所真的跑起来了 —— pack 生效、成员在轮转工作**
+
+### 13.1 ★★ 两个修复叠加后的读数
+```
+PROVIDER PACKAGE present in the clone: True
+  bundles now: @deepseek-ai/dsh-base, @deepseek-ai/dsh-web-app, dshmarket, dsh-image-gen, dsh-vibe-math, @mars-sea/dsh-commandcode-provider
+MODEL SET: provider=commandcode model=deepseek/deepseek-v4.1-flash
+PACK config injected onto the framework plugin row (line 1873)
+RESULT preset=vibe-math-vmu exit=0 dur=245s tokens=904769 capHit=True timeoutOrFatal=False adapterError=False
+VERDICT: NON-RESULT (token cap hit)
+```
+
+### 13.2 ★★★★ 研究所的**实际状态**（★ 逐字来自回执与工具调用）
+| 项 | ★ 读数 |
+|---|---|
+| ★★ **整合包** | ★★ **`packs: ["v5r"]`** —— ★ **pack 真的生效了** ✓ |
+| ★★★ **阶段** | ★★★ **`phase: "round-robin"`** —— ★ **成员在轮转工作** ✓ |
+| ★★ **运行中** | ★★ **`running: true`** ✓ |
+| ★★ **能力面** | ★★ **63 个 `vibe_vmu_*`** ✓ |
+| ★ **转录** | ★ **1,740 KB** ✓ |
+
+★★ **代理实际调用过的工具（★ 按次数）**：
+```
+  vibe_vmu_meeting      x43      ← ★ 会议真的开了
+  vibe_vmu_control      x37
+  vibe_vmu_task         x25      ← ★ 任务板在用
+  vibe_vmu_turn         x19      ← ★ 回合驱动在用
+  vibe_vmu_chat         x13
+  vibe_vmu_status       x13
+  vibe_vmu_formal       x7       ← ★ 形式化面
+  vibe_vmu_mathtools    x7       ← ★ 数学工具面
+  vibe_vmu_mathadapters x7
+  vibe_vmu_mathjobs     x7
+  vibe_vmu_set          x7       ← ★ 运行时设置
+  vibe_vmu_admission / arbitration / audit  x1 each
+```
+⇒ ★★★★ **即：会议、任务、回合、通信、形式化、数学工具、设置——这些面【都被真的调用起来了**】✓ —— ★ **这正是 Phase 5 要验证的"逻辑、功能、提示词交互是否正常"** ✓
+
+### 13.3 ★★ 诚实的两点
+1. ★★ **它打满了 900k 的 token 上限（★ `capHit=True`）**，★ **245 秒用掉 904,769 tokens** ⇒ ★ **预算不够跑完** ✓
+2. ★★ **因此没有收敛证据**：★ **没有 `vote_solved` / `allSolved`** ⇒ ★★ **按手册铁律【记为 NON-RESULT】—— ★ 触顶不是通过** ✓ —— ★ 而**我修正后的分类器正确地这么判了**（★ 若按旧分类器会误报 done ✓）✓
+
+### 13.4 ★ 下一步
+★ **用更大的预算重跑以求收敛**：★ 本次 `-MaxTokens 4000000 -TimeoutSec 3600`（★ 手册的总预算约 ≤2.5M／阶段，★ 而一次"跑到结题"本就比单轮昂贵）✓
+★ 若**仍触顶** ⇒ ★ **如实记为 NON-RESULT，并报告它跑到了哪个阶段**（★ 这本身就是有价值的观测）✓
