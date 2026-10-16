@@ -139,10 +139,10 @@ const CORE_DEFS = Object.freeze([
   // settings value, reached from the section through the pipeline own `{{ setting:... }}` variable.
     // ★★★ ROUND 55: THE PERMISSION THAT GRANTS A CLOSURE VOTE IS DEPLOYMENT VOCABULARY, SO IT IS DECLARED HERE RATHER
   // THAN HARDCODED. The closure predicate needs to know which permission makes a member enfranchised; the v5r pack
-  // grants ote to the member slot but NOT to the chair or the temp slot, and another institution may word it
+  // grants `vote` to the member slot but NOT to the chair or the temp slot, and another institution may word it
   // differently. My Round-53 reason text REFERRED to this key before it existed - the contract-promising-what-the-
   // implementation-does-not-do family this phase keeps removing, and this instance was mine. Declared now, with the
-  // pack supplying the default, so a deployment can rename it and ibe_vmu_set accepts it.
+  // pack supplying the default, so a deployment can rename it and `vibe_vmu_set` accepts it.
     // ★★★ ROUND 63: WHICH PROVIDER THE ONE-SHOT DELIVERY PATH USES. startContinuable goes through the host's
   // continuable-activation registry, which refuses a new activation while a previous one is being torn down -
   // measured as a persistent failure on a real machine because the driver already holds the root agent as an
@@ -153,9 +153,9 @@ const CORE_DEFS = Object.freeze([
   // the assembled prompt goes back to the calling session, which plays the member turn and returns the reply through
   // vibe_vmu_turn { reply }. The caller route exists because the host types a subagent request's parent as an Agent
   // while exposing only list(): string[] to a plugin, so a plugin cannot construct a legal parent.
-  { key: 'vmu.turn.deliverMode', type: 'enum', domain: ['subagents', 'caller'], def: 'subagents', hot: HOT.H2, who: 'office', doc: '交付路线：★ subagents＝宿主把成员回合当作子代理运行（★ 默认）；★ caller＝把装配好的提示词交回调用会话，★ 由它扮演成员回合并用 ibe_vmu_turn { reply } 送回答复' },
+  { key: 'vmu.turn.deliverMode', type: 'enum', domain: ['subagents', 'caller'], def: 'subagents', hot: HOT.H2, who: 'office', doc: 'capability-default: 这是交付【传输】的选择，不是研究该怎么进行的政策 —— 默认值 subagents＝宿主把成员回合当作子代理运行，是宿主协作得了的那条路（caller 那条要求部署把提示词交回调用会话）。交付路线：★ subagents＝宿主把成员回合当作子代理运行（★ 默认）；★ caller＝把装配好的提示词交回调用会话，★ 由它扮演成员回合并用 vibe_vmu_turn { reply } 送回答复' },
 { key: 'vmu.turn.deliverProvider', type: 'string', def: '', hot: HOT.H2, who: 'office', doc: '成员回合【一次性交付】所用的 provider 名：★ 非空且宿主提供 start() 时，★ 交付走一次性路径（★ 不进入 continuable registry）；★ 空则走 continuable 路径' },
-{ key: 'vmu.turn.closureVotePermission', type: 'string', def: 'vote', hot: HOT.H2, who: 'office', doc: '哪一个权限字符串算【结题表决权】：★ 谓词据此判断谁【有资格】结题。★ 默认 ote（★ v5r pack 把 ote 给 member 槽位，chair 与 	emp 都没有）；★ 另一家机构可以改名' },
+{ key: 'vmu.turn.closureVotePermission', type: 'string', def: 'vote', hot: HOT.H2, who: 'office', doc: 'capability-default: 值只是一个权限字符串的【名字】，谓词拿它去问谁能结题；换名不改机制，而名字本身是部署词汇（v5r 交给 member 槽位）。哪一个权限字符串算【结题表决权】：★ 谓词据此判断谁【有资格】结题。★ 默认 vote（★ v5r pack 把 vote 给 member 槽位，chair 与 temp 都没有）；★ 另一家机构可以改名' },
 { key: 'vmu.turn.objective', type: 'string', def: '（尚未设定）', hot: HOT.H2, who: 'office', doc: '本所研究对象（原问题）；默认值与原线未设定时的输出一字不差，绝不留空括号' },
   // ROUND 365: the resource discipline the original puts in front of every member is not a slogan, it is a block whose
   // NUMBERS are runtime parameters (docs/26 section 3.14). They live here so the text stays in the pack and the values
