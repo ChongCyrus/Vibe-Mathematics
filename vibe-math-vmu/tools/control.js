@@ -11,7 +11,15 @@ export function makeControlSpec({ param, refused, TOOL_NAMES, kernel }) {
         action: param('string', 'status（默认）｜pause｜resume｜stop｜beat｜roster｜hire｜fire｜tune', { required: true, enum: ['status', 'pause', 'resume', 'stop', 'beat', 'roster', 'hire', 'fire', 'tune'] }),
         member_id: param('string', 'roster 可省；hire/fire 必填的成员 id'),
         slot: param('string', '★ hire 必填：把成员放进【哪一个内核角色槽位】（v5r pack 声明 chair／member／temp）。★ 内核【绝不猜】成员担任什么角色，★ 因此缺失即具名拒'),
-        institution: param('string', 'hire 的所属机构（缺省时由内核决定）'),
+        // ★★★ ROUND 46 (measured): THE DESCRIPTION SAID OPTIONAL AND THE KERNEL REFUSED. It read "缺省时由内核决定" -
+        // when omitted, the kernel decides - while `identity.addMembership` requires a non-empty institution and no
+        // declared default exists anywhere in the framework. A caller following the description was refused from deep
+        // inside the identity service, with no way to know beforehand. The description now states the truth, and the
+        // refusal happens HERE, at the face, naming the missing argument - rather than being discovered mid-call.
+        // Inventing a default institution name was the other option and is the wrong one: a name the framework makes up
+        // is exactly the hardcoded value this project forbids, and which institution a member joins is a deployment
+        // decision, not the framework's.
+        institution: param('string', '★ hire 必填：成员所属机构名。★ 内核【没有】任何缺省机构（`identity.addMembership` 要求非空，缺失即具名拒），★ 因为"某成员属于哪个机构"是【部署的决定】，不是框架可以替它编的'),
         since: param('string', 'hire 的加入时间戳（可省）'),
         reason: param('string', 'pause/stop 的原因（写入控制面与审计）'),
         note: param('string', 'beat 的备注（可选）'),
@@ -44,11 +52,14 @@ export function makeControlSpec({ param, refused, TOOL_NAMES, kernel }) {
             return Object.assign({ ok: true, action, source: 'kernel.members (the roster the turn face reads)' }, { roster: kernel.members.roster() })
           }
           if (action === 'hire') {
-            const identity = kernel.identity ? kernel.identity.addMembership({ memberId: member_id, institution: institution === undefined ? null : institution, since: since === undefined ? null : since }) : null
             // ★ THE SEATING IS THE POINT. Without it the hire is recorded where the turn face does not look, and the
             // framework never starts however many times the operator hires. Distinct refusals, deliberately: "no roles
             // are declared" is a wiring gap, while a FULL slot is a capacity limit - sharing one message would let the
             // first read as the second.
+            //
+            // ★★ THE ORDER MATTERS AND WAS MEASURED: the SLOT is checked first, because seating is this face's own
+            // concept and the point of the fix - a caller who omitted the slot must be told about the SLOT, not about a
+            // later requirement. The institution is checked after, immediately before the identity call that needs it.
             if (!kernel.members || typeof kernel.members.hire !== 'function') {
               return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel declares no role slots, so a hired member cannot be seated',
                 'the roster the turn face reads comes from the pack-declared slots; load a pack that declares them')
@@ -58,6 +69,15 @@ export function makeControlSpec({ param, refused, TOOL_NAMES, kernel }) {
               return refused('VMU_INVALID_ARGUMENT', 'hire needs the SLOT to seat ' + String(member_id) + ' into',
                 'pass slot: one of ' + (available.length ? available.join('｜') : '(none declared)') + ' - the kernel never guesses which role a member fills')
             }
+            // ★★ THE MISSING ARGUMENT IS REFUSED HERE, NOT DEEP IN THE IDENTITY SERVICE. `identity.addMembership`
+            // requires a non-empty institution and the framework declares no default, so a caller that followed the
+            // OLD description ("the kernel decides") was refused from inside another service with no warning. Naming
+            // it at the face is the difference between an actionable refusal and a treasure hunt.
+            if (typeof institution !== 'string' || institution.length === 0) {
+              return refused('VMU_INVALID_ARGUMENT', 'hire needs the INSTITUTION to put ' + String(member_id) + ' in',
+                'pass institution: "<name>" - the framework declares no default institution on purpose, because which institution a member joins is a deployment decision, not one the framework may invent')
+            }
+            const identity = kernel.identity ? kernel.identity.addMembership({ memberId: member_id, institution, since: since === undefined ? null : since }) : null
             return Object.assign({ ok: true, action, seated: true, slot: String(slot) }, await kernel.members.hire({ id: String(member_id), slot: String(slot) }), identity ? { identity } : {})
           }
           if (action === 'fire') {

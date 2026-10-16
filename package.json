@@ -424,6 +424,7 @@
     "tests/vmu-mathjobs.test.mjs",
     "tests/vmu-arbitration.test.mjs",
     "tests/vmu-recruit.test.mjs",
+    "tests/vmu-control.test.mjs",
     "tests/vmu-topology.test.mjs",
     "tests/vmu-fairness.test.mjs",
     "tests/vmu-charter.test.mjs",
