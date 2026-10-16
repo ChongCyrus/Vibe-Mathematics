@@ -2146,7 +2146,28 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     packNotes() { return packNotesLog.map((n) => Object.assign({}, n)) },
 
     /** Observability (R11): the whole assembly in one place, with each part reporting its own state. */
-    status() {
+    /**
+     * ★★ ROUND 34 (measured): `status(opts)` takes a `detail`. The full per-key resolved map is the bulk of this
+     * receipt - over a thousand keys with value, source, hot class and who-may-change - and on a real machine it
+     * pushed the whole answer past the host's size limit, so the host truncated it and the sections a reader most
+     * needed were the ones cut. The four segments an operator actually asks about (phase / quorum / formal / paper)
+     * are contributed by the PACK and are not the bulk, so trimming the map here keeps them visible by construction.
+     *
+     * ★★ THE BOUND BELONGS AT THE BOUNDARY, NOT IN THE DATA SOURCE. The KERNEL defaults to the COMPLETE view: a
+     * caller asking the kernel directly is asking for the truth, and eliding keys there would make an absent key
+     * indistinguishable from an unset one - which is this phase's recurring defect family, and a suite proved it
+     * within one run (it read a single default-valued key and crashed). It is the TOOL FACE that exceeded the host's
+     * size limit, so the FACE defaults to the bounded summary and offers `detail:'full'`.
+     *
+     * `detail: 'summary'` keeps the counts, plus every key whose source is NOT the schema default - the ones a
+     * deployment actually set, and therefore the ones worth reading - and records how many were elided. `detail:
+     * 'full'` (the default here) or `'settings'` returns the complete map exactly as before. NOTHING IS LOST, ONLY
+     * REQUESTED: the summary states what it left out and how to ask for it, so a bounded receipt and a complete one
+     * can never be mistaken for each other.
+     */
+    status(opts = {}) {
+      const detail = typeof opts.detail === 'string' ? opts.detail : 'full'
+      const wantsFullSettings = detail !== 'summary'
       // `settings.resolved` answers the manual's promise (docs/04 搂6): for EVERY declared key, the effective
       // value, WHERE it came from (pack layer > runtime `vibe_vmu_set` > the plugin's config > schema default),
       // its hot class and who may change it. Precedence is stated because a pack and a runtime write are not
@@ -2171,6 +2192,18 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
           overridden: source === 'default' ? [] : overridden,
         }
       }
+      // ★ THE BOUNDED VIEW. `resolved` stays the complete map for `detail:'full'`; the default summary keeps the
+      // keys a deployment actually set (source !== 'default') and counts the rest, so the answer is bounded by the
+      // deployment rather than by the size of the catalogue. The elided count is stated, never silent.
+      const resolvedSummary = {}
+      let elided = 0
+      for (const k of Object.keys(resolved)) {
+        if (resolved[k].source === 'default') { elided++ } else { resolvedSummary[k] = resolved[k] }
+      }
+      const resolvedView = wantsFullSettings ? resolved : resolvedSummary
+      const resolvedNote = wantsFullSettings
+        ? 'full: every declared key with its effective value, source, hot class and who may change it'
+        : 'summary: only keys whose source is NOT the schema default are listed (' + elided + ' default-valued keys elided); ask for detail:"full" or detail:"settings" for the complete map'
       return {
         enabled: true,
         active: started,
@@ -2187,7 +2220,11 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
           conflictsView: 'vibe_vmu_status → settingsMerge.conflicts (the entry\'s mergeReport)',
           note: 'a conflict is a pack default that collided with a higher layer: the higher layer WINS and the collision is named (O4); open the door with vmu.packs.activeOverrides / allowKernelOverride',
         },
-        settings: { keys: Object.keys(settings).length, engineEnabled: enabled, dryRun, resolved,
+        settings: { keys: Object.keys(settings).length, engineEnabled: enabled, dryRun, detail,
+          // ★ ROUND 34: which of the two views this receipt carries, and how to ask for the other. A reader must
+          // never have to guess whether an absent key is unset or merely elided.
+          resolvedDetail: resolvedNote,
+          resolved: resolvedView,
           // TASK-163: the hot-grading promise is SELF-DISCLOSED here, and the last runtime write is shown with
           // what it really applied — the receipt and this line are the same fact, not two opinions.
           hotGrading: 'H0/H1 runtime writes are applied LIVE (and the receipt names the consumers); an H2 write is stored now and takes effect on the next start, and its receipt carries requiresRestart:true; H3 keys are framework-owned and REFUSED by name on BOTH paths (kernel API and tool face)',

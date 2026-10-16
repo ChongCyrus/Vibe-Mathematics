@@ -426,10 +426,15 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   if (on('status')) specs.push({
     name: TOOL_NAMES.status,
     description: 'vmu 内核状态：装配了哪些服务/接缝、注册了哪些中间件、生效的整合包、实例身份、以及是否"零机制惰性"。只读。',
-    parameters: {},
-    run: async () => {
+    parameters: {
+      // ★★ ROUND 34 (measured): the resolved settings map made this receipt larger than the host's limit on a real
+      // machine, so the host truncated it and the sections a reader most needed were the ones cut. The default is a
+      // bounded summary; the complete map is one word away. Nothing is lost - only requested.
+      detail: param('string', 'summary（默认，只列非默认来源的键 ＋ 计数）｜full／settings（完整逐键表）｜phase｜quorum｜formal｜paper（按段取）'),
+    },
+    run: async (req = {}) => {
       try {
-        const out = Object.assign({ ok: true, instance }, kernel.status())
+        const out = Object.assign({ ok: true, instance }, kernel.status({ detail: req && typeof req.detail === 'string' ? req.detail : 'summary' }))
         // ROUND 1 / K1 (D-01): WHICH faces exist and WHY the other ones do not. A face that silently disappears is
         // exactly the failure this map exists to end, so the answer travels with the status receipt.
         // ROUND 26 / task-141 (the third "receipt vs fact" instance): `published` used to be THIS evaluation's tool
@@ -599,8 +604,8 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         // never has to guess whether a change was ignored (H2 ⇒ a new session is required, and we say so).
         // The table comes from the KERNEL (one source); this face only formats it.
         const APPLIES = (kernel.appliesTable ? kernel.appliesTable() : null)
-          || (kernel.status && kernel.status().settings && kernel.status().settings.applies) || {}
-        const resolved = kernel.status ? (kernel.status().settings.resolved || {})[key] : null
+          || (kernel.status && kernel.status({ detail: 'full' }).settings && kernel.status({ detail: 'full' }).settings.applies) || {}
+        const resolved = kernel.status ? (kernel.status({ detail: 'full' }).settings.resolved || {})[key] : null
         // A PLANNED KEY is a design-phase declaration with NO consumer yet (settings/planned.js, docs/04 §6.3).
         // The receipt must SAY so: "settable but inert" is exactly the trap the manual forbids. `noConsumer` is
         // present only for planned keys, so no other receipt changes shape.
