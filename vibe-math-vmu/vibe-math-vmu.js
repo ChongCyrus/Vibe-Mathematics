@@ -441,7 +441,7 @@ export function apply(ctx, config = {}) {
     if (!subs || (typeof subs.startContinuable !== 'function' && !(configuredProvider && typeof subs.start === 'function'))) {
       const err = new Error('the host exposes no subagents service (ctx.get(\'subagents\')), so no member turn can be delivered')
       err.code = 'VMU_ENGINE_UNAVAILABLE'
-      err.hint = 'the turn loop refuses by name rather than pretending a member answered (docs/26 stage 3); pass config.deliverReply to extract the reply from a non-standard handle, or config.deliverProvider to use the ONE-SHOT start() path'
+      err.hint = 'the turn loop refuses by name rather than pretending a member answered (docs/26 stage 3); pass config.deliverReply to extract the reply from a non-standard handle, or config.deliverProvider to use the ONE-SHOT start() path. parentKind=' + parentKind + ' agentsKeys=' + JSON.stringify(agentKeys)
       throw err
     }
     const extract = typeof config.deliverReply === 'function' ? config.deliverReply : null
@@ -453,11 +453,18 @@ export function apply(ctx, config = {}) {
     // CALL TIME like every other seam here. The SIGNAL is the framework's own: one is created per turn, so a member
     // turn is abortable and a caller that hands in its own still wins.
     let parent = null
+    // ★★★ ROUND 71: WHAT THE RESOLUTION ACTUALLY PRODUCED, AND WHAT THE SERVICE OFFERS. The remaining question is
+    // whether a plugin can obtain the CALLING Agent at all - the host types the one-shot request's parent as Agent
+    // while its agents service lists only ids - and one observation settles it. Both facts are recorded here and, when
+    // the parent is unusable, they are carried into the refusal so the diagnosis needs no extra instrumentation.
+    let parentKind = 'null'
+    let agentKeys = null
     try {
       const agents = ctx && typeof ctx.get === 'function' ? ctx.get('agents') : null
+      if (agents && typeof agents === 'object') { try { agentKeys = Object.keys(agents).concat(Object.keys(Object.getPrototypeOf(agents) || {})).slice(0, 24) } catch { agentKeys = null } }
       if (agents && typeof agents.get === 'function') {
         const id = (typeof config.sessionId === 'string' && config.sessionId) || (typeof config.agentId === 'string' && config.agentId) || null
-        parent = (id && agents.get(id)) || null
+        if (id && typeof agents.get === 'function') { const cand = agents.get(id); parent = cand || null; parentKind = cand ? (typeof cand === 'object' ? (cand.options ? 'agent' : 'object-without-options') : typeof cand) : 'get-returned-nothing' }
         if (!parent && typeof agents.list === 'function') {
           // ★★★ ROUND 70: list() RETURNS IDS, NOT AGENTS. The host's own declaration reads list(): string[], and the
           // one-shot request's parent is typed Agent - an object carrying options and session.header. Taking the
@@ -468,6 +475,7 @@ export function apply(ctx, config = {}) {
           if (Array.isArray(all) && all.length === 1) {
             const resolved = agents.get(String(all[0]))
             // only an object with the fields the host reads is accepted; anything else stays null and is refused by name
+            parentKind = resolved === undefined || resolved === null ? 'get-returned-nothing' : (typeof resolved === 'object' ? (resolved.options ? 'agent' : 'object-without-options') : typeof resolved)
             if (resolved && typeof resolved === 'object' && resolved.options && resolved.session) parent = resolved
           }
         }
@@ -1253,5 +1261,6 @@ export function apply(ctx, config = {}) {
     cleanups,
   }
 }
+
 
 
