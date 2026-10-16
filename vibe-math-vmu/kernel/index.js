@@ -26,7 +26,7 @@ import { createPromptPipeline } from './prompt/index.js'
 // ROUND 339: the TURN LOOP itself (docs/26) - assemble, deliver, parse, dispatch - so a host that installs only the
 // framework can run a member turn instead of borrowing the original preset loop. Its ownership table names REAL
 // faces and operations (read off this kernel at runtime in round 338), and delivery goes through the host seam.
-import { createTurnOrchestrator, facesFrom } from './turn/index.js'
+import { createTurnOrchestrator, facesFrom, closureVoteOf } from './turn/index.js'
 // A1 step 1 · Part A: the reporting feedback receipt shape, handed DOWN to `kernel/report.js` as an injected provider
 // (that file stays import-free by invariant).
 import { reportFeedbackFailure, REPORT_FEEDBACK_WHAT_CONTEXT } from './reportfeedback.js'
@@ -2389,6 +2389,29 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         }
         view.diagnosticsBounded = 'summary headlined the seven diagnostic sections (registry / guards / seams / reporting / approvalGate / projections / activity); each is returned in full for detail:"full", and nothing else in this receipt is trimmed'
       }
+      // ★★★ ROUND 50: THE READING AN OPERATOR WAS MISSING, AND THE REASON THIS PHASE TOOK SO LONG TO CLOSE. Sixty-one
+      // meetings ran with no way to see that the single field which closes the institute had never been emitted. The
+      // predicate itself lives in the turn module (pure, exported, tested without a kernel); what the KERNEL adds is the
+      // two things only it owns - the LIVE ROSTER and the PERMISSION test. Both are injected rather than assumed:
+      // which permission grants a closure vote is deployment vocabulary (the v5r pack gives `vote` to the member slot
+      // but NOT to the chair or the temp slot), so hardcoding a name here would invent policy, and counting the whole
+      // roster instead of the enfranchised members would leave the chair permanently "missing" and make unanimity
+      // UNREACHABLE - which is exactly how a "fix" here could have produced another institute that never closes.
+      view.closureVote = closureVoteOf({
+        votes: turn && typeof turn.status === 'function' ? turn.status().closureVoteVotes : new Map(),
+        roster: members && typeof members.roster === 'function' ? members.roster() : [],
+        may: members && typeof members.may === 'function' ? (id, perm) => {
+          // ★★★ ROUND 50: `may()` RETURNS AN OBJECT, NOT A BOOLEAN - `{ ok, allowed, member, slot, permission }`. An
+          // object is ALWAYS truthy, so passing the method straight through enfranchised EVERY member including the
+          // chair - which is exactly the trap that makes unanimity unreachable (the chair may convene, close, assign,
+          // grant and freeze but may NOT vote). Measured before this unwrap: `eligible: ["acad","m1","m2"]` with acad
+          // on the chair slot. The unwrap is load-bearing, not tidying.
+          const r = members.may(id, perm)
+          return !!(r && typeof r === 'object' ? r.allowed : r)
+        } : null,
+        permission: typeof settings['vmu.turn.closureVotePermission'] === 'string' && settings['vmu.turn.closureVotePermission']
+          ? settings['vmu.turn.closureVotePermission'] : 'vote',
+      })
       return view
     },
   }
@@ -2400,3 +2423,4 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
 
   return kernel
 }
+

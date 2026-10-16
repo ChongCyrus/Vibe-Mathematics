@@ -57,6 +57,53 @@ export const FIELD_OWNERS = Object.freeze({
   reject_assign: Object.freeze({ face: 'vmu.meetings', op: 'speak' }),
 })
 
+/**
+ * ★★★ ROUND 50 — THE CLOSURE PREDICATE, WHICH DID NOT EXIST. The original stops when every speaker's judgement is
+ * true (`vibe-math-v4/vibe-math-v4.js:2369`). Nothing in this framework counted the equivalent field at all: `solved`
+ * was recorded onto the turn state under RECORDED_FIELDS and never read back, so an institute could run forever
+ * without any answer to "is the question solved".
+ *
+ * PURE, AND THE PERMISSION IS INJECTED. Which permission name grants a closure vote is DEPLOYMENT vocabulary - the
+ * v5r pack gives `vote` to the member slot but NOT to the chair (convene/close/assign/grant/freeze) or the temp slot
+ * (speak only) - so hardcoding a name here would both invent policy and, if the whole roster were counted instead of
+ * the enfranchised members, make unanimity UNREACHABLE. `may(id, permission)` is therefore injected, and the
+ * permission name is a parameter.
+ *
+ * @param votes      member id -> boolean (each member's own `solved`), collected per TURN and keyed by member.
+ * @param roster     the members to consider, each `{ id }` (the live roster).
+ * @param may        `(id, permission) => boolean`; defaults to "everyone may" so a kernel without a roster still
+ *                   returns a well-formed reading rather than throwing.
+ * @param permission the permission that grants a closure vote. Defaults to the framework's own README word only as
+ *                   a last resort; a deployment should set `vmu.turn.closureVotePermission`.
+ */
+export function closureVoteOf({ votes = new Map(), roster = [], may = null, permission = 'vote' } = {}) {
+  const enfranchised = roster
+    .map((m) => String(m && m.id !== undefined ? m.id : m))
+    .filter((id) => (typeof may === 'function' ? may(id, permission) : true))
+  const forIt = []
+  const against = []
+  const missing = []
+  for (const id of enfranchised) {
+    if (!votes.has(id)) missing.push(id)
+    else if (votes.get(id) === true) forIt.push(id)
+    else against.push(id)
+  }
+  const cast = enfranchised.length > 0 && missing.length === 0 && against.length === 0
+  return {
+    window: 'round',
+    cast,
+    for: forIt,
+    against,
+    missing,
+    eligible: enfranchised,
+    permission,
+    reason: cast
+      ? 'every enfranchised member judged the question solved'
+      : (enfranchised.length === 0
+        ? 'no member holds the closure-vote permission, so unanimity is unreachable (check the pack slot permissions and vmu.turn.closureVotePermission)'
+        : (missing.length ? 'silence blocks closure; no judgement yet from: ' + missing.join(', ') : 'a member judged the question NOT solved: ' + against.join(', '))),
+  }
+}
 export const FIELDS = Object.freeze(Object.keys(FIELD_OWNERS))
 
 /**
@@ -570,7 +617,11 @@ export function createTurnOrchestrator({
     return q
   }
 
-  const apply = async (reply, faceMap = null) => {
+  // ★★ ROUND 50: THE CLOSURE VOTE, BY MEMBER. `solved` arrives once per turn and would otherwise overwrite a single
+  // context slot, so a unanimous judgement could never be observed - which is trap 3 ("solved is per-turn state
+  // while closure is a per-round judgement"). Keyed by member, the window becomes well defined.
+  const closureVotes = new Map()
+  const apply = async (reply, faceMap = null, memberId = null) => {
     const map = faceMap || faces
     const r = reply && typeof reply === 'object' ? reply : {}
     const bookkeeping = []
@@ -607,6 +658,8 @@ export function createTurnOrchestrator({
     // in a default kernel, and sending a payload to an operation that does not exist would be worse than keeping it.
     for (const field of RECORDED_FIELDS) {
       if (r[field] === undefined || r[field] === null) continue
+      // ★ the member's own round judgement: the field the ORIGINAL reads for `allSolved`
+      if (field === 'solved' && memberId !== null) closureVotes.set(String(memberId), r[field] === true)
       if (bookkeeping.some((b) => b.field === field)) continue
       context.set(field, r[field])
       bookkeeping.push({ field, kept: true })
@@ -627,7 +680,7 @@ export function createTurnOrchestrator({
       const seen = await bus.emit('turn/reply-parsed', { turn: turn.id, member: turn.member, phase: turn.phase, fields: parsed.fields, reply: parsed.reply }, { member: turn.member, role: turn.role, phase: turn.phase })
       if (seen && seen.ok === false) fail((seen.refused && seen.refused.code) || 'VMU_MIDDLEWARE_FAILED', (seen.refused && seen.refused.message) || 'a middleware refused turn/reply-parsed', (seen.refused && seen.refused.hint) || null)
     }
-    const out = await apply(parsed.reply)
+    const out = await apply(parsed.reply, null, turn.member)
     // ROUND 396: a REFUSED dispatch becomes a notice for this member's NEXT prompt, which is the shape the original's
     // own corpus shows - "【研究所提示】task_update 未生效（V5_TASK_STALE_REVISION）：…". A refusal that lives only in the
     // receipt is invisible to the member that caused it, and the source is explicit that the announcement point is the
@@ -725,7 +778,13 @@ export function createTurnOrchestrator({
     notify: (memberId, line) => queueNotice(memberId, line),
     /** Drain a member queued notices. The assembly calls this, which is what makes the announcement one-shot. */
     takeNotices: (memberId) => drainNotices(memberId),
-    status: () => ({ apiVersion, turns: turns.size, fields: known.length, owners, policy: POLICY, woken: Object.fromEntries(woken), counts: { ...counts }, lastRefusal: { ...lastRefusal } }),
+    status: ({ roster = [], may = null, permission = 'vote' } = {}) => ({ apiVersion, turns: turns.size, fields: known.length, owners, policy: POLICY, woken: Object.fromEntries(woken), counts: { ...counts }, lastRefusal: { ...lastRefusal },
+      // ★★★ ROUND 50: THE READING AN OPERATOR WAS MISSING. Sixty-one meetings ran with no way to see that the one
+      // field which closes the institute had never been emitted. `missing` names WHO, because silence is what blocks
+      // closure and "somebody did not vote" is not actionable.
+      // ★ the raw per-member judgements, so a caller that owns the roster (the kernel) can run the predicate itself
+      closureVoteVotes: closureVotes,
+      closureVote: closureVoteOf({ votes: closureVotes, roster, may, permission }) }),
   }
 }
 
