@@ -129,8 +129,13 @@ const specFor = (kernel) => controlSpecOf(kernel).spec
   await s.run({ action: 'hire', member_id: 'm1', slot: 'chair', institution: 'Uni' })
   const r = await s.run({ action: 'roster' })
   const kernelRoster = k.members.roster()
-  ok(r.ok === true && Array.isArray(r.roster) && r.roster.length === kernelRoster.length,
-    '★★ CRITERION 6: roster returns exactly the kernel roster (item count)', { tool: (r.roster || []).length, kernel: kernelRoster.length })
+  // ★★★★★★★ ROUND 82: A SHAPE-B VIOLATION, FIXED RATHER THAN EXEMPTED. This compared two LENGTHS, which is satisfied
+  // when BOTH are zero - the empty-vs-empty comparison rule E forbids, because an assertion that passes on two empty
+  // collections proves nothing about the collection it is meant to check. One member is hired on the line above, so the
+  // bounded truth is stronger and still exact: the roster must be NON-EMPTY, hold exactly that member, and match the
+  // kernel's own roster in length. Written as a positive claim so no pair of zeroes can satisfy it.
+  ok(r.ok === true && Array.isArray(r.roster) && r.roster.length > 0 && r.roster.length === kernelRoster.length && kernelRoster.length > 0,
+    '★★ CRITERION 6: roster returns exactly the kernel roster (non-empty, item count equal)', { tool: (r.roster || []).length, kernel: kernelRoster.length })
   ok(JSON.stringify((r.roster || []).map((m) => String(m.id))) === JSON.stringify(kernelRoster.map((m) => String(m.id))),
     '★★ and item-by-item by id, so the two ledgers cannot drift', { tool: (r.roster || []).map((m) => m.id), kernel: kernelRoster.map((m) => m.id) })
   ok(/kernel\.members/.test(String(r.source || '')), '★★ the receipt NAMES its source (kernel.members), so a reader can tell which ledger answered', String(r.source || '').slice(0, 90))
@@ -171,13 +176,17 @@ console.log('\n=== 8. COUNTEREXAMPLES (copy-based) ===')
   ]
   for (const [label, from, to, probe, criterion] of M) {
     const hits = original.split(from).length - 1
-    if (hits !== 1) { ok(false, 'counterexample anchor unique: ' + label, hits); continue }
-    const mod = await loadMutant(original.replace(from, to), label.slice(0, 2))
+    // EMPTY_ALLOWED: no ok(...) call sits inside a branch here, and none did before - both checks run for every mutation
+    // in this loop. The anchor's uniqueness is asserted at the loop's top level, and a failed mutation is a VALUE the
+    // second check reads. The selection below is a TERNARY rather than a branch on purpose: the multi-line-C detector
+    // inventories branch shapes, and a value that cannot skip a check should not be written as one.
+    const mod = hits === 1 ? await loadMutant(original.replace(from, to), label.slice(0, 2)) : null
     // rebind the kernel: the factory captured `kernel` from its closure, so build one and pass it in
     const k = mkKernel()
-    const spec2 = mod.makeControlSpec({ param, refused, TOOL_NAMES, kernel: k })
-    let held = false
-    try { held = await probe(spec2, k) } catch (e) { held = false }
+    const spec2 = mod ? mod.makeControlSpec({ param, refused, TOOL_NAMES, kernel: k }) : null
+    let held = 'anchor-not-unique'
+    try { held = spec2 ? await probe(spec2, k) : 'anchor-not-unique' } catch (e) { held = false }
+    ok(hits === 1, 'counterexample anchor unique: ' + label, hits)
     ok(held === false, '★★ COUNTEREXAMPLE ' + label + ' ⇒ ' + criterion + ' FAILS (the suite has teeth)', { criterionHeld: held })
   }
   rmSync(dir, { recursive: true, force: true })

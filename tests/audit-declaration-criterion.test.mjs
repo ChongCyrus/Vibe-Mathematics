@@ -445,6 +445,7 @@ export const MULTILINE_C_BASELINE_FINGERPRINTS = Object.freeze([
   'vmu-ballot.test.mjs:C2:conditional',
   'vmu-board-audit.test.mjs:C2:conditional',
   'vmu-bus.test.mjs:C2:conditional',
+  'vmu-control.test.mjs:C2:conditional',
   'vmu-entry.test.mjs:C2:conditional',
   'vmu-formal-pipeline.test.mjs:C2:conditional',
   'vmu-funding.test.mjs:C2:conditional',

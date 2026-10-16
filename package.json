@@ -253,6 +253,7 @@
     "vibe-math-vmu/kernel/discipline.js",
     "vibe-math-vmu/kernel/human.js",
     "vibe-math-vmu/kernel/identity.js",
+    "vibe-math-vmu/host-deliver.js",
     "vibe-math-vmu/preset.yml",
     "vibe-math-vmu/vibe-math-vmu.js",
     "vibe-math-vmu/math-computation.js",

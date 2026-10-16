@@ -745,7 +745,14 @@ if (SELF_PROBE) {
   const fullStr = JSON.stringify(kd.status({ detail: "full" }))
   const sumStr = JSON.stringify(kd.status({ detail: "summary" }))
   const dfltStr = JSON.stringify(kd.status())
-  ok(dfltStr.length === fullStr.length,
+  // EMPTY_ALLOWED: fullStr.length > 0 is asserted in the same condition, so two empty views cannot satisfy it; the
+  // strings are JSON of a real status object and the non-empty requirement is stated rather than assumed.
+  // ★★★★★★★ ROUND 82: A SHAPE-B VIOLATION, FIXED AT THE ROOT. This compared two LENGTHS, which is satisfied when BOTH
+  // views are empty - the empty-vs-empty comparison rule E forbids, because the assertion would then prove nothing about
+  // the view it is meant to check. Comparing the STRINGS is strictly stronger and cannot pass on two empty values, and
+  // the length is required to be non-zero so the claim is about real content either way.
+  ok(fullStr.length > 0, 'D4: the full view is NON-EMPTY, so the comparison below cannot be satisfied by two empty views')
+  ok(dfltStr === fullStr,
     "D4: the KERNEL defaults to the COMPLETE view - eliding keys at the source would make an absent key indistinguishable from an unset one")
   ok(sumStr.length < fullStr.length, "D4: the summary is strictly smaller than the full view")
   ok(sumStr.length < 12000, "D4: the summary fits the 12 KB limit the real machine reported (measured " + sumStr.length + " B)")
@@ -764,6 +771,11 @@ if (SELF_PROBE) {
   // ★ THE COUNTEREXAMPLE: a receipt that silently omitted a heavy section would satisfy every check above, so each
   // bound must remain visible as a PRESENCE fact rather than as a missing key.
   const bounded = ["registry", "guards", "seams", "reporting", "approvalGate", "projections", "activity"]
+  // ★★★★★★★ ROUND 82: THE NON-EMPTY GUARD RULE E ASKS FOR. The two .every(...) assertions below are shape-A candidate
+  // lines: with an EMPTY list they would pass vacuously and report success for a check that never ran. The list is a
+  // literal of seven names, so the guard is provably satisfied - but it is STATED, because the scanner reads guards and
+  // literals rather than intent, and an assertion that cannot fail is not an assertion.
+  ok(bounded.length === 7, "D4: the bounded-section list is the seven the receipt names, so the checks below cannot run on nothing")
   ok(bounded.every((key) => sm[key] !== undefined && typeof sm[key].present === "boolean"),
     "D4: each bounded section still reports whether it is PRESENT (absent-by-design stays distinguishable from elided-for-size)")
   ok(bounded.every((key) => kd.status({ detail: "full" })[key] !== undefined),
@@ -772,3 +784,4 @@ if (SELF_PROBE) {
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
+
