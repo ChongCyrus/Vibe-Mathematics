@@ -628,7 +628,24 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
       counters.rangeRuns += 1
       let raw
       try { raw = spawn({ op: p.plan.op, args: p.plan.args, seed: p.plan.seed, backend: p.plan.backend, limits: p.limits }) } finally { active -= 1 }
+      // ★★ ROUND 38 (measured): A PROMISE HERE PROVES THE WRONG SEAM WAS INJECTED. This face's computation seam is
+      // SYNCHRONOUS by design (the math surface is), so an async answer means the SCRIPT BRIDGE was wired in - it is
+      // async, it speaks {file,args} rather than {op,args,seed,backend,limits}, and it refuses by throwing. Awaiting
+      // it here would be wrong twice over: it would paper over a wiring error, and an unawaited rejection from it is
+      // exactly what the host reports as a fatal load failure (which is why the server kept dying while every
+      // refusal it produced was correct). So the mismatch is REFUSED BY NAME, with the shape explained, instead of
+      // being silently treated as a computation result.
+      if (raw && typeof raw.then === 'function') {
+        throw deny('VMU_ENGINE_UNAVAILABLE',
+          'the injected computation seam is ASYNC, so it is not the math seam: it is the script bridge (which speaks {file,args} and refuses by throwing)',
+          'inject the MATH seam (math-computation); a synchronous seam is what this face requires, and an unawaited rejection from an async one takes the host process down', p.enforced)
+      }
       if (!raw || typeof raw !== 'object') throw deny('VMU_ENGINE_UNAVAILABLE', 'the injected seam returned no result object', 'spawn must return { ok, result, … }', p.enforced)
+      if (raw.ok === undefined && raw.result === undefined) {
+        throw deny('VMU_ENGINE_UNAVAILABLE',
+          'the injected computation seam does not speak the math vocabulary (op/args/seed/backend/limits): it answered with the keys ' + JSON.stringify(Object.keys(raw).slice(0, 8)),
+          'inject the MATH seam (math-computation), not the script bridge - the script bridge answers {exit,stdout,stderr} and would otherwise be read as a null result', p.enforced)
+      }
       const result = raw.result === undefined ? null : raw.result
       const enforced = p.enforced.slice()
       // ⑫ RESULT-CONDITIONAL RAILS (each one belongs to a wired key)
