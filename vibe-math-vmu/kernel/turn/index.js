@@ -199,6 +199,10 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
   // provider name is configured AND the seam offers `start`, the one-shot path is taken. The continuable path stays as
   // the fallback, because a host that offers only that one must still work.
   const oneShot = typeof provider === 'string' && provider !== '' && typeof subagents.start === 'function'
+  // ★★★ ROUND 67: WHICH PATH ACTUALLY RAN IS THE READING THAT SPLITS THE PROBLEM. Recording it costs nothing and
+  // settles an ambiguity that cost a whole round: with the one-shot path chosen the host accepts the turn and the
+  // reply shape is the question; with the fallback chosen the provider name was never resolved.
+  const path = oneShot ? 'one-shot' : 'continuable'
   if (!subagents || (!oneShot && typeof subagents.startContinuable !== 'function')) {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'the subagents seam cannot start a member turn',
       'inject { deliver } yourself, or give the loop a seam with startContinuable (docs/26 stage 3) - or pass { provider } so the ONE-SHOT start() path can be used, which never touches the continuable registry')
@@ -239,7 +243,7 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
           : await subagents.startContinuable(spec)
       } catch (e2) {
         throw refuse('VMU_ENGINE_UNAVAILABLE',
-          'the host refused to start this member turn twice: ' + String((e2 && e2.message) || e2),
+          'the host refused to start this member turn twice on the ' + path + ' path: ' + String((e2 && e2.message) || e2),
           'the host\'s subagent registry would not admit a new activation; the first failure was "' + first + '". It refuses while a previous activation is still being torn down, so retry later or serialise deliveries so each turn waits for the last teardown (docs/26 §3.22)')
       }
     }
@@ -247,10 +251,10 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
       const got = extract(handle)
       if (typeof got === 'string') {
         return { reply: got, childId: childIdOf(handle), stopReason: null,
-          attribution: 'extractor returned a bare string: no stopReason was read (docs/26 §3.22)' }
+          attribution: 'extractor returned a bare string: no stopReason was read (docs/26 §3.22)', deliveryPath: path }
       }
       if (got && typeof got === 'object' && typeof got.reply === 'string') {
-        return { reply: got.reply, childId: got.childId || childIdOf(handle), stopReason: got.stopReason || null, attribution: 'extractor' }
+        return { reply: got.reply, childId: got.childId || childIdOf(handle), stopReason: got.stopReason || null, attribution: 'extractor', deliveryPath: path }
       }
       throw refuse('VMU_ENGINE_UNAVAILABLE', 'the extractor returned no reply text for this turn')
     }
@@ -284,11 +288,11 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
     const attribution = childId && stopReason
       ? 'childId+stopReason from the host handle'
       : (childId ? 'childId only: the host handle carried no stopReason (SubagentRun.result was unavailable)' : 'unavailable: the host handle carried no childId (docs/26 §3.22) - the turn is NOT attributed')
-    if (handle && typeof handle.reply === 'string') return { reply: handle.reply, childId, stopReason, attribution }
-    if (handle && typeof handle.text === 'string') return { reply: handle.text, childId, stopReason, attribution }
+    if (handle && typeof handle.reply === 'string') return { reply: handle.reply, childId, stopReason, attribution, deliveryPath: path }
+    if (handle && typeof handle.text === 'string') return { reply: handle.text, childId, stopReason, attribution, deliveryPath: path }
     // ★ ROUND 66: AND FINALLY THE REPLY THE HOST ACTUALLY HANDED BACK, from the result the block above already awaited.
     if (resolvedReply !== null) return { reply: resolvedReply, childId, stopReason,
-      attribution: (childId ? 'childId' : 'no childId') + '+reply from the host run result (the handle itself carried no text)' }
+      attribution: (childId ? 'childId' : 'no childId') + '+reply from the host run result (the handle itself carried no text)', deliveryPath: path }
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host accepted the turn but handed back no reply',
       'give the loop an extractor, or deliver the reply through the loop as a later turn')
   }
