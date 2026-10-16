@@ -752,7 +752,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     { dispatched: FIELDS.length, bookkept: RECORDED_FIELDS.length, total: FIELDS.length + RECORDED_FIELDS.length })
   ok(FIELD_OWNERS.vote_solved === undefined && FIELD_OWNERS.meeting_hand.op === 'queue' && FIELD_OWNERS.convene_meeting.op === 'open' && FIELD_OWNERS.assign.op === 'assign',
     'T105. **** and each new owner names an operation the kernel really exposes - nothing is invented (and `vote_solved` is BOOKKEPT, not dispatched to a face that cannot accept it)',
-    { sample: FIELD_OWNERS.vote_solved.face + '.' + FIELD_OWNERS.vote_solved.op + ' ' + FIELD_OWNERS.meeting_hand.face + '.' + FIELD_OWNERS.meeting_hand.op })
+    { sample: FIELD_OWNERS.meeting_hand.face + '.' + FIELD_OWNERS.meeting_hand.op + ' ' + FIELD_OWNERS.convene_meeting.face + '.' + FIELD_OWNERS.convene_meeting.op + ' (and vote_solved is absent from FIELD_OWNERS: it is bookkept, not dispatched)' })
   // A loop built INSIDE this block: the earlier one lives in another block's scope, and reaching across would be a
   // dependency on declaration order that the next person would have to rediscover.
   const loopF = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
