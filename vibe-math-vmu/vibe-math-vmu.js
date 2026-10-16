@@ -416,7 +416,13 @@ export function apply(ctx, config = {}) {
   // `config.deliverMode` or the setting `vmu.turn.deliverMode` selects: 'subagents' (default) or 'caller'. Neither is
   // invented at run time - an unknown value is refused by name, because silently choosing for the deployment is the
   // failure this phase has ruled out everywhere else.
-  const declaredDeliverMode = (typeof config.deliverMode === 'string' && config.deliverMode)
+  // ★★★ ROUND 74 (corrected): THE CONFIG SHAPE IS NESTED. The framework plugin row's config is
+  // `{ packs, root, vmu: { tools, deliverMode } }`, so a mode declared under `vmu` was invisible to a reader that
+  // looked only at the top level - measured as no 'unknown delivery mode' refusal at all (the value was accepted)
+  // together with delegationDepthOf still appearing (the subagents path still running). Both shapes are accepted,
+  // with the nested one first because that is the shape this entry's own documented config uses.
+  const declaredDeliverMode = (config.vmu && typeof config.vmu.deliverMode === 'string' && config.vmu.deliverMode)
+    || (typeof config.deliverMode === 'string' && config.deliverMode)
     || (settings && typeof settings['vmu.turn.deliverMode'] === 'string' && settings['vmu.turn.deliverMode'])
     || 'subagents'
   if (declaredDeliverMode !== 'subagents' && declaredDeliverMode !== 'caller') {
