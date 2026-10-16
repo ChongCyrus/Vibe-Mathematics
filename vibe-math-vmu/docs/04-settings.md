@@ -302,8 +302,8 @@ vmu.packs.active: [v5r]
 | `vmu.tasks.requireExpectedRevision` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 任务变更必须声明所见版本（防丢更新；关＝仅在声明时校验） |
 | `vmu.tasks.stages` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | 阶段列表；默认空＝不假装有流程 |
 | `vmu.turn.wakeupPolicy` | enum | `round-robin` | `round-robin`∣`least-recent` | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | 下一轮唤醒谁：round-robin＝按在册次序轮转；least-recent＝最少被唤醒者优先（同票按在册次序，确定性） |
-| `vmu.turn.deliverMode` | enum | `subagents` | `subagents`∣`caller` | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | 交付路线：★ subagents＝宿主把成员回合当作子代理运行（★ 默认）；★ caller＝把装配好的提示词交回调用会话，★ 由它扮演成员回合并用 ibe_vmu_turn { reply } 送回答复 |
-| `vmu.turn.deliverProvider` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | 成员回合【一次性交付】所用的 provider 名：★ 非空且宿主提供 start() 时，★ 交付走一次性路径（★ 不进入 continuable registry）；★ 空则走 continuable 路径 |
+| `vmu.turn.deliverMode` | enum | `subagents` | `subagents`∣`caller` | 会话 | H2 | office | ✅ 已接线 | `host-deliver.js` | 交付路线：★ subagents＝宿主把成员回合当作子代理运行（★ 默认）；★ caller＝把装配好的提示词交回调用会话，★ 由它扮演成员回合并用 ibe_vmu_turn { reply } 送回答复 |
+| `vmu.turn.deliverProvider` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `host-deliver.js` | 成员回合【一次性交付】所用的 provider 名：★ 非空且宿主提供 start() 时，★ 交付走一次性路径（★ 不进入 continuable registry）；★ 空则走 continuable 路径 |
 | `vmu.turn.closureVotePermission` | string | `vote` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | 哪一个权限字符串算【结题表决权】：★ 谓词据此判断谁【有资格】结题。★ 默认 ote（★ v5r pack 把 ote 给 member 槽位，chair 与 	emp 都没有）；★ 另一家机构可以改名 |
 | `vmu.turn.objective` | string | `（尚未设定）` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 本所研究对象（原问题）；默认值与原线未设定时的输出一字不差，绝不留空括号 |
 | `vmu.turn.maxParallel` | number | `3` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 每轮最多同时唤醒的成员数（原线默认 3；非法值回落 3） |
