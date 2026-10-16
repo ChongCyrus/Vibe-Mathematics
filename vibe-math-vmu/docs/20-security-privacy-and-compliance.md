@@ -237,7 +237,7 @@
 
 - **矩阵（要点）**：`CC-BY-4.0`／`CC0`／`MIT`／`Apache-2.0` 可再分发；`GPL-*` **传染**（派生作品须同许可）；含**专利条款**（Apache-2.0 有，CC 无）。
 - **键**：`vmu.license.default`、`vmu.license.codeDefault`、`vmu.license.incompatiblePolicy`（默认 `"deny"`）、`vmu.license.attributionRequired`（默认 `true`）。
-- **错误码**：`VMU_LICENSE_INCOMPATIBLE`。
+- **错误码**：`VMU_LICENSE_INCOMPATIBLE`。 ★ **未声明时要报出的两个码**：`VMU_LICENSE_DEFAULT_UNDECLARED`（未声明默认许可 ⇒ 不替用户选）｜`VMU_LICENSE_CODE_UNDECLARED`（未声明代码许可 ⇒ 同上）。
 - **成熟度** ✗ 规划。**优先级** P1。
 
 ---

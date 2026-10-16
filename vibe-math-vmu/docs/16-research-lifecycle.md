@@ -302,7 +302,7 @@
   **✓ 已实现（轮 552 复核）**：`vibe_vmu_reviewers`（★ 轮 541 落地，10 个动作 ✓；★ 本行原写"规划/未接线"，★ 已过时 ✓）。
 - **字段级规则**：① **COI 校验**——`conflicts[]` 命中被审对象 ⇒ **必须回避**，否则**具名拒**；② **盲评映射**——单盲/双盲/公开由 `vmu.review.mode` 决定；映射表与解绑**必须有留痕**（谁在何时解绑）；③ **负载均衡**——同一审稿人并发分配上限可配。
 - **参数键**：`vmu.reviewers.maxLoad`（整数，默认 `3`）｜`vmu.reviewers.coiPolicy`（`"deny"|"ask"`，默认 `"deny"`）｜`vmu.reviewers.blindUnbindRequiresReason`（布尔，默认 `true`）｜`vmu.reviewers.acknowledgement`（布尔，默认 `false`，可选"致谢/报酬"登记）。
-- **错误码**：`VMU_COI_VIOLATION`（未回避）｜`VMU_REVIEWER_OVERLOADED`（超负载）｜`VMU_BLIND_UNBIND_DENIED`（无理由解绑）。
+- **错误码**：`VMU_COI_VIOLATION`（未回避）｜`VMU_REVIEWER_OVERLOADED`（超负载）｜`VMU_BLIND_UNBIND_DENIED`（无理由解绑）。｜`VMU_REVIEW_MODE_UNDECLARED`（未声明评审模式 ⇒ 不猜单盲/双盲）｜`VMU_REVIEWERS_CAP_UNDECLARED`（未声明审稿人上限 ⇒ 不臆造配额）。
 - **交界**：会议与表决规则留在 **08** ✓（本卷只登记"评审作业"对象）；信任与公平不变式留在 **17** ✓；审稿人个人数据按 **20 卷**隐私规则处理（分类＋去标识化）✓。
 - **成熟度** ✗ 规划（记录面 ✓ 可承载；市场/负载面未接线）。**优先级** P0。
 
@@ -328,7 +328,7 @@
 - **接口形状**：`vibe_vmu_records {action:'append', kind:'availability'}`（记录面 ✓）；**规划 ✗（未实现）**：`vibe_vmu_availability`（**规划**：校验＋徽章计算）。
 - **字段级规则**：**"应要求提供"必须被拒** ✗✓（`how:"on request"`／缺失 `url` ⇒ **具名拒**）；**徽章口径** ✓：`data` 与 `code` 均给出**可解析 URL** 且许可为开放许可 ⇒ 记 `badge:'open'`；任一为受限 ⇒ `restricted`；否则 `closed`。
 - **参数键**：`vmu.avail.requireUrl`（布尔，默认 `true`）｜`vmu.avail.allowOnRequest`（布尔，**默认 `false`**）｜`vmu.avail.openLicenses`（数组，默认 `["CC0-1.0","CC-BY-4.0","MIT","Apache-2.0"]`）。
-- **错误码**：`VMU_AVAILABILITY_VAGUE`（"应要求提供"／无 URL）｜`VMU_BADGE_MISMATCH`（徽章与字段不符）。
+- **错误码**：`VMU_AVAILABILITY_VAGUE`（"应要求提供"／无 URL）｜`VMU_BADGE_MISMATCH`（徽章与字段不符）。｜`VMU_LICENSE_DEFAULT_UNDECLARED`（未声明 `vmu.license.default` 且调用方未给显式许可证 ⇒ 具名拒）｜`VMU_LICENSE_CODE_UNDECLARED`（声明构造前未声明 `vmu.license.codeDefault` ⇒ 具名拒）。
 - **交界**：许可兼容矩阵归 **20 卷** ✓；发布版本链归本卷 **L15** ✓。
 - **成熟度** ✗ 规划。**优先级** P0。
 
