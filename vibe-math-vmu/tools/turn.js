@@ -9,7 +9,21 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
     const coreTurn = async (args = {}) => {
       if (!kernel.turn) return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no turn loop')
       const op = String(args.op || 'status')
-      const members = Array.isArray(args.members) ? args.members : []
+      // ★★★ ROUND 45 (measured on a real machine): THE CONTRACT PROMISED THE ROSTER INFERENCE AND THE CODE DID NOT DO IT.
+      // This parameter's own description says "缺省时由内核名册推断" - when omitted, inferred from the KERNEL ROSTER -
+      // but the fallback was `[]`, so a caller that (reasonably) omitted `members` got `stopped:'no-members'` every
+      // time no matter how many members the institute actually had. The real run shows exactly that: the turn face was
+      // called sixty-one times and answered `no-members` throughout, while the roster held a seated member in the
+      // chair slot. The same contract-versus-implementation family as the control face's hire, in a second place.
+      //
+      // The fallback now reads the roster the framework already maintains: live members become {id, role} with the
+      // slot as the role. An explicit `members` still WINS when the caller supplies one - the framework defaults
+      // sensibly and the deployment stays in control.
+      const explicit = Array.isArray(args.members) && args.members.length > 0
+      const inferred = !explicit && kernel.members && typeof kernel.members.roster === 'function'
+        ? kernel.members.roster().filter((m) => m && m.state === 'live').map((m) => ({ id: m.id, role: m.slot }))
+        : []
+      const members = explicit ? args.members : inferred
       if (op === 'status') return { ok: true, status: kernel.turn.status() }
       if (op === 'step') return await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step })
       if (op === 'drive') return await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step })

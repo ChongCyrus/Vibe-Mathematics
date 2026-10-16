@@ -677,7 +677,12 @@ export function createTurnOrchestrator({
     const receipts = []
     for (let i = 1; i <= n; i += 1) {
       const spec = nextTurn({ members, phase, why, nextStep, role })
-      if (!spec) return { ok: true, receipts, stopped: 'no-members', roundsRun: receipts.length }
+      // ★★ ROUND 45: AN EMPTY ROUND MUST SAY WHERE MEMBERS COME FROM. `no-members` is true, but on its own it leaves a
+      // reader unable to act - the real machine called this face sixty-one times and learned nothing from it. The
+      // hint names the two things that actually help: read the roster, and pass it (the tool face now infers it from
+      // the roster too, so omitting it works; this hint is for the case where the roster itself is empty).
+      if (!spec) return { ok: true, receipts, stopped: 'no-members', roundsRun: receipts.length,
+        next: { kind: 'roster', tool: 'vibe_vmu_control', hint: 'no member was passed AND the kernel roster holds no live member: read it with vibe_vmu_control { action: "roster" }, seat one with { action: "hire", member_id, slot } (the pack declares the slots), then retry. Passing an explicit `members` array also works.' } }
       try {
         const r = await run({ ...spec, round: i })
         receipts.push({ round: i, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, turn: r.turn.id })
