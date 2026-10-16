@@ -203,7 +203,27 @@ export function deliverViaSubagents(subagents, extract = null) {
       next_step: turn && typeof turn.nextStep === 'string' ? turn.nextStep : null,
       request: { prompt: [{ type: 'text', text: String(text) }] },
     }
-    const handle = await subagents.startContinuable(spec)
+    // ★★★ ROUND 62: THE HOST'S REGISTRY CAN REFUSE A TURN THAT IS OTHERWISE FINE, AND THAT MUST BE NAMED.
+    // A real machine's stacks - captured only after the receipt started keeping them - show the throw coming from the
+    // host's own subagent library: startContinuable -> assertAdmitting -> closingTeardownFor -> liveLineage, i.e. the
+    // host refuses to admit a new continuable activation WHILE A PREVIOUS ONE IS STILL BEING TORN DOWN. That is a
+    // TIMING condition, not a defect in the turn, and the same call normally succeeds a moment later. So it is retried
+    // once, and if it still fails the refusal carries the HOST'S OWN WORDS rather than letting a bare TypeError be
+    // reported as "the agent said nothing" - which is exactly how this looked undiagnosable for several rounds.
+    let handle
+    try {
+      handle = await subagents.startContinuable(spec)
+    } catch (e) {
+      const first = String((e && e.message) || e)
+      await new Promise((r) => setTimeout(r, 250))
+      try {
+        handle = await subagents.startContinuable(spec)
+      } catch (e2) {
+        throw refuse('VMU_ENGINE_UNAVAILABLE',
+          'the host refused to start this member turn twice: ' + String((e2 && e2.message) || e2),
+          'the host\'s subagent registry would not admit a new activation; the first failure was "' + first + '". It refuses while a previous activation is still being torn down, so retry later or serialise deliveries so each turn waits for the last teardown (docs/26 §3.22)')
+      }
+    }
     if (typeof extract === 'function') {
       const got = extract(handle)
       if (typeof got === 'string') {
