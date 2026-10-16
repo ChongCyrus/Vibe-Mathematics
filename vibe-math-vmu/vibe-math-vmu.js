@@ -21,6 +21,9 @@ import { decideSections as V5R_DECIDE_SECTIONS } from './packs/v5r/middleware/pr
 import { inboxBlock as V5R_INBOX_BLOCK } from './packs/v5r/notices.js'
 import { V5R_PHASES } from './packs/v5r/index.js'
 import { createKernel } from './kernel/index.js'
+// ★ A1 step 1 · Part B: the report-feedback DELIVERY call. It lives in a module of its own (this file is at its
+// 1200-line budget, and the call carries enough reasoning to belong there); the entry passes its own `ctx`/`effect` down.
+import { deliverReportFeedback } from './kernel/reportfeedbackdelivery.js'
 import { deliverViaSubagents, sendViaSubagents, interruptViaSubagents } from './kernel/turn/index.js'
 import { createHostAdapter } from './host.js'
 import { attachHostHooks } from './host-hooks.js'
@@ -485,7 +488,13 @@ export function apply(ctx, config = {}) {
   const noticeBlock = (packRuntime.find((r) => r.noticeBlock) || {}).noticeBlock || null
   const extraPhases = packRuntime.length ? [...new Set(packRuntime.flatMap((r) => r.phases || []))] : null
   const promptPolicies = []   // the sink a pack's manifest.promptPolicies arrives through (vmu-pack's side)
+  // ★ A1 STEP 1 · PART B: LATE-BOUND FEEDBACK STATE. Declared BEFORE the kernel because the kernel takes a provider that
+  // must be able to answer later - the host `context()` call can only happen after the kernel exists (the snapshot it
+  // delivers is built from the assembled report face). `null` until that block runs, and the report face's placeholder
+  // speaks for itself until then, truthfully.
+  let reportFeedbackState = null
   const kernel = createKernel(Object.assign({ sectionPolicy, noticeBlock, extraPhases, settings: settingsWithPackDefaults, root, spawn: spawnSeam, host: mathHost, deliverTurn: turnDeliver,
+    reportFeedback: () => Object.assign({}, reportFeedbackState),
     // ROUND 6 / target-5 (reader-b's ruling): the SAME seam is the killable one - `spawn(request, onHandle)` hands the
     // host's handle to the caller BEFORE the outcome is awaited, which is what makes `cancel({jobId})` a real
     // `terminate()` instead of a named "this seam cannot kill".
@@ -831,6 +840,18 @@ export function apply(ctx, config = {}) {
         reason: 'the host exposes no systemPrompt.section() to receive ' + effectivePrompts.length + ' declared section(s)' }
     }
   }
+
+  // ★ A1 STEP 1 · PART B: THE DELIVERY CALL, IN A MODULE OF ITS OWN. This file sits at its 1200-line budget, and the
+  // call carries enough reasoning to belong in a module: the four outcomes, the named failures, and why the payload is
+  // a runtime snapshot rather than policy. The entry remains the holder of the host prompt service (that is why the
+  // call lives here at all), so it passes `ctx`/`effect` down, and it reads the ASSEMBLED face's status so the
+  // effective values - schema defaults applied - come from the one place that already computed them.
+  // ★ THE FACE MAY NOT BE THERE. `kernel.report` is assembled with the rest of the kernel, but a construction that ends
+  // up without it must not turn "no feedback" into a CRASH - the same red line as the prompt-section guard above. A
+  // missing face is simply no delivery, and the module turns a null status into the switch-off state.
+  let reportFeedbackStatus = null
+  try { reportFeedbackStatus = kernel && kernel.report ? kernel.report.status() : null } catch (e) { /* never fatal */ }
+  reportFeedbackState = deliverReportFeedback({ ctx, effect, status: reportFeedbackStatus })
 
   // A PACK is where an institution lives (slots, tracks, rules, aliases). `config.packs` accepts either a
   // shipped pack id (resolved from packs/<id>.js) or an inline manifest; conflicts are refused (O4) and the
