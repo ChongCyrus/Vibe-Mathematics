@@ -263,68 +263,79 @@ const rows = dataRows(block)
   // slow suite - measured 135-144 s - is not killed). Each case mutates a DIFFERENT file and restores it below, so
   // the copy is pristine for the next case and NO assertion is weakened: every case still starts from a tree whose
   // settings table and wiring block are mutually consistent.
-  let tree = null
-  const makeTree = (tag) => {
-    if (tree) return tree
+  // ★★ task-247/249 (MEASURED, NOT ASSUMED): THE TREE COPIES WERE NOT THE COST - THE GENERATOR RUNS WERE. One
+  // invocation costs 17-22 s (wiring --check/--json/--write 20.9-21.7 s; settings --check/--write 16.6-17.6 s;
+  // planned --check 1.9 s) and this suite makes nine of them. The old self-consistent tree ALSO re-ran two of
+  // them (~37.5 s measured) purely so the copy would be fresh - which is redundant, because SECTION A ALREADY
+  // ASSERTS the REAL tree passes `--check` (exit 0), the very fact those copies existed to guarantee. So each
+  // case now points the documented seams at the REAL tree plus ITS OWN temp file for the one file it mutates,
+  // and the runs inside a case start TOGETHER (three serial `wiring --check` runs measured 65.1 s).
+  // ★ EVERY ASSERTION BELOW IS UNCHANGED - only the machinery is cheaper.
+  const tempReadme = (tag) => {
     const dir = mkdtempSync(join(tmpdir(), 'vmu-wiring-' + tag + '-'))
-    const docsCopy = join(dir, 'docs')
-    cpSync(DOCS, docsCopy, { recursive: true, filter: () => true })
-    const vmuCopy = join(dir, 'vibe-math-vmu')
-    cpSync(VMU, vmuCopy, { recursive: true, filter: () => true })
     const readme = join(dir, '00-README.md')
-    copyFileSync(join(docsCopy, '00-README.md'), readme)
-    const env = { VMU_SETTINGS_DOC: join(docsCopy, '04-settings.md'), VMU_DOCS_DIR: docsCopy,
-      VMU_CODE_DIR: vmuCopy, VMU_WIRING_DOC: readme }
-    for (const [script, args] of [['generate-vmu-settings-table.mjs', ['--write']], ['generate-wiring-index.mjs', ['--write']]]) {
-      spawnSync(process.execPath, [join(REPO, 'scripts', script)].concat(args),
-        { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, env) })
-    }
-    tree = { dir, docsCopy, vmuCopy, readme, env }
-    return tree
+    copyFileSync(join(DOCS, '00-README.md'), readme)
+    return { dir, readme }
   }
+  /** Run ANY generator asynchronously (the same seams `runAsync` uses, which is fixed to the wiring generator). */
+  const spawnAsync = (script, args, env) => new Promise((resolve) => {
+    const p = spawn(process.execPath, [join(REPO, 'scripts', script)].concat(args),
+      { cwd: REPO, env: Object.assign({}, process.env, env) })
+    let out = '', err = ''
+    p.stdout.on('data', (d) => { out += d }); p.stderr.on('data', (d) => { err += d })
+    p.on('close', (status) => resolve({ status, stdout: out, stderr: err }))
+  })
 
   // ② a STALE settings table ⇒ exit 2 + the fix command is NAMED (not the generic "regenerate something").
-  // The mutation lands in the COPY that `VMU_SETTINGS_DOC` points at, so the hard class cannot depend on
+  // The mutation lands in THIS CASE'S OWN copy of the table (one file), so the hard class cannot depend on
   // whether the real docs/04 happens to be fresh at this instant.
-  const t2 = makeTree('stale')
-  const st = join(t2.docsCopy, '04-settings.md')
-  const pristineSettings = readFileSync(st, 'utf8')   // ★ restored after case ② so case ③ starts pristine
-  writeFileSync(st, pristineSettings.replace(/(\n\| `vmu\.[A-Za-z0-9_.]+`)/, '\n| `vmu.__probe__`'), 'utf8')
-  const hard = spawnSync(process.execPath, [join(REPO, 'scripts', 'generate-vmu-settings-table.mjs'), '--check'],
-    { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, t2.env) })
+  const t2 = tempReadme('stale')
+  const st = join(t2.dir, '04-settings.md')
+  copyFileSync(SETTINGS, st)
+  writeFileSync(st, readFileSync(st, 'utf8').replace(/(\n\| `vmu\.[A-Za-z0-9_.]+`)/, '\n| `vmu.__probe__`'), 'utf8')
+  const env2 = { VMU_SETTINGS_DOC: st, VMU_DOCS_DIR: DOCS, VMU_CODE_DIR: VMU, VMU_WIRING_DOC: t2.readme }
+
+  // ③ a LAGGING planned registry is the SOFT class: loud warning, index still produced ⇒ exit 0. It edits
+  // settings/planned.js, so it needs a CODE copy - but not the docs (its table seam is the real one).
+  const t3 = tempReadme('soft')
+  const codeCopy = join(t3.dir, 'vibe-math-vmu')
+  cpSync(VMU, codeCopy, { recursive: true, filter: (s) => !/[\\/]docs([\\/]|$)/.test(s) })
+  const plannedCopy = join(codeCopy, 'settings', 'planned.js')
+  // planned.js writes keys with DOUBLE quotes (a single-quote regex silently matched nothing — the first
+  // version of this case passed for the wrong reason).
+  writeFileSync(plannedCopy, readFileSync(plannedCopy, 'utf8').replace(/key: "/, 'key: "zzz-lagging-'), 'utf8')
+  const env3 = { VMU_SETTINGS_DOC: SETTINGS, VMU_DOCS_DIR: DOCS, VMU_CODE_DIR: codeCopy, VMU_WIRING_DOC: t3.readme }
+
+  // ④ a block that is not what the artefacts yield ⇒ exit 1 (real inconsistency, distinct from ②)
+  const t4 = tempReadme('inc')
+  writeFileSync(t4.readme, readFileSync(t4.readme, 'utf8').replace(/(\| 20 \| )(\d+)/, '$1' + '777'), 'utf8')
+  const env4 = { VMU_SETTINGS_DOC: SETTINGS, VMU_DOCS_DIR: DOCS, VMU_CODE_DIR: VMU, VMU_WIRING_DOC: t4.readme }
+
+  // ★ ALL FIVE RUNS START TOGETHER. The two preconditions and the three case assertions are independent reads
+  // of a FIXED state (each case owns its own temp file / code copy), so serialising them bought wall time only.
+  const [hard, r3, soft, r4, r5] = await Promise.all([
+    spawnAsync('generate-vmu-settings-table.mjs', ['--check'], env2),
+    runAsync(['--check'], env2),
+    spawnAsync('generate-planned-settings.mjs', ['--check'], env3),
+    runAsync(['--check'], env3),
+    runAsync(['--check'], env4),
+  ])
   ok(hard.status !== 0, '② precondition: the mutated settings table really is stale (sub-check fails)',
     'exit=' + hard.status)
-  const r3 = run(['--check'], t2.env)
   ok(r3.status === 2 && /设置表过期/.test(String(r3.stderr || ''))
     && /generate-vmu-settings-table\.mjs --write/.test(String(r3.stderr || '')),
     '② stale settings table ⇒ exit 2 and the NAMED fix command',
     'exit=' + r3.status + ' ' + String(r3.stderr || '').trim().split('\n').slice(0, 2).join(' | ').slice(0, 170))
-  writeFileSync(st, pristineSettings, 'utf8')   // ★ restore (no rmSync: the copy is shared now)
-
-  // ③ a LAGGING planned registry is the SOFT class: loud warning, index still produced ⇒ exit 0
-  const t3 = makeTree('soft')
-  const plannedCopy = join(t3.vmuCopy, 'settings', 'planned.js')
-  const pristinePlanned = readFileSync(plannedCopy, 'utf8')   // ★ restored after case ③
-  // planned.js writes keys with DOUBLE quotes (a single-quote regex silently matched nothing — the first
-  // version of this case passed for the wrong reason).
-  writeFileSync(plannedCopy, pristinePlanned.replace(/key: "/, 'key: "zzz-lagging-'), 'utf8')
-  const soft = spawnSync(process.execPath, [join(REPO, 'scripts', 'generate-planned-settings.mjs'), '--check'],
-    { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, t3.env) })
   ok(soft.status !== 0, '③ precondition: the mutated planned.js really lags (sub-check fails)', 'exit=' + soft.status)
-  const r4 = run(['--check'], t3.env)
   ok(r4.status === 0 && /WARNING/.test(String(r4.stderr || '')),
     '③ lagging planned.js ⇒ WARNING but exit 0 (soft class preserved)',
     'exit=' + r4.status + ' ' + String(r4.stderr || '').trim().split('\n')[0].slice(0, 140))
-  writeFileSync(plannedCopy, pristinePlanned, 'utf8')   // ★ restore
-
-  // ④ a block that is not what the artefacts yield ⇒ exit 1 (real inconsistency, distinct from ②)
-  const t4 = makeTree('inc')
-  const pristineReadme = readFileSync(t4.readme, 'utf8')
-  writeFileSync(t4.readme, pristineReadme.replace(/(\| 20 \| )(\d+)/, '$1' + '777'), 'utf8')
-  const r5 = run(['--check'], t4.env)
   ok(r5.status === 1, '④ real inconsistency inside the block ⇒ exit 1 (never 2)', 'exit=' + r5.status)
-  writeFileSync(t4.readme, pristineReadme, 'utf8')   // ★ restore
-  rmSync(tree.dir, { recursive: true, force: true })   // ★ the ONE shared copy is removed here, at the end
+
+  // ★ cleanup: three temp dirs, one per case (no shared tree to remove any more)
+  rmSync(t2.dir, { recursive: true, force: true })
+  rmSync(t3.dir, { recursive: true, force: true })
+  rmSync(t4.dir, { recursive: true, force: true })
 }
 
 if (failed === 0) {

@@ -113,6 +113,17 @@ dsh plugin --profile slv-v5r-r15 add <本仓路径>        # ← 用本仓当前
 ```
 ★ **这同时更符合 Phase 4 的目的**：★ **我们要测的是【本仓的 v5r】**，★ 不是一个已发布的产物 ✓ —— ★ 而且**可复现、自包含** ✓
 
+### 7e. ★★★ Round 16：**从本仓装成功 ⇒ Phase 4/5 的目标 preset 全部到手**
+
+★ **安装读数（逐字）**：★ `- dsh-vibe-math 2.8.5` → ★★ **`+ dsh-vibe-math link:D:/wd/vibemath开发/Vibe-Mathematics`** ✓
+★ **实测它是符号链接**：★ `LinkType=SymbolicLink`，★ `Target=D:\wd\vibemath开发\Vibe-Mathematics` ⇒ ★★ **克隆用的是【本仓的实时状态】** ✓
+★★ **`vibe-math-v5r` 现已出现**（★ 含 `docs`／`架构图.md`／`设计总览.md`／`agent.cordis.yml`／`math-computation.js`／`math-engines.js`／`MEETING-PLATFORM-A/B/C-*.md` …）✓
+★★★ **bundle 现在提供【六个】preset**：**`vibe-math-v2`／`v3`／`v4`／`v5`／`v5r`／`vmu`** ✓✓
+⇒ ★★ **这意味着 Phase 4（原 v5r）与 Phase 5（`vmu+v5r` pack 的 preset）两个目标【都已就位】** ✓
+★ **用户的 preset 根【仍未被碰】**（★ 仍是 `.vibe-math-backup` ＋ v2–v5 ＋ `.vibe-math-installed.json`）✓
+
+★★★ **因此：机制上【再无阻塞】** —— ★ **唯一残留的门就是 `T1 全绿`**（★ 用户的目标 ④ 在 ⑤⑥ 之前）✓
+
 ## 8. 没核（★ 与"核了"分开）
 
 1. ★ **手册我读的是 §3–§8 与开头**（★ 逐字读了 §2 铁律、§3 开关表、§4 预算、§5 能力边界、§6 中止、§7 清理、§8 结论写法）⇒ ★ **§1 的隔离命令我只看了标题级**。
