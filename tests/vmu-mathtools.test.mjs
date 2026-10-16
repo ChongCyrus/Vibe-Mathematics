@@ -20,8 +20,8 @@ const ok = (cond, name, detail) => {
   if (cond) passed++
   else { failed++; failures.push(name + (detail === undefined ? '' : ' [' + detail + ']')) }
 }
-const codeOf = (fn) => { try { fn(); return 'NO-THROW' } catch (e) { return (e && e.code) || 'no-code' } }
-const errOf = (fn) => { try { fn(); return null } catch (e) { return e } }
+const codeOf = async (fn) => { try { await fn(); return 'NO-THROW' } catch (e) { return (e && e.code) || 'no-code' } }
+const errOf = async (fn) => { try { await fn(); return null } catch (e) { return e } }
 
 /** Build a runtime: settings overrides + optional spawn/library seams + optional clock. */
 /** ROUND 175: the shared universal recorder - see tests/helpers/settings-recorder.mjs. */
@@ -45,15 +45,15 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
 // ---- sandbox: network / memoryMb / cpuMs / wallMs / threads ---------------------------------------
 {
   const deny = mk({ settings: { 'vmu.math.sandbox.network': 'deny' } })
-  ok(codeOf(() => deny.t.plan({ op: 'stats/mean', needsNetwork: true })) === 'VMU_NETWORK_DENIED',
+  ok(await codeOf(() => deny.t.plan({ op: 'stats/mean', needsNetwork: true })) === 'VMU_NETWORK_DENIED',
     'sandbox.network[-]: needsNetwork is refused with VMU_NETWORK_DENIED')
   const allow = mk({ settings: { 'vmu.math.sandbox.network': 'allow' } })
   ok(allow.t.plan({ op: 'stats/mean', needsNetwork: true }).ok === true, 'sandbox.network[+]: "allow" permits egress')
   for (const [key, field] of [['vmu.math.sandbox.memoryMb', 'memoryMb'], ['vmu.math.sandbox.cpuMs', 'cpuMs'], ['vmu.math.sandbox.wallMs', 'wallMs'], ['vmu.math.sandbox.threads', 'threads']]) {
     const over = mk({ settings: { [key]: 10 } })
-    ok(codeOf(() => over.t.plan({ op: 'stats/mean', [field]: 20 })) === 'VMU_RESOURCE_BUDGET', key + '[-]: over the cap is refused')
+    ok(await codeOf(() => over.t.plan({ op: 'stats/mean', [field]: 20 })) === 'VMU_RESOURCE_BUDGET', key + '[-]: over the cap is refused')
     ok(over.t.plan({ op: 'stats/mean', [field]: 5 }).ok === true, key + '[+]: under the cap passes')
-    const e = errOf(() => over.t.plan({ op: 'stats/mean', [field]: 20 }))
+    const e = await errOf(() => over.t.plan({ op: 'stats/mean', [field]: 20 }))
     ok(/现值=20/.test(String(e.hint)) && /上限=10/.test(String(e.hint)), key + '[]: the refusal gives 现值/上限', e.hint)
   }
 }
@@ -63,32 +63,32 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
   // maxParallel: a nested plan during an active run sees `active >= cap`
   const nested = []
   const one = mk({ settings: { 'vmu.math.maxParallel': 1 }, seam: () => { try { nested.push(one.t.plan({ op: 'x' }).ok) } catch (e) { nested.push(e.code) }; return { ok: true, result: { value: 1 } } } })
-  one.t.run({ op: 'stats/mean' })
+  await one.t.run({ op: 'stats/mean' })
   ok(nested[0] === 'VMU_RESOURCE_BUDGET', 'maxParallel[-]: a nested run at cap 1 is refused', JSON.stringify(nested))
   const three = mk({ settings: { 'vmu.math.maxParallel': 3 }, seam: () => { try { nested.push(three.t.plan({ op: 'x' }).ok) } catch (e) { nested.push(e.code) }; return { ok: true, result: { value: 1 } } } })
-  three.t.run({ op: 'stats/mean' })
+  await three.t.run({ op: 'stats/mean' })
   ok(nested[1] === true, 'maxParallel[+]: at cap 3 the nested plan passes')
   // dir
   const root = process.cwd()
   const dirs = mk({ settings: { 'vmu.math.jobs.dir': root } })
-  ok(codeOf(() => dirs.t.plan({ op: 'stats/mean', jobDir: root + '/../outside' })) === 'VMU_PATH_ESCAPE_REFUSED',
+  ok(await codeOf(() => dirs.t.plan({ op: 'stats/mean', jobDir: root + '/../outside' })) === 'VMU_PATH_ESCAPE_REFUSED',
     'jobs.dir[-]: a jobDir escaping the configured root is refused')
   ok(dirs.t.plan({ op: 'stats/mean', jobDir: root + '/inside' }).ok === true, 'jobs.dir[+]: an inside jobDir passes')
   // logMax (detail kept only when persist=true)
   const logs = mk({ settings: { 'vmu.math.jobs.logMax': 2, 'vmu.math.jobs.persist': true }, seam: () => ({ ok: true, result: { value: 1 }, logLines: ['a', 'b', 'c', 'd', 'e'] }) })
-  const lr = logs.t.run({ op: 'stats/mean' })
+  const lr = await logs.t.run({ op: 'stats/mean' })
   ok(lr.receipt.log.length === 2 && lr.receipt.logLines === 2 && logs.t.status().counters.droppedLogLines === 3,
     'jobs.logMax[+]: the log is capped AND the drops are counted', JSON.stringify({ kept: lr.receipt.log.length, dropped: logs.t.status().counters.droppedLogLines }))
   ok(lr.enforced.includes('vmu.math.jobs.logMax'), 'jobs.logMax[]: the key appears in `enforced` (auditable wiring)')
   const bigLog = mk({ settings: { 'vmu.math.jobs.logMax': 10, 'vmu.math.jobs.persist': true }, seam: () => ({ ok: true, result: { value: 1 }, logLines: ['a', 'b'] }) })
-  ok(bigLog.t.run({ op: 'stats/mean' }).receipt.log.length === 2, 'jobs.logMax[-]: under the cap nothing is dropped')
+  ok((await bigLog.t.run({ op: 'stats/mean' })).receipt.log.length === 2, 'jobs.logMax[-]: under the cap nothing is dropped')
   // persist
   const keep = mk({ settings: { 'vmu.math.jobs.persist': true } })
-  keep.t.run({ op: 'stats/mean' })
+  await keep.t.run({ op: 'stats/mean' })
   ok(keep.calls.appends === 1 && keep.t.receiptsView().receipts[0].keptDetail === true,
     'jobs.persist[+]: the receipt is persisted through the library seam and keeps detail')
   const skip = mk({ settings: { 'vmu.math.jobs.persist': false } })
-  const sr = skip.t.run({ op: 'stats/mean' })
+  const sr = await skip.t.run({ op: 'stats/mean' })
   ok(skip.calls.appends === 0 && sr.receipt.keptDetail === false && sr.receipt.log === undefined && skip.t.status().counters.persistSkipped >= 1,
     'jobs.persist[-]: with persist=false the library is NOT written and the detail is not kept (only counts)')
 }
@@ -96,56 +96,56 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
 // ---- repro: requireSeed / seed / deterministic / packOnSuccess ------------------------------------
 {
   const req = mk({ settings: { 'vmu.math.repro.requireSeed': true } })
-  const e = errOf(() => req.t.plan({ op: 'stats/mean' }))
+  const e = await errOf(() => req.t.plan({ op: 'stats/mean' }))
   ok(e && e.code === 'VMU_MATH_INVALID_INPUT' && /requireSeed/.test(String(e.hint)),
     'repro.requireSeed[-]: an unseeded run is refused and the hint names the key', e && e.hint)
   ok(req.t.plan({ op: 'stats/mean', seed: 7 }).ok === true, 'repro.requireSeed[+]: with a seed the plan passes')
   const configured = mk({ settings: { 'vmu.math.repro.seed': 12345 } })
   ok(configured.t.plan({ op: 'stats/mean' }).plan.seed === 12345, 'repro.seed[+]: the configured seed is applied to the plan')
-  ok(configured.t.run({ op: 'stats/mean' }).receipt.seed === 12345, 'repro.seed[]: the receipt carries the applied seed')
+  ok((await configured.t.run({ op: 'stats/mean' })).receipt.seed === 12345, 'repro.seed[]: the receipt carries the applied seed')
   const none = mk({})
   ok(none.t.plan({ op: 'stats/mean' }).plan.seed === null, 'repro.seed[-]: with no key and no request seed the plan seed is null')
   const det = mk({ settings: { 'vmu.math.repro.deterministic': true } })
-  ok(codeOf(() => det.t.plan({ op: 'stats/mean', seed: 1, randomized: true })) === 'VMU_MATH_INVALID_INPUT',
+  ok(await codeOf(() => det.t.plan({ op: 'stats/mean', seed: 1, randomized: true })) === 'VMU_MATH_INVALID_INPUT',
     'repro.deterministic[-]: a randomized request is refused when determinism is on')
   ok(det.t.plan({ op: 'stats/mean', seed: 1 }).ok === true, 'repro.deterministic[+]: a seeded deterministic run passes')
-  ok(codeOf(() => det.t.plan({ op: 'stats/mean' })) === 'VMU_MATH_INVALID_INPUT', 'repro.deterministic[]: an unseeded run is refused too')
+  ok(await codeOf(() => det.t.plan({ op: 'stats/mean' })) === 'VMU_MATH_INVALID_INPUT', 'repro.deterministic[]: an unseeded run is refused too')
   const pack = mk({ settings: { 'vmu.math.repro.packOnSuccess': true } })
-  ok(!!pack.t.run({ op: 'stats/mean', seed: 3 }).receipt.reproPack, 'repro.packOnSuccess[+]: the receipt carries a repro pack')
-  ok(mk({}).t.run({ op: 'stats/mean', seed: 3 }).receipt.reproPack === undefined, 'repro.packOnSuccess[-]: without the key there is no pack')
+  ok(!!(await pack.t.run({ op: 'stats/mean', seed: 3 })).receipt.reproPack, 'repro.packOnSuccess[+]: the receipt carries a repro pack')
+  ok((await mk({}).t.run({ op: 'stats/mean', seed: 3 })).receipt.reproPack === undefined, 'repro.packOnSuccess[-]: without the key there is no pack')
 }
 
 // ---- cache: enabled / maxEntries / onCorrupt / crossProject ---------------------------------------
 {
   const on = mk({ settings: { 'vmu.math.cache.enabled': true } })
-  on.t.run({ op: 'stats/mean', args: { a: 1 } })
-  const second = on.t.run({ op: 'stats/mean', args: { a: 1 } })
+  await on.t.run({ op: 'stats/mean', args: { a: 1 } })
+  const second = await on.t.run({ op: 'stats/mean', args: { a: 1 } })
   ok(second.cached === true && on.calls.spawn === 1 && on.t.status().cache.hits === 1,
     'cache.enabled[+]: an identical request hits the cache and the seam is NOT called twice', JSON.stringify({ cached: second.cached, spawn: on.calls.spawn }))
   const off = mk({ settings: { 'vmu.math.cache.enabled': false } })
-  off.t.run({ op: 'stats/mean', args: { a: 1 } })
-  ok(off.t.run({ op: 'stats/mean', args: { a: 1 } }).cached === false && off.calls.spawn === 2,
+  await off.t.run({ op: 'stats/mean', args: { a: 1 } })
+  ok((await off.t.run({ op: 'stats/mean', args: { a: 1 } })).cached === false && off.calls.spawn === 2,
     'cache.enabled[-]: with the cache off the seam runs every time')
   const cap = mk({ settings: { 'vmu.math.cache.enabled': true, 'vmu.math.cache.maxEntries': 1 } })
-  cap.t.run({ op: 'stats/mean', args: { a: 1 } })
-  cap.t.run({ op: 'stats/mean', args: { a: 2 } })
+  await cap.t.run({ op: 'stats/mean', args: { a: 1 } })
+  await cap.t.run({ op: 'stats/mean', args: { a: 2 } })
   ok(cap.t.status().cache.evictions === 1 && cap.t.cacheView().available <= 1,
     'cache.maxEntries[+]: exceeding the cap EVICTS and the eviction is counted')
   const roomy = mk({ settings: { 'vmu.math.cache.enabled': true, 'vmu.math.cache.maxEntries': 100 } })
-  roomy.t.run({ op: 'stats/mean', args: { a: 1 } })
-  roomy.t.run({ op: 'stats/mean', args: { a: 2 } })
+  await roomy.t.run({ op: 'stats/mean', args: { a: 1 } })
+  await roomy.t.run({ op: 'stats/mean', args: { a: 2 } })
   ok(roomy.t.status().cache.evictions === 0, 'cache.maxEntries[-]: under the cap nothing is evicted')
   // onCorrupt: mark an entry corrupt, then compare 'refuse' vs 'recompute'
-  const mkCorrupt = (onCorrupt) => {
+  const mkCorrupt = async (onCorrupt) => {
     const r = mk({ settings: { 'vmu.math.cache.enabled': true, 'vmu.math.cache.onCorrupt': onCorrupt } })
-    const run = r.t.run({ op: 'stats/mean', args: { q: 1 } })
+    const run = await r.t.run({ op: 'stats/mean', args: { q: 1 } })
     r.t.cacheMarkCorrupt({ cacheKey: run.receipt.cacheKey, why: 'test' })
     return r
   }
-  const refuse = mkCorrupt('refuse')
-  ok(codeOf(() => refuse.t.plan({ op: 'stats/mean', args: { q: 1 } })) === 'VMU_STATE',
+  const refuse = await mkCorrupt('refuse')
+  ok(await codeOf(() => refuse.t.plan({ op: 'stats/mean', args: { q: 1 } })) === 'VMU_STATE',
     'cache.onCorrupt[-]: a corrupt entry is refused by name when onCorrupt="refuse"')
-  const recompute = mkCorrupt('recompute')
+  const recompute = await mkCorrupt('recompute')
   ok(recompute.t.plan({ op: 'stats/mean', args: { q: 1 } }).plan.cached === false && recompute.t.status().cache.corrupt === 1,
     'cache.onCorrupt[+]: with "recompute" the corrupt entry is skipped and the corruption is counted')
   const local = mk({ settings: { 'vmu.math.cache.enabled': true, 'vmu.math.cache.crossProject': false } })
@@ -160,79 +160,81 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
 // ---- precision: digits / mode / rounding / tolerance ----------------------------------------------
 {
   const d3 = mk({ settings: { 'vmu.math.precision.digits': 3, 'vmu.math.precision.mode': 'significant' }, seam: () => ({ ok: true, result: { value: 1234.5678 } }) })
-  ok(d3.t.run({ op: 'stats/mean' }).result.value === 1230, 'precision.digits[+]: 3 significant digits round 1234.5678 → 1230', String(d3.t.run({ op: 'stats/mean' }).result.value))
+  ok((await d3.t.run({ op: 'stats/mean' })).result.value === 1230, 'precision.digits[+]: 3 significant digits round 1234.5678 → 1230', String((await d3.t.run({ op: 'stats/mean' })).result.value))
   const d0 = mk({ seam: () => ({ ok: true, result: { value: 1234.5678 } }) })
-  ok(d0.t.run({ op: 'stats/mean' }).result.value === 1234.5678, 'precision.digits[-]: digits=0 leaves the value untouched')
+  ok((await d0.t.run({ op: 'stats/mean' })).result.value === 1234.5678, 'precision.digits[-]: digits=0 leaves the value untouched')
   const fixed = mk({ settings: { 'vmu.math.precision.digits': 2, 'vmu.math.precision.mode': 'fixed' }, seam: () => ({ ok: true, result: { value: 12345.6789 } }) })
-  ok(fixed.t.run({ op: 'stats/mean' }).result.value === 12345.68, 'precision.mode[+]: "fixed" keeps 2 decimal places', String(fixed.t.run({ op: 'stats/mean' }).result.value))
+  ok((await fixed.t.run({ op: 'stats/mean' })).result.value === 12345.68, 'precision.mode[+]: "fixed" keeps 2 decimal places', String((await fixed.t.run({ op: 'stats/mean' })).result.value))
   const sig = mk({ settings: { 'vmu.math.precision.digits': 2, 'vmu.math.precision.mode': 'significant' }, seam: () => ({ ok: true, result: { value: 12345.6789 } }) })
-  ok(sig.t.run({ op: 'stats/mean' }).result.value === 12000, 'precision.mode[-]: "significant" rounds to 2 significant digits', String(sig.t.run({ op: 'stats/mean' }).result.value))
+  ok((await sig.t.run({ op: 'stats/mean' })).result.value === 12000, 'precision.mode[-]: "significant" rounds to 2 significant digits', String((await sig.t.run({ op: 'stats/mean' })).result.value))
   // `fixed` counts digits AFTER the decimal point, so digits=0 rounds to an integer (the mode removes the
   // ambiguity with `significant`, where 0 means "leave the value untouched" — see the d0 case above).
-  const round = (rounding, value) => mk({ settings: { 'vmu.math.precision.digits': 0, 'vmu.math.precision.mode': 'fixed', 'vmu.math.precision.rounding': rounding }, seam: () => ({ ok: true, result: { value } }) }).t.run({ op: 'stats/mean' }).result.value
-  ok(round('floor', 2.5) === 2 && round('half-up', 2.5) === 3 && round('half-even', 2.5) === 2 && round('half-even', 3.5) === 4,
+  // ★ ROUND 42: `round` is async because `mathtools.run` is async, and the awaited result is wrapped before the
+  // member access - `await f(x).value` would parse as `await (f(x).value)`, reading `.value` off the PROMISE.
+  const round = async (rounding, value) => (await mk({ settings: { 'vmu.math.precision.digits': 0, 'vmu.math.precision.mode': 'fixed', 'vmu.math.precision.rounding': rounding }, seam: () => ({ ok: true, result: { value } }) }).t.run({ op: 'stats/mean' })).result.value
+  ok(await round('floor', 2.5) === 2 && await round('half-up', 2.5) === 3 && await round('half-even', 2.5) === 2 && await round('half-even', 3.5) === 4,
     'precision.rounding[+]: floor/half-up/half-even give observably different results',
-    JSON.stringify([round('floor', 2.5), round('half-up', 2.5), round('half-even', 2.5), round('half-even', 3.5)]))
-  ok(round('floor', 2.5) !== round('half-up', 2.5) && round('ceil', 2.1) === 3,
-    'precision.rounding[-]: floor and half-up are NOT the same function (and ceil works)', JSON.stringify([round('floor', 2.5), round('half-up', 2.5), round('ceil', 2.1)]))
+    JSON.stringify([await round('floor', 2.5), await round('half-up', 2.5), await round('half-even', 2.5), await round('half-even', 3.5)]))
+  ok(await round('floor', 2.5) !== await round('half-up', 2.5) && await round('ceil', 2.1) === 3,
+    'precision.rounding[-]: floor and half-up are NOT the same function (and ceil works)', JSON.stringify([await round('floor', 2.5), await round('half-up', 2.5), await round('ceil', 2.1)]))
   const tol = mk({ settings: { 'vmu.math.precision.tolerance': 1e-9 }, seam: () => ({ ok: true, result: { value: 1 }, delta: 0.5 }) })
-  ok(tol.t.run({ op: 'stats/mean' }).receipt.converged === false, 'precision.tolerance[-]: delta above the tolerance ⇒ not converged')
+  ok((await tol.t.run({ op: 'stats/mean' })).receipt.converged === false, 'precision.tolerance[-]: delta above the tolerance ⇒ not converged')
   const loose = mk({ settings: { 'vmu.math.precision.tolerance': 1 }, seam: () => ({ ok: true, result: { value: 1 }, delta: 0.5 }) })
-  ok(loose.t.run({ op: 'stats/mean' }).receipt.converged === true, 'precision.tolerance[+]: a loose tolerance makes the same delta converge')
+  ok((await loose.t.run({ op: 'stats/mean' })).receipt.converged === true, 'precision.tolerance[+]: a loose tolerance makes the same delta converge')
 }
 
 // ---- optim: timeLimitMs / tolerance / backend / certificates --------------------------------------
 {
   const lim = mk({ settings: { 'vmu.math.optim.timeLimitMs': 100 } })
-  const e = errOf(() => lim.t.plan({ op: 'optim/minimize', timeoutMs: 200 }))
+  const e = await errOf(() => lim.t.plan({ op: 'optim/minimize', timeoutMs: 200 }))
   ok(e && e.code === 'VMU_TIMEOUT' && /现值=200ms/.test(String(e.hint)) && /上限=100ms/.test(String(e.hint)),
     'optim.timeLimitMs[-]: over the limit is refused with 现值/上限', e && e.hint)
   ok(lim.t.plan({ op: 'optim/minimize', timeoutMs: 50 }).ok === true, 'optim.timeLimitMs[+]: under the limit passes')
   const ot = mk({ settings: { 'vmu.math.optim.tolerance': 1e-6 }, seam: () => ({ ok: true, result: { value: 1 }, delta: 0.5 }) })
-  ok(ot.t.run({ op: 'optim/minimize' }).receipt.converged === false && ot.t.run({ op: 'optim/minimize' }).receipt.tolerance === 1e-6,
+  ok((await ot.t.run({ op: 'optim/minimize' })).receipt.converged === false && (await ot.t.run({ op: 'optim/minimize' })).receipt.tolerance === 1e-6,
     'optim.tolerance[-]: the optim tolerance is the one applied to optim ops')
   const otLoose = mk({ settings: { 'vmu.math.optim.tolerance': 1 }, seam: () => ({ ok: true, result: { value: 1 }, delta: 0.5 }) })
-  ok(otLoose.t.run({ op: 'optim/minimize' }).receipt.converged === true, 'optim.tolerance[+]: a loose optim tolerance converges')
+  ok((await otLoose.t.run({ op: 'optim/minimize' })).receipt.converged === true, 'optim.tolerance[+]: a loose optim tolerance converges')
   const be = mk({ settings: opt })
-  ok(codeOf(() => be.t.plan({ op: 'optim/minimize', backend: 'scipy' })) === 'VMU_MATH_UNSUPPORTED_OP',
+  ok(await codeOf(() => be.t.plan({ op: 'optim/minimize', backend: 'scipy' })) === 'VMU_MATH_UNSUPPORTED_OP',
     'optim.backend[-]: a different backend is refused by name')
   ok(be.t.plan({ op: 'optim/minimize', backend: 'ipopt' }).ok === true, 'optim.backend[+]: the declared backend passes')
   const cert = mk({ settings: { 'vmu.math.optim.certificates': true } })
-  ok(codeOf(() => cert.t.run({ op: 'optim/minimize' })) === 'VMU_STATE', 'optim.certificates[-]: a run without a certificate is refused')
+  ok(await codeOf(() => cert.t.run({ op: 'optim/minimize' })) === 'VMU_STATE', 'optim.certificates[-]: a run without a certificate is refused')
   const cert2 = mk({ settings: { 'vmu.math.optim.certificates': true }, seam: () => ({ ok: true, result: { value: 1 }, certificate: { kind: 'kkt' } }) })
-  ok(cert2.t.run({ op: 'optim/minimize' }).ok === true, 'optim.certificates[+]: with a certificate the run is accepted')
+  ok((await cert2.t.run({ op: 'optim/minimize' })).ok === true, 'optim.certificates[+]: with a certificate the run is accepted')
 }
 
 // ---- formal: sorryPolicy / coqTimeoutMs / axiomAudit / requireAll ---------------------------------
 {
   const deny = mk({ settings: { 'vmu.math.formal.sorryPolicy': 'deny' }, seam: () => ({ ok: true, result: { value: 1 }, sorry: true }) })
-  ok(codeOf(() => deny.t.run({ op: 'formal/prove' })) === 'VMU_FORMAL_SORRY_FOUND', 'formal.sorryPolicy[-]: sorry is refused under "deny"')
+  ok(await codeOf(() => deny.t.run({ op: 'formal/prove' })) === 'VMU_FORMAL_SORRY_FOUND', 'formal.sorryPolicy[-]: sorry is refused under "deny"')
   const warn = mk({ settings: { 'vmu.math.formal.sorryPolicy': 'warn' }, seam: () => ({ ok: true, result: { value: 1 }, sorry: true }) })
-  ok(warn.t.run({ op: 'formal/prove' }).ok === true, 'formal.sorryPolicy[+]: "warn" accepts it (and the run is recorded)')
+  ok((await warn.t.run({ op: 'formal/prove' })).ok === true, 'formal.sorryPolicy[+]: "warn" accepts it (and the run is recorded)')
   const coq = mk({ settings: { 'vmu.math.formal.coqTimeoutMs': 50 } })
-  ok(codeOf(() => coq.t.plan({ op: 'formal/prove', timeoutMs: 100 })) === 'VMU_TIMEOUT', 'formal.coqTimeoutMs[-]: the formal limit is used for formal ops')
+  ok(await codeOf(() => coq.t.plan({ op: 'formal/prove', timeoutMs: 100 })) === 'VMU_TIMEOUT', 'formal.coqTimeoutMs[-]: the formal limit is used for formal ops')
   ok(coq.t.plan({ op: 'formal/prove', timeoutMs: 10 }).ok === true, 'formal.coqTimeoutMs[+]: under the formal limit passes')
   const ax = mk({ settings: { 'vmu.math.formal.axiomAudit': true }, seam: () => ({ ok: true, result: { value: 1 }, axioms: ['funext'] }) })
-  ok(codeOf(() => ax.t.run({ op: 'formal/prove' })) === 'VMU_FORMAL_AXIOM_UNTRUSTED', 'formal.axiomAudit[-]: an untrusted axiom is refused')
+  ok(await codeOf(() => ax.t.run({ op: 'formal/prove' })) === 'VMU_FORMAL_AXIOM_UNTRUSTED', 'formal.axiomAudit[-]: an untrusted axiom is refused')
   const ax2 = mk({ settings: { 'vmu.math.formal.axiomAudit': true }, seam: () => ({ ok: true, result: { value: 1 }, axioms: [] }) })
-  ok(ax2.t.run({ op: 'formal/prove' }).ok === true, 'formal.axiomAudit[+]: no untrusted axioms ⇒ accepted')
+  ok((await ax2.t.run({ op: 'formal/prove' })).ok === true, 'formal.axiomAudit[+]: no untrusted axioms ⇒ accepted')
   const all = mk({ settings: { 'vmu.math.formal.requireAll': true }, seam: () => ({ ok: true, result: { value: 1 }, assistants: ['lean'], expectedAssistants: ['lean', 'coq'] }) })
-  ok(codeOf(() => all.t.run({ op: 'formal/prove' })) === 'VMU_FORMAL_ADAPTER_UNSUPPORTED', 'formal.requireAll[-]: a missing assistant is refused (named)')
+  ok(await codeOf(() => all.t.run({ op: 'formal/prove' })) === 'VMU_FORMAL_ADAPTER_UNSUPPORTED', 'formal.requireAll[-]: a missing assistant is refused (named)')
   const all2 = mk({ settings: { 'vmu.math.formal.requireAll': true }, seam: () => ({ ok: true, result: { value: 1 }, assistants: ['lean', 'coq'], expectedAssistants: ['lean', 'coq'] }) })
-  ok(all2.t.run({ op: 'formal/prove' }).ok === true, 'formal.requireAll[+]: all assistants ran ⇒ accepted')
+  ok((await all2.t.run({ op: 'formal/prove' })).ok === true, 'formal.requireAll[+]: all assistants ran ⇒ accepted')
 }
 
 // ---- units: enabled / strictDimensions / constantsSource ------------------------------------------
 {
   const off = mk({ settings: { 'vmu.math.units.enabled': false } })
-  ok(codeOf(() => off.t.plan({ op: 'units/convert', units: 'm' })) === 'VMU_MATH_INVALID_INPUT', 'units.enabled[-]: units are refused when disabled')
+  ok(await codeOf(() => off.t.plan({ op: 'units/convert', units: 'm' })) === 'VMU_MATH_INVALID_INPUT', 'units.enabled[-]: units are refused when disabled')
   ok(mk({ settings: { 'vmu.math.units.enabled': true } }).t.plan({ op: 'units/convert', units: 'm' }).ok === true, 'units.enabled[+]: units pass when enabled')
   const strict = mk({ settings: { 'vmu.math.units.strictDimensions': true }, seam: () => ({ ok: true, result: { value: 1 }, dimensionMismatch: true, dimensionDetail: 'm vs s' }) })
-  ok(codeOf(() => strict.t.run({ op: 'units/convert' })) === 'VMU_MATH_DIMENSION_MISMATCH', 'units.strictDimensions[-]: a mismatch is refused')
+  ok(await codeOf(() => strict.t.run({ op: 'units/convert' })) === 'VMU_MATH_DIMENSION_MISMATCH', 'units.strictDimensions[-]: a mismatch is refused')
   const loose = mk({ settings: { 'vmu.math.units.strictDimensions': false }, seam: () => ({ ok: true, result: { value: 1 }, dimensionMismatch: true }) })
-  ok(loose.t.run({ op: 'units/convert' }).ok === true, 'units.strictDimensions[+]: with the check off the run passes')
+  ok((await loose.t.run({ op: 'units/convert' })).ok === true, 'units.strictDimensions[+]: with the check off the run passes')
   const cs = mk({ settings: { 'vmu.math.units.constantsSource': 'CODATA-2018' } })
-  ok(codeOf(() => cs.t.plan({ op: 'units/convert', constantsSource: 'NIST-1998' })) === 'VMU_MATH_INVALID_INPUT',
+  ok(await codeOf(() => cs.t.plan({ op: 'units/convert', constantsSource: 'NIST-1998' })) === 'VMU_MATH_INVALID_INPUT',
     'units.constantsSource[-]: a different source is refused')
   ok(cs.t.plan({ op: 'units/convert', constantsSource: 'CODATA-2018' }).ok === true, 'units.constantsSource[+]: the declared source passes')
 }
@@ -240,65 +242,65 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
 // ---- linalg: backend / requireResidual / sparse ---------------------------------------------------
 {
   const be = mk({ settings: { 'vmu.math.linalg.backend': 'lapack' } })
-  ok(codeOf(() => be.t.plan({ op: 'linalg/solve', backend: 'mkl' })) === 'VMU_MATH_UNSUPPORTED_OP', 'linalg.backend[-]: a different backend is refused')
+  ok(await codeOf(() => be.t.plan({ op: 'linalg/solve', backend: 'mkl' })) === 'VMU_MATH_UNSUPPORTED_OP', 'linalg.backend[-]: a different backend is refused')
   ok(be.t.plan({ op: 'linalg/solve', backend: 'lapack' }).ok === true, 'linalg.backend[+]: the declared backend passes')
   const res = mk({ settings: { 'vmu.math.linalg.requireResidual': true }, seam: () => ({ ok: true, result: { value: 1 } }) })
-  ok(codeOf(() => res.t.run({ op: 'linalg/solve' })) === 'VMU_STATE', 'linalg.requireResidual[-]: a solve without a residual is refused')
+  ok(await codeOf(() => res.t.run({ op: 'linalg/solve' })) === 'VMU_STATE', 'linalg.requireResidual[-]: a solve without a residual is refused')
   const res2 = mk({ settings: { 'vmu.math.linalg.requireResidual': true }, seam: () => ({ ok: true, result: { value: 1 }, residual: 1e-12 }) })
-  ok(res2.t.run({ op: 'linalg/solve' }).ok === true, 'linalg.requireResidual[+]: with a residual the solve passes')
+  ok((await res2.t.run({ op: 'linalg/solve' })).ok === true, 'linalg.requireResidual[+]: with a residual the solve passes')
   const sp = mk({ settings: { 'vmu.math.linalg.sparse': true } })
-  ok(codeOf(() => sp.t.plan({ op: 'linalg/solve', dense: true, size: 5000 })) === 'VMU_RESOURCE_BUDGET', 'linalg.sparse[-]: a large dense-only request is refused')
+  ok(await codeOf(() => sp.t.plan({ op: 'linalg/solve', dense: true, size: 5000 })) === 'VMU_RESOURCE_BUDGET', 'linalg.sparse[-]: a large dense-only request is refused')
   ok(sp.t.plan({ op: 'linalg/solve', dense: true, size: 10 }).ok === true, 'linalg.sparse[+]: a small dense request passes')
 }
 
 // ---- convergence / numeric / artifacts ------------------------------------------------------------
 {
   const conv = mk({ settings: { 'vmu.math.convergence.policy': 'require' }, seam: () => ({ ok: true, result: { value: 1 }, converged: false }) })
-  ok(codeOf(() => conv.t.run({ op: 'stats/mean' })) === 'VMU_STATE', 'convergence.policy[-]: a non-converged run is refused under "require"')
+  ok(await codeOf(() => conv.t.run({ op: 'stats/mean' })) === 'VMU_STATE', 'convergence.policy[-]: a non-converged run is refused under "require"')
   const rep = mk({ settings: { 'vmu.math.convergence.policy': 'report' }, seam: () => ({ ok: true, result: { value: 1 }, converged: false }) })
-  ok(rep.t.run({ op: 'stats/mean' }).ok === true, 'convergence.policy[+]: "report" accepts it (the receipt says converged:false)')
+  ok((await rep.t.run({ op: 'stats/mean' })).ok === true, 'convergence.policy[+]: "report" accepts it (the receipt says converged:false)')
   const quiet = mk({ settings: { 'vmu.math.numeric.warnings': false }, seam: () => ({ ok: true, result: { value: 1 }, warnings: ['ill-conditioned', 'loss of precision'] }) })
-  const qr = quiet.t.run({ op: 'stats/mean' })
+  const qr = await quiet.t.run({ op: 'stats/mean' })
   ok(qr.receipt.warnings.length === 0 && qr.receipt.warningsDropped === 2 && quiet.t.status().counters.droppedWarnings === 2,
     'numeric.warnings[-]: suppression is observable AND counted', JSON.stringify({ w: qr.receipt.warnings.length, dropped: qr.receipt.warningsDropped }))
   const loud = mk({ seam: () => ({ ok: true, result: { value: 1 }, warnings: ['x'] }) })
-  ok(loud.t.run({ op: 'stats/mean' }).receipt.warnings.length === 1, 'numeric.warnings[+]: with warnings on they are kept')
+  ok((await loud.t.run({ op: 'stats/mean' })).receipt.warnings.length === 1, 'numeric.warnings[+]: with warnings on they are kept')
   const st = mk({ settings: { 'vmu.math.numeric.stability': 'require' }, seam: () => ({ ok: true, result: { value: 1 }, unstable: true }) })
-  ok(codeOf(() => st.t.run({ op: 'stats/mean' })) === 'VMU_STATE', 'numeric.stability[-]: an unstable result is refused under "require"')
+  ok(await codeOf(() => st.t.run({ op: 'stats/mean' })) === 'VMU_STATE', 'numeric.stability[-]: an unstable result is refused under "require"')
   const st2 = mk({ settings: { 'vmu.math.numeric.stability': 'report' }, seam: () => ({ ok: true, result: { value: 1 }, unstable: true }) })
-  ok(st2.t.run({ op: 'stats/mean' }).ok === true, 'numeric.stability[+]: "report" accepts it')
+  ok((await st2.t.run({ op: 'stats/mean' })).ok === true, 'numeric.stability[+]: "report" accepts it')
   const mb = mk({ settings: { 'vmu.math.artifacts.maxFileMb': 1 }, seam: () => ({ ok: true, result: { value: 1 }, artifactMb: 5 }) })
-  ok(codeOf(() => mb.t.run({ op: 'stats/mean' })) === 'VMU_RESOURCE_BUDGET', 'artifacts.maxFileMb[-]: a big artifact is refused')
+  ok(await codeOf(() => mb.t.run({ op: 'stats/mean' })) === 'VMU_RESOURCE_BUDGET', 'artifacts.maxFileMb[-]: a big artifact is refused')
   const mb2 = mk({ settings: { 'vmu.math.artifacts.maxFileMb': 1 }, seam: () => ({ ok: true, result: { value: 1 }, artifactMb: 0.5 }) })
-  ok(mb2.t.run({ op: 'stats/mean' }).ok === true, 'artifacts.maxFileMb[+]: a small artifact passes')
+  ok((await mb2.t.run({ op: 'stats/mean' })).ok === true, 'artifacts.maxFileMb[+]: a small artifact passes')
   const runs = mk({ settings: { 'vmu.math.artifacts.maxRuns': 1 } })
-  runs.t.run({ op: 'stats/mean' })
-  const e2 = errOf(() => runs.t.run({ op: 'stats/mean' }))
+  await runs.t.run({ op: 'stats/mean' })
+  const e2 = await errOf(() => runs.t.run({ op: 'stats/mean' }))
   ok(e2 && e2.code === 'VMU_QUOTA_EXCEEDED' && /现值=1/.test(String(e2.hint)) && /上限=1/.test(String(e2.hint)),
     'artifacts.maxRuns[-]: the run quota is enforced with 现值/上限', e2 && e2.hint)
   const runs2 = mk({ settings: { 'vmu.math.artifacts.maxRuns': 5 } })
-  runs2.t.run({ op: 'stats/mean' })
-  ok(runs2.t.run({ op: 'stats/mean' }).ok === true, 'artifacts.maxRuns[+]: under the quota runs pass')
+  await runs2.t.run({ op: 'stats/mean' })
+  ok((await runs2.t.run({ op: 'stats/mean' })).ok === true, 'artifacts.maxRuns[+]: under the quota runs pass')
   const att = mk({ settings: { 'vmu.math.artifacts.maxAttemptsPerRun': 1 } })
-  ok(codeOf(() => att.t.plan({ op: 'stats/mean', retries: 3 })) === 'VMU_RESOURCE_BUDGET', 'artifacts.maxAttemptsPerRun[-]: too many retries are refused')
+  ok(await codeOf(() => att.t.plan({ op: 'stats/mean', retries: 3 })) === 'VMU_RESOURCE_BUDGET', 'artifacts.maxAttemptsPerRun[-]: too many retries are refused')
   ok(att.t.plan({ op: 'stats/mean', retries: 1 }).ok === true, 'artifacts.maxAttemptsPerRun[+]: retries within the cap pass')
 }
 
 // ---- report: language / includeRepro / style ------------------------------------------------------
 {
   const zh = mk({ settings: { 'vmu.math.report.language': 'zh-Hans' }, seam: () => ({ ok: true, result: { value: 7 } }) })
-  ok(/^结果=/.test(zh.t.run({ op: 'stats/mean' }).receipt.rendered), 'report.language[-]: zh-Hans renders the Chinese label')
+  ok(/^结果=/.test((await zh.t.run({ op: 'stats/mean' })).receipt.rendered), 'report.language[-]: zh-Hans renders the Chinese label')
   const en = mk({ settings: { 'vmu.math.report.language': 'en' }, seam: () => ({ ok: true, result: { value: 7 } }) })
-  ok(/^value=/.test(en.t.run({ op: 'stats/mean' }).receipt.rendered), 'report.language[+]: en renders the English label')
+  ok(/^value=/.test((await en.t.run({ op: 'stats/mean' })).receipt.rendered), 'report.language[+]: en renders the English label')
   const inc = mk({ settings: { 'vmu.math.report.includeRepro': true, 'vmu.math.repro.packOnSuccess': true } })
-  ok(inc.t.run({ op: 'stats/mean' }).receipt.reproInReport === true, 'report.includeRepro[+]: the repro block is reported')
+  ok((await inc.t.run({ op: 'stats/mean' })).receipt.reproInReport === true, 'report.includeRepro[+]: the repro block is reported')
   const exc = mk({ settings: { 'vmu.math.report.includeRepro': false, 'vmu.math.repro.packOnSuccess': true } })
-  ok(exc.t.run({ op: 'stats/mean' }).receipt.reproInReport === false, 'report.includeRepro[-]: with the key off the repro block is not reported')
+  ok((await exc.t.run({ op: 'stats/mean' })).receipt.reproInReport === false, 'report.includeRepro[-]: with the key off the repro block is not reported')
   const js = mk({ settings: { 'vmu.math.report.style': 'json' }, seam: () => ({ ok: true, result: { value: 7 } }) })
-  const parsed = (() => { try { return JSON.parse(js.t.run({ op: 'stats/mean' }).receipt.rendered) } catch (e) { return null } })()
+  const parsed = await (async () => { try { return JSON.parse((await js.t.run({ op: 'stats/mean' })).receipt.rendered) } catch (e) { return null } })()
   ok(parsed && parsed['结果'] === 7, 'report.style[+]: "json" renders valid JSON', JSON.stringify(parsed))
   const md = mk({ settings: { 'vmu.math.report.style': 'markdown' }, seam: () => ({ ok: true, result: { value: 7 } }) })
-  ok(/\*\*/.test(md.t.run({ op: 'stats/mean' }).receipt.rendered), 'report.style[-]: "markdown" renders bold markup instead')
+  ok(/\*\*/.test((await md.t.run({ op: 'stats/mean' })).receipt.rendered), 'report.style[-]: "markdown" renders bold markup instead')
 }
 
 // ---- interval.enabled -----------------------------------------------------------------------------
@@ -306,7 +308,7 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
   const on = mk({ settings: { 'vmu.math.interval.enabled': true } })
   ok(on.t.plan({ op: 'interval/sum', interval: true }).ok === true, 'interval.enabled[+]: interval requests pass when enabled')
   const off = mk({ settings: { 'vmu.math.interval.enabled': false } })
-  ok(codeOf(() => off.t.plan({ op: 'interval/sum', interval: true })) === 'VMU_MATH_INVALID_INPUT', 'interval.enabled[-]: interval requests are refused when disabled')
+  ok(await codeOf(() => off.t.plan({ op: 'interval/sum', interval: true })) === 'VMU_MATH_INVALID_INPUT', 'interval.enabled[-]: interval requests are refused when disabled')
 }
 
 // ---- the honesty rails: complement, determinism, zero mechanism, counters -------------------------
@@ -330,13 +332,13 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
   ok(UNWIRED_REASONS['vmu.math.optim'].includes('后端'), 'the reason table explains the biggest unwired cluster (optim backends)')
   // determinism: two instances, same settings, same clock ⇒ identical status
   const a = mk({ clock: () => 777 }); const b = mk({ clock: () => 777 })
-  a.t.run({ op: 'stats/mean', seed: 1 }); b.t.run({ op: 'stats/mean', seed: 1 })
+  await a.t.run({ op: 'stats/mean', seed: 1 }); await b.t.run({ op: 'stats/mean', seed: 1 })
   ok(JSON.stringify(a.t.status()) === JSON.stringify(b.t.status()), 'two instances with the same inputs produce identical status()')
   // zero mechanism: plan() answers, run() refuses by name
   const zero = createMathTools({ clock: () => 0 })
   ok(zero.plan({ op: 'stats/mean' }).ok === true, 'zero mechanism[+]: plan() answers with the documented defaults')
-  ok(codeOf(() => zero.run({ op: 'stats/mean' })) === 'VMU_ENGINE_UNAVAILABLE', 'zero mechanism[-]: run() without a seam refuses by name')
-  ok(codeOf(() => zero.plan({})) === 'VMU_MATH_INVALID_INPUT', 'an op-less request is a named refusal')
+  ok(await codeOf(() => zero.run({ op: 'stats/mean' })) === 'VMU_ENGINE_UNAVAILABLE', 'zero mechanism[-]: run() without a seam refuses by name')
+  ok(await codeOf(() => zero.plan({})) === 'VMU_MATH_INVALID_INPUT', 'an op-less request is a named refusal')
   // The declared universe is one table now (settings/schema.js = CORE + PLANNED), so `plannedSource`
   // names that single source. The count is asserted above; this pins WHERE it is read from.
   // ROUND 224: the floor moved with the universe (49 measured after the phantom removal), and the SOURCE is what this
@@ -425,26 +427,26 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
   ok(quiet.enforced.includes('vmu.math.maxParallel'),
     'the concurrency rail (always evaluated) IS present, so the reverse check is meaningful')
   // M12: the SHAPING rails are listed too (self-audit: the same defect class existed here)
-  const sig = (over = {}) => {
+  const sig = async (over = {}) => {
     const t = createMathTools({ clock: () => 1000, settings: Object.assign({}, over), spawn: () => ({ ok: true, result: { value: 1 }, delta: 0.5 }) })
     return t.run({ op: 'stats/mean', seed: 1 })
   }
-  const shaping = sig({ 'vmu.math.precision.digits': 3, 'vmu.math.jobs.persist': true, 'vmu.math.report.style': 'json', 'vmu.math.repro.packOnSuccess': true, 'vmu.math.cache.enabled': true, 'vmu.math.cache.crossProject': true })
+  const shaping = await sig({ 'vmu.math.precision.digits': 3, 'vmu.math.jobs.persist': true, 'vmu.math.report.style': 'json', 'vmu.math.repro.packOnSuccess': true, 'vmu.math.cache.enabled': true, 'vmu.math.cache.crossProject': true })
   for (const k of ['vmu.math.precision.digits', 'vmu.math.precision.mode', 'vmu.math.precision.rounding', 'vmu.math.precision.tolerance',
     'vmu.math.jobs.persist', 'vmu.math.repro.packOnSuccess', 'vmu.math.cache.crossProject',
     'vmu.math.report.language', 'vmu.math.report.style', 'vmu.math.report.includeRepro']) {
     ok(shaping.enforced.includes(k), 'shaping[]: ' + k + ' is listed when its read shaped this result', JSON.stringify(shaping.enforced))
   }
-  const optimRun = (over) => createMathTools({ clock: () => 1000, settings: over, spawn: () => ({ ok: true, result: { value: 1 }, delta: 0.5 }) }).run({ op: 'optim/minimize', seed: 1 })
-  ok(optimRun({ 'vmu.math.optim.tolerance': 1e-6 }).enforced.includes('vmu.math.optim.tolerance'),
-    'shaping[]: optim ops list optim.tolerance (not precision.tolerance)', JSON.stringify(optimRun({ 'vmu.math.optim.tolerance': 1e-6 }).enforced))
-  ok(!optimRun({ 'vmu.math.optim.tolerance': 1e-6 }).enforced.includes('vmu.math.precision.tolerance'),
+  const optimRun = async (over) => createMathTools({ clock: () => 1000, settings: over, spawn: () => ({ ok: true, result: { value: 1 }, delta: 0.5 }) }).run({ op: 'optim/minimize', seed: 1 })
+  ok((await optimRun({ 'vmu.math.optim.tolerance': 1e-6 })).enforced.includes('vmu.math.optim.tolerance'),
+    'shaping[]: optim ops list optim.tolerance (not precision.tolerance)', JSON.stringify((await optimRun({ 'vmu.math.optim.tolerance': 1e-6 })).enforced))
+  ok(!(await optimRun({ 'vmu.math.optim.tolerance': 1e-6 })).enforced.includes('vmu.math.precision.tolerance'),
     'shaping[-]: an optim op does NOT claim precision.tolerance')
-  ok(!sig({}).enforced.includes('vmu.math.precision.digits'),
+  ok(!(await sig({})).enforced.includes('vmu.math.precision.digits'),
     'shaping[-]: with digits=0 the rounding keys are NOT claimed (their read changes nothing)')
   const cap2 = createMathTools({ clock: () => 1000, settings: { 'vmu.math.cache.enabled': true, 'vmu.math.cache.maxEntries': 1 }, spawn: () => ({ ok: true, result: { value: 1 } }) })
-  cap2.run({ op: 'stats/mean', args: { a: 1 } })
-  const evicted = cap2.run({ op: 'stats/mean', args: { a: 2 } })
+  await cap2.run({ op: 'stats/mean', args: { a: 1 } })
+  const evicted = await cap2.run({ op: 'stats/mean', args: { a: 2 } })
   ok(evicted.enforced.includes('vmu.math.cache.maxEntries'), 'shaping[]: an eviction lists cache.maxEntries', JSON.stringify(evicted.enforced))
 }
 
@@ -464,14 +466,14 @@ if (failed === 0) {
   const mt = mk({})
   const plan = mt.t.plan({ op: 'optim/minimize', args: { f: 'x^2' } })
   ok(plan.enforcedScope === 'evaluated-so-far', 'D3: a plan() receipt states enforcedScope=evaluated-so-far')
-  const refusal = errOf(() => mt.t.plan({ op: 'optim/minimize', args: {}, needsNetwork: true }))
+  const refusal = await errOf(() => mt.t.plan({ op: 'optim/minimize', args: {}, needsNetwork: true }))
   ok(!!refusal && refusal.enforcedScope === 'evaluated-so-far', 'D3: a REFUSAL carries enforcedScope itself')
   ok(!!refusal && Array.isArray(refusal.enforced) && refusal.enforced.includes('vmu.math.sandbox.network'), 'D3: the refusal lists the key that caused it (and states the scope)')
   const recs = []
-  const tryPush = (fn) => { try { const r = fn(); if (r && Array.isArray(r.enforced)) recs.push(r) } catch (e) { /* refusals covered elsewhere */ } }
-  tryPush(() => mt.t.plan({ op: 'optim/minimize', args: {} }))
-  tryPush(() => mt.t.plan({ op: 'optim/minimize', args: {}, seed: 1 }))
-  tryPush(() => mt.t.plan({ op: 'symbolic/simplify', args: { expr: 'x' } }))
+  const tryPush = async (fn) => { try { const r = await fn(); if (r && Array.isArray(r.enforced)) recs.push(r) } catch (e) { /* refusals covered elsewhere */ } }
+  await tryPush(() => mt.t.plan({ op: 'optim/minimize', args: {} }))
+  await tryPush(() => mt.t.plan({ op: 'optim/minimize', args: {}, seed: 1 }))
+  await tryPush(() => mt.t.plan({ op: 'symbolic/simplify', args: { expr: 'x' } }))
   const dup = recs.filter((x) => !Array.isArray(x.enforced) || new Set(x.enforced).size !== x.enforced.length)
   ok(recs.length >= 2, 'no-dup: the batch produced receipts to check (' + recs.length + ')')
   ok(recs.every((x) => x.enforcedScope === 'evaluated-so-far'), 'D3: every receipt in the batch carries the scope')
@@ -484,7 +486,7 @@ if (failed === 0) {
   const pass = { ok: true, result: { value: 1 }, assistants: ['lean'], expectedAssistants: ['lean'] }
   // formal.assistants: a request may not name an assistant outside the declared set
   const oneAssistant = mk({ settings: { 'vmu.math.formal.assistants': ['lean'] }, seam: () => pass })
-  ok(codeOf(() => oneAssistant.t.plan({ op: 'formal/prove', assistants: ['coq'] })) === 'VMU_FORMAL_ADAPTER_UNSUPPORTED',
+  ok(await codeOf(() => oneAssistant.t.plan({ op: 'formal/prove', assistants: ['coq'] })) === 'VMU_FORMAL_ADAPTER_UNSUPPORTED',
     'formal.assistants[-]: an assistant outside the declared set is refused by name')
   ok(oneAssistant.t.plan({ op: 'formal/prove', assistants: ['lean'] }).ok === true, 'formal.assistants[+]: a declared assistant passes')
   const twoAssistants = mk({ settings: { 'vmu.math.formal.assistants': ['lean', 'coq'] }, seam: () => pass })
@@ -492,7 +494,7 @@ if (failed === 0) {
 
   // formal.crossCheck: cross-checking with one assistant is not cross-checking
   const needing = mk({ settings: { 'vmu.math.formal.assistants': ['lean', 'coq'], 'vmu.math.formal.crossCheck': true }, seam: () => pass })
-  ok(codeOf(() => needing.t.plan({ op: 'formal/prove', assistants: ['lean'] })) === 'VMU_FORMAL_ADAPTER_UNSUPPORTED',
+  ok(await codeOf(() => needing.t.plan({ op: 'formal/prove', assistants: ['lean'] })) === 'VMU_FORMAL_ADAPTER_UNSUPPORTED',
     'formal.crossCheck[-]: one assistant cannot cross-check, and it is refused by name')
   ok(needing.t.plan({ op: 'formal/prove', assistants: ['lean', 'coq'] }).ok === true, 'formal.crossCheck[+]: two assistants satisfy it')
   const notNeeding = mk({ settings: { 'vmu.math.formal.assistants': ['lean', 'coq'], 'vmu.math.formal.crossCheck': false }, seam: () => pass })
@@ -501,40 +503,40 @@ if (failed === 0) {
   // formal.onDisagreement: block refuses, report records
   const disagreeing = { ok: true, result: { value: 1 }, assistants: ['lean', 'coq'], expectedAssistants: ['lean', 'coq'], assistantDisagreement: true }
   const blocking = mk({ settings: { 'vmu.math.formal.onDisagreement': 'block' }, seam: () => disagreeing })
-  ok(codeOf(() => blocking.t.run({ op: 'formal/prove' })) === 'VMU_FORMAL_DISAGREEMENT',
+  ok(await codeOf(() => blocking.t.run({ op: 'formal/prove' })) === 'VMU_FORMAL_DISAGREEMENT',
     'formal.onDisagreement[-]: a disagreement is refused by name under "block"')
   const reporting = mk({ settings: { 'vmu.math.formal.onDisagreement': 'report' }, seam: () => disagreeing })
-  ok(reporting.t.run({ op: 'formal/prove' }).ok === true, 'formal.onDisagreement[+]: under "report" the run is recorded instead of refused')
+  ok((await reporting.t.run({ op: 'formal/prove' })).ok === true, 'formal.onDisagreement[+]: under "report" the run is recorded instead of refused')
 
   // formal.librarySearch
   const noSearch = mk({ settings: { 'vmu.math.formal.librarySearch': 'off' }, seam: () => pass })
-  ok(codeOf(() => noSearch.t.plan({ op: 'formal/prove', librarySearch: true })) === 'VMU_MATH_INVALID_INPUT',
+  ok(await codeOf(() => noSearch.t.plan({ op: 'formal/prove', librarySearch: true })) === 'VMU_MATH_INVALID_INPUT',
     'formal.librarySearch[-]: asking for a search while it is off is refused by name')
   const searching = mk({ settings: { 'vmu.math.formal.librarySearch': 'loogle' }, seam: () => pass })
   ok(searching.t.plan({ op: 'formal/prove', librarySearch: true }).ok === true, 'formal.librarySearch[+]: a declared search backend allows it')
 
   // formal.skeletonStyle
   const noSkeleton = mk({ settings: { 'vmu.math.formal.skeletonStyle': 'off' }, seam: () => pass })
-  ok(codeOf(() => noSkeleton.t.plan({ op: 'formal/prove', skeletonStyle: 'have' })) === 'VMU_MATH_INVALID_INPUT',
+  ok(await codeOf(() => noSkeleton.t.plan({ op: 'formal/prove', skeletonStyle: 'have' })) === 'VMU_MATH_INVALID_INPUT',
     'formal.skeletonStyle[-]: asking for a skeleton while it is off is refused by name')
   const skeleton = mk({ settings: { 'vmu.math.formal.skeletonStyle': 'have' }, seam: () => pass })
   ok(skeleton.t.plan({ op: 'formal/prove', skeletonStyle: 'have' }).ok === true, 'formal.skeletonStyle[+]: a declared style allows it')
 
   // units.uncertainty
   const noUnc = mk({ settings: { 'vmu.math.units.uncertainty': 'off' }, seam: () => pass })
-  ok(codeOf(() => noUnc.t.plan({ op: 'formal/prove', uncertainty: true })) === 'VMU_MATH_INVALID_INPUT',
+  ok(await codeOf(() => noUnc.t.plan({ op: 'formal/prove', uncertainty: true })) === 'VMU_MATH_INVALID_INPUT',
     'units.uncertainty[-]: asking for uncertainty propagation while it is off is refused by name')
   const unc = mk({ settings: { 'vmu.math.units.uncertainty': 'first-order' }, seam: () => pass })
   ok(unc.t.plan({ op: 'formal/prove', uncertainty: true }).ok === true, 'units.uncertainty[+]: a declared mode allows it')
 
   // artifacts.dir: an artifact outside the declared directory is refused
   const inside = mk({ settings: { 'vmu.math.artifacts.dir': 'Computation' }, seam: () => ({ ok: true, result: { value: 1 }, artifactPath: 'Computation/out.txt' }) })
-  ok(inside.t.run({ op: 'formal/prove' }).ok === true, 'artifacts.dir[+]: an artifact under the declared directory passes')
+  ok((await inside.t.run({ op: 'formal/prove' })).ok === true, 'artifacts.dir[+]: an artifact under the declared directory passes')
   const outside = mk({ settings: { 'vmu.math.artifacts.dir': 'Computation' }, seam: () => ({ ok: true, result: { value: 1 }, artifactPath: 'Elsewhere/out.txt' }) })
-  ok(codeOf(() => outside.t.run({ op: 'formal/prove' })) === 'VMU_MATH_INVALID_INPUT',
+  ok(await codeOf(() => outside.t.run({ op: 'formal/prove' })) === 'VMU_MATH_INVALID_INPUT',
     'artifacts.dir[-]: an artifact outside the declared directory is refused by name')
   const custom = mk({ settings: { 'vmu.math.artifacts.dir': 'Work/Artifacts' }, seam: () => ({ ok: true, result: { value: 1 }, artifactPath: 'Work/Artifacts/out.txt' }) })
-  ok(custom.t.run({ op: 'formal/prove' }).ok === true, 'artifacts.dir[+]: changing the declaration changes which path is accepted')
+  ok((await custom.t.run({ op: 'formal/prove' })).ok === true, 'artifacts.dir[+]: changing the declaration changes which path is accepted')
 }
 
 
@@ -542,57 +544,57 @@ if (failed === 0) {
 {
   // bayes.backend / chains / iterations
   const b = mk({ settings: { 'vmu.math.bayes.backend': 'stan', 'vmu.math.bayes.chains': 4, 'vmu.math.bayes.iterations': 2000 }, seam: () => ({ ok: true, result: { value: 1 } }) })
-  ok(codeOf(() => b.t.plan({ op: 'bayes/sample', backend: 'pymc' })) === 'VMU_MATH_UNSUPPORTED_OP',
+  ok(await codeOf(() => b.t.plan({ op: 'bayes/sample', backend: 'pymc' })) === 'VMU_MATH_UNSUPPORTED_OP',
     'bayes.backend[-]: a backend other than the declared one is refused by name')
   ok(b.t.plan({ op: 'bayes/sample', backend: 'stan' }).ok === true, 'bayes.backend[+]: the declared backend passes')
-  ok(codeOf(() => b.t.plan({ op: 'bayes/sample', chains: 2 })) === 'VMU_MATH_INVALID_INPUT',
+  ok(await codeOf(() => b.t.plan({ op: 'bayes/sample', chains: 2 })) === 'VMU_MATH_INVALID_INPUT',
     'bayes.chains[-]: fewer chains than declared is refused by name')
   ok(b.t.plan({ op: 'bayes/sample', chains: 8 }).ok === true, 'bayes.chains[+]: more chains than the floor is fine')
-  ok(codeOf(() => b.t.plan({ op: 'bayes/sample', iterations: 500 })) === 'VMU_MATH_INVALID_INPUT',
+  ok(await codeOf(() => b.t.plan({ op: 'bayes/sample', iterations: 500 })) === 'VMU_MATH_INVALID_INPUT',
     'bayes.iterations[-]: fewer iterations than declared is refused by name')
   ok(b.t.plan({ op: 'bayes/sample', iterations: 4000 }).ok === true, 'bayes.iterations[+]: above the floor passes')
   const loose = mk({ settings: { 'vmu.math.bayes.chains': 1, 'vmu.math.bayes.iterations': 100 }, seam: () => ({ ok: true, result: { value: 1 } }) })
   ok(loose.t.plan({ op: 'bayes/sample', chains: 1, iterations: 100 }).ok === true, 'bayes.chains[+]/iterations[+]: a lowered declaration admits the smaller request')
   // bayes.diagnostics: the RESULT decides
   const refusing = mk({ settings: { 'vmu.math.bayes.diagnostics': 'refuse' }, seam: () => ({ ok: true, result: { value: 1 }, bayesDiagnosticsFailed: true }) })
-  ok(codeOf(() => refusing.t.run({ op: 'bayes/sample' })) === 'VMU_MATH_NOT_CONVERGED',
+  ok(await codeOf(() => refusing.t.run({ op: 'bayes/sample' })) === 'VMU_MATH_NOT_CONVERGED',
     'bayes.diagnostics[-]: failed diagnostics are refused by name under "refuse"')
   const warning = mk({ settings: { 'vmu.math.bayes.diagnostics': 'warn' }, seam: () => ({ ok: true, result: { value: 1 }, bayesDiagnosticsFailed: true }) })
-  ok(warning.t.run({ op: 'bayes/sample' }).ok === true, 'bayes.diagnostics[+]: under "warn" the run is recorded instead of refused')
+  ok((await warning.t.run({ op: 'bayes/sample' })).ok === true, 'bayes.diagnostics[+]: under "warn" the run is recorded instead of refused')
 
   // ode.backend / method / tolerance / reportConvergence
   const o = mk({ settings: { 'vmu.math.ode.backend': 'scipy', 'vmu.math.ode.method': 'rk45', 'vmu.math.ode.tolerance': 1e-8 }, seam: () => ({ ok: true, result: { value: 1 } }) })
-  ok(codeOf(() => o.t.plan({ op: 'ode/solve', backend: 'julia' })) === 'VMU_MATH_UNSUPPORTED_OP', 'ode.backend[-]: another backend is refused by name')
-  ok(codeOf(() => o.t.plan({ op: 'ode/solve', method: 'euler' })) === 'VMU_MATH_UNSUPPORTED_OP', 'ode.method[-]: another method is refused by name')
-  ok(codeOf(() => o.t.plan({ op: 'ode/solve', tolerance: 1e-3 })) === 'VMU_MATH_INVALID_INPUT', 'ode.tolerance[-]: a LOOSER tolerance is refused by name')
+  ok(await codeOf(() => o.t.plan({ op: 'ode/solve', backend: 'julia' })) === 'VMU_MATH_UNSUPPORTED_OP', 'ode.backend[-]: another backend is refused by name')
+  ok(await codeOf(() => o.t.plan({ op: 'ode/solve', method: 'euler' })) === 'VMU_MATH_UNSUPPORTED_OP', 'ode.method[-]: another method is refused by name')
+  ok(await codeOf(() => o.t.plan({ op: 'ode/solve', tolerance: 1e-3 })) === 'VMU_MATH_INVALID_INPUT', 'ode.tolerance[-]: a LOOSER tolerance is refused by name')
   ok(o.t.plan({ op: 'ode/solve', tolerance: 1e-10, method: 'rk45', backend: 'scipy' }).ok === true, 'ode.tolerance[+]: a tighter tolerance is fine')
   const noMethod = mk({ settings: { 'vmu.math.ode.method': '' }, seam: () => ({ ok: true, result: { value: 1 } }) })
   ok(noMethod.t.plan({ op: 'ode/solve', method: 'anything' }).ok === true, 'ode.method[empty]: an empty declaration leaves the method free')
   const needConv = mk({ settings: { 'vmu.math.ode.reportConvergence': 'require' }, seam: () => ({ ok: true, result: { value: 1 }, converged: false }) })
-  ok(codeOf(() => needConv.t.run({ op: 'ode/solve' })) === 'VMU_STATE', 'ode.reportConvergence[-]: an unconverged result is refused under "require"')
+  ok(await codeOf(() => needConv.t.run({ op: 'ode/solve' })) === 'VMU_STATE', 'ode.reportConvergence[-]: an unconverged result is refused under "require"')
   const warnConv = mk({ settings: { 'vmu.math.ode.reportConvergence': 'warn' }, seam: () => ({ ok: true, result: { value: 1 }, converged: false }) })
-  ok(warnConv.t.run({ op: 'ode/solve' }).ok === true, 'ode.reportConvergence[+]: under "warn" it is recorded')
+  ok((await warnConv.t.run({ op: 'ode/solve' })).ok === true, 'ode.reportConvergence[+]: under "warn" it is recorded')
 
   // stats.backend / multipleComparison / effectSize
   const st = mk({ settings: { 'vmu.math.stats.backend': 'python', 'vmu.math.stats.multipleComparison': 'holm' }, seam: () => ({ ok: true, result: { value: 1 } }) })
-  ok(codeOf(() => st.t.plan({ op: 'stats/test', backend: 'r' })) === 'VMU_MATH_UNSUPPORTED_OP', 'stats.backend[-]: another backend is refused by name')
-  ok(codeOf(() => st.t.plan({ op: 'stats/test', multipleComparison: 'bh' })) === 'VMU_MATH_INVALID_INPUT',
+  ok(await codeOf(() => st.t.plan({ op: 'stats/test', backend: 'r' })) === 'VMU_MATH_UNSUPPORTED_OP', 'stats.backend[-]: another backend is refused by name')
+  ok(await codeOf(() => st.t.plan({ op: 'stats/test', multipleComparison: 'bh' })) === 'VMU_MATH_INVALID_INPUT',
     'stats.multipleComparison[-]: silently switching the declared correction is refused by name')
   ok(st.t.plan({ op: 'stats/test', multipleComparison: 'holm' }).ok === true, 'stats.multipleComparison[+]: the declared correction passes')
   const noCorr = mk({ settings: { 'vmu.math.stats.multipleComparison': 'none' }, seam: () => ({ ok: true, result: { value: 1 } }) })
   ok(noCorr.t.plan({ op: 'stats/test', multipleComparison: 'bh' }).ok === true, 'stats.multipleComparison[none]: with none declared the request is free')
   const needsEffect = mk({ settings: { 'vmu.math.stats.effectSize': true }, seam: () => ({ ok: true, result: { value: 1 } }) })
-  ok(codeOf(() => needsEffect.t.run({ op: 'stats/test' })) === 'VMU_MATH_INVALID_INPUT',
+  ok(await codeOf(() => needsEffect.t.run({ op: 'stats/test' })) === 'VMU_MATH_INVALID_INPUT',
     'stats.effectSize[-]: a result without an effect size is refused by name')
   const withEffect = mk({ settings: { 'vmu.math.stats.effectSize': true }, seam: () => ({ ok: true, result: { value: 1 }, effectSize: 0.42 }) })
-  ok(withEffect.t.run({ op: 'stats/test' }).ok === true, 'stats.effectSize[+]: a result carrying one passes')
+  ok((await withEffect.t.run({ op: 'stats/test' })).ok === true, 'stats.effectSize[+]: a result carrying one passes')
 
   // symbolic.backend / assumptions / assumptionsPolicy
   const sy = mk({ settings: { 'vmu.math.symbolic.backend': 'sympy' }, seam: () => ({ ok: true, result: { value: 1 } }) })
-  ok(codeOf(() => sy.t.plan({ op: 'symbolic/solve', backend: 'mathematica' })) === 'VMU_MATH_UNSUPPORTED_OP',
+  ok(await codeOf(() => sy.t.plan({ op: 'symbolic/solve', backend: 'mathematica' })) === 'VMU_MATH_UNSUPPORTED_OP',
     'symbolic.backend[-]: another backend is refused by name')
   const strict = mk({ settings: { 'vmu.math.symbolic.assumptionsPolicy': 'require' }, seam: () => ({ ok: true, result: { value: 1 } }) })
-  ok(codeOf(() => strict.t.plan({ op: 'symbolic/solve' })) === 'VMU_MATH_INVALID_INPUT',
+  ok(await codeOf(() => strict.t.plan({ op: 'symbolic/solve' })) === 'VMU_MATH_INVALID_INPUT',
     'symbolic.assumptionsPolicy[-]: require refuses an operation with no assumptions to rely on')
   ok(strict.t.plan({ op: 'symbolic/solve', assumptions: ['x>0'] }).ok === true, 'symbolic.assumptionsPolicy[+]: supplying assumptions satisfies it')
   const declared = mk({ settings: { 'vmu.math.symbolic.assumptionsPolicy': 'require', 'vmu.math.symbolic.assumptions': ['x>0'] }, seam: () => ({ ok: true, result: { value: 1 } }) })
@@ -606,31 +608,31 @@ if (failed === 0) {
 {
   // ad.backend / ad.gradCheck
   const a = mk({ settings: { 'vmu.math.ad.backend': 'jax', 'vmu.math.ad.gradCheck': true }, seam: () => ({ ok: true, result: { value: 1 } }) })
-  ok(codeOf(() => a.t.plan({ op: 'ad/grad', backend: 'torch' })) === 'VMU_MATH_UNSUPPORTED_OP',
+  ok(await codeOf(() => a.t.plan({ op: 'ad/grad', backend: 'torch' })) === 'VMU_MATH_UNSUPPORTED_OP',
     'ad.backend[-]: a backend other than the declared one is refused by name')
   ok(a.t.plan({ op: 'ad/grad', backend: 'jax' }).ok === true, 'ad.backend[+]: the declared backend passes')
-  ok(codeOf(() => a.t.run({ op: 'ad/grad' })) === 'VMU_MATH_INVALID_INPUT',
+  ok(await codeOf(() => a.t.run({ op: 'ad/grad' })) === 'VMU_MATH_INVALID_INPUT',
     'ad.gradCheck[-]: a gradient result with no check is refused by name')
   const checked = mk({ settings: { 'vmu.math.ad.gradCheck': true }, seam: () => ({ ok: true, result: { value: 1 }, gradCheckPassed: true }) })
-  ok(checked.t.run({ op: 'ad/grad' }).ok === true, 'ad.gradCheck[+]: a checked gradient passes')
+  ok((await checked.t.run({ op: 'ad/grad' })).ok === true, 'ad.gradCheck[+]: a checked gradient passes')
   const unchecked = mk({ settings: { 'vmu.math.ad.gradCheck': false }, seam: () => ({ ok: true, result: { value: 1 } }) })
-  ok(unchecked.t.run({ op: 'ad/grad' }).ok === true, 'ad.gradCheck[off]: with it off no check is demanded')
+  ok((await unchecked.t.run({ op: 'ad/grad' })).ok === true, 'ad.gradCheck[off]: with it off no check is demanded')
 
   // discrete.backend / maxEnumeration — the contract says exceeding it is refused
   const d = mk({ settings: { 'vmu.math.discrete.backend': 'ortools', 'vmu.math.discrete.maxEnumeration': 1000000 }, seam: () => ({ ok: true, result: { value: 1 } }) })
-  ok(codeOf(() => d.t.plan({ op: 'discrete/enumerate', backend: 'igraph' })) === 'VMU_MATH_UNSUPPORTED_OP',
+  ok(await codeOf(() => d.t.plan({ op: 'discrete/enumerate', backend: 'igraph' })) === 'VMU_MATH_UNSUPPORTED_OP',
     'discrete.backend[-]: another backend is refused by name')
-  ok(codeOf(() => d.t.plan({ op: 'discrete/enumerate', enumerationSize: 2000000 })) === 'VMU_RESOURCE_BUDGET',
+  ok(await codeOf(() => d.t.plan({ op: 'discrete/enumerate', enumerationSize: 2000000 })) === 'VMU_RESOURCE_BUDGET',
     'discrete.maxEnumeration[-]: an enumeration above the declared cap is refused by name')
   ok(d.t.plan({ op: 'discrete/enumerate', enumerationSize: 500000 }).ok === true, 'discrete.maxEnumeration[+]: below the cap passes')
   const tiny = mk({ settings: { 'vmu.math.discrete.maxEnumeration': 10 }, seam: () => ({ ok: true, result: { value: 1 } }) })
-  ok(codeOf(() => tiny.t.plan({ op: 'discrete/enumerate', enumerationSize: 11 })) === 'VMU_RESOURCE_BUDGET',
+  ok(await codeOf(() => tiny.t.plan({ op: 'discrete/enumerate', enumerationSize: 11 })) === 'VMU_RESOURCE_BUDGET',
     'discrete.maxEnumeration[+]: lowering the declaration tightens the cap')
 
   // geom.backend / exactCoordinates
   const g = mk({ settings: { 'vmu.math.geom.backend': 'shapely', 'vmu.math.geom.exactCoordinates': true }, seam: () => ({ ok: true, result: { value: 1 } }) })
-  ok(codeOf(() => g.t.plan({ op: 'geom/intersect', backend: 'sympy' })) === 'VMU_MATH_UNSUPPORTED_OP', 'geom.backend[-]: another backend is refused by name')
-  ok(codeOf(() => g.t.plan({ op: 'geom/intersect', exactCoordinates: false })) === 'VMU_MATH_INVALID_INPUT',
+  ok(await codeOf(() => g.t.plan({ op: 'geom/intersect', backend: 'sympy' })) === 'VMU_MATH_UNSUPPORTED_OP', 'geom.backend[-]: another backend is refused by name')
+  ok(await codeOf(() => g.t.plan({ op: 'geom/intersect', exactCoordinates: false })) === 'VMU_MATH_INVALID_INPUT',
     'geom.exactCoordinates[-]: asking for approximate coordinates is refused while the declaration prefers exact ones')
   ok(g.t.plan({ op: 'geom/intersect', exactCoordinates: true }).ok === true, 'geom.exactCoordinates[+]: exact coordinates are accepted')
   const floating = mk({ settings: { 'vmu.math.geom.exactCoordinates': false }, seam: () => ({ ok: true, result: { value: 1 } }) })
@@ -638,8 +640,8 @@ if (failed === 0) {
 
   // nt.backend / proofRequiredAbove — the contract says a certificate is mandatory above the size
   const n = mk({ settings: { 'vmu.math.nt.backend': 'pari', 'vmu.math.nt.proofRequiredAbove': 100 }, seam: () => ({ ok: true, result: { value: 1 } }) })
-  ok(codeOf(() => n.t.plan({ op: 'nt/factor', backend: 'gmpy2' })) === 'VMU_MATH_UNSUPPORTED_OP', 'nt.backend[-]: another backend is refused by name')
-  ok(codeOf(() => n.t.plan({ op: 'nt/factor', scale: 500 })) === 'VMU_MATH_INVALID_INPUT',
+  ok(await codeOf(() => n.t.plan({ op: 'nt/factor', backend: 'gmpy2' })) === 'VMU_MATH_UNSUPPORTED_OP', 'nt.backend[-]: another backend is refused by name')
+  ok(await codeOf(() => n.t.plan({ op: 'nt/factor', scale: 500 })) === 'VMU_MATH_INVALID_INPUT',
     'nt.proofRequiredAbove[-]: a result above the declared size without a certificate is refused by name')
   ok(n.t.plan({ op: 'nt/factor', scale: 500, certificate: 'proof-1' }).ok === true, 'nt.proofRequiredAbove[+]: a certificate satisfies it')
   ok(n.t.plan({ op: 'nt/factor', scale: 50, certificate: undefined }).ok === true, 'nt.proofRequiredAbove[+]: below the size no certificate is needed')
@@ -648,7 +650,7 @@ if (failed === 0) {
 
   // tensor.backend
   const te = mk({ settings: { 'vmu.math.tensor.backend': 'numpy' }, seam: () => ({ ok: true, result: { value: 1 } }) })
-  ok(codeOf(() => te.t.plan({ op: 'tensor/contract', backend: 'jax' })) === 'VMU_MATH_UNSUPPORTED_OP', 'tensor.backend[-]: another backend is refused by name')
+  ok(await codeOf(() => te.t.plan({ op: 'tensor/contract', backend: 'jax' })) === 'VMU_MATH_UNSUPPORTED_OP', 'tensor.backend[-]: another backend is refused by name')
   ok(te.t.plan({ op: 'tensor/contract', backend: 'numpy' }).ok === true, 'tensor.backend[+]: the declared backend passes')
 }
 
@@ -661,14 +663,14 @@ for (const f of failures) console.log('  FAIL - ' + f)
   const mt = mk({})
   const plan = mt.t.plan({ op: 'optim/minimize', args: { f: 'x^2' } })
   ok(plan.enforcedScope === 'evaluated-so-far', 'D3: a plan() receipt states enforcedScope=evaluated-so-far')
-  const refusal = errOf(() => mt.t.plan({ op: 'optim/minimize', args: {}, needsNetwork: true }))
+  const refusal = await errOf(() => mt.t.plan({ op: 'optim/minimize', args: {}, needsNetwork: true }))
   ok(!!refusal && refusal.enforcedScope === 'evaluated-so-far', 'D3: a REFUSAL carries enforcedScope itself')
   ok(!!refusal && Array.isArray(refusal.enforced) && refusal.enforced.includes('vmu.math.sandbox.network'), 'D3: the refusal lists the key that caused it (and states the scope)')
   const recs = []
-  const tryPush = (fn) => { try { const r = fn(); if (r && Array.isArray(r.enforced)) recs.push(r) } catch (e) { /* refusals covered elsewhere */ } }
-  tryPush(() => mt.t.plan({ op: 'optim/minimize', args: {} }))
-  tryPush(() => mt.t.plan({ op: 'optim/minimize', args: {}, seed: 1 }))
-  tryPush(() => mt.t.plan({ op: 'symbolic/simplify', args: { expr: 'x' } }))
+  const tryPush = async (fn) => { try { const r = await fn(); if (r && Array.isArray(r.enforced)) recs.push(r) } catch (e) { /* refusals covered elsewhere */ } }
+  await tryPush(() => mt.t.plan({ op: 'optim/minimize', args: {} }))
+  await tryPush(() => mt.t.plan({ op: 'optim/minimize', args: {}, seed: 1 }))
+  await tryPush(() => mt.t.plan({ op: 'symbolic/simplify', args: { expr: 'x' } }))
   const dup = recs.filter((x) => !Array.isArray(x.enforced) || new Set(x.enforced).size !== x.enforced.length)
   ok(recs.length >= 2, 'no-dup: the batch produced receipts to check (' + recs.length + ')')
   ok(recs.every((x) => x.enforcedScope === 'evaluated-so-far'), 'D3: every receipt in the batch carries the scope')

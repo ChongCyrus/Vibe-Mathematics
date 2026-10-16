@@ -627,7 +627,11 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
       active += 1
       counters.rangeRuns += 1
       let raw
-      try { raw = spawn({ op: p.plan.op, args: p.plan.args, seed: p.plan.seed, backend: p.plan.backend, limits: p.limits }) } finally { active -= 1 }
+      // ★★★ ROUND 42: THE SEAM IS CALLED EXACTLY ONCE. My Round-39 edit ADDED the awaited call below without
+      // removing the synchronous one that used to sit here, so every run invoked the seam TWICE - which the suite
+      // caught as `{cached:true, spawn:2}`, and which also meant an un-awaited promise was created on every single
+      // run (the very hazard that edit existed to remove). `node --check` cannot see a duplicated call; only running
+      // the behaviour can. The one call is the awaited one below.
       // ★★★ ROUND 39 (measured, and it reverses my Round-38 reading): THE CORRECT MATH SEAM *IS* ASYNC.
       // `createMathSurface({host}).run(args)` is declared async, so the seam this face is meant to call returns a
       // promise - and my previous guard refused an async seam on the grounds that it proved the wrong one was
