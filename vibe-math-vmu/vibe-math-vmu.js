@@ -445,7 +445,27 @@ export function apply(ctx, config = {}) {
       throw err
     }
     const extract = typeof config.deliverReply === 'function' ? config.deliverReply : null
-    return deliverViaSubagents(subs, extract, { provider: configuredProvider })({ turn, text })
+    // ★★★ ROUND 65: THE ONE-SHOT REQUEST NEEDS A PARENT AND A SIGNAL, AND BOTH ARE RESOLVED HERE RATHER THAN DEMANDED.
+    // The host's documentation for `start(name, request)` names them: "child label, prompt, parent, signal, and optional
+    // capabilities" - and omitting them produced `reading 'aborted'`, i.e. the host reading a signal off the parent it
+    // did not receive. The PARENT is the current session, which the host exposes through `ctx.get('agents')` (its own
+    // code reads `agent.session` for a child run); the entry is where that service is reachable, so it is resolved at
+    // CALL TIME like every other seam here. The SIGNAL is the framework's own: one is created per turn, so a member
+    // turn is abortable and a caller that hands in its own still wins.
+    let parent = null
+    try {
+      const agents = ctx && typeof ctx.get === 'function' ? ctx.get('agents') : null
+      if (agents && typeof agents.get === 'function') {
+        const id = (typeof config.sessionId === 'string' && config.sessionId) || (typeof config.agentId === 'string' && config.agentId) || null
+        parent = (id && agents.get(id)) || null
+        if (!parent && typeof agents.list === 'function') {
+          const all = agents.list()
+          if (Array.isArray(all) && all.length === 1) parent = all[0]
+        }
+      }
+    } catch { parent = null }
+    const signal = (typeof config.deliverSignal === 'object' && config.deliverSignal) || (typeof AbortSignal !== 'undefined' && typeof AbortController !== 'undefined' ? new AbortController().signal : null)
+    return deliverViaSubagents(subs, extract, { provider: configuredProvider, parent, signal })({ turn, text })
   }
   // ROUND 4 / F9+F10 (docs/26 §3.22): THE ONGOING-COMMAND SEAMS, assembled exactly like the turn-delivery one above -
   // the capability is the host's (`subagents.sendMessage` / `subagents.interrupt`), the bridge is
