@@ -31,11 +31,32 @@
 | ⑤ | **计算/工具面** | ★★ **混合**：★ **Python／R 可用**；★ **Octave／Julia／MATLAB 不在本机**；★ **`probe` 正确报告可用性且不尝试安装**；★ **真实 `run` 成功并正确归档** ✓ |
 | ⑥ | **会议系统** | ★ **研究所未运行时拒绝开会**；★ **"后位发言"未测**（★ 需要 ≥2 名常驻）✓ |
 
-## 3. ★★★ 本次运行【发现的真缺陷】（★ 这是 Phase 4 的价值所在）
+## 3. ★★★ 本次运行提出的缺陷 —— ★ **读码后的更正：它【已经被修过一次】，残余更窄也更精确**
 
-★★ **代理自己具名指出**：★ *"**the error code naming for missing members doesn't accurately reflect the real issue — it's not actually a member lookup failure**"* ✓✓
-⇒ ★★ 即：★ **"office 不是成员"这个情形被报成了一个【成员查找失败】的错误码**，★ **而真实的语义是"该调用者不是本所成员"** ⇒ ★ **具名但不真** ✓ —— ★ **正是本阶段一直在消的那一类** ✓
-★ **待办**：★ 定位该错误码（★ 应在 `vibe_v5_record_progress` 或等价工具的**身份判定**处），★ 并判定是**改错误码**还是**补一个更准确的码** ✓
+★★ **代理的原话**：*"**the error code naming for missing members doesn't accurately reflect the real issue — it's not actually a member lookup failure**"* ✓
+
+★★ **但读 `vibe-math-v5r.js:2954-2991` 之后**：★ **那里的 `memberDiagnosis(what, memberId)` 已经区分【四种】原因**，★ **各有自己的 message 与 `next` hint**：
+| # | 分支 | ★ 它说的 |
+|---|---|---|
+| **(1)** | `active === 0 && !running` | ★ **研究所尚未启动（在册 N 名、有表决权者 0 人），没有可归属的成员身份** ⇒ ★ next 直接指向 `vibe_v5_start` ✓ |
+| **(2)** | `active === 0` | ★ 当前没有在册成员 ⇒ ★ next 指向 `vibe_v5_add_researcher` ✓ |
+| **(3)** | `!who` | ★ 无法识别调用者（这是成员工具，**所办/会话根没有成员身份**）⇒ ★ next 指向"请由成员子代理调用" ✓ |
+| **(4)** | 否则 | ★ 名册中没有该成员（**可能已被解雇或尚未就位**）⇒ ★ next 指向 `vibe_v5_members` ✓ |
+
+★★★ **而正上方的注释逐字载明**：★ **`// DEFECT 1 (v5 self-test §18)`** —— ★ **"一个成员域工具在研究所还不存在时被调用……回了一个【光秃秃的 `V5_MEMBER_NOT_FOUND`】，★ 于是操作者（或模型）**既不知道【为什么失败】、也不知道【先做什么】"** ⇒ ★ **那次修复补上了 message 与下一步 hint**，★ **并且【故意保留 CODE 不变】，★ 理由逐字："all existing gates keep matching on it"** ✓✓
+
+⇒ ★★ **所以代理看到的那条 message 是【正确的】**（★ 它确实点名了"研究所尚未启动"与下一步）⇒ ★ **它抱怨的是【CODE】** ✓
+⇒ ★★★ **残余因此更窄：★ 只有分支 (1) 根本不是"成员查找失败"** —— ★ 是**研究所没跑**，★ 而本仓**已有 `V5_INSTITUTE_STATE` ＋ "the institute is not running"**（★ `:7420`）✓
+★ **裁定**：★ **分支 (1) 应得到自己的码**（★ 或复用 `V5_INSTITUTE_STATE`），★ **`V5_MEMBER_NOT_FOUND` 留给 (2)(3)(4) 那三个真正的成员情形** ⇒ ★ **而这四个分支已经分开了 ⇒ 拆分风险低** ✓
+★★ **但必须先核那条兼容性声明**（★ 注释说"所有既有门都靠它匹配"）⇒ ★ **已派 `task-256`：先查出所有匹配点、报出会坏什么，再决定改不改** ✓
+★★★ **而且这次改动会动【parity 基线】**（★ `vibe-math-v5r.js` 是原版）⇒ ★ **已在任务里要求写明，免得以后的 parity 对比把它当成漂移** ✓
+
+★★ **顺带：★ 本次运行同时【确认了几项确实工作】的东西**（★ 都逐字来自 tool/result）：
+- ★ `V5_TASK_DEPENDENCY_CYCLE`：★ **"dependency cycle through t-1"** ⇒ ★ **成环检测真的起了作用** ✓
+- ★ **计算 probe** ⇒ ★ `ok:true`，★ `engineInfo:{name:'python', path:…\Python312\python.EXE, version:'3.12.10'}` ⇒ ★ **正确报告可用性、且不尝试安装** ✓
+- ★ **`V5_INVALID_ARGUMENT` 的拒绝带理由**：★ *"辩论的开启与辩论对象的选择由院士决定（issue #13 #1）：请由院士发起 propose_verify"* ⇒ ★ **具名且给出该找谁** ✓
+- ★ **`status()` 的汇报里自带 `rosterVersion`（名册版本）的解释** ⇒ ★ *"多个视图不一致时用它判断谁过期"* ✓
+
 
 ## 4. ★ 未测／未核（★ 与"核了"分开）
 
