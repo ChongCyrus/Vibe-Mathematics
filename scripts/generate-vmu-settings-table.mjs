@@ -257,6 +257,29 @@ const IMPORTERS = (() => {
       if (destr) for (const part of destr[1].split(',')) add(part.trim().split(/\s*:\s*/).pop().trim(), f.rel)
     }
     if (!nsNames.length) continue
+    // ★ C3 (phase-2 round 4): COMPUTED MEMBER ACCESS ON A NAMESPACE BINDING — `NS[key]`, `NS[dyn]`, `NS[CONST]`.
+    // R42 closed the *dot* form (`NS.NAME`) and its reading was "本树 0 处": a value that is true TODAY and would go
+    // silently false tomorrow, because a computed access is invisible to a name-based criterion. This guard makes it
+    // LOUD rather than silently ignored: every hit is printed BY NAME (file:line + the line) and the process exits
+    // non-zero. ★ It is deliberately NOT a claim about a key's wiring (a computed key cannot be resolved statically):
+    // it says "a computed access exists — a human must look". ★ Residual, named: a LITERAL-CONSTANT key
+    // (`const K = 'vmu.x'; NS[K]`) is NOT resolved (that needs a same-file constant table); it is reported by this
+    // same guard as "computed" ⇒ it lands in the loud bucket instead of the silent one, never in "nobody reads it".
+    const computed = []
+    for (const nsName of nsNames) {
+      const cre = new RegExp('\\b' + nsName + '\\s*\\[', 'g')
+      for (const cm of f.text.matchAll(cre)) {
+        const line = f.text.slice(0, cm.index).split('\n').length
+        const text = f.text.split('\n')[line - 1] || ''
+        computed.push({ rel: f.rel, line, binding: nsName, text: text.trim().slice(0, 120) })
+      }
+    }
+    if (computed.length) {
+      console.error('vmu settings table: 计算属性访问（computed member access on a namespace binding）—— 判据看不见它的键：')
+      for (const c of computed) console.error('  · ' + c.rel + ':' + c.line + '  ' + c.binding + '[ … ]  ' + c.text)
+      console.error('  ★ 这不是"没人读"：下标名静态不可解析 ⇒ 必须人工看（本守卫＝出现即报）。')
+      process.exitCode = 1
+    }
     for (const nsName of nsNames) {
       // ★ R40: membership pre-check — a whole-file regex is pointless when the binding is never dereferenced.
       if (f.text.indexOf(nsName + '.') < 0) continue

@@ -7,10 +7,15 @@
 // ★ LIVE PROOF that the fixture is live: the same call with the UNMODIFIED doc must be up to date (exit 0).
 import { mkdtempSync, readFileSync, writeFileSync, rmSync, mkdirSync, cpSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
-const REPO = process.cwd()
+// ★ CONVENTION (not a defect): the sibling audits (`audit-claim-traceability`, `audit-code-size`,
+// `audit-table-integrity`, …) all derive the repo root from THIS FILE's URL, so the suite works from any cwd. My
+// first version used `process.cwd()` — it passed only because the runner sets cwd, and a different cwd would have
+// failed confusingly. Nothing else changed (this is robustness, not a bug fix).
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..')
 const WIRE = 'scripts/generate-wiring-index.mjs'
 const SETTINGS_GEN = 'scripts/generate-vmu-settings-table.mjs'
 const PLANNED_GEN = 'scripts/generate-planned-settings.mjs'
