@@ -24,7 +24,7 @@ import { createKernel } from './kernel/index.js'
 // ★ A1 step 1 · Part B: the report-feedback DELIVERY call. It lives in a module of its own (this file is at its
 // 1200-line budget, and the call carries enough reasoning to belong there); the entry passes its own `ctx`/`effect` down.
 import { deliverReportFeedbackFrom } from './kernel/reportfeedbackdelivery.js'
-import { deliverViaSubagents, sendViaSubagents, interruptViaSubagents } from './kernel/turn/index.js'
+import { deliverViaSubagents, deliverByReturning, sendViaSubagents, interruptViaSubagents } from './kernel/turn/index.js'
 import { createHostAdapter } from './host.js'
 import { attachHostHooks } from './host-hooks.js'
 import { createPackLoader } from './kernel/pack.js'
@@ -406,7 +406,29 @@ export function apply(ctx, config = {}) {
   // has no `deliverTurn`, so `vibe_vmu_turn` step/drive refused by name on every real host.
   // The service is resolved AT CALL TIME (the same lesson the spawn seam records at :72): a plugin's `apply` can run
   // before the subagents service mounts, and binding "absent" at this instant would refuse every turn forever.
+  // ★★★ ROUND 74: WHICH DELIVERY ROUTE RUNS IS A DECLARATION, NOT A GUESS. Two routes ship: the HOST BRIDGE, which
+  // asks the host to run the member turn as a subagent, and the CALLER-PLAYED turn, in which the assembled prompt
+  // goes back to the session that called the tool and the member's reply comes in on the next call. The bridge is
+  // preferred (it is what the original did); the caller route exists because the host types a subagent request's
+  // `parent` as an Agent and marks it required while exposing only `list(): string[]`, so a plugin cannot construct a
+  // legal parent. Measured: that boundary is why every subagent path failed on a real machine.
+  //
+  // `config.deliverMode` or the setting `vmu.turn.deliverMode` selects: 'subagents' (default) or 'caller'. Neither is
+  // invented at run time - an unknown value is refused by name, because silently choosing for the deployment is the
+  // failure this phase has ruled out everywhere else.
+  const declaredDeliverMode = (typeof config.deliverMode === 'string' && config.deliverMode)
+    || (settings && typeof settings['vmu.turn.deliverMode'] === 'string' && settings['vmu.turn.deliverMode'])
+    || 'subagents'
+  if (declaredDeliverMode !== 'subagents' && declaredDeliverMode !== 'caller') {
+    const err = new Error('unknown delivery mode: ' + String(declaredDeliverMode))
+    err.code = 'VMU_INVALID_ARGUMENT'
+    err.hint = 'vmu.turn.deliverMode (or config.deliverMode) is either "subagents" - the host runs the member turn - or "caller" - the calling session plays it and returns the reply through vibe_vmu_turn { reply }'
+    throw err
+  }
+  const callerSeam = declaredDeliverMode === 'caller' ? deliverByReturning() : null
   const turnDeliver = async ({ turn, text } = {}) => {
+    // ★ caller mode needs nothing from the host at all
+    if (callerSeam) return callerSeam({ turn, text })
     let subs = null
     try { subs = ctx && typeof ctx.get === 'function' ? ctx.get('subagents') : null } catch { subs = null }
     // ★★★ ROUND 63: THE ONE-SHOT PROVIDER, DISCOVERED RATHER THAN DEMANDED. `startContinuable` goes through the host's

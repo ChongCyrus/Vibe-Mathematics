@@ -149,7 +149,12 @@ const CORE_DEFS = Object.freeze([
   // activation. The host's own comment says one-shot delegation start() never enters that lifecycle, so naming a
   // provider switches member delivery to the one-shot path. Empty means 'use the continuable path', which is what a
   // host offering only that one needs.
-  { key: 'vmu.turn.deliverProvider', type: 'string', def: '', hot: HOT.H2, who: 'office', doc: '成员回合【一次性交付】所用的 provider 名：★ 非空且宿主提供 start() 时，★ 交付走一次性路径（★ 不进入 continuable registry）；★ 空则走 continuable 路径' },
+    // ★★★ ROUND 74: WHICH DELIVERY ROUTE RUNS. 'subagents' (default) = the host runs the member turn as a subagent; 'caller' =
+  // the assembled prompt goes back to the calling session, which plays the member turn and returns the reply through
+  // vibe_vmu_turn { reply }. The caller route exists because the host types a subagent request's parent as an Agent
+  // while exposing only list(): string[] to a plugin, so a plugin cannot construct a legal parent.
+  { key: 'vmu.turn.deliverMode', type: 'enum', domain: ['subagents', 'caller'], def: 'subagents', hot: HOT.H2, who: 'office', doc: '交付路线：★ subagents＝宿主把成员回合当作子代理运行（★ 默认）；★ caller＝把装配好的提示词交回调用会话，★ 由它扮演成员回合并用 ibe_vmu_turn { reply } 送回答复' },
+{ key: 'vmu.turn.deliverProvider', type: 'string', def: '', hot: HOT.H2, who: 'office', doc: '成员回合【一次性交付】所用的 provider 名：★ 非空且宿主提供 start() 时，★ 交付走一次性路径（★ 不进入 continuable registry）；★ 空则走 continuable 路径' },
 { key: 'vmu.turn.closureVotePermission', type: 'string', def: 'vote', hot: HOT.H2, who: 'office', doc: '哪一个权限字符串算【结题表决权】：★ 谓词据此判断谁【有资格】结题。★ 默认 ote（★ v5r pack 把 ote 给 member 槽位，chair 与 	emp 都没有）；★ 另一家机构可以改名' },
 { key: 'vmu.turn.objective', type: 'string', def: '（尚未设定）', hot: HOT.H2, who: 'office', doc: '本所研究对象（原问题）；默认值与原线未设定时的输出一字不差，绝不留空括号' },
   // ROUND 365: the resource discipline the original puts in front of every member is not a slogan, it is a block whose
@@ -1763,5 +1768,6 @@ export function resolveSettings(layers = [], { onInvalid = 'refuse' } = {}) {
   })
   return { values: out, accepted, provenance, rejected }
 }
+
 
 
