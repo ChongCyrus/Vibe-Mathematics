@@ -3,14 +3,6 @@
 // ★★ INVARIANT (Round 30, MEASURED): NO ARGUMENT A CALLER CAN PASS MAY KILL THE HOST. A tool handler runs inside
 // the host process, so an uncaught throw is not "a failed call" - it is `fatal load failure` and the server dies.
 // Measured case: `request.args` was a non-iterable object, `for (const a of request.args || [])` threw
-    // ★★ A MALFORMED ARGUMENT MUST NOT KILL THE HOST (header invariant): `request.args` is caller-fed, so a
-    // non-iterable value used to reach `for..of` and throw an UNCAUGHT TypeError (`object is not iterable`), which
-    // the host surfaced as `fatal load failure` - one bad tool argument killed the process. Refused BY NAME.
-    if (!Array.isArray(argList)) {
-      throw refuse('VMU_INVALID_ARGUMENT', 'spawn args must be an ARRAY of arguments, got ' + (typeof argList),
-        'pass args as an array (e.g. args: ["--version"]); a malformed call is refused instead of killing the host')
-    }
-    for (const a of argList) argv.push(String(a))
 // `TypeError: object is not iterable`, and the process went down (host-spawn.js:104 via kernel/mathtools.js:630).
 // Therefore every value that arrives from a CALLER is validated before it is iterated, spread or destructured, and
 // the failure is a NAMED refusal (`VMU_INVALID_ARGUMENT` with a hint), never a raw throw.
@@ -124,7 +116,7 @@ export function createHostSpawn({
     const argList = request.args === undefined || request.args === null ? [] : request.args
     if (!Array.isArray(argList)) {
       throw refuse('VMU_INVALID_ARGUMENT', 'spawn args must be an ARRAY of arguments, got ' + (typeof argList),
-        'pass args as an array (e.g. args: ["--version"]); a single value is not accepted, so a malformed call is refused instead of killing the host')
+        'pass args as an array (e.g. args: ["--version"]); a malformed call is refused instead of killing the host')
     }
     for (const a of argList) argv.push(String(a))
     if (argv.length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'a spawn needs an executable to run')
