@@ -2953,16 +2953,22 @@ export function apply(ctx) {
     }
     // DEFECT 1 (v5 self-test §18): a member-scoped tool called before the institute exists — or
     // by nobody identifiable — answered a BARE `V5_MEMBER_NOT_FOUND`, so an operator (or the
-    // model) could not tell WHY it failed or WHAT TO DO FIRST. The error CODE is unchanged (all
-    // existing gates keep matching on it); the answer now names the state and the next step, in
-    // the same `next`-hint shape the `math_computation` tool uses.
+    // model) could not tell WHY it failed or WHAT TO DO FIRST. The answer names the state and the next step, in
+    // the same `next`-hint shape the `math_computation` tool uses. ★ task-257 narrowed the CODE: branch (1) now
+    // answers `V5_INSTITUTE_STATE` (the institute is not running - not a member lookup); the three genuine member
+    // branches below keep `V5_MEMBER_NOT_FOUND`. The gates were moved to behaviour-level assertions first, so the
+    // ordering is test-then-code rather than the reverse.
     function memberDiagnosis(what, memberId) {
       const total = (inst().members || []).length
       const active = activeMembers().length
       const who = String(memberId || '')
       if (active === 0 && !running) {
         return {
-          ok: false, code: 'V5_MEMBER_NOT_FOUND',
+          // ★ task-257: THIS IS NOT A MEMBER-LOOKUP FAILURE. The institute is not running, so the code that already
+          // means "the institute state forbids this" is the honest one (the same one used at :7419/:7420). Reusing an
+          // existing named concept beats minting a single-use code; the specific detail stays in `message`.
+          // ★ ORDER MATTERS: the four gates that pinned this branch on the old code were made behaviour-level FIRST.
+          ok: false, code: 'V5_INSTITUTE_STATE',
           message: what + '失败：研究所尚未启动（在册 ' + total + ' 名、有表决权者 0 人），没有可归属的成员身份。',
           next: {
             kind: 'start', tool: 'vibe_v5_start',

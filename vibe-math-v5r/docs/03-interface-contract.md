@@ -158,7 +158,7 @@
 | `V5_INVALID_ARGUMENT` | 参数缺失/类型错 | **是**（修正后） | 指出缺失字段与期望类型 |
 | `V5_INVALID_TIMEOUT` | 时长非法 | 是 | 时长范围 |
 | `V5_INVALID_VERDICT` | 概率/选项非法 | 是 | 0…1 或选项范围 |
-| `V5_MEMBER_NOT_FOUND` | 目标成员不存在 | 否 | 成员 id |
+| `V5_MEMBER_NOT_FOUND` | 目标成员不存在（★ **仅成员情形**：无在册成员／调用者无法识别／名册无此人；★"研究所未启动"自 task-257 起用 `V5_INSTITUTE_STATE`） | 否 | 成员 id |
 | `V5_MEMBER_LIMIT` | 编制/临时工上限 | 否 | 上限值与释放方式 |
 | `V5_TASK_NOT_FOUND`、`V5_TASK_ALREADY_CLAIMED`、`V5_TASK_STALE_REVISION`、`V5_TASK_INVALID_TRANSITION`、`V5_TASK_BLOCKED`、`V5_TASK_DEPENDENCY_CYCLE`、`V5_TASK_UNAUTHORIZED`、`V5_TASK_HAS_DEPENDENTS`、`V5_TASK_DELETED` | 任务与认领 | 视情形 | 与任务系统既有语义一致 |
 | `V5_INSTITUTE_STATE` | 机构状态不允许（未运行/已结题） | 否 | 当前状态与允许动作 |

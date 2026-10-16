@@ -240,7 +240,7 @@ function v5err(code, message) { const e = new Error(message || code); e.code = c
 | code | 首个站点 | 触发点（函数/语境） | 可重试 | 对外文案要点 |
 |---|---|---|---|---|
 | `V5_INVALID_ARGUMENT` | `:2033` | 参数非法（**54 处**，最大一族） | 否（改参数后重试） | 指名非法项与期望形状 |
-| `V5_MEMBER_NOT_FOUND` | `:1474` | 找不到成员/非成员调用成员工具（22 处） | 否 | 应给 `next` 指向 `vibe_v5_start`（`:1456-1459` 已实现） |
+| `V5_MEMBER_NOT_FOUND` | `:1474` | 找不到成员/非成员调用成员工具（★ task-257 起**不含"研究所未启动"**——那条改用 `V5_INSTITUTE_STATE`；仍 20+ 处） | 否 | 应给 `next` 指向 `vibe_v5_start`（`:1456-1459` 已实现） |
 | `V5_NOT_ACADEMICIAN` | `:4572` | 非院士调院士专属动作（5 处） | 否 | 指明需要院士或所办 |
 | `V5_NOT_OFFICE` | `:6096` | `paperEditor='office'` 但调用者非所办（5 处） | 否 | 说明所办须先咨询研究所 |
 | `V5_NOT_VOTER` | `:5176` | 临时工投票（2 处） | 否 | 「临时工没有表决权；意见已转达」（与定稿 D8 一致） |
