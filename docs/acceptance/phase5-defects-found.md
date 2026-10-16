@@ -64,7 +64,52 @@ dsh: fatal load failure: TypeError: object is not iterable (cannot read property
 
 ---
 
-## ★★★★★ D6（★ 最深的一条）：**具名拒绝对工具面来说【仍然是服务器致命的】**
+## ★★★★★ D6（★ 已修正的结论）：**具名拒的【形状】与成功回执不一致**
+
+> ★★★ **本节先前的结论是错的，这里更正** —— ★ 我先写的是"框架的具名拒约定【假设了一个并不存在的 catch】"。
+> ★★ **读码后：★ catch 存在**（★ `host.js:969-976` 的 `toHostSpec` 里就有 `try/catch` ✓），★ **而且工具 spec 自己还有一层**（★ `tools/mathtools.js:26-28` ✓）。
+> ★ **更正由队友独立读码得出**（★ 它明确拒绝在错误前提上动代码，★ 并给出更可能的根因 ✓）—— ★ **这是本阶段"拒绝保护了工作"的又一次** ✓
+
+### 6.1 ★★★★ 真正的根因：**两条分支返回【不同形状】**
+★ `host.js:969-976`（★ 每个工具 spec 都经它 ✓）：
+```js
+execute: async (args, exec) => {
+  try {
+    return boundedToolResult(await spec.run(args || {}, exec))       // 成功分支
+  } catch (e) {
+    return JSON.stringify({ ok: false, code: …, message: …, hint: … })  // ★ 失败分支：裸 JSON.stringify
+  }
+}
+```
+★★★ **而 `kernel/receiptbounds.js:8` 逐字写着**：★ `boundedToolResult(value)` 是 **"the ONE place a tool result is serialized"** ✓
+★★★ **且它【总是】附加 `receiptMeta`** —— ★ `:106-109` 逐字解释为什么**连"什么都没裁"时也要附加**：
+> ★ *"`receiptMeta` is present EVEN WHEN NOTHING WAS CUT. Returning early here (as the previous version did) made **the key set depend on the payload size** - the very defect the contract removes"* ✓
+⇒ ★★★★ **于是：★ 成功回执【必然】带 `receiptMeta`，★ 而【具名拒必然不带】** ⇒ ★★ **同一 `execute` 的两条分支交付【不同物种】的回执** ✓✓
+⇒ ★★★ **这解释了真机现象**：★ 守卫**正确地**具名拒了（★ `code`／`message`／`hint` 俱全 ✓）、★ **而进程仍然死了** —— ★★ **因为那条拒绝【内容对、形状错】** ✓✓
+★ 也解释了"改 D1 只是把一种崩溃换成另一种"：★ **任何走失败分支的具名拒都踩同一个形状问题** ✓
+
+### 6.2 ★★★ 修法（★ 已落地）：★ 失败分支走【同一个序列化器】
+★ `host.js` 的 `catch` 改为 **`return boundedToolResult({ ok: false, code, message, hint })`** ✓
+★★ **内容不变**（★ 同样的 `code`／`message`／`hint` 到达调用方 ✓），★ **只是形状与成功回执一致** ✓
+
+### 6.3 ★★★ 验证（★ 三条，★ 其中第 ③ 条是能抓住 D6 的那条）
+★ 结构探针：★ **成功分支与失败分支都用 `boundedToolResult`** ✓；★ **失败分支不再用裸 `JSON.stringify`** ✓
+★ 导入并**真的跑两条分支**（★ 在真适配器 `toHostSpec` 上 ✓）：
+```
+failure carries receiptMeta : true   ← ★ 被破坏的那条不变量，现已恢复
+success carries receiptMeta : true
+BOTH branches agree on the SPECIES: true
+内容不变：ok:false / code:VMU_INVALID_ARGUMENT / hint 俱全
+```
+★★ **判据（★ 比 D1 当时强）**：★ ① `ok:false` ＋ 具名码；★ ② **进程仍活着**；★③ **回执【类型与形状】与成功路径相同** ⇒ ★ **第 ③ 条才是能抓住 D6 的那条**（★ 前两条都抓不到 ✓）
+★ **套件**：★ `vmu-kernel` **183/0**／★ `vmu-turn` **148/0**／★ `vmu-recruit` **50/0**／★ `vmu-pack` **53/0**／★ `vmu-mathtools` **208/0** ✓
+
+### 6.4 ★ 另一条**顺带发现**：★ 代理口中的"宿主 12 KB 上限"其实是**本框架自己的上限**
+★ `MAX_TOOL_RESULT_BYTES = 12000` 定义在 ★ `kernel/receiptbounds.js` ⇒ ★★ **"12 KB"不是宿主的限制，★ 是本框架 `receiptbounds` 的限制** ✓ —— ★ 这**不影响 D4 的结论**（★ 摘要确实超过它 ✓），★ 但**归属要说对** ✓
+
+## （★ 以下为本节先前的错误结论，★ 保留以示更正）
+
+## ★★★★★ D6（★ 先前的结论 —— **已被上面的读码更正**）：**具名拒绝对工具面来说【仍然是服务器致命的】**
 
 ### 6.1 ★★★ 证据（★ 来自保留下来的 `srv.err`，Round 35）
 ```

@@ -970,8 +970,21 @@ export function toHostSpec(spec) {
       try {
         return boundedToolResult(await spec.run(args || {}, exec))
       } catch (e) {
-        return JSON.stringify({ ok: false, code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED',
-          message: String((e && e.message) || e), hint: (e && e.hint) || null })
+        // ★★ ROUND 36 (measured on a real machine): THIS BRANCH USED TO RETURN A DIFFERENT SHAPE FROM THE OTHER ONE.
+        // The success path goes through `boundedToolResult`, documented in receiptbounds.js as "the ONE place a tool
+        // result is serialized", and it ALWAYS attaches `receiptMeta` - even when nothing was cut, deliberately, so
+        // that the key set does not depend on the payload size. This branch called a bare `JSON.stringify` and omitted
+        // it, so a NAMED REFUSAL produced a receipt unlike every other result. A run in which the spawn guard refused
+        // correctly by name - code, message and hint all present - still ended the process, and this asymmetry is why:
+        // the refusal was well-formed in CONTENT and malformed in SHAPE.
+        // It now goes through the SAME serializer as every other result, so a refusal is a receipt of the same species
+        // as a success. The content is unchanged: the same code, message and hint reach the caller.
+        return boundedToolResult({
+          ok: false,
+          code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED',
+          message: String((e && e.message) || e),
+          hint: (e && e.hint) || null,
+        })
       }
     },
   }
