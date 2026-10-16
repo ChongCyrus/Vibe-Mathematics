@@ -636,9 +636,16 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
       // refusal it produced was correct). So the mismatch is REFUSED BY NAME, with the shape explained, instead of
       // being silently treated as a computation result.
       if (raw && typeof raw.then === 'function') {
+        // ★★★ THE HANDLER GOES ON FIRST, AND THAT ORDER IS THE WHOLE FIX. An async seam that refuses returns an
+        // ALREADY-REJECTED promise. Node flags an unhandled rejection on the NEXT TICK, and the host turns that into a
+        // fatal load failure - so merely throwing our own refusal here (the first version of this guard) was TOO LATE:
+        // the trace still showed the seam's own rejection, and the process died anyway. Attaching a no-op handler
+        // marks the rejection as observed and removes the fatal path; only then do we refuse by name, so the caller
+        // still gets the diagnostic that matters instead of a silent or a fatal outcome.
+        if (typeof raw.catch === 'function') raw.catch(() => {})
         throw deny('VMU_ENGINE_UNAVAILABLE',
           'the injected computation seam is ASYNC, so it is not the math seam: it is the script bridge (which speaks {file,args} and refuses by throwing)',
-          'inject the MATH seam (math-computation); a synchronous seam is what this face requires, and an unawaited rejection from an async one takes the host process down', p.enforced)
+          'inject the MATH seam (math-computation); a synchronous seam is what this face requires, and an unhandled rejection from an async one takes the host process down', p.enforced)
       }
       if (!raw || typeof raw !== 'object') throw deny('VMU_ENGINE_UNAVAILABLE', 'the injected seam returned no result object', 'spawn must return { ok, result, … }', p.enforced)
       if (raw.ok === undefined && raw.result === undefined) {
