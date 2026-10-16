@@ -131,10 +131,23 @@ export const RECORDED_FIELDS = Object.freeze([
 // further is vocabulary, and vocabulary belongs to the institution.
 const PHASES = Object.freeze(['founding', 'normal', 'checkpoint', 'verify', 'verify-debate', 'meeting', 'resume'])
 
-export function refuse(code, message, hint) {
+export function refuse(code, message, hint, cause = null) {
+  // ★★★ ROUND 68: A WRAPPED FAILURE KEEPS THE FRAME IT CAME FROM. When this helper wraps an inner error - as the
+  // delivery path does when it reports "the host refused to start this member turn twice: <inner message>" - building a
+  // fresh Error threw the inner STACK away, and the stack is the only thing that says WHERE the inner failure happened.
+  // Measured on a real machine: the receipt's first frame was this very wrap site, so eight frames were spent on
+  // our own code and the host's frames - the ones that matter - were never reached. The cause is now carried on
+  // err.cause, and its frames are APPENDED to the message's stack, so a reader sees the whole chain without a
+  // debugger. It is optional and defaults to null, so every existing call site behaves exactly as before.
   const err = new Error(message)
   err.code = code
   if (hint) err.hint = hint
+  if (cause && typeof cause === 'object') {
+    err.cause = cause
+    if (typeof cause.stack === 'string' && cause.stack !== '' && typeof err.stack === 'string') {
+      err.stack = err.stack + '\n  <- caused by:\n' + cause.stack.split('\n').slice(0, 6).map((l) => '  ' + l.trim()).join('\n')
+    }
+  }
   return err
 }
 
@@ -244,7 +257,7 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
       } catch (e2) {
         throw refuse('VMU_ENGINE_UNAVAILABLE',
           'the host refused to start this member turn twice on the ' + path + ' path: ' + String((e2 && e2.message) || e2),
-          'the host\'s subagent registry would not admit a new activation; the first failure was "' + first + '". It refuses while a previous activation is still being torn down, so retry later or serialise deliveries so each turn waits for the last teardown (docs/26 §3.22)')
+          'the host\'s subagent registry would not admit a new activation; the first failure was "' + first + '". It refuses while a previous activation is still being torn down, so retry later or serialise deliveries so each turn waits for the last teardown (docs/26 §3.22)', e2)
       }
     }
     if (typeof extract === 'function') {
@@ -867,5 +880,7 @@ export function createTurnOrchestrator({
 }
 
 export default createTurnOrchestrator
+
+
 
 
