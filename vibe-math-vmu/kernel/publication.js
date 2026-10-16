@@ -66,8 +66,8 @@ export function createPublication({ clock = () => Date.now(), log = () => {}, se
     allowOnRequest: boolOr(settings['vmu.avail.allowOnRequest'], false),
     requireUrl: boolOr(settings['vmu.avail.requireUrl'], true),
     // ROUND 274 (volume 16 §L215 / volume 20 §L226): the licence declarations.
-    licenseDefault: (typeof settings['vmu.license.default'] === 'string' && settings['vmu.license.default']) ? settings['vmu.license.default'] : 'CC-BY-4.0',
-    licenseCodeDefault: (typeof settings['vmu.license.codeDefault'] === 'string' && settings['vmu.license.codeDefault']) ? settings['vmu.license.codeDefault'] : 'MIT',
+    licenseDefault: (typeof settings['vmu.license.default'] === 'string' && settings['vmu.license.default']) ? settings['vmu.license.default'] : '',   // ★ P2-01：未声明就是未声明（保持 string 类型的中性）
+    licenseCodeDefault: (typeof settings['vmu.license.codeDefault'] === 'string' && settings['vmu.license.codeDefault']) ? settings['vmu.license.codeDefault'] : '',
     licenseIncompatiblePolicy: ['deny', 'warn'].includes(settings['vmu.license.incompatiblePolicy']) ? settings['vmu.license.incompatiblePolicy'] : 'deny',
     licenseAttributionRequired: settings['vmu.license.attributionRequired'] !== false,
     openLicenses: Array.isArray(settings['vmu.avail.openLicenses']) && settings['vmu.avail.openLicenses'].length ? settings['vmu.avail.openLicenses'] : ['CC0-1.0', 'CC-BY-4.0', 'MIT', 'Apache-2.0'],
@@ -193,6 +193,13 @@ export function createPublication({ clock = () => Date.now(), log = () => {}, se
     // ROUND 274: the licence the statement CARRIES is the declared default when none was given, and a licence outside the declared
     // open set is handled by the declared policy - refused by name under `deny`, recorded as a warning under `warn`.
     const licenseGiven = typeof license === 'string' && license.trim() ? license.trim() : null
+      // ★ P2-01（Round 12）：许可证是【机构的选择】，不是内核的。未声明时在【真正需要它的地方】具名拒绝：
+      // 只有"没给显式许可证、必须由默认值决定"这一路才拒；`status()` 仍能如实报告"未声明"（cfg() 不抛）。
+      if (!licenseGiven && c.licenseDefault === '') {
+        throw refuse('VMU_LICENSE_DEFAULT_UNDECLARED', 'no default licence is declared and none was given for this paper, and this kernel will not choose one for you',
+          'declare vmu.license.default - a pack or deployment does this; v5r declares CC-BY-4.0',
+          { declared: settings['vmu.license.default'] === undefined ? null : settings['vmu.license.default'] })
+      }
     const effectiveLicense = licenseGiven || c.licenseDefault
     // ROUND 274 (volume 20 §L225): the incompatibility the volume describes is COPYLEFT - a GPL-* derivative must carry the same
     // licence. A licence that is merely non-open is NOT that: its established behaviour is to stay accepted and make the badge
@@ -204,6 +211,12 @@ export function createPublication({ clock = () => Date.now(), log = () => {}, se
         'declare a matching default, or set vmu.license.incompatiblePolicy=warn (volume 20 §L225: GPL derivatives must use the same licence)', { paperId, license: effectiveLicense, licenseDefault: c.licenseDefault })
     }
     const licenseNote = copyleftConflict ? 'copyleft-warn' : null
+      // ★ P2-01（Round 12）：代码许可证同样由机构选择 —— 声明里要写下它，就必须先有人声明过它。
+      if (c.licenseCodeDefault === '') {
+        throw refuse('VMU_LICENSE_CODE_UNDECLARED', 'no default CODE licence is declared, and this kernel will not choose one for you',
+          'declare vmu.license.codeDefault - a pack or deployment does this; v5r declares MIT',
+          { declared: settings['vmu.license.codeDefault'] === undefined ? null : settings['vmu.license.codeDefault'] })
+      }
     const decl = { paperId, ...fields, license: effectiveLicense, licenseDeclared: licenseGiven, codeLicense: c.licenseCodeDefault,
       attributionRequired: c.licenseAttributionRequired, licenseNote, url: urlStr || null, how: howStr || null, at: clock() }
     p.availability = decl

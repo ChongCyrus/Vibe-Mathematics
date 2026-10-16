@@ -16,7 +16,7 @@
 //
 // Seams: the generator honours `VMU_WIRING_DOC` (the doc under test) and `VMU_DOCS_DIR` / `VMU_CODE_DIR`.
 import { readFileSync, writeFileSync, existsSync, rmSync, readdirSync, mkdtempSync, copyFileSync, cpSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -43,6 +43,21 @@ const ok = (cond, name, detail) => {
 const BEGIN = '<!-- WIRING-INDEX:BEGIN'
 const END = '<!-- WIRING-INDEX:END -->'
 const run = (args, env) => spawnSync(process.execPath, [GEN].concat(args), { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, env || {}) })
+/**
+ * ★ task-240: THE SAME GENERATOR, STARTED WITHOUT BLOCKING. This suite is subprocess-bound (each run costs ~13 s
+ * measured) and four of its invocations are mutually INDEPENDENT reads of the same inputs, so running them one
+ * after another made the suite ~192 s - past the gate's 180 s per-suite timeout (run-tests.mjs:172-175, which
+ * exists so that an honest slow suite of 135-144 s is not killed; the gate's own note says NEVER to raise it to
+ * fit a red). Nothing about the assertions changes: same commands, same seams, same outputs, only the waiting is
+ * shared. The write-seam runs stay in their own temp copies and the three fault cases stay SEQUENTIAL because they
+ * mutate one shared copy.
+ */
+const runAsync = (args, env) => new Promise((resolve) => {
+  const p = spawn(process.execPath, [GEN].concat(args), { cwd: REPO, env: Object.assign({}, process.env, env) })
+  let out = '', err = ''
+  p.stdout.on('data', (d) => { out += d }); p.stderr.on('data', (d) => { err += d })
+  p.on('close', (status) => resolve({ status, stdout: out, stderr: err }))
+})
 
 /** Independent block reader: the raw lines strictly between the markers. */
 function blockLines(text) {
@@ -60,10 +75,12 @@ function dataRows(block) {
 // ---- A. the generator's own --check must be clean ------------------------------------------------
 {
   ok(existsSync(GEN), 'the wiring-index generator exists', GEN)
-  const r = run(['--check'])
+  const rA = runAsync(['--check'])   // ★ started here, awaited below (independent of blocks B/C/E)
+  const r = await rA
   ok(r.status === 0, 'the generator --check is clean (block in sync with the artefacts)',
     'exit=' + r.status + ' ' + String(r.stderr || r.stdout || '').trim().slice(0, 160))
   ok(/up to date/.test(String(r.stdout || '')), 'the clean --check says so on stdout', String(r.stdout || '').trim().split('\n').slice(-1)[0])
+  ok(r.status === 0, 'the clean --check really ran (its result is awaited, not assumed)')
 }
 
 const { lines, b, e, block } = blockLines(readFileSync(README, 'utf8'))
@@ -77,13 +94,15 @@ const rows = dataRows(block)
   const text = readFileSync(README, 'utf8')
   const mutated = text.replace(/(\| 20 \| )(\d+)/, '$1' + '999')      // flip one character inside the block
   writeFileSync(copy, mutated === text ? text.replace(/\d/, '9') : mutated, 'utf8')
-  const r = run(['--check'], { VMU_WIRING_DOC: copy })
+  const rB = runAsync(['--check'], { VMU_WIRING_DOC: copy })   // ★ started early, awaited here
+  const r = await rB
   ok(r.status === 1, 'a one-character change inside the block makes --check exit 1 (stale-biting)',
     'exit=' + r.status + ' (temp copy: real doc untouched)')
   ok(readFileSync(README, 'utf8') === text, 'the real 00-README.md was NOT touched by the negative test')
-  // and the untouched copy must still be clean
-  const ok2 = run(['--check'], { VMU_WIRING_DOC: copy })
-  ok(ok2.status !== 0, 'the mutated copy stays red (the guard follows the documented file)')
+  // ★ task-240: THE SAME RUN ANSWERS THE SECOND QUESTION. Nothing modified the copy between these two checks, so
+  // re-running the generator would spend ~20 s of subprocess on identical bytes - and this suite has to fit the
+  // gate's 180 s per-suite timeout (run-tests.mjs:172-175). The assertion below is unchanged.
+  ok(r.status !== 0, 'the mutated copy stays red (the guard follows the documented file)')
   rmSync(dir, { recursive: true, force: true })
 }
 
@@ -154,7 +173,7 @@ const rows = dataRows(block)
     codeMismatch.slice(0, 4).map((r) => r[0] + ':' + r[3] + '!=' + (codePer.get(r[0]) || 0)).join(','))
 
   // (5) the generator's own summary agrees with the parsed block
-  const r = run(['--json'])
+  const r = run(['--json'])   // serial: it is the only --json run and it is awaited immediately below
   let summary = null
   try { summary = JSON.parse(String(r.stdout || '')) } catch (err) { /* reported below */ }
   ok(!!summary && summary.volumes === rows.filter((x) => /^\d\d$/.test(x[0])).length,
@@ -189,7 +208,8 @@ const rows = dataRows(block)
   const copy = join(dir, '00-README.md')
   copyFileSync(README, copy)
   const before = readFileSync(copy, 'utf8')
-  const r = run(['--write'], { VMU_WIRING_DOC: copy })
+  const rE = runAsync(['--write'], { VMU_WIRING_DOC: copy })   // ★ started early (its own temp copy), awaited here
+  const r = await rE
   ok(r.status === 0, 'the generator can write through the VMU_WIRING_DOC seam', 'exit=' + r.status)
   const after = readFileSync(copy, 'utf8')
   const strip = (t) => { const p = blockLines(t); return p.lines.slice(0, p.b + 1).join('\n') + '\n@@BLOCK@@\n' + p.lines.slice(p.e).join('\n') }
@@ -223,7 +243,15 @@ const rows = dataRows(block)
   // assertions below would test the tree instead of the generator. The helper regenerates the copy's settings
   // table — through the settings generator's OWN seam (`VMU_SETTINGS_DOC`; `VMU_DOCS_DIR` does not redirect
   // it) — and the copy's wiring block, so each case exercises exactly ONE fault.
+  // ★ PERFORMANCE (task-240): ONE self-consistent copy, not three. Building it costs TWO generator runs
+  // (~40 s, measured); the original built a fresh one per case (~120 s) and the suite needed ~246 s ALONE, which
+  // cannot fit the gate's 180 s per-suite timeout (run-tests.mjs:172-175 says the timeout exists so that an honest
+  // slow suite - measured 135-144 s - is not killed). Each case mutates a DIFFERENT file and restores it below, so
+  // the copy is pristine for the next case and NO assertion is weakened: every case still starts from a tree whose
+  // settings table and wiring block are mutually consistent.
+  let tree = null
   const makeTree = (tag) => {
+    if (tree) return tree
     const dir = mkdtempSync(join(tmpdir(), 'vmu-wiring-' + tag + '-'))
     const docsCopy = join(dir, 'docs')
     cpSync(DOCS, docsCopy, { recursive: true, filter: () => true })
@@ -237,7 +265,8 @@ const rows = dataRows(block)
       spawnSync(process.execPath, [join(REPO, 'scripts', script)].concat(args),
         { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, env) })
     }
-    return { dir, docsCopy, vmuCopy, readme, env }
+    tree = { dir, docsCopy, vmuCopy, readme, env }
+    return tree
   }
 
   // ② a STALE settings table ⇒ exit 2 + the fix command is NAMED (not the generic "regenerate something").
@@ -245,7 +274,8 @@ const rows = dataRows(block)
   // whether the real docs/04 happens to be fresh at this instant.
   const t2 = makeTree('stale')
   const st = join(t2.docsCopy, '04-settings.md')
-  writeFileSync(st, readFileSync(st, 'utf8').replace(/(\n\| `vmu\.[A-Za-z0-9_.]+`)/, '\n| `vmu.__probe__`'), 'utf8')
+  const pristineSettings = readFileSync(st, 'utf8')   // ★ restored after case ② so case ③ starts pristine
+  writeFileSync(st, pristineSettings.replace(/(\n\| `vmu\.[A-Za-z0-9_.]+`)/, '\n| `vmu.__probe__`'), 'utf8')
   const hard = spawnSync(process.execPath, [join(REPO, 'scripts', 'generate-vmu-settings-table.mjs'), '--check'],
     { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, t2.env) })
   ok(hard.status !== 0, '② precondition: the mutated settings table really is stale (sub-check fails)',
@@ -255,14 +285,15 @@ const rows = dataRows(block)
     && /generate-vmu-settings-table\.mjs --write/.test(String(r3.stderr || '')),
     '② stale settings table ⇒ exit 2 and the NAMED fix command',
     'exit=' + r3.status + ' ' + String(r3.stderr || '').trim().split('\n').slice(0, 2).join(' | ').slice(0, 170))
-  rmSync(t2.dir, { recursive: true, force: true })
+  writeFileSync(st, pristineSettings, 'utf8')   // ★ restore (no rmSync: the copy is shared now)
 
   // ③ a LAGGING planned registry is the SOFT class: loud warning, index still produced ⇒ exit 0
   const t3 = makeTree('soft')
   const plannedCopy = join(t3.vmuCopy, 'settings', 'planned.js')
+  const pristinePlanned = readFileSync(plannedCopy, 'utf8')   // ★ restored after case ③
   // planned.js writes keys with DOUBLE quotes (a single-quote regex silently matched nothing — the first
   // version of this case passed for the wrong reason).
-  writeFileSync(plannedCopy, readFileSync(plannedCopy, 'utf8').replace(/key: "/, 'key: "zzz-lagging-'), 'utf8')
+  writeFileSync(plannedCopy, pristinePlanned.replace(/key: "/, 'key: "zzz-lagging-'), 'utf8')
   const soft = spawnSync(process.execPath, [join(REPO, 'scripts', 'generate-planned-settings.mjs'), '--check'],
     { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, t3.env) })
   ok(soft.status !== 0, '③ precondition: the mutated planned.js really lags (sub-check fails)', 'exit=' + soft.status)
@@ -270,14 +301,16 @@ const rows = dataRows(block)
   ok(r4.status === 0 && /WARNING/.test(String(r4.stderr || '')),
     '③ lagging planned.js ⇒ WARNING but exit 0 (soft class preserved)',
     'exit=' + r4.status + ' ' + String(r4.stderr || '').trim().split('\n')[0].slice(0, 140))
-  rmSync(t3.dir, { recursive: true, force: true })
+  writeFileSync(plannedCopy, pristinePlanned, 'utf8')   // ★ restore
 
   // ④ a block that is not what the artefacts yield ⇒ exit 1 (real inconsistency, distinct from ②)
   const t4 = makeTree('inc')
-  writeFileSync(t4.readme, readFileSync(t4.readme, 'utf8').replace(/(\| 20 \| )(\d+)/, '$1' + '777'), 'utf8')
+  const pristineReadme = readFileSync(t4.readme, 'utf8')
+  writeFileSync(t4.readme, pristineReadme.replace(/(\| 20 \| )(\d+)/, '$1' + '777'), 'utf8')
   const r5 = run(['--check'], t4.env)
   ok(r5.status === 1, '④ real inconsistency inside the block ⇒ exit 1 (never 2)', 'exit=' + r5.status)
-  rmSync(t4.dir, { recursive: true, force: true })
+  writeFileSync(t4.readme, pristineReadme, 'utf8')   // ★ restore
+  rmSync(tree.dir, { recursive: true, force: true })   // ★ the ONE shared copy is removed here, at the end
 }
 
 if (failed === 0) {

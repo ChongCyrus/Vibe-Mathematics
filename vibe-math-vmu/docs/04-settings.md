@@ -798,7 +798,7 @@ vmu.packs.active: [v5r]
 | `vmu.collab.jointAuthorshipPolicy` | string | `contribution-then-alternate` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 共同署名政策（声明顺序；未实现的政策名自曝而非假装） |
 | `vmu.collab.settlementCycleDays` | integer | `60` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 结算周期天数（≥1；未到周期即结算具名拒并给到期时刻） |
 | `vmu.collab.reconciliationToleranceMinor` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 对账容差（最小货币单位；超出容差具名拒并给差额） |
-| `vmu.funds.currencyDefault` | string | `EUR` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 默认币种（缺省时用于 scaleOf 等；不覆盖显式传入者） |
+| `vmu.funds.currencyDefault` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 默认币种（缺省时用于 scaleOf 等；不覆盖显式传入者）；★ P2-01：''＝未声明（中性），v5r 在 pack 里声明 EUR |
 | `vmu.funds.roundingMode` | enum | `half-even` | `half-up`∣`half-even`∣`floor`∣`ceil`∣`trunc` | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 舍入方式（roundMinor 用它；默认银行家舍入） |
 | `vmu.funds.scaleByCurrency` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 币种→精度位数（覆盖 ISO 表；自曝 overridden） |
 | `vmu.funds.fxSource` | string | `manual-snapshot` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 汇率来源名（离线优先；checkFx 自曝来源） |
@@ -1171,8 +1171,8 @@ vmu.packs.active: [v5r]
 | `vmu.ip.sweepCadenceDays` | int ≥0 | `90` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ip.js` | 已接线（ip.js 读取）；默认值取自模块源码 |
 | `vmu.ip.transferPolicy` | string | `manual` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ip.js` | 已接线（ip.js 读取）；默认值取自模块源码 |
 | `vmu.license.attributionRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
-| `vmu.license.codeDefault` | string | `MIT` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
-| `vmu.license.default` | string | `CC-BY-4.0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
+| `vmu.license.codeDefault` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
+| `vmu.license.default` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.license.incompatiblePolicy` | string | `deny` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.math.artifacts.maxAttemptsPerRun` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.artifacts.maxFileMb` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |

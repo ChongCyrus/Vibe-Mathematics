@@ -57,6 +57,10 @@
     "vmu.meetings.unansweredInDenominator": false,
     "vmu.review.mode": "single-blind",
 
-  "vmu.reviewers.maxLoad": 3
+  "vmu.reviewers.maxLoad": 3,
+
+  "vmu.license.default": "CC-BY-4.0",
+  "vmu.license.codeDefault": "MIT",
+  "vmu.funds.currencyDefault": "EUR"
   }
 }

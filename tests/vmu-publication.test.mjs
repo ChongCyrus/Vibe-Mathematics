@@ -9,7 +9,11 @@ const ok = (cond, label) => { if (cond) { pass++ } else { fail++; console.log('F
 const rejects = (fn) => { try { fn(); return { threw: false } } catch (e) { return { threw: true, code: e && e.code, msg: String(e && e.message), hint: e && e.hint, current: e && e.current, legalNext: e && e.legalNext, missing: e && e.missing } } }
 
 let now = 1000
-const mk = (settings = {}, opts = {}) => createPublication({ clock: () => now, settings, listCap: 100, ...opts })
+// ★ P2-01（Round 12）：内核【不再替你选】许可证 —— 未声明时 `publication.js` 会**具名拒绝**
+// （`VMU_LICENSE_DEFAULT_UNDECLARED`／`VMU_LICENSE_CODE_UNDECLARED`），而且**声明构造**本身就需要 code 默认值，
+// 所以即使调用方给了显式 `license`，未声明 codeDefault 仍会被拒。v5r 在自己的 pack 里声明这两个值
+// （`packs/v5r/settings/defaults.json`），下面这个构造器【显式声明】它们：这正是真实部署经 pack 折叠拿到的形状。
+const mk = (settings = {}, opts = {}) => createPublication({ clock: () => now, settings: { 'vmu.license.default': 'CC-BY-4.0', 'vmu.license.codeDefault': 'MIT', ...settings }, listCap: 100, ...opts })
 
 // 1) new paper must start at the chain head; unknown versions refused
 {

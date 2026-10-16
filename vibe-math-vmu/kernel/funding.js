@@ -149,7 +149,7 @@ export function createFunding({ clock = () => 0, log = null, settings = {}, bus 
   const MONEY_REMAINDER = Object.freeze(['largest-remainder', 'first-party', 'last-party'])
   const ISO_SCALE = Object.freeze({ JPY: 0, KRW: 0, VND: 0, CLP: 0, ISK: 0, EUR: 2, USD: 2, GBP: 2, CNY: 2, CHF: 2, SEK: 2, CAD: 2, AUD: 2, INR: 2 })
   const moneyCfg = () => ({
-    currencyDefault: str(sget('vmu.funds.currencyDefault')) || str(K.currency) || 'EUR',
+    currencyDefault: str(sget('vmu.funds.currencyDefault')) || K.currency,   // ★ P2-01（Round 12）：本键的三层 'EUR' 收敛为一层 —— 这里不再自带字面量，唯一内部兜底留在上面 K.currency（承重：:329/:338/:343 等一整面的读点）
     roundingMode: MONEY_ROUNDING.includes(sget('vmu.funds.roundingMode')) ? sget('vmu.funds.roundingMode') : 'half-even',
     scaleByCurrency: (() => { const v = sget('vmu.funds.scaleByCurrency'); return v && typeof v === 'object' && !Array.isArray(v) ? v : {} })(),
     fxSource: str(sget('vmu.funds.fxSource')) || 'manual-snapshot',

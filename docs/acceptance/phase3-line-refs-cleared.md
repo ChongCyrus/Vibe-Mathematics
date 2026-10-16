@@ -28,7 +28,7 @@
 ### 1.2 反转区间（2 条）
 | # | 文档:行 | 原引用 | 判定 |
 |---|---|---|---|
-| 8 | `03-v5r-full-inventory.md:488` | `vibe-math-v5r.js:3288–3092`（**start > end**） | ★ 按短语（`memberMayRejectAssign`）解析到三处真锚点 ⇒ 改为 **`:1066`（默认值 `memberMayRejectAssign: true`）／`:4018`（提示里那句 `reject_assign`）／`:9555`（开关的判定处 `if (p.reject_assign && … params.memberMayRejectAssign)`）** |
+| 8 | `03-v5r-full-inventory.md:488` | `vibe-math-v5r.js:3288–3092`（**start > end**；★ **pre-split** —— 本行引的是**修复前**的反转区间，属历史记录，故按门的 `pre-split` 机制豁免） | ★ 按短语（`memberMayRejectAssign`）解析到三处真锚点 ⇒ 改为 **`:1066`（默认值 `memberMayRejectAssign: true`）／`:4018`（提示里那句 `reject_assign`）／`:9555`（开关的判定处 `if (p.reject_assign && … params.memberMayRejectAssign)`）** |
 | 9 | `v5r-inventory-a.md:445` | 同上 | 同上 |
 ★ **哪一端对？**★ 两端**都不对**：`3288–3092` 既反向又**不指向该内容**（该内容在 `:1066`／`:4018`／`:9555`）；★ 且**这两份是 v5r 源码盘点、而 v5r 源是冻结的** ⇒ **直接改正区间即可，不需历史标记** ✓（★ 与 1.1 的"拆前坐标"性质不同，故处置也不同）。
 
