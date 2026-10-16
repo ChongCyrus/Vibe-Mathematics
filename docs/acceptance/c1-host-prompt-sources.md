@@ -65,10 +65,12 @@ sections — **not** part of the host archive:
    the repository copy. Which copy a live session loads is exactly the "which copy, which version, which moment"
    question this project requires every reading to answer — and it is now a **known, named** fact rather than an
    unexamined assumption.
-3. The same profile tree already contains tests that bear directly on this boundary —
-   `vmu-assistant-systemprompt.test.mjs` and **`vmu-prompt-section-guard.test.mjs`** — so the ledger's
-   "not enumerated / boundary" entry may be **more covered than it says**, and must be re-derived against those tests
-   before the claim is repeated.
+3. Two tests that bear directly on this boundary — `vmu-assistant-systemprompt.test.mjs` and
+   **`vmu-prompt-section-guard.test.mjs`** — exist in **this repository's own `tests/`**, NOT in the profile tree.
+   (An earlier version of this file said "the same profile tree"; that was **wrong**, and it was caught by the
+   teammate reading the archive rather than by me. Corrected here rather than left to propagate.) They matter because
+   they may already cover part of what the ledger calls an unenumerated boundary, so that entry must be re-derived
+   against them before it is repeated.
 
 ## Scope and residual (what this file does NOT claim)
 
