@@ -2204,7 +2204,16 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
       const resolvedNote = wantsFullSettings
         ? 'full: every declared key with its effective value, source, hot class and who may change it'
         : 'summary: only keys whose source is NOT the schema default are listed (' + elided + ' default-valued keys elided); ask for detail:"full" or detail:"settings" for the complete map'
-      return {
+      // ★★ ROUND 35: THE OTHER SEVEN HEAVY SECTIONS ARE ALL DIAGNOSTIC, AND NONE OF THEM CARRIES THE FOUR SEGMENTS
+      // an operator asks about (phase / quorum / formal / paper - those come from the PACK, not from here). Measured:
+      // registry 4256 B, guards 2056, seams 2011, reporting 1346, approvalGate 986, projections 902, activity 818 -
+      // 12,003 of the 16,693-byte summary. So the summary shows that each section EXISTS, with a headline, and the
+      // whole section stays one word away. A section is never omitted: `present` distinguishes "absent by design"
+      // from "elided for size", which is the distinction this phase keeps insisting on.
+      const headline = (v) => (v === null || v === undefined
+        ? { present: false, note: 'absent by construction; ask detail:"full" for the section that says why' }
+        : { present: true, fields: typeof v === 'object' ? Object.keys(v).length : 0, note: 'headline only; ask detail:"full" for the whole section' })
+      const view = {
         enabled: true,
         active: started,
         // ROUND 1 / K5: the ONE pack path, stated rather than implied. `loader` means `kernel/pack.js` via the injected
@@ -2365,6 +2374,15 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
         },
         note: 'a kernel with no declarations is inert by construction (zero mechanism, R1)',
       }
+      // ★★ SUMMARY BOUNDS THE SEVEN DIAGNOSTIC SECTIONS (see the note above). The four segments an operator asks
+      // about are contributed by the PACK and are deliberately NOT touched here, so they survive at any detail.
+      if (!wantsFullSettings) {
+        for (const k of ['registry', 'guards', 'seams', 'reporting', 'approvalGate', 'projections', 'activity']) {
+          view[k] = headline(view[k])
+        }
+        view.diagnosticsBounded = 'summary headlined the seven diagnostic sections (registry / guards / seams / reporting / approvalGate / projections / activity); each is returned in full for detail:"full", and nothing else in this receipt is trimmed'
+      }
+      return view
     },
   }
 

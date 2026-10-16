@@ -735,6 +735,40 @@ if (SELF_PROBE) {
     'packNotes(): both the apply and the unload are recorded', JSON.stringify(notes.map((n) => n.what)))
 }
 
+
+// ── D4 (Round 35): THE STATUS RECEIPT MUST FIT, AND MUST NOT LOSE A SECTION TO DO IT ──────────────────────
+// Measured on a real machine: the full receipt exceeded the host limit, the host truncated it, and the four
+// segments a reader asks about were the parts cut. The KERNEL defaults to the complete view; the TOOL FACE
+// defaults to the bounded summary. Both ends of that contract are asserted here.
+{
+  const kd = m.createKernel({ clock })
+  const fullStr = JSON.stringify(kd.status({ detail: "full" }))
+  const sumStr = JSON.stringify(kd.status({ detail: "summary" }))
+  const dfltStr = JSON.stringify(kd.status())
+  ok(dfltStr.length === fullStr.length,
+    "D4: the KERNEL defaults to the COMPLETE view - eliding keys at the source would make an absent key indistinguishable from an unset one")
+  ok(sumStr.length < fullStr.length, "D4: the summary is strictly smaller than the full view")
+  ok(sumStr.length < 12000, "D4: the summary fits the 12 KB limit the real machine reported (measured " + sumStr.length + " B)")
+  // ★ THE CONTRACT IS A SUPERSET, NOT AN EQUALITY: the summary may ADD a note explaining what it bounded, but it
+  // may never REMOVE a section. Asserting equality would also forbid the receipt from saying what it did - which is
+  // the honesty this change exists to provide.
+  const fullKeyList = Object.keys(kd.status())
+  const sumKeySet = new Set(Object.keys(kd.status({ detail: "summary" })))
+  const missingFromSummary = fullKeyList.filter((key) => !sumKeySet.has(key))
+  ok(missingFromSummary.length === 0,
+    "D4: the summary removes NO top-level section (it may add a note; missing: " + missingFromSummary.join(",") + ")")
+  const sm = kd.status({ detail: "summary" })
+  ok(typeof sm.settings.resolvedDetail === "string" && /summary/.test(sm.settings.resolvedDetail),
+    "D4: the summary STATES what it bounded and how to ask for the rest")
+  ok(typeof sm.diagnosticsBounded === "string", "D4: the bounded diagnostic sections are named in the receipt")
+  // ★ THE COUNTEREXAMPLE: a receipt that silently omitted a heavy section would satisfy every check above, so each
+  // bound must remain visible as a PRESENCE fact rather than as a missing key.
+  const bounded = ["registry", "guards", "seams", "reporting", "approvalGate", "projections", "activity"]
+  ok(bounded.every((key) => sm[key] !== undefined && typeof sm[key].present === "boolean"),
+    "D4: each bounded section still reports whether it is PRESENT (absent-by-design stays distinguishable from elided-for-size)")
+  ok(bounded.every((key) => kd.status({ detail: "full" })[key] !== undefined),
+    "D4: every bounded section is returned IN FULL for detail:full - nothing is lost, only requested")
+}
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
