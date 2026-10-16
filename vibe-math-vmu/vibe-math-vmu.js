@@ -433,6 +433,11 @@ export function apply(ctx, config = {}) {
   }
   const callerSeam = declaredDeliverMode === 'caller' ? deliverByReturning() : null
   const turnDeliver = async ({ turn, text } = {}) => {
+    // ★ ROUND 80: DECLARED FIRST, BECAUSE THE REFUSAL BELOW READS THEM. T1 caught a temporal dead zone here: the
+    // missing-seam hint reports parentKind and the agents keys, but both were declared further down, so that path
+    // threw "Cannot access 'parentKind' before initialization" instead of the refusal it was written to produce.
+    let parentKind = 'null'
+    let agentKeys = null
     // ★ caller mode needs nothing from the host at all
     if (callerSeam) return callerSeam({ turn, text })
     let subs = null
@@ -485,8 +490,6 @@ export function apply(ctx, config = {}) {
     // whether a plugin can obtain the CALLING Agent at all - the host types the one-shot request's parent as Agent
     // while its agents service lists only ids - and one observation settles it. Both facts are recorded here and, when
     // the parent is unusable, they are carried into the refusal so the diagnosis needs no extra instrumentation.
-    let parentKind = 'null'
-    let agentKeys = null
     try {
       const agents = ctx && typeof ctx.get === 'function' ? ctx.get('agents') : null
       if (agents && typeof agents === 'object') { try { agentKeys = Object.keys(agents).concat(Object.keys(Object.getPrototypeOf(agents) || {})).slice(0, 24) } catch { agentKeys = null } }

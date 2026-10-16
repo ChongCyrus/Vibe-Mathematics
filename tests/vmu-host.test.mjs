@@ -65,7 +65,10 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
     'it registers exactly that one, and the HOST owns the unwind (ctx.effect)')
   ok(host.state.effects.join(',') === 'vmu:tool:vibe_vmu_status',
     'each registration is wrapped in ctx.effect with its own label', host.state.effects.join(','))
-  const st = await call(host.state.specs[0])
+  // ROUND 80: ask for FULL detail. Since the Round-34 bounding, detail:'summary' (the default) replaces the seven
+  // diagnostic sections - seams among them - with a HEADLINE by design, and says so in the receipt. A test that wants to
+  // read a NAMED seam must ask for full; asserting on the headline's fields would assert the wrong thing.
+  const st = await call(host.state.specs[0], { detail: 'full' })
   ok(st.ok === true && st.enabled === true && st.active === false && st.registrations.length === 0,
     'the adapter alone does not start the kernel: status reports enabled, not started, nothing registered')
   ok(st.seams.host === false && st.seams.store === false, 'status names the missing seams instead of hiding them')
@@ -340,3 +343,4 @@ if (SELF_PROBE) {
 console.log('=== VMU HOST: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
+

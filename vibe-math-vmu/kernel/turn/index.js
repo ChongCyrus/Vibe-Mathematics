@@ -200,7 +200,7 @@ export function facesFrom(services = {}, owners = FIELD_OWNERS) {
  * `extract` lets a host whose handle carries the reply elsewhere say where it is; the built-in order is `reply`, then
  * `text`, which covers the two shapes seen in practice.
  */
-export function deliverViaSubagents(subagents, extract = null, { provider = null, parent = null, signal = null, options = null } = {}) {
+export function deliverViaSubagents(subagents, extract = null, { provider = null, parent = null, signal = null, options = null, delay = null } = {}) {
   // ★★★ ROUND 63: A MEMBER TURN IS FOREGROUND ONE-SHOT DELEGATION, AND THE HOST SAYS SO ITSELF. The stack captured on
   // a real machine came from the continuable-activation registry - startContinuable -> assertAdmitting ->
   // closingTeardownFor -> liveLineage - which refuses to admit a NEW activation while a previous one is still being
@@ -257,7 +257,11 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
         : await subagents.startContinuable(spec)
     } catch (e) {
       const first = String((e && e.message) || e)
-      await new Promise((r) => setTimeout(r, 250))
+      // ★★★ ROUND 80: THE PAUSE IS AN INJECTED SEAM, NOT A GLOBAL TIMER. The timer scan counts every file that creates
+      // a global timer and its list is exact, so adding one was not available - and rightly so: a library that reaches
+      // for a global timer cannot be controlled by its host. `delay` is awaited if the deployment supplies one, and
+      // otherwise the retry simply proceeds, which keeps this function free of global state entirely.
+      if (typeof delay === 'function') await delay(250)
       try {
         handle = oneShot
           ? await subagents.start(provider, Object.assign({ label: spec.label, prompt: spec.request.prompt, parent, signal, options: options || {} }, spec.oneShotRequest || {}))
