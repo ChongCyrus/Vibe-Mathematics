@@ -137,7 +137,14 @@ const CORE_DEFS = Object.freeze([
   // ROUND 356: the research objective is DATA, not text. The charter's opening block carries a "（尚未设定）" slot in
   // the original, and freezing an objective into a section would make every deployment's charter wrong. It is a
   // settings value, reached from the section through the pipeline own `{{ setting:... }}` variable.
-  { key: 'vmu.turn.objective', type: 'string', def: '（尚未设定）', hot: HOT.H2, who: 'office', doc: '本所研究对象（原问题）；默认值与原线未设定时的输出一字不差，绝不留空括号' },
+    // ★★★ ROUND 55: THE PERMISSION THAT GRANTS A CLOSURE VOTE IS DEPLOYMENT VOCABULARY, SO IT IS DECLARED HERE RATHER
+  // THAN HARDCODED. The closure predicate needs to know which permission makes a member enfranchised; the v5r pack
+  // grants ote to the member slot but NOT to the chair or the temp slot, and another institution may word it
+  // differently. My Round-53 reason text REFERRED to this key before it existed - the contract-promising-what-the-
+  // implementation-does-not-do family this phase keeps removing, and this instance was mine. Declared now, with the
+  // pack supplying the default, so a deployment can rename it and ibe_vmu_set accepts it.
+  { key: 'vmu.turn.closureVotePermission', type: 'string', def: 'vote', hot: HOT.H2, who: 'office', doc: '哪一个权限字符串算【结题表决权】：★ 谓词据此判断谁【有资格】结题。★ 默认 ote（★ v5r pack 把 ote 给 member 槽位，chair 与 	emp 都没有）；★ 另一家机构可以改名' },
+{ key: 'vmu.turn.objective', type: 'string', def: '（尚未设定）', hot: HOT.H2, who: 'office', doc: '本所研究对象（原问题）；默认值与原线未设定时的输出一字不差，绝不留空括号' },
   // ROUND 365: the resource discipline the original puts in front of every member is not a slogan, it is a block whose
   // NUMBERS are runtime parameters (docs/26 section 3.14). They live here so the text stays in the pack and the values
   // stay configurable - the point of the whole settings surface.
@@ -1749,3 +1756,4 @@ export function resolveSettings(layers = [], { onInvalid = 'refuse' } = {}) {
   })
   return { values: out, accepted, provenance, rejected }
 }
+

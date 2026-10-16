@@ -4,6 +4,7 @@
   "_round7": "ROUND 7 fidelity audit (Lead ruling): `vmu.math.maxParallel` below is a RESTATEMENT OF THE FRAMEWORK DEFAULT (def 1) and is NOT fidelity evidence - v5r's own parameter for this is `leanJobsMaxParallel: 1` (vibe-math-v5r.js:1119), whose framework twin `vmu.math.leanJobsMaxParallel` already defaults to 1. It is kept because an integration pack should be readable and tunable. The real round-7 fidelity corrections are documented in defaults.js: `vmu.turn.selfCheck` true->false (v5r:1122 resourceSelfCheck false), `vmu.control.idleAfterMs: 120000` (v5r:1082 activityTimeoutMs), and the REMOVAL of `vmu.limits.maxLiveMembers: 3` (v5r:1130 maxLiveChildren 0 = no cap).",
   "defaults": {
     "vmu.turn.replyCatalogue": "compact",
+      "vmu.turn.closureVotePermission": "vote",
     "vmu.pointer.propagation": true,
     "vmu.turn.selfCheck": false,
     "vmu.turn.feedback": true,
@@ -64,3 +65,4 @@
   "vmu.funds.currencyDefault": "EUR"
   }
 }
+
