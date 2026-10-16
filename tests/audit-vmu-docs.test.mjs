@@ -557,8 +557,33 @@ ok(unregisteredInCode.length === 0,
     unmarkedRows.slice(0, 3).map((r) => r.slice(0, 48)).join(' | '))
   // non-vacuity: the line above would also pass a table that had lost a whole tier
   const tierCounts = { wired: rows.filter((r) => TIER_MARKER.wired.test(tierCellOf(r))).length, undetermined: rows.filter((r) => TIER_MARKER.undetermined.test(tierCellOf(r))).length, unwired: rows.filter((r) => TIER_MARKER.unwired.test(tierCellOf(r))).length }
-  ok(tierCounts.wired > 0 && tierCounts.undetermined > 0 && tierCounts.unwired > 0,
-    'and all three tiers are actually represented in the table (a collapsed table would pass the line above vacuously)', tierCounts)
+  // ★★ task-253: THE NON-VACUITY IS NOW **marker<->verdict agreement**, NOT "every tier is non-empty". The
+  // three-tier check was written when the table carried rows in all three tiers; MEASURING showed the `❓ 未判定`
+  // tier can legitimately be EMPTY (the five keys that were undetermined now resolve to wired, and the
+  // generator's own --check agrees: 1134 wired / 0 undetermined / 94 unwired). "Every tier is non-empty" then
+  // reds on a CORRECT table and progress retires a tier legitimately - so it was testing the table's history,
+  // not its honesty. The invariant that cannot be retired is that each row's marker is the one the GENERATOR
+  // reports for that key: a drifted tier, or a marker no tier claims, still reds - with ANY number of rows per
+  // tier, including zero. The three NAMED tiers stay the vocabulary (asserted below).
+  const expectedTierOf = (key) => {
+    const v = verdictOf(key)
+    return v === WIRED ? 'wired' : (v === UNDETERMINED ? 'undetermined' : 'unwired')
+  }
+  const tierOfRow = (r) => {
+    const cell = tierCellOf(r)
+    if (TIER_MARKER.wired.test(cell)) return 'wired'
+    if (TIER_MARKER.undetermined.test(cell)) return 'undetermined'
+    if (TIER_MARKER.unwired.test(cell)) return 'unwired'
+    return null
+  }
+  const keyOfRow = (r) => (r.match(/^\| `(vmu\.[a-zA-Z0-9.]+)`/) || [])[1]
+  const drifted = rows.filter((r) => { const k = keyOfRow(r); return k !== undefined && tierOfRow(r) !== expectedTierOf(k) })
+  ok(drifted.length === 0,
+    '★★ and EVERY row\'s tier marker is the one the GENERATOR reports for that key (marker<->verdict agreement) - it has teeth with any number of rows per tier, including zero in a tier',
+    { drifted: drifted.slice(0, 3).map((r) => keyOfRow(r)), tierCounts })
+  ok(Object.keys(TIER_MARKER).length === 3 && rows.every((r) => tierOfRow(r) !== null),
+    '★ the THREE named tiers are still the vocabulary and every row lands in exactly one of them (a blank or vague cell still reds above)',
+    Object.keys(TIER_MARKER).join('/'))
 
   // Independently recompute the wired set: a key is wired when its literal appears in the runtime sources.
   const runtimeFiles = ['vibe-math-vmu.js', 'host.js', 'host-hooks.js', 'host-spawn.js'].map((f) => join(VMU, f))

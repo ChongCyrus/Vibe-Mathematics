@@ -526,7 +526,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     '★ PRECONDITION (shape B): both sides of the T71b comparison are NON-EMPTY, so it cannot pass on two empty collections',
     { known: KNOWN_UNBASELINED.length, found: unbaselined.length })
 
-  ok(unbaselined.length === KNOWN_UNBASELINED.length,
+  ok(unbaselined.length > 0 && KNOWN_UNBASELINED.length > 0 && unbaselined.length === KNOWN_UNBASELINED.length,
     'T71b. ★★ THE ONLY LINES WITH NO CAPTURED BASELINE ARE THE NAMED ONES: the capture has no temp×leaderless charter, so that single line is frozen here - a NEW gap reddens T71b, and a closed gap must shrink the list (no silent exemption)',
     { found: unbaselined.length, known: KNOWN_UNBASELINED.length, foundList: unbaselined.map((x) => x.slice(0, 70)) })
   const loopC = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_ROLE_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
