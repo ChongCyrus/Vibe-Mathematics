@@ -231,3 +231,42 @@ kernel/mathtools.js:630  raw = spawn({ op: p.plan.op, args: p.plan.args, seed: p
 2. ★★★★ **`await`**：★ **`:630` 必须 `await` 注入接缝的结果**（★ 并在接缝为同步时也安全 ✓）⇒ ★ **让"拒绝"被本层的 `try` 接住** ✓
 3. ★★★ **通用护栏**：★ **`mathtools` 的 `spawn` 若返回 Promise，`raw` 就应被识别并处理** ⇒ ★ **最好在【注入点】做一次归一：★ 同步接缝与异步接缝都变成可 await 的** ✓
 ★ **判据**：★ 把缺可执行文件／词汇不匹配的调用送进去 ⇒ ★ **得到具名拒【且进程仍然活着、后续调用仍可用】** ✓ —— ★★ **前两轮（D1／D6）都没守住这一条，因为真正的缝在 `await` 上** ✓
+
+---
+
+## ★★★★★★★ D10（★ **致命链已断**）：异步接缝的拒绝必须【先标记为已处理】
+
+### 10.1 ★★★ 我第一版修法【太晚了】，★ 而真机当场说明
+★ 我先把"异步接缝"**具名拒**掉 ⇒ ★★ **但一条已拒绝的 Promise，★ Node 会在【下一个 tick】把它标为 unhandled** ✓
+⇒ ★★★ **所以当我自己的拒绝抛出时，★ 致命路径【早已武装**】** ⇒ ★ `srv.err` 里仍是**接缝自己的拒绝**，★ **进程仍然死** ✓✓
+⇒ ★★★★ **即：★ 一个具名拒【救不了】一条【已经被上报】的拒绝** ✓✓
+
+### 10.2 ★★★ 修法：★ 先挂 handler，★ 再拒
+★ 在拒绝之前先 `raw.catch(() => {})` ⇒ ★★ **把那条拒绝标记为"已观察"** ⇒ ★ **致命路径消失**；★ **然后才具名拒出** ✓✓
+★★ **实测（★ 不是论证）**：
+```
+run THREW a named refusal: true
+the refusal names the ASYNC mismatch: true
+★ unhandled rejections after a tick: 0   (NONE - the fatal path is removed)
+synchronous seam still runs: true
+```
+
+### 10.3 ★★★★ 而真机确认了它
+```
+RESULT preset=vibe-math-vmu exit=0 dur=257s tokens=1,390,409 capHit=False timeoutOrFatal=False
+srv.err tail: 只有无害的 dshmarket bundle 跳过 —— ★【没有 fatal load failure 了】
+```
+★★★ **即：★ `srv.err` 现在只剩那条无害的 bundle 跳过** ✓✓ —— ★ **此前每一次都有的 `dsh: fatal load failure` 消失了** ✓✓✓
+
+### 10.4 ★★★★★ 而且运行【开始推进阶段了】
+```
+packs: ["v5r"] | ["v5r-core"]      appliedPacks: ["v5r-core"]
+store: true   library: true
+phase: "founding" | "round-robin" | "round…"     ← ★ 研究所在【跨阶段推进】
+stopped: "no-members" | …                        ← ★ founding 阶段里是正确的
+```
+⇒ ★★★★ **此前每一次都是【秒死】；★ 现在它装包、★ 从 `founding` 走到 `round-robin`、★ 并存活** ✓✓✓
+
+### 10.5 ★★★ 仍未修的那一件（★ 说明白）
+★★ **数学工具面拿到的仍是【错误的接缝】** —— ★ 正确做法是**接上数学接缝**；★ 本次改动只是把那个错误**从"致命"变成"可诊断"** ✓
+⇒ ★★ **"消除死亡让缺陷【可见】；接对接缝让缺陷【不存在】"** ✓
