@@ -2,7 +2,7 @@
 export function makeRecruitSpec({ param, refused, TOOL_NAMES, kernel }) {
   return {
     name: TOOL_NAMES.recruit,
-    description: 'vmu 招募面（(j) 代理自组织）：15 个动作。★ 任期、晋升与试用都由内核服务强制；本工具只做寻址与调用（整对象透传 ✓）。',
+    description: 'vmu 招募面（(j) 代理自组织）：15 个动作。★ 任期、晋升与试用都由内核服务强制；本工具只做寻址与调用（整对象透传 ✓）。' + '★ **与 `vibe_vmu_admission` 动作集相同（同一内核服务）**：本面是任期/晋升视图；两面等价，★ 选一个即可（分工裁定见 docs）。',
     parameters: {
       action: param('string', 'renewTerm｜recall｜actAsChair｜promote｜openPosting｜apply｜score｜offer｜accept｜reject｜probation｜confirm｜postings｜status｜aggregate', { required: true,
         enum: ['renewTerm','recall','actAsChair','promote','openPosting','apply','score','offer','accept','reject','probation','confirm','postings','status','aggregate'] }),

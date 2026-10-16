@@ -3,7 +3,7 @@
 export function makeAdmissionSpec({ param, refused, TOOL_NAMES, kernel }) {
   return {
     name: TOOL_NAMES.admission,
-    description: 'vmu 招募/准入面（(j) 代理自组织）：15 个动作，构成流水线 openPosting→apply→offer→accept→confirm。★ 每一步的前置条件由内核服务强制，★ 且【拒绝会告出下一步**]（如 "offer() first" ✓）；本工具只做寻址与调用（整对象透传 ✓）。',
+    description: 'vmu 招募/准入面（(j) 代理自组织）：15 个动作，构成流水线 openPosting→apply→offer→accept→confirm。★ 每一步的前置条件由内核服务强制，★ 且【拒绝会告出下一步**]（如 "offer() first" ✓）；本工具只做寻址与调用（整对象透传 ✓）。' + '★ **与 `vibe_vmu_recruit` 动作集相同（同一内核服务）**：本面是招募/准入流水线视图；两面等价，★ 选一个即可（分工裁定见 docs）。',
     parameters: {
       action: param('string', 'accept｜actAsChair｜aggregate｜apply｜confirm｜offer｜openPosting｜postings｜probation｜promote｜recall｜reject｜renewTerm｜score｜status', { required: true,
         enum: ['accept','actAsChair','aggregate','apply','confirm','offer','openPosting','postings','probation','promote','recall','reject','renewTerm','score','status'] }),
