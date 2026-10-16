@@ -9,7 +9,35 @@ const ok = (cond, label) => { if (cond) { pass++ } else { fail++; console.log('F
 const throws = (fn) => { try { fn(); return { threw: false } } catch (e) { return { threw: true, code: e && e.code, msg: String(e && e.message), hint: e && e.hint, current: e && e.current, limit: e && e.limit, remainingMs: e && e.remainingMs, missing: e && e.missing } } }
 
 let now = 1000
-const mk = (settings = {}, opts = {}) => createRecruit({ clock: () => now, settings, listCap: 100, ...opts })
+
+// SEATING FIX (Round 32): `confirm` now SEATS the member in the kernel roster, so a roster must be supplied.
+// The turn face reads that roster; before the fix nothing populated it and the institute idled with `no-members`.
+// This fake records every seating AND the wake events, so both probes below can count them.
+const mkRoster = () => {
+  const seated = []
+  const wakes = []
+  return {
+    seated, wakes,
+    async assignRole(id, slot) {
+      const prior = seated.find((x) => x.id === id && x.slot === slot)
+      if (prior) return { ok: true, id, slot, unchanged: true }   // idempotent: a re-seat is not a second wake
+      seated.push({ id, slot })
+      wakes.push({ id, slot })
+      return { ok: true, id, slot }
+    },
+  }
+}
+// The default harness ALWAYS supplies a roster, because `confirm` now SEATS the member; a test that wants the
+// no-roles case passes `{ members: null }` explicitly (probe P2). `mkAsync` is kept as an alias so the probes read
+// as what they are testing.
+const mk = (settings = {}, opts = {}) => {
+  const roster = Object.prototype.hasOwnProperty.call(opts, 'members') ? opts.members : mkRoster()
+  const api = createRecruit({ clock: () => now, settings, listCap: 100, ...opts, members: roster })
+  api.__roster = roster
+  return api
+}
+const mkAsync = (settings = {}, opts = {}) => mk(settings, opts)
+const throwsAsync = async (fn) => { try { await fn(); return { threw: false } } catch (e) { return { threw: true, code: e && e.code, msg: String(e && e.message), hint: e && e.hint, remainingMs: e && e.remainingMs } } }
 
 // 0) ROUND 217: the appointment/term family (vmu.roles.*) — ten settings, each enforced here
 {
@@ -98,7 +126,7 @@ const mk = (settings = {}, opts = {}) => createRecruit({ clock: () => now, setti
   const o = w.offer({ applicationId: a.id })
   const acc = w.accept({ offerId: o.id, by: 'acad' })
   ok(acc.memberId === 'acad' && acc.slot === 'researcher' && acc.confirmed === false, 'accept creates a probationary seat')
-  ok(w.confirm({ memberId: 'acad', by: 'chair' }).confirmed === true, 'confirm works when probation is zero-length')
+  ok((await w.confirm({ memberId: 'acad', by: 'chair' })).confirmed === true, 'confirm works when probation is zero-length')
 }
 
 // 4) probation not over ⇒ named refusal with remaining time; then it becomes due
@@ -109,11 +137,11 @@ const mk = (settings = {}, opts = {}) => createRecruit({ clock: () => now, setti
   const o = w.offer({ applicationId: a.id })
   w.accept({ offerId: o.id, by: 'r-2' })
   now = 3000
-  const r = throws(() => w.confirm({ memberId: 'r-2', by: 'chair' }))
+  const r = await throwsAsync(() => w.confirm({ memberId: 'r-2', by: 'chair' }))
   ok(r.threw && r.code === 'VMU_RECRUIT_PROBATION_NOT_DUE' && r.remainingMs === 3000, 'probation early confirm refused with remaining')
   ok(w.probation({ memberId: 'r-2' }).remainingMs === 3000, 'probation() reports remaining (read-only)')
   now = 6500
-  ok(w.confirm({ memberId: 'r-2', by: 'chair' }).confirmedAt === 6500, 'confirm succeeds after probation elapsed')
+  ok((await w.confirm({ memberId: 'r-2', by: 'chair' })).confirmedAt === 6500, 'confirm succeeds after probation elapsed')
   now = 1000
 }
 
@@ -244,5 +272,34 @@ const mk = (settings = {}, opts = {}) => createRecruit({ clock: () => now, setti
   ok(bogus.policy === 'closed' && bogus.decideBy === 'manager', 'policy/decideBy: an unrecognised value falls back to the declared default')
 }
 
+
+// ── SEATING FIX PROBES (Round 32) ──────────────────────────────────────────────────────────────────────
+// P1: the wake event must fire EXACTLY ONCE per member. `task/assign` is a WAKE action, and a replayed
+// confirm calling it twice would read as "the same member was called twice" - a stranger fault than no-members.
+{
+  const w = mkAsync()
+  const p = w.openPosting({ slot: "fellow", seats: 2 })
+  const a = w.apply({ postingId: p.id, candidate: "r-9" })
+  const o = w.offer({ applicationId: a.id })
+  w.accept({ offerId: o.id, by: "r-9" })
+  const first = await w.confirm({ memberId: "r-9", by: "chair" })
+  const second = await w.confirm({ memberId: "r-9", by: "chair" })
+  ok(first.seated === true, "P1: a confirmed member is actually SEATED in the kernel roster")
+  ok(w.__roster.seated.length === 1, "P1: the roster holds the member exactly once")
+  ok(w.__roster.wakes.length === 1, "P1: the wake event fired EXACTLY ONCE across two confirms")
+  ok(second.confirmed === true && second.seated === true, "P1: the replay still reports success without re-waking")
+}
+// P2: with NO roles declared there is nowhere to seat anyone, and that must be a DISTINCT named refusal -
+// "the system has no roles wired" must not read as "you do not qualify". A full slot is a different failure.
+{
+  const w = mkAsync({}, { members: null })
+  const p = w.openPosting({ slot: "fellow", seats: 1 })
+  const a = w.apply({ postingId: p.id, candidate: "r-8" })
+  const o = w.offer({ applicationId: a.id })
+  w.accept({ offerId: o.id, by: "r-8" })
+  const r = await throwsAsync(() => w.confirm({ memberId: "r-8", by: "chair" }))
+  ok(r.threw === true && r.code === "VMU_ENGINE_UNAVAILABLE", "P2: no declared roles refuses by NAME (VMU_ENGINE_UNAVAILABLE)")
+  ok(/no role slots/.test(r.msg || ""), "P2: the refusal says the roles are not wired, not that the hire failed")
+}
 console.log('=== VMU RECRUIT: ' + pass + ' passed, ' + fail + ' failed ===')
 process.exit(fail ? 1 : 0)

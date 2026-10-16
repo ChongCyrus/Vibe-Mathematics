@@ -230,10 +230,18 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
   }
 
   /** confirm(): probation must be over; named refusal with remaining time otherwise. */
-  function confirm({ memberId, by = null } = {}) {
+  // ★★ `confirm` is ASYNC because it now SEATS the member (see below). Its caller already awaits it
+  // (`:26`, `await recruit.confirm(request)`), so this changes no call site.
+  async function confirm({ memberId, by = null } = {}) {
     const s = staff.get(memberId)
     if (!s) throw refuse('VMU_RECRUIT_NOT_APPLIED', 'no staff record for ' + String(memberId), 'accept() first', { memberId })
-    if (s.confirmedAt) return { memberId, slot: s.slot, confirmed: true, confirmedAt: s.confirmedAt }
+    // ★ IDEMPOTENT BY CONSTRUCTION (probe P1): a replayed confirm returns HERE, before both the event and the
+    // seating, so the wake event is emitted exactly once per member. `task/assign` is a WAKE action - emitting it
+    // twice would call the same member twice, which reads as a far stranger fault than "no members".
+    // ★ A REPLAY REPORTS THE SAME TRUTH. `seated: true` belongs here too: the member IS in the roster (that is
+    // precisely why this path is idempotent), so omitting it would make the replay answer a weaker shape than the
+    // first call for no reason - a receipt that depends on WHEN it was asked. Probe P1 asserts this.
+    if (s.confirmedAt) return { memberId, slot: s.slot, confirmed: true, confirmedAt: s.confirmedAt, seated: true }
     const now = clock()
     if (s.probationUntil !== null && now < s.probationUntil) {
       throw refuse('VMU_RECRUIT_PROBATION_NOT_DUE', 'probation not over for ' + memberId + ': remaining=' + (s.probationUntil - now) + 'ms',
@@ -241,8 +249,22 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
     }
     s.confirmedAt = now
     s.by = by || s.by
+    // ★★★ THE SEATING, WITHOUT WHICH THE INSTITUTE CANNOT RUN (measured on a real machine). `confirm` used to stop
+    // at its own `staff` map: the kernel roster that the turn face reads (`kernel.members`, built from the
+    // pack-declared slots) was never populated by ANY published path, so every turn answered `no-members`,
+    // `turn(op:step, members:[…])` could not help, and no member was ever woken - the whole institute idled.
+    // `assignRole` is the published service that seats a member (docs/03 §2): it validates the slot, writes the
+    // member `live` into the roster, and emits `task/assign`, which IS the wake.
+    if (!members || typeof members.assignRole !== 'function') {
+      // ★ TWO DIFFERENT FAILURES MUST NOT SHARE ONE MESSAGE (the family this phase keeps removing): "the system has
+      // no roles wired" must not read as "you do not qualify". A FULL slot is a different failure and is already
+      // refused separately by `assignRole` as VMU_RESOURCE_BUDGET.
+      throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel declares no role slots, so a confirmed member cannot be seated',
+        'the roster is built from the pack-declared slots; load a pack that declares them - a framework with no roles has nowhere to seat anyone, and that is a wiring gap rather than a hiring failure')
+    }
+    await members.assignRole(s.memberId, s.slot)
     if (bus && typeof bus.emit === 'function') bus.emit('recruit/confirmed', { memberId, slot: s.slot, by: by || null })
-    return { memberId, slot: s.slot, confirmed: true, confirmedAt: now }
+    return { memberId, slot: s.slot, confirmed: true, confirmedAt: now, seated: true }
   }
 
   /** Read-only views (never mutate; every truncation is counted). */
