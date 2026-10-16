@@ -1216,79 +1216,42 @@ vmu.packs.active: [v5r]
 | `vmu.math.units.enabled` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.units.strictDimensions` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.appealDeadlineMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.appealDeadlineMs` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.appealReasonRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.appealReasonRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.budgetTokens` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.budgetTokens` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.budgetTurns` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.budgetTurns` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.budgetWallMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.budgetWallMs` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.chairNeutral` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.chairNeutral` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.chairTransferAudit` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.chairTransferAudit` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.committeeMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.committeeMax` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.committeeReportRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.committeeReportRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.confirmPreviousMinutes` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.confirmPreviousMinutes` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.disciplineExpelAllowed` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.disciplineExpelAllowed` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.disciplineMuteMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.disciplineMuteMs` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.disciplineWarnMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.disciplineWarnMax` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.emergencyKinds` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.emergencyKinds` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.emergencyQuorumRatio` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.emergencyQuorumRatio` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.interruptAllow` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.interruptAllow` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.interruptQuota` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.interruptQuota` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.lateAfterMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.lateAfterMs` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.liveCap` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.liveCap` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.materialsRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.materialsRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.minutesActionsRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.minutesActionsRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.minutesIncludeRefused` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.minutesIncludeRefused` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.minutesRetentionMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.minutesRetentionMs` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.quorumMin` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.quorumMin` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.quorumRatio` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.quorumRatio` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.quorumRecountMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.quorumRecountMs` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.recessMaxMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.recessMaxMs` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.recessResumeRequiresMotion` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.recessResumeRequiresMotion` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.speechDefaultMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.speechDefaultMs` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.speechExtendMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.speechExtendMax` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.speechExtendMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.speechExtendMs` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.speechMaxMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.speechMaxMs` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.speechQuotaPerMember` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.speechQuotaPerMember` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.typeCatalog` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.typeCatalog` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.meetings.unansweredInDenominator` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.unansweredInDenominator` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.verbatimEnabled` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.verbatimEnabled` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.verbatimRetentionMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.verbatimRetentionMs` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（★ 未具名：见 OBJECT_FALLBACKS，--check 会红） |
 | `vmu.migration.auto` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |
 | `vmu.migration.dryRunDefault` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |
 | `vmu.migration.dryrun` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |

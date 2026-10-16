@@ -381,6 +381,27 @@ export function collect() {
     perModule.push({ module: f, keys: keys.length, recovered })
   }
   out.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
+  // ★ R21: ONE KEY, ONE ROW - AND THE ROW THAT KNOWS ITS DEFAULT WINS. A module that READS a key but obtains its
+  // default by import (rather than declaring the literal itself) now yields a second row for the same key with
+  // `literal: null`. That is exactly what happened when the meetings face's data tables moved into a companion
+  // module: the declaring module still yields the literal, while the reader yields null, and the block ended up
+  // declaring the key twice - which the invariant below correctly refuses. The fix is NOT to record these keys in
+  // EFFECTIVE_DEFAULTS (that table means "the default genuinely cannot be inferred", and these defaults ARE known -
+  // filing them there would be a false name), and NOT to re-inline the data (the split is the point). It is to keep
+  // the row that carries the literal and drop the null duplicate, so attribution still points at the declaring
+  // module. Order-independent by construction because it runs after the sort.
+  {
+    const byKey = new Map()
+    for (const d of out) {
+      const prev = byKey.get(d.key)
+      if (!prev) { byKey.set(d.key, d); continue }
+      if ((prev.literal === null || prev.literal === undefined) && d.literal !== null && d.literal !== undefined) byKey.set(d.key, d)
+      else if (prev.literal !== null && prev.literal !== undefined && (d.literal === null || d.literal === undefined)) continue
+      else continue
+    }
+    out.length = 0
+    out.push(...byKey.values())
+  }
   return { defs: out, perModule, skipped, preexisting, handDeclared }
 }
 

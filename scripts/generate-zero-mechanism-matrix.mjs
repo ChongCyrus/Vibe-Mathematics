@@ -148,6 +148,7 @@ const EXPECT = {
   partnership: G('ok 或 object', '实测（轮 276）：零声明下 status() ⇒ ok（entities=0、zeroMechanism=true 自曝 ✓）；validateInvoice() 对**缺声明的税务字段位【逐位点名】**并拒（VMU_TAX_FIELD_MISSING）；绑定未登记实体拒（VMU_ENTITY_UNKNOWN）✓'),
   reviewers: G('ok 或 object', '实测（轮 279）：零声明下 status() ⇒ ok（reviewers=0、zeroMechanism=true 自曝 ✓）；assign() 对【已声明冲突】具名拒（VMU_COI_VIOLATION）、对【达并发上限】具名拒（VMU_REVIEWER_OVERLOADED）；盲评解绑无理由拒（VMU_BLIND_UNBIND_DENIED）✓'),
   guard: G('EXPECT_NA', '非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）'),
+  'meetings-defaults': G('EXPECT_NA', 'R21 拆出（纯数据：WIRED_KEYS／UNWIRED_REASONS／reasonFor／DEFAULTS，无 `status()`、无 `create*` 工厂 ⇒ 不适用 ✓）—— 行为由 vmu-meetings／vmu-meeting-parity／vmu-meeting-domain 套件覆盖 ✓'),
   // Round 90-91: the grant face (temporary, scoped, single-command authorization, ported from the v5r line). Its
   // zero mechanism is `vmu.grant.enabled=false`, where NOTHING may be granted or checked and every attempt is
   // refused BY NAME - so the honest expectation is a named refusal, not an ok.
@@ -453,3 +454,4 @@ const main = async () => {
   process.exit(mism.length > 0 ? 1 : 0)
 }
 main()
+
