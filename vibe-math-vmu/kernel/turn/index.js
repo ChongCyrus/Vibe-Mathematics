@@ -848,7 +848,7 @@ export function createTurnOrchestrator({
       // somewhere" into "this line, in this function". The bound is deliberate: a stack from a deep async chain can be
       // long, and a receipt is not a log file.
       const stack = typeof e === 'object' && e && typeof e.stack === 'string'
-        ? e.stack.split('\n').slice(0, 8).map((l) => l.trim()).join(' | ').slice(0, 900)
+        ? (function () { const all = String(e.stack).split('\n'); const head = all.slice(0, 8).map((l) => l.trim()); const ci = all.findIndex((l) => /caused by/.test(l)); const tail = ci >= 0 ? all.slice(ci, ci + 5).map((l) => l.trim()) : []; return head.concat(tail).join(' | ').slice(0, 1400) })()
         : null
       return { ok: false, code: e && e.code, message: String((e && e.message) || e), receipt: null, stack }
     }
@@ -880,6 +880,7 @@ export function createTurnOrchestrator({
 }
 
 export default createTurnOrchestrator
+
 
 
 
