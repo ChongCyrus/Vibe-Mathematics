@@ -376,3 +376,43 @@ closureVote: { cast:false, eligible:["m1"], missing:["m1"], reason:"silence bloc
 1. ★★★★ **给 `run()` 路径上的 `roster`／`meetingState`／`quorum` 加 `null` 守卫**，★ **或在 `step` 的入口就【具名拒】**（★ 例如"这一回合需要一场已开的会议；★ 先 `open` 一场" ✓）—— ★★ **两者都可，★ 但必须有其一** ✓
 2. ★★★ **把栈留进回执**（★ `step` 的 catch 现在只留 `message` ✓）⇒ ★★ **"吞掉栈正是它在转录里不可诊断的原因"** ✓
 3. ★★ **然后重跑** ⇒ ★ **回合若能跑通，★ 代理的 `vote_solved` 才会真的到达谓词** ✓
+
+---
+
+## 15. ★★★★★★★★★★ Round 61：**栈一开口，真相就出来了 —— ★ 抛出点【不在 vmu 里】**
+
+### 15.1 ★★★★★★★★ 而“把栈留进回执”这一步【立刻就付清了】
+★ **上一轮加的 10 行**（★ 把 `step` 的 catch 里保留 8 帧栈、★ 上限 900 字符 ✓）⇒ ★ **本次运行里【stack 出现 3 次】** ✓✓
+★ **逐字**：
+```
+TypeError: Cannot read properties of undefined (reading 'id')
+  at ContinuableActivationRegistry.liveLineage        (…/@deepseek-ai/dsh-subagent/lib/index.js:1038:31)
+  at ContinuableActivationRegistry.closingTeardownFor (…:1052:24)
+  at ContinuableActivationRegistry.assertAdmitting    (…:946:24)
+  at SubagentContinuationManager.startContinuable     (…
+```
+⇒ ★★★★★★★ **即：★ 抛出点在 `@deepseek-ai/dsh-subagent`（★ DSH 宿主【自己的】子代理库），★ 而【不在 vmu 里】** ✓✓✓
+⇒ ★★★★ **而函数名本身就是诊断**：★ **`startContinuable` → `assertAdmitting` → `closingTeardownFor` → `liveLineage`** ⇒ ★★ **宿主在【上一条 continuable 还在收尾】时，★ 拒绝开下一条** ✓✓✓
+
+### 15.2 ★★★★★ 于是整条因果链【完全闭合】
+1. ★★ **vmu 的成员回合通过 `deliverViaSubagents` 调 `subagents.startContinuable(...)`** ✓
+2. ★★★ **宿主的 `ContinuableActivationRegistry` 在 `liveLineage` 里抛 `reading id`**（★ 一条 lineage 为 `undefined` ✓）
+3. ★★ **于是该回合抛异常 ⇒ 没有回复 ⇒ 没有 `vote_solved`** ✓✓
+4. ★ **于是 `closureVote.missing` 【永远填不满】** ✓
+5. ★ **于是研究所永远不结题** ✓
+⇒ ★★★★★★ **而这一整条，★ 与“代理不肯投票”毫无关系** ✓✓ —— ★ **它是【交付层的时序问题】** ✓✓
+
+### 15.3 ★★★★ 为什么此前几轮都没找到（★ 值得记下）
+★ **我逐个自读了 5 个候选点**（★ `pick.id`／★ `open` 的 `member`／★ `charterMemberBindings`／★ `grant.js`／★ `kernel/index.js:829`），★ **它们【全都已守卫】** ✓
+★★ **而真相是：★ 抛出点根本【不在我的代码里】** ⇒ ★★ **所以无论读多少 vmu 的代码都找不到** ✓✓
+★★★ **而把栈留进回执【只花了 10 行】，★ 就一次定位了** ✓✓ —— ★★ **“这正是『让失败自己说明自己』的价值”** ✓✓
+
+### 15.4 ★★★ 下一批（★ 而这次是【有据可依】的）
+1. ★★★★ **在 vmu 这一侧【处理】它** —— ★ 选项：★ **(a)** 交付失败时**按名用具名拒**（★ 把宿主的信息原样带出去，★ 而不是让它变成一个裸 TypeError ✓）；★ **(b)** **重试一次**（★ 若失败只是“上一条还在收尾”，★ 退避后应可成功 ✓）；★ **(c)** **串行化**（★ 确认上一条真的收尾后再开下一条 ✓）
+2. ★★ **并把宿主的信息保留在原样文案里**（★ 便于日后区分“宿主拒绝”与“框架拒绝” ✓）
+3. ★★ **然后重跑** ⇒ ★ **回合若能跑通，★ 代理的 `vote_solved` 才会到达谓词，★ `cast` 才可能翻转** ✓
+★ **仍未主张收敛**：★ `cast:true` 0 次 ⇒ **按铁律不主张** ✓
+
+### 15.5 ★ 本轮读数的其余部分
+★ `"paper": 26`／★ `silence blocks closure: 3`／★ **`reading id` 14 次**（★ 少于上一轮 33 次 —— ★ 但仍是同一个原因 ✓）
+★ **213 秒／1,435,663 tokens** ✓
