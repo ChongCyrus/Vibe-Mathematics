@@ -187,7 +187,7 @@ export function facesFrom(services = {}, owners = FIELD_OWNERS) {
  * `extract` lets a host whose handle carries the reply elsewhere say where it is; the built-in order is `reply`, then
  * `text`, which covers the two shapes seen in practice.
  */
-export function deliverViaSubagents(subagents, extract = null, { provider = null } = {}) {
+export function deliverViaSubagents(subagents, extract = null, { provider = null, parent = null, signal = null } = {}) {
   // ★★★ ROUND 63: A MEMBER TURN IS FOREGROUND ONE-SHOT DELEGATION, AND THE HOST SAYS SO ITSELF. The stack captured on
   // a real machine came from the continuable-activation registry - startContinuable -> assertAdmitting ->
   // closingTeardownFor -> liveLineage - which refuses to admit a NEW activation while a previous one is still being
@@ -235,7 +235,7 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
       await new Promise((r) => setTimeout(r, 250))
       try {
         handle = oneShot
-          ? await subagents.start(provider, Object.assign({ label: spec.label, prompt: spec.request.prompt }, spec.oneShotRequest || {}))
+          ? await subagents.start(provider, Object.assign({ label: spec.label, prompt: spec.request.prompt, parent, signal }, spec.oneShotRequest || {}))
           : await subagents.startContinuable(spec)
       } catch (e2) {
         throw refuse('VMU_ENGINE_UNAVAILABLE',
