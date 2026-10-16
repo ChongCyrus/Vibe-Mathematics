@@ -258,8 +258,13 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(keys.includes('to') && keys.includes('why') && keys.includes('next_step') && seen2[0].to === 'r-2',
     'T41. **** and the host SEES them: the delivery spec names the member, the reason and the next step, so supervision does not depend on reading the prompt text',
     { keys, to: seen2[0] && seen2[0].to })
-  ok(JSON.stringify(keys) === JSON.stringify(['label', 'next_step', 'request', 'to', 'why']),
-    'T42. **** PROPERTY: the spec key set is exactly what the original wake takes plus the trace label - the two sides wake a member with the same information',
+  // ★★ ROUND 71: THE HOST'S OWN CONTINUABLE CONTRACT ADDS THREE REQUIRED FIELDS. It types the request as
+  // `ContinuableCreateRequest { sessionId; parent: Agent; signal: AbortSignal }`, and this spec previously supplied only
+  // the wake information - label, to, why, next_step, request. The host then read `agent.options` off a parent that was
+  // never sent, which is the "reading 'options'" failure seen thirty-five times on a real machine. The wake information
+  // is still exactly what the original carries; the three transport fields are what the host requires on top.
+  ok(JSON.stringify(keys) === JSON.stringify(['label', 'next_step', 'parent', 'request', 'sessionId', 'signal', 'to', 'why']),
+    'T42. **** PROPERTY: the spec key set is the original wake plus the trace label PLUS the three fields the host\'s continuable contract requires (parent, signal, sessionId)',
     { keys })
   let noSeam = null
   try { deliverViaSubagents(null) } catch (e) { noSeam = e }

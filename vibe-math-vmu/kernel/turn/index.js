@@ -230,6 +230,14 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
       why: turn && typeof turn.why === 'string' ? turn.why : null,
       next_step: turn && typeof turn.nextStep === 'string' ? turn.nextStep : null,
       request: { prompt: [{ type: 'text', text: String(text) }] },
+      // ★★★ ROUND 71: THE CONTINUABLE REQUEST HAS ITS OWN REQUIRED SHAPE. The host types it as
+      // ContinuableCreateRequest { sessionId; parent: Agent; signal: AbortSignal }, and this spec supplied only a
+      // label and a prompt - so the same delegationDepthOf read gent.options off a parent that was never there,
+      // which is the "reading 'options'" seen thirty-five times on a real machine. The three required fields are now
+      // carried, from the same values the one-shot path uses.
+      parent,
+      signal,
+      sessionId: (parent && parent.session && (parent.session.id || (parent.session.header && parent.session.header.id))) || null,
     }
     // ★★★ ROUND 62: THE HOST'S REGISTRY CAN REFUSE A TURN THAT IS OTHERWISE FINE, AND THAT MUST BE NAMED.
     // A real machine's stacks - captured only after the receipt started keeping them - show the throw coming from the
@@ -880,6 +888,7 @@ export function createTurnOrchestrator({
 }
 
 export default createTurnOrchestrator
+
 
 
 
