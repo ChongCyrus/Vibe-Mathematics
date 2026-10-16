@@ -110,20 +110,20 @@
 | 11 | `v5r-prompts.js:51` 等（61/67 条） | `math_computation：可用引擎 无。` | **(b)** | 能力快照；真实能力应按轮现算（`docs/26:370`） | 删掉这段（它属于 `{{ statusBlock }}` 的现算内容） |
 | 12 | `v5r-prompts.js:51–55` 等（9 条） | `[任务板] 进行中 0｜可认领 1｜我负责 无` | **(b)** | 任务板是每轮现算事实（`docs/26:264`） | 同上：交给 `{{ statusBlock }}` |
 | 13 | `v5r-prompts.js:51–55`、`73`、`80–82` 等 | `任务 t-1 当前 revision 是 1，不是 99` / `由 acad 分派` / `t-999` | **(b)** | 具体任务与成员 id；`t-999` 是刻意构造的异常值 | 语料保留（证据 ✓），但**不得**作为 section 投递 |
-| 14 | `v5r-charter.js:51/52/56` | `由 {{ setting:vmu.member.hiredBy }} 雇入`、`用途：{{ setting:vmu.member.direction }}`、`任务期至：{{ setting:vmu.member.term }}` | **(b)** | 这三个键 schema/planned 都没有 ⇒ **渲染成空串**（实测 `由  雇入`、`任务期至：。`） | 改为循环按成员事实供值（`docs/26:216` 的后半句），或登记真键并由 loop 注入 |
-| 15 | `v5r-charter.js:267/290` | `本所的领头人是**院士 {{ setting:vmu.institute.leaderId }}**` | **(b)** | `leaderId` 只在 `planned.js:69`（未接线）⇒ 空串 ⇒ "**院士 **" | 补真键＋循环注入；或整块改为 leader-conditional（含 leaderless 文本） |
-| 16 | `v5r-charter.js:353/373` | `辩论轮次上限 {{ setting:vmu.verdict.maxRounds }} 轮` | **(b)** | **键名错**：pack 自己的设置是 `vmu.meetings.verdictMaxRounds`（`v5r-core.js:69`）⇒ 渲染成"上限  轮"（实测 ×2/角色） | 改用 `vmu.meetings.verdictMaxRounds`（或把该键登记为别名） |
-| 17 | `v5r-charter.js:660` | `Lean 形式化：{{ setting:vmu.formal.modeLine }}详见…` | **(b)** | `modeLine` 无来源 ⇒ 引导语消失；同族已有 `modeLabel`（schema:147） | 用 `modeLabel`，或补 `modeLine` 并接线 |
-| 18 | `v5r-charter.js:678` | `【研究所会议 {{ setting:vmu.meeting.current }} 进行中 —— …】` | **(b)** | `vmu.meeting.current` 无来源（schema 里是 `vmu.meetings.*`）⇒ 会议标题丢 id | 用 loop 注入的 `{{ setting:vmu.meetings.currentId }}`（或新增 `{{ meeting }}` 变量） |
+| 14 | **找不到**（拆前 `v5r-charter.js:51/52/56`） | `由 {{ setting:vmu.member.hiredBy }} 雇入`、`用途：{{ setting:vmu.member.direction }}`、`任务期至：{{ setting:vmu.member.term }}` | **(b)** | 这三个键 schema/planned 都没有 ⇒ **渲染成空串**（实测 `由  雇入`、`任务期至：。`） | 改为循环按成员事实供值（`docs/26:216` 的后半句），或登记真键并由 loop 注入。★ **行号无法重锚**：搜过上述三个短语与 `vmu.member.hiredBy`／`vmu.member.direction`／`vmu.member.term`，在 `v5r-charter.js`／`v5r-blocks-a.js`／`v5r-blocks-b.js`／`v5r-persona.js`／`v5r-prompts.js` **全部 0 命中**（task-226 实测）⇒ 这不是行号漂移，是**该行描述的内容本身已不在 pack 里** |
+| 15 | `v5r-blocks-a.js:23`（拆前 `v5r-charter.js:267/290`） | `本所的领头人是**院士 {{ setting:vmu.institute.leaderId }}**` | **(b)** | `leaderId` 只在 `planned.js:69`（未接线）⇒ 空串 ⇒ "**院士 **" | 补真键＋循环注入；或整块改为 leader-conditional（含 leaderless 文本）。★ 重锚：短语"本所的领头人"现于 `v5r-blocks-a.js:23`／`:280`／`:303`（`v5r-persona.js:27`／`:106` 亦有） |
+| 16 | `v5r-blocks-a.js:366`（拆前 `v5r-charter.js:353/373`） | `辩论轮次上限 {{ setting:vmu.verdict.maxRounds }} 轮` | **(b)** | **键名错**：pack 自己的设置是 `vmu.meetings.verdictMaxRounds`（`v5r-core.js:69`）⇒ 渲染成"上限  轮"（实测 ×2/角色） | 改用 `vmu.meetings.verdictMaxRounds`（或把该键登记为别名）。★ 重锚：短语"辩论轮次上限"现于 `v5r-blocks-a.js:366`／`:386`（`v5r-persona.js:62`／`:186`／`:191` 亦有） |
+| 17 | `v5r-blocks-a.js:675`（拆前 `v5r-charter.js:660`） | `Lean 形式化：{{ setting:vmu.formal.modeLine }}详见…` | **(b)** | `modeLine` 无来源 ⇒ 引导语消失；同族已有 `modeLabel`（schema:147） | 用 `modeLabel`，或补 `modeLine` 并接线。★ 重锚：短语"Lean 形式化："现于 `v5r-blocks-a.js:675` |
+| 18 | `v5r-blocks-a.js:694`（拆前 `v5r-charter.js:678`） | `【研究所会议 {{ setting:vmu.meeting.current }} 进行中 —— …】` | **(b)** | `vmu.meeting.current` 无来源（schema 里是 `vmu.meetings.*`）⇒ 会议标题丢 id | 用 loop 注入的 `{{ setting:vmu.meetings.currentId }}`（或新增 `{{ meeting }}` 变量）。★ 重锚：短语"研究所会议"现于 `v5r-blocks-a.js:694`（语料 `v5r-prompts.js:83`／`:84` 亦有） |
 | 19 | `v5r-core.js:208–211` | `｜角色：{{ role }} ｜阶段：{{ phase }}` | **(b)** | 面向成员的展示行用了种类键 | `{{ roleLabel }}` |
-| 20 | `v5r-charter.js:907` | `text: … (b.texts['with-leader'] \|\| b.texts.researcher \|\| '')` | **(b)** | 给**所有角色**的默认文本取了 `researcher` 版 ⇒ 基线角色错位（与 persona 同病） | `role` 类段不要给"默认文本"，只给绑定；或让默认随 `ctx.role` 解析 |
-| 21 | `v5r-charter.js:19–20`（注释） | `member.id -> {{ member }}` / `member.kind -> {{ role }}`（绑定维） | **(c)** | 注释里的对照表：把 `role` 写成面向读者的身份 | 注释点明 `roleLabel` 才是显示名 |
+| 20 | `v5r-charter.js:119`（拆前 `v5r-charter.js:907`） | `text: … (b.texts['with-leader'] \|\| b.texts.researcher \|\| '')` | **(b)** | 给**所有角色**的默认文本取了 `researcher` 版 ⇒ 基线角色错位（与 persona 同病） | `role` 类段不要给"默认文本"，只给绑定；或让默认随 `ctx.role` 解析。★ 重锚：该短语逐字命中 `v5r-charter.js:119`（`charterSections` 内） |
+| 21 | `v5r-charter.js:13`（拆前 `v5r-charter.js:19–20`） | `member.id -> {{ member }}` / `member.kind -> {{ role }}`（绑定维） | **(c)** | 注释里的对照表：把 `role` 写成面向读者的身份 | 注释点明 `roleLabel` 才是显示名。★ 重锚：该注释块（"WHAT THE SOURCE READS"）现于 `v5r-charter.js:9–18`，`member.kind              -> {{ role }}` 在第 **13** 行 |
 | 22 | `v5r-prompts.js:56` 等 | `"charterChars":797` | **(c)** | 采集期度量（长度会随运行变化） | 保留（证据），但注明它**不是**运行时字段 |
 | 23 | `v5r-core.js:78–82` | `capacity: 1` / `capacity: 0` / `capacity: 12` | **(a)/(c)** | 声明层数据 ✓，但 `0` 的含义（无限/零）未注明 | 补一句注释 |
 | 24 | `v5r-core.js:65–75` | `quorumCap:3`、`hardLimitMs:1800000`、`wakeRetries:5` … | **(a)** | 属于 pack 的机制默认层（数据 ✓） | 无需改；仅需与章程/文档同键名 |
-| 25 | `v5r-charter.js:730–734` | `每轮最多同时唤醒 {{ setting:vmu.turn.maxParallel }} 名…` | **(a)** | 全部走 settings（`docs/26:318–320`）✓ | —— |
-| 26 | `v5r-charter.js:551–575` 等 | 回复目录里的示例 `{"to":"r-2"…}`、`"t-3"`、`"expected_revision":2`、`"contextPct": 40` | **(c)** | 这些是**示例值**（散文的一部分）✓，但 `r-2`／`t-3` 恰好是真实存在的 id，读者可能误以为是约定 | 示例改成中性记号（`r-x`／`t-x`／`contextPct: <0-100>`） |
-| 27 | `v5r-charter.js:699`、`v5r-persona.js:48` 等 | `例如 Members/acad/Progress/progress.md` | **(c)** | 说明性举例 ✓（但仍是具体成员名） | 可选：改 `Members/<你的 id>/…` |
+| 25 | `v5r-blocks-b.js:37`（拆前 `v5r-charter.js:730–734`） | `每轮最多同时唤醒 {{ setting:vmu.turn.maxParallel }} 名…` | **(a)** | 全部走 settings（`docs/26:318–320`）✓ | ——　★ 重锚：短语"每轮最多同时唤醒"现于 `v5r-blocks-b.js:37`（另有 `:679`） |
+| 26 | `v5r-blocks-a.js:567`（拆前 `v5r-charter.js:551–575`） | 回复目录里的示例 `{"to":"r-2"…}`、`"t-3"`、`"expected_revision":2`、`"contextPct": 40` | **(c)** | 这些是**示例值**（散文的一部分）✓，但 `r-2`／`t-3` 恰好是真实存在的 id，读者可能误以为是约定 | 示例改成中性记号（`r-x`／`t-x`／`contextPct: <0-100>`）。★ 重锚：`"to":"r-2"` 现于 `v5r-blocks-a.js:567`／`:600`／`:609`／`:611`／`:637`（回复目录三处站点所在段） |
+| 27 | `v5r-blocks-a.js:212`（拆前 `v5r-charter.js:699`）、`v5r-persona.js:48` 等 | `例如 Members/acad/Progress/progress.md` | **(c)** | 说明性举例 ✓（但仍是具体成员名） | 可选：改 `Members/<你的 id>/…`。★ 重锚：该示例短语现于 `v5r-blocks-a.js:212`（`v5r-persona.js:48`／`:146`／`:151`／`:156` 亦有） |
 | 28 | `v5r-prompts.js:51–117` | 每条尾部同一段 ~700 字回复目录／状态块 | **(c)** | 采集重复 ✓（不是错误），但说明语料**不能**整体当 section | 见 §6 建议 |
 
 ---
@@ -164,11 +164,11 @@
 
 ## 4. 读起来像"某一次运行快照"而不是"可复用模板"的块
 
-1. **整个 `v5r-persona.js`（行 21–203）**：`院士 acad`、`代号 r-1/r-2/r-3`、`m = 1/2/3`、`辩论轮次上限 3 轮`、`VibeMath/Projects/default/Institutes/institute/Members/<acad|r-1|r-2|r-3>/` —— 一次运行的四名成员、一个研究所、三个法定票数 ✗。
+1. **整个 `v5r-persona.js`（行 21–219；`PERSONA_SECTIONS` :21、`PERSONA_BINDINGS` :102）**：`院士 acad`、`代号 r-1/r-2/r-3`、`m = 1/2/3`、`辩论轮次上限 3 轮`、`VibeMath/Projects/default/Institutes/institute/Members/<acad|r-1|r-2|r-3>/` —— 一次运行的四名成员、一个研究所、三个法定票数 ✗。
 2. **整个 `v5r-prompts.js`（行 51–117）**：67 条**采集**提示，含 `轮次 1..12`、`有表决权者 1..4 人`、`acad`／`r-1`／`t-999`、任务板计数、`可用引擎 无` ✗（作为证据 ✓；作为 section ✗）。
-3. **`v5r-charter.js` 的 `v5r-charter-roster`（行 92–116）**：`· **院士 {{ member }}（你）**` —— 这句**只在读者是院士时成立**，而该块的基线（`CHARTER_SECTIONS` 默认，行 907）会把它送给所有人 ✗（实测：researcher 的装配里也出现）。
-4. **`v5r-charter.js:199` 的"例如 `Members/acad/Progress/progress.md`"** —— 举例用了采集期成员 ✓（可接受，但同一文件其它处已改成 `{{ member }}`，前后不一致）。
-5. **`v5r-charter.js:551–575` 的回复目录示例**：`{"to":"r-2"…}`、`"t-3"`、`"contextPct": 40` —— 示例值恰好是真实 id/轮次，容易被读成约定 ✗（低危）。
+3. **`v5r-blocks-a.js:67` 的 `v5r-charter-roster`（正文 `:74`；拆前写作"`v5r-charter.js` 的 `v5r-charter-roster`（行 92–116）"）**：`· **院士 {{ member }}（你）**` —— 这句**只在读者是院士时成立**，而该块的基线（`CHARTER_SECTIONS` 默认，`v5r-charter.js:131`）会把它送给所有人 ✗（实测：researcher 的装配里也出现）。
+4. **`v5r-blocks-a.js:212`（拆前 `v5r-charter.js:199`）的"例如 `Members/acad/Progress/progress.md`"** —— 举例用了采集期成员 ✓（可接受，但同一文件其它处已改成 `{{ member }}`，前后不一致）。
+5. **`v5r-blocks-a.js:567`（拆前 `v5r-charter.js:551–575`）的回复目录示例**：`{"to":"r-2"…}`、`"t-3"`、`"contextPct": 40` —— 示例值恰好是真实 id/轮次，容易被读成约定 ✗（低危）。
 
 ---
 

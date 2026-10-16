@@ -31,6 +31,7 @@ vibe-math-vmu/
       notices.js              ← 这个包的通知措辞（四种形态）
       middleware/             ← ★ 这个包贡献的策略（纯函数，可读可测可替换）
         prompt-switches.js    ← 哪些可选段开关、发哪份回复目录、会议三态、形式化四分支
+        waitsemantics.js      ← ★ 轮 8：v5r 的"等待/投递"规范（来自官方 agent-teams 的 B1／B2）：**本部署**的活跃对等体词表（`running`/`provisioning`）、"无活跃对等体即立刻 noProgress"、以及"成功投递即持久、不要重发"的**条件版**（只在 `durable:true` 时是无条件承诺；无 store 时具名降级）。★ 内核只给机制（`kernel/activity.js` 的 `activePeers` 可选接缝、`kernel/idempotency.js` 的票据账本），**策略文本住在这里** ✓
         stall-meeting.js      ← ★ 轮 10：v5r 的"静止⇒开会"（`control/idle` 的 M2 模块；阈值＝3 × `vmu.control.idleAfterMs`＝v5r 的 360000；经 `api.services.get('vmu.meetings')` 真开会）
         motion-box.js         ← ★ 轮 13：v5r 的"动议⇒开箱"政策（挂 `meeting/motion`；开真箱 ＋ 懒绑 `vmu.meetings` 的 `bindBox`；选项词表＝会议侧 1/0，**本 pack 政策**）
         artifact-counter.js   ← ★ 轮 20（task-126）：**指标计数者**（挂**回合内**的 `tools/result` ＋ 两个 `…/job-settled`；经 `api.services.get('vmu.metrics')` 的 `observe(...)` 写观测，指标名须由部署在 `vmu.metrics.indicators` 声明；未声明 ⇒ **具名跳过并被计数**）。★ 它是"`threshold` 报告能否自主开火"的**唯一收口条件**，且**故意不挂** `agent/turn-stopping`（报告边界就在那个钩子上，同刻写入要到下一轮才可见）

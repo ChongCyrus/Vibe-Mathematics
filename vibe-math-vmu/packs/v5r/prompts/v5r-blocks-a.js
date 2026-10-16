@@ -95,6 +95,40 @@ export const CHARTER_BLOCKS_A = Object.freeze([
       ].join('\n'),
     },
   },
+  // ── 一-b、temp 名册的【所长条件】两句 ＋ 雇主行（★ phase-3 parity 修复，task-223）──────────────────────────
+  // WHY THIS BLOCK EXISTS. The prompt-content audit (`docs/acceptance/phase3-parity-prompt-content.md`) found TWO
+  // source sentences ABSENT from the temp branch - not reworded, missing:
+  //   · `vibe-math-v5r.js:3173-3174` — the temp's view of the leader: "· **院士 X** —— 本所领头人，组织与协调
+  //     中心。它统筹全所、分派任务、主持" + "    会议、督导进度，也可以直接分派任务给你。";
+  //   · `vibe-math-v5r.js:3255` — the temp's leaderless line: "· 本所当前没有在册院士：你只需向**雇主**负责
+  //     （它给你派活）。".
+  // WHY A LEADER-CONDITIONAL BLOCK AND NOT `texts.temp`. The source branches BOTH on the member kind AND on
+  // `acadId` (`if (kind === 'temp') { if (acadId) … ; … if (!acadId) … }`). `v5r-charter-roster` is `kind: 'role'`,
+  // and a role block has no leader dimension - `charterSections()` picks `texts[role]` with no way to ask whether a
+  // leader exists. That is exactly how the two sentences went missing. The variant table already expresses the
+  // leader dimension, so they are restored here, where `charterSections({ hasLeader })` can select them.
+  // ★ The employer line (`vibe-math-v5r.js:3176`) is carried with both cases, because the source appends
+  //   "；院士也可以给你派活。" only when a leader exists and "。" when none does.
+  // ★ RESIDUAL, NAMED (not hidden): this block is leader-conditional, so `charterSections()` emits it for EVERY
+  //   role; the SECTION POLICY (outside this file) must select it for temps only. `CHARTER_ROLE_BINDINGS` cannot
+  //   express "temp AND leaderless" - that gap is named in the round report as a follow-up for the assembly.
+  {
+    name: 'v5r-charter-roster-temp',
+    order: 702.5,
+    range: 'pack',
+    kind: 'leader-conditional',
+    texts: {
+      'with-leader': [
+        '  · **院士 {{ setting:vmu.turn.leaderId }}** —— 本所领头人，组织与协调中心。它统筹全所、分派任务、主持',
+        '    会议、督导进度，也可以直接分派任务给你。',
+        '  · 你的雇主：{{ setting:vmu.turn.tempHiredBy }}。它给你派活；院士也可以给你派活。',
+      ].join('\n'),
+      leaderless: [
+        '  · 你的雇主：{{ setting:vmu.turn.tempHiredBy }}。它给你派活。',
+        '  · 本所当前没有在册院士：你只需向**雇主**负责（它给你派活）。',
+      ].join('\n'),
+    },
+  },
   // the snapshot disclaimer is SHARED and, like the source, says the authoritative list lives in the state block
   {
     name: 'v5r-charter-roster-snapshot',

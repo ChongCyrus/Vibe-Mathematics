@@ -142,6 +142,28 @@
 
 ---
 
+## 10. ★★★ 更正：118 里有 **21 个其实【被读了】** —— 生成器的判据漏了**模板代换**（★ 我的头条数字被高估）
+
+★ `task-217` 的台账（`phase3-inert-keys-ledger.md`，449 行）查出**我这份文件的判据有一个洞**，★ **它比 118 行本身重要**：
+
+★★ **事实**：★ `kernel/prompt/index.js:435` 做 `{{ … }}` 代换；`:438` 把 `setting:` 列入白名单；★★ **`:445` `if (key.startsWith('setting:')) value = ctx.settings ? ctx.settings[key.slice(8)] : undefined`** ⇒ ★★ **凡在 packs 里写成 `{{ setting:<key> }}` 的键，装配时【真的从 settings 读】** ✓
+★ **实例**（出现在 `v5r-blocks-a/b.js`／`v5r-charter.js`／`v5r-assistant.js`）：`vmu.turn.leaderId`／`objective`／`maxParallel`／`toolCallsPerTurnCap`／`memoryCeilingMb`／`protocolPath`／`verifyTarget`／`formal*`／`paper.reviewedMember` … ✓
+
+⇒ ★★ **结论（三条，都要落）**：
+1. ★★ **对那 21 个键，"未接线"这个词是【不真的】** ⇒ ★ **该修的是【判据/表格】，不是这些键** ✓
+2. ★★ **生成器 `hasConsumer()` 有真实缺陷**：★ **它看不见模板读取** ⇒ ★ **"1110 wired／113 未接线"这组数【按此被误分类】** ⇒ ★ **应给判据补上"packs 里的 `{{ setting:X }}`"这一路消费者** ✓
+3. ★★ **我这份文件 §1 的标题与读法应加一句限定**：★ 正确说法不是"118 键无人读"，而是"★ **118 键是【静态判据看不见消费者】的键，★ 其中约 21 个经模板路径真有读者**" ✓
+
+★★ **第二条口径发现（同样重要）**：★ 118 键是**并集** —— **93 个 `planned` ＋ 25 个 CORE（手写）** ⇒ ★★ **"planned ⇒ 未接线"不成立**（★ `PLANNED_DEFS` 共 111 键，★ **其中 18 个 planned 键是被读的**）✓
+⇒ ★★ **因此"删键"的杠杆【不是改 schema】**：★ `settings/planned.js` 是**生成物**（`generate-planned-settings.mjs --check` 要求它与设计卷逐字一致 ⇒ **手改会被判失败，`--write` 会把改动覆盖回来**）⇒ ★★ **DELETE ＝ 撤回【声明它的那份设计卷】里的那条宣称**（★ 台账 §4 每行给出卷号）✓
+⇒ ★★ **而 WIRE 必须同步改卷内"未实现/规划"的措辞**，★ 否则 `audit-doc-planned-claims.mjs` 的规则**正好会把它判成活缺陷**（★ 表已接线、卷还说未实现）✓
+
+**★ 台账的裁定分布（可逐批处置）**：**WIRE 25**（★ 上述 21 个模板代换键 ＋ `core.storeBackend`（→`kernel/store.js`：★ 耐久后端实现了，**选后端的旋钮却没人读**）＋ 其余）／**DELETE 13**（★ **运行时零足迹**的三域：`a11y`(7)＋`sovereignty`(3)＋`supplychain`(3)，★ 每行报出 grep 命中）／**UNDECIDED 80**（★ 阻碍统一写成"**这是产品决定、不是代码事实**"）✓
+★★ **5 个"未判定"键【一个都没判 DELETE】** ✓
+★★ **红线的守持**：★ 台账**没有**打开 41 份设计卷正文、★ **没有**评估"删键的外部代价"（★ **可能有部署方在 config 里设过**）、★ `domainWordInModules` 是**子串计数**只当弱信号 ⇒ **全部具名** ✓
+
+---
+
 ## 7. 没核（★ 与"核了"分开）
 
 1. ★ **没有逐键读模块** ⇒ ★ `hasConsumer` 是**静态**判据，★ 与生成器 `UNDETERMINED` 那条自陈一致："**可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有**" ⇒ ★ **这 5 个"未判定"键尤其不能当死键处理** ✓
