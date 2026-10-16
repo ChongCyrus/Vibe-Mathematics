@@ -163,3 +163,71 @@ cause:  SubprocessExecutableNotFoundError: command "--stdin" was not found on PA
    ★ **判据**：★ **直接对这样一条拒绝做 `boundedToolResult`，★ 看它是否抛** ✓
 2. ★★ **调用方缺陷 D7 本身**：★ 修好 argv 组装（★ 让真正的可执行文件回到 `argv[0]` ✓），★ **这样这条拒绝根本不会发生** ✓
 ⇒ ★★★ **建议先做 1**（★ 它是**通用**的死亡路径：★ 任何富拒绝都可能踩 ✓），★ **再做 2**（★ 它是**这一条**的具体成因 ✓）✓
+
+---
+
+## ★★★★★ D8（★ 第三种参数名漂移，★ 也是"服务器为何死"的最后一环）
+
+### 8.1 ★★★ 证据（★ 来自 `srv.err` 的**第一行**，★ 这次它自己说了"fatal"）
+```
+dsh: skipping profile bundle "dshmarket": …（无害）
+dsh: fatal load failure: Error: a spawn needs an EXECUTABLE (file/command), not only arguments
+    at refuse (…/host-spawn.js:33:15)
+    at spawnSeam (…/host-spawn.js:117:13)
+    at Object.run (…/kernel/mathtools.js:630:19)
+```
+★★★ **`dsh: fatal load failure:` 是宿主自己的判词** ⇒ ★★ **这条拒绝【到达了宿主】，★ 而宿主把它当【致命装载失败】处理** ✓✓
+★ 而驱动随后 `fetch` 得到 ★ **`ECONNREFUSED 127.0.0.1:19389`** ⇒ ★ **服务器确实没了** ✓
+
+### 8.2 ★★★ 第二个调用方：★ 把 **mathtools 自己的参数** 传给了 spawn 接缝
+★ `kernel/mathtools.js:630` 逐字：
+```js
+try { raw = spawn({ op: p.plan.op, args: p.plan.args, seed: p.plan.seed, backend: p.plan.backend, limits: p.limits }) } finally { active -= 1 }
+```
+★★★ **它传的是 `{ op, args, seed, backend, limits }` —— ★ 那是【mathtools 自己的词汇】** ✓✓
+★ 而 spawn 接缝要的是 ★ **`{ file | command, args, … }`** ✓
+⇒ ★★★★ **所以：★ 这是【第三种】调用方／被调用方参数名漂移**（★ 前两种：★ chat 的 `from`/`by` ✓；★ formal 的 `command`/`file` ✓）✓
+★★ **而且这一处【没有 `catch`】**：★ `try { … } finally { active -= 1 }` ⇒ ★★ **只有 `finally`，★ 异常继续冒泡** ✓
+
+### 8.3 ★★★ 而且它说明了**最后一环**：★ "throw 出去"与"宿主把它当致命"之间的缝
+★ 关键观察：★ **`spawnSeam` 的 `refuse(...)` 是在【async 函数】里抛的** ⇒ ★★ **它是一条**被拒绝的 Promise**，★ 而不是同步 throw** ✓
+★ 而链路是：★ `spawnSeam`（★ async）→ `mathtools.run` → `tools/mathtools.js` 的 `try/catch` → `boundedToolResult` ✓
+★★★ **但宿主的判词是 `fatal load failure`** ⇒ ★★ **说明那条链上有一环【没有 await】或者【在 await 之外】** ⇒ ★ **于是拒绝逃出 `try`，★ 成为未处理的拒绝（unhandled rejection），★ 而宿主的顶层处理把它变成致命退出** ✓✓
+★ **这与"catch 明明存在、而进程仍死"完全自洽** ✓ —— ★★ **catch 存在但【够不着】那条拒绝** ✓✓
+
+### 8.4 ★★ 修法的两个层次
+1. ★★★ **调用方（★ D8 本体）**：★ `kernel/mathtools.js:630` 必须把**可执行文件**放进 seam 认识的字段（★ `file`／`command` ✓），★ 并把 `op`／`seed`／`backend`／`limits` **留在 mathtools 自己那层**（★ 它们不是 seam 的参数 ✓）✓
+2. ★★★ **接缝（★ 通用）**：★ **`spawnSeam` 自己把【同步 throw 与 async 拒绝都归一】**，★ 或 ★ **把它的调用点统统 `await` 到位** ⇒ ★ **让"具名拒"永远只是一条回执，★ 而不是一个逃逸的拒绝** ✓ —— ★★ **这一条才是"每一条具名拒都致命"的根治** ✓
+★ **判据**：★ 传一个缺可执行文件的 spawn ⇒ ★ **得到具名拒【且服务器活着、后续调用仍可用】** ✓ —— ★ **这正是 D1／D6 两次都没能守住的那一条** ✓
+
+---
+
+## ★★★★★★★ D9（★ **根因链的终点**）：**一个接缝注入了两个【词汇不同】的消费者，且调用处没有 `await`**
+
+### 9.1 ★★★ 三行代码说明一切
+```js
+vibe-math-vmu.js:499   const kernel = createKernel(Object.assign({ …, spawn: spawnSeam, … }))
+kernel/index.js:1157   const mathtools = createMathTools({ settings, bus, clock, log, spawn, library })
+kernel/mathtools.js:630  raw = spawn({ op: p.plan.op, args: p.plan.args, seed: p.plan.seed, backend: p.plan.backend, limits: p.limits })
+```
+★★★ **即**：
+- ★ `spawnSeam` 是 **脚本桥接**（★ `host-spawn.js`，★ 词汇是 **`{ file | command, args }`** ✓）；
+- ★★ **同一个 `spawn` 被传给了 `createMathTools`**（★ `index.js:1157` ✓）；
+- ★★★ **而 `mathtools` 用它时，传的是【数学词汇】** —— ★ `{ op, args, seed, backend, limits }` ✓✓
+⇒ ★★★★ **一个接缝、两个消费者、两套词汇** ⇒ ★ **`mathtools` 拿到的是【它不该拿的那个接缝】** ✓✓✓
+
+### 9.2 ★★★ 而 `:630` **没有 `await`** —— 这才是"致命"的那一环
+★ `mathtools.js:187`：★ `createMathTools({ … spawn = null … })` ⇒ ★ **它是一个【注入接缝】** ✓
+★★ **而 `:630` 是 `raw = spawn({…})`，★ 没有 `await`** ✓
+⇒ ★★★ **所以当接缝是 `async` 的（★ `spawnSeam` 正是 `async` ✓）**：★ **`raw` 拿到的是一个【Promise】**，★ **而它的拒绝【没人接】** ⇒ ★★★★ **成为 unhandled rejection** ⇒ ★★ **宿主的顶层处理把它判为 `dsh: fatal load failure` 并退出** ✓✓✓
+★ 随后驱动 `fetch` 得到 ★ **`ECONNREFUSED`** ✓ —— ★ **这条链到此闭合** ✓
+
+### 9.3 ★★★★ 这解释了此前【所有】"守卫正确地具名拒了，★ 而进程仍然死"的现象
+★ **catch 是存在的**（★ `host.js:969-976`／`tools/mathtools.js:26-28` ✓）—— ★★ **但那条【被拒绝的 Promise】从 `await` 缺席的那一环【逃出了 try】** ✓✓
+⇒ ★★★ **所以"每一条具名拒都可能致命"的机制不是"没有 catch"，★ 而是"有一环没 await"** ✓✓ —— ★ **这正是 D6 当时想抓而抓错了的东西** ✓
+
+### 9.4 ★★ 修法（三层，★ 缺一层仍会复发）
+1. ★★★★ **接缝归属**：★ `mathtools` 应当拿到 **`math-computation` 的接缝**（★ 词汇是 `{op, args, seed, backend, limits}` ✓），★ **而不是脚本桥接的 `spawnSeam`** ⇒ ★ **要么在 `index.js:1157` 传入正确的那个，★ 要么让 `mathtools` 明确声明它要哪一种** ✓
+2. ★★★★ **`await`**：★ **`:630` 必须 `await` 注入接缝的结果**（★ 并在接缝为同步时也安全 ✓）⇒ ★ **让"拒绝"被本层的 `try` 接住** ✓
+3. ★★★ **通用护栏**：★ **`mathtools` 的 `spawn` 若返回 Promise，`raw` 就应被识别并处理** ⇒ ★ **最好在【注入点】做一次归一：★ 同步接缝与异步接缝都变成可 await 的** ✓
+★ **判据**：★ 把缺可执行文件／词汇不匹配的调用送进去 ⇒ ★ **得到具名拒【且进程仍然活着、后续调用仍可用】** ✓ —— ★★ **前两轮（D1／D6）都没守住这一条，因为真正的缝在 `await` 上** ✓
