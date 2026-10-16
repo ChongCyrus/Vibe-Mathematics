@@ -518,6 +518,14 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(total > 30 && missing.length === 0,
     'T71. **** PARITY WITH THE SOURCE: every fixed prose line of the source-derived charter appears verbatim in the charter the original really hands a member - across EVERY captured kind (temp, leaderless and the rest), not just the academician',
     { checked: total, missing: missing.slice(0, 3), baselines: baselineCorpus.length, unbaselinedKnown: unbaselined.length })
+  // ★ task-252 / RULE E (shape B): A NON-EMPTY PRECONDITION BEFORE THE COMPARISON. Two EMPTY collections compare
+  // equal, so without this line the assertion below could pass while comparing nothing at all - the vacuous class
+  // the declaration-criterion gate exists to catch. Both sides must be non-empty for the comparison to mean
+  // anything: KNOWN_UNBASELINED is the frozen list, and `unbaselined` is what the run actually found against it.
+  ok(KNOWN_UNBASELINED.length > 0 && unbaselined.length > 0,
+    '★ PRECONDITION (shape B): both sides of the T71b comparison are NON-EMPTY, so it cannot pass on two empty collections',
+    { known: KNOWN_UNBASELINED.length, found: unbaselined.length })
+
   ok(unbaselined.length === KNOWN_UNBASELINED.length,
     'T71b. ★★ THE ONLY LINES WITH NO CAPTURED BASELINE ARE THE NAMED ONES: the capture has no temp×leaderless charter, so that single line is frozen here - a NEW gap reddens T71b, and a closed gap must shrink the list (no silent exemption)',
     { found: unbaselined.length, known: KNOWN_UNBASELINED.length, foundList: unbaselined.map((x) => x.slice(0, 70)) })
