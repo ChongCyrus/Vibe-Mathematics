@@ -140,11 +140,15 @@ export function createFormal(opts) {
     for (const p of c.searchPaths) args2.push('-R', p)
     for (const x of c.leanArgs) args2.push(x)
     args2.push('--stdin')
+    // ★★ ROUND 37 (measured): THE PROGRAM GOES IN `file`, NOT `command`. This call used to pass `command:`, which the
+    // spawn seam does not read, so the program was SILENTLY IGNORED and `argv[0]` became the first ARGUMENT - the host
+    // tried to execute `--stdin`. The seam now refuses that shape by name, and this call names its executable the way
+    // the seam reads it. (`--stdin` as an ARGUMENT is correct: Lean reads the script from stdin, which is also passed.)
     const argvFingerprint = fp([c.leanCommand].concat(args2))
     const inputFingerprint = fp({ statement, proof: src, seed: '' })
     const startedAt = clock()
     let out
-    try { out = spawn({ command: c.leanCommand, args: args2, cwd: '.', stdin: src, timeoutMs: c.timeoutMs }) } catch (e) {
+    try { out = spawn({ file: c.leanCommand, args: args2, cwd: '.', stdin: src, timeoutMs: c.timeoutMs }) } catch (e) {
       return refuse('VMU_EXTERNAL_UNAVAILABLE', 'spawn 抛出：' + String((e && e.message) || e), '宿主接缝异常；本面不假装成功')
     }
     const r = out || {}
@@ -210,7 +214,7 @@ export function createFormal(opts) {
     const nowFp = fp([c.leanCommand].concat(args2))
     const diffs = []
     if (nowFp !== r.argvFingerprint) diffs.push({ member: 'argvFingerprint', expected: r.argvFingerprint, actual: nowFp })
-    const out = spawn({ command: c.leanCommand, args: args2, cwd: '.', stdin: '(reproduce)', timeoutMs: c.timeoutMs }) || {}
+    const out = spawn({ file: c.leanCommand, args: args2, cwd: '.', stdin: '(reproduce)', timeoutMs: c.timeoutMs }) || {}
     const nowExit = out.timedOut === true ? null : Number(out.exitCode)
     if (nowExit !== r.exitCode) diffs.push({ member: 'exitCode', expected: r.exitCode, actual: nowExit })
     if (diffs.length) {

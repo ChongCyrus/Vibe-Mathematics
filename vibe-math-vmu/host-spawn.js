@@ -103,8 +103,23 @@ export function createHostSpawn({
     // be folded into "not given". `null` = absent/invalid, `0` = an explicit zero budget — the two are distinct.
     const budget = Number.isInteger(request.timeoutMs) && request.timeoutMs >= 0 ? request.timeoutMs : null
     const argv = []
-    if (typeof request.file === 'string' && request.file.length > 0) argv.push(request.file)
-    else if (typeof request.inline === 'string' && request.inline.length > 0) {
+    // ★★ ROUND 37 (measured): THE EXECUTABLE IS REQUIRED, AND IT IS NOT INFERRED FROM THE ARGUMENTS. A caller
+    // (`kernel/formal.js:147`) passed `{ command: leanCommand, args: […, '--stdin'] }` while this seam reads `file` -
+    // a pure FIELD-NAME MISMATCH, the same family as the chat face's `from`/`by` drift. `file` was undefined, so
+    // nothing was pushed, and because `args` were then appended, `argv[0]` became `--stdin`: the host tried to EXECUTE
+    // a flag, and the real command was silently ignored. The emptiness guard below could not catch it, because argv
+    // was not empty - it was wrong. So the executable is taken from `file` (accepting `command` as an alias, since
+    // that is the word callers reach for) and its ABSENCE is refused by name BEFORE anything else is considered.
+    const exe = typeof request.file === 'string' && request.file.length > 0
+      ? request.file
+      : (typeof request.command === 'string' && request.command.length > 0 ? request.command : null)
+    if (exe === null) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'a spawn needs an EXECUTABLE (file/command), not only arguments'
+        + (Array.isArray(request.args) && request.args.length > 0 ? ' - got args starting with ' + JSON.stringify(request.args[0]) : ''),
+        'pass { file: "<program>", args: [...] } (or command); arguments alone would make argv[0] an argument, which is how a flag once became the program to execute')
+    }
+    argv.push(exe)
+    if (typeof request.inline === 'string' && request.inline.length > 0) {
       throw refuse('VMU_INVALID_ARGUMENT', 'an inline script cannot be spawned by argv: give a file',
         'the host spawns executables, not evaluated text')
     }
