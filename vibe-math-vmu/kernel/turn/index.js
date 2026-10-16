@@ -764,7 +764,16 @@ export function createTurnOrchestrator({
       const r = await run({ ...spec, round: turns.size + 1 })
       return { ok: true, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, turn: r.turn.id } }
     } catch (e) {
-      return { ok: false, code: e && e.code, message: String((e && e.message) || e), receipt: null }
+      // ★★★ ROUND 61: THE STACK STAYS. This catch kept only the message, and that is precisely why a real machine's
+      // failure was undiagnosable: the transcript recorded `Cannot read properties of undefined (reading 'id')` thirty-
+      // three times with no frame, no file and no line, and several rounds went into reading candidate sites by hand.
+      // A slice of the stack costs a few hundred bytes on a FAILED round only, and it converts "a TypeError happened
+      // somewhere" into "this line, in this function". The bound is deliberate: a stack from a deep async chain can be
+      // long, and a receipt is not a log file.
+      const stack = typeof e === 'object' && e && typeof e.stack === 'string'
+        ? e.stack.split('\n').slice(0, 8).map((l) => l.trim()).join(' | ').slice(0, 900)
+        : null
+      return { ok: false, code: e && e.code, message: String((e && e.message) || e), receipt: null, stack }
     }
   }
 
