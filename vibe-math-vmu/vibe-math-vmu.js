@@ -459,8 +459,17 @@ export function apply(ctx, config = {}) {
         const id = (typeof config.sessionId === 'string' && config.sessionId) || (typeof config.agentId === 'string' && config.agentId) || null
         parent = (id && agents.get(id)) || null
         if (!parent && typeof agents.list === 'function') {
+          // ★★★ ROUND 70: list() RETURNS IDS, NOT AGENTS. The host's own declaration reads list(): string[], and the
+          // one-shot request's parent is typed Agent - an object carrying options and session.header. Taking the
+          // first list entry directly therefore passed a STRING where an Agent was required, and the host's
+          // delegationDepthOf read gent.options off it: exactly the "Cannot read properties of null (reading
+          // 'options')" seen on a real machine. The id must be RESOLVED through get() before it can be a parent.
           const all = agents.list()
-          if (Array.isArray(all) && all.length === 1) parent = all[0]
+          if (Array.isArray(all) && all.length === 1) {
+            const resolved = agents.get(String(all[0]))
+            // only an object with the fields the host reads is accepted; anything else stays null and is refused by name
+            if (resolved && typeof resolved === 'object' && resolved.options && resolved.session) parent = resolved
+          }
         }
       }
     } catch { parent = null }
@@ -1244,4 +1253,5 @@ export function apply(ctx, config = {}) {
     cleanups,
   }
 }
+
 
