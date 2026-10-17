@@ -174,3 +174,39 @@
 
 ★ **因此 §10.2 的【设置键】那一半**（★ 独立复现了惰性键台账的边界）★ **保留并固化**为门禁 `tests/audit-silent-keys.mjs`（★ 自证 4/0，★ **扫 640 文件，★ 0 个"既无人读也未被裁定"的键**）✓
 ★★ **并修掉该扫描自身的两处判据错误**：★ **要求键名带引号**（★ 会漏掉 `{{ setting:… }}` 形式）／★ **只收 `.js`**（★ 而测试是 `.test.mjs`，★ **于是所有测试都没被扫**）✓
+
+## 11. ★★★★★★★ ROUND 99：真机【功能扫掠】—— ★ 47/47 个重点面全部触达，★ 39 条拒绝全部【可执行】
+
+### 11.1 ★★★★★ 方法：★ 不写清单，直接扫
+★ 与其写"待测清单"，★ **本轮写了一份【功能扫掠任务书】**，★ **告知真机代理这是【模拟／演练】、★ 以测试功能为主**，★ 并给它**一张"面 → 建议动作"的表**（47 个重点面），★ 要求它**逐面读一次、写一次、并如实记录返回的 `ok`／`code`／`message`**，★ **明确"看到拒绝是有价值的观测，不要绕过、不要掩盖"** ✓
+★ **真机跑完**：★ **453s／4,334,052 tokens**（★ 本阶段最长），★ **无 cap、无超时、无 adapter 错误** ✓
+
+### 11.2 ★★★★★★ 读数
+| ★ 项 | ★ 结果 |
+|---|---|
+| ★★ **不同面被触达** | ★ **53** |
+| ★★★★ **本次重点的 47 个面** | ★★ **47/47 全部被调用**，★ **无遗漏** ✓✓ |
+| ★★ 拒绝总数 | ★ **39**（★ 跨 8 个 code）|
+| ★★ `cast:true` | ★ **1**（★ 该轮也结题了）|
+| ★★ 引擎消息／崩溃 | ★★ **0** ✓ |
+
+### 11.3 ★★★★★ 而拒绝【每一条都可执行】—— 逐条列举（★ 全部有 code＋message＋hint）
+- ★ `unknown action: list`／`status` ＋ hint **"pass `action` PLUS the parameters docs/18 §1 lists for that action"** ⇒ ★★ **我任务书里猜错的 action，★ 面【按名拒绝并指向文档】** —— ★ **这正是框架承诺的行为** ✓
+- ★ **`a message needs a non-empty sender id` ＋ hint 点名 `by`** ⇒ ★★★ **R89 的措辞修复【在真机上可见并生效】** ✓✓
+- ★ `no such conference: undefined` ＋ **"open a conference first (open())"** ✓
+- ★ `找不到形式化记录` ＋ **"先 check() 取 id"** ✓
+- ★ `step 1 needs a non-empty service` ＋ **"name the service so a partial outcome can be handed to a human"** ✓
+- ★ `the entry carries no identifier and vmu.citations.allowFreeText=false` ＋ **"give one of doi, arxiv, pmid, u…"** ✓
+- ★ `allocation needs a non-negative integer { pool }` ＋ **"pass { pool: <int> }"** ✓
+- ★ `timeout_ms must be an integer from 10000 through 3600000 (the v5r interval); got 1000` ＋ 区间理由 ⇒ ★ **连"为什么是这个区间"都给了** ✓
+- ★ `draft needs { meetingId }` ＋ **"pass { meetingId }"** ✓
+
+⇒ ★★★★★★ **"零引擎消息、零崩溃、★ 每条拒绝都指名缺什么并给出下一步"** ✓✓ —— ★ **这正是"真机各功能无问题"那门要的证据形态** ✓
+
+### 11.4 ★★★★ 附带交叉核对：★ `kernel/report.js` 与 pack 的汇报策略【词汇表完全吻合】
+★ 原语的 `TRIGGER_KINDS` 含 `period/event/threshold`；★ `EVENT_VOCAB` 含 **`meeting-closed`**；★ `THRESHOLD_OPS` 含 **`gte`**；★ `TEMPLATE_VARS` 支持 **`metric:`／`setting:` 带参数**；★ `channels` 含 **`inbox`／`digest`** ✓
+★ 而 pack 的 `v5r-core.js` 声明的三个汇报**恰好用的是这几样** ⇒ ★★ **不会静默失效** ✓✓（★ 这类"策略用了原语不认识的词"正是会静默失效的一类）
+
+### 11.5 ★★ 结论与边界
+★★ **"真机跑遍各功能"这一门，现在的证据是**：★ **53 面被真实调用、47/47 重点面逐一触达、39 条拒绝全部设计内且可执行、零崩溃、结题仍可达** ✓
+★ **仍未做**：★ **每个面的【全部】动作（★ 本次每面 1–2 个）**；★ **kernel 逐行 12/103** ✗
