@@ -289,12 +289,15 @@
     "vibe-math-vmu/docs/27-pack-folder.md",
     "vibe-math-vmu/docs/29-build-your-own-preset.md",
     "tests/audit-kernel-claims-3.mjs",
+    "tests/audit-kernel-claims-5.mjs",
+    "tests/audit-kernel-claims-6.mjs",
     "tests/audit-kernel-claims-4.mjs",
     "tests/audit-kernel-claims-2.mjs",
     "tests/audit-kernel-claims.mjs",
     "tests/audit-silent-keys.mjs",
     "tests/audit-face-actions.mjs",
     "tests/audit-service-calls.mjs",
+    "scripts/generate-coverage-debt.mjs",
     "scripts/generate-planned-codes.mjs",
     "vibe-math-vmu/settings/schema.js",
     "vibe-math-vmu/glossary.json",
@@ -801,6 +804,8 @@
     "build:presets": "node scripts/build-preset-rows.mjs"
   }
 }
+
+
 
 
 

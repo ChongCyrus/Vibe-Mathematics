@@ -86,6 +86,11 @@ export const WIRED_KEYS = Object.freeze([
   'vmu.math.interval.enabled',
 ])
 
+// ★ CROSS-MODULE WARNING (round 106, raised by an independent audit that this name made read the WRONG way): the token
+// `UNWIRED_REASONS` does NOT mean the same thing in every module. Here it means 「a non-empty map of PLANNED key FAMILIES with the reason each is not wired yet — keyed by NAMESPACE, not by key」; in `kernel/ip.js` it means
+// 「deliberate-empty, because that module wires everything it declares」. Neither claim is wrong, but the shared name is a comprehension hazard - an auditor who assumes the other
+// convention reads a correct module as broken, which is exactly what happened. If you touch either table, say which one
+// you mean.
 /** Per-namespace reasons for the keys NOT wired yet (drift-proof: the list comes from planned.js at runtime;
  *  this table only explains WHY). The reasons are deliberately concrete — "no backend", "no consumer yet". */
 export const UNWIRED_REASONS = Object.freeze({

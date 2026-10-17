@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url'
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const CHECK = process.argv.includes('--check')
 const STEPS = [
+  ['coverage debt (docs/acceptance/audit-coverage-debt.md)', 'scripts/generate-coverage-debt.mjs', '--write'],
   ['glossary table (docs/01-§7)', 'scripts/generate-glossary-table.mjs'],
   // ROUND 136: the pack prompt TEXT is generated from the corpus so the pack cannot become a second, drifting copy.
   // It is in the chain for the same reason every other generated artefact is: a difference between the module and

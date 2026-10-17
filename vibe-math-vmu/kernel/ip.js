@@ -65,6 +65,11 @@ export const KNOB_KEYS = Object.freeze(DECLARED_KEYS.filter((k) => !SERVICE_KEYS
 export const WIRED_KEYS = Object.freeze(DECLARED_KEYS.slice())
 
 /** Per-key reasons for the declared keys NOT wired yet (empty ⇒ all 20 are wired; stated, not implied). */
+// ★ CROSS-MODULE WARNING (round 106, raised by an independent audit that this name made read the WRONG way): the token
+// `UNWIRED_REASONS` does NOT mean the same thing in every module. Here it means 「deliberate-empty」: WIRED_KEYS equals DECLARED_KEYS, so NOTHING is unwired and the table is empty on purpose; in `kernel/mathtools.js` it means
+// 「a non-empty map of PLANNED key FAMILIES with the reason each is not wired yet」. Neither claim is wrong, but the shared name is a comprehension hazard - an auditor who assumes the other
+// convention reads a correct module as broken, which is exactly what happened. If you touch either table, say which one
+// you mean.
 export const UNWIRED_REASONS = Object.freeze({})
 
 const DEPTHS = Object.freeze(['quick', 'standard', 'deep'])
