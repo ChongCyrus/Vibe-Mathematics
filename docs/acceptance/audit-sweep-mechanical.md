@@ -16,7 +16,18 @@
 | ★★★ **服务存在、方法不存在** | ★★ **0** | ★ **产生真机失败 `capacity.retire is not a function` 的那一类，★ 已证明【全树不存在】** ✓✓ |
 | ★★★ **服务名根本不存在** | ★★ **0** | ★ 没有写错服务名的调用点 ✓ |
 | ★★★ **读设置却用了未声明的键** | ★★ **0** | ★ 没有"设了也不生效"的静默空转（★ 这是 **`sget` 口径**，★ 可靠；★ 见 §3 关于宽口径的教训）✓ |
-| ★★ **无理由吞异常** | ★ 5 → **框架内 0** | ★ 框架内两处已补理由（★ `kernel/activity.js` 的 `removeEventListener`、★ `math-computation.js` 的 receipt 解析）；★ 余 3 处在 **`scripts/dsh-drive.mjs`**（★ 驱动器 teardown：`server.kill()`／`sock.close()`），★ **已阅**，★ 属驱动器而非框架，★ 见 §5 |
+| ★★ **无理由吞异常** | ★ 5 → **框架内 1** | ★ 框架内**只**改了 `kernel/activity.js` 的 `removeEventListener`（★ **它运行在【处理 arm 失败】的过程中，★ 那里的抛错会顶掉真正的错误**）。★ **`math-computation.js` 那处【回退、未改】** —— ★ 见 §3.1，★ **这是一个真教训**。★ 余 3 处在 **`scripts/dsh-drive.mjs`**（★ 驱动器 teardown），★ **已阅**，★ 属驱动器而非框架 |
+
+### 3.1 ★★★★★ 教训：**改一个文件之前，先确认它是不是"逐字节共享副本"**
+
+★ **我本已给 `math-computation.js` 那处 `catch { /* ignore */ }` 补了理由** ⇒ ★★ **而 T1 立刻报红**：
+```
+FAIL 6 copies of math-computation.js are byte-identical — 2 distinct hash(es)
+```
+⇒ ★★★ **该文件有【6 份副本】，★ 按仓库规矩【必须逐字节相同】**（★ 原文：★ *"reused verbatim … what makes a math result comparable across presets"*）✓✓
+⇒ ★★★★ **所以"给某一份补注释"本身就是【破坏不变式】** ⇒ ★ **正确处置是【回退】** —— ★★ **"parity 优先于我这条补理由的善意"** ✓✓
+★ **而门禁【当场抓住了我】**：★ `audit-shared-module-parity`、★ `audit-math-computation-parity`（★ 141/0）⇒ ★★ **这正是它们存在的意义** ✓✓
+★★ **可迁移的规矩**：★ **凡在 `vibe-math-vmu/` 下改文件前，★ 先问"这是共享 verbatim 副本吗"**（★ 门禁会答，★ 但先问更省事）✓
 
 ★ **而这两条"0"是可复算的**：★ 87 个服务 × 213 个文件的调用点，★ **不是抽样** ✓
 
