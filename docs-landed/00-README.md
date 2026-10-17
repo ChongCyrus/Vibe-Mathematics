@@ -121,3 +121,4 @@ node scripts/check-docs.mjs                 # 文档 lint
 
 ★ **不要发布**；★ **不要动** `D:\wd\vibemath开发\token.txt`；★ **不要把临时文件写进 C 盘**（用 `D:\_tmp`）；★ **不要把"没读到"写成"没问题"**。★ 最后这条**比其它三条加起来更重要** ✓
 
+
