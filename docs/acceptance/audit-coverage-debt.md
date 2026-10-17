@@ -18,54 +18,50 @@
 ★ `tests/audit-service-calls.mjs`（★ 调用侧：★ `kernel.<服务>.<方法>` 必须可解析，★ **87 服务 × 213 文件**）／
 ★ `tests/audit-face-actions.mjs`（★ 面侧：★ 每个提供的动作必须存在或有分支，★ **51 面／47 enum**）／
 ★ `tests/audit-silent-keys.mjs`（★ 设置键：★ 不得「既无人读也未被裁定」，★ **640 文件**）／
-★ `tests/audit-kernel-claims*.mjs`（★ 行为宣称：★ **68 模块／断言数见各探针总结行**）。
+★ `tests/audit-kernel-claims*.mjs`（★ 行为宣称：★ **72 模块／断言数见各探针总结行**）。
 
 ## 2. ★★★★★ 账（★ kernel 103 文件／45166 行）
 
 | ★ 级别 | ★ 文件 | ★ 行数 | ★ 占比 |
 |---|---|---|---|
-| ★★ **L3 宣称级验证** | ★ **68** | ★ **32666** | ★ 72.3% |
+| ★★ **L3 宣称级验证** | ★ **72** | ★ **33427** | ★ 74.0% |
 | ★★ **L2 已逐行读** | ★ **15** | ★ **9690** | ★ 21.5% |
-| ★ **L1 仅机器门禁** | ★ **20** | ★ **2810** | ★ 6.2% |
+| ★ **L1 仅机器门禁** | ★ **16** | ★ **2049** | ★ 4.5% |
 | ★ **L0 未触及** | ★ **0** | ★ **0** | ★ 0% |
 
-⇒ ★★★★ **83/103 文件（94% 行）有人工审查；★ 20 文件（6% 行）仅机器门禁覆盖** ✓
+⇒ ★★★★ **87/103 文件（95% 行）有人工审查；★ 16 文件（5% 行）仅机器门禁覆盖** ✓
 
 ### 2.1 ★★ L3（★ 有行为断言在测其头部宣称）
 
-  `resume.js`（1195） · `meetings.js`（1154） · `mathjobs.js`（1033） · `idempotency.js`（907） · `lean.js`（893） · `records.js`（883） · `mathtools.js`（873） · `mathadapters.js`（855） · `chat.js`（758） · `ip.js`（747） · `workflow.js`（729） · `library.js`（727） · `funding.js`（712） · `pack.js`（640） · `ballot.js`（631） · `replay.js`（627） · `meeting.js`（613） · `scheduler.js`（611） · `alerts.js`（609） · `charter.js`（598） · `conference.js`（593） · `paper.js`（586） · `ballotbox.js`（571） · `migration.js`（561） · `auditchain.js`（550） · `bidding.js`（537） · `tasks.js`（534） · `human.js`（528） · `external.js`（524） · `meetingmarker.js`（516） · `memory.js`（497） · `capacity.js`（456） · `publication.js`（435） · `minutes.js`（434） · `course.js`（429） · `panel.js`（428） · `transaction.js`（416） · `rules.js`（410） · `compliance.js`（407） · `resource.js`（386） · `retention.js`（376） · `recruit.js`（368） · `fairness.js`（303） · `notify.js`（301） · `trust.js`（290） · `collab.js`（287） · `storepolicy.js`（284） · `lifecycle.js`（270） · `grant.js`（268） · `tenure.js`（268） · `loader.js`（254） · `skills.js`（252） · `governance.js`（251） · `topology.js`（249） · `handover.js`（243） · `clockguard.js`（242） · `formal.js`（241） · `stateversion.js`（237） · `identity.js`（227） · `meetinglapse.js`（224） · `script-bridge.js`（219） · `budget.js`（216） · `audit.js`（214） · `crypto.js`（213） · `receiptbounds.js`（209） · `custody.js`（204） · `registry.js`（194） · `ratelimit.js`（169）
+  `resume.js`（1195） · `meetings.js`（1154） · `mathjobs.js`（1033） · `idempotency.js`（907） · `lean.js`（893） · `records.js`（883） · `mathtools.js`（873） · `mathadapters.js`（855） · `chat.js`（758） · `ip.js`（747） · `workflow.js`（729） · `library.js`（727） · `funding.js`（712） · `pack.js`（640） · `ballot.js`（631） · `replay.js`（627） · `meeting.js`（613） · `scheduler.js`（611） · `alerts.js`（609） · `charter.js`（598） · `conference.js`（593） · `paper.js`（586） · `ballotbox.js`（571） · `migration.js`（561） · `auditchain.js`（550） · `bidding.js`（537） · `tasks.js`（534） · `human.js`（528） · `external.js`（524） · `meetingmarker.js`（516） · `memory.js`（497） · `capacity.js`（456） · `publication.js`（435） · `minutes.js`（434） · `course.js`（429） · `panel.js`（428） · `transaction.js`（416） · `rules.js`（410） · `compliance.js`（407） · `resource.js`（386） · `retention.js`（376） · `recruit.js`（368） · `fairness.js`（303） · `notify.js`（301） · `trust.js`（290） · `collab.js`（287） · `storepolicy.js`（284） · `lifecycle.js`（270） · `grant.js`（268） · `tenure.js`（268） · `loader.js`（254） · `skills.js`（252） · `governance.js`（251） · `topology.js`（249） · `handover.js`（243） · `clockguard.js`（242） · `formal.js`（241） · `stateversion.js`（237） · `identity.js`（227） · `meetinglapse.js`（224） · `script-bridge.js`（219） · `budget.js`（216） · `audit.js`（214） · `crypto.js`（213） · `receiptbounds.js`（209） · `custody.js`（204） · `registry.js`（194） · `repropack.js`（192） · `reviewers.js`（192） · `board.js`（190） · `fidelity.js`（187） · `ratelimit.js`（169）
 
 ### 2.2 ★★ L2（★ 已逐行读过或改过并复读 · ★ 声明于 `READ_MODULES`）
 
   `index.js`（2439，R80） · `turn/index.js`（1034，R50） · `prompt/index.js`（785，R86） · `bus.js`（753，R85） · `report.js`（628，R99） · `mailbox.js`（607，R89） · `activity.js`（547，R80） · `delegation.js`（547，R97） · `arbitration.js`（497，R97） · `metrics.js`（394，R97） · `store.js`（317，R97） · `members.js`（316，R83） · `control.js`（309，R83） · `guard.js`（293，R97） · `ids.js`（224，R97）
 
-## 3. ★★★★★ L1 的具名余项（★ 20 文件，★ 按行数降序）
+## 3. ★★★★★ L1 的具名余项（★ 16 文件，★ 按行数降序）
 
 > ★ **这一列就是门 1 的剩余工作清单** —— ★ **可数、★ 具名、★ 按规模排序**。
 > ★ 推进方式：★ **每轮取 2–3 个照「验证宣称」那把尺过一遍**（★ 已验证者升到 L3，★ 并把断言收进 `audit-kernel-claims*`）。
 
 | ★ # | ★ 文件 | ★ 行数 |
 |---|---|---|
-| 1 | `repropack.js` | 192 |
-| 2 | `reviewers.js` | 192 |
-| 3 | `board.js` | 190 |
-| 4 | `fidelity.js` | 187 |
-| 5 | `projmigrate.js` | 181 |
-| 6 | `reportfeedbackdelivery.js` | 179 |
-| 7 | `discipline.js` | 175 |
-| 8 | `work.js` | 165 |
-| 9 | `math.js` | 159 |
-| 10 | `explain.js` | 157 |
-| 11 | `resumeflush.js` | 152 |
-| 12 | `library-policy.js` | 143 |
-| 13 | `partnership.js` | 143 |
-| 14 | `citations.js` | 137 |
-| 15 | `reportfeedback.js` | 125 |
-| 16 | `meetingleave.js` | 96 |
-| 17 | `meetingdomain.js` | 72 |
-| 18 | `meetings-defaults.js` | 58 |
-| 19 | `timevalue.js` | 55 |
-| 20 | `contentvalue.js` | 52 |
+| 1 | `projmigrate.js` | 181 |
+| 2 | `reportfeedbackdelivery.js` | 179 |
+| 3 | `discipline.js` | 175 |
+| 4 | `work.js` | 165 |
+| 5 | `math.js` | 159 |
+| 6 | `explain.js` | 157 |
+| 7 | `resumeflush.js` | 152 |
+| 8 | `library-policy.js` | 143 |
+| 9 | `partnership.js` | 143 |
+| 10 | `citations.js` | 137 |
+| 11 | `reportfeedback.js` | 125 |
+| 12 | `meetingleave.js` | 96 |
+| 13 | `meetingdomain.js` | 72 |
+| 14 | `meetings-defaults.js` | 58 |
+| 15 | `timevalue.js` | 55 |
+| 16 | `contentvalue.js` | 52 |
 
 ## 4. ★★★ 这份账之外的覆盖
 
@@ -77,26 +73,27 @@
 ★ `docs/landscape-similar-frameworks.md`（★ **408 行**）—— ★ **完全未读**（★ 调研文档，★ 不影响运行机制，★ 但按「不许把没读到写成没问题」，★ 在此具名）。
 ★ `README.md` 与 `vibe-math-vmu/docs/00–14` 各卷 —— ★ **未逐卷通读**（★ 但其**数字与链接**由 `check-docs`／`audit-doc-line-refs`／`audit-readme-counts`／`regen --check` 在管）。
 
-## 18. ★★★★★ ROUND 119：第十七批 D 路 **30/0**（★ L3 达 68、L1 只剩 20）
+## 19. ★★★★★ ROUND 120：第十八批 E 路 **29/0**（★ L3 达 72、L1 只剩 16）
 
 | ★ 模块 | ★ 断言 | ★ 关键宣称 |
 |---|---|---|
-| ★ `crypto.js` | ★ 7 | ★★ **"私钥材料【永不】返回"在【5 个敏感名】上测**（privateKey／secretSeed／pem／dk／sk）★ **＋ 正向：公开字段保留、干净键原样** ／★ **四类可区分的失败理由**逐字 ／★ **旧键 `retired` 而非删除**（三态）／★ **无 signer 时 sign·verify 两入口都具名拒**且 `signatures===0`（★ 前提）|
-| ★ `receiptbounds.js` | ★ 8 | ★★ **"`receiptMeta` 【总是】在，且两态【同一组五键】"**（★ 截断态与未截断态**键集合逐字比较**）／★ **每条裁剪记【八键】**（★ 前置：`elided` 非空）／★ **"不丢键、不改数组长度"在 2 个点上** ／★ `hostElision:'possible'` **单独报告、绝不混淆** |
-| ★ `custody.js` | ★ 7 | ★★ **"键开启时，主体→引用的明文映射【按名拒】，★ 只有引用出行"**（★ **双向**：开 ⇒ `VMU_CUSTODY_REVERSIBLE_MAPPING`／关 ⇒ 接受）／★ **链随人走**（★ 前置：登记＋转移都成功）／★ **销毁仍保留引用** |
-| ★ `registry.js` | ★ 8 | ★★ **"绝不静默覆盖（O4）"在【2 个点】**（重复注册／★ 别名占用已解析名）／★ **"别名从不隐藏自己"** ⇒ `resolve()` 带 `viaAlias{deprecated,reason}` ／★ **"版本被检查而非信任"并报出【比较过的数字】**（`required` > `published`）|
-★ **累计：68 个模块、769 条断言**（★ 二十个探针）⇒ ★ **L3 达 68/103 文件** ✓
+| ★ `repropack.js` | ★ 7 | ★ "**缺必填成员 ⇒ 具名拒并【点名】**"在 **3 个缺失组合**上测（★ 每处都点名缺的成员）／★ **缺种子 ⇒ `VMU_MATH_SEED_REQUIRED`**／★ **数据默认只存指针**（`pointerMode:true`）／★ `list`/`status` 纯读 |
+| ★ `reviewers.js` | ★ 7 | ★ **"未声明 mode ⇒ 内核不替调用方选"**／★ **COI 双向**：有冲突 ⇒ `VMU_COI_VIOLATION`／无冲突 ⇒ 通过 ／★ **"每次解绑必须留痕"双向**：无理由 ⇒ 拒／带理由＋作者 ⇒ 通过 ／★ **并发上限**（★ 前置：第一次成功）|
+| ★ `board.js` | ★ 7 | ★ **"未配置 ⇒ 零机制"三点同时**：`configured:false`＋无列＋**移动具名拒且不裸抛** ／★ **WIP 上限 ⇒ `VMU_WORKFLOW_WIP_LIMIT`** ／★ **读面只读** |
+| ★ `fidelity.js` | ★ 8 | ★ **缺 `target`/`by`/`note` 在【3 个点】各具名拒**，★ 且**每条带数组 `enforced` ＋作用域** ／★ **"append-only"**（★ 两次声明后留痕 ≥2）／★ **"永远不是反证"在【2 张票】上**（true／false 皆 `isRefutation:false`）／★ **无 fs 缝 ⇒ `durable:false` 具名** |
+★ **累计：72 个模块、798 条断言**（★ 二十一个探针）⇒ ★ **L3 达 72/103 文件** ✓
 
-### 18.1 ★★★★ 而它的一处错误是【本阶段最老教训的新装】
-★ `receiptbounds` **返回的是字符串**，★ 所以对返回值读 `.receiptMeta` **什么也读不到** —— ★ **要先 `JSON.parse`** ✓
-★ 而它把区别讲清了：★ **"这跟『读序列化而不读字段』是同一个错，★ 只是外了一层 —— ★ 这里字符串【就是】那个值，★ 所以解析它是对的；★ 而给一个对象【造】一层 JSON 则不对。★ 区别在于你是【拆开这个值】还是【替换它】"** ✓✓
-⇒ ★★★ **"同一种形式，★ 两种相反的对错 —— ★ 取决于你是在解包还是在替换"** ✓
+### 19.1 ★★★★ 而它的一处**差点误报**是本阶段最常见的失败方式
+★ `fidelity` 的 "append-only" 断言**差点被判为坏** —— 因为 **`view({target})` 只回一条** ✓
+★ **纠正**：★ **`view({target})` 是【per-target 视图】，★ 而留痕在 `trail()`** ⇒ ★ **改读 `trail()` 后条数 ≥ 2** ✓✓
+⇒ ★★★ **"为问题读错了【面】—— ★ 这已是本阶段断言对正确模块失败的最常见方式，★ 而解法每次都一样：★ 判断答案之前，★ 先问这条宣称说的是【哪个面】"** ✓
 
-### 18.2 ★★ 而 A 路 22/7 仍未入库（★ 7 条红全是它自己的读法）
-★ 但 **16A 的 4 条红【全部变绿】** ⇒ ★ **账里那两条"一次读"的答案（★ `code` 而非 `exitCode`／★ 公理扫源码）确实有效** ✓
-★ 它剩下的 5 条同源红：★ **`boundedToolResult` 返回字符串**（★ 与 D 路同一处发现）⇒ ★ **下轮 `JSON.parse` 即可** ✓
+### 19.2 ★★ 而 A 路 39/2（★ 17A 的 7 条**全绿**）
+★ 它按账里"解包字符串"的答案修好了 **5 条** ⇒ ★ **`JSON.parse(boundedToolResult(x))` 后 `receiptMeta` 五键、`elided[0]` 八键、`keptBytes<bytes` 全对** ✓
+★ 余 2 条红：★★ **它未先证"缺陷已登记"就去断言强制弃权**（★ `applyAbstention` 返回 `enforced:false`）⇒ ★ **正是"上限/截断/强制类断言必须先证前置动作真发生了"这条规矩在它自己身上复现** ✓
+★ 它留下的开工单：★ **① 读 `declareDefect` 必填字段 ⇒ 先断言登记成功再断言 `enforced:true`；② 三处"截断/上限"补前置造数据；③ 目标 41/0** ✓
 
-### 18.3 ★★ 判定
-★ **覆盖债务：L3 68 · L2 15 · L1 20 · L0 0** ⇒ ★ **有人工审查 83/103 文件（81%）；★ 仅机器门禁只剩 20** ✓
-★ **T1 370/370**（★ suites 312 · **probes 58**）／★ **RULE E 88/0**／★ **regen-all 16/16** ✓
-★ **按当前速率（★ 每轮 4–8 个）⇒ L1 清到个位数还需 2–3 轮** ✓
+### 19.3 ★★ 判定
+★ **覆盖债务：L3 72 · L2 15 · L1 16 · L0 0** ⇒ ★ **有人工审查 87/103 文件（84%）；★ 仅机器门禁只剩 16** ✓
+★ **T1 371/371**（★ suites 312 · **probes 59**）／★ **RULE E 88/0**／★ **regen-all 16/16** ✓
+★ **按当前速率 ⇒ L1 清到个位数还需 1–2 轮** ✓
