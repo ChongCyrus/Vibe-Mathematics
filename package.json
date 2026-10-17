@@ -291,6 +291,8 @@
     "tests/audit-kernel-claims-3.mjs",
     "tests/audit-kernel-claims-5.mjs",
     "tests/audit-kernel-claims-7.mjs",
+    "tests/audit-kernel-claims-10.mjs",
+    "tests/audit-kernel-claims-9.mjs",
     "tests/audit-kernel-claims-8.mjs",
     "tests/audit-kernel-claims-6.mjs",
     "tests/audit-kernel-claims-4.mjs",
