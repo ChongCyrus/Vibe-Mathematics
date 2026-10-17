@@ -11,7 +11,7 @@
 | ★ 模块 | ★ 已验 | ★ **未验证的具体宣称** |
 |---|---|---|
 | ★ `records.js` | ★ 10 | ★ `enforced[]`／`fired[]` 回执的**行为形**；★ 按码计数；★ **读路径不变更** |
-| ★ `resume.js` | ★ 9 | ★ ① `write()`／`patch()` 在**从未读过的 store** 上抛 `VMU_RESUME_WRITE_BEFORE_READ` 的**行为形**；★ ② `nextId()` ＝ `max(stored,observed)+1`；★ ③ `settleOutcome` 的拒绝；★ ④ `hydrate()` 的 `degraded` 行为 |
+| ★ `resume.js` | ★ 9 ＋ **1（R109）** | ★ ① 的**行为形【已验】**（R109：★ 具名拒 `VMU_RESUME_WRITE_BEFORE_READ` ✓）；★ **②③④ 仍未验，★ 且原因已查明**：★ `nextId` **只写内存 `counters`（`:465`）**，★ 而持久化读的是 **`own.counters`（`:404`）** ⇒ ★ **"计数持久"靠【flush／exit 路径】落盘，★ 不是每次 `nextId`** ⇒ ★ **要验它必须驱动 flush，★ 并要一个 fold 布局与 `kernel/store.js` 一致的 store** —— ★ **属"需要真装配"类**；★ ③ 的 `settleOutcome` **没有 `interrupted` 参数**（★ 中断状态来自面的自身记录）⇒ ★ **需先跑一次 recover／restart 循环**；★ ④ `hydrate({keys})` ★ **需先 `read()`** |
 | ★ `mathjobs.js` | ★ 25 | ★ ①②③ 超时／非零／部分输出；★ ④ 回执完备性；★ ⑤ 种子要求；★ ⑥ 计数截断；★ ⑩ 镜像写点；★ ⑪ **`recover()` 四分支**；★ ⑬ `admission()` 标志 |
 | ★ `ballot.js` | ★ 15 | ★ `createBallot` 的 **frozen ⇒ 拒票不入计**（s8 回归那条）；★ 资格拒；★ **重复投**；★ 决定值非 1/0 拒；★ 未知 kind 拒；★ **middleware 返回无 reason 的 undecided ⇒ `VMU_MIDDLEWARE_FAILED`**；★ `createDurableCommitLog` 的 `VMU_COMMIT_STORE_FAILED`；★ snapshot／restore 一致性 |
 | ★ `meetings.js` | ★ 6 | ★★ **大头**：★ **状态机**（convene／floor／minutes）；★ **29 个 `VMU_*` 码**（含已知的 `VMU_NO_OPEN_MEETING`；★ `VMU_MEETING_CONFIDENTIAL_DENIED`／`TIER_CONFLICT`／`LIGHT_NO_TRUTH`／`SPEECH_TIMEBOUND`）；★ 两条成员寻址 journal 事件；★ receipt 词表 |
@@ -117,3 +117,20 @@
 
 ### 6.3 ★★★ 四处测量错（★ 与前三批同族）
 ★ **常量时钟看不见审批窗口过期**／★ **async 的 `fetchOne` 被同步 attempt 包住 ⇒ 把 rejection 读成"没有 code"**／★ **`vmu.external.enabled` 未声明时整面禁用 ⇒ 三条断言被 `VMU_EXTERNAL_DISABLED` 遮住**／★ **`seamCalls === after1` 两侧都可能为 0 ⇒ 对"缓存命中"什么都没证明**（★ 已补 `> 0` 守卫）✓
+
+
+## 7. ★★★★★ ROUND 109：把 `resume` 那 3 条**查清到底**（★ 而结论是【仍需真装配】）
+
+★ **我按契约重建了假 store**（★ 这已是同一个 store 的第 4–6 次形状发现）：
+★ `requireStore` 要 **`read` ＋ `patch`**（`:379`）→ ★ 折页其实从 **`export()`** 读（`:390`）→ ★★ **而 `patch` 是【两参·函数式】：`store.patch(String(key), () => payload)`（`:439`）** ⇒ ★ **我原先的单参合并版【什么都没存下去】**，★ **这才是"新面从 `t-1` 重来"看起来像缺陷的原因** ✓
+★ **并纠正了调用形**：★ `settleOutcome({id,outcome,explicit,reason})` —— ★ **没有 `interrupted` 参数**；★ `hydrate({keys})` —— ★ **不是 `{key,mode}`**，★ **且它要求先 `read()`** ✓
+
+### 7.1 ★★★★★ 而最后一查给出了【定论】
+★ `nextId` **只写内存 `counters` Map**（`:465`：`counters.set(k, n)`），★ **并不落盘**；★ 而持久化侧的读点是 **`own.counters`（`:404`）** ⇒ ★★ **"计数持久（`resume.counters`）"是靠【flush／exit 路径】写下去的，★ 不是每次 `nextId`** ✓
+⇒ ★★★★ **因此 **② 的期望本身错了**：★ 一个【没有 flush 过】的新面当然从 `t-1` 起** —— ★ **这不是缺陷，★ 是设计要求** ✓
+⇒ ★★★★ **要真正验 ②③④，必须：** ★（a）驱动 **flush／exit** 路径；★（b）用一个 **fold 布局与 `kernel/store.js` 一致**的 store；★（c）跑一次 **recover／restart** 循环来产生一个中断的 id ✓
+⇒ ★★★ **这三样都不是"便宜"** ⇒ ★ **它们归入债务台账既有的"需要真装配"类**，★ **并【保持未验证】—— ★ 不计作通过** ✓✓
+
+### 7.2 ★★★ 副产品（★ 正面的，值得留）
+★ 它的拒绝措辞是**本仓"不许静默假装"的样板**：★ *"refusing to treat an unreadable fold as an empty one"*／★ *"an unread snapshot must never be overwritten (the v5r V5_STATE_NOT_LOADED rule)"*／★ *"a recovery that cannot read a fold would be a claim, not a recovery"* ✓
+★ **且它的三条不变式在【测试这个动作本身上】成立**：★ **读之前不许写**（★ ①已验）、★ **读之前不许分配 id**（★ `nextId` 也走 `requireRead`）、★ **读不了的折页不当作空的**（★ 我三次撞到这条具名拒）✓
