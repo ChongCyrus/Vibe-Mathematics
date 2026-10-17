@@ -18,81 +18,78 @@
 ★ `tests/audit-service-calls.mjs`（★ 调用侧：★ `kernel.<服务>.<方法>` 必须可解析，★ **87 服务 × 213 文件**）／
 ★ `tests/audit-face-actions.mjs`（★ 面侧：★ 每个提供的动作必须存在或有分支，★ **51 面／47 enum**）／
 ★ `tests/audit-silent-keys.mjs`（★ 设置键：★ 不得「既无人读也未被裁定」，★ **640 文件**）／
-★ `tests/audit-kernel-claims*.mjs`（★ 行为宣称：★ **41 模块／断言数见各探针总结行**）。
+★ `tests/audit-kernel-claims*.mjs`（★ 行为宣称：★ **44 模块／断言数见各探针总结行**）。
 
-## 2. ★★★★★ 账（★ kernel 103 文件／45154 行）
+## 2. ★★★★★ 账（★ kernel 103 文件／45162 行）
 
 | ★ 级别 | ★ 文件 | ★ 行数 | ★ 占比 |
 |---|---|---|---|
-| ★★ **L3 宣称级验证** | ★ **41** | ★ **25762** | ★ 57.1% |
+| ★★ **L3 宣称级验证** | ★ **44** | ★ **26809** | ★ 59.4% |
 | ★★ **L2 已逐行读** | ★ **15** | ★ **9690** | ★ 21.5% |
-| ★ **L1 仅机器门禁** | ★ **47** | ★ **9702** | ★ 21.5% |
+| ★ **L1 仅机器门禁** | ★ **44** | ★ **8663** | ★ 19.2% |
 | ★ **L0 未触及** | ★ **0** | ★ **0** | ★ 0% |
 
-⇒ ★★★★ **56/103 文件（79% 行）有人工审查；★ 47 文件（21% 行）仅机器门禁覆盖** ✓
+⇒ ★★★★ **59/103 文件（81% 行）有人工审查；★ 44 文件（19% 行）仅机器门禁覆盖** ✓
 
 ### 2.1 ★★ L3（★ 有行为断言在测其头部宣称）
 
-  `resume.js`（1195） · `meetings.js`（1154） · `mathjobs.js`（1033） · `idempotency.js`（907） · `lean.js`（893） · `records.js`（883） · `mathtools.js`（873） · `mathadapters.js`（855） · `chat.js`（758） · `ip.js`（747） · `workflow.js`（729） · `library.js`（727） · `funding.js`（712） · `pack.js`（640） · `ballot.js`（631） · `replay.js`（627） · `meeting.js`（613） · `scheduler.js`（611） · `alerts.js`（609） · `charter.js`（598） · `conference.js`（593） · `paper.js`（586） · `ballotbox.js`（571） · `migration.js`（561） · `auditchain.js`（550） · `bidding.js`（537） · `tasks.js`（534） · `human.js`（528） · `external.js`（524） · `meetingmarker.js`（516） · `memory.js`（497） · `capacity.js`（456） · `publication.js`（435） · `minutes.js`（434） · `course.js`（429） · `panel.js`（428） · `transaction.js`（416） · `rules.js`（410） · `compliance.js`（407） · `resource.js`（386） · `ratelimit.js`（169）
+  `resume.js`（1195） · `meetings.js`（1154） · `mathjobs.js`（1033） · `idempotency.js`（907） · `lean.js`（893） · `records.js`（883） · `mathtools.js`（873） · `mathadapters.js`（855） · `chat.js`（758） · `ip.js`（747） · `workflow.js`（729） · `library.js`（727） · `funding.js`（712） · `pack.js`（640） · `ballot.js`（631） · `replay.js`（627） · `meeting.js`（613） · `scheduler.js`（611） · `alerts.js`（609） · `charter.js`（598） · `conference.js`（593） · `paper.js`（586） · `ballotbox.js`（571） · `migration.js`（561） · `auditchain.js`（550） · `bidding.js`（537） · `tasks.js`（534） · `human.js`（528） · `external.js`（524） · `meetingmarker.js`（516） · `memory.js`（497） · `capacity.js`（456） · `publication.js`（435） · `minutes.js`（434） · `course.js`（429） · `panel.js`（428） · `transaction.js`（416） · `rules.js`（410） · `compliance.js`（407） · `resource.js`（386） · `retention.js`（376） · `recruit.js`（368） · `fairness.js`（303） · `ratelimit.js`（169）
 
 ### 2.2 ★★ L2（★ 已逐行读过或改过并复读 · ★ 声明于 `READ_MODULES`）
 
   `index.js`（2439，R80） · `turn/index.js`（1034，R50） · `prompt/index.js`（785，R86） · `bus.js`（753，R85） · `report.js`（628，R99） · `mailbox.js`（607，R89） · `activity.js`（547，R80） · `delegation.js`（547，R97） · `arbitration.js`（497，R97） · `metrics.js`（394，R97） · `store.js`（317，R97） · `members.js`（316，R83） · `control.js`（309，R83） · `guard.js`（293，R97） · `ids.js`（224，R97）
 
-## 3. ★★★★★ L1 的具名余项（★ 47 文件，★ 按行数降序）
+## 3. ★★★★★ L1 的具名余项（★ 44 文件，★ 按行数降序）
 
 > ★ **这一列就是门 1 的剩余工作清单** —— ★ **可数、★ 具名、★ 按规模排序**。
 > ★ 推进方式：★ **每轮取 2–3 个照「验证宣称」那把尺过一遍**（★ 已验证者升到 L3，★ 并把断言收进 `audit-kernel-claims*`）。
 
 | ★ # | ★ 文件 | ★ 行数 |
 |---|---|---|
-| 1 | `retention.js` | 376 |
-| 2 | `recruit.js` | 360 |
-| 3 | `fairness.js` | 303 |
-| 4 | `notify.js` | 301 |
-| 5 | `trust.js` | 290 |
-| 6 | `collab.js` | 287 |
-| 7 | `storepolicy.js` | 284 |
-| 8 | `lifecycle.js` | 270 |
-| 9 | `grant.js` | 268 |
-| 10 | `tenure.js` | 268 |
-| 11 | `loader.js` | 254 |
-| 12 | `skills.js` | 252 |
-| 13 | `governance.js` | 251 |
-| 14 | `topology.js` | 249 |
-| 15 | `handover.js` | 243 |
-| 16 | `formal.js` | 241 |
-| 17 | `clockguard.js` | 238 |
-| 18 | `stateversion.js` | 237 |
-| 19 | `identity.js` | 227 |
-| 20 | `meetinglapse.js` | 224 |
-| 21 | `script-bridge.js` | 219 |
-| 22 | `budget.js` | 216 |
-| 23 | `audit.js` | 214 |
-| 24 | `crypto.js` | 213 |
-| 25 | `receiptbounds.js` | 209 |
-| 26 | `custody.js` | 204 |
-| 27 | `registry.js` | 194 |
-| 28 | `repropack.js` | 192 |
-| 29 | `reviewers.js` | 192 |
-| 30 | `board.js` | 190 |
-| 31 | `fidelity.js` | 187 |
-| 32 | `projmigrate.js` | 181 |
-| 33 | `reportfeedbackdelivery.js` | 179 |
-| 34 | `discipline.js` | 175 |
-| 35 | `work.js` | 165 |
-| 36 | `math.js` | 159 |
-| 37 | `explain.js` | 157 |
-| 38 | `resumeflush.js` | 152 |
-| 39 | `library-policy.js` | 143 |
-| 40 | `partnership.js` | 143 |
-| 41 | `citations.js` | 137 |
-| 42 | `reportfeedback.js` | 125 |
-| 43 | `meetingleave.js` | 96 |
-| 44 | `meetingdomain.js` | 72 |
-| 45 | `meetings-defaults.js` | 58 |
-| 46 | `timevalue.js` | 55 |
-| 47 | `contentvalue.js` | 52 |
+| 1 | `notify.js` | 301 |
+| 2 | `trust.js` | 290 |
+| 3 | `collab.js` | 287 |
+| 4 | `storepolicy.js` | 284 |
+| 5 | `lifecycle.js` | 270 |
+| 6 | `grant.js` | 268 |
+| 7 | `tenure.js` | 268 |
+| 8 | `loader.js` | 254 |
+| 9 | `skills.js` | 252 |
+| 10 | `governance.js` | 251 |
+| 11 | `topology.js` | 249 |
+| 12 | `handover.js` | 243 |
+| 13 | `formal.js` | 241 |
+| 14 | `clockguard.js` | 238 |
+| 15 | `stateversion.js` | 237 |
+| 16 | `identity.js` | 227 |
+| 17 | `meetinglapse.js` | 224 |
+| 18 | `script-bridge.js` | 219 |
+| 19 | `budget.js` | 216 |
+| 20 | `audit.js` | 214 |
+| 21 | `crypto.js` | 213 |
+| 22 | `receiptbounds.js` | 209 |
+| 23 | `custody.js` | 204 |
+| 24 | `registry.js` | 194 |
+| 25 | `repropack.js` | 192 |
+| 26 | `reviewers.js` | 192 |
+| 27 | `board.js` | 190 |
+| 28 | `fidelity.js` | 187 |
+| 29 | `projmigrate.js` | 181 |
+| 30 | `reportfeedbackdelivery.js` | 179 |
+| 31 | `discipline.js` | 175 |
+| 32 | `work.js` | 165 |
+| 33 | `math.js` | 159 |
+| 34 | `explain.js` | 157 |
+| 35 | `resumeflush.js` | 152 |
+| 36 | `library-policy.js` | 143 |
+| 37 | `partnership.js` | 143 |
+| 38 | `citations.js` | 137 |
+| 39 | `reportfeedback.js` | 125 |
+| 40 | `meetingleave.js` | 96 |
+| 41 | `meetingdomain.js` | 72 |
+| 42 | `meetings-defaults.js` | 58 |
+| 43 | `timevalue.js` | 55 |
+| 44 | `contentvalue.js` | 52 |
 
 ## 4. ★★★ 这份账之外的覆盖
 

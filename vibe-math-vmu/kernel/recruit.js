@@ -32,10 +32,16 @@ export function aggregate(scores, mode = 'mean') {
   const sorted = s.slice().sort((a, b) => a - b)
   if (mode === 'median') return sorted.length % 2 ? sorted[(sorted.length - 1) / 2] : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
   if (mode === 'trimmed') { const use = sorted.length >= 3 ? sorted.slice(1, -1) : sorted; return use.reduce((a, b) => a + b, 0) / use.length }
-  return s.reduce((a, b) => a + b, 0) / s.length
+  if (mode === 'mean') return s.reduce((a, b) => a + b, 0) / s.length
+  // ★ ROUND 111 FIX (measured): this line used to be an unconditional fallback, so ANY unrecognised mode silently became
+  // the mean - `aggregate([1,2,3],'max')` answered 2, giving the caller an average while they believed they asked for a
+  // maximum. A silent fallback to a different statistic is exactly the shape this repository refuses, so unknown modes are
+  // now refused BY NAME, naming the accepted set.
+  throw refuse('VMU_INVALID_ARGUMENT', 'unknown aggregation mode: ' + String(mode),
+    'the accepted modes are mean (default), median and trimmed')
 }
 
-export function createRecruit({ clock = () => Date.now(), log = () => {}, settings = {}, bus = null, members = null, listCap = 100 } = {}) {
+export function createRecruit({ clock = () => Date.now(), log = () => {}, settings = {}, bus = null, members = null, listCap = 100, roleMap = null } = {}) {
   const postings = new Map()      // postingId -> { id, slot, seats, requirements[], applicants[] }
   const applications = new Map()  // applicationId -> { id, postingId, candidate, evidence, scores[], status }
   const offers = new Map()        // offerId -> { id, applicationId, expiresAt, status }
@@ -62,7 +68,9 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
     rejectNeedsReason: boolOr(settings['vmu.admission.rejectNeedsReason'], true),
     requireEvidence: boolOr(settings['vmu.admission.requireEvidence'], false),
     maxCandidates: intOr(settings['vmu.admission.maxCandidates'], Infinity),
-    roleMap: (settings['vmu.roles.map'] && typeof settings['vmu.roles.map'] === 'object') ? settings['vmu.roles.map'] : {},
+    // ★ ROUND 111 FIX (measured): the header promised "vmu.roles.map / roleMap option" while only the SETTING was read, so
+  // passing the option did nothing at all - a promise the code did not keep. The option now wins, then the setting.
+  roleMap: (roleMap && typeof roleMap === 'object') ? roleMap : ((settings['vmu.roles.map'] && typeof settings['vmu.roles.map'] === 'object') ? settings['vmu.roles.map'] : {}),
     // ROUND 217: the appointment/term family (docs/17 §29.3). Every one of these is enforced somewhere below.
     slotIdPattern: (() => { const v = settings['vmu.roles.slotIdPattern']; try { return new RegExp(typeof v === 'string' && v ? v : '^[a-z][a-z0-9-]*$') } catch { return /^[a-z][a-z0-9-]*$/ } })(),
     termDefaultMs: intOr(settings['vmu.roles.termDefaultMs'], 0),
