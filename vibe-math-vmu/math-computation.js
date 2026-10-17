@@ -872,7 +872,10 @@ async function previousReceiptOf(H, baseDir, attempt) {
     if (prev !== undefined) { try { return JSON.parse(prev) } catch (e) { /* fall through */ } }
   }
   const first = await H.readText(baseDir + '/receipt.json')
-  if (first !== undefined) { try { return JSON.parse(first) } catch (e) { /* ignore */ } }
+  // ★ ROUND 84: THE REASON IS STATED, LIKE THE BRANCH ABOVE IT. An unreadable receipt is treated as NO receipt rather
+  // than as an error, because this function's only job is to offer the previous attempt something to build on - and a
+  // corrupt file must not turn "we have no usable prior receipt" into a crash. The caller already handles null.
+  if (first !== undefined) { try { return JSON.parse(first) } catch (e) { /* unparseable ⇒ treated as absent, never as a failure: see the stated reason above */ } }
   return null
 }
 

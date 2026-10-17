@@ -454,7 +454,7 @@ export function createActivity({
         try {
           timerDisposer = arm(onTimeout, ms)
         } catch (err) {
-          if (signal && typeof signal.removeEventListener === 'function') { try { signal.removeEventListener('abort', onAbort) } catch (e) { /* ignore */ } }
+          if (signal && typeof signal.removeEventListener === 'function') { try { signal.removeEventListener('abort', onAbort) } catch (e) { /* ★ ROUND 84: the reason is stated - this runs while HANDLING an arming failure, so a throw here would replace the real error with a cleanup error; the listener is owner-supplied and its removal must never mask why the arm failed */ } }
           waiters.delete(entry)
           done = true
           reject(err)
