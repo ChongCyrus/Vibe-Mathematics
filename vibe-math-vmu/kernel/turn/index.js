@@ -503,7 +503,7 @@ export function createTurnOrchestrator({
   const lastRefusal = { code: null, message: null }
   // ROUND 4 / F11: the attribution of the MOST RECENT delivery (`childId` + `stopReason`), so a caller can ask who a
   // receipt belongs to without re-reading the host handle.
-  let lastAttribution = { childId: null, stopReason: null, attribution: 'no turn has been delivered yet' }
+  let lastAttribution = { childId: null, stopReason: null, deliveryPath: null, attribution: 'no turn has been delivered yet' }
   let seq = 0
   // ★ ROUND 79: which member the most recent caller-supplied reply answers, so the closure vote is recorded against
   // THAT member rather than against whoever the next step happened to wake.
@@ -607,7 +607,7 @@ export function createTurnOrchestrator({
     // `{ reply, childId, stopReason, attribution }` that `deliverViaSubagents` now produces. A bare string is accepted
     // and NAMED as unattributed - the loop never invents a child id or a stop reason.
     if (typeof delivered === 'string') {
-      lastAttribution = { childId: null, stopReason: null, attribution: 'the delivery adapter returned a bare string: no childId/stopReason (docs/26 §3.22)' }
+      lastAttribution = { childId: null, stopReason: null, deliveryPath: null, attribution: 'the delivery adapter returned a bare string: no childId/stopReason (docs/26 §3.22)' }
       return delivered
     }
     const reply0 = delivered && typeof delivered.reply === 'string' ? delivered.reply : null
@@ -617,8 +617,8 @@ export function createTurnOrchestrator({
     // reply" would make the one route that needs no host Agent indistinguishable from a broken host. The awaiting
     // envelope therefore travels through UNCHANGED, and `run` returns it rather than parsing an empty answer.
     if (delivered && delivered.awaiting === true) {
-      lastAttribution = { childId: null, stopReason: null, attribution: 'the CALLING session plays this member turn (deliverByReturning): the assembled prompt was handed back, and the reply arrives on the next call' }
-      return { awaiting: true, memberPrompt: (delivered && delivered.memberPrompt) || null, reply: null }
+      lastAttribution = { childId: null, stopReason: null, deliveryPath: 'caller', attribution: 'the CALLING session plays this member turn (deliverByReturning): the assembled prompt was handed back, and the reply arrives on the next call' }
+      return { awaiting: true, memberPrompt: (delivered && delivered.memberPrompt) || null, reply: null, deliveryPath: 'caller' }
     }
     const reply = reply0
     // ★★★ ROUND 79: THE REPLY IS RECORDED AGAINST THE MEMBER IT ANSWERS, NOT AGAINST THIS TURN'S MEMBER. The
@@ -627,6 +627,8 @@ export function createTurnOrchestrator({
     const replyForMember = delivered && delivered.forMember ? String(delivered.forMember) : null
     lastReplyForMember = replyForMember
     lastAttribution = {
+      // ★ ROUND 88: WHICH ROUTE DELIVERED, reported by the seam itself (host bridge or caller-played).
+      deliveryPath: (delivered && delivered.deliveryPath) || null,
       childId: (delivered && delivered.childId) || null,
       stopReason: (delivered && delivered.stopReason) || null,
       attribution: (delivered && delivered.attribution) || 'the delivery adapter returned an envelope without an attribution note',
@@ -941,7 +943,7 @@ export function createTurnOrchestrator({
       try {
         const r = await run({ ...spec, round: i })
         // ★ ROUND 73: a caller-played turn ENDS the batch - the prompt goes back and the round resumes on the next call.
-        if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, receipts, roundsRun: receipts.length, round: i, member: spec.member }
+        if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null, receipts, roundsRun: receipts.length, round: i, member: spec.member }
         receipts.push({ round: i, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, turn: r.turn.id })
       } catch (e) {
         counts.refused += 0
@@ -964,7 +966,9 @@ export function createTurnOrchestrator({
       const r = await run({ ...spec, round: turns.size + 1 })
       // ★★★ ROUND 73: a caller-played turn is a LEGAL outcome, not a receipt with empty fields. It is surfaced as such so
       // the caller knows to play the member turn and answer on the next call.
-      if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, receipt: null, attribution: r.attribution || null }
+      // ★ ROUND 88: and it NAMES THE ROUTE that handed the prompt back, so "which delivery path ran" is read from the
+      // receipt the agent actually sees rather than inferred from prose in a transcript.
+      if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null, receipt: null, attribution: r.attribution || null }
       return { ok: true, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, turn: r.turn.id } }
     } catch (e) {
       // ★★★ ROUND 61: THE STACK STAYS. This catch kept only the message, and that is precisely why a real machine's
