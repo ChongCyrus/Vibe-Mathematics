@@ -134,3 +134,19 @@
 ### 7.2 ★★★ 副产品（★ 正面的，值得留）
 ★ 它的拒绝措辞是**本仓"不许静默假装"的样板**：★ *"refusing to treat an unreadable fold as an empty one"*／★ *"an unread snapshot must never be overwritten (the v5r V5_STATE_NOT_LOADED rule)"*／★ *"a recovery that cannot read a fold would be a claim, not a recovery"* ✓
 ★ **且它的三条不变式在【测试这个动作本身上】成立**：★ **读之前不许写**（★ ①已验）、★ **读之前不许分配 id**（★ `nextId` 也走 `requireRead`）、★ **读不了的折页不当作空的**（★ 我三次撞到这条具名拒）✓
+
+## 8. ★★★★★ ROUND 109 补记：第八批 K 路 —— **30 条断言，★ 且【首次一遍过】**
+
+| ★ 模块 | ★ 断言 | ★ 关键宣称 |
+|---|---|---|
+| ★ `memory.js` | ★ 10 | ★ **记忆【永不授权】：★ `may()`／`authorize()` 【总是】具名拒 `VMU_MEMORY_NOT_AUTHORITY`（S-3）**／★ 零机制下**每个读面都作答、不抛**／★ 工厂时钟默认合法、★ **非函数才拒且 message 点名 clock** |
+| ★ `capacity.js` | ★ 9 | ★ **拒绝带 D3 作用域标记 `ENFORCED_SCOPE`**（★ **读拒绝对象【自身的属性】** ⇒ `raw.enforcedScope === 'evaluated-so-far'`）／★ 每条未接线键带非空理由 |
+| ★ `publication.js` | ★ 11 | ★ **"'on request' 除非显式允许否则被拒"** ⇒ `isVague('available on request')===true` ★ **而 `isVague('doi:10.1234/abc')===false`（★ 不是常量真）**／★ **匹配不可被格式规避**（大小写/多空格不敏感）／★ **读路径不改账本**（两次读逐字相同）|
+★ **累计：35 个模块、422 条断言** ⇒ ★ **L3 达 35/103 文件** ✓
+
+### 8.1 ★★★★★★ **本批【0 处 API 猜错】—— ★ 而这是七轮学费换来的**
+★ 它的自述把对应关系逐条列出：★ **读拒绝对象自身属性**（★ R107 我因此误报过缺陷）／★ **"省略时钟合法 ＋ 非函数才拒"两个方向都断言**（★ R105/107/108 各错一次）／★ **throw-vs-return·async 一律走归一化助手**／★ **方法名只用 `typeof` discovery-first，★ 证存在后才调用**／★ **不确定形状的**不猜**，★ 只断言导出的纯函数与零机制读路径**／★ **每个谓词都做【双向】**（★ 防"恒真/恒假"混过）／★ **探针用 write 工具落盘，★ 不在 pwsh 里内联 JS**（★ 前两轮各因引号解析失败一次）✓
+⇒ ★★★★ **"七轮的错误换来了这一批的第一次干净通过 —— ★ 而这是这类审计唯一能攒下的进展"** ✓✓
+
+### 8.2 ★★★ 而它**独立再次确认**了上一轮的撤回
+★ capacity 的拒绝**确实**以自身属性携带 `enforcedScope: 'evaluated-so-far'` —— ★ **正是那个被助手丢弃、从而导致误报 `conference.js` 的字段** ✓
