@@ -304,6 +304,7 @@
     "tests/audit-kernel-claims-4.mjs",
     "tests/audit-kernel-claims-2.mjs",
     "tests/audit-kernel-claims.mjs",
+    "tests/audit-receipt-fields.mjs",
     "tests/audit-silent-keys.mjs",
     "tests/audit-face-actions.mjs",
     "tests/audit-service-calls.mjs",
@@ -814,6 +815,7 @@
     "build:presets": "node scripts/build-preset-rows.mjs"
   }
 }
+
 
 
 
