@@ -397,17 +397,28 @@ const refuseCorpus = (code, message, hint) => {
  * set that carries none (so "refuses everything" is impossible — `PACK.sections` passes). Pure and dependency-free:
  * it can be called from the wiring path, from a test, or from a future loader.
  */
-export function assertRuntimeSafeSections(sections, what = 'the runtime section set') {
+export function assertRuntimeSafeSections(sections, what = 'the runtime section set', bindings = null) {
   const list = Array.isArray(sections) ? sections : []
   const offenders = []
+  // ★ ROUND 94 — THE RUNTIME SOURCE IS SECTIONS **AND BINDINGS**, SO THE DOOR CHECKS BOTH. It used to inspect only the
+  // sections, and that blindness was measured: one charter binding (phase `verify`) carried a captured absolute path,
+  // the guard still answered {ok:true}, and an assembled verify-phase prompt really did contain it. A guard that covers
+  // half of what the pipeline consumes is worse than none, because it reports safety. The third argument is OPTIONAL so
+  // every existing two-argument caller - and the tests that pin its behaviour - keep working unchanged.
   for (const s of list) {
     const m = SNAPSHOT_VALUE_RE.exec(String((s && s.text) || ''))
     if (m) offenders.push(((s && s.name) || '(unnamed)') + ' [' + m[0] + ']')
   }
+  // the bindings are part of the same runtime source: same regex, same refusal, one list of offenders
+  for (const b of (Array.isArray(bindings) ? bindings : [])) {
+    const m = SNAPSHOT_VALUE_RE.exec(String((b && b.text) || ''))
+    if (m) offenders.push('binding ' + ((b && b.section) || '(unnamed)') + ' [' + m[0] + ']')
+  }
   if (offenders.length) {
     throw refuseCorpus('VMU_PACK_V5R_CORPUS_NOT_RUNTIME',
-      what + ': ' + offenders.length + ' section(s) carry CAPTURED SNAPSHOT values — a recorded run\u2019s literals (round numbers, voter counts, absolute paths) must not become live prompt text',
+      what + ': ' + offenders.length + ' site(s) carry CAPTURED SNAPSHOT values — a recorded run\u2019s literals (round numbers, voter counts, absolute paths) must not become live prompt text',
       'declare the hand-written charter instead (`PACK.sections`; docs/26 §3.7 / round 374). Offenders: ' + offenders.slice(0, 4).join(', ') + (offenders.length > 4 ? ' +' + (offenders.length - 4) + ' more' : ''))
   }
-  return { ok: true, sections: list.length, checked: list.length }
+  return { ok: true, sections: list.length, bindings: Array.isArray(bindings) ? bindings.length : 0, checked: list.length + (Array.isArray(bindings) ? bindings.length : 0) }
 }
+

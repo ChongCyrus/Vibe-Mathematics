@@ -407,7 +407,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         'vibe_v5_lean_run on a missing file: V5_NOT_FOUND｜no such file: Formal/no-such-file.lean',
         'vibe_v5_lean_archive without a name: V5_INVALID_ARGUMENT｜name is required for a reusable definition/lemma',
         'vibe_v5_lean_archive blocked without a note: V5_INVALID_ARGUMENT｜阻塞记录必须写明原因（note）——"因难度决定不做形式化"必须显式、可审计',
-        'vibe_v5_lean_lib hint: 复用优先：先在 VibeMath/Projects/default/Institutes/institute/Formal/Lib/ 里找现成定义（vibe_v5_lean_read {name} 取原文）；新定义用 vibe_v5_lean_archive kind=\'def\' 归档，已证引理用 kind=\'lemma\'。复用已归档内容：import Formal.Lib.<name> / import Formal.Proved.<name>。同内容重复归档会自动去重。',
+        'vibe_v5_lean_lib hint: 复用优先：先在 Formal/Lib/ 里找现成定义（vibe_v5_lean_read {name} 取原文）；新定义用 vibe_v5_lean_archive kind=\'def\' 归档，已证引理用 kind=\'lemma\'。复用已归档内容：import Formal.Lib.<name> / import Formal.Proved.<name>。同内容重复归档会自动去重。',
       ].join('\n'),
     },
   },

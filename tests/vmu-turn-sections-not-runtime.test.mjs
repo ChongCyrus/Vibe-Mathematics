@@ -25,7 +25,7 @@ const ok = (cond, label, detail) => {
   console.error('  FAIL ' + label + (detail === undefined ? '' : ' - ' + JSON.stringify(detail)))
   return false
 }
-const attempt = (fn) => { try { return { value: fn() } } catch (e) { return { code: (e && e.code) || null, message: String((e && e.message) || e) } } }
+const attempt = (fn) => { try { return { value: fn() } } catch (e) { return { code: (e && e.code) || null, message: String((e && e.message) || e), hint: e && e.hint ? String(e.hint) : null } } }
 const textsOf = (list) => (Array.isArray(list) ? list : []).map((s) => String((s && s.text) || '')).join('\n')
 
 console.log('=== §1 THE HAZARD IS REAL: the corpus-derived set carries frozen snapshot values ===')
@@ -69,7 +69,40 @@ console.log('=== §4 BOTH DIRECTIONS ON THE SAME FUNCTION ===')
     'and the two sets are different objects, so a wire-up that mixes them is visible rather than accidental', {})
 }
 
+console.log('=== §5 THE RUNTIME SOURCE IS SECTIONS **AND BINDINGS**, SO THE DOOR CHECKS BOTH ===')
+{
+  // ★ ROUND 94 MEASURED THIS HOLE: the guard inspected only sections while the pipeline assembles sections PLUS
+  // bindings, and one charter binding (phase `verify`) carried a captured absolute path. The guard answered {ok:true}
+  // and an assembled verify-phase prompt really did contain it - a guard covering half the runtime source is worse
+  // than none, because it reports safety.
+  const live = attempt(() => assertRuntimeSafeSections(PACK.sections, 'round-94 probe', PACK.bindings))
+  ok(live.code === undefined && live.value && live.value.ok === true && live.value.bindings === PACK.bindings.length,
+    '★ the LIVE sections AND bindings pass the guard together, and the receipt says how many bindings were examined',
+    { value: live.value })
+  const planted = attempt(() => assertRuntimeSafeSections([], 'planted probe', [{ section: 'x', phase: 'verify', text: 'read VibeMath/Projects/default/Institutions/x' }]))
+  ok(planted.code === 'VMU_PACK_V5R_CORPUS_NOT_RUNTIME',
+    '★★ and a BINDING that carries a captured value is refused by name - the hole this round measured', planted)
+  // the offending site is named in the HINT (the message carries the count and the reason), so both are checked
+  ok(/binding/.test((planted.message || '') + ' ' + (planted.hint || '')),
+    '★ the refusal names it as a BINDING rather than a section, so the reader knows which half broke', { message: (planted.message || '').slice(0, 120) })
+  const compat = attempt(() => assertRuntimeSafeSections(PACK.sections, 'two-arg callers still work'))
+  ok(compat.code === undefined && compat.value && compat.value.bindings === 0,
+    'and the two-argument form still works unchanged, reporting zero bindings examined rather than pretending to have checked them',
+    { value: compat.value })
+}
+
+console.log('=== §6 NO PROMPT BLOCK CARRIES A CAPTURED ABSOLUTE PATH ANY MORE ===')
+{
+  // the text used to say `VibeMath/Projects/default/Institutes/institute/Formal/Lib/` - a literal from the captured run
+  const texts = textsOf(PACK.bindings.map((b) => ({ text: b.text })))
+  ok(!/VibeMath\/Projects\//.test(texts),
+    '★ no binding text carries the captured `VibeMath/Projects/` path; the instruction uses the relative `Formal/Lib/` that every other path in the charter uses')
+  ok(/Formal\/Lib\//.test(texts),
+    'and the Lean hint still POINTS somewhere - the path was made relative, not deleted')
+}
 console.log('')
 console.log('=== VMU TURN SECTIONS NOT RUNTIME: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n'))
 process.exitCode = failed === 0 ? 0 : 1
+
+

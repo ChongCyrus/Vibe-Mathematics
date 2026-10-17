@@ -241,11 +241,18 @@ console.log('=== 5. EVERY REMAINING GAP IS STRUCTURAL, and this says which ===')
   }
   const isOtherCatalogueVersion = (l) => /协调需要时可用assign（subject/.test(l)
   const isAddressedToSomeoneElse = (l) => /给你的起点方向：/.test(l) || /请你审阅 \*\*/.test(l)
-  const unexplained = left.filter((x) => !isOtherCatalogueVersion(x.line) && !isAddressedToSomeoneElse(x.line))
+  // ★ ROUND 94 — THE THIRD CLASS, AND IT IS A GOOD ONE RATHER THAN A LOSS. One corpus line carried a CAPTURED ABSOLUTE
+  // PATH (`VibeMath/Projects/.../Formal/Lib/`). Reproducing it verbatim would freeze a recorded run's path into a live
+  // prompt - exactly what `assertRuntimeSafeSections` exists to refuse, and it had been getting through a BINDING while
+  // that guard looked only at sections. The runtime text is now relative (`Formal/Lib/`, the form every other path in the
+  // charter uses), so this line cannot match the corpus verbatim BY DESIGN. Naming it here keeps the claim honest: a gap
+  // appearing BEYOND these three classes still means real transcription is missing.
+  const isDeFrozenCapturedPath = (l) => /VibeMath\/Projects\//.test(l)
+  const unexplained = left.filter((x) => !isOtherCatalogueVersion(x.line) && !isAddressedToSomeoneElse(x.line) && !isDeFrozenCapturedPath(x.line))
   const uniqueLeft = [...new Set(left.map((x) => x.line))]
   const uniqueUnexplained = [...new Set(unexplained.map((x) => x.line))]
   ok(unexplained.length === 0,
-    "EVERY REMAINING GAP IS STRUCTURAL: of " + left.length + " unreproduced occurrences, which are " + uniqueLeft.length + " DISTINCT lines, every one is either the compact catalogues OTHER wording (the corpus spans a version change of the original, so printing both would print a line the original did not) or a line addressed to a member or reviewer this scenario did not name (one assembly names one member). No line is missing for want of transcription",
+    "EVERY REMAINING GAP IS STRUCTURAL: of " + left.length + " unreproduced occurrences, which are " + uniqueLeft.length + " DISTINCT lines, every one is either the compact catalogues OTHER wording (the corpus spans a version change of the original, so printing both would print a line the original did not) a line addressed to a member or reviewer this scenario did not name (one assembly names one member), or a line that carried a CAPTURED ABSOLUTE PATH and was made relative on purpose (round 94: freezing a recorded path into a live prompt is what the runtime-safety guard refuses). No line is missing for want of transcription",
     { occurrences: left.length, distinctLines: uniqueLeft.length, firstLines: uniqueLeft.slice(0, 3).map((l) => l.slice(0, 60)), unexplainedDistinct: uniqueUnexplained.length })
 }
 console.log('=== 6. THE PER-MEMBER STARTING DIRECTIONS ARE SELECTED BY MEMBER ===')
@@ -275,3 +282,4 @@ console.log('=== 6. THE PER-MEMBER STARTING DIRECTIONS ARE SELECTED BY MEMBER ==
 }
 console.log('=== PER-TYPE COVERAGE: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }
+
