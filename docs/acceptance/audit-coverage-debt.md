@@ -22,6 +22,23 @@
 
 ## 2. ★★★★★ 账（★ kernel 103 文件／45139 行）
 
+★ **行为断言**：★ 12 个探针共 **461** 条（★ **派生**：★ 逐个运行探针并读它自报的总结行；★ 手抄的计数会在下一批落地时漂移）
+
+| ★ 探针 | ★ 断言 |
+|---|---|
+| `audit-kernel-claims-10.mjs` | 51 |
+| `audit-kernel-claims-11.mjs` | 30 |
+| `audit-kernel-claims-12.mjs` | 39 |
+| `audit-kernel-claims-2.mjs` | 44 |
+| `audit-kernel-claims-3.mjs` | 27 |
+| `audit-kernel-claims-4.mjs` | 46 |
+| `audit-kernel-claims-5.mjs` | 33 |
+| `audit-kernel-claims-6.mjs` | 50 |
+| `audit-kernel-claims-7.mjs` | 31 |
+| `audit-kernel-claims-8.mjs` | 44 |
+| `audit-kernel-claims-9.mjs` | 29 |
+| `audit-kernel-claims.mjs` | 37 |
+
 | ★ 级别 | ★ 文件 | ★ 行数 | ★ 占比 |
 |---|---|---|---|
 | ★★ **L3 宣称级验证** | ★ **38** | ★ **24559** | ★ 54.4% |
