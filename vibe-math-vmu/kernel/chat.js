@@ -314,7 +314,13 @@ export function createChat({
      */
     send(from, text, { replyTo = null, quotes = [], kind = 'chat' } = {}) {
       const who = from === null || from === undefined ? '' : String(from)
-      if (!who) throw refuse('VMU_INVALID_ARGUMENT', 'a message needs a non-empty `from`', 'pass the speaking member id')
+      // ★ ROUND 89: THE REFUSAL NAMES THE PARAMETER THE CALLER ACTUALLY SUPPLIES. This said "a message needs a non-empty
+      // `from`" - which is correct about THIS function's own parameter - but an agent only ever reaches it through the
+      // tool face, whose parameter is `by`. A real run showed the consequence: the agent reported that `from` appears
+      // nowhere in the tool's parameter table, which is true, and it had no way to act on the message. A refusal is
+      // addressed to whoever must fix it, so it names their vocabulary and says which face it is on.
+      if (!who) throw refuse('VMU_INVALID_ARGUMENT', 'a message needs a non-empty sender id',
+        'the tool face passes this as `by`: {"action":"send","by":"<member id>","text":"…"} - a message with no sender is not auditable')
       const body = String(text === undefined || text === null ? '' : text)
       if (!body.trim()) throw refuse('VMU_INVALID_ARGUMENT', 'a message needs non-empty text', 'pass { text }')
       const k = String(kind || 'chat')

@@ -221,7 +221,11 @@ export function createMailbox({
     },
     sendBody(from, { to = null, text = '', kind = 'dm', replyTo = null } = {}) {
       const who = String(from === undefined || from === null ? '' : from)
-      if (!who) throw refuse('VMU_INVALID_ARGUMENT', 'a message needs a non-empty `from`', 'pass the sending member id')
+      // ★ ROUND 89: same wording fix as `kernel/chat.js` - the sender id reaches this service positionally from a tool
+      // face whose parameter is `by`, so naming this function's own `from` sends an agent looking for a parameter it
+      // cannot supply.
+      if (!who) throw refuse('VMU_INVALID_ARGUMENT', 'a message needs a non-empty sender id',
+        'the tool face passes this as `by`: {"action":"send","by":"<member id>","text":"…"} - a message with no sender is not auditable')
       const body = String(text === undefined || text === null ? '' : text)
       if (!body.trim()) throw refuse('VMU_INVALID_ARGUMENT', 'a message needs non-empty text', 'pass { text }')
       rejectInstants({ replyTo }, 'send')
