@@ -88,7 +88,7 @@ export function createCollab({ clock = () => 0, log = null, settings = {}, bus =
     const beyondDefault = list.filter((t) => t !== c.dataSharingTemplate)
     const rec = { id: realId, name: realName, institution: str(institution) || null, templates: list, at: clock() }
     counterparties.set(realId, rec)
-    return { ok: true, counterparty: { id: rec.id, name: rec.name, institution: rec.institution }, registry: c.counterpartyRegistry, templatesBeyondDefault: beyondDefault, enforced: ['vmu.collab.counterpartyRegistry', 'vmu.collab.dataSharingTemplate'] }
+    return { ok: true, fired: [], counterparty: { id: rec.id, name: rec.name, institution: rec.institution }, registry: c.counterpartyRegistry, templatesBeyondDefault: beyondDefault, enforced: ['vmu.collab.counterpartyRegistry', 'vmu.collab.dataSharingTemplate'] }
   }
 
   const counterpartyOf = (id) => {
@@ -125,7 +125,7 @@ export function createCollab({ clock = () => 0, log = null, settings = {}, bus =
     const left = daysLeft(rec, at)
     const warn = left !== null && left <= c.expiryWarnDays
     if (warn) say({ type: 'collab/expiry-warning', at, agreement: id, daysLeft: left, expiryWarnDays: c.expiryWarnDays })
-    return { ok: true, id, counterparty: cp.id, kind: realKind, template: tmpl, expiresAt: end, daysLeft: left, expiryWarning: warn,
+    return { ok: true, fired: [], id, counterparty: cp.id, kind: realKind, template: tmpl, expiresAt: end, daysLeft: left, expiryWarning: warn,
       registryDir: c.agreementsRegistryDir, signed: false,
       enforced: ['vmu.collab.agreementRequired', 'vmu.collab.dataSharingTemplate', 'vmu.collab.expiryWarnDays', 'vmu.collab.jointAuthorshipPolicy', 'vmu.agreements.kinds', 'vmu.agreements.registryDir'] }
   }
@@ -149,7 +149,7 @@ export function createCollab({ clock = () => 0, log = null, settings = {}, bus =
     a.signatureRef = ref === null ? null : String(ref)
     a.signedBy = by === null ? null : String(by)
     a.signedAt = clock()
-    return { ok: true, agreementId: a.id, signed: true, ref: a.signatureRef, enforced }
+    return { ok: true, fired: [], agreementId: a.id, signed: true, ref: a.signatureRef, enforced }
   }
 
   /** ROUND 219: record a review. `reviewCadenceDays` decides when the next one is due. */
@@ -158,7 +158,7 @@ export function createCollab({ clock = () => 0, log = null, settings = {}, bus =
     const at = clock()
     a.lastReviewedAt = at
     a.reviewWarnings = []
-    return { ok: true, agreementId: a.id, reviewedAt: at, cadenceDays: cfg().reviewCadenceDays, nextDueAt: at + cfg().reviewCadenceDays * 86400000, enforced: ['vmu.agreements.reviewCadenceDays'] }
+    return { ok: true, fired: [], agreementId: a.id, reviewedAt: at, cadenceDays: cfg().reviewCadenceDays, nextDueAt: at + cfg().reviewCadenceDays * 86400000, enforced: ['vmu.agreements.reviewCadenceDays'] }
   }
 
   /**
@@ -254,7 +254,7 @@ export function createCollab({ clock = () => 0, log = null, settings = {}, bus =
     const a = agreementOf(agreementId)
     const c = cfg()
     const authors = a.authors.slice()
-    return { ok: true, agreementId: a.id, policy: c.jointAuthorshipPolicy, authors,
+    return { ok: true, fired: [], agreementId: a.id, policy: c.jointAuthorshipPolicy, authors,
       note: c.jointAuthorshipPolicy === 'contribution-then-alternate'
         ? 'contribution order first, alternating for equal contributions'
         : 'policy name is not one this face implements: the declared order is returned unchanged',
