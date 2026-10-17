@@ -33,14 +33,27 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
       throw err
     }
     const callerSeam = declaredDeliverMode === 'caller' ? deliverByReturning() : null
+
+  // ★★★★★★★ ROUND 87 — IN CALLER MODE THIS FUNCTION MUST **BE** THE SEAM, NOT A WRAPPER AROUND IT.
+  // MEASURED ON A REAL MACHINE: the refusals below reached it twenty-one times in a single run -
+  // "this delivery seam does not accept a caller-supplied reply" - because the wrapper returned at the end of this
+  // function is a plain arrow: `async ({ turn, text }) => callerSeam({ turn, text })`. That arrow has no `.supply`, so
+  // `supplyMemberReply` refused EVERY reply the calling session handed back, and the caller-played route never once
+  // delivered a member turn. The run looked like "replies are flowing" from the transcript alone, because the task
+  // instructions quoted the phrase `supplied-by-caller` back into it; the seam's own fields were absent throughout
+  // (`stopReason:"supplied-by-caller"`: 0 occurrences, `deliveryPath:"caller"`: 0). A wrapper that hides the capability
+  // it wraps is the whole bug, so in caller mode the seam ITSELF is returned - carrying `supply`, `pending` and
+  // `awaiting` with it - and the subagents bridge keeps its own wrapper below.
+  if (callerSeam) return callerSeam
     const turnDeliver = async ({ turn, text } = {}) => {
       // ★ ROUND 80: DECLARED FIRST, BECAUSE THE REFUSAL BELOW READS THEM. T1 caught a temporal dead zone here: the
       // missing-seam hint reports parentKind and the agents keys, but both were declared further down, so that path
       // threw "Cannot access 'parentKind' before initialization" instead of the refusal it was written to produce.
       let parentKind = 'null'
       let agentKeys = null
-      // ★ caller mode needs nothing from the host at all
-      if (callerSeam) return callerSeam({ turn, text })
+      // (caller mode returned the seam above, so this wrapper only ever runs the HOST BRIDGE - the branch that used to
+      // sit here was unreachable the moment the early return landed, and dead code that looks like a live route is how
+      // a reader concludes a route works when it does not.)
       let subs = null
       try { subs = ctx && typeof ctx.get === 'function' ? ctx.get('subagents') : null } catch { subs = null }
       // ★★★ ROUND 63: THE ONE-SHOT PROVIDER, DISCOVERED RATHER THAN DEMANDED. `startContinuable` goes through the host's
