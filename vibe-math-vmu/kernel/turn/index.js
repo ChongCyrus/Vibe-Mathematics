@@ -804,26 +804,13 @@ export function createTurnOrchestrator({
       context.set('seed', seed)
       bookkeeping.push({ field: 'compacted', seedChars: seed.length })
     }
-    const dispatches = plan(reply)
-    const executed = []
-    const skipped = []
-    for (const d of dispatches) {
-      const face = map[d.face]
-      const fn = face && typeof face[d.op] === 'function' ? face[d.op] : null
-      if (!fn) {
-        counts.notExecuted += 1
-        skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'face-not-wired' })
-        continue
-      }
-      const res = await fn(d.payload, { field: d.field, face: d.face, op: d.op })
-      counts.dispatched += 1
-      executed.push({ field: d.field, face: d.face, op: d.op, result: res })
-    }
-    // ROUND 394: the remaining recorded fields used to be RECOGNISED AND THEN DISCARDED - a model that wrote prioritize,
-    // hire or fire had its payload vanish with no trace, which is the silent-failure class this repository refuses.
-    // Each one is now kept on the turn state under its own name and reported in the receipt, so the framework can read
-    // it and a consumer can see that it arrived. No face is invented for them: the members service is not even present
-    // in a default kernel, and sending a payload to an operation that does not exist would be worse than keeping it.
+    // ★★★★★★★ ROUND 86 — THE RECORDED FIELDS ARE TAKEN BEFORE ANY DISPATCH RUNS, AND THAT ORDER IS THE FIX. This loop
+    // used to run AFTER the dispatch loop below, so a face that REFUSED any field threw out of `apply` and everything
+    // here was lost - including the member's own closure vote. Measured on a real machine (and reproduced locally
+    // through the tool faces): a reply carried `vote_solved: true`, another field of that same reply was refused with
+    // VMU_NO_OPEN_MEETING because the meeting had closed, and `closureVoteRecorded` stayed empty while `missing` still
+    // named the member who had just answered. A member's judgement is not contingent on the rest of their reply being
+    // accepted, so it is recorded FIRST; the dispatches then carry out the effects that DO need a face.
     for (const field of RECORDED_FIELDS) {
       if (r[field] === undefined || r[field] === null) continue
       // ★★★ WHICH FIELD CLOSES THE INSTITUTE IS SETTLED BY THE PROMPT, NOT BY ME. Its own words: `vote_solved` is
@@ -846,6 +833,27 @@ export function createTurnOrchestrator({
       bookkeeping.push({ field, kept: true })
     }
     if (bookkeeping.length) counts.bookkept = (counts.bookkept || 0) + bookkeeping.length
+
+    const dispatches = plan(reply)
+    const executed = []
+    const skipped = []
+    for (const d of dispatches) {
+      const face = map[d.face]
+      const fn = face && typeof face[d.op] === 'function' ? face[d.op] : null
+      if (!fn) {
+        counts.notExecuted += 1
+        skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'face-not-wired' })
+        continue
+      }
+      const res = await fn(d.payload, { field: d.field, face: d.face, op: d.op })
+      counts.dispatched += 1
+      executed.push({ field: d.field, face: d.face, op: d.op, result: res })
+    }
+    // ROUND 394: the remaining recorded fields used to be RECOGNISED AND THEN DISCARDED - a model that wrote prioritize,
+    // hire or fire had its payload vanish with no trace, which is the silent-failure class this repository refuses.
+    // Each one is now kept on the turn state under its own name and reported in the receipt, so the framework can read
+    // it and a consumer can see that it arrived. No face is invented for them: the members service is not even present
+    // in a default kernel, and sending a payload to an operation that does not exist would be worse than keeping it.
     return { ok: true, executed, skipped, planned: dispatches.length, bookkeeping }
   }
 
