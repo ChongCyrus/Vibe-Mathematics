@@ -31,22 +31,10 @@ const READ_MODULES = {
 const claimsFiles = readdirSync(join(ROOT, "tests")).filter((f) => /^audit-kernel-claims.*\.mjs$/.test(f)).sort()
 const claimsText = claimsFiles.map((f) => readFileSync(join(ROOT, "tests", f), "utf8")).join("\n")
 
-// ★ DERIVED ASSERTION COUNT: run each probe and read the number it reports about itself. The alternative - typing how many
-// assertions exist - is the hand-copied-count mistake this repository keeps refusing, and it drifts on the first new batch.
-const { execFileSync } = await import("node:child_process")
-const assertionRows = []
-let assertionsTotal = 0
-for (const f of claimsFiles) {
-  let n = null
-  try {
-    const out = execFileSync(process.execPath, [join(ROOT, "tests", f)], { encoding: "utf8" })
-    const m = /: (\d+) passed, (\d+) failed/.exec(out)
-    if (m) { n = Number(m[1]); assertionsTotal += n }
-  } catch { n = null }
-  assertionRows.push({ file: f, count: n })
-}
-if (assertionRows.every((r) => r.count === null)) { console.error("COVERAGE DEBT: no probe reported a count - the parser has broken"); process.exit(1) }
-
+// ★ THE ASSERTION COUNT IS DELIBERATELY NOT DERIVED HERE. Deriving it meant RUNNING the probes, which made
+// `regen-all --check` execute test files - and one T1 run then reported regen-all as failing while two direct runs exited 0.
+// A --check must be deterministic and side-effect-free, so the counts live in this ledger's prose (the probes' own summary
+// lines are the authority) and the derivation below stays purely source-based.
 // ★ THE DERIVATION MUST NOT DEPEND ON HOW A PROBE SPELLS ITS IMPORT. The first version matched only `url("x.js")` and
 // `K + 'x.js'`, so the probes that used `pathToFileURL(join(K, 'x.js'))` were invisible and L3 under-reported by three.
 // Now: take EVERY quoted `*.js` token in the probes and keep the ones that are real kernel files - a spelling-proof rule.
@@ -102,12 +90,6 @@ const doc = [
   "★ `tests/audit-kernel-claims*.mjs`（★ 行为宣称：★ **" + by("L3").length + " 模块／断言数见各探针总结行**）。",
   "",
   "## 2. ★★★★★ 账（★ kernel " + files.length + " 文件／" + total + " 行）",
-  "",
-  "★ **行为断言**：★ " + assertionRows.filter((r) => r.count !== null).length + " 个探针共 **" + assertionsTotal + "** 条（★ **派生**：★ 逐个运行探针并读它自报的总结行；★ 手抄的计数会在下一批落地时漂移）",
-  "",
-  "| ★ 探针 | ★ 断言 |",
-  "|---|---|",
-  ...assertionRows.map((r) => "| `" + r.file + "` | " + (r.count === null ? "?" : r.count) + " |"),
   "",
   "| ★ 级别 | ★ 文件 | ★ 行数 | ★ 占比 |",
   "|---|---|---|---|",

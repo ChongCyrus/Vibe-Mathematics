@@ -52,6 +52,20 @@ export function validateRule(rule) {
   else if (!Array.isArray(rule.on) || rule.on.length === 0) problems.push('on must be a hook name or a non-empty list of them')
   if (rule.when === undefined || rule.when === null) problems.push('when is required (a predicate tree; use {} to always match)')
   if (!Array.isArray(rule.then) || rule.then.length === 0) problems.push('then must be a non-empty list of actions')
+  // ★ ROUND 110 FIX (claim vs implementation, measured). The header promises two refusals that the code did not deliver:
+  //   · "a rule carrying anything expression-shaped ... is refused" - but `walk` starts at `rule.when`, so an
+  //     expression-shaped key on the rule ITSELF (`{ id, on, js: '…', when: {} }`) was never inspected;
+  //   · "or a string where a predicate object belongs" - but `walk` returns early for any string, so `when: 'text'` was
+  //     accepted as a predicate.
+  // Both are the red line this engine exists for (data, never a small interpreter), and both are now refused by name.
+  for (const k of Object.keys(rule)) {
+    if (FORBIDDEN_KEYS.includes(k)) {
+      problems.push(k + ': expressions are not allowed in M1 - use a code module (M2)')
+    }
+  }
+  if (rule.when !== undefined && rule.when !== null && !isPlainObject(rule.when) && !Array.isArray(rule.when)) {
+    problems.push('when: a predicate must be an object or a list - a string where a predicate object belongs is refused (use a code module for logic)')
+  }
 
   const walk = (node, path) => {
     if (node === null || node === undefined) return
@@ -392,3 +406,4 @@ export function createRulesEngine({
 
   return engine
 }
+
