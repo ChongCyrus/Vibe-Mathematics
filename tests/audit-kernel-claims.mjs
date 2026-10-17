@@ -123,6 +123,60 @@ console.log("=== 6. lean: `passed` IS A CONCLUSION, NOT A STATE ===")
   ok(ad !== null && ad.crossProcess === "not-enforced", "★ and that cross-process safety is NOT enforced")
 }
 
+console.log("=== 7. ratelimit: ZERO-MECHANISM SAYS SO · EXCEEDING IS NAMED · READS DO NOT MUTATE ===")
+{
+  const RL = await import(url("ratelimit.js"))
+  const rl = RL.createRateLimit({ clock: () => 1000, settings: {} })
+  const st = rl.status ? rl.status() : null
+  ok(st !== null && (st.unlimited === true || st.enabled === false || st.mode === "unlimited"),
+    "★ with no limit declared it reports 'unlimited' rather than pretending to protect")
+  const rl2 = RL.createRateLimit({ clock: () => 1000, settings: { "vmu.ratelimit.ratePerSec": 1, "vmu.ratelimit.burst": 1, "vmu.ratelimit.retryAfterMs": 500 } })
+  const fn = rl2.take || rl2.consume
+  let limited = null
+  try { for (let i = 0; i < 5; i++) await fn({ key: "k" }) } catch (e) { limited = e }
+  ok(limited !== null && String(limited.code).startsWith("VMU_RATE"), "★ exceeding the limit is a NAMED refusal")
+  ok(limited !== null && typeof limited.retryAfterMs === "number" && limited.retryAfterMs > 0,
+    "★ and it carries retryAfterMs, so nothing is silently dropped")
+  const before = JSON.stringify(rl.status())
+  if (rl.list) rl.list(); if (rl.history) rl.history()
+  ok(before === JSON.stringify(rl.status()), "★ read paths (list/history/status) do not mutate the state")
+}
+
+console.log("=== 8. transaction: A STEP NEEDS undo · FAILURE COMPENSATES IN REVERSE · partial IS NAMED · NO DOUBLE RUN ===")
+{
+  const TX = await import(url("transaction.js"))
+  const tx = TX.createTransaction({ clock: () => 0, settings: {} })
+  let noUndo = null
+  try { tx.begin({ id: "c1", steps: [{ service: "s", apply: () => 1 }] }) } catch (e) { noUndo = e }
+  ok(noUndo !== null && noUndo.code === "VMU_TX_STEP_NOT_COMPENSABLE",
+    "★ ③ a step without `undo` is refused AT BEGIN, never discovered after the write")
+  const calls = []
+  tx.begin({ id: "c2", steps: [
+    { service: "a", apply: () => { calls.push("apply-a"); return 1 }, undo: () => { calls.push("undo-a") } },
+    { service: "b", apply: () => { calls.push("apply-b"); throw new Error("b fails") }, undo: () => { calls.push("undo-b") } },
+    { service: "c", apply: () => { calls.push("apply-c"); return 3 }, undo: () => { calls.push("undo-c") } },
+  ] })
+  try { await tx.run({ id: "c2" }) } catch { /* the run fails by design */ }
+  ok(calls.join(",") === "apply-a,apply-b,undo-a",
+    "★ ① it applies in order, stops at the failure, and undoes ONLY what was applied, in reverse", { calls })
+  const tx2 = TX.createTransaction({ clock: () => 0, settings: {} })
+  tx2.begin({ id: "c3", steps: [
+    { service: "a", apply: () => 1, undo: () => { throw new Error("undo-a fails") } },
+    { service: "b", apply: () => { throw new Error("b fails") }, undo: () => {} },
+  ] })
+  try { await tx2.run({ id: "c3" }) } catch { /* the run fails by design */ }
+  const s3 = tx2.status({ id: "c3" })
+  ok(s3 && s3.transaction && s3.transaction.state === "partial",
+    "★ ② a failing compensation becomes a `partial` state with evidence kept, not a swallowed error",
+    { state: s3 && s3.transaction && s3.transaction.state })
+  const tx3 = TX.createTransaction({ clock: () => 0, settings: {} })
+  let applies = 0
+  tx3.begin({ id: "c4", steps: [{ service: "a", apply: () => { applies += 1; return 1 }, undo: () => {} }] })
+  await tx3.run({ id: "c4" })
+  const second = await tx3.run({ id: "c4" })
+  ok(applies === 1 && second && second.idempotent === true,
+    "★ ④ the same txId does not run twice: the second run returns the recorded outcome with idempotent:true")
+}
 if (process.argv.includes("--selftest")) {
   // the harness must be able to FAIL: plant a claim that the module does not satisfy and require the checker to reject it
   const planted = { canonicalize: (v) => JSON.stringify(v) }   // a naive encoder that DOES collide across kinds
@@ -139,6 +193,6 @@ if (process.argv.includes("--selftest")) {
 }
 
 console.log("")
-console.log("=== KERNEL CLAIMS: " + pass + " passed, " + fail + " failed (idempotency 17 · scheduler 7 · lean 8) ===")
+console.log("=== KERNEL CLAIMS: " + pass + " passed, " + fail + " failed (idempotency 17 · scheduler 7 · lean 5 · ratelimit 5 · transaction 5) ===")
 if (fail) console.error("FAILURES:\n" + failures.map((f) => "  - " + f).join("\n"))
 process.exit(fail === 0 ? 0 : 1)

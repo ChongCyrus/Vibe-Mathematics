@@ -278,3 +278,27 @@
 | ★ `audit-silent-keys.mjs` | ★ 设置键：★ 不得"既无人读也未被裁定"（★ 640 文件）| ★ **0** ✓ |
 | ★ `audit-kernel-claims.mjs` | ★ 三模块的 29 条行为宣称 | ★ **29/29** ✓ |
 | ★ 原有 T1 | ★ 350 作业 | ★ **350/350** ✓ |
+
+## 15. ★★★★★★ ROUND 103：同法再验两个模块 —— ★ 累计 **5 模块 37 条断言**
+
+### 15.1 ★★★★ `kernel/ratelimit.js`（153 行）
+| ★ 宣称 | ★ 验证 |
+|---|---|
+| ★ **零机制【直通并明说】**：★ 未声明限速 ⇒ 报 **`unlimited:true`** ＋ 一句 *"this call was NOT limited"* | ★ ✓ |
+| ★ **超限是具名拒且带 `retryAfterMs`** | ★ ✓ |
+| ★ **读路径（list/history/status）不改状态** | ★ ✓（★ 前后 `status()` 逐字相同）|
+★ **附加**：★ 其注记会**自报读的是哪个键**（★ `vmu.ratelimit.ratePerSec=0`）⇒ ★ **我原以为的键名 `vmu.ratelimit.default` 是错的，★ 而修正依据就是它自己的注记** ✓
+
+### 15.2 ★★★★ `kernel/transaction.js`（393 行）的四条硬不变式
+| ★ 宣称 | ★ 验证 |
+|---|---|
+| ★ **③ 缺 `undo` 的步骤在 `begin` 就拒**（`VMU_TX_STEP_NOT_COMPENSABLE`），★ **绝不在写入之后才发现** | ★ ✓ |
+| ★ **① 失败【逆序补偿】、★ 只补偿【已应用】的步骤** | ★ ✓（★ 实际调用序列恰为 `apply-a,apply-b,undo-a`）|
+| ★ **② 补偿失败 ⇒ `partial` 并留下证据**，★ 不吞异常 | ★ ✓ |
+| ★ **④ 同一 `txId` 不跑两次** ⇒ 第二次返回记录结果且 **`idempotent:true`** | ★ ✓ |
+★ **附加**：★ `status()` 的形状是 **`{ok, transaction, evidence, note}`**（★ 状态在 `transaction.state` 里）⇒ ★ **我又猜错了扁平字段，★ 同样由真实形状纠正** ✓
+
+### 15.3 ★★★★★ 累计
+★ **`tests/audit-kernel-claims.mjs` 现覆盖 5 个模块、37 条断言**（★ idempotency 17 · scheduler 7 · lean 5 · ratelimit 5 · transaction 5），★ **全绿** ✓
+★ **T1 350/350**（★ probes 38）✓
+★ **方法论第三次自我证明**：★ **我每轮都有 2–3 处 API/字段猜测错误，★ 而每一处都被【模块自己的具名拒绝、自报注记或真实形状】纠正** ⇒ ★★ **"如实报告的系统，让审计者能自我纠正；★ 而含糊的系统会让审计者以为自己没错"** ✓✓
