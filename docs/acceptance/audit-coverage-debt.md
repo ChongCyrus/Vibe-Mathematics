@@ -18,102 +18,96 @@
 ★ `tests/audit-service-calls.mjs`（★ 调用侧：★ `kernel.<服务>.<方法>` 必须可解析，★ **87 服务 × 213 文件**）／
 ★ `tests/audit-face-actions.mjs`（★ 面侧：★ 每个提供的动作必须存在或有分支，★ **51 面／47 enum**）／
 ★ `tests/audit-silent-keys.mjs`（★ 设置键：★ 不得「既无人读也未被裁定」，★ **640 文件**）／
-★ `tests/audit-kernel-claims*.mjs`（★ 行为宣称：★ **20 模块／断言数见各探针总结行**）。
+★ `tests/audit-kernel-claims*.mjs`（★ 行为宣称：★ **26 模块／断言数见各探针总结行**）。
 
 ## 2. ★★★★★ 账（★ kernel 103 文件／45139 行）
 
 | ★ 级别 | ★ 文件 | ★ 行数 | ★ 占比 |
 |---|---|---|---|
-| ★★ **L3 宣称级验证** | ★ **20** | ★ **15169** | ★ 33.6% |
+| ★★ **L3 宣称级验证** | ★ **26** | ★ **18691** | ★ 41.4% |
 | ★★ **L2 已逐行读** | ★ **15** | ★ **9690** | ★ 21.5% |
-| ★ **L1 仅机器门禁** | ★ **68** | ★ **20280** | ★ 44.9% |
+| ★ **L1 仅机器门禁** | ★ **62** | ★ **16758** | ★ 37.1% |
 | ★ **L0 未触及** | ★ **0** | ★ **0** | ★ 0% |
 
-⇒ ★★★★ **35/103 文件（55% 行）有人工审查；★ 68 文件（45% 行）仅机器门禁覆盖** ✓
+⇒ ★★★★ **41/103 文件（63% 行）有人工审查；★ 62 文件（37% 行）仅机器门禁覆盖** ✓
 
 ### 2.1 ★★ L3（★ 有行为断言在测其头部宣称）
 
-  `resume.js`（1195） · `meetings.js`（1154） · `mathjobs.js`（1033） · `idempotency.js`（907） · `lean.js`（893） · `records.js`（883） · `mathtools.js`（873） · `mathadapters.js`（855） · `chat.js`（758） · `ip.js`（747） · `workflow.js`（729） · `library.js`（727） · `funding.js`（712） · `pack.js`（640） · `ballot.js`（631） · `replay.js`（627） · `scheduler.js`（611） · `alerts.js`（609） · `transaction.js`（416） · `ratelimit.js`（169）
+  `resume.js`（1195） · `meetings.js`（1154） · `mathjobs.js`（1033） · `idempotency.js`（907） · `lean.js`（893） · `records.js`（883） · `mathtools.js`（873） · `mathadapters.js`（855） · `chat.js`（758） · `ip.js`（747） · `workflow.js`（729） · `library.js`（727） · `funding.js`（712） · `pack.js`（640） · `ballot.js`（631） · `replay.js`（627） · `meeting.js`（613） · `scheduler.js`（611） · `alerts.js`（609） · `charter.js`（598） · `conference.js`（593） · `paper.js`（586） · `ballotbox.js`（571） · `migration.js`（561） · `transaction.js`（416） · `ratelimit.js`（169）
 
 ### 2.2 ★★ L2（★ 已逐行读过或改过并复读 · ★ 声明于 `READ_MODULES`）
 
   `index.js`（2439，R80） · `turn/index.js`（1034，R50） · `prompt/index.js`（785，R86） · `bus.js`（753，R85） · `report.js`（628，R99） · `mailbox.js`（607，R89） · `activity.js`（547，R80） · `delegation.js`（547，R97） · `arbitration.js`（497，R97） · `metrics.js`（394，R97） · `store.js`（317，R97） · `members.js`（316，R83） · `control.js`（309，R83） · `guard.js`（293，R97） · `ids.js`（224，R97）
 
-## 3. ★★★★★ L1 的具名余项（★ 68 文件，★ 按行数降序）
+## 3. ★★★★★ L1 的具名余项（★ 62 文件，★ 按行数降序）
 
 > ★ **这一列就是门 1 的剩余工作清单** —— ★ **可数、★ 具名、★ 按规模排序**。
 > ★ 推进方式：★ **每轮取 2–3 个照「验证宣称」那把尺过一遍**（★ 已验证者升到 L3，★ 并把断言收进 `audit-kernel-claims*`）。
 
 | ★ # | ★ 文件 | ★ 行数 |
 |---|---|---|
-| 1 | `meeting.js` | 613 |
-| 2 | `charter.js` | 598 |
-| 3 | `conference.js` | 593 |
-| 4 | `paper.js` | 586 |
-| 5 | `ballotbox.js` | 571 |
-| 6 | `migration.js` | 561 |
-| 7 | `auditchain.js` | 550 |
-| 8 | `bidding.js` | 537 |
-| 9 | `tasks.js` | 534 |
-| 10 | `human.js` | 528 |
-| 11 | `external.js` | 524 |
-| 12 | `meetingmarker.js` | 516 |
-| 13 | `memory.js` | 497 |
-| 14 | `capacity.js` | 456 |
-| 15 | `publication.js` | 435 |
-| 16 | `minutes.js` | 434 |
-| 17 | `course.js` | 429 |
-| 18 | `panel.js` | 428 |
-| 19 | `compliance.js` | 407 |
-| 20 | `rules.js` | 395 |
-| 21 | `resource.js` | 386 |
-| 22 | `retention.js` | 376 |
-| 23 | `recruit.js` | 360 |
-| 24 | `fairness.js` | 303 |
-| 25 | `notify.js` | 301 |
-| 26 | `trust.js` | 290 |
-| 27 | `collab.js` | 287 |
-| 28 | `storepolicy.js` | 284 |
-| 29 | `lifecycle.js` | 270 |
-| 30 | `grant.js` | 268 |
-| 31 | `tenure.js` | 268 |
-| 32 | `loader.js` | 254 |
-| 33 | `skills.js` | 252 |
-| 34 | `governance.js` | 251 |
-| 35 | `topology.js` | 249 |
-| 36 | `handover.js` | 243 |
-| 37 | `formal.js` | 241 |
-| 38 | `clockguard.js` | 238 |
-| 39 | `stateversion.js` | 237 |
-| 40 | `identity.js` | 227 |
-| 41 | `meetinglapse.js` | 224 |
-| 42 | `script-bridge.js` | 219 |
-| 43 | `budget.js` | 216 |
-| 44 | `audit.js` | 214 |
-| 45 | `crypto.js` | 213 |
-| 46 | `receiptbounds.js` | 209 |
-| 47 | `custody.js` | 204 |
-| 48 | `registry.js` | 194 |
-| 49 | `repropack.js` | 192 |
-| 50 | `reviewers.js` | 192 |
-| 51 | `board.js` | 190 |
-| 52 | `fidelity.js` | 187 |
-| 53 | `projmigrate.js` | 181 |
-| 54 | `reportfeedbackdelivery.js` | 179 |
-| 55 | `discipline.js` | 175 |
-| 56 | `work.js` | 165 |
-| 57 | `math.js` | 159 |
-| 58 | `explain.js` | 157 |
-| 59 | `resumeflush.js` | 152 |
-| 60 | `library-policy.js` | 143 |
-| 61 | `partnership.js` | 143 |
-| 62 | `citations.js` | 137 |
-| 63 | `reportfeedback.js` | 125 |
-| 64 | `meetingleave.js` | 96 |
-| 65 | `meetingdomain.js` | 72 |
-| 66 | `meetings-defaults.js` | 58 |
-| 67 | `timevalue.js` | 55 |
-| 68 | `contentvalue.js` | 52 |
+| 1 | `auditchain.js` | 550 |
+| 2 | `bidding.js` | 537 |
+| 3 | `tasks.js` | 534 |
+| 4 | `human.js` | 528 |
+| 5 | `external.js` | 524 |
+| 6 | `meetingmarker.js` | 516 |
+| 7 | `memory.js` | 497 |
+| 8 | `capacity.js` | 456 |
+| 9 | `publication.js` | 435 |
+| 10 | `minutes.js` | 434 |
+| 11 | `course.js` | 429 |
+| 12 | `panel.js` | 428 |
+| 13 | `compliance.js` | 407 |
+| 14 | `rules.js` | 395 |
+| 15 | `resource.js` | 386 |
+| 16 | `retention.js` | 376 |
+| 17 | `recruit.js` | 360 |
+| 18 | `fairness.js` | 303 |
+| 19 | `notify.js` | 301 |
+| 20 | `trust.js` | 290 |
+| 21 | `collab.js` | 287 |
+| 22 | `storepolicy.js` | 284 |
+| 23 | `lifecycle.js` | 270 |
+| 24 | `grant.js` | 268 |
+| 25 | `tenure.js` | 268 |
+| 26 | `loader.js` | 254 |
+| 27 | `skills.js` | 252 |
+| 28 | `governance.js` | 251 |
+| 29 | `topology.js` | 249 |
+| 30 | `handover.js` | 243 |
+| 31 | `formal.js` | 241 |
+| 32 | `clockguard.js` | 238 |
+| 33 | `stateversion.js` | 237 |
+| 34 | `identity.js` | 227 |
+| 35 | `meetinglapse.js` | 224 |
+| 36 | `script-bridge.js` | 219 |
+| 37 | `budget.js` | 216 |
+| 38 | `audit.js` | 214 |
+| 39 | `crypto.js` | 213 |
+| 40 | `receiptbounds.js` | 209 |
+| 41 | `custody.js` | 204 |
+| 42 | `registry.js` | 194 |
+| 43 | `repropack.js` | 192 |
+| 44 | `reviewers.js` | 192 |
+| 45 | `board.js` | 190 |
+| 46 | `fidelity.js` | 187 |
+| 47 | `projmigrate.js` | 181 |
+| 48 | `reportfeedbackdelivery.js` | 179 |
+| 49 | `discipline.js` | 175 |
+| 50 | `work.js` | 165 |
+| 51 | `math.js` | 159 |
+| 52 | `explain.js` | 157 |
+| 53 | `resumeflush.js` | 152 |
+| 54 | `library-policy.js` | 143 |
+| 55 | `partnership.js` | 143 |
+| 56 | `citations.js` | 137 |
+| 57 | `reportfeedback.js` | 125 |
+| 58 | `meetingleave.js` | 96 |
+| 59 | `meetingdomain.js` | 72 |
+| 60 | `meetings-defaults.js` | 58 |
+| 61 | `timevalue.js` | 55 |
+| 62 | `contentvalue.js` | 52 |
 
 ## 4. ★★★ 这份账之外的覆盖
 

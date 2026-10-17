@@ -290,6 +290,8 @@
     "vibe-math-vmu/docs/29-build-your-own-preset.md",
     "tests/audit-kernel-claims-3.mjs",
     "tests/audit-kernel-claims-5.mjs",
+    "tests/audit-kernel-claims-7.mjs",
+    "tests/audit-kernel-claims-8.mjs",
     "tests/audit-kernel-claims-6.mjs",
     "tests/audit-kernel-claims-4.mjs",
     "tests/audit-kernel-claims-2.mjs",
