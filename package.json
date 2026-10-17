@@ -288,6 +288,7 @@
     "vibe-math-vmu/docs/26-turn-orchestration.md",
     "vibe-math-vmu/docs/27-pack-folder.md",
     "vibe-math-vmu/docs/29-build-your-own-preset.md",
+    "tests/audit-kernel-claims-2.mjs",
     "tests/audit-kernel-claims.mjs",
     "tests/audit-silent-keys.mjs",
     "tests/audit-face-actions.mjs",
@@ -798,6 +799,7 @@
     "build:presets": "node scripts/build-preset-rows.mjs"
   }
 }
+
 
 
 
