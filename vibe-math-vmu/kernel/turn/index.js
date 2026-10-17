@@ -101,7 +101,7 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
       // is a choice this predicate is entitled to make silently.
       throw refuse('VMU_INVALID_ARGUMENT',
         'the closure-vote permission test answered with ' + typeof verdict + ' instead of a boolean or { allowed }',
-        'pass may as (id, permission) => boolean, or pass the members service method UNCHANGED - its result carries `allowed`, which this predicate now reads (docs/26 §3.30)')
+        'pass may as (id, permission) => boolean, or pass the members service method UNCHANGED - its result carries `allowed`, which this predicate now reads; a deployment may rename the permission with vmu.turn.closureVotePermission')
     })
   const forIt = []
   const against = []

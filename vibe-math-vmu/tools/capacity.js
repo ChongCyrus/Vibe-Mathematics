@@ -35,8 +35,15 @@ export function makeCapacitySpec({ param, refused, TOOL_NAMES, kernel }) {
           return refused('VMU_ENGINE_UNAVAILABLE', 'this assembly has no capacity service to address',
             'the capacity face is registered whenever the tool is declared; a deployment that wants it must provide kernel.capacity')
         }
-        const fn = Object.prototype.hasOwnProperty.call(capacity, action) ? capacity[action] : null
-        if (typeof fn !== 'function') {
+        // ★ ASK "CAN I CALL IT?", NOT "IS IT AN OWN PROPERTY?". The first version of this dispatch checked
+        // `hasOwnProperty`, which is stricter than the question the face is actually asking and refuses services whose
+        // methods live on a prototype, behind a getter, or on a Proxy - cases where a plain `capacity.status()` works
+        // perfectly. A tool that refuses an action the service would have answered is worse than one that forwards it:
+        // the caller learns nothing about the real service, and the SERVICE'S OWN refusal code (the thing an operator
+        // needs) never survives. Measured by the rejection guard, which replaces the service with a Proxy and expects
+        // its code back.
+        const fn = typeof capacity[action] === 'function' ? capacity[action] : null
+        if (!fn) {
           // REFUSED BY NAME, and the refusal carries the enforced list - so a caller who guessed an action learns the
           // real set here rather than from an engine error. The message keeps the repository's own wording for this
           // case ("unknown action: …", as in tools/control.js); the FACE is named by the hint, which also lists what
