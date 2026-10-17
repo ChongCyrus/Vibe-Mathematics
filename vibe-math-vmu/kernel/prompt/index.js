@@ -50,7 +50,7 @@ export const ORDER_RANGES = Object.freeze({
 export const VARIABLE_WHITELIST = Object.freeze(['member', 'role', 'roleLabel', 'phase', 'time', 'pack', 'task', 'roster', 'round', 'quorum', 'statusBlock', 'setting:', 'count:'])
 
 /** Fixed binding priority, low to high (docs/06 §5). */
-export const BINDING_PRIORITY = Object.freeze(['role', 'phase', 'member', 'task'])
+export const BINDING_PRIORITY = Object.freeze(['role', 'phase', 'member', 'task', 'agent'])
 
 export function refuse(code, message, hint) {
   const err = new Error(message)
@@ -169,6 +169,22 @@ export function createPromptPipeline({
     const v = sget('vmu.prompts.glossary.mode')
     return ['enforce', 'warn', 'off'].includes(v) ? v : 'enforce'
   }
+  // ★★★★★★★ ROUND 84 — WHICH HOST AGENT THIS ASSEMBLY IS FOR (the fifth dimension).
+  // UNSET MATCHES NOBODY, deliberately: a scope that says `agent: 'x'` must not render for every agent merely because
+  // nobody said which agent this is. Matching everything would inject a section into assemblies it was never meant
+  // for, which is the silent-success shape this framework refuses everywhere else.
+  const agentIdOf = (ctx) => {
+    const fromCtx = ctx && typeof ctx.agent === 'string' ? ctx.agent.trim() : ''
+    if (fromCtx) return fromCtx
+    // A PER-ASSEMBLY settings view is honoured too, because `assemble` accepts one (`ctx.settings`) and a host that
+    // routes several agents through one pipeline would otherwise have to rebuild the pipeline per agent.
+    const perAssembly = ctx && ctx.settings && typeof ctx.settings === 'object'
+      && typeof ctx.settings['vmu.prompts.agentId'] === 'string' ? ctx.settings['vmu.prompts.agentId'].trim() : ''
+    if (perAssembly) return perAssembly
+    const declared = sget('vmu.prompts.agentId')
+    return typeof declared === 'string' ? declared.trim() : ''
+  }
+
   const glossaryPathOf = () => {
     const v = sget('vmu.prompts.glossary.ontology')
     return typeof v === 'string' && v.trim() ? v.trim() : 'vibe-math-vmu/glossary.json'
@@ -256,9 +272,9 @@ export function createPromptPipeline({
     if (typeof b.section !== 'string' || !KEBAB.test(b.section)) {
       throw refuse('VMU_INVALID_ARGUMENT', 'a binding must name its section in kebab-case: ' + String(b && b.section))
     }
-    const dims = ['role', 'phase', 'member', 'task'].filter((d) => typeof b[d] === 'string' && b[d] !== '')
+    const dims = ['role', 'phase', 'member', 'task', 'agent'].filter((d) => typeof b[d] === 'string' && b[d] !== '')
     if (dims.length !== 1) {
-      throw refuse('VMU_INVALID_ARGUMENT', 'a binding must name exactly one dimension', 'one of: role < phase < member < task')
+      throw refuse('VMU_INVALID_ARGUMENT', 'a binding must name exactly one dimension', 'one of: role < phase < member < task < agent')
     }
     bindings.push(b)
     return { section: b.section, dim: dims[0], total: bindings.length }
@@ -402,7 +418,7 @@ export function createPromptPipeline({
       const list = Array.isArray(want) ? want : [want]
       return list.includes(value)
     }
-    return hit('member', ctx.member) && hit('role', ctx.role) && hit('phase', ctx.phase) && hit('task', ctx.task)
+    return hit('member', ctx.member) && hit('role', ctx.role) && hit('phase', ctx.phase) && hit('task', ctx.task) && hit('agent', agentIdOf(ctx))
   }
 
   /** Which binding dimensions match this context, lowest priority first. */
@@ -417,6 +433,7 @@ export function createPromptPipeline({
       else if (b.member !== undefined && matches(b.member, ctx.member)) dim = 'member'
       else if (b.phase !== undefined && matches(b.phase, ctx.phase)) dim = 'phase'
       else if (b.role !== undefined && matches(b.role, ctx.role)) dim = 'role'
+      else if (b.agent !== undefined && matches(b.agent, agentIdOf(ctx))) dim = 'agent'
       if (dim) scored.push({ binding: b, dim, priority: BINDING_PRIORITY.indexOf(dim), index: i })
     })
     return scored.sort((a, b) => (a.priority - b.priority) || (a.index - b.index))
@@ -752,6 +769,13 @@ export function createPromptPipeline({
         bindings: bindings.length,
         truncation: truncation.map((t) => ({ section: t.section, kept: t.kept, dropped: t.dropped, mode: t.mode })),
         middlewareAppends: lastAppends.map((a) => ({ section: a.section, source: a.source })),
+      // ★ ROUND 84 (C-3): THE DISPLACEMENT RECORD IS NOW ON THE STATUS SURFACE. It was already published in the
+      // ASSEMBLY receipt, but `pipeline.status()` - the surface a deployment reads WITHOUT assembling - did not carry
+      // it, so "what got displaced, and by whom" was auditable only if you had just assembled. C2's requirement is
+      // that a declared replacement be VISIBLE, and one out-param here is enough because the kernel carries this
+      // object out unchanged.
+      replacedSections: replacedSections.map((r) => Object.assign({}, r)),
+      replacedCount: replacedSections.length,
       }
     },
   }

@@ -287,7 +287,8 @@ vmu.packs.active: [v5r]
 | `vmu.work.keepEntries` | integer | `200` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/work.js` | 在途台账保留条数（超过即裁掉【最旧】的，使仍未完成的工作保持可见 ✓） |
 | `vmu.work.autoSettle` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/work.js` | 重启后 recover() 是否【自动标记】残留项为中断（false ⇒ 只报告不改写，即'仅安全动作' ✓） |
 | `vmu.prompts.overridesDir` | path | `prompts/overrides` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 提示词覆盖目录（仓内相对路径） |
-| `vmu.prompts.bindings` | obj[] | `[]` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 四维绑定（优先级 角色<阶段<成员<任务） |
+| `vmu.prompts.bindings` | obj[] | `[]` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 五维绑定（优先级 角色<阶段<成员<任务<agent） |
+| `vmu.prompts.agentId` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 本装配是【为哪个宿主 agent】：★ scope 的 agent 维据此命中；★ 空 ⇒ 【不命中任何人】（★ 不会因为没设就命中全部）；★ 宿主在装配上下文里给的 agent 优先于此；★ 名字是部署词汇 |
 | `vmu.prompts.whoMayOverride` | string[] | `[office]` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 允许覆盖提示词者 |
 | `vmu.prompts.resourceSection` | bool | `false` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | P3/S25-A：默认 false＝提示词一字不改；true 才注入【资源】段 |
 | `vmu.meetings.quorumRule` | enum | `m-unanimous` | `m-unanimous`∣`all-unanimous` | 会话 | H1 | role:chair | ✅ 已接线 | `kernel/index.js` | 法定数规则（仅规则，不含"何时开会"） |
@@ -1509,7 +1510,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1120** 个，前缀家族 **115** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1121** 个，前缀家族 **115** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1590,7 +1591,7 @@ vmu.packs.active: [v5r]
 | `vmu.privacy.*` | 6 |
 | `vmu.projection.*` | 1 |
 | `vmu.prompt.*` | 2 |
-| `vmu.prompts.*` | 13 |
+| `vmu.prompts.*` | 14 |
 | `vmu.provenance.*` | 2 |
 | `vmu.prune.*` | 4 |
 | `vmu.publish.*` | 3 |

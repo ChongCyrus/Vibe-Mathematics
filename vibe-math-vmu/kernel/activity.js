@@ -466,7 +466,11 @@ export function createActivity({
           const d = timerDisposer
           timerDisposer = null
           disposersCalled += 1
-          try { d() } catch (e) { /* ignore */ }
+          // ★ ROUND 84: THE REASON IS STATED, LIKE ITS FOUR SIBLINGS. Every other disposer call in this file says WHY it
+          // tolerates a throw (`:131`/`:141`/`:399`/`:402`) - a disposer is owner-supplied teardown, and its failure must
+          // not take down the wait it belongs to. This one said only "ignore", which reads as an oversight rather than a
+          // decision; the same rule applies here, and now it says so.
+          try { d() } catch (e) { /* the disposer is owner-supplied teardown: a throw here must not surface as a wait failure, exactly as on the other disposal branches (see :131/:141/:399/:402) */ }
         }
       })
     },

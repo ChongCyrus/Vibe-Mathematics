@@ -105,7 +105,11 @@ const CORE_DEFS = Object.freeze([
 
   // ---- prompts ------------------------------------------------------------------------------
   { key: 'vmu.prompts.overridesDir', type: 'path', def: 'prompts/overrides', hot: HOT.H0, who: 'office', doc: '提示词覆盖目录（仓内相对路径）' },
-  { key: 'vmu.prompts.bindings', type: 'objectList', def: [], hot: HOT.H0, who: 'office', doc: '四维绑定（优先级 角色<阶段<成员<任务）' },
+  { key: 'vmu.prompts.bindings', type: 'objectList', def: [], hot: HOT.H0, who: 'office', doc: '五维绑定（优先级 角色<阶段<成员<任务<agent）' },
+  // ★ ROUND 84: WHICH HOST AGENT AN ASSEMBLY IS FOR - the fifth binding dimension. Empty means NO assembly matches an
+  // `agent`-scoped section or binding, which is deliberate: defaulting to "everyone" would inject a section into
+  // assemblies it was never meant for. A host that knows its own identity passes `ctx.agent` instead, and that wins.
+  { key: 'vmu.prompts.agentId', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: '本装配是【为哪个宿主 agent】：★ scope 的 agent 维据此命中；★ 空 ⇒ 【不命中任何人】（★ 不会因为没设就命中全部）；★ 宿主在装配上下文里给的 agent 优先于此；★ 名字是部署词汇' },
   { key: 'vmu.prompts.whoMayOverride', type: 'stringList', def: ['office'], hot: HOT.H1, who: 'office', doc: '允许覆盖提示词者' },
   { key: 'vmu.prompts.resourceSection', type: 'boolean', def: false, hot: HOT.H0, who: 'office', doc: 'P3/S25-A：默认 false＝提示词一字不改；true 才注入【资源】段' },
 
