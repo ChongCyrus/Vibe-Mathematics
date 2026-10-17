@@ -29,7 +29,10 @@ const numOf = (v, d) => { const n = Number(v); return Number.isFinite(n) ? n : d
 
 /**
  * `createClockGuard({ now, log, settings, onBackward })` —— `now` 是**注入的底层时钟**（必填才 guarded）。
- * 本模块**从不**调用 `Date.now()` / `performance.now()`。
+ * 时钟是**注入**的：**注入时**本模块从不调用 `Date.now()` / `performance.now()`。
+ * 未注入时（零机制）它**回退**到 `Date.now()` —— ★ 而这一点在 `status().guarded === false` 里**自曝**，★ 绝不假装检测过单调性。
+ * ★ ROUND 116：这半句原先写作「本模块**从不**调用 `Date.now()`」—— 而 `:36` 的回退默认确实调用它。★ 一个不成立的「从不」
+ * （宣称的覆盖范围被夸大）已改为条件式陈述；★ 行为未改，★ 只把头注改到与实现一致。
  */
 export function createClockGuard({ clock = null, now = null, log = () => {}, settings = {}, onBackward = null, bus = null } = {}) {
   // 注入优先；零机制 ⇒ 默认底层时钟（行为同直连），但 status() 自曝 guarded:false。本模块其余处不读真实时间。
@@ -235,3 +238,4 @@ export function createClockGuard({ clock = null, now = null, log = () => {}, set
 
   return { now: nowGuarded, observe, skew, monotonic, status, clockSource: base }
 }
+
