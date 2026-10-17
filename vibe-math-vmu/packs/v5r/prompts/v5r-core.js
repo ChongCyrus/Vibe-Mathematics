@@ -98,7 +98,12 @@ export const PACK = Object.freeze({
     'vmu.meetings.hardLimitMs': 1800000,
     'vmu.meetings.wakeRetries': 5,
     'vmu.records.pointerPropagation': true,
-    // PACK-LAYER key (not in docs/04 §11 - the pack owns it, and `setting()` reads it like any other):
+    // ★ ROUND 92 — CORRECTED: this key IS declared in `settings/schema.js:81` (type boolean, default true, owner
+    // `office`, hot H1) and therefore DOES appear in the generated table `docs/04-settings.md`. The comment here used to
+    // say "not in docs/04 §11 - the pack owns it", which was true when it was written and has been false since the key
+    // was declared: what the PACK owns is the opening VALUE it favours, not the declaration. A stale comment of this
+    // shape is the "comment disagrees with code" class, and it misleads in a specific way - a reader would conclude the
+    // key bypasses the schema, when in fact it is settable, documented and owned like every other knob.
     'vmu.records.requireSettledRecords': true,
 
     // ── THE ASSISTANT'S REPORTING POLICY (goal 6, ruling D-09) ─────────────────────────────────────────
