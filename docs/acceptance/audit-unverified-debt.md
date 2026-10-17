@@ -380,3 +380,28 @@ list           => ["ok","total","returned","capped","members"]
 ★ **B 路仍在跑** ⇒ ★ **下轮一并收** ✓
 ★ **覆盖债务**：★ **L3 60 · L2 15 · L1 28 · L0 0**（★ 因两路均未达绿而与上轮相同）✓
 ★ **T1 368/368**（★ probes 56）✓
+
+## 21. ★★★★★ ROUND 122：两路均未达绿（★ 29/3 与 21/2）＋ ★ **两处"一次读"的答案**
+
+### 21.1 ★★★ 而 A 路把 19A 的 1 条补绿并加了【反向点】
+★ `abstentionFor({target, by})` ⇒ `{vote:0.5, enforced:true, reason:'fidelity-defect', markerId:'fd-1', …}` ✓
+★ 且**加了反向点**：★ **不带 `by` ⇒ `null`** —— ★ **查找以 `(target, by)` 为键，★ 无人署名就不发明弃权** ✓✓
+⇒ ★★★ **"弃权不是一个可以被『推断』的事实，★ 它需要署名"** ✓
+
+### 21.2 ★★★★★★ 两处"一次读"的答案（★ 我做的，★ 下轮不必再找）
+★ **① `citations.identify({ ids })`** —— ★ 标识在**嵌套的 `ids` 对象**里（`ids:{doi,url,…}`），★ **不在顶层**；★ 返回按**声明的 `idPriority`** 选中的 `idType`/`id`，★ 且 **`fired` 只在优先级真的起了作用时非空**（★ 选中首位 ⇒ `fired:[]`）✓
+   ⇒ ★ 它那两条未定论（"按声明优先级而非输入里先出现的那个"）**下轮直接可测** ✓
+★ **② `library-policy` 的 `getIndex` 必须返回 `Map`** —— `:14` 逐字 `@param {() => Map} o.getIndex  the caller's index, read lazily`；★ 而 A 路传的是 `() => ({})` **普通对象** ⇒ ★ **`getIndex` 契约不符，★ 所以在走到它的 `refuse` 间谍之前就抛了** ✓
+   ⇒ ★ 它那条未定论（注入 `refuse` 的真实调用契约）**下轮传 `() => new Map()` 即可** ✓
+★★ **这已是本阶段第 8／9 次"接缝形状"类答案** —— ★ **共同点：★ 答案都在【被注入物的类型声明】里，★ 而不在行为里** ✓
+
+### 21.3 ★★★ A 路取到的 6 个文件里，两条新发现
+★ **`math.js`**：★ **"计算是【证据】，★ 永不是裁决"** ⇒ ★ `isRefutation:false` 在 **defect 分类**与 **unsettled** 两点都是 false ✓✓
+★ **`explain.js`**：★ **"超过上限 ⇒ 【拒】而不是截断"**（★ **前提先立**：`long.length > cap` 才断言 `VMU_EXPLAIN_REASON_TOO_LONG`）✓
+★ **`library-policy.js` 是【纯单元】**（★ 头注逐字 *"a cohesive, PURE unit: they read the resolved settings, they refuse by name, and they touch nothing on disk"*）⇒ ★ **六个检查器全部靠注入** ✓
+
+### 21.4 ★★ 判定（★ 如实）
+★ **两路均未达绿**（★ A 29/3、B 21/2）⇒ ★ **均未入库** ⇒ ★ **覆盖债务不变：L3 77 · L2 15 · L1 11 · L0 0** ✓
+★ **而两路各自的红都追到了自己的形状**（★ 无一条报成缺陷）✓
+★ **T1 372/372**（★ probes 60）／★ **RULE E 88/0** ✓
+★ **下轮开工单（★ 已由答案消掉大半）**：★ ① `identify({ids:{…}})` ⇒ 修 2 条；★ ② `getIndex: () => new Map()` ⇒ 修 1 条；★ ③ 剩余 5 个台账文件按同一尺过 ⇒ **L1 可清**
