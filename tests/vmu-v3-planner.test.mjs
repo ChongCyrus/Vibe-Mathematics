@@ -31,6 +31,7 @@ import {
   V3_PLANNER_MODULE, PLANNER_MEMBER, PLAN_TRACK, PLAN_KIND, PLAN_VERBS, SPAWN_ROLES,
   v3PlannerStatus, readPlanRecord, readRawPlan, loadCardIndex, validatePlan, promotedProblemId,
 } from '../vibe-math-vmu/packs/v3/middleware/planner.js'
+import { listGates, approveGate, createGate } from '../vibe-math-vmu/packs/v3/middleware/gates.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const VMU = join(HERE, '..', 'vibe-math-vmu')
@@ -505,6 +506,89 @@ console.log('=== 11. 纯函数面：validatePlan 的计数可独立复现（RULE
   ok(res.truncated === 1, '合法但超出 horizon 的 1 个被截断', res.truncated)
   ok(res.rejectReasons.length === 5, '5 条拒绝原因都点名了', res.rejectReasons.length)
   ok(res.validated[0].action === 'spawn' && res.validated[0].role === 'explorer', '保留下来的第一条是 explorer spawn q-1', res.validated[0])
+}
+
+console.log('=== 11b. P0-8 人工门（plan）：manual 下计划排队且**真的没执行**；approve 只放行那一条 ===')
+{
+  const plan = [
+    { action: 'spawn', role: 'solver', target: 'q-1', direction: 'd1' },
+    { action: 'spawn', role: 'solver', target: 'q-1', direction: 'd2' },
+  ]
+  const h = boot({ overrides: { 'vmu.v3.mode': 'manual', 'vmu.v3.planMinIntervalMs': 0 }, replier: ({ turn }) => (turn.member === PLANNER_MEMBER ? planReply('两个 solver', plan) : ACK) })
+  await h.loader.apply(PACK)
+  problemCard(h.kernel, 'q-1')
+  await tick(h, 3000)
+  const canonical = latestPlan(h.kernel)
+  ok(canonical && canonical.canonical && canonical.canonical.status === 'awaiting-approval',
+    '★ manual：计划记录的 status 是 awaiting-approval（不是 executed/queued）', canonical && canonical.canonical && canonical.canonical.status)
+  ok(canonical && canonical.canonical && typeof canonical.canonical.gateId === 'string' && canonical.canonical.gateId.length > 0,
+    '★ 计划记录带 gateId（门与计划互相可追）', canonical && canonical.canonical && canonical.canonical.gateId)
+  ok(canonical && canonical.canonical && canonical.canonical.outcomes.length === 0 && canonical.canonical.queued.length === 2,
+    '★ 0 条 outcome、2 条 queued（一条都没执行）', canonical && canonical.canonical && { outcomes: canonical.canonical.outcomes.length, queued: canonical.canonical.queued.length })
+  const solverTurns = h.delivered.filter((d) => d.member === 'solver')
+  ok(solverTurns.length === 0, '★★ manual 下**真的没执行**：solver 回合投递 0 次（不是"记录了但还在跑"）', solverTurns.length)
+  ok(v3PlannerStatus().lastExecuted === 0, '★★ 规划器自报 lastExecuted=0（执行计数为 0，不是被记录成执行过）', v3PlannerStatus().lastExecuted)
+  const gatesNow = listGates({ records: h.kernel.records })
+  ok(gatesNow.counts.pending === 1 && gatesNow.pending[0].kind === 'plan',
+    '★ 台账里恰好 1 扇 pending 的 plan 门（门类正确）', gatesNow.pending.map((g) => g.kind))
+  ok(gatesNow.pending[0].subject === canonical.id, '门的 subject 指向那条计划记录', gatesNow.pending[0].subject)
+
+  // 第二个 tick：仍在等同一扇门 ⇒ **不重复开门**（否则 manual 下每 tick 刷一扇，台账就成噪声）。
+  await tick(h, 4000)
+  const gatesAgain = listGates({ records: h.kernel.records })
+  ok(gatesAgain.counts.total === 1 && gatesAgain.counts.pending === 1, '★ 第二次 tick 不重复开门（台账仍只有 1 条）', gatesAgain.counts)
+  const solverTurns2 = h.delivered.filter((d) => d.member === 'solver')
+  ok(solverTurns2.length === 0, '★ 第二次 tick 之后仍然 0 次 solver 回合（门没放行就绝不执行）', solverTurns2.length)
+
+  // 另开一扇"别的计划"的门：批准第一扇时它必须**仍 pending**（"只那一条执行"）。
+  const other = createGate({ records: h.kernel.records, at: 4500, kind: 'plan', subject: 'other-plan', payload: { planId: 'other-plan', actions: [] }, why: 'second plan waiting' })
+  const gateId = gatesAgain.pending[0].gateId
+  const approved = await approveGate({ records: h.kernel.records, gateId, by: 'human', at: 5000, reason: 'looks fine' })
+  ok(approved.ok === true && approved.executed === true && approved.gate.status === 'released',
+    '★ approve 之后执行器真的跑了（executed:true、终态 released）', approved.gate && approved.gate.status)
+  const solverTurns3 = h.delivered.filter((d) => d.member === 'solver')
+  ok(solverTurns3.length === 2, '★★ 只那一条计划被执行：恰好 2 个 solver 回合（就是被批准计划的两条动作）', solverTurns3.length)
+  const releasedPlan = latestPlan(h.kernel)
+  ok(releasedPlan && releasedPlan.canonical && releasedPlan.canonical.status === 'executed' && releasedPlan.canonical.outcomes.length === 2,
+    '★ 放行后计划记录落终态 executed、outcomes=2', releasedPlan && releasedPlan.canonical && { status: releasedPlan.canonical.status, outcomes: releasedPlan.canonical.outcomes.length })
+  const gatesAfter = listGates({ records: h.kernel.records })
+  ok(gatesAfter.counts.pending === 1 && gatesAfter.pending[0].gateId === other.gateId,
+    '★★ 另一扇门（未被批准）仍然 pending —— "只那一条"不是"全都放行"', gatesAfter.pending.map((g) => g.gateId))
+  ok(gatesAfter.counts.byStatus.released === 1, '台账：恰好 1 条 released', gatesAfter.counts.byStatus)
+}
+
+console.log('=== 11c. P0-8 人工门：auto 零延迟直通；manual 排队后切 auto ⇒ 一拍 tick 全部放行 ===')
+{
+  // auto：计划直接执行，**一条门记录都不写**（零延迟、零台账）。
+  const plan = [{ action: 'spawn', role: 'solver', target: 'q-1', direction: 'd1' }]
+  const hAuto = boot({ replier: ({ turn }) => (turn.member === PLANNER_MEMBER ? planReply('一个 solver', plan) : ACK) })
+  await hAuto.loader.apply(PACK)
+  problemCard(hAuto.kernel, 'q-1')
+  await tick(hAuto, 3000)
+  const autoCanonical = latestPlan(hAuto.kernel)
+  ok(autoCanonical && autoCanonical.canonical && autoCanonical.canonical.status === 'executed',
+    '★ auto：计划直接 executed（零延迟，没有停在 awaiting）', autoCanonical && autoCanonical.canonical && autoCanonical.canonical.status)
+  const autoGates = listGates({ records: hAuto.kernel.records })
+  ok(autoGates.counts.total === 0, '★ auto：台账 0 条（auto 直通不写门记录）', autoGates.counts)
+  const autoSolver = hAuto.delivered.filter((d) => d.member === 'solver')
+  ok(autoSolver.length === 1, '★ auto：动作真的执行了（1 个 solver 回合）', autoSolver.length)
+
+  // manual → auto：同一内核切模式后**一拍 tick** 把 pending 全部放行。
+  const h = boot({ overrides: { 'vmu.v3.mode': 'manual', 'vmu.v3.planMinIntervalMs': 0 }, replier: ({ turn }) => (turn.member === PLANNER_MEMBER ? planReply('一个 solver', plan) : ACK) })
+  await h.loader.apply(PACK)
+  problemCard(h.kernel, 'q-1')
+  await tick(h, 3000)
+  const pendingBefore = listGates({ records: h.kernel.records }).counts.pending
+  const solverBefore = h.delivered.filter((d) => d.member === 'solver')
+  ok(pendingBefore === 1 && solverBefore.length === 0, '切换前：1 扇 pending、0 次执行', { pending: pendingBefore, solver: solverBefore.length })
+  h.kernel.setSettingsValue('vmu.v3.mode', 'auto')
+  await tick(h, 5000) // ★ 只跑这一拍
+  const pendingAfter = listGates({ records: h.kernel.records }).counts.pending
+  const solverAfter = h.delivered.filter((d) => d.member === 'solver')
+  ok(pendingAfter === 0, '★★ 切 auto 后一拍 tick：pending 清零（不是等下一次规划）', pendingAfter)
+  ok(solverAfter.length === 1, '★★ 同一拍里动作被放行执行（solver 回合 1 次）', solverAfter.length)
+  const switched = latestPlan(h.kernel)
+  ok(switched && switched.canonical && switched.canonical.status === 'executed', '切 auto 放行后计划记录落 executed', switched && switched.canonical && switched.canonical.status)
 }
 
 console.log('=== 12. 真机装配路径：packs:[v3] ⇒ 规划段被晚注册（带 scope），规划器条目上总线 ===')

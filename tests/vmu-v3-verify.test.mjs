@@ -34,6 +34,7 @@ import {
   recordVote, readVotes, openVoteBox, submitVote, trySettle, settleProposition,
   recordUndecided, votesFromReply, v3VerifyStatus, listCandidates, isVerifierMember,
 } from '../vibe-math-vmu/packs/v3/middleware/verify.js'
+import { listGates, approveGate, rejectGate, v3GatesStatus } from '../vibe-math-vmu/packs/v3/middleware/gates.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const VMU = join(HERE, '..', 'vibe-math-vmu')
@@ -413,7 +414,71 @@ console.log('=== 10. 载体：progress.votes / vote: tag / 顶层都认；缺字
   ok(orphanTitles.length === 1, '★ 但票没被静默丢：journal 里有一条具名"没有对应票箱"', orphanTitles)
 }
 
-console.log('=== 11. 装配路径：真实入口 packs:["v3"] 上 v3-verify 挂上总线；votes 轨在值层 ===')
+console.log('=== 11b. P0-8 人工门（verdict）：manual 下裁决排审、三处都不写；approve 才结算 ===')
+{
+  const h = boot({ overrides: { 'vmu.v3.mode': 'manual', 'vmu.v3.debateMaxRounds': 1 }, replier: voteReplier(() => 1) })
+  await h.loader.apply(PACK)
+  propCard(h.kernel, 'p-1')
+  const before = findProp(h.records, 'p-1')
+  await tick(h, 4000)
+  const held = findProp(h.records, 'p-1')
+  ok(held.body === before.body && held.card.状态 === '未定论' && held.card.概率 === 0.5,
+    '★★ manual：命题卡**逐字节不变**、状态仍"未定论"、概率仍 0.5（裁决没回写）', { 状态: held.card.状态, 概率: held.card.概率 })
+  const verifiedBefore = h.records.list({ track: 'verified', limit: 0 }).items.length
+  ok(verifiedBefore === 0, '★★ manual：verified 轨 0 条（没结算就没有 Verified 卡）', verifiedBefore)
+  const verdictTitles = journalTitles(h.records).filter((t) => String(t).startsWith('v3 裁决｜'))
+  const waitingTitles = journalTitles(h.records).filter((t) => String(t).startsWith('v3 裁决待审'))
+  ok(verdictTitles.length === 0 && waitingTitles.length === 1,
+    '★ journal：只有"裁决待审"审计、没有裁决记录（不是静默不写）', { verdict: verdictTitles, waiting: waitingTitles })
+  const gatesNow = listGates({ records: h.records })
+  ok(gatesNow.counts.pending === 1 && gatesNow.pending[0].kind === 'verdict' && gatesNow.pending[0].subject === 'p-1',
+    '★ 台账里恰好 1 扇 pending 的 verdict 门，subject 是命题卡 id', gatesNow.pending.map((g) => g.kind + ':' + g.subject))
+  const gateId = gatesNow.pending[0].gateId
+  // 第二个 tick：门仍 pending ⇒ 不再开第二扇（不刷台账）。
+  await tick(h, 5000)
+  const gatesAgain = listGates({ records: h.records })
+  ok(gatesAgain.counts.total === 1 && gatesAgain.counts.pending === 1, '★ 第二次 tick 不重复开门（台账仍 1 条）', gatesAgain.counts)
+  // approve：执行器真的结算（卡＋verified＋裁决 journal 三处同时出现）。
+  const approved = await approveGate({ records: h.records, gateId, by: 'human', at: 6000 })
+  ok(approved.ok === true && approved.executed === true && approved.gate.status === 'released',
+    '★ approve 后裁决执行器真的跑了（executed:true、released）', approved.gate && approved.gate.status)
+  const settledProp = findProp(h.records, 'p-1')
+  ok(settledProp.card.状态 === '已验证·真' && settledProp.card.概率 === 1,
+    '★★ 放行后命题卡被回写（已验证·真 / 概率 1）', { 状态: settledProp.card.状态, 概率: settledProp.card.概率 })
+  ok(h.records.list({ track: 'verified', limit: 0 }).items.length === 1, '★★ 放行后 verified 轨出现 1 张定论卡', h.records.list({ track: 'verified', limit: 0 }).items.length)
+  ok(journalTitles(h.records).filter((t) => String(t).startsWith('v3 裁决｜')).length === 1, '★★ 放行后 journal 出现 1 条裁决记录', journalTitles(h.records))
+  ok(v3GatesStatus().counts.released >= 1 && v3GatesStatus().counts.failed === 0,
+    '★ gates 自报 released≥1、failed=0（放行不是"看起来成功"）', v3GatesStatus().counts)
+}
+
+console.log('=== 11c. P0-8 人工门（verdict）：auto 零延迟直通；reject ⇒ 不定论且同轮不再刷门 ===')
+{
+  // auto：裁决直接结算，门台账 0 条（零延迟）。
+  const hAuto = boot({ replier: voteReplier(() => 1) })
+  await hAuto.loader.apply(PACK)
+  propCard(hAuto.kernel, 'p-auto')
+  await tick(hAuto, 4000)
+  ok(findProp(hAuto.records, 'p-auto').card.状态 === '已验证·真', '★ auto：裁决零延迟直通（直接 已验证·真）', findProp(hAuto.records, 'p-auto').card.状态)
+  const autoGates = listGates({ records: hAuto.records })
+  ok(autoGates.counts.total === 0, '★ auto：台账 0 条（不写门记录）', autoGates.counts)
+
+  // reject：human 拒绝 ⇒ 候选仍"未定论"、不写 verified；同一轮**不重复开门**。
+  const h = boot({ overrides: { 'vmu.v3.mode': 'manual', 'vmu.v3.debateMaxRounds': 1 }, replier: voteReplier(() => 1) })
+  await h.loader.apply(PACK)
+  propCard(h.kernel, 'p-rej')
+  await tick(h, 4000)
+  const gateId = listGates({ records: h.records }).pending[0].gateId
+  const rejected = rejectGate({ records: h.records, gateId, by: 'human', at: 5000, reason: 'not convincing' })
+  ok(rejected.ok === true && rejected.gate.status === 'rejected' && rejected.executed === false,
+    '★ reject：门落终态 rejected 且**没有执行**（executed:false）', rejected.gate && rejected.gate.status)
+  await tick(h, 6000)
+  const afterReject = listGates({ records: h.records })
+  ok(afterReject.counts.pending === 0, '★★ 被拒后同一轮**不再自动开新门**（pending 0，不刷台账）', afterReject.counts)
+  ok(findProp(h.records, 'p-rej').card.状态 === '未定论', '★ 被拒 ⇒ 命题仍"未定论"（人工拒绝不等于否决事实）', findProp(h.records, 'p-rej').card.状态)
+  ok(h.records.list({ track: 'verified', limit: 0 }).items.length === 0, '★ 被拒 ⇒ verified 轨仍 0 条', h.records.list({ track: 'verified', limit: 0 }).items.length)
+}
+
+console.log('=== 12. 装配路径：真实入口 packs:["v3"] 上 v3-verify 挂上总线；votes 轨在值层 ===')
 {
   const entry = await import(pathToFileURL(ENTRY).href)
   const ctx = { effect(fn) { return fn() }, on() { return () => {} }, tools: { register: async () => () => {} } }

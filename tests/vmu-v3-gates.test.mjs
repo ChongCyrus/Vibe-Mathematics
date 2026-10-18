@@ -21,6 +21,7 @@ import { dirname, join } from 'node:path'
 
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
 import { V3_TICK_TOPIC } from '../vibe-math-vmu/packs/v3/middleware/tick.js'
+import { PACK } from '../vibe-math-vmu/packs/v3/index.js'
 import {
   V3_GATES_MODULE, GATE_KINDS, GATE_MODES, GATE_TRACK, GATE_RECORD_KIND,
   gateDecision, normaliseGateMode, evaluateGate, createGate, getGate, listGates,
@@ -303,6 +304,13 @@ console.log('=== 11. 模块形状：可被 pack 清单装载（meta/apiVersion/c
   // 模块是冻结声明：外部改不动（loader 会拒绝被改写的声明）。
   ok(Object.isFrozen(V3_GATES_MODULE) && Object.isFrozen(V3_GATES_MODULE.hooks),
     '★ 模块声明是冻结对象（装配期不被后手改写）')
+  // P0-8 的最后一步：**真的挂进清单**（module 形状、order 在 tick 消费者末尾、只在 v3/tick 上）。
+  const entries = Array.isArray(PACK.middleware) ? PACK.middleware : []
+  const myEntry = entries.find((e) => e && e.id === 'v3-gates')
+  ok(myEntry !== undefined && myEntry.module === V3_GATES_MODULE,
+    '★★ 清单里有 v3-gates 条目且携带同一个 module 对象（"能装载"与"已装载"是两件事）', entries.map((e) => e && e.id))
+  ok(myEntry && myEntry.order === 125 && myEntry.capabilities.includes('trigger-workflow') && myEntry.failure === 'open',
+    '★ 条目形状：order 125（最后一个 tick 消费者）、trigger-workflow、failure=open', myEntry && { order: myEntry.order, caps: myEntry.capabilities, failure: myEntry.failure })
   clearGateExecutors(h3.records)
   ok(listGates({ records: h3.records }).counts.total === 0,
     '★ clearGateExecutors 只清注册表、不动台账（records 是事实源）')

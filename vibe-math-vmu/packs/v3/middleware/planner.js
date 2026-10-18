@@ -39,6 +39,8 @@
  */
 import { V3_TICK_TOPIC } from './tick.js'
 import { parseCard, writeBody, writeCard, supersedeBody, updateCard, escField, unescField } from './dataplane.js'
+// P0-8：人工门的判定/台账由 gates.js 提供；planner 只**调**它，不自己写一套"该不该放行"。
+import { evaluateGate, registerGateExecutor, getGate } from './gates.js'
 
 /** 规划器是 bus 主题 `v3/tick` 的消费者；这个别名只是让调用方不必 import 两个模块。 */
 export const V3_PLANNER_TOPIC = V3_TICK_TOPIC
@@ -514,16 +516,13 @@ function applyPlanToProblemCards(actions, { records, problems }) {
 }
 
 // ── 计划记录：归一化落盘 / 队列排空 ───────────────────────────────────────────────────────────────────
-/**
- * 把一个规划回执的**原始**计划记录就地归一化：校验 → 按容量执行 → 逐条 outcome 写回（`supersedeBody`）。
- * 返回 `{opened, summary, validated, rejected, truncated, duplicates, outcomes, queued, status, recordId}`。
- */
-async function settlePlan({ records, turn, rawPlan, planRecordId, at, horizon, capacity, problems, propos, state }) {
-  const check = validatePlan(rawPlan.actions, { horizon, problems, propos })
+/** 执行一段已校验的动作（容量之内），逐条产出 outcome —— settlePlan 与"人工门放行后的执行器"共用**同一段**。 */
+async function executeValidatedActions({ records, turn, at, capacity, problems, propos, state, actions }) {
   const outcomes = []
   const queued = []
   let executedThisTick = 0
-  for (const a of check.validated) {
+  const list = Array.isArray(actions) ? actions : []
+  for (const a of list) {
     if (executedThisTick >= capacity) { queued.push(a); continue }
     let o
     try { o = await executeOne(a, { turn, records, problems, propos, at, state }) } catch (e) {
@@ -532,45 +531,126 @@ async function settlePlan({ records, turn, rawPlan, planRecordId, at, horizon, c
     outcomes.push(o)
     executedThisTick += 1
   }
-  const body = {
-    version: 1,
-    kind: 'v3-plan',
-    at,
-    horizon,
-    summary: rawPlan.summary,
-    raw: rawPlan.actions,
-    validated: check.validated,
-    rejected: check.rejected,
-    truncated: check.truncated,
-    duplicates: check.duplicates,
-    rejectReasons: check.rejectReasons,
-    outcomes,
-    queued,
-    status: queued.length > 0 ? (outcomes.length > 0 ? 'partial' : 'queued') : 'executed',
-    note: 'validated/rejected/truncated are counted; an action that could not be dispatched keeps a named ok:false outcome instead of disappearing',
+  return { outcomes, queued }
+}
+
+/**
+ * 计划门放行后的执行器（注册给 gates.js；批准/切回 auto 的放行会调到它）。
+ * ★ **复用** `executeValidatedActions` 与 `applyPlanToProblemCards`，不复制执行逻辑；批准时按"整条计划"执行
+ *   （计划在校验阶段已按 horizon 截断，所以这里容量 = 该计划的动作数）。
+ */
+function planGateExecutorFor({ records, turn, state }) {
+  return async (gate) => {
+    const payload = isObject(gate && gate.payload) ? gate.payload : {}
+    const planId = str(payload.planId || (gate && gate.subject))
+    const at = Number.isFinite(gate && gate.at) ? gate.at : null
+    const rec = records.get({ id: planId })
+    const canonical = readPlanRecord({ body: rec.body })
+    if (!canonical) {
+      throw refuse('VMU_STATE', 'gate points at a plan record that is not the canonical JSON shape: ' + planId,
+        'the plan must be settled (canonical JSON) before it can be released')
+    }
+    const actions = Array.isArray(canonical.validated) ? canonical.validated : []
+    const problems = loadCardIndex(records, 'problems', 'problem')
+    const propos = loadCardIndex(records, 'propos', 'proposition')
+    const executed = await executeValidatedActions({ records, turn, at, capacity: Math.max(1, actions.length), problems, propos, state, actions })
+    canonical.outcomes = executed.outcomes
+    canonical.queued = executed.queued
+    canonical.status = executed.queued.length > 0 ? (executed.outcomes.length > 0 ? 'partial' : 'queued') : 'executed'
+    canonical.releasedAt = at
+    canonical.gateStatus = 'released'
+    canonical.gateId = str(gate && gate.gateId)
+    supersedeBody({
+      records, id: planId, body: JSON.stringify(canonical, null, 2),
+      reason: 'v3 plan released by a human gate: ' + executed.outcomes.length + ' executed / ' + executed.queued.length + ' left',
+      by: PLANNER_MEMBER,
+    })
+    applyPlanToProblemCards(actions, { records, problems })
+    state.lastPlan = { planId, at, summary: str(canonical.summary), validated: actions.length, rejected: canonical.rejected || 0, truncated: canonical.truncated || 0, outcomes: executed.outcomes.length, queued: executed.queued.length, status: canonical.status, rev: null, released: true }
+    state.lastExecuted = executed.outcomes.length
+    state.gateReleased = (state.gateReleased || 0) + 1
+    return { ok: true, planId, outcomes: executed.outcomes.length, queued: executed.queued.length, status: canonical.status }
   }
-  const written = supersedeBody({
-    records,
-    id: planRecordId,
-    body: JSON.stringify(body, null, 2),
-    reason: 'v3 plan settled: ' + check.validated.length + ' kept / ' + check.rejected + ' rejected / ' + check.truncated + ' truncated',
+}
+
+/** 最新一条"正在等人放行"的计划（没有 ⇒ null）。planner 靠它在 manual 下**不重复规划**。 */
+export function awaitingPlan(records) {
+  const list = records.list({ track: PLAN_TRACK, limit: 0 })
+  let best = null
+  for (const head of list.items) {
+    let rec = null
+    try { rec = records.get({ id: head.id }) } catch (e) { continue }
+    const canonical = readPlanRecord({ body: rec.body })
+    if (!canonical || canonical.status !== 'awaiting-approval') continue
+    if (best === null || (head.updatedAt || 0) >= (best.updatedAt || 0)) {
+      best = { recordId: head.id, planId: str(canonical.planId) || head.id, gateId: str(canonical.gateId) || null, canonical, updatedAt: head.updatedAt }
+    }
+  }
+  return best
+}
+
+/** 把一条 awaiting 计划收成终态（**只有**"被拒绝 / 放行失败"走这里；批准由执行器写 executed）。 */
+function closeAwaitingPlan({ records, planId, status, gate, at }) {
+  const rec = records.get({ id: planId })
+  const canonical = readPlanRecord({ body: rec.body })
+  if (!canonical) return { ok: false, code: 'VMU_STATE' }
+  canonical.status = status
+  canonical.gateStatus = str(gate && gate.status)
+  canonical.queued = []
+  canonical.closedAt = at
+  canonical.note = 'mode=manual: the human gate ended as ' + str(gate && gate.status) + '; the queued actions were NOT executed (a terminal plan status, not a pending one)'
+  supersedeBody({ records, id: planId, body: JSON.stringify(canonical, null, 2), reason: 'v3 plan closed without execution: gate ' + str(gate && gate.status), by: PLANNER_MEMBER })
+  return { ok: true, planId, status }
+}
+
+/**
+ * 把一个规划回执的**原始**计划记录就地归一化：校验 → **人工门判定** → 按容量执行 → 逐条 outcome 写回。
+ * manual 且未放行 ⇒ 计划记录写 `status:'awaiting-approval'` ＋ `gateId`，**一条动作都不执行**（P0-8）。
+ */
+async function settlePlan({ records, turn, rawPlan, planRecordId, at, horizon, capacity, problems, propos, state, human = null, mode = 'auto' }) {
+  const check = validatePlan(rawPlan.actions, { horizon, problems, propos })
+  // ★ P0-8：执行前先过人工门。auto ⇒ 直通且**零记录**；manual ⇒ 开一扇 pending 门并停在这里。
+  const gate = evaluateGate({
+    records, human, at, mode, kind: 'plan',
+    subject: planRecordId,
+    payload: { planId: planRecordId, actions: check.validated, summary: rawPlan.summary, horizon },
+    why: 'v3 plan awaiting human approval (' + check.validated.length + ' validated actions)',
     by: PLANNER_MEMBER,
   })
-  const planUpdated = applyPlanToProblemCards(check.validated, { records, problems })
-  state.lastPlan = {
-    planId: planRecordId,
-    at,
-    summary: rawPlan.summary,
-    validated: check.validated.length,
-    rejected: check.rejected,
-    truncated: check.truncated,
-    outcomes: outcomes.length,
-    queued: queued.length,
-    status: body.status,
-    rev: written && written.rev,
+  const baseBody = {
+    version: 1, kind: 'v3-plan', at, horizon,
+    summary: rawPlan.summary, raw: rawPlan.actions,
+    validated: check.validated, rejected: check.rejected, truncated: check.truncated,
+    duplicates: check.duplicates, rejectReasons: check.rejectReasons,
   }
-  state.lastExecuted = outcomes.length
-  return Object.assign({ ok: true, recordId: planRecordId, planUpdated }, body)
+  if (!gate.allow) {
+    // 登记执行器：批准后 gates.js 调它；不注册的话批准会落 failed（gates.js 的终态语义：没执行绝不伪装成放行）。
+    registerGateExecutor(records, 'plan', planGateExecutorFor({ records, turn, state }))
+    const body = Object.assign({}, baseBody, {
+      outcomes: [], queued: check.validated,
+      status: 'awaiting-approval',
+      gateId: gate.gateId || null,
+      gateOutcome: gate.decision ? gate.decision.outcome : 'pending',
+      note: 'mode=manual: this plan is QUEUED behind a human gate and was NOT executed; approve it (or switch to auto) to release',
+    })
+    const written = supersedeBody({ records, id: planRecordId, body: JSON.stringify(body, null, 2), reason: 'v3 plan awaiting human approval: ' + check.validated.length + ' actions queued', by: PLANNER_MEMBER })
+    state.lastPlan = { planId: planRecordId, at, summary: rawPlan.summary, validated: check.validated.length, rejected: check.rejected, truncated: check.truncated, outcomes: 0, queued: check.validated.length, status: 'awaiting-approval', rev: written && written.rev }
+    state.awaiting = (state.awaiting || 0) + 1
+    state.lastExecuted = 0
+    return Object.assign({ ok: true, recordId: planRecordId, awaitingApproval: true, gateId: gate.gateId || null, decision: gate.decision }, body)
+  }
+  const executed = await executeValidatedActions({ records, turn, at, capacity, problems, propos, state, actions: check.validated })
+  const body = Object.assign({}, baseBody, {
+    outcomes: executed.outcomes, queued: executed.queued,
+    status: executed.queued.length > 0 ? (executed.outcomes.length > 0 ? 'partial' : 'queued') : 'executed',
+    gateOutcome: gate.decision ? gate.decision.outcome : 'auto-pass',
+    note: 'validated/rejected/truncated are counted; an action that could not be dispatched keeps a named ok:false outcome instead of disappearing',
+  })
+  const written = supersedeBody({ records, id: planRecordId, body: JSON.stringify(body, null, 2), reason: 'v3 plan settled: ' + check.validated.length + ' kept / ' + check.rejected + ' rejected / ' + check.truncated + ' truncated', by: PLANNER_MEMBER })
+  const planUpdated = applyPlanToProblemCards(check.validated, { records, problems })
+  state.lastPlan = { planId: planRecordId, at, summary: rawPlan.summary, validated: check.validated.length, rejected: check.rejected, truncated: check.truncated, outcomes: executed.outcomes.length, queued: executed.queued.length, status: body.status, rev: written && written.rev }
+  state.lastExecuted = executed.outcomes.length
+  return Object.assign({ ok: true, recordId: planRecordId, planUpdated, gate: { allow: true, outcome: gate.decision ? gate.decision.outcome : 'auto-pass' } }, body)
 }
 
 /** 排空上一条计划的 `queued` 动作（容量之内），把新的 outcome 追加回同一条记录。 */
@@ -579,6 +659,11 @@ async function drainPlanQueue({ records, turn, at, capacity, problems, propos, s
   if (!latest) return { ok: true, executed: 0, remaining: 0, reason: 'no-plan-record' }
   const canonical = readPlanRecord(latest)
   if (!canonical) return { ok: true, executed: 0, remaining: 0, reason: 'latest-plan-not-settled-yet' }
+  // ★ P0-8：在等人工放行的计划**不能**被排空 —— 否则"manual 下不执行"会被下一个 tick 自己绕过。
+  if (canonical.status === 'awaiting-approval') {
+    const waiting = Array.isArray(canonical.queued) ? canonical.queued.length : 0
+    return { ok: true, executed: 0, remaining: waiting, reason: 'awaiting-approval', gateId: str(canonical.gateId) || null }
+  }
   const queued = Array.isArray(canonical.queued) ? canonical.queued.slice() : []
   if (queued.length === 0) return { ok: true, executed: 0, remaining: 0, reason: 'queue-empty' }
   const outcomes = Array.isArray(canonical.outcomes) ? canonical.outcomes.slice() : []
@@ -671,6 +756,11 @@ function readSettings(api) {
     planMinIntervalMs: Number.isFinite(minRaw) && minRaw >= 0 ? minRaw : 30000,
     plannerMaxFails: Number(api.setting('vmu.v3.plannerMaxFails')),
     maxLiveMembers: Number.isFinite(maxLiveRaw) && maxLiveRaw > 0 ? maxLiveRaw : 0,
+    // P0-8：人工门读**原始值**（gates.js 的 normaliseGateMode 负责归一化；**脏值**按 manual，fail-closed）。
+    // ★ 但"键不存在"不是脏值：内核不把 schema 默认值物化进设置对象，而 `vmu.v3.mode` 的声明默认是 auto
+    //   ⇒ 缺省必须回落成 auto（否则每个没显式写 mode 的部署都会静默变成 manual）。只对"缺省"回落，
+    //   拼错的字符串仍然 fail-closed（normaliseGateMode 的 unknown-mode 分支）。
+    mode: (() => { const v = api.setting('vmu.v3.mode'); return v === undefined || v === null || String(v).trim() === '' ? 'auto' : v })(),
   }
 }
 
@@ -718,6 +808,23 @@ async function onTick(flat) {
   }
   const problems = loadCardIndex(records, 'problems', 'problem')
   const propos = loadCardIndex(records, 'propos', 'proposition')
+  // ★ P0-8：上一条计划还在等人放行时**不重复规划**（否则 manual 下每 tick 都会再开一扇门）。
+  //   门的终态由 gates.js 写；这里只负责把计划记录的终态跟上，并在"被拒绝/放行失败"时收口。
+  const awaiting = awaitingPlan(records)
+  if (awaiting) {
+    const gate = awaiting.gateId ? getGate({ records, gateId: awaiting.gateId }) : null
+    const gateStatus = gate ? str(gate.status) : 'missing'
+    if (gateStatus === 'pending' || gateStatus === 'missing') {
+      state.lastSkip = { reason: 'plan-awaiting-approval', gateId: awaiting.gateId, gateStatus, tick: state.ticks }
+      return { ok: true, skipped: 'plan-awaiting-approval', at, gateId: awaiting.gateId, planId: awaiting.recordId, drained }
+    }
+    if (gateStatus === 'rejected' || gateStatus === 'failed') {
+      const closed = closeAwaitingPlan({ records, planId: awaiting.recordId, status: gateStatus === 'rejected' ? 'rejected' : 'gate-failed', gate, at })
+      state.lastSkip = { reason: 'plan-gate-' + gateStatus, gateId: awaiting.gateId, planId: awaiting.recordId, closed: closed.ok, tick: state.ticks }
+      return { ok: true, skipped: 'plan-gate-' + gateStatus, at, gateId: awaiting.gateId, planId: awaiting.recordId, status: closed.status || null, drained }
+    }
+    // released：执行器已把计划写成终态（executed/partial）；继续用最新状态往下走。
+  }
   // ② 判可推进 + 组简报。
   const advanceable = advanceableProblems(problems)
   const queuedRemaining = drained && Number.isInteger(drained.remaining) ? drained.remaining : 0
@@ -761,20 +868,23 @@ async function onTick(flat) {
     return { ok: true, planned: false, at, code: 'VMU_INVALID_ARGUMENT', message: 'planner reply carried no plan record', plannerTurn: receipt && receipt.turn ? receipt.turn.id : null, drained }
   }
   state.plannerCalls += 1
-  // ⑤ 归一化/校验 + 按容量执行 + 逐条 outcome 写回。
+  // ⑤ 归一化/校验 → **人工门判定** → 按容量执行 → 逐条 outcome 写回（manual 未放行 ⇒ 计划停在 awaiting-approval）。
+  let human = null
+  try { if (typeof api.services.names === 'function' && api.services.names().includes('vmu.human')) human = api.services.get('vmu.human') } catch (e) { human = null }
   let plan = null
   try {
     const rec = records.get({ id: planId })
-    plan = await settlePlan({ records, turn, rawPlan: readRawPlan(rec), planRecordId: planId, at, horizon: settings.horizon, capacity, problems, propos, state })
+    plan = await settlePlan({ records, turn, rawPlan: readRawPlan(rec), planRecordId: planId, at, horizon: settings.horizon, capacity, problems, propos, state, human, mode: settings.mode })
     state.plans += 1
   } catch (e) {
     recordFailure({ records, at, state, api, error: e, phase: 'plan-settle' })
     return { ok: true, planned: true, settled: false, at, planId, code: str((e && e.code) || 'VMU_MIDDLEWARE_FAILED'), message: str((e && e.message) || e), drained }
   }
   return {
-    ok: true, planned: true, settled: true, at, planId,
+    ok: true, planned: true, settled: plan.awaitingApproval !== true, at, planId,
     validated: plan.validated.length, rejected: plan.rejected, truncated: plan.truncated, duplicates: plan.duplicates,
     outcomes: plan.outcomes.length, queued: plan.queued.length, status: plan.status,
+    awaitingApproval: plan.awaitingApproval === true, gateId: plan.gateId || null,
     plannerTurn: receipt && receipt.turn ? receipt.turn.id : null,
     drained,
   }

@@ -13,13 +13,14 @@
 
 | 文件 | 职责 |
 |---|---|
-| `index.js` | 被装载清单（`PACK`）：五个 middleware 模块（`v3-tick`、`v3-planner`、`v3-methods`、`v3-verify`、`v3-dataplane`）＋ 提示段（`sections: [v3-planner, ...21 段]`，见下）。 |
+| `index.js` | 被装载清单（`PACK`）：六个 middleware 模块（`v3-tick`、`v3-planner`、`v3-methods`、`v3-verify`、`v3-dataplane`、`v3-gates`）＋ 提示段（`sections: [v3-planner, ...21 段]`，见下）。 |
 | `settings/defaults.json` | **值层**：构造期就被读取的值 —— schedule 四键、`vmu.v3.tickIntervalMs`，P0-9 的 records 五键（轨/kind 白名单/未定稿可写/正文上限/条数上限），以及 P0-4 的第六把 `vmu.records.history.storeMode=full`（版本要带快照）。 |
 | `middleware/tick.js` | P0-1 tick 体：订阅 `v3/tick`，写一条 `journal` 记录，返回 `{ok:true}`。 |
 | `middleware/dataplane.js` | **P0-9 ＋ P0-6 数据面**：三卡 compose/parse（问题/命题/方法）、正文段逐字保留、有界写入（截断＋`dropped` 计数）、索引重建（条目数＝磁盘卡数、坏卡点名、`dropped` 计数）、Verified 分裂（只收定论、内容不变不重写）、tick 驱动的 5s 节流索引；P0-2 追加 `supersedeBody`（非卡记录的**同一个**有界写入口）。 |
 | `middleware/planner.js` | **P0-2 ＋ P0-3 规划-调度与学习闭环**：`v3/tick` → 判可推进 → 组简报 → `vmu.turn.run({member:'planner'})` → 归一化/校验（6 动作白名单／horizon 截断／去重／逐角色硬校验）→ 按容量执行 → 逐条 outcome 写回 `plans` 轨；`turn/reply-parsed` 上做 K10 归一化（落盘 + `rewriteResult`）。 |
 | `middleware/methods.js` | **P0-4 ＋ P0-5 方法库与发明上报**：方法卡的应用记录（只在有 qid/dirId 上下文时追加）／改进历史（v 号单调）／可信断言（只收概率 1/0 的命题）／项目级↔全局级两级晋升／耐久库冻结修订；`new_inventions` 入 `inventions` 轨、method-keeper 到期派发、有产出与无产出两条路都清队，无产出走**幂等兜底建卡**。 |
 | `middleware/verify.js` | **P0-7 验证闭环**：**双写**（内核 `vmu.ballotbox` 强制法定人数＋连续 Result 落 `votes` 轨）／pack 纯函数聚合（全 1、全 0、同侧均值 ≥0.85、forced 等权均值夹 [0.01,0.99]、flat）／非全票一致才辩论且轮次有界（`vmu.v3.debateMaxRounds`）／裁决回写三处：命题卡＋`verified` 轨（只经 `promoteVerified`）＋`journal` 轨。 |
+| `middleware/gates.js` | **P0-8 人工门**：判定纯函数（auto 直通／manual 排队／未知值 fail-closed）＋台账（`journal` 轨 `decision` kind，一条门一条记录）＋ approve/reject/releaseAll；planner/verify 在动作落地前调 `evaluateGate`，批准后由它们注册的执行器真正执行。 |
 | `prompts/planner.js` | **P0-2 规划器提示段**（纯数据，`scope.role='planner'`）：动作词表、硬规则、回执契约。走清单 `sections` 通道（原因见下）。 |
 | `prompts/sections.json` | **P0-6 可信分层段**（纯数据）：只有 `verified` 轨"绝对可信"，其余一律"经验参考"。插件在建内核**之前**按目录名读它。 |
 | `README.md` | 本文件。 |
@@ -112,6 +113,21 @@ P1-6 的提示段负责写进提示词），或 `progress.methods_used`/`progres
 候选仍然合法、下一 tick 会继续收票。所以本模块用**具名返回值**（`ok:false`＋`code`＋`tally`）表达它，
 并由 tick 落一条 `v3 验证未成立` 审计记录；内核 `close` 的 `deny` 对象也**原样透传**（同一 code，`source:'kernel'`）。
 
+## 人工门（P0-8）的四条契约
+
+1. **判定／台账／放行都在 `gates.js`**：判定是纯函数（auto 直通、manual 排队、未知值 fail-closed）；台账落
+   `journal` 轨的 `decision` kind —— **不占 `plans` 轨**（否则 `latestPlanRecord` 会把审批记录当成"上一条计划"，
+   排空被延后一整轮）；一条门一条记录，放行/拒绝/失败都用 `supersede` 写回**同一条**（id 不变、rev 递增）。
+2. **消费点只有两处**：`planner.js`（计划执行前，`kind:'plan'`）与 `verify.js`（裁决回写前，`kind:'verdict'`）。
+   manual 且未放行 ⇒ 计划记录写 `status:'awaiting-approval'` ＋ `gateId` 且**一条动作都不执行**；裁决只写
+   "待审"journal，命题卡与 `verified` 轨都不动。
+3. **放行才执行**：planner/verify 在开门时用 `registerGateExecutor` 注册执行器（**复用**同一条执行段：
+   计划复用 `executeValidatedActions`，裁决复用 `settleProposition`）；`approveGate` 调到它；批准但没有执行器
+   ⇒ 终态 `failed`（**绝不**把"没执行"伪装成"已放行"）。
+4. **切回 auto ＝ 一拍放行**：`v3-gates` 是**最后**一个 tick 消费者（order 125）；模式是 auto 且仍有 pending ⇒
+   `releaseAllGates()` 全部放行（失败也落终态）。planner/verify 在门仍 pending 时**不重复开门**（计划仍在等审批 ⇒
+   规划器具名 skip；同一候选已有 pending 裁决门 ⇒ verify 具名 skip，不刷台账）。
+
 ## 规划-调度与学习闭环（P0-2/P0-3）的三条契约
 
 1. **派发只能从 `v3/tick` 里做。** `vmu.turn` 已进 M2 服务目录（K2），但回合内再开回合会被
@@ -169,15 +185,18 @@ P1-6 的提示段负责写进提示词），或 `progress.methods_used`/`progres
   但把简报字段接上要改 `planner.js`（P0-2 的写域，本轮不动）⇒ 留作后续一轮的小接线，简报的 `notes` 仍如实点名。
 - **验证闭环本轮只结算"命题"这一类**：v3 的 `settleVerdict` 还有 `prop-proof` 与 `problem-solution` 两个分支
   （`:4312-4365`），本卡只落命题分支（`候选＝可验证命题`）；另两类需要各自的对象卡语义，未做即未做。
-- **`vmu.v3.mode=manual` 的裁决门属 P0-8**：本轮 verify **不读** `vmu.v3.mode`，裁决直接结算；
-  人工门（先排队等 approve）由 `gates.js`（另一路）接管，接管点是 `settleProposition` 之前的判定。
+- **人工门只接了"计划"与"裁决"两类**：`gates.js` 的第三类 `method-promote`（方法晋升到全局库）已有判定/台账
+  能力，但 `methods.js` 的晋升目前仍是"auto 才晋升、否则具名 skipped"（P0-4 的实现），**没有**调 `evaluateGate`
+  —— 把它接上是后续一小步（`vmu.v3.methodAutoPromote` 与人工门的取舍属机构策略）。
 - **`flat` 只是纯函数里的 v3 字面回退**（`:4267`）：设置 `vmu.v3.verdictMode` 的域是 `forced｜natural`，
   没有设置值会选中 `flat`；它保留是为了与 v3 逐条对照和测试可断。
 - **验证者回合的"话术"属 P1-6**：本模块用 `turn.run` 的 `statusBlock` 传契约（票放 `progress.votes`），
   不伪造验证者提示词；`keeper`/`verifier` 的提示段由提示词对账那一路上线。
 - **多候选时一个 tick 会依次推进每个候选**（各自 ≤ `debateMaxRounds` 轮 × `required` 个回合）：
   本卡没有做"每 tick 只验一个"的预算，P0-10 若需要限流应在装配面/工具面加（不是在这里藏一个常量）。
-- 本轮没有 slots（v3 的 planner/solver/verifier）与 M1 规则 —— slots/gates/P0-10 属后续卡。
+- **手动放行的执行粒度**：计划门批准时按"整条计划"执行（计划在校验阶段已按 horizon 截断）；没有做
+  "批准后每 tick 只执行 capacity 条"的分片（v3 的 executePlanQueue 是分片的）—— 这是有意的简化，`capacity`
+  在执行器里取该计划的动作数。
 - **本轮的 method-keeper 只有"机制"，没有"话术"**：keeper 回合的提示内容（v3 `:1905-1919` 的
   `methodKeeperPrompt`）属 P1-6 的提示词对账；本模块用 `turn.run` 的 `statusBlock` 传**摘要**
   （`buildMethodDigest`，v3 `:2844-2860` 的等价面），不给它伪造一段提示词。
@@ -187,4 +206,4 @@ P1-6 的提示段负责写进提示词），或 `progress.methods_used`/`progres
   ② `kernel/library.js` 只有"追加 + 冻结"、没有"原地改记录"的写面 ⇒ 每一版卡冻结成**一个新的库记录**
   的 `<库记录 id>@1.md`，而不是同一个 id 的 `@2`；`@<n>` 的单调性由 library 的 high-water mark 保证，
   测试里用同一内容连续冻结两次断到 `@1`/`@2`。
-- 本轮没有 slots（v3 的 planner/solver/verifier）与 M1 规则 —— slots/gates/P0-10 属后续卡。
+- 本轮没有 slots（v3 的 planner/solver/verifier）与 M1 规则 —— slots／P0-10 属后续卡。

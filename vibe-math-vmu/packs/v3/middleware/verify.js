@@ -42,6 +42,8 @@ import {
   parseCard, parseAnchors, composeCard, supersedeBody, writeBody,
   promoteVerified,
 } from './dataplane.js'
+// P0-8：裁决前的人工门由 gates.js 判定/记账；verify 只调它，并在放行时由注册的执行器真正结算。
+import { evaluateGate, registerGateExecutor, listGates } from './gates.js'
 
 /** 轨/kind（`vmu.records.tracks` 与 `allowedKinds` 在 packs/v3/settings/defaults.json 的值层里声明）。 */
 export const VOTES_TRACK = 'votes'
@@ -500,7 +502,77 @@ function readSettings(api) {
     required: requiredVerifiers(Number.isFinite(vcRaw) && vcRaw > 0 ? vcRaw : 3),
     debateMaxRounds: Number.isFinite(roundsRaw) && roundsRaw >= 1 ? Math.floor(roundsRaw) : 5,
     verdictMode: VERDICT_MODES.includes(String(modeRaw)) ? String(modeRaw) : 'forced',
+    // P0-8：人工门读**原始值**（gates.js 归一化；**脏值**按 manual，fail-closed）。
+    // ★ "键不存在"不是脏值：内核不物化 schema 默认，而 `vmu.v3.mode` 的声明默认是 auto ⇒ 缺省回落 auto；
+    //   拼错的字符串仍然 fail-closed（normaliseGateMode 的 unknown-mode 分支）。
+    mode: (() => { const v = api.setting('vmu.v3.mode'); return v === undefined || v === null || String(v).trim() === '' ? 'auto' : v })(),
   }
+}
+
+// ── P0-8：裁决前的人工门（判定/台账在 gates.js；这里只做"该不该结算"的转接与放行执行器） ─────────────
+/** 一扇裁决门放行后真正结算（**复用** settleProposition，不复制回写逻辑）。 */
+function verdictGateExecutorFor({ records, state }) {
+  return async (gate) => {
+    const payload = isObject(gate && gate.payload) ? gate.payload : {}
+    const at = Number.isFinite(gate && gate.at) ? gate.at : null
+    const settled = settleProposition({
+      records, target: str(payload.target), recordId: str(payload.recordId),
+      verdict: Number(payload.verdict), rule: str(payload.rule), at,
+      round: Number(payload.round) || 1, maxRoundsReached: payload.maxRoundsReached === true,
+      votes: Array.isArray(payload.votes) ? payload.votes : [], ballotId: str(payload.ballotId) || null,
+      by: 'v3-gates',
+    })
+    if (settled.ok !== true) {
+      throw refuse(settled.code || 'VMU_MIDDLEWARE_FAILED', str(settled.message || 'the approved verdict could not be settled'),
+        'a gate release must either settle the verdict or end as a terminal failure — never pretend success')
+    }
+    state.verdicts += 1
+    if (payload.maxRoundsReached === true) state.maxRoundsStops += 1
+    state.active.delete(str(payload.target))
+    state.lastReceipt = Object.assign({}, settled, { releasedBy: 'gate', gateId: str(gate && gate.gateId) })
+    state.gateReleased = (state.gateReleased || 0) + 1
+    return settled
+  }
+}
+
+/**
+ * 裁决前过门：`allow:true` ⇒ 直接结算；`allow:false` ⇒ 返回具名 skip / 新建的 pending 门 id。
+ * 幂等性：**同一候选已有 pending 裁决门 ⇒ 不再开第二扇**（manual 下每 tick 都开会在台账里刷出一堆重复门）；
+ *          同一候选同一轮已有 rejected/failed 终态 ⇒ 本轮不再重开（下一轮辩论才会再问人）。
+ */
+function gateVerdict({ records, state, human, at, mode, target, candidate, verdict, rule, round, maxRoundsReached, votes, ballotId }) {
+  const gates = listGates({ records })
+  const pendingMine = gates.pending.find((g) => str(g.kind) === 'verdict' && str(g.subject) === str(target))
+  if (pendingMine) return { allow: false, skip: 'verdict-gate-pending', gateId: pendingMine.gateId, gate: pendingMine }
+  const sameRound = gates.resolved.filter((g) => str(g.kind) === 'verdict' && str(g.subject) === str(target)
+    && isObject(g.payload) && Number(g.payload.round) === Number(round))
+  const blocked = sameRound.find((g) => g.status === 'rejected' || g.status === 'failed')
+  if (blocked) return { allow: false, skip: 'verdict-gate-' + blocked.status, gateId: blocked.gateId, gate: blocked }
+  registerGateExecutor(records, 'verdict', verdictGateExecutorFor({ records, state }))
+  const res = evaluateGate({
+    records, human, at, mode, kind: 'verdict',
+    subject: target,
+    payload: { target: str(target), recordId: str(candidate.recordId), verdict, rule: str(rule), round, maxRoundsReached: maxRoundsReached === true, votes: Array.isArray(votes) ? votes : [], ballotId: str(ballotId) || null },
+    why: 'v3 verdict awaiting human approval (verdict ' + str(verdict) + ', rule ' + str(rule) + ')',
+    by: 'v3-verify',
+  })
+  if (res.allow) return { allow: true, outcome: res.decision ? res.decision.outcome : 'auto-pass' }
+  return { allow: false, gateId: res.gateId || null, gate: res.gate || null, outcome: res.decision ? res.decision.outcome : 'pending' }
+}
+
+/** 裁决被人工门拦下时的审计 journal（**不是**裁决记录；对象卡与 verified 轨都没动）。 */
+function recordVerdictAwaiting({ records, target, verdict, rule, round, gateId, at }) {
+  const body = [
+    '- target: ' + str(target),
+    '- tentativeVerdict: ' + str(verdict),
+    '- rule: ' + str(rule),
+    '- round: ' + (Number.isInteger(round) ? round : 1),
+    '- gateId: ' + str(gateId),
+    '- at: ' + timeText(at),
+    '- note: mode=manual: the verdict is QUEUED behind a human gate; the proposition card and the verified track were NOT written',
+  ].join('\n')
+  const rec = writeBody({ records, track: 'journal', kind: 'state', title: 'v3 裁决待审｜' + str(target), body, settled: true, by: 'v3-verify' })
+  return { ok: true, journalId: rec && rec.id ? rec.id : null }
 }
 
 /** 派一个验证者回合（**只从 tick 调用**；回合内再开回合会被 VMU_TURN_REENTRANT 拒）。 */
@@ -534,7 +606,7 @@ async function dispatchVerifier({ turn, target, question, round, verifier, requi
  * 推进一个候选：逐轮"派发 → 收票 → 结算/辩论"，**轮次有界**（`debateMaxRounds`）。
  * 返回 `{ok, settled, verdict?, rule?, rounds, maxRoundsReached, undecided?}`。
  */
-async function advanceCandidate({ records, ballotbox, turn, at, settings, state, candidate }) {
+async function advanceCandidate({ records, ballotbox, turn, at, settings, state, candidate, human = null }) {
   const target = candidate.id
   const required = settings.required
   const ids = verifierIds(settings.verifierCount)
@@ -592,6 +664,27 @@ async function advanceCandidate({ records, ballotbox, turn, at, settings, state,
       continue
     }
     const maxRoundsReached = !consensus && round >= settings.debateMaxRounds
+    // ★ P0-8：裁决**之前**过人工门（auto ⇒ 直通零记录；manual ⇒ 停在这里，对象卡/verified 轨都不写）。
+    const gate = gateVerdict({
+      records, state, human, at, mode: settings.mode, target, candidate, verdict, rule, round,
+      maxRoundsReached, votes: votes.items, ballotId: box.boxId,
+    })
+    if (!gate.allow) {
+      const gateOutcome = {
+        ok: true, settled: false, target, round, rounds: round,
+        verdict, rule, maxRoundsReached,
+        awaitingApproval: gate.skip === undefined,
+        skipped: gate.skip || 'verdict-awaiting-approval',
+        gateId: gate.gateId || null,
+        pendingVerdict: verdict,
+      }
+      if (gate.skip === undefined) {
+        recordVerdictAwaiting({ records, target, verdict, rule, round, gateId: gate.gateId, at })
+        state.awaitingVerdicts = (state.awaitingVerdicts || 0) + 1
+      }
+      state.lastReceipt = Object.assign({}, gateOutcome, { note: 'verdict held by the human gate' })
+      return gateOutcome
+    }
     const settled = settleProposition({
       records, target, recordId: candidate.recordId, verdict, rule,
       at, round, maxRoundsReached, votes: votes.items, ballotId: box.boxId,
@@ -631,16 +724,21 @@ async function onTick(flat) {
   }
   const ballotbox = api.services.get('vmu.ballotbox')
   const turn = api.services.get('vmu.turn')
+  let human = null
+  try { if (typeof api.services.names === 'function' && api.services.names().includes('vmu.human')) human = api.services.get('vmu.human') } catch (e) { human = null }
   state.inFlight = true
   const results = []
   try {
     for (const candidate of candidates.items) {
-      const advanced = await advanceCandidate({ records, ballotbox, turn, at, settings, state, candidate })
+      const advanced = await advanceCandidate({ records, ballotbox, turn, at, settings, state, candidate, human })
       results.push({
         target: candidate.id, settled: advanced.settled === true,
         verdict: advanced.verdict === undefined ? (advanced.pendingVerdict === undefined ? null : advanced.pendingVerdict) : advanced.verdict,
         rule: advanced.rule || null, rounds: advanced.rounds === undefined ? null : advanced.rounds,
         code: advanced.code || null, source: advanced.source || null,
+        awaitingApproval: advanced.awaitingApproval === true,
+        gateId: advanced.gateId || null,
+        skipped: advanced.skipped || null,
       })
       if (advanced.ok === false && advanced.code === 'VMU_ENGINE_UNAVAILABLE') break
     }
@@ -651,6 +749,7 @@ async function onTick(flat) {
   return {
     ok: true, at, candidates: candidates.items.length, settled: settledCount,
     undecided: results.filter((r) => r.settled !== true && r.code === 'VMU_BALLOT_MIN_VOTES_NOT_MET').length,
+    awaitingApproval: results.filter((r) => r.awaitingApproval === true).length,
     results,
   }
 }

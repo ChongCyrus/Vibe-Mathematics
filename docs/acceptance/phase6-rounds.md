@@ -825,9 +825,67 @@ const run = async (spec) => {
 | ★ package-membership ／ installer-policy ／ pack-face | ★ 29/0 ／ 100/0 ／ 5/0 ✓ |
 | ★ RULE E ／ regen ／ check-docs ／ preflight | ★ 88/0 ／ 16/16 ／ PASS ／ PASS ✓ |
 | ★ 派生作业数 | ★ **454**（suites 348 · probes 106）✓ |
-| ★ **T1** | ★ 见下 |
+| ★ **T1** | ★★★ **385 / 385，★ 0 红**（suites 323 · probes 62）✓ —— 本轮无新套件，断言在既有套件内增长到 702 |
 
 ### ★ 轮 14 计划（★ 收口 P0 ＋ 接上 P0-8）
 1. ★★★ **把 `evaluateGate` 接进 `planner.js` 与 `verify.js`**（★ 然后**才**挂载 `gates.js`）—— ★ 这是 P0-8 真正的完成 ✓
 2. ★★★ **P0-10（工具面收口）** —— ★ 队友给的关键约束：★ **面解析发生在 pack settings 之后**、★ **本包 `PACK.settings` 故意为空** ⇒ ★ **工具面不能靠 pack 声明点亮**，★ 必须走装配改动（★ `host.js` 的 `TOOL_NAMES`/`toolSpecs`）★ 或内核加"声明式工具面" ✓
 3. ★★ **P1 剩余**（★ 硬约束／文件锁／优先级晋升／子问题三对象／汇报三路／工具过滤／Lean 三档／defect 撤回／论文收口）✓
+
+---
+
+## 轮 14（2026-10-18）
+
+### ★★★★★ **P0-8 真正接上**（★ **702 条断言**）＋ ★ **P0-10 设计交付（★ 并推翻了我的一条前提）**
+
+### ① ★★★ P0-8 从"模块已实现但未挂载"→"**真的在跑**"
+★ `planner.js`：★ 执行段抽成 **`executeValidatedActions`**（★ `settlePlan` 与门执行器**共用**，★ **没有第二份执行逻辑**）；★ `settlePlan` 执行前 `evaluateGate(kind:'plan')` ✓
+★ `verify.js`：★ 结算前 `evaluateGate(kind:'verdict')`；★ 放行时**复用** `settleProposition` ✓
+★ `index.js`：★ **`v3-gates` 条目已挂**（★ order 125）✓
+★ **7 个 v3 套件共 702 条断言**（★ 663 → **702**）✓
+
+★★★ **"manual 下真的没执行"的断言写法（★ 范本级）**：
+★ **先钉住非空前置**（★ `awaiting-approval`、★ `validated.length===2`、★ `queued.length===2`、★ `outcomes` 空、★ 台账恰 1 扇 pending 门且 `subject === 计划记录 id`）⇒ ★ **让"0 次执行"有含义** ✓
+★ 然后**三路计数同时为 0**：★ 回合投递 0／★ `lastExecuted===0`／★ 落盘 `outcomes` 0，★ **且第二个 tick 之后仍 0**（★ 不是"还没轮到"）✓
+★ approve 后同组转正：★ **solver 回合恰 2**（★ 该计划的 2 条动作）、★ `outcomes===2`、★ 计划 `executed`；★ **另开的一扇仍 pending**（★ "只那一条"不是"全放行"）✓
+
+★★ **两处"不互相挡"的设计（★ 都值得记）**：
+1. ★ **台账不放 `plans` 轨**（★ `latestPlanRecord()` 取该轨最新一条当"上一条计划" ⇒ 审批记录会被读成计划）✓
+2. ★ `drainPlanQueue` 见 `awaiting-approval` **立即提前返回**（★ 绝不从门后偷跑）；★ **planner(110) 先于 gates(125)** ⇒ **切 auto 那一拍**：★ planner 见 pending 门 skip、★ gates 同 tick 放行 ⇒ ★ **一拍完成**（★ 测试用"只跑一拍"钉住）✓
+
+★★★ **而它顺手修了一个真缺陷（★ 这是本轮最重要的发现之一）**：
+> ★ 内核**不把 schema 默认值物化进 settings 对象** ⇒ `api.setting('vmu.v3.mode')` 在**未显式配置**时返回 **`undefined`** ⇒ ★ 最初 `undefined` 被当成"未知模式 ⇒ manual（fail-closed）" ⇒ ★★ **默认部署会【静默进入 manual】** ✓
+★ 修法：★ **缺省 ⇒ 回落成声明默认 `auto`**，★ 而**拼错的字符串仍然 fail-closed** ✓
+   ⇒ ★ **这是"默认值未物化"这一类缺陷的第一次现身**，★ 目标 3（全面审查）要按这条线索普查**其它读 `api.setting()` 的地方** ✓
+
+### ② ★★★★ P0-10 设计交付，★ 而它**推翻了我的前提**（★ 好事）
+★ `docs/acceptance/phase6-v3-p0-10-tool-face.md`（**218 行**）✓
+★★ **它用【真实入口 ＋ 内联清单】实跑**，★ 证明 **`vmu.tools.faces` 能点亮【现有】面**（★ `vibe_vmu_turn/control/task/human/report` **真的被发布**，★ `packErrors` 空）⇒ ★ **存在第三条路 ⑤′（值层点亮现有面，★ 零代码）** ✓
+★ **但 ⑤′ 发布的是 vmu 的名字**，★ 不满足"10 个 v3 名"的验收 ⇒ ★ **真缺口是：★ pack 不能声明【新】工具名**（★ `validatePack` 不认 `tools` 字段）✓
+   ⇒ ★★ **所以"面解析在 pack settings 之后"属实，★ 但"因此必须改装配"【不成立】** —— ★ **我把它交出去时带的前提有一半是错的，★ 而它去实跑了** ✓
+
+★ **36 个工具里模型真会主动调的：★ 11 个**（★ 判据：★ 提示词里有**祈使句**，★ 不只是"被列出"）✓
+★ 推荐保留 10 个：★ `start`／`pause`／`status`／`report`／`list_decisions`／`decide`／`plan`／`list_agents`／`method_list`／`add_problem` ✓
+★ **⑥ 的最小改动**：★ 内核约 **80 行**（`pack.js` 3 处 ＋ `index.js` 1 处）＋ 宿主约 **35 行**（`host.js` 的 `makePackToolSpec` ＋ known 集）＋ 包内 **200 行**（`packs/v3/tools.js`），★ **装配零改动**（★ "装载后再 install"机制现成）✓
+
+### ③ ★★ 我的两条裁定（★ 都记进验收）
+1. ★★ **接受 3 处 acceptance 修订**：★ 用 `pause`／`list_decisions`／`add_problem` **换掉** `claim_write`／`release_write`／`sync_meta` ✓
+   ★ **理由**：★ v3 复刻的提示词**已把"成员自己写 md"改写成"卡片由数据面写、★ 你只提供回执"**，★ 并写明"vmu 的写锁面不存在" ⇒ ★ **再发那三个工具就是给模型一个【没有消费者】的机制** ⇒ ★ 违反红线 4 ✓
+2. ★★ **工具面走 ⑥（内核声明式）**：★ **工具名是"这家机构对外说的语言"，★ 应由 pack 声明** —— ★ ⑤ 让宿主适配层认识 v3、★ ⑤′ 让调用者改口说 vmu 的名字，★ **两者都把成本推给下游**；★ **⑥ 才守住"换机构＝换 pack，★ 不改框架"** ✓
+
+### ★★ 结果
+| ★ 项 | ★ 结果 |
+|---|---|
+| ★ 7 个 v3 套件 | ★ **702 条断言，★ 0 failed** ✓ |
+| ★ RULE E ／ vmu-docs ／ regen ／ check-docs ／ preflight | ★ 88/0 ／ 103/0 ／ 16/16 ／ PASS ／ PASS ✓ |
+| ★ package-membership ／ installer-policy ／ pack-face | ★ 29/0 ／ 100/0 ／ 5/0 ✓ |
+| ★ **T1** | ★ 见下 |
+
+### ★★★ 给目标 3 的一条**新线索**（★ 从本轮缺陷提炼）
+★ **"内核不把 schema 默认值物化进 settings 对象"** ⇒ ★ **任何 `api.setting('vmu.x.y')` 在未显式配置时都拿到 `undefined`** ⇒ ★ **凡是"把 undefined 当某个模式"的读法都会静默选错分支** ✓
+★ **目标 3 要做的普查**：★ grep 所有 `api.setting(`／`settings[` 的读取点，★ 逐个问 **"未配置时它拿到什么、★ 那个值被当成了什么意思"**，★ 并**给每个消费点加一条"未配置 ⇒ 等于声明默认"的断言** ✓
+
+### ★ 轮 15 计划
+1. ★★★ **P0-10 实施（⑥ 路线）**：★ 内核 `declarePackTools`（80 行）＋ `host.js` 的 `makePackToolSpec`（35 行）＋ `packs/v3/tools.js`（10 个 handler）＋ 3 个 slots ⇒ ★ **P0 十张齐** ✓
+2. ★★ **`method-promote` 门接上**（★ gates.js 支持第三类，★ methods.js 还没调）✓
+3. ★★ **T1 收口**（★ 每轮 P0 完成后一次）✓

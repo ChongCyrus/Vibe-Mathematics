@@ -23,6 +23,9 @@
  *   · P0-7 验证闭环 —— middleware/verify.js（**双写**：内核 `vmu.ballotbox` 强制法定人数、连续 Result 落 `votes` 轨；
  *     pack 纯函数聚合：全 1/全 0／同侧均值≥0.85／forced 等权均值夹 [0.01,0.99]；非全票一致才辩论、轮次有界；
  *     裁决回写三处：命题卡＋`verified` 轨（只经 promoteVerified）＋`journal` 轨）。
+ *   · P0-8 人工门 —— middleware/gates.js（判定/台账/放行）＋ planner/verify 的**消费点**：manual 下计划与裁决
+ *     写 `awaiting-approval`/待审 journal 并**一条都不执行**；approve 后由注册的执行器执行；切回 auto 由
+ *     gates 的 tick 把 pending 一次放行（失败也落终态，绝不留悬空 pending）。
  *
  * ★ 值层判据（P0-1 踩过、P0-9 又踩一次会一样的坑）：读点在 createKernel 之前/构造中 ⇒ 只能写
  *   `settings/defaults.json`。`vmu.records.tracks/allowedKinds/requireSettledRecords/bodyCapBytes/
@@ -36,7 +39,7 @@
  *   `root` 的装配上**具名拒**（kernel/index.js:1871-1877）⇒ 加了它，没工作区的部署会在 apply 期拿到 pack 错误；
  *   而且它喂的是 `kernel.library`，**不是** vmu.records 的构造期快照 ⇒ 轨仍然写不进去。轨的唯一生效处是值层。
  *
- * 还没有落的东西（属于 P0-8/P0-10，不要在本文件里提前声明）：gates 模块（另一路）、slots
+ * 还没有落的东西（属于 P0-10，不要在本文件里提前声明）：工具面/slots
  * （v3 的 planner/solver/verifier）、任何 M1 规则（v3 的规则需要计数与状态，是代码不是 DSL）。
  */
 import { V3_TICK_MODULE, V3_TICK_TOPIC } from './middleware/tick.js'
@@ -44,6 +47,7 @@ import { V3_DATAPLANE_MODULE } from './middleware/dataplane.js'
 import { V3_PLANNER_MODULE } from './middleware/planner.js'
 import { V3_METHODS_MODULE } from './middleware/methods.js'
 import { V3_VERIFY_MODULE } from './middleware/verify.js'
+import { V3_GATES_MODULE } from './middleware/gates.js'
 import { V3_PLANNER_SECTION } from './prompts/planner.js'
 // ★ PHASE 6 · 轮 12：P1-6 的 21 段（知识上下文 9／简报 2／论文 3／角色 7）。走**清单 sections 通道**而不是
 // `prompts/sections.json`，理由同 planner 段：那个通道会**丢弃 `scope`**，而这 21 段全都靠 `scope` 做互斥。
@@ -51,12 +55,13 @@ import { V3_PROMPT_SECTIONS } from './prompts/index.js'
 
 export const PACK = Object.freeze({
   id: 'v3',
-  version: '0.5.0',
+  version: '0.6.0',
   packContractVersion: 1,
-  description: 'v3 复刻包（PHASE 6）：P0-1 周期驱动 + P0-9 数据面 + P0-6 软规范三卡与 Verified 分裂 + P0-2/P0-3 规划-调度与学习闭环 + P0-4/P0-5 方法库与发明上报 + P0-7 验证闭环（双写/辩论/裁决回写）。与 packs/v3-core 互斥装载；不是行为等价证明。',
+  description: 'v3 复刻包（PHASE 6）：P0-1 周期驱动 + P0-9 数据面 + P0-6 软规范三卡与 Verified 分裂 + P0-2/P0-3 规划-调度与学习闭环 + P0-4/P0-5 方法库与发明上报 + P0-7 验证闭环 + P0-8 人工门（manual 下计划/裁决排队，approve 或切 auto 才放行）。与 packs/v3-core 互斥装载；不是行为等价证明。',
 
-  // 五个模块在运行期通过 loader 的能力门读 `vmu.records`；planner/methods/verify 还要 `vmu.turn`（K2 已把
+  // 六个模块在运行期通过 loader 的能力门读 `vmu.records`；planner/methods/verify 还要 `vmu.turn`（K2 已把
   // 回合循环进 M2 服务目录）；verify 还读 `vmu.ballotbox`（**法定人数由内核强制**，见 verify.js 文件头）。
+  // gates 读 `vmu.human` 但**不 require** 它：人性面只是"尽力镜像"，台账（records）才是事实源。
   // 在装载期就把依赖声明出来：缺它应当在 apply 时具名拒，而不是等第一次 tick 才炸。
   requires: [
     { service: 'vmu.records', minVersion: 1 },
@@ -139,6 +144,18 @@ export const PACK = Object.freeze({
       failure: 'open',
       capabilities: Object.freeze(['trigger-workflow']),
       module: V3_DATAPLANE_MODULE,
+    },
+    {
+      // P0-8：人工门。order 125 = **最后**一个 tick 消费者：planner/verify 在本 tick 里决定"要不要开/等门"，
+      // gates 随后看到"模式已经是 auto ⇒ 把 pending 一次放行"（放行执行器由 planner/verify 在开门时注册）。
+      // 它只订阅 tick：判定/台账/放行都是被 planner/verify 调用的普通导出函数（不靠总线 decision）。
+      id: 'v3-gates',
+      order: 125,
+      on: Object.freeze([V3_TICK_TOPIC]),
+      // 放行失败不该让 tick 停摆：失败以终态（failed）写回同一条门记录，并在回执里逐条点名。
+      failure: 'open',
+      capabilities: Object.freeze(['trigger-workflow']),
+      module: V3_GATES_MODULE,
     },
   ]),
 
