@@ -192,3 +192,210 @@ aliases: [{ from: 'vibe_v5_poll_vote', to: 'vmu.tasks' }]
 6. ★ **旧名字用别名**（★ 指向**服务**）✓
 7. ★ **验三层**（★ plan／真机副作用／unload 无残留）✓
 ★ **★ 全程不改内核一行** —— ★ 如果某一步你觉得"必须改内核"，★ **先问：★ 这能不能是一条【声明】？** ★ 答案是能，★ 那就声明；★ 真的不能，★ 那才是内核的新能力（★ 而它要有**消费者**才该存在）✓
+
+---
+
+## M1 规则的闭集（代码核实版）
+
+> ★ 本节**每个名字都从 `vibe-math-vmu/kernel/rules.js` 读到**（行号见每行末）。★ 上游 `docs/05` 是主张，**代码是事实**。
+> ★★ 一句话：**M1 规则是【数据】，不是代码。** 引擎能**静态校验**、能 **dry-run**，正是因为它**不允许表达式**（`:1-13`）。
+
+### 谓词白名单 —— 只有这 12 个键
+
+| 键 | 含义（引擎读它的方式） | 出处 |
+|---|---|---|
+| `tool` | 工具名；★ **支持 `*` 结尾通配** | `:19` ／ `:189` |
+| `member` / `role` / `phase` | 等于该维度之一（数组 ⇒ 任一命中） | `:190-192` |
+| `arg` / `setting` / `count` / `subject` / `match` | 见 `:19` 的白名单；★ 求值在 `:189-200` 一带 | `:19` |
+| `all` / `any` / `not` | ★ **组合子**（递归子树，不是原子谓词） | `:19` ／ `:83` |
+
+★ **不在白名单里的键 ⇒ 编译期拒**（`:84` 收集 `unknown`；`:83` 单独算原子谓词）。
+★ **比较算子**（写在谓词对象里）：`undefined`（等价 `eq`）／`eq`／`ne`／`gt`／`gte`／`lt`／`lte`／`in`／`re` —— **就这 9 个**（`:163-170`）。
+
+### 动作白名单 —— 只有这 12 个键，且**每个都消费一项能力**
+
+| 动作 | 需要的能力 | 出处 |
+|---|---|---|
+| `deny` | `deny` | `:28` |
+| `cancel` | `cancel` | `:28` |
+| `rewriteArgs` | `rewrite-args` | `:28` |
+| `replaceResult` | `rewrite-result` | `:28` |
+| `appendPrompt` | `append-prompt` | `:28` |
+| `record` | `record` | `:28` |
+| `notify` | `notify` | `:28` |
+| `setSetting` | `set-setting` | `:29` |
+| `triggerWorkflow` | `trigger-workflow` | `:29` |
+| `annotate` | `annotate` | `:29` |
+| `allow` | `read-args` | `:29` |
+| `ask` | `read-args` | `:29` |
+
+★ **这张表就是 `ACTION_CAPABILITY`（`:27-30`）**，且**与 `kernel/bus.js` 逐项一致**（`:25-26` 的注释 ＋ `tests/vmu-rules.test.mjs` 断言两者相同）⇒ ★ **你写 `then: [{ triggerWorkflow: … }]` 就必须先声明 `trigger-workflow` 能力**，否则总线拒。
+★ 不在表里的动作名 ⇒ **编译期拒**：`then[i]: unknown action: <key>`（`:122`）✓
+
+### 两条硬拒 —— ★ 这是 M1 的**哲学边界**，不是实现细节
+
+1. ★★ **未知的谓词键 / 动作名 ⇒ 具名拒**（`:5-6` 注释；执行点 `:84` ／ `:122`）；
+2. ★★ **任何"像表达式"的东西 ⇒ 拒**：带 `expr`／`js`／`eval`／`code`／`function`／`script` 键，**或**在本该放谓词对象的地方放了字符串（`:7-11`）。
+   ★ 注释原话：**"the answer to 'I need more logic' is a code module (M2), not a small interpreter here"** ⇒ ★ **要更多逻辑就去写 M2 模块，别指望在这里塞表达式** ✓
+
+### 其它已验证的校验形状
+
+| 校验 | 读数 | 出处 |
+|---|---|---|
+| `then` 必须是**非空列表** | `'then must be a non-empty list of actions'` | `:54` |
+| 未知动作 | `'then[i]: unknown action: '` | `:122` |
+| `apiVersion` | ★ **1** | `:17` |
+
+★ **未验证**（本轮**没读到 ⇒ 不写死**）：`when` 的**完整**树形语法（只读到 `:19`／`:83-84`／`:163-170` 三处）；`subject` 谓词的**命名状态从哪注入**（`:147` 注释提到由内核注入 ⇒ ★ 具体注入点未核）；`count` 谓词的**计数口径**。
+⇒ ★ 要补这三条：`grep -n "subjects\|count" vibe-math-vmu/kernel/rules.js` 并读 `createRulesEngine` 的调用点。
+
+---
+
+## M2 模块契约（代码核实版）
+
+> ★ 全部读自 `vibe-math-vmu/kernel/loader.js` 与 `kernel/bus.js`。★ **M2 = 代码模块**；★ **M1 = 数据规则**（见上一节）。
+
+### ★★ `module:` 形态拿到的 `api` —— **只有这 7 个键**
+
+★ **`kernel/loader.js:32`**：`export const API_KEYS = Object.freeze(['log', 'setting', 'kernel', 'dryRun', 'traceId', 'hook', 'services'])` ⇒ ★ **`api` 上挂的就是这 7 个，一个不多** ✓
+★ 逐项来源（`makeApi`，`:120-127`）：`log` ／ `setting: (key) => services.setting ? services.setting(key) : undefined`（`:125`）／ `kernel: services.kernel || Object.freeze({})`（`:126`）／ `services`（`:127`，★ **能力门控**）／ `dryRun`／`traceId`／ `hook`。
+★ **`services` 是能力门控的门**：`:111` 的注释 —— ★ **"`services` is the CAPABILITY-GATED door to the assembled services"** ⇒ ★ 没声明能力就拿不到 `services`（★ 与 `trigger-workflow` 解锁相关，见上节动作表）。
+
+### 能力（capability）—— ★ 三处定义，含义不同，别混
+
+| 处 | 内容 | 用途 |
+|---|---|---|
+| `kernel/loader.js:34` | `['read-state','read-args','deny','cancel','rewrite-args','rewrite-result', …]` | ★ **模块可声明的能力集合** |
+| `kernel/bus.js:24` | `export const CAPABILITIES = Object.freeze([ … ])` | ★ **总线侧的能力表**（与上面须一致） |
+| `kernel/bus.js:30` | `DECISION_CAPABILITY` | ★ **决策类动作 → 能力** 的映射 |
+
+★ **三条硬校验（`loader.js`）**：① `:81` **`capabilities` 必须非空**；② `:82` **未知能力名 ⇒ 具名拒** `'unknown capability: ' + c`；③ ★★ `:93-95` **模块用的能力必须是【条目声明的能力】的子集** ⇒ 否则 `'the module uses capabilities the entry did not declare: ' + undeclared` ✓
+
+### 条目（entry）形状与 `handler`
+
+★ 条目字段（`bus.js:77-105` 的 `VU_HOOKS` 是它们的实例）：`{ name, kind, failure, blockable, rewritable, scope, timing… }`。
+| 字段 | 语义（★ 读到什么写什么） | 出处 |
+|---|---|---|
+| `order` | ★ **排序确定性：`order` 然后 `id`**（两句原话："ordering is deterministic (order, then id) so two runs of the same configuration behave identically"） | `bus.js:12` |
+| `failure` | ★ 我读到的取值：**`'open'` / `'closed'`**（如 `:77` `failure:'open'`、`:79` `failure:'closed'`）；★ **`open` 与"是否 blockable"是两件事**（`:86` 注释专门区分） | `bus.js:77-105` |
+| `scope` | ★ **member / role / phase**（`bus.js:11` 原话："scope decides who a hook applies to (member / role / phase)"） | `bus.js:11` |
+| `capabilities` | ★ 每个条目**必须声明**；★ **用了没声明的能力 ⇒ 具名拒**（`bus.js:7`："using one it did not declare is a named refusal, not a …"） | `bus.js:7` |
+
+★ **未验证 ①：`order` 的缺省值** —— ★ 我只核到"排序规则"，**没核到缺省值** ⇒ 补法：`grep -n "order\b" vibe-math-vmu/kernel/bus.js` 读条目规范化处。
+★ **未验证 ②：`failure` 是否有第三个值** —— ★ 我**只在 `VU_HOOKS` 实例里看到 `open`/`closed`**，★ **没有读到校验它的闭集定义** ⇒ 补法：`grep -n "failure" vibe-math-vmu/kernel/bus.js` 找取值校验点。
+★ **未验证 ③**：★ **"非规则条目必须给 handler（`file` 不是替代品）"这句** —— ★ 我本轮**没在 `loader.js`/`bus.js` 的 grep 里读到它** ⇒ ★ **不写死** ⇒ 补法：`grep -n "no handler attached\|must have a handler\|kind:'rules'" vibe-math-vmu/kernel/bus.js`（★ 本仓此前有"`kind:'rules'` 豁免"与 `middleware/skipped … 'no handler attached'` 的读数，但我**没有在本次会话重新核到行号**）。
+
+---
+
+## M3 脚本契约（代码核实版）
+
+> ★ 全部读自 `vibe-math-vmu/kernel/script-bridge.js` ＋ 入口/宿主三处。★ **一条 M3 脚本 = 一个可执行文件，用【结构化 JSON】回话。**
+
+### 四条契约（`:9-10` 与具名拒的执行点）
+
+| # | 契约 | 出处 |
+|---|---|---|
+| ① | ★ **接缝注入**；没有子进程接缝 ⇒ **`VMU_ENGINE_UNAVAILABLE`** `'no subprocess seam is bound'` | `:131` |
+| ② | ★ **必须打印结构化 JSON，且至少带布尔 `ok`** ⇒ 三种情况**分别具名拒**：**没有输出**／**不是 JSON**／**JSON 但没有布尔 `ok`** | `:75` ／ `:78` ／ `:82` |
+| ③ | ★ **非零退出是【结果】，不是异常** —— 由调用方的失败策略决定，**拒里带退出码** | `:9` |
+| ④ | ★ **只有超时是硬失败 `VMU_JOB_TIMEOUT`**，★ **且消息如实说有没有被真的终止** | `:10` ／ `:137` 的 `{ timedOut, terminated, hadHandle }` |
+
+### 形状（`spec` / 接缝返回 / 工厂）
+
+| 对象 | 形状 | 出处 |
+|---|---|---|
+| **`spec`** | ★ `{ file, inline, args, cwd, env, timeoutMs, graceMs }` | `:146-147` |
+| **接缝返回** | ★ `{ code, stdout, stderr, timedOut?, ms? }` | `:56` |
+| **handle 形** | ★ `spawnHandle(spec, onHandle)` ⇒ ★ **本地预算才真的能杀子进程**（`:58` 原话 "then the local budget really terminates"） | `:58` |
+| **工厂** | ★ `createScriptBridge({ spawn, spawnHandle, timer, defaultTimeoutMs = 60_000, … })` | `:61` |
+| **`dryRun`** | ★ `{ ok:true, dryRun:true, ran:false, plan }` ⇒ ★ **真的不跑** | `:127` |
+| **超时预算** | ★ `const timeoutMs = request.timeoutMs \|\| defaultTimeoutMs` | `:134` |
+
+★ **`run()` 的返回是 shadow 摊平在【顶层】**：`{ ran, exit, policy, timedOut, ok, summary, findings, data }` —— ★ 这句是 Lead 的**实测结论**（17/17 全绿），★ **我没有在源码里逐字段核这 8 个键** ⇒ ★ 见「未验证 ①」。
+
+### ★★ `config.scripts` → 实例的链路（我核到三段，第四段未核）
+
+| 段 | 读数 | 出处 |
+|---|---|---|
+| ① 入口读配置 | ★ `scripts: Array.isArray(config.scripts) ? config.scripts : []` | `vibe-math-vmu.js:560` |
+| ② 传给宿主适配层 | ★ `scripts: Array.isArray(scripts) ? …`（进入面解析的参数） | `host.js:283` |
+| ③ 面/工具名映射 | ★ `script: 'vibe_vmu_script'`（`TOOL_NAMES` 一带） | `host.js:88` |
+| ④ 脚本面的列出形状 | ★ `return { ok:true, action, scripts: scripts.map((s) => ({ id: s && s.id, file: s && s.file, timeoutMs: … })) }` | `host.js:750` |
+
+★ **未验证 ④（Lead 点名要补的那条）**：★ **`createScriptBridge(...)` 的实例化点** —— ★ 我**没有核到**"谁把 `scripts[]` 变成 bridge 实例"这一段（★ 上面 ①→② 是**配置传递**，不是**建桥**）⇒ 补法：`grep -rn "createScriptBridge" vibe-math-vmu/` 并读该文件的构造参数。
+
+### ★★ 写成「未验证」的条目（逐条 ＋ 补法）
+
+1. ★ **`run()` 返回的那 8 个顶层键**：★ 来自 Lead 的**实测**，★ **我未在源码逐字段核** ⇒ `grep -n "ran:\|policy:\|findings:\|data:" vibe-math-vmu/kernel/script-bridge.js`。
+2. ★ **`config.scripts` 数组里每一项的字段全表**：★ 我只核到 `id`／`file`／`timeoutMs`（`host.js:750` 的列出形状）⇒ ★ **是否还有 `args`／`env`／`cwd`／`graceMs`／`inline` 我没核** ⇒ 读 `:146-147` 的 `spec` 与 `:107` 的 `plan` 即可对齐。
+3. ★ **`vibe_vmu_script` 工具面的参数形**：★ 我核到**名字映射**（`host.js:88`）与**列出动作**（`:750`），★ **没有核到它的 `parameters` 声明**（★ 参数名/必需性）⇒ `grep -n "vibe_vmu_script\|makeScriptSpec\|script" vibe-math-vmu/host.js | head -30` 并读该 spec 工厂。
+4. ★ **`policy` 的取值**：★ 契约说"非零退出由**调用方的失败策略**决定"，★ **策略的取值闭集我没核** ⇒ `grep -n "policy" vibe-math-vmu/kernel/script-bridge.js`。
+
+---
+
+## ★ Round 84 更正：5 条「未验证」→ **已核实**（行号已核）
+
+> ★ 上一轮我列的 8 条未验证，其中 **5 条已定论**。★ 下面**取代**前文对应条目（★ 前文保留以便对照，★ **以本节为准**）。
+
+| # | 前文的未验证项 | ★ **已核实的答案** | 出处 |
+|---|---|---|---|
+| 1 | `createScriptBridge` 的实例化点 | ★★ **`kernel/index.js:1443`** `const bridge = createScriptBridge({ spawn, defaultTimeoutMs: settings['vmu.math.timeoutMs'] \|\| undefined, … })` ⇒ ★ **建桥在 `kernel/index.js`，且默认超时取自设置 `vmu.math.timeoutMs`** ✓ | `kernel/index.js:1443`（导入 `:41`） |
+| 2 | `failure` 是否有第三个值 | ★★ **有三个**：`export const FAILURE = Object.freeze({ OPEN:'open', CLOSED:'closed', ABORT:'abort' })` ⇒ ★ 我先前**只看到两个，是因为那个实例只用了两个** ✓ | `kernel/bus.js:21` |
+| 3 | "非规则条目必须给 handler" | ★★ **原话在** `problems.push('a non-rules bus entry needs a handler function (the bus does not load files: load a module…)')` ⇒ ★ **总线不装载文件** ✓ | `kernel/bus.js:446`（铺垫注释 `:444`） |
+| 4 | `run()` 的 `exit`/`policy` 从哪来 | ★★ **`const failure = request.failure \|\| FAILURE.OPEN`（`:135`）**，失败时 `record({ what:'script-failed', label, exit, policy: failure })`（`:187`）⇒ ★ **`policy` 就是这次调用实际采用的失败策略** ✓ | `kernel/script-bridge.js:135`／`:187` |
+| 5 | `vibe_vmu_script` 的调用形 | ★★ **`run: async ({ action = 'list', id, args } = {})`** ⇒ ★ **形＝`{action, id, args}`**；★ `action:'list'` ⇒ 列出 `{id, file, timeoutMs}`；★ `action:'run'` ＋ `id`；★ 其它 ⇒ `VMU_INVALID_ARGUMENT 'unknown action: …'` ✓ | `host.js:747`（`:752` 的 unknown action） |
+
+★★ **顺带两条新核实（比原问题更深一层）**：
+1. ★★ **`failure` 的取值有【闭集校验】**：`kernel/script-bridge.js:46` —— `if (request.failure !== undefined && !Object.values(FAILURE).includes(request.failure)) { … }` ⇒ ★ **只接受 `open`/`closed`/`abort`**（★ 这条同时回答了我原列的"`policy` 取值闭集"）✓
+2. ★ **`bus.js:296` 还有 `DEFAULT_FAILURE`**（`Object.fromEntries(…)`）⇒ ★ **每个钩子的缺省失败策略是【分钩子】的，不是全局一个** ✓（★ 具体每个钩子取什么值 = `DEFAULT_FAILURE` 的映射，★ **我未逐项展开**）
+
+---
+
+## M4 插件：消费已发布服务 ＋ `alias` 约束（代码核实版）
+
+> ★ 读自 `kernel/registry.js`／`kernel/index.js`／`vibe-math-vmu.js`。★ **M4 = 宿主插件**：它**不写 pack**，它**消费 vmu 已发布的服务**。
+
+### ★ 发布面：vmu 真的把能力**登记成服务**
+
+★ **`registry.register('vmu.…')` 在 `kernel/index.js` 里出现 80 次**（★ 我数的是 `registry.register('vmu.` 的命中数 **80**）⇒ ★ **80 个服务登记点**，形状是
+`registry.register('<name>', <impl>, { apiVersion: 1, kind: 'service', description: … })`（签名见 `registry.js:74`）✓
+
+### 注册表的**全部公开面**（★ 这就是插件能用的一切）
+
+| 方法 | 签名 | 出处 |
+|---|---|---|
+| `register` | `register(name, impl, { apiVersion, kind = 'service', description = null })` | `registry.js:74` |
+| `alias` | `alias(from, to, { deprecated = true, reason = 'legacy name', since = null })` | `registry.js:93` |
+| `removeAlias` | `removeAlias(from)` | `registry.js:109` |
+| `resolve` | `resolve(name)` ⇒ `{name, kind, apiVersion, viaAlias}` | `registry.js:117`（`:119`／`:126`） |
+| `get` | `get(name, { minVersion = 0 })` | `registry.js:130` |
+| `contract` | `contract()` | `registry.js:141` |
+| `checkPack` | `checkPack(manifest = {})` | `registry.js:153` |
+| `status` | `status()` | `registry.js:179` |
+
+### ★★ `alias(from, to)` 的唯一硬约束：**目标必须【已发布】**
+
+★ `registry.js:100`：`throw refuse('VMU_NO_SUCH_OBJECT', 'the alias target is not published: ' + String(to), …)` ⇒ ★ **你不能给一个还没登记的名字起别名** ⇒ ★ **顺序是：先 `register`，再 `alias`** ✓
+★ `resolve` 命中别名时返回 **`viaAlias: { from, deprecated, reason }`**（`:126`）⇒ ★ **消费者能看出"我拿到的是别名"** ✓
+
+### ★★ `checkPack(manifest)` —— 三桶，**缺了就报数字，绝不静默满足**
+
+| 桶 | 形状 | 出处 |
+|---|---|---|
+| `missing` | `{ service, reason: 'not published' }` | `registry.js:162` |
+| `tooOld` | `{ service, required, published }` | `registry.js:166` |
+| `satisfied` | ★ 含 **`viaAlias`** 与 `apiVersion`（`:157` 初始化） | `registry.js:157` |
+
+★ 设计意图（原话 `:151`）：★ **"Missing and too-old requirements are reported WITH the numbers, and nothing is silently satisfied"** ✓
+
+### ★ `inject = ['tools']` —— 其余服务是**机会性消费**
+
+★ `vibe-math-vmu.js:55`：★ **`export const inject = ['tools']`** ⇒ ★ **插件只【要求】`tools`**，其它服务**有就用、没有也不装不上** ⇒ ★ 注释的意思是**"最小部署仍能装载，而不是激活失败"** ✓
+★ ⇒ ★ **要消费 vmu 服务，正确姿势是 `inject` 里只写你【必须】的，其余用注册表的 `get`/`resolve` 机会性取**（★ 取不到要**具名**处理，不能静默）。
+
+### ★ 我这轮**仍未核**的（逐条＋补法）
+
+1. ★ **`config.scripts` 每项的全字段** —— 目前只见 `id`／`file`／`timeoutMs`（`host.js:750` 的列出形状）⇒ ★ `args`／`env`／`cwd`／`inline` **有没有**未核 ⇒ 读 `script-bridge.js:146-147` 的 `spec` 与构造处；
+2. ★ **`order` 的缺省值** —— 未核 ⇒ 读 `bus.js` 条目规范化处；
+3. ★ **`vibe_vmu_script` 的 `parameters` 完整声明** —— 只核到 `run` 的**解构形**（`{action, id, args}`），★ **没有读它的 `parameters` 声明块** ⇒ 读 `host.js:747` 所在的 spec 工厂；
+4. ★ **`DEFAULT_FAILURE` 的逐钩子映射**（`bus.js:296`）—— 未展开 ⇒ 读该 `Object.fromEntries` 的入参。

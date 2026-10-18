@@ -327,8 +327,8 @@
     "tests/audit-vmu-glossary.test.mjs",
     "tests/vmu-wiring-index.test.mjs",
     "tests/vmu-work.test.mjs",
-"vibe-math-vmu/kernel/resource.js",
-"vibe-math-vmu/kernel/custody.js",
+    "vibe-math-vmu/kernel/resource.js",
+    "vibe-math-vmu/kernel/custody.js",
     "tests/vmu-ab-v5r-meetings.test.mjs",
     "tests/vmu-ab-v5r-verification.test.mjs",
     "vibe-math-vmu/settings/planned.js",
@@ -761,7 +761,18 @@
     "docs/release-notes/RELEASE-NOTES-2.8.4.md",
     "docs/release-notes/RELEASE-NOTES-2.8.4.en.md",
     "docs/release-notes/RELEASE-NOTES-2.8.5.md",
-    "docs/release-notes/RELEASE-NOTES-2.8.5.en.md"
+    "docs/release-notes/RELEASE-NOTES-2.8.5.en.md",
+    "docs-landed/00-README.md",
+    "docs-landed/01-architecture.md",
+    "docs-landed/02-running.md",
+    "docs-landed/03-extending.md",
+    "docs-landed/04-verification.md",
+    "docs-landed/05-known-debt.md",
+    "docs-landed/06-coverage-map.md",
+    "docs-landed/07-index-and-relationship.md",
+    "docs-landed/08-reference-map.md",
+    "docs-landed/09-pack-and-middleware-reference.md",
+    "docs-landed/10-prompt-and-settings-reference.md"
   ],
   "license": "MIT",
   "keywords": [
@@ -823,12 +834,3 @@
     "build:presets": "node scripts/build-preset-rows.mjs"
   }
 }
-
-
-
-
-
-
-
-
-
