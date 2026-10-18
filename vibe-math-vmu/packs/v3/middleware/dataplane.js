@@ -195,6 +195,8 @@ export function composeProblem(card) {
   lines.push(anchorLine('依赖', JSON.stringify(card.依赖 || [])))
   lines.push(anchorLine('被依赖', JSON.stringify(card.被依赖 || [])))
   lines.push(anchorLine('来源', card.来源 || '原始'))
+  // P1-3：晋升出来的判断命题问题与源命题**双向**可追（问题侧指回命题；命题侧指回问题）。
+  if (card.来源命题) lines.push(anchorLine('来源命题', card.来源命题))
   lines.push(anchorLine('计划', card.计划 || ''))
   lines.push('')
   lines.push('## 陈述')
@@ -225,6 +227,10 @@ export function composeProposition(card) {
   lines.push(anchorLine('依赖', JSON.stringify(card.依赖 || [])))
   if (card.来源问题) lines.push(anchorLine('来源问题', card.来源问题))
   if (card.来源方向) lines.push(anchorLine('来源方向', card.来源方向))
+  // P1-3：被自动晋升成问题卡的命题回指那个问题（与问题卡的 `来源命题` 互为反向指针）。
+  if (card.晋升问题) lines.push(anchorLine('晋升问题', card.晋升问题))
+  // P1-3：命题的「价值/关键性」是晋升判据（0..1）。只在有值时写锚点；缺省 = 未声明（不冒充 0.5）。
+  if (card.价值关键性 !== undefined && card.价值关键性 !== null && card.价值关键性 !== '') lines.push(anchorLine('价值关键性', card.价值关键性))
   lines.push('')
   lines.push('## 陈述')
   lines.push(card.陈述 || '')
@@ -348,6 +354,7 @@ export function parseCard(body) {
     card.依赖 = safeJson(a['依赖'], [])
     card.被依赖 = safeJson(a['被依赖'], [])
     card.来源 = a['来源'] || '原始'
+    card.来源命题 = a['来源命题'] || ''
     card.计划 = a['计划'] || ''
     card.陈述 = section(rest, '陈述')
     card.来源与动机 = section(rest, '来源与动机')
@@ -361,6 +368,9 @@ export function parseCard(body) {
     card.依赖 = safeJson(a['依赖'], [])
     card.来源问题 = a['来源问题'] || ''
     card.来源方向 = a['来源方向'] || ''
+    card.晋升问题 = a['晋升问题'] || ''
+    // P1-3：价值/关键性（0..1）；缺锚点 = 未声明（null），不是 0 —— 0 会把“没填”读成“最不重要”。
+    card.价值关键性 = a['价值关键性'] === undefined || a['价值关键性'] === '' ? null : Number(a['价值关键性'])
     card.陈述 = section(rest, '陈述')
     card.proofs = parseEntries(section(rest, '证明尝试'), entryRe('证明')).map((e) => ({ title: unescField(e.title), prob: e.prob, status: unescField(e.status), text: e.text }))
     card.refutes = parseEntries(section(rest, '证伪尝试'), entryRe('证伪')).map((e) => ({ title: unescField(e.title), prob: e.prob, status: unescField(e.status), text: e.text }))

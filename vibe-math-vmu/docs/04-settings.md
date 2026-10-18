@@ -284,6 +284,7 @@ vmu.packs.active: [v5r]
 | `vmu.v3.methodKeepIntervalMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/methods.js` | v3 复刻：方法库按时间的保留间隔（0＝只按次数）。读者＝`packs/v3/middleware/methods.js`。 |
 | `vmu.v3.methodAutoPromote` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/methods.js` | v3 复刻：方法是否自动晋升（默认 false＝须人工/规则放行）。读者＝`packs/v3/middleware/methods.js`。 |
 | `vmu.v3.debateMaxRounds` | int ≥0 | `5` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/verify.js` | v3 复刻：验证辩论的最大轮次。读者＝`packs/v3/middleware/verify.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记 |
+| `vmu.v3.promoteValueThreshold` | number | `0.7` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/planner.js` | v3 复刻：命题「价值/关键性」 ≥ 该值且未定论时自动晋升为问题（每 tick 至多一个）。读者＝`packs/v3/middleware/planner.js`；范围 [0,1]，越界/NaN 回落 0.7 ✓ |
 | `vmu.v3.verdictMode` | enum | `forced` | `forced`∣`natural` | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/verify.js` | v3 复刻：连续概率票如何折叠成裁决（forced＝夹到 [0.01,0.99] 后按阈值；natural＝原值）。读者＝`packs/v3/middleware/verify.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记 |
 | `vmu.records.pointerPropagation` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/records.js` | P3/S21：头部列表为默认信息通道；关＝零注入且提示词逐字回退 |
 | `vmu.records.meetingKeepEvery` | int ≥1 | `5` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/records.js` | P3：每 N 场会议保留一次归档（v5r 的 meetingKeepEvery） |
@@ -1521,7 +1522,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1132** 个，前缀家族 **115** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1133** 个，前缀家族 **115** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1635,7 +1636,7 @@ vmu.packs.active: [v5r]
 | `vmu.trust.*` | 16 |
 | `vmu.turn.*` | 27 |
 | `vmu.tx.*` | 6 |
-| `vmu.v3.*` | 12 |
+| `vmu.v3.*` | 13 |
 | `vmu.visibility.*` | 1 |
 | `vmu.work.*` | 2 |
 | `vmu.workflow.*` | 27 |

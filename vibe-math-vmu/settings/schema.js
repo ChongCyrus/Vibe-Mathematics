@@ -98,6 +98,8 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.v3.methodKeepIntervalMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: 'v3 复刻：方法库按时间的保留间隔（0＝只按次数）。读者＝`packs/v3/middleware/methods.js`。' },
   { key: 'vmu.v3.methodAutoPromote', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: 'v3 复刻：方法是否自动晋升（默认 false＝须人工/规则放行）。读者＝`packs/v3/middleware/methods.js`。' },
   { key: 'vmu.v3.debateMaxRounds', type: 'natural', def: 5, hot: HOT.H1, who: 'office', doc: 'v3 复刻：验证辩论的最大轮次。读者＝`packs/v3/middleware/verify.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记' },
+  // ★ PHASE 6 · 目标 2 / P1-3：升迁阈值。★ reader 是 `packs/v3/middleware/planner.js`，★ 未登记/越界时回落 0.7（与声明默认同值）。
+  { key: 'vmu.v3.promoteValueThreshold', type: 'number', def: 0.7, hot: HOT.H1, who: 'office', doc: 'v3 复刻：命题「价值/关键性」 ≥ 该值且未定论时自动晋升为问题（每 tick 至多一个）。读者＝`packs/v3/middleware/planner.js`；范围 [0,1]，越界/NaN 回落 0.7 ✓' },
   { key: 'vmu.v3.verdictMode', type: 'enum', domain: ['forced', 'natural'], def: 'forced', hot: HOT.H1, who: 'office', doc: 'v3 复刻：连续概率票如何折叠成裁决（forced＝夹到 [0.01,0.99] 后按阈值；natural＝原值）。读者＝`packs/v3/middleware/verify.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记' },
   { key: 'vmu.records.pointerPropagation', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: 'P3/S21：头部列表为默认信息通道；关＝零注入且提示词逐字回退' },
   { key: 'vmu.records.meetingKeepEvery', type: 'positiveInteger', def: 5, hot: HOT.H1, who: 'office', doc: 'P3：每 N 场会议保留一次归档（v5r 的 meetingKeepEvery）' },

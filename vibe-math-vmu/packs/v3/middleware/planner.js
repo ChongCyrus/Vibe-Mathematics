@@ -1,5 +1,6 @@
 /**
- * packs/v3/middleware/planner.js — PHASE 6 / **P0-2（规划-调度闭环）＋ P0-3（规划学习闭环）**。
+ * packs/v3/middleware/planner.js — PHASE 6 / **P0-2（规划-调度闭环）＋ P0-3（规划学习闭环）＋
+ * P1-1（硬约束：幂等／已验不再调度／依赖／容量）＋ P1-3（自动晋升阈值）**。
  *
  * 一次性把 v3 的 planner 链条落成一个 M2 模块：**tick → 判可推进 → 组简报 → 调 planner 回合 →
  * 归一化/校验 → 按容量执行 → 逐条 outcome 写回计划记录 → 下一次简报带 last_plan**。
@@ -17,10 +18,10 @@
  *    所以它不走 `composeCard`；但它的写入点仍然只有 dataplane 的那两个函数。
  *
  * ③ **构造期快照的键只能进 `settings/defaults.json`；调用期读的键在 `settings/schema.js` 里已登记。**
- *    本模块读的四把 `vmu.v3.planningHorizon/plannerEnabled/planMinIntervalMs/plannerMaxFails`
- *    都是**调用期**读取（每 tick 用 `api.setting()` 现读），所以它们在清单 `settings` 里也无所谓 ——
- *    但 `packs/v3/index.js` 的清单 `settings` 仍保持为空（P0-1/P0-9 的同一条纪律：
- *    `tests/vmu-v3-tick.test.mjs`/`vmu-v3-dataplane.test.mjs` 都钉住了它）。
+ *    本模块调用期读 `vmu.v3.planningHorizon/plannerEnabled/planMinIntervalMs/plannerMaxFails`、
+ *    `vmu.limits.maxLiveMembers` 与 `vmu.limits.maxParallel`（后四把都已登记）；P1-3 的
+ *    `vmu.v3.promoteValueThreshold`（默认 0.7）的 schema 登记待 Lead 加入 —— 代码在未登记时**回落 0.7**
+ *    （与声明默认同值，不是 0：0 会让每条命题都晋升），登记后无需改代码。
  *
  * ★★ **K10（`turn/reply-parsed` 可改写回执）是回执归一化的正规手段**（`kernel/bus.js:752-773`，
  *    消费者 `kernel/turn/index.js:1012-1021`）。本模块在 `turn/reply-parsed` 上做两件事：
@@ -98,6 +99,12 @@ function stateFor(records) {
       lastExecuted: 0,
       calls: 0,
       turns: [],
+      // P1-1：派发幂等账（进程内；键＝角色:目标:方向，verifier 的“目标”就是 rId）。派发成功才登记，
+      // 失败留待下一 tick 重试；重启后归零是**如实**的进程内诊断，不冒充持久事实。
+      dispatched: new Map(),
+      // P1-3：自动晋升计数与最近一次晋升（每个 tick 至多一个）。
+      promotions: 0,
+      lastPromotion: null,
     }
     PLANNER_STATES.set(records, s)
   }
@@ -129,6 +136,10 @@ export function v3PlannerStatus() {
     lastError: s.lastError,
     lastExecuted: s.lastExecuted,
     turns: s.turns.slice(),
+    // P1-1/P1-3 的**进程内**账本：派发幂等键数、自动晋升次数与最近一次晋升（持久事实仍在 plans/problems 轨）。
+    dispatched: s.dispatched.size,
+    promotions: s.promotions,
+    lastPromotion: s.lastPromotion ? Object.assign({}, s.lastPromotion) : null,
     note: 'diagnostics only: counters are per-process; the durable facts are records on the plans track',
   }
 }
@@ -227,8 +238,20 @@ export function loadCardIndex(records, track, kind) {
   return { items, bad }
 }
 
-/** 可推进的问题：不是已解决 / 不是 never / 不是在等依赖（v3 `:2274-2287` 的判定面）。 */
-export function advanceableProblems(index) {
+/**
+ * P1-1：`verified` 轨上的对象 id 集合（按卡片的逻辑 `ID` 锚点，不是记录 id）。定论一旦进 verified 轨，
+ * 就不再进入任何候选/派发面 —— v3 的 HARD RULE“never re-schedule verified objects”。坏卡不进集合（`loadCardIndex`
+ * 已把它们点名）；读轨失败 ⇒ 抛具名拒，**不静默当成空集**（空集会让已验对象重新被调度）。
+ */
+export function verifiedIds(records) {
+  const idx = loadCardIndex(records, 'verified', 'verified')
+  return new Set(idx.items.map((x) => x.id))
+}
+
+/** 可推进的问题：不是已解决 / 不是 never / 不是等待依赖 / 不在 verified 轨（v3 `:2274-2287` 的判定面）。 */
+export function advanceableProblems(index, verified = null) {
+  const byId = new Map(((index && index.items) || []).map((p) => [p.id, p]))
+  const done = verified instanceof Set ? verified : new Set()
   const out = []
   for (const p of (index && index.items) || []) {
     const c = p.card
@@ -236,6 +259,10 @@ export function advanceableProblems(index) {
     if (str(c.状态) === '已解决') continue
     if (c.优先级 === 'never') continue
     if (str(c.状态) === '等待依赖') continue
+    // P1-1：依赖未就绪同样不算“可推进”（v3 的 autoDependencyStates 会把它标成等待依赖；这里两条都挡，
+    // 因为一个刚写入依赖、还没被状态机回写的卡不能靠“状态字符串恰好对”才不被派）。
+    if (!depReady(c, byId)) continue
+    if (done.has(p.id)) continue
     out.push(p)
   }
   return out
@@ -364,10 +391,11 @@ const dedupeKey = (a) => [a.action, a.role, a.target, a.direction, a.childId].jo
  * · `duplicates` 同键重复；
  * · `rejectReasons` 逐条点名（索引 + 原因），不静默。
  */
-export function validatePlan(actions, { horizon, problems, propos }) {
+export function validatePlan(actions, { horizon, problems, propos, verified = null } = {}) {
   const limit = Number.isInteger(horizon) && horizon >= 0 ? horizon : 0
   const problemById = new Map((problems.items || []).map((p) => [p.id, p]))
   const proposById = new Map((propos.items || []).map((p) => [p.id, p]))
+  const done = verified instanceof Set ? verified : new Set()
   const validated = []
   const rejectReasons = []
   const seen = new Set()
@@ -390,11 +418,15 @@ export function validatePlan(actions, { horizon, problems, propos }) {
         const p = problemById.get(a.target)
         if (!p) { why('unknown-problem:' + (a.target || '(empty)')); ok = false }
         else if (str(p.card.状态) === '已解决' || p.card.优先级 === 'never') { why('problem-not-advanceable:' + a.target); ok = false }
+        // P1-1：① 已在 verified 轨的对象不再调度；② 依赖未就绪 ⇒ 拒绝并点名（不是“悄悄不派”）。
+        else if (done.has(a.target)) { why('already-verified:' + a.target); ok = false }
+        else if (!depReady(p.card, problemById)) { why('dependency-not-ready:' + a.target); ok = false }
         else if (a.role === 'solver' && a.direction === '') { why('solver-needs-direction:' + a.target); ok = false }
       } else if (a.role === 'verifier') {
         // v3 还要求 target 出现在 buildVerifyCandidates() 里；候选面属于 P0-7，本轮只做结构校验并把这条
         // 限制写进文件头/README —— 不假装「已验证它不是候选」。
         if (a.target === '') { why('verifier-needs-target'); ok = false }
+        else if (done.has(a.target)) { why('already-verified:' + a.target); ok = false }
       }
     } else if (a.action === 'interrupt') {
       if (a.childId === '') { why('interrupt-needs-childId'); ok = false }
@@ -402,6 +434,8 @@ export function validatePlan(actions, { horizon, problems, propos }) {
       const p = proposById.get(a.target)
       if (!p) { why('unknown-proposition:' + (a.target || '(empty)')); ok = false }
       else if (p.card.概率 === 1 || p.card.概率 === 0) { why('proposition-already-settled:' + a.target); ok = false }
+      else if (done.has(a.target)) { why('already-verified:' + a.target); ok = false }
+      else if (str(p.card.晋升问题) !== '') { why('already-promoted:' + a.target); ok = false }
     }
     if (!ok) continue
     seen.add(key)
@@ -421,6 +455,11 @@ function outcomeOf(a, ok, extra = {}) {
   return Object.assign(o, extra)
 }
 
+/** P1-1 的派发身份：verifier 的 target 就是 rId（候选解法/命题），其余角色带方向。 */
+export function dispatchKey(a = {}) {
+  return [str(a.role), str(a.target), str(a.direction)].join('\u0000')
+}
+
 async function executeOne(a, ctx) {
   const { turn, records, problems, propos, at, api } = ctx
   if (ADVISORY_VERBS.includes(a.action)) {
@@ -428,6 +467,18 @@ async function executeOne(a, ctx) {
     return outcomeOf(a, true, { advisory: true, note: 'advisory only: logged, no scheduling effect' })
   }
   if (a.action === 'spawn') {
+    // P1-1 幂等：同一个 rId（verifier）/同一个 (role,target,direction) 只建一次任务。第二次不是“恰好没动”，
+    // 而是一条**具名跳过**的 outcome（ok:true + skipped + code），调用方与学习环都能看见它被跳过而不是被丢弃。
+    const key = dispatchKey(a)
+    const prior = ctx.state && ctx.state.dispatched ? ctx.state.dispatched.get(key) : null
+    if (prior) {
+      return outcomeOf(a, true, {
+        skipped: 'already-dispatched',
+        code: 'VMU_PACK_V3_DUPLICATE_DISPATCH',
+        message: 'this target was already dispatched by the v3 planner; a second task was NOT created',
+        previousTurn: prior.turn || null,
+      })
+    }
     const phase = a.role === 'verifier' ? 'verify' : 'normal'
     const receipt = await turn.run({
       member: a.role,
@@ -441,6 +492,8 @@ async function executeOne(a, ctx) {
     if (receipt && receipt.ok === true) {
       const turnId = receipt.turn && receipt.turn.id ? receipt.turn.id : null
       if (turnId && plannerState) plannerState.turns.push({ member: a.role, turn: turnId, from: 'plan' })
+      // 成功派发才登记幂等键：失败的派发留待下一 tick 重试（“同 rId 不重复建任务”只针对**已建成**的任务）。
+      if (plannerState && plannerState.dispatched) plannerState.dispatched.set(key, { at, turn: turnId, role: a.role, target: a.target, direction: a.direction })
       return outcomeOf(a, true, { turn: turnId, fields: Array.isArray(receipt.fields) ? receipt.fields.slice() : [] })
     }
     return outcomeOf(a, false, { error: 'VMU_ENGINE_UNAVAILABLE', message: 'the spawned turn returned ok !== true' })
@@ -487,6 +540,59 @@ async function executeOne(a, ctx) {
     return outcomeOf(a, true, { problemId: qid, recordId: written.id })
   }
   return outcomeOf(a, false, { error: 'VMU_INVALID_ARGUMENT', message: 'unreachable: ' + a.action })
+}
+
+/**
+ * P1-3 自动晋升（v3 `:2173-2201 processPromote` 的等价面，**每 tick 至多一个**）。
+ * 条件：命题未定论、优先级不是 never、`价值关键性 >= vmu.v3.promoteValueThreshold`、尚未晋升。
+ * 晋升出的“判断命题”问题卡带 `来源命题`，源命题带 `晋升问题` —— **双向指针**，任一侧都能追到另一侧；
+ * 幂等依据是这两个字段＋问题 id 派生（同一命题不会重复建卡）。
+ */
+function processPromote({ records, problems, propos, threshold, at, state, verified = null }) {
+  const problemIds = new Set(problems.items.map((p) => p.id))
+  const done = verified instanceof Set ? verified : new Set()
+  for (const p of propos.items) {
+    const c = p.card
+    if (!c) continue
+    if (c.概率 === 1 || c.概率 === 0) continue
+    if (c.优先级 === 'never') continue
+    // P1-1：verified 轨上的命题不是候选（已验对象不再调度）。
+    if (done.has(p.id)) continue
+    const value = Number(c.价值关键性)
+    if (c.价值关键性 === null || c.价值关键性 === undefined) continue
+    if (!Number.isFinite(value) || value < threshold) continue
+    const qid = promotedProblemId(p.id)
+    if (problemIds.has(qid)) continue
+    if (str(c.晋升问题) !== '') continue
+    const sols = []
+    for (const it of (Array.isArray(c.proofs) ? c.proofs : [])) {
+      sols.push({ title: '【证明】' + str(it.title || '证明'), prob: Number.isFinite(it.prob) ? it.prob : 0.5, status: '未定论', text: '【证明】' + str(it.text) })
+    }
+    for (const it of (Array.isArray(c.refutes) ? c.refutes : [])) {
+      sols.push({ title: '【证伪】' + str(it.title || '证伪'), prob: Number.isFinite(it.prob) ? it.prob : 0.5, status: '未定论', text: '【证伪】' + str(it.text) })
+    }
+    const card = {
+      id: qid,
+      标题: '判断命题：' + str(c.标题 || p.id),
+      状态: '求解中',
+      优先级: 1,
+      依赖: [],
+      来源: 'promote',
+      来源命题: p.id,
+      计划: '证明或证伪源命题 ' + p.id + '（验证结果回写源命题）。',
+      陈述: '判断下述命题是否成立：' + str(c.陈述),
+      来源与动机: '由命题 ' + p.id + '（价值/关键性=' + value + '）自动晋升，目标：证明或证伪该命题；验证结果回写源命题。',
+      solutions: sols,
+    }
+    const written = writeCard({ records, kind: 'problem', card, settled: false, by: PLANNER_MEMBER })
+    updateCard({ records, id: p.recordId, patch: { anchors: { 晋升问题: qid } }, reason: 'v3 planner: proposition ' + p.id + ' promoted to problem ' + qid })
+    if (state) {
+      state.promotions += 1
+      state.lastPromotion = { propositionId: p.id, problemId: qid, recordId: written.id, at, value, threshold }
+    }
+    return { ok: true, promoted: 1, propositionId: p.id, problemId: qid, recordId: written.id, value, threshold }
+  }
+  return { ok: true, promoted: 0, threshold }
 }
 
 /** v3 `:2522` 的 qid 派生（同一公式，保持两侧可对照）。 */
@@ -607,8 +713,8 @@ function closeAwaitingPlan({ records, planId, status, gate, at }) {
  * 把一个规划回执的**原始**计划记录就地归一化：校验 → **人工门判定** → 按容量执行 → 逐条 outcome 写回。
  * manual 且未放行 ⇒ 计划记录写 `status:'awaiting-approval'` ＋ `gateId`，**一条动作都不执行**（P0-8）。
  */
-async function settlePlan({ records, turn, rawPlan, planRecordId, at, horizon, capacity, problems, propos, state, human = null, mode = 'auto' }) {
-  const check = validatePlan(rawPlan.actions, { horizon, problems, propos })
+async function settlePlan({ records, turn, rawPlan, planRecordId, at, horizon, capacity, problems, propos, verified = null, state, human = null, mode = 'auto' }) {
+  const check = validatePlan(rawPlan.actions, { horizon, problems, propos, verified })
   // ★ P0-8：执行前先过人工门。auto ⇒ 直通且**零记录**；manual ⇒ 开一扇 pending 门并停在这里。
   const gate = evaluateGate({
     records, human, at, mode, kind: 'plan',
@@ -745,17 +851,24 @@ function requireApi(flat, who) {
   return api
 }
 
-/** 读四把调用期设置（schema 已登记；缺值 ⇒ schema 默认）。 */
+/** 读调用期设置（除 promoteValueThreshold 的 schema 登记待加外均已登记；缺值 ⇒ 声明默认）。 */
 function readSettings(api) {
   const horizonRaw = Number(api.setting('vmu.v3.planningHorizon'))
   const minRaw = Number(api.setting('vmu.v3.planMinIntervalMs'))
   const maxLiveRaw = Number(api.setting('vmu.limits.maxLiveMembers'))
+  const maxParRaw = Number(api.setting('vmu.limits.maxParallel'))
+  // P1-3：晋升阈值（声明默认 0.7；键登记由 Lead 加进 schema）。未登记时缺省回落 0.7，**不是** 0
+  // ——0 会让每条命题都晋升；缺省必须等于声明的默认值。
+  const promoteRaw = Number(api.setting('vmu.v3.promoteValueThreshold'))
   return {
     plannerEnabled: api.setting('vmu.v3.plannerEnabled') !== false,
     horizon: Number.isInteger(horizonRaw) && horizonRaw >= 0 ? horizonRaw : 3,
     planMinIntervalMs: Number.isFinite(minRaw) && minRaw >= 0 ? minRaw : 30000,
     plannerMaxFails: Number(api.setting('vmu.v3.plannerMaxFails')),
     maxLiveMembers: Number.isFinite(maxLiveRaw) && maxLiveRaw > 0 ? maxLiveRaw : 0,
+    // P1-1 容量：内核已声明的并发上限（vmu.limits.maxParallel，机器强制）；0/缺省 ⇒ 不用它。
+    maxParallel: Number.isInteger(maxParRaw) && maxParRaw > 0 ? maxParRaw : 0,
+    promoteValueThreshold: Number.isFinite(promoteRaw) && promoteRaw >= 0 && promoteRaw <= 1 ? promoteRaw : 0.7,
     // P0-8：人工门读**原始值**（gates.js 的 normaliseGateMode 负责归一化；**脏值**按 manual，fail-closed）。
     // ★ 但"键不存在"不是脏值：内核不把 schema 默认值物化进设置对象，而 `vmu.v3.mode` 的声明默认是 auto
     //   ⇒ 缺省必须回落成 auto（否则每个没显式写 mode 的部署都会静默变成 manual）。只对"缺省"回落，
@@ -764,8 +877,16 @@ function readSettings(api) {
   }
 }
 
-/** 本 tick 的执行容量：显式成员上限优先，否则一个计划最多 horizon 个动作（计划本身就被 horizon 截断）。 */
-const capacityOf = (settings) => (settings.maxLiveMembers > 0 ? settings.maxLiveMembers : Math.max(1, settings.horizon))
+/**
+ * 本 tick 的执行容量：P1-1 把三处上限合起来取**最小**的正值 —— `vmu.limits.maxLiveMembers`（>0 时）与
+ * `vmu.limits.maxParallel`（内核声明的并发上限，>0 时）；都没有 ⇒ 一个计划最多 horizon 个动作。
+ * 超出的动作进 `queued`（不丢），下一 tick 由 `drainPlanQueue` 继续。
+ */
+const capacityOf = (settings) => {
+  const caps = [settings.maxLiveMembers, settings.maxParallel].filter((n) => Number.isFinite(n) && n > 0)
+  if (caps.length === 0) return Math.max(1, settings.horizon)
+  return Math.max(1, Math.floor(Math.min(...caps)))
+}
 
 async function onTick(flat) {
   const api = requireApi(flat, 'v3 planner')
@@ -808,6 +929,17 @@ async function onTick(flat) {
   }
   const problems = loadCardIndex(records, 'problems', 'problem')
   const propos = loadCardIndex(records, 'propos', 'proposition')
+  const verified = verifiedIds(records)
+  // P1-3：自动晋升放在重读索引之前 —— 本 tick 晋升出的“判断命题”问题必须出现在同一 tick 的简报里，
+  // 否则模型要等到下一 tick 才看得见它（v3 的流程也是 promote 在 buildBrief 之前）。
+  let promotion = { ok: true, promoted: 0, threshold: settings.promoteValueThreshold }
+  try {
+    promotion = processPromote({ records, problems, propos, threshold: settings.promoteValueThreshold, at, state, verified })
+  } catch (e) {
+    promotion = { ok: false, promoted: 0, code: str((e && e.code) || 'VMU_MIDDLEWARE_FAILED'), message: str((e && e.message) || e) }
+  }
+  // 晋升可能刚写了一张问题卡：重新读一次，后续候选/简报/校验都看同一份最新索引。
+  const problemsNow = promotion.promoted > 0 ? loadCardIndex(records, 'problems', 'problem') : problems
   // ★ P0-8：上一条计划还在等人放行时**不重复规划**（否则 manual 下每 tick 都会再开一扇门）。
   //   门的终态由 gates.js 写；这里只负责把计划记录的终态跟上，并在"被拒绝/放行失败"时收口。
   const awaiting = awaitingPlan(records)
@@ -826,9 +958,9 @@ async function onTick(flat) {
     // released：执行器已把计划写成终态（executed/partial）；继续用最新状态往下走。
   }
   // ② 判可推进 + 组简报。
-  const advanceable = advanceableProblems(problems)
+  const advanceable = advanceableProblems(problemsNow, verified)
   const queuedRemaining = drained && Number.isInteger(drained.remaining) ? drained.remaining : 0
-  const brief = buildBrief({ records, at, horizon: settings.horizon, maxLiveMembers: settings.maxLiveMembers, problems, state, queuedRemaining })
+  const brief = buildBrief({ records, at, horizon: settings.horizon, maxLiveMembers: settings.maxLiveMembers, problems: problemsNow, state, queuedRemaining })
   if (advanceable.length === 0 && queuedRemaining === 0) {
     state.lastSkip = { reason: 'no-schedulable-work', tick: state.ticks }
     return { ok: true, skipped: 'no-schedulable-work', at, bytes: { problems: problems.items.length, badProblems: problems.bad.length }, drained }
@@ -874,7 +1006,7 @@ async function onTick(flat) {
   let plan = null
   try {
     const rec = records.get({ id: planId })
-    plan = await settlePlan({ records, turn, rawPlan: readRawPlan(rec), planRecordId: planId, at, horizon: settings.horizon, capacity, problems, propos, state, human, mode: settings.mode })
+    plan = await settlePlan({ records, turn, rawPlan: readRawPlan(rec), planRecordId: planId, at, horizon: settings.horizon, capacity, problems: problemsNow, propos, verified, state, human, mode: settings.mode })
     state.plans += 1
   } catch (e) {
     recordFailure({ records, at, state, api, error: e, phase: 'plan-settle' })
@@ -887,6 +1019,8 @@ async function onTick(flat) {
     awaitingApproval: plan.awaitingApproval === true, gateId: plan.gateId || null,
     plannerTurn: receipt && receipt.turn ? receipt.turn.id : null,
     drained,
+    promoted: promotion.promoted,
+    promotion: promotion.promoted > 0 ? promotion : null,
   }
 }
 

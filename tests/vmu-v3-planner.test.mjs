@@ -30,6 +30,7 @@ import { writeCard } from '../vibe-math-vmu/packs/v3/middleware/dataplane.js'
 import {
   V3_PLANNER_MODULE, PLANNER_MEMBER, PLAN_TRACK, PLAN_KIND, PLAN_VERBS, SPAWN_ROLES,
   v3PlannerStatus, readPlanRecord, readRawPlan, loadCardIndex, validatePlan, promotedProblemId,
+  advanceableProblems, verifiedIds,
 } from '../vibe-math-vmu/packs/v3/middleware/planner.js'
 import { listGates, approveGate, createGate } from '../vibe-math-vmu/packs/v3/middleware/gates.js'
 
@@ -612,6 +613,162 @@ console.log('=== 12. 真机装配路径：packs:[v3] ⇒ 规划段被晚注册�
   ok(busEntries.some((x) => x.startsWith('v3-planner:') && x.includes('turn/reply-parsed')), '规划器的 turn/reply-parsed 归一化钩子也挂上了总线', busEntries)
   ok(handle.appliedPacks().some((p) => p.id === 'v3'), 'pack v3 被记为已应用', handle.appliedPacks().map((p) => p.id))
   for (const cleanup of handle.cleanups || []) { try { cleanup() } catch { /* unwind is the host's job */ } }
+}
+
+// ── 11. P1-1 幂等：同一个 rId 的第二次派发是【具名跳过】 ─────────────────────────────────────────────────
+{
+  const h = boot({
+    replier: ({ turn }) => (turn.role === PLANNER_MEMBER
+      ? planReply('派 verifier 验证 r-1', [{ action: 'spawn', role: 'verifier', target: 'r-1', reason: '验证候选 r-1' }])
+      : ACK),
+    overrides: { 'vmu.v3.planMinIntervalMs': 0 },
+  })
+  await h.loader.apply(PACK)
+  problemCard(h.kernel, 'q-1')
+  await tick(h, 1000)
+  const f0 = latestPlan(h.kernel).canonical.outcomes[0]
+  ok(f0 && f0.ok === true && f0.skipped === undefined && f0.turn !== undefined,
+    '第一次派发真的建了回合（outcome 带 turn id，而不是跳过）', f0)
+  const afterFirst = h.delivered.filter((d) => d.role === 'verifier').length
+  ok(afterFirst === 1, '第一次派发投递了恰好 1 个 verifier 回合', afterFirst)
+  await tick(h, 2000)
+  const f1 = latestPlan(h.kernel).canonical.outcomes[0]
+  ok(f1 && f1.ok === true && f1.skipped === 'already-dispatched',
+    '★ 第二次派发自报 skipped=already-dispatched（不是静默）', f1)
+  ok(f1 && f1.code === 'VMU_PACK_V3_DUPLICATE_DISPATCH',
+    '★ 跳过带已登记具名码 VMU_PACK_V3_DUPLICATE_DISPATCH', f1 && f1.code)
+  ok(f1 && f1.previousTurn !== null && f1.previousTurn !== undefined,
+    '跳过回执带前一次 turn id（能追到“已经建过的是哪一个”）', f1 && f1.previousTurn)
+  const afterSecond = h.delivered.filter((d) => d.role === 'verifier').length
+  ok(afterSecond === 1, '★ 第二次没有建第二个回合（投递数仍是 1）——这是“具名跳过”与“恰好没动”的区别', afterSecond)
+  ok(v3PlannerStatus().dispatched === 1, '派发幂等账只登记 1 个键', v3PlannerStatus().dispatched)
+}
+
+// ── 12. P1-1 依赖：未就绪目标被拒并点名 ────────────────────────────────────────────────────────────────
+{
+  const h = boot({
+    replier: ({ turn }) => (turn.role === PLANNER_MEMBER
+      ? planReply('派 q-dep', [{ action: 'spawn', role: 'solver', target: 'q-dep', direction: 'd-1', reason: '推进' }])
+      : ACK),
+    overrides: { 'vmu.v3.planMinIntervalMs': 0 },
+  })
+  await h.loader.apply(PACK)
+  problemCard(h.kernel, 'q-dep', { 依赖: ['q-missing'] })
+  problemCard(h.kernel, 'q-1')
+  await tick(h, 1000)
+  const c = latestPlan(h.kernel).canonical
+  ok(c && c.validated.length === 0 && c.outcomes.length === 0,
+    '★ 依赖未就绪的动作既未 validated 也未执行', c && { validated: c.validated.length, outcomes: c.outcomes.length })
+  ok(c && Array.isArray(c.rejectReasons) && c.rejectReasons.some((r) => /dependency-not-ready:q-dep/.test(String(r.why))),
+    '★ 拒绝原因点名 dependency-not-ready:q-dep（不丢）', c && c.rejectReasons)
+  ok(h.delivered.filter((d) => d.role === 'solver').length === 0, '没有 solver 回合被投递', h.delivered.filter((d) => d.role === 'solver').length)
+  problemCard(h.kernel, 'q-wait', { 状态: '等待依赖' })
+  const adv = advanceableProblems(loadCardIndex(h.kernel.records, 'problems', 'problem'), verifiedIds(h.kernel.records)).map((p) => p.id)
+  ok(adv.includes('q-1') && !adv.includes('q-wait') && !adv.includes('q-dep'),
+    '★ 可推进集合排除「等待依赖」与依赖未就绪', { adv })
+}
+
+// ── 13. P1-1 已验不再调度：verified 轨上的对象不进入候选 ───────────────────────────────────────────────
+{
+  const h = boot({ overrides: { 'vmu.v3.planMinIntervalMs': 0 } })
+  await h.loader.apply(PACK)
+  problemCard(h.kernel, 'q-ver', { 状态: '求解中' })
+  writeCard({
+    records: h.kernel.records, kind: 'verified',
+    card: { id: 'q-ver', 标题: '已验证 q-ver', 类型: '问题', 结论: true, 概率: 1, 分类: '未分类', 来源: 'q-ver', 时间: '2026-10-19 00:00', 陈述: '陈述 q-ver。', 内容: '结论' },
+  })
+  const vids = verifiedIds(h.kernel.records)
+  ok(vids.has('q-ver'), 'verifiedIds 读到 verified 轨上的逻辑 id', [...vids])
+  ok(advanceableProblems(loadCardIndex(h.kernel.records, 'problems', 'problem'), vids).some((p) => p.id === 'q-ver') === false,
+    '★ 已验对象被排除出可推进候选（依据是 verified 轨，不是“状态恰好已解决”）')
+  writeCard({ records: h.kernel.records, kind: 'proposition', card: { id: 'p-ver', 标题: '命题 p-ver', 概率: 0.5, 陈述: '陈述 p-ver。', 价值关键性: 0.9 } })
+  writeCard({
+    records: h.kernel.records, kind: 'verified',
+    card: { id: 'p-ver', 标题: '已验证 p-ver', 类型: '命题', 结论: true, 概率: 1, 分类: '未分类', 来源: 'p-ver', 时间: '2026-10-19 00:00', 陈述: '陈述 p-ver。', 内容: '结论' },
+  })
+  problemCard(h.kernel, 'q-1')
+  await tick(h, 1000)
+  const ids = loadCardIndex(h.kernel.records, 'problems', 'problem').items.map((p) => p.id)
+  ok(!ids.includes(promotedProblemId('p-ver')), '★ 已验命题不会被自动晋升（候选集合里没有它）', ids)
+}
+
+// ── 14. P1-1 容量：超 maxParallel 的动作进队列（不丢），下一 tick 排空 ──────────────────────────────────
+{
+  const h = boot({
+    replier: ({ turn }) => (turn.role === PLANNER_MEMBER
+      ? planReply('派两个 solver', [
+        { action: 'spawn', role: 'solver', target: 'q-a', direction: 'd-1', reason: '推进 a' },
+        { action: 'spawn', role: 'solver', target: 'q-b', direction: 'd-1', reason: '推进 b' },
+      ])
+      : ACK),
+    overrides: { 'vmu.v3.planMinIntervalMs': 0, 'vmu.limits.maxParallel': 1 },
+  })
+  await h.loader.apply(PACK)
+  problemCard(h.kernel, 'q-a'); problemCard(h.kernel, 'q-b')
+  await tick(h, 1000)
+  const c1 = latestPlan(h.kernel).canonical
+  ok(c1 && c1.outcomes.length === 1 && c1.queued.length === 1,
+    '★ maxParallel=1 ⇒ 本 tick 执行 1 个、另一个进 queued（不丢）', c1 && { executed: c1.outcomes.length, queued: c1.queued.length })
+  ok(c1 && c1.queued.length === 1 && c1.queued[0] && c1.queued[0].target !== undefined,
+    '排队动作保留完整字段，下一 tick 能原样执行', c1 && c1.queued[0])
+  await tick(h, 2000)
+  ok(h.delivered.filter((d) => d.role === 'solver').length === 2,
+    '★ 下一 tick 排空队列：两个 solver 回合最终都投递了（队列不丢）', h.delivered.filter((d) => d.role === 'solver').length)
+}
+
+// ── 15. P1-3 阈值边界：0.699 不晋升 ／ 0.7 晋升 ／ 0.701 晋升 ────────────────────────────────────────────
+const promoteOnce = async (value) => {
+  const h = boot({ overrides: { 'vmu.v3.planMinIntervalMs': 0 } })
+  await h.loader.apply(PACK)
+  writeCard({ records: h.kernel.records, kind: 'proposition', card: { id: 'p-edge', 标题: '命题 p-edge', 概率: 0.5, 陈述: '陈述 p-edge。', 价值关键性: value } })
+  problemCard(h.kernel, 'q-1')
+  await tick(h, 1000)
+  const ids = loadCardIndex(h.kernel.records, 'problems', 'problem').items.map((p) => p.id)
+  return { promoted: ids.includes(promotedProblemId('p-edge')), status: v3PlannerStatus() }
+}
+{
+  const below = await promoteOnce(0.699)
+  ok(below.promoted === false, '★ 0.699 < 0.7 ⇒ 不晋升（边界下方不误触）', below.status.lastPromotion)
+  const atEdge = await promoteOnce(0.7)
+  ok(atEdge.promoted === true, '★ 0.7 == 阈值 ⇒ 晋升（v3 是 >=，边界包含）', atEdge.status.lastPromotion)
+  ok(atEdge.status.lastPromotion && atEdge.status.lastPromotion.value === 0.7,
+    '晋升回执记下触发值 0.7（数字可核对）', atEdge.status.lastPromotion)
+  const above = await promoteOnce(0.701)
+  ok(above.promoted === true, '★ 0.701 > 0.7 ⇒ 晋升（边界上方也触发）', above.status.lastPromotion)
+}
+
+// ── 16. P1-3 每 tick 至多一个晋升 ＋ 双向可追 ──────────────────────────────────────────────────────────
+{
+  const h = boot({ overrides: { 'vmu.v3.planMinIntervalMs': 0 } })
+  await h.loader.apply(PACK)
+  for (const [id, value] of [['p-a', 0.9], ['p-b', 0.8], ['p-c', 0.75]]) {
+    writeCard({ records: h.kernel.records, kind: 'proposition', card: { id, 标题: '命题 ' + id, 概率: 0.5, 陈述: '陈述 ' + id + '。', 价值关键性: value } })
+  }
+  problemCard(h.kernel, 'q-1')
+  await tick(h, 1000)
+  const afterOne = loadCardIndex(h.kernel.records, 'problems', 'problem').items.map((p) => p.id).filter((id) => id.startsWith('q-promoted-'))
+  ok(afterOne.length === 1, '★ 三个都过阈值，第 1 个 tick 只晋升 1 个', afterOne)
+  ok(v3PlannerStatus().promotions === 1, '晋升计数 = 1', v3PlannerStatus().promotions)
+  const first = v3PlannerStatus().lastPromotion
+  await tick(h, 2000)
+  const afterTwo = loadCardIndex(h.kernel.records, 'problems', 'problem').items.map((p) => p.id).filter((id) => id.startsWith('q-promoted-'))
+  ok(afterTwo.length === 2 && v3PlannerStatus().promotions === 2,
+    '★ 第 2 个 tick 再晋升 1 个（两 tick 共 2 个，不是一次全推）', { afterTwo, promotions: v3PlannerStatus().promotions })
+  ok(v3PlannerStatus().lastPromotion.propositionId !== first.propositionId,
+    '第 2 个 tick 晋升的是另一个命题（不是重复晋升第 1 个）', v3PlannerStatus().lastPromotion)
+  const pIdx = loadCardIndex(h.kernel.records, 'propos', 'proposition')
+  const qid = promotedProblemId(first.propositionId)
+  const qCard = loadCardIndex(h.kernel.records, 'problems', 'problem').items.find((p) => p.id === qid)
+  const pCard = pIdx.items.find((p) => p.id === first.propositionId)
+  ok(qCard && String(qCard.card.来源命题) === first.propositionId,
+    '★ 问题侧可追：判断命题问题的 `来源命题` 指回原命题', qCard && qCard.card.来源命题)
+  ok(pCard && String(pCard.card.晋升问题) === qid,
+    '★ 命题侧可追：原命题的 `晋升问题` 指回晋升出的问题（双向互指）', pCard && pCard.card.晋升问题)
+  const check = validatePlan([{ action: 'promote', target: first.propositionId }], {
+    horizon: 3, problems: loadCardIndex(h.kernel.records, 'problems', 'problem'), propos: pIdx,
+  })
+  ok(check.validated.length === 0 && check.rejectReasons.some((r) => /already-promoted/.test(String(r.why))),
+    '对已晋升命题再次 promote：被拒且点名 already-promoted（幂等第二道门）', check.rejectReasons)
 }
 
 console.log('')
