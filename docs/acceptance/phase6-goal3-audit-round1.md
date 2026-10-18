@@ -229,3 +229,49 @@
 **范围外顺手修（P1 关联，来自本轮核对）**：`cancelGate` 原本只写 v3 台账、**不镜像** `vmu.human`，撤回后人性面审批仍是
 pending（一个"看起来还能批"的幽灵）；已补镜像（以 `denied`＋理由前缀 `cancelled:`，失败记 `mirrorError` 不吞），并在
 `vmu-v3-gates` 加断言（cancel 后 human 面 `state==='denied'`）。
+
+## §10 九条 P2 的逐条裁定（本轮只裁定，不改代码）
+
+**判据**：① 注册表有没有界（无界＝泄漏；有界/随会话消亡＝可能是有意设计）；② 缺的反向入口有没有替代路径；③ 不补的具体后果。
+
+| 模块 | 有界吗 | 替代路径 | 不补的具体后果 | 裁定 |
+|---|---|---|---|---|
+| `ballotbox.js`（`cast` 无撤回/改票，:196） | 有界：一票箱一 map，票箱随会议/会话（`liveBallots` 有 cap） | 无（重复投票直接拒） | 不能改票——但**"不能撤回"正是投票完整性的要求**；真实缺口是"改票（带版本/理由）"而不是撤回 | **不补；记录"只增是设计"**：已投票必须不可撤回，否则计票可被事后推翻。若需要改票，应新增"改票"动作（新值＋旧值留痕），而不是开放撤回 |
+| `governance.js`（`tabled` 无 un-table，:184） | 有界：动议随会议 | 新建一条动议（丢失原 id/历史） | 搁置中的动议**永远无法恢复讨论**，只能重开新案并丢历史；状态机缺一条合法边 | **加反向入口**：补 `unTable`（具名、带理由、写台账） |
+| `human.js`（`openApproval` 无撤回，:521-525） | **无界**（审批请求列表没有 cap 设置；`status()` 只报计数） | 只能由持有 `decide` 的路径拒绝（把"撤回"记成"拒绝"，语义不同） | 请求方**无法撤回**自己的申请；待批列表只增不减，且与 v3 gate 已修的 cancel 不对齐（gate 撤回后 human 面靠镜像才不挂） | **加反向入口**：补 `withdrawApproval`（请求方撤回，具名、带理由、终态可查；与 gate cancel 同一语义） |
+| `collab.js`（`addCounterparty` 无移除，:285） | **无界**（`counterparties` 是 Map，无 cap） | 无 | 合作方**永久不能停用/改名**；错误登记与已终止合作都留在册，且只增不减 | **加反向入口**：补 `retireCounterparty`（标记 retired＋理由，保留历史而不是硬删） |
+| `board.js`（`addColumn` 无 removeColumn，:87） | 有界：**运行期新增列是内存态**（`added`，重启回 settings 基线） | 重启后按 settings 重建基线 | 本会话内误加的列**无法纠正**，会一直参与 WIP/移动判定 | **加反向入口（低优先）**：补 `removeColumn`（拒绝仍有任务的列，或要求先转移） |
+| `control.js`（`register` 无 unregister，:283） | 有界：注册表**只用来让 `stopClearsRegistry` 可观测**，`stop()` 会按声明清空（:271-279） | `stop()` 清空；同一 id 重复注册幂等（Set） | 无实际泄漏；未注册只影响"停止时清理了几个"的观测数字 | **不补；记录"只增是设计"**：它是控制面自报簿记，生命周期由 stop/会话决定（`vmu.control.stopClearsRegistry` 可配） |
+| `workflow.js`（`registerCompensation` 无 unregister，:721-723） | 有界：注册名由**内核/装配代码**给出（当前无 M2 可达入口），不是任意用户输入 | 用同名重新注册覆盖旧 action（Map.set） | 旧补偿动作无法注销；但当前只有框架注册，名字数量固定 | **不补；记录"只增是设计"**：注册面不对外开放；若未来把 workflow 放进能力门控目录，必须同时补 unregister |
+| `partnership.js`（`registerEntity` 无 unregister，:141） | 有界/近似：法律实体是机构级集合（实际数量有限），但代码无 cap | 无（实体退役没有状态位） | 错误登记或已解散实体**永久留在册**；只增不删 | **不补；记录"只增是设计，且注明条件"**：实体集合天然有限；真正缺的是"实体状态（active/retired）"这一特性，等机构生命周期需求出现再加，不在本轮臆造 |
+| `publication.js`（`openOutreachReview` 无 close，:431-433） | 有界：评审是 outreach 记录上的**布尔策略开关**，随论文记录 | `publishOutreach` 推进"已发布"；评审开关本身可视为长期策略 | 一旦打开无法关闭（只能改值/重建记录）？——但它是"该论文允许开放评审"的策略位，不是一次评审会，没有"结束"语义 | **不补；记录"只增是设计"**：`openReview` 是文档级策略开关而非会话；发布由 `publishOutreach` 推进，二者语义不同 |
+
+**分布**：**加反向入口 4 条**（`governance.unTable`、`human.withdrawApproval`、`collab.retireCounterparty`、`board.removeColumn`）；
+**记录"只增是设计" 5 条**（`ballotbox`、`control`、`workflow`、`partnership`、`publication`）。
+**最该优先补的一条**：`human.withdrawApproval` —— 它是用户可见的"幽灵待批"（申请人自己撤不回，且待批列表无界），
+与刚修的 gate cancel 语义不齐，补齐后两个审批面才同一套语义。
+
+## §11 审计最后一块：`packs/**`（31 个 js）与 `host-*.js`（6 个）
+
+**方法**：逐字段问"manifest 声明的键谁读它"；v5r 中间件逐钩子问"是否已注册＋有发射点"；v3/v3-core 用**实测**
+（同一内核依次 apply 两个 manifest）确认互斥是否机器强制；host 文件逐个导出查调用点、边界与降级是否具名。
+
+| 文件 | 发现 | 文件:行 | 级别 |
+|---|---|---|---|
+| `packs/v3/index.js` ＋ `packs/v3-core/index.js` | **"互斥装载"只是描述，没有机器强制**：实测同一内核依次 apply v3、v3-core **都返回 ok**，`status().packs` 同时列出两者；v3-core 的 `tracks` 静默替换库轨、两个包的 `slots` 同名静默替换，且两套人工门/verifier 机制同时在线（v3-core 的 verifier-quorum 模块订阅 `ballot/tally`） | `packs/v3/index.js:66`（description 写"互斥"）；`packs/v3-core/index.js:41-110`（settings/slots/middleware）；`kernel/pack.js`（无 `excludes` 校验） | **P1**（双机构语义并存，静默覆盖；建议加 manifest `excludes` 并在 plan/apply 具名拒） |
+| `packs/v5r/middleware/waitsemantics.js` | **随包发布但没有任何 import / 清单条目 / 测试引用**（只在自身头注释里出现）；`package.json` 与 `installer.js` 都列了它 ⇒ 装完永远不会被装载 | `packs/v5r/middleware/waitsemantics.js:1`；`package.json:486`；`installer.js:93` | **P2**（要么接入清单/测试，要么删除或降级为 `.md`） |
+| `packs/v5r/index.js`（folder 记录字段 `sectionModule`/`policyModule`/`noticeModule`/`phases`/`defaults`/`contributes`） | **未发现**：这些不是装载器字段，但都有消费者——`describeV5rPack()` 逐键回显（:94-115），并有测试守"folder 记录每个键必须出现在 PACK 或描述里" | `packs/v5r/index.js:88-115` | — |
+| `packs/v5r/middleware/*`（5 个文件） | **未发现（一处除外）**：`prompt-switches` 是 prompt-pipeline 策略（经 `promptPolicies` 消费，不是总线）；`stall-meeting`(`control/idle`)、`motion-box`(`meeting/motion`)、`artifact-counter`(`tools/result`/`math/job-settled`/`lean/job-settled`) 的钩子均已注册且各有发射点；`waitsemantics` 见上一行 | `packs/v5r/prompts/v5r-core.js:200-260` | — |
+| `packs/v3/**`（index/tools/6 middleware/7 prompts） | **未发现**（manifest 的 `topics` 已在 §8 接上；tools/slots/sections/middleware/settings 均有消费者；21 段 prompt 经 sections 通道） | `packs/v3/index.js` | — |
+| `packs/institute-min/index.js` | **未发现**：可装载（settings/slots/tracks/rules/aliases/codes 均有 pack.js 消费者），测试有装载用例 | `packs/institute-min/index.js` | — |
+| `packs/example-data/`（无 index.js） | **未发现**：data-only 包由入口识别（`dataOnly:true`，读 prompts/sections.json + settings/defaults.json），有测试 | `vibe-math-vmu.js:1030-1044` | — |
+| `host.js` | **未发现**：工具规格/装配边界；只 import `host-pack-tools`；无与其它 host 文件的逻辑重复 | `host.js:55` | — |
+| `host-hooks.js` | **未发现**：`attachHostHooks` 由入口调用；`toPre/PostExecuteDecision` 内部使用；宿主无 `ctx.on` ⇒ 具名 `VMU_ENGINE_UNAVAILABLE` | `host-hooks.js:123` | — |
+| `host-math.js` | **未发现**：`createHostMath` 由入口调用，`MATH_OUTPUT`/`MATH_PARAM_MAP` 内部使用；无 `tools.register`/无 subprocess ⇒ 具名拒 | `host-math.js:79,154` | — |
+| `host-spawn.js` | **未发现**：`createHostSpawn`/`hasHostSpawn` 由入口用；无 subprocess ⇒ 具名 `VMU_ENGINE_UNAVAILABLE`（:98） | `host-spawn.js:98` | — |
+| `host-deliver.js` | **未发现**：`createTurnDeliver` 由入口用；无宿主投递 ⇒ 具名 `VMU_ENGINE_UNAVAILABLE`（:108） | `host-deliver.js:108` | — |
+| `host-children.js` | **未发现**：`createChildrenPort` 由入口用；无子会话 ⇒ 具名 `VMU_RESUME_CHILDREN_UNAVAILABLE`（:48） | `host-children.js:48` | — |
+| `host-pack-tools.js` | **未发现**：`appendPackToolSpecs`/`packToolFailureRows` 由 host.js 用，另两个导出是内部工厂（被 append 使用）与测试面 | `host-pack-tools.js` | — |
+
+**Packs/hosts 汇总**：packs **P1 1 条、P2 2 条**（余下均"未发现"）；host-* **0 条**（唯一观察：`host-hooks/host-math/host-spawn/host-deliver`
+各有一份很小的 `refuse` 辅助函数，属 P3 重复，不影响行为）。**最高级别**：v3 与 v3-core 的"互斥"未被机器强制（P1）。
