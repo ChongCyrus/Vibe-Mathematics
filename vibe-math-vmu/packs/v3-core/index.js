@@ -22,6 +22,8 @@ export const PACK = Object.freeze({
   version: '1.0.0',
   packContractVersion: 1,
   description: 'v3 的机构语义包：planner/solver/verifier 三槽位、法定 verifier 数、manual 门、v3 的机制默认',
+  // PHASE 6（目标 3 审计 P1）：与 v3 互斥——由 pack.js 的 plan/apply 双向检查并具名拒（VMU_PACK_CONFLICT）。
+  excludes: Object.freeze(['v3']),
 
   // NOTE (the v5r-core lesson): a pack must NOT require a service it is itself the first to introduce -
   // `vmu.members` appears only after somebody declares slots. `v3-core` BRINGS the roster, so it requires only

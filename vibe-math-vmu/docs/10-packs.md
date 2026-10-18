@@ -49,6 +49,7 @@ vibe-math-vmu/packs/<id>/middleware/    # 该 pack 在框架扩展点上加的�
 | `slots` | `[{id, capacity?}]` ✓ | kebab id＋整数容量 ✓ |
 | `tracks` | `string[]` ✓ | 归档分轨名 ✓ |
 | `topics` ✓（**PHASE 6 / 目标 3 新增：协议主题声明**） | `string[]`（`domain/name`，两侧 kebab-case ✓） | 本包引入的**新钩子主题**。装载时由 `pack.js` 在 middleware **之前**声明到运行期总线（owner＝本次装载 token），卸载 undo **只撤回本包的声明** ⇒ 不会有"卸载后仍注册"的跨内核泄漏；同一主题由别的 owner 持有时仍然有效 ✓。计划期非法/重名 ⇒ `problems` 逐条点名 ✓ |
+| `excludes` ✓（**PHASE 6 / 目标 3 新增：互斥装载**） | `string[]`（pack id，kebab-case） | 本包**不能与之共存**的包。`plan()`／`apply()` **双向**检查（对方 manifest 也可能把本包列进 excludes）⇒ 同内核同装会**具名拒 `VMU_PACK_CONFLICT`**，并在 `problems` 里以 `EXCLUDES:` 前缀点名；先装的那个包的状态**不受影响**（不会被静默替换 tracks/slots）✓。禁止自指、重复项、非法 id（计划期即报）✓ |
 | `tools` ✓（**PHASE 6 / P0-10**） | `[{name, description, parameters?, handler}]` ✓ | 本包**发布的工具面**。名字/描述/handler/参数形状在计划期校验；内核**持有**声明、宿主 `host.js` 发布；与内核已发布工具或另一包重名 ⇒ 具名拒（`VMU_PACK_CONFLICT`）；卸载按包归属撤回（`by` 不符 ⇒ `VMU_NOT_PERMITTED`）✓。★ **没有 `capabilities` 字段**：工具没有能力消费者（能力门控只对 middleware 条目执行）⇒ 声明里带它会被**具名拒**，不静默丢弃 ✓ |
 | `rules` | `[{id, on, when, then, …}]` ✓ | **M1 规则体内联** ✓（`on` 必填 ✓） |
 | `middleware` | `[{id, kind?, handler, …}]` ✓ | **追加到总线的条目** ✓。**轮 1（D-03）**：`kind` 只能是 `rules`／`module`，且非 `rules` **必须带 `handler` 函数**（总线不装载文件）；`script`／`plugin` ⇒ 计划期即报 `kind must be rules\|module`，`apply` 期由总线具名拒 `VMU_MIDDLEWARE_KIND_UNSUPPORTED` ✓（注意：`kind:'rules'` 的条目**不会**被编译 ⇒ 规则要放 `rules:` ✗✓） |

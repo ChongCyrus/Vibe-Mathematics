@@ -29,7 +29,7 @@ import { deliverViaSubagents, deliverByReturning, sendViaSubagents, interruptVia
 import { createTurnDeliver } from './host-deliver.js'
 import { createHostAdapter } from './host.js'
 import { attachHostHooks } from './host-hooks.js'
-import { createPackLoader } from './kernel/pack.js'
+import { createPackLoader, collectPackSections } from './kernel/pack.js'
 // ROUND 1 / K5 (D-02): a NAMESPACE import as well, so `composePromptPolicies` can be feature-detected. A named import
 // of an export that does not exist yet throws at MODULE LOAD time, which would take the whole preset down; the
 // namespace form degrades to the per-pack first-wins fallback below instead.
@@ -1053,7 +1053,11 @@ export function apply(ctx, config = {}) {
     // added for the same reason: without bindings a late charter would assemble with a baseline written for another
     // role. Failures are NOT swallowed: a declared section the pipeline refuses is a configuration error worth seeing.
     if (manifest && kernel.prompt) {
-      const declared = Array.isArray(manifest.sections) ? manifest.sections : []
+      // PHASE 6 (goal-3 audit P2): the PRODUCTION path now uses `collectPackSections` - the one place that refuses
+      // malformed/duplicate section names and binding-less sections - instead of registering `manifest.sections` raw.
+      // The helper was previously test-only, so its "named refusal" never ran in production; plan/apply and the
+      // prompt pipeline now agree on one validator.
+      const declared = collectPackSections([manifest])
       for (const s of declared) kernel.prompt.register(s)
       const declaredBindings = Array.isArray(manifest.bindings) ? manifest.bindings : []
       if (declaredBindings.length) {

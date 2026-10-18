@@ -483,7 +483,6 @@
     "vibe-math-vmu/packs/v5r/settings/defaults.js",
     "vibe-math-vmu/packs/v5r/settings/defaults.json",
     "vibe-math-vmu/packs/v5r/middleware/prompt-switches.js",
-    "vibe-math-vmu/packs/v5r/middleware/waitsemantics.js",
     "vibe-math-vmu/packs/v5r/middleware/stall-meeting.js",
     "vibe-math-vmu/packs/v5r/middleware/motion-box.js",
     "vibe-math-vmu/packs/v5r/middleware/artifact-counter.js",

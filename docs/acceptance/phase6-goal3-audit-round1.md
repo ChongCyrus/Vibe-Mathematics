@@ -275,3 +275,22 @@ pending（一个"看起来还能批"的幽灵）；已补镜像（以 `denied`�
 
 **Packs/hosts 汇总**：packs **P1 1 条、P2 2 条**（余下均"未发现"）；host-* **0 条**（唯一观察：`host-hooks/host-math/host-spawn/host-deliver`
 各有一份很小的 `refuse` 辅助函数，属 P3 重复，不影响行为）。**最高级别**：v3 与 v3-core 的"互斥"未被机器强制（P1）。
+
+## §12 修复记录（§10／§11 裁定后的执行，本轮）
+
+- **P1 · 互斥装载机器强制**：`kernel/pack.js` 新增 manifest `excludes`（校验：pack id／禁自指／禁重复）；`plan()` 与 `apply()`
+  共用**同一** `exclusionConflicts` 双向检查（对方 manifest 的反向声明也算），冲突以 `EXCLUDES:` 前缀进 `problems`、
+  返回/抛出**已登记** `VMU_PACK_CONFLICT`；成功 apply 记录该包的 `excludes`，`unload` 清理。`packs/v3/index.js` 与
+  `packs/v3-core/index.js` **互相声明** `excludes`。测试（`tests/vmu-pack.test.mjs`，53→**66** 断言）：v3 先装 ⇒ `plan(v3-core)`
+  也拒；apply(v3-core) 抛 `VMU_PACK_CONFLICT`；**先装包的 tracks／slots 逐项不变**（两侧都先断言非空，避免空集恒真）；
+  反向同理；单独装任一 ⇒ ok；`excludes` 自指/非法 id 在计划期报。
+- **§10 · `human.withdrawApproval`**：`kernel/human.js` 新增具名撤回（必须带理由；终态 `withdrawn`，`approvalState` 可查，
+  `queue().pending` 减一，`status().withdrawnApprovals` 计数；二次撤回／撤回后再 decide ⇒ `VMU_STATE`；无理由 ⇒
+  `VMU_INVALID_ARGUMENT`），并加进 human API。v3 `cancelGate` 的镜像改走**同一词汇**（有 `withdrawApproval` 就用它，
+  老 face 回退 `decide`）；`vmu-v3-gates` 断言镜像状态为 `withdrawn`。测试：`tests/vmu-human-gate.test.mjs`（79→**83**）。
+- **§11 · waitsemantics（选 b：文件删除、文本迁文档）**：该文件自称 normative text 但无消费者；已删除
+  `packs/v5r/middleware/waitsemantics.js` 并从 `package.json#files`／`installer.js` managed 清单移除；规范文本迁入
+  `vibe-math-vmu/docs/24-v5r-containment.md` §6（写明活跃对等体判定、future-only 等待、durable-when-reported 三件事及其代码依据）。
+- **§11 · collectPackSections（选 a：入口真的用它）**：`vibe-math-vmu.js` 注册 pack sections 时改为
+  `collectPackSections([manifest])`（此前是裸 `manifest.sections`）⇒ 同名/非法段名的**具名拒在生产路径上**；
+  helper 不再是"只有测试用的导出"。入口/`vmu-turn`/v3 prompts 套件回归绿。

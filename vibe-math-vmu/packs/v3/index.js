@@ -65,6 +65,9 @@ export const PACK = Object.freeze({
   packContractVersion: 1,
   description: 'v3 复刻包（PHASE 6）：P0-1 周期驱动 + P0-9 数据面 + P0-6 软规范三卡与 Verified 分裂 + P0-2/P0-3 规划-调度与学习闭环 + P0-4/P0-5 方法库与发明上报 + P0-7 验证闭环 + P0-8 人工门 + P0-10 工具面（10 个 pack 声明的工具 ＋ planner/solver/verifier 槽位）。与 packs/v3-core 互斥装载；不是行为等价证明。',
 
+  // PHASE 6（目标 3 审计 P1）：互斥从"描述"变成**机器强制**——`pack.js` 的 plan/apply 双向检查，同内核同装二者
+  // 会具名拒 `VMU_PACK_CONFLICT`（而不是静默替换 tracks/slots、两套门同时在线）。
+  excludes: Object.freeze(['v3-core']),
   // 六个模块在运行期通过 loader 的能力门读 `vmu.records`；planner/methods/verify 还要 `vmu.turn`（K2 已把
   // 回合循环进 M2 服务目录）；verify 还读 `vmu.ballotbox`（**法定人数由内核强制**，见 verify.js 文件头）。
   // gates 读 `vmu.human` 但**不 require** 它：人性面只是"尽力镜像"，台账（records）才是事实源。

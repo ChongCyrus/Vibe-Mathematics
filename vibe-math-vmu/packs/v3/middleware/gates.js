@@ -475,10 +475,20 @@ export function cancelGate({ records, human = null, at = null, gateId, by = null
   const s = stateFor(recs)
   s.cancelled = (s.cancelled || 0) + 1
   // The human approval MIRROR must not be left pending after the gate is withdrawn (a stayed-pending mirror would
-  // make a cancelled request look actionable in the human face). The human face has no "cancel" vocabulary, so the
-  // withdrawal is mirrored through its `decide({allow:false})` with the reason prefixed by `cancelled:` - and a mirror
-  // failure is recorded in mirrorError rather than swallowed (the ledger stays the source of truth).
-  const mirror = mirrorHuman(human, gate.gateId, false, by, 'cancelled: ' + str(reason).trim())
+  // make a cancelled request look actionable in the human face). PHASE 6: the human face now has the SAME vocabulary
+  // (`withdrawApproval`), so the mirror uses it when present and falls back to `decide({allow:false})` on an older face.
+  // A mirror failure is recorded in mirrorError rather than swallowed (the ledger stays the source of truth).
+  let mirror = null
+  const h = humanOf(human)
+  if (h) {
+    try {
+      mirror = typeof h.withdrawApproval === 'function'
+        ? h.withdrawApproval({ requestId: gate.gateId, by, reason: str(reason).trim() })
+        : mirrorHuman(human, gate.gateId, false, by, 'cancelled: ' + str(reason).trim())
+    } catch (e) {
+      mirror = { mirrorError: str((e && e.code) || (e && e.message)) }
+    }
+  }
   const out = settleGate({
     records: recs, gateId: gate.gateId, current: gate,
     patch: {

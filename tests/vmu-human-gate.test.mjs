@@ -301,6 +301,33 @@ const queueUp = (h, req) => { try { h.gate(req) } catch (e) { return e } return 
   ok(forced.ok === false && forced.code === 'VMU_INVALID_ARGUMENT', 'an unknown via is refused by name', forced)
 }
 
+// ── N. withdrawApproval: a PENDING request can be withdrawn (same vocabulary as the v3 gate's cancel) ─────────
+{
+  const h = hu({})
+  const o = h.openApproval({ subject: 'withdraw-me' })
+  const before = h.queue().pending
+  ok(before >= 1, 'a fresh approval is pending before the withdrawal', before)
+  const w = h.withdrawApproval({ requestId: o.id, by: 'office', reason: 'superseded by a new plan' })
+  ok(w.ok === true && w.state === 'withdrawn' && w.reason === 'superseded by a new plan' && w.withdrawnBy === 'office',
+    'withdrawApproval lands state=withdrawn with who/why (the same vocabulary as the gate cancel)', w)
+  ok(h.approvalState({ requestId: o.id }).state === 'withdrawn',
+    'the state is READABLE afterwards (approvalState returns withdrawn)', h.approvalState({ requestId: o.id }).state)
+  ok(h.queue().pending === before - 1, 'it no longer counts as pending (the queue pending count drops by one)', h.queue().pending)
+  ok(h.status().withdrawnApprovals === 1, 'the status view counts the withdrawal (visible, not only in the ledger)', h.status().withdrawnApprovals)
+  // no reason ⇒ named refusal; a still-pending request must say why it is withdrawn
+  const o2 = h.openApproval({ subject: 'no-reason' })
+  let noReason = null
+  try { h.withdrawApproval({ requestId: o2.id }) } catch (e) { noReason = e }
+  ok(!!noReason && noReason.code === 'VMU_INVALID_ARGUMENT', 'withdrawing WITHOUT a reason is refused by name', noReason && noReason.code)
+  h.withdrawApproval({ requestId: o2.id, reason: 'ok, close it' })
+  let twice = null
+  try { h.withdrawApproval({ requestId: o2.id, reason: 'again' }) } catch (e) { twice = e }
+  ok(!!twice && twice.code === 'VMU_STATE', 'withdrawing a terminal request twice is VMU_STATE', twice && twice.code)
+  let decideAfter = null
+  try { h.decide({ requestId: o2.id, allow: true }) } catch (e) { decideAfter = e }
+  ok(!!decideAfter && decideAfter.code === 'VMU_STATE', 'a withdrawn approval cannot be decided afterwards', decideAfter && decideAfter.code)
+}
+
 const guard = process.argv.includes('--self-probe')
 if (guard) {
   console.log('=== VMU HUMAN GATE SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')

@@ -267,6 +267,48 @@ if (SELF_PROBE) {
   ok(ids[0] === 'p-bbb' && ids[1] === 'p-ccc' && ids[2] === 'p-aaa', 'packs.priority: status() reports applied packs by priority (manifest first, then the declaration)', ids)
 }
 
+// ---- N. excludes: "mutually exclusive" is MACHINE-ENFORCED, in both directions, and plan() says so first ----------
+{
+  const V3 = (await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu/packs/v3/index.js')).href)).PACK
+  const V3CORE = (await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu/packs/v3-core/index.js')).href)).PACK
+  ok(m.validatePack({ id: 'x', excludes: ['x'] }).some((p) => /cannot exclude itself/.test(p)),
+    'a pack cannot exclude itself (validated, not merely documented)')
+  ok(m.validatePack({ id: 'x', excludes: ['Bad Id'] }).some((p) => /pack ids/.test(p)),
+    'an excludes entry must be a pack id (kebab-case)')
+
+  // direction 1: v3 first, then v3-core must be refused and leave v3 untouched
+  const a = await mk()
+  ok((await a.loader.apply(V3)).ok === true, 'v3 applies alone (single-pack install still works)')
+  const tracksAfterV3 = (await a.kernel.library.status()).tracks.slice()
+  const slotsAfterV3 = a.kernel.members.roles().map((r) => r.id + ':' + r.capacity)
+  ok(tracksAfterV3.length > 0 && slotsAfterV3.length > 0,
+    'the first pack really HAS tracks and slots, so the unchanged-comparisons below cannot pass on two empty collections',
+    { tracks: tracksAfterV3.length, slots: slotsAfterV3.length })
+  const plan = a.loader.plan(V3CORE)
+  ok(plan.ok === false && plan.code === 'VMU_PACK_CONFLICT' && plan.problems.some((p) => /EXCLUDES/.test(p)),
+    'plan() REFUSES the excluded peer too (otherwise "plan says yes, apply says no")', { ok: plan.ok, code: plan.code, problems: plan.problems })
+  await expectThrow(() => a.loader.apply(V3CORE), 'VMU_PACK_CONFLICT', 'applying v3-core on top of v3 is a NAMED conflict')
+  const tracksAfter = (await a.kernel.library.status()).tracks.slice()
+  const slotsAfter = a.kernel.members.roles().map((r) => r.id + ':' + r.capacity)
+  ok(tracksAfter.length > 0 && tracksAfterV3.length > 0 && JSON.stringify(tracksAfter) === JSON.stringify(tracksAfterV3),
+    'the FIRST pack is untouched: its tracks (non-empty on BOTH sides, so the comparison cannot pass on two empty sets) were NOT replaced', { before: tracksAfterV3, after: tracksAfter })
+  ok(slotsAfter.length > 0 && slotsAfterV3.length > 0 && JSON.stringify(slotsAfter) === JSON.stringify(slotsAfterV3),
+    'the FIRST pack is untouched: its slots (non-empty on BOTH sides) were NOT replaced', { before: slotsAfterV3, after: slotsAfter })
+  ok(a.kernel.status().packs.includes('v3-core') === false, 'the refused pack is not listed as applied', a.kernel.status().packs)
+  await rm(a.root, { recursive: true, force: true })
+
+  // direction 2: v3-core first, then v3 must be refused
+  const b = await mk()
+  ok((await b.loader.apply(V3CORE)).ok === true, 'v3-core applies alone')
+  const tracksCore = (await b.kernel.library.status()).tracks.slice()
+  ok(tracksCore.length > 0, 'v3-core really HAS tracks, so the unchanged-comparison below cannot pass on two empty collections', tracksCore.length)
+  await expectThrow(() => b.loader.apply(V3), 'VMU_PACK_CONFLICT', 'the reverse direction is refused too (mutual excludes, not one-way)')
+  const tracksCoreAfter = (await b.kernel.library.status()).tracks.slice()
+  ok(tracksCoreAfter.length > 0 && tracksCore.length > 0 && JSON.stringify(tracksCoreAfter) === JSON.stringify(tracksCore),
+    'v3-core keeps its tracks after the refused v3 apply (both sides non-empty)', { before: tracksCore, after: tracksCoreAfter })
+  await rm(b.root, { recursive: true, force: true })
+}
+
 console.log('=== VMU PACK: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

@@ -833,3 +833,19 @@ So the answer flips: the prompt text IS now composed and regulated by the framew
 - **56 个工具里哪些是"同一机制的不同入口"** ✗（例如 `motion` / `second` / `verdict` 可能同属一条动议流水线）⇒ 分组须在 **G1 中由真实驱动确认**，不靠名字 ✗。
 - **十份 `MEETING-PLATFORM-*` 之间的权威顺序** ✗（`SPEC` 是初稿、`RULINGS` 是定稿、`DECISIONS` 是裁决）⇒ 对照**以定稿为准** ✓，**冲突处须记明** ✗。
 - **"效果更强"的判据** ✗：目前只有 `leanHashText` 一例（**vmu 更严** ✓）⇒ 需一套**可比口径**（至少：同一输入 ⇒ 同一可观测输出；且 **vmu 不得更松** ✓）。
+
+## 6. 部署规范：等待与"已排队即持久"（原 `packs/v5r/middleware/waitsemantics.js` 的 normative text 迁入）
+
+> 原文曾以 **middleware 文件**的形式随包发布，但它**没有任何 import／清单条目／消费者**（既不装载也不进提示词）。
+> 按"声明了没有路径"的判据，文件已删除；**规范文本在此保留**——它是部署语义，不是可装载机制。以下每句都有代码事实。
+
+- **活跃对等体**：装配后的内核以「**在册且未结束**的成员（**除调用者**）」判定（`kernel/index.js` 的 `activePeers` 接缝，
+  由 `kernel/activity.js` 的既有能力消费）。本 pack 曾另声明一份 `status` 词表（`running`／`provisioning`），
+  **当前没有消费者**——因此这里**不**把它写成事实；若某个部署注入按 status 分类的接缝，那才是它的用武之地。
+- **等待只看调用之后发生的变化**（future-only，**无 backlog**）：wait 注册前发生的通知永远不会唤醒它。
+  当存在活跃对等体接缝且无活跃对等体时，`wait()` **立即返回** `noProgress`（`reason: no-active-peer`），
+  而不是把回合花在"没人能推进"上；该短路受 `vmu.activity.noPeerShortCircuit` 开关约束。
+  **对等体检查自身失败 ⇒ 具名拒**（绝不静默跳过）。
+- **发送成功即持久，但只在它自报持久时**：ledger 的 `durable:true` 表示票据可跨重启；`durable:false` 会同时给出
+  `durableReason`，**绝不假装持久**。因此"不要重发"的依据是**票据已存在**、重复 payload 以**具名码**拒绝，
+  而不是一句无条件的持久承诺。

@@ -232,10 +232,36 @@ export function createHuman({ clock = () => 0, log = null, settings = {}, bus = 
     return { ok: true, id: rec.id, state: 'allowed-on-timeout', expired: true, onTimeout: 'default-allow', enforced, fired }
   }
 
+  /**
+   * PHASE 6（目标 3 审计 §10）：撤回一条**未决**审批请求。与 decide 的区别是语义：decide 是"有人做了批准/拒绝的
+   * 决定"；withdraw 是"申请方收回了这个请求"（主体没了/开错了），没有决定可记。终态 `withdrawn` 之后它不再是
+   * pending（queue 的 pending 计数随之下降），二次撤回/已决后再撤 ⇒ 具名 `VMU_STATE`；撤回必须带理由。
+   * 这是与 v3 gate 的 cancelGate 对齐的一侧：两边都用"撤回（带理由）"而不是把撤回伪装成拒绝。
+   */
+  function withdrawApproval({ requestId, by = null, reason = null } = {}) {
+    const rec = approvals.get(String(requestId))
+    if (!rec) throw refuse('VMU_INVALID_ARGUMENT', 'unknown approval: ' + String(requestId), 'openApproval returns its id', { requestId: String(requestId) })
+    if (rec.decidedAt !== null) {
+      throw refuse('VMU_STATE', 'approval ' + rec.id + ' is already ' + String(rec.decision), 'only a pending approval can be withdrawn (a terminal one is not re-decided)')
+    }
+    const why = str(reason)
+    if (!why) throw refuse('VMU_INVALID_ARGUMENT', 'withdrawApproval needs a reason', 'pass { reason } - a withdrawal must say why (the ledger keeps it)')
+    rec.decidedAt = clock()
+    rec.decision = 'withdrawn'
+    rec.reason = why
+    rec.decidedBy = by === null ? null : String(by)
+    rec.withdrawn = true
+    say({ type: 'human/approval-withdrawn', at: rec.decidedAt, id: rec.id, by: rec.decidedBy, reason: why })
+    return { ok: true, id: rec.id, state: 'withdrawn', withdrawnAt: rec.decidedAt, withdrawnBy: rec.decidedBy, reason: why, pending: queue().pending, enforced: [], fired: [] }
+  }
+
   /** A human decides. A denial takes effect IMMEDIATELY, is broadcast, and may carry its reason later. */
   function decide({ requestId, allow, reason = null, by = null } = {}) {
     const rec = approvals.get(String(requestId))
     if (!rec) throw refuse('VMU_INVALID_ARGUMENT', 'unknown approval: ' + String(requestId), 'openApproval returns its id', { requestId: String(requestId) })
+    if (rec.decision === 'withdrawn') {
+      throw refuse('VMU_STATE', 'approval ' + rec.id + ' was withdrawn: it can no longer be decided', 'open a new approval if the action is still wanted')
+    }
     rec.decidedAt = clock()
     rec.decision = allow === true ? 'allowed' : 'denied'
     rec.reason = reason === null ? null : String(reason)
@@ -501,6 +527,7 @@ export function createHuman({ clock = () => 0, log = null, settings = {}, bus = 
     vetoes: vetoes.length, pendingReasons: vetoes.filter((v) => v.pendingReason).length,
     activeVetoes: vetoes.filter((v) => !v.liftedAt).length, liftedVetoes: vetoes.filter((v) => !!v.liftedAt).length,
     approvals: approvals.size, dropped,
+    withdrawnApprovals: [...approvals.values()].filter((r) => r.decision === 'withdrawn').length,
     // ROUND 2 — the gate's observable surface. `queue` is what a human actually reads before deciding.
     queue: queue(),
     gatedActions: cfg().gatedActions.slice(),
@@ -519,7 +546,7 @@ export function createHuman({ clock = () => 0, log = null, settings = {}, bus = 
   // `api` is the ONE public shape; `gate()` reaches `approvalDecision` through it so a projection wrapper (which
   // replaces the property) also sees the internal call path. See the note in `gate`.
   const api = { apiVersion, veto, explainVeto, explainDecision, liftVeto, observerView, openApproval, approvalState,
-    decide, queue, approvalDecision, gate, dashboard, snapshot, restore,
+    withdrawApproval, decide, queue, approvalDecision, gate, dashboard, snapshot, restore,
     /** Adapter convenience: the rows a projection reconciles ids against. */
     list: () => queue().requests,
     status }

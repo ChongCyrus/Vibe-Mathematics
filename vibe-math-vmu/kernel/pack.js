@@ -121,6 +121,20 @@ export function validatePack(manifest) {
     else if (s.capacity !== undefined && (!Number.isInteger(s.capacity) || s.capacity < 0)) problems.push('slot ' + s.id + ': capacity must be an integer >= 0')
   }
   for (const t of manifest.tracks || []) if (typeof t !== 'string' || t.length === 0) problems.push('a track name must be a non-empty string')
+  // PHASE 6 / goal-3 audit P1: a pack may declare the packs it must not coexist with. Names are pack ids (kebab-case),
+  // unique, and never itself — the enforcement is in buildPlan()/apply(), so plan() and apply() cannot disagree.
+  if (manifest.excludes !== undefined) {
+    if (!Array.isArray(manifest.excludes)) problems.push('excludes must be a list of pack ids')
+    else {
+      const seen = new Set()
+      for (const x of manifest.excludes) {
+        if (typeof x !== 'string' || !ID.test(x)) problems.push('excludes entries must be pack ids (kebab-case): ' + JSON.stringify(x))
+        else if (x === manifest.id) problems.push('a pack cannot exclude itself (' + x + ')')
+        else if (seen.has(x)) problems.push('excludes lists ' + x + ' twice')
+        seen.add(x)
+      }
+    }
+  }
   for (const r of manifest.rules || []) {
     if (!r || typeof r.id !== 'string') problems.push('a rule needs an id')
     else if (!Array.isArray(r.on) || r.on.length === 0) problems.push('rule ' + r.id + ': on is required')
@@ -299,6 +313,19 @@ export function composePromptPolicies(policies = []) {
 
 export function createPackLoader({ kernel, registry = null, allowOverride = false, clock = () => new Date().toISOString(), onPromptPolicy = null, settingSource = null } = {}) {
   const applied = new Map()
+  /** PHASE 6 (goal-3 audit P1): the `excludes` list each applied pack declared, so BOTH directions are checkable. */
+  const appliedExcludes = new Map()
+  /** The mutual-exclusion check used by plan() and apply() alike (one implementation, so they cannot disagree). */
+  const exclusionConflicts = (manifest) => {
+    const m = manifest && typeof manifest === 'object' ? manifest : {}
+    const own = Array.isArray(m.excludes) ? m.excludes.map(String) : []
+    const out = []
+    for (const [appliedId, list] of appliedExcludes.entries()) {
+      if (own.includes(appliedId)) out.push('this pack excludes ' + appliedId + ', which is already applied')
+      if (list.includes(String(m.id))) out.push(appliedId + ' excludes this pack, and it is already applied')
+    }
+    return out
+  }
   // Per-pack record of what the settings layer did: applied keys, and keys SHADOWED by a higher layer (D-02).
   const settingsResolution = new Map()
 
@@ -439,16 +466,24 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         chars: Number.isInteger(Number(pp.chars)) ? Number(pp.chars) : null,
       })
     }
+    // PHASE 6 (goal-3 audit P1): a pack's excluded peers must be checked in BOTH directions (the applied pack may
+    // name this one instead). Every conflict is a named problem, so plan() reports it before apply() refuses.
+    const exclusionProblems = exclusionConflicts(m)
+    for (const p of exclusionProblems) problems.push('EXCLUDES: ' + p)
     // THE NAMED REFUSAL (task-159): a plan that cannot be built is a refusal and MUST carry a code —
     // `{ ok:false, problems:[…] }` without one left the caller holding a nameless error (the matrix finding).
     // The code is the SAME one `apply()` uses for the very same `problems` (module consistency), and the
     // nested `refused{}` mirrors the house style of returned refusals elsewhere in the kernel.
+    // An EXCLUDES conflict is a pack conflict (the registered code for "two packs cannot coexist"), not a missing pack.
     const ok = problems.length === 0
+    const code = ok ? null : (exclusionProblems.length > 0 ? 'VMU_PACK_CONFLICT' : 'VMU_PACK_MISSING')
     const message = ok ? null : 'pack ' + String(m.id === undefined ? '(no id)' : m.id) + ' cannot be planned: ' + problems.join('; ')
-    const hint = ok ? null : 'fix the manifest problems they are listed in `problems`; plan() is PURE (nothing was applied)'
+    const hint = ok ? null : (exclusionProblems.length > 0
+      ? 'the two packs declare each other (or one declares the other) in `excludes`; unload the applied one first - a coexistence would silently replace tracks/slots and run two institutions at once'
+      : 'fix the manifest problems they are listed in `problems`; plan() is PURE (nothing was applied)')
     return {
-      ok, code: ok ? null : 'VMU_PACK_MISSING', message, hint,
-      refused: ok ? null : { code: 'VMU_PACK_MISSING', message, hint },
+      ok, code, message, hint,
+      refused: ok ? null : { code, message, hint },
       id: m.id, version: m.version || null, problems, warnings, requires, actions,
       count: actions.length, wouldTouch: actions.map((a) => a.kind).filter((v, i, arr) => arr.indexOf(v) === i),
     }
@@ -475,7 +510,7 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
       }
       const plan = buildPlan(manifest)
       if (!plan.ok) {
-        throw refuse('VMU_PACK_MISSING', 'pack ' + String(manifest && manifest.id) + ' cannot be applied: ' + plan.problems.join('; '),
+        throw refuse(plan.code || 'VMU_PACK_MISSING', 'pack ' + String(manifest && manifest.id) + ' cannot be applied: ' + plan.problems.join('; '),
           // ROUND 20c (task-128): this hint used to promise "it reports EVERY problem" - and that was false in
           // both directions: before the fix `plan` did not even run the M1 rule validator (see `buildPlan`), and
           // it still cannot see a middleware MODULE's problems, which only `kernel/loader` finds at apply time
@@ -678,6 +713,7 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
       const resolution = settingsResolution.get(manifest.id) || { applied: [], shadowed: [] }
       const record = { id: manifest.id, version: manifest.version || null, appliedAt: clock(), actions: plan.actions, undo, priority: priorityOf(manifest), resolution }
       applied.set(manifest.id, record)
+      appliedExcludes.set(manifest.id, Array.isArray(manifest.excludes) ? manifest.excludes.map(String) : [])
       if (kernel.notePackApplied) kernel.notePackApplied(manifest.id)
       return { ok: true, id: manifest.id, applied: plan.count, actions: plan.actions, requires: plan.requires,
         settings: { applied: resolution.applied.length, shadowed: resolution.shadowed.slice() },
@@ -693,6 +729,7 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         try { undoOne() } catch (e) { failures.push(String(e && e.message)) }
       }
       applied.delete(id)
+      appliedExcludes.delete(id)
       settingsResolution.delete(id)
       if (kernel.notePackUnloaded) kernel.notePackUnloaded(id)
       return { ok: failures.length === 0, id, reversed: record.actions.length, failures, residueFree: failures.length === 0 }
