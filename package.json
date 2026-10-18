@@ -493,6 +493,8 @@
     "vibe-math-vmu/packs/v3/middleware/tick.js",
     "vibe-math-vmu/packs/v3/middleware/dataplane.js",
     "vibe-math-vmu/packs/v3/middleware/planner.js",
+    "vibe-math-vmu/packs/v3/middleware/subquestions.js",
+    "vibe-math-vmu/packs/v3/middleware/reports.js",
     "vibe-math-vmu/packs/v3/middleware/methods.js",
     "vibe-math-vmu/packs/v3/middleware/verify.js",
     "vibe-math-vmu/packs/v3/prompts/sections.json",

@@ -27,7 +27,8 @@
       "verified",
       "plans",
       "inventions",
-      "votes"
+      "votes",
+      "reports"
     ],
     "vmu.records.allowedKinds": [
       "progress",

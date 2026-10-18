@@ -30,7 +30,8 @@ import { V3_TICK_TOPIC } from './tick.js'
 
 /** v3 的记录轨。★ 这是**值层**的同一份清单（settings/defaults.json 的 vmu.records.tracks），此处仅供测试与文档对照。 */
 export const V3_TRACKS = Object.freeze([
-  'problems', 'propos', 'methods', 'directions', 'journal', 'verified', 'plans', 'inventions', 'votes',
+  // P1-5：`reports` 是 v3 汇报面（file 路）的持久快照轨；它不是“卡”轨（kind=state），所以 CARD_KINDS 不含它。
+  'problems', 'propos', 'methods', 'directions', 'journal', 'verified', 'plans', 'inventions', 'votes', 'reports',
 ])
 
 /** 有卡片形状的 kind（索引只解析这些；journal 的 state、vote 等不是卡片，不算坏卡）。 */
@@ -195,6 +196,8 @@ export function composeProblem(card) {
   lines.push(anchorLine('依赖', JSON.stringify(card.依赖 || [])))
   lines.push(anchorLine('被依赖', JSON.stringify(card.被依赖 || [])))
   lines.push(anchorLine('来源', card.来源 || '原始'))
+  // P1-4：子问题三对象的“来源／动机”是逐字段可核的（空串＝未声明，不是“填了”）。
+  if (card.动机) lines.push(anchorLine('动机', card.动机))
   // P1-3：晋升出来的判断命题问题与源命题**双向**可追（问题侧指回命题；命题侧指回问题）。
   if (card.来源命题) lines.push(anchorLine('来源命题', card.来源命题))
   lines.push(anchorLine('计划', card.计划 || ''))
@@ -227,6 +230,9 @@ export function composeProposition(card) {
   lines.push(anchorLine('依赖', JSON.stringify(card.依赖 || [])))
   if (card.来源问题) lines.push(anchorLine('来源问题', card.来源问题))
   if (card.来源方向) lines.push(anchorLine('来源方向', card.来源方向))
+  // P1-4：子问题三对象里的临时假设命题也要有**可核的**来源与动机（不是只靠自由文本）。
+  if (card.来源) lines.push(anchorLine('来源', card.来源))
+  if (card.动机) lines.push(anchorLine('动机', card.动机))
   // P1-3：被自动晋升成问题卡的命题回指那个问题（与问题卡的 `来源命题` 互为反向指针）。
   if (card.晋升问题) lines.push(anchorLine('晋升问题', card.晋升问题))
   // P1-3：命题的「价值/关键性」是晋升判据（0..1）。只在有值时写锚点；缺省 = 未声明（不冒充 0.5）。
@@ -355,6 +361,7 @@ export function parseCard(body) {
     card.被依赖 = safeJson(a['被依赖'], [])
     card.来源 = a['来源'] || '原始'
     card.来源命题 = a['来源命题'] || ''
+    card.动机 = a['动机'] || ''
     card.计划 = a['计划'] || ''
     card.陈述 = section(rest, '陈述')
     card.来源与动机 = section(rest, '来源与动机')
@@ -368,6 +375,8 @@ export function parseCard(body) {
     card.依赖 = safeJson(a['依赖'], [])
     card.来源问题 = a['来源问题'] || ''
     card.来源方向 = a['来源方向'] || ''
+    card.来源 = a['来源'] || ''
+    card.动机 = a['动机'] || ''
     card.晋升问题 = a['晋升问题'] || ''
     // P1-3：价值/关键性（0..1）；缺锚点 = 未声明（null），不是 0 —— 0 会把“没填”读成“最不重要”。
     card.价值关键性 = a['价值关键性'] === undefined || a['价值关键性'] === '' ? null : Number(a['价值关键性'])

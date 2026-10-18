@@ -1374,10 +1374,10 @@
 | `VMU_REPORT_AUDIT_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/report.js` | 代码里有该码字符串 ✓ |
 | `VMU_REPORT_CHANNEL_UNKNOWN` | **已实现 ✓** | `vibe-math-vmu/kernel/report.js` | 代码里有该码字符串 ✓ |
 | `VMU_REPORT_DECLARATION_INVALID` | **已实现 ✓** | `vibe-math-vmu/kernel/report.js` | 代码里有该码字符串 ✓ |
-| `VMU_REPORT_DELIVER_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/report.js` | 代码里有该码字符串 ✓ |
+| `VMU_REPORT_DELIVER_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/report.js`、`vibe-math-vmu/packs/v3/middleware/reports.js` | 代码里有该码字符串 ✓ |
 | `VMU_REPORT_NOT_ENABLED` | **已实现 ✓** | `vibe-math-vmu/kernel/report.js` | 代码里有该码字符串 ✓ |
 | `VMU_REPORT_NO_RECIPIENTS` | **已实现 ✓** | `vibe-math-vmu/kernel/report.js` | 代码里有该码字符串 ✓ |
-| `VMU_REPORT_NO_TRANSPORT` | **已实现 ✓** | `vibe-math-vmu/kernel/report.js` | 代码里有该码字符串 ✓ |
+| `VMU_REPORT_NO_TRANSPORT` | **已实现 ✓** | `vibe-math-vmu/kernel/report.js`、`vibe-math-vmu/packs/v3/middleware/reports.js` | 代码里有该码字符串 ✓ |
 | `VMU_REPORT_PARAM_NOT_ALLOWED` | **已实现 ✓** | `vibe-math-vmu/kernel/report.js` | 代码里有该码字符串 ✓ |
 | `VMU_REPORT_PARAM_NOT_DECLARED` | **已实现 ✓** | `vibe-math-vmu/kernel/report.js` | 代码里有该码字符串 ✓ |
 | `VMU_REPORT_PARAM_READONLY` | **已实现 ✓** | `vibe-math-vmu/kernel/report.js` | 代码里有该码字符串 ✓ |

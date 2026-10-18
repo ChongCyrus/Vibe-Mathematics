@@ -56,7 +56,7 @@ const PACK_DEFAULTS = (() => {
   return parsed && typeof parsed.defaults === 'object' && parsed.defaults ? parsed.defaults : {}
 })()
 
-const EXPECTED_TRACKS = ['problems', 'propos', 'methods', 'directions', 'journal', 'verified', 'plans', 'inventions', 'votes']
+const EXPECTED_TRACKS = ['problems', 'propos', 'methods', 'directions', 'journal', 'verified', 'plans', 'inventions', 'votes', 'reports']
 const DEFAULT_KINDS = ['progress', 'route', 'decision', 'finding', 'lesson', 'state', 'dataset', 'rebuttal']
 const V3_KINDS = ['problem', 'proposition', 'method', 'verified', 'plan', 'invention', 'direction', 'vote']
 const CONSTRUCTION_KEYS = ['vmu.records.tracks', 'vmu.records.allowedKinds', 'vmu.records.requireSettledRecords', 'vmu.records.bodyCapBytes', 'vmu.records.head.maxItems']
@@ -79,8 +79,8 @@ console.log('=== 1. 值层：轨/kind/未定稿/上限都在 defaults.json，且
   ok(sameList(PACK_DEFAULTS['vmu.records.tracks'], EXPECTED_TRACKS),
     '★ vmu.records.tracks 是 v3 的全套轨（problems/propos/methods/directions/journal/verified ＋ plans/inventions/votes）', PACK_DEFAULTS['vmu.records.tracks'])
   const missTracks = missingOf(PACK_DEFAULTS['vmu.records.tracks'] || [], V3_TRACKS)
-  ok(missTracks.length === 0 && V3_TRACKS.length === 9,
-    'dataplane 导出的 V3_TRACKS 每一项都在值层轨清单里（两处不漂移）', missTracks)
+  ok(missTracks.length === 0 && V3_TRACKS.length === 10,
+    'dataplane 导出的 V3_TRACKS 每一项都在值层轨清单里（两处不漂移；P1-5 加了 reports 轨）', missTracks)
   const kinds = PACK_DEFAULTS['vmu.records.allowedKinds'] || []
   const missDefaults = missingOf(kinds, DEFAULT_KINDS)
   const missV3 = missingOf(kinds, V3_KINDS)

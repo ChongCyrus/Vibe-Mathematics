@@ -49,6 +49,8 @@
 import { V3_TICK_MODULE, V3_TICK_TOPIC } from './middleware/tick.js'
 import { V3_DATAPLANE_MODULE } from './middleware/dataplane.js'
 import { V3_PLANNER_MODULE } from './middleware/planner.js'
+import { V3_SUBQUESTIONS_MODULE } from './middleware/subquestions.js'
+import { V3_REPORTS_MODULE } from './middleware/reports.js'
 import { V3_METHODS_MODULE } from './middleware/methods.js'
 import { V3_VERIFY_MODULE } from './middleware/verify.js'
 import { V3_GATES_MODULE } from './middleware/gates.js'
@@ -134,6 +136,26 @@ export const PACK = Object.freeze({
       // trigger-workflow：解锁 api.services（vmu.records / vmu.turn）；rewrite-result：K10 的 decision 能力。
       capabilities: Object.freeze(['trigger-workflow', 'rewrite-result']),
       module: V3_PLANNER_MODULE,
+    },
+    {
+      // P1-4：solver 回执里的 `sub_questions` ⇒ 一次注册**三个**对象（子问题＋判断命题＋临时假设命题）。
+      // 只消费 `turn/reply-parsed`（K10 通道）：不派发、不再开回合，所以不需要 rewrite-result。
+      id: 'v3-subquestions',
+      order: 112,
+      on: Object.freeze(['turn/reply-parsed']),
+      failure: 'open',
+      capabilities: Object.freeze(['trigger-workflow']),
+      module: V3_SUBQUESTIONS_MODULE,
+    },
+    {
+      // P1-5：汇报三路。file＝写 reports 轨的持久快照；push＝只在 vmu.v3.reportMode 允许时经 vmu.report 投递，
+      // 否则具名跳过；status＝v3ReportsStatus()（与报告同一份快照计数）。tick 里跑，不派发、不开回合。
+      id: 'v3-reports',
+      order: 130,
+      on: Object.freeze([V3_TICK_TOPIC]),
+      failure: 'open',
+      capabilities: Object.freeze(['trigger-workflow']),
+      module: V3_REPORTS_MODULE,
     },
     {
       // P0-4/P0-5：方法库 ＋ 发明上报。两个钩子：

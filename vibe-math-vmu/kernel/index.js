@@ -1471,6 +1471,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // READS the decisions of an already-completed emit and returns a string // null - it executes nothing and emits
     // nothing, so no recursion is possible (unlike `vmu.turn`, which needed the re-entrancy guard).
     'vmu.middleware': bus,
+    // PHASE 6 / P1-5: the reporting face (declare/tick/emit) is documented and published, but a pack could not reach
+    // it through the capability-gated catalogue. It never drives anything (`drives:false` on every receipt); `emit`
+    // only DELIVERS an already-declared report, so listing it is safe for a module with `trigger-workflow`.
+    'vmu.report': report,
   })
   const loader = createLoader({
     // (甲) PRODUCTION GOES THROUGH THE GUARD: this facade used to answer `null` when there was no durable root,

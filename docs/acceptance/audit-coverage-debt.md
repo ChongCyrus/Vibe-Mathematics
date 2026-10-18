@@ -20,12 +20,12 @@
 ★ `tests/audit-silent-keys.mjs`（★ 设置键：★ 不得「既无人读也未被裁定」，★ **640 文件**）／
 ★ `tests/audit-kernel-claims*.mjs`（★ 行为宣称：★ **88 模块／断言数见各探针总结行**）。
 
-## 2. ★★★★★ 账（★ kernel 104 文件／45970 行）
+## 2. ★★★★★ 账（★ kernel 104 文件／45974 行）
 
 | ★ 级别 | ★ 文件 | ★ 行数 | ★ 占比 |
 |---|---|---|---|
 | ★★ **L3 宣称级验证** | ★ **88** | ★ **35711** | ★ 77.7% |
-| ★★ **L2 已逐行读** | ★ **15** | ★ **10207** | ★ 22.2% |
+| ★★ **L2 已逐行读** | ★ **15** | ★ **10211** | ★ 22.2% |
 | ★ **L1 仅机器门禁** | ★ **1** | ★ **52** | ★ 0.1% |
 | ★ **L0 未触及** | ★ **0** | ★ **0** | ★ 0% |
 
@@ -37,7 +37,7 @@
 
 ### 2.2 ★★ L2（★ 已逐行读过或改过并复读 · ★ 声明于 `READ_MODULES`）
 
-  `index.js`（2612，R80） · `turn/index.js`（1251，R50） · `bus.js`（880，R85） · `prompt/index.js`（785，R86） · `report.js`（628，R99） · `mailbox.js`（607，R89） · `activity.js`（547，R80） · `delegation.js`（547，R97） · `arbitration.js`（497，R97） · `metrics.js`（394，R97） · `store.js`（317，R97） · `members.js`（316，R83） · `control.js`（309，R83） · `guard.js`（293，R97） · `ids.js`（224，R97）
+  `index.js`（2616，R80） · `turn/index.js`（1251，R50） · `bus.js`（880，R85） · `prompt/index.js`（785，R86） · `report.js`（628，R99） · `mailbox.js`（607，R89） · `activity.js`（547，R80） · `delegation.js`（547，R97） · `arbitration.js`（497，R97） · `metrics.js`（394，R97） · `store.js`（317，R97） · `members.js`（316，R83） · `control.js`（309，R83） · `guard.js`（293，R97） · `ids.js`（224，R97）
 
 ## 3. ★★★★★ L1 的具名余项（★ 1 文件，★ 按行数降序）
 

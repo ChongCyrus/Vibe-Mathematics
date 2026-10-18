@@ -27,6 +27,8 @@ import { SETTING_DEFS } from '../vibe-math-vmu/settings/schema.js'
 import { PACK } from '../vibe-math-vmu/packs/v3/index.js'
 import { V3_TICK_TOPIC } from '../vibe-math-vmu/packs/v3/middleware/tick.js'
 import { writeCard } from '../vibe-math-vmu/packs/v3/middleware/dataplane.js'
+import { registerSubQuestions, subQuestionIds, V3_SUBQUESTIONS_MODULE } from '../vibe-math-vmu/packs/v3/middleware/subquestions.js'
+import { REPORTS_TRACK, v3ReportsStatus, pushReport, buildReport } from '../vibe-math-vmu/packs/v3/middleware/reports.js'
 import {
   V3_PLANNER_MODULE, PLANNER_MEMBER, PLAN_TRACK, PLAN_KIND, PLAN_VERBS, SPAWN_ROLES,
   v3PlannerStatus, readPlanRecord, readRawPlan, loadCardIndex, validatePlan, promotedProblemId,
@@ -769,6 +771,72 @@ const promoteOnce = async (value) => {
   })
   ok(check.validated.length === 0 && check.rejectReasons.some((r) => /already-promoted/.test(String(r.why))),
     '对已晋升命题再次 promote：被拒且点名 already-promoted（幂等第二道门）', check.rejectReasons)
+}
+
+// ── 17. P1-4 子问题三对象：一次 q_sub **恰 3 个**、重复去重、来源/动机逐字段非空 ─────────────────────────
+{
+  const h = boot({ overrides: { 'vmu.v3.planMinIntervalMs': 0 } })
+  await h.loader.apply(PACK)
+  writeCard({ records: h.kernel.records, kind: 'problem', card: { id: 'q-parent', 标题: '父问题', 状态: '求解中', 陈述: '父问题陈述。' } })
+  const sq = { q_sub_statement: '辅助猜想 A：对任意 n，P(n) 成立。', q_sub_title: '辅助猜想 A', assumption_statement: '假设辅助猜想 A 成立。' }
+  const first = registerSubQuestions({ records: h.kernel.records, qid: 'q-parent', dirId: 'd-1', subQuestions: [sq], at: 1000 })
+  ok(first.ok === true && first.created === 3, '★ 一次 q_sub 恰好创建 3 个对象（不是 >=3）', first)
+  const ids = subQuestionIds({ qid: 'q-parent', dirId: 'd-1', statement: sq.q_sub_statement })
+  const newProblems = loadCardIndex(h.kernel.records, 'problems', 'problem').items.filter((p) => p.id === ids.subId || p.id === ids.judgeId)
+  const newPropos = loadCardIndex(h.kernel.records, 'propos', 'proposition').items.filter((p) => p.id === ids.assumeId)
+  ok(newProblems.length === 2 && newPropos.length === 1, '★ 三个对象：2 个问题 ＋ 1 个命题', { problems: newProblems.length, propos: newPropos.length })
+  const second = registerSubQuestions({ records: h.kernel.records, qid: 'q-parent', dirId: 'd-1', subQuestions: [sq], at: 1100 })
+  ok(second.created === 0 && second.duplicate === 1, '★ 重复 q_sub 被去重：created=0、duplicate=1', second)
+  const stillThree = loadCardIndex(h.kernel.records, 'problems', 'problem').items.filter((p) => p.id === ids.subId || p.id === ids.judgeId).length
+    + loadCardIndex(h.kernel.records, 'propos', 'proposition').items.filter((p) => p.id === ids.assumeId).length
+  ok(stillThree === 3, '★ 二次入队后仍是 3 个对象（不是 3+3）', stillThree)
+  ok(newProblems.length === 2 && newProblems.every((p) => String(p.card.来源 || '').trim() !== ''),
+    '★ 两个子问题对象的来源都非空（逐字段，空串算空）', newProblems.map((p) => p.card.来源))
+  ok(newProblems.length === 2 && newProblems.every((p) => String(p.card.动机 || '').trim() !== ''),
+    '★ 两个子问题对象的动机都非空', newProblems.map((p) => p.card.动机))
+  ok(newProblems.length === 2 && newProblems.every((p) => String(p.card.来源与动机 || '').trim() !== ''),
+    '★ 两个子问题对象的来源与动机段都非空', newProblems.map((p) => p.card.来源与动机))
+  const prop = newPropos[0]
+  ok(prop && String(prop.card.来源 || '').trim() !== '' && String(prop.card.动机 || '').trim() !== '',
+    '临时假设命题：来源与动机都非空', prop && { 来源: prop.card.来源, 动机: prop.card.动机 })
+  ok(prop && String(prop.card.来源问题 || '') === 'q-parent' && String(prop.card.来源方向 || '') === 'd-1',
+    '临时假设命题指回父问题与方向', prop && { 来源问题: prop.card.来源问题, 来源方向: prop.card.来源方向 })
+  const api = { services: { names: () => ['vmu.records'], get: (n) => (n === 'vmu.records' ? h.kernel.records : null) } }
+  const sq2 = { q_sub_statement: '辅助猜想 B：对任意 n，Q(n) 成立。', q_sub_title: '辅助猜想 B' }
+  await V3_SUBQUESTIONS_MODULE.hooks['turn/reply-parsed']({ api, reply: { meta: { qid: 'q-parent', dirId: 'd-1' }, sub_questions: [sq2] }, at: 1200 })
+  const bIds = subQuestionIds({ qid: 'q-parent', dirId: 'd-1', statement: sq2.q_sub_statement })
+  ok(loadCardIndex(h.kernel.records, 'problems', 'problem').items.filter((p) => p.id === bIds.subId || p.id === bIds.judgeId).length === 2,
+    '钩子路径（turn/reply-parsed）也注册了 2 个问题对象（不是只有直调函数能用）')
+}
+
+// ── 18. P1-5 汇报三路：file 段可解析、push 仅在 mode 允许时、报告计数与 status 同源 ─────────────────────
+{
+  const h = boot({ overrides: { 'vmu.v3.planMinIntervalMs': 0 } })
+  await h.loader.apply(PACK)
+  writeCard({ records: h.kernel.records, kind: 'problem', card: { id: 'q-r', 标题: '报告问题', 状态: '求解中', 陈述: 'x' } })
+  await tick(h, 1000)
+  const reports = h.kernel.records.list({ track: REPORTS_TRACK, limit: 0 }).items
+  ok(reports.length === 1, '★ file 路真的落了一条 reports 记录（不是只在内存计数）', reports.length)
+  const rec = h.kernel.records.get({ id: reports[0].id })
+  let parsed = null
+  try { parsed = JSON.parse(rec.body) } catch { parsed = null }
+  ok(parsed && parsed.kind === 'v3-report' && parsed.counts && Number.isInteger(parsed.counts.problems),
+    '★ 落盘正文可解析为 JSON 且带 counts', parsed && parsed.kind)
+  const st = v3ReportsStatus()
+  ok(st.writes >= 1 && st.lastReport && st.lastReport.recordId === reports[0].id,
+    'status 报出写入次数与最近一条报告 id', { writes: st.writes, last: st.lastReport })
+  ok(parsed && st.lastReport && parsed.counts.problems === st.lastReport.counts.problems,
+    '★ 报告计数与 status 是同一个数字（同一份快照）', { report: parsed && parsed.counts.problems, status: st.lastReport && st.lastReport.counts.problems })
+  ok(st.pushSkips >= 1 && st.lastSkip && st.lastSkip.reason === 'push-not-allowed-by-mode',
+    '★ 默认 mode=file ⇒ push 不推，并自报 push-not-allowed-by-mode', st.lastSkip)
+  const calls = []
+  const fake = { emit: (args) => { calls.push(args); return { ok: true, delivered: true } } }
+  const pushed = pushReport({ reportService: fake, report: buildReport({ records: h.kernel.records, at: 2000 }), at: 2000, mode: 'push' })
+  ok(pushed.ok === true && pushed.pushed === true && pushed.delivered === true && calls.length === 1,
+    '★ mode=push ⇒ 真的调用 report 服务 emit', pushed)
+  const notAllowed = pushReport({ reportService: fake, report: buildReport({ records: h.kernel.records, at: 3000 }), at: 3000, mode: 'file' })
+  ok(notAllowed.pushed === false && notAllowed.skipped === 'push-not-allowed-by-mode' && calls.length === 1,
+    '★ mode=file ⇒ 不调用服务（调用数不增），并具名跳过', notAllowed)
 }
 
 console.log('')
