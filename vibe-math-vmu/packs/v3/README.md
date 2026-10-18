@@ -13,12 +13,13 @@
 
 | 文件 | 职责 |
 |---|---|
-| `index.js` | 被装载清单（`PACK`）：四个 middleware 模块（`v3-tick`、`v3-planner`、`v3-methods`、`v3-dataplane`）＋ 规划器提示段（`sections: [v3-planner]`，见下）。 |
+| `index.js` | 被装载清单（`PACK`）：五个 middleware 模块（`v3-tick`、`v3-planner`、`v3-methods`、`v3-verify`、`v3-dataplane`）＋ 提示段（`sections: [v3-planner, ...21 段]`，见下）。 |
 | `settings/defaults.json` | **值层**：构造期就被读取的值 —— schedule 四键、`vmu.v3.tickIntervalMs`，P0-9 的 records 五键（轨/kind 白名单/未定稿可写/正文上限/条数上限），以及 P0-4 的第六把 `vmu.records.history.storeMode=full`（版本要带快照）。 |
 | `middleware/tick.js` | P0-1 tick 体：订阅 `v3/tick`，写一条 `journal` 记录，返回 `{ok:true}`。 |
 | `middleware/dataplane.js` | **P0-9 ＋ P0-6 数据面**：三卡 compose/parse（问题/命题/方法）、正文段逐字保留、有界写入（截断＋`dropped` 计数）、索引重建（条目数＝磁盘卡数、坏卡点名、`dropped` 计数）、Verified 分裂（只收定论、内容不变不重写）、tick 驱动的 5s 节流索引；P0-2 追加 `supersedeBody`（非卡记录的**同一个**有界写入口）。 |
 | `middleware/planner.js` | **P0-2 ＋ P0-3 规划-调度与学习闭环**：`v3/tick` → 判可推进 → 组简报 → `vmu.turn.run({member:'planner'})` → 归一化/校验（6 动作白名单／horizon 截断／去重／逐角色硬校验）→ 按容量执行 → 逐条 outcome 写回 `plans` 轨；`turn/reply-parsed` 上做 K10 归一化（落盘 + `rewriteResult`）。 |
 | `middleware/methods.js` | **P0-4 ＋ P0-5 方法库与发明上报**：方法卡的应用记录（只在有 qid/dirId 上下文时追加）／改进历史（v 号单调）／可信断言（只收概率 1/0 的命题）／项目级↔全局级两级晋升／耐久库冻结修订；`new_inventions` 入 `inventions` 轨、method-keeper 到期派发、有产出与无产出两条路都清队，无产出走**幂等兜底建卡**。 |
+| `middleware/verify.js` | **P0-7 验证闭环**：**双写**（内核 `vmu.ballotbox` 强制法定人数＋连续 Result 落 `votes` 轨）／pack 纯函数聚合（全 1、全 0、同侧均值 ≥0.85、forced 等权均值夹 [0.01,0.99]、flat）／非全票一致才辩论且轮次有界（`vmu.v3.debateMaxRounds`）／裁决回写三处：命题卡＋`verified` 轨（只经 `promoteVerified`）＋`journal` 轨。 |
 | `prompts/planner.js` | **P0-2 规划器提示段**（纯数据，`scope.role='planner'`）：动作词表、硬规则、回执契约。走清单 `sections` 通道（原因见下）。 |
 | `prompts/sections.json` | **P0-6 可信分层段**（纯数据）：只有 `verified` 轨"绝对可信"，其余一律"经验参考"。插件在建内核**之前**按目录名读它。 |
 | `README.md` | 本文件。 |
@@ -86,6 +87,31 @@ P1-6 的提示段负责写进提示词），或 `progress.methods_used`/`progres
 （同名字段）。纯 API 与测试也接受 v3 的顶层形状。消费完成后本模块返回 `{rewriteResult: <JSON 对象文本>}`，
 把载荷换成一条合法 `journal` 记录再交给派发器（K10：非 JSON 对象文本会被内核以 `VMU_TURN_BAD_JSON` 具名拒）。
 
+## 验证闭环（P0-7）的五条契约
+
+1. **分层**：**法定人数由内核强制**（`vmu.ballotbox` 的 `open`/`cast`/`close`；不足即 `VMU_BALLOT_MIN_VOTES_NOT_MET`，
+   且明说"不是未通过，是未成立"），**概率语义由 pack 持有**（连续 `Result∈[0,1]` 落 `votes` 轨，聚合在纯函数里）。
+   票箱只收选项票，所以每票**双写**：`cast`（选项＝`for`/`against`）+ `votes` 轨（连续值/理由/轮次）。
+2. **单票绝不定论**：闸门在结算层 `trySettle()`，不在算术里 —— 要求本轮 `votes` ≥ `max(2, vmu.v3.verifierCount)`；
+   不足则**具名返回** `{ok:false, code:'VMU_BALLOT_MIN_VOTES_NOT_MET', settled:false, verdict:null}`
+   （`source:'pack-precheck'` 或 `source:'kernel'`），对象卡/verified 轨/裁决 journal **一律不写**，
+   只写一条"本轮未成立"审计 journal。这是**pack 自己的具名失败返回**，**不是**总线的 `deny`
+   （`deny` 会阻断 tick 的动作，而这里要的是"这一轮不定论、下一 tick 继续"）。
+3. **辩论轮次有界**：v3 的 `consensus` 只指**全 1/全 0**；不是全票一致且在 `vmu.v3.debateMaxRounds` 之内 ⇒
+   进入下一轮（**每轮新开一个票箱**，因为票箱一人一票），每轮摘要写进 `journal`；轮次用完按
+   `vmu.v3.verdictMode`（`forced` 夹 [0.01,0.99]／`natural` 原值）**具名收口**并记 `maxRoundsReached: true`。
+4. **三处同时落盘**：命题卡 `- 概率:`/`- 状态:`（`已验证·真`/`已验证·假`/`未定论`）→ `verified` 轨
+   （**只经 `dataplane.promoteVerified`**，只收 1/0）→ `journal` 轨裁决记录（target/verdict/rule/round/votes/ballot）。
+5. **载体**：验证者的票只能走**已登记字段 `progress`** 的载荷（`progress.votes` 同名字段，或 `vote:<target>｜<result>｜<reason>｜<round>`
+   tag —— tag 的 `｜`/换行/反斜杠经转义可逐字还原）；消费后返回 `{rewriteResult: '{}'}`（JSON 对象文本）。
+   缺字段的票与"没有本轮票箱的票"都写具名 journal，**不静默丢**。
+
+### 为什么"未成立"不是 `deny`
+
+总线 `deny` 的语义是"这个动作被拒绝"（调用方应当停下/改参）；而"票数不足"是**一次真实但未完成的表决**：
+候选仍然合法、下一 tick 会继续收票。所以本模块用**具名返回值**（`ok:false`＋`code`＋`tally`）表达它，
+并由 tick 落一条 `v3 验证未成立` 审计记录；内核 `close` 的 `deny` 对象也**原样透传**（同一 code，`source:'kernel'`）。
+
 ## 规划-调度与学习闭环（P0-2/P0-3）的三条契约
 
 1. **派发只能从 `v3/tick` 里做。** `vmu.turn` 已进 M2 服务目录（K2），但回合内再开回合会被
@@ -119,8 +145,8 @@ P1-6 的提示段负责写进提示词），或 `progress.methods_used`/`progres
 
 ★ **K10 已修好并接线**（Lead 实测：`turn/reply-parsed` 现在真的发射）。★ 语义也已改：框架会把
 `rewriteResult` **解码成【reply 对象】再 dispatch**（字符串按 JSON 解析；非 JSON 对象 ⇒ 具名
-`VMU_TURN_BAD_JSON`）⇒ 本包两个钩子在返回 `rewriteResult` 时都只给 **JSON 对象文本**（`{...}` / `{}`），
-绝不给裸字符串或数组。规划器与 methods 的钩子都只做"落盘/消费 + 改写"，**绝不**在钩子里再开回合。
+`VMU_TURN_BAD_JSON`）⇒ 本包三个钩子（planner／methods／verify）在返回 `rewriteResult` 时都只给 **JSON 对象文本**
+（`{...}` / `{}`），绝不给裸字符串或数组。三个钩子都只做"落盘/消费 + 改写"，**绝不**在钩子里再开回合。
 
 ## 诚实边界 ✗
 
@@ -139,7 +165,19 @@ P1-6 的提示段负责写进提示词），或 `progress.methods_used`/`progres
   `interruptMember({ targetSessionId, authority })`。
 - **`spawn` 出来的回合在 P0 里装配文本为空**：被派发角色的提示词内容属 P1-6（对账文档 E1/E3 的 solver/
   explorer 段），本轮证明的是**派发机制**（open→assemble→deliver→parse→dispatch）而不是那些角色的提示词。
-- **`verify_candidates` 为空是构造性的**（P0-7 才建候选面），不是漏掉；简报的 `notes` 里点名这一点。
+- **`verify_candidates` 在规划器简报里仍为空**：P0-7 的候选面已经在 `verify.js` 的 `listCandidates()` 里，
+  但把简报字段接上要改 `planner.js`（P0-2 的写域，本轮不动）⇒ 留作后续一轮的小接线，简报的 `notes` 仍如实点名。
+- **验证闭环本轮只结算"命题"这一类**：v3 的 `settleVerdict` 还有 `prop-proof` 与 `problem-solution` 两个分支
+  （`:4312-4365`），本卡只落命题分支（`候选＝可验证命题`）；另两类需要各自的对象卡语义，未做即未做。
+- **`vmu.v3.mode=manual` 的裁决门属 P0-8**：本轮 verify **不读** `vmu.v3.mode`，裁决直接结算；
+  人工门（先排队等 approve）由 `gates.js`（另一路）接管，接管点是 `settleProposition` 之前的判定。
+- **`flat` 只是纯函数里的 v3 字面回退**（`:4267`）：设置 `vmu.v3.verdictMode` 的域是 `forced｜natural`，
+  没有设置值会选中 `flat`；它保留是为了与 v3 逐条对照和测试可断。
+- **验证者回合的"话术"属 P1-6**：本模块用 `turn.run` 的 `statusBlock` 传契约（票放 `progress.votes`），
+  不伪造验证者提示词；`keeper`/`verifier` 的提示段由提示词对账那一路上线。
+- **多候选时一个 tick 会依次推进每个候选**（各自 ≤ `debateMaxRounds` 轮 × `required` 个回合）：
+  本卡没有做"每 tick 只验一个"的预算，P0-10 若需要限流应在装配面/工具面加（不是在这里藏一个常量）。
+- 本轮没有 slots（v3 的 planner/solver/verifier）与 M1 规则 —— slots/gates/P0-10 属后续卡。
 - **本轮的 method-keeper 只有"机制"，没有"话术"**：keeper 回合的提示内容（v3 `:1905-1919` 的
   `methodKeeperPrompt`）属 P1-6 的提示词对账；本模块用 `turn.run` 的 `statusBlock` 传**摘要**
   （`buildMethodDigest`，v3 `:2844-2860` 的等价面），不给它伪造一段提示词。
@@ -149,4 +187,4 @@ P1-6 的提示段负责写进提示词），或 `progress.methods_used`/`progres
   ② `kernel/library.js` 只有"追加 + 冻结"、没有"原地改记录"的写面 ⇒ 每一版卡冻结成**一个新的库记录**
   的 `<库记录 id>@1.md`，而不是同一个 id 的 `@2`；`@<n>` 的单调性由 library 的 high-water mark 保证，
   测试里用同一内容连续冻结两次断到 `@1`/`@2`。
-- 本轮没有 slots（v3 的 planner/solver/verifier）与 M1 规则 —— slots/verify/gates 属 P0-7/P0-8/P0-10。
+- 本轮没有 slots（v3 的 planner/solver/verifier）与 M1 规则 —— slots/gates/P0-10 属后续卡。

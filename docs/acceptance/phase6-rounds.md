@@ -762,7 +762,7 @@ const run = async (spec) => {
 | ★ pack-face ／ installer-policy ／ RULE E | ★ 5/0 ／ 100/0 ／ 88/0 ✓ |
 | ★ vmu-docs ／ regen ／ check-docs ／ preflight | ★ 103/0 ／ 16/16 ／ PASS ／ PASS ✓ |
 | ★ 派生作业数 | ★ **452**（suites 346 · probes 106）✓ |
-| ★ **T1** | ★ 见下 |
+| ★ **T1** | ★★★ **385 / 385，★ 0 红**（suites 323 · probes 62）✓ —— 一次确认 P0-7／P0-8 ＋ 接线 |
 
 ### ★★ 两处需要我裁定的遗留（★ 已裁）
 1. ★★ **`v3-verified-trust` 段会进【每一个】回合**（含 planner），★ 与"planner 不拿知识上下文"有张力 ⇒ ★ **我裁定：保留** —— ★ 它**不是角色知识，★ 是"什么是事实"的边界声明**（★ "只有 `verified` 轨算事实"），★ **每个角色都需要知道**，★ 否则 planner 会把非 Verified 内容当事实来规划 ✓
@@ -772,3 +772,62 @@ const run = async (spec) => {
 1. ★★ **T1 结果处理**
 2. ★★★ **P0-7（验证闭环）** —— ★ 队友留话两条关键：★ ① **回合字段门在中间件之前拒未知顶层字段** ⇒ 票/裁决**只能走 `progress` 载荷**（★ 同 P0-4 的 `mu:/inv:/ctx:/imp:` 契约）；★ ② **`rewriteResult` 必须是 JSON 对象文本**；★ ③ **`verified` 轨只能由 `promoteVerified` 写**，★ **别自己 put** ✓
 3. ★★ **P0-8（人工门）＋ P0-10（工具面收口）** 之后 ⇒ ★ **P0 十张齐** ✓
+
+---
+
+## 轮 13（2026-10-18）
+
+### ★★★★★ **P0-7（验证环）＋ P0-8（人工门）落地** —— ★ **P0 九张完成（★ 第十张是工具面）**
+
+### ① ★★★ **P0-7 验证闭环**（★ `verify.js` 726 行，★ **101/0**）
+★ **双写**：★ 内核票箱（★ `open/cast/close`）＋ ★ `votes` 轨连续值 ✓
+★ **pack 纯聚合**：★ **全 1⇒1**／★ **全 0⇒0**／★ **均值恰 0.85 ⇒ 取均值**／★ **`forced` 夹 [0.01, 0.99]**／★ **`natural` 不夹**（★ 对齐 schema 对"原值"的声明）✓
+★ **裁决三处回写**：★ 命题卡 ＋ ★ **`verified` 轨（★ 只经 `promoteVerified`）** ＋ ★ `journal` ✓
+★ **轮次有界辩论**（★ 上限 `vmu.v3.debateMaxRounds`）✓
+
+★★★ **边界断言断的是【具体值】，★ 不是区间**：
+- ★ 均值 **恰好 0.85** ⇒ `|verdict−0.85| < 1e-12`；★ **0.845** ⇒ `forced-mean` ⇒ ★ **钉住阈值是 `>=` 不是 `>`** 的两侧 ✓
+- ★ `forced` 夹端点**两端各断具体值**：★ `[1,1,0.998]` ⇒ **恰 0.99**；★ `[0,0,0.002]` ⇒ **恰 0.01**；★ **同输入 `natural` ⇒ 0.99933…／0.000666…（不夹）** ⇒ ★ **同一输入两档结果不同，★ 证明夹取是【模式特有】而不是写死** ✓
+- ★ 3 票 2 同意 ⇒ ★ **恰 `2/3`**、★ 状态"未定论"、★ `verified` **0 条**（★ 抓"多数票＝真"）✓
+
+★★★ **"无裁决" ≠ `deny`（★ 这个区分是对的，★ 值得记）**：
+★ 三条路**都分名** —— ① **pack 前置闸门**（★ 票数 < `max(2, verifierCount)`）⇒ 返回**具名对象**；★ ② **内核法定人数**（★ `VMU_BALLOT_MIN_VOTES_NOT_MET`）⇒ **原样透传**；★ ③ **不改任何对象**（★ 命题卡**逐字节不变**、★ `verified` 0 条、★ 只有 `v3 验证未成立` 审计、★ **没有** `v3 裁决`）✓
+★★ **理由（★ 它自己写的）**：★ **`deny` 的语义是"这个动作被拒绝"，★ 而票数不足是"一次真实但未完成的表决"** —— ★ 候选仍合法、★ **下一 tick 继续收票** ✓
+   ⇒ ★ **这是"具名失败"与"拒绝"的正确区分**，★ 比笼统 deny 精确得多 ✓
+
+### ② ★★★ **P0-8 人工门**（★ `gates.js` 545 行，★ **55/0**）
+★ `gateDecision` **纯判定**（★ 可被 planner／verify **复用**，★ 不是各自实现）＋ ★ `vmu.records` 的 **journal/decision 台账**（★ **一扇门一条记录，★ id 即门 id，★ 终态用 supersede 写回【同一条】**、★ rev 递增）✓
+★★ **为什么台账放 `journal` 而不放 `plans`**（★ 实测读码结论）：★ `planner.js` 的 `latestPlanRecord()` 会取该轨**最新一条**当"上一条计划" ⇒ ★ **审批记录会把调度排空推迟一整轮** ✓ ⇒ ★ **台账不能挡住调度队列** ✓
+★★ **"manual 下不执行"五层可见**：★ ① 判定返回**具名 `outcome:'pending'`**（★ 不是"没反应"）② 台账记录 `note: QUEUED and was NOT executed` ③ **tick 回执** `released:null` ④ `v3GatesStatus().counts` ⑤ **执行器调用 0 次**（★ 并用"approve 时确实被调 1 次"作**反空断言**）✓
+★ **批准了但没执行器 ⇒ 终态 `failed` ＋ `VMU_ENGINE_UNAVAILABLE`**（★ **绝不伪装成 released**）✓
+
+### ③ ★★★★ 我做的一个**重要裁定**：★ **`gates.js` 不挂载**
+★★ 理由：★ **它的消费者（planner／verify）还没调用 `evaluateGate`** ⇒ ★ **挂上去就是一个"零消费者注册"** ⇒ ★ **违反红线 4** ✓
+★ 处置：★ **文件照样打包**（★ 进 `package.json#files` ＋ ★ `installer.js` managed ＋ ★ `docs/27` 命名）★ **但 `index.js` 里【不加模块条目】**，★ 并在 docs/27 与 README **具名写"尚未挂载 ＋ 原因"** ✓
+★ **下一步**（★ 轮 14）：★ 让 `planner.js` 的 `settlePlan` 与 `verify.js` 的 `settleProposition()` **调用 `evaluateGate`**，★ 然后**才**挂载 ✓
+   ⇒ ★ 这是"**先把消费者做好，再挂机制**"的顺序，★ 与我在 K10／K1／K2／U4 上反复纠正的**相反方向** ✓
+
+### ④ ★★ 接线（★ 我的域）
+★ `package.json#files` **+2**（★ 共 **781**）／★ `installer.js` managed **+1**（★ `gates.js`）／★ `docs/27` **+2 行**（★ 命名 `verify.js`／`gates.js`）✓
+★ `generate-planned-codes --write` ∕ ★ `update-doc-counts --write` ∕ ★ `regen-all --write` ⇒ **16/16** ✓
+★★ 设置表 **1149 wired** —— ★ **三把 v3 验证键（`verifierCount`／`debateMaxRounds`／`verdictMode`）因 `verify.js` 成为真读者而转接线** ✓
+
+### ★★ 一处我的失误（★ 如实）
+★ 我第一版接线脚本**语法错**（★ 中文串里用了 `"` ⇒ 提前终止字符串）⇒ ★ **三项全没写**（★ 而同一批的 `regen` 照跑）⇒ ★ **修正后重跑才落地** ✓
+⇒ ★★ **教训**：★ **脚本里的中文字符串不能用未转义的 `"`** —— ★ 统一用 `「」` 或单引号 ✓
+
+### ★★ 结果
+| ★ 项 | ★ 结果 |
+|---|---|
+| ★ `vmu-v3-verify`（新） | ★ **101 / 0** ✓ |
+| ★ `vmu-v3-gates`（新） | ★ **55 / 0** ✓ |
+| ★ v3-tick ／ dataplane ／ planner ／ methods ／ prompts | ★ 66/0 ／ 107/0 ／ 136/0 ／ 133/0 ／ 65/0 ✓ |
+| ★ package-membership ／ installer-policy ／ pack-face | ★ 29/0 ／ 100/0 ／ 5/0 ✓ |
+| ★ RULE E ／ regen ／ check-docs ／ preflight | ★ 88/0 ／ 16/16 ／ PASS ／ PASS ✓ |
+| ★ 派生作业数 | ★ **454**（suites 348 · probes 106）✓ |
+| ★ **T1** | ★ 见下 |
+
+### ★ 轮 14 计划（★ 收口 P0 ＋ 接上 P0-8）
+1. ★★★ **把 `evaluateGate` 接进 `planner.js` 与 `verify.js`**（★ 然后**才**挂载 `gates.js`）—— ★ 这是 P0-8 真正的完成 ✓
+2. ★★★ **P0-10（工具面收口）** —— ★ 队友给的关键约束：★ **面解析发生在 pack settings 之后**、★ **本包 `PACK.settings` 故意为空** ⇒ ★ **工具面不能靠 pack 声明点亮**，★ 必须走装配改动（★ `host.js` 的 `TOOL_NAMES`/`toolSpecs`）★ 或内核加"声明式工具面" ✓
+3. ★★ **P1 剩余**（★ 硬约束／文件锁／优先级晋升／子问题三对象／汇报三路／工具过滤／Lean 三档／defect 撤回／论文收口）✓

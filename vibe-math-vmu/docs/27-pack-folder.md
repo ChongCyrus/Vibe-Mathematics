@@ -286,6 +286,8 @@ vibe-math-vmu/
 | `packs/v3/prompts/assistant.json` | ★ 根 persona 4 段（`hostPrompt:true`，★ **该通道不渲染 `{{ }}`**） |
 | `packs/v3/prompts/index.js` | ★ 提示段汇总出口（`V3_PROMPT_SECTIONS`／段名/家族/marker 表） |
 | `packs/v3/middleware/planner.js` | ★ 规划-调度闭环（P0-2）＋ 学习闭环（P0-3）：★ 判可推进 → 组简报 → 派 planner 回合 → 校验 → 按容量执行 → outcome 写回；★ 派发**只**从 `v3/tick` 起（不撞重入守卫） |
+| `packs/v3/middleware/gates.js` | ★ 人工门（P0-8）：★ `gateDecision` 纯判定 ＋ `vmu.records` 的 journal/decision 台账（★ 一扇门一条记录、★ id 即门 id、★ 终态用 supersede 写回同一条）；★ **模块已实现并自测，但【尚未挂载】**（★ 消费者 planner/verify 还没调用 `evaluateGate`） |
+| `packs/v3/middleware/verify.js` | ★ 验证闭环（P0-7）：★ 收票 → 聚合（★ 全 1⇒1／全 0⇒0／★ 均值恰 0.85 ⇒ 取均值／★ forced 夹 [0.01,0.99]）→ 裁决 → ★ **只有 `promoteVerified` 写 `verified` 轨**；★ 「未成立」**不是 deny**（★ 对象卡不变、★ 下一 tick 继续收票） |
 | `packs/v3/prompts/planner.js` | ★ 规划器提示段（纯数据，`scope.role='planner'`，order 700）：★ 动作词表／硬规则／简报注入／回执契约 |
 | `packs/v3/README.md` | 这个文件夹是什么、与 v3-core 的关系、诚实边界与装载约束 |
 
