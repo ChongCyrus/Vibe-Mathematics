@@ -91,10 +91,19 @@ console.log('=== 1. 值层：轨/kind/未定稿/上限都在 defaults.json，且
   ok(PACK_DEFAULTS['vmu.records.head.maxItems'] === 2000, 'head.maxItems=2000（v3 卡多），且它是构造期快照键', PACK_DEFAULTS['vmu.records.head.maxItems'])
 
   // ★ typo guard: a defaults.json key that is not declared in settings/schema.js would fail silently.
+  // ★ 计数不手写（Lead 裁决）：判据是 `undeclared.length === 0`（每把键都必须已登记），加上**具名必需项**逐条点名。
+  // 这样下一次加键不会把这一行变成"该改没改"的债，而删掉任何一项具名必需键仍然会红。
   const declared = new Set(SETTING_DEFS.map((d) => d.key))
   const undeclared = Object.keys(PACK_DEFAULTS).filter((k) => !declared.has(k))
-  ok(undeclared.length === 0 && Object.keys(PACK_DEFAULTS).length === 10,
-    'defaults.json 的 10 把键都已在 settings/schema.js 声明（拼错不会静默）', undeclared)
+  const requiredValueLayerKeys = [
+    'vmu.schedule.autoArm', 'vmu.schedule.timeSource', 'vmu.schedule.triggerVia', 'vmu.schedule.triggers',
+    'vmu.v3.tickIntervalMs', 'vmu.records.tracks', 'vmu.records.allowedKinds', 'vmu.records.requireSettledRecords',
+    'vmu.records.bodyCapBytes', 'vmu.records.head.maxItems', 'vmu.records.history.storeMode',
+  ]
+  const missingRequired = requiredValueLayerKeys.filter((k) => !Object.prototype.hasOwnProperty.call(PACK_DEFAULTS, k))
+  ok(undeclared.length === 0 && missingRequired.length === 0,
+    '值层：每把键都已在 settings/schema.js 声明，且 11 项具名必需键都在（判据是两个空清单，不手写计数）',
+    { undeclared, missingRequired })
 
   ok(PACK && PACK.id === 'v3', 'PACK.id 是 v3', PACK && PACK.id)
   ok(Object.keys(PACK.settings || {}).length === 0,

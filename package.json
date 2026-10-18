@@ -492,8 +492,15 @@
     "vibe-math-vmu/packs/v3/middleware/tick.js",
     "vibe-math-vmu/packs/v3/middleware/dataplane.js",
     "vibe-math-vmu/packs/v3/middleware/planner.js",
+    "vibe-math-vmu/packs/v3/middleware/methods.js",
     "vibe-math-vmu/packs/v3/prompts/sections.json",
     "vibe-math-vmu/packs/v3/prompts/planner.js",
+    "vibe-math-vmu/packs/v3/prompts/knowledge.js",
+    "vibe-math-vmu/packs/v3/prompts/roles.js",
+    "vibe-math-vmu/packs/v3/prompts/briefs.js",
+    "vibe-math-vmu/packs/v3/prompts/paper.js",
+    "vibe-math-vmu/packs/v3/prompts/index.js",
+    "vibe-math-vmu/packs/v3/prompts/assistant.json",
     "vibe-math-vmu/host.js",
     "vibe-math-vmu/host-hooks.js",
     "vibe-math-vmu/host-spawn.js",
@@ -788,7 +795,9 @@
     "tests/vmu-turn-dispatch-k2.test.mjs",
     "tests/vmu-v3-tick.test.mjs",
     "tests/vmu-v3-dataplane.test.mjs",
-    "tests/vmu-v3-planner.test.mjs"
+    "tests/vmu-v3-planner.test.mjs",
+    "tests/vmu-v3-methods.test.mjs",
+    "tests/vmu-v3-prompts.test.mjs"
   ],
   "license": "MIT",
   "keywords": [

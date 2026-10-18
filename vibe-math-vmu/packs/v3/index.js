@@ -8,7 +8,7 @@
  * 已落：
  *   · P0-1 周期驱动 —— settings/defaults.json 的 schedule 种子（值层）＋ middleware/tick.js。
  *   · P0-9 数据面 —— defaults.json 的 records 五键（轨/kind 白名单/未定稿可写/正文上限/条数上限；都是
- *     **构造期快照**）＋ middleware/dataplane.js（三卡 compose/parse、正文段保留、有界写入与 dropped 计数、
+ *     **构造期快照**；P0-4 又加第六把 history.storeMode=full）＋ middleware/dataplane.js（三卡 compose/parse、正文段保留、有界写入与 dropped 计数、
  *     索引重建与坏卡点名、Verified 分裂、tick 驱动的 5s 节流索引）。
  *   · P0-6 软规范三卡 ＋ Verified 分裂 —— dataplane.js 的 compose/rewrite/promoteVerified ＋
  *     prompts/sections.json 的"可信分层"段（段文本是数据；插件在建内核前按目录名读它）。
@@ -16,6 +16,10 @@
  *     调 planner 回合（`turn.run()`，只从 tick 里做）→ 归一化/校验（6 动作白名单／horizon 截断／去重／
  *     逐角色硬校验）→ 按容量执行 → 逐条 outcome 写回 plans 轨；下一次简报带 `last_plan.outcomes`）＋
  *     prompts/planner.js 的规划器提示段（清单 `sections` 通道，带 `scope.role='planner'`）。
+ *   · P0-4 方法库 ＋ P0-5 发明上报 —— middleware/methods.js（方法卡的应用记录只在有 qid/dirId 上下文时追加、
+ *     改进 v 号单调、可信断言只收概率 1/0 的命题、项目级/全局级两级晋升、耐久库 `<库记录 id>@<n>.md` 冻结修订；
+ *     `new_inventions` 入 `inventions` 轨、keeper 到期派发、有产出/无产出两条路都清队且无产出走**幂等兜底建卡**）。
+ *     `vmu.records.history.storeMode=full` 进值层（构造期快照；否则版本无快照）。
  *
  * ★ 值层判据（P0-1 踩过、P0-9 又踩一次会一样的坑）：读点在 createKernel 之前/构造中 ⇒ 只能写
  *   `settings/defaults.json`。`vmu.records.tracks/allowedKinds/requireSettledRecords/bodyCapBytes/
@@ -29,21 +33,25 @@
  *   `root` 的装配上**具名拒**（kernel/index.js:1871-1877）⇒ 加了它，没工作区的部署会在 apply 期拿到 pack 错误；
  *   而且它喂的是 `kernel.library`，**不是** vmu.records 的构造期快照 ⇒ 轨仍然写不进去。轨的唯一生效处是值层。
  *
- * 还没有落的东西（属于 P0-4…P0-10，不要在本文件里提前声明）：methods/verify/gates 模块、slots
+ * 还没有落的东西（属于 P0-7…P0-10，不要在本文件里提前声明）：verify/gates 模块、slots
  * （v3 的 planner/solver/verifier）、任何 M1 规则（v3 的规则需要计数与状态，是代码不是 DSL）。
  */
 import { V3_TICK_MODULE, V3_TICK_TOPIC } from './middleware/tick.js'
 import { V3_DATAPLANE_MODULE } from './middleware/dataplane.js'
 import { V3_PLANNER_MODULE } from './middleware/planner.js'
+import { V3_METHODS_MODULE } from './middleware/methods.js'
 import { V3_PLANNER_SECTION } from './prompts/planner.js'
+// ★ PHASE 6 · 轮 12：P1-6 的 21 段（知识上下文 9／简报 2／论文 3／角色 7）。走**清单 sections 通道**而不是
+// `prompts/sections.json`，理由同 planner 段：那个通道会**丢弃 `scope`**，而这 21 段全都靠 `scope` 做互斥。
+import { V3_PROMPT_SECTIONS } from './prompts/index.js'
 
 export const PACK = Object.freeze({
   id: 'v3',
-  version: '0.3.0',
+  version: '0.4.0',
   packContractVersion: 1,
-  description: 'v3 复刻包（PHASE 6）：P0-1 周期驱动 + P0-9 数据面 + P0-6 软规范三卡与 Verified 分裂 + P0-2/P0-3 规划-调度与学习闭环。与 packs/v3-core 互斥装载；不是行为等价证明。',
+  description: 'v3 复刻包（PHASE 6）：P0-1 周期驱动 + P0-9 数据面 + P0-6 软规范三卡与 Verified 分裂 + P0-2/P0-3 规划-调度与学习闭环 + P0-4/P0-5 方法库与发明上报。与 packs/v3-core 互斥装载；不是行为等价证明。',
 
-  // 三个模块在运行期通过 loader 的能力门读 `vmu.records`，P0-2 的 planner 还要 `vmu.turn`（K2 已把回合循环
+  // 四个模块在运行期通过 loader 的能力门读 `vmu.records`；planner/methods 还要 `vmu.turn`（K2 已把回合循环
   // 进 M2 服务目录）。在装载期就把依赖声明出来：缺它应当在 apply 时具名拒，而不是等第一次 tick 才炸。
   requires: [
     { service: 'vmu.records', minVersion: 1 },
@@ -91,6 +99,19 @@ export const PACK = Object.freeze({
       module: V3_PLANNER_MODULE,
     },
     {
+      // P0-4/P0-5：方法库 ＋ 发明上报。两个钩子：
+      // `v3/tick` 是 keeper 的**唯一派发点**（tick 不是 turn ⇒ 不撞 VMU_TURN_REENTRANT）；
+      // `turn/reply-parsed` 只消费/落盘/改写（K10），绝不在这里再开回合。
+      id: 'v3-methods',
+      // order 115 落在 planner(110) 与 dataplane(120) 之间：同一 tick 里 keeper 新建的方法卡会被随后的
+      // 索引重建看到；而 planner 先跑，方法反馈消费不会与计划执行抢同一个回合起点。
+      order: 115,
+      on: Object.freeze([V3_TICK_TOPIC, 'turn/reply-parsed']),
+      failure: 'open',
+      capabilities: Object.freeze(['trigger-workflow', 'rewrite-result']),
+      module: V3_METHODS_MODULE,
+    },
+    {
       // P0-9/P0-6：数据面模块。它【不写记录】——tick 到期时重建一次索引视图（5s 节流，v3 `:2039`），
       // 让"索引"这条机制真的有消费者，而不是一对只被测试调用的纯函数。
       id: 'v3-dataplane',
@@ -107,7 +128,7 @@ export const PACK = Object.freeze({
   // `prompts/planner.js` 文件头：`prompts/sections.json` 的读取端会丢弃 `scope`，而这一段必须只对
   // `role='planner'` 的回合生效（否则求解器/验证器也会读到调度词表，违反提示词对账文档 §2.3 的 X9）。
   // order 落在 pack 区间 [600,899]，`range` 由 order 派生且已声明一致。
-  sections: Object.freeze([V3_PLANNER_SECTION]),
+  sections: Object.freeze([V3_PLANNER_SECTION, ...V3_PROMPT_SECTIONS]),
 })
 
 export default PACK

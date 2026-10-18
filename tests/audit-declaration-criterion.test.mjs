@@ -468,6 +468,7 @@ export const MULTILINE_C_BASELINE_FINGERPRINTS = Object.freeze([
   'vmu-set-attribution.test.mjs:C2:conditional',
   'vmu-settings.test.mjs:C2:conditional',
   'vmu-store.test.mjs:C2:conditional',
+  'vmu-v3-prompts.test.mjs:C2:conditional',
 ])
 // MULTILINE-C-BASELINE-END
 /** Kept for visibility: the COUNT is reported, but the enforcement is the fingerprint SET below. */

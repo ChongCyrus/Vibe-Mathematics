@@ -685,7 +685,7 @@ const run = async (spec) => {
 | ★ `vmu-v3-planner`（新） | ★ **136 / 0** ✓ |
 | ★ `vmu-entry` ／ ★ `vmu-turn` | ★ **150/0 ／ 148/0（★ 数量未变 ⇒ 零机制证明）** ✓ |
 | ★ vmu-docs ／ regen ／ check-docs ／ preflight | ★ 103/0 ／ 16/16 ／ PASS ／ PASS ✓ |
-| ★ **T1** | ★ 见下 |
+| ★ **T1** | ★★★ **383 / 383，★ 0 红**（suites 321 · probes 62）✓ —— 一次确认 P0-4／P0-5／P1-6 ＋ 接线 ＋ 全部派生面 |
 
 ### ★★ 两处**纪律问题**（★ 队友主动披露，★ 记之）
 1. ★★ **它两次误写了生成件**：★ ① 把 `regen-all.mjs --help` 当只读帮助跑 —— ★ **该脚本无参默认就是 `--write`**；★ ② 用 `generate-coverage-debt.mjs` 做"只读比对"时**漏加 `--check`** ⇒ ★ 它默认写盘 ✓ ★ **两次写的都是【生成件】**（★ `regen --write` 本来就要写这些），★ 最终 `--check` 绿 ✓
@@ -711,3 +711,64 @@ const run = async (spec) => {
 
 ★ **收口后**：★ policy-defaults **13/0**／★ pack-face **5/0**／★ vmu-settings **47/0**／★ regen **16/16**／★ DOC LINT PASS／★ **PREFLIGHT PASS** ✓
 ★ ★ **T1 未再整跑**（★ 三条红已各自独立复跑证明修好）⇒ ★ **轮 12 开头整跑确认** ✓
+
+---
+
+## 轮 12（2026-10-18）
+
+### ★★★★★★ **P0-4 ＋ P0-5 ＋ P1-6 三张卡落地** —— ★ **v3 包 8/10 张完成**
+
+### ① ★★★ **P0-4（方法库）＋ P0-5（发明上报）**
+★ **`packs/v3/middleware/methods.js`（868 行）** ＋ ★ **测试 133/0** ✓
+★ 内容：★ 方法卡应用记录（★ **只在有 `qid`／`dirId` 上下文时才追加**）／★ **改进 v 号单调**／★ **可信断言只收定论命题**／★ **两级晋升**／★ **耐久库冻结修订**／★ `new_inventions` 入队／★ **keeper 到期派发**／★ **有产出/无产出双路清队**／★ **无产出幂等兜底建卡** ✓
+
+★★★ **`vmu.records.history.storeMode = "full"` 已补进值层**（★ 第 11 把）—— ★ 而它给了**三支证据**，★ 缺一不可：
+1. ★ 值层里有这把键
+2. ★ **构造期快照真的吃到**（★ `records.status().caps.historyStoreMode === 'full'`，★ **直接内核路径 ＋ 真实入口路径各断言一次**）
+3. ★★ **行为差分**（★ 关键）：★ `full` 下两次 `supersede` ⇒ `versions.length === 2` **且每版 `snapshot` 是对象**；★ **对照内核用 `diff` 覆盖同一操作 ⇒ `versions.length === 1` 且无 `snapshot`** ⇒ ★ **不补这把键，第三支就红** ✓
+   ⇒ ★ **这比"回读了一个字符串"强得多** ✓
+
+★ **幂等键**：★ `fallback:<sha256(发明记录 id)[:16]>` ＋ **内容指纹兜底**；★ 回执把 **`created`／`newCards`／`deduplicated` 分开报** ✓
+★ **测试形状（★ 漂亮）**：★ 第一遍 `newCards=1, deduplicated=0` ⇒ ★ **`records.restore()` 把同一条发明恢复**（★ 模拟"卡已写、★ pending 因崩溃未清"）⇒ ★ 第二遍 `newCards=0, deduplicated=1` **且方法轨仍只 1 张卡** ✓
+
+### ② ★★★★ **P1-6（提示词复刻）：21 段落地**
+★ **8 个新文件**：★ `prompts/knowledge.js`（★ 知识上下文 **9 段**，★ 按角色组合）／★ `roles.js`（★ **8 个角色提示词，★ 互斥**）／★ `briefs.js`（2）／★ `paper.js`（3）／★ `index.js`（汇总）／★ `assistant.json`（★ 根 persona 4 段，★ `hostPrompt:true`）＋ ★ **测试 62/0** ✓
+★★★ **"互斥"落地方式（★ 头号风险，★ 已解决）**：
+- ★ 用 **`scope`**（★ 清单 `sections` 通道）；★ **explorer／rederive 用 `task` 分**（★ 同属 normal 相，★ 相位分不开）；★ **verifier 初审／辩论用 `phase` 分**（★ 内核本有 `verify`／`verify-debate`）✓
+- ★ **探针派发方不传 `task`／`phase` ⇒ 两段都不出现**（★ **fail-safe：宁可没有角色说明，★ 也不要两套人设**）✓
+- ★ **断言**：★ 逐角色装配 ⇒ **`【v3 角色｜` 恰出现 1 次**（★ planner 为 0）／★ **反向点名**（★ solver 装配**没有** verifier marker，★ 反之亦然）／★ **顺序用 `indexOf` 相对位置**／★ **`role=researcher` 时 21 段一个不出现** ✓
+- ★★ **`--self-probe` 自证可失败**：★ 多注册一个 solver 段 ⇒ 抬头变 **2** 次被红；★ 漏写 `scope` ⇒ **researcher 装配里出现该段**被红 ✓
+
+### ③ ★★★ 我做的接线（★ 关键：★ 否则 21 段就是"没人注册的文件"）
+★ `packs/v3/index.js`：★ `sections: [V3_PLANNER_SECTION, ...V3_PROMPT_SECTIONS]` ✓
+★ `installer.js`：★ 补 **6 条 managed**（★ 否则装完 `MODULE_NOT_FOUND`）✓
+★ `docs/27`：★ 补 **7 行**命名（★ `audit-pack-face` 要求每个 pack 文件被命名）✓
+★ `generate-planned-codes --write` ∕ ★ `update-doc-counts --write` ∕ ★ `regen-all --write` ⇒ **16/16** ✓
+★ 设置表 **1147 wired**（★ **三把 `vmu.v3.methodKeep*` 因 methods.js 成为真读者而刚从"声明未接线"转接线** ✓）
+
+### ④ ★★ RULE E 4 条红 —— ★ 两条不同处置，★ 而理由不同
+| ★ 类 | ★ 指纹 | ★ 处置 |
+|---|---|---|
+| ★ **A（空集恒真）** | ★ `A:for:CONTEXTS`／★ `A:for:V3_PROMPT_SECTIONS` | ★★ **加非空守卫**（★ 3 条）—— ★ **这是真空洞**，★ 同步 baseline 会把空洞留下 ⇒ ★ **修测试** ✓（★ 62 → **65/0**）|
+| ★ **C2（多行条件断言）** | ★ `vmu-v3-prompts.test.mjs:C2:conditional` | ★★ **同步 baseline**（★ 仅多一行，★ 已核 diff）—— ★ 门禁**自己写明**这形状在本树出现 **199 次**、★ 且"**绝大多数是普通场景控制流**"、★ 并**提供 `--write-baseline`** ⇒ ★ **这是该形状的正规机制** ✓ |
+⇒ ★ **两类分开处置，★ 因为我先判断了"它是不是真空洞"**，★ 而不是一律同步 ✓
+
+### ★★ 结果
+| ★ 项 | ★ 结果 |
+|---|---|
+| ★ `vmu-v3-methods`（新） | ★ **133 / 0** ✓ |
+| ★ `vmu-v3-prompts`（新） | ★ **65 / 0** ✓ |
+| ★ v3-tick ／ dataplane ／ planner | ★ 66/0 ／ 107/0 ／ 136/0 ✓ |
+| ★ pack-face ／ installer-policy ／ RULE E | ★ 5/0 ／ 100/0 ／ 88/0 ✓ |
+| ★ vmu-docs ／ regen ／ check-docs ／ preflight | ★ 103/0 ／ 16/16 ／ PASS ／ PASS ✓ |
+| ★ 派生作业数 | ★ **452**（suites 346 · probes 106）✓ |
+| ★ **T1** | ★ 见下 |
+
+### ★★ 两处需要我裁定的遗留（★ 已裁）
+1. ★★ **`v3-verified-trust` 段会进【每一个】回合**（含 planner），★ 与"planner 不拿知识上下文"有张力 ⇒ ★ **我裁定：保留** —— ★ 它**不是角色知识，★ 是"什么是事实"的边界声明**（★ "只有 `verified` 轨算事实"），★ **每个角色都需要知道**，★ 否则 planner 会把非 Verified 内容当事实来规划 ✓
+2. ★ **方法卡没有 `- 来源:` 锚点**（★ `dataplane.js` 的 `composeMethod` 没有，★ v3 原文也没有）⇒ ★ 来源/幂等键落**自定义段**，★ **如实记，★ 不假装有锚点** ✓
+
+### ★ 轮 13 计划
+1. ★★ **T1 结果处理**
+2. ★★★ **P0-7（验证闭环）** —— ★ 队友留话两条关键：★ ① **回合字段门在中间件之前拒未知顶层字段** ⇒ 票/裁决**只能走 `progress` 载荷**（★ 同 P0-4 的 `mu:/inv:/ctx:/imp:` 契约）；★ ② **`rewriteResult` 必须是 JSON 对象文本**；★ ③ **`verified` 轨只能由 `promoteVerified` 写**，★ **别自己 put** ✓
+3. ★★ **P0-8（人工门）＋ P0-10（工具面收口）** 之后 ⇒ ★ **P0 十张齐** ✓

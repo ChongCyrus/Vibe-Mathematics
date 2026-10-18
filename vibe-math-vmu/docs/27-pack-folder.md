@@ -278,6 +278,13 @@ vibe-math-vmu/
 | `packs/v3/middleware/tick.js` | ★ tick 体：★ 声明并订阅 `v3/tick`，★ 每到期写一条 `journal` 记录 ✓ |
 | `packs/v3/middleware/dataplane.js` | ★ 数据面（P0-9）＋ 软规范/Verified 分裂（P0-6）：★ 卡与轨的读写、★ **有界截断＋计数**、★ 索引重建（5s 节流）、★ 只有 `verified` 轨的定论被当作事实 |
 | `packs/v3/prompts/sections.json` | ★ 提示词段（★ 装载期**纯数据**：★ 只读 `name/order/range/text` ＋ 四维绑定；★ **动态文本不能放这里**，★ 走 M2 `appendPrompt`） |
+| `packs/v3/middleware/methods.js` | ★ 方法库（P0-4）＋ 发明上报（P0-5）：★ 方法卡/应用记录/改进历史（v 号单调）＋ 发明待办与**幂等兜底建卡** |
+| `packs/v3/prompts/knowledge.js` | ★ 知识上下文 9 段（按角色组合，★ 全部带 `scope.role`） |
+| `packs/v3/prompts/roles.js` | ★ 8 个角色提示词（★ **互斥**：explorer/rederive 用 `task` 分、verifier 初审/辩论用 `phase` 分） |
+| `packs/v3/prompts/briefs.js` | ★ 简报 2 段（planner 简报、方法整理摘要） |
+| `packs/v3/prompts/paper.js` | ★ 论文 3 段（材料/九节骨架逐字/LaTeX 四步） |
+| `packs/v3/prompts/assistant.json` | ★ 根 persona 4 段（`hostPrompt:true`，★ **该通道不渲染 `{{ }}`**） |
+| `packs/v3/prompts/index.js` | ★ 提示段汇总出口（`V3_PROMPT_SECTIONS`／段名/家族/marker 表） |
 | `packs/v3/middleware/planner.js` | ★ 规划-调度闭环（P0-2）＋ 学习闭环（P0-3）：★ 判可推进 → 组简报 → 派 planner 回合 → 校验 → 按容量执行 → outcome 写回；★ 派发**只**从 `v3/tick` 起（不撞重入守卫） |
 | `packs/v3/prompts/planner.js` | ★ 规划器提示段（纯数据，`scope.role='planner'`，order 700）：★ 动作词表／硬规则／简报注入／回执契约 |
 | `packs/v3/README.md` | 这个文件夹是什么、与 v3-core 的关系、诚实边界与装载约束 |
