@@ -1,6 +1,7 @@
 {
   "_comment": "packs/v3/prompts/sections.json — P0-6 的【提示词段】纯数据。插件在【建内核之前】按目录名读它（vibe-math-vmu.js:326-351 的循环，readFileSync(packs/<id>/prompts/sections.json)），再把它并入 createKernel 的 sections ⇒ 段在构造期就存在。★ 本文件与 settings/defaults.json 同一处置：读点在构造期 ⇒ 只能放包里作为数据，不能写进被装载清单的 settings。",
   "_why": "P0-6 的验收原文：可信分层段必须【同时】出现『绝对可信』与『其余为经验参考』两侧，缺一侧即失败（docs/acceptance/phase6-v3-p0-build-checklist.md:102）。所以段文本放在这里、而不是硬编码进 middleware/dataplane.js：文本是内容，管线只负责装配。order 必须落在 pack 区间 [600,899]（kernel/prompt/index.js:24-30 ORDER_RANGES），range 由 order 派生且必须一致，否则 register() 具名拒。",
+  "_p0_2_where_is_the_planner_section": "P0-2 的规划器提示段【故意不在本文件】：本文件的读取端（vibe-math-vmu.js:331-342）只保留 name/order/range/text 与 role|phase|member|task 四个绑定维度，scope 会被丢弃（docs/10-packs.md §3.3）；而规划器词表只能对 role='planner' 的回合出现（提示词对账文档 §2.3 X9）。所以它在 packs/v3/prompts/planner.js，经清单的 sections 通道晚注册（vibe-math-vmu.js:997-1006，kernel/prompt/index.js 的 register，scope 生效）。两个通道的分工：本文件=构造前折入的纯文本；清单 sections=需要 scope/绑定的段。",
   "sections": [
     {
       "name": "v3-verified-trust",

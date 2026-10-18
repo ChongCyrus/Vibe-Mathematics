@@ -16,12 +16,21 @@
 //   · a rewrite on a hook the registry says is NOT rewritable is a NAMED refusal that names the flag - this is the first
 //     place the `.rewritable` metadata is actually READ, which is what makes it metadata rather than decoration;
 //   · a refused emit (`ok:false`) yields nothing to rewrite;
-//   · and turn/index.js really calls it for `turn/reply-parsed` (a wiring assertion, checked at the source, because the
-//     orchestrator cannot be stood up here without a full pipeline - the unit contract above is what that call relies on).
+//   · and turn/index.js really calls it for `turn/reply-parsed` (a wiring assertion, checked at the source).
+//
+// ★ ROUND 98 — THE WIRING HALF WAS MISSING AND IS NOW MEASURED ON A REAL KERNEL. This file used to end with the note
+// "the orchestrator cannot be stood up here without a full pipeline", so the consumer was only GREPPED. That is why the
+// defect below survived: `createKernel` never handed its `bus` to `createTurnOrchestrator`, so on the REAL assembly
+// path `turn/reply-parsed` was emitted 0 times (a kernel that ran two turns left the hook's hit counter at 0) and
+// `bus.rewriteOf` rewired nothing. Sections 8-10 now stand up a REAL kernel, run a turn through `kernel.turn.run()`,
+// and require the hook to be hit AND the rewritten reply to be the one the dispatcher applies. They also pin the
+// two things a rewrite could otherwise break: the ZERO-MECHANISM receipt (nobody rewrites ⇒ unchanged) and the
+// NAMED failure for a rewrite the framework cannot read (never a silently emptied reply).
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { createBus, HOOK_REGISTRY } from '../vibe-math-vmu/kernel/bus.js'
+import { createKernel } from '../vibe-math-vmu/kernel/index.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -111,12 +120,106 @@ console.log('=== 6. A REFUSED EMIT LEAVES NOTHING TO REWRITE ===')
   ok(bus.rewriteOf('turn/reply-parsed', seen) === null, 'and nothing is returned to rewrite', {})
 }
 
-console.log('=== 7. WIRING: THE TURN LOOP ACTUALLY CALLS IT (source-level, because the unit above is what it relies on) ===')
+console.log('=== 7. WIRING: THE TURN LOOP CALLS IT AND KERNEL/index.js HANDS ITS bus OVER ===')
 {
-  const src = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'turn', 'index.js'), 'utf8')
-  ok(/bus\.rewriteOf\('turn\/reply-parsed'/.test(src), 'turn/index.js calls bus.rewriteOf for turn/reply-parsed', {})
-  ok(/typeof bus\.rewriteOf === 'function'/.test(src), 'and probes for the method first, so an injected or older bus keeps working', {})
-  ok(/parsed\.reply = rewritten/.test(src), 'and the returned value replaces the parsed reply BEFORE dispatch', {})
+  const turnSrc = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'turn', 'index.js'), 'utf8')
+  const kernelSrc = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'index.js'), 'utf8')
+  ok(/bus\.rewriteOf\('turn\/reply-parsed'/.test(turnSrc), 'turn/index.js calls bus.rewriteOf for turn/reply-parsed', {})
+  ok(/typeof bus\.rewriteOf === 'function'/.test(turnSrc), 'and probes for the method first, so an injected or older bus keeps working', {})
+  ok(/parsed\.reply = replacement/.test(turnSrc) && /rewrittenReplyObject\(rewritten\)/.test(turnSrc),
+    'and the returned value is DECODED into the replacement reply object that dispatch consumes', {})
+  // THE ASSEMBLY HALF (the defect): the kernel must hand the SAME bus to the loop, or the emit branch above is dead.
+  // Anchored to a REAL option line (`    bus,`), not to a mention: a commented-out `// bus,` must not satisfy this
+  // assertion - that is exactly how a source-level check turns into a vacuous one (measured: the loose regex passed
+  // while the line was commented out).
+  const turnCall = /createTurnOrchestrator\(\{([\s\S]*?)\n  \}\)/.exec(kernelSrc)
+  ok(turnCall !== null && /^ {4}bus,$/m.test(turnCall[1]),
+    'kernel/index.js passes `bus` to createTurnOrchestrator - without it `turn/reply-parsed` is emitted ZERO times on a real kernel',
+    turnCall === null ? 'createTurnOrchestrator call not found' : turnCall[1].slice(0, 200))
+}
+
+// ── THE REAL-ASSEMBLY HARNESS (sections 8-10): a REAL kernel, a REAL turn, no hand-wired loop ──────────────────────
+const REPLY = '{"vote_solved": false}'
+const MIDDLEWARE = (id, decision, caps) => ({ id, kind: 'module', order: 10, on: ['turn/reply-parsed'], failure: 'closed', capabilities: caps, handler: () => decision })
+const bootKernel = (entries = []) => {
+  const kernel = createKernel({ settings: {}, deliverTurn: async () => REPLY })
+  for (const e of entries) kernel.bus.add(e)
+  return kernel
+}
+const hookHits = (kernel, id) => {
+  const rows = kernel.bus.status().entries
+  const row = rows.find((e) => e.id === id)
+  return row ? row.hits : 0
+}
+
+console.log('=== 8. ★★ REAL ASSEMBLY: THE HOOK FIRES AND THE DISPATCHER APPLIES THE REWRITTEN REPLY ===')
+{
+  // Control: nobody subscribes. The parsed reply's own field is what dispatch/record sees.
+  const control = bootKernel([])
+  const controlOut = await control.turn.run({ member: 'm-1', phase: 'founding' })
+  const controlState = control.turn.status({ roster: ['m-1'], permission: 'vote' })
+  ok(controlOut.ok === true && controlOut.fields.length === 1 && controlOut.fields[0] === 'vote_solved',
+    'control: the ORIGINAL reply is the one the loop applies', JSON.stringify(controlOut.fields))
+  ok(controlState.closureVoteVotes.get('m-1') === false && controlState.solvedThisRound['m-1'] === undefined,
+    'control: the original values are recorded (vote false, no `solved` field)', JSON.stringify({ votes: Object.fromEntries(controlState.closureVoteVotes), solved: controlState.solvedThisRound }))
+
+  // Rewriting middleware: replace the parsed reply BEFORE dispatch with a DIFFERENT document (order 10).
+  const rewriting = bootKernel([MIDDLEWARE('k10-rewrite', { rewriteResult: '{"vote_solved": true, "solved": true}' }, ['rewrite-result'])])
+  const rewrittenOut = await rewriting.turn.run({ member: 'm-1', phase: 'founding' })
+  const rewrittenState = rewriting.turn.status({ roster: ['m-1'], permission: 'vote' })
+  ok(hookHits(rewriting, 'k10-rewrite') === 1,
+    '★★ the REAL kernel emitted turn/reply-parsed exactly once (before the wiring fix the hit counter stayed 0)',
+    JSON.stringify({ hits: hookHits(rewriting, 'k10-rewrite') }))
+  ok(rewrittenOut.ok === true && rewrittenOut.fields.length === 2 && rewrittenOut.fields.includes('solved'),
+    '★★ and the DISPATCHER received the rewritten document: the receipt names the rewritten field set (original had only vote_solved)',
+    JSON.stringify(rewrittenOut.fields))
+  ok(rewrittenState.closureVoteVotes.get('m-1') === true && rewrittenState.solvedThisRound['m-1'] === true,
+    '★★ the values recorded come from the REWRITE (vote true, solved true) - not from the original reply',
+    JSON.stringify({ votes: Object.fromEntries(rewrittenState.closureVoteVotes), solved: rewrittenState.solvedThisRound }))
+}
+
+console.log('=== 9. ★ ZERO MECHANISM: NOBODY REWRITES ⇒ THE RECEIPT IS THE SAME AS WITH NO MIDDLEWARE ===')
+{
+  const plain = bootKernel([])
+  const plainOut = await plain.turn.run({ member: 'm-1', phase: 'founding' })
+  const observing = bootKernel([MIDDLEWARE('k10-observe', { annotate: 'just looking' }, ['annotate'])])
+  const observedOut = await observing.turn.run({ member: 'm-1', phase: 'founding' })
+  const plainState = plain.turn.status({ roster: ['m-1'], permission: 'vote' })
+  const observedState = observing.turn.status({ roster: ['m-1'], permission: 'vote' })
+  ok(hookHits(observing, 'k10-observe') === 1, 'the middleware really saw the hook', String(hookHits(observing, 'k10-observe')))
+  ok(plainOut.fields.length === 1 && plainOut.fields.join(',') === observedOut.fields.join(',') &&
+    plainOut.refused.length === observedOut.refused.length &&
+    plainOut.executed.length === observedOut.executed.length &&
+    plainOut.skipped.length === observedOut.skipped.length,
+    'an entry that rewrites NOTHING leaves the receipt unchanged (fields/refused/executed/skipped)',
+    JSON.stringify({ plain: plainOut.fields, observed: observedOut.fields }))
+  ok(plainState.closureVoteVotes.get('m-1') === observedState.closureVoteVotes.get('m-1'),
+    'and the recorded values are unchanged - no rewrite, no mechanism', JSON.stringify({ plain: Object.fromEntries(plainState.closureVoteVotes), observed: Object.fromEntries(observedState.closureVoteVotes) }))
+}
+
+console.log('=== 10. ★ NAMED FAILURES AND GRACEFUL DEGRADATION ON THE REAL ASSEMBLY ===')
+{
+  // A rewrite the framework cannot read is a NAMED refusal, never a silently emptied reply.
+  const unreadable = bootKernel([MIDDLEWARE('k10-bad-rewrite', { rewriteResult: 'this is not json' }, ['rewrite-result'])])
+  let bad = null
+  try { await unreadable.turn.run({ member: 'm-1', phase: 'founding' }) } catch (e) { bad = e }
+  ok(bad !== null && bad.code === 'VMU_TURN_BAD_JSON',
+    '★★ a rewrite that is not a JSON object is REFUSED BY NAME (the member reply is not silently discarded)',
+    bad === null ? 'no refusal was thrown' : bad.code)
+
+  // An older/injected bus without `rewriteOf` must NOT crash the turn: the probe keeps the previous behaviour.
+  const legacy = bootKernel([MIDDLEWARE('k10-legacy', { rewriteResult: '{"vote_solved": true}' }, ['rewrite-result'])])
+  delete legacy.bus.rewriteOf
+  let legacyErr = null
+  let legacyOut = null
+  try { legacyOut = await legacy.turn.run({ member: 'm-1', phase: 'founding' }) } catch (e) { legacyErr = e }
+  const legacyState = legacy.turn.status({ roster: ['m-1'], permission: 'vote' })
+  ok(legacyErr === null && legacyOut !== null && legacyOut.ok === true,
+    'a bus WITHOUT rewriteOf (an injected or older one) does not crash the turn - the probe degrades gracefully',
+    legacyErr === null ? 'ok' : String(legacyErr.message).slice(0, 160))
+  ok(legacyState.closureVoteVotes.get('m-1') === false,
+    'and with no rewrite channel the ORIGINAL reply is applied (false), unchanged behaviour',
+    JSON.stringify(Object.fromEntries(legacyState.closureVoteVotes)))
 }
 
 console.log('')

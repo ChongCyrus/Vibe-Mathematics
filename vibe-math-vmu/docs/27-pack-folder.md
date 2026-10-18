@@ -278,6 +278,8 @@ vibe-math-vmu/
 | `packs/v3/middleware/tick.js` | ★ tick 体：★ 声明并订阅 `v3/tick`，★ 每到期写一条 `journal` 记录 ✓ |
 | `packs/v3/middleware/dataplane.js` | ★ 数据面（P0-9）＋ 软规范/Verified 分裂（P0-6）：★ 卡与轨的读写、★ **有界截断＋计数**、★ 索引重建（5s 节流）、★ 只有 `verified` 轨的定论被当作事实 |
 | `packs/v3/prompts/sections.json` | ★ 提示词段（★ 装载期**纯数据**：★ 只读 `name/order/range/text` ＋ 四维绑定；★ **动态文本不能放这里**，★ 走 M2 `appendPrompt`） |
+| `packs/v3/middleware/planner.js` | ★ 规划-调度闭环（P0-2）＋ 学习闭环（P0-3）：★ 判可推进 → 组简报 → 派 planner 回合 → 校验 → 按容量执行 → outcome 写回；★ 派发**只**从 `v3/tick` 起（不撞重入守卫） |
+| `packs/v3/prompts/planner.js` | ★ 规划器提示段（纯数据，`scope.role='planner'`，order 700）：★ 动作词表／硬规则／简报注入／回执契约 |
 | `packs/v3/README.md` | 这个文件夹是什么、与 v3-core 的关系、诚实边界与装载约束 |
 
 ★ **两条硬约束**（★ 都实测咬过）：★ ① **middleware 必须是 module 形状**（pack 调 `loader.toBusEntries` 不传 `importModule`，★ `file:` 不可用）；★ ② **假主题必须 `declareTopic` 才能 emit**，★ 且**要在 import 时声明**（`kernel/loader.js` 在 `load()` 时校验，scheduler 的声明发生在装载之后）✓

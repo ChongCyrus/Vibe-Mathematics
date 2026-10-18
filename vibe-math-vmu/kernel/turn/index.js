@@ -850,6 +850,31 @@ export function createTurnOrchestrator({
     return { ok: true, reply: obj, fields: Object.keys(obj) }
   }
 
+  /**
+   * ★★★★★★★ PHASE 6 / K10 — DECODE A `turn/reply-parsed` REWRITE INTO THE REPLACEMENT REPLY OBJECT.
+   *
+   * The bus's contract returns a STRING (`bus.js rewriteOf`: `string` | `{ reply: string }`), while the dispatcher
+   * consumes the PARSED reply object. Assigning that string straight into `parsed.reply` made `apply()`'s first line
+   * (`typeof reply === 'object' ? reply : {}`) fall back to `{}`, i.e. a rewrite silently DISCARDED every field of the
+   * member's reply instead of replacing it. Measured end-to-end on a real kernel: the reply was recorded as nothing.
+   *
+   * WHY THIS IS NOT `parse()`: `parse()` is the MODEL-REPLY gate; it refuses unknown fields, which is right for a
+   * model reply and wrong for a normalisation rewrite. The v3 planner returns `{ summary, plan, normalizedBy, note }`
+   * and deliberately DROPS `progress` so the kernel does not write the same record twice - re-running the field gate
+   * would turn that legal rewrite into a failed turn. A rewrite that is not a JSON OBJECT is still a NAMED refusal:
+   * it can never silently empty the reply, and the original reply is not dispatchable after a rewrite the caller
+   * asked for but the framework cannot read.
+   */
+  const rewrittenReplyObject = (text) => {
+    let obj = null
+    try { obj = JSON.parse(String(text).trim()) } catch (e) { obj = null }
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+      fail('VMU_TURN_BAD_JSON', 'the rewritten reply is not a JSON object, so it cannot replace the parsed reply: ' + String(text).slice(0, 160),
+        'a `turn/reply-parsed` rewrite must return JSON text for an object reply (docs/19 §19.12: the replacement `reply`)')
+    }
+    return obj
+  }
+
   /** ⑤ plan: a PURE function from a parsed reply to the dispatch list (one owner per field). */
   const plan = (reply) => {
     const r = reply && typeof reply === 'object' ? reply : {}
@@ -1017,7 +1042,14 @@ export function createTurnOrchestrator({
       // or older bus (the fake hosts in the suites) keeps the previous behaviour byte for byte.
       if (typeof bus.rewriteOf === 'function') {
         const rewritten = bus.rewriteOf('turn/reply-parsed', seen)
-        if (rewritten !== null) parsed.reply = rewritten
+        if (rewritten !== null) {
+          // ★ THE REWRITE IS THE SERIALISED REPLACEMENT REPLY, NOT RAW MODEL TEXT - see `rewrittenReplyObject` above
+          // for the measured defect (a string assignment emptied the reply) and for why the rewrite must not go
+          // through the model-reply field gate. The rewritten object is what `apply()` dispatches.
+          const replacement = rewrittenReplyObject(rewritten)
+          parsed.reply = replacement
+          parsed.fields = Object.keys(replacement)
+        }
       }
     }
     // ★ ROUND 79: a caller-supplied reply is attributed to the member it ANSWERS; everything else keeps turn.member.

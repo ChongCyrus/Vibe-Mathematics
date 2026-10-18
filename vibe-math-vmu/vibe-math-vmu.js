@@ -444,20 +444,64 @@ export function apply(ctx, config = {}) {
   // prompt switches / notice block / phases used to be injected unconditionally, so the framework's own policy ran in
   // a deployment that declared NO pack - the opposite of "零机制". They are now keyed by the pack ids this row
   // declares (`config.packs`), which is the same switch that folds in a pack's settings and prompt text.
+  // ★ PHASE 6 / LIVE PROMPT POLICIES: COMPOSITION MOVED FROM CONSTRUCTION TIME TO ASSEMBLY TIME. A pack is applied
+  // AFTER `createKernel` (its apply may need the kernel), while `sectionPolicy` was a CONSTRUCTION parameter - so a
+  // manifest's `promptPolicies` was collected by the loader's sink and never composed into the function the turn
+  // loop consults: reported, yet ZERO effect. That is the half `kernel/pack.js`'s own refusal message already asked
+  // the caller to finish ("compose the collected policies into the section policy the turn loop consults"). The v5r
+  // table below is why it went unnoticed: its policy arrives through PACK_RUNTIME before the kernel exists.
+  // THE FIX: ONE stable dispatcher, handed to the kernel for its whole lifetime, that re-reads the LIVE list on every
+  // assembly. No second construction path, no mutable kernel hook, and the turn loop needed no change.
   const PACK_RUNTIME = Object.freeze({
-    v5r: { sectionPolicy: V5R_DECIDE_SECTIONS, noticeBlock: V5R_INBOX_BLOCK, phases: V5R_PHASES },
+    v5r: { id: 'v5r', sectionPolicy: V5R_DECIDE_SECTIONS, noticeBlock: V5R_INBOX_BLOCK, phases: V5R_PHASES },
   })
   const wantedPackIds = Array.isArray(config.packs) ? config.packs.filter((p) => typeof p === 'string') : []
   const packRuntime = wantedPackIds.map((id) => PACK_RUNTIME[id]).filter(Boolean)
-  const packSectionPolicies = packRuntime.map((r) => r.sectionPolicy).filter(Boolean)
+  const builtinPromptPolicies = packRuntime.filter((r) => typeof r.sectionPolicy === 'function')
+  // ★ THE ONE SINK CONTRACT (kernel/pack.js): a manifest's policy is handed to `onPromptPolicy`, whose RETURN VALUE is
+  // the loader's undo. This array holds EXACTLY those manifest-declared policies, so the existing `promptPolicies()`
+  // accessor and `packMerge.promptPolicies` keep their documented meaning (they never included PACK_RUNTIME's).
+  const promptPolicies = []
+  const livePromptPolicies = () => builtinPromptPolicies.map((r) => r.sectionPolicy).concat(promptPolicies)
   const composePromptPolicies = typeof packModule.composePromptPolicies === 'function' ? packModule.composePromptPolicies : null
-  // With the composer available, several packs' policies combine; without it (not landed yet) the first wins, which is
-  // the same behaviour a single-pack deployment gets. NO packs ⇒ null, so nothing switches a section (zero mechanism).
-  const sectionPolicy = packSectionPolicies.length === 0 ? null
-    : (composePromptPolicies ? composePromptPolicies(packSectionPolicies) : packSectionPolicies[0])
+  // With the composer available several policies combine; without it (not landed yet) the first wins, which is the
+  // same behaviour a single-pack deployment gets. The composer answers `null` for an EMPTY list, and this dispatcher
+  // passes that through: an empty live list means "switch nothing", never "skip a policy that exists".
+  const liveSectionPolicy = (askCtx) => {
+    const list = livePromptPolicies()
+    if (list.length === 0) return null
+    const composed = composePromptPolicies ? composePromptPolicies(list) : list[0]
+    return typeof composed === 'function' ? composed(askCtx) : null
+  }
+  // THE SAME declaration the pack tool/loader gate uses (below), hoisted so the kernel and the adapter can never
+  // disagree about it. NO pack declared ⇒ `null` is handed to the kernel exactly as before: the turn loop's own
+  // `typeof sectionPolicy === 'function'` guard keeps the zero-mechanism path byte-identical.
+  const packsDeclared = (Array.isArray(config.packs) && config.packs.length > 0) ||
+    (Array.isArray(settings['vmu.packs.active']) && settings['vmu.packs.active'].length > 0)
+  const sectionPolicy = packsDeclared ? liveSectionPolicy : null
+  // ★ THE REQUIRED SELF-REPORT: what would the dispatcher compose RIGHT NOW, and was a dispatcher even handed over?
+  // Lazy (never called during apply) so it can never disagree with the state the next assembly will see. It READS
+  // names only - no policy is called - so asking has no side effects.
+  const promptPolicyReport = () => {
+    const list = livePromptPolicies()
+    const idOf = (p) => (typeof p === 'function' ? (p.name || '(anonymous function)') : ((p && p.id) || '(anonymous policy)'))
+    return {
+      // THREE NAMED STATES, never one silence: no pack declared (the kernel received null) / packs declared and
+      // nothing collected yet (the dispatcher answers null) / at least one policy is live.
+      mode: packsDeclared ? (list.length > 0 ? 'live' : 'live-empty') : 'none',
+      handedToKernel: packsDeclared ? 'dispatcher' : null,
+      effective: list.length > 0,
+      ids: list.map(idOf),
+      builtin: builtinPromptPolicies.map((r) => r.id),
+      collected: promptPolicies.map(idOf),
+      composition: composePromptPolicies ? 'composePromptPolicies' : 'first-wins',
+      note: packsDeclared
+        ? 'the turn loop asks the dispatcher on EVERY assembly and it re-composes this live list, so a policy a pack declares after construction acts on the next turn'
+        : 'no pack is declared, so createKernel received sectionPolicy:null and the turn loop never asks: the framework switches no prompt section (zero mechanism)',
+    }
+  }
   const noticeBlock = (packRuntime.find((r) => r.noticeBlock) || {}).noticeBlock || null
   const extraPhases = packRuntime.length ? [...new Set(packRuntime.flatMap((r) => r.phases || []))] : null
-  const promptPolicies = []   // the sink a pack's manifest.promptPolicies arrives through (vmu-pack's side)
   // ★ A1 STEP 1 · PART B: THE FEEDBACK STATE IS COMPUTED ONCE, OUTSIDE THE PROVIDER, AND BOTH HALVES OF THAT SENTENCE
   // MATTER. OUTSIDE, because the receipt is what CALLS the provider - a provider that read `report.status()` would
   // recurse forever, which is what happened when this was made lazy. ONCE, here, because the switch is read from the
@@ -532,9 +576,9 @@ export function apply(ctx, config = {}) {
   // the pack tool resolves it at call time, and no ordering trap is introduced (§11-§8 "TOCTOU" lessons).
   // It is offered ONLY when packs are actually declared - with no configuration the adapter must still
   // register exactly one tool (zero mechanism, R1); a management surface is not an exception to that.
+  // ★ `packsDeclared` is declared ABOVE, beside the prompt-policy dispatcher: the value the kernel is built with
+  // (`sectionPolicy` vs null) and the value that decides whether the pack tool is offered must be the SAME fact.
   let packLoaderRef = null
-  const packsDeclared = (Array.isArray(config.packs) && config.packs.length > 0) ||
-    (Array.isArray(settings['vmu.packs.active']) && settings['vmu.packs.active'].length > 0)
   // ROUND 3 / task-20 F1 (framework defect, measured by vmu-assistant on a real host): the adapter was handed the
   // DEPLOYMENT's settings object, while a pack MANIFEST's settings (`packs/v5r/v5r-core.js` `PACK.settings`) are
   // applied AFTER the kernel exists - into the KERNEL's own settings. So a family key that only a pack manifest
@@ -576,6 +620,11 @@ export function apply(ctx, config = {}) {
       // would have declared (`faces.notPublished`), which is what makes "this pack's tools are missing" legible
       // instead of an unexplained absence of ten tool names.
       defaultsUnfolded: defaultsUnfolded.map((u) => ({ id: u.id, keys: u.keys.slice(), reason: u.reason })),
+      // ★ PHASE 6 / LIVE PROMPT POLICIES: THE CURRENT POLICY IS REPORTED, NOT ONLY REQUESTED. `host.js` merges this
+      // object into the `vibe_vmu_status` receipt, so one read answers "which prompt policies exist RIGHT NOW, did
+      // the kernel receive a dispatcher, and would the next assembly switch anything". The three `mode` states are
+      // named (none / live-empty / live) precisely so "no pack" is not confused with "a pack declared nothing".
+      promptPolicies: promptPolicyReport(),
     }),
     // ROUND 31 / task-153 (③): THE PROMPT-SECTION DEGRADATION, IN THE RECEIPT INSTEAD OF ONLY ON STDERR. Declaring
     // `vmu.prompts.*` text and failing to inject it is a real degradation: until now the ONLY place it existed was a
@@ -849,9 +898,18 @@ export function apply(ctx, config = {}) {
   // layer ⇒ my default is shadowed" from "it belongs to ANOTHER pack ⇒ named conflict"; `onPromptPolicy` is the sink
   // for a manifest's own `promptPolicies`, which is what makes a pack's prompt machinery pack-owned instead of
   // hard-wired here. Both are optional to the loader, so this call is safe before vmu-pack's side lands.
+  // ★ THE SINK'S RETURN VALUE IS THE LOADER'S UNDO (kernel/pack.js records it and `unload()` calls it). It used to
+  // return undefined, so an unloaded pack's policy stayed in the collected list forever. Now removal is REAL, which
+  // is the same "无残留" contract the loader's own docs state for this seam.
   const packLoader = createPackLoader({ kernel, registry: kernel.registry,
     settingSource: (key) => kernel.settingSource(key),
-    onPromptPolicy: (p) => { promptPolicies.push(p) } })
+    onPromptPolicy: (p) => {
+      promptPolicies.push(p)
+      return () => {
+        const i = promptPolicies.indexOf(p)
+        if (i !== -1) promptPolicies.splice(i, 1)
+      }
+    } })
   packLoaderRef = packLoader
   // ROUND 24 / task-136 — `vmu.packs.active` IS A REAL SWITCH NOW, ON THIS SAME LOADING PATH.
   // It used to only flip `packsDeclared` (:515-516) and therefore only made the pack TOOL/loader REACHABLE
@@ -1130,6 +1188,9 @@ export function apply(ctx, config = {}) {
       // would have declared (`faces.notPublished`), which is what makes "this pack's tools are missing" legible
       // instead of an unexplained absence of ten tool names.
       defaultsUnfolded: defaultsUnfolded.map((u) => ({ id: u.id, keys: u.keys.slice(), reason: u.reason })),
+      // ★ PHASE 6 / LIVE PROMPT POLICIES: the SAME report the host receipt receives, readable without the host
+      // service (a test, or a deployment inspecting the handle directly).
+      promptPolicies: promptPolicyReport(),
     }),
     // ROUND 31 / task-153 (③): THE PROMPT-SECTION DEGRADATION, IN THE RECEIPT INSTEAD OF ONLY ON STDERR. Declaring
     // `vmu.prompts.*` text and failing to inject it is a real degradation: until now the ONLY place it existed was a
@@ -1157,6 +1218,11 @@ export function apply(ctx, config = {}) {
       promptPolicies: promptPolicies.slice(),
     }),
     promptPolicies: () => promptPolicies.slice(),
+    // ★ PHASE 6: WHAT THE KERNEL'S DISPATCHER WOULD SWITCH ON THE NEXT ASSEMBLY, and whether it got a dispatcher at
+    // all. `promptPolicies()` above answers "which manifest policies are collected" (the field's existing meaning);
+    // this answers the question the defect made unanswerable: "is that collection COMPOSED into what the turn loop
+    // consults?". Same object `packReport().promptPolicies` carries into the host receipt.
+    promptPoliciesStatus: () => promptPolicyReport(),
     hooks,
     hooksResult: () => hooksResult,
     hooksError: () => hooksError,

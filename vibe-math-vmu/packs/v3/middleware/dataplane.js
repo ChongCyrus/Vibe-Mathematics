@@ -461,7 +461,7 @@ function truncateToBytes(text, capBytes) {
  * 报 `dropped` —— **不是拒写**。上限取自 `records.status().caps.bodyCapBytes`（内核构造期的**同一个**
  * 快照），因此这里与内核不会出现“两个上限”。
  */
-export function writeBody({ records, track, kind, title, body = '', settled = false, by = null, capBytes = null } = {}) {
+export function writeBody({ records, track, kind, title, body = '', tags = null, settled = false, by = null, capBytes = null } = {}) {
   if (!records || typeof records.put !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'writeBody needs a vmu.records handle', 'pass { records: kernel.records }')
   const caps = records.status().caps
   const cap = Number.isInteger(capBytes) && capBytes > 0 ? capBytes : caps.bodyCapBytes
@@ -469,9 +469,35 @@ export function writeBody({ records, track, kind, title, body = '', settled = fa
   const bytes = Buffer.byteLength(text, 'utf8')
   const kept = truncateToBytes(text, cap)
   const dropped = bytes - Buffer.byteLength(kept, 'utf8')
-  const rec = records.put({ track, kind, title, body: kept, settled, by })
+  // `tags` 是可选的：v3 的 `plans` 轨把**规划回执的动作**编码在 tags 上（P0-2），因此写入口必须能带它们。
+  // 不传时保持原样（`records.put` 的默认是 []），所以已有的 4 个卡的调用点逐字节不变。
+  const putSpec = { track, kind, title, body: kept, settled, by }
+  if (Array.isArray(tags)) putSpec.tags = tags
+  const rec = records.put(putSpec)
   return Object.assign({}, rec, {
     track, kind,
+    bounded: { key: 'vmu.records.bodyCapBytes', cap, bytes, keptBytes: Buffer.byteLength(kept, 'utf8'), dropped, truncated: dropped > 0 },
+  })
+}
+
+/**
+ * 改一条**非卡记录**的正文（`records.supersede` 的有界包装）。与 `writeBody` 共用同一个上限与同一套
+ * `bounded` 回执形状：`plans` 轨的记录是 JSON（不是 md 卡），`updateCard` 的 compose 路径不适用，所以
+ * 它的第二版走这里 —— 两个写入点共享**同一份**截断实现与同一个 `vmu.records.bodyCapBytes` 快照。
+ * `reason` 仍是必填的（内核 `supersede` 会以 `VMU_REASON_REQUIRED` 拒），这里只是把默认措辞点名。
+ */
+export function supersedeBody({ records, id, title = null, body, tags = null, reason = null, by = null, capBytes = null } = {}) {
+  if (!records || typeof records.supersede !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'supersedeBody needs a vmu.records handle', 'pass { records: kernel.records }')
+  const caps = records.status().caps
+  const cap = Number.isInteger(capBytes) && capBytes > 0 ? capBytes : caps.bodyCapBytes
+  const text = String(body == null ? '' : body)
+  const bytes = Buffer.byteLength(text, 'utf8')
+  const kept = truncateToBytes(text, cap)
+  const dropped = bytes - Buffer.byteLength(kept, 'utf8')
+  const spec = { id, reason: reason || 'v3 dataplane: bounded record body', title, body: kept, by }
+  if (Array.isArray(tags)) spec.tags = tags
+  const res = records.supersede(spec)
+  return Object.assign({}, res, {
     bounded: { key: 'vmu.records.bodyCapBytes', cap, bytes, keptBytes: Buffer.byteLength(kept, 'utf8'), dropped, truncated: dropped > 0 },
   })
 }

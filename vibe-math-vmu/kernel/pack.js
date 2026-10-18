@@ -214,6 +214,8 @@ export function settingLayerRank(source) {
  * hands each one to its `onPromptPolicy` sink, and the ENTRY composes them into the single function the
  * turn loop consults. Pure, no kernel, no pipeline: the same shape `decideSections` returns, merged —
  * a later policy wins for the same section NAME, and every policy's errors are kept.
+ * A policy that THROWS becomes a named error in that same `errors` list (`VMU_PACK_PROMPT_POLICY_FAILED`),
+ * which the turn loop forwards as a refusal - it is never silently skipped.
  * An empty list returns null, so "no pack declares a policy" stays the framework's zero mechanism
  * (the turn loop only asks when `typeof sectionPolicy === 'function'`).
  */
@@ -230,9 +232,24 @@ export function composePromptPolicies(policies = []) {
     const byName = new Map()
     const errors = []
     for (const p of list) {
-      const out = p.apply({ settings, turn }) || {}
+      // A POLICY THAT THROWS IS A NAMED REFUSAL, NEVER A SILENT SKIP. The turn loop already forwards every entry of
+      // `errors` through its own `fail()` (code/message/hint), so catching here is what turns a policy bug into a
+      // refusal the caller can read. Swallowing it would deliver a prompt assembled by a policy that ran halfway -
+      // the "declared but ineffective" class this project keeps finding. The code is `VMU_PACK_`-namespaced like the
+      // sink-less refusal above (a `VMU_*` code outside that family must be registered in docs/03 §8).
+      let out
+      try {
+        out = p.apply({ settings, turn }) || {}
+      } catch (e) {
+        errors.push({
+          code: 'VMU_PACK_PROMPT_POLICY_FAILED',
+          message: 'prompt policy ' + String(p.id) + ' threw while deciding sections: ' + String((e && e.message) || e),
+          hint: 'a prompt policy must return {decisions,errors} from apply({settings,turn}); a throwing policy is refused by name rather than skipped (the prompt is not assembled from a half-run policy)',
+        })
+        continue
+      }
       for (const d of out.decisions || []) byName.set(d.name, d)
-      for (const e of out.errors || []) errors.push(e)
+      for (const de of out.errors || []) errors.push(de)
     }
     return { decisions: [...byName.values()], errors }
   }

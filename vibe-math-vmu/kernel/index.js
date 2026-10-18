@@ -1313,6 +1313,15 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     sectionPolicy: sectionPolicy || null,
     noticeBlock: noticeBlock || null,
     extraPhases: extraPhases || null,
+    // ★★★★★★★ PHASE 6 / K10 WIRING: THE LOOP'S BUS WAS NEVER HANDED OVER, SO `turn/reply-parsed` COULD NOT FIRE.
+    // `kernel/turn/index.js:1009` emits that hook (the ONLY producer in the tree) inside `if (bus && ...)`, and the
+    // orchestrator defaults `bus = null` - measured: a real kernel ran two turns and the hook's hit counter stayed 0,
+    // so `bus.rewriteOf` (K10's whole point) rewired nothing in a real deployment while its unit test stayed green.
+    // The `bus` below is the SAME instance every other service and the host hooks use (constructed above this call,
+    // so there is no initialization cycle: the bus never reaches for the turn loop). An EMPTY bus emits nothing, so
+    // the zero-mechanism path is unchanged; a deployment that injects its own turn keeps the loop's own `typeof`
+    // probes and degrades exactly as before.
+    bus,
     prompt,
     faces: facesFrom({ tasks, records, library, meetings, ballotbox, formal, mathjobs }),
     // ROUND 1 / K3: the TURN delivery seam is its own kernel option (`deliverTurn`), because the wake envelope a
