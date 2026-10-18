@@ -772,7 +772,8 @@
     "docs-landed/07-index-and-relationship.md",
     "docs-landed/08-reference-map.md",
     "docs-landed/09-pack-and-middleware-reference.md",
-    "docs-landed/10-prompt-and-settings-reference.md"
+    "docs-landed/10-prompt-and-settings-reference.md",
+    "tests/vmu-turn-activation.test.mjs"
   ],
   "license": "MIT",
   "keywords": [
@@ -801,8 +802,8 @@
       "patch": "./cordis.patch.yml"
     },
     "minVersion": "0.1.2-alpha.4",
-    "testedVersion": "0.2.0-rc.2",
-    "compatNote": "v2.8.5 补丁版：修 Lean 形式化通道（此前默认无法编译）、TeX 引擎发现与若干提示词问题，并新增一个纯增量的工作经验反馈库。① Lean：注入的搜索根旗标改用 Lean 4 的 -R（此前用 Lean 3 的 --search-path，编译器在参数解析阶段即以 rc=1 失败、文件从未被读取）——真机实测最小证明编译通过、归档到 Verified/Lean/，并被另一名成员复用。② TeX：「装了但不在 PATH」的引擎现在能在**有界**的文档化候选根里找到（仍只查文档化位置、不扫全盘、绝不自动安装、绝不写工作区之外；未检测到时 triedPaths 具名列出实际探测过的路径）。③ 提示词：缺引擎不再要求成员「向用户询问」而改为「如实上报所办」，LaTeX 指引标注适用范围，「回执」概念首次出现处补背景，空引擎列表改为「可用引擎 无」，面向成员的回执标题改为【研究所提示】，面向代理文本不再含盘符字面量。④ 新增 v5 工具 vibe_v5_feedback 与参数 feedback（默认 on）：self/team 路由自己调整即可、interpersonal 需评估＋事后回填；off 时不注入提示词且每次写入具名拒绝。⑤ 安装/升级：dsh plugin 需要一个可用的 pnpm；安装与升级请给显式版本（dsh plugin --profile <profile> add dsh-vibe-math@2.8.5）——不带版本可能装到旧版。参数名与默认值、数据格式与目录结构均未变；DSH 支撑窗口不变；无需迁移。",
+    "testedVersion": "0.2.1-rc.2",
+    "compatNote": "v2.8.5 补丁版：修 Lean 形式化通道（此前默认无法编译）、TeX 引擎发现与若干提示词问题，并新增一个纯增量的工作经验反馈库。① Lean：注入的搜索根旗标改用 Lean 4 的 -R（此前用 Lean 3 的 --search-path，编译器在参数解析阶段即以 rc=1 失败、文件从未被读取）——真机实测最小证明编译通过、归档到 Verified/Lean/，并被另一名成员复用。② TeX：「装了但不在 PATH」的引擎现在能在**有界**的文档化候选根里找到（仍只查文档化位置、不扫全盘、绝不自动安装、绝不写工作区之外；未检测到时 triedPaths 具名列出实际探测过的路径）。③ 提示词：缺引擎不再要求成员「向用户询问」而改为「如实上报所办」，LaTeX 指引标注适用范围，「回执」概念首次出现处补背景，空引擎列表改为「可用引擎 无」，面向成员的回执标题改为【研究所提示】，面向代理文本不再含盘符字面量。④ 新增 v5 工具 vibe_v5_feedback 与参数 feedback（默认 on）：self/team 路由自己调整即可、interpersonal 需评估＋事后回填；off 时不注入提示词且每次写入具名拒绝。⑤ 安装/升级：dsh plugin 需要一个可用的 pnpm；安装与升级请给显式版本（dsh plugin --profile <profile> add dsh-vibe-math@2.8.5）——不带版本可能装到旧版。参数名与默认值、数据格式与目录结构均未变；DSH 支撑窗口不变；无需迁移。 | PHASE 6（DSH 0.2.1-rc.2）：0.2.1 移除了 subagents.start()/startContinuable() 并新增 startActivation()；vmu 的默认成员回合交付（deliverMode=subagents）已改为优先走 startActivation（delivery:'caller'），旧的两个动词保留为回退以维持 0.1.2+ 支撑窗口。其余宿主面（tools.register / systemPrompt / subprocess / agents / sendMessage / interrupt / listChildren / 钩子）经运行时服务目录核对未变。",
     "compatibility": {
       "dshReleases": {
         "0.1.2-alpha.4": "compatible",
@@ -815,7 +816,8 @@
         "0.1.5-rc.2": "compatible",
         "0.1.6-alpha.2": "compatible",
         "0.1.7-rc.2": "compatible",
-        "0.2.0-rc.2": "compatible"
+        "0.2.0-rc.2": "compatible",
+        "0.2.1-rc.2": "compatible"
       }
     },
     "engines": {

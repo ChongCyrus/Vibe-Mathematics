@@ -132,3 +132,63 @@
    - ★ **再做 K1（周期自驱）＋ K2（派发回合）** —— ★ **v3 复刻的两根支柱**，★ 必须先进内核
    - ★ **然后 P0 的 pack 层**（★ 规划模块／方法库模块／验证模块／人工门／tracks）
 3. ★★ **跑一次 T1**（★ 换 DSH 大版本后值一次；★ >5 分钟，★ 但本轮是第 2 轮，★ 且 K10 改动会影响全量）
+
+---
+
+## 轮 2（2026-10-18）
+
+### ★★★★★ 目标 1 的实质：DSH 0.2.1-rc.2 换了子代理的**启动动词** —— 而 vmu 的默认交付路径正靠它
+
+★ **`dsh-compat` 审计 ＋ 我向运行时核实**，两边一致：
+★ **`subagents` 服务现在提供**：`startActivation`（两个重载）／`waitForChildren`／`drainDescendants`／`drainChildren`／`sendMessage`／`interrupt`／`listChildren`／`listDescendants`／`prompt`／`interruptByParent`／`registerProvider`／`getProvider`／`list`／`resolveMaxDepth`
+★★ **而 `start` 与 `startContinuable`【都不存在】** ✓（★ 运行时服务目录直接读出来的，★ 不是看文档）
+★ 新增类型：★ `SubagentActivationSpec = { provider, label, childId?, request, signal, delivery:'parent'|'caller' }`；★ `SubagentActivation = { childId, messageId?, result: Promise<SubagentResult>, dispose() }`；★ `SubagentResult = { output: ContentBlock[], structured?, diagnostic?, stopReason }` ✓
+⇒ ★★ **vmu 的默认 `deliverMode:'subagents'` 在 0.2.1 上会【每次交付都被拒】** —— ★ 这是**唯一的硬伤** ✓
+
+### ★★★★ 本轮改动（目标 1 的适配）
+
+| ★ 文件 | ★ 改了什么 | ★ 为什么 |
+|---|---|---|
+| ★ **`kernel/turn/index.js`** | ★ 加**第三条路径 `activation`**（★ 顺序：`one-shot` → ★ **`activation`** → `continuable`）；★ 加 `startOnce()` 把"发起"集中一处；★ **activation 的取回逻辑**：★ `await activation.result` → ★ **从 `result.output` 的 text 块取文本** → ★ **`dispose()`** → ★ 带上 `stopReason`／`childId`／`structured`；★ 加两个防御式助手 `providerNamesOf()`／`textOfContentBlocks()` | ★ 0.2.1 只有 `startActivation`；★ **旧的两个动词保留作回退**（★ vmu 仍声明支持 0.1.2+，★ 且 48 个 fake-host 测试靠它们）|
+| ★ **`host-deliver.js`** | ★ provider 发现条件加 `startActivation`；★ **前置判定**加 `startActivation`；★ **拒绝措辞改成真话**（★ 原文说"宿主没有 subagents 服务"★ **是假话** —— 服务在，★ 缺的是动词）；★ 列出**宿主实际提供的动词** | ★ 否则 0.2.1 上永远发现不到 provider、★ 且诊断指向错误的原因 |
+| ★ **`installer.js`** | ★ **去掉 `startContinuable` 的必需要求**；★ 改成"`start`／`startActivation`／`startContinuable` **至少其一**"探测 | ★ 否则自检会把**更新的宿主**报成"宿主版本可能过旧"（★ 假阴性）|
+| ★ **`package.json`** | ★ `testedVersion: 0.2.0-rc.2 → **0.2.1-rc.2**`；★ `compatibility.dshReleases` 补 `"0.2.1-rc.2": "compatible"`；★ `compatNote` 加一段说明 0.2.1 的动词变更；★ 新测试进 `files` | ★ `engines.dsh` 本已覆盖（`>=0.2.0-alpha.1 <0.3.0-0`）★ **不必改**；★ 而 `testedVersion`／`dshReleases` 是**给人看的宣称**，★ 留着 0.2.0 会误导 |
+| ★★ **`tests/vmu-turn-activation.test.mjs`（新）** | ★ **27 条断言**：★ activation 路径被选中／★ **spec 五字段形状**（含 `delivery:'caller'`）／★ 从 `output` 取词／★ `stopReason`/`childId`/`structured` 传递／★ **成功与失败两条路都 `dispose()`**／★ 无文本⇒具名拒／★ 缺 provider⇒`VMU_INVALID_ARGUMENT`（**在重试之外**）／★ 旧动词回归／★ 无动词⇒具名拒并列出实际动词 | ★ 改前 **48 个测试用旧动词、★ 0 个用 `startActivation`** ⇒ ★ **新路径零覆盖**；★ 这条改动是"要么有测试、要么等于没做" |
+
+### ★★★ 结果
+
+| ★ 测试 | ★ 结果 |
+|---|---|
+| ★ `vmu-turn-activation.test.mjs`（新） | ★ **27 passed / 0 failed** ✓ |
+| ★ `vmu-turn.test.mjs` | ★ 148 / 0 ✓ |
+| ★ `vmu-host-deliver-wiring.test.mjs` | ★ 9 / 0 ✓ |
+| ★ `vmu-round1-seams.test.mjs` | ★ 40 / 0 ✓ |
+| ★ `vmu-turn-contracts.test.mjs` | ★ 12 / 0 ✓ |
+| ★ `audit-code-size.test.mjs` | ★ 9 / 0 ✓（★ `turn/index.js` **1159/1200**，★ 逼近上限）|
+| ★ `audit-installer-compat.test.mjs` | ★ 77 / 0 ✓ |
+| ★ `audit-package-membership.mjs` | ★ 29 / 0 ✓ |
+| ★ `preflight` | ★ **PASS** ✓ |
+| ★ `check-docs` | ★ **PASS** ✓ |
+| ★ `regen-all --check` | ★ **16/16 in sync** ✓ |
+
+### ★★★★★ 本轮我写下的两个【同类错误】—— 值得单列
+
+★ **两处"拒绝自己抛异常"**，★ **而且都写在同一批修改里**：
+1. ★ `kernel/turn/index.js` 的拒绝 hint 里 `Object.getPrototypeOf(subagents)` —— ★ `subagents` 为 `null` 时**抛 TypeError** ⇒ ★ **三条既有断言拿到的是裸 TypeError（无 `.code`）**
+2. ★ `host-deliver.js` 的 `typeof subs.startActivation` —— ★ `subs` 为 `undefined` 时**抛 TypeError** ⇒ ★ 同一后果
+⇒ ★★ **教训（★ 已写进代码注释）**：★ **"每个新探针都要先把【服务不存在】的情形写好，★ 而不是最后才想"**；★ 而**"一个会抛的 hint 会把可诊断的拒绝变成不可诊断的崩溃"** ✓
+★ 两处都已修，★ 并**复跑验证**（★ 探针直接打出 `code: VMU_ENGINE_UNAVAILABLE` ＋ 诚实消息）✓
+
+### ★★ 轮 2 未做 / 待办（★ 按 `dsh-compat` 的清单）
+
+- ★★ **建议改（不坏）**：★ `cordis.patch.yml` 的 `backgroundMode: continuable`（★ 0.2.1 无此键，★ 被静默忽略）／★ **4 个宿主不存在的钩子名**（★ `prompt/assemble`／`prompt/section`／`agent/inbox`／`settings/changed` —— ★ 两版都不存在，★ 是 vmu 登记表里的旧词汇）／★ `ctx.get('session')` 应为 `'sessions'`／★ `reportfeedback.js` 的 CONTEXT_ORDERS 注释
+- ★★ **可采纳的新能力**（★ 最贴合哲学的三条）：★ **per-child `cwd`/`agentPreset`/`outputSchema`**（★ 成员各有工具面/预设；★ 近乎零成本）／★ **结构化子代理回执**（★ `structured` ＋ `outputSchema`，★ 与 vmu"回执＝一次调用的 JSON 结果"文化契合）／★ **`plugin:` 会话记录通道**（★ `ignorable`、★ 随 fork/resume 走 —— ★ 但**实验 API**，★ 只能当镜像不能当权威）
+- ★★ **未跑 T1**（★ >8 分钟）—— ★ 本轮改了 turn 内核，★ **T1 列为轮 3 必跑**（★ 已经超过"换大版本后值一次"的理由）
+- ★ **目标 2／3／4 未动**（★ 本轮全部用于目标 1 的硬伤）
+
+### ★ 轮 3 计划
+
+1. ★★ **跑 T1**（★ 本轮改了 turn 内核，★ 必跑）
+2. ★★ **清 `dsh-compat` 的"建议改"四项**（★ 都是小而真的）
+3. ★★ **采纳 1–2 项新能力**（★ 优先 **per-child `cwd`/`agentPreset`** 与 **结构化回执**，★ 按"内核加具名能力 ＋ pack 声明去用"）
+4. ★ 然后回 **目标 2**（★ 按蓝图的 P0 顺序：★ 先 K10（`rewritable` 名不副实）→ ★ K1（周期自驱）→ ★ K2（派发回合））

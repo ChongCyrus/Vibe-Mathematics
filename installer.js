@@ -489,7 +489,13 @@ async function checkHostCapabilities(ctx, logger) {
   const checks = [
     // subagents 服务的续做/唤醒方法是 sendMessage(sender, targetId, content, {signal})；
     // followup 不是 subagents 服务的方法（它只是 Agent 对象方法）。同时探测两者，能用一个即可。
-    { svc: 'subagents', methods: ['startContinuable', 'interrupt'], required: true },
+    // ★★★★★★★ PHASE 6: `startContinuable` IS NOT REQUIRED HERE ANY MORE, BECAUSE DSH DELETED IT.
+    // Measured on the running host's own catalog: 0.2.1-rc.2 offers startActivation and NO start/startContinuable.
+    // Requiring the old verb made this self-check log "subagents.startContinuable 不可用（宿主版本可能过旧）" on a host
+    // that is NEWER than the one it was written for - a false negative that sends the reader chasing a downgrade.
+    // The START capability is probed as "at least one of start / startActivation / startContinuable" in the block
+    // below; `interrupt` is unchanged across both versions and stays required.
+    { svc: 'subagents', methods: ['interrupt'], required: true },
     { svc: 'agents', methods: ['roots'], required: true },
     { svc: 'tools', methods: ['register'], required: true },
     { svc: 'commands', methods: ['register'], required: true },
@@ -517,6 +523,13 @@ async function checkHostCapabilities(ctx, logger) {
     // subagents continuation (wake) API: sendMessage (modern) OR followup (legacy) must exist.
     if (svc === 'subagents' && typeof s.sendMessage !== 'function' && typeof s.followup !== 'function') {
       problems.push('subagents 缺少续做/唤醒方法（需 sendMessage 或 followup 至少其一）')
+    }
+    // ★ PHASE 6: THE START VERB MOVED, SO IT IS PROBED AS A SET. DSH 0.2.1-rc.2 removed start/startContinuable and
+    // added startActivation; a host must offer at least ONE of the three or no member turn can ever be delivered.
+    // The refusal names which ones were found, so the diagnosis does not require re-reading the host's catalog.
+    if (svc === 'subagents' && typeof s.start !== 'function' && typeof s.startActivation !== 'function' && typeof s.startContinuable !== 'function') {
+      const seen = Object.keys(Object.getPrototypeOf(s) || {}).concat(Object.keys(s)).filter((k) => /^start/.test(k)).slice(0, 8).join(',') || '(none)'
+      problems.push('subagents 缺少启动方法（需 start / startActivation / startContinuable 至少其一；DSH 0.2.1 起为 startActivation）。本宿主提供：' + seen)
     }
   }
   // fs API shape: DSH 0.1.1 起 resolve 返回 {targetKey, displayPath} 对象（旧版返回字符串路径）

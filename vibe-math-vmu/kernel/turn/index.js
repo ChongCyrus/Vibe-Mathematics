@@ -224,6 +224,37 @@ export function facesFrom(services = {}, owners = FIELD_OWNERS) {
  * `extract` lets a host whose handle carries the reply elsewhere say where it is; the built-in order is `reply`, then
  * `text`, which covers the two shapes seen in practice.
  */
+/**
+ * ★ PHASE 6: the provider names a host advertises, read DEFENSIVELY.
+ * `subagents.list()` is the documented discovery verb (registered names in insertion order). A host without it, or one
+ * whose list() throws, yields a readable string rather than an exception - this is used inside a refusal HINT, and a
+ * hint that itself fails turns a diagnosable refusal into a bare TypeError.
+ */
+function providerNamesOf(subagents) {
+  try {
+    const names = subagents && typeof subagents.list === 'function' ? subagents.list() : null
+    const usable = Array.isArray(names) ? names.filter((n) => typeof n === 'string') : []
+    return usable.length > 0 ? usable.slice(0, 12).join(',') : '(none registered)'
+  } catch { return '(list() threw)' }
+}
+
+/**
+ * ★ PHASE 6: the words out of a `SubagentResult.output`, or null when there are none.
+ * DSH types that output as ContentBlock[]; only blocks of type 'text' carry words. Returning NULL rather than '' is
+ * deliberate: "the child produced no words" and "the child said nothing meaningful" are different facts, and the caller
+ * refuses by name on the former instead of delivering an empty member turn as if the member had answered.
+ */
+function textOfContentBlocks(output) {
+  if (!Array.isArray(output)) return null
+  const parts = []
+  for (const block of output) {
+    if (typeof block === 'string') { parts.push(block); continue }
+    if (block && typeof block === 'object' && typeof block.text === 'string' && (block.type === undefined || block.type === 'text')) parts.push(block.text)
+  }
+  const text = parts.join('')
+  return text.trim() === '' ? null : text
+}
+
 export function deliverViaSubagents(subagents, extract = null, { provider = null, parent = null, signal = null, options = null, delay = null } = {}) {
   // ★★★ ROUND 63: A MEMBER TURN IS FOREGROUND ONE-SHOT DELEGATION, AND THE HOST SAYS SO ITSELF. The stack captured on
   // a real machine came from the continuable-activation registry - startContinuable -> assertAdmitting ->
@@ -236,13 +267,45 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
   // provider name is configured AND the seam offers `start`, the one-shot path is taken. The continuable path stays as
   // the fallback, because a host that offers only that one must still work.
   const oneShot = typeof provider === 'string' && provider !== '' && typeof subagents.start === 'function'
+  // ★★★★★★★ PHASE 6 / ROUND 2: DSH 0.2.1-rc.2 REPLACED BOTH OLDER VERBS WITH `startActivation`.
+  // MEASURED, NOT ASSUMED: the running host's own service catalog (`cordis_inspect` -> host Service.listService
+  // "subagents") lists startActivation, waitForChildren, drainDescendants, drainChildren, sendMessage, interrupt,
+  // listChildren, listDescendants, prompt, interruptByParent, registerProvider, getProvider, list, resolveMaxDepth -
+  // and `start` / `startContinuable` are ABSENT. The 0.2.0 -> 0.2.1 type diff agrees: `startContinuable(spec)` and
+  // `start(name, request)` were removed and `startActivation(spec)` added, with
+  //   SubagentActivationSpec  = { provider, label, childId?, request, signal, delivery: 'parent' | 'caller' }
+  //   SubagentActivation      = { childId, messageId?, result: Promise<SubagentResult>, dispose() }
+  //   SubagentResult          = { output: ContentBlock[], structured?, diagnostic?, stopReason }
+  // Without this branch a member turn is refused on EVERY delivery on 0.2.1, because the default delivery mode is
+  // 'subagents'. The older verbs are KEPT as fallbacks: vmu still declares support back to 0.1.2-alpha.4, and a host
+  // that offers only those must keep working (and their fake-host tests must keep passing).
+  const canActivate = !!subagents && typeof subagents.startActivation === 'function'
   // ★★★ ROUND 67: WHICH PATH ACTUALLY RAN IS THE READING THAT SPLITS THE PROBLEM. Recording it costs nothing and
   // settles an ambiguity that cost a whole round: with the one-shot path chosen the host accepts the turn and the
   // reply shape is the question; with the fallback chosen the provider name was never resolved.
-  const path = oneShot ? 'one-shot' : 'continuable'
-  if (!subagents || (!oneShot && typeof subagents.startContinuable !== 'function')) {
-    throw refuse('VMU_ENGINE_UNAVAILABLE', 'the subagents seam cannot start a member turn',
-      'inject { deliver } yourself, or give the loop a seam with startContinuable (docs/26 stage 3) - or pass { provider } so the ONE-SHOT start() path can be used, which never touches the continuable registry')
+  // ★ ORDER: one-shot, then activation, then continuable. `delivery: 'caller'` on the activation path keeps the
+  // result with this caller instead of also notifying the parent model, which is what a member turn wants.
+  const path = oneShot ? 'one-shot' : (canActivate ? 'activation' : 'continuable')
+  if (!subagents || (!oneShot && !canActivate && typeof subagents.startContinuable !== 'function')) {
+    // ★★★★★★★ PHASE 6: A REFUSAL HINT MUST NOT ITSELF THROW. The first version of this hint read
+    // `Object.getPrototypeOf(subagents)` unguarded, so when the seam was ABSENT (subagents === null) the refusal
+    // construction died with a bare `TypeError` - the caller saw an unnamed TypeError instead of the named
+    // VMU_ENGINE_UNAVAILABLE it is entitled to, and three existing tests caught exactly that (their detail printed
+    // as `{}`, i.e. no `.code`). A hint that fails turns a diagnosable refusal into an undiagnosable crash, so the
+    // verb listing is read defensively, and the message distinguishes the two genuinely different causes.
+    const offeredVerbs = (() => {
+      try {
+        if (!subagents) return ''
+        return Object.keys(Object.getPrototypeOf(subagents) || {}).concat(Object.keys(subagents))
+          .filter((k) => /start|interrupt|list|send/i.test(k)).slice(0, 12).join(',') || '(none readable)'
+      } catch { return '(the service could not be read)' }
+    })()
+    throw refuse('VMU_ENGINE_UNAVAILABLE',
+      subagents
+        ? 'the subagents service offers none of start(), startActivation() or startContinuable(), so it cannot start a member turn'
+        : 'no subagents service is bound, so no member turn can be delivered',
+      'inject { deliver } yourself to supply a seam (docs/26 stage 3)'
+        + (subagents ? '; verbs this host does offer: ' + offeredVerbs : '; ctx.get(\'subagents\') returned nothing'))
   }
   return async ({ turn, text }) => {
     // ROUND 346: the spec carries the SAME three elements the original's wake carries - who, why, and what next -
@@ -274,11 +337,40 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
     // continuable lifecycle, so the registry that refused a NESTED activation is not consulted at all. The request
     // shape is the one-shot one: a label, the prompt, and the parent/signal the provider expects - the continuable
     // `spec` is a DIFFERENT contract and is only used on the fallback path.
+    // ★★★★★★★ PHASE 6: ONE `start` NAME, ISSUED TWICE. The retry below calls it a second time; naming it keeps the
+    // ACTIVATION spec - whose shape differs from BOTH older verbs - in one place instead of duplicated at two sites.
+    //   activation: { provider, label, request:{prompt,parent,signal,...}, signal, delivery:'caller' }
+    //   one-shot  : start(provider, { label, prompt, parent, signal, options, ... })
+    // `delivery:'caller'` is deliberate: the result comes back to THIS caller instead of also notifying the parent
+    // model, which is exactly what a member turn is - one delivery with a reply (docs/26 stage 3).
+    const startOnce = () => {
+      if (oneShot) {
+        return subagents.start(provider, Object.assign({ label: spec.label, prompt: spec.request.prompt, parent, signal, options: options || {} }, spec.oneShotRequest || {}))
+      }
+      if (canActivate) {
+        return subagents.startActivation({
+          provider: String(provider),
+          label: spec.label,
+          request: Object.assign({ prompt: spec.request.prompt, parent, signal }, spec.oneShotRequest || {}),
+          signal,
+          // 'caller' = keep the result with this caller; 'parent' would also notify the parent model.
+          delivery: 'caller',
+        })
+      }
+      return subagents.startContinuable(spec)
+    }
+    // ★★★★★★★ PHASE 6: A MISSING PROVIDER IS A CONFIGURATION MISTAKE, NOT A HOST REFUSAL - SO IT IS CHECKED OUTSIDE
+    // THE RETRY WRAPPER. Anything thrown inside startOnce() is caught by the first catch, retried once, and then
+    // re-labelled VMU_ENGINE_UNAVAILABLE ("the host refused to start this member turn twice"). Reporting a fixable
+    // deployment setting as a host failure is the kind of misdirection this phase removes, and it would be invisible:
+    // the message would blame the host while the fix is one setting key.
+    if (canActivate && !oneShot && (typeof provider !== 'string' || provider === '')) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'the activation delivery path needs a provider name',
+        'set config.deliverProvider or vmu.turn.deliverProvider to one of the names this host lists: ' + providerNamesOf(subagents))
+    }
     let handle
     try {
-      handle = oneShot
-        ? await subagents.start(provider, Object.assign({ label: spec.label, prompt: spec.request.prompt, parent, signal, options: options || {} }, spec.oneShotRequest || {}))
-        : await subagents.startContinuable(spec)
+      handle = await startOnce()
     } catch (e) {
       const first = String((e && e.message) || e)
       // ★★★ ROUND 80: THE PAUSE IS AN INJECTED SEAM, NOT A GLOBAL TIMER. The timer scan counts every file that creates
@@ -287,13 +379,46 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
       // otherwise the retry simply proceeds, which keeps this function free of global state entirely.
       if (typeof delay === 'function') await delay(250)
       try {
-        handle = oneShot
-          ? await subagents.start(provider, Object.assign({ label: spec.label, prompt: spec.request.prompt, parent, signal, options: options || {} }, spec.oneShotRequest || {}))
-          : await subagents.startContinuable(spec)
+        handle = await startOnce()
       } catch (e2) {
         throw refuse('VMU_ENGINE_UNAVAILABLE',
           'the host refused to start this member turn twice on the ' + path + ' path: ' + String((e2 && e2.message) || e2),
           'the host\'s subagent registry would not admit a new activation; the first failure was "' + first + '". It refuses while a previous activation is still being torn down, so retry later or serialise deliveries so each turn waits for the last teardown (docs/26 §3.22)', e2)
+      }
+    }
+    // ★★★★★★★ PHASE 6: AN ACTIVATION IS NOT A HANDLE - IT MUST BE AWAITED AND DISPOSED, AND ITS TEXT LIVES IN `output`.
+    //   SubagentActivation = { childId, messageId?, result: Promise<SubagentResult>, dispose() }
+    //   SubagentResult     = { output: ContentBlock[], structured?, diagnostic?, stopReason }
+    // None of the handle-shaped readings below (`handle.reply` / `handle.text` / `handle.result`) apply - a
+    // SubagentResult carries no `reply`/`text` field, only content blocks - so this path is handled here and returns.
+    // dispose() runs on the FAILURE path too: an undisposed activation holds an execution handle open, which is
+    // exactly the leak that later surfaces as "the host refuses to admit a new activation".
+    if (path === 'activation') {
+      const activation = handle
+      const disposeOnce = async () => {
+        try { if (activation && typeof activation.dispose === 'function') await activation.dispose() } catch { /* a failed dispose must not lose the reply */ }
+      }
+      let res = null
+      try {
+        res = activation && activation.result ? await activation.result : null
+      } catch (e) {
+        await disposeOnce()
+        throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host activation for this member turn failed: ' + String((e && e.message) || e),
+          'the activation was started and then disposed; the failure came from the child run itself, not from the delivery (docs/26 stage 3)', e)
+      }
+      await disposeOnce()
+      const activationReply = textOfContentBlocks(res && res.output)
+      if (activationReply === null) {
+        throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host accepted the activation but the child returned no text',
+          'stopReason=' + String(res && res.stopReason) + ' diagnostic=' + String(res && res.diagnostic) + '; an activation that returns structure without text is a contract mismatch, not an empty answer')
+      }
+      return {
+        reply: activationReply,
+        childId: (activation && (activation.childId || activation.id)) || null,
+        stopReason: res && typeof res.stopReason === 'string' ? res.stopReason : null,
+        structured: res && res.structured !== undefined ? res.structured : null,
+        attribution: 'activation: reply read from result.output, then dispose() called on the activation',
+        deliveryPath: 'activation',
       }
     }
     if (typeof extract === 'function') {

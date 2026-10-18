@@ -72,7 +72,10 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
         || (settings && typeof settings['vmu.turn.deliverProvider'] === 'string' && settings['vmu.turn.deliverProvider'])
         || null
       let configuredProvider = declaredProvider
-      if (!configuredProvider && subs && typeof subs.start === 'function' && typeof subs.list === 'function') {
+      // ★ PHASE 6: DSH 0.2.1-rc.2 replaced `start`/`startContinuable` with `startActivation`, so provider discovery
+      // must accept that verb too - otherwise a 0.2.1 host is never asked which providers it has and the activation
+      // path can never resolve a name.
+      if (!configuredProvider && subs && (typeof subs.start === 'function' || typeof subs.startActivation === 'function') && typeof subs.list === 'function') {
         // ★★★ ROUND 64: THE METHOD IS `list()`. Round 63's discovery asked the host for `listProviders()` - which does
         // NOT EXIST (zero occurrences in the library) - so the condition was false, the discovery never ran, and the
         // one-shot path was never taken on a real machine. The library's own doc comment on the method reads "List
@@ -85,10 +88,25 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
           if (Array.isArray(names) && names.length > 0 && typeof names[0] === 'string') configuredProvider = names[0]
         } catch { configuredProvider = null }
       }
-      if (!subs || (typeof subs.startContinuable !== 'function' && !(configuredProvider && typeof subs.start === 'function'))) {
-        const err = new Error('the host exposes no subagents service (ctx.get(\'subagents\')), so no member turn can be delivered')
+      // ★★★★★★★ PHASE 6: THE REFUSAL BELOW USED TO LIE. It said "the host exposes no subagents service" - which on
+      // DSH 0.2.1-rc.2 is FALSE: the service is there (measured through the host's own catalog: startActivation,
+      // waitForChildren, sendMessage, interrupt, listChildren, list, ...). What changed is the START verb: `start` and
+      // `startContinuable` were removed and `startActivation` added. A refusal that names the wrong cause sends the next
+      // reader looking for a missing service, so this one names WHICH verbs the host actually offers.
+      // ★★★★★★★ PHASE 6: `!!subs &&` IS NOT DEFENSIVE PADDING - IT IS THE FIX. The first version of this line read
+      // `typeof subs.startActivation === 'function'`, so when NO subagents service was bound (subs === undefined) the
+      // refusal path itself died with "Cannot read properties of undefined (reading 'startActivation')" and the caller
+      // received a bare TypeError instead of the named VMU_ENGINE_UNAVAILABLE it is entitled to. This is the SECOND
+      // instance of "the hint/refusal itself throws" written in the same edit batch as the kernel one; the lesson is
+      // that every new probe on a possibly-absent service needs the absence case written first, not last.
+      const canActivate = !!subs && typeof subs.startActivation === 'function'
+      if (!subs || (typeof subs.startContinuable !== 'function' && !canActivate && !(configuredProvider && typeof subs.start === 'function'))) {
+        const offered = !subs ? '(no subagents service)' : Object.keys(Object.getPrototypeOf(subs) || {}).concat(Object.keys(subs)).filter((k) => /^start|^interrupt|^list|^send/.test(k)).slice(0, 10).join(',') || '(none of start*/list*/send*)'
+        const err = new Error(!subs
+          ? 'the host exposes no subagents service at all (ctx.get(\'subagents\') returned nothing), so no member turn can be delivered'
+          : 'the host exposes a subagents service, but it offers none of start(), startActivation() or startContinuable() - so no member turn can be delivered')
         err.code = 'VMU_ENGINE_UNAVAILABLE'
-        err.hint = 'the turn loop refuses by name rather than pretending a member answered (docs/26 stage 3); pass config.deliverReply to extract the reply from a non-standard handle, or config.deliverProvider to use the ONE-SHOT start() path. parentKind=' + parentKind + ' agentsKeys=' + JSON.stringify(agentKeys)
+        err.hint = 'verbs this host does offer: ' + offered + '. Inject { deliver } yourself, or run the caller-played route (vmu.turn.deliverMode="caller"), which never touches subagents. parentKind=' + parentKind + ' agentsKeys=' + JSON.stringify(agentKeys)
         throw err
       }
       const extract = typeof config.deliverReply === 'function' ? config.deliverReply : null
