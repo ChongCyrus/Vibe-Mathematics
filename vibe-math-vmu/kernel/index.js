@@ -870,6 +870,21 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // difference is that absence is now a deployment fact rather than a hard-coded one.
   const scheduler = createScheduler({ settings: settingsView, bus, clock, log, timer,
     isPaused: () => controlState.state === 'paused' })
+  // ★★★★★★★ PHASE 6 / K1: THE DRIVER THE SCHEDULE NEVER HAD. `arm()` was fully implemented - arm, fire, tick,
+  // release the handle - and NOTHING IN THE TREE CALLED IT (measured: zero hits for `scheduler.arm(` / `.tick(`),
+  // so a declared `vmu.schedule.triggers` seed could never fire on its own and a recurring item fired once and went
+  // quiet. That is the "mechanism exists, no path to the user" defect this project keeps removing.
+  // OPT-IN, because arming a host timer is a real side effect and the default must be zero mechanism:
+  // `vmu.schedule.autoArm` defaults to FALSE. A refusal is NOT swallowed - a deployment that declared
+  // `timeSource='host-timer'` without a seam gets `VMU_CONTROL_NO_TIMER` recorded at construction rather than a quiet
+  // downgrade to tick-only.
+  let scheduleDrive = null
+  if (settingsView['vmu.schedule.autoArm'] === true) {
+    try { scheduleDrive = scheduler.autoArm({ on: true }) } catch (e) {
+      scheduleDrive = { ok: false, mode: 'refused', code: (e && e.code) || 'VMU_CONTROL_NO_TIMER', message: String((e && e.message) || e) }
+      log({ at: clock(), what: 'schedule/auto-arm-refused', code: scheduleDrive.code, why: scheduleDrive.message })
+    }
+  }
   const crypto = createCrypto({ settings: settingsView, bus, clock: guardedClock, log, signer })
   const notify = createNotify({ settings: settingsView, bus, clock: guardedClock, log, deliver })
   noteSeam('deliver', 'notify', notify ? deliver : null)
@@ -2349,6 +2364,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           ids: !!ids, resume: !!resume, chat: !!chat, mathadapters: !!mathadapters,
           mathjobsFileMirror: mathjobs && typeof mathjobs.admission === 'function' ? !!mathjobs.admission().fileMirror : null,
           timer: scheduler.status().timerShape !== null,
+          // ★ PHASE 6 / K1: whether a self-drive loop is actually RUNNING and what the construction-time attempt said.
+          // Reported, not promised: a reader must be able to tell "the schedule is driven" from "the schedule is a
+          // passive book", and a refused drive has to be visible here rather than only in a log line.
+          scheduleAutoArm: scheduler.status().autoArm,
+          scheduleAutoRearms: scheduler.status().autoRearms,
+          scheduleDrive,
           timerShape: scheduler.status().timerShape,
           timerInjected: scheduler.status().timerInjected,
           timerNote: scheduler.status().timerShape === null

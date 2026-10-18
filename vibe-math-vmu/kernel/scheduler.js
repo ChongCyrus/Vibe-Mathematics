@@ -137,6 +137,18 @@ export function createScheduler({ clock = () => 0, log = null, settings = {}, bu
   let passesTotal = 0
   let ticking = false          // the trampoline guard: one tick is in progress
   let rerunRequested = false   // a re-entrant request asked for another pass
+  // ★★★★★★★ PHASE 6 / K1 — OPT-IN SELF-DRIVE, AND THE MEASUREMENT THAT JUSTIFIED IT.
+  // Before this, `arm()` was FULLY IMPLEMENTED (arm the earliest item, on fire -> tick(), release the handle) and
+  // NOTHING IN THE TREE EVER CALLED IT: `grep` for `scheduler.arm(` / `scheduler.tick(` had zero hits outside this
+  // file. So the scheduler was a passive book that answered `due()`, a declared `vmu.schedule.triggers` seed could
+  // never fire on its own, and a recurring item fired once and went quiet because the next occurrence was never
+  // re-armed. That is the "mechanism exists but has no path to the user" defect this project keeps removing: the
+  // mechanism was there, the DRIVER was not.
+  // WHY OPT-IN: an armed timer is a real side effect on the host, and red line 4 says the default is zero mechanism.
+  // `vmu.schedule.autoArm` defaults to FALSE; when true the kernel arms once at construction and this module re-arms
+  // after every fire. Nothing here pretends a timer exists - without a seam autoArm() reports mode:'tick-only'.
+  let autoArmed = false
+  let autoRearms = 0
 
   const bump = (map, key, by = 1) => map.set(key, (map.get(key) || 0) + by)
   const objOf = (map) => { const o = {}; for (const k of [...map.keys()].sort()) o[k] = map.get(k); return o }
@@ -498,6 +510,17 @@ export function createScheduler({ clock = () => 0, log = null, settings = {}, bu
             say({ type: 'schedule/timer-fired', at: now(), id: it.id, handleReleased: cleared })
           }
           try { api.tick({ at: null }) } catch (e) { /* a throw here must not escape the host timer */ }
+          // ★★★★★★★ PHASE 6 / K1: RE-ARM AFTER THE FIRE, OR THE SCHEDULE STOPS AFTER ONE ITEM. This is the second
+          // half of the missing driver: arming once executes exactly one item, and a recurring schedule needs the
+          // next occurrence armed again. A failing seam turns the loop OFF and is COUNTED and ANNOUNCED rather than
+          // retried forever or swallowed - a self-drive loop that dies quietly would be worse than none.
+          if (autoArmed) {
+            try { autoRearms += 1; api.arm() } catch (e) {
+              autoArmed = false
+              bump(unwired, 'auto-arm', 1)
+              say({ type: 'schedule/auto-arm-stopped', at: now(), why: String((e && e.message) || e) })
+            }
+          }
         }
         try {
           handle = timerCall(it.atMs, onFire)
@@ -519,6 +542,42 @@ export function createScheduler({ clock = () => 0, log = null, settings = {}, bu
         record_({ type: 'schedule/armed', id: it.id, at: it.atMs, shape })
       }
       return { ok: true, armed: armedList.length > 0, mode: 'host-timer', shape, armedIds: armedList, at: now() }
+    },
+
+    /**
+     * ★★★★★★★ PHASE 6 / K1 — TURN THE PASSIVE BOOK INTO A DRIVEN SCHEDULE, ON REQUEST.
+     *
+     * `arm()` has always been complete: arm the earliest pending item, and on fire -> `tick()` -> release the handle.
+     * What was missing was a DRIVER - nothing called it. `autoArm({on:true})` sets the flag and arms once; the fire
+     * path then re-arms, so the schedule keeps running across items and recurrences.
+     *
+     * THREE OUTCOMES, ALL SELF-DISCLOSED AND NONE PRETENDED:
+     *   · `on:false`                 -> turns the loop off, `mode:'off'`, already-armed handles are left alone
+     *                                   (use `disarm()` to release them, because turning a driver off and silently
+     *                                   cancelling work are different decisions);
+     *   · no timer seam at all        -> `mode:'tick-only'` and `armed:false`; the schedule stays driven by explicit
+     *                                   `tick({at})` calls, which is exactly what `status()` has always said;
+     *   · with `timeSource='host-timer'` and no seam -> `arm()` throws `VMU_CONTROL_NO_TIMER` by name, so a deployment
+     *                                   that DECLARED a host timer and did not provide one hears about it rather than
+     *                                   quietly degrading to tick-only.
+     * The kernel calls this only when `vmu.schedule.autoArm` is true; the default is false (zero mechanism).
+     */
+    autoArm({ on = true } = {}) {
+      if (on !== true) {
+        const was = autoArmed
+        autoArmed = false
+        return { ok: true, armed: false, mode: 'off', was, note: 'the schedule keeps its pending items; disarm() releases any armed handles' }
+      }
+      const shape = timerShape()
+      if (shape === null) {
+        // arm() is what decides between a named refusal (host-timer declared) and an honest tick-only answer.
+        const verdict = api.arm()
+        autoArmed = false
+        return Object.assign({}, verdict, { mode: 'tick-only', note: 'no timer seam: the schedule is advanced by explicit tick({at}) calls only' })
+      }
+      const verdict = api.arm()
+      autoArmed = verdict && verdict.armed === true
+      return Object.assign({}, verdict, { mode: autoArmed ? 'armed' : 'idle', note: autoArmed ? 'the earliest pending item is armed; the fire path re-arms automatically' : 'nothing is pending to arm yet' })
     },
 
     /** Disarm the timer handle of one item (or all): this does NOT cancel the item itself. */
@@ -568,6 +627,9 @@ export function createScheduler({ clock = () => 0, log = null, settings = {}, bu
         timerInjected: !!timer, timerShape: timerShape(), timerHandles: handles.size,
         // F15/F16 (round 4): the timer-discipline and trampoline readings, so neither is a promise.
         timerFired: firedByTimer, tickPasses: passesTotal, reentrantDeferred,
+        // ★ PHASE 6 / K1: whether a self-drive loop is RUNNING, and how many times it re-armed. Reported rather than
+        // promised: a reader must be able to tell "the scheduler is driven" from "the scheduler is a passive book".
+        autoArm: autoArmed, autoRearms,
         items: {
           total: all.length, pending: all.filter((it) => it.state === 'pending').length,
           cancelled: all.filter((it) => it.state === 'cancelled').length,

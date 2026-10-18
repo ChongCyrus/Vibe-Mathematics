@@ -336,3 +336,94 @@
 
 ★ **收口后**：★ `audit-vmu-docs` **103/0**／★ 跨卷 **1087/0**／★ `regen 16/16`／★ `DOC LINT PASS`／★ **`PREFLIGHT PASS`** ✓
 ★ **T1 未再整跑**（★ 两条红已各自独立复跑证明修好）⇒ ★ **轮 6 开头补一次确认** ✓
+
+---
+
+## 轮 6（2026-10-18）
+
+### ★★★★★★ K1 落地：★ 调度器终于**有驱动了** —— ★ 而缺口比我预想的小得多
+
+★ **测量先行**（★ 这是本轮最关键的一步）：
+- ★ `createScheduler` **本来就接受 `timer` 接缝** ✓
+- ★ 设置里**早就有** `vmu.schedule.timeSource: 'tick-only' | 'host-timer'`，★ 且 `scheduler.js:100-101` **真的读它**、★ `:471` **真的处理 `host-timer`** ✓
+- ★ `arm()` **完整实现了** arm→fire→`tick()`→释放 handle→计数 ✓
+- ★★ **而 `grep 'scheduler.arm(' / 'scheduler.tick('` 在全仓【零命中】** ⇒ ★★ **机制全在，★ 就是【没人调它】** ✓
+
+⇒ ★ **后果（★ 用户可见）**：★ ① 声明在 `vmu.schedule.triggers` 的种子**永远不会自己触发**；★ ② **重复项只触发一次就安静**（★ 因为下次触发从不重新 arm）✓
+⇒ ★★ **这正是本项目一直在清的那一类**：★ **"机制存在，★ 但没有通往用户的路径"**（★ 与 K10 同族）✓
+
+### ★★ 修法：★ **显式 opt-in 的自驱**（★ 不默认打开）
+| ★ 件 | ★ 改动 |
+|---|---|
+| ★ **`scheduler.js`** | ★ 加 `autoArm({on})`（★ 三态自曝：★ `on:false`⇒`mode:'off'`／★ **无 timer⇒`mode:'tick-only'`** 绝不假装／★ `host-timer` 已声明却无接缝⇒**`VMU_CONTROL_NO_TIMER` 具名拒**，★ **不静默降级**）；★ **fire 路径里重 arm**（★ 自驱环的第二半）；★ `status()` 自曝 **`autoArm`／`autoRearms`** ✓ |
+| ★ **`kernel/index.js`** | ★ 构造后按 **`vmu.schedule.autoArm`** 起手 arm；★ **拒绝不被吞**（★ 记 log ＋ ★ `status().seams.scheduleDrive` 自曝）✓ |
+| ★ **`settings/schema.js`** | ★ 新键 **`vmu.schedule.autoArm`**（★ **boolean，★ 默认 false ＝ 零机制**）✓ |
+
+★ **为什么默认 false**：★ **arm 一个宿主 timer 是真实的副作用**，★ 而红线 4 要求**默认零机制** ⇒ ★ **一切自驱都必须来自【声明】** ✓
+★ **为什么"关掉"不取消待触发项**：★ **停止驱动 ≠ 取消工作**，★ 那是两个决定 ⇒ ★ `autoArm({on:false})` 只停环，★ 释放 handle 要用 `disarm()` ✓
+★ **顺带得到一件事**：★ **`vmu.schedule.autoArm` 一加就有读者**（★ 内核读它的字面量）⇒ ★ 设置表把它算作 **wired** ✓
+
+### ★★★ 新测试 `tests/vmu-schedule-autodrive.test.mjs`：**27/0** ✓
+★ 七组：★ ① **默认零机制**（★ `autoArm:false`、★ `autoRearms:0`；★ 且 `on:false` 时**待触发项存活**）② **opt-in 真 arm**（★ 恰一个 handle、★ `mode:'armed'`、★ status 自曝）③ **无接缝不假装**（★ `mode:'tick-only'`、★ `timerShape:null`）④ **`host-timer` 已声明却无接缝⇒具名拒** ⑤ **触发真的驱动**（★ `timerFired>=1`、★ **`tickPasses>=1`** ← ★ 这就是从前永不发生的那件事）⑥ **fire 后重 arm**（★ `autoRearms` 增、★ 出现新 handle、★ **第二次也能触发** —— ★ "重复"的定义）⑦ **内核级**（★ 默认 `scheduleAutoArm:false` 且 `scheduleDrive:null`；★ **带触发器种子时构造即 arm**、★ **真经注入 timer 触发**、★ 触发后仍自驱）✓
+
+★★ **两个自我纠正（★ 都记在测试注释里）**：
+1. ★★ **我的假 timer 签名错了** —— ★ 我写 `arm(ms, cb)`，★ **真实是 `arm({ at, delayMs, onFire })`**（★ `scheduler.js:191`）⇒ ★ `TypeError: h.cb is not a function` ⇒ ★ **正是 AGENTS.md §7.3「探针报错先假设是自己用错了 API」** ✓
+2. ★★ **我内核级那条断言前提错了** —— ★ 我**没声明任何触发器**就断言"内核已 arm"，★ 而**无待触发项时 `armed:false` 是正确的** ⇒ ★ 补上 `vmu.schedule.triggers` 种子后才有意义 ✓
+
+### ★★ 本轮结果
+| ★ 项 | ★ 结果 |
+|---|---|
+| ★ `vmu-schedule-autodrive`（新） | ★ **27 / 0** ✓ |
+| ★ `vmu-scheduler`（既有） | ★ **111 / 0** ✓（★ 默认关闭 ⇒ 我的改动对它不可见）|
+| ★ `audit-vmu-docs` ／ ★ `audit-silent-keys` ／ ★ RULE E | ★ 103/0 ／ exit 0 ／ **88/0** ✓ |
+| ★ `regen` ／ ★ `check-docs` ／ ★ `preflight` | ★ **16/16** ／ PASS ／ PASS ✓ |
+| ★ **设置表** | ★ **1233 键（1139 wired，★ 0 undetermined，★ 94 声明未接线）** ✓ |
+| ★ **T1** | ★ 见下（★ 本轮末跑）|
+
+### ★ 轮 7 计划
+
+1. ★★ **T1 确认**
+2. ★★★ **目标 2 · K2（派发一个成员回合）**：★ **`vmu.turn` 加进 M2 服务目录**（★ 宽义已在消费者审计的 D12 判"写自己运行机制的人显然需要它"）—— ★ 但要**防递归**（★ 中间件在 turn 钩子里再调 turn）与**具名能力**（★ 蓝图建议 `dispatch-work` 类），★ 这两点要在实现时想清 ✓
+3. ★★ **然后 v3 的 P0-2（规划/调度环）才有地基** —— ★ K1（周期自驱）＋ K2（派发回合）正是它的两块前置 ✓
+
+
+### ★★★★ 轮 6 收口：T1 **376/377** 的一红 —— ★ 而它是【一条早就存在的守卫，★ 断言的正是我刚补上的缺口】
+
+★★ **红：`vmu-activity-timers`** —— ★ 它有一条 **F15/F16 集成缺口守卫**，★ 原文逐字：
+> ★ *"★ F15/F16 INTEGRATION GAP (named): **NOTHING in the shipped framework (host/tools/entry) calls scheduler.arm()/tick()/disarm()** — the timer discipline is real but has no production driver (the tool face has no scheduler action)"*
+
+⇒ ★★★ **所以它不是"我弄坏了它"，★ 而是"我【修好了它守护的那个缺陷】，★ 于是它必须改口"** ✓
+★ **诚实的一步**：★ **不能删掉它**（★ 删掉就等于**把缺口的可见性一起删了**）⇒ ★ **改成"反转 ＋ 收窄"**：
+| ★ 断言 | ★ 改后 |
+|---|---|
+| ★ ① 内核**必须**驱动 | ★ `scheduler.autoArm(` **必须出现**在 `kernel/index.js` ⇒ ★ **删掉驱动就红** |
+| ★ ② 工具面**仍**无手动 arm | ★ `tools/` 下**不许**出现 `scheduler.(arm|tick|disarm|cancel|autoArm)(` ⇒ ★ **残余缺口仍具名** |
+| ★ ③ 模块不自引 | ★ `scheduler.js` 内**不许**出现 `scheduler.` 句柄（★ 它走 `api.`）✓ |
+★ 结果：★ **38/0** ✓（★ 原 35/1）
+
+★★ **而这里还有一个自我造成的假红，★ 值得单记**：★ 旧检查**读未剥注释的 `scheduler.js` 原文**，★ 而**我在 K1 的注释里写了 `scheduler.arm(` 字面量** ⇒ ★ **注释把我自己的测试搞红了** ⇒ ★ **修法不是改注释躲开，★ 而是【所有源码扫描断言都要声明它在扫什么文本】** ⇒ ★ 三条现在都在 **`stripComments` 之后**判 ✓
+
+### ★★★ 结果汇总
+
+| ★ 项 | ★ 结果 |
+|---|---|
+| ★ `vmu-schedule-autodrive`（新） | ★ **27 / 0** ✓ |
+| ★ `vmu-scheduler` | ★ **111 / 0** ✓ |
+| ★ `vmu-activity-timers` | ★ **38 / 0** ✓（★ 原 35/1）|
+| ★ `audit-vmu-docs` ／ ★ `audit-silent-keys` ／ ★ RULE E | ★ 103/0 ／ exit 0 ／ 88/0 ✓ |
+| ★ `regen` ／ ★ `check-docs` ／ ★ `preflight` | ★ 16/16 ／ PASS ／ PASS ✓ |
+| ★ **T1（末读）** | ★ **376/377**，★ 唯一红已修并**独立复跑 38/0** ⇒ ★ **下一轮开头整跑确认**（★ 不把独立复跑当 T1 绿）|
+
+---
+
+## ★★★★ 待办登记（★ 创始人 2026-10-18 指示；★ 由他决定何时处理）
+
+### 待办 P1：★ 处理"消费者"误读造成的**错误决策**（★ 创始人插话要求）
+
+★ **背景**：★ 创始人指出"消费者"一词有歧义（★ 实际指**使用者可能的需求**，★ 不是仓内引用）⇒ ★ 经审计判定 **(C) 歧义真实存在、★ 且已影响过决策** ⇒ ★ **已在 `docs/01-philosophy.md` §1.4.1–§1.4.4 纠正定义**，★ 并记 `docs/acceptance/phase6-consumer-semantics-audit.md` ✓
+★ **本待办的内容**：★ **把"当时被否定、★ 但在纠偏后的判据下其实是【用户可能会用】"的那些对象/功能，★ 逐条筛出来并处置**（★ 恢复／接线／★ 保留降级但具名登记"未接线＋怎么用"）✓
+★ **状态**：★ **执行中** —— ★ 已派 `consumer-audit` 产出 **`docs/acceptance/phase6-consumer-wrong-decisions.md`**（★ W-01 起的翻案清单，★ 每条带**当时裁决原文＋`文件:行`**、★ **具体使用者场景**、★ **当前状态（已恢复/仍未恢复/部分）**、★ **建议处置**、★ **置信度**）✓
+★ **★ 等你裁定**：★ 清单产出后**不自动翻案** —— ★ 由你决定何时处理、★ 以及拿不准的条目（★ 代理会单列"需 Lead 裁定"）如何处置 ✓
+
+### 待办 P2：★ 为 v5r pack 补齐原版 v5r 守卫的对应物（★ 早前登记，★ 仍未做）
+★ 四个空白：★ ① 类型字段驱动的机制 ② 覆盖必被记录 ③ 广播携带规则引用 ④ 授权到期/召回；★ 另加：★ SLV 四类表 ＋ 硬预算模板、★ §5 四条兼容断言 ✓

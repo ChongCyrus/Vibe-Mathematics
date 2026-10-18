@@ -544,6 +544,11 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.schedule.triggers', type: 'objectList', def: [], hot: HOT.H1, who: 'office', doc: '声明式触发器种子' },
   { key: 'vmu.schedule.overdueGraceMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '迟到宽限（超宽限 ⇒ 丢弃并计数，绝不静默 ✗）' },
   { key: 'vmu.schedule.coalesceMissed', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '漏跑是否合并（合并也要报 missed ✓）' },
+  // ★ PHASE 6 / K1: the DRIVER switch. Before this key existed, `arm()` was complete and nothing called it, so a
+  // declared `vmu.schedule.triggers` seed could never fire on its own and a recurring item fired once and went quiet.
+  // Default FALSE = zero mechanism (arming a host timer is a real side effect). When true the kernel arms once at
+  // construction and the fire path re-arms. Read by `kernel/index.js` at the scheduler construction site.
+  { key: 'vmu.schedule.autoArm', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '是否自动驱动调度（false＝零机制，只按 tick() 推进 ✓；true＝内核起手 arm 并在每次触发后重 arm ✓；timeSource=host-timer 但无 timer 接缝 ⇒ 起手即 VMU_CONTROL_NO_TIMER）' },
   { key: 'vmu.schedule.maxRecurrences', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '重复项上限（0＝不限）' },
   // ROUND 264: 时间与时区声明（07 卷 §L359/L360/L368；现由 kernel/scheduler.js 读取 ✓）.
   { key: 'vmu.schedule.defaultTimezone', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: "默认时区（IANA 名；事件未带时区时取它，回执据此报告；缺时区 ⇒ VMU_SCHEDULE_TZ_UNKNOWN）" },

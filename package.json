@@ -775,7 +775,8 @@
     "docs-landed/09-pack-and-middleware-reference.md",
     "docs-landed/10-prompt-and-settings-reference.md",
     "tests/vmu-turn-activation.test.mjs",
-    "tests/vmu-rewrite-result.test.mjs"
+    "tests/vmu-rewrite-result.test.mjs",
+    "tests/vmu-schedule-autodrive.test.mjs"
   ],
   "license": "MIT",
   "keywords": [

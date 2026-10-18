@@ -244,13 +244,29 @@ console.log('=== 5. THE NAMED FINDINGS: two CLOSED by their owners (regression-g
   ok(slept === 2 && /await new Promise\(\(resolve\) => setTimeout\(resolve/.test(mathCode),
     '★ F15 FINDING (math-computation.js:617,728): two `await new Promise(resolve => setTimeout(resolve, …))` sleeps bind no handle ⇒ uncancellable on abort (named, not fixed: outside this task write scope)',
     slept)
-  // (c) THE INTEGRATION GAP: no production caller ever arms or ticks the scheduler, so the timer path is only
-  //     exercised by this suite and tests/vmu-scheduler.test.mjs — the F15/F16 properties are real but UNDRIVEN.
-  const drivers = walk('vibe-math-vmu').filter((f) => f.endsWith('.js') && !/kernel[\\/]scheduler\.js$/.test(f))
-    .filter((f) => /\bscheduler\s*\.\s*(arm|tick|disarm|cancel)\s*\(/.test(stripComments(readFileSync(join(REPO, f), 'utf8'), { strings: true })))
-  ok(drivers.length === 0 && /\bscheduler\s*\.\s*(arm|tick|disarm|cancel)\s*\(/.test(readFileSync(join(VMU, 'kernel', 'scheduler.js'), 'utf8')) === false,
-    '★ F15/F16 INTEGRATION GAP (named): NOTHING in the shipped framework (host/tools/entry) calls scheduler.arm()/tick()/disarm() — the timer discipline is real but has no production driver (the tool face has no scheduler action)',
-    drivers)
+  // (c) THE INTEGRATION GAP — NOW CLOSED AT THE KERNEL, STILL OPEN AT THE TOOL FACE.
+  // PHASE 6 / K1: this block used to assert that NOTHING in the shipped framework ever armed the scheduler, i.e. that
+  // the F15/F16 timer discipline was real but UNDRIVEN. That was true, and it was a DEFECT: `arm()` was complete while
+  // nothing called it, so a `vmu.schedule.triggers` seed could never fire on its own and a recurring item fired once.
+  // The kernel now arms it when `vmu.schedule.autoArm` is declared true, so the assertion is INVERTED for the kernel
+  // (the driver must EXIST) and KEPT for the tool face (a member still cannot arm a schedule by hand). Inverting rather
+  // than deleting is deliberate: the remaining gap stays named, and deleting the driver turns this red again.
+  // NOTE ON THE MECHANICS: both checks now run on COMMENT-STRIPPED source. The previous version read scheduler.js RAW,
+  // so the literal text `scheduler.arm(` inside a comment satisfied the pattern and failed the test - a self-inflicted
+  // red, and a reminder that a source-scanning assertion has to say which text it is scanning.
+  const kernelSrc = stripComments(readFileSync(join(VMU, 'kernel', 'index.js'), 'utf8'), { strings: true })
+  ok(/\bscheduler\s*\.\s*autoArm\s*\(/.test(kernelSrc),
+    '★ PHASE 6 / K1: the kernel DOES drive the schedule (scheduler.autoArm at the scheduler construction site) — this replaces the old "nothing ever arm()s it" finding, and removing the driver turns this red',
+    {})
+  const toolDrivers = walk('vibe-math-vmu/tools').filter((f) => f.endsWith('.js'))
+    .filter((f) => /\bscheduler\s*\.\s*(arm|tick|disarm|cancel|autoArm)\s*\(/.test(stripComments(readFileSync(join(REPO, f), 'utf8'), { strings: true })))
+  ok(toolDrivers.length === 0,
+    '★ and the REMAINING gap stays named: the tool face still exposes no way for a member to arm or tick a schedule by hand',
+    toolDrivers)
+  const schedSrc = stripComments(readFileSync(join(VMU, 'kernel', 'scheduler.js'), 'utf8'), { strings: true })
+  ok(!/\bscheduler\s*\.\s*(arm|tick|disarm|cancel|autoArm)\s*\(/.test(schedSrc),
+    'the scheduler module still never refers to itself through a `scheduler.` handle (it goes through `api`), now checked on comment-stripped source so a COMMENT cannot fake a failure',
+    {})
 }
 
 console.log('')
