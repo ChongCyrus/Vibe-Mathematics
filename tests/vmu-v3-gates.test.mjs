@@ -332,6 +332,10 @@ console.log('=== 12. 未决门可以【取消】（半成品对：不再是 appr
     'the cancelled gate is READABLE afterwards (status + reason + who)', back && { status: back.status, reason: back.reason, by: back.decidedBy })
   ok(listGates({ records: hc.records }).counts.pending === 0,
     'it no longer blocks: the pending list is empty after the cancel', listGates({ records: hc.records }).counts.pending)
+  // The human mirror must not stay pending after a withdrawal (a phantom approval would look actionable).
+  const humanState = hc.human.approvalState({ requestId: g.gateId })
+  ok(humanState && humanState.state === 'denied',
+    'the withdrawal is mirrored to the human face (state=denied, reason prefixed cancelled), not left pending', humanState && humanState.state)
   const again = cancelGate({ records: hc.records, gateId: g.gateId, reason: 'twice' })
   ok(again && again.ok === false && again.code === 'VMU_STATE', 'a terminal gate cannot be cancelled twice', again && again.code)
   const approveAfter = await approveGate({ records: hc.records, gateId: g.gateId })

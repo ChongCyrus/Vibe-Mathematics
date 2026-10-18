@@ -425,7 +425,7 @@ B2 actions=[{"kind":"setting","key":"vmu.records.headListAt","value":9},{"kind":
      ```
      （注：该字段**原样**就是调用形 `vmu.tasks.status()`。**R12 曾为绕门把它拆写**成"服务 `vmu.tasks` 的方法 `status()`"；**R14 已复原**——门 `tests/audit-vmu-docs.test.mjs:348` 的收集正则带**负向前瞻** `(?!\s*\()`：**紧跟 `(` 的点分记号＝方法调用，不是设置键**，所以调用形可以直接写，且不再依赖"这个名字碰巧是 `settings/schema.js` 里的键"。）
      ⇒ **会话正跑着、工具真被调用，但插件行的 `ctx` 里五个 vmu 服务全部 `present:false`**。
-   - **机制解释（两条实测并置）**：**M4 插件行活在 profile 作用域**，能看到的只有**宿主级**服务（同一 marker 里 `tools.present=true`）；而 **vmu 的服务发布在"每会话"作用域**——R11 已实测：**预设/会话作用域**里的 M2 模块用 `api.services.get('vmu.activity')` 能拿到，且一次列出 **13 个已发布服务**（`vmu.tasks` 在其中）。⇒ **"在 M4 行里 `ctx.get('vmu.tasks')`"这条路本身不成立**（不是配错了、也不是时序问题）。
+   - **机制解释（两条实测并置）**：**M4 插件行活在 profile 作用域**，能看到的只有**宿主级**服务（同一 marker 里 `tools.present=true`）；而 **vmu 的服务发布在"每会话"作用域**——R11 已实测：**预设/会话作用域**里的 M2 模块用 `api.services.get('vmu.activity')` 能拿到，且一次列出 **13 个已发布服务**（`vmu.tasks` 在其中）；★ **本轮（PHASE 6 / 目标 3）复测 = 17 个**（K2 补入 `vmu.turn`、目标 3 补入 `vmu.middleware`）✓。⇒ **"在 M4 行里 `ctx.get('vmu.tasks')`"这条路本身不成立**（不是配错了、也不是时序问题）。
    - **正确做法（要消费 vmu 服务时）**：把逻辑放到**会话作用域**——① **M2 模块 + `capabilities:['trigger-workflow']`** 用 `api.services.get(name)`（R11 已实测三条具名拒与正向控制）；② 或让 **pack/预设**里的条目去做；③ M4 适合"新服务/新工具/新提示词段"这类**宿主级**扩展。
    - **口径**：这一条**已实测**（原"未实测"关闭）＝**从 M4 插件行不可达**；**不写成"已验证可达"** ✓。
 2. **`script`/`plugin` kind 的具名拒** ✅ **已实测**（Round 10）：`probe-kinds.mjs` 三层证据 —— `validatePack` ⇒ `kind must be rules|module (got "script")`；`loader.apply` ⇒ `VMU_PACK_MISSING`（同一条 message）；`kernel.bus.add` ⇒ **`VMU_MIDDLEWARE_KIND_UNSUPPORTED`**（hint 指向 `docs/05 §2` 的真实载体）（**U16 可关**）。

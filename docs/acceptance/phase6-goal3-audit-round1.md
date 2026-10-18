@@ -124,3 +124,108 @@
 - **测试**：`vmu-kernel`（+11：回执/原子/归属/tracks 卸载）、`vmu-bus`（+3：owner 撤回语义）、
   `vmu-v3-tools`（+2：应用期注册、隔离进程卸载后不再注册）、`vmu-v3-tick`（声明时机断言更新）、
   `vmu-v3-gates`（+8：cancel 全链路）；作业数不变（454）。
+
+## §9 Round 2 覆盖：其余 80 个 kernel 模块（只读发现）
+
+**范围**：`kernel/**/*.js` 共 **104** 个；首轮读过/定位读 24 个（§6），本轮扫其余 **80** 个。
+**方法**（每模块只问三问，不通读）：
+1. 声明的能力有没有生产调用点（自报的 `status()` 字段谁在用？——注意：`status()` 整段被 `kernel.status()`/工具面**整体消费**，
+   字段名在仓内无直接引用**不等于**无消费者，故只把"能力本身无反向入口"计为发现）；
+2. 读设置/状态缺省走哪个分支——用与首轮相同的 schema 默认对照扫描；
+3. 成对机制缺一半——扫描 `declare/retract`、`open/close`、`enable/disable`、`register/unregister`、`attach/detach`、
+   `arm/disarm`、`acquire/release`、`subscribe/unsubscribe`、`add/remove`、`table/untable` 等，逐条人工复核误报。
+
+**汇总**：P0 **0** 条；P1 **0** 条；**P2 9 条**（全是"半成品/反向入口缺失"型）。其余 **71** 个模块：**未发现**
+（按上述三问的静态判据；不等于通读）。设置缺省扫描：**80 个模块里 0 处回落值与 schema 声明默认不一致**（与首轮 4 条 P0 的
+修法一致：这一类在剩余模块中没有新的门）。
+
+| 模块 | 发现 | 文件:行 |
+|---|---|---|
+| `activity.js` | 未发现 | — |
+| `alerts.js` | 未发现 | — |
+| `arbitration.js` | 未发现 | — |
+| `ballot.js` | 未发现 | — |
+| `ballotbox.js` | P2：`cast` 没有对应的撤回/改票入口；重复投票的错误提示自己写着"改票需先撤回（本面未实现 ✗）" | `kernel/ballotbox.js:196` |
+| `bidding.js` | 未发现 | — |
+| `board.js` | P2：`addColumn` 没有 `removeColumn`（列只能加不能删） | `kernel/board.js:87` |
+| `budget.js` | 未发现 | — |
+| `capacity.js` | 未发现 | — |
+| `charter.js` | 未发现 | — |
+| `chat.js` | 未发现 | — |
+| `citations.js` | 未发现 | — |
+| `clockguard.js` | 未发现 | — |
+| `collab.js` | P2：`addCounterparty` 没有移除/停用对口机构，登记表只增不减 | `kernel/collab.js:285` |
+| `compliance.js` | 未发现 | — |
+| `conference.js` | 未发现 | — |
+| `contentvalue.js` | 未发现 | — |
+| `control.js` | P2：`register(id)` 没有对应 `unregister`，watchdog 注册只增不减（是否有界未核） | `kernel/control.js:283,307` |
+| `course.js` | 未发现 | — |
+| `custody.js` | 未发现 | — |
+| `delegation.js` | 未发现 | — |
+| `discipline.js` | 未发现 | — |
+| `explain.js` | 未发现 | — |
+| `fairness.js` | 未发现 | — |
+| `fidelity.js` | 未发现 | — |
+| `formal.js` | 未发现 | — |
+| `funding.js` | 未发现 | — |
+| `governance.js` | P2：`tabled` 动议没有 un-table，附议提示"先取消搁置（本切片未实现 un-table ✗）" | `kernel/governance.js:184` |
+| `grant.js` | 未发现 | — |
+| `handover.js` | 未发现 | — |
+| `human.js` | P2：`openApproval` 只有 `decide`（批准/拒绝），没有撤回/取消路径；与 gate 的 cancel 属同一半成品类 | `kernel/human.js:521-525` |
+| `idempotency.js` | 未发现 | — |
+| `identity.js` | 未发现 | — |
+| `ids.js` | 未发现 | — |
+| `ip.js` | 未发现 | — |
+| `lean.js` | 未发现 | — |
+| `lifecycle.js` | 未发现 | — |
+| `mailbox.js` | 未发现 | — |
+| `mathadapters.js` | 未发现 | — |
+| `mathjobs.js` | 未发现 | — |
+| `meetinglapse.js` | 未发现 | — |
+| `meetingleave.js` | 未发现 | — |
+| `meetingmarker.js` | 未发现 | — |
+| `members.js` | 未发现 | — |
+| `memory.js` | 未发现 | — |
+| `metrics.js` | 未发现 | — |
+| `migration.js` | 未发现 | — |
+| `minutes.js` | 未发现 | — |
+| `notify.js` | 未发现 | — |
+| `panel.js` | 未发现 | — |
+| `paper.js` | 未发现 | — |
+| `partnership.js` | P2：`registerEntity` 没有 unregister/retire，法律实体登记只增不减 | `kernel/partnership.js:141` |
+| `projmigrate.js` | 未发现 | — |
+| `prompt/index.js` | 未发现 | — |
+| `publication.js` | P2：`openOutreachReview` 没有 close/cancel 对应入口（对外传播评审只能开） | `kernel/publication.js:431-433` |
+| `ratelimit.js` | 未发现 | — |
+| `receiptbounds.js` | 未发现 | — |
+| `recruit.js` | 未发现 | — |
+| `registry.js` | 未发现 | — |
+| `replay.js` | 未发现 | — |
+| `report.js` | 未发现 | — |
+| `reportfeedback.js` | 未发现 | — |
+| `reportfeedbackdelivery.js` | 未发现 | — |
+| `repropack.js` | 未发现 | — |
+| `resource.js` | 未发现 | — |
+| `resume.js` | 未发现 | — |
+| `resumeflush.js` | 未发现 | — |
+| `reviewers.js` | 未发现 | — |
+| `script-bridge.js` | 未发现 | — |
+| `skills.js` | 未发现 | — |
+| `stateversion.js` | 未发现 | — |
+| `storepolicy.js` | 未发现 | — |
+| `tasks.js` | 未发现 | — |
+| `tenure.js` | 未发现 | — |
+| `timevalue.js` | 未发现 | — |
+| `topology.js` | 未发现 | — |
+| `transaction.js` | 未发现 | — |
+| `trust.js` | 未发现 | — |
+| `work.js` | 未发现 | — |
+| `workflow.js` | P2：`registerCompensation` 没有 unregister，补偿处理器注册只增不减 | `kernel/workflow.js:721-723` |
+
+**误报说明（复核过、不计发现）**：`alerts.js` 的"declare 无 retract"是误报（它有 `undeclare`，`kernel/alerts.js:279`）；
+`identity.js` 有 `endMembership`、`skills.js` 有 `retire`、`recruit.js` 有 `recall/reject`，均属"反向入口换了动词"；
+`activity.js`/`lean.js` 的 `arm` 是 timer 接缝名，不是成对生命周期；`budget.open` 是预算 scope 的打开语义，不是资源对。
+
+**范围外顺手修（P1 关联，来自本轮核对）**：`cancelGate` 原本只写 v3 台账、**不镜像** `vmu.human`，撤回后人性面审批仍是
+pending（一个"看起来还能批"的幽灵）；已补镜像（以 `denied`＋理由前缀 `cancelled:`，失败记 `mirrorError` 不吞），并在
+`vmu-v3-gates` 加断言（cancel 后 human 面 `state==='denied'`）。

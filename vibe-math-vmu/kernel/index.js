@@ -1465,6 +1465,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // overlap BY NAME (`VMU_TURN_REENTRANT`) rather than nesting and silently sharing its single-turn state, so the
     // capability can be granted without the recursion hazard. The guard was added in the same change, deliberately.
     'vmu.turn': turn,
+    // ★ PHASE 6 / goal-3 audit P2: `vmu.middleware` was REGISTERED (the M4 contract lists it and docs/03 documents
+    // `rewriteOf`) but absent from this capability-gated catalogue, so an M2 module could declare `requires` and still
+    // get `VMU_NO_SUCH_OBJECT` on get(). Added here so the documented surface is reachable. It is safe: `rewriteOf` only
+    // READS the decisions of an already-completed emit and returns a string // null - it executes nothing and emits
+    // nothing, so no recursion is possible (unlike `vmu.turn`, which needed the re-entrancy guard).
+    'vmu.middleware': bus,
   })
   const loader = createLoader({
     // (甲) PRODUCTION GOES THROUGH THE GUARD: this facade used to answer `null` when there was no durable root,
@@ -1967,6 +1973,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       for (const raw of source) {
         if (!raw || typeof raw !== 'object') throw refuse('VMU_INVALID_ARGUMENT', 'a declared tool must be an object', 'pass { name, description, parameters, handler }')
         const name = typeof raw.name === 'string' ? raw.name.trim() : ''
+        // PHASE 6 / goal-3 audit P2: a pack tool has NO capability consumer (the host publishes it like any other tool;
+        // nothing checks a capability before running it). Accepting the field would be a declaration with no effect,
+        // so it is refused by name instead of being silently dropped or listed as if it meant something.
+        if (raw.capabilities !== undefined) throw refuse('VMU_INVALID_ARGUMENT', 'declared tool "' + String(raw.name) + '" carries capabilities, but pack tools have no capability consumer', 'remove capabilities from the tool declaration (capabilities are enforced for MIDDLEWARE entries by the bus, not for tools)')
         if (!/^[a-z][a-z0-9_]{2,63}$/.test(name)) throw refuse('VMU_INVALID_ARGUMENT', 'a declared tool name must be lowercase [a-z0-9_], 3..64 chars: ' + JSON.stringify(raw.name), 'e.g. vibe_math_status')
         if (kernelToolNames.has(name)) throw refuse('VMU_PACK_CONFLICT', 'declared tool "' + name + '" is already published by this kernel', 'a pack cannot shadow a framework tool; rename the pack tool')
         if (stagedNames.has(name)) throw refuse('VMU_PACK_CONFLICT', 'declared tool "' + name + '" appears twice in this declaration', 'a pack declares each tool name once')
@@ -1978,7 +1988,6 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           description: typeof raw.description === 'string' ? raw.description : '',
           parameters: raw.parameters && typeof raw.parameters === 'object' && !Array.isArray(raw.parameters) ? raw.parameters : {},
           handler: raw.handler,
-          capabilities: Array.isArray(raw.capabilities) ? raw.capabilities.filter((c) => typeof c === 'string') : [],
           packId: owner,
         }))
         stagedNames.add(name)
@@ -2016,7 +2025,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     packTools() {
       return [...packToolDeclarations.values()].map((t) => ({
         name: t.name, description: t.description, parameters: t.parameters, handler: t.handler,
-        capabilities: t.capabilities.slice(), packId: t.packId,
+        packId: t.packId,
       }))
     },
 
@@ -2456,7 +2465,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           return [...new Set(packs.concat(appliedIds).filter((id) => !unloadedIds.has(id)))]
         })(),
         // PHASE 6 / P0-10: the tool NAMES packs declared. The kernel holds them; the host publishes them.
-        packTools: [...packToolDeclarations.values()].map((t) => ({ name: t.name, packId: t.packId, capabilities: t.capabilities.slice() })),
+        packTools: [...packToolDeclarations.values()].map((t) => ({ name: t.name, packId: t.packId })),
         bus: bus.status ? bus.status() : { entries: [] },
         prompt: prompt.status ? prompt.status() : null,
         store: store ? store.stats() : null,

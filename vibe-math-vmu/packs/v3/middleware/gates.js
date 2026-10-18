@@ -474,6 +474,11 @@ export function cancelGate({ records, human = null, at = null, gateId, by = null
   if (gate.status !== 'pending') return { ok: false, code: 'VMU_STATE', message: 'gate ' + gate.gateId + ' is already ' + gate.status, hint: 'only a pending gate can be cancelled (a terminal gate is not re-decided)' }
   const s = stateFor(recs)
   s.cancelled = (s.cancelled || 0) + 1
+  // The human approval MIRROR must not be left pending after the gate is withdrawn (a stayed-pending mirror would
+  // make a cancelled request look actionable in the human face). The human face has no "cancel" vocabulary, so the
+  // withdrawal is mirrored through its `decide({allow:false})` with the reason prefixed by `cancelled:` - and a mirror
+  // failure is recorded in mirrorError rather than swallowed (the ledger stays the source of truth).
+  const mirror = mirrorHuman(human, gate.gateId, false, by, 'cancelled: ' + str(reason).trim())
   const out = settleGate({
     records: recs, gateId: gate.gateId, current: gate,
     patch: {
@@ -481,6 +486,7 @@ export function cancelGate({ records, human = null, at = null, gateId, by = null
       decidedAt: Number.isFinite(at) ? at : null,
       decidedBy: by === null ? null : str(by),
       reason: str(reason).trim(),
+      mirrorError: isObject(mirror) ? mirror.mirrorError : null,
       note: 'cancelled (withdrawn, not decided): the action was NOT executed and the gate no longer blocks',
     },
     reason: 'v3 gate cancelled', by,

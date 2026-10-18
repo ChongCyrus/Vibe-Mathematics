@@ -953,6 +953,35 @@ const FALLBACK_KEYS = [
   await rm(root, { recursive: true, force: true })
 }
 
+// ── PHASE 6 · goal 3 P2: no decorative fields; documented middleware surface must be REACHABLE from M2 ─────────
+{
+  const kh = m.createKernel({ clock })
+  const handler = async () => ({ ok: true })
+  let capErr = null
+  try { kh.declarePackTools([{ name: 'pack_cap_tool', description: 'd', handler, capabilities: ['x'] }], { by: 'pack-A' }) } catch (e) { capErr = e }
+  ok(capErr && capErr.code === 'VMU_INVALID_ARGUMENT' && kh.packTools().length === 0,
+    'P2-no-decoration: a pack tool carrying capabilities is REFUSED by name - there is no capability consumer for tools, so accepting it would be decoration', capErr && capErr.code)
+  kh.declarePackTools([{ name: 'pack_plain_tool', description: 'd', handler }], { by: 'pack-A' })
+  const declared = kh.packTools().find((t) => t.name === 'pack_plain_tool')
+  ok(declared && Object.prototype.hasOwnProperty.call(declared, 'capabilities') === false,
+    'P2-no-decoration: packTools() no longer exposes a capabilities field', declared && Object.keys(declared))
+  let face = null
+  let callErr = null
+  const probe = {
+    meta: { id: 'mw-face-probe', apiVersion: 1 },
+    capabilities: ['trigger-workflow'],
+    hooks: { 'tools/pre-execute': (event) => { try { face = event.api.services.get('vmu.middleware') } catch (e) { callErr = e } } },
+  }
+  const probeEntry = { id: 'mw-face-probe', kind: 'module', on: ['tools/pre-execute'], module: probe }
+  const probeBusEntries = await kh.loader.toBusEntries([probeEntry])
+  for (const entry of probeBusEntries) kh.bus.add(entry)
+  await kh.bus.emit('tools/pre-execute', { tool: 'probe' })
+  ok(!callErr && face && typeof face.rewriteOf === 'function',
+    'P2-catalog: an M2 module CAN get vmu.middleware and its rewriteOf (before: VMU_NO_SUCH_OBJECT)', callErr && callErr.code)
+  ok(face && face.rewriteOf('tools/pre-execute', { ok: true, decisions: [] }) === null,
+    'P2-catalog: rewriteOf on an emit nobody rewrote returns null (pure read, executes nothing)')
+}
+
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
