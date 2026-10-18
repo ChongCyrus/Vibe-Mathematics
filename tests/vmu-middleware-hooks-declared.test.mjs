@@ -33,6 +33,7 @@ ok(Array.isArray(VU_HOOKS) && VU_HOOKS.includes('ballot/tally'), 'and the VMU bu
 
 console.log('=== EVERY PACK S MANIFEST, READ FROM THE RUNTIME ===')
 const hooks = []
+const manifestTopics = new Set()
 let packs = 0
 for (const d of readdirSync(PACKS, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)) {
   const entry = join(PACKS, d, 'index.js')
@@ -42,6 +43,10 @@ for (const d of readdirSync(PACKS, { withFileTypes: true }).filter((e) => e.isDi
   const man = mod.PACK || mod.V5R_PACK || mod.default || null
   if (!man) continue
   packs += 1
+  // PHASE 6 (goal-3 audit P1): a pack now DECLARES its protocol topics in the manifest, and pack.js declares them on
+  // the runtime bus at apply time. This gate analyses manifests WITHOUT applying them, so the manifest field is the
+  // fact to read - relying on an import-time side effect was exactly the leak that got removed.
+  for (const topic of (Array.isArray(man.topics) ? man.topics : [])) manifestTopics.add(topic)
   const mw = Array.isArray(man.middleware) ? man.middleware : []
   for (const m of mw) {
     const on = m && m.on
@@ -56,8 +61,9 @@ console.log('=== EACH DECLARED HOOK IS BRIDGED, DECLARED AT RUN TIME, OR RECORDE
 // ROUND 566 CORRECTION: a pack middleware attaches to the VMU BUS by hook name, and BRIDGED_HOOKS is the separate list of HOST
 // hooks the bridge can map. A VMU-internal hook needs no bridging at all, so the criterion is membership in EITHER list -
 // which is why ballot/tally (in VU_HOOKS, emitted by ballot.js) was never inert, contrary to what round 562 recorded.
-// ★ PHASE 6: the runtime's OWN declared-topic set is the third (and authoritative) source for a pack-created topic.
-const DECLARED_THEMES = new Set(declaredTopics())
+// ★ PHASE 6: the runtime's OWN declared-topic set is the third (and authoritative) source for a pack-created topic;
+// the MANIFEST's `topics` field is the static declaration this gate can read without applying the pack.
+const DECLARED_THEMES = new Set([...declaredTopics(), ...manifestTopics])
 const KNOWN_HOOKS = new Set([...VU_HOOKS, ...BRIDGED_HOOKS, ...DECLARED_THEMES])
 /** Pure criterion, so its ability to bite is itself testable (below). */
 const undeclaredOf = (list, known) => list.filter((h) => !known.has(h.hook) && !KNOWN_UNBRIDGED[h.hook])

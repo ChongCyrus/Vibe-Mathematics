@@ -640,10 +640,13 @@ export function createKernel({
   // policy through this handle on every assemble, so a runtime `vibe_vmu_set` really does reach the next turn.
   const prompt = createPromptPipeline({ sections, bindings, overrides, whoMayOverride, bus, readFile, clock, settings: settingsView })
 
+  // PHASE 6 (goal-3 audit, half-built pair): the CONSTRUCTION-TIME tracks are kept, because `retractTracks()` must be
+  // able to restore exactly what the kernel started with after a pack that declared tracks is unloaded.
+  const initialTracks = tracks || settings['vmu.records.tracks']
   let library = root
     ? createLibrary({
       root,
-      tracks: tracks || settings['vmu.records.tracks'],
+      tracks: initialTracks,
       headListAt: settings['vmu.records.headListAt'],
       truncateMode: settings['vmu.records.truncateMode'],
       fingerprintPolicy: settings['vmu.records.fingerprintPolicy'],
@@ -1903,18 +1906,42 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       if (list.length === 0) {
         throw refuse('VMU_INVALID_ARGUMENT', 'a pack must declare at least one track', 'tracks are a closed set (docs/07 搂4.2)')
       }
+      const rebuildLibrary = (tracksList) => {
+        library = createLibrary({
+          root,
+          tracks: tracksList,
+          headListAt: settings['vmu.records.headListAt'],
+          truncateMode: settings['vmu.records.truncateMode'],
+          fingerprintPolicy: settings['vmu.records.fingerprintPolicy'],
+          // The path policy must survive a RE-DECLARATION too, or a pack that declares tracks would silently
+          // drop the write gate the first library had (docs/04 搂11).
+          settings,
+          clock,
+        })
+        return library
+      }
+      rebuildLibrary(list.slice())
+      return { ok: true, tracks: list.slice() }
+    },
+
+    /**
+     * PHASE 6 (goal-3 audit, half-built pair): the reverse of `declareTracks`. A pack's unload calls this and the
+     * library goes back to the CONSTRUCTION-TIME tracks, so the pack's tracks stop being declared. Slots had an undo
+     * entry and tracks did not, which is exactly why the rebuilt library survived an unload.
+     */
+    retractTracks() {
+      if (!root) return { ok: true, retracted: false, note: 'no library root: track declarations do not exist here' }
+      const restore = Array.isArray(initialTracks) && initialTracks.length > 0 ? initialTracks.slice() : null
       library = createLibrary({
         root,
-        tracks: list.slice(),
+        ...(restore ? { tracks: restore } : {}),
         headListAt: settings['vmu.records.headListAt'],
         truncateMode: settings['vmu.records.truncateMode'],
         fingerprintPolicy: settings['vmu.records.fingerprintPolicy'],
-        // The path policy must survive a RE-DECLARATION too, or a pack that declares tracks would silently
-        // drop the write gate the first library had (docs/04 搂11).
         settings,
         clock,
       })
-      return { ok: true, tracks: library.status ? list.slice() : list.slice() }
+      return { ok: true, retracted: true, tracks: restore }
     },
 
     /**
@@ -1927,41 +1954,61 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
      * refused. The last rule is what stops a pack from shadowing a framework tool.
      */
     declarePackTools(list = [], { by = null } = {}) {
-      const declared = []
+      const source = Array.isArray(list) ? list : []
       const kernelToolNames = new Set()
       try {
         for (const svc of (registry.contract().services || [])) if (svc.kind === 'tool') kernelToolNames.add(svc.name)
       } catch { /* an unreadable contract cannot be a collision source; the host still checks its own names */ }
-      for (const raw of Array.isArray(list) ? list : []) {
+      const owner = by === null || by === undefined ? null : String(by)
+      // PASS 1 — validate the WHOLE list and mutate NOTHING. A refusal half-way through used to leave the entries
+      // already written in place (a half declaration); a batch is all-or-nothing now.
+      const staged = []
+      const stagedNames = new Set()
+      for (const raw of source) {
         if (!raw || typeof raw !== 'object') throw refuse('VMU_INVALID_ARGUMENT', 'a declared tool must be an object', 'pass { name, description, parameters, handler }')
         const name = typeof raw.name === 'string' ? raw.name.trim() : ''
         if (!/^[a-z][a-z0-9_]{2,63}$/.test(name)) throw refuse('VMU_INVALID_ARGUMENT', 'a declared tool name must be lowercase [a-z0-9_], 3..64 chars: ' + JSON.stringify(raw.name), 'e.g. vibe_math_status')
         if (kernelToolNames.has(name)) throw refuse('VMU_PACK_CONFLICT', 'declared tool "' + name + '" is already published by this kernel', 'a pack cannot shadow a framework tool; rename the pack tool')
-        const owner = packToolDeclarations.get(name)
-        if (owner) throw refuse('VMU_PACK_CONFLICT', 'declared tool "' + name + '" was already declared by pack "' + String(owner.packId) + '"', 'two packs cannot publish one tool name; rename one of them')
+        if (stagedNames.has(name)) throw refuse('VMU_PACK_CONFLICT', 'declared tool "' + name + '" appears twice in this declaration', 'a pack declares each tool name once')
+        const existing = packToolDeclarations.get(name)
+        if (existing) throw refuse('VMU_PACK_CONFLICT', 'declared tool "' + name + '" was already declared by pack "' + String(existing.packId) + '"', 'two packs cannot publish one tool name; rename one of them')
         if (typeof raw.handler !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'declared tool "' + name + '" needs a handler function', 'declare tools[i].handler in the pack manifest')
-        const entry = Object.freeze({
+        staged.push(Object.freeze({
           name,
           description: typeof raw.description === 'string' ? raw.description : '',
           parameters: raw.parameters && typeof raw.parameters === 'object' && !Array.isArray(raw.parameters) ? raw.parameters : {},
           handler: raw.handler,
           capabilities: Array.isArray(raw.capabilities) ? raw.capabilities.filter((c) => typeof c === 'string') : [],
-          packId: by === null || by === undefined ? null : String(by),
-        })
-        packToolDeclarations.set(name, entry)
-        declared.push(name)
+          packId: owner,
+        }))
+        stagedNames.add(name)
       }
-      return { ok: true, declared, count: declared.length }
+      // PASS 2 — commit (nothing above could abort it).
+      for (const entry of staged) packToolDeclarations.set(entry.name, entry)
+      return { ok: true, declared: staged.map((e) => e.name), count: staged.length }
     },
 
-    /** PHASE 6 / P0-10 — reverse exactly what declarePackTools added (a pack unload calls this with its names). */
-    retractPackTools(names = null) {
+    /**
+     * PHASE 6 / P0-10 — reverse exactly what declarePackTools added (a pack unload calls this with its names).
+     * PHASE 6 (goal-3 audit, security): `by` is the pack claiming the retraction. A name owned by ANOTHER pack is a
+     * NAMED refusal, and the whole batch is checked before anything is removed, so a mixed batch cannot half-succeed.
+     */
+    retractPackTools(names = null, { by = null } = {}) {
       const wanted = names === null ? [...packToolDeclarations.keys()] : (Array.isArray(names) ? names : [names])
-      const removed = []
+      const owner = by === null || by === undefined ? null : String(by)
+      const pending = []
       for (const n of wanted) {
         const key = String(n)
-        if (packToolDeclarations.delete(key)) removed.push(key)
+        const entry = packToolDeclarations.get(key)
+        if (!entry) continue
+        if (owner !== null && String(entry.packId) !== owner) {
+          throw refuse('VMU_NOT_PERMITTED', 'refusing to retract tool "' + key + '": it was declared by pack "' + String(entry.packId) + '", not by "' + owner + '"',
+            'pass { by } naming the pack that owns the declaration; a pack cannot retract another pack\'s tools')
+        }
+        pending.push(key)
       }
+      const removed = []
+      for (const key of pending) if (packToolDeclarations.delete(key)) removed.push(key)
       return { ok: true, removed, count: removed.length }
     },
 

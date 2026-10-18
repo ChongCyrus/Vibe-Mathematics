@@ -79,6 +79,10 @@ export const PACK = Object.freeze({
   // pack.js 会按 O4 判"重叠"并具名拒（它并不会有第二个答案）。
   settings: Object.freeze({}),
 
+  // PHASE 6（目标 3 审计 P1）：本包引入的协议扩展主题。由 pack.js 在装载其 middleware **之前**声明到
+  // 运行期总线（owner=本包 id），卸载时 undo 只撤回本包的声明 ⇒ 不会跨内核永久泄漏；重装时重新声明。
+  topics: Object.freeze([V3_TICK_TOPIC]),
+
   // v3 的规则是定量+有状态的（"至少 N 名验证者"、"manual 下不许跑"），M1 的谓词 DSL 表达不了 ⇒ 与 v3-core 一致：
   // P0 不引入 M1。tick/dataplane 也不需要规则。
   rules: Object.freeze([]),

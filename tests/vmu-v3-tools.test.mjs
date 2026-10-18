@@ -16,6 +16,10 @@
 import { pathToFileURL } from 'node:url'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { isRegisteredHook } from '../vibe-math-vmu/kernel/loader.js'
+import { isDeclaredTopic } from '../vibe-math-vmu/kernel/bus.js'
+import { V3_TICK_TOPIC } from '../vibe-math-vmu/packs/v3/middleware/tick.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -251,11 +255,39 @@ console.log('=== 9. UNLOAD RETRACTS THE DECLARATIONS (the names stop being publi
 {
   const b = await boot({ packs: ['v3'] })
   ok(b.handle.kernel.packTools().length === 10, '10 declarations before unload', b.handle.kernel.packTools().length)
+  // PHASE 6 (goal-3 audit P1): the pack's protocol topic is REGISTERED while it is applied.
+  ok(isRegisteredHook(V3_TICK_TOPIC) === true && isDeclaredTopic(V3_TICK_TOPIC) === true,
+    'while the pack is applied, its declared topic is registered', { hook: isRegisteredHook(V3_TICK_TOPIC), declared: isDeclaredTopic(V3_TICK_TOPIC) })
   const loader = b.handle.packLoader()
   ok(loader && typeof loader.unload === 'function', 'the entry exposes the ONE pack loader', loader && typeof loader.unload)
   const receipt = await loader.unload('v3')
   ok(receipt && receipt.ok === true, 'unload succeeded', receipt && receipt.ok)
   ok(b.handle.kernel.packTools().length === 0, 'retractPackTools removed every declaration', b.handle.kernel.packTools().length)
+  // THE CROSS-KERNEL LEAK THIS CLOSES: DECLARED_TOPICS used to be process-wide with no retraction, so an unloaded
+  // pack's topic stayed "registered" for the rest of the process. A FRESH PROCESS is the only honest way to assert
+  // "after this unload it is gone" inside a suite that has several other live v3 instances (each legitimately holds
+  // its own declaration; a global predicate cannot say "gone for one owner only"). Red before the fix: the import-time
+  // declaration had no owner and survived this exact unload ⇒ after===true.
+  const probe = `
+    const entry = await import(${JSON.stringify(pathToFileURL(ENTRY).href)});
+    const bus = await import(${JSON.stringify(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kernel', 'bus.js')).href)});
+    const loaderMod = await import(${JSON.stringify(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kernel', 'loader.js')).href)});
+    const ctx = { effect(fn){ return fn() }, on(){ return () => {} }, tools: { register: async () => () => {} } };
+    const handle = entry.apply(ctx, { clock: () => 1000, packs: ['v3'] });
+    await handle.ready();
+    const before = loaderMod.isRegisteredHook(${JSON.stringify(V3_TICK_TOPIC)});
+    await handle.packLoader().unload('v3');
+    const after = loaderMod.isRegisteredHook(${JSON.stringify(V3_TICK_TOPIC)});
+    process.stdout.write(JSON.stringify({ before, after, declaredAfter: bus.isDeclaredTopic(${JSON.stringify(V3_TICK_TOPIC)}) }));
+    // The applied pack arms the kernel's platform timer (autoArm=true), so the child would stay alive; the probe's
+    // FACT is already written, and exiting here cannot make a false positive (an unload that failed would print true).
+    process.exit(0);
+  `
+  const isolated = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', probe], { encoding: 'utf8', cwd: REPO }))
+  ok(isolated.before === true, 'P1-topic: in a fresh process the applied pack registers v3/tick', isolated.before)
+  ok(isolated.after === false && isolated.declaredAfter === false,
+    'P1-topic: UNLOAD RETRACTS it - after the unload v3/tick is no longer "registered" (this is the cross-kernel leak, gone)',
+    isolated)
   const namesAfter = b.handle.adapter.plan().names
   ok(namesAfter.filter((n) => n.startsWith('vibe_math_')).length === 0, 'and plan() no longer promises any v3 tool', namesAfter.filter((n) => n.startsWith('vibe_math_')))
   // The class next, not the adapter: a fresh install would publish nothing new (the declarations are the source).

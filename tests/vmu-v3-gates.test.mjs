@@ -25,7 +25,7 @@ import { PACK } from '../vibe-math-vmu/packs/v3/index.js'
 import {
   V3_GATES_MODULE, GATE_KINDS, GATE_MODES, GATE_TRACK, GATE_RECORD_KIND,
   gateDecision, normaliseGateMode, evaluateGate, createGate, getGate, listGates,
-  approveGate, rejectGate, releaseAllGates, registerGateExecutor, clearGateExecutors, v3GatesStatus,
+  approveGate, rejectGate, releaseAllGates, registerGateExecutor, clearGateExecutors, v3GatesStatus, cancelGate,
 } from '../vibe-math-vmu/packs/v3/middleware/gates.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -314,6 +314,29 @@ console.log('=== 11. 模块形状：可被 pack 清单装载（meta/apiVersion/c
   clearGateExecutors(h3.records)
   ok(listGates({ records: h3.records }).counts.total === 0,
     '★ clearGateExecutors 只清注册表、不动台账（records 是事实源）')
+}
+
+console.log('=== 12. 未决门可以【取消】（半成品对：不再是 approve/reject 二选一） ===')
+{
+  const hc = makeKernel({ mode: 'manual' })
+  const g = await evaluateGate({ records: hc.records, human: hc.human, at: 6000, mode: 'manual', kind: 'plan', subject: 'cancel-me' })
+  ok(listGates({ records: hc.records }).counts.pending === 1, 'the gate starts pending', listGates({ records: hc.records }).counts.pending)
+  let noReason = null
+  try { cancelGate({ records: hc.records, gateId: g.gateId }) } catch (e) { noReason = e }
+  ok(noReason && noReason.code === 'VMU_INVALID_ARGUMENT', 'cancel without a reason is refused by name (a withdrawal must say why)', noReason && noReason.code)
+  const cancelled = cancelGate({ records: hc.records, human: hc.human, gateId: g.gateId, by: 'office', reason: 'superseded by a new plan' })
+  ok(cancelled.ok === true && cancelled.gate.status === 'cancelled' && cancelled.executed === false,
+    'cancel lands the terminal status cancelled, and NOTHING was executed', cancelled.gate && cancelled.gate.status)
+  const back = getGate({ records: hc.records, gateId: g.gateId })
+  ok(back && back.status === 'cancelled' && back.reason === 'superseded by a new plan' && back.decidedBy === 'office',
+    'the cancelled gate is READABLE afterwards (status + reason + who)', back && { status: back.status, reason: back.reason, by: back.decidedBy })
+  ok(listGates({ records: hc.records }).counts.pending === 0,
+    'it no longer blocks: the pending list is empty after the cancel', listGates({ records: hc.records }).counts.pending)
+  const again = cancelGate({ records: hc.records, gateId: g.gateId, reason: 'twice' })
+  ok(again && again.ok === false && again.code === 'VMU_STATE', 'a terminal gate cannot be cancelled twice', again && again.code)
+  const approveAfter = await approveGate({ records: hc.records, gateId: g.gateId })
+  ok(approveAfter.ok === false && approveAfter.code === 'VMU_STATE',
+    'and a cancelled gate cannot be approved afterwards (terminal means terminal)', approveAfter.code)
 }
 
 console.log('')

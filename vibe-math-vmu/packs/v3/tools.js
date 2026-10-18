@@ -27,7 +27,7 @@
  * explicit fallback: a missing `vmu.v3.mode` means `auto`, a missing `vmu.v3.tickIntervalMs` means 2000.
  * A default deployment must not silently become `manual` just because nobody set the key.
  */
-import { listGates, approveGate, rejectGate } from './middleware/gates.js'
+import { listGates, approveGate, rejectGate, cancelGate } from './middleware/gates.js'
 import { latestPlanRecord, readPlanRecord } from './middleware/planner.js'
 import { writeCard, parseCard } from './middleware/dataplane.js'
 
@@ -279,9 +279,10 @@ async function toolDecide(args = {}, { kernel } = {}) {
   const raw = str(args.action).trim().toLowerCase()
   const action = ['approve', 'approved', 'allow'].includes(raw) ? 'approve'
     : ['reject', 'rejected', 'deny'].includes(raw) ? 'reject'
-      : ['override'].includes(raw) ? 'override'
-        : null
-  if (action === null) throw refuse('VMU_INVALID_ARGUMENT', 'unknown decide action "' + str(args.action) + '"', 'action must be approve / reject / override')
+      : ['cancel', 'withdraw'].includes(raw) ? 'cancel'
+        : ['override'].includes(raw) ? 'override'
+          : null
+  if (action === null) throw refuse('VMU_INVALID_ARGUMENT', 'unknown decide action "' + str(args.action) + '"', 'action must be approve / reject / cancel / override')
   const records = recordsOf(kernel)
   let human = null
   try { human = kernel && kernel.human ? kernel.human : null } catch { human = null }
@@ -290,6 +291,10 @@ async function toolDecide(args = {}, { kernel } = {}) {
   if (action === 'reject') {
     const r = rejectGate({ records, human, gateId: id, by, reason })
     return { ok: r.ok === true, tool: 'decide', action, executed: false, code: r.code || null, message: r.message || null, hint: r.hint || null, gate: r.gate ? gateView(r.gate) : null }
+  }
+  if (action === 'cancel') {
+    const r = cancelGate({ records, human, gateId: id, by, reason })
+    return { ok: r.ok === true, tool: 'decide', action, executed: false, cancelled: r.cancelled === true, code: r.code || null, message: r.message || null, hint: r.hint || null, gate: r.gate ? gateView(r.gate) : null }
   }
   // approve / override share the ONE executor path (override additionally RECORDS the human's verdict in the reason).
   const overrideNote = action === 'override' && args.verdict !== undefined
@@ -435,7 +440,7 @@ export const V3_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_math_decide',
-    description: 'Resolve one pending manual gate: approve runs the registered executor, reject never executes. A terminal failure is reported, never silently released.',
+    description: 'Resolve one pending manual gate: approve runs the registered executor, reject never executes, cancel withdraws it (a reason is required) so a withdrawn request stops blocking. A terminal failure is reported, never silently released.',
     parameters: { id: { type: 'string', required: true }, action: { type: 'string', required: true }, verdict: { type: 'number' }, reason: { type: 'string' }, by: { type: 'string' } },
     handler: toolDecide,
   },

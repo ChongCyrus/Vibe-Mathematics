@@ -117,11 +117,14 @@ console.log('=== 2. 清单只声明调用期的东西：构造期的键【不在
   ok(V3_TICK_MODULE.hooks && typeof V3_TICK_MODULE.hooks[V3_TICK_TOPIC] === 'function', '模块的 hooks 里真的有 v3/tick 处理器', Object.keys(V3_TICK_MODULE.hooks || {}))
 }
 
-console.log('=== 3. v3/tick 在【装载前】就是已声明主题（否则 loader 会以 unregistered hook 拒整包） ===')
+console.log('=== 3. v3/tick 的声明是【apply 的动作】，不是 import 的副作用（P1：卸载可撤销） ===')
 {
   ok(V3_TICK_TOPIC === 'v3/tick', '主题名是 v3/tick', V3_TICK_TOPIC)
-  ok(isDeclaredTopic(V3_TICK_TOPIC) === true, 'bus 的进程级已声明主题集里有它（declareTopic 在模块 import 时执行）', V3_TICK_TOPIC)
-  ok(isRegisteredHook(V3_TICK_TOPIC) === true, 'loader 的 isRegisteredHook 认它（这是模块能否被装载的判据）', V3_TICK_TOPIC)
+  // PHASE 6 (goal-3 audit P1): this used to be true HERE because tick.js declared on a throwaway bus at import time -
+  // and that process-wide declaration could never be retracted, so an unloaded pack stayed "registered". Now the pack
+  // manifest declares the topic and pack.js declares it at APPLY (owner-tracked), so before apply it is NOT registered.
+  ok(isDeclaredTopic(V3_TICK_TOPIC) === false, '装载前它【未】被声明（声明发生在 apply，而不是 import 的副作用）', V3_TICK_TOPIC)
+  ok(isRegisteredHook(V3_TICK_TOPIC) === false, '因此 loader 在装载前也【不】认它（不会再有"卸载后仍注册"）', V3_TICK_TOPIC)
 }
 
 console.log('=== 4. 正向：注入 timer + autoArm + 种子 ⇒ 手工触发一次假 timer ⇒ tick 体被调用 1 次 ===')
@@ -133,6 +136,9 @@ console.log('=== 4. 正向：注入 timer + autoArm + 种子 ⇒ 手工触发一
   const loader = createPackLoader({ kernel, registry: kernel.registry })
   const applied = await loader.apply(PACK)
   ok(applied && applied.ok === true, 'v3 包装载干净（module 形状经 loader 成功装载）', applied && { applied: applied.applied, actions: applied.actions && applied.actions.length })
+  // PHASE 6 (P1): the manifest's topics field is what makes v3/tick registered, and it happens at THIS point.
+  ok(isDeclaredTopic(V3_TICK_TOPIC) === true && isRegisteredHook(V3_TICK_TOPIC) === true,
+    'apply 之后 v3/tick 才被声明并成为可订阅钩子（pack 清单 topics 字段 ⇒ pack.js declareTopic）', V3_TICK_TOPIC)
 
   const before = v3TickStatus()
   ok(before.calls === 0, '触发前 tick 体一次都没被调用', before.calls)

@@ -639,7 +639,7 @@ vmu.packs.active: [v5r]
 | `vmu.schedule.triggers` | obj[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 声明式触发器种子 |
 | `vmu.schedule.overdueGraceMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 迟到宽限（超宽限 ⇒ 丢弃并计数，绝不静默 ✗） |
 | `vmu.schedule.coalesceMissed` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 漏跑是否合并（合并也要报 missed ✓） |
-| `vmu.schedule.autoArm` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 是否自动驱动调度（false＝零机制，只按 tick() 推进 ✓；true＝内核起手 arm 并在每次触发后重 arm ✓；timeSource=host-timer 但无 timer 接缝 ⇒ 起手即 VMU_CONTROL_NO_TIMER） |
+| `vmu.schedule.autoArm` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | 是否自动驱动调度（false＝零机制，只按 tick() 推进 ✓；true＝内核起手 arm 并在每次触发后重 arm ✓；★ 构造期读取一次：运行期修改在**重启后**生效，回执会如实说 next session ✓；timeSource=host-timer 但无 timer 接缝 ⇒ 起手即 VMU_CONTROL_NO_TIMER） |
 | `vmu.schedule.maxRecurrences` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 重复项上限（0＝不限） |
 | `vmu.schedule.defaultTimezone` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 默认时区（IANA 名；事件未带时区时取它，回执据此报告；缺时区 ⇒ VMU_SCHEDULE_TZ_UNKNOWN） |
 | `vmu.schedule.recurrenceEnabled` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/scheduler.js` | 是否允许重复规则（false ⇒ every() 具名拒；默认 true ⇒ 不声明就不改变行为） |

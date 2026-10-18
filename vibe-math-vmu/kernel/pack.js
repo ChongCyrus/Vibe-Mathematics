@@ -17,6 +17,13 @@
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
 
+/**
+ * PHASE 6 (goal-3 audit P1): one counter for topic ownership. The owner is per APPLY (`pack-id#N`), not per pack id,
+ * so two kernels that apply the same pack in one process each hold their own declaration and one unload cannot revoke
+ * the other's topic.
+ */
+let topicOwnerSeq = 0
+
 export function refuse(code, message, hint) {
   const err = new Error(message)
   err.hint = hint
@@ -165,6 +172,20 @@ export function validatePack(manifest) {
       if (t.parameters !== undefined && (t.parameters === null || typeof t.parameters !== 'object' || Array.isArray(t.parameters))) {
         problems.push('tool ' + name + ': parameters must be an object map of parameter definitions')
       }
+    }
+  }
+  // PHASE 6 (goal-3 audit P1): the protocol TOPICS this pack introduces. Declared here so `plan` shows them, applied
+  // on the runtime bus with THIS pack as owner, and retracted by the unload undo. A topic name has the same shape the
+  // bus requires (domain/name, kebab-case), and the same name twice is refused rather than merged.
+  {
+    const seenTopics = new Set()
+    for (const topic of manifest.topics || []) {
+      if (typeof topic !== 'string' || !/^[a-z0-9-]+\/[a-z0-9-]+$/.test(topic)) {
+        problems.push('topic ' + JSON.stringify(topic) + ': must look like domain/name with kebab-case on both sides')
+        continue
+      }
+      if (seenTopics.has(topic)) problems.push('topic is declared twice in the same manifest: ' + topic)
+      seenTopics.add(topic)
     }
   }
   return problems
@@ -390,6 +411,8 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
     for (const c of m.codes || []) actions.push({ kind: 'code', code: c })
     // PHASE 6 / P0-10: a declared tool is an ACTION of this pack, so plan() shows it before apply publishes it.
     for (const t of m.tools || []) actions.push({ kind: 'tool', name: t.name })
+    // PHASE 6 (goal-3 audit P1): a declared topic is an action too, with the bus as its only consumer.
+    for (const topic of m.topics || []) actions.push({ kind: 'topic', name: topic, consumer: 'kernel.bus.declareTopic' })
     // D-03/P1: a declared prompt policy needs a CONSUMER. `plan()` says so rather than letting apply() be the
     // first place the gap appears; it stays a warning (not a problem) because the manifest is well-formed —
     // what is missing is the assembly's sink, which the caller may add before applying.
@@ -510,6 +533,20 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
           shadowed: shadowed.slice(),
         })
       }
+      // PHASE 6 (goal-3 audit P1): declare this pack's protocol topics BEFORE its middleware is loaded, because the
+      // loader's `isRegisteredHook()` consults the process-wide declared-topic set. The undo retracts exactly this
+      // pack's ownership, so an unload leaves no topic registered (and a later kernel in the same process does not
+      // inherit it). A pack that declares topics on a bus without that capability is refused by name.
+      const declaredTopics = Array.isArray(manifest.topics) ? manifest.topics : []
+      if (declaredTopics.length > 0) {
+        if (!kernel.bus || typeof kernel.bus.declareTopic !== 'function' || typeof kernel.bus.retractTopicsOwnedBy !== 'function') {
+          throw refuse('VMU_ENGINE_UNAVAILABLE', 'pack ' + manifest.id + ' declares topics but this kernel bus cannot declare/retract them',
+            'use the kernel bus from kernel/index.js (declareTopic/retractTopicsOwnedBy), or drop the topics field')
+        }
+        const topicOwner = manifest.id + '#' + (++topicOwnerSeq)
+        for (const topic of declaredTopics) kernel.bus.declareTopic(topic, { by: topicOwner })
+        undo.push(() => kernel.bus.retractTopicsOwnedBy(topicOwner))
+      }
       for (const s of manifest.slots || []) {
         if (!kernel.declareSlots) throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel cannot declare role slots')
         kernel.declareSlots((manifest.slots || []))
@@ -517,7 +554,11 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         break // declaring is atomic for the whole list; one undo entry is enough
       }
       for (const t of manifest.tracks || []) {
-        if (kernel.declareTracks) kernel.declareTracks(manifest.tracks)
+        if (!kernel.declareTracks) continue
+        kernel.declareTracks(manifest.tracks)
+        // PHASE 6 (goal-3 audit, half-built pair): slots had an undo and tracks did not, so an unload left the
+        // rebuilt library in place. The kernel restores its construction-time tracks and this is the reverse entry.
+        if (typeof kernel.retractTracks === 'function') undo.push(() => kernel.retractTracks())
         break
       }
       for (const r of manifest.rules || []) {
@@ -597,7 +638,7 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
             'construct the kernel with declarePackTools() (kernel/index.js), or drop the tools field')
         }
         const declared = kernel.declarePackTools(manifest.tools, { by: manifest.id })
-        undo.push(() => kernel.retractPackTools(declared.declared))
+        undo.push(() => kernel.retractPackTools(declared.declared, { by: manifest.id }))
         break // one call declares the whole list; one undo entry is enough
       }
       // D-03/P1 — A DECLARED PROMPT POLICY IS CONSUMED, OR THE PACK IS REFUSED BY NAME. These entries are not

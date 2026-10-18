@@ -105,3 +105,22 @@
 - **未改**：`settings/schema.js`（schema 是声明真源）；R4（`vmu.middleware.onFailure` 的 `def:'closed'` 与"按钩子默认"的
   文档文本冲突）**留给你裁定**——把 `closed` 变成实际默认会改变四个观测钩子的失败策略，故本轮未动，只在注释里留了裁决说明。
 - **派生面**：零机制矩阵新增 `settings-defaults` 的 `EXPECT_NA` 裁定行；`regen-all --check` 16/16；preflight／check-docs 通过。
+
+## §8 修复记录（P1 ＋ 半成品四对）
+
+- **autoArm（P1，选 b）**：声明仍是**构造期读取**，把该键热级改为 **H2**（`settings/schema.js`），回执从此如实说
+  `requiresRestart:true`／`appliesAt: next session`，不再谎称即时生效；理由：装配期才注入 timer 接缝，运行期"开"在没有
+  timer 的部署里只能得到 tick-only，若强行支持就要给所有部署注入平台 timer（破坏零机制与 `status().seams` 的诚实性）。
+  程序化的 `scheduler.autoArm({on:false})` 与 `disarm()` 保留（库层能力，不是设置语义）。
+- **declareTopic（P1）**：改为**可撤销的、带 owner 的声明**（`kernel/bus.js`：`TOPIC_OWNERS`／`retractTopic`／
+  `retractTopicsOwnedBy`）；v3 的 `topics` 进入**清单字段**（`packs/v3/index.js`），`pack.js` 在 middleware 之前声明、
+  卸载 undo 按本次装载 token 撤回；`tick.js` 不再在 import 时用一次性 bus 声明（那正是跨内核泄漏源）。
+  反面断言：新进程内 apply→unload 后 `isRegisteredHook('v3/tick') === false`。
+- **retractPackTools 归属（P1）**：撤销必须带 `by`，归属不符 ⇒ `VMU_NOT_PERMITTED` 且**工具仍在**；整批先校验后删除。
+- **declarePackTools 原子性**：先全量校验、再一次性提交 ⇒ 中途非法时**一条都不留**。
+- **declareTracks 反向**：新增 `retractTracks()`，`pack.js` 的 tracks undo 调用它 ⇒ 卸载后回到构造期轨集合。
+- **gate 可取消**：新增 `cancelGate`（必须带理由；终态 `cancelled` 入台账、不再阻塞；已终结者不可再取消），
+  并接到 `vibe_math_decide` 的 `cancel` 动作；`GATE_TERMINAL_STATUSES` 与计数视图同步；`docs/10` 清单字段表补 `topics`／`tools`。
+- **测试**：`vmu-kernel`（+11：回执/原子/归属/tracks 卸载）、`vmu-bus`（+3：owner 撤回语义）、
+  `vmu-v3-tools`（+2：应用期注册、隔离进程卸载后不再注册）、`vmu-v3-tick`（声明时机断言更新）、
+  `vmu-v3-gates`（+8：cancel 全链路）；作业数不变（454）。

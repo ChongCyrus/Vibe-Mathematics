@@ -54,8 +54,8 @@ export const GATE_TAG_PREFIX = 'gate:'
 export const GATE_ID_TAG_PREFIX = 'gate-id:'
 export const GATE_STATUS_TAG_PREFIX = 'gate-status:'
 
-/** 门的终态（pending 之外的都算结束，不再被 releaseAllGates 触碰）。 */
-export const GATE_TERMINAL_STATUSES = Object.freeze(['released', 'rejected', 'failed'])
+/** 门的终态（pending 之外的都算结束，不再被 releaseAllGates 触碰）。cancelled＝作废（不是决定）。 */
+export const GATE_TERMINAL_STATUSES = Object.freeze(['released', 'rejected', 'failed', 'cancelled'])
 
 const str = (v) => (v === undefined || v === null ? '' : String(v))
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
@@ -150,7 +150,7 @@ let lastState = null
 function stateFor(records) {
   let s = GATE_STATES.get(records)
   if (!s) {
-    s = { created: 0, approved: 0, rejected: 0, released: 0, failed: 0, unexecuted: 0, ticks: 0, lastTick: null, lastError: null }
+    s = { created: 0, approved: 0, rejected: 0, released: 0, failed: 0, cancelled: 0, unexecuted: 0, ticks: 0, lastTick: null, lastError: null }
     GATE_STATES.set(records, s)
   }
   lastState = s
@@ -161,12 +161,12 @@ function stateFor(records) {
 export function v3GatesStatus() {
   const s = lastState
   if (!s) {
-    return { track: GATE_TRACK, kinds: GATE_KINDS.slice(), counts: { created: 0, approved: 0, rejected: 0, released: 0, failed: 0, unexecuted: 0, ticks: 0 }, lastTick: null, lastError: null, note: 'no gate has been evaluated in this process yet' }
+    return { track: GATE_TRACK, kinds: GATE_KINDS.slice(), counts: { created: 0, approved: 0, rejected: 0, released: 0, failed: 0, cancelled: 0, unexecuted: 0, ticks: 0 }, lastTick: null, lastError: null, note: 'no gate has been evaluated in this process yet' }
   }
   return {
     track: GATE_TRACK,
     kinds: GATE_KINDS.slice(),
-    counts: { created: s.created, approved: s.approved, rejected: s.rejected, released: s.released, failed: s.failed, unexecuted: s.unexecuted, ticks: s.ticks },
+    counts: { created: s.created, approved: s.approved, rejected: s.rejected, released: s.released, failed: s.failed, cancelled: s.cancelled || 0, unexecuted: s.unexecuted, ticks: s.ticks },
     lastTick: s.lastTick === null ? null : Object.assign({}, s.lastTick),
     lastError: s.lastError === null ? null : Object.assign({}, s.lastError),
   }
@@ -456,6 +456,36 @@ export function rejectGate({ records, human = null, at = null, gateId, by = null
     reason: 'v3 gate rejected', by,
   })
   return { ok: true, gate: out, executed: false }
+}
+
+/**
+ * PHASE 6（目标 3 审计，半成品对）：取消一扇**未决**门。与 reject 的区别是语义，不是状态字：
+ * reject 是"人做了否定的决定"（动作不执行，记录一个决定）；cancel 是"这个请求作废了"（主体没了／被取代／
+ * 误开），没有决定可记。终态 `cancelled` 进台账后不再出现在 pending 里，因此不再阻塞消费方；
+ * 已终结的门不可再取消（具名 VMU_STATE），取消必须带理由（具名 VMU_INVALID_ARGUMENT）。
+ */
+export function cancelGate({ records, human = null, at = null, gateId, by = null, reason = null } = {}) {
+  const recs = requireRecords(records, 'cancelGate')
+  if (reason === null || str(reason).trim() === '') {
+    throw refuse('VMU_INVALID_ARGUMENT', 'cancelGate needs a reason (why is this gate being withdrawn?)', 'pass reason: "superseded by a new plan", "opened by mistake", …')
+  }
+  const gate = getGate({ records: recs, gateId })
+  if (!gate) return { ok: false, code: 'VMU_NO_SUCH_OBJECT', message: 'unknown gate: ' + str(gateId), hint: 'listGates returns the pending gate ids' }
+  if (gate.status !== 'pending') return { ok: false, code: 'VMU_STATE', message: 'gate ' + gate.gateId + ' is already ' + gate.status, hint: 'only a pending gate can be cancelled (a terminal gate is not re-decided)' }
+  const s = stateFor(recs)
+  s.cancelled = (s.cancelled || 0) + 1
+  const out = settleGate({
+    records: recs, gateId: gate.gateId, current: gate,
+    patch: {
+      status: 'cancelled', executed: false, error: null,
+      decidedAt: Number.isFinite(at) ? at : null,
+      decidedBy: by === null ? null : str(by),
+      reason: str(reason).trim(),
+      note: 'cancelled (withdrawn, not decided): the action was NOT executed and the gate no longer blocks',
+    },
+    reason: 'v3 gate cancelled', by,
+  })
+  return { ok: true, gate: out, executed: false, cancelled: true }
 }
 
 /**

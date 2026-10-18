@@ -896,6 +896,63 @@ const FALLBACK_KEYS = [
   }
 }
 
+// ── PHASE 6 · goal 3 P1: the HALF-BUILT PAIRS (receipt truth / topic retract / ownership / atomicity / tracks) ──
+// Each assertion below FAILS on the pre-fix tree: the receipt claimed 'immediate' for a construction-only key, a
+// refused tool batch left its earlier entries behind, a foreign pack could retract another pack's tool, and an
+// unloaded pack's tracks stayed declared.
+{
+  // (1) autoArm is a CONSTRUCTION-TIME read; the receipt must say "restart required", not "immediate".
+  const ka = m.createKernel({ clock })
+  const receipt = ka.setSettingsValue('vmu.schedule.autoArm', true, { by: 'office' })
+  ok(receipt.requiresRestart === true && /next session|restart/i.test(String(receipt.appliesAt)),
+    'P1-autoArm: setting it at runtime reports "restart required" (construction-time read) - before the hot-class fix this receipt said immediate',
+    { requiresRestart: receipt.requiresRestart, appliesAt: receipt.appliesAt, applied: receipt.applied })
+  ok(receipt.liveApplied.length === 0, 'P1-autoArm: the receipt names NO live consumer (because there is none)', receipt.liveApplied)
+}
+{
+  // (2) declarePackTools is ALL-OR-NOTHING: a bad second entry must leave the first one out too.
+  const kt = m.createKernel({ clock })
+  const handler = async () => ({ ok: true })
+  let refused = null
+  try {
+    kt.declarePackTools([
+      { name: 'pack_atomic_one', description: 'first', handler },
+      { name: 'BAD NAME', description: 'second', handler },
+    ], { by: 'pack-A' })
+  } catch (e) { refused = e }
+  ok(refused && refused.code === 'VMU_INVALID_ARGUMENT', 'P1-atomic: an invalid entry is refused by name', refused && refused.code)
+  ok(kt.packTools().length === 0,
+    'P1-atomic: the refused batch leaves NO half-declaration behind (the first entry is not in packTools)', kt.packTools().map((t) => t.name))
+  // (3) retractPackTools enforces OWNERSHIP: pack B cannot retract pack A's tool, and the tool survives.
+  kt.declarePackTools([{ name: 'pack_a_tool', description: 'owned by A', handler }], { by: 'pack-A' })
+  let denied = null
+  try { kt.retractPackTools(['pack_a_tool'], { by: 'pack-B' }) } catch (e) { denied = e }
+  ok(denied && denied.code === 'VMU_NOT_PERMITTED',
+    'P1-ownership: a foreign pack retracting a tool is a NAMED refusal (before the fix it silently removed it)', denied && denied.code)
+  ok(kt.packTools().some((t) => t.name === 'pack_a_tool'),
+    'P1-ownership: and the tool is STILL declared after the refused retraction', kt.packTools().map((t) => t.name))
+  const own = kt.retractPackTools(['pack_a_tool'], { by: 'pack-A' })
+  ok(own.count === 1 && kt.packTools().length === 0, 'P1-ownership: the owner CAN retract its own tool', own)
+}
+{
+  // (4) declareTracks has a REVERSE, and a pack unload uses it: the pack's tracks stop being declared.
+  const root = await mkdtemp(join(tmpdir(), 'vmu-tracks-'))
+  const kr = m.createKernel({ clock, root })
+  const loader = createPackLoader({ kernel: kr, registry: kr.registry })
+  const applied = await loader.apply({ id: 'track-pack', tracks: ['progress', 'problems'] })
+  ok(applied && applied.ok !== false, 'P1-tracks: a pack declaring tracks applies', applied && applied.ok)
+  const during = await kr.library.status()
+  ok(during.tracks.includes('problems'),
+    'P1-tracks: while applied, the pack track is declared (library.status().tracks)', during.tracks)
+  const unload = await loader.unload('track-pack')
+  ok(unload && unload.ok === true, 'P1-tracks: the pack unloads', unload && unload.ok)
+  const after = await kr.library.status()
+  ok(after.tracks.includes('problems') === false && after.tracks.length > 0,
+    'P1-tracks: after the unload the pack track is GONE and the construction-time tracks are back (before the fix the rebuilt library survived)',
+    after.tracks)
+  await rm(root, { recursive: true, force: true })
+}
+
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

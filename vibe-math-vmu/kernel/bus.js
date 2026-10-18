@@ -347,9 +347,43 @@ export const LOG_ONLY_EMITS = Object.freeze({
  * topic is a protocol extension point of this process, and every bus instance must agree on it.
  */
 const DECLARED_TOPICS = new Set()
+/**
+ * PHASE 6 (goal-3 audit P1): WHO declared each topic. The registry stays process-wide on purpose (a protocol
+ * extension point is process-global), but an OWNER can take its declaration back. A pack's unload retracts exactly
+ * the topics it declared; a topic another owner still holds survives. Kernel faces that declare WITHOUT an owner are
+ * kernel-lifetime declarations and are never retracted by a pack.
+ */
+const TOPIC_OWNERS = new Map() // topic -> Set<owner>
 
 /** The declared custom topics, in declaration order (observability + the loader's subscription check). */
 export function declaredTopics() { return [...DECLARED_TOPICS] }
+
+/** The topics a given owner declared (pack unload retracts exactly its own). */
+export function topicsOwnedBy(owner) {
+  const wanted = owner === null || owner === undefined ? null : String(owner)
+  if (wanted === null) return []
+  const out = []
+  for (const [topic, owners] of TOPIC_OWNERS) if (owners.has(wanted)) out.push(topic)
+  return out.sort()
+}
+
+/**
+ * Take back ONE owner's declaration. Returns whether the topic is still declared after the removal.
+ * `by: null` is reserved for kernel/process teardown and removes every owner of that topic.
+ */
+export function retractTopic(name, { by = null } = {}) {
+  const topic = String(name)
+  const owners = TOPIC_OWNERS.get(topic)
+  let removed = false
+  if (owners) {
+    if (by === null || by === undefined) { removed = true; owners.clear() }
+    else removed = owners.delete(String(by))
+    if (owners.size === 0) { TOPIC_OWNERS.delete(topic); DECLARED_TOPICS.delete(topic) }
+  } else if (by === null || by === undefined) {
+    removed = DECLARED_TOPICS.delete(topic)
+  }
+  return { ok: true, topic, removed, stillDeclared: DECLARED_TOPICS.has(topic), owners: TOPIC_OWNERS.has(topic) ? [...TOPIC_OWNERS.get(topic)].sort() : [] }
+}
 
 /** Is this name a topic some face declared with `bus.declareTopic`? */
 export function isDeclaredTopic(name) { return typeof name === 'string' && DECLARED_TOPICS.has(name) }
@@ -623,7 +657,7 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
      * contract, so a genuinely new topic must be declared here before anything may emit it: nothing appears
      * without a declaration (zero mechanism). Declaring twice is not an error, and `existing` says which.
      */
-    declareTopic(name) {
+    declareTopic(name, { by = null } = {}) {
       if (typeof name !== 'string' || !/^[a-z0-9-]+\/[a-z0-9-]+$/.test(name)) {
         throw refuse('VMU_INVALID_ARGUMENT', 'a hook topic must look like domain/name: ' + String(name),
           'e.g. lab/review-requested (kebab-case on both sides)')
@@ -634,7 +668,26 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
       // emittable - `kernel/loader.js`'s isRegisteredHook() consults this process-wide set. A topic that can
       // be emitted but not subscribed to was "declared but unusable", the class this project keeps catching.
       DECLARED_TOPICS.add(name)
-      return { ok: true, topic: name, existing }
+      // PHASE 6 (goal-3 audit P1): an OWNED declaration is retractable by that owner (a pack's unload calls
+      // retractTopic with its manifest id). Declaring twice for one owner is not an error.
+      if (by !== null && by !== undefined) {
+        const owner = String(by)
+        const owners = TOPIC_OWNERS.get(name) || new Set()
+        owners.add(owner)
+        TOPIC_OWNERS.set(name, owners)
+        return { ok: true, topic: name, existing, by: owner }
+      }
+      return { ok: true, topic: name, existing, by: null }
+    },
+
+    /** PHASE 6 (goal-3 audit P1): take back an owned topic declaration (idempotent; names what survives). */
+    retractTopic(name, { by = null } = {}) { return retractTopic(name, { by }) },
+    /** PHASE 6 (goal-3 audit P1): retract every topic one owner declared (pack unload uses this). */
+    retractTopicsOwnedBy(by) {
+      const owned = topicsOwnedBy(by)
+      const removed = []
+      for (const topic of owned) { if (retractTopic(topic, { by }).removed) removed.push(topic) }
+      return { ok: true, by: by === null || by === undefined ? null : String(by), removed, count: removed.length }
     },
 
     /**

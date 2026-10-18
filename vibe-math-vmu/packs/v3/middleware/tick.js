@@ -25,13 +25,16 @@
  * `Date.now()`；`vmu.v3.tickIntervalMs` 是声明式间隔（settings/schema.js），tick 体把它记进 journal，
  * 供 P0-2 的 tickDue 判定复用同一把键。
  */
-import { createBus, isDeclaredTopic } from '../../../kernel/bus.js'
-
+import { isDeclaredTopic } from '../../../kernel/bus.js'
 /** 本包声明的协议扩展主题。调度器 seed 的 `what` 就是它（settings/defaults.json）。 */
 export const V3_TICK_TOPIC = 'v3/tick'
 
-/** 本模块订阅的主题在【装载前】就必须是已声明主题，理由见文件头 ①。 */
-const V3_TICK_DECLARATION = createBus().declareTopic(V3_TICK_TOPIC)
+/**
+ * 本模块订阅的主题在【装载前】就必须是已声明主题，理由见文件头 ①。
+ * ★ PHASE 6（目标 3 审计 P1）：声明不再发生在 import 时（那会让"卸载后仍注册"成立，且进程级集合无法按包撤回）。
+ * 现在由 pack 清单的 `topics` 字段在 `pack.js` 的 apply 里声明（owner=本包本次装载的 token），
+ * 卸载 undo 只撤回本包的声明；`v3TickStatus().declared` 反映运行期真实状态。
+ */
 
 /** 模块内已处理过的 tick 次数（进程内；重启归零 —— 因此只用于自报，不当作持久计数）。 */
 let tickCalls = 0
@@ -42,7 +45,8 @@ export function v3TickStatus() {
   return {
     topic: V3_TICK_TOPIC,
     declared: isDeclaredTopic(V3_TICK_TOPIC),
-    declaredExisting: V3_TICK_DECLARATION ? V3_TICK_DECLARATION.existing === true : false,
+    declaredExisting: false, // PHASE 6: declaration is a pack-apply action now, so there is no import-time "already existed" fact
+    declaredBy: 'pack apply (manifest topics field)',
     calls: tickCalls,
     last: lastTick === null ? null : Object.assign({}, lastTick),
   }

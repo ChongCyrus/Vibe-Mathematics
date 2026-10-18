@@ -207,6 +207,17 @@ const newBus = (settings = {}) => m.createBus({ settings, onAudit: (r) => auditR
   ok(dec.ok === true && dec.existing === false, 'a NEW topic can be declared (zero mechanism)', JSON.stringify(dec))
   ok(bus.declareTopic('lab/review-requested').existing === true,
     'declaring it twice reports "existing" instead of failing')
+  // PHASE 6 (goal-3 audit P1): an OWNED declaration is RETRACTABLE, and a topic survives while another owner holds it.
+  const owned = newBus().declareTopic('lab/owned-topic', { by: 'pack-A' })
+  ok(owned.by === 'pack-A' && m.isDeclaredTopic('lab/owned-topic') === true,
+    'an owned declaration is visible while its owner holds it', JSON.stringify(owned))
+  newBus().declareTopic('lab/owned-topic', { by: 'pack-B' })
+  const dropA = newBus().retractTopic('lab/owned-topic', { by: 'pack-A' })
+  ok(dropA.removed === true && dropA.stillDeclared === true && m.isDeclaredTopic('lab/owned-topic') === true,
+    'retracting ONE owner keeps the topic (pack B still holds it)', JSON.stringify(dropA))
+  const dropAll = newBus().retractTopicsOwnedBy('pack-B')
+  ok(dropAll.count === 1 && m.isDeclaredTopic('lab/owned-topic') === false,
+    'retracting the LAST owner drops the topic from the declared set - an unload leaves no topic behind', JSON.stringify(dropAll))
   let seen = 0
   bus.on({ id: 'lab-watch', kind: 'module', on: ['lab/review-requested'], capabilities: ['annotate'] },
     () => { seen++; return undefined })
