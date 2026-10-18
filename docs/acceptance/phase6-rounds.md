@@ -593,3 +593,53 @@ const run = async (spec) => {
 2. ★★★ **P0-6 软规范三卡＋Verified 分裂**（★ 与 P0-9 可并行，★ 都属数据面）
 3. ★★ 然后 **P0-2＋P0-3（规划环＋学习环）** —— ★ 它们才需要 K2 的派发
 ★ 每条都按清单 §1 的"**可写成 `ok(...)`**"字段落测试 ✓
+
+---
+
+## 轮 10（2026-10-18）
+
+### ★★★★★★ **P0-9 ＋ P0-6（数据面）落地** —— ★ 卡、轨、索引、截断、Verified 分裂
+
+★ **`packs/v3/middleware/dataplane.js`（697 行）**：★ md 软规范的**锚点/段解析**（★ `findSectionHeads` **跳围栏**）／★ **三卡 compose/parse**（★ 问题/命题/方法，★ **逐字节往返**）／★ `rewriteCard`（★ **只改托管锚点与托管段**；★ **未识别的 `## ` 段逐字保留**）／★ **有界写入**（★ 按 `records.status().caps.bodyCapBytes` **字节截断 ＋ `dropped` 计数**，★ **不拒写**）／★ `rebuildIndex`（★ **条目数＝磁盘卡数**、★ `dropped`、★ **坏卡逐张点名**）／★ `promoteVerified`（★ **只收定论**、★ 内容不变不重写）／★ **5s 节流的索引重建模块** ✓
+★ **`packs/v3/prompts/sections.json`**：★ 可信分层段（★ **同时**写明"绝对可信＝只 `verified` 轨"与"其余为经验参考"）✓
+★ **测试 `tests/vmu-v3-dataplane.test.mjs`：★ 107 / 0** ✓（★ RULE E 指纹 72=72 **无新增**）
+
+### ★★★ 队友实测确认的**五把必须进值层的键**（★ 全是"构造期快照"陷阱）
+1. ★ `vmu.records.tracks` → **9 条**（★ `kernel/records.js:214` 构造期快照；★ **漏一条＝该轨 `put` 具名拒**）✓
+2. ★★ `vmu.records.allowedKinds` → ★ **必须列全默认 8 种 ＋ v3 的 8 种** ⇒ ★ **否则 `dataset`/`rebuttal` 静默不可用**（★ **实测：包默认层是【替换】不是合并**）✓
+3. ★ `requireSettledRecords=false` → ★ 否则"求解中/未定论"卡被 `VMU_STATE` 拒 ✓
+4. ★ `bodyCapBytes=65536` ／ ★ 5. `head.maxItems=2000` ✓
+★ **并且它把"清单里没有这些键""清单里没有 manifest `tracks`"也写成断言** ✓
+
+### ★★★★ 而它挖出一个**比清单更深的坑**（★ 值得单列）
+★ 清单说"轨要放值层"，★ **但没说过 manifest `tracks:` 字段是【有害的】**：★ **`kernel.declareTracks()` 在没有 `library root` 时会在 apply 期具名拒**（★ 整包失败），★ **而它喂的是 `kernel.library`、★ 不是 `vmu.records` 的快照** ⇒ ★ **加了它既坏事、★ 又仍然写不进卡** ⇒ ★ **轨的唯一生效处就是 `defaults.json`** ✓
+
+### ★★★★★ 提示词平价盘点交付（★ 为 P1-6 备料）
+★ **`docs/acceptance/phase6-v3-prompt-parity.md`（433 行）**：★ **50 条提示词构件**（★ 派生）／★ **装配顺序**一句话总结／★ **差集与施工建议** ✓
+
+★★★ **它给出"最容易做错的一件事"，★ 而这是目标 2 的真实风险**：
+> ★ **把 v3 里"互斥"的角色/阶段提示词，★ 落成"并列"的多个段。**
+★ 理由：★ v3 的互斥写在**调用图**里（★ 每次 spawn 只调一个 `*Prompt()`）；★ 而 vmu 的段**默认全装配**，★ binding 的语义是"**同一段内选一个赢家替换**"，★ **不是"多段选一"** ⇒ ★ **照抄 8 个段＝每个回合同时收到 8 套人设/8 套回执契约**（★ 字段名互撞），★ 而**这类错不会被"装配成功"的测试抓到**（★ `ok:true`、★ 字节确定、★ 无缺值）✓
+★ **v5r 已为同族错误付过学费**（★ 18,528 字里塞了院士/r-1/r-2/r-3 三个身份）⇒ ★ **正确做法：★ `phase`＋`task` 绑定 或 `sectionPolicy` 关段，★ 并写一条"一次装配只有一个角色抬头"的内容断言** ✓
+
+★ 它还报了一个**疑似真缺陷**：★ **manifest `promptPolicies` 似乎没有回灌到 `turn.sectionPolicy`**（★ 只找到 sink 与上报，★ **没找到回灌点**）⇒ ★ **若属实，★ v3 包无法切换提示词段** ⇒ ★ **列入轮 11 必查** ✓
+
+### ★★ 本轮两处**我的失误**（★ 如实）
+1. ★ 改 P0-1 断言时**误插入 `if (false) {`**（★ 会破坏括号平衡）⇒ ★ 立刻发现并修回 ✓
+2. ★ 跑 `audit-pack-middleware-shape`／`audit-pack-value-domain` **用错目录**（★ 它们在 `scripts/` 不在 `tests/`）⇒ 报 `MODULE_NOT_FOUND` ⇒ ★ **又一次"先怀疑自己"**（★ AGENTS.md §7.3）✓
+
+### ★★ 结果
+| ★ 项 | ★ 结果 |
+|---|---|
+| ★ `vmu-v3-dataplane`（新） | ★ **107 / 0** ✓ |
+| ★ `vmu-v3-tick` | ★ **66 / 0** ✓ |
+| ★ pack-face ／ pack-middleware-shape ／ pack-value-domain | ★ 5/0 ／ 7/0 ／ 5/0 ✓ |
+| ★ silent-keys ／ vmu-docs ／ RULE E | ★ **0 未裁定** ／ 103/0 ／ 88/0 ✓ |
+| ★ package-membership ／ installer-compat ／ generators-current | ★ 29/0 ／ 77/0 ／ 23/0 ✓ |
+| ★ regen ／ check-docs ／ preflight | ★ **16/16** ／ PASS ／ PASS ✓ |
+| ★ 派生作业数 | ★ **449**（suites 343 · probes 106）✓ |
+
+### ★ 轮 11 计划
+1. ★★★ **查 `manifest promptPolicies` 有无回灌到 `turn.sectionPolicy`**（★ 若缺 ⇒ **这是目标 2 的硬缺口**，★ 补）
+2. ★★★ **P0-2 ＋ P0-3（规划环 ＋ 学习环）** —— ★ **数据面已给好读写面**，★ 队友留话：★ **卡的读写一律走 `dataplane.js`，★ 不要自己正则解析 md**（★ 第二份解析器一定漂移）✓
+3. ★★ **P1-6 提示词复刻**时**必须避开"并列 vs 互斥"那个坑**（★ 上面那段）✓

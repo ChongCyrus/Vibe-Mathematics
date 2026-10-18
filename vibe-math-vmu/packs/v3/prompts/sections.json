@@ -1,0 +1,13 @@
+{
+  "_comment": "packs/v3/prompts/sections.json — P0-6 的【提示词段】纯数据。插件在【建内核之前】按目录名读它（vibe-math-vmu.js:326-351 的循环，readFileSync(packs/<id>/prompts/sections.json)），再把它并入 createKernel 的 sections ⇒ 段在构造期就存在。★ 本文件与 settings/defaults.json 同一处置：读点在构造期 ⇒ 只能放包里作为数据，不能写进被装载清单的 settings。",
+  "_why": "P0-6 的验收原文：可信分层段必须【同时】出现『绝对可信』与『其余为经验参考』两侧，缺一侧即失败（docs/acceptance/phase6-v3-p0-build-checklist.md:102）。所以段文本放在这里、而不是硬编码进 middleware/dataplane.js：文本是内容，管线只负责装配。order 必须落在 pack 区间 [600,899]（kernel/prompt/index.js:24-30 ORDER_RANGES），range 由 order 派生且必须一致，否则 register() 具名拒。",
+  "sections": [
+    {
+      "name": "v3-verified-trust",
+      "order": 640,
+      "range": "pack",
+      "text": "## 可信分层（v3）\n- **绝对可信（可以当事实引用）**：只有 `verified` 轨上的定论卡 —— 它带 `- 结论: 真` 或 `- 结论: 假`、`- 概率: 1` 或 `- 概率: 0`，并且正文的『可信内容』段收着全部 prob=1 的证明/证伪/解法全文。引用它时不必再加免责。\n- **其余为经验参考（不得当事实）**：`problems`／`propos`／`methods`／`directions`／`journal`／`plans`／`inventions` 轨上的卡片一律是经验参考。引用前必须说明『这是经验参考』，不得据此宣称某个命题已被证明、或某个问题已解决。\n- **定论只发生在 `verified` 轨**：概率 0.5 的命题、状态『求解中』的问题都不是结论；把它们当结论引用，就是把经验冒充事实。"
+    }
+  ],
+  "bindings": []
+}

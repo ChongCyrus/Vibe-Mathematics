@@ -96,8 +96,16 @@ console.log('=== 2. 清单只声明调用期的东西：构造期的键【不在
   const duplicated = constructionKeys.filter((k) => Object.prototype.hasOwnProperty.call(PACK.settings, k))
   ok(duplicated.length === 0, '没有任何构造期键同时出现在清单 settings 里', duplicated)
   const entries = Array.isArray(PACK.middleware) ? PACK.middleware : []
-  ok(entries.length === 1, '清单恰好携带一个 middleware 条目（P0-1 的 tick）', entries.length)
-  const entry = entries[0] || {}
+  // ★ CHANGED IN ROUND 10 (Lead ruling, at v3-dataplane's request): this used to assert `entries.length === 1`, i.e.
+  // "the manifest carries exactly one middleware entry". That was never the requirement - the requirement is that P0-1
+  // contributes exactly ONE TICK entry. The stricter form would have forbidden the pack from ever growing a second
+  // module, which is what P0-9 legitimately needed (an index rebuilder on a 5s throttle), so it was enforcing a
+  // counting accident rather than a contract. Narrowing it keeps the original intent and stops the assertion from
+  // becoming a veto on the next card.
+  ok(entries.filter((e) => e && e.id === 'v3-tick').length === 1,
+    '清单恰好携带一个 tick middleware 条目（P0-1 的契约；其它条目属其它卡，不由本卡计数）',
+    entries.map((e) => e && e.id))
+  const entry = entries.find((e) => e && e.id === 'v3-tick') || {}
   ok(entry.id === 'v3-tick', '条目 id 是 v3-tick', entry.id)
   ok(Array.isArray(entry.on) && entry.on.includes(V3_TICK_TOPIC), '条目订阅 v3/tick', entry.on)
   ok(entry.module === V3_TICK_MODULE, '条目携带 module 对象（loader 才会附上 api；file: 不可用，因为 pack 调 toBusEntries 不传 importer）', typeof entry.module)
