@@ -1440,6 +1440,16 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // WHEN they are observed stays the pack's (it must also declare them in `vmu.metrics.indicators`, or the face
     // skips the write BY NAME — that skip is counted, never silent).
     'vmu.metrics': metrics,
+    // ★★★★★★★ PHASE 6 / K2: THE TURN LOOP BECOMES REACHABLE FROM A DECLARED MODULE.
+    // WHAT WAS MISSING: `vmu.turn` was already PUBLISHED to the M4 registry (line ~1466) and completely absent from
+    // this capability-gated catalogue, so a pack could DECLARE `requires: ['vmu.turn']` and be checked, while a module
+    // could not actually call it. That is the "declared but no path to the user" shape again, and it is what blocks
+    // v3's planning/scheduling loop: a declared policy that wants to WAKE a member has no verb to do it with.
+    // WHY IT IS SAFE NOW AND WAS NOT BEFORE: this catalogue is behind the loader's `trigger-workflow` capability, and
+    // a module running on a `turn/*` hook could therefore call `run()` INSIDE a turn. The turn loop now refuses that
+    // overlap BY NAME (`VMU_TURN_REENTRANT`) rather than nesting and silently sharing its single-turn state, so the
+    // capability can be granted without the recursion hazard. The guard was added in the same change, deliberately.
+    'vmu.turn': turn,
   })
   const loader = createLoader({
     // (甲) PRODUCTION GOES THROUGH THE GUARD: this facade used to answer `null` when there was no durable root,

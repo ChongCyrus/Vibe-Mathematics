@@ -985,7 +985,9 @@ export function createTurnOrchestrator({
   }
 
   /** One full turn, in order. Returns the turn receipt rather than making the caller re-implement the sequence. */
-  const run = async (spec) => {
+  // ★ PHASE 6 / K2: renamed from `run` to `runOne` so the public `run` can be the guarded wrapper below. The body is
+  // untouched; what changed is only that it is no longer directly callable while another turn is in flight.
+  const runOne = async (spec) => {
     const { turn } = open(spec)
     const asm = await assemble(turn)
     const raw = await deliverTurn(turn, asm.text)
@@ -1034,6 +1036,31 @@ export function createTurnOrchestrator({
       refused.push({ field: e.field, code: r.code === undefined ? null : r.code })
     }
     return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, fields: parsed.fields, refused, attribution: Object.assign({}, lastAttribution), ...out }
+  }
+
+  /**
+   * ★★★★★★★ PHASE 6 / K2 — THE RE-ENTRANCY GUARD, added in the SAME change that makes `vmu.turn` reachable from an
+   * M2 middleware module. WHY IT IS NEEDED NOW AND NOT BEFORE: until this change, the turn loop was only ever driven by
+   * the tool face and by the entry, which cannot re-enter it. A middleware module running on a turn hook CAN: it holds
+   * `trigger-workflow` (the capability that unlocks the service catalogue) and `vmu.turn` is in it, so `run()` inside a
+   * `turn/*` hook would nest one turn inside another.
+   *
+   * WHY REFUSE RATHER THAN FORBID SILENTLY, OR JUST ALLOW IT: this loop keeps SINGLE-TURN state that the caller cannot
+   * see - `lastAttribution`, `lastReplyForMember`, the per-member notice queue - and a nested turn would overwrite them
+   * under the outer turn's feet. The framework does not want to take away the legitimate use (starting a turn from a
+   * declared policy is the whole point of K2); it refuses the OVERLAP by name, which leaves a caller one obvious move:
+   * let the in-flight turn settle, then start the next one. SEQUENTIAL turns are completely unaffected - `drive()` and
+   * `step()` call `run()` in a loop and pass through this wrapper one at a time.
+   */
+  let turnInFlight = false
+  const run = async (spec) => {
+    if (turnInFlight) {
+      throw refuse('VMU_TURN_REENTRANT',
+        'a turn is already in progress, so this run() would nest inside it',
+        'the loop keeps ONE turn at a time (attribution, the member reply slot and the notice queue are single-turn state); call run() again after the in-flight turn settles - drive()/step() already do this for you')
+    }
+    turnInFlight = true
+    try { return await runOne(spec) } finally { turnInFlight = false }
   }
 
   /**

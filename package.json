@@ -776,7 +776,8 @@
     "docs-landed/10-prompt-and-settings-reference.md",
     "tests/vmu-turn-activation.test.mjs",
     "tests/vmu-rewrite-result.test.mjs",
-    "tests/vmu-schedule-autodrive.test.mjs"
+    "tests/vmu-schedule-autodrive.test.mjs",
+    "tests/vmu-turn-dispatch-k2.test.mjs"
   ],
   "license": "MIT",
   "keywords": [

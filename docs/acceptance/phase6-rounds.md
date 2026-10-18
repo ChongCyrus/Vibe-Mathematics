@@ -450,3 +450,56 @@
 6. ★ **双名对照**（`biospecimen`=`custody`＋`anonymity`；`instruments`=`resource`）是否进 `23 §0b.3` 对照表？
 
 ★ **代理另列了 12 条“不该翻案”**（★ 4 个宿主钩子名／v3-core 三键／设置表三档／bus `kind:'plugin'`／`settingsConflicts`／`CHARTER_LEADER_VARIANTS`／`rewrite-result`／货币税务／`clinical`／会计科目树 O6／`vmu.dissemination`／`23:175`），★ **理由逐条**，★ 我复核后认为该结论成立 ✓
+
+---
+
+## 轮 7（2026-10-18）
+
+### ★★★★★ K2 落地：★ `vmu.turn` 对**已声明模块**可达 —— ★ 且递归被【具名拒】而不是被静默允许
+
+★ **测量先行，★ 又一次让改动变小**：
+- ★★ **`vmu.turn` 早就在 M4 注册表里【已发布】**（★ `kernel/index.js` 的 `registry.register('vmu.turn', …)`）
+- ★★ **而它【不在 M2 能力门控目录】里** ⇒ ★ **pack 可以声明 `requires:['vmu.turn']` 并被校验，★ 而模块根本调不到它** ✓
+⇒ ★★ **又是"已声明、★ 但没有通往用户的路径"** —— ★ 消费者审计的 **D12／W-06** 早已判它是错的 ✓
+⇒ ★ **而它正是 v3 规划/调度环的卡点**：★ **一个想"唤醒某个成员"的声明式策略，★ 手里没有那个动词** ✓
+
+### ★★ 修法：★ 一行接线 ＋ **同一次改动里加的重入守卫**
+★ 目录里补 **`'vmu.turn': turn`** ✓
+★ **而目录在 loader 的 `trigger-workflow` 能力之后** ⇒ ★ **跑在 `turn/*` 钩子里的模块现在可以【在回合内部】再调 `run()`** ⇒ ★ **会嵌套** ✓
+★★ **为什么不禁止、也不静默**：★ 本循环持有**单回合状态**（★ `lastAttribution`／★ `lastReplyForMember`／★ **每成员通告队列**），★ **嵌套会在外层回合脚下覆盖它们** ⇒ ★ **框架不拿走正当用法（★ 从声明的策略里起一个回合正是 K2 的全部意义），★ 而是把【重叠】具名拒掉**：
+```js
+let turnInFlight = false
+const run = async (spec) => {
+  if (turnInFlight) throw refuse('VMU_TURN_REENTRANT', 'a turn is already in progress, so this run() would nest inside it', '…单回合状态…；等在途回合结算后再调 —— drive()/step() 已按顺序调用')
+  turnInFlight = true
+  try { return await runOne(spec) } finally { turnInFlight = false }
+}
+```
+★ **`try/finally`**：★ **抛异常的回合也不会把循环卡死** ✓
+★ **顺序调用完全不受影响**：★ `drive()`／`step()` **本来就循环调 `run()`**，★ 一次一个，★ 顺利通过 ✓
+
+### ★★★ 新测试 `tests/vmu-turn-dispatch-k2.test.mjs`：**10/0** ✓
+★ 四组：★ ① **在途时第二次 `run()` 具名拒**（★ `VMU_TURN_REENTRANT`，★ **且 hint 说出"单回合状态"这个理由** —— ★ 读者不用猜）★ ② **守卫会解除**（★ 在途回合结算后**紧接着**的 `run()` 被接受 —— ★ "会把循环卡死的守卫比 bug 更坏"）★ ③ **顺序 5 回合全成功**（★ 只拒重叠、★ 不拒重复）★ ④ **接线**（★ 目录真映射 `'vmu.turn': turn`、★ **两扇门必须一致（声明 AND 可达）**、★ 拒绝码在循环内声明、★ **`finally` 释放**）✓
+
+★★ **两个自我纠正（★ 都在注释里记着）**：
+1. ★ 我的假回执先是**纯文本** ⇒ ★ `VMU_TURN_NO_FENCE` ⇒ ★ **回合回执必须是【一个围栏 JSON 对象】**（★ docs/26 §3）✓
+2. ★ 我用 `node` 脚本替换那串时**插入了真实换行**（★ 单引号字符串不能跨行）⇒ ★ 语法错误 ⇒ ★ 改用**转义序列** ✓
+
+### ★★★ 门禁抓到的新码登记（★ 又一次证明它在守）
+★ **`audit-vmu-docs` 具名报出**：★ *"every framework `VMU_*` code the CODE can throw is registered in 03-§8 … `[VMU_TURN_REENTRANT (kernel/turn/index.js)]`"* ✓
+⇒ ★ 在 `docs/03 §8` 补登该码（★ 含"单回合状态"理由 ＋ ★ "等在途回合结算"的处置）⇒ **103/0** ✓
+
+### ★★ 结果
+| ★ 项 | ★ 结果 |
+|---|---|
+| ★ `vmu-turn-dispatch-k2`（新） | ★ **10 / 0** ✓ |
+| ★ `vmu-turn` ／ ★ `vmu-turn-activation` ／ ★ `vmu-turn-contracts` | ★ 148/0 ／ 27/0 ／ 12/0 ✓ |
+| ★ `vmu-loader` ／ ★ `vmu-bus` | ★ 28/0 ／ 44/0 ✓ |
+| ★ `audit-vmu-docs` ／ ★ service-calls ／ ★ face-actions ／ ★ silent-keys | ★ 103/0 ／ ✅ ／ ✅ ／ ✅ ✓ |
+| ★ `regen` ／ ★ `check-docs` ／ ★ `preflight` | ★ 16/16 ／ PASS ／ PASS ✓ |
+| ★ **T1** | ★★★ **378 / 378，★ 0 红**（suites 316 · probes 62，528s）✓ —— ★本阶段第一次【整跑全绿】 |
+
+### ★ 轮 8 计划
+1. ★★ **T1 确认**
+2. ★★★ **回目标 2 的 P0**：★ **K1（周期自驱）＋ K2（派发回合）两块前置已齐** ⇒ ★ **可以开 v3 的 P0-2（规划/调度环）**：★ 按蓝图把 **tick 驱动的规划步 → 选成员 → 派发回合** 串起来，★ 且**全部由 pack 声明**（★ 内核只给能力）✓
+3. ★ 视需要把 **K1／K2 的结论补进 `docs/03`／`docs/05`**（★ 现在只在代码注释、契约行与本账里）
