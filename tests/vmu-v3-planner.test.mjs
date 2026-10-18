@@ -1030,18 +1030,19 @@ const promoteOnce = async (value) => {
   }
   const mkKernel = () => createKernel({ clock: () => 1000, settings: clone(PACK_DEFAULTS), sections: PACK.sections, host: fakeFs })
   const k1 = mkKernel()
-  await new Promise((r) => setTimeout(r, 5))
-  ok(k1.fidelityLoad().status === 'loaded' && k1.fidelityLoad().loaded === 0, '有 fs：装配期 loadDefects 真的跑了（0 条，具名状态 loaded）', k1.fidelityLoad())
+  const load1 = await k1.fidelityReady()
+  ok(load1.status === 'loaded' && load1.loaded === 0, '有 fs：装配期 loadDefects 真的跑了（0 条，具名状态 loaded）', load1)
   await k1.fidelity.declareDefect({ target: 'p-durable', by: 'office', note: 'durable marker' })
   ok([...files.keys()].some((k) => k.includes('Defects')), 'declareDefect 落盘到 Defects/（有 fs 时 persisted）', [...files.keys()])
   const k2 = mkKernel()
-  await new Promise((r) => setTimeout(r, 10))
-  ok(k2.fidelityLoad().status === 'loaded' && k2.fidelityLoad().loaded === 1, '★ 新内核装配期重载了 1 条耐久标记', k2.fidelityLoad())
+  const load2 = await k2.fidelityReady()
+  ok(load2.status === 'loaded' && load2.loaded === 1, '★ 新内核装配期重载了 1 条耐久标记（fidelityReady 可 await）', load2)
   ok(k2.fidelity.passedWithdrawnFor('p-durable') && k2.fidelity.passedWithdrawnFor('p-durable').withdrawn === true,
     '★ 重启后 passedWithdrawnFor 仍读得到（机制真的接线了）')
   const kNoFs = createKernel({ clock: () => 1000, settings: clone(PACK_DEFAULTS), sections: PACK.sections })
-  ok(kNoFs.fidelityLoad().status === 'unavailable' && kNoFs.fidelityLoad().code === 'VMU_MATH_JOBS_MIRROR_UNWIRED',
-    '★ 无 fs ⇒ 具名 unavailable（不假装加载了）', kNoFs.fidelityLoad())
+  const loadNo = await kNoFs.fidelityReady()
+  ok(loadNo.status === 'unavailable' && loadNo.code === 'VMU_MATH_JOBS_MIRROR_UNWIRED',
+    '★ 无 fs ⇒ 具名 unavailable（不假装加载了；fidelityReady 立即返回该回执）', loadNo)
   // library currentDefect 端到端（带 root）
   const dir = await fsp.mkdtemp(pathMod.join(os.tmpdir(), 'vmu-lib-def-'))
   try {

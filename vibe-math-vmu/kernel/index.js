@@ -926,18 +926,20 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
    */
   const fidelityLoad = { status: 'pending', loaded: 0, code: null, message: null }
   const fsForDefects = host && typeof host.writeText === 'function' && typeof host.readText === 'function' ? host : null
+  let fidelityLoadPromise = Promise.resolve(fidelityLoad)
   if (!fsForDefects) {
     fidelityLoad.status = 'unavailable'
     fidelityLoad.code = 'VMU_MATH_JOBS_MIRROR_UNWIRED'
     fidelityLoad.message = 'no host fs seam (writeText/readText): durable defect markers cannot be reloaded; in-memory markers only'
   } else {
-    Promise.resolve()
+    fidelityLoadPromise = Promise.resolve()
       .then(() => fidelity.loadDefects())
       .then((r) => {
         if (r && r.ok === true) { fidelityLoad.status = 'loaded'; fidelityLoad.loaded = Number(r.loaded) || 0 }
         else { fidelityLoad.status = 'unavailable'; fidelityLoad.code = (r && r.code) || 'VMU_MATH_JOBS_MIRROR_UNWIRED'; fidelityLoad.message = (r && r.message) || 'loadDefects refused' }
+        return fidelityLoad
       })
-      .catch((e) => { fidelityLoad.status = 'unavailable'; fidelityLoad.code = (e && e.code) || 'VMU_MATH_JOBS_MIRROR_UNWIRED'; fidelityLoad.message = String((e && e.message) || e) })
+      .catch((e) => { fidelityLoad.status = 'unavailable'; fidelityLoad.code = (e && e.code) || 'VMU_MATH_JOBS_MIRROR_UNWIRED'; fidelityLoad.message = String((e && e.message) || e); return fidelityLoad })
   }
   // ROUND 2 (task-14, vmu-assistant's contract): the REPORTING face. It has NO internal timer by design ("a report
   // never drives anything"), so the entry advances it at the turn boundary; `deliver` is the transport (a missing one
@@ -1768,6 +1770,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     get fidelity() { return fidelity },
     /** P1-9: the async durable-defect-load receipt (`status: pending|loaded|unavailable`, named code when unavailable). */
     fidelityLoad: () => Object.assign({}, fidelityLoad),
+    /** P1-9: AWAITABLE form of the same load — `await kernel.fidelityReady()` resolves the receipt (polling not needed). */
+    fidelityReady: () => fidelityLoadPromise.then(() => Object.assign({}, fidelityLoad)),
     /** The control SERVICE (`createControl`), distinct from `kernel.control()` - the control VIEW function that has
      *  occupied that name since round 1. `tune()` (the mid-flight retune face) lives on the service. */
     get controlService() { return control },

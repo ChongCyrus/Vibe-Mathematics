@@ -308,3 +308,17 @@ pending（一个"看起来还能批"的幽灵）；已补镜像（以 `denied`�
 - **工具面测试**：`tests/vmu-human-gate.test.mjs` 新增 O 段：`toHostSpec(makeHumanSpec(...)).execute` 得到的**是 JSON 字符串**；
   经工具开审批→`withdraw` ⇒ `state==='withdrawn'` 且 kernel 状态一致、pending 减一；无理由 ⇒ `VMU_INVALID_ARGUMENT`；
   二次 ⇒ `VMU_STATE`。该套件 83→**89** 断言。
+
+## §24 收尾档：defect 标记的迁移说明 ＋ fidelity 加载时序
+
+- **唯一写者已收敛**：defect 标记只由内核 fidelity 写（`declareDefect`，落 `Formal/Defects/<target>.json`）；
+  pack 的 `recordDefect` 是 async wrapper，**不再写 journal**。
+- **旧 journal 标记（`v3-defect｜<target>`，`status: withdrawn`）**：**只读兼容、不再产生新的**。
+  - 读点（`proofVerdict`）先查 fidelity，再查旧 journal 标记（返回 `source:'legacy-journal'`），所以**清理前旧标记仍然生效**；
+  - **可以何时清理**：当某个部署确认其旧标记已被重新登记到 fidelity（或确认不需要撤回）之后，可删除这些 journal 记录；
+  - **清理前会发生什么**：旧标记继续让读点读到 withdrawn（与 fidelity 标记同效）；**清理后**只有 fidelity 标记生效。
+    两条记录若同时存在且结论冲突，**fidelity 优先**（唯一写者）。
+- **fidelity 加载时序**：`createKernel` 是同步的，`loadDefects` 异步**启动**；调用方有两种正确形态：
+  1. `await kernel.fidelityReady()` —— **推荐**（可等待，返回 `{status:'loaded'|'unavailable', loaded, code, message}`）；
+  2. `kernel.fidelityLoad()` —— 非阻塞快照，需自行轮询；`status:'pending'` 时**不保证**标记已就绪。
+  - 无 fs 接缝 ⇒ `unavailable` + `VMU_MATH_JOBS_MIRROR_UNWIRED`（**不假装 loaded 0**）。
