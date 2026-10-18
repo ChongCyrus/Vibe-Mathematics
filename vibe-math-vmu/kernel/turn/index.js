@@ -1007,6 +1007,16 @@ export function createTurnOrchestrator({
     if (bus && typeof bus.emit === 'function') {
       const seen = await bus.emit('turn/reply-parsed', { turn: turn.id, member: turn.member, phase: turn.phase, fields: parsed.fields, reply: parsed.reply }, { member: turn.member, role: turn.role, phase: turn.phase })
       if (seen && seen.ok === false) fail((seen.refused && seen.refused.code) || 'VMU_MIDDLEWARE_FAILED', (seen.refused && seen.refused.message) || 'a middleware refused turn/reply-parsed', (seen.refused && seen.refused.hint) || null)
+      // ★★★★★★★ PHASE 6 / K10: THE REWRITE POINT NOW EXISTS. `docs/19 §19.12` publishes this hook as returning
+      // "reply（rewrite-result）" and `bus.js` has always carried `rewriteResult: 'rewrite-result'` - but nothing read
+      // either, so a pack could declare the capability, pass the check, return a rewrite and watch the ORIGINAL reply
+      // reach the dispatcher. `bus.rewriteOf()` is the missing reader: it enforces the registry's `rewritable` flag,
+      // refuses a malformed value by name, and returns the last writer's text. The method is PROBED, so an injected
+      // or older bus (the fake hosts in the suites) keeps the previous behaviour byte for byte.
+      if (typeof bus.rewriteOf === 'function') {
+        const rewritten = bus.rewriteOf('turn/reply-parsed', seen)
+        if (rewritten !== null) parsed.reply = rewritten
+      }
     }
     // ★ ROUND 79: a caller-supplied reply is attributed to the member it ANSWERS; everything else keeps turn.member.
     const out = await apply(parsed.reply, null, attributedTo || turn.member)

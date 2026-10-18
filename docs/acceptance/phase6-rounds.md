@@ -270,3 +270,69 @@
 ★ ★ **T1 未再重跑**（★ 又一轮 8 分钟）—— ★ 而两条红**已被各自的独立复跑证明修好**（★ 且改的只有那三条断言与两处注释）⇒ ★ **下一轮开头补一次 T1 作为确认**，★ **不把"独立复跑绿"当成"T1 绿"** ✓
 
 ★★★ **额外说明（★ 关于"体积"这件事本身）**：★ 硬闸退休后，★ `kernel/index.js`（**2439 行**）／★ `settings/schema.js`（1778）／★ `math-computation.js`（1482）★ **都不再需要为此做任何动作**；★ 而 `turn/index.js`（1159）等**也不再被逼着压** ⇒ ★ **后续目标 2 的实现不必为凑行数牺牲清晰度** ✓
+
+---
+
+## 轮 5（2026-10-18）
+
+### ★★★★★★ K10 落地：**`rewrite-result` 终于有了消费者** —— ★ 而这是"契约承诺了实现没做的事"的第 6 例
+
+★ **改前三件事都查实**：
+1. ★★ **`.rewritable` 全仓【零读者】**（★ 除登记表自己外无一处 grep 命中）
+2. ★★ **`rewriteResult` 全仓【只出现 1 次】** —— 就是 `DECISION_CAPABILITY` 里那条映射
+3. ★★ **而 `docs/19 §7` 把契约写成了**：★ `turn/reply-parsed … reply（rewrite-result）` ⇒ ★ **文档承诺了一个不存在的应用点** ✓
+⇒ ★★★ **后果**：★ pack 可以声明该能力、★ **通过能力校验**、★ 返回一个改写、★ **然后看着原始回执被派发下去** ⇒ ★ **静默无效** ✓
+
+### ★★ 修法：**实现它**（★ 而不是删文档）—— ★ 因为文档承诺的行为**真的有用**
+★ 与**目标 2 直接相关**：★ v3 的 `sync_meta` 要**规范化/校验成员回执**，★ 而 `blockable` 只能"拒"、★ **不能"规范化后再收"** ✓
+
+★ **加了 `bus.rewriteOf(hook, emitted)`**（★ 在 `bus.js` 里，★ 与词汇同处一地）：
+| ★ 状态 | ★ 行为 |
+|---|---|
+| ★ 没人要求改写 | ★ 返回 `null`，★ 调用方保留原值 |
+| ★ 合法改写 | ★ 返回它（★ **`order` 已决定谁最后跑 ⇒ 后者胜，★ 确定性**）|
+| ★★ **在【非 rewritable】钩子上改写** | ★★ **具名拒**，★ **并报出 `rewritable=false`** ⇒ ★ **`.rewritable` 获得了第一个读者** ✓ |
+| ★★ **值畸形**（★ 非 string、★ 非 `{reply}`） | ★★ **具名拒**，★ 点名出错条目 ⇒ ★ **不静默** ✓ |
+★ 而 `turn/index.js` **不 import 任何东西**（★ 它刻意零依赖）⇒ ★ **`bus.rewriteOf` 是【探测式】调用**：★ 注入的/旧的 fake bus 没有它 ⇒ **行为逐字不变**（★ 这就是 48 个 fake-host 套件没被打破的原因）✓
+★ 应用点在 **`turn/reply-parsed` 之后、`dispatch` 之前**：★ `parsed.reply = rewritten` ✓
+
+### ★★★ 新测试 `tests/vmu-rewrite-result.test.mjs`：**18/0** ✓
+★ **用真 `createBus`**（★ 不是假 bus），★ 七组：
+1. ★ **正向**：★ `{rewriteResult:'normalised'}` ⇒ 取回 `'normalised'` ✓
+2. ★ **对象形**：★ `{rewriteResult:{reply:'from-an-object'}}` ⇒ 取回 `'from-an-object'`（★ 文档给的就是这个形）✓
+3. ★ 没人要求 ⇒ `null`（★ 两条：★ 只 annotate 的条目／★ 空条目表）✓
+4. ★ **后者胜**（★ `order` 100 vs 200 ⇒ 取 200 的）✓
+5. ★ **畸形 ⇒ 具名拒且点名条目** ✓
+6. ★★ **非 rewritable 钩子（`tools/pre-execute`）⇒ 具名拒**，★ **消息含 "not declared rewritable"**、★ **hint 含 `rewritable=false`** ✓
+7. ★ 被拒的 emit ⇒ **什么都不可改写** ✓
+8. ★ **接线**（★ 源码级：★ 真的调 `bus.rewriteOf('turn/reply-parsed'`、★ 真的探测、★ 真的在派发前替换）✓
+
+### ★★ 本轮结果
+
+| ★ 项 | ★ 结果 |
+|---|---|
+| ★ `vmu-rewrite-result`（新） | ★ **18 / 0** ✓ |
+| ★ `vmu-bus` ／ ★ `vmu-turn` ／ ★ `vmu-turn-activation` | ★ 44/0 ／ 148/0 ／ 27/0 ✓ |
+| ★ `audit-hook-coverage` ／ ★ `vmu-middleware-hooks-declared` | ★ 4/0 ／ 8/0 ✓ |
+| ★ `check-docs` ／ ★ `regen` ／ ★ `preflight` | ★ PASS ／ **16/16** ／ PASS ✓ |
+| ★ **T1** | ★ 见下（★ 本轮末跑） |
+
+### ★ 轮 6 计划（★ 目标 2 正式开工）
+
+1. ★★ **T1 确认**（★ 本轮末跑的结果决定它是否已绿）
+2. ★★★ **目标 2 · K1（周期自驱）**：★ 蓝图 P0-1 —— ★ `scheduler` 有 `every/arm/tick`，★ **但装配没注入 timer、内核不自动 arm**；★ 做法按蓝图：★ 加 `vmu.schedule.autoArm`（★ **默认 false = 零机制**）＋ 内核 start 时 arm/tick ＋ **`status()` 自曝 `armed`** ✓
+3. ★★★ **目标 2 · K2（派发一个成员回合）**：★ `vmu.turn` 不在 M2 服务目录 ⇒ ★ 按"**内核加具名能力**"加进去（★ 目录 `kernel/index.js` ＋ `loader.js` 能力表同步）✓
+4. ★ **然后**：★ v3 的 P0-2／P0-4（规划模块／方法库模块）才有地基建 ✓
+
+★ **注意**：★ **硬闸退休后，`kernel/turn/index.js`（现约 1170 行）不必为凑行数牺牲清晰度** ✓
+
+
+### ★★★ 轮 5 收口：T1 **374/376** 的两红（★ 都是 K10 带出来的，★ 且都被门禁正确拦下）
+
+| ★ 红 | ★ 根因 | ★ 处置 |
+|---|---|---|
+| ★ `audit-vmu-docs` | ★★ **我给 `vmu.middleware` 加了公开方法 `rewriteOf`，★ 而 `docs/03` 的契约表【没登记】** ⇒ ★ 门禁报 *"the module does not expose methods the contract omits [rewriteOf]"* —— ★ **这正是它该做的**（★ 契约卷是"公开面登记处"，★ 多一个未登记的面就是**未声明的接口**）✓ | ★ 在 `docs/03` **两处**补登：★ `:44` 摘要表 ＋ ★ `:78` 详表（★ 详表里写明**三态**与**首个消费者**）⇒ ★ **103/0** ✓ |
+| ★ `audit-cross-volume-refs` | ★ 我引 **`docs/19 §7`**，★ **而卷 19 的编号是 `19.1–19.21`，★ 没有 §7** ✓ | ★ 改成 **`§19.12`**（★ "逐钩子 payload 规范表"，★ 那条 `rewrite-result` 契约正在其中）⇒ ★ **1087 条、0 未解析** ✓ |
+
+★ **收口后**：★ `audit-vmu-docs` **103/0**／★ 跨卷 **1087/0**／★ `regen 16/16`／★ `DOC LINT PASS`／★ **`PREFLIGHT PASS`** ✓
+★ **T1 未再整跑**（★ 两条红已各自独立复跑证明修好）⇒ ★ **轮 6 开头补一次确认** ✓

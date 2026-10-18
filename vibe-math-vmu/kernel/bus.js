@@ -723,6 +723,55 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
       return { ok: true, decisions, traceId, decision: last }
     },
 
+    /**
+     * ★★★★★★★ PHASE 6 / K10 — THE FIRST READER OF `.rewritable`, AND THE APPLICATION POINT THE DOCS ALREADY PROMISED.
+     *
+     * WHAT WAS WRONG BEFORE THIS METHOD EXISTED, measured rather than assumed:
+     *   · `REWRITABLE_HOOKS`-style metadata was declared on nine hooks and read by NOBODY (`grep` for `.rewritable`
+     *     had zero hits outside the registry itself);
+     *   · `rewriteResult: 'rewrite-result'` appeared exactly ONCE in the whole tree - that mapping - so nothing ever
+     *     consumed the capability;
+     *   · and `docs/19 §19.12` nevertheless publishes the contract as `turn/reply-parsed … reply（rewrite-result）`,
+     *     i.e. it promises that a middleware can REPLACE a parsed reply before dispatch.
+     * So a pack could declare the capability, pass the capability check, return a rewrite, and watch the ORIGINAL value
+     * go on to the dispatcher. That is the "contract promises what the implementation does not do" family this phase
+     * keeps removing; here the honest repair is to IMPLEMENT it, because the documented behaviour is genuinely useful
+     * (a pack that normalises or validates a member's reply before it is recorded needs exactly this).
+     *
+     * THE THREE STATES ARE ALL EXPLICIT, which is the point:
+     *   · nobody asked                  -> returns null, and the caller keeps its value;
+     *   · a valid rewrite               -> returns it (LAST writer wins, because `order` already decides who runs last);
+     *   · a rewrite on a hook declared NOT rewritable, or a malformed value
+     *                                   -> NAMED refusal. Silently ignoring it would be the same silent no-op this
+     *                                      method exists to remove, and silently applying it would let a hook rewrite
+     *                                      something the registry says it may not.
+     *
+     * `turn/index.js` calls this WITHOUT importing anything (it is deliberately dependency-free: every seam is
+     * injected), and it probes the method first, so an older or faked bus simply keeps the previous behaviour.
+     */
+    rewriteOf(hook, emitted) {
+      if (!emitted || emitted.ok === false || !Array.isArray(emitted.decisions) || emitted.decisions.length === 0) return null
+      const declared = HOOK_REGISTRY.find((h) => h.name === hook)
+      const mayRewrite = !!(declared && declared.rewritable === true)
+      let found = null
+      for (const row of emitted.decisions) {
+        const d = row && row.decision
+        if (!d || typeof d !== 'object' || !Object.prototype.hasOwnProperty.call(d, 'rewriteResult')) continue
+        if (!mayRewrite) {
+          throw refuse('VMU_MIDDLEWARE_FAILED',
+            'middleware ' + String(row.id) + ' tried to REWRITE the result of ' + String(hook) + ', which is not declared rewritable',
+            'the hook registry decides this: ' + String(hook) + ' is rewritable=' + String(declared ? declared.rewritable : 'unknown') + '. Rewriting a value the registry says is read-only is refused by name (docs/05 §3.3)')
+        }
+        const v = d.rewriteResult
+        if (typeof v === 'string') { found = v; continue }
+        if (v && typeof v === 'object' && typeof v.reply === 'string') { found = v.reply; continue }
+        throw refuse('VMU_MIDDLEWARE_FAILED',
+          'middleware ' + String(row.id) + ' returned rewriteResult that is neither a string nor { reply }',
+          'a rewrite this framework cannot read is refused by name rather than applied as silence (docs/19 §19.12)')
+      }
+      return found
+    },
+
     /** Observability (R11): ordered entries with their enable state, hits, failures and breaker state. */
     status() {
       return {
