@@ -38,10 +38,10 @@ const VMU = join(HERE, '..', 'vibe-math-vmu')
 const ASSISTANT_FILE = join(VMU, 'packs', 'v3', 'prompts', 'assistant.json')
 const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/
 const ROLE_COUNT = 7
-const KNOWLEDGE_COUNT = 9
+const KNOWLEDGE_COUNT = 10
 const BRIEF_COUNT = 2
 const PAPER_COUNT = 3
-const TOTAL_COUNT = ROLE_COUNT + KNOWLEDGE_COUNT + BRIEF_COUNT + PAPER_COUNT // 21
+const TOTAL_COUNT = ROLE_COUNT + KNOWLEDGE_COUNT + BRIEF_COUNT + PAPER_COUNT // 22（P1-8 加了 v3-verifier-lean）
 
 let passed = 0
 let failed = 0
@@ -208,8 +208,8 @@ for (const c of CONTEXTS) {
     explorer: ['v3-kb-object-models', 'v3-kb-tracks', 'v3-kb-output-quality', 'v3-kb-method-library', 'v3-capabilities'],
     rederive: ['v3-kb-object-models', 'v3-kb-tracks', 'v3-kb-output-quality', 'v3-kb-method-library', 'v3-capabilities'],
     solver: ['v3-kb-object-models', 'v3-kb-tracks', 'v3-kb-output-quality', 'v3-kb-method-library', 'v3-write-workflow', 'v3-role-files-solver', 'v3-capabilities'],
-    'verifier-review': ['v3-kb-object-models', 'v3-kb-tracks', 'v3-kb-output-quality', 'v3-capabilities', 'v3-verifier-rules'],
-    'verifier-debate': ['v3-kb-object-models', 'v3-kb-tracks', 'v3-kb-output-quality', 'v3-capabilities', 'v3-verifier-rules'],
+    'verifier-review': ['v3-kb-object-models', 'v3-kb-tracks', 'v3-kb-output-quality', 'v3-capabilities', 'v3-verifier-rules', 'v3-verifier-lean'],
+    'verifier-debate': ['v3-kb-object-models', 'v3-kb-tracks', 'v3-kb-output-quality', 'v3-capabilities', 'v3-verifier-rules', 'v3-verifier-lean'],
     'method-keeper': ['v3-kb-object-models', 'v3-kb-tracks', 'v3-kb-output-quality', 'v3-kb-method-library', 'v3-write-workflow', 'v3-role-files-keeper', 'v3-capabilities'],
     'paper-writer': [],
     planner: [],
@@ -254,7 +254,7 @@ for (const c of CONTEXTS) {
     const b = idx(texts['solver'], solverChain[i])
     if (a < 0 || b < 0 || a >= b) orderIssues.push(solverChain[i - 1] + ' !< ' + solverChain[i] + ' (' + a + ',' + b + ')')
   }
-  const verifierChain = ['v3-kb-object-models', 'v3-kb-tracks', 'v3-kb-output-quality', 'v3-capabilities', 'v3-verifier-rules', 'v3-role-verifier-review']
+  const verifierChain = ['v3-kb-object-models', 'v3-kb-tracks', 'v3-kb-output-quality', 'v3-capabilities', 'v3-verifier-rules', 'v3-verifier-lean', 'v3-role-verifier-review']
   for (let i = 1; i < verifierChain.length; i++) {
     const a = idx(texts['verifier-review'], verifierChain[i - 1])
     const b = idx(texts['verifier-review'], verifierChain[i])

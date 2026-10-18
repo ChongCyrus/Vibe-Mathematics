@@ -342,7 +342,7 @@ console.log('=== 7. P0-9：tick 驱动的索引重建（模块经总线真的接
 {
   let t = 7000
   const kernel = makeKernel(() => t)
-  const loader = createPackLoader({ kernel, registry: kernel.registry })
+  const loader = createPackLoader({ kernel, registry: kernel.registry, onPromptPolicy: () => () => {} })
   const applied = await loader.apply(PACK)
   ok(applied && applied.ok === true, 'v3 包装载干净（两个 module 形状条目都经 loader 装载）', applied && { applied: applied.applied, actions: applied.actions && applied.actions.length })
   const busIds = kernel.bus.entries().map((e) => String(e.id))

@@ -133,7 +133,7 @@ console.log('=== 4. 正向：注入 timer + autoArm + 种子 ⇒ 手工触发一
   const clock = () => clockMs
   const { timer, pending, fireNext } = makeTimer()
   const kernel = createKernel({ clock, settings: cloneDefaults(), timer })
-  const loader = createPackLoader({ kernel, registry: kernel.registry })
+  const loader = createPackLoader({ kernel, registry: kernel.registry, onPromptPolicy: () => () => {} })
   const applied = await loader.apply(PACK)
   ok(applied && applied.ok === true, 'v3 包装载干净（module 形状经 loader 成功装载）', applied && { applied: applied.applied, actions: applied.actions && applied.actions.length })
   // PHASE 6 (P1): the manifest's topics field is what makes v3/tick registered, and it happens at THIS point.

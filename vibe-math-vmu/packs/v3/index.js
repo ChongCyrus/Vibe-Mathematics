@@ -51,6 +51,7 @@ import { V3_DATAPLANE_MODULE } from './middleware/dataplane.js'
 import { V3_PLANNER_MODULE } from './middleware/planner.js'
 import { V3_SUBQUESTIONS_MODULE } from './middleware/subquestions.js'
 import { V3_REPORTS_MODULE } from './middleware/reports.js'
+import { V3_LEAN_GATE_MODULE, V3_LEAN_PROMPT_POLICY } from './middleware/lean-gate.js'
 import { V3_METHODS_MODULE } from './middleware/methods.js'
 import { V3_VERIFY_MODULE } from './middleware/verify.js'
 import { V3_GATES_MODULE } from './middleware/gates.js'
@@ -71,7 +72,7 @@ export const PACK = Object.freeze({
   // 会具名拒 `VMU_PACK_CONFLICT`（而不是静默替换 tracks/slots、两套门同时在线）。
   excludes: Object.freeze(['v3-core']),
   // P1-1：同一个 rId 的二次派发是**具名跳过**（不是静默、不是重复建任务）。码登记在清单里（R-d：包命名空间）。
-  codes: Object.freeze(['VMU_PACK_V3_DUPLICATE_DISPATCH']),
+  codes: Object.freeze(['VMU_PACK_V3_DUPLICATE_DISPATCH', 'VMU_PACK_V3_LEAN_REQUIRED']),
   // 六个模块在运行期通过 loader 的能力门读 `vmu.records`；planner/methods/verify 还要 `vmu.turn`（K2 已把
   // 回合循环进 M2 服务目录）；verify 还读 `vmu.ballotbox`（**法定人数由内核强制**，见 verify.js 文件头）。
   // gates 读 `vmu.human` 但**不 require** 它：人性面只是"尽力镜像"，台账（records）才是事实源。
@@ -158,6 +159,16 @@ export const PACK = Object.freeze({
       module: V3_REPORTS_MODULE,
     },
     {
+      // P1-8：Lean 三档的裁定门。挂在 `ballot/tally`（blockable 钩子）：require 档缺 passed 证据 ⇒ 具名 deny，
+      // 票箱不收口、裁决不生数，对象留在原轨（留档）；off/encourage ⇒ 不阻断。
+      id: 'v3-lean-gate',
+      order: 132,
+      on: Object.freeze(['ballot/tally']),
+      failure: 'closed',
+      capabilities: Object.freeze(['trigger-workflow']),
+      module: V3_LEAN_GATE_MODULE,
+    },
+    {
       // P0-4/P0-5：方法库 ＋ 发明上报。两个钩子：
       // `v3/tick` 是 keeper 的**唯一派发点**（tick 不是 turn ⇒ 不撞 VMU_TURN_REENTRANT）；
       // `turn/reply-parsed` 只消费/落盘/改写（K10），绝不在这里再开回合。
@@ -212,6 +223,9 @@ export const PACK = Object.freeze({
   // `role='planner'` 的回合生效（否则求解器/验证器也会读到调度词表，违反提示词对账文档 §2.3 的 X9）。
   // order 落在 pack 区间 [600,899]，`range` 由 order 派生且已声明一致。
   sections: Object.freeze([V3_PLANNER_SECTION, ...V3_PROMPT_SECTIONS]),
+  // P1-8：Lean 三档的提示词策略——只控制 `v3-verifier-lean` 段（off 关闭，encourage/require 打开）。
+  // 走清单的 `promptPolicies` 通道，由入口的 onPromptPolicy sink 收集并合成为 sectionPolicy。
+  promptPolicies: Object.freeze([V3_LEAN_PROMPT_POLICY]),
 })
 
 export default PACK

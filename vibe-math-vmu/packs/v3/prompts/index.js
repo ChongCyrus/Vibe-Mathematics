@@ -47,6 +47,7 @@ export const V3_SECTION_FAMILY = Object.freeze({
   'v3-role-files-keeper': 'knowledge',
   'v3-capabilities': 'knowledge',
   'v3-verifier-rules': 'knowledge',
+  'v3-verifier-lean': 'knowledge',
   'v3-brief-planner': 'brief',
   'v3-brief-method-digest': 'brief',
   'v3-paper-material': 'paper',

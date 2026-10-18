@@ -42,6 +42,12 @@ import {
   parseCard, parseAnchors, composeCard, supersedeBody, writeBody,
   promoteVerified,
 } from './dataplane.js'
+// P1-8：Lean 三档的裁定门。**同一套语义函数**在 ballot/tally 钩子与这里各调用一次：
+//   · 钩子给总线消费者一个具名 deny（该钩子是 blockable 的）；
+//   · 真正的“不结算”必须在这里 —— 实测 `ballot.close()` 只读 `dec.decisions[].decision.tally`，
+//     **不检查 `emit` 的 `refused`**，所以只挂钩子不会阻止裁决落库。留档（对象已在轨上）是自然的：
+//     这里返回 settled:false，不调 settleProposition。
+import { leanModeOf, leanEvidence, leanGateDecision } from './lean-gate.js'
 // P0-8：裁决前的人工门由 gates.js 判定/记账；verify 只调它，并在放行时由注册的执行器真正结算。
 import { evaluateGate, registerGateExecutor, listGates } from './gates.js'
 
@@ -506,6 +512,8 @@ function readSettings(api) {
     // ★ "键不存在"不是脏值：内核不物化 schema 默认，而 `vmu.v3.mode` 的声明默认是 auto ⇒ 缺省回落 auto；
     //   拼错的字符串仍然 fail-closed（normaliseGateMode 的 unknown-mode 分支）。
     mode: (() => { const v = api.setting('vmu.v3.mode'); return v === undefined || v === null || String(v).trim() === '' ? 'auto' : v })(),
+    // P1-8：H2 档位在构造期被 Lean 面读入；模块这里现读是为了让"本装配是哪一档"可观测（运行期改值不是热更新）。
+    formalVerify: leanModeOf(api.setting('vmu.math.formalVerify')),
   }
 }
 
@@ -684,6 +692,38 @@ async function advanceCandidate({ records, ballotbox, turn, at, settings, state,
       }
       state.lastReceipt = Object.assign({}, gateOutcome, { note: 'verdict held by the human gate' })
       return gateOutcome
+    }
+    // ★ P1-8：人工门之后、结算之前 —— Lean 的 require 档在这里**真正**拦下裁决：
+    //   没有 passed 证据（或最新证据是 blocked）⇒ 不调 settleProposition，对象留在原轨，写一条具名 journal。
+    //   off / encourage ⇒ 不阻断（zero policy / 只提示）。
+    const leanEvidenceView = leanEvidence({ records, target })
+    const leanCheck = leanGateDecision({ mode: settings.formalVerify, target, evidence: leanEvidenceView.evidence })
+    if (!leanCheck.allow) {
+      try {
+        writeBody({
+          records, track: 'journal', kind: 'state',
+          title: 'v3 裁决被 Lean 门拦下｜' + str(target),
+          body: [
+            '- target: ' + str(target),
+            '- formalVerify: require',
+            '- evidence: ' + (leanEvidenceView.evidence ? String(leanEvidenceView.evidence.status) : '(none)'),
+            '- code: ' + str(leanCheck.code),
+            '- at: ' + (Number.isFinite(at) ? at : 'unknown'),
+            '- note: the verdict was NOT settled; the object stays on its track (no field was rewritten, verified track untouched)',
+          ].join('\n'),
+          settled: true, by: 'v3-verify',
+        })
+      } catch { /* a journal write must not break the tick; the receipt below still carries the refusal */ }
+      state.leanDenials = (state.leanDenials || 0) + 1
+      const leanOutcome = {
+        ok: true, settled: false, target, round, rounds: round,
+        verdict, rule, maxRoundsReached,
+        skipped: 'lean-evidence-missing', pendingVerdict: verdict,
+        code: leanCheck.code, message: leanCheck.message, hint: leanCheck.hint,
+        note: 'formalVerify=require: no passed/blocked evidence ⇒ the verdict is NOT counted and the object is left on its track (a named hold, not a silent drop)',
+      }
+      state.lastReceipt = Object.assign({}, leanOutcome)
+      return leanOutcome
     }
     const settled = settleProposition({
       records, target, recordId: candidate.recordId, verdict, rule,

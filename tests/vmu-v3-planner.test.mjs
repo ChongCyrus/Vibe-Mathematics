@@ -83,7 +83,7 @@ function boot({ replier = null, overrides = {} } = {}) {
       return replier ? replier({ turn, text }) : ACK
     },
   })
-  const loader = createPackLoader({ kernel, registry: kernel.registry })
+  const loader = createPackLoader({ kernel, registry: kernel.registry, onPromptPolicy: () => () => {} })
   return { kernel, loader, delivered, clockRef }
 }
 
@@ -837,6 +837,75 @@ const promoteOnce = async (value) => {
   const notAllowed = pushReport({ reportService: fake, report: buildReport({ records: h.kernel.records, at: 3000 }), at: 3000, mode: 'file' })
   ok(notAllowed.pushed === false && notAllowed.skipped === 'push-not-allowed-by-mode' && calls.length === 1,
     '★ mode=file ⇒ 不调用服务（调用数不增），并具名跳过', notAllowed)
+}
+
+// ── 19. P1-8 Lean 三档：off 零策略／encourage 不阻断／require fail-closed 且留档 ─────────────────────────
+{
+  const { leanPromptPolicy, leanGateDecision, leanEvidence, recordLeanEvidence, LEAN_SECTION, LEAN_GATE_CODE,
+    leanBearingSections, V3_LEAN_GATE_MODULE } = await import('../vibe-math-vmu/packs/v3/middleware/lean-gate.js')
+  const settingsOf = (mode) => ({ 'vmu.math.formalVerify': mode })
+  // ① 段文本：Lean 字样只存在于唯一一段（v3-verifier-lean），off 档该段被策略关闭
+  const bearing = leanBearingSections(PACK.sections)
+  ok(bearing.length === 1 && bearing[0] === LEAN_SECTION,
+    '★ 三档测试的可扫描前提：Lean 字样只出现在一段（' + LEAN_SECTION + '）', bearing)
+  const enabledText = (mode) => {
+    const decisions = leanPromptPolicy({ settings: settingsOf(mode) }).decisions
+    const byName = new Map(decisions.map((d) => [d.name, d.enabled]))
+    return PACK.sections.filter((s) => byName.get(s.name) !== false).map((s) => s.text).join('\n')
+  }
+  ok(!/Lean|形式化/.test(enabledText('off')),
+    '★ off ⇒ 提示词零 Lean 字样（把被策略关闭的段去掉后，全文扫描 /Lean|形式化/ 不命中）')
+  ok(/Lean/.test(enabledText('encourage')) && /Lean/.test(enabledText('require')),
+    '★ encourage / require ⇒ Lean 段是启用的（提示词里有 Lean 字样）')
+  ok(leanPromptPolicy({ settings: settingsOf('off') }).decisions[0].enabled === false
+    && leanPromptPolicy({ settings: settingsOf('encourage') }).decisions[0].enabled === true,
+    '策略按档位开关同一段（不是两套提示词）')
+  // ② 纯判定：off/encourage 不阻断；require 只有 passed 放行
+  ok(leanGateDecision({ mode: 'off' }).allow === true && leanGateDecision({ mode: 'encourage' }).allow === true,
+    '★ off / encourage ⇒ 无证据也不阻断裁定')
+  const noEv = leanGateDecision({ mode: 'require', target: 'p-1', evidence: null })
+  ok(noEv.allow === false && noEv.code === LEAN_GATE_CODE, '★ require + 无证据 ⇒ fail-closed（带 code）', noEv)
+  ok(leanGateDecision({ mode: 'require', target: 'p-1', evidence: { status: 'blocked' } }).allow === false,
+    '★ require + blocked ⇒ 也不放行（blocked 不是 passed）')
+  ok(leanGateDecision({ mode: 'require', target: 'p-1', evidence: { status: 'passed' } }).allow === true,
+    '★ require + passed ⇒ 放行')
+  // ③ 钩子路径：require 档 deny，对象**留在原轨**（状态不变、不进 verified），不是消失
+  const h = boot({ overrides: { 'vmu.math.formalVerify': 'require', 'vmu.v3.planMinIntervalMs': 0 } })
+  await h.loader.apply(PACK)
+  writeCard({ records: h.kernel.records, kind: 'proposition', card: { id: 'p-lean', 标题: '命题 p-lean', 概率: 0.5, 陈述: '陈述 p-lean。' } })
+  const callGate = (target) => V3_LEAN_GATE_MODULE.hooks['ballot/tally']({
+    api: { services: { names: () => ['vmu.records'], get: (n) => (n === 'vmu.records' ? h.kernel.records : null) }, setting: (k) => (k === 'vmu.math.formalVerify' ? 'require' : undefined) },
+    at: 1000, payload: { target },
+  })
+  const deny = await callGate('p-lean')
+  ok(deny && deny.deny && deny.deny.code === LEAN_GATE_CODE,
+    '★ 钩子（ballot/tally）在 require 档无证据 ⇒ 返回具名 deny（带 code/hint）', deny)
+  const still = loadCardIndex(h.kernel.records, 'propos', 'proposition').items.find((p) => p.id === 'p-lean')
+  ok(still !== undefined && String(still.card.状态) === '未定论',
+    '★ 对象没消失：仍在 propos 轨、状态仍是未定论（留档，不是被删）', still && still.card.状态)
+  ok(loadCardIndex(h.kernel.records, 'verified', 'verified').items.length === 0,
+    '★ 也没有偷偷落进 verified 轨（裁定确实没生数）')
+  recordLeanEvidence({ records: h.kernel.records, target: 'p-lean', status: 'blocked', at: 1100, reason: 'lean 编译失败' })
+  const blockedDeny = await callGate('p-lean')
+  ok(blockedDeny && blockedDeny.deny && blockedDeny.deny.code === LEAN_GATE_CODE, 'blocked 证据也 deny', blockedDeny)
+  ok(loadCardIndex(h.kernel.records, 'propos', 'proposition').items.some((p) => p.id === 'p-lean'), 'blocked 被拒后对象仍在原轨')
+  recordLeanEvidence({ records: h.kernel.records, target: 'p-lean', status: 'passed', at: 1200 })
+  const ev = leanEvidence({ records: h.kernel.records, target: 'p-lean' })
+  ok(ev.status === 'passed' && ev.evidence && ev.evidence.recordId, 'leanEvidence 读回最近一条 passed 证据', ev)
+  ok((await callGate('p-lean')) === undefined, '★ require + passed ⇒ 钩子不 deny（放行）')
+  // ④ off 档：不阻断，且 formal 投影为空（没有证据可投影）
+  const off = boot({ overrides: { 'vmu.math.formalVerify': 'off', 'vmu.v3.planMinIntervalMs': 0 } })
+  await off.loader.apply(PACK)
+  const offEvidence = leanEvidence({ records: off.kernel.records, target: 'p-lean' })
+  ok(offEvidence.evidence === null && offEvidence.status === null, '★ off 档 formal 投影为空（没有证据可投影）', offEvidence)
+  const offGate = await V3_LEAN_GATE_MODULE.hooks['ballot/tally']({
+    api: { services: { names: () => ['vmu.records'], get: (n) => (n === 'vmu.records' ? off.kernel.records : null) }, setting: () => 'off' },
+    at: 1000, payload: { target: 'p-lean' },
+  })
+  ok(offGate === undefined, '★ off 档不阻断裁定（零策略）')
+  // ⑤ 三档必须分别构造内核（H2：运行期改档不生效）；两个独立 boot 证明不同装配不同档
+  ok(leanPromptPolicy({ settings: settingsOf('require') }).mode === 'require' && leanPromptPolicy({ settings: settingsOf('off') }).mode === 'off',
+    '档位是构造期装配事实（同一进程里两个内核各读自己的设置）')
 }
 
 console.log('')

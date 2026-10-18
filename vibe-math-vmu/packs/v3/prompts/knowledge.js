@@ -220,6 +220,23 @@ export const V3_KB_VERIFIER_RULES = Object.freeze({
     '- **Reason 必填且非空**：点名你核过的步骤、或潜在反例/致命缺陷、或（0.5 时）卡住判断的确切缺口。空的 Reason 视为未贡献，会被忽略。',
     '- **引用纪律**：事实只能引 `verified` 轨（或状态为已验证·真/假的命题）；未验证/已被否证的对象不得当事实引用，需要它的子结论就自己重推。',
     '- **回执（vmu 适配）**：只输出一个 ```json 围栏，用 `progress` 写一条 `votes` 轨记录：`title` 写对象 id，`body` 写 `- Result: <0..1>` 与 `- Reason: <…>` 两行（字段名就是 `Result`／`Reason`），tags 里给 `vote:<对象id>|<Result>`。',
+  ].join('\n'),
+})
+
+/**
+ * P1-8：**Lean 忠实性分支**独立成段（从 verifier 规则里拆出来）。
+ * 理由：`vmu.math.formalVerify=off` 是**零策略**——提示词里必须零 Lean 字样；而 v3 原来把它塞在 verifier
+ * 规则里，无法整段关闭。拆成独立段后由 `V3_LEAN_PROMPT_POLICY` 按档位 enable/disable（off 关闭，encourage/
+ * require 打开），这正是“框架只提供开关、机构决定策略”的分层。
+ */
+export const V3_KB_VERIFIER_LEAN = Object.freeze({
+  name: 'v3-verifier-lean',
+  order: 659,
+  range: 'pack',
+  source: 'pack:v3',
+  scope: Object.freeze({ role: 'verifier' }),
+  text: [
+    '## v3 知识上下文｜忠实性分支（Lean 形式化）',
     '- **忠实性分支**：若该对象已有**通过的 Lean 形式化证明**，你的审查对象变成**忠实性**——逐条核对定义/对象/条件/假设/结论是否与命题原文完全一致。一致 ⇒ Result = 1。发现偏差**不要投 0**：给严格介于 0 与 1 的弃权值并在 Reason 写清偏差（偏差只说明形式化不合格，不代表命题为假）；只有你**独立于这份 Lean 代码**也能确定命题为假时才投 0。本机构没有强制门禁时，你必须给弃权值，才能让本轮无法得出一致结论。',
   ].join('\n'),
 })
@@ -235,6 +252,7 @@ export const V3_KNOWLEDGE_SECTIONS = Object.freeze([
   V3_KB_ROLE_FILES_KEEPER,
   V3_KB_CAPABILITIES,
   V3_KB_VERIFIER_RULES,
+  V3_KB_VERIFIER_LEAN,
 ])
 
 export default V3_KNOWLEDGE_SECTIONS

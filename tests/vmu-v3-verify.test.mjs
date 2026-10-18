@@ -74,7 +74,7 @@ function boot({ replier = null, overrides = {} } = {}) {
     sections: PACK.sections,
     deliverTurn: async ({ turn, text }) => { delivered.push({ member: turn.member, task: turn.task, statusBlock: turn.statusBlock }); return replier ? replier({ turn, text }) : ACK },
   })
-  const loader = createPackLoader({ kernel, registry: kernel.registry })
+  const loader = createPackLoader({ kernel, registry: kernel.registry, onPromptPolicy: () => () => {} })
   return { kernel, loader, delivered, clockRef, records: kernel.records }
 }
 

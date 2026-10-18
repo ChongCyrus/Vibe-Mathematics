@@ -41,7 +41,7 @@ const clock = () => '2026-10-09T00:00:00.000Z'
 const mk = async (settings = {}) => {
   const root = await mkdtemp(join(tmpdir(), 'vmu-pack-'))
   const kernel = km.createKernel({ clock, root, settings })
-  const loader = m.createPackLoader({ kernel, registry: kernel.registry })
+  const loader = m.createPackLoader({ kernel, registry: kernel.registry, onPromptPolicy: () => () => {} })
   return { kernel, loader, root }
 }
 
