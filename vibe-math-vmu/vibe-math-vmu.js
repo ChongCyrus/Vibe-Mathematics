@@ -467,6 +467,19 @@ export function apply(ctx, config = {}) {
   // later, which needs the face to hand its counts to the provider instead of the provider asking the face. Not done yet.
   let reportFeedbackState = null
   const kernel = createKernel(Object.assign({ sectionPolicy, noticeBlock, extraPhases, settings: settingsWithPackDefaults, root, spawn: spawnSeam, host: mathHost, deliverTurn: turnDeliver,
+    // ★★★★★★★ PHASE 6 / K1 COMPLETION: THE KERNEL HALF WAS DONE AND THE WIRING WAS NOT.
+    // `createScheduler` accepted a `timer` seam all along, and K1 added `autoArm()` plus the `vmu.schedule.autoArm`
+    // switch - but THIS assembly never passed a timer, so on a real machine `autoArm=true` could only ever answer
+    // `mode:'tick-only'` and a declared `vmu.schedule.triggers` seed would never fire. That is the same "mechanism
+    // exists, no path to the user" shape K1 was meant to remove, one layer up: measured by reading this file, the only
+    // occurrence of the word `timer` here was a COMMENT.
+    // PASSED ONLY WHEN DECLARED, deliberately: a timer seam changes `status().seams.timer*`, so an undeclared deployment
+    // must stay byte-identical to before (zero mechanism). The shape is the fourth one `timerShape()` accepts -
+    // `setTimeout(onFire, delayMs)` / `clearTimeout(handle)` - i.e. the platform timer this process already has. A host
+    // with its own scheduler can inject a different seam straight into the kernel instead of through this entry.
+    ...(settingsWithPackDefaults['vmu.schedule.autoArm'] === true
+      ? { timer: { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: (h) => clearTimeout(h) } }
+      : {}),
     reportFeedback: () => Object.assign({}, reportFeedbackState),
     // ROUND 6 / target-5 (reader-b's ruling): the SAME seam is the killable one - `spawn(request, onHandle)` hands the
     // host's handle to the caller BEFORE the outcome is awaited, which is what makes `cancel({jobId})` a real

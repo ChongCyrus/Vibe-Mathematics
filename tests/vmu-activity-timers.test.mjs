@@ -63,6 +63,12 @@ const VERDICT = {
   'kernel/mathjobs.js': { timers: 1, clears: 2, verdict: 'disposer-default-FIXED', note: 'ROUND 12 RECHECK (vmu-activity): the COUNTS are still exact — 1 global setTimeout (:110) and 2 clearTimeout (:111, :152) read CODE ONLY, so the `clearTimeout` that is visible at :129 (inside a doc comment) does not count, which is the D7 lesson in miniature. But this note had DRIFTED: the disposer lives at :110-111 (not :125-126) and `disposeTimer` at :148 with the raw Timeout cleared at :152 (not :132-133). It also understated the discipline: the child-budget race disposes the timer in a `finally` (:224) and a cleanup FAILURE is NAMED (`timer-cleanup-failed`, :230/:233) rather than swallowed. §5 keeps the regression probe (success branch leaves nothing armed, timeout branch still fires and releases)' },
   'host-spawn.js': { timers: 2, clears: 1, verdict: 'budget-FIXED', note: 'the DEFAULT budget timer now has its own handle, is `unref`ed, and is cleared in `finally` with a NAMED failure (`VMU_SPAWN_TIMER_CLEANUP`): host-spawn.js:49,191,216-224 — the finding is CLOSED, and §5 keeps a regression probe' },
   'math-computation.js': { timers: 2, clears: 0, verdict: 'NAMED-FINDING-uncancellable', note: 'two awaited sleeps with no handle bound, so no abort path can release them (math-computation.js:617,728) — named in §5' },
+  // ★ PHASE 6 / K1 COMPLETION: the ENTRY now hands the kernel the platform timer, so a declared `vmu.schedule.autoArm`
+  // has something to arm. Passed ONLY when that setting is true, so an undeclared deployment gets no seam and stays
+  // byte-identical - the site is one clear plus one set, both inside the seam object, and the handle the scheduler gets
+  // back is the same one Node returns, so `timerClear` really cancels it. Classified here because this test's rule is
+  // that a new GLOBAL timer site cannot appear unnoticed.
+  'vibe-math-vmu.js': { timers: 1, clears: 1, verdict: 'declared-only-seam', note: 'the platform timer is forwarded to the scheduler only when vmu.schedule.autoArm is true (K1); undeclared ⇒ no timer seam at all and status().seams.timerShape stays null' },
 }
 {
   const files = walk('vibe-math-vmu').filter((f) => f.endsWith('.js'))
@@ -100,7 +106,15 @@ const VERDICT = {
   ok(intervalTotal === 0, '★ the framework has ZERO setInterval sites (the class that is hardest to clean up does not exist)', intervalTotal)
   const leaks = known.filter((k) => VERDICT[k].verdict.startsWith('NAMED-FINDING'))
   ok(leaks.length === 1, 'one site remains a NAMED finding (outside this task write scope); `kernel/mathjobs.js` and `host-spawn.js` were the other two and are now FIXED by their owners', leaks)
-  ok(found.length === 5, 'five framework files touch a GLOBAL timer, and all five are accounted for (scheduler.js is the sixth row: it declares zero)', found)
+  // ★ PHASE 6 / K1 COMPLETION: this was `found.length === 5` with a message that said "five ... scheduler.js is the
+  // sixth row". The ENTRY became a sixth timer site when it started forwarding the platform timer for a declared
+  // `vmu.schedule.autoArm`, so the literal went stale - which is exactly what a hand-typed count does. The number is
+  // now derived from the table it has to agree with, and the ACTUAL list travels in the detail so a new site is visible
+  // rather than described: `found` must equal the keys that declare a real site, and the row count is the table's size.
+  const declaredSites = Object.keys(VERDICT).filter((f) => VERDICT[f].timers > 0 || VERDICT[f].clears > 0)
+  ok(found.length === declaredSites.length && declaredSites.length > 0,
+    'every framework file that touches a GLOBAL timer is accounted for by a row declaring a real site (counts derived, never typed)',
+    { found: found.length, declared: declaredSites.length, files: found })
 }
 
 console.log('=== 2. F15 · THE SCHEDULER RELEASES ITS HANDLE ON THE FIRE BRANCH (and every other branch) ===')
