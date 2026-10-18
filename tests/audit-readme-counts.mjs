@@ -87,6 +87,27 @@ if (derived) {
     'scanned=' + scanned + ' occurrences=' + occurrences)
   ok(FROZEN_EXCLUDED.length > 0, '★ the frozen release notes are excluded BY NAME, not by a pattern that could swallow the sweep',
     JSON.stringify(FROZEN_EXCLUDED.length))
+
+  // ── F-D (PHASE 6 FIX): THE docs/11 "vmu 子集" LINE IS DERIVED FROM `--scope-report`, AND VERIFIED ──
+  // That line used to be UNWRITABLE automatically: the writer asked `--counts` (scope-independent by design), got the
+  // repository count back, refused it, and left a hand-typed number that could never follow the tree. The writer now
+  // derives it from the scope report; this assertion makes the number reproducible, so a stale line REDS and
+  // `node scripts/update-doc-counts.mjs --write` is the fix.
+  let scopedVmu = null
+  try {
+    const sr = spawnSync(process.execPath, [join(HERE, 'run-tests.mjs'), '--scope-report'], { cwd: REPO, encoding: 'utf8' })
+    const report = JSON.parse(String(sr.stdout || '').trim())
+    scopedVmu = report && report.scopes && report.scopes.vmu
+  } catch (e) { scopedVmu = null }
+  ok(!!scopedVmu && Number.isInteger(scopedVmu.total) && scopedVmu.total > 0,
+    'the scope report yields the vmu-subset job counts, which is the number the gate volume quotes', scopedVmu)
+  if (scopedVmu) {
+    const gateVol = read('COUNTS_GATEVOL', 'vibe-math-vmu/docs/11-gates-and-development.md')
+    const canonical = '**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **' + scopedVmu.total + ' 作业**（' + scopedVmu.suites + ' 套件 + ' + scopedVmu.probes + ' 探针/变体'
+    ok(gateVol.includes(canonical),
+      '★ docs/11 "vmu 子集" line equals the scope-report-derived counts (fix: node scripts/update-doc-counts.mjs --write)',
+      canonical)
+  }
 }
 
 console.log('')

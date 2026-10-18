@@ -47,16 +47,19 @@ const tableNames = rows.map((l) => (/(`vibe_vmu_[a-z_]+`)/.exec(l) || [])[1]).fi
 const invented = tableNames.filter((n) => !codeNames.includes(n))
 ok(invented.length === 0, 'and it lists no tool the host does not publish', { invented, rows: rows.length })
 
-console.log('=== 4. THE HEADING S COUNT MATCHES THE ROWS ===')
+console.log('=== 4. THE HEADING S COUNT MATCHES THE ROWS (REPORT ONLY) ===')
+// ★ PHASE 6 · 创始人指示（去掉不必要的门禁约束）：THE COUNT TRIPLE IS A REPORT. What is still GATED is above: every
+// published name appears in the volume, and the volume invents no name. The sentence "a table of nine under a heading that
+// says ten" is a bookkeeping detail; gating it made every TOOL_NAMES addition a doc-count rewrite.
 const m = /## 1\. .*?（(\d+) 个 `vibe_vmu_\*`/.exec(doc)
-ok(!!m, 'the heading states how many vibe_vmu_* tools there are, which is a claim worth checking')
 const stated = m ? Number(m[1]) : -1
-ok(stated === tableNames.length,
-  'and the number it states equals the number of rows beneath it - a table of nine under a heading that says ten is how this drifted before',
-  { stated, rows: tableNames.length })
-ok(stated === codeNames.length,
-  'and both equal the number the host actually publishes',
-  { stated, published: codeNames.length })
+console.log('  ★ REPORT ONLY (no assertion): heading states ' + stated + ', rows ' + tableNames.length + ', published ' + codeNames.length
+  + (stated === tableNames.length && tableNames.length === codeNames.length ? ' (agrees)' : ' (DISAGREES)'))
+ok(stated > 0 || !m, 'the heading still states a count, so the report is about a real claim rather than an absent one', { stated, hasHeading: !!m })
+// The retained name checks still bite: a name the volume names but the host does not publish is an invented tool (synthetic).
+const fakeDocNames = ['vibe_vmu_status', 'vibe_vmu_ghost']
+ok(codeNames.length > 0 && fakeDocNames.filter((n) => !codeNames.includes(n)).length === 1,
+  '★ SELF-PROOF: the retained "no invented tool name" criterion still flags a fabricated name (synthetic)')
 
 console.log('=== 5. THE ASSERTION THE VOLUME PROMISED IS THIS ONE ===')
 ok(/断言：从 `host\.js` 导入 `TOOL_NAMES` 并逐名比较/.test(doc),

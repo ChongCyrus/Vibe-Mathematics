@@ -15,7 +15,7 @@ export function claims(derived, shipped, scoped) {
   // `49 作业` and `total 96 / suites 41 / probes 55` while the tree said 137 and 170 - in the one volume a reader
   // opens to learn how big the gate is. A count no generator owns will drift; these are owned now.
   const v11Scoped = scoped
-    ? '**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **' + scoped.total + ' 作业**（' + scoped.suites + ' 套件 + ' + scoped.probes + ' 探针/变体，**作业计数**；**由 `--counts` 派生** ✓）'
+    ? '**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **' + scoped.total + ' 作业**（' + scoped.suites + ' 套件 + ' + scoped.probes + ' 探针/变体，**作业计数**；**由 `--scope-report` 派生** ✓）'
     : null
   const v11Shipped = '| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total ' + shipped.total
     + ' / suites ' + shipped.suites + ' / probes ' + shipped.probes + '`** ✓ |'

@@ -43,12 +43,17 @@ export function jsFiles(dir) {
 }
 
 /**
- * Declared keys that no source mentions and no ledger accounts for.
+ * Declared keys that no source mentions and no declarative record accounts for.
  * ★ THE READ TEST CANNOT REQUIRE QUOTES: a key reaches the prompt as `{{ setting:vmu.turn.leaderId }}`, an unquoted
  * substring, and a quoted-only predicate reported eleven LIVE keys as unread.
+ * ★★ PHASE 6 · 创始人指示（去掉不必要的门禁约束）：THE EXEMPTION SOURCE IS NO LONGER ONLY THE HAND-WRITTEN LEDGER.
+ * Any DECLARATIVE RECORD counts: the inert-key ledger, OR an `inert:` marker beside the key's own schema line (the
+ * declaration and its verdict in ONE place, so a deliberately-unwired key costs one comment, not a second file).
  */
+export const INERT_MARKER = /\/\/\s*inert:\s*\S/
 export function silentKeys({ schemaSrc, sources, ledgerText, schemaPath }) {
   const declared = [...String(schemaSrc).matchAll(/key:\s*'([^']+)'/g)].map((m) => m[1])
+  const lines = String(schemaSrc).split('\n')
   const out = []
   for (const key of declared) {
     let seen = false
@@ -58,21 +63,31 @@ export function silentKeys({ schemaSrc, sources, ledgerText, schemaPath }) {
     }
     if (seen) continue
     if (String(ledgerText || "").includes(key)) continue
+    // The key's OWN declaration line may carry the verdict: `// inert: <reason>`.
+    if (lines.some((l) => l.includes("'" + key + "'") && INERT_MARKER.test(l))) continue
     out.push(key)
   }
   return out
 }
 
+/**
+ * ★★ THE ONE-WAY BASELINE: a key that was ALREADY silent when this rule was relaxed is reported, not gated; only a
+ * NEW silently-declared key reds. This is the "只对新增且从未有读者红" half — existing debt stays visible without
+ * blocking every round, and a fresh declaration with no consumer still fails by name.
+ */
+export const KNOWN_SILENT_KEYS = Object.freeze([])
+
 if (process.argv.includes("--selftest")) {
   const src = new Map([
-    ["/s/schema.js", "export const S = [\n { key: 'vmu.prompt.read' },\n { key: 'vmu.ledgered.one' },\n { key: 'vmu.silent.one' },\n]\n"],
+    ["/s/schema.js", "export const S = [\n { key: 'vmu.prompt.read' },\n { key: 'vmu.ledgered.one' },\n { key: 'vmu.inert.one' }, // inert: deliberate, see the design note\n { key: 'vmu.silent.one' },\n]\n"],
     ["/s/reader.js", "const v = '{{ setting:vmu.prompt.read }}'\n"],
   ])
   const got = silentKeys({ schemaSrc: src.get("/s/schema.js"), sources: src, ledgerText: "vmu.ledgered.one  WIRE", schemaPath: "/s/schema.js" })
   const checks = [
-    [got.includes("vmu.silent.one"), "★ a declared key nothing mentions and no ledger rules on is caught"],
+    [got.includes("vmu.silent.one"), "★ a declared key nothing mentions and no record rules on is caught"],
     [got.includes("vmu.prompt.read") === false, "★ a key read ONLY through a prompt variable counts as read (a quoted-only scan missed eleven such keys)"],
     [got.includes("vmu.ledgered.one") === false, "★ a key the inert-key ledger rules on is accounted for, not silent"],
+    [got.includes("vmu.inert.one") === false, "★ a key with an `inert:` marker on its OWN schema line is a declarative record too"],
     [got.length === 1, "and exactly the one silent key is reported"],
   ]
   let bad = 0
@@ -92,7 +107,21 @@ for (const dir of ["tests", "scripts"]) {
 const schemaPath = join(VMU, "settings", "schema.js")
 const ledgerText = existsSync(LEDGER) ? readFileSync(LEDGER, "utf8") : ""
 const keys = silentKeys({ schemaSrc: sources.get(schemaPath) || "", sources, ledgerText, schemaPath })
+// ★ BARE-MODE SELF-PROOF (runs on every gate run, not only with --selftest): the relaxed criterion still catches a
+// silently-declared key. Without this, the relaxation could have been a blanket pass and nothing would say so.
+{
+  const synthetic = silentKeys({ schemaSrc: "key: 'vmu.synthetic.silent'", sources: new Map(), ledgerText: "", schemaPath: "/s/schema.js" })
+  const caught = synthetic.length === 1 && synthetic[0] === "vmu.synthetic.silent"
+  console.log('  SELF-PROOF: the relaxed criterion still catches a silently-declared key (synthetic) = ' + caught)
+  if (!caught) process.exitCode = 1
+}
 for (const k of keys) console.log("  SILENT-KEY  " + k)
-console.log("=== SILENT KEYS: " + sources.size + " files scanned, " + keys.length + " declared key(s) neither read nor ruled ===")
-process.exit(keys.length === 0 ? 0 : 1)
+// ONE-WAY: a previously-known silent key is REPORTED; only a NEW one reds (see KNOWN_SILENT_KEYS above).
+const newlySilent = keys.filter((k) => !KNOWN_SILENT_KEYS.includes(k))
+const known = keys.filter((k) => KNOWN_SILENT_KEYS.includes(k))
+const staleKnown = KNOWN_SILENT_KEYS.filter((k) => !keys.includes(k))
+if (known.length > 0) console.log("  ★ REPORT ONLY (no assertion): known silent keys = " + known.join(", "))
+if (staleKnown.length > 0) console.log("  ★ REPORT ONLY (no assertion): baseline entries that now have a consumer = " + staleKnown.join(", "))
+console.log("=== SILENT KEYS: " + sources.size + " files scanned, " + keys.length + " declared key(s) neither read nor ruled; new=" + newlySilent.length + " known=" + known.length + " ===")
+process.exit(newlySilent.length === 0 ? 0 : 1)
 

@@ -49,25 +49,32 @@ const PAIRS = [
 ]
 
 console.log('=== 1. EVERY PAIR RESOLVES, AND THE NAMES ARE REAL EXPORTS ===')
+const exportedNames = (src) => new Set([...String(src).matchAll(/^export (?:function|const) (\w+)/gm)].map((m) => m[1]))
+const missingExports = (src, must) => must.filter((n) => !exportedNames(src).has(n))
 const invented = []
 for (const p of PAIRS) {
   // the shared math module lives at the REPOSITORY root, not under vibe-math-vmu - resolve both placements
   const modPath = existsSync(join(VMU, p.mod)) ? join(VMU, p.mod) : join(REPO, p.mod)
   const src = readFileSync(modPath, 'utf8')
-  const exports = new Set([...src.matchAll(/^export (?:function|const) (\w+)/gm)].map((m) => m[1]))
-  for (const n of p.must) if (!exports.has(n)) invented.push(p.mod + ':' + n)
+  for (const n of missingExports(src, p.must)) invented.push(p.mod + ':' + n)
 }
 ok(invented.length === 0, 'every name the guard requires really is exported by the module it is required from', { invented })
+ok(missingExports('export const here = 1\n', ['here']).length === 0 && missingExports('export const here = 1\n', ['ghost']).length === 1,
+  '★ SELF-PROOF: the retained "the required name is really exported" criterion still flags an invented name (synthetic)')
 
-console.log('=== 2. AND EVERY VOLUME NAMES THE SURFACE IT TEACHES ===')
+console.log('=== 2. AND EVERY VOLUME NAMES THE SURFACE IT TEACHES (REPORT) ===')
+// ★ PHASE 6 · 创始人指示（去掉不必要的门禁约束）：THIS HALF IS A REPORT, NOT AN ASSERTION.
+// WHY: whether a volume's prose names a particular export is a documentation-completeness matter, and gating it means every
+// new export needs a doc edit before code can land. MEASURED this phase: the required-name list went stale twice (new pack
+// tool face, new binder export) and the only fix was hand-editing the pair table. What is still GATED is §1 above: a
+// required name that is not a real export is a lie about the API. The completeness gap is printed for a human.
 const unnamed = []
 for (const p of PAIRS) {
   const vol = readFileSync(join(VMU, 'docs', p.vol), 'utf8')
   for (const n of p.must) if (!vol.includes(n)) unnamed.push(p.vol.slice(0, 2) + ' must name ' + n)
 }
-ok(unnamed.length === 0,
-  'each volume names the API of the surface it documents, so a reader can act on what the volume teaches',
-  { unnamed })
+if (unnamed.length > 0) console.log('  ★ REPORT ONLY (no assertion): volume/API naming gaps = ' + unnamed.join(', '))
+else console.log('  ★ REPORT ONLY (no assertion): every volume happens to name its surface')
 
 console.log('=== DOC API COVERAGE: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }

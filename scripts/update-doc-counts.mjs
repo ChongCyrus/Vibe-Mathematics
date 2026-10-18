@@ -24,23 +24,20 @@ const REPO = join(HERE, '..')
 const checkOnly = process.argv.includes('--check')
 
 const derived = JSON.parse(spawnSync(process.execPath, [join(REPO, 'tests', 'run-tests.mjs'), '--counts'], { cwd: REPO, encoding: 'utf8' }).stdout.trim())
-// THE SCOPED COUNT IS DERIVED THE SAME WAY, from the gate's own list under the scope the docs quote. Two spawns of
-// `--counts` are cheap (it prints the job list and runs nothing), and deriving it is the whole point.
+// ── THE SCOPED COUNT (PHASE 6 FIX) ───────────────────────────────────────────────────────────────────────────────
+// DEFECT THIS REPLACES: `--counts` with GATE_SCOPE=vmu is scope-independent by design (the runner forces `full` in that
+// mode), so the old code could never derive the scoped count and the docs/11 scoped line was NEVER rewritten - a derived
+// number with no automatic repair path. `--scope-report` DERIVES per-scope job counts and runs nothing; scopes.vmu is it.
 let scoped = null
 try {
-  const r = spawnSync(process.execPath, [join(REPO, 'tests', 'run-tests.mjs'), '--counts'], { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, { GATE_SCOPE: 'vmu' }) })
-  const parsed = JSON.parse(String(r.stdout || '').trim())
-  // `--counts` IS DELIBERATELY SCOPE-INDEPENDENT, and this guard is here because that is easy to mistake for a bug.
-  // The runner says why: documented counts are properties of the REPOSITORY, not of an edit loop, so a scope that
-  // narrowed them would make the docs depend on how the run was invoked and would break every guard that spawns the
-  // runner as a child. The consequence for THIS script is that the number it can derive is the repository job count
-  // (the repository job count), which is NOT the vmu-subset count a reader of the gate volume is asking for - and the number
-// itself is deliberately NOT written here, because a comment quoting a count goes stale exactly like prose does. Run
-// `node tests/run-tests.mjs --counts` for it. A
-  // generator that cannot answer a question must not answer it wrongly, so a scoped count equal to the full one is
-  // refused and the line is left to the number a run actually prints.
-  if (parsed && Number.isInteger(parsed.total) && parsed.total !== derived.total) scoped = { total: parsed.total, suites: parsed.suites, probes: parsed.probes }
-  else if (parsed && parsed.total === derived.total) process.stderr.write('update-doc-counts: --counts is scope-independent BY DESIGN (it returned the repository job count ' + parsed.total + '), which is not the scoped count, so the scoped line is NOT generated\n')
+  const r = spawnSync(process.execPath, [join(REPO, 'tests', 'run-tests.mjs'), '--scope-report'], { cwd: REPO, encoding: 'utf8' })
+  const report = JSON.parse(String(r.stdout || '').trim())
+  const vmu = report && report.scopes && report.scopes.vmu
+  if (vmu && Number.isInteger(vmu.total) && vmu.total > 0 && Number.isInteger(vmu.suites) && Number.isInteger(vmu.probes)) {
+    scoped = { total: vmu.total, suites: vmu.suites, probes: vmu.probes }
+  } else {
+    process.stderr.write('update-doc-counts: the scope report carried no usable scopes.vmu counts; the scoped line is left alone\n')
+  }
 } catch (e) {
   // `log` is declared further down, so a failure here cannot use it; a scoped count that cannot be derived must be
   // VISIBLE rather than silent, because the line it feeds is one of the two that drifted for years.

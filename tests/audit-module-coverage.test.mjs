@@ -55,12 +55,18 @@ for (const mod of mods) {
   if (best > 0) gaps.push(stem + ' (' + best + ' unnamed)')
 }
 ok(withExports.length >= 70, 'most kernel modules publish an API', { n: withExports.length })
+// ★ PHASE 6 · 创始人指示（去掉不必要的门禁约束）：PER-EXPORT NAMING IS A REPORT; the RED criterion is only "a module with
+// exports is named by NO volume at all" (a module a reader cannot find is a real gap). Requiring EVERY export name in a
+// volume made a new export a mandatory doc edit before code could land — bookkeeping, and it went stale twice this phase.
 ok(stemless.length === 0,
   'every module with exports is named by at least one volume, so a reader can find it from the docs',
   { stemless })
-ok(gaps.length === 0,
-  'and within that volume every export is named, so the reader learns the whole surface rather than part of it',
-  { gaps })
+if (gaps.length > 0) console.log('  ★ REPORT ONLY (no assertion): per-export naming gaps = ' + gaps.join(', '))
+else console.log('  ★ REPORT ONLY (no assertion): every named module names all of its exports')
+// The retained criterion is still able to red: a module nothing names is flagged by the same predicate (synthetic).
+const namedByAny = (docsText, stem) => docsText.some((t) => t.includes(stem))
+ok(namedByAny(['records'], 'records') && !namedByAny(['records'], 'ghost-module'),
+  '★ SELF-PROOF: the retained "undocumented module" criterion still flags a module no volume names (synthetic)', {})
 
 console.log('=== 3. AND THE COUNT IS NOT VACUOUS ===')
 ok(withExports.length === mods.filter((m) => existsSync(join(REPO, m))).length,

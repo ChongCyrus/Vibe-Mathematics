@@ -210,13 +210,13 @@
 
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
-| `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 322 / suites 250 / probes 72`** ✓（旧值 134／68／66 已在扩卷与增件后过期 ✗；本轮树新增 1 个作业：`tests/audit-scope-classification.test.mjs` ✓） |
+| `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓；PHASE 6 复测 ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 454 / suites 348 / probes 106`** ✓（旧值 134／68／66、322／250／72 均已在扩卷与增件后过期 ✗；PHASE 6 删除 `audit-gate-snapshot.test.mjs` 后作业数 −1） |
 | `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 352 / suites 252 / probes 100`** ✓ |
-| `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 258 / suites 225 / probes 33`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
+| `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓；**PHASE 6 起由 `--scope-report` 派生、`update-doc-counts --write` 自动重写** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 385 / suites 323 / probes 62`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。
-**vmu 子集**：`GATE_SCOPE=vmu` ⇒ ★★★ **这里有两个不同的量**（**2026-10-14 按 D-06 改写：旧文写"没有一个机器模式能报出子集那个"，那已不再成立** ✗✓）：★ **请求的作用域与生效的作用域是【两个变量**]✓ —— ★ `run-tests.mjs` 在 `--counts`／`--self-check` 下【**强制生效作用域为 `full`**]✓（★ **有意为之，且有事故记录** ✓：★ vmu 作用域第一次运行时，子进程继承了作用域 ⇒ **`run-tests.mutants.mjs` 的超时正例看到 **0 个作业** ✗、`--self-check` 基线发散 ✗、`audit-readme-counts` 读到 **27 而不是 110** ✗**）⇒ ★★ **所以 `--counts` 报的是【仓库作业计数 **322**（**250 套件 ＋ 72 探针**）**]✓（★ 基础 ＋ 变体 ✓），**不是子集计数** ✓。★★ **而 T1 【执行**]的 `TOTAL` 是 **258（225 套件 + 33 探针）** ✓（★ 2026-10-14 用 **`--scope-report`** 复测 ✓ —— ★ 本行原先写 **236** 与 **142／119／23** ✓，★ 两处都已过期 ✗）。★★★ **本轮的三项修正** ✓：① **子集计数现在有机器面** —— `node tests/run-tests.mjs --scope-report` 打印三个作用域各自的 `{total,suites,probes}` ✓；② **`--only`／`--exclude` 改为与【请求的作用域】求交**，不再把作用域静默降级为 `full` ✓；③ 表头**同时**打印 `requested-scope`／`effective-scope`／`final-jobs` ✓（★ 此前只印请求值，**读起来像"作用域没生效"** ✗ —— ★ **它误导了三轮排查** ✓）。
-**更新方式（2026-10-14 更正 ✗✓）**：旧文写"`scripts/update-doc-counts.mjs` 只**整行重写 4 处**……**不含** `vibe-math-vmu/docs/**`" —— **该说法已过期** ✗。实读该脚本（`scripts/update-doc-counts.mjs:81-86`）：它覆盖 **5 处**（两个 README、`docs/test-timing.md`、`docs/AUDIT-CHECKLIST.md`、**本卷**），本卷的 `shipped.*` 行由 `MARKERS.v11Shipped` 整行重写（**不要手改** ✓）。**唯一的限制**是本表上面那行"vmu 子集"（`MARKERS.v11Scoped`）：`--counts` **按设计**只报仓库计数，脚本据此**拒绝**把仓库数当成子集数写入（`update-doc-counts.mjs:42-43` 打印具名原因），所以该行**仍由人工同步、必须带日期** ✓；子集数可随时用 `node tests/run-tests.mjs --scope-report` 现取 ✓。若 `--check` 与本表不一致，**以 `--check` 的输出为准** ✓。
+**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **385 作业**（323 套件 + 62 探针/变体，**作业计数**；**由 `--scope-report` 派生** ✓）
+**更新方式（2026-10-14 更正 ✗✓；PHASE 6 再更正 ✓）**：旧文写"`scripts/update-doc-counts.mjs` 只**整行重写 4 处**……**不含** `vibe-math-vmu/docs/**`" —— **该说法已过期** ✗。实读该脚本：它覆盖 **6 处**（两个 README、`docs/test-timing.md`、`docs/AUDIT-CHECKLIST.md`、**本卷两行**），本卷的 `shipped.*` 行与"vmu 子集"行都按标记**整行重写**（**不要手改** ✓）。★ **PHASE 6 修复的残留缺陷**：此前"vmu 子集"行**永远不会被重写** —— 它想用 `GATE_SCOPE=vmu` 下的 `--counts` 派生，而 `--counts` **按设计**是作用域无关的，脚本只能拒绝并留一行人工数字（**永久说谎** ✗）。现在改为从 `node tests/run-tests.mjs --scope-report` 的 `scopes.vmu` 派生（只派生、不跑作业 ✓），该行**由 `--write` 自动跟随**；`--check` 与 `--write` 的差集即为待同步项 ✓。
 
 ### 5.2 可原样复用的**通用基础设施** ✓
 

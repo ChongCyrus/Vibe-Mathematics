@@ -48,5 +48,8 @@ if (process.argv.includes('--selftest')) {
 
 if (!quiet) console.log('  template entries scanned: ' + entries)
 for (const h of findings) console.log('FINDING ' + h.file + ':' + h.line + '  a capability entry carries no maturity marker :: ' + h.text)
-console.log('=== DOCS ENTRY TEMPLATE: ' + entries + ' entr(ies) scanned, ' + findings.length + ' without a maturity marker ===')
-process.exit(findings.length > 0 ? 1 : 0)
+// ★ PHASE 6 · 创始人指示（去掉不必要的门禁约束）：A REPORT, NOT A GATE. Requiring a ✓/✗ marker on every capability entry is
+// pure bookkeeping: 171/171 entries carried one when it was measured, and a new entry could not land without adding one. The
+// DETECTOR is kept (its selftest above still proves it can find a markerless entry); what stops being enforced is presence.
+console.log('=== DOCS ENTRY TEMPLATE: ' + entries + ' entr(ies) scanned, ' + findings.length + ' without a maturity marker (REPORT ONLY) ===')
+process.exit(0)

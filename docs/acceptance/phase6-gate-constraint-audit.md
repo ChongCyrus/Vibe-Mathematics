@@ -296,3 +296,29 @@ node -e "const fs=require('fs');const a=fs.readdirSync('tests').filter(f=>/^audi
 3. **`scripts/` 侧 5 个 audit 未逐个读**（只在 §6 标注边界）。
 4. **本文件是建议，不是施工**：Lead 要按它改门禁时，建议一次只改一类（先 (乙) 的删/报告，再放松，再修派生自动化），
    每改一类跑一次 `GATE_SCOPE=vmu node tests/run-tests.mjs`，避免"清理本身"制造新的假绿。
+
+## §8 执行记录（PHASE 6 清理落地，本轮已落）
+
+> 原则：每条改动都保留一个**在裸跑（不是 `--selftest`）里能红的负控**，否则就明说"降为报告、不再保护什么"。
+
+| 门禁 | 原来阻什么 | 改后仍然保护什么 | 还能红的证据 |
+|---|---|---|---|
+| `tests/audit-declaration-criterion.test.mjs` | ①C2 多行条件断言按**文件**冻结，任何人新增普通 `if (x) { ok() }` 都要 `--write-baseline`；②A 类 `every()` 对**非空字面量数组**误判，且**删除**也红（修好一条还要改 baseline） | A/B/D 与单行 C 仍红；C2 只**打印清单**；A 新增仍红，删除只报告；非空字面量视为自带守卫 | `:809` 字面量自证、`:820` 单向策略自证（裸跑）；C2 报告行每次打印 `newSinceBaseline` |
+| `tests/audit-silent-keys.mjs` | 声明未读的键**只能**进手写惰性台账（中间态 v3 键为此写过 8 行） | "声明无消费者"仍红（新增未读键）；`inert:` 标记可写在键的 schema 行上，台账只是**众多声明性记录之一** | 裸跑 `SELF-PROOF: the relaxed criterion still catches a silently-declared key = true`；`--selftest` 5/5（含 `inert:` 例） |
+| `tests/vmu-middleware-hooks-declared.test.mjs` | `v3/tick` 这类**运行时 `declareTopic` 的合法主题**也必须写 `KNOWN_UNBRIDGED` 理由行 | 判据并入**运行时已声明主题集**；既未桥接、也未声明、也未记录理由的 hook 仍红 | 裸跑两条 `SELF-PROOF`：合成的未声明 hook 被红、`v3/tick` 不被红（不是一刀切放行） |
+| `tests/audit-doc-api-coverage.test.mjs` | 每卷必须点名其 API（新导出要先改文档） | "要求的名字必须真是该模块导出"仍红（防文档说谎） | 裸跑 `SELF-PROOF: ...flags an invented name` |
+| `tests/audit-module-coverage.test.mjs` | **逐导出**命名缺口即红（记账） | "模块完全未被任何卷点名"仍红；逐导出缺口只报告 | 裸跑 `SELF-PROOF: ...undocumented module` |
+| `tests/audit-readme-bilingual.test.mjs` | 标题/表格行/代码围栏/图片数**全等**、CJK≤150 的手写预算 | 两文件存在与 H1、切换链接、图片**资产**对应、内部锚点可解析、本地链接集合相等仍红；计数与 CJK 只报告 | 裸跑 `SELF-PROOF: ...broken anchor`（计数项仅打印） |
+| `tests/audit-tool-table.test.mjs` | "标题数字=行数=发布数"（新工具要改文档数字） | 已发布名字必须出现在卷里、卷不得发明名字（两向）仍红；计数三元组只报告 | 裸跑 `SELF-PROOF: ...fabricated name` |
+| `tests/audit-docs-entry-template.mjs` | 每条能力条目必须带成熟度标记（纯记账） | **降为报告，不再保护任何东西**（诚实说明）；检测器与 `--selftest` 保留 | `--selftest` 仍能标出无标记条目 |
+| `tests/audit-planned-tools-inventory.test.mjs` | 路标表与卷内 ⛔ 标记**双向同步**（doc-doc 记账） | 两次扫描必须非空（防"什么都没读到"的假绿）仍红；两向差异只报告 | 裸跑 `SELF-PROOF: ...detects a missing row` |
+| `tests/audit-gate-snapshot.test.mjs` | **删除**。删前核对：它只给"生成器结论行"加 git HEAD/dirty 指纹（依赖 git 工作区），不保护任何产品行为；无 `package.json#files`/`run-tests`/检查清单联动；引用仅存于历史报告 | —（无产品行为可保护） | 删除后 `run-tests --counts` 454（−1 作业），preflight 不受影响 |
+
+**派生自动化缺陷修复（原 §3.5/§6）**：`scripts/update-doc-counts.mjs` 改为从 `node tests/run-tests.mjs --scope-report`
+的 `scopes.vmu` 派生"vmu 子集"行（旧路径 `--counts` 按设计作用域无关 ⇒ 该行**永不被重写**）。证明（实测）：
+①`docs/11` 该行由旧值 `258`（2026-10-14 手写）重写为当前派生值 `385`；②另在 `tests/audit-readme-counts.mjs` 增加
+F-D 断言（文档行必须等于 `--scope-report` 派生值）；③故障注入：把行改成 `384` ⇒ 该门禁 **18 passed / 1 failed**（红）；
+④`node scripts/update-doc-counts.mjs --write` ⇒ 恢复 `385`，再跑 **19/0 绿** ⇒ 数字现在**跟着树走且可自动修**。
+
+**收尾核验**：`regen-all --check` **16/16 in sync**；`preflight` **PASS**；`check-docs` **PASS**；作业数 **454**
+（348 套件 + 106 探针/变体，删除 1 条后）。未跑全量 vmu 扫（时间预算），已跑全部受影响门禁及其负控。
