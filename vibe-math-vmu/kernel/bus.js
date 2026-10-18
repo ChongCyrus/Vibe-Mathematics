@@ -268,21 +268,30 @@ export const HOOK_REGISTRY = Object.freeze([
   { name: 'tools/post-execute', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: true, rewritable: true, timing: 'after a tool call ran' },
   { name: 'tools/execute', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'tool execution (observation)' },
   { name: 'tools/result', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'a tool result exists (observation)' },
-  { name: 'prompt/assemble', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'the HOST assembles its system prompt' },
-  { name: 'prompt/section', kind: 'host', bridged: false, blockable: false, rewritable: false, timing: 'host prompt-section registration (subscribe-only)' },
+  // ★★★★★★★ PHASE 6 / ROUND 3: FOUR NAMES WERE DELETED HERE, BECAUSE THE HOST DOES NOT EMIT THEM - IN EITHER VERSION.
+  // Removed: `prompt/assemble`, `prompt/section`, `agent/inbox`, `settings/changed`.
+  // WHY THIS MATTERED ENOUGH TO CHANGE A FROZEN VOCABULARY: this registry IS a contract ("the vocabulary belongs to DSH"),
+  // and a pack may declare `on: '<name>'` for anything listed here. A listed-but-never-emitted name therefore registers
+  // successfully and NEVER FIRES - silence, which is the failure mode this repository rules out everywhere else. Each of
+  // the four also had ZERO consumers (measured: the only occurrence of each in the whole tree was its own registry line),
+  // so nothing breaks by removing them; what changes is that a pack naming one now gets the bus's NAMED refusal for an
+  // unknown hook instead of a no-op.
+  // WHAT THE HOST ACTUALLY HAS, for whoever needs it later (do NOT pre-register without a consumer):
+  //   · system prompt assembly  -> `system-prompt/assemble` (already registered below, line ~285 - the real name)
+  //   · settings document edits -> `settings/document-updated`
+  //   · agent inbox delivery    -> `agent/inbox/inserted` / `agent/inbox/claimed` / `agent/inbox/discarded`
+  //   · prompt SECTION assembly -> there is no host hook; the vmu-side name is `prompt/section-assembled` (kind:'vmu')
   { name: 'agent/pre-step', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: true, rewritable: false, timing: 'before an agent step' },
   { name: 'agent/request', kind: 'host', bridged: false, blockable: false, rewritable: false, timing: 'an agent request is issued (subscribe-only)' },
   { name: 'agent/request-error', kind: 'host', bridged: false, blockable: false, rewritable: false, timing: 'an agent request failed (subscribe-only)' },
   { name: 'agent/turn-stopping', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'the host turn ends (the per-turn tool budget resets here)' },
-  { name: 'agent/inbox', kind: 'host', bridged: false, blockable: false, rewritable: false, timing: 'agent inbox delivery (subscribe-only)' },
   { name: 'agent/created', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'an agent was created' },
   { name: 'subagent/start', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'a subagent starts' },
   { name: 'subagent/end', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'a subagent ends' },
   { name: 'session/event', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'a session event' },
   { name: 'session/flush', kind: 'host', bridged: false, blockable: false, rewritable: false, timing: 'a session is flushed (subscribe-only)' },
   { name: 'fs/write-intent', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: true, rewritable: false, timing: 'a write is about to happen' },
-  { name: 'settings/changed', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'settings changed' },
-  { name: 'system-prompt/assemble', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'the host assembles its system prompt (host-side name)' },
+  { name: 'system-prompt/assemble', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'the host assembles its system prompt (the host-side name; `prompt/assemble` was never one)' },
 ])
 
 /** The vmu-internal hook names the bus enforces (docs/05 §4.2) — DERIVED from the registry, in its order. */

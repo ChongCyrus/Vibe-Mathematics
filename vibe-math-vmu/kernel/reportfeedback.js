@@ -41,9 +41,15 @@ export const REPORT_FEEDBACK_MAX_BYTES = 65536
 
 /**
  * ★ The order we pass to `systemPrompt.context({ name, order, text })`. It is an EXPLICIT FINITE NUMBER on purpose:
- * the host's `CONTEXT_ORDERS` map (110/115/120) is for centrally owned placements and returns `undefined` for any
- * name it does not know, and an `undefined` order sorts on nothing. 5000 sits after those three and well before the
+ * the host's `CONTEXT_ORDERS` map is for centrally owned placements and returns `undefined` for any name it does not
+ * know, and an `undefined` order sorts on nothing. 5000 sits after every host-owned context and well before the
  * section slots that carry tool/report material, so feedback lands with the runtime context rather than inside policy.
+ * ★ PHASE 6 / ROUND 3: the numbers in this comment were stale. DSH 0.2.1-rc.2's map is
+ *   WORKING_DIRECTORY 100 · SANDBOX_POLICY 110 · APPROVAL_POLICY 115 · SUBAGENT_DELEGATION 120 · TEAM_IDENTITY 125 ·
+ *   HARNESS_SOURCE 200 · WEB_SURFACE 210
+ * (older comment said "110/115/120"). The DECISION is unchanged - 5000 still sorts last - but the justification now
+ * names what is actually there, because a comment that argues from a wrong table is how a later reader "fixes" a
+ * number that was right.
  */
 export const REPORT_FEEDBACK_CONTEXT_ORDER = 5000
 

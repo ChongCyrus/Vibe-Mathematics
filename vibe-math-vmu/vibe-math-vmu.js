@@ -20,6 +20,7 @@
 import { decideSections as V5R_DECIDE_SECTIONS } from './packs/v5r/middleware/prompt-switches.js'
 import { inboxBlock as V5R_INBOX_BLOCK } from './packs/v5r/notices.js'
 import { V5R_PHASES } from './packs/v5r/index.js'
+import { createChildrenPort } from './host-children.js'
 import { createKernel } from './kernel/index.js'
 // ★ A1 step 1 · Part B: the report-feedback DELIVERY call. It lives in a module of its own (this file is at its
 // 1200-line budget, and the call carries enough reasoning to belong there); the entry passes its own `ctx`/`effect` down.
@@ -433,30 +434,12 @@ export function apply(ctx, config = {}) {
     }
     return interruptViaSubagents(subs)(args)
   }
-  // ROUND 4 / task-25 (reader-a's 5②): the recovery CHILDREN port. The host's `listChildren(parentSessionId)` is its own
-  // durable direct-child directory (it does NOT load or resume an Agent), which is exactly what "reconcile the members
-  // that hold a childId against reality after a restart" needs. A host without it yields the NAMED
-  // `VMU_RESUME_CHILDREN_UNAVAILABLE`; recovery still succeeds - it just says the roster could not be checked.
-  const children = {
-    parentId: () => {
-      try {
-        if (ctx && typeof ctx.sessionId === 'string' && ctx.sessionId) return ctx.sessionId
-        if (ctx && typeof ctx.get === 'function') { const s = ctx.get('session'); if (s && typeof s.id === 'string' && s.id) return s.id }
-      } catch { /* a ctx that cannot answer is reported as "no parent id" */ }
-      return null
-    },
-    list: async (parentId) => {
-      const subs = resolveSubagents()
-      if (!subs || typeof subs.listChildren !== 'function') {
-        const err = new Error('the host exposes no subagents.listChildren, so live children cannot be reconciled')
-        err.code = 'VMU_RESUME_CHILDREN_UNAVAILABLE'
-        err.hint = 'the recovery port NAMES the gap instead of guessing the roster (docs/26 §3.22)'
-        throw err
-      }
-      const rows = await subs.listChildren(parentId)
-      return (Array.isArray(rows) ? rows : []).map((r) => (typeof r === 'string' ? r : (r && (r.id || r.sessionId || r.childId)) || null)).filter(Boolean)
-    },
-  }
+  // ROUND 4 / task-25 (reader-a's 5②) — EXTRACTED IN PHASE 6 ROUND 4 to `./host-children.js` when the entry crossed the
+  // recorded 1200-line ceiling (docs/02 §7; the same reason `host-deliver.js` was split in Round 81). The port is
+  // unchanged: `parentId()` names the parent the roster is reconciled against, and `list()` reads the host's durable
+  // direct-child directory (`subagents.listChildren`, which does NOT load or resume an Agent). A host without it yields
+  // the NAMED `VMU_RESUME_CHILDREN_UNAVAILABLE`; recovery still succeeds - it just says the roster could not be checked.
+  const children = createChildrenPort({ ctx, resolveSubagents })
   // ROUND 1 / K5 + P6 (D-02, vmu-pack interface): A PACK'S PROMPT MACHINERY IS DECLARED, NOT HARD-WIRED. The v5r
   // prompt switches / notice block / phases used to be injected unconditionally, so the framework's own policy ran in
   // a deployment that declared NO pack - the opposite of "零机制". They are now keyed by the pack ids this row

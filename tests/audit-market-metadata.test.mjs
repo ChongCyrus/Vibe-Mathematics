@@ -100,7 +100,12 @@ ok(existsSync(join(HERE, String((pkg.dsh.bundle || {}).patch || 'cordis.patch.ym
 // admits a prerelease version when a comparator on the SAME [major,minor,patch] tuple also carries
 // one. A branch like >=0.1.5-alpha.1 <0.2.0-0 therefore silently rejects 0.1.6-alpha.x and 0.1.7-rc.x,
 // which is how the DSH 0.2.0 adaptation widened this chain.
-const EXPECTED = '>=0.1.2-alpha.4 <0.1.3-0 || >=0.1.3-alpha.2 <0.1.5-0 || >=0.1.5-alpha.1 <0.1.6-0 || >=0.1.6-alpha.1 <0.1.7-0 || >=0.1.7-alpha.1 <0.2.0-0 || >=0.2.0-alpha.1 <0.3.0-0'
+// ★ PHASE 6: 0.2.1-rc.2 was added to the verified chain. WHY A NEW SEGMENT RATHER THAN A LOOSER BOUND: semver only
+// lets a prerelease satisfy a range when the range carries a comparator with the SAME major.minor.patch AND a
+// prerelease, so ">=0.2.0-alpha.1 <0.3.0-0" does not admit 0.2.1-rc.2 on its own - the gate said so in as many words
+// ("uncovered: 0.2.1-rc.2") and it was right. The three declarations (top-level engines.dsh, dsh.engines.dsh and this
+// constant) must stay byte-identical, which is the whole point of the assertion below.
+const EXPECTED = '>=0.1.2-alpha.4 <0.1.3-0 || >=0.1.3-alpha.2 <0.1.5-0 || >=0.1.5-alpha.1 <0.1.6-0 || >=0.1.6-alpha.1 <0.1.7-0 || >=0.1.7-alpha.1 <0.2.0-0 || >=0.2.0-alpha.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0'
 const engineDsh = pkg.engines && pkg.engines.dsh
 const dshEnginesDsh = pkg.dsh && pkg.dsh.engines && pkg.dsh.engines.dsh
 ok(typeof engineDsh === 'string', 'engines.dsh is declared (the position dsh-market reads)', JSON.stringify(engineDsh))
