@@ -25,22 +25,22 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
   }
   return {
     name: TOOL_NAMES.human,
-    description: 'vmu 人类在环：action=status｜veto｜explainVeto｜liftVeto｜observerView｜openApproval｜approvalState｜decide｜queue｜gate｜dashboard｜inject｜recover｜recoverStatus｜readBack。' +
+    description: 'vmu 人类在环：action=status｜veto｜explainVeto｜liftVeto｜observerView｜openApproval｜approvalState｜decide｜withdraw｜queue｜gate｜dashboard｜inject｜recover｜recoverStatus｜readBack。' +
       '**审批是真闸门**：被闸动作在获批前**不执行、只排队**（VMU_HUMAN_APPROVAL_PENDING 带 requestId）；超时默认 hold，default-allow 必须显式确认。' +
       '**inject＝人工中途干预**：以 `from`（默认 office）把一句话送进运行中的研究所，经群聊或私发；**该面的策略照常生效**（配额/禁言/冻结等具名拒原样透传，绝不假装已送达）。' +
       'recover/recoverStatus/readBack 是**会话级恢复原语**：写前必读（VMU_RESUME_WRITE_BEFORE_READ）、中断具名（绝不静默变 passed）、回读一致性可查。',
     parameters: {
-      action: param('string', 'status（默认）｜veto｜explainVeto｜liftVeto｜observerView｜openApproval｜approvalState｜decide｜queue｜gate｜dashboard｜inject｜recover｜recoverStatus｜readBack',
-        { required: true, enum: ['status', 'veto', 'explainVeto', 'liftVeto', 'observerView', 'openApproval', 'approvalState', 'decide', 'queue', 'gate', 'dashboard', 'inject', 'recover', 'recoverStatus', 'readBack'] }),
+      action: param('string', 'status（默认）｜veto｜explainVeto｜liftVeto｜observerView｜openApproval｜approvalState｜decide｜withdraw｜queue｜gate｜dashboard｜inject｜recover｜recoverStatus｜readBack',
+        { required: true, enum: ['status', 'veto', 'explainVeto', 'liftVeto', 'observerView', 'openApproval', 'approvalState', 'decide', 'withdraw', 'queue', 'gate', 'dashboard', 'inject', 'recover', 'recoverStatus', 'readBack'] }),
       scope: param('string', 'veto/observerView/dashboard/gate 的作用域；dashboard 只接受 global｜institution'),
       target: param('string', 'veto 的目标（可省＝覆盖整个作用域）'),
-      reason: param('string', 'veto/decide/liftVeto 的理由（vmu.human.vetoNeedsReason=true 时否决必填；紧急可后补）'),
+      reason: param('string', 'veto/decide/liftVeto/withdraw 的理由（withdraw 必填；vmu.human.vetoNeedsReason=true 时否决必填；紧急可后补）'),
       emergency: param('boolean', '紧急否决：允许理由后补（记录为 pending，不假装已给）'),
       veto_id: param('string', 'explainVeto/liftVeto 的目标否决 id'),
       member_id: param('string', 'gate 的主体（被闸对象 id，可省）'),
-      request_id: param('string', 'approvalState/decide/explainVeto 的审批 id'),
+      request_id: param('string', 'approvalState/decide/withdraw/explainVeto 的审批 id'),
       allow: param('boolean', 'decide：true＝批准、false＝否决（否决立即生效）'),
-      by: param('string', '做出该决定/解除否决的角色（liftVeto 必填；受 vmu.human.vetoLiftRoles 约束）'),
+      by: param('string', '做出该决定/解除否决/撤回的角色（liftVeto 必填；受 vmu.human.vetoLiftRoles 约束）'),
       subject: param('string', 'openApproval/gate 的主体说明'),
       domains: param('string', 'dashboard：逗号分隔的可见域；空＝仅聚合（private/dm 永不可见）'),
       requestId: param('string', 'openApproval 的调用方自定义 id（可省）'),
@@ -68,6 +68,10 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
           return Object.assign({ ok: true, action }, human().approvalState({ requestId: notEmpty(request_id), at }))
         }
         if (action === 'decide') return Object.assign({ ok: true, action }, human().decide({ requestId: notEmpty(request_id), allow: allow === true, reason: notEmpty(reason) || null, by: notEmpty(by) || null }))
+        // PHASE 6（目标 3 审计）: a PENDING approval can be WITHDRAWN through the tool face — the same path as every
+        // other human verb (no direct kernel call needed). Missing reason / second withdrawal surface as named
+        // refusals through the outer catch (VMU_INVALID_ARGUMENT / VMU_STATE).
+        if (action === 'withdraw') return Object.assign({ ok: true, action }, human().withdrawApproval({ requestId: notEmpty(request_id), by: notEmpty(by) || null, reason: notEmpty(reason) || null }))
         if (action === 'queue') return Object.assign({ ok: true, action }, human().queue())
         if (action === 'gate') {
           const at = Number.isFinite(Number(timeout_ms)) ? Number(timeout_ms) : null

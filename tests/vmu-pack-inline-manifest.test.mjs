@@ -202,6 +202,50 @@ async function assemble(packs, { reports = null, root = null } = {}) {
   try { await rm(dir, { recursive: true, force: true }) } catch { /* going away */ }
 }
 
+// =========================================================================================================
+// D. DUPLICATE SECTION NAMES ARE A NAMED REFUSAL ON THE REAL ENTRY PATH - and a UNIQUE set still loads
+// =========================================================================================================
+// PHASE 6 / goal-3 audit §11: `collectPackSections` used to have NO production call site (sections were registered
+// raw), so its "two packs declare the same prompt section" refusal only ever ran in tests. The entry now calls it;
+// this section proves the refusal BY NAME through `entry.apply` AND proves the fixture itself is not the reason.
+{
+  const dup = {
+    id: 'dup-section-pack',
+    sections: [
+      { name: 'deploy-dup-section', text: 'ONE' },
+      { name: 'deploy-dup-section', text: 'TWO' },
+    ],
+  }
+  const bad = await assemble([dup])
+  const errs = bad.handle.packErrors()
+  ok(errs.length === 1, 'D1. the duplicate-section manifest produces exactly ONE pack error (not a crash, not silence)', errs)
+  ok(errs.length === 1 && errs[0].code === 'VMU_PACK_CONFLICT',
+    'D2. ★ refused with the NAMED code VMU_PACK_CONFLICT (the same code collectPackSections throws)', errs.map((e) => e.code))
+  ok(errs.length === 1 && /same prompt section/.test(String(errs[0].message)),
+    'D3. and the message names the actual conflict (a duplicate section), not a generic failure', errs.map((e) => e.message))
+  ok(bad.handle.appliedPacks().some((a) => a.id === 'dup-section-pack') === false,
+    'D4. the refused pack is NOT recorded as applied (a named refusal is not a partial success)', bad.handle.appliedPacks())
+  try { await rm(bad.dir, { recursive: true, force: true }) } catch { /* going away */ }
+
+  // REVERSE: the SAME fixture shape with UNIQUE names must load - so the red above is the duplicate, not the fixture.
+  const good = {
+    id: 'uniq-section-pack',
+    sections: [
+      { name: 'deploy-uniq-a', text: 'A' },
+      { name: 'deploy-uniq-b', text: 'B' },
+    ],
+  }
+  const fine = await assemble([good])
+  ok(fine.handle.packErrors().length === 0,
+    'D5. the SAME manifest shape with UNIQUE section names loads with NO pack error (the fixture itself is valid)', fine.handle.packErrors())
+  ok(fine.handle.appliedPacks().some((a) => a.id === 'uniq-section-pack'),
+    'D6. and it is recorded as applied', fine.handle.appliedPacks())
+  const registered = (fine.handle.kernel.prompt.status().sections || []).map((s) => s.name)
+  ok(registered.includes('deploy-uniq-a') && registered.includes('deploy-uniq-b'),
+    'D7. both sections really reached the prompt pipeline (the production path registered them through the helper)', registered)
+  try { await rm(fine.dir, { recursive: true, force: true }) } catch { /* going away */ }
+}
+
 console.log('=== VMU PACK INLINE MANIFEST: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

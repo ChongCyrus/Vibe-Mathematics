@@ -294,3 +294,17 @@ pending（一个"看起来还能批"的幽灵）；已补镜像（以 `denied`�
 - **§11 · collectPackSections（选 a：入口真的用它）**：`vibe-math-vmu.js` 注册 pack sections 时改为
   `collectPackSections([manifest])`（此前是裸 `manifest.sections`）⇒ 同名/非法段名的**具名拒在生产路径上**；
   helper 不再是"只有测试用的导出"。入口/`vmu-turn`/v3 prompts 套件回归绿。
+
+## §13 两个尾巴的闭环（fixture ＋ 工具路径）
+
+- **端到端 fixture（入口真实路径）**：`tests/vmu-pack-inline-manifest.test.mjs` 新增 D 段——inline manifest（`config.packs`
+  文档化的形态，与文件夹 pack 走同一 `apply`+section 注册路径）声明**两个同名 section**，经 `entry.apply` ⇒ `packErrors()`
+  中**恰一条** `VMU_PACK_CONFLICT`（message 含 "same prompt section"），且该 pack **未进 `appliedPacks()`**；**反向**：同样的
+  清单换成两个**唯一**段名 ⇒ 零 packError、被记录为 applied、两段都出现在 `kernel.prompt.status().sections`（证明红的是重名，
+  不是 fixture 非法）。该套件 35→**42** 断言。
+- **`withdraw` 进工具动作表**：`vibe-math-vmu/tools/human.js` 的 `vibe_vmu_human` 增加 `withdraw` 动作（`request_id`＋`reason`，
+  落到 `kernel.human.withdrawApproval`，外层 catch 把拒绝转成带已登记 code 的 receipt）。**动作数由代码派生 = 16**；
+  `docs/03` 原文写 14，经核实**此前就已过期**（`inject` 已存在却不在表里）⇒ 现改为 16 并把 `inject`／`withdraw` 都列上。
+- **工具面测试**：`tests/vmu-human-gate.test.mjs` 新增 O 段：`toHostSpec(makeHumanSpec(...)).execute` 得到的**是 JSON 字符串**；
+  经工具开审批→`withdraw` ⇒ `state==='withdrawn'` 且 kernel 状态一致、pending 减一；无理由 ⇒ `VMU_INVALID_ARGUMENT`；
+  二次 ⇒ `VMU_STATE`。该套件 83→**89** 断言。

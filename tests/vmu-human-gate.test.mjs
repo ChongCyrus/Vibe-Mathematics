@@ -17,6 +17,7 @@ import { createControl, CODE as CT } from '../vibe-math-vmu/kernel/control.js'
 import { createTasks } from '../vibe-math-vmu/kernel/tasks.js'
 import { createResume } from '../vibe-math-vmu/kernel/resume.js'
 import { makeHumanSpec } from '../vibe-math-vmu/tools/human.js'
+import { toHostSpec } from '../vibe-math-vmu/host.js'
 
 let passed = 0
 let failed = 0
@@ -326,6 +327,34 @@ const queueUp = (h, req) => { try { h.gate(req) } catch (e) { return e } return 
   let decideAfter = null
   try { h.decide({ requestId: o2.id, allow: true }) } catch (e) { decideAfter = e }
   ok(!!decideAfter && decideAfter.code === 'VMU_STATE', 'a withdrawn approval cannot be decided afterwards', decideAfter && decideAfter.code)
+}
+
+// ── O. THROUGH THE TOOL FACE: withdraw is reachable, receipts are JSON strings, refusals carry registered codes ──
+{
+  const param = (type, description, opts) => Object.assign({ type, description }, opts || {})
+  const refusedTool = (code, message, hint) => ({ ok: false, code, message, hint })
+  const TOOL_NAMES = { human: 'vibe_vmu_human' }
+  const h = hu({})
+  const spec = toHostSpec(makeHumanSpec({ param, refused: refusedTool, TOOL_NAMES, kernel: { human: h } }))
+  ok(spec && Array.isArray(spec.parameters && spec.parameters) === false && typeof spec.execute === 'function',
+    'O0. the tool spec is the HOST shape (an execute function, not a raw internal spec)')
+  const call = async (args) => { const raw = await spec.execute(args, {}); return { raw, parsed: JSON.parse(raw) } }
+  const opened = await call({ action: 'openApproval', subject: 'tool-withdraw' })
+  ok(typeof opened.raw === 'string' && opened.parsed.ok === true && typeof opened.parsed.id === 'string',
+    'O1. openApproval through the TOOL returns a JSON STRING that parses to an object with an id', opened.parsed)
+  const before = h.queue().pending
+  const w = await call({ action: 'withdraw', request_id: opened.parsed.id, by: 'office', reason: 'withdrawn through the tool' })
+  ok(typeof w.raw === 'string' && w.parsed.ok === true && w.parsed.state === 'withdrawn',
+    'O2. ★ withdraw is REACHABLE through the tool face (no direct kernel call) and the receipt is a JSON string', w.parsed)
+  ok(h.approvalState({ requestId: opened.parsed.id }).state === 'withdrawn' && h.queue().pending === before - 1,
+    'O3. the receipt and the kernel state agree (state withdrawn; pending count dropped)', { state: h.approvalState({ requestId: opened.parsed.id }).state, pending: h.queue().pending })
+  const second = await call({ action: 'openApproval', subject: 'tool-no-reason' })
+  const noReason = await call({ action: 'withdraw', request_id: second.parsed.id })
+  ok(noReason.parsed.ok === false && noReason.parsed.code === 'VMU_INVALID_ARGUMENT',
+    'O4. withdrawing through the tool WITHOUT a reason is a named refusal (registered code, not a bare throw)', noReason.parsed)
+  const twice = await call({ action: 'withdraw', request_id: opened.parsed.id, reason: 'again' })
+  ok(twice.parsed.ok === false && twice.parsed.code === 'VMU_STATE',
+    'O5. a second withdrawal through the tool is refused with VMU_STATE', twice.parsed)
 }
 
 const guard = process.argv.includes('--self-probe')
