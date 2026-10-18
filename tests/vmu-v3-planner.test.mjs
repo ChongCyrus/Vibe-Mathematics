@@ -1053,7 +1053,9 @@ const promoteOnce = async (value) => {
     const json1 = await lib.exportRecord(r1.id, { format: 'json', allowInternal: true, includeHistory: true })
     ok(json1.currentDefect && json1.currentDefect.withdrawn === true, '★ library 有缺陷 ⇒ currentDefect.withdrawn===true', json1.currentDefect)
     const md1 = await lib.exportRecord(r1.id, { format: 'md', allowInternal: true })
-    ok(/current defect: proof withdrawn/.test(String(md1.text)), '★ markdown 里出现 current defect 行')
+    ok(String(md1.text).startsWith('---'), '★ md 第一个字符必须是 -（YAML frontmatter 必须第一行，defect 不得 prepend）')
+    ok(/^current_defect: withdrawn/m.test(String(md1.text)) || String(md1.text).includes('current_defect: withdrawn'),
+      '★ currentDefect 信息仍可读（在 frontmatter 字段里，不是正文 prepend）')
     const body2 = '# 已验证｜proof-2\n- ID: proof-2\n- 类型: 命题\n- 结论: 真\n- 概率: 1\n'
     const r2 = await lib.append({ kind: 'proposition', track: 'verified', title: '已验证｜proof-2', statement: '- ID: proof-2\n- 类型: 命题\n- 结论: 真\n- 概率: 1', body: body2 })
     const json2 = await lib.exportRecord(r2.id, { format: 'json', allowInternal: true })

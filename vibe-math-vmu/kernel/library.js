@@ -575,7 +575,17 @@ export function createLibrary({
     }
     const historyIncluded = { asked: includeHistory === true, count: revs.length }
     if (format === 'json') return { ok: true, format, visibility, history: historyIncluded, currentDefect, text: JSON.stringify({ head: body, body: expanded.body, history: revs }, null, 2) }
-    if (format === 'md') return { ok: true, format, visibility, history: historyIncluded, currentDefect, text: (currentDefect ? '> current defect: proof withdrawn (' + String(currentDefect.markerId || '') + ')\n\n' : '') + render(body, expanded.body) }
+    if (format === 'md') {
+      // ★ (a) machine-readable: the defect truth goes into the YAML frontmatter as a field. The blockquote form was
+      // prepended BEFORE `---`, which broke the one invariant every markdown/frontmatter parser relies on
+      // (frontmatter must start at character 0). The object field is removed from the meta view and replaced by a
+      // compact scalar; nothing human-facing is injected into the body.
+      const mdMeta = Object.assign({}, body)
+      delete mdMeta.currentDefect
+      if (currentDefect && currentDefect.withdrawn === true) mdMeta.current_defect = 'withdrawn (' + String(currentDefect.markerId || '') + ')'
+      else if (currentDefect && currentDefect.unresolved === true) mdMeta.current_defect = 'unresolved (' + String(currentDefect.code || '') + ')'
+      return { ok: true, format, visibility, history: historyIncluded, currentDefect, text: render(mdMeta, expanded.body) }
+    }
     return { ok: true, format, visibility, history: historyIncluded, currentDefect, manifest: body, text: expanded.body,
       package: { container: containerFinal, includeBody: bodyFinal, includeTrash: trashFinal } }
   },
