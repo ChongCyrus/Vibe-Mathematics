@@ -496,6 +496,7 @@
     "vibe-math-vmu/packs/v3/middleware/subquestions.js",
     "vibe-math-vmu/packs/v3/middleware/reports.js",
     "vibe-math-vmu/packs/v3/middleware/lean-gate.js",
+    "vibe-math-vmu/packs/v3/middleware/toolfilter.js",
     "vibe-math-vmu/packs/v3/middleware/methods.js",
     "vibe-math-vmu/packs/v3/middleware/verify.js",
     "vibe-math-vmu/packs/v3/prompts/sections.json",

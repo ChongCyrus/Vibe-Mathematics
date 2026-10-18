@@ -52,6 +52,7 @@ import { V3_PLANNER_MODULE } from './middleware/planner.js'
 import { V3_SUBQUESTIONS_MODULE } from './middleware/subquestions.js'
 import { V3_REPORTS_MODULE } from './middleware/reports.js'
 import { V3_LEAN_GATE_MODULE, V3_LEAN_PROMPT_POLICY } from './middleware/lean-gate.js'
+import { V3_TOOLFILTER_MODULE } from './middleware/toolfilter.js'
 import { V3_METHODS_MODULE } from './middleware/methods.js'
 import { V3_VERIFY_MODULE } from './middleware/verify.js'
 import { V3_GATES_MODULE } from './middleware/gates.js'
@@ -72,7 +73,7 @@ export const PACK = Object.freeze({
   // 会具名拒 `VMU_PACK_CONFLICT`（而不是静默替换 tracks/slots、两套门同时在线）。
   excludes: Object.freeze(['v3-core']),
   // P1-1：同一个 rId 的二次派发是**具名跳过**（不是静默、不是重复建任务）。码登记在清单里（R-d：包命名空间）。
-  codes: Object.freeze(['VMU_PACK_V3_DUPLICATE_DISPATCH', 'VMU_PACK_V3_LEAN_REQUIRED']),
+  codes: Object.freeze(['VMU_PACK_V3_DUPLICATE_DISPATCH', 'VMU_PACK_V3_LEAN_REQUIRED', 'VMU_PACK_V3_TOOL_NOT_PERMITTED', 'VMU_PACK_V3_TOOL_UNRESOLVED']),
   // 六个模块在运行期通过 loader 的能力门读 `vmu.records`；planner/methods/verify 还要 `vmu.turn`（K2 已把
   // 回合循环进 M2 服务目录）；verify 还读 `vmu.ballotbox`（**法定人数由内核强制**，见 verify.js 文件头）。
   // gates 读 `vmu.human` 但**不 require** 它：人性面只是"尽力镜像"，台账（records）才是事实源。
@@ -167,6 +168,16 @@ export const PACK = Object.freeze({
       failure: 'closed',
       capabilities: Object.freeze(['trigger-workflow']),
       module: V3_LEAN_GATE_MODULE,
+    },
+    {
+      // P1-7：工具过滤。挂在**宿主实际消费**的 `tools/pre-execute`（bridge 把 deny 映射成宿主的拒绝）；
+      // 只用 deny（该钩子上 rewriteArgs 被具名拒为 unsupported）；名单为空＝零策略，拿不到工具名＝fail-closed。
+      id: 'v3-toolfilter',
+      order: 300,
+      on: Object.freeze(['tools/pre-execute']),
+      failure: 'closed',
+      capabilities: Object.freeze(['deny']),
+      module: V3_TOOLFILTER_MODULE,
     },
     {
       // P0-4/P0-5：方法库 ＋ 发明上报。两个钩子：

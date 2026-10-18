@@ -100,6 +100,9 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.v3.debateMaxRounds', type: 'natural', def: 5, hot: HOT.H1, who: 'office', doc: 'v3 复刻：验证辩论的最大轮次。读者＝`packs/v3/middleware/verify.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记' },
   // ★ PHASE 6 · 目标 2 / P1-3：升迁阈值。★ reader 是 `packs/v3/middleware/planner.js`，★ 未登记/越界时回落 0.7（与声明默认同值）。
   // ★ PHASE 6 · P1-5：汇报三路。★ reader＝`packs/v3/middleware/reports.js`；★ 未登记时回落 file。
+  // ★ PHASE 6 · P1-7：工具过滤（★ 按【宿主实际注册名】比对；★ 调用期读取，不进值层）。★ 两张名单都空＝零机制。
+  { key: 'vmu.v3.toolAllow', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: 'v3 复刻：允许的宿主工具名白名单（空＝零策略）；非空时名单外/拿不到工具名 ⇒ 具名拒。读者＝`packs/v3/middleware/toolfilter.js` ✓' },
+  { key: 'vmu.v3.toolDeny', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: 'v3 复刻：禁止的宿主工具名黑名单（优先于 allow）；读者同上 ✓' },
   { key: 'vmu.v3.reportMode', type: 'enum', domain: ['file', 'push', 'both'], def: 'file', hot: HOT.H1, who: 'office', doc: 'v3 复刻：汇报三路模式（file＝写 reports 轨快照；push＝经 vmu.report 投递；both＝两者）。读者＝`packs/v3/middleware/reports.js` ✓' },
   { key: 'vmu.v3.reportIntervalMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: 'v3 复刻：汇报节流毫秒；0＝每个 tick 一次；>0 未到点具名 report-not-due。读者＝`packs/v3/middleware/reports.js` ✓' },
   { key: 'vmu.v3.promoteValueThreshold', type: 'number', def: 0.7, hot: HOT.H1, who: 'office', doc: 'v3 复刻：命题「价值/关键性」 ≥ 该值且未定论时自动晋升为问题（每 tick 至多一个）。读者＝`packs/v3/middleware/planner.js`；范围 [0,1]，越界/NaN 回落 0.7 ✓' },

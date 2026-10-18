@@ -20,6 +20,7 @@ import { execFileSync } from 'node:child_process'
 import { isRegisteredHook } from '../vibe-math-vmu/kernel/loader.js'
 import { isDeclaredTopic } from '../vibe-math-vmu/kernel/bus.js'
 import { V3_TICK_TOPIC } from '../vibe-math-vmu/packs/v3/middleware/tick.js'
+import { filterTool, V3_TOOLFILTER_MODULE, TOOL_FILTER_CODE, v3ToolFilterStatus } from '../vibe-math-vmu/packs/v3/middleware/toolfilter.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -293,6 +294,45 @@ console.log('=== 9. UNLOAD RETRACTS THE DECLARATIONS (the names stop being publi
   // The class next, not the adapter: a fresh install would publish nothing new (the declarations are the source).
   const reinstalled = await b.handle.adapter.install()
   ok(reinstalled && reinstalled.ok !== false, 'a re-install still succeeds (nothing to add)', reinstalled && reinstalled.ok)
+}
+
+// ── P1-7: tool filtering on tools/pre-execute (deny-only, host names, fail-closed, no unfiltered retry) ──────
+{
+  const records = {}
+  const api = (settings) => ({ setting: (k) => settings[k], services: { names: () => ['vmu.records'], get: () => records } })
+  const call = async (settings, payload) => V3_TOOLFILTER_MODULE.hooks['tools/pre-execute']({ api: api(settings), payload })
+  // ① allowed host tool (names are the HOST's actual names, not v3's old vibe_math_* names)
+  const allow = { 'vmu.v3.toolAllow': ['web_search', 'dsh-tool-pwsh'] }
+  ok((await call(allow, { tool: 'web_search' })) === undefined,
+    '★ allow list: a declared host tool (web_search) is NOT denied')
+  ok((await call(allow, { tool: 'dsh-tool-pwsh' })) === undefined,
+    '★ allow list: the prefixed host runtime name (dsh-tool-pwsh) is matched literally')
+  // ② outside the allow list -> NAMED deny (code + message + hint)
+  const denied = await call(allow, { tool: 'vibe_math_legacy_tool' })
+  ok(denied && denied.deny && denied.deny.code === TOOL_FILTER_CODE.denied,
+    '★ outside the allow list ⇒ 具名 deny with the registered code', denied && denied.deny)
+  ok(denied && denied.deny && /not on the allow list/.test(String(denied.deny.message)) && typeof denied.deny.hint === 'string' && denied.deny.hint.length > 0,
+    'the deny names the reason and carries a usable hint', denied && denied.deny && denied.deny.hint)
+  // ③ no resolvable tool name -> FAIL-CLOSED
+  const unresolved = await call(allow, {})
+  ok(unresolved && unresolved.deny && unresolved.deny.code === TOOL_FILTER_CODE.unresolved,
+    '★ no resolvable tool name ⇒ fail-closed (VMU_PACK_V3_TOOL_UNRESOLVED), never a silent allow', unresolved && unresolved.deny)
+  ok((await call({ 'vmu.v3.toolDeny': ['danger_tool'] }, {})).deny.code === TOOL_FILTER_CODE.unresolved,
+    'fail-closed also holds when only the DENY list is declared')
+  const dark = await call({ 'vmu.v3.toolDeny': ['danger_tool'] }, { tool: 'danger_tool' })
+  ok(dark && dark.deny && dark.deny.code === TOOL_FILTER_CODE.denied, 'deny list refuses the named tool', dark && dark.deny)
+  // ④ zero mechanism: both lists empty => no interception at all
+  ok((await call({}, {})) === undefined && (await call({}, { tool: 'anything' })) === undefined,
+    '★ zero mechanism: with no lists declared the filter does not intercept (even without a tool name)')
+  // ⑤ NO unfiltered retry: the module has no retry path; a denial is terminal and counted
+  const st = v3ToolFilterStatus()
+  ok(st.retries === 0, '★ the filter has NO retry path (retries === 0 after denials)', st)
+  ok(st.denied >= 2 && st.unresolved >= 2, 'denials and fail-closed refusals are counted', st)
+  // ⑥ pure decision table (same semantics without the bus)
+  ok(filterTool({ tool: 'x', allow: ['x'] }).allow === true && filterTool({ tool: 'y', allow: ['x'] }).allow === false,
+    'allow list is a whitelist (in ⇒ allow, out ⇒ deny)')
+  ok(filterTool({ tool: null, allow: ['x'] }).code === TOOL_FILTER_CODE.unresolved, 'missing tool + declared lists ⇒ unresolved')
+  ok(filterTool({ tool: null }).allow === true && filterTool({ tool: null }).zeroMechanism === true, 'missing tool + no lists ⇒ zero mechanism')
 }
 
 console.log('')
