@@ -238,7 +238,7 @@ export function v3VerifyStatus() {
 
 // ── 候选：未定论的命题（v3 buildVerifyCandidates `:2204-2230` 的等价面） ─────────────────────────────
 /** 可验证候选：命题卡且概率不是 1/0、状态不是已验证/已弃权。返回 `{items:[{recordId,id,card}], bad}`。 */
-export function listCandidates(records) {
+export function listCandidates(records, { fidelity = null } = {}) {
   const list = records.list({ track: 'propos', limit: 0 })
   const items = []
   const bad = []
@@ -252,6 +252,8 @@ export function listCandidates(records) {
     const card = parsed.card
     // P1-9（共同真源）：defect 撤回的命题**不再进入候选**——否则下一轮会把它重新验证/重新判“通过”。
     if (proofVerdict({ records, target: str(card.id) }).state === 'withdrawn') continue
+    // 内核 fidelity 的 `passedWithdrawn` 也要问（同一撤回语义的两份既有标记）。
+    if (fidelity && typeof fidelity.passedWithdrawnFor === 'function' && fidelity.passedWithdrawnFor(str(card.id))) continue
     if (card.概率 === 1 || card.概率 === 0) continue
     if (str(card.状态) === '已验证·真' || str(card.状态) === '已验证·假') continue
     if (card.优先级 === 'never') continue
@@ -346,7 +348,7 @@ function strongestReason(votes, verdict) {
  * ③ `journal` 轨（裁决记录）。verdict 不是 1/0 时**只**改卡 + journal（verified 只收定论）。
  * 这是 v3 `settleVerdict`（`:4269-4368`）命题分支的等价面。
  */
-export function settleProposition({ records, target, recordId, verdict, rule, at = null, by = 'v3-verify', round = 1, maxRoundsReached = false, votes = [], ballotId = null }) {
+export function settleProposition({ records, target, recordId, verdict, rule, at = null, by = 'v3-verify', round = 1, maxRoundsReached = false, votes = [], ballotId = null, fidelity = null }) {
   requireRecords(records, 'settleProposition')
   const value = clamp01(verdict)
   let rec
@@ -362,6 +364,11 @@ export function settleProposition({ records, target, recordId, verdict, rule, at
   if (proofVerdict({ records, target: str(target) }).state === 'withdrawn') {
     return refusal('VMU_PACK_V3_DEFECT_WITHDRAWN', 'the archived proof of ' + str(target) + ' was withdrawn by a defect marker',
       'a defect marker is the shared truth for every reader; reinstating requires a NEW settlement/card, recorded deliberately')
+  }
+  // 内核实真：fidelity 的 `passedWithdrawn` 标记同样拒绝再结算（真实内核标记，不是 pack 记忆）。
+  if (fidelity && typeof fidelity.passedWithdrawnFor === 'function' && fidelity.passedWithdrawnFor(str(target))) {
+    return refusal('VMU_PACK_V3_DEFECT_WITHDRAWN', 'the archived proof of ' + str(target) + ' was withdrawn by a fidelity defect marker',
+      'the fidelity registry records passedWithdrawn for this target; a settlement cannot silently reinstate it')
   }
   const status = value === 1 ? '已验证·真' : value === 0 ? '已验证·假' : '未定论'
   card.概率 = value
@@ -622,7 +629,7 @@ async function dispatchVerifier({ turn, target, question, round, verifier, requi
  * 推进一个候选：逐轮"派发 → 收票 → 结算/辩论"，**轮次有界**（`debateMaxRounds`）。
  * 返回 `{ok, settled, verdict?, rule?, rounds, maxRoundsReached, undecided?}`。
  */
-async function advanceCandidate({ records, ballotbox, turn, at, settings, state, candidate, human = null }) {
+async function advanceCandidate({ records, ballotbox, turn, at, settings, state, candidate, human = null, fidelity = null }) {
   const target = candidate.id
   const required = settings.required
   const ids = verifierIds(settings.verifierCount)
@@ -746,7 +753,7 @@ async function advanceCandidate({ records, ballotbox, turn, at, settings, state,
     }
     const settled = settleProposition({
       records, target, recordId: candidate.recordId, verdict, rule,
-      at, round, maxRoundsReached, votes: votes.items, ballotId: box.boxId,
+      at, round, maxRoundsReached, votes: votes.items, ballotId: box.boxId, fidelity,
     })
     if (settled.ok === true) {
       state.verdicts += 1
@@ -772,7 +779,9 @@ async function onTick(flat) {
   }
   state.lastTickAt = at
   const settings = readSettings(api)
-  const candidates = listCandidates(records)
+  let fidelity = null
+  try { if (typeof api.services.names === 'function' && api.services.names().includes('vmu.fidelity')) fidelity = api.services.get('vmu.fidelity') } catch { fidelity = null }
+  const candidates = listCandidates(records, { fidelity })
   if (candidates.items.length === 0) {
     state.lastSkip = { reason: 'no-candidates', tick: state.ticks }
     return { ok: true, skipped: 'no-candidates', at, badCandidates: candidates.bad.length }
@@ -789,7 +798,7 @@ async function onTick(flat) {
   const results = []
   try {
     for (const candidate of candidates.items) {
-      const advanced = await advanceCandidate({ records, ballotbox, turn, at, settings, state, candidate, human })
+      const advanced = await advanceCandidate({ records, ballotbox, turn, at, settings, state, candidate, human, fidelity })
       results.push({
         target: candidate.id, settled: advanced.settled === true,
         verdict: advanced.verdict === undefined ? (advanced.pendingVerdict === undefined ? null : advanced.pendingVerdict) : advanced.verdict,

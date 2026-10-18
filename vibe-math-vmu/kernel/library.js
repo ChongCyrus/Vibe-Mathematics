@@ -62,6 +62,9 @@ export function createLibrary({
   fingerprintAlgo = (settings && settings['vmu.fingerprint.algo']) || 'sha256',
   fingerprintTruncate = (() => { const v = Number(settings && settings['vmu.fingerprint.truncate']); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0 })(),
   fingerprintIncludeMeta = (settings && settings['vmu.fingerprint.includeMeta']) === true,
+  // P1-9: optional read-only lookup of the CURRENT defect truth (`passedWithdrawn`). History rows keep the old body
+  // (a historical fact); the export's `currentDefect` is the current truth. Absent ⇒ null (zero mechanism).
+  defectLookup = null,
   // ROUND 230: the tags family (`vmu.tags.*`).
   tagsControlled = (settings && settings['vmu.tags.controlled']) === true,
   tagsMaxDepth = (() => { const v = Number(settings && settings['vmu.tags.maxDepth']); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 3 })(),
@@ -554,15 +557,22 @@ export function createLibrary({
     }
     const expanded = await this.expand(rec.id, {})   // ROUND 234: a sibling method, not a lexical name
     const revs = includeHistory ? await revisionFiles(rec.file) : []
+    // P1-9: history rows are FACTS about the past; `currentDefect` is the CURRENT truth. The verified track's defect
+    // marker (`fidelity.passedWithdrawn`) is looked up for the card's logical `- ID:` anchor, never guessed from a title.
+    const idAnchor = /(?:^|\n)- ID:\s*(.+)/.exec(String(expanded.body || ''))
+    const proofTarget = idAnchor ? idAnchor[1].trim() : String(rec.id)
+    const currentDefect = typeof defectLookup === 'function' ? defectLookup(proofTarget) : null
     const body = {
       id: rec.id, kind: rec.kind, title: rec.title, status: rec.status, owner: rec.owner,
       fingerprint: rec.fingerprint, visibility, updatedAt: rec.updatedAt,
       references: rec.references || [], statement: rec.statement,
+      // P1-9: a reader that wants "current proof" must use this; `history[]` is explicitly historical.
+      currentDefect,
     }
     const historyIncluded = { asked: includeHistory === true, count: revs.length }
-    if (format === 'json') return { ok: true, format, visibility, history: historyIncluded, text: JSON.stringify({ head: body, body: expanded.body, history: revs }, null, 2) }
-    if (format === 'md') return { ok: true, format, visibility, history: historyIncluded, text: render(body, expanded.body) }
-    return { ok: true, format, visibility, history: historyIncluded, manifest: body, text: expanded.body,
+    if (format === 'json') return { ok: true, format, visibility, history: historyIncluded, currentDefect, text: JSON.stringify({ head: body, body: expanded.body, history: revs }, null, 2) }
+    if (format === 'md') return { ok: true, format, visibility, history: historyIncluded, currentDefect, text: (currentDefect ? '> current defect: proof withdrawn (' + String(currentDefect.markerId || '') + ')\n\n' : '') + render(body, expanded.body) }
+    return { ok: true, format, visibility, history: historyIncluded, currentDefect, manifest: body, text: expanded.body,
       package: { container: containerFinal, includeBody: bodyFinal, includeTrash: trashFinal } }
   },
 

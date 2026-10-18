@@ -643,6 +643,9 @@ export function createKernel({
   // PHASE 6 (goal-3 audit, half-built pair): the CONSTRUCTION-TIME tracks are kept, because `retractTracks()` must be
   // able to restore exactly what the kernel started with after a pack that declared tracks is unloaded.
   const initialTracks = tracks || settings['vmu.records.tracks']
+  // P1-9: the library is created BEFORE the fidelity registry, but history exports must be able to say
+  // "a defect marker withdrew this proof". A holder is set once fidelity exists (never a forward reference).
+  const fidelityRef = { current: null }
   let library = root
     ? createLibrary({
       root,
@@ -650,6 +653,9 @@ export function createKernel({
       headListAt: settings['vmu.records.headListAt'],
       truncateMode: settings['vmu.records.truncateMode'],
       fingerprintPolicy: settings['vmu.records.fingerprintPolicy'],
+      // P1-9: history rows keep the OLD body (that is a historical fact), but the export must also carry the
+      // CURRENT truth: `currentDefect` asks the fidelity marker, so a reader cannot mistake history for current proof.
+      defectLookup: (target) => (fidelityRef.current && typeof fidelityRef.current.passedWithdrawnFor === 'function' ? fidelityRef.current.passedWithdrawnFor(target) : null),
       // THE PATH POLICY REACHES THE WRITE SURFACE (docs/04 搂11): the library gates its writes through
       // kernel/guard.js, so `vmu.safety.pathPolicy` is a consumer rather than a declaration.
       // TASK-163: it gets the READ-ONLY LIVE VIEW (not the raw object) — a consumer handed the raw settings
@@ -911,6 +917,8 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // NAMED as `durable:false` by the module, not silently ignored).
   const fidelity = createFidelityRegistry({ clock, log, bus,
     fs: host && typeof host.writeText === 'function' && typeof host.readText === 'function' ? host : null })
+  // ...and the library's history export can now ask the CURRENT truth (P1-9); assignment (not a forward call).
+  fidelityRef.current = fidelity
   // ROUND 2 (task-14, vmu-assistant's contract): the REPORTING face. It has NO internal timer by design ("a report
   // never drives anything"), so the entry advances it at the turn boundary; `deliver` is the transport (a missing one
   // is a NAMED refusal, not a silent drop) and `audit` is where parameter changes are recorded.
@@ -1475,6 +1483,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // it through the capability-gated catalogue. It never drives anything (`drives:false` on every receipt); `emit`
     // only DELIVERS an already-declared report, so listing it is safe for a module with `trigger-workflow`.
     'vmu.report': report,
+    // PHASE 6 / P1-9: the fidelity registry already OWNS the defect markers (`passedWithdrawn`), but a pack had no
+    // way to ask it - the marker was write-only. Exposing the READ-ONLY predicate (`passedWithdrawnFor`) lets the
+    // verified read points check the same truth the kernel writes. It mutates nothing through this seam.
+    'vmu.fidelity': fidelity,
   })
   const loader = createLoader({
     // (甲) PRODUCTION GOES THROUGH THE GUARD: this facade used to answer `null` when there was no durable root,

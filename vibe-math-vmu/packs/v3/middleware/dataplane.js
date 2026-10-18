@@ -556,10 +556,12 @@ const timeText = (ms) => (Number.isFinite(ms) ? new Date(ms).toISOString() : '')
 const stripTime = (s) => String(s).split('\n').filter((l) => l.indexOf('- 时间:') !== 0).join('\n').trim()
 
 /** 找到某个源卡的 Verified 卡（`- ID:` 等于源 id）。找不到 ⇒ null，绝不猜。 */
-export function findVerified(records, sourceId) {
+export function findVerified(records, sourceId, { fidelity = null } = {}) {
   // ★ P1-9 共同真源：defect 撤回后，verified 卡**不再被这个读点看见**（返回 null，而非返回旧证明）。
   const defect = latestDefect({ records, target: String(sourceId) })
   if (defect.defect && defect.defect.status === 'withdrawn') return null
+  // 内核侧的 fidelity defect（`passedWithdrawn`）是另一份已存在的标记：读点也必须问它，否则它只是写入没人看。
+  if (fidelity && typeof fidelity.passedWithdrawnFor === 'function' && fidelity.passedWithdrawnFor(String(sourceId))) return null
   const heads = records.list({ track: 'verified', limit: 0 })
   for (const h of heads.items) {
     const rec = records.get({ id: h.id })
@@ -589,12 +591,17 @@ function trustedContent(kind, card) {
  * · 命题：概率必须是 1 或 0；· 问题：状态必须是`已解决`。否则 **具名拒** `VMU_STATE`（不是沉默地不写）。
  * · `written:false, unchanged:true` 表示内容没变（时间行不参与比较）—— 与 v3 `writeVerifiedCardIfChanged` 同义。
  */
-export function promoteVerified({ records, sourceId, at = null, by = null, capBytes = null } = {}) {
+export function promoteVerified({ records, sourceId, at = null, by = null, capBytes = null, fidelity = null } = {}) {
   if (!records || typeof records.get !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'promoteVerified needs a vmu.records handle', 'pass { records: kernel.records }')
   const src = records.get({ id: sourceId })
   const parsed = parseCard(src.body)
   if (!parsed.ok) throw refuse('VMU_INVALID_ARGUMENT', 'record ' + String(sourceId) + ' is not a parsable v3 card: ' + parsed.reason, 'only problem/proposition/method cards can be promoted')
   const card = parsed.card
+  // ★ P1-9：内核 fidelity 的 `passedWithdrawn` 标记必须先问 —— 键是**卡片的逻辑 id**（不是记录 id）。
+  if (fidelity && typeof fidelity.passedWithdrawnFor === 'function' && fidelity.passedWithdrawnFor(String(card.id))) {
+    throw refuse('VMU_PACK_V3_DEFECT_WITHDRAWN', 'archived proof of ' + String(card.id) + ' was withdrawn by a fidelity defect marker',
+      'the fidelity registry already records passedWithdrawn for this target; a new attempt cannot silently reinstate it')
+  }
   // ★ P1-9：被 defect 撤回的对象**不能再进 verified 轨**（否则“撤回”会被下一次结算悄悄撤销）。
   const verdictOfDefect = latestDefect({ records, target: String(card.id) })
   if (verdictOfDefect.defect && verdictOfDefect.defect.status === 'withdrawn') {

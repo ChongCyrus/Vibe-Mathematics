@@ -1,4 +1,7 @@
 // vmu kernel audit — append-only, redact-before-store, named write failure, counted ring truncation.
+// ★ NOT CURRENT PROOF (P1-9): every row is a HISTORICAL FACT ("something passed at that time"). A later defect
+//   withdrawal changes the CURRENT truth — which is read from the fidelity defect marker / verified read points —
+//   it does not rewrite this log. A reader asking "is this proof valid NOW?" must not answer it from audit rows.
 // Spec: docs/21-observability-and-operations.md §2 · docs/07-durability-library.md §4.9 ·
 //       docs/20-security-privacy-and-compliance.md §6.  Codes: VMU_AUDIT_WRITE_FAILED / VMU_IO_FAILED.
 // Invariants: no mutate/delete entry point is exported; redaction happens BEFORE the row is stored;

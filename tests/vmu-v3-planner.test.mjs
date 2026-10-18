@@ -972,6 +972,40 @@ const promoteOnce = async (value) => {
   ok(finalTitles('proj-c') === 1, '完成记录恰好一条')
 }
 
+// ── 22. P1-9（内核侧）：真实 fidelity `passedWithdrawn` 标记必须让 verified 读点读不到 passed ─────────────
+{
+  const dp = await import('../vibe-math-vmu/packs/v3/middleware/dataplane.js')
+  const vf = await import('../vibe-math-vmu/packs/v3/middleware/verify.js')
+  const h = boot({ overrides: { 'vmu.v3.planMinIntervalMs': 0 } })
+  await h.loader.apply(PACK)
+  const fid = h.kernel.fidelity
+  ok(fid && typeof fid.passedWithdrawnFor === 'function', '内核 fidelity 暴露 passedWithdrawnFor（标记不再只写不读）')
+  for (const id of ['p-bad', 'p-ok']) {
+    writeCard({ records: h.kernel.records, kind: 'proposition', card: { id, 标题: '命题 ' + id, 概率: 1, 状态: '已验证·真', 陈述: '陈述 ' + id + '。' } })
+    const rec = loadCardIndex(h.kernel.records, 'propos', 'proposition').items.find((p) => p.id === id)
+    dp.promoteVerified({ records: h.kernel.records, sourceId: rec.recordId, at: 1000 })
+  }
+  ok(dp.findVerified(h.kernel.records, 'p-ok', { fidelity: fid }) !== null, '反向：无 defect 的 verified 仍读得到 passed')
+  const declared = await fid.declareDefect({ target: 'p-bad', by: 'office', note: 'the formalisation drops one hypothesis' })
+  ok(declared && declared.ok === true && declared.marker && declared.marker.passedWithdrawn === true,
+    '★ 用真实 fidelity 标记（不是 fake）：declareDefect 写入 passedWithdrawn', declared && declared.marker)
+  ok(declared.durable === false, '没有 fs 接缝时如实报 durable:false（不假装已持久化）', declared.durable)
+  const predicate = fid.passedWithdrawnFor('p-bad')
+  ok(predicate && predicate.withdrawn === true && predicate.markerId === declared.marker.markerId,
+    'passedWithdrawnFor 读回同一条标记', predicate)
+  ok(dp.findVerified(h.kernel.records, 'p-bad', { fidelity: fid }) === null,
+    '★ 真实标记后：findVerified（带 fidelity）读不到“通过”')
+  let refused = null
+  try { dp.promoteVerified({ records: h.kernel.records, sourceId: loadCardIndex(h.kernel.records, 'propos', 'proposition').items.find((p) => p.id === 'p-bad').recordId, fidelity: fid }) } catch (e) { refused = e }
+  ok(refused && refused.code === 'VMU_PACK_V3_DEFECT_WITHDRAWN', '★ 真实标记后：promoteVerified 拒绝重新归档', refused && refused.code)
+  writeCard({ records: h.kernel.records, kind: 'proposition', card: { id: 'p-cand-bad', 标题: '命题 c', 概率: 0.5, 陈述: 'x' } })
+  writeCard({ records: h.kernel.records, kind: 'proposition', card: { id: 'p-cand-ok', 标题: '命题 d', 概率: 0.5, 陈述: 'y' } })
+  await fid.declareDefect({ target: 'p-cand-bad', by: 'office', note: 'unfaithful statement' })
+  const ids = vf.listCandidates(h.kernel.records, { fidelity: fid }).items.map((c) => c.id)
+  ok(ids.includes('p-cand-ok') && !ids.includes('p-cand-bad'),
+    '★ 真实标记后：listCandidates 排除该对象、不误伤正常对象', ids)
+}
+
 console.log('')
 console.log('=== V3 PLANNER (P0-2 + P0-3): ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length > 0) for (const f of failures) console.error('  - ' + f)

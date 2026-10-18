@@ -142,6 +142,21 @@ export function createFidelityRegistry(opts) {
     return { ok: true, vote: FIDELITY_ABSTENTION_VOTE, enforced: true, reason: 'fidelity-defect', marker: f.markerId, note: f.note, declared, isRefutation: false }
   }
 
+  /**
+   * 纯谓词（P1-9 的共读真源）：该对象是否有一条 `passedWithdrawn:true` 的 defect 标记。
+   * 返回 `{ok:true,target,withdrawn:true,markerId,note,by,at}` 或 `null`。**证明读点（verified 面）必须调用它**，
+   * 否则 `declareDefect` 写下的 `passedWithdrawn` 就只是一行没人看的字。
+   */
+  const passedWithdrawnFor = (q) => {
+    const target = targetSafe(typeof q === 'string' ? q : (q && q.target))
+    if (!target) return null
+    const rec = defects.get(target)
+    if (!rec) return null
+    const hit = (Array.isArray(rec.history) ? rec.history : []).filter((m) => m && m.passedWithdrawn === true).pop()
+    if (!hit) return null
+    return { ok: true, target, withdrawn: true, markerId: hit.markerId, note: hit.note, by: hit.by, at: hit.at }
+  }
+
   /** 重载耐久 marker（在 `store`/`fs` 装好之后调用一次，像作业恢复那样）。 */
   const loadDefects = async () => {
     if (!fsSeam) {
@@ -180,7 +195,7 @@ export function createFidelityRegistry(opts) {
 
   const status = () => ({ ok: true, durable: !!fsSeam, defects: defects.size, declared: defectsDeclared, abstentionsEnforced, dir: fsSeam ? FIDELITY_DEFECT_DIR : null })
 
-  return { declareDefect, abstentionFor, applyAbstention, loadDefects, view, status, trail: () => trail.slice() }
+  return { declareDefect, abstentionFor, applyAbstention, passedWithdrawnFor, loadDefects, view, status, trail: () => trail.slice() }
 }
 
 export default createFidelityRegistry
