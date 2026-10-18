@@ -123,6 +123,9 @@ import { createReproPack } from './repropack.js'
 import { createLegalEntity } from './partnership.js'
 import { createReviewers } from './reviewers.js'
 import { SETTING_DEFS, screenSettings, resolveSettings, validateValue, unenforcedReport } from '../settings/schema.js'
+// PHASE 6 / P0 (goal-3 audit R1/R3): ONE reader for "configured value, else the DECLARED default". Every read below
+// that may see an unconfigured key goes through it, so the declared default has one home (settings/schema.js).
+import { readSetting } from './settings-defaults.js'
 // ROUND 2 (task-14): the four new faces' factories + the ONE id minter (D: "id 不可复用").
 //   · ids.js      - reader-a's primitive; `bindIds` binds the module-level singleton the ~20 id-minting modules import;
 //   · resume.js   - recovery primitives + the projection wrapper this file attaches;
@@ -1473,10 +1476,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       // 修在【访问器】而不是每个调用点：★ 说谎的是 API，★ 不是调用者。★ 要区分「操作员到底设过没有」的调用方，
       // 仍可走 `settingDef()`／`settingSource()`（★ 它们分别报声明与来源，★ 不被这里合并）✓
       setting: (k) => {
-        const raw = settings[k]
-        if (raw !== undefined) return raw
-        const def = SETTING_DEFS.find((d) => d.key === k)
-        return def && Object.prototype.hasOwnProperty.call(def, 'def') ? def.def : undefined
+        // PHASE 6 / P0 (goal-3 audit R3): this accessor already fell back to the declared default; it now does so
+        // through the ONE reader, so the M1 `setting:` predicate (same reader) and M2 modules give the same answer.
+        return readSetting(settings, k)
       },
       get: (name) => { const id = String(name === undefined || name === null ? '' : name); return middlewareServiceCatalog()[id] || null },
       names: () => { const cat = middlewareServiceCatalog(); return Object.keys(cat).filter((k) => cat[k]).sort() },
@@ -1792,9 +1794,11 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     meeting: (opts = {}) => {
       const id = (opts && typeof opts.id === 'string' && opts.id) ? opts.id : 'm-' + (++liveSeq)
       const made = createMeeting(Object.assign({ bus, clock, deliver,
-        roundTimeoutMs: settings['vmu.meetings.roundTimeoutMs'] || 0,
-        quotesPerMessageMax: settings['vmu.meetings.quotesPerMessageMax'] || 0,
-        quoteDepthMax: settings['vmu.meetings.quoteDepthMax'] || 0,
+        // PHASE 6 / P0 (goal-3 audit R1): these used to read raw and fall back to 0, turning the declared caps OFF.
+        // The declared defaults (2 / 3) now come from the ONE reader, and an unconfigured deployment enforces them.
+        roundTimeoutMs: readSetting(settings, 'vmu.meetings.roundTimeoutMs'),
+        quotesPerMessageMax: readSetting(settings, 'vmu.meetings.quotesPerMessageMax'),
+        quoteDepthMax: readSetting(settings, 'vmu.meetings.quoteDepthMax'),
         isPaused: () => controlState.state === 'paused' }, opts, { id }))
       // E2: the MEETING factory receives `deliver` on construction AND hands it to every meeting it makes.
       noteSeam('deliver', 'meetings', made ? deliver : null)

@@ -356,6 +356,7 @@
     "vibe-math-vmu/kernel/script-bridge.js",
     "vibe-math-vmu/kernel/registry.js",
     "vibe-math-vmu/kernel/index.js",
+    "vibe-math-vmu/kernel/settings-defaults.js",
     "vibe-math-vmu/tools/transaction.js",
     "vibe-math-vmu/kernel/pack.js",
     "vibe-math-vmu/kernel/work.js",

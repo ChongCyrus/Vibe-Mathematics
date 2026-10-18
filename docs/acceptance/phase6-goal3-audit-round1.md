@@ -91,3 +91,17 @@
 - **完全没看**：其余约 70 个 kernel 模块（audit／crypto／governance 等只在上轮看过片段）、`packs/v5r/**` 全部、`packs/v3/prompts/**`（只核了声明）、`host-*.js` 除上述外的 6 个、`docs/acceptance/**` 仅按需检索（348 份未通读）、`docs/00-02/06-28` 的绝大多数正文。
 - **未做**：没有为 R1–R3 跑真机内核行为探针（结论来自代码路径＋声明对照）；没有跑全量 T1；`scripts/` 侧门禁未纳入。
 - **诚实边界**：§1 的 R1–R3 是**静态可判定**的（缺省值→分支），但"默认部署实际表现"仍需一次真机确认；§2/§3 的路径结论以"调用点 grep 为空"为依据，未见调用点 ≠ 永远不存在（覆盖面即上文）。
+
+## §7 修复记录（同阶段修复轮，非审计结论）
+
+- **一类问题一个助手**：新增 `vibe-math-vmu/kernel/settings-defaults.js`（`readSetting(settings, key)`：配置值优先，否则取
+  `SETTING_DEFS` 的 `def`；`declaredDefault`／`settingDeclaration` 同源）。四扇门全部改走它：
+  `kernel/library.js`（storeMode）、`kernel/retention.js`（storeMode）、`kernel/index.js`（quotesPerMessageMax／quoteDepthMax，
+  另把 `api.setting` 也统一到同一助手）、`kernel/rules.js`（M1 `setting:` 谓词；`kernel/bus.js` 的 handler `setting` 闭包同步改）。
+- **行为按 schema 对齐**：storeMode 缺省 ⇒ `diff`（不再 full）；引用上限缺省 ⇒ 2／3（不再 0 关闭）；
+  `tests/vmu-library-revisions.test.mjs` 的旧期望（full）随之更新为 diff。
+- **防回归**：`tests/vmu-kernel.test.mjs` 新增 "P0-fallback" 段（助手语义＋四扇门行为＋M1 规则匹配＋裸读扫描与报告），
+  旧基线 185 断言 → 今 **212**（作业数不变，未新增测试文件）。
+- **未改**：`settings/schema.js`（schema 是声明真源）；R4（`vmu.middleware.onFailure` 的 `def:'closed'` 与"按钩子默认"的
+  文档文本冲突）**留给你裁定**——把 `closed` 变成实际默认会改变四个观测钩子的失败策略，故本轮未动，只在注释里留了裁决说明。
+- **派生面**：零机制矩阵新增 `settings-defaults` 的 `EXPECT_NA` 裁定行；`regen-all --check` 16/16；preflight／check-docs 通过。

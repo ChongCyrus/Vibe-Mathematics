@@ -251,7 +251,13 @@ const CORE_DEFS = Object.freeze([
   // ROUND 294: 三段逐条目字段的【全局默认值】（05 卷 §L77/§L81/§L63；现由 kernel/bus.js 的条目规范化读取 ✓）.
   { key: 'vmu.middleware.enabled', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: "条目未声明 enabled 时的默认（false ⇒ 新条目默认【登记但不调用】；★ 条目自身的 enabled 优先 ✓）" },
   { key: 'vmu.middleware.order', type: 'integer', def: 1000, hot: HOT.H2, who: 'office', doc: "条目未声明 order 时的默认排序键（越小越先；同级按 id 字典序 ✓）" },
-  { key: 'vmu.middleware.onFailure', type: 'enum', domain: ['closed', 'open', 'skip'], def: 'closed', hot: HOT.H2, who: 'office', doc: "条目未声明 failure 时的默认失败策略（★ 条目自身优先，其次本键，再次按钩子的内置默认 ✓）" },
+  // ★★★★★★★ PHASE 6 · 轮 17（Lead 裁决，回应目标 3 审计的 C5）：`def` 从 `'closed'` 改为 `''`（中性）。
+  // WHY: the per-hook policy in `HOOK_REGISTRY` (`DEFAULT_FAILURE`; observation hooks are `open`) IS the designed
+  // semantics - "the policy lives in the declaration" - and a global `closed` would silently turn every observation hook
+  // fail-closed, so a throwing OBSERVATION middleware would start BLOCKING tool calls. That is a behaviour change nobody
+  // asked for, and it is not what the code ever did. The schema row was the thing that lied: this key has no single
+  // scalar default, and its honest default is "whatever each hook declares". Empty string = neutral = per-hook.
+  { key: 'vmu.middleware.onFailure', type: 'enum', domain: ['', 'closed', 'open', 'skip'], def: '', hot: HOT.H2, who: 'office', doc: "条目未声明 failure 时的默认失败策略（★ 缺省 `''`＝**按每个钩子在登记表里声明的策略** ✓；显式设 closed/open/skip 才会覆盖所有条目 —— ★ 注意 closed 会让观测类钩子也挡住操作）" },
   { key: 'vmu.middleware.dryRun', type: 'boolean', def: false, hot: HOT.H0, who: 'office', doc: '干跑（只报不做）' },
 
   // ---- packs --------------------------------------------------------------------------------

@@ -15,6 +15,11 @@
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
 
+// PHASE 6 / P0 (goal-3 audit R3): a `setting:` predicate must see the same value M2's `api.setting()` sees. The bus
+// hands this engine its own `setting` closure (now the declared-default reader); for a direct/offline evaluation the
+// engine falls back to the same reader instead of re-implementing "raw settings[..], perhaps undefined".
+import { readSetting } from './settings-defaults.js'
+
 /** The predicate whitelist (docs/05 §5.2). Keys outside this list are refused at compile time. */
 export const PREDICATES = Object.freeze(['tool', 'member', 'role', 'phase', 'arg', 'setting', 'count', 'subject', 'match', 'all', 'any', 'not'])
 
@@ -197,7 +202,7 @@ export function createRulesEngine({
       }
       case 'setting': {
         const [op, value] = readOp(want, 'eq', undefined)
-        const current = typeof ev.__settingFn === 'function' ? ev.__settingFn(want.key) : settings[want.key]
+        const current = typeof ev.__settingFn === 'function' ? ev.__settingFn(want.key) : readSetting(settings, want.key)
         return compare(op, current, value)
       }
       case 'count': {

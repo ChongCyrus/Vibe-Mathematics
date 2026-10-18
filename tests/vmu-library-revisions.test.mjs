@@ -31,7 +31,7 @@ let id = null
   ok(c1.ok === true && c1.rev === 1 && c1.at === fixed && c1.step === 'done', 'commit trace has rev/at(clock)/step')
   ok(c1.by === 'acad' && c1.reason === 'first freeze' && typeof c1.fingerprint === 'string', 'commit records who/why and the fingerprint')
   const list = await lib.revisions({ id })
-  ok(list.total === 1 && list.dropped === 0 && list.storeMode === 'full', 'revisions() lists with total/dropped/storeMode')
+  ok(list.total === 1 && list.dropped === 0 && list.storeMode === 'diff', 'revisions() lists with total/dropped/storeMode (declared default diff)')
   const r1 = await lib.revision({ id, rev: 1 })
   ok(r1.ok === true && r1.by === 'acad' && r1.reason === 'first freeze' && r1.at === fixed, 'revision() reads back the trace')
   ok(r1.body.includes('n^2+n'), 'revision() returns the frozen body')

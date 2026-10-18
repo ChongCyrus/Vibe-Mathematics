@@ -13,11 +13,12 @@
 // requires the zero-mechanism assertion to fail.
 
 import { readFile, writeFile, mkdtemp, mkdir, rm } from 'node:fs/promises'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { makeFakeHost } from './helpers/math-computation-fake-seam.mjs'
+import { readSetting, declaredDefault } from '../vibe-math-vmu/kernel/settings-defaults.js'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -781,6 +782,120 @@ if (SELF_PROBE) {
   ok(bounded.every((key) => kd.status({ detail: "full" })[key] !== undefined),
     "D4: every bounded section is returned IN FULL for detail:full - nothing is lost, only requested")
 }
+// ── PHASE 6 · goal 3 P0: "未配置 ⇒ 声明默认" must hold on EVERY door ───────────────────────────────────────────
+// What broke before this block existed (goal-3 audit round 1, R1/R2/R3): the kernel does not materialise schema
+// defaults, and FOUR readers each invented a fallback - two of which said 'full' where the schema says 'diff', one said
+// 0 where the schema says 2/3, and the M1 predicate saw `undefined` while M2 saw the declared default. The repair is
+// ONE reader (kernel/settings-defaults.js); these assertions pin the reader AND its four call sites, and the last one
+// makes any NEW bare read visible.
+const FALLBACK_KEYS = [
+  ['vmu.records.history.storeMode', 'diff'],
+  ['vmu.meetings.quotesPerMessageMax', 2],
+  ['vmu.meetings.quoteDepthMax', 3],
+]
+{
+  ok(FALLBACK_KEYS.length === 3, 'P0-fallback: the three audited keys are listed, so the checks below cannot run on an empty list')
+  for (const [key, expected] of FALLBACK_KEYS) {
+    ok(readSetting({}, key) === expected, 'P0-fallback: unconfigured ' + key + ' reads as its DECLARED default ' + JSON.stringify(expected), readSetting({}, key))
+    ok(declaredDefault(key) === expected, 'P0-fallback: the declared default really comes from the schema table (' + key + ')', declaredDefault(key))
+  }
+  ok(readSetting({ 'vmu.records.history.storeMode': 'full' }, 'vmu.records.history.storeMode') === 'full',
+    'P0-fallback: a configured value WINS over the declared default (the reader is not a hard-coded default)')
+  ok(readSetting(undefined, 'vmu.meetings.quotesPerMessageMax') === 2 && readSetting(null, 'vmu.meetings.quotesPerMessageMax') === 2,
+    'P0-fallback: a missing settings object still yields the declared default (no undefined leaking into a consumer)')
+  ok(readSetting({}, 'vmu.not.a.declared.key') === undefined,
+    'P0-fallback: an UNDECLARED key still reads undefined - the reader does not invent defaults for unknown names')
+}
+
+// DOOR 1 (library): the diff-mode baseline protection is only reachable when the default is really 'diff'.
+{
+  const root = await mkdtemp(join(tmpdir(), 'vmu-def-lib-'))
+  const kl = m.createKernel({ clock, root })
+  const added = await kl.library.append({ kind: 'proposition', statement: 'p0 default storeMode', title: 'p0', owner: 'acad' })
+  await kl.library.commitRevision({ id: added.id, by: 'acad', reason: 'baseline' })
+  const removed = await kl.library.removeRevision({ id: added.id, rev: 1 }).then(() => null, (e) => e)
+  ok(removed && removed.code === 'VMU_RETENTION_CONFLICT',
+    'P0-fallback: with an EMPTY settings object, storeMode is diff ⇒ the baseline revision is protected (before the fix the default was full and this delete succeeded)', removed && removed.code)
+  await rm(root, { recursive: true, force: true })
+}
+
+// DOOR 2 (retention): its config view must report the same declared default.
+{
+  const kr = m.createKernel({ clock })
+  ok(kr.retention.status().config.historyStoreMode === 'diff',
+    'P0-fallback: retention sees the declared storeMode default (diff) when nothing configured', kr.retention.status().config.historyStoreMode)
+}
+
+// DOOR 3 (meeting factory): the quote caps are machine-enforced at their DECLARED defaults.
+{
+  const kq = m.createKernel({ clock })
+  const mt = kq.meeting({ id: 'p0-caps', roster: ['a', 'b'] })
+  await mt.convene('agenda')
+  await mt.openRound({ members: ['a', 'b'] })
+  const folded = await mt.speak('a', 'one quote', { quotes: [{ id: 'q1', depth: 5 }] })
+  ok(folded && folded.ok === true && folded.folded === 1,
+    'P0-fallback: quoteDepthMax is 3 by default, so a depth-5 quote is FOLDED and counted (before the fix the cap was 0 = off)', JSON.stringify(folded && folded.folded))
+  const overCap = await mt.speak('b', 'three quotes', { quotes: [{ id: 'q1' }, { id: 'q2' }, { id: 'q3' }] }).then(() => null, (e) => e)
+  ok(overCap && overCap.code === 'VMU_INVALID_ARGUMENT' && /at most 2/.test(String(overCap.message)),
+    'P0-fallback: quotesPerMessageMax is 2 by default, so a third quote is REFUSED by name (before the fix the cap was 0 = off)',
+    overCap && String(overCap.message))
+}
+
+// DOOR 4 (M1 `setting:` predicate through the assembled bus): the SAME answer M2's api.setting() gives.
+{
+  const rule = (id, eq) => ({ id, kind: 'rules', on: ['tools/pre-execute'], when: { setting: { key: 'vmu.meetings.quotesPerMessageMax', eq } }, then: [{ allow: {} }] })
+  const km = m.createKernel({ clock, settings: { 'vmu.middleware.entries': [rule('def-match', 2), rule('def-miss', 0)] } })
+  await km.start()
+  const hit = await km.bus.emit('tools/pre-execute', { tool: 'probe' })
+  const matched = (hit.decisions || []).filter((d) => d && d.decision && Object.prototype.hasOwnProperty.call(d.decision, 'allow')).length
+  ok(hit.ok === true && matched === 1,
+    'P0-fallback: an M1 rule written against the DECLARED default (eq 2) matches on an unconfigured kernel, and the eq-0 twin does not',
+    JSON.stringify((hit.decisions || []).map((d) => d.id)))
+}
+
+// THE WIDE-ANGLE GUARD: every remaining bare settings read is LISTED, so a fifth door cannot grow quietly.
+{
+  const KERNEL_DIR = join(REPO, 'vibe-math-vmu', 'kernel')
+  const walkJs = (dir) => readdirSync(dir).flatMap((name) => {
+    const p = join(dir, name)
+    return statSync(p).isDirectory() ? walkJs(p) : (p.endsWith('.js') ? [p] : [])
+  })
+  const bareReads = (src) => {
+    const out = []
+    src.split('\n').forEach((line, i) => {
+      if (/^\s*(\/\/|\*)/.test(line)) return
+      for (const match of line.matchAll(/settings\[\s*'(vmu\.[^']+)'\s*\]/g)) out.push({ line: i + 1, key: match[1] })
+    })
+    return out
+  }
+  ok(bareReads("const x = settings['vmu.records.tracks']").length === 1,
+    'P0-scan: SELF-PROOF - the bare-read scanner really sees a bare read (a scanner that matches nothing would report "clean")')
+  const found = []
+  for (const file of walkJs(KERNEL_DIR)) {
+    for (const hit of bareReads(readFileSync(file, 'utf8'))) found.push(file.replace(REPO + '\\', '').replace(REPO + '/', '') + ':' + hit.line + ' ' + hit.key)
+  }
+  console.log('  ★ BARE-READ-REPORT kernel reads still literal-dotted = ' + found.length)
+  // RULE E NOTE: this is a join, not a loop - the report must not create an A-class "zero-iteration assertion" shape.
+  if (found.length > 0) console.log('    ' + found.slice(0, 40).join('\n    '))
+  const MUST_USE_READER = [
+    ['kernel/library.js', 'vmu.records.history.storeMode'],
+    ['kernel/retention.js', 'vmu.records.history.storeMode'],
+    ['kernel/index.js', 'vmu.meetings.quotesPerMessageMax'],
+    ['kernel/index.js', 'vmu.meetings.quoteDepthMax'],
+    ['kernel/bus.js', 'vmu.middleware.hookTimeoutMs'],
+    ['kernel/bus.js', 'vmu.middleware.breakerThreshold'],
+  ]
+  ok(MUST_USE_READER.length === 6, 'P0-scan: the must-use-reader list is the six audited read sites, so the loop below cannot run on nothing')
+  for (const [file, key] of MUST_USE_READER) {
+    ok(!found.some((row) => row.indexOf(file + ':') === 0 && row.endsWith(' ' + key)),
+      'P0-scan: ' + file + ' no longer reads ' + key + ' as a bare literal (it goes through the one reader)')
+  }
+  for (const file of ['kernel/library.js', 'kernel/retention.js', 'kernel/rules.js', 'kernel/bus.js']) {
+    ok(readFileSync(join(REPO, 'vibe-math-vmu', file), 'utf8').includes('settings-defaults.js'),
+      'P0-scan: ' + file + ' imports the one declared-default reader')
+  }
+}
+
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

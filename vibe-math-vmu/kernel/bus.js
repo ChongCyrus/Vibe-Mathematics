@@ -17,6 +17,11 @@
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
 
+// PHASE 6 / P0 (goal-3 audit R3): the bus is the SECOND door that reads settings on behalf of M1 rules and entry
+// handlers; it now uses the same declared-default reader as the kernel, so an unconfigured key reads as its schema
+// default on every door instead of as `undefined` on this one.
+import { readSetting } from './settings-defaults.js'
+
 /** Failure policies (docs/05 §7). */
 export const FAILURE = Object.freeze({ OPEN: 'open', CLOSED: 'closed', ABORT: 'abort' })
 
@@ -473,13 +478,24 @@ function scopeMatches(scope, ctx) {
  * (that is how code modules register). `settings` is the resolved settings map from settings/schema.js.
  */
 export function createBus({ entries = [], settings = {}, clock = () => new Date().toISOString(), onAudit } = {}) {
-  const hookTimeoutMs = Number.isInteger(settings['vmu.middleware.hookTimeoutMs']) ? settings['vmu.middleware.hookTimeoutMs'] : 2000
-  const breakerThreshold = Number.isInteger(settings['vmu.middleware.breakerThreshold']) ? settings['vmu.middleware.breakerThreshold'] : 3
+  // PHASE 6 / P0: the four middleware defaults are read through the ONE declared-default reader. A value the caller
+  // declared (even a wrong-typed one) keeps the old validation path; only the fallback changed hands.
+  const middlewareInt = (key, fallback) => {
+    const v = readSetting(settings, key)
+    return Number.isInteger(v) ? v : fallback
+  }
+  const hookTimeoutMs = middlewareInt('vmu.middleware.hookTimeoutMs', 2000)
+  const breakerThreshold = middlewareInt('vmu.middleware.breakerThreshold', 3)
   // ROUND 294 (volume 05 §L77/§L81/§L63): the DECLARED defaults for three per-entry fields. Each replaces a value that was hard-coded
   // here, so declaring one changes what an entry that does not state its own gets - and nothing else.
-  const enabledDefault = settings['vmu.middleware.enabled'] !== false
-  const orderDefault = Number.isInteger(settings['vmu.middleware.order']) ? settings['vmu.middleware.order'] : 1000
-  const failureDefault = ['closed', 'open', 'skip'].includes(settings['vmu.middleware.onFailure']) ? settings['vmu.middleware.onFailure'] : null
+  const enabledDefault = readSetting(settings, 'vmu.middleware.enabled') !== false
+  const orderDefault = middlewareInt('vmu.middleware.order', 1000)
+  // NOTE: `onFailure` is deliberately NOT routed through the reader yet. Its schema `def` is 'closed' while the schema
+  // DOC says an entry that states nothing falls back to the HOOK's built-in policy (observations are 'open'), and
+  // DEFAULT_FAILURE below is derived from the registry. Making 'closed' effective here would change four hooks'
+  // failure policy. Which of the two is the truth is a schema-owner decision (reported, not assumed).
+  const failurePolicy = settings['vmu.middleware.onFailure']
+  const failureDefault = ['closed', 'open', 'skip'].includes(failurePolicy) ? failurePolicy : null
 
   const registry = new Map() // id -> entry (normalised)
   const failures = new Map() // id -> consecutive failure count
@@ -672,7 +688,7 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
         }
         let decision
         try {
-          decision = await withTimeout(entry.handler, { hook, payload, ctx, dryRun, traceId, setting: (k) => settings[k] })
+          decision = await withTimeout(entry.handler, { hook, payload, ctx, dryRun, traceId, setting: (k) => readSetting(settings, k) })
         } catch (error) {
           recordFailure(entry, error)
           const policy = entry.failure

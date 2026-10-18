@@ -35,6 +35,9 @@
 
 export const apiVersion = 1
 
+// PHASE 6 / P0 (goal-3 audit R2): the declared default is `diff`; this module used to fall back to `full`. ONE reader.
+import { readSetting } from './settings-defaults.js'
+
 /** Counted-truncation marker (a WARNING, not a refusal): something was dropped and is being reported. */
 export const RETENTION_WARNING = 'VMU_RETENTION_TRUNCATED'
 /** Warning emitted when usage crosses the soft limit. */
@@ -82,7 +85,7 @@ export function createRetention({ clock = () => Date.now(), log = () => {}, sett
     trashAutoPurge: bool(settings['vmu.records.trash.autoPurge']) ?? false,
     trashCountInQuota: bool(settings['vmu.records.trash.countInQuota']) ?? true,
     historyDepth: num(settings['vmu.records.history.depth']) ?? 0,                  // 0 = unlimited
-    historyStoreMode: str(settings['vmu.records.history.storeMode']) || 'full',
+    historyStoreMode: str(readSetting(settings, 'vmu.records.history.storeMode')),
     softBytes: num(settings['vmu.quota.softBytes']) ?? 0,
     hardBytes: num(settings['vmu.quota.hardBytes']) ?? 0,
     onExceed: str(settings['vmu.quota.onExceed']) || 'warn',

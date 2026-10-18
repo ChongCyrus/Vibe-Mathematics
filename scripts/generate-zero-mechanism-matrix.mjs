@@ -141,6 +141,11 @@ const EXPECT = {
   // and has NO `status()` at all, so the matrix does not apply to it - the same form used for other utility modules. Its
   // behaviour is covered where it is USED, by the library suites that call every one of the six.
   'library-policy': G('EXPECT_NA', '非服务模块（无 `status()`；返回六个纯检查器 ✓）—— 行为由调用它的 library 套件覆盖 ✓'),
+  // PHASE 6 / goal 3 P0: the ONE declared-default reader (extracted to kill four divergent fallbacks). MEASURED form:
+  // a plain map over `SETTING_DEFS` plus three pure functions (`settingDeclaration` / `declaredDefault` / `readSetting`);
+  // NO `create*` factory and NO `status()`, so the matrix does not apply for the same measured reason as `timevalue` /
+  // `library-policy`. Its behaviour is covered where it is USED (vmu-kernel's "P0-fallback" block pins all four doors).
+  'settings-defaults': G('EXPECT_NA', '非服务模块（纯读取器：`settingDeclaration`／`declaredDefault`／`readSetting`，无 `create*` 工厂、无 `status()` ⇒ 矩阵不适用 ✓）—— 行为由 `tests/vmu-kernel.test.mjs` 的 P0-fallback 段覆盖四扇门 ✓'),
   // ROUND 247: MEASURED with nothing declared - status() answers ok with the declared pack list empty, while gate() refuses by name
   // (`VMU_META_VALIDATION_FAILED` for an unknown domain, and `VMU_GATE_UNSATISFIED` naming every missing item for a domain whose
   // required evidence is absent). The face is fail-closed by design, which is exactly why it must be ruled rather than assumed.

@@ -18,6 +18,7 @@ import { join, dirname } from 'node:path'
 import { createHash } from 'node:crypto'
 import { guardWrite } from './guard.js'
 import { createLibraryPolicy } from './library-policy.js'   // ROUND 235: the extracted policy checkers
+import { readSetting } from './settings-defaults.js'        // PHASE 6 / P0: the ONE declared-default reader
 
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
@@ -101,7 +102,9 @@ export function createLibrary({
   provenanceDepth = (() => { const v = Number(settings && settings['vmu.provenance.depth']); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0 })(),
   provenanceInputFingerprint = (settings && settings['vmu.provenance.recordInputFingerprint']) !== false,
   clock = () => new Date().toISOString(),
-  storeMode = (settings && settings['vmu.records.history.storeMode']) || 'full',
+  // PHASE 6 / P0 (goal-3 audit R2): the declared default is `diff` (settings/schema.js); this read used to fall back
+  // to `full`, so a default deployment kept full history and lost the diff-mode BASELINE protection. One reader now.
+  storeMode = readSetting(settings, 'vmu.records.history.storeMode'),
 } = {}) {
   if (typeof root !== 'string' || root.length === 0) {
     throw refuse('VMU_INVALID_ARGUMENT', 'createLibrary needs a workspace root', 'pass { root }')

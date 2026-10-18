@@ -368,7 +368,7 @@ vmu.packs.active: [v5r]
 | `vmu.middleware.breakerThreshold` | int ≥1 | `3` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/bus.js` | 连续失败熔断阈值 |
 | `vmu.middleware.enabled` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/bus.js` | 条目未声明 enabled 时的默认（false ⇒ 新条目默认【登记但不调用】；★ 条目自身的 enabled 优先 ✓） |
 | `vmu.middleware.order` | integer | `1000` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/bus.js` | 条目未声明 order 时的默认排序键（越小越先；同级按 id 字典序 ✓） |
-| `vmu.middleware.onFailure` | enum | `closed` | `closed`∣`open`∣`skip` | 会话 | H2 | office | ✅ 已接线 | `kernel/bus.js` | 条目未声明 failure 时的默认失败策略（★ 条目自身优先，其次本键，再次按钩子的内置默认 ✓） |
+| `vmu.middleware.onFailure` | enum | `` | ``∣`closed`∣`open`∣`skip` | 会话 | H2 | office | ✅ 已接线 | `kernel/bus.js` | 条目未声明 failure 时的默认失败策略（★ 缺省 `''`＝**按每个钩子在登记表里声明的策略** ✓；显式设 closed/open/skip 才会覆盖所有条目 —— ★ 注意 closed 会让观测类钩子也挡住操作） |
 | `vmu.middleware.dryRun` | bool | `false` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/index.js` | 干跑（只报不做） |
 | `vmu.packs.active` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | 生效整合包（冲突按 O4 报错） |
 | `vmu.packs.allowOverride` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 是否允许 pack 间显式覆盖 |
