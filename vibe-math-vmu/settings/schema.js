@@ -84,6 +84,21 @@ const CORE_DEFS = Object.freeze([
   // REMOVED from the pack rather than declared (declaring a key nobody reads is the "声明了没人读" defect).
   { key: 'vmu.v3.verifierCount', type: 'natural', def: 3, hot: HOT.H1, who: 'office', doc: 'v3-core 包私有：裁定需要多少名独立验证者表态（v3 `verifierCount`）。读者＝`packs/v3-core/index.js:80` 的 quorum 中间件（`setting("vmu.v3.verifierCount")`）。' },
   { key: 'vmu.v3.mode', type: 'enum', domain: ['auto', 'manual'], def: 'auto', hot: HOT.H1, who: 'office', doc: 'v3-core 包私有：`manual` ⇒ 未经人工放行不得派发/运行（v3 `mode`）。读者＝`packs/v3-core/index.js:105` 的 manual-gate 中间件。' },
+  // ★★★★★★★ PHASE 6 · 目标 2（v3 复刻）：THE TEN PACK-PRIVATE KEYS THE `packs/v3/` BUILD NEEDS, declared here for the
+  // reason the two rows above exist - a pack-private key that is NOT in the schema is REFUSED BY NAME by
+  // `vibe_vmu_set` (docs/10-packs.md:139-146), so "the pack declares it" is not enough to make it settable.
+  // NOTE ON `who`: 'office' (the institute's own knob), matching the two v3-core rows above; these are pack policy
+  // values, never framework behaviour, and the kernel reads NONE of them - their readers are `packs/v3/middleware/*`.
+  { key: 'vmu.v3.tickIntervalMs', type: 'natural', def: 2000, hot: HOT.H1, who: 'office', doc: 'v3 复刻：周期扫描的墙钟间隔（v3 `tickIntervalMs:2000`，`vibe-math-v3.js:400`）。读者＝`packs/v3/settings/defaults.json` 的 `v3/tick` 种子 ＋ `packs/v3/middleware/tick.js` 的到期判定。' },
+  { key: 'vmu.v3.planningHorizon', type: 'natural', def: 3, hot: HOT.H1, who: 'office', doc: 'v3 复刻：一次计划最多保留多少个可执行动作（超出截断且计数）。读者＝`packs/v3/middleware/planner.js`。' },
+  { key: 'vmu.v3.plannerEnabled', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: 'v3 复刻：规划器总开关；连续 `plannerMaxFails` 次不可解析 ⇒ 自动置 false 并发出具名事件（绝不静默）。读者＝`packs/v3/middleware/planner.js`。' },
+  { key: 'vmu.v3.planMinIntervalMs', type: 'natural', def: 30000, hot: HOT.H1, who: 'office', doc: 'v3 复刻：两次规划之间的最小间隔（冷却）。读者＝`packs/v3/middleware/planner.js`。' },
+  { key: 'vmu.v3.plannerMaxFails', type: 'natural', def: 3, hot: HOT.H1, who: 'office', doc: 'v3 复刻：连续不可解析多少次后关闭规划器。读者＝`packs/v3/middleware/planner.js`。' },
+  { key: 'vmu.v3.methodKeepEvery', type: 'positiveInteger', def: 5, hot: HOT.H1, who: 'office', doc: 'v3 复刻：方法库每 N 个应用记录保留一次归档。读者＝`packs/v3/middleware/methods.js`。' },
+  { key: 'vmu.v3.methodKeepIntervalMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: 'v3 复刻：方法库按时间的保留间隔（0＝只按次数）。读者＝`packs/v3/middleware/methods.js`。' },
+  { key: 'vmu.v3.methodAutoPromote', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: 'v3 复刻：方法是否自动晋升（默认 false＝须人工/规则放行）。读者＝`packs/v3/middleware/methods.js`。' },
+  { key: 'vmu.v3.debateMaxRounds', type: 'natural', def: 5, hot: HOT.H1, who: 'office', doc: 'v3 复刻：验证辩论的最大轮次。读者＝`packs/v3/middleware/verify.js`。' },
+  { key: 'vmu.v3.verdictMode', type: 'enum', domain: ['forced', 'natural'], def: 'forced', hot: HOT.H1, who: 'office', doc: 'v3 复刻：连续概率票如何折叠成裁决（forced＝夹到 [0.01,0.99] 后按阈值；natural＝原值）。读者＝`packs/v3/middleware/verify.js`。' },
   { key: 'vmu.records.pointerPropagation', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: 'P3/S21：头部列表为默认信息通道；关＝零注入且提示词逐字回退' },
   { key: 'vmu.records.meetingKeepEvery', type: 'positiveInteger', def: 5, hot: HOT.H1, who: 'office', doc: 'P3：每 N 场会议保留一次归档（v5r 的 meetingKeepEvery）' },
   // task-196 REGISTRATION ALIGNMENT: both keys were WIRED for real (audit age-out; deterministic LZSS packing)

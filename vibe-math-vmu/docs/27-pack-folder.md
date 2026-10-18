@@ -265,3 +265,17 @@ vibe-math-vmu/
 ## 8. 关联
 
 ★ `04-settings.md`（键宇宙与家系 ✓）｜`05-middleware.md`（中间件的四种形态 ✓）｜`10-packs.md`（pack 接口与原子应用 ✓）｜`26-turn-orchestration.md`（回合编排与策略注入点 ✓）｜`audit/downgrade-candidates.md`（降级审计与负责人复核 ✓）。
+
+## 9. v3 整合包（★ PHASE 6 · 目标 2；★ 与 `v3-core` 互斥装载）
+
+★ `packs/v3/` 是**原 vibe-math-v3 的复刻包**，与 `packs/v3-core/`（★ 自称"**不是 v3**"）**互斥**：★ 同装会 `VMU_PACK_CONFLICT` ✓
+★ 当前**只落了 P0-1（周期驱动）**，★ 其余按 `docs/acceptance/phase6-v3-p0-build-checklist.md` §2 的顺序推进 ✓
+
+| 文件 | 职责 |
+|---|---|
+| `packs/v3/index.js` | 被装载清单 `PACK`（id `v3`、`requires: [vmu.records]`、module 形状的 `v3-tick` 条目） |
+| `packs/v3/settings/defaults.json` | **值层**：`schedule.autoArm/timeSource/triggerVia/triggers` ＋ `vmu.v3.tickIntervalMs` ＋ `records.tracks` —— ★ **构造期读取的键只能放这里**（manifest 的 `settings` 是装载后才 apply） |
+| `packs/v3/middleware/tick.js` | ★ tick 体：★ 声明并订阅 `v3/tick`，★ 每到期写一条 `journal` 记录 ✓ |
+| `packs/v3/README.md` | 这个文件夹是什么、与 v3-core 的关系、诚实边界与装载约束 |
+
+★ **两条硬约束**（★ 都实测咬过）：★ ① **middleware 必须是 module 形状**（pack 调 `loader.toBusEntries` 不传 `importModule`，★ `file:` 不可用）；★ ② **假主题必须 `declareTopic` 才能 emit**，★ 且**要在 import 时声明**（`kernel/loader.js` 在 `load()` 时校验，scheduler 的声明发生在装载之后）✓

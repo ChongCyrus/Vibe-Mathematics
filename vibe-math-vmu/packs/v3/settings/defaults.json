@@ -1,0 +1,20 @@
+{
+  "_comment": "packs/v3（v3 复刻）的【值层】默认值。纯数据：插件在建内核之前按目录名读它、折在用户设置之下（vibe-math-vmu.js:352-391），所以这里只放【构造期就被读取】的值。★ 判据：读点在 createKernel 之前/构造中 ⇒ 必须在这里；读点在调用期 ⇒ 归被装载清单的 settings（O4：同一键不得两处都写，重叠会被 pack.js:428-458 具名拒）。P0-1 只落周期驱动：vmu.schedule.* 的四个键在 kernel/index.js:878-887 与 kernel/scheduler.js:96-114 的构造期被读；vmu.records.* 的三个键在 kernel/records.js:189-221 被【快照】一次（与 schedule 是同一类陷阱：写进清单的 settings 永远到不了快照）。",
+  "_p0": "P0-1：把 v3 的每秒扫描变成 vmu 的调度器自驱。缺 timer 接缝时 autoArm 只得到 tick-only；装配侧只在该值来自值层时才注入平台 timer（vibe-math-vmu.js:480-482）。seed 的 what 是 v3/tick：它是本包用 bus.declareTopic 声明的协议扩展主题（冻结集之外的新钩子必须先声明才可 emit / 才可订阅，kernel/bus.js:337-350、kernel/loader.js:54-61）。",
+  "defaults": {
+    "vmu.schedule.autoArm": true,
+    "vmu.schedule.timeSource": "host-timer",
+    "vmu.schedule.triggerVia": "middleware",
+    "vmu.schedule.triggers": [
+      {
+        "kind": "every",
+        "intervalMs": 2000,
+        "what": "v3/tick",
+        "payload": { "phase": "tick" },
+        "by": "settings"
+      }
+    ],
+    "vmu.v3.tickIntervalMs": 2000,
+    "vmu.records.tracks": ["propos", "problems", "directions", "journal", "verified"]
+  }
+}

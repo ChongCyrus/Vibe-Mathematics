@@ -486,6 +486,10 @@
     "vibe-math-vmu/packs/v5r/middleware/motion-box.js",
     "vibe-math-vmu/packs/v5r/middleware/artifact-counter.js",
     "vibe-math-vmu/packs/v3-core/index.js",
+    "vibe-math-vmu/packs/v3/index.js",
+    "vibe-math-vmu/packs/v3/README.md",
+    "vibe-math-vmu/packs/v3/settings/defaults.json",
+    "vibe-math-vmu/packs/v3/middleware/tick.js",
     "vibe-math-vmu/host.js",
     "vibe-math-vmu/host-hooks.js",
     "vibe-math-vmu/host-spawn.js",
@@ -777,7 +781,8 @@
     "tests/vmu-turn-activation.test.mjs",
     "tests/vmu-rewrite-result.test.mjs",
     "tests/vmu-schedule-autodrive.test.mjs",
-    "tests/vmu-turn-dispatch-k2.test.mjs"
+    "tests/vmu-turn-dispatch-k2.test.mjs",
+    "tests/vmu-v3-tick.test.mjs"
   ],
   "license": "MIT",
   "keywords": [

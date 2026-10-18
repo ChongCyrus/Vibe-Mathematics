@@ -23,7 +23,13 @@ const PACKS = join(REPO, 'vibe-math-vmu', 'packs')
 // it must be declared here with a reason - silence is what made this class invisible.
 // NOTHING IS CURRENTLY IN NEITHER LIST. The table stays as the mechanism that would force a reason to be written if one ever is.
 const KNOWN_UNBRIDGED = {
-  // (empty) every declared hook resolves against the bus vocabulary or the host bridge list
+  // ★ PHASE 6 · 目标 2（P0-1）：`v3/tick` is a PACK-DECLARED protocol topic, not a framework hook. It is introduced by
+  // `packs/v3/middleware/tick.js` through `declareTopic('v3/tick')` - the sanctioned extension point for a topic outside
+  // the frozen `VU_HOOKS` list - and the scheduler emits it when the declared seed fires. This scan compares pack hooks
+  // against `VU_HOOKS ∪ BRIDGED_HOOKS`, so a correctly-declared custom topic necessarily shows up as "undeclared" here.
+  // Recording it WITH a reason is the point of this table: it keeps the scan strict for framework hooks while making an
+  // inert pack declaration impossible to leave unnoticed. If the topic ever stops being emitted, this row goes stale.
+  'v3/tick': 'pack-declared custom topic via bus.declareTopic (kernel/bus.js DECLARED_TOPICS): declared+subscribed by packs/v3/middleware/tick.js and emitted by the scheduler from the declared v3/tick seed - not a framework hook, so it is not in VU_HOOKS by design',
 }
 
 console.log('=== THE HOST S PUBLISHED HOOK LIST ===')

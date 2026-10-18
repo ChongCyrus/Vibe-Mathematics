@@ -275,6 +275,16 @@ vmu.packs.active: [v5r]
 | `vmu.records.requireSettledRecords` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/records.js` | 只允许写入已结算记录（v5r 机制；由包携带默认 true） |
 | `vmu.v3.verifierCount` | int ≥0 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3-core/index.js` | v3-core 包私有：裁定需要多少名独立验证者表态（v3 `verifierCount`）。读者＝`packs/v3-core/index.js:80` 的 quorum 中间件（`setting("vmu.v3.verifierCount")`）。 |
 | `vmu.v3.mode` | enum | `auto` | `auto`∣`manual` | 会话 | H1 | office | ✅ 已接线 | `packs/v3-core/index.js` | v3-core 包私有：`manual` ⇒ 未经人工放行不得派发/运行（v3 `mode`）。读者＝`packs/v3-core/index.js:105` 的 manual-gate 中间件。 |
+| `vmu.v3.tickIntervalMs` | int ≥0 | `2000` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/tick.js` | v3 复刻：周期扫描的墙钟间隔（v3 `tickIntervalMs:2000`，`vibe-math-v3.js:400`）。读者＝`packs/v3/settings/defaults.json` 的 `v3/tick` 种子 ＋ `packs/v3/middleware/tick.js` 的到期判定。 |
+| `vmu.v3.planningHorizon` | int ≥0 | `3` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | v3 复刻：一次计划最多保留多少个可执行动作（超出截断且计数）。读者＝`packs/v3/middleware/planner.js`。 |
+| `vmu.v3.plannerEnabled` | bool | `true` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | v3 复刻：规划器总开关；连续 `plannerMaxFails` 次不可解析 ⇒ 自动置 false 并发出具名事件（绝不静默）。读者＝`packs/v3/middleware/planner.js`。 |
+| `vmu.v3.planMinIntervalMs` | int ≥0 | `30000` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | v3 复刻：两次规划之间的最小间隔（冷却）。读者＝`packs/v3/middleware/planner.js`。 |
+| `vmu.v3.plannerMaxFails` | int ≥0 | `3` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | v3 复刻：连续不可解析多少次后关闭规划器。读者＝`packs/v3/middleware/planner.js`。 |
+| `vmu.v3.methodKeepEvery` | int ≥1 | `5` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | v3 复刻：方法库每 N 个应用记录保留一次归档。读者＝`packs/v3/middleware/methods.js`。 |
+| `vmu.v3.methodKeepIntervalMs` | int ≥0 | `0` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | v3 复刻：方法库按时间的保留间隔（0＝只按次数）。读者＝`packs/v3/middleware/methods.js`。 |
+| `vmu.v3.methodAutoPromote` | bool | `false` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | v3 复刻：方法是否自动晋升（默认 false＝须人工/规则放行）。读者＝`packs/v3/middleware/methods.js`。 |
+| `vmu.v3.debateMaxRounds` | int ≥0 | `5` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | v3 复刻：验证辩论的最大轮次。读者＝`packs/v3/middleware/verify.js`。 |
+| `vmu.v3.verdictMode` | enum | `forced` | `forced`∣`natural` | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | v3 复刻：连续概率票如何折叠成裁决（forced＝夹到 [0.01,0.99] 后按阈值；natural＝原值）。读者＝`packs/v3/middleware/verify.js`。 |
 | `vmu.records.pointerPropagation` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/records.js` | P3/S21：头部列表为默认信息通道；关＝零注入且提示词逐字回退 |
 | `vmu.records.meetingKeepEvery` | int ≥1 | `5` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/records.js` | P3：每 N 场会议保留一次归档（v5r 的 meetingKeepEvery） |
 | `vmu.audit.retentionDays` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/audit.js` | 审计按天老化（天）；0 或负＝禁用老化（kernel/audit.js 的回落语义，禁用时不删任何行） |
@@ -1511,7 +1521,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1122** 个，前缀家族 **115** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1132** 个，前缀家族 **115** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1625,7 +1635,7 @@ vmu.packs.active: [v5r]
 | `vmu.trust.*` | 16 |
 | `vmu.turn.*` | 27 |
 | `vmu.tx.*` | 6 |
-| `vmu.v3.*` | 2 |
+| `vmu.v3.*` | 12 |
 | `vmu.visibility.*` | 1 |
 | `vmu.work.*` | 2 |
 | `vmu.workflow.*` | 27 |

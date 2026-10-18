@@ -446,3 +446,26 @@
 4. ★ **`domainWordInModules` 是子串计数**（如 `names` 命中 171 个模块）⇒ ★ 它在表里只当"弱信号"用，**没有**据此单独判 WIRE/DELETE。
 5. ★ **本轮未改任何代码**；★ 未跑 git；★ 只跑了 `check-docs`／`audit-doc-index`（见 §7）；★ `settings/schema.js` 正在被兄弟改 ⇒ 若其 sha16 变了，§4 的机械列须重跑。
 6. ★ **5 个 UNDETERMINED 键我没有构造真机动态读取去证实**（我只据生成器自陈＋packs/docs/tests 引用）⇒ 它们的 WIRE 目标是**建议**，不是观测。
+
+---
+
+## ★ PHASE 6 · 目标 2 的八把新键：裁定 **WIRE**（读者属 P0-2／P0-4／P0-7，★ 已排期而非悬空）
+
+★ 这八把是 **`packs/v3/`（原 v3 复刻包）的包私有旋钮**，★ 在 `settings/schema.js` 登记（★ 否则 `vibe_vmu_set` 会按名拒），★
+★ 读者**尚未落地**——★ 它们分别属于 P0-2（规划）、P0-4（方法库）、P0-7（验证）三张卡 ✓
+★ **裁定：WIRE**（★ **不是 DELETE**）——★ 理由：★ 按 `docs/01 §1.4.1`，★ **一个用 vmu 写自己运行机制的人显然会想调规划视界/冷却/方法晋升/裁决模式** ⇒ ★ **有消费者**；★
+★ 而按 §1.4.4，★ **声明了却没人读**是缺陷 ⇒ ★ **正确处置是【尽快接线】**，★ 不是撤声明 ✓
+
+| 键 | 默认 | 读者（施工卡） |
+|---|---|---|
+| `vmu.v3.planningHorizon` | 3 | P0-2 `packs/v3/middleware/planner.js` |
+| `vmu.v3.plannerEnabled` | true | P0-2 `packs/v3/middleware/planner.js` |
+| `vmu.v3.planMinIntervalMs` | 30000 | P0-2 `packs/v3/middleware/planner.js` |
+| `vmu.v3.plannerMaxFails` | 3 | P0-2 `packs/v3/middleware/planner.js` |
+| `vmu.v3.methodKeepEvery` | 5 | P0-4 `packs/v3/middleware/methods.js` |
+| `vmu.v3.methodKeepIntervalMs` | 0 | P0-4 `packs/v3/middleware/methods.js` |
+| `vmu.v3.methodAutoPromote` | false | P0-4 `packs/v3/middleware/methods.js` |
+| `vmu.v3.debateMaxRounds` | 5 | P0-7 `packs/v3/middleware/verify.js` |
+| `vmu.v3.verdictMode` | forced | P0-7 `packs/v3/middleware/verify.js` |
+
+★ **`vmu.v3.tickIntervalMs` 不在此表**：★ 它已由 **P0-1** 的 `packs/v3/middleware/tick.js` 真正读取（★ 已从静默名单清除）✓

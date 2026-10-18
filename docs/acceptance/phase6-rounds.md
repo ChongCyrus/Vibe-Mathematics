@@ -549,3 +549,47 @@ const run = async (spec) => {
 1. ★★★ **读清单 §2 的施工顺序，开工 P0 第一块**（★ 按它给的顺序，★ 不自己拍）
 2. ★★ **建 `packs/v3/` 骨架**（★ §3 给的文件清单）＋ **`index.js` 的 `PACK` 声明**
 3. ★★ **每条 P0 都写断言**（★ 清单 §1 已给"能写成 `ok(...)`"的判据，★ 直接落成测试）✓
+
+---
+
+## 轮 9（2026-10-18）
+
+### ★★★★★★ **目标 2 正式开工：★ P0-1（周期驱动）落地** —— ★ v3 包的第一个文件诞生
+
+★ **第 0 步（★ Lead 做）**：★ 把 **10 把 `vmu.v3.*` 新键**一次登记进 `settings/schema.js` ⇒ ★ 设置表 **1243 键（1139 wired，★ 0 undetermined，★ 104 声明未接线）** ✓
+★ 理由（★ 不是形式）：★ **pack 私有键不进 schema，★ `vibe_vmu_set` 会按名拒**（`docs/10-packs.md:139-146`）✓
+
+### ★★ P0-1 交付（★ 派 `v3-pack-build`）
+★ **建了 `packs/v3/`**：★ `index.js`（★ `PACK`：★ id `v3`、★ `requires:[vmu.records]`、★ module 形状的 `v3-tick` 条目）／★ `settings/defaults.json`／★ `middleware/tick.js`／★ `README.md` ＋ ★ `tests/vmu-v3-tick.test.mjs` ✓
+★ **测试 66/0** ✓，★ 含**正向**（★ 假 timer ＋ autoArm ＋ 2000ms 种子 ⇒ 手工触发 ⇒ tick 体调用 **1** 次、★ `fired=1`、★ 重 arm、★ journal 1 条）／★ **反向**（★ 不注入 timer ⇒ `timerShape===null`、★ `autoArm===false`、★ `scheduleDrive` 是**具名** `VMU_CONTROL_NO_TIMER`）／★ **真实入口**（★ `entry.apply(ctx,{packs:['v3']})` ⇒ defaults 在内核前折入、★ timer 注入、★ `scheduleDrive.mode='armed'`、★ tick 与 journal 都真的发生）✓
+
+★★★ **而队友挖出了两个"构造期快照"陷阱（★ 本仓会安静地不跑的那一类）**：
+1. ★ **`vmu.schedule.autoArm`／`triggers` 是【构造期】读取**，★ 而 **pack manifest 的 `settings` 是【装载后】apply** ⇒ ★ **写进 `PACK.settings` 会永远读不到、★ 且不报错** ⇒ ★ **必须写 `settings/defaults.json`（值层）** ✓
+2. ★★ **`vmu.records.tracks` 同类** —— ★ `kernel/records.js:189-221` 在**构造期快照**所有 records knobs ⇒ ★ **不把 `journal` 放进值层，★ tick 写 journal 会被按名拒** ✓
+⇒ ★ **P0-9（数据面）必须知道这条** ✓
+
+### ★★★ Lead 修的三处红（★ 都不在队友允许范围）
+| ★ 红 | ★ 处置 |
+|---|---|
+| ★ `audit-pack-face` | ★ `docs/27` 补 **§9 v3 整合包布局**（★ 逐文件命名 `packs/v3/middleware/tick.js` 等）⇒ **5/0** ✓ |
+| ★ `vmu-middleware-hooks-declared` | ★ `KNOWN_UNBRIDGED` 加 **`v3/tick`** ＋ **>40 字理由**（★ 它是 **pack 用 `declareTopic` 声明的协议扩展主题**，★ 按设计不在 `VU_HOOKS`；★ **记录理由**正是该表存在的意义）⇒ **8/0** ✓ |
+| ★ `audit-silent-keys` | ★ **9 把**声明未读（★ tickIntervalMs 随 P0-1 转绿）⇒ ★ 其余 **8 把在惰性键台账里裁定 WIRE**（★ 读者属 P0-2／P0-4／P0-7）⇒ ★ **按 §1.4.1 它们有消费者**（★ 写自己运行机制的人会想调规划视界/冷却/方法晋升/裁决模式），★ **按 §1.4.4 正确处置是【接线】而不是撤声明** ⇒ ★ **674 文件扫描、0 把既未读也未裁定** ✓ |
+
+### ★★ 另外更正一条过期事实
+★ 施工清单 §0 第 13 行原记"**装配没传 timer**" ⇒ ★ **上一轮已修**（★ `vibe-math-vmu.js` 的 K1 COMPLETION 段，★ **仅当 `autoArm===true`**）⇒ ★ 该行已加更正，★ **P0-1 的"装配 5 行"算完成** ✓
+
+### ★★ 结果
+| ★ 项 | ★ 结果 |
+|---|---|
+| ★ `vmu-v3-tick`（新） | ★ **66 / 0** ✓ |
+| ★ pack-face ／ hooks-declared ／ silent-keys | ★ 5/0 ／ 8/0 ／ **0 未裁定** ✓ |
+| ★ vmu-docs ／ generators-current ／ RULE E | ★ 103/0 ／ 23/0 ／ 88/0 ✓ |
+| ★ scheduler ／ autodrive | ★ 111/0 ／ 27/0 ✓ |
+| ★ regen ／ check-docs ／ preflight | ★ 16/16 ／ PASS ／ PASS ✓ |
+
+### ★★ 轮 10 计划（★ 按 P0 顺序：★ `P0-9＋P0-6` 两块并行）
+★★ **队友给了 P0-2 开工前必须知道的一条**：★ **派发只能从 tick 处理器里做**（★ tick 不是 turn ⇒ K2 重入守卫不拦；★ 而**绝不能**在 `turn/reply-parsed` 里同步再开 turn）✓
+1. ★★★ **P0-9 数据面**（★ 轨/卡/索引/持久；★ **构造期快照的键必须进 `settings/defaults.json`**）
+2. ★★★ **P0-6 软规范三卡＋Verified 分裂**（★ 与 P0-9 可并行，★ 都属数据面）
+3. ★★ 然后 **P0-2＋P0-3（规划环＋学习环）** —— ★ 它们才需要 K2 的派发
+★ 每条都按清单 §1 的"**可写成 `ok(...)`**"字段落测试 ✓
