@@ -101,6 +101,8 @@ const CORE_DEFS = Object.freeze([
   // ★ PHASE 6 · 目标 2 / P1-3：升迁阈值。★ reader 是 `packs/v3/middleware/planner.js`，★ 未登记/越界时回落 0.7（与声明默认同值）。
   // ★ PHASE 6 · P1-5：汇报三路。★ reader＝`packs/v3/middleware/reports.js`；★ 未登记时回落 file。
   // ★ PHASE 6 · P1-7：工具过滤（★ 按【宿主实际注册名】比对；★ 调用期读取，不进值层）。★ 两张名单都空＝零机制。
+  // ★ PHASE 6 · P1-10：论文收口目标。★ 空串＝零机制；★ 读者＝`packs/v3/middleware/paper-close.js`。
+  { key: 'vmu.v3.paperCloseTarget', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: 'v3 复刻：论文收口目标 id；非空时 tick 里检查四件产物，缺件不宣称完成，必要时派 paper-writer 回合。读者＝`packs/v3/middleware/paper-close.js` ✓' },
   { key: 'vmu.v3.toolAllow', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: 'v3 复刻：允许的宿主工具名白名单（空＝零策略）；非空时名单外/拿不到工具名 ⇒ 具名拒。读者＝`packs/v3/middleware/toolfilter.js` ✓' },
   { key: 'vmu.v3.toolDeny', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: 'v3 复刻：禁止的宿主工具名黑名单（优先于 allow）；读者同上 ✓' },
   { key: 'vmu.v3.reportMode', type: 'enum', domain: ['file', 'push', 'both'], def: 'file', hot: HOT.H1, who: 'office', doc: 'v3 复刻：汇报三路模式（file＝写 reports 轨快照；push＝经 vmu.report 投递；both＝两者）。读者＝`packs/v3/middleware/reports.js` ✓' },

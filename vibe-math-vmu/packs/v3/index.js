@@ -53,6 +53,7 @@ import { V3_SUBQUESTIONS_MODULE } from './middleware/subquestions.js'
 import { V3_REPORTS_MODULE } from './middleware/reports.js'
 import { V3_LEAN_GATE_MODULE, V3_LEAN_PROMPT_POLICY } from './middleware/lean-gate.js'
 import { V3_TOOLFILTER_MODULE } from './middleware/toolfilter.js'
+import { V3_PAPER_CLOSE_MODULE } from './middleware/paper-close.js'
 import { V3_METHODS_MODULE } from './middleware/methods.js'
 import { V3_VERIFY_MODULE } from './middleware/verify.js'
 import { V3_GATES_MODULE } from './middleware/gates.js'
@@ -73,7 +74,7 @@ export const PACK = Object.freeze({
   // 会具名拒 `VMU_PACK_CONFLICT`（而不是静默替换 tracks/slots、两套门同时在线）。
   excludes: Object.freeze(['v3-core']),
   // P1-1：同一个 rId 的二次派发是**具名跳过**（不是静默、不是重复建任务）。码登记在清单里（R-d：包命名空间）。
-  codes: Object.freeze(['VMU_PACK_V3_DUPLICATE_DISPATCH', 'VMU_PACK_V3_LEAN_REQUIRED', 'VMU_PACK_V3_TOOL_NOT_PERMITTED', 'VMU_PACK_V3_TOOL_UNRESOLVED']),
+  codes: Object.freeze(['VMU_PACK_V3_DUPLICATE_DISPATCH', 'VMU_PACK_V3_LEAN_REQUIRED', 'VMU_PACK_V3_TOOL_NOT_PERMITTED', 'VMU_PACK_V3_TOOL_UNRESOLVED', 'VMU_PACK_V3_PAPER_INCOMPLETE']),
   // 六个模块在运行期通过 loader 的能力门读 `vmu.records`；planner/methods/verify 还要 `vmu.turn`（K2 已把
   // 回合循环进 M2 服务目录）；verify 还读 `vmu.ballotbox`（**法定人数由内核强制**，见 verify.js 文件头）。
   // gates 读 `vmu.human` 但**不 require** 它：人性面只是"尽力镜像"，台账（records）才是事实源。
@@ -178,6 +179,16 @@ export const PACK = Object.freeze({
       failure: 'closed',
       capabilities: Object.freeze(['deny']),
       module: V3_TOOLFILTER_MODULE,
+    },
+    {
+      // P1-10：论文收口。只在 v3/tick 里跑（收口可能要派 paper-writer 回合；turn 钩子里再派会被 VMU_TURN_REENTRANT
+      // 拒）。`vmu.v3.paperCloseTarget` 为空 ⇒ 零机制；四件缺一 ⇒ 具名 incomplete、绝不停机/宣称完成。
+      id: 'v3-paper-close',
+      order: 135,
+      on: Object.freeze([V3_TICK_TOPIC]),
+      failure: 'open',
+      capabilities: Object.freeze(['trigger-workflow']),
+      module: V3_PAPER_CLOSE_MODULE,
     },
     {
       // P0-4/P0-5：方法库 ＋ 发明上报。两个钩子：

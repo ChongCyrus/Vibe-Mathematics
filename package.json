@@ -808,7 +808,9 @@
     "vibe-math-vmu/packs/v3/middleware/gates.js",
     "vibe-math-vmu/packs/v3/tools.js",
     "tests/vmu-v3-gates.test.mjs",
-    "tests/vmu-v3-tools.test.mjs"
+    "tests/vmu-v3-tools.test.mjs",
+    "vibe-math-vmu/packs/v3/middleware/defects.js",
+    "vibe-math-vmu/packs/v3/middleware/paper-close.js"
   ],
   "license": "MIT",
   "keywords": [

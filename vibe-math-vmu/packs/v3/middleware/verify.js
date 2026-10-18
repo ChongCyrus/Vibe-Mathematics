@@ -48,6 +48,7 @@ import {
 //     **不检查 `emit` 的 `refused`**，所以只挂钩子不会阻止裁决落库。留档（对象已在轨上）是自然的：
 //     这里返回 settled:false，不调 settleProposition。
 import { leanModeOf, leanEvidence, leanGateDecision } from './lean-gate.js'
+import { proofVerdict } from './defects.js'
 // P0-8：裁决前的人工门由 gates.js 判定/记账；verify 只调它，并在放行时由注册的执行器真正结算。
 import { evaluateGate, registerGateExecutor, listGates } from './gates.js'
 
@@ -249,6 +250,8 @@ export function listCandidates(records) {
     if (!parsed.ok) { bad.push({ recordId: head.id, why: parsed.reason }); continue }
     if (parsed.kind !== 'proposition') { bad.push({ recordId: head.id, why: 'kind-mismatch:' + parsed.kind }); continue }
     const card = parsed.card
+    // P1-9（共同真源）：defect 撤回的命题**不再进入候选**——否则下一轮会把它重新验证/重新判“通过”。
+    if (proofVerdict({ records, target: str(card.id) }).state === 'withdrawn') continue
     if (card.概率 === 1 || card.概率 === 0) continue
     if (str(card.状态) === '已验证·真' || str(card.状态) === '已验证·假') continue
     if (card.优先级 === 'never') continue
@@ -355,6 +358,11 @@ export function settleProposition({ records, target, recordId, verdict, rule, at
     return refusal('VMU_INVALID_ARGUMENT', 'record ' + str(recordId) + ' is not a parsable proposition card: ' + (parsed.reason || parsed.kind), 'the P0-7 settlement rewrites propositions; other kinds are separate cards')
   }
   const card = parsed.card
+  // P1-9（共同真源）：已撤回的证明不能被“再结算一次”悄悄恢复成通过。
+  if (proofVerdict({ records, target: str(target) }).state === 'withdrawn') {
+    return refusal('VMU_PACK_V3_DEFECT_WITHDRAWN', 'the archived proof of ' + str(target) + ' was withdrawn by a defect marker',
+      'a defect marker is the shared truth for every reader; reinstating requires a NEW settlement/card, recorded deliberately')
+  }
   const status = value === 1 ? '已验证·真' : value === 0 ? '已验证·假' : '未定论'
   card.概率 = value
   card.状态 = status

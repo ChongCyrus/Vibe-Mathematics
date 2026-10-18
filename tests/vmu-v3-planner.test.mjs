@@ -908,6 +908,70 @@ const promoteOnce = async (value) => {
     '档位是构造期装配事实（同一进程里两个内核各读自己的设置）')
 }
 
+// ── 20. P1-9 defect 撤回：共同真源让所有读点都读不到 passed ─────────────────────────────────────────────
+{
+  const defects = await import('../vibe-math-vmu/packs/v3/middleware/defects.js')
+  const dp = await import('../vibe-math-vmu/packs/v3/middleware/dataplane.js')
+  const vf = await import('../vibe-math-vmu/packs/v3/middleware/verify.js')
+  const lg = await import('../vibe-math-vmu/packs/v3/middleware/lean-gate.js')
+  const h = boot({ overrides: { 'vmu.v3.planMinIntervalMs': 0 } })
+  await h.loader.apply(PACK)
+  writeCard({ records: h.kernel.records, kind: 'proposition', card: { id: 'p-def', 标题: '命题 p-def', 概率: 1, 状态: '已验证·真', 陈述: '陈述 p-def。' } })
+  const rec = loadCardIndex(h.kernel.records, 'propos', 'proposition').items.find((p) => p.id === 'p-def')
+  dp.promoteVerified({ records: h.kernel.records, sourceId: rec.recordId, at: 1000 })
+  ok(defects.proofVerdict({ records: h.kernel.records, target: 'p-def' }).state === 'passed', '基线：归档后读点读到 passed')
+  const emptyNote = defects.recordDefect({ records: h.kernel.records, target: 'p-def', note: '   ' })
+  ok(emptyNote.ok === false && emptyNote.code === defects.DEFECT_CODE.noteRequired,
+    '★ note 为空 ⇒ 具名拒，不写 defect', emptyNote)
+  ok(defects.proofVerdict({ records: h.kernel.records, target: 'p-def' }).state === 'passed',
+    '★ 被拒后证明保持不变（没有被“空理由”悄悄撤回）')
+  const written = defects.recordDefect({ records: h.kernel.records, target: 'p-def', note: 'failed independent replication', at: 1100 })
+  ok(written.ok === true && written.status === 'withdrawn', 'defect announce 写入成功', written)
+  const verdict = defects.proofVerdict({ records: h.kernel.records, target: 'p-def' })
+  ok(verdict.state === 'withdrawn' && verdict.readableAsPassed === false, '★ 共同真源：proofVerdict 读不到 passed', verdict)
+  ok(dp.findVerified(h.kernel.records, 'p-def') === null, '★ 读点 1（dataplane.findVerified）读不到归档证明')
+  ok(lg.leanEvidence({ records: h.kernel.records, target: 'p-def' }).status === 'withdrawn', '★ 读点 2（leanEvidence）读不到 passed')
+  ok(vf.listCandidates(h.kernel.records).items.some((c) => c.id === 'p-def') === false,
+    '★ 读点 3（verify.listCandidates）不再把该对象列为可验证候选')
+  const settleTry = vf.settleProposition({ records: h.kernel.records, target: 'p-def', recordId: rec.recordId, verdict: 1, rule: 'test' })
+  ok(settleTry.ok === false && settleTry.code === 'VMU_PACK_V3_DEFECT_WITHDRAWN',
+    '★ 读点 4（verify.settleProposition）拒绝把它再结算成通过', settleTry && settleTry.code)
+  let promoteErr = null
+  try { dp.promoteVerified({ records: h.kernel.records, sourceId: rec.recordId, at: 1200 }) } catch (e) { promoteErr = e }
+  ok(promoteErr && promoteErr.code === 'VMU_PACK_V3_DEFECT_WITHDRAWN', '★ 读点 5（promoteVerified）不能再写回 verified', promoteErr && promoteErr.code)
+  const unenforced = defects.retractArchivedProof({ records: h.kernel.records, target: 'p-def', note: 'delete it', mode: 'delete' })
+  ok(unenforced.ok === false && unenforced.unenforced === true && unenforced.code === defects.DEFECT_CODE.unenforced,
+    '★ 缺 fs 接缝 ⇒ 具名 unenforced（不假装删除/覆盖成功）', unenforced)
+  ok(defects.proofVerdict({ records: h.kernel.records, target: 'p-def' }).state === 'withdrawn', 'announce 态仍生效')
+}
+
+// ── 21. P1-10 论文收口：先产论文再停机；四件缺一 ⇒ 具名不宣称完成 ─────────────────────────────────────
+{
+  const pc = await import('../vibe-math-vmu/packs/v3/middleware/paper-close.js')
+  const h = boot({ overrides: { 'vmu.v3.planMinIntervalMs': 0 } })
+  await h.loader.apply(PACK)
+  const finalTitles = (target) => h.kernel.records.list({ track: 'journal', limit: 0 }).items.filter((x) => String(x.title).startsWith(pc.PAPER_FINAL_PREFIX + target)).length
+  const empty = pc.finalizePaper({ records: h.kernel.records, target: 'proj-a' })
+  ok(empty.ok === false && empty.completed === false && empty.code === pc.PAPER_INCOMPLETE && empty.missing.length === 4,
+    '★ 四件全缺 ⇒ 具名 incomplete，completed:false（不宣称完成）', empty)
+  ok(finalTitles('proj-a') === 0, '没有写任何“完成”记录')
+  ok(pc.PAPER_ARTIFACTS.length === 4, '产物定义恰为四件', pc.PAPER_ARTIFACTS)
+  for (const a of ['md', 'tex', 'pdf']) pc.recordPaperArtifact({ records: h.kernel.records, target: 'proj-b', artifact: a })
+  const three = pc.finalizePaper({ records: h.kernel.records, target: 'proj-b' })
+  ok(three.ok === false && three.missing.length === 1 && three.missing[0] === 'meta',
+    '★ 三件齐、缺 meta ⇒ incomplete 且 missing 精确点名 meta', three.missing)
+  const calls = []
+  const idleTurn = { run: async () => { calls.push(1); return { ok: true, turn: { id: 't-idle' } } } }
+  const held = await pc.closeout({ records: h.kernel.records, turn: idleTurn, target: 'proj-b' })
+  ok(held.completed === false && held.dispatched === true && held.stopped === false && held.turn === 't-idle' && calls.length === 1,
+    '★ 缺件 ⇒ 先派论文回合（1 次），仍缺 ⇒ completed:false、stopped:false', held)
+  const produceTurn = { run: async () => { for (const a of pc.PAPER_ARTIFACTS) pc.recordPaperArtifact({ records: h.kernel.records, target: 'proj-c', artifact: a }); return { ok: true, turn: { id: 't-produce' } } } }
+  const closed = await pc.closeout({ records: h.kernel.records, turn: produceTurn, target: 'proj-c' })
+  ok(closed.completed === true && closed.stopped === true && closed.dispatched === true,
+    '★ 产物补齐后才 completed:true（先产论文、再允许停机）', closed)
+  ok(finalTitles('proj-c') === 1, '完成记录恰好一条')
+}
+
 console.log('')
 console.log('=== V3 PLANNER (P0-2 + P0-3): ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length > 0) for (const f of failures) console.error('  - ' + f)

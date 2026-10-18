@@ -284,6 +284,7 @@ vmu.packs.active: [v5r]
 | `vmu.v3.methodKeepIntervalMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/methods.js` | v3 复刻：方法库按时间的保留间隔（0＝只按次数）。读者＝`packs/v3/middleware/methods.js`。 |
 | `vmu.v3.methodAutoPromote` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/methods.js` | v3 复刻：方法是否自动晋升（默认 false＝须人工/规则放行）。读者＝`packs/v3/middleware/methods.js`。 |
 | `vmu.v3.debateMaxRounds` | int ≥0 | `5` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/verify.js` | v3 复刻：验证辩论的最大轮次。读者＝`packs/v3/middleware/verify.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记 |
+| `vmu.v3.paperCloseTarget` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/paper-close.js` | v3 复刻：论文收口目标 id；非空时 tick 里检查四件产物，缺件不宣称完成，必要时派 paper-writer 回合。读者＝`packs/v3/middleware/paper-close.js` ✓ |
 | `vmu.v3.toolAllow` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/toolfilter.js` | v3 复刻：允许的宿主工具名白名单（空＝零策略）；非空时名单外/拿不到工具名 ⇒ 具名拒。读者＝`packs/v3/middleware/toolfilter.js` ✓ |
 | `vmu.v3.toolDeny` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/toolfilter.js` | v3 复刻：禁止的宿主工具名黑名单（优先于 allow）；读者同上 ✓ |
 | `vmu.v3.reportMode` | enum | `file` | `file`∣`push`∣`both` | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/reports.js` | v3 复刻：汇报三路模式（file＝写 reports 轨快照；push＝经 vmu.report 投递；both＝两者）。读者＝`packs/v3/middleware/reports.js` ✓ |
@@ -1526,7 +1527,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1137** 个，前缀家族 **115** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1138** 个，前缀家族 **115** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1640,7 +1641,7 @@ vmu.packs.active: [v5r]
 | `vmu.trust.*` | 16 |
 | `vmu.turn.*` | 27 |
 | `vmu.tx.*` | 6 |
-| `vmu.v3.*` | 17 |
+| `vmu.v3.*` | 18 |
 | `vmu.visibility.*` | 1 |
 | `vmu.work.*` | 2 |
 | `vmu.workflow.*` | 27 |

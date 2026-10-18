@@ -18,6 +18,8 @@
  * ★ 提示词：`v3-verifier-lean` 段唯一承载 Lean 字样；`V3_LEAN_PROMPT_POLICY` 在 off 档把它 enabled:false，
  *   于是 off 档的提示词里**没有任何 Lean 字样**（其他 v3 段不含该词，测试逐段扫描）。
  */
+import { proofVerdict } from './defects.js'
+
 export const LEAN_MODES = Object.freeze(['off', 'encourage', 'require'])
 export const LEAN_SECTION = 'v3-verifier-lean'
 export const LEAN_EVIDENCE_PREFIX = 'v3-formal｜'
@@ -78,6 +80,11 @@ export function recordLeanEvidence({ records, target, status, at = null, by = 'v
 /** 读某对象的**最近一条**形式化证据（passed/blocked）；没有 ⇒ null。坏记录跳过并计数。 */
 export function leanEvidence({ records, target = null } = {}) {
   const id = str(target)
+  // ★ P1-9 共同真源：defect 标记优先——撤回后这里**不再**返回 passed（“归档证明不可再被读成通过”的一个读点）。
+  const verdict = proofVerdict({ records, target: id })
+  if (verdict.state === 'withdrawn') {
+    return { ok: true, target: id || null, evidence: null, status: 'withdrawn', withdrawn: true, bad: 0 }
+  }
   const list = records.list({ track: 'journal', limit: 0 }).items
   let best = null
   let bad = 0

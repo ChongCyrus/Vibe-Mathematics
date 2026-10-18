@@ -27,6 +27,8 @@
  *   并在 `status()` 里自报，而不是假装它可配置。
  */
 import { V3_TICK_TOPIC } from './tick.js'
+// P1-9：defect 标记是归档证明的**共同真源**。`findVerified` 与 `promoteVerified` 都先问它，避免“某处还读得到 passed”。
+import { latestDefect } from './defects.js'
 
 /** v3 的记录轨。★ 这是**值层**的同一份清单（settings/defaults.json 的 vmu.records.tracks），此处仅供测试与文档对照。 */
 export const V3_TRACKS = Object.freeze([
@@ -555,6 +557,9 @@ const stripTime = (s) => String(s).split('\n').filter((l) => l.indexOf('- 时间
 
 /** 找到某个源卡的 Verified 卡（`- ID:` 等于源 id）。找不到 ⇒ null，绝不猜。 */
 export function findVerified(records, sourceId) {
+  // ★ P1-9 共同真源：defect 撤回后，verified 卡**不再被这个读点看见**（返回 null，而非返回旧证明）。
+  const defect = latestDefect({ records, target: String(sourceId) })
+  if (defect.defect && defect.defect.status === 'withdrawn') return null
   const heads = records.list({ track: 'verified', limit: 0 })
   for (const h of heads.items) {
     const rec = records.get({ id: h.id })
@@ -590,6 +595,12 @@ export function promoteVerified({ records, sourceId, at = null, by = null, capBy
   const parsed = parseCard(src.body)
   if (!parsed.ok) throw refuse('VMU_INVALID_ARGUMENT', 'record ' + String(sourceId) + ' is not a parsable v3 card: ' + parsed.reason, 'only problem/proposition/method cards can be promoted')
   const card = parsed.card
+  // ★ P1-9：被 defect 撤回的对象**不能再进 verified 轨**（否则“撤回”会被下一次结算悄悄撤销）。
+  const verdictOfDefect = latestDefect({ records, target: String(card.id) })
+  if (verdictOfDefect.defect && verdictOfDefect.defect.status === 'withdrawn') {
+    throw refuse('VMU_PACK_V3_DEFECT_WITHDRAWN', 'archived proof of ' + String(card.id) + ' was withdrawn by a defect marker',
+      'the defect is the shared truth for every reader; if the proof is reinstated, record that as a NEW card/settlement, not by deleting the defect')
+  }
   let 结论
   let 概率
   if (parsed.kind === 'proposition') {
