@@ -916,33 +916,41 @@ const promoteOnce = async (value) => {
   const lg = await import('../vibe-math-vmu/packs/v3/middleware/lean-gate.js')
   const h = boot({ overrides: { 'vmu.v3.planMinIntervalMs': 0 } })
   await h.loader.apply(PACK)
+  const fid = h.kernel.fidelity
   writeCard({ records: h.kernel.records, kind: 'proposition', card: { id: 'p-def', 标题: '命题 p-def', 概率: 1, 状态: '已验证·真', 陈述: '陈述 p-def。' } })
   const rec = loadCardIndex(h.kernel.records, 'propos', 'proposition').items.find((p) => p.id === 'p-def')
   dp.promoteVerified({ records: h.kernel.records, sourceId: rec.recordId, at: 1000 })
-  ok(defects.proofVerdict({ records: h.kernel.records, target: 'p-def' }).state === 'passed', '基线：归档后读点读到 passed')
-  const emptyNote = defects.recordDefect({ records: h.kernel.records, target: 'p-def', note: '   ' })
+  ok(defects.proofVerdict({ records: h.kernel.records, target: 'p-def', fidelity: fid }).state === 'passed', '基线：归档后读点读到 passed')
+  const emptyNote = await defects.recordDefect({ records: h.kernel.records, target: 'p-def', note: '   ', fidelity: fid })
   ok(emptyNote.ok === false && emptyNote.code === defects.DEFECT_CODE.noteRequired,
     '★ note 为空 ⇒ 具名拒，不写 defect', emptyNote)
-  ok(defects.proofVerdict({ records: h.kernel.records, target: 'p-def' }).state === 'passed',
+  ok(defects.proofVerdict({ records: h.kernel.records, target: 'p-def', fidelity: fid }).state === 'passed',
     '★ 被拒后证明保持不变（没有被“空理由”悄悄撤回）')
-  const written = defects.recordDefect({ records: h.kernel.records, target: 'p-def', note: 'failed independent replication', at: 1100 })
-  ok(written.ok === true && written.status === 'withdrawn', 'defect announce 写入成功', written)
-  const verdict = defects.proofVerdict({ records: h.kernel.records, target: 'p-def' })
+  const written = await defects.recordDefect({ records: h.kernel.records, target: 'p-def', note: 'failed independent replication', at: 1100, fidelity: fid })
+  ok(written.ok === true && written.status === 'withdrawn' && written.source === 'fidelity', 'defect 写入成功且唯一写者是 fidelity', written)
+  ok(h.kernel.records.list({ track: 'journal', limit: 0 }).items.filter((x) => String(x.title).startsWith(defects.DEFECT_PREFIX)).length === 0,
+    '★ pack 不再新增 journal 标记（只有一处写标记）')
+  const verdict = defects.proofVerdict({ records: h.kernel.records, target: 'p-def', fidelity: fid })
   ok(verdict.state === 'withdrawn' && verdict.readableAsPassed === false, '★ 共同真源：proofVerdict 读不到 passed', verdict)
-  ok(dp.findVerified(h.kernel.records, 'p-def') === null, '★ 读点 1（dataplane.findVerified）读不到归档证明')
-  ok(lg.leanEvidence({ records: h.kernel.records, target: 'p-def' }).status === 'withdrawn', '★ 读点 2（leanEvidence）读不到 passed')
+  ok(dp.findVerified(h.kernel.records, 'p-def', { fidelity: fid }) === null, '★ 读点 1（dataplane.findVerified）读不到归档证明')
+  ok(lg.leanEvidence({ records: h.kernel.records, target: 'p-def', fidelity: fid }).status === 'withdrawn', '★ 读点 2（leanEvidence）读不到 passed')
   ok(vf.listCandidates(h.kernel.records).items.some((c) => c.id === 'p-def') === false,
     '★ 读点 3（verify.listCandidates）不再把该对象列为可验证候选')
-  const settleTry = vf.settleProposition({ records: h.kernel.records, target: 'p-def', recordId: rec.recordId, verdict: 1, rule: 'test' })
+  const settleTry = vf.settleProposition({ records: h.kernel.records, target: 'p-def', recordId: rec.recordId, verdict: 1, rule: 'test', fidelity: fid })
   ok(settleTry.ok === false && settleTry.code === 'VMU_PACK_V3_DEFECT_WITHDRAWN',
     '★ 读点 4（verify.settleProposition）拒绝把它再结算成通过', settleTry && settleTry.code)
   let promoteErr = null
-  try { dp.promoteVerified({ records: h.kernel.records, sourceId: rec.recordId, at: 1200 }) } catch (e) { promoteErr = e }
+  try { dp.promoteVerified({ records: h.kernel.records, sourceId: rec.recordId, at: 1200, fidelity: fid }) } catch (e) { promoteErr = e }
   ok(promoteErr && promoteErr.code === 'VMU_PACK_V3_DEFECT_WITHDRAWN', '★ 读点 5（promoteVerified）不能再写回 verified', promoteErr && promoteErr.code)
-  const unenforced = defects.retractArchivedProof({ records: h.kernel.records, target: 'p-def', note: 'delete it', mode: 'delete' })
+  const unenforced = await defects.retractArchivedProof({ records: h.kernel.records, target: 'p-def', note: 'delete it', mode: 'delete', fidelity: fid })
   ok(unenforced.ok === false && unenforced.unenforced === true && unenforced.code === defects.DEFECT_CODE.unenforced,
     '★ 缺 fs 接缝 ⇒ 具名 unenforced（不假装删除/覆盖成功）', unenforced)
-  ok(defects.proofVerdict({ records: h.kernel.records, target: 'p-def' }).state === 'withdrawn', 'announce 态仍生效')
+  ok(defects.proofVerdict({ records: h.kernel.records, target: 'p-def', fidelity: fid }).state === 'withdrawn', 'fidelity 标记仍生效')
+  // 向后兼容：旧 journal 标记仍被认（只读）
+  h.kernel.records.put({ track: 'journal', kind: 'state', title: defects.DEFECT_PREFIX + 'p-legacy', body: '- target: p-legacy\n- status: withdrawn\n- note: old marker', settled: true, by: 'legacy' })
+  ok(defects.proofVerdict({ records: h.kernel.records, target: 'p-legacy' }).state === 'withdrawn' &&
+    defects.proofVerdict({ records: h.kernel.records, target: 'p-legacy' }).source === 'legacy-journal',
+    '★ 旧 journal 标记仍被识别（只读兼容，不静默丢弃）')
 }
 
 // ── 21. P1-10 论文收口：先产论文再停机；四件缺一 ⇒ 具名不宣称完成 ─────────────────────────────────────
@@ -1004,6 +1012,58 @@ const promoteOnce = async (value) => {
   const ids = vf.listCandidates(h.kernel.records, { fidelity: fid }).items.map((c) => c.id)
   ok(ids.includes('p-cand-ok') && !ids.includes('p-cand-bad'),
     '★ 真实标记后：listCandidates 排除该对象、不误伤正常对象', ids)
+}
+
+
+// ── 23. P1-9（接线）：loadDefects 重启重载 ＋ library currentDefect 端到端 ─────────────────────────────────
+{
+  const fsp = await import('node:fs/promises')
+  const os = await import('node:os')
+  const pathMod = await import('node:path')
+  const { createFidelityRegistry } = await import('../vibe-math-vmu/kernel/fidelity.js')
+  const { createLibrary } = await import('../vibe-math-vmu/kernel/library.js')
+  const files = new Map()
+  const fakeFs = {
+    writeText: async (rel, text) => { files.set(rel, String(text)); return true },
+    readText: async (rel) => (files.has(rel) ? files.get(rel) : null),
+    listDir: async (rel) => [...files.keys()].filter((k) => k.startsWith(rel + '/')).map((k) => ({ name: k.slice(rel.length + 1), type: 'file' })),
+  }
+  const mkKernel = () => createKernel({ clock: () => 1000, settings: clone(PACK_DEFAULTS), sections: PACK.sections, host: fakeFs })
+  const k1 = mkKernel()
+  await new Promise((r) => setTimeout(r, 5))
+  ok(k1.fidelityLoad().status === 'loaded' && k1.fidelityLoad().loaded === 0, '有 fs：装配期 loadDefects 真的跑了（0 条，具名状态 loaded）', k1.fidelityLoad())
+  await k1.fidelity.declareDefect({ target: 'p-durable', by: 'office', note: 'durable marker' })
+  ok([...files.keys()].some((k) => k.includes('Defects')), 'declareDefect 落盘到 Defects/（有 fs 时 persisted）', [...files.keys()])
+  const k2 = mkKernel()
+  await new Promise((r) => setTimeout(r, 10))
+  ok(k2.fidelityLoad().status === 'loaded' && k2.fidelityLoad().loaded === 1, '★ 新内核装配期重载了 1 条耐久标记', k2.fidelityLoad())
+  ok(k2.fidelity.passedWithdrawnFor('p-durable') && k2.fidelity.passedWithdrawnFor('p-durable').withdrawn === true,
+    '★ 重启后 passedWithdrawnFor 仍读得到（机制真的接线了）')
+  const kNoFs = createKernel({ clock: () => 1000, settings: clone(PACK_DEFAULTS), sections: PACK.sections })
+  ok(kNoFs.fidelityLoad().status === 'unavailable' && kNoFs.fidelityLoad().code === 'VMU_MATH_JOBS_MIRROR_UNWIRED',
+    '★ 无 fs ⇒ 具名 unavailable（不假装加载了）', kNoFs.fidelityLoad())
+  // library currentDefect 端到端（带 root）
+  const dir = await fsp.mkdtemp(pathMod.join(os.tmpdir(), 'vmu-lib-def-'))
+  try {
+    const fidL = createFidelityRegistry({ clock: () => 1000 })
+    await fidL.declareDefect({ target: 'proof-1', by: 'office', note: 'unfaithful' })
+    const lib = createLibrary({ root: dir, tracks: ['verified'], defectLookup: (t) => fidL.passedWithdrawnFor(t) })
+    const body = '# 已验证｜proof-1\n- ID: proof-1\n- 类型: 命题\n- 结论: 真\n- 概率: 1\n- 陈述: s\n- 内容: c\n'
+    const r1 = await lib.append({ kind: 'proposition', track: 'verified', title: '已验证｜proof-1', statement: '- ID: proof-1\n- 类型: 命题\n- 结论: 真\n- 概率: 1', body })
+    const json1 = await lib.exportRecord(r1.id, { format: 'json', allowInternal: true, includeHistory: true })
+    ok(json1.currentDefect && json1.currentDefect.withdrawn === true, '★ library 有缺陷 ⇒ currentDefect.withdrawn===true', json1.currentDefect)
+    const md1 = await lib.exportRecord(r1.id, { format: 'md', allowInternal: true })
+    ok(/current defect: proof withdrawn/.test(String(md1.text)), '★ markdown 里出现 current defect 行')
+    const body2 = '# 已验证｜proof-2\n- ID: proof-2\n- 类型: 命题\n- 结论: 真\n- 概率: 1\n'
+    const r2 = await lib.append({ kind: 'proposition', track: 'verified', title: '已验证｜proof-2', statement: '- ID: proof-2\n- 类型: 命题\n- 结论: 真\n- 概率: 1', body: body2 })
+    const json2 = await lib.exportRecord(r2.id, { format: 'json', allowInternal: true })
+    ok(json2.currentDefect === null, '★ 无缺陷 ⇒ currentDefect 为空（不误报）', json2.currentDefect)
+    const body3 = '# 已验证｜no-anchor\n- 结论: 真\n- 概率: 1\n'
+    const r3 = await lib.append({ kind: 'proposition', track: 'verified', title: '无锚点', statement: '- 结论: 真\n- 概率: 1', body: body3 })
+    const json3 = await lib.exportRecord(r3.id, { format: 'json', allowInternal: true })
+    ok(json3.currentDefect && json3.currentDefect.code === 'VMU_PACK_V3_DEFECT_TARGET_UNRESOLVED',
+      '★ 缺 - ID: 锚点 ⇒ 具名 unresolved（不静默猜记录 id）', json3.currentDefect)
+  } finally { await fsp.rm(dir, { recursive: true, force: true }) }
 }
 
 console.log('')

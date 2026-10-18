@@ -560,8 +560,12 @@ export function createLibrary({
     // P1-9: history rows are FACTS about the past; `currentDefect` is the CURRENT truth. The verified track's defect
     // marker (`fidelity.passedWithdrawn`) is looked up for the card's logical `- ID:` anchor, never guessed from a title.
     const idAnchor = /(?:^|\n)- ID:\s*(.+)/.exec(String(expanded.body || ''))
-    const proofTarget = idAnchor ? idAnchor[1].trim() : String(rec.id)
-    const currentDefect = typeof defectLookup === 'function' ? defectLookup(proofTarget) : null
+    // Missing anchor is NAMED, not guessed: a record id is not the defect key (the marker is keyed by the card ID).
+    const currentDefect = !idAnchor
+      ? { ok: false, code: 'VMU_PACK_V3_DEFECT_TARGET_UNRESOLVED', unresolved: true, withdrawn: false,
+          message: 'the exported record has no `- ID:` anchor, so the current defect truth cannot be resolved',
+          hint: 'the defect marker is keyed by the card ID; add the anchor or read the verified track directly' }
+      : (typeof defectLookup === 'function' ? defectLookup(idAnchor[1].trim()) : null)
     const body = {
       id: rec.id, kind: rec.kind, title: rec.title, status: rec.status, owner: rec.owner,
       fingerprint: rec.fingerprint, visibility, updatedAt: rec.updatedAt,

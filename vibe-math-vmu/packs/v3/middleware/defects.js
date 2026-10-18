@@ -59,11 +59,17 @@ export function latestDefect({ records, target } = {}) {
  * **共同真源读取器**：v3 侧所有“这算不算通过”的判断都必须经它。
  * 返回 `{state: 'withdrawn'|'passed'|'unknown', readableAsPassed, defectId?, recordId?, verifiedId?}`。
  */
-export function proofVerdict({ records, target } = {}) {
+export function proofVerdict({ records, target, fidelity = null } = {}) {
   const id = str(target)
+  // 唯一写者/真源：内核 fidelity 的 `passedWithdrawn`。pack 不再写 journal 标记。
+  if (fidelity && typeof fidelity.passedWithdrawnFor === 'function') {
+    const marker = fidelity.passedWithdrawnFor(id)
+    if (marker) return { ok: true, target: id, state: 'withdrawn', readableAsPassed: false, markerId: marker.markerId, source: 'fidelity' }
+  }
+  // 向后兼容：**旧** journal 标记仍被识别（只读），不会被静默丢弃。
   const defect = latestDefect({ records, target: id })
   if (defect.defect && defect.defect.status === 'withdrawn') {
-    return { ok: true, target: id, state: 'withdrawn', readableAsPassed: false, defectId: defect.defect.recordId }
+    return { ok: true, target: id, state: 'withdrawn', readableAsPassed: false, defectId: defect.defect.recordId, source: 'legacy-journal' }
   }
   const verified = findVerifiedCard(records, id)
   if (verified) return { ok: true, target: id, state: 'passed', readableAsPassed: true, verifiedId: verified.id }
@@ -73,7 +79,7 @@ export function proofVerdict({ records, target } = {}) {
 /**
  * 记一条 defect 公告。**note 必填**：空/空白 ⇒ 返回具名拒**且不写任何记录**（证明保持不变）。
  */
-export function recordDefect({ records, target, note = null, by = 'v3-defects', at = null } = {}) {
+export async function recordDefect({ records = null, target, note = null, by = 'v3-defects', at = null, fidelity = null } = {}) {
   const id = str(target)
   const why = str(note).trim()
   if (!id) return { ok: false, code: DEFECT_CODE.noteRequired, message: 'recordDefect needs a target', hint: 'pass { target }' }
@@ -84,9 +90,16 @@ export function recordDefect({ records, target, note = null, by = 'v3-defects', 
       hint: 'pass { note } explaining why the archived proof must no longer be read as passed; nothing was written',
     }
   }
-  const body = ['- target: ' + id, '- status: withdrawn', '- note: ' + why, '- at: ' + (Number.isFinite(at) ? at : 'unknown'), '- by: ' + str(by)].join('\n')
-  const rec = records.put({ track: 'journal', kind: 'state', title: DEFECT_PREFIX + id, body, settled: true, by })
-  return { ok: true, recordId: rec && rec.id ? rec.id : null, target: id, status: 'withdrawn' }
+  if (!fidelity || typeof fidelity.declareDefect !== 'function') {
+    return {
+      ok: false, code: DEFECT_CODE.unenforced, unenforced: true, target: id,
+      message: 'defect markers live in the kernel fidelity registry, and no fidelity seam was provided',
+      hint: 'pass { fidelity: <vmu.fidelity> }; the pack does NOT write a local marker (two truths is the defect)',
+    }
+  }
+  const declared = await fidelity.declareDefect({ target: id, note: why, by })
+  if (!declared || declared.ok === false) return { ok: false, code: (declared && declared.code) || DEFECT_CODE.unenforced, target: id, detail: declared || null }
+  return { ok: true, target: id, status: 'withdrawn', source: 'fidelity', markerId: declared.marker && declared.marker.markerId ? declared.marker.markerId : null, durable: declared.durable === true }
 }
 
 /**
@@ -96,11 +109,11 @@ export function recordDefect({ records, target, note = null, by = 'v3-defects', 
  *    缺失 ⇒ `{ok:false, code: VMU_PACK_V3_DEFECT_UNENFORCED, unenforced:true}`，**不写公告冒充成功**。
  * 返回回执里 `enforced` 如实报“哪一部分真的做了”。
  */
-export function retractArchivedProof({ records, target, note = null, mode = 'announce', fs = null, by = 'v3-defects', at = null } = {}) {
+export async function retractArchivedProof({ records, target, note = null, mode = 'announce', fs = null, by = 'v3-defects', at = null, fidelity = null } = {}) {
   const m = str(mode)
   if (!RETRACT_MODES.includes(m)) return { ok: false, code: DEFECT_CODE.modeUnknown, message: 'unknown defect retract mode: ' + (m || '(empty)'), hint: 'one of ' + RETRACT_MODES.join('|') }
   if (m === 'announce') {
-    const rec = recordDefect({ records, target, note, by, at })
+    const rec = await recordDefect({ records, target, note, by, at, fidelity })
     if (rec.ok !== true) return rec
     return Object.assign({}, rec, { mode: m, enforced: ['announce'], unenforced: [] })
   }

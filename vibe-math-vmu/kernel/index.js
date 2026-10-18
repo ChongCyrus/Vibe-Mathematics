@@ -919,6 +919,26 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     fs: host && typeof host.writeText === 'function' && typeof host.readText === 'function' ? host : null })
   // ...and the library's history export can now ask the CURRENT truth (P1-9); assignment (not a forward call).
   fidelityRef.current = fidelity
+  /**
+   * P1-9: durable defect markers must be reloaded after a restart. createKernel is SYNC, so the async load is STARTED
+   * here and its receipt is observable (`kernel.fidelityLoad()`); nothing pretends it already ran. No host fs seam ⇒
+   * status is NAMED `unavailable` (loadDefects refuses by name), never "loaded 0".
+   */
+  const fidelityLoad = { status: 'pending', loaded: 0, code: null, message: null }
+  const fsForDefects = host && typeof host.writeText === 'function' && typeof host.readText === 'function' ? host : null
+  if (!fsForDefects) {
+    fidelityLoad.status = 'unavailable'
+    fidelityLoad.code = 'VMU_MATH_JOBS_MIRROR_UNWIRED'
+    fidelityLoad.message = 'no host fs seam (writeText/readText): durable defect markers cannot be reloaded; in-memory markers only'
+  } else {
+    Promise.resolve()
+      .then(() => fidelity.loadDefects())
+      .then((r) => {
+        if (r && r.ok === true) { fidelityLoad.status = 'loaded'; fidelityLoad.loaded = Number(r.loaded) || 0 }
+        else { fidelityLoad.status = 'unavailable'; fidelityLoad.code = (r && r.code) || 'VMU_MATH_JOBS_MIRROR_UNWIRED'; fidelityLoad.message = (r && r.message) || 'loadDefects refused' }
+      })
+      .catch((e) => { fidelityLoad.status = 'unavailable'; fidelityLoad.code = (e && e.code) || 'VMU_MATH_JOBS_MIRROR_UNWIRED'; fidelityLoad.message = String((e && e.message) || e) })
+  }
   // ROUND 2 (task-14, vmu-assistant's contract): the REPORTING face. It has NO internal timer by design ("a report
   // never drives anything"), so the entry advances it at the turn boundary; `deliver` is the transport (a missing one
   // is a NAMED refusal, not a silent drop) and `audit` is where parameter changes are recorded.
@@ -1746,6 +1766,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     get activity() { return activity },
     // ROUND 3 / task-20: the fidelity registry (the C-45 enforcement point).
     get fidelity() { return fidelity },
+    /** P1-9: the async durable-defect-load receipt (`status: pending|loaded|unavailable`, named code when unavailable). */
+    fidelityLoad: () => Object.assign({}, fidelityLoad),
     /** The control SERVICE (`createControl`), distinct from `kernel.control()` - the control VIEW function that has
      *  occupied that name since round 1. `tune()` (the mid-flight retune face) lives on the service. */
     get controlService() { return control },

@@ -78,10 +78,10 @@ export function recordLeanEvidence({ records, target, status, at = null, by = 'v
 }
 
 /** 读某对象的**最近一条**形式化证据（passed/blocked）；没有 ⇒ null。坏记录跳过并计数。 */
-export function leanEvidence({ records, target = null } = {}) {
+export function leanEvidence({ records, target = null, fidelity = null } = {}) {
   const id = str(target)
-  // ★ P1-9 共同真源：defect 标记优先——撤回后这里**不再**返回 passed（“归档证明不可再被读成通过”的一个读点）。
-  const verdict = proofVerdict({ records, target: id })
+  // ★ P1-9 共同真源：fidelity 标记优先（唯一写者）；再兼容旧 journal 标记；撤回后这里**不再**返回 passed。
+  const verdict = proofVerdict({ records, target: id, fidelity })
   if (verdict.state === 'withdrawn') {
     return { ok: true, target: id || null, evidence: null, status: 'withdrawn', withdrawn: true, bad: 0 }
   }
