@@ -172,7 +172,7 @@
 | 10 | `task/assign` | `closed` | **✓** `members.js`／`tasks.js` | 任务、被指派者、验收 | `deny`／`rewriteArgs`／`notify` | ✓ | ✓ | 用户可定义 |
 | 11 | `task/transition` | `closed` | **✓** `tasks.js` | 任务、原/目标状态 | `deny`／`record` | ✓ | ✗ | 用户可定义（状态机仍内核校验） |
 | 12 | `prompt/section-assembled` | **`open`** | **✓ 已有生产者**（装配路径 emit ✓；曾漂移为 `prompt/assemble` ✗ ⇒ 本会话已修 ✓ 见 §5.2） | 段名、段文本、来源、顺序、剩余预算 | `deny`／`appendPrompt`／`rewriteResult`／`annotate` | ✓ | ✓ | 用户可定义（**见 06**） |
-| 13 | `budget/exceeded` | **`abort`** | **✓ 已有生产者**（`kernel/fairness.js` 在守恒分配失败时 emit ✓；独立复核者第 6 轮指出本表曾写"无生产者"✗ ⇒ 已更正 ✓） | 超预算对象、已用/上限、候选 | `deny`／`annotate` | ✓ | ✓ | 用户可定义（截断协商） |
+| 13 | `budget/exceeded` | **`abort`** | **✓ 已有生产者**（`kernel/fairness.js` 在守恒分配失败时 emit ✓；独立复核者第 6 轮指出本表曾写"无生产者"✗ ⇒ 已更正 ✓） | 超预算对象、已用/上限、候选 | `annotate` | ✗ | ✗ | **观测**（PHASE 6 更正：生产者在分配已入账后才 emit 且不看回执 ⇒ `deny` 无法撤销；登记表已改 `blockable:false`，`abort` 失败策略保留） |
 | 14 | `pack/loading` | `closed` | **✓** `kernel/pack.js`（轮 496 已接线：应用前、可否决） | 包 id、声明、计划 | `deny`／`rewriteArgs` | ✓ | ✓ | 用户可定义 |
 | 15 | `pack/loaded` | `closed` | **✓** `kernel/pack.js`（轮 496 已接线：全部就位后） | 包 id、条目数、服务、耗时 | `record`／`notify` | ✗ | ✗ | 用户可定义 |
 | 16 | `settle/before` | `closed` | **✓** `tasks.js` | 结算对象、口径、参与集 | `deny`（**唯一**） | ✓ | ✗ | **内核强制**（口径不可改写） |
@@ -217,7 +217,7 @@
 | 恢复（`resume/`，`kernel/resume.js`） | `recovered`／`degraded`／`projection-error` | `open` | ✗ | 恢复完成／带未水合投影降级／单面水合失败 |
 | 标识（`ids/`，`kernel/ids.js`） | `minted`／`hydrated`／`persist-failed` | `open` | ✗ | 铸号／从 fold 水合计数／持久化失败 |
 | 人类在环（`human/`，`kernel/human.js`） | `vetoed`／`veto-lifted`／`approval-asked`／`approval-decided` | `open` | ✗ | 否决已记录／已解除／请求审批／审批已决 |
-| 同上 | **`gate-pending`** | **`closed`** | **✓** | 动作被审批闸挂起——**闸门语义必须有人接**：监听者坏掉不得等于放行 |
+| 同上 | **`gate-pending`** | **`closed`** | ✗ | 动作被审批闸挂起——**这是观测通知**（闸门已决定后才发、回执被丢弃；PHASE 6 更正 `blockable:false`）；`closed` 失败策略仍保证**监听者坏掉不得等于放行** |
 | 控制（`control/`，`kernel/control.js`） | `scope-paused`／`scope-resumed`／`param-set`／`param-refused` | `open` | ✗ | 范围暂停/恢复、参数已改/被拒（观测，与既有 `control/paused|resumed|heartbeat` 同策略） |
 | 群聊（`chat/`，`kernel/chat.js`） | **`send-before`** | **`closed`** | **✓** | 配额/禁言/表决冻结策略的执行点 |
 | 同上 | `sent`／`refused` | `open` | ✗ | 已接受／被策略拒（观测） |
@@ -229,6 +229,7 @@
 
 ★★★ **命名空间规则同步扩展**（`bus.emit` 的 `VU_NAMESPACE`）：`resume|ids|human|chat|mailbox|panel|math` 已加入 ⇒ 这七个命名空间里**未登记的名字会被具名拒**，不再"看起来正常、其实没人能挂"（与轮 496 修 `budget/warn`／`member/self-report` 同一条规则）。
 ★★ **emit 形态是硬要求**：`bus.emit('<名>', payload, {member,role,phase})`。`emit({type:'x'})` 这种**单对象调用**会被总线以 `VMU_INVALID_ARGUMENT` 拒绝（`kernel/lifecycle.js:39` 曾是活样例，其两条广播因此**从未到达总线**）；且门禁只认字面量 `bus.emit('<名>'` ⇒ 对象形态**不算生产者**。
+★★★ **PHASE 6 钩子诚实性更正**：`blockable` 只是登记表的**承诺**，总线本身不检查它——真正兑现承诺的是消费者。本轮普查后：`ballot/tally`（`ballot.close`）与 `task/assign`（`members.assignRole`）补齐 `ok===false` 检查（拒绝真的中止）；`budget/exceeded`、`human/gate-pending` 与宿主侧 `agent/pre-step`、`fs/write-intent` 的消费者**只看回执/根本不读回执**（宿主的 bridge 对后两者是观测式，`host-hooks.js:177-178`），故登记表改为 `blockable:false`（不再谎称可否决），失败策略不变。
 
 ### 5.4 三类"名字"的边界：**登记钩子 / 声明主题 / 仅日志**（轮 4 定稿：逐个分类 + 门禁）
 

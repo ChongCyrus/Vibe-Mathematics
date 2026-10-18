@@ -270,6 +270,22 @@ if (SELF_PROBE) {
     'the ENTRY wins over every declared default - the keys only fill gaps', JSON.stringify(own))
 }
 
+// ── PHASE 6: the registry's `blockable` flag must be TRUE only where a consumer honours a deny ───────────────
+{
+  const row = (name) => m.HOOK_REGISTRY.find((h) => h.name === name) || null
+  // These four USED to claim blockable:true while their only consumer ignored the receipt. They are now honest
+  // (observation-only), and the reason lives next to each row in kernel/bus.js.
+  const observationOnly = ['budget/exceeded', 'human/gate-pending', 'agent/pre-step', 'fs/write-intent']
+  const stillClaimed = observationOnly.filter((n) => { const r = row(n); return !r || r.blockable !== false })
+  ok(stillClaimed.length === 0,
+    '★ observation-only hooks do NOT claim blockable (a registry that promises a veto nobody implements is a lie)',
+    stillClaimed)
+  // And the hooks whose consumers DO honour the receipt are still blockable (the fix did not downgrade reality).
+  const enforced = ['ballot/tally', 'ballot/cast', 'task/assign', 'task/transition', 'settle/before', 'pack/loading', 'tools/pre-execute']
+  const lost = enforced.filter((n) => { const r = row(n); return !r || r.blockable !== true })
+  ok(lost.length === 0, '★ hooks with a real refusing consumer remain blockable:true', lost)
+}
+
 console.log('=== VMU BUS: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

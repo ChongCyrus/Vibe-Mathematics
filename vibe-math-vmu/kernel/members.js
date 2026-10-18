@@ -146,8 +146,17 @@ export function createMembers({
       const rec = existing
         ? Object.assign(existing, { slot: slotId, state: 'live', since: clock() })
         : { id, slot: slotId, state: 'live', since: clock(), wakes: 0 }
+      // ★ PHASE 6 fix: `task/assign` is declared BLOCKABLE. This producer used to emit AFTER `members.set` and
+      // ignore the result — so a deny could not prevent the assignment, and the hook only looked load-bearing.
+      // The assignment is now the effect of an allowed decision: emit first, refuse by name, mutate only when
+      // no listener denied (the other producer, kernel/tasks.js, already honoured the same contract).
+      if (bus) {
+        const assignDecision = await bus.emit('task/assign', { member: id, slot: slotId }, { member: id })
+        if (assignDecision && assignDecision.ok === false) {
+          return { ok: false, refused: assignDecision.refused || { code: assignDecision.code, message: assignDecision.message } }
+        }
+      }
       members.set(id, rec)
-      if (bus) await bus.emit('task/assign', { member: id, slot: slotId }, { member: id })
       return { ok: true, id, slot: slotId, occupied: occupancy(slotId), capacity: def.capacity }
     },
 

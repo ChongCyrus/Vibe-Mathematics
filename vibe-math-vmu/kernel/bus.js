@@ -165,7 +165,10 @@ export const HOOK_REGISTRY = Object.freeze([
   { name: 'motion/table', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a motion was tabled', producer: 'kernel/governance.js' },
   { name: 'motion/amend', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a motion was amended', producer: 'kernel/governance.js' },
   { name: 'prompt/section-assembled', kind: 'vmu', failure: 'open', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'a prompt assembly asks for section decisions', producer: 'kernel/prompt/index.js' },
-  { name: 'budget/exceeded', kind: 'vmu', failure: 'abort', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'a conserving allocation fails', producer: 'kernel/fairness.js' },
+  // PHASE 6 hook-honesty fix: `blockable:false` because the producer emits AFTER the allocation is recorded
+  // (kernel/fairness.js emits once conservation succeeded) and ignores the receipt — a deny cannot un-record it.
+  // `failure:'abort'` stays: a broken listener still aborts the caller (that part was real).
+  { name: 'budget/exceeded', kind: 'vmu', failure: 'abort', blockable: false, rewritable: true, scope: VU_SCOPE, timing: 'a conserving allocation fails', producer: 'kernel/fairness.js' },
   { name: 'pack/loading', kind: 'vmu', failure: 'closed', blockable: true, rewritable: true, scope: VU_SCOPE, timing: 'before a pack changes anything (may refuse)', producer: 'kernel/pack.js' },
   { name: 'pack/loaded', kind: 'vmu', failure: 'closed', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'after every manifest is in place', producer: 'kernel/pack.js' },
   { name: 'settle/before', kind: 'vmu', failure: 'closed', blockable: true, rewritable: false, scope: VU_SCOPE, timing: 'before a settlement', producer: 'kernel/tasks.js' },
@@ -192,7 +195,10 @@ export const HOOK_REGISTRY = Object.freeze([
   { name: 'human/vetoed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a human veto was recorded', producer: 'kernel/human.js' },
   { name: 'human/veto-lifted', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a human veto was lifted', producer: 'kernel/human.js' },
   { name: 'human/approval-asked', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'an approval was requested', producer: 'kernel/human.js' },
-  { name: 'human/gate-pending', kind: 'vmu', failure: 'closed', blockable: true, rewritable: false, scope: VU_SCOPE, timing: 'an action is held at the approval gate (a broken listener must NOT open the gate)', producer: 'kernel/human.js' },
+  // PHASE 6 hook-honesty fix: this notification is fire-and-forget AFTER the gate already decided (kernel/human.js
+  // uses its local `emit`, which discards the receipt), so a deny cannot change the hold. `failure:'closed'` stays:
+  // a broken listener must not open the gate — that is the failure policy, not a veto.
+  { name: 'human/gate-pending', kind: 'vmu', failure: 'closed', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'an action is held at the approval gate (a broken listener must NOT open the gate)', producer: 'kernel/human.js' },
   { name: 'human/approval-decided', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'an approval was decided', producer: 'kernel/human.js' },
   { name: 'control/scope-paused', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a scope was paused', producer: 'kernel/control.js' },
   { name: 'control/scope-resumed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a scope was resumed', producer: 'kernel/control.js' },
@@ -286,7 +292,10 @@ export const HOOK_REGISTRY = Object.freeze([
   //   · settings document edits -> `settings/document-updated`
   //   · agent inbox delivery    -> `agent/inbox/inserted` / `agent/inbox/claimed` / `agent/inbox/discarded`
   //   · prompt SECTION assembly -> there is no host hook; the vmu-side name is `prompt/section-assembled` (kind:'vmu')
-  { name: 'agent/pre-step', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: true, rewritable: false, timing: 'before an agent step' },
+  // PHASE 6 hook-honesty fix: the host bridge treats this hook as OBSERVATION-ONLY (host-hooks.js:177-178 —
+  // "the decision is recorded, and the waterfall is always continued"), so no deny ever reaches the host. Calling
+  // it blockable made the registry promise a veto the only consumer does not implement.
+  { name: 'agent/pre-step', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'before an agent step' },
   { name: 'agent/request', kind: 'host', bridged: false, blockable: false, rewritable: false, timing: 'an agent request is issued (subscribe-only)' },
   { name: 'agent/request-error', kind: 'host', bridged: false, blockable: false, rewritable: false, timing: 'an agent request failed (subscribe-only)' },
   { name: 'agent/turn-stopping', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'the host turn ends (the per-turn tool budget resets here)' },
@@ -295,7 +304,9 @@ export const HOOK_REGISTRY = Object.freeze([
   { name: 'subagent/end', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'a subagent ends' },
   { name: 'session/event', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'a session event' },
   { name: 'session/flush', kind: 'host', bridged: false, blockable: false, rewritable: false, timing: 'a session is flushed (subscribe-only)' },
-  { name: 'fs/write-intent', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: true, rewritable: false, timing: 'a write is about to happen' },
+  // PHASE 6 hook-honesty fix: same as agent/pre-step — the host bridge is observation-only for this hook
+  // (host-hooks.js:177-178), so the registry must not claim it can block a write.
+  { name: 'fs/write-intent', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'a write is about to happen' },
   { name: 'system-prompt/assemble', kind: 'host', bridged: true, bridgeSite: BRIDGE_SITE, blockable: false, rewritable: false, timing: 'the host assembles its system prompt (the host-side name; `prompt/assemble` was never one)' },
 ])
 

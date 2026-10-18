@@ -185,6 +185,26 @@ if (SELF_PROBE) {
   ok(mid.selfReportHistory('m-1').length === 3, 'but the history survives the member ending (nothing is deleted)')
 }
 
+// ── PHASE 6: `task/assign` is declared BLOCKABLE ⇒ a deny must actually refuse the assignment ───────────────
+{
+  const denyAssign = { emit: async (hook) => (hook === 'task/assign'
+    ? { ok: false, refused: { code: 'VMU_TEST_ASSIGN_DENIED', message: 'the assignment gate said no' }, decisions: [], entry: 'test-gate' }
+    : { ok: true, decisions: [] }) }
+  const blocked = m.createMembers({ slots, clock: () => '2026-10-09T00:00:00.000Z', bus: denyAssign })
+  const res = await blocked.assignRole('m-9', 'lead')
+  ok(res && res.ok === false && res.refused && res.refused.code === 'VMU_TEST_ASSIGN_DENIED',
+    '★ deny on task/assign ⇒ assignRole reports the refusal by name', res)
+  ok(blocked.roster().length === 0,
+    '★ and the member was NOT assigned (the port emitted before mutating, so a deny prevents the effect)',
+    blocked.roster().map((r) => r.id))
+  // REVERSE: no deny ⇒ assignment still works (the fix must not block the normal path).
+  const allow = { emit: async () => ({ ok: true, decisions: [] }) }
+  const fine = m.createMembers({ slots, clock: () => '2026-10-09T00:00:00.000Z', bus: allow })
+  const okRes = await fine.assignRole('m-9', 'lead')
+  ok(okRes && okRes.ok === true && fine.roster().some((r) => r.id === 'm-9'),
+    '★ reverse: with no deny, assignRole succeeds and the member is on the roster', okRes && okRes.refused)
+}
+
 console.log('=== VMU MEMBERS: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

@@ -651,7 +651,18 @@ async function advanceCandidate({ records, ballotbox, turn, at, settings, state,
       }
     }
     const votes = readVotes(records, target, round)
-    const settledAttempt = trySettle({ records, ballotbox, boxId: box.boxId, target, round, required, verdictMode: settings.verdictMode, at })
+    // ★ PHASE 6 联动：`ballot.close()` 现在真的会因 middleware 的 deny 而**抛具名拒**（修了“blockable 钩子
+    // 不被消费者检查”那一类）。这里把它接成“本轮未成立 + 保留候选”，而不是让整条 tick 抛出去 —— 否则
+    // 一个候选的拒绝会带走同一 tick 里其它候选。
+    let settledAttempt
+    try {
+      settledAttempt = trySettle({ records, ballotbox, boxId: box.boxId, target, round, required, verdictMode: settings.verdictMode, at })
+    } catch (e) {
+      const held = { ok: false, settled: false, target, round, rounds: round, code: str((e && e.code) || 'VMU_MIDDLEWARE_FAILED'), message: str((e && e.message) || e) }
+      recordUndecided({ records, target, code: held.code, message: held.message, tally: null, at, round })
+      state.undecided += 1
+      return Object.assign({}, held, { note: 'the tally point refused this settlement by name; the object stays on its track' })
+    }
     if (settledAttempt.ok === false) {
       // 未成立：写一条"不是否决"的审计 journal，保留候选（下一 tick 继续收票）。
       recordUndecided({ records, target, code: settledAttempt.code, message: settledAttempt.message, tally: settledAttempt.tally, at, round })

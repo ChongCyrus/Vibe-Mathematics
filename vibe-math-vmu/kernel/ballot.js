@@ -473,6 +473,16 @@ export function createBallot({
       let result
       if (bus) {
         const dec = await bus.emit('ballot/tally', { target, votes: voteObject, eligible: eligible.slice(), quorumRule }, {})
+        // ★ PHASE 6 fix: `ballot/tally` is declared BLOCKABLE, so a deny MUST change behaviour. Before this check
+        // the box read only `.decision.tally` and closed anyway — a deny was recorded and then ignored, which made
+        // every middleware gate on this hook look effective while changing nothing. A denial now aborts the close
+        // by name (state stays open/frozen, no outcome, no history row claiming a settlement).
+        if (dec && dec.ok === false) {
+          const code = (dec.refused && dec.refused.code) || dec.code || 'VMU_MIDDLEWARE_FAILED'
+          const message = (dec.refused && dec.refused.message) || dec.message || 'a middleware refused this settlement'
+          record('close-refused', { reason: 'middleware', code, entry: dec.entry || null })
+          throw refuse(code, message, 'the ballot/tally hook refused this settlement (a blockable hook must be honoured); the box stays open and no tally was written (docs/05 §5)')
+        }
         const override = dec && dec.ok && dec.decisions.find((d) => d.decision && d.decision.tally)
         result = override ? override.decision.tally : tally({ votes: voteObject, eligible: eligible.slice(), quorumRule })
       } else {

@@ -220,6 +220,35 @@ if (SELF_PROBE) {
   ok(skipped.detail.ballots === 1, 'irv: only decisive ballots are counted')
 }
 
+// ── 12. PHASE 6: `ballot/tally` is declared BLOCKABLE ⇒ a deny must actually refuse the close ──────────────
+{
+  // Deny ONLY the tally point; cast must still be allowed so the fixture reaches close().
+  const denyTally = { emit: async (hook) => (hook === 'ballot/tally'
+    ? { ok: false, refused: { code: 'VMU_TEST_TALLY_DENIED', message: 'the tally gate said no' }, decisions: [], entry: 'test-gate' }
+    : { ok: true, decisions: [] }) }
+  const denied = m.createBallot({ target: 'prop-deny', eligible: members, bus: denyTally })
+  await denied.open()
+  await denied.cast('r-1', 1)
+  await denied.cast('r-2', 1)
+  let closeErr = null
+  try { await denied.close() } catch (e) { closeErr = e }
+  ok(!!closeErr && closeErr.code === 'VMU_TEST_TALLY_DENIED',
+    '★ deny on ballot/tally ⇒ close() REFUSES with the listener code (not silently tallied)', closeErr && closeErr.code)
+  const ds = denied.status()
+  ok(ds.state === 'open' && ds.outcome === null,
+    '★ and nothing was settled: state is still open, outcome is null (a denied close is not a tally)', { state: ds.state, outcome: ds.outcome })
+
+  // REVERSE: no deny ⇒ close still succeeds (the fix must not block the normal path).
+  const allow = { emit: async () => ({ ok: true, decisions: [] }) }
+  const fine = m.createBallot({ target: 'prop-allow', eligible: members, bus: allow })
+  await fine.open()
+  await fine.cast('r-1', 1)
+  await fine.cast('r-2', 1)
+  const closed = await fine.close()
+  ok(closed.ok === true && closed.outcome === true,
+    '★ reverse: with no deny, close() succeeds and tallies as before', closed && closed.outcome)
+}
+
 console.log('=== VMU BALLOT: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
