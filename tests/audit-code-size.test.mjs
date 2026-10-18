@@ -1,40 +1,38 @@
-// tests/audit-code-size.test.mjs — THE FILE-SIZE FACE: it MEASURES and it REPORTS. It no longer REFUSES.
+// tests/audit-code-size.test.mjs — THE FILE-SIZE FACE: it MEASURES and it REPORTS. There is NO LIMIT AND NO ADVISORY LINE.
 //
-// ★★★★★★★ THE HARD CAP WAS RETIRED ON PURPOSE (phase 6, round 4, founder's decision). WHAT IT WAS: docs/02 §178 recorded
-// "单文件建议 ≤1200 行" and this gate turned that SENTENCE into a barrier - a file over 1200 lines reddened the tree
-// unless it appeared on a frozen `KNOWN` list whose contract was "may shrink, never grow". WHY THAT WAS WRONG HERE, in
-// the founder's words: 1200 is too tight, an artificial cap should not exist unless it is NECESSARY, and a rule that
-// limits what the framework is allowed to look like does exactly what this project refuses everywhere else.
+// ★★★★★★★ HISTORY, because this file has changed its mind twice and both changes are recorded on purpose.
 //
-// WHAT IS KEPT, BECAUSE IT WAS THE POINT ALL ALONG. The purpose was never "files must be small" - it was "屎山 must stay
-// VISIBLE". So the measurement survives in full: every framework .js is counted, the largest are printed, everything
-// over the advisory line is listed by name, and the gate FAILS if that report is not produced. Visibility without
-// constraint: a reader still sees the drift, a contributor is never blocked by it.
+// 1. It began as a HARD GATE at 1200 lines with a frozen `KNOWN` backlog whose contract was "may shrink, never grow".
+// 2. In round 4 the FOUNDER retired the hard gate: "1200 is too tight; a cap that is not necessary should not exist; do
+//    not let it limit what you do". It became an "advisory line" that reported without refusing.
+// 3. In round 15 the founder came back with the point that made this version necessary: the number itself was still
+//    shaping decisions. Measured - after the advisory was introduced, the Lead wrote "host.js is at exactly 1200, do not
+//    grow it", i.e. the soft line was being treated as a cap in all but name. An advisory that everyone respects as a
+//    limit IS a limit.
 //
-// WHAT SURVIVES AS A REAL ASSERTION, and why each one is not vacuous:
-//   · the walker must actually reach the framework (a scan that finds zero files would make every report empty);
-//   · the counter must DISCRIMINATE - a synthetic over-line input is detected AND a short one is not, so "always says
-//     fine" and "always complains" are both caught;
-//   · the advisory list must MATCH the measurement (same computation, so a stale hand-written list cannot rot into
-//     fiction - the failure mode the old KNOWN list was built to avoid);
-//   · the decision must be recorded where a reader looks (docs/02), INCLUDING the fact that it is now advisory.
+// SO THE NUMBER IS GONE. Not raised, not commented out, not "advisory": removed from the assertion surface entirely. What
+// remains is a report - the largest framework modules by line count - plus the assertions that keep the REPORT honest:
+//   · the walker must actually reach the framework (a scan that finds no files would make every report empty);
+//   · the counter must DISCRIMINATE (a synthetic long input is measured as long, a short one is not), so "always fine"
+//     and "always alarming" are both caught;
+//   · the preview must be exactly min(N, files) rows, so a printed report cannot silently shrink or lie.
+// There is deliberately NOTHING here that can fail a file for its size, and nothing that names a size to stay under.
+// If you want a file split, that is a design judgement about that file - it is not this gate's business.
 import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
-
-// ★ AN ADVISORY LINE, NOT A REFUSAL. Above it, a file is REPORTED; nothing turns red and nothing is blocked.
-const ADVISORY = 1200
+const PREVIEW_ROWS = 8   // how many of the largest modules to PRINT; not a threshold of any kind
 
 let passed = 0
 let failed = 0
 const failures = []
 const ok = (cond, label, detail) => {
   if (cond) { passed++; console.log('  ok   ' + label); return true }
-  failed++; failures.push(label + (detail === undefined ? '' : ' — ' + JSON.stringify(detail)))
-  console.error('  FAIL ' + label + (detail === undefined ? '' : ' — ' + JSON.stringify(detail)))
+  failed++; failures.push(label + (detail === undefined ? '' : ' - ' + JSON.stringify(detail)))
+  console.error('  FAIL ' + label + (detail === undefined ? '' : ' - ' + JSON.stringify(detail)))
   return false
 }
 
@@ -51,40 +49,35 @@ ok(framework.length > 50, 'the walker found more than 50 framework modules, so t
 ok(framework.includes('vibe-math-vmu/vibe-math-vmu.js'), 'and it includes the entry, which is known to exist', {})
 
 console.log('=== 2. THE COUNTER DISCRIMINATES (a counter that always agrees with itself proves nothing) ===')
-const syntheticOver = Array.from({ length: ADVISORY + 100 }, () => 'x').join('\n').split('\n').length
+const syntheticLong = Array.from({ length: 100000 }, () => 'x').join('\n').split('\n').length
 const syntheticShort = 'x'.repeat(10).split('\n').length
-ok(syntheticOver > ADVISORY, 'a synthetic input of ADVISORY+100 lines is measured as over the advisory line', { measured: syntheticOver })
-ok(syntheticShort <= ADVISORY, 'and an ordinary short input is not, so the predicate is not stuck on', { measured: syntheticShort })
+ok(syntheticLong > syntheticShort, 'a synthetic very long input measures longer than a short one, so the counter is not stuck', { syntheticLong, syntheticShort })
+ok(syntheticShort === 1, 'and a single line measures as one line', { syntheticShort })
 
-console.log('=== 3. THE ADVISORY LIST IS DERIVED, PRINTED, AND MATCHES THE MEASUREMENT ===')
-const measured = framework.map((f) => ({ file: f, lines: lines(join(REPO, f)) }))
-const advisory = measured.filter((m) => m.lines > ADVISORY).sort((a, b) => b.lines - a.lines)
-const largest = measured.slice().sort((a, b) => b.lines - a.lines).slice(0, 8)
-console.log('  ── largest framework files (advisory line ' + ADVISORY + ', NOT a limit) ──')
-for (const m of largest) console.log('     ' + String(m.lines).padStart(5) + '  ' + m.file + (m.lines > ADVISORY ? '   ← over the advisory' : ''))
-console.log('  ── over the advisory line: ' + advisory.length + ' of ' + framework.length + ' ──')
-for (const m of advisory) console.log('     ' + String(m.lines).padStart(5) + '  ' + m.file)
-// ★ FALSIFIABLE, UNLIKE THE FIRST VERSION OF THESE LINES. It asserted `advisory.length >= 0`, which is true of every
-// array and therefore checked nothing, and RULE E caught exactly that (`:68 [A] every() is TRUE on an empty set`). The
-// two assertions below are derived FROM the same measurement, so a broken sort or a changed filter moves them.
-const sortedDesc = advisory.every((m, i) => i === 0 || advisory[i - 1].lines >= m.lines)
-ok(sortedDesc, 'the advisory list is sorted largest-first, so its order comes from the measurement and not from hand editing', advisory.slice(0, 3))
-ok(measured.length > 0 && largest.length === Math.min(8, measured.length),
-  'the "largest" preview is exactly min(8, files) rows, so the printed report cannot silently shrink or lie', { largest: largest.length, files: measured.length })
-// EMPTY_ALLOWED: an EMPTY advisory list is the GOOD outcome (no file over the line), so this `.every` is deliberately
-// vacuously true then. What can still go red is `sortedDesc` / the `largest` count above and the per-entry bound below.
-ok(advisory.every((m) => m.lines > ADVISORY), 'and every entry in it is genuinely over the line', {})
-// ★ NO ASSERTION BELOW REFUSES A FILE FOR ITS SIZE. That is the retirement: the report is the mechanism, the number is advice.
+console.log('=== 3. THE REPORT IS DERIVED FROM THE MEASUREMENT AND IS PRINTED ===')
+const measured = framework.map((f) => ({ file: f, lines: lines(join(REPO, f)) })).filter((m) => Number.isFinite(m.lines))
+const largest = measured.slice().sort((a, b) => b.lines - a.lines).slice(0, PREVIEW_ROWS)
+console.log('  ── the largest framework modules by line count (purely descriptive: there is NO limit) ──')
+for (const m of largest) console.log('     ' + String(m.lines).padStart(5) + '  ' + m.file)
+ok(measured.length > 0 && largest.length === Math.min(PREVIEW_ROWS, measured.length),
+  'the printed preview is exactly min(rows, files) entries, so the report cannot silently shrink or lie',
+  { preview: largest.length, files: measured.length })
+const sortedDesc = largest.every((m, i) => i === 0 || largest[i - 1].lines >= m.lines)
+ok(sortedDesc, 'and it is ordered largest-first, so the order comes from the measurement rather than from hand editing', largest.slice(0, 3))
 
-console.log('=== 4. THE DECISION IS RECORDED WHERE A READER LOOKS, AND IT SAYS "ADVISORY" ===')
+console.log('=== 4. NO SIZE ASSERTION EXISTS HERE (the point of this version) ===')
+const ownSource = readFileSync(fileURLToPath(import.meta.url), 'utf8')
+// Falsifiable: if anyone re-introduces a threshold constant or a per-file size assertion, this goes red and names it.
+const thresholdish = /LIMIT\s*=|ADVISORY\s*=|KNOWN\s*=\s*\[/.exec(ownSource)
+ok(thresholdish === null, 'this gate defines NO size limit, NO advisory line and NO backlog list - a re-introduced threshold turns this red', thresholdish && thresholdish[0])
+const sizeCompare = /\.lines\s*[<>]=?\s*\d+/.test(ownSource)
+ok(sizeCompare === false, 'and no assertion compares a line count against a number, so no file can fail for its size', {})
+
+console.log('=== 5. THE DECISION IS RECORDED WHERE A READER LOOKS ===')
 const doc = readFileSync(join(REPO, 'vibe-math-vmu', 'docs', '02-architecture.md'), 'utf8')
-ok(doc.includes('1200'), 'the architecture volume still names the 1200-line advisory, so the number is traceable', {})
-ok(/建议|advisory|软/.test(doc.split('\n').filter((l) => l.includes('1200')).join(' ')),
-  'and the same line calls it a RECOMMENDATION rather than a cap, so a future reader cannot re-derive a barrier from it', {})
+const sizeSection = doc.split('\n').filter((l) => /模块规模|行数|size/i.test(l)).join('\n')
+ok(/无上限|不设|没有上限|no cap|不再限制/i.test(sizeSection),
+  'docs/02 records that there is NO size cap, so a future reader cannot re-derive one from the architecture volume', {})
 
-console.log('=== 5. THE RETIREMENT ITSELF IS RECORDED (so it cannot be undone by accident) ===')
-ok(doc.includes('退休') || doc.includes('retire') || doc.includes('不设硬闸') || doc.includes('软'),
-  'docs/02 records that the hard gate was retired, not merely that a number exists', {})
-
-console.log('=== CODE SIZE: ' + passed + ' passed, ' + failed + ' failed (advisory over: ' + advisory.length + ') ===')
+console.log('=== CODE SIZE: ' + passed + ' passed, ' + failed + ' failed (largest: ' + (largest[0] ? largest[0].lines + ' lines, ' + largest[0].file : 'n/a') + ') ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }

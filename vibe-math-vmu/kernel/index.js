@@ -1466,7 +1466,18 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // with no root now gets the NAMED refusal (and with a root, the same state as before).
     services: {
       kernel: Object.freeze({ read: () => mustStore().read() }),
-      setting: (k) => settings[k],
+      // ★ PHASE 6 · 轮 15：★ 未配置的键**必须**回落到【声明的默认值】。
+      // 缺陷实测（轮 14）：★ 内核**不把 schema 默认物化进 settings** ⇒ `api.setting('vmu.v3.mode')` 在没人设过时
+      // 返回 `undefined`，★ 而 schema 声明的是 `auto`；★ 一个消费点把 `undefined` 读成「未知模式 ⇒ manual（fail-closed）」
+      // ⇒ ★ **默认部署会静默进入 manual，★ 什么都不跑**。
+      // 修在【访问器】而不是每个调用点：★ 说谎的是 API，★ 不是调用者。★ 要区分「操作员到底设过没有」的调用方，
+      // 仍可走 `settingDef()`／`settingSource()`（★ 它们分别报声明与来源，★ 不被这里合并）✓
+      setting: (k) => {
+        const raw = settings[k]
+        if (raw !== undefined) return raw
+        const def = SETTING_DEFS.find((d) => d.key === k)
+        return def && Object.prototype.hasOwnProperty.call(def, 'def') ? def.def : undefined
+      },
       get: (name) => { const id = String(name === undefined || name === null ? '' : name); return middlewareServiceCatalog()[id] || null },
       names: () => { const cat = middlewareServiceCatalog(); return Object.keys(cat).filter((k) => cat[k]).sort() },
     },
@@ -1575,6 +1586,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
 
   const packs = []
   const registrations = []
+  // PHASE 6 / P0-10: THE PACK-DECLARED TOOL FACE. A pack states which tool NAMES it publishes (manifest
+  // `tools[]`); the kernel only HOLDS those declarations (like slots/tracks), and the host publishes them.
+  // That is the boundary this card is about: the framework never learns an institution's tool names.
+  const packToolDeclarations = new Map()
   let started = false
   // CONTROL FLOW (docs/08 搂5; the user's explicit domain). The kernel owns the STATE; a pause is a real
   // gate (task work is refused while paused) rather than a label nobody reads.
@@ -1896,6 +1911,62 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         clock,
       })
       return { ok: true, tracks: library.status ? list.slice() : list.slice() }
+    },
+
+    /**
+     * PHASE 6 / P0-10 — a pack declares the TOOLS it publishes. The kernel HOLDS the declarations; the host
+     * publishes them (`host.js#toolSpecs` calls `appendPackToolSpecs`). Same boundary as
+     * declareSlots/declareTracks: an institution's vocabulary never moves into the framework.
+     *
+     * EVERY REFUSAL IS NAMED AND NOTHING IS SILENTLY MERGED: a malformed entry, one name declared twice (in one
+     * list or by two packs), or a name this kernel already publishes as a TOOL (the inherited math tool) is
+     * refused. The last rule is what stops a pack from shadowing a framework tool.
+     */
+    declarePackTools(list = [], { by = null } = {}) {
+      const declared = []
+      const kernelToolNames = new Set()
+      try {
+        for (const svc of (registry.contract().services || [])) if (svc.kind === 'tool') kernelToolNames.add(svc.name)
+      } catch { /* an unreadable contract cannot be a collision source; the host still checks its own names */ }
+      for (const raw of Array.isArray(list) ? list : []) {
+        if (!raw || typeof raw !== 'object') throw refuse('VMU_INVALID_ARGUMENT', 'a declared tool must be an object', 'pass { name, description, parameters, handler }')
+        const name = typeof raw.name === 'string' ? raw.name.trim() : ''
+        if (!/^[a-z][a-z0-9_]{2,63}$/.test(name)) throw refuse('VMU_INVALID_ARGUMENT', 'a declared tool name must be lowercase [a-z0-9_], 3..64 chars: ' + JSON.stringify(raw.name), 'e.g. vibe_math_status')
+        if (kernelToolNames.has(name)) throw refuse('VMU_PACK_CONFLICT', 'declared tool "' + name + '" is already published by this kernel', 'a pack cannot shadow a framework tool; rename the pack tool')
+        const owner = packToolDeclarations.get(name)
+        if (owner) throw refuse('VMU_PACK_CONFLICT', 'declared tool "' + name + '" was already declared by pack "' + String(owner.packId) + '"', 'two packs cannot publish one tool name; rename one of them')
+        if (typeof raw.handler !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'declared tool "' + name + '" needs a handler function', 'declare tools[i].handler in the pack manifest')
+        const entry = Object.freeze({
+          name,
+          description: typeof raw.description === 'string' ? raw.description : '',
+          parameters: raw.parameters && typeof raw.parameters === 'object' && !Array.isArray(raw.parameters) ? raw.parameters : {},
+          handler: raw.handler,
+          capabilities: Array.isArray(raw.capabilities) ? raw.capabilities.filter((c) => typeof c === 'string') : [],
+          packId: by === null || by === undefined ? null : String(by),
+        })
+        packToolDeclarations.set(name, entry)
+        declared.push(name)
+      }
+      return { ok: true, declared, count: declared.length }
+    },
+
+    /** PHASE 6 / P0-10 — reverse exactly what declarePackTools added (a pack unload calls this with its names). */
+    retractPackTools(names = null) {
+      const wanted = names === null ? [...packToolDeclarations.keys()] : (Array.isArray(names) ? names : [names])
+      const removed = []
+      for (const n of wanted) {
+        const key = String(n)
+        if (packToolDeclarations.delete(key)) removed.push(key)
+      }
+      return { ok: true, removed, count: removed.length }
+    },
+
+    /** READ-ONLY: the tools packs have declared. The HOST publishes these; the kernel executes nothing. */
+    packTools() {
+      return [...packToolDeclarations.values()].map((t) => ({
+        name: t.name, description: t.description, parameters: t.parameters, handler: t.handler,
+        capabilities: t.capabilities.slice(), packId: t.packId,
+      }))
     },
 
     /** The settings this assembly was constructed with (used by pack planning and residue checks). */
@@ -2333,6 +2404,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           const unloadedIds = new Set(notes.filter((n) => n.what === 'unloaded').map((n) => n.id))
           return [...new Set(packs.concat(appliedIds).filter((id) => !unloadedIds.has(id)))]
         })(),
+        // PHASE 6 / P0-10: the tool NAMES packs declared. The kernel holds them; the host publishes them.
+        packTools: [...packToolDeclarations.values()].map((t) => ({ name: t.name, packId: t.packId, capabilities: t.capabilities.slice() })),
         bus: bus.status ? bus.status() : { entries: [] },
         prompt: prompt.status ? prompt.status() : null,
         store: store ? store.stats() : null,

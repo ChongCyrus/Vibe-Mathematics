@@ -21,6 +21,7 @@
 | `middleware/methods.js` | **P0-4 ＋ P0-5 方法库与发明上报**：方法卡的应用记录（只在有 qid/dirId 上下文时追加）／改进历史（v 号单调）／可信断言（只收概率 1/0 的命题）／项目级↔全局级两级晋升／耐久库冻结修订；`new_inventions` 入 `inventions` 轨、method-keeper 到期派发、有产出与无产出两条路都清队，无产出走**幂等兜底建卡**。 |
 | `middleware/verify.js` | **P0-7 验证闭环**：**双写**（内核 `vmu.ballotbox` 强制法定人数＋连续 Result 落 `votes` 轨）／pack 纯函数聚合（全 1、全 0、同侧均值 ≥0.85、forced 等权均值夹 [0.01,0.99]、flat）／非全票一致才辩论且轮次有界（`vmu.v3.debateMaxRounds`）／裁决回写三处：命题卡＋`verified` 轨（只经 `promoteVerified`）＋`journal` 轨。 |
 | `middleware/gates.js` | **P0-8 人工门**：判定纯函数（auto 直通／manual 排队／未知值 fail-closed）＋台账（`journal` 轨 `decision` kind，一条门一条记录）＋ approve/reject/releaseAll；planner/verify 在动作落地前调 `evaluateGate`，批准后由它们注册的执行器真正执行。 |
+| `tools.js` | **P0-10 工具面**：10 个 handler（`vibe_math_start`／`pause`／`status`／`report`／`list_decisions`／`decide`／`plan`／`list_agents`／`method_list`／`add_problem`）。★ 名字只写在**本包**；内核只持有声明、宿主只发布（见下节）。 |
 | `prompts/planner.js` | **P0-2 规划器提示段**（纯数据，`scope.role='planner'`）：动作词表、硬规则、回执契约。走清单 `sections` 通道（原因见下）。 |
 | `prompts/sections.json` | **P0-6 可信分层段**（纯数据）：只有 `verified` 轨"绝对可信"，其余一律"经验参考"。插件在建内核**之前**按目录名读它。 |
 | `README.md` | 本文件。 |
@@ -164,6 +165,27 @@ P1-6 的提示段负责写进提示词），或 `progress.methods_used`/`progres
 `VMU_TURN_BAD_JSON`）⇒ 本包三个钩子（planner／methods／verify）在返回 `rewriteResult` 时都只给 **JSON 对象文本**
 （`{...}` / `{}`），绝不给裸字符串或数组。三个钩子都只做"落盘/消费 + 改写"，**绝不**在钩子里再开回合。
 
+## 工具面（P0-10）：10 个工具，名字由**本包**声明
+
+v3 原来有 36 个工具；本复刻只留**根代理/人真的要调**的 10 个，因为其余 26 个的工作已经由 tick 调度器、
+planner、数据面与方法整理代劳（再发工具＝给模型 26 个没有消费者的名字）。**被淘汰的三个写锁工具**
+（`claim_write`/`release_write`/`sync_meta`）是被**回执通道**取代的：成员不写 md，卡片由数据面落盘
+（`prompts/knowledge.js:136-155`）。
+
+发布链路（**框架不认识任何 `vibe_math_*` 名字**）：
+
+1. 本文件夹的 `index.js` 把 `tools.js` 的数组声明成清单的 `tools[]`（每项 `{name, description, parameters, handler}`）；
+2. `kernel/pack.js` 校验它（名字形状／非空描述／handler 必须是函数／同一清单内不得重名），并在 apply 时调
+   `kernel.declarePackTools(tools, {by: 'v3'})`（undo 会 `retractPackTools`，卸载零残留）；
+3. `kernel/index.js` 只**持有**这些声明（`kernel.packTools()` 只读；它还拒绝与内核已发布的 `math_computation`
+   重名 —— 那会让继承的数学工具被遮蔽）；
+4. `host.js` 的 `toolSpecs()` 用 `host-pack-tools.js` 把它们追加成内部 spec（`face:'pack:v3'`），再由
+   `toHostSpec`/`boundedToolResult` 序列化。**宿主已发布的工具名撞车 ⇒ 具名失败**（`failures` 里
+   `VMU_PACK_CONFLICT`），不静默遮蔽。
+
+两条回执契约（被 `tests/vmu-v3-tools.test.mjs` 钉住）：handler 返回**对象**（宿主只 stringify 一次；返回字符串
+会被二次编码），拒绝必须带**已登记** `code`（未登记码会让 `docs/03 §8.1` 的实现状态表过期）。
+
 ## 诚实边界 ✗
 
 - 这**不是** v3，也**不是**行为等价证明。P0 只做"机制可用"；行为等价的 A/B 是另立项（与 P0-10 同一口径）。
@@ -206,4 +228,9 @@ P1-6 的提示段负责写进提示词），或 `progress.methods_used`/`progres
   ② `kernel/library.js` 只有"追加 + 冻结"、没有"原地改记录"的写面 ⇒ 每一版卡冻结成**一个新的库记录**
   的 `<库记录 id>@1.md`，而不是同一个 id 的 `@2`；`@<n>` 的单调性由 library 的 high-water mark 保证，
   测试里用同一内容连续冻结两次断到 `@1`/`@2`。
-- 本轮没有 slots（v3 的 planner/solver/verifier）与 M1 规则 —— slots／P0-10 属后续卡。
+- **P0-10 的 10 个工具不覆盖 v3 的 36 个**（见上节）：它只覆盖根代理/人会用的控制与观察面；成员侧的写入、
+  派发、索引重建、方法沉淀都是包内模块自动做的，**没有**对应工具——这是有意的收口，不是遗漏。
+- **P0-10 的 `interrupt` 语义仍未接**：v3 的 `vibe_math_interrupt_agent` 被淘汰（派发由 planner 代劳），
+  而 planner 里的 `interrupt` 动作在本轮仍是具名失败（缺 host 权威）；工具面因此不发布它，也不假装有。
+- `slots`（planner/solver/verifier）与工具面是 P0-10 落的；M1 规则仍不引入（v3 的规则需要计数与状态，是代码
+  不是 DSL）。

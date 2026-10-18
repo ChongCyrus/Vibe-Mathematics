@@ -26,6 +26,10 @@
  *   · P0-8 人工门 —— middleware/gates.js（判定/台账/放行）＋ planner/verify 的**消费点**：manual 下计划与裁决
  *     写 `awaiting-approval`/待审 journal 并**一条都不执行**；approve 后由注册的执行器执行；切回 auto 由
  *     gates 的 tick 把 pending 一次放行（失败也落终态，绝不留悬空 pending）。
+ *   · P0-10 工具面 —— tools.js（10 个 handler：start/pause/status/report/list_decisions/decide/plan/
+ *     list_agents/method_list/add_problem）＋ **本文件的 `slots`（planner/solver/verifier，list_agents 的名册
+ *     来源）与 `tools` 声明**。★ 工具名由**本包**声明，内核只持有、宿主只发布（kernel/index.js 的
+ *     declarePackTools/packTools ＋ host.js 的 host-pack-tools.js）：框架不认识任何 `vibe_math_*` 名字。
  *
  * ★ 值层判据（P0-1 踩过、P0-9 又踩一次会一样的坑）：读点在 createKernel 之前/构造中 ⇒ 只能写
  *   `settings/defaults.json`。`vmu.records.tracks/allowedKinds/requireSettledRecords/bodyCapBytes/
@@ -39,8 +43,8 @@
  *   `root` 的装配上**具名拒**（kernel/index.js:1871-1877）⇒ 加了它，没工作区的部署会在 apply 期拿到 pack 错误；
  *   而且它喂的是 `kernel.library`，**不是** vmu.records 的构造期快照 ⇒ 轨仍然写不进去。轨的唯一生效处是值层。
  *
- * 还没有落的东西（属于 P0-10，不要在本文件里提前声明）：工具面/slots
- * （v3 的 planner/solver/verifier）、任何 M1 规则（v3 的规则需要计数与状态，是代码不是 DSL）。
+ * ★ `slots` 与 `tools` 是 P0-10 的两处**声明**（不是设置、不进值层）：slots 让名册存在（list_agents 的数据源），
+ *   tools 让工具名从包里来。两者都不改 `settings`（它仍然是空的，见上）。
  */
 import { V3_TICK_MODULE, V3_TICK_TOPIC } from './middleware/tick.js'
 import { V3_DATAPLANE_MODULE } from './middleware/dataplane.js'
@@ -52,12 +56,14 @@ import { V3_PLANNER_SECTION } from './prompts/planner.js'
 // ★ PHASE 6 · 轮 12：P1-6 的 21 段（知识上下文 9／简报 2／论文 3／角色 7）。走**清单 sections 通道**而不是
 // `prompts/sections.json`，理由同 planner 段：那个通道会**丢弃 `scope`**，而这 21 段全都靠 `scope` 做互斥。
 import { V3_PROMPT_SECTIONS } from './prompts/index.js'
+// PHASE 6 / P0-10：10 个工具 handler。★ 名字写在这里（pack 声明），内核/宿主只持有/发布，不认识其中任何一个名字。
+import { V3_PACK_TOOLS } from './tools.js'
 
 export const PACK = Object.freeze({
   id: 'v3',
-  version: '0.6.0',
+  version: '0.7.0',
   packContractVersion: 1,
-  description: 'v3 复刻包（PHASE 6）：P0-1 周期驱动 + P0-9 数据面 + P0-6 软规范三卡与 Verified 分裂 + P0-2/P0-3 规划-调度与学习闭环 + P0-4/P0-5 方法库与发明上报 + P0-7 验证闭环 + P0-8 人工门（manual 下计划/裁决排队，approve 或切 auto 才放行）。与 packs/v3-core 互斥装载；不是行为等价证明。',
+  description: 'v3 复刻包（PHASE 6）：P0-1 周期驱动 + P0-9 数据面 + P0-6 软规范三卡与 Verified 分裂 + P0-2/P0-3 规划-调度与学习闭环 + P0-4/P0-5 方法库与发明上报 + P0-7 验证闭环 + P0-8 人工门 + P0-10 工具面（10 个 pack 声明的工具 ＋ planner/solver/verifier 槽位）。与 packs/v3-core 互斥装载；不是行为等价证明。',
 
   // 六个模块在运行期通过 loader 的能力门读 `vmu.records`；planner/methods/verify 还要 `vmu.turn`（K2 已把
   // 回合循环进 M2 服务目录）；verify 还读 `vmu.ballotbox`（**法定人数由内核强制**，见 verify.js 文件头）。
@@ -76,6 +82,17 @@ export const PACK = Object.freeze({
   // v3 的规则是定量+有状态的（"至少 N 名验证者"、"manual 下不许跑"），M1 的谓词 DSL 表达不了 ⇒ 与 v3-core 一致：
   // P0 不引入 M1。tick/dataplane 也不需要规则。
   rules: Object.freeze([]),
+
+  // P0-10：v3 的机构槽位。名册（kernel.members）由它创建，`vibe_math_list_agents` 读的就是这里；capacity 是
+  // 内核强制的并发上限（permissions 是不透明词表 —— 内核只做包含判断，不解释"planner"是什么，D5）。
+  slots: Object.freeze([
+    { id: 'planner', label: '规划', capacity: 1, permissions: Object.freeze(['plan', 'dispatch', 'gate']) },
+    { id: 'solver', label: '求解', capacity: 8, permissions: Object.freeze(['solve', 'propose', 'record']) },
+    { id: 'verifier', label: '验证', capacity: 3, permissions: Object.freeze(['verify', 'vote', 'refute']) },
+  ]),
+
+  // P0-10：工具面。清单的 `tools[]` 只声明名字/描述/schema/handler；内核校验并把它们交给宿主发布。
+  tools: Object.freeze(V3_PACK_TOOLS),
 
   middleware: Object.freeze([
     {

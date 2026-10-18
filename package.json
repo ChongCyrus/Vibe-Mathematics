@@ -254,6 +254,7 @@
     "vibe-math-vmu/kernel/human.js",
     "vibe-math-vmu/kernel/identity.js",
     "vibe-math-vmu/host-deliver.js",
+    "vibe-math-vmu/host-pack-tools.js",
     "vibe-math-vmu/host-children.js",
     "vibe-math-vmu/preset.yml",
     "vibe-math-vmu/vibe-math-vmu.js",
@@ -801,7 +802,9 @@
     "tests/vmu-v3-verify.test.mjs",
     "tests/vmu-v3-prompts.test.mjs",
     "vibe-math-vmu/packs/v3/middleware/gates.js",
-    "tests/vmu-v3-gates.test.mjs"
+    "vibe-math-vmu/packs/v3/tools.js",
+    "tests/vmu-v3-gates.test.mjs",
+    "tests/vmu-v3-tools.test.mjs"
   ],
   "license": "MIT",
   "keywords": [

@@ -51,6 +51,8 @@ import { makeFidelitySpec } from './tools/fidelity.js'
 import { makeMathadaptersSpec } from './tools/mathadapters.js'
 import { makeMathjobsSpec } from './tools/mathjobs.js'
 import { boundedToolResult, MAX_TOOL_RESULT_BYTES } from './kernel/receiptbounds.js'
+// PHASE 6 / P0-10: the host half of a PACK-DECLARED tool face, extracted (this file is at the 1200-line ceiling).
+import { appendPackToolSpecs, packToolFailureRows } from './host-pack-tools.js'
 //
 // TOOL SHAPE (learned from the REAL HOST, not from our own assumptions): the first scripted live run
 // (SLV) showed the preset active but NO vmu tools in the agent's tool list. The cause was this file: the
@@ -920,6 +922,10 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   if (on('mathadapters')) specs.push(makeMathadaptersSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('mathjobs')) specs.push(makeMathjobsSpec({ param, refused, TOOL_NAMES, kernel }))
 
+  // PHASE 6 / P0-10 — PACK-DECLARED TOOLS: the NAMES come from the pack manifest (`tools[]`), never from this file
+  // (a second institution publishes its own names without editing the framework); a collision is NAMED by doInstall.
+  appendPackToolSpecs(specs, (kernel && typeof kernel.packTools === 'function') ? kernel.packTools() : [], Object.values(TOOL_NAMES), kernel)
+
   // ROUND 26 / task-141 — PROVENANCE ON EVERY TOOL, attached at the ONE place that has both the tool's name and the
   // face decision. Measured defect: the receipt's `faces.published` listed the tools of THIS evaluation only, while
   // the registration surface is the union across evaluations (a pack installed after the kernel adds faces, and the
@@ -929,9 +935,12 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   {
     const faceOfTool = new Map(TOOL_FACES.map((r) => [r.name, r.face]))
     for (const s of specs) {
-      const face = faceOfTool.get(s.name) || null
-      s.face = face
-      s.reason = face ? (faceResolution.sources[face] || null) : null
+      // A pack-declared tool already carries its own face/reason (`pack:<id>`); overwriting would erase it.
+      if (!s.face) {
+        const face = faceOfTool.get(s.name) || null
+        s.face = face
+        s.reason = face ? (faceResolution.sources[face] || null) : null
+      }
     }
   }
   return specs
@@ -1039,9 +1048,13 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     // in failures and logged, never swallowed: a filter that quietly stops filtering is the failure this
     // mechanism exists to prevent.
     const declared = settings && Object.prototype.hasOwnProperty.call(settings, 'vmu.tools.enabled') ? settings['vmu.tools.enabled'] : null
+    // PHASE 6 / P0-10: a pack-declared name must be known to the filter, or `vmu.tools.enabled` naming it is refused.
+    const packDeclaredNames = (kernel && typeof kernel.packTools === 'function')
+      ? kernel.packTools().map((t) => (t && typeof t.name === 'string' ? t.name : '')).filter((n) => n !== '')
+      : []
     let filterResult = null
     try {
-      filterResult = sanitizeToolFilter(declared, TOOL_NAMES)
+      filterResult = sanitizeToolFilter(declared, [...Object.values(TOOL_NAMES), ...packDeclaredNames])
     } catch (e) {
       // sanitizeToolFilter REFUSES an unknown name by throwing. FAIL-CLOSED: an unusable filter must never widen
       // the surface, so nothing registers and the refusal is recorded where install problems are already reported.
@@ -1062,6 +1075,8 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     const hasEffect = typeof ctx.effect === 'function'
     ownedByHost = hasEffect
     failures.length = 0
+    // PHASE 6 / P0-10: a pack tool colliding with a name THIS host publishes is a NAMED failure (never a shadow).
+    failures.push(...packToolFailureRows((kernel && typeof kernel.packTools === 'function') ? kernel.packTools() : [], Object.values(TOOL_NAMES)))
     // ROUND 26 / task-141: ONE EVALUATION per `doInstall()` that produced tools - the honest denominator for "the
     // union merged N passes". Counted HERE, at the evaluation, NOT at push time (a single pass pushes many specs,
     // so a push counter would overstate the number of evaluations and make the receipt's self-account a lie).

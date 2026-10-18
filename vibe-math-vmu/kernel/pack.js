@@ -146,6 +146,27 @@ export function validatePack(manifest) {
   for (const a of manifest.aliases || []) {
     if (!a || typeof a.from !== 'string' || typeof a.to !== 'string') problems.push('an alias needs { from, to }')
   }
+  // PHASE 6 / P0-10 — PACK-DECLARED TOOL FACE. A pack may state the tool NAMES it publishes; the framework must
+  // never learn an institution's vocabulary, so the manifest field is the only place those names are written.
+  // Validated here (plan sees it before apply), then held by kernel.declarePackTools and published by host.js.
+  {
+    const seen = new Set()
+    for (const t of manifest.tools || []) {
+      if (!t || typeof t !== 'object') { problems.push('a tool entry must be an object'); continue }
+      const name = typeof t.name === 'string' ? t.name : ''
+      if (!/^[a-z][a-z0-9_]{2,63}$/.test(name)) {
+        problems.push('tool ' + JSON.stringify(t.name) + ': name must be lowercase [a-z0-9_], 3..64 chars (e.g. vibe_math_status)')
+        continue
+      }
+      if (seen.has(name)) problems.push('tool name is declared twice in the same manifest: ' + name)
+      seen.add(name)
+      if (typeof t.description !== 'string' || t.description.trim() === '') problems.push('tool ' + name + ': needs a non-empty description (the model reads it)')
+      if (typeof t.handler !== 'function') problems.push('tool ' + name + ': needs a handler function (the framework cannot execute a name)')
+      if (t.parameters !== undefined && (t.parameters === null || typeof t.parameters !== 'object' || Array.isArray(t.parameters))) {
+        problems.push('tool ' + name + ': parameters must be an object map of parameter definitions')
+      }
+    }
+  }
   return problems
 }
 
@@ -367,6 +388,8 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
     for (const pp of m.promptPolicies || []) actions.push({ kind: 'prompt-policy', id: pp.id, form: 'pipeline', consumer: typeof onPromptPolicy === 'function' ? 'onPromptPolicy' : null })
     for (const a of m.aliases || []) actions.push({ kind: 'alias', from: a.from, to: a.to })
     for (const c of m.codes || []) actions.push({ kind: 'code', code: c })
+    // PHASE 6 / P0-10: a declared tool is an ACTION of this pack, so plan() shows it before apply publishes it.
+    for (const t of m.tools || []) actions.push({ kind: 'tool', name: t.name })
     // D-03/P1: a declared prompt policy needs a CONSUMER. `plan()` says so rather than letting apply() be the
     // first place the gap appears; it stays a warning (not a problem) because the manifest is well-formed —
     // what is missing is the assembly's sink, which the caller may add before applying.
@@ -565,6 +588,17 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         const entry = Object.assign({}, m)
         kernel.bus.add(entry)
         undo.push(() => removeEntry(kernel.bus, entry.id))
+      }
+      // PHASE 6 / P0-10 — THE PACK DECLARES ITS TOOL FACE, the kernel holds it, the host publishes it. One call for
+      // the whole list (declaring is atomic) and one undo entry, so an unload removes exactly what apply added.
+      for (const t of manifest.tools || []) {
+        if (typeof kernel.declarePackTools !== 'function') {
+          throw refuse('VMU_ENGINE_UNAVAILABLE', 'pack ' + manifest.id + ' declares tools but this kernel cannot hold tool declarations',
+            'construct the kernel with declarePackTools() (kernel/index.js), or drop the tools field')
+        }
+        const declared = kernel.declarePackTools(manifest.tools, { by: manifest.id })
+        undo.push(() => kernel.retractPackTools(declared.declared))
+        break // one call declares the whole list; one undo entry is enough
       }
       // D-03/P1 — A DECLARED PROMPT POLICY IS CONSUMED, OR THE PACK IS REFUSED BY NAME. These entries are not
       // bus entries (their hook is the prompt pipeline's `prompt/section-assembled` path, not a bus hook); the
