@@ -161,6 +161,35 @@ const signal = new AbortController().signal
   ok(err && /someOtherStartLikeThing|\(none/.test(String(err.hint)), 'the hint lists the start-like verbs the host does offer', err && err.hint)
 }
 
+// ── 7. ★ TARGET 1(b): THE 0.2.1 PER-CHILD FIELDS ARE EXPRESSIBLE, AND COST NOTHING WHEN UNUSED ────────────────
+{
+  const taken = []
+  const subs = {
+    list: () => ['spawn'], interrupt: () => {}, sendMessage: async () => 'm1',
+    async startActivation(s) {
+      taken.push(s)
+      return { childId: 'c', result: Promise.resolve({ output: [{ type: 'text', text: 'ok' }], stopReason: 'completed' }), dispose: async () => {} }
+    },
+  }
+  const base = { turn: { id: 't' }, text: 'x' }
+  // (a) a caller that supplies the new fields: they must reach the spec verbatim.
+  await deliverViaSubagents(subs, null, { provider: 'spawn', parent, signal })({ ...base, child: {
+    cwd: '/workspace/proj', agentPreset: 'v3-solver', outputSchema: { type: 'object' }, persona: 'solver', toolFilter: ['read', 'write'], depthLimit: 2,
+  } })
+  const withFields = taken[0] || {}
+  ok(withFields.cwd === '/workspace/proj', 'cwd reaches the activation spec (0.2.1 per-child field)', withFields.cwd)
+  ok(withFields.agentPreset === 'v3-solver', 'agentPreset reaches it, so roles can use different presets', withFields.agentPreset)
+  ok(withFields.toolFilter && withFields.toolFilter.length === 2, 'toolFilter reaches it, so roles can have different tool faces', withFields.toolFilter)
+  ok(withFields.persona === 'solver' && withFields.depthLimit === 2, 'persona and depthLimit reach it too', { p: withFields.persona, d: withFields.depthLimit })
+  ok(withFields.outputSchema && withFields.outputSchema.type === 'object', 'outputSchema reaches it (structured member output becomes expressible)', withFields.outputSchema)
+  // (b) a caller that supplies NOTHING: the spec must not grow undefined keys, i.e. default behaviour is byte-identical.
+  taken.length = 0
+  await deliverViaSubagents(subs, null, { provider: 'spawn', parent, signal })(base)
+  const bare = taken[0] || {}
+  const extraKeys = Object.keys(bare).filter((k) => ['cwd', 'agentPreset', 'outputSchema', 'persona', 'toolFilter', 'depthLimit'].includes(k))
+  ok(extraKeys.length === 0, 'NOTHING is injected when the caller supplies nothing, so an unchanged caller is byte-identical', extraKeys)
+}
+
 console.log('')
 console.log('=== TURN ACTIVATION (0.2.1 delivery verb): ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length > 0) for (const f of failures) console.error('  - ' + f)

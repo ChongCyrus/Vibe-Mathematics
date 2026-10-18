@@ -230,6 +230,26 @@ export function facesFrom(services = {}, owners = FIELD_OWNERS) {
  * whose list() throws, yields a readable string rather than an exception - this is used inside a refusal HINT, and a
  * hint that itself fails turns a diagnosable refusal into a bare TypeError.
  */
+/**
+ * ★★★★★★★ PHASE 6 · 目标 1(b) —— DSH 0.2.1 的 PER-CHILD FIELDS 现在【可表达】。
+ *
+ * WHAT WAS MISSING: 0.2.1's SubagentActivationSpec accepts per-child `cwd`, `agentPreset`, `outputSchema`, `persona`,
+ * `toolFilter` and `depthLimit`, and vmu built its spec WITHOUT any of them - so a pack could not give the solver and the
+ * verifier different tool faces, different presets or a different working directory, which is exactly what a
+ * multi-role research pack needs (and what v3's role separation expressed).
+ *
+ * WHY THIS IS SAFE AND FREE: only keys the caller ACTUALLY PROVIDES are copied, so an unchanged caller produces a
+ * byte-identical spec (no `undefined` is ever injected), and a host that predates these fields simply ignores them.
+ * A caller supplies them on the spec it already hands to the delivery seam - no new settings key, no default change.
+ */
+function childFieldsOf(spec) {
+  const src = (spec && (spec.child || spec)) || {}
+  const out = {}
+  for (const k of ['cwd', 'agentPreset', 'outputSchema', 'persona', 'toolFilter', 'depthLimit']) {
+    if (src[k] !== undefined && src[k] !== null) out[k] = src[k]
+  }
+  return out
+}
 function providerNamesOf(subagents) {
   try {
     const names = subagents && typeof subagents.list === 'function' ? subagents.list() : null
@@ -307,7 +327,10 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
       'inject { deliver } yourself to supply a seam (docs/26 stage 3)'
         + (subagents ? '; verbs this host does offer: ' + offeredVerbs : '; ctx.get(\'subagents\') returned nothing'))
   }
-  return async ({ turn, text }) => {
+  return async ({ turn, text, child }) => {
+    // ★ 目标 1(b)：`child` 是调用方提供的 per-child 字段（cwd/agentPreset/toolFilter/outputSchema/persona/depthLimit）；
+    // 也接受把它们直接放在 `turn` 上。★ 只取真给了的键 ⇒ 不传时 spec 逐字节不变。
+    const childOpts = childFieldsOf(child || turn)
     // ROUND 346: the spec carries the SAME three elements the original's wake carries - who, why, and what next -
     // because a host that only receives "here is some text" cannot supervise the turn it just started. Measured
     // against the original: its wake takes { to, why, next_step }, so the framework labels its own the same way.
@@ -348,14 +371,14 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
         return subagents.start(provider, Object.assign({ label: spec.label, prompt: spec.request.prompt, parent, signal, options: options || {} }, spec.oneShotRequest || {}))
       }
       if (canActivate) {
-        return subagents.startActivation({
+        return subagents.startActivation(Object.assign({
           provider: String(provider),
           label: spec.label,
           request: Object.assign({ prompt: spec.request.prompt, parent, signal }, spec.oneShotRequest || {}),
           signal,
           // 'caller' = keep the result with this caller; 'parent' would also notify the parent model.
           delivery: 'caller',
-        })
+        }, childOpts))
       }
       return subagents.startContinuable(spec)
     }
