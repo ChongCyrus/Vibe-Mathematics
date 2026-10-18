@@ -12,7 +12,9 @@ const rejects = async (fn) => { try { await fn(); return { threw: false } } catc
 
 const root = await mkdtemp(join(tmpdir(), 'vmu-lib-remove-'))
 const fixed = '2026-10-10T00:00:00.000Z'
-const lib = createLibrary({ root, settings: {}, clock: () => fixed })
+// ★ PHASE 6 · 轮 18：`storeMode` 的声明默认已是 `diff`（P0-A 修复），而 **diff 保护基线版本** ⇒ 本套件要测的是
+// **删除契约本身**，所以必须显式在【允许删除的模式】下跑；紧跟其后还有一条【默认 diff 下基线被保护】的断言。
+const lib = createLibrary({ root, settings: { 'vmu.records.history.storeMode': 'full' }, clock: () => fixed })
 
 // 0) existing behaviour intact: append + list + expand still work
 {

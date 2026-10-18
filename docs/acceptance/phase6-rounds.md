@@ -978,3 +978,25 @@ const run = async (spec) => {
 
 ### ★ 结论一句话
 ★★ **消费者相关断言全部【建议保留】；★ 没有一条是错误决策、★ 也没有一条在阻碍哲学理念** —— ★ 该修的是**它们用的词**，★ 不是它们的**判据** ✓
+
+---
+
+## 轮 17–18（PHASE 6；目标 3 开工）
+
+### ★★★★ 首轮深度审计 → 3 条 P0 已修（`a64ff82c`）
+★ 3 条 P0 全是【缺省不回落声明默认】同一族，★而它们打了我的脸：上轮我只在 `api.setting()` 修了一扇门，★而实际有【四扇】。
+★修法：★一个**回落助手**（`kernel/settings-defaults.js` 的 `readSetting`）★四扇门全走它；★证据是**行为**的（★ library 删基线必须 `VMU_RETENTION_CONFLICT`／★ meeting 3 条引用必须拒／★ M1 谓词必须命中）。
+★另加**裸写扫描**：★ 325 条只报告，★但**硬断言 6 个审计读点不得再裸写**。
+
+### ★★★★ P1 两条 ＋ 半成品四对已修（`368318c3`）
+| 问题 | 修法 |
+|---|---|
+| `autoArm` 只能开不能关，且回执报 immediate | ★热级 H1→**H2**（需重启），回执自动诚实为 `requiresRestart:true`；★程序化 `autoArm({on:false})`保留 |
+| `declareTopic` 无撤销、进程级泄漏 | ★加 **owner**：`retractTopic`／`retractTopicsOwnedBy`；★ 声明从 **import 副作用** 改为清单字段 `topics`；★**子进程**验证卸载后不再已注册 |
+| `retractPackTools` 不校验归属 | ★必须带 `{by}`，不符 ⇒ **`VMU_NOT_PERMITTED`** |
+| `declarePackTools` 非原子 | ★两段式：先全量校验、再一次性写 |
+| `declareTracks` 无 retract | ★加 `retractTracks` 并接入 pack undo |
+| gate 无 cancel／expire | ★加 `cancelGate`（**必须带理由**，终态 `cancelled`） |
+
+### ★★★ T1 的那一红是《修复在生效》的证据
+★ `vmu-library-remove` 停在旧假设（★默认 `full`、可删基线）★而 P0-A 修后默认是 `diff`、**基线受保护** ⇒ ★ 测试必须**显式在 `full` 下**测删除契约 ✓（**31/0**）
