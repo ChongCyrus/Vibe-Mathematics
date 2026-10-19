@@ -1017,6 +1017,22 @@ async function onTick(flat) {
     }
     if (pruned > 0) state.lastLedgerPruned = { count: pruned, tick: state.ticks }
   }
+  // ★ P0-8: a plan waiting at the HUMAN GATE must not be replaced by a new plan (otherwise "manual does not execute"
+  // is bypassed by the very next tick). Released/rejected gates close the awaiting plan and continue.
+  const awaiting = awaitingPlan(records)
+  if (awaiting) {
+    const gate = getGate({ records, gateId: awaiting.gateId })
+    const gateStatus = str(gate && gate.status)
+    if (gateStatus === 'released') {
+      closeAwaitingPlan({ records, planId: awaiting.recordId, status: 'released', gate, at })
+    } else if (gateStatus === 'rejected' || gateStatus === 'failed') {
+      const closed = closeAwaitingPlan({ records, planId: awaiting.recordId, status: gateStatus === 'rejected' ? 'rejected' : 'gate-failed', gate, at })
+      state.lastSkip = { reason: 'plan-gate-' + gateStatus, gateId: awaiting.gateId, planId: awaiting.recordId, closed: closed.ok, tick: state.ticks }
+      return { ok: true, skipped: 'plan-gate-' + gateStatus, at, gateId: awaiting.gateId, planId: awaiting.recordId, status: closed.status || null, drained }
+    } else {
+      return { ok: true, skipped: 'plan-awaiting-approval', at, gateId: awaiting.gateId, planId: awaiting.recordId, drained }
+    }
+  }
   // ★ SLV / TWO-PHASE SETTLEMENT (the second tick): the reply landed and turn/reply-parsed persisted the plan
   // record. Settling here - not inside the dispatch hook - is what keeps the hook under its 2000ms budget.
   // ★ SLV CROSS-INSTANCE: the reply hook may run in ANOTHER kernel assembly (a subagent session), so a process-local
@@ -1088,49 +1104,17 @@ async function onTick(flat) {
       return { ok: true, planned: false, dispatched: false, at, code: 'VMU_INVALID_ARGUMENT', message: 'planner turn completed without a plan record', plannerTurn: noPlanTurn, drained }
     }
   }
-  // ★ BOUNDED NO-REPLY EXIT: a dispatched planner turn that never answers must not be able to stall the institute
-  // forever. After PLANNER_REPLY_TICKS ticks the pending turn is reported BY NAME with its turn id (not silently lost).
-  if (state.lastDispatched) {
-    const pending = typeof turn.dispatchStatus === 'function' ? turn.dispatchStatus() : null
-    const stillPending = pending && pending.oldestPending && pending.oldestPending.turn === state.lastDispatched.turnId
-    const age = state.ticks - state.lastDispatched.tick
-    if (stillPending && age >= 5) {
-      const missingTurn = state.lastDispatched.turnId
-      state.lastDispatched = null
-      recordFailure({ records, at, state, api,
-        error: refuse('VMU_PACK_V3_PLANNER_REPLY_MISSING', 'the dispatched planner turn ' + str(missingTurn) + ' produced no reply within ' + age + ' ticks',
-          'the turn id is retained in this failure record; dispatch status names the oldest pending turn (no reply is NOT treated as no work)'),
-        phase: 'planner-reply-missing' })
-      return { ok: true, skipped: 'planner-reply-missing', at, turnId: missingTurn, ageTicks: age, drained }
-    }
+  // ★ SLV / DEADLINE OWNS "NO REPLY": this block used to declare REPLY_MISSING after FIVE TICKS (10s) while a real
+  // member turn takes ~100s - so a turn that was still running was called missing, the planner counted 3 failures and
+  // disabled itself, while the queue later completed those very turns. The dispatch pump now has a declared wall-clock
+  // deadline (vmu.turn.deliveryTimeoutMs, VMU_TURN_DELIVERY_TIMEOUT) and the failure is recorded by the dispatch-outcome
+  // handler below. Nothing here may declare "no reply" from a tick COUNT.
+  // P1-3：自动晋升（每 tick 至多一个）。晋升出的问题必须进入【同一 tick】的简报，所以晋升后重读问题索引。
+  let promotion = { promoted: 0 }
+  try { promotion = processPromote({ records, problems, propos, threshold: settings.promoteValueThreshold, at, state, verified }) } catch (e) {
+    promotion = { promoted: 0, error: str((e && e.code) || 'VMU_MIDDLEWARE_FAILED'), message: str((e && e.message) || e) }
   }
-  // P1-3：自动晋升放在重读索引之前 —— 本 tick 晋升出的“判断命题”问题必须出现在同一 tick 的简报里，
-  // 否则模型要等到下一 tick 才看得见它（v3 的流程也是 promote 在 buildBrief 之前）。
-  let promotion = { ok: true, promoted: 0, threshold: settings.promoteValueThreshold }
-  try {
-    promotion = processPromote({ records, problems, propos, threshold: settings.promoteValueThreshold, at, state, verified })
-  } catch (e) {
-    promotion = { ok: false, promoted: 0, code: str((e && e.code) || 'VMU_MIDDLEWARE_FAILED'), message: str((e && e.message) || e) }
-  }
-  // 晋升可能刚写了一张问题卡：重新读一次，后续候选/简报/校验都看同一份最新索引。
-  const problemsNow = promotion.promoted > 0 ? loadCardIndex(records, 'problems', 'problem') : problems
-  // ★ P0-8：上一条计划还在等人放行时**不重复规划**（否则 manual 下每 tick 都会再开一扇门）。
-  //   门的终态由 gates.js 写；这里只负责把计划记录的终态跟上，并在"被拒绝/放行失败"时收口。
-  const awaiting = awaitingPlan(records)
-  if (awaiting) {
-    const gate = awaiting.gateId ? getGate({ records, gateId: awaiting.gateId }) : null
-    const gateStatus = gate ? str(gate.status) : 'missing'
-    if (gateStatus === 'pending' || gateStatus === 'missing') {
-      state.lastSkip = { reason: 'plan-awaiting-approval', gateId: awaiting.gateId, gateStatus, tick: state.ticks }
-      return { ok: true, skipped: 'plan-awaiting-approval', at, gateId: awaiting.gateId, planId: awaiting.recordId, drained }
-    }
-    if (gateStatus === 'rejected' || gateStatus === 'failed') {
-      const closed = closeAwaitingPlan({ records, planId: awaiting.recordId, status: gateStatus === 'rejected' ? 'rejected' : 'gate-failed', gate, at })
-      state.lastSkip = { reason: 'plan-gate-' + gateStatus, gateId: awaiting.gateId, planId: awaiting.recordId, closed: closed.ok, tick: state.ticks }
-      return { ok: true, skipped: 'plan-gate-' + gateStatus, at, gateId: awaiting.gateId, planId: awaiting.recordId, status: closed.status || null, drained }
-    }
-    // released：执行器已把计划写成终态（executed/partial）；继续用最新状态往下走。
-  }
+  const problemsNow = loadCardIndex(records, 'problems', 'problem')
   // ② 判可推进 + 组简报。
   const advanceable = advanceableProblems(problemsNow, verified)
   const queuedRemaining = drained && Number.isInteger(drained.remaining) ? drained.remaining : 0
@@ -1187,7 +1171,8 @@ async function onTick(flat) {
   }
   state.lastDispatched = { turnId: dispatchReceipt.turn && dispatchReceipt.turn.id ? dispatchReceipt.turn.id : null, tick: state.ticks, at }
   return { ok: true, dispatched: true, planned: false, settled: false, at, plannerTurn: state.lastDispatched.turnId,
-    queued: dispatchReceipt.queued, drained, promoted: 0,
+    queued: dispatchReceipt.queued, drained, promoted: promotion.promoted,
+    promotion: promotion.promoted > 0 ? promotion : null,
     note: 'planner turn dispatched; the reply lands through turn/reply-parsed and the plan is settled on a later tick' }
 }
 
