@@ -61,6 +61,7 @@ export const V3_ROLE_EXPLORER = Object.freeze({
   scope: Object.freeze({ role: 'explorer', task: 'explore' }),
   text: [
     '★ 重要：本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只根据本轮状态块推理，最后只输出一个 ```json 围栏回执。',
+    '★ 回执只能是：{"progress":{"track":"<本角色规定的轨>","kind":"<kind>","title":"...","body":"..."}}；顶层只允许 progress（closure poll 时只允许 {"vote_solved":true|false}）；自造 receipt/status/artifacts/missing/notes 等顶层字段会被 VMU_TURN_UNKNOWN_FIELD 整条拒。',
     '',
     '本轮状态块（问题/方向/轮次都在这里；没读到就如实说没读到）：',
     '{{statusBlock}}',
@@ -92,6 +93,7 @@ export const V3_ROLE_REDERIVE = Object.freeze({
   scope: Object.freeze({ role: 'explorer', task: 'rederive' }),
   text: [
     '★ 重要：本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只根据本轮状态块推理，最后只输出一个 ```json 围栏回执。',
+    '★ 回执只能是：{"progress":{"track":"<本角色规定的轨>","kind":"<kind>","title":"...","body":"..."}}；顶层只允许 progress（closure poll 时只允许 {"vote_solved":true|false}）；自造 receipt/status/artifacts/missing/notes 等顶层字段会被 VMU_TURN_UNKNOWN_FIELD 整条拒。',
     '',
     '本轮状态块（问题/方向/轮次都在这里；没读到就如实说没读到）：',
     '{{statusBlock}}',
@@ -118,6 +120,7 @@ export const V3_ROLE_SOLVER = Object.freeze({
   scope: Object.freeze({ role: 'solver' }),
   text: [
     '★ 重要：本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只根据本轮状态块推理，最后只输出一个 ```json 围栏回执。',
+    '★ 回执只能是：{"progress":{"track":"<本角色规定的轨>","kind":"<kind>","title":"...","body":"..."}}；顶层只允许 progress（closure poll 时只允许 {"vote_solved":true|false}）；自造 receipt/status/artifacts/missing/notes 等顶层字段会被 VMU_TURN_UNKNOWN_FIELD 整条拒。',
     '',
     '本轮状态块（问题/方向/轮次都在这里；没读到就如实说没读到）：',
     '{{statusBlock}}',
@@ -171,6 +174,7 @@ export const V3_ROLE_VERIFIER_REVIEW = Object.freeze({
   scope: Object.freeze({ role: 'verifier', phase: 'verify' }),
   text: [
     '★ 重要：本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只根据本轮状态块推理，最后只输出一个 ```json 围栏回执。',
+    '★ 回执只能是：{"progress":{"track":"<本角色规定的轨>","kind":"<kind>","title":"...","body":"..."}}；顶层只允许 progress（closure poll 时只允许 {"vote_solved":true|false}）；自造 receipt/status/artifacts/missing/notes 等顶层字段会被 VMU_TURN_UNKNOWN_FIELD 整条拒。',
     '',
     '本轮状态块（问题/方向/轮次都在这里；没读到就如实说没读到）：',
     '{{statusBlock}}',
@@ -209,6 +213,7 @@ export const V3_ROLE_VERIFIER_DEBATE = Object.freeze({
   scope: Object.freeze({ role: 'verifier', phase: 'verify-debate' }),
   text: [
     '★ 重要：本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只根据本轮状态块推理，最后只输出一个 ```json 围栏回执。',
+    '★ 回执只能是：{"progress":{"track":"<本角色规定的轨>","kind":"<kind>","title":"...","body":"..."}}；顶层只允许 progress（closure poll 时只允许 {"vote_solved":true|false}）；自造 receipt/status/artifacts/missing/notes 等顶层字段会被 VMU_TURN_UNKNOWN_FIELD 整条拒。',
     '',
     '本轮状态块（问题/方向/轮次都在这里；没读到就如实说没读到）：',
     '{{statusBlock}}',
@@ -235,6 +240,7 @@ export const V3_ROLE_METHOD_KEEPER = Object.freeze({
   scope: Object.freeze({ role: 'method-keeper' }),
   text: [
     '★ 重要：本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只根据本轮状态块推理，最后只输出一个 ```json 围栏回执。',
+    '★ 回执只能是：{"progress":{"track":"<本角色规定的轨>","kind":"<kind>","title":"...","body":"..."}}；顶层只允许 progress（closure poll 时只允许 {"vote_solved":true|false}）；自造 receipt/status/artifacts/missing/notes 等顶层字段会被 VMU_TURN_UNKNOWN_FIELD 整条拒。',
     '',
     '本轮状态块（问题/方向/轮次都在这里；没读到就如实说没读到）：',
     '{{statusBlock}}',
@@ -266,6 +272,7 @@ export const V3_ROLE_PAPER_WRITER = Object.freeze({
   scope: Object.freeze({ role: 'paper-writer' }),
   text: [
     '★ 重要：本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只根据本轮状态块推理，最后只输出一个 ```json 围栏回执。',
+    '★ 回执只能是：{"progress":{"track":"<本角色规定的轨>","kind":"<kind>","title":"...","body":"..."}}；顶层只允许 progress（closure poll 时只允许 {"vote_solved":true|false}）；自造 receipt/status/artifacts/missing/notes 等顶层字段会被 VMU_TURN_UNKNOWN_FIELD 整条拒。',
     '',
     '本轮状态块（问题/方向/轮次都在这里；没读到就如实说没读到）：',
     '{{statusBlock}}',
