@@ -730,8 +730,13 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           // has its own kind model). Read records first, library only as the zero-mechanism fallback.
           const rc = kernel && kernel.records ? kernel.records : null
           if (action === 'list') {
+            // ★ The library service is AWAITED first: an async-rejecting service must surface as a FAILURE (that is the
+            // service-rejection contract). Only when it answers EMPTY do we fall back to the records projection that the
+            // v3 data plane writes (a real deployment can have a non-empty records store beside an empty library).
+            const libItems = await kernel.library.list()
+            if (Array.isArray(libItems) && libItems.length > 0) return Object.assign({ ok: true, action }, { records: libItems })
             if (rc && typeof rc.list === 'function') return Object.assign({ ok: true, action }, { records: rc.list({}).items })
-            return Object.assign({ ok: true, action }, { records: await kernel.library.list() })
+            return Object.assign({ ok: true, action }, { records: libItems })
           }
           if (action === 'expand') {
             if (rc && typeof rc.get === 'function') return Object.assign({ ok: true, action }, rc.get({ id }))

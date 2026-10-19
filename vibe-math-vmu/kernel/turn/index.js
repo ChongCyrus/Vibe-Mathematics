@@ -753,7 +753,14 @@ export function createTurnOrchestrator({
       fail('VMU_TURN_ASSEMBLY_FAILED', 'the prompt pipeline refused this turn: ' + JSON.stringify((out && out.refused) || {}).slice(0, 160))
     }
     counts.assembled += 1
-    return { ok: true, text: (noticeText ? noticeText + "\n" : "") + out.text, sources: out.sources || [], truncation: out.truncation || null }
+    // ★ v3 SLV: the status block is TURN DATA, not institution prose. The pipeline may render it through a section
+    // (v5r does); when NO section rendered it, append it literally here so the member still receives it. Sections
+    // that carry a '{{' placeholder are forbidden by the prompt gate, so this is the template-free route.
+    let assembledText = (noticeText ? noticeText + "\n" : "") + out.text
+    if (statusWithNotices && !assembledText.includes(statusWithNotices)) {
+      assembledText += "\n\n【本轮状态块】\n" + statusWithNotices
+    }
+    return { ok: true, text: assembledText, sources: out.sources || [], truncation: out.truncation || null }
   }
 
   /** ③ deliver through the adapter seam. A missing adapter is refused, never faked. */

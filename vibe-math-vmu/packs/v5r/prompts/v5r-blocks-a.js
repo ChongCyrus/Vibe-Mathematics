@@ -24,7 +24,6 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         '还向全所负责组织与推进。本所的目标是解决下述研究对象（原问题）：',
         '',
         '  {{ setting:vmu.turn.objective }}',
-        '',
       ].join('\n'),
       temp: [
         '你是「{{ setting:vmu.turn.instituteName }}」的**临时工**，代号 {{ member }}，由 {{ setting:vmu.turn.tempHiredBy }} 雇入，',
@@ -39,6 +38,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         '机构，目标是解决下述研究对象（原问题）：',
         '',
         '  {{ setting:vmu.turn.objective }}',
+        '',
       ].join('\n'),
     },
   },
