@@ -30,6 +30,7 @@
 import { listGates, approveGate, rejectGate, cancelGate } from './middleware/gates.js'
 import { paperArtifacts, PAPER_ARTIFACTS } from './middleware/paper-close.js'
 import { latestPlanRecord, readPlanRecord, v3PlannerStatus } from './middleware/planner.js'
+import { v3VerifyStatus, listCandidates } from './middleware/verify.js'
 import { writeCard, parseCard } from './middleware/dataplane.js'
 
 const str = (v) => (v === undefined || v === null ? '' : String(v))
@@ -228,6 +229,25 @@ function toolStatus(_args = {}, { kernel } = {}) {
       : null,
     lastPlan: lastPlanView(records),
     paper,
+    // ★ SLV: the TURN DISPATCH QUEUE - "verify dispatched but no reply" vs "dispatch failed" is visible here.
+    dispatch: (() => {
+      try { return kernel && kernel.turn && typeof kernel.turn.dispatchStatus === 'function' ? kernel.turn.dispatchStatus() : null } catch { return null }
+    })(),
+    // ★ SLV: the verifier's own decision surface. Without this, "verified 0" could mean no candidate, no dispatch, or
+    // dispatched-but-no-vote - three very different bugs. This reports which one it is.
+    verify: (() => {
+      const v = v3VerifyStatus()
+      let candidates = null
+      let bad = null
+      try {
+        const c = listCandidates(records)
+        candidates = c.items.length
+        bad = c.bad.length
+      } catch (e) { candidates = null; bad = { error: String((e && e.message) || e) } }
+      return { ticks: v.ticks, rounds: v.rounds, debates: v.debates, ballotsOpened: v.ballotsOpened, votesCast: v.votesCast,
+        verdicts: v.verdicts, undecided: v.undecided, malformed: v.malformed, inFlight: v.inFlight,
+        lastSkip: v.lastSkip, lastReceipt: v.lastReceipt, lastError: v.lastError, candidates, badCandidates: bad }
+    })(),
     // ★ SLV DIAGNOSTIC READER: the failure record (with replyLength/hadBrace/replyExcerpt) existed but NO reader
     // exposed it - the journal was head-capped and status only showed lastPlan. Same family as the paper field.
     planner: (() => {

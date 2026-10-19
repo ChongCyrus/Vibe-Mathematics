@@ -509,6 +509,21 @@ console.log('=== 12. 装配路径：真实入口 packs:["v3"] 上 v3-verify 挂�
   for (const cleanup of handle.cleanups || []) { try { cleanup() } catch (e) { /* unwind is the host's job */ } }
 }
 
+// ── 候选【后出现】：先空跑一 tick，再写入候选，下一 tick 必须派 verifier（tried 不能永久挡住） ────────
+console.log('=== 后出现的候选：空 tick 之后写卡 ⇒ 下一 tick 仍必须派发（tried 不按旧轮次挡） ===')
+{
+  const h = boot({ overrides: { 'vmu.v3.verifierCount': 2, 'vmu.v3.debateMaxRounds': 1 }, replier: voteReplier(() => 1) })
+  await h.loader.apply(PACK)
+  await tick(h, 1000)
+  const before = h.delivered.filter((d) => /^verifier-\d+$/.test(String(d.member))).length
+  ok(before === 0, '空 tick 没有派 verifier（没有候选时不能凭空派）', before)
+  propCard(h.kernel, 'p-late')
+  await tick(h, 2000)
+  const after = h.delivered.filter((d) => /^verifier-\d+$/.test(String(d.member))).length
+  ok(after >= 2, '★ 候选在空 tick 之后出现 ⇒ 下一 tick 真的派了 verifier（tried/active 没有挡住新候选）', after)
+  const verified = h.records.list({ track: 'verified', limit: 0 }).items
+  ok(verified.length === 1, '★ 后出现的候选最终能走完验证并落 verified 轨', verified.map((x) => x.id))
+}
 console.log('')
 console.log('=== V3 VERIFY (P0-7): ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length > 0) for (const f of failures) console.error('  - ' + f)

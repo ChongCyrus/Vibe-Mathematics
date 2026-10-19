@@ -181,6 +181,15 @@ console.log('=== 6. THE TOOLS REALLY DO THEIR JOB (on the assembled kernel) ==='
     && Object.prototype.hasOwnProperty.call(statusPaper.parsed.planner, 'disabled'),
     '★ status exposes the planner diagnostics reader (fails / disabled / lastError), not just lastPlan',
     statusPaper.parsed && statusPaper.parsed.planner)
+  // ★ SLV: "verified 0" must be distinguishable as no-candidate / no-dispatch / dispatched-no-vote.
+  ok(statusPaper.parsed && statusPaper.parsed.verify && typeof statusPaper.parsed.verify.candidates === 'number'
+    && typeof statusPaper.parsed.verify.votesCast === 'number'
+    && Object.prototype.hasOwnProperty.call(statusPaper.parsed.verify, 'lastSkip'),
+    '★ status exposes the verifier diagnostics reader (candidates / votesCast / lastSkip), not just the verified count',
+    statusPaper.parsed && statusPaper.parsed.verify)
+  ok(statusPaper.parsed && statusPaper.parsed.dispatch && typeof statusPaper.parsed.dispatch.queued === 'number'
+    && typeof statusPaper.parsed.dispatch.failed === 'number',
+    '★ status exposes the turn dispatch queue (queued / inFlight / failed / lastError)', statusPaper.parsed && statusPaper.parsed.dispatch)
   const report = await parseReceipt(v3boot, 'vibe_math_report', {})
   ok(report.parsed && Array.isArray(report.parsed.problems.items) && report.parsed.problems.items.length === 1, 'report shows the problem card', report.parsed && report.parsed.problems)
   ok(report.parsed && typeof report.parsed.text === 'string' && report.parsed.text.includes('q-1'), 'report carries a readable text body', report.parsed && String(report.parsed.text).slice(0, 40))
