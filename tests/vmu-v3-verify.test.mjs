@@ -351,7 +351,8 @@ console.log('=== 8. 辩论：第 1 轮分歧 ⇒ 第 2 轮一致 ⇒ 第 2 轮�
   await h.loader.apply(PACK)
   propCard(h.kernel, 'p-debate')
   const receipt = await tick(h, 7000)
-  const vr = Array.isArray(receipt.decisions) ? receipt.decisions.find((d) => /^v3-verify/.test(String(d.id))) : null
+  const allReceipts = Array.isArray(receipt.receipts) ? receipt.receipts : [receipt]
+  const verifyDecisions = allReceipts.flatMap((r) => (Array.isArray(r.decisions) ? r.decisions : [])).filter((d) => /^v3-verify/.test(String(d.id)))
   const prop = findProp(h.records, 'p-debate')
   ok(prop.card.概率 === 1 && prop.card.状态 === '已验证·真', '★ 第 2 轮全 1 ⇒ 最终裁决 1（辩论真的改变了结果）', { 概率: prop.card.概率, 状态: prop.card.状态 })
   ok(readVotes(h.records, 'p-debate', 1).count === 3 && readVotes(h.records, 'p-debate', 2).count === 3 && readVotes(h.records, 'p-debate', 3).count === 0,
@@ -365,7 +366,10 @@ console.log('=== 8. 辩论：第 1 轮分歧 ⇒ 第 2 轮一致 ⇒ 第 2 轮�
   const last = v3VerifyStatus().lastReceipt
   ok(last && last.settled === true && last.rounds === 2 && last.rule === 'unanimous-1',
     '回执：settled、rounds=2、rule=unanimous-1', last && { settled: last.settled, rounds: last.rounds, rule: last.rule })
-  ok(vr !== null && vr.decision && vr.decision.settled === 1, '同一 tick 的回执也报 settled=1（总线层面的证据）', vr && vr.decision)
+  const settledDecisions = verifyDecisions.filter((d) => d.decision && d.decision.settled === 1)
+  ok(settledDecisions.length === 1, '★ 结算回执出现在【后续 tick】（两阶段：派发轮不报 settled）', settledDecisions.length)
+  const firstVerify = verifyDecisions[0]
+  ok(firstVerify && firstVerify.decision && firstVerify.decision.settled !== 1, '★ 第一次 tick 的 v3-verify 回执没有 settled=1（它只派发）', firstVerify && firstVerify.decision)
 }
 
 console.log('=== 9. 辩论轮次上限：每轮都分歧 ⇒ 用完即具名收口（不无限） ===')

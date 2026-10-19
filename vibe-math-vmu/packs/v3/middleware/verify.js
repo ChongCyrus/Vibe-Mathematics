@@ -643,18 +643,28 @@ async function advanceCandidate({ records, ballotbox, turn, at, settings, state,
   //   {boxId, round}，只有"结算成功"或"进入下一轮辩论"才换箱。
   const active = state.active.get(target) || null
   let round = active ? active.round : 1
+  // ★ SLV / TWO-PHASE: a verifier is dispatched ONCE per round. If its reply never arrives, the round still proceeds to
+  // the settlement attempt with the votes it HAS (the old synchronous code did this in one tick; now a later tick does).
+  if (!state.tried) state.tried = new Map()
+  let tried = state.tried.get(target)
+  if (!tried || tried.round !== round) { tried = { round, verifiers: new Set() }; state.tried.set(target, tried) }
   let box = active ? { ok: true, boxId: active.boxId, round } : null
   for (; round <= settings.debateMaxRounds; round++) {
     if (!box) {
+      tried = { round, verifiers: new Set() }
+      state.tried.set(target, tried)
       box = openVoteBox({ ballotbox, target, round, at })
       if (box.ok !== true) return Object.assign({}, box, { settled: false, target, round, rounds: round })
       state.ballotsOpened += 1
       state.active.set(target, { boxId: box.boxId, round })
     }
     // 逐个派发本轮还缺票的验证者。
+    let dispatchedThisTick = false
     for (const verifier of ids) {
       const before = readVotes(records, target, round)
       if (before.verifiers.includes(verifier)) continue
+      if (tried.verifiers.has(verifier)) continue
+      tried.verifiers.add(verifier)
       state.dispatch = { target, boxId: box.boxId, round, verifier }
       let receipt = null
       try {
@@ -664,15 +674,17 @@ async function advanceCandidate({ records, ballotbox, turn, at, settings, state,
       } finally {
         state.dispatch = null
       }
-      // ★ SLV / TWO-PHASE: the verifier turn was only DISPATCHED. Its vote lands through turn/reply-parsed; this tick
-      // returns now, and a later tick reads the votes and decides whether the round settled.
-      if (receipt && receipt.dispatched === true) {
-        return { ok: true, dispatched: true, settled: false, target, round, verifier, awaitingReply: true, turn: receipt.turn || null }
-      }
+      // ★ SLV / TWO-PHASE: the verifier turn was only DISPATCHED. Its vote lands through turn/reply-parsed; the whole
+      // round's dispatches happen in this tick, and a LATER tick reads the votes and decides.
+      if (receipt && receipt.dispatched === true) dispatchedThisTick = true
       if (receipt && receipt.ok === false && str((receipt.refused && receipt.refused.code) || receipt.code) === 'VMU_TURN_REENTRANT') {
         state.lastError = { phase: 'verifier-turn', code: 'VMU_TURN_REENTRANT', message: 'another turn is in flight; the next tick retries' }
         return { ok: true, settled: false, skipped: 'turn-reentrant', target, round, rounds: round, pendingVerdict: null }
       }
+    }
+    if (dispatchedThisTick) {
+      state.lastDispatcherTick = state.ticks
+      return { ok: true, dispatched: true, settled: false, target, round, awaitingReply: true }
     }
     const votes = readVotes(records, target, round)
     // ★ PHASE 6 联动：`ballot.close()` 现在真的会因 middleware 的 deny 而**抛具名拒**（修了“blockable 钩子
