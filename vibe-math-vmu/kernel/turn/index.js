@@ -1101,7 +1101,23 @@ export function createTurnOrchestrator({
       }
     }
     // ★ ROUND 79: a caller-supplied reply is attributed to the member it ANSWERS; everything else keeps turn.member.
-    const out = await apply(parsed.reply, null, attributedTo || turn.member)
+    // ★ SLV: WRITE-BACK failures need the SAME diagnostics parse failures have. "unknown record track: undefined" used to
+    // arrive with no reply text at all, so the only way to learn what the verifier actually wrote was another run.
+    let out
+    try {
+      out = await apply(parsed.reply, null, attributedTo || turn.member)
+    } catch (e) {
+      try {
+        const text = typeof raw === 'string' ? raw : JSON.stringify(parsed.reply)
+        if (e && typeof e === 'object') {
+          e.replyText = String(text).slice(0, 2000)
+          e.replyLength = String(text).length
+          e.hadBrace = String(text).indexOf('{') !== -1
+          e.trackValue = parsed.reply && parsed.reply.progress && parsed.reply.progress.track !== undefined ? parsed.reply.progress.track : null
+        }
+      } catch { /* diagnostics must not replace the refusal */ }
+      throw e
+    }
     // ROUND 396: a REFUSED dispatch becomes a notice for this member's NEXT prompt, which is the shape the original's
     // own corpus shows - "【研究所提示】task_update 未生效（V5_TASK_STALE_REVISION）：…". A refusal that lives only in the
     // receipt is invisible to the member that caused it, and the source is explicit that the announcement point is the
@@ -1164,7 +1180,7 @@ export function createTurnOrchestrator({
         if (dispatchStats.recentCompleted.length > 10) dispatchStats.recentCompleted.shift()
         dispatchStats.lastError = { code, message, turn: item.turn.id, member: item.turn.member, at: Date.now(),
           ...(e && Number.isFinite(e.waitedMs) ? { waitedMs: e.waitedMs, deliveryTimeoutMs: e.deliveryTimeoutMs || null, requestSent: e.requestSent === true, lastPhase: e.lastPhase || null, phases: Array.isArray(e.phases) ? e.phases.slice(0, 12) : [] } : {}),
-          ...(e && typeof e.replyText === 'string' ? { replyLength: Number.isInteger(e.replyLength) ? e.replyLength : e.replyText.length, hadBrace: e.hadBrace === true, replyExcerpt: e.replyText.slice(0, 500) } : {}) }
+          ...(e && typeof e.replyText === 'string' ? { replyLength: Number.isInteger(e.replyLength) ? e.replyLength : e.replyText.length, hadBrace: e.hadBrace === true, replyExcerpt: e.replyText.slice(0, 500), trackValue: e.trackValue === undefined ? null : e.trackValue } : {}) }
         // ★ A dispatched turn that FAILED must not vanish: its named outcome stays in status; the awaiting handle rejects.
         item.reject(e)
       } finally {
@@ -1322,7 +1338,8 @@ export function createTurnOrchestrator({
       const stack = typeof e === 'object' && e && typeof e.stack === 'string'
         ? (function () { const all = String(e.stack).split('\n'); const head = all.slice(0, 8).map((l) => l.trim()); const ci = all.findIndex((l) => /caused by/.test(l)); const tail = ci >= 0 ? all.slice(ci, ci + 5).map((l) => l.trim()) : []; return head.concat(tail).join(' | ').slice(0, 1400) })()
         : null
-      return { ok: false, code: e && e.code, message: String((e && e.message) || e), receipt: null, stack }
+      return { ok: false, code: e && e.code, message: String((e && e.message) || e), receipt: null, stack,
+        ...(e && typeof e.replyText === 'string' ? { replyLength: e.replyLength, hadBrace: e.hadBrace, replyExcerpt: e.replyText.slice(0, 500), trackValue: e.trackValue } : {}) }
     }
   }
 

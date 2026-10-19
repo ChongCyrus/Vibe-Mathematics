@@ -524,6 +524,22 @@ console.log('=== 后出现的候选：空 tick 之后写卡 ⇒ 下一 tick 仍�
   const verified = h.records.list({ track: 'verified', limit: 0 }).items
   ok(verified.length === 1, '★ 后出现的候选最终能走完验证并落 verified 轨', verified.map((x) => x.id))
 }
+// ── 无票重跑：undecided 只数【新票后的未成立】，重复 tick 记 ticksWithoutVerdict；无票不可能有判决 ─────
+console.log('=== 无票重跑：votesCast=0 ⇒ verdicts=0，重复 tick 不把 undecided 刷大 ===')
+{
+  const h = boot({ overrides: { 'vmu.v3.verifierCount': 2, 'vmu.v3.debateMaxRounds': 1 }, replier: () => ACK })
+  await h.loader.apply(PACK)
+  propCard(h.kernel, 'p-novote')
+  for (let i = 0; i < 3; i += 1) {
+    h.clockRef.at = 1000 + i * 10
+    await h.kernel.bus.emit(V3_TICK_TOPIC, { at: h.clockRef.at }, {})
+    await h.kernel.turn.whenIdle()
+  }
+  const st = v3VerifyStatus()
+  ok(st.votesCast === 0 && st.verdicts === 0, '★ 无票 ⇒ votesCast=0 且 verdicts=0（无票不可能有判决）', { votesCast: st.votesCast, verdicts: st.verdicts })
+  ok(st.undecided <= 1, '★ undecided 不随 tick 刷大（只在有票后的未成立时 +1）', st.undecided)
+  ok(st.ticksWithoutVerdict >= 1, '★ 重复 tick 记进 ticksWithoutVerdict（名字诚实：多少 tick 没有判决）', st.ticksWithoutVerdict)
+}
 console.log('')
 console.log('=== V3 VERIFY (P0-7): ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length > 0) for (const f of failures) console.error('  - ' + f)

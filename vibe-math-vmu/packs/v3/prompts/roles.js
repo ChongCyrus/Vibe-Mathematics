@@ -194,6 +194,7 @@ export const V3_ROLE_VERIFIER_REVIEW = Object.freeze({
     // ★ SLV MEASURED: the only eligible closure voter is this role, and a round asked "already solved?" produced no
     // vote because the reply schema above only spoke about `progress`. The closure question needs its OWN field, and it
     // is the kernel-accepted one; without this sentence the institute can never reach unanimity.
+    '★ 无法验证时**只输出** `{"progress":[]}`；**不要用 `say`**（`say` 需要已开启的会议，验证回合没有会议，会以 VMU_NO_OPEN_MEETING 失败）。',
     '★ 若本轮唤醒的 why／状态块在问「研究目标是否已解决」（closure poll）：回执**只输出** `{"vote_solved": true}` 或 `{"vote_solved": false}`——**不要写 progress 条目、不要写任何其他字段**（closure 回合只为闭题投票；写不合法的 progress 会以未知 track 失败，票就不会被记）。',
   ].join('\n'),
 })

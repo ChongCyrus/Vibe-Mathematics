@@ -207,7 +207,7 @@ function stateFor(records) {
   let s = VERIFY_STATES.get(records)
   if (!s) {
     s = {
-      ticks: 0, rounds: 0, debates: 0, ballotsOpened: 0, votesCast: 0, verdicts: 0, undecided: 0,
+      ticks: 0, rounds: 0, debates: 0, ballotsOpened: 0, votesCast: 0, verdicts: 0, undecided: 0, ticksWithoutVerdict: 0,
       maxRoundsStops: 0, malformed: 0, inFlight: false, lastTickAt: null, dispatch: null,
       active: new Map(),
       lastSkip: null, lastReceipt: null, lastError: null,
@@ -228,7 +228,7 @@ export function v3VerifyStatus() {
   }
   return {
     ticks: s.ticks, rounds: s.rounds, debates: s.debates, ballotsOpened: s.ballotsOpened, votesCast: s.votesCast,
-    verdicts: s.verdicts, undecided: s.undecided, maxRoundsStops: s.maxRoundsStops, malformed: s.malformed,
+    verdicts: s.verdicts, undecided: s.undecided, ticksWithoutVerdict: s.ticksWithoutVerdict || 0, maxRoundsStops: s.maxRoundsStops, malformed: s.malformed,
     inFlight: s.inFlight, lastTickAt: s.lastTickAt,
     lastSkip: s.lastSkip, lastReceipt: s.lastReceipt ? JSON.parse(JSON.stringify(s.lastReceipt)) : null,
     lastError: s.lastError,
@@ -599,7 +599,7 @@ function recordVerdictAwaiting({ records, target, verdict, rule, round, gateId, 
 }
 
 /** 派一个验证者回合（**只从 tick 调用**；回合内再开回合会被 VMU_TURN_REENTRANT 拒）。 */
-async function dispatchVerifier({ turn, target, question, round, verifier, required, transcript, at }) {
+async function dispatchVerifier({ turn, target, question, round, verifier, required, transcript, at, targetBody = null, targetCard = null }) {
   const brief = {
     target,
     question,
@@ -612,6 +612,8 @@ async function dispatchVerifier({ turn, target, question, round, verifier, requi
       note: 'put the votes inside the registered `progress` field payload; a rewrite that is not JSON object text is refused by name',
     },
     transcript,
+    targetCard: targetCard || null,
+    targetBody: targetBody ? String(targetBody).slice(0, 8000) : null,
     at: Number.isFinite(at) ? at : null,
   }
   // ★ SLV / TWO-PHASE: dispatch only. Votes are written by the turn/reply-parsed handler; a later tick reads them
@@ -670,7 +672,7 @@ async function advanceCandidate({ records, ballotbox, turn, at, settings, state,
       state.dispatch = { target, boxId: box.boxId, round, verifier }
       let receipt = null
       try {
-        receipt = await dispatchVerifier({ turn, target, question: '命题 ' + target + ' 是否成立？', round, verifier, required, transcript, at })
+        receipt = await dispatchVerifier({ turn, target, question: '命题 ' + target + ' 是否成立？', round, verifier, required, transcript, at, targetCard: candidate.card, targetBody: (() => { try { return records.get({ id: candidate.recordId }).body } catch { return null } })() })
       } catch (e) {
         state.lastError = { phase: 'verifier-turn', code: str((e && e.code) || 'VMU_MIDDLEWARE_FAILED'), message: str((e && e.message) || e) }
       } finally {
@@ -689,6 +691,13 @@ async function advanceCandidate({ records, ballotbox, turn, at, settings, state,
       return { ok: true, dispatched: true, settled: false, target, round, awaitingReply: true }
     }
     const votes = readVotes(records, target, round)
+    // ★ SLV: a REPEATED tick with the same vote count is not a new "undecided verdict" - it is a tick without a verdict.
+    // Counting it as undecided made the number grow at tick rate while votesCast stayed 0.
+    const voteKey = target + '@' + round
+    if (!state.lastVoteCount || typeof state.lastVoteCount.get !== 'function') state.lastVoteCount = new Map()
+    const prevVoteCount = state.lastVoteCount.get(voteKey)
+    const repeatedNoNewVotes = prevVoteCount === votes.count
+    state.lastVoteCount.set(voteKey, votes.count)
     // ★ PHASE 6 联动：`ballot.close()` 现在真的会因 middleware 的 deny 而**抛具名拒**（修了“blockable 钩子
     // 不被消费者检查”那一类）。这里把它接成“本轮未成立 + 保留候选”，而不是让整条 tick 抛出去 —— 否则
     // 一个候选的拒绝会带走同一 tick 里其它候选。
@@ -698,13 +707,15 @@ async function advanceCandidate({ records, ballotbox, turn, at, settings, state,
     } catch (e) {
       const held = { ok: false, settled: false, target, round, rounds: round, code: str((e && e.code) || 'VMU_MIDDLEWARE_FAILED'), message: str((e && e.message) || e) }
       recordUndecided({ records, target, code: held.code, message: held.message, tally: null, at, round })
-      state.undecided += 1
+      if (repeatedNoNewVotes) state.ticksWithoutVerdict = (state.ticksWithoutVerdict || 0) + 1
+      else state.undecided += 1
       return Object.assign({}, held, { note: 'the tally point refused this settlement by name; the object stays on its track' })
     }
     if (settledAttempt.ok === false) {
       // 未成立：写一条"不是否决"的审计 journal，保留候选（下一 tick 继续收票）。
       recordUndecided({ records, target, code: settledAttempt.code, message: settledAttempt.message, tally: settledAttempt.tally, at, round })
-      state.undecided += 1
+      if (repeatedNoNewVotes) state.ticksWithoutVerdict = (state.ticksWithoutVerdict || 0) + 1
+      else state.undecided += 1
       return Object.assign({}, settledAttempt, { settled: false, target, round, rounds: round, undecided: true })
     }
     const verdict = settledAttempt.pendingVerdict
