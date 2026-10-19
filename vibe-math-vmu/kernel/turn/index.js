@@ -1132,7 +1132,7 @@ export function createTurnOrchestrator({
    * whenIdle() is a DETERMINISTIC wait for tests (never a sleep).
    */
   const dispatchQueue = []
-  const dispatchStats = { queued: 0, inFlight: 0, dispatched: 0, completed: 0, failed: 0, lastError: null, oldestPending: null }
+  const dispatchStats = { queued: 0, inFlight: 0, dispatched: 0, completed: 0, failed: 0, lastError: null, oldestPending: null, recentCompleted: [] }
   let dispatchActive = false
   let idleWaiters = []
   const settleIdle = () => {
@@ -1149,14 +1149,19 @@ export function createTurnOrchestrator({
       dispatchStats.queued = dispatchQueue.length
       dispatchStats.inFlight = 1
       dispatchStats.oldestPending = { turn: item.turn.id, member: item.turn.member, at: item.turn.at || null }
+      const itemStartedAt = Date.now()
       try {
         const out = await runFrom(item.turn, item.spec)
         dispatchStats.completed += 1
+        dispatchStats.recentCompleted.push({ turn: item.turn.id, member: item.turn.member, ms: Date.now() - itemStartedAt, ok: true })
+        if (dispatchStats.recentCompleted.length > 10) dispatchStats.recentCompleted.shift()
         item.settle(out)
       } catch (e) {
         const code = (e && e.code) || "VMU_TURN_DISPATCH_FAILED"
         const message = String((e && e.message) || e)
         dispatchStats.failed += 1
+        dispatchStats.recentCompleted.push({ turn: item.turn.id, member: item.turn.member, ms: Date.now() - itemStartedAt, ok: false, code })
+        if (dispatchStats.recentCompleted.length > 10) dispatchStats.recentCompleted.shift()
         dispatchStats.lastError = { code, message, turn: item.turn.id, member: item.turn.member, at: Date.now(),
           ...(e && Number.isFinite(e.waitedMs) ? { waitedMs: e.waitedMs, deliveryTimeoutMs: e.deliveryTimeoutMs || null, requestSent: e.requestSent === true, lastPhase: e.lastPhase || null, phases: Array.isArray(e.phases) ? e.phases.slice(0, 12) : [] } : {}),
           ...(e && typeof e.replyText === 'string' ? { replyLength: Number.isInteger(e.replyLength) ? e.replyLength : e.replyText.length, hadBrace: e.hadBrace === true, replyExcerpt: e.replyText.slice(0, 500) } : {}) }

@@ -506,6 +506,34 @@ async function executeOne(a, ctx) {
     const phase = a.role === 'verifier' ? 'verify' : 'normal'
     // ★ SLV: the explorer role sections are scoped by TASK (explore / rederive). Sending 'v3-plan:spawn:…' meant the
     // explorer prompt was assembled WITHOUT its role section and without a status block (a blind delegation).
+    // ★ SLV: role prompts require the STATUS BLOCK (problem id + full statement + direction). The planner turn gets one;
+    // the dispatched member turns used to get NONE, so a real explorer answered "状态块没有随提示送达" and produced no
+    // direction. Build it from the RECORDS (not from the model's guesses).
+    let memberBrief = { qid: str(a.target), role: a.role, direction: str(a.direction) || null, reason: str(a.reason) || null }
+    try {
+      const readBody = (id) => { const r = records.get({ id }); return String((r && r.body) || '') }
+      const problemsList = records.list({ track: 'problems', limit: 0 }).items
+      for (const it of problemsList) {
+        const body = readBody(it.id)
+        if (body.includes('- ID: ' + str(a.target)) || body.includes('- ID: ' + str(a.target) + '\n')) {
+          memberBrief.problem = body
+          break
+        }
+      }
+      const dirs = []
+      for (const it of records.list({ track: 'directions', limit: 0 }).items) {
+        const body = readBody(it.id)
+        const idm = /(?:^|\n)[-*]\s*ID\s*[:：]\s*([^\n]*)/.exec(body)
+        const did = idm ? idm[1].trim() : String(it.id)
+        if (str(a.direction) && did !== str(a.direction) && String(it.id) !== str(a.direction)) continue
+        if (str(a.direction) === '') continue
+        dirs.push({ id: did, body })
+      }
+      if (dirs.length > 0) memberBrief.directions = dirs
+      const methods = records.list({ track: 'methods', limit: 0 }).items.slice(0, 5).map((it) => it.id)
+      if (methods.length > 0) memberBrief.methods = methods
+    } catch { /* the status block is still useful with qid/role */ }
+    const memberStatusBlock = JSON.stringify(memberBrief, null, 2)
     const task = a.role === 'explorer'
       ? (a.action === 'spawn' ? 'explore' : 'rederive')
       : ('v3-plan:' + a.action + ':' + (a.target || a.direction || a.role))
@@ -518,7 +546,8 @@ async function executeOne(a, ctx) {
         role: a.role,
         phase,
         task,
-        why: 'v3 planner plan (' + a.action + ' ' + a.role + ')',
+        statusBlock: memberStatusBlock,
+        why: a.reason ? String(a.reason) : ('v3 planner plan (' + a.action + ' ' + a.role + ')'),
         round: 1,
       })
     } catch (e) {

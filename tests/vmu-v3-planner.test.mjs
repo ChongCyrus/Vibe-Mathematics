@@ -1157,6 +1157,35 @@ console.log('=== 23. 非 plan 回执：具名拒 + journal，plans 轨零记录�
     '★ 具名：lastRejectedPlan 可读（带 reason）', rejected)
   ok(journals.length === 1, '★ 具名：journal 有一条“计划回执被拒”记录', journals.length)
 }
+// ── 24. explorer 提示词契约：方向卡正文必须带 问题/来源 锚点（否则 planner 判不可用） ─────────────────
+console.log('=== 24. explorer 回执契约含 问题/来源 锚点，并禁止自造顶层字段 ===')
+{
+  const explorerSection = (PACK.sections || []).find((s) => s && s.name === 'v3-role-explorer')
+  ok(explorerSection !== undefined, 'explorer 角色段存在于清单 sections', (PACK.sections || []).map((s) => s && s.name).filter(Boolean).slice(0, 8))
+  const text = explorerSection && typeof explorerSection.text === 'string' ? explorerSection.text : ''
+  ok(text.includes('- 问题:') && text.includes('- 来源:'),
+    '★ 正：explorer 的正文样例含 - 问题: 与 - 来源: 两个锚点（planner 的读取器靠它们）', text.includes('- 问题:'))
+  ok(text.includes('VMU_TURN_UNKNOWN_FIELD') && text.includes('顶层'),
+    '★ 反：提示词明说自造顶层字段会被 VMU_TURN_UNKNOWN_FIELD 整条拒', text.includes('VMU_TURN_UNKNOWN_FIELD'))
+}
+// ── 25. 被派发的成员回合必须带状态块（否则真机 explorer 回“状态块没有随提示送达”） ───────────────────
+console.log('=== 25. planner 派 explorer/solver 时，成员提示里必须有状态块（qid + 问题正文） ===')
+{
+  const h = boot({
+    overrides: { 'vmu.v3.planMinIntervalMs': 0 },
+    replier: ({ turn }) => (turn.role === PLANNER_MEMBER
+      ? planReply('派 explorer', [{ action: 'spawn', role: 'explorer', target: 'q-1' }])
+      : ACK),
+  })
+  await h.loader.apply(PACK)
+  problemCard(h.kernel, 'q-1', { 描述: '证明 1+1=2。' })
+  await tick(h, 1000)
+  const ex = h.delivered.find((d) => d.role === 'explorer')
+  ok(ex !== undefined, 'explorer 回合被投递', h.delivered.map((d) => d.role))
+  const text = ex ? String(ex.text) : ''
+  ok(text.includes('本轮状态块') && text.includes('"qid": "q-1"'), '★ 正：explorer 提示里真的绑定了状态块（qid q-1），不是只有角色段', text.slice(3300, 4100))
+  ok(text.includes('1+1=2') || text.includes('陈述'), '★ 正：状态块里带问题正文（不是只有 id）', text.includes('陈述'))
+}
 console.log('')
 console.log('=== V3 PLANNER (P0-2 + P0-3): ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length > 0) for (const f of failures) console.error('  - ' + f)

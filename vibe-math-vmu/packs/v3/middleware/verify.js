@@ -633,10 +633,12 @@ async function dispatchVerifier({ turn, target, question, round, verifier, requi
  * 推进一个候选：逐轮"派发 → 收票 → 结算/辩论"，**轮次有界**（`debateMaxRounds`）。
  * 返回 `{ok, settled, verdict?, rule?, rounds, maxRoundsReached, undecided?}`。
  */
-async function advanceCandidate({ records, ballotbox, turn, at, settings, state, candidate, human = null, fidelity = null }) {
+async function advanceCandidate({ records, ballotbox, turn, at, settings, state, candidate, human = null, fidelity = null, seatedVerifiers = null }) {
   const target = candidate.id
   const required = settings.required
-  const ids = verifierIds(settings.verifierCount)
+  // ★ SLV: dispatch to the SEATED verifier members. The original guessed verifier-1..N, but a real deployment seats
+  // verifier-a via the admission chain - the guessed ids are refused by name (VMU_INVALID_ARGUMENT / no meeting).
+  const ids = Array.isArray(seatedVerifiers) && seatedVerifiers.length > 0 ? seatedVerifiers.slice() : verifierIds(settings.verifierCount)
   const transcript = []
   // ★ 跨 tick 复用同一轮的票箱：内核票箱是"一人一票"，若每 tick 重开一个箱，前几 tick 的 cast 就不在这个
   //   箱里 ⇒ 部署一旦设置 `vmu.ballot.minVotes`，法定人数会永远差几票（实测过的坑）。所以 active 按目标保存
@@ -815,11 +817,26 @@ async function onTick(flat) {
   const turn = api.services.get('vmu.turn')
   let human = null
   try { if (typeof api.services.names === 'function' && api.services.names().includes('vmu.human')) human = api.services.get('vmu.human') } catch (e) { human = null }
+  // ★ seated verifier ids from the roster (never guessed names)
+  let seatedVerifiers = []
+  try {
+    const membersSvc = api.services.get('vmu.members')
+    if (membersSvc && typeof membersSvc.roster === 'function') {
+      for (const m of membersSvc.roster()) {
+        if (!m || typeof m !== 'object') continue
+        const slot = String(m.slot || m.role || '')
+        if (slot !== 'verifier') continue
+        if (m.state !== undefined && m.state !== 'live') continue
+        seatedVerifiers.push(String(m.id || m.memberId || ''))
+      }
+      seatedVerifiers = seatedVerifiers.filter((x) => x !== '')
+    }
+  } catch { seatedVerifiers = [] }
   state.inFlight = true
   const results = []
   try {
     for (const candidate of candidates.items) {
-      const advanced = await advanceCandidate({ records, ballotbox, turn, at, settings, state, candidate, human, fidelity })
+      const advanced = await advanceCandidate({ records, ballotbox, turn, at, settings, state, candidate, human, fidelity, seatedVerifiers })
       results.push({
         target: candidate.id, settled: advanced.settled === true,
         verdict: advanced.verdict === undefined ? (advanced.pendingVerdict === undefined ? null : advanced.pendingVerdict) : advanced.verdict,
