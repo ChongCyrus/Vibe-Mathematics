@@ -341,7 +341,7 @@ import { V5R_ASSISTANT_TURN_SECTIONS } from './v5r-assistant.js'
  * the one section that simply NAMES the phase, which the charter headings do not. PLUS the assistant's reporting duty,
  * which is what turns "主动向院士汇报" from persona prose into a duty a member is told every round.
  */
-const v5rCharterSectionsGlobal = () => [...CHARTER_SECTIONS, v5rRoleSection, ...V5R_ASSISTANT_TURN_SECTIONS]
+const v5rCharterSectionsGlobal = () => [...CHARTER_SECTIONS, v5rRoleSection, v5rFixtureConstraint, ...V5R_ASSISTANT_TURN_SECTIONS]
 
 /** Its role and phase bindings - one winner per section per assembly is the pipeline's job (docs/26 section 3.20). */
 const v5rCharterBindingsGlobal = () => CHARTER_BINDINGS
@@ -368,6 +368,27 @@ export const v5rRoleSection = Object.freeze({
   text: [
     '【本轮面向的成员】代号：{{ member }} ｜角色：{{ roleLabel }} ｜阶段：{{ phase }}',
     '★★ 分派决定做什么，判断属于你自己；异议与未表态都要留痕，沉默不得被折算成任何一侧。',
+  ].join('\n'),
+})
+
+/**
+ * ★ SLV FIXTURE CONSTRAINT (NOT source-derived): the simulation's member turns must not call tools, and the reply
+ * surface must be shown as a complete example (a model copies an example far more reliably than it derives a rule).
+ * It is deliberately a SEPARATE section with its OWN first-line marker and NO template placeholders, so:
+ *   - the source-parity gate (vmu-turn T71) still sees the charter verbatim;
+ *   - section markers stay unique;
+ *   - no cross-role prose is copied into the source-derived charter.
+ */
+export const v5rFixtureConstraint = Object.freeze({
+  name: 'v5r-fixture-constraint',
+  order: 602,
+  range: 'pack',
+  source: 'v5r-fixture:slv',
+  text: [
+    '【SLV 夹具约束｜本轮不调用工具】',
+    '本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只读本轮状态块推理，最后只输出一个 json 围栏回执。',
+    'closure poll 的正确回执样例（照抄形状）：{"vote_solved": true} 或 {"vote_solved": false}；只写这一句，不写 progress。',
+    '其它回合 progress 必须是数组/对象（不能是字符串），正确样例：{"progress":[{"track":"progress","kind":"note","title":"本轮进展","body":"……"}]}；顶层不要写 record/artifacts 等自造字段。',
   ].join('\n'),
 })
 
