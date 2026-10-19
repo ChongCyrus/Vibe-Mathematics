@@ -79,10 +79,22 @@ function boot({ replier = null, overrides = {} } = {}) {
 }
 
 async function tick(h, at) {
+  // ★ SLV / TWO-PHASE: tick 1 dispatches verifier turns; the deterministic barrier lets turn/reply-parsed write the
+  // votes; tick 2 settles the round. No sleeping.
   h.clockRef.at = at
-  const receipt = await h.kernel.bus.emit(V3_TICK_TOPIC, { at }, {})
+  // One verifier per tick is dispatched (the loop returns on dispatch); the deterministic barrier lets each reply land,
+  // and repeated ticks dispatch the remaining verifiers and finally settle. No sleeping anywhere.
+  const before = v3VerifyStatus()
+  const receipts = []
+  for (let i = 0; i < 12; i += 1) {
+    h.clockRef.at = at
+    receipts.push(await h.kernel.bus.emit(V3_TICK_TOPIC, { at }, {}))
+    await h.kernel.turn.whenIdle()
+    const st = v3VerifyStatus()
+    if (st.verdicts > before.verdicts || st.undecided > before.undecided || st.maxRoundsStops > before.maxRoundsStops) break
+  }
   await new Promise((resolve) => setImmediate(resolve))
-  return receipt
+  return { receipts, ...receipts[receipts.length - 1] }
 }
 
 /** 一个按 (round, verifier index) 返回概率的"验证者"；返回 null ⇒ 该回合不投票（模拟没交票）。 */

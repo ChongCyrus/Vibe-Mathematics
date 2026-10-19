@@ -614,15 +614,19 @@ async function dispatchVerifier({ turn, target, question, round, verifier, requi
     transcript,
     at: Number.isFinite(at) ? at : null,
   }
-  return turn.run({
-    member: verifier,
+  // ★ SLV / TWO-PHASE: dispatch only. Votes are written by the turn/reply-parsed handler; a later tick reads them
+  // and decides whether the round settled.
+  if (typeof turn.dispatch === 'function') {
+    return turn.dispatch({
+      member: verifier,
     role: 'verifier',
     phase: 'verify',
     task: 'v3-verify:' + target + ':r' + String(round) + ':' + verifier,
     why: 'v3 verification round ' + round + ' (' + verifier + '/' + String(required) + ')',
     statusBlock: JSON.stringify(brief, null, 2),
     round,
-  })
+    })
+  }
 }
 
 /**
@@ -659,6 +663,11 @@ async function advanceCandidate({ records, ballotbox, turn, at, settings, state,
         state.lastError = { phase: 'verifier-turn', code: str((e && e.code) || 'VMU_MIDDLEWARE_FAILED'), message: str((e && e.message) || e) }
       } finally {
         state.dispatch = null
+      }
+      // ★ SLV / TWO-PHASE: the verifier turn was only DISPATCHED. Its vote lands through turn/reply-parsed; this tick
+      // returns now, and a later tick reads the votes and decides whether the round settled.
+      if (receipt && receipt.dispatched === true) {
+        return { ok: true, dispatched: true, settled: false, target, round, verifier, awaitingReply: true, turn: receipt.turn || null }
       }
       if (receipt && receipt.ok === false && str((receipt.refused && receipt.refused.code) || receipt.code) === 'VMU_TURN_REENTRANT') {
         state.lastError = { phase: 'verifier-turn', code: 'VMU_TURN_REENTRANT', message: 'another turn is in flight; the next tick retries' }
@@ -849,8 +858,12 @@ async function onReplyParsed(flat) {
   for (const vote of parsedVotes.votes) {
     const dispatch = state.dispatch
     const target = vote.target || (dispatch ? dispatch.target : '')
-    const boxId = dispatch && dispatch.target === target ? dispatch.boxId : null
-    const round = vote.round || (dispatch ? dispatch.round : 1)
+    // ★ SLV / TWO-PHASE: a dispatched verifier's reply arrives on a LATER tick, when `state.dispatch` is already null.
+    // The active ballot for the target is the durable-in-process link (set when the box was opened), so the vote can
+    // still be double-written instead of being mislabelled "no box".
+    const activeForTarget = target ? state.active.get(target) : null
+    const boxId = dispatch && dispatch.target === target ? dispatch.boxId : (activeForTarget ? activeForTarget.boxId : null)
+    const round = vote.round || (dispatch ? dispatch.round : (activeForTarget ? activeForTarget.round : 1))
     if (!target) { state.malformed += 1; continue }
     if (!boxId) {
       // 没有本轮票箱（例如票来自 planner 派的 verifier，或进程重启后）⇒ 记录为"没有箱的票"？不行：

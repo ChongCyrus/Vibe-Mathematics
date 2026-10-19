@@ -1044,8 +1044,7 @@ export function createTurnOrchestrator({
   /** One full turn, in order. Returns the turn receipt rather than making the caller re-implement the sequence. */
   // ★ PHASE 6 / K2: renamed from `run` to `runOne` so the public `run` can be the guarded wrapper below. The body is
   // untouched; what changed is only that it is no longer directly callable while another turn is in flight.
-  const runOne = async (spec) => {
-    const { turn } = open(spec)
+  const runFrom = async (turn, spec) => {
     const asm = await assemble(turn)
     const raw = await deliverTurn(turn, asm.text)
     // ★★★ ROUND 73: A CALLER-PLAYED TURN RETURNS EARLY, AND THAT IS NOT A FAILED ROUND. The seam handed the assembled
@@ -1113,6 +1112,81 @@ export function createTurnOrchestrator({
       refused.push({ field: e.field, code: r.code === undefined ? null : r.code })
     }
     return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, fields: parsed.fields, refused, attribution: Object.assign({}, lastAttribution), ...out }
+  }
+
+  /**
+   * ★★★★★★★ SLV / DISPATCH: A TICK MUST NOT WAIT FOR A MODEL TURN.
+   *
+   * MEASURED ON A REAL HOST: multiple tick middleware (planner / methods / verify) each called run() and awaited
+   * the whole model round inside a hook whose budget is 2000ms. The hook timed out but the in-flight turn was NOT
+   * cancelled, so the next middleware hit the re-entrancy guard -> VMU_TURN_REENTRANT, and the three different
+   * refusals (REENTRANT / NO_FENCE / BAD_JSON) looked like three unrelated bugs. They were one structure.
+   *
+   * dispatch(spec) OPENS the turn synchronously (a real turn id), ENQUEUES it, and returns at once. A single
+   * background worker runs queued turns ONE AT A TIME (attribution / reply slot / notices are single-turn state),
+   * so several dispatches in one tick are legal and cannot nest. The reply travels through turn/reply-parsed;
+   * whenIdle() is a DETERMINISTIC wait for tests (never a sleep).
+   */
+  const dispatchQueue = []
+  const dispatchStats = { queued: 0, inFlight: 0, dispatched: 0, completed: 0, failed: 0, lastError: null, oldestPending: null }
+  let dispatchActive = false
+  let idleWaiters = []
+  const settleIdle = () => {
+    if (dispatchActive || dispatchQueue.length > 0) return
+    const waiters = idleWaiters
+    idleWaiters = []
+    for (const resolve of waiters) { try { resolve() } catch { /* a waiter must not break the queue */ } }
+  }
+  const pump = async () => {
+    if (dispatchActive) return
+    dispatchActive = true
+    while (dispatchQueue.length > 0) {
+      const item = dispatchQueue.shift()
+      dispatchStats.queued = dispatchQueue.length
+      dispatchStats.inFlight = 1
+      dispatchStats.oldestPending = { turn: item.turn.id, member: item.turn.member, at: item.turn.at || null }
+      try {
+        const out = await runFrom(item.turn, item.spec)
+        dispatchStats.completed += 1
+        item.settle(out)
+      } catch (e) {
+        const code = (e && e.code) || "VMU_TURN_DISPATCH_FAILED"
+        const message = String((e && e.message) || e)
+        dispatchStats.failed += 1
+        dispatchStats.lastError = { code, message, turn: item.turn.id, member: item.turn.member, at: Date.now(),
+          ...(e && typeof e.replyText === 'string' ? { replyLength: Number.isInteger(e.replyLength) ? e.replyLength : e.replyText.length, hadBrace: e.hadBrace === true, replyExcerpt: e.replyText.slice(0, 500) } : {}) }
+        // ★ A dispatched turn that FAILED must not vanish: its named outcome stays in status; the awaiting handle rejects.
+        item.reject(e)
+      } finally {
+        dispatchStats.inFlight = 0
+        dispatchStats.queued = dispatchQueue.length
+        if (dispatchQueue.length === 0) dispatchStats.oldestPending = null
+      }
+    }
+    dispatchActive = false
+    settleIdle()
+  }
+  const dispatch = (spec) => {
+    const { turn } = open(spec)
+    dispatchStats.dispatched += 1
+    const done = new Promise((resolve, reject) => {
+      dispatchQueue.push({ turn, spec, settle: resolve, reject })
+    })
+    done.catch(() => { void 0 })
+    dispatchStats.queued = dispatchQueue.length
+    if (dispatchStats.oldestPending === null) dispatchStats.oldestPending = { turn: turn.id, member: turn.member, at: turn.at || null }
+    void pump()
+    return { ok: true, dispatched: true, turn: { id: turn.id, member: turn.member, phase: turn.phase }, queued: dispatchQueue.length, handle: done }
+  }
+  const whenIdle = () => new Promise((resolve) => {
+    if (!dispatchActive && dispatchQueue.length === 0) { resolve(); return }
+    idleWaiters.push(resolve)
+  })
+  const dispatchStatus = () => Object.assign({}, dispatchStats, { active: dispatchActive })
+
+  const runOne = async (spec) => {
+    const { turn } = open(spec)
+    return runFrom(turn, spec)
   }
 
   /**
@@ -1244,6 +1318,7 @@ export function createTurnOrchestrator({
 
   return {
     open, assemble, deliver: deliverTurn, parse, plan, apply, run, nextTurn, drive, step,
+    dispatch, whenIdle, dispatchStatus,
     // ★★★ ROUND 73: THE CALLER-PLAYED TURN. When the injected seam is `deliverByReturning`, the assembled prompt
     // travels back to the caller and the member's reply arrives through this verb. A seam without `supply` refuses by
     // name rather than dropping the reply, because silently discarding an answer is the one outcome this phase has
@@ -1269,7 +1344,7 @@ export function createTurnOrchestrator({
     notify: (memberId, line) => queueNotice(memberId, line),
     /** Drain a member queued notices. The assembly calls this, which is what makes the announcement one-shot. */
     takeNotices: (memberId) => drainNotices(memberId),
-    status: ({ roster = [], may = null, permission = 'vote' } = {}) => ({ apiVersion, turns: turns.size, fields: known.length, owners, policy: POLICY, woken: Object.fromEntries(woken), counts: { ...counts }, lastRefusal: { ...lastRefusal },
+    status: ({ roster = [], may = null, permission = 'vote' } = {}) => ({ apiVersion, dispatch: dispatchStatus(), turns: turns.size, fields: known.length, owners, policy: POLICY, woken: Object.fromEntries(woken), counts: { ...counts }, lastRefusal: { ...lastRefusal },
       // ★★★ ROUND 50: THE READING AN OPERATOR WAS MISSING. Sixty-one meetings ran with no way to see that the one
       // field which closes the institute had never been emitted. `missing` names WHO, because silence is what blocks
       // closure and "somebody did not vote" is not actionable.

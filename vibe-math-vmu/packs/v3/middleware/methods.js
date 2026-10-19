@@ -136,7 +136,7 @@ export function v3MethodsStatus() {
     topic: V3_TICK_TOPIC,
     keeperRuns: s.keeperRuns, keeperInFlight: s.keeperInFlight,
     lastKeepAt: s.lastKeepAt, lastTickAt: s.lastTickAt,
-    lastSkip: s.lastSkip, lastReceipt: s.lastReceipt ? JSON.parse(JSON.stringify(s.lastReceipt)) : null,
+    lastSkip: s.lastSkip, lastDispatched: s.lastDispatched || null, lastReceipt: s.lastReceipt ? JSON.parse(JSON.stringify(s.lastReceipt)) : null,
     lastError: s.lastError,
     applications: s.applications, inventionsQueued: s.inventionsQueued, drafts: s.drafts,
     improved: s.improved, created: s.created, promotions: s.promotions, archived: s.archived,
@@ -757,6 +757,28 @@ async function runKeeperTurn({ records, turn, at, library, settings, state, dige
   state.keeperRuns += 1
   state.keeperInFlight = true
   state.keeperReceipt = null
+  // ★ SLV / TWO-PHASE: dispatch and return. The keeper reply lands through turn/reply-parsed (which sets
+  // state.keeperReceipt); the NEXT tick performs the fallback decision if no parsed reply ever arrived.
+  if (typeof turn.dispatch === 'function') {
+    try {
+      const dispatched = turn.dispatch({
+        member: KEEPER_MEMBER,
+        role: KEEPER_MEMBER,
+        phase: 'normal',
+        task: 'v3-method-keeper',
+        why: 'v3 method keeper due (' + digest.split('\n')[0].replace(/^- /, '') + ')',
+        statusBlock: digest,
+        round: 1,
+      })
+      state.keeperInFlight = false
+      state.lastDispatched = { turnId: dispatched.turn && dispatched.turn.id ? dispatched.turn.id : null, tick: state.ticks }
+      return { keeperTurn: state.lastDispatched.turnId, dispatched: true, deferred: true, hookHandled: false, receipt: null }
+    } catch (e) {
+      state.lastError = { phase: 'keeper-dispatch', code: str((e && e.code) || 'VMU_MIDDLEWARE_FAILED'), message: str((e && e.message) || e) }
+      state.keeperInFlight = false
+      return { keeperTurn: null, dispatched: false, receipt: { ok: false, code: state.lastError.code, message: state.lastError.message } }
+    }
+  }
   let receipt = null
   try {
     receipt = await turn.run({
@@ -802,6 +824,34 @@ async function onTick(flat) {
   state.lastTickAt = at
   const settings = readSettings(api)
   const library = tryLibrary(api)
+  const turn = api.services.get('vmu.turn')
+  // ★ SLV / TWO-PHASE: a dispatched keeper turn is decided HERE on a later tick - either the reply landed (the
+  // turn/reply-parsed handler set `state.keeperReceipt`) or it failed/completed without a parsed reply and the documented
+  // fallback runs. A pending reply is named, never silently swallowed.
+  if (state.lastDispatched) {
+    const pendingTurn = state.lastDispatched.turnId
+    const ds = turn && typeof turn.dispatchStatus === 'function' ? turn.dispatchStatus() : null
+    const failed = ds && ds.lastError && ds.lastError.turn === pendingTurn ? ds.lastError : null
+    const settledDispatch = !!ds && ds.active === false && ds.queued === 0
+    const age = state.ticks - state.lastDispatched.tick
+    if (state.keeperReceipt === null && (failed || (settledDispatch && age >= 1))) {
+      const fb = await fallbackFromPending({ records, at, library })
+      state.lastReceipt = {
+        fallback: true,
+        fallbackReason: failed ? 'keeper-turn-failed' : 'keeper-turn-produced-no-parsed-reply',
+        turnOk: false, code: failed ? str(failed.code) : null, turnId: pendingTurn,
+        pendingBefore: fb.pendingBefore, created: fb.created, newCards: fb.newCards, deduplicated: fb.deduplicated, cleared: fb.cleared,
+      }
+      state.lastDispatched = null
+      state.lastKeepAt = at
+      return { ok: true, keeperFallback: true, at, turnId: pendingTurn, ...state.lastReceipt }
+    }
+    if (state.keeperReceipt === null) {
+      state.lastSkip = { reason: 'keeper-reply-pending', turnId: pendingTurn, ageTicks: age, tick: state.ticks }
+      return { ok: true, skipped: 'keeper-reply-pending', at, turnId: pendingTurn, pending: true }
+    }
+    state.lastDispatched = null
+  }
   // ① 晋升（默认 methodAutoPromote=false ⇒ 只报告，不晋升）。
   const promotion = await promoteMethodsToGlobal({ records, auto: settings.autoPromote, at, library })
   state.promotions += promotion.promoted
@@ -811,7 +861,6 @@ async function onTick(flat) {
     state.lastSkip = Object.assign({ tick: state.ticks }, due)
     return { ok: true, skipped: due.reason, at, pending: due.pending, promotion: { promoted: promotion.promoted, skipped: promotion.skipped } }
   }
-  const turn = api.services.get('vmu.turn')
   const digest = buildMethodDigest({ records, at })
   const ran = await runKeeperTurn({ records, turn, at, library, settings, state, digest })
   return { ok: true, keeper: true, at, due: due.reason, pendingBefore: due.pending, ...ran, promotion: { promoted: promotion.promoted, skipped: promotion.skipped } }

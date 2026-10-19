@@ -27,7 +27,7 @@ let lastState = null
 function stateFor(records) {
   let s = REPORT_STATES.get(records)
   if (!s) {
-    s = { writes: 0, pushes: 0, pushSkips: 0, pushCalls: 0, lastWriteAt: null, lastPushAt: null, lastSkip: null, lastError: null, lastReport: null }
+    s = { writes: 0, pushes: 0, pushSkips: 0, pushCalls: 0, lastWriteAt: null, lastPushAt: null, lastSkip: null, lastPushSkip: null, lastError: null, lastReport: null }
     REPORT_STATES.set(records, s)
   }
   lastState = s
@@ -36,12 +36,12 @@ function stateFor(records) {
 
 export function v3ReportsStatus() {
   const s = lastState
-  if (!s) return { track: REPORTS_TRACK, writes: 0, pushes: 0, pushSkips: 0, pushCalls: 0, lastWriteAt: null, lastPushAt: null, lastSkip: null, lastError: null, lastReport: null, note: 'no tick has touched the v3 report module yet' }
+  if (!s) return { track: REPORTS_TRACK, writes: 0, pushes: 0, pushSkips: 0, pushCalls: 0, lastWriteAt: null, lastPushAt: null, lastSkip: null, lastPushSkip: null, lastError: null, lastReport: null, note: 'no tick has touched the v3 report module yet' }
   return {
     track: REPORTS_TRACK,
     writes: s.writes, pushes: s.pushes, pushSkips: s.pushSkips, pushCalls: s.pushCalls,
     lastWriteAt: s.lastWriteAt, lastPushAt: s.lastPushAt,
-    lastSkip: s.lastSkip, lastError: s.lastError,
+    lastSkip: s.lastSkip, lastPushSkip: s.lastPushSkip || null, lastError: s.lastError,
     lastReport: s.lastReport ? JSON.parse(JSON.stringify(s.lastReport)) : null,
     note: 'diagnostics only: counters are per-process; the durable fact is the latest record on the reports track',
   }
@@ -134,11 +134,11 @@ async function onTick(flat) {
     try { if (typeof api.services.names === 'function' && api.services.names().includes('vmu.report')) reportService = api.services.get('vmu.report') } catch { reportService = null }
     const pushed = pushReport({ reportService, report, at, mode: routes.mode })
     if (pushed.pushed) { state.pushes += 1; state.lastPushAt = at } else { state.pushSkips += 1 }
-    state.lastSkip = pushed.pushed ? null : { reason: pushed.skipped || pushed.code || 'push-failed', code: pushed.code || null }
+    state.lastSkip = pushed.pushed ? null : { reason: pushed.skipped || pushed.code || 'push-failed', code: pushed.code || null }; if (!pushed.pushed) state.lastPushSkip = state.lastSkip
     out.push = pushed
   } else {
     state.pushSkips += 1
-    state.lastSkip = { reason: 'push-not-allowed-by-mode', mode: routes.mode }
+    state.lastSkip = { reason: 'push-not-allowed-by-mode', mode: routes.mode }; state.lastPushSkip = state.lastSkip
     out.push = { ok: true, pushed: false, skipped: 'push-not-allowed-by-mode', mode: routes.mode }
   }
   return out

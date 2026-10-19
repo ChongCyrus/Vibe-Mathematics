@@ -89,11 +89,18 @@ function boot({ replier = null, overrides = {} } = {}) {
 
 /** 一个 tick：注入时钟推到 `at`，然后**从总线发** `v3/tick`（模块形状的 api 由 loader 附上）。 */
 async function tick(h, at, runs = 1) {
+  // ★ SLV / TWO-PHASE: tick 1 DISPATCHES the planner turn; the reply lands through turn/reply-parsed; tick 2 settles
+  // the persisted plan. whenIdle() is the DETERMINISTIC barrier - no sleeping. The helper returns the SECOND receipt
+  // because that is the one carrying the settled outcome most assertions describe.
   h.clockRef.at = at
-  const receipt = await h.kernel.bus.emit(V3_TICK_TOPIC, { at, runs }, {})
-  // 所有模块钩子都被 bus.emit await 过，这里再让一个宏任务过去，纯粹是为了不依赖 await 的实现细节。
+  const first = await h.kernel.bus.emit(V3_TICK_TOPIC, { at, runs }, {})
+  // Only a tick that DISPATCHED a planner turn needs the second (settle) tick; otherwise a second pass would double
+  // unrelated per-tick work (promotion) and the interaction would test something else.
+  if (!v3PlannerStatus().lastDispatched) { await new Promise((resolve) => setImmediate(resolve)); return first }
+  await h.kernel.turn.whenIdle()
+  const second = await h.kernel.bus.emit(V3_TICK_TOPIC, { at, runs }, {})
   await new Promise((resolve) => setImmediate(resolve))
-  return receipt
+  return { first, second, ...second }
 }
 
 /** 计划记录（最新一条）与其规范化视图。 */
@@ -558,6 +565,7 @@ console.log('=== 11b. P0-8 人工门（plan）：manual 下计划排队且**真�
   const approved = await approveGate({ records: h.kernel.records, gateId, by: 'human', at: 5000, reason: 'looks fine' })
   ok(approved.ok === true && approved.executed === true && approved.gate.status === 'released',
     '★ approve 之后执行器真的跑了（executed:true、终态 released）', approved.gate && approved.gate.status)
+  await h.kernel.turn.whenIdle()   // ★ two-phase: the approved plan's solver turns are DISPATCHED; wait for the queue deterministically
   const solverTurns3 = h.delivered.filter((d) => d.member === 'solver')
   ok(solverTurns3.length === 2, '★★ 只那一条计划被执行：恰好 2 个 solver 回合（就是被批准计划的两条动作）', solverTurns3.length)
   const releasedPlan = latestPlan(h.kernel)
@@ -836,7 +844,7 @@ const promoteOnce = async (value) => {
     'status 报出写入次数与最近一条报告 id', { writes: st.writes, last: st.lastReport })
   ok(parsed && st.lastReport && parsed.counts.problems === st.lastReport.counts.problems,
     '★ 报告计数与 status 是同一个数字（同一份快照）', { report: parsed && parsed.counts.problems, status: st.lastReport && st.lastReport.counts.problems })
-  ok(st.pushSkips >= 1 && st.lastSkip && st.lastSkip.reason === 'push-not-allowed-by-mode',
+  ok(st.pushSkips >= 1 && ((st.lastSkip && st.lastSkip.reason === 'push-not-allowed-by-mode') || (st.lastPushSkip && st.lastPushSkip.reason === 'push-not-allowed-by-mode')),
     '★ 默认 mode=file ⇒ push 不推，并自报 push-not-allowed-by-mode', st.lastSkip)
   const calls = []
   const fake = { emit: (args) => { calls.push(args); return { ok: true, delivered: true } } }

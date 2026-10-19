@@ -78,6 +78,23 @@ export async function closeout({ records, turn = null, target, at = null, by = '
     return Object.assign({}, first, { dispatched: false, stopped: false, note: 'no turn seam: cannot produce the paper; closure is NOT claimed' })
   }
   let turnId = null
+  // ★ SLV / TWO-PHASE: the closeout hook MUST NOT await the paper-writer turn (tick budget). It dispatches it; a later
+  // tick calls closeout again, finds the artifacts, and finalizes. `pending:true` is the observable "waiting for reply".
+  if (typeof turn.dispatch === 'function') {
+    try {
+      const dispatched = turn.dispatch({
+        member: 'paper-writer', role: 'paper-writer', phase: 'paper-write', task: 'v3-paper',
+        why: 'paper closeout: four artifacts must exist before stopping (missing: ' + first.missing.join(', ') + ')',
+        round: 1,
+      })
+      if (typeof dispatch === 'function') dispatch(dispatched)
+      return Object.assign({}, first, { dispatched: true, pending: true, stopped: false,
+        turn: dispatched.turn && dispatched.turn.id ? dispatched.turn.id : null,
+        note: 'paper-writer turn dispatched; a later tick re-checks the four artifacts and finalizes when they exist' })
+    } catch (e) {
+      return Object.assign({}, first, { dispatched: false, stopped: false, turnError: { code: str((e && e.code) || 'VMU_MIDDLEWARE_FAILED'), message: str((e && e.message) || e) } })
+    }
+  }
   try {
     const receipt = await turn.run({
       member: 'paper-writer', role: 'paper-writer', phase: 'paper-write', task: 'v3-paper',

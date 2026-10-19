@@ -134,6 +134,7 @@ export function v3PlannerStatus() {
     lastBrief: s.lastBrief ? JSON.parse(JSON.stringify(s.lastBrief)) : null,
     lastSkip: s.lastSkip,
     lastError: s.lastError,
+    lastDispatched: s.lastDispatched || null,
     lastExecuted: s.lastExecuted,
     turns: s.turns.slice(),
     // P1-1/P1-3 的**进程内**账本：派发幂等键数、自动晋升次数与最近一次晋升（持久事实仍在 plans/problems 轨）。
@@ -480,14 +481,26 @@ async function executeOne(a, ctx) {
       })
     }
     const phase = a.role === 'verifier' ? 'verify' : 'normal'
-    const receipt = await turn.run({
-      member: a.role,
-      role: a.role,
-      phase,
-      task: 'v3-plan:' + a.action + ':' + (a.target || a.direction || a.role),
-      why: 'v3 planner plan (' + a.action + ' ' + a.role + ')',
-      round: 1,
-    })
+    // ★ SLV: the explorer role sections are scoped by TASK (explore / rederive). Sending 'v3-plan:spawn:…' meant the
+    // explorer prompt was assembled WITHOUT its role section and without a status block (a blind delegation).
+    const task = a.role === 'explorer'
+      ? (a.action === 'spawn' ? 'explore' : 'rederive')
+      : ('v3-plan:' + a.action + ':' + (a.target || a.direction || a.role))
+    // ★ SLV / TWO-PHASE: plan actions are DISPATCHED, never awaited. The reply lands through turn/reply-parsed.
+    let receipt = null
+    try {
+      if (typeof turn.dispatch !== 'function') throw refuse('VMU_ENGINE_UNAVAILABLE', 'this turn loop exposes no dispatch(spec)')
+      receipt = turn.dispatch({
+        member: a.role,
+        role: a.role,
+        phase,
+        task,
+        why: 'v3 planner plan (' + a.action + ' ' + a.role + ')',
+        round: 1,
+      })
+    } catch (e) {
+      receipt = { ok: false, code: str((e && e.code) || 'VMU_ENGINE_UNAVAILABLE'), message: str((e && e.message) || e) }
+    }
     const plannerState = ctx.state
     if (receipt && receipt.ok === true) {
       const turnId = receipt.turn && receipt.turn.id ? receipt.turn.id : null
@@ -950,6 +963,93 @@ async function onTick(flat) {
   const problems = loadCardIndex(records, 'problems', 'problem')
   const propos = loadCardIndex(records, 'propos', 'proposition')
   const verified = verifiedIds(records)
+  // ★ SLV / TWO-PHASE SETTLEMENT (the second tick): the reply landed and turn/reply-parsed persisted the plan
+  // record. Settling here - not inside the dispatch hook - is what keeps the hook under its 2000ms budget.
+  // ★ SLV CROSS-INSTANCE: the reply hook may run in ANOTHER kernel assembly (a subagent session), so a process-local
+  // `lastPersistedPlanId` is not enough. The PLANS TRACK is the shared durable fact: settle the latest plan record that is
+  // still raw/unsettled even if this process never saw its reply.
+  let deferredPlanId = state.lastPersistedPlanId
+  if (!deferredPlanId) {
+    try {
+      const latest = latestPlanRecord(records)
+      if (latest) {
+        const canon = readPlanRecord(latest)
+        const status = str(canon && canon.status)
+        const terminal = status === 'executed' || status === 'partial' || status === 'rejected' || status === 'gate-failed' || status === 'awaiting-approval'
+        if (!canon || !terminal) deferredPlanId = latest.id || latest.recordId || null
+      }
+    } catch { deferredPlanId = null }
+  }
+  if (deferredPlanId) {
+    state.lastPersistedPlanId = null
+    let human = null
+    try { if (typeof api.services.names === 'function' && api.services.names().includes('vmu.human')) human = api.services.get('vmu.human') } catch (e) { human = null }
+    try {
+      const rec = records.get({ id: deferredPlanId })
+      // IDEMPOTENT: a plan record already in a terminal state is never settled twice (no second card, no double advance).
+      const status = str((rec && rec.status) || '')
+      if (status === 'executed' || status === 'partial' || status === 'rejected' || status === 'gate-failed') {
+        state.lastDispatched = null
+        return { ok: true, settledDeferredPlan: false, alreadyTerminal: true, at, planId: deferredPlanId, status, drained }
+      }
+      const plan = await settlePlan({ records, turn, rawPlan: readRawPlan(rec), planRecordId: deferredPlanId, at, horizon: settings.horizon, capacity, problems, propos, verified, state, human, mode: settings.mode })
+      state.plans += 1
+      state.plannerCalls += 1
+      state.lastDispatched = null
+      return { ok: true, settledDeferredPlan: true, at, planId: deferredPlanId,
+        validated: plan.validated.length, rejected: plan.rejected, truncated: plan.truncated, duplicates: plan.duplicates,
+        outcomes: plan.outcomes.length, queued: plan.queued.length, status: plan.status,
+        awaitingApproval: plan.awaitingApproval === true, gateId: plan.gateId || null,
+        plannerTurn: state.lastDispatched ? null : (plan.plannerTurn || null), drained }
+    } catch (e) {
+      recordFailure({ records, at, state, api, error: e, phase: 'plan-settle' })
+      state.lastDispatched = null
+      return { ok: true, planned: true, settled: false, at, planId: deferredPlanId, code: str((e && e.code) || 'VMU_MIDDLEWARE_FAILED'), message: str((e && e.message) || e), drained }
+    }
+  }
+  // ★ A DISPATCHED PLANNER TURN THAT FAILED REPORTS ITSELF BACK TO THE PLANNER: the failure lives in
+  // turn.dispatchStatus().lastError (with the reply excerpt), so it becomes a named planner failure on the next tick -
+  // instead of a fire-and-forget error nobody counts.
+  if (state.lastDispatched) {
+    const ds = typeof turn.dispatchStatus === 'function' ? turn.dispatchStatus() : null
+    const failedTurn = ds && ds.lastError && ds.lastError.turn === state.lastDispatched.turnId ? ds.lastError : null
+    if (failedTurn) {
+      const missingTurn = state.lastDispatched.turnId
+      state.lastDispatched = null
+      const err = Object.assign(new Error(str(failedTurn.message)), {
+        code: str(failedTurn.code || 'VMU_MIDDLEWARE_FAILED'),
+        ...(typeof failedTurn.replyExcerpt === 'string' ? { replyText: failedTurn.replyExcerpt, replyLength: failedTurn.replyLength, hadBrace: failedTurn.hadBrace === true } : {}),
+      })
+      recordFailure({ records, at, state, api, error: err, phase: 'planner-turn' })
+      return { ok: true, planned: false, dispatched: false, at, code: err.code, message: err.message, plannerTurn: missingTurn, drained }
+    }
+    const age = state.ticks - state.lastDispatched.tick
+    if (ds && ds.active === false && ds.queued === 0 && age >= 1 && !state.lastPersistedPlanId) {
+      const noPlanTurn = state.lastDispatched.turnId
+      state.lastDispatched = null
+      recordFailure({ records, at, state, api,
+        error: refuse('VMU_INVALID_ARGUMENT', 'the dispatched planner turn ' + str(noPlanTurn) + ' completed without persisting a plan record',
+          'the turn id is retained here; a reply that is not a plan envelope must be visible as a planner failure, not silently ignored'),
+        phase: 'planner-no-plan' })
+      return { ok: true, planned: false, dispatched: false, at, code: 'VMU_INVALID_ARGUMENT', message: 'planner turn completed without a plan record', plannerTurn: noPlanTurn, drained }
+    }
+  }
+  // ★ BOUNDED NO-REPLY EXIT: a dispatched planner turn that never answers must not be able to stall the institute
+  // forever. After PLANNER_REPLY_TICKS ticks the pending turn is reported BY NAME with its turn id (not silently lost).
+  if (state.lastDispatched) {
+    const pending = typeof turn.dispatchStatus === 'function' ? turn.dispatchStatus() : null
+    const stillPending = pending && pending.oldestPending && pending.oldestPending.turn === state.lastDispatched.turnId
+    const age = state.ticks - state.lastDispatched.tick
+    if (stillPending && age >= 5) {
+      const missingTurn = state.lastDispatched.turnId
+      state.lastDispatched = null
+      recordFailure({ records, at, state, api,
+        error: refuse('VMU_PACK_V3_PLANNER_REPLY_MISSING', 'the dispatched planner turn ' + str(missingTurn) + ' produced no reply within ' + age + ' ticks',
+          'the turn id is retained in this failure record; dispatch status names the oldest pending turn (no reply is NOT treated as no work)'),
+        phase: 'planner-reply-missing' })
+      return { ok: true, skipped: 'planner-reply-missing', at, turnId: missingTurn, ageTicks: age, drained }
+    }
+  }
   // P1-3：自动晋升放在重读索引之前 —— 本 tick 晋升出的“判断命题”问题必须出现在同一 tick 的简报里，
   // 否则模型要等到下一 tick 才看得见它（v3 的流程也是 promote 在 buildBrief 之前）。
   let promotion = { ok: true, promoted: 0, threshold: settings.promoteValueThreshold }
@@ -994,10 +1094,15 @@ async function onTick(flat) {
   state.inFlight = true
   state.lastPlanAt = at
   state.lastPersistedPlanId = null
-  let receipt = null
-  let planId = null
+  // ★ SLV / TWO-PHASE: tick DISPATCHES and returns. Settlement happens on a LATER tick, after turn/reply-parsed has
+  // persisted the plan record. A tick hook must never await a model turn (its budget is 2000ms).
+  let dispatchReceipt = null
   try {
-    receipt = await turn.run({
+    if (typeof turn.dispatch !== 'function') {
+      throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel turn loop exposes no dispatch(spec), so a tick cannot dispatch without blocking',
+        'assemble the kernel with the current kernel/turn/index.js (dispatch + whenIdle); keeping a synchronous turn.run in a tick hook is the structural defect this change removes')
+    }
+    dispatchReceipt = turn.dispatch({
       member: PLANNER_MEMBER,
       role: PLANNER_MEMBER,
       phase: 'normal',
@@ -1006,42 +1111,21 @@ async function onTick(flat) {
       statusBlock: JSON.stringify(brief, null, 2),
       round: 1,
     })
-    planId = planIdFromReceipt(receipt, state)
   } catch (e) {
     state.inFlight = false
     const code = str((e && e.code) || 'VMU_MIDDLEWARE_FAILED')
-    recordFailure({ records, at, state, api, error: e, phase: 'planner-turn' })
-    // VMU_TURN_REENTRANT 是「另一个回合在飞」：这不是规划器坏的证据，但也不重试（下一次 tick 再来）。
-    return { ok: true, planned: false, at, code, message: str((e && e.message) || e), reentrant: code === 'VMU_TURN_REENTRANT', continues: code !== 'VMU_TURN_REENTRANT', drained }
+    recordFailure({ records, at, state, api, error: e, phase: 'planner-dispatch' })
+    return { ok: true, planned: false, dispatched: false, at, code, message: str((e && e.message) || e), drained }
   }
   state.inFlight = false
-  if (planId === null) {
-    recordFailure({ records, at, state, api, error: refuse('VMU_INVALID_ARGUMENT', 'the planner turn produced no plan record (its reply was not a plan envelope)', 'the planner reply must be {"progress":{"track":"plans","kind":"plan","body":"- summary: …","tags":["act:…"]}}'), phase: 'planner-reply' })
-    return { ok: true, planned: false, at, code: 'VMU_INVALID_ARGUMENT', message: 'planner reply carried no plan record', plannerTurn: receipt && receipt.turn ? receipt.turn.id : null, drained }
+  if (!dispatchReceipt || dispatchReceipt.dispatched !== true) {
+    recordFailure({ records, at, state, api, error: refuse('VMU_MIDDLEWARE_FAILED', 'the planner turn could not be dispatched'), phase: 'planner-dispatch' })
+    return { ok: true, planned: false, dispatched: false, at, code: 'VMU_MIDDLEWARE_FAILED', message: 'planner turn could not be dispatched', drained }
   }
-  state.plannerCalls += 1
-  // ⑤ 归一化/校验 → **人工门判定** → 按容量执行 → 逐条 outcome 写回（manual 未放行 ⇒ 计划停在 awaiting-approval）。
-  let human = null
-  try { if (typeof api.services.names === 'function' && api.services.names().includes('vmu.human')) human = api.services.get('vmu.human') } catch (e) { human = null }
-  let plan = null
-  try {
-    const rec = records.get({ id: planId })
-    plan = await settlePlan({ records, turn, rawPlan: readRawPlan(rec), planRecordId: planId, at, horizon: settings.horizon, capacity, problems: problemsNow, propos, verified, state, human, mode: settings.mode })
-    state.plans += 1
-  } catch (e) {
-    recordFailure({ records, at, state, api, error: e, phase: 'plan-settle' })
-    return { ok: true, planned: true, settled: false, at, planId, code: str((e && e.code) || 'VMU_MIDDLEWARE_FAILED'), message: str((e && e.message) || e), drained }
-  }
-  return {
-    ok: true, planned: true, settled: plan.awaitingApproval !== true, at, planId,
-    validated: plan.validated.length, rejected: plan.rejected, truncated: plan.truncated, duplicates: plan.duplicates,
-    outcomes: plan.outcomes.length, queued: plan.queued.length, status: plan.status,
-    awaitingApproval: plan.awaitingApproval === true, gateId: plan.gateId || null,
-    plannerTurn: receipt && receipt.turn ? receipt.turn.id : null,
-    drained,
-    promoted: promotion.promoted,
-    promotion: promotion.promoted > 0 ? promotion : null,
-  }
+  state.lastDispatched = { turnId: dispatchReceipt.turn && dispatchReceipt.turn.id ? dispatchReceipt.turn.id : null, tick: state.ticks, at }
+  return { ok: true, dispatched: true, planned: false, settled: false, at, plannerTurn: state.lastDispatched.turnId,
+    queued: dispatchReceipt.queued, drained, promoted: 0,
+    note: 'planner turn dispatched; the reply lands through turn/reply-parsed and the plan is settled on a later tick' }
 }
 
 // ── K10：turn/reply-parsed 上的回执归一化 ───────────────────────────────────────────────────────────────

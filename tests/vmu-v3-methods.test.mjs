@@ -83,10 +83,15 @@ function boot({ replier = null, overrides = {}, root = null } = {}) {
 }
 
 async function tick(h, at) {
+  // ★ SLV / TWO-PHASE: dispatch first, then the deterministic reply barrier, then a second tick for the deferred
+  // keeper decision (fallback if no parsed reply). A tick that dispatched nothing stays a single tick.
   h.clockRef.at = at
-  const receipt = await h.kernel.bus.emit(V3_TICK_TOPIC, { at, runs: 1 }, {})
+  const first = await h.kernel.bus.emit(V3_TICK_TOPIC, { at, runs: 1 }, {})
+  if (!v3MethodsStatus || !v3MethodsStatus().lastDispatched) { await new Promise((resolve) => setImmediate(resolve)); return first }
+  await h.kernel.turn.whenIdle()
+  const second = await h.kernel.bus.emit(V3_TICK_TOPIC, { at, runs: 1 }, {})
   await new Promise((resolve) => setImmediate(resolve))
-  return receipt
+  return { first, second, ...second }
 }
 
 const methodCard = (id, extra = {}) => Object.assign({ id, 标题: '方法 ' + id, 核心内容: '核心内容 ' + id + '。', improvements: [{ v: 1, 原因: '初始沉淀', text: '初始正文' }] }, extra)
@@ -97,8 +102,8 @@ console.log('=== 1. 值层/清单形状：storeMode=full 在值层；methods 是
     '★ 值层有 vmu.records.history.storeMode="full"（构造期快照；不补会静默拿 diff）', PACK_DEFAULTS['vmu.records.history.storeMode'])
   const declared = new Set(SETTING_DEFS.map((d) => d.key))
   const undeclared = Object.keys(PACK_DEFAULTS).filter((k) => !declared.has(k))
-  ok(undeclared.length === 0 && Object.keys(PACK_DEFAULTS).length === 11,
-    '值层 11 把键全部已在 settings/schema.js 登记（拼错不会静默）', { undeclared, n: Object.keys(PACK_DEFAULTS).length })
+  ok(undeclared.length === 0 && Object.keys(PACK_DEFAULTS).length === 12,
+    '值层 12 把键全部已在 settings/schema.js 登记（拼错不会静默）', { undeclared, n: Object.keys(PACK_DEFAULTS).length })
   ok(Object.keys(PACK.settings || {}).length === 0, '清单 settings 仍为空（构造期键只在值层；调用期键有 schema 默认）', PACK.settings)
   const entries = Array.isArray(PACK.middleware) ? PACK.middleware : []
   const methodsEntry = entries.find((e) => e && e.id === 'v3-methods')
