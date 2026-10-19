@@ -1007,9 +1007,9 @@ async function onTick(flat) {
     }
     let pruned = 0
     for (const [key, v] of Array.from(state.dispatched.entries())) {
-      // Only the explorer link is released here (its missing effect kills the whole chain at direction=0); solver ledger
-      // semantics are covered by the composer/proposition tests and are not changed in this step.
-      if (!v || v.role !== 'explorer') continue
+      // An explorer whose turn produced no direction, or a solver whose turn produced no proposition, releases its key after
+      // the turn is no longer pending (a timed-out delivery must not permanently block the retry that could still succeed).
+      if (!v || (v.role !== 'explorer' && v.role !== 'solver')) continue
       if (pendingTurn !== null && v.turn === pendingTurn) continue
       const age = state.ticks - (Number.isInteger(v.tick) ? v.tick : 0)
       if (age < 2) continue

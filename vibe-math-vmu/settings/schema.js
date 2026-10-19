@@ -184,6 +184,7 @@ const CORE_DEFS = Object.freeze([
   // while exposing only list(): string[] to a plugin, so a plugin cannot construct a legal parent.
   { key: 'vmu.turn.deliverMode', type: 'enum', domain: ['subagents', 'caller'], def: 'subagents', hot: HOT.H2, who: 'office', doc: 'capability-default: 这是交付【传输】的选择，不是研究该怎么进行的政策 —— 默认值 subagents＝宿主把成员回合当作子代理运行，是宿主协作得了的那条路（caller 那条要求部署把提示词交回调用会话）。交付路线：★ subagents＝宿主把成员回合当作子代理运行（★ 默认）；★ caller＝把装配好的提示词交回调用会话，★ 由它扮演成员回合并用 vibe_vmu_turn { reply } 送回答复' },
 { key: 'vmu.turn.deliverProvider', type: 'string', def: '', hot: HOT.H2, who: 'office', doc: '成员回合【一次性交付】所用的 provider 名：★ 非空且宿主提供 start() 时，★ 交付走一次性路径（★ 不进入 continuable registry）；★ 空则走 continuable 路径' },
+{ key: 'vmu.turn.deliveryTimeoutMs', type: 'number', def: 180000, hot: HOT.H2, who: 'office', doc: '成员回合 one-shot 交付的 deadline（毫秒）。★ 超时后该回合以 VMU_TURN_DELIVERY_TIMEOUT 具名失败（带 turn/member/已等毫秒/最后一次交付阶段），并释放串行队列；★ 正常回合只要在 deadline 内返回就不受影响' },
 { key: 'vmu.turn.closureVotePermission', type: 'string', def: 'vote', hot: HOT.H2, who: 'office', doc: 'capability-default: 值只是一个权限字符串的【名字】，谓词拿它去问谁能结题；换名不改机制，而名字本身是部署词汇（v5r 交给 member 槽位）。哪一个权限字符串算【结题表决权】：★ 谓词据此判断谁【有资格】结题。★ 默认 vote（★ v5r pack 把 vote 给 member 槽位，chair 与 temp 都没有）；★ 另一家机构可以改名' },
 { key: 'vmu.turn.objective', type: 'string', def: '（尚未设定）', hot: HOT.H2, who: 'office', doc: '本所研究对象（原问题）；默认值与原线未设定时的输出一字不差，绝不留空括号' },
   // ROUND 365: the resource discipline the original puts in front of every member is not a slogan, it is a block whose

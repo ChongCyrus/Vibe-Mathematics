@@ -144,5 +144,72 @@ console.log('=== 5. THE BOUND ROOT AGENT: tick/timer deliveries have a parent ev
   ok(seen2.length === 0, 'and the host was never called with parent=null (the refusal happens before start)', { calls: seen2.length })
 }
 
+console.log('=== 5. BOUNDED DELIVERY: a hung one-shot rejects by name, a normal one is untouched ===')
+{
+  const rootAgent = { options: {}, session: { id: 'sess-1' } }
+  const makeSeam = (fakeSubs, timeoutMs) => createTurnDeliver({
+    ctx: { get: (name) => name === 'subagents' ? fakeSubs : null },
+    config: { deliverProvider: 'fake-provider' },
+    settings: { 'vmu.turn.deliveryTimeoutMs': timeoutMs },
+    deliverViaSubagents, deliverByReturning,
+    getRootAgent: () => rootAgent,
+  })
+  // POSITIVE: a promise that NEVER resolves must reject with the named timeout, carrying turn/member/waited/phase evidence.
+  const hungSubs = { list: () => ['fake-provider'], start: () => new Promise(() => {}) }
+  const hungSeam = makeSeam(hungSubs, 60)
+  let timedOut = null
+  const startedAt = Date.now()
+  try {
+    await hungSeam({ turn: { id: 't-hang', member: 'explorer-a' }, text: 'do it' })
+  } catch (e) { timedOut = e }
+  const waited = Date.now() - startedAt
+  ok(timedOut !== null && timedOut.code === 'VMU_TURN_DELIVERY_TIMEOUT',
+    '★ 正：永不 resolve 的 one-shot ⇒ 具名超时（不是永久 inFlight）', { code: timedOut && timedOut.code })
+  ok(timedOut && timedOut.turn === 't-hang' && timedOut.member === 'explorer-a'
+    && Number.isFinite(timedOut.waitedMs) && timedOut.deliveryTimeoutMs === 60,
+    '★ 超时记录带 turn id、member、已等毫秒、deadline', timedOut && { turn: timedOut.turn, member: timedOut.member, waitedMs: timedOut.waitedMs, deadline: timedOut.deliveryTimeoutMs })
+  ok(timedOut && timedOut.requestSent === true && timedOut.lastPhase === 'start-called',
+    '★ 超时记录说明“请求已进入调用”（lastPhase=start-called），不是静默', timedOut && { sent: timedOut.requestSent, phase: timedOut.lastPhase })
+  ok(waited >= 40 && waited < 2000, '★ 是真的按 deadline 释放（不是等了 40 分钟）', waited)
+  // NEGATIVE: a normal reply well inside the deadline must NOT be killed by the bound.
+  const goodSubs = { list: () => ['fake-provider'], start: () => ({ result: Promise.resolve({ output: [{ type: 'text', text: '{"say":"ok"}' }], stopReason: 'end' }) }) }
+  const goodSeam = makeSeam(goodSubs, 5000)
+  const reply = await goodSeam({ turn: { id: 't-good', member: 'solver-a' }, text: 'go' })
+  ok(reply && reply.reply === '{"say":"ok"}', '★ 反：正常回合在 deadline 内返回 ⇒ 不被误杀', reply && reply.reply)
+}
+console.log('=== 6. THE SERIAL DISPATCH QUEUE IS RELEASED BY A TIMED-OUT DELIVERY (the next turn runs) ===')
+{
+  const rootAgent = { options: {}, session: { id: 'sess-2' } }
+  let calls = 0
+  const subs = {
+    list: () => ['fake-provider'],
+    start: () => {
+      calls += 1
+      if (calls === 1) return new Promise(() => {})
+      return { result: Promise.resolve({ output: [{ type: 'text', text: '{"prioritize":"ack"}' }], stopReason: 'end' }) }
+    },
+  }
+  const seam = createTurnDeliver({
+    ctx: { get: (name) => name === 'subagents' ? subs : null },
+    config: { deliverProvider: 'fake-provider' },
+    settings: { 'vmu.turn.deliveryTimeoutMs': 80 },
+    deliverViaSubagents, deliverByReturning, getRootAgent: () => rootAgent,
+  })
+  const kernel = createKernel({
+    clock: () => 1000, settings: {}, deliverTurn: seam,
+    slots: [{ id: 'member', capacity: 4, permissions: ['speak', 'vote'] }],
+  })
+  await kernel.members.hire({ id: 'm1', slot: 'member' })
+  await kernel.members.hire({ id: 'm2', slot: 'member' })
+  kernel.turn.dispatch({ member: 'm1', role: 'member', phase: 'normal' })
+  kernel.turn.dispatch({ member: 'm2', role: 'member', phase: 'normal' })
+  await kernel.turn.whenIdle()
+  const ds = kernel.turn.dispatchStatus()
+  ok(ds.queued === 0 && ds.inFlight === 0 && ds.failed === 1 && ds.completed === 1,
+    '★ 卡住的第一个回合具名超时 → 队列释放 → 第二个回合照常完成（inFlight 不永久为 1）',
+    { queued: ds.queued, inFlight: ds.inFlight, failed: ds.failed, completed: ds.completed })
+  ok(ds.lastError && ds.lastError.code === 'VMU_TURN_DELIVERY_TIMEOUT' && calls === 2,
+    '★ 失败记进 dispatch.lastError，且第二个回合真的被调用（不是静默丢）', { lastError: ds.lastError, calls })
+}
 console.log('=== HOST DELIVER WIRING: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }

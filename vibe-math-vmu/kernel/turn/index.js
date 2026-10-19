@@ -391,9 +391,12 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
       throw refuse('VMU_INVALID_ARGUMENT', 'the activation delivery path needs a provider name',
         'set config.deliverProvider or vmu.turn.deliverProvider to one of the names this host lists: ' + providerNamesOf(subagents))
     }
+    const reportPhase = (phase) => { try { if (options && typeof options.onPhase === 'function') options.onPhase(phase) } catch { /* evidence only */ } }
+    reportPhase('start-called')
     let handle
     try {
       handle = await startOnce()
+      reportPhase('start-returned')
     } catch (e) {
       const first = String((e && e.message) || e)
       // ★★★ ROUND 80: THE PAUSE IS AN INJECTED SEAM, NOT A GLOBAL TIMER. The timer scan counts every file that creates
@@ -430,6 +433,7 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
           'the activation was started and then disposed; the failure came from the child run itself, not from the delivery (docs/26 stage 3)', e)
       }
       await disposeOnce()
+      reportPhase('result-returned')
       const activationReply = textOfContentBlocks(res && res.output)
       if (activationReply === null) {
         throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host accepted the activation but the child returned no text',

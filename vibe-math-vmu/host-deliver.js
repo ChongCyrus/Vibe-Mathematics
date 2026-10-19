@@ -1,3 +1,4 @@
+import { SETTING_DEFS } from './settings/schema.js'
 // vibe-math-vmu/host-deliver.js — THE TURN-DELIVERY ASSEMBLY, EXTRACTED FROM THE ENTRY.
 //
 // WHY IT LIVES HERE (Round 81): the entry had grown past the recorded 1200-line limit, and the size gate's contract
@@ -176,7 +177,55 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
       throw err
       }
       const signal = (typeof config.deliverSignal === 'object' && config.deliverSignal) || (typeof AbortSignal !== 'undefined' && typeof AbortController !== 'undefined' ? new AbortController().signal : null)
-      return deliverViaSubagents(subs, extract, { provider: configuredProvider, parent, signal, options: (config.deliverOptions && typeof config.deliverOptions === 'object') ? config.deliverOptions : {} })({ turn, text })
+      // ★ SLV / BOUNDED DELIVERY: a one-shot member turn used to occupy the serial dispatch queue FOREVER (measured:
+      // inFlight=1 for 40 minutes, failed=0, lastError=null while the whole queue sat behind it). The deadline comes from
+      // the declared setting (no literal here); the error carries WHERE the turn stood, so "request never sent" and
+      // "sent, no provider event" are distinguishable without another run.
+      const timeoutDef = SETTING_DEFS.find((d) => d && d.key === 'vmu.turn.deliveryTimeoutMs')
+      const configuredTimeout = Number(settings && settings['vmu.turn.deliveryTimeoutMs'])
+      const deliveryTimeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : Number(timeoutDef && timeoutDef.def)
+      if (!(deliveryTimeoutMs > 0)) {
+        throw Object.assign(new Error('no delivery deadline is declared'), {
+          code: 'VMU_INVALID_ARGUMENT',
+          hint: 'the schema must declare vmu.turn.deliveryTimeoutMs (number > 0); an unbounded one-shot delivery can stall the queue forever',
+        })
+      }
+      const startedMs = Date.now()
+      const phases = []
+      const onPhase = (phase) => { try { phases.push({ phase: String(phase), at: Date.now() - startedMs }) } catch { /* evidence only */ } }
+      let timer = null
+      // ★ The bridge is a FACTORY: call it once to get the actual deliverer, then call THAT with the turn/text. Racing
+      // the factory itself (it returns a function synchronously) made the seam return a function instead of a reply.
+      const deliverer = deliverViaSubagents(subs, extract, {
+        provider: configuredProvider, parent, signal,
+        options: Object.assign({}, (config.deliverOptions && typeof config.deliverOptions === 'object') ? config.deliverOptions : {}, { onPhase }),
+      })
+      if (typeof deliverer !== 'function') {
+        throw Object.assign(new Error('the delivery seam factory did not return a callable deliverer'), { code: 'VMU_ENGINE_UNAVAILABLE' })
+      }
+      const delivery = Promise.resolve().then(() => deliverer({ turn, text }))
+      const deadline = new Promise((resolve, reject) => {
+        timer = setTimeout(() => {
+          const waitedMs = Date.now() - startedMs
+          const last = phases.length > 0 ? phases[phases.length - 1] : null
+          const err = new Error('the one-shot delivery for this member turn did not settle within ' + deliveryTimeoutMs + 'ms')
+          err.code = 'VMU_TURN_DELIVERY_TIMEOUT'
+          err.turn = turn && turn.id ? turn.id : null
+          err.member = turn && turn.member ? turn.member : null
+          err.waitedMs = waitedMs
+          err.deliveryTimeoutMs = deliveryTimeoutMs
+          err.requestSent = last !== null
+          err.lastPhase = last ? last.phase : 'before-call'
+          err.phases = phases.slice()
+          err.hint = 'the turn was started through the one-shot path and never returned; the serial queue is released automatically, and this record says whether the call was entered (' + (last ? 'yes, last phase ' + last.phase : 'no') + ')'
+          reject(err)
+        }, deliveryTimeoutMs)
+      })
+      try {
+        return await Promise.race([delivery, deadline])
+      } finally {
+        if (timer) clearTimeout(timer)
+      }
     }
     // ROUND 4 / F9+F10 (docs/26 §3.22): THE ONGOING-COMMAND SEAMS, assembled exactly like the turn-delivery one above -
     // the capability is the host's (`subagents.sendMessage` / `subagents.interrupt`), the bridge is
