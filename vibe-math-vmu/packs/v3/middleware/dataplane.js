@@ -30,6 +30,10 @@ import { V3_TICK_TOPIC } from './tick.js'
 // P1-9：defect 标记是归档证明的**共同真源**。`findVerified` 与 `promoteVerified` 都先问它，避免“某处还读得到 passed”。
 import { latestDefect } from './defects.js'
 
+/** 局部文本归一（dataplane 的 helper；与内核 str 同义）。 */
+const str = (v) => (v === undefined || v === null ? '' : String(v))
+const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
+
 /** v3 的记录轨。★ 这是**值层**的同一份清单（settings/defaults.json 的 vmu.records.tracks），此处仅供测试与文档对照。 */
 export const V3_TRACKS = Object.freeze([
   // P1-5：`reports` 是 v3 汇报面（file 路）的持久快照轨；它不是“卡”轨（kind=state），所以 CARD_KINDS 不含它。
@@ -706,6 +710,77 @@ export function rebuildIndex({ records, tracks = V3_TRACKS, limit = 0, at = null
   }
 }
 
+/**
+ * ★ SLV / P0-9 COMPOSER: a SOLVER turn's journal has no card composer, so a complete proof stayed on the journal track and
+ * the verifier never had a candidate. This lifts a proposition out of the SOLVER's own progress payload:
+ *   · SOURCE IS THE TURN, not a journal scan - only role solver (member solver-*) is considered, so planner/explorer
+ *     journal rows can never become verification candidates;
+ *   · IDEMPOTENT - the record id is deterministic ('p-sol-' + turn id), so composing the same reply twice returns
+ *     {already:true} and writes NO second card;
+ *   · NAMED - a solver that claims success but carries no extractable statement/body gets a journal record with
+ *     VMU_PACK_V3_PROPOSITION_NOT_EXTRACTABLE instead of an empty card.
+ */
+export function composePropositionFromReply({ records, flat, at = null } = {}) {
+  const turnId = str(flat && (flat.turn || (flat.receipt && flat.receipt.turn)))
+  const role = str(flat && flat.role)
+  const member = str(flat && flat.member)
+  if (role !== 'solver' && !/^solver(?:-|$)/i.test(member)) return { ok: true, skipped: 'not-a-solver-turn' }
+  const reply = flat && isObject(flat.reply) ? flat.reply : null
+  const progress = reply && isObject(reply.progress) ? reply.progress : null
+  const body = progress && typeof progress.body === 'string' ? progress.body : ''
+  const tags = progress && Array.isArray(progress.tags) ? progress.tags.map(String) : []
+  const status = str(progress && progress.status) || str(reply && reply.status)
+  const solutionish = status === 'success' || tags.some((t) => /^solution\s*:/i.test(t)) || /证毕|完整解|Q\.E\.D|∎/.test(body)
+  let qid = progress && progress.qid !== undefined ? str(progress.qid) : ''
+  let dirId = progress && progress.dirId !== undefined ? str(progress.dirId) : ''
+  const ctxTag = tags.find((t) => /^ctx\s*:/.test(t))
+  if ((!qid || !dirId) && ctxTag) {
+    const parts = ctxTag.replace(/^ctx\s*:/, '').split('｜')
+    if (!qid && parts[0]) qid = parts[0].trim()
+    if (!dirId && parts[1]) dirId = parts[1].trim()
+  }
+  if (!solutionish) return { ok: true, skipped: 'not-a-complete-solution' }
+  const fail = (message, hint) => {
+    try {
+      writeBody({ records, track: 'journal', kind: 'state', title: 'v3 命题抽取失败', settled: true, by: 'v3-dataplane',
+        body: ['- code: VMU_PACK_V3_PROPOSITION_NOT_EXTRACTABLE', '- turn: ' + (turnId || '(none)'), '- member: ' + member,
+          '- problem: ' + (qid || '(none)'), '- status: ' + (status || '(none)'), '- reason: ' + message, '- at: ' + (at === null ? '(none)' : String(at))].join('\n') })
+    } catch { /* the named receipt below is the primary channel */ }
+    return { ok: true, skipped: 'proposition-not-extractable', code: 'VMU_PACK_V3_PROPOSITION_NOT_EXTRACTABLE', message, hint, turnId }
+  }
+  if (!qid) return fail('the solver reply carries no problem id (progress.qid / ctx tag), so no proposition can be anchored', 'the solver prompt must put qid/dirId in the progress payload or a ctx:qid｜dirId tag')
+  if (!body.trim()) return fail('the solver claims a complete solution but its journal body is empty', 'a proposition must quote the statement/proof; refusing to create an empty card')
+  const propId = 'p-sol-' + (turnId || (qid + '-' + String(body.length)))
+  try {
+    const existing = records.get({ id: propId })
+    if (existing && existing.id === propId) return { ok: true, already: true, propositionId: propId, qid }
+  } catch { /* not present: compose it */ }
+  let statement = ''
+  try {
+    const items = records.list({ track: 'problems', limit: 0 }).items
+    for (const it of items) {
+      const full = records.get({ id: it.id })
+      const text = String((full && full.body) || '')
+      if (text.includes('- ID: ' + qid + '\n') || text.includes('- ID: ' + qid + ' ') || text.includes('- ID: ' + qid)) {
+        const m = /(?:^|\n)[-*]\s*(?:描述|陈述)\s*[:：]\s*([^\n]*)/.exec(text)
+        statement = m ? m[1].trim() : ''
+        break
+      }
+    }
+  } catch { statement = '' }
+  if (!statement) statement = '问题 ' + qid + ' 的求解候选'
+  const composedBody = ['# 命题｜' + qid + ' 的求解候选', '- ID: ' + propId, '- 类型: 命题', '- 标题: ' + qid + ' 的求解候选',
+    '- 陈述: ' + statement, '- 状态: 未定论', '- 概率: 0.5', '- 来源: solver 回合 ' + (turnId || '(none)'),
+    '- 问题: ' + qid + (dirId ? '，方向 ' + dirId : ''), '', '## 求解正文（来自 solver 回合的 journal）', '', body].join('\n')
+  try {
+    records.put({ id: propId, track: 'propos', kind: 'proposition', title: qid + ' 的求解候选', body: composedBody,
+      tags: ['qid:' + qid, 'from:solver', turnId ? 'turn:' + turnId : 'turn:none'] })
+    return { ok: true, composed: true, propositionId: propId, qid, dirId: dirId || null, turnId }
+  } catch (e) {
+    return fail('the proposition record could not be written: ' + str((e && e.message) || e), 'the records track/kind must accept proposition cards')
+  }
+}
+
 // ── 模块：tick 驱动的索引重建（5s 节流） ──────────────────────────────────────────────────────────────
 let indexRuns = 0
 let lastIndexAt = null
@@ -728,6 +803,19 @@ export const V3_DATAPLANE_MODULE = Object.freeze({
   // 读 vmu.records 必须声明它（kernel/loader.js:127-143 的能力门）。
   capabilities: Object.freeze(['trigger-workflow']),
   hooks: Object.freeze({
+    // ★ SLV / P0-9: the solver turn's reply is the ONE source of verification candidates. The hook never throws: a
+    // refusal is a named receipt/journal row, so a bad reply cannot break the turn loop.
+    'turn/reply-parsed': async (event) => {
+      const flat = event && typeof event === 'object' ? event : {}
+      const api = flat.api
+      if (!api || !api.services) return undefined
+      try {
+        const records = api.services.get('vmu.records')
+        return composePropositionFromReply({ records, flat, at: Number.isFinite(flat.at) ? flat.at : null })
+      } catch (e) {
+        return { ok: true, skipped: 'composer-error', code: 'VMU_PACK_V3_PROPOSITION_NOT_EXTRACTABLE', message: str((e && e.message) || e) }
+      }
+    },
     [V3_TICK_TOPIC]: async (event) => {
       const flat = event && typeof event === 'object' ? event : {}
       const api = flat.api

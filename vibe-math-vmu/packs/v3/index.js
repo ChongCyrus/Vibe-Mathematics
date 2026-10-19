@@ -74,7 +74,7 @@ export const PACK = Object.freeze({
   // 会具名拒 `VMU_PACK_CONFLICT`（而不是静默替换 tracks/slots、两套门同时在线）。
   excludes: Object.freeze(['v3-core']),
   // P1-1：同一个 rId 的二次派发是**具名跳过**（不是静默、不是重复建任务）。码登记在清单里（R-d：包命名空间）。
-  codes: Object.freeze(['VMU_PACK_V3_DUPLICATE_DISPATCH', 'VMU_PACK_V3_LEAN_REQUIRED', 'VMU_PACK_V3_TOOL_NOT_PERMITTED', 'VMU_PACK_V3_TOOL_UNRESOLVED', 'VMU_PACK_V3_PAPER_INCOMPLETE']),
+  codes: Object.freeze(['VMU_PACK_V3_DUPLICATE_DISPATCH', 'VMU_PACK_V3_LEAN_REQUIRED', 'VMU_PACK_V3_TOOL_NOT_PERMITTED', 'VMU_PACK_V3_TOOL_UNRESOLVED', 'VMU_PACK_V3_PROPOSITION_NOT_EXTRACTABLE', 'VMU_PACK_V3_PAPER_INCOMPLETE']),
   // 六个模块在运行期通过 loader 的能力门读 `vmu.records`；planner/methods/verify 还要 `vmu.turn`（K2 已把
   // 回合循环进 M2 服务目录）；verify 还读 `vmu.ballotbox`（**法定人数由内核强制**，见 verify.js 文件头）。
   // gates 读 `vmu.human` 但**不 require** 它：人性面只是"尽力镜像"，台账（records）才是事实源。

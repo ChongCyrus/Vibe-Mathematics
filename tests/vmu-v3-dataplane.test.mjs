@@ -27,9 +27,10 @@ import { createPackLoader } from '../vibe-math-vmu/kernel/pack.js'
 import { SETTING_DEFS } from '../vibe-math-vmu/settings/schema.js'
 import { PACK } from '../vibe-math-vmu/packs/v3/index.js'
 import { V3_TICK_TOPIC } from '../vibe-math-vmu/packs/v3/middleware/tick.js'
+import { listCandidates } from '../vibe-math-vmu/packs/v3/middleware/verify.js'
 import {
   V3_TRACKS, CARD_KINDS, composeCard, parseCard, rewriteCard, parseBodySections,
-  writeCard, writeBody, updateCard, promoteVerified, findVerified, rebuildIndex, v3DataplaneStatus,
+  writeCard, writeBody, updateCard, promoteVerified, findVerified, rebuildIndex, v3DataplaneStatus, composePropositionFromReply,
   INDEX_THROTTLE_MS,
 } from '../vibe-math-vmu/packs/v3/middleware/dataplane.js'
 
@@ -416,6 +417,38 @@ console.log('=== 8. 装配路径（真机那一半）：defaults.json 在构造�
   for (const cleanup of handle.cleanups || []) { try { cleanup() } catch (e) { /* unwind is the host's job */ } }
 }
 
+// ── composer：solver 的 journal ⇒ propos 卡（否则 verifier 永远没有候选） ─────────────────────────────
+console.log('=== P0-9 composer：solver 回合 ⇒ propos 卡（正／反／幂等／来源限制） ===')
+{
+  const kernel = makeKernel(() => 1000)
+  const records = kernel.records
+  writeCard({ records, kind: 'problem', card: { id: 'q-comp', 标题: 'q-comp', 描述: '前 n 个奇数之和等于 n 的平方。', 状态: '求解中', 优先级: 1 } })
+  const flat = (turn, body, extra = {}) => ({
+    turn, member: 'solver-a', role: 'solver', at: 1000,
+    reply: { progress: Object.assign({ track: 'journal', kind: 'progress', title: 'q-comp/d1', body, qid: 'q-comp', dirId: 'd1', status: 'success' }, extra) },
+  })
+  const good = '完整证明：对 n 归纳。基例 n=1 成立；归纳步由 S_{n+1}=S_n+(2n+1) 得证。证毕。'
+  const a = composePropositionFromReply({ records, flat: flat('t-c1', good), at: 1000 })
+  const list1 = records.list({ track: 'propos', limit: 0 }).items
+  ok(a.ok === true && a.composed === true && a.propositionId === 'p-sol-t-c1' && list1.length === 1,
+    '★ 正：solver 的完整解被抽成 1 张 propos 卡（确定性 id = p-sol-<turn>）', { a, list: list1.map((x) => x.id) })
+  const cands = listCandidates(records)
+  ok(cands.items.length === 1 && cands.items[0].id === 'p-sol-t-c1',
+    '★ verifier 候选列表现在非空（缺的正是这个 composer）', cands.items.map((x) => x.id))
+  const b = composePropositionFromReply({ records, flat: flat('t-c1', good), at: 1000 })
+  const list2 = records.list({ track: 'propos', limit: 0 }).items
+  ok(b.ok === true && b.already === true && list2.length === 1,
+    '★ 幂等：同一 journal 再 compose 一次 ⇒ 卡数不变（不产第二张）', { b, list: list2.map((x) => x.id) })
+  const bad = composePropositionFromReply({ records, flat: flat('t-c2', ''), at: 1000 })
+  const list3 = records.list({ track: 'propos', limit: 0 }).items
+  const failJournal = records.list({ track: 'journal', limit: 0 }).items.filter((x) => String(x.title).includes('命题抽取失败'))
+  ok(bad.skipped === 'proposition-not-extractable' && bad.code === 'VMU_PACK_V3_PROPOSITION_NOT_EXTRACTABLE'
+    && list3.length === 1 && failJournal.length === 1,
+    '★ 反：无可抽取 ⇒ 具名拒 + journal 一条，且没有产空卡', { bad, list: list3.map((x) => x.id), journal: failJournal.length })
+  const planner = composePropositionFromReply({ records, flat: { turn: 't-plan', member: 'planner', role: 'planner', reply: { progress: { track: 'journal', body: good, qid: 'q-comp' } } }, at: 1000 })
+  ok(planner.skipped === 'not-a-solver-turn' && records.list({ track: 'propos', limit: 0 }).items.length === 1,
+    '★ 来源限制：planner 的 journal 不会被抽成命题（只认 solver 回合）', planner)
+}
 console.log('')
 console.log('=== V3 DATAPLANE (P0-9+P0-6): ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length > 0) for (const f of failures) console.error('  - ' + f)
