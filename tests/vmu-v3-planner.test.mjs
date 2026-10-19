@@ -483,6 +483,15 @@ console.log('=== 10. 规划器失败：不可解析的回执 ⇒ 具名失败计
     .filter((rec) => /v3 planner attempt failed/.test(String(rec.title)))
   ok(journal.length === 1, 'journal 轨上有一条具名的失败记录', journal.length)
   ok(journal.length === 1 && /VMU_TURN_NO_FENCE/.test(String(journal[0].body)), '失败记录正文里带错误码', journal[0] && String(journal[0].body).slice(0, 120))
+  // ★ SLV DIAGNOSTIC: after NO_FENCE the next question is "what did the reply ACTUALLY contain?" - the record must be
+  // answerable without re-running. Bounded excerpt + length + hadBrace (this replier writes prose with no brace).
+  const failureBody = journal.length === 1 ? String(journal[0].body) : ''
+  ok(/replyExcerpt: "/.test(failureBody) && /这不是 JSON/.test(failureBody),
+    '★ 失败记录带截断的 reply 原文（可直接回答"空文本？prose？工具对象？"）', failureBody.slice(0, 200))
+  ok(/replyLength: \d+/.test(failureBody) && /hadBrace: false/.test(failureBody),
+    '★ 并且带 replyLength 与 hadBrace（本回复是 prose、没有花括号）', failureBody.slice(0, 200))
+  ok(st.lastError && st.lastError.replyExcerpt && st.lastError.replyLength > 0 && st.lastError.hadBrace === false,
+    '★ 状态回执 lastError 也带同一份诊断（不只在 journal 正文里）', st.lastError && { code: st.lastError.code, len: st.lastError.replyLength, brace: st.lastError.hadBrace })
   await tick(h, 40000)
   ok(v3PlannerStatus().plannerCalls === 0, '自禁用后不再派出规划回合', v3PlannerStatus().plannerCalls)
   ok(v3PlannerStatus().lastSkip && v3PlannerStatus().lastSkip.reason === 'planner-self-disabled', '跳过理由是具名的 planner-self-disabled', v3PlannerStatus().lastSkip)

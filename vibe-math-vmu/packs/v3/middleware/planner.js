@@ -812,11 +812,31 @@ function planIdFromReceipt(receipt, state) {
 /** 规划器不可用/回执不可解析 ⇒ 计一次失败 + 写一条具名 journal（绝不静默）。 */
 function recordFailure({ records, at, state, api, error, phase }) {
   state.fails += 1
-  state.lastError = { phase, code: str((error && error.code) || 'VMU_MIDDLEWARE_FAILED'), message: str((error && error.message) || error), at }
+  // ★ SLV DIAGNOSTIC: the refusal says "no usable object"; the NEXT question is always "what did it actually contain?"
+  // (empty / prose / a tool object). Keep a BOUNDED excerpt + length + hadBrace on failures only (a success must never
+  // carry 500 characters of reply into the ledger).
+  const replyText = error && typeof error.replyText === 'string' ? error.replyText : null
+  state.lastError = {
+    phase,
+    code: str((error && error.code) || 'VMU_MIDDLEWARE_FAILED'),
+    message: str((error && error.message) || error),
+    at,
+    ...(replyText === null ? {} : {
+      replyLength: Number.isInteger(error.replyLength) ? error.replyLength : replyText.length,
+      hadBrace: error.hadBrace === true,
+      replyExcerpt: replyText.slice(0, 500),
+    }),
+  }
   const maxFails = Number(api.setting('vmu.v3.plannerMaxFails'))
   if (Number.isInteger(maxFails) && maxFails > 0 && state.fails >= maxFails && state.disabled === false) {
     state.disabled = true
     state.lastError.disabledPlannerAfterFails = state.fails
+  }
+  const failureLines = ['- phase: ' + phase, '- at: ' + (Number.isFinite(at) ? at : 'unknown'), '- code: ' + state.lastError.code, '- message: ' + state.lastError.message, '- consecutiveFails: ' + state.fails, '- plannerDisabled: ' + state.disabled]
+  if (replyText !== null) {
+    failureLines.push('- replyLength: ' + state.lastError.replyLength)
+    failureLines.push('- hadBrace: ' + state.lastError.hadBrace)
+    failureLines.push('- replyExcerpt: ' + JSON.stringify(state.lastError.replyExcerpt))
   }
   try {
     writeBody({
@@ -824,7 +844,7 @@ function recordFailure({ records, at, state, api, error, phase }) {
       track: 'journal',
       kind: 'state',
       title: 'v3 planner attempt failed',
-      body: ['- phase: ' + phase, '- at: ' + (Number.isFinite(at) ? at : 'unknown'), '- code: ' + state.lastError.code, '- message: ' + state.lastError.message, '- consecutiveFails: ' + state.fails, '- plannerDisabled: ' + state.disabled].join('\n'),
+      body: failureLines.join('\n'),
       settled: true,
       by: 'v3-planner',
     })

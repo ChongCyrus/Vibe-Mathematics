@@ -1057,7 +1057,20 @@ export function createTurnOrchestrator({
         assembled: { chars: asm.text.length, sources: asm.sources.length }, fields: [], executed: [], skipped: [], refused: [],
         attribution: Object.assign({}, lastAttribution) }
     }
-    const parsed = parse(raw)
+    let parsed
+    try {
+      parsed = parse(raw)
+    } catch (e) {
+      // ★ SLV DIAGNOSTIC: a refusal about the reply's SHAPE must carry the reply itself (bounded), so the next run can
+      // answer "empty? prose? a tool object?" from the record instead of re-running to guess.
+      if (e && typeof e === 'object') {
+        const text = String(raw === undefined || raw === null ? '' : raw)
+        e.replyText = text.slice(0, 2000)
+        e.replyLength = text.length
+        e.hadBrace = text.indexOf('{') !== -1
+      }
+      throw e
+    }
     // consumed once: the next turn's reply belongs to whoever it answers
     const attributedTo = lastReplyForMember
     lastReplyForMember = null
