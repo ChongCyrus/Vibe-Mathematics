@@ -282,6 +282,8 @@ export const V3_ROLE_PAPER_WRITER = Object.freeze({
     '',
     '### 回执（vmu 适配；只输出一个 ```json 围栏）',
     '用 `progress` 写一条 `journal` 轨记录承载整篇论文：`title` = 论文标题；`body` = 完整论文 Markdown（含全部九节 `## ` 标题）；tags 给 `paper:<标题>｜<lang>｜<format>`。',
+    '★ 顶层**只允许** `progress`；`artifacts`／`missing`／`notes`／`say` 等自造顶层字段会被 `VMU_TURN_UNKNOWN_FIELD` 整条拒（四件产物由框架从你的 progress 回执落盘，不需要你在顶层报 artifacts）。',
+    '★ 回执样例：{"progress":{"track":"journal","title":"odd-sum 论文","body":"## 摘要\\n…\\n## 引言与问题背景\\n…","tags":["paper:odd-sum 论文｜zh｜md"]}}',
     '摘要写成正文第一节里的第一段（或别用 `## 摘要` 之外的重复节）。',
   ].join('\n'),
 })

@@ -74,7 +74,7 @@ export async function closeout({ records, turn = null, target, at = null, by = '
   const id = str(target)
   const first = finalizePaper({ records, target: id, at, by })
   if (first.completed) return Object.assign({}, first, { dispatched: false, stopped: true })
-  if (!turn || typeof turn.run !== 'function') {
+  if (!turn || (typeof turn.run !== 'function' && typeof turn.dispatch !== 'function')) {
     return Object.assign({}, first, { dispatched: false, stopped: false, note: 'no turn seam: cannot produce the paper; closure is NOT claimed' })
   }
   let turnId = null
@@ -82,8 +82,28 @@ export async function closeout({ records, turn = null, target, at = null, by = '
   // tick calls closeout again, finds the artifacts, and finalizes. `pending:true` is the observable "waiting for reply".
   if (typeof turn.dispatch === 'function') {
     try {
+      const ds = typeof turn.dispatchStatus === 'function' ? turn.dispatchStatus() : null
+      if (ds && ((Number(ds.queued) || 0) > 0 || (Number(ds.inFlight) || 0) > 0)) {
+        return Object.assign({}, first, { dispatched: false, pending: true, stopped: false,
+          note: 'paper-writer NOT dispatched: the serial turn queue already has work (the closeout will retry on a later tick)' })
+      }
+    } catch { /* fall through: the dispatch below is still correct */ }
+    try {
       const dispatched = turn.dispatch({
-        member: 'paper-writer', role: 'paper-writer', phase: 'paper-write', task: 'v3-paper',
+        member: 'paper-writer', role: 'paper-writer', phase: 'normal', task: 'v3-paper',
+        statusBlock: JSON.stringify((() => {
+          // ★ SLV: the writer must get the MATERIAL it is allowed to use - the verified cards. Without it a real writer
+          // honestly answered "MATERIAL 缺失下的诚实回执" (skeleton placeholders only).
+          const material = []
+          try {
+            for (const it of records.list({ track: 'verified', limit: 0 }).items.slice(0, 8)) {
+              const rec = records.get({ id: it.id })
+              material.push({ id: it.id, body: String((rec && rec.body) || '').slice(0, 6000) })
+            }
+          } catch { /* the writer still receives target/instruction */ }
+          return { target: id, artifacts: PAPER_ARTIFACTS, material,
+            instruction: '用 material 里的 verified 证据写完整论文；四件产物由框架从你的回执记录。顶层只允许 progress。' }
+        })()),
         why: 'paper closeout: four artifacts must exist before stopping (missing: ' + first.missing.join(', ') + ')',
         round: 1,
       })
@@ -97,7 +117,7 @@ export async function closeout({ records, turn = null, target, at = null, by = '
   }
   try {
     const receipt = await turn.run({
-      member: 'paper-writer', role: 'paper-writer', phase: 'paper-write', task: 'v3-paper',
+      member: 'paper-writer', role: 'paper-writer', phase: 'normal', task: 'v3-paper',
       why: 'paper closeout: four artifacts must exist before stopping (missing: ' + first.missing.join(', ') + ')',
       round: 1,
     })
@@ -123,10 +143,37 @@ async function onTick(flat) {
   return closeout({ records, turn, target, at })
 }
 
+/**
+ * ★ SLV: the writer produces ONE journal record (the paper markdown). The closeout's four artifacts are FOUR journal
+ * records with the prefix 'v3-paper｜<target>｜<artifact>' - nothing wrote them. This hook bridges the writer reply to the
+ * artifacts, so "paper present []" becomes present [md,tex,pdf,meta]. Refusal is named, never silent.
+ */
+async function onPaperReply(flat) {
+  const api = flat && flat.api
+  if (!api || !api.services) return undefined
+  if (str(flat.member) !== 'paper-writer' && str(flat.role) !== 'paper-writer') return undefined
+  const reply = flat.reply
+  const progress = isObject(reply) && isObject(reply.progress) ? reply.progress : null
+  const body = progress && typeof progress.body === 'string' ? progress.body : ''
+  if (body.trim() === '') return undefined
+  const records = api.services.get('vmu.records')
+  const target = str(typeof api.setting === 'function' ? api.setting('vmu.v3.paperCloseTarget') : '')
+  if (!target) return undefined
+  const written = []
+  for (const artifact of PAPER_ARTIFACTS) {
+    const artifactBody = artifact === 'meta'
+      ? JSON.stringify({ target, artifact, source: progress && progress.title ? progress.title : null, format: 'meta' })
+      : ('artifact: ' + artifact + ' for ' + target + '\nformat: ' + artifact + '\n\n' + body)
+    const r = recordPaperArtifact({ records, target, artifact, body: artifactBody })
+    if (r && r.ok === true) written.push(artifact)
+  }
+  return { rewriteResult: JSON.stringify({ prioritize: 'ack' }) }
+}
+
 export const V3_PAPER_CLOSE_MODULE = Object.freeze({
   meta: Object.freeze({ id: 'v3-paper-close', apiVersion: 1 }),
-  capabilities: Object.freeze(['trigger-workflow']),
-  hooks: Object.freeze({ 'v3/tick': onTick }),
+  capabilities: Object.freeze(['trigger-workflow', 'rewrite-result']),
+  hooks: Object.freeze({ 'v3/tick': onTick, 'turn/reply-parsed': onPaperReply }),
 })
 
 export default V3_PAPER_CLOSE_MODULE

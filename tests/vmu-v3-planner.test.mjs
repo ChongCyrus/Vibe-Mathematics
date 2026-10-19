@@ -999,6 +999,24 @@ const promoteOnce = async (value) => {
   ok(closed.completed === true && closed.stopped === true && closed.dispatched === true,
     '★ 产物补齐后才 completed:true（先产论文、再允许停机）', closed)
   ok(finalTitles('proj-c') === 1, '完成记录恰好一条')
+  // ★ SLV: a dispatch-only turn seam (the real kernel no longer gives ticks turn.run) MUST still dispatch the writer.
+  let dispatchedSpec = null
+  const dispatchTurn = {
+    dispatchStatus: () => ({ queued: 0, inFlight: 0 }),
+    dispatch: (spec) => { dispatchedSpec = spec; return { ok: true, dispatched: true, turn: { id: 't-disp' }, queued: 1 } },
+  }
+  const dispatched = await pc.closeout({ records: h.kernel.records, turn: dispatchTurn, target: 'proj-d' })
+  ok(dispatched.dispatched === true && dispatched.pending === true && dispatched.turn === 't-disp' && dispatchedSpec && dispatchedSpec.member === 'paper-writer',
+    '★ dispatch-only seam ⇒ paper-writer 被派发（不再是 no turn seam 的假跳过）', dispatched)
+  // ★ and a BUSY queue must NOT enqueue one writer turn per tick.
+  let busyCalls = 0
+  const busyTurn = {
+    dispatchStatus: () => ({ queued: 2, inFlight: 1 }),
+    dispatch: () => { busyCalls += 1; return { ok: true, dispatched: true, turn: { id: 't-busy' } } },
+  }
+  const busy = await pc.closeout({ records: h.kernel.records, turn: busyTurn, target: 'proj-e' })
+  ok(busy.dispatched === false && busy.pending === true && busyCalls === 0,
+    '★ 反：队列已有工作时不再叠派 paper-writer（避免每 tick 一回合）', busy)
 }
 
 // ── 22. P1-9（内核侧）：真实 fidelity `passedWithdrawn` 标记必须让 verified 读点读不到 passed ─────────────

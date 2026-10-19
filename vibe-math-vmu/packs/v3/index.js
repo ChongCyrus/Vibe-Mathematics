@@ -188,9 +188,10 @@ export const PACK = Object.freeze({
       // 拒）。`vmu.v3.paperCloseTarget` 为空 ⇒ 零机制；四件缺一 ⇒ 具名 incomplete、绝不停机/宣称完成。
       id: 'v3-paper-close',
       order: 135,
-      on: Object.freeze([V3_TICK_TOPIC]),
+      on: Object.freeze([V3_TICK_TOPIC, 'turn/reply-parsed']),
       failure: 'open',
-      capabilities: Object.freeze(['trigger-workflow']),
+      // ★ SLV: the writer reply becomes the four artifact records on the K10 rewrite point (rewrite-result needed).
+      capabilities: Object.freeze(['trigger-workflow', 'rewrite-result']),
       module: V3_PAPER_CLOSE_MODULE,
     },
     {
