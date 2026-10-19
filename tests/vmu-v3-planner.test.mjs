@@ -1120,6 +1120,26 @@ console.log('=== 21. planner 提示词装配：含“调度规划器”角色段
   ok(!text.includes('根会话'),
     '★ 反：planner 的实际提示词【不含】“根会话”人格（真机 t-7 的自称根会话不能再出现）', text.includes('根会话'))
 }
+// ── 22. explorer 派发【没有产出方向】时，幂等键必须释放（否则 directions 永远 0） ───────────────────
+console.log('=== 22. explorer 无产出 ⇒ 释放幂等键并允许重派（不再永久 already-dispatched） ===')
+{
+  const h = boot({
+    overrides: { 'vmu.v3.planMinIntervalMs': 0 },
+    replier: ({ turn }) => (turn.role === PLANNER_MEMBER
+      ? planReply('派 explorer 开方向', [{ action: 'spawn', role: 'explorer', target: 'q-1' }])
+      : ACK),
+  })
+  await h.loader.apply(PACK)
+  problemCard(h.kernel, 'q-1')
+  await tick(h, 1000)
+  const first = h.delivered.filter((d) => d.role === 'explorer').length
+  ok(first === 1, '第一次 explorer 派发成功（1 个回合）', first)
+  await tick(h, 4000)
+  const second = h.delivered.filter((d) => d.role === 'explorer').length
+  ok(second === 2, '★ 无方向产出 ⇒ 后续 tick 释放幂等键并重派（不是永久 already-dispatched）', second)
+  ok(v3PlannerStatus().lastLedgerPruned !== null && v3PlannerStatus().lastLedgerPruned.count >= 1,
+    '★ 释放是具名可观测的（lastLedgerPruned.count>=1），不是静默删除', v3PlannerStatus().lastLedgerPruned)
+}
 console.log('')
 console.log('=== V3 PLANNER (P0-2 + P0-3): ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length > 0) for (const f of failures) console.error('  - ' + f)

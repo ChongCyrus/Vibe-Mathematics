@@ -135,6 +135,7 @@ export function v3PlannerStatus() {
     lastSkip: s.lastSkip,
     lastError: s.lastError,
     lastDispatched: s.lastDispatched || null,
+    lastLedgerPruned: s.lastLedgerPruned || null,
     lastExecuted: s.lastExecuted,
     turns: s.turns.slice(),
     // P1-1/P1-3 的**进程内**账本：派发幂等键数、自动晋升次数与最近一次晋升（持久事实仍在 plans/problems 轨）。
@@ -526,7 +527,7 @@ async function executeOne(a, ctx) {
       const turnId = receipt.turn && receipt.turn.id ? receipt.turn.id : null
       if (turnId && plannerState) plannerState.turns.push({ member: a.role, turn: turnId, from: 'plan' })
       // 成功派发才登记幂等键：失败的派发留待下一 tick 重试（“同 rId 不重复建任务”只针对**已建成**的任务）。
-      if (plannerState && plannerState.dispatched) plannerState.dispatched.set(key, { at, turn: turnId, role: a.role, target: a.target, direction: a.direction })
+      if (plannerState && plannerState.dispatched) plannerState.dispatched.set(key, { at, turn: turnId, role: a.role, target: a.target, direction: a.direction, tick: ctx.state && Number.isInteger(ctx.state.ticks) ? ctx.state.ticks : null })
       // ★ SLV: "accepted" is not "completed". The tick only DISPATCHED the member turn; the reply arrives later and is
       // handled by turn/reply-parsed. The outcome therefore says dispatched:true, executed:false (red line 3's cousin).
       return outcomeOf(a, true, { turn: turnId, dispatched: true, executed: false, status: 'dispatched',
@@ -987,6 +988,35 @@ async function onTick(flat) {
   const problems = loadCardIndex(records, 'problems', 'problem')
   const propos = loadCardIndex(records, 'propos', 'proposition')
   const verified = verifiedIds(records)
+  // ★ SLV / STALE LEDGER: the idempotency key used to be permanent once DISPATCHED. On a real run an explorer turn was
+  // dispatched, produced no direction card, and then every retry was refused 'already-dispatched' forever - directions
+  // stayed 0 and the chain died at its first link. A dispatch is only idempotent if it produced its EFFECT (direction for
+  // explorer / proposition for solver); otherwise, after the turn is no longer pending, the key is released.
+  if (state.dispatched && state.dispatched.size > 0) {
+    const ds = typeof turn.dispatchStatus === 'function' ? turn.dispatchStatus() : null
+    const pendingTurn = ds && ds.oldestPending ? ds.oldestPending.turn : null
+    const readBody = (id) => { try { const r = records.get({ id }); return String((r && r.body) || '') } catch { return '' } }
+    const dirBodies = []
+    try { for (const it of records.list({ track: 'directions', limit: 0 }).items) dirBodies.push(readBody(it.id)) } catch { /* no track */ }
+    const propBodies = []
+    try { for (const it of records.list({ track: 'propos', limit: 0 }).items) propBodies.push(readBody(it.id)) } catch { /* no track */ }
+    const effectOf = (v) => {
+      if (v.role === 'explorer') return dirBodies.some((b) => b.includes('- ID: ' + v.target) || b.includes('- 问题: ' + v.target) || b.includes(v.target))
+      if (v.role === 'solver') return propBodies.some((b) => b.includes('- 问题: ' + v.target) || b.includes(v.target))
+      return true
+    }
+    let pruned = 0
+    for (const [key, v] of Array.from(state.dispatched.entries())) {
+      // Only the explorer link is released here (its missing effect kills the whole chain at direction=0); solver ledger
+      // semantics are covered by the composer/proposition tests and are not changed in this step.
+      if (!v || v.role !== 'explorer') continue
+      if (pendingTurn !== null && v.turn === pendingTurn) continue
+      const age = state.ticks - (Number.isInteger(v.tick) ? v.tick : 0)
+      if (age < 2) continue
+      if (!effectOf(v)) { state.dispatched.delete(key); pruned += 1 }
+    }
+    if (pruned > 0) state.lastLedgerPruned = { count: pruned, tick: state.ticks }
+  }
   // ★ SLV / TWO-PHASE SETTLEMENT (the second tick): the reply landed and turn/reply-parsed persisted the plan
   // record. Settling here - not inside the dispatch hook - is what keeps the hook under its 2000ms budget.
   // ★ SLV CROSS-INSTANCE: the reply hook may run in ANOTHER kernel assembly (a subagent session), so a process-local
