@@ -1105,6 +1105,21 @@ console.log('=== 20. directions 轨进入规划简报：无卡时为空、有卡
   ok(after && Array.isArray(after.directions) && after.directions.length === 1 && after.directions[0].id === 'd-1',
     '正：方向卡真的进入简报（planner 能看见 d-1，不再盲派 explorer）', after && after.directions)
 }
+// ── 21. planner 回合的【实际拼装提示词】必须含角色段、不含根会话人格 ───────────────────────────────
+console.log('=== 21. planner 提示词装配：含“调度规划器”角色段、不含“根会话”人格（直接拿 delivered.text） ===')
+{
+  const h = boot({ replier: ({ turn }) => (turn.member === PLANNER_MEMBER ? planReply('装配检查', [{ action: 'wait', target: 'q-1' }]) : ACK) })
+  await h.loader.apply(PACK)
+  problemCard(h.kernel, 'q-1')
+  await tick(h, 1000)
+  const plannerTurns = h.delivered.filter((d) => d.member === PLANNER_MEMBER)
+  ok(plannerTurns.length === 1, '恰好一次 planner 回合被投递', plannerTurns.length)
+  const text = plannerTurns.length > 0 ? String(plannerTurns[0].text) : ''
+  ok(text.includes('调度规划器') && text.includes('# v3-planner'),
+    '★ 正：planner 的实际提示词里含规划器角色段（不是只有简报）', text.slice(0, 120))
+  ok(!text.includes('根会话'),
+    '★ 反：planner 的实际提示词【不含】“根会话”人格（真机 t-7 的自称根会话不能再出现）', text.includes('根会话'))
+}
 console.log('')
 console.log('=== V3 PLANNER (P0-2 + P0-3): ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length > 0) for (const f of failures) console.error('  - ' + f)

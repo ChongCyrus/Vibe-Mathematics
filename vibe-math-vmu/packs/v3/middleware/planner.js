@@ -1114,6 +1114,15 @@ async function onTick(flat) {
     state.lastSkip = { reason: 'cooldown', elapsedMs: at - state.lastPlanAt, minIntervalMs: settings.planMinIntervalMs, tick: state.ticks }
     return { ok: true, skipped: 'cooldown', at, elapsedMs: at - state.lastPlanAt, minIntervalMs: settings.planMinIntervalMs, drained }
   }
+  // ★ SLV / BACKLOG: a planner turn takes ~100s on a real provider while the tick is 2s. Dispatching one per
+  // plan interval regardless of the pending one is what produced queued:15. While OUR turn is still pending, skip.
+  if (state.lastDispatched && typeof turn.dispatchStatus === 'function') {
+    const ds = turn.dispatchStatus()
+    if (ds && ds.oldestPending && ds.oldestPending.turn === state.lastDispatched.turnId) {
+      state.lastSkip = { reason: 'planner-reply-pending', turnId: state.lastDispatched.turnId, ageTicks: state.ticks - state.lastDispatched.tick, tick: state.ticks }
+      return { ok: true, skipped: 'planner-reply-pending', at, turnId: state.lastDispatched.turnId, queue: { queued: ds.queued, inFlight: ds.inFlight }, drained }
+    }
+  }
   // ④ 调 planner 回合（**只从 tick 里做**；tick 不是 turn，所以不会撞 VMU_TURN_REENTRANT）。
   state.inFlight = true
   state.lastPlanAt = at

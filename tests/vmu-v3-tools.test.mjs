@@ -190,6 +190,13 @@ console.log('=== 6. THE TOOLS REALLY DO THEIR JOB (on the assembled kernel) ==='
   ok(statusPaper.parsed && statusPaper.parsed.dispatch && typeof statusPaper.parsed.dispatch.queued === 'number'
     && typeof statusPaper.parsed.dispatch.failed === 'number',
     '★ status exposes the turn dispatch queue (queued / inFlight / failed / lastError)', statusPaper.parsed && statusPaper.parsed.dispatch)
+  const selected = await parseReceipt(v3boot, 'vibe_math_status', { fields: ['counts', 'dispatch', 'verify'] })
+  ok(selected.parsed && selected.parsed.counts && selected.parsed.verify && selected.parsed.dispatch
+    && selected.parsed.problems === undefined && selected.parsed.paper === undefined,
+    '★ status fields 选择器只回所要的段（大回执不会把诊断字段挤出边界）', selected.parsed && Object.keys(selected.parsed))
+  const unknown = await parseReceipt(v3boot, 'vibe_math_status', { fields: ['counts', 'no_such_section'] })
+  ok(unknown.parsed && Array.isArray(unknown.parsed.unknownFields) && unknown.parsed.unknownFields.includes('no_such_section'),
+    '★ 选择器对未知段具名报出（不静默丢）', unknown.parsed && unknown.parsed.unknownFields)
   const report = await parseReceipt(v3boot, 'vibe_math_report', {})
   ok(report.parsed && Array.isArray(report.parsed.problems.items) && report.parsed.problems.items.length === 1, 'report shows the problem card', report.parsed && report.parsed.problems)
   ok(report.parsed && typeof report.parsed.text === 'string' && report.parsed.text.includes('q-1'), 'report carries a readable text body', report.parsed && String(report.parsed.text).slice(0, 40))

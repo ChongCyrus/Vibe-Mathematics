@@ -204,7 +204,12 @@ async function toolPause(args = {}, { kernel } = {}) {
 
 // ── ③ status ────────────────────────────────────────────────────────────────────────────────────────────
 /** Read-only: control state, scheduler, per-track counts, roster and the pending human gates. */
-function toolStatus(_args = {}, { kernel } = {}) {
+async function toolStatus(_args = {}, { kernel } = {}) {
+  // ★ SLV: an explicit, DETERMINISTIC drain before the final status - "dispatched but still queued" must be distinguishable
+  // from "dispatched and replied". No sleeping: whenIdle() resolves exactly when the dispatch queue is empty.
+  if (_args && _args.waitIdle === true && kernel && kernel.turn && typeof kernel.turn.whenIdle === 'function') {
+    await kernel.turn.whenIdle()
+  }
   const records = recordsOf(kernel)
   const gates = listGates({ records })
   const members = kernel && kernel.members ? kernel.members : null
@@ -215,7 +220,7 @@ function toolStatus(_args = {}, { kernel } = {}) {
   const paper = paperTarget
     ? paperArtifacts({ records, target: paperTarget })
     : { target: null, present: [], missing: PAPER_ARTIFACTS.slice(), complete: false, note: 'no vmu.v3.paperCloseTarget is declared, so no paper is being tracked' }
-  return {
+  const statusOut = {
     ok: true, tool: 'status',
     mode: str(settingOr(kernel, 'vmu.v3.mode', 'auto')),
     tickIntervalMs: Number(settingOr(kernel, 'vmu.v3.tickIntervalMs', 2000)) || 2000,
@@ -252,10 +257,32 @@ function toolStatus(_args = {}, { kernel } = {}) {
     // exposed it - the journal was head-capped and status only showed lastPlan. Same family as the paper field.
     planner: (() => {
       const p = v3PlannerStatus()
-      return { plannerCalls: p.plannerCalls, plans: p.plans, fails: p.fails, disabled: p.disabled, lastSkip: p.lastSkip, lastError: p.lastError }
+      const brief = p.lastBrief && typeof p.lastBrief === 'object' ? p.lastBrief : null
+      return { plannerCalls: p.plannerCalls, plans: p.plans, fails: p.fails, disabled: p.disabled, lastSkip: p.lastSkip, lastError: p.lastError,
+        // ★ SLV: the planner's own view of directions, read in the SAME status call as counts.directions, so a "count says 1,
+        // planner says empty" report can be compared instead of guessed.
+        briefAt: brief && Number.isFinite(brief.at) ? brief.at : null,
+        briefDirections: brief && Array.isArray(brief.directions) ? brief.directions.length : null,
+        briefProblems: brief && Array.isArray(brief.problems) ? brief.problems.length : null,
+        briefVerifyCandidates: brief && Array.isArray(brief.verify_candidates) ? brief.verify_candidates.length : null }
     })(),
     note: 'read-only receipt: no card and no gate was changed by this call',
   }
+  // ★ SLV: a FIELD SELECTOR, so a big status cannot lose the diagnostics to the host's receipt bound. Ask for exactly
+  // the sections you read; unknown names are reported by name (never silently dropped).
+  const wanted = _args && _args.fields
+  if (Array.isArray(wanted) && wanted.length > 0) {
+    const out = { ok: true, tool: 'status' }
+    const missing = []
+    for (const name of wanted.map(String)) {
+      if (Object.prototype.hasOwnProperty.call(statusOut, name)) out[name] = statusOut[name]
+      else missing.push(name)
+    }
+    out.selected = wanted.map(String)
+    if (missing.length > 0) out.unknownFields = missing
+    return out
+  }
+  return statusOut
 }
 
 // ── ④ report ────────────────────────────────────────────────────────────────────────────────────────────
@@ -457,8 +484,8 @@ export const V3_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_math_status',
-    description: 'Read-only status: control state, scheduler mode/timer shape, per-track record counts, pending human gates, roster slots and the last plan. Changing nothing is the point.',
-    parameters: {},
+    description: 'Read-only status: control state, scheduler mode/timer shape, per-track record counts, pending human gates, roster slots, the last plan, the turn dispatch queue and the verifier counters. waitIdle:true drains the dispatch queue deterministically before reading. Changing nothing is the point.',
+    parameters: { waitIdle: { type: 'boolean' }, fields: { type: 'array', items: { type: 'string' } } },
     handler: toolStatus,
   },
   {
