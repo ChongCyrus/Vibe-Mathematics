@@ -107,15 +107,41 @@ console.log('=== 4. THE ONE-SHOT PARENT IS THE CALLING AGENT (`currentInitiator`
     { parentKind: seen[0] && (seen[0].request.parent === initiator ? 'initiator' : seen[0].request.parent) })
   ok(seen[0].request.parent.options && seen[0].request.parent.session,
     'the parent is the shape the host reads (`.options` and `.session`) - the two fields the null-parent failure lacked')
-  // Reverse: no initiator and a MULTI-entry list must NOT invent a parent by taking an arbitrary id.
+  // Reverse: no initiator and a MULTI-entry list must NOT invent a parent. Since the root-binding change it refuses
+  // BY NAME instead of calling the host with parent=null (that null was the real "reading 'options'" failure).
   const seen2 = []
   const subagents2 = { list: () => ['p'], start: async (provider, request) => { seen2.push(request); return { reply: 'r2' } } }
   const ctx2 = { get: (name) => name === 'agents' ? { list: () => ['x', 'y'], get: () => null } : (name === 'subagents' ? subagents2 : null) }
   const seam2 = createTurnDeliver({ ctx: ctx2, config: {}, settings: {}, deliverViaSubagents, deliverByReturning })
-  await seam2({ turn: { id: 't-null', member: 'm' }, text: 'x' })
-  ok(seen2.length === 1 && seen2[0].parent === null,
-    'reverse: without an initiator a multi-entry id list does NOT get turned into a parent (no arbitrary pick)',
-    { parent: seen2[0] && seen2[0].parent })
+  let noParent = null
+  try { await seam2({ turn: { id: 't-null', member: 'm' }, text: 'x' }) } catch (e) { noParent = e }
+  ok(noParent !== null && noParent.code === 'VMU_ENGINE_UNAVAILABLE' && seen2.length === 0,
+    'reverse: without an initiator/binding a multi-entry id list does NOT get an arbitrary parent - the delivery refuses by name before the host',
+    { code: noParent && noParent.code, calls: seen2.length })
+}
+
+console.log('=== 5. THE BOUND ROOT AGENT: tick/timer deliveries have a parent even outside a turn (and no root is NAMED) ===')
+{
+  // ★ MEASURED: a scheduler tick is outside every turn initiator boundary, so `currentInitiator()` cannot answer and an
+  // id list with more than one agent cannot pick one. The entry binds the root Agent when the host first shows it
+  // (`exec.agent` on a tool call); this seam must accept that binding and use it as the one-shot parent.
+  const root = { options: { preset: 'vibe-math-vmu' }, session: { id: 'root-session' } }
+  const seen = []
+  const subagents = { list: () => ['spawn'], start: async (provider, request) => { seen.push(request); return { reply: 'ok' } } }
+  const ctx = { get: (name) => name === 'agents' ? { list: () => ['x', 'y'], get: () => null } : (name === 'subagents' ? subagents : null) }
+  const seam = createTurnDeliver({ ctx, config: {}, settings: {}, deliverViaSubagents, deliverByReturning, getRootAgent: () => root })
+  await seam({ turn: { id: 't-tick', member: 'planner-a' }, text: 'plan' })
+  ok(seen.length === 1 && seen[0].parent === root,
+    '★ a tick delivery uses the BOUND root Agent as parent (not currentInitiator, not a guess)', { bound: seen[0] && seen[0].parent === root })
+  const seen2 = []
+  const subagents2 = { list: () => ['spawn'], start: async (provider, request) => { seen2.push(request); return { reply: 'ok' } } }
+  const ctx2 = { get: (name) => name === 'agents' ? { list: () => ['x', 'y'], get: () => null } : (name === 'subagents' ? subagents2 : null) }
+  const seam2 = createTurnDeliver({ ctx: ctx2, config: {}, settings: {}, deliverViaSubagents, deliverByReturning })
+  let refused = null
+  try { await seam2({ turn: { id: 't-unbound', member: 'planner-a' }, text: 'plan' }) } catch (e) { refused = e }
+  ok(refused !== null && refused.code === 'VMU_ENGINE_UNAVAILABLE' && /root Agent is bound/.test(String(refused.message || '')),
+    '★ reverse: an UNBOUND deployment refuses by name instead of starting the host with a null parent', { code: refused && refused.code })
+  ok(seen2.length === 0, 'and the host was never called with parent=null (the refusal happens before start)', { calls: seen2.length })
 }
 
 console.log('=== HOST DELIVER WIRING: ' + passed + ' passed, ' + failed + ' failed ===')

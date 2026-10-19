@@ -79,7 +79,7 @@ export function toPostExecuteDecision(decision) {
  * `entries` is the declared middleware list; `kernel.bus` is the vmu bus. Every registration goes through
  * `ctx.effect(..., 'vmu:hook:<name>')`, so the host unwinds it.
  */
-export function attachHostHooks({ ctx, kernel, settings = {}, log = () => {} } = {}) {
+export function attachHostHooks({ ctx, kernel, settings = {}, log = () => {}, onAgentSeen = null } = {}) {
   const attached = []
   const refused = []
   // The per-turn tool budget (vmu.limits.toolCallsPerTurnCap): counted here because the HOST is what sees
@@ -129,6 +129,12 @@ export function attachHostHooks({ ctx, kernel, settings = {}, log = () => {} } =
           const next = args[args.length - 1]
           const delegating = typeof next === 'function'
           const exec = args[0] || {}
+          // ★ THE ASSEMBLY-TIME ROOT BINDING (SLV): a host tool call carries the CALLING Agent (`exec.agent`), and that
+          // is the one moment the deployment's driver is observable. Remember it so tick/timer deliveries — which are
+          // outside any turn initiator boundary — have a real parent instead of guessing per call.
+          if (typeof onAgentSeen === 'function' && exec.agent && typeof exec.agent === 'object' && exec.agent.options && exec.agent.session) {
+            try { onAgentSeen(exec.agent) } catch { /* a recording failure must not break the hook */ }
+          }
           // A TURN-END resets the per-turn tool budget; the budget itself is read AT CALL TIME, so an H0
           // change takes effect on the very next call (docs/04 §5). Without this, the promised
           // `vmu.limits.toolCallsPerTurnCap` was a knob with no enforcement anywhere.

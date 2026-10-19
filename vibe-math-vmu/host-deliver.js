@@ -6,7 +6,7 @@
 //
 // THE BOUNDARY IS UNCHANGED. The entry still owns assembly; this module owns the delivery assembly alone, and takes
 // the context, config and settings it needs as parameters rather than reaching for them.
-export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaSubagents, deliverByReturning }) {
+export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaSubagents, deliverByReturning, getRootAgent = null }) {
     // ★★★ ROUND 74: WHICH DELIVERY ROUTE RUNS IS A DECLARATION, NOT A GUESS. Two routes ship: the HOST BRIDGE, which
     // asks the host to run the member turn as a subagent, and the CALLER-PLAYED turn, in which the assembled prompt
     // goes back to the session that called the tool and the member's reply comes in on the next call. The bridge is
@@ -125,6 +125,16 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
       try {
         const agents = ctx && typeof ctx.get === 'function' ? ctx.get('agents') : null
         if (agents && typeof agents === 'object') { try { agentKeys = Object.keys(agents).concat(Object.keys(Object.getPrototypeOf(agents) || {})).slice(0, 24) } catch { agentKeys = null } }
+        // ★★★★★★★ SLV: WHO DRIVES THIS DEPLOYMENT IS AN ASSEMBLY FACT, NOT A PER-CALL GUESS. A tick/timer delivery is
+        // outside any turn initiator boundary, so `currentInitiator()` is unavailable there and the id list may hold
+        // several agents. The entry binds the root Agent as soon as the host shows it (a tool call carries `exec.agent`),
+        // and this seam accepts it as the parent. A per-call inference is only a FALLBACK for callers that have no binding.
+        if (typeof getRootAgent === 'function') {
+          try {
+            const cand = getRootAgent()
+            if (cand && typeof cand === 'object' && cand.options && cand.session) { parent = cand; parentKind = 'bound-root' }
+          } catch { /* an unbound deployment keeps the fallbacks below, then fails by name */ }
+        }
         if (agents && typeof agents.get === 'function') {
           const id = (typeof config.sessionId === 'string' && config.sessionId) || (typeof config.agentId === 'string' && config.agentId) || null
           if (id && typeof agents.get === 'function') { const cand = agents.get(id); parent = cand || null; parentKind = cand ? (typeof cand === 'object' ? (cand.options ? 'agent' : 'object-without-options') : typeof cand) : 'get-returned-nothing' }
@@ -155,6 +165,16 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
           }
         }
       } catch { parent = null }
+      // ★ THE REVERSE OF THE BINDING: no root Agent is a NAMED refusal, never a silent "nobody worked" tick. The
+      // one-shot path needs the parent object (the host reads `.options`/`.session` off it); calling it with null is how
+      // a real run produced "the host refused to start this member turn twice: Cannot read properties of null".
+      if (configuredProvider && !parent) {
+        const err = new Error('no root Agent is bound for this deployment, so a tick-driven member turn has no parent')
+        err.code = 'VMU_ENGINE_UNAVAILABLE'
+        err.hint = 'bind the deployment root Agent at assembly (the entry does this from the first host tool call); '
+          + 'diagnosis: parentKind=' + parentKind + ' agentKeys=' + String(agentKeys)
+      throw err
+      }
       const signal = (typeof config.deliverSignal === 'object' && config.deliverSignal) || (typeof AbortSignal !== 'undefined' && typeof AbortController !== 'undefined' ? new AbortController().signal : null)
       return deliverViaSubagents(subs, extract, { provider: configuredProvider, parent, signal, options: (config.deliverOptions && typeof config.deliverOptions === 'object') ? config.deliverOptions : {} })({ turn, text })
     }

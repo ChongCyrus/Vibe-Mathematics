@@ -410,7 +410,10 @@ export function apply(ctx, config = {}) {
   // before the subagents service mounts, and binding "absent" at this instant would refuse every turn forever.
   // ★★★ ROUND 81: THE DELIVERY ASSEMBLY MOVED TO ITS OWN MODULE (host-deliver.js). The entry is under the recorded
   // line limit again, and the concern - which route runs and the seam that runs it - now lives with itself.
-  const turnDeliver = createTurnDeliver({ ctx, config, settings, deliverViaSubagents, deliverByReturning })
+  // ★ THE DEPLOYMENT'S DRIVER IS BOUND HERE, NOT GUESSED PER DELIVERY. A host tool call carries `exec.agent` — the
+  // one place the root Agent is observable without an initiator boundary. Tick/timer deliveries then have a real parent.
+  let rootAgentBound = null
+  const turnDeliver = createTurnDeliver({ ctx, config, settings, deliverViaSubagents, deliverByReturning, getRootAgent: () => rootAgentBound })
   const resolveSubagents = () => {
     try { return ctx && typeof ctx.get === 'function' ? ctx.get('subagents') : null } catch { return null }
   }
@@ -724,7 +727,7 @@ export function apply(ctx, config = {}) {
   const switchedOff = settings['vmu.core.enabled'] === false
   let installError = null
   // The BRIDGE: the declared middleware must fire on REAL host events, not only on the internal bus.
-  const hooks = attachHostHooks({ ctx, kernel, settings })
+  const hooks = attachHostHooks({ ctx, kernel, settings, onAgentSeen: (agent) => { rootAgentBound = agent } })
   let hooksResult = null
   let hooksError = null
   if (!switchedOff && hooks.plan().count > 0) {

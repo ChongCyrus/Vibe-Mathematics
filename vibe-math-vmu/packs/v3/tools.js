@@ -28,6 +28,7 @@
  * A default deployment must not silently become `manual` just because nobody set the key.
  */
 import { listGates, approveGate, rejectGate, cancelGate } from './middleware/gates.js'
+import { paperArtifacts, PAPER_ARTIFACTS } from './middleware/paper-close.js'
 import { latestPlanRecord, readPlanRecord } from './middleware/planner.js'
 import { writeCard, parseCard } from './middleware/dataplane.js'
 
@@ -206,6 +207,13 @@ function toolStatus(_args = {}, { kernel } = {}) {
   const records = recordsOf(kernel)
   const gates = listGates({ records })
   const members = kernel && kernel.members ? kernel.members : null
+  // ★ SLV MEASURED: "论文好了没有" had no reader at all - the paper-close middleware wrote its final record, but no
+  // status/report field exposed it. `vmu.v3.paperCloseTarget` names the project; absent ⇒ explicitly `null` (zero
+  // mechanism), never an invented "paper not started".
+  const paperTarget = str(settingOr(kernel, 'vmu.v3.paperCloseTarget', ''))
+  const paper = paperTarget
+    ? paperArtifacts({ records, target: paperTarget })
+    : { target: null, present: [], missing: PAPER_ARTIFACTS.slice(), complete: false, note: 'no vmu.v3.paperCloseTarget is declared, so no paper is being tracked' }
   return {
     ok: true, tool: 'status',
     mode: str(settingOr(kernel, 'vmu.v3.mode', 'auto')),
@@ -219,6 +227,7 @@ function toolStatus(_args = {}, { kernel } = {}) {
       ? { slots: members.roles().map((r) => ({ id: r.id, capacity: r.capacity })), live: members.roster().filter((m) => m.state === 'live').length }
       : null,
     lastPlan: lastPlanView(records),
+    paper,
     note: 'read-only receipt: no card and no gate was changed by this call',
   }
 }

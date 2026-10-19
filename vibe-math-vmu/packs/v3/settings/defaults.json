@@ -13,7 +13,9 @@
         "kind": "every",
         "intervalMs": 2000,
         "what": "v3/tick",
-        "payload": { "phase": "tick" },
+        "payload": {
+          "phase": "tick"
+        },
         "by": "settings"
       }
     ],
@@ -51,6 +53,7 @@
     "vmu.records.requireSettledRecords": false,
     "vmu.records.bodyCapBytes": 65536,
     "vmu.records.head.maxItems": 2000,
-    "vmu.records.history.storeMode": "full"
+    "vmu.records.history.storeMode": "full",
+    "vmu.v3.reportIntervalMs": 30000
   }
 }

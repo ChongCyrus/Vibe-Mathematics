@@ -164,6 +164,16 @@ console.log('=== 6. THE TOOLS REALLY DO THEIR JOB (on the assembled kernel) ==='
   ok(dup.parsed && dup.parsed.ok === false && dup.parsed.code === 'VMU_STATE', 'a duplicate id is refused by name (VMU_STATE)', dup.parsed && dup.parsed.code)
   const status = await parseReceipt(v3boot, 'vibe_math_status', {})
   ok(status.parsed && status.parsed.counts && status.parsed.counts.problems === 1, 'status counts the new problem', status.parsed && status.parsed.counts)
+  // ★ SLV: the paper state had NO reader (the middleware finalized records that nothing surfaced). Absent target is
+  // explicitly null/zero-mechanism; a declared target exposes done/missing.
+  ok(status.parsed && status.parsed.paper && status.parsed.paper.target === null && status.parsed.paper.complete === false
+    && Array.isArray(status.parsed.paper.missing) && status.parsed.paper.missing.length === 4,
+    'status exposes the paper state: no target ⇒ explicit null with all four artifacts missing', status.parsed && status.parsed.paper)
+  v3boot.handle.kernel.setSettingsValue('vmu.v3.paperCloseTarget', 'proj-p', { by: 'office' })
+  const statusPaper = await parseReceipt(v3boot, 'vibe_math_status', {})
+  ok(statusPaper.parsed && statusPaper.parsed.paper && statusPaper.parsed.paper.target === 'proj-p'
+    && statusPaper.parsed.paper.complete === false && statusPaper.parsed.paper.missing.length === 4,
+    '★ a declared target makes done/missing READABLE (four missing before any artifact is written)', statusPaper.parsed && statusPaper.parsed.paper)
   const report = await parseReceipt(v3boot, 'vibe_math_report', {})
   ok(report.parsed && Array.isArray(report.parsed.problems.items) && report.parsed.problems.items.length === 1, 'report shows the problem card', report.parsed && report.parsed.problems)
   ok(report.parsed && typeof report.parsed.text === 'string' && report.parsed.text.includes('q-1'), 'report carries a readable text body', report.parsed && String(report.parsed.text).slice(0, 40))
