@@ -89,9 +89,13 @@ export function filterTool({ tool = null, allow = null, deny = null } = {}) {
 async function onPreExecute(flat) {
   const api = flat && flat.api
   if (!api || !api.services) throw new Error('v3 toolfilter: no api facade')
-  // The hook payload is the host bridge's shape: { tool, args, agent, hook }.
-  const payload = isObject(flat.payload) ? flat.payload : {}
-  const tool = payload.tool === undefined ? null : payload.tool
+  // ★ The loader FLATTENS the bus envelope for modules (`kernel/loader.js`: `flat = {...envelope.payload}`), so the
+  // real handler shape is `{ tool, args, agent, hook, api }` — NOT `{ payload: { tool } }`. Measured on a real DSH
+  // host: reading `flat.payload` only made EVERY call carry `tool: null` ⇒ fail-closed denied every tool. Accept the
+  // flat shape first and keep the nested one as a compatibility fallback (a module invoked by an older caller).
+  const nested = isObject(flat.payload) ? flat.payload : {}
+  const rawTool = flat.tool !== undefined ? flat.tool : nested.tool
+  const tool = rawTool === undefined ? null : rawTool
   const allow = typeof api.setting === 'function' ? api.setting('vmu.v3.toolAllow') : null
   const deny = typeof api.setting === 'function' ? api.setting('vmu.v3.toolDeny') : null
   const decision = filterTool({ tool, allow, deny })

@@ -48,7 +48,11 @@ node scripts/check-docs.mjs                 # 文档 lint
 
 ## 4. 真机实测（SLV）
 
-★ 脚本：`D:\_tmp\slv-phase5\slv5n-run.ps1`（★ **不要**用用户的 profile／端口；★ 模型提供商必须 **`commandcode` / `deepseek/deepseek-v4.1-flash`**，**不要**用 deepseek 官方同名模型）。
+★ 脚本：`D:\_tmp\slv-phase5\slv5n-run.ps1`（★ **不要**用用户的 profile／端口）。
+★ **模型提供商（PHASE 6 起，★ 创始人当面更正，★ 此前写着 commandcode 已作废）**：★ **官方 `deepseek` / `deepseek-v4.1-flash`**。★ 而 **SLV 必须消耗【专门给它的一把 key】**，★ **不许用团队自己的额度**：
+　① ★ **key 只放仓外**（★ 现为 `D:\_tmp\slv-key.txt`），★ **绝不进仓／不进文档／不写进脚本默认值**；
+　② ★ **团队自己的模型源不变** —— ★ 换 key 只作用于 SLV 这一次真机跑，★ **不要改成全局环境变量**（★ 那会让团队的会话也吃这把 key）；
+　③ ★ **跑前先做接缝探针**（★ 真实 fs 的 `Defects/` 落盘与重载、★ 一次真实工具 `deny`、★ 一次真实 md 导出）—— ★ 本阶段所有"已接线"只在本地夹具上成立，★ **接缝的形状差异会把"测试里绿"变成"真机里静"**。
 ★ 交付模式 `caller` 时，★ **成员回合由调用会话扮演**：`step` 返回 `awaiting` ＋ `memberPrompt` ⇒ 按该提示词作答 ⇒ 下次调用带 `reply`。
 ★ 结题判据：`vibe_vmu_status` 的 **`closureVote.cast` 为 `true`**（全体有表决权者一致），★ **不是**"看起来收敛"。
 

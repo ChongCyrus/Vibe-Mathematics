@@ -300,7 +300,15 @@ console.log('=== 9. UNLOAD RETRACTS THE DECLARATIONS (the names stop being publi
 {
   const records = {}
   const api = (settings) => ({ setting: (k) => settings[k], services: { names: () => ['vmu.records'], get: () => records } })
-  const call = async (settings, payload) => V3_TOOLFILTER_MODULE.hooks['tools/pre-execute']({ api: api(settings), payload })
+  const call = async (settings, payload) => V3_TOOLFILTER_MODULE.hooks['tools/pre-execute']({ api: api(settings), ...payload })
+  // ⓪ REAL loader shape: the bus envelope is FLATTENED for modules (kernel/loader.js) — measured on a real DSH host,
+  // reading only `flat.payload` turned every call into `tool: null` and fail-closed denied EVERY tool.
+  const flatDeny = await call({ 'vmu.v3.toolDeny': ['web_search'] }, { tool: 'web_search' })
+  ok(flatDeny && flatDeny.deny && flatDeny.deny.code === 'VMU_PACK_V3_TOOL_NOT_PERMITTED',
+    '★ real flat handler shape resolves the tool name and denies the listed one', flatDeny)
+  const legacyNested = await V3_TOOLFILTER_MODULE.hooks['tools/pre-execute']({ api: api({ 'vmu.v3.toolDeny': ['web_search'] }), payload: { tool: 'web_search' } })
+  ok(legacyNested && legacyNested.deny && legacyNested.deny.code === 'VMU_PACK_V3_TOOL_NOT_PERMITTED',
+    'compat: the older nested-caller shape is still accepted', legacyNested)
   // ① allowed host tool (names are the HOST's actual names, not v3's old vibe_math_* names)
   const allow = { 'vmu.v3.toolAllow': ['web_search', 'dsh-tool-pwsh'] }
   ok((await call(allow, { tool: 'web_search' })) === undefined,
