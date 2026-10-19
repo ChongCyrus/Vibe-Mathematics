@@ -190,6 +190,28 @@ const signal = new AbortController().signal
   ok(extraKeys.length === 0, 'NOTHING is injected when the caller supplies nothing, so an unchanged caller is byte-identical', extraKeys)
 }
 
+console.log('=== ONESHOT RESULT.OUTPUT: an accepted one-shot run s text is CONTENT BLOCKS, not a reply field ===')
+{
+  // ★ MEASURED ON A REAL HOST (v3 SLV): `subagents.start` resolves to SubagentResult { output: ContentBlock[] }; the
+  // one-shot path looked for reply/text strings only, so a real member turn was reported as "the host accepted the turn
+  // but handed back no reply" even though the text was in the result the code had already awaited.
+  const parent = { options: {}, session: { id: 's' } }
+  const signal = new AbortController().signal
+  const oneShot = (output) => ({
+    list: () => ['spawn'],
+    start: async () => ({ childId: 'c-one', result: Promise.resolve({ output, stopReason: 'completed' }) }),
+  })
+  const deliver = deliverViaSubagents(oneShot([{ type: 'text', text: 'one-shot answer' }, { type: 'reasoning', text: 'skip' }]), null, { provider: 'spawn', parent, signal })
+  const res = await deliver({ turn: { id: 't-one', member: 'verifier-a' }, text: 'x' })
+  ok(res && res.reply === 'one-shot answer', '★ one-shot result.output text blocks become the reply (no reply/text field needed)', res && res.reply)
+  ok(res.deliveryPath === 'one-shot', 'the receipt still says which path delivered it', res && res.deliveryPath)
+  let refused = null
+  try {
+    await deliverViaSubagents(oneShot([{ type: 'reasoning', text: 'thinking only' }]), null, { provider: 'spawn', parent, signal })({ turn: { id: 't-empty' }, text: 'x' })
+  } catch (e) { refused = e }
+  ok(refused && refused.code === 'VMU_ENGINE_UNAVAILABLE', '★ reverse: an output with no text still refuses by name', refused && refused.code)
+}
+
 console.log('')
 console.log('=== TURN ACTIVATION (0.2.1 delivery verb): ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length > 0) for (const f of failures) console.error('  - ' + f)

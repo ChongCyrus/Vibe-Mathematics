@@ -798,7 +798,10 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   const arbitration = createArbitration({ settings: settingsView, bus, clock, log, members, minutes })
   // Batch-2 slices 5-8: recruitment, collaboration topology, charters, fair allocation. All four are
   // zero-mechanism by default (no postings / flat topology / charters disabled / no claimants).
-  const admission = createRecruit({ settings: settingsView, bus, clock, log, members })
+  // SLV: pass a GETTER, not the current object. `declareSlots()` REPLACES `members` when a pack declares slots; a
+  // value captured here would be the pre-pack null (measured on a real host: every confirm refused "no role slots"
+  // after the v3 pack had declared three). Admission resolves the CURRENT roster per call.
+  const admission = createRecruit({ settings: settingsView, bus, clock, log, members: () => members })
   const topology = createTopology({ settings: settingsView, bus, clock, log, members })
   const fairness = createFairness({ settings: settingsView, bus, clock, log, budget, tasks })
   const charter = createCharter({ settings: settingsView, bus, clock, log, members, delegation })

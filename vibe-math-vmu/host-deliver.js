@@ -128,6 +128,17 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
         if (agents && typeof agents.get === 'function') {
           const id = (typeof config.sessionId === 'string' && config.sessionId) || (typeof config.agentId === 'string' && config.agentId) || null
           if (id && typeof agents.get === 'function') { const cand = agents.get(id); parent = cand || null; parentKind = cand ? (typeof cand === 'object' ? (cand.options ? 'agent' : 'object-without-options') : typeof cand) : 'get-returned-nothing' }
+          // ★★★★★★★ SLV MEASURED: the CALLING Agent is the seam's own `currentInitiator()`. When v3 was driven from a
+          // real tool turn (`vibe_vmu_turn`), neither a configured session id nor a single-entry list was available, so
+          // `parent` stayed null and the host's provider read `null.options` ("the host refused to start this member
+          // turn twice on the one-shot path"). The initiating Agent is exactly what this delivery needs, and the host
+          // exposes it by name - so ask for it BEFORE guessing from a list of ids.
+          if (!parent && typeof agents.currentInitiator === 'function') {
+            try {
+              const cand = agents.currentInitiator()
+              if (cand && typeof cand === 'object' && cand.options && cand.session) { parent = cand; parentKind = 'current-initiator' }
+            } catch { /* outside an initiator boundary: keep the list fallback below */ }
+          }
           if (!parent && typeof agents.list === 'function') {
             // ★★★ ROUND 70: list() RETURNS IDS, NOT AGENTS. The host's own declaration reads list(): string[], and the
             // one-shot request's parent is typed Agent - an object carrying options and session.header. Taking the

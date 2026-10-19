@@ -83,5 +83,40 @@ console.log('=== 3. THE HOST BRIDGE KEEPS ITS OWN WRAPPER (the fix must not leak
     { code: refused && refused.code })
 }
 
+console.log('=== 4. THE ONE-SHOT PARENT IS THE CALLING AGENT (`currentInitiator`), NOT A GUESS FROM A LIST ===')
+{
+  // ★ MEASURED ON A REAL HOST: a v3 run driven from a tool turn (`vibe_vmu_turn`) had neither a configured session id
+  // nor a single-entry agent list, so `parent` stayed null and the host provider read `null.options`: "the host refused
+  // to start this member turn twice on the one-shot path". The host exposes the initiating Agent by name.
+  const initiator = { options: { preset: 'vibe-math-vmu' }, session: { id: 'session-1' } }
+  const seen = []
+  const subagents = {
+    list: () => ['one-shot-provider'],
+    start: async (provider, request) => { seen.push({ provider, request }); return { reply: 'member-reply' } },
+  }
+  const ctx = {
+    get: (name) => name === 'agents'
+      ? { list: () => ['x', 'y'], get: () => null, currentInitiator: () => initiator }
+      : (name === 'subagents' ? subagents : null),
+  }
+  const seam = createTurnDeliver({ ctx, config: {}, settings: {}, deliverViaSubagents, deliverByReturning })
+  const reply = await seam({ turn: { id: 't-real', member: 'verifier-a' }, text: 'judge' })
+  ok(JSON.stringify(reply).includes('member-reply'), 'the one-shot delivery returns the provider reply', { reply })
+  ok(seen.length === 1 && seen[0].request.parent === initiator,
+    '★ the request carries the CALLING Agent as parent (resolved from currentInitiator, not from the id list)',
+    { parentKind: seen[0] && (seen[0].request.parent === initiator ? 'initiator' : seen[0].request.parent) })
+  ok(seen[0].request.parent.options && seen[0].request.parent.session,
+    'the parent is the shape the host reads (`.options` and `.session`) - the two fields the null-parent failure lacked')
+  // Reverse: no initiator and a MULTI-entry list must NOT invent a parent by taking an arbitrary id.
+  const seen2 = []
+  const subagents2 = { list: () => ['p'], start: async (provider, request) => { seen2.push(request); return { reply: 'r2' } } }
+  const ctx2 = { get: (name) => name === 'agents' ? { list: () => ['x', 'y'], get: () => null } : (name === 'subagents' ? subagents2 : null) }
+  const seam2 = createTurnDeliver({ ctx: ctx2, config: {}, settings: {}, deliverViaSubagents, deliverByReturning })
+  await seam2({ turn: { id: 't-null', member: 'm' }, text: 'x' })
+  ok(seen2.length === 1 && seen2[0].parent === null,
+    'reverse: without an initiator a multi-entry id list does NOT get turned into a parent (no arbitrary pick)',
+    { parent: seen2[0] && seen2[0].parent })
+}
+
 console.log('=== HOST DELIVER WIRING: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }

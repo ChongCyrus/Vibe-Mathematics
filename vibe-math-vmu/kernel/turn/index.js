@@ -478,6 +478,15 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
             const v = res[field]
             if (typeof v === 'string' && v.trim() !== '') { resolvedReply = v; break }
             if (v && typeof v === 'object' && typeof v.reply === 'string' && v.reply.trim() !== '') { resolvedReply = v.reply; break }
+            // ★★★★★★★ SLV MEASURED (v3, real host): a ONE-SHOT `subagents.start` run resolves to
+            // SubagentResult { output: ContentBlock[] }, and `output` is an ARRAY - the string/`reply` tests above both
+            // miss it, so the host's accepted turn was reported as "handed back no reply". The activation path already
+            // read `result.output` blocks; this branch is the one-shot counterpart, and it is the last place the text
+            // exists before the loop would refuse.
+            if (Array.isArray(v)) {
+              const text = textOfContentBlocks(v)
+              if (text !== null) { resolvedReply = text; break }
+            }
           }
         }
       } catch { /* the run's own failure is named below */ }

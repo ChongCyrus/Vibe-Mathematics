@@ -301,5 +301,42 @@ const throwsAsync = async (fn) => { try { await fn(); return { threw: false } } 
   ok(r.threw === true && r.code === "VMU_ENGINE_UNAVAILABLE", "P2: no declared roles refuses by NAME (VMU_ENGINE_UNAVAILABLE)")
   ok(/no role slots/.test(r.msg || ""), "P2: the refusal says the roles are not wired, not that the hire failed")
 }
+// ── SLV regression: a PACK declares slots AFTER the kernel (and its admission) was constructed ────────────────
+// Measured on a real DSH host: `declareSlots()` REPLACES the kernel's `members`; a value captured by `createRecruit`
+// stayed null ⇒ confirm refused "no role slots" after the v3 pack had declared three, and a retry returned a FAKE
+// `seated:true` because `confirmedAt` had been written before the seating failed.
+{
+  const { createKernel } = await import('../vibe-math-vmu/kernel/index.js')
+  const chain = async (api, candidate) => {
+    const p = api.openPosting({ slot: 'planner', seats: 1 })
+    const a = api.apply({ postingId: p.id, candidate })
+    api.score({ applicationId: a.id, by: 'chair', score: 0.9, rationale: 'slv regression' })
+    const o = api.offer({ applicationId: a.id })
+    await api.accept({ offerId: o.id, by: 'chair' })
+    return candidate
+  }
+  const k = createKernel({ clock: () => now })
+  k.declareSlots([
+    { id: 'planner', label: 'planning', capacity: 1, permissions: ['plan'] },
+    { id: 'verifier', label: 'verification', capacity: 1, permissions: ['vote'] },
+  ])
+  const who = await chain(k.admission, 'planner-a')
+  const seated = await k.admission.confirm({ memberId: who })   // NO slot in the request: the real tool shape
+  ok(seated.ok !== false && seated.seated === true && seated.slot === 'planner',
+    'slots declared by a LATER pack: confirm (no slot arg) seats the member')
+  ok(k.members.roster().some((m) => m.id === who && m.state === 'live'),
+    '★ the KERNEL roster really has the member live (the receipt is not the only witness)')
+  // Reverse: no slots anywhere ⇒ the named refusal, and a REPLAY must not turn the failed attempt into seated:true.
+  const k2 = createKernel({ clock: () => now })
+  const who2 = await chain(k2.admission, 'planner-b')
+  const first = await throwsAsync(() => k2.admission.confirm({ memberId: who2 }))
+  ok(first.threw === true && first.code === 'VMU_ENGINE_UNAVAILABLE' && /no role slots/.test(first.msg || ''),
+    'no slots: confirm refuses by NAME (VMU_ENGINE_UNAVAILABLE)')
+  ok(k2.admission.status().items.find((s) => s.memberId === who2).confirmed === false,
+    '★ a FAILED confirm leaves no partially-written confirmed state')
+  const replay = await throwsAsync(() => k2.admission.confirm({ memberId: who2 }))
+  ok(replay.threw === true && replay.code === 'VMU_ENGINE_UNAVAILABLE',
+    '★ the replay still refuses — it must NOT return a fake seated:true for an empty roster')
+}
 console.log('=== VMU RECRUIT: ' + pass + ' passed, ' + fail + ' failed ===')
 process.exit(fail ? 1 : 0)
