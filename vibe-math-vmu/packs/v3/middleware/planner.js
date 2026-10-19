@@ -39,6 +39,7 @@
  * ★ 时间只来自注入的时钟（tick 事件的 `at`）：没有 `at` 就**不规划**、不执行，并在回执里写明理由。
  */
 import { V3_TICK_TOPIC } from './tick.js'
+import { SETTING_DEFS } from '../../../settings/schema.js'
 import { parseCard, writeBody, writeCard, supersedeBody, updateCard, escField, unescField } from './dataplane.js'
 // P0-8：人工门的判定/台账由 gates.js 提供；planner 只**调**它，不自己写一套"该不该放行"。
 import { evaluateGate, registerGateExecutor, getGate } from './gates.js'
@@ -136,6 +137,7 @@ export function v3PlannerStatus() {
     lastError: s.lastError,
     lastDispatched: s.lastDispatched || null,
     lastLedgerPruned: s.lastLedgerPruned || null,
+    lastRejectedPlan: s.lastRejectedPlan || null,
     lastExecuted: s.lastExecuted,
     turns: s.turns.slice(),
     // P1-1/P1-3 的**进程内**账本：派发幂等键数、自动晋升次数与最近一次晋升（持久事实仍在 plans/problems 轨）。
@@ -927,6 +929,9 @@ function readSettings(api) {
     // P1-1 容量：内核已声明的并发上限（vmu.limits.maxParallel，机器强制）；0/缺省 ⇒ 不用它。
     maxParallel: Number.isInteger(maxParRaw) && maxParRaw > 0 ? maxParRaw : 0,
     promoteValueThreshold: Number.isFinite(promoteRaw) && promoteRaw >= 0 && promoteRaw <= 1 ? promoteRaw : 0.7,
+    // ★ SLV: queue pressure is a wall-clock/model-speed fact, not a tick fact. Both values are DECLARED settings.
+    plannerMaxQueuedTurns: (() => { const v = Number(api.setting('vmu.v3.plannerMaxQueuedTurns')); if (Number.isInteger(v) && v >= 0) return v; const d = SETTING_DEFS.find((x) => x && x.key === 'vmu.v3.plannerMaxQueuedTurns'); return d ? Number(d.def) : 2 })(),
+    deliveryTimeoutMs: (() => { const v = Number(api.setting('vmu.turn.deliveryTimeoutMs')); if (Number.isFinite(v) && v > 0) return v; const d = SETTING_DEFS.find((x) => x && x.key === 'vmu.turn.deliveryTimeoutMs'); return d ? Number(d.def) : 180000 })(),
     // P0-8：人工门读**原始值**（gates.js 的 normaliseGateMode 负责归一化；**脏值**按 manual，fail-closed）。
     // ★ 但"键不存在"不是脏值：内核不把 schema 默认值物化进设置对象，而 `vmu.v3.mode` 的声明默认是 auto
     //   ⇒ 缺省必须回落成 auto（否则每个没显式写 mode 的部署都会静默变成 manual）。只对"缺省"回落，
@@ -1128,6 +1133,23 @@ async function onTick(flat) {
     state.lastSkip = { reason: 'cooldown', elapsedMs: at - state.lastPlanAt, minIntervalMs: settings.planMinIntervalMs, tick: state.ticks }
     return { ok: true, skipped: 'cooldown', at, elapsedMs: at - state.lastPlanAt, minIntervalMs: settings.planMinIntervalMs, drained }
   }
+  // ★ SLV / QUEUE PRESSURE: "the queue is empty" is too strict (a hung turn would stop the chain forever), and
+  // "the queue is non-empty" is too loose (it keeps piling). Two DECLARED brakes: (a) queue length >= the declared cap;
+  // (b) the HEAD has been waiting longer than the declared delivery deadline (that head is stuck; adding more cannot help).
+  if (typeof turn.dispatchStatus === 'function') {
+    const qs = turn.dispatchStatus()
+    const queueLen = (Number(qs.queued) || 0) + (Number(qs.inFlight) || 0)
+    const headAt = qs.oldestPending && typeof qs.oldestPending.at === 'string' ? Date.parse(qs.oldestPending.at) : NaN
+    const headAge = Number.isFinite(headAt) ? Date.now() - headAt : null
+    if (queueLen >= settings.plannerMaxQueuedTurns) {
+      state.lastSkip = { reason: 'queue-at-cap', queueLen, cap: settings.plannerMaxQueuedTurns, tick: state.ticks }
+      return { ok: true, skipped: 'queue-at-cap', at, queueLen, cap: settings.plannerMaxQueuedTurns, drained }
+    }
+    if (headAge !== null && headAge > settings.deliveryTimeoutMs) {
+      state.lastSkip = { reason: 'queue-head-stuck', headAgeMs: headAge, deadlineMs: settings.deliveryTimeoutMs, head: qs.oldestPending, tick: state.ticks }
+      return { ok: true, skipped: 'queue-head-stuck', at, headAgeMs: headAge, drained }
+    }
+  }
   // ★ SLV / BACKLOG: a planner turn takes ~100s on a real provider while the tick is 2s. Dispatching one per
   // plan interval regardless of the pending one is what produced queued:15. While OUR turn is still pending, skip.
   if (state.lastDispatched && typeof turn.dispatchStatus === 'function') {
@@ -1201,7 +1223,16 @@ async function onReplyParsed(flat) {
   // ★ SLV: a payload that merely CLAIMS track=plans/kind=plan but has no actions array is NOT a plan. Persisting it
   // polluted the plans track with raw receipts that could never settle (lastPlan settled:false). Refuse to write it;
   // the planner then reports "no plan record" by name instead of leaving an unclearable card.
-  if (!raw || !Array.isArray(raw.actions)) return undefined
+  if (!raw || !Array.isArray(raw.actions)) {
+    // ★ SLV: a rejection must be NAMED, not a silent undefined - otherwise "refused" and "never arrived" are the same view.
+    const reason = !raw ? 'the progress body is not a plan envelope' : 'the plan has no actions array'
+    state.lastRejectedPlan = { turn: flat && flat.turn ? String(flat.turn) : null, member: PLANNER_MEMBER, reason, bodyLength: typeof payload.body === 'string' ? payload.body.length : 0, at: Number.isFinite(flat && flat.at) ? flat.at : null }
+    try {
+      writeBody({ records, track: 'journal', kind: 'state', title: 'v3 计划回执被拒', settled: true, by: PLANNER_MEMBER,
+        body: ['- code: VMU_INVALID_ARGUMENT', '- turn: ' + str(state.lastRejectedPlan.turn), '- reason: ' + reason, '- bodyLength: ' + state.lastRejectedPlan.bodyLength].join('\n') })
+    } catch { /* the named receipt above is the primary channel */ }
+    return undefined
+  }
   try {
     const rec = writeBody({
       records,

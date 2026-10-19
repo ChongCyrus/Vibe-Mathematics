@@ -279,6 +279,7 @@ vmu.packs.active: [v5r]
 | `vmu.v3.planningHorizon` | int ≥0 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/planner.js` | v3 复刻：一次计划最多保留多少个可执行动作（超出截断且计数）。读者＝`packs/v3/middleware/planner.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记 |
 | `vmu.v3.plannerEnabled` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/planner.js` | v3 复刻：规划器总开关；连续 `plannerMaxFails` 次不可解析 ⇒ 自动置 false 并发出具名事件（绝不静默）。读者＝`packs/v3/middleware/planner.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记 |
 | `vmu.v3.planMinIntervalMs` | int ≥0 | `30000` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/planner.js` | v3 复刻：两次规划之间的最小间隔（冷却）。读者＝`packs/v3/middleware/planner.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记 |
+| `vmu.v3.plannerMaxQueuedTurns` | number | `2` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/planner.js` | v3 规划器：串行派发队列里同时存在的回合数达到该值就不再派新回合（防止模型慢/卡时把队列越堆越长）；队头已等待超过 vmu.turn.deliveryTimeoutMs 时同样停止派发 |
 | `vmu.v3.plannerMaxFails` | int ≥0 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/planner.js` | v3 复刻：连续不可解析多少次后关闭规划器。读者＝`packs/v3/middleware/planner.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记 |
 | `vmu.v3.methodKeepEvery` | int ≥1 | `5` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/methods.js` | v3 复刻：方法库每 N 个应用记录保留一次归档。读者＝`packs/v3/middleware/methods.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记 |
 | `vmu.v3.methodKeepIntervalMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/methods.js` | v3 复刻：方法库按时间的保留间隔（0＝只按次数）。读者＝`packs/v3/middleware/methods.js`。 |
@@ -1528,7 +1529,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1139** 个，前缀家族 **115** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1140** 个，前缀家族 **115** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1642,7 +1643,7 @@ vmu.packs.active: [v5r]
 | `vmu.trust.*` | 16 |
 | `vmu.turn.*` | 28 |
 | `vmu.tx.*` | 6 |
-| `vmu.v3.*` | 18 |
+| `vmu.v3.*` | 19 |
 | `vmu.visibility.*` | 1 |
 | `vmu.work.*` | 2 |
 | `vmu.workflow.*` | 27 |

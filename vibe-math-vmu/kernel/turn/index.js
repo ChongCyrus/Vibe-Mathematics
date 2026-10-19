@@ -1158,6 +1158,7 @@ export function createTurnOrchestrator({
         const message = String((e && e.message) || e)
         dispatchStats.failed += 1
         dispatchStats.lastError = { code, message, turn: item.turn.id, member: item.turn.member, at: Date.now(),
+          ...(e && Number.isFinite(e.waitedMs) ? { waitedMs: e.waitedMs, deliveryTimeoutMs: e.deliveryTimeoutMs || null, requestSent: e.requestSent === true, lastPhase: e.lastPhase || null, phases: Array.isArray(e.phases) ? e.phases.slice(0, 12) : [] } : {}),
           ...(e && typeof e.replyText === 'string' ? { replyLength: Number.isInteger(e.replyLength) ? e.replyLength : e.replyText.length, hadBrace: e.hadBrace === true, replyExcerpt: e.replyText.slice(0, 500) } : {}) }
         // ★ A dispatched turn that FAILED must not vanish: its named outcome stays in status; the awaiting handle rejects.
         item.reject(e)
