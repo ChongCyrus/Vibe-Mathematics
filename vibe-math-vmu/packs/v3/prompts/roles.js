@@ -60,6 +60,7 @@ export const V3_ROLE_EXPLORER = Object.freeze({
   source: 'pack:v3',
   scope: Object.freeze({ role: 'explorer', task: 'explore' }),
   text: [
+    '★ 重要：本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只根据本轮状态块推理，最后只输出一个 ```json 围栏回执。',
     V3_ROLE_PREFIX + 'explorer】方向发现',
     '你是研究数学家，为一个问题**编排解题战略**。问题 id 与完整陈述在本轮状态块里。',
     '',
@@ -84,6 +85,7 @@ export const V3_ROLE_REDERIVE = Object.freeze({
   source: 'pack:v3',
   scope: Object.freeze({ role: 'explorer', task: 'rederive' }),
   text: [
+    '★ 重要：本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只根据本轮状态块推理，最后只输出一个 ```json 围栏回执。',
     V3_ROLE_PREFIX + 'explorer-rederive】重派生',
     '你是研究数学家；面前这个问题**已有方向停滞或走死**，现在要重做战略。问题 id 与完整陈述在本轮状态块里，**历史方向（含 blocker、轮次、存活率、子路线）也在状态块里**。',
     '',
@@ -105,6 +107,7 @@ export const V3_ROLE_SOLVER = Object.freeze({
   source: 'pack:v3',
   scope: Object.freeze({ role: 'solver' }),
   text: [
+    '★ 重要：本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只根据本轮状态块推理，最后只输出一个 ```json 围栏回执。',
     V3_ROLE_PREFIX + 'solver】求解',
     '你是专职求解代理，负责一个数学问题的**一条**求解方向（自迭代）。问题 id/陈述、方向（标题/方法/核心假设）、轮次，以及你之前的进展都在本轮状态块里。',
     '',
@@ -153,6 +156,7 @@ export const V3_ROLE_VERIFIER_REVIEW = Object.freeze({
   source: 'pack:v3',
   scope: Object.freeze({ role: 'verifier', phase: 'verify' }),
   text: [
+    '★ 重要：本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只根据本轮状态块推理，最后只输出一个 ```json 围栏回执。',
     V3_ROLE_PREFIX + 'verifier-review】初审',
     '你是**严格的同行评审者**，只验证一个数学对象。TARGET（对象 id、类型、陈述，以及被审的证明/反驳/解法全文）在本轮状态块里。**多核几遍。**',
     '',
@@ -181,6 +185,7 @@ export const V3_ROLE_VERIFIER_DEBATE = Object.freeze({
   source: 'pack:v3',
   scope: Object.freeze({ role: 'verifier', phase: 'verify-debate' }),
   text: [
+    '★ 重要：本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只根据本轮状态块推理，最后只输出一个 ```json 围栏回执。',
     V3_ROLE_PREFIX + 'verifier-debate】交流群',
     '你是这个对象"交流群"里的一名评审。TARGET 与**目前为止的完整辩论史**（每轮所有评审的发言）都在本轮状态块里。',
     '',
@@ -202,6 +207,7 @@ export const V3_ROLE_METHOD_KEEPER = Object.freeze({
   source: 'pack:v3',
   scope: Object.freeze({ role: 'method-keeper' }),
   text: [
+    '★ 重要：本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只根据本轮状态块推理，最后只输出一个 ```json 围栏回执。',
     V3_ROLE_PREFIX + 'method-keeper】方法沉淀',
     '你是本研究的**方法保管者**。你的职责：把求解过程中发明/总结的可复用**理论、框架、工具、方法、思想**（含经验性的）蒸馏进理论库，让后续工作能应用并扩展它们——就像在解方程时发明群论、在研究变分问题时发明泛函分析。',
     '',
@@ -228,6 +234,7 @@ export const V3_ROLE_PAPER_WRITER = Object.freeze({
   source: 'pack:v3',
   scope: Object.freeze({ role: 'paper-writer' }),
   text: [
+    '★ 重要：本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只根据本轮状态块推理，最后只输出一个 ```json 围栏回执。',
     V3_ROLE_PREFIX + 'paper-writer】论文撰写',
     '你是这次数学研究**收口后**的专职论文撰写者（**单作者模式**）。用本提示里的 MATERIAL 段写最终论文；MATERIAL 之外的证据一律不许用。',
     '',

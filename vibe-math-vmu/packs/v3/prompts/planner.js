@@ -38,6 +38,7 @@ export const V3_PLANNER_SECTION = Object.freeze({
   source: 'pack:v3',
   scope: Object.freeze({ role: 'planner' }),
   text: [
+    '★ 重要：本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只读下面的状态块，最后只输出一个 ```json 围栏回执。',
     '## v3 规划器（SCHEDULING PLANNER）',
     '你是多智能体数学研究系统的**调度规划器**。你的唯一职责是：读下面这份简报，自主选出接下来**最多 {{ setting:vmu.v3.planningHorizon }} 个**调度动作。动作会按顺序被执行；超出当前容量的会留在队列里等下一次 tick。',
     '',

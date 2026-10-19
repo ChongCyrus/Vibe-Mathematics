@@ -1223,7 +1223,8 @@ async function onReplyParsed(flat) {
   // ★ SLV: a payload that merely CLAIMS track=plans/kind=plan but has no actions array is NOT a plan. Persisting it
   // polluted the plans track with raw receipts that could never settle (lastPlan settled:false). Refuse to write it;
   // the planner then reports "no plan record" by name instead of leaving an unclearable card.
-  if (!raw || !Array.isArray(raw.actions)) {
+  const looksLikePlan = raw && Array.isArray(raw.actions) && (str(raw.summary) !== '' || raw.actions.length > 0 || tags.length > 0)
+  if (!looksLikePlan) {
     // ★ SLV: a rejection must be NAMED, not a silent undefined - otherwise "refused" and "never arrived" are the same view.
     const reason = !raw ? 'the progress body is not a plan envelope' : 'the plan has no actions array'
     state.lastRejectedPlan = { turn: flat && flat.turn ? String(flat.turn) : null, member: PLANNER_MEMBER, reason, bodyLength: typeof payload.body === 'string' ? payload.body.length : 0, at: Number.isFinite(flat && flat.at) ? flat.at : null }
@@ -1231,7 +1232,9 @@ async function onReplyParsed(flat) {
       writeBody({ records, track: 'journal', kind: 'state', title: 'v3 计划回执被拒', settled: true, by: PLANNER_MEMBER,
         body: ['- code: VMU_INVALID_ARGUMENT', '- turn: ' + str(state.lastRejectedPlan.turn), '- reason: ' + reason, '- bodyLength: ' + state.lastRejectedPlan.bodyLength].join('\n') })
     } catch { /* the named receipt above is the primary channel */ }
-    return undefined
+    // ★ DO NOT let the kernel's generic progress writer persist the raw payload: replace it with a benign receipt, so
+    // the plans track stays clean while the named journal/lastRejectedPlan carry the reason.
+    return { rewriteResult: JSON.stringify({ prioritize: 'ack' }) }
   }
   try {
     const rec = writeBody({

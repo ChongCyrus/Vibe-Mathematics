@@ -1141,6 +1141,22 @@ console.log('=== 22. explorer 无产出 ⇒ 释放幂等键并允许重派（不
   ok(v3PlannerStatus().lastLedgerPruned !== null && v3PlannerStatus().lastLedgerPruned.count >= 1,
     '★ 释放是具名可观测的（lastLedgerPruned.count>=1），不是静默删除', v3PlannerStatus().lastLedgerPruned)
 }
+// ── 23. plans 轨过滤：非 plan 回执被【具名】拒（journal + lastRejectedPlan），且不落 plans 轨 ─────────
+console.log('=== 23. 非 plan 回执：具名拒 + journal，plans 轨零记录（不是静默丢） ===')
+{
+  const badPlanReply = JSON.stringify({ progress: { track: 'plans', kind: 'plan', title: '伪计划', body: '这不是计划，只是一段无锚点文本。' } })
+  const h = boot({ overrides: { 'vmu.v3.planMinIntervalMs': 0 }, replier: ({ turn }) => (turn.member === PLANNER_MEMBER ? badPlanReply : ACK) })
+  await h.loader.apply(PACK)
+  problemCard(h.kernel, 'q-1')
+  await tick(h, 1000)
+  const plans = h.kernel.records.list({ track: 'plans', limit: 0 }).items
+  const rejected = v3PlannerStatus().lastRejectedPlan
+  const journals = h.kernel.records.list({ track: 'journal', limit: 0 }).items.filter((x) => String(x.title).includes('计划回执被拒'))
+  ok(plans.length === 0, '反：非 plan 回执没有落进 plans 轨（不污染）', plans.map((x) => x.id))
+  ok(rejected && typeof rejected.reason === 'string' && rejected.reason.length > 0,
+    '★ 具名：lastRejectedPlan 可读（带 reason）', rejected)
+  ok(journals.length === 1, '★ 具名：journal 有一条“计划回执被拒”记录', journals.length)
+}
 console.log('')
 console.log('=== V3 PLANNER (P0-2 + P0-3): ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length > 0) for (const f of failures) console.error('  - ' + f)
