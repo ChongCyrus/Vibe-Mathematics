@@ -664,6 +664,8 @@ export function createKernel({
       clock,
     })
     : null
+  // ★ the same stable handle for `library`: `declareTracks()` / `retractTracks()` REPLACE it.
+  const libraryRef = new Proxy({}, { get(_, prop) { const cur = library; if (!cur) return undefined; const v = cur[prop]; return typeof v === 'function' ? v.bind(cur) : v } })
 
   // THE LEAN FACE (docs/09, `vmu.math.lean*`): a real subsystem, created only when a spawn seam exists. The
   // face owns the semantics the docs promise ("exit 0 AND the content hash unchanged"); the kernel only wires.
@@ -697,6 +699,10 @@ export function createKernel({
     if (received !== null && received !== undefined && !seamReceipts[name].includes(consumer)) seamReceipts[name].push(consumer)
   }
   let members = createMembersList({ slots, maxLiveMembers, deliver, bus, clock, settings, resourceGate })
+  // ★ ONE STABLE HANDLE, INSTEAD OF 8 CAPTURED VALUES. `declareSlots()` REPLACES `members` (a pack declares slots
+  // after the kernel is constructed). Every internal consumer receives this proxy, which resolves the CURRENT
+  // member service per property access, so "names right, object stale" cannot recur (measured on a real DSH host).
+  const memberRef = new Proxy({}, { get(_, prop) { const cur = members; if (!cur) return undefined; const v = cur[prop]; return typeof v === 'function' ? v.bind(cur) : v } })
   noteSeam('deliver', 'members', members ? deliver : null)
   const packNotesLog = []   // ROUND 240: renamed - this array used to SHADOW the `packNotes()` method
   const tasks = createTasks({
@@ -784,38 +790,38 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // `library` is the EXISTING kernel library; the module counts any unsupported adapter method as skipped and
   // never pretends a delete succeeded. Delegation gets the live members surface plus explicit roots (authority
   // that does not come from a delegation); without roots, S-2 refuses every grant - which is the honest default.
-  const retention = createRetention({ settings: settingsView, bus, clock: guardedClock, log, library })
+  const retention = createRetention({ settings: settingsView, bus, clock: guardedClock, log, library: libraryRef })
   // `roots` = who holds authority that does NOT come from a delegation. It is an EXPLICIT setting rather than
   // a guess from role names: unset means nobody can grant anything (S-2 refuses every grant), which is the
   // honest zero-mechanism default. Guessing "office looks like a root" would be policy hiding in the kernel.
-  const delegation = createDelegation({ settings: settingsView, bus, clock: guardedClock, log, members,
+  const delegation = createDelegation({ settings: settingsView, bus, clock: guardedClock, log, members: memberRef,
     roots: Array.isArray(settings['vmu.delegation.roots']) ? settings['vmu.delegation.roots'] : [] })
   const workflow = createWorkflow({ settings: settingsView, bus, clock, log, tasks })
   const trust = createTrust({ settings: settingsView, bus, clock, log })
-  const handover = createHandover({ settings: settingsView, bus, clock, log, tasks, library })
+  const handover = createHandover({ settings: settingsView, bus, clock, log, tasks, library: libraryRef })
   // Batch 2 slice 3: arbitration. `minutes` is the live minutes service so a ruling can be recorded there;
   // `mode` defaults to off (zero mechanism) so nothing is arbitrated unless the institution turns it on.
-  const arbitration = createArbitration({ settings: settingsView, bus, clock, log, members, minutes })
+  const arbitration = createArbitration({ settings: settingsView, bus, clock, log, members: memberRef, minutes })
   // Batch-2 slices 5-8: recruitment, collaboration topology, charters, fair allocation. All four are
   // zero-mechanism by default (no postings / flat topology / charters disabled / no claimants).
   // SLV: pass a GETTER, not the current object. `declareSlots()` REPLACES `members` when a pack declares slots; a
   // value captured here would be the pre-pack null (measured on a real host: every confirm refused "no role slots"
   // after the v3 pack had declared three). Admission resolves the CURRENT roster per call.
   const admission = createRecruit({ settings: settingsView, bus, clock, log, members: () => members })
-  const topology = createTopology({ settings: settingsView, bus, clock, log, members })
+  const topology = createTopology({ settings: settingsView, bus, clock, log, members: memberRef })
   const fairness = createFairness({ settings: settingsView, bus, clock, log, budget, tasks })
-  const charter = createCharter({ settings: settingsView, bus, clock, log, members, delegation })
+  const charter = createCharter({ settings: settingsView, bus, clock, log, members: memberRef, delegation })
   // Batch-3 slice 2: reproduction packs (docs/16 L12). Data is referenced by pointer by default; a missing
   // required member is named rather than silently omitted.
-  const repropack = createReproPack({ settings: settingsView, bus, clock, log, library })
+  const repropack = createReproPack({ settings: settingsView, bus, clock, log, library: libraryRef })
   // Batch-2 slices 10-11: institutional memory and the auction. Memory's `may`/`authorize` always refuse,
   // and the auction's price never depends on reputation unless the institution explicitly turns that on.
-  const memory = createMemory({ settings: settingsView, bus, clock, log, library })
-  const bidding = createBidding({ settings: settingsView, bus, clock, log, members, trust })
+  const memory = createMemory({ settings: settingsView, bus, clock, log, library: libraryRef })
+  const bidding = createBidding({ settings: settingsView, bus, clock, log, members: memberRef, trust })
   // Batch-2/3/4 tails: skills, publication and the formalisation face. Skills' capacity counts only live and
   // fresh claims (a retired claim frees its slot); all three are zero-mechanism by default.
-  const skills = createSkills({ settings: settingsView, bus, clock, log, members })
-  const publication = createPublication({ settings: settingsView, bus, clock, log, library, repropack })
+  const skills = createSkills({ settings: settingsView, bus, clock, log, members: memberRef })
+  const publication = createPublication({ settings: settingsView, bus, clock, log, library: libraryRef, repropack })
   const collab = createCollab({ settings: settingsView, bus, clock, log })
   const identity = createIdentity({ settings: settingsView, bus, clock, log })
   const human = createHuman({ settings: settingsView, bus, clock, log })
@@ -843,7 +849,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
       const roster = typeof members.roster === 'function' ? members.roster() : []
       return roster.map((m) => (m && (m.id || m.member)) || m).filter(Boolean).map(String)
     } : null })
-  const panel = createPanel({ clock: guardedClock, log, settings: settingsView, bus, members })
+  const panel = createPanel({ clock: guardedClock, log, settings: settingsView, bus, members: memberRef })
   const discipline = createDiscipline({ settings: settingsView, bus, clock, log })
   const custody = createCustody({ settings: settingsView, bus, clock, log })
   const explain = createExplain({ settings: settingsView, bus, clock, log })
@@ -853,7 +859,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     // silent bypass of the very gate this line is for.
     approval: typeof human.gate === 'function' ? (req) => human.gate(req) : null })
   const citations = createCitations({ settings: settingsView, bus, clock, log })
-  const formal = createFormal({ settings: settingsView, bus, clock, log, spawn, library })
+  const formal = createFormal({ settings: settingsView, bus, clock, log, spawn, library: libraryRef })
   // INTEGRATOR FIX: `vmu.mathjobs` was REGISTERED but never CREATED - the registry advertised a service the
   // kernel did not build. Both job faces now receive the kernel's real spawn seam (the host injects it), so a
   // missing engine surfaces as a named refusal rather than a silent no-op.
@@ -1214,7 +1220,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
 // it also armed the unhandled rejection that took the host process down. The math surface is built from `host` and
 // is exactly the seam this face wants. It is resolved LAZILY (a kernel with no math host must still construct), and
 // `mathtools` already refuses by name when no seam is available.
-const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedClock, log, library,
+const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedClock, log, library: libraryRef,
   spawn: (req) => mathSurface().run(req) })
   // `projmigrate` is built EARLIER now: the idempotency ledger needs it at construction so an old on-disk
   // projection is migrated instead of silently discarded.

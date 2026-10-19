@@ -1031,6 +1031,42 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     "T145. **** while a SUCCESSFUL dispatch queues nothing at all, because a notice about nothing is noise",
     { refused: r2.refused.length })
 }
+// 15) ONE BAD REPLY DOES NOT KILL THE BATCH: a broken round is recorded and the run continues (bounded per member)
+{
+  const kernel = createKernel({ settings: {}, root: null, host: null })
+  const mk = (deliver) => createTurnOrchestrator({
+    sectionPolicy: DECIDE_SECTIONS,
+    prompt: createPromptPipeline({ sections: collectPackSections([PACK]) }),
+    faces: facesFrom(kernel),
+    deliver,
+  })
+  const roster = [{ id: 'a', role: 'member' }, { id: 'b', role: 'member' }, { id: 'c', role: 'member' }]
+  let call = 0
+  // Round 2 emits a reply with fields the kernel does not accept (the EXACT v3 shape that used to abort the whole run).
+  const mixed = mk(async () => {
+    call += 1
+    if (call === 2) return '```json\n' + JSON.stringify({ role: 'verifier-review', status: 'cannot-verify', needed: 'target' }) + '\n```'
+    return '```json\n' + JSON.stringify({ task_create: { title: 'round ' + call } }) + '\n```'
+  })
+  const before = (kernel.tasks.list() || []).length
+  const out = await mixed.drive({ members: roster, rounds: 3 })
+  ok(out.ok === true && out.roundsAttempted === 3 && out.roundsRun === 2 && out.failures.length === 1,
+    'T146. **** one member s bad reply is RECORDED and the batch CONTINUES to the next round', { out })
+  ok(out.receipts[1] && out.receipts[1].failed === true && out.receipts[1].code === 'VMU_TURN_UNKNOWN_FIELD'
+    && out.receipts[1].executed === undefined && out.receipts[1].turn === undefined,
+    'T147. **** and the failed round is NOT reported as a success (no fields/executed/turn on that receipt)', out.receipts[1] && out.receipts[1].code)
+  ok((kernel.tasks.list() || []).length === before + 2,
+    'T148. **** the bad round applied NOTHING (the ledger grew by exactly the two good rounds)',
+    { before, after: (kernel.tasks.list() || []).length })
+  // Reverse: a member that fails the SAME way three rounds in a row stops the batch BY NAME, with the limit stated.
+  const alwaysBad = mk(async () => '```json\n' + JSON.stringify({ role: 'x', status: 'y' }) + '\n```')
+  const out2 = await alwaysBad.drive({ members: [{ id: 'z', role: 'member' }], rounds: 5 })
+  ok(out2.ok === false && out2.stopped === 'member-failures' && out2.failures.length === 3,
+    'T149. **** a member failing three rounds in a row stops the run by name (roundsRun still names the successes)',
+    { stopped: out2.stopped, failures: out2.failures && out2.failures.length })
+  ok(out2.roundsRun === 0 && out2.roundsAttempted === 3,
+    'T150. *** and the receipt separates successful rounds from attempted ones', { run: out2.roundsRun, attempted: out2.roundsAttempted })
+}
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

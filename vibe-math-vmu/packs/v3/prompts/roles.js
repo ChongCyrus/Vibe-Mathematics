@@ -160,6 +160,16 @@ export const V3_ROLE_VERIFIER_REVIEW = Object.freeze({
     '独立给结论，不要被"这是别人写的"或"看起来很长"影响；宁可指出一个具体的未核实步骤，也不要给一个没有理由的 0.5。',
     '',
     '回执：只输出一个 ```json 围栏，用 `progress` 写一条 `votes` 轨记录（见「验证规则」段的字段格式）。',
+    // ★ SLV MEASURED (real host, v3): the verifier answered with a well-reasoned object whose TOP-LEVEL fields were
+    // role/status/code/target/Result/Reason/message/evidence/blocked_by/needed - the kernel accepts none of those, and
+    // the whole drive stopped. The pack must require the KERNEL's reply surface, not v3's internal vocabulary.
+    '★ 回执字段契约（内核只接受这些）：JSON 顶层**只允许** `progress`（以及 `say`／`vote_solved`／`solved` 等内核已声明字段）。',
+    '★ **顶层禁止**出现 `role`／`status`／`code`／`target`／`Result`／`Reason`／`message`／`evidence`／`blocked_by`／`needed`：这些不是内核字段，出现即整条回执被具名拒（VMU_TURN_UNKNOWN_FIELD）且本轮作废。',
+    '★ 没有 TARGET／没有可写内容时：只输出 `{"progress": []}`（解释用 `say` 或写进 progress 条目的正文）；**不要**自己发明字段来表达「无法验证」。',
+    // ★ SLV MEASURED: the only eligible closure voter is this role, and a round asked "already solved?" produced no
+    // vote because the reply schema above only spoke about `progress`. The closure question needs its OWN field, and it
+    // is the kernel-accepted one; without this sentence the institute can never reach unanimity.
+    '★ 若本轮唤醒的 why／状态块在问「研究目标是否已解决」（closure poll）：回执**只输出** `{"vote_solved": true}` 或 `{"vote_solved": false}`——**不要写 progress 条目、不要写任何其他字段**（closure 回合只为闭题投票；写不合法的 progress 会以未知 track 失败，票就不会被记）。',
   ].join('\n'),
 })
 
@@ -179,6 +189,8 @@ export const V3_ROLE_VERIFIER_DEBATE = Object.freeze({
     '',
     'Reason 必填且非空；空的 Reason（尤其裸 0.5）会被当作未贡献而忽略，所以永远给你的数字一个理由。',
     '回执：只输出一个 ```json 围栏，用 `progress` 写一条 `votes` 轨记录；body 里除 `- Result:`／`- Reason:` 外再加 `- changed: <理由或 none>`。',
+    // ★ same contract as the review section: v3 vocabulary stays INSIDE the record body, never at the JSON top level.
+    '★ 回执字段契约：JSON 顶层只允许 `progress`（以及 `say`／`vote_solved`／`solved`）。**顶层禁止** `role`／`status`／`code`／`target`／`Result`／`Reason`／`message`／`evidence`／`blocked_by`／`needed`；违规即整条回执具名拒。',
   ].join('\n'),
 })
 

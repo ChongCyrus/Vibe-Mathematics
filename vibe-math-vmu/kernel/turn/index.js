@@ -1148,9 +1148,13 @@ export function createTurnOrchestrator({
 
   /**
    * ⑦ drive: run SEVERAL turns, one after another, choosing each member by the policy. The bound is explicit (there
-   * is no unlimited default), and a failing round STOPS the run and reports its number with the receipts so far -
-   * a half-finished run is reported as half-finished, never as complete.
+   * is no unlimited default). ★ MEASURED ON A REAL HOST (v3): one member's reply carried fields the kernel does not
+   * accept, and the WHOLE drive returned `ok:false` after two successful rounds - an occasional bad reply and a broken
+   * system looked identical. A failing round is now RECORDED (named code + excerpt) and the run CONTINUES; it stops
+   * only when one member fails `MEMBER_FAILURE_LIMIT` rounds in a row, which is the signal that the member (not the
+   * batch) is broken. The final receipt distinguishes `roundsRun` (successful) from `roundsAttempted`.
    */
+  const MEMBER_FAILURE_LIMIT = 3
   const drive = async ({ members = [], rounds = 1, phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
     const n = Number(rounds)
     if (!Number.isInteger(n) || n < 1) {
@@ -1158,25 +1162,40 @@ export function createTurnOrchestrator({
         'pass { rounds: N } (docs/26 section 3.2 invariant 2)')
     }
     const receipts = []
+    const failures = []
+    const consecutive = new Map()
     for (let i = 1; i <= n; i += 1) {
       const spec = nextTurn({ members, phase, why, nextStep, role })
       // ★★ ROUND 45: AN EMPTY ROUND MUST SAY WHERE MEMBERS COME FROM. `no-members` is true, but on its own it leaves a
       // reader unable to act - the real machine called this face sixty-one times and learned nothing from it. The
       // hint names the two things that actually help: read the roster, and pass it (the tool face now infers it from
       // the roster too, so omitting it works; this hint is for the case where the roster itself is empty).
-      if (!spec) return { ok: true, receipts, stopped: 'no-members', roundsRun: receipts.length,
+      if (!spec) return { ok: true, receipts, failures, stopped: 'no-members', roundsRun: receipts.filter((r) => !r.failed).length, roundsAttempted: receipts.length,
         next: { kind: 'roster', tool: 'vibe_vmu_control', hint: 'no member was passed AND the kernel roster holds no live member: read it with vibe_vmu_control { action: "roster" }, seat one with { action: "hire", member_id, slot } (the pack declares the slots), then retry. Passing an explicit `members` array also works.' } }
       try {
         const r = await run({ ...spec, round: i })
         // ★ ROUND 73: a caller-played turn ENDS the batch - the prompt goes back and the round resumes on the next call.
-        if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null, receipts, roundsRun: receipts.length, round: i, member: spec.member }
+        if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null, receipts, failures, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length, round: i, member: spec.member }
         receipts.push({ round: i, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, turn: r.turn.id })
+        consecutive.set(spec.member, 0)
       } catch (e) {
         counts.refused += 0
-        return { ok: false, round: i, code: e && e.code, message: String((e && e.message) || e), receipts, roundsRun: receipts.length }
+        const code = (e && e.code) || null
+        const message = String((e && e.message) || e)
+        // ★ THE FAILED ROUND IS NOT A SUCCESS: no `fields`/`executed`/`turn`, and `failed:true` so a reader can tell it
+        // apart from a round that ran. The excerpt is bounded (a receipt is not a log file).
+        receipts.push({ round: i, member: spec.member, failed: true, code, message: message.slice(0, 300) })
+        failures.push({ round: i, member: spec.member, code, message: message.slice(0, 300) })
+        const streak = (consecutive.get(spec.member) || 0) + 1
+        consecutive.set(spec.member, streak)
+        if (streak >= MEMBER_FAILURE_LIMIT) {
+          return { ok: false, stopped: 'member-failures', member: spec.member, round: i, code, message: message.slice(0, 300),
+            receipts, failures, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length,
+            hint: 'the SAME member failed ' + streak + ' rounds in a row; a batch is not stopped by one bad reply, but a member that cannot answer three times in a row is reported (docs/26 section 3.2)' }
+        }
       }
     }
-    return { ok: true, receipts, roundsRun: receipts.length }
+    return { ok: true, receipts, failures, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length }
   }
 
   /**

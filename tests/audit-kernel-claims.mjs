@@ -12,6 +12,7 @@
 // module and requires the checker to reject it.
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
+import { readFileSync } from "node:fs"
 const HERE = dirname(fileURLToPath(import.meta.url))
 const K = join(HERE, "..", "vibe-math-vmu", "kernel")
 const url = (f) => "file:///" + join(K, f).replace(/\\/g, "/").replace(/ /g, "%20")
@@ -190,6 +191,59 @@ if (process.argv.includes("--selftest")) {
   console.log("")
   console.log("=== KERNEL CLAIMS SELFTEST: " + (checks.length - bad) + " passed, " + bad + " failed ===")
   process.exit(bad === 0 ? 0 : 1)
+}
+
+// ── GATE: an object REPLACED by declareSlots/declareTracks/retractTracks must travel as a STABLE HANDLE ─────────────
+// The measured defect family: `members` and `library` are re-assigned by those kernel methods, while services built at
+// construction captured the VALUES. A pack that declares slots/tracks after construction then leaves consumers holding
+// null/stale objects ("names right, object stale"). This gate reads the source: every `create*` call that touches one of
+// the re-assigned names must pass the stable proxy (`members: memberRef` / `library: libraryRef`) or an explicit getter.
+{
+  const src = readFileSync(join(HERE, '..', 'vibe-math-vmu', 'kernel', 'index.js'), 'utf8')
+  const replaced = new Set()
+  for (const line of src.split('\n')) {
+    const m = /^\s+(members|library)\s*=/.exec(line)
+    if (m) replaced.add(m[1])
+  }
+  const check = (cond, label) => { if (cond) { pass++; console.log('  ok   ' + label) } else { fail++; failures.push(label); console.error('  FAIL ' + label) } }
+  check(replaced.size === 2, 'the gate itself sees the re-assigned names (members + library) - a scan that matches nothing is not a pass', [...replaced])
+  const bad = []
+  const re = /(create[A-Z][A-Za-z0-9]*)\(\{/g
+  const FACTORIES = new Set(['createKernel', 'createLibrary', 'createMembers', 'createMembersList'])
+  let m
+  while ((m = re.exec(src)) !== null) {
+    if (FACTORIES.has(m[1])) continue
+    const start = m.index + m[1].length + 1   // first `{`
+    let depth = 0
+    let i = start
+    let end = -1
+    for (; i < src.length; i += 1) {
+      if (src[i] === '{') depth += 1
+      else if (src[i] === '}') { depth -= 1; if (depth === 0) { end = i; break } }
+    }
+    if (end < 0) continue
+    const inner = src.slice(start + 1, end)
+    // split the object literal at ITS top-level commas: nested braces/parens stay inside one property
+    const props = []
+    let d = 0
+    let cur = ''
+    for (let k = 0; k < inner.length; k += 1) {
+      const ch = inner[k]
+      if (ch === '{' || ch === '(' || ch === '[') d += 1
+      else if (ch === '}' || ch === ')' || ch === ']') d -= 1
+      if (ch === ',' && d === 0) { props.push(cur); cur = '' } else cur += ch
+    }
+    props.push(cur)
+    for (const raw of props) {
+      const prop = raw.trim()
+      for (const name of replaced) {
+        if (prop === name || new RegExp('^' + name + '\\s*:\\s*' + name + '$').test(prop)) {
+          bad.push({ name, prop, call: m[1] })
+        }
+      }
+    }
+  }
+  check(bad.length === 0, '★ no create* call captures a REPLACED object by VALUE: the property is a shorthand/self-reference instead of memberRef / libraryRef (or a getter)', bad.slice(0, 4))
 }
 
 console.log("")
