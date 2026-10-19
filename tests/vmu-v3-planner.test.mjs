@@ -648,6 +648,9 @@ console.log('=== 12. 真机装配路径：packs:[v3] ⇒ 规划段被晚注册�
   const f0 = latestPlan(h.kernel).canonical.outcomes[0]
   ok(f0 && f0.ok === true && f0.skipped === undefined && f0.turn !== undefined,
     '第一次派发真的建了回合（outcome 带 turn id，而不是跳过）', f0)
+  // ★ SLV / RED LINE: "accepted/dispatched" must NOT be reported as executed. The spawned outcome says exactly that.
+  ok(f0 && f0.dispatched === true && f0.executed === false && f0.status === 'dispatched',
+    '★ 计划 outcome 区分 dispatched 与 executed：派发成功 = dispatched:true / executed:false', f0 && { d: f0.dispatched, e: f0.executed, s: f0.status })
   const afterFirst = h.delivered.filter((d) => d.role === 'verifier').length
   ok(afterFirst === 1, '第一次派发投递了恰好 1 个 verifier 回合', afterFirst)
   await tick(h, 2000)
@@ -1086,6 +1089,22 @@ const promoteOnce = async (value) => {
   } finally { await fsp.rm(dir, { recursive: true, force: true }) }
 }
 
+// ── 20. directions 轨：方向卡必须进入简报（否则 planner 盲派 explorer，方向卡再多也看不见） ──────────────
+console.log('=== 20. directions 轨进入规划简报：无卡时为空、有卡时可见（一正一反） ===')
+{
+  const h = boot({ overrides: { 'vmu.v3.planMinIntervalMs': 0 } })
+  await h.loader.apply(PACK)
+  problemCard(h.kernel, 'q-dir')
+  await tick(h, 1000)
+  const before = v3PlannerStatus().lastBrief
+  ok(before && Array.isArray(before.directions) && before.directions.length === 0,
+    '反：没有方向卡时 brief.directions 为空数组（不是缺字段）', before && before.directions)
+  h.kernel.records.put({ track: 'directions', kind: 'direction', title: 'v3 direction｜d-1', body: '- ID: d-1\n- 标题: 归纳法\n- 问题: q-dir\n- 状态: 活跃' })
+  await tick(h, 2000)
+  const after = v3PlannerStatus().lastBrief
+  ok(after && Array.isArray(after.directions) && after.directions.length === 1 && after.directions[0].id === 'd-1',
+    '正：方向卡真的进入简报（planner 能看见 d-1，不再盲派 explorer）', after && after.directions)
+}
 console.log('')
 console.log('=== V3 PLANNER (P0-2 + P0-3): ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length > 0) for (const f of failures) console.error('  - ' + f)

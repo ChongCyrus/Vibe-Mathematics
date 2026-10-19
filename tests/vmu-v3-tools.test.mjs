@@ -92,9 +92,9 @@ console.log('=== 2. THE MANIFEST DECLARES 10 TOOLS AND 3 SLOTS (a declaration, n
   ok(missing.length === 0, 'the manifest declares every expected name', missing)
   const handlers = PACK.tools.map((t) => t.handler)
   ok(handlers.length > 0 && handlers.every((h) => typeof h === 'function'), 'every declaration carries a handler function', handlers.filter((h) => typeof h !== 'function').length)
-  ok(PACK.slots.length === 3, 'the pack declares the 3 v3 slots', PACK.slots && PACK.slots.length)
+  ok(PACK.slots.length === 4, 'the pack declares the 4 v3 slots (planner/explorer/solver/verifier)', PACK.slots && PACK.slots.length)
   const slotIds = PACK.slots.map((s) => s.id)
-  ok(slotIds.join(',') === 'planner,solver,verifier', 'slot ids are planner/solver/verifier (list_agents reads these)', slotIds)
+  ok(slotIds.join(',') === 'planner,explorer,solver,verifier', 'slot ids are planner/explorer/solver/verifier (list_agents reads these)', slotIds)
   ok(PACK.settings && Object.keys(PACK.settings).length === 0, 'PACK.settings stays EMPTY: tool names are not settings', PACK.settings)
 }
 
@@ -121,7 +121,7 @@ let v3boot = null
   // The roster now exists because the pack declared slots (list_agents' data source).
   ok(v3boot.handle.kernel.members !== null, 'declaring slots created the roster', v3boot.handle.kernel.members && 'present')
   const roles = v3boot.handle.kernel.members.roles()
-  ok(roles.length === 3, 'the roster exposes the three declared slots', roles.map((r) => r.id))
+  ok(roles.length === 4, 'the roster exposes the four declared slots', roles.map((r) => r.id))
 }
 
 console.log('=== 4. EVERY RECEIPT IS A JSON STRING — stringified exactly ONCE ===')
@@ -185,7 +185,7 @@ console.log('=== 6. THE TOOLS REALLY DO THEIR JOB (on the assembled kernel) ==='
   ok(report.parsed && Array.isArray(report.parsed.problems.items) && report.parsed.problems.items.length === 1, 'report shows the problem card', report.parsed && report.parsed.problems)
   ok(report.parsed && typeof report.parsed.text === 'string' && report.parsed.text.includes('q-1'), 'report carries a readable text body', report.parsed && String(report.parsed.text).slice(0, 40))
   const agents = await parseReceipt(v3boot, 'vibe_math_list_agents', {})
-  ok(agents.parsed && Array.isArray(agents.parsed.slots) && agents.parsed.slots.length === 3, 'list_agents reports the three slots', agents.parsed && agents.parsed.slots && agents.parsed.slots.length)
+  ok(agents.parsed && Array.isArray(agents.parsed.slots) && agents.parsed.slots.length === 4, 'list_agents reports the four slots', agents.parsed && agents.parsed.slots && agents.parsed.slots.length)
   ok(agents.parsed && Array.isArray(agents.parsed.agents) && agents.parsed.agents.length === 0, 'nobody is hired yet: the roster is empty (not faked)', agents.parsed && agents.parsed.agents.length)
   const plan = await parseReceipt(v3boot, 'vibe_math_plan', {})
   ok(plan.parsed && plan.parsed.ok === true && plan.parsed.lastPlan === null, 'plan() honestly reports "no plan yet"', plan.parsed && plan.parsed.lastPlan)

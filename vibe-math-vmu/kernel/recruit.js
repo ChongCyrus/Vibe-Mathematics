@@ -61,7 +61,9 @@ export function createRecruit({ clock = () => Date.now(), log = () => {}, settin
     // ROUND 10 / task-74 (A4): v5r's per-hirer cap on SIMULTANEOUSLY employed temps (v5r :8920:
     // `perCap = Math.max(1, Math.floor(Number(params.maxTempPerMember) || 3))` - the floor and the `|| 3` are v5r's,
     // so a 0/absent value means 3 and a value below 1 is raised to 1). The reader is `accept()` below.
-    maxTempPerMember: Math.max(1, Math.floor(Number(settings['vmu.members.maxTempPerMember']) || 3)),
+    // ★ SLV: the v3 institution now declares FOUR roles (planner/explorer/solver/verifier); a per-chair default of 3
+    // made the fourth seat impossible (VMU_MEMBER_LIMIT). The cap is still enforceable by setting, only its default grows.
+    maxTempPerMember: Math.max(1, Math.floor(Number(settings['vmu.members.maxTempPerMember']) || 4)),
     // ROUND 267 (volume 17 §L266-271): the four remaining declarations. Every one is read here and enforced or reported below.
     policy: ['closed', 'claim', 'nominate', 'open'].includes(settings['vmu.admission.policy']) ? settings['vmu.admission.policy'] : 'closed',
     decideBy: ['manager', 'vote', 'allocation', 'human'].includes(settings['vmu.admission.decideBy']) ? settings['vmu.admission.decideBy'] : 'manager',

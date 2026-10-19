@@ -27,7 +27,7 @@ import { createKernel } from './kernel/index.js'
 import { deliverReportFeedbackFrom } from './kernel/reportfeedbackdelivery.js'
 import { deliverViaSubagents, deliverByReturning, sendViaSubagents, interruptViaSubagents } from './kernel/turn/index.js'
 import { createTurnDeliver } from './host-deliver.js'
-import { createHostAdapter } from './host.js'
+import { createHostAdapter, setToolExecObserver } from './host.js'
 import { attachHostHooks } from './host-hooks.js'
 import { createPackLoader, collectPackSections } from './kernel/pack.js'
 // ROUND 1 / K5 (D-02): a NAMESPACE import as well, so `composePromptPolicies` can be feature-detected. A named import
@@ -413,6 +413,11 @@ export function apply(ctx, config = {}) {
   // ★ THE DEPLOYMENT'S DRIVER IS BOUND HERE, NOT GUESSED PER DELIVERY. A host tool call carries `exec.agent` — the
   // one place the root Agent is observable without an initiator boundary. Tick/timer deliveries then have a real parent.
   let rootAgentBound = null
+  // ★ SLV: bind the root Agent from the tool-execution seam (see host.setToolExecObserver). This is attached by the
+  // ADAPTER, not by a middleware bus hook, so it works even when a pack declares no tool hooks at all.
+  setToolExecObserver((exec) => {
+    try { if (exec && exec.agent && typeof exec.agent === 'object' && exec.agent.options && exec.agent.session) rootAgentBound = exec.agent } catch { /* best effort */ }
+  })
   const turnDeliver = createTurnDeliver({ ctx, config, settings, deliverViaSubagents, deliverByReturning, getRootAgent: () => rootAgentBound })
   const resolveSubagents = () => {
     try { return ctx && typeof ctx.get === 'function' ? ctx.get('subagents') : null } catch { return null }

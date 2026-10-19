@@ -101,6 +101,9 @@ export const PACK = Object.freeze({
   // 内核强制的并发上限（permissions 是不透明词表 —— 内核只做包含判断，不解释"planner"是什么，D5）。
   slots: Object.freeze([
     { id: 'planner', label: '规划', capacity: 1, permissions: Object.freeze(['plan', 'dispatch', 'gate']) },
+    // ★ SLV: explorer is a REAL v3 role (direction exploration) and the planner spawns it; without a slot the dispatch
+    // reported success while nobody was seated. The role belongs to the institution, so it gets a slot (not removed).
+    { id: 'explorer', label: '探索', capacity: 4, permissions: Object.freeze(['explore', 'record']) },
     { id: 'solver', label: '求解', capacity: 8, permissions: Object.freeze(['solve', 'propose', 'record']) },
     { id: 'verifier', label: '验证', capacity: 3, permissions: Object.freeze(['verify', 'vote', 'refute']) },
   ]),

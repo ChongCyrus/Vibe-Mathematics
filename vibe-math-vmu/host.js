@@ -979,6 +979,12 @@ export function toHostParameters(params = {}) {
 
 
 
+let toolExecObserver = null
+/** ★ SLV: the entry needs the deployment root Agent (to bind one-shot member turns). Every tool call passes `exec`; this
+ * is the reliably-attached seam - an event bridge only exists for hooks a pack declares, and the empty v3 toolfilter
+ * lists meant no listener existed at all. */
+export function setToolExecObserver(fn) { toolExecObserver = typeof fn === 'function' ? fn : null }
+
 /** Turn an internal spec into the HOST's shape (the one the real host accepted for v5r). */
 export function toHostSpec(spec) {
   return {
@@ -988,6 +994,7 @@ export function toHostSpec(spec) {
     output: OUTPUT,
     execute: async (args, exec) => {
       try {
+        try { if (toolExecObserver) toolExecObserver(exec) } catch { /* binding must not break a tool call */ }
         return boundedToolResult(await spec.run(args || {}, exec))
       } catch (e) {
         // ★★ ROUND 36 (measured on a real machine): THIS BRANCH USED TO RETURN A DIFFERENT SHAPE FROM THE OTHER ONE.

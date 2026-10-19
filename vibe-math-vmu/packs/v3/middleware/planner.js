@@ -330,6 +330,25 @@ export function buildBrief({ records, at, horizon, maxLiveMembers, problems, sta
     const mIdx = loadCardIndex(records, 'methods', 'method')
     methods = mIdx.items.slice(0, 20).map((m) => ({ id: m.id, 标题: str(m.card.标题), 状态: str(m.card.状态) }))
   } catch { methods = [] }
+  // ★ SLV: directions ARE durable cards on the directions track (written by the explorer's progress payload). The brief
+  // used to omit them, so the planner kept re-spawning explorers while direction cards already existed. Read them.
+  let directions = []
+  try {
+    // Directions have NO dataplane card parser yet (the explorer's progress payload writes them as records). Read the
+    // raw records and lift the anchors directly, so the planner SEES the cards that actually exist.
+    const pick = (body, key) => {
+      const m = new RegExp('(?:^|\\n)[-*]\\s*' + key + '\\s*[:：]\\s*([^\\n]*)').exec(String(body || ''))
+      return m ? m[1].trim() : ''
+    }
+    const dItems = records.list({ track: 'directions', limit: 0 }).items
+    directions = dItems.slice(0, 30).map((rec) => {
+      let full = null
+      try { full = records.get({ id: rec.id }) } catch { full = null }
+      const body = String((full && full.body) || (rec && rec.body) || '')
+      const id = pick(body, 'ID') || str(rec && rec.id)
+      return { id, 标题: pick(body, '标题') || str(rec && rec.title), 问题: pick(body, '问题') || pick(body, '目标'), 状态: pick(body, '状态'), 来源: pick(body, '来源') }
+    })
+  } catch { directions = [] }
   let pendingInventions = 0
   try { pendingInventions = records.list({ track: 'inventions', limit: 0 }).items.length } catch { pendingInventions = 0 }
   let recentEvents = []
@@ -365,6 +384,7 @@ export function buildBrief({ records, at, horizon, maxLiveMembers, problems, sta
     free_slots: maxLive > 0 ? maxLive : horizon,
     maxLiveMembers: maxLive > 0 ? maxLive : null,
     problems: problemsOut,
+    directions,
     verify_candidates: [],
     methods,
     pending_inventions: pendingInventions,
@@ -374,7 +394,7 @@ export function buildBrief({ records, at, horizon, maxLiveMembers, problems, sta
     notes: {
       active_agents: 'this pack has no live-agent registry yet: P0-2 dispatches through a synchronous turn.run(), so an agent is never "in flight" between ticks',
       verify_candidates: 'P0-7 (verification loop) builds the candidate list; until then it is empty by construction, not by omission',
-      directions: 'the directions track has no card composer/parser in dataplane yet (P0-9 covers problem/proposition/method/verified), so 方向数/活跃方向 are not claimed here',
+      directions: 'directions are W3C cards read verbatim from the directions track (the explorer progress payload composes them); a solver action consumes one by direction id',
     },
   }
   if (state) state.lastBrief = JSON.parse(JSON.stringify(brief))
@@ -507,7 +527,11 @@ async function executeOne(a, ctx) {
       if (turnId && plannerState) plannerState.turns.push({ member: a.role, turn: turnId, from: 'plan' })
       // 成功派发才登记幂等键：失败的派发留待下一 tick 重试（“同 rId 不重复建任务”只针对**已建成**的任务）。
       if (plannerState && plannerState.dispatched) plannerState.dispatched.set(key, { at, turn: turnId, role: a.role, target: a.target, direction: a.direction })
-      return outcomeOf(a, true, { turn: turnId, fields: Array.isArray(receipt.fields) ? receipt.fields.slice() : [] })
+      // ★ SLV: "accepted" is not "completed". The tick only DISPATCHED the member turn; the reply arrives later and is
+      // handled by turn/reply-parsed. The outcome therefore says dispatched:true, executed:false (red line 3's cousin).
+      return outcomeOf(a, true, { turn: turnId, dispatched: true, executed: false, status: 'dispatched',
+        fields: Array.isArray(receipt.fields) ? receipt.fields.slice() : [],
+        note: 'member turn dispatched; completion is recorded when its reply arrives (turn/reply-parsed)' })
     }
     return outcomeOf(a, false, { error: 'VMU_ENGINE_UNAVAILABLE', message: 'the spawned turn returned ok !== true' })
   }
@@ -1150,6 +1174,10 @@ async function onReplyParsed(flat) {
   const records = api.services.get('vmu.records')
   const state = stateFor(records)
   const raw = readRawPlan({ body: payload.body, tags })
+  // ★ SLV: a payload that merely CLAIMS track=plans/kind=plan but has no actions array is NOT a plan. Persisting it
+  // polluted the plans track with raw receipts that could never settle (lastPlan settled:false). Refuse to write it;
+  // the planner then reports "no plan record" by name instead of leaving an unclearable card.
+  if (!raw || !Array.isArray(raw.actions)) return undefined
   try {
     const rec = writeBody({
       records,
