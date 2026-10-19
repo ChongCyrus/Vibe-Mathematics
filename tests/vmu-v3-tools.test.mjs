@@ -174,6 +174,13 @@ console.log('=== 6. THE TOOLS REALLY DO THEIR JOB (on the assembled kernel) ==='
   ok(statusPaper.parsed && statusPaper.parsed.paper && statusPaper.parsed.paper.target === 'proj-p'
     && statusPaper.parsed.paper.complete === false && statusPaper.parsed.paper.missing.length === 4,
     '★ a declared target makes done/missing READABLE (four missing before any artifact is written)', statusPaper.parsed && statusPaper.parsed.paper)
+  // ★ SLV: the planner failure diagnostic (replyLength/hadBrace/replyExcerpt) existed on an error object that NOTHING
+  // exposed; the journal was head-capped. status now carries a bounded planner reader.
+  ok(statusPaper.parsed && statusPaper.parsed.planner && typeof statusPaper.parsed.planner.fails === 'number'
+    && Object.prototype.hasOwnProperty.call(statusPaper.parsed.planner, 'lastError')
+    && Object.prototype.hasOwnProperty.call(statusPaper.parsed.planner, 'disabled'),
+    '★ status exposes the planner diagnostics reader (fails / disabled / lastError), not just lastPlan',
+    statusPaper.parsed && statusPaper.parsed.planner)
   const report = await parseReceipt(v3boot, 'vibe_math_report', {})
   ok(report.parsed && Array.isArray(report.parsed.problems.items) && report.parsed.problems.items.length === 1, 'report shows the problem card', report.parsed && report.parsed.problems)
   ok(report.parsed && typeof report.parsed.text === 'string' && report.parsed.text.includes('q-1'), 'report carries a readable text body', report.parsed && String(report.parsed.text).slice(0, 40))

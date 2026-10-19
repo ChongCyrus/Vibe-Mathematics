@@ -29,7 +29,7 @@
  */
 import { listGates, approveGate, rejectGate, cancelGate } from './middleware/gates.js'
 import { paperArtifacts, PAPER_ARTIFACTS } from './middleware/paper-close.js'
-import { latestPlanRecord, readPlanRecord } from './middleware/planner.js'
+import { latestPlanRecord, readPlanRecord, v3PlannerStatus } from './middleware/planner.js'
 import { writeCard, parseCard } from './middleware/dataplane.js'
 
 const str = (v) => (v === undefined || v === null ? '' : String(v))
@@ -228,6 +228,12 @@ function toolStatus(_args = {}, { kernel } = {}) {
       : null,
     lastPlan: lastPlanView(records),
     paper,
+    // ★ SLV DIAGNOSTIC READER: the failure record (with replyLength/hadBrace/replyExcerpt) existed but NO reader
+    // exposed it - the journal was head-capped and status only showed lastPlan. Same family as the paper field.
+    planner: (() => {
+      const p = v3PlannerStatus()
+      return { plannerCalls: p.plannerCalls, plans: p.plans, fails: p.fails, disabled: p.disabled, lastSkip: p.lastSkip, lastError: p.lastError }
+    })(),
     note: 'read-only receipt: no card and no gate was changed by this call',
   }
 }
