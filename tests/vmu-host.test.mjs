@@ -119,6 +119,34 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   await rm(root, { recursive: true, force: true })
 }
 
+// ---- 3b. THE RECORDS TOOL READS THE SAME SOURCE THE DATA PLANE WRITES (SLV measured: two different stores) ----
+{
+  const root = await mkdtemp(join(tmpdir(), 'vmu-host-records-'))
+  const settings = {
+    'vmu.records.tracks': ['problems'],
+    'vmu.records.allowedKinds': ['problem', 'state'],
+    'vmu.records.requireSettledRecords': false,
+  }
+  const kernel = km.createKernel({ clock: () => 1000, root, settings })
+  await kernel.store.open()
+  const host = fakeHost()
+  await hm.createHostAdapter({ ctx: host.ctx, kernel, settings, assertDeclared }).install()
+  const recSpec = host.state.specs.find((s) => s.name === 'vibe_vmu_records')
+  ok(!!recSpec, 'the records tool is published with a durable root')
+  const put = kernel.records.put({ track: 'problems', kind: 'problem', title: 'tool-visible', body: 'tool-body', settled: true })
+  const listed = await call(recSpec, { action: 'list' })
+  ok(Array.isArray(listed.records) && listed.records.some((r) => r.id === put.id),
+    '★ a card written by the data plane (kernel.records) IS visible through vibe_vmu_records list (same source)',
+    listed.records && listed.records.map((r) => r.id))
+  const expanded = await call(recSpec, { action: 'expand', id: put.id })
+  ok(expanded && expanded.ok === true && String(expanded.body) === 'tool-body',
+    '★ expand returns the body instead of VMU_NO_SUCH_OBJECT', expanded && expanded.code)
+  const missing = await call(recSpec, { action: 'expand', id: 'r-nope' })
+  ok(missing && missing.ok === false && missing.code === 'VMU_NO_SUCH_OBJECT',
+    'reverse: an id that was never written still refuses by name (no invented record)', missing && missing.code)
+  try { await rm(root, { recursive: true, force: true }) } catch { /* the store may still hold the file open; the temp dir is disposable */ }
+}
+
 // ---- 4. the HOST shape (the mismatch the real host exposed) -------------------------------------
 {
   const root = await mkdtemp(join(tmpdir(), 'vmu-host-shape-'))

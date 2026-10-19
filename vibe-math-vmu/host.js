@@ -724,8 +724,19 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
       },
       run: async ({ action = 'list', id, kind, statement, proof } = {}) => {
         try {
-          if (action === 'list') return Object.assign({ ok: true, action }, { records: await kernel.library.list() })
-          if (action === 'expand') return Object.assign({ ok: true, action }, await kernel.library.expand(id))
+          // ★ SLV (measured): this face read `kernel.library` while the v3 data plane writes `kernel.records` - two
+          // different stores, so every card was invisible here (`records: []` beside a non-zero journal). The RECORDS
+          // projection is the authority for record tracks; the library remains the append/archival face (its `append`
+          // has its own kind model). Read records first, library only as the zero-mechanism fallback.
+          const rc = kernel && kernel.records ? kernel.records : null
+          if (action === 'list') {
+            if (rc && typeof rc.list === 'function') return Object.assign({ ok: true, action }, { records: rc.list({}).items })
+            return Object.assign({ ok: true, action }, { records: await kernel.library.list() })
+          }
+          if (action === 'expand') {
+            if (rc && typeof rc.get === 'function') return Object.assign({ ok: true, action }, rc.get({ id }))
+            return Object.assign({ ok: true, action }, await kernel.library.expand(id))
+          }
           if (action === 'append') return Object.assign({ ok: true, action }, await kernel.library.append({ kind, statement, proof }))
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {

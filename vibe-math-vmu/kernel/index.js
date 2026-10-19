@@ -1293,6 +1293,74 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // `cast` runs unchanged (named degradation, no pretend durability).
   const ballotbox = createBallotBox({ settings: settingsView, bus, clock: guardedClock, log, durableQueue: sharedCommitLog })
   const records = createRecords({ settings: settingsView, bus, clock: guardedClock, log })
+  // ★★★★★★★ SLV (the measured data-loss defect): the records projection was created WITHOUT a durable seam, and its
+  // own header says persistence is delegated ("store"/"library"). The pack's data plane writes here, so a restart lost
+  // every card while the tick journal still reported them. The `records` state key is already in store.PUBLIC_KEYS
+  // (reserved, no writer) - this is the writer: hydrate on boot, snapshot after every mutation. Ids/track/kind/body are
+  // preserved so plan references (e.g. r-32) survive the restart.
+  const recordsStore = store && typeof store.read === 'function' && typeof store.write === 'function' ? store : null
+  const recordTracks = (() => {
+    const t = settings && settings['vmu.records.tracks']
+    return Array.isArray(t) && t.length > 0 ? t.slice() : null
+  })()
+  let recordsHydrated = false
+  let hydratingRecords = false
+  // ★ The store opens ASYNCHRONOUSLY, so hydration is LAZY: each access retries once until it succeeds. (Hydrating at
+  // construction ran before `store.open()` and silently restored nothing - a data-loss bug hiding behind a green probe.)
+  const hydrateRecords = () => {
+    if (!recordsStore || recordsHydrated || hydratingRecords) return
+    hydratingRecords = true
+    try {
+      const saved = recordsStore.read('records')
+      recordsHydrated = true
+      if (Array.isArray(saved) && saved.length > 0) {
+        let restored = 0
+        for (const row of saved) {
+          try {
+            if (!row || !row.track || !row.kind) continue
+            records.put({ id: row.id, track: row.track, kind: row.kind, title: row.title, body: row.body, tags: row.tags, settled: true, by: row.by || 'restore' })
+            restored += 1
+          } catch (e) { log('vmu records restore: ' + String((e && e.message) || e)) }
+        }
+        log('vmu records restored: ' + restored + '/' + saved.length)
+      }
+    } catch (e) {
+      // store not open yet: leave recordsHydrated false so the next access retries
+      log('vmu records hydrate (will retry): ' + String((e && e.message) || e))
+    } finally { hydratingRecords = false }
+  }
+  const snapshotRecords = () => {
+    if (!recordsStore || hydratingRecords) return
+    try {
+      const tracks = recordTracks || (settings && settings['vmu.records.tracks'])
+      if (!Array.isArray(tracks)) return
+      const rows = []
+      for (const track of tracks) {
+        for (const head of records.list({ track, limit: 0 }).items) {
+          const r = records.get({ id: head.id })
+          rows.push({ id: r.id, track: r.track, kind: r.kind, title: r.title, body: r.body, tags: r.tags, by: r.by })
+        }
+      }
+      const wrote = recordsStore.write('records', rows)
+      if (wrote && typeof wrote.catch === 'function') wrote.catch((e) => log('vmu records persist: ' + String((e && e.message) || e)))
+    } catch (e) { log('vmu records persistence: ' + String((e && e.message) || e)) }
+  }
+  if (recordsStore) {
+    const wrap = (name, { snapshot = false, hydrate = false } = {}) => {
+      const original = records[name]
+      if (typeof original !== 'function') return
+      records[name] = function wrappedRecordsAccess(arg) {
+        if (hydrate) hydrateRecords()
+        const out = original.call(records, arg)
+        if (snapshot) { try { snapshotRecords() } catch { /* persistence must not break the mutation */ } }
+        return out
+      }
+    }
+    wrap('put', { snapshot: true })
+    wrap('supersede', { snapshot: true })
+    wrap('list', { hydrate: true })
+    wrap('get', { hydrate: true })
+  }
   // ── ROUND 2 (task-14): THE APPROVAL GATE, ATTACHED TO THE REAL FACES ──────────────────────────────────
   // Lead's requirement: an undeclared action runs; a GATED action may only QUEUE until a human decides (a real gate,
   // not a label). `attachApprovalGate` wraps the named mutating methods, so the WRAP is what enforces it - and only

@@ -454,7 +454,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     },
 
     /** Create a record. Every cap is a NAMED refusal with 现值/上限; duplicates are COUNTED, never re-added. */
-    put({ track, kind, title, body = '', tags = [], settled = false, permanent = false, by = null } = {}) {
+    put({ id: requestedId = null, track, kind, title, body = '', tags = [], settled = false, permanent = false, by = null } = {}) {
       const enforced = []
       const fired = []
       mark(enforced, K.tracks)
@@ -521,7 +521,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         fire('records/deduplicated', { id: existing.id, track, fingerprint: fp })
         return { ok: true, deduplicated: true, id: existing.id, slug: existing.slug, fingerprint: fp, bytes: existing.bytes, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), note: 'the same content is already recorded in this track (fingerprintPolicy=' + fingerprintPolicy + '): nothing was added, the duplicate is COUNTED' }
       }
-      const id = mint('record', 'r-')
+      const id = requestedId === null || requestedId === undefined ? mint('record', 'r-') : String(requestedId)
       const at = now()
       const rec = {
         id, track, kind: String(kind), title: candidate.title, slug, body: bodyText, tags: candidate.tags, bytes,

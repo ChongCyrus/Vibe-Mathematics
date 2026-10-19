@@ -982,6 +982,40 @@ const FALLBACK_KEYS = [
     'P2-catalog: rewriteOf on an emit nobody rewrote returns null (pure read, executes nothing)')
 }
 
+// ---- 99. RECORDS ARE DURABLE: the projection had NO persistence seam, so a restart lost every card (SLV measured) ----
+{
+  const root = await mkdtemp(join(tmpdir(), 'vmu-records-persist-'))
+  const clockNum = () => 1000
+  const settings = {
+    'vmu.records.tracks': ['problems'],
+    'vmu.records.allowedKinds': ['problem', 'state'],
+    'vmu.records.requireSettledRecords': false,
+  }
+  const boot = async () => {
+    const k = m.createKernel({ clock: clockNum, root, settings })
+    await k.store.open()
+    return k
+  }
+  const k1 = await boot()
+  const put = k1.records.put({ track: 'problems', kind: 'problem', title: 'persist-q', body: 'persist-body', settled: true })
+  await new Promise((r) => setTimeout(r, 30))
+  const k2 = await boot()
+  const heads = k2.records.list({ track: 'problems', limit: 0 }).items
+  ok(heads.length === 1 && heads[0].id === put.id,
+    '★ SLV: a record written before a restart is restored from the durable store with the SAME id (plan references survive)',
+    { before: put.id, after: heads.map((h) => h.id) })
+  ok(k2.records.get({ id: put.id }).body === 'persist-body',
+    '★ and its body is readable after the restart (expand no longer VMU_NO_SUCH_OBJECT)')
+  // Reverse: without a root there is no store at all, and a fresh kernel never invents records it never wrote.
+  const noRoot = m.createKernel({ clock: clockNum, settings })
+  ok(noRoot.store === null, 'reverse: no root means no store (named absence, not a fake durability)')
+  noRoot.records.put({ track: 'problems', kind: 'problem', title: 'ephemeral', body: 'x', settled: true })
+  const fresh = m.createKernel({ clock: clockNum, settings })
+  ok(fresh.records.list({ track: 'problems', limit: 0 }).items.length === 0,
+    'reverse: a kernel without a root starts with NO records (nothing is invented)')
+  try { await rm(root, { recursive: true, force: true }) } catch { /* the store may still hold the file open */ }
+}
+
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
