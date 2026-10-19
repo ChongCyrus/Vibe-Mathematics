@@ -250,7 +250,7 @@ async function toolStatus(_args = {}, { kernel } = {}) {
         bad = c.bad.length
       } catch (e) { candidates = null; bad = { error: String((e && e.message) || e) } }
       return { ticks: v.ticks, rounds: v.rounds, debates: v.debates, ballotsOpened: v.ballotsOpened, votesCast: v.votesCast,
-        verdicts: v.verdicts, undecided: v.undecided, malformed: v.malformed, inFlight: v.inFlight,
+        verdicts: v.verdicts, undecided: v.undecided, ticksWithoutVerdict: v.ticksWithoutVerdict, closurePollDispatched: v.closurePollDispatched, malformed: v.malformed, inFlight: v.inFlight,
         lastSkip: v.lastSkip, lastReceipt: v.lastReceipt, lastError: v.lastError, candidates, badCandidates: bad }
     })(),
     // ★ SLV DIAGNOSTIC READER: the failure record (with replyLength/hadBrace/replyExcerpt) existed but NO reader

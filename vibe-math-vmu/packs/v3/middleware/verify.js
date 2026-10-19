@@ -228,7 +228,7 @@ export function v3VerifyStatus() {
   }
   return {
     ticks: s.ticks, rounds: s.rounds, debates: s.debates, ballotsOpened: s.ballotsOpened, votesCast: s.votesCast,
-    verdicts: s.verdicts, undecided: s.undecided, ticksWithoutVerdict: s.ticksWithoutVerdict || 0, maxRoundsStops: s.maxRoundsStops, malformed: s.malformed,
+    verdicts: s.verdicts, undecided: s.undecided, ticksWithoutVerdict: s.ticksWithoutVerdict || 0, closurePollDispatched: s.closurePollDispatched || 0, maxRoundsStops: s.maxRoundsStops, malformed: s.malformed,
     inFlight: s.inFlight, lastTickAt: s.lastTickAt,
     lastSkip: s.lastSkip, lastReceipt: s.lastReceipt ? JSON.parse(JSON.stringify(s.lastReceipt)) : null,
     lastError: s.lastError,
@@ -801,6 +801,60 @@ async function advanceCandidate({ records, ballotbox, turn, at, settings, state,
   return refusal('VMU_STATE', 'the debate loop ended without a settlement: ' + str(target), 'debateMaxRounds must be >= 1; this is a code-path guard, not an expected outcome', { settled: false, target, rounds: settings.debateMaxRounds })
 }
 
+/**
+ * ★ SLV / P1-8 CLOSURE POLL PATH: the pack wrote the vote_solved receipt contract but NOTHING dispatched the poll turn.
+ * When every object is settled (verified track non-empty AND no candidates), ask each seated verifier the closure
+ * question once. Positive: settled + no candidates ⇒ poll dispatched. Negative: no settled object / already polled ⇒ no poll.
+ */
+export async function dispatchClosurePoll({ records, turn, state, seatedVerifiers = [] }) {
+  let verifiedCount = 0
+  try { verifiedCount = records.list({ track: 'verified', limit: 0 }).items.length } catch { verifiedCount = 0 }
+  if (verifiedCount === 0) return { dispatched: false, reason: 'no-settled-object-yet' }
+  const ids = Array.isArray(seatedVerifiers) && seatedVerifiers.length > 0 ? seatedVerifiers : []
+  if (ids.length === 0) return { dispatched: false, reason: 'no-seated-verifier' }
+  if (!state.closurePolled) state.closurePolled = new Set()
+  for (const id of ids) {
+    if (state.closurePolled.has(id)) continue
+    if (typeof turn.dispatch !== 'function') return { dispatched: false, reason: 'no-dispatch-verb' }
+    const receipt = turn.dispatch({
+      member: id,
+      role: 'verifier',
+      phase: 'verify',
+      task: 'v3-closure-poll',
+      why: 'closure poll: 所有需要验证的对象都已定论。只回答研究目标是否已解决。',
+      statusBlock: JSON.stringify(Object.assign({ closurePoll: true,
+        question: '研究目标是否已经解决？',
+        instruction: '若下列 verified 证明已完整解决该问题，只输出 {"vote_solved": true}；否则只输出 {"vote_solved": false}。不要写 progress、不要写其他字段。' },
+        (() => {
+          // ★ SLV: the poll must carry the EVIDENCE, otherwise a verifier honestly answers "not solved" (it has no idea
+          // what was proved). Include the verified cards and the problem they settle.
+          const evidence = []
+          try {
+            for (const it of records.list({ track: 'verified', limit: 0 }).items.slice(0, 5)) {
+              const rec = records.get({ id: it.id })
+              evidence.push({ id: it.id, title: it.title, body: String((rec && rec.body) || '').slice(0, 4000) })
+            }
+          } catch { /* the poll still carries the question */ }
+          const problems = []
+          try {
+            for (const it of records.list({ track: 'problems', limit: 0 }).items.slice(0, 5)) {
+              const rec = records.get({ id: it.id })
+              problems.push({ id: it.id, body: String((rec && rec.body) || '').slice(0, 3000) })
+            }
+          } catch { /* optional */ }
+          return { verified: evidence, problems }
+        })())),
+      round: 1,
+    })
+    if (receipt && receipt.dispatched === true) {
+      state.closurePolled.add(id)
+      state.closurePollDispatched += 1
+      return { dispatched: true, verifier: id, turn: receipt.turn || null }
+    }
+  }
+  return { dispatched: false, reason: 'already-polled' }
+}
+
 async function onTick(flat) {
   const api = requireApi(flat, 'v3 verify')
   const at = Number.isFinite(flat.at) ? flat.at : null
@@ -816,9 +870,31 @@ async function onTick(flat) {
   let fidelity = null
   try { if (typeof api.services.names === 'function' && api.services.names().includes('vmu.fidelity')) fidelity = api.services.get('vmu.fidelity') } catch { fidelity = null }
   const candidates = listCandidates(records, { fidelity })
+  // seats are resolved before the no-candidates branch so the closure poll can use them
+  let seatedForPoll = []
+  try {
+    const membersSvc = api.services.get('vmu.members')
+    if (membersSvc && typeof membersSvc.roster === 'function') {
+      for (const m of membersSvc.roster()) {
+        if (!m || typeof m !== 'object') continue
+        const slot = String(m.slot || m.role || '')
+        if (slot !== 'verifier') continue
+        if (m.state !== undefined && m.state !== 'live') continue
+        seatedForPoll.push(String(m.id || m.memberId || ''))
+      }
+      seatedForPoll = seatedForPoll.filter((x) => x !== '')
+    }
+  } catch { seatedForPoll = [] }
+  if (!state.closurePollDispatched) state.closurePollDispatched = 0
   if (candidates.items.length === 0) {
-    state.lastSkip = { reason: 'no-candidates', tick: state.ticks }
-    return { ok: true, skipped: 'no-candidates', at, badCandidates: candidates.bad.length }
+    const pollTurn = (() => { try { return api.services.get('vmu.turn') } catch { return null } })()
+    const poll = await dispatchClosurePoll({ records, turn: pollTurn, state, seatedVerifiers: seatedForPoll })
+    if (poll.dispatched) {
+      state.lastSkip = { reason: 'closure-poll-dispatched', verifier: poll.verifier, tick: state.ticks }
+      return { ok: true, skipped: 'closure-poll-dispatched', at, poll, badCandidates: candidates.bad.length }
+    }
+    state.lastSkip = { reason: 'no-candidates', tick: state.ticks, poll }
+    return { ok: true, skipped: 'no-candidates', at, badCandidates: candidates.bad.length, poll }
   }
   if (state.inFlight) {
     state.lastSkip = { reason: 'verify-in-flight', tick: state.ticks }

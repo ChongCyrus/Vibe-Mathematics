@@ -30,7 +30,7 @@ import { writeCard, parseCard, escField } from '../vibe-math-vmu/packs/v3/middle
 import {
   V3_VERIFY_MODULE, VOTES_TRACK, VOTE_KIND, VOTE_TAG_PREFIX,
   NEAR_CONSENSUS_THRESHOLD, FORCED_MIN, FORCED_MAX, MIN_VERIFIERS, VERDICT_RULES,
-  aggregateVerdict, requiredVerifiers, verifierIds, optionForResult,
+  aggregateVerdict, dispatchClosurePoll, requiredVerifiers, verifierIds, optionForResult,
   recordVote, readVotes, openVoteBox, submitVote, trySettle, settleProposition,
   recordUndecided, votesFromReply, v3VerifyStatus, listCandidates, isVerifierMember,
 } from '../vibe-math-vmu/packs/v3/middleware/verify.js'
@@ -539,6 +539,28 @@ console.log('=== 无票重跑：votesCast=0 ⇒ verdicts=0，重复 tick 不把 
   ok(st.votesCast === 0 && st.verdicts === 0, '★ 无票 ⇒ votesCast=0 且 verdicts=0（无票不可能有判决）', { votesCast: st.votesCast, verdicts: st.verdicts })
   ok(st.undecided <= 1, '★ undecided 不随 tick 刷大（只在有票后的未成立时 +1）', st.undecided)
   ok(st.ticksWithoutVerdict >= 1, '★ 重复 tick 记进 ticksWithoutVerdict（名字诚实：多少 tick 没有判决）', st.ticksWithoutVerdict)
+}
+// ── closure poll 驱动：全部定论 ⇒ 派 poll；无定论对象 ⇒ 不派；已派过 ⇒ 不重复 ─────────────────────
+console.log('=== closure poll：settled 且无候选才派，只派一次，statusBlock 只问 vote_solved ===')
+{
+  const h = boot({})
+  await h.loader.apply(PACK)
+  const calls = []
+  const fakeTurn = { dispatch: (spec) => { calls.push(spec); return { ok: true, dispatched: true, turn: { id: 't-poll' } } } }
+  const state = {}
+  const neg = await dispatchClosurePoll({ records: h.records, turn: fakeTurn, state, seatedVerifiers: ['verifier-a'] })
+  ok(neg.dispatched === false && neg.reason === 'no-settled-object-yet' && calls.length === 0,
+    '反：还没有任何 verified 对象 ⇒ 不派 closure poll', neg)
+  writeCard({ records: h.records, kind: 'verified', card: { id: 'v-1', 标题: 'v-1', 结论: '真', 概率: 1 } })
+  const pos = await dispatchClosurePoll({ records: h.records, turn: fakeTurn, state, seatedVerifiers: ['verifier-a'] })
+  const spec = calls[0]
+  ok(pos.dispatched === true && pos.verifier === 'verifier-a' && spec && spec.task === 'v3-closure-poll',
+    '★ 正：有定论对象且无候选 ⇒ 派 closure poll 给 seated verifier', pos)
+  ok(spec && typeof spec.statusBlock === 'string' && spec.statusBlock.includes('closurePoll') && spec.statusBlock.includes('vote_solved'),
+    '★ poll 的状态块只问 vote_solved（不要求 progress/其它字段）', spec && spec.statusBlock)
+  const again = await dispatchClosurePoll({ records: h.records, turn: fakeTurn, state, seatedVerifiers: ['verifier-a'] })
+  ok(again.dispatched === false && again.reason === 'already-polled' && calls.length === 1,
+    '★ 反：同一个 verifier 不重复派 poll', { again, calls: calls.length })
 }
 console.log('')
 console.log('=== V3 VERIFY (P0-7): ' + passed + ' passed, ' + failed + ' failed ===')
