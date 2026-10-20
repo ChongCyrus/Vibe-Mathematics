@@ -11,6 +11,7 @@
 // the config is the single source of both the kit entry and (later) the pack spec.
 
 import { KIT_CARD_TOOL, KIT_SOCIAL, KIT_READ_LIBRARY, KIT_RECORD_PROGRESS } from './handlers.js'
+import { KIT_LEAN, KIT_TASKS } from './extras.js'
 
 /**
  * The three card tools differ ONLY in their declared config (track/kind/required fields/title). One table, read by
@@ -39,6 +40,16 @@ export const KIT_TOOLS = Object.freeze([
   { name: 'vibe_v5_say', purpose: 'speak in the group chat / private message / meeting speech (three routes)', disableKey: 'v5r.social', run: KIT_SOCIAL.say },
   { name: 'vibe_v5_message', purpose: 'relay an office/human message into the institute', disableKey: 'v5r.social', run: KIT_SOCIAL.message },
   { name: 'vibe_v5_read_library', purpose: 'read any member library (READ-ONLY)', disableKey: 'v5r.library', run: KIT_READ_LIBRARY },
+  // B-3: the task board (4) and the Lean five (5) — handlers live in extras.js (extracted verbatim from the pack).
+  { name: 'vibe_v5_task_create', purpose: 'create a task on the shared board (priority is stored)', disableKey: 'v5r.tasks', run: KIT_TASKS.create },
+  { name: 'vibe_v5_task_list', purpose: 'list the task board (filter by status/owner/ready)', disableKey: 'v5r.tasks', run: KIT_TASKS.list },
+  { name: 'vibe_v5_task_update', purpose: 'update a task by revision (claim/reassign/complete/reopen/deps)', disableKey: 'v5r.tasks', run: KIT_TASKS.update },
+  { name: 'vibe_v5_task_get', purpose: 'read one task (plus its brief when present)', disableKey: 'v5r.tasks', run: KIT_TASKS.get },
+  { name: 'vibe_v5_lean_run', purpose: 'submit an existing .lean file to the kernel Lean face', disableKey: 'v5r.lean', run: KIT_LEAN.run },
+  { name: 'vibe_v5_lean_job', purpose: 'read one Lean job or list the queue', disableKey: 'v5r.lean', run: KIT_LEAN.job },
+  { name: 'vibe_v5_lean_lib', purpose: 'read the Lean archive library', disableKey: 'v5r.lean', run: KIT_LEAN.lib },
+  { name: 'vibe_v5_lean_read', purpose: 'read one archived Lean card by name', disableKey: 'v5r.lean', run: KIT_LEAN.read },
+  { name: 'vibe_v5_lean_archive', purpose: 'register an existing .lean file in the archive (kind mapping)', disableKey: 'v5r.lean', run: KIT_LEAN.archive },
 ])
 
 /**

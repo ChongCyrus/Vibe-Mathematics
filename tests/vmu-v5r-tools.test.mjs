@@ -1062,9 +1062,9 @@ try {
   const idxLowT = rowsT.findIndex((t) => String(t.title) === '低优先级任务')
   ok(rowsT.length === 2 && idxHighT === 0 && idxLowT === 1,
     '★★ task priority: the ledger STORES it and the BOARD ORDER shows it (priority 9 row first, priority 0 row second)', { idxHigh: idxHighT, idxLow: idxLowT })
-  const toolsSrcPrio = fsModGap.readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
+  const toolsSrcPrio = fsModGap.readFileSync(join(REPO, 'vibe-math-vmu', 'kit', 'extras.js'), 'utf8')
   ok(/tasks\.create\(\{[\s\S]{0,400}?priority,/.test(toolsSrcPrio),
-    '★★ and the PACK really passes it (task_create forwards `priority` into the ledger create call) — the tool no longer drops the hint', null)
+    '★★ and the kit handler really passes it (the probe follows task_create into kit/extras.js, where it now lives) — the tool no longer drops the hint', null)
   const floorPoll = await receipt(v5rBoot, 'vibe_v5_poll_open', { question: '门槛测试', options: ['a', 'b'], min_votes: 2, member: chairId })
   const floorBox = floorPoll.parsed && floorPoll.parsed.boxId
   await receipt(v5rBoot, 'vibe_v5_poll_vote', { ballot_id: floorBox, choices: ['a'], member: 'r-1' })
@@ -1147,9 +1147,15 @@ try {
   ok(helperNames.length === 8 && helperNames.filter((n) => typeof kitModW.KIT_HELPERS[n] === 'function').length === 8,
     '★★ the kit exports all 8 helpers it now owns (one copy in the tree, imported by the pack)', helperNames)
   const kitToolsModW = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kit', 'tools.js')).href)
+  // B-2 moved 4 tools, B-3 moved the task board (4) + the Lean five (5) ⇒ 13 kit entries, five disableKey families.
   const kitNamed = kitToolsModW.KIT_TOOLS.map((t) => t.name)
-  ok(kitNamed.length === 4 && typeof kitToolsModW.kitCardHandler === 'function' &&
-    ['vibe_v5_record_progress', 'vibe_v5_say', 'vibe_v5_message', 'vibe_v5_read_library'].every((n) => kitNamed.includes(n)),
+  const kitFamilies = [...new Set(kitToolsModW.KIT_TOOLS.map((t) => t.disableKey))].sort()
+  const expectedKit = ['vibe_v5_record_progress', 'vibe_v5_say', 'vibe_v5_message', 'vibe_v5_read_library',
+    'vibe_v5_task_create', 'vibe_v5_task_list', 'vibe_v5_task_update', 'vibe_v5_task_get',
+    'vibe_v5_lean_run', 'vibe_v5_lean_job', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_archive']
+  ok(kitNamed.length === 13 && expectedKit.every((n) => kitNamed.includes(n)) &&
+    kitToolsModW.KIT_TOOLS.filter((t) => typeof t.run !== 'function' || typeof t.disableKey !== 'string' || t.disableKey === '').length === 0 &&
+    kitFamilies.length === 5,
     '★★ the kit holds the four moved tools, each with a disableKey and a run', kitToolsModW.KIT_TOOLS.map((t) => t.name + ':' + t.disableKey))
 
 } finally {

@@ -823,7 +823,8 @@
     "tests/audit-kit-boundaries.test.mjs",
     "vibe-math-vmu/tools/member-tools.js",
     "vibe-math-vmu/kit/tools.js",
-    "vibe-math-vmu/kit/handlers.js"
+    "vibe-math-vmu/kit/handlers.js",
+    "vibe-math-vmu/kit/extras.js"
   ],
   "license": "MIT",
   "keywords": [

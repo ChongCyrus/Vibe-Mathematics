@@ -582,10 +582,31 @@
 
 ★★ **能力形状**：内核 `applyMemberToolFace({ member, allow?, deny? })` ⇒ 回执 `{ ok, member, added, removed, visibleBefore, visibleAfter }`；宿主适配器注册唯一 applier（`kernel.setMemberToolFaceApplier`），用 `agents.get(childSessionId)`（`turn.memberSession(member)` 学到的会话 id）找到**活 Agent**，调 `agent.ctx.tools.restrict({allow, deny})`，保存 disposer；`visibleBefore/After` 来自宿主 `tools.schemas()`，不是声明 ✓。
 ★★ **具名拒**：成员不存在 ⇒ `VMU_NO_SUCH_OBJECT`；面名不在宿主目录 ⇒ `VMU_INVALID_ARGUMENT`（目录 = `TOOL_NAMES` ＋ pack 工具名，由宿主 `setToolFaceCatalogue` 发布）；没有 applier / 没有活 Agent ⇒ `VMU_ENGINE_UNAVAILABLE` ✓。
-★★ **声明在 pack**：manifest `toolFaces: { <slot id>: { allow?: [...], deny?: [...] } }`；`validatePack` 校验形状、角色必须是本 manifest 声明过的 slot、allow/deny 非空且不相交、名字形状合法；**名字是否存在**在 apply 时对宿主目录校验 ✓。`pack.js` 在 apply 时 `declarePackToolFaces` ＋ `applyPackToolFaces`（只对**当前 live** 成员生效；未落座者等下一次 apply/同步），unload 撤销声明 ✓。
+★★ **声明在 pack**：manifest `toolFaces: { <slot id>: { allow?: [...], deny?: [...] } }`；`validatePack` 校验形状、角色必须是本 manifest 声明过的 slot、allow/deny 非空且不相交、名字形状合法；**名字是否存在**在 apply 时对宿主目录校验 ✓。`pack.js` 在 apply 时 `declarePackToolFaces` ＋ `applyPackToolFaces`（**旧的 push 路径**只对当时 live 成员生效；**轮 25 起实际生产走 §3.35 的 pull 路径**：每次 `system-prompt/assemble` 前按当前 slot 重新解析，后落座者也覆盖），unload 撤销声明 ✓。
 ★★ **零机制**：没有 `toolFaces` ⇒ 不调用；没有 live 成员 ⇒ 不改变任何工具面 ✓。
 ★★ **可发现性（目标 3）**：turn 装配末尾在状态块里追加「本轮可用工具」——名字来自宿主 provider 读取的 **`schemas()` 实际集合**，集合为空则不写该段（不留空标题）✓。
 ★★ **`tools/change`**：本轮**未订阅**。宿主会自动把注册表差异写成 `tool-addition`／`tool-removal` 提示；vmu 只在“真的改”时改，不重复造提示。若未来需要审计/指标，可订阅 `tools/change` 做**只读**记录，但不得据此再改工具面（否则同一事实两个写者）✓。
+
+## 3.35 ★★★★★ 作用域过滤的钩子：**普通监听器会被静默过滤**（PHASE 8 轮 25 真机教训）
+
+★★ **事实（DSH 源码）**：`system-prompt/assemble` 是 **scope-filtered waterfall** —— `dsh-system-prompt` 里
+`this.ctx.waterfall(scopeTarget(this, scope), 'system-prompt/assemble', assembly, context, …)`，`dsh-scope` 的
+`scopeTarget` 按 **`context.scope`（= 当前 agent）** 路由监听器（`dsh-scope/lib/invariant.js` 的
+`"system-prompt/assemble": (args) => args[1]["scope"]`）。**在插件/入口作用域注册的普通监听器与 agent 作用域不匹配时会被过滤掉，而且不报错**。
+★ 同卷 `dsh-system-prompt` 自己的 invariant 就是用 **`{ global: true }`** 安装的，这是可抄的正确形状：
+```js
+ctx.on('system-prompt/assemble', handler, { global: true })
+```
+★★★ **症状（轮 25 实测）**：三席位（chair/member/temp）的请求表**全是 118**，看起来像"角色收窄功能没开"，
+实际是**钩子根本没跑**。诊断判据不是"表没变"，而是内核诊断计数 **`toolFacePull.matched`**：旧包 `matched:0`，
+加 `{global:true}` 后 `seen:58 / matched:50 / applied:50`。**没有这个计数，会误修错层。**
+★★ **另一条（one-shot child）**：one-shot 子代理的 `agent.id` **不在 `kernel.memberSession` 映射里**
+（该映射在投递结算时学习，而子代理的 assembly 可能早于/独立于该学习；常驻成员则不同）。所以 pull hook
+不能只靠 `memberOfAgent(agent.id)`：需要 `vibe_vmu_turn` 在 step 前 `setActiveTurnMember(member)`、
+`finally` 清空；hook 对**非 `session-` 前缀**的 child agent 用 active member 兜底。`session-` 前缀用于排除
+root agent 自己的 assembly（root 不属于任何成员槽）。
+★ **顺序（避免再次静默）**：每次请求前按 ① per-turn override（`tools:'none'` ⇒ deny all）② pack
+`toolFaces[slot].deny` ③ 无声明 ⇒ 不动；**只 deny 不 allow**（allow 会推翻框架面自己的发布）。
 
 ## 4. v1 的边界（**未做，明写** ✗）
 
