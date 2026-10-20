@@ -44,6 +44,8 @@ import { V5R_ARTIFACT_COUNTER } from '../middleware/artifact-counter.js'
 import { V5R_PACK_TOOLS } from '../tools.js'
 // PHASE 7 round 8: THE PAPER PROMPTS (write / cross-review / final), phase-scoped and NON-source-derived.
 import { V5R_PAPER_PROMPT_SECTIONS } from './v5r-paper-prompts.js'
+// PHASE 7 round 9: the reply → paper-subsystem dispatcher (the prompt contract above must have a CONSUMER).
+import { V5R_PAPER_DISPATCH } from '../middleware/paper-dispatch.js'
 
 /**
  * ROUND 336 — THE BRIDGE FROM TEXT TO PIPELINE. Until now the v5r prompt corpus was carried as DATA: hash-locked,
@@ -99,6 +101,8 @@ export const PACK = Object.freeze({
     'VMU_PACK_V5R_CORE_PAPER_FINGERPRINT_MISMATCH',
     'VMU_PACK_V5R_CORE_PAPER_PDF_NEEDS_KERNEL',
     'VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING',
+    // PHASE 7 round 9 — the kernel's LaTeX face refused (no engine / timeout / compile error).
+    'VMU_PACK_V5R_CORE_PAPER_PDF_FAILED',
   ],
 
   // Mechanisms only (docs/04 §11 ownership rule): these are v5r's own defaults, expressed as keys the
@@ -270,6 +274,20 @@ export const PACK = Object.freeze({
       failure: 'open',
       capabilities: ['trigger-workflow', 'record'],
       module: V5R_MOTION_BOX,
+    },
+    // ★ PHASE 7 round 9: THE PAPER REPLY DISPATCHER. The three paper prompts tell a member to answer with a JSON object
+    // (`paper_part` / `paper_review` / `paper_final`); until this entry existed, NOTHING consumed those fields — the
+    // "prompt promises, code cannot" defect. It listens on `turn/reply-parsed` (the one point where a parsed reply is
+    // still actionable), dispatches ONLY the current phase's field, and records every outcome in
+    // `paperDispatchStatus()`. `failure:'open'`: a broken dispatcher must not stop a turn.
+    {
+      id: 'v5r.paper-dispatch',
+      kind: 'module',
+      order: 320,
+      on: ['turn/reply-parsed'],
+      failure: 'open',
+      capabilities: ['record'],
+      module: V5R_PAPER_DISPATCH,
     },
     // ROUND 20 (task-126): the METRIC COUNTER. Same shape, same capabilities; it observes on the INTRA-turn hooks
     // (`tools/result` = "a tool result exists, observation" per the host's own guidance; the two job-settled events)

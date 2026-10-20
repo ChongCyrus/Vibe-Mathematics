@@ -26,6 +26,8 @@ export const TOOL_FILTER_CODE = Object.freeze({
 
 const STATE = new WeakMap()
 let lastState = null
+// ★ PHASE 7：★ 最后一次「拿 records 被能力门控拒」的记录。★ 拒绝不许静默吞 ⇒ 它必须可被 status() 读到。
+let LAST_RECORDS_REFUSAL = null
 function stateFor(records) {
   let s = STATE.get(records)
   if (!s) { s = { calls: 0, allowed: 0, denied: 0, unresolved: 0, lastDecision: null }; STATE.set(records, s) }
@@ -36,6 +38,8 @@ function stateFor(records) {
 export function v3ToolFilterStatus() {
   const s = lastState
   return {
+    // ★ 拿 records 通道若被【能力门控】拒了，★ 这里是那个码与话；★ null＝没被拒过。
+    recordsRefusal: LAST_RECORDS_REFUSAL,
     calls: s ? s.calls : 0,
     allowed: s ? s.allowed : 0,
     denied: s ? s.denied : 0,
@@ -100,8 +104,17 @@ async function onPreExecute(flat) {
   const deny = typeof api.setting === 'function' ? api.setting('vmu.v3.toolDeny') : null
   const decision = filterTool({ tool, allow, deny })
   // Counters hang off the records service when one is reachable; the filter must not require persistence to decide.
+  // ★ PHASE 7：★ 拒绝【不许静默吞】（红线 3）。★ 上面那次 `services.get` 是**能力门控**的，★ 被拒时若只写
+  // `catch { records = null }`，★ 就会得到一个**看不见的**故障：★ 计数器永远不动、★ 而没有任何提示。
+  // 这里不阻断过滤（过滤本身不依赖持久化），★ 但把拒绝的码与话留下，★ 并让它可被 `status()` 读到。
   let records = null
-  try { if (typeof api.services.names === 'function' && api.services.names().includes('vmu.records')) records = api.services.get('vmu.records') } catch { records = null }
+  let recordsRefusal = null
+  try {
+    if (typeof api.services.names === 'function' && api.services.names().includes('vmu.records')) records = api.services.get('vmu.records')
+  } catch (e) {
+    recordsRefusal = { code: (e && e.code) ? String(e.code) : 'UNKNOWN', message: (e && e.message) ? String(e.message) : '' }
+    LAST_RECORDS_REFUSAL = recordsRefusal
+  }
   const st = records ? stateFor(records) : null
   if (st) {
     st.calls += 1
@@ -117,7 +130,11 @@ async function onPreExecute(flat) {
 export const V3_TOOLFILTER_MODULE = Object.freeze({
   meta: Object.freeze({ id: 'v3-toolfilter', apiVersion: 1 }),
   // `deny` is the ONLY decision this module produces (rewriteArgs is refused as unsupported on pre-execute).
-  capabilities: Object.freeze(['deny']),
+  // ★ PHASE 7 修（audit-pack-middleware-shape 抓出来的真缺陷）：★ 本模块还用了 `api.services.get('vmu.records')`（拿计数器用），
+  // 而那条门是【能力门控】的（kernel/loader.js 里 `caps` 取自 **module.capabilities**：不声明 trigger-workflow 就
+  // VMU_NOT_PERMITTED）⇒ ★ 必须一起声明。★ 之前它只声明 `deny` ⇒ 那次 `get` 被拒、★ 而代码用 try/catch 吞了
+  // ⇒ **计数器永远不动且毫无提示** —— 正是"拒绝被静默吞掉"那一族。
+  capabilities: Object.freeze(['deny', 'trigger-workflow']),
   hooks: Object.freeze({ 'tools/pre-execute': onPreExecute }),
 })
 

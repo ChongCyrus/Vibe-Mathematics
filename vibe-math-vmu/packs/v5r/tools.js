@@ -175,10 +175,24 @@ function toolRecordProgress(args = {}, { kernel } = {}) {
  * `value` / `motive` / `p` are carried into the body verbatim — they are v5r's card keys, and the framework does
  * not interpret them (the records face stores a body; the card schema belongs to the institution).
  */
-function cardTool({ tool, track, kind, required, extra, title }) {
+function cardTool({ tool, track: defaultTrack, kind: defaultKind, required, extra, title }) {
   return function handler(args = {}, { kernel } = {}) {
     const records = recordsOf(kernel)
+    // ★ PHASE 7 / toolification B: a record tool may target a DECLARED generic track (not only its original one).
+    // The declared set is the ONLY source of allowed tracks — a name outside it is a NAMED refusal, never an invented
+    // track. With no { track } the old behavior is byte-identical (default track, default kind); the old receipt path is
+    // deliberately kept (the JSON-progress path still exists).
+    const tracks = declaredTracks(kernel)
+    const track = has(args.track) ? str(args.track) : defaultTrack
+    if (!tracks.includes(track)) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'unknown track "' + track + '" for ' + tool,
+        'vmu.records.tracks declares: ' + tracks.join(', '))
+    }
+    const kind = has(args.kind) ? str(args.kind) : defaultKind
     const body = cardBody(args, required, extra)
+      + (has(args.payload) && args.payload && typeof args.payload === 'object' && !Array.isArray(args.payload)
+        ? '\n' + Object.entries(args.payload).map(([k, v]) => '- ' + k + '：' + str(v)).join('\n')
+        : '')
     // v5r's card key `p` is the author's probability; a card is ARCHIVED as settled only when p is decision-grade
     // (1 or 0). The pack declares `requireSettledRecords:true`, so an undecided card is refused BY NAME downstream —
     // the refusal comes from the institution's declared stance, and this handler must not pretend otherwise.

@@ -131,6 +131,15 @@ try {
   ok(prop.parsed && prop.parsed.ok === true && prop.parsed.track === 'propositions', 'record_proposition writes onto the propositions track', prop.parsed)
   ok(prop.parsed && prop.parsed.settled === true, 'p=1 settles the card (the original card key is carried, not interpreted)', prop.parsed && prop.parsed.settled)
   ok(countOf(kernel, 'propositions') === propBefore + 1, 'the propositions track grew by exactly one', propBefore)
+  // ★ PHASE 7 / toolification B: a record tool may target a DECLARED generic track; an undeclared one is NAMED.
+  const generic = await receipt(v5rBoot, 'vibe_v5_record_method', { track: 'feedback', content: '通用 track 探针', value: 1, motive: 'B 阶段', p: 0 })
+  ok(generic.parsed && generic.parsed.ok === true && generic.parsed.track === 'feedback',
+    '★ 正：record_method 用【已声明】的通用 track（feedback）写入 ⇒ 卡落在该轨', generic.parsed)
+  const unknownTrack = await receipt(v5rBoot, 'vibe_v5_record_method', { track: 'not-a-declared-track', content: 'x', value: 1, motive: 'x', p: 0 })
+  ok(unknownTrack.parsed && unknownTrack.parsed.ok === false && unknownTrack.parsed.code === 'VMU_INVALID_ARGUMENT' && /unknown track/.test(unknownTrack.parsed.message),
+    '★ 反：未声明的 track ⇒ 具名 VMU_INVALID_ARGUMENT（不发明轨）', unknownTrack.parsed && unknownTrack.parsed.code)
+  const payload = await receipt(v5rBoot, 'vibe_v5_record_method', { track: 'feedback', content: 'payload 探针', value: 1, motive: 'B 阶段', p: 0, payload: { 权重: 0.5 } })
+  ok(payload.parsed && payload.parsed.ok === true, '★ 正：payload 附加字段按 key：value 写入正文', payload.parsed)
   const meth = await receipt(v5rBoot, 'vibe_v5_record_method', { content: '方法：反证 + 极值', value: 2, motive: '复用', p: 0 })
   ok(meth.parsed && meth.parsed.ok === true && meth.parsed.track === 'methods' && meth.parsed.settled === true,
     'record_method writes onto the methods track (p=0 ⇒ settled, which is what the pack stance demands)', meth.parsed)
@@ -438,9 +447,9 @@ try {
     '★ PaperArtifacts: the missing PDF NAMES the kernel capability it needs (LaTeX 编译执行器) — measured: no latex face in kernel/', artsBefore.pdf && artsBefore.pdf.needsKernel)
 
   let finalBad = null
-  try { paper.recordFinal({ target: TARGET, member: 'r-1', decision: 'deliverable' }) } catch (e) { finalBad = e }
+  try { await paper.recordFinal({ target: TARGET, member: 'r-1', decision: 'deliverable' }) } catch (e) { finalBad = e }
   ok(finalBad && finalBad.code === 'VMU_NOT_PERMITTED', '★ recordFinal: 反 — a non-chair member cannot finalise (the academician does)', finalBad && finalBad.code)
-  const finalized = paper.recordFinal({ target: TARGET, member: 'r-chair', decision: 'deliverable', note: '互审一致', conclusion: 'A 成立' })
+  const finalized = await paper.recordFinal({ target: TARGET, member: 'r-chair', decision: 'deliverable', note: '互审一致', conclusion: 'A 成立' })
   ok(finalized && finalized.ok === true && finalized.finalized === true && finalized.missing.includes('pdf'),
     '★ recordFinal: 正 — the academician finalises; the receipt renders md/tex/meta, still reports the missing pdf, and NEVER claims a complete paper', finalized && { missing: finalized.missing })
   const md = paper.PaperMd({ target: TARGET })
@@ -504,6 +513,94 @@ try {
     '★ and phase=paper-final carries only the final prompt', { final: atFinal.length })
   ok(!atNormal.includes('【最终论文·撰写】') && !atNormal.includes('【最终论文·互审】') && !atNormal.includes('【最终论文·定稿】'),
     '★ a NON-paper phase carries NONE of the three (no phase ⇒ no paper instruction at all)', { normal: atNormal.length })
+
+  // ── ③h THE REPLY → PAPER DISPATCHER (round 9): phase-gated, named on malformed, idempotent, status-visible ──
+  console.log('=== 3h. THE PAPER REPLY DISPATCHER (the gap the prompts promised) ===')
+  const dispatchMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'middleware', 'paper-dispatch.js')).href)
+  const T2 = '论文-回执'
+  paper.start({ target: T2, participants: ['r-1', 'r-2'] })
+  dispatchMod.resetPaperDispatch()
+  const partsOf = () => Object.keys(paper.state(T2).state.parts).length
+  // ① a paper field in the WRONG phase is NOT recorded, and it is NAMED
+  const wrongPhase = await dispatchMod.dispatchPaperReply({ phase: 'normal', turn: 't-wrong', member: 'r-1', flat: { kernel },
+    reply: { paper_part: { target: T2, title: '不该被收', solution: 'x' } } })
+  ok(wrongPhase.ok === false && wrongPhase.skipped === true && wrongPhase.code === 'VMU_PACK_V5R_CORE_PAPER_STATE' && partsOf() === 0,
+    '★ ① phase gating: a `paper_part` reply in a NORMAL turn is refused by name AND nothing is recorded', { parts: partsOf(), code: wrongPhase.code })
+  // ② malformed: the field is there but the subsystem refuses it — named, and NOT marked as dispatched
+  const malformed = await dispatchMod.dispatchPaperReply({ phase: 'paper-write', turn: 't-bad', member: 'r-1', flat: { kernel },
+    reply: { paper_part: { target: T2 } } })
+  ok(malformed.ok === false && malformed.code === 'VMU_INVALID_ARGUMENT' && partsOf() === 0,
+    '★ ② a malformed part is recorded as a NAMED failure (not silently dropped) and nothing lands', { code: malformed.code })
+  ok(dispatchMod.paperDispatchStatus().last && dispatchMod.paperDispatchStatus().last.ok === false,
+    '★ ④ the last refusal is VISIBLE through paperDispatchStatus() (what status() reports)', dispatchMod.paperDispatchStatus().last)
+  // ③ a REAL write reply: dispatched to paper.recordPart
+  const goodAnswer = { paper_part: { target: T2, title: '回执标题', solution: '回执正文' } }
+  const dispatched = await dispatchMod.dispatchPaperReply({ phase: 'paper-write', turn: 't-good', member: 'r-1', flat: { kernel }, reply: goodAnswer })
+  ok(dispatched.ok === true && dispatched.field === 'paper_part' && partsOf() === 1 && dispatched.result && dispatched.result.recorded === 'r-1',
+    '★ 正: a paper-write reply is really recorded through paper.recordPart (the prompt contract now has a consumer)', { parts: partsOf() })
+  // ③ IDEMPOTENT: the SAME turn dispatched twice writes nothing the second time
+  const again = await dispatchMod.dispatchPaperReply({ phase: 'paper-write', turn: 't-good', member: 'r-1', flat: { kernel }, reply: goodAnswer })
+  ok(again.ok === true && again.duplicate === true && partsOf() === 1,
+    '★ ③ idempotent: re-dispatching the SAME turn reports duplicate:true and the part count stays 1', { parts: partsOf(), duplicate: again.duplicate })
+  // review + final through the dispatcher
+  paper.advance({ target: T2 })
+  const rev1 = await dispatchMod.dispatchPaperReply({ phase: 'paper-review', turn: 't-rev-1', member: 'r-1', flat: { kernel }, reply: { paper_review: { target: T2, deliverable: true, comments: '可以' } } })
+  const rev2 = await dispatchMod.dispatchPaperReply({ phase: 'paper-review', turn: 't-rev-2', member: 'r-2', flat: { kernel }, reply: { paper_review: { target: T2, deliverable: true, comments: '可以' } } })
+  ok(rev1.ok === true && rev2.ok === true, '★ review replies are dispatched to paper.recordReview', { r1: rev1.ok, r2: rev2.ok })
+  paper.advance({ target: T2 })
+  const fin = await dispatchMod.dispatchPaperReply({ phase: 'paper-final', turn: 't-fin', member: 'r-chair', flat: { kernel },
+    reply: { paper_final: { target: T2, decision: 'deliverable', note: '一致', conclusion: '结论' } } })
+  ok(fin.ok === true && fin.result && fin.result.finalized === true,
+    '★ final reply is dispatched to paper.recordFinal and the paper really finalises', { finalized: fin.result && fin.result.finalized })
+  const noTarget = await dispatchMod.dispatchPaperReply({ phase: 'paper-write', turn: 't-notarget', member: 'r-1', flat: { kernel }, reply: { paper_part: { title: 'x', solution: 'y' } } })
+  ok(noTarget.ok === false && noTarget.code === 'VMU_INVALID_ARGUMENT' && /target/.test(String(noTarget.reason)),
+    '★ a reply that does not name its paper target is refused by name (the dispatcher never guesses which paper)', noTarget.reason)
+
+  // ── ③i paperCompilePdf: the KERNEL LaTeX face, named when absent, four artefacts when it works ──────────────
+  console.log('=== 3i. paperCompilePdf (kernel latex face) ===')
+  const T3 = '论文-编译'
+  paper.start({ target: T3, participants: ['r-1'] })
+  paper.recordPart({ target: T3, member: 'r-1', title: '编译用正文', solution: '正文' })
+  let noFaceErr = null
+  try { await paper.compilePdf({ target: T3 }) } catch (e) { noFaceErr = e }
+  ok(noFaceErr && noFaceErr.code === 'VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING' && /spawn/.test(String(noFaceErr.hint)),
+    '★ 反: with NO kernel latex face the PDF is refused by name (…PAPER_EXECUTOR_MISSING) with the spawn-seam hint', noFaceErr && noFaceErr.code)
+  const artsNoFace = paper.PaperArtifacts({ target: T3 })
+  ok(artsNoFace.missing.includes('pdf') && artsNoFace.complete === false, '★ 反: and the pdf artefact is still MISSING (complete:false)', artsNoFace.missing)
+  let sawRequest = null
+  const fakeLatexKernel = {
+    records: kernel.records, members: kernel.members, settingsSnapshot: () => kernel.settingsSnapshot(),
+    latex: { check: async (req) => { sawRequest = req; return { ok: true, engine: 'xelatex', tried: ['xelatex', 'latexmk'], pdfPath: 'Paper/' + T3 + '/main.pdf', pdfBytes: 4096, elapsedMs: 17, timeoutMs: 120000 } } },
+  }
+  const paperWithLatex = paperMod.createPaperSubsystem({ kernel: fakeLatexKernel })
+  paperWithLatex.render({ target: T3 })
+  const compiled = await paperWithLatex.compilePdf({ target: T3 })
+  ok(compiled.ok === true && compiled.engine === 'xelatex' && compiled.artifacts.complete === true && compiled.artifacts.missing.length === 0,
+    '★★ 正: a working (faked) kernel latex face makes the PDF the FOURTH artefact — md/tex/meta/pdf all present, complete:true', compiled.artifacts && compiled.artifacts.present)
+  ok(sawRequest && typeof sawRequest.source === 'string' && /\\documentclass/.test(sawRequest.source) && sawRequest.outDir === 'Paper/paper-' + T3,
+    '★ the pack hands the kernel the rendered TEX source and an out dir — the kernel owns engine probing/timeout/kill', sawRequest && { outDir: sawRequest.outDir, len: String(sawRequest.source || '').length })
+  const failKernel = {
+    records: kernel.records, members: kernel.members, settingsSnapshot: () => kernel.settingsSnapshot(),
+    latex: { check: async () => ({ ok: false, code: 'LATEX_COMPILE_FAILED', engine: 'xelatex', tried: ['xelatex'], stderr: '! Undefined control sequence.', elapsedMs: 9 }) },
+  }
+  const paperBadLatex = paperMod.createPaperSubsystem({ kernel: failKernel })
+  let failErr = null
+  try { await paperBadLatex.compilePdf({ target: T3 }) } catch (e) { failErr = e }
+  ok(failErr && failErr.code === 'VMU_PACK_V5R_CORE_PAPER_PDF_FAILED' && /LATEX_COMPILE_FAILED/.test(String(failErr.message)) && /Undefined control sequence/.test(String(failErr.stderrTail)),
+    '★ a REFUSED compile is named with the face\'s own code AND a bounded stderr tail (no fake success)', failErr && { code: failErr.faceCode, tail: String(failErr.stderrTail).slice(0, 24) })
+
+  // ── ③j THE VALUE LAYER: Chinese-first engine order is PACK POLICY, the kernel stays neutral ─────────────────
+  console.log('=== 3j. latexEngineOrder: policy in the pack, neutral default in the kernel ===')
+  const installedOrder = kernel.settingsSnapshot()['vmu.paper.latexEngineOrder']
+  ok(Array.isArray(installedOrder) && installedOrder.length > 0 && installedOrder[0] === 'xelatex',
+    '★ 装 v5r ⇒ 值层把引擎顺序设成中文优先（xelatex 第一），与原版 zh 顺序一致', installedOrder && installedOrder.join(' → '))
+  const bareOrder = bare.handle.kernel.settingsSnapshot()['vmu.paper.latexEngineOrder']
+  const bareDecl = bare.handle.kernel.settingDef('vmu.paper.latexEngineOrder')
+  // the DECLARATION is neutral (pdflatex first); a kernel without the pack holds no pack value for it at all (the
+  // snapshot does not materialise schema defaults - the same lesson the v3 tools file documents).
+  ok(bareDecl && Array.isArray(bareDecl.def) && bareDecl.def[0] === 'pdflatex' && (!Array.isArray(bareOrder) || bareOrder[0] !== 'xelatex'),
+    '★★ 不装 v5r ⇒ 内核默认声明是中性顺序（pdflatex 第一），且没有 pack 的中文优先值 —— 这就是"策略在 pack、机制在内核"的教科书例子',
+    { bareOrder: bareOrder === undefined ? '(unset)' : bareOrder, declared: bareDecl && bareDecl.def })
 
   // ── ④ REFUSALS ARE NAMED (the 一正一反 the fixture verified: empty sender) ──────────────────────────────────
   console.log('=== 4. REFUSALS CARRY A REGISTERED CODE + A HINT ===')

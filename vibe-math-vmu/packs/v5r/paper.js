@@ -50,6 +50,7 @@ export const PAPER_CODES = Object.freeze({
   FINGERPRINT: 'VMU_PACK_V5R_CORE_PAPER_FINGERPRINT_MISMATCH',
   PDF_NEEDS_KERNEL: 'VMU_PACK_V5R_CORE_PAPER_PDF_NEEDS_KERNEL',
   EXECUTOR: 'VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING',
+  PDF_FAILED: 'VMU_PACK_V5R_CORE_PAPER_PDF_FAILED',
 })
 
 const str = (v) => (v === undefined || v === null ? '' : String(v))
@@ -228,7 +229,7 @@ export function createPaperSubsystem({ kernel } = {}) {
   }
 
   /** ⑥ the final decision: academician only, decision deliverable|revise (the original's two values). */
-  function recordFinal({ target, member, decision, note = '', conclusion = '' } = {}) {
+  async function recordFinal({ target, member, decision, note = '', conclusion = '' } = {}) {
     const { state } = requireState(target)
     if (state.status !== 'awaiting-editor') throw refuse(PAPER_CODES.STATE, 'the paper is not awaiting its editor (now: ' + state.status + ')', 'advance() until the cross-review is unanimous or the round cap is reached')
     if (state.editor !== 'academician') {
@@ -245,7 +246,15 @@ export function createPaperSubsystem({ kernel } = {}) {
       state.final = fin; state.status = 'finalized'; state.stage = 'finalized'
       writeState(state)
       const rendered = render({ target })
-      return { ok: true, finalized: true, target: state.target, final: fin, artifacts: rendered.artifacts, missing: rendered.missing }
+      // The PDF is the one artefact the KERNEL must make. Its absence is reported, never hidden: a receipt that says
+      // "finalized" while the fourth artefact is missing is the paper-world version of crying wolf.
+      let pdf = null
+      try {
+        pdf = { ok: true, ...(await compilePdf({ target })) }
+      } catch (e) {
+        pdf = { ok: false, code: (e && e.code) || null, message: String((e && e.message) || e) }
+      }
+      return { ok: true, finalized: true, target: state.target, final: fin, artifacts: rendered.artifacts, missing: rendered.missing, pdf }
     }
     state.final = fin
     if (state.round < PAPER_MAX_ROUNDS) {
@@ -349,7 +358,56 @@ export function createPaperSubsystem({ kernel } = {}) {
     return { ok: artifacts.complete, target: state.target, wrote: Object.keys(wrote), artifacts, missing: artifacts.missing, pdf: artifacts.pdf }
   }
 
-  return { start, recordPart, recordReview, advance, pass, recordFinal, PaperMd, PaperTex, PaperArtifacts, render, sections: () => PAPER_SECTIONS.slice(), state: (target) => readState(target) }
+  /**
+   * ★ ⑪ `paperCompilePdf` — compile through the KERNEL's LaTeX face (`kernel.latex.check`), the same
+   * spawn-conditioned shape as Lean: the face owns the process, the engine probing, the timeout and the killable
+   * handle; this pack only supplies the source and RECORDS the result as the fourth artefact.
+   *
+   * Named outcomes, never silence:
+   *   · no LaTeX face on this assembly ⇒ `…PAPER_EXECUTOR_MISSING` with a hint that names the host spawn seam;
+   *   · the face refused (no engine / timeout / compile error) ⇒ `…PAPER_PDF_FAILED` carrying the face's own code,
+   *     the engines it tried and a bounded stderr/stdout tail;
+   *   · success ⇒ a `pdf` record is written, so `PaperArtifacts` really sees four artefacts.
+   */
+  async function compilePdf({ target, engineOrder = null, timeoutMs = null } = {}) {
+    const { state } = requireState(target)
+    const tex = PaperTex({ target })
+    const latexFace = kernel && kernel.latex
+    if (!latexFace || typeof latexFace.check !== 'function') {
+      throw refuse(PAPER_CODES.EXECUTOR, 'This assembly has no LaTeX face, so a PDF cannot be compiled (host injected no spawn seam)',
+        '需要宿主 spawn 接缝：kernel/index.js 只在 spawn/spawnHandle 存在时创建 kernel.latex；本包不自己起子进程')
+    }
+    const outDir = state.outDir || ('Paper/' + state.id)
+    const request = { source: tex, outDir, sourceName: state.id + '.tex' }
+    if (Array.isArray(engineOrder) && engineOrder.length > 0) request.engineOrder = engineOrder.slice()
+    if (Number.isFinite(timeoutMs) && timeoutMs > 0) request.timeoutMs = Math.floor(timeoutMs)
+    const r = await latexFace.check(request)
+    if (!r || r.ok !== true) {
+      const tail = (s) => String(s === undefined || s === null ? '' : s).slice(-1500)
+      const failure = refuse(PAPER_CODES.PDF_FAILED,
+        'LaTeX 编译失败：' + String((r && r.code) || 'unknown') + (r && r.engine ? '（engine=' + r.engine + '）' : '') +
+          (r && Array.isArray(r.tried) && r.tried.length ? '；已试引擎=' + r.tried.join('、') : ''),
+        '这不是"论文为假"，只是**没编译出来**：把 stderrTail 交给人看；回执不声称有 pdf')
+      // the face's own diagnostics travel ON the error (bounded), so the caller can put them into a receipt
+      failure.faceCode = (r && r.code) || null
+      failure.tried = (r && Array.isArray(r.tried)) ? r.tried.slice() : []
+      failure.stderrTail = tail(r && r.stderr)
+      failure.stdoutTail = tail(r && r.stdout)
+      failure.signal = (r && r.signal) || null
+      throw failure
+    }
+    const put = records.put({
+      track: PAPER_TRACK, kind: 'paper-pdf', title: recordName(state.target, 'pdf'),
+      body: JSON.stringify({ pdfPath: r.pdfPath, pdfBytes: r.pdfBytes, engine: r.engine, tried: r.tried, argv: r.argv, elapsedMs: r.elapsedMs, timeoutMs: r.timeoutMs }),
+      settled: true, by: 'vibe_v5_paper',
+    })
+    return { ok: true, target: state.target, engine: r.engine, pdfPath: r.pdfPath, pdfBytes: r.pdfBytes,
+      tried: r.tried, elapsedMs: r.elapsedMs, recordId: put && put.id,
+      artifacts: PaperArtifacts({ target }), missing: PaperArtifacts({ target }).missing }
+  }
+
+  return { start, recordPart, recordReview, advance, pass, recordFinal, PaperMd, PaperTex, PaperArtifacts, render, compilePdf,
+    sections: () => PAPER_SECTIONS.slice(), state: (target) => readState(target) }
 }
 
 export default createPaperSubsystem

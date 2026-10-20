@@ -180,7 +180,9 @@ export const PACK = Object.freeze({
       order: 300,
       on: Object.freeze(['tools/pre-execute']),
       failure: 'closed',
-      capabilities: Object.freeze(['deny']),
+      // ★ PHASE 7：★ 模块用了 api.services.get（能力门控），★ 所以条目也要声明 trigger-workflow
+      // （loader 要求 module 的能力是条目能力的【子集】）。
+      capabilities: Object.freeze(['deny', 'trigger-workflow']),
       module: V3_TOOLFILTER_MODULE,
     },
     {
