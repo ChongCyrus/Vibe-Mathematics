@@ -108,6 +108,8 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.v3.toolDeny', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: 'v3 复刻：禁止的宿主工具名黑名单（优先于 allow）；读者同上 ✓' },
   { key: 'vmu.v3.reportMode', type: 'enum', domain: ['file', 'push', 'both'], def: 'file', hot: HOT.H1, who: 'office', doc: 'v3 复刻：汇报三路模式（file＝写 reports 轨快照；push＝经 vmu.report 投递；both＝两者）。读者＝`packs/v3/middleware/reports.js` ✓' },
   { key: 'vmu.v3.reportIntervalMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: 'v3 复刻：汇报节流毫秒；0＝每个 tick 一次；>0 未到点具名 report-not-due。读者＝`packs/v3/middleware/reports.js` ✓' },
+  // ★ PHASE 7 · v5r 夹具模式开关（★ 调用期读：★ `kernel/turn/index.js` 的 sectionPolicy 每回合读一次并 disable/enable；★ 因此值层即足够、不是构造期快照）。
+  { key: 'vmu.v5r.fixtureMode', type: 'enum', domain: ['no-tools', 'tools'], def: 'no-tools', hot: HOT.H1, who: 'office', doc: 'PHASE 7：SLV 夹具模式开关。no-tools（默认）＝本轮不调用工具（保持历史 run 可比）；tools＝本轮可以且应该调用工具。由 pack 的 prompt 策略在【调用期】按回合 settings 读取，因此值层即足够；未知取值按具名拒处理，不猜默认。' },
   { key: 'vmu.v3.promoteValueThreshold', type: 'number', def: 0.7, hot: HOT.H1, who: 'office', doc: 'v3 复刻：命题「价值/关键性」 ≥ 该值且未定论时自动晋升为问题（每 tick 至多一个）。读者＝`packs/v3/middleware/planner.js`；范围 [0,1]，越界/NaN 回落 0.7 ✓' },
   { key: 'vmu.v3.verdictMode', type: 'enum', domain: ['forced', 'natural'], def: 'forced', hot: HOT.H1, who: 'office', doc: 'v3 复刻：连续概率票如何折叠成裁决（forced＝夹到 [0.01,0.99] 后按阈值；natural＝原值）。读者＝`packs/v3/middleware/verify.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记' },
   { key: 'vmu.records.pointerPropagation', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: 'P3/S21：头部列表为默认信息通道；关＝零注入且提示词逐字回退' },

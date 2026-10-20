@@ -387,7 +387,11 @@ import { V5R_ASSISTANT_TURN_SECTIONS } from './v5r-assistant.js'
  * the one section that simply NAMES the phase, which the charter headings do not. PLUS the assistant's reporting duty,
  * which is what turns "主动向院士汇报" from persona prose into a duty a member is told every round.
  */
-const v5rCharterSectionsGlobal = () => [...CHARTER_SECTIONS, v5rRoleSection, v5rFixtureConstraint,
+const v5rCharterSectionsGlobal = () => [...CHARTER_SECTIONS, v5rRoleSection,
+  // ★ PHASE 7 round 10: BOTH fixture variants are DECLARED here; `decideSections` (the pack's prompt policy) enables
+  // exactly one per assembly, according to `vmu.v5r.fixtureMode`. Declaring both is what makes the switch possible at
+  // CALL time; the mutual exclusion lives in the policy, not in which sections exist.
+  v5rFixtureConstraint, v5rFixtureTools,
   // PHASE 7 / goal 2: the per-role TOOL DISCOVERY sections (non-source-derived, role-scoped, unique markers).
   v5rToolSectionAcademician, v5rToolSectionResearcher, v5rToolSectionTemp,
   // PHASE 7 round 8: the PAPER PROMPTS — phase-scoped (`paper-write` / `paper-review` / `paper-final`), so at most ONE
@@ -431,6 +435,11 @@ export const v5rRoleSection = Object.freeze({
  *   - section markers stay unique;
  *   - no cross-role prose is copied into the source-derived charter.
  */
+/**
+ * ★ PHASE 7 round 10 — THE `no-tools` VARIANT (the default; UNCHANGED text, byte for byte, so previous rounds' results
+ * stay comparable). It and `v5rFixtureTools` below are MUTUALLY EXCLUSIVE: `decideSections` enables exactly one,
+ * according to `vmu.v5r.fixtureMode`.
+ */
 export const v5rFixtureConstraint = Object.freeze({
   name: 'v5r-fixture-constraint',
   order: 602,
@@ -441,6 +450,39 @@ export const v5rFixtureConstraint = Object.freeze({
     '本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只读本轮状态块推理，最后只输出一个 json 围栏回执。',
     'closure poll 的正确回执样例（照抄形状）：{"vote_solved": true} 或 {"vote_solved": false}；只写这一句，不写 progress。',
     '其它回合 progress 必须是数组/对象（不能是字符串），正确样例：{"progress":[{"track":"progress","kind":"note","title":"本轮进展","body":"……"}]}；顶层不要写 record/artifacts 等自造字段。',
+  ].join('\n'),
+})
+
+/**
+ * ★ PHASE 7 round 10 — THE `tools` VARIANT OF THE SLV FIXTURE CONSTRAINT.
+ *
+ * THE MEASUREMENT THAT MOTIVATED IT: `v5r-fixture-constraint` (above) says "本轮不调用任何工具" and it is ALWAYS in the
+ * prompt, so the run mode where a member really USES its tools could never be reached — a whole half of the tool face
+ * was unreachable in the fixture. The fix is TWO variants plus a switch, NOT one edited section: changing the existing
+ * text would make the previous rounds' `cast:true` results and historical runs incomparable (the same reason the
+ * original corpus is hash-locked).
+ *
+ * THE SWITCH: `vmu.v5r.fixtureMode` ∈ `no-tools | tools` (default `no-tools`), read at **CALL time** by
+ * `decideSections` (the pack's prompt policy, which the pipeline consults per assembly with the CALL's settings — see
+ * `kernel/prompt/index.js` "the policy is read from the CALL's settings"), so the value layer is enough and no kernel
+ * change is needed. The two sections are MUTUALLY EXCLUSIVE: `decideSections` enables exactly one of them.
+ *
+ * NOT source-derived (`v5r-fixture:slv`, same family as the constraint) ⇒ the charter verbatim gate is untouched.
+ */
+export const v5rFixtureTools = Object.freeze({
+  name: 'v5r-fixture-tools',
+  order: 603,
+  range: 'pack',
+  source: 'v5r-fixture:slv',
+  // every seat may call its own tools; the per-role list is the `v5r-tools-*` section of the same assembly
+  scope: Object.freeze({ role: Object.freeze(['academician', 'researcher', 'temp']) }),
+  text: [
+    '【SLV 夹具约束｜本轮调用工具】',
+    '本轮**可以且应该**调用你自己的工具：边做边记录，不要把动作攒到回合末尾。',
+    '你这一刻能用的工具清单就在本提示词的「本轮可用的工具｜<你的角色>」段里（按你的席位列出，逐条只有工具名与一句用途）；不确定时可调用工具帮助本身。',
+    '调用工具后结果立即可见；**回执可以很薄**——动作已经由工具完成了，回执只需说明"这一轮做了什么、下一步是什么"，不要为了凑长篇而重复工具已经记录的内容。',
+    '仍然只输出一个合法 JSON 对象作为回执（不要输出额外的说明文字）。',
+    '若某个工具被具名拒绝，把它的 code 与 hint 写进回执的 note，不要当成没发生。',
   ].join('\n'),
 })
 

@@ -1735,6 +1735,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // to be observable to the adapter, or a pack unload leaves the names visible to the model. One observer, set by
   // the host adapter; the kernel never calls a host API itself.
   let onPackToolRetract = null
+  // ★ PHASE 7: a PACK may register the status reader of a subsystem it owns (v5r's paper dispatcher). The kernel holds
+  // only the seam; no pack ⇒ no field in status() (zero mechanism), and a reader that throws is a NAMED failure.
+  let paperDispatchStatusSource = null
   let started = false
   // CONTROL FLOW (docs/08 搂5; the user's explicit domain). The kernel owns the STATE; a pause is a real
   // gate (task work is refused while paused) rather than a label nobody reads.
@@ -2232,6 +2235,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
      */
     /** ★ PHASE 7: the host adapter registers the ONLY consumer of "a pack retracted its tools". Read-only. */
     setPackToolRetractObserver(fn) { onPackToolRetract = typeof fn === 'function' ? fn : null; return { ok: true, observer: typeof fn === 'function' } },
+    /** ★ PHASE 7: the pack registers its paper-dispatch status reader (same shape as the other set* registrations). */
+    setPaperDispatchStatus(fn) { paperDispatchStatusSource = typeof fn === 'function' ? fn : null; return { ok: true, source: typeof fn === 'function' } },
 
     retractPackTools(names = null, { by = null } = {}) {
       const wanted = names === null ? [...packToolDeclarations.keys()] : (Array.isArray(names) ? names : [names])
@@ -2714,6 +2719,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         })(),
         // PHASE 6 / P0-10: the tool NAMES packs declared. The kernel holds them; the host publishes them.
         packTools: [...packToolDeclarations.values()].map((t) => ({ name: t.name, packId: t.packId })),
+        // ★ PHASE 7: only present when a pack registered the reader; a throwing reader is NAMED here, never hidden.
+        ...(paperDispatchStatusSource ? { paperDispatch: (() => {
+          try { return { ok: true, status: paperDispatchStatusSource() } } catch (e) {
+            return { ok: false, code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) }
+          }
+        })() } : {}),
         bus: bus.status ? bus.status() : { entries: [] },
         prompt: prompt.status ? prompt.status() : null,
         store: store ? store.stats() : null,

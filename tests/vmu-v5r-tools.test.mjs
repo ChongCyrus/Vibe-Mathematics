@@ -602,6 +602,57 @@ try {
     '★★ 不装 v5r ⇒ 内核默认声明是中性顺序（pdflatex 第一），且没有 pack 的中文优先值 —— 这就是"策略在 pack、机制在内核"的教科书例子',
     { bareOrder: bareOrder === undefined ? '(unset)' : bareOrder, declared: bareDecl && bareDecl.def })
 
+  // ── ③k THE SLV FIXTURE MODE (round 10): two variants + one switch, MUTUALLY EXCLUSIVE ───────────────────────
+  console.log('=== 3k. THE SLV FIXTURE MODE (no-tools | tools, mutually exclusive) ===')
+  const fixtureSections = PACK.sections.filter((s) => s.source === 'v5r-fixture:slv')
+  ok(fixtureSections.length === 2, '★ BOTH fixture variants are declared in the manifest (declaring both is what makes a call-time switch possible)', fixtureSections.map((s) => s.name))
+  const fixtureNames = fixtureSections.map((s) => s.name).sort()
+  ok(J(fixtureNames) === J(['v5r-fixture-constraint', 'v5r-fixture-tools']), '★ they are exactly the constraint and the tools variant', fixtureNames)
+  const fixtureMarkers = fixtureSections.map((s) => String(s.text).split('\n')[0])
+  ok(new Set(fixtureMarkers).size === 2 && fixtureMarkers.filter((m) => m.includes('夹具约束')).length === 2,
+    '★ their markers are UNIQUE and both belong to the fixture family', fixtureMarkers)
+  const constraintMarker = '【SLV 夹具约束｜本轮不调用工具】'
+  const toolsMarker = '【SLV 夹具约束｜本轮调用工具】'
+  // ① the POLICY: exactly one variant enabled in each mode (the positive proof of mutual exclusion)
+  const decDefault = v5r.decideSections({ settings: {} }).decisions.filter((d) => d.name.startsWith('v5r-fixture-'))
+  const decTools = v5r.decideSections({ settings: { 'vmu.v5r.fixtureMode': 'tools' } }).decisions.filter((d) => d.name.startsWith('v5r-fixture-'))
+  ok(decDefault.length === 2 && decDefault.filter((d) => d.enabled === true).length === 1 &&
+    decDefault.filter((d) => d.name === 'v5r-fixture-constraint' && d.enabled === true).length === 1 && decDefault.filter((d) => d.name === 'v5r-fixture-tools' && d.enabled === false).length === 1,
+    '★ 反（默认）: only the CONSTRAINT variant is enabled (mode defaults to no-tools)', decDefault)
+  ok(decTools.length === 2 && decTools.filter((d) => d.enabled === true).length === 1 &&
+    decTools.filter((d) => d.name === 'v5r-fixture-tools' && d.enabled === true).length === 1 && decTools.filter((d) => d.name === 'v5r-fixture-constraint' && d.enabled === false).length === 1,
+    '★ 正: fixtureMode=tools enables ONLY the tools variant (the constraint is disabled)', decTools)
+  const decBad = v5r.decideSections({ settings: { 'vmu.v5r.fixtureMode': 'nope' } }).errors
+  ok(decBad.length === 1 && decBad[0].code === 'VMU_INVALID_ARGUMENT' && /fixtureMode/.test(String(decBad[0].message)),
+    '★ an UNKNOWN fixture mode is refused by name (never defaulted to a guess)', decBad)
+  // ② THROUGH THE REAL KERNEL PIPELINE: the TURN LOOP is what applies the policy's decisions (kernel/turn/index.js
+  // calls prompt.disable/enable per turn). This test reproduces that exact step — it does NOT assume the raw
+  // `assemble()` consults the policy (it does not; the policy is applied by the turn loop BEFORE assembling).
+  const kernelPrompt = v5rBoot.handle.kernel.prompt
+  const applyMode = (settings) => {
+    for (const d of v5r.decideSections({ settings }).decisions) {
+      if (d.enabled === true) kernelPrompt.enable(d.name)
+      else kernelPrompt.disable(d.name)
+    }
+  }
+  const assembleAs = async (settings) => {
+    applyMode(settings)
+    return (await kernelPrompt.assemble({ member: 'r-1', role: 'researcher', roleLabel: 'researcher', phase: 'normal', settings: {} })).text
+  }
+  const defaultText = await assembleAs({})
+  const toolsText = await assembleAs({ 'vmu.v5r.fixtureMode': 'tools' })
+  ok(defaultText.includes(constraintMarker) && !defaultText.includes(toolsMarker),
+    '★ 反（经真管线 + 真实策略应用步骤）: the default assembly carries the CONSTRAINT marker and NOT the tools marker', { len: defaultText.length })
+  ok(toolsText.includes(toolsMarker) && !toolsText.includes(constraintMarker),
+    '★★ 正（经真管线）: fixtureMode=tools carries the TOOLS marker and NOT the constraint marker', { len: toolsText.length })
+  ok([defaultText, toolsText].filter((t) => t.includes(constraintMarker) && t.includes(toolsMarker)).length === 0,
+    '★★★ 互斥性: in NEITHER assembly do the two markers co-occur (the positive form of "exactly one")',
+    { defaultBoth: defaultText.includes(constraintMarker) && defaultText.includes(toolsMarker), toolsBoth: toolsText.includes(constraintMarker) && toolsText.includes(toolsMarker) })
+  // ③ the value layer keeps the historical default so previous rounds' results stay comparable
+  const installedFixtureMode = kernel.settingsSnapshot()['vmu.v5r.fixtureMode']
+  ok(installedFixtureMode === 'no-tools',
+    '★ the pack\'s value layer ships fixtureMode = no-tools (the historical instruction stays the default ⇒ old runs remain comparable)', installedFixtureMode)
+
   // ── ④ REFUSALS ARE NAMED (the 一正一反 the fixture verified: empty sender) ──────────────────────────────────
   console.log('=== 4. REFUSALS CARRY A REGISTERED CODE + A HINT ===')
   const noP = await receipt(v5rBoot, 'vibe_v5_record_proposition', { statement: '缺 p 的命题' })

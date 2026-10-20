@@ -67,6 +67,21 @@ export function decideSections({ settings = {}, turn = {} } = {}) {
   const decisions = []
   const errors = []
 
+  // (0) ★ PHASE 7 round 10 — THE SLV FIXTURE MODE: exactly ONE of the two variants is enabled.
+  //   `vmu.v5r.fixtureMode` ∈ { 'no-tools' (default), 'tools' }. Read HERE, at call time (the pipeline consults this
+  //   policy per assembly with the CALL's settings), so the value layer is enough. An unknown value is REFUSED by name
+  //   rather than defaulted — guessing which fixture the operator meant would put the wrong instruction in the prompt.
+  const fixtureMode = s['vmu.v5r.fixtureMode'] === undefined ? 'no-tools' : s['vmu.v5r.fixtureMode']
+  if (fixtureMode !== 'no-tools' && fixtureMode !== 'tools') {
+    errors.push({
+      code: 'VMU_INVALID_ARGUMENT',
+      message: 'unknown vmu.v5r.fixtureMode: ' + String(fixtureMode),
+      hint: "one of: 'no-tools', 'tools' (default 'no-tools' keeps historical runs comparable)",
+    })
+  }
+  decisions.push({ name: 'v5r-fixture-constraint', enabled: fixtureMode !== 'tools' })
+  decisions.push({ name: 'v5r-fixture-tools', enabled: fixtureMode === 'tools' })
+
   // (1) The three gated blocks.
   for (const [key, section] of OFF_SWITCHES) {
     decisions.push({ name: section, enabled: s[key] !== false })

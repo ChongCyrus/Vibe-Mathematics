@@ -1016,6 +1016,23 @@ const FALLBACK_KEYS = [
   try { await rm(root, { recursive: true, force: true }) } catch { /* the store may still hold the file open */ }
 }
 
+// ── ★ PHASE 7: a pack can register its paper-dispatch status reader; absent ⇒ the field does NOT appear ──────────
+{
+  const bare = m.createKernel({ clock: () => 0 })
+  ok(!Object.prototype.hasOwnProperty.call(bare.status(), 'paperDispatch'), '★ 反（零机制）：没有注册 ⇒ status() 里没有 paperDispatch 段', Object.keys(bare.status()).includes('paperDispatch'))
+  const k = m.createKernel({ clock: () => 0 })
+  const reg = k.setPaperDispatchStatus(() => ({ last: { ok: true, code: null, phase: 'paper-write' }, seen: 1 }))
+  ok(reg.ok === true && reg.source === true, 'setPaperDispatchStatus 注册成功（与其它 set* 同形）', reg)
+  const st = k.status()
+  ok(st.paperDispatch && st.paperDispatch.ok === true && st.paperDispatch.status.last.ok === true && st.paperDispatch.status.last.code === null,
+    '★ 正：status().paperDispatch 读得到 last ok/code', st.paperDispatch)
+  const bad = m.createKernel({ clock: () => 0 })
+  bad.setPaperDispatchStatus(() => { const e = new Error('reader exploded'); e.code = 'VMU_STATE'; throw e })
+  const bst = bad.status()
+  ok(bst.paperDispatch && bst.paperDispatch.ok === false && bst.paperDispatch.code === 'VMU_STATE',
+    '★ 反：reader 抛错 ⇒ 具名状态，不静默', bst.paperDispatch)
+}
+
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
