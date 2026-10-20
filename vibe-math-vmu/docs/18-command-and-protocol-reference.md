@@ -518,16 +518,17 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 44 | `admission` | `vibe_vmu_admission` |
 | 45 | `turn` | `vibe_vmu_turn` |
 | 46 | `memberTools` | `vibe_vmu_tools` |
-| 47 | `human` | `vibe_vmu_human` |
-| 48 | `chat` | `vibe_vmu_chat` |
-| 49 | `mailbox` | `vibe_vmu_mailbox` |
-| 50 | `panel` | `vibe_vmu_panel` |
-| 51 | `report` | `vibe_vmu_report` |
-| 52 | `activity` | `vibe_vmu_wait` |
-| 53 | `fidelity` | `vibe_vmu_fidelity` |
-| 54 | `mathadapters` | `vibe_vmu_mathadapters` |
-| 55 | `mathjobs` | `vibe_vmu_mathjobs` |
+| 47 | `vote` | `vibe_vmu_vote` |
+| 48 | `human` | `vibe_vmu_human` |
+| 49 | `chat` | `vibe_vmu_chat` |
+| 50 | `mailbox` | `vibe_vmu_mailbox` |
+| 51 | `panel` | `vibe_vmu_panel` |
+| 52 | `report` | `vibe_vmu_report` |
+| 53 | `activity` | `vibe_vmu_wait` |
+| 54 | `fidelity` | `vibe_vmu_fidelity` |
+| 55 | `mathadapters` | `vibe_vmu_mathadapters` |
+| 56 | `mathjobs` | `vibe_vmu_mathjobs` |
 
-> ★★ 合计 **55** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
+> ★★ 合计 **56** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
 
 <!-- END GENERATED: tool-index -->

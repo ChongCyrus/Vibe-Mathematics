@@ -621,6 +621,68 @@ if (SELF_PROBE) {
   ok(!zeroView.source, '★ 反：无 pack 声明 ⇒ resolver 不产生 deny（零机制）', zeroView)
 }
 
+// ── PHASE 8 / goal 10 (round 37): the host EXECUTES the pack's toolPresentation declaration ────────────────────────
+// One assertion per mode, plus the negative shapes that matter: nothing declared (zero mechanism) and an explicit
+// `native` (same effect, different semantics — the receipt says which one happened).
+{
+  const mkCapture = (withPresentAs) => {
+    const seen = []; const presentCalls = []
+    const tools = { register: (spec) => { seen.push(spec); return () => {} } }
+    if (withPresentAs) tools.presentAs = (mode) => { presentCalls.push(mode); return () => {} }
+    return { ctx: { effect: (fn) => fn(), tools }, seen, presentCalls }
+  }
+  const mkKernel = (decl) => {
+    const k = km.createKernel({ clock })
+    k.declarePackTools([
+      { name: 'probe_pres_a', description: 'declared face', handler: () => ({ ok: true }) },
+      { name: 'probe_pres_b', description: 'other face', handler: () => ({ ok: true }) },
+    ], { by: 'p-pres' })
+    if (decl) k.declarePackToolPresentation(decl, { by: 'p-pres' })
+    return k
+  }
+  // 反 1: NOTHING declared ⇒ no deferLoading anywhere, presentAs never called.
+  {
+    const cap = mkCapture(true)
+    const receipt = await hm.createHostAdapter({ ctx: cap.ctx, kernel: mkKernel(null), settings: {} }).install()
+    const sa = cap.seen.filter((s) => s.name === 'probe_pres_a')[0]
+    ok(sa && sa.deferLoading === undefined && cap.presentCalls.length === 0 && receipt.presentation && receipt.presentation.mode === null,
+      '★ 反（零机制）：不声明 ⇒ spec 无 deferLoading、不调 presentAs、回执 presentation.mode=null', receipt && receipt.presentation)
+  }
+  // 正: `defer` names ONE face ⇒ only that spec gets deferLoading (per-tool, not per-batch).
+  {
+    const cap = mkCapture(true)
+    const receipt = await hm.createHostAdapter({ ctx: cap.ctx, kernel: mkKernel({ mode: 'defer', faces: ['probe_pres_a'] }), settings: {} }).install()
+    const sa = cap.seen.filter((s) => s.name === 'probe_pres_a')[0]
+    const sb = cap.seen.filter((s) => s.name === 'probe_pres_b')[0]
+    ok(sa && sa.deferLoading === true && sb && sb.deferLoading === undefined && cap.presentCalls.length === 0 && receipt.presentation.mode === 'defer',
+      '★★ 正（defer）：声明的那一个 spec 带 deferLoading:true，同批其它 face 不带，且不调 presentAs', receipt && receipt.presentation)
+  }
+  // 反 2: explicit `native` ⇒ same EFFECT as nothing declared; the receipt records the distinct semantic.
+  {
+    const cap = mkCapture(true)
+    const receipt = await hm.createHostAdapter({ ctx: cap.ctx, kernel: mkKernel({ mode: 'native' }), settings: {} }).install()
+    const sa = cap.seen.filter((s) => s.name === 'probe_pres_a')[0]
+    ok(sa && sa.deferLoading === undefined && cap.presentCalls.length === 0 && receipt.presentation.mode === 'native',
+      '★ 反（native）：效果与"不声明"相同（无 deferLoading、不调 presentAs），回执记录 mode=native（语义不同）', receipt && receipt.presentation)
+  }
+  // 正: `ptc` ⇒ per-AGENT presentAs(mode) called ONCE with 'ptc'.
+  {
+    const cap = mkCapture(true)
+    const receipt = await hm.createHostAdapter({ ctx: cap.ctx, kernel: mkKernel({ mode: 'ptc' }), settings: {} }).install()
+    ok(cap.presentCalls.length === 1 && cap.presentCalls[0] === 'ptc' && receipt.presentation.presentAs && receipt.presentation.presentAs.called === true,
+      '★★ 正（ptc）：presentAs("ptc") 以 per-AGENT 方式只调一次（不是每个工具一次）', { calls: cap.presentCalls })
+  }
+  // 反 3: `ptc` with NO presentAs ⇒ NAMED unapplied + visible failure, never a silent native fallback.
+  {
+    const cap = mkCapture(false)
+    const receipt = await hm.createHostAdapter({ ctx: cap.ctx, kernel: mkKernel({ mode: 'ptc' }), settings: {} }).install()
+    const rows = receipt.presentation && Array.isArray(receipt.presentation.unapplied) ? receipt.presentation.unapplied : []
+    ok(receipt.ok === false && receipt.presentation.presentAs === null && rows.length === 1 && rows[0].code === 'VMU_ENGINE_UNAVAILABLE' &&
+      (receipt.failures || []).filter((f) => f.name === '(tool presentation)').length === 1,
+      '★★ 反（不静默降级）：宿主无 presentAs ⇒ 具名 VMU_ENGINE_UNAVAILABLE 进 unapplied 与 failures，回执 ok:false，绝不当 native', rows)
+  }
+}
+
 console.log('=== VMU HOST: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

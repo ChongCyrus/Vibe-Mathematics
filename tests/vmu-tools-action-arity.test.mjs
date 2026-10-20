@@ -30,6 +30,7 @@ const offenders = []
 let checked = 0
 // EXEMPT BY NAME WITH A REASON. turn.js dispatches on op rather than action, and its block was self-contained before the split.
 const EXEMPT = {
+  'vote.js': 'single-purpose face: vibe_vmu_vote records exactly one thing (a closure vote) and has no action/op by design',
   'member-tools.js': 'single-purpose introspection face: no action/op by design, it takes only member — and line 45 below proves the exemption is real',
   'turn.js': 'dispatches on op rather than action; the host translates op to the turn engine s own verbs' }
 

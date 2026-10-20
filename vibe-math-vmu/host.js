@@ -1227,7 +1227,6 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     const list = wanted === null ? raw : raw.filter((s) => wanted.includes(s.name))
     // ★ PHASE 8 / goal 10: translate the pack's presentation declaration (no declaration ⇒ this does nothing).
     const presentation = await applyToolPresentation({ kernel, ctx, list, log })
-    for (const u of presentation.unapplied) failures.push({ name: '(tool presentation)', code: u.code, message: u.why })
     if (list.length === 0) {
       installed = true
       log('vmu is disabled: nothing registered')
@@ -1236,6 +1235,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     const hasEffect = typeof ctx.effect === 'function'
     ownedByHost = hasEffect
     failures.length = 0
+    for (const u of presentation.unapplied) failures.push({ name: '(tool presentation)', code: u.code, message: u.why })
     // PHASE 6 / P0-10: a pack tool colliding with a name THIS host publishes is a NAMED failure (never a shadow).
     failures.push(...packToolFailureRows((kernel && typeof kernel.packTools === 'function') ? kernel.packTools() : [], Object.values(TOOL_NAMES)))
     // ROUND 26 / task-141: ONE EVALUATION per `doInstall()` that produced tools - the honest denominator for "the
