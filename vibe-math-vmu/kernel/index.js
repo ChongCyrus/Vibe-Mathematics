@@ -2302,6 +2302,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
      */
     toolsView({ member } = {}) {
       if (typeof member !== 'string' || member.trim() === '') throw refuse('VMU_INVALID_ARGUMENT', 'toolsView needs a member', 'pass member:"<roster id>"')
+      // ★ roster FIRST: an unknown member must be refused as such, not masked by "no live Agent" from the provider.
+      let row = null
+      try { row = (members.roster() || []).find((m) => m && m.id === member) || null } catch { row = null }
+      if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + member + '" on this roster', 'the roster holds the live members; omit member is not allowed here')
       if (!turn || typeof turn.visibleToolsOf !== 'function') throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no visible-tools provider', 'assemble the host adapter so members expose their tool table')
       const visible = turn.visibleToolsOf(member)
       const names = visible && Array.isArray(visible.tools) ? visible.tools : []

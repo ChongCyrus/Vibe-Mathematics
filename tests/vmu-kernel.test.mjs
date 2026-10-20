@@ -1059,16 +1059,22 @@ const FALLBACK_KEYS = [
 // ── ★ PHASE 8 / B-1: the kernel's toolsView = the LIVE visible set (not pack declarations) ─────────────────────
 {
   const k = m.createKernel({ clock: () => 0 })
+  k.declareSlots([{ id: 'member', label: 'm', capacity: 0 }])
+  await k.members.hire({ id: 'member-a', slot: 'member', institution: 'sim' })
   k.turn.setVisibleToolsProvider(() => ['a_tool', 'b_tool'])
   k.setToolFaceDescriptions({ a_tool: 'does A' })
   const v = k.toolsView({ member: 'member-a' })
   ok(v.ok === true && v.count === 2 && v.tools[0].name === 'a_tool' && v.tools[0].purpose === 'does A' && v.tools[1].purpose === null,
     '★ 正：toolsView 的名字集合 == visibleToolsOf 的实际集合，用途来自 host 描述（未登记 ⇒ null，不编造）', v)
   const bare = m.createKernel({ clock: () => 0 })
+  bare.declareSlots([{ id: 'member', label: 'm', capacity: 0 }])
+  await bare.members.hire({ id: 'member-a', slot: 'member', institution: 'sim' })
   let err = null
   try { bare.toolsView({ member: 'member-a' }) } catch (e) { err = e }
   ok(err && err.code === 'VMU_ENGINE_UNAVAILABLE', '★ 反：没有 visible provider ⇒ 具名拒，不返回空清单假装成功', err && err.code)
   const noAgent = m.createKernel({ clock: () => 0 })
+  noAgent.declareSlots([{ id: 'member', label: 'm', capacity: 0 }])
+  await noAgent.members.hire({ id: 'member-a', slot: 'member', institution: 'sim' })
   noAgent.turn.setVisibleToolsProvider(() => { const e = new Error('no live Agent'); e.code = 'VMU_NO_SUCH_OBJECT'; throw e })
   let err2 = null
   try { noAgent.toolsView({ member: 'member-a' }) } catch (e) { err2 = e }
