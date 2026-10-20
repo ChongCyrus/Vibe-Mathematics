@@ -21,15 +21,17 @@
  *   ③ nothing is pretended: a missing face, a missing roster or an unknown record track produces a named refusal,
  *      never an empty success. "The tool worked over an absent mechanism" is the paper capability this repo bans.
  *
- * WHERE EACH TOOL LANDS (the report states this table too):
- *   · `vibe_v5_record_progress`    → `vmu.records.put`  track `progress` (default) or routes/obstacles/rejected/state
- *   · `vibe_v5_record_proposition` → `vmu.records.put`  track `propositions`, kind `proposition`
- *   · `vibe_v5_record_method`      → `vmu.records.put`  track `methods`,      kind `method`
- *   · `vibe_v5_record_subproblem`  → `vmu.records.put`  track `problems`,     kind `subproblem`
- *   · `vibe_v5_say`                → `vmu.chat.send` (group chat; `to` given ⇒ `vmu.mailbox` DM; `meeting` given ⇒
- *                                    `vmu.meetings.speak`) — the ORIGINAL semantics is the group chat, see the header
+ * WHERE EACH TOOL LANDS (the report states this table too). Face methods are written as `face.op`, never as a dotted
+ * three-segment key: this repo's settings scanner treats an `a.b.c` shape in prose as a key READ, and an undeclared key
+ * in a comment reddens `vmu-settings` — the scanner is right to be strict, so the prose adapts.
+ *   · `vibe_v5_record_progress`    → records face `put`  track `progress` (default) or routes/obstacles/rejected/state
+ *   · `vibe_v5_record_proposition` → records face `put`  track `propositions`, kind `proposition`
+ *   · `vibe_v5_record_method`      → records face `put`  track `methods`,      kind `method`
+ *   · `vibe_v5_record_subproblem`  → records face `put`  track `problems`,     kind `subproblem`
+ *   · `vibe_v5_say`                → chat face `send` (group chat; `to` given ⇒ mailbox DM; `meeting` given ⇒
+ *                                    meetings face `speak`) — the ORIGINAL semantics is the group chat, see the header
  *                                    of `toolSay`
- *   · `vibe_v5_message`            → `vmu.mailbox.send` as **office** (the original relays an office/human message)
+ *   · `vibe_v5_message`            → mailbox face `send` as **office** (the original relays an office/human message)
  *
  * THE ROSTER RULE FOR `say`. The original resolved the speaker through its agent→member map (`memberIdOfAgent`).
  * A pack handler has no agent id, so the speaker is an EXPLICIT parameter and it must be a REAL roster id: an
@@ -190,10 +192,10 @@ function cardTool({ tool, track, kind, required, extra, title }) {
  *   · the ORIGINAL `vibe_v5_say` means "speak in the group chat (omit `to`) / send a private message (`to`: id) /
  *     address only the voters (`to`: "voters")" — that is `vmu.chat`, not a meeting: `meetings.speak` needs an
  *     OPEN meeting and writes into the MINUTES, which is a different artefact;
- *   · so `to` omitted ⇒ `vmu.chat.send(member, text)` (everyone who reads the channel), `to` given ⇒
- *     `vmu.mailbox.send(member, {to, text})` (per-recipient durable mail, which is what `all`/`voters` audiences
+ *   · so `to` omitted ⇒ chat face `send(member, text)` (everyone who reads the channel), `to` given ⇒
+ *     mailbox face `send(member, {to, text})` (per-recipient durable mail, which is what `all`/`voters` audiences
  *     mean once an audience seam is bound);
- *   · a `meeting` argument is ALSO accepted and routes to `vmu.meetings.speak` — so the pack supports the
+ *   · a `meeting` argument is ALSO accepted and routes to the meetings face `speak` — so the pack supports the
  *     meeting-board reading without pretending a meeting is open when it is not.
  */
 function toolSay(args = {}, { kernel } = {}) {

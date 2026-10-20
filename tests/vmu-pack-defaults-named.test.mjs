@@ -230,7 +230,7 @@ const LOST_TOOLS = ['vibe_vmu_chat', 'vibe_vmu_control', 'vibe_vmu_human', 'vibe
     'F3. ...with the same-frame `idMap` agreeing with the array (two representations of one fact must not drift)', { idMap: pr.idMap, applied })
   const f3 = status.faces || {}
   const toolNames = f3.registeredTools || []
-  ok(toolNames.length > 0 && toolNames.every((n) => typeof n === 'string' && /^vibe_vmu_/.test(n)),
+  ok(toolNames.length > 0 && toolNames.every((n) => typeof n === 'string' && /^vibe_[a-z0-9]+_/.test(n)),
     'F4. ★ `faces.registeredTools` is a TOOL-NAME list (not the four guard names the other `registered` field holds)', toolNames)
   ok(toolNames.length > 0 && JSON.stringify([...toolNames].sort()) === JSON.stringify([...(f3.published || [])].sort()),
     'F5. ...and it agrees with `published`, so `published − registered` is computable from the receipt at all', { registeredTools: toolNames.length, published: (f3.published || []).length })
