@@ -1197,6 +1197,31 @@ try {
   ok(addedLines.length === 2 && addedLines.filter((line) => /vibe_v5_[a-z0-9_]+/.test(line)).length === 0,
     '★★ the added sentences mention NO tool name (the bullet derivation and the prose⊆bullet assertion stay untouched)', addedLines.length)
 
+  // ── ⑦h PHASE 8 / B-4 WIRING: packs/v5r/paper.js is a THIN SHELL over kit/paper.js ─────────────────────────────
+  // The hard judges of this step: no local flow implementation left, the kit is imported, and the institution POLICY
+  // (sections / round cap / engine order / repair set) is still declared in the pack — the kit must not own it.
+  console.log('=== 7h. B-4 WIRING: paper.js is a policy shell ===')
+  const paperSrcW = (await import('node:fs')).readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper.js'), 'utf8')
+  ok(/from '\.\.\/\.\.\/kit\/paper\.js'/.test(paperSrcW) && /createPaperFlow\(/.test(paperSrcW),
+    '★★ the pack IMPORTS the kit flow and calls its factory (deleted cannot mean forgot to import)', null)
+  const paperImpls = ['function writeState(', 'function readState(', 'function requireState(', 'function readPartVerified(',
+    'function advance(', 'function pass(', 'async function recordFinal(', 'function PaperMd(', 'function PaperTex(',
+    'function PaperArtifacts(', 'function render(', 'async function compilePdf(', 'function recordPart(', 'function recordReview(']
+  const paperLeftovers = paperImpls.filter((sig) => paperSrcW.split(sig).length - 1 > 0)
+  ok(paperImpls.length === 14 && paperLeftovers.length === 0,
+    '★★★ ZERO local state-machine / fingerprint / assembly implementations remain in the pack (source probe, 14 signatures)', { checked: paperImpls.length, leftovers: paperLeftovers })
+  const policyDecls = ['export const PAPER_MAX_ROUNDS = 3', 'export const PAPER_SECTIONS', 'export const PAPER_ENGINE_ORDER', 'export const PAPER_REPAIR_CORE']
+  ok(policyDecls.filter((p) => paperSrcW.includes(p)).length === policyDecls.length,
+    '★★ the four POLICY constants are still declared in the PACK (the kit never owns institution semantics)', policyDecls)
+  const paperModW = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper.js')).href)
+  const paperKeys = Object.keys(paperModW).sort()
+  ok(JSON.stringify(paperKeys) === JSON.stringify(['PAPER_ARTIFACTS', 'PAPER_CODES', 'PAPER_ENGINE_ORDER', 'PAPER_MAX_ROUNDS', 'PAPER_REPAIR_CORE', 'PAPER_SECTIONS', 'PAPER_STATES', 'PAPER_TRACK', 'createPaperSubsystem', 'default']) &&
+    typeof paperModW.default === 'function', '★★ the module EXPORT SURFACE is unchanged (middleware/tests import these names)', paperKeys)
+  const paperFlow = paperModW.createPaperSubsystem({ kernel: v5rBoot.handle.kernel })
+  const flowMethods = ['start', 'recordPart', 'recordReview', 'advance', 'pass', 'recordFinal', 'PaperMd', 'PaperTex', 'PaperArtifacts', 'render', 'compilePdf', 'sections', 'state']
+  ok(flowMethods.filter((m) => typeof paperFlow[m] === 'function').length === flowMethods.length,
+    '★★ the subsystem still exposes all 13 methods (the shell forwards the kit flow)', flowMethods.length)
+
 } finally {
   // The store writes atomically through temp+rename, so a removal can race one in-flight file: retry, and never let
   // a cleanup failure turn a green run red (the assertions above already reported the truth).
