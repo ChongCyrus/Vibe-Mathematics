@@ -1467,6 +1467,20 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // the face. Absent (no Lean face) ⇒ `[]`, so an assembly without Lean is byte-identical to before.
     noticeSource: (member) => (lean && typeof lean.takeNoticesFor === 'function' ? lean.takeNoticesFor(member) : []),
   })
+  // ★ PHASE 7 / round 17: THE ONE CLOSURE-VOTE CALCULATION. The turn face and kernel.status() call THIS function with the
+  // SAME inputs, so "two places compute the same reading" cannot drift into eligible:[] again.
+  const closureVoteInput = () => ({
+    votes: turn && typeof turn.status === 'function' ? turn.status().closureVoteVotes : new Map(),
+    roster: members && typeof members.roster === 'function' ? members.roster() : [],
+    may: members && typeof members.may === 'function' ? (id, perm) => {
+      // may() returns an OBJECT ({ ok, allowed }), not a boolean; passing it straight through enfranchised the chair.
+      const r = members.may(id, perm)
+      return !!(r && typeof r === 'object' ? r.allowed : r)
+    } : null,
+    permission: typeof settings['vmu.turn.closureVotePermission'] === 'string' && settings['vmu.turn.closureVotePermission']
+      ? settings['vmu.turn.closureVotePermission'] : 'vote',
+  })
+  const closureVoteView = () => closureVoteOf(closureVoteInput())
   // ROUND 24: the teaching face the N13 volume declared (19 of its 24 knobs change behaviour; the five that need
   // a library, records or ontology seam are named rather than silently accepted).
   const teaching = createCourse({ settings: settingsView, bus, clock: guardedClock, log })
@@ -1945,6 +1959,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     get latex() { return latex },
     /** ★ PHASE 7: the generic pack-registered status-section service (same object modules reach as vmu.status). */
     get statusService() { return statusService },
+    /** ★ PHASE 7: the ONE closure-vote reading; the turn tool calls this instead of re-deriving it without a roster. */
+    closureVoteView,
     tasks,
     rules,
     loader,
@@ -2865,21 +2881,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       view.closureVoteRecorded = recordedVotes && typeof recordedVotes.forEach === 'function'
         ? Object.fromEntries([...recordedVotes.entries()])
         : {}
-      view.closureVote = closureVoteOf({
-        votes: turn && typeof turn.status === 'function' ? turn.status().closureVoteVotes : new Map(),
-        roster: members && typeof members.roster === 'function' ? members.roster() : [],
-        may: members && typeof members.may === 'function' ? (id, perm) => {
-          // ★★★ ROUND 50: `may()` RETURNS AN OBJECT, NOT A BOOLEAN - `{ ok, allowed, member, slot, permission }`. An
-          // object is ALWAYS truthy, so passing the method straight through enfranchised EVERY member including the
-          // chair - which is exactly the trap that makes unanimity unreachable (the chair may convene, close, assign,
-          // grant and freeze but may NOT vote). Measured before this unwrap: `eligible: ["acad","m1","m2"]` with acad
-          // on the chair slot. The unwrap is load-bearing, not tidying.
-          const r = members.may(id, perm)
-          return !!(r && typeof r === 'object' ? r.allowed : r)
-        } : null,
-        permission: typeof settings['vmu.turn.closureVotePermission'] === 'string' && settings['vmu.turn.closureVotePermission']
-          ? settings['vmu.turn.closureVotePermission'] : 'vote',
-      })
+      view.closureVote = closureVoteView()
+      view.closureVoteInput = closureVoteInput
       return view
     },
   }

@@ -400,6 +400,34 @@ if (SELF_PROBE) {
     '★ pack unload 后该工具不在宿主可见面（kernel 通知了 host）', host.ctx.tools.schemas())
 }
 
+// ── ★ PHASE 7 / round 17: ONE closure reading + compact status faces (measurable readability) ────────────────
+{
+  // positive: a seated member WITH the permission must be eligible and missing (not "nobody has a vote")
+  const k = km.createKernel({ clock })
+  k.declareSlots([{ id: 'member', label: '成员', capacity: 0, permissions: ['vote'] }])
+  await k.members.hire({ id: 'member-a', slot: 'member', institution: 'sim' })
+  const view = k.closureVoteView()
+  ok(view && view.eligible.includes('member-a') && view.missing.includes('member-a') && view.cast === false,
+    '★ 正：有票权成员在册 ⇒ closureVote.eligible 含他、missing 正确（不再误报“没人有票权”）', view)
+  // reverse: no roster ⇒ eligible [] and the reason is truthful
+  const bare = km.createKernel({ clock })
+  const none = bare.closureVoteView()
+  ok(none.eligible.length === 0 && /no member holds the closure-vote permission/.test(none.reason),
+    '★ 反：真的没人有票权 ⇒ eligible:[] 且 reason 说真话', none)
+  // size: the default summary and the closure-only face must really be readable (first quantification of readability)
+  const host2 = fakeHost()
+  const adapter2 = hm.createHostAdapter({ ctx: host2.ctx, kernel: k, settings: {} })
+  await adapter2.install()
+  const statusSpec = host2.state.specs.find((s) => s.name === 'vibe_vmu_status')
+  const defaultText = await statusSpec.execute({}, {})
+  ok(defaultText.length < 4000, '★ status 默认 summary 实测 < 4000 字符（可读，不再被宿主截断）', defaultText.length)
+  const closureText = await statusSpec.execute({ detail: 'closure' }, {})
+  ok(closureText.length < 1500, '★ detail:"closure" 是专门的小读数面，实测 < 1500 字符', closureText.length)
+  const parsed = JSON.parse(closureText)
+  ok(parsed.closureVote && parsed.closureVote.eligible.includes('member-a'),
+    '★ closure 小面回的就是统一后的 reading（与 kernel 同一份输入）', parsed.closureVote)
+}
+
 // ── 9. ★ PHASE 7 (goal 4): MEMBER TOOL FACE — kernel capability, host applier, real schemas diff ────────────
 {
   const kernel = km.createKernel({ clock })

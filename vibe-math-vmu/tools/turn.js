@@ -24,7 +24,13 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         ? kernel.members.roster().filter((m) => m && m.state === 'live').map((m) => ({ id: m.id, role: m.slot }))
         : []
       const members = explicit ? args.members : inferred
-      if (op === 'status') return { ok: true, status: kernel.turn.status() }
+      if (op === 'status') {
+    const status = kernel.turn.status()
+    // ★ PHASE 7 / round 17: the turn face used to call closureVoteOf with its DEFAULTS (roster []), so a seated member
+    // with the vote permission still read eligible:[]. Use the kernel's ONE calculation instead of a second one.
+    if (typeof kernel.closureVoteView === 'function') status.closureVote = kernel.closureVoteView()
+    return { ok: true, status }
+  }
       // ★★★ ROUND 73: THE CALLER-PLAYED TURN, SECOND HALF. When a host cannot lend an Agent, the assembled member
       // prompt is handed back to the CALLING session instead of being delivered to a subagent, and that session
       // returns the member's own reply here on the next call. The seam is the framework's own (`deliverByReturning`);

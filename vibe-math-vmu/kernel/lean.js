@@ -284,6 +284,11 @@ export function createLeanFace(opts) {
     outputDroppedBytes: Number(j.outputDroppedBytes) || 0, outputLossy: j.outputLossy === true, outputSpill: j.outputSpill || null,
     // F45 fact: this job reused an earlier PASSED compile (same content + build context).
     dedupedOf: j.dedupedOf || null,
+    // ★ PHASE 7 / round 17: a failed job used to show exitCode:null with NO reason. The receipt already has the named
+    // code; a diagnostic view that drops it is exactly the "refusal not named" class, so expose code/message/hint.
+    code: (j.receipt && j.receipt.code) || null,
+    message: (j.receipt && j.receipt.message) || null,
+    hint: (j.receipt && j.receipt.hint) || null,
     dropped: { events: droppedEvents }, // 截断/丢弃必计数（纪律）
   })
 

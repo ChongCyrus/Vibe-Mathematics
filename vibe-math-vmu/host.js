@@ -432,11 +432,18 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
       // ★★ ROUND 34 (measured): the resolved settings map made this receipt larger than the host's limit on a real
       // machine, so the host truncated it and the sections a reader most needed were the ones cut. The default is a
       // bounded summary; the complete map is one word away. Nothing is lost - only requested.
-      detail: param('string', 'summary（默认，只列非默认来源的键 ＋ 计数）｜full／settings（完整逐键表）｜phase｜quorum｜formal｜paper（按段取）'),
+      detail: param('string', 'summary（默认，紧凑可读，<4000 字符）｜full／settings（完整逐键表）｜closure（只回结题读数）｜phase｜quorum｜formal｜paper（按段取）'),
     },
     run: async (req = {}) => {
       try {
-        const out = Object.assign({ ok: true, instance }, kernel.status({ detail: req && typeof req.detail === 'string' ? req.detail : 'summary' }))
+        const detail = req && typeof req.detail === 'string' ? req.detail : 'summary'
+        // ★ PHASE 7 / round 17: a diagnostic face the model cannot READ is a mechanism nobody can use. These two compact
+        // faces are the measurable answer: default summary, and detail:'closure' = only the closing reading.
+        if (detail === 'closure') {
+          const cv = typeof kernel.closureVoteView === 'function' ? kernel.closureVoteView() : (kernel.status().closureVote || null)
+          return { ok: true, instance, closureVote: cv, counts: { tools: 1 }, note: "detail:'closure' returns only the closing reading; detail:'full' for everything" }
+        }
+        const out = Object.assign({ ok: true, instance }, kernel.status({ detail }))
         // ROUND 1 / K1 (D-01): WHICH faces exist and WHY the other ones do not. A face that silently disappears is
         // exactly the failure this map exists to end, so the answer travels with the status receipt.
         // ROUND 26 / task-141 (the third "receipt vs fact" instance): `published` used to be THIS evaluation's tool
@@ -548,6 +555,22 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           try { out.packReport = packReport() } catch (e) {
             out.packReport = { requested: null, applied: null, errors: [{ id: '(packReport)', code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) }], loading: null, ok: false }
           }
+        }
+        if (detail === 'summary') {
+          const roster = out.members && Array.isArray(out.members.roster) ? out.members.roster : []
+          const compact = {
+            ok: true, instance, enabled: out.enabled, active: out.active, packPath: out.packPath, note: out.note,
+            packs: Array.isArray(out.packs) ? out.packs : [],
+            closureVote: out.closureVote || null,
+            members: { live: roster.filter((m) => m && m.state === 'live').map((m) => ({ id: m.id, slot: m.slot, state: m.state })) },
+            counts: {
+              tools: out.faces && Array.isArray(out.faces.published) ? out.faces.published.length : null,
+              busEntries: out.bus && Array.isArray(out.bus.entries) ? out.bus.entries.length : null,
+              records: out.library ? 'present' : null,
+            },
+            detail: 'summary (compact); pass detail:"full" for settings/bus/faces detail, detail:"closure" for the closing reading only',
+          }
+          return compact
         }
         return out
       } catch (e) {

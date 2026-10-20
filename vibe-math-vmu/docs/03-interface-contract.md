@@ -146,7 +146,7 @@
 
 | 工具 | 语义 | 参数（宿主视图） | 出现条件 | 具名拒 |
 |---|---|---|---|---|
-| `vibe_vmu_status` | 只读总览：接缝/注册面/中间件条目/生效整合包/**实例身份**/`settings.resolved`/`auditTail`/`prompt` | —（对象 schema，无必填） | `vmu.core.enabled !== false` | `VMU_MIDDLEWARE_FAILED` |
+| `vibe_vmu_status` | 只读总览：接缝/注册面/中间件条目/生效整合包/**实例身份**/`settings.resolved`/`auditTail`/`prompt`；★ 默认 `detail:'summary'` 是**紧凑可读**（含 `closureVote`、live 成员 id/slot/state、计数，实测 <4000 字符）；`detail:'full'` 才回全量；`detail:'closure'` 只回结题读数（<1500 字符） | —（对象 schema，无必填） | `vmu.core.enabled !== false` | `VMU_MIDDLEWARE_FAILED` |
 
 > ★★★★ **「出现条件」的单一真源（轮 1／K1，D-01 裁决 ✓；轮 2 扩到 52 面 ✓）**：★ **本节各行的"出现条件"由 `host.js` 的 `TOOL_FACES` 一张表解析** ✓ —— ★ **不再是"四十个布尔开关"** ✗（★ 轮 1 实测：真实入口只传 4 个开关 ⇒ **45 面里 35 面真机不可达** ✗，而本节与 `docs/18` 却写着它们都在 ✓）。★★ **轮 2 实数**：**工具面 52**（轮 1 的 45 ＋ `human`／`chat`／`mailbox`／`panel`／`report`／`mathadapters`／`mathjobs` 七个新面 ✓；★ `vibe_vmu_mathtools` 的 6 个 action **不变** —— 数学库适配与数学作业**各自开面**，因为"一工具一服务、action 枚举＝该服务方法集"是既有强契约 ✓）、**服务 77**（轮 1 的 70 ＋ `vmu.ids`／`vmu.resume`／`vmu.chat`／`vmu.mailbox`／`vmu.panel`／`vmu.report`／`vmu.mathadapters` ✓）、**耐久公开键 15**（`settings.resolved`／`packs`／`middleware`／`members`／`tasks`／`meetings`／`ballots`／`records`／`budget`／`phase`／`work`／`idempotency`／`mailbox`／`resume`／`ids` ✓）。
 > **每一面的意图来源（按序求值 ✓）**：① `settings['vmu.tools.faces']`（面键／工具名／`*` ✓）；② `config.faces`；③ 该面自己的 `config.<face>` 键（如 `config.minutes` ✓）；④ 该面的 `vmu.<族>.*` 设置键（如 `vmu.minutes.*` ✓）；⑤ 少数面的特有条件（`set`＝有声明键；`records`＝有耐久 root；`script`＝声明了 scripts；`pack`＝装载器在场 ✓）。
