@@ -156,6 +156,25 @@ export function validatePack(manifest) {
       }
     }
   }
+  // ★ PHASE 8 / goal 10 (round 36): WHICH PRESENTATION a pack's tool batch uses. DECLARATION ONLY this round — the host
+  // executes (deferLoading / presentAs) later. Zero mechanism: no declaration ⇒ today's native full-schema behaviour.
+  // The VALUE is checked here too (a plan should catch a typo before apply), and the kernel's declare method refuses the
+  // same cases by name with the legal values.
+  const TOOL_PRESENTATION_MODES = Object.freeze(['native', 'ptc', 'defer'])
+  if (manifest.toolPresentation !== undefined) {
+    const tp = manifest.toolPresentation
+    if (!tp || typeof tp !== 'object' || Array.isArray(tp)) problems.push('toolPresentation must be an object { mode, faces? }')
+    else {
+      for (const k of Object.keys(tp)) if (k !== 'mode' && k !== 'faces') problems.push('toolPresentation has unknown key ' + JSON.stringify(k) + ' (mode|faces)')
+      if (typeof tp.mode !== 'string' || !TOOL_PRESENTATION_MODES.includes(tp.mode)) {
+        problems.push('toolPresentation.mode must be one of: ' + TOOL_PRESENTATION_MODES.join('|') + ' (got ' + JSON.stringify(tp.mode) + ')')
+      }
+      if (tp.faces !== undefined) {
+        if (!Array.isArray(tp.faces) || tp.faces.length === 0) problems.push('toolPresentation.faces must be a non-empty array of tool names')
+        else for (const n of tp.faces) if (typeof n !== 'string' || !/^[a-z][a-z0-9_]{2,63}$/.test(n)) problems.push('toolPresentation.faces has an invalid tool name: ' + JSON.stringify(n))
+      }
+    }
+  }
   for (const r of manifest.rules || []) {
     if (!r || typeof r.id !== 'string') problems.push('a rule needs an id')
     else if (!Array.isArray(r.on) || r.on.length === 0) problems.push('rule ' + r.id + ': on is required')
@@ -702,6 +721,12 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         const declared = kernel.declarePackTools(manifest.tools, { by: manifest.id })
         undo.push(() => { const r = kernel.retractPackTools(declared.declared, { by: manifest.id }); return r && r.hostRetract ? r.hostRetract : undefined })
         break // one call declares the whole list; one undo entry is enough
+      }
+      // ★ PHASE 8 / goal 10 (round 36): tool PRESENTATION is a DECLARATION; the kernel records it and exposes one reader.
+      // Nothing here reaches a host request yet (execution is the next round). No declaration ⇒ no call at all.
+      if (manifest.toolPresentation && typeof kernel.declarePackToolPresentation === 'function') {
+        kernel.declarePackToolPresentation(manifest.toolPresentation, { by: manifest.id })
+        undo.push(() => { try { if (typeof kernel.retractPackToolPresentation === 'function') kernel.retractPackToolPresentation({ by: manifest.id }) } catch { /* unload must still proceed */ } })
       }
       // ★ PHASE 7 (goal 4): role -> tool face is a DECLARATION; the kernel holds it and the host applies it to live
       // member Agents. No declaration ⇒ no call at all (zero mechanism).

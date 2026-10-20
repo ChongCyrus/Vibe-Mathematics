@@ -1775,6 +1775,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   let toolFaceDescriptions = null
   // ★ PHASE 7: pack-declared role -> tool face. Strategy in the pack, capability in the kernel, Agent in the host.
   const packToolFaces = new Map()
+  // ★ PHASE 8 / goal 10 (round 36): pack-declared TOOL PRESENTATION — which channel a pack's tool batch prefers.
+  // DECLARATION ONLY in this round: the kernel stores it and exposes ONE reader; the host translates it into the DSH
+  // mechanisms (deferLoading / presentAs('ptc')) in the next round. No declaration ⇒ nothing is stored (zero mechanism).
+  const packToolPresentation = new Map()
   /** ★ PHASE 8 / round 24: per-TURN overrides consumed by the pull resolver at request time (tools:"none"). */
   const memberToolOverrides = new Map()
   /** ★ PHASE 8: the member this step is currently driving, so the pull hook can resolve a one-shot child Agent. */
@@ -2273,6 +2277,61 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
 
     /** READ-ONLY: what packs declared (for status/audit). */
     packToolFaces() { return [...packToolFaces.entries()].map(([pack, v]) => ({ pack, roles: v.roles.slice(), faces: v.faces })) },
+
+    /**
+     * ★ PHASE 8 / goal 10 (round 36): A PACK DECLARES WHICH PRESENTATION ITS TOOL BATCH USES.
+     * Modes are a CLOSED set ('native' | 'ptc' | 'defer') and an unknown one is a NAMED refusal with the legal values —
+     * never a silent fallback, because a typo would otherwise read as "native" and the operator would believe the
+     * declaration took effect. `faces` (optional) narrows the declaration to named tools and every name must be a tool
+     * this kernel actually holds (declared pack tools or a host-published face); an unknown one is refused by name.
+     * THIS METHOD ONLY RECORDS; execution (deferLoading/presentAs) belongs to the host and is a later round.
+     */
+    declarePackToolPresentation(presentation, { by = null } = {}) {
+      const MODES = ['native', 'ptc', 'defer']
+      const owner = by === null || by === undefined ? '(anonymous)' : String(by)
+      if (!presentation || typeof presentation !== 'object' || Array.isArray(presentation)) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'toolPresentation must be an object { mode, faces? }', 'example: { mode: "ptc" } or { mode: "defer", faces: ["vibe_v5_say"] }')
+      }
+      for (const k of Object.keys(presentation)) {
+        if (k !== 'mode' && k !== 'faces') throw refuse('VMU_INVALID_ARGUMENT', 'toolPresentation has unknown key: ' + String(k), 'allowed keys: mode, faces')
+      }
+      if (typeof presentation.mode !== 'string' || !MODES.includes(presentation.mode)) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'unknown tool presentation mode: ' + JSON.stringify(presentation.mode),
+          'legal modes: ' + MODES.join(' | ') + ' (native = today\'s full schemas; ptc = SDK list; defer = lazy schemas)')
+      }
+      let faces = null
+      if (presentation.faces !== undefined) {
+        if (!Array.isArray(presentation.faces) || presentation.faces.length === 0) {
+          throw refuse('VMU_INVALID_ARGUMENT', 'toolPresentation.faces must be a non-empty array of tool names', 'omit faces to declare the whole batch')
+        }
+        const known = new Set([...(typeof packToolDeclarations !== 'undefined' ? [...packToolDeclarations.keys()] : []), ...(Array.isArray(memberToolFaceCatalogue) ? memberToolFaceCatalogue : [])])
+        for (const n of presentation.faces) {
+          if (typeof n !== 'string' || n.trim() === '') throw refuse('VMU_INVALID_ARGUMENT', 'toolPresentation.faces contains a non-string name', 'facets are tool names')
+          if (!known.has(n)) {
+            throw refuse('VMU_INVALID_ARGUMENT', 'toolPresentation.faces names a tool this kernel does not hold: ' + n,
+              'holdable now: ' + (known.size ? [...known].slice(0, 20).join(', ') + (known.size > 20 ? ' …' : '') : '(none declared yet)'))
+          }
+        }
+        faces = presentation.faces.slice()
+      }
+      packToolPresentation.set(owner, { mode: presentation.mode, faces })
+      return { ok: true, pack: owner, mode: presentation.mode, faces }
+    },
+    /** The unload half (pack undo calls this): drop a pack's declaration. */
+    retractPackToolPresentation({ by = null } = {}) {
+      const owner = by === null || by === undefined ? '(anonymous)' : String(by)
+      const had = packToolPresentation.delete(owner)
+      return { ok: true, pack: owner, removed: had }
+    },
+    /**
+     * THE ONE READER. Zero mechanism: NO declaration ⇒ `null` (never a fabricated 'native' default — "nothing declared"
+     * and "declared native" must stay distinguishable). One pack ⇒ that declaration; several ⇒ an array of them.
+     */
+    packToolPresentation() {
+      if (packToolPresentation.size === 0) return null
+      const rows = [...packToolPresentation.entries()].map(([pack, v]) => ({ pack, mode: v.mode, faces: v.faces === null ? null : v.faces.slice() }))
+      return rows.length === 1 ? rows[0] : rows
+    },
 
     /** ★ PHASE 7: the host adapter registers the ONLY applier (it owns the Agent/ctx). */
     setMemberToolFaceApplier(fn) { memberToolFaceApplier = typeof fn === 'function' ? fn : null; return { ok: true, applier: typeof fn === 'function' } },
