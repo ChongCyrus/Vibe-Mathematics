@@ -50,13 +50,21 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         const ids = members.map((m) => m && m.id).filter((id) => typeof id === 'string' && id !== '')
         if (ids.length === 0) return refused('VMU_INVALID_ARGUMENT', 'tools:"none" needs at least one member', 'pass members:[{id, role}]')
         for (const id of ids) kernel.setMemberToolOverride({ member: id, all: true })
+        // The pull hook resolves a one-shot child by this active member; without it the override is invisible.
+        if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(ids[0])
         try {
           return await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step })
         } finally {
+          if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(null)
           for (const id of ids) { try { kernel.clearMemberToolOverride(id) } catch { /* clear is best effort; the turn tool reports what ran */ } }
         }
       }
-      if (op === 'step') return await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step })
+      if (op === 'step') {
+        const activeId = members.length > 0 && members[0] && typeof members[0].id === 'string' ? members[0].id : null
+        if (activeId && typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(activeId)
+        try { return await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step }) }
+        finally { if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(null) }
+      }
       if (op === 'drive') return await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step })
       return refused('VMU_INVALID_ARGUMENT', 'unknown op: ' + op, 'known ops: step, drive, status')
     }

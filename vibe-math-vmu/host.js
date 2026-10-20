@@ -1316,12 +1316,39 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   }
   const pullMemberToolFace = async (assembly, context, next) => {
     const out = await next()
-    const member = memberOfAgent(context && context.agent)
+    try { if (kernel.noteToolFacePull) { const prev = kernel.toolFacePull ? kernel.toolFacePull() : {}; const aid = (context && context.agent && context.agent.id) || null; const seen = (prev.agentsSeen || []).slice(); if (aid && !seen.includes(aid)) { seen.push(aid); if (seen.length > 8) seen.shift() }; kernel.noteToolFacePull({ seen: 1 + (prev.seen || 0), lastAgent: aid, lastSections: Array.isArray(out.sections) ? out.sections.length : null, lastContexts: Array.isArray(out.contexts) ? out.contexts.length : null, agentsSeen: seen }) } } catch { /* diagnostics */ }
+    // The agent→member map is learned at delivery time; fall back to the ASSEMBLY ITSELF, which already carries the
+    // member-specific blocks (v5r: 【本轮面向的成员】代号：member-a). This avoids guessing and works even when the
+    // session map is not yet populated.
+    let member = memberOfAgent(context && context.agent)
+    if (!member) {
+      const texts = []
+      // The member-specific role block is a CONTEXT in DSH (PromptAssembly.contexts), not only a section; scan BOTH.
+      for (const sec of Array.isArray(out.sections) ? out.sections : []) if (sec && typeof sec.text === 'string') texts.push(sec.text)
+      for (const ctx of Array.isArray(out.contexts) ? out.contexts : []) if (ctx && typeof ctx.text === 'string') texts.push(ctx.text)
+      for (const txt of texts) {
+        const m = /代号：\s*([A-Za-z0-9_-]+)/.exec(txt) || /【本轮面向的成员】[^\n]*?([A-Za-z0-9][A-Za-z0-9_-]*)/.exec(txt)
+        if (m && m[1]) { member = m[1]; break }
+      }
+      if (!member) {
+        const all = texts.join('\n')
+        const idx = all.indexOf('代号')
+        try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ lastTextLen: all.length, lastCodeIdx: idx, lastTextSample: idx >= 0 ? all.slice(Math.max(0, idx - 60), idx + 120) : all.slice(0, 160) }) } catch { /* diagnostics */ }
+      }
+    }
+    if (!member) {
+      // One-shot child Agents have no learned memberSession in some delivery modes. The turn tool records WHICH member
+      // this step is driving; use it ONLY for non-root agents (root ids are 'session-…').
+      const aid = String((context && context.agent && context.agent.id) || '')
+      if (aid && !aid.startsWith('session-') && typeof kernel.currentTurnMember === 'function') member = kernel.currentTurnMember()
+    }
     if (!member) return out
+    try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ matched: 1 + ((kernel.toolFacePull && kernel.toolFacePull().matched) || 0), lastMember: member }) } catch { /* diagnostics */ }
     try {
       const resolved = kernel.resolveMemberToolDeny(member)
       const deny = new Set(resolved.deny || [])
       if (!resolved.all && deny.size === 0) return out
+      try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ applied: 1 + ((kernel.toolFacePull && kernel.toolFacePull().applied) || 0), lastMember: member }) } catch { /* diagnostics */ }
       if (resolved.all) out.tools = []
       else out.tools = (Array.isArray(out.tools) ? out.tools : []).filter((t) => !deny.has(t && t.name))
       const tools = context.agent && context.agent.ctx && context.agent.ctx.tools
@@ -1334,9 +1361,27 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       return out
     }
   }
-  if (ctx && typeof ctx.on === 'function') {
-    try { ctx.on('system-prompt/assemble', pullMemberToolFace) } catch (e) { log('vmu: system-prompt/assemble hook was refused: ' + String((e && e.message) || e)) }
-  }
+  // TWO REGISTRATIONS, DELIBERATELY:
+  //   · the ROOT context is unscoped; the assemble event is scope-filtered to the agent (dsh-scope
+  //     `system-prompt/assemble: args[1].scope`), and a scope-tagged listener on a sibling scope would be filtered out.
+  //     Registering on ctx.root (when present) makes the listener untagged and therefore admitted globally.
+  //   · agent/created gives the per-agent ctx itself; registering the same listener there is the scoped fallback (and the
+  //     event's own `this` scope is the agent, so dispatch can also route it this way).
+  try {
+    const rootCtx = ctx && ctx.root && typeof ctx.root.on === 'function' ? ctx.root : ctx
+    // ★ { global: true } is REQUIRED: this event is dispatched through a scope carrier (dsh-scope routes it by
+    // context.scope = the agent). A NORMAL listener is filtered by its own context tag; the DSH invariant installs the
+    // same event with { global: true } for exactly this reason. Without it the listener is silently never called.
+    if (rootCtx && typeof rootCtx.on === 'function') { rootCtx.on('system-prompt/assemble', pullMemberToolFace, { global: true }); if (kernel.setToolFacePullRegistered) kernel.setToolFacePullRegistered(true) }
+    if (ctx && typeof ctx.on === 'function') {
+      ctx.on('agent/created', (payload) => {
+        const agent = payload && payload.agent
+        const agentCtx = agent && agent.ctx
+        if (!agentCtx || typeof agentCtx.on !== 'function') return
+        try { agentCtx.on('system-prompt/assemble', pullMemberToolFace) } catch { /* root registration still applies */ }
+      })
+    }
+  } catch (e) { log('vmu: system-prompt/assemble hook was refused: ' + String((e && e.message) || e)) }
   if (kernel && kernel.turn && typeof kernel.turn.setVisibleToolsProvider === 'function') {
     kernel.turn.setVisibleToolsProvider((member) => {
       const r = resolveMemberAgent(member)

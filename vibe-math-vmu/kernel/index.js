@@ -1777,8 +1777,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   const packToolFaces = new Map()
   /** ★ PHASE 8 / round 24: per-TURN overrides consumed by the pull resolver at request time (tools:"none"). */
   const memberToolOverrides = new Map()
+  /** ★ PHASE 8: the member this step is currently driving, so the pull hook can resolve a one-shot child Agent. */
+  let activeTurnMember = null
   /** ★ PHASE 8: named failures from the pull hook, visible in status() instead of silently skipped. */
   const toolFaceFailures = []
+  /** ★ PHASE 8: diagnostics for the pull hook (registered/seen/matched/applied) — visible in status(). */
+  const toolFacePullState = { registered: false, seen: 0, matched: 0, applied: 0, lastAgent: null, lastMember: null, lastSections: null, lastContexts: null, agentsSeen: [] }
   // ★ PHASE 7: the HOST owns the tool table; the kernel only holds pack DECLARATIONS. A retraction therefore has
   // to be observable to the adapter, or a pack unload leaves the names visible to the model. One observer, set by
   // the host adapter; the kernel never calls a host API itself.
@@ -2197,12 +2201,17 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       return { ok: true, pack: owner, roles }
     },
     /** ★ PHASE 8: a per-turn override (e.g. tools:"none"). The pull resolver reads it; the turn tool clears it in finally. */
+    setActiveTurnMember(member) { activeTurnMember = typeof member === 'string' ? member : null; return { ok: true, member: activeTurnMember } },
+    currentTurnMember() { return activeTurnMember },
     setMemberToolOverride({ member, all = false, deny = null } = {}) {
       const id = typeof member === 'string' ? member.trim() : ''
       if (!id) throw refuse('VMU_INVALID_ARGUMENT', 'setMemberToolOverride needs a member', 'pass member:"<roster id>"')
       memberToolOverrides.set(id, { all: all === true, deny: Array.isArray(deny) ? deny.filter((x) => typeof x === 'string') : [] })
       return { ok: true, member: id }
     },
+    setToolFacePullRegistered(v) { toolFacePullState.registered = v === true; return { ok: true } },
+    noteToolFacePull(partial = {}) { Object.assign(toolFacePullState, partial); return { ok: true } },
+    toolFacePull() { return Object.assign({}, toolFacePullState) },
     noteToolFaceFailure({ member, code = 'VMU_ENGINE_UNAVAILABLE', message = null } = {}) { toolFaceFailures.push({ member: String(member), code, message: message === null ? null : String(message), at: clock() }); if (toolFaceFailures.length > 20) toolFaceFailures.shift(); return { ok: true, count: toolFaceFailures.length } },
     clearMemberToolOverride(member) { return { ok: true, member: String(member), removed: memberToolOverrides.delete(String(member)) } },
     memberToolOverride(member) { return memberToolOverrides.get(String(member)) || null },
@@ -2822,6 +2831,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         // PHASE 6 / P0-10: the tool NAMES packs declared. The kernel holds them; the host publishes them.
         packTools: [...packToolDeclarations.values()].map((t) => ({ name: t.name, packId: t.packId })),
         // ★ PHASE 7: only when a pack registered sections; a throwing reader is NAMED, never hidden.
+        toolFacePull: Object.assign({}, toolFacePullState),
         ...(toolFaceFailures.length > 0 ? { toolFaceFailures: toolFaceFailures.slice() } : {}),
         ...(statusSections.size > 0 ? { sections: Object.fromEntries([...statusSections.entries()].map(([name, fn]) => {
           try { return [name, { ok: true, value: fn() }] } catch (e) {
