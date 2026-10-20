@@ -1081,6 +1081,44 @@ const FALLBACK_KEYS = [
   ok(err2 && err2.code === 'VMU_NO_SUCH_OBJECT', '★ 反：provider 的无 live Agent 具名拒原样传播', err2 && err2.code)
 }
 
+// ── PHASE 8 / goal 10 (round 36): the pack can DECLARE which presentation its tool batch uses ─────────────────────
+// DECLARATION CHANNEL ONLY: the kernel records it and exposes ONE reader; execution (deferLoading / presentAs) is the
+// host's, next round. So the assertions here are exactly: zero mechanism (no declaration ⇒ null), positive (declared ⇒
+// readable), and the two NAMED refusals (unknown mode / unknown face). Nothing may change tool callability.
+{
+  const pk = m.createKernel({ clock: () => 1000 })
+  ok(pk.packToolPresentation() === null,
+    '\u2605 \u53cd\uff08\u96f6\u673a\u5236\uff09\uff1a\u4e0d\u58f0\u660e toolPresentation \u21d2 \u8bfb\u53d6\u5668\u8fd4\u56de null\uff08\u7edd\u4e0d\u4f2a\u9020 native \u9ed8\u8ba4\uff09', pk.packToolPresentation())
+  let badMode = null
+  try { pk.declarePackToolPresentation({ mode: 'warp' }, { by: 'probe-pack' }) } catch (e) { badMode = e }
+  ok(badMode && badMode.code === 'VMU_INVALID_ARGUMENT' && /native.*ptc.*defer/.test(String(badMode.hint || badMode.message)),
+    '\u2605\u2605 \u53cd\uff1a\u672a\u77e5 mode \u21d2 \u5177\u540d VMU_INVALID_ARGUMENT\uff0c\u5e76\u5217\u51fa\u5408\u6cd5\u503c', badMode && { code: badMode.code, hint: badMode.hint })
+  const declared = pk.declarePackTools([{ name: 'probe_tool_alpha', description: 'probe face', handler: () => ({ ok: true }) }], { by: 'probe-pack' })
+  ok(declared && declared.ok === true,
+    '\u2605 precondition: a probe tool is declared so a narrowed declaration has a REAL name to reference', declared && declared.declared)
+  const toolsBefore = pk.packTools().length
+  const one = pk.declarePackToolPresentation({ mode: 'ptc', faces: ['probe_tool_alpha'] }, { by: 'probe-pack' })
+  const readBack = pk.packToolPresentation()
+  ok(one.ok === true && readBack && readBack.mode === 'ptc' && readBack.pack === 'probe-pack' &&
+    Array.isArray(readBack.faces) && readBack.faces.length === 1 && readBack.faces[0] === 'probe_tool_alpha',
+    '\u2605\u2605\u2605 \u6b63\uff1a\u58f0\u660e\u540e packToolPresentation() \u8fd4\u56de\u8be5\u58f0\u660e\uff08mode + faces + \u6765\u6e90 pack\uff09', readBack)
+  ok(pk.packTools().length === toolsBefore,
+    '\u2605 \u58f0\u660e\u53ea\u662f\u58f0\u660e\uff1a\u5df2\u5b58\u5728\u7684\u5de5\u5177\u8868\u4e0e\u53ef\u8c03\u6027\u4e0d\u53d8\uff08packTools \u6570\u91cf\u4e0d\u53d8\uff09', { before: toolsBefore, after: pk.packTools().length })
+  let badFace = null
+  try { pk.declarePackToolPresentation({ mode: 'defer', faces: ['no_such_face_here'] }, { by: 'probe-pack' }) } catch (e) { badFace = e }
+  ok(badFace && badFace.code === 'VMU_INVALID_ARGUMENT' && /does not hold/.test(String(badFace.message)),
+    '\u2605\u2605 \u53cd\uff1a\u58f0\u660e\u91cc\u5f15\u7528\u672a\u6ce8\u518c\u7684\u9762\u540d \u21d2 \u5177\u540d VMU_INVALID_ARGUMENT', badFace && badFace.code)
+  const retracted = pk.retractPackToolPresentation({ by: 'probe-pack' })
+  ok(retracted.ok === true && retracted.removed === true && pk.packToolPresentation() === null,
+    '\u2605 \u5378\u8f7d\u534a\uff1a\u64a4\u9500\u540e\u8bfb\u53d6\u5668\u53c8\u53d8\u56de null\uff08\u96f6\u6b8b\u7559\uff09', retracted)
+  // validatePack catches the same typo at PLAN time (shape problems), so apply is not the first place it appears.
+  const packModW36 = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'kernel', 'pack.js')).href)
+  const plainsRaw = packModW36.validatePack({ id: 'probe-pack', version: '1.0.0', toolPresentation: { mode: 'warp' } })
+  const plains = { problems: Array.isArray(plainsRaw) ? plainsRaw : ((plainsRaw && (plainsRaw.problems || plainsRaw.errors)) || []) }
+  ok(plains && Array.isArray(plains.problems) && plains.problems.filter((p) => /toolPresentation\.mode must be one of/.test(String(p))).length === 1,
+    '\u2605 validatePack \u540c\u6837\u5728 plan \u9636\u6bb5\u5c31\u62a5\u5f62\u72b6\uff08\u5408\u6cd5\u503c\u5217\u5728\u9519\u8bef\u91cc\uff09', plains && plains.problems)
+}
+
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
