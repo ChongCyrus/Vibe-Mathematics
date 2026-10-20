@@ -1126,6 +1126,32 @@ try {
   ok(Array.isArray(reapplied.applied) || Array.isArray(reapplied.failed),
     '★ re-declaring and re-applying the face is possible (the apply path is idempotent enough to re-run)', reapplied && { applied: (reapplied.applied || []).length, failed: (reapplied.failed || []).length })
 
+  // ── ⑦e GOAL B-2 (PHASE 8): the pack IMPORTS the kit — one copy of the code, institution vocabulary stays in v5r ──
+  console.log('=== 7e. B-2 WIRING: kit imports, zero local copies ===')
+  ok(PACK.tools.length === 38,
+    '★★ the declared tool COUNT is unchanged by the move (institution vocabulary stays in the pack)', PACK.tools.length)
+  const packSrcW = (await import('node:fs')).readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
+  const movedDecls = [
+    'const str = (v)', 'const has = (v)', 'function refuse(', 'function settingsOf(', 'function declaredTracks(',
+    'function recordsOf(', 'function membersOf(', 'function requireSpeaker(',
+    'function cardBody(', 'function cardTool(', 'function toolSay(', 'function toolMessage(',
+    'function toolReadLibrary(', 'function toolRecordProgress(',
+  ]
+  const leftovers = movedDecls.filter((p) => packSrcW.split(p).length - 1 > 0)
+  ok(movedDecls.length === 14 && leftovers.length === 0,
+    '★★★ ZERO local declarations left for the 8 helpers + 6 handlers moved into the kit (probe over the pack source)', { checked: movedDecls.length, leftovers })
+  ok(packSrcW.includes("from '../../kit/handlers.js'") && packSrcW.includes("from '../../kit/tools.js'"),
+    '★★ the pack IMPORTS the kit (handlers + the card factory) — "deleted" cannot quietly mean "forgot to import"', null)
+  const kitModW = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kit', 'handlers.js')).href)
+  const helperNames = Object.keys(kitModW.KIT_HELPERS || {})
+  ok(helperNames.length === 8 && helperNames.filter((n) => typeof kitModW.KIT_HELPERS[n] === 'function').length === 8,
+    '★★ the kit exports all 8 helpers it now owns (one copy in the tree, imported by the pack)', helperNames)
+  const kitToolsModW = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kit', 'tools.js')).href)
+  const kitNamed = kitToolsModW.KIT_TOOLS.map((t) => t.name)
+  ok(kitNamed.length === 4 && typeof kitToolsModW.kitCardHandler === 'function' &&
+    ['vibe_v5_record_progress', 'vibe_v5_say', 'vibe_v5_message', 'vibe_v5_read_library'].every((n) => kitNamed.includes(n)),
+    '★★ the kit holds the four moved tools, each with a disableKey and a run', kitToolsModW.KIT_TOOLS.map((t) => t.name + ':' + t.disableKey))
+
 } finally {
   // The store writes atomically through temp+rename, so a removal can race one in-flight file: retry, and never let
   // a cleanup failure turn a green run red (the assertions above already reported the truth).

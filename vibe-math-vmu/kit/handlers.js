@@ -264,6 +264,10 @@ function toolReadLibrary(args = {}, { kernel } = {}) {
 
 
 
+/** The generic helpers the moved handlers use. Exported so a pack can import ONE implementation instead of keeping
+ *  a second copy (the bodies above are the verbatim extraction; this block only names them). */
+export const KIT_HELPERS = Object.freeze({ str, has, refuse, settingsOf, declaredTracks, recordsOf, membersOf, requireSpeaker })
+
 export const KIT_READ_LIBRARY = toolReadLibrary
 export const KIT_RECORD_PROGRESS = toolRecordProgress
 export const KIT_CARD_TOOL = cardTool
