@@ -1144,6 +1144,14 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(out && out.ok === true && during.length === 1 && during[0] && Array.isArray(during[0].allow) && during[0].allow.join(',') === 'vibe_vmu_vote' && during[0].all === false,
     '★ 正：tools:{allow:[vibe_vmu_vote]} ⇒ 回合执行时该成员只挂 allow 面（不是空面）', during)
   ok(overrides.size === 0, '★ 反：allow 回合结束后 override 被清除', [...overrides.keys()])
+  // the REAL tool schema types tools as a string, so the model sends the object form JSON-encoded; that ONE form must
+  // normalize to the same branch (and any other string shape must be refused, not silently ignored).
+  const encoded = await spec.run({ op: 'step', members: [{ id: 'member-a', role: 'member' }], why: 'JSON 字符串形态', tools: JSON.stringify({ allow: ['vibe_vmu_vote'] }) })
+  ok(encoded && encoded.ok === true && during.length === 2 && Array.isArray(during[1].allow) && during[1].allow.join(',') === 'vibe_vmu_vote',
+    '★ 正：tools 以 JSON 字符串送达（真实 schema 是 string）⇒ 归一化后仍只挂 allow', during)
+  const shape = await spec.run({ op: 'step', members: [{ id: 'member-a', role: 'member' }], why: '不认识的 tools 形态', tools: 'wat' })
+  ok(shape && shape.ok === false && shape.code === 'VMU_INVALID_ARGUMENT' && during.length === 2,
+    '★ 反：不认识的 tools 字符串 ⇒ 具名拒，不静默走角色收窄', shape)
   const before = during.length
   const bad = await spec.run({ op: 'step', members: [{ id: 'member-a', role: 'member' }], why: '未知工具名', tools: { allow: ['ghost_tool'] } })
   ok(bad && bad.ok === false && bad.code === 'VMU_INVALID_ARGUMENT' && during.length === before,

@@ -43,9 +43,17 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       //   'none'                 -> empty face (deny all)
       //   { allow: [names...] }  -> ONLY those names (validated against the host catalogue)
       //   omitted                -> role narrowing exactly as today (zero mechanism)
-      const toolsArg = args.tools
+      let toolsArg = args.tools
+      // ★ The schema declares tools as a STRING (so 'none' is expressible), and the model may therefore send the object
+      // form JSON-encoded. Normalize that ONE representation; everything else unknown is refused rather than ignored.
+      if (typeof toolsArg === 'string' && toolsArg.trim() !== '' && toolsArg.trim() !== 'none' && toolsArg.trim().startsWith('{')) {
+        try { toolsArg = JSON.parse(toolsArg) } catch (e) { return refused('VMU_INVALID_ARGUMENT', 'tools is not valid JSON: ' + String((e && e.message) || e), 'use none, or {"allow":["<tool>", ...]}, or omit tools') }
+      }
       const isNone = toolsArg === 'none'
       const isAllow = toolsArg && typeof toolsArg === 'object' && !Array.isArray(toolsArg) && Array.isArray(toolsArg.allow)
+      if (op === 'step' && toolsArg !== undefined && toolsArg !== null && !isNone && !isAllow) {
+        return refused('VMU_INVALID_ARGUMENT', 'tools has an unsupported shape', 'use none, or {"allow":["<tool>", ...]}, or omit tools (role narrowing)')
+      }
       if (op === 'step' && (isNone || isAllow)) {
         if (typeof kernel.setMemberToolOverride !== 'function' || typeof kernel.clearMemberToolOverride !== 'function') {
           return refused('VMU_ENGINE_UNAVAILABLE', 'this tools override needs the per-turn tool override seam',
@@ -111,7 +119,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         why: param('string', '为什么唤醒（原预设的唤醒也带这一项）'),
         reply: param('string', '★ 由调用者扮演成员回合时：★ 上一次 step／drive 交回的成员提示词，★ 其【成员自己的回复】放在这里送回（★ 仅当交付接缝是 deliverByReturning 时需要）'),
         next_step: param('string', '下一步要做什么'),
-        tools: param('string', '★ step 专用：none＝本回合把成员可见工具面清空（表决回合用），回合结束后恢复；缺省＝不动工具面'),
+        tools: param('string', '★ step 专用：none＝清空；或 JSON 字符串 {"allow":["<工具名>"]}＝只挂这些（校验后生效）；缺省＝按角色收窄'),
       },
       execute: executeTurn,
       run: runTurn,
