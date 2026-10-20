@@ -43,18 +43,21 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       // an agent that HAS tools (measured: 3 vote rounds, 180 s delivery timeouts, 12-21 calls each). `tools:'none'` makes
       // the member's visible face EMPTY for exactly this round, then restores the previous face in a finally block.
       if (op === 'step' && args.tools === 'none') {
-        if (typeof kernel.visibleToolsOf !== 'function' || typeof kernel.applyMemberToolFace !== 'function') {
-          return refused('VMU_ENGINE_UNAVAILABLE', 'tools:"none" needs the member tool face (visibleToolsOf + applyMemberToolFace)',
+        // ★ visibleToolsOf is the TURN loop's getter (the host's table is an adapter method; the kernel has no such
+        // top-level method - measured: a real run refused here with "needs the member tool face" while the face existed).
+        const visibleOf = kernel.turn && typeof kernel.turn.visibleToolsOf === 'function' ? kernel.turn.visibleToolsOf.bind(kernel.turn) : null
+        if (!visibleOf || typeof kernel.applyMemberToolFace !== 'function') {
+          return refused('VMU_ENGINE_UNAVAILABLE', 'tools:"none" needs the member tool face (turn.visibleToolsOf + applyMemberToolFace)',
             'assemble the host adapter so the member Agent exposes its tool table, or omit tools')
         }
         const before = []
         try {
           for (const m of members) {
             const id = m && m.id
-            const visible = kernel.visibleToolsOf(id)
+            const visible = visibleOf(id)
             before.push({ id, tools: visible && Array.isArray(visible.tools) ? visible.tools.slice() : [] })
             await kernel.applyMemberToolFace({ member: id, allow: [] })
-            const after = kernel.visibleToolsOf(id)
+            const after = visibleOf(id)
             if (!after || !Array.isArray(after.tools) || after.tools.length !== 0) {
               return refused('VMU_ENGINE_UNAVAILABLE', 'the empty member tool face did not take effect for ' + String(id),
                 'the host refused restrict({allow:[]}); a vote round must not run with tools still visible')

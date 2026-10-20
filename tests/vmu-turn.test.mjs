@@ -1113,8 +1113,10 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   const visible = new Map([['member-a', ['vibe_v5_say', 'vibe_v5_record_progress']]])
   const during = []
   const kernel = {
-    turn: { step: async () => { during.push((visible.get('member-a') || []).slice()); return { ok: true, receipt: { fields: ['vote_solved'] } } } },
-    visibleToolsOf: (id) => ({ ok: true, member: String(id), tools: (visible.get(String(id)) || []).slice() }),
+    turn: {
+      step: async () => { during.push((visible.get('member-a') || []).slice()); return { ok: true, receipt: { fields: ['vote_solved'] } } },
+      visibleToolsOf: (id) => ({ ok: true, member: String(id), tools: (visible.get(String(id)) || []).slice() }),
+    },
     applyMemberToolFace: async ({ member, allow }) => { visible.set(String(member), Array.isArray(allow) ? allow.slice() : []); return { ok: true } },
   }
   const spec = makeTurnSpec({ param: (type, description, extra = {}) => ({ type, description, ...extra }), refused: (code, message, hint) => ({ ok: false, code, message, hint }), TOOL_NAMES: { turn: 'vibe_vmu_turn' }, kernel })

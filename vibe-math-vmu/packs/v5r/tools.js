@@ -296,15 +296,19 @@ async function toolTaskCreate(args = {}, { kernel } = {}) {
     throw refuse('VMU_INVALID_ARGUMENT', 'task_create needs a subject',
       'pass subject:"what the task is" (the original REQUIRED it)')
   }
+  // ★ PHASE 7 round 23: the task ledger DOES carry a priority column now (`kernel/tasks.js:211` create takes
+  // `priority = 0`, `:234` stores it, `:371` sorts the board by it). The old note said the column did not exist — stale.
+  const priority = Number.isInteger(args.priority) ? args.priority : 0
   const made = await tasks.create({
     title: str(args.subject),
     objective: has(args.description) ? str(args.description) : null,
     owner: has(args.owner) ? str(args.owner) : null,
     deps: Array.isArray(args.blocked_by) ? args.blocked_by.map(String) : null,
     writeScopes: Array.isArray(args.write_scopes) ? args.write_scopes.map(String) : [],
+    priority,
   })
-  return { ok: true, tool: 'vibe_v5_task_create', task: made,
-    note: 'priority is a hint field in the original; this kernel\'s task ledger carries no priority column, so it is not stored (reported, not dropped silently)' }
+  return { ok: true, tool: 'vibe_v5_task_create', task: made, priority,
+    note: 'priority is STORED (the ledger has the column and lists the board by it); the original also treated it as a hint — here it is real data' }
 }
 
 async function toolTaskList(args = {}, { kernel } = {}) {
@@ -562,13 +566,18 @@ async function toolPrioritize(args = {}, { kernel } = {}) {
     throw refuse('VMU_NO_SUCH_OBJECT', 'the order names task(s) this board does not hold: ' + unknown.join(', '),
       'call task_list for the real ids; an order over phantom tasks would be a lie about priorities')
   }
+  // the board's CURRENT priorities travel with the receipt, so "what was already true" stays comparable to the order
+  const currentPriorities = order.map((r) => {
+    const row = taskRows.filter((t) => String(t.id) === String(r.task_id))[0]
+    return { task_id: String(r.task_id), current: row && row.priority !== undefined ? row.priority : null, requested: r.priority === undefined ? null : r.priority }
+  })
   const archived = recordsOf(kernel).put({
     track: 'state', kind: 'decision', title: 'priorities: ' + order.length + ' task(s)',
     body: 'why：' + str(args.why) + '\norder：' + order.map((r, i) => (i + 1) + '. ' + str(r.task_id) + ' (priority ' + str(r.priority) + ')').join('\n'),
     settled: false, by: str(args.member) || 'vibe_v5_prioritize',
   })
-  return { ok: true, tool: 'vibe_v5_prioritize', order, archived: archived && archived.id,
-    note: 'the task ledger has no priority column, so the ORDER is archived on the state track (a durable record) and NOT applied to the board — named, not silently ignored' }
+  return { ok: true, tool: 'vibe_v5_prioritize', order, archived: archived && archived.id, currentPriorities,
+    note: 'this kernel carries priority AT CREATE TIME and sorts the board by it (kernel/tasks.js:211/234/371), but it exposes NO operation to change an existing task\'s priority — so the ORDER itself is archived on the state track and NOT applied to existing rows; that remaining half is recorded as 需内核能力：tasks.setPriority' }
 }
 
 const FEEDBACK_ADD_REQUIRED = Object.freeze(['category', 'route', 'phenomenon', 'impact', 'action'])
@@ -722,23 +731,34 @@ function toolMeeting(args = {}, { kernel } = {}) {
   if (!kernel.meetings || typeof kernel.meetings.open !== 'function') {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'no meetings face is published, so a meeting cannot be convened', 'assemble a kernel with the meetings service')
   }
-  const opened = kernel.meetings.open({ type: 'ordinary', chair: member, roster, materials: str(args.agenda) })
+  // ★ PHASE 7 round 23: the kernel's `meetings.open` accepts a SECRETARY (a recorder). The pack passes it through and
+  // validates that the named id is on the roster — the RECORD right is a role the meeting declares, never a silent name.
+  let secretary = null
+  if (has(args.secretary)) {
+    const row = membersOf(kernel).roster().filter((m) => m.id === str(args.secretary))[0]
+    if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + str(args.secretary) + '" on this roster', 'the secretary must be a real member id')
+    secretary = row.id
+  }
+  const opened = kernel.meetings.open({ type: 'ordinary', chair: member, roster, materials: str(args.agenda), secretary })
   return { ok: true, tool: 'vibe_v5_meeting', meeting: opened && opened.meeting ? opened.meeting : opened,
-    kind, agenda: str(args.agenda), formalAgenda: args.formal_agenda === true,
+    kind, agenda: str(args.agenda), formalAgenda: args.formal_agenda === true, secretary,
     note: 'the original could also PROPOSE a meeting from a non-chair seat and let the chair convene it; this face has no propose path (named gap: procedure/propose)' }
 }
 
 const MOTION_KINDS = Object.freeze(['topic', 'procedural', 'resolution'])
 
-/** ★ `vibe_v5_motion` — raise a motion inside an ONGOING meeting, or WITHDRAW your own. The vmu meeting face has
- * `motion()` but no withdraw and no secondedBy, so withdraw is refused by name (needs a kernel capability). */
+/** ★ `vibe_v5_motion` — raise a motion inside an ONGOING meeting, or WITHDRAW your own. The kernel's meeting face has
+ * `motion()`, `second()` and `withdraw()` (PHASE 7 round 6); this tool is the pack-side path to all three. */
 function toolMotion(args = {}, { kernel } = {}) {
   const op = has(args.op) ? str(args.op) : ''
-  if (op === 'withdraw') {
-    throw refuse('VMU_ENGINE_UNAVAILABLE', 'withdrawing a motion needs kernel capability "motion withdraw" — the meetings face exposes no withdrawal',
-      'the original offered op:"withdraw"; this kernel models motions without a withdraw transition (named gap, not silently accepted)')
-  }
   if (!has(args.meeting)) throw refuse('VMU_INVALID_ARGUMENT', 'motion needs the meeting id', 'take it from vibe_v5_meeting\'s receipt')
+  if (op === 'withdraw') {
+    if (!has(args.motion_id) && !has(args.motion)) throw refuse('VMU_INVALID_ARGUMENT', 'withdraw needs the motion id', 'pass motion_id:"<motion id from vibe_v5_motion>"')
+    const who = requireVoter(kernel, args.member, 'motion withdraw').id
+    const w = kernel.meetings.withdraw({ meeting: str(args.meeting), motion: str(args.motion_id || args.motion), member: who })
+    if (w && w.ok === false) throw refuse(w.code || 'VMU_CONFLICT', w.message || 'the meeting face refused this withdrawal', w.hint || null)
+    return { ok: true, tool: 'vibe_v5_motion', op: 'withdraw', meeting: str(args.meeting), motion: w && (w.motion || args.motion_id), status: w && w.status, receipt: w && w.receipt }
+  }
   if (!has(args.kind)) throw refuse('VMU_INVALID_ARGUMENT', 'motion needs a kind', 'the original offered: ' + MOTION_KINDS.join(', '))
   if (!MOTION_KINDS.includes(str(args.kind))) {
     throw refuse('VMU_INVALID_ARGUMENT', 'unknown motion kind: ' + str(args.kind), 'the original offered: ' + MOTION_KINDS.join(', '))
@@ -747,21 +767,33 @@ function toolMotion(args = {}, { kernel } = {}) {
   const member = requireVoter(kernel, args.member, 'motion').id
   const made = kernel.meetings.motion({ meeting: str(args.meeting), member, kind: str(args.kind), text: str(args.text) })
   return { ok: true, tool: 'vibe_v5_motion', meeting: str(args.meeting), motion: made && (made.motion || made.id), kind: str(args.kind), text: str(args.text),
-    note: 'the original motions start `proposed` and need a SECOND; this face has no secondedBy field, so no second state is pretended' }
+    status: made && made.status,
+    note: 'a new motion starts `proposed` and needs a SECOND (vibe_v5_second) before it can be voted — the kernel models that window' }
 }
 
-/** ★ `vibe_v5_second` — seconding a proposed motion. The vmu meetings face models NO second state (no secondedBy, no
- * proposed gate), so this refuses BY NAME and names the missing capability: a silent no-op would make the prompt's
- * "second it" look like it did something. */
+/** ★ `vibe_v5_second` — second a proposed motion. The kernel's meeting face models the second state (secondedBy + the
+ * proposed gate, PHASE 7 round 6), including the original's "the proposer cannot second their own motion" rule. */
 function toolSecond(args = {}, { kernel } = {}) {
   if (!has(args.motion_id)) throw refuse('VMU_INVALID_ARGUMENT', 'second needs motion_id', 'pass motion_id:"<motion id from vibe_v5_motion>"')
-  requireVoter(kernel, args.member, 'second')
-  throw refuse('VMU_ENGINE_UNAVAILABLE', 'seconding a motion needs kernel capability "motion second" (secondedBy + proposed gate) — the meetings face has neither',
-    'named gap: the original refused seconding your own motion and prevented double seconds; this kernel does not model seconds at all, so the tool refuses instead of pretending')
+  if (!has(args.meeting)) throw refuse('VMU_INVALID_ARGUMENT', 'second needs the meeting id', 'the second state lives on the meeting; take the id from vibe_v5_meeting\'s receipt')
+  const member = requireVoter(kernel, args.member, 'second').id
+  const s = kernel.meetings.second({ meeting: str(args.meeting), motion: str(args.motion_id), member })
+  if (s && s.ok === false) throw refuse(s.code || 'VMU_CONFLICT', s.message || 'the meeting face refused this second', s.hint || null)
+  return { ok: true, tool: 'vibe_v5_second', meeting: str(args.meeting), motion: s && s.motion, status: s && s.status, secondedBy: s && s.secondedBy, receipt: s && s.receipt }
 }
 
-/** ★ `vibe_v5_poll_open` — open an option-type poll board. The box face supports question+options ONLY, so the
- * original's six per-poll rules are returned under `unapplied` with the reason — "asked" and "applied" stay distinct. */
+/**
+ * ★ `vibe_v5_poll_open` — open an option-type poll board, TRANSLATING the original's per-poll rules into the kernel's
+ * per-BOX `rules` object (PHASE 7 round 6 added it: `ballotbox.open({question, options, rules})`, where the allowed rule
+ * keys are minVotes / allowRevote / maxChoices / minChoices / mode). Rule names are the KERNEL's, not guessed:
+ *   · `min_votes`     → rules.minVotes        (integer ≥ 0)
+ *   · `max`           → rules.maxChoices      (integer ≥ 1)
+ *   · `min`           → rules.minChoices      (integer ≥ 1)
+ *   · `mode`          → rules.mode            (single|multi)
+ *   · `allow_revote`  → rules.allowRevote     (boolean)
+ *   · `secret` / `allow_abstain` have NO per-box rule in this kernel (secrecy and abstention are deployment-level), so
+ *     they stay in `unapplied` with that reason — asked-vs-applied stays explicit.
+ */
 function toolPollOpen(args = {}, { kernel } = {}) {
   if (!has(args.question)) throw refuse('VMU_INVALID_ARGUMENT', 'poll_open needs a question', 'pass question:"…"')
   const options = Array.isArray(args.options) ? args.options.map(String).filter((x) => x !== '') : []
@@ -770,13 +802,23 @@ function toolPollOpen(args = {}, { kernel } = {}) {
   if (!kernel.ballotbox || typeof kernel.ballotbox.open !== 'function') {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'no ballot box face is published, so a poll cannot be opened', 'assemble a kernel with the ballot box service')
   }
-  const opened = kernel.ballotbox.open({ question: str(args.question), options })
-  const askedRules = ['mode', 'max', 'min', 'min_votes', 'secret', 'allow_abstain', 'allow_revote'].filter((k) => args[k] !== undefined)
+  const rules = {}
+  const appliedMap = [['min_votes', 'minVotes'], ['max', 'maxChoices'], ['min', 'minChoices'], ['mode', 'mode'], ['allow_revote', 'allowRevote']]
+  for (const [from, to] of appliedMap) if (args[from] !== undefined) rules[to] = args[from]
+  const hasRules = Object.keys(rules).length > 0
+  const opened = kernel.ballotbox.open({ question: str(args.question), options, ...(hasRules ? { rules } : {}) })
+  if (opened && opened.ok === false) {
+    throw refuse(opened.code || 'VMU_CONFLICT', opened.message || 'the ballot box refused to open with these rules', opened.hint || null)
+  }
+  const unapplied = ['secret', 'allow_abstain'].filter((k) => args[k] !== undefined)
+    .map((k) => ({ rule: k, why: 'this kernel has no per-box ' + (k === 'secret' ? 'secrecy' : 'abstention') + ' rule: it is a deployment-level ballot policy, not a per-box one' }))
+  const appliedRules = ['min_votes', 'max', 'min', 'mode', 'allow_revote'].filter((k) => args[k] !== undefined)
   return { ok: true, tool: 'vibe_v5_poll_open', boxId: opened && opened.boxId, question: str(args.question), options,
-    unapplied: askedRules.map((k) => ({ rule: k, why: 'the ballot box face accepts question+options only; per-box mode/max/min/secret/allow_*/min_votes are constructor-level in this kernel (需内核能力：per-box rules)' })),
-    note: askedRules.length > 0
-      ? 'the per-poll rules named in unapplied were ASKED FOR but not applied — reported, not silently dropped'
-      : 'no per-poll rules were asked for; the box uses the deployment\'s declared ballot policy' }
+    rulesDeclared: !!(opened && opened.rulesDeclared), rules: (opened && opened.rules) || {},
+    applied: appliedRules, unapplied,
+    note: unapplied.length > 0
+      ? 'the rules named in unapplied have NO per-box form in this kernel — reported, not silently dropped'
+      : (hasRules ? 'every asked rule was translated into the kernel per-box rules object' : 'no per-poll rules were asked for; the box uses the deployment\'s declared ballot policy') }
 }
 
 /** ★ `vibe_v5_poll_vote` — cast an option-type vote. ① lands here (non-voter refused by name). `choices[]` is
@@ -1165,24 +1207,24 @@ export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_meeting',
     description: 'Convene a meeting (agenda REQUIRED; kind is sync/division/verify-request/solve-vote). The original could also PROPOSE a meeting from a non-chair seat — this face has no propose path, and the receipt says so by name.',
-    parameters: { agenda: { type: 'string', required: true }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: 'boolean' }, member: { type: 'string', required: true } },
+    parameters: { agenda: { type: 'string', required: true }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: 'boolean' }, secretary: { type: 'string' }, member: { type: 'string', required: true } },
     handler: toolMeeting,
   },
   {
     name: 'vibe_v5_motion',
-    description: 'Raise a motion inside an ongoing meeting (kind: topic/procedural/resolution; text required), or ask to withdraw one. Withdrawal needs a kernel capability the meetings face does not have, so it is refused by name.',
+    description: 'Raise a motion inside an ongoing meeting (kind: topic/procedural/resolution; text required; you must be a voting seat), or WITHDRAW your own with op:"withdraw" + motion_id. A new motion starts proposed and needs a second.',
     parameters: { op: { type: 'string' }, motion_id: { type: 'string' }, kind: { type: 'string' }, text: { type: 'string' }, reason: { type: 'string' }, meeting: { type: 'string', required: true }, member: { type: 'string', required: true } },
     handler: toolMotion,
   },
   {
     name: 'vibe_v5_second',
-    description: 'Second a proposed motion. This kernel does not model motion seconds (no secondedBy / proposed gate), so the tool refuses by name and names the missing capability — it never pretends a second was recorded.',
-    parameters: { motion_id: { type: 'string', required: true }, member: { type: 'string', required: true } },
+    description: 'Second a proposed motion (meeting + motion_id). The kernel models the second state and refuses the proposer seconding their own motion by name.',
+    parameters: { meeting: { type: 'string', required: true }, motion_id: { type: 'string', required: true }, member: { type: 'string', required: true } },
     handler: toolSecond,
   },
   {
     name: 'vibe_v5_poll_open',
-    description: 'Open an option-type poll board inside the meeting (question + at least two options; chair seat only). The six §7.1 per-poll rules this kernel\'s box cannot take per box are returned under `unapplied` with the reason.',
+    description: 'Open an option-type poll board inside the meeting (question + at least two options; chair seat only). min_votes/max/min/mode/allow_revote are translated into the kernel\'s per-box rules; only per-box secrecy/abstention stay in `unapplied`.',
     parameters: { question: { type: 'string', required: true }, options: { type: 'array', required: true }, mode: { type: 'string' }, max: { type: 'integer' }, min: { type: 'integer' }, min_votes: { type: 'integer' }, secret: { type: 'boolean' }, allow_abstain: { type: 'boolean' }, allow_revote: { type: 'boolean' }, member: { type: 'string', required: true } },
     handler: toolPollOpen,
   },
@@ -1294,12 +1336,41 @@ export const V5R_NEXT_BATCH_TOOLS = Object.freeze([])
  * name reddens the suite instead of quietly lingering as a comment.
  */
 
-/** ★ NAMED GAPS (each round's measured limits, recorded rather than hidden). */
+/**
+ * ★ NAMED GAPS — ONLY WHAT IS STILL TRUE, and each one carries a MACHINE CHECK below so the list cannot rot again.
+ *
+ * PHASE 7 round 23 rewrote this list. Three entries of the old list were STALE: the kernel had closed them in round 6
+ * (per-box ballot `rules`, `meetings.second`/`withdraw`, `meetings.open({secretary})`) while the pack still said
+ * "需内核能力" — the (甲) class defect (kernel face exists, pack does not wire it). Those three are now WIRED (see the
+ * tools above) and moved to `V5R_CLOSED_GAPS` with the kernel references. One further entry was ALSO stale in a subtler
+ * way: the task ledger DOES carry priority (create + board sort) — what it lacks is a SETTER for an existing task, so
+ * the gap was narrowed to exactly that.
+ */
 export const V5R_NAMED_GAPS = Object.freeze([
-  'visible-tools reader: the kernel has no getter for the host\'s full visible NAME set (the host publishes TOOL_NAMES and installs a visible-tools provider, but exposes no reader) — tool_help can therefore name the pack-declared tools exactly and the host visible COUNT, not the host face names.',
+  'visible-tools reader: the kernel installs a visible-tools PROVIDER but exposes no getter for the full visible NAME set, so tool_help can name the pack-declared tools exactly and the host visible COUNT, not the host face names.',
   'mail purge on fire: the mailbox face exposes no per-member purge this pack may call, so fire dismisses the member and cancels their tasks but does not drop their mail.',
-  'task priority column: the task ledger has no priority/order column, so prioritize archives the order as a record instead of applying it to the board.',
-  'motion second: the meetings face has no secondedBy field and no proposed gate, so vibe_v5_second and the withdraw half of vibe_v5_motion are refused by name (需内核能力：motion second / motion withdraw).',
-  'per-box poll rules: the ballot box accepts question+options only; the original §7.1 six per-poll rules (mode/max/min/secret/allow_*/min_votes) are constructor-level in this kernel, so poll_open reports them under `unapplied` (需内核能力：per-box rules).',
-  'meeting secretary: the meeting face records a chair but no secretary, so the original rule "决议只能由院士或当次会议的记录人写入" can only be half-enforced (chair check); the recorder half is a named gap.',
+  'task priority setter: the ledger stores priority at CREATE time and sorts the board by it, but exposes no operation to CHANGE an existing task\'s priority, so prioritize archives the order instead of applying it to existing rows.',
+  'per-box secrecy/abstention: the per-box `rules` object covers minVotes/allowRevote/maxChoices/minChoices/mode only; secrecy and abstention remain deployment-level ballot policy, so poll_open reports those two under `unapplied`.',
+  'meeting propose: the meetings face has no "propose a meeting" path, so a non-chair seat cannot propose one for the chair to convene (the tool says so in its receipt instead of pretending).',
+])
+
+/** The gaps CLOSED by the kernel in round 6 and WIRED by this pack in round 23 — kept as data so "closed" is searchable. */
+export const V5R_CLOSED_GAPS = Object.freeze([
+  { id: 'per-box ballot rules', kernel: 'kernel/ballotbox.js open({rules}) — minVotes/allowRevote/maxChoices/minChoices/mode', wired: 'vibe_v5_poll_open translates the original six rule names' },
+  { id: 'motion second', kernel: 'kernel/meetings.js second({meeting,motion,member}) — secondedBy + proposed gate', wired: 'vibe_v5_second' },
+  { id: 'motion withdraw', kernel: 'kernel/meetings.js withdraw({meeting,motion,member})', wired: 'vibe_v5_motion {op:"withdraw"}' },
+  { id: 'meeting secretary', kernel: 'kernel/meetings.js open({secretary}) + resolution mover check', wired: 'vibe_v5_meeting {secretary}' },
+])
+
+/**
+ * ★ THE ANTI-ROT CHECK: every gap above must remain VERIFIABLE — its claimed missing capability must still be ABSENT
+ * from the kernel file named here (and, for the provider/getter pair, the provider must still be PRESENT). The suite
+ * greps these patterns; if the kernel gains the capability, the assertion flips and the list must be edited, not drift.
+ */
+export const V5R_NAMED_GAP_CHECKS = Object.freeze([
+  { gap: 'visible-tools reader', file: 'kernel/turn/index.js', absent: /visibleTools\s*\(/, present: /setVisibleToolsProvider/ },
+  { gap: 'mail purge on fire', file: 'kernel/mailbox.js', absent: /purge/ },
+  { gap: 'task priority setter', file: 'kernel/tasks.js', absent: /setPriority\s*\(/ },
+  { gap: 'per-box secrecy/abstention', file: 'kernel/ballotbox.js', absent: /RULE_KEYS\s*=\s*\[[^\]]*'secret'/ },
+  { gap: 'meeting propose', file: 'kernel/meetings.js', absent: /propose\s*\(/ },
 ])
