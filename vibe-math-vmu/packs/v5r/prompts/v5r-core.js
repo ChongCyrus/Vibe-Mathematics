@@ -286,7 +286,9 @@ export const PACK = Object.freeze({
       order: 320,
       on: ['turn/reply-parsed'],
       failure: 'open',
-      capabilities: ['record'],
+      // `trigger-workflow` unlocks the capability-gated services accessor the LOAD-TIME factory receives, which is how
+      // this module registers its `vmu.status` section (`dispose` clears it on unload).
+      capabilities: ['record', 'trigger-workflow'],
       module: V5R_PAPER_DISPATCH,
     },
     // ROUND 20 (task-126): the METRIC COUNTER. Same shape, same capabilities; it observes on the INTRA-turn hooks
@@ -449,7 +451,12 @@ export const v5rFixtureConstraint = Object.freeze({
     '【SLV 夹具约束｜本轮不调用工具】',
     '本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只读本轮状态块推理，最后只输出一个 json 围栏回执。',
     'closure poll 的正确回执样例（照抄形状）：{"vote_solved": true} 或 {"vote_solved": false}；只写这一句，不写 progress。',
-    '其它回合 progress 必须是数组/对象（不能是字符串），正确样例：{"progress":[{"track":"progress","kind":"note","title":"本轮进展","body":"……"}]}；顶层不要写 record/artifacts 等自造字段。',
+    // ★ PHASE 7 round 14 (real-machine defect): the old wording said "数组/对象" and showed an ARRAY. The kernel
+    // dispatches the reply's `progress` payload STRAIGHT to the records face (`FIELD_OWNERS.progress = {face:vmu.records,
+    // op:'put'}`), so it must be ONE OBJECT of put-args; an array (or a string) arrives with `track: undefined` and the
+    // whole turn's writes fail ("unknown record track: undefined" ×19 on the real machine). The kind must also be a
+    // DECLARED kind ('progress' is declared; 'note' was NOT).
+    '其它回合 progress 必须是**一个对象**（不是字符串、不是数组），可直接照抄：{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"……"}}；顶层不要写 record/artifacts 等自造字段。',
   ].join('\n'),
 })
 
@@ -486,6 +493,15 @@ export const v5rFixtureTools = Object.freeze({
     '调用工具后结果立即可见；**回执可以很薄**——动作已经由工具完成了，回执只需说明"这一轮做了什么、下一步是什么"，不要为了凑长篇而重复工具已经记录的内容。',
     '仍然只输出一个合法 JSON 对象作为回执（不要输出额外的说明文字）。',
     '若某个工具被具名拒绝，把它的 code 与 hint 写进回执的 note，不要当成没发生。',
+    // ★ PHASE 7 round 14: COPY-PASTE samples, taken from the kernel's real shapes (records.put args / the declared
+    // kinds). The real machine proved why this is needed: a member guessed `"progress": "长叙述"` and every write of the
+    // turn failed with "unknown record track: undefined".
+    '★★ 一次工具调用只做一件事；不要把多个动作攒进一个字段。',
+    '★★ 回执的形状样例（可直接照抄；progress 必须是**一个对象**，不是字符串/数组）：',
+    '   · {"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"这一轮做了什么与下一步"}}',
+    '   · {"say":"已经在群里说过的一句话"}（已经用 vibe_v5_say 说过时，回执里可只留一句说明）',
+    '   · {"solved":false}（结题表决只走回执；它不是工具）',
+    '   · 写卡片请直接用工具（vibe_v5_record_*），**不要**把卡片塞进回执的 record 字段。',
   ].join('\n'),
 })
 
@@ -538,6 +554,7 @@ export const v5rToolSectionAcademician = Object.freeze({
     '· vibe_v5_start / vibe_v5_stop / vibe_v5_pause / vibe_v5_resume —— 建所并启动／停机／暂停／继续（全部走内核自己的控制状态；resume 走控制面，不是耐久投影）。',
     '· vibe_v5_configure / vibe_v5_set —— 改【已声明】的设置键；回执会带该键的热级：H1 立即生效，H2 重启后生效；未声明的键与 H3 只读键都会被具名拒。',
     '· vibe_v5_lean_run / vibe_v5_lean_job / vibe_v5_lean_lib / vibe_v5_lean_read / vibe_v5_lean_archive —— 真的用内核 Lean 面编译既有 .lean 文件／查作业／看库／读归档／归档（kind: def/lemma/proof/blocked）；本包不自己起子进程。',
+    '★★ 回执样例（可直接照抄）：{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"做了什么与下一步"},"solved":false}；★ progress 必须是**一个对象**（不是字符串/数组），kind 只能是已声明的（如 progress）。',
     '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准；没有该约束时，上表就是你现在真的能调用的工具。',
   ].join('\n'),
 })
@@ -565,6 +582,7 @@ export const v5rToolSectionResearcher = Object.freeze({
     '· vibe_v5_verdict —— 对验证对象投 [0,1] 的裁决。',
     '· vibe_v5_lean_run / vibe_v5_lean_job / vibe_v5_lean_lib / vibe_v5_lean_read / vibe_v5_lean_archive —— 用内核 Lean 面编译既有 .lean 文件／查作业／看库／读归档／归档（本包不自己起子进程；无宿主 spawn 接缝时具名拒）。',
     '转达所办口吻的消息不是你的职责（那是院士的 vibe_v5_message）；所内全局视图也不是（vibe_v5_overview 仅院士）。',
+    '★★ 回执样例（可直接照抄）：{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"做了什么与下一步"},"solved":false}；★ progress 必须是**一个对象**（不是字符串/数组）。',
     '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。',
   ].join('\n'),
 })
@@ -583,6 +601,7 @@ export const v5rToolSectionTemp = Object.freeze({
     '· vibe_v5_read_library —— 读任何人的成果库（只读）。',
     '· vibe_v5_tool_help —— 回答"我现在能用什么"：清单取自内核自己的声明（packTools）。',
     '招人、汇报与全局视图不是临时席位的职责（那是院士与常驻研究员的工具）。',
+    '★★ 回执样例（可直接照抄）：{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"做了什么与下一步"}}；★ progress 必须是**一个对象**（不是字符串/数组）。',
     '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。',
   ].join('\n'),
 })

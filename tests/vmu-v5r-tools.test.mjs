@@ -653,39 +653,72 @@ try {
   ok(installedFixtureMode === 'no-tools',
     '★ the pack\'s value layer ships fixtureMode = no-tools (the historical instruction stays the default ⇒ old runs remain comparable)', installedFixtureMode)
 
-  // ── ③l THE PAPER DISPATCH STATUS REGISTRATION (round 11): zero-mechanism, install, release ──────────────────
-  console.log('=== 3l. paperDispatch STATUS REGISTRATION (kernel segment) ===')
-  ok(typeof kernel.setPaperDispatchStatus === 'function',
-    'precondition: the kernel exposes setPaperDispatchStatus (the registration API this round is about)', typeof kernel.setPaperDispatchStatus)
-  ok(kernel.status().paperDispatch === undefined,
-    '★ 反（零机制）: with NO registration the kernel status has NO paperDispatch segment at all', kernel.status().paperDispatch)
-  ok(bare.handle.kernel.status().paperDispatch === undefined,
-    '★ 反（不装 v5r）: a kernel assembled without the pack also has the segment absent', bare.handle.kernel.status().paperDispatch)
-  const installMod = dispatchMod
-  const noKernelInstall = installMod.installPaperDispatch({ kernel: {} })
-  ok(noKernelInstall.ok === false && noKernelInstall.code === 'VMU_ENGINE_UNAVAILABLE',
-    '★ the module DEFENDS itself when handed a kernel-shaped facade without the setter (the loader hands modules `{read}` only) — named refusal, no crash', noKernelInstall.code)
-  const installed = installMod.installPaperDispatch({ kernel })
-  ok(installed.ok === true && installed.registered === true,
-    '★ 正: the module registers its status source with the kernel (one segment appears)', installed)
-  const withSegment = kernel.status().paperDispatch
-  ok(withSegment && withSegment.ok === true && withSegment.status && typeof withSegment.status === 'object' && Array.isArray(withSegment.status.fields),
-    '★★ 正（装了就有）: status().paperDispatch now carries the dispatcher status (last/seen/fields), readable by an operator', withSegment && { fields: withSegment.status.fields.length })
-  // dispatch once so `last` is a real outcome, then read it back FROM THE KERNEL's status
+  // ── ③l THE PAPER DISPATCH STATUS (round 14): registered through the GENERAL `vmu.status` service ────────────
+  // Round 11 could not do this: a pack module got a `{read}`-only kernel facade. The framework now hands a module's
+  // LOAD-TIME factory the capability-gated `services` accessor and honours a module `dispose()` on unload, so the pack
+  // registers a status SECTION and unload really clears it. The single-purpose `setPaperDispatchStatus` setter is no
+  // longer used by v5r at all.
+  console.log('=== 3l. paperDispatch STATUS via the general vmu.status service ===')
+  const dispatchSrc = (await import('node:fs')).readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'middleware', 'paper-dispatch.js'), 'utf8')
+  ok(dispatchSrc.includes("services.get('vmu.status')") && !/setPaperDispatchStatus\s*\(/.test(dispatchSrc),
+    '★ the module registers through `services.get(\'vmu.status\')` and NO LONGER CALLS the deprecated single-point setter (code probe: a comment may name it, a CALL would fail here)', { usesStatus: dispatchSrc.includes("services.get('vmu.status')"), callsSetter: /setPaperDispatchStatus\s*\(/.test(dispatchSrc) })
+  const bareSections = bare.handle.kernel.status().sections
+  ok(bareSections === undefined || bareSections.paperDispatch === undefined,
+    '★ 反（不装 v5r / 零机制）: with no pack the kernel status has NO `sections.paperDispatch`', bareSections && Object.keys(bareSections))
+  const bootSections = v5rBoot.handle.kernel.status().sections
+  ok(bootSections && bootSections.paperDispatch && bootSections.paperDispatch.ok === true && bootSections.paperDispatch.value && Array.isArray(bootSections.paperDispatch.value.fields),
+    '★★ 正（装了就有）: the pack\'s LOAD-TIME factory registered the section — `status().sections.paperDispatch` is readable (fields list included)', bootSections && bootSections.paperDispatch && { ok: bootSections.paperDispatch.ok, fields: bootSections.paperDispatch.value && bootSections.paperDispatch.value.fields.length })
+  // a real dispatch outcome must be visible through that SAME section
   await dispatchMod.dispatchPaperReply({ phase: 'normal', turn: 't-status', member: 'r-1', flat: { kernel }, reply: { paper_part: { target: T2, title: 'x', solution: 'y' } } })
-  const afterDispatch = kernel.status().paperDispatch.status
-  ok(afterDispatch.last && afterDispatch.last.turn === 't-status' && afterDispatch.last.ok === false,
-    '★ the LAST dispatch outcome (a phase-mismatch here) is readable straight from status() — "the dispatcher refused because …" needs no log', afterDispatch.last && { ok: afterDispatch.last.ok, reason: afterDispatch.last.reason })
-  // ★ RELEASE — the documented clear (what a kernel-side unload line will call):
-  const released = installMod.releasePaperDispatch({ kernel })
-  ok(released.ok === true && released.cleared === true && kernel.status().paperDispatch === undefined,
-    '★★ 卸载/释放后 status().paperDispatch 完全消失（零残留）', released)
-  // ★★ MEASURED GAP, stated so it cannot rot: the PACK's own module cannot reach the real kernel — the loader hands
-  // modules `services.kernel = Object.freeze({read})` (kernel/index.js:1602-1603) and `services.get` only exposes the
-  // registered vmu.* catalog. So registration must happen at the ENTRY/HOST (one line after createKernel) or the kernel
-  // must expose the setter through the module api. The real v5r boot therefore still has NO segment:
-  ok(v5rBoot.handle.kernel.status().paperDispatch === undefined,
-    '★★ NAMED GAP (measured): a v5r boot does NOT yet show the segment — the pack module is given a `{read}`-only kernel facade, so the one-line registration has to be done by the entry/host (or the kernel must expose the setter). This assertion flips the day that line lands.', v5rBoot.handle.kernel.status().paperDispatch)
+  const sectionNow = v5rBoot.handle.kernel.status().sections.paperDispatch.value
+  ok(sectionNow.last && sectionNow.last.turn === 't-status' && sectionNow.last.ok === false,
+    '★ after a real dispatch the section\'s `.last` reflects the outcome (phase-mismatch refused) — "why was it refused" needs no log', sectionNow.last && { ok: sectionNow.last.ok })
+  // module-level disposer is exported (the loader\'s unload contract) and safe to call once
+  ok(typeof dispatchMod.V5R_PAPER_DISPATCH.dispose === 'function',
+    '★ the module EXPORTS `dispose` — the loader\'s unload contract (kernel/pack.js awaits it)', typeof dispatchMod.V5R_PAPER_DISPATCH.dispose)
+  // ★★★ UNLOAD RESIDUE: a minimal manifest carrying this module really clears its section on unload (dispose awaited)
+  const pm2 = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kernel', 'pack.js')).href)
+  const km2 = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kernel', 'index.js')).href)
+  const kUnload = km2.createKernel({ clock: () => 1000 })
+  const loader2 = pm2.createPackLoader({ kernel: kUnload, registry: kUnload.registry })
+  const applied2 = await loader2.apply({ id: 'v5r-status-probe', version: '1.0.0', middleware: [{ id: 'v5r.paper-dispatch', kind: 'module', order: 320, on: ['turn/reply-parsed'], failure: 'open', capabilities: ['record', 'trigger-workflow'], module: dispatchMod.V5R_PAPER_DISPATCH }] })
+  ok(applied2 && applied2.ok === true && kUnload.status().sections && kUnload.status().sections.paperDispatch && kUnload.status().sections.paperDispatch.ok === true,
+    '★ load-time registration works through a manifest apply (section present after apply)', applied2 && applied2.code)
+  const unloaded2 = await loader2.unload('v5r-status-probe')
+  const afterUnload = kUnload.status().sections
+  ok(unloaded2 && unloaded2.ok === true && (afterUnload === undefined || afterUnload.paperDispatch === undefined),
+    '★★★ 卸载后该段消失（零残留）: `pack.unload()` awaited the module\'s `dispose`, so the status section is gone', { residueFree: unloaded2 && unloaded2.residueFree, sections: afterUnload && Object.keys(afterUnload) })
+
+  // ── ③o THE `progress` SHAPE (round 14): the prompt's copy-paste sample must be the kernel's REAL shape ──────
+  // REAL-MACHINE DEFECT: members sent `"progress": "طول叙述"` (a string) and every write of the turn failed with
+  // "unknown record track: undefined" ×19. Root cause: OUR fixture/prompts never showed the concrete shape. The shape
+  // is not a guess: `FIELD_OWNERS.progress = {face:'vmu.records', op:'put'}` ⇒ the payload IS the put-args object.
+  console.log('=== 3o. THE progress SHAPE: the sample the prompts teach is the shape the kernel accepts ===')
+  const turnMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kernel', 'turn', 'index.js')).href)
+  ok(turnMod.FIELD_OWNERS && turnMod.FIELD_OWNERS.progress && turnMod.FIELD_OWNERS.progress.face === 'vmu.records' && turnMod.FIELD_OWNERS.progress.op === 'put',
+    '★ the reply field `progress` is dispatched straight to the records face `put` — so its value must be ONE put-args OBJECT', turnMod.FIELD_OWNERS.progress)
+  const sampleProgress = { track: 'progress', kind: 'progress', title: '本轮进展', body: '做了什么与下一步' }
+  const progressBefore = countOf(kernel, 'progress')
+  const wrote = kernel.records.put(sampleProgress)
+  const wroteRow = wrote && wrote.id ? (() => { const g = kernel.records.get({ id: wrote.id }); return g && g.record ? g.record : g })() : null
+  ok(wrote && wrote.ok === true && countOf(kernel, 'progress') === progressBefore + 1 && wroteRow && String(wroteRow.track) === 'progress',
+    '★★ 正: the EXACT sample the prompts teach is ACCEPTED by the kernel and the record really lands on the progress track', { before: progressBefore, after: countOf(kernel, 'progress'), id: wrote && wrote.id, track: wroteRow && wroteRow.track })
+  let stringRefused = null
+  try { kernel.records.put('长叙述') } catch (e) { stringRefused = e }
+  ok(stringRefused && stringRefused.code === 'VMU_INVALID_ARGUMENT' && /unknown record track/.test(String(stringRefused.message)),
+    '★★ 反: the real-machine shape (a STRING) is refused by name — exactly the "unknown record track: undefined" that killed a whole turn', stringRefused && stringRefused.code)
+  let arrayRefused = null
+  try { kernel.records.put([sampleProgress]) } catch (e) { arrayRefused = e }
+  ok(arrayRefused && arrayRefused.code === 'VMU_INVALID_ARGUMENT',
+    '★★ 反: an ARRAY is refused too (the old fixture sample showed an array!) — the sample had to be corrected, not the kernel', arrayRefused && arrayRefused.code)
+  // And the prompts really carry that sample (so the proof above cannot drift away from the text a member reads).
+  const sampleMarker = '"progress":{"track":"progress"'
+  const withSample = [...PACK.sections].filter((s) => String(s.text || '').includes(sampleMarker))
+  ok(withSample.length >= 4,
+    '★★ the copy-paste sample appears in the prompts a member reads (fixture-constraint / fixture-tools / all three role lists)', withSample.map((s) => s.name))
+  const wrongArraySample = [...PACK.sections].filter((s) => String(s.text || '').includes('"progress":['))
+  ok(wrongArraySample.length === 0,
+    '★★ the OLD array-shaped sample is GONE from every section (it was the shape that produced the real-machine failure)', wrongArraySample.map((s) => s.name))
 
   // ── ③m THE ROLE VOCABULARY (round 12): section scopes must speak SLOT IDS, not display names ────────────────
   // THE BUG THIS PINS (found on a real machine): `scope.role` is matched against `turn.role`, which is the ROSTER SLOT

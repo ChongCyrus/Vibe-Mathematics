@@ -131,42 +131,61 @@ export async function dispatchPaperReply({ phase, reply, turn = null, member = n
 const faceTargetOf = (body) => (body && typeof body.target === 'string' && body.target.trim() !== '' ? body.target.trim() : null)
 
 /**
- * ★ PHASE 7 round 11 — REGISTER THE DISPATCH STATUS WITH THE KERNEL, AT LOAD TIME.
+ * ★ PHASE 7 round 14 — REGISTER THE DISPATCH STATUS THROUGH THE GENERAL `vmu.status` SERVICE (load time).
  *
- * The kernel exposes `setPaperDispatchStatus(fn)` and its `status()` shows a `paperDispatch` segment ONLY while a
- * source is registered (zero mechanism). The loader calls a module's `default({hooks, log, kernel, setting})` when it
- * loads a MODULE-SHAPED entry (`kernel/loader.js:182-184`), and that call receives the kernel — which makes it the one
- * place where a pack can both register and stay inside its own folder.
- *
- * ★ WHAT THIS CANNOT DO, MEASURED (named, not hidden): `kernel/loader.js` has NO dispose contract, and pack unload
- * only runs its ACTION undos (bus-entry removal); no hook fires on unload (`kernel/bus.js` declares `pack/loading` and
- * `pack/loaded` only). So a pack-loaded module cannot clear the kernel's status source by itself — `unload` therefore
- * needs ONE kernel line: clearing `paperDispatchStatusSource` in `notePackUnloaded` (or in the unload path). Until that
- * line lands, `releasePaperDispatch(kernel)` is the documented manual clear, and the round report names the gap.
+ * WHAT CHANGED AND WHY: round 11 had to stop because a pack module could not reach the real kernel (the loader handed
+ * modules a `{read}`-only kernel facade). The framework now closes that with TWO general facilities, and this module
+ * uses both:
+ *   ① `services.get('vmu.status')` — the capability-gated service catalog includes a status-section registry
+ *      (`registerSection(name, reader)` → disposer; a same-name registration is a NAMED `VMU_INVALID_ARGUMENT`), and the
+ *      loader hands a module's factory the SAME capability-gated `services` accessor its hooks get;
+ *   ② the UNLOAD CONTRACT — a module may return/export `dispose()`, `pack.unload()` awaits it (kernel/pack.js undo), so
+ *      what was registered at load time is REALLY cleared. That is why the round-11 "manual clear" gap is gone.
+ * ⇒ the single-purpose `kernel.setPaperDispatchStatus` setter is no longer used by this pack at all (it is deprecated).
  */
-export function installPaperDispatch({ kernel } = {}) {
-  if (!kernel || typeof kernel.setPaperDispatchStatus !== 'function') {
-    return { ok: false, code: 'VMU_ENGINE_UNAVAILABLE', registered: false, reason: 'this kernel has no setPaperDispatchStatus (older assembly)' }
+let statusDisposer = null
+
+export function installPaperDispatch({ services } = {}) {
+  if (!services || typeof services.get !== 'function') {
+    return { ok: false, code: 'VMU_ENGINE_UNAVAILABLE', registered: false, reason: 'the loader passed no capability-gated services accessor (older assembly)' }
   }
-  const r = kernel.setPaperDispatchStatus(paperDispatchStatus)
-  return { ok: r && r.ok === true, registered: !!(r && r.ok === true), status: r }
+  let statusService = null
+  try {
+    statusService = services.get('vmu.status')
+  } catch (e) {
+    return { ok: false, code: (e && e.code) || 'VMU_NOT_PERMITTED', registered: false, reason: String((e && e.message) || e) }
+  }
+  if (!statusService || typeof statusService.registerSection !== 'function') {
+    return { ok: false, code: 'VMU_ENGINE_UNAVAILABLE', registered: false, reason: 'this assembly publishes no vmu.status registerSection' }
+  }
+  try {
+    statusDisposer = statusService.registerSection('paperDispatch', paperDispatchStatus)
+  } catch (e) {
+    statusDisposer = null
+    return { ok: false, code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', registered: false, reason: String((e && e.message) || e) }
+  }
+  return { ok: true, registered: true, section: 'paperDispatch', disposable: typeof statusDisposer === 'function' }
 }
 
-/** The manual counterpart (what the one-line kernel fix will call on unload): remove the segment entirely. */
-export function releasePaperDispatch({ kernel } = {}) {
-  if (!kernel || typeof kernel.setPaperDispatchStatus !== 'function') return { ok: false, code: 'VMU_ENGINE_UNAVAILABLE', cleared: false }
-  const r = kernel.setPaperDispatchStatus(null)
-  return { ok: r && r.ok === true, cleared: !!(r && r.source === false) }
+/** The unload half: remove the section. Called by the loader through the module's `dispose` and safe to call twice. */
+export function disposePaperDispatch() {
+  if (typeof statusDisposer !== 'function') return { ok: true, cleared: false, note: 'nothing was registered by this module' }
+  const disposer = statusDisposer
+  statusDisposer = null
+  const r = disposer()
+  return { ok: true, cleared: true, result: r }
 }
 
 /**
  * The M2 module object `kernel/pack.js` hands to `kernel/loader.js`.
- * `default` is the LOAD-TIME factory: the loader passes it the kernel, so registration happens exactly when the pack is
- * applied — and the hooks it returns are the ones the bus runs.
+ * `default` is the LOAD-TIME factory (the loader passes it the capability-gated `services`), and `dispose` is the
+ * loader's unload contract — both are required for a pack-owned status section to appear AND disappear cleanly.
  */
 export const V5R_PAPER_DISPATCH = Object.freeze({
   meta: Object.freeze({ id: 'v5r.paper-dispatch', apiVersion: 1 }),
-  capabilities: Object.freeze(['record']),
+  // `trigger-workflow` is what unlocks the capability-gated services accessor the factory receives (a service, not a
+  // workflow — the capability name is the framework's existing gate for "this module may reach services").
+  capabilities: Object.freeze(['record', 'trigger-workflow']),
   hooks: Object.freeze({
     'turn/reply-parsed': async (flat = {}) => {
       const reply = (flat && flat.fields) || (flat && flat.reply) || null
@@ -179,6 +198,8 @@ export const V5R_PAPER_DISPATCH = Object.freeze({
       })
     },
   }),
-  /** the load-time factory the loader calls with `{hooks, log, kernel, setting}` */
+  /** the load-time factory the loader calls with `{hooks, log, kernel, setting, services}` */
   default: installPaperDispatch,
+  /** ★ THE UNLOAD CONTRACT: `pack.unload()` awaits this, so the status section really disappears. */
+  dispose: disposePaperDispatch,
 })
