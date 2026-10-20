@@ -270,6 +270,10 @@ export const HOOK_REGISTRY = Object.freeze([
   // ROUND 6 (found by v5r-reader-a, the same class as `resume/lock-release-failed`): `kernel/lean.js` emits this
   // inside the `lean/` namespace, which is in VU_NAMESPACE - unregistered, so the bus refused it and the helper's
   // catch swallowed the refusal (a cancelled job reached no middleware).
+  // ★ PHASE 7 / round 20：`kernel/lean.js` **已经在 emit** `lean/job-failed`（★ 失败与**否则拒绝**的分支都走它），
+  // 而它不在冻结表里 ⇒ ★ **总线会拒收**。这是**同一个病的第三次**（budget/warn → meeting/second+withdrawn → 这里），
+  // 每次都是 `audit-hook-coverage` 抳到的 ⇒ 补登记。形状同 `lean/job-cancelled`（动作已发生，不可 block）。
+  { name: 'lean/job-failed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a Lean compilation job failed (including spawn failure / timeout / non-zero exit)', producer: 'kernel/lean.js' },
   { name: 'lean/job-cancelled', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a Lean compilation job was cancelled', producer: 'kernel/lean.js' },
   // The in-repo classification gate (scripts/audit-hook-emit-classification.mjs) found five MORE string-form
   // emits the earlier out-of-repo census missed: each is marked "advisory" in its module, so nobody could
