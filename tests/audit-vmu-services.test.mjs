@@ -37,6 +37,8 @@ const ok = (cond, name, detail) => { if (cond) passed++; else { failed++; consol
 const SURFACES = {
   'vmu.library': 'library', 'vmu.members': 'members', 'vmu.tasks': 'tasks', 'vmu.prompt': 'prompt', 'vmu.turn': 'turn',
   'vmu.middleware': 'bus', 'vmu.governance': 'governance', 'vmu.board': 'board', 'vmu.minutes': 'minutes',
+  // ★ PHASE 7: pack-registered status sections (registerSection returns a disposer; unregisterSection removes).
+  'vmu.status': 'statusService',
   'vmu.budget': 'budget', 'vmu.metrics': 'metrics', 'vmu.audit': 'audit', 'vmu.alerts': 'alerts',
   'vmu.partnership': 'legalEntity',
   'vmu.reviewers': 'reviewers',

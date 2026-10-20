@@ -36,9 +36,26 @@ import { CHARTER_BLOCKS_B } from './v5r-blocks-b.js'
 // The two halves concatenated, in order. Every export below reads this, exactly as it did when the array was inline.
 export const CHARTER_BLOCKS = Object.freeze([...CHARTER_BLOCKS_A, ...CHARTER_BLOCKS_B])
 
-/** One binding per role for every role-varying block, so the assembly puts the right charter in front of each kind. */
+/**
+ * ★ PHASE 7 round 13 — THE BINDING DIMENSION SPEAKS THE SLOT VOCABULARY.
+ *
+ * MEASURED DEFECT (the same mechanism as round 12's scope fix, one layer deeper): a binding's `role` dimension is matched
+ * against `turn.role`, and the real machine sets that to the ROSTER SLOT ID (`tools/turn.js:24` → `role: m.slot`;
+ * `kernel/turn/index.js:691` states `role` is the KEY bindings select on while `roleLabel` is the display name). The
+ * charter's block texts are keyed by the SOURCE's role words (`academician`/`researcher`/`temp`), and those keys used to
+ * be emitted directly as binding dimensions — so `academician`/`researcher` bindings NEVER matched, every role fell back
+ * to the section's default text and the DELIVERED charter's role-specific content was dead (a real-machine run showed the
+ * academician reading the researcher version).
+ *
+ * THE FIX IS ONE PLACE, BY DESIGN: the mapping lives here and only here. `v5r-blocks-a/b.js` keeps the source's role
+ * WORDS (they are the text's own keys), and only the BINDING dimension is translated. `text` is carried through
+ * untouched, so the whole change is metadata — proven by a sha256 snapshot diff (text identical for all 46 bindings).
+ */
+export const CHARTER_ROLE_BINDING_KEY = Object.freeze({ academician: 'chair', researcher: 'member', temp: 'temp' })
+
+/** One binding per role for every role-varying block, so the assembly puts the right charter in front of each seat. */
 export const CHARTER_ROLE_BINDINGS = Object.freeze(CHARTER_BLOCKS.filter((b) => b.kind === 'role').flatMap((b) =>
-  Object.entries(b.texts).map(([role, text]) => ({ section: b.name, role, text }))))
+  Object.entries(b.texts).map(([role, text]) => ({ section: b.name, role: CHARTER_ROLE_BINDING_KEY[role] || role, text }))))
 
 /** One binding per PHASE for the heading and the ask (docs/26 section 3.13): the phase dimension carries them. */
 export const CHARTER_PHASE_BINDINGS = Object.freeze(CHARTER_BLOCKS.filter((b) => b.kind === 'phase').flatMap((b) =>

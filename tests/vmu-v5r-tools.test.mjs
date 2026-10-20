@@ -732,6 +732,39 @@ try {
     '★★★ 负证明: when `role` is a DISPLAY name (academician/researcher) NO role-scoped v5r section renders — so the next person who writes a display name in a scope turns this red',
     { displayAcademician: asDisplayAcademician.includes('【本轮可用的工具'), displayResearcher: asDisplayResearcher.includes('【本轮可用的工具') })
 
+  // ── ③n THE BINDING VOCABULARY (round 13): the charter's role BINDINGS must speak slot ids too ───────────────
+  // Same mechanism as §3m, one layer deeper: a binding's `role` dimension is matched against turn.role (the SLOT ID).
+  // The charter's texts are keyed by the SOURCE's words (academician/researcher/temp); emitting those words as binding
+  // dimensions made the role-specific content DEAD — every seat fell back to the section default (= researcher text).
+  console.log('=== 3n. THE BINDING VOCABULARY: charter role bindings speak slot ids ===')
+  const roleBindings = (PACK.bindings || []).filter((b) => b && b.role !== undefined)
+  const bindingRoleCounts = roleBindings.reduce((m, b) => { m[b.role] = (m[b.role] || 0) + 1; return m }, {})
+  ok(roleBindings.length > 0 && Object.keys(bindingRoleCounts).length === 3 &&
+    bindingRoleCounts.chair > 0 && bindingRoleCounts.member > 0 && bindingRoleCounts.temp > 0,
+    '★ every charter role binding uses a SLOT ID (chair/member/temp), with all three seats represented', bindingRoleCounts)
+  const displayNameBindings = roleBindings.filter((b) => b.role === 'academician' || b.role === 'researcher')
+  ok(displayNameBindings.length === 0,
+    '★★ NO charter binding uses a DISPLAY name any more (that was the shape that made the role content dead on a real run)', displayNameBindings.length)
+  // POSITIVE: the two permanent seats really receive DIFFERENT charter content for the same role-varying section.
+  const roleSection = roleBindings[0].section
+  const miniSections = PACK.sections.filter((s) => s.name === roleSection)
+  const miniBindings = roleBindings.filter((b) => b.section === roleSection)
+  ok(miniSections.length === 1 && miniBindings.filter((b) => b.role === 'chair' || b.role === 'member').length === 2,
+    'precondition: a role-varying charter section exists with a bindings pair for chair and member', { section: roleSection, bindings: miniBindings.length })
+  const miniPipe = promptMod2.createPromptPipeline({ sections: miniSections, bindings: miniBindings, settings: {}, counts: {} })
+  const seatText = async (role) => (await miniPipe.assemble({ member: 'r-1', role, roleLabel: role, phase: 'normal', settings: {} })).text
+  const chairCharter = await seatText('chair')
+  const memberCharter = await seatText('member')
+  const defaultCharter = await seatText('academician')   // a display name matches NO binding ⇒ the section's default text
+  ok(chairCharter.length > 0 && memberCharter.length > 0 && chairCharter !== memberCharter,
+    '★★★ 正: the CHAIR seat and the MEMBER seat receive DIFFERENT charter text for the same section (the role content is alive again)', { chair: chairCharter.length, member: memberCharter.length })
+  // The section's DEFAULT text (what a non-matching role falls back to) is `texts['with-leader'] || texts.researcher`
+  // in `charterSections()` — i.e. the RESEARCHER version. That is the measured answer to "which seat's text was every
+  // real run actually reading": the member/researcher one, for every seat.
+  ok(defaultCharter === memberCharter && defaultCharter !== chairCharter,
+    '★★ 负证明: a DISPLAY name as `role` matches NO binding and lands on the section\'s DEFAULT text, which IS the member/researcher version — so before this fix EVERY seat (the academician included) read the researcher charter',
+    { defaultLen: defaultCharter.length, equalsMember: defaultCharter === memberCharter, equalsChair: defaultCharter === chairCharter })
+
   // ── ④ REFUSALS ARE NAMED (the 一正一反 the fixture verified: empty sender) ──────────────────────────────────
   console.log('=== 4. REFUSALS CARRY A REGISTERED CODE + A HINT ===')
   const noP = await receipt(v5rBoot, 'vibe_v5_record_proposition', { statement: '缺 p 的命题' })

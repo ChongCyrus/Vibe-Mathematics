@@ -85,6 +85,7 @@ export function validateModule(entry, module) {
   else {
     const keys = Object.keys(hooks)
     if (keys.length === 0) problems.push('the module declares no hooks')
+  if (module.dispose !== undefined && typeof module.dispose !== 'function') problems.push('dispose must be a function when present (the unload contract)')
     for (const h of keys) {
       if (!isRegisteredHook(h)) problems.push('unregistered hook: ' + h + ' (see docs/05 §4; a typo would silently never fire)')
       else if (typeof hooks[h] !== 'function') problems.push('hook ' + h + ' must be a function')
@@ -179,8 +180,11 @@ export function createLoader({ services = {}, log = () => {}, dryRun = false, cl
       }
       let produced
       try {
+        const factoryApi = typeof module.default === 'function' ? makeApi(entry, 'module/load', null, Array.isArray(module.capabilities) ? module.capabilities : []) : null
         produced = typeof module.default === 'function'
-          ? module.default({ hooks: module.hooks, log, kernel: services.kernel || Object.freeze({}), setting: services.setting })
+          // PHASE 7: a factory may register at LOAD time (e.g. a vmu.status section) through the SAME capability-gated
+          // services accessor a hook gets. It must return a dispose function for unload to clear what it registered.
+          ? module.default({ hooks: module.hooks, log, kernel: services.kernel || Object.freeze({}), setting: services.setting, services: factoryApi.services })
           : module
       } catch (e) {
         stats.refusals++
@@ -188,6 +192,10 @@ export function createLoader({ services = {}, log = () => {}, dryRun = false, cl
           'failure isolation starts at load time')
       }
       const hooks = (produced && produced.hooks) || module.hooks
+      // ★ PHASE 7: the UNLOAD CONTRACT. A module may return/export `dispose()`, called exactly once when the pack is
+      // unloaded; without it no runtime registration made by the module (e.g. a vmu.status section) could be cleared.
+      const dispose = (produced && typeof produced.dispose === 'function') ? produced.dispose
+        : (typeof module.dispose === 'function' ? module.dispose : null)
       const handlers = {}
       for (const [hook, fn] of Object.entries(hooks)) {
         handlers[hook] = async (raw) => {
@@ -210,7 +218,7 @@ export function createLoader({ services = {}, log = () => {}, dryRun = false, cl
       }
       stats.loads++
       const record = { id: entry.id, apiVersion: module.meta.apiVersion, capabilities: module.capabilities.slice(),
-        hooks: Object.keys(handlers), file: entry.file || null, at: clock(), handlers }
+        hooks: Object.keys(handlers), file: entry.file || null, at: clock(), handlers, dispose }
       loaded.set(entry.id, record)
       return record
     },
@@ -220,9 +228,12 @@ export function createLoader({ services = {}, log = () => {}, dryRun = false, cl
       const out = []
       for (const entry of entries) {
         const record = await loader.load(entry, opts)
-        for (const hook of record.hooks) {
+        for (let hi = 0; hi < record.hooks.length; hi += 1) {
+          const hook = record.hooks[hi]
           out.push({ id: record.id + '::' + hook, kind: 'module', on: [hook], order: entry.order, failure: entry.failure,
-            capabilities: entry.capabilities || record.capabilities, handler: record.handlers[hook] })
+            capabilities: entry.capabilities || record.capabilities, handler: record.handlers[hook],
+            // the module-level disposer rides on its FIRST bus entry; pack unload calls it once.
+            ...(hi === 0 && typeof record.dispose === 'function' ? { dispose: record.dispose } : {}) })
         }
       }
       return out

@@ -333,6 +333,30 @@ if (SELF_PROBE) {
   await rm(root, { recursive: true, force: true })
 }
 
+// ── ★ PHASE 7: a pack module registers a vmu.status section at LOAD; pack unload calls its dispose and clears it ──
+{
+  const h = await mk()
+  const mod = {
+    meta: { apiVersion: 1, id: 'probe-status-mod' },
+    capabilities: ['trigger-workflow'],
+    hooks: { 'turn/reply-parsed': async () => ({ ok: true }) },
+    default({ services }) {
+      const status = services.get('vmu.status')
+      status.registerSection('probeDispatch', () => ({ last: { ok: true } }))
+      return { hooks: { 'turn/reply-parsed': async () => ({ ok: true }) }, dispose: () => status.unregisterSection('probeDispatch') }
+    },
+  }
+  const manifest = { id: 'probe-status-pack', version: '1.0.0', middleware: [{ id: 'probe-status-mod', order: 10, module: mod }] }
+  const applied = await h.loader.apply(manifest)
+  ok(applied.ok === true, 'pack 装载成功（模块工厂拿到 services）', applied && applied.ok)
+  ok(h.kernel.status().sections && h.kernel.status().sections.probeDispatch && h.kernel.status().sections.probeDispatch.ok === true,
+    '★ 正：装载期注册后 status().sections.probeDispatch 可读', h.kernel.status().sections)
+  await h.loader.unload('probe-status-pack')
+  ok(!Object.prototype.hasOwnProperty.call(h.kernel.status(), 'sections'),
+    '★ 正：pack unload 调 dispose 后该段消失（清零路径存在）', Object.keys(h.kernel.status()).includes('sections'))
+  await rm(h.root, { recursive: true, force: true })
+}
+
 console.log('=== VMU PACK: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

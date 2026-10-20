@@ -417,8 +417,8 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     'T63. **** the captured persona is NOT declared at runtime: the pack declares the hand-written charter, because a snapshot of one run must never enter a live assembly',
     { declaredFromCapture: personaSections.length })
   const loopP = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: declaredP, bindings: PACK.bindings, clock: () => '2026-01-01T00:00:00.000Z' }) })
-  const acadAsm = await loopP.assemble(loopP.open({ member: 'acad', role: 'academician', roleLabel: '院士', phase: 'founding' }).turn)
-  const resAsm = await loopP.assemble(loopP.open({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'founding' }).turn)
+  const acadAsm = await loopP.assemble(loopP.open({ member: 'acad', role: 'chair', roleLabel: '院士', phase: 'founding' }).turn)
+  const resAsm = await loopP.assemble(loopP.open({ member: 'r-1', role: 'member', roleLabel: '常驻研究员', phase: 'founding' }).turn)
   ok(acadAsm.text.includes('通用规章') && acadAsm.text.includes('表决与定论') && acadAsm.text.includes('{{') === false,
     'T64. **** THE ASSEMBLED TURN CARRIES THE CHARTER, titles included and every placeholder filled - the persona is assembled, not appended as a blob',
     { chars: acadAsm.text.length })

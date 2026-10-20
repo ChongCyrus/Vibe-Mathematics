@@ -677,10 +677,15 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
           // `config.modules` path already normalises exactly this way, so the default is applied here too.
           const spec = m.kind === undefined ? Object.assign({ kind: 'module' }, m) : m
           const entries = await kernel.loader.toBusEntries([spec])
+          let moduleRecord = null
+          try { moduleRecord = kernel.loader.get ? kernel.loader.get(spec.id) : null } catch { moduleRecord = null }
+          const dispose = moduleRecord && typeof moduleRecord.dispose === 'function' ? moduleRecord.dispose : entries.find((e) => typeof e.dispose === 'function')
           for (const e of entries) {
             kernel.bus.add(e)
             undo.push(() => removeEntry(kernel.bus, e.id))
           }
+          // ★ PHASE 7: the module's unload contract. Runs AFTER the bus entries are gone, and is awaited by unload().
+          if (dispose) undo.push(async () => { const r = await dispose(); return r })
           continue
         }
         const entry = Object.assign({}, m)
@@ -757,7 +762,7 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
       if (!record) throw refuse('VMU_NO_SUCH_OBJECT', 'pack ' + String(id) + ' is not applied')
       const failures = []
       for (const undoOne of record.undo.slice().reverse()) {
-        try { undoOne() } catch (e) { failures.push(String(e && e.message)) }
+        try { await undoOne() } catch (e) { failures.push(String(e && e.message)) }
       }
       applied.delete(id)
       appliedExcludes.delete(id)

@@ -1558,6 +1558,31 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // before AND after this point (a snapshot would hit the TDZ), and a lazy read can never report a face that was
   // never built. Only faces this assembly really holds answer; the CAPABILITY gate itself lives in the loader, so
   // this port answers "is it published?", not "may you have it?".
+  /**
+   * ★ PHASE 7 / goal 5: A PACK-REGISTERED STATUS SECTION. This is the GENERAL capability (not a single feature hole):
+   * a declared module reaches it through services.get('vmu.status'); each section is a named reader; registration returns
+   * a disposer and unregister removes it. The kernel only merges names into status(); it never knows what they mean.
+   */
+  const statusSections = new Map()
+  const statusService = Object.freeze({
+    registerSection(name, fn) {
+      const id = typeof name === 'string' ? name.trim() : ''
+      if (!id) throw refuse('VMU_INVALID_ARGUMENT', 'registerSection needs a non-empty section name', 'e.g. registerSection("paperDispatch", fn)')
+      if (typeof fn !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'registerSection needs a reader function', 'the reader returns a JSON-serialisable object')
+      if (statusSections.has(id)) throw refuse('VMU_INVALID_ARGUMENT', 'status section "' + id + '" is already registered', 'unregister the previous one first; a silent overwrite would hide which reader is in force')
+      statusSections.set(id, fn)
+      let disposed = false
+      return () => { if (disposed) return { ok: true, alreadyDisposed: true, name: id }; disposed = true; statusSections.delete(id); return { ok: true, removed: id, name: id } }
+    },
+    unregisterSection(name) {
+      const id = typeof name === 'string' ? name.trim() : ''
+      if (!id) throw refuse('VMU_INVALID_ARGUMENT', 'unregisterSection needs a section name', 'pass the name previously registered')
+      const had = statusSections.delete(id)
+      return { ok: true, name: id, removed: had }
+    },
+    names() { return [...statusSections.keys()].sort() },
+  })
+
   const middlewareServiceCatalog = () => ({
     'vmu.tasks': tasks, 'vmu.meetings': meetings, 'vmu.chat': chat, 'vmu.mailbox': mailbox,
     'vmu.panel': panel, 'vmu.minutes': minutes, 'vmu.ballotbox': ballotbox, 'vmu.members': members,
@@ -1580,6 +1605,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // overlap BY NAME (`VMU_TURN_REENTRANT`) rather than nesting and silently sharing its single-turn state, so the
     // capability can be granted without the recursion hazard. The guard was added in the same change, deliberately.
     'vmu.turn': turn,
+    // ★ PHASE 7: pack-registered status sections (registerSection/unregisterSection).
+    'vmu.status': statusService,
     // ★ PHASE 6 / goal-3 audit P2: `vmu.middleware` was REGISTERED (the M4 contract lists it and docs/03 documents
     // `rewriteOf`) but absent from this capability-gated catalogue, so an M2 module could declare `requires` and still
     // get `VMU_NO_SUCH_OBJECT` on get(). Added here so the documented surface is reachable. It is safe: `rewriteOf` only
@@ -1628,6 +1655,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   registry.register('vmu.tasks', { apiVersion: 1 }, { kind: 'service', description: 'task ledger and stage machine' })
   registry.register('vmu.prompt', { apiVersion: 1 }, { kind: 'service', description: 'prompt sections, bindings, overrides' })
   registry.register('vmu.turn', { apiVersion: 1 }, { kind: 'service', description: 'turn loop: assemble, deliver, parse, dispatch (docs/26)' })
+  registry.register('vmu.status', { apiVersion: 1 }, { kind: 'service', description: 'pack-registered status sections: registerSection returns a disposer, unregisterSection removes by name' })
   registry.register('vmu.middleware', { apiVersion: 1 }, { kind: 'service', description: 'the hook bus and its four forms' })
   // Batch-1 services (docs/11 搂9.8). Registered unconditionally, like tasks/prompt/middleware: they are
   // zero-mechanism by construction (no config 鈬?empty agenda, empty board, refusals by name).
@@ -1918,6 +1946,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
     get latex() { return latex },
+    /** ★ PHASE 7: the generic pack-registered status-section service (same object modules reach as vmu.status). */
+    get statusService() { return statusService },
     tasks,
     rules,
     loader,
@@ -2719,6 +2749,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         })(),
         // PHASE 6 / P0-10: the tool NAMES packs declared. The kernel holds them; the host publishes them.
         packTools: [...packToolDeclarations.values()].map((t) => ({ name: t.name, packId: t.packId })),
+        // ★ PHASE 7: only when a pack registered sections; a throwing reader is NAMED, never hidden.
+        ...(statusSections.size > 0 ? { sections: Object.fromEntries([...statusSections.entries()].map(([name, fn]) => {
+          try { return [name, { ok: true, value: fn() }] } catch (e) {
+            return [name, { ok: false, code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) }]
+          }
+        })) } : {}),
         // ★ PHASE 7: only present when a pack registered the reader; a throwing reader is NAMED here, never hidden.
         ...(paperDispatchStatusSource ? { paperDispatch: (() => {
           try { return { ok: true, status: paperDispatchStatusSource() } } catch (e) {

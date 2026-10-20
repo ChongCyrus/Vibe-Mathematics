@@ -1033,6 +1033,46 @@ const FALLBACK_KEYS = [
     '★ 反：reader 抛错 ⇒ 具名状态，不静默', bst.paperDispatch)
 }
 
+// ── ★ PHASE 7: vmu.status — generic pack-registered status sections + unload dispose contract ─────────────────
+{
+  const k = m.createKernel({ clock: () => 0 })
+  const bare = k.status()
+  ok(!Object.prototype.hasOwnProperty.call(bare, 'sections'), '★ 反（零机制）：没有注册 ⇒ status() 没有 sections 段', Object.keys(bare).includes('sections'))
+  const entry = {
+    id: 'probe-status-module', kind: 'module', order: 100,
+    module: {
+      meta: { apiVersion: 1, id: 'probe-status-module' }, capabilities: ['trigger-workflow'],
+      hooks: { 'turn/reply-parsed': async () => ({ ok: true }) },
+      default({ services }) {
+        const status = services.get('vmu.status')
+        status.registerSection('paperDispatch', () => ({ last: { ok: true, code: null } }))
+        return { hooks: { 'turn/reply-parsed': async () => ({ ok: true }) }, dispose: () => status.unregisterSection('paperDispatch') }
+      },
+    },
+  }
+  const entries = await k.loader.toBusEntries([entry])
+  ok(entries.length === 1 && typeof entries[0].dispose === 'function', 'loader 把模块 dispose 挂到首条总线条目上（unload 契约）', entries.map((e) => e.id))
+  const st = k.status()
+  ok(st.sections && st.sections.paperDispatch && st.sections.paperDispatch.ok === true && st.sections.paperDispatch.value.last.ok === true,
+    '★ 正：pack 模块经 services.get("vmu.status") 注册后 status().sections.paperDispatch 可读', st.sections)
+  const status = entries[0]
+  ok(status && typeof status.dispose === 'function', 'loader record 携带 dispose（同一契约的 commit 点）', status && typeof status.dispose)
+  let dup = null
+  // duplicate registration is a NAMED refusal — reach the service through a factory module
+  const dupEntry = {
+    id: 'probe-status-dup', kind: 'module', order: 101,
+    module: { meta: { apiVersion: 1, id: 'probe-status-dup' }, capabilities: ['trigger-workflow'], hooks: { 'turn/reply-parsed': async () => ({ ok: true }) }, default({ services }) {
+      const statusSvc = services.get('vmu.status')
+      try { statusSvc.registerSection('paperDispatch', () => ({})) } catch (e) { dup = e }
+      return { hooks: { 'turn/reply-parsed': async () => ({ ok: true }) } }
+    } },
+  }
+  await k.loader.toBusEntries([dupEntry])
+  ok(dup && dup.code === 'VMU_INVALID_ARGUMENT', '★ 反：同名注册两次 ⇒ 具名拒（不静默覆盖）', dup && dup.code)
+  await status.dispose()
+  ok(!Object.prototype.hasOwnProperty.call(k.status(), 'sections'), '★ 正/反：dispose 后该段消失（unload 清零路径存在）', Object.keys(k.status()).includes('sections'))
+}
+
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

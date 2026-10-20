@@ -255,6 +255,8 @@
 ### 6.1 三类扩展物的装载顺序（**轮 1 按 D-03 更正：只有 M1/M2 进总线**）
 1. **整合包（L4）先**：`kernel/pack.js` 解析依赖 → 施加包内 `settings`／`slots`／`tracks`／`rules`（M1）／`middleware`（M2）／`aliases`／`promptPolicies`；包冲突**必须显式声明**（重名 id／设置重叠直接拒绝）。**包不是 M4**：它是自成一档的 L4 组合。
 2. **模块（M2）次之**：`kernel/loader.js` 校验 `meta.apiVersion`／`capabilities`／**已注册钩子**并挂上 `handler`，再由 `bus.add` 进总线（测试也用 `bus.on(entry, handler)` 注入）。
+   - ★ **PHASE 7：模块的 unload 契约**——模块（或其 `default` 工厂）可返回/导出 **`dispose()`**；loader 把它挂在**该模块第一条总线条目**上，`pack.unload()` 在移除条目后 `await dispose()`。没有 dispose 的模块行为不变。
+   - ★ **工厂在装载期即可注册**：`default({ hooks, log, kernel, setting, services })` 现在也拿到**能力门控的 `services`**（与钩子里的 `flat.api.services` 同一个门），所以 pack 可在装载期调用 `services.get('vmu.status').registerSection(name, fn)`；`dispose` 负责 `unregisterSection`，卸载即清零。
 3. **脚本（M3）不在总线上**：经 `kernel/script-bridge.js` ＋ `vibe_vmu_script` 工具（`config.scripts`）建立调用；`file`／`inline` 二选一。**外部插件（M4）同样不在总线上**：它是消费 vmu 已发布服务的 DSH 插件。
 > **同 order 内**按 `id` 字典序 ⇒ 总线上的条目顺序**确定可复现**。
 
