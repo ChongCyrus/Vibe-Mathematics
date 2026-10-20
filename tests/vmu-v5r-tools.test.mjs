@@ -1222,6 +1222,29 @@ try {
   ok(flowMethods.filter((m) => typeof paperFlow[m] === 'function').length === flowMethods.length,
     '★★ the subsystem still exposes all 13 methods (the shell forwards the kit flow)', flowMethods.length)
 
+  // ── ⑦i PHASE 8 / goal 10 (round 38): the PACK declares its tool presentation; the HOST applies it ───────────────
+  // 正: the declaration is readable from the KERNEL and the HOST really marked those specs (per-tool deferLoading).
+  // 反: assembling without the pack leaves the reader at null (zero mechanism) — no fabricated 'native'.
+  console.log('=== 7i. TOOL PRESENTATION: the pack declares, the host applies ===')
+  const declaredPresentation = PACK.toolPresentation
+  const declaredFaces = declaredPresentation && Array.isArray(declaredPresentation.faces) ? declaredPresentation.faces.slice() : []
+  const packageToolNames = new Set((PACK.tools || []).map((t) => t.name))
+  ok(declaredPresentation && declaredPresentation.mode === 'defer' && declaredFaces.length === 10 &&
+    declaredFaces.filter((n) => packageToolNames.has(n)).length === 10,
+    '★★ the pack declares mode=defer for exactly ten faces, and every face is a tool this pack DECLARES (no ghost name)', { mode: declaredPresentation && declaredPresentation.mode, faces: declaredFaces.length })
+  const readPresentation = v5rBoot.handle.kernel.packToolPresentation()
+  ok(readPresentation && readPresentation.pack === 'v5r-core' && readPresentation.mode === 'defer' &&
+    JSON.stringify(readPresentation.faces.slice().sort()) === JSON.stringify(declaredFaces.slice().sort()),
+    '★★★ 正: packToolPresentation() returns this declaration (mode + exact faces + owning pack)', readPresentation)
+  ok(bare.handle.kernel.packToolPresentation() === null,
+    '★★ 反: an assembly WITHOUT the pack returns null (zero mechanism, no fabricated native default)', bare.handle.kernel.packToolPresentation())
+  // The HOST half: the captured register specs show deferLoading on exactly the declared faces (and nowhere else).
+  const deferredInHost = declaredFaces.filter((n) => { const sp = v5rBoot.specOf(n); return sp && sp.deferLoading === true }).length
+  const eager = ['vibe_v5_record_progress', 'vibe_v5_say', 'vibe_v5_read_library', 'vibe_v5_tool_help']
+  const eagerClean = eager.filter((n) => { const sp = v5rBoot.specOf(n); return sp && sp.deferLoading === undefined }).length
+  ok(deferredInHost === declaredFaces.length && eagerClean === eager.length,
+    '★★★ 装了 v5r 之后：被 defer 的 10 个 spec 真的带 deferLoading:true，而每回合都可能用的 4 个（record_progress/say/read_library/tool_help）不带', { deferredInHost, eagerClean })
+
 } finally {
   // The store writes atomically through temp+rename, so a removal can race one in-flight file: retry, and never let
   // a cleanup failure turn a green run red (the assertions above already reported the truth).

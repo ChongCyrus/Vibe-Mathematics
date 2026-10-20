@@ -197,6 +197,21 @@ export const PACK = Object.freeze({
   // sections below (the text a member actually reads); the manifest only points at that derivation, so the prompt
   // and the tool table cannot drift. A getter is required because those sections are defined after PACK.
   get toolFaces() { return V5R_TOOL_FACES },
+  // ★ PHASE 8 / goal 10 (round 38): THE BATCH THAT DOES NOT NEED ITS FULL SCHEMA UP FRONT.
+  // `defer` here means the host marks these specs `deferLoading: true`, so the model loads them on demand instead of
+  // paying for their schemas on every request. Chosen by "big schema + episodic use", never by "rarely tested":
+  //   · the five Lean tools — file/kind/target/jobId/timeout shapes, used only when formalising;
+  //   · the three poll tools + second + verdict — meeting-time actions, unused in ordinary research rounds.
+  // DELIBERATELY NOT deferred: record_* / say / message / read_library / tool_help / task_* — a round may need any of
+  // them at its first step, and a deferred tool costs a round-trip exactly then. The list is explicit (not "everything
+  // except") so a future tool is eagerly available until someone decides otherwise.
+  toolPresentation: Object.freeze({
+    mode: 'defer',
+    faces: Object.freeze([
+      'vibe_v5_lean_run', 'vibe_v5_lean_job', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_archive',
+      'vibe_v5_poll_open', 'vibe_v5_poll_vote', 'vibe_v5_poll_close', 'vibe_v5_second', 'vibe_v5_verdict',
+    ]),
+  }),
   slots: [
     { id: 'chair', label: '主持人', capacity: 1, permissions: ['convene', 'close', 'assign', 'grant', 'freeze'] },
     { id: 'member', label: '成员', capacity: 0, permissions: ['speak', 'vote', 'propose'] },

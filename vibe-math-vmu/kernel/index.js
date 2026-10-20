@@ -2385,7 +2385,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         'seat the member in a slot whose permissions include this one; the pack grants it to its voting slot')
       if (!turn || typeof turn.recordClosureVote !== 'function') throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no closure-vote writer', 'assemble the turn loop')
       const out = turn.recordClosureVote(id, solved)
-      return { ok: true, tool: 'vibe_vmu_vote', member: id, solved: out.solved, why: why === null ? null : String(why), closureVote: closureVoteView() }
+      const writes = (() => { try { return turn.status().closureVoteWrites } catch { return null } })()
+      return { ok: true, tool: 'vibe_vmu_vote', member: id, solved: out.solved, why: why === null ? null : String(why), writes, closureVote: closureVoteView() }
     },
     /**
      * ★ PHASE 8 / B-1: THE MEMBER'S REAL TOOL TABLE, in the kernel. Names come ONLY from the live visible-tools provider

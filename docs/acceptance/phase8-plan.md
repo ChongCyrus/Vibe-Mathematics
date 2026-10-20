@@ -1,4 +1,4 @@
-﻿# PHASE 8 鈥?鍒涘浜鸿疆 31 杩介棶鍚庣殑涓や釜鍚庣画鐩爣
+# PHASE 8 鈥?鍒涘浜鸿疆 31 杩介棶鍚庣殑涓や釜鍚庣画鐩爣
 
 鈽呪槄 **鏉ユ簮**锛氣槄 鍒涘浜哄 PHASE 7 鐨勪袱娆¤拷闂紙鈽?"tools.js 鏄笉鏄熀浜?DSH 娉ㄥ唽鏈哄埗锛熲槄 DSH 浼氫笉浼氭妸鐢ㄤ笉鍒扮殑宸ュ叿涔熷彂缁欐垜浠? 锛?鈽?"鏄惁璇ユ妸棰戠箒澶嶇敤鐨勫皝瑁呮彁鍗囪繘鍐呮牳锛忛檮灞炲寘"锛夆噿 鈽?**瑁佸畾锛氣槄 涓ゆ潯閮芥寜寤鸿鍋氾紝鈽?鍔犲叆鍚庣画鐩爣** 鉁?
 ---
@@ -181,6 +181,30 @@ createPaperFlow({ sections, maxRounds, engineOrder, …, codes })  ← 政策作
 
 ---
 
+### 轮 36 —— ★ 目标 10 第一层：**先让声明可读**（★ 本阶段的教训：先钉"可读"，再接"执行"）
+- ★ 形状：`manifest.toolPresentation = { mode: 'native' | 'ptc' | 'defer', faces?: [tool name…] }`；`validatePack` 在 plan 阶段就校验形状与取值；内核新增 `declarePackToolPresentation`／`retractPackToolPresentation`／**唯一读取器** `packToolPresentation()`。
+- ★ **零机制**：**不声明 ⇒ 读取器返回 `null`**（★ 不伪造 `native`）；未知 `mode`／引用未持有的面名 ⇒ **具名 `VMU_INVALID_ARGUMENT`**（hint 列合法值）。
+- ★ 断言：`vmu-kernel 248/0`（+8）；`vmu-pack 74/0` 不变；`regen --check`／`preflight` 绿。
+
+### 轮 37 —— ★ 目标 10 第二层：**宿主真的执行**
+- ★ `host.js`：`defer` ⇒ **per-tool** `hostSpec.deferLoading = true`（只对声明的 `faces`）；`ptc` ⇒ **per-agent** `ctx.tools.presentAs('ptc')`，**每次 install 只调一次**并回收其 disposer；`native`／未声明 ⇒ **零动作**（★ `native` 与"未声明"效果相同、**语义不同**，回执记录 mode）。
+- ★ **失败可见**：宿主无 `presentAs`、面未被本宿主注册、多 pack mode 冲突 ⇒ 写 `presentation.unapplied`（带 code）**并进 `failures`**，回执 `ok:false` —— **绝不静默降级到 native**。
+- ★★ **本轮自己抓到的 bug**：`unapplied` 的 push 原先写在 `failures.length = 0` **之前**，会被清空 ⇒ `ok` 仍为真 —— **这正是"静默成功"的制造方式**；已移到 reset 之后并复跑。
+- ★ 断言：`vmu-host 156/0`（+5：不声明／`defer` 单面／`native`／`ptc` 一次／无 `presentAs` 具名）。
+
+### 轮 38 —— ★ 目标 10 接线：**pack 真的声明 `defer`**
+- ★ v5r manifest 声明 `mode:'defer'`，**显式十个面**：`lean_*` 五件 ＋ `poll_open/poll_vote/poll_close` ＋ `second`/`verdict`（理由：**schema 大且 episodic**，只在形式化／会议时用）。
+- ★ **不 defer**：`record_*`／`say`／`message`／`read_library`／`tool_help`／`task_*`（**每个回合的第一步就可能要用**；deferred 工具恰好在那时要多一次往返）。
+- ★ 断言：内核读取器返回**精确声明**；**不装 pack ⇒ `null`**；**宿主捕获的 register spec：十个带 `deferLoading:true`，四个常用工具不带**。
+- ★ `vmu-v5r-tools 259/0`（+3）。
+
+### ★ 另一路在本窗口的三条（★ 按 Lead 简报补录，★ 我未独立复验）
+1. ★★ **`vibe_vmu_vote`：表决成了工具**，唯一写入者是 `recordClosureVote`；计数器 `closureVoteWrites` 证**两条通道各 +1**。
+2. ★★ **`tools:{allow}`：把"唯一动作"从【请求】变成【事实】** —— 两次提示词失败后换的实现方式（★ 本窗口最重要的设计判断）。
+3. ★★ **并发缺陷**：多个 step 在一条消息里并发 ⇒ 同一个 `activeMember` 标量互相覆盖 ⇒ 成员拿到 **temp 的面**；已串行化 ⇒ 本阶段**第三个"单看对、并发错"**。
+
+---
+
 ## §7 ★ 目标对账（★ 更新）
 
 | # | ★ 目标 | ★ 证据 | ★ 状态 |
@@ -188,4 +212,4 @@ createPaperFlow({ sections, maxRounds, engineOrder, …, codes })  ← 政策作
 | 1–7 | ★ PHASE 7 全部 | ★ 覆盖矩阵／移植／工具化／装卸／盲区／纠错／**T1 390-390 ＋ v3/v5r 双 `cast:true`** | **✅** |
 | **8** | ★ 工具表按角色收窄 | ★ **三席逐名 diff 0**（117/37、100/20、86/6）＋ ★ `tools:'none'`（0 调用、9.9s）＋ ★ **恢复已验** ＋ ★ 同源三断言 | **✅** |
 | **9** | ★ 共享 kit | ★ **B-1～B-4 全完成**（★ 4 文件／13 工具／论文流）＋ ★ **每批"原断言一条未红"** ＋ ★ 三条防退化门禁 | **✅** |
-| **10** | ★ 工具呈现方式 | ★ 长期、★ 非阻塞；★ DSH 有 `deferLoading`／`presentAs('ptc')` 而 vmu 未用 ⇒ ★ **118 个 schema 每次全发** | **⬜ 长期** |
+| **10** | ★ 工具呈现方式 | ★ **声明＋执行都完成**：`toolPresentation` 形状/零机制/具名拒（轮 36）＋ 宿主 `deferLoading`（per-tool）与 `presentAs('ptc')`（per-agent，一次）（轮 37）＋ **v5r 声明 defer 十面**（轮 38，十个 spec 带字段、四个常用不带）⇒ ★ **待真机**：schema 体积下降、工具仍可调 | **🟡 声明＋执行完成，待真机** |
