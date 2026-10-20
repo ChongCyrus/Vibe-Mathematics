@@ -455,6 +455,12 @@ export const v5rFixtureConstraint = Object.freeze({
     '【SLV 夹具约束｜本轮不调用工具】',
     '本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只读本轮状态块推理，最后只输出一个 json 围栏回执。',
     'closure poll 的正确回执样例（照抄形状）：{"vote_solved": true} 或 {"vote_solved": false}；只写这一句，不写 progress。',
+    // ★ PHASE 8 round 32 (real-machine defect, 19850): with tools switched OFF the model had no tool channel and wrote a
+    // DSML tool call INTO THE BODY, which parses as no JSON at all ⇒ VMU_TURN_NO_FENCE and the vote never landed. The
+    // cause is a missing fact in the prompt, not a mechanism bug, so the prompt states the fact plainly.
+    '★★ 本回合你**没有任何工具可用**——这是刻意的，不是故障（本轮只做判断、不产生新工作，所以不需要工具）。',
+    '★★ 因此**不要写任何工具调用语法**（不要 DSML、不要 bash、不要 XML、不要示例调用），也不要尝试调用；把调用语法写进正文会被判为无法解析。',
+    '★★ 若是结题表决回合：整个回复必须**只是一行 JSON**（围栏或裸 JSON 均可，但必须能被解析）：{"vote_solved": true} 或 {"vote_solved": false}。',
     // ★ PHASE 7 round 14 (real-machine defect): the old wording said "数组/对象" and showed an ARRAY. The kernel
     // dispatches the reply's `progress` payload STRAIGHT to the records face (`FIELD_OWNERS.progress = {face:vmu.records,
     // op:'put'}`), so it must be ONE OBJECT of put-args; an array (or a string) arrives with `track: undefined` and the

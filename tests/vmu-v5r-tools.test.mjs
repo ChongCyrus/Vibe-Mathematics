@@ -1181,6 +1181,22 @@ try {
     kitFamilies.length === 5,
     '★★ the kit holds the four moved tools, each with a disableKey and a run', kitToolsModW.KIT_TOOLS.map((t) => t.name + ':' + t.disableKey))
 
+  // ── ⑦g PHASE 8 round 32: tell the model PLAINLY that a no-tools turn really has no tools ─────────────────────
+  // REAL-MACHINE DEFECT (run 19850): with `tools:'none'` the tool channel was gone, so the model wrote a DSML tool call
+  // into the BODY ⇒ no JSON ⇒ VMU_TURN_NO_FENCE and the vote never landed. The prompt now states the fact.
+  console.log('=== 7g. NO-TOOLS TURN: the fact is stated (and only there) ===')
+  const noToolMarkers = ['没有任何工具可用', '不要写任何工具调用语法']
+  const constraintSec = PACK.sections.filter((s) => s.name === 'v5r-fixture-constraint')[0]
+  const toolsSec = PACK.sections.filter((s) => s.name === 'v5r-fixture-tools')[0]
+  ok(constraintSec && noToolMarkers.filter((m) => String(constraintSec.text).includes(m)).length === noToolMarkers.length,
+    '★★ 正: the NO-TOOLS turn section says there are no tools AND not to write tool-call syntax', noToolMarkers)
+  ok(toolsSec && noToolMarkers.filter((m) => String(toolsSec.text).includes(m)).length === 0,
+    '★★ 反: the TOOLS-ENABLED section does NOT carry those sentences (they would mislead a turn that does have tools)', 'v5r-fixture-tools')
+  // the new text must not mention any tool name — otherwise it would perturb the bullet-derived role faces (assertion C)
+  const addedLines = String(constraintSec.text).split('\n').filter((line) => noToolMarkers.some((m) => line.includes(m)))
+  ok(addedLines.length === 2 && addedLines.filter((line) => /vibe_v5_[a-z0-9_]+/.test(line)).length === 0,
+    '★★ the added sentences mention NO tool name (the bullet derivation and the prose⊆bullet assertion stay untouched)', addedLines.length)
+
 } finally {
   // The store writes atomically through temp+rename, so a removal can race one in-flight file: retry, and never let
   // a cleanup failure turn a green run red (the assertions above already reported the truth).
