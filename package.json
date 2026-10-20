@@ -824,7 +824,8 @@
     "vibe-math-vmu/tools/member-tools.js",
     "vibe-math-vmu/kit/tools.js",
     "vibe-math-vmu/kit/handlers.js",
-    "vibe-math-vmu/kit/extras.js"
+    "vibe-math-vmu/kit/extras.js",
+    "vibe-math-vmu/kit/paper.js"
   ],
   "license": "MIT",
   "keywords": [

@@ -1320,7 +1320,13 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     // The agent→member map is learned at delivery time; fall back to the ASSEMBLY ITSELF, which already carries the
     // member-specific blocks (v5r: 【本轮面向的成员】代号：member-a). This avoids guessing and works even when the
     // session map is not yet populated.
-    let member = memberOfAgent(context && context.agent)
+    // CHILD FIRST: the turn tool records WHICH member this step drives, and that is more reliable than the learned
+    // session map (one-shot child ids can mis-resolve; measured: chair received temp-a's deny list). Root ids are
+    // 'session-…' and have no active member, so they still go through memberOfAgent.
+    const agentId = String((context && context.agent && context.agent.id) || '')
+    let member = null
+    if (agentId && !agentId.startsWith('session-') && typeof kernel.currentTurnMember === 'function') member = kernel.currentTurnMember()
+    if (!member) member = memberOfAgent(context && context.agent)
     if (!member) {
       const texts = []
       // The member-specific role block is a CONTEXT in DSH (PromptAssembly.contexts), not only a section; scan BOTH.
