@@ -808,6 +808,7 @@
     "vibe-math-vmu/packs/v3/middleware/gates.js",
     "vibe-math-vmu/packs/v3/tools.js",
     "vibe-math-vmu/packs/v5r/tools.js",
+    "vibe-math-vmu/packs/v5r/paper.js",
     "tests/vmu-v5r-tools.test.mjs",
     "tests/vmu-v3-gates.test.mjs",
     "tests/vmu-v3-tools.test.mjs",

@@ -65,5 +65,23 @@ console.log('=== AND THE COUNT IS NOT VACUOUS ===')
 ok(FACES.length === 10, 'all ten faces are listed, so this check cannot pass by covering a subset', { n: FACES.length })
 ok(new Set(FACES.map((f) => f[1])).size >= 8, 'and they are carried by distinct tools rather than one tool claiming everything', { distinct: new Set(FACES.map((f) => f[1])).size })
 
+// ── ★ PHASE 7: the meeting tool face exposes second/withdraw (kernel capability reachable from the model) ─────────
+console.log('=== MEETING TOOL: second / withdraw reachable from the FACE ===')
+{
+  const clock = () => 1000
+  const kk = createKernel({ clock, settings: { 'vmu.meetings.quorumCap': 0 } })
+  for (const t of ['meeting/motion', 'meeting/second', 'meeting/withdrawn']) { try { kk.bus.declareTopic(t) } catch { /* already declared */ } }
+  const op = kk.meetings.open({ chair: 'acad', roster: ['acad', 'r-1', 'r-2'], secretary: 'r-2' })
+  const mo = kk.meetings.motion({ meeting: op.meeting, member: 'r-2', kind: 'ordinary', text: 'probe motion' })
+  const spec = toolSpecs({ kernel: kk, settings: {}, meetingTool: true }).find((s) => s.name === TOOL_NAMES.meeting)
+  ok(!!spec, 'meeting tool registers for the face-level second test')
+  const good = await spec.run({ action: 'second', id: op.meeting, motion: mo.motion, member: 'r-1' })
+  ok(good && good.ok === true && good.status === 'seconded' && good.secondedBy === 'r-1',
+    '★ 正：经工具面 second ⇒ 动议真的变 seconded', good)
+  const own = await spec.run({ action: 'second', id: op.meeting, motion: mo.motion, member: 'r-2' })
+  ok(own && own.ok === false && own.code === 'VMU_NOT_PERMITTED',
+    '★ 反：提案人经工具面附议自己 ⇒ 回执保留内核的具名拒（不泛化）', own && own.code)
+}
+
 console.log('=== TEN FACES USABLE: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }

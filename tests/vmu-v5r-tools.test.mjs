@@ -355,7 +355,7 @@ try {
   ok(paused.parsed && paused.parsed.ok === true && paused.parsed.receipt, 'pause: 正 — the kernel control state is paused', paused.parsed && paused.parsed.receipt)
   const resumed = await receipt(v5rBoot, 'vibe_v5_resume', { reason: '继续' })
   ok(resumed.parsed && resumed.parsed.ok === true && resumed.parsed.receipt, 'resume: 正 — resumed through the CONTROL face', resumed.parsed && resumed.parsed.receipt)
-  const h1 = await receipt(v5rBoot, 'vibe_v5_set', { key: 'vmu.records.tracks', value: ['progress', 'state'] })
+  const h1 = await receipt(v5rBoot, 'vibe_v5_set', { key: 'vmu.records.tracks', value: ['progress', 'routes', 'obstacles', 'rejected', 'state', 'propositions', 'methods', 'problems', 'feedback', 'paper'] })
   ok(h1.parsed && h1.parsed.ok === true && h1.parsed.applied.hot === 'H1' && /立即/.test(String(h1.parsed.effective)),
     '★ set: 正 — an H1 key is written AND the receipt says "live now" with its declared hot level', h1.parsed && h1.parsed.applied)
   const h2 = await receipt(v5rBoot, 'vibe_v5_set', { key: 'vmu.ballot.minVotes', value: 2 })
@@ -391,6 +391,73 @@ try {
     '★ and each refusal names the missing capability (需内核能力：宿主 spawn 接缝) — the fix is in the tool itself', leanRefusals)
   const leanBadKind = await receipt(v5rBoot, 'vibe_v5_lean_archive', { kind: 'nope', name: 'x', from: 'Formal/x.lean' })
   ok(leanBadKind.parsed && leanBadKind.parsed.ok === false && leanBadKind.parsed.code === 'VMU_INVALID_ARGUMENT', 'lean_archive: 反 — an unknown archive kind is refused BEFORE the face check', leanBadKind.parsed)
+
+  // ── ③f THE PAPER SUBSYSTEM (round 7): state machine + records + fingerprints + the four artefacts ───────────
+  console.log('=== 3f. THE PAPER SUBSYSTEM (state machine / records / fingerprints / artefacts) ===')
+  const paperMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper.js')).href)
+  const paper = paperMod.createPaperSubsystem({ kernel })
+  const TARGET = '引理 A'
+  const begun = paper.start({ target: TARGET, participants: ['r-1', 'r-2'] })
+  ok(begun && begun.ok === true && begun.status === 'writing' && begun.round === 1 && !!begun.stateRecord,
+    'paper start: 正 — a paper object is created in the records face (writing, round 1) and the state record exists', begun)
+  let startDup = null
+  try { paper.start({ target: TARGET, participants: ['r-1'] }) } catch (e) { startDup = e }
+  ok(startDup && startDup.code === 'VMU_PACK_V5R_CORE_PAPER_STATE', '★ paper start: 反 — a second paper for the same target is REFUSED by name (never a silent overwrite)', startDup && startDup.code)
+
+  const part = paper.recordPart({ target: TARGET, member: 'r-1', title: '引理 A 的证明骨架', solution: '把 A 拆成两个引理', evidence: ['r-1 的命题卡'] })
+  ok(part && part.ok === true && !!part.recordId && typeof part.fingerprint === 'string' && part.fingerprint.length > 0,
+    '★ recordPart: 正 — the part is archived as its own record AND carries the KERNEL-computed fingerprint', part && { id: part.recordId, fp: String(part.fingerprint).slice(0, 12) })
+  let reviewTooEarly = null
+  try { paper.recordReview({ target: TARGET, member: 'r-2', deliverable: true }) } catch (e) { reviewTooEarly = e }
+  ok(reviewTooEarly && reviewTooEarly.code === 'VMU_PACK_V5R_CORE_PAPER_STATE', '★ recordReview: 反 — a review in the WRITING stage is refused by name (out-of-order is never silently accepted)', reviewTooEarly && reviewTooEarly.code)
+  let noPart = null
+  try { paper.recordPart({ target: TARGET, member: 'r-9', title: 'x' }) } catch (e) { noPart = e }
+  ok(noPart && noPart.code === 'VMU_NO_SUCH_OBJECT', 'recordPart: 反 — a non-participant is refused by name', noPart && noPart.code)
+
+  const adv1 = paper.advance({ target: TARGET })
+  ok(adv1 && adv1.moved === true && adv1.to === 'reviewing' && adv1.reviewOf && adv1.reviewOf['r-1'] === 'r-2',
+    '★ advance: 正 — writing → reviewing with the rotation (r-1 reviews r-2, the original\'s reviewOf)', adv1 && adv1.reviewOf)
+  let badDeliverable = null
+  try { paper.recordReview({ target: TARGET, member: 'r-1', deliverable: 'yes' }) } catch (e) { badDeliverable = e }
+  ok(badDeliverable && badDeliverable.code === 'VMU_INVALID_ARGUMENT', '★ recordReview: 反 — deliverable must be a real boolean ("未表态不算可交付")', badDeliverable && badDeliverable.code)
+  paper.recordReview({ target: TARGET, member: 'r-1', deliverable: false, comments: '还缺 n=5 的情形' })
+  const adv2 = paper.advance({ target: TARGET })
+  ok(adv2 && adv2.moved === true && adv2.to === 'writing' && adv2.round === 2,
+    '★ advance: 正 — one non-deliverable review sends the paper back to writing for round 2 (the disagreement is recorded)', adv2 && adv2.refusers)
+  paper.advance({ target: TARGET })
+  paper.recordReview({ target: TARGET, member: 'r-1', deliverable: true, comments: '已补 n=5' })
+  paper.recordReview({ target: TARGET, member: 'r-2', deliverable: true, comments: '可交付' })
+  const adv3 = paper.advance({ target: TARGET })
+  ok(adv3 && adv3.moved === true && adv3.to === 'awaiting-editor' && adv3.unanimous === true,
+    '★ advance: 正 — unanimous cross-review moves to awaiting-editor', adv3)
+
+  const artsBefore = paper.PaperArtifacts({ target: TARGET })
+  ok(artsBefore.complete === false && artsBefore.missing.length === 4,
+    '★ PaperArtifacts: 正 — before rendering, ALL FOUR artefacts are missing and the receipt says INCOMPLETE (never claims completion)', artsBefore.missing)
+  ok(artsBefore.pdf && artsBefore.pdf.code === 'VMU_PACK_V5R_CORE_PAPER_PDF_NEEDS_KERNEL' && /LaTeX/.test(String(artsBefore.pdf.needsKernel)),
+    '★ PaperArtifacts: the missing PDF NAMES the kernel capability it needs (LaTeX 编译执行器) — measured: no latex face in kernel/', artsBefore.pdf && artsBefore.pdf.needsKernel)
+
+  let finalBad = null
+  try { paper.recordFinal({ target: TARGET, member: 'r-1', decision: 'deliverable' }) } catch (e) { finalBad = e }
+  ok(finalBad && finalBad.code === 'VMU_NOT_PERMITTED', '★ recordFinal: 反 — a non-chair member cannot finalise (the academician does)', finalBad && finalBad.code)
+  const finalized = paper.recordFinal({ target: TARGET, member: 'r-chair', decision: 'deliverable', note: '互审一致', conclusion: 'A 成立' })
+  ok(finalized && finalized.ok === true && finalized.finalized === true && finalized.missing.includes('pdf'),
+    '★ recordFinal: 正 — the academician finalises; the receipt renders md/tex/meta, still reports the missing pdf, and NEVER claims a complete paper', finalized && { missing: finalized.missing })
+  const md = paper.PaperMd({ target: TARGET })
+  ok(typeof md === 'string' && md.includes(paperMod.PAPER_SECTIONS[0]) && md.includes('r-1'),
+    '★ PaperMd: 正 — the body is REBUILT from the parts (by id + fingerprint), section headings from the original\'s nine', md.length)
+  const tex = paper.PaperTex({ target: TARGET })
+  ok(typeof tex === 'string' && tex.includes('\\documentclass') && tex.includes('ctex') && tex.includes('xelatex'),
+    '★ PaperTex: 正 — the tex carries the engine order (xelatex first for zh ⇒ ctex preamble)', tex.length)
+
+  // ★★ RULE ①: the fingerprint guard. Tamper with the part record BY ID (a new body under the same record id) — the
+  // state still remembers the old fingerprint, so rendering must BLOCK by name instead of reusing stale prose.
+  const stateNow = paper.state(TARGET).state
+  kernel.records.put({ id: stateNow.parts['r-1'].recordId, track: 'paper', kind: 'paper-part', title: 'v5r-paper|' + TARGET + '|part|r-1', body: JSON.stringify({ member: 'r-1', title: '被背后改过的正文', solution: '改了' }), by: 'tamper' })
+  let fpErr = null
+  try { paper.PaperMd({ target: TARGET }) } catch (e) { fpErr = e }
+  ok(fpErr && fpErr.code === 'VMU_PACK_V5R_CORE_PAPER_FINGERPRINT_MISMATCH',
+    '★★ RULE ①: a body changed behind the paper\'s back BLOCKS BY NAME (fingerprint mismatch) — the stale text is never silently used', fpErr && fpErr.code)
 
   // ── ④ REFUSALS ARE NAMED (the 一正一反 the fixture verified: empty sender) ──────────────────────────────────
   console.log('=== 4. REFUSALS CARRY A REGISTERED CODE + A HINT ===')

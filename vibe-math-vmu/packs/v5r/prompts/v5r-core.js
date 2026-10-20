@@ -92,6 +92,11 @@ export const PACK = Object.freeze({
   codes: [
     'VMU_PACK_V5R_CORE_NOT_SETTLED',
     'VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS',
+    // PHASE 7 round 7 — the paper subsystem's own named outcomes (packs/v5r/paper.js).
+    'VMU_PACK_V5R_CORE_PAPER_STATE',
+    'VMU_PACK_V5R_CORE_PAPER_FINGERPRINT_MISMATCH',
+    'VMU_PACK_V5R_CORE_PAPER_PDF_NEEDS_KERNEL',
+    'VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING',
   ],
 
   // Mechanisms only (docs/04 §11 ownership rule): these are v5r's own defaults, expressed as keys the
