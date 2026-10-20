@@ -1067,6 +1067,21 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(out2.roundsRun === 0 && out2.roundsAttempted === 3,
     'T150. *** and the receipt separates successful rounds from attempted ones', { run: out2.roundsRun, attempted: out2.roundsAttempted })
 }
+// ── ★ PHASE 7 (goal 3): the status block lists the REAL visible tools (from schemas), and writes NOTHING when empty ─
+{
+  const t = mk()
+  const { turn } = t.open({ member: 'r-1', phase: 'normal', statusBlock: '{"qid":"x"}' })
+  t.setVisibleToolsProvider(() => ['vibe_vmu_status', 'vibe_vmu_turn'])
+  const asm = await t.assemble(turn)
+  ok(asm.text.includes('【本轮可用工具】vibe_vmu_status、vibe_vmu_turn'),
+    '★ 正：状态块里的工具清单来自 provider（真实可见面），不是声明', asm.text.slice(-200))
+  const t2 = mk()
+  const { turn: turn2 } = t2.open({ member: 'r-1', phase: 'normal', statusBlock: '{"qid":"x"}' })
+  t2.setVisibleToolsProvider(() => [])
+  const asm2 = await t2.assemble(turn2)
+  ok(!asm2.text.includes('【本轮可用工具】'), '★ 反：没有工具时不写空段（零机制）', asm2.text.slice(-120))
+}
+
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

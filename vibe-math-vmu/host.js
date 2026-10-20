@@ -1168,6 +1168,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       }
     }
     installed = true
+    publishToolFaceCatalogue()
     return { ok: failures.length === 0, installed: registered.length, names: registered.slice(), ownedByHost, failures: failures.map((f) => Object.assign({}, f)) }
   }
 
@@ -1197,6 +1198,65 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     }
     return r
   }
+
+  /**
+   * ★ PHASE 7 (goal 4) — THE HOST HALF OF A MEMBER TOOL FACE. The kernel owns the capability and the named refusals;
+   * this function is the ONLY place a DSH tool table is touched. Target Agent comes from agents.get(childSessionId)
+   * (the session the delivery seam reported), never invented. Missing seam / missing live agent / missing restrict are
+   * NAMED refusals.
+   */
+  const memberFaceDisposers = new Map()
+  const resolveMemberAgent = (member) => {
+    let agents = null
+    try { agents = ctx && typeof ctx.get === 'function' ? ctx.get('agents') : null } catch { agents = null }
+    if (!agents || typeof agents.get !== 'function') return { agent: null, reason: 'the host exposes no agents.get' }
+    const session = kernel && typeof kernel.memberSession === 'function' ? kernel.memberSession(member) : null
+    const candidates = [session, member].filter((x) => typeof x === 'string' && x !== '')
+    for (const id of candidates) {
+      try { const a = agents.get(id); if (a) return { agent: a, sessionId: id, reason: null } } catch { /* try next */ }
+    }
+    return { agent: null, reason: 'no live Agent for member ' + String(member) + ' (session=' + String(session || '(none learned yet)') + ')' }
+  }
+  const applyMemberToolFace = async ({ member, allow = null, deny = null }) => {
+    const resolved = resolveMemberAgent(member)
+    if (!resolved.agent) return { ok: false, code: 'VMU_ENGINE_UNAVAILABLE', member, message: resolved.reason,
+      hint: 'a member tool face applies to a LIVE member Agent; deliver one turn first so the session id is learned' }
+    const tools = resolved.agent.ctx && resolved.agent.ctx.tools
+    if (!tools || typeof tools.restrict !== 'function') return { ok: false, code: 'VMU_ENGINE_UNAVAILABLE', member,
+      message: 'the member Agent has no ctx.tools.restrict', hint: 'DSH 0.2.1 exposes register/restrict on the agent ctx' }
+    const namesOf = () => {
+      try { return (typeof tools.schemas === 'function' ? tools.schemas() : []).map((s) => (s && typeof s === 'object' ? (s.name || s.id) : s)).filter((n) => typeof n === 'string') } catch { return [] }
+    }
+    const before = namesOf()
+    const prev = memberFaceDisposers.get(member)
+    if (typeof prev === 'function') { try { await prev() } catch { /* the new face still applies */ } }
+    let dispose = null
+    try { dispose = tools.restrict({ allow: Array.isArray(allow) ? allow : undefined, deny: Array.isArray(deny) ? deny : undefined }) } catch (e) {
+      return { ok: false, code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', member, message: String((e && e.message) || e), hint: (e && e.hint) || null }
+    }
+    if (typeof dispose === 'function') memberFaceDisposers.set(member, dispose)
+    const after = namesOf()
+    return { ok: true, member,
+      added: after.filter((n) => !before.includes(n)),
+      removed: before.filter((n) => !after.includes(n)),
+      visibleBefore: before.length, visibleAfter: after.length }
+  }
+  const publishToolFaceCatalogue = () => {
+    try {
+      const packNames = kernel && typeof kernel.packTools === 'function' ? kernel.packTools().map((t) => t.name) : []
+      const names = [...new Set([...Object.values(TOOL_NAMES), ...packNames])]
+      if (kernel && typeof kernel.setToolFaceCatalogue === 'function') kernel.setToolFaceCatalogue(names)
+    } catch { /* the catalogue is a validation aid; its absence must not break assembly */ }
+  }
+  if (kernel && typeof kernel.setMemberToolFaceApplier === 'function') kernel.setMemberToolFaceApplier(applyMemberToolFace)
+  if (kernel && kernel.turn && typeof kernel.turn.setVisibleToolsProvider === 'function') {
+    kernel.turn.setVisibleToolsProvider((member) => {
+      const r = resolveMemberAgent(member)
+      if (!r.agent) return []
+      try { return (r.agent.ctx.tools.schemas() || []).map((x) => (x && typeof x === 'object' ? (x.name || x.id) : x)).filter((n) => typeof n === 'string') } catch { return [] }
+    })
+  }
+  publishToolFaceCatalogue()
 
   // ★ PHASE 7: a pack unload retracts its declarations in the KERNEL; the HOST tool table must follow. The kernel
   // calls this ONE observer after a successful retraction, and the adapter answers with its own retractTools.

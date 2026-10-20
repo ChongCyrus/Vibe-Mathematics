@@ -109,7 +109,19 @@ export const PACK = Object.freeze({
     // was declared: what the PACK owns is the opening VALUE it favours, not the declaration. A stale comment of this
     // shape is the "comment disagrees with code" class, and it misleads in a specific way - a reader would conclude the
     // key bypasses the schema, when in fact it is settable, documented and owned like every other knob.
-    'vmu.records.requireSettledRecords': true,
+    // ★ PHASE 7 ROUND 3 (Lead ruling): `vmu.records.requireSettledRecords` is FALSE for this institution, because the
+    // original let a member WRITE a draft proposition and have it PROMOTED later by the verified track, so refusing
+    // drafts makes the original workflow impossible. The risk "an unsettled card looks proved" is carried by the
+    // VERIFIED TRACK plus the card's own status (the P0-6 Verified split), NOT by refusing the write.
+    //
+    // ★ WHERE IT IS SET, AND WHY NOT HERE (measured this round, not assumed): `kernel/records.js` SNAPSHOTS this key
+    // at CONSTRUCTION (records.js:189-221 reads the whole records key block once), while a manifest's `settings` block
+    // is applied by the pack loader AFTER the kernel exists. Declaring it here therefore changed nothing — the draft
+    // was still refused (measured) — and adding it to the value layer WHILE this line existed is the
+    // `VMU_PACK_CONFLICT` the Lead hit (one owner per key). The single effective owner for a construct-time key is the
+    // VALUE layer, which is exactly how the v3 pack sets it: `settings/defaults.json` carries the false. So the line
+    // is gone from this manifest on purpose and the value lives there.
+
 
     // ── THE ASSISTANT'S REPORTING POLICY (goal 6, ruling D-09) ─────────────────────────────────────────
     // v5r had NO automatic reporting mechanism: only persona prose ("主动向院士汇报"), the Progress/ files, an
@@ -428,11 +440,15 @@ export const v5rToolSectionAcademician = Object.freeze({
   text: [
     '【本轮可用的工具｜院士】',
     '· vibe_v5_record_progress —— 写你自己的研究日志（track 可选 progress/routes/obstacles/rejected/state；证伪的路走 rejected，阻塞走 obstacles）。',
-    '· vibe_v5_record_proposition —— 写命题卡（statement、value、motive、p 四项必填）。',
+    '· vibe_v5_record_proposition —— 写命题卡（statement、value、motive、p 四项必填；p 是你对它为真的概率，未定稿可以先写，草稿不会被当成已验证）。',
     '· vibe_v5_record_method —— 写方法卡（content、value、motive、p 四项必填）。',
     '· vibe_v5_record_subproblem —— 写子问题卡（statement、value、motive、p 四项必填）。',
     '· vibe_v5_say —— 在群里说一句（省略 to）；to 填成员 id 即私信；填 meeting 则记进那场会议的发言。发言者必须是你自己的真名册 id。',
     '· vibe_v5_message —— 以「所办/人类」的口吻给所内转达消息（to 可为成员 id、all 或 voters）。',
+    '· vibe_v5_task_create / vibe_v5_task_list / vibe_v5_task_update —— 建任务、看任务板、按修订号更新任务（认领/改派/完成/重开/改依赖）。',
+    '· vibe_v5_hire —— 招一名临时成员（需要 purpose 与 initial_task；会把人放进 temp 席并按需建一张任务）。',
+    '· vibe_v5_report —— 生成一份人类可读的所内报告（编制、任务板、会议、成果计数）。',
+    '· vibe_v5_overview —— 所内全局视图（名册、任务板、会议、成果与在办状态）；只有院士席位可以调用。',
     '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准；没有该约束时，上表就是你现在真的能调用的工具。',
   ].join('\n'),
 })
@@ -446,11 +462,13 @@ export const v5rToolSectionResearcher = Object.freeze({
   text: [
     '【本轮可用的工具｜研究员】',
     '· vibe_v5_record_progress —— 写你自己的研究日志（track 可选 progress/routes/obstacles/rejected/state）。',
-    '· vibe_v5_record_proposition —— 写命题卡（statement、value、motive、p 必填）。',
+    '· vibe_v5_record_proposition —— 写命题卡（statement、value、motive、p 必填；草稿可先写，不会被当成已验证）。',
     '· vibe_v5_record_method —— 写方法卡（content、value、motive、p 必填）。',
     '· vibe_v5_record_subproblem —— 写子问题卡（statement、value、motive、p 必填）。',
     '· vibe_v5_say —— 群里发言（省略 to）或私信（to 填成员 id）；发言者必须是你自己的真名册 id。',
-    '转达所办口吻的消息不是你的职责（那是院士的 vibe_v5_message）。',
+    '· vibe_v5_task_create / vibe_v5_task_list / vibe_v5_task_update —— 建任务、看任务板、按修订号更新任务。',
+    '· vibe_v5_hire —— 你作为常驻研究员可以给自己招一名临时成员（需要 purpose 与 initial_task）。',
+    '转达所办口吻的消息不是你的职责（那是院士的 vibe_v5_message）；所内全局视图也不是（vibe_v5_overview 仅院士）。',
     '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。',
   ].join('\n'),
 })
@@ -465,6 +483,8 @@ export const v5rToolSectionTemp = Object.freeze({
     '【本轮可用的工具｜临时成员】',
     '· vibe_v5_record_progress —— 把你这一轮的进展写进研究日志（临时席位只记进展，不建自己的方法/命题库）。',
     '· vibe_v5_say —— 在群里发言（省略 to）或私信（to 填成员 id）；发言者必须是你自己的真名册 id。',
+    '· vibe_v5_task_list / vibe_v5_task_update —— 看任务板、就地更新分给你的那张任务（认领/完成/重开）。',
+    '招人、汇报与全局视图不是临时席位的职责（那是院士与常驻研究员的工具）。',
     '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。',
   ].join('\n'),
 })

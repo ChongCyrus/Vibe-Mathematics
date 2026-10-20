@@ -1716,6 +1716,13 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // `tools[]`); the kernel only HOLDS those declarations (like slots/tracks), and the host publishes them.
   // That is the boundary this card is about: the framework never learns an institution's tool names.
   const packToolDeclarations = new Map()
+  // ★ PHASE 7 (goal 4): a MEMBER TOOL FACE is a kernel capability with a host seam. The kernel validates the request
+  // (member exists, names are catalogue names) and the HOST applies it to that member's live Agent; the kernel never
+  // holds a DSH ctx. Catalogue = the face names the host really publishes (set by the host adapter).
+  let memberToolFaceApplier = null
+  let memberToolFaceCatalogue = null
+  // ★ PHASE 7: pack-declared role -> tool face. Strategy in the pack, capability in the kernel, Agent in the host.
+  const packToolFaces = new Map()
   // ★ PHASE 7: the HOST owns the tool table; the kernel only holds pack DECLARATIONS. A retraction therefore has
   // to be observable to the adapter, or a pack unload leaves the names visible to the model. One observer, set by
   // the host adapter; the kernel never calls a host API itself.
@@ -2118,6 +2125,95 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       // PASS 2 — commit (nothing above could abort it).
       for (const entry of staged) packToolDeclarations.set(entry.name, entry)
       return { ok: true, declared: staged.map((e) => e.name), count: staged.length }
+    },
+
+    /** ★ PHASE 7: store a pack's role -> face declaration (validated by validatePack; owner-checked by pack.js). */
+    declarePackToolFaces(faces, { by = null } = {}) {
+      const owner = by === null || by === undefined ? null : String(by)
+      if (!faces || typeof faces !== 'object' || Array.isArray(faces)) throw refuse('VMU_INVALID_ARGUMENT', 'toolFaces must be an object role -> { allow?, deny? }', 'fix the pack manifest')
+      const roles = Object.keys(faces)
+      packToolFaces.set(owner === null ? '(anonymous)' : owner, { roles: roles.slice(), faces })
+      return { ok: true, pack: owner, roles }
+    },
+    /** ★ PHASE 7: apply the declaration to every LIVE member of that role NOW (members seated later are skipped).
+     *  The receipt is per member: applied / failed, both derived from the real applier. */
+    applyPackToolFaces({ by = null } = {}) {
+      const owner = by === null || by === undefined ? null : String(by)
+      const declared = packToolFaces.get(owner === null ? '(anonymous)' : owner)
+      if (!declared) return { ok: true, applied: [], failed: [], note: 'this pack declares no toolFaces' }
+      const applied = []
+      const failed = []
+      let roster = []
+      try { roster = members.roster().filter((m) => m && m.state === 'live') } catch { roster = [] }
+      for (const role of declared.roles) {
+        const face = declared.faces[role] || {}
+        for (const m of roster) {
+          if (String(m.slot || m.role || '') !== role) continue
+          try {
+            const r = this.applyMemberToolFace({ member: m.id, allow: face.allow || null, deny: face.deny || null })
+            applied.push({ member: m.id, role, receipt: r })
+          } catch (e) {
+            failed.push({ member: m.id, role, code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) })
+          }
+        }
+      }
+      return { ok: failed.length === 0, pack: owner, applied, failed }
+    },
+    /** ★ PHASE 7: remove a pack's tool-face declaration on unload (per-member host disposers are replaced by the next apply). */
+    retractPackToolFaces({ by = null } = {}) {
+      const owner = by === null || by === undefined ? null : String(by)
+      const key = owner === null ? '(anonymous)' : owner
+      const had = packToolFaces.delete(key)
+      return { ok: true, pack: owner, removed: had }
+    },
+
+    /** READ-ONLY: what packs declared (for status/audit). */
+    packToolFaces() { return [...packToolFaces.entries()].map(([pack, v]) => ({ pack, roles: v.roles.slice(), faces: v.faces })) },
+
+    /** ★ PHASE 7: the host adapter registers the ONLY applier (it owns the Agent/ctx). */
+    setMemberToolFaceApplier(fn) { memberToolFaceApplier = typeof fn === 'function' ? fn : null; return { ok: true, applier: typeof fn === 'function' } },
+    /** ★ PHASE 7: the host publishes the names that MAY be named in allow/deny (core faces + pack tools). */
+    setToolFaceCatalogue(names) { memberToolFaceCatalogue = Array.isArray(names) ? names.filter((n) => typeof n === 'string') : null; return { ok: true, count: memberToolFaceCatalogue ? memberToolFaceCatalogue.length : 0 } },
+
+    /**
+     * ★ PHASE 7 (goal 4): apply one member's tool face. Input { member, allow?, deny? }. Receipt carries added/removed
+     * and visibleBefore/visibleAfter, both DERIVED from the host's own schemas() before/after. Named refusals:
+     *   - no live member with that id            -> VMU_NO_SUCH_OBJECT
+     *   - a name the host did not publish        -> VMU_INVALID_ARGUMENT (unknown face name)
+     *   - no host applier / no live Agent         -> VMU_ENGINE_UNAVAILABLE
+     * Zero mechanism: only a caller that asks gets a face applied; nothing changes by default.
+     */
+    applyMemberToolFace({ member, allow = null, deny = null } = {}) {
+      const id = typeof member === 'string' ? member : ''
+      if (id === '') throw refuse('VMU_INVALID_ARGUMENT', 'a member tool face needs a member id', 'pass { member }')
+      let live = null
+      try { live = members.roster().find((m) => m && m.id === id && m.state === 'live') || null } catch { live = null }
+      if (!live) throw refuse('VMU_NO_SUCH_OBJECT', 'no live member with id ' + id + ' (a tool face applies to a SEATED member)',
+        'seat the member first (control hire / admission), then apply its face')
+      const clean = (list, what) => {
+        if (list === null || list === undefined) return null
+        if (!Array.isArray(list)) throw refuse('VMU_INVALID_ARGUMENT', what + ' must be an array of face names', 'pass allow/deny arrays')
+        const out = []
+        for (const n of list) {
+          if (typeof n !== 'string' || n === '') throw refuse('VMU_INVALID_ARGUMENT', what + ' contains a non-string face name', 'face names are strings')
+          if (Array.isArray(memberToolFaceCatalogue) && !memberToolFaceCatalogue.includes(n)) {
+            throw refuse('VMU_INVALID_ARGUMENT', 'unknown tool face name: ' + n,
+              'known faces: ' + memberToolFaceCatalogue.slice(0, 40).join(', ') + (memberToolFaceCatalogue.length > 40 ? ' …' : ''))
+          }
+          if (!out.includes(n)) out.push(n)
+        }
+        if (allow !== null && allow !== undefined && deny !== null && deny !== undefined) {
+          for (const n of out) if (deny.includes(n)) throw refuse('VMU_INVALID_ARGUMENT', 'face ' + n + ' is in BOTH allow and deny', 'allow and deny must be disjoint')
+        }
+        return out
+      }
+      const allowClean = clean(allow, 'allow')
+      const denyClean = clean(deny, 'deny')
+      if (typeof memberToolFaceApplier !== 'function') {
+        throw refuse('VMU_ENGINE_UNAVAILABLE', 'this assembly has no host applier for member tool faces',
+          'the host adapter sets kernel.setMemberToolFaceApplier(fn); a kernel alone cannot change an Agent tool table')
+      }
+      return memberToolFaceApplier({ member: id, allow: allowClean, deny: denyClean })
     },
 
     /**

@@ -578,6 +578,15 @@
 ★★ **pack 卸载的接线**：内核 `retractPackTools` 只删内核声明，**必须通知宿主**；`host.js` 现在保存 `name → disposer` 并提供 `retractTools(names)`（返回 `{ok,retracted,notFound}`，不存在的名字具名 `notFound`），内核在 `retracted` 后回调宿主适配器，宿主可见面随 `tools.schemas()` 变化 ✓。
 ★★ **教训**：○ 能力在内核、策略在 pack；○ 但**"看起来有能力、实际没有再调一次宿主"** 是本阶段抓到的假能力形态——新的 per-child 字段先问"宿主真的读它吗、谁传它"，再写断言 ✓。
 
+## 3.34 ★★★★★ 成员工具面：声明在 pack，能力在内核，Agent 在宿主，可见名从 `schemas()` 取（PHASE 7 目标 4）
+
+★★ **能力形状**：内核 `applyMemberToolFace({ member, allow?, deny? })` ⇒ 回执 `{ ok, member, added, removed, visibleBefore, visibleAfter }`；宿主适配器注册唯一 applier（`kernel.setMemberToolFaceApplier`），用 `agents.get(childSessionId)`（`turn.memberSession(member)` 学到的会话 id）找到**活 Agent**，调 `agent.ctx.tools.restrict({allow, deny})`，保存 disposer；`visibleBefore/After` 来自宿主 `tools.schemas()`，不是声明 ✓。
+★★ **具名拒**：成员不存在 ⇒ `VMU_NO_SUCH_OBJECT`；面名不在宿主目录 ⇒ `VMU_INVALID_ARGUMENT`（目录 = `TOOL_NAMES` ＋ pack 工具名，由宿主 `setToolFaceCatalogue` 发布）；没有 applier / 没有活 Agent ⇒ `VMU_ENGINE_UNAVAILABLE` ✓。
+★★ **声明在 pack**：manifest `toolFaces: { <slot id>: { allow?: [...], deny?: [...] } }`；`validatePack` 校验形状、角色必须是本 manifest 声明过的 slot、allow/deny 非空且不相交、名字形状合法；**名字是否存在**在 apply 时对宿主目录校验 ✓。`pack.js` 在 apply 时 `declarePackToolFaces` ＋ `applyPackToolFaces`（只对**当前 live** 成员生效；未落座者等下一次 apply/同步），unload 撤销声明 ✓。
+★★ **零机制**：没有 `toolFaces` ⇒ 不调用；没有 live 成员 ⇒ 不改变任何工具面 ✓。
+★★ **可发现性（目标 3）**：turn 装配末尾在状态块里追加「本轮可用工具」——名字来自宿主 provider 读取的 **`schemas()` 实际集合**，集合为空则不写该段（不留空标题）✓。
+★★ **`tools/change`**：本轮**未订阅**。宿主会自动把注册表差异写成 `tool-addition`／`tool-removal` 提示；vmu 只在“真的改”时改，不重复造提示。若未来需要审计/指标，可订阅 `tools/change` 做**只读**记录，但不得据此再改工具面（否则同一事实两个写者）✓。
+
 ## 4. v1 的边界（**未做，明写** ✗）
 
 1. ★★★ **投递缝已接进内核（轮 339）＋ 宿主桥已提供（轮 344）＋ 入口已装配（轮 1／K3）** ✓✓✓：**vmu.turn 在 kernel/index.js 里建成** ✓，**投递缝是内核的 `deliverTurn` 选项** ✓（★ **轮 1 更正** ✗✓：原文只写 `host.deliverTurn` —— 而真实入口交给内核的 `host` 是 `host-math.js` 的适配器，**它没有 `deliverTurn`** ⇒ 于是**真机每一轮都在 `turn/index.js` 的缺缝分支具名拒** ✗；旧名仍兼容，但**不再是唯一来源** ✓）；★ **宿主不给缝 ⇒ 具名拒 VMU_ENGINE_UNAVAILABLE** ✓（**绝不假装成员答了** ✗，且**计数可见** ✓，`status().seams.turnDeliver`／`turnDeliverSource` 自曝 ✓）。★★★ **宿主桥 `deliverViaSubagents(subagents, extract?)`** ✓✓：**入口已按声明装配** —— `vibe-math-vmu.js` 把它接到 `ctx.get('subagents')`（**调用时解析**，因为 `apply()` 可能早于服务挂载 ✓），宿主**不需要自己写适配器** ✓；★ **它只送【装配后的文本】，绝不自拼** ✗；**标签带轮次 id（可追）** ✓；★ **不给缝 ⇒ 具名拒** ✓；★★ **宿主收下却不回回复 ⇒ 也是【具名拒**】✓（**绝不解析成"模型什么都没说"** ✗）。★ **实测（T35–T39）** ✓✓：**整轮走宿主缝跑通** —— 装配 ⇒ 桥投递 ⇒ 解析 ⇒ **任务台账真的增长** ✓✓；★ **到达缝的正是装配文本且带轮次标签** ✓（>1000 字 ✓）。★★ **轮 1 复测** ✓：以假宿主（`ctx.get('subagents')`）走**真实入口** `entry.apply(...)` ⇒ `seams.turnDeliver:true`，`kernel.turn.step({members:[{id}]})` **真的投递并分派**（`receipt.executed ≥ 1`，桥收到的 `label === 'vmu-turn-<id>'`）✓。

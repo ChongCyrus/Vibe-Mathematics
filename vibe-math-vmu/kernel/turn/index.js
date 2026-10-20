@@ -651,6 +651,8 @@ export function createTurnOrchestrator({
   // ROUND 4 / F11: the attribution of the MOST RECENT delivery (`childId` + `stopReason`), so a caller can ask who a
   // receipt belongs to without re-reading the host handle.
   let lastAttribution = { childId: null, stopReason: null, deliveryPath: null, attribution: 'no turn has been delivered yet' }
+  const memberSessions = new Map()
+  let visibleToolsFor = null
   let seq = 0
   // ★ ROUND 79: which member the most recent caller-supplied reply answers, so the closure vote is recorded against
   // THAT member rather than against whoever the next step happened to wake.
@@ -746,7 +748,15 @@ export function createTurnOrchestrator({
     if (statusWithNotices && !assembledText.includes(statusWithNotices)) {
       assembledText += "\n\n【本轮状态块】\n" + statusWithNotices
     }
-    return { ok: true, text: assembledText, sources: out.sources || [], truncation: out.truncation || null }
+    let withVisible = assembledText
+    // ★ PHASE 7 (goal 3): the REAL visible tool names from the host's schemas - never from a declaration. An absent or
+    // empty answer adds NOTHING (zero mechanism: no empty header).
+    if (typeof visibleToolsFor === 'function') {
+      let visible = null
+      try { visible = visibleToolsFor(turn.member) } catch { visible = null }
+      if (Array.isArray(visible) && visible.length > 0) withVisible += "\n\n【本轮可用工具】" + visible.slice(0, 80).join('、')
+    }
+    return { ok: true, text: withVisible, sources: out.sources || [], truncation: out.truncation || null }
   }
 
   /** ③ deliver through the adapter seam. A missing adapter is refused, never faked. */
@@ -787,6 +797,7 @@ export function createTurnOrchestrator({
       stopReason: (delivered && delivered.stopReason) || null,
       attribution: (delivered && delivered.attribution) || 'the delivery adapter returned an envelope without an attribution note',
     }
+    if (lastAttribution.childId && turn && typeof turn.member === 'string') memberSessions.set(turn.member, lastAttribution.childId)
     if (reply === null) {
       fail('VMU_ENGINE_UNAVAILABLE', 'the delivery adapter returned no reply text',
         'return a string, or { reply, childId, stopReason } (docs/26 §3.22)')
@@ -1355,6 +1366,8 @@ export function createTurnOrchestrator({
     // ROUND 4 / F9+F10: the ongoing-command verbs, plus the observable state behind them.
     sendToMember, interruptMember,
     attribution: () => Object.assign({}, lastAttribution),
+    memberSession: (member) => memberSessions.get(String(member)) || null,
+    setVisibleToolsProvider: (fn) => { visibleToolsFor = typeof fn === 'function' ? fn : null; return { ok: true, installed: typeof visibleToolsFor === 'function' } },
     seams: () => ({ deliver: typeof deliver === 'function', sendMessage: typeof sendMessage === 'function', interrupt: typeof interrupt === 'function' }),
     /**
      * ROUND 384 - a ONE-SHOT notice for a member (docs/26 section 3.25). Queued here, drained by the next assembly

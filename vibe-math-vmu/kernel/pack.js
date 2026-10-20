@@ -135,6 +135,27 @@ export function validatePack(manifest) {
       }
     }
   }
+  // ★ PHASE 7 (goal 4): pack-declared role -> tool face. Strategy belongs here; the kernel only validates the SHAPE
+  // and that the role is one of the slots this manifest declares. Face NAMES are checked at apply against the host's
+  // catalogue (kernel.setToolFaceCatalogue), because a pack cannot know which host faces exist.
+  if (manifest.toolFaces !== undefined) {
+    if (!manifest.toolFaces || typeof manifest.toolFaces !== 'object' || Array.isArray(manifest.toolFaces)) {
+      problems.push('toolFaces must be an object role -> { allow?, deny? }')
+    } else {
+      const slotIds = new Set((manifest.slots || []).map((s) => s && s.id).filter((x) => typeof x === 'string'))
+      for (const [role, face] of Object.entries(manifest.toolFaces)) {
+        if (!slotIds.has(role)) problems.push('toolFaces role ' + JSON.stringify(role) + ' is not a declared slot id (' + [...slotIds].join(',') + ')')
+        if (!face || typeof face !== 'object' || Array.isArray(face)) { problems.push('toolFaces.' + role + ' must be { allow?, deny? }'); continue }
+        for (const k of Object.keys(face)) if (k !== 'allow' && k !== 'deny') problems.push('toolFaces.' + role + ' has unknown key ' + JSON.stringify(k) + ' (allow|deny)')
+        for (const k of ['allow', 'deny']) {
+          if (face[k] === undefined) continue
+          if (!Array.isArray(face[k]) || face[k].length === 0) problems.push('toolFaces.' + role + '.' + k + ' must be a non-empty array')
+          else for (const n of face[k]) if (typeof n !== 'string' || !/^[a-z][a-z0-9_]{2,63}$/.test(n)) problems.push('toolFaces.' + role + '.' + k + ' has an invalid tool name: ' + JSON.stringify(n))
+        }
+        if (Array.isArray(face.allow) && Array.isArray(face.deny)) for (const n of face.allow) if (face.deny.includes(n)) problems.push('toolFaces.' + role + ': ' + n + ' is in both allow and deny')
+      }
+    }
+  }
   for (const r of manifest.rules || []) {
     if (!r || typeof r.id !== 'string') problems.push('a rule needs an id')
     else if (!Array.isArray(r.on) || r.on.length === 0) problems.push('rule ' + r.id + ': on is required')
@@ -500,6 +521,7 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
      * receipt records what was changed so `unload` can reverse exactly that.
      */
     async apply(manifest) {
+      let toolFaceReceipt = null
       // ROUND 496: pack/loading and pack/loaded were frozen WITH default policies and nothing emitted them, so "pack-loading
       // intervention" was a paper capability. loading fires before any change is made and MAY refuse; loaded fires after.
       const busOf = () => (kernel && kernel.bus && typeof kernel.bus.emit === 'function' ? kernel.bus : null)
@@ -676,6 +698,14 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         undo.push(() => { const r = kernel.retractPackTools(declared.declared, { by: manifest.id }); return r && r.hostRetract ? r.hostRetract : undefined })
         break // one call declares the whole list; one undo entry is enough
       }
+      // ★ PHASE 7 (goal 4): role -> tool face is a DECLARATION; the kernel holds it and the host applies it to live
+      // member Agents. No declaration ⇒ no call at all (zero mechanism).
+      if (manifest.toolFaces && typeof kernel.declarePackToolFaces === 'function') {
+        kernel.declarePackToolFaces(manifest.toolFaces, { by: manifest.id })
+        const faceResult = kernel.applyPackToolFaces({ by: manifest.id })
+        undo.push(() => { try { if (typeof kernel.retractPackToolFaces === 'function') kernel.retractPackToolFaces({ by: manifest.id }) } catch { /* unload must still proceed */ } })
+        toolFaceReceipt = faceResult
+      }
       // D-03/P1 — A DECLARED PROMPT POLICY IS CONSUMED, OR THE PACK IS REFUSED BY NAME. These entries are not
       // bus entries (their hook is the prompt pipeline's `prompt/section-assembled` path, not a bus hook); the
       // loader hands each one to the assembly's `onPromptPolicy` sink, which registers it into the section
@@ -717,7 +747,8 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
       if (kernel.notePackApplied) kernel.notePackApplied(manifest.id)
       return { ok: true, id: manifest.id, applied: plan.count, actions: plan.actions, requires: plan.requires,
         settings: { applied: resolution.applied.length, shadowed: resolution.shadowed.slice() },
-        promptPolicies: (Array.isArray(manifest.promptPolicies) ? manifest.promptPolicies : []).map((p) => p.id) }
+        promptPolicies: (Array.isArray(manifest.promptPolicies) ? manifest.promptPolicies : []).map((p) => p.id),
+        ...(toolFaceReceipt ? { toolFaces: toolFaceReceipt } : {}) }
     },
 
     /** Unload: reverse exactly what was applied, newest first, and report whether the state is restored. */

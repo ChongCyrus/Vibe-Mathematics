@@ -391,12 +391,24 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   const scriptDecision = await handle.kernel.bus.emit('tools/pre-execute', { tool: 'vibe_vmu_script', args: {} }, {})
   ok(scriptDecision.ok === false && scriptDecision.refused && scriptDecision.refused.code === 'VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS',
     'the M1 rule fires on a tool the host REALLY registers', JSON.stringify(scriptDecision.refused))
-  // M2 FIRES (and stays silent for other tools).
+  // M2 IS CONDITIONAL ON THE DECLARED STANCE (PHASE 7 round 3 ruling): the v5r pack now declares
+  // `vmu.records.requireSettledRecords: false` in its VALUE layer (drafts must be writable — the original workflow), so
+  // on THIS assembly the module correctly ALLOWS the append. The gate stays TWO-WAY: a second assembly that declares
+  // the stance ON must still be refused by the same code, so "allows" cannot mean "the module went dead".
   const recordDecision = await handle.kernel.bus.emit('tools/pre-execute', { tool: 'vibe_vmu_records', args: { action: 'append' } }, {})
-  ok(recordDecision.ok === false && recordDecision.refused && recordDecision.refused.code === 'VMU_PACK_V5R_CORE_NOT_SETTLED',
-    'the pack-carried M2 module fires too', JSON.stringify(recordDecision.refused))
+  const stance = handle.kernel.settingsSnapshot()['vmu.records.requireSettledRecords']
+  ok(stance === false && recordDecision.ok === true,
+    'the pack-carried M2 module lets the append through because the declared stance is OFF (drafts are writable)', JSON.stringify(recordDecision.refused || null))
   const other = await handle.kernel.bus.emit('tools/pre-execute', { tool: 'vibe_vmu_status', args: {} }, {})
   ok(other.ok === true, 'and it stays silent for tools it does not govern (no blanket denial)')
+  const dirOn = await mkdtemp(join(tmpdir(), 'vmu-entry-m2on-'))
+  const hOn = fakeCtx()
+  const handleOn = entry.apply(hOn.ctx, { clock, root: dirOn, packs: ['v5r'], 'vmu.records.requireSettledRecords': true })
+  await handleOn.ready()
+  const forced = await handleOn.kernel.bus.emit('tools/pre-execute', { tool: 'vibe_vmu_records', args: { action: 'append' } }, {})
+  ok(forced.ok === false && forced.refused && forced.refused.code === 'VMU_PACK_V5R_CORE_NOT_SETTLED',
+    'and it STILL fires when the same pack is assembled with the stance ON (the module is wired, not dead)', JSON.stringify(forced.refused || null))
+  await rm(dirOn, { recursive: true, force: true })
   await rm(dir, { recursive: true, force: true })
 }
 

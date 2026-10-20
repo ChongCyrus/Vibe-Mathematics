@@ -309,6 +309,30 @@ if (SELF_PROBE) {
   await rm(b.root, { recursive: true, force: true })
 }
 
+// ── ★ PHASE 7 (goal 4): pack-declared role -> tool face. Shape is validated; no declaration = zero mechanism ──────
+{
+  const good = m.validatePack({ id: 'probe-pack', slots: [{ id: 'member' }], toolFaces: { member: { allow: ['vibe_vmu_status'] } } })
+  ok(good.length === 0, '★ 正：合法的 toolFaces 通过 validatePack', good)
+  const badRole = m.validatePack({ id: 'probe-pack', slots: [{ id: 'member' }], toolFaces: { researcher: { allow: ['vibe_vmu_status'] } } })
+  ok(badRole.some((p) => p.includes('not a declared slot id')), '★ 反：未声明角色 ⇒ 具名问题', badRole)
+  const both = m.validatePack({ id: 'probe-pack', slots: [{ id: 'member' }], toolFaces: { member: { allow: ['vibe_vmu_status'], deny: ['vibe_vmu_status'] } } })
+  ok(both.some((p) => p.includes('both allow and deny')), '★ 反：同一面同时在 allow/deny ⇒ 具名问题', both)
+  const root = await mkdtemp(join(tmpdir(), 'vmu-pack-face-'))
+  const k = km.createKernel({ clock, root })
+  k.declareSlots([{ id: 'member', label: '成员', capacity: 0 }])
+  await k.members.hire({ id: 'member-a', slot: 'member', institution: 'sim' })
+  k.setToolFaceCatalogue(['vibe_vmu_status', 'vibe_vmu_turn'])
+  const calls = []
+  k.setMemberToolFaceApplier(async (req) => { calls.push(req); return { ok: true, member: req.member, added: [], removed: [], visibleBefore: 2, visibleAfter: 1 } })
+  const zero = k.applyPackToolFaces({ by: 'probe-pack' })
+  ok(zero.applied.length === 0 && k.packToolFaces().length === 0, '★ 反：没有声明 ⇒ 零机制（不 apply、不改工具面）', zero)
+  k.declarePackToolFaces({ member: { allow: ['vibe_vmu_status'] } }, { by: 'probe-pack' })
+  const applied = k.applyPackToolFaces({ by: 'probe-pack' })
+  ok(applied.ok === true && applied.applied.length === 1 && applied.applied[0].member === 'member-a' && calls.length === 1 && calls[0].allow[0] === 'vibe_vmu_status',
+    '★ 正：声明后按角色真的 apply 到 live 成员（内核执行、宿主 applier 收到 allow）', applied)
+  await rm(root, { recursive: true, force: true })
+}
+
 console.log('=== VMU PACK: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

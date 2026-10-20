@@ -400,6 +400,38 @@ if (SELF_PROBE) {
     '★ pack unload 后该工具不在宿主可见面（kernel 通知了 host）', host.ctx.tools.schemas())
 }
 
+// ── 9. ★ PHASE 7 (goal 4): MEMBER TOOL FACE — kernel capability, host applier, real schemas diff ────────────
+{
+  const kernel = km.createKernel({ clock })
+  kernel.declareSlots([{ id: 'member', label: '成员', capacity: 0 }])
+  await kernel.members.hire({ id: 'member-a', slot: 'member', institution: 'sim' })
+  const live = new Set(['vibe_vmu_status', 'vibe_vmu_turn', 'vibe_vmu_records'])
+  const agent = {
+    id: 'member-a',
+    ctx: { tools: {
+      schemas: () => [...live].map((name) => ({ name })),
+      restrict: ({ allow, deny }) => {
+        if (Array.isArray(allow)) for (const n of [...live]) if (!allow.includes(n)) live.delete(n)
+        if (Array.isArray(deny)) for (const n of deny) live.delete(n)
+        return () => { /* the test only needs the diff */ }
+      },
+    } },
+  }
+  const ctx = Object.assign({}, fakeHost().ctx, { get: (name) => (name === 'agents' ? { get: (id) => (id === 'member-a' ? agent : null) } : null) })
+  const adapter = hm.createHostAdapter({ ctx, kernel, settings: {} })
+  void adapter
+  const before = live.size
+  const r = await kernel.applyMemberToolFace({ member: 'member-a', allow: ['vibe_vmu_status', 'vibe_vmu_turn'] })
+  ok(r.ok === true && r.removed.includes('vibe_vmu_records') && r.added.length === 0 && r.visibleBefore === before && r.visibleAfter === 2,
+    '★ 正：成员工具面 apply 后 schemas() 真的少了工具，且 added/removed 与前后差集一致', r)
+  let missing = null
+  try { await kernel.applyMemberToolFace({ member: 'no-such-member', allow: ['vibe_vmu_status'] }) } catch (e) { missing = e }
+  ok(missing && missing.code === 'VMU_NO_SUCH_OBJECT', '★ 反：成员不存在 ⇒ 具名 VMU_NO_SUCH_OBJECT', missing && missing.code)
+  let unknown = null
+  try { await kernel.applyMemberToolFace({ member: 'member-a', allow: ['vibe_vmu_not_a_tool'] }) } catch (e) { unknown = e }
+  ok(unknown && unknown.code === 'VMU_INVALID_ARGUMENT', '★ 反：未声明的面名 ⇒ 具名 VMU_INVALID_ARGUMENT', unknown && unknown.code)
+}
+
 console.log('=== VMU HOST: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

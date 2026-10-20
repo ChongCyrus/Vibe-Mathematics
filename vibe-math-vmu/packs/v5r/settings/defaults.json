@@ -17,6 +17,8 @@
 
     "vmu.records.tracks": ["progress", "routes", "obstacles", "rejected", "state", "propositions", "methods", "problems"],
     "vmu.records.allowedKinds": ["progress", "route", "decision", "finding", "lesson", "state", "dataset", "rebuttal", "proposition", "method", "subproblem"],
+    "_requireSettledRecords": "PHASE 7 ROUND 3 (Lead ruling): FALSE, so a draft proposition can be written and promoted later by the verified track (the original workflow). This key is SNAPSHOTTED at kernel construction (kernel/records.js:189-221), so the VALUE layer is the only effective owner; the manifest line was removed to keep exactly one owner (a duplicate is refused as VMU_PACK_CONFLICT).",
+    "vmu.records.requireSettledRecords": false,
 
     "vmu.chat.admins": ["acad"],
     "vmu.chat.speakQuota": 0,
