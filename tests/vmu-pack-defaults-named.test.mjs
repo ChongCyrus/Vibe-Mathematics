@@ -53,7 +53,7 @@ async function assemble({ settings = {}, packs = null } = {}) {
   if (packs) cfg.packs = packs
   const handle = entry.apply(ctx, cfg)
   await handle.ready()
-  const raw = await tools['vibe_vmu_status'].execute({})
+  const raw = await tools['vibe_vmu_status'].execute({ detail: 'full' })
   const status = typeof raw === 'string' ? JSON.parse(raw) : raw
   try { await rm(dir, { recursive: true, force: true }) } catch { /* going away */ }
   return { status, registered: [...new Set(registered)] }

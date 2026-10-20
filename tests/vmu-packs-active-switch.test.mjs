@@ -49,7 +49,7 @@ async function assemble({ settings = {}, root = true, packs = null } = {}) {
   if (packs) cfg.packs = packs
   const handle = entry.apply(ctx, cfg)
   await handle.ready()          // ★ the settle precondition is the call itself, asserted in arm A
-  const raw = await tools['vibe_vmu_status'].execute({})
+  const raw = await tools['vibe_vmu_status'].execute({ detail: 'full' })
   const status = typeof raw === 'string' ? JSON.parse(raw) : raw
   return { handle, status, dir, tools }
 }
