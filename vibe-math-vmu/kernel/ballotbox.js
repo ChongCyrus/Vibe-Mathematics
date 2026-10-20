@@ -163,6 +163,42 @@ export function createBallotBox(opts) {
   const open = (a) => {
     const args = a || {}
     const c = cfg()
+    // ★ PHASE 7: PER-BOX RULES live ON THE BOX, never in a global setting snapshot. The six the original v5r §7.1
+    // allows (options/one-or-multi/max/min choices/min_votes/allow_revote) are accepted here; unknown names are a
+    // NAMED refusal so a typo cannot silently become "the global default".
+    const RULE_KEYS = ['minVotes', 'allowRevote', 'maxChoices', 'minChoices', 'mode']
+    const rawRules = args.rules === undefined || args.rules === null ? null : args.rules
+    const rules = {}
+    if (rawRules !== null) {
+      if (typeof rawRules !== 'object' || Array.isArray(rawRules)) return deny('VMU_BALLOT_RULE_INVALID', 'open 的 rules 必须是对象', '例如 { minVotes: 2, mode: "single" }')
+      for (const k of Object.keys(rawRules)) if (!RULE_KEYS.includes(k)) {
+        return deny('VMU_BALLOT_RULE_UNKNOWN', '未知的票箱规则：' + k, '允许：' + RULE_KEYS.join('、'))
+      }
+      if (rawRules.minVotes !== undefined) {
+        if (!Number.isInteger(rawRules.minVotes) || rawRules.minVotes < 0) return deny('VMU_BALLOT_RULE_INVALID', 'rules.minVotes 必须是非负整数', '例如 minVotes: 2')
+        if (Array.isArray(args.eligible) && rawRules.minVotes > args.eligible.length) {
+          return deny('VMU_BALLOT_RULE_INVALID', 'rules.minVotes=' + rawRules.minVotes + ' 大于有表决权人数 ' + args.eligible.length, '门槛不能高于可投票人数')
+        }
+        rules.minVotes = rawRules.minVotes
+      }
+      if (rawRules.allowRevote !== undefined) {
+        if (typeof rawRules.allowRevote !== 'boolean') return deny('VMU_BALLOT_RULE_INVALID', 'rules.allowRevote 必须是布尔值', 'true|false')
+        rules.allowRevote = rawRules.allowRevote
+      }
+      for (const k of ['maxChoices', 'minChoices']) {
+        if (rawRules[k] === undefined) continue
+        if (!Number.isInteger(rawRules[k]) || rawRules[k] < 1) return deny('VMU_BALLOT_RULE_INVALID', 'rules.' + k + ' 必须是正整数', '例如 ' + k + ': 2')
+        rules[k] = rawRules[k]
+      }
+      if (rawRules.mode !== undefined) {
+        if (rawRules.mode !== 'single' && rawRules.mode !== 'multi') return deny('VMU_BALLOT_RULE_INVALID', 'rules.mode 只能是 single|multi', 'single|multi')
+        rules.mode = rawRules.mode
+      }
+      if (rules.minChoices !== undefined && rules.maxChoices !== undefined && rules.minChoices > rules.maxChoices) {
+        return deny('VMU_BALLOT_RULE_INVALID', 'rules.minChoices 不能大于 maxChoices', 'minChoices <= maxChoices')
+      }
+      if (rules.mode === 'single' && (rules.maxChoices === undefined || rules.maxChoices > 1)) rules.maxChoices = 1
+    }
     // **真实求值列表**（求值点即列举点 ✓；未求值/未改变行为者**不得**出现 ✗✓）
     const enforced = []
     const evalKey = (k) => { mark(enforced, k) }
@@ -175,13 +211,13 @@ export function createBallotBox(opts) {
     const options = Array.isArray(args.options) ? args.options.map(String) : []
     if (!question || options.length < 2) return deny('VMU_CONFLICT', 'open 需要 question 与 ≥2 个 options', '给出问题与选项')
     const id = 'bx-' + (++seq)
-    const box = { id, question, options, at: clock(), round: 1, votes: new Map(), abstain: new Map(), absent: [], recused: [], sealed: c.secrecy, tieUsed: '', rounds: 0, enforced,
+    const box = { id, question, options, at: clock(), round: 1, votes: new Map(), abstain: new Map(), absent: [], recused: [], sealed: c.secrecy, tieUsed: '', rounds: 0, enforced, rules, rulesDeclared: rawRules !== null,
       // GAP-MTG-10: a box has an explicit life cycle now, because `reopen()` has to mean something. `state` is
       // `open` | `closed`; only a CLOSED box may be reopened, and a closed box never accepts another vote.
       state: 'open', closedAt: 0, priorResult: null, reopenCount: 0, reopenedAt: 0, reopenHistory: [] }
     boxes.set(id, box)
     emit('ballot/open', { id })
-    return { ok: true, boxId: id, round: box.round, sealed: box.sealed, enforced, enforcedScope: ENFORCED_SCOPE }
+    return { ok: true, boxId: id, round: box.round, sealed: box.sealed, rules: box.rules || null, rulesDeclared: box.rulesDeclared === true, enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
   const castBody = (a) => {
@@ -193,7 +229,11 @@ export function createBallotBox(opts) {
     if (box.state !== 'open') return deny('VMU_STATE', '该票箱已裁定（state=' + box.state + '）：不再收票', '要重开请调 reopen()（附理由；受 vmu.ballot.reopenFloor 约束）')
     const by = String(args.by || '').trim()
     if (!by) return deny('VMU_CONFLICT', 'cast 需要 by（投票人）', 'by 必填')
-    if (box.votes.has(by) || box.abstain.has(by)) return deny('VMU_CONFLICT', '重复投票被拒：' + by, '一人一票；改票需先撤回（本面未实现 ✗）')
+    const br = box.rules || {}
+    if (box.votes.has(by) || box.abstain.has(by)) {
+      if (br.allowRevote !== true) return deny('VMU_CONFLICT', '重复投票被拒：' + by, '该票箱 allowRevote=false ⇒ 一人一票')
+      box.votes.delete(by); box.abstain.delete(by)
+    }
     const c = cfg()
     const enforced = []
     if (String(args.choice) === 'abstain') {
@@ -216,6 +256,13 @@ export function createBallotBox(opts) {
     const approved = Array.isArray(args.approvals) ? args.approvals.map((x) => String(x === undefined || x === null ? '' : x).trim()).filter((x) => x !== '') : null
     const list = ranked || approved
     const choice = list || String(args.choice || '')
+    if (br.mode === 'single' || br.maxChoices !== undefined || br.minChoices !== undefined) {
+      const n = list ? list.length : 1
+      const maxC = br.maxChoices !== undefined ? br.maxChoices : (br.mode === 'single' ? 1 : Infinity)
+      const minC = br.minChoices !== undefined ? br.minChoices : 1
+      if (n < minC) return deny('VMU_BALLOT_CHOICE_COUNT', '选择数 ' + n + ' 少于规则 minChoices=' + minC, '按该票箱规则至少选 ' + minC)
+      if (n > maxC) return deny('VMU_BALLOT_CHOICE_COUNT', '选择数 ' + n + ' 多于规则 maxChoices=' + maxC, '按该票箱规则最多选 ' + maxC)
+    }
     if (list) {
       const off = list.filter((x) => box.options.indexOf(x) === -1)
       if (off.length) return deny('VMU_CONFLICT', '清单里有不在票面上的选项：' + off.join('、'), '可选：' + box.options.join('、'))
@@ -325,12 +372,13 @@ export function createBallotBox(opts) {
     }
     const castN = box.votes.size + box.abstain.size
     const floorBase = box.votes.size + (c.abstainCountsForFloor ? box.abstain.size : 0)
-    const floor = Math.max(c.minVotes, Math.ceil((box.options.length ? 1 : 0) * 0 + c.minVotesRatio * (box.votes.size + box.abstain.size + box.absent.length)))
+    const boxMinVotes = box.rules && Number.isInteger(box.rules.minVotes) ? box.rules.minVotes : c.minVotes
+    const floor = Math.max(boxMinVotes, Math.ceil((box.options.length ? 1 : 0) * 0 + c.minVotesRatio * (box.votes.size + box.abstain.size + box.absent.length)))
     // **法定人数不足 ⇒ 具名拒（不是"未通过"）** ✗✓
     if (floorBase < floor) {
       // **点名是哪把尺子不够** ✗✓（`minVotes` 还是 `minVotesRatio`）—— 求值点即列举点 ✓
       const ratioFloor = Math.ceil(c.minVotesRatio * (box.votes.size + box.abstain.size + box.absent.length))
-      const boundBy = c.minVotes >= ratioFloor ? 'vmu.ballot.minVotes' : 'vmu.ballot.minVotesRatio'
+      const boundBy = boxMinVotes >= ratioFloor ? (box.rules && Number.isInteger(box.rules.minVotes) ? 'ballot.rules.minVotes' : 'vmu.ballot.minVotes') : 'vmu.ballot.minVotesRatio'
       mark(enforced, boundBy)
       return Object.assign(deny('VMU_BALLOT_MIN_VOTES_NOT_MET', '法定人数不足：' + floorBase + ' < ' + floor + '（受限键：`' + boundBy + '`）⇒ **本次不是"未通过"，而是"未成立"** ✗✓',
         '继续收票/催票；不得把不足法定人数的结果当否决 ✗'), { tally: { cast: castN, votes: box.votes.size, abstain: box.abstain.size, absent: box.absent.length, floor, floorBase, boundBy }, enforced })
@@ -513,7 +561,7 @@ export function createBallotBox(opts) {
         // here, never inferred (mirrors `ballot.status().gate.durable`).
         durableLog: { bound: !!(o.durableQueue && o.durableQueue.durable === true) } }
     }
-    return { ok: true, boxes: boxes.size, droppedAudit, refusals: Object.fromEntries(refusals), partition: partition(), method: c.method, tieRule: c.tieRule, secrecy: c.secrecy, durableLog: { bound: !!(o.durableQueue && o.durableQueue.durable === true) } }
+    return { ok: true, boxes: boxes.size, droppedAudit, refusals: Object.fromEntries(refusals), partition: partition(), method: c.method, tieRule: c.tieRule, rules: [...boxes.values()].map((b) => ({ id: b.id, state: b.state, rules: b.rules || null, rulesDeclared: b.rulesDeclared === true })), secrecy: c.secrecy, durableLog: { bound: !!(o.durableQueue && o.durableQueue.durable === true) } }
   }
 
   /**

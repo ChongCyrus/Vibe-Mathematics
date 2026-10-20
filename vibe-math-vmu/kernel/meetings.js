@@ -347,7 +347,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     WIRED_KEYS, UNWIRED_REASONS,
 
     /** Open a meeting. `type`/`size`/`materials` are checked against `typeCatalog` / `committeeMax` / `materialsRequired`. */
-    open({ type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, at = null } = {}) {
+    open({ type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null } = {}) {
       const enforced = []
       const ms = at === null ? clock() : at
       // GAP-MTG-02: a CONTRADICTORY tier declaration is refused BEFORE any state is created. Same predicate as
@@ -374,7 +374,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       }
       const id = 'm' + (counters.opened + 1)
       const m = {
-        id, type: String(type), kind: kind === null ? null : String(kind), chair: chair === null ? null : String(chair),
+        id, type: String(type), kind: kind === null ? null : String(kind), chair: chair === null ? null : String(chair), secretary: secretary === null ? null : String(secretary),
         roster: arr(roster).map(String), present: new Set(chair === null ? [] : [String(chair)]),
         openedAt: ms, state: 'open', turns: 0, tokens: 0, wallStartMs: ms,
         queue: [], speechUsed: new Map(), interrupts: new Map(), warnings: new Map(), mutes: new Map(),
@@ -582,6 +582,16 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // GAP-MTG-02: a RESOLUTION motion is an entity conclusion, so a light meeting refuses it through the SAME
       // predicate the close rail uses (the v5r S12/D7 rule, now a single decision point).
       if (String(kind) === 'resolution') {
+        // ★ PHASE 7: a resolution is a RECORD write; the original allows the chair OR the secretary. The secretary is
+        // DECLARED on the meeting (never inferred from a vote permission), and this check grants NOTHING about voting.
+        if (m.secretary === null && String(member) !== String(m.chair)) {
+          throw deny('VMU_NOT_PERMITTED', 'only the chair or the declared secretary may move a resolution: ' + String(member),
+            'declare { secretary: "<member id>" } when opening the meeting, or let the chair move it', enforced)
+        }
+        if (m.secretary !== null && String(member) !== String(m.chair) && String(member) !== m.secretary) {
+          throw deny('VMU_NOT_PERMITTED', 'only the chair or the declared secretary may move a resolution: ' + String(member),
+            'secretary=' + m.secretary + '; chair=' + String(m.chair || '(none)'), enforced)
+        }
         const tierBlock = truthWriteRefusal('moving a resolution', enforced)
         if (tierBlock) throw tierBlock
       }
@@ -609,7 +619,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         mark(enforced, 'vmu.meetings.emergencyQuorumRatio')
         need = Math.max(need, Math.ceil(K.emergencyQuorumRatio * m.roster.length))
       }
-      const motion = { id: 'mo' + (m.motions.length + 1), at: now, by: String(member), kind: String(kind), text: String(text), emergency, quorumRequired: need, status: 'open', votes: new Map(), abstain: new Set(), refused: false }
+      const motion = { id: 'mo' + (m.motions.length + 1), at: now, by: String(member), kind: String(kind), text: String(text), emergency, quorumRequired: need, status: 'proposed', secondedBy: null, votes: new Map(), abstain: new Set(), refused: false }
       m.motions.push(motion)
       counters.motions += 1
       m.minutes.entries.push({ at: now, kind: 'motion', id: motion.id, by: motion.by, motionKind: motion.kind })
@@ -625,6 +635,45 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       return { ok: true, motion: motion.id, quorumRequired: need, quorum: q, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
+    /**
+     * ★ PHASE 7: SECOND a proposed motion. A motion is not votable until seconded; the proposer cannot second their own
+     * motion (original semantics). Only a PROPOSED motion can be seconded.
+     */
+    second({ meeting, motion = null, member = null, at = null } = {}) {
+      const m = requireMeeting(meeting)
+      const now = at === null ? clock() : at
+      if (!isMember(String(member))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'second() acts as a member', [])
+      const target = motion === null ? null : m.motions.find((x) => x.id === String(motion))
+      if (!target) throw deny('VMU_NO_SUCH_OBJECT', 'no such motion: ' + String(motion), 'motions: ' + (m.motions.map((x) => x.id).join(', ') || 'none'))
+      if (String(member) === target.by) throw deny('VMU_NOT_PERMITTED', 'the proposer cannot second their own motion: ' + String(member), 'another member must second it')
+      if (target.status !== 'proposed') throw deny('VMU_STATE', 'motion ' + target.id + ' is ' + target.status + ', not proposed', 'only a proposed motion can be seconded')
+      target.status = 'seconded'
+      target.secondedBy = String(member)
+      m.minutes.entries.push({ at: now, kind: 'second', id: target.id, by: String(member) })
+      const receipt = { at: now, action: 'second', meeting: m.id, motion: target.id, by: String(member), status: target.status, secondedBy: target.secondedBy }
+      pushReceipt(receipt)
+      emit('meeting/second', { at: now, meeting: m.id, motion: target.id, by: String(member) })
+      return { ok: true, motion: target.id, status: target.status, secondedBy: target.secondedBy, receipt }
+    },
+    /**
+     * ★ PHASE 7: WITHDRAW a motion. Only the proposer, and only while proposed/seconded. A withdrawn motion leaves the
+     * state machine (it cannot be seconded or voted); the minutes record who withdrew it.
+     */
+    withdraw({ meeting, motion = null, member = null, at = null } = {}) {
+      const m = requireMeeting(meeting)
+      const now = at === null ? clock() : at
+      const target = motion === null ? null : m.motions.find((x) => x.id === String(motion))
+      if (!target) throw deny('VMU_NO_SUCH_OBJECT', 'no such motion: ' + String(motion), 'motions: ' + (m.motions.map((x) => x.id).join(', ') || 'none'))
+      if (String(member) !== target.by) throw deny('VMU_NOT_PERMITTED', 'only the proposer may withdraw motion ' + target.id + ': ' + String(member), 'proposer=' + target.by)
+      if (target.status !== 'proposed' && target.status !== 'seconded') throw deny('VMU_STATE', 'motion ' + target.id + ' is ' + target.status + '; only proposed/seconded can be withdrawn', 'a voted/withdrawn motion cannot be withdrawn again')
+      target.status = 'withdrawn'
+      target.withdrawnAt = now
+      m.minutes.entries.push({ at: now, kind: 'withdraw', id: target.id, by: String(member) })
+      const receipt = { at: now, action: 'withdraw', meeting: m.id, motion: target.id, by: String(member), status: target.status }
+      pushReceipt(receipt)
+      emit('meeting/withdrawn', { at: now, meeting: m.id, motion: target.id, by: String(member) })
+      return { ok: true, motion: target.id, status: target.status, receipt }
+    },
     /**
      * Vote on a motion (or open ballot). Rails: `chairNeutral` (the chair may vote only to break a tie),
      * `unansweredInDenominator`/`attendanceMode` (through quorum), `quorumLossPolicy`/`quorumRecountMs`.
@@ -1014,6 +1063,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       return { ok: true, receipts: kept, count: kept.length, available: receipts.length, dropped: receipts.length - kept.length, ringDropped: receiptDropped.n, enforcedScope: ENFORCED_SCOPE }
     },
 
+    /** ★ PHASE 7: one meeting's OBSERVABLE state — who records (chair/secretary) and every motion's state. */
+    meetingView({ meeting = null } = {}) {
+      const m = requireMeeting(meeting, { readOnly: true })
+      return { ok: true, meeting: m.id, state: m.state, chair: m.chair || null, secretary: m.secretary || null,
+        motions: m.motions.map((x) => ({ id: x.id, by: x.by, kind: x.kind, status: x.status, secondedBy: x.secondedBy || null, withdrawnAt: x.withdrawnAt || null })) }
+    },
     /** READ-ONLY self-report: WIRED list, the declared-but-unwired list (per key + reason), counters, values. */
     status() {
       const declared = declaredKeys()

@@ -542,6 +542,9 @@
 | `VMU_MINUTES_ACTION_REQUIRED` | 决议缺行动项 | 纪要 | ✅ |
 | **表决（卷 08 ✓）** | | | |
 | `VMU_BALLOT_METHOD_UNSUPPORTED` | 计票方法未实现/未声明 | 表决 | ✅（须给**可用方法**） |
+| `VMU_BALLOT_RULE_UNKNOWN` | ★ **PHASE 7**：`ballot.open({ rules })` 里出现未声明的规则名（避免拼写错误静默变成全局默认） | 票箱 | ✗（给 minVotes／allowRevote／maxChoices／minChoices／mode 之一） |
+| `VMU_BALLOT_RULE_INVALID` | ★ **PHASE 7**：逐箱规则值非法（minVotes 超有表决权人数、minChoices>maxChoices、mode 非 single/multi 等） | 票箱 | ✗（按提示修正） |
+| `VMU_BALLOT_CHOICE_COUNT` | ★ **PHASE 7**：选择数违反该票箱的 minChoices/maxChoices（逐箱规则，不是全局设置） | 票箱 | ✗（按该票箱规则调整或改规则） |
 | `VMU_BALLOT_MIN_VOTES_NOT_MET` | 本次投票**成立门槛未达** | 表决 | ✅（须给**当前与门槛**） |
 | `VMU_TURN_NO_FENCE` | 回复里**没有 json 围栏** ⇒ 无可分派 | 轮次编排 26 | ✗（须要求"只输出一个围栏 JSON 对象"） |
 | `VMU_PROMPT_BINDING_CONFLICT` | **同一段、同一维度上有两条绑定并列** ⇒ 拒（不再静默取其一） | 提示管线 06 | ✗（给其中一条更具体的维度；优先级 `role < phase < member < task`） |
@@ -1059,7 +1062,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **400** 个码，**逐行**给出状态 ✓：其中 **361** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **403** 个码，**逐行**给出状态 ✓：其中 **364** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1104,10 +1107,13 @@
 | `VMU_AUDIT_WRITE_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/alerts.js`、`vibe-math-vmu/kernel/audit.js`、`vibe-math-vmu/kernel/paper.js` | 代码里有该码字符串 ✓ |
 | `VMU_AWARD_RATIONALE_REQUIRED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_BALLOT_ABSTAIN_NOT_ALLOWED` | **已实现 ✓** | `vibe-math-vmu/kernel/ballotbox.js` | 代码里有该码字符串 ✓ |
+| `VMU_BALLOT_CHOICE_COUNT` | **已实现 ✓** | `vibe-math-vmu/kernel/ballotbox.js` | 代码里有该码字符串 ✓ |
 | `VMU_BALLOT_FROZEN` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_BALLOT_METHOD_UNSUPPORTED` | **已实现 ✓** | `vibe-math-vmu/kernel/ballotbox.js` | 代码里有该码字符串 ✓ |
 | `VMU_BALLOT_MIN_VOTES_NOT_MET` | **已实现 ✓** | `vibe-math-vmu/kernel/ballotbox.js`、`vibe-math-vmu/packs/v3/middleware/verify.js`、`vibe-math-vmu/packs/v5r/tools.js` | 代码里有该码字符串 ✓ |
 | `VMU_BALLOT_ROUNDS_EXHAUSTED` | **已实现 ✓** | `vibe-math-vmu/kernel/ballotbox.js` | 代码里有该码字符串 ✓ |
+| `VMU_BALLOT_RULE_INVALID` | **已实现 ✓** | `vibe-math-vmu/kernel/ballotbox.js` | 代码里有该码字符串 ✓ |
+| `VMU_BALLOT_RULE_UNKNOWN` | **已实现 ✓** | `vibe-math-vmu/kernel/ballotbox.js` | 代码里有该码字符串 ✓ |
 | `VMU_BALLOT_SECRECY_LOCKED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_BALLOT_TIE_UNRESOLVED` | **已实现 ✓** | `vibe-math-vmu/kernel/ballotbox.js` | 代码里有该码字符串 ✓ |
 | `VMU_BODY_TRUNCATED` | **已实现 ✓** | `vibe-math-vmu/kernel/alerts.js` | 代码里有该码字符串 ✓ |

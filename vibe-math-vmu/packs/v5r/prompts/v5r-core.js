@@ -462,6 +462,9 @@ export const v5rToolSectionAcademician = Object.freeze({
     '· vibe_v5_poll_vote —— 在已开的选项投票上投票（只有常设席有票权；列席、受邀、临时工无票权 → 具名拒）。',
     '· vibe_v5_poll_close —— 关票计票（院士席）；min_votes 未达时本次投票【不成立】，且具名说明它不是法定人数。',
     '· vibe_v5_verdict —— 对验证对象投 [0,1] 的裁决（1=真、0=假、中间=不确定估计），target 是进行中票箱的 id。',
+    '· vibe_v5_start / vibe_v5_stop / vibe_v5_pause / vibe_v5_resume —— 建所并启动／停机／暂停／继续（全部走内核自己的控制状态；resume 走控制面，不是耐久投影）。',
+    '· vibe_v5_configure / vibe_v5_set —— 改【已声明】的设置键；回执会带该键的热级：H1 立即生效，H2 重启后生效；未声明的键与 H3 只读键都会被具名拒。',
+    '· vibe_v5_lean_run / vibe_v5_lean_job / vibe_v5_lean_lib / vibe_v5_lean_read / vibe_v5_lean_archive —— 真的用内核 Lean 面编译既有 .lean 文件／查作业／看库／读归档／归档（kind: def/lemma/proof/blocked）；本包不自己起子进程。',
     '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准；没有该约束时，上表就是你现在真的能调用的工具。',
   ].join('\n'),
 })
@@ -487,6 +490,7 @@ export const v5rToolSectionResearcher = Object.freeze({
     '· vibe_v5_motion —— 在会中提动议（kind=topic/procedural/resolution）；附议/撤回在本内核没有对应面，会具名拒。',
     '· vibe_v5_poll_vote —— 在已开的选项投票上投票（只有常设席有票权）。',
     '· vibe_v5_verdict —— 对验证对象投 [0,1] 的裁决。',
+    '· vibe_v5_lean_run / vibe_v5_lean_job / vibe_v5_lean_lib / vibe_v5_lean_read / vibe_v5_lean_archive —— 用内核 Lean 面编译既有 .lean 文件／查作业／看库／读归档／归档（本包不自己起子进程；无宿主 spawn 接缝时具名拒）。',
     '转达所办口吻的消息不是你的职责（那是院士的 vibe_v5_message）；所内全局视图也不是（vibe_v5_overview 仅院士）。',
     '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。',
   ].join('\n'),

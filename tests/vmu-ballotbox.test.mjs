@@ -313,6 +313,48 @@ test('irv is resolved in one ruling, and refused by name when the key is off', (
   passed += 1
 })
 
+// ★ PHASE 7: PER-BOX rules. Two boxes in the SAME assembly, different minVotes, each judged by its own rule.
+test('per-box minVotes: the same assembly has two boxes with different floors, each judge by its own', () => {
+  const b = box({ 'vmu.ballot.minVotes': 0 })
+  const b2 = b.open(Object.assign({}, OPEN, { rules: { minVotes: 2 }, eligible: ['r-1', 'r-2', 'r-3'] }))
+  const b1 = b.open(Object.assign({}, OPEN, { rules: { minVotes: 1 }, eligible: ['r-1', 'r-2', 'r-3'] }))
+  assert.equal(b2.rules.minVotes, 2, 'the box receipt exposes its own rules')
+  b.cast({ boxId: b1.boxId, by: 'r-1', choice: 'a' })
+  b.cast({ boxId: b2.boxId, by: 'r-1', choice: 'a' })
+  const c1 = b.close({ boxId: b1.boxId })
+  assert.equal(c1.ok, true, 'minVotes=1 box closes with 1 vote')
+  const c2 = b.close({ boxId: b2.boxId })
+  assert.equal(c2.ok, false, 'minVotes=2 box does NOT close with 1 vote')
+  assert.equal(c2.code, 'VMU_BALLOT_MIN_VOTES_NOT_MET')
+  assert.equal(c2.tally.floor, 2, 'the failing box reports ITS floor, not the global one')
+  passed += 1
+})
+test('per-box rules: unknown name and illegal value are NAMED refusals', () => {
+  const b = box({})
+  const unk = b.open(Object.assign({}, OPEN, { rules: { min_votes: 2 } }))
+  assert.equal(unk.code, 'VMU_BALLOT_RULE_UNKNOWN')
+  const big = b.open(Object.assign({}, OPEN, { rules: { minVotes: 9 }, eligible: ['r-1', 'r-2'] }))
+  assert.equal(big.code, 'VMU_BALLOT_RULE_INVALID')
+  const bad = b.open(Object.assign({}, OPEN, { rules: { minChoices: 2, maxChoices: 1 } }))
+  assert.equal(bad.code, 'VMU_BALLOT_RULE_INVALID')
+  passed += 1
+})
+test('per-box rules: mode/maxChoices enforced, and zero rules changes nothing', () => {
+  const b = box({})
+  const plain = b.open(OPEN)
+  assert.equal(plain.rulesDeclared, false, 'no rules ⇒ zero mechanism, rulesDeclared=false')
+  const single = b.open(Object.assign({}, OPEN, { rules: { mode: 'single', maxChoices: 2 } }))
+  assert.equal(single.rules.maxChoices, 1, 'mode=single forces maxChoices=1')
+  const over = b.cast({ boxId: single.boxId, by: 'r-1', approvals: ['a', 'b'] })
+  assert.equal(over.ok, false)
+  assert.equal(over.code, 'VMU_BALLOT_CHOICE_COUNT')
+  const rev = b.open(Object.assign({}, OPEN, { rules: { allowRevote: true } }))
+  b.cast({ boxId: rev.boxId, by: 'r-1', choice: 'a' })
+  const again = b.cast({ boxId: rev.boxId, by: 'r-1', choice: 'b' })
+  assert.equal(again.ok, true, 'allowRevote=true allows replacing the vote')
+  passed += 1
+})
+
 for (const c of cases) {
   try { await c.f(); console.log('ok - ' + c.n) } catch (e) { failed += 1; console.log('FAIL - ' + c.n + ' :: ' + String((e && e.message) || e)) }
 }

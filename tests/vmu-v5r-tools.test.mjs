@@ -37,14 +37,16 @@ const entry = await import(pathToFileURL(ENTRY).href)
 const v5r = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'index.js')).href)
 const toolsMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')).href)
 
-/** The names the pack is expected to declare (bands 1–4: 6 + 6 + 7 + 7). */
+/** The names the pack is expected to declare (bands 1–6: 6 + 6 + 7 + 7 + 11). */
 const EXPECTED = ['vibe_v5_record_progress', 'vibe_v5_record_proposition', 'vibe_v5_record_method',
   'vibe_v5_record_subproblem', 'vibe_v5_say', 'vibe_v5_message',
-  'vibe_v5_task_create', 'vibe_v5_task_list', 'vibe_v5_task_update', 'vibe_v5_hire', 'vibe_v5_report', 'vibe_v5_overview',
+  'vibe_v5_task_create', 'vibe_v5_task_list', 'vibe_v5_task_get', 'vibe_v5_task_update', 'vibe_v5_hire', 'vibe_v5_report', 'vibe_v5_overview',
   'vibe_v5_tool_help', 'vibe_v5_assign', 'vibe_v5_fire', 'vibe_v5_nudge', 'vibe_v5_prioritize', 'vibe_v5_feedback',
   'vibe_v5_read_library',
   'vibe_v5_meeting', 'vibe_v5_motion', 'vibe_v5_second', 'vibe_v5_poll_open', 'vibe_v5_poll_vote', 'vibe_v5_poll_close',
-  'vibe_v5_verdict']
+  'vibe_v5_verdict',
+  'vibe_v5_start', 'vibe_v5_stop', 'vibe_v5_pause', 'vibe_v5_resume', 'vibe_v5_configure', 'vibe_v5_set',
+  'vibe_v5_lean_run', 'vibe_v5_lean_job', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_archive']
 /** The codes a refusal may carry: REGISTERED ones only (docs/03 §8). */
 const REGISTERED_CODES = ['VMU_INVALID_ARGUMENT', 'VMU_NO_SUCH_OBJECT', 'VMU_STATE', 'VMU_ENGINE_UNAVAILABLE',
   'VMU_NOT_PERMITTED', 'VMU_NOT_FOUND', 'VMU_CONFLICT', 'VMU_QUOTA_EXCEEDED', 'VMU_PACK_MISSING']
@@ -82,24 +84,24 @@ try {
   // ── ① ZERO MECHANISM ────────────────────────────────────────────────────────────────────────────────────────
   console.log('=== 1. NO PACK ⇒ NOT ONE v5r TOOL EXISTS ===')
   const bare = await boot({ root })
-  ok(EXPECTED.length === 26, 'the expected list is non-empty (RULE E)', EXPECTED.length)
+  ok(EXPECTED.length === 38, 'the expected list is non-empty (RULE E)', EXPECTED.length)
   const bareHits = EXPECTED.filter((n) => bare.names.includes(n))
   ok(bareHits.length === 0, 'without the pack none of the six names is published', bareHits)
 
   // ── ② THE DECLARATION (the names come FROM the pack) ───────────────────────────────────────────────────────
-  console.log('=== 2. WITH packs=["v5r"] THE TWENTY-SIX DECLARED NAMES ARE PUBLISHED ===')
+  console.log('=== 2. WITH packs=["v5r"] THE THIRTY-EIGHT DECLARED NAMES ARE PUBLISHED ===')
   const PACK = v5r.PACK
-  ok(Array.isArray(PACK.tools) && PACK.tools.length === 26, 'the loaded manifest DECLARES twenty-six tools', PACK.tools && PACK.tools.length)
+  ok(Array.isArray(PACK.tools) && PACK.tools.length === 38, 'the loaded manifest DECLARES thirty-eight tools', PACK.tools && PACK.tools.length)
   const declaredNames = PACK.tools.map((t) => t.name)
   ok(declaredNames.length > 0 && EXPECTED.filter((n) => declaredNames.includes(n)).length === EXPECTED.length,
-    'the declaration is exactly the twenty-six expected names', declaredNames)
+    'the declaration is exactly the thirty-eight expected names', declaredNames)
   const v5rBoot = await boot({ root, packs: ['v5r'] })
   const published = EXPECTED.filter((n) => v5rBoot.names.includes(n))
   ok(EXPECTED.length > 0 && published.length > 0 && published.length === EXPECTED.length,
-    'all twenty-six are published through the real host adapter', { published: published.length, names: v5rBoot.names.length })
-  ok(v5rBoot.handle.kernel.packTools().length === 26, 'the KERNEL holds the twenty-six declarations', v5rBoot.handle.kernel.packTools().length)
+    'all thirty-eight are published through the real host adapter', { published: published.length, names: v5rBoot.names.length })
+  ok(v5rBoot.handle.kernel.packTools().length === 38, 'the KERNEL holds the thirty-eight declarations', v5rBoot.handle.kernel.packTools().length)
   const kernelStatus = v5rBoot.handle.kernel.status({ detail: 'summary' })
-  ok(Array.isArray(kernelStatus.packTools) && kernelStatus.packTools.length === 26,
+  ok(Array.isArray(kernelStatus.packTools) && kernelStatus.packTools.length === 38,
     'kernel.status() reports the declared names (observable, not implicit)', kernelStatus.packTools && kernelStatus.packTools.length)
   const hostNames = Object.values((await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'host.js')).href)).TOOL_NAMES)
   const leaked = EXPECTED.filter((n) => hostNames.includes(n))
@@ -341,6 +343,55 @@ try {
   ok(verdictNoBallot.parsed && verdictNoBallot.parsed.ok === false && verdictNoBallot.parsed.code === 'VMU_NO_SUCH_OBJECT',
     'verdict: 反 — a verdict on a non-live ballot is refused by name (no invented ballot)', verdictNoBallot.parsed)
 
+  // ── ③e FIFTH/SIXTH BANDS (round 6): lifecycle, configuration, and the Lean five ─────────────────────────────
+  console.log('=== 3e. LIFECYCLE, CONFIGURATION, AND THE LEAN FIVE (sixth band) ===')
+  const started = await receipt(v5rBoot, 'vibe_v5_start', { problem: '证明引理 A', researcherCount: 2, academician: false })
+  ok(started.parsed && started.parsed.ok === true && started.parsed.hired.length === 2 && started.parsed.started && started.parsed.started.ok === true,
+    'start: 正 — the institute is founded (2 researchers seated, kernel.start reported); academician:false because the chair seat is already taken in this fixture', started.parsed && { hired: started.parsed.hired })
+  const chairTaken = await receipt(v5rBoot, 'vibe_v5_start', { researcherCount: 0 })
+  ok(chairTaken.parsed && chairTaken.parsed.ok === false && !!chairTaken.parsed.code,
+    'start: 反 — seating a SECOND academician while the chair slot is occupied is refused by name (slot capacity)', chairTaken.parsed && chairTaken.parsed.code)
+  const paused = await receipt(v5rBoot, 'vibe_v5_pause', { reason: '评测' })
+  ok(paused.parsed && paused.parsed.ok === true && paused.parsed.receipt, 'pause: 正 — the kernel control state is paused', paused.parsed && paused.parsed.receipt)
+  const resumed = await receipt(v5rBoot, 'vibe_v5_resume', { reason: '继续' })
+  ok(resumed.parsed && resumed.parsed.ok === true && resumed.parsed.receipt, 'resume: 正 — resumed through the CONTROL face', resumed.parsed && resumed.parsed.receipt)
+  const h1 = await receipt(v5rBoot, 'vibe_v5_set', { key: 'vmu.records.tracks', value: ['progress', 'state'] })
+  ok(h1.parsed && h1.parsed.ok === true && h1.parsed.applied.hot === 'H1' && /立即/.test(String(h1.parsed.effective)),
+    '★ set: 正 — an H1 key is written AND the receipt says "live now" with its declared hot level', h1.parsed && h1.parsed.applied)
+  const h2 = await receipt(v5rBoot, 'vibe_v5_set', { key: 'vmu.ballot.minVotes', value: 2 })
+  ok(h2.parsed && h2.parsed.ok === true && h2.parsed.applied.hot === 'H2' && /重启后生效/.test(String(h2.parsed.effective)),
+    '★ set: 正 — an H2 key is written AND the receipt says "restart to take effect" (never implying it is live)', h2.parsed && h2.parsed.effective)
+  const undeclared = await receipt(v5rBoot, 'vibe_v5_set', { key: 'vmu.no.such.key', value: 1 })
+  ok(undeclared.parsed && undeclared.parsed.ok === false && undeclared.parsed.code === 'VMU_INVALID_ARGUMENT',
+    '★ set: 反 — an UNDECLARED key is refused by name (only settings/schema.js keys are settable)', undeclared.parsed)
+  const cfgMixed = await receipt(v5rBoot, 'vibe_v5_configure', { institute: '测试所', params: { 'vmu.ballot.minVotes': 3 } })
+  ok(cfgMixed.parsed && cfgMixed.parsed.ok === true && cfgMixed.parsed.restartRequired.includes('vmu.ballot.minVotes'),
+    '★ configure: 正 — mixed hot levels are reported: H2 keys land in restartRequired (H1 ones do not)', cfgMixed.parsed && cfgMixed.parsed.restartRequired)
+  const cfgEmpty = await receipt(v5rBoot, 'vibe_v5_configure', {})
+  ok(cfgEmpty.parsed && cfgEmpty.parsed.ok === false && cfgEmpty.parsed.code === 'VMU_INVALID_ARGUMENT', 'configure: 反 — nothing to set is refused by name', cfgEmpty.parsed)
+
+  // ★ Lean: the kernel HAS the executor but only when the host injected a spawn seam. The fixture context has none, so
+  // the honest evidence is TWO-SIDED: the face is absent, AND the kernel's own formal face + our five tools all refuse
+  // BY NAME — none of them fakes a compile.
+  ok(kernel.lean === null, '★ Lean: this assembly has NO Lean face (kernel/index.js creates it only when a spawn seam exists)', typeof kernel.lean)
+  let formalNoSpawn = null
+  try { formalNoSpawn = await v5rBoot.handle.kernel.formal.check({ statement: 'P', proof: 'theorem t : True := trivial' }) } catch (e) { formalNoSpawn = { code: e && e.code, message: String(e && e.message) } }
+  ok(formalNoSpawn && (formalNoSpawn.code === 'VMU_EXTERNAL_UNAVAILABLE' || /spawn/.test(String(formalNoSpawn.message))),
+    '★ Lean: the kernel\'s formal face REFUSES BY NAME without a spawn seam ("本面绝不假跑") — the executor is real but conditional', formalNoSpawn && formalNoSpawn.code)
+  const leanNames = ['vibe_v5_lean_run', 'vibe_v5_lean_job', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_archive']
+  const leanArgs = { 'vibe_v5_lean_run': { file: 'Formal/x.lean' }, 'vibe_v5_lean_job': {}, 'vibe_v5_lean_lib': {}, 'vibe_v5_lean_read': { name: 'x' }, 'vibe_v5_lean_archive': { kind: 'lemma', name: 'x', from: 'Formal/x.lean' } }
+  const leanRefusals = []
+  for (const n of leanNames) {
+    const r = await receipt(v5rBoot, n, leanArgs[n])
+    leanRefusals.push({ name: n, code: r.parsed && r.parsed.code, hint: r.parsed && r.parsed.hint })
+  }
+  ok(leanNames.length === 5 && leanRefusals.filter((r) => r.code === 'VMU_ENGINE_UNAVAILABLE').length === 5,
+    '★ Lean 五工具: 反 — all five refuse BY NAME (VMU_ENGINE_UNAVAILABLE) when there is no spawn seam; none fakes a run', leanRefusals)
+  ok(leanRefusals.filter((r) => /spawn/.test(String(r.hint)) && /内核/.test(String(r.hint))).length === 5,
+    '★ and each refusal names the missing capability (需内核能力：宿主 spawn 接缝) — the fix is in the tool itself', leanRefusals)
+  const leanBadKind = await receipt(v5rBoot, 'vibe_v5_lean_archive', { kind: 'nope', name: 'x', from: 'Formal/x.lean' })
+  ok(leanBadKind.parsed && leanBadKind.parsed.ok === false && leanBadKind.parsed.code === 'VMU_INVALID_ARGUMENT', 'lean_archive: 反 — an unknown archive kind is refused BEFORE the face check', leanBadKind.parsed)
+
   // ── ④ REFUSALS ARE NAMED (the 一正一反 the fixture verified: empty sender) ──────────────────────────────────
   console.log('=== 4. REFUSALS CARRY A REGISTERED CODE + A HINT ===')
   const noP = await receipt(v5rBoot, 'vibe_v5_record_proposition', { statement: '缺 p 的命题' })
@@ -422,6 +473,13 @@ try {
     'the researcher seat gets motion/poll_vote/verdict', String(researcherSection.text).length)
   ok(!bulletHas(tempSection.text, 'vibe_v5_poll_vote') && !bulletHas(tempSection.text, 'vibe_v5_poll_open') && !bulletHas(tempSection.text, 'vibe_v5_meeting'),
     '★ the temp seat\'s list carries NO meeting/voting tool (D8), matching the runtime refusal', String(tempSection.text).length)
+  // ROUND 6: lifecycle/configuration stay with the chair seat; the Lean five are research work (chair + researcher).
+  ok(bulletHas(acadSection.text, 'vibe_v5_start') && bulletHas(acadSection.text, 'vibe_v5_configure') && bulletHas(acadSection.text, 'vibe_v5_lean_run'),
+    'the chair seat gets the lifecycle/config band AND the Lean five', String(acadSection.text).length)
+  ok(bulletHas(researcherSection.text, 'vibe_v5_lean_run') && !bulletHas(researcherSection.text, 'vibe_v5_start') && !bulletHas(researcherSection.text, 'vibe_v5_configure'),
+    'the researcher gets the Lean five but NOT the lifecycle/config band', String(researcherSection.text).length)
+  ok(!bulletHas(tempSection.text, 'vibe_v5_lean_run') && !bulletHas(tempSection.text, 'vibe_v5_set'),
+    'the temp seat gets neither the Lean five nor configuration', String(tempSection.text).length)
   ok(asTemp.includes('【本轮可用的工具｜临时成员】') && !asTemp.includes('【本轮可用的工具｜研究员】'),
     'the TEMP assembly carries its OWN marker and not another role\'s', asTemp.length)
   ok(!asResearcher.includes('【本轮可用的工具｜临时成员】') && !asAcademician.includes('【本轮可用的工具｜研究员】'),
@@ -434,21 +492,24 @@ try {
   const k2 = km.createKernel({ clock: () => 1000, root })
   const loader = pm.createPackLoader({ kernel: k2, registry: k2.registry })
   const applied = await loader.apply({ id: 'v5r-tools-probe', version: '1.0.0', tools: toolsMod.V5R_PACK_TOOLS })
-  ok(applied && applied.ok === true, 'a manifest carrying the twenty-six declarations APPLIES', applied && (applied.code || applied.id))
-  ok(k2.packTools().length === 26, 'the kernel holds the twenty-six names after apply', k2.packTools().length)
+  ok(applied && applied.ok === true, 'a manifest carrying the thirty-eight declarations APPLIES', applied && (applied.code || applied.id))
+  ok(k2.packTools().length === 38, 'the kernel holds the thirty-eight names after apply', k2.packTools().length)
   const unloaded = await loader.unload('v5r-tools-probe')
   ok(unloaded && unloaded.ok === true && unloaded.residueFree === true, 'unload reports no residue', unloaded)
   ok(k2.packTools().length === 0, 'the declarations are RETRACTED (nothing left to publish)', k2.packTools().length)
   // ── ⑦ THE NAMED NEXT BATCH AND THE ROUND'S NAMED GAPS ─────────────────────────────────────────────────────
   console.log('=== 7. THE NEXT BATCH AND THE NAMED GAPS ===')
   const next = toolsMod.V5R_NEXT_BATCH_TOOLS
-  ok(Array.isArray(next) && next.length === 4, 'four next-batch names are recorded (the Lean family)', next && next.length)
-  const overlap = next.filter((n) => EXPECTED.includes(n.name))
-  ok(overlap.length === 0, 'none of the next batch is declared as a tool today (the two lists do not overlap)', overlap.map((n) => n.name))
+  ok(Array.isArray(next) && next.length === 0, '★ the next-batch list is EMPTY: every prompt-taught name is now declared (the four Lean names joined this round)', next && next.length)
+  // The emptiness is not "vacuous": it is paired with the closed-world check — every vibe_v5_* name the PROMPTS teach
+  // must be declared. A new taught-but-missing name reddens here instead of lingering.
   const fsMod = await import('node:fs')
   const origSrc = fsMod.readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
-  const wrongFlag = next.filter((n) => n.inOriginal !== origSrc.includes("registerTool('" + n.name + "'"))
-  ok(wrongFlag.length === 0, 'each `inOriginal` flag matches the ORIGINAL registry (measured, not asserted by hand)', wrongFlag.map((n) => n.name))
+  const corpusSrc = fsMod.readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-prompts.js'), 'utf8')
+  const taught = [...new Set((corpusSrc.match(/vibe_v5_[a-z_]+/g) || []))]
+  const undeclaredTaught = taught.filter((n) => !EXPECTED.includes(n))
+  ok(taught.length > 0 && undeclaredTaught.length === 0,
+    '★ closed world: every vibe_v5_* name the PROMPT CORPUS teaches is declared as a tool (nothing taught-but-missing is left)', { taught: taught.length, missing: undeclaredTaught })
   const gaps = toolsMod.V5R_NAMED_GAPS
   ok(Array.isArray(gaps) && gaps.length === 6 && gaps.filter((g) => typeof g === 'string' && g.length > 20).length === 6,
     '★ the measured limits are recorded as NAMED GAPS (visible-tools reader / mail purge / priority column / motion second / per-box poll rules / secretary)', gaps && gaps.length)

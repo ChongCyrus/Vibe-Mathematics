@@ -668,6 +668,36 @@ const err = (fn) => errOf(fn)
   ok(unread.length === 0, 'every wired key was really READ by the suite, not merely listed (' + (unread.length ? 'unread: ' + unread.join(', ') : READS.length + ' reads recorded') + ')')
 }
 
+// ── ★ PHASE 7: motion second/withdraw + declared secretary (record right, NOT vote right) ─────────────────
+{
+  const h = mk({}, {})
+  const id = h.t.open({ chair: 'acad', roster, secretary: 'r-2' }).meeting
+  ok(h.t.meetingView({ meeting: id }).secretary === 'r-2', '★ 正：secretary 是会议上的声明，status 可读', h.t.meetingView({ meeting: id }).secretary)
+  const mo = h.t.motion({ meeting: id, member: 'r-2', kind: 'resolution', text: 'adopt the result' })
+  ok(mo.ok === true && h.t.meetingView({ meeting: id }).motions[0].status === 'proposed',
+    '★ 正：secretary 能写决议（记录权），动议初始状态 proposed', h.t.meetingView({ meeting: id }).motions[0])
+  const badWrite = err(() => h.t.motion({ meeting: id, member: 'r-3', kind: 'resolution', text: 'x' }))
+  ok(badWrite && badWrite.code === 'VMU_NOT_PERMITTED', '★ 反：非 chair 非 secretary ⇒ 具名拒', badWrite && badWrite.code)
+  const st1 = h.t.second({ meeting: id, motion: mo.motion, member: 'r-1' })
+  ok(st1.ok === true && st1.status === 'seconded' && st1.secondedBy === 'r-1',
+    '★ 正：second 让 proposed → seconded，回执带新状态/附议人', st1)
+  const own = err(() => h.t.second({ meeting: id, motion: mo.motion, member: 'r-2' }))
+  ok(own && own.code === 'VMU_NOT_PERMITTED', '★ 反：提案人自己附议 ⇒ 具名拒', own && own.code)
+  const again = err(() => h.t.second({ meeting: id, motion: mo.motion, member: 'r-3' }))
+  ok(again && again.code === 'VMU_STATE', '★ 反：已 seconded 再附议 ⇒ 具名拒', again && again.code)
+  const noSuch = err(() => h.t.second({ meeting: id, motion: 'mo-404', member: 'r-1' }))
+  ok(noSuch && noSuch.code === 'VMU_NO_SUCH_OBJECT', '★ 反：不存在的动议 ⇒ 具名拒', noSuch && noSuch.code)
+  const wd = h.t.withdraw({ meeting: id, motion: mo.motion, member: 'r-2' })
+  ok(wd.ok === true && wd.status === 'withdrawn', '★ 正：提案人在 seconded 阶段撤回 ⇒ withdrawn', wd)
+  const wdAgain = err(() => h.t.withdraw({ meeting: id, motion: mo.motion, member: 'r-2' }))
+  ok(wdAgain && wdAgain.code === 'VMU_STATE', '★ 反：已撤回再撤回 ⇒ 具名拒', wdAgain && wdAgain.code)
+  const mo2 = h.t.motion({ meeting: id, member: 'r-2', kind: 'ordinary', text: 'second motion' })
+  const wdOther = err(() => h.t.withdraw({ meeting: id, motion: mo2.motion, member: 'r-1' }))
+  ok(wdOther && wdOther.code === 'VMU_NOT_PERMITTED', '★ 反：非提案人撤回 ⇒ 具名拒', wdOther && wdOther.code)
+  const voteBySecretary = h.t.vote({ meeting: id, member: 'r-2', motion: mo2.motion, value: 1 })
+  ok(voteBySecretary.ok === true, '★ secretary 的表决仍按原有成员资格进行（没有因为 secretry 而获得额外票权）', voteBySecretary && voteBySecretary.ok)
+}
+
 console.log('=== VMU MEETINGS: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL - ' + f)
 process.exit(failed ? 1 : 0)

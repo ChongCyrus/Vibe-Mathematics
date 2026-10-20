@@ -682,6 +682,18 @@ function requireVoter(kernel, member, what) {
   return row
 }
 
+/** ★ `vibe_v5_task_get` — read ONE task (the corpus teaches it, so it is declared rather than left dangling). */
+async function toolTaskGet(args = {}, { kernel } = {}) {
+  if (!has(args.id) && !has(args.task_id)) throw refuse('VMU_INVALID_ARGUMENT', 'task_get needs the task id', 'pass id:"t-…" (from task_list)')
+  const id = str(args.id || args.task_id)
+  const rows = rowsOf(await tasksOf(kernel).list())
+  const row = rows.filter((t) => String(t.id) === id)[0]
+  if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no task "' + id + '" on this board', 'call task_list for the real ids')
+  let brief = null
+  if (kernel.tasks && typeof kernel.tasks.briefOf === 'function') brief = kernel.tasks.briefOf(id)
+  return { ok: true, tool: 'vibe_v5_task_get', task: row, brief }
+}
+
 /** ★ `vibe_v5_meeting` — convene a meeting. The original also let a non-chair PROPOSE one for the chair to convene;
  * this face has no propose path, so that half is a named gap rather than a silent convenience. */
 function toolMeeting(args = {}, { kernel } = {}) {
@@ -831,6 +843,174 @@ function toolVerdict(args = {}, { kernel } = {}) {
     kind: v === 1 || v === 0 ? 'decisive' : 'estimate', receipt: r }
 }
 
+// ── ㉗–㊲ FIFTH/SIXTH BANDS: lifecycle, configuration, and the Lean five ─────────────────────────────────────
+/**
+ * ★ THE LEAN QUESTION, ANSWERED FROM CODE (PHASE 7 round 6): the kernel DOES have a real Lean executor, but it is
+ * CONDITIONAL on the host's `spawn` seam:
+ *   · kernel/index.js:679 — `const lean = spawn ? createLeanFace({...}) : null` ⇒ an assembly without a spawn seam
+ *     (a bare kernel, or the local fixture context) has NO Lean face;
+ *   · kernel/formal.js:151 — `formal.check` really calls `spawn({ file: leanCommand, args, stdin, timeoutMs })` and
+ *     REFUSES BY NAME when the seam is missing (`VMU_EXTERNAL_UNAVAILABLE`, "本面绝不假跑");
+ *   · kernel/lean.js:882 — the face's API is `submit / status / list / settle / archive / read / lib / cancel /
+ *     recover / dispose / admission …`, i.e. a JOB QUEUE with Formal/Jobs mirrors, states
+ *     queued|running|settled|failed|timeout|interrupted, and archive kinds def|lemma|theorem|assumption.
+ * ⇒ these five tools CALL that face and never start a process themselves: how it spawns / times out / cancels is the
+ * face's business (vmu.math.leanCommand, vmu.math.leanTimeoutMs, cancel() with the killable handle). A face-less
+ * assembly is a NAMED refusal, never a pretend run.
+ */
+function leanFaceOrRefuse(kernel, what) {
+  const lean = kernel && kernel.lean
+  if (!lean || typeof lean.submit !== 'function') {
+    throw refuse('VMU_ENGINE_UNAVAILABLE', what + ' needs the Lean face, and this assembly has none (the host injected no spawn seam)',
+      '需内核能力：宿主 spawn 接缝（kernel/index.js 只在 spawn 存在时创建 Lean face）。本包不自己起子进程——那是内核/特殊脚本的活')
+  }
+  return lean
+}
+
+/** ★ `vibe_v5_start` — found the institute: start the kernel, seat the academician, and seat N researchers. The
+ * original also carried problem/seedDirections; a member's direction is roster DATA here, so it is reported. */
+async function toolStart(args = {}, { kernel } = {}) {
+  const n = Number.isInteger(args.researcherCount) ? args.researcherCount : 3
+  if (n < 0 || n > 50) throw refuse('VMU_INVALID_ARGUMENT', 'researcherCount must be between 0 and 50', 'the original seeded a small permanent staff')
+  const hired = []
+  if (args.academician !== false) {
+    await membersOf(kernel).hire({ id: 'r-acad', slot: 'chair' })
+    hired.push('r-acad')
+  }
+  for (let i = 1; i <= n; i += 1) {
+    await membersOf(kernel).hire({ id: 'r-' + i, slot: 'member' })
+    hired.push('r-' + i)
+  }
+  const started = typeof kernel.start === 'function' ? await kernel.start() : null
+  const applied = []
+  if (has(args.problem)) applied.push(applyDeclaredSetting(kernel, 'vmu.turn.objective', str(args.problem)))
+  return { ok: true, tool: 'vibe_v5_start', hired, started, applied,
+    note: 'seedDirections are roster data here (the charter reads a member\'s direction), so they are not stored by this tool — reported, not silently dropped' }
+}
+
+/** ★ `vibe_v5_stop` / `vibe_v5_pause` — the kernel's own control state, not a second one. */
+async function toolStop(args = {}, { kernel } = {}) {
+  if (typeof kernel.stop !== 'function') throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no stop()', 'assemble a full kernel (vibe-math-vmu.js)')
+  const r = await kernel.stop(has(args.reason) ? str(args.reason) : 'vibe_v5_stop')
+  return { ok: true, tool: 'vibe_v5_stop', receipt: r, note: 'the kernel\'s control state is the only one; nothing here starts child sessions' }
+}
+async function toolPause(args = {}, { kernel } = {}) {
+  if (typeof kernel.pause !== 'function') throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no pause()', 'assemble a full kernel (vibe-math-vmu.js)')
+  const r = await kernel.pause(has(args.reason) ? str(args.reason) : 'paused by vibe_v5_pause')
+  return { ok: true, tool: 'vibe_v5_pause', receipt: r }
+}
+/** ★ `vibe_v5_resume` — un-pause through the kernel's CONTROL face (NOT `kernel.resume`, which is the durability
+ * projection: a same-name trap, written down here instead of being learned the hard way). */
+async function toolResume(args = {}, { kernel } = {}) {
+  const control = kernel && kernel.controlService
+  if (!control || typeof control.resume !== 'function') {
+    throw refuse('VMU_ENGINE_UNAVAILABLE', 'no control face is published, so a paused institute cannot be resumed', 'assemble a kernel with the control service')
+  }
+  const r = control.resume(has(args.reason) ? str(args.reason) : undefined)
+  const receipt = r && typeof r.then === 'function' ? await r : r
+  return { ok: true, tool: 'vibe_v5_resume', receipt,
+    note: 'resumed through the control face (kernel.resume is the DURABILITY projection and is deliberately not used here)' }
+}
+
+/** Apply ONE declared setting through the kernel's guarded writer and report the hot level it declares. Shared body of
+ * configure/set/start so the H1/H2 wording is written exactly once. */
+function applyDeclaredSetting(kernel, key, value, opts = {}) {
+  const def = typeof kernel.settingDef === 'function' ? kernel.settingDef(key) : null
+  if (!def) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'unknown setting: ' + key,
+      'only DECLARED keys are settable (settings/schema.js); the kernel refuses an undeclared key by name')
+  }
+  if (def.hot === 'H3') {
+    throw refuse('VMU_NOT_PERMITTED', 'setting ' + key + ' is H3 (read-only at runtime)',
+      'the declaration owns its hot level; an H3 key cannot be written by any face')
+  }
+  if (typeof kernel.setSettingsValue !== 'function') {
+    throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no settings writer', 'assemble a full kernel (vibe-math-vmu.js)')
+  }
+  // THE OWNER IS THE DECLARATION'S: the kernel's settings guard refuses a `by` that is not the key's declared owner
+  // (`settingsGuard`: declared key, H3 read-only, declared owner). A pack tool has no human identity, so it acts AS the
+  // declared owner and records that in the receipt instead of inventing an actor.
+  const actor = opts.by || def.who || null
+  const receipt = kernel.setSettingsValue(key, value, { by: actor, reason: opts.reason || null })
+  return { key, value, hot: def.hot, who: def.who || null, appliedBy: actor,
+    applied: receipt && receipt.applied !== undefined ? receipt.applied : null,
+    effective: def.hot === 'H1' ? '立即生效（H1）' : '重启后生效（' + String(def.hot) + '）',
+    receipt }
+}
+
+/** ★ `vibe_v5_configure` — create/configure the institute WITHOUT starting it: every value goes through the declared
+ * setting writer, so an undeclared key is refused by name (never stored "for later"). */
+function toolConfigure(args = {}, { kernel } = {}) {
+  const applied = []
+  if (has(args.institute)) applied.push(applyDeclaredSetting(kernel, 'vmu.turn.instituteName', str(args.institute), { reason: 'vibe_v5_configure' }))
+  if (has(args.problem)) applied.push(applyDeclaredSetting(kernel, 'vmu.turn.objective', str(args.problem), { reason: 'vibe_v5_configure' }))
+  if (args.params !== undefined && args.params !== null) {
+    if (typeof args.params !== 'object' || Array.isArray(args.params)) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'configure params must be an object of {declared key: value}', 'pass params:{"vmu.turn.instituteName":"…"}')
+    }
+    for (const [k, v] of Object.entries(args.params)) {
+      applied.push(applyDeclaredSetting(kernel, k, v, { reason: 'vibe_v5_configure params' }))
+    }
+  }
+  if (applied.length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'configure needs something to set', 'pass institute/problem/params (the original needed at least one)')
+  const restarts = applied.filter((a) => a.hot !== 'H1')
+  return { ok: true, tool: 'vibe_v5_configure', applied, restartRequired: restarts.map((a) => a.key),
+    note: restarts.length > 0
+      ? 'the keys in restartRequired are NOT live yet: their declared hot level takes effect on restart (the receipt says so instead of implying it worked)'
+      : 'every key applied here is H1 (live immediately)' }
+}
+
+/** ★ `vibe_v5_set` — one declared key. Same guarded writer, same hot-level wording. */
+function toolSet(args = {}, { kernel } = {}) {
+  if (!has(args.key)) throw refuse('VMU_INVALID_ARGUMENT', 'set needs a key', 'pass key:"vmu.…" (a DECLARED settings key)')
+  if (args.value === undefined) throw refuse('VMU_INVALID_ARGUMENT', 'set needs a value', 'pass value:… explicitly')
+  const applied = applyDeclaredSetting(kernel, str(args.key), args.value, { reason: has(args.why) ? str(args.why) : 'vibe_v5_set' })
+  return { ok: true, tool: 'vibe_v5_set', applied, effective: applied.effective }
+}
+
+// ── the Lean five ──────────────────────────────────────────────────────────────────────────────────────────
+const LEAN_ARCHIVE_KIND_MAP = Object.freeze({ def: 'def', lemma: 'lemma', proof: 'theorem', blocked: 'assumption' })
+
+/** ★ `vibe_v5_lean_run` — compile one existing .lean FILE through the kernel's Lean face (the face owns the process,
+ * the timeout and the cancel path). A per-call timeout is NOT supported (the face declares vmu.math.leanTimeoutMs). */
+async function toolLeanRun(args = {}, { kernel } = {}) {
+  if (!has(args.file)) throw refuse('VMU_INVALID_ARGUMENT', 'lean_run needs file', 'pass file:"Formal/x.lean"')
+  const lean = leanFaceOrRefuse(kernel, 'vibe_v5_lean_run')
+  const statement = has(args.target) ? str(args.target) : (has(args.statement) ? str(args.statement) : '')
+  const submitted = await lean.submit({ statement, file: str(args.file), member: has(args.member) ? str(args.member) : '' })
+  return { ok: true, tool: 'vibe_v5_lean_run', job: submitted,
+    unapplied: has(args.timeout_ms) ? [{ rule: 'timeout_ms', why: 'the Lean face times out on its declared vmu.math.leanTimeoutMs; a per-call timeout is not part of submit()' }] : [],
+    note: 'the process, the timeout and the cancel path belong to the Lean face (spawn seam); this tool only submits' }
+}
+async function toolLeanJob(args = {}, { kernel } = {}) {
+  const lean = leanFaceOrRefuse(kernel, 'vibe_v5_lean_job')
+  if (has(args.jobId)) return { ok: true, tool: 'vibe_v5_lean_job', job: lean.status(str(args.jobId)) }
+  return { ok: true, tool: 'vibe_v5_lean_job', jobs: lean.list(),
+    note: has(args.waitMs) ? 'waitMs is not applied: the job queue returns its current state; observe again after a wake' : undefined }
+}
+async function toolLeanLib(args = {}, { kernel } = {}) {
+  const lean = leanFaceOrRefuse(kernel, 'vibe_v5_lean_lib')
+  return { ok: true, tool: 'vibe_v5_lean_lib', lib: await lean.lib({ refresh: args.refresh === true }) }
+}
+async function toolLeanRead(args = {}, { kernel } = {}) {
+  if (!has(args.name)) throw refuse('VMU_INVALID_ARGUMENT', 'lean_read needs name', 'pass name:"<archived name>" (see lean_lib)')
+  const lean = leanFaceOrRefuse(kernel, 'vibe_v5_lean_read')
+  return { ok: true, tool: 'vibe_v5_lean_read', card: await lean.read({ name: str(args.name) }),
+    note: has(args.kind) ? 'kind (auto/lib/proved) is not applied: this kernel keeps ONE archive namespace (def/lemma/theorem/assumption)' : undefined }
+}
+async function toolLeanArchive(args = {}, { kernel } = {}) {
+  if (!has(args.kind)) throw refuse('VMU_INVALID_ARGUMENT', 'lean_archive needs kind', 'the original offered def/lemma/proof/blocked')
+  const mapped = LEAN_ARCHIVE_KIND_MAP[str(args.kind)]
+  if (!mapped) throw refuse('VMU_INVALID_ARGUMENT', 'unknown archive kind: ' + str(args.kind), 'the original offered: ' + Object.keys(LEAN_ARCHIVE_KIND_MAP).join(', '))
+  if (!has(args.name)) throw refuse('VMU_INVALID_ARGUMENT', 'lean_archive needs name', 'give a stable name: read() and lib() use it')
+  const file = has(args.from) ? str(args.from) : (has(args.file) ? str(args.file) : '')
+  if (!file) throw refuse('VMU_INVALID_ARGUMENT', 'lean_archive needs the existing .lean file (from/file)', 'this face registers existing files; it does not take inline content')
+  const lean = leanFaceOrRefuse(kernel, 'vibe_v5_lean_archive')
+  const archived = await lean.archive({ name: str(args.name), kind: mapped, file, statement: has(args.target) ? str(args.target) : '' })
+  return { ok: true, tool: 'vibe_v5_lean_archive', mappedKind: mapped, archived,
+    note: has(args.content) ? 'content is NOT stored: the archive registers existing files by hash (write the file first)' : undefined }
+}
+
 /**
  * THE MANIFEST FACE. Parameter shapes are taken from the ORIGINAL `vibe-math-v5r.js` registration blocks so a
  * member's prompt and the tool schema agree — first batch: `record_*` (content/statement+value+motive+p), `say`
@@ -841,7 +1021,11 @@ function toolVerdict(args = {}, { kernel } = {}) {
  * (order/why), `feedback` (op + the original's fields), `read_library` (member/kind/id/list/limit), and `tool_help`
  * (member optional); fourth batch: `meeting` (agenda/kind/target/formal_agenda), `motion` (op/motion_id/kind/text/
  * reason), `second` (motion_id), `poll_open` (question/options + the six §7.1 rules), `poll_vote`
- * (ballot_id/choices/abstain/note/reason), `poll_close` (ballot_id/reason), `verdict` (target/verdict/reason).
+ * (ballot_id/choices/abstain/note/reason), `poll_close` (ballot_id/reason), `verdict` (target/verdict/reason);
+ * fifth/sixth: `start` (problem/researcherCount/academician/params/seedDirections), `stop`/`pause`/`resume`
+ * (reason optional), `configure` (project/institute/problem/params), `set` (key/value/why), and the Lean five
+ * (`lean_run` file/target/timeout_ms, `lean_job` jobId/waitMs, `lean_lib` refresh, `lean_read` name/kind,
+ * `lean_archive` kind/name/target/content/from/note/run).
  */
 export const V5R_PACK_TOOLS = Object.freeze([
   {
@@ -891,6 +1075,12 @@ export const V5R_PACK_TOOLS = Object.freeze([
     description: 'List shared tasks with readiness, owner and blockers. Filters: status, owner, ready (ready is DERIVED: no unfinished blocker).',
     parameters: { status: { type: 'string' }, owner: { type: 'string' }, ready: { type: 'boolean' } },
     handler: toolTaskList,
+  },
+  {
+    name: 'vibe_v5_task_get',
+    description: 'Read ONE task by id (the corpus teaches this name): the board row plus its brief when the ledger has one.',
+    parameters: { id: { type: 'string' }, task_id: { type: 'string' } },
+    handler: toolTaskGet,
   },
   {
     name: 'vibe_v5_task_update',
@@ -1000,6 +1190,72 @@ export const V5R_PACK_TOOLS = Object.freeze([
     parameters: { target: { type: 'string', required: true }, verdict: { type: 'number', required: true }, reason: { type: 'string' }, member: { type: 'string', required: true } },
     handler: toolVerdict,
   },
+  {
+    name: 'vibe_v5_start',
+    description: 'Found the institute: start the kernel and seat the academician (unless academician:false) plus researcherCount permanent researchers (default 3). seedDirections are roster data here and are reported as not stored.',
+    parameters: { problem: { type: 'string' }, researcherCount: { type: 'integer' }, academician: { type: 'boolean' }, params: { type: 'object' }, seedDirections: { type: 'array' } },
+    handler: toolStart,
+  },
+  {
+    name: 'vibe_v5_stop',
+    description: 'Stop the institute through the kernel\'s own control state (the only one). Nothing here kills child sessions.',
+    parameters: { reason: { type: 'string' } },
+    handler: toolStop,
+  },
+  {
+    name: 'vibe_v5_pause',
+    description: 'Pause the institute through the kernel\'s control face (in-flight turns are the kernel\'s business; no new wakes while paused).',
+    parameters: { reason: { type: 'string' } },
+    handler: toolPause,
+  },
+  {
+    name: 'vibe_v5_resume',
+    description: 'Resume a paused institute through the CONTROL face (deliberately not kernel.resume, which is the durability projection).',
+    parameters: { reason: { type: 'string' } },
+    handler: toolResume,
+  },
+  {
+    name: 'vibe_v5_configure',
+    description: 'Configure the institute WITHOUT starting it: institute/problem/params, where params is {declared key: value}. Every write goes through the declared-settings guard, so an undeclared key is refused by name; each receipt carries the key\'s hot level (H1 live now / H2 restart).',
+    parameters: { project: { type: 'string' }, institute: { type: 'string' }, problem: { type: 'string' }, params: { type: 'object' } },
+    handler: toolConfigure,
+  },
+  {
+    name: 'vibe_v5_set',
+    description: 'Set ONE declared setting key. The receipt carries the declared hot level and whether it is live now or on restart; an undeclared key or an H3 (read-only) key is refused by name.',
+    parameters: { key: { type: 'string', required: true }, value: {}, why: { type: 'string' } },
+    handler: toolSet,
+  },
+  {
+    name: 'vibe_v5_lean_run',
+    description: 'Compile one existing .lean file through the kernel\'s Lean face (the face owns the process, timeout and cancel path). Assembly without a host spawn seam ⇒ NAMED refusal; a per-call timeout_ms is reported as unapplied.',
+    parameters: { file: { type: 'string', required: true }, target: { type: 'string' }, statement: { type: 'string' }, timeout_ms: { type: 'integer' }, member: { type: 'string' } },
+    handler: toolLeanRun,
+  },
+  {
+    name: 'vibe_v5_lean_job',
+    description: 'Inspect the Lean job queue: with jobId the job\'s state, otherwise the list. (waitMs is reported as not applied — the queue returns current state.)',
+    parameters: { jobId: { type: 'string' }, waitMs: { type: 'integer' } },
+    handler: toolLeanJob,
+  },
+  {
+    name: 'vibe_v5_lean_lib',
+    description: 'List the Lean archive/library (def/lemma/theorem/assumption entries) through the Lean face.',
+    parameters: { refresh: { type: 'boolean' } },
+    handler: toolLeanLib,
+  },
+  {
+    name: 'vibe_v5_lean_read',
+    description: 'Read one archived Lean entry VERBATIM by name (kind auto/lib/proved is reported as not applied: this kernel keeps one archive namespace).',
+    parameters: { name: { type: 'string', required: true }, kind: { type: 'string' } },
+    handler: toolLeanRead,
+  },
+  {
+    name: 'vibe_v5_lean_archive',
+    description: 'Archive an existing .lean file: kind def/lemma/proof/blocked maps to the face\'s def/lemma/theorem/assumption; the face registers existing files by hash (inline content is not stored).',
+    parameters: { kind: { type: 'string', required: true }, name: { type: 'string', required: true }, target: { type: 'string' }, content: { type: 'string' }, from: { type: 'string' }, file: { type: 'string' }, note: { type: 'string' }, run: { type: 'boolean' } },
+    handler: toolLeanArchive,
+  },
 ])
 
 export default V5R_PACK_TOOLS
@@ -1014,12 +1270,15 @@ export default V5R_PACK_TOOLS
  * WHY DATA AND NOT MORE HANDLERS: each remaining name needs a face mapping that does not exist yet (the `lean_*` set
  * needs the Lean archive), and a tool declared before its mapping exists would be the paper capability this repo bans.
  */
-export const V5R_NEXT_BATCH_TOOLS = Object.freeze([
-  { name: 'vibe_v5_lean_archive', inOriginal: true },
-  { name: 'vibe_v5_lean_lib', inOriginal: true },
-  { name: 'vibe_v5_lean_read', inOriginal: true },
-  { name: 'vibe_v5_lean_run', inOriginal: true },
-])
+export const V5R_NEXT_BATCH_TOOLS = Object.freeze([])
+
+/**
+ * ★ `V5R_NEXT_BATCH_TOOLS` IS NOW EMPTY, AND THAT IS THE FINDING, NOT AN OVERSIGHT: the eleven prompt-taught names
+ * that were undeclared in round 3 are all declared now (rounds 4–6), and the four Lean names the last round left here
+ * are declared too — no name this pack's prompts teach is missing from `V5R_PACK_TOOLS`. The EMPTINESS is asserted in
+ * `tests/vmu-v5r-tools.test.mjs` §7 together with "every prompt-taught name is declared", so a new taught-but-missing
+ * name reddens the suite instead of quietly lingering as a comment.
+ */
 
 /** ★ NAMED GAPS (each round's measured limits, recorded rather than hidden). */
 export const V5R_NAMED_GAPS = Object.freeze([
