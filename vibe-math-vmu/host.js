@@ -557,12 +557,35 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           }
         }
         if (detail === 'summary') {
-          // ★ PHASE 7 / round 18 修（真回归，被 5 套门禁抓到，★ 而且是**我这一轮引入的**）：
-          // ★★ 宿主这里原本【又裁了一层字段】—— 但 **`kernel.status({detail:'summary'})` 本身就已经是紧凑面**
-          // （它只保留计数 ＋ 非 schema 默认来源的键，见 `wantsFullSettings`）⇒ ★ **同一个"紧凑"被两个所有者实现** ⇒
-          // ★ 宿主那层把 `faces`／`packReport`／`prompt` 这些**契约字段**裁掉了，★ 而它们并不大。
-          // ★★ **正确形状：★ 紧凑只有【一个所有者】（内核），★ 宿主只加想加的东西，★ 不再裁。**
-          // ★ 体积问题若仍在 ⇒ 改内核的 summary（★ 单一所有者），★ 不是在这里再裁一遍。
+          // ★ PHASE 7 / round 22: the DEFAULT face must be readable under a REAL pack (measured 49,933 chars with v5r,
+          // because host-added faces carried every tool's detail and prompt carried every section body). The ruling:
+          // keep the CONTRACT fields, make them SUMMARY-shaped - faces -> counts + names, prompt -> counts + chars,
+          // packReport stays (it is small and answers "which packs applied"). Detail is one word away via detail:'full'.
+          out.faces = {
+            enabled: (out.faces && out.faces.enabled) || [],
+            disabled: (out.faces && out.faces.disabled) || [],
+            published: (out.faces && out.faces.published) || [],
+            count: out.faces && Array.isArray(out.faces.published) ? out.faces.published.length : 0,
+            note: 'summary: names only; detail:"full" for per-tool provenance and disabled reasons',
+          }
+          // Bulky KERNEL sections are SUMMARY-shaped here too (measured with v5r: settings 3.3k, bus 2.3k,
+          // auditTail 2.3k, packTools 1.8k, loader 1.0k). Field names stay; detail moves behind detail:"full".
+          if (out.settings && typeof out.settings === 'object') {
+            out.settings = { keys: out.settings.keys, engineEnabled: out.settings.engineEnabled, dryRun: out.settings.dryRun,
+              resolvedCount: out.settings.resolved && typeof out.settings.resolved === 'object' ? Object.keys(out.settings.resolved).length : 0,
+              note: 'summary: counts only; detail:"full" or detail:"settings" for the resolved map' }
+          }
+          if (out.bus && typeof out.bus === 'object' && Array.isArray(out.bus.entries)) {
+            out.bus = { entries: out.bus.entries.length, note: 'summary: count only; detail:"full" for the bus table' }
+          }
+          if (Array.isArray(out.auditTail)) out.auditTail = out.auditTail.slice(-1)
+          if (Array.isArray(out.packTools)) out.packTools = { count: out.packTools.length, note: 'summary: count only; detail:"full" for names' }
+          if (out.loader && typeof out.loader === 'object') out.loader = { loaded: Array.isArray(out.loader.modules) ? out.loader.modules.length : null, note: 'summary: count only; detail:"full"' }
+          out.prompt = out.prompt && typeof out.prompt === 'object'
+            ? { sections: Array.isArray(out.prompt.sections) ? out.prompt.sections.length : null,
+                chars: typeof out.prompt.text === 'string' ? out.prompt.text.length : null,
+                note: 'summary: counts only; detail:"full" for the assembled text and section table' }
+            : out.prompt
           return out
         }
         return out

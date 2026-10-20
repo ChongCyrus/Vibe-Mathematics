@@ -113,3 +113,102 @@
 ★★ **57 → vmu 映射**：★ **直接映射 26** ／ ★ **需写新 handler 29** ／ ★★ **无对应 2（★ `paper`、★ `finalize_paper`）** ⇒ ★ **只有这 2 个需要新内核能力** ✓
 ★★ **论文 13 函数**：★ **11 个可在 pack 内实现**（★ 提示词 3／★ 状态机 3／★ records 写入 3／★ 产物章节 2）★ **`paperCompilePdf` 必须动内核或特殊脚本**（★ LaTeX 子进程 ＋ 引擎探测）；★ `paperLatexCommand` 是设置项 ✓
 ★★ **回执 4 字段**：★ **建议【保留】代执行**（★ 消费者明确：★ 提示词契约／★ `turn/reply-parsed`／★ 闭题与验证结算／★ 测试）⇒ ★ **两条路不冗余：★ 代执行是"只输出回执"的适配层，★ 显式工具是"主动调用"的审计层，★ 二者共享同一 service/audit** ✓
+﻿---
+
+## §6 ★ 轮 2–22 的完整记录（★ 每轮：★ 做了什么、★ 抓到什么）
+
+★★ **这一节不是流水账，★ 而是"我们被什么纠正了"** ⇒ ★ **每一条都带一个具体缺陷** ✓
+
+### 轮 2 — 首轮真实交付 ＋ ★ 我自己的死代码被删
+| ★ 做了什么 | ★ 被什么纠正 |
+|---|---|
+| ★ 装卸接口补 **按名字 retract** ＋ **pack 卸载真的卸载** | ★ 此前**只有装、没有卸** |
+| ★ 删掉 childFieldsOf（★ **我 PHASE 6 写的**） | ★★ **DSH 0.2.1 已移除 per-child toolFilter/persona，★ 且字段放错层（spec 顶层 vs spec.request）、★ 且无人喂 child** ⇒ ★ **看起来有能力、★ 实际无效** |
+| ★ v5r 首次声明 **6 个工具** | ★ 此前 **v5r 声明 0 个工具**、★ 而提示词在教 17 个不存在的名字 |
+
+### 轮 3 — ★★★ **按成员装卸工具**（★ 目标 4 的主体）
+★ applyMemberToolFace({member, allow, deny}) ＋ ★ **正断言比【真实差集】而不是比回执** ✓
+★ 状态块里的"本轮可用工具"**从 schemas() 读**，★ 不是从声明抄 ✓
+
+### 轮 4 — ★★ **盲区审计 ＋ 首道新门禁**
+★ tests/audit-observer-consumers.mjs：★ **每个 set*Observer 必须有一个测试按名字提到它并断言**
+★★ **它立刻抓到两个**：★ setToolExecObserver／setPackToolRetractObserver **此前从未被断言过** ✓
+
+### 轮 5–6 — ★★★ **一个时钟被当成一把尺子**
+★★ 审计卷第一条：★ planner 用 **tick 数**判"回合是否超时" ⇒ ★ **5 tick = 10 秒 去判一个 100 秒的回合** ✓
+★ 修法：★ **lastDispatched.at ＋ pendingMs 对 vmu.turn.deliveryTimeoutMs**（★ **复用已有键、★ 未新造**）✓
+★★ **反断言是关键**：★ **同一时间戳跑 10 个 tick ⇒ pendingMs===0、★ ageTicks===undefined、★ 不自禁用** ⇒ ★ **旧代码在这个用例上必红** ✓
+★ 并补三个**具名内核缺口**：★ per-box 票箱规则／★ motion second+withdraw／★ meeting secretary ✓
+
+### 轮 7–9 — ★★★ **论文子系统**（★ 14 个函数）＋ ★ LaTeX 判定
+★ **状态机**：★ writing → reviewing → awaiting-editor → finalized，★ **指纹不一致 ⇒ 回 writing ＋ round+1（上限 3）** ✓
+★★ **指纹用【内核的】**（★ records.put 返回的那个），★ **测试模拟"背后改文"⇒ 具名 FINGERPRINT_MISMATCH** ✓
+★★★ **LaTeX 判定**：★ **grep 证据 ⇒ 内核【没有】LaTeX 执行器**（★ 只有 sympy 的 latex 字符串）⇒ ★ **按哲学补在【内核】**（★ 编译/子进程/超时/取消是机制）⇒ ★ **kernel/latex.js** ✓
+★★ **而中文优先**：★ **内核【不硬编码】**，★ **由 pack 值层给 latexEngineOrder** ⇒ ★ **策略在 pack、★ 机制在内核的教科书例子** ✓
+
+### 轮 10–12 — ★★★★★ **真机第一次覆盖"成员用工具"** ＋ ★★★ **三处假绿**
+★★ 真机：★ **成员 21 次工具调用、★ 3 条记录真的落地**（★ r-1/r-2/r-3）✓
+★★★ **而它同时暴露 scope.role 说的是【一个真实回合不说的词汇表】**：
+- ★ **role 是 binding 选择的【KEY】＝槽 id**（★ kernel/turn/index.js:691 明写 roleLabel 与它**故意分开**）
+- ★ **v5r 却用显示名 academician/researcher** ⇒ ★ **永不匹配** ⇒ ★ **两段"本轮可用工具"与夹具段【从未渲染】** ✓
+★★ **而两条测试是绿的是因为它们【也】**用显示名装配 —— ★ **双方共谋** ✓
+★★★ **改成槽 id 后**：★ **vmu-turn T65 立刻红**（★ 假绿现形）⇒ ★ 修正后绿 ✓
+★★ **更重的一处**：★ **charter 的 role BINDINGS 也用显示名** ⇒ ★ **46 条 binding 里 18 条从未生效** ⇒ ★ **默认文本是 researcher 版** ⇒ ★★ **过去所有真机 run 里，院士读的都是研究员版章程** ✓
+★ **修法**：★ **只改元数据，★ 文本 sha 逐字不变**（★ 68/68 sections, TEXT changed 0）✓
+★ **并机械化**：★ audit-scope-role-vocabulary ⇒ ★ **一个 vocabularyOf(pack) ＋ 一个 validateDimension**，★ **scope 与 binding 各供一个提取器** ✓
+
+### 轮 13–16 — ★★★ **门禁抓到的四件事**
+| ★ 抓到 | ★ 性质 |
+|---|---|
+| ★ **v3-toolfilter 用了 api.services.get 却没声明 trigger-workflow** | ★ **能力被拒，★ 而代码用 try/catch 把拒绝【吞了】** ⇒ ★ **计数器永远不动且毫无提示** |
+| ★ **meeting/second+meeting/withdrawn emit 了却没冻结** | ★ **总线拒收自己的事件** ⇒ ★ **没人能订阅** |
+| ★ **secretary 的权限检查插到了 light-tier 检查【之前】** | ★ **拒绝说了错的理由**（你不是主持人 vs 这个会议不能产生实体结论） |
+| ★ **服务数 80 → 81（加了 vmu.status）而文档写 80** | ★ **派生数字 stale** |
+
+### 轮 17–19 — ★★★ **诊断面在说谎/读不到**
+★★ 真机原文：★ **eligible:[], reason:"no member holds the closure-vote permission"** —— ★ **而成员明明有票权、★ 也真的投了票** ✓
+★★★ **根因**：★ **vibe_vmu_turn 的 status 调 closureVoteOf 时【没传 roster】** ⇒ ★ **eligible:[] 是假的、★ reason 在说谎** ⇒ ★ **root 被引向"没人有票权"⇒ 反复派轮 ⇒ 撞 6.1M token cap** ✓
+★★ **修法**：★ **closureVoteInput() 算一次、★ closureVoteView() 渲染，★ 两处共用** ⇒ ★ **两处算同一件事在结构上不可能不一致** ✓
+★★ **第二个**：★ **vibe_vmu_status 49,933 字符被宿主截断** ⇒ ★ **模型读不到** ⇒ ★ **补 detail:closure（★ 真装配 447 字节）** ✓
+★★★ **第三个（最妙）**：★ **Lean 的 code 是【错的具名】** —— ★ VMU_LEAN_EXIT_NONZERO ＋ "退出码 NaN"，★ 而 exitCode 是 null ⇒ ★ **Number(null) → NaN** ⇒ ★ **判成"非零退出"，★ 而真相在 spawn 层** ⇒ ★ **调用方会去查证明** ✓
+⇒ ★ **已分开**：★ **缺 exitCode ⇒ VMU_LEAN_SPAWN_FAILED** ✓
+
+### 轮 20 — ★★ **同一个病的第三次**
+★★ **budget/warn → meeting/second+withdrawn → lean/job-failed** —— ★ **在自己命名空间 emit、★ 而名字没进冻结表** ✓
+★★★ **三次都是 audit-hook-coverage 抓到的，★ 而它们附近的测试一次都没抓到** ✓
+★ **原因**：★ **emit 与登记在两个文件里两处编辑** ⇒ ★ **只有全仓检查能看见不一致** ✓
+
+### 轮 21 — ★★★★★ **closureVote.cast === true**
+    {"window":"round","cast":true,"for":["member-a"],"against":[],"missing":[],
+     "eligible":["member-a"],"permission":"vote",
+     "reason":"every enfranchised member judged the question solved"}
+★ **通过 detail:closure 读到，★ 447 字节** ✓
+★★ **四票全 true**，★ 其中一票自己写道：★ **本轮本地实际运行 lean.exe 编译 exit 0；face 运行 lean-3 仍返回 VMU_LEAN_SPAWN_FAILED…我这一票 vote_solved=true** ⇒ ★ **成员把矛盾写进回执而【不隐藏】** ✓
+★★★ **而之前每一票 false 的原因**：★ **vmu.turn.objective 未设定**（★ charter 显示"尚未设定"）⇒ ★ **成员拒绝从 why 自拟机构的问题** ⇒ ★ **那个拒绝是对的** ✓
+★ **修法**：★ **机构目标写进 pack 值层**（★ 本所本期目标：确立并证明前 n 个奇数之和的封闭形式 n²…四步归纳…归档）✓
+★★ **关键澄清**：★ **charter 的原问题字段根本没丢** —— ★ **原版它也是配置字段**（★ vibe-math-v5r.js:489 problem:{id:'',statement:''}）⇒ ★ **漏搬的不是文本、★ 是【机构数据】** ✓
+★★★ **而 tools:none 上一轮为什么没生效**：★ **tools/turn.js 把 parameters 声明成【完整 JSON Schema】**，★ 而宿主按 **param map** 包 ⇒ ★ **发布 schema 变成 properties.type/properties/required** ⇒ ★ **真参数全被塞进一个叫 properties 的对象** ⇒ ★ **tools:none 被静默忽略** ⇒ ★ **投票回合仍有 30 次工具调用** ✓
+★ **已修**：★ **发布 schema 现在是 properties.op/members/…/tools** ✓
+
+---
+
+## §7 ★ 七个目标的逐条对账
+
+| # | ★ 目标 | ★ 证据 | ★ 状态 |
+|---|---|---|---|
+| 1 | ★ 覆盖矩阵 | ★ phase7-coverage-matrix.md（171 行）；★ **(甲)48／(乙)10／(丙)0**（v3）、★ **(甲)48／(乙)0／(丙)17**（v5r） | **✅** |
+| 2 | ★ v5r 完整移植 | ★ **38 个 vibe_v5_* 工具**（★ V5R_NEXT_BATCH_TOOLS 为空且被断言）；★ **论文 14/14 函数**（★ 含指纹阻塞、★ 四件产物、★ xelatex 中文优先走 pack 值层） | **✅** |
+| 3 | ★ 工具化改造 | ★ 真机 **124 次工具调用**；★ vmu.turn.unknownReplyFieldMode 默认 ignore-named（★ **一个多余字段不再作废整轮**）；★ 代执行路径**保留**（★ 消费者清单在 phase7-toolification-plan.md） | **✅** |
+| 4 | ★ 按成员/场景装卸 | ★ applyMemberToolFace（★ 正断言比真实差集）；★ toolFaces 由 pack 声明、★ 内核执行；★ 状态块列真实可见工具；★ **DSH 侧核实：ctx.tools.register/restrict ＋ tools/change ＋ 宿主自动增减提示** | **✅** |
+| 5 | ★ 补审盲区 | ★ phase7-blindspot-audit.md；★ **3 道新门禁**（observer-consumers／scope-vocabulary／hook-coverage 三次抓到）；★ **3 处假绿现形** | **✅** |
+| 6 | ★ 文档纠错 | ★ 两处错误结论已改（v5r 没有 paper 是正确差异 → 未移植；no tools 是设计 → 未移植）；★ 派生面全同步 | **✅** |
+| 7 | ★ 收尾验证 | ★ **全量 T1 389/389 绿**；★ **v5r 真机 cast === true**；★ **v3 待重跑**（★ 本阶段改过它的能力声明与守卫顺序） | **🟡 只剩 v3 重跑** |
+
+---
+
+## §8 ★ 这一阶段最该被记住的四条（★ 都花过真金）
+
+1. ★★★ **"设了值" ≠ "生效了"** —— ★ 本轮三种形态：★ **构造期快照**（★ manifest 改 requireSettledRecords 不生效）、★ **scope 词汇不匹配**（★ 段永不渲染）、★ **schema 形状错层**（★ 参数被塞进 properties ⇒ tools:none 被忽略）⇒ ★ **每一种都必须【读回确认】，★ 不能只信"我设了"** ✓
+2. ★★★ **假绿比红更危险** —— ★ 三处假绿都是因为**测试与代码犯了同一个错**（★ 同一种词汇、★ 同一个形状）⇒ ★ **"改对一侧，★ 看另一侧崩不崩"** 是发现它们的唯一办法 ✓
+3. ★★★ **错的具名比不具名更糟** —— ★ VMU_LEAN_EXIT_NONZERO ＋ "退出码 NaN" 会把调用方引向**错误的方向**；★ **一个具名必须能被验伪**（★ 要么它说的事是真的，★ 要么它说"我不知道"）✓
+4. ★★★ **诊断面本身就是被测系统的一部分** —— ★ **eligible:[] 说谎**让 root 撞了 6.1M token cap；★ **status 49,933 字节**让模型读不到 ⇒ ★ **"机制写好但没人能读"与本阶段那三类盲区是同一族** ✓

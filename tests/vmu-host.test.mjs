@@ -40,6 +40,8 @@ const expectThrow = async (fn, code, name) => {
 const hm = await import(pathToFileURL(MODULE).href)
 const km = await import(pathToFileURL(KERNEL).href)
 const { assertDeclared } = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'settings', 'schema.js')).href)
+const packm = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'kernel', 'pack.js')).href)
+const { PACK: V5R_PACK } = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'index.js')).href)
 const clock = () => '2026-10-09T00:00:00.000Z'
 
 const fakeHost = ({ withEffect = true } = {}) => {
@@ -435,6 +437,26 @@ if (SELF_PROBE) {
   const parsed = JSON.parse(closureText)
   ok(parsed.closureVote && parsed.closureVote.eligible.includes('member-a'),
     '★ closure 小面回的就是统一后的 reading（与 kernel 同一份输入）', parsed.closureVote)
+}
+
+// ── ★ PHASE 7 / round 22: summary is READABLE under a REAL pack (v5r), < 8000 bytes ─────────────────────────
+{
+  const root = await mkdtemp(join(tmpdir(), 'vmu-host-v5r-'))
+  const k = km.createKernel({ clock, root })
+  const packLoader = packm.createPackLoader({ kernel: k, registry: k.registry, onPromptPolicy: () => () => {} })
+  await packLoader.apply(V5R_PACK)
+  const host = fakeHost()
+  const adapter = hm.createHostAdapter({ ctx: host.ctx, kernel: k, settings: {} })
+  await adapter.install()
+  const statusSpec = host.state.specs.find((s) => s.name === 'vibe_vmu_status')
+  const text = await statusSpec.execute({}, {})
+  const parsed = JSON.parse(text)
+  ok(text.length < 8000, '★ 真装配（v5r pack）下 status 默认 summary < 8000 字节（可读，不再被宿主截断）', { bytes: text.length })
+  ok(parsed.faces && typeof parsed.faces.count === 'number' && Array.isArray(parsed.faces.published),
+    '★ summary 的 faces 是计数＋名字，不是每个工具的详情（契约字段仍在）', parsed.faces)
+  ok(parsed.prompt && (parsed.prompt.sections !== undefined || parsed.prompt.chars !== undefined),
+    '★ summary 的 prompt 是段数/字符数（契约字段仍在）', parsed.prompt)
+  await rm(root, { recursive: true, force: true })
 }
 
 // ── 9. ★ PHASE 7 (goal 4): MEMBER TOOL FACE — kernel capability, host applier, real schemas diff ────────────
