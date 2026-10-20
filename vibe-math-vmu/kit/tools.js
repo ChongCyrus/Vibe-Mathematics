@@ -1,4 +1,4 @@
-// vibe-math-vmu/packs/_kit/tools.js — PHASE 8 / B-1: the SHARED KIT skeleton (no tools moved yet; B-2 moves record_*).
+// vibe-math-vmu/kit/tools.js — PHASE 8 / B-1: the SHARED KIT skeleton (no tools moved yet; B-2 moves record_*).
 //
 // A kit entry is a DECLARATION of a tool that composes ALREADY-PUBLISHED kernel faces. The three anti-degeneration
 // gates live in tests/audit-kit-boundaries.test.mjs:
