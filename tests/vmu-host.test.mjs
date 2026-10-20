@@ -430,6 +430,12 @@ if (SELF_PROBE) {
   let unknown = null
   try { await kernel.applyMemberToolFace({ member: 'member-a', allow: ['vibe_vmu_not_a_tool'] }) } catch (e) { unknown = e }
   ok(unknown && unknown.code === 'VMU_INVALID_ARGUMENT', '★ 反：未声明的面名 ⇒ 具名 VMU_INVALID_ARGUMENT', unknown && unknown.code)
+  const vis = adapter.visibleToolsOf('member-a')
+  ok(vis.ok === true && JSON.stringify(vis.tools) === JSON.stringify(agent.ctx.tools.schemas().map((x) => x.name)),
+    '★ 正：visibleToolsOf 返回的名字集合 == schemas() 的真实结果', vis)
+  const visMissing = adapter.visibleToolsOf('no-such-member')
+  ok(visMissing.ok === false && visMissing.code === 'VMU_NO_SUCH_OBJECT',
+    '★ 反：无 live Agent ⇒ 具名拒（不返回空数组假装“没有工具”）', visMissing)
 }
 
 // ── 10. ★ PHASE 7 (blindspot c): the set* observers are PROVEN to be called, not just declared ────────────────

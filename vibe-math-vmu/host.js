@@ -1252,8 +1252,13 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   if (kernel && kernel.turn && typeof kernel.turn.setVisibleToolsProvider === 'function') {
     kernel.turn.setVisibleToolsProvider((member) => {
       const r = resolveMemberAgent(member)
-      if (!r.agent) return []
-      try { return (r.agent.ctx.tools.schemas() || []).map((x) => (x && typeof x === 'object' ? (x.name || x.id) : x)).filter((n) => typeof n === 'string') } catch { return [] }
+      if (!r.agent) {
+        const e = new Error('no live Agent for member ' + String(member) + ' (session=' + String(r.sessionId || '(none learned yet)') + ')')
+        e.code = 'VMU_NO_SUCH_OBJECT'
+        e.hint = 'deliver one turn first so the child session id is learned; a member with no Agent has no visible tool table'
+        throw e
+      }
+      return (r.agent.ctx.tools.schemas() || []).map((x) => (x && typeof x === 'object' ? (x.name || x.id) : x)).filter((n) => typeof n === 'string')
     })
   }
   publishToolFaceCatalogue()
@@ -1284,6 +1289,15 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
      */
     /** ★ PHASE 7: the pack loader's unload notifies the host through this observer -> retractTools. */
     retractTools(names) { chain = chain.then(() => retractTools(names)); return chain },
+    /** ★ PHASE 7: what the member's Agent can really see; no live Agent is a NAMED refusal. */
+    visibleToolsOf(member) {
+      const r = resolveMemberAgent(member)
+      if (!r.agent) return { ok: false, code: 'VMU_NO_SUCH_OBJECT', member: String(member),
+        message: 'no live Agent for member ' + String(member) + ' (session=' + String(r.sessionId || '(none learned yet)') + ')',
+        hint: 'deliver one turn first so the child session id is learned' }
+      const names = (r.agent.ctx.tools.schemas() || []).map((x) => (x && typeof x === 'object' ? (x.name || x.id) : x)).filter((n) => typeof n === 'string')
+      return { ok: true, member: String(member), tools: names }
+    },
 
     install() {
       chain = chain.then(() => doInstall())

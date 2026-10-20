@@ -228,7 +228,8 @@ export function v3VerifyStatus() {
   }
   return {
     ticks: s.ticks, rounds: s.rounds, debates: s.debates, ballotsOpened: s.ballotsOpened, votesCast: s.votesCast,
-    verdicts: s.verdicts, undecided: s.undecided, ticksWithoutVerdict: s.ticksWithoutVerdict || 0, closurePollDispatched: s.closurePollDispatched || 0, maxRoundsStops: s.maxRoundsStops, malformed: s.malformed,
+    verdicts: s.verdicts, undecided: s.undecided, // ★ PHASE 7: ticksWithoutVerdict counts TICKS, not time. For duration use vmu.turn.deliveryTimeoutMs / the delivery deadline.
+    ticksWithoutVerdict: s.ticksWithoutVerdict || 0, closurePollDispatched: s.closurePollDispatched || 0, maxRoundsStops: s.maxRoundsStops, malformed: s.malformed,
     inFlight: s.inFlight, lastTickAt: s.lastTickAt,
     lastSkip: s.lastSkip, lastReceipt: s.lastReceipt ? JSON.parse(JSON.stringify(s.lastReceipt)) : null,
     lastError: s.lastError,

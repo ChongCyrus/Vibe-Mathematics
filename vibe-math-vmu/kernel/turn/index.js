@@ -1368,6 +1368,19 @@ export function createTurnOrchestrator({
     attribution: () => Object.assign({}, lastAttribution),
     memberSession: (member) => memberSessions.get(String(member)) || null,
     setVisibleToolsProvider: (fn) => { visibleToolsFor = typeof fn === 'function' ? fn : null; return { ok: true, installed: typeof visibleToolsFor === 'function' } },
+    /** ★ PHASE 7: ask what a member can REALLY see. No provider / no answer is a NAMED refusal, not []. */
+    visibleToolsOf: (member) => {
+      if (typeof visibleToolsFor !== 'function') {
+        fail('VMU_ENGINE_UNAVAILABLE', 'this loop has no visible-tools provider',
+          'the host adapter installs it (kernel.turn.setVisibleToolsProvider); a kernel alone cannot read a host tool table')
+      }
+      const names = visibleToolsFor(String(member))
+      if (!Array.isArray(names)) {
+        fail('VMU_ENGINE_UNAVAILABLE', 'the visible-tools provider returned ' + (names === null ? 'null' : typeof names) + ' for member ' + String(member),
+          'the provider must return an array of tool names or throw a named refusal')
+      }
+      return { ok: true, member: String(member), tools: names.slice() }
+    },
     seams: () => ({ deliver: typeof deliver === 'function', sendMessage: typeof sendMessage === 'function', interrupt: typeof interrupt === 'function' }),
     /**
      * ROUND 384 - a ONE-SHOT notice for a member (docs/26 section 3.25). Queued here, drained by the next assembly

@@ -1075,6 +1075,13 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   const asm = await t.assemble(turn)
   ok(asm.text.includes('【本轮可用工具】vibe_vmu_status、vibe_vmu_turn'),
     '★ 正：状态块里的工具清单来自 provider（真实可见面），不是声明', asm.text.slice(-200))
+  const asked = t.visibleToolsOf('r-1')
+  ok(asked.ok === true && asked.tools.length === 2 && asked.tools[0] === 'vibe_vmu_status',
+    '★ 正：visibleToolsOf 具名读取器返回同一集合', asked)
+  const noProvider = mk()
+  let refused = null
+  try { noProvider.visibleToolsOf('r-1') } catch (e) { refused = e }
+  ok(refused && refused.code === 'VMU_ENGINE_UNAVAILABLE', '★ 反：没有 provider ⇒ 具名拒，不返回空数组', refused && refused.code)
   const t2 = mk()
   const { turn: turn2 } = t2.open({ member: 'r-1', phase: 'normal', statusBlock: '{"qid":"x"}' })
   t2.setVisibleToolsProvider(() => [])

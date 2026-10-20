@@ -878,7 +878,8 @@ function planIdFromReceipt(receipt, state) {
   return null
 }
 
-/** 规划器不可用/回执不可解析 ⇒ 计一次失败 + 写一条具名 journal（绝不静默）。 */
+/** ★ PHASE 7: a planner FAILURE is a real named error (code + message). "The reply has not arrived yet" is NOT a
+ * failure and never reaches here; pending is judged by real elapsed time in onTick (vmu.turn.deliveryTimeoutMs). */
 function recordFailure({ records, at, state, api, error, phase }) {
   state.fails += 1
   // ★ SLV DIAGNOSTIC: the refusal says "no usable object"; the NEXT question is always "what did it actually contain?"
@@ -1045,8 +1046,11 @@ async function onTick(flat) {
       // the turn is no longer pending (a timed-out delivery must not permanently block the retry that could still succeed).
       if (!v || (v.role !== 'explorer' && v.role !== 'solver')) continue
       if (pendingTurn !== null && v.turn === pendingTurn) continue
-      const age = state.ticks - (Number.isInteger(v.tick) ? v.tick : 0)
-      if (age < 2) continue
+      // ★ PHASE 7: this used to wait 2 TICKS. A tick is ~2s while a member turn is 5-100s, so "2 ticks" was a
+      // different ruler. The real condition is already "the turn is no longer pending"; its duration is the delivery
+      // deadline's business. Keep an explicit declared interval only for the in-flight edge, never a tick count.
+      const ageMs = Number.isFinite(v.at) ? Math.max(0, at - v.at) : null
+      if (ageMs !== null && ageMs < 2000) continue
       if (!effectOf(v)) { state.dispatched.delete(key); pruned += 1 }
     }
     if (pruned > 0) state.lastLedgerPruned = { count: pruned, tick: state.ticks }
@@ -1127,8 +1131,8 @@ async function onTick(flat) {
       recordFailure({ records, at, state, api, error: err, phase: 'planner-turn' })
       return { ok: true, planned: false, dispatched: false, at, code: err.code, message: err.message, plannerTurn: missingTurn, drained }
     }
-    const age = state.ticks - state.lastDispatched.tick
-    if (ds && ds.active === false && ds.queued === 0 && age >= 1 && !state.lastPersistedPlanId) {
+    const elapsedMs = Number.isFinite(state.lastDispatched.at) ? Math.max(0, at - state.lastDispatched.at) : 0
+    if (ds && ds.active === false && ds.queued === 0 && !state.lastPersistedPlanId) {
       const noPlanTurn = state.lastDispatched.turnId
       state.lastDispatched = null
       recordFailure({ records, at, state, api,
@@ -1184,7 +1188,12 @@ async function onTick(flat) {
   if (state.lastDispatched && typeof turn.dispatchStatus === 'function') {
     const ds = turn.dispatchStatus()
     if (ds && ds.oldestPending && ds.oldestPending.turn === state.lastDispatched.turnId) {
-      state.lastSkip = { reason: 'planner-reply-pending', turnId: state.lastDispatched.turnId, ageTicks: state.ticks - state.lastDispatched.tick, tick: state.ticks }
+      // ★ PHASE 7: PENDING is measured in MILLISECONDS. The declared key is the one that already means "one member turn
+      // may take this long": vmu.turn.deliveryTimeoutMs. A pending turn under that deadline is NOT a failure - it is
+      // simply not answered yet; the dispatch deadline owns the named timeout.
+      const pendingMs = Number.isFinite(state.lastDispatched.at) ? Math.max(0, at - state.lastDispatched.at) : null
+      state.lastSkip = { reason: 'planner-reply-pending', turnId: state.lastDispatched.turnId,
+        pendingMs, deadlineMs: settings.deliveryTimeoutMs, tick: state.ticks }
       return { ok: true, skipped: 'planner-reply-pending', at, turnId: state.lastDispatched.turnId, queue: { queued: ds.queued, inFlight: ds.inFlight }, drained }
     }
   }

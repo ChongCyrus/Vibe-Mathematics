@@ -1204,6 +1204,43 @@ console.log('=== 25. planner 派 explorer/solver 时，成员提示里必须有�
   ok(text.includes('本轮状态块') && text.includes('"qid": "q-1"'), '★ 正：explorer 提示里真的绑定了状态块（qid q-1），不是只有角色段', text.slice(3300, 4100))
   ok(text.includes('1+1=2') || text.includes('陈述'), '★ 正：状态块里带问题正文（不是只有 id）', text.includes('陈述'))
 }
+// ── 26. ★ PHASE 7: 待回执按【真实时长】判，不按 tick 数（tick 10 次但时间没到 ⇒ 不超时）──────────────
+console.log('=== 26. planner pending：用 elapsedMs/deliveryTimeoutMs，不用 tick 计数 ===')
+{
+  let release = null
+  const h = boot({ replier: () => new Promise((resolve) => { release = resolve }), overrides: { 'vmu.v3.planMinIntervalMs': 0 } })
+  await h.loader.apply(PACK)
+  problemCard(h.kernel, 'q-pending')
+  h.clockRef.at = 1000
+  await h.kernel.bus.emit(V3_TICK_TOPIC, { at: 1000, runs: 1 }, {})
+  ok(v3PlannerStatus().lastDispatched !== null, '规划器回合已派发并在等回执', v3PlannerStatus().lastDispatched)
+  for (let i = 0; i < 10; i += 1) await h.kernel.bus.emit(V3_TICK_TOPIC, { at: 1000, runs: 1 }, {})
+  let st = v3PlannerStatus()
+  ok(st.lastSkip && st.lastSkip.reason === 'planner-reply-pending' && st.lastSkip.pendingMs === 0 && st.lastSkip.ageTicks === undefined,
+    '★ 反（旧代码必红）：时间没到、tick 跑了 10 次 ⇒ pendingMs=0，不按 tick 判超时', st.lastSkip)
+  ok(st.disabled === false, '★ 待回执不累计 plannerMaxFails ⇒ 规划器未被禁用', st.disabled)
+  h.clockRef.at = 1000 + 200000
+  await h.kernel.bus.emit(V3_TICK_TOPIC, { at: 1000 + 200000, runs: 1 }, {})
+  st = v3PlannerStatus()
+  ok(st.lastSkip && st.lastSkip.reason === 'planner-reply-pending' && st.lastSkip.pendingMs >= 180000 && st.lastSkip.deadlineMs === 180000,
+    '★ 正（旧代码必红）：时间超过 deliveryTimeoutMs ⇒ pendingMs 超阈值（tick 只多 1 次）', st.lastSkip)
+  ok(st.disabled === false, '★ 超时本身由 dispatch deadline 具名失败；planner 不自禁用、不按 tick 记失败', st.disabled)
+  release(planReply('晚到的计划', [{ action: 'wait', reason: 'drain' }]))
+  await h.kernel.turn.whenIdle()
+}
+
+// ── 27. ★ PHASE 7: 真实具名失败累积 3 次 ⇒ 仍按 plannerMaxFails 禁用（保留原语义）────────────────
+console.log('=== 27. 真实失败（具名 code）累积 3 次 ⇒ plannerMaxFails 仍禁用 ===')
+{
+  const h = boot({ replier: () => 'this is not a plan receipt', overrides: { 'vmu.v3.planMinIntervalMs': 0, 'vmu.v3.plannerMaxFails': 3 } })
+  await h.loader.apply(PACK)
+  problemCard(h.kernel, 'q-fails')
+  for (let i = 0; i < 5; i += 1) await tick(h, 1000 + i * 1000)
+  const st = v3PlannerStatus()
+  ok(st.fails >= 3 && st.disabled === true,
+    '★ 正：三次真实失败后按 plannerMaxFails=3 自禁用（pending 不计入失败）', { fails: st.fails, disabled: st.disabled })
+}
+
 console.log('')
 console.log('=== V3 PLANNER (P0-2 + P0-3): ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length > 0) for (const f of failures) console.error('  - ' + f)
