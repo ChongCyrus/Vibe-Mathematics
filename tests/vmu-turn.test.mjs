@@ -1108,23 +1108,21 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(!asm2.text.includes('【本轮可用工具】'), '★ 反：没有工具时不写空段（零机制）', asm2.text.slice(-120))
 }
 
-// ★ PHASE 7 / round 19: a VOTE-ONLY round runs with an EMPTY member tool face, then restores it.
+// ★ PHASE 8 / round 24: tools:'none' is a PER-TURN override consumed by the pull resolver at request time.
 {
-  const visible = new Map([['member-a', ['vibe_v5_say', 'vibe_v5_record_progress']]])
+  const overrides = new Map()
   const during = []
   const kernel = {
-    turn: {
-      step: async () => { during.push((visible.get('member-a') || []).slice()); return { ok: true, receipt: { fields: ['vote_solved'] } } },
-      visibleToolsOf: (id) => ({ ok: true, member: String(id), tools: (visible.get(String(id)) || []).slice() }),
-    },
-    applyMemberToolFace: async ({ member, allow }) => { visible.set(String(member), Array.isArray(allow) ? allow.slice() : []); return { ok: true } },
+    turn: { step: async () => { during.push(overrides.get('member-a') || null); return { ok: true, receipt: { fields: ['vote_solved'] } } } },
+    setMemberToolOverride: ({ member, all }) => { overrides.set(String(member), { all: all === true }); return { ok: true } },
+    clearMemberToolOverride: (member) => { overrides.delete(String(member)); return { ok: true } },
+    memberToolOverride: (member) => overrides.get(String(member)) || null,
   }
   const spec = makeTurnSpec({ param: (type, description, extra = {}) => ({ type, description, ...extra }), refused: (code, message, hint) => ({ ok: false, code, message, hint }), TOOL_NAMES: { turn: 'vibe_vmu_turn' }, kernel })
   const out = await spec.run({ op: 'step', members: [{ id: 'member-a', role: 'member' }], why: '结题表决', tools: 'none' })
-  ok(out && out.ok === true && during.length === 1 && during[0].length === 0,
-    '★ 正：tools:"none" ⇒ 回合执行时该成员 visible 工具为空（物理上不能调工具）', during)
-  ok((visible.get('member-a') || []).length === 2,
-    '★ 反：回合结束后工具面恢复（不残留空面）', visible.get('member-a'))
+  ok(out && out.ok === true && during.length === 1 && during[0] && during[0].all === true,
+    '★ 正：tools:"none" ⇒ 回合执行时该成员的 per-turn override 是 all（pull 解析器据此清空可见集）', during)
+  ok(overrides.size === 0, '★ 反：回合结束后 override 被清除（不泄漏到下一回合）', [...overrides.keys()])
 }
 
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')

@@ -43,7 +43,7 @@
  *   · `vibe_v5_assign`             → tasks face `create`/`assign` ＋ mailbox face `send` (why/acceptance reach the assignee)
  *   · `vibe_v5_fire`               → members face `end` ＋ tasks face `transition` to `cancelled`
  *   · `vibe_v5_nudge`              → mailbox face `send` (kind nudge)
- *   · `vibe_v5_prioritize`         → records face `put` on the state track (the ledger has no priority column)
+ *   · `vibe_v5_prioritize`         → records face `put` on the state track (the ledger has priority but NO setter for an existing row)
  *   · `vibe_v5_feedback`           → records face `put`/`list` on the feedback track
  *   · `vibe_v5_read_library`       → records face `get`/`list` (READ-ONLY)
  *
@@ -665,13 +665,14 @@ function toolReadLibrary(args = {}, { kernel } = {}) {
  *
  *  ② `min_votes` — "whether THIS ballot counts, not the quorum". vmu's ballot box HAS that floor, but per-INSTANCE
  *     (constructor config `vmu.ballot.minVotes` / `minVotesRatio`), and `open()` accepts only question+options. ⇒ a
- *     per-poll `min_votes` argument is REPORTED as not applied (`unapplied`), and `close()` is where the real floor
- *     fires: the face refuses by name (`VMU_BALLOT_MIN_VOTES_NOT_MET`) and poll_close re-throws that code with the
- *     "未达门槛" wording. ⇒ 需内核能力：per-box rules (mode/max/min/secret/allow_* 与 min_votes).
+ *     per-poll `min_votes` argument is translated into the kernel's per-BOX `rules` (minVotes) and `close()` is where
+ *     the real floor fires: the face refuses by name (`VMU_BALLOT_MIN_VOTES_NOT_MET`) and poll_close re-throws that code
+ *     with the "未达门槛" wording. Only per-box secrecy/abstention remain unappliable (deployment-level policy).
  *
- *  ③ RECORD-KEEPING vs VOTING — "决议只能由院士或当次会议的记录人写入". The vmu meeting face has no secretary concept
- *     (chair only), so the "院士 OR 记录人" half is a NAMED GAP; what the face CAN carry is enforced: opening/closing a
- *     poll board requires the CHAIR seat (the original marks both "(academician)").
+ *  ③ RECORD-KEEPING vs VOTING — "决议只能由院士或当次会议的记录人写入". The meeting face now carries a SECRETARY and
+ *     lets the chair OR the secretary move a resolution; what stays the PACK's is narrower and stricter: opening/closing a
+ *     poll board requires the CHAIR seat (the original marks both "(academician)"), and a recorder right never grants a
+ *     vote — the secretary still votes through the ordinary eligibility rules.
  */
 const CHAIR_SLOT = 'chair'
 const VOTER_SLOTS = Object.freeze(['chair', 'member'])
@@ -766,8 +767,14 @@ function toolMotion(args = {}, { kernel } = {}) {
   if (!has(args.text)) throw refuse('VMU_INVALID_ARGUMENT', 'motion needs its text', 'pass text:"the motion as stated"')
   const member = requireVoter(kernel, args.member, 'motion').id
   const made = kernel.meetings.motion({ meeting: str(args.meeting), member, kind: str(args.kind), text: str(args.text) })
-  return { ok: true, tool: 'vibe_v5_motion', meeting: str(args.meeting), motion: made && (made.motion || made.id), kind: str(args.kind), text: str(args.text),
-    status: made && made.status,
+  // the face's `motion()` receipt may not carry the status; read the meeting's OBSERVABLE view for it instead of
+  // inventing "proposed" — the state machine is the kernel's and this tool only reports it.
+  const motionId = made && (made.motion || made.id)
+  const view = made && made.status === undefined && typeof kernel.meetings.meetingView === 'function'
+    ? kernel.meetings.meetingView({ meeting: str(args.meeting) }) : null
+  const row = view && Array.isArray(view.motions) ? view.motions.filter((x) => String(x.id) === String(motionId))[0] : null
+  return { ok: true, tool: 'vibe_v5_motion', meeting: str(args.meeting), motion: motionId, kind: str(args.kind), text: str(args.text),
+    status: (made && made.status) || (row && row.status) || null,
     note: 'a new motion starts `proposed` and needs a SECOND (vibe_v5_second) before it can be voted — the kernel models that window' }
 }
 
@@ -1188,7 +1195,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_prioritize',
-    description: 'Set institute-wide priorities: an ordered list of {task_id, priority} plus why. This orders work only — it never changes what is true. The task ledger has no priority column, so the order is archived as a durable record and the receipt says it was not applied to the board.',
+    description: 'Set institute-wide priorities: an ordered list of {task_id, priority} plus why. The ledger stores priority at CREATE time and sorts the board by it, but exposes no setter for an existing task — so the order is archived as a durable record, the receipt reports each task\'s CURRENT priority, and the unapplied half is named (需内核能力：tasks.setPriority).',
     parameters: { order: { type: 'array', required: true }, why: { type: 'string', required: true } },
     handler: toolPrioritize,
   },
@@ -1349,7 +1356,7 @@ export const V5R_NEXT_BATCH_TOOLS = Object.freeze([])
 export const V5R_NAMED_GAPS = Object.freeze([
   'visible-tools reader: the kernel installs a visible-tools PROVIDER but exposes no getter for the full visible NAME set, so tool_help can name the pack-declared tools exactly and the host visible COUNT, not the host face names.',
   'mail purge on fire: the mailbox face exposes no per-member purge this pack may call, so fire dismisses the member and cancels their tasks but does not drop their mail.',
-  'task priority setter: the ledger stores priority at CREATE time and sorts the board by it, but exposes no operation to CHANGE an existing task\'s priority, so prioritize archives the order instead of applying it to existing rows.',
+  'task priority surface: the ledger stores priority at CREATE time and SORTS the board by it, but (a) the list projection omits the field and (b) no operation changes an existing task\'s priority — so prioritize archives the order and reports each row\'s requested/current value instead of applying it.',
   'per-box secrecy/abstention: the per-box `rules` object covers minVotes/allowRevote/maxChoices/minChoices/mode only; secrecy and abstention remain deployment-level ballot policy, so poll_open reports those two under `unapplied`.',
   'meeting propose: the meetings face has no "propose a meeting" path, so a non-chair seat cannot propose one for the chair to convene (the tool says so in its receipt instead of pretending).',
 ])

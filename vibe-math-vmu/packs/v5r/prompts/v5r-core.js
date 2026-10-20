@@ -193,6 +193,10 @@ export const PACK = Object.freeze({
   },
 
   // v5r's institute roster, as OPAQUE SLOTS (D5: the kernel never learns what "academician" means).
+  // ★ GOAL A (PHASE 8): THE ROLE-SCOPED TOOL FACE. The allow lists are DERIVED from the three role prompt
+  // sections below (the text a member actually reads); the manifest only points at that derivation, so the prompt
+  // and the tool table cannot drift. A getter is required because those sections are defined after PACK.
+  get toolFaces() { return V5R_TOOL_FACES },
   slots: [
     { id: 'chair', label: '主持人', capacity: 1, permissions: ['convene', 'close', 'assign', 'grant', 'freeze'] },
     { id: 'member', label: '成员', capacity: 0, permissions: ['speak', 'vote', 'propose'] },
@@ -625,6 +629,36 @@ export const v5rToolSectionTemp = Object.freeze({
  * and 66 voter counts into live prompts. The runtime declaration is the hand-written charter — `PACK.sections`
  * (docs/26 §3.7, round 374: "captured snapshots must not be used as a runtime source"). A caller that really means to
  * wire a section set must pass it through `assertRuntimeSafeSections`, which refuses this one BY NAME. */
+/**
+ * ★ GOAL A (PHASE 8): the three role tool lists are the SINGLE SOURCE of the role-scoped tool face.
+ * The `v5rToolSection*` texts are what a member reads; this derivation is what the manifest declares as `toolFaces`.
+ * Names are filtered to the DECLARED tool set, so a prose mention can never widen what a face allows.
+ */
+const roleToolNames = (section) => Object.freeze([...new Set(String(section.text).matchAll(/vibe_v5_[a-z0-9_]+/g).map((m) => m[0]))].filter((n) => V5R_PACK_TOOLS.some((tool) => tool && tool.name === n)))
+export const V5R_ROLE_TOOL_NAMES = Object.freeze({
+  chair: roleToolNames(v5rToolSectionAcademician),
+  member: roleToolNames(v5rToolSectionResearcher),
+  temp: roleToolNames(v5rToolSectionTemp),
+})
+
+/**
+ * ★ ROUND 24 RULING — DENY, NOT ALLOW. `allow` would drop the framework faces (they are activated by THIS pack's
+ * settings declaration, so hiding them would be one pack decision overriding another) and would silently hide any
+ * framework face added later. The narrowing target is exactly the 38 v5r tools, so the face denies the role's
+ * COMPLEMENT of them and leaves every other tool alone: `deny = declared(v5r) − roleSet`.
+ */
+const v5rDeclaredToolNames = Object.freeze((V5R_PACK_TOOLS || []).map((t) => t && t.name).filter((n) => typeof n === 'string'))
+export const V5R_ROLE_TOOL_DENY = Object.freeze({
+  chair: Object.freeze(v5rDeclaredToolNames.filter((n) => !V5R_ROLE_TOOL_NAMES.chair.includes(n))),
+  member: Object.freeze(v5rDeclaredToolNames.filter((n) => !V5R_ROLE_TOOL_NAMES.member.includes(n))),
+  temp: Object.freeze(v5rDeclaredToolNames.filter((n) => !V5R_ROLE_TOOL_NAMES.temp.includes(n))),
+})
+export const V5R_TOOL_FACES = Object.freeze({
+  chair: Object.freeze({ deny: V5R_ROLE_TOOL_DENY.chair }),
+  member: Object.freeze({ deny: V5R_ROLE_TOOL_DENY.member }),
+  temp: Object.freeze({ deny: V5R_ROLE_TOOL_DENY.temp }),
+})
+
 export const v5rTurnSections = Object.freeze([...v5rPromptSections, v5rRoleSection])
 
 /** The captured-snapshot fingerprint: a literal round number, a literal voter count, or the captured absolute path. */

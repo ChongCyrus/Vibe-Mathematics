@@ -39,35 +39,21 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       if (typeof args.reply === 'string' && kernel.turn && typeof kernel.turn.supplyMemberReply === 'function') {
         kernel.turn.supplyMemberReply(args.reply)
       }
-      // ★ PHASE 7 / round 19: A VOTE-ONLY TURN MUST NOT HAVE TOOLS. Telling an agent "do not call tools" does not constrain
-      // an agent that HAS tools (measured: 3 vote rounds, 180 s delivery timeouts, 12-21 calls each). `tools:'none'` makes
-      // the member's visible face EMPTY for exactly this round, then restores the previous face in a finally block.
+      // ★ PHASE 8 / round 24: tools:'none' is a PER-TURN OVERRIDE, resolved by the host's system-prompt/assemble pull
+      // hook at request time. It no longer needs a live Agent between turns (the one-shot bug), and it is the SAME path
+      // pack toolFaces use. The override is cleared in finally so it cannot leak into a later turn.
       if (op === 'step' && args.tools === 'none') {
-        // ★ visibleToolsOf is the TURN loop's getter (the host's table is an adapter method; the kernel has no such
-        // top-level method - measured: a real run refused here with "needs the member tool face" while the face existed).
-        const visibleOf = kernel.turn && typeof kernel.turn.visibleToolsOf === 'function' ? kernel.turn.visibleToolsOf.bind(kernel.turn) : null
-        if (!visibleOf || typeof kernel.applyMemberToolFace !== 'function') {
-          return refused('VMU_ENGINE_UNAVAILABLE', 'tools:"none" needs the member tool face (turn.visibleToolsOf + applyMemberToolFace)',
-            'assemble the host adapter so the member Agent exposes its tool table, or omit tools')
+        if (typeof kernel.setMemberToolOverride !== 'function' || typeof kernel.clearMemberToolOverride !== 'function') {
+          return refused('VMU_ENGINE_UNAVAILABLE', 'tools:"none" needs the per-turn tool override seam',
+            'assemble a kernel with setMemberToolOverride (the pull resolver owns the actual restriction)')
         }
-        const before = []
+        const ids = members.map((m) => m && m.id).filter((id) => typeof id === 'string' && id !== '')
+        if (ids.length === 0) return refused('VMU_INVALID_ARGUMENT', 'tools:"none" needs at least one member', 'pass members:[{id, role}]')
+        for (const id of ids) kernel.setMemberToolOverride({ member: id, all: true })
         try {
-          for (const m of members) {
-            const id = m && m.id
-            const visible = visibleOf(id)
-            before.push({ id, tools: visible && Array.isArray(visible.tools) ? visible.tools.slice() : [] })
-            await kernel.applyMemberToolFace({ member: id, allow: [] })
-            const after = visibleOf(id)
-            if (!after || !Array.isArray(after.tools) || after.tools.length !== 0) {
-              return refused('VMU_ENGINE_UNAVAILABLE', 'the empty member tool face did not take effect for ' + String(id),
-                'the host refused restrict({allow:[]}); a vote round must not run with tools still visible')
-            }
-          }
           return await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step })
         } finally {
-          for (const b of before) {
-            try { await kernel.applyMemberToolFace({ member: b.id, allow: b.tools }) } catch { /* restore is best-effort; the receipt says what ran */ }
-          }
+          for (const id of ids) { try { kernel.clearMemberToolOverride(id) } catch { /* clear is best effort; the turn tool reports what ran */ } }
         }
       }
       if (op === 'step') return await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step })

@@ -1,6 +1,7 @@
 // vmu host adapter — attaching the assembled kernel to the DSH tool surface (docs/03 §3, docs/11 §9).
 import { makeTransactionSpec } from './tools/transaction.js'
 import { makeTurnSpec } from './tools/turn.js'
+import { makeMemberToolsSpec } from './tools/member-tools.js'
 import { makeControlSpec } from './tools/control.js'
 import { makeMeetingSpec } from './tools/meeting.js'
 import { makeTaskSpec } from './tools/task.js'
@@ -130,6 +131,7 @@ export const TOOL_NAMES = Object.freeze({
   // ROUND 349: the turn loop needs a real entry point. Without it the framework could run a round only from a test,
   // which is not the same as a host being able to run one - and the objective is the latter.
   turn: 'vibe_vmu_turn',
+  memberTools: 'vibe_vmu_tools',
   // ROUND 2 (task-14): the four new implementation faces' tools (human/chat/mailbox/panel/report).
   human: 'vibe_vmu_human',
   chat: 'vibe_vmu_chat',
@@ -188,6 +190,9 @@ export const TOOL_FACES = Object.freeze([
     surface: (c) => (c.packLoader ? null : 'the entry did not hand this adapter a pack loader') },
   { face: 'control', name: TOOL_NAMES.control, families: ['vmu.limits.', 'vmu.control.'], config: ['control'], make: makeControlSpec },
   { face: 'turn', name: TOOL_NAMES.turn, families: ['vmu.turn.'], config: ['turn'], make: makeTurnSpec },
+  // ★ PHASE 8 / B-1: framework introspection (what is visible to a member). Gated like the pack tools; zero-mechanism
+  // still publishes exactly one tool when nothing is declared.
+  { face: 'memberTools', name: TOOL_NAMES.memberTools, families: ['vmu.members.'], config: ['members'], make: makeMemberToolsSpec },
   { face: 'meeting', name: TOOL_NAMES.meeting, families: ['vmu.meetings.', 'vmu.ballot.'], config: ['meetings', 'ballot'], make: makeMeetingSpec },
   { face: 'task', name: TOOL_NAMES.task, families: ['vmu.tasks.'], config: ['tasks'], make: makeTaskSpec },
   { face: 'minutes', name: TOOL_NAMES.minutes, families: ['vmu.minutes.'], config: ['minutes'], make: makeMinutesSpec },
@@ -929,6 +934,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   // ROUND 538: the tool specs live in tools/<key>.js so this file stays inside the decided 1200-line limit. The CONDITIONS
   // stay here: which intent declares a tool is policy, and policy belongs with the host.
   if (on('turn')) specs.push(makeTurnSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('memberTools')) specs.push(makeMemberToolsSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('control')) specs.push(makeControlSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('meeting')) specs.push(makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('task')) specs.push(makeTaskSpec({ param, refused, TOOL_NAMES, kernel }))
@@ -1069,6 +1075,7 @@ export function toHostSpec(spec) {
 export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null, scripts = [], packLoader = null, config = {}, faces = null, mergeReport = null, packReport = null, promptSection = null, ...faceFlags } = {}) {
   const disposers = []
   const registered = []
+  const toolDescriptions = {}
   // ★ PHASE 7: name -> disposer. `registered` alone can only be unwound as a batch in uninstall(), which left no way
   // to retract ONE tool (a pack unload). The map is the exact inverse of each successful registration.
   const disposerFor = new Map()
@@ -1193,6 +1200,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
           if (typeof dispose === 'function') { disposers.push(dispose); disposerFor.set(spec.name, dispose) }
         }
         registered.push(spec.name)
+        if (spec && typeof spec.name === 'string' && typeof spec.description === 'string') toolDescriptions[spec.name] = spec.description
         // FIRST-WINS provenance, mirroring the skip above: `host.js` keeps ONE registration per name, so the reason
         // that describes the tool in force is the one from the FIRST evaluation that registered it. Recording it
         // here (not in the receipt) means a later evaluation can never overwrite the reason of an earlier winner -
@@ -1285,9 +1293,50 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       const packNames = kernel && typeof kernel.packTools === 'function' ? kernel.packTools().map((t) => t.name) : []
       const names = [...new Set([...Object.values(TOOL_NAMES), ...packNames])]
       if (kernel && typeof kernel.setToolFaceCatalogue === 'function') kernel.setToolFaceCatalogue(names)
+      if (kernel && typeof kernel.setToolFaceDescriptions === 'function') kernel.setToolFaceDescriptions(toolDescriptions)
     } catch { /* the catalogue is a validation aid; its absence must not break assembly */ }
   }
   if (kernel && typeof kernel.setMemberToolFaceApplier === 'function') kernel.setMemberToolFaceApplier(applyMemberToolFace)
+  // ★ PHASE 8 / round 24: THE PULL POINT. The system-prompt assemble waterfall returns the authoritative PromptAssembly
+  // and its context.agent is the agent this assembly belongs to (dsh-agent assembleContextFor: {agent, scope:agent}).
+  // The assembly is built BEFORE agent/pre-step, so filtering HERE is what actually reaches the request; restrict()
+  // is called too (best effort) so the runtime table matches for later steps.
+  const memberOfAgent = (agent) => {
+    if (!agent) return null
+    const id = typeof agent.id === 'string' ? agent.id : ''
+    if (!id) return null
+    let roster = []
+    try { roster = (kernel.members && typeof kernel.members.roster === 'function') ? kernel.members.roster() : [] } catch { roster = [] }
+    for (const m of roster) {
+      if (!m || typeof m.id !== 'string') continue
+      if (m.id === id) return m.id
+      try { if (kernel.memberSession && kernel.memberSession(m.id) === id) return m.id } catch { /* keep looking */ }
+    }
+    return null
+  }
+  const pullMemberToolFace = async (assembly, context, next) => {
+    const out = await next()
+    const member = memberOfAgent(context && context.agent)
+    if (!member) return out
+    try {
+      const resolved = kernel.resolveMemberToolDeny(member)
+      const deny = new Set(resolved.deny || [])
+      if (!resolved.all && deny.size === 0) return out
+      if (resolved.all) out.tools = []
+      else out.tools = (Array.isArray(out.tools) ? out.tools : []).filter((t) => !deny.has(t && t.name))
+      const tools = context.agent && context.agent.ctx && context.agent.ctx.tools
+      if (tools && typeof tools.restrict === 'function') {
+        try { tools.restrict(resolved.all ? { allow: [] } : { deny: [...deny] }) } catch { /* assembly already filtered; this only aligns future steps */ }
+      }
+      return out
+    } catch (e) {
+      try { if (kernel.noteToolFaceFailure) kernel.noteToolFaceFailure({ member, code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) }) } catch { /* reporting must not break assembly */ }
+      return out
+    }
+  }
+  if (ctx && typeof ctx.on === 'function') {
+    try { ctx.on('system-prompt/assemble', pullMemberToolFace) } catch (e) { log('vmu: system-prompt/assemble hook was refused: ' + String((e && e.message) || e)) }
+  }
   if (kernel && kernel.turn && typeof kernel.turn.setVisibleToolsProvider === 'function') {
     kernel.turn.setVisibleToolsProvider((member) => {
       const r = resolveMemberAgent(member)

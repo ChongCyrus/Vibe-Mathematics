@@ -29,7 +29,9 @@ console.log('=== 2. EVERY FACTORY S DESTRUCTURING NAMES action ===')
 const offenders = []
 let checked = 0
 // EXEMPT BY NAME WITH A REASON. turn.js dispatches on op rather than action, and its block was self-contained before the split.
-const EXEMPT = { 'turn.js': 'dispatches on op rather than action; the host translates op to the turn engine s own verbs' }
+const EXEMPT = {
+  'member-tools.js': 'single-purpose introspection face: no action/op by design, it takes only member — and line 45 below proves the exemption is real',
+  'turn.js': 'dispatches on op rather than action; the host translates op to the turn engine s own verbs' }
 
 for (const f of files) {
   const src = readFileSync(join(DIR, f), 'utf8')

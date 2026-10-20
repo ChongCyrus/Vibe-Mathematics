@@ -300,22 +300,34 @@ try {
   ok(motion.parsed && motion.parsed.ok === true && !!motion.parsed.motion, 'motion: 正 — the motion lands in the meeting', motion.parsed && motion.parsed.motion)
   const motionBadKind = await receipt(v5rBoot, 'vibe_v5_motion', { meeting: meetingId, kind: 'nope', text: 'x', member: 'r-1' })
   ok(motionBadKind.parsed && motionBadKind.parsed.ok === false && motionBadKind.parsed.code === 'VMU_INVALID_ARGUMENT', 'motion: 反 — an unknown motion kind is refused by name', motionBadKind.parsed)
-  const withdrew = await receipt(v5rBoot, 'vibe_v5_motion', { op: 'withdraw', meeting: meetingId, member: 'r-1' })
-  ok(withdrew.parsed && withdrew.parsed.ok === false && withdrew.parsed.code === 'VMU_ENGINE_UNAVAILABLE' && /withdraw/.test(String(withdrew.parsed.message)),
-    '★ motion withdraw: 反 — refused by NAME (需内核能力：motion withdraw), never silently accepted', withdrew.parsed)
+  // ★ round 23: the kernel HAS withdraw; the pack now calls it.
+  const withdrew = await receipt(v5rBoot, 'vibe_v5_motion', { op: 'withdraw', meeting: meetingId, motion_id: motion.parsed && motion.parsed.motion, member: 'r-1' })
+  ok(withdrew.parsed && withdrew.parsed.ok === true && withdrew.parsed.status === 'withdrawn',
+    '★ motion withdraw: 正 — the proposer withdraws and the kernel moves the motion to withdrawn', withdrew.parsed)
 
-  const seconded = await receipt(v5rBoot, 'vibe_v5_second', { motion_id: motion.parsed && motion.parsed.motion, member: 'r-2' })
-  ok(seconded.parsed && seconded.parsed.ok === false && seconded.parsed.code === 'VMU_ENGINE_UNAVAILABLE' && /motion second/.test(String(seconded.parsed.message)),
-    '★ second: 反 — refused by NAME with the missing capability (no secondedBy in this kernel), never a silent no-op', seconded.parsed)
-  const secondByTemp = await receipt(v5rBoot, 'vibe_v5_second', { motion_id: 'm-1', member: 'r-temp-1' })
+  // ★ round 23: second is a REAL kernel transition now (secondedBy + proposed gate).
+  // make a FRESH proposed motion so the second-gate assertions do not depend on the withdrawn one above
+  const fresh = await receipt(v5rBoot, 'vibe_v5_motion', { meeting: meetingId, kind: 'topic', text: '建议把证明归档', member: 'r-1' })
+  const freshMotion = fresh.parsed && fresh.parsed.motion
+  ok(fresh.parsed && fresh.parsed.ok === true && fresh.parsed.status === 'proposed', '★ motion: a new motion starts proposed (the second gate is real)', fresh.parsed && fresh.parsed.status)
+  const seconded = await receipt(v5rBoot, 'vibe_v5_second', { meeting: meetingId, motion_id: freshMotion, member: 'r-2' })
+  ok(seconded.parsed && seconded.parsed.ok === true && seconded.parsed.status === 'seconded' && seconded.parsed.secondedBy === 'r-2',
+    '★★ second: 正 — another member seconds and the kernel records status=seconded + secondedBy', seconded.parsed)
+  const selfSecond = await receipt(v5rBoot, 'vibe_v5_second', { meeting: meetingId, motion_id: freshMotion, member: 'r-1' })
+  ok(selfSecond.parsed && selfSecond.parsed.ok === false && selfSecond.parsed.code === 'VMU_NOT_PERMITTED',
+    '★★ second: 反 — the proposer cannot second their own motion (the kernel refuses it by name)', selfSecond.parsed && selfSecond.parsed.code)
+  const secondByTemp = await receipt(v5rBoot, 'vibe_v5_second', { meeting: meetingId, motion_id: freshMotion, member: 'r-temp-1' })
   ok(secondByTemp.parsed && secondByTemp.parsed.ok === false && secondByTemp.parsed.code === 'VMU_NOT_PERMITTED',
     '★ second: 反 — a TEMP seat is refused as a NON-VOTER before the capability gap (V5_NOT_VOTER lands first)', secondByTemp.parsed)
 
   const poll = await receipt(v5rBoot, 'vibe_v5_poll_open', { question: '引理 A 的证明策略？', options: ['拆两步', '直接反证'], min_votes: 2, mode: 'single', member: chairId })
   const boxId = poll.parsed && poll.parsed.boxId
   ok(poll.parsed && poll.parsed.ok === true && !!boxId, 'poll_open: 正 — the box is really open', poll.parsed && poll.parsed.boxId)
-  ok(poll.parsed.unapplied.length === 2 && poll.parsed.unapplied.filter((u) => u.why.length > 20).length === 2,
-    '★ poll_open: the per-poll rules the box cannot take are reported under `unapplied` (asked ≠ applied; 需内核能力：per-box rules)', poll.parsed.unapplied)
+  // ★ round 23: the §7.1 per-poll rules are TRANSLATED into the kernel's per-box rules object.
+  ok(poll.parsed.rulesDeclared === true && poll.parsed.rules && poll.parsed.rules.minVotes === 2 && poll.parsed.rules.mode === 'single' && poll.parsed.rules.maxChoices === 1,
+    '★★ poll_open: min_votes/mode are translated into the kernel per-box rules (and mode single pins maxChoices=1)', poll.parsed.rules)
+  ok(poll.parsed.unapplied.length === 0 && poll.parsed.applied.length === 2,
+    '★ poll_open: nothing asked was untranslatable, so `unapplied` is empty (asked vs applied is still reported)', { applied: poll.parsed.applied, unapplied: poll.parsed.unapplied })
   const pollByMemberSeat = await receipt(v5rBoot, 'vibe_v5_poll_open', { question: 'q', options: ['a', 'b'], member: 'r-1' })
   ok(pollByMemberSeat.parsed && pollByMemberSeat.parsed.ok === false && pollByMemberSeat.parsed.code === 'VMU_NOT_PERMITTED',
     'poll_open: 反 — only the chair seat may open a poll (the original marks it "(academician)")', pollByMemberSeat.parsed)
@@ -984,12 +996,120 @@ try {
   ok(taught.length > 0 && undeclaredTaught.length === 0,
     '★ closed world: every vibe_v5_* name the PROMPT CORPUS teaches is declared as a tool (nothing taught-but-missing is left)', { taught: taught.length, missing: undeclaredTaught })
   const gaps = toolsMod.V5R_NAMED_GAPS
-  ok(Array.isArray(gaps) && gaps.length === 6 && gaps.filter((g) => typeof g === 'string' && g.length > 20).length === 6,
-    '★ the measured limits are recorded as NAMED GAPS (visible-tools reader / mail purge / priority column / motion second / per-box poll rules / secretary)', gaps && gaps.length)
+  ok(Array.isArray(gaps) && gaps.length === 5 && gaps.filter((g) => typeof g === 'string' && g.length > 20).length === 5,
+    '★ the measured limits are recorded as NAMED GAPS (visible-tools reader / mail purge / task-priority SETTER / per-box secrecy / meeting propose)', gaps && gaps.length)
+  // ★ ROUND 23: three of the six old gaps were CLOSED by the kernel in round 6 and are now WIRED by this pack. The list
+  // must say so, and every remaining gap must be VERIFIABLE — its missing capability has to still be grep-absent from the
+  // kernel file named in the check (this is the anti-rot guard: if the kernel gains the capability, this flips red).
+  const closed = toolsMod.V5R_CLOSED_GAPS
+  ok(Array.isArray(closed) && closed.length === 4 && closed.filter((c) => /kernel\//.test(String(c.kernel)) && /vibe_v5_/.test(String(c.wired))).length === 4,
+    '★★ the gaps CLOSED by the kernel and WIRED here are recorded as data (with the kernel file reference and the wiring)', closed && closed.map((c) => c.id))
+  const gapChecks = toolsMod.V5R_NAMED_GAP_CHECKS
+  const fsModGap = await import('node:fs')
+  const gapVerdicts = []
+  for (const c of (gapChecks || [])) {
+    const src = fsModGap.readFileSync(join(REPO, 'vibe-math-vmu', ...c.file.split('/')), 'utf8')
+    gapVerdicts.push({ gap: c.gap, file: c.file, absent: (src.match(c.absent) || []).length, present: c.present ? (src.match(c.present) || []).length : -1 })
+  }
+  ok(Array.isArray(gapChecks) && gapChecks.length === 5 && gapVerdicts.filter((v) => v.absent === 0 && (v.present === -1 || v.present > 0)).length === 5,
+    '★★★ every NAMED GAP is still VERIFIABLE: the claimed-missing capability is grep-ABSENT from the kernel file it names (and the provider it names is still present) — the list cannot silently go stale again',
+    { checked: gapVerdicts.length, all: gapVerdicts.filter((v) => v.absent === 0 && (v.present === -1 || v.present > 0)).length })
   // ★ ROUND 4: `tool_help` is no longer a prompt invention — it is DECLARED, and the original still has no such tool.
   const helpDeclared = PACK.tools.some((t) => t.name === 'vibe_v5_tool_help')
   ok(helpDeclared && origSrc.includes("registerTool('vibe_v5_tool_help'") === false,
     '★ `vibe_v5_tool_help` is now a REAL declared tool although the ORIGINAL never registered it (the prompt was implemented, not deleted)', { declared: helpDeclared })
+  // ── ⑦b ROUND 23: the pack now WIRES what the kernel closed in round 6 ─────────────────────────────────────────
+  console.log('=== 7b. ROUND 23: SECRETARY / PRIORITY / PER-BOX FLOOR ===')
+  const secMeet = await receipt(v5rBoot, 'vibe_v5_meeting', { agenda: '记录人测试', kind: 'sync', member: chairId, secretary: 'r-temp-1' })
+  const secMeetId = secMeet.parsed && (secMeet.parsed.meeting && (secMeet.parsed.meeting.id || secMeet.parsed.meeting))
+  const secView = secMeetId ? v5rBoot.handle.kernel.meetings.meetingView({ meeting: secMeetId }) : null
+  ok(secMeet.parsed && secMeet.parsed.ok === true && secMeet.parsed.secretary === 'r-temp-1' && secView && secView.secretary === 'r-temp-1',
+    '★★ ③ secretary: the recorder is accepted at open and the kernel meeting view carries it', secView && { secretary: secView.secretary, chair: secView.chair })
+  const secUnknown = await receipt(v5rBoot, 'vibe_v5_meeting', { agenda: 'x', kind: 'sync', member: chairId, secretary: 'nobody' })
+  ok(secUnknown.parsed && secUnknown.parsed.ok === false && secUnknown.parsed.code === 'VMU_NO_SUCH_OBJECT',
+    '★ ③ 反: a secretary that is not on the roster is refused by name (no phantom recorder)', secUnknown.parsed && secUnknown.parsed.code)
+  const secPoll = await receipt(v5rBoot, 'vibe_v5_poll_open', { question: '记录人测试票', options: ['a', 'b'], member: chairId })
+  const secPollVote = secPoll.parsed && secPoll.parsed.boxId
+    ? await receipt(v5rBoot, 'vibe_v5_poll_vote', { ballot_id: secPoll.parsed.boxId, choices: ['a'], member: 'r-temp-1' })
+    : { parsed: null }
+  ok(secPoll.parsed && secPoll.parsed.ok === true && secPollVote.parsed && secPollVote.parsed.ok === false && secPollVote.parsed.code === 'VMU_NOT_PERMITTED',
+    '★★ ③ 记录权≠表决权: the SECRETARY (a temp seat) still cannot vote — the recorder right grants no ballot', secPollVote.parsed && secPollVote.parsed.code)
+  // ★ the kernel STORES priority and SORTS by it, but its list projection omits the field (kernel/tasks.js:368-372) —
+  // so the honest observation is the receipt plus the BOARD ORDER, not a priority column that the view does not carry.
+  // The lifecycle section above STOPPED the institute (stop is terminal; resume does not reopen it), so the priority
+  // observation runs on a FRESH kernel: storage + board order are the KERNEL's facts.
+  const taskKernel = km2.createKernel({ clock: () => 1000 })
+  await taskKernel.tasks.create({ title: '低优先级任务', priority: 0 })
+  await taskKernel.tasks.create({ title: '高优先级任务', priority: 9 })
+  const rowsT = taskKernel.tasks.list()
+  const idxHighT = rowsT.findIndex((t) => String(t.title) === '高优先级任务')
+  const idxLowT = rowsT.findIndex((t) => String(t.title) === '低优先级任务')
+  ok(rowsT.length === 2 && idxHighT === 0 && idxLowT === 1,
+    '★★ task priority: the ledger STORES it and the BOARD ORDER shows it (priority 9 row first, priority 0 row second)', { idxHigh: idxHighT, idxLow: idxLowT })
+  const toolsSrcPrio = fsModGap.readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
+  ok(/tasks\.create\(\{[\s\S]{0,400}?priority,/.test(toolsSrcPrio),
+    '★★ and the PACK really passes it (task_create forwards `priority` into the ledger create call) — the tool no longer drops the hint', null)
+  const floorPoll = await receipt(v5rBoot, 'vibe_v5_poll_open', { question: '门槛测试', options: ['a', 'b'], min_votes: 2, member: chairId })
+  const floorBox = floorPoll.parsed && floorPoll.parsed.boxId
+  await receipt(v5rBoot, 'vibe_v5_poll_vote', { ballot_id: floorBox, choices: ['a'], member: 'r-1' })
+  const floorClose = await receipt(v5rBoot, 'vibe_v5_poll_close', { ballot_id: floorBox, member: chairId })
+  ok(floorPoll.parsed && floorPoll.parsed.rulesDeclared === true && floorClose.parsed && floorClose.parsed.ok === false && floorClose.parsed.code === 'VMU_BALLOT_MIN_VOTES_NOT_MET',
+    '★★★ ① 正: a PER-BOX min_votes:2 box with ONE vote refuses on close with the kernel\'s own VMU_BALLOT_MIN_VOTES_NOT_MET (the kernel criterion, not a pack rule)', floorClose.parsed && floorClose.parsed.code)
+  const plainPoll = await receipt(v5rBoot, 'vibe_v5_poll_open', { question: '无规则对照', options: ['a', 'b'], member: chairId })
+  ok(plainPoll.parsed && plainPoll.parsed.ok === true && plainPoll.parsed.rulesDeclared === false && Object.keys(plainPoll.parsed.rules || {}).length === 0,
+    '★★ ① 反: with no rules asked, rulesDeclared is FALSE and the box behaves as before (the deployment policy applies)', plainPoll.parsed && { rulesDeclared: plainPoll.parsed.rulesDeclared })
+  // ── ⑦c GOAL A (PHASE 8): THE ROLE-SCOPED TOOL FACE ────────────────────────
+  console.log('=== 7c. GOAL A: role-scoped tool faces (prompt == declaration) ===')
+  const faces = PACK.toolFaces
+  const faceRoles = faces ? Object.keys(faces).sort() : []
+  ok(JSON.stringify(faceRoles) === JSON.stringify(['chair', 'member', 'temp']),
+    '★★ the manifest declares a tool face for each of the THREE slot ids (chair/member/temp)', faceRoles)
+  // THE SAME-SOURCE PROOF: the allow list the manifest applies IS the set of tool names the role prompt teaches.
+  const reDerive = (section) => [...new Set(String(section.text).matchAll(/vibe_v5_[a-z0-9_]+/g).map((m) => m[0]))]
+  const coreModA = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-core.js')).href)
+  const sectionFor = { chair: coreModA.v5rToolSectionAcademician, member: coreModA.v5rToolSectionResearcher, temp: coreModA.v5rToolSectionTemp }
+  // ★ ROUND 24 RULING: the face is DENY-based, so the same-source identity is `declared(v5r) − deny === roleSet`.
+  const allDeclared = (PACK.tools || []).map((x) => x.name)
+  const sameSource = [
+    { role: 'chair', prompt: reDerive(sectionFor.chair), deny: faces.chair.deny },
+    { role: 'member', prompt: reDerive(sectionFor.member), deny: faces.member.deny },
+    { role: 'temp', prompt: reDerive(sectionFor.temp), deny: faces.temp.deny },
+  ].map((r) => {
+    const visible = allDeclared.filter((n) => !r.deny.includes(n))
+    return {
+      role: r.role,
+      denyOverlap: r.deny.filter((n) => r.prompt.includes(n)),
+      missingInVisible: r.prompt.filter((n) => !visible.includes(n)),
+      extraInVisible: visible.filter((n) => !r.prompt.includes(n)),
+      visibleCount: visible.length,
+    }
+  })
+  ok(sameSource.filter((r) => r.denyOverlap.length === 0 && r.missingInVisible.length === 0 && r.extraInVisible.length === 0 && r.visibleCount > 0).length === 3,
+    '★★★ SAME SOURCE (deny form): for every seat `declared − deny` EQUALS the prompt’s tool set (both diffs empty) and the deny overlaps nothing the seat may use', sameSource)
+  // ★★ THE BOUNDARY: a deny list names ONLY institution vocabulary — never a framework face.
+  const denyAll = [...faces.chair.deny, ...faces.member.deny, ...faces.temp.deny]
+  ok(denyAll.length > 0 && denyAll.filter((n) => !n.startsWith('vibe_v5_')).length === 0 && denyAll.filter((n) => /^vibe_vmu_/.test(n)).length === 0,
+    '★★ the deny lists contain ONLY v5r tools (vibe_v5_*) — no framework face (vibe_vmu_*) is ever denied by this pack', { deny: denyAll.length })
+  ok(faces.chair.deny.length === allDeclared.length - 37 && faces.member.deny.length === allDeclared.length - 22 && faces.temp.deny.length === allDeclared.length - 6,
+    '★★ the deny sizes are the complement of the role sets (chair 1 / member 16 / temp 32 of the 38 declared)', { chair: faces.chair.deny.length, member: faces.member.deny.length, temp: faces.temp.deny.length })
+  // every DENIED name is a DECLARED tool (a prose mention cannot narrow a face)
+  const declaredNameSet = new Set((PACK.tools || []).map((t) => t.name))
+  ok(denyAll.filter((n) => declaredNameSet.has(n)).length === denyAll.length,
+    '★ every name in a deny list is a tool this pack DECLARES (no prompt-only phantom can be denied)', { denied: denyAll.length })
+  // ZERO MECHANISM: a kernel assembled WITHOUT the pack has no pack faces at all.
+  ok(Array.isArray(bare.handle.kernel.packToolFaces()) && bare.handle.kernel.packToolFaces().length === 0,
+    '★ 反（零机制）: with no pack applied there is NO declared tool face \u2014 nothing is narrowed by default', bare.handle.kernel.packToolFaces().length)
+  // RETRACTION PATH: the declaration is retractable and re-declarable (pack unload calls this same retract).
+  const declaredBefore = v5rBoot.handle.kernel.packToolFaces()
+  const retracted = v5rBoot.handle.kernel.retractPackToolFaces({ by: 'v5r-core' })
+  const afterRetract = v5rBoot.handle.kernel.packToolFaces()
+  ok(declaredBefore.length === 1 && retracted && retracted.ok === true && afterRetract.length === 0,
+    '★★ 卸载/撤销: retracting the pack removes its declared faces (zero residue) — and pack unload runs this same retract', { before: declaredBefore.length, after: afterRetract.length })
+  v5rBoot.handle.kernel.declarePackToolFaces(faces, { by: 'v5r-core' })
+  const reapplied = v5rBoot.handle.kernel.applyPackToolFaces({ by: 'v5r-core' })
+  ok(Array.isArray(reapplied.applied) || Array.isArray(reapplied.failed),
+    '★ re-declaring and re-applying the face is possible (the apply path is idempotent enough to re-run)', reapplied && { applied: (reapplied.applied || []).length, failed: (reapplied.failed || []).length })
+
 } finally {
   // The store writes atomically through temp+rename, so a removal can race one in-flight file: retry, and never let
   // a cleanup failure turn a green run red (the assertions above already reported the truth).

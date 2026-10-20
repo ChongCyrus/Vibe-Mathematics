@@ -1771,8 +1771,14 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // holds a DSH ctx. Catalogue = the face names the host really publishes (set by the host adapter).
   let memberToolFaceApplier = null
   let memberToolFaceCatalogue = null
+  /** ★ PHASE 8 / B-1: name -> one-line purpose, registered by the HOST (the owner of the tool table). */
+  let toolFaceDescriptions = null
   // ★ PHASE 7: pack-declared role -> tool face. Strategy in the pack, capability in the kernel, Agent in the host.
   const packToolFaces = new Map()
+  /** ★ PHASE 8 / round 24: per-TURN overrides consumed by the pull resolver at request time (tools:"none"). */
+  const memberToolOverrides = new Map()
+  /** ★ PHASE 8: named failures from the pull hook, visible in status() instead of silently skipped. */
+  const toolFaceFailures = []
   // ★ PHASE 7: the HOST owns the tool table; the kernel only holds pack DECLARATIONS. A retraction therefore has
   // to be observable to the adapter, or a pack unload leaves the names visible to the model. One observer, set by
   // the host adapter; the kernel never calls a host API itself.
@@ -2190,6 +2196,40 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       packToolFaces.set(owner === null ? '(anonymous)' : owner, { roles: roles.slice(), faces })
       return { ok: true, pack: owner, roles }
     },
+    /** ★ PHASE 8: a per-turn override (e.g. tools:"none"). The pull resolver reads it; the turn tool clears it in finally. */
+    setMemberToolOverride({ member, all = false, deny = null } = {}) {
+      const id = typeof member === 'string' ? member.trim() : ''
+      if (!id) throw refuse('VMU_INVALID_ARGUMENT', 'setMemberToolOverride needs a member', 'pass member:"<roster id>"')
+      memberToolOverrides.set(id, { all: all === true, deny: Array.isArray(deny) ? deny.filter((x) => typeof x === 'string') : [] })
+      return { ok: true, member: id }
+    },
+    noteToolFaceFailure({ member, code = 'VMU_ENGINE_UNAVAILABLE', message = null } = {}) { toolFaceFailures.push({ member: String(member), code, message: message === null ? null : String(message), at: clock() }); if (toolFaceFailures.length > 20) toolFaceFailures.shift(); return { ok: true, count: toolFaceFailures.length } },
+    clearMemberToolOverride(member) { return { ok: true, member: String(member), removed: memberToolOverrides.delete(String(member)) } },
+    memberToolOverride(member) { return memberToolOverrides.get(String(member)) || null },
+    /**
+     * ★ PHASE 8 / round 24: THE PULL RESOLVER. Read the member's CURRENT slot and the CURRENT pack declarations at
+     * request time; a member hired AFTER apply therefore gets the face. Returns {member,slot,all,deny,source}; unknown
+     * member is a NAMED refusal (the hook records it instead of silently skipping).
+     */
+    resolveMemberToolDeny(member) {
+      const id = typeof member === 'string' ? member.trim() : ''
+      if (!id) throw refuse('VMU_INVALID_ARGUMENT', 'resolveMemberToolDeny needs a member', 'pass member:"<roster id>"')
+      let row = null
+      try { row = (members.roster() || []).find((m) => m && m.id === id) || null } catch { row = null }
+      if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + id + '" on this roster', 'the resolver reads the LIVE roster so late hires are covered')
+      const slot = String(row.slot || '')
+      const deny = new Set()
+      const sources = []
+      for (const [, v] of packToolFaces.entries()) {
+        const face = v && v.faces ? v.faces[slot] : null
+        if (!face) continue
+        if (Array.isArray(face.deny)) for (const n of face.deny) if (typeof n === 'string') deny.add(n)
+        sources.push('pack')
+      }
+      const ov = memberToolOverrides.get(id)
+      if (ov) { if (ov.all) { deny.add('*'); sources.push('turn') } else for (const n of ov.deny) { deny.add(n); sources.push('turn') } }
+      return { ok: true, member: id, slot, all: deny.has('*'), deny: [...deny].filter((n) => n !== '*'), source: sources.length ? sources : null }
+    },
     /** ★ PHASE 7: apply the declaration to every LIVE member of that role NOW (members seated later are skipped).
      *  The receipt is per member: applied / failed, both derived from the real applier. */
     applyPackToolFaces({ by = null } = {}) {
@@ -2229,6 +2269,13 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     setMemberToolFaceApplier(fn) { memberToolFaceApplier = typeof fn === 'function' ? fn : null; return { ok: true, applier: typeof fn === 'function' } },
     /** ★ PHASE 7: the host publishes the names that MAY be named in allow/deny (core faces + pack tools). */
     setToolFaceCatalogue(names) { memberToolFaceCatalogue = Array.isArray(names) ? names.filter((n) => typeof n === 'string') : null; return { ok: true, count: memberToolFaceCatalogue ? memberToolFaceCatalogue.length : 0 } },
+    /** ★ PHASE 8 / B-1: the HOST registers each published tool's one-line purpose (the kernel only reads it back). */
+    setToolFaceDescriptions(map) {
+      const out = {}
+      if (map && typeof map === 'object') for (const [k, v] of Object.entries(map)) if (typeof k === 'string' && typeof v === 'string') out[k] = v
+      toolFaceDescriptions = Object.keys(out).length ? out : null
+      return { ok: true, count: toolFaceDescriptions ? Object.keys(toolFaceDescriptions).length : 0 }
+    },
 
     /**
      * ★ PHASE 7 (goal 4): apply one member's tool face. Input { member, allow?, deny? }. Receipt carries added/removed
@@ -2238,6 +2285,20 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
      *   - no host applier / no live Agent         -> VMU_ENGINE_UNAVAILABLE
      * Zero mechanism: only a caller that asks gets a face applied; nothing changes by default.
      */
+
+    /**
+     * ★ PHASE 8 / B-1: THE MEMBER'S REAL TOOL TABLE, in the kernel. Names come ONLY from the live visible-tools provider
+     * (turn.visibleToolsOf), never from a pack declaration; purposes come from the host's published descriptions.
+     * No live Agent ⇒ the provider's NAMED refusal is propagated - never an empty list pretending success.
+     */
+    toolsView({ member } = {}) {
+      if (typeof member !== 'string' || member.trim() === '') throw refuse('VMU_INVALID_ARGUMENT', 'toolsView needs a member', 'pass member:"<roster id>"')
+      if (!turn || typeof turn.visibleToolsOf !== 'function') throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no visible-tools provider', 'assemble the host adapter so members expose their tool table')
+      const visible = turn.visibleToolsOf(member)
+      const names = visible && Array.isArray(visible.tools) ? visible.tools : []
+      const purposes = toolFaceDescriptions || {}
+      return { ok: true, member: String(member), count: names.length, tools: names.map((name) => ({ name, purpose: purposes[name] || null })) }
+    },
     applyMemberToolFace({ member, allow = null, deny = null } = {}) {
       const id = typeof member === 'string' ? member : ''
       if (id === '') throw refuse('VMU_INVALID_ARGUMENT', 'a member tool face needs a member id', 'pass { member }')
@@ -2761,6 +2822,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         // PHASE 6 / P0-10: the tool NAMES packs declared. The kernel holds them; the host publishes them.
         packTools: [...packToolDeclarations.values()].map((t) => ({ name: t.name, packId: t.packId })),
         // ★ PHASE 7: only when a pack registered sections; a throwing reader is NAMED, never hidden.
+        ...(toolFaceFailures.length > 0 ? { toolFaceFailures: toolFaceFailures.slice() } : {}),
         ...(statusSections.size > 0 ? { sections: Object.fromEntries([...statusSections.entries()].map(([name, fn]) => {
           try { return [name, { ok: true, value: fn() }] } catch (e) {
             return [name, { ok: false, code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) }]

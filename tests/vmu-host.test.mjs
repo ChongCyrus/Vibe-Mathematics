@@ -516,6 +516,80 @@ if (SELF_PROBE) {
   ok(calls.length === 1 && calls[0].includes('probe_retract_tool'), '★ setPackToolRetractObserver 的 observer 真的被 retract 调用（含被撤名）', calls)
 }
 
+// ── ★ PHASE 8 / B-1: vibe_vmu_tools = the LIVE visible set, never an invented list ────────────────────────────
+{
+  const kernel = km.createKernel({ clock })
+  kernel.declareSlots([{ id: 'member', label: '成员', capacity: 0, permissions: ['vote'] }])
+  await kernel.members.hire({ id: 'member-a', slot: 'member', institution: 'sim' })
+  const agent = { id: 'member-a', ctx: { tools: { schemas: () => [{ name: 'vibe_vmu_status' }, { name: 'vibe_vmu_turn' }] } } }
+  const host = fakeHost()
+  const ctx = Object.assign({}, host.ctx, { get: (name) => (name === 'agents' ? { get: (id) => (id === 'member-a' ? agent : null) } : null) })
+  const adapter = hm.createHostAdapter({ ctx, kernel, settings: { 'vmu.members.maxTempPerMember': 1, 'vmu.turn.deliveryTimeoutMs': 1 } })
+  await adapter.install()
+  const spec = host.state.specs.find((s) => s.name === 'vibe_vmu_tools')
+  ok(spec !== undefined, '★ 声明 members 面时内核自省工具真的发布', host.state.specs.map((s) => s.name))
+  const parsed = JSON.parse(await spec.execute({ member: 'member-a' }, {}))
+  ok(parsed.ok === true && parsed.count === 2 && parsed.tools.map((t) => t.name).join(',') === 'vibe_vmu_status,vibe_vmu_turn',
+    '★ 正：返回集合 == visibleToolsOf 的实际集合', parsed)
+  ok(parsed.tools.every((t) => typeof t.purpose === 'string' && t.purpose.length > 0),
+    '★ 每项都有一句用途（来自 host 发布的描述，不是编造）', parsed.tools)
+  const bareHost = fakeHost()
+  const noAgent = hm.createHostAdapter({ ctx: bareHost.ctx, kernel, settings: { 'vmu.members.maxTempPerMember': 1 } })
+  await noAgent.install()
+  const bareSpec = bareHost.state.specs.find((s) => s.name === 'vibe_vmu_tools')
+  const refusal = JSON.parse(await bareSpec.execute({ member: 'member-a' }, {}))
+  ok(refusal.ok === false && refusal.code === 'VMU_NO_SUCH_OBJECT',
+    '★ 反：无 live Agent ⇒ 具名拒（不返回空清单假装成功）', refusal)
+}
+
+// ── ★ PHASE 8 / round 24: the PULL hook — per-request face, late hire, no cross-agent leak, zero mechanism ──────
+{
+  const kernel = km.createKernel({ clock })
+  kernel.declareSlots([
+    { id: 'member', label: '成员', capacity: 0, permissions: ['vote'] },
+    { id: 'temp', label: '临时', capacity: 0, permissions: [] },
+  ])
+  // declaration BEFORE the member is seated: the pull resolver must still apply it on the next request
+  kernel.declarePackToolFaces({ member: { deny: ['vibe_v5_say'] } }, { by: 'probe-pack' })
+  await kernel.members.hire({ id: 'member-a', slot: 'member', institution: 'sim' })
+  await kernel.members.hire({ id: 'temp-b', slot: 'temp', institution: 'sim' })
+  const mkAgent = (id, names) => ({ id, ctx: { tools: { schemas: () => names.map((name) => ({ name })), restrict: () => () => {} } } })
+  const agentA = mkAgent('member-a', ['vibe_v5_say', 'vibe_vmu_status'])
+  const agentB = mkAgent('temp-b', ['vibe_v5_say', 'vibe_vmu_status'])
+  const listeners = {}
+  const state = { specs: [], live: new Set() }
+  const ctx = {
+    tools: { register: async (s) => { state.specs.push(s); state.live.add(s.name); return () => {} }, schemas: () => [...state.live] },
+    effect: (fn) => fn(),
+    on: (event, fn) => { (listeners[event] = listeners[event] || []).push(fn) },
+    get: (name) => (name === 'agents' ? { get: (id) => ({ 'member-a': agentA, 'temp-b': agentB }[id] || null) } : null),
+  }
+  const adapter = hm.createHostAdapter({ ctx, kernel, settings: { 'vmu.members.maxTempPerMember': 1 } })
+  await adapter.install()
+  const hook = (listeners['system-prompt/assemble'] || [])[0]
+  ok(typeof hook === 'function', '★ 订阅到了 system-prompt/assemble（pull 钩子存在）', Object.keys(listeners))
+  const runHook = async (agent, tools) => {
+    const assembly = { tools: tools.map((name) => ({ name })) }
+    const out = await hook(assembly, { agent }, () => Promise.resolve(assembly))
+    return out.tools.map((t) => t.name)
+  }
+  const aTools = await runHook(agentA, ['vibe_v5_say', 'vibe_vmu_status'])
+  ok(aTools.join(',') === 'vibe_vmu_status', '★ 正：member 槽的 deny 在请求前生效（可见集 == deny 的补集）', aTools)
+  const bTools = await runHook(agentB, ['vibe_v5_say', 'vibe_vmu_status'])
+  ok(bTools.join(',') === 'vibe_v5_say,vibe_vmu_status', '★ 反：另一个 agent 的可见集不受影响（不串）', bTools)
+  kernel.setMemberToolOverride({ member: 'member-a', all: true })
+  const none = await runHook(agentA, ['vibe_v5_say', 'vibe_vmu_status'])
+  ok(none.length === 0, '★ 正：tools:"none" 的 per-turn override ⇒ 可见集为空', none)
+  kernel.clearMemberToolOverride('member-a')
+  const restored = await runHook(agentA, ['vibe_v5_say', 'vibe_vmu_status'])
+  ok(restored.join(',') === 'vibe_vmu_status', '★ 反：override 清除后恢复为槽 deny 的补集', restored)
+  const zero = km.createKernel({ clock })
+  zero.declareSlots([{ id: 'member', label: '成员', capacity: 0 }])
+  await zero.members.hire({ id: 'member-a', slot: 'member', institution: 'sim' })
+  const zeroView = (() => { try { return zero.resolveMemberToolDeny('member-a') } catch (e) { return { error: e.code } } })()
+  ok(!zeroView.source, '★ 反：无 pack 声明 ⇒ resolver 不产生 deny（零机制）', zeroView)
+}
+
 console.log('=== VMU HOST: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

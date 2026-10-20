@@ -40,6 +40,7 @@
 | `vibe_vmu_meeting`（`meeting`） | `meetingTool` 为真 | 会议/表决原语 | `list` ✓；写动作 ✗ | `list/open/speak/silent/close/ballot/vote/tally/reopen` |
 | `vibe_vmu_task`（`task`） | `taskTool` 为真 | 任务台账 | `list/stage/brief/history` ✓；写动作 ✗ | `list/create/assign/transition/stage/advance/brief/history` |
 | `vibe_vmu_turn`（`turn`） | `turnTool` 为真 | 回合执行 | `status` ✓；`step/drive` ✗ | `status`(默认)`/step/drive` |
+| `vibe_vmu_tools`（`memberTools`） | `vmu.members.*` 或 `vmu.tools.faces` 声明该面 | 成员可见工具自省 | 全只读 ✓ | `member`（必填） |
 | `vibe_vmu_minutes`（`minutes`） | `minutesTool` 为真 | 纪要读写 | `list/actions/status` ✓；`draft/confirm/append` ✗ | `list`(默认)`/draft/confirm/append/actions/status` |
 | `vibe_vmu_board`（`board`） | `boardTool` 为真 | 看板读写 | `columns`/`swimlanes`/`aging`/`status` ✓；`addColumn`/`move`/`setWip` ✗ | `columns`(默认)`/addColumn/move/setWip/swimlanes/aging/status` |
 | `vibe_vmu_budget`（`budget`） | `budgetTool` 为真 | 配额读写 | `remaining`/`status`/`list`/`totals`/`perTaskShare` ✓；`open`/`charge`/`reserve` ✗ | `status`(默认)`/open/charge/reserve/remaining/list/totals/perTaskShare` |
@@ -515,16 +516,17 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 43 | `bidding` | `vibe_vmu_bidding` |
 | 44 | `admission` | `vibe_vmu_admission` |
 | 45 | `turn` | `vibe_vmu_turn` |
-| 46 | `human` | `vibe_vmu_human` |
-| 47 | `chat` | `vibe_vmu_chat` |
-| 48 | `mailbox` | `vibe_vmu_mailbox` |
-| 49 | `panel` | `vibe_vmu_panel` |
-| 50 | `report` | `vibe_vmu_report` |
-| 51 | `activity` | `vibe_vmu_wait` |
-| 52 | `fidelity` | `vibe_vmu_fidelity` |
-| 53 | `mathadapters` | `vibe_vmu_mathadapters` |
-| 54 | `mathjobs` | `vibe_vmu_mathjobs` |
+| 46 | `memberTools` | `vibe_vmu_tools` |
+| 47 | `human` | `vibe_vmu_human` |
+| 48 | `chat` | `vibe_vmu_chat` |
+| 49 | `mailbox` | `vibe_vmu_mailbox` |
+| 50 | `panel` | `vibe_vmu_panel` |
+| 51 | `report` | `vibe_vmu_report` |
+| 52 | `activity` | `vibe_vmu_wait` |
+| 53 | `fidelity` | `vibe_vmu_fidelity` |
+| 54 | `mathadapters` | `vibe_vmu_mathadapters` |
+| 55 | `mathjobs` | `vibe_vmu_mathjobs` |
 
-> ★★ 合计 **54** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
+> ★★ 合计 **55** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
 
 <!-- END GENERATED: tool-index -->
