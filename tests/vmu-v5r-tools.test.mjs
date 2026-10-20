@@ -1237,27 +1237,55 @@ try {
     '★★★ 正: packToolPresentation() returns this declaration (mode=ptc, faces=null, owning pack)', readPresentation)
   ok(bare.handle.kernel.packToolPresentation() === null,
     '★★ 反: an assembly WITHOUT the pack returns null (zero mechanism, no fabricated native default)', bare.handle.kernel.packToolPresentation())
-  // HOST half: a presentation-capable ctx sees presentAs('ptc') called EXACTLY ONCE (per agent), and no spec is defer'd.
+  // HOST half (round 42): the apply point is the PER-AGENT assemble hook, not install. Install must defer; the hook
+  // calls presentAs('ptc') exactly once per agent (idempotent), and an agent ctx without presentAs must be a NAMED
+  // unapplied entry — never a silent native fallback.
   const hm39 = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'host.js')).href)
   const presentCalls = []
   const seen39 = []
+  const listeners39 = {}
   const ctxWithPtc = {
     effect: (fn) => fn(),
-    on: () => () => {},
-    tools: { register: (spec) => { seen39.push(spec); return () => {} }, presentAs: (mode) => { presentCalls.push(mode); return () => {} } },
+    on: (event, fn) => { (listeners39[event] = listeners39[event] || []).push(fn) },
+    tools: { register: (spec) => { seen39.push(spec); return () => {} } },
   }
   const receipt39 = await hm39.createHostAdapter({ ctx: ctxWithPtc, kernel: v5rBoot.handle.kernel, settings: {} }).install()
-  ok(presentCalls.length === 1 && presentCalls[0] === 'ptc' && receipt39.presentation && receipt39.presentation.mode === 'ptc' &&
-    receipt39.presentation.presentAs && receipt39.presentation.presentAs.called === true,
-    '★★★ 宿主执行：presentAs(\'ptc\') 以 per-AGENT 方式只调一次（不是每个工具一次），回执记录 mode=ptc', { calls: presentCalls })
+  ok(presentCalls.length === 0 && receipt39.presentation && receipt39.presentation.mode === 'ptc' && receipt39.presentation.deferredToHook === true,
+    '★★★ 安装时：ptc 不在入口 ctx 上猜，回执 deferredToHook:true，presentAs 未被调用',
+    { calls: presentCalls, presentation: receipt39.presentation })
   ok(seen39.filter((s) => s.deferLoading !== undefined).length === 0,
     '★★ 反向证明 defer 已撤：没有任何 spec 带 deferLoading（ptc 不使用该字段）', seen39.length)
-  // A host WITHOUT presentAs must refuse by name (never silently fall back to native) — this is the visibility path.
-  const ctxNoPtc = { effect: (fn) => fn(), on: () => () => {}, tools: { register: () => () => {} } }
+  const hook39 = (listeners39['system-prompt/assemble'] || [])[0]
+  ok(typeof hook39 === 'function', '★★ 轮 42 新接缝：system-prompt/assemble 钩子已订阅', Object.keys(listeners39))
+  const ptcAgent = {
+    id: 'child-ptc',
+    ctx: { tools: { presentAs: async (mode) => { presentCalls.push(mode); return () => {} } } },
+  }
+  const assembly39 = { tools: [{ name: 'probe_pres_a' }] }
+  v5rBoot.handle.kernel.setActiveTurnMember('member-a')
+  const runHook39 = async () => hook39(assembly39, { agent: ptcAgent }, () => Promise.resolve(assembly39))
+  await runHook39()
+  await runHook39()
+  ok(presentCalls.length === 1 && presentCalls[0] === 'ptc' && receipt39.presentation.presentAs &&
+    receipt39.presentation.presentAs.called === true && receipt39.presentation.presentAs.agentId === 'child-ptc',
+    '★★★ hook 应用：presentAs(\'ptc\') 恰好 1 次（同一 agent 第二次触发不重复），参数 == ptc',
+    { calls: presentCalls, presentation: receipt39.presentation })
+  // A host WITHOUT presentAs must refuse by name at the HOOK (never silently fall back to native).
+  const listeners39b = {}
+  const ctxNoPtc = {
+    effect: (fn) => fn(),
+    on: (event, fn) => { (listeners39b[event] = listeners39b[event] || []).push(fn) },
+    tools: { register: () => () => {} },
+  }
   const receipt39b = await hm39.createHostAdapter({ ctx: ctxNoPtc, kernel: v5rBoot.handle.kernel, settings: {} }).install()
+  const hook39b = (listeners39b['system-prompt/assemble'] || [])[0]
+  const noPtcAgent = { id: 'child-no-ptc', ctx: { tools: {} } }
+  await hook39b({ tools: [] }, { agent: noPtcAgent }, () => Promise.resolve({ tools: [] }))
   const unapplied39 = receipt39b.presentation && Array.isArray(receipt39b.presentation.unapplied) ? receipt39b.presentation.unapplied : []
-  ok(receipt39b.ok === false && unapplied39.length === 1 && unapplied39[0].code === 'VMU_ENGINE_UNAVAILABLE' && receipt39b.presentation.presentAs === null,
-    '★★ 反（不静默降级）：宿主无 presentAs ⇒ 具名 VMU_ENGINE_UNAVAILABLE，回执 ok:false，绝不当 native', unapplied39)
+  ok(receipt39b.presentation.deferredToHook === true && unapplied39.length === 1 && unapplied39[0].code === 'VMU_ENGINE_UNAVAILABLE' && receipt39b.presentation.presentAs === null,
+    '★★ 反（不静默降级）：agent ctx 无 presentAs ⇒ hook 里具名 VMU_ENGINE_UNAVAILABLE 进 unapplied，绝不当 native',
+    unapplied39)
+  v5rBoot.handle.kernel.setActiveTurnMember(null)
 
 } finally {
   // The store writes atomically through temp+rename, so a removal can race one in-flight file: retry, and never let

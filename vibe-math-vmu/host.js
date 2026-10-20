@@ -1298,8 +1298,17 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     if (typeof presentation.disposer === 'function') disposers.push(presentation.disposer)
     installed = true
     publishToolFaceCatalogue()
+    // ★ The receipt's presentation object is the SAME object the hook mutates (presentAs / unapplied after an agent
+    // request). Returning a frozen copy here made "was ptc applied?" unobservable through the install receipt.
+    presentationState = {
+      mode: presentation.mode,
+      deferredToHook: presentation.deferredToHook === true,
+      deferLoading: presentation.deferLoading.slice(),
+      presentAs: presentation.presentAs,
+      unapplied: presentation.unapplied.map((u) => Object.assign({}, u)),
+    }
     return { ok: failures.length === 0, installed: registered.length, names: registered.slice(), ownedByHost, failures: failures.map((f) => Object.assign({}, f)),
-      presentation: { mode: presentation.mode, deferredToHook: presentation.deferredToHook === true, deferLoading: presentation.deferLoading.slice(), presentAs: presentation.presentAs, unapplied: presentation.unapplied.map((u) => Object.assign({}, u)) } }
+      presentation: presentationState }
   }
 
   /**
