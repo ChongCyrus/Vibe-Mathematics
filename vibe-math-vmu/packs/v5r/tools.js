@@ -39,6 +39,13 @@
  *   · `vibe_v5_hire`               → members face `hire` into the `temp` seat ＋ tasks face `create` for the initial task
  *   · `vibe_v5_report`             → READ-ONLY aggregation of the published faces (no new capability)
  *   · `vibe_v5_overview`           → READ-ONLY aggregation, chair seat only (the role check is the pack's)
+ *   · `vibe_v5_tool_help`          → READ: kernel `packTools()` (names+descriptions) ＋ the host applier's visible count
+ *   · `vibe_v5_assign`             → tasks face `create`/`assign` ＋ mailbox face `send` (why/acceptance reach the assignee)
+ *   · `vibe_v5_fire`               → members face `end` ＋ tasks face `transition` to `cancelled`
+ *   · `vibe_v5_nudge`              → mailbox face `send` (kind nudge)
+ *   · `vibe_v5_prioritize`         → records face `put` on the state track (the ledger has no priority column)
+ *   · `vibe_v5_feedback`           → records face `put`/`list` on the feedback track
+ *   · `vibe_v5_read_library`       → records face `get`/`list` (READ-ONLY)
  *
  * THE ROSTER RULE FOR `say`. The original resolved the speaker through its agent→member map (`memberIdOfAgent`).
  * A pack handler has no agent id, so the speaker is an EXPLICIT parameter and it must be a REAL roster id: an
@@ -394,12 +401,244 @@ async function toolOverview(args = {}, { kernel } = {}) {
     meetings: meetingRows.map((m) => ({ id: m.id, state: m.state })) }
 }
 
+// ── ⑬–⑲ THIRD BATCH: help, assignment, dismissal, supervision, priorities, feedback, library reading ─────────
+/**
+ * ★ `vibe_v5_tool_help` — THE PROMPT-INVENTED NAME MADE REAL (PHASE 7 round 4 Lead ruling). The corpus teaches it 47
+ * times and the ORIGINAL NEVER REGISTERED IT; the idea is right (a member needs an exit that answers "what can I call
+ * right now?"), so this implements it instead of deleting the sentence.
+ *
+ * THE SOURCE IS THE KERNEL, NOT THE PROMPT: the list comes from `kernel.packTools()` — the declarations the kernel
+ * actually holds, each carrying the description written in this file, so the answer cannot drift from what is
+ * published. The host's per-Agent visible set is consulted through the ONLY kernel-side reader that exists
+ * (`applyMemberToolFace` with an EMPTY allow/deny acts as a read: it returns the host receipt's visible counts); a
+ * host with no applier / no live Agent refuses BY NAME and this tool reports that instead of an empty list.
+ *
+ * ★ NAMED GAP (reported, not hidden): the kernel has no reader for the FULL visible NAME set — the host publishes
+ * TOOL_NAMES and installs a visible-tools PROVIDER, but no getter is exposed, so this tool can name the pack-declared
+ * tools exactly and the host's visible COUNT, not the host face names. "需内核能力：visible-tools reader" is recorded
+ * in `V5R_NEXT_BATCH_TOOLS`.
+ */
+function toolHelp(args = {}, { kernel } = {}) {
+  const roster = membersOf(kernel).roster()
+  const member = has(args.member) ? str(args.member) : ''
+  if (member !== '' && !roster.some((m) => m.id === member)) {
+    throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + member + '" on this roster',
+      'the roster holds ' + roster.length + ' member(s); omit `member` for the institute-wide tool list')
+  }
+  const packTools = kernel && typeof kernel.packTools === 'function' ? kernel.packTools() : []
+  const tools = packTools.map((t) => ({ name: t.name, purpose: t.description || null }))
+  let host = { available: false, code: null, visible: null }
+  if (member !== '') {
+    try {
+      const r = kernel.applyMemberToolFace({ member, allow: [], deny: [] })
+      host = { available: true, code: null, visible: (r && (r.visibleBefore !== undefined ? r.visibleBefore : r.visibleAfter)) || 0 }
+    } catch (e) {
+      host = { available: false, code: (e && e.code) || null, visible: null }
+    }
+  }
+  if (tools.length === 0) {
+    throw refuse('VMU_ENGINE_UNAVAILABLE', 'the kernel holds no declared pack tools, so there is nothing to answer',
+      'load the v5r pack (config.packs / vmu.packs.active) before asking what is available')
+  }
+  return { ok: true, tool: 'vibe_v5_tool_help', member: member || null, count: tools.length, tools, host,
+    note: 'names come from the kernel\'s own declarations (packTools); the host face names are not readable from the kernel yet (named gap)' }
+}
+
+/**
+ * ★ `vibe_v5_assign` — the original ASSIGNS work: create/pick a task, give it to a member, and state WHY plus the
+ * acceptance criteria (all three REQUIRED there). This kernel has no separate "assignment" object, so the handler
+ * composes two published capabilities: the tasks face (`create` when no task_id, then `assign`) and the mailbox face
+ * (the assignee must SEE the why/acceptance — a silent assignment is the paper capability this repo bans).
+ */
+async function toolAssign(args = {}, { kernel } = {}) {
+  if (!has(args.to)) throw refuse('VMU_INVALID_ARGUMENT', 'assign needs the assignee', 'pass to:"<roster id>"')
+  if (!has(args.why)) throw refuse('VMU_INVALID_ARGUMENT', 'assign needs why', 'pass why:"the reason this work matters"')
+  if (!has(args.acceptance)) throw refuse('VMU_INVALID_ARGUMENT', 'assign needs acceptance criteria', 'pass acceptance:"how we will know it is done"')
+  const to = str(args.to)
+  const roster = membersOf(kernel).roster()
+  if (!roster.some((m) => m.id === to)) {
+    throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + to + '" on this roster', 'the roster holds ' + roster.length + ' member(s)')
+  }
+  const tasks = tasksOf(kernel)
+  let taskId = has(args.task_id) ? str(args.task_id) : null
+  let created = null
+  if (!taskId) {
+    if (!has(args.subject)) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'assign without task_id needs a subject (the original created the task here)',
+        'pass task_id:"t-…" to assign an existing task, or subject:"…" to create one')
+    }
+    created = await tasks.create({ title: str(args.subject), objective: has(args.description) ? str(args.description) : str(args.acceptance), owner: to, deps: null, writeScopes: Array.isArray(args.write_scopes) ? args.write_scopes.map(String) : [] })
+    taskId = created && created.id
+  } else {
+    await tasks.assign(taskId, to)
+  }
+  let notice = null
+  if (kernel.mailbox && typeof kernel.mailbox.send === 'function') {
+    notice = kernel.mailbox.send('office', { to, kind: 'assign',
+      text: '【分派】' + str(args.subject || args.task_id) + '\n理由：' + str(args.why) + '\n验收：' + str(args.acceptance) })
+  }
+  return { ok: true, tool: 'vibe_v5_assign', to, taskId, created: created || null, notice,
+    note: 'priority/due_in/origin of the original have no column here; the why/acceptance travel to the assignee as mail (named, not dropped)' }
+}
+
+/**
+ * ★ `vibe_v5_fire` — dismiss a TEMP worker for real. The members face has `end(id, reason)`, and the task ledger can
+ * move that member's open tasks to `cancelled` — both published capabilities, so the handler composes them. The
+ * original also DROPPED its mail; the mailbox face has no per-member purge this pack may call, so it is reported.
+ */
+async function toolFire(args = {}, { kernel } = {}) {
+  if (!has(args.id)) throw refuse('VMU_INVALID_ARGUMENT', 'fire needs the member id', 'pass id:"<roster id>"')
+  const id = str(args.id)
+  const row = membersOf(kernel).roster().filter((m) => m.id === id)[0]
+  if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + id + '" on this roster', 'the roster holds the live ids')
+  const ended = await membersOf(kernel).end(id, str(args.reason) || 'dismissed by vibe_v5_fire')
+  const cancelled = []
+  const tasks = kernel.tasks && typeof kernel.tasks.list === 'function' ? rowsOf(await kernel.tasks.list()) : []
+  for (const t of tasks) {
+    if (String(t.owner) !== id) continue
+    const st = String(t.status || t.state)
+    if (st === 'done' || st === 'cancelled') continue
+    try {
+      await kernel.tasks.transition(t.id, 'cancelled', { reason: 'assignee dismissed (vibe_v5_fire)' })
+      cancelled.push(t.id)
+    } catch (e) { cancelled.push(t.id + ':refused:' + ((e && e.code) || 'unknown')) }
+  }
+  return { ok: true, tool: 'vibe_v5_fire', id, slot: row.slot, ended, cancelledTasks: cancelled,
+    note: 'mail is not purged (the mailbox face exposes no per-member purge this pack may call) — reported, not pretended' }
+}
+
+/** ★ `vibe_v5_nudge` — supervision: wake one member with a reason and a concrete next step, through the mailbox. */
+function toolNudge(args = {}, { kernel } = {}) {
+  if (!has(args.to)) throw refuse('VMU_INVALID_ARGUMENT', 'nudge needs the member', 'pass to:"<roster id>"')
+  if (!has(args.why)) throw refuse('VMU_INVALID_ARGUMENT', 'nudge needs why', 'pass why:"the concrete reason"')
+  const to = str(args.to)
+  const roster = membersOf(kernel).roster()
+  const row = roster.filter((m) => m.id === to)[0]
+  if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + to + '" on this roster', 'the roster holds ' + roster.length + ' member(s)')
+  if (!kernel.mailbox || typeof kernel.mailbox.send !== 'function') {
+    throw refuse('VMU_ENGINE_UNAVAILABLE', 'no mailbox face is published, so a nudge cannot be delivered', 'assemble a kernel with the mailbox service')
+  }
+  const text = '【督办】' + str(args.why) + (has(args.next_step) ? '\n建议下一步：' + str(args.next_step) : '')
+  const sent = kernel.mailbox.send('office', { to, kind: 'nudge', text })
+  return { ok: true, tool: 'vibe_v5_nudge', to, sent,
+    note: row.state === 'live' ? 'delivered as urgent mail (v5r lists nudge among its urgent kinds)' : 'member is ' + String(row.state) + '; the mail waits for its next wake' }
+}
+
+/**
+ * ★ `vibe_v5_prioritize` — "set institute-wide priorities: an ordered list of {task_id, priority} plus WHY. This
+ * orders work only — it never changes what is true." The kernel's task ledger has NO priority/order column (measured:
+ * `tasks.create` has no priority and there is no reorder op), so the ORDER is ARCHIVED as a durable record on the
+ * state track and the receipt says so — the order is real, its enforcement is not pretended.
+ */
+async function toolPrioritize(args = {}, { kernel } = {}) {
+  const order = args.order
+  if (!Array.isArray(order) || order.length === 0) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'prioritize needs a non-empty ordered list', 'pass order:[{task_id, priority}, …]')
+  }
+  if (!has(args.why)) throw refuse('VMU_INVALID_ARGUMENT', 'prioritize needs why', 'pass why:"why this order"')
+  const taskRows = rowsOf(await tasksOf(kernel).list())
+  const unknown = []
+  for (const row of order) {
+    if (!row || typeof row !== 'object' || !has(row.task_id)) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'every order entry needs a task_id', 'pass order:[{task_id, priority}, …]')
+    }
+    if (!taskRows.some((t) => String(t.id) === String(row.task_id))) unknown.push(String(row.task_id))
+  }
+  if (unknown.length > 0) {
+    throw refuse('VMU_NO_SUCH_OBJECT', 'the order names task(s) this board does not hold: ' + unknown.join(', '),
+      'call task_list for the real ids; an order over phantom tasks would be a lie about priorities')
+  }
+  const archived = recordsOf(kernel).put({
+    track: 'state', kind: 'decision', title: 'priorities: ' + order.length + ' task(s)',
+    body: 'why：' + str(args.why) + '\norder：' + order.map((r, i) => (i + 1) + '. ' + str(r.task_id) + ' (priority ' + str(r.priority) + ')').join('\n'),
+    settled: false, by: str(args.member) || 'vibe_v5_prioritize',
+  })
+  return { ok: true, tool: 'vibe_v5_prioritize', order, archived: archived && archived.id,
+    note: 'the task ledger has no priority column, so the ORDER is archived on the state track (a durable record) and NOT applied to the board — named, not silently ignored' }
+}
+
+const FEEDBACK_ADD_REQUIRED = Object.freeze(['category', 'route', 'phenomenon', 'impact', 'action'])
+
+/** ★ `vibe_v5_feedback` — the work-experience/process feedback library (not research conclusions). Mapped onto the
+ * records face with a `feedback` track: `add` writes, `update` writes a revision with status/outcome, `list` returns
+ * the open ones. The original REQUIRED five fields for `add` and `assessment` on the interpersonal route. */
+function toolFeedback(args = {}, { kernel } = {}) {
+  const records = recordsOf(kernel)
+  const op = has(args.op) ? str(args.op) : ''
+  if (op !== 'add' && op !== 'update' && op !== 'list') {
+    throw refuse('VMU_INVALID_ARGUMENT', 'feedback needs op=add|update|list', 'pass op:"add" / "update" / "list"')
+  }
+  if (op === 'list') {
+    const rows = records.list({ track: 'feedback', limit: has(args.limit) ? Number(args.limit) : 50 })
+    const items = Array.isArray(rows.items) ? rows.items : []
+    const open = items.filter((r) => String(r.status) !== 'closed')
+    return { ok: true, tool: 'vibe_v5_feedback', op, count: open.length, items: args.all === true ? items : open }
+  }
+  if (op === 'add') {
+    const missing = FEEDBACK_ADD_REQUIRED.filter((k) => !has(args[k]))
+    if (missing.length > 0) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'feedback add is missing REQUIRED field(s): ' + missing.join(', '),
+        'the original required category/route/phenomenon/impact/action')
+    }
+    if (str(args.route) === 'interpersonal' && !has(args.assessment)) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'the interpersonal route REQUIRES assessment',
+        'pass assessment:"your judgement of the interpersonal situation" (required by the original)')
+    }
+    const body = ['category：' + str(args.category), 'route：' + str(args.route), 'context：' + str(args.context),
+      'phenomenon：' + str(args.phenomenon), 'impact：' + str(args.impact), 'action：' + str(args.action),
+      'assessment：' + str(args.assessment)].filter((l) => !l.endsWith('：')).join('\n')
+    const written = records.put({ track: 'feedback', kind: 'feedback', title: str(args.category) + '/' + str(args.route), body, settled: false, by: str(args.member) || 'vibe_v5_feedback' })
+    return { ok: true, tool: 'vibe_v5_feedback', op, recordId: written && written.id, status: 'open' }
+  }
+  if (!has(args.id)) throw refuse('VMU_INVALID_ARGUMENT', 'feedback update needs id', 'pass id:"<feedback record id>"')
+  const body = ['status：' + (has(args.status) ? str(args.status) : 'closed'), 'outcome：' + str(args.outcome), 'note：' + str(args.note)]
+    .filter((l) => !l.endsWith('：')).join('\n')
+  const written = records.put({ id: str(args.id), track: 'feedback', kind: 'feedback', title: str(args.id), body,
+    settled: has(args.status) && str(args.status) === 'closed', by: str(args.member) || 'vibe_v5_feedback' })
+  return { ok: true, tool: 'vibe_v5_feedback', op, recordId: written && written.id, status: has(args.status) ? str(args.status) : 'closed' }
+}
+
+/** ★ `vibe_v5_read_library` — read anyone's library, READ-ONLY: `id` reads one card; the list form reads the given
+ * tracks and filters by kind and by the card's author. A track this deployment does not declare is SKIPPED because the
+ * records face refused it by name — the skip is the face's answer, not a swallowed exception. */
+function toolReadLibrary(args = {}, { kernel } = {}) {
+  const records = recordsOf(kernel)
+  if (has(args.id)) {
+    const row = records.get({ id: str(args.id) })
+    return { ok: true, tool: 'vibe_v5_read_library', card: row && row.record ? row.record : row }
+  }
+  const limit = has(args.limit) ? Number(args.limit) : 20
+  const wanted = has(args.member) ? str(args.member) : null
+  const tracks = has(args.kind) ? ['propositions', 'methods', 'problems', 'progress'] : ['propositions', 'methods', 'problems', 'progress']
+  const cards = []
+  const skipped = []
+  for (const track of tracks) {
+    let listed = null
+    try { listed = records.list({ track, limit }) } catch (e) {
+      if (!e || e.code !== 'VMU_INVALID_ARGUMENT') throw e
+      skipped.push(track)
+      continue
+    }
+    const items = Array.isArray(listed.items) ? listed.items : []
+    for (const it of items) {
+      if (has(args.kind) && String(it.kind) !== str(args.kind)) continue
+      if (wanted && String(it.owner || it.by) !== wanted) continue
+      cards.push(it)
+    }
+  }
+  return { ok: true, tool: 'vibe_v5_read_library', member: wanted, kind: has(args.kind) ? str(args.kind) : null,
+    count: cards.length, cards: cards.slice(0, limit), skippedTracks: skipped }
+}
+
 /**
  * THE MANIFEST FACE. Parameter shapes are taken from the ORIGINAL `vibe-math-v5r.js` registration blocks so a
  * member's prompt and the tool schema agree — first batch: `record_*` (content/statement+value+motive+p), `say`
  * (text), `message` (to/content); second batch: `task_create` (subject/description/blocked_by/write_scopes/priority),
  * `task_list` (status/owner/ready), `task_update` (task_id/expected_revision/action/...), `hire`
- * (purpose/initial_task/direction/term/to), `report` and `overview` (no parameters).
+ * (purpose/initial_task/direction/term/to), `report` and `overview` (no parameters); third batch: `assign`
+ * (to/why/acceptance required, task_id or subject), `fire` (id/reason), `nudge` (to/why/next_step), `prioritize`
+ * (order/why), `feedback` (op + the original's fields), `read_library` (member/kind/id/list/limit), and `tool_help`
+ * (member optional — the prompt-invented name this pack now really answers).
  */
 export const V5R_PACK_TOOLS = Object.freeze([
   {
@@ -474,6 +713,48 @@ export const V5R_PACK_TOOLS = Object.freeze([
     parameters: { member: { type: 'string', required: true } },
     handler: toolOverview,
   },
+  {
+    name: 'vibe_v5_tool_help',
+    description: 'What can I call right now? Answers from the kernel\'s own declarations (packTools), never from the prompt: the tool names with one-line purposes, plus the host\'s visible count when a member\'s Agent is reachable. An unknown member, or a host with no live Agent, is a NAMED refusal — never an empty list pretending success.',
+    parameters: { member: { type: 'string' } },
+    handler: toolHelp,
+  },
+  {
+    name: 'vibe_v5_assign',
+    description: 'Assign work: pick an existing task (task_id) or create one (subject), give it to the member in `to`, and state why + acceptance criteria (both REQUIRED, as in the original). The why/acceptance are mailed to the assignee.',
+    parameters: { to: { type: 'string', required: true }, why: { type: 'string', required: true }, acceptance: { type: 'string', required: true }, task_id: { type: 'string' }, subject: { type: 'string' }, description: { type: 'string' }, write_scopes: { type: 'array' }, priority: { type: 'integer' }, due_in: { type: 'string' }, origin: { type: 'string' } },
+    handler: toolAssign,
+  },
+  {
+    name: 'vibe_v5_fire',
+    description: 'Dismiss a member for real: seat ended through the members face, and that member\'s open tasks moved to cancelled. Mail is not purged (no per-member purge is exposed) — reported, not pretended.',
+    parameters: { id: { type: 'string', required: true }, reason: { type: 'string' } },
+    handler: toolFire,
+  },
+  {
+    name: 'vibe_v5_nudge',
+    description: 'Supervise: wake one member with a stated reason and a concrete suggested next step (prefer a specific step over a bare "hurry up"). Delivered as urgent mail.',
+    parameters: { to: { type: 'string', required: true }, why: { type: 'string', required: true }, next_step: { type: 'string' } },
+    handler: toolNudge,
+  },
+  {
+    name: 'vibe_v5_prioritize',
+    description: 'Set institute-wide priorities: an ordered list of {task_id, priority} plus why. This orders work only — it never changes what is true. The task ledger has no priority column, so the order is archived as a durable record and the receipt says it was not applied to the board.',
+    parameters: { order: { type: 'array', required: true }, why: { type: 'string', required: true } },
+    handler: toolPrioritize,
+  },
+  {
+    name: 'vibe_v5_feedback',
+    description: 'Work-experience / process feedback library (not research conclusions). op=add needs category/route/phenomenon/impact/action (and assessment on the interpersonal route); op=update closes with status/outcome/note; op=list returns the open items.',
+    parameters: { op: { type: 'string', required: true }, id: { type: 'string' }, category: { type: 'string' }, route: { type: 'string' }, context: { type: 'string' }, phenomenon: { type: 'string' }, impact: { type: 'string' }, action: { type: 'string' }, assessment: { type: 'string' }, outcome: { type: 'string' }, status: { type: 'string' }, note: { type: 'string' }, all: { type: 'boolean' }, limit: { type: 'integer' } },
+    handler: toolFeedback,
+  },
+  {
+    name: 'vibe_v5_read_library',
+    description: 'Read anyone\'s library (read-only): id reads one card; the list form reads the declared tracks and filters by kind and by the card\'s author.',
+    parameters: { member: { type: 'string' }, kind: { type: 'string' }, id: { type: 'string' }, list: { type: 'boolean' }, limit: { type: 'integer' } },
+    handler: toolReadLibrary,
+  },
 ])
 
 export default V5R_PACK_TOOLS
@@ -481,29 +762,23 @@ export default V5R_PACK_TOOLS
 /**
  * THE NEXT BATCH, DECLARED AS DATA (not as tools). Every name below is MENTIONED by this pack's prompts and is NOT
  * declared by `V5R_PACK_TOOLS` yet; the `inOriginal` flag records whether the ORIGINAL registry in `vibe-math-v5r.js`
- * registers it — measured, not assumed:
+ * registers it — measured, not assumed. Round 4 implemented `assign / fire / nudge / prioritize / feedback /
+ * read_library`, and `vibe_v5_tool_help` (the ONE prompt-invented name: the corpus teaches it and the original never
+ * registered it) is now a REAL tool. What is left is the Lean family, which needs the Lean archive surface.
  *
- *   · ten of them exist in the original (`assign / fire / nudge / prioritize / feedback / read_library / lean_*`), so
- *     they are real capabilities waiting for a translation, not prompt inventions;
- *   · `vibe_v5_tool_help` is the EXCEPTION: the prompt corpus mentions it 47 times and the ORIGINAL NEVER REGISTERED
- *     IT — the original's own prompt asked for a tool that did not exist. The corpus is sha256-locked and asserted by
- *     `tests/vmu-pack-prompts.test.mjs`, so deleting the sentence is not available without breaking that gate; the two
- *     honest options are to implement it (making the prompt true) or to keep the mismatch NAMED, and this round keeps
- *     it named and visible here rather than silent.
- *
- * WHY DATA AND NOT THIRTEEN MORE HANDLERS: each remaining name needs its own face mapping (and `lean_*` needs the Lean
- * archive surface), and a tool declared before its mapping exists would be the paper capability this repo bans.
+ * WHY DATA AND NOT MORE HANDLERS: each remaining name needs a face mapping that does not exist yet (the `lean_*` set
+ * needs the Lean archive), and a tool declared before its mapping exists would be the paper capability this repo bans.
  */
 export const V5R_NEXT_BATCH_TOOLS = Object.freeze([
-  { name: 'vibe_v5_assign', inOriginal: true },
-  { name: 'vibe_v5_fire', inOriginal: true },
-  { name: 'vibe_v5_nudge', inOriginal: true },
-  { name: 'vibe_v5_prioritize', inOriginal: true },
-  { name: 'vibe_v5_feedback', inOriginal: true },
-  { name: 'vibe_v5_read_library', inOriginal: true },
   { name: 'vibe_v5_lean_archive', inOriginal: true },
   { name: 'vibe_v5_lean_lib', inOriginal: true },
   { name: 'vibe_v5_lean_read', inOriginal: true },
   { name: 'vibe_v5_lean_run', inOriginal: true },
-  { name: 'vibe_v5_tool_help', inOriginal: false },
+])
+
+/** ★ NAMED GAPS (this round's measured limits, recorded rather than hidden). */
+export const V5R_NAMED_GAPS = Object.freeze([
+  'visible-tools reader: the kernel has no getter for the host\'s full visible NAME set (the host publishes TOOL_NAMES and installs a visible-tools provider, but exposes no reader) — tool_help can therefore name the pack-declared tools exactly and the host visible COUNT, not the host face names.',
+  'mail purge on fire: the mailbox face exposes no per-member purge this pack may call, so fire dismisses the member and cancels their tasks but does not drop their mail.',
+  'task priority column: the task ledger has no priority/order column, so prioritize archives the order as a record instead of applying it to the board.',
 ])

@@ -812,7 +812,8 @@
     "tests/vmu-v3-gates.test.mjs",
     "tests/vmu-v3-tools.test.mjs",
     "vibe-math-vmu/packs/v3/middleware/defects.js",
-    "vibe-math-vmu/packs/v3/middleware/paper-close.js"
+    "vibe-math-vmu/packs/v3/middleware/paper-close.js",
+    "tests/audit-observer-consumers.mjs"
   ],
   "license": "MIT",
   "keywords": [

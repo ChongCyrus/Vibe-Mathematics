@@ -432,6 +432,25 @@ if (SELF_PROBE) {
   ok(unknown && unknown.code === 'VMU_INVALID_ARGUMENT', '★ 反：未声明的面名 ⇒ 具名 VMU_INVALID_ARGUMENT', unknown && unknown.code)
 }
 
+// ── 10. ★ PHASE 7 (blindspot c): the set* observers are PROVEN to be called, not just declared ────────────────
+{
+  const seen = []
+  hm.setToolExecObserver((exec) => seen.push(exec))
+  const kernel = km.createKernel({ clock })
+  const host = fakeHost()
+  const adapter = hm.createHostAdapter({ ctx: host.ctx, kernel, settings: {} })
+  await adapter.install()
+  const spec = host.state.specs.find((x) => x.name === 'vibe_vmu_status')
+  await spec.execute({}, {})
+  ok(seen.length > 0, '★ setToolExecObserver 的 observer 被真实工具执行调用（不是只存在）', seen.length)
+  const calls = []
+  kernel.setPackToolRetractObserver(({ removed }) => { calls.push(removed); return { ok: true } })
+  kernel.declarePackTools([{ name: 'probe_retract_tool', description: 'probe', parameters: {}, handler: () => ({ ok: true }) }], { by: 'probe-pack' })
+  const retracted = kernel.retractPackTools(['probe_retract_tool'], { by: 'probe-pack' })
+  if (retracted && retracted.hostRetract) await retracted.hostRetract
+  ok(calls.length === 1 && calls[0].includes('probe_retract_tool'), '★ setPackToolRetractObserver 的 observer 真的被 retract 调用（含被撤名）', calls)
+}
+
 console.log('=== VMU HOST: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
