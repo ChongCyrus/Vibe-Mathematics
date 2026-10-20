@@ -72,7 +72,7 @@ export const V3_ROLE_EXPLORER = Object.freeze({
     '{"progress":{"track":"directions","kind":"direction","title":"q-1 方向候选","body":"# 方向｜q-1\n- ID: d1\n- 标题: 直接数学归纳法\n- 问题: q-1\n- 来源: explorer 回合\n- 方法: 对 n 归纳…\n- 核心假设: …\n- 可行性: 0.9\n\n（每条方向一段完整叙述：标题/方法/核心假设/可行性理由）","qid":"q-1","methods_used":[{"id":"m-abc12345","效果":"某个方向借鉴了它","建议":"…"}],"new_inventions":[{"类型":"方法","标题":"…","内容描述":"…"}],"tags":["dir:explorer｜d1｜标题｜方法｜核心假设｜0.5","dir:explorer｜d2｜…｜…｜…｜0.4"]}}',
     '```',
     '★ 顶层**不能**写 `methods_used`／`new_inventions`／`qid`／`dirId`（字段门具名拒），它们只能放在 `progress` 对象里；兼容的 tags 形见「方法库规则」段（`mu:`／`inv:`／`ctx:`）。',
-    '★ 顶层**只允许** `progress`（以及内核已登记的 `vote_solved`/`solved` 等）；`receipt`／`status`／`code`／`detail`／`directions` 这类自造顶层字段会被 `VMU_TURN_UNKNOWN_FIELD` **整条拒掉**。',
+    '★ 顶层**只允许** `progress`（以及内核已登记的 `vote_solved`/`solved` 等）；`receipt`／`status`／`code`／`detail`／`directions` 这类自造顶层字段在默认 `ignore-named` 下会被记录并忽略、在 `refuse` 模式下会被 `VMU_TURN_UNKNOWN_FIELD` **整条拒掉**。',
     '★ 方向卡正文**必须**带 `- 问题: <问题 id>` 与 `- 来源: <来源>` 两个锚点（planner 靠它们判断方向是否可派 solver）；缺这两个锚点的方向卡会被当成不可用。',
     'tags 每条方向一个，六段用全角竖线 `｜` 分隔：`dir:explorer｜<方向id>｜<标题>｜<方法>｜<核心假设>｜<feasibility>`；方向 id 由你按 d1/d2/… 顺序给。理由里不要出现 `｜`。',
   ].join('\n'),
@@ -167,7 +167,7 @@ export const V3_ROLE_VERIFIER_REVIEW = Object.freeze({
     // role/status/code/target/Result/Reason/message/evidence/blocked_by/needed - the kernel accepts none of those, and
     // the whole drive stopped. The pack must require the KERNEL's reply surface, not v3's internal vocabulary.
     '★ 回执字段契约（内核只接受这些）：JSON 顶层**只允许** `progress`（以及 `say`／`vote_solved`／`solved` 等内核已声明字段）。',
-    '★ **顶层禁止**出现 `role`／`status`／`code`／`target`／`Result`／`Reason`／`message`／`evidence`／`blocked_by`／`needed`：这些不是内核字段，出现即整条回执被具名拒（VMU_TURN_UNKNOWN_FIELD）且本轮作废。',
+    '★ **顶层禁止**出现 `role`／`status`／`code`／`target`／`Result`／`Reason`／`message`／`evidence`／`blocked_by`／`needed`：这些不是内核字段；默认 `ignore-named` 下会被记录并忽略，`refuse` 模式下整条回执被具名拒（VMU_TURN_UNKNOWN_FIELD）且本轮作废。',
     '★ 没有 TARGET／没有可写内容时：只输出 `{"progress": []}`（解释用 `say` 或写进 progress 条目的正文）；**不要**自己发明字段来表达「无法验证」。',
     '★ 回执样例（照这个形状；track/kind 必填，缺了会被当成 unknown track 拒）：',
     '{"progress":{"track":"votes","kind":"vote","title":"vote for <target> r<round>","body":"- target: <target>\\n- result: 0.9\\n- reason: 具体理由\\n- round: 1","votes":[{"target":"<target>","result":0.9,"reason":"具体理由","round":1}]}}',
@@ -247,7 +247,7 @@ export const V3_ROLE_PAPER_WRITER = Object.freeze({
     '',
     '### 回执（vmu 适配；只输出一个 ```json 围栏）',
     '用 `progress` 写一条 `journal` 轨记录承载整篇论文：`title` = 论文标题；`body` = 完整论文 Markdown（含全部九节 `## ` 标题）；tags 给 `paper:<标题>｜<lang>｜<format>`。',
-    '★ 顶层**只允许** `progress`；`artifacts`／`missing`／`notes`／`say` 等自造顶层字段会被 `VMU_TURN_UNKNOWN_FIELD` 整条拒（四件产物由框架从你的 progress 回执落盘，不需要你在顶层报 artifacts）。',
+    '★ 顶层**只允许** `progress`；`artifacts`／`missing`／`notes`／`say` 等自造顶层字段在默认 `ignore-named` 下会被记录并忽略、在 `refuse` 模式下被 `VMU_TURN_UNKNOWN_FIELD` 整条拒（四件产物由框架从你的 progress 回执落盘，不需要你在顶层报 artifacts）。',
     '★ 回执样例：{"progress":{"track":"journal","title":"odd-sum 论文","body":"## 摘要\\n…\\n## 引言与问题背景\\n…","tags":["paper:odd-sum 论文｜zh｜md"]}}',
     '摘要写成正文第一节里的第一段（或别用 `## 摘要` 之外的重复节）。',
   ].join('\n'),

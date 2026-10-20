@@ -64,7 +64,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 
 // ② parsing: three DIFFERENT failures get three DIFFERENT names
 {
-  const t = mk()
+  const t = mk({ settings: { 'vmu.turn.unknownReplyFieldMode': 'refuse' } })
   const noFence = await rejects(() => t.parse('I could not decide anything.'), 'VMU_TURN_NO_FENCE')
   ok(noFence.caught && noFence.code === 'VMU_TURN_NO_FENCE', 'T6. ★★ a reply with no fence is refused as such', { code: noFence.code })
   const badJson = await rejects(() => t.parse('```json\n{ say: not json }\n```'), 'VMU_TURN_BAD_JSON')
@@ -74,6 +74,23 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     'T8. ★★★ an unknown field is refused BY NAME - the loop never guesses what the model meant', { code: unknown.code })
   const good = t.parse(fence({ say: 'hello', verdict: true }))
   ok(good.ok === true && good.fields.length === 2, 'T9. ★ a well-formed reply parses and reports its fields', good.fields)
+}
+// ★ PHASE 7 round 15: unknownReplyFieldMode — ignore-named reports (never silently drops), refuse keeps the old gate.
+{
+  const loose = mk()   // default = ignore-named
+  const parsed = loose.parse(fence({ say: 'hi', note: 'extra', solved: true }))
+  ok(parsed.ok === true && Array.isArray(parsed.ignoredFields) && parsed.ignoredFields.join(',') === 'note',
+    '★ 正（ignore-named）：带 note 的回执解析成功、已知字段保留、ignoredFields=[note]', { fields: parsed.fields, ignored: parsed.ignoredFields })
+  ok(parsed.reply.say === 'hi' && parsed.reply.ignoredFields && parsed.reply.ignoredFields[0] === 'note',
+    '★ 正：已知字段真的在 reply 里，ignoredFields 也挂在 reply 上（可见，不静默）', parsed.reply)
+  const clean = loose.parse(fence({ say: 'hi' }))
+  ok(clean.ok === true && !Object.prototype.hasOwnProperty.call(clean, 'ignoredFields'),
+    '★ 反（零噪音）：没有未知字段 ⇒ 回执里【不出现】ignoredFields 键', clean.ignoredFields)
+  const strict = mk({ settings: { 'vmu.turn.unknownReplyFieldMode': 'refuse' } })
+  const refused = await rejects(() => strict.parse(fence({ say: 'hi', note: 'extra' })), 'VMU_TURN_UNKNOWN_FIELD')
+  ok(refused.caught && refused.code === 'VMU_TURN_UNKNOWN_FIELD', '★ 反（refuse）：同一回执仍被整轮拒（严格模式没被破坏）', refused.code)
+  const applied = await loose.apply({ say: 'hi', note: 'x' })
+  ok(applied && applied.ok === true && Array.isArray(applied.executed), '★ 正：known 字段照常进入 apply（动作面不因多余字段被丢）', applied && applied.ok)
   ok(extractFence('x```json\n{a:1}\n```y') !== null, 'T10. ★ the fence extractor is exported and works on embedded text')
 }
 
@@ -717,7 +734,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 // compaction directive reappeared at the head of every later prompt forever. Here the two fields must be RECOGNISED -
 // refusing them was a blocker for a real round - and the compacted case must store the seed.
 {
-  const loopC = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
+  const loopC = createTurnOrchestrator({ settings: { 'vmu.turn.unknownReplyFieldMode': 'refuse' }, sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
   // NOTE: the sample deliberately carries no other field. `solved`, `assign`, `task_claim` and the rest are REAL
   // reply fields the original parses and this face still does not know, which is the audit's field-surface gap (12 of
   // 29) and is recorded as owed rather than hidden by a sample that avoids them.
@@ -1035,6 +1052,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 {
   const kernel = createKernel({ settings: {}, root: null, host: null })
   const mk = (deliver) => createTurnOrchestrator({
+    settings: { 'vmu.turn.unknownReplyFieldMode': 'refuse' },
     sectionPolicy: DECIDE_SECTIONS,
     prompt: createPromptPipeline({ sections: collectPackSections([PACK]) }),
     faces: facesFrom(kernel),

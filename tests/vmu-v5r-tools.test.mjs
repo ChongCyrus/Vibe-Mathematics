@@ -720,6 +720,39 @@ try {
   ok(wrongArraySample.length === 0,
     '★★ the OLD array-shaped sample is GONE from every section (it was the shape that produced the real-machine failure)', wrongArraySample.map((s) => s.name))
 
+  // ── ③p THE RECEIPT CONTRACT + THE CLOSURE VOTE (round 15): thin receipts, and what actually casts ----------
+  // REAL-MACHINE DEFECT: a member finished its tool work and then wrote a RICH receipt (`note` + `solved` +
+  // `vote_solved` + `meeting_hand` + `record` + a string `progress`) ⇒ "unknown reply field(s)" ×9, the whole turn
+  // voided. The contract below is derived from the kernel's OWN catalogue, not invented.
+  console.log('=== 3p. THE RECEIPT CONTRACT + THE CLOSURE VOTE ===')
+  ok(turnMod.FIELDS.includes('progress') && turnMod.FIELDS.includes('say') &&
+    turnMod.RECORDED_FIELDS.includes('solved') && turnMod.RECORDED_FIELDS.includes('vote_solved'),
+    '★ the four fields the contract allows are REAL kernel fields (progress/say from FIELDS; solved/vote_solved from RECORDED_FIELDS)', { fields: turnMod.FIELDS.length, recorded: turnMod.RECORDED_FIELDS.length })
+  const unknownClass = ['note', 'plan']
+  ok(unknownClass.filter((f) => !turnMod.FIELDS.includes(f) && !turnMod.RECORDED_FIELDS.includes(f)).length === unknownClass.length,
+    '★★ 反: `note`/`plan` are in NEITHER catalogue — writing them is the `VMU_TURN_UNKNOWN_FIELD` class the real machine hit', unknownClass)
+  const turnSrc2 = (await import('node:fs')).readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'turn', 'index.js'), 'utf8')
+  ok(turnSrc2.includes("fail('VMU_TURN_UNKNOWN_FIELD'") || turnSrc2.includes('VMU_TURN_UNKNOWN_FIELD'),
+    '★ the kernel really raises VMU_TURN_UNKNOWN_FIELD for those (source probe) — the failure class exists, it is not hypothetical', turnSrc2.includes('VMU_TURN_UNKNOWN_FIELD'))
+  // 正: the MINIMAL receipt's only key is a kernel field ⇒ acceptable BY CONSTRUCTION
+  const minimalReceipt = { vote_solved: true }
+  ok(Object.keys(minimalReceipt).length === 1 && Object.keys(minimalReceipt).every((k) => turnMod.FIELDS.includes(k) || turnMod.RECORDED_FIELDS.includes(k)),
+    '★★ 正: the minimal receipt {"vote_solved": true} has exactly one key and that key is a kernel field ⇒ the field gate accepts it', Object.keys(minimalReceipt))
+  // 正/反: the CLOSURE PREDICATE is the kernel's, and `missing` is exactly what the fixture loop must drain.
+  const votesAll = new Map([['r-1', true], ['r-2', true]])
+  const allIn = turnMod.closureVoteOf({ votes: votesAll, roster: ['r-1', 'r-2'] })
+  const half = new Map([['r-1', true]])
+  const halfIn = turnMod.closureVoteOf({ votes: half, roster: ['r-1', 'r-2'] })
+  ok(allIn.cast === true && allIn.missing.length === 0 && halfIn.cast === false && halfIn.missing.filter((m) => m === 'r-2').length === 1,
+    '★★ the closure predicate: all-true ⇒ cast:true (missing empty); one silent member ⇒ cast:false with `missing` naming them — this is what the fixture tells root to drain', { all: allIn.cast, half: halfIn.cast, missing: halfIn.missing })
+  // and the prompt teaches exactly that contract (no drift between the text a member reads and the proof above)
+  const contractText = [...PACK.sections].filter((s) => String(s.text || '').includes('顶层只允许这四个字段'))
+  ok(contractText.length >= 1 && contractText.filter((s) => String(s.text).includes('{"vote_solved": true}')).length >= 1,
+    '★★ the fixture-tools section carries the receipt contract AND the copy-paste minimal receipt', contractText.map((s) => s.name))
+  const staleNoteAdvice = [...PACK.sections].filter((s) => /写进回执的 note/.test(String(s.text || '')))
+  ok(staleNoteAdvice.length === 0,
+    '★★ the OLD wrong advice ("把 code 与 hint 写进回执的 note") is GONE — that advice itself produced an unknown field', staleNoteAdvice.map((s) => s.name))
+
   // ── ③m THE ROLE VOCABULARY (round 12): section scopes must speak SLOT IDS, not display names ────────────────
   // THE BUG THIS PINS (found on a real machine): `scope.role` is matched against `turn.role`, which is the ROSTER SLOT
   // ID (chair/member/temp); the display names (academician/researcher) are `roleLabel`, and a scope written with them can

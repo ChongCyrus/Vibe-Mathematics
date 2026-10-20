@@ -556,7 +556,7 @@
 | `VMU_PROMPT_BINDING_CONFLICT` | **同一段、同一维度上有两条绑定并列** ⇒ 拒（不再静默取其一） | 提示管线 06 | ✗（给其中一条更具体的维度；优先级 `role < phase < member < task`） |
 | `VMU_PROMPT_VARIABLE_MISSING` | **占位符无人供值**（`vmu.prompts.missingVariable=refuse` 时） | 提示管线 06 | ✗（在装配上下文或 settings 里补值；默认 `report` 只记录不拒） |
 | `VMU_TURN_BAD_JSON` | 围栏内容**不是合法 JSON**，或不是对象 | 轮次编排 26 | ✗（与"没有围栏"是**两种**失败 ✗） |
-| `VMU_TURN_UNKNOWN_FIELD` | 回复字段**不在已宣告目录**里 | 轮次编排 26 | ✗（须**点名**该字段并列出已知字段，**绝不猜** ✗） |
+| `VMU_TURN_UNKNOWN_FIELD` | 回复字段**不在已宣告目录**里，且 `vmu.turn.unknownReplyFieldMode='refuse'`（默认 `ignore-named` 不抛此码，改为 `ignoredFields`＋notice） | 轮次编排 26 | ✗（须**点名**该字段并列出已知字段，**绝不猜** ✗） |
 | `VMU_TURN_ASSEMBLY_FAILED` | **管线拒绝了本轮装配** | 轮次编排 26 | ✗（须转述管线的拒因） |
 | `VMU_TURN_REENTRANT` | ★ **PHASE 6 / K2**：★ **已有一个回合在途，★ 第二次 `run()` 会嵌套** —— ★ 本循环的**归因／成员回复槽／通告队列都是单回合状态**，★ 嵌套会覆盖 | 轮次编排 26 | ✗（★ **等在途回合结算后再调**；★ `drive()`／`step()` 已按顺序调用，★ 不受影响 ✓） |
 | `VMU_TURN_DELIVERY_TIMEOUT` | ★ **PHASE 6 / SLV**：★ **one-shot 成员回合在 `vmu.turn.deliveryTimeoutMs` 内没有结算**（请求已进入调用、未返回）—— ★ 超时后该回合**具名失败并释放串行派发队列**，后面的回合继续；★ 记录带 turn／member／已等毫秒／最后交付阶段／是否已进入调用 | 轮次编排 26 | ✅（可调 deadline；★ 正常回合不受影响） |

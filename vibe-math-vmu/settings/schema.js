@@ -207,6 +207,7 @@ const CORE_DEFS = Object.freeze([
   // ROUND 367: the pointer-propagation contract has its own switch, exactly as the original gates it. Off means the
   // section is not included at all (zero injection), never a "disabled" notice - see docs/26 section 3.14.
   { key: 'vmu.turn.replyCatalogue', type: 'enum', domain: ['compact', 'full'], def: 'compact', hot: HOT.H2, who: 'office', doc: 'which reply catalogue is injected: compact (what the delivered-prompt corpus carries) or full' },
+  { key: 'vmu.turn.unknownReplyFieldMode', type: 'enum', domain: ['ignore-named', 'refuse'], def: 'ignore-named', hot: HOT.H1, who: 'office', doc: 'PHASE 7：回执顶层出现未登记字段时怎么办。ignore-named（默认）＝已知字段照常处理、未登记字段不丢弃而是具名报告（reply.ignoredFields＋一条 notice），不再作废整轮；refuse＝保留旧严格语义（VMU_TURN_UNKNOWN_FIELD，整轮拒绝）。' },
   { key: 'vmu.turn.protocolPath', type: 'string', def: 'Shared/Protocol.md', hot: HOT.H2, who: 'office', doc: 'protocol path named by the compact reply catalogue (relative to the session working directory)' },
   { key: 'vmu.turn.verifyTarget', type: 'string', def: '(unspecified)', hot: HOT.H2, who: 'office', doc: 'the object under a truth ballot (verify phase)' },
   { key: 'vmu.turn.verifyKindLabel', type: 'string', def: '(unspecified)', hot: HOT.H2, who: 'office', doc: 'the kind label shown next to the object under a truth ballot' },

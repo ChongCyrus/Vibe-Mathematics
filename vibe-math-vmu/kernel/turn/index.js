@@ -884,12 +884,18 @@ export function createTurnOrchestrator({
         'ask for exactly one fenced json object (docs/26 §3); a bare fence, a bare object and a prose-wrapped object are all accepted')
     }
     const unknown = Object.keys(obj).filter((k) => !Object.prototype.hasOwnProperty.call(owners, k) && !RECORDED_FIELDS.includes(k))
-    if (unknown.length) {
+    // ★ PHASE 7 / round 15: a field gate must not destroy a turn the member already did the work in (founder's own
+    // complaint). ignore-named is the DEFAULT: known fields still apply, and every unknown name is REPORTED, never
+    // silently dropped (reply.ignoredFields + one notice). refuse keeps the old strict semantics byte for byte.
+    const unknownFieldMode = settings && settings['vmu.turn.unknownReplyFieldMode'] === 'refuse' ? 'refuse' : 'ignore-named'
+    if (unknown.length && unknownFieldMode === 'refuse') {
       fail('VMU_TURN_UNKNOWN_FIELD', 'unknown reply field(s): ' + unknown.join(', ') + ' - refusing rather than guessing what was meant',
         'known fields: ' + known.concat(RECORDED_FIELDS).join(', '))
     }
+    const ignoredFields = unknown.length ? unknown.slice() : []
+    if (ignoredFields.length) obj.ignoredFields = ignoredFields
     counts.parsed += 1
-    return { ok: true, reply: obj, fields: Object.keys(obj) }
+    return { ok: true, reply: obj, fields: Object.keys(obj), ...(ignoredFields.length ? { ignoredFields } : {}) }
   }
 
   /**
@@ -1083,6 +1089,10 @@ export function createTurnOrchestrator({
     // consumed once: the next turn's reply belongs to whoever it answers
     const attributedTo = lastReplyForMember
     lastReplyForMember = null
+    // ★ PHASE 7: "ignored" must be READABLE - one notice for this member's next prompt (red line 3: never silent).
+    if (Array.isArray(parsed.ignoredFields) && parsed.ignoredFields.length) {
+      queueNotice(turn.member, '【研究所提示】回执里出现未登记字段：' + parsed.ignoredFields.join(', ') + '（已按 ignore-named 忽略；回执顶层请只写登记字段）')
+    }
     // ROUND 496: `turn/reply-parsed` was frozen with a default policy and NOTHING emitted it, so middleware could not see
     // a parsed reply. Emitted BEFORE dispatch, which is the only point where inspecting it can still change the outcome.
     if (bus && typeof bus.emit === 'function') {
@@ -1137,7 +1147,7 @@ export function createTurnOrchestrator({
       queueNotice(turn.member, line)
       refused.push({ field: e.field, code: r.code === undefined ? null : r.code })
     }
-    return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, fields: parsed.fields, refused, attribution: Object.assign({}, lastAttribution), ...out }
+    return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, fields: parsed.fields, ignoredFields: parsed.ignoredFields || [], refused, attribution: Object.assign({}, lastAttribution), ...out }
   }
 
   /**

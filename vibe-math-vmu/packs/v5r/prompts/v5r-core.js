@@ -492,7 +492,18 @@ export const v5rFixtureTools = Object.freeze({
     '你这一刻能用的工具清单就在本提示词的「本轮可用的工具｜<你的角色>」段里（按你的席位列出，逐条只有工具名与一句用途）；不确定时可调用工具帮助本身。',
     '调用工具后结果立即可见；**回执可以很薄**——动作已经由工具完成了，回执只需说明"这一轮做了什么、下一步是什么"，不要为了凑长篇而重复工具已经记录的内容。',
     '仍然只输出一个合法 JSON 对象作为回执（不要输出额外的说明文字）。',
-    '若某个工具被具名拒绝，把它的 code 与 hint 写进回执的 note，不要当成没发生。',
+    // ★ PHASE 7 round 15 (real-machine defect): this used to say "把 code 与 hint 写进回执的 note" — but `note` is NOT
+    // a top-level field the kernel accepts (`FIELDS` ∪ `RECORDED_FIELDS`), so that advice itself produced
+    // VMU_TURN_UNKNOWN_FIELD. The refusal text has to go somewhere that IS accepted.
+    '若某个工具被具名拒绝：把它的 code 与 hint 写进 **progress 的 body 里**（或下一次工具调用的参数里），**不要**新增 `note` 之类的顶层字段。',
+    // ★ PHASE 7 round 15: THE RECEIPT CONTRACT. The real machine's members finished their tool work and then wrote a
+    // RICH receipt (`note` + `solved` + `vote_solved` + `meeting_hand` + `record` + a string `progress`) ⇒
+    // "unknown reply field(s)" ×9 and the whole turn was voided. The allowed top-level fields come from the kernel's own
+    // catalogue (`kernel/turn/index.js` FIELDS ∪ RECORDED_FIELDS, 29 names), but for a thin receipt only these four are
+    // ever needed.
+    '★★ 回执契约：**顶层只允许这四个字段** —— progress / say / solved / vote_solved（这是本夹具的收敛口径）。★ `note`、`plan` 之类**不在内核字段清单**里，写了会被判 `VMU_TURN_UNKNOWN_FIELD`；`record`/`meeting_hand` 虽在内核清单里，但本夹具要求用工具做、**不要写进回执**。',
+    '★★ 已经用工具做完的动作，**不要再写进回执**；回执只放"没有工具对应的纯决定"（例如是否结题）。',
+    '★★ 最小合法回执（可直接照抄）：{"vote_solved": true} 或 {"solved": false}；要写进展就 `{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"…"}}`，**不要**把 progress 写成字符串。',
     // ★ PHASE 7 round 14: COPY-PASTE samples, taken from the kernel's real shapes (records.put args / the declared
     // kinds). The real machine proved why this is needed: a member guessed `"progress": "长叙述"` and every write of the
     // turn failed with "unknown record track: undefined".

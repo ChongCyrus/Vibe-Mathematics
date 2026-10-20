@@ -334,6 +334,7 @@ vmu.packs.active: [v5r]
 | `vmu.turn.memoryCeilingMb` | number | `0` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 内存上限（MB）；0＝只提醒"压力明显增大"而不给数字 |
 | `vmu.turn.selfCheck` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/middleware/prompt-switches.js` | 是否向成员展示资源纪律段（关掉＝零注入，提示词回到该段之前，注入点逐字不变） |
 | `vmu.turn.replyCatalogue` | enum | `compact` | `compact`∣`full` | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/middleware/prompt-switches.js` | which reply catalogue is injected: compact (what the delivered-prompt corpus carries) or full |
+| `vmu.turn.unknownReplyFieldMode` | enum | `ignore-named` | `ignore-named`∣`refuse` | 会话 | H1 | office | ✅ 已接线 | `kernel/turn/index.js` | PHASE 7：回执顶层出现未登记字段时怎么办。ignore-named（默认）＝已知字段照常处理、未登记字段不丢弃而是具名报告（reply.ignoredFields＋一条 notice），不再作废整轮；refuse＝保留旧严格语义（VMU_TURN_UNKNOWN_FIELD，整轮拒绝）。 |
 | `vmu.turn.protocolPath` | string | `Shared/Protocol.md` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | protocol path named by the compact reply catalogue (relative to the session working directory) |
 | `vmu.turn.verifyTarget` | string | `(unspecified)` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | the object under a truth ballot (verify phase) |
 | `vmu.turn.verifyKindLabel` | string | `(unspecified)` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | the kind label shown next to the object under a truth ballot |
@@ -1532,7 +1533,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1143** 个，前缀家族 **116** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1144** 个，前缀家族 **116** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1644,7 +1645,7 @@ vmu.packs.active: [v5r]
 | `vmu.tools.*` | 2 |
 | `vmu.topology.*` | 12 |
 | `vmu.trust.*` | 16 |
-| `vmu.turn.*` | 28 |
+| `vmu.turn.*` | 29 |
 | `vmu.tx.*` | 6 |
 | `vmu.v3.*` | 19 |
 | `vmu.v5r.*` | 1 |
