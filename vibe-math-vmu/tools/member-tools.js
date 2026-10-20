@@ -24,7 +24,11 @@ export function makeMemberToolsSpec({ param, refused, TOOL_NAMES, kernel }) {
         return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel has no toolsView reader',
           'assemble a kernel with the visible-tools provider (host adapter)')
       }
-      return kernel.toolsView({ member })
+      // ★ A tool runs on the caller's Agent; pass it when this is a child (root ids are 'session-…'). The kernel's
+      // provider path stays for out-of-turn calls (where there is no caller Agent).
+      const caller = exec && exec.agent ? exec.agent : null
+      const agent = caller && typeof caller.id === 'string' && !caller.id.startsWith('session-') ? caller : null
+      return kernel.toolsView({ member, agent })
     },
   }
 }

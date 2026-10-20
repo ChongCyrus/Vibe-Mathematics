@@ -687,3 +687,8 @@ root agent 自己的 assembly（root 不属于任何成员槽）。
 - **退出有了一个可断言的接缝**：引擎 `recovery.settle()`（排空在飞写穿）／`flushAll()`（刷 journal，state 键具名 skip）／`exit({reason})`（两半边，`ok` 取 AND，**失败进回执、不 throw**——因为它在宿主 dispose 路径上）；装配侧由 core 的 `kernel/index.js shutdown()` 调用。⇒ 编排面/宿主只需 `await kernel.shutdown({reason:'…'})` 并检查 `status().shutdown`；钻取 `10a`–`10k` 断言到"**一次 await 即耐久**"与"**下一位读者（另一个 store 实例）看得到**"，`10l` 断言**装配确实调了它**。
 - **多实例不需要注册表，需要的是【被包裹的方法】**：`kernel/index.js` 的 `methodsOf` 只列了 `tasks`，其余声明为投影的面拿到 `[]` ⇒ 写穿永不触发 ⇒ `members/meetings/ballotbox/budget/chat/panel/minutes` **声明为投影却从未被写过**（钻取 `11c`：开两个会、`settle()` 后 `meetings` 键仍是 store 的 `[]` 种子；`11d`：退出 flush 按契约只刷 journal，**救不了 state 键**）。把方法列表填上（`['open','close','attend','motion']`）⇒ 写穿落地、**重启后两个会一起回来**（`11e`/`11f`）。⇒ 若一轮编排要"重启后接着开那个会"，缺的不是新机制，而是装配的条目。
 - **未落地（具名）**：v5r `meetingOpen` 等价物（"重启后哪个会还开着"）——由 reader-c 接手，本轮复核 `grep meetingOpen|openMeeting|unclosed` 全包 **0 命中**；钻取**没有**断言"哪个还开着"。
+
+## 附录：工具呈现（PHASE 8 / 目标 10）的两条实测结论
+
+- ★ **`deferLoading` 是【延迟激活】标志，★ 不省略 schema。** 真机实测（v5r 声明十个 defer 面）：header 工具数 100 → 101、schema 字节 **102,114 → 102,883（+769）**；同一批 100 个共享工具 **102,013 → 102,162（+149）**；每个 defer 工具 **+20 字节**（正是该字段），且 `parameters` **仍完整在 header**（`vibe_v5_lean_run` 498 → 518、`hasParameters:true`）。⇒ **想靠 `defer` 省 wire 是错的**；它的价值只在"延迟激活"。★ 下一个想省体积的人不必再花一轮。
+- ★ **`presentAs('ptc')` 是 per-AGENT 的呈现切换**（作用于调用它的 agent 的整个工具上下文、返回 disposer），因此**"部分工具 ptc、其余 native"不可表达**：要 ptc 就是**整批** ptc。`defer` 与 `ptc` 在本仓实现中也不可并存（多 pack 声明不同 mode ⇒ 具名 `unapplied`，不猜）。

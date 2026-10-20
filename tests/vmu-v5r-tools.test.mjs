@@ -1223,27 +1223,41 @@ try {
     '★★ the subsystem still exposes all 13 methods (the shell forwards the kit flow)', flowMethods.length)
 
   // ── ⑦i PHASE 8 / goal 10 (round 38): the PACK declares its tool presentation; the HOST applies it ───────────────
-  // 正: the declaration is readable from the KERNEL and the HOST really marked those specs (per-tool deferLoading).
+  // 正: the declaration is readable from the KERNEL and the HOST applies it as a PER-AGENT presentation.
   // 反: assembling without the pack leaves the reader at null (zero mechanism) — no fabricated 'native'.
-  console.log('=== 7i. TOOL PRESENTATION: the pack declares, the host applies ===')
+  // ★ ROUND 39: the mode changed from `defer` to `ptc` because a real-machine run DISPROVED defer's premise (deferLoading
+  // is an activation flag: parameters stay in the header, +20 bytes per tool). `ptc` is per-AGENT, so the declaration
+  // carries NO faces — a mixed "ten ptc / rest native" table is not expressible, and the test pins that down.
+  console.log('=== 7i. TOOL PRESENTATION: the pack declares ptc; the host applies it per agent ===')
   const declaredPresentation = PACK.toolPresentation
-  const declaredFaces = declaredPresentation && Array.isArray(declaredPresentation.faces) ? declaredPresentation.faces.slice() : []
-  const packageToolNames = new Set((PACK.tools || []).map((t) => t.name))
-  ok(declaredPresentation && declaredPresentation.mode === 'defer' && declaredFaces.length === 10 &&
-    declaredFaces.filter((n) => packageToolNames.has(n)).length === 10,
-    '★★ the pack declares mode=defer for exactly ten faces, and every face is a tool this pack DECLARES (no ghost name)', { mode: declaredPresentation && declaredPresentation.mode, faces: declaredFaces.length })
+  ok(declaredPresentation && declaredPresentation.mode === 'ptc' && declaredPresentation.faces === undefined,
+    '★★ the pack declares mode=ptc with NO faces (the presentation choice is institute-wide, not per tool)', declaredPresentation)
   const readPresentation = v5rBoot.handle.kernel.packToolPresentation()
-  ok(readPresentation && readPresentation.pack === 'v5r-core' && readPresentation.mode === 'defer' &&
-    JSON.stringify(readPresentation.faces.slice().sort()) === JSON.stringify(declaredFaces.slice().sort()),
-    '★★★ 正: packToolPresentation() returns this declaration (mode + exact faces + owning pack)', readPresentation)
+  ok(readPresentation && readPresentation.pack === 'v5r-core' && readPresentation.mode === 'ptc' && readPresentation.faces === null,
+    '★★★ 正: packToolPresentation() returns this declaration (mode=ptc, faces=null, owning pack)', readPresentation)
   ok(bare.handle.kernel.packToolPresentation() === null,
     '★★ 反: an assembly WITHOUT the pack returns null (zero mechanism, no fabricated native default)', bare.handle.kernel.packToolPresentation())
-  // The HOST half: the captured register specs show deferLoading on exactly the declared faces (and nowhere else).
-  const deferredInHost = declaredFaces.filter((n) => { const sp = v5rBoot.specOf(n); return sp && sp.deferLoading === true }).length
-  const eager = ['vibe_v5_record_progress', 'vibe_v5_say', 'vibe_v5_read_library', 'vibe_v5_tool_help']
-  const eagerClean = eager.filter((n) => { const sp = v5rBoot.specOf(n); return sp && sp.deferLoading === undefined }).length
-  ok(deferredInHost === declaredFaces.length && eagerClean === eager.length,
-    '★★★ 装了 v5r 之后：被 defer 的 10 个 spec 真的带 deferLoading:true，而每回合都可能用的 4 个（record_progress/say/read_library/tool_help）不带', { deferredInHost, eagerClean })
+  // HOST half: a presentation-capable ctx sees presentAs('ptc') called EXACTLY ONCE (per agent), and no spec is defer'd.
+  const hm39 = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'host.js')).href)
+  const presentCalls = []
+  const seen39 = []
+  const ctxWithPtc = {
+    effect: (fn) => fn(),
+    on: () => () => {},
+    tools: { register: (spec) => { seen39.push(spec); return () => {} }, presentAs: (mode) => { presentCalls.push(mode); return () => {} } },
+  }
+  const receipt39 = await hm39.createHostAdapter({ ctx: ctxWithPtc, kernel: v5rBoot.handle.kernel, settings: {} }).install()
+  ok(presentCalls.length === 1 && presentCalls[0] === 'ptc' && receipt39.presentation && receipt39.presentation.mode === 'ptc' &&
+    receipt39.presentation.presentAs && receipt39.presentation.presentAs.called === true,
+    '★★★ 宿主执行：presentAs(\'ptc\') 以 per-AGENT 方式只调一次（不是每个工具一次），回执记录 mode=ptc', { calls: presentCalls })
+  ok(seen39.filter((s) => s.deferLoading !== undefined).length === 0,
+    '★★ 反向证明 defer 已撤：没有任何 spec 带 deferLoading（ptc 不使用该字段）', seen39.length)
+  // A host WITHOUT presentAs must refuse by name (never silently fall back to native) — this is the visibility path.
+  const ctxNoPtc = { effect: (fn) => fn(), on: () => () => {}, tools: { register: () => () => {} } }
+  const receipt39b = await hm39.createHostAdapter({ ctx: ctxNoPtc, kernel: v5rBoot.handle.kernel, settings: {} }).install()
+  const unapplied39 = receipt39b.presentation && Array.isArray(receipt39b.presentation.unapplied) ? receipt39b.presentation.unapplied : []
+  ok(receipt39b.ok === false && unapplied39.length === 1 && unapplied39[0].code === 'VMU_ENGINE_UNAVAILABLE' && receipt39b.presentation.presentAs === null,
+    '★★ 反（不静默降级）：宿主无 presentAs ⇒ 具名 VMU_ENGINE_UNAVAILABLE，回执 ok:false，绝不当 native', unapplied39)
 
 } finally {
   // The store writes atomically through temp+rename, so a removal can race one in-flight file: retry, and never let

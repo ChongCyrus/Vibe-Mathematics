@@ -197,21 +197,16 @@ export const PACK = Object.freeze({
   // sections below (the text a member actually reads); the manifest only points at that derivation, so the prompt
   // and the tool table cannot drift. A getter is required because those sections are defined after PACK.
   get toolFaces() { return V5R_TOOL_FACES },
-  // ★ PHASE 8 / goal 10 (round 38): THE BATCH THAT DOES NOT NEED ITS FULL SCHEMA UP FRONT.
-  // `defer` here means the host marks these specs `deferLoading: true`, so the model loads them on demand instead of
-  // paying for their schemas on every request. Chosen by "big schema + episodic use", never by "rarely tested":
-  //   · the five Lean tools — file/kind/target/jobId/timeout shapes, used only when formalising;
-  //   · the three poll tools + second + verdict — meeting-time actions, unused in ordinary research rounds.
-  // DELIBERATELY NOT deferred: record_* / say / message / read_library / tool_help / task_* — a round may need any of
-  // them at its first step, and a deferred tool costs a round-trip exactly then. The list is explicit (not "everything
-  // except") so a future tool is eagerly available until someone decides otherwise.
-  toolPresentation: Object.freeze({
-    mode: 'defer',
-    faces: Object.freeze([
-      'vibe_v5_lean_run', 'vibe_v5_lean_job', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_archive',
-      'vibe_v5_poll_open', 'vibe_v5_poll_vote', 'vibe_v5_poll_close', 'vibe_v5_second', 'vibe_v5_verdict',
-    ]),
-  }),
+  // ★ PHASE 8 / goal 10 (round 39): PTC — THE INSTITUTION-LEVEL PRESENTATION CHOICE.
+  // Round 38 declared `defer` here; a REAL-MACHINE run DISPROVED its premise: `deferLoading` is an ACTIVATION flag, not
+  // schema elision. Measured: header 100 tools/102,114 bytes before vs 101 tools/102,883 after (+769); the shared 100
+  // tools went 102,013 → 102,162 (+149, i.e. +20 bytes per deferred tool = the flag itself); `parameters` stayed FULL in
+  // the header (vibe_v5_lean_run 498 → 518, hasParameters:true). "Smaller request" was false; "still callable" was proved.
+  // ⇒ `ptc` is the only mode whose semantics could actually shrink the wire (the SDK-list system section is REGENERATED
+  // from the visible tools). It is PER-AGENT: `presentAs('ptc')` acts on the calling agent's whole tool context, so a
+  // mixed "these ten ptc / the rest native" table is NOT expressible ⇒ this declaration carries NO `faces`: it is the
+  // institute's presentation choice for the whole batch, and the comment says so instead of pretending per-tool control.
+  toolPresentation: Object.freeze({ mode: 'ptc' }),
   slots: [
     { id: 'chair', label: '主持人', capacity: 1, permissions: ['convene', 'close', 'assign', 'grant', 'freeze'] },
     { id: 'member', label: '成员', capacity: 0, permissions: ['speak', 'vote', 'propose'] },

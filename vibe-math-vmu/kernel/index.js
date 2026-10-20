@@ -2384,7 +2384,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       if (!allowed) throw refuse('VMU_NOT_PERMITTED', 'member "' + id + '" has no closure-vote permission (' + permission + ')',
         'seat the member in a slot whose permissions include this one; the pack grants it to its voting slot')
       if (!turn || typeof turn.recordClosureVote !== 'function') throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no closure-vote writer', 'assemble the turn loop')
-      const out = turn.recordClosureVote(id, solved)
+      const out = turn.recordClosureVote(id, solved, 'tool')
       const writes = (() => { try { return turn.status().closureVoteWrites } catch { return null } })()
       return { ok: true, tool: 'vibe_vmu_vote', member: id, solved: out.solved, why: why === null ? null : String(why), writes, closureVote: closureVoteView() }
     },
@@ -2393,15 +2393,25 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
      * (turn.visibleToolsOf), never from a pack declaration; purposes come from the host's published descriptions.
      * No live Agent ⇒ the provider's NAMED refusal is propagated - never an empty list pretending success.
      */
-    toolsView({ member } = {}) {
+    toolsView({ member, agent = null } = {}) {
       if (typeof member !== 'string' || member.trim() === '') throw refuse('VMU_INVALID_ARGUMENT', 'toolsView needs a member', 'pass member:"<roster id>"')
       // ★ roster FIRST: an unknown member must be refused as such, not masked by "no live Agent" from the provider.
       let row = null
       try { row = (members.roster() || []).find((m) => m && m.id === member) || null } catch { row = null }
       if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + member + '" on this roster', 'the roster holds the live members; omit member is not allowed here')
-      if (!turn || typeof turn.visibleToolsOf !== 'function') throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no visible-tools provider', 'assemble the host adapter so members expose their tool table')
-      const visible = turn.visibleToolsOf(member)
-      const names = visible && Array.isArray(visible.tools) ? visible.tools : []
+      // ★ CALLER AGENT FIRST: inside a one-shot member turn the memberSession map may not be learned yet, but the tool
+      // already runs on that Agent — its own schemas are the authoritative visible set. The provider remains the
+      // out-of-turn path. A caller without tools.schemas falls through (never fabricate an empty list).
+      let names = null
+      const agentTools = agent && agent.ctx && agent.ctx.tools
+      if (agentTools && typeof agentTools.schemas === 'function') {
+        names = (agentTools.schemas() || []).map((x) => (x && typeof x === 'object' ? (x.name || x.id) : x)).filter((n) => typeof n === 'string')
+      }
+      if (names === null) {
+        if (!turn || typeof turn.visibleToolsOf !== 'function') throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no visible-tools provider', 'assemble the host adapter so members expose their tool table')
+        const visible = turn.visibleToolsOf(member)
+        names = visible && Array.isArray(visible.tools) ? visible.tools : []
+      }
       const purposes = toolFaceDescriptions || {}
       return { ok: true, member: String(member), count: names.length, tools: names.map((name) => ({ name, purpose: purposes[name] || null })) }
     },

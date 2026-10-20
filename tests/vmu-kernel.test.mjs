@@ -1079,6 +1079,16 @@ const FALLBACK_KEYS = [
   let err2 = null
   try { noAgent.toolsView({ member: 'member-a' }) } catch (e) { err2 = e }
   ok(err2 && err2.code === 'VMU_NO_SUCH_OBJECT', '★ 反：provider 的无 live Agent 具名拒原样传播', err2 && err2.code)
+  // ★ PHASE 8 / round 39: inside the caller's own turn, the caller Agent's schemas are authoritative even when the
+  // memberSession map is not learned yet. Roster check still runs FIRST.
+  const caller = { id: 'child-agent', ctx: { tools: { schemas: () => [{ name: 'only_one' }] } } }
+  const viaCaller = k.toolsView({ member: 'member-a', agent: caller })
+  ok(viaCaller.ok === true && viaCaller.count === 1 && viaCaller.tools[0].name === 'only_one',
+    '★ 正：调用者 Agent 可用 ⇒ 名字来自它的 schemas（不查 memberSession）', viaCaller)
+  let ghostAgent = null
+  try { k.toolsView({ member: 'ghost-x', agent: caller }) } catch (e) { ghostAgent = e }
+  ok(ghostAgent && ghostAgent.code === 'VMU_NO_SUCH_OBJECT' && /no member/.test(ghostAgent.message),
+    '★ 反：不在名册 ⇒ 即使有调用者 Agent 也先按 roster 具名拒', ghostAgent && ghostAgent.message)
 }
 
 // ── PHASE 8 / goal 10 (round 36): the pack can DECLARE which presentation its tool batch uses ─────────────────────

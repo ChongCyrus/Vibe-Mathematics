@@ -554,15 +554,16 @@ if (SELF_PROBE) {
   const vote = host.state.specs.find((s) => s.name === 'vibe_vmu_vote')
   ok(vote !== undefined, '★ 正：turn 面声明时 vibe_vmu_vote 真的发布', host.state.specs.map((s) => s.name))
   const beforeWrites = k.turn.status().closureVoteWrites
-  const viaTool = JSON.parse(await vote.execute({ member: 'member-a', solved: true, why: 'tool' }, {}))
-  const afterTool = k.turn.status().closureVoteWrites
-  ok(viaTool.ok === true && afterTool === beforeWrites + 1 && k.turn.status().closureVoteVotes.get('member-a') === true,
-    '★ 正：投票工具路径 ⇒ 同一 writer 计数 +1，账本写入 true', JSON.stringify({ viaTool, beforeWrites, afterTool }))
+  // reply path FIRST (this turn has no tool vote yet), then the tool path: both increment the SAME counter.
   const viaReply = await k.turn.apply({ vote_solved: false }, null, 'member-a')
   const afterReply = k.turn.status().closureVoteWrites
-  ok(afterReply === afterTool + 1 && k.turn.status().closureVoteVotes.get('member-a') === false,
-    '★ 正：回执路径 ⇒ 同一 writer 计数再 +1，同一条记录覆盖为 false（不是两本账）',
-    JSON.stringify({ viaReply, afterTool, afterReply, votes: Object.fromEntries(k.turn.status().closureVoteVotes) }))
+  ok(afterReply === beforeWrites + 1 && k.turn.status().closureVoteVotes.get('member-a') === false,
+    '★ 正：回执路径 ⇒ 同一 writer 计数 +1，账本写入 false',
+    JSON.stringify({ viaReply, beforeWrites, afterReply, votes: Object.fromEntries(k.turn.status().closureVoteVotes) }))
+  const viaTool = JSON.parse(await vote.execute({ member: 'member-a', solved: true, why: 'tool' }, {}))
+  const afterTool = k.turn.status().closureVoteWrites
+  ok(viaTool.ok === true && afterTool === afterReply + 1 && k.turn.status().closureVoteVotes.get('member-a') === true,
+    '★ 正：投票工具路径 ⇒ 同一 writer 计数再 +1，同一条记录覆盖为 true（跨回合最新票生效）', JSON.stringify({ viaTool, afterReply, afterTool }))
   const denied = JSON.parse(await vote.execute({ member: 'temp-a', solved: true }, {}))
   ok(denied.ok === false && denied.code === 'VMU_NOT_PERMITTED',
     '★ 反：非票权席位（temp）调 vote ⇒ 具名拒（复用 may 资格判断）', denied)
@@ -573,6 +574,19 @@ if (SELF_PROBE) {
   try { k.validateToolFaceNames(['ghost-tool']) } catch (e) { badName = e }
   ok(badName && badName.code === 'VMU_INVALID_ARGUMENT', '★ 反：allow 里的未注册名 ⇒ 具名拒（validateToolFaceNames）', badName && badName.code)
   ok(k.validateToolFaceNames(['vibe_vmu_vote']).ok === true, '★ 正：已注册名通过目录校验', k.validateToolFaceNames(['vibe_vmu_vote']))
+  // ★ PHASE 8 / round 39: ONE TURN, ONE CHANNEL. Tool path writes false; the SAME turn's reply vote_solved:true must be
+  // ignored (bookkeeping kept:false). A DIFFERENT turn (no prior tool write) still records the reply field.
+  const sameTurn = await k.turn.recordClosureVote('member-a', false, 'tool')
+  const replySame = await k.turn.apply({ vote_solved: true }, null, 'member-a')
+  ok(sameTurn.ok === true && k.turn.status().closureVoteVotes.get('member-a') === false &&
+    Array.isArray(replySame.bookkeeping) && replySame.bookkeeping.some((b) => b.field === 'vote_solved' && b.kept === false),
+    '★ 正：同回合工具票 false ⇒ 回执 vote_solved:true 被忽略且 bookkeeping 记 kept:false', JSON.stringify({ sameTurn, replySame, votes: Object.fromEntries(k.turn.status().closureVoteVotes) }))
+  const k2 = km.createKernel({ clock })
+  k2.declareSlots([{ id: 'member', label: '成员', capacity: 0, permissions: ['vote'] }])
+  await k2.members.hire({ id: 'member-a', slot: 'member', institution: 'sim' })
+  const replyOnly = await k2.turn.apply({ vote_solved: true }, null, 'member-a')
+  ok(k2.turn.status().closureVoteVotes.get('member-a') === true && replyOnly.ok === true,
+    '★ 反：没有工具票的回合 ⇒ 回执 vote_solved 仍生效（旧路径零机制）', JSON.stringify({ replyOnly, votes: Object.fromEntries(k2.turn.status().closureVoteVotes) }))
 }
 {
   const kernel = km.createKernel({ clock })

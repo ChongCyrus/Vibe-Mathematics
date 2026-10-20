@@ -756,6 +756,7 @@ export function createTurnOrchestrator({
     if (typeof visibleToolsFor === 'function') {
       let visible = null
       try { visible = visibleToolsFor(turn.member) } catch { visible = null }
+      if (Array.isArray(visible)) { visibleToolsByMember.set(String(turn.member), visible.slice()); toolVotedThisTurn.delete(String(turn.member)) }
       if (Array.isArray(visible) && visible.length > 0) withVisible += "\n\n【本轮可用工具】" + visible.slice(0, 80).join('、')
     }
     return { ok: true, text: withVisible, sources: out.sources || [], truncation: out.truncation || null }
@@ -989,15 +990,18 @@ export function createTurnOrchestrator({
   // while closure is a per-round judgement"). Keyed by member, the window becomes well defined.
   const closureVotes = new Map()   // ★ `vote_solved` per member: the CLOSURE vote (unanimity required)
   let closureVoteWrites = 0        // ★ one counter, incremented ONLY inside recordClosureVote (both input channels)
+  const visibleToolsByMember = new Map() // ★ last assembled visible set per member (this turn)
+  const toolVotedThisTurn = new Set()    // ★ members who already voted THROUGH THE TOOL this turn
   const solvedThisRound = new Map() // ★ `solved` per member: the per-round convergence reading, NOT closure
   /**
    * ★ PHASE 8 / round 37: THE ONE CLOSURE-VOTE WRITER. Both inputs — a reply's `vote_solved` field and the
    * `vibe_vmu_vote` tool — call THIS function; there is no second ledger. A repeated write for the same member replaces
    * that member's single boolean (the tally counts a member once, as before).
    */
-  const recordClosureVote = (memberId, solved) => {
+  const recordClosureVote = (memberId, solved, source = 'reply') => {
     const id = typeof memberId === 'string' ? memberId : String(memberId)
     const value = solved === true || solved === 'true'
+    if (source === 'tool') toolVotedThisTurn.add(id)
     closureVotes.set(id, value)
     closureVoteWrites += 1
     return { ok: true, member: id, solved: value }
@@ -1040,7 +1044,16 @@ export function createTurnOrchestrator({
         // and the two literal words, case-insensitively trimmed. Anything else stays FALSE rather than being guessed at,
         // because a closure vote is a judgement and inventing one is the worst outcome available here.
         const rawVote = typeof r.vote_solved === 'string' ? r.vote_solved.trim().toLowerCase() : r.vote_solved
-        recordClosureVote(memberId, rawVote === true || rawVote === 'true')
+        const id = String(memberId)
+        const visible = visibleToolsByMember.get(id) || []
+        const voteFaceVisible = visible.includes('vibe_vmu_vote')
+        if (voteFaceVisible || toolVotedThisTurn.has(id)) {
+          // ★ PHASE 8 / round 39: ONE TURN, ONE CHANNEL. If the vote tool is visible (or was already used), the reply
+          // field is NOT recorded; the latest-wins ACROSS turns is untouched.
+          bookkeeping.push({ field: 'vote_solved', kept: false, reason: 'vibe_vmu_vote is available this turn; the reply vote_solved is ignored (use the tool)' })
+        } else {
+          recordClosureVote(memberId, rawVote === true || rawVote === 'true')
+        }
       }
       if (bookkeeping.some((b) => b.field === field)) continue
       context.set(field, r[field])
@@ -1417,7 +1430,7 @@ export function createTurnOrchestrator({
     /** Drain a member queued notices. The assembly calls this, which is what makes the announcement one-shot. */
     takeNotices: (memberId) => drainNotices(memberId),
     /** ★ PHASE 8: record a closure vote through the SAME writer the reply path uses. */
-    recordClosureVote: (memberId, solved) => recordClosureVote(memberId, solved),
+    recordClosureVote: (memberId, solved, source = 'reply') => recordClosureVote(memberId, solved, source),
     status: ({ roster = [], may = null, permission = 'vote' } = {}) => ({ apiVersion, dispatch: dispatchStatus(), turns: turns.size, fields: known.length, owners, policy: POLICY, woken: Object.fromEntries(woken), counts: { ...counts }, lastRefusal: { ...lastRefusal },
       // ★★★ ROUND 50: THE READING AN OPERATOR WAS MISSING. Sixty-one meetings ran with no way to see that the one
       // field which closes the institute had never been emitted. `missing` names WHO, because silence is what blocks
