@@ -34,9 +34,11 @@ paper {"target":"odd-sum","present":["md","tex","pdf","meta"],"missing":[],"comp
 
 ## 3. 偏差（必须与“达成”分开读）
 
-1. **成员在回合内使用工具的路径未覆盖**：两个包的成员段都被夹具约束为“本轮不调用工具、只输出 JSON 回执”。
+1. **成员在回合内使用工具的路径未覆盖**：两个包的成员段都被夹具约束为“本轮不调用工具、只输出 JSON 回执”。★ **PHASE 7 更正（创始人质询后核实）**：这条的真实原因比"夹具为避超时而禁止"严重得多 —— ★ **`packs/v5r` 根本没有声明任何工具**（无 `tools.js`），而原始 `vibe-math-v5r.js`（**11275 行**）有 **57 个 `vibe_v5_*` 工具**；★ 而 v5r 的**提示词里仍在教成员调用 `vibe_v5_record_progress` 等不存在的工具**。⇒ ★ **不是"我们选择不测工具路径"，★ 是"成员当时没有工具可调"**。覆盖矩阵见 `docs/acceptance/phase7-coverage-matrix.md`。
 2. **v5r 的 caller 交付偏差**：19607 的 `cast:true` 经 caller 交付（root 扮演 member）；19611 已用真 one-shot 子代理复现，故 v5r 的 subagent 交付路径现已被覆盖。
-3. **v5r 无 paper 面**：v5r 没有 paper-close 中间件（只有 `vmu.paper.*` 设置声明），因此 v5r 不产生论文四件。这是正确的 pack 差异，**没有**把 v3 的 paper 策略复制进 v5r。
+3. ~~**v5r 无 paper 面**：v5r 没有 paper-close 中间件，因此 v5r 不产生论文四件。这是正确的 pack 差异。~~
+   ★★ **本条【错误】，PHASE 7 更正**：★ 原始 `vibe-math-v5r.js` **有完整的论文子系统** —— `paperWritePrompt`／`paperReviewPrompt`／`paperAdvance`／`paperPass`／`paperStep`／`paperRecordPart`／`paperRecordReview`／`paperRecordFinal`／`paperCompilePdf`／`paperLatexCommand`／`PaperMd`／`PaperTex`／`PaperArtifacts`／`PaperEnum`／`paperSections`，含 **xelatex 中文优先的引擎探测**、**"指纹与磁盘正文不一致 ⇒ 具名阻塞并上报，绝不静默用旧文"**。
+   ⇒ ★ **我们的 `packs/v5r/` 整块【未移植】** —— ★ **这不是 pack 差异，★ 是移植遗漏**；★ 列入 PHASE 7 目标 2 补齐。
 
 ## 4. meeting/send 正反例（v5r，19612）
 
@@ -46,7 +48,8 @@ paper {"target":"odd-sum","present":["md","tex","pdf","meta"],"missing":[],"comp
 
 ## 5. 未覆盖清单
 
-- v5r 的 paper 面（**不存在**，见偏差 3；不是覆盖不足）。
+- ~~v5r 的 paper 面（**不存在**，见偏差 3；不是覆盖不足）。~~
+  ★★ **PHASE 7 更正**：★ **paper 面【存在】于原文、★ 只是未移植** ⇒ ★ 这**是覆盖不足**，★ 不是"不存在"。★ 已列入 PHASE 7 目标 2。
 - v5r 的 `vibe_vmu_status` 没有 `dispatch` 字段；成员回合完成度以 `turn.status` 的 `turns/delivered/parsed` 为等价证据。
 - v5r 全链的 token 预算未单独标定（本次 19611 为 45s / 171469 tokens）。
 
