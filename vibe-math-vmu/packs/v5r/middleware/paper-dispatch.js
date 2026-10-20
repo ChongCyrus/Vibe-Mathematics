@@ -130,7 +130,40 @@ export async function dispatchPaperReply({ phase, reply, turn = null, member = n
 
 const faceTargetOf = (body) => (body && typeof body.target === 'string' && body.target.trim() !== '' ? body.target.trim() : null)
 
-/** The M2 module object `kernel/pack.js` hands to `kernel/loader.js` (module shape: it needs the hook's `api`). */
+/**
+ * ★ PHASE 7 round 11 — REGISTER THE DISPATCH STATUS WITH THE KERNEL, AT LOAD TIME.
+ *
+ * The kernel exposes `setPaperDispatchStatus(fn)` and its `status()` shows a `paperDispatch` segment ONLY while a
+ * source is registered (zero mechanism). The loader calls a module's `default({hooks, log, kernel, setting})` when it
+ * loads a MODULE-SHAPED entry (`kernel/loader.js:182-184`), and that call receives the kernel — which makes it the one
+ * place where a pack can both register and stay inside its own folder.
+ *
+ * ★ WHAT THIS CANNOT DO, MEASURED (named, not hidden): `kernel/loader.js` has NO dispose contract, and pack unload
+ * only runs its ACTION undos (bus-entry removal); no hook fires on unload (`kernel/bus.js` declares `pack/loading` and
+ * `pack/loaded` only). So a pack-loaded module cannot clear the kernel's status source by itself — `unload` therefore
+ * needs ONE kernel line: clearing `paperDispatchStatusSource` in `notePackUnloaded` (or in the unload path). Until that
+ * line lands, `releasePaperDispatch(kernel)` is the documented manual clear, and the round report names the gap.
+ */
+export function installPaperDispatch({ kernel } = {}) {
+  if (!kernel || typeof kernel.setPaperDispatchStatus !== 'function') {
+    return { ok: false, code: 'VMU_ENGINE_UNAVAILABLE', registered: false, reason: 'this kernel has no setPaperDispatchStatus (older assembly)' }
+  }
+  const r = kernel.setPaperDispatchStatus(paperDispatchStatus)
+  return { ok: r && r.ok === true, registered: !!(r && r.ok === true), status: r }
+}
+
+/** The manual counterpart (what the one-line kernel fix will call on unload): remove the segment entirely. */
+export function releasePaperDispatch({ kernel } = {}) {
+  if (!kernel || typeof kernel.setPaperDispatchStatus !== 'function') return { ok: false, code: 'VMU_ENGINE_UNAVAILABLE', cleared: false }
+  const r = kernel.setPaperDispatchStatus(null)
+  return { ok: r && r.ok === true, cleared: !!(r && r.source === false) }
+}
+
+/**
+ * The M2 module object `kernel/pack.js` hands to `kernel/loader.js`.
+ * `default` is the LOAD-TIME factory: the loader passes it the kernel, so registration happens exactly when the pack is
+ * applied — and the hooks it returns are the ones the bus runs.
+ */
 export const V5R_PAPER_DISPATCH = Object.freeze({
   meta: Object.freeze({ id: 'v5r.paper-dispatch', apiVersion: 1 }),
   capabilities: Object.freeze(['record']),
@@ -146,4 +179,6 @@ export const V5R_PAPER_DISPATCH = Object.freeze({
       })
     },
   }),
+  /** the load-time factory the loader calls with `{hooks, log, kernel, setting}` */
+  default: installPaperDispatch,
 })

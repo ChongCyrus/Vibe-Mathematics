@@ -653,6 +653,40 @@ try {
   ok(installedFixtureMode === 'no-tools',
     '★ the pack\'s value layer ships fixtureMode = no-tools (the historical instruction stays the default ⇒ old runs remain comparable)', installedFixtureMode)
 
+  // ── ③l THE PAPER DISPATCH STATUS REGISTRATION (round 11): zero-mechanism, install, release ──────────────────
+  console.log('=== 3l. paperDispatch STATUS REGISTRATION (kernel segment) ===')
+  ok(typeof kernel.setPaperDispatchStatus === 'function',
+    'precondition: the kernel exposes setPaperDispatchStatus (the registration API this round is about)', typeof kernel.setPaperDispatchStatus)
+  ok(kernel.status().paperDispatch === undefined,
+    '★ 反（零机制）: with NO registration the kernel status has NO paperDispatch segment at all', kernel.status().paperDispatch)
+  ok(bare.handle.kernel.status().paperDispatch === undefined,
+    '★ 反（不装 v5r）: a kernel assembled without the pack also has the segment absent', bare.handle.kernel.status().paperDispatch)
+  const installMod = dispatchMod
+  const noKernelInstall = installMod.installPaperDispatch({ kernel: {} })
+  ok(noKernelInstall.ok === false && noKernelInstall.code === 'VMU_ENGINE_UNAVAILABLE',
+    '★ the module DEFENDS itself when handed a kernel-shaped facade without the setter (the loader hands modules `{read}` only) — named refusal, no crash', noKernelInstall.code)
+  const installed = installMod.installPaperDispatch({ kernel })
+  ok(installed.ok === true && installed.registered === true,
+    '★ 正: the module registers its status source with the kernel (one segment appears)', installed)
+  const withSegment = kernel.status().paperDispatch
+  ok(withSegment && withSegment.ok === true && withSegment.status && typeof withSegment.status === 'object' && Array.isArray(withSegment.status.fields),
+    '★★ 正（装了就有）: status().paperDispatch now carries the dispatcher status (last/seen/fields), readable by an operator', withSegment && { fields: withSegment.status.fields.length })
+  // dispatch once so `last` is a real outcome, then read it back FROM THE KERNEL's status
+  await dispatchMod.dispatchPaperReply({ phase: 'normal', turn: 't-status', member: 'r-1', flat: { kernel }, reply: { paper_part: { target: T2, title: 'x', solution: 'y' } } })
+  const afterDispatch = kernel.status().paperDispatch.status
+  ok(afterDispatch.last && afterDispatch.last.turn === 't-status' && afterDispatch.last.ok === false,
+    '★ the LAST dispatch outcome (a phase-mismatch here) is readable straight from status() — "the dispatcher refused because …" needs no log', afterDispatch.last && { ok: afterDispatch.last.ok, reason: afterDispatch.last.reason })
+  // ★ RELEASE — the documented clear (what a kernel-side unload line will call):
+  const released = installMod.releasePaperDispatch({ kernel })
+  ok(released.ok === true && released.cleared === true && kernel.status().paperDispatch === undefined,
+    '★★ 卸载/释放后 status().paperDispatch 完全消失（零残留）', released)
+  // ★★ MEASURED GAP, stated so it cannot rot: the PACK's own module cannot reach the real kernel — the loader hands
+  // modules `services.kernel = Object.freeze({read})` (kernel/index.js:1602-1603) and `services.get` only exposes the
+  // registered vmu.* catalog. So registration must happen at the ENTRY/HOST (one line after createKernel) or the kernel
+  // must expose the setter through the module api. The real v5r boot therefore still has NO segment:
+  ok(v5rBoot.handle.kernel.status().paperDispatch === undefined,
+    '★★ NAMED GAP (measured): a v5r boot does NOT yet show the segment — the pack module is given a `{read}`-only kernel facade, so the one-line registration has to be done by the entry/host (or the kernel must expose the setter). This assertion flips the day that line lands.', v5rBoot.handle.kernel.status().paperDispatch)
+
   // ── ④ REFUSALS ARE NAMED (the 一正一反 the fixture verified: empty sender) ──────────────────────────────────
   console.log('=== 4. REFUSALS CARRY A REGISTERED CODE + A HINT ===')
   const noP = await receipt(v5rBoot, 'vibe_v5_record_proposition', { statement: '缺 p 的命题' })
