@@ -1045,6 +1045,8 @@ vmu.packs.active: [v5r]
 | `vmu.activity.wakeOn` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/activity.js` | 构造期注册的唤醒总线条目（**H2**：条目在构造时注册 ⇒ 下次会话生效，回执不得声称即时）。默认空＝不额外挂任何条目。 |
 | `vmu.activity.maxWaiters` | int ≥0 | `128` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/activity.js` | 同时等待者上限（超出具名拒）。 |
 | `vmu.activity.noPeerShortCircuit` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/activity.js` | 无活跃同伴时是否立即返回 noProgress（true＝短路，对齐 v5r）。 |
+| `vmu.paper.latexEngineOrder` | string[] | `[pdflatex,xelatex]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/latex.js` | PHASE 7：LaTeX 引擎探测顺序（数组）。★ 这是【pack/部署的政策数据】，内核只按传入顺序试，不硬编码“中文优先”；中文优先的顺序应写在 pack 的 settings/defaults.json 里 |
+| `vmu.paper.latexTimeoutMs` | int ≥0 | `120000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/latex.js` | PHASE 7：一次 LaTeX 编译的预算（毫秒）；超时以具名码返回，不静默失败 |
 | `vmu.paper.officeConsult` | enum | `required` | `off`∣`required` | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | office 定稿咨询门总开关（`off`＝零机制，不闸任何定稿）；`required` 时未咨询即定稿 ⇒ 具名拒 `VMU_OFFICE_CONSULT_REQUIRED`。读者：定稿路径（`kernel/paper.js`／human 面）。 |
 | `vmu.paper.officeConsultOn` | enum | `finalize` | `finalize`∣`finalize-or-submit` | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 何时必须征询：`finalize`＝只卡定稿（对齐 v5r 的 `finalizePaperByOffice`／`notePaperConsult`）；`finalize-or-submit`＝投稿前也要问。 |
 | `vmu.paper.officeConsultTimeoutMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 等待咨询答复的时限（0＝无限等／挂起）。超时处置见 `vmu.paper.officeConsultOnTimeout`，**绝不默认放行**。 |
@@ -1529,7 +1531,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1140** 个，前缀家族 **115** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1142** 个，前缀家族 **115** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1603,7 +1605,7 @@ vmu.packs.active: [v5r]
 | `vmu.pack.*` | 4 |
 | `vmu.packs.*` | 5 |
 | `vmu.panel.*` | 4 |
-| `vmu.paper.*` | 14 |
+| `vmu.paper.*` | 16 |
 | `vmu.partnership.*` | 6 |
 | `vmu.paths.*` | 2 |
 | `vmu.pointer.*` | 1 |

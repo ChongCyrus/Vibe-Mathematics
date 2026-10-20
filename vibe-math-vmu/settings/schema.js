@@ -1054,6 +1054,8 @@ const CORE_DEFS = Object.freeze([
   // declares policy in the pack, the JUDGING POINT is the paper/human face; the four keys below are the final set
   // (vmu-pack's proposal, adjudicated here). `off` is the zero-mechanism switch; a timeout NEVER defaults to allow
   // (same stance as the human face: `hold`), and `office` itself is exempt because it IS the consulting party.
+  { key: 'vmu.paper.latexEngineOrder', type: 'stringList', def: ['pdflatex', 'xelatex'], hot: HOT.H1, who: 'office', doc: 'PHASE 7：LaTeX 引擎探测顺序（数组）。★ 这是【pack/部署的政策数据】，内核只按传入顺序试，不硬编码“中文优先”；中文优先的顺序应写在 pack 的 settings/defaults.json 里' },
+  { key: 'vmu.paper.latexTimeoutMs', type: 'natural', def: 120000, hot: HOT.H1, who: 'office', doc: 'PHASE 7：一次 LaTeX 编译的预算（毫秒）；超时以具名码返回，不静默失败' },
   { key: 'vmu.paper.officeConsult', type: 'enum', domain: ['off', 'required'], def: 'required', hot: HOT.H1, who: 'office', doc: 'office 定稿咨询门总开关（`off`＝零机制，不闸任何定稿）；`required` 时未咨询即定稿 ⇒ 具名拒 `VMU_OFFICE_CONSULT_REQUIRED`。读者：定稿路径（`kernel/paper.js`／human 面）。' },
   { key: 'vmu.paper.officeConsultOn', type: 'enum', domain: ['finalize', 'finalize-or-submit'], def: 'finalize', hot: HOT.H1, who: 'office', doc: '何时必须征询：`finalize`＝只卡定稿（对齐 v5r 的 `finalizePaperByOffice`／`notePaperConsult`）；`finalize-or-submit`＝投稿前也要问。' },
   { key: 'vmu.paper.officeConsultTimeoutMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '等待咨询答复的时限（0＝无限等／挂起）。超时处置见 `vmu.paper.officeConsultOnTimeout`，**绝不默认放行**。' },

@@ -71,16 +71,28 @@ console.log('=== MEETING TOOL: second / withdraw reachable from the FACE ===')
   const clock = () => 1000
   const kk = createKernel({ clock, settings: { 'vmu.meetings.quorumCap': 0 } })
   for (const t of ['meeting/motion', 'meeting/second', 'meeting/withdrawn']) { try { kk.bus.declareTopic(t) } catch { /* already declared */ } }
-  const op = kk.meetings.open({ chair: 'acad', roster: ['acad', 'r-1', 'r-2'], secretary: 'r-2' })
-  const mo = kk.meetings.motion({ meeting: op.meeting, member: 'r-2', kind: 'ordinary', text: 'probe motion' })
   const spec = toolSpecs({ kernel: kk, settings: {}, meetingTool: true }).find((s) => s.name === TOOL_NAMES.meeting)
   ok(!!spec, 'meeting tool registers for the face-level second test')
-  const good = await spec.run({ action: 'second', id: op.meeting, motion: mo.motion, member: 'r-1' })
+  const open = await spec.run({ action: 'open', id: 'mt-face-probe', roster: ['acad', 'r-1', 'r-2'], secretary: 'r-2' })
+  ok(open && open.ok === true && typeof open.serviceMeeting === 'string' && open.serviceMeeting !== '', '★ 端到端：工具 open 声明的 secretary 同时落到 service 记录（serviceMeeting 可读）', open)
+  const mo = kk.meetings.motion({ meeting: open.serviceMeeting, member: 'r-2', kind: 'ordinary', text: 'probe motion' })
+  const good = await spec.run({ action: 'second', id: open.serviceMeeting, motion: mo.motion, member: 'r-1' })
   ok(good && good.ok === true && good.status === 'seconded' && good.secondedBy === 'r-1',
     '★ 正：经工具面 second ⇒ 动议真的变 seconded', good)
-  const own = await spec.run({ action: 'second', id: op.meeting, motion: mo.motion, member: 'r-2' })
+  const own = await spec.run({ action: 'second', id: open.serviceMeeting, motion: mo.motion, member: 'r-2' })
   ok(own && own.ok === false && own.code === 'VMU_NOT_PERMITTED',
     '★ 反：提案人经工具面附议自己 ⇒ 回执保留内核的具名拒（不泛化）', own && own.code)
+  // ★ 端到端②：tool boxopen({rules}) ⇒ tool boxclose 真的按该票箱的规则判（不是全局默认）
+  const b2 = await spec.run({ action: 'boxopen', target: 'probe Q?', options: ['a', 'b'], rules: { minVotes: 2 } })
+  const b1 = await spec.run({ action: 'boxopen', target: 'probe Q?', options: ['a', 'b'], rules: { minVotes: 1 } })
+  ok(b2 && b2.ok === true && b2.rules && b2.rules.minVotes === 2, '★ 端到端：工具 boxopen 的 rules 落到票箱', b2)
+  await spec.run({ action: 'boxcast', ballotId: b1.boxId, member: 'r-1', value: 'a' })
+  await spec.run({ action: 'boxcast', ballotId: b2.boxId, member: 'r-1', value: 'a' })
+  const close1 = await spec.run({ action: 'boxclose', ballotId: b1.boxId })
+  const close2 = await spec.run({ action: 'boxclose', ballotId: b2.boxId })
+  ok(close1 && close1.ok === true, '★ 端到端：minVotes=1 票箱经工具 close 成立', close1)
+  ok(close2 && close2.ok === false && close2.code === 'VMU_BALLOT_MIN_VOTES_NOT_MET',
+    '★ 端到端：同一装配的 minVotes=2 票箱经工具 close 按自己的门槛拒', close2 && close2.code)
 }
 
 console.log('=== TEN FACES USABLE: ' + passed + ' passed, ' + failed + ' failed ===')

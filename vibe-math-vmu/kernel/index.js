@@ -42,6 +42,7 @@ import { createScriptBridge } from './script-bridge.js'
 import { createRegistry } from './registry.js'
 import { createWorkLedger } from './work.js'
 import { createLeanFace } from './lean.js'
+import { createLatexFace } from './latex.js'
 import { memoryCeilingExceeded } from './guard.js'
 // IMPLEMENTATION PHASE (docs/11 搂9.8): the first planned primitives to become real code.
 import { createGovernance } from './governance.js'
@@ -679,6 +680,13 @@ export function createKernel({
   const lean = spawn
     ? createLeanFace({ settings: settingsView, spawn, spawnHandle, timer, ids, root, clock, log,
       fs: host && typeof host.readText === 'function' && typeof host.writeText === 'function' ? host : null })
+    : null
+
+  // ★ PHASE 7 — THE LaTeX EXECUTOR (paper's missing mechanism). Constructed ONLY when a spawn seam exists, exactly like
+  // the Lean face; no seam ⇒ no face (a direct call would still refuse by name). The engine ORDER is pack policy data,
+  // never a Chinese-first constant in the kernel.
+  const latex = (spawn || spawnHandle)
+    ? createLatexFace({ settings: settingsView, spawn, spawnHandle, root, clock, log })
     : null
 
   // The resource gate closes the `vmu.limits.memoryCeilingMb` loop. The ceiling is the HOST PROCESS RSS (the
@@ -1906,6 +1914,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     get migration() { return migration },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
+    get latex() { return latex },
     tasks,
     rules,
     loader,

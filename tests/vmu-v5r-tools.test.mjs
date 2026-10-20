@@ -459,6 +459,52 @@ try {
   ok(fpErr && fpErr.code === 'VMU_PACK_V5R_CORE_PAPER_FINGERPRINT_MISMATCH',
     '★★ RULE ①: a body changed behind the paper\'s back BLOCKS BY NAME (fingerprint mismatch) — the stale text is never silently used', fpErr && fpErr.code)
 
+  // ── ③g THE PAPER PROMPTS (round 8): phase-scoped, non-source-derived, one prompt per phase ──────────────────
+  console.log('=== 3g. THE PAPER PROMPTS (phase-scoped, non-source-derived) ===')
+  const promptMod2 = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kernel', 'prompt', 'index.js')).href)
+  const paperPromptsMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-paper-prompts.js')).href)
+  const paperSections = PACK.sections.filter((s) => s.source === 'v5r-fixture:paper')
+  ok(paperSections.length === 3, '★ three paper prompt sections exist in the loaded manifest', paperSections.map((s) => s.name))
+  const phasesScoped = paperSections.map((s) => s.scope && s.scope.phase).sort()
+  ok(J(phasesScoped) === J(['paper-final', 'paper-review', 'paper-write']),
+    '★ each is scoped to exactly ONE phase (the pipeline matches scope.phase — no kernel change needed)', phasesScoped)
+  const paperMarkers = paperSections.map((s) => String(s.text).split('\n')[0])
+  ok(new Set(paperMarkers).size === 3 && paperMarkers.filter((m) => m.startsWith('【最终论文·')).length === 3,
+    '★ the three markers are UNIQUE and each names its own stage', paperMarkers)
+  ok(paperSections.filter((s) => /\{\{/.test(String(s.text))).length === 0,
+    'no paper prompt contains a {{ }} placeholder (static per-phase text)', paperSections.map((s) => s.name))
+  ok(paperSections.filter((s) => String(s.text).length > 300).length === 3,
+    'each paper prompt carries real content (not a one-line stub)', paperSections.map((s) => String(s.text).length))
+  // THE CONTENT CONTRACTS: deliverable's meaning, the office precondition, the evidence rule, and the numbers coming
+  // from `paper.js` (single source of truth, not hand-copied).
+  const byPhase = (p) => paperSections.filter((s) => s.scope && s.scope.phase === p)[0]
+  const writeText = String(byPhase('paper-write').text)
+  const reviewText = String(byPhase('paper-review').text)
+  const finalText = String(byPhase('paper-final').text)
+  ok(writeText.includes('不得编造') && writeText.includes('paper_part') && writeText.includes('vibe_v5_record_proposition'),
+    '★ write prompt: the evidence rule + the reply contract + the REAL tool name (no invented tool)', { hasTool: writeText.includes('vibe_v5_record_proposition') })
+  ok(reviewText.includes('deliverable: true') && reviewText.includes('全体参与成员都投 true') && reviewText.includes('未表态不算可交付'),
+    '★★ review prompt: `deliverable` is DEFINED (true = ship as-is / false = must revise / all-true required) — the state machine\'s only input', reviewText.length)
+  ok(finalText.includes('院士') && finalText.includes('所办') && finalText.includes('未接线') && finalText.includes('咨询'),
+    '★★ final prompt: the CHAIR decides AND the office precondition (consult + meeting) is stated as NOT wired — so nobody assumes office can finalise', finalText.length)
+  ok(writeText.includes(String(paperMod.PAPER_MAX_ROUNDS)) && paperSections.filter((s) => s.text.includes('xelatex')).length >= 1,
+    '★ the numbers/engine order are taken from paper.js (single source), not hand-copied', String(paperMod.PAPER_MAX_ROUNDS))
+  // 一正一反 THROUGH THE REAL PIPELINE: each phase's assembly carries ONLY its own marker.
+  const paperPipe = promptMod2.createPromptPipeline({ sections: PACK.sections, bindings: PACK.bindings || [], settings: {}, counts: {} })
+  const textAt = async (phase) => (await paperPipe.assemble({ member: 'r-1', role: 'researcher', roleLabel: 'researcher', phase })).text
+  const atWrite = await textAt('paper-write')
+  const atReview = await textAt('paper-review')
+  const atFinal = await textAt('paper-final')
+  const atNormal = await textAt('normal')
+  ok(atWrite.includes('【最终论文·撰写】') && !atWrite.includes('【最终论文·互审】') && !atWrite.includes('【最终论文·定稿】'),
+    '★ 正: phase=paper-write carries ONLY the writing prompt', { write: atWrite.length })
+  ok(atReview.includes('【最终论文·互审】') && !atReview.includes('【最终论文·撰写】') && !atReview.includes('【最终论文·定稿】'),
+    '★ 反: phase=paper-review does NOT carry the writing prompt (nor the final one)', { review: atReview.length })
+  ok(atFinal.includes('【最终论文·定稿】') && !atFinal.includes('【最终论文·撰写】') && !atFinal.includes('【最终论文·互审】'),
+    '★ and phase=paper-final carries only the final prompt', { final: atFinal.length })
+  ok(!atNormal.includes('【最终论文·撰写】') && !atNormal.includes('【最终论文·互审】') && !atNormal.includes('【最终论文·定稿】'),
+    '★ a NON-paper phase carries NONE of the three (no phase ⇒ no paper instruction at all)', { normal: atNormal.length })
+
   // ── ④ REFUSALS ARE NAMED (the 一正一反 the fixture verified: empty sender) ──────────────────────────────────
   console.log('=== 4. REFUSALS CARRY A REGISTERED CODE + A HINT ===')
   const noP = await receipt(v5rBoot, 'vibe_v5_record_proposition', { statement: '缺 p 的命题' })

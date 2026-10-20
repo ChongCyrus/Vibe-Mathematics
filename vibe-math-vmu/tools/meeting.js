@@ -61,7 +61,20 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             if (typeof secretary === 'string' && secretary !== '') meeting.secretary = secretary
             await meeting.convene(agenda === undefined ? null : agenda)
             await meeting.openRound({ members: Array.isArray(roster) ? roster : null })
-            return { ok: true, action, id: meeting.id, state: meeting.state, phase: meeting.phase, secretary: meeting.secretary || null }
+            // ★ PHASE 7: the SERVICE record (which owns motions/resolutions) must learn the SAME id, or a tool-declared
+            // secretary could never be honoured by the service's resolution check. Only declared ⇒ this call happens
+            // (zero mechanism: no secretary ⇒ no service record created here).
+            let serviceMeeting = null
+            let serviceError = null
+            if (typeof secretary === 'string' && secretary !== '') {
+              const svc = kernel && kernel.meetings ? kernel.meetings : null
+              if (svc && typeof svc.open === 'function') {
+                try { serviceMeeting = svc.open({ id: meeting.id, roster: Array.isArray(roster) ? roster : undefined, secretary }).meeting }
+                catch (e) { serviceError = { code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) } }
+              } else serviceError = { code: 'VMU_ENGINE_UNAVAILABLE', message: 'kernel.meetings service is not mounted' }
+            }
+            return { ok: true, action, id: meeting.id, state: meeting.state, phase: meeting.phase, secretary: meeting.secretary || null,
+              serviceMeeting, ...(serviceError ? { serviceError } : {}) }
           }
           if (action === 'speak') return Object.assign({ ok: true, action, id }, await live().speak(need(member, 'member'), need(text, 'text')))
           if (action === 'silent') return Object.assign({ ok: true, action, id }, await live().markSilent(need(member, 'member'), reason || 'no input'))

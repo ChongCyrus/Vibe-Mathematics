@@ -42,6 +42,8 @@ import { V5R_ARTIFACT_COUNTER } from '../middleware/artifact-counter.js'
 // 0 declared). The six names live in `../tools.js` and are declared below as the manifest's `tools[]` - the SAME
 // mechanism `packs/v3` uses, so the kernel holds them and the host publishes them without learning any v5r name.
 import { V5R_PACK_TOOLS } from '../tools.js'
+// PHASE 7 round 8: THE PAPER PROMPTS (write / cross-review / final), phase-scoped and NON-source-derived.
+import { V5R_PAPER_PROMPT_SECTIONS } from './v5r-paper-prompts.js'
 
 /**
  * ROUND 336 — THE BRIDGE FROM TEXT TO PIPELINE. Until now the v5r prompt corpus was carried as DATA: hash-locked,
@@ -370,6 +372,9 @@ import { V5R_ASSISTANT_TURN_SECTIONS } from './v5r-assistant.js'
 const v5rCharterSectionsGlobal = () => [...CHARTER_SECTIONS, v5rRoleSection, v5rFixtureConstraint,
   // PHASE 7 / goal 2: the per-role TOOL DISCOVERY sections (non-source-derived, role-scoped, unique markers).
   v5rToolSectionAcademician, v5rToolSectionResearcher, v5rToolSectionTemp,
+  // PHASE 7 round 8: the PAPER PROMPTS — phase-scoped (`paper-write` / `paper-review` / `paper-final`), so at most ONE
+  // of them is in any given turn's prompt (the pipeline matches scope.phase; no kernel change needed).
+  ...V5R_PAPER_PROMPT_SECTIONS,
   ...V5R_ASSISTANT_TURN_SECTIONS]
 
 /** Its role and phase bindings - one winner per section per assembly is the pipeline's job (docs/26 section 3.20). */

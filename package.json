@@ -809,12 +809,15 @@
     "vibe-math-vmu/packs/v3/tools.js",
     "vibe-math-vmu/packs/v5r/tools.js",
     "vibe-math-vmu/packs/v5r/paper.js",
+    "vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js",
     "tests/vmu-v5r-tools.test.mjs",
     "tests/vmu-v3-gates.test.mjs",
     "tests/vmu-v3-tools.test.mjs",
     "vibe-math-vmu/packs/v3/middleware/defects.js",
     "vibe-math-vmu/packs/v3/middleware/paper-close.js",
-    "tests/audit-observer-consumers.mjs"
+    "tests/audit-observer-consumers.mjs",
+    "vibe-math-vmu/kernel/latex.js",
+    "tests/vmu-latex.test.mjs"
   ],
   "license": "MIT",
   "keywords": [
