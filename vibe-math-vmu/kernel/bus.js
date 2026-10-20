@@ -92,6 +92,12 @@ export const HOOK_REGISTRY = Object.freeze([
   // blockable: the motion has happened, and the audience/policy belongs to middleware (R1) - exactly the door the
   // pack's "propose ⇒ open a box" policy needs.
   { name: 'meeting/motion', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a motion was moved inside a meeting (meeting-scoped motion id)', producer: 'kernel/meetings.js' },
+  // ★ PHASE 7：`meetings.js` 的 `second`／`withdraw` 是【附加的两条状态机边】，它们**已经在 emit**，而名字不在冻结表里
+  // ⇒ ★ **总线会拒收**（这正是当年 `budget/warn` 同一个坑：事件发不出去，且没有任何人能订阅它）。
+  // `audit-hook-coverage` 把这两条抓了出来 —— 这条门禁存在的唯一理由就是这个。形状同 `meeting/motion`：
+  // 动作已经发生，所以 `failure: 'open'`，且不可 block。
+  { name: 'meeting/second', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a motion inside a meeting was seconded', producer: 'kernel/meetings.js' },
+  { name: 'meeting/withdrawn', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a motion inside a meeting was withdrawn', producer: 'kernel/meetings.js' },
   // ── ROUND 13 / task-99: the `emit({ type: … })` family becomes REGISTRABLE 事件 ────────────────────────────────
   // Background (measured in round 12): 29 object-shape emit sites existed, 28 of them unregistered, and NEITHER hook
   // audit could see them (the classification gate's regex only accepts `emit('<name>'`; `audit-vmu-docs` §I's helper

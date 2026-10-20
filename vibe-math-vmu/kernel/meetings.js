@@ -582,6 +582,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // GAP-MTG-02: a RESOLUTION motion is an entity conclusion, so a light meeting refuses it through the SAME
       // predicate the close rail uses (the v5r S12/D7 rule, now a single decision point).
       if (String(kind) === 'resolution') {
+        // ★ PHASE 7 修（真回归，被 vmu-meeting-parity 抓到）：★ **先问"这个会议有没有资格产生实体结论"，再问"你是谁"**。
+        // 理由不是口味：★ **轻量会议【根本不能】产生实体结论，★ 与提案人是谁无关** ⇒ ★ 若先查权限，一个非 chair 成员
+        // 得到的拒绝是 `VMU_NOT_PERMITTED`（"你不是主持人"），而真相是"**这个会议不允许**" ⇒ 调用方会去争取 chair 席位
+        // 而不是升级会议层级。★ **拒绝要用调用者的词汇说清【真正的原因】**（红线 3）。
+        const tierBlock = truthWriteRefusal('moving a resolution', enforced)
+        if (tierBlock) throw tierBlock
         // ★ PHASE 7: a resolution is a RECORD write; the original allows the chair OR the secretary. The secretary is
         // DECLARED on the meeting (never inferred from a vote permission), and this check grants NOTHING about voting.
         if (m.secretary === null && String(member) !== String(m.chair)) {
@@ -592,8 +598,6 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
           throw deny('VMU_NOT_PERMITTED', 'only the chair or the declared secretary may move a resolution: ' + String(member),
             'secretary=' + m.secretary + '; chair=' + String(m.chair || '(none)'), enforced)
         }
-        const tierBlock = truthWriteRefusal('moving a resolution', enforced)
-        if (tierBlock) throw tierBlock
       }
       const emergency = K.emergencyKinds.length > 0 && K.emergencyKinds.includes(String(kind))
       if (K.emergencyKinds.length) mark(enforced, 'vmu.meetings.emergencyKinds')
