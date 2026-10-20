@@ -1081,10 +1081,11 @@ const FALLBACK_KEYS = [
   ok(err2 && err2.code === 'VMU_NO_SUCH_OBJECT', '★ 反：provider 的无 live Agent 具名拒原样传播', err2 && err2.code)
   // ★ PHASE 8 / round 39: inside the caller's own turn, the caller Agent's schemas are authoritative even when the
   // memberSession map is not learned yet. Roster check still runs FIRST.
-  const caller = { id: 'child-agent', ctx: { tools: { schemas: () => [{ name: 'only_one' }] } } }
+  const caller = { id: 'child-agent', ctx: { tools: { schemas: (scope) => { callerScope = scope; return [{ name: 'only_one' }] } } } }
+  let callerScope = null
   const viaCaller = k.toolsView({ member: 'member-a', agent: caller })
-  ok(viaCaller.ok === true && viaCaller.count === 1 && viaCaller.tools[0].name === 'only_one',
-    '★ 正：调用者 Agent 可用 ⇒ 名字来自它的 schemas（不查 memberSession）', viaCaller)
+  ok(viaCaller.ok === true && viaCaller.count === 1 && viaCaller.tools[0].name === 'only_one' && callerScope === caller && viaCaller.source === 'caller' && viaCaller.schemaScope === 'agent',
+    '★ 正：调用者 Agent 可用 ⇒ 名字来自它的 schemas(AGENT 对象)（dsh-scope 的 scope 键是 agent 对象，不是 id 字符串；无参是全局视图）', { viaCaller, callerScopeIsAgent: callerScope === caller })
   let ghostAgent = null
   try { k.toolsView({ member: 'ghost-x', agent: caller }) } catch (e) { ghostAgent = e }
   ok(ghostAgent && ghostAgent.code === 'VMU_NO_SUCH_OBJECT' && /no member/.test(ghostAgent.message),

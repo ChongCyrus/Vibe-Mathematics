@@ -2403,17 +2403,33 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       // already runs on that Agent — its own schemas are the authoritative visible set. The provider remains the
       // out-of-turn path. A caller without tools.schemas falls through (never fabricate an empty list).
       let names = null
+      let source = 'provider'
+      let agentId = null
+      let schemaScope = null
       const agentTools = agent && agent.ctx && agent.ctx.tools
       if (agentTools && typeof agentTools.schemas === 'function') {
-        names = (agentTools.schemas() || []).map((x) => (x && typeof x === 'object' ? (x.name || x.id) : x)).filter((n) => typeof n === 'string')
+        // ★ schemas() with NO argument is the GLOBAL view. The tools live in the agent's SCOPE; pass the agent id as the
+        // ScopeKey (measured: omitted scope returned [] for the caller agent and thus count:0).
+        agentId = agent && typeof agent.id === 'string' ? agent.id : null
+        // ★ dsh-scope keys a scope by the AGENT OBJECT (createScope(loopCtx, this)), not by its id string. schemas()
+        // without a scope is the GLOBAL view, which is why an id string (and no argument) both returned [].
+        const candidateScopes = [agent, agent.scope, agentId]
+        let lastErr = null
+        for (const scope of candidateScopes) {
+          try { names = (agentTools.schemas(scope) || []).map((x) => (x && typeof x === 'object' ? (x.name || x.id) : x)).filter((n) => typeof n === 'string'); schemaScope = scope === agent ? 'agent' : (scope === agent.scope ? 'agent.scope' : 'agent.id'); if (names.length > 0) break } catch (e) { lastErr = e }
+        }
+        if (names === null) names = []
+        if (lastErr && names.length === 0) schemaScope = 'failed:' + String(lastErr.message || lastErr).slice(0, 80)
+        source = 'caller'
       }
       if (names === null) {
         if (!turn || typeof turn.visibleToolsOf !== 'function') throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no visible-tools provider', 'assemble the host adapter so members expose their tool table')
         const visible = turn.visibleToolsOf(member)
         names = visible && Array.isArray(visible.tools) ? visible.tools : []
+        source = 'provider'
       }
       const purposes = toolFaceDescriptions || {}
-      return { ok: true, member: String(member), count: names.length, tools: names.map((name) => ({ name, purpose: purposes[name] || null })) }
+      return { ok: true, member: String(member), count: names.length, tools: names.map((name) => ({ name, purpose: purposes[name] || null })), source, agentId, schemaScope }
     },
     applyMemberToolFace({ member, allow = null, deny = null } = {}) {
       const id = typeof member === 'string' ? member : ''

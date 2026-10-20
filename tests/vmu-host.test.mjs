@@ -679,21 +679,21 @@ if (SELF_PROBE) {
     ok(sa && sa.deferLoading === undefined && cap.presentCalls.length === 0 && receipt.presentation.mode === 'native',
       '★ 反（native）：效果与"不声明"相同（无 deferLoading、不调 presentAs），回执记录 mode=native（语义不同）', receipt && receipt.presentation)
   }
-  // 正: `ptc` ⇒ per-AGENT presentAs(mode) called ONCE with 'ptc'.
+  // 正: `ptc` ⇒ install does NOT guess on the entry ctx; it defers to the per-AGENT assemble hook.
   {
     const cap = mkCapture(true)
     const receipt = await hm.createHostAdapter({ ctx: cap.ctx, kernel: mkKernel({ mode: 'ptc' }), settings: {} }).install()
-    ok(cap.presentCalls.length === 1 && cap.presentCalls[0] === 'ptc' && receipt.presentation.presentAs && receipt.presentation.presentAs.called === true,
-      '★★ 正（ptc）：presentAs("ptc") 以 per-AGENT 方式只调一次（不是每个工具一次）', { calls: cap.presentCalls })
+    ok(cap.presentCalls.length === 0 && receipt.presentation.deferredToHook === true && receipt.presentation.mode === 'ptc',
+      '★★ 正（ptc）：安装时不在入口 ctx 上猜；标记 deferredToHook，真正应用留给 per-agent assemble hook', { calls: cap.presentCalls, presentation: receipt.presentation })
   }
-  // 反 3: `ptc` with NO presentAs ⇒ NAMED unapplied + visible failure, never a silent native fallback.
+  // 反 3: install cannot know an agent ctx at install time; it must NOT fake native and must NOT mark failure. The NAMED
+  // unapplied entry is produced later, by the hook, when that agent really lacks presentAs.
   {
     const cap = mkCapture(false)
     const receipt = await hm.createHostAdapter({ ctx: cap.ctx, kernel: mkKernel({ mode: 'ptc' }), settings: {} }).install()
     const rows = receipt.presentation && Array.isArray(receipt.presentation.unapplied) ? receipt.presentation.unapplied : []
-    ok(receipt.ok === false && receipt.presentation.presentAs === null && rows.length === 1 && rows[0].code === 'VMU_ENGINE_UNAVAILABLE' &&
-      (receipt.failures || []).filter((f) => f.name === '(tool presentation)').length === 1,
-      '★★ 反（不静默降级）：宿主无 presentAs ⇒ 具名 VMU_ENGINE_UNAVAILABLE 进 unapplied 与 failures，回执 ok:false，绝不当 native', rows)
+    ok(receipt.ok === true && receipt.presentation.deferredToHook === true && rows.length === 0,
+      '★★ 反（不静默降级）：安装时入口 ctx 没有 presentAs 也不再假装应用；deferredToHook 交给 agent hook，届时无 presentAs 才具名 VMU_ENGINE_UNAVAILABLE', rows)
   }
 }
 

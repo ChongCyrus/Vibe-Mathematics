@@ -1151,6 +1151,36 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
    * A host without `ctx.tools.presentAs`, or a face this host does not register, is a NAMED `unapplied` entry that is
    * also pushed into `failures` — never a silent fall back to native.
    */
+  let presentationState = null
+  const ptcAppliedAgents = new Set()
+  /**
+   * ★ PHASE 8 / round 41: PTC is PER-AGENT. presentAs lives on the AGENT's ctx.tools, and the only place we already hold
+   * that agent is the system-prompt/assemble hook (context.agent). Install-time entry ctx has no presentAs; that is why
+   * the old attempt returned unapplied VMU_ENGINE_UNAVAILABLE. This helper is idempotent per agent and keeps the named
+   * unapplied entry when the agent ctx really has no presentAs (never a silent downgrade).
+   */
+  const ensurePtcForAgent = async (agent) => {
+    const st = presentationState
+    if (!st || st.mode !== 'ptc' || !agent || !agent.ctx || !agent.ctx.tools) return null
+    const id = typeof agent.id === 'string' ? agent.id : String(agent.id || '')
+    if (!id || ptcAppliedAgents.has(id)) return null
+    const tools = agent.ctx.tools
+    if (typeof tools.presentAs !== 'function') {
+      st.unapplied.push({ mode: 'ptc', code: 'VMU_ENGINE_UNAVAILABLE', agentId: id,
+        why: 'this AGENT ctx exposes no tools.presentAs; per-agent PTC cannot be applied (not falling back to native)' })
+      return null
+    }
+    try {
+      const d = await tools.presentAs('ptc')
+      ptcAppliedAgents.add(id)
+      st.presentAs = { called: true, agentId: id, disposable: typeof d === 'function' }
+      return d
+    } catch (e) {
+      st.unapplied.push({ mode: 'ptc', code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', agentId: id,
+        why: 'presentAs("ptc") failed on the agent ctx: ' + String((e && e.message) || e) })
+      return null
+    }
+  }
   const applyToolPresentation = async ({ kernel, ctx, list, log }) => {
     const receipt = { mode: null, deferLoading: [], presentAs: null, unapplied: [] }
     if (!kernel || typeof kernel.packToolPresentation !== 'function') return receipt
@@ -1176,19 +1206,9 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       return receipt
     }
     if (mode === 'ptc') {
-      const fn = ctx && ctx.tools && typeof ctx.tools.presentAs === 'function' ? ctx.tools.presentAs : null
-      if (!fn) {
-        receipt.unapplied.push({ mode, code: 'VMU_ENGINE_UNAVAILABLE', why: 'ptc needs an AGENT-SCOPED presentAs(mode); this host context exposes no ctx.tools.presentAs (per-agent, not per-tool) - not falling back to native' })
-        return receipt
-      }
-      try {
-        const d = await fn.call(ctx.tools, 'ptc')
-        receipt.presentAs = { called: true, disposable: typeof d === 'function' }
-        return Object.assign(receipt, { disposer: typeof d === 'function' ? d : null })
-      } catch (e) {
-        receipt.unapplied.push({ mode, code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', why: 'presentAs("ptc") failed: ' + String((e && e.message) || e) })
-        return receipt
-      }
+      // The entry ctx is NOT an agent ctx; the actual apply happens per request in the assemble hook (ensurePtcForAgent).
+      receipt.deferredToHook = true
+      return receipt
     }
     receipt.unapplied.push({ mode, code: 'VMU_INVALID_ARGUMENT', why: 'unknown mode reached the host (the kernel should have refused it): ' + String(mode) })
     return receipt
@@ -1227,6 +1247,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     const list = wanted === null ? raw : raw.filter((s) => wanted.includes(s.name))
     // ★ PHASE 8 / goal 10: translate the pack's presentation declaration (no declaration ⇒ this does nothing).
     const presentation = await applyToolPresentation({ kernel, ctx, list, log })
+    presentationState = presentation
     if (list.length === 0) {
       installed = true
       log('vmu is disabled: nothing registered')
@@ -1278,7 +1299,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     installed = true
     publishToolFaceCatalogue()
     return { ok: failures.length === 0, installed: registered.length, names: registered.slice(), ownedByHost, failures: failures.map((f) => Object.assign({}, f)),
-      presentation: { mode: presentation.mode, deferLoading: presentation.deferLoading.slice(), presentAs: presentation.presentAs, unapplied: presentation.unapplied.map((u) => Object.assign({}, u)) } }
+      presentation: { mode: presentation.mode, deferredToHook: presentation.deferredToHook === true, deferLoading: presentation.deferLoading.slice(), presentAs: presentation.presentAs, unapplied: presentation.unapplied.map((u) => Object.assign({}, u)) } }
   }
 
   /**
@@ -1411,6 +1432,13 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       if (aid && !aid.startsWith('session-') && typeof kernel.currentTurnMember === 'function') member = kernel.currentTurnMember()
     }
     if (!member) return out
+    // ★ PHASE 8 / round 41: PTC is per-AGENT and is applied HERE (the only seam that holds context.agent). An explicit
+    // per-turn tools override (tools:"none" / tools.allow) is a narrower, intentional native face: PTC must NOT replace
+    // it with run_code, otherwise the allowed tool becomes unreachable (measured: allow vote + ptc ⇒ header vote but
+    // direct vote call refused as "only run_code is callable").
+    let turnOverride = null
+    try { turnOverride = typeof kernel.memberToolOverride === 'function' ? kernel.memberToolOverride(member) : null } catch { turnOverride = null }
+    if (!turnOverride) { try { await ensurePtcForAgent(context && context.agent) } catch { /* named unapplied is recorded by the helper */ } }
     try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ matched: 1 + ((kernel.toolFacePull && kernel.toolFacePull().matched) || 0), lastMember: member }) } catch { /* diagnostics */ }
     try {
       const resolved = kernel.resolveMemberToolDeny(member)
@@ -1497,7 +1525,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       if (!r.agent) return { ok: false, code: 'VMU_NO_SUCH_OBJECT', member: String(member),
         message: 'no live Agent for member ' + String(member) + ' (session=' + String(r.sessionId || '(none learned yet)') + ')',
         hint: 'deliver one turn first so the child session id is learned' }
-      const names = (r.agent.ctx.tools.schemas() || []).map((x) => (x && typeof x === 'object' ? (x.name || x.id) : x)).filter((n) => typeof n === 'string')
+      const names = (r.agent.ctx.tools.schemas(r.agent) || []).map((x) => (x && typeof x === 'object' ? (x.name || x.id) : x)).filter((n) => typeof n === 'string')
       return { ok: true, member: String(member), tools: names }
     },
 
