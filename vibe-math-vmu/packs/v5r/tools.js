@@ -39,7 +39,7 @@
  *   · `vibe_v5_hire`               → members face `hire` into the `temp` seat ＋ tasks face `create` for the initial task
  *   · `vibe_v5_report`             → READ-ONLY aggregation of the published faces (no new capability)
  *   · `vibe_v5_overview`           → READ-ONLY aggregation, chair seat only (the role check is the pack's)
- *   · `vibe_v5_tool_help`          → READ: kernel `packTools()` (names+descriptions) ＋ the host applier's visible count
+ *   · `vibe_v5_tool_help`          → thin forwarder to the kernel's `toolsView` (the member's VISIBLE set, not the declaration)
  *   · `vibe_v5_assign`             → tasks face `create`/`assign` ＋ mailbox face `send` (why/acceptance reach the assignee)
  *   · `vibe_v5_fire`               → members face `end` ＋ tasks face `transition` to `cancelled`
  *   · `vibe_v5_nudge`              → mailbox face `send` (kind nudge)
@@ -436,30 +436,32 @@ async function toolOverview(args = {}, { kernel } = {}) {
  * tools exactly and the host's visible COUNT, not the host face names. "需内核能力：visible-tools reader" is recorded
  * in `V5R_NEXT_BATCH_TOOLS`.
  */
+/**
+ * ★ `vibe_v5_tool_help` — A THIN FORWARDER (PHASE 8 / B-1), not a second implementation.
+ *
+ * WHAT CHANGED AND WHY: the old body answered from the kernel's DECLARATIONS (`packTools()` — 38 names, whether or not
+ * the asking seat may call them). A member needs "what can I call RIGHT NOW?", which is the kernel's `toolsView`: names
+ * from the LIVE visible-tools provider (`turn.visibleToolsOf`), purposes from the host's registered descriptions. With
+ * role-scoped deny faces those two sets are no longer the same (a temp seat's declaration set is 38, its visible set is
+ * 6), so keeping the old answer would have been a lie the pack could have avoided.
+ *
+ * ★ `purpose: null` IS NOT A MISSING FIELD: it means the host registered no description for that name. The kernel
+ * refuses to invent one, and this forwarder passes it through untouched.
+ * ★ NO LIVE AGENT / NO PROVIDER ⇒ the kernel's reading refuses BY NAME; this forwarder propagates that refusal (it never
+ * returns an empty list and calls it success).
+ */
 function toolHelp(args = {}, { kernel } = {}) {
-  const roster = membersOf(kernel).roster()
-  const member = has(args.member) ? str(args.member) : ''
-  if (member !== '' && !roster.some((m) => m.id === member)) {
-    throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + member + '" on this roster',
-      'the roster holds ' + roster.length + ' member(s); omit `member` for the institute-wide tool list')
+  if (!has(args.member)) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'tool_help needs the member id',
+      'pass member:"<roster id>" — the answer is per member, because each seat sees a different tool table')
   }
-  const packTools = kernel && typeof kernel.packTools === 'function' ? kernel.packTools() : []
-  const tools = packTools.map((t) => ({ name: t.name, purpose: t.description || null }))
-  let host = { available: false, code: null, visible: null }
-  if (member !== '') {
-    try {
-      const r = kernel.applyMemberToolFace({ member, allow: [], deny: [] })
-      host = { available: true, code: null, visible: (r && (r.visibleBefore !== undefined ? r.visibleBefore : r.visibleAfter)) || 0 }
-    } catch (e) {
-      host = { available: false, code: (e && e.code) || null, visible: null }
-    }
+  if (!kernel || typeof kernel.toolsView !== 'function') {
+    throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no toolsView reader, so the visible tool table cannot be read',
+      'assemble the host adapter so members expose their tool table (the pack must not invent one)')
   }
-  if (tools.length === 0) {
-    throw refuse('VMU_ENGINE_UNAVAILABLE', 'the kernel holds no declared pack tools, so there is nothing to answer',
-      'load the v5r pack (config.packs / vmu.packs.active) before asking what is available')
-  }
-  return { ok: true, tool: 'vibe_v5_tool_help', member: member || null, count: tools.length, tools, host,
-    note: 'names come from the kernel\'s own declarations (packTools); the host face names are not readable from the kernel yet (named gap)' }
+  const view = kernel.toolsView({ member: str(args.member) })
+  return Object.assign({}, view, { tool: 'vibe_v5_tool_help',
+    note: 'thin forwarder: the kernel\'s toolsView reading (the member\'s VISIBLE set from the live provider), not the pack declaration; purpose:null means the host registered no description for that name' })
 }
 
 /**
@@ -1171,8 +1173,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_tool_help',
-    description: 'What can I call right now? Answers from the kernel\'s own declarations (packTools), never from the prompt: the tool names with one-line purposes, plus the host\'s visible count when a member\'s Agent is reachable. An unknown member, or a host with no live Agent, is a NAMED refusal — never an empty list pretending success.',
-    parameters: { member: { type: 'string' } },
+    description: 'What can I call right now? A thin forwarder to the kernel\'s toolsView: the member\'s VISIBLE tool set from the live provider (not the pack declaration), each with a one-line purpose (null = the host registered none). No live Agent / no provider ⇒ the provider\'s NAMED refusal — never an empty list pretending success.',
+    parameters: { member: { type: 'string', required: true } },
     handler: toolHelp,
   },
   {

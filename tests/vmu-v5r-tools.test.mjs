@@ -229,16 +229,32 @@ try {
 
   // ── ③c THIRD BATCH (round 4): help, assign, fire, nudge, prioritize, feedback, read_library ────────────────
   console.log('=== 3c. THE THIRD BATCH (one positive + one named negative each) ===')
-  const help = await receipt(v5rBoot, 'vibe_v5_tool_help', {})
-  const declaredNow = kernel.packTools().map((t) => t.name).sort()
-  const helpNames = help.parsed && Array.isArray(help.parsed.tools) ? help.parsed.tools.map((t) => t.name).sort() : []
-  ok(help.parsed && help.parsed.ok === true && J(helpNames) === J(declaredNow),
-    '★ tool_help: 正 — the returned list SET-EQUALS the kernel\'s own declarations (packTools), not a copy of the prompt', { help: helpNames.length, declared: declaredNow.length })
-  ok(help.parsed.tools.length > 0 && help.parsed.tools.every((t) => typeof t.name === 'string' && typeof t.purpose === 'string' && t.purpose.length > 10),
-    'tool_help: 正 — every entry carries a name and a one-line purpose', help.parsed.tools.length)
-  const helpUnknown = await receipt(v5rBoot, 'vibe_v5_tool_help', { member: 'r-nobody' })
-  ok(helpUnknown.parsed && helpUnknown.parsed.ok === false && helpUnknown.parsed.code === 'VMU_NO_SUCH_OBJECT',
-    '★ tool_help: 反 — an unknown member is refused by name (never an empty list pretending success)', helpUnknown.parsed)
+  // ★ PHASE 8 / B-1 (round 26): tool_help is a THIN FORWARDER to kernel.toolsView. The assertions that used to live
+  // here encoded the DECLARATION-based answer (`packTools` — 38 names). That is an INTENTIONAL semantic change, not a
+  // convenience edit: the declaration set and the visible set are no longer the same once role-scoped deny faces apply
+  // (a temp seat declares 38 and sees 6), and the old answer was the wrong one for a member asking "what can I call".
+  const helpNoMember = await receipt(v5rBoot, 'vibe_v5_tool_help', {})
+  ok(helpNoMember.parsed && helpNoMember.parsed.ok === false && helpNoMember.parsed.code === 'VMU_INVALID_ARGUMENT' && typeof helpNoMember.parsed.hint === 'string',
+    '★ tool_help: 反（no member）— the answer is PER MEMBER, so a missing member id is refused by name (with a hint)', helpNoMember.parsed && helpNoMember.parsed.code)
+  const help = await receipt(v5rBoot, 'vibe_v5_tool_help', { member: 'r-1' })
+  // ★ In THIS fixture there is no live Agent behind the visible-tools provider, so the kernel reading REFUSES BY NAME.
+  // That is the honest local truth; the positive (a real per-seat tool table) needs a live host Agent (real machine).
+  ok(help.parsed && help.parsed.ok === false && typeof help.parsed.code === 'string' && help.parsed.code.length > 3 &&
+    help.parsed.tools === undefined && /live Agent|visible|provider/i.test(String(help.parsed.message || '')),
+    '★★ tool_help: 反（fixture has no live Agent）— it propagates the kernel\'s NAMED refusal and returns NO declaration list (the old body would have returned 38 names here)', help.parsed && { code: help.parsed.code })
+  // ★★★ POSITIVE by a DIRECT handler call with a stub kernel: the forwarder must return EXACTLY the toolsView result, and
+  // purpose:null must survive — null means "the host registered no description", NOT a missing field.
+  const helpSpec = PACK.tools.filter((t) => t.name === 'vibe_v5_tool_help')[0]
+  const stubView = { ok: true, member: 'stub-1', count: 2, tools: [{ name: 'vibe_v5_say', purpose: '在群里说一句' }, { name: 'vibe_v5_unknown', purpose: null }] }
+  const forwarded = helpSpec.handler({ member: 'stub-1' }, { kernel: { toolsView: ({ member }) => Object.assign({}, stubView, { member }) } })
+  ok(forwarded && forwarded.ok === true && forwarded.count === 2 && forwarded.tools[0].purpose === '在群里说一句' && forwarded.tools[1].purpose === null && forwarded.tool === 'vibe_v5_tool_help',
+    '★★★ tool_help: 正 — the forwarder returns the kernel\'s toolsView result unchanged (purpose:null passed through as "no registered description", never invented)', forwarded && { count: forwarded.count })
+  // ★★ SAME READING: the pack alias and the framework tool must both call kernel.toolsView — the two cannot disagree.
+  const helpSrc = (await import('node:fs')).readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
+  const helpFnSrc = helpSrc.slice(helpSrc.indexOf('function toolHelp'), helpSrc.indexOf('function toolHelp') + 1800)
+  const fwSrc = (await import('node:fs')).readFileSync(join(REPO, 'vibe-math-vmu', 'tools', 'member-tools.js'), 'utf8')
+  ok(/kernel\.toolsView\(\{ member/.test(helpFnSrc) && /packTools\(\)/.test(helpFnSrc) === false && /kernel\.toolsView\(\{ member/.test(fwSrc),
+    '★★ SAME READING: both `vibe_v5_tool_help` and the framework\'s `vibe_vmu_tools` call kernel.toolsView (source probe: the pack body no longer mentions packTools at all)', null)
 
   const assignNoAccept = await receipt(v5rBoot, 'vibe_v5_assign', { to: 'r-1', why: '因为你最熟' })
   ok(assignNoAccept.parsed && assignNoAccept.parsed.ok === false && assignNoAccept.parsed.code === 'VMU_INVALID_ARGUMENT',
