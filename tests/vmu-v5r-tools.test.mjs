@@ -500,7 +500,7 @@ try {
     '★ the numbers/engine order are taken from paper.js (single source), not hand-copied', String(paperMod.PAPER_MAX_ROUNDS))
   // 一正一反 THROUGH THE REAL PIPELINE: each phase's assembly carries ONLY its own marker.
   const paperPipe = promptMod2.createPromptPipeline({ sections: PACK.sections, bindings: PACK.bindings || [], settings: {}, counts: {} })
-  const textAt = async (phase) => (await paperPipe.assemble({ member: 'r-1', role: 'researcher', roleLabel: 'researcher', phase })).text
+  const textAt = async (phase) => (await paperPipe.assemble({ member: 'r-1', role: 'member', roleLabel: 'researcher', phase })).text
   const atWrite = await textAt('paper-write')
   const atReview = await textAt('paper-review')
   const atFinal = await textAt('paper-final')
@@ -637,7 +637,7 @@ try {
   }
   const assembleAs = async (settings) => {
     applyMode(settings)
-    return (await kernelPrompt.assemble({ member: 'r-1', role: 'researcher', roleLabel: 'researcher', phase: 'normal', settings: {} })).text
+    return (await kernelPrompt.assemble({ member: 'r-1', role: 'member', roleLabel: 'researcher', phase: 'normal', settings: {} })).text
   }
   const defaultText = await assembleAs({})
   const toolsText = await assembleAs({ 'vmu.v5r.fixtureMode': 'tools' })
@@ -687,6 +687,51 @@ try {
   ok(v5rBoot.handle.kernel.status().paperDispatch === undefined,
     '★★ NAMED GAP (measured): a v5r boot does NOT yet show the segment — the pack module is given a `{read}`-only kernel facade, so the one-line registration has to be done by the entry/host (or the kernel must expose the setter). This assertion flips the day that line lands.', v5rBoot.handle.kernel.status().paperDispatch)
 
+  // ── ③m THE ROLE VOCABULARY (round 12): section scopes must speak SLOT IDS, not display names ────────────────
+  // THE BUG THIS PINS (found on a real machine): `scope.role` is matched against `turn.role`, which is the ROSTER SLOT
+  // ID (chair/member/temp); the display names (academician/researcher) are `roleLabel`, and a scope written with them can
+  // never match. The local tests used to pass the DISPLAY name as `role`, so they stayed green while the prompt was
+  // empty on a real run — the (a)-class "fixture has the same shape as the wrong code" defect.
+  console.log('=== 3m. THE ROLE VOCABULARY: scope.role must be the SLOT ID ===')
+  const slotIds = (PACK.slots || []).map((s) => s.id).sort()
+  ok(slotIds.length === 3 && J(slotIds) === J(['chair', 'member', 'temp']),
+    '★ the slots come FROM THE MANIFEST (not hand-copied): chair/member/temp', slotIds)
+  const roleScoped = PACK.sections.filter((s) => s.scope && s.scope.role !== undefined)
+  const scopeRoleValues = [...new Set(roleScoped.flatMap((s) => Array.isArray(s.scope.role) ? s.scope.role : [s.scope.role]))].sort()
+  ok(roleScoped.length > 0 && scopeRoleValues.length > 0 && scopeRoleValues.every((v) => slotIds.includes(v)),
+    '★★ every `scope.role` value is one of the manifest\'s SLOT IDS (nothing outside the slot vocabulary)', { sections: roleScoped.length, values: scopeRoleValues })
+  const displayNameScopes = roleScoped.filter((s) => {
+    const list = Array.isArray(s.scope.role) ? s.scope.role : [s.scope.role]
+    return list.some((v) => v === 'academician' || v === 'researcher')
+  })
+  ok(displayNameScopes.length === 0,
+    '★★ NO section scopes on a DISPLAY name (academician/researcher) — that is the exact shape that rendered nothing on the real machine', displayNameScopes.map((s) => s.name))
+  // POSITIVE through the real turn-applied pipeline: each SLOT ID gets its own tool list.
+  const assembleForRole = async (role) => {
+    applyMode({})
+    return (await kernelPrompt.assemble({ member: 'r-1', role, roleLabel: role, phase: 'normal', settings: {} })).text
+  }
+  const asChair = await assembleForRole('chair')
+  const asMemberSlot = await assembleForRole('member')
+  const asTempSlot = await assembleForRole('temp')
+  ok(asChair.includes('【本轮可用的工具｜院士】') && asChair.includes('vibe_v5_poll_open'),
+    '★ chair slot renders the academician tool list (convening/poll verbs included)', asChair.length)
+  ok(asMemberSlot.includes('【本轮可用的工具｜研究员】') && !asMemberSlot.includes('【本轮可用的工具｜院士】'),
+    '★ member slot renders the researcher tool list and not the chair one', asMemberSlot.length)
+  ok(asTempSlot.includes('【本轮可用的工具｜临时成员】') && !asTempSlot.includes('【本轮可用的工具｜研究员】'),
+    '★ temp slot renders the temp tool list only', asTempSlot.length)
+  // NEGATIVE (this is the real-machine shape): a DISPLAY name as `role` renders NO ROLE-SCOPED v5r section at all.
+  // (The non-role-scoped sections — e.g. the no-tools fixture constraint — legitimately still render; only sections whose
+  // scope is a role are evidence here, so those are exactly the markers counted below.)
+  const asDisplayAcademician = await assembleForRole('academician')
+  const asDisplayResearcher = await assembleForRole('researcher')
+  const displayMarkers = ['【本轮可用的工具｜院士】', '【本轮可用的工具｜研究员】', '【本轮可用的工具｜临时成员】', '【SLV 夹具约束｜本轮调用工具】']
+  const renderedWithDisplay = [asDisplayAcademician, asDisplayResearcher]
+    .filter((t) => displayMarkers.some((m) => t.includes(m))).length
+  ok(renderedWithDisplay === 0,
+    '★★★ 负证明: when `role` is a DISPLAY name (academician/researcher) NO role-scoped v5r section renders — so the next person who writes a display name in a scope turns this red',
+    { displayAcademician: asDisplayAcademician.includes('【本轮可用的工具'), displayResearcher: asDisplayResearcher.includes('【本轮可用的工具') })
+
   // ── ④ REFUSALS ARE NAMED (the 一正一反 the fixture verified: empty sender) ──────────────────────────────────
   console.log('=== 4. REFUSALS CARRY A REGISTERED CODE + A HINT ===')
   const noP = await receipt(v5rBoot, 'vibe_v5_record_proposition', { statement: '缺 p 的命题' })
@@ -710,7 +755,7 @@ try {
   const toolSections = sections.filter((s) => s && s.source === 'v5r-fixture:tools')
   ok(toolSections.length === 3, 'three tool-discovery sections exist (one per role)', toolSections.map((s) => s.name))
   const rolesScoped = toolSections.map((s) => s.scope && s.scope.role)
-  ok(J(rolesScoped.sort()) === J(['academician', 'researcher', 'temp']), 'each is scoped to exactly ONE role (no cross-role prelude)', rolesScoped)
+  ok(J(rolesScoped.sort()) === J(['chair', 'member', 'temp']), 'each is scoped to exactly ONE role (no cross-role prelude)', rolesScoped)
   const markers = toolSections.map((s) => String(s.text).split('\n')[0])
   const badMarkers = markers.filter((m) => !m.startsWith('【本轮可用的工具｜'))
   ok(new Set(markers).size === 3 && markers.length === 3 && badMarkers.length === 0,
@@ -724,9 +769,9 @@ try {
   const promptMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kernel', 'prompt', 'index.js')).href)
   const pipe = promptMod.createPromptPipeline({ sections, bindings: PACK.bindings || [], settings: {}, counts: {} })
   const textFor = async (role) => (await pipe.assemble({ member: 'r-1', role, roleLabel: role, phase: 'normal' })).text
-  const asResearcher = await textFor('researcher')
+  const asResearcher = await textFor('member')
   const asTemp = await textFor('temp')
-  const asAcademician = await textFor('academician')
+  const asAcademician = await textFor('chair')
   ok(asResearcher.includes('vibe_v5_record_proposition') && asResearcher.includes('【本轮可用的工具｜研究员】'),
     'the researcher\'s assembly carries the researcher tool list', asResearcher.length)
   ok(asAcademician.includes('vibe_v5_message') && asAcademician.includes('【本轮可用的工具｜院士】'),
@@ -734,8 +779,8 @@ try {
   // THE SUBSET IS CHECKED ON THE SECTION ITSELF (the assembled prompt legitimately mentions these names elsewhere in
   // the charter, so a whole-prompt grep would confuse prose with a tool list).
   const tempSection = toolSections.filter((s) => s.scope && s.scope.role === 'temp')[0]
-  const researcherSection = toolSections.filter((s) => s.scope && s.scope.role === 'researcher')[0]
-  const acadSection = toolSections.filter((s) => s.scope && s.scope.role === 'academician')[0]
+  const researcherSection = toolSections.filter((s) => s.scope && s.scope.role === 'member')[0]
+  const acadSection = toolSections.filter((s) => s.scope && s.scope.role === 'chair')[0]
   ok(!!tempSection && !!researcherSection && !!acadSection, 'precondition: all three role sections are present', { temp: !!tempSection, res: !!researcherSection, acad: !!acadSection })
   ok(!String(tempSection.text).includes('vibe_v5_record_proposition') && String(tempSection.text).includes('vibe_v5_record_progress'),
     'the TEMP section lists only its own subset (progress + say, no library cards)', String(tempSection.text).length)

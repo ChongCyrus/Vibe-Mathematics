@@ -818,7 +818,8 @@
     "vibe-math-vmu/packs/v3/middleware/paper-close.js",
     "tests/audit-observer-consumers.mjs",
     "vibe-math-vmu/kernel/latex.js",
-    "tests/vmu-latex.test.mjs"
+    "tests/vmu-latex.test.mjs",
+    "tests/audit-scope-role-vocabulary.mjs"
   ],
   "license": "MIT",
   "keywords": [

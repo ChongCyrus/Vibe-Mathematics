@@ -154,6 +154,8 @@ export const RECORDED_FIELDS = Object.freeze([
 // UNION of this list and whatever the pack supplies. The framework list is what a turn can be by itself; anything
 // further is vocabulary, and vocabulary belongs to the institution.
 const PHASES = Object.freeze(['founding', 'normal', 'checkpoint', 'verify', 'verify-debate', 'meeting', 'resume'])
+/** ★ PHASE 7: the turn PHASES, exported so vocabulary gates DERIVE the set instead of hand-copying it. */
+export const TURN_PHASES = PHASES
 
 export function refuse(code, message, hint, cause = null) {
   // ★★★ ROUND 68: A WRAPPED FAILURE KEEPS THE FRAME IT CAME FROM. When this helper wraps an inner error - as the

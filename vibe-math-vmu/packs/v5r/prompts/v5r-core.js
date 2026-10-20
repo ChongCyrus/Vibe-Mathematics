@@ -474,8 +474,11 @@ export const v5rFixtureTools = Object.freeze({
   order: 603,
   range: 'pack',
   source: 'v5r-fixture:slv',
-  // every seat may call its own tools; the per-role list is the `v5r-tools-*` section of the same assembly
-  scope: Object.freeze({ role: Object.freeze(['academician', 'researcher', 'temp']) }),
+  // every seat may call its own tools; the per-role list is the `v5r-tools-*` section of the same assembly.
+  // ★ PHASE 7 round 12: `scope.role` matches `turn.role`, and that value is the ROSTER SLOT ID (chair/member/temp),
+  // while `roleLabel` is the display name (kernel/turn/index.js:691 says mixing display text into a binding is
+  // forbidden). The v5r words academician/researcher therefore NEVER match; the slots are the real vocabulary.
+  scope: Object.freeze({ role: Object.freeze(['chair', 'member', 'temp']) }),
   text: [
     '【SLV 夹具约束｜本轮调用工具】',
     '本轮**可以且应该**调用你自己的工具：边做边记录，不要把动作攒到回合末尾。',
@@ -506,7 +509,7 @@ export const v5rToolSectionAcademician = Object.freeze({
   order: 603,
   range: 'pack',
   source: 'v5r-fixture:tools',
-  scope: Object.freeze({ role: 'academician' }),
+  scope: Object.freeze({ role: 'chair' }),
   text: [
     '【本轮可用的工具｜院士】',
     '· vibe_v5_record_progress —— 写你自己的研究日志（track 可选 progress/routes/obstacles/rejected/state；证伪的路走 rejected，阻塞走 obstacles）。',
@@ -544,7 +547,7 @@ export const v5rToolSectionResearcher = Object.freeze({
   order: 604,
   range: 'pack',
   source: 'v5r-fixture:tools',
-  scope: Object.freeze({ role: 'researcher' }),
+  scope: Object.freeze({ role: 'member' }),
   text: [
     '【本轮可用的工具｜研究员】',
     '· vibe_v5_record_progress —— 写你自己的研究日志（track 可选 progress/routes/obstacles/rejected/state）。',
