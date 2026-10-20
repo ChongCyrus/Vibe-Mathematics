@@ -39,6 +39,34 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       if (typeof args.reply === 'string' && kernel.turn && typeof kernel.turn.supplyMemberReply === 'function') {
         kernel.turn.supplyMemberReply(args.reply)
       }
+      // ★ PHASE 7 / round 19: A VOTE-ONLY TURN MUST NOT HAVE TOOLS. Telling an agent "do not call tools" does not constrain
+      // an agent that HAS tools (measured: 3 vote rounds, 180 s delivery timeouts, 12-21 calls each). `tools:'none'` makes
+      // the member's visible face EMPTY for exactly this round, then restores the previous face in a finally block.
+      if (op === 'step' && args.tools === 'none') {
+        if (typeof kernel.visibleToolsOf !== 'function' || typeof kernel.applyMemberToolFace !== 'function') {
+          return refused('VMU_ENGINE_UNAVAILABLE', 'tools:"none" needs the member tool face (visibleToolsOf + applyMemberToolFace)',
+            'assemble the host adapter so the member Agent exposes its tool table, or omit tools')
+        }
+        const before = []
+        try {
+          for (const m of members) {
+            const id = m && m.id
+            const visible = kernel.visibleToolsOf(id)
+            before.push({ id, tools: visible && Array.isArray(visible.tools) ? visible.tools.slice() : [] })
+            await kernel.applyMemberToolFace({ member: id, allow: [] })
+            const after = kernel.visibleToolsOf(id)
+            if (!after || !Array.isArray(after.tools) || after.tools.length !== 0) {
+              return refused('VMU_ENGINE_UNAVAILABLE', 'the empty member tool face did not take effect for ' + String(id),
+                'the host refused restrict({allow:[]}); a vote round must not run with tools still visible')
+            }
+          }
+          return await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step })
+        } finally {
+          for (const b of before) {
+            try { await kernel.applyMemberToolFace({ member: b.id, allow: b.tools }) } catch { /* restore is best-effort; the receipt says what ran */ }
+          }
+        }
+      }
       if (op === 'step') return await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step })
       if (op === 'drive') return await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step })
       return refused('VMU_INVALID_ARGUMENT', 'unknown op: ' + op, 'known ops: step, drive, status')
@@ -60,6 +88,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
           why: param('string', '为什么唤醒（原预设的唤醒也带这一项）'),
           reply: param('string', '★ 由调用者扮演成员回合时：★ 上一次 step／drive 交回的成员提示词，★ 其【成员自己的回复】放在这里送回（★ 仅当交付接缝是 deliverByReturning 时需要）'),
           next_step: param('string', '下一步要做什么'),
+          tools: param('string', '★ step 专用：none＝本回合把成员可见工具面清空（表决回合用），回合结束后恢复；缺省＝不动工具面'),
         },
         required: ['op'],
       },

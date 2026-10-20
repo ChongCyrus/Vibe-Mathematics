@@ -22,6 +22,9 @@
     "_v5rFixtureMode": "PHASE 7 ROUND 10: the SLV fixture switch. 'no-tools' (default) keeps the historical instruction ('本轮不调用工具') so previous rounds' results stay comparable; 'tools' enables the v5r-fixture-tools variant ('本轮可以且应该调用工具'). READ AT CALL TIME by the pack's prompt policy (decideSections), so the value layer is sufficient — no kernel construction snapshot is involved.",
     "vmu.v5r.fixtureMode": "no-tools",
 
+    "_objective": "PHASE 7 ROUND 19 — 'WHAT IS THIS INSTITUTE RESEARCHING' IS PACK POLICY (red line 1), NOT FRAMEWORK POLICY. The declaration's default is the placeholder '（尚未设定）', and the charter interpolates the value verbatim; a real run showed members reading that placeholder and (correctly) refusing to invent a problem from the turn's `why`. This institution therefore carries its own objective in the VALUE layer: a small, definitely-true claim with an explicit acceptance standard — and the members have already demonstrated that they judge it honestly (they voted false while the evidence was incomplete). MEASURED READ PATH: the template interpolation `{{ setting:vmu.turn.objective }}` is resolved at ASSEMBLY time from the call's settings (probe: passing a marker in ctx.settings replaced the value), and the turn loop passes its settings view at kernel/turn/index.js:741 — so the value layer is both sufficient and the right owner.",
+    "vmu.turn.objective": "本所本期目标：确立并证明『前 n 个奇数之和的封闭形式 n²』——即对任意正整数 n，1 + 3 + 5 + … + (2n−1) = n²；验收标准是给出完整的四步数学归纳证明（基础情形 n=1、归纳假设、归纳步 n²+(2(n+1)−1)=(n+1)²、结论），并把证明归档进本所成果库。",
+
     "vmu.chat.admins": ["acad"],
     "vmu.chat.speakQuota": 0,
     "vmu.chat.muteDefaultMs": 0,

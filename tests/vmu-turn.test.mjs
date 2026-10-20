@@ -17,6 +17,7 @@ import { createKernel } from '../vibe-math-vmu/kernel/index.js'
 import { collectPackSections } from '../vibe-math-vmu/kernel/pack.js'
 import { PACK } from '../vibe-math-vmu/packs/v5r/prompts/v5r-core.js'
 import { toolSpecs } from '../vibe-math-vmu/host.js'
+import { makeTurnSpec } from '../vibe-math-vmu/tools/turn.js'
 import { SOURCE_SHA256 as PERSONA_SOURCE_SHA256 } from '../vibe-math-vmu/packs/v5r/prompts/v5r-persona.js'
 import { CHARTER_SECTIONS, CHARTER_BLOCKS, CHARTER_ROLE_BINDINGS, CHARTER_BINDINGS } from '../vibe-math-vmu/packs/v5r/prompts/v5r-charter.js'
 import { v5rRoleSection as V5R_ROLE_SECTION } from '../vibe-math-vmu/packs/v5r/prompts/v5r-core.js'
@@ -1105,6 +1106,23 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   t2.setVisibleToolsProvider(() => [])
   const asm2 = await t2.assemble(turn2)
   ok(!asm2.text.includes('【本轮可用工具】'), '★ 反：没有工具时不写空段（零机制）', asm2.text.slice(-120))
+}
+
+// ★ PHASE 7 / round 19: a VOTE-ONLY round runs with an EMPTY member tool face, then restores it.
+{
+  const visible = new Map([['member-a', ['vibe_v5_say', 'vibe_v5_record_progress']]])
+  const during = []
+  const kernel = {
+    turn: { step: async () => { during.push((visible.get('member-a') || []).slice()); return { ok: true, receipt: { fields: ['vote_solved'] } } } },
+    visibleToolsOf: (id) => ({ ok: true, member: String(id), tools: (visible.get(String(id)) || []).slice() }),
+    applyMemberToolFace: async ({ member, allow }) => { visible.set(String(member), Array.isArray(allow) ? allow.slice() : []); return { ok: true } },
+  }
+  const spec = makeTurnSpec({ param: (type, description, extra = {}) => ({ type, description, ...extra }), refused: (code, message, hint) => ({ ok: false, code, message, hint }), TOOL_NAMES: { turn: 'vibe_vmu_turn' }, kernel })
+  const out = await spec.run({ op: 'step', members: [{ id: 'member-a', role: 'member' }], why: '结题表决', tools: 'none' })
+  ok(out && out.ok === true && during.length === 1 && during[0].length === 0,
+    '★ 正：tools:"none" ⇒ 回合执行时该成员 visible 工具为空（物理上不能调工具）', during)
+  ok((visible.get('member-a') || []).length === 2,
+    '★ 反：回合结束后工具面恢复（不残留空面）', visible.get('member-a'))
 }
 
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')

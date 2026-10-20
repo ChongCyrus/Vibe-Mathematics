@@ -83,6 +83,35 @@ test('a timed-out run is a named refusal', async () => {
   passed += 1
 })
 
+// ── ★ exitCode 缺失 ≠ 退出码非零：具名分开（正/反）────────────────────────────
+test('spawn returning NO exitCode is VMU_LEAN_SPAWN_FAILED, not EXIT_NONZERO', async () => {
+  const settings = mkSettings({ 'vmu.math.leanAsync': false })
+  const spawn = async () => ({ exitCode: null, stdout: 'no code' })
+  const face = createLeanFace({ settings, spawn, root: dir, clock: () => 5, log: () => {} })
+  const sub = await face.submit({ statement: 'True', file: leanFile })
+  const s = await face.settle(sub.id)
+  assert.equal(s.passed, false)
+  assert.equal(s.receipt.code, 'VMU_LEAN_SPAWN_FAILED')
+  assert.match(s.receipt.message, /spawn 未返回退出码/)
+  assert.ok(s.receipt.hint && /spawn/.test(s.receipt.hint))
+  assert.equal(s.exitCode, null)
+  const job = face.list().jobs.find((j) => j.id === sub.id)
+  assert.equal(job.code, 'VMU_LEAN_SPAWN_FAILED', 'job view must CARRY the code (not a bare failed)')
+  passed += 1
+})
+
+test('a real non-zero exit is still VMU_LEAN_EXIT_NONZERO', async () => {
+  const settings = mkSettings({ 'vmu.math.leanAsync': false })
+  const spawn = async () => ({ exitCode: 1, stderr: 'error: unknown identifier' })
+  const face = createLeanFace({ settings, spawn, root: dir, clock: () => 6, log: () => {} })
+  const sub = await face.submit({ statement: 'True', file: leanFile })
+  const s = await face.settle(sub.id)
+  assert.equal(s.passed, false)
+  assert.equal(s.receipt.code, 'VMU_LEAN_EXIT_NONZERO')
+  assert.equal(s.exitCode, 1)
+  passed += 1
+})
+
 // ── 非法输入 ⇒ 具名拒 ───────────────────────────────────────────────────────
 test('missing statement/file are named refusals', async () => {
   const settings = mkSettings({})

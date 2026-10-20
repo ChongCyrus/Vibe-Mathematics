@@ -753,6 +753,40 @@ try {
   ok(staleNoteAdvice.length === 0,
     '★★ the OLD wrong advice ("把 code 与 hint 写进回执的 note") is GONE — that advice itself produced an unknown field', staleNoteAdvice.map((s) => s.name))
 
+  // ── ③q THE INSTITUTE'S PROBLEM (round 19): `vmu.turn.objective` is PACK POLICY, and empty was why cast stayed false ──
+  // REAL-MACHINE ROOT CAUSE (the one in OUR layer): members read the charter's "原问题" as the unfilled placeholder and
+  // (correctly) refused to invent a problem from the turn's `why`. "What this institute is researching" is the
+  // INSTITUTION's problem, so the pack's value layer carries it (red line 1); the framework only declares the key.
+  console.log('=== 3q. THE INSTITUTE\'S PROBLEM: objective in the pack value layer ===')
+  const objectiveDef = kernel.settingDef('vmu.turn.objective')
+  ok(objectiveDef && objectiveDef.type === 'string' && objectiveDef.def === '（尚未设定）' && objectiveDef.hot === 'H2',
+    '★ the framework DECLARES the key with the unfilled placeholder as its default (hot H2) — the value is policy, not mechanism', objectiveDef && { def: objectiveDef.def, hot: objectiveDef.hot })
+  const defaultsJsonR19 = JSON.parse((await import('node:fs')).readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'settings', 'defaults.json'), 'utf8'))
+  const packObjective = defaultsJsonR19.defaults['vmu.turn.objective']
+  ok(typeof packObjective === 'string' && packObjective.length > 40 && packObjective !== objectiveDef.def &&
+    /前 n 个奇数之和/.test(packObjective) && /归纳/.test(packObjective),
+    '★★ 正（装了 v5r 的值层携带）: the pack DEFAULT itself is the institute\'s objective — non-empty, the n² claim, with an acceptance standard', { chars: String(packObjective).length })
+  // ★ NOTE: §3e above ran `vibe_v5_start({problem:'证明引理 A'})`, which sets the objective AT RUNTIME by design — so the
+  // live snapshot here is that value, not the pack default. That is why the assertion above reads the VALUE LAYER, and
+  // the read-path proof below passes the pack value explicitly (the turn loop passes its settings view at
+  // kernel/turn/index.js:741).
+  const bareObjective = bare.handle.kernel.settingsSnapshot()['vmu.turn.objective']
+  const bareObjectiveDecl = bare.handle.kernel.settingDef('vmu.turn.objective')
+  ok((bareObjective === undefined) && bareObjectiveDecl && bareObjectiveDecl.def === '（尚未设定）',
+    '★★ 反（不装 v5r）: the kernel keeps its declared default (the placeholder) and no pack value exists — exactly the state members read on the real machine', { bareObjective: bareObjective === undefined ? '(unset)' : bareObjective, def: bareObjectiveDecl && bareObjectiveDecl.def })
+  // ★ THE READ PATH (measured): the template `{{ setting:vmu.turn.objective }}` is resolved at ASSEMBLY time from the
+  // call's settings (probe: a marker in ctx.settings replaced the value), and the turn loop passes its settings view at
+  // kernel/turn/index.js:741 — so the value layer is both sufficient and the right owner.
+  const withObjective = (await kernelPrompt.assemble({ member: 'r-1', role: 'member', roleLabel: '研究员', phase: 'normal', settings: { ...kernel.settingsSnapshot(), 'vmu.turn.objective': packObjective } })).text
+  ok(withObjective.includes('前 n 个奇数之和') && !withObjective.includes('（尚未设定）'),
+    '★★ 正: with the turn settings the assembled charter carries the objective (and the placeholder is gone)', { len: withObjective.length })
+  const bareAssembled = (await bare.handle.kernel.prompt.assemble({ member: 'm-1', role: 'member', phase: 'normal', settings: bare.handle.kernel.settingsSnapshot() })).text
+  ok(!bareAssembled.includes('前 n 个奇数之和'),
+    '★★ 反: without the pack the objective is absent from the charter (no hidden second source of the problem)', { len: bareAssembled.length })
+  const blocksSrc = (await import('node:fs')).readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-blocks-a.js'), 'utf8')
+  ok((blocksSrc.match(/\{\{ setting:vmu\.turn\.objective \}\}/g) || []).length === 3,
+    '★ the ported charter still interpolates the key in all three role texts (the field was never missing — the VALUE was)', (blocksSrc.match(/\{\{ setting:vmu\.turn\.objective \}\}/g) || []).length)
+
   // ── ③m THE ROLE VOCABULARY (round 12): section scopes must speak SLOT IDS, not display names ────────────────
   // THE BUG THIS PINS (found on a real machine): `scope.role` is matched against `turn.role`, which is the ROSTER SLOT
   // ID (chair/member/temp); the display names (academician/researcher) are `roleLabel`, and a scope written with them can

@@ -473,7 +473,24 @@ export function createLeanFace(opts) {
       Promise.resolve().then(pump)
       return
     }
-    const exitCode = Number(r.exitCode)
+    // ★ PHASE 7 / round 19: exitCode null/undefined used to become NaN and be labelled EXIT_NONZERO - a WRONG NAME
+    // (it sends the reader to the proof while the truth is that spawn returned nothing). No exit code = spawn failure.
+    const rawExit = r.exitCode
+    const exitCode = Number(rawExit)
+    if (rawExit === null || rawExit === undefined || !Number.isFinite(exitCode)) {
+      j.state = 'failed'; j.exitCode = null; j.endedAt = clock()
+      j.receipt = Object.assign(refuse('VMU_LEAN_SPAWN_FAILED',
+        'spawn 未返回退出码（exitCode=' + String(rawExit) + '）⇒ 无法判断编译结果',
+        '检查宿主是否真的注入了 spawn 接缝、命令是否存在、以及 handle/promise 的返回形状是否为 { exitCode }'),
+        { stdoutDroppedBytes: capOut.droppedBytes, stderrDroppedBytes: capErr.droppedBytes, hostLossy, spillPath: hostSpill,
+          stdoutTail: capOut.text.slice(-2000), stderrTail: capErr.text.slice(-2000) })
+      note(j.id, 'failed:VMU_LEAN_SPAWN_FAILED')
+      await writeMirror(j)
+      emit('lean/job-failed', { jobId: j.id, exitCode: null, hashUnchanged: null, code: 'VMU_LEAN_SPAWN_FAILED' })
+      pushNotice(j, '【形式化结果】' + j.id + '：VMU_LEAN_SPAWN_FAILED（spawn 未返回退出码）')
+      Promise.resolve().then(pump)
+      return
+    }
     const after = await readHash(j.file)
     j.hashAfter = after === undefined ? null : after
     const hashUnchanged = before !== undefined && after !== undefined && before === after
