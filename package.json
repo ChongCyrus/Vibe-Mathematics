@@ -822,6 +822,7 @@
     "tests/audit-scope-role-vocabulary.mjs",
     "tests/audit-kit-boundaries.test.mjs",
     "vibe-math-vmu/tools/member-tools.js",
+    "vibe-math-vmu/tools/vote.js",
     "vibe-math-vmu/kit/tools.js",
     "vibe-math-vmu/kit/handlers.js",
     "vibe-math-vmu/kit/extras.js",

@@ -542,7 +542,38 @@ if (SELF_PROBE) {
     '★ 反：无 live Agent ⇒ 具名拒（不返回空清单假装成功）', refusal)
 }
 
-// ── ★ PHASE 8 / round 24: the PULL hook — per-request face, late hire, no cross-agent leak, zero mechanism ──────
+// ── ★ PHASE 8 / round 37: vibe_vmu_vote writes through the SAME function as the reply path ────────────────────
+{
+  const k = km.createKernel({ clock })
+  k.declareSlots([{ id: 'member', label: '成员', capacity: 0, permissions: ['vote'] }, { id: 'temp', label: '临时', capacity: 2, permissions: [] }])
+  await k.members.hire({ id: 'member-a', slot: 'member', institution: 'sim' })
+  await k.members.hire({ id: 'temp-a', slot: 'temp', institution: 'sim' })
+  const host = fakeHost()
+  const adapter = hm.createHostAdapter({ ctx: host.ctx, kernel: k, settings: { 'vmu.turn.closureVotePermission': 'vote', 'vmu.members.maxTempPerMember': 1 } })
+  await adapter.install()
+  const vote = host.state.specs.find((s) => s.name === 'vibe_vmu_vote')
+  ok(vote !== undefined, '★ 正：turn 面声明时 vibe_vmu_vote 真的发布', host.state.specs.map((s) => s.name))
+  const beforeWrites = k.turn.status().closureVoteWrites
+  const viaTool = JSON.parse(await vote.execute({ member: 'member-a', solved: true, why: 'tool' }, {}))
+  const afterTool = k.turn.status().closureVoteWrites
+  ok(viaTool.ok === true && afterTool === beforeWrites + 1 && k.turn.status().closureVoteVotes.get('member-a') === true,
+    '★ 正：投票工具路径 ⇒ 同一 writer 计数 +1，账本写入 true', JSON.stringify({ viaTool, beforeWrites, afterTool }))
+  const viaReply = await k.turn.apply({ vote_solved: false }, null, 'member-a')
+  const afterReply = k.turn.status().closureVoteWrites
+  ok(afterReply === afterTool + 1 && k.turn.status().closureVoteVotes.get('member-a') === false,
+    '★ 正：回执路径 ⇒ 同一 writer 计数再 +1，同一条记录覆盖为 false（不是两本账）',
+    JSON.stringify({ viaReply, afterTool, afterReply, votes: Object.fromEntries(k.turn.status().closureVoteVotes) }))
+  const denied = JSON.parse(await vote.execute({ member: 'temp-a', solved: true }, {}))
+  ok(denied.ok === false && denied.code === 'VMU_NOT_PERMITTED',
+    '★ 反：非票权席位（temp）调 vote ⇒ 具名拒（复用 may 资格判断）', denied)
+  const unknown = JSON.parse(await vote.execute({ member: 'ghost-x', solved: true }, {}))
+  ok(unknown.ok === false && unknown.code === 'VMU_NO_SUCH_OBJECT',
+    '★ 反：不在册成员 ⇒ VMU_NO_SUCH_OBJECT（不是空票）', unknown)
+  let badName = null
+  try { k.validateToolFaceNames(['ghost-tool']) } catch (e) { badName = e }
+  ok(badName && badName.code === 'VMU_INVALID_ARGUMENT', '★ 反：allow 里的未注册名 ⇒ 具名拒（validateToolFaceNames）', badName && badName.code)
+  ok(k.validateToolFaceNames(['vibe_vmu_vote']).ok === true, '★ 正：已注册名通过目录校验', k.validateToolFaceNames(['vibe_vmu_vote']))
+}
 {
   const kernel = km.createKernel({ clock })
   kernel.declareSlots([

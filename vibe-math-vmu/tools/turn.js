@@ -6,7 +6,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
     // while direct callers (and the tests) call `spec.execute` and parse a string themselves. Measured the hard way:
     // a face that returns a string from `run` gets it stringified AGAIN, so the caller parses back the same string.
     // `run` therefore returns the OBJECT and `execute` returns the JSON STRING, both from the same core.
-    const coreTurn = async (args = {}) => {
+    const coreTurnInner = async (args = {}) => {
       if (!kernel.turn) return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no turn loop')
       const op = String(args.op || 'status')
       // ★★★ ROUND 45 (measured on a real machine): THE CONTRACT PROMISED THE ROSTER INFERENCE AND THE CODE DID NOT DO IT.
@@ -39,24 +39,38 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       if (typeof args.reply === 'string' && kernel.turn && typeof kernel.turn.supplyMemberReply === 'function') {
         kernel.turn.supplyMemberReply(args.reply)
       }
-      // ★ PHASE 8 / round 24: tools:'none' is a PER-TURN OVERRIDE, resolved by the host's system-prompt/assemble pull
-      // hook at request time. It no longer needs a live Agent between turns (the one-shot bug), and it is the SAME path
-      // pack toolFaces use. The override is cleared in finally so it cannot leak into a later turn.
-      if (op === 'step' && args.tools === 'none') {
+      // ★ PHASE 8 / round 37: THREE SHAPES of tools:
+      //   'none'                 -> empty face (deny all)
+      //   { allow: [names...] }  -> ONLY those names (validated against the host catalogue)
+      //   omitted                -> role narrowing exactly as today (zero mechanism)
+      const toolsArg = args.tools
+      const isNone = toolsArg === 'none'
+      const isAllow = toolsArg && typeof toolsArg === 'object' && !Array.isArray(toolsArg) && Array.isArray(toolsArg.allow)
+      if (op === 'step' && (isNone || isAllow)) {
         if (typeof kernel.setMemberToolOverride !== 'function' || typeof kernel.clearMemberToolOverride !== 'function') {
-          return refused('VMU_ENGINE_UNAVAILABLE', 'tools:"none" needs the per-turn tool override seam',
+          return refused('VMU_ENGINE_UNAVAILABLE', 'this tools override needs the per-turn tool override seam',
             'assemble a kernel with setMemberToolOverride (the pull resolver owns the actual restriction)')
         }
         const ids = members.map((m) => m && m.id).filter((id) => typeof id === 'string' && id !== '')
-        if (ids.length === 0) return refused('VMU_INVALID_ARGUMENT', 'tools:"none" needs at least one member', 'pass members:[{id, role}]')
-        for (const id of ids) kernel.setMemberToolOverride({ member: id, all: true })
-        // The pull hook resolves a one-shot child by this active member; without it the override is invisible.
+        if (ids.length === 0) return refused('VMU_INVALID_ARGUMENT', 'this tools override needs at least one member', 'pass members:[{id, role}]')
+        let allow = null
+        if (isAllow) {
+          allow = toolsArg.allow.filter((x) => typeof x === 'string')
+          if (allow.length === 0) return refused('VMU_INVALID_ARGUMENT', 'tools.allow must not be empty', 'pass at least one registered tool name, or omit tools')
+          if (typeof kernel.validateToolFaceNames !== 'function') {
+            return refused('VMU_ENGINE_UNAVAILABLE', 'the host catalogue is not published, so tools.allow cannot be validated', 'assemble the host adapter first')
+          }
+          try { kernel.validateToolFaceNames(allow) } catch (e) {
+            return refused((e && e.code) || 'VMU_INVALID_ARGUMENT', (e && e.message) || 'unknown tool name in tools.allow', (e && e.hint) || null)
+          }
+        }
+        for (const id of ids) kernel.setMemberToolOverride({ member: id, all: isNone, allow })
         if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(ids[0])
         try {
           return await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step })
         } finally {
           if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(null)
-          for (const id of ids) { try { kernel.clearMemberToolOverride(id) } catch { /* clear is best effort; the turn tool reports what ran */ } }
+          for (const id of ids) { try { kernel.clearMemberToolOverride(id) } catch { /* clear is best effort */ } }
         }
       }
       if (op === 'step') {
@@ -67,6 +81,16 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       }
       if (op === 'drive') return await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step })
       return refused('VMU_INVALID_ARGUMENT', 'unknown op: ' + op, 'known ops: step, drive, status')
+    }
+    // ★ PHASE 8 / round 36: SERIALIZE the tool calls. Root may issue several step calls in ONE assistant message (parallel
+    // tool calls); the active-member hint is a per-step scalar, so parallel steps would overwrite each other and a member
+    // could receive another slot's deny list (measured: member-a got temp-a's 6-tool face). A single queue preserves the
+    // caller's order and makes each step's active member unambiguous.
+    let turnQueue = Promise.resolve()
+    const coreTurn = (args = {}) => {
+      const job = turnQueue.then(() => coreTurnInner(args), () => coreTurnInner(args))
+      turnQueue = job.catch(() => {})
+      return job
     }
     const runTurn = (args = {}) => coreTurn(args)
     const executeTurn = async (args = {}) => JSON.stringify(await coreTurn(args))

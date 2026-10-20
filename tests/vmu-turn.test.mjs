@@ -1125,6 +1125,31 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(overrides.size === 0, '★ 反：回合结束后 override 被清除（不泄漏到下一回合）', [...overrides.keys()])
 }
 
+// ★ PHASE 8 / round 37: tools:{allow:[...]} is the SECOND override shape; unknown names are a NAMED refusal.
+{
+  const overrides = new Map()
+  const during = []
+  const kernel = {
+    turn: { step: async () => { during.push(overrides.get('member-a') || null); return { ok: true, receipt: { fields: ['vote_solved'] } } } },
+    setMemberToolOverride: ({ member, all, allow }) => { overrides.set(String(member), { all: all === true, allow: Array.isArray(allow) ? allow.slice() : null }); return { ok: true } },
+    clearMemberToolOverride: (member) => { overrides.delete(String(member)); return { ok: true } },
+    validateToolFaceNames: (names) => {
+      const known = ['vibe_vmu_vote', 'vibe_vmu_tools']
+      for (const n of names) if (!known.includes(n)) { const e = new Error('unknown tool face name in tools.allow: ' + n); e.code = 'VMU_INVALID_ARGUMENT'; e.hint = 'known faces: ' + known.join(', '); throw e }
+      return { ok: true, names: names.slice() }
+    },
+  }
+  const spec = makeTurnSpec({ param: (type, description, extra = {}) => ({ type, description, ...extra }), refused: (code, message, hint) => ({ ok: false, code, message, hint }), TOOL_NAMES: { turn: 'vibe_vmu_turn' }, kernel })
+  const out = await spec.run({ op: 'step', members: [{ id: 'member-a', role: 'member' }], why: '只挂表决工具', tools: { allow: ['vibe_vmu_vote'] } })
+  ok(out && out.ok === true && during.length === 1 && during[0] && Array.isArray(during[0].allow) && during[0].allow.join(',') === 'vibe_vmu_vote' && during[0].all === false,
+    '★ 正：tools:{allow:[vibe_vmu_vote]} ⇒ 回合执行时该成员只挂 allow 面（不是空面）', during)
+  ok(overrides.size === 0, '★ 反：allow 回合结束后 override 被清除', [...overrides.keys()])
+  const before = during.length
+  const bad = await spec.run({ op: 'step', members: [{ id: 'member-a', role: 'member' }], why: '未知工具名', tools: { allow: ['ghost_tool'] } })
+  ok(bad && bad.ok === false && bad.code === 'VMU_INVALID_ARGUMENT' && during.length === before,
+    '★ 反：allow 里的未注册名 ⇒ 具名拒（VMU_INVALID_ARGUMENT），且该回合不执行', bad)
+}
+
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

@@ -2,6 +2,7 @@
 import { makeTransactionSpec } from './tools/transaction.js'
 import { makeTurnSpec } from './tools/turn.js'
 import { makeMemberToolsSpec } from './tools/member-tools.js'
+import { makeVoteSpec } from './tools/vote.js'
 import { makeControlSpec } from './tools/control.js'
 import { makeMeetingSpec } from './tools/meeting.js'
 import { makeTaskSpec } from './tools/task.js'
@@ -132,6 +133,7 @@ export const TOOL_NAMES = Object.freeze({
   // which is not the same as a host being able to run one - and the objective is the latter.
   turn: 'vibe_vmu_turn',
   memberTools: 'vibe_vmu_tools',
+  vote: 'vibe_vmu_vote',
   // ROUND 2 (task-14): the four new implementation faces' tools (human/chat/mailbox/panel/report).
   human: 'vibe_vmu_human',
   chat: 'vibe_vmu_chat',
@@ -193,6 +195,8 @@ export const TOOL_FACES = Object.freeze([
   // ★ PHASE 8 / B-1: framework introspection (what is visible to a member). Gated like the pack tools; zero-mechanism
   // still publishes exactly one tool when nothing is declared.
   { face: 'memberTools', name: TOOL_NAMES.memberTools, families: ['vmu.members.'], config: ['members'], make: makeMemberToolsSpec },
+  // ★ PHASE 8 / round 37: the closure vote as a tool (so a vote-only turn has ONE legal action instead of none).
+  { face: 'vote', name: TOOL_NAMES.vote, families: ['vmu.turn.'], config: ['turn'], make: makeVoteSpec },
   { face: 'meeting', name: TOOL_NAMES.meeting, families: ['vmu.meetings.', 'vmu.ballot.'], config: ['meetings', 'ballot'], make: makeMeetingSpec },
   { face: 'task', name: TOOL_NAMES.task, families: ['vmu.tasks.'], config: ['tasks'], make: makeTaskSpec },
   { face: 'minutes', name: TOOL_NAMES.minutes, families: ['vmu.minutes.'], config: ['minutes'], make: makeMinutesSpec },
@@ -935,6 +939,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   // stay here: which intent declares a tool is policy, and policy belongs with the host.
   if (on('turn')) specs.push(makeTurnSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('memberTools')) specs.push(makeMemberToolsSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('vote')) specs.push(makeVoteSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('control')) specs.push(makeControlSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('meeting')) specs.push(makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('task')) specs.push(makeTaskSpec({ param, refused, TOOL_NAMES, kernel }))
@@ -1139,6 +1144,56 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     return { ok: notFound.length === 0 && failed.length === 0, retracted, notFound, ...(failed.length ? { failed } : {}) }
   }
 
+  /**
+   * ★ PHASE 8 / goal 10 (round 37): EXECUTE the pack's toolPresentation declaration against THIS host.
+   * `native` = explicit no-op (semantically distinct from "nothing declared", same effect); `defer` = per-TOOL
+   * `deferLoading:true` on the declared faces; `ptc` = per-AGENT `presentAs(mode)` (returns a disposer), called once.
+   * A host without `ctx.tools.presentAs`, or a face this host does not register, is a NAMED `unapplied` entry that is
+   * also pushed into `failures` — never a silent fall back to native.
+   */
+  const applyToolPresentation = async ({ kernel, ctx, list, log }) => {
+    const receipt = { mode: null, deferLoading: [], presentAs: null, unapplied: [] }
+    if (!kernel || typeof kernel.packToolPresentation !== 'function') return receipt
+    const raw = kernel.packToolPresentation()
+    if (raw === null || raw === undefined) return receipt   // zero mechanism: nothing declared, nothing done
+    const decls = Array.isArray(raw) ? raw : [raw]
+    const modes = [...new Set(decls.map((d) => d && d.mode))]
+    if (modes.length !== 1) {
+      receipt.unapplied.push({ mode: null, code: 'VMU_INVALID_ARGUMENT', why: 'conflicting toolPresentation modes across packs: ' + modes.join(', ') })
+      return receipt
+    }
+    const mode = modes[0]
+    receipt.mode = mode
+    if (mode === 'native') { log('vmu toolPresentation: native (explicit) - no host action'); return receipt }
+    const registeredNames = list.map((s) => s.name)
+    if (mode === 'defer') {
+      const faces = decls.flatMap((d) => (Array.isArray(d.faces) ? d.faces : []))
+      const packNames = (kernel.packTools() || []).map((t) => t && t.name)
+      const wanted = faces.length > 0 ? faces : registeredNames.filter((n) => packNames.includes(n))
+      const missing = wanted.filter((n) => !registeredNames.includes(n))
+      if (missing.length > 0) receipt.unapplied.push({ mode, code: 'VMU_NO_SUCH_OBJECT', why: 'declared faces are not registered by this host: ' + missing.join(', ') })
+      receipt.deferLoading = wanted.filter((n) => registeredNames.includes(n))
+      return receipt
+    }
+    if (mode === 'ptc') {
+      const fn = ctx && ctx.tools && typeof ctx.tools.presentAs === 'function' ? ctx.tools.presentAs : null
+      if (!fn) {
+        receipt.unapplied.push({ mode, code: 'VMU_ENGINE_UNAVAILABLE', why: 'ptc needs an AGENT-SCOPED presentAs(mode); this host context exposes no ctx.tools.presentAs (per-agent, not per-tool) - not falling back to native' })
+        return receipt
+      }
+      try {
+        const d = await fn.call(ctx.tools, 'ptc')
+        receipt.presentAs = { called: true, disposable: typeof d === 'function' }
+        return Object.assign(receipt, { disposer: typeof d === 'function' ? d : null })
+      } catch (e) {
+        receipt.unapplied.push({ mode, code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', why: 'presentAs("ptc") failed: ' + String((e && e.message) || e) })
+        return receipt
+      }
+    }
+    receipt.unapplied.push({ mode, code: 'VMU_INVALID_ARGUMENT', why: 'unknown mode reached the host (the kernel should have refused it): ' + String(mode) })
+    return receipt
+  }
+
   const doInstall = async () => {
     if (!ctx || !ctx.tools || typeof ctx.tools.register !== 'function') {
       throw Object.assign(new Error('the host context has no tools.register'), { code: 'VMU_ENGINE_UNAVAILABLE',
@@ -1170,6 +1225,9 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     }
     const wanted = filterResult.ok ? filterResult.filter : []
     const list = wanted === null ? raw : raw.filter((s) => wanted.includes(s.name))
+    // ★ PHASE 8 / goal 10: translate the pack's presentation declaration (no declaration ⇒ this does nothing).
+    const presentation = await applyToolPresentation({ kernel, ctx, list, log })
+    for (const u of presentation.unapplied) failures.push({ name: '(tool presentation)', code: u.code, message: u.why })
     if (list.length === 0) {
       installed = true
       log('vmu is disabled: nothing registered')
@@ -1189,6 +1247,8 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       // entries after install), and already-registered names are skipped instead of colliding.
       if (registered.includes(spec.name)) continue
       const hostSpec = typeof defineTool === 'function' ? defineTool(toHostSpec(spec)) : toHostSpec(spec)
+      // ★ per-TOOL half of the presentation declaration: only names the declaration asked for get deferLoading.
+      if (presentation.deferLoading.includes(spec.name)) hostSpec.deferLoading = true
       try {
         if (hasEffect) {
           // The host owns the unwind through ctx.effect; ctx.effect returns the callback's value, which
@@ -1214,9 +1274,11 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
         log('vmu tool ' + spec.name + ' was not registered: ' + String((e && e.message) || e))
       }
     }
+    if (typeof presentation.disposer === 'function') disposers.push(presentation.disposer)
     installed = true
     publishToolFaceCatalogue()
-    return { ok: failures.length === 0, installed: registered.length, names: registered.slice(), ownedByHost, failures: failures.map((f) => Object.assign({}, f)) }
+    return { ok: failures.length === 0, installed: registered.length, names: registered.slice(), ownedByHost, failures: failures.map((f) => Object.assign({}, f)),
+      presentation: { mode: presentation.mode, deferLoading: presentation.deferLoading.slice(), presentAs: presentation.presentAs, unapplied: presentation.unapplied.map((u) => Object.assign({}, u)) } }
   }
 
   /**
@@ -1356,10 +1418,11 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       if (!resolved.all && deny.size === 0) return out
       try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ applied: 1 + ((kernel.toolFacePull && kernel.toolFacePull().applied) || 0), lastMember: member }) } catch { /* diagnostics */ }
       if (resolved.all) out.tools = []
+      else if (Array.isArray(resolved.allow)) out.tools = (Array.isArray(out.tools) ? out.tools : []).filter((t) => resolved.allow.includes(t && t.name))
       else out.tools = (Array.isArray(out.tools) ? out.tools : []).filter((t) => !deny.has(t && t.name))
       const tools = context.agent && context.agent.ctx && context.agent.ctx.tools
       if (tools && typeof tools.restrict === 'function') {
-        try { tools.restrict(resolved.all ? { allow: [] } : { deny: [...deny] }) } catch { /* assembly already filtered; this only aligns future steps */ }
+        try { tools.restrict(resolved.all ? { allow: [] } : (Array.isArray(resolved.allow) ? { allow: resolved.allow.slice() } : { deny: [...deny] })) } catch { /* assembly already filtered; this only aligns future steps */ }
       }
       return out
     } catch (e) {

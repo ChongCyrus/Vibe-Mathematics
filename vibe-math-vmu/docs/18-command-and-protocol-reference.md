@@ -41,6 +41,7 @@
 | `vibe_vmu_task`（`task`） | `taskTool` 为真 | 任务台账 | `list/stage/brief/history` ✓；写动作 ✗ | `list/create/assign/transition/stage/advance/brief/history` |
 | `vibe_vmu_turn`（`turn`） | `turnTool` 为真 | 回合执行 | `status` ✓；`step/drive` ✗ | `status`(默认)`/step/drive` |
 | `vibe_vmu_tools`（`memberTools`） | `vmu.members.*` 或 `vmu.tools.faces` 声明该面 | 成员可见工具自省 | 全只读 ✓ | `member`（必填） |
+| `vibe_vmu_vote`（`vote`） | `vmu.turn.*` 或 `vmu.tools.faces` 声明该面 | 结题表决（与回执 `vote_solved` 同一写入者） | 写入一票 ✗（只改本成员布尔） | `member`、`solved`（必填） |
 | `vibe_vmu_minutes`（`minutes`） | `minutesTool` 为真 | 纪要读写 | `list/actions/status` ✓；`draft/confirm/append` ✗ | `list`(默认)`/draft/confirm/append/actions/status` |
 | `vibe_vmu_board`（`board`） | `boardTool` 为真 | 看板读写 | `columns`/`swimlanes`/`aging`/`status` ✓；`addColumn`/`move`/`setWip` ✗ | `columns`(默认)`/addColumn/move/setWip/swimlanes/aging/status` |
 | `vibe_vmu_budget`（`budget`） | `budgetTool` 为真 | 配额读写 | `remaining`/`status`/`list`/`totals`/`perTaskShare` ✓；`open`/`charge`/`reserve` ✗ | `status`(默认)`/open/charge/reserve/remaining/list/totals/perTaskShare` |

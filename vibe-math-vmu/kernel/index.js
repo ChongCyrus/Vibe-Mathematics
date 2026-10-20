@@ -2207,10 +2207,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     /** ★ PHASE 8: a per-turn override (e.g. tools:"none"). The pull resolver reads it; the turn tool clears it in finally. */
     setActiveTurnMember(member) { activeTurnMember = typeof member === 'string' ? member : null; return { ok: true, member: activeTurnMember } },
     currentTurnMember() { return activeTurnMember },
-    setMemberToolOverride({ member, all = false, deny = null } = {}) {
+    setMemberToolOverride({ member, all = false, allow = null, deny = null } = {}) {
       const id = typeof member === 'string' ? member.trim() : ''
       if (!id) throw refuse('VMU_INVALID_ARGUMENT', 'setMemberToolOverride needs a member', 'pass member:"<roster id>"')
-      memberToolOverrides.set(id, { all: all === true, deny: Array.isArray(deny) ? deny.filter((x) => typeof x === 'string') : [] })
+      memberToolOverrides.set(id, { all: all === true, deny: Array.isArray(deny) ? deny.filter((x) => typeof x === 'string') : [], allow: Array.isArray(allow) ? allow.filter((x) => typeof x === 'string') : null })
       return { ok: true, member: id }
     },
     setToolFacePullRegistered(v) { toolFacePullState.registered = v === true; return { ok: true } },
@@ -2240,8 +2240,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         sources.push('pack')
       }
       const ov = memberToolOverrides.get(id)
-      if (ov) { if (ov.all) { deny.add('*'); sources.push('turn') } else for (const n of ov.deny) { deny.add(n); sources.push('turn') } }
-      return { ok: true, member: id, slot, all: deny.has('*'), deny: [...deny].filter((n) => n !== '*'), source: sources.length ? sources : null }
+      let allow = null
+      if (ov) { if (ov.all) { deny.add('*'); sources.push('turn') } else { if (Array.isArray(ov.allow)) { allow = ov.allow.slice(); sources.push('turn') }; for (const n of ov.deny) { deny.add(n); sources.push('turn') } } }
+      return { ok: true, member: id, slot, all: deny.has('*'), deny: [...deny].filter((n) => n !== '*'), allow, source: sources.length ? sources : null }
     },
     /** ★ PHASE 7: apply the declaration to every LIVE member of that role NOW (members seated later are skipped).
      *  The receipt is per member: applied / failed, both derived from the real applier. */
@@ -2354,6 +2355,38 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
      * Zero mechanism: only a caller that asks gets a face applied; nothing changes by default.
      */
 
+    /** ★ PHASE 8: validate names against the HOST-published tool catalogue (unknown name is a named refusal). */
+    validateToolFaceNames(names) {
+      if (!Array.isArray(names)) throw refuse('VMU_INVALID_ARGUMENT', 'validateToolFaceNames needs an array', 'pass the allow list')
+      if (!Array.isArray(memberToolFaceCatalogue)) throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host has not published its tool catalogue yet',
+        'assemble the host adapter first; an unvalidated allow list could silently name a tool that does not exist')
+      for (const n of names) if (typeof n !== 'string' || !memberToolFaceCatalogue.includes(n)) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'unknown tool face name in tools.allow: ' + String(n),
+          'known faces: ' + memberToolFaceCatalogue.slice(0, 40).join(', '))
+      }
+      return { ok: true, names: names.slice() }
+    },
+    /**
+     * ★ PHASE 8 / round 37: THE VOTE TOOL'S WRITER. It records through turn.recordClosureVote, the SAME function the
+     * reply's vote_solved path uses; the roster/may check is the EXISTING qualification test (no second rule).
+     */
+    recordClosureVote({ member, solved, why = null } = {}) {
+      const id = typeof member === 'string' ? member.trim() : ''
+      if (!id) throw refuse('VMU_INVALID_ARGUMENT', 'recordClosureVote needs a member', 'pass member:"<roster id>"')
+      if (typeof solved !== 'boolean') throw refuse('VMU_INVALID_ARGUMENT', 'recordClosureVote needs solved:boolean', 'pass solved:true or false')
+      let row = null
+      try { row = (members.roster() || []).find((m) => m && m.id === id) || null } catch { row = null }
+      if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + id + '" on this roster', 'only a seated member can vote')
+      const permission = typeof settings['vmu.turn.closureVotePermission'] === 'string' && settings['vmu.turn.closureVotePermission']
+        ? settings['vmu.turn.closureVotePermission'] : 'vote'
+      const verdict = members && typeof members.may === 'function' ? members.may(id, permission) : null
+      const allowed = !!(verdict && typeof verdict === 'object' ? verdict.allowed : verdict)
+      if (!allowed) throw refuse('VMU_NOT_PERMITTED', 'member "' + id + '" has no closure-vote permission (' + permission + ')',
+        'seat the member in a slot whose permissions include this one; the pack grants it to its voting slot')
+      if (!turn || typeof turn.recordClosureVote !== 'function') throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no closure-vote writer', 'assemble the turn loop')
+      const out = turn.recordClosureVote(id, solved)
+      return { ok: true, tool: 'vibe_vmu_vote', member: id, solved: out.solved, why: why === null ? null : String(why), closureVote: closureVoteView() }
+    },
     /**
      * ★ PHASE 8 / B-1: THE MEMBER'S REAL TOOL TABLE, in the kernel. Names come ONLY from the live visible-tools provider
      * (turn.visibleToolsOf), never from a pack declaration; purposes come from the host's published descriptions.

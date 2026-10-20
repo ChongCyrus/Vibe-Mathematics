@@ -988,7 +988,21 @@ export function createTurnOrchestrator({
   // context slot, so a unanimous judgement could never be observed - which is trap 3 ("solved is per-turn state
   // while closure is a per-round judgement"). Keyed by member, the window becomes well defined.
   const closureVotes = new Map()   // ★ `vote_solved` per member: the CLOSURE vote (unanimity required)
+  let closureVoteWrites = 0        // ★ one counter, incremented ONLY inside recordClosureVote (both input channels)
   const solvedThisRound = new Map() // ★ `solved` per member: the per-round convergence reading, NOT closure
+  /**
+   * ★ PHASE 8 / round 37: THE ONE CLOSURE-VOTE WRITER. Both inputs — a reply's `vote_solved` field and the
+   * `vibe_vmu_vote` tool — call THIS function; there is no second ledger. A repeated write for the same member replaces
+   * that member's single boolean (the tally counts a member once, as before).
+   */
+  const recordClosureVote = (memberId, solved) => {
+    const id = typeof memberId === 'string' ? memberId : String(memberId)
+    const value = solved === true || solved === 'true'
+    closureVotes.set(id, value)
+    closureVoteWrites += 1
+    return { ok: true, member: id, solved: value }
+  }
+
   const apply = async (reply, faceMap = null, memberId = null) => {
     const map = faceMap || faces
     const r = reply && typeof reply === 'object' ? reply : {}
@@ -1026,7 +1040,7 @@ export function createTurnOrchestrator({
         // and the two literal words, case-insensitively trimmed. Anything else stays FALSE rather than being guessed at,
         // because a closure vote is a judgement and inventing one is the worst outcome available here.
         const rawVote = typeof r.vote_solved === 'string' ? r.vote_solved.trim().toLowerCase() : r.vote_solved
-        closureVotes.set(String(memberId), rawVote === true || rawVote === 'true')
+        recordClosureVote(memberId, rawVote === true || rawVote === 'true')
       }
       if (bookkeeping.some((b) => b.field === field)) continue
       context.set(field, r[field])
@@ -1402,12 +1416,15 @@ export function createTurnOrchestrator({
     notify: (memberId, line) => queueNotice(memberId, line),
     /** Drain a member queued notices. The assembly calls this, which is what makes the announcement one-shot. */
     takeNotices: (memberId) => drainNotices(memberId),
+    /** ★ PHASE 8: record a closure vote through the SAME writer the reply path uses. */
+    recordClosureVote: (memberId, solved) => recordClosureVote(memberId, solved),
     status: ({ roster = [], may = null, permission = 'vote' } = {}) => ({ apiVersion, dispatch: dispatchStatus(), turns: turns.size, fields: known.length, owners, policy: POLICY, woken: Object.fromEntries(woken), counts: { ...counts }, lastRefusal: { ...lastRefusal },
       // ★★★ ROUND 50: THE READING AN OPERATOR WAS MISSING. Sixty-one meetings ran with no way to see that the one
       // field which closes the institute had never been emitted. `missing` names WHO, because silence is what blocks
       // closure and "somebody did not vote" is not actionable.
       // ★ the raw per-member judgements, so a caller that owns the roster (the kernel) can run the predicate itself
       closureVoteVotes: closureVotes,
+      closureVoteWrites,
       solvedThisRound: Object.fromEntries(solvedThisRound),
       closureVote: closureVoteOf({ votes: closureVotes, roster, may, permission }) }),
   }
