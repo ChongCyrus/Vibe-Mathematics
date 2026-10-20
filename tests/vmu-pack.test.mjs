@@ -357,6 +357,35 @@ if (SELF_PROBE) {
   await rm(h.root, { recursive: true, force: true })
 }
 
+// ── PHASE 9 / round 1: a NON-NATIVE presentation must prove its prompts were adapted (promptAck) ──────────────────
+// The mechanism exists because the failure mode is silent: ptc changes the wire to a single run_code while the prompts
+// keep teaching tool-by-tool. So a pack that declares ptc/defer must carry `promptAck`, a marker that must LITERALLY
+// appear in one of its prompt sections. native / no declaration ⇒ no ack needed (zero mechanism).
+{
+  const problemsOf = (r) => (Array.isArray(r) ? r : ((r && (r.problems || r.errors)) || []))
+  const marked = [{ name: 'wire-ack', text: '… the tool table is presented as a code list: marker WIRE-ACK-1 …' }]
+  const good = problemsOf(m.validatePack({ id: 'ack-probe-good', version: '1.0.0', toolPresentation: { mode: 'ptc', promptAck: 'WIRE-ACK-1' }, sections: marked }))
+  ok(good.filter((p) => /promptAck/.test(String(p))).length === 0,
+    '★★ 正：声明 ptc + promptAck 且 marker 真的出现在某个段里 ⇒ 无 promptAck 问题', good)
+  const badMarker = problemsOf(m.validatePack({ id: 'ack-probe-bad', version: '1.0.0', toolPresentation: { mode: 'ptc', promptAck: 'WIRE-ACK-1' }, sections: [{ name: 'other', text: 'no marker here' }] }))
+  ok(badMarker.filter((p) => /promptAck marker/.test(String(p))).length === 1,
+    '★★ 反：marker 不在任何段里 ⇒ 具名 problems 条目（"wire 与提示词会各说各话"）', badMarker)
+  const noAck = problemsOf(m.validatePack({ id: 'ack-probe-none', version: '1.0.0', toolPresentation: { mode: 'ptc' } }))
+  ok(noAck.filter((p) => /promptAck is REQUIRED/.test(String(p))).length === 1,
+    '★★ 反：声明非 native 却没给 promptAck ⇒ 具名 problems（并列出合法要求）', noAck)
+  const nativeNoAck = problemsOf(m.validatePack({ id: 'ack-probe-native', version: '1.0.0', toolPresentation: { mode: 'native' } }))
+  ok(nativeNoAck.filter((p) => /promptAck/.test(String(p))).length === 0,
+    '★★ 零机制：native（或不声明）不需要 promptAck', nativeNoAck)
+  // a FRESH kernel+loader: this suite’s shared loader has history (applied packs/settings), so it is not a clean
+  // surface for a plan-time refusal probe.
+  const ackKernel = km.createKernel({ clock: () => 1000 })
+  const ackLoader = m.createPackLoader({ kernel: ackKernel, registry: ackKernel.registry })
+  let applyErr = null
+  try { await ackLoader.apply({ id: 'ack-probe-apply', version: '1.0.0', toolPresentation: { mode: 'ptc', promptAck: 'NO-SUCH-MARKER' } }) } catch (e) { applyErr = e }
+  ok(applyErr && applyErr.code === 'VMU_PACK_MISSING' && /promptAck/.test(String(applyErr.message)),
+    '★★★ 反（apply 被拒）：带着未兑现的 promptAck 去 apply ⇒ 具名拒绝（VMU_PACK_MISSING 且 message 点名 promptAck）', applyErr && applyErr.code)
+}
+
 console.log('=== VMU PACK: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

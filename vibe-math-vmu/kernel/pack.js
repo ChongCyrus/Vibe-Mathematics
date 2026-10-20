@@ -165,13 +165,35 @@ export function validatePack(manifest) {
     const tp = manifest.toolPresentation
     if (!tp || typeof tp !== 'object' || Array.isArray(tp)) problems.push('toolPresentation must be an object { mode, faces? }')
     else {
-      for (const k of Object.keys(tp)) if (k !== 'mode' && k !== 'faces') problems.push('toolPresentation has unknown key ' + JSON.stringify(k) + ' (mode|faces)')
+      for (const k of Object.keys(tp)) if (k !== 'mode' && k !== 'faces' && k !== 'promptAck') problems.push('toolPresentation has unknown key ' + JSON.stringify(k) + ' (mode|faces|promptAck)')
       if (typeof tp.mode !== 'string' || !TOOL_PRESENTATION_MODES.includes(tp.mode)) {
         problems.push('toolPresentation.mode must be one of: ' + TOOL_PRESENTATION_MODES.join('|') + ' (got ' + JSON.stringify(tp.mode) + ')')
       }
       if (tp.faces !== undefined) {
         if (!Array.isArray(tp.faces) || tp.faces.length === 0) problems.push('toolPresentation.faces must be a non-empty array of tool names')
         else for (const n of tp.faces) if (typeof n !== 'string' || !/^[a-z][a-z0-9_]{2,63}$/.test(n)) problems.push('toolPresentation.faces has an invalid tool name: ' + JSON.stringify(n))
+      }
+      // ★ PHASE 9 / round 1 — THE ANTI-INCONSISTENCY GATE, as a MECHANISM instead of a memory.
+      // A non-native presentation CHANGES THE WIRE SHAPE (ptc turns the tool table into a single `run_code`), while the
+      // prompts keep teaching tool-by-tool. A pack that declares one of those modes must therefore prove its prompts were
+      // adapted: `promptAck` is a non-empty marker that must literally appear in one of THIS pack's prompt sections.
+      // Missing ack / ack not found in any section ⇒ problems (apply then refuses by name). `native` or no declaration ⇒
+      // no ack needed (zero mechanism: today's wire and prompt already agree).
+      if (typeof tp.mode === 'string' && TOOL_PRESENTATION_MODES.includes(tp.mode) && tp.mode !== 'native') {
+        if (typeof tp.promptAck !== 'string' || tp.promptAck.trim() === '') {
+          problems.push('toolPresentation.promptAck is REQUIRED when mode is "' + tp.mode + '": the wire shape changes, so the prompt must be adapted and the marker must appear in one of this pack\'s prompt sections (legal: a non-empty string)')
+        } else {
+          let sections = null
+          try { sections = manifest.sections } catch { sections = null }
+          const list = Array.isArray(sections) ? sections : (sections && Array.isArray(sections.sections) ? sections.sections : [])
+          const marker = tp.promptAck.trim()
+          const hit = list.some((sec) => sec && String(sec.text || '').includes(marker))
+          if (!hit) {
+            problems.push('toolPresentation.promptAck marker ' + JSON.stringify(marker) + ' does not appear in any of this pack\'s prompt sections: declaring mode "' + tp.mode + '" without an adapted prompt would make the wire and the prompt disagree')
+          }
+        }
+      } else if (tp.promptAck !== undefined && (typeof tp.promptAck !== 'string' || tp.promptAck.trim() === '')) {
+        problems.push('toolPresentation.promptAck must be a non-empty string when present')
       }
     }
   }

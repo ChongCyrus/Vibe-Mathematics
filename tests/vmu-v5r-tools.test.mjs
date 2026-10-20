@@ -1223,69 +1223,40 @@ try {
     '★★ the subsystem still exposes all 13 methods (the shell forwards the kit flow)', flowMethods.length)
 
   // ── ⑦i PHASE 8 / goal 10 (round 38): the PACK declares its tool presentation; the HOST applies it ───────────────
-  // 正: the declaration is readable from the KERNEL and the HOST applies it as a PER-AGENT presentation.
-  // 反: assembling without the pack leaves the reader at null (zero mechanism) — no fabricated 'native'.
-  // ★ ROUND 39: the mode changed from `defer` to `ptc` because a real-machine run DISPROVED defer's premise (deferLoading
-  // is an activation flag: parameters stay in the header, +20 bytes per tool). `ptc` is per-AGENT, so the declaration
-  // carries NO faces — a mixed "ten ptc / rest native" table is not expressible, and the test pins that down.
-  console.log('=== 7i. TOOL PRESENTATION: the pack declares ptc; the host applies it per agent ===')
-  const declaredPresentation = PACK.toolPresentation
-  ok(declaredPresentation && declaredPresentation.mode === 'ptc' && declaredPresentation.faces === undefined,
-    '★★ the pack declares mode=ptc with NO faces (the presentation choice is institute-wide, not per tool)', declaredPresentation)
-  const readPresentation = v5rBoot.handle.kernel.packToolPresentation()
-  ok(readPresentation && readPresentation.pack === 'v5r-core' && readPresentation.mode === 'ptc' && readPresentation.faces === null,
-    '★★★ 正: packToolPresentation() returns this declaration (mode=ptc, faces=null, owning pack)', readPresentation)
+  // ★ PHASE 9 / round 1 — THE FOUNDER'S RULING, AS ASSERTIONS: v5r DECLARES NOTHING.
+  // ptc really did change the wire (a single `run_code`) while these prompts still teach tool-by-tool and never mention
+  // ptc/run_code ⇒ wire and prompt disagreed, which is the one property this pack exists to keep. The CAPABILITY stays
+  // (manifest field / validatePack / reader / host layer) for a pack willing to adapt its prompts; v5r stays native.
+  console.log('=== 7i. TOOL PRESENTATION: v5r stays native (declares nothing) ===')
+  ok(PACK.toolPresentation === undefined,
+    '★★ v5r declares NO toolPresentation (zero mechanism: every tool stays native, prompt == wire)', PACK.toolPresentation)
+  ok(v5rBoot.handle.kernel.packToolPresentation() === null,
+    '★★★ packToolPresentation() returns null when the applied pack declares nothing (no fabricated native default)', v5rBoot.handle.kernel.packToolPresentation())
   ok(bare.handle.kernel.packToolPresentation() === null,
-    '★★ 反: an assembly WITHOUT the pack returns null (zero mechanism, no fabricated native default)', bare.handle.kernel.packToolPresentation())
-  // HOST half (round 42): the apply point is the PER-AGENT assemble hook, not install. Install must defer; the hook
-  // calls presentAs('ptc') exactly once per agent (idempotent), and an agent ctx without presentAs must be a NAMED
-  // unapplied entry — never a silent native fallback.
+    '★ 反: an assembly without the pack is null too — nothing is declared anywhere', bare.handle.kernel.packToolPresentation())
+  // WIRE == LOGICAL: with no declaration every registered v5r spec is one of the tools the kernel holds, and no spec
+  // carries `deferLoading` (the disproved mode is gone too). This is exactly the property ptc breaks.
+  const wireSpecs39 = v5rBoot.state.specs.map((s) => s.name).filter((n) => String(n).startsWith('vibe_v5_'))
+  const kernelNames39 = v5rBoot.handle.kernel.packTools().map((t) => t.name)
+  // (constant-anchored: the declared count is a contract asserted elsewhere, so "both sides empty" cannot pass here)
+  const wireSorted39 = wireSpecs39.slice().sort()
+  const kernelSorted39 = kernelNames39.slice().sort()
+  ok(wireSpecs39.length === 38 && kernelNames39.length === 38 && JSON.stringify(wireSorted39) === JSON.stringify(kernelSorted39),
+    '★★★ WIRE == LOGICAL: the registered v5r specs are exactly the tools the kernel holds (native; nothing replaced by run_code)', { wire: wireSpecs39.length, kernel: kernelNames39.length })
+  ok(v5rBoot.state.specs.filter((s) => s.deferLoading !== undefined).length === 0,
+    '★★ no spec carries deferLoading (the disproved defer mode is gone as well)', v5rBoot.state.specs.length)
+  // HOST half: no declaration ⇒ the presentation hook exists but does NOTHING (no presentAs on any agent, no unapplied).
   const hm39 = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'host.js')).href)
-  const presentCalls = []
-  const seen39 = []
+  const presentCalls39 = []
   const listeners39 = {}
-  const ctxWithPtc = {
-    effect: (fn) => fn(),
-    on: (event, fn) => { (listeners39[event] = listeners39[event] || []).push(fn) },
-    tools: { register: (spec) => { seen39.push(spec); return () => {} } },
-  }
-  const receipt39 = await hm39.createHostAdapter({ ctx: ctxWithPtc, kernel: v5rBoot.handle.kernel, settings: {} }).install()
-  ok(presentCalls.length === 0 && receipt39.presentation && receipt39.presentation.mode === 'ptc' && receipt39.presentation.deferredToHook === true,
-    '★★★ 安装时：ptc 不在入口 ctx 上猜，回执 deferredToHook:true，presentAs 未被调用',
-    { calls: presentCalls, presentation: receipt39.presentation })
-  ok(seen39.filter((s) => s.deferLoading !== undefined).length === 0,
-    '★★ 反向证明 defer 已撤：没有任何 spec 带 deferLoading（ptc 不使用该字段）', seen39.length)
+  const ctx39 = { effect: (fn) => fn(), on: (event, fn) => { (listeners39[event] = listeners39[event] || []).push(fn) }, tools: { register: () => () => {} } }
+  const receipt39 = await hm39.createHostAdapter({ ctx: ctx39, kernel: v5rBoot.handle.kernel, settings: {} }).install()
   const hook39 = (listeners39['system-prompt/assemble'] || [])[0]
-  ok(typeof hook39 === 'function', '★★ 轮 42 新接缝：system-prompt/assemble 钩子已订阅', Object.keys(listeners39))
-  const ptcAgent = {
-    id: 'child-ptc',
-    ctx: { tools: { presentAs: async (mode) => { presentCalls.push(mode); return () => {} } } },
-  }
-  const assembly39 = { tools: [{ name: 'probe_pres_a' }] }
-  v5rBoot.handle.kernel.setActiveTurnMember('member-a')
-  const runHook39 = async () => hook39(assembly39, { agent: ptcAgent }, () => Promise.resolve(assembly39))
-  await runHook39()
-  await runHook39()
-  ok(presentCalls.length === 1 && presentCalls[0] === 'ptc' && receipt39.presentation.presentAs &&
-    receipt39.presentation.presentAs.called === true && receipt39.presentation.presentAs.agentId === 'child-ptc',
-    '★★★ hook 应用：presentAs(\'ptc\') 恰好 1 次（同一 agent 第二次触发不重复），参数 == ptc',
-    { calls: presentCalls, presentation: receipt39.presentation })
-  // A host WITHOUT presentAs must refuse by name at the HOOK (never silently fall back to native).
-  const listeners39b = {}
-  const ctxNoPtc = {
-    effect: (fn) => fn(),
-    on: (event, fn) => { (listeners39b[event] = listeners39b[event] || []).push(fn) },
-    tools: { register: () => () => {} },
-  }
-  const receipt39b = await hm39.createHostAdapter({ ctx: ctxNoPtc, kernel: v5rBoot.handle.kernel, settings: {} }).install()
-  const hook39b = (listeners39b['system-prompt/assemble'] || [])[0]
-  const noPtcAgent = { id: 'child-no-ptc', ctx: { tools: {} } }
-  await hook39b({ tools: [] }, { agent: noPtcAgent }, () => Promise.resolve({ tools: [] }))
-  const unapplied39 = receipt39b.presentation && Array.isArray(receipt39b.presentation.unapplied) ? receipt39b.presentation.unapplied : []
-  ok(receipt39b.presentation.deferredToHook === true && unapplied39.length === 1 && unapplied39[0].code === 'VMU_ENGINE_UNAVAILABLE' && receipt39b.presentation.presentAs === null,
-    '★★ 反（不静默降级）：agent ctx 无 presentAs ⇒ hook 里具名 VMU_ENGINE_UNAVAILABLE 进 unapplied，绝不当 native',
-    unapplied39)
-  v5rBoot.handle.kernel.setActiveTurnMember(null)
+  const agent39 = { id: 'child-native', ctx: { tools: { presentAs: (mode) => { presentCalls39.push(mode); return () => {} } } } }
+  if (typeof hook39 === 'function') await hook39({ tools: [] }, { agent: agent39 }, () => Promise.resolve({ tools: [] }))
+  ok(receipt39.presentation && receipt39.presentation.mode === null && presentCalls39.length === 0 &&
+    (!receipt39.presentation.unapplied || receipt39.presentation.unapplied.length === 0),
+    '★★★ 零机制（宿主侧）：不声明 ⇒ 回执 mode:null、presentAs 从未被调用、无 unapplied', { mode: receipt39.presentation && receipt39.presentation.mode, calls: presentCalls39 })
 
 } finally {
   // The store writes atomically through temp+rename, so a removal can race one in-flight file: retry, and never let

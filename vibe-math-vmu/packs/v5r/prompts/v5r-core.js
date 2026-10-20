@@ -197,16 +197,17 @@ export const PACK = Object.freeze({
   // sections below (the text a member actually reads); the manifest only points at that derivation, so the prompt
   // and the tool table cannot drift. A getter is required because those sections are defined after PACK.
   get toolFaces() { return V5R_TOOL_FACES },
-  // ★ PHASE 8 / goal 10 (round 39): PTC — THE INSTITUTION-LEVEL PRESENTATION CHOICE.
-  // Round 38 declared `defer` here; a REAL-MACHINE run DISPROVED its premise: `deferLoading` is an ACTIVATION flag, not
-  // schema elision. Measured: header 100 tools/102,114 bytes before vs 101 tools/102,883 after (+769); the shared 100
-  // tools went 102,013 → 102,162 (+149, i.e. +20 bytes per deferred tool = the flag itself); `parameters` stayed FULL in
-  // the header (vibe_v5_lean_run 498 → 518, hasParameters:true). "Smaller request" was false; "still callable" was proved.
-  // ⇒ `ptc` is the only mode whose semantics could actually shrink the wire (the SDK-list system section is REGENERATED
-  // from the visible tools). It is PER-AGENT: `presentAs('ptc')` acts on the calling agent's whole tool context, so a
-  // mixed "these ten ptc / the rest native" table is NOT expressible ⇒ this declaration carries NO `faces`: it is the
-  // institute's presentation choice for the whole batch, and the comment says so instead of pretending per-tool control.
-  toolPresentation: Object.freeze({ mode: 'ptc' }),
+  // ★ PHASE 9 / round 1: WE DO **NOT** DECLARE A TOOL PRESENTATION HERE — and the reason is a real-machine measurement.
+  // Round 38 declared `defer`; a real run disproved its premise (`deferLoading` is an ACTIVATION flag: header stayed
+  // +769 bytes, parameters still present, +20 B per tool = the flag itself). Round 39 switched to `ptc`; that one DID
+  // change the wire, but the founder's ruling is that it changes it too much: with ptc the wire carries a single
+  // `run_code` and the member writes CODE to call tools, while these prompt sections still teach tool-by-tool and never
+  // mention ptc/run_code ⇒ the wire and the prompt disagree, which is exactly the property this pack is built to keep
+  // ("the tools the prompt lists == the tools it can call").
+  // The CAPABILITY stays: the manifest field, validatePack's shape check, packToolPresentation() and the host
+  // translation layer are all still there for a pack that is willing to adapt its prompts. A non-native declaration now
+  // REQUIRES `promptAck` (a marker that must appear in one of this pack's prompt sections) — see kernel/pack.js.
+  // ⇒ v5r deliberately declares nothing: zero mechanism, every tool stays native, and the prompt keeps matching the wire.
   slots: [
     { id: 'chair', label: '主持人', capacity: 1, permissions: ['convene', 'close', 'assign', 'grant', 'freeze'] },
     { id: 'member', label: '成员', capacity: 0, permissions: ['speak', 'vote', 'propose'] },

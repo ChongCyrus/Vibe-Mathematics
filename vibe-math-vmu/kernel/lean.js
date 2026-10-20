@@ -161,6 +161,38 @@ export function createLeanFace(opts) {
     } catch (e) { /* 广播不改结果 */ }
   }
 
+  // ★ PHASE 9 / round 1: the spawn failure carries EVIDENCE, not only a verdict. resolved=null means the host's
+  // resolveExecutable failed (host PATH) while the member's own shell can still find lean; doneError is a REJECTED
+  // handle.done; pathPrefix/cwd let a reader compare the host service env with the member env.
+  const spawnDiagnostics = (src, cmd2) => {
+    const o = src || {}
+    const done = o.doneError || null
+    const resolve = o.resolveError || null
+    const spawnErr = o.spawnError || null
+    const pathText = o.path === null || o.path === undefined ? null : String(o.path).slice(0, 300)
+    return {
+      resolved: o.resolved === undefined ? null : o.resolved,
+      doneError: done,
+      resolveError: resolve,
+      spawnError: spawnErr,
+      cwd: o.cwd === undefined || o.cwd === null ? (cmd2 && cmd2.cwd ? String(cmd2.cwd) : null) : String(o.cwd),
+      pathPrefix: pathText,
+      signal: o.signal === undefined ? null : o.signal,
+      timedOut: o.timedOut === true,
+    }
+  }
+  const commandNotFoundOf = (e, diag) => {
+    if (e && e.commandNotFound === true) return true
+    const rows = [diag.resolveError, diag.spawnError, diag.doneError].filter(Boolean)
+    return rows.some((x) => x && (x.code === 'ENOENT' || /not found|ENOENT|no such file/i.test(String(x.message || ''))))
+  }
+  const spawnEvidenceText = (diag) => 'resolved=' + JSON.stringify(diag.resolved) +
+    ' doneError=' + JSON.stringify(diag.doneError) +
+    ' resolveError=' + JSON.stringify(diag.resolveError) +
+    ' spawnError=' + JSON.stringify(diag.spawnError) +
+    ' cwd=' + JSON.stringify(diag.cwd) + ' pathPrefix=' + JSON.stringify(diag.pathPrefix) +
+    ' signal=' + JSON.stringify(diag.signal) + ' timedOut=' + String(diag.timedOut)
+
   // ── 设置读取（**唯一口径**；每个键只在此处被读 ⇒ keysUsed() 与实现必然一致）────────────
   const cfg = () => {
     const formalVerify = String(readKey('vmu.math.formalVerify') || 'off')
@@ -422,7 +454,14 @@ export function createLeanFace(opts) {
       budgetInfo = { timedOut: r.timedOut, terminated: r.terminated, hadHandle: r.hadHandle }
     } catch (e) {
       j.state = 'failed'; j.endedAt = clock(); j.reason = 'spawn-threw'
-      j.receipt = refuse('VMU_LEAN_SPAWN_FAILED', 'Lean 起不来：' + String((e && e.message) || e), '检查 `' + cmd.command + '` 是否在 PATH（Host 负责真机探测）')
+      const diag = spawnDiagnostics(e, cmd2)
+      const notFound = commandNotFoundOf(e, diag)
+      const code = notFound ? 'VMU_LEAN_COMMAND_NOT_FOUND' : 'VMU_LEAN_SPAWN_FAILED'
+      const hint = notFound
+        ? '把 \'vmu.math.leanCommand\' 设成 lean 的完整路径（例如 D:\\.elan\\bin\\lean.exe），或把该目录加进宿主服务的 PATH；成员自己的 shell 能找到 Lean 不等于宿主服务的 PATH 能找到'
+        : '检查宿主是否真的注入了 spawn 接缝，以及 handle.done 是否 reject；证据见 resolved/doneError/cwd/pathPrefix'
+      j.receipt = Object.assign(refuse(code,
+        (notFound ? 'Lean 命令解析不到：' : 'Lean 起不来：') + String((e && e.message) || e) + ' | ' + spawnEvidenceText(diag), hint), diag)
       note(j.id, 'failed:spawn'); await writeMirror(j); return
     }
     // ── ROUND 8（同一类缺陷，与计算面同修）─────────────────────────────────────────────────────────
@@ -479,11 +518,12 @@ export function createLeanFace(opts) {
     const exitCode = Number(rawExit)
     if (rawExit === null || rawExit === undefined || !Number.isFinite(exitCode)) {
       j.state = 'failed'; j.exitCode = null; j.endedAt = clock()
+      const diag = spawnDiagnostics(r, cmd2)
       j.receipt = Object.assign(refuse('VMU_LEAN_SPAWN_FAILED',
-        'spawn 未返回退出码（exitCode=' + String(rawExit) + '）⇒ 无法判断编译结果',
-        '检查宿主是否真的注入了 spawn 接缝、命令是否存在、以及 handle/promise 的返回形状是否为 { exitCode }'),
+        'spawn 未返回退出码（exitCode=' + String(rawExit) + '）⇒ 无法判断编译结果 | ' + spawnEvidenceText(diag),
+        '检查宿主是否真的注入了 spawn 接缝、命令是否存在、以及 handle/promise 的返回形状是否为 { exitCode }；证据见 resolved/doneError/cwd/pathPrefix'),
         { stdoutDroppedBytes: capOut.droppedBytes, stderrDroppedBytes: capErr.droppedBytes, hostLossy, spillPath: hostSpill,
-          stdoutTail: capOut.text.slice(-2000), stderrTail: capErr.text.slice(-2000) })
+          stdoutTail: capOut.text.slice(-2000), stderrTail: capErr.text.slice(-2000) }, diag)
       note(j.id, 'failed:VMU_LEAN_SPAWN_FAILED')
       await writeMirror(j)
       emit('lean/job-failed', { jobId: j.id, exitCode: null, hashUnchanged: null, code: 'VMU_LEAN_SPAWN_FAILED' })

@@ -99,6 +99,14 @@ export function createHostSpawn({
         'the script bridge refuses by name in that deployment (the older preset reports NO_SUBPROCESS)')
     }
     const started = clock()
+    // ★ PHASE 9 / round 1: REAL spwan-failure evidence, carried on the seam's result/error. Without these the kernel
+    // could only say "no exitCode" and could not tell PATH-not-found from a rejected done or a signal.
+    let resolvedExe = null
+    let doneError = null
+    let spawnError = null
+    let resolveError = null
+    const hostPath = (typeof process !== 'undefined' && process.env && (process.env.PATH || process.env.Path)) || null
+    const pathPrefix = hostPath ? String(hostPath).slice(0, 500) : null
     // task-217 (falsy-zero): `timeoutMs: 0` is a LEGAL budget (spawn and time out immediately), so it must not
     // be folded into "not given". `null` = absent/invalid, `0` = an explicit zero budget — the two are distinct.
     const budget = Number.isInteger(request.timeoutMs) && request.timeoutMs >= 0 ? request.timeoutMs : null
@@ -142,7 +150,7 @@ export function createHostSpawn({
     if (typeof sub.resolveExecutable === 'function') {
       try {
         const resolved = await sub.resolveExecutable(String(argv[0]))
-        if (typeof resolved === 'string' && resolved.length > 0) argv[0] = resolved
+        if (typeof resolved === 'string' && resolved.length > 0) { argv[0] = resolved; resolvedExe = resolved }
       } catch (e) {
         const shape = { phase: 'resolveExecutable', argv0: String(argv[0]), argvLen: argv.length }
         const sum = shapeSummary(shape)
@@ -152,6 +160,12 @@ export function createHostSpawn({
         err.hostStack = (e && e.stack) || null
         err.shape = shape
         err.cause = e
+        resolveError = { code: (e && e.code) || null, message: String((e && e.message) || e) }
+        err.resolved = null
+        err.resolveError = resolveError
+        err.commandNotFound = (e && e.code === 'ENOENT') || /not found|ENOENT|no such file/i.test(String((e && e.message) || e))
+        err.cwd = null
+        err.path = pathPrefix
         throw err
       }
     }
@@ -213,6 +227,12 @@ export function createHostSpawn({
       err.hostStack = (e && e.stack) || null
       err.shape = shape
       err.cause = e
+      spawnError = { code: (e && e.code) || null, message: String((e && e.message) || e) }
+      err.resolved = resolvedExe
+      err.spawnError = spawnError
+      err.commandNotFound = (e && e.code === 'ENOENT') || /not found|ENOENT|no such file/i.test(String((e && e.message) || e))
+      err.cwd = null
+      err.path = pathPrefix
       throw err
     }
     // ★ THE KILLABLE HALF: hand the host's handle to the caller BEFORE waiting for it. A throw in the callback must not
@@ -247,15 +267,27 @@ export function createHostSpawn({
       const text = (side) => { try { const c = handle.collected && handle.collected[side]; return c ? c.readFrom(0).text : '' } catch { return '' } }
       if (outcome.timeout) {
         // Return the shape the bridge turns into VMU_JOB_TIMEOUT; the host's graceMs terminates the process.
-        return { code: null, stdout: text('stdout'), stderr: text('stderr'), timedOut: true, ms }
+        return { code: null, stdout: text('stdout'), stderr: text('stderr'), timedOut: true, ms,
+          signal: null, resolved: resolvedExe, doneError, spawnError, resolveError, cwd: null, path: pathPrefix }
       }
       if (!outcome.settled) {
-        throw refuse('VMU_MIDDLEWARE_FAILED', 'the spawn failed: ' + String(outcome.error && outcome.error.message),
-          'the host reported an error instead of an outcome')
+        doneError = {
+          code: (outcome.error && outcome.error.code) || null,
+          message: String((outcome.error && outcome.error.message) || outcome.error),
+          signal: (outcome.error && outcome.error.signal) || null,
+        }
+        const err = refuse('VMU_MIDDLEWARE_FAILED', 'the spawn failed (done rejected): ' + doneError.message,
+          'the host reported a rejected done instead of an outcome; the kernel exposes doneError/resolved/cwd/path')
+        err.resolved = resolvedExe
+        err.doneError = doneError
+        err.cwd = null
+        err.path = pathPrefix
+        throw err
       }
       return { code: outcome.value && Number.isInteger(outcome.value.exitCode) ? outcome.value.exitCode : null,
         stdout: text('stdout'), stderr: text('stderr'), timedOut: false, ms,
-        signal: (outcome.value && outcome.value.signal) || null }
+        signal: (outcome.value && outcome.value.signal) || null,
+        resolved: resolvedExe, doneError, spawnError, resolveError, cwd: null, path: pathPrefix }
     } finally {
       if (budgetTimer !== null) {
         const t = budgetTimer

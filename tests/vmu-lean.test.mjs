@@ -112,6 +112,55 @@ test('a real non-zero exit is still VMU_LEAN_EXIT_NONZERO', async () => {
   passed += 1
 })
 
+// ★ PHASE 9 / round 1: the failure must carry EVIDENCE and distinguish "command not found" from "ran but failed".
+test('spawn resolve/ENOENT is VMU_LEAN_COMMAND_NOT_FOUND and carries resolved/doneError/pathPrefix', async () => {
+  const settings = mkSettings({ 'vmu.math.leanAsync': false })
+  const spawn = async () => {
+    const e = new Error('spawn lean ENOENT')
+    e.code = 'ENOENT'
+    e.commandNotFound = true
+    e.resolved = null
+    e.doneError = null
+    e.path = 'C:\\host\\bin;C:\\Windows\\system32'
+    throw e
+  }
+  const face = createLeanFace({ settings, spawn, root: dir, clock: () => 7, log: () => {} })
+  const sub = await face.submit({ statement: 'True', file: leanFile })
+  const s = await face.settle(sub.id)
+  assert.equal(s.passed, false)
+  assert.equal(s.receipt.code, 'VMU_LEAN_COMMAND_NOT_FOUND')
+  assert.equal(s.receipt.resolved, null, 'the resolved field is PRESENT (null), not only mentioned in message')
+  assert.equal(s.receipt.doneError, null)
+  assert.match(String(s.receipt.pathPrefix), /host/)
+  assert.match(String(s.receipt.message), /resolved=/)
+  assert.match(String(s.receipt.hint), /leanCommand/)
+  passed += 1
+})
+
+test('done rejection is SPAWN_FAILED with doneError, never COMMAND_NOT_FOUND; exit 1 stays EXIT_NONZERO', async () => {
+  const settings = mkSettings({ 'vmu.math.leanAsync': false })
+  const spawn = async () => {
+    const e = new Error('spawn failed')
+    e.resolved = 'C:\\lean\\lean.exe'
+    e.doneError = { code: 'EACCES', message: 'access denied', signal: null }
+    e.path = 'C:\\host\\bin'
+    throw e
+  }
+  const face = createLeanFace({ settings, spawn, root: dir, clock: () => 8, log: () => {} })
+  const sub = await face.submit({ statement: 'True', file: leanFile })
+  const s = await face.settle(sub.id)
+  assert.equal(s.receipt.code, 'VMU_LEAN_SPAWN_FAILED')
+  assert.equal(s.receipt.resolved, 'C:\\lean\\lean.exe')
+  assert.equal(s.receipt.doneError && s.receipt.doneError.code, 'EACCES')
+  assert.match(String(s.receipt.message), /doneError=/)
+  const settings2 = mkSettings({ 'vmu.math.leanAsync': false })
+  const face2 = createLeanFace({ settings: settings2, spawn: async () => ({ exitCode: 1 }), root: dir, clock: () => 9, log: () => {} })
+  const sub2 = await face2.submit({ statement: 'True', file: leanFile })
+  const s2 = await face2.settle(sub2.id)
+  assert.equal(s2.receipt.code, 'VMU_LEAN_EXIT_NONZERO', 'a found command with non-zero exit is NOT a command-not-found')
+  passed += 1
+})
+
 // ── 非法输入 ⇒ 具名拒 ───────────────────────────────────────────────────────
 test('missing statement/file are named refusals', async () => {
   const settings = mkSettings({})

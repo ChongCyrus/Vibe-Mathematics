@@ -464,7 +464,8 @@
 | `VMU_LEAN_EXIT_NONZERO` | Lean 作业退出非 0（**编译/检查失败**） | 形式化面（`kernel/lean.js` ✓） | ✅（与"哈希变了"分开登记 ✓） |
 | `VMU_LEAN_HASH_CHANGED` | 退出 0 **但**产物内容哈希变了 ⇒ **不算 passed** ✓ | 形式化面 | ✅（"退出 0 就行"是错的 ✓） |
 | `VMU_LEAN_TIMEOUT` | 超过 `vmu.math.leanTimeoutMs` 单次预算 | 形式化面 | ✅（须给当前值 ✓） |
-| `VMU_LEAN_SPAWN_FAILED` | Lean 进程起不来/异常（**须给原始错误** ✓） | 形式化面 | ✅ |
+| `VMU_LEAN_SPAWN_FAILED` | Lean 进程起不来/异常（**须给原始错误** ✓；回执带 `resolved`／`doneError`／`resolveError`／`spawnError`／`cwd`／`pathPrefix`／`signal`／`timedOut`） | 形式化面 | ✅ |
+| `VMU_LEAN_COMMAND_NOT_FOUND` | **命令解析不到**（宿主服务的 PATH 找不到 `lean`；与“找到但退出非零”分开） | 形式化面（`kernel/lean.js` ✓） | ✅（hint 指向 `vmu.math.leanCommand` 或宿主 PATH） |
 | `VMU_LEAN_FILE_UNREADABLE` / `VMU_LEAN_FILE_REQUIRED` | 产物文件读不到／`submit` 未给 `file` | 形式化面 | ✅（本面只编译既有文件 ✓） |
 | `VMU_LEAN_STATEMENT_REQUIRED` | `submit` 未给 `statement`（回执与审计的对象 ✓） | 形式化面 | ✅ |
 | `VMU_LEAN_NOT_SETTLED` | 作业尚未结算（`state≠settled`）就要求结算 | 形式化面 | ✅（须给当前 state ✓） |
@@ -1080,7 +1081,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **414** 个码，**逐行**给出状态 ✓：其中 **375** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **415** 个码，**逐行**给出状态 ✓：其中 **376** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1247,6 +1248,7 @@
 | `VMU_LEAN_ARCHIVE_NAME_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/lean.js` | 代码里有该码字符串 ✓ |
 | `VMU_LEAN_ARCHIVE_NAME_TAKEN` | **已实现 ✓** | `vibe-math-vmu/kernel/lean.js` | 代码里有该码字符串 ✓ |
 | `VMU_LEAN_ARCHIVE_NOT_FOUND` | **已实现 ✓** | `vibe-math-vmu/kernel/lean.js` | 代码里有该码字符串 ✓ |
+| `VMU_LEAN_COMMAND_NOT_FOUND` | **已实现 ✓** | `vibe-math-vmu/kernel/lean.js` | 代码里有该码字符串 ✓ |
 | `VMU_LEAN_COMPILE_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/formal.js` | 代码里有该码字符串 ✓ |
 | `VMU_LEAN_EXIT_NONZERO` | **已实现 ✓** | `vibe-math-vmu/kernel/lean.js` | 代码里有该码字符串 ✓ |
 | `VMU_LEAN_FILE_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/lean.js` | 代码里有该码字符串 ✓ |

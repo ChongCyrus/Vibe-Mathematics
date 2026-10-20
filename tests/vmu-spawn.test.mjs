@@ -86,5 +86,36 @@ const makeSeam = (record) => m.createHostSpawn({
     'with no subprocess service the seam refuses by name instead of inventing one', refused && refused.code)
 }
 
+// ---- 5. spawn-failure EVIDENCE: resolve/ENOENT and a rejected done must survive the seam -----------------
+{
+  const sub = {
+    async resolveExecutable() { const e = new Error('lean not found'); e.code = 'ENOENT'; throw e },
+    spawn() { throw new Error('must not be reached after resolve failure') },
+  }
+  const seam = m.createHostSpawn({ ctx: { get: () => sub }, defaultCwd: null })
+  let refused = null
+  try { await seam({ file: 'lean', args: ['--version'] }) } catch (e) { refused = e }
+  ok(refused && refused.resolveError && refused.resolveError.code === 'ENOENT' && refused.resolved === null && refused.commandNotFound === true,
+    '★ 正（ENOENT）：resolveExecutable 的拒绝原文进 resolveError，resolved:null，commandNotFound:true', refused && { code: refused.code, resolveError: refused.resolveError, resolved: refused.resolved })
+  ok(refused && refused.path === null || typeof refused.path === 'string',
+    '★ 反：path 字段存在（宿主 PATH 或其 null），不是只写在 message 里', refused && typeof refused.path)
+}
+{
+  const sub = {
+    async resolveExecutable() { return 'C:\\fake\\lean.EXE' },
+    spawn() {
+      return {
+        done: Promise.reject(Object.assign(new Error('access denied'), { code: 'EACCES' })),
+        collected: { stdout: { readFrom: () => ({ text: '' }) }, stderr: { readFrom: () => ({ text: '' }) } },
+      }
+    },
+  }
+  const seam = m.createHostSpawn({ ctx: { get: () => sub }, defaultCwd: null })
+  let refused = null
+  try { await seam({ file: 'lean', args: ['--version'] }) } catch (e) { refused = e }
+  ok(refused && refused.doneError && refused.doneError.code === 'EACCES' && refused.resolved === 'C:\\fake\\lean.EXE',
+    '★ 正（done reject）：doneError.code/message 与 resolved 都在错误对象上', refused && { doneError: refused.doneError, resolved: refused.resolved })
+}
+
 console.log('=== VMU SPAWN: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) process.exit(1)
