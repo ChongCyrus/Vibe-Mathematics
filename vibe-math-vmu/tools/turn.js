@@ -78,19 +78,19 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       description: 'Run institute TURNS: step runs exactly one round (who is chosen by vmu.turn.wakeupPolicy, what ' +
         'prompt is assembled by the pipeline), drive runs a bounded number, status reports what the loop has done. ' +
         'A round with no members is a legal no-op; a failed round is returned with its code rather than thrown.',
+      // ★ PHASE 7 / round 20: this block used to be a FULL JSON SCHEMA passed where the host expects a PARAM MAP.
+      // toHostParameters() then wrapped it once more, so the PUBLISHED schema had properties named type/properties/required
+      // and a real "properties" object - the model (correctly) put its arguments INSIDE that object, so top-level keys like
+      // tools:'none' never reached coreTurn. It is a param map now, exactly like every other tool.
       parameters: {
-        type: 'object',
-        properties: {
-          op: param('string', 'step＝一轮／drive＝连跑若干轮／status＝读数'),
-          members: param('array', '本轮可唤醒的成员：[{id, role}]；缺省时由内核名册推断（无成员 ⇒ 合法空转）'),
-          rounds: param('integer', 'drive 的轮数（必须为正整数；没有无限默认）'),
-          phase: param('string', '相位：founding／normal／checkpoint／verify／verify-debate／meeting／resume'),
-          why: param('string', '为什么唤醒（原预设的唤醒也带这一项）'),
-          reply: param('string', '★ 由调用者扮演成员回合时：★ 上一次 step／drive 交回的成员提示词，★ 其【成员自己的回复】放在这里送回（★ 仅当交付接缝是 deliverByReturning 时需要）'),
-          next_step: param('string', '下一步要做什么'),
-          tools: param('string', '★ step 专用：none＝本回合把成员可见工具面清空（表决回合用），回合结束后恢复；缺省＝不动工具面'),
-        },
-        required: ['op'],
+        op: param('string', 'step＝一轮／drive＝连跑若干轮／status＝读数', { required: true }),
+        members: param('array', '本轮可唤醒的成员：[{id, role}]；缺省时由内核名册推断（无成员 ⇒ 合法空转）'),
+        rounds: param('integer', 'drive 的轮数（必须为正整数；没有无限默认）'),
+        phase: param('string', '相位：founding／normal／checkpoint／verify／verify-debate／meeting／resume'),
+        why: param('string', '为什么唤醒（原预设的唤醒也带这一项）'),
+        reply: param('string', '★ 由调用者扮演成员回合时：★ 上一次 step／drive 交回的成员提示词，★ 其【成员自己的回复】放在这里送回（★ 仅当交付接缝是 deliverByReturning 时需要）'),
+        next_step: param('string', '下一步要做什么'),
+        tools: param('string', '★ step 专用：none＝本回合把成员可见工具面清空（表决回合用），回合结束后恢复；缺省＝不动工具面'),
       },
       execute: executeTurn,
       run: runTurn,

@@ -365,7 +365,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     'T53. *** with nothing declared the turn tool is NOT offered - the preset still registers exactly one tool (zero mechanism)')
   const on = toolSpecs({ kernel: kernel4, settings: {}, turnTool: true })
   const spec = on.find((s) => s.name === 'vibe_vmu_turn')
-  ok(spec && typeof spec.execute === 'function' && spec.parameters && spec.parameters.properties.op,
+  ok(spec && typeof spec.execute === 'function' && spec.parameters && spec.parameters.op && spec.parameters.tools,
     'T54. **** and when the configuration declares it, the tool exists with its parameters - the loop is reachable from a session, not only from a test',
     { names: on.map((s) => s.name).slice(0, 6) })
   const st = JSON.parse(await spec.execute({ op: 'status' }))
