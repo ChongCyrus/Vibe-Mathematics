@@ -1084,30 +1084,53 @@ try {
   const reDerive = (section) => [...new Set(String(section.text).matchAll(/vibe_v5_[a-z0-9_]+/g).map((m) => m[0]))]
   const coreModA = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-core.js')).href)
   const sectionFor = { chair: coreModA.v5rToolSectionAcademician, member: coreModA.v5rToolSectionResearcher, temp: coreModA.v5rToolSectionTemp }
-  // ★ ROUND 24 RULING: the face is DENY-based, so the same-source identity is `declared(v5r) − deny === roleSet`.
+  // ★ ROUND 31: the derivation counts LINE-STARTING BULLETS only, so the same-source identity is split into TWO pairs
+  // (they answer different questions): A = bullet list ↔ what the seat can actually call; B = declaration ↔ bullet.
+  const bulletNames = (section) => [...new Set(String(section.text).split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('·'))
+    .flatMap((line) => line.match(/vibe_v5_[a-z0-9_]+/g) || []))]
+  const allNamesIn = (section) => [...new Set(String(section.text).match(/vibe_v5_[a-z0-9_]+/g) || [])]
   const allDeclared = (PACK.tools || []).map((x) => x.name)
-  const sameSource = [
-    { role: 'chair', prompt: reDerive(sectionFor.chair), deny: faces.chair.deny },
-    { role: 'member', prompt: reDerive(sectionFor.member), deny: faces.member.deny },
-    { role: 'temp', prompt: reDerive(sectionFor.temp), deny: faces.temp.deny },
-  ].map((r) => {
+  const roleRows = [
+    { role: 'chair', section: sectionFor.chair, deny: faces.chair.deny },
+    { role: 'member', section: sectionFor.member, deny: faces.member.deny },
+    { role: 'temp', section: sectionFor.temp, deny: faces.temp.deny },
+  ]
+  // A) bullet ↔ visible (declared − deny)
+  const pairA = roleRows.map((r) => {
+    const bullets = bulletNames(r.section)
     const visible = allDeclared.filter((n) => !r.deny.includes(n))
     return {
       role: r.role,
-      denyOverlap: r.deny.filter((n) => r.prompt.includes(n)),
-      missingInVisible: r.prompt.filter((n) => !visible.includes(n)),
-      extraInVisible: visible.filter((n) => !r.prompt.includes(n)),
-      visibleCount: visible.length,
+      bullets: bullets.length,
+      visible: visible.length,
+      missingInVisible: bullets.filter((n) => !visible.includes(n)),
+      extraInVisible: visible.filter((n) => !bullets.includes(n)),
     }
   })
-  ok(sameSource.filter((r) => r.denyOverlap.length === 0 && r.missingInVisible.length === 0 && r.extraInVisible.length === 0 && r.visibleCount > 0).length === 3,
-    '★★★ SAME SOURCE (deny form): for every seat `declared − deny` EQUALS the prompt’s tool set (both diffs empty) and the deny overlaps nothing the seat may use', sameSource)
-  // ★★ THE BOUNDARY: a deny list names ONLY institution vocabulary — never a framework face.
+  ok(pairA.filter((r) => r.bullets > 0 && r.missingInVisible.length === 0 && r.extraInVisible.length === 0).length === 3,
+    '★★★ A: the BULLET LIST a seat reads EQUALS the set it can actually call (`declared − deny`) — both diffs empty; THIS is the pair a live session drifted on', pairA)
+  // B) declaration ↔ bullet  (keeps the declaration and the prompt from drifting apart)
+  const pairB = roleRows.map((r) => {
+    const bullets = bulletNames(r.section)
+    return { role: r.role, missingInBullets: allDeclared.filter((n) => !bullets.includes(n)).length, extra: bullets.filter((n) => !allDeclared.includes(n)) }
+  })
+  ok(pairB.filter((r) => r.extra.length === 0).length === 3,
+    '★★★ B: every BULLET names a DECLARED tool (the prompt cannot promise a tool the pack does not declare)', pairB)
+  // C) ANTI-DEGENERATION: prose mentions must also be in the bullet list, otherwise the prose promises what the list omits.
+  const proseRows = roleRows.map((r) => {
+    const prose = allNamesIn(r.section).filter((n) => !bulletNames(r.section).includes(n))
+    return { role: r.role, proseOnly: prose }
+  })
+  ok(proseRows.filter((r) => r.proseOnly.length === 0).length === 3,
+    '★★ C: every `vibe_v5_*` mentioned ANYWHERE in the section is in its bullet list — "prose says you may use X, the list omits X" would be the next drift', proseRows)
+  // the deny boundary + sizes
   const denyAll = [...faces.chair.deny, ...faces.member.deny, ...faces.temp.deny]
   ok(denyAll.length > 0 && denyAll.filter((n) => !n.startsWith('vibe_v5_')).length === 0 && denyAll.filter((n) => /^vibe_vmu_/.test(n)).length === 0,
     '★★ the deny lists contain ONLY v5r tools (vibe_v5_*) — no framework face (vibe_vmu_*) is ever denied by this pack', { deny: denyAll.length })
-  ok(faces.chair.deny.length === allDeclared.length - 37 && faces.member.deny.length === allDeclared.length - 22 && faces.temp.deny.length === allDeclared.length - 6,
-    '★★ the deny sizes are the complement of the role sets (chair 1 / member 16 / temp 32 of the 38 declared)', { chair: faces.chair.deny.length, member: faces.member.deny.length, temp: faces.temp.deny.length })
+  ok(faces.chair.deny.length === allDeclared.length - 37 && faces.member.deny.length === allDeclared.length - 20 && faces.temp.deny.length === allDeclared.length - 6,
+    '★★ the deny sizes are the complement of the BULLET sets (chair 1 / member 18 / temp 32 of the 38 declared)', { chair: faces.chair.deny.length, member: faces.member.deny.length, temp: faces.temp.deny.length })
   // every DENIED name is a DECLARED tool (a prose mention cannot narrow a face)
   const declaredNameSet = new Set((PACK.tools || []).map((t) => t.name))
   ok(denyAll.filter((n) => declaredNameSet.has(n)).length === denyAll.length,

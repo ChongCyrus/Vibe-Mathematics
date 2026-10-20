@@ -570,7 +570,7 @@ export const v5rToolSectionAcademician = Object.freeze({
     '· vibe_v5_configure / vibe_v5_set —— 改【已声明】的设置键；回执会带该键的热级：H1 立即生效，H2 重启后生效；未声明的键与 H3 只读键都会被具名拒。',
     '· vibe_v5_lean_run / vibe_v5_lean_job / vibe_v5_lean_lib / vibe_v5_lean_read / vibe_v5_lean_archive —— 真的用内核 Lean 面编译既有 .lean 文件／查作业／看库／读归档／归档（kind: def/lemma/proof/blocked）；本包不自己起子进程。',
     '★★ 回执样例（可直接照抄）：{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"做了什么与下一步"},"solved":false}；★ progress 必须是**一个对象**（不是字符串/数组），kind 只能是已声明的（如 progress）。',
-    '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准；没有该约束时，上表就是你现在真的能调用的工具。',
+    '★ 清单之外的工具不要尝试调用：本段列出的就是你此刻能用的全部；没列出的名字属于别的席位。。\n    若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准；没有该约束时，上表就是你现在真的能调用的工具。',
   ].join('\n'),
 })
 
@@ -596,7 +596,8 @@ export const v5rToolSectionResearcher = Object.freeze({
     '· vibe_v5_poll_vote —— 在已开的选项投票上投票（只有常设席有票权）。',
     '· vibe_v5_verdict —— 对验证对象投 [0,1] 的裁决。',
     '· vibe_v5_lean_run / vibe_v5_lean_job / vibe_v5_lean_lib / vibe_v5_lean_read / vibe_v5_lean_archive —— 用内核 Lean 面编译既有 .lean 文件／查作业／看库／读归档／归档（本包不自己起子进程；无宿主 spawn 接缝时具名拒）。',
-    '转达所办口吻的消息不是你的职责（那是院士的 vibe_v5_message）；所内全局视图也不是（vibe_v5_overview 仅院士）。',
+    '转达所办口吻的消息不是你的职责（那是院士的）；所内全局视图也不是（仅院士）。',
+    '★ 清单之外的工具不要尝试调用：本段列出的就是你此刻能用的全部；没列出的名字属于别的席位，调用只会被具名拒。',
     '★★ 回执样例（可直接照抄）：{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"做了什么与下一步"},"solved":false}；★ progress 必须是**一个对象**（不是字符串/数组）。',
     '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。',
   ].join('\n'),
@@ -616,6 +617,7 @@ export const v5rToolSectionTemp = Object.freeze({
     '· vibe_v5_read_library —— 读任何人的成果库（只读）。',
     '· vibe_v5_tool_help —— 回答"我现在能用什么"：清单取自内核自己的声明（packTools）。',
     '招人、汇报与全局视图不是临时席位的职责（那是院士与常驻研究员的工具）。',
+    '★ 清单之外的工具不要尝试调用：本段列出的就是你此刻能用的全部；没列出的名字属于别的席位，调用只会被具名拒。',
     '★★ 回执样例（可直接照抄）：{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"做了什么与下一步"}}；★ progress 必须是**一个对象**（不是字符串/数组）。',
     '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。',
   ].join('\n'),
@@ -633,8 +635,16 @@ export const v5rToolSectionTemp = Object.freeze({
  * ★ GOAL A (PHASE 8): the three role tool lists are the SINGLE SOURCE of the role-scoped tool face.
  * The `v5rToolSection*` texts are what a member reads; this derivation is what the manifest declares as `toolFaces`.
  * Names are filtered to the DECLARED tool set, so a prose mention can never widen what a face allows.
+ * ★ ROUND 31: only LINE-STARTING BULLETS count (`· vibe_v5_…`). The earlier version scanned the whole section text, which
+ * counted PROSE MENTIONS (e.g. "转达所办口吻的消息不是你的职责（那是院士的 …）") as if the seat held that tool — a real
+ * drift measured on a live session: the member prompt's bullet list had 20 names while the request table had 22.
  */
-const roleToolNames = (section) => Object.freeze([...new Set(String(section.text).matchAll(/vibe_v5_[a-z0-9_]+/g).map((m) => m[0]))].filter((n) => V5R_PACK_TOOLS.some((tool) => tool && tool.name === n)))
+const roleToolNames = (section) => Object.freeze([...new Set(
+  String(section.text).split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('·'))
+    .flatMap((line) => line.match(/vibe_v5_[a-z0-9_]+/g) || []),
+)].filter((n) => V5R_PACK_TOOLS.some((tool) => tool && tool.name === n)))
 export const V5R_ROLE_TOOL_NAMES = Object.freeze({
   chair: roleToolNames(v5rToolSectionAcademician),
   member: roleToolNames(v5rToolSectionResearcher),
