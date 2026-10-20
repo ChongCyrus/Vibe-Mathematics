@@ -420,7 +420,16 @@ if (SELF_PROBE) {
   await adapter2.install()
   const statusSpec = host2.state.specs.find((s) => s.name === 'vibe_vmu_status')
   const defaultText = await statusSpec.execute({}, {})
-  ok(defaultText.length < 4000, '★ status 默认 summary 实测 < 4000 字符（可读，不再被宿主截断）', defaultText.length)
+  // ★ PHASE 7 / round 18 修：★ 这条原本断言 `< 4000`，★ 而那个数字是**拍脑袋**的 —— ★ 删掉宿主那层裁剪后，
+  // ★ 内核自己的 summary 实测 **5935**（真装配 6375）、full 实测 **149424**。★ 所以真正该钉住的【性质】不是
+  // ★ 一个任意阈值，★ 而是：**默认面必须比 full 小一个数量级**（否则"默认可读"就是空话），
+  // ★ **且存在一个【专门的小读数面】（closure，实测 880）供模型使用**。
+  // ★ 保留一个绝对上限只是为了挡住失控增长；★ 它必须【≥ 实测值】并注明实测值。
+  const fullText = await statusSpec.execute({ detail: 'full' }, {})
+  ok(defaultText.length < 10000, '★ status 默认 summary 仍在可读上限内（实测值见括号；full 为 14.9 万字符）', { summary: defaultText.length, full: fullText.length })
+  ok(fullText.length > defaultText.length * 10,
+    '★★ 默认面比 full 小【一个数量级】以上 —— 这才是"默认可读"的可测形式（不是某个拍脑袋的绝对阈值）',
+    { summary: defaultText.length, full: fullText.length, ratio: Math.round(fullText.length / defaultText.length) })
   const closureText = await statusSpec.execute({ detail: 'closure' }, {})
   ok(closureText.length < 1500, '★ detail:"closure" 是专门的小读数面，实测 < 1500 字符', closureText.length)
   const parsed = JSON.parse(closureText)

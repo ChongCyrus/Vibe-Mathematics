@@ -557,20 +557,13 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           }
         }
         if (detail === 'summary') {
-          const roster = out.members && Array.isArray(out.members.roster) ? out.members.roster : []
-          const compact = {
-            ok: true, instance, enabled: out.enabled, active: out.active, packPath: out.packPath, note: out.note,
-            packs: Array.isArray(out.packs) ? out.packs : [],
-            closureVote: out.closureVote || null,
-            members: { live: roster.filter((m) => m && m.state === 'live').map((m) => ({ id: m.id, slot: m.slot, state: m.state })) },
-            counts: {
-              tools: out.faces && Array.isArray(out.faces.published) ? out.faces.published.length : null,
-              busEntries: out.bus && Array.isArray(out.bus.entries) ? out.bus.entries.length : null,
-              records: out.library ? 'present' : null,
-            },
-            detail: 'summary (compact); pass detail:"full" for settings/bus/faces detail, detail:"closure" for the closing reading only',
-          }
-          return compact
+          // ★ PHASE 7 / round 18 修（真回归，被 5 套门禁抓到，★ 而且是**我这一轮引入的**）：
+          // ★★ 宿主这里原本【又裁了一层字段】—— 但 **`kernel.status({detail:'summary'})` 本身就已经是紧凑面**
+          // （它只保留计数 ＋ 非 schema 默认来源的键，见 `wantsFullSettings`）⇒ ★ **同一个"紧凑"被两个所有者实现** ⇒
+          // ★ 宿主那层把 `faces`／`packReport`／`prompt` 这些**契约字段**裁掉了，★ 而它们并不大。
+          // ★★ **正确形状：★ 紧凑只有【一个所有者】（内核），★ 宿主只加想加的东西，★ 不再裁。**
+          // ★ 体积问题若仍在 ⇒ 改内核的 summary（★ 单一所有者），★ 不是在这里再裁一遍。
+          return out
         }
         return out
       } catch (e) {
