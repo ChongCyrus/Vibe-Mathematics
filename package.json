@@ -807,6 +807,8 @@
     "tests/vmu-v3-prompts.test.mjs",
     "vibe-math-vmu/packs/v3/middleware/gates.js",
     "vibe-math-vmu/packs/v3/tools.js",
+    "vibe-math-vmu/packs/v5r/tools.js",
+    "tests/vmu-v5r-tools.test.mjs",
     "tests/vmu-v3-gates.test.mjs",
     "tests/vmu-v3-tools.test.mjs",
     "vibe-math-vmu/packs/v3/middleware/defects.js",

@@ -1030,6 +1030,9 @@ export function toHostSpec(spec) {
 export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null, scripts = [], packLoader = null, config = {}, faces = null, mergeReport = null, packReport = null, promptSection = null, ...faceFlags } = {}) {
   const disposers = []
   const registered = []
+  // ★ PHASE 7: name -> disposer. `registered` alone can only be unwound as a batch in uninstall(), which left no way
+  // to retract ONE tool (a pack unload). The map is the exact inverse of each successful registration.
+  const disposerFor = new Map()
   const failures = []
   // ROUND 26 / task-141: the two facts the receipt needs to be honest about its own coverage.
   //   · `evaluations` - how many install passes produced tools (the union merged THIS many);
@@ -1058,6 +1061,37 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   const enabledFaceSet = () => { const r = resolveFaceSet(); return r.enabled }
 
   const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance, scripts, packLoader, config, mergeReport, packReport, promptSection, publishedSurface: () => ({ names: registered.slice(), reasons: reasonFor, evaluations }), ...faceFlags, faces: (() => { const r = resolveFaceSet(); return r })() }))
+
+  /**
+   * ★ PHASE 7 — RETRACT BY NAME. The exact inverse of ONE registration: call that registration's disposer, forget the
+   * name, and report what happened. Unknown names are NAMED in notFound (never silently ignored), and a disposer that
+   * throws is carried in failed (the name stays registered in that case, because the host still has it).
+   */
+  const retractTools = async (names) => {
+    const wanted = names === null || names === undefined ? registered.slice() : (Array.isArray(names) ? names : [names])
+    const retracted = []
+    const notFound = []
+    const failed = []
+    for (const raw of wanted) {
+      const name = String(raw)
+      const idx = registered.indexOf(name)
+      if (idx < 0) { notFound.push(name); continue }
+      const dispose = disposerFor.get(name)
+      try {
+        if (typeof dispose === 'function') await dispose()
+      } catch (e) {
+        failed.push({ name, code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) })
+        continue
+      }
+      registered.splice(idx, 1)
+      disposerFor.delete(name)
+      const di = disposers.indexOf(dispose)
+      if (di >= 0) disposers.splice(di, 1)
+      delete reasonFor[name]
+      retracted.push(name)
+    }
+    return { ok: notFound.length === 0 && failed.length === 0, retracted, notFound, ...(failed.length ? { failed } : {}) }
+  }
 
   const doInstall = async () => {
     if (!ctx || !ctx.tools || typeof ctx.tools.register !== 'function') {
@@ -1114,10 +1148,10 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
           // The host owns the unwind through ctx.effect; ctx.effect returns the callback's value, which
           // here is the promise from tools.register().
           const dispose = await ctx.effect(() => ctx.tools.register(hostSpec), 'vmu:tool:' + spec.name)
-          if (typeof dispose === 'function') disposers.push(dispose)
+          if (typeof dispose === 'function') { disposers.push(dispose); disposerFor.set(spec.name, dispose) }
         } else {
           const dispose = await ctx.tools.register(hostSpec)
-          if (typeof dispose === 'function') disposers.push(dispose)
+          if (typeof dispose === 'function') { disposers.push(dispose); disposerFor.set(spec.name, dispose) }
         }
         registered.push(spec.name)
         // FIRST-WINS provenance, mirroring the skip above: `host.js` keeps ONE registration per name, so the reason
@@ -1164,6 +1198,12 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     return r
   }
 
+  // ★ PHASE 7: a pack unload retracts its declarations in the KERNEL; the HOST tool table must follow. The kernel
+  // calls this ONE observer after a successful retraction, and the adapter answers with its own retractTools.
+  if (kernel && typeof kernel.setPackToolRetractObserver === 'function') {
+    kernel.setPackToolRetractObserver(({ removed }) => retractTools(Array.isArray(removed) ? removed : []))
+  }
+
   return {
     /** What WOULD be registered (pure: no host calls) - the host-side zero-mechanism proof. */
     plan() {
@@ -1182,6 +1222,9 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
      * after install can make a tool available, and two concurrent installs would register the same name
      * twice (the first version of this did exactly that).
      */
+    /** ★ PHASE 7: the pack loader's unload notifies the host through this observer -> retractTools. */
+    retractTools(names) { chain = chain.then(() => retractTools(names)); return chain },
+
     install() {
       chain = chain.then(() => doInstall())
       return chain
@@ -1195,6 +1238,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       const exitFlush = await flushOnExit('host-uninstall')
       if (ownedByHost) {
         registered.length = 0
+        disposerFor.clear()
         // ROUND 26 / task-141: the coverage bookkeeping goes away WITH the registrations it describes - otherwise a
         // receipt could advertise an unloaded surface (the OPPOSITE of the under-reporting this round fixes).
         evaluations = 0
@@ -1205,6 +1249,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       const failures2 = []
       for (const d of disposers.splice(0)) { try { d() } catch (e) { failures2.push(String(e && e.message)) } }
       registered.length = 0
+      disposerFor.clear()
       evaluations = 0
       for (const k of Object.keys(reasonFor)) delete reasonFor[k]
       installed = false

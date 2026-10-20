@@ -15,6 +15,9 @@
     "vmu.members.maxTempPerMember": 3,
     "vmu.tasks.memberMayRejectAssign": true,
 
+    "vmu.records.tracks": ["progress", "routes", "obstacles", "rejected", "state", "propositions", "methods", "problems"],
+    "vmu.records.allowedKinds": ["progress", "route", "decision", "finding", "lesson", "state", "dataset", "rebuttal", "proposition", "method", "subproblem"],
+
     "vmu.chat.admins": ["acad"],
     "vmu.chat.speakQuota": 0,
     "vmu.chat.muteDefaultMs": 0,

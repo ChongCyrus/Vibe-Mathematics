@@ -43,8 +43,15 @@ const { assertDeclared } = await import(pathToFileURL(resolve(REPO, 'vibe-math-v
 const clock = () => '2026-10-09T00:00:00.000Z'
 
 const fakeHost = ({ withEffect = true } = {}) => {
-  const state = { specs: [], disposed: 0, effects: [] }
-  const tools = { register: async (spec) => { state.specs.push(spec); return () => { state.disposed++ } } }
+  const state = { specs: [], disposed: 0, effects: [], live: new Set() }
+  const tools = {
+    register: async (spec) => {
+      state.specs.push(spec); state.live.add(spec.name)
+      return () => { state.disposed++; state.live.delete(spec.name) }
+    },
+    // ★ PHASE 7: the host's VISIBLE table (what the model would see). retraction must change THIS, not only the receipt.
+    schemas: () => [...state.live],
+  }
   const ctx = withEffect
     ? { tools, effect(fn, label) { state.effects.push(label); return fn() } }
     : { tools }
@@ -366,6 +373,31 @@ if (SELF_PROBE) {
     ok(unsetH3 && unsetH3.code === 'VMU_NOT_PERMITTED' && unsetH3.message === viaTool.message,
       'E-7: unset applies the same H3 guard with the same words', unsetH3 && unsetH3.code)
   }
+}
+
+// ── 8. ★ PHASE 7: RETRACT BY NAME, AND A PACK UNLOAD MUST CHANGE THE HOST'S VISIBLE TABLE ──────────────
+{
+  const kernel = km.createKernel({ clock })
+  const host = fakeHost()
+  const adapter = hm.createHostAdapter({ ctx: host.ctx, kernel, settings: {} })
+  await adapter.install()
+  const before = host.ctx.tools.schemas()
+  ok(before.includes('vibe_vmu_status'), '正：retract 之前宿主可见面含该工具', before)
+  const r = await adapter.retractTools(['vibe_vmu_status'])
+  const after = host.ctx.tools.schemas()
+  ok(r.ok === true && r.retracted.length === 1 && r.notFound.length === 0 && !after.includes('vibe_vmu_status'),
+    '★ 正：retract 后 tools.schemas() 里真的没有它（宿主可见面变了）', { r, after })
+  const miss = await adapter.retractTools(['vibe_vmu_not_a_tool'])
+  ok(miss.ok === false && miss.notFound.includes('vibe_vmu_not_a_tool') && miss.retracted.length === 0,
+    '★ 反：不存在的名字 ⇒ 具名 notFound，不静默成功', miss)
+  // ② pack unload: the kernel retraction must notify the host, and the host table must follow it.
+  kernel.declarePackTools([{ name: 'probe_pack_tool', description: 'probe', parameters: {}, handler: () => ({ ok: true }) }], { by: 'probe-pack' })
+  await adapter.install()
+  ok(host.ctx.tools.schemas().includes('probe_pack_tool'), 'pack 工具先真的出现在宿主可见面', host.ctx.tools.schemas())
+  const retracted = kernel.retractPackTools(['probe_pack_tool'], { by: 'probe-pack' })
+  if (retracted && retracted.hostRetract) await retracted.hostRetract
+  ok(!host.ctx.tools.schemas().includes('probe_pack_tool'),
+    '★ pack unload 后该工具不在宿主可见面（kernel 通知了 host）', host.ctx.tools.schemas())
 }
 
 console.log('=== VMU HOST: ' + passed + ' passed, ' + failed + ' failed ===')

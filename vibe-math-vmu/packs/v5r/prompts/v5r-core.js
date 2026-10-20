@@ -37,6 +37,11 @@ import { V5R_MOTION_BOX } from '../middleware/motion-box.js'
 // ★ It is INTRA-turn (`tools/result`, plus the two `…/job-settled` events) on purpose: the report boundary listens on
 // `agent/turn-stopping` too, and an observation written at the reader's own instant may only be visible NEXT turn.
 import { V5R_ARTIFACT_COUNTER } from '../middleware/artifact-counter.js'
+// PHASE 7 / goal 2 (first batch): THE TOOL FACE. `packs/v5r` used to declare ZERO tools while its prompts taught
+// members to call `vibe_v5_record_* / say / message` (docs/acceptance/phase7-coverage-matrix.md §2: 17 names taught,
+// 0 declared). The six names live in `../tools.js` and are declared below as the manifest's `tools[]` - the SAME
+// mechanism `packs/v3` uses, so the kernel holds them and the host publishes them without learning any v5r name.
+import { V5R_PACK_TOOLS } from '../tools.js'
 
 /**
  * ROUND 336 — THE BRIDGE FROM TEXT TO PIPELINE. Until now the v5r prompt corpus was carried as DATA: hash-locked,
@@ -286,6 +291,10 @@ export const PACK = Object.freeze({
   get sections() { return v5rCharterSectionsGlobal() },
   /** The charter's role and phase bindings, declared the same way. */
   get bindings() { return v5rCharterBindingsGlobal() },
+  // PHASE 7 / goal 2: THE DECLARED TOOL FACE (first batch, six tools). The names come from `../tools.js`; the kernel
+  // validates the declarations (`kernel/pack.js`) and `host-pack-tools.js` publishes them. The framework never learns
+  // a `vibe_v5_*` name - the same rule the v3 pack follows for its ten tools.
+  tools: V5R_PACK_TOOLS,
   aliases: [
     { from: 'vibe_v5_poll_vote', to: 'vmu.tasks' },
     { from: 'vibe_v5_poll_open', to: 'vmu.tasks' },
@@ -341,7 +350,10 @@ import { V5R_ASSISTANT_TURN_SECTIONS } from './v5r-assistant.js'
  * the one section that simply NAMES the phase, which the charter headings do not. PLUS the assistant's reporting duty,
  * which is what turns "主动向院士汇报" from persona prose into a duty a member is told every round.
  */
-const v5rCharterSectionsGlobal = () => [...CHARTER_SECTIONS, v5rRoleSection, v5rFixtureConstraint, ...V5R_ASSISTANT_TURN_SECTIONS]
+const v5rCharterSectionsGlobal = () => [...CHARTER_SECTIONS, v5rRoleSection, v5rFixtureConstraint,
+  // PHASE 7 / goal 2: the per-role TOOL DISCOVERY sections (non-source-derived, role-scoped, unique markers).
+  v5rToolSectionAcademician, v5rToolSectionResearcher, v5rToolSectionTemp,
+  ...V5R_ASSISTANT_TURN_SECTIONS]
 
 /** Its role and phase bindings - one winner per section per assembly is the pipeline's job (docs/26 section 3.20). */
 const v5rCharterBindingsGlobal = () => CHARTER_BINDINGS
@@ -389,6 +401,71 @@ export const v5rFixtureConstraint = Object.freeze({
     '本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只读本轮状态块推理，最后只输出一个 json 围栏回执。',
     'closure poll 的正确回执样例（照抄形状）：{"vote_solved": true} 或 {"vote_solved": false}；只写这一句，不写 progress。',
     '其它回合 progress 必须是数组/对象（不能是字符串），正确样例：{"progress":[{"track":"progress","kind":"note","title":"本轮进展","body":"……"}]}；顶层不要写 record/artifacts 等自造字段。',
+  ].join('\n'),
+})
+
+/**
+ * ★ PHASE 7 / goal 2 — THE TOOL DISCOVERY SECTIONS (NOT source-derived, exactly like `v5rFixtureConstraint` above).
+ *
+ * The tool face is declared in `../tools.js`; a tool a member cannot SEE is a paper capability, so each ROLE gets its
+ * own list. Three separate sections instead of one shared one, on purpose:
+ *   · the PHASE 6 defect was cross-role prelude copying (one role's prose leaking into seven others), so no text is
+ *     shared between these sections and each names its own role in the FIRST line (unique marker);
+ *   · the fixture constraint (order 602, ALWAYS on) tells a member not to call tools in an SLV run. The caveat line
+ *     inside each section makes the precedence explicit instead of leaving two contradictory instructions side by side.
+ *
+ * WHY THE SUBSETS DIFFER: the pack's slots say what each kind is for (`chair`: convene/close/assign/grant/freeze -
+ * it relays office messages too; `member`: propose/speak - it records and speaks; `temp`: speak only - a temporary
+ * seat logs its progress and speaks, and does not open library cards of its own). That is PACK POLICY: it is stated
+ * here as text and nowhere in the kernel, so another institution can pick different subsets by editing this section.
+ */
+export const v5rToolSectionAcademician = Object.freeze({
+  name: 'v5r-tools-academician',
+  order: 603,
+  range: 'pack',
+  source: 'v5r-fixture:tools',
+  scope: Object.freeze({ role: 'academician' }),
+  text: [
+    '【本轮可用的工具｜院士】',
+    '· vibe_v5_record_progress —— 写你自己的研究日志（track 可选 progress/routes/obstacles/rejected/state；证伪的路走 rejected，阻塞走 obstacles）。',
+    '· vibe_v5_record_proposition —— 写命题卡（statement、value、motive、p 四项必填）。',
+    '· vibe_v5_record_method —— 写方法卡（content、value、motive、p 四项必填）。',
+    '· vibe_v5_record_subproblem —— 写子问题卡（statement、value、motive、p 四项必填）。',
+    '· vibe_v5_say —— 在群里说一句（省略 to）；to 填成员 id 即私信；填 meeting 则记进那场会议的发言。发言者必须是你自己的真名册 id。',
+    '· vibe_v5_message —— 以「所办/人类」的口吻给所内转达消息（to 可为成员 id、all 或 voters）。',
+    '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准；没有该约束时，上表就是你现在真的能调用的工具。',
+  ].join('\n'),
+})
+
+export const v5rToolSectionResearcher = Object.freeze({
+  name: 'v5r-tools-researcher',
+  order: 604,
+  range: 'pack',
+  source: 'v5r-fixture:tools',
+  scope: Object.freeze({ role: 'researcher' }),
+  text: [
+    '【本轮可用的工具｜研究员】',
+    '· vibe_v5_record_progress —— 写你自己的研究日志（track 可选 progress/routes/obstacles/rejected/state）。',
+    '· vibe_v5_record_proposition —— 写命题卡（statement、value、motive、p 必填）。',
+    '· vibe_v5_record_method —— 写方法卡（content、value、motive、p 必填）。',
+    '· vibe_v5_record_subproblem —— 写子问题卡（statement、value、motive、p 必填）。',
+    '· vibe_v5_say —— 群里发言（省略 to）或私信（to 填成员 id）；发言者必须是你自己的真名册 id。',
+    '转达所办口吻的消息不是你的职责（那是院士的 vibe_v5_message）。',
+    '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。',
+  ].join('\n'),
+})
+
+export const v5rToolSectionTemp = Object.freeze({
+  name: 'v5r-tools-temp',
+  order: 605,
+  range: 'pack',
+  source: 'v5r-fixture:tools',
+  scope: Object.freeze({ role: 'temp' }),
+  text: [
+    '【本轮可用的工具｜临时成员】',
+    '· vibe_v5_record_progress —— 把你这一轮的进展写进研究日志（临时席位只记进展，不建自己的方法/命题库）。',
+    '· vibe_v5_say —— 在群里发言（省略 to）或私信（to 填成员 id）；发言者必须是你自己的真名册 id。',
+    '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。',
   ].join('\n'),
 })
 

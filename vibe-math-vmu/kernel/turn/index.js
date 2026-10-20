@@ -231,25 +231,14 @@ export function facesFrom(services = {}, owners = FIELD_OWNERS) {
  * hint that itself fails turns a diagnosable refusal into a bare TypeError.
  */
 /**
- * ★★★★★★★ PHASE 6 · 目标 1(b) —— DSH 0.2.1 的 PER-CHILD FIELDS 现在【可表达】。
- *
- * WHAT WAS MISSING: 0.2.1's SubagentActivationSpec accepts per-child `cwd`, `agentPreset`, `outputSchema`, `persona`,
- * `toolFilter` and `depthLimit`, and vmu built its spec WITHOUT any of them - so a pack could not give the solver and the
- * verifier different tool faces, different presets or a different working directory, which is exactly what a
- * multi-role research pack needs (and what v3's role separation expressed).
- *
- * WHY THIS IS SAFE AND FREE: only keys the caller ACTUALLY PROVIDES are copied, so an unchanged caller produces a
- * byte-identical spec (no `undefined` is ever injected), and a host that predates these fields simply ignores them.
- * A caller supplies them on the spec it already hands to the delivery seam - no new settings key, no default change.
+ * ★ PHASE 7 (removed a FAKE capability): DSH 0.2.1 REMOVED the per-child `toolFilter` / `persona` / `depthLimit`
+ * fields from its subagent contract (the only per-child knobs left are cwd/agentPreset/outputSchema, and 0.2.1's
+ * official replacement for a different tool face is the Agent Preset). The PHASE 6 helper below copied those names
+ * onto the ACTIVATION spec, but the host reads `spec.request` and the delivery seam never received a `child` - so it
+ * looked like a capability and was never in force. Red line 4: no consumers, no mechanism. Deleted, with this note so
+ * the next person does not re-add it: a different tool face for a subagent comes from agentPreset at CREATION time;
+ * inside a session, dynamic add/remove is `ctx.tools.register` / `ctx.tools.restrict` (docs/26 §3.22).
  */
-function childFieldsOf(spec) {
-  const src = (spec && (spec.child || spec)) || {}
-  const out = {}
-  for (const k of ['cwd', 'agentPreset', 'outputSchema', 'persona', 'toolFilter', 'depthLimit']) {
-    if (src[k] !== undefined && src[k] !== null) out[k] = src[k]
-  }
-  return out
-}
 function providerNamesOf(subagents) {
   try {
     const names = subagents && typeof subagents.list === 'function' ? subagents.list() : null
@@ -328,9 +317,6 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
         + (subagents ? '; verbs this host does offer: ' + offeredVerbs : '; ctx.get(\'subagents\') returned nothing'))
   }
   return async ({ turn, text, child }) => {
-    // ★ 目标 1(b)：`child` 是调用方提供的 per-child 字段（cwd/agentPreset/toolFilter/outputSchema/persona/depthLimit）；
-    // 也接受把它们直接放在 `turn` 上。★ 只取真给了的键 ⇒ 不传时 spec 逐字节不变。
-    const childOpts = childFieldsOf(child || turn)
     // ROUND 346: the spec carries the SAME three elements the original's wake carries - who, why, and what next -
     // because a host that only receives "here is some text" cannot supervise the turn it just started. Measured
     // against the original: its wake takes { to, why, next_step }, so the framework labels its own the same way.
@@ -378,7 +364,7 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
           signal,
           // 'caller' = keep the result with this caller; 'parent' would also notify the parent model.
           delivery: 'caller',
-        }, childOpts))
+        }))
       }
       return subagents.startContinuable(spec)
     }

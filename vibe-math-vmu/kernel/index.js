@@ -1716,6 +1716,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // `tools[]`); the kernel only HOLDS those declarations (like slots/tracks), and the host publishes them.
   // That is the boundary this card is about: the framework never learns an institution's tool names.
   const packToolDeclarations = new Map()
+  // ★ PHASE 7: the HOST owns the tool table; the kernel only holds pack DECLARATIONS. A retraction therefore has
+  // to be observable to the adapter, or a pack unload leaves the names visible to the model. One observer, set by
+  // the host adapter; the kernel never calls a host API itself.
+  let onPackToolRetract = null
   let started = false
   // CONTROL FLOW (docs/08 搂5; the user's explicit domain). The kernel owns the STATE; a pause is a real
   // gate (task work is refused while paused) rather than a label nobody reads.
@@ -2121,6 +2125,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
      * PHASE 6 (goal-3 audit, security): `by` is the pack claiming the retraction. A name owned by ANOTHER pack is a
      * NAMED refusal, and the whole batch is checked before anything is removed, so a mixed batch cannot half-succeed.
      */
+    /** ★ PHASE 7: the host adapter registers the ONLY consumer of "a pack retracted its tools". Read-only. */
+    setPackToolRetractObserver(fn) { onPackToolRetract = typeof fn === 'function' ? fn : null; return { ok: true, observer: typeof fn === 'function' } },
+
     retractPackTools(names = null, { by = null } = {}) {
       const wanted = names === null ? [...packToolDeclarations.keys()] : (Array.isArray(names) ? names : [names])
       const owner = by === null || by === undefined ? null : String(by)
@@ -2137,7 +2144,24 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       }
       const removed = []
       for (const key of pending) if (packToolDeclarations.delete(key)) removed.push(key)
-      return { ok: true, removed, count: removed.length }
+      // ★ PHASE 7: notify the host adapter AFTER the declaration is gone. The callback is best-effort - a retraction
+      // that already removed the kernel declaration must not be reported as failed because a host call threw - but the
+      // failure is RETURNED (never swallowed), so the caller can see it.
+      // ★ PHASE 7: notify the HOST asynchronously. The declaration removal itself is SYNCHRONOUS (callers and the
+      // existing contracts rely on that); the returned `hostRetract` promise is what pack.js awaits on unload, so the
+      // host tool table is updated before the unload is considered complete.
+      let hostRetract = null
+      if (removed.length > 0 && typeof onPackToolRetract === 'function') {
+        try {
+          hostRetract = Promise.resolve(onPackToolRetract({ by: owner, removed: removed.slice() })).then(
+            (r) => r,
+            (e) => ({ ok: false, code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) }),
+          )
+        } catch (e) {
+          hostRetract = Promise.resolve({ ok: false, code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) })
+        }
+      }
+      return { ok: true, removed, count: removed.length, hostRetract }
     },
 
     /** READ-ONLY: the tools packs have declared. The HOST publishes these; the kernel executes nothing. */

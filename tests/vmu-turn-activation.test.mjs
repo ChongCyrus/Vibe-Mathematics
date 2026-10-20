@@ -161,7 +161,9 @@ const signal = new AbortController().signal
   ok(err && /someOtherStartLikeThing|\(none/.test(String(err.hint)), 'the hint lists the start-like verbs the host does offer', err && err.hint)
 }
 
-// ── 7. ★ TARGET 1(b): THE 0.2.1 PER-CHILD FIELDS ARE EXPRESSIBLE, AND COST NOTHING WHEN UNUSED ────────────────
+// ── 7. ★ PHASE 7: 0.2.1 REMOVED THE PER-CHILD FIELDS. The activation spec must carry ONLY its own keys, and a
+// caller that passes the old names must NOT get them injected (the previous version tested a capability that never
+// existed: the host reads request, and the delivery seam never received a child).
 {
   const taken = []
   const subs = {
@@ -172,24 +174,21 @@ const signal = new AbortController().signal
     },
   }
   const base = { turn: { id: 't' }, text: 'x' }
-  // (a) a caller that supplies the new fields: they must reach the spec verbatim.
+  // (a) the spec carries the 0.2.1 activation keys and NOTHING from the removed per-child contract.
+  await deliverViaSubagents(subs, null, { provider: 'spawn', parent, signal })(base)
+  const spec = taken[0] || {}
+  const allowed = ['provider', 'label', 'request', 'signal', 'delivery']
+  const extra = Object.keys(spec).filter((k) => !allowed.includes(k))
+  ok(extra.length === 0, '★ 0.2.1 activation spec carries only provider/label/request/signal/delivery', extra)
+  // (b) a caller that supplies the OLD per-child names gets NOTHING injected (no fake capability).
+  taken.length = 0
   await deliverViaSubagents(subs, null, { provider: 'spawn', parent, signal })({ ...base, child: {
     cwd: '/workspace/proj', agentPreset: 'v3-solver', outputSchema: { type: 'object' }, persona: 'solver', toolFilter: ['read', 'write'], depthLimit: 2,
   } })
   const withFields = taken[0] || {}
-  ok(withFields.cwd === '/workspace/proj', 'cwd reaches the activation spec (0.2.1 per-child field)', withFields.cwd)
-  ok(withFields.agentPreset === 'v3-solver', 'agentPreset reaches it, so roles can use different presets', withFields.agentPreset)
-  ok(withFields.toolFilter && withFields.toolFilter.length === 2, 'toolFilter reaches it, so roles can have different tool faces', withFields.toolFilter)
-  ok(withFields.persona === 'solver' && withFields.depthLimit === 2, 'persona and depthLimit reach it too', { p: withFields.persona, d: withFields.depthLimit })
-  ok(withFields.outputSchema && withFields.outputSchema.type === 'object', 'outputSchema reaches it (structured member output becomes expressible)', withFields.outputSchema)
-  // (b) a caller that supplies NOTHING: the spec must not grow undefined keys, i.e. default behaviour is byte-identical.
-  taken.length = 0
-  await deliverViaSubagents(subs, null, { provider: 'spawn', parent, signal })(base)
-  const bare = taken[0] || {}
-  const extraKeys = Object.keys(bare).filter((k) => ['cwd', 'agentPreset', 'outputSchema', 'persona', 'toolFilter', 'depthLimit'].includes(k))
-  ok(extraKeys.length === 0, 'NOTHING is injected when the caller supplies nothing, so an unchanged caller is byte-identical', extraKeys)
+  const injected = Object.keys(withFields).filter((k) => ['cwd', 'agentPreset', 'outputSchema', 'persona', 'toolFilter', 'depthLimit'].includes(k))
+  ok(injected.length === 0, '★ reverse: the removed per-child names are NOT injected (agentPreset belongs at CREATION time)', injected)
 }
-
 console.log('=== ONESHOT RESULT.OUTPUT: an accepted one-shot run s text is CONTENT BLOCKS, not a reply field ===')
 {
   // ★ MEASURED ON A REAL HOST (v3 SLV): `subagents.start` resolves to SubagentResult { output: ContentBlock[] }; the

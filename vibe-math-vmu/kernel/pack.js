@@ -673,7 +673,7 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
             'construct the kernel with declarePackTools() (kernel/index.js), or drop the tools field')
         }
         const declared = kernel.declarePackTools(manifest.tools, { by: manifest.id })
-        undo.push(() => kernel.retractPackTools(declared.declared, { by: manifest.id }))
+        undo.push(() => { const r = kernel.retractPackTools(declared.declared, { by: manifest.id }); return r && r.hostRetract ? r.hostRetract : undefined })
         break // one call declares the whole list; one undo entry is enough
       }
       // D-03/P1 — A DECLARED PROMPT POLICY IS CONSUMED, OR THE PACK IS REFUSED BY NAME. These entries are not
