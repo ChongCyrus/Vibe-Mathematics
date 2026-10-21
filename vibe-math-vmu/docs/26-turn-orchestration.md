@@ -633,7 +633,7 @@ root agent 自己的 assembly（root 不属于任何成员槽）。
 ★ **真机病**：`step` 的 `why` 只存在 turn 对象和 host wake spec 里，**没进装配文本**；只给 `vibe_v5_wait` 的回合，成员不知道“只等一次”，回了会议字段，最后只看到 `VMU_NO_OPEN_MEETING`。
 ★ **修**：`assemble()` 在 `why`/`nextStep` 非空时追加 `【本轮指令】<原文>`（截断 4000），返回 `instructionDelivered:true`；无指令的回合不追加空块（false）。
 ★ **交付回执**：`awaiting` 与最终 turn 回执都带 `instructionDelivered`，所以“指令到了吗”可读。
-★ **会议门**：`apply()` 中 meeting face 抛 `VMU_NO_OPEN_MEETING` 时，改为具名 `VMU_TURN_FIELD_NOT_CALLED`（保留 `cause`），hint 指向 `instructionDelivered` 与 per-turn tools allowlist——**不再把“成员没收到指令”误报成“会议服务坏了”**。
+★ **会议门**：`apply()` 中 meeting face 抛 `VMU_NO_OPEN_MEETING` 时，改为具名 `VMU_TURN_FIELD_NOT_APPLICABLE`（保留 `cause`），hint 指向 `instructionDelivered` 与 per-turn tools allowlist——**不再把“成员没收到指令”误报成“会议服务坏了”**。
 
 ## 4. v1 的边界（**未做，明写** ✗）
 

@@ -1090,7 +1090,7 @@ export function createTurnOrchestrator({
           // prompt. Keep the underlying message, but name the field/tool/instruction chain so a reader does not chase
           // the meeting service. Nothing is pretended to have executed.
           const err = new Error('this turn was not given a meeting tool, and no meeting is open: the reply field "' + d.field + '" cannot be applied (' + String(e.message || e) + ')')
-          err.code = 'VMU_TURN_FIELD_NOT_CALLED'
+          err.code = 'VMU_TURN_FIELD_NOT_APPLICABLE'
           err.hint = 'the member answered with a field no tool in this turn could produce; check instructionDelivered on the turn receipt, and the per-turn tools allowlist. The underlying meeting error is kept as cause.'
           err.cause = e
           throw err

@@ -572,7 +572,7 @@
 | `VMU_TURN_BAD_JSON` | 围栏内容**不是合法 JSON**，或不是对象 | 轮次编排 26 | ✗（与"没有围栏"是**两种**失败 ✗） |
 | `VMU_TURN_UNKNOWN_FIELD` | 回复字段**不在已宣告目录**里，且 `vmu.turn.unknownReplyFieldMode='refuse'`（默认 `ignore-named` 不抛此码，改为 `ignoredFields`＋notice） | 轮次编排 26 | ✗（须**点名**该字段并列出已知字段，**绝不猜** ✗） |
 | `VMU_TURN_ASSEMBLY_FAILED` | **管线拒绝了本轮装配** | 轮次编排 26 | ✗（须转述管线的拒因） |
-| `VMU_TURN_FIELD_NOT_CALLED` | **回执带了某个字段，但本回合的 face/tool 根本调不到**（真机 `NO_OPEN_MEETING` 的真实原因：指令没进提示词）；`cause` 保留原会议错误 | 轮次编排 26（`kernel/turn/index.js` ✓） | ✅（hint 指向 `instructionDelivered` 与 per-turn tools allowlist） |
+| `VMU_TURN_FIELD_NOT_APPLICABLE` | **回执带了某个字段，但本回合的 face/tool 根本调不到**（真机 `NO_OPEN_MEETING` 的真实原因：指令没进提示词）；`cause` 保留原会议错误 | 轮次编排 26（`kernel/turn/index.js` ✓） | ✅（hint 指向 `instructionDelivered` 与 per-turn tools allowlist） |
 | `VMU_TURN_REENTRANT` | ★ **PHASE 6 / K2**：★ **已有一个回合在途，★ 第二次 `run()` 会嵌套** —— ★ 本循环的**归因／成员回复槽／通告队列都是单回合状态**，★ 嵌套会覆盖 | 轮次编排 26 | ✗（★ **等在途回合结算后再调**；★ `drive()`／`step()` 已按顺序调用，★ 不受影响 ✓） |
 | `VMU_TURN_DELIVERY_TIMEOUT` | ★ **PHASE 6 / SLV**：★ **one-shot 成员回合在 `vmu.turn.deliveryTimeoutMs` 内没有结算**（请求已进入调用、未返回）—— ★ 超时后该回合**具名失败并释放串行派发队列**，后面的回合继续；★ 记录带 turn／member／已等毫秒／最后交付阶段／是否已进入调用 | 轮次编排 26 | ✅（可调 deadline；★ 正常回合不受影响） |
 | `VMU_TURN_DISPATCH_FAILED` | ★ **PHASE 6 / SLV**：★ **一次 `turn.dispatch(spec)` 的成员回合在串行队列里失败**（交付/解析/写回任一环节）—— ★ 失败原因与原文在 `lastError`，`dispatch.completed` 不进；★ 队列继续 | 轮次编排 26 | ✅（读 `dispatchStatus().lastError` 与 `recentCompleted`） |
@@ -1492,7 +1492,7 @@
 | `VMU_TURN_BAD_JSON` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_DELIVERY_TIMEOUT` | **已实现 ✓** | `vibe-math-vmu/host-deliver.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_DISPATCH_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
-| `VMU_TURN_FIELD_NOT_CALLED` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
+| `VMU_TURN_FIELD_NOT_APPLICABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_NO_FENCE` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_REENTRANT` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/packs/v3/middleware/verify.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_UNKNOWN_FIELD` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |

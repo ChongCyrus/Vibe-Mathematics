@@ -141,9 +141,9 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     faces: { 'vmu.meetings': { speak: async () => { const e = new Error('no meeting is open'); e.code = 'VMU_NO_OPEN_MEETING'; throw e } } } })
   let wrapped = null
   try { await noMeeting.apply({ say: 'x' }) } catch (e) { wrapped = e }
-  ok(wrapped && wrapped.code === 'VMU_TURN_FIELD_NOT_CALLED' && wrapped.cause && wrapped.cause.code === 'VMU_NO_OPEN_MEETING' &&
+  ok(wrapped && wrapped.code === 'VMU_TURN_FIELD_NOT_APPLICABLE' && wrapped.cause && wrapped.cause.code === 'VMU_NO_OPEN_MEETING' &&
     /instructionDelivered/.test(String(wrapped.hint)),
-    'T16b. ★ 反：回执带 meeting 字段但本回合无会议工具 ⇒ 具名 VMU_TURN_FIELD_NOT_CALLED（保留 cause，不再只报 NO_OPEN_MEETING）', wrapped && { code: wrapped.code, cause: wrapped.cause && wrapped.cause.code })
+    'T16b. ★ 反：回执带 meeting 字段但本回合无会议工具 ⇒ 具名 VMU_TURN_FIELD_NOT_APPLICABLE（保留 cause，不再只报 NO_OPEN_MEETING）', wrapped && { code: wrapped.code, cause: wrapped.cause && wrapped.cause.code })
 }
 
 // ⑤ the whole loop in one call, through both seams

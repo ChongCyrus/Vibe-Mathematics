@@ -56,8 +56,15 @@ console.log('=== 2. ★ A REFUSED ROUND STILL RECORDS THE JUDGEMENT THE MEMBER E
   const reply = JSON.stringify({ say: '占位命题已解决', progress: '投 true', vote_solved: true })
   seam.supply(reply)
   const refused = await spec(TOOL_NAMES.turn).run({ op: 'step', phase: 'founding', reply })
-  ok(refused.ok === false && refused.code === 'VMU_NO_OPEN_MEETING',
-    'the round IS refused, for a reason unrelated to the vote (no meeting is open)', { code: refused.code })
+  // ★ PHASE 9 / round 7 (INTENTIONAL SEMANTIC CHANGE, not a relaxation): the turn now wraps the meeting error in a code that
+  // names what actually went wrong - the reply carried a field that no tool in this turn could produce - and keeps the meeting
+  // error inside the message. Both halves are asserted, so the wrapper adds precision instead of hiding the original reason.
+  // ★ And the code is called NOT_APPLICABLE rather than NOT_CALLED because the member DID send the field: an unhelpful name
+  // would send the caller looking for a missing call that was never missing.
+  const msg = String((refused && refused.message) || '')
+  ok(refused.ok === false && refused.code === 'VMU_TURN_FIELD_NOT_APPLICABLE' && /no meeting is open/.test(msg),
+    'the round IS refused, for a reason unrelated to the vote - the code names "no tool here could produce that field" AND the message still carries the meeting cause',
+    { code: refused.code, message: msg.slice(0, 160) })
   ok(recorded(kernel).m1 === true,
     '★★★ AND THE VOTE IS RECORDED ANYWAY: a judgement is bookkeeping, not a dispatch, so refusing another field of the same reply cannot discard it',
     { recorded: recorded(kernel) })
