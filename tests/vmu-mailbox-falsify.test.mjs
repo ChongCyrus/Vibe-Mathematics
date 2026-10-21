@@ -38,7 +38,7 @@ async function mailboxProbe(mod) {
   const mk = () => mod.createMailbox({ clock: () => 1000, log: () => {}, settings: {}, bus: null, deliver: async () => true })
   const attempt = async (send) => {
     const m = mk()
-    m.send('m1', { to: 'm2', text: 'hello' })
+    m.send('m1', { to: 'm2', text: 'hello', urgent: true })
     try { return { flush: await m.flush('m2', send ? { send } : undefined), m } } catch (e) { return { error: (e && e.code) || String((e && e.message) || e), m } }
   }
   const good = await attempt(null)
@@ -65,10 +65,10 @@ const family = await falsifyFamily({
     mutations: [
       { label: 'ack BEFORE the delivery attempt', name: 'mailbox-ack-first',
         find: '      let result\n      try {\n        result = await tx(envelope)\n',
-        replace: '      let result\n      mailbox.ack(id, entries.map((e) => e.id))   // MUTANT: ack before the transport ran\n      try {\n        result = await tx(envelope)\n' },
+        replace: '      let result\n      mailbox.ack(id, urgentRows.map((e) => e.id))   // MUTANT: ack before the transport ran\n      try {\n        result = await tx(envelope)\n' },
       { label: 'ack ON the transport-refused branch', name: 'mailbox-ack-refused',
         find: "      if (result === false || (result && result.ok === false)) {\n        note('VMU_MAILBOX_DELIVERY_FAILED')\n",
-        replace: "      if (result === false || (result && result.ok === false)) {\n        mailbox.ack(id, entries.map((e) => e.id))   // MUTANT: ack although nothing was delivered\n        note('VMU_MAILBOX_DELIVERY_FAILED')\n" },
+        replace: "      if (result === false || (result && result.ok === false)) {\n        mailbox.ack(id, urgentRows.map((e) => e.id))   // MUTANT: ack although nothing was delivered\n        note('VMU_MAILBOX_DELIVERY_FAILED')\n" },
     ],
   }],
 })

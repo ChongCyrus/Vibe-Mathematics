@@ -1312,7 +1312,7 @@ recount(ballotId):
 
 **不变式（与 v5r 的对应关系）**
 - 群聊：消息 `{id:'msg-N', seq, from, at, text, replyTo, quotes[], kind}` —— **id／发言人／时间／回复目标**四件齐全；被拒发言**不追加**（"拒绝不是一条消息"）；禁言**到期即自动解除并留痕**；配额 `0＝不限`、窗口 `0＝整场`；**表决期禁言由注入的 `isFrozen()` 派生**（与 `ballot.freeze` 同源，无定时器），`freezeExemptAdmins` 保留 v5r 的 chair-first 豁免开关。
-- 信箱：**每收件人一份**（群发＝N 条 N 个 id）；**ack 只在投递成功之后**（返回 `false`／抛异常／无 transport ⇒ 一条都不 ack，队列原样可重投）；**ack 后正文即删**，指向它的引用锚**具名悬空拒**；`freshOnly`＋`markInjected/clearInjected` ＝ **每提示一次去重**；urgent（默认 `dm/office/assign/nudge/notice/meeting/verify`）立即投，其余按 `digestMax`／`digestWindowMs` 合批；`plan()` 受 `wakeBudget` 约束且**具名列出被推迟者与原因**。
+- 信箱：**每收件人一份**（群发＝N 条 N 个 id）；**非紧急投递只给提示（count／发件人／标题，notice ≤300 字），正文不进提示词**；成员用 `list` 看 8 字段行（无正文），`open` 返回正文并置 `read:true`，`setState` 改 read/todo；**`ack` 是投递层结算，不等于读过**；**ack 后正文即删**，指向它的引用锚**具名悬空拒**；`freshOnly`＋`markInjected/clearInjected` ＝ **每提示一次去重**；紧急只有发送方**显式 `urgent:true`** 才带正文（`vmu.mailbox.urgentKinds` 默认空，机构可声明 kind 自动紧急）；其余按 `digestMax`／`digestWindowMs` 合批（45000ms／12 是**非紧急提示的节奏**，不是批量投正文）；`plan()` 受 `wakeBudget` 约束且**具名列出被推迟者与原因**。
 - 状态面板：字段 `overall`（总目标）／`subgoal`／`plan[]`／`status`／**`subtasks[]`（正在执行的子任务，v5r 缺的独立字段）**，`state ∈ planned|running|blocked|done`；**只追加**历史；时间**由框架写**（自带 `…At/…Ms` 具名拒）；同值幂等；他人改 `overall` ⇒ 记 `deviation`（保留原作者与原值）或按 `deviationPolicy:"refuse"` **具名拒**；`view()` **留痕**且上限触界**计数上报**；有 `members` 接缝时镜像 `overall/subgoal/plan/status`（**不镜像 `subtasks`**，那个面不认识它）。
 
 ### 25.2 基线 A（v5r 实际实现）覆盖表
@@ -1382,7 +1382,7 @@ recount(ballotId):
 
 ### 25.6 工具面与钩子生产者
 
-- 新工具面：`vibe_vmu_chat`（send/list/policy/setpolicy/mute/unmute/quota/admin/status）、`vibe_vmu_mailbox`（send/pending/flush/ack/plan/anchor/unread/status）、`vibe_vmu_panel`（set/get/view/board/history/audit/status）。
+- 新工具面：`vibe_vmu_chat`（send/list/policy/setpolicy/mute/unmute/quota/admin/status）、`vibe_vmu_mailbox`（send/pending/flush/ack/list/open/setState/plan/anchor/unread/status）、`vibe_vmu_panel`（set/get/view/board/history/audit/status）。
 - 新钩子（**字符串首参**形态；对象形态会被总线拒且被 catch 吞掉，等于没广播）：`chat/send-before`(可阻断)｜`chat/sent`｜`chat/refused`｜`mailbox/deliver-before`(可阻断)｜`mailbox/delivered`｜`panel/write-before`(可阻断)｜`panel/written`｜`panel/viewed`。三条 BEFORE 钩子的拒绝都会**具名**落到调用方（chat ⇒ 抛出该码且不追加；mailbox ⇒ 返回 `ok:false` 且**一条都不 ack**；panel ⇒ 抛出该码且行不变）。
 
 ### 25.7 本轮验证

@@ -46,7 +46,8 @@ const EXPECTED = ['vibe_v5_record_progress', 'vibe_v5_record_proposition', 'vibe
   'vibe_v5_meeting', 'vibe_v5_motion', 'vibe_v5_second', 'vibe_v5_poll_open', 'vibe_v5_poll_vote', 'vibe_v5_poll_close',
   'vibe_v5_verdict',
   'vibe_v5_start', 'vibe_v5_stop', 'vibe_v5_pause', 'vibe_v5_resume', 'vibe_v5_configure', 'vibe_v5_set',
-  'vibe_v5_lean_run', 'vibe_v5_lean_job', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_archive']
+  'vibe_v5_lean_run', 'vibe_v5_lean_job', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_archive',
+  'vibe_v5_inbox', 'vibe_v5_wait']
 /** The codes a refusal may carry: REGISTERED ones only (docs/03 §8). */
 const REGISTERED_CODES = ['VMU_INVALID_ARGUMENT', 'VMU_NO_SUCH_OBJECT', 'VMU_STATE', 'VMU_ENGINE_UNAVAILABLE',
   'VMU_NOT_PERMITTED', 'VMU_NOT_FOUND', 'VMU_CONFLICT', 'VMU_QUOTA_EXCEEDED', 'VMU_PACK_MISSING']
@@ -84,14 +85,14 @@ try {
   // ── ① ZERO MECHANISM ────────────────────────────────────────────────────────────────────────────────────────
   console.log('=== 1. NO PACK ⇒ NOT ONE v5r TOOL EXISTS ===')
   const bare = await boot({ root })
-  ok(EXPECTED.length === 38, 'the expected list is non-empty (RULE E)', EXPECTED.length)
+  ok(EXPECTED.length === 40, 'the expected list is non-empty (RULE E)', EXPECTED.length)
   const bareHits = EXPECTED.filter((n) => bare.names.includes(n))
   ok(bareHits.length === 0, 'without the pack none of the six names is published', bareHits)
 
   // ── ② THE DECLARATION (the names come FROM the pack) ───────────────────────────────────────────────────────
   console.log('=== 2. WITH packs=["v5r"] THE THIRTY-EIGHT DECLARED NAMES ARE PUBLISHED ===')
   const PACK = v5r.PACK
-  ok(Array.isArray(PACK.tools) && PACK.tools.length === 38, 'the loaded manifest DECLARES thirty-eight tools', PACK.tools && PACK.tools.length)
+  ok(Array.isArray(PACK.tools) && PACK.tools.length === 40, 'the loaded manifest DECLARES forty tools', PACK.tools && PACK.tools.length)
   const declaredNames = PACK.tools.map((t) => t.name)
   ok(declaredNames.length > 0 && EXPECTED.filter((n) => declaredNames.includes(n)).length === EXPECTED.length,
     'the declaration is exactly the thirty-eight expected names', declaredNames)
@@ -99,9 +100,9 @@ try {
   const published = EXPECTED.filter((n) => v5rBoot.names.includes(n))
   ok(EXPECTED.length > 0 && published.length > 0 && published.length === EXPECTED.length,
     'all thirty-eight are published through the real host adapter', { published: published.length, names: v5rBoot.names.length })
-  ok(v5rBoot.handle.kernel.packTools().length === 38, 'the KERNEL holds the thirty-eight declarations', v5rBoot.handle.kernel.packTools().length)
+  ok(v5rBoot.handle.kernel.packTools().length === 40, 'the KERNEL holds the forty declarations', v5rBoot.handle.kernel.packTools().length)
   const kernelStatus = v5rBoot.handle.kernel.status({ detail: 'summary' })
-  ok(Array.isArray(kernelStatus.packTools) && kernelStatus.packTools.length === 38,
+  ok(Array.isArray(kernelStatus.packTools) && kernelStatus.packTools.length === 40,
     'kernel.status() reports the declared names (observable, not implicit)', kernelStatus.packTools && kernelStatus.packTools.length)
   const hostNames = Object.values((await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'host.js')).href)).TOOL_NAMES)
   const leaked = EXPECTED.filter((n) => hostNames.includes(n))
@@ -993,8 +994,8 @@ try {
   const k2 = km.createKernel({ clock: () => 1000, root })
   const loader = pm.createPackLoader({ kernel: k2, registry: k2.registry })
   const applied = await loader.apply({ id: 'v5r-tools-probe', version: '1.0.0', tools: toolsMod.V5R_PACK_TOOLS })
-  ok(applied && applied.ok === true, 'a manifest carrying the thirty-eight declarations APPLIES', applied && (applied.code || applied.id))
-  ok(k2.packTools().length === 38, 'the kernel holds the thirty-eight names after apply', k2.packTools().length)
+  ok(applied && applied.ok === true, 'a manifest carrying the forty declarations APPLIES', applied && (applied.code || applied.id))
+  ok(k2.packTools().length === 40, 'the kernel holds the forty names after apply', k2.packTools().length)
   const unloaded = await loader.unload('v5r-tools-probe')
   ok(unloaded && unloaded.ok === true && unloaded.residueFree === true, 'unload reports no residue', unloaded)
   ok(k2.packTools().length === 0, 'the declarations are RETRACTED (nothing left to publish)', k2.packTools().length)
@@ -1129,8 +1130,8 @@ try {
   const denyAll = [...faces.chair.deny, ...faces.member.deny, ...faces.temp.deny]
   ok(denyAll.length > 0 && denyAll.filter((n) => !n.startsWith('vibe_v5_')).length === 0 && denyAll.filter((n) => /^vibe_vmu_/.test(n)).length === 0,
     '★★ the deny lists contain ONLY v5r tools (vibe_v5_*) — no framework face (vibe_vmu_*) is ever denied by this pack', { deny: denyAll.length })
-  ok(faces.chair.deny.length === allDeclared.length - 37 && faces.member.deny.length === allDeclared.length - 20 && faces.temp.deny.length === allDeclared.length - 6,
-    '★★ the deny sizes are the complement of the BULLET sets (chair 1 / member 18 / temp 32 of the 38 declared)', { chair: faces.chair.deny.length, member: faces.member.deny.length, temp: faces.temp.deny.length })
+  ok(faces.chair.deny.length === allDeclared.length - 39 && faces.member.deny.length === allDeclared.length - 22 && faces.temp.deny.length === allDeclared.length - 8,
+    '★★ the deny sizes are the complement of the BULLET sets (chair 1 / member 18 / temp 32 of the 40 declared)', { chair: faces.chair.deny.length, member: faces.member.deny.length, temp: faces.temp.deny.length })
   // every DENIED name is a DECLARED tool (a prose mention cannot narrow a face)
   const declaredNameSet = new Set((PACK.tools || []).map((t) => t.name))
   ok(denyAll.filter((n) => declaredNameSet.has(n)).length === denyAll.length,
@@ -1151,8 +1152,8 @@ try {
 
   // ── ⑦e GOAL B-2 (PHASE 8): the pack IMPORTS the kit — one copy of the code, institution vocabulary stays in v5r ──
   console.log('=== 7e. B-2 WIRING: kit imports, zero local copies ===')
-  ok(PACK.tools.length === 38,
-    '★★ the declared tool COUNT is unchanged by the move (institution vocabulary stays in the pack)', PACK.tools.length)
+  ok(PACK.tools.length === 40,
+    '★★ the declared tool COUNT is what the pack declares (institution vocabulary stays in the pack; 38 + inbox + wait)', PACK.tools.length)
   const packSrcW = (await import('node:fs')).readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
   const movedDecls = [
     'const str = (v)', 'const has = (v)', 'function refuse(', 'function settingsOf(', 'function declaredTracks(',
@@ -1241,7 +1242,7 @@ try {
   // (constant-anchored: the declared count is a contract asserted elsewhere, so "both sides empty" cannot pass here)
   const wireSorted39 = wireSpecs39.slice().sort()
   const kernelSorted39 = kernelNames39.slice().sort()
-  ok(wireSpecs39.length === 38 && kernelNames39.length === 38 && JSON.stringify(wireSorted39) === JSON.stringify(kernelSorted39),
+  ok(wireSpecs39.length === 40 && kernelNames39.length === 40 && JSON.stringify(wireSorted39) === JSON.stringify(kernelSorted39),
     '★★★ WIRE == LOGICAL: the registered v5r specs are exactly the tools the kernel holds (native; nothing replaced by run_code)', { wire: wireSpecs39.length, kernel: kernelNames39.length })
   ok(v5rBoot.state.specs.filter((s) => s.deferLoading !== undefined).length === 0,
     '★★ no spec carries deferLoading (the disproved defer mode is gone as well)', v5rBoot.state.specs.length)
@@ -1257,6 +1258,83 @@ try {
   ok(receipt39.presentation && receipt39.presentation.mode === null && presentCalls39.length === 0 &&
     (!receipt39.presentation.unapplied || receipt39.presentation.unapplied.length === 0),
     '★★★ 零机制（宿主侧）：不声明 ⇒ 回执 mode:null、presentAs 从未被调用、无 unapplied', { mode: receipt39.presentation && receipt39.presentation.mode, calls: presentCalls39 })
+
+  // ── ⑦j PHASE 9 / round 3: INBOX (eight-field triage) + WAIT + message subject/urgent ──────────────────────────
+  // The mailbox list/open/setState work is another lane's: the tool face is asserted BOTH ways — the stub proves the
+  // projection (eight fields, no body on list, body on open), and the REAL kernel right now proves the named refusal
+  // ("需内核能力：mailbox …") instead of a silent empty list.
+  console.log('=== 7j. INBOX / WAIT / MESSAGE (subject+urgent) ===')
+  const specs = (n) => PACK.tools.filter((t) => t.name === n)[0]
+  const stubKernel = {
+    members: { roster: () => [{ id: 'r-1', slot: 'member', state: 'live' }] },
+    mailbox: {
+      list: async (member, opts) => ([{ id: 'm1', from: 'r-2', at: 7, subject: 'hello', read: false, todo: false, kind: 'dm', bytes: 12, text: 'SECRET BODY' }]),
+      open: async (member, id) => ({ entry: { id, from: 'r-2', at: 7, subject: 'hello', kind: 'dm', text: 'BODY TEXT', read: false, todo: false } }),
+      setState: async (member, patch) => ({ id: patch && patch.id, read: patch && patch.read === true, todo: patch && patch.todo === true }),
+      send: (from, payload) => { stubKernel._sent = { from, payload }; return { ok: true, ids: ['m9'] } },
+    },
+  }
+  const inboxList = await specs('vibe_v5_inbox').handler({ action: 'list', member: 'r-1' }, { kernel: stubKernel })
+  const rowKeys = inboxList.rows && inboxList.rows[0] ? Object.keys(inboxList.rows[0]).sort() : []
+  ok(JSON.stringify(rowKeys) === JSON.stringify(['at', 'bytes', 'from', 'id', 'kind', 'read', 'subject', 'todo']) && inboxList.rows[0].text === undefined,
+    '★★★ inbox list: every row carries EXACTLY the eight triage fields and NO body (text is only via open)', rowKeys)
+  const inboxOpen = await specs('vibe_v5_inbox').handler({ action: 'open', id: 'm1', member: 'r-1' }, { kernel: stubKernel })
+  ok(inboxOpen.message && inboxOpen.message.text === 'BODY TEXT' && inboxOpen.message.read === true,
+    '★★★ inbox open: the body comes back and the read flag is true', inboxOpen.message && { hasText: inboxOpen.message.text === 'BODY TEXT', read: inboxOpen.message.read })
+  const inboxMark = await specs('vibe_v5_inbox').handler({ action: 'mark', id: 'm1', todo: true, member: 'r-1' }, { kernel: stubKernel })
+  ok(inboxMark.state && inboxMark.state.todo === true,
+    '★★ inbox mark: the todo flag is set', inboxMark.state)
+  // The kernel's mailbox list/open/setState HAS landed (this round): assert the REAL cycle, and keep the
+  // "capability missing" refusal on a stub whose mailbox has no list (a named refusal, never a silent empty table).
+  const emptyInbox = await receipt(v5rBoot, 'vibe_v5_inbox', { action: 'list', member: 'r-chair', status: 'all' })
+  ok(emptyInbox.parsed && emptyInbox.parsed.ok === true && Array.isArray(emptyInbox.parsed.rows),
+    '★★ 正（真实内核）：inbox list 返回 rows 数组（此时可能为空，但不是失败）', emptyInbox.parsed && { count: emptyInbox.parsed.count })
+  const sentProbe = await receipt(v5rBoot, 'vibe_v5_message', { to: 'r-chair', content: 'hello body line', subject: 'S1' })
+  const inboxAfter = await receipt(v5rBoot, 'vibe_v5_inbox', { action: 'list', member: 'r-chair', status: 'all' })
+  const rowAfter = inboxAfter.parsed && Array.isArray(inboxAfter.parsed.rows) ? inboxAfter.parsed.rows.filter((r) => r.subject === 'S1')[0] : null
+  const rowKeysReal = rowAfter ? Object.keys(rowAfter).sort() : []
+  ok(sentProbe.parsed && sentProbe.parsed.ok === true && sentProbe.parsed.urgent === false && rowAfter &&
+    JSON.stringify(rowKeysReal) === JSON.stringify(['at', 'bytes', 'from', 'id', 'kind', 'read', 'subject', 'todo']) && rowAfter.text === undefined,
+    '★★★ 真实 cycle：message 默认非紧急发出 ⇒ inbox list 里出现该行，且行【恰八个字段、无正文】', { keys: rowKeysReal, urgent: sentProbe.parsed && sentProbe.parsed.urgent })
+  const realId = rowAfter && rowAfter.id
+  const openedReal = await receipt(v5rBoot, 'vibe_v5_inbox', { action: 'open', id: realId, member: 'r-chair' })
+  const listAgainReal = await receipt(v5rBoot, 'vibe_v5_inbox', { action: 'list', member: 'r-chair', status: 'all' })
+  const rowAgain = listAgainReal.parsed && Array.isArray(listAgainReal.parsed.rows) ? listAgainReal.parsed.rows.filter((r) => r.id === realId)[0] : null
+  ok(openedReal.parsed && openedReal.parsed.ok === true && /hello body line/.test(String(openedReal.parsed.message && openedReal.parsed.message.text)) &&
+    rowAgain && rowAgain.read === true,
+    '★★★ 真实 open：正文回来，且再 list 时该行 read:true', openedReal.parsed && { hasBody: !!(openedReal.parsed.message && openedReal.parsed.message.text), read: rowAgain && rowAgain.read })
+  const markedReal = await receipt(v5rBoot, 'vibe_v5_inbox', { action: 'mark', id: realId, todo: true, member: 'r-chair' })
+  ok(markedReal.parsed && markedReal.parsed.ok === true && markedReal.parsed.state && markedReal.parsed.state.todo === true,
+    '★★ 真实 mark：todo 置位（setState 的 (member, {id,…}) 形状）', markedReal.parsed && markedReal.parsed.state)
+  const openMissing = await receipt(v5rBoot, 'vibe_v5_inbox', { action: 'open', id: 'ml-does-not-exist', member: 'r-chair' })
+  ok(openMissing.parsed && openMissing.parsed.ok === false && typeof openMissing.parsed.code === 'string' && openMissing.parsed.code.startsWith('VMU_'),
+    '★★ 反：open 未知 id ⇒ 具名拒（不静默返回空）', openMissing.parsed && openMissing.parsed.code)
+  const noListStub = { members: { roster: () => [{ id: 'r-1', slot: 'member', state: 'live' }] }, mailbox: {} }
+  const missingCap = await specs('vibe_v5_inbox').handler({ action: 'list', member: 'r-1' }, { kernel: noListStub }).catch((e) => ({ code: e && e.code, hint: e && e.hint }))
+  ok(missingCap && missingCap.code === 'VMU_ENGINE_UNAVAILABLE' && /mailbox/.test(String(missingCap.hint)),
+    '★★ 反（缺内核能力）：mailbox 无 list ⇒ 具名 VMU_ENGINE_UNAVAILABLE 且 hint 点名 mailbox（工具"等能力"，不是坏了）', missingCap)
+  const waitStub = await specs('vibe_v5_wait').handler({ timeout_ms: 5 }, { kernel: { activity: { wait: async ({ timeoutMs }) => ({ timedOut: true, timeoutMs }), status: () => ({ waiters: 0 }) } } })
+  ok(waitStub.ok === true && waitStub.action === 'wait' && waitStub.timedOut === true,
+    '★★ wait: returns on timeout with timedOut:true (the seam; never a poll loop)', waitStub)
+  const waitStatus = await receipt(v5rBoot, 'vibe_v5_wait', { action: 'status' })
+  ok(waitStatus.parsed && waitStatus.parsed.ok === true && waitStatus.parsed.status !== null,
+    '★ wait status: the real kernel activity face answers', waitStatus.parsed && typeof waitStatus.parsed.status)
+  const msgDefault = await specs('vibe_v5_message').handler({ to: 'r-1', content: 'hi' }, { kernel: stubKernel })
+  const msgUrgent = await specs('vibe_v5_message').handler({ to: 'r-1', content: 'hi', subject: 'S', urgent: true }, { kernel: stubKernel })
+  ok(msgDefault.urgent === false && msgUrgent.urgent === true && msgUrgent.subject === 'S' && /urgent defaults to FALSE/.test(String(msgUrgent.note)),
+    '★★ message: urgent defaults FALSE; when passed it is explicit, and subject travels with it', { d: msgDefault.urgent, u: msgUrgent.urgent })
+  // prompts: the four lines exist in EACH role section, item 3 carries the exact tightening, and nothing uses `{{ }}`.
+  const roleSecs = ['v5r-tools-academician', 'v5r-tools-researcher', 'v5r-tools-temp'].map((n) => PACK.sections.filter((s) => s.name === n)[0])
+  const promptHits = roleSecs.map((s) => {
+    const t = String((s && s.text) || '')
+    return {
+      wait: t.includes('留言（信箱）不需要立即阅读'), order: t.includes('先看列表'), urgent: t.includes('【紧急】只表示'),
+      noInterrupt: t.includes('不代表】内容更重要') && t.includes('也不代表】你必须立刻中断'), waitTool: t.includes('用 vibe_v5_wait'),
+      noTemplate: !t.includes('{{'),
+    }
+  })
+  ok(promptHits.filter((h) => h.wait && h.order && h.urgent && h.noInterrupt && h.waitTool && h.noTemplate).length === 3,
+    '★★★ prompts: all four mailbox-semantics lines are in EVERY role section, item 3 keeps "不代表内容更重要 / 不必中断", and no `{{ }}`', promptHits)
 
 } finally {
   // The store writes atomically through temp+rename, so a removal can race one in-flight file: retry, and never let

@@ -364,6 +364,7 @@
 | **R2 · `VMU_CHAT_CAP_REACHED`** | 聊天审计环形上限触界（`vmu.chat.historyCap`） | 群聊 | ✅（须给**丢弃条数**） |
 | **R2 · `VMU_MAILBOX_NO_SUCH_RECIPIENT`** | 收件人不在册/无法解析（`resolveAudience` 缺或返回空） | 私信（`kernel/mailbox.js`） | ✅（须给**可用入口**） |
 | **R2 · `VMU_MAILBOX_ACK_UNKNOWN`** | ack 一个不存在的待投递条目 | 私信 | ✅（须给**已知 id 示例**） |
+| **P9R2 · `VMU_MAILBOX_NO_SUCH_ENTRY`** | `open`/`setState` 给了一个不属于该成员信箱的 id（含已 ack 后正文已丢弃的 id） | 私信（`kernel/mailbox.js` ✓） | ✅（hint 指向 `list()`；**与投递层 ack 明确分开**） |
 | **R2 · `VMU_MAILBOX_DELIVERY_FAILED`** | 投递失败 ⇒ **不 ack**，留在待投递（缺 `deliver` 缝时也走此路） | 私信 `flush()` | ✅（须给**原始错误**与重试口径） |
 | **R2 · `VMU_MAILBOX_ANCHOR_DANGLING`** | 引用已 ack 后删除的正文（只留 `{id,from,at,kind,bytes}`） | 私信 | ✅（须给**悬空引用 id**） |
 | **R2 · `VMU_MAILBOX_CAP_REACHED`** | ack 台账/待投递触界（`vmu.mailbox.ackedLedgerCap`／`digestMax`） | 私信 | ✅（须给**丢弃/滞留条数**） |
@@ -1081,7 +1082,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **415** 个码，**逐行**给出状态 ✓：其中 **376** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **416** 个码，**逐行**给出状态 ✓：其中 **377** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1271,6 +1272,7 @@
 | `VMU_MAILBOX_ANCHOR_DANGLING` | **已实现 ✓** | `vibe-math-vmu/kernel/mailbox.js` | 代码里有该码字符串 ✓ |
 | `VMU_MAILBOX_CAP_REACHED` | **已实现 ✓** | `vibe-math-vmu/kernel/mailbox.js` | 代码里有该码字符串 ✓ |
 | `VMU_MAILBOX_DELIVERY_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/mailbox.js` | 代码里有该码字符串 ✓ |
+| `VMU_MAILBOX_NO_SUCH_ENTRY` | **已实现 ✓** | `vibe-math-vmu/kernel/mailbox.js` | 代码里有该码字符串 ✓ |
 | `VMU_MAILBOX_NO_SUCH_RECIPIENT` | **已实现 ✓** | `vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/mailbox.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_ADAPTER_OP_UNKNOWN` | **已实现 ✓** | `vibe-math-vmu/kernel/mathadapters.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_ARTIFACT_TOO_LARGE` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
@@ -1557,7 +1559,7 @@
 | `vibe_vmu_recruit` | **招募面**（15 动作）：任期/晋升/试用/招聘 ✓ | `action`(必填，枚举)、`request`、`id` | `recruitTool` 为真 | 服务的码原样透传 ✓ |
 | **`vibe_vmu_human`**（轮 2 ✓） | **人工干预 + 审批闸 + 恢复动词**（16 动作）：`status｜veto｜explainVeto｜liftVeto｜observerView｜openApproval｜approvalState｜decide｜withdraw｜queue｜gate｜dashboard｜inject｜recover｜recoverStatus｜readBack` ✓ —— **只做寻址与调用**（审批闸在 `kernel/human.gate`；撤回走 `kernel/human.withdrawApproval`；恢复动词打 `kernel.recovery` ✓） | `action`(必填，枚举)、`request`、`id`、`reason`、`byRole` | `humanTool` 为真（`vmu.human.*`／`vmu.resume.*` 任一声明） | 服务的码原样透传 ✓（`VMU_HUMAN_APPROVAL_PENDING`／`VMU_HUMAN_VETOED`／`VMU_RESUME_*`） |
 | **`vibe_vmu_chat`**（轮 2 ✓） | **群聊面**（9 动作）：`send｜list｜policy｜setpolicy｜mute｜unmute｜quota｜admin｜status` ✓ —— 管理员/发言配额/禁言/冻结豁免都由服务强制 ✓ | `action`(必填，枚举)、`from`、`text`、`kind`、`member`、`patch` | `chatTool` 为真（`vmu.chat.*`） | 服务的码原样透传 ✓（`VMU_CHAT_*`） |
-| **`vibe_vmu_mailbox`**（轮 2 ✓） | **私信面**（8 动作）：`send｜pending｜flush｜ack｜plan｜anchor｜unread｜status` ✓ —— **成功才 ack**，未 ack 可重投 ✓ | `action`(必填，枚举)、`to`、`from`、`kind`、`text`、`id` | `mailboxTool` 为真（`vmu.mailbox.*`） | 服务的码原样透传 ✓（`VMU_MAILBOX_*`） |
+| **`vibe_vmu_mailbox`**（轮 2 ✓；PHASE 9 / 轮 2 扩） | **私信面**（11 动作）：`send｜pending｜flush｜ack｜list｜open｜setState｜plan｜anchor｜unread｜status` ✓。★ **非紧急投递只给提示（count/发件人/标题，notice ≤300 字），正文不进提示词**；`list` 行不带正文，`open` 返回正文并置 `read:true`，`setState` 改 read/todo；**`ack` 是投递层结算，不等于读过**；紧急只有发送方显式 `urgent:true` 才带正文。 | `action`(必填，枚举)、`to`、`from`、`kind`、`text`、`subject`、`urgent`、`id`、`read`、`todo`、`status` | `mailboxTool` 为真（`vmu.mailbox.*`） | 服务的码原样透传 ✓（`VMU_MAILBOX_*`） |
 | **`vibe_vmu_panel`**（轮 2 ✓） | **成员状态面板**（7 动作）：`set｜get｜view｜board｜history｜audit｜status` ✓ —— 总目标/计划/正在执行的子任务 ✓ | `action`(必填，枚举)、`member`、`fields`、`source`、`by` | `panelTool` 为真（`vmu.panel.*`） | 服务的码原样透传 ✓（`VMU_PANEL_*`） |
 | **`vibe_vmu_report`**（轮 2 ✓） | **自动汇报 + 参数配置面**（8 动作）：`status｜declarations｜params｜set｜preview｜emit｜tick｜trace` ✓ —— **汇报只报告**（无 timer、不驱动任何决策 ✓） | `action`(必填，枚举)、`name`、`payload`、`key`、`value`、`by`、`reason` | `reportTool` 为真（`vmu.report.*`） | 服务的码原样透传 ✓（`VMU_REPORT_*`） |
 | **`vibe_vmu_mathadapters`**（轮 2 ✓） | **数学库适配面**（8 动作）：`probe｜plan｜run｜shapeContract｜status｜keysUsed｜config｜clearBinding` ✓ —— numpy/scipy/pandas/sympy 的会话级环境绑定与形状契约 ✓（★ **单开一面**：`vibe_vmu_mathtools` 的 action 枚举＝`kernel.mathtools` 方法集，不混装 ✓） | `action`(必填，枚举)、`lib`、`op`、`mode`、`expr`、`code`、`fn`、`packages`、`seed`、`timeoutMs`、`args`、`refresh` | `mathadaptersTool` 为真（`vmu.math.adapters.*`） | 服务的码原样透传 ✓（`VMU_MATH_LIB_*`／`VMU_MATH_SHAPE_UNKNOWN`／`VMU_EXTERNAL_UNAVAILABLE`） |

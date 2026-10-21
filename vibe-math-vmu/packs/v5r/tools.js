@@ -62,6 +62,71 @@ const toolMessage = KIT_SOCIAL.message
  * named refusal" semantics the SLV fixture verified for `meeting/send`.
  */
 
+// ── PHASE 9 / round 3: INBOX + WAIT ───────────────────────────────────────────────────────────────────────────
+/** The mailbox face action, or a NAMED refusal that names the capability. The list/open/setState work is another lane's;
+ *  this face is ready the moment it lands, and says "waiting for a capability" instead of pretending to read mail. */
+function mailboxAction(kernel, action) {
+  const mb = kernel && kernel.mailbox
+  const fn = mb && typeof mb[action] === 'function' ? mb[action] : null
+  if (!fn) {
+    throw refuse('VMU_ENGINE_UNAVAILABLE', 'inbox ' + action + ' needs the mailbox face action this assembly does not publish yet',
+      '需内核能力：mailbox ' + action + '（另一路在落）；落地后本工具自动可用，现在不会假装读到')
+  }
+  return fn.bind(mb)
+}
+/** A row WITHOUT the body: exactly the eight fields a member needs to triage. */
+const inboxRow = (row) => ({
+  id: str(row && row.id), from: str(row && (row.from || row.by)), at: row && row.at !== undefined ? row.at : null,
+  subject: row && row.subject !== undefined ? row.subject : null, read: row && row.read === true, todo: row && row.todo === true,
+  kind: str(row && row.kind), bytes: Number.isFinite(Number(row && row.bytes)) ? Number(row.bytes) : 0,
+})
+/** vibe_v5_inbox — ONE action-shaped tool (list | open | mark) over the mailbox face. */
+async function toolInbox(args = {}, { kernel } = {}) {
+  const action = has(args.action) ? str(args.action) : 'list'
+  const member = requireSeat(kernel, args.member, 'inbox').id
+  if (action === 'list') {
+    const list = mailboxAction(kernel, 'list')
+    const status = has(args.status) ? str(args.status) : 'unread'
+    const r = await list(member, { status })
+    const rows = Array.isArray(r) ? r : Array.isArray(r && r.entries) ? r.entries : Array.isArray(r && r.rows) ? r.rows : []
+    return { ok: true, tool: 'vibe_v5_inbox', action: 'list', member, status, count: rows.length, rows: rows.map(inboxRow),
+      note: 'rows carry NO body: triage by sender/time/subject/read/todo, then open ONE message' }
+  }
+  if (action === 'open') {
+    if (!has(args.id)) throw refuse('VMU_INVALID_ARGUMENT', 'inbox open needs the message id', 'take it from the list rows')
+    const open = mailboxAction(kernel, 'open')
+    const r = await open(member, str(args.id))
+    const row = r && r.entry ? r.entry : r
+    if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no message "' + str(args.id) + '" in this inbox', 'call inbox list for the real ids')
+    return { ok: true, tool: 'vibe_v5_inbox', action: 'open', member, id: str(args.id),
+      message: { id: str(row.id), from: str(row.from || row.by), at: row.at !== undefined ? row.at : null, subject: row.subject !== undefined ? row.subject : null, kind: str(row.kind), text: str(row.text), read: true, todo: row.todo === true },
+      note: 'opening marks it read; use action:"mark" with todo to track a follow-up' }
+  }
+  if (action === 'mark') {
+    if (!has(args.id)) throw refuse('VMU_INVALID_ARGUMENT', 'inbox mark needs the message id', 'take it from the list rows')
+    const setState = mailboxAction(kernel, 'setState')
+    const patch = {}
+    if (args.read !== undefined) patch.read = args.read === true
+    if (args.todo !== undefined) patch.todo = args.todo === true
+    if (Object.keys(patch).length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'inbox mark needs read and/or todo', 'pass read:true|false and/or todo:true|false')
+    const r = await setState(member, { id: str(args.id), ...patch })
+    return { ok: true, tool: 'vibe_v5_inbox', action: 'mark', member, id: str(args.id), state: { read: r && r.read === true, todo: r && r.todo === true }, receipt: r }
+  }
+  throw refuse('VMU_INVALID_ARGUMENT', 'unknown inbox action: ' + action, 'legal: list | open | mark')
+}
+/** vibe_v5_wait — wait for activity through the kernel face (NOT polling). */
+async function toolWait(args = {}, { kernel } = {}) {
+  const act = kernel && kernel.activity
+  if (!act || typeof act.wait !== 'function') throw refuse('VMU_ENGINE_UNAVAILABLE', 'wait needs the activity face', 'assemble a kernel with the activity service')
+  const action = has(args.action) ? str(args.action) : 'wait'
+  if (action === 'status') return { ok: true, tool: 'vibe_v5_wait', action: 'status', status: typeof act.status === 'function' ? act.status() : null }
+  if (action !== 'wait') throw refuse('VMU_INVALID_ARGUMENT', 'unknown wait action: ' + action, 'legal: wait | status')
+  const timeoutMs = Number.isInteger(args.timeout_ms) && args.timeout_ms > 0 ? args.timeout_ms : 60000
+  const result = await act.wait({ timeoutMs, member: has(args.member) ? str(args.member) : null, reason: has(args.reason) ? str(args.reason) : '' })
+  return { ok: true, tool: 'vibe_v5_wait', action: 'wait', timedOut: result && result.timedOut === true, result,
+    note: 'waits until activity or the timeout; never poll' }
+}
+
 // ── ⑦–⑫ SECOND BATCH: task board, hiring, reporting, overview ───────────────────────────────────────────────
 /**
  * THE TASK BOARD. The original's `task_create / task_list / task_update` are the shared-board face; the kernel
@@ -749,6 +814,18 @@ export const V5R_PACK_TOOLS = Object.freeze([
     description: 'Relay a message from the office/human into the institute: to a member id, to "all", or to "voters". Delivered as per-recipient durable mail in the office voice.',
     parameters: { to: { type: 'string', required: true }, content: { type: 'string', required: true } },
     handler: toolMessage,
+  },
+  {
+    name: 'vibe_v5_inbox',
+    description: 'Read/triage the mailbox: action=list returns rows WITHOUT the body (id/from/at/subject/read/todo/kind/bytes), action=open returns ONE body and marks it read, action=mark sets read/todo. Mail does not need to be read immediately.',
+    parameters: { action: { type: 'string' }, member: { type: 'string', required: true }, status: { type: 'string' }, id: { type: 'string' }, read: { type: 'boolean' }, todo: { type: 'boolean' } },
+    handler: toolInbox,
+  },
+  {
+    name: 'vibe_v5_wait',
+    description: 'Wait until someone answers (returns on activity or timeout) — do NOT poll. action=status reports the waiter instead.',
+    parameters: { action: { type: 'string' }, timeout_ms: { type: 'integer' }, member: { type: 'string' }, reason: { type: 'string' } },
+    handler: toolWait,
   },
   {
     name: 'vibe_v5_task_create',

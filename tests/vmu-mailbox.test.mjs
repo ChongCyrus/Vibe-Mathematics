@@ -49,11 +49,11 @@ const mk = (settings = {}, extra = {}) => m.createMailbox(Object.assign({ clock,
 {
   const calls = []
   const mb = mk({}, { deliver: async (env) => { calls.push(env); return { ok: true } } })
-  mb.send('r-1', { to: 'r-2', text: 'hello', kind: 'dm' })
+  mb.send('r-1', { to: 'r-2', text: 'hello', kind: 'dm', urgent: true })
   const out = await mb.flush('r-2')
-  ok(out.ok === true && out.acked.length === 1 && out.remaining === 0, 'a successful flush acknowledges the entries')
+  ok(out.ok === true && out.acked.length === 1 && out.remaining === 0, 'a successful urgent flush acknowledges the urgent entry')
   ok(calls.length === 1 && calls[0].member === 'r-2' && calls[0].count === 1 && calls[0].urgent === true, 'the transport sees the envelope with the urgent flag')
-  ok(calls[0].entries[0].text === 'hello', 'the envelope carries the bodies (they are dropped only at ack)')
+  ok(calls[0].entries[0].text === 'hello', 'an URGENT envelope carries the body (dropped only at ack)')
   ok(mb.status().acked === 1 && mb.status().pending === 0, 'status separates pending from the acked ledger')
 
   // A transport that returns false acks NOTHING.
@@ -77,10 +77,47 @@ const mk = (settings = {}, extra = {}) => m.createMailbox(Object.assign({ clock,
   ok((await noSeam.flush('r-9')).reason === 'nothing-pending', 'flushing an empty box is a no-op, not an error')
 }
 
+// ---- 2b. non-urgent delivery is a NOTICE ONLY; list/open/setState manage reading & todo ---------------
+{
+  const calls = []
+  const mb = mk({}, { deliver: async (env) => { calls.push(env); return { ok: true } } })
+  const SECRET = 'SECRET_BODY_MARKER_9f2'
+  mb.send('r-1', { to: 'r-2', text: 'first line subject\n' + SECRET, kind: 'note' })
+  const out = await mb.flush('r-2')
+  const env = calls[0]
+  ok(env.urgent === false && Array.isArray(env.entries) && env.entries.length === 0,
+    '★ 正 1：非紧急 envelope 的 entries 为空（不携带正文）', JSON.stringify(env))
+  ok(typeof env.notice === 'string' && env.notice.length > 0 && env.notice.length <= 300 && /不需要立即阅读/.test(env.notice) && /list/.test(env.notice),
+    '★ 正 1：notice 含“不需要立即阅读 / list”，且 ≤300 字符', { length: env.notice && env.notice.length, notice: env.notice })
+  ok(!JSON.stringify(env).includes(SECRET), '★ 反（唯一真证据）：非紧急投递物【任何字段/JSON 文本】都不含正文标记串', JSON.stringify(env))
+  ok(out.notified === 1 && mb.pending('r-2').length === 1, 'non-urgent notice does not ack (body remains readable)')
+  const row = mb.list('r-2').entries[0]
+  ok(row && Object.keys(row).sort().join(',') === ['at', 'bytes', 'from', 'id', 'kind', 'read', 'subject', 'todo'].join(',') &&
+    row.read === false && row.todo === false && !('text' in row), '★ 正：list 行字段恰为 8 个、不含正文、初始 read:false', row)
+  const opened = mb.open('r-2', row.id)
+  ok(opened.ok === true && opened.entry.text.includes(SECRET) && opened.read === true, '★ 正：open 返回正文并把 read 置 true', opened)
+  const row2 = mb.list('r-2').entries[0]
+  ok(row2.read === true && !('text' in row2), '★ 正：list 再看 read:true 且仍不含正文')
+  const state = mb.setState('r-2', { id: row.id, todo: true })
+  ok(state.ok === true && state.todo === true && state.read === true, '★ 正：setState 改 todo，read 保留')
+  ok(mb.list('r-2', { status: 'todo' }).count === 1 && mb.list('r-2', { status: 'unread' }).count === 0,
+    '★ 正：list status 过滤（todo 命中、unread 不命中）')
+  await expectThrow(() => mb.open('r-2', 'ml-nope'), 'VMU_MAILBOX_NO_SUCH_ENTRY', '★ 反：open 未知 id ⇒ 具名拒')
+  await expectThrow(() => mb.setState('r-2', { id: 'ml-nope', read: true }), 'VMU_MAILBOX_NO_SUCH_ENTRY', '★ 反：setState 未知 id ⇒ 具名拒')
+  // subject: explicit wins; omitted = first non-empty line; overlong is truncated and marked.
+  mb.send('r-1', { to: 'r-3', text: 'ignored first', subject: 'Explicit subject', kind: 'note' })
+  mb.send('r-1', { to: 'r-3', text: '\nDefault subject line\nbody', kind: 'note' })
+  const rows3 = mb.list('r-3').entries
+  ok(rows3[0].subject === 'Explicit subject' && rows3[1].subject === 'Default subject line', '★ 正：subject 显式优先，缺省取正文首个非空行', rows3.map((r) => r.subject))
+  mb.send('r-1', { to: 'r-3', text: 'x', subject: 'S'.repeat(200), kind: 'note' })
+  const longRow = mb.list('r-3').entries[2]
+  ok(longRow.subject.length <= m.MAILBOX_SUBJECT_MAX && /…$/.test(longRow.subject), '★ 正：超长 subject 截断且带标记', longRow.subject)
+}
+
 // ---- 3. the body is dropped at ack ⇒ anchors dangle BY NAME ----------------------------------------
 {
   const mb = mk({}, { deliver: async () => ({ ok: true }) })
-  const sent = mb.send('r-1', { to: 'r-2', text: 'evidence', kind: 'dm' })
+  const sent = mb.send('r-1', { to: 'r-2', text: 'evidence', kind: 'dm', urgent: true })
   const id = sent.ids[0]
   ok(mb.anchor(id).text === 'evidence', 'live mail resolves as an anchor')
   await mb.flush('r-2')
@@ -105,18 +142,27 @@ const mk = (settings = {}, extra = {}) => m.createMailbox(Object.assign({ clock,
   ok(mb.pending('r-2', { freshOnly: true }).length === 1, 're-marking is idempotent')
   mb.clearInjected('r-2')
   ok(mb.pending('r-2', { freshOnly: true }).length === 2, 'a concluded attempt clears the marks, so a retried wake re-prepends')
-  const flushed = mk({}, { deliver: async () => ({ ok: true }) })
+  // ★ PHASE 9 / round 2: a non-urgent flush announces ONLY, marks the entries injected, and does NOT ack them; a
+  // repeated flush says already-notified instead of repeating the notice.
+  const calls = []
+  const flushed = mk({}, { deliver: async (env) => { calls.push(env); return { ok: true } } })
   flushed.send('r-1', { to: 'r-2', text: 'x', kind: 'dm' })
-  flushed.markInjected('r-2', flushed.pending('r-2').map((e) => e.id))
   await flushed.flush('r-2')
-  ok(flushed.unread('r-2').injected === 0, 'a successful flush clears the injection marks too')
+  ok(flushed.pending('r-2').length === 1 && flushed.unread('r-2').injected === 1,
+    'non-urgent flush keeps the body pending and marks it injected (notice was shown once)')
+  const again = await flushed.flush('r-2')
+  ok(again.reason === 'already-notified' && calls.length === 1, 'a repeated non-urgent flush does not repeat the notice')
 }
 
 // ---- 5. graded delivery: urgent now, digest by window or count -------------------------------------
 {
   const urgentMb = mk()
-  urgentMb.send('r-1', { to: 'r-2', text: 'nudge', kind: 'nudge' })
-  ok(urgentMb.deliverable('r-2').deliver === true && urgentMb.deliverable('r-2').urgent === true, 'an urgent kind delivers immediately')
+  urgentMb.send('r-1', { to: 'r-2', text: 'nudge', kind: 'nudge', urgent: true })
+  ok(urgentMb.deliverable('r-2').deliver === true && urgentMb.deliverable('r-2').urgent === true, 'urgent:true delivers immediately')
+  const defaultMb = mk()
+  defaultMb.send('r-1', { to: 'r-2', text: 'nudge', kind: 'nudge' })
+  ok(defaultMb.deliverable('r-2').urgent === false && defaultMb.deliverable('r-2').deliver === false,
+    'a kind alone is NOT urgent by default (urgent is the sender\'s explicit intent)')
   const chatMb = mk()
   chatMb.send('r-1', { to: 'r-2', text: 'chatter', kind: 'chat' })
   const d1 = chatMb.deliverable('r-2')
@@ -136,8 +182,8 @@ const mk = (settings = {}, extra = {}) => m.createMailbox(Object.assign({ clock,
 // ---- 6. the wake plan is budgeted and NAMES the deferred -----------------------------------------
 {
   const mb = mk({ 'vmu.mailbox.wakeBudget': 1 })
-  mb.send('r-1', { to: 'r-2', text: 'u', kind: 'dm' })
-  mb.send('r-1', { to: 'r-3', text: 'u', kind: 'notice' })
+  mb.send('r-1', { to: 'r-2', text: 'u', kind: 'dm', urgent: true })
+  mb.send('r-1', { to: 'r-3', text: 'u', kind: 'notice', urgent: true })
   const plan = mb.plan({ members: ['r-2', 'r-3'] })
   ok(plan.wake.length === 1 && plan.deferred.length === 1, 'the budget bounds one pass')
   ok(plan.deferred[0].why === 'wake-budget', 'the deferred member is named WITH a reason')

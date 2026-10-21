@@ -983,7 +983,7 @@ const CORE_DEFS = Object.freeze([
   // mailbox (v5r-reader-c · kernel/mailbox.js) — 私信耐久 + ack 语义
   { key: 'vmu.mailbox.digestWindowMs', type: 'natural', def: 45000, hot: HOT.H1, who: 'office', doc: '摘要合并窗口（同窗内多条合并投递）' },
   { key: 'vmu.mailbox.digestMax', type: 'natural', def: 12, hot: HOT.H1, who: 'office', doc: '单次摘要最多合并条数（超出计数丢弃并留在待投递队列）' },
-  { key: 'vmu.mailbox.urgentKinds', type: 'stringList', def: ['dm', 'office', 'assign', 'nudge', 'notice', 'meeting', 'verify'], hot: HOT.H1, who: 'office', doc: '立即投递（不并入摘要）的消息种类' },
+  { key: 'vmu.mailbox.urgentKinds', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '恒紧急的消息种类（默认空；urgent 由发送方显式 urgent:true 决定，kind 不自动紧急）' },
   { key: 'vmu.mailbox.ackedLedgerCap', type: 'natural', def: 500, hot: HOT.H1, who: 'office', doc: '已 ack 台账保留条数（ack 后正文即删，只留 {id,from,at,kind,bytes}）' },
   { key: 'vmu.mailbox.wakeBudget', type: 'natural', def: 1, hot: HOT.H1, who: 'office', doc: '每轮唤醒预算（一次 flush 最多唤醒几个收件人）' },
   { key: 'vmu.mailbox.deliverTimeoutMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '投递超时（0＝沿用调用方/宿主默认；超时不算投递成功 ⇒ 不 ack）' },

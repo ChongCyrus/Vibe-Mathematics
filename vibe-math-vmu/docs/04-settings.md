@@ -995,7 +995,7 @@ vmu.packs.active: [v5r]
 | `vmu.chat.historyCap` | int ≥0 | `200` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/chat.js` | 聊天审计环形上限（触界计数丢弃，绝不静默） |
 | `vmu.mailbox.digestWindowMs` | int ≥0 | `45000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mailbox.js` | 摘要合并窗口（同窗内多条合并投递） |
 | `vmu.mailbox.digestMax` | int ≥0 | `12` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mailbox.js` | 单次摘要最多合并条数（超出计数丢弃并留在待投递队列） |
-| `vmu.mailbox.urgentKinds` | string[] | `[dm,office,assign,nudge,notice,meeting,verify]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mailbox.js` | 立即投递（不并入摘要）的消息种类 |
+| `vmu.mailbox.urgentKinds` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mailbox.js` | 恒紧急的消息种类（默认空；urgent 由发送方显式 urgent:true 决定，kind 不自动紧急） |
 | `vmu.mailbox.ackedLedgerCap` | int ≥0 | `500` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mailbox.js` | 已 ack 台账保留条数（ack 后正文即删，只留 {id,from,at,kind,bytes}） |
 | `vmu.mailbox.wakeBudget` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mailbox.js` | 每轮唤醒预算（一次 flush 最多唤醒几个收件人） |
 | `vmu.mailbox.deliverTimeoutMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mailbox.js` | 投递超时（0＝沿用调用方/宿主默认；超时不算投递成功 ⇒ 不 ack） |

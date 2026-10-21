@@ -223,9 +223,13 @@ function toolMessage(args = {}, { kernel } = {}) {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'no mailbox face is published, so an office message cannot be delivered',
       'assemble a kernel with the mailbox service')
   }
-  const sent = kernel.mailbox.send('office', { to: str(args.to), text: str(args.content), kind: 'notice' })
-  return { ok: true, tool: 'vibe_v5_message', from: 'office', to: str(args.to), receipt: sent,
-    note: 'the office/human voice is the original tool\'s sender; delivery state is per-recipient durable mail' }
+  // ★ PHASE 9 / round 3: `subject` + an EXPLICIT `urgent` (default false) travel to the mailbox face. Urgent means
+  // "the sender wants a timely/online reply", never "the content matters more" — the prompt says so; the tool carries the flag.
+  const payload = { to: str(args.to), text: str(args.content), kind: 'notice', urgent: args.urgent === true }
+  if (has(args.subject)) payload.subject = str(args.subject)
+  const sent = kernel.mailbox.send('office', payload)
+  return { ok: true, tool: 'vibe_v5_message', from: 'office', to: str(args.to), subject: has(args.subject) ? str(args.subject) : null, urgent: args.urgent === true, receipt: sent,
+    note: 'the office/human voice is the original tool\'s sender; urgent defaults to FALSE (non-urgent mail is a hint, not a demand)' }
 }
 
 

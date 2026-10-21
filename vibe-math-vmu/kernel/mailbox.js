@@ -25,8 +25,11 @@
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
 
-/** Kinds that are delivered the moment the recipient runs, instead of waiting for the digest window. */
-export const MAILBOX_URGENT_KINDS = Object.freeze(['dm', 'office', 'assign', 'nudge', 'notice', 'meeting', 'verify'])
+/** ★ PHASE 9 / round 2: urgent is the SENDER'S explicit intent ⇒ DEFAULT EMPTY. An institution that wants a kind to be
+ * always urgent declares `vmu.mailbox.urgentKinds`; nothing is urgent by kind out of the box. */
+export const MAILBOX_URGENT_KINDS = Object.freeze([])
+export const MAILBOX_SUBJECT_MAX = 120
+export const MAILBOX_NOTICE_MAX = 300
 
 /** Advisory per-box cap. Over it a send is REFUSED by name with the count — a limit the machine enforces. */
 export const MAILBOX_BOX_CAP = 500
@@ -186,6 +189,43 @@ export function createMailbox({
   }
   const urgentOf = (kind) => urgentKindsOf().includes(String(kind))
 
+  /** Stable, predictable subject: explicit subject wins; otherwise the first non-empty line, capped (with a marker). */
+  const subjectOf = (text, subject) => {
+    let s = typeof subject === 'string' ? subject.trim() : ''
+    if (!s) {
+      const first = String(text || '').split(/\r?\n/).map((x) => x.trim()).find((x) => x.length > 0) || ''
+      s = first
+    }
+    if (s.length > MAILBOX_SUBJECT_MAX) return { subject: s.slice(0, MAILBOX_SUBJECT_MAX - 1) + '…', subjectTruncated: true }
+    return { subject: s, subjectTruncated: false }
+  }
+  const capNotice = (s) => {
+    const t = String(s || '')
+    return t.length <= MAILBOX_NOTICE_MAX ? t : t.slice(0, MAILBOX_NOTICE_MAX - 1) + '…'
+  }
+  const sendersOf = (rows) => [...new Set(rows.map((e) => e.from))]
+  const oldestAtOf = (rows) => {
+    const st = oldestStamp(rows)
+    return st === null ? null : new Date(st).toISOString()
+  }
+  /** Public list row: exactly these 8 fields; NO body. */
+  const listRow = (e) => ({ id: e.id, from: e.from, at: e.at, subject: e.subject, kind: e.kind,
+    read: e.read === true, todo: e.todo === true, bytes: bytesOf(e.text) })
+  const openView = (e) => ({ id: e.id, from: e.from, at: e.at, subject: e.subject, kind: e.kind,
+    text: e.text, replyTo: e.replyTo === undefined ? null : e.replyTo })
+  const findEntry = (member, id) => {
+    const box = boxes.get(String(member)) || []
+    const hit = box.find((e) => e.id === String(id))
+    return hit || null
+  }
+  const noSuchEntry = (member, id) => {
+    note('VMU_MAILBOX_NO_SUCH_ENTRY')
+    record('entry-refused', { member: String(member), id: String(id) })
+    throw refuse('VMU_MAILBOX_NO_SUCH_ENTRY', 'no entry ' + String(id) + ' in the mailbox of ' + String(member),
+      'list() names the live entries; an acked entry has no retained body')
+  }
+
+
   const rejectInstants = (args, what) => {
     const keys = Object.keys(args || {}).filter((k) => INSTANT_KEY.test(String(k)) || INSTANT_NAMES.includes(String(k)))
     if (!keys.length) return
@@ -219,7 +259,7 @@ export function createMailbox({
         throw e
       }
     },
-    sendBody(from, { to = null, text = '', kind = 'dm', replyTo = null } = {}) {
+    sendBody(from, { to = null, text = '', kind = 'dm', replyTo = null, subject = null, urgent = false } = {}) {
       const who = String(from === undefined || from === null ? '' : from)
       // ★ ROUND 89: same wording fix as `kernel/chat.js` - the sender id reaches this service positionally from a tool
       // face whose parameter is `by`, so naming this function's own `from` sends an agent looking for a parameter it
@@ -271,6 +311,8 @@ export function createMailbox({
       if (replyTo !== null && replyTo !== undefined && String(replyTo) !== '') anchorRef = mailbox.anchor(replyTo).id
 
       const made = []
+      const sub = subjectOf(body, subject)
+      const isUrgent = urgent === true || urgentOf(kind)
       for (const t of targets) {
         const box = boxOf(t)
         if (box.length >= MAILBOX_BOX_CAP) {
@@ -282,13 +324,14 @@ export function createMailbox({
         }
         seq += 1
         const entry = { id: 'ml-' + String(seq), seq, from: who, to: t, at: clock(), kind: String(kind || 'dm'),
-          text: body, replyTo: anchorRef, urgent: urgentOf(kind) }
+          subject: sub.subject, subjectTruncated: sub.subjectTruncated, text: body, replyTo: anchorRef,
+          urgent: isUrgent, read: false, todo: false, ackedAt: null }
         box.push(entry)
         made.push({ id: entry.id, to: t, urgent: entry.urgent })
       }
-      record('sent', { from: who, ids: made.map((m) => m.id), to: targets, kind: String(kind || 'dm'), urgent: urgentOf(kind) })
+      record('sent', { from: who, ids: made.map((m) => m.id), to: targets, kind: String(kind || 'dm'), urgent: isUrgent })
       return { ok: true, ids: made.map((m) => m.id), to: targets, delivered: 0, queued: made.length,
-        urgent: urgentOf(kind), enforced: ['vmu.mailbox.urgentKinds'] }
+        urgent: isUrgent, subject: sub.subject, subjectTruncated: sub.subjectTruncated, enforced: ['vmu.mailbox.urgentKinds'] }
     },
 
     /** Pending = queued and NOT acked. `freshOnly` also excludes what a prompt already carried. */
@@ -325,35 +368,72 @@ export function createMailbox({
     },
 
     /**
-     * Deliver, then acknowledge — IN THAT ORDER. A transport that fails (returns false or throws) acks
-     * NOTHING, and the receipt says how much is still pending.
+     * Deliver the PENDING NOTICE. ★ PHASE 9 / round 2:
+     *   · non-urgent entries are announced (count/senders/subjects) with `entries: []` — the body never enters the
+     *     prompt; they are marked injected (so the same notice is not repeated) but NOT acked: the body is still
+     *     available through list/open until the member explicitly acks it;
+     *   · urgent entries are the only ones whose body is put in the envelope, and only THEY are acked after a
+     *     successful delivery (the old "ack everything" would delete the non-urgent body before the member could read it).
+     * A transport that fails acks NOTHING and keeps everything redeliverable.
      */
     async flush(member, { send = null } = {}) {
       const id = String(member === undefined || member === null ? '' : member)
       if (!id) throw refuse('VMU_INVALID_ARGUMENT', 'flush needs a member id', 'pass { member }')
-      const entries = mailbox.pending(id)
-      if (!entries.length) {
+      const allPending = mailbox.pending(id)
+      const fresh = mailbox.pending(id, { freshOnly: true })
+      if (!allPending.length) {
         mailbox.clearInjected(id)
-        return { ok: true, member: id, delivered: 0, acked: [], remaining: 0, reason: 'nothing-pending' }
+        return { ok: true, member: id, delivered: 0, acked: [], notified: 0, remaining: 0, reason: 'nothing-pending' }
       }
+      if (!fresh.length) {
+        return { ok: true, member: id, delivered: 0, acked: [], notified: 0, remaining: allPending.length,
+          reason: 'already-notified', hint: 'list()/open() expose the bodies; ack() settles the delivery layer' }
+      }
+      const urgentRows = fresh.filter((e) => e.urgent)
+      const plainRows = fresh.filter((e) => !e.urgent)
+      const isUrgent = urgentRows.length > 0
       const tx = typeof send === 'function' ? send : deliver
       if (typeof tx !== 'function') {
         note('VMU_ENGINE_UNAVAILABLE')
-        record('flush-refused', { member: id, reason: 'no-deliver-seam', pending: entries.length })
+        record('flush-refused', { member: id, reason: 'no-deliver-seam', pending: fresh.length })
         return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', code: 'VMU_ENGINE_UNAVAILABLE',
-          message: 'cannot deliver to ' + id + ': no deliver seam is bound (' + entries.length + ' entr(y/ies) still pending)',
+          message: 'cannot deliver to ' + id + ': no deliver seam is bound (' + fresh.length + ' entr(y/ies) still pending)',
           hint: 'inject { deliver } or pass { send } — a mail that was never sent is never acked' }
       }
-      const urgent = entries.some((e) => e.urgent)
-      const envelope = { member: id, entries, count: entries.length, urgent, at: clock(), timeoutMs: deliverTimeoutOf() }
+      const allRows = fresh
+      const senders = sendersOf(allRows)
+      const subjects = allRows.slice(0, 4).map((e) => e.subject).filter(Boolean)
+      let notice
+      if (isUrgent) {
+        notice = capNotice('【紧急｜对方希望尽快回复】' + urgentRows.length + ' 条留言：' +
+          senders.join('、') + (subjects.length ? '｜' + subjects.join('；') : '') +
+          (plainRows.length ? '（另有 ' + plainRows.length + ' 条非紧急，未展开）' : ''))
+      } else {
+        notice = capNotice('你收到 ' + allRows.length + ' 条新留言（来自 ' + senders.join('、') + '）。' +
+          (subjects.length ? '标题：' + subjects.join('；') + '。' : '') +
+          '不需要立即阅读，有空再看；用 vibe_vmu_mailbox 的 list 查看、open 打开。')
+      }
+      const envelope = {
+        member: id,
+        urgent: isUrgent,
+        count: allRows.length,
+        from: senders,
+        kinds: [...new Set(allRows.map((e) => e.kind))],
+        oldestAt: oldestAtOf(allRows),
+        notice,
+        entries: isUrgent ? urgentRows.map((e) => ({ id: e.id, from: e.from, at: e.at, kind: e.kind,
+          subject: e.subject, text: e.text, replyTo: e.replyTo })) : [],
+        at: clock(),
+        timeoutMs: deliverTimeoutOf(),
+      }
       // The BEFORE hook: a middleware may stop this delivery by name. A refusal acks NOTHING.
-      const blocked = emitHook('mailbox/deliver-before', { member: id, count: entries.length, urgent }, { member: id })
+      const blocked = emitHook('mailbox/deliver-before', { member: id, count: allRows.length, urgent: isUrgent, notice }, { member: id })
       if (blocked && blocked.ok === false) {
         const code = (blocked.refused && blocked.refused.code) || blocked.code || 'VMU_MAILBOX_DELIVERY_FAILED'
         const msg = (blocked.refused && blocked.refused.message) || blocked.message || 'a middleware refused this delivery'
         note(code)
-        record('flush-refused', { member: id, reason: 'middleware', code, pending: entries.length })
-        return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', code, message: msg, remaining: entries.length,
+        record('flush-refused', { member: id, reason: 'middleware', code, pending: fresh.length })
+        return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', code, message: msg, remaining: fresh.length,
           hint: 'the mailbox/deliver-before hook refused it; nothing was acknowledged (docs/05 §5)' }
       }
       let result
@@ -361,23 +441,25 @@ export function createMailbox({
         result = await tx(envelope)
       } catch (e) {
         note('VMU_MAILBOX_DELIVERY_FAILED')
-        record('flush-failed', { member: id, reason: 'transport-threw', error: String((e && e.message) || e), pending: entries.length })
+        record('flush-failed', { member: id, reason: 'transport-threw', error: String((e && e.message) || e), pending: fresh.length })
         return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', code: 'VMU_MAILBOX_DELIVERY_FAILED', message: 'delivery to ' + id + ' failed: ' + String((e && e.message) || e),
-          remaining: entries.length, hint: 'nothing was acknowledged: the same entries are still pending' }
+          remaining: fresh.length, hint: 'nothing was acknowledged: the same entries are still pending' }
       }
       if (result === false || (result && result.ok === false)) {
         note('VMU_MAILBOX_DELIVERY_FAILED')
-        record('flush-failed', { member: id, reason: 'transport-refused', pending: entries.length })
+        record('flush-failed', { member: id, reason: 'transport-refused', pending: fresh.length })
         return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', code: 'VMU_MAILBOX_DELIVERY_FAILED', message: 'the transport refused delivery to ' + id,
-          remaining: entries.length, hint: 'nothing was acknowledged: the same entries are still pending' }
+          remaining: fresh.length, hint: 'nothing was acknowledged: the same entries are still pending' }
       }
-      // Success: NOW acknowledge, and only now.
-      const ids = mailbox.ack(id, entries.map((e) => e.id))
-      mailbox.clearInjected(id)
-      record('flushed', { member: id, acked: ids.acked.length, urgent })
-      emitHook('mailbox/delivered', { member: id, acked: ids.acked.length, remaining: mailbox.pending(id).length, urgent }, { member: id })
-      return { ok: true, member: id, delivered: entries.length, acked: ids.acked, remaining: mailbox.pending(id).length,
-        urgent, timeoutMs: envelope.timeoutMs, enforced: ['vmu.mailbox.deliverTimeoutMs'] }
+      // Success: only the URGENT bodies are settled by this delivery. Non-urgent entries stay readable until ack().
+      let ackedIds = []
+      if (urgentRows.length) ackedIds = mailbox.ack(id, urgentRows.map((e) => e.id)).acked
+      if (plainRows.length) mailbox.markInjected(id, plainRows.map((e) => e.id))
+      record('flushed', { member: id, acked: ackedIds.length, notified: plainRows.length, urgent: isUrgent })
+      emitHook('mailbox/delivered', { member: id, acked: ackedIds.length, notified: plainRows.length, remaining: mailbox.pending(id).length, urgent: isUrgent }, { member: id })
+      return { ok: true, member: id, delivered: urgentRows.length, acked: ackedIds, notified: plainRows.length,
+        remaining: mailbox.pending(id).length, urgent: isUrgent, notice, noticeLength: notice.length,
+        entries: envelope.entries.length, timeoutMs: envelope.timeoutMs, enforced: ['vmu.mailbox.deliverTimeoutMs'] }
     },
 
     /**
@@ -401,9 +483,11 @@ export function createMailbox({
             'pending() lists what can still be acknowledged')
         }
         const e = box[i]
+        e.ackedAt = clock()
         box.splice(i, 1)
         const ledger = acked.get(id) || []
-        ledger.push({ id: e.id, from: e.from, at: e.at, kind: e.kind, bytes: bytesOf(e.text) })
+        ledger.push({ id: e.id, from: e.from, at: e.at, kind: e.kind, subject: e.subject, read: e.read === true, todo: e.todo === true,
+          ackedAt: e.ackedAt, bytes: bytesOf(e.text) })
         const cap = ackedCapOf()
         if (cap > 0 && ledger.length > cap) {
           const over = ledger.length - cap
@@ -414,6 +498,45 @@ export function createMailbox({
         ackedIds.push(e.id)
       }
       return { ok: true, member: id, acked: ackedIds, remaining: box.length, ackedLedger: (acked.get(id) || []).length, enforced: ['vmu.mailbox.ackedLedgerCap'] }
+    },
+
+    /**
+     * ★ PHASE 9 / round 2: the LIST view. A row is EXACTLY {id, from, at, subject, kind, read, todo, bytes} — no body,
+     * and listing never changes read state. `status` filters unread / todo / all. `ack` is the DELIVERY-layer settlement;
+     * `read` is the MEMBER's reading state — they are deliberately different, and `ack` no longer implies read.
+     */
+    list(member, { status = 'all' } = {}) {
+      const id = String(member === undefined || member === null ? '' : member)
+      const want = status === 'unread' || status === 'todo' ? status : 'all'
+      const box = boxes.get(id) || []
+      const rows = box.filter((e) => want === 'all' || (want === 'unread' ? e.read !== true : e.todo === true))
+      const entries = rows.map(listRow)
+      return { ok: true, member: id, status: want, count: entries.length, entries }
+    },
+
+    /** Open ONE entry by id: returns the body and marks read=true (the body is NOT removed; ack does that). */
+    open(member, id) {
+      const mid = String(member === undefined || member === null ? '' : member)
+      const entry = findEntry(mid, id)
+      if (!entry) noSuchEntry(mid, id)
+      entry.read = true
+      record('opened', { member: mid, id: entry.id })
+      return { ok: true, member: mid, entry: openView(entry), read: true }
+    },
+
+    /** Change the per-entry READ/TODO state. Unknown id is a named refusal; at least one boolean is required. */
+    setState(member, { id, read, todo } = {}) {
+      const mid = String(member === undefined || member === null ? '' : member)
+      if (id === undefined || id === null || String(id) === '') throw refuse('VMU_INVALID_ARGUMENT', 'setState needs an entry id', 'pass { id, read?, todo? }')
+      if (typeof read !== 'boolean' && typeof todo !== 'boolean') {
+        throw refuse('VMU_INVALID_ARGUMENT', 'setState needs read:boolean and/or todo:boolean', 'pass at least one explicit boolean')
+      }
+      const entry = findEntry(mid, id)
+      if (!entry) noSuchEntry(mid, id)
+      if (typeof read === 'boolean') entry.read = read
+      if (typeof todo === 'boolean') entry.todo = todo
+      record('entry-state', { member: mid, id: entry.id, read: entry.read === true, todo: entry.todo === true })
+      return { ok: true, member: mid, id: entry.id, read: entry.read === true, todo: entry.todo === true }
     },
 
     /**
