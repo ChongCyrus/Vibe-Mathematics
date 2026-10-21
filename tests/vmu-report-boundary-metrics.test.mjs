@@ -48,7 +48,11 @@ await (async () => {
     root,
     packs: [],
     vmu: {
-      'vmu.tools.faces': ['report', 'metrics'],
+      // ★ 轮 8：`metrics` 不是工具面（TOOL_FACES 里没有它）；`vmu.metrics.indicators` 是【设置族】，
+      // 由 kernel/report.js 的 metricValues 读取。旧的 ['report','metrics'] 里 `report` 真生效、`metrics`
+      // 一直是空转（未知名被静默丢弃）。去掉它后装配不再带一个不存在的面，断言（本套件只测 report 边界 +
+      // metrics 服务，不测工具集）逐条不变。
+      'vmu.tools.faces': ['report'],
       'vmu.metrics.indicators': ['artifacts'],
       'vmu.report.enabled': true,
       'vmu.report.minIntervalMs': 0,

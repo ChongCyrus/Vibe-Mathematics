@@ -98,7 +98,11 @@ async function assemble(packs, { reports = null, root = null } = {}) {
     packs,
     deliver: (report) => sink.push({ name: report.name, text: report.text }),
     vmu: {
-      'vmu.tools.faces': reports ? ['report', 'metrics'] : ['metrics'],
+      // ★ 轮 8：`metrics` 不是工具面（TOOL_FACES 里 0 处）；`vmu.metrics.indicators` 是被 kernel/report.js
+      // 读的【设置族】。这条过滤在修前对 metrics 是空转：reports 分支实际只有 `report` 生效，无 reports
+      // 分支实际一个面都不加（只剩 always 的 status）。现在把前者写成 ['report']、后者写成 []，效果与旧运行
+      // 完全一致；本套件的断言（pack 应用/总线/metrics/report/拒绝）都不依赖工具集。
+      'vmu.tools.faces': reports ? ['report'] : [],
       'vmu.metrics.indicators': ['artifacts'],
       ...(reports ? { 'vmu.report.enabled': true, 'vmu.report.minIntervalMs': 0, 'vmu.report.reports': reports } : {}),
     },
