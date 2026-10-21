@@ -833,7 +833,7 @@
     "vibe-math-vmu/tools/env.js",
     "scripts/slv-inspect.mjs",
     "docs/AUDIT-CHECKLIST-SLV-INSPECT.md",
-    "scripts/audit-no-consumer.mjs"
+    "scripts/audit-readers.mjs"
   ],
   "license": "MIT",
   "keywords": [

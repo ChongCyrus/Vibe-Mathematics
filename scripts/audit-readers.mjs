@@ -129,7 +129,10 @@ export const classify = ({ defs, texts, testTexts, services, annotations = new M
     if (prod > 0) continue
     const test = Math.max(0, countRefs(d.name, testTexts, { file: null, line: -1 }))
     let cls
-    if (MECHANISM.test(d.name)) cls = 'A'
+    // An OBJECT METHOD that only tests read is not "the framework forgot to call it" (it is a face method the test
+    // exercises): decide by readers first for that kind, so the deep mode cannot inflate A with public face methods.
+    if (d.kind === 'object-method') cls = test > 0 ? 'C' : 'A'
+    else if (MECHANISM.test(d.name)) cls = 'A'
     else if (test > 0) cls = 'C'
     else if (d.exported || service) cls = 'B'
     else cls = 'D'
@@ -161,7 +164,10 @@ async function census({ deep = false } = {}) {
       m = line.match(/^\s*(export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function\b|\()/)
       if (m) defs.push({ name: m[2], file: f, line: i + 1, exported: !!m[1], kind: 'const' })
     })
-    if (deep) for (const d of objectMethods(f, strip(readFileSync(f, 'utf8')))) defs.push(d)
+    // NOISE CONTROL (the measured 1000+ false-positive lesson): deep mode only expands DEFINITION EXTRACTION to
+    // object-literal methods, and then keeps only MECHANISM-named ones - a method whose name a lifecycle owns is
+    // supposed to be called by the framework; ordinary private helpers are not a wiring claim at all.
+    if (deep) for (const d of objectMethods(f, readFileSync(f, 'utf8'))) if (MECHANISM.test(d.name)) defs.push(d)
   }
   // Public service methods: enumerate the ACTUAL kernel, not prose.
   const services = new Map()

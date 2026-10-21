@@ -37,6 +37,11 @@ export const PACKAGE_EXEMPTIONS = Object.freeze([
   { path: 'vibe-math-vmu/docs/audit/source-detail-verification.md', reason: '仓内审计工作稿（源细节核验），不是预设载荷；不随 tarball 交付是正确状态', approvedBy: 'Lead', approveRound: 15, reviewRound: 25 },
   { path: 'vibe-math-vmu/docs/audit/source-prompt-coverage.md', reason: '仓内审计工作稿（提示词来源覆盖），不是预设载荷；不随 tarball 交付是正确状态', approvedBy: 'Lead', approveRound: 15, reviewRound: 25 },
   { path: 'vibe-math-vmu/docs/audit/source-runtime-coverage.md', reason: '仓内审计工作稿（运行时来源覆盖），不是预设载荷；不随 tarball 交付是正确状态', approvedBy: 'Lead', approveRound: 15, reviewRound: 25 },
+  // ROUND 13 (this round's census rename): the readers-census note is the same kind of working paper - it documents
+  // WHY audit-readers.mjs is named that way and carries the B-class adjudications. Not an import target, never read
+  // by the loader, and not preset payload; naming it here keeps "deliberately not shipped" distinguishable from
+  // "forgotten" (the exact purpose of this table).
+  { path: 'vibe-math-vmu/docs/audit/readers-census.md', reason: '仓内审计工作稿（读点普查正名与 B 类裁定），不是预设载荷；不随 tarball 交付是正确状态', approvedBy: 'Lead', approveRound: 13, reviewRound: 26 },
 ])
 
 /** The round this gate is running in - used ONLY for the reviewRound expiry COUNT (never for a red).
