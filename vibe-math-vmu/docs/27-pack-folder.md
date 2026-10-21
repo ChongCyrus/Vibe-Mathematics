@@ -294,3 +294,5 @@ vibe-math-vmu/
 | `packs/v3/README.md` | 这个文件夹是什么、与 v3-core 的关系、诚实边界与装载约束 |
 
 ★ **两条硬约束**（★ 都实测咬过）：★ ① **middleware 必须是 module 形状**（pack 调 `loader.toBusEntries` 不传 `importModule`，★ `file:` 不可用）；★ ② **假主题必须 `declareTopic` 才能 emit**，★ 且**要在 import 时声明**（`kernel/loader.js` 在 `load()` 时校验，scheduler 的声明发生在装载之后）✓
+
+> **历史引用声明（G5 H3）**：本卷提到的 `vibe-math-v2`／`v3`／`v4`／`v5`／`v5r` 路径与行号均为**历史源码引用**；这些 preset 已归档到 `archive/legacy-presets/`，不再作为可安装 preset 发布。

@@ -755,3 +755,5 @@ root agent 自己的 assembly（root 不属于任何成员槽）。
 
 - ★ **`deferLoading` 是【延迟激活】标志，★ 不省略 schema。** 真机实测（v5r 声明十个 defer 面）：header 工具数 100 → 101、schema 字节 **102,114 → 102,883（+769）**；同一批 100 个共享工具 **102,013 → 102,162（+149）**；每个 defer 工具 **+20 字节**（正是该字段），且 `parameters` **仍完整在 header**（`vibe_v5_lean_run` 498 → 518、`hasParameters:true`）。⇒ **想靠 `defer` 省 wire 是错的**；它的价值只在"延迟激活"。★ 下一个想省体积的人不必再花一轮。
 - ★ **`presentAs('ptc')` 是 per-AGENT 的呈现切换**（作用于调用它的 agent 的整个工具上下文、返回 disposer），因此**"部分工具 ptc、其余 native"不可表达**：要 ptc 就是**整批** ptc。`defer` 与 `ptc` 在本仓实现中也不可并存（多 pack 声明不同 mode ⇒ 具名 `unapplied`，不猜）。
+
+> **历史引用声明（G5 H3）**：本卷提到的 `vibe-math-v2`／`v3`／`v4`／`v5`／`v5r` 路径与行号均为**历史源码引用**；这些 preset 已归档到 `archive/legacy-presets/`，不再作为可安装 preset 发布。

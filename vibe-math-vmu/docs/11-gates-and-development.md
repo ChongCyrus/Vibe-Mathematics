@@ -1151,3 +1151,5 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 - **`-Faces` 未知名 ⇒ 具名拒**：`vmu.tools.faces` 里的未知面键/工具名必须报 `VMU_INVALID_ARGUMENT`（hint 列出已知面），不得静默忽略或静默全开。
 - **`capacity:0 = unlimited`**：槽位容量 0 表示无上限，回执带 `unlimited:true`；门禁 `vmu-kernel` 断言 `capacity 0 ⇒ unlimited:true`、`capacity 1 ⇒ unlimited:false`。
 - **`instructionDelivered`**：`step`/最终 turn 回执带该布尔，回答“本轮 `why` 指令是否进了装配文本”；无此字段不等于已交付。
+
+> **历史引用声明（G5 H3）**：本卷提到的 `vibe-math-v2`／`v3`／`v4`／`v5`／`v5r` 路径与行号均为**历史源码引用**；这些 preset 已归档到 `archive/legacy-presets/`，不再作为可安装 preset 发布。

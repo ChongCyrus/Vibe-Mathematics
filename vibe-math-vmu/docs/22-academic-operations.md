@@ -1237,3 +1237,5 @@
 - **验收（机器可判定）**：① **具名**：未咨询定稿 ⇒ `VMU_OFFICE_CONSULT_REQUIRED` ＋ `enforced` 是 5 元数组 ＋ `enforcedScope` 存在 ✓；② **断言**：空豁免名单下 `office` 定稿被拒、声明 `['office']` 后同一路径通过 ✓；③ **场景**：`hold` 超时后**任意久**都不放行，`consult` 后才通过 ✓；④ **红**：把 `default-allow` 写进 `OnTimeout` ⇒ 回执 `onTimeout:'hold'` 且**仍拒** ✓；⑤ 与 `22-§19` 的汇报面同一条纪律：**只提示/只记账，绝不越权驱动** ✓。
 - **测试**：`tests/vmu-paper-consult.test.mjs`（40 项 ✓）；**码登记**：`VMU_OFFICE_CONSULT_REQUIRED` 已登记 `03-§8` ✓；**策略值**：5 个键已由 pack 在 `packs/v5r/settings/defaults.json` 声明（`ExemptRoles: []`，F4 口径 ✓）。
 - **未核项（见 `14-§2`）**：① `finalize-or-submit` 的 **submit 那一半**不在本面（归出版/投稿面）✗；② v5r 的**双计数**（消息＋会议都要）在 vmu 是"任意一次咨询即可"——要恢复双计数需**再声明白名单**（属 pack 扩展点）✓；③ 豁免按**字符串**匹配角色（无槽位解析，同 §19.9-4）✓。
+
+> **历史引用声明（G5 H3）**：本卷提到的 `vibe-math-v2`／`v3`／`v4`／`v5`／`v5r` 路径与行号均为**历史源码引用**；这些 preset 已归档到 `archive/legacy-presets/`，不再作为可安装 preset 发布。

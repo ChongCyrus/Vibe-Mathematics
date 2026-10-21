@@ -70,3 +70,5 @@
 - **未核**：`{{ statusBlock }}`、`{{ setting:… }}`、`{{ count:… }}` 在**语料**中的实际使用（白名单里有，语料抽样中未见）⇒ **无法确定**是否为未使用的通道。
 - **未跑**：任何测试与全量门禁（按要求）；未做任何运行时探针（未使用 `tests/vmu-ab-v5r-verification.test.mjs` 的 harness）。
 - **未改**：除本文件外**零改动**；未 `git commit`／`git push`。
+
+> **历史引用声明（G5 H3）**：本卷提到的 `vibe-math-v2`／`v3`／`v4`／`v5`／`v5r` 路径与行号均为**历史源码引用**；这些 preset 已归档到 `archive/legacy-presets/`，不再作为可安装 preset 发布。

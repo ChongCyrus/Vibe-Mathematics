@@ -374,4 +374,4 @@ dsh --profile <你的 profile> --patch <你的临时目录>/vmu-overlay.yml web
 ★ **为什么不"顶层加家族键"** ✗：顶层 patch 打的是**别的条目**，框架行的 config 根本收不到（实测 A 组）✓。
 ★ **为什么不"把 overlay 放进 preset 行 config"** ✗：**实测会替换掉整个 config** ⇒ preset 失去身份（第一版的失败）✓。
 
-
+> **历史引用声明（G5 H3）**：本卷提到的 `vibe-math-v2`／`v3`／`v4`／`v5`／`v5r` 路径与行号均为**历史源码引用**；这些 preset 已归档到 `archive/legacy-presets/`，不再作为可安装 preset 发布。

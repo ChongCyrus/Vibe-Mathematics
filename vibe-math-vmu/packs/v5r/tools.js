@@ -1194,6 +1194,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
       evidence: { type: 'array', description: 'part：证据指针列表' },
       deliverable: { type: 'boolean', description: 'review：true/false（未表态不交付）' },
       notes: { type: 'string', description: 'review：评语' },
+      comments: { type: 'string', description: 'review：评语（与 notes 同义，向后兼容的别名）' },
       of: { type: 'string', description: 'review：被审成员' },
       decision: { type: 'string', description: 'final：deliverable｜revise（必填，面不代填）' },
       note: { type: 'string', description: 'final：定稿代表备注' },

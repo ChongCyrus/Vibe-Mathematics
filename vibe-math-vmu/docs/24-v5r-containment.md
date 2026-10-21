@@ -849,3 +849,5 @@ So the answer flips: the prompt text IS now composed and regulated by the framew
 - **发送成功即持久，但只在它自报持久时**：ledger 的 `durable:true` 表示票据可跨重启；`durable:false` 会同时给出
   `durableReason`，**绝不假装持久**。因此"不要重发"的依据是**票据已存在**、重复 payload 以**具名码**拒绝，
   而不是一句无条件的持久承诺。
+
+> **历史引用声明（G5 H3）**：本卷提到的 `vibe-math-v2`／`v3`／`v4`／`v5`／`v5r` 路径与行号均为**历史源码引用**；这些 preset 已归档到 `archive/legacy-presets/`，不再作为可安装 preset 发布。

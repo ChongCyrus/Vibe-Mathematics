@@ -242,3 +242,5 @@
   2. 真实装配探针：用 `createPromptPipeline` ＋ `PERSONA_SECTIONS/PERSONA_BINDINGS` 与 `CHARTER_SECTIONS/CHARTER_BINDINGS` 分别对 `academician/researcher/temp` 装配，统计重复片段与空替换；
   3. 占位符清单：对四个 pack 文件抽取全部 `{{ }}`，逐项给出白名单判定与供值来源（`schema`／`planned`／loop）。
 - **未运行**：任何门禁或测试套件；**未修改**：除本文件外的任何文件。
+
+> **历史引用声明（G5 H3）**：本卷提到的 `vibe-math-v2`／`v3`／`v4`／`v5`／`v5r` 路径与行号均为**历史源码引用**；这些 preset 已归档到 `archive/legacy-presets/`，不再作为可安装 preset 发布。

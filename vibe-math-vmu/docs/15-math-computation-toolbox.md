@@ -651,3 +651,5 @@ CacheEntry = { keyHash, engineIdentity, argv, precision, receiptRef, createdAt, 
 | 协议/形状（目标 5 ✓） | `MathJobMirror`（`schema:'vmu/math-job@1'`）、`MathAdapterResult`（`schema:'vmu/math-adapter-result@1'`）、`admission()`（跨进程/保留的能力自述） | ✓ |
 | 助手适配器 | `lean` | ✓ |
 | 助手适配器（计划） | `coq`/`rocq` ⛔、`isabelle` ⛔、`agda` ⛔、`metamath` ⛔ | ⛔ |
+
+> **历史引用声明（G5 H3）**：本卷提到的 `vibe-math-v2`／`v3`／`v4`／`v5`／`v5r` 路径与行号均为**历史源码引用**；这些 preset 已归档到 `archive/legacy-presets/`，不再作为可安装 preset 发布。

@@ -126,3 +126,5 @@
 **后果**：**vmu 单独跑一轮研究所时，"上下文将满 ⇒ 压缩 ⇒ 带摘要续跑"这条链在回合面不存在**；长回合会**一直膨胀到宿主上限**（或依赖宿主自身的压缩，而那不是原文的机制）。**这一条直接决定"vmu 能否独立跑完一轮长研究"。**
 
 **修复方向（供 Lead 裁示，未实施）**：在 `FIELD_OWNERS` 增 `contextPct`（→ `vmu.metrics/observe` 或新 `vmu.context/report`）与 `compacted`（→ `vmu.records/seed`），并在 `kernel/turn/index.js` 的收尾处对齐原文 5820–5824 的语义（**含 `slice(0, 4000)` 的计数式截断**）。
+
+> **历史引用声明（G5 H3）**：本卷提到的 `vibe-math-v2`／`v3`／`v4`／`v5`／`v5r` 路径与行号均为**历史源码引用**；这些 preset 已归档到 `archive/legacy-presets/`，不再作为可安装 preset 发布。

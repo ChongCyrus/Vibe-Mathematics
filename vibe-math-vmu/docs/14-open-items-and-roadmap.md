@@ -828,3 +828,5 @@
 2. ★★ **`vibe-math-vmu/docs/24-v5r-containment.md`（517 行）它【未读】** ⇒ ★ **那里可能已给出部分逐条对照** ⇒ ★★ **开工第一件事应当是【先读它】，★ 避免重复劳动** ✓
 3. ★ **`vibe-math-v5r/docs/09-implementation-manual.md` 第 12 节未读**（★ 原守卫表把 S21 的完整子项指到那里）⇒ ★ **S21 的子项清单未读全** ✓
 4. ★ **`docs/acceptance/04-parity-matrix.md`（2117 行）只读了 v5r/v3 命中行** ⇒ ★ 它的**逐条映射**未核 ✓
+
+> **历史引用声明（G5 H3）**：本卷提到的 `vibe-math-v2`／`v3`／`v4`／`v5`／`v5r` 路径与行号均为**历史源码引用**；这些 preset 已归档到 `archive/legacy-presets/`，不再作为可安装 preset 发布。

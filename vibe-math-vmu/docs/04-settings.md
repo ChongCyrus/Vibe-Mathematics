@@ -1663,3 +1663,5 @@ vmu.packs.active: [v5r]
 | `vmu.workspace.*` | 3 |
 
 <!-- END GENERATED: settings-index -->
+
+> **历史引用声明（G5 H3）**：本卷提到的 `vibe-math-v2`／`v3`／`v4`／`v5`／`v5r` 路径与行号均为**历史源码引用**；这些 preset 已归档到 `archive/legacy-presets/`，不再作为可安装 preset 发布。

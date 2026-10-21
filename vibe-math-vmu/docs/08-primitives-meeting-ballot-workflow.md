@@ -1662,5 +1662,4 @@ for (const m of roster) chat.mute(m, { by: chair, reason: 'meeting in progress' 
 ★ **`eligibleSeats`**：框架默认 **`[]`（零策略：不替机构决定谁有票）**；v5r 的 pack 值层声明 `chair/member` —— 这是“政策在 pack，不在内核”的红线 1 例子。
 ★ **真机证据**：G7 复验（`D:\_tmp\slv-v5r\g7-verify.txt`，仓库外实测文件）—— `serviceVote.ballot.mirrored:true`、`summary.tally.for:2`、`close.enforced:[]`（数组）、`slv-inspect 5 sessions / 0 RED`。
 
-
-
+> **历史引用声明（G5 H3）**：本卷提到的 `vibe-math-v2`／`v3`／`v4`／`v5`／`v5r` 路径与行号均为**历史源码引用**；这些 preset 已归档到 `archive/legacy-presets/`，不再作为可安装 preset 发布。
