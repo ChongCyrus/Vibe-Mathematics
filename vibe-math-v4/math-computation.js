@@ -56,6 +56,17 @@ export const MATH_FAILURE_CODES = Object.freeze([
 
 export const MATH_CAPS = Object.freeze({ stdout: 64 * 1024, stderr: 64 * 1024, file: 4 * 1024 * 1024 })
 
+// CWE-400 guard: cap how many math subprocesses may run at once and how long any one may run,
+// so a burst of requests cannot exhaust host CPU/memory/process-table resources.
+export const MATH_MAX_CONCURRENT_RUNS = 4
+export const MATH_TIMEOUT_MS_MAX = 10 * 60 * 1000
+let mathActiveRuns = 0
+async function acquireMathSlot() {
+  while (mathActiveRuns >= MATH_MAX_CONCURRENT_RUNS) await new Promise((resolve) => setTimeout(resolve, 50))
+  mathActiveRuns++
+}
+function releaseMathSlot() { mathActiveRuns = Math.max(0, mathActiveRuns - 1) }
+
 // Archive retention (P2a item 5): a documented CAP that only ever WARNS - the tool never deletes.
 // Per-run: the attempt number that may be created for one archive id (attempt 1 lives in
 // Computation/<id>/, later attempts in Computation/<id>/attempts/<n>/). Per-project: only checked
@@ -193,7 +204,7 @@ export function normalizeMathParams(raw) {
   }
   if ('mathTimeoutMs' in r) {
     const n = Number(r.mathTimeoutMs)
-    out.mathTimeoutMs = Number.isFinite(n) && n > 0 ? Math.max(1000, Math.floor(n)) : MATH_PARAM_DEFAULTS.mathTimeoutMs
+    out.mathTimeoutMs = Number.isFinite(n) && n > 0 ? Math.min(MATH_TIMEOUT_MS_MAX, Math.max(1000, Math.floor(n))) : MATH_PARAM_DEFAULTS.mathTimeoutMs
   }
   if ('mathPackages' in r) {
     const list = Array.isArray(r.mathPackages) ? r.mathPackages.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : []
@@ -250,7 +261,7 @@ export function validateMathArgs(args, params) {
   if (args.captureFiles !== undefined && (!Array.isArray(args.captureFiles) || args.captureFiles.some((x) => typeof x !== 'string'))) return bad('captureFiles must be a string[]')
   if (args.timeoutMs !== undefined) {
     const n = Number(args.timeoutMs)
-    if (!Number.isFinite(n) || n < 1000) return bad('timeoutMs must be an integer >= 1000')
+    if (!Number.isFinite(n) || n < 1000 || n > MATH_TIMEOUT_MS_MAX) return bad('timeoutMs must be an integer >= 1000 and <= ' + MATH_TIMEOUT_MS_MAX)
   }
   if (args.record !== undefined && typeof args.record !== 'boolean') return bad('record must be a boolean')
   if (args.dryRun !== undefined && typeof args.dryRun !== 'boolean') return bad('dryRun must be a boolean')
@@ -1078,7 +1089,13 @@ async function opRun(H, args, params) {
   if (assembled.refused) return fail('MATH_REFUSED', det.name, assembled.refused, { next: next('reason', { reason: 'mode-not-supported' }) })
 
   const timeoutMs = args.timeoutMs || params.mathTimeoutMs
-  const r = await H.spawn({ argv: assembled.argv, cwd: root, timeoutMs: timeoutMs, stdoutCap: MATH_CAPS.file, stderrCap: MATH_CAPS.file })
+  await acquireMathSlot()
+  let r
+  try {
+    r = await H.spawn({ argv: assembled.argv, cwd: root, timeoutMs: timeoutMs, stdoutCap: MATH_CAPS.file, stderrCap: MATH_CAPS.file })
+  } finally {
+    releaseMathSlot()
+  }
   // P2a item 2/4: hash the SOURCE again after the run. A member editing the file while this run was
   // in flight shows up here (and never silently).
   let sourceHashAfter = null
@@ -1346,7 +1363,13 @@ async function opInstall(H, args, params) {
   const timeoutMs = args.timeoutMs || params.mathTimeoutMs
   const results = []
   for (const c of commands) {
-    const r = await H.spawn({ argv: c.argv, cwd: await H.projectRoot(), timeoutMs: timeoutMs, stdoutCap: MATH_CAPS.file, stderrCap: MATH_CAPS.file })
+    await acquireMathSlot()
+    let r
+    try {
+      r = await H.spawn({ argv: c.argv, cwd: await H.projectRoot(), timeoutMs: timeoutMs, stdoutCap: MATH_CAPS.file, stderrCap: MATH_CAPS.file })
+    } finally {
+      releaseMathSlot()
+    }
     results.push({ argv: c.argv, exit: r ? r.exit : null, timedOut: !!(r && r.timedOut), ms: r ? r.ms : 0, stdoutTail: String((r && r.stdout) || '').slice(-2000), stderrTail: String((r && r.stderr) || '').slice(-2000) })
     if (!r || r.timedOut || r.exit !== 0) {
       const audit0 = { schema: 'vibe-math/math-computation-install@1', planToken: planToken, scope: scope, manager: activeManager, commands: commands, results: results, exit: r ? r.exit : null, timedOut: !!(r && r.timedOut), installed: args.packages, rollback: rollbackFor(d, exe, args.packages, uninstallTmpl), network: 'not-enforced-by-plugin' }
