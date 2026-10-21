@@ -32,7 +32,7 @@
 // the assembled kernel and hands back the state; the entry's one line, because its 1200-line budget is counted by
 // `split('\n')`) and `deliverReportFeedback` (the delivery itself, `{ ctx, effect, status, enabled, audience }`) - no
 // `create*` factory, no service, nothing to probe. The matrix therefore registers this module `EXPECT_NA`.
-import { REPORT_FEEDBACK_CONTEXT_NAME, REPORT_FEEDBACK_CONTEXT_ORDER, REPORT_FEEDBACK_WHAT_AUDIENCE, REPORT_FEEDBACK_WHAT_CONTEXT } from './reportfeedback.js'
+import { REPORT_FEEDBACK_CONTEXT_NAME, REPORT_FEEDBACK_CONTEXT_ORDER, REPORT_FEEDBACK_WHAT_AUDIENCE, REPORT_FEEDBACK_WHAT_CONTEXT, assertFiniteOrder, boundFeedback } from './reportfeedback.js'
 
 /** The code reused for every "the host could not take it" outcome. Already registered: nothing new is invented here. */
 const UNAVAILABLE = 'VMU_EXTERNAL_UNAVAILABLE'
@@ -82,7 +82,8 @@ export function deliverReportFeedbackFrom({ kernel = null, ctx = null, effect = 
  * `status` is still taken, but ONLY for the snapshot's counts. `ctx` and `effect` are the entry's own: it is the only
  * holder of the host prompt service, which is why this call lives there rather than in the report domain.
  */
-export function deliverReportFeedback({ ctx = null, effect = null, status = null, enabled = false, audience = null, source = null } = {}) {
+export function deliverReportFeedback({ ctx = null, effect = null, status = null, enabled = false, audience = null, source = null,
+  order = REPORT_FEEDBACK_CONTEXT_ORDER, feedbackText = null } = {}) {
   const isOn = enabled === true
   const who = typeof audience === 'string' && audience ? audience : null
   // ★ THE SOURCE IS THE LAYER THAT ACTUALLY ARMED THE SWITCH, PASSED IN - NEVER A LITERAL. It used to read
@@ -101,8 +102,8 @@ export function deliverReportFeedback({ ctx = null, effect = null, status = null
   const armed = (typeof source === 'string' && source) ? source : (isOn ? null : 'default')
   const base = { enabled: isOn, source: armed, audience: who, delivered: false, registered: false, code: null, what: null, reason: null, stack: null }
 
-  const named = (what, reason, e) => Object.assign({}, base, {
-    code: UNAVAILABLE, what, reason, stack: e ? String((e && e.stack) || '') : null,
+  const named = (what, reason, e, code = UNAVAILABLE) => Object.assign({}, base, {
+    code, what, reason, stack: e ? String((e && e.stack) || '') : null,
   })
   const complain = (reason, e) => {
     try {
@@ -112,6 +113,17 @@ export function deliverReportFeedback({ ctx = null, effect = null, status = null
 
   if (!isOn) return base                                     // zero mechanism: off means nothing, not a failure
   if (!who) return named(REPORT_FEEDBACK_WHAT_AUDIENCE, 'feedback is on but no audience is named')
+  // ★ PHASE 9 / new goal round 2: the module header declared this caller-side order guard ("the host does not validate
+  // context order; we do"), but the delivery path never called it. Validate HERE, BEFORE any host access, and keep the
+  // guard's own VMU_MIDDLEWARE_FAILED code so the receipt names the layer (not a generic unavailable).
+  let safeOrder
+  try {
+    safeOrder = assertFiniteOrder(order)
+  } catch (e) {
+    const out = named('report.feedback.order', 'report feedback context order is not finite (got ' + String(order) + ')', e, (e && e.code) || UNAVAILABLE)
+    complain(out.reason, e)
+    return out
+  }
 
   let host = null
   let accessFailed = null
@@ -155,21 +167,31 @@ export function deliverReportFeedback({ ctx = null, effect = null, status = null
   }
 
   try {
-    const run = () => {
-      const s = status || {}
-      const text = '[vmu report feedback] audience: ' + who +
+    const s = status || {}
+    const rawText = feedbackText !== null && feedbackText !== undefined
+      ? String(feedbackText)
+      : '[vmu report feedback] audience: ' + who +
         ' · reports declared: ' + (s.declared || 0) +
         ' · recorded: ' + ((s.trace && s.trace.kept) || 0) +
         ' · delivered: ' + (s.delivered || 0) +
         ' · this is a delivery notice, not an instruction.'
-      const dispose = host.context({ name: REPORT_FEEDBACK_CONTEXT_NAME, order: REPORT_FEEDBACK_CONTEXT_ORDER, text })
+    // ★ PHASE 9 / new goal round 2: boundFeedback was declared ("truncation must SAY SO") but never called by the
+    // delivery path. Every text that can reach host.context() goes through it, and truncation is stated BOTH in the
+    // delivered text and in the receipt (truncated/originalBytes/deliveredBytes) — a shortened text is never passed as whole.
+    const bounded = boundFeedback(rawText)
+    const text = bounded.truncated
+      ? bounded.text + '\n[vmu feedback truncated: original ' + bounded.originalBytes + ' bytes, delivered ' + bounded.text.length + ' bytes]'
+      : rawText
+    const run = () => {
+      const dispose = host.context({ name: REPORT_FEEDBACK_CONTEXT_NAME, order: safeOrder, text })
       return typeof dispose === 'function' ? dispose : () => {}
     }
     // Wrapped exactly like the prompt-section registration in the entry: the host answers with a Cordis disposer, and an
     // un-wrapped registration would never be collected.
     if (typeof effect === 'function') effect(run, 'vmu:report-feedback')
     else run()
-    return Object.assign({}, base, { delivered: true, registered: true, what: REPORT_FEEDBACK_WHAT_CONTEXT })
+    return Object.assign({}, base, { delivered: true, registered: true, what: REPORT_FEEDBACK_WHAT_CONTEXT,
+      truncated: bounded.truncated, originalBytes: bounded.originalBytes, deliveredBytes: bounded.text.length, maxBytes: bounded.maxBytes })
   } catch (e) {
     const out = named('systemPrompt.context', 'the host refused the feedback context', e)
     complain(out.reason, e)

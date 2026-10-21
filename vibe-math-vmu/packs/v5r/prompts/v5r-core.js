@@ -1,4 +1,4 @@
-﻿// vmu pack — `v5r-core`: v5r's institution as an INSTITUTIONAL PACK (docs/10 §5, the V5 deliverable).
+// vmu pack — `v5r-core`: v5r's institution as an INSTITUTIONAL PACK (docs/10 §5, the V5 deliverable).
 //
 // Why a second pack when `institute-min` exists: institute-min proved the SHAPE (slots/tracks/settings/
 // rules/aliases) but its rule names a v5-era tool that no host registers (`vibe_v5_poll_vote`), so it never
@@ -44,8 +44,11 @@ import { V5R_ARTIFACT_COUNTER } from '../middleware/artifact-counter.js'
 import { V5R_PACK_TOOLS } from '../tools.js'
 // PHASE 7 round 8: THE PAPER PROMPTS (write / cross-review / final), phase-scoped and NON-source-derived.
 import { V5R_PAPER_PROMPT_SECTIONS } from './v5r-paper-prompts.js'
-// PHASE 7 round 9: the reply → paper-subsystem dispatcher (the prompt contract above must have a CONSUMER).
-import { V5R_PAPER_DISPATCH } from '../middleware/paper-dispatch.js'
+// ★ GOAL ROUND 3 — THE PAPER REPLY DISPATCHER IS NO LONGER INSTALLED. It listened for `paper_part`/`paper_review`/
+// `paper_final` reply fields, but the kernel's turn parser refuses any field outside `FIELDS ∪ RECORDED_FIELDS`, and none
+// of those three names is in it. A listener that can never fire is exactly the "declared but unreachable" defect, so the
+// mechanism moved to the TOOL face (`vibe_v5_paper`, declared in ../tools.js) and the module is kept only as a
+// DEPRECATED compatibility path for a deployment that installs it explicitly (it now has NO production reader).
 
 /**
  * ROUND 336 — THE BRIDGE FROM TEXT TO PIPELINE. Until now the v5r prompt corpus was carried as DATA: hash-locked,
@@ -290,22 +293,14 @@ export const PACK = Object.freeze({
       capabilities: ['trigger-workflow', 'record'],
       module: V5R_MOTION_BOX,
     },
-    // ★ PHASE 7 round 9: THE PAPER REPLY DISPATCHER. The three paper prompts tell a member to answer with a JSON object
-    // (`paper_part` / `paper_review` / `paper_final`); until this entry existed, NOTHING consumed those fields — the
-    // "prompt promises, code cannot" defect. It listens on `turn/reply-parsed` (the one point where a parsed reply is
-    // still actionable), dispatches ONLY the current phase's field, and records every outcome in
-    // `paperDispatchStatus()`. `failure:'open'`: a broken dispatcher must not stop a turn.
-    {
-      id: 'v5r.paper-dispatch',
-      kind: 'module',
-      order: 320,
-      on: ['turn/reply-parsed'],
-      failure: 'open',
-      // `trigger-workflow` unlocks the capability-gated services accessor the LOAD-TIME factory receives, which is how
-      // this module registers its `vmu.status` section (`dispose` clears it on unload).
-      capabilities: ['record', 'trigger-workflow'],
-      module: V5R_PAPER_DISPATCH,
-    },
+    // ★ GOAL ROUND 3: THE PAPER REPLY DISPATCHER ENTRY WAS REMOVED, WITH THE REASON KEPT HERE.
+    // It used to sit at order 320 and listen on `turn/reply-parsed` for `paper_part`/`paper_review`/`paper_final`.
+    // Those fields are NOT in the kernel's accepted reply fields (`FIELDS ∪ RECORDED_FIELDS`), so the parser refused
+    // every such reply as `VMU_TURN_UNKNOWN_FIELD` before this listener could ever run — a listener that can never fire.
+    // The institution's paper flow now has a REAL entry: the `vibe_v5_paper` tool (packs/v5r/tools.js) with
+    // start/part/review/advance/final/render/status/compile/sections. The module remains on disk as a DEPRECATED
+    // compatibility path (no production reader); a deployment may install it explicitly if it wants the old reply-field
+    // contract. Leaving the entry here would re-create the "declared but unreachable" defect this round removes.
     // ROUND 20 (task-126): the METRIC COUNTER. Same shape, same capabilities; it observes on the INTRA-turn hooks
     // (`tools/result` = "a tool result exists, observation" per the host's own guidance; the two job-settled events)
     // and writes through `api.services.get('vmu.metrics')`. Which indicators exist and when they are observed stays
@@ -594,6 +589,8 @@ export const v5rToolSectionAcademician = Object.freeze({
     '· vibe_v5_inbox —— 信箱（列表 / 打开 / 标记）：看列表不读正文；打开一封会自动标已读；需要跟进标待办。',
     '· vibe_v5_wait —— 等别人回你（等到或超时即返回）；不要用反复轮询。',
     '· vibe_vmu_env —— 探测本机的外部环境（action:\'probe\' 传 need，如 python／lean／xelatex；action:\'list\' 看全部需求；action:\'report\' 把缺失记成一条 finding 供主代理读）。它只探测与上报，【绝不安装、绝不联网、绝不改系统】。',
+    '· vibe_v5_paper —— 论文子系统：action=start（开题，需 target 与 participants）／part（写你那一份）／review（互审，deliverable 必填）／advance（推进阶段）／final（定稿，只有 chair 席会被内核接受）／render（产出 md／tex／meta 并如实报 missing）／status／compile／sections；阶段合法性与席位权限由内核判。',
+    '★ 论文流程：start → part（逐章／逐人）→ advance → review → render；advance 可能多次（互审全票通过后还要再 advance 才到 awaiting-editor，之后由 chair 席 final），被具名拒时照拒因处理、不要跳过阶段。',
     '★ 留言（信箱）不需要立即阅读 —— 你可以在有空时再看。',
     '★ 查看顺序：先看列表（发件人 / 时间 / 标题 / 已读 / 待办），再挑一封打开读；读过的会自动标已读，需要跟进的标待办（todo）。',
     '★★【紧急】只表示：发送方希望你【及时 / 在线】回复。它【不代表】内容更重要、【也不代表】你必须立刻中断手上的推导。除这种情况外，一律走非紧急留言（默认），这样才不会因为频繁高强度交互而偏离原任务、拖慢进度。',
@@ -634,6 +631,8 @@ export const v5rToolSectionResearcher = Object.freeze({
     '· vibe_v5_inbox —— 信箱（列表 / 打开 / 标记）：看列表不读正文；打开一封会自动标已读；需要跟进标待办。',
     '· vibe_v5_wait —— 等别人回你（等到或超时即返回）；不要用反复轮询。',
     '· vibe_vmu_env —— 探测本机的外部环境（action:\'probe\' 传 need，如 python／lean／xelatex；action:\'list\' 看全部需求；action:\'report\' 把缺失记成一条 finding 供主代理读）。它只探测与上报，【绝不安装、绝不联网、绝不改系统】。',
+    '· vibe_v5_paper —— 论文子系统：action=start（开题，需 target 与 participants）／part（写你那一份）／review（互审，deliverable 必填）／advance（推进阶段）／final（定稿，只有 chair 席会被内核接受）／render（产出 md／tex／meta 并如实报 missing）／status／compile／sections；阶段合法性与席位权限由内核判。',
+    '★ 论文流程：start → part（逐章／逐人）→ advance → review → render；advance 可能多次（互审全票通过后还要再 advance 才到 awaiting-editor，之后由 chair 席 final），被具名拒时照拒因处理、不要跳过阶段。',
     '★ 留言（信箱）不需要立即阅读 —— 你可以在有空时再看。',
     '★ 查看顺序：先看列表（发件人 / 时间 / 标题 / 已读 / 待办），再挑一封打开读；读过的会自动标已读，需要跟进的标待办（todo）。',
     '★★【紧急】只表示：发送方希望你【及时 / 在线】回复。它【不代表】内容更重要、【也不代表】你必须立刻中断手上的推导。除这种情况外，一律走非紧急留言（默认），这样才不会因为频繁高强度交互而偏离原任务、拖慢进度。',
@@ -666,6 +665,8 @@ export const v5rToolSectionTemp = Object.freeze({
     '· vibe_v5_inbox —— 信箱（列表 / 打开 / 标记）：看列表不读正文；打开一封会自动标已读；需要跟进标待办。',
     '· vibe_v5_wait —— 等别人回你（等到或超时即返回）；不要用反复轮询。',
     '· vibe_vmu_env —— 探测本机的外部环境（action:\'probe\' 传 need，如 python／lean／xelatex；action:\'list\' 看全部需求；action:\'report\' 把缺失记成一条 finding 供主代理读）。它只探测与上报，【绝不安装、绝不联网、绝不改系统】。',
+    '· vibe_v5_paper —— 论文子系统：action=start（开题，需 target 与 participants）／part（写你那一份）／review（互审，deliverable 必填）／advance（推进阶段）／final（定稿，只有 chair 席会被内核接受）／render（产出 md／tex／meta 并如实报 missing）／status／compile／sections；阶段合法性与席位权限由内核判。',
+    '★ 论文流程：start → part（逐章／逐人）→ advance → review → render；advance 可能多次（互审全票通过后还要再 advance 才到 awaiting-editor，之后由 chair 席 final），被具名拒时照拒因处理、不要跳过阶段。',
     '★ 留言（信箱）不需要立即阅读 —— 你可以在有空时再看。',
     '★ 查看顺序：先看列表（发件人 / 时间 / 标题 / 已读 / 待办），再挑一封打开读；读过的会自动标已读，需要跟进的标待办（todo）。',
     '★★【紧急】只表示：发送方希望你【及时 / 在线】回复。它【不代表】内容更重要、【也不代表】你必须立刻中断手上的推导。除这种情况外，一律走非紧急留言（默认），这样才不会因为频繁高强度交互而偏离原任务、拖慢进度。',

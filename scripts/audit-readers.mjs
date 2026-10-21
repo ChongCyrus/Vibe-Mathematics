@@ -49,6 +49,16 @@ export const PUBLIC_API = Object.freeze({
   'kernel/bus.js::hookRegistryProblems': '总线自检面：把注册表问题（重名/未登记）暴露给诊断者；正常运行时问题集合为空，故无仓内调用者。',
   'kernel/guard.js::readSafetyMemoryMb': '内存安全阈值的读取面：由宿主/部署方在装配时问“你们期望多少内存”，框架不自设策略。',
   'kernel/ids.js::currentIds': 'id 快照读取面：供宿主/观察者读取当前 id 集；框架内部走增量 id，不读全量快照。',
+  'kernel/guard.js::requiresApproval': 'guard 的审批判定面：导出给宿主/策略层与验证套件使用；仓内正常路径由 guardWriteExtended 一并判定。',
+  'kernel/guard.js::capabilityOf': 'guard 的能力归类面：导出给宿主/策略层与验证套件；仓内正常路径不逐个调用。',
+  'kernel/guard.js::cpuBudgetExceeded': 'guard 的 CPU 预算判定面：导出给宿主/验证套件；生产路径由 guardWriteExtended 合并判定。',
+  'kernel/guard.js::guardWriteExtended': 'guard 的写保护扩展判定面：宿主/部署方按需调用；导出属于对外 API，测试是当前唯一读点。',
+  'kernel/index.js::createMembersList': '成员名册的构造接缝：供宿主/测试按依赖注入构造；主装配走 createMembers。',
+  'kernel/turn/index.js::extractFence': '从模型回复中取 JSON 围栏的解析工具：导出给宿主/中间件与验证套件复用。',
+  'kit/tools.js::selectKitTools': 'Kit 工具选择器：供宿主/测试构造裁剪后的工具面；主路径由 Kit 装配消费。',
+  'math-engines.js::isKnownMathEngine': '数学引擎名校验面：供宿主/配置校验与验证套件使用。',
+  'settings/schema.js::renameNotice': '设置改名公告的生成面：供迁移/诊断与验证套件读取；主路径不逐条调用。',
+  'settings/schema.js::toJsonSchema': '设置 schema 的 JSON Schema 导出面：供外部工具/宿主消费（导出即 API）。',
 })
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -129,9 +139,13 @@ export const classify = ({ defs, texts, testTexts, services, annotations = new M
     if (prod > 0) continue
     const test = Math.max(0, countRefs(d.name, testTexts, { file: null, line: -1 }))
     let cls
+    // An explicit PUBLIC_API annotation is an ADJUDICATION: the symbol is an outward API even when the only in-repo
+    // reader is a test. Without this branch the annotation was decorative (it never changed the class), and --strict
+    // could never be satisfied for a legitimate exported seam.
+    if (annotations.has(key)) cls = 'B'
     // An OBJECT METHOD that only tests read is not "the framework forgot to call it" (it is a face method the test
     // exercises): decide by readers first for that kind, so the deep mode cannot inflate A with public face methods.
-    if (d.kind === 'object-method') cls = test > 0 ? 'C' : 'A'
+    else if (d.kind === 'object-method') cls = test > 0 ? 'C' : 'A'
     else if (MECHANISM.test(d.name)) cls = 'A'
     else if (test > 0) cls = 'C'
     else if (d.exported || service) cls = 'B'

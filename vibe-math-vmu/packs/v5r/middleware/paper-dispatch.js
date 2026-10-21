@@ -1,13 +1,25 @@
 /**
  * packs/v5r/middleware/paper-dispatch.js — PHASE 7 round 9: THE REPLY → PAPER-SUBSYSTEM WIRING.
  *
- * WHY THIS FILE EXISTS (the gap the previous round named): the three paper prompts (`paper-write` / `paper-review` /
+ * ★★★ DEPRECATED (GOAL ROUND 3) — NOT INSTALLED BY THE PACK ANY MORE, AND THE REASON IS THE WHOLE POINT:
+ * the pack's loaded manifest no longer declares the `v5r.paper-dispatch` middleware entry. This listener waits for
+ * `paper_part` / `paper_review` / `paper_final` reply fields, but those names are NOT in the kernel turn parser's
+ * accepted set (`FIELDS ∪ RECORDED_FIELDS`), so such a reply is refused as `VMU_TURN_UNKNOWN_FIELD` BEFORE any
+ * `turn/reply-parsed` hook can run. In other words the listener could never fire: it was a "declared but unreachable"
+ * mechanism. The paper flow now has a REAL runtime entry — the `vibe_v5_paper` TOOL face in `../tools.js`.
+ *
+ * THIS MODULE IS KEPT ONLY AS A COMPATIBILITY PATH: a deployment that wants the old reply-field contract can install it
+ * explicitly (`installPaperDispatch({ services })`), and the pure `dispatchPaperReply()` remains usable by tests and by
+ * such a deployment. It has NO production reader by default; do not re-add the manifest entry without also making the
+ * turn parser accept those fields (otherwise the dead listener is back).
+ *
+ * WHY THIS FILE EXISTED (the gap the previous round named): the three paper prompts (`paper-write` / `paper-review` /
  * `paper-final`) tell a member to answer with a JSON object (`paper_part` / `paper_review` / `paper_final`), and the
  * paper subsystem (`../paper.js`) can record each of those — but NOTHING connected the two. A prompt that promises a
  * contract no code consumes is exactly the "says it can, cannot do it" defect this repo bans. This module closes it on
  * the ONE hook where a parsed reply is still actionable: `turn/reply-parsed`.
  *
- * THE FOUR RULES (each is asserted in tests/vmu-v5r-tools.test.mjs):
+ * ★ The four rules below describe the OLD contract (kept for the compatibility path and its tests).
  *   ① ONLY THE CURRENT PHASE'S FIELD IS DISPATCHED. A reply carrying `paper_part` in an `normal` turn is NOT recorded;
  *      it is recorded as a NAMED refusal (`phase-mismatch`) so the mistake is visible instead of silently dropped.
  *   ② A MALFORMED reply (the field present but the subsystem refuses it — missing title/content, non-boolean
@@ -23,6 +35,15 @@
  * refuses BY NAME when a required face is absent — it never invents one.
  */
 import { createPaperSubsystem } from '../paper.js'
+
+/** Machine-readable deprecation marker (an audit or a deployment can read it without parsing prose). */
+export const PAPER_DISPATCH_DEPRECATED = Object.freeze({
+  deprecated: true,
+  since: 'goal-round-3',
+  replacement: 'vibe_v5_paper (packs/v5r/tools.js) — actions start/part/review/advance/final/render/status/compile/sections',
+  whyUnreachable: 'paper_part/paper_review/paper_final are not in kernel/turn FIELDS ∪ RECORDED_FIELDS, so the parser refuses the reply before turn/reply-parsed runs',
+  installedByDefault: false,
+})
 
 /** The phase → reply-field mapping. ONE table, so the prompt contract and the dispatcher cannot drift. */
 export const PAPER_REPLY_FIELDS = Object.freeze([
