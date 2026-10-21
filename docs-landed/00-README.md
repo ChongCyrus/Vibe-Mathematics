@@ -19,15 +19,17 @@
 
 ## 3. 它由什么构成（★ 目录即架构）
 
+> ★★★ **历史快照声明（G8）**：本目录是某一版 **`docs-landed`** 的落地快照，**不是当前权威清单**。当前模块数／工具面数／键数一律以 `node scripts/regen-all.mjs --check` 与 `docs/18` 的生成式索引为准；旧 `vibe-math-v2`…`v5r` preset 已弃用（见 `docs/DEPRECATED-LEGACY-PRESETS.md`）。
+
 ```
 vibe-math-vmu/                 ← 框架（能力在内核）
-  kernel/       103 个模块      ← 能力：回合循环／提示词管线／名册／会议／票箱／工作流／
+  kernel/       模块数见生成式索引  ← 能力：回合循环／提示词管线／名册／会议／票箱／工作流／
                                  记录／形式化／数学面／评审出版／恢复／耐久……
-  tools/        54 个工具面      ← 模型真正能调用的那些 face
-  settings/     schema.js       ← 【声明】：可设什么、类型/域/默认/归属/热级（1232 键）
+  tools/        工具面数见 docs/18 生成式索引 ← 模型真正能调用的那些 face
+  settings/     schema.js       ← 【声明】：可设什么、类型/域/默认/归属/热级（键数见生成式设置表）
   host*.js                      ← 与宿主 DSH 的适配与装配
-  packs/v5r/                    ← ★ 一个整合包：settings ＋ middleware ＋ prompts ＋ notices
-  packs/institute-min/          ← ★ 另一个整合包：证明"换机构＝换文件夹"
+  packs/v5r/                    ★ 一个整合包：settings ＋ middleware ＋ prompts ＋ notices
+  packs/institute-min/          ★ 另一个整合包：证明"换机构＝换文件夹"
 ```
 
 ★ **红线（违反即等于改错方向）**：

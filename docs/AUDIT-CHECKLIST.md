@@ -755,3 +755,18 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 - **V3-G2 —— 第二条"同族门禁条件"（断言已落地并绿）**：`tests/formal-verify-v3.test.mjs` 在**模块作用域**记住第一轮槽位（`:328` `let gateSlots1 = null`，round-one 的 require 轮在块里，所以必须提到模块级；`:739` `gateSlots1 = slotsOf(batch) // measured ["0","1"]`），并断言**
   `:812` `* V3-G2 the re-eligible reviews are the SAME slots that fired in round one (before=… after=…)` **与** `:813` `* V3-G2 and they are still DISTINCT slots`**（`:807` 的注释写明"`.length >= 2` 是**计数**，语义单元是**同一批槽位**"）。修复树 ALL GREEN（该套件 41.3 s）。
 - **V3-G2 的实测边界（无判别性变异 ⇒ 不发布该族，这是测量结论而非疏漏）**：本 revision 下**不存在**严格保计数的变异 —— 继承旧子任务在本树里是**惰性**的（已结论的 verify 任务早已被删除），而**完全禁用回填**会超过 300 s 子进程上限、被分类为 **`HANG`（不是具名红）**。两个候选变异都被逐一实测后**否决**，记录在 `tests/formal-verify-v3.mutants.mjs` 的 `MEASURED BOUNDARY (V3-G2)`（`:78`）、`TWO CANDIDATE MUTANTS WERE THEN MEASURED - BOTH REJECTED`（`:86`）与 `RECORDED BOUNDARY`（`:93`）。因此该族**保持 1/1**，**故意**不含 V3-G2 条目 —— 一个会挂起的族会拖垮门禁，而不是证明什么。
+
+
+## G7/G8 新增门禁（PHASE 9+ / 2026-10-21）
+
+| 门禁 | 命令 | 判据 |
+|---|---|---|
+| 读点/消费者词表 | `node scripts/audit-readers.mjs` | 0 defects；工具名与四类措辞指回 `vibe-math-vmu/docs/01 §1.4` |
+| 未定义拒绝审计 | `node tests/vmu-undefined-refusals.test.mjs` | 未定义拒绝按桶报告，0 未解释 |
+| 静默读取 | `node tests/audit-no-silent-reads.test.mjs` | 读取路径不得静默吞键 |
+| 面发布 | `node tests/audit-face-publication.test.mjs` | 每个 TOOL_NAMES 要么注册、要么家族条件明确为假 |
+| 拒绝回归 | `node tests/audit-refusal-regressions.test.mjs` | 具名拒绝有回归断言（样板桶 env） |
+| 真机会话检查 | `node scripts/slv-inspect.mjs <sessions-dir>` | 成员 calls==results；同源块==header；0 RED |
+
+★ G7 真机判据：`slv-inspect` 5 sessions / 0 RED；root prompt 不含 `【本轮你实际能调用的工具｜member】`；会议 ballot/service tally 互为镜像；`close.enforced` 是数组；`cast:true`；四类错误 0。
+★ 证据：`D:\_tmp\slv-v5r\g7-verify.txt`（仓库外实测文件）。

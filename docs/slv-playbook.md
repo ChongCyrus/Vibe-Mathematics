@@ -51,7 +51,7 @@ dsh --profile <clone> --port <自有端口> --no-open
 --allow-probe-patch --token --session --resume
 ```
 
-- 常用组合：`--port <端口> --token <TOKEN> --preset vibe-math-v4 --task-file <任务> --jsonl <产物.jsonl> [--follow-stream] [--follow-members]`。
+- 常用组合：`--port <端口> --token <TOKEN> --preset vibe-math-vmu --task-file <任务> --jsonl <产物.jsonl> [--follow-stream] [--follow-members]`（旧 `vibe-math-v4` 已弃用，见 `docs/DEPRECATED-LEGACY-PRESETS.md`）。
 - **`--steer-after`** 是中途注入/中继通道：用它在运行中追加指令（例如模拟声明或中途 steer），**不要**为此另开一个会话。
 - `--timeout` 与 `--max-tokens` **每次都要设**（见 §4）。
 

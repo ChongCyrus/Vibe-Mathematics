@@ -1657,7 +1657,8 @@ for (const m of roster) chat.mute(m, { by: chair, reason: 'meeting in progress' 
 ★ **投票镜像到 service**：`action:"vote"` 回执带
 `serviceVote:{ok, counted, tally, tallyNote, ballot:{mirrored, reason, boxId, code}}`；
 `action:"summary"` 的 `motions[0].tally` 与 `votes` **必须和 ballot 票数一致**（G7 复验：两票后 `tally.for:2`、`votes` 两条、会议级 `votes:2`）。
-★ **close**：`action:"close"` 回 `registry:"service"`、`closeSemantics:"service-archives"`、`enforced` **必须是数组**（不是字符串 `"[circular]"`）；会议进 service 归档后 `summary` 仍可读 motion/票。
+★ **close**：`action:"close"` 回 `registry:"service"`、`closeSemantics:"service-archives"`、`enforced` **必须是数组**（不是字符串 `"[circular]"`）；会议进 service 归档后 `summary` 仍可读 motion/票。★ **`close.enforced` 现在会列出 advisory rails**（例如 `vmu.meetings.eligibleSeats`；数组可为空，空数组表示本次没有 advisory 键生效，不是类型退化）。
+★ **quorum 的“投票即参与”语义**：`vote` 计票的同时把投票人视为**已参与**（`quorum.present` 应随票增加）；`vmu.meetings.unansweredPolicy` 决定未回答者如何计入分母——**“未投票”与“未参与”不是一回事**，实现与回执必须分开读。G7 复验仍观察到 `unansweredList` 陈旧（已知读数缺陷，不改变本条语义）。
 ★ **`eligibleSeats`**：框架默认 **`[]`（零策略：不替机构决定谁有票）**；v5r 的 pack 值层声明 `chair/member` —— 这是“政策在 pack，不在内核”的红线 1 例子。
 ★ **真机证据**：G7 复验（`D:\_tmp\slv-v5r\g7-verify.txt`，仓库外实测文件）—— `serviceVote.ballot.mirrored:true`、`summary.tally.for:2`、`close.enforced:[]`（数组）、`slv-inspect 5 sessions / 0 RED`。
 

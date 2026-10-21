@@ -203,7 +203,7 @@
 
 | 工具 | 要点 | 参数/返回 |
 |---|---|---|
-| `vibe_v5_paper` ★ G7 重点 | **论文的唯一运行入口**：`start/part/advance/review/final/render/status/compile/sections`（9 action）。`final` **只有 chair 席**能过（成员 ⇒ `VMU_NOT_PERMITTED`）；`render` 回 `wrote/missing/complete/pdf`；`status` 回同一 `PaperArtifacts` 的 `missing/complete/pdf`（不写产物） | `action`、`target`、`member`、`participants`、`part/title`、`body`、`deliverable`、`notes`、`decision` |
+| `vibe_v5_paper` ★ G7 重点 | **论文的唯一运行入口**：`start/part/advance/review/final/render/status/compile/sections`（9 action）。`final` **只有 chair 席**能过（成员 ⇒ `VMU_NOT_PERMITTED`）；`render` 回 `wrote/missing/complete/pdf`；`status` 回同一 `PaperArtifacts` 的 `missing/complete/pdf`（不写产物）；PDF 失败回执带 **`triedEngines:[{engine,phase,code}]`**（可读的结构化引擎尝试列表，不再 `[object Object]`） | `action`、`target`、`member`、`participants`、`part/title`、`body`、`deliverable`、`notes`、`decision` |
 | `vibe_v5_inbox` | 信箱：`list/open/mark`；`list` 行 **8 字段无正文**，`open` 置 `read:true`，`mark` 改 read/todo。与 `vibe_vmu_mailbox` **同一套存储**（非紧急提示无正文；紧急只有发送方 `urgent:true` 才带正文） | `action`、`member`、`status`、`id`、`read`、`todo` |
 | `vibe_v5_wait` | 等待：`wait/status`；**面名是 `activity`（不是 `wait`）**；回执 `timedOut/waitedMs/timeoutMs`；无 peer 接缝时 `peerCheck:"no-seam"` | `action`、`timeout_ms`、`member`、`reason` |
 | `vibe_v5_record_*` | 研究日志/成果卡（内容指纹去重） | `content`/`statement`、`value`、`motive`、`p`、`track` |

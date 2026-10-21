@@ -1080,8 +1080,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       archive.push(m)
       counters.closed += 1
       // minutes retention pruning (counted, never silent)
-      mark(enforced, 'vmu.meetings.minutesRetentionMs')
+      // ★ G7 ② note: this key is marked ONLY when its switch is on. The enforced-consistency gate has a rule that a
+      // receipt must distinguish "the key was in force" from "the key was at its permissive default" when the
+      // behaviour differs — this key DROPS minutes only when > 0, so listing it at 0 would erase that distinction
+      // (the other three close rails do not change behaviour at their defaults, so they are listed on consultation).
       if (K.minutesRetentionMs > 0) {
+        mark(enforced, 'vmu.meetings.minutesRetentionMs')
         let dropped = 0
         while (archive.length && now - archive[0].openedAt > K.minutesRetentionMs) { archive.shift(); dropped += 1 }
         if (dropped) { counters.prunedMinutes += dropped; say({ type: 'meetings/minutes-pruned', at: now, dropped }) }

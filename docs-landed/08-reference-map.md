@@ -15,7 +15,7 @@
 | `docs-landed/` | ★ **定稿短版文档**（★ 8 卷；★ **本卷是第 8 卷**）✓ 实测 `docs-landed/*.md` = 8 |
 | `docs/` | ★ **权威细节**：`vibe-math-vmu/docs/` 的**镜像卷**从不在顶层；顶层 `docs/` 放**架构图／审计清单／方法论／对比审计／论文** ＋ `acceptance/` ✓ 实测顶层 6 个 .md ＋ `acceptance/` |
 | `docs/acceptance/` | ★ **过程与审计记录**（★ 逐轮报告／裁决／来源盘点）✓ 实测 **339** 份 `.md` |
-| `vibe-math-v5r/`、`vibe-math-v5/`、`v4`、`v3`、`v2` | ★ **历史各代 preset**（★ 迁移与 parity 的对照面；★ v5r ＝ 最近一代替换对象）✓ 目录存在 |
+| `vibe-math-v5r/`、`vibe-math-v5/`、`v4`、`v3`、`v2` | ★ **历史各代 preset（已弃用；见 `docs/DEPRECATED-LEGACY-PRESETS.md`）**：目录仍在仓内作历史参考，**不再出现在 package/installer 的发射面**（迁移与 parity 的对照面仍可读）✓ |
 | `prompt-corpus-v5/`、`prompt-corpus-persona/`、`prompt-corpus-v2/`～`v4/` | ★ **提示词语料快照**（★ pack 提示词由它派生；v5 语料带 sha256 记录）✓ 目录存在 |
 | `tests/` | ★ **套件与探针**（★ 门禁都在这里）✓ |
 | `scripts/` | ★ **生成器与审计脚本**（★ 见 §4.3）✓ |

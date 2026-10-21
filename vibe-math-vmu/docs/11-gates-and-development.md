@@ -1143,3 +1143,11 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 ★★ **自证**：`--selftest` 用合成段证明「显示名 `academician` 在 v5r 上必红」「槽 id `member` 绿」「派生集合非空」；默认跑两包，v5r 未修前应红，修后应绿。**作业数 +1**（写入门禁列表）。
 
 
+
+
+## G7 门禁增量（PHASE 9+ / 真机教训）
+
+- **错误码的 `hint` 不许为 `null`**：任何具名拒绝都必须带非空 `hint`（G7 抓到 `v5_pause/resume` 的 `hint:null`）；门禁在 `tests/audit-declaration-criterion.test.mjs` 与 `vmu-undefined-refusals.test.mjs` 的声明判据上收紧。
+- **`-Faces` 未知名 ⇒ 具名拒**：`vmu.tools.faces` 里的未知面键/工具名必须报 `VMU_INVALID_ARGUMENT`（hint 列出已知面），不得静默忽略或静默全开。
+- **`capacity:0 = unlimited`**：槽位容量 0 表示无上限，回执带 `unlimited:true`；门禁 `vmu-kernel` 断言 `capacity 0 ⇒ unlimited:true`、`capacity 1 ⇒ unlimited:false`。
+- **`instructionDelivered`**：`step`/最终 turn 回执带该布尔，回答“本轮 `why` 指令是否进了装配文本”；无此字段不等于已交付。

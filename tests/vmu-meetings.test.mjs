@@ -133,13 +133,13 @@ const err = (fn) => errOf(fn)
     const c = opened({}, {}, { roster: ['acad', 'r-1'] })
     const closed = c.h.t.close({ meeting: c.id })
     const keys = closed.enforced
-    ok(Array.isArray(keys) && keys.length >= 4 &&
+    ok(Array.isArray(keys) && keys.length === 3 &&
       keys.includes('vmu.meetings.confirmPreviousMinutes') && keys.includes('vmu.meetings.committeeReportRequired') &&
-      keys.includes('vmu.meetings.minutesActionsRequired') && keys.includes('vmu.meetings.minutesRetentionMs'),
-      '★ G7 ②：close 披露它本轮真正评估的 rail 键（全在默认值也照样列出），不再回 enforced:[]',
+      keys.includes('vmu.meetings.minutesActionsRequired'),
+      '★ G7 ②：close 披露它本轮真正评估的 3 个默认 rail 键（全在默认值也列出）；minutesRetentionMs 只在 >0 时列出（gate 要求区分"在 force"与"默认"）',
       keys)
-    ok(closed.enforcedScope === 'evaluated-so-far' && Array.isArray(closed.receipt.enforced) && closed.receipt.enforced.length === 4,
-      '★ G7 ② 反：enforcedScope 仍是 evaluated-so-far，receipt 内是同一份 4 键列表（不是共享引用/标记）',
+    ok(closed.enforcedScope === 'evaluated-so-far' && Array.isArray(closed.receipt.enforced) && closed.receipt.enforced.length === 3,
+      '★ G7 ② 反：enforcedScope 仍是 evaluated-so-far，receipt 内是同一份 3 键列表（不是共享引用/标记）',
       { scope: closed.enforcedScope, inReceipt: closed.receipt.enforced && closed.receipt.enforced.length })
   }
 }

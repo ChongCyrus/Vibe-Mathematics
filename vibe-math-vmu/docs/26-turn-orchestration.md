@@ -662,8 +662,13 @@ root agent 自己的 assembly（root 不属于任何成员槽）。
 ★ **不许继承到 root**：G7 真机抓到 root 提示词残留最后一个 member 的 `【本轮你实际能调用的工具｜member】` 块，根因是 `pullMemberToolFace` **原地改 section 对象**，管线把同一对象交给 root。修法是 **copy-on-write**（`out.sections` 新对象），并在 `vibe_vmu_status.detail:summary` 的 `toolFacePull` 里报告 `lastResolution/effectiveBlock/effectiveCount`。
 ★ **`toolPresentation` 与 `promptAck`**：
 - `toolPresentation` 是**声明通道**：pack 声明“本机构以 native / ptc / defer 呈现”；**非 native 必须带 marker**（例如 `【本轮工具呈现｜<slot>】`），否则宿主不改写；
+- **native**：逐字保持原块（`【本轮你实际能调用的工具｜…】… 与你这回合的 wire 完全一致 …`）；
+- **ptc 已应用**：wire 换成 `run_code`，块改为 `【本轮工具呈现｜<slot>】本回合以 run_code 呈现：下列 N 个工具可通过代码调用…（它们不在 wire 顶层目录里，这是呈现方式的差异，不是收窄）`；**marker 必须在**，否则调用方无法区分“收窄”与“呈现方式变化”；
+- **ptc 声明但 `presentAs` 未应用（unapplied）**：wire 未变 ⇒ 块回落 native 形状；
+- **defer**：名字集合不变，只在块尾追加“部分工具需 load 后才可调用（deferLoading）”；
 - `promptAck` **只**保证“该 pack 的提示词提到了呈现方式”，**不能替代**同源块的实际计算；
 - **v5r 不声明 `toolPresentation`**，所以 v5r 的块逐字是 native 形状（`与你这回合的 wire 完全一致`）。
+★ **`step` 回执的 `toolCalls`**：每个成员回合的回执带 `toolCalls:[{name,called,receipts,ok}]`，用于回答“这轮到底调了什么”；**部署没有声明 tools 钩子时它是空数组——那表示真的没有观察者，不是“成员没调工具”**。
 ★ **判据**：成员会话 `block` 与 `request/header.tools` 名字集合一致；root 会话的 `block` **不得含 `｜member】`**；`slv-inspect` 0 RED 才是通过。
 
 ## 4. v1 的边界（**未做，明写** ✗）
