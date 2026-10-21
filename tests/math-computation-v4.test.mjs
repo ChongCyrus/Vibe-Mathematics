@@ -32,13 +32,15 @@ import { mkdtempSync, existsSync, readFileSync, mkdirSync, writeFileSync, rmSync
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute, basename, resolve as pathResolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
+// ★ G4 stage B: the v4 preset files resolve through the ONE preset seam.
+import { legacyFile } from './_lib/legacy-presets.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 // V4_PERSONA_YML points the persona assertions at a MUTATED persona file (sensitivity probe).
-const PERSONA_YML = process.env.V4_PERSONA_YML ? pathResolve(process.env.V4_PERSONA_YML) : join(HERE, '..', 'vibe-math-v4', 'agent.cordis.yml')
+const PERSONA_YML = process.env.V4_PERSONA_YML ? pathResolve(process.env.V4_PERSONA_YML) : legacyFile('vibe-math-v4', 'agent.cordis.yml')
 const PLUGIN = process.env.V4_PLUGIN
   ? pathToFileURL(isAbsolute(process.env.V4_PLUGIN) ? process.env.V4_PLUGIN : join(HERE, '..', process.env.V4_PLUGIN))
-  : pathToFileURL(join(HERE, '..', 'vibe-math-v4', 'vibe-math-v4.js'))
+  : pathToFileURL(legacyFile('vibe-math-v4', 'vibe-math-v4.js'))
 const PRESET_DIR = dirname(fileURLToPath(PLUGIN))
 const MODULE = await import(pathToFileURL(join(PRESET_DIR, 'math-computation.js')).href)
 const ENGINES_MOD = await import(pathToFileURL(join(PRESET_DIR, 'math-engines.js')).href)

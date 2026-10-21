@@ -56,7 +56,7 @@ cpSync(legacyDir('vibe-math-v2'), join(baseRoot, 'vibe-math-v2'), { recursive: t
 }
 {
   const pRoot = mkdtempSync(join(tmpdir(), 'v2gaps-persona-'))
-  for (const d of PRESETS) cpSync(join(REPO, d), join(pRoot, d), { recursive: true, filter: () => true })
+  for (const d of PRESETS) cpSync(legacyDir(d), join(pRoot, d), { recursive: true, filter: () => true })
   const p = runSuite('audit-persona-surface.test.mjs', { PERSONA_ROOT: pRoot })
   ok(p.status === 0, 'baseline: audit-persona-surface is green on the COPIED preset tree (PERSONA_ROOT)', p.sum.slice(0, 60))
   rmSync(pRoot, { recursive: true, force: true })

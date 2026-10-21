@@ -18,7 +18,10 @@
 
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { __testHelpers as V5R } from '../vibe-math-v5r/vibe-math-v5r.js'
+import { pathToFileURL } from 'node:url'
+// ★ G4 stage B: the v5r preset source resolves through the ONE preset seam.
+import { legacyFile } from './_lib/legacy-presets.mjs'
+const { __testHelpers: V5R } = await import(pathToFileURL(legacyFile('vibe-math-v5r', 'vibe-math-v5r.js')).href)
 import { createLibrary } from '../vibe-math-vmu/kernel/library.js'
 import { createLeanFace } from '../vibe-math-vmu/kernel/lean.js'
 import { createMembers } from '../vibe-math-vmu/kernel/members.js'

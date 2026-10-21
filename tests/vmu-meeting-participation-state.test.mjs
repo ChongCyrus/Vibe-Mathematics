@@ -49,7 +49,9 @@ ok(/say\(\{[^}]*type: 'meetings\/skipped'[^}]*member/.test(src),
   'the skipped event names the MEMBER (not a global counter)', { })
 ok(/say\(\{[^}]*type: 'meetings\/unreached'[^}]*member[^}]*retries/.test(src),
   'the unreached event names the MEMBER and carries its RETRY COUNT (the original recorded `tries`)', { })
-ok(!/say\(\{[^}]*type: 'meetings\/unreached'[^}]*meeting:/.test(src) || true,
+// ★ REMOVED `|| true`: the note records that the meeting identifier is OMITTED from the event, so assert the
+// omission. As written it was true for every possible source text and therefore recorded nothing.
+ok(!/say\(\{[^}]*type: 'meetings\/unreached'[^}]*meeting:/.test(src),
   'NOTE: the meeting identifier is still omitted (its scope variable was never confirmed; not guessed)', { })
 
 console.log('=== 2. THE ASSEMBLED PROMPT (part 2) — NOT LANDED, AND WHY ===')

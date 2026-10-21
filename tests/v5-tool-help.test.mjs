@@ -3,7 +3,8 @@ import { pathToFileURL } from 'node:url'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { toolRegistry } from './helpers/v5-tool-registry.mjs'
-import { V5_TOOL_HELP_REQUIRED } from '../vibe-math-v5/vibe-math-v5.js'
+// ★ G4 stage B: the v5 preset source resolves through the ONE preset seam (dynamic import: a static specifier cannot follow LEGACY_BASE).
+const { V5_TOOL_HELP_REQUIRED } = await import(pathToFileURL(legacyFile('vibe-math-v5', 'vibe-math-v5.js')).href)
 import { createHost } from './helpers/v5-tool-host.mjs'
 const baseline = JSON.parse(fs.readFileSync(new URL('../prompt-corpus-v5/baseline-tools.json', import.meta.url)))
 const registry = toolRegistry()

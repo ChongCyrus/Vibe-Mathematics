@@ -14,7 +14,7 @@
 //
 // HOW TO USE
 //   import { requireFile } from './_lib/require-file.mjs'
-//   const src = requireFile(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'the v5r baseline for the parity suite')
+//   const src = requireFile(legacyFile('vibe-math-v5r', 'vibe-math-v5r.js'), 'the v5r baseline for the parity suite')
 //
 // The message is deliberately actionable: file, why, and the archive hint.
 import { existsSync, readFileSync, readdirSync } from 'node:fs'

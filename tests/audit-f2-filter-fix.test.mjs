@@ -25,6 +25,8 @@
  */
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+// ★ G4 stage B: preset sources resolve through the ONE preset seam.
+import { legacyFile } from './_lib/legacy-presets.mjs';
 
 let passed = 0;
 let failed = 0;
@@ -35,8 +37,8 @@ const assert = (cond, msg) => {
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const PLUGINS = {
-  'vibe-math-v2': `${REPO}/vibe-math-v2/vibe-math-v2.js`,
-  'vibe-math-v3': `${REPO}/vibe-math-v3/vibe-math-v3.js`,
+  'vibe-math-v2': legacyFile('vibe-math-v2', 'vibe-math-v2.js'),
+  'vibe-math-v3': legacyFile('vibe-math-v3', 'vibe-math-v3.js'),
 };
 
 /** What this win32 preset composition registers (see prove-f2-toolfilter-throws). */

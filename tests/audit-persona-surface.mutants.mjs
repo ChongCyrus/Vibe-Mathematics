@@ -17,6 +17,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+// ★ G4 stage B: the SOURCE presets resolve through the ONE preset seam (scratch copies keep their own root).
+import { legacyDir } from './_lib/legacy-presets.mjs'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = join(HERE, '..')
@@ -37,7 +39,7 @@ ok(base.status === 0, 'baseline: the shipped guard is green on the real tree', b
 
 // baseline 2: the COPIED tree the mutation will use (proves the copy is faithful, not the mutation)
 const root = mkdtempSync(join(tmpdir(), 'persona-surface-mut-'))
-for (const dir of ['vibe-math-v2', 'vibe-math-v3', 'vibe-math-v4', 'vibe-math-v5']) cpSync(join(REPO, dir), join(root, dir), { recursive: true, filter: () => true })
+for (const dir of ['vibe-math-v2', 'vibe-math-v3', 'vibe-math-v4', 'vibe-math-v5']) cpSync(legacyDir(dir), join(root, dir), { recursive: true, filter: () => true })
 const copyBase = runGuard({ PERSONA_ROOT: root })
 ok(copyBase.status === 0, 'baseline: the same guard is green on the copied tree (PERSONA_ROOT seam is faithful)', copyBase.sum.slice(0, 70))
 
@@ -57,7 +59,7 @@ else {
 // guard must fail with ENOENT naming the COPIED path — that proves the seam is actually READ, rather than
 // the guard silently falling back to the real tree (which would make the mutation case above meaningless).
 const root2 = mkdtempSync(join(tmpdir(), 'persona-surface-seam-'))
-for (const dir of ['vibe-math-v2', 'vibe-math-v3', 'vibe-math-v5']) cpSync(join(REPO, dir), join(root2, dir), { recursive: true, filter: () => true })
+for (const dir of ['vibe-math-v2', 'vibe-math-v3', 'vibe-math-v5']) cpSync(legacyDir(dir), join(root2, dir), { recursive: true, filter: () => true })
 const missing = runGuard({ PERSONA_ROOT: root2 })
 const namesCopiedPath = missing.out.indexOf(root2) !== -1 && /ENOENT/.test(missing.out)
 ok(missing.status !== 0 && namesCopiedPath,

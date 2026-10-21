@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { legacyDir, legacyFile, LEGACY_PRESET_NAMES } from './_lib/legacy-presets.mjs'
 /**
  * REAL-ENGINE FACES (task-3) — presence-detected, loud-SKIP guards for the three "engine faces" that the
  * scripted live validation could only sample: numeric (python/Rscript), Lean (lean), LaTeX (xelatex).
@@ -21,6 +21,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
+/** A preset source path: env/argv seams may be absolute, legacy preset dirs go through LEGACY_BASE. */
+const resolvePresetPath = (relOrAbs) => {
+  const idx = relOrAbs.indexOf('/')
+  return idx > 0 && LEGACY_PRESET_NAMES.includes(relOrAbs.slice(0, idx)) ? legacyFile(relOrAbs.slice(0, idx), relOrAbs.slice(idx + 1)) : resolve(REPO, relOrAbs)
+}
 let passed = 0, failed = 0
 const failures = []
 const skips = []
@@ -111,7 +116,7 @@ function makeCtx(WS) {
 async function registeredTool(presetRel, name, WS) {
   const { ctx, regs } = makeCtx(WS)
   // `resolve`, not `join`: a seam value may be an ABSOLUTE path, and join(REPO, abs) mangles it.
-  const mod = await import(pathToFileURL(resolve(REPO, presetRel)).href + '?t=' + Date.now())
+  const mod = await import(pathToFileURL(resolvePresetPath(presetRel)).href + '?t=' + Date.now())
   ;(mod.default || mod).apply(ctx)
   return regs.find((s) => s.name === name) || null
 }
@@ -194,7 +199,7 @@ if (!LEAN) {
     ok(b.status !== 0 && /error/i.test(bMsg),
       '★ engine-faces lean: a WRONG proof fails with the toolchain\'s own error (exit ' + String(b.status) + '; ' + JSON.stringify(bMsg.split('\n')[0].slice(0, 80)) + ')')
     // (b) the REGISTERED tool handler is reachable and enforces its NAMED path contract.
-    const tool = await registeredTool(process.env.V4_PLUGIN || 'vibe-math-v4/vibe-math-v4.js', 'vibe_v4_lean_run', WS)
+    const tool = await registeredTool(process.env.V4_PLUGIN || legacyFile('vibe-math-v4', 'vibe-math-v4.js'), 'vibe_v4_lean_run', WS)
     ok(!!tool, '★ engine-faces lean: the registered tool \`vibe_v4_lean_run\` is reachable (spec found)')
     const agent = { id: 'S', options: {}, session: { id: 'S', header: { cwd: WS } } }
     const esc = parse(await tool.execute({ name: 'probeProj', file: '../../../../escape.lean' }, { agent }))
@@ -205,7 +210,7 @@ if (!LEAN) {
     // root agent, no scaffold file, and no engine required: the resolver is driven with fake subprocess
     // services and a temp ELAN_HOME, so this block runs anywhere.
     {
-      const presetPath = resolve(REPO, process.env.V4_PLUGIN || 'vibe-math-v4/vibe-math-v4.js')
+      const presetPath = resolvePresetPath(process.env.V4_PLUGIN || legacyFile('vibe-math-v4', 'vibe-math-v4.js'))
       const R = await import(pathToFileURL(presetPath).href + '?t=' + Date.now())
       const res = R.resolveKnownTool
       ok(typeof res === 'function', '★ engine-faces lean: the resolver seam `resolveKnownTool` is exported for testing (like `mathInstallRoots`)')
@@ -247,8 +252,8 @@ if (!XELATEX) {
 } else {
   const WS = mkdtempSync(join(tmpdir(), 'engine-latex-'))
   try {
-    const start = await registeredTool(process.env.V5_PLUGIN || 'vibe-math-v5/vibe-math-v5.js', 'vibe_v5_paper', WS)
-    const setP = await registeredTool(process.env.V5_PLUGIN || 'vibe-math-v5/vibe-math-v5.js', 'vibe_v5_set', WS)
+    const start = await registeredTool(process.env.V5_PLUGIN || legacyFile('vibe-math-v5', 'vibe-math-v5.js'), 'vibe_v5_paper', WS)
+    const setP = await registeredTool(process.env.V5_PLUGIN || legacyFile('vibe-math-v5', 'vibe-math-v5.js'), 'vibe_v5_set', WS)
     ok(!!start, '★ engine-faces latex: the registered tool `vibe_v5_paper` is reachable (spec found)')
     const agent = { id: 'S', options: {}, session: { id: 'S', header: { cwd: WS } } }
     if (setP) { try { await setP.execute({ name: 'probeProj', params: { paperLatexCommand: XELATEX } }, { agent }) } catch (e) { /* fall through to the start assertion */ } }
@@ -280,13 +285,13 @@ if (process.argv.includes('--self-probe')) {
   ]
   for (const c of cases) {
     if (!c.engines.some(Boolean)) { console.log('SELF-PROBE SKIP (' + c.face + '): the engine is absent, so the mutant cannot be exercised'); continue }
-    const src = readFileSync(join(REPO, c.file), 'utf8')
+    const src = readFileSync(resolvePresetPath(c.file), 'utf8')
     if (src.indexOf(c.from) === -1) { console.log('SELF-PROBE FAIL (' + c.face + '): anchor missing: ' + c.from); probeBad++; continue }
     // Copy the WHOLE source directory: the module/preset imports its siblings (math-engines.js,
     // math-computation.js, …), so a bare copy in a temp dir would crash instead of reddening.
     const dirRoot = mkdtempSync(join(tmpdir(), 'engine-mut-' + c.face + '-'))
     const dir = join(dirRoot, c.file.split('/')[0])
-    cpSync(join(REPO, c.file.split('/')[0]), dir, { recursive: true })
+    cpSync(legacyDir(c.file.split('/')[0]), dir, { recursive: true })
     const dst = join(dir, c.file.split('/').pop())
     writeFileSync(dst, src.replace(c.from, c.to), 'utf8')
     const r = child({ [c.env]: dst })

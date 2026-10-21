@@ -18,14 +18,16 @@
  */
 import { pathToFileURL } from 'node:url';
 import { fileURLToPath } from 'node:url';
+// ★ G4 stage B: preset sources resolve through the ONE preset seam.
+import { legacyFile } from './_lib/legacy-presets.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const FILES = {
-  'vibe-math-v2': `${REPO}/vibe-math-v2/vibe-math-v2.js`,
-  'vibe-math-v3': `${REPO}/vibe-math-v3/vibe-math-v3.js`,
-  'vibe-math-v4': `${REPO}/vibe-math-v4/vibe-math-v4.js`,
-  'vibe-math-v5': `${REPO}/vibe-math-v5/vibe-math-v5.js`,
-  'vibe-math-v5r': `${REPO}/vibe-math-v5r/vibe-math-v5r.js`,
+  'vibe-math-v2': legacyFile('vibe-math-v2', 'vibe-math-v2.js'),
+  'vibe-math-v3': legacyFile('vibe-math-v3', 'vibe-math-v3.js'),
+  'vibe-math-v4': legacyFile('vibe-math-v4', 'vibe-math-v4.js'),
+  'vibe-math-v5': legacyFile('vibe-math-v5', 'vibe-math-v5.js'),
+  'vibe-math-v5r': legacyFile('vibe-math-v5r', 'vibe-math-v5r.js'),
 };
 
 const HOSTILE = [

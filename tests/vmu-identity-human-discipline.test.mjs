@@ -209,7 +209,11 @@ const di = (s = {}) => createDiscipline({ clock: () => now, settings: s })
   p.recordFailure({ subject: 'm8' })
   const before = JSON.stringify(p.status())
   throwsNamed(() => p.mayAct({ subject: 'm8' }), DI_CODE.breakerOpen, 'discipline purity: the refusal still fires')
-  ok(JSON.stringify(p.status()) !== before || true, 'discipline purity: status is callable after a refusal')
+  // ★ REMOVED `|| true`: "callable after a refusal" is a claim about not throwing, so call it and require no throw.
+  // The JSON comparison it used to make could not fail, and was not the claim its own message stated.
+  let statusAfterRefusal = null
+  try { statusAfterRefusal = p.status() } catch { statusAfterRefusal = undefined }
+  ok(statusAfterRefusal !== null && typeof statusAfterRefusal === 'object', 'discipline purity: status is callable after a refusal')
   ok(p.status().readsArePure === true, 'discipline purity: the face declares its reads pure')
 }
 

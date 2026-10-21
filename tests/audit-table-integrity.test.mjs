@@ -98,7 +98,10 @@ ok(scopedRows > 500, 'the scoped scan really covered the vmu tables', { scopedRo
 // hard gate because that one is unambiguous.
 console.log('  column-count mismatches in the vmu set: ' + mismatched.length + ' of ' + scopedRows + ' rows')
 for (const m of mismatched.slice(0, 12)) console.log('      ' + m)
-ok(true, 'reported rather than gated, because a cell may contain a pipe and this cannot tell that from a short row', { n: mismatched.length })
+// ★ REMOVED `ok(true, 'reported rather than gated...')`. It described itself honestly, but it still added a
+// passing assertion that could never fail, which inflates the count without checking anything. The report above
+// (the row count and the first twelve mismatches) is the output; there is no assertion here to make, so there is
+// none. If this ever becomes gateable, it becomes a real ok(...) rather than a literal true.
 
 console.log('=== TABLE INTEGRITY: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }

@@ -1,4 +1,6 @@
 import { requireFile } from './_lib/require-file.mjs'
+// ★ G4 stage B: preset sources resolve through the ONE preset seam.
+import { legacyFile, LEGACY_PRESET_NAMES } from './_lib/legacy-presets.mjs'
 // ============================================================================================
 // CROSS-PRESET PARTICIPANT-SET PARITY (P4 / item 6.3)
 //
@@ -25,7 +27,11 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const REPO = resolve(fileURLToPath(new URL('..', import.meta.url)))
-const read = (rel) => requireFile(join(REPO, rel), 'a preset source the participant-set parity suite compares')
+const resolveRepoRel = (rel) => {
+  const idx = rel.indexOf('/')
+  return idx > 0 && LEGACY_PRESET_NAMES.includes(rel.slice(0, idx)) ? legacyFile(rel.slice(0, idx), rel.slice(idx + 1)) : join(REPO, rel)
+}
+const read = (rel) => requireFile(resolveRepoRel(rel), 'a preset source the participant-set parity suite compares')
 
 let passed = 0, failed = 0
 const failures = []

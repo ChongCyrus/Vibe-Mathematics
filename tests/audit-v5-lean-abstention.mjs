@@ -22,9 +22,11 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdi
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { join, dirname, isAbsolute } from 'node:path'
+// ★ G4 stage B: the v5 preset dir resolves through the ONE preset seam.
+import { legacyDir } from './_lib/legacy-presets.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const PRESET_DIR = process.env.V5_PRESET_DIR ? String(process.env.V5_PRESET_DIR) : join(HERE, '..', 'vibe-math-v5')
+const PRESET_DIR = process.env.V5_PRESET_DIR ? String(process.env.V5_PRESET_DIR) : legacyDir('vibe-math-v5')
 const PLUGIN_PATH = process.env.V5_PLUGIN ? String(process.env.V5_PLUGIN) : join(PRESET_DIR, 'vibe-math-v5.js')
 const TARGET_A = 'p-a'
 const TARGET_B = 'p-b'

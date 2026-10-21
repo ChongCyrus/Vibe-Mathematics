@@ -24,6 +24,8 @@
 import { readFileSync } from 'node:fs'
 import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+// ★ G4 stage B: legacy preset files resolve through the ONE preset seam (docs/ paths stay repo-relative).
+import { legacyFile, LEGACY_PRESET_NAMES } from './_lib/legacy-presets.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -32,9 +34,14 @@ let passed = 0, failed = 0
 const failures = []
 const ok = (cond, label, detail) => { if (cond) passed++; else { failed++; failures.push(label + (detail ? ' — ' + detail : '')) } }
 
+/** A repo-relative path, except paths into a legacy preset dir which go through LEGACY_BASE. */
+const resolveRepoRel = (rel) => {
+  const idx = rel.indexOf('/')
+  return idx > 0 && LEGACY_PRESET_NAMES.includes(rel.slice(0, idx)) ? legacyFile(rel.slice(0, idx), rel.slice(idx + 1)) : join(REPO, rel)
+}
 const read = (envName, rel) => {
   const v = process.env[envName]
-  return readFileSync(v ? (isAbsolute(v) ? v : join(REPO, v)) : join(REPO, rel), 'utf8')
+  return readFileSync(v ? (isAbsolute(v) ? v : join(REPO, v)) : resolveRepoRel(rel), 'utf8')
 }
 const count = (text, needle) => text.split(needle).length - 1
 

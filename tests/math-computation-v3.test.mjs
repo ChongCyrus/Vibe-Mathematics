@@ -23,16 +23,16 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync
 import { join, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import {
+const {
   MATH_PARAM_NAMES,
   MATH_PARAM_DEFAULTS,
   MATH_TOOL_DESCRIPTION,
   MATH_PERSONA_TOOL_LINE,
   MATH_ARCHIVE_WORKFLOW_LINE,
   MATH_SUBSTITUTION_RULE_LINE,
-} from '../vibe-math-v3/math-computation.js'
+} = await import(pathToFileURL(legacyFile('vibe-math-v3', 'math-computation.js')).href)
 // 引擎表在姊妹模块里（模块自己 import 它；测试为了拼 argv 模板也直接读一次，只读不写）。
-import { MATH_ENGINES } from '../vibe-math-v3/math-engines.js'
+const { MATH_ENGINES } = await import(pathToFileURL(legacyFile('vibe-math-v3', 'math-engines.js')).href)
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PLUGIN = process.env.MC_V3_PLUGIN
@@ -560,7 +560,7 @@ section('§15 提示词面：可用性行三档 + persona 两块')
   assert(!!offCall.next && offCall.next.kind === 'enable' && offCall.next.param === 'mathComputation', '★ 并给出开启指引（不会静默失败）')
   await call('vibe_math_set_params', { mathComputation: 'auto', mathMode: 'typed+shell' })
   // persona：两个文本块都要有工具行
-  const yml = readFileSync(join(HERE, '..', 'vibe-math-v3', 'agent.cordis.yml'), 'utf8')
+  const yml = readFileSync(legacyFile('vibe-math-v3', 'agent.cordis.yml'), 'utf8')
   const blocks = yml.split(/\n\s*(?:prefix|text):\s*\|/)
   const hits = blocks.filter((b) => b.indexOf('math_computation') !== -1).length
   assert(hits >= 2, '★★★ persona 的 prefix 与 text **两个**块都含 math_computation 工具行（命中 ' + hits + ' 块）')

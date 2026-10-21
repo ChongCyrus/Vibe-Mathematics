@@ -14,8 +14,14 @@ import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+// ★ G4 stage B: paths into a legacy preset dir resolve through the ONE preset seam; other paths stay repo-relative.
+import { legacyFile, LEGACY_PRESET_NAMES } from './_lib/legacy-presets.mjs'
 
 const HERE = new URL('../', import.meta.url)
+const resolveRepoRel = (rel) => {
+  const idx = rel.indexOf('/')
+  return idx > 0 && LEGACY_PRESET_NAMES.includes(rel.slice(0, idx)) ? legacyFile(rel.slice(0, idx), rel.slice(idx + 1)) : fileURLToPath(new URL(rel, HERE))
+}
 /**
  * `V5_INTEGRITY_MUTATE` carries a JSON `[rel, from, to]` triple: that ONE repo-relative file is mutated
  * IN MEMORY for one child run. Combined with `--self-probe` this makes every guard below reproducible
@@ -30,7 +36,7 @@ const HERE = new URL('../', import.meta.url)
  */
 const MUT = process.env.V5_INTEGRITY_MUTATE
 function readRaw(rel) {
-  let text = readFileSync(new URL(rel, HERE), 'utf8').replace(/\r\n?/g, '\n')
+  let text = readFileSync(resolveRepoRel(rel), 'utf8').replace(/\r\n?/g, '\n')
   if (MUT) {
     try {
       const [r, from, to] = JSON.parse(MUT)

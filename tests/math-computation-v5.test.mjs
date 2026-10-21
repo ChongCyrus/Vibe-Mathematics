@@ -24,9 +24,11 @@ import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
+// ★ G4 stage B: the v5 preset dir resolves through the ONE preset seam.
+import { legacyDir } from './_lib/legacy-presets.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const PRESET_DIR = process.env.V5_PRESET_DIR || join(HERE, '..', 'vibe-math-v5')
+const PRESET_DIR = process.env.V5_PRESET_DIR || legacyDir('vibe-math-v5')
 // The module files sit NEXT TO the plugin, so both URLs are derived from the plugin path.
 const PLUGIN_PATH = process.env.V5_PLUGIN ? String(process.env.V5_PLUGIN) : join(PRESET_DIR, 'vibe-math-v5.js')
 const PLUGIN_URL = pathToFileURL(PLUGIN_PATH).href

@@ -158,8 +158,11 @@ expectThrow(() => m.validateValue('vmu.middleware.entries', [null]), 'VMU_INVALI
 // ---- 4. time belongs to the framework (01 §3.1 I-3) --------------------------------------------
 expectThrow(() => m.assertNoUserTime('vmu.custom.deadlineAt'), 'VMU_NOT_PERMITTED', 'user-supplied instant refused')
 expectThrow(() => m.assertNoUserTime('vmu.custom.runDeadline'), 'VMU_NOT_PERMITTED', 'user-supplied deadline refused')
-m.assertNoUserTime('vmu.limits.wallClockMs')
-ok(true, 'a declared budget key is allowed (budgets are settings, instants are not)')
+// ★ REMOVED `ok(true, ...)`: "a declared budget key is allowed" is a claim that this call does NOT throw, so
+// assert exactly that instead of asserting the literal true.
+let budgetKeyError = null
+try { m.assertNoUserTime('vmu.limits.wallClockMs') } catch (e) { budgetKeyError = e }
+ok(budgetKeyError === null, 'a declared budget key is allowed (budgets are settings, instants are not)', budgetKeyError && String(budgetKeyError.message))
 
 // ---- 5. the outward JSON Schema is derived, and closes the surface -----------------------------
 const js = m.toJsonSchema()

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { requireFile } from './_lib/require-file.mjs'
+// ★ G4 stage B: preset/spec files resolve through the ONE preset seam (other paths stay repo-relative).
+import { legacyFile, LEGACY_PRESET_NAMES } from './_lib/legacy-presets.mjs'
 /**
  * SPEC/README ↔ CODE TRACEABILITY (all four presets).
  *
@@ -21,7 +23,11 @@ import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 
 const HERE = fileURLToPath(new URL('../', import.meta.url))
-const read = (rel) => requireFile(join(HERE, rel), 'a spec/README the traceability suite reads')
+const resolveRepoRel = (rel) => {
+  const idx = rel.indexOf('/')
+  return idx > 0 && LEGACY_PRESET_NAMES.includes(rel.slice(0, idx)) ? legacyFile(rel.slice(0, idx), rel.slice(idx + 1)) : join(HERE, rel)
+}
+const read = (rel) => requireFile(resolveRepoRel(rel), 'a spec/README the traceability suite reads')
 
 const PRESETS = [
   { tag: 'v2', js: 'vibe-math-v2/vibe-math-v2.js', spec: 'vibe-math-v2/实现方案.md', prefix: 'vibe_math_' },

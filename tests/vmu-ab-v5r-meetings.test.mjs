@@ -12,7 +12,10 @@
 import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, rmSync, readdirSync, renameSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
-import { apply as applyV5R } from '../vibe-math-v5r/vibe-math-v5r.js'
+import { pathToFileURL } from 'node:url'
+// ★ G4 stage B: the v5r preset source resolves through the ONE preset seam.
+import { legacyFile } from './_lib/legacy-presets.mjs'
+const { apply: applyV5R } = await import(pathToFileURL(legacyFile('vibe-math-v5r', 'vibe-math-v5r.js')).href)
 import { createMeetings } from '../vibe-math-vmu/kernel/meetings.js'
 import { createMembers } from '../vibe-math-vmu/kernel/members.js'
 import { createTasks } from '../vibe-math-vmu/kernel/tasks.js'

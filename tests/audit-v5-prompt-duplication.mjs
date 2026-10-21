@@ -12,10 +12,12 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+// ★ G4 stage B: the v5 persona file resolves through the ONE preset seam.
+import { legacyFile } from './_lib/legacy-presets.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REL = 'vibe-math-v5/agent.cordis.yml'
-const YML = process.env.V5_PROMPT_YML ? String(process.env.V5_PROMPT_YML) : join(HERE, '..', REL)
+const YML = process.env.V5_PROMPT_YML ? String(process.env.V5_PROMPT_YML) : legacyFile('vibe-math-v5', 'agent.cordis.yml')
 // In-memory single-site mutation for --self-probe: `[from, to]` applied to the FIRST copy only.
 const MUT = process.env.V5_PROMPT_MUTATE ? JSON.parse(process.env.V5_PROMPT_MUTATE) : null
 

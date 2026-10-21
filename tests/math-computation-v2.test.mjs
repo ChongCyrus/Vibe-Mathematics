@@ -23,16 +23,16 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync
 import { join, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import {
+const {
   MATH_PARAM_NAMES,
   MATH_PARAM_DEFAULTS,
   MATH_TOOL_DESCRIPTION,
   MATH_PERSONA_TOOL_LINE,
   MATH_ARCHIVE_WORKFLOW_LINE,
   MATH_SUBSTITUTION_RULE_LINE,
-} from '../vibe-math-v2/math-computation.js'
+} = await import(pathToFileURL(legacyFile('vibe-math-v2', 'math-computation.js')).href)
 // 引擎表在姊妹模块里（模块自己 import 它；测试为了拼 argv 模板也直接读一次，只读不写）。
-import { MATH_ENGINES } from '../vibe-math-v2/math-engines.js'
+const { MATH_ENGINES } = await import(pathToFileURL(legacyFile('vibe-math-v2', 'math-engines.js')).href)
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PLUGIN = process.env.MC_V2_PLUGIN
@@ -560,7 +560,7 @@ section('§15 提示词面：可用性行三档 + persona 两块')
   assert(!!offCall.next && offCall.next.kind === 'enable' && offCall.next.param === 'mathComputation', '★ 并给出开启指引（不会静默失败）')
   await call('vibe_math_set_params', { mathComputation: 'auto', mathMode: 'typed+shell' })
   // persona：两个文本块都要有工具行
-  const yml = readFileSync(join(HERE, '..', 'vibe-math-v2', 'agent.cordis.yml'), 'utf8')
+  const yml = readFileSync(legacyFile('vibe-math-v2', 'agent.cordis.yml'), 'utf8')
   const blocks = yml.split(/\n\s*(?:prefix|text):\s*\|/)
   const hits = blocks.filter((b) => b.indexOf('math_computation') !== -1).length
   assert(hits >= 2, '★★★ persona 的 prefix 与 text **两个**块都含 math_computation 工具行（命中 ' + hits + ' 块）')
@@ -747,7 +747,7 @@ section('§20 审计 P0：成员可见路径说明（文本层断言，断言的
   const evPaths = evBlock.split('\n').filter((l) => l.trim().indexOf('- ') === 0).map((l) => l.trim().slice(2))
   assert(evPaths.filter((p) => /^qs\/qs\.json$/.test(p)).length > 0 && evPaths.filter((p) => /^qs\/qs\.json$/.test(p)).every((p) => existsSync(join(projRoot(), p))),
     '★★ [D5] 证据索引里的 qs/qs.json 在磁盘上真实存在（实测索引前几项 ' + JSON.stringify(evPaths.slice(0, 4)) + '）')
-  const v2src = readFileSync(join(HERE, '..', 'vibe-math-v2', 'vibe-math-v2.js'), 'utf8')
+  const v2src = readFileSync(legacyFile('vibe-math-v2', 'vibe-math-v2.js'), 'utf8')
   assert(v2src.indexOf("if (await paperPathExists('qs/qs.json')) out.push('qs/qs.json')") !== -1,
     '★★ [D5] 代码层：qs/qs.json 也是**存在才列**（不是无条件 push），"only files that exist" 才名副其实')
   // V2-ONLY-END

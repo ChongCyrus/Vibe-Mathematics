@@ -9,6 +9,9 @@
 import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, readdirSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
+import { pathToFileURL } from 'node:url';
+// ★ G4 stage B: preset sources resolve through the ONE preset seam.
+import { legacyFile } from './_lib/legacy-presets.mjs';
 
 let passed = 0; let failed = 0;
 const assert = (c, m) => { if (c) { passed += 1; console.log('  ok - ' + m); } else { failed += 1; console.error('  FAIL - ' + m); } };
@@ -57,12 +60,12 @@ function makeHarness(pluginPath, WS) {
   return { toolRegs, ctx };
 }
 
-for (const [label, file] of [['v2', '../vibe-math-v2/vibe-math-v2.js'], ['v3', '../vibe-math-v3/vibe-math-v3.js']]) {
+for (const [label, file] of [['v2', legacyFile('vibe-math-v2', 'vibe-math-v2.js')], ['v3', legacyFile('vibe-math-v3', 'vibe-math-v3.js')]]) {
   console.log(`\n-- ${label}: written settings file is valid JSON and round-trips --`);
   const WS = mkdtempSync(join(tmpdir(), `set-${label}-`));
   const { toolRegs, ctx } = makeHarness(file, WS);
   const ROOT = { id: 'S', options: {}, session: { id: 'S', header: { cwd: WS } } };
-  const mod = await import(new URL(file, import.meta.url).href + '?t=' + Date.now());
+  const mod = await import(pathToFileURL(file).href + '?t=' + Date.now());
   (mod.default || mod).apply(ctx);
   const call = async (n, a) => JSON.parse(await (toolRegs.find((s) => s.name === n)).execute(a || {}, { agent: ROOT }));
 

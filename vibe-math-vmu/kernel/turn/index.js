@@ -1402,7 +1402,13 @@ export function createTurnOrchestrator({
         else cur.called += 1
         byName.set(r.name, cur)
       }
-      return [...byName.values()].slice(0, 30)
+      // ★ THE 30-NAME CAP MUST ANNOUNCE ITSELF. A receipt showing thirty tool names with no marker reads as
+      // "that is every tool the member called", which is the same silent-truncation defect records.list,
+      // read_library and triedEngines already had fixed. The cap stays (a receipt must stay bounded); the
+      // total and a truncated flag travel with it.
+      const allCalls = [...byName.values()]
+      const cappedCalls = allCalls.slice(0, 30)
+      return { list: cappedCalls, total: allCalls.length, truncated: allCalls.length > cappedCalls.length }
     }
     try {
       const r = await run({ ...spec, round: turns.size + 1 })
@@ -1410,10 +1416,13 @@ export function createTurnOrchestrator({
       // the caller knows to play the member turn and answer on the next call.
       // ★ ROUND 88: and it NAMES THE ROUTE that handed the prompt back, so "which delivery path ran" is read from the
       // receipt the agent actually sees rather than inferred from prose in a transcript.
+      const tcs = toolCallSummary()
       if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null,
-        instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null, toolCalls: toolCallSummary() }
+        instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null,
+        toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated }
       return { ok: true, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length,
-        instructionDelivered: r.instructionDelivered === true, turn: r.turn.id, toolCalls: toolCallSummary() } }
+        instructionDelivered: r.instructionDelivered === true, turn: r.turn.id,
+        toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated } }
     } catch (e) {
       // ★★★ ROUND 61: THE STACK STAYS. This catch kept only the message, and that is precisely why a real machine's
       // failure was undiagnosable: the transcript recorded `Cannot read properties of undefined (reading 'id')` thirty-

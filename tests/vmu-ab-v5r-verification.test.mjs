@@ -24,7 +24,8 @@ import { CHARTER_SECTIONS, CHARTER_BINDINGS } from '../vibe-math-vmu/packs/v5r/p
 import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, rmSync, readdirSync, renameSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
-import { apply as applyV5R } from '../vibe-math-v5r/vibe-math-v5r.js'
+// ★ G4 stage B: the v5r preset source resolves through the ONE preset seam.
+const { apply: applyV5R } = await import(pathToFileURL(legacyFile('vibe-math-v5r', 'vibe-math-v5r.js')).href)
 import { createTasks } from '../vibe-math-vmu/kernel/tasks.js'
 import { createTurnOrchestrator, facesFrom } from '../vibe-math-vmu/kernel/turn/index.js'
 import { createPromptPipeline } from '../vibe-math-vmu/kernel/prompt/index.js'

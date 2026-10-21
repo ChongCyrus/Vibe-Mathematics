@@ -194,7 +194,9 @@ console.log('=== 3. WHAT THIS REPORT WOULD *NOT* HAVE CAUGHT (recorded honestly)
 {
   const sample = { code: 'VMU_INVALID_ARGUMENT', message: 'unknown agreement: undefined', hint: 'openAgreement({counterparty,…}) first' }
   const sample2 = { code: 'VMU_INVALID_ARGUMENT', message: 'unknown agreement: undefined', hint: '' }
-  ok(!PRIOR.test(String(sample.hint)) === false || true, 'the classifier separates a hint that names a prior step from one that does not', { withHint: PRIOR.test(sample.hint), withoutHint: PRIOR.test(sample2.hint) })
+  // ★ REMOVED: `!X === false || true` is true for every possible input, so it asserted nothing - and the
+  // assertion directly below states the real distinction (a hint naming the prior step classifies, an empty
+  // hint does not). One line was dead weight pretending to be a second check.
   ok(PRIOR.test(sample.hint) && !PRIOR.test(sample2.hint),
     'a hint naming openAgreement classifies as the normal case and an empty hint does not, which is the distinction the reader needs', {})
 }

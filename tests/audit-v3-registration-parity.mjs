@@ -25,9 +25,11 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+// ★ G4 stage B: the v3 preset source resolves through the ONE preset seam.
+import { legacyFile } from './_lib/legacy-presets.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-let SRC = readFileSync(join(HERE, '..', 'vibe-math-v3', 'vibe-math-v3.js'), 'utf8');
+let SRC = readFileSync(legacyFile('vibe-math-v3', 'vibe-math-v3.js'), 'utf8');
 
 const SELF_PROBE = process.argv.indexOf('--self-probe');
 if (SELF_PROBE !== -1 && process.argv[SELF_PROBE + 1]) {

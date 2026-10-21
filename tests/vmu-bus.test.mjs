@@ -230,8 +230,11 @@ const newBus = (settings = {}) => m.createBus({ settings, onAudit: (r) => auditR
 
   // The host-waterfall BRIDGE forwards the host's OWN hook names, so it is exempt on purpose.
   const bridge = newBus()
-  await bridge.emit('agent/created', {}, { bridge: true })
-  ok(true, 'bridged host hook names are accepted (the substrate bridge must not be refused)')
+  // ★ REMOVED `ok(true, ...)`: the claim is that a bridged host hook name is ACCEPTED, which means the emit
+  // must not throw. Awaiting it and requiring no throw is the assertion; a literal `true` asserted nothing.
+  let bridgeEmitError = null
+  try { await bridge.emit('agent/created', {}, { bridge: true }) } catch (e) { bridgeEmitError = e }
+  ok(bridgeEmitError === null, 'bridged host hook names are accepted (the substrate bridge must not be refused)', bridgeEmitError && String(bridgeEmitError.message))
 
   // NAMESPACE-AWARE validity: a FOREIGN namespace belongs to the substrate and is passed through WITHOUT the
   // bridge flag, while VMU's own namespaces stay closed (that asymmetry is what keeps `prompt/assemble` - a host

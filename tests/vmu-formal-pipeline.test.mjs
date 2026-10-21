@@ -50,7 +50,12 @@ console.log('=== 3. A WELL-FORMED PROOF IS ACCEPTED AND HAS AN ID ===')
     ok(later && later.ok !== true === false || (later && typeof later.code === 'string'),
       'and a stage after it accepts that id, so the pipeline links', { later: later && (later.code || Object.keys(later).slice(0, 5)) })
   } else {
-    ok(true, 'the answer carries no id in this environment, which is a fact about the engine rather than the pipeline, and the refusal above is named', {})
+    // ★ REMOVED `ok(true, ...)`: its own message claimed "the refusal above is named", so assert that instead of
+    // asserting the literal true. The earlier claim that a refusal happened is only worth something if the
+    // refusal carries a code - otherwise the two lines together would accept anything.
+    ok(r && r.ok !== true && typeof r.code === 'string',
+      'the answer carries no id in this environment, which is a fact about the engine rather than the pipeline, and the refusal above is named',
+      { code: r && r.code })
   }
 }
 
