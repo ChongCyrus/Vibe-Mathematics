@@ -3,6 +3,7 @@ import { makeTransactionSpec } from './tools/transaction.js'
 import { makeTurnSpec } from './tools/turn.js'
 import { makeMemberToolsSpec } from './tools/member-tools.js'
 import { makeVoteSpec } from './tools/vote.js'
+import { makeEnvSpec } from './tools/env.js'
 import { makeControlSpec } from './tools/control.js'
 import { makeMeetingSpec } from './tools/meeting.js'
 import { makeTaskSpec } from './tools/task.js'
@@ -134,6 +135,7 @@ export const TOOL_NAMES = Object.freeze({
   turn: 'vibe_vmu_turn',
   memberTools: 'vibe_vmu_tools',
   vote: 'vibe_vmu_vote',
+  env: 'vibe_vmu_env',
   // ROUND 2 (task-14): the four new implementation faces' tools (human/chat/mailbox/panel/report).
   human: 'vibe_vmu_human',
   chat: 'vibe_vmu_chat',
@@ -197,6 +199,9 @@ export const TOOL_FACES = Object.freeze([
   { face: 'memberTools', name: TOOL_NAMES.memberTools, families: ['vmu.members.'], config: ['members'], make: makeMemberToolsSpec },
   // ★ PHASE 8 / round 37: the closure vote as a tool (so a vote-only turn has ONE legal action instead of none).
   { face: 'vote', name: TOOL_NAMES.vote, families: ['vmu.turn.'], config: ['turn'], make: makeVoteSpec },
+  // ★ PHASE 9 / goal 3: the environment adapter. Declared by vmu.env.* OR any vmu.math.* key (every math capability
+  // may need an external runtime); no such declaration ⇒ the face is not published (zero mechanism).
+  { face: 'env', name: TOOL_NAMES.env, families: ['vmu.env.', 'vmu.math.'], config: ['env'], make: makeEnvSpec },
   { face: 'meeting', name: TOOL_NAMES.meeting, families: ['vmu.meetings.', 'vmu.ballot.'], config: ['meetings', 'ballot'], make: makeMeetingSpec },
   { face: 'task', name: TOOL_NAMES.task, families: ['vmu.tasks.'], config: ['tasks'], make: makeTaskSpec },
   { face: 'minutes', name: TOOL_NAMES.minutes, families: ['vmu.minutes.'], config: ['minutes'], make: makeMinutesSpec },
@@ -288,7 +293,11 @@ export function resolveFaces({ config = {}, settings = {}, kernel = null, explic
   // declaration path even when its family happens to declare no keys of its own.
   const listedFaces = Array.isArray(settings['vmu.tools.faces']) ? settings['vmu.tools.faces'] : null
   const listedKeys = listedFaces ? new Set(listedFaces.map(faceKeyOf).filter(Boolean)) : null
-  const listedAll = !!(listedFaces && listedFaces.includes('*'))
+  // ★ PHASE 9 / round 5: a wildcard is a DECISION, not a typo. It is honoured only with the explicit
+  // vmu.tools.allowAll:true; otherwise listedAll stays false (no silent full-open) and the caller gets a named problem.
+  const listedWildcard = !!(listedFaces && listedFaces.includes('*'))
+  const allowAll = settings['vmu.tools.allowAll'] === true
+  const listedAll = listedWildcard && allowAll
   const declaredSettingKeys = Object.keys(settings || {})
   const cfgFaces = Array.isArray(cfg.faces) ? new Set(cfg.faces.map(faceKeyOf).filter(Boolean)) : null
   const c = { config: cfg, settings, kernel, declaredKeys, declaredSettingKeys, scripts: Array.isArray(scripts) ? scripts : [], packLoader, listedAll, listedKeys, cfgFaces }
@@ -318,7 +327,10 @@ export function resolveFaces({ config = {}, settings = {}, kernel = null, explic
     enabled.push(row.face)
     sources[row.face] = why
   }
-  return { enabled, disabled, unavailable, unknownDisabled, sources }
+  return { enabled, disabled, unavailable, unknownDisabled, sources,
+    toolsWildcardInEffect: listedAll,
+    toolsWildcardUnconfirmed: listedWildcard && !allowAll,
+    toolsAllowAllUnused: allowAll && !listedWildcard }
 }
 
 /**
@@ -564,6 +576,16 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           try { out.packReport = packReport() } catch (e) {
             out.packReport = { requested: null, applied: null, errors: [{ id: '(packReport)', code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) }], loading: null, ok: false }
           }
+        }
+        // ★ PHASE 9 / round 5: "set a value ≠ in effect, and in effect but invisible" — expose the wildcard diagnosis
+        // at the TOP level so it survives the summary reshaping below.
+        {
+          const facesWant = Array.isArray(settings['vmu.tools.faces']) ? settings['vmu.tools.faces'] : []
+          const wildcard = facesWant.includes('*')
+          const allowAll = settings['vmu.tools.allowAll'] === true
+          out.toolsWildcardInEffect = wildcard && allowAll
+          out.toolsWildcardUnconfirmed = wildcard && !allowAll
+          out.toolsAllowAllUnused = allowAll && !wildcard
         }
         if (detail === 'summary') {
           // ★ PHASE 7 / round 22: the DEFAULT face must be readable under a REAL pack (measured 49,933 chars with v5r,
@@ -940,6 +962,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   if (on('turn')) specs.push(makeTurnSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('memberTools')) specs.push(makeMemberToolsSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('vote')) specs.push(makeVoteSpec({ param, refused, TOOL_NAMES, kernel }))
+  if (on('env')) specs.push(makeEnvSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('control')) specs.push(makeControlSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('meeting')) specs.push(makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('task')) specs.push(makeTaskSpec({ param, refused, TOOL_NAMES, kernel }))
@@ -1256,6 +1279,12 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     const hasEffect = typeof ctx.effect === 'function'
     ownedByHost = hasEffect
     failures.length = 0
+    const wildcardFaces = Array.isArray(settings['vmu.tools.faces']) ? settings['vmu.tools.faces'] : []
+    const wildcardOn = wildcardFaces.includes('*')
+    const allowAllSetting = settings['vmu.tools.allowAll'] === true
+    if (wildcardOn && !allowAllSetting) failures.push({ name: '(tools wildcard)', code: 'VMU_INVALID_ARGUMENT',
+      message: 'vmu.tools.faces contains "*" but vmu.tools.allowAll is not true: "*" would publish EVERY host tool face to EVERY member',
+      hint: 'confirm the full-open by setting vmu.tools.allowAll: true, or replace "*" with the face keys you actually want' })
     for (const u of presentation.unapplied) failures.push({ name: '(tool presentation)', code: u.code, message: u.why })
     // PHASE 6 / P0-10: a pack tool colliding with a name THIS host publishes is a NAMED failure (never a shadow).
     failures.push(...packToolFailureRows((kernel && typeof kernel.packTools === 'function') ? kernel.packTools() : [], Object.values(TOOL_NAMES)))

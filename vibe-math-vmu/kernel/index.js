@@ -42,6 +42,7 @@ import { createScriptBridge } from './script-bridge.js'
 import { createRegistry } from './registry.js'
 import { createWorkLedger } from './work.js'
 import { createLeanFace } from './lean.js'
+import { createEnvFace } from './env.js'
 import { createLatexFace } from './latex.js'
 import { memoryCeilingExceeded } from './guard.js'
 // IMPLEMENTATION PHASE (docs/11 搂9.8): the first planned primitives to become real code.
@@ -1301,6 +1302,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // `cast` runs unchanged (named degradation, no pretend durability).
   const ballotbox = createBallotBox({ settings: settingsView, bus, clock: guardedClock, log, durableQueue: sharedCommitLog })
   const records = createRecords({ settings: settingsView, bus, clock: guardedClock, log })
+  // ★ PHASE 9 / goal 3: the environment adapter — table + probe + report, no installs. The spawn seam may be null; probe
+  // then returns a NAMED result instead of fabricating a version.
+  const env = createEnvFace({ settings: settingsView, spawn, records, log })
   // ★★★★★★★ SLV (the measured data-loss defect): the records projection was created WITHOUT a durable seam, and its
   // own header says persistence is delegated ("store"/"library"). The pack's data plane writes here, so a restart lost
   // every card while the tick journal still reported them. The `records` state key is already in store.PUBLIC_KEYS
@@ -1706,6 +1710,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   registry.register('vmu.chat', { apiVersion: 1 }, { kind: 'service', description: 'group chat: admin list, speech quota and mute are declared, hot-changed and audited (docs/17)' })
   registry.register('vmu.mathadapters', { apiVersion: 1 }, { kind: 'service', description: '数学库适配面：numpy/scipy/pandas/sympy 的会话级环境绑定、结果形状契约与具名拒（docs/09·15）' })
   registry.register('vmu.mailbox', { apiVersion: 1 }, { kind: 'service', description: 'durable per-recipient mailbox: ack only after a successful delivery, unacked remains redeliverable (docs/17)' })
+  registry.register('vmu.env', { apiVersion: 1 }, { kind: 'service', description: 'environment adapter: probe/list/report over vmu.env.needs; failed probe is a result; NEVER installs or calls the network (docs/09)' })
   // ⚠ MEASURED MISTAKE, fixed here: the three registrations below were each ADDED by REPLACING the previous line
   // (the `vmu.panel` line was overwritten by `vmu.activity`, then by `vmu.fidelity`), which silently unregistered
   // `vmu.panel` and `vmu.activity` - a service with a factory, a tool face and settings keys but NO registry entry is
@@ -1970,6 +1975,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     get migration() { return migration },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
     get lean() { return lean },
+    /** ★ PHASE 9 / goal 3: the environment adapter (probe/list/report; it never installs). */
+    get env() { return env },
     get latex() { return latex },
     /** ★ PHASE 7: the generic pack-registered status-section service (same object modules reach as vmu.status). */
     get statusService() { return statusService },

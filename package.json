@@ -827,7 +827,10 @@
     "vibe-math-vmu/kit/tools.js",
     "vibe-math-vmu/kit/handlers.js",
     "vibe-math-vmu/kit/extras.js",
-    "vibe-math-vmu/kit/paper.js"
+    "vibe-math-vmu/kit/paper.js",
+    "vibe-math-vmu/settings/env-needs.js",
+    "vibe-math-vmu/kernel/env.js",
+    "vibe-math-vmu/tools/env.js"
   ],
   "license": "MIT",
   "keywords": [

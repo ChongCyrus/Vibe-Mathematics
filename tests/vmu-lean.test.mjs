@@ -100,6 +100,24 @@ test('spawn returning NO exitCode is VMU_LEAN_SPAWN_FAILED, not EXIT_NONZERO', a
   passed += 1
 })
 
+// ★ PHASE 9 / round 6: hadHandle + no exit code + no error fields is its own direction (typically a sandbox exec denial),
+// not the generic spawn failure. Reverse: a numeric exit code still goes to EXIT_NONZERO (test below).
+test('hadHandle + undefined exitCode + no error is VMU_LEAN_EXIT_UNOBSERVED', async () => {
+  const settings = mkSettings({ 'vmu.math.leanAsync': false })
+  const spawnHandle = async (req, onHandle) => {
+    onHandle({ kill: () => {} })
+    return { exitCode: undefined, resolved: 'D:\\.elan\\bin\\lean.EXE', doneError: null, spawnError: null, resolveError: null }
+  }
+  const face = createLeanFace({ settings, spawn: async () => ({ exitCode: 0 }), spawnHandle, root: dir, clock: () => 5, log: () => {} })
+  const sub = await face.submit({ statement: 'True', file: leanFile })
+  const s = await face.settle(sub.id)
+  assert.equal(s.receipt.code, 'VMU_LEAN_EXIT_UNOBSERVED')
+  assert.match(s.receipt.message, /已解析|退出码/)
+  assert.match(s.receipt.hint, /沙箱|workspace-write|权限/)
+  assert.equal(s.receipt.resolved, 'D:\\.elan\\bin\\lean.EXE')
+  passed += 1
+})
+
 test('a real non-zero exit is still VMU_LEAN_EXIT_NONZERO', async () => {
   const settings = mkSettings({ 'vmu.math.leanAsync': false })
   const spawn = async () => ({ exitCode: 1, stderr: 'error: unknown identifier' })

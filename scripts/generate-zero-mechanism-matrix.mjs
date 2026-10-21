@@ -34,6 +34,7 @@ const REFUSE = G('具名拒（带 code）', '缺必填参数 ⇒ 具名拒并点
 const EXPECT = {
   // ── 状态/列表/只读面：零机制＝宽松放行 ✓（26）
   alerts: OK_READ, audit: OK_READ, auditchain: OK_READ, ballot: OK_READ, bidding: OK_READ,
+  env: OK_READ,
   board: OK_READ, bus: OK_READ, clockguard: G('ok 或 null', '时钟守卫：无声明 ⇒ 不拦（返回 null 亦合规）'),
   crypto: OK_READ, domaingate: OK_READ, external: OK_READ, fairness: OK_READ, index: OK_READ,
   loader: OK_READ, meeting: OK_READ, members: OK_READ, metrics: OK_READ, minutes: OK_READ,

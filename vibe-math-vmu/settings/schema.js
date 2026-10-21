@@ -28,6 +28,7 @@ export const apiVersion = 1
 // are frozen and must never be mutated). A1/A2 of the P3 containment report apply exactly that here:
 // `vmu.math.*` defaults are the module's, not a second hand-written opinion.
 import { MATH_PARAM_DEFAULTS as MATH_DEFAULTS } from '../math-computation.js'
+import { ENV_NEEDS_DEFAULTS } from './env-needs.js'
 
 const mathDefaults = () => ({
   mathComputation: MATH_DEFAULTS.mathComputation,
@@ -200,6 +201,7 @@ const CORE_DEFS = Object.freeze([
   // removes faces BY NAME with a reason. They exist so every published face has at least one declaration path even when
   // its own settings family declares no keys - and so "this face is off" is always a named decision, never an absence.
   { key: 'vmu.tools.faces', type: 'stringList', def: null, hot: HOT.H1, who: 'office', doc: "已接线（host.js resolveFaces 读取）：要发布的工具面清单（面键如 `minutes`／工具名 `vibe_vmu_minutes`／`*` 全部）。缺省 null＝不额外声明任何面（仍遵守各面自己的 config／vmu.<族>.* 声明）；显式空表 []＝不靠本键声明任何面。" },
+  { key: 'vmu.tools.allowAll', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "P9：确认 `vmu.tools.faces` 里的 `*` 真的表示全开（默认 false；未确认的 `*` 不生效并给出具名 problem）。" },
   { key: 'vmu.core.facesDisabled', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: "已接线（host.js resolveFaces 读取）：按名关闭的工具面（面键或工具名）。被关的面在 status().faces.disabled 里带 VMU_NOT_PERMITTED 具名上报；名字写错会出现在 unknownDisabled 而不是被忽略。" },
   { key: 'vmu.turn.toolCallsPerTurnCap', was: ['vmu.agentBudget.toolCallsPerTurnCap', 'vmu.resources.toolCallsPerTurnCap'], was: ['vmu.resources.toolCallsPerTurnCap'], type: 'number', def: 0, hot: HOT.H2, who: 'office', doc: '本回合工具调用上限；0＝未设上限（仍请克制）' },
   { key: 'vmu.turn.memoryCeilingMb', was: ['vmu.agentBudget.memoryCeilingMb', 'vmu.resources.memoryCeilingMb'], was: ['vmu.resources.memoryCeilingMb'], type: 'number', def: 0, hot: HOT.H2, who: 'office', doc: '内存上限（MB）；0＝只提醒"压力明显增大"而不给数字' },
@@ -246,6 +248,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.math.installScope', type: 'enum', domain: ['user', 'system'], def: mathDefaults().mathInstallScope, hot: HOT.H1, who: 'office', doc: 'P3：安装作用域；system 仅当次、绝不记忆' },
   { key: 'vmu.math.compileTimeoutMs', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '编译超时；0＝作业级默认' },
   { key: 'vmu.math.formalVerify', type: 'enum', domain: ['off', 'encourage', 'require'], def: 'off', hot: HOT.H2, who: 'office', doc: 'P3：判定时的形式化要求；默认 off＝零策略' },
+  { key: 'vmu.env.needs', type: 'object', def: ENV_NEEDS_DEFAULTS, hot: HOT.H1, who: 'office', doc: 'P9：外部环境需求表（每个 need 的 probe/installCommand/requiresUser/why；新增环境只改这张表，不改内核）' },
   { key: 'vmu.math.leanCommand', type: 'string', def: 'lean', hot: HOT.H1, who: 'office', doc: 'P3：Lean 命令名（命令模板可覆盖）' },
   { key: 'vmu.math.leanArgs', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: 'P3：Lean 附加参数（显式 -R/--root 优先于 searchPaths）' },
   { key: 'vmu.math.leanTimeoutMs', type: 'natural', def: 120000, hot: HOT.H0, who: 'office', doc: 'P3：单次 Lean 编译预算' },

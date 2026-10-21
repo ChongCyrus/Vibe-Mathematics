@@ -223,13 +223,21 @@ function toolMessage(args = {}, { kernel } = {}) {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'no mailbox face is published, so an office message cannot be delivered',
       'assemble a kernel with the mailbox service')
   }
-  // ★ PHASE 9 / round 3: `subject` + an EXPLICIT `urgent` (default false) travel to the mailbox face. Urgent means
-  // "the sender wants a timely/online reply", never "the content matters more" — the prompt says so; the tool carries the flag.
-  const payload = { to: str(args.to), text: str(args.content), kind: 'notice', urgent: args.urgent === true }
+  // ★ PHASE 9 / round 6 — TWO REAL BUGS FIXED HERE:
+  //  A) the tool's PUBLISHED schema had lost `subject`/`urgent` (the spec param map), so the host dropped `urgent:true`
+  //     before this handler ran. The spec carries them again; an assertion pins the deployed schema.
+  //  B) `kind` must NOT decide urgency: the kernel computes `isUrgent = urgent === true || urgentOf(kind)`, and `notice`
+  //     is in its urgent-kind list, so kind 'notice' made every office message urgent even without the flag. Non-urgent
+  //     mail goes out as kind 'note' (not in that list); 'notice' only when the sender explicitly asked for urgent.
+  // Arrival normalisation: a boolean may reach a tool as a JSON string (the older tools-parameter lesson), so `true`
+  // and the strings "true"/"1" mean urgent; everything else — including ABSENT — is the default NON-urgent.
+  const urgentFlag = args.urgent === true || args.urgent === 'true' || args.urgent === 1 || args.urgent === '1'
+  const kind = urgentFlag ? 'notice' : 'note'
+  const payload = { to: str(args.to), text: str(args.content), kind, urgent: urgentFlag }
   if (has(args.subject)) payload.subject = str(args.subject)
   const sent = kernel.mailbox.send('office', payload)
-  return { ok: true, tool: 'vibe_v5_message', from: 'office', to: str(args.to), subject: has(args.subject) ? str(args.subject) : null, urgent: args.urgent === true, receipt: sent,
-    note: 'the office/human voice is the original tool\'s sender; urgent defaults to FALSE (non-urgent mail is a hint, not a demand)' }
+  return { ok: true, tool: 'vibe_v5_message', from: 'office', to: str(args.to), subject: has(args.subject) ? str(args.subject) : null, urgent: urgentFlag, kind,
+    note: 'kind does NOT decide urgency (kind "note" for non-urgent, "notice" only when urgent:true); urgent defaults to FALSE' }
 }
 
 

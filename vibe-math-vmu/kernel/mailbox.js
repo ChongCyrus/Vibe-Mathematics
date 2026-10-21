@@ -28,6 +28,10 @@ export const apiVersion = 1
 /** ★ PHASE 9 / round 2: urgent is the SENDER'S explicit intent ⇒ DEFAULT EMPTY. An institution that wants a kind to be
  * always urgent declares `vmu.mailbox.urgentKinds`; nothing is urgent by kind out of the box. */
 export const MAILBOX_URGENT_KINDS = Object.freeze([])
+/** The PRE-PHASE-9 framework default. A deployment that still carries this exact list is treated as "old default",
+ * not as an institution's explicit policy (the founder's ruling made kind-only urgency opt-in). Kept as documentation;
+ * any OTHER list is honoured. */
+export const LEGACY_MAILBOX_URGENT_KINDS = Object.freeze(['dm', 'office', 'assign', 'nudge', 'notice', 'meeting', 'verify'])
 export const MAILBOX_SUBJECT_MAX = 120
 export const MAILBOX_NOTICE_MAX = 300
 
@@ -115,7 +119,13 @@ export function createMailbox({
 
   const digestWindowOf = () => numKey('vmu.mailbox.digestWindowMs', 45000)
   const digestMaxOf = () => numKey('vmu.mailbox.digestMax', 12)
-  const urgentKindsOf = () => listKey('vmu.mailbox.urgentKinds', MAILBOX_URGENT_KINDS)
+  const urgentKindsOf = () => {
+    const raw = listKey('vmu.mailbox.urgentKinds', MAILBOX_URGENT_KINDS)
+    // A deployment that still carries the pre-PHASE-9 seven-kind list is on the OLD DEFAULT, not an explicit policy.
+    // Empty [] is a real decision and is preserved; the legacy list is ignored so kind alone is never urgent by default.
+    const legacy = raw.length === LEGACY_MAILBOX_URGENT_KINDS.length && LEGACY_MAILBOX_URGENT_KINDS.every((k, i) => raw[i] === k)
+    return legacy ? [] : raw
+  }
   const ackedCapOf = () => numKey('vmu.mailbox.ackedLedgerCap', 500)
   const wakeBudgetOf = () => numKey('vmu.mailbox.wakeBudget', 1)
   const deliverTimeoutOf = () => numKey('vmu.mailbox.deliverTimeoutMs', 0)

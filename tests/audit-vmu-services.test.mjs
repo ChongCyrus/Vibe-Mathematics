@@ -71,6 +71,7 @@ const SURFACES = {
   'vmu.resume': 'resume',             // round 2 (session resume/recovery projection)
   'vmu.chat': 'chat',                 // round 2 (group chat + management)
   'vmu.mailbox': 'mailbox',           // round 2 (durable per-recipient mailbox)
+  'vmu.env': 'env',                   // P9 (environment adapter: probe/list/report, never installs)
   'vmu.panel': 'panel',               // round 2 (member state panel)
   'vmu.mathadapters': 'mathadapters', // round 2 (numpy/scipy/pandas/sympy adapters)
   'vmu.ids': 'ids',                   // round 2 (the ONE id minter; bound via bindIds, not createX)

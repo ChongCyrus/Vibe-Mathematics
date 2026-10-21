@@ -329,6 +329,7 @@ vmu.packs.active: [v5r]
 | `vmu.turn.maxParallel` | number | `3` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 每轮最多同时唤醒的成员数（原线默认 3；非法值回落 3） |
 | `vmu.tools.enabled` | string[] | `null` | — | 会话 | H2 | office | ✅ 已接线 | `host.js` | 已接线（host.js 的 install 读取）：宿主注册哪些 vmu 工具。空/缺省（null）＝不限制；显式空表 [] ＝一个都不注册；未知名会被具名拒绝而不是静默放开（docs/03 §7）。 |
 | `vmu.tools.faces` | string[] | `null` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 已接线（host.js resolveFaces 读取）：要发布的工具面清单（面键如 `minutes`／工具名 `vibe_vmu_minutes`／`*` 全部）。缺省 null＝不额外声明任何面（仍遵守各面自己的 config／vmu.<族>.* 声明）；显式空表 []＝不靠本键声明任何面。 |
+| `vmu.tools.allowAll` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `host.js` | P9：确认 `vmu.tools.faces` 里的 `*` 真的表示全开（默认 false；未确认的 `*` 不生效并给出具名 problem）。 |
 | `vmu.core.facesDisabled` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `host.js` | 已接线（host.js resolveFaces 读取）：按名关闭的工具面（面键或工具名）。被关的面在 status().faces.disabled 里带 VMU_NOT_PERMITTED 具名上报；名字写错会出现在 unknownDisabled 而不是被忽略。 |
 | `vmu.turn.toolCallsPerTurnCap` | number | `0` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 本回合工具调用上限；0＝未设上限（仍请克制） |
 | `vmu.turn.memoryCeilingMb` | number | `0` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 内存上限（MB）；0＝只提醒"压力明显增大"而不给数字 |
@@ -363,6 +364,7 @@ vmu.packs.active: [v5r]
 | `vmu.math.installScope` | enum | `user` | `user`∣`system` | 会话 | H1 | office | ✅ 已接线 | `host-math.js` | P3：安装作用域；system 仅当次、绝不记忆 |
 | `vmu.math.compileTimeoutMs` | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/formal.js` | 编译超时；0＝作业级默认 |
 | `vmu.math.formalVerify` | enum | `off` | `off`∣`encourage`∣`require` | 会话 | H2 | office | ✅ 已接线 | `host.js` | P3：判定时的形式化要求；默认 off＝零策略 |
+| `vmu.env.needs` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/env.js` | P9：外部环境需求表（每个 need 的 probe/installCommand/requiresUser/why；新增环境只改这张表，不改内核） |
 | `vmu.math.leanCommand` | string | `lean` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | P3：Lean 命令名（命令模板可覆盖） |
 | `vmu.math.leanArgs` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | P3：Lean 附加参数（显式 -R/--root 优先于 searchPaths） |
 | `vmu.math.leanTimeoutMs` | int ≥0 | `120000` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/formal.js` | P3：单次 Lean 编译预算 |
@@ -1533,7 +1535,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1144** 个，前缀家族 **116** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1146** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1571,6 +1573,7 @@ vmu.packs.active: [v5r]
 | `vmu.delegation.*` | 12 |
 | `vmu.discipline.*` | 6 |
 | `vmu.dissemination.*` | 10 |
+| `vmu.env.*` | 1 |
 | `vmu.explain.*` | 7 |
 | `vmu.export.*` | 2 |
 | `vmu.external.*` | 31 |
@@ -1642,7 +1645,7 @@ vmu.packs.active: [v5r]
 | `vmu.tasks.*` | 4 |
 | `vmu.teaching.*` | 24 |
 | `vmu.tenure.*` | 11 |
-| `vmu.tools.*` | 2 |
+| `vmu.tools.*` | 3 |
 | `vmu.topology.*` | 12 |
 | `vmu.trust.*` | 16 |
 | `vmu.turn.*` | 29 |

@@ -1319,10 +1319,32 @@ try {
   const waitStatus = await receipt(v5rBoot, 'vibe_v5_wait', { action: 'status' })
   ok(waitStatus.parsed && waitStatus.parsed.ok === true && waitStatus.parsed.status !== null,
     '★ wait status: the real kernel activity face answers', waitStatus.parsed && typeof waitStatus.parsed.status)
-  const msgDefault = await specs('vibe_v5_message').handler({ to: 'r-1', content: 'hi' }, { kernel: stubKernel })
-  const msgUrgent = await specs('vibe_v5_message').handler({ to: 'r-1', content: 'hi', subject: 'S', urgent: true }, { kernel: stubKernel })
-  ok(msgDefault.urgent === false && msgUrgent.urgent === true && msgUrgent.subject === 'S' && /urgent defaults to FALSE/.test(String(msgUrgent.note)),
-    '★★ message: urgent defaults FALSE; when passed it is explicit, and subject travels with it', { d: msgDefault.urgent, u: msgUrgent.urgent })
+  // ── ⑦k PHASE 9 / round 6: the two real-machine bugs (A: urgent missing from the PUBLISHED schema; B: kind decides
+  // urgency). A fixes the parameter map the host publishes; B makes the DEFAULT non-urgent and keeps `urgent` the only
+  // thing that decides urgency (kind 'note' vs 'notice' is a consequence, never the cause).
+  console.log('=== 7k. MESSAGE: urgent in the DEPLOYED schema + default NON-urgent ===')
+  const msgHostSpec = v5rBoot.specOf('vibe_v5_message')
+  const msgProps = msgHostSpec && msgHostSpec.parameters && msgHostSpec.parameters.properties ? Object.keys(msgHostSpec.parameters.properties).sort() : []
+  ok(msgProps.length === 4 && msgProps.filter((n) => n === 'urgent' || n === 'subject').length === 2,
+    '★★★ bug A 反/正：宿主真正发布的 schema 里有 subject 与 urgent（不再被静默丢弃）', msgProps)
+  const mkMsgStub = () => {
+    const stub = { members: { roster: () => [{ id: 'r-1', slot: 'member', state: 'live' }] }, _sent: null }
+    stub.mailbox = { send: (from, payload) => { stub._sent = { from, payload }; return { ok: true, ids: ['m1'] } } }
+    return stub
+  }
+  const stubA = mkMsgStub()
+  const msgDefault = await specs('vibe_v5_message').handler({ to: 'r-1', content: 'hi' }, { kernel: stubA })
+  ok(msgDefault.urgent === false && msgDefault.kind === 'note' && stubA._sent.payload.urgent === false && stubA._sent.payload.kind === 'note',
+    '★★★ bug B 反：不传 urgent ⇒ 回执 urgent===false，且以 kind=note（非紧急 kind）投递', { urgent: msgDefault.urgent, kind: stubA._sent.payload.kind })
+  const stubB = mkMsgStub()
+  const msgStringTrue = await specs('vibe_v5_message').handler({ to: 'r-1', content: 'hi', subject: 'S', urgent: 'true' }, { kernel: stubB })
+  ok(msgStringTrue.urgent === true && msgStringTrue.kind === 'notice' && msgStringTrue.subject === 'S' &&
+    stubB._sent.payload.urgent === true && stubB._sent.payload.kind === 'notice',
+    '★★★ bug B 正：urgent 以 JSON 字符串 "true" 到达也归一化为真 ⇒ 用 kind=notice 投递（紧急只由 urgent 决定）', { urgent: msgStringTrue.urgent, kind: stubB._sent.payload.kind })
+  const stubC = mkMsgStub()
+  const msgExplicitFalse = await specs('vibe_v5_message').handler({ to: 'r-1', content: 'hi', urgent: false }, { kernel: stubC })
+  ok(msgExplicitFalse.urgent === false && stubC._sent.payload.kind === 'note',
+    '★ 显式 urgent:false ⇒ 仍是非紧急（kind=note），不会因为别的字段变紧急', stubC._sent.payload.kind)
   // prompts: the four lines exist in EACH role section, item 3 carries the exact tightening, and nothing uses `{{ }}`.
   const roleSecs = ['v5r-tools-academician', 'v5r-tools-researcher', 'v5r-tools-temp'].map((n) => PACK.sections.filter((s) => s.name === n)[0])
   const promptHits = roleSecs.map((s) => {

@@ -697,6 +697,32 @@ if (SELF_PROBE) {
   }
 }
 
+// ── ★ PHASE 9 / round 5: `*` is a DECISION, not a typo; and "in effect" must be visible ─────────────────────────
+{
+  const unconfirmed = hm.resolveFaces({ settings: { 'vmu.tools.faces': ['*'] } })
+  ok(unconfirmed.toolsWildcardUnconfirmed === true && unconfirmed.toolsWildcardInEffect === false &&
+    unconfirmed.enabled.includes('status') && !unconfirmed.enabled.includes('mailbox'),
+    '★ 反：`*` 未确认（allowAll 非 true）⇒ 不生效，只留下 always 的 status 面，并带 toolsWildcardUnconfirmed', unconfirmed)
+  const confirmed = hm.resolveFaces({ settings: { 'vmu.tools.faces': ['*'], 'vmu.tools.allowAll': true } })
+  ok(confirmed.toolsWildcardInEffect === true && confirmed.toolsWildcardUnconfirmed === false && confirmed.enabled.length > 1,
+    '★ 正：`*` + allowAll:true ⇒ 全开生效，toolsWildcardInEffect:true', { enabled: confirmed.enabled.length, toolsWildcardInEffect: confirmed.toolsWildcardInEffect })
+  const unused = hm.resolveFaces({ settings: { 'vmu.tools.allowAll': true } })
+  ok(unused.toolsAllowAllUnused === true && unused.toolsWildcardInEffect === false,
+    '★ 反：allowAll:true 但 faces 没有 `*` ⇒ 标记 unused（不让人以为它生效了）', unused)
+  const h = fakeHost()
+  const adapter = hm.createHostAdapter({ ctx: h.ctx, kernel: km.createKernel({ clock }), settings: { 'vmu.tools.faces': ['*'] } })
+  const receipt = await adapter.install()
+  ok(receipt.ok === false && (receipt.failures || []).some((f) => f.name === '(tools wildcard)' && /allowAll/.test(f.hint || '')),
+    '★ 反：install 对未确认的 `*` 报具名 problem（hint 指向 allowAll），不静默全开', receipt.failures)
+  const h2 = fakeHost()
+  const adapter2 = hm.createHostAdapter({ ctx: h2.ctx, kernel: km.createKernel({ clock }), settings: { 'vmu.tools.faces': ['*'], 'vmu.tools.allowAll': true } })
+  await adapter2.install()
+  const statusSpec = h2.state.specs.find((s) => s.name === 'vibe_vmu_status')
+  const summary = JSON.parse(await statusSpec.execute({ detail: 'summary' }, {}))
+  ok(summary.toolsWildcardInEffect === true,
+    '★ 正：status() 顶层暴露 toolsWildcardInEffect:true（生效可见，summary 重塑后仍在）', summary.toolsWildcardInEffect)
+}
+
 console.log('=== VMU HOST: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

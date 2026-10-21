@@ -812,7 +812,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_message',
     description: 'Relay a message from the office/human into the institute: to a member id, to "all", or to "voters". Delivered as per-recipient durable mail in the office voice.',
-    parameters: { to: { type: 'string', required: true }, content: { type: 'string', required: true } },
+    parameters: { to: { type: 'string', required: true }, content: { type: 'string', required: true }, subject: { type: 'string' }, urgent: { type: 'boolean' } },
     handler: toolMessage,
   },
   {

@@ -519,15 +519,26 @@ export function createLeanFace(opts) {
     if (rawExit === null || rawExit === undefined || !Number.isFinite(exitCode)) {
       j.state = 'failed'; j.exitCode = null; j.endedAt = clock()
       const diag = spawnDiagnostics(r, cmd2)
-      j.receipt = Object.assign(refuse('VMU_LEAN_SPAWN_FAILED',
-        'spawn 未返回退出码（exitCode=' + String(rawExit) + '）⇒ 无法判断编译结果 | ' + spawnEvidenceText(diag),
-        '检查宿主是否真的注入了 spawn 接缝、命令是否存在、以及 handle/promise 的返回形状是否为 { exitCode }；证据见 resolved/doneError/cwd/pathPrefix'),
+      // ★ PHASE 9 / round 6: hadHandle + no exitCode + NO error field is a DIFFERENT fact from a rejected spawn: the
+      // command was resolved and a handle existed, but this host never supplied an exit code. The real-machine form is
+      // the DSH file sandbox refusing to execute "D:\\.elan\\bin\\lean.EXE" (Access is denied, workspace-write); the old
+      // message merely said "no exitCode", naming the symptom instead of the direction.
+      const unobserved = j.hadHandle === true && rawExit === undefined &&
+        !diag.doneError && !diag.spawnError && !diag.resolveError
+      const code = unobserved ? 'VMU_LEAN_EXIT_UNOBSERVED' : 'VMU_LEAN_SPAWN_FAILED'
+      const message = unobserved
+        ? 'Lean 命令已解析到 ' + String(diag.resolved || '(unknown)') + '，宿主也已启动句柄，但没有给出退出码 ⇒ 无法判断编译结果 | ' + spawnEvidenceText(diag)
+        : 'spawn 未返回退出码（exitCode=' + String(rawExit) + '）⇒ 无法判断编译结果 | ' + spawnEvidenceText(diag)
+      const hint = unobserved
+        ? '常见原因是宿主沙箱拒绝执行该路径（workspace-write 模式会拒绝工作区外的可执行文件）；若成员能在自己的 shell 里跑通而本面不能，就是宿主 vs 成员的执行环境差异。请检查宿主沙箱模式/允许路径，必要时由主代理向用户请求执行权限，或把 lean 目录加进允许范围'
+        : '检查宿主是否真的注入了 spawn 接缝、命令是否存在、以及 handle/promise 的返回形状是否为 { exitCode }；证据见 resolved/doneError/cwd/pathPrefix'
+      j.receipt = Object.assign(refuse(code, message, hint),
         { stdoutDroppedBytes: capOut.droppedBytes, stderrDroppedBytes: capErr.droppedBytes, hostLossy, spillPath: hostSpill,
           stdoutTail: capOut.text.slice(-2000), stderrTail: capErr.text.slice(-2000) }, diag)
-      note(j.id, 'failed:VMU_LEAN_SPAWN_FAILED')
+      note(j.id, 'failed:' + code)
       await writeMirror(j)
-      emit('lean/job-failed', { jobId: j.id, exitCode: null, hashUnchanged: null, code: 'VMU_LEAN_SPAWN_FAILED' })
-      pushNotice(j, '【形式化结果】' + j.id + '：VMU_LEAN_SPAWN_FAILED（spawn 未返回退出码）')
+      emit('lean/job-failed', { jobId: j.id, exitCode: null, hashUnchanged: null, code })
+      pushNotice(j, '【形式化结果】' + j.id + '：' + code + (unobserved ? '（已解析/已启动但退出码不可观测）' : '（spawn 未返回退出码）'))
       Promise.resolve().then(pump)
       return
     }
