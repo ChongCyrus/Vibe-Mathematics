@@ -557,9 +557,14 @@ const phaseOf = (kind, text) => {
     "the compact catalogue VARIANT per phase (its field list says it lists the current phase, and one was transcribed)",
     "the full catalogue and the compact one are alternatives in the original, and both are currently injected here",
     "the office/chat notice header the corpus writes as [新到的消息] before the line itself",
+    // G4-era declared replacement (the v5r paper prompt was converted from JSON receipt fields to the
+    // `vibe_v5_paper` tool calls by the pack's own prompts/v5r-blocks-b.js): the original submits
+    // `paper_part` / `paper_review` JSON, the pack now instructs tool calls instead. This is a deliberate
+    // divergence, so those captured lines are structurally unreproducible rather than missing transcription.
+    "the paper submission protocol (JSON receipt fields → vibe_v5_paper tool calls)",
   ]
-  ok(pctAB >= 86 && knownGapsAB.length === 4,
-    "V67. **** and the gap is NAMED rather than rounded away, with a FLOOR on the measured ratio: the closed families are the compact catalogue, the refusal notice and the contextPct/compacted clarification, and the four that remain are listed",
+  ok(pctAB >= 84 && knownGapsAB.length === 5,
+    "V67. **** and the gap is NAMED rather than rounded away, with a FLOOR on the measured ratio: the closed families are the compact catalogue, the refusal notice and the contextPct/compacted clarification, and the five that remain are listed (the paper protocol is a DECLARED replacement, see the comment)",
     { families: knownGapsAB.length, percent: pctAB })
 
   // ROUND 549 - THE GAP LIST, CHECKED RATHER THAN TRUSTED. The four families above were each verified by hand and all four are
@@ -573,6 +578,7 @@ const phaseOf = (kind, text) => {
     { family: 'the compact catalogue VARIANT per phase', by: 'vibe-math-vmu/packs/v5r/middleware/prompt-switches.js', what: 'decideSections chooses exactly one' },
     { family: 'the two catalogues are alternatives', by: 'vibe-math-vmu/packs/v5r/middleware/prompt-switches.js', what: 'the same switch' },
     { family: 'the inbox header before the line', by: 'vibe-math-vmu/packs/v5r/notices.js', what: 'INBOX_HEADER' },
+    { family: 'the paper submission protocol (JSON receipt fields → vibe_v5_paper tool calls)', by: 'vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js', what: 'paper part/review tool instructions (declared replacement)' },
   ]
   // NON-EMPTY FIRST: two empty collections compare equal, which the declaration criterion calls shape B - the check would pass
   // by having nothing to check. And the existence clause is evaluated over a list now required to be non-empty.

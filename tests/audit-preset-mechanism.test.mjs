@@ -130,9 +130,9 @@ async function applyFrom(ctx, tag, dshVersion) {
   // THE OLD LINE, with the scanner service ALREADY UP and a version that says "0.1.6": this exact
   // configuration wrote nothing at all before the fix.
   const logs = await applyFrom(ctxOf({ entries: () => OLD_TREE }, OLD_SERVICE), 'old-ready', '0.1.6-alpha.2')
-  ok(allManaged(), 'service-ready <= 0.1.6: all six preset dirs and every managed file are written',
+  ok(allManaged(), 'service-ready <= 0.1.6: every shipped preset dir and every managed file is written',
     'dirs=' + dirsNow().join(','))
-  eq(dirsNow().length, 6, 'service-ready <= 0.1.6: exactly six preset directories')
+  eq(dirsNow().length, PRESETS.length, 'service-ready <= 0.1.6: one directory per shipped preset')
   ok(!logs.some((l) => l.includes('跳过')),
     '...and the installer does NOT claim the row mechanism (the log line that used to be false here)',
     (logs.find((l) => l.includes('跳过')) || '').slice(0, 140))

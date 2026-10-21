@@ -3,6 +3,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
+// ★ G4: the v5 preset is archived; resolve it through the ONE preset seam.
+import { legacyFile } from '../_lib/legacy-presets.mjs'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 export const inject = ['agents', 'sessions', 'subagents', 'tools', 'fs', 'commands', 'timer']
@@ -53,7 +55,7 @@ export function apply(ctx) {
   }
   async function run() {
     await ctx.get('loader')?.await()
-    const { apply: applyV5 } = await import(pathToFileURL(path.join(config.repository, 'vibe-math-v5/vibe-math-v5.js')).href)
+    const { apply: applyV5 } = await import(pathToFileURL(legacyFile('vibe-math-v5', 'vibe-math-v5.js')).href)
     const baseline = JSON.parse(fs.readFileSync(path.join(config.repository, 'prompt-corpus-v5/baseline-tools.json')))
     const register = ctx.tools.register.bind(ctx.tools)
     const specs = new Map()

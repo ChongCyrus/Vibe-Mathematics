@@ -124,8 +124,8 @@ console.log('=== 1. baseline install into an empty DSH home ===')
 }
 
 console.log('=== 2. a user edit + the SAME version: untouched, and no backup ===')
-const editedJs = { p: PRESETS[3], f: 'vibe-math-v5.js' }
-const editedDoc = { p: PRESETS[0], f: '实现方案.md' }
+const editedJs = { p: PRESETS[0], f: 'vibe-math-vmu.js' }
+const editedDoc = { p: PRESETS[0], f: 'agent.cordis.yml' }
 {
   appendFileSync(at(editedJs.p, editedJs.f), '\n// USER EDIT\n')
   appendFileSync(at(editedDoc.p, editedDoc.f), '\nUSER EDIT\n')
@@ -141,7 +141,7 @@ const editedDoc = { p: PRESETS[0], f: '实现方案.md' }
   const rec = state.files[editedJs.p.src + '/' + editedJs.f]
   ok(rec && rec.hash === sha(readFileSync(shipped(editedJs.p, editedJs.f, pkgA))),
     'the state keeps the hash of the installed bytes (not of the edit), so the drift survives a same-version boot')
-  ok(isCopyOf(PRESETS[2], 'preset.yml', pkgA), 'same version: an unedited file is still the installed bytes')
+  ok(isCopyOf(PRESETS[0], 'preset.yml', pkgA), 'same version: an unedited file is still the installed bytes')
 }
 
 console.log('=== 3. a VERSION CHANGE: every managed file is replaced, the edit is preserved ===')
@@ -151,11 +151,11 @@ let userJsBytes = null
   const logs = await applyFrom(pkgB, home, [])
   ok(isCopyOf(editedJs.p, editedJs.f), 'version change: the edited plugin file IS replaced by the shipped bytes')
   ok(isCopyOf(editedDoc.p, editedDoc.f), 'version change: the edited document IS replaced too')
-  ok(isCopyOf(PRESETS[1], 'preset.yml'), 'version change: an unedited file is replaced as well')
+  ok(isCopyOf(PRESETS[0], 'preset.yml'), 'version change: an unedited file is replaced as well')
   const backup = join(backupRoot, '1.0.0', editedJs.p.dst, editedJs.f)
   ok(existsSync(backup), 'the replaced edit is kept at .vibe-math-backup/<fromVersion>/<preset>/<file>')
   ok(existsSync(backup) && readFileSync(backup).equals(userJsBytes), 'the backup holds exactly the bytes the user had')
-  ok(!existsSync(join(backupRoot, '1.0.0', PRESETS[1].dst, 'preset.yml')), 'an unedited file is replaced WITHOUT a backup (nothing to preserve)')
+  ok(!existsSync(join(backupRoot, '1.0.0', PRESETS[0].dst, 'preset.yml')), 'an unedited file is replaced WITHOUT a backup (nothing to preserve)')
   const state = JSON.parse(readFileSync(stateFile, 'utf8'))
   ok(state.version === '2.0.0', 'the state records the new version', String(state.version))
   ok(logs.some((l) => l.includes('.vibe-math-backup')), 'the log names the backup location')
@@ -167,10 +167,10 @@ let userJsBytes = null
 
 console.log('=== 4. a deleted file at the SAME version: restored, nothing backed up ===')
 {
-  rmSync(at(PRESETS[2], 'agent.cordis.yml'))
+  rmSync(at(PRESETS[0], 'agent.cordis.yml'))
   const logs = await applyFrom(pkgB, home, [])
-  ok(existsSync(at(PRESETS[2], 'agent.cordis.yml')), 'a deleted managed file is restored')
-  ok(isCopyOf(PRESETS[2], 'agent.cordis.yml'), 'the restored file is byte-identical to the shipped one')
+  ok(existsSync(at(PRESETS[0], 'agent.cordis.yml')), 'a deleted managed file is restored')
+  ok(isCopyOf(PRESETS[0], 'agent.cordis.yml'), 'the restored file is byte-identical to the shipped one')
   ok(!existsSync(join(backupRoot, '2.0.0')), 'a run that replaced nothing creates no backup directory')
   // Guard-sync: the installer's user-visible stream is Chinese by convention (one language, see the
   // comment at the cleanup line), so these assert the FACT (an action keyword + the count) rather than
@@ -220,23 +220,23 @@ console.log('=== 7. an unreadable package manifest replaces nothing (and self-he
   writeFileSync(join(broken, 'package.json'), JSON.stringify({ name: 'dsh-vibe-math', type: 'module' }, null, 2))
   const pkgC = buildPackage('3.0.0', join(tmp, 'pkg-3.0.0'))
 
-  appendFileSync(at(PRESETS[1], 'preset.yml'), '\n# USER EDIT 2\n')
-  const driftedBytes = readFileSync(at(PRESETS[1], 'preset.yml'))
-  rmSync(at(PRESETS[2], 'preset.yml')) // ...but a missing file is still restored
+  appendFileSync(at(PRESETS[0], 'preset.yml'), '\n# USER EDIT 2\n')
+  const driftedBytes = readFileSync(at(PRESETS[0], 'preset.yml'))
+  rmSync(at(PRESETS[0], 'agent.cordis.yml')) // ...but a missing file is still restored
   // an earlier upgrade already preserved an edit of this same file: that copy must win
-  const earlier = join(backupRoot, '2.0.0', PRESETS[1].dst, 'preset.yml')
+  const earlier = join(backupRoot, '2.0.0', PRESETS[0].dst, 'preset.yml')
   mkdirSync(dirname(earlier), { recursive: true })
   writeFileSync(earlier, 'EARLIER COPY\n')
 
   const logs = await applyFrom(broken, home, [])
-  ok(readFileSync(at(PRESETS[1], 'preset.yml')).equals(driftedBytes), 'an unreadable manifest leaves drifted files alone')
-  ok(isCopyOf(PRESETS[2], 'preset.yml', broken), '...while a missing file is still restored')
+  ok(readFileSync(at(PRESETS[0], 'preset.yml')).equals(driftedBytes), 'an unreadable manifest leaves drifted files alone')
+  ok(isCopyOf(PRESETS[0], 'agent.cordis.yml', broken), '...while a missing file is still restored')
   ok(logs.some((l) => l.includes('读不到本包版本')), 'the reason is reported, not swallowed')
   ok(JSON.parse(readFileSync(stateFile, 'utf8')).version === '2.0.0', 'the previously recorded version is kept (so the next run reports the right "from" version)')
   ok(!existsSync(join(backupRoot, '(unversioned)')), 'no "(unversioned)" backup directory was created')
 
   const logs2 = await applyFrom(pkgC, home, [])
-  ok(readFileSync(at(PRESETS[1], 'preset.yml')).equals(readFileSync(shipped(PRESETS[1], 'preset.yml', pkgC))),
+  ok(readFileSync(at(PRESETS[0], 'preset.yml')).equals(readFileSync(shipped(PRESETS[0], 'preset.yml', pkgC))),
     'the next readable run replaces the drift as a normal version change')
   ok(readFileSync(earlier, 'utf8') === 'EARLIER COPY\n', 'a backup that already exists for that version is kept byte-for-byte (the earliest copy wins)')
   // A8: report-level, not wording-level - a pre-existing backup must not be counted as a failure by the
@@ -307,7 +307,7 @@ console.log('=== 10. preset writes are ATOMIC: a failed write cannot touch the d
 {
   const H = tmpHome('10')
   await applyFrom(pkgA, H.home, [])
-  const target = { p: PRESETS[1], f: 'preset.yml' }
+  const target = { p: PRESETS[0], f: 'preset.yml' }
   const userBytes = Buffer.from('# USER EDIT (must survive a failed write)\n')
   writeFileSync(H.at(target.p, target.f), userBytes)
   // `writePresetFile` writes `<dest>.<pid>.<seq>.vibe-math-tmp` and renames it over the destination,
@@ -364,16 +364,16 @@ console.log('=== 12. a legacy hash-less record is reported as UNKNOWN, never as 
   const H = tmpHome('12')
   await applyFrom(pkgA, H.home, [])
   const state = readJson(H.state) || { files: {} }
-  delete state.files[PRESETS[2].src + '/preset.yml'].hash // the shape a pre-hash installer wrote
+  delete state.files[PRESETS[0].src + '/preset.yml'].hash // the shape a pre-hash installer wrote
   writeFileSync(H.state, JSON.stringify(state, null, 2) + '\n')
-  appendFileSync(H.at(PRESETS[2], 'preset.yml'), '\n# edit while the recorded hash is unknown\n')
-  const editBytes = readText(H.at(PRESETS[2], 'preset.yml'))
+  appendFileSync(H.at(PRESETS[0], 'preset.yml'), '\n# edit while the recorded hash is unknown\n')
+  const editBytes = readText(H.at(PRESETS[0], 'preset.yml'))
   const logs = await applyFrom(pkgB, H.home, [])
   ok(logs.some((l) => l.includes('没有哈希')),
     'the file whose previous hash is unknown is reported as "cannot tell whether you changed it"')
   ok(!logs.some((l) => l.includes('被改过')),
     '...and is NOT called an edit the installer can prove', logs.filter((l) => l.includes('被改过')).join(' | '))
-  const backup = join(H.backup, '1.0.0', PRESETS[2].dst, 'preset.yml')
+  const backup = join(H.backup, '1.0.0', PRESETS[0].dst, 'preset.yml')
   ok(existsSync(backup) && readText(backup) === editBytes,
     '...while its bytes are still copied to the backup root before the replacement')
 }
@@ -404,7 +404,10 @@ console.log('=== 13. deleting a file with a dropped preset backs it up FIRST and
 console.log('=== 14. a user edit inside a preset a NEWER package drops is KEPT ===')
 {
   const H = tmpHome('14')
-  const edited = { p: PRESETS[1], f: 'agent.cordis.yml' }
+  // G4: only ONE preset ships now (vmu). The "different preset" the old fixture used is gone, so the
+  // edited/unedited pair is two FILES of the same preset: agent.cordis.yml (edited) and preset.yml (unedited).
+  const edited = { p: PRESETS[0], f: 'agent.cordis.yml' }
+  const unedited = { p: PRESETS[0], f: 'preset.yml' }
   await applyFrom(pkgA, H.home, [])
   appendFileSync(H.at(edited.p, edited.f), '\n# MY EDIT\n')
   await applyFrom(pkgA, H.home, [])
@@ -414,11 +417,11 @@ console.log('=== 14. a user edit inside a preset a NEWER package drops is KEPT =
   // "a newer package no longer ships this preset": rename its src in the copied installer, so the copy
   // loop cannot rebuild it and the old keys become stale — exactly what the cleanup must handle.
   const dropper = buildPackage('2.0.0', join(tmp, 'pkg-dropper'),
-    (src) => src.replace("src: 'vibe-math-v3',", "src: 'vibe-math-v3-dropped',"))
+    (src) => src.replace("src: 'vibe-math-vmu',", "src: 'vibe-math-vmu-dropped',"))
   const logs = await applyFrom(dropper, H.home, [])
   ok(existsSync(H.at(edited.p, edited.f)), 'the edited file of the dropped preset SURVIVES')
   ok((readText(H.at(edited.p, edited.f)) || '').includes('MY EDIT'), '...with the user\'s bytes intact')
-  ok(!existsSync(H.at(edited.p, 'preset.yml')), 'the unedited files of the dropped preset are still removed')
+  ok(!existsSync(H.at(unedited.p, unedited.f)), 'the unedited files of the dropped preset are still removed')
   ok(logs.some((l) => l.includes('记为用户所有的文件被保留')), '...and the log says the user-owned file was kept')
 }
 

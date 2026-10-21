@@ -375,9 +375,9 @@ try {
 // (PERSONA_ROOT), so a mutation probe can never overwrite the shipped corpus.
 {
   const rows = PRESETS.map((P) => {
-    const yml = readFileSync(join(BASE, P.dir, 'agent.cordis.yml'), 'utf8')
+    const yml = readFileSync(join(presetDir(P), 'agent.cordis.yml'), 'utf8')
     const b = literalBlocks(yml)
-    const src = readFileSync(join(BASE, P.dir, P.js), 'utf8')
+    const src = readFileSync(join(presetDir(P), P.js), 'utf8')
     const registered = [...new Set([...src.matchAll(/registerTool\(\s*'([A-Za-z0-9_]+)'/g)].map((m) => m[1]))].sort()
     const region = commandRegion(src) || ''
     return {

@@ -190,8 +190,8 @@ ok(duplicateListed.length === 0, 'no path is listed twice in package.json#files 
     }
   }
   const real = closureOf({ diskFiles: diskUnderRoots, listedSet: listed, exemptions: PACKAGE_EXEMPTIONS })
-  ok(PRESETS.length >= 5 && srcRoots.length >= 5,
-    'the presets and their source roots were read FROM installer.js (not restated here)', PRESETS.length + '/' + srcRoots.length)
+  ok(PRESETS.length >= 1 && srcRoots.length >= 1,
+    'the presets and their source roots were read FROM installer.js (not restated here; G4: only the shipped vmu preset remains)', PRESETS.length + '/' + srcRoots.length)
   ok(diskUnderRoots.length > 0 && PACKAGE_EXEMPTIONS.length > 0,
     'non-vacuous: the disk walk saw files and the exemption table is not empty',
     diskUnderRoots.length + ' files / ' + PACKAGE_EXEMPTIONS.length + ' exemptions')

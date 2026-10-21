@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 // ★ G4 stage A: the DEFAULT preset comes from the ONE preset seam; a preset-directory move needs no edit here.
-import { legacyFile } from './_lib/legacy-presets.mjs';
+import { legacyFile, LEGACY_PRESET_NAMES } from './_lib/legacy-presets.mjs';
 
 const WS = mkdtempSync(join(tmpdir(), 'reg-'));
 const toolRegs = [];
@@ -41,9 +41,16 @@ const ctx = {
 };
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-// ★ G4 stage A: the default path is RESOLVED THROUGH legacy-presets.mjs (LEGACY_BASE), never hard-coded.
-const FILE = process.argv[2] || legacyFile('vibe-math-v3', 'vibe-math-v3.js');
-const TARGET = isAbsolute(FILE) ? FILE : resolve(REPO, FILE);
+// ★ G4: BOTH the default AND a caller-supplied argv resolve through the ONE preset seam. The external job list
+// (`tests/run-tests.mjs`) still passes the historical `vibe-math-vN/vibe-math-vN.js` spelling, so an argv that
+// starts with a legacy preset directory is routed to LEGACY_BASE instead of the repository root.
+const resolvePresetArg = (arg) => {
+  if (isAbsolute(arg)) return arg
+  const idx = arg.indexOf('/')
+  return idx > 0 && LEGACY_PRESET_NAMES.includes(arg.slice(0, idx)) ? legacyFile(arg.slice(0, idx), arg.slice(idx + 1)) : resolve(REPO, arg)
+}
+const FILE = process.argv[2] ? resolvePresetArg(process.argv[2]) : legacyFile('vibe-math-v3', 'vibe-math-v3.js');
+const TARGET = FILE;
 const mod = await import(pathToFileURL(TARGET).href + '?t=' + Date.now());
 const plugin = mod.default || mod;
 

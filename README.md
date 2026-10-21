@@ -42,7 +42,7 @@
 ## 🧩 架构图（v2 + v3 + v4 + v5）
 
 > 静态架构图；完整流程说明见 [docs/架构图.md](docs/架构图.md)（v1 历史架构图；v2 起目录布局已变更）与
-> [vibe-math-v5/架构图.md](vibe-math-v5/架构图.md)（v5 全套细节图）；
+> [vibe-math-v5/架构图.md](docs/DEPRECATED-LEGACY-PRESETS.md)（v5 全套细节图）；
 > 可编辑生成脚本：中文 v2/v3 海报由 matplotlib 脚本生成 [v2](docs/generate_framework_diagram_v2.py) / [v3](docs/generate_framework_diagram_v3.py)（matplotlib → PNG）；
 > 英文版 v2/v3 由零依赖 Node 脚本生成 [v2-en](docs/generate_framework_diagram_v2_en.mjs) / [v3-en](docs/generate_framework_diagram_v3_en.mjs)（→ **SVG**）；
 > [v4](docs/generate_framework_diagram_v4.mjs) / [v5](docs/generate_framework_diagram_v5.mjs)
@@ -84,7 +84,7 @@
 ![Vibe Math V5 架构图](示例图/框架图-v5.svg)
 
 > 图源与全部细节图（成员生命周期、一轮时序、共识状态机、会议流程、调度优先级、状态折叠、
-> 提示词构成、任务板、职权矩阵）：[`vibe-math-v5/架构图.md`](vibe-math-v5/架构图.md)。
+> 提示词构成、任务板、职权矩阵）：[`vibe-math-v5/架构图.md`](docs/DEPRECATED-LEGACY-PRESETS.md)。
 > 上面这张 SVG 由零依赖脚本生成：`node docs/generate_framework_diagram_v5.mjs`。
 
 ```mermaid
@@ -114,7 +114,7 @@ flowchart TB
 
 **一句话流水线**：所办（会话根/人）`configure → start` 建所 → **院士**（academician，组织与协调中心）拆解原问题并**分派**任务、定优先级、主持会议、督导进度；**常驻研究员**各自研究并持有表决权，**临时工**可按需雇入（无表决权、可被真实解雇）。**框架只做媒介，绝不指派任务**；一切结论都要 **≥ m = min(`quorumCap`, 在册有表决权人数) 张布尔票且全部同向**才写入 `Verified/`（反向票阻塞、弃权不计票但计入平均概率，未达门槛留库附平均概率）；会议与验证**双向互斥**；状态写在研究所目录下的加固 JSON `State/<研究所>.v5state.json`（零 token 成本、串行写、读前必 load）；**仅当全体有表决权者都认为原问题已解决**才结题。
 
-> 职位与职权、求真规则细节、运行机制、状态与持久化、提示词构成、研究所目录、工具面、与 v4 的差异：见 [`vibe-math-v5/架构图.md`](vibe-math-v5/架构图.md) §13「从 README 移入的 v5 说明」（原文保留）；参数见[参数速查表](#-参数速查表)，最终论文见 [`docs/final-paper.md`](docs/final-paper.md)。
+> 职位与职权、求真规则细节、运行机制、状态与持久化、提示词构成、研究所目录、工具面、与 v4 的差异：见 [`vibe-math-v5/架构图.md`](docs/DEPRECATED-LEGACY-PRESETS.md) §13「从 README 移入的 v5 说明」（原文保留）；参数见[参数速查表](#-参数速查表)，最终论文见 [`docs/final-paper.md`](docs/final-paper.md)。
 
 ---
 
@@ -287,14 +287,14 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 把 v4 的常驻升级为一座**研究所**：**院士**（领头人 / 组织与协调中心：拆解、**分派**、定优先级、主持会议、督导进度）+ **常驻研究员**（有表决权，可自主雇佣/解雇自己的临时工）+ **临时工**（无表决权）；**框架仍然只做中继、任务板、会议与计数，绝不指派任务**。定论门槛为 **≥ m = min(`quorumCap`, 在册有表决权人数) 票布尔一致**（反向票阻塞、弃权不计票但计入平均概率、未达门槛留库附平均概率）；状态写在 `State/<研究所>.v5state.json`（零 token 成本）；会议与验证严格互斥。**选它**：想要"有组织的自组织"、可增减的编制与可调门槛。
 
-v5 的完整架构（成员生命周期、一轮时序、共识状态机、会议流程、调度优先级、状态折叠、提示词构成、任务板、职权矩阵）见 [`vibe-math-v5/架构图.md`](vibe-math-v5/架构图.md)；文字规格见 [`vibe-math-v5/实现方案.md`](vibe-math-v5/实现方案.md)。
+v5 的完整架构（成员生命周期、一轮时序、共识状态机、会议流程、调度优先级、状态折叠、提示词构成、任务板、职权矩阵）见 [`vibe-math-v5/架构图.md`](docs/DEPRECATED-LEGACY-PRESETS.md)；文字规格见 [`vibe-math-v5/实现方案.md`](docs/DEPRECATED-LEGACY-PRESETS.md)。
 
 ---
 
 
 ## 📁 目录结构
 
-> 只列**顶层与高价值路径**；每个文件的完整语义见各预设的 `实现方案.md`（[v2](vibe-math-v2/实现方案.md) · [v3](vibe-math-v3/实现方案.md) · [v4](vibe-math-v4/实现方案.md) · [v5](vibe-math-v5/实现方案.md)）与 [`vibe-math-v5/架构图.md`](vibe-math-v5/架构图.md)。
+> 只列**顶层与高价值路径**；每个文件的完整语义见各预设的 `实现方案.md`（[v2](docs/DEPRECATED-LEGACY-PRESETS.md) · [v3](docs/DEPRECATED-LEGACY-PRESETS.md) · [v4](docs/DEPRECATED-LEGACY-PRESETS.md) · [v5](docs/DEPRECATED-LEGACY-PRESETS.md)）与 [`vibe-math-v5/架构图.md`](docs/DEPRECATED-LEGACY-PRESETS.md)。
 
 ### v2（概率驱动 · 经典）
 
@@ -638,10 +638,10 @@ v3 与 v2 同一开关、同一时序（严格收口；**在调度器停止之�
 
 ## 📚 规格文档
 
-- **v2（概率驱动）**：[`vibe-math-v2/实现方案.md`](vibe-math-v2/实现方案.md)
-- **v3（论文式 md + 规划代理 + 方法库）**：[`vibe-math-v3/实现方案.md`](vibe-math-v3/实现方案.md)
-- **v4（常驻自组织）**：[`vibe-math-v4/实现方案.md`](vibe-math-v4/实现方案.md)
-- **v5（研究所体系）**：[`vibe-math-v5/实现方案.md`](vibe-math-v5/实现方案.md)（文字规格）· [`vibe-math-v5/架构图.md`](vibe-math-v5/架构图.md)（全套架构图）
+- **v2（概率驱动）**：[`vibe-math-v2/实现方案.md`](docs/DEPRECATED-LEGACY-PRESETS.md)
+- **v3（论文式 md + 规划代理 + 方法库）**：[`vibe-math-v3/实现方案.md`](docs/DEPRECATED-LEGACY-PRESETS.md)
+- **v4（常驻自组织）**：[`vibe-math-v4/实现方案.md`](docs/DEPRECATED-LEGACY-PRESETS.md)
+- **v5（研究所体系）**：[`vibe-math-v5/实现方案.md`](docs/DEPRECATED-LEGACY-PRESETS.md)（文字规格）· [`vibe-math-v5/架构图.md`](docs/DEPRECATED-LEGACY-PRESETS.md)（全套架构图）
 - **v5 提示词与交互语料**：[`prompt-corpus-v5/prompt-corpus-v5.md`](prompt-corpus-v5/prompt-corpus-v5.md)（框架真正发出的每一条提示词原文，可直接人工复核身份/编制/交互署名是否正确）
 - **四套 Lean 提示词语料**：[`prompt-corpus-v2/formal-verify-v2.md`](prompt-corpus-v2/formal-verify-v2.md) · [`prompt-corpus-v3/formal-verify-v3.md`](prompt-corpus-v3/formal-verify-v3.md) · [`prompt-corpus-v4/formal-verify-v4.md`](prompt-corpus-v4/formal-verify-v4.md)（各自覆盖 off / encourage / **require** / 忠实性分支 / 工作轮 / 回执契约；工作区归一化为 `<WS>`、VibeMath 根为 `<VIBEMATH>`）
 - **四个预设的 persona 原文**：[`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md)（主代理实际收到的提示词：有哪些工具、哪些参数、哪些斜杠子命令；由 `audit-persona-surface.test.mjs` 生成，随包发布）

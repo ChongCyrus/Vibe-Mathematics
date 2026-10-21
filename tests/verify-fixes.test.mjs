@@ -12,6 +12,9 @@
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
+import { pathToFileURL } from 'node:url';
+// ★ G4: preset sources are archived; resolve them through the ONE preset seam.
+import { legacyFile, LEGACY_PRESET_NAMES } from './_lib/legacy-presets.mjs';
 
 let passed = 0; let failed = 0;
 const assert = (c, m) => { if (c) { passed += 1; console.log('  ok - ' + m); } else { failed += 1; console.error('  FAIL - ' + m); } };
@@ -49,7 +52,12 @@ function makeCtx(WS) {
 async function load(file) {
   const WS = mkdtempSync(join(tmpdir(), 'vfix-'));
   const { ctx, toolRegs, root } = makeCtx(WS);
-  const mod = await import(new URL(file, import.meta.url).href + '?t=' + Date.now());
+  const rel = file.replace(/^\.\.\//, '');
+  const idx = rel.indexOf('/');
+  const href = idx > 0 && LEGACY_PRESET_NAMES.includes(rel.slice(0, idx))
+    ? pathToFileURL(legacyFile(rel.slice(0, idx), rel.slice(idx + 1))).href
+    : new URL(file, import.meta.url).href;
+  const mod = await import(href + '?t=' + Date.now());
   (mod.default || mod).apply(ctx);
   const call = async (n, a) => JSON.parse(await (toolRegs.find((s) => s.name === n)).execute(a || {}, { agent: root }));
   return { WS, call, toolRegs };

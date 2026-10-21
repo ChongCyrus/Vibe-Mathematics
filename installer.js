@@ -52,39 +52,6 @@ export const name = 'vibe-math-preset-installer'
 // and the installed preset then cannot mount).
 export const PRESETS = [
   {
-    src: 'vibe-math-v2',
-    dst: 'vibe-math-v2',
-    // math-computation.js + math-engines.js are PER-PRESET copies of the shared module (they must be
-    // listed here: on the <=0.1.6 line only these files are copied into .agent-presets/<id>/, and the
-    // preset JS imports them relatively). guard: tests/audit-math-computation-parity.mjs
-    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v2.js', '实现方案.md', 'math-computation.js', 'math-engines.js'],
-  },
-  {
-    src: 'vibe-math-v3',
-    dst: 'vibe-math-v3',
-    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v3.js', '实现方案.md', 'math-computation.js', 'math-engines.js'],
-  },
-  {
-    src: 'vibe-math-v4',
-    dst: 'vibe-math-v4',
-    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v4.js', '实现方案.md', 'math-computation.js', 'math-engines.js'],
-  },
-  {
-    src: 'vibe-math-v5',
-    dst: 'vibe-math-v5',
-    // 架构图.md belongs here for the same reason 实现方案.md does: the installer's policy is to put
-    // the preset's documentation next to the preset, and the shipped v5 directory carries both.
-    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v5.js', '实现方案.md', '架构图.md', 'math-computation.js', 'math-engines.js'],
-  },
-  {
-    src: 'vibe-math-v5r',
-    dst: 'vibe-math-v5r',
-    // v5r is the refactor preview of v5 (they coexist for an on-machine A/B comparison): the same
-    // runtime files, plus the design basis (MEETING-PLATFORM-*.md) and the two navigation/legacy docs,
-    // so every shipped behaviour can be traced back to a shipped design decision.
-    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-v5r.js', 'LEGACY-v5-实现方案（仅供参考）.md', '设计总览.md', '架构图.md', 'math-computation.js', 'math-engines.js', 'MEETING-PLATFORM-PHILOSOPHY.md', 'MEETING-PLATFORM-RULINGS.md', 'MEETING-PLATFORM-VOTING.md', 'MEETING-PLATFORM-EXPANSION.md', 'MEETING-PLATFORM-OVERSIGHT-TIME.md', 'MEETING-PLATFORM-SPEC.md', 'MEETING-PLATFORM-A-model.md', 'MEETING-PLATFORM-B-protocol.md', 'MEETING-PLATFORM-C-landing.md', 'MEETING-PLATFORM-DECISIONS.md', 'MEETING-PLATFORM-GAPS.md', 'docs/00-README.md', 'docs/01-philosophy.md', 'docs/02-rulings.md', 'docs/03-interface-contract.md', 'docs/04-flows-and-protocols.md', 'docs/05-voting.md', 'docs/06-expansion-mechanisms.md', 'docs/07-oversight-and-time.md', 'docs/08-landing-plan.md', 'docs/09-implementation-manual.md', 'docs/10-guards-and-acceptance.md', 'docs/11-appendix-drafts.md', 'docs/12-traceability.md'],
-  },
-  {
     src: 'vibe-math-vmu',
     dst: 'vibe-math-vmu',
     // vmu is the framework-first preset (vibe-math-unify): the runtime files plus its complete

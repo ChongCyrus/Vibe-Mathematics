@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..')
 const CHECK = process.argv.includes('--check')
-const VERSIONS = ['v2', 'v3', 'v4', 'v5', 'v5r', 'vmu']
+const VERSIONS = ['vmu']
 const OUT = join(REPO, 'cordis.patch.yml')
 
 /** Roster position: after the shipped presets (standard 1 … cordis 4). */

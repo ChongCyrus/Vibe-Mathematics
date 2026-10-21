@@ -179,10 +179,10 @@ const SELF_PROBE_MUTATIONS = [
     expect: 'v5 I18:',
   },
   {
-    name: 'the generated bundle patch keeps the Lean-3 `--search-path` (I18b: source fixed but not regenerated)',
+    name: 'the generated bundle patch teaches the Lean-3 `--search-path` (I18b: source fixed but not regenerated)',
     rel: 'cordis.patch.yml',
-    from: '-R <VibeMath root>',
-    to: '--search-path <VibeMath root>',
+    from: 'preset-vibe-math-vmu',
+    to: '--search-path preset-vibe-math-vmu',
     expect: 'I18b:',
   },
   {
@@ -838,8 +838,11 @@ for (const P of PRESETS) {
 {
   const patch = read('cordis.patch.yml')
   const hits = patch ? patch.split(/\r?\n/).map((l, i) => [i + 1, l]).filter(([, l]) => l.includes('--search-path')) : []
-  check(patch !== null && patch.includes('-R <VibeMath root>') && hits.length === 0,
-    'I18b: the generated cordis.patch.yml teaches no `--search-path` (regenerate: node scripts/build-preset-rows.mjs)',
+  // G4: the bundle patch now carries only the shipped vmu preset; the archived presets that carried the
+  // `-R <VibeMath root>` text no longer ship, so the invariant is "the shipped patch exists, identifies vmu,
+  // and teaches no --search-path".
+  check(patch !== null && patch.includes('preset-vibe-math-vmu') && hits.length === 0,
+    'I18b: the generated cordis.patch.yml (shipped vmu only) teaches no `--search-path` (regenerate: node scripts/build-preset-rows.mjs)',
     patch === null ? 'cordis.patch.yml unreadable' : 'lines ' + JSON.stringify(hits.map(([n]) => n)))
 }
 

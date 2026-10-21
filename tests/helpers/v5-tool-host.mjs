@@ -1,7 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { apply } from '../../vibe-math-v5/vibe-math-v5.js'
+import { pathToFileURL } from 'node:url'
+// ★ G4: the v5 preset is archived; resolve it through the ONE preset seam.
+import { legacyFile } from '../_lib/legacy-presets.mjs'
+const { apply } = await import(pathToFileURL(legacyFile('vibe-math-v5', 'vibe-math-v5.js')).href)
 
 export async function createHost(options = {}) {
   const workspace = options.workspace || fs.mkdtempSync(path.join(os.tmpdir(), 'v5-tool-help-'))

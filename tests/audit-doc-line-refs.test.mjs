@@ -159,17 +159,20 @@ function historicalLines(lines) {
  *   · every row states a reason.
  */
 export const KNOWN_OUT_OF_RANGE = Object.freeze([
-  // ★ EMPTIED by task-233 (round 10). Every one of the nine rows this gate found on its first run has been
-  // re-anchored by PHRASE, not by offset:
-  //   · the `packs/v5r/settings/defaults.js` cluster (7 refs across 6 docs) - that file was SPLIT by task-201 and
-  //     now derives its 43 values from `./defaults.json`, so the old line numbers are PRE-SPLIT coordinates. Each
-  //     site now cites the modern anchor (`defaults.json:27` for the projections, `:42` for `vmu.ballot.reopenFloor`)
-  //     and carries the word `pre-split` on the line, which is the marker this gate accepts for a historical claim.
-  //     `10-goal3-final.md:41` is the one where NO modern anchor exists: the orphan key it names
-  //     (`vmu.meetings.reconsiderFloor`) was DELETED, so its coordinate stays and says so.
-  //   · the two REVERSED ranges (`vibe-math-v5r.js:3288-3092`) resolve by phrase to `:1066` (the default),
-  //     `:4018` (the sentence a member reads) and `:9555` (where the switch is judged).
-  // The marker mechanism is documented at HIST_LINE / REANCHOR_HEAD above; rows may be added again with a reason.
+  // ★ G4 (round 18): the five presets were archived and `vibe-math-vmu/agent.cordis.yml` was subsequently
+  // shortened to 207 lines, so ten HISTORICAL references now point past its end. `docs/acceptance/**` is
+  // history and must not be rewritten; `docs/COMPAT-AUDIT-ROUND2.md` is a historical audit record. They are
+  // recorded here (with the reason) instead of being silently corrected or silently ignored.
+  { doc: 'docs/acceptance/03-v5r-full-inventory.md', docLine: 2063, ref: 'agent.cordis.yml:294-295', why: '历史 acceptance 记录：当时 vmu agent.cordis.yml 更长（现 207 行）；按“历史 acceptance 不改写”保留原行号' },
+  { doc: 'docs/acceptance/03-v5r-full-inventory.md', docLine: 2295, ref: 'agent.cordis.yml:294-295', why: '历史 acceptance 记录：当时 vmu agent.cordis.yml 更长（现 207 行）；按“历史 acceptance 不改写”保留原行号' },
+  { doc: 'docs/acceptance/phase6-v3-prompt-parity.md', docLine: 71, ref: 'agent.cordis.yml:141-264', why: '历史 acceptance 记录：当时 vmu agent.cordis.yml 更长（现 207 行）；按“历史 acceptance 不改写”保留原行号' },
+  { doc: 'docs/acceptance/phase6-v3-prompt-parity.md', docLine: 73, ref: 'agent.cordis.yml:322-333', why: '历史 acceptance 记录：当时 vmu agent.cordis.yml 更长（现 207 行）；按“历史 acceptance 不改写”保留原行号' },
+  { doc: 'docs/acceptance/phase6-v3-prompt-parity.md', docLine: 333, ref: 'agent.cordis.yml:322-333', why: '历史 acceptance 记录：当时 vmu agent.cordis.yml 更长（现 207 行）；按“历史 acceptance 不改写”保留原行号' },
+  { doc: 'docs/acceptance/phase6-v3-prompt-parity.md', docLine: 412, ref: 'agent.cordis.yml:322-333', why: '历史 acceptance 记录：当时 vmu agent.cordis.yml 更长（现 207 行）；按“历史 acceptance 不改写”保留原行号' },
+  { doc: 'docs/acceptance/v5r-inventory-c.md', docLine: 555, ref: 'agent.cordis.yml:294-295', why: '历史 acceptance 记录：当时 vmu agent.cordis.yml 更长（现 207 行）；按“历史 acceptance 不改写”保留原行号' },
+  { doc: 'docs/acceptance/v5r-inventory-c.md', docLine: 787, ref: 'agent.cordis.yml:294-295', why: '历史 acceptance 记录：当时 vmu agent.cordis.yml 更长（现 207 行）；按“历史 acceptance 不改写”保留原行号' },
+  { doc: 'docs/COMPAT-AUDIT-ROUND2.md', docLine: 113, ref: 'agent.cordis.yml:191-209', why: '历史兼容审计记录：当时 vmu agent.cordis.yml 更长（现 207 行）；旧行号保留，供对照历史审计' },
+  { doc: 'docs/COMPAT-AUDIT-ROUND2.md', docLine: 114, ref: 'agent.cordis.yml:212-230', why: '历史兼容审计记录：当时 vmu agent.cordis.yml 更长（现 207 行）；旧行号保留，供对照历史审计' },
 ])
 /**
  * A doc that cites one file several times writes the follow-ups as SHORTHAND on the same line: `f.js:531`, `:564`

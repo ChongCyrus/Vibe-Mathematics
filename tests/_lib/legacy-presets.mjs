@@ -12,7 +12,8 @@ import { fileURLToPath } from 'node:url'
 const REPO = fileURLToPath(new URL('../..', import.meta.url))
 
 /**
- * Root that contains the five preset directories. Stage B flips THIS value to the archived root.
+ * Root that contains the five preset directories. The five are ARCHIVED (G4): they no longer ship and
+ * no longer sit at the repository root; this ONE string is how every test keeps locating them.
  *
  * VMU_LEGACY_BASE is a one-run OVERRIDE (default: the string below). It exists so a probe can prove
  * "every audit script really follows this one switch" by running the scripts against a different root
@@ -20,7 +21,7 @@ const REPO = fileURLToPath(new URL('../..', import.meta.url))
  */
 export const LEGACY_BASE = (() => {
   const fromEnv = process.env.VMU_LEGACY_BASE
-  return typeof fromEnv === 'string' && fromEnv.trim() !== '' ? fromEnv.trim() : '.'
+  return typeof fromEnv === 'string' && fromEnv.trim() !== '' ? fromEnv.trim() : 'archive/legacy-presets'
 })()
 
 /** Directory of one preset, e.g. legacyDir('vibe-math-v5r'). */

@@ -30,7 +30,7 @@ const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
 const pkg = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8'))
 const patch = readFileSync(join(REPO, 'cordis.patch.yml'), 'utf8')
-const VERSIONS = ['v2', 'v3', 'v4', 'v5', 'v5r', 'vmu']
+const VERSIONS = ['vmu']
 
 let passed = 0, failed = 0
 const failures = []

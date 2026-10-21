@@ -1,8 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createHash } from 'node:crypto'
-import { V5_TOOL_HELP_REQUIRED } from '../../vibe-math-v5/vibe-math-v5.js'
+// ★ G4: the v5 preset is archived; resolve it through the ONE preset seam.
+import { legacyFile } from '../_lib/legacy-presets.mjs'
+const { V5_TOOL_HELP_REQUIRED } = await import(pathToFileURL(legacyFile('vibe-math-v5', 'vibe-math-v5.js')).href)
 const repository = fileURLToPath(new URL('../../', import.meta.url))
 const directory = path.resolve(process.env.V5_EVAL_DIR || path.join(repository, '..', '.v5-tool-harness'))
 const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'manifest.json')))

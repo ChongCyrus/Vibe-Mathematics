@@ -834,7 +834,7 @@ console.log('-- math_computation shared contract --')
     // probe argv may carry them - the parsers accept both `name:state` and `name state` shapes.
     ok(!!probe && !/[|%]/.test(probe.argv.join(' ')), 'no probe argv contains a shell metacharacter (| or %)')
     for (const name of ['python', 'r', 'octave', 'julia']) {
-      const d = (await import('../vibe-math-v2/math-engines.js')).MATH_ENGINES[name]
+      const d = (await import(pathToFileURL(legacyFile('vibe-math-v2', 'math-engines.js')).href)).MATH_ENGINES[name]
       for (const a of (d.packageProbe.argv || [])) ok(!/[|%]/.test(String(a)), name + ' probe template has no | or %: ' + String(a).slice(0, 40))
       ok(!/[|%]/.test(String(d.probeCode || 'numpy ok line')), name + ' probeCode has no | or %')
     }

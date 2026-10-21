@@ -4,6 +4,8 @@ import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { createHost } from '../helpers/v5-tool-host.mjs'
+// ★ G4: the v5 preset is archived; the digest is computed from the seam-resolved file.
+import { legacyFile } from '../_lib/legacy-presets.mjs'
 const repository = fileURLToPath(new URL('../../', import.meta.url))
 const directory = path.resolve(process.env.V5_EVAL_DIR || path.join(repository, '..', '.v5-tool-harness'))
 const home = path.join(directory, 'home'), profile = path.join(home, 'profiles', 'v5-tools')
@@ -86,7 +88,7 @@ let random = 42
 const next = () => { random = (Math.imul(random, 1664525) + 1013904223) >>> 0; return random / 2 ** 32 }
 const episodes = cases.flatMap(([scenario, member, task]) => ['full','short'].flatMap(group => [1,2].map(repeat => ({ scenario, member, task, group, repeat }))))
 for (let i = episodes.length - 1; i > 0; i--) { const j = Math.floor(next() * (i + 1)); [episodes[i],episodes[j]] = [episodes[j],episodes[i]] }
-const sourceSha256 = createHash('sha256').update(fs.readFileSync(path.join(repository,'vibe-math-v5/vibe-math-v5.js'))).digest('hex')
+const sourceSha256 = createHash('sha256').update(fs.readFileSync(legacyFile('vibe-math-v5', 'vibe-math-v5.js'))).digest('hex')
 fs.writeFileSync(path.join(directory, 'manifest.json'), JSON.stringify({ harness: '0.2.0-rc.2', provider: 'deepseek-official', model: 'deepseek-flash', price, ledger, sourceSha256, seed: 42, episodes }, null, 2))
 const limit = process.argv.includes('--one') ? 1 : episodes.length
 for (let i = 0; i < limit; i++) {

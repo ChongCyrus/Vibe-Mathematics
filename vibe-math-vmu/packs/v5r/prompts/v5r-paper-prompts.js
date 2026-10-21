@@ -48,9 +48,11 @@ export const v5rPaperWriteSection = Object.freeze({
     '工具与回执契约：',
     '· 需要把一条支撑命题正式落库时用 `vibe_v5_record_proposition`（p=1/0 表示判定级证据，中间值表示不确定估计）；',
     '· 需要与同事对齐时用 `vibe_v5_say`；不确定自己有哪些工具时用 `vibe_v5_tool_help`。',
-    '· 结束时只输出一个 JSON 对象：`{"paper_part": {"target":"本次论文的目标对象","title":"你这部分的标题","solution":"你对原问题完整解法的贡献（推理链与结论，只写有证据的）","methods":"方法/理论/思想/经验与数学理解","rules":"规律总结","limits":"局限、未决与不同意互审意见的理由","evidence":["证据路径或卡片 id", "…"]}}`。',
+    '· 写完这部分，调用工具 `vibe_v5_paper`，action 为 `part`：',
+    '    vibe_v5_paper { action: "part", target: "本次论文的目标对象", part: "你这部分的标题",',
+    '                    body: "你对原问题完整解法的贡献（推理链与结论，只写有证据的）；可分段写方法/规律/局限；证据路径写在正文里" }',
     '· `target` 必须填（论文流程按目标对象定位这一篇；不填会被具名拒，绝不替你猜是哪一篇）。',
-    '· 编排层会把这一个 `paper_part` 交给论文流程记录（写入 records 并计算指纹）；它**不是**一个工具，别去找同名工具。',
+    '· ★ 它**是**一个工具：早先靠回执字段 `paper_part` 提交的做法已经取消，回执里写那个字段会被判 `VMU_TURN_UNKNOWN_FIELD`。',
   ].join('\n'),
 })
 
@@ -72,9 +74,11 @@ export const v5rPaperReviewSection = Object.freeze({
     '· **必须显式二选一**：含糊的「差不多可以」不算可交付；`deliverable` 必须是 true 或 false，缺省/字符串会被具名拒（"未表态不算可交付"）。',
     '',
     '工具与回执契约：',
-    '· 结束时只输出一个 JSON 对象：`{"paper_review": {"target":"本次论文的目标对象","of":"你审阅的成员 id","deliverable":true,"comments":"具体意见（指出问题、给出可执行的修改建议）"}}`；',
+    '· 写完评审意见，调用工具 `vibe_v5_paper`，action 为 `review`：',
+    '    vibe_v5_paper { action: "review", target: "本次论文的目标对象", member: "你的成员 id",',
+    '                    deliverable: true, comments: "具体意见（指出问题、给出可执行的修改建议）" }',
     '· 想先核对证据可读任何人的成果库（`vibe_v5_read_library`）；不确定工具时用 `vibe_v5_tool_help`。',
-    '· 编排层会把这一个 `paper_review` 交给论文流程记录；它**不是**一个工具。',
+    '· ★ 它**是**一个工具：早先靠回执字段 `paper_review` 提交的做法已经取消，回执里写那个字段会被判 `VMU_TURN_UNKNOWN_FIELD`。',
   ].join('\n'),
 })
 
@@ -100,8 +104,11 @@ export const v5rPaperFinalSection = Object.freeze({
     '',
     '决定与回执契约：',
     '· `decision: "deliverable"` = 定稿通过；`decision: "revise"` = 打回再写一轮（未到轮次上限时）；两者只能二选一。',
-    '· 结束时只输出一个 JSON 对象：`{"paper_final": {"target":"本次论文的目标对象","decision":"deliverable","note":"定稿说明（含对最后分歧的处理）","conclusion":"论文结论的正式陈述"}}`；',
-    '· 编排层会把 `paper_final` 交给论文流程记录；它**不是**一个工具。',
+    '· 调用工具 `vibe_v5_paper`，action 为 `final`：',
+    '    vibe_v5_paper { action: "final", target: "本次论文的目标对象", member: "你的成员 id",',
+    '                    decision: "deliverable", note: "定稿说明（含对最后分歧的处理）", conclusion: "论文结论的正式陈述" }',
+    '· ★ 它**是**一个工具：早先靠回执字段 `paper_final` 提交的做法已经取消，回执里写那个字段会被判 `VMU_TURN_UNKNOWN_FIELD`。',
+    '· ★ **只有学术委员会主席席可以定稿**；其他席位调用 `final` 会被具名拒绝（VMU_NOT_PERMITTED，并指出你的席位）。',
     '· ★ 产物四件：md / tex / pdf / meta。渲染会写出 md、tex、meta；**pdf 需要内核的 LaTeX 编译执行器**，本内核尚无此能力（会具名说明），所以定稿回执不会声称四件齐全。中文论文的引擎顺序是 ' + PAPER_ENGINE_ORDER.zh.join(' → ') + '。',
   ].join('\n'),
 })

@@ -180,7 +180,7 @@ for (const f of MODULES) {
   const hashes = {}
   ok(PRESETS.length > 0, 'non-vacuous: PRESETS must not be empty')
 for (const p of PRESETS) {
-    const file = join(REPO, p, f)
+    const file = p === 'vibe-math-vmu' ? join(REPO, p, f) : join(legacyDir(p), f)
     if (!existsSync(file)) { ok(false, p + '/' + f + ' exists'); continue }
     const h = sha(file)
     hashes[h] = (hashes[h] || []).concat(p)
@@ -195,7 +195,7 @@ for (const p of PRESETS) {
     + ' (the ' + PRESETS.length + '-way byte comparison above still ran)')
 }
 
-// ---- 3. both install lines ship the module ----
+// ---- 3. only the SHIPPED preset (vmu) is shipped by both install lines; the five archived copies are not ----
 {
   const installer = read('installer.js')
   // Parse each preset block: src + dst + (optional comment lines) + files[...]. Windows are not
@@ -206,14 +206,28 @@ for (const p of PRESETS) {
   let m
   while ((m = re.exec(installer)) !== null) blocks[m[1]] = m[2]
   ok(PRESETS.length > 0, 'non-vacuous: PRESETS must not be empty')
-for (const p of PRESETS) {
-    const list = blocks[p]
-    ok(!!list, 'installer.js has a PRESETS entry for ' + p)
-    for (const f of MODULES) ok(!!list && list.indexOf("'" + f + "'") !== -1, 'installer.js ' + p + ' files[] ships ' + f)
+  ok(MODULES.length > 0, 'non-vacuous: MODULES must not be empty before the shipping loops')
+  // G4: only vmu ships. Its managed list must carry both modules (vmu imports them relatively).
+  {
+    const list = blocks['vibe-math-vmu']
+    ok(!!list, 'installer.js has the shipped vmu PRESETS entry')
+    for (const f of MODULES) ok(!!list && list.indexOf("'" + f + "'") !== -1, 'installer.js vibe-math-vmu files[] ships ' + f)
+  }
+  // The five archived presets must NOT look shipped: a stray PRESETS entry would copy a missing dir at install.
+  ok(PRESETS.length > 0, 'non-vacuous: PRESETS must not be empty before the installer-shipping loop')
+  for (const p of PRESETS) {
+    if (p === 'vibe-math-vmu') continue
+    ok(!blocks[p], 'installer.js has NO PRESETS entry for archived ' + p)
   }
   const pkg = JSON.parse(read('package.json'))
   const files = pkg.files || []
-  for (const p of PRESETS) for (const f of MODULES) ok(files.indexOf(p + '/' + f) !== -1, 'package.json files[] ships ' + p + '/' + f)
+  ok(MODULES.length > 0, 'non-vacuous: MODULES must not be empty before the package.json loops')
+  for (const f of MODULES) ok(files.indexOf('vibe-math-vmu/' + f) !== -1, 'package.json files[] ships vibe-math-vmu/' + f)
+  ok(PRESETS.length > 0, 'non-vacuous: PRESETS must not be empty before the package.json archived loop')
+  for (const p of PRESETS) {
+    if (p === 'vibe-math-vmu') continue
+    for (const f of MODULES) ok(files.indexOf(p + '/' + f) === -1, 'package.json files[] does NOT ship archived ' + p + '/' + f)
+  }
   ok(files.indexOf('docs/math-computation.md') !== -1, 'package.json files[] ships docs/math-computation.md')
   ok(files.indexOf('tests/audit-math-computation-parity.mjs') !== -1 && files.indexOf('tests/audit-math-computation-contract.mjs') !== -1, 'package.json ships the cross-preset guards')
   ok(files.indexOf('tests/math-computation-shared.test.mjs') !== -1, 'package.json ships the shared contract suite')
