@@ -64,8 +64,15 @@ export const V5R_MOTION_BOX = Object.freeze({
   capabilities: Object.freeze(['trigger-workflow', 'record']),
   hooks: Object.freeze({
     'meeting/motion': async (flat = {}) => {
-      const meetings = flat.api.services.get('vmu.meetings')
-      const ballotbox = flat.api.services.get('vmu.ballotbox')
+      // ★ A NAMED REFUSAL, NOT A TypeError. The loader can call this hook with whatever context it is handed, and
+      // reading `flat.api.services` off a context that has no `api` threw "Cannot read properties of undefined" -
+      // a crash where the contract says a refusal must be named and say what is missing.
+      const services = flat && flat.api && flat.api.services
+      if (!services || typeof services.get !== 'function') {
+        return { ok: false, reason: 'the motion box needs the pack api (flat.api.services); this loader handed it none', code: 'VMU_ENGINE_UNAVAILABLE', motion: flat && flat.motion }
+      }
+      const meetings = services.get('vmu.meetings')
+      const ballotbox = services.get('vmu.ballotbox')
       const opened = ballotbox.open({ question: motionBoxQuestion(flat), options: MOTION_BOX_OPTIONS.slice() })
       if (!opened || opened.ok !== true) {
         return { ok: false, reason: 'the box was refused by name', code: (opened && opened.code) || null, motion: flat.motion }

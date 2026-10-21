@@ -1580,7 +1580,17 @@ function whyBad(d, value) {
     case 'natural': return (!Number.isInteger(value) || value < 0) ? 'expected an integer >= 0' : null
     case 'string': return typeof value !== 'string' ? 'expected a string' : null
     case 'integer': return !Number.isInteger(value) ? 'expected an integer' : null
-    case 'number': return (typeof value !== 'number' || !Number.isFinite(value)) ? 'expected a finite number' : null
+    // ★ THE DECLARED BOUNDS MUST BE ENFORCED, or they are decoration. This branch used to check only that the value
+    // is a finite number, so a key declaring min/max would accept anything on either side of them - measured on
+    // vmu.env.probeTimeoutMs (min 1, max 2147483647): both 0 and 2147483648 were accepted, and 0 would disable the
+    // probe timeout entirely. A mechanism that does not bite is worse than no mechanism, because the declaration
+    // reads like a guarantee.
+    case 'number': {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return 'expected a finite number'
+      if (typeof d.min === 'number' && value < d.min) return 'expected a number >= ' + d.min
+      if (typeof d.max === 'number' && value > d.max) return 'expected a number <= ' + d.max
+      return null
+    }
     // `object` is TYPE-ONLY by ruling (task-149 ②): the schema declares no field shape, so judging fields would be
     // inventing a contract. "Is it an object" is all the declaration promises.
     case 'object': return (value === null || typeof value !== 'object' || Array.isArray(value)) ? 'expected an object' : null

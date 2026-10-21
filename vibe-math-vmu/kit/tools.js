@@ -26,7 +26,7 @@ export const KIT_CARD_CONFIG = Object.freeze({
 /** The one handler factory for the card family (an unknown name is the caller's bug, not a silent no-op). */
 export function kitCardHandler(name) {
   const cfg = KIT_CARD_CONFIG[name]
-  if (!cfg) throw new Error('no kit card config named ' + String(name))
+  if (!cfg) throw Object.assign(new Error('no kit card config named ' + String(name)), { code: 'VMU_INVALID_ARGUMENT' })
   return KIT_CARD_TOOL(cfg)
 }
 
@@ -56,7 +56,14 @@ export const KIT_TOOLS = Object.freeze([
  * Select the kit tools a pack enabled. A pack must name them; there is no "all by default" (that would be a mechanism
  * nobody declared). Unknown names are ignored by the kit and reported by the caller's own pack validation.
  */
-export function selectKitTools({ enabled = [] } = {}) {
+export function selectKitTools(opts = {}) {
+  if (opts === null || typeof opts !== 'object' || Array.isArray(opts)) {
+    throw Object.assign(new Error('selectKitTools needs an options object { enabled: string[] }'), { code: 'VMU_INVALID_ARGUMENT' })
+  }
+  const { enabled = [] } = opts
+  if (enabled !== undefined && !Array.isArray(enabled)) {
+    throw Object.assign(new Error('selectKitTools needs `enabled` to be an array of tool names (got ' + typeof enabled + ')'), { code: 'VMU_INVALID_ARGUMENT' })
+  }
   const wanted = new Set(Array.isArray(enabled) ? enabled.filter((x) => typeof x === 'string') : [])
   return KIT_TOOLS.filter((t) => wanted.has(t.name))
 }

@@ -27,10 +27,16 @@ export const STALL_RATIO = 3
  * The pure decision: should this idle edge convene a meeting? No kernel, no clock, no I/O.
  * `afterMs` is the declared idle threshold; `elapsedMs` is how long the institute has been idle.
  */
-export function stallDecision({ elapsedMs = 0, afterMs = 0 } = {}) {
+export function stallDecision(input) {
+  // ★ A DEFAULT PARAMETER DOES NOT CATCH `null`. `stallDecision({ elapsedMs = 0, afterMs = 0 } = {})` looked safe
+  // and threw a TypeError on `stallDecision(null)`, because destructuring applies its default only for undefined.
+  // The contract says a refusal is named, so a non-object input is reported as "idleness is not declared" rather
+  // than crashing - the decision is "do not convene", which is the safe answer here, and the reason says why.
+  const { elapsedMs = 0, afterMs = 0 } = (input && typeof input === 'object') ? input : {}
   const idleAfterMs = Number(afterMs || 0)
   const elapsed = Number(elapsedMs || 0)
   const stallAfterMs = STALL_RATIO * idleAfterMs
+  if (input !== undefined && input !== null && typeof input !== 'object') return { convene: false, stallAfterMs: 0, reason: 'the idle measurement must be an object ({ elapsedMs, afterMs }); got ' + typeof input }
   if (!(idleAfterMs > 0)) return { convene: false, stallAfterMs: 0, reason: 'idleness is not declared (vmu.control.idleAfterMs = 0)' }
   if (!(elapsed >= stallAfterMs)) return { convene: false, stallAfterMs, reason: 'idle for ' + elapsed + 'ms, short of the stall threshold ' + stallAfterMs + 'ms' }
   return { convene: true, stallAfterMs, reason: 'idle for ' + elapsed + 'ms >= stall threshold ' + stallAfterMs + 'ms (v5r stallAutoMeetingMs)' }

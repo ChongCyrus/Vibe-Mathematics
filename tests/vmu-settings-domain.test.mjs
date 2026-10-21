@@ -35,6 +35,21 @@ const errOf = (fn) => { try { fn(); return null } catch (e) { return e } }
 const root = await mkdtemp(join(tmpdir(), 'vmu-settings-domain-'))
 const build = (settings = {}) => createKernel({ root, clock: () => 1000, settings: Object.assign({}, settings) })
 
+// ★ DECLARED BOUNDS MUST BITE, or the declaration is decoration. `whyBad`'s number branch used to check only
+// Number.isFinite, so a key declaring min/max accepted anything outside them - measured on vmu.env.probeTimeoutMs
+// (min 1, max 2147483647): 0 and 2147483648 were both accepted, and 0 disables the probe timeout entirely.
+{
+  const mod = await import('../vibe-math-vmu/settings/schema.js')
+  const boundsKey = 'vmu.env.probeTimeoutMs'
+  let refusedLow = null, refusedHigh = null
+  try { mod.validateValue(boundsKey, 0) } catch (e) { refusedLow = String(e.message) }
+  try { mod.validateValue(boundsKey, 2147483648) } catch (e) { refusedHigh = String(e.message) }
+  ok(/>= *1/.test(String(refusedLow)), 'W-BOUNDS 1: a value below the declared min is refused BY NAME', refusedLow)
+  ok(/<= *2147483647/.test(String(refusedHigh)), 'W-BOUNDS 2: a value above the declared max is refused BY NAME', refusedHigh)
+  let accepted = 0
+  for (const v of [1, 2147483647, 15000]) { try { mod.validateValue(boundsKey, v); accepted += 1 } catch { /* recorded below */ } }
+  ok(accepted === 3, 'W-BOUNDS 3: the boundary values themselves and an ordinary valid value are accepted (both ends inclusive)', accepted)
+}
 console.log('=== 1. THE INTERACTIVE WRITE FACE REFUSES BY NAME (was: stored, then every reader fell back) ===')
 {
   const k = build()

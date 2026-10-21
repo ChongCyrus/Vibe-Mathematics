@@ -1715,6 +1715,15 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       // a failure is NAMED here (log + receipt) and never turns into a silent success.
       const exitFlush = await flushOnExit('host-uninstall')
       if (ownedByHost) {
+        // ★ `ownedByHost` MEANS THE HOST UNWINDS THE TOOL REGISTRATIONS - it does NOT mean the listeners we attached
+        // with `ctx.on` unwind themselves. Those are not `ctx.effect` registrations, so this branch used to return
+        // early and leave every `on` disposer uncalled: the handle was collected and never used, which is exactly the
+        // "set a value, nothing happened" failure this phase keeps finding. They are now invoked here, on BOTH paths.
+        const onFailures = []
+        let onDisposed = 0
+        for (const d of disposers.splice(0)) {
+          try { d(); onDisposed += 1 } catch (e) { onFailures.push(String((e && e.message) || e)) }
+        }
         registered.length = 0
         disposerFor.clear()
         // ROUND 26 / task-141: the coverage bookkeeping goes away WITH the registrations it describes - otherwise a
@@ -1722,7 +1731,13 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
         evaluations = 0
         for (const k of Object.keys(reasonFor)) delete reasonFor[k]
         installed = false
-        return { ok: exitFlush.ok !== false, ownedByHost: true, exitFlush, note: 'the host unwinds these registrations through ctx.effect' }
+        // ★ AND IT IS NAMED WHEN THERE WAS NOTHING TO DISPOSE. A host whose `on()` returns no handle leaves us with
+        // no way to detach, and that fact must be visible in the receipt rather than being an empty array nobody
+        // interprets: `onDisposed: 0` with `onDisposeMode: 'host-managed'` says the host is responsible.
+        return { ok: exitFlush.ok !== false, ownedByHost: true, exitFlush,
+          onDisposed, onDisposeMode: onDisposed > 0 ? 'disposed-here' : 'host-managed',
+          onDisposeFailures: onFailures.length ? onFailures : undefined,
+          note: 'the host unwinds the TOOL registrations through ctx.effect; ctx.on listeners are disposed here' }
       }
       const failures2 = []
       for (const d of disposers.splice(0)) { try { d() } catch (e) { failures2.push(String(e && e.message)) } }

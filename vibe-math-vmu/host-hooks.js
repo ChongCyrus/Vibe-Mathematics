@@ -221,13 +221,23 @@ export function attachHostHooks({ ctx, kernel, settings = {}, log = () => {}, on
 
     detach() {
       const failures = []
-      for (const a of attached.splice(0)) { try { if (a.dispose) a.dispose() } catch (e) { failures.push(String(e && e.message)) } }
-      return { ok: failures.length === 0, failures }
+      const unrevokable = []
+      let revoked = 0
+      for (const a of attached.splice(0)) {
+        try {
+          if (typeof a.dispose === 'function') { a.dispose(); revoked += 1 } else unrevokable.push(a.hook)
+        } catch (e) { failures.push(String(e && e.message)) }
+      }
+      // ★ G5 §13 third class: a host whose `ctx.on` returns NO disposer cannot be unwound. That is recorded in
+      // the RECEIPT (`unrevokable`), never silently dropped — the caller can tell "detached cleanly" apart from
+      // "this host offers no revoke seam".
+      return { ok: failures.length === 0, revoked, unrevokable, failures, note: unrevokable.length ? 'this host returned no disposer for the listed hooks; nothing was revoked for them' : null }
     },
 
     status() {
+      const revokable = attached.filter((a) => typeof a.dispose === 'function').length
       return { attached: attached.map((a) => a.hook), planned: declaredHooks(), refusedUnsupported: refused.slice(),
-        turnCalls, budgetRefusals,
+        turnCalls, budgetRefusals, revokable, unrevokable: attached.filter((a) => typeof a.dispose !== 'function').map((a) => a.hook),
         note: 'with no declared entry on a host hook, no listener is registered; pre-execute refuses input rewriting instead of silently ignoring it; the per-turn tool budget is enforced here and resets on the host turn-end event' }
     },
   }

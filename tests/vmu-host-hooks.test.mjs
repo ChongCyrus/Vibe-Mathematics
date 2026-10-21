@@ -234,6 +234,37 @@ if (SELF_PROBE) {
   kernel.setActiveTurnMember(null)
 }
 
+// ---- G5 §13 third class: `ctx.on` DISPOSERS ARE REVOKED ON detach(), AND A HOST WITHOUT ONE IS RECORDED --------
+{
+  const rule = denyRule('g5-disposers')
+  rule.on = ['tools/pre-execute', 'tools/result', 'agent/turn-stopping']
+  const settings = { 'vmu.middleware.entries': [rule] }
+  const kernel = km.createKernel({ clock, settings })
+  const host = fakeCtx()
+  const bridge = hm.attachHostHooks({ ctx: host.ctx, kernel, settings })
+  const attached = bridge.attach()
+  ok(attached.attached.length === 3, 'G5③: three declared host hooks are bridged', attached.attached)
+  const detached = bridge.detach()
+  ok(detached.ok === true && detached.revoked === 3 && detached.unrevokable.length === 0,
+    'G5③ 正：detach() calls all three disposers and reports revoked:3', detached)
+  ok(Object.values(host.state.listeners).every((l) => l.length === 0),
+    'G5③ 正：the fake host listeners are actually gone after detach', host.state.listeners)
+
+  // A host whose `ctx.on` returns no disposer cannot be unwound: that must be NAMED in the receipt, not silent.
+  const hostNoDispose = {
+    state: { listeners: {}, effects: [] },
+    ctx: {
+      effect(fn) { hostNoDispose.state.effects.push('effect'); return fn() },
+      on(event, handler) { (hostNoDispose.state.listeners[event] = hostNoDispose.state.listeners[event] || []).push(handler) /* returns undefined on purpose */ },
+    },
+  }
+  const bridge2 = hm.attachHostHooks({ ctx: hostNoDispose.ctx, kernel, settings })
+  bridge2.attach()
+  const detached2 = bridge2.detach()
+  ok(detached2.ok === true && detached2.revoked === 0 && detached2.unrevokable.length === 3 && /no disposer/.test(String(detached2.note)),
+    'G5③ 反：a host returning no disposer is RECORDED as unrevokable (never silently "detached")', detached2)
+}
+
 console.log('=== VMU HOST HOOKS: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
