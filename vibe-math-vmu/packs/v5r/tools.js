@@ -2,6 +2,9 @@
 import { toolTaskCreate, toolTaskList, toolTaskUpdate, toolTaskGet, toolLeanRun, toolLeanJob, toolLeanLib, toolLeanRead, toolLeanArchive, tasksOf, rowsOf } from '../../kit/extras.js'
 import { KIT_CARD_TOOL as cardTool, KIT_HELPERS, KIT_READ_LIBRARY as toolReadLibrary, KIT_RECORD_PROGRESS as toolRecordProgress, KIT_SOCIAL } from '../../kit/handlers.js'
 import { kitCardHandler } from '../../kit/tools.js'
+// ★ GOAL ROUND 3: the paper subsystem's RUNTIME ENTRY. It lives in this pack (`./paper.js` → `kit/paper.js` is the flow);
+// the face below is only the missing READ POINT — before it, `paper.start` existed but nothing in production called it.
+import { createPaperSubsystem } from './paper.js'
 // ★ PHASE 8 / B-2 step 2: the kit owns the implementations; v5r keeps only INSTITUTION vocabulary (names, descriptions,
 // parameters) and its policy. The 8 generic helpers come from the kit so the tree has exactly ONE copy.
 const { str, has, refuse, settingsOf, declaredTracks, recordsOf, membersOf, requireSpeaker } = KIT_HELPERS
@@ -759,6 +762,124 @@ function toolSet(args = {}, { kernel } = {}) {
   return { ok: true, tool: 'vibe_v5_set', applied, effective: applied.effective }
 }
 
+/**
+ * ★★ GOAL ROUND 3 — `vibe_v5_paper`: THE PAPER SUBSYSTEM'S RUNTIME ENTRY (the read point that was missing).
+ *
+ * WHY THIS FACE EXISTS. `packs/v5r/paper.js` exports `createPaperSubsystem` and `kit/paper.js` holds the whole flow
+ * (writing → reviewing → awaiting-editor → finalized, the fingerprint guard, md/tex/meta/pdf), but NOTHING in production
+ * ever called it: `paper.start` appeared only in unit tests. A member could neither open nor advance a paper, so the
+ * paper mechanism was "complete but unreachable". This face is the missing entry — and the ONLY thing it does is map
+ * arguments onto the subsystem's own methods.
+ *
+ * THE FACE ADDS NO POLICY OF ITS OWN (hard rule):
+ *   · no stage checks here (before-writing, out-of-order advance, unanimous-review … are the flow's own named refusals);
+ *   · no role checks here — "only the chair seat may finalise" is enforced by the flow against the KERNEL roster;
+ *   · no defaults that decide a meaning (a missing `decision` reaches the flow and is refused by its own message).
+ * A kernel refusal keeps its registered code and hint: the tool never rewrites one into a generic error.
+ *
+ * PARAMETER MAPPING (institution vocabulary → flow arguments, and nothing more):
+ *   start   target|title|track · participants · editor · lang · format
+ *   part    target · member · part|title · body|solution · methods · rules · limits · evidence
+ *   review  target · member · deliverable (boolean) · notes · of|part
+ *   advance target
+ *   final   target · member · decision (deliverable|revise) · note · conclusion|body
+ *   render / status / compile / sections
+ */
+async function toolPaper(args = {}, { kernel } = {}) {
+  const action = str(args.action || 'status')
+  if (!kernel || !kernel.records) {
+    throw refuse('VMU_ENGINE_UNAVAILABLE', 'the paper subsystem needs the records face, and this assembly has none',
+      'assemble a kernel with the records primitive (the paper state is a record, not memory)')
+  }
+  const paper = createPaperSubsystem({ kernel })
+  const target = str(args.target || args.title || args.track || '')
+  const tool = 'vibe_v5_paper'
+  switch (action) {
+    case 'sections':
+      return { ok: true, tool, action, sections: paper.sections() }
+    case 'status': {
+      const got = paper.state(target)
+      return { ok: true, tool, action, target, exists: !!(got && got.state),
+        paper: got && got.state ? got.state : null }
+    }
+    case 'start': {
+      const started = paper.start({
+        target,
+        participants: Array.isArray(args.participants) ? args.participants : undefined,
+        ...(has(args.editor) ? { editor: str(args.editor) } : {}),
+        ...(has(args.lang) ? { lang: str(args.lang) } : {}),
+        ...(has(args.format) ? { format: str(args.format) } : {}),
+      })
+      return { ok: true, tool, action, started }
+    }
+    case 'part': {
+      const part = paper.recordPart({
+        target,
+        member: str(args.member),
+        title: str(args.part || args.title || ''),
+        solution: str(args.body || args.solution || ''),
+        methods: str(args.methods || ''),
+        rules: str(args.rules || ''),
+        limits: str(args.limits || ''),
+        evidence: Array.isArray(args.evidence) ? args.evidence : [],
+      })
+      return { ok: true, tool, action, part }
+    }
+    case 'review': {
+      const review = paper.recordReview({
+        target,
+        member: str(args.member),
+        deliverable: args.deliverable,
+        comments: str(args.notes || args.comments || ''),
+        of: has(args.of) ? str(args.of) : (has(args.part) ? str(args.part) : null),
+      })
+      return { ok: true, tool, action, review }
+    }
+    case 'advance':
+      return { ok: true, tool, action, advance: paper.advance({ target }) }
+    case 'final': {
+      const finalized = await paper.recordFinal({
+        target,
+        member: str(args.member),
+        decision: str(args.decision || ''),
+        note: str(args.note || ''),
+        conclusion: str(args.conclusion || args.body || ''),
+      })
+      // Projected, not re-exported: the flow returns `artifacts`/`missing`/`pdf` sharing references, and the host's
+      // serializer labels a second occurrence of the same value "[circular]". A face that hands out a receipt full of
+      // "[circular]" would make a reader think the receipt is broken.
+      return { ok: true, tool, action, final: {
+        ok: finalized.ok === true, finalized: finalized.finalized === true, target: finalized.target,
+        final: finalized.final || null,
+        missing: Array.isArray(finalized.missing) ? finalized.missing.slice() : [],
+        pdf: finalized.pdf ? { ok: finalized.pdf.ok === true, code: finalized.pdf.code || null, message: finalized.pdf.message || null } : null,
+      } }
+    }
+    case 'render': {
+      const rendered = paper.render({ target })
+      const arts = rendered.artifacts || null
+      return { ok: true, tool, action, target, renderOk: rendered.ok === true,
+        wrote: Array.isArray(rendered.wrote) ? rendered.wrote.slice() : [],
+        missing: Array.isArray(rendered.missing) ? rendered.missing.slice() : [],
+        complete: arts ? arts.complete === true : false,
+        present: arts && arts.present ? Object.assign({}, arts.present) : null,
+        pdf: rendered.pdf ? { ok: rendered.pdf.ok === true, code: rendered.pdf.code || null,
+          needsKernel: rendered.pdf.needsKernel || null, message: rendered.pdf.message || null } : null }
+    }
+    case 'compile': {
+      const compiled = await paper.compilePdf({ target })
+      return { ok: true, tool, action, compiled: {
+        ok: compiled.ok === true, target: compiled.target, engine: compiled.engine || null,
+        pdfPath: compiled.pdfPath || null, pdfBytes: compiled.pdfBytes || null,
+        missing: Array.isArray(compiled.missing) ? compiled.missing.slice() : [],
+      } }
+    }
+    default:
+      throw refuse('VMU_INVALID_ARGUMENT', 'unknown paper action: ' + action,
+        'actions: start|part|review|advance|final|render|status|compile|sections')
+  }
+}
+
 // ── the Lean five ──────────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -1018,6 +1139,31 @@ export const V5R_PACK_TOOLS = Object.freeze([
     description: 'Archive an existing .lean file: kind def/lemma/proof/blocked maps to the face\'s def/lemma/theorem/assumption; the face registers existing files by hash (inline content is not stored).',
     parameters: { kind: { type: 'string', required: true }, name: { type: 'string', required: true }, target: { type: 'string' }, content: { type: 'string' }, from: { type: 'string' }, file: { type: 'string' }, note: { type: 'string' }, run: { type: 'boolean' } },
     handler: toolLeanArchive,
+  },
+  {
+    name: 'vibe_v5_paper',
+    description: '论文子系统（真入口）：action=start|part|review|advance|final|render|status|compile|sections。只做参数映射——阶段合法性、互审规则、'
+      + '「只有 chair 席能定稿」都由内核的 paper flow 判并具名拒；本面不自己判政策、不造阶段、不编结论。render 如实报 wrote/missing/complete；compile 无 LaTeX 面即具名拒。',
+    parameters: {
+      action: { type: 'string', required: true, description: 'start｜part｜review｜advance｜final｜render｜status｜compile｜sections' },
+      target: { type: 'string', description: '论文对象（对象名；start 时可用 title/track 别名）' },
+      title: { type: 'string' },
+      track: { type: 'string' },
+      participants: { type: 'array', description: 'start：写作参与者（成员 id 列表；引用名册，本面不猜）' },
+      editor: { type: 'string' }, lang: { type: 'string' }, format: { type: 'string' },
+      member: { type: 'string', description: 'part/review/final：动作发起者的名册 id（由内核校验其参与资格/席位）' },
+      part: { type: 'string', description: 'part：你这一份的标题；review：被审对象（of 的别名）' },
+      body: { type: 'string', description: 'part：正文；final：结论别名' },
+      solution: { type: 'string' }, methods: { type: 'string' }, rules: { type: 'string' }, limits: { type: 'string' },
+      evidence: { type: 'array', description: 'part：证据指针列表' },
+      deliverable: { type: 'boolean', description: 'review：true/false（未表态不交付）' },
+      notes: { type: 'string', description: 'review：评语' },
+      of: { type: 'string', description: 'review：被审成员' },
+      decision: { type: 'string', description: 'final：deliverable｜revise（必填，面不代填）' },
+      note: { type: 'string', description: 'final：定稿代表备注' },
+      conclusion: { type: 'string', description: 'final：结论' },
+    },
+    handler: toolPaper,
   },
 ])
 

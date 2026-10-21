@@ -47,7 +47,7 @@ const EXPECTED = ['vibe_v5_record_progress', 'vibe_v5_record_proposition', 'vibe
   'vibe_v5_verdict',
   'vibe_v5_start', 'vibe_v5_stop', 'vibe_v5_pause', 'vibe_v5_resume', 'vibe_v5_configure', 'vibe_v5_set',
   'vibe_v5_lean_run', 'vibe_v5_lean_job', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_archive',
-  'vibe_v5_inbox', 'vibe_v5_wait']
+  'vibe_v5_inbox', 'vibe_v5_wait', 'vibe_v5_paper']
 /** The codes a refusal may carry: REGISTERED ones only (docs/03 §8). */
 const REGISTERED_CODES = ['VMU_INVALID_ARGUMENT', 'VMU_NO_SUCH_OBJECT', 'VMU_STATE', 'VMU_ENGINE_UNAVAILABLE',
   'VMU_NOT_PERMITTED', 'VMU_NOT_FOUND', 'VMU_CONFLICT', 'VMU_QUOTA_EXCEEDED', 'VMU_PACK_MISSING']
@@ -85,14 +85,14 @@ try {
   // ── ① ZERO MECHANISM ────────────────────────────────────────────────────────────────────────────────────────
   console.log('=== 1. NO PACK ⇒ NOT ONE v5r TOOL EXISTS ===')
   const bare = await boot({ root })
-  ok(EXPECTED.length === 40, 'the expected list is non-empty (RULE E)', EXPECTED.length)
+  ok(EXPECTED.length === 41, 'the expected list is non-empty (RULE E)', EXPECTED.length)
   const bareHits = EXPECTED.filter((n) => bare.names.includes(n))
   ok(bareHits.length === 0, 'without the pack none of the six names is published', bareHits)
 
   // ── ② THE DECLARATION (the names come FROM the pack) ───────────────────────────────────────────────────────
   console.log('=== 2. WITH packs=["v5r"] THE THIRTY-EIGHT DECLARED NAMES ARE PUBLISHED ===')
   const PACK = v5r.PACK
-  ok(Array.isArray(PACK.tools) && PACK.tools.length === 40, 'the loaded manifest DECLARES forty tools', PACK.tools && PACK.tools.length)
+  ok(Array.isArray(PACK.tools) && PACK.tools.length === 41, 'the loaded manifest DECLARES forty tools', PACK.tools && PACK.tools.length)
   const declaredNames = PACK.tools.map((t) => t.name)
   ok(declaredNames.length > 0 && EXPECTED.filter((n) => declaredNames.includes(n)).length === EXPECTED.length,
     'the declaration is exactly the thirty-eight expected names', declaredNames)
@@ -100,9 +100,9 @@ try {
   const published = EXPECTED.filter((n) => v5rBoot.names.includes(n))
   ok(EXPECTED.length > 0 && published.length > 0 && published.length === EXPECTED.length,
     'all thirty-eight are published through the real host adapter', { published: published.length, names: v5rBoot.names.length })
-  ok(v5rBoot.handle.kernel.packTools().length === 40, 'the KERNEL holds the forty declarations', v5rBoot.handle.kernel.packTools().length)
+  ok(v5rBoot.handle.kernel.packTools().length === 41, 'the KERNEL holds the forty declarations', v5rBoot.handle.kernel.packTools().length)
   const kernelStatus = v5rBoot.handle.kernel.status({ detail: 'summary' })
-  ok(Array.isArray(kernelStatus.packTools) && kernelStatus.packTools.length === 40,
+  ok(Array.isArray(kernelStatus.packTools) && kernelStatus.packTools.length === 41,
     'kernel.status() reports the declared names (observable, not implicit)', kernelStatus.packTools && kernelStatus.packTools.length)
   const hostNames = Object.values((await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'host.js')).href)).TOOL_NAMES)
   const leaked = EXPECTED.filter((n) => hostNames.includes(n))
@@ -694,14 +694,15 @@ try {
   const bareSections = bare.handle.kernel.status().sections
   ok(bareSections === undefined || bareSections.paperDispatch === undefined,
     '★ 反（不装 v5r / 零机制）: with no pack the kernel status has NO `sections.paperDispatch`', bareSections && Object.keys(bareSections))
+  // ★ GOAL ROUND 3: the dispatcher is DEPRECATED and NOT installed by the pack. It waits for paper_part/paper_review/
+  // paper_final, but kernel/turn refuses those fields as VMU_TURN_UNKNOWN_FIELD before turn/reply-parsed — so it could
+  // never fire. The real entry is the `vibe_v5_paper` tool. Assert BOTH facts instead of pretending the section exists.
+  ok(dispatchMod.PAPER_DISPATCH_DEPRECATED && dispatchMod.PAPER_DISPATCH_DEPRECATED.deprecated === true &&
+    dispatchMod.PAPER_DISPATCH_DEPRECATED.installedByDefault === false,
+    '★★ 反：paper-dispatch 是 DEPRECATED 且默认不安装（marker 可机器读）', dispatchMod.PAPER_DISPATCH_DEPRECATED)
   const bootSections = v5rBoot.handle.kernel.status().sections
-  ok(bootSections && bootSections.paperDispatch && bootSections.paperDispatch.ok === true && bootSections.paperDispatch.value && Array.isArray(bootSections.paperDispatch.value.fields),
-    '★★ 正（装了就有）: the pack\'s LOAD-TIME factory registered the section — `status().sections.paperDispatch` is readable (fields list included)', bootSections && bootSections.paperDispatch && { ok: bootSections.paperDispatch.ok, fields: bootSections.paperDispatch.value && bootSections.paperDispatch.value.fields.length })
-  // a real dispatch outcome must be visible through that SAME section
-  await dispatchMod.dispatchPaperReply({ phase: 'normal', turn: 't-status', member: 'r-1', flat: { kernel }, reply: { paper_part: { target: T2, title: 'x', solution: 'y' } } })
-  const sectionNow = v5rBoot.handle.kernel.status().sections.paperDispatch.value
-  ok(sectionNow.last && sectionNow.last.turn === 't-status' && sectionNow.last.ok === false,
-    '★ after a real dispatch the section\'s `.last` reflects the outcome (phase-mismatch refused) — "why was it refused" needs no log', sectionNow.last && { ok: sectionNow.last.ok })
+  ok(bootSections === undefined || bootSections.paperDispatch === undefined,
+    '★★ 反（不再假装在工作）: 装了 v5r 也没有 `sections.paperDispatch` —— 该监听器永远收不到字段，已由 `vibe_v5_paper` 取代', bootSections && Object.keys(bootSections))
   // module-level disposer is exported (the loader\'s unload contract) and safe to call once
   ok(typeof dispatchMod.V5R_PAPER_DISPATCH.dispose === 'function',
     '★ the module EXPORTS `dispose` — the loader\'s unload contract (kernel/pack.js awaits it)', typeof dispatchMod.V5R_PAPER_DISPATCH.dispose)
@@ -995,7 +996,7 @@ try {
   const loader = pm.createPackLoader({ kernel: k2, registry: k2.registry })
   const applied = await loader.apply({ id: 'v5r-tools-probe', version: '1.0.0', tools: toolsMod.V5R_PACK_TOOLS })
   ok(applied && applied.ok === true, 'a manifest carrying the forty declarations APPLIES', applied && (applied.code || applied.id))
-  ok(k2.packTools().length === 40, 'the kernel holds the forty names after apply', k2.packTools().length)
+  ok(k2.packTools().length === 41, 'the kernel holds the forty names after apply', k2.packTools().length)
   const unloaded = await loader.unload('v5r-tools-probe')
   ok(unloaded && unloaded.ok === true && unloaded.residueFree === true, 'unload reports no residue', unloaded)
   ok(k2.packTools().length === 0, 'the declarations are RETRACTED (nothing left to publish)', k2.packTools().length)
@@ -1130,7 +1131,7 @@ try {
   const denyAll = [...faces.chair.deny, ...faces.member.deny, ...faces.temp.deny]
   ok(denyAll.length > 0 && denyAll.filter((n) => !n.startsWith('vibe_v5_')).length === 0 && denyAll.filter((n) => /^vibe_vmu_/.test(n)).length === 0,
     '★★ the deny lists contain ONLY v5r tools (vibe_v5_*) — no framework face (vibe_vmu_*) is ever denied by this pack', { deny: denyAll.length })
-  ok(faces.chair.deny.length === allDeclared.length - 39 && faces.member.deny.length === allDeclared.length - 22 && faces.temp.deny.length === allDeclared.length - 8,
+  ok(faces.chair.deny.length === allDeclared.length - 40 && faces.member.deny.length === allDeclared.length - 23 && faces.temp.deny.length === allDeclared.length - 9,
     '★★ the deny sizes are the complement of the BULLET sets (chair 1 / member 18 / temp 32 of the 40 declared)', { chair: faces.chair.deny.length, member: faces.member.deny.length, temp: faces.temp.deny.length })
   // every DENIED name is a DECLARED tool (a prose mention cannot narrow a face)
   const declaredNameSet = new Set((PACK.tools || []).map((t) => t.name))
@@ -1152,7 +1153,7 @@ try {
 
   // ── ⑦e GOAL B-2 (PHASE 8): the pack IMPORTS the kit — one copy of the code, institution vocabulary stays in v5r ──
   console.log('=== 7e. B-2 WIRING: kit imports, zero local copies ===')
-  ok(PACK.tools.length === 40,
+  ok(PACK.tools.length === 41,
     '★★ the declared tool COUNT is what the pack declares (institution vocabulary stays in the pack; 38 + inbox + wait)', PACK.tools.length)
   const packSrcW = (await import('node:fs')).readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
   const movedDecls = [
@@ -1242,7 +1243,7 @@ try {
   // (constant-anchored: the declared count is a contract asserted elsewhere, so "both sides empty" cannot pass here)
   const wireSorted39 = wireSpecs39.slice().sort()
   const kernelSorted39 = kernelNames39.slice().sort()
-  ok(wireSpecs39.length === 40 && kernelNames39.length === 40 && JSON.stringify(wireSorted39) === JSON.stringify(kernelSorted39),
+  ok(wireSpecs39.length === 41 && kernelNames39.length === 41 && JSON.stringify(wireSorted39) === JSON.stringify(kernelSorted39),
     '★★★ WIRE == LOGICAL: the registered v5r specs are exactly the tools the kernel holds (native; nothing replaced by run_code)', { wire: wireSpecs39.length, kernel: kernelNames39.length })
   ok(v5rBoot.state.specs.filter((s) => s.deferLoading !== undefined).length === 0,
     '★★ no spec carries deferLoading (the disproved defer mode is gone as well)', v5rBoot.state.specs.length)
@@ -1521,6 +1522,18 @@ try {
   // The store writes atomically through temp+rename, so a removal can race one in-flight file: retry, and never let
   // a cleanup failure turn a green run red (the assertions above already reported the truth).
   await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }).catch(() => {})
+}
+
+// ★ GOAL ROUND 3: paper.start must have a PRODUCTION read point. Before `vibe_v5_paper`, `paper.start` appeared only
+// in unit tests — the mechanism was complete but unreachable. This is the same read-point probe as the reportfeedback
+// guards: read the production pack source, not a mention in a comment.
+{
+  const toolsSrcPaper = (await import('node:fs')).readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
+  ok(/import\s*\{[^}]*createPaperSubsystem[^}]*\}\s*from\s*'\.\/paper\.js'/.test(toolsSrcPaper) &&
+    /paper\.start\s*\(/.test(toolsSrcPaper) && /function\s+toolPaper\s*\(/.test(toolsSrcPaper),
+    '★★ 正：`paper.start` 有生产读点（tools.js 引入 createPaperSubsystem 且 toolPaper 调 paper.start）', {
+      imported: /createPaperSubsystem/.test(toolsSrcPaper), called: /paper\.start\s*\(/.test(toolsSrcPaper),
+    })
 }
 
 console.log('\n=== VMU V5R TOOLS: ' + passed + ' passed, ' + failed + ' failed ===')
