@@ -211,13 +211,23 @@ if (SELF_PROBE) {
   const pre = host.state.listeners['tools/pre-execute'] && host.state.listeners['tools/pre-execute'][0]
   const post = host.state.listeners['tools/result'] && host.state.listeners['tools/result'][0]
   await pre({ name: 'vibe_mu_extra', args: {}, agent: child }, async () => ({ kind: 'allow' }))
-  if (typeof post === 'function') await post({ name: 'vibe_mu_extra', args: {}, agent: child, result: { ok: false } }, async () => ({ kind: 'allow' }))
+  // ★ THE REAL tools/result CONTRACT IS (exec, result) - NOT a next() chain, and not exec.result.
+  // Read from the installed DSH source: dsh-tools dispatches `emit([target, "tools/result", exec, result])`,
+  // and success is `result.isError`. This test used to pass `next` where the result belongs, so the
+  // implementation - which follows the source - saw a function and honestly recorded ok:null.
+  if (typeof post === 'function') await post({ name: 'vibe_mu_extra', args: {}, agent: child }, { isError: true })
   const calls = kernel.memberToolCalls('r-1')
   ok(calls.length >= 1 && calls[0].name === 'vibe_mu_extra' && calls[0].phase === 'call',
     '★ G7 ④ 正：child Agent 的 tool hook 把调用写进该成员的工具索引（name + phase）', calls)
   ok(calls.some((c) => c.phase === 'result' && c.ok === false),
     '★ G7 ④ 正：tools/result 写入回执阶段与 ok（失败可见）', calls.map((c) => c.phase + ':' + c.ok))
-  const before = calls.length
+  // ★ THE OTHER HALF: a successful call must record ok:true, so the field is not permanently null.
+  if (typeof post === 'function') await post({ name: 'vibe_mu_ok', args: {}, agent: child }, { isError: false })
+  ok(kernel.memberToolCalls('r-1').some((c) => c.name === 'vibe_mu_ok' && c.phase === 'result' && c.ok === true),
+    '★ G7 ④ 正 2：成功的回执记为 ok:true（不是恒 null）',
+    kernel.memberToolCalls('r-1').map((c) => c.name + ':' + c.phase + ':' + c.ok))
+  // ★ `calls` is a SNAPSHOT taken before the positive case, so re-read the live length here.
+  const before = kernel.memberToolCalls('r-1').length
   await pre({ name: 'root_tool', args: {}, agent: { id: 'session-root' } }, async () => ({ kind: 'allow' }))
   ok(kernel.memberToolCalls('r-1').length === before,
     '★ G7 ④ 反：root（session-…）的工具调用不写进成员索引（只记成员自己的回合）', kernel.memberToolCalls('r-1').length)

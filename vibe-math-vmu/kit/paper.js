@@ -387,8 +387,20 @@ export function createPaperFlow({
       failure.tried = (r && Array.isArray(r.tried)) ? r.tried.slice() : []
       // ★ G7 ③: structured engines: [{engine, phase, code}] — bounded, and only the fields a caller can act on.
       failure.triedEngines = (r && Array.isArray(r.tried) ? r.tried : []).slice(0, 12).map((t) => {
-        if (t && typeof t === 'object') return { engine: t.engine === undefined || t.engine === null ? null : String(t.engine), phase: t.phase === undefined || t.phase === null ? null : String(t.phase), code: t.code === undefined ? null : t.code }
-        return { engine: String(t), phase: null, code: null }
+        if (t && typeof t === 'object') {
+          const entry = {
+            engine: t.engine === undefined || t.engine === null ? null : String(t.engine),
+            phase: t.phase === undefined || t.phase === null ? null : String(t.phase),
+            code: t.code === undefined ? null : t.code,
+          }
+          // ★ Round 15 (member-reported): the compile-branch `tried` record carries engine/phase but NO code, so the
+          // structured list said code:null while the message said VMU_PAPER_LATEX_FAILED. Fall back to the FACE's own
+          // code for every entry that actually failed (phase compile, or an engine that was unavailable); a
+          // successfully probed engine keeps code:null, which is the explicit "this engine did not error".
+          if (entry.code === null && ((entry.phase === 'compile') || (t.available === false))) entry.code = (r && r.code) || null
+          return entry
+        }
+        return { engine: String(t), phase: null, code: (r && r.code) || null }
       })
       failure.stderrTail = tail(r && r.stderr)
       failure.stdoutTail = tail(r && r.stdout)
