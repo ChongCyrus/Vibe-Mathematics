@@ -822,6 +822,73 @@ if (SELF_PROBE) {
     '★ 正：status() 顶层暴露 toolsWildcardInEffect:true（生效可见，summary 重塑后仍在）', summary.toolsWildcardInEffect)
 }
 
+// ★ G6 tier 2 (measured on a real machine): (a) `wait` was silently dropped from `vmu.tools.faces` (the face id is
+// `activity`); (b) after a member turn's identity was lost (the outer step timed out and cleared the active member),
+// the host pull returned the FULL 87-tool catalogue, so the per-role narrowing was bypassable from inside a member
+// turn. Both are asserted here: an unknown face name is a NAMED refusal, and a member's face may NARROW or stay the
+// same, never WIDEN.
+{
+  // (a) unknown face name vs the two spellings that ARE valid (face key, tool name)
+  const bad = hm.resolveFaces({ settings: { 'vmu.tools.faces': ['wait'] } })
+  ok(Array.isArray(bad.unknownListed) && bad.unknownListed.join(',') === 'wait' && !bad.enabled.includes('activity'),
+    '★ G6 反：`vmu.tools.faces:["wait"]`（面 id 是 activity）⇒ unknownListed:["wait"]，不再静默丢弃', bad.unknownListed)
+  const goodFace = hm.resolveFaces({ settings: { 'vmu.tools.faces': ['activity'] } })
+  ok(goodFace.unknownListed.length === 0 && goodFace.enabled.includes('activity'),
+    '★ G6 正：面 id `activity` ⇒ 生效且无未知名', { enabled: goodFace.enabled, unknown: goodFace.unknownListed })
+  const goodTool = hm.resolveFaces({ settings: { 'vmu.tools.faces': ['vibe_vmu_wait'] } })
+  ok(goodTool.unknownListed.length === 0 && goodTool.enabled.includes('activity'),
+    '★ G6 正：工具名拼写 `vibe_vmu_wait` 也被识别（映射到 activity 面）', goodTool.enabled)
+  const hBad = fakeHost()
+  const adapterBad = hm.createHostAdapter({ ctx: hBad.ctx, kernel: km.createKernel({ clock }), settings: { 'vmu.tools.faces': ['wait'] } })
+  let threw = null
+  try { adapterBad.plan() } catch (e) { threw = e }
+  ok(threw && threw.code === 'VMU_INVALID_ARGUMENT' && /unknown tool face name/.test(String(threw.message)) && /activity/.test(String(threw.hint)),
+    '★ G6 反：装配时未知名 ⇒ 具名拒 VMU_INVALID_ARGUMENT（hint 列出已知面/工具名），不是"少一个面照跑"',
+    threw && { code: threw.code, hint: String(threw.hint).slice(0, 120) })
+
+  // (b) sticky narrow face: first request narrow, then the member identity is lost ⇒ stays narrow; root unaffected
+  const roster = [{ id: 'r-1', state: 'live', slot: 'member' }]
+  const full = ['vibe_vmu_task', 'vibe_vmu_turn', 'vibe_vmu_meeting', 'host_tool_x']
+  let current = 'r-1'
+  let session = 'child-1'
+  let handler = null
+  const stub = {
+    members: { roster: () => roster },
+    memberSession: (id) => (id === 'r-1' ? session : null),
+    resolveMemberToolDeny: () => (current ? { allow: ['vibe_vmu_task'], deny: [], slot: 'member' } : { deny: [], slot: 'member' }),
+    memberToolOverride: (m) => (m === 'r-1' && current ? { all: false, allow: ['vibe_vmu_task'], deny: [] } : null),
+    currentTurnMember: () => current,
+    noteToolFacePull: () => {}, toolFacePull: () => ({}), status: () => ({}),
+    packTools: () => [], setToolFaceCatalogue: () => {}, setToolFaceDescriptions: () => {},
+    setMemberToolFaceApplier: () => {}, setToolFacePullRegistered: () => {}, setPackToolRetractObserver: () => {},
+  }
+  const ctx = { effect(fn) { return fn() }, get() { return null }, root: null, on(ev, fn) { if (ev === 'system-prompt/assemble') handler = fn; return () => {} } }
+  const adapter = hm.createHostAdapter({
+    ctx, kernel: stub, settings: { 'vmu.core.enabled': true },
+    faces: { enabled: ['status'], disabled: [], unavailable: [], unknownDisabled: [], unknownListed: [], sources: {} },
+  })
+  void adapter
+  const agent = { id: 'child-1', ctx: { tools: { restrict: () => () => {}, schemas: () => [] } } }
+  const asm = (withMember) => ({
+    sections: withMember ? [{ name: 'v5r-role-block', text: '【本轮面向的成员】代号：r-1' }] : [],
+    contexts: [],
+    tools: full.map((name) => ({ name })),
+  })
+  const first = await handler(asm(true), { agent }, async () => asm(true))
+  ok(first.tools.length === 1 && first.tools[0].name === 'vibe_vmu_task',
+    '★ G6 正：成员首次请求的 wire 只挂 allow 面（1 个）', first.tools.map((t) => t && t.name))
+  current = null  // the outer step timed out: its finally cleared the active member
+  session = null  // the learned session map no longer answers
+  const second = await handler(asm(false), { agent }, async () => asm(false))
+  ok(second.tools.length === 1 && second.tools[0].name === 'vibe_vmu_task',
+    '★ G6 反（本轮最严重）：成员身份丢失后 wire 仍只挂窄面，绝不回落到全开（修前这里变成 4/87 个宿主工具）',
+    second.tools.map((t) => t && t.name))
+  const rootAgent = { id: 'session-root', ctx: { tools: { restrict: () => () => {}, schemas: () => [] } } }
+  const root = await handler(asm(false), { agent: rootAgent }, async () => asm(false))
+  ok(root.tools.length === 4 && full.length === 4,
+    '★ G6 正：root（session-…）的 wire 不受 sticky 影响，仍是全量（fixture 4 个）', root.tools.length)
+}
+
 console.log('=== VMU HOST: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

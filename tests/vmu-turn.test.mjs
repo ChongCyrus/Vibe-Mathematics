@@ -1196,6 +1196,60 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     '★ 反：allow 里的未注册名 ⇒ 具名拒（VMU_INVALID_ARGUMENT），且该回合不执行', bad)
 }
 
+// ★ G6 tier 2 (measured on a real machine): a member turn that calls `vibe_vmu_turn` used to QUEUE behind the very
+// step delivering it (measured 175.7s), the outer step hit its 180s delivery timeout, the timeout's finally cleared
+// the active-member scalar, and the member's NEXT request resolved no member and leaked the full 87-tool host
+// catalogue. Two guards, both asserted here: member step/drive is refused BY NAME, and member status runs directly.
+{
+  const refused = (code, message, hint) => ({ ok: false, code, message, hint })
+  const param = (type, description, opts) => Object.assign({ type, description }, opts || {})
+  const mkTurnSpec = (kernel) => makeTurnSpec({ param, refused, TOOL_NAMES: { turn: 'vibe_vmu_turn' }, kernel })
+  const baseKernel = (turnStep) => ({
+    turn: { step: turnStep || (async () => ({ ok: true })), status: () => ({ apiVersion: 1 }) },
+    members: { roster: () => [{ id: 'r-1', state: 'live', slot: 'member' }] },
+    setMemberToolOverride: () => ({ ok: true }), clearMemberToolOverride: () => ({ ok: true }),
+    validateToolFaceNames: () => ({ ok: true }), setActiveTurnMember: () => ({ ok: true }),
+  })
+  // (a) 反：成员不能 drive/step 回合引擎 —— 具名拒，且引擎真的没执行。
+  {
+    let stepped = 0
+    const kernel = baseKernel(async () => { stepped += 1; return { ok: true } })
+    const spec = mkTurnSpec(kernel)
+    const res = await spec.run({ op: 'step', members: [{ id: 'r-1', role: 'member' }], tools: { allow: ['vibe_vmu_task'] } },
+      { agent: { id: 'child-1' } })
+    ok(res && res.ok === false && res.code === 'VMU_NOT_PERMITTED' && /member turn/.test(String(res.message)) && stepped === 0,
+      '★ G6 反：成员回合调用 turn.step ⇒ 具名 VMU_NOT_PERMITTED（引擎不执行，不是排队空等）', { res, stepped })
+  }
+  // (b) 正：成员在回合内读 turn.status ⇒ 立即返回，不排在自己的 step 后面（旧行为：300ms 超时 / 真机 175.7s）。
+  {
+    let spec = null
+    let nested = null
+    const kernel = baseKernel(async () => {
+      const t0 = Date.now()
+      nested = await Promise.race([
+        spec.run({ op: 'status' }, { agent: { id: 'child-1' } }),
+        new Promise((r) => setTimeout(() => r({ timedOut: true }), 300)),
+      ])
+      return { ok: true, nestedMs: Date.now() - t0 }
+    })
+    spec = mkTurnSpec(kernel)
+    const outer = await spec.run({ op: 'step', members: [{ id: 'r-1', role: 'member' }], tools: { allow: ['vibe_vmu_task'] } },
+      { agent: { id: 'session-root' } })
+    ok(outer && outer.ok === true && nested && nested.ok === true,
+      '★ G6 正：成员在回合内读 turn.status ⇒ 立即返回（绕过队列），同一 step 正常完成——不再 175s 死等', { outer, nested })
+  }
+  // (c) 正：root 的并行调用仍按队列串行完成（修法没有把 root 的合法并行变成拒绝）。
+  {
+    const spec = mkTurnSpec(baseKernel())
+    const [a, b] = await Promise.all([
+      spec.run({ op: 'status' }, { agent: { id: 'session-root' } }),
+      spec.run({ op: 'status' }, { agent: { id: 'session-root' } }),
+    ])
+    ok(a && a.ok === true && b && b.ok === true,
+      '★ G6 正：root 的并行调用仍按队列串行完成（root 的合法并行没有被误拒）', { a: a && a.ok, b: b && b.ok })
+  }
+}
+
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

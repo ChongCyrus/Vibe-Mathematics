@@ -6,7 +6,8 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
     // while direct callers (and the tests) call `spec.execute` and parse a string themselves. Measured the hard way:
     // a face that returns a string from `run` gets it stringified AGAIN, so the caller parses back the same string.
     // `run` therefore returns the OBJECT and `execute` returns the JSON STRING, both from the same core.
-    const coreTurnInner = async (args = {}) => {
+    const coreTurnInner = async (args = {}, exec = null) => {
+      void exec
       if (!kernel.turn) return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no turn loop')
       const op = String(args.op || 'status')
       // ★★★ ROUND 45 (measured on a real machine): THE CONTRACT PROMISED THE ROSTER INFERENCE AND THE CODE DID NOT DO IT.
@@ -108,13 +109,32 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
     // could receive another slot's deny list (measured: member-a got temp-a's 6-tool face). A single queue preserves the
     // caller's order and makes each step's active member unambiguous.
     let turnQueue = Promise.resolve()
-    const coreTurn = (args = {}) => {
-      const job = turnQueue.then(() => coreTurnInner(args), () => coreTurnInner(args))
+    // ★ G6 tier 2 (measured on a real machine): A MEMBER TURN MUST NEVER RUN THE TURN ENGINE.
+    // The real run put `vibe_vmu_turn` in a member's tools.allow; the member called it. The nested call did not
+    // deadlock by itself — it QUEUED behind the very step that was delivering it, waited 175.7s, and made the outer
+    // step hit its 180s delivery timeout. That timeout's `finally` cleared the active-member scalar, so the member's
+    // NEXT model request resolved NO member and the host pull returned the full 87-tool host catalogue: the role
+    // narrowing was bypassable from inside a member turn. Two guards, both here:
+    //   · a non-root caller (child Agent id, not 'session-…') may only READ turn status; step/drive is refused BY NAME;
+    //   · that read runs directly instead of entering the queue, so it can never wait behind its own step.
+    const agentIdOf = (exec) => { try { return String((exec && exec.agent && exec.agent.id) || '') } catch { return '' } }
+    const isMemberCaller = (id) => id !== '' && !id.startsWith('session-')
+    const coreTurn = (args = {}, exec = null) => {
+      const op = String((args && args.op) || 'status')
+      const caller = agentIdOf(exec)
+      const memberCaller = isMemberCaller(caller)
+      if (memberCaller && op !== 'status') {
+        return Promise.resolve(refused('VMU_NOT_PERMITTED',
+          'a member turn cannot run the institute turn engine (op: ' + op + ')',
+          'remove vibe_vmu_turn from tools.allow: the turn engine belongs to the root/office; a member acts through the faces its role grants and waits for the next step'))
+      }
+      if (memberCaller) return Promise.resolve(coreTurnInner(args, exec))
+      const job = turnQueue.then(() => coreTurnInner(args, exec), () => coreTurnInner(args, exec))
       turnQueue = job.catch(() => {})
       return job
     }
-    const runTurn = (args = {}) => coreTurn(args)
-    const executeTurn = async (args = {}) => JSON.stringify(await coreTurn(args))
+    const runTurn = (args, exec) => coreTurn(args, exec)
+    const executeTurn = async (args, exec) => JSON.stringify(await coreTurn(args, exec))
   return {
       name: TOOL_NAMES.turn,
       description: 'Run institute TURNS: step runs exactly one round (who is chosen by vmu.turn.wakeupPolicy, what ' +

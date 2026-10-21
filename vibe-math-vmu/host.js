@@ -293,6 +293,11 @@ export function resolveFaces({ config = {}, settings = {}, kernel = null, explic
   // declaration path even when its family happens to declare no keys of its own.
   const listedFaces = Array.isArray(settings['vmu.tools.faces']) ? settings['vmu.tools.faces'] : null
   const listedKeys = listedFaces ? new Set(listedFaces.map(faceKeyOf).filter(Boolean)) : null
+  // ★ G6 tier 2 (measured on a real machine): `vmu.tools.faces` is matched by FACE KEY or TOOL NAME. A word that is
+  // neither (`wait` for the `activity` face) used to be silently dropped: the face simply did not exist and
+  // unknownDisabled stayed empty. A typo must never silently remove a face, so the unmatched entries are REPORTED
+  // (and the adapter turns them into a named refusal before it registers anything).
+  const unknownListed = listedFaces ? listedFaces.filter((f) => f !== '*' && !faceKeyOf(f)) : []
   // ★ PHASE 9 / round 5: a wildcard is a DECISION, not a typo. It is honoured only with the explicit
   // vmu.tools.allowAll:true; otherwise listedAll stays false (no silent full-open) and the caller gets a named problem.
   const listedWildcard = !!(listedFaces && listedFaces.includes('*'))
@@ -327,10 +332,24 @@ export function resolveFaces({ config = {}, settings = {}, kernel = null, explic
     enabled.push(row.face)
     sources[row.face] = why
   }
-  return { enabled, disabled, unavailable, unknownDisabled, sources,
+  return { enabled, disabled, unavailable, unknownDisabled, unknownListed, sources,
     toolsWildcardInEffect: listedAll,
     toolsWildcardUnconfirmed: listedWildcard && !allowAll,
     toolsAllowAllUnused: allowAll && !listedWildcard }
+}
+
+/**
+ * ★ G6 tier 2: an unmatched entry in `vmu.tools.faces` is a NAMED refusal, not a silent drop. Measured on a real
+ * machine: writing `wait` (the tool name suffix) instead of the face key `activity` silently removed the face from the
+ * wire, `unknownDisabled` stayed empty, and the member simply did not get the tool. A typo that removes a capability
+ * must be louder than that.
+ */
+function unknownFaceError(names) {
+  const known = TOOL_FACES.map((r) => r.face)
+  return Object.assign(new Error('unknown tool face name(s) in vmu.tools.faces: ' + names.join(', ')), {
+    code: 'VMU_INVALID_ARGUMENT',
+    hint: 'use a FACE KEY (or one of its tool names, e.g. vibe_vmu_wait for activity); known faces: ' + known.join(', '),
+  })
 }
 
 /**
@@ -440,6 +459,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   // deployment declared settings, and a caller that passes it is asking for the face (this is the pre-existing contract).
   if (typeof assertDeclared === 'function') explicit.set = true
   const faceResolution = faces || resolveFaces({ config, settings, kernel, explicit, declaredKeys: Object.keys(settings || {}).length, scripts, packLoader })
+  if (Array.isArray(faceResolution.unknownListed) && faceResolution.unknownListed.length) throw unknownFaceError(faceResolution.unknownListed)
   const enabledFaces = new Set(faceResolution.enabled)
   const on = (face) => enabledFaces.has(face)
 
@@ -1121,17 +1141,21 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   // ROUND 1 / K1 (D-01): the face set is resolved ONCE here and handed to `toolSpecs`, so what `plan()` promises and
   // what `install()` registers can never disagree (the same "one fact, one source" rule the seams follow). The legacy
   // `<face>Tool` flags still travel through `...faceFlags`, so an existing caller (and the unit tests) keeps working.
-  const resolveFaceSet = () => (faces || resolveFaces({
-    config, settings, kernel, explicit: (() => {
-      const e = {}
-      for (const row of TOOL_FACES) if (faceFlags[row.face + 'Tool'] === true) e[row.face] = true
-      // The `set` face is declared by the presence of the declared-key guard (see toolSpecs), so plan() and install()
-      // agree on it instead of one of them dropping it.
-      if (typeof assertDeclared === 'function') e.set = true
-      return e
-    })(),
-    declaredKeys: Object.keys(settings || {}).length, scripts, packLoader,
-  }))
+  const resolveFaceSet = () => {
+    const r = faces || resolveFaces({
+      config, settings, kernel, explicit: (() => {
+        const e = {}
+        for (const row of TOOL_FACES) if (faceFlags[row.face + 'Tool'] === true) e[row.face] = true
+        // The `set` face is declared by the presence of the declared-key guard (see toolSpecs), so plan() and install()
+        // agree on it instead of one of them dropping it.
+        if (typeof assertDeclared === 'function') e.set = true
+        return e
+      })(),
+      declaredKeys: Object.keys(settings || {}).length, scripts, packLoader,
+    })
+    if (Array.isArray(r.unknownListed) && r.unknownListed.length) throw unknownFaceError(r.unknownListed)
+    return r
+  }
   const enabledFaceSet = () => { const r = resolveFaceSet(); return r.enabled }
 
   const specs = () => (settings['vmu.core.enabled'] === false ? [] : toolSpecs({ kernel, settings, assertDeclared, log, instance, scripts, packLoader, config, mergeReport, packReport, promptSection, publishedSurface: () => ({ names: registered.slice(), reasons: reasonFor, evaluations }), ...faceFlags, faces: (() => { const r = resolveFaceSet(); return r })() }))
@@ -1374,6 +1398,10 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
    * NAMED refusals.
    */
   const memberFaceDisposers = new Map()
+  // ★ G6 tier 2: the LAST narrow face each Agent received in the current turn. Used when the member identity is
+  // momentarily unresolvable (measured: the outer step timed out, its finally cleared the active member, and the
+  // member's next request found no member) — the face may NARROW or stay the same, never WIDEN to the full catalogue.
+  const narrowFaceByAgent = new Map()
   const resolveMemberAgent = (member) => {
     let agents = null
     try { agents = ctx && typeof ctx.get === 'function' ? ctx.get('agents') : null } catch { agents = null }
@@ -1469,30 +1497,43 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       const aid = String((context && context.agent && context.agent.id) || '')
       if (aid && !aid.startsWith('session-') && typeof kernel.currentTurnMember === 'function') member = kernel.currentTurnMember()
     }
-    if (!member) return out
+    // ★ G6 tier 2 — THE FACE MAY NARROW, NEVER WIDEN. If this Agent already received a narrow face in this turn and
+    // the member identity is lost (measured on a real machine: the outer step timed out, its finally cleared the
+    // active member, and the member's NEXT request resolved no member), returning the full host catalogue would let a
+    // member turn escape the role narrowing. Reuse the last narrow list for that Agent: fail CLOSED, never open.
+    // (Root agents are 'session-…' and never have an entry here, so the root's full face is unchanged.)
+    const stickyAllow = (!member && agentId && !agentId.startsWith('session-')) ? (narrowFaceByAgent.get(agentId) || null) : null
+    if (!member && !Array.isArray(stickyAllow)) return out
     // ★ PHASE 8 / round 41: PTC is per-AGENT and is applied HERE (the only seam that holds context.agent). An explicit
     // per-turn tools override (tools:"none" / tools.allow) is a narrower, intentional native face: PTC must NOT replace
     // it with run_code, otherwise the allowed tool becomes unreachable (measured: allow vote + ptc ⇒ header vote but
     // direct vote call refused as "only run_code is callable").
     let turnOverride = null
-    try { turnOverride = typeof kernel.memberToolOverride === 'function' ? kernel.memberToolOverride(member) : null } catch { turnOverride = null }
+    try { turnOverride = member && typeof kernel.memberToolOverride === 'function' ? kernel.memberToolOverride(member) : null } catch { turnOverride = null }
+    if (!turnOverride && Array.isArray(stickyAllow)) turnOverride = { all: false, allow: stickyAllow.slice(), deny: [] }
     if (!turnOverride) { try { await ensurePtcForAgent(context && context.agent) } catch { /* named unapplied is recorded by the helper */ } }
     // ★ PHASE 9 / new goal round 1: PTC changes the WIRE (a single run_code) but not the LOGICAL effective list. The
     // block must say so, or it will claim "wire-identical" while the wire is a presentation wrapper — the exact drift
     // this block exists to prevent, re-entering through a presentation mode. `ptcActive` is true only when this turn
     // actually applied presentAs (and no per-turn allow override suppressed it).
     const ptcActive = !turnOverride && ptcAppliedAgents.has(agentId)
-    try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ matched: 1 + ((kernel.toolFacePull && kernel.toolFacePull().matched) || 0), lastMember: member }) } catch { /* diagnostics */ }
+    try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ matched: 1 + ((kernel.toolFacePull && kernel.toolFacePull().matched) || 0), lastMember: member || '(sticky)' }) } catch { /* diagnostics */ }
     try {
-      const resolved = kernel.resolveMemberToolDeny(member)
+      const resolved = member ? kernel.resolveMemberToolDeny(member) : { all: false, allow: stickyAllow.slice(), deny: [], slot: 'member' }
       const deny = new Set(resolved.deny || [])
-      try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ applied: 1 + ((kernel.toolFacePull && kernel.toolFacePull().applied) || 0), lastMember: member }) } catch { /* diagnostics */ }
+      try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ applied: 1 + ((kernel.toolFacePull && kernel.toolFacePull().applied) || 0), lastMember: member || '(sticky)', lastResolution: member ? 'member' : 'sticky-no-member' }) } catch { /* diagnostics */ }
       // ★ PHASE 9 / round 4: ONE COMPUTATION, TWO CONSUMERS. The effective names are computed HERE and used for BOTH
       // the wire (`out.tools` / restrict) and the prompt block below — no second name table is ever built.
       if (resolved.all) out.tools = []
       else if (Array.isArray(resolved.allow)) out.tools = (Array.isArray(out.tools) ? out.tools : []).filter((t) => resolved.allow.includes(t && t.name))
       else out.tools = (Array.isArray(out.tools) ? out.tools : []).filter((t) => !deny.has(t && t.name))
       const effectiveNames = (Array.isArray(out.tools) ? out.tools : []).map((t) => (t && typeof t === 'object' ? t.name : t)).filter((n) => typeof n === 'string')
+      // Remember what this Agent was actually given, so a later request that cannot resolve the member reuses the
+      // narrow list instead of the full catalogue (the "narrow or unchanged, never wider" invariant).
+      if (agentId) {
+        narrowFaceByAgent.set(agentId, effectiveNames.slice())
+        if (narrowFaceByAgent.size > 64) narrowFaceByAgent.delete(narrowFaceByAgent.keys().next().value)
+      }
       const slot = resolved.slot || 'member'
       const namesText = effectiveNames.join('、')
       const nativeBlockText = effectiveNames.length
