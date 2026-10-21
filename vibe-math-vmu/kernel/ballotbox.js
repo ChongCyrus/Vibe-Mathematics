@@ -214,7 +214,12 @@ export function createBallotBox(opts) {
     const box = { id, question, options, at: clock(), round: 1, votes: new Map(), abstain: new Map(), absent: [], recused: [], sealed: c.secrecy, tieUsed: '', rounds: 0, enforced, rules, rulesDeclared: rawRules !== null,
       // GAP-MTG-10: a box has an explicit life cycle now, because `reopen()` has to mean something. `state` is
       // `open` | `closed`; only a CLOSED box may be reopened, and a closed box never accepts another vote.
-      state: 'open', closedAt: 0, priorResult: null, reopenCount: 0, reopenedAt: 0, reopenHistory: [] }
+      state: 'open', closedAt: 0, priorResult: null, reopenCount: 0, reopenedAt: 0, reopenHistory: [],
+      // ★ ELIGIBILITY IS RECORDED HERE, AND ENFORCED AT CAST TIME. It used to be consulted only when validating
+      // `minVotes`, and never stored - so `cast` had no idea who was entitled to vote, and any caller reaching it
+      // directly could add a vote from someone who is not. That is the same bypass the meeting service had before
+      // the members seam was wired; here it is a missing record rather than a missing seam.
+      eligible: Array.isArray(args.eligible) ? args.eligible.map((x) => String(x)) : null }
     boxes.set(id, box)
     emit('ballot/open', { id })
     return { ok: true, boxId: id, round: box.round, sealed: box.sealed, rules: box.rules || null, rulesDeclared: box.rulesDeclared === true, enforced, enforcedScope: ENFORCED_SCOPE }
@@ -229,6 +234,13 @@ export function createBallotBox(opts) {
     if (box.state !== 'open') return deny('VMU_STATE', '该票箱已裁定（state=' + box.state + '）：不再收票', '要重开请调 reopen()（附理由；受 vmu.ballot.reopenFloor 约束）')
     const by = String(args.by || '').trim()
     if (!by) return deny('VMU_CONFLICT', 'cast 需要 by（投票人）', 'by 必填')
+    // ★ THE ENTITLEMENT CHECK THE BOX WAS MISSING. An empty or absent list means "no restriction was declared",
+    // which stays the zero-policy default; a non-empty list means exactly those ids may vote, and anyone else is
+    // refused BY NAME rather than quietly counted.
+    if (Array.isArray(box.eligible) && box.eligible.length > 0 && !box.eligible.includes(by)) {
+      return deny('VMU_NOT_PERMITTED', 'not eligible to vote in this box: ' + by,
+        'this box was opened with an explicit eligible list: ' + box.eligible.join(', '))
+    }
     const br = box.rules || {}
     if (box.votes.has(by) || box.abstain.has(by)) {
       if (br.allowRevote !== true) return deny('VMU_CONFLICT', '重复投票被拒：' + by, '该票箱 allowRevote=false ⇒ 一人一票')
@@ -405,10 +417,17 @@ export function createBallotBox(opts) {
       }
       if (c.tieRule === 'unresolved') {
         box.tieUsed = 'unresolved'
-        return Object.assign(deny('VMU_BALLOT_TIE_UNRESOLVED', '平票且 tieRule=unresolved ⇒ 不判定（自曝规则：unresolved ✓）', '设 tieRule=chair|random|runoff，或人工裁定'), { tally: { cast: castN, votes: box.votes.size, abstain: box.abstain.size, absent: box.absent.length, floor, floorBase }, enforced, tieUsed: 'unresolved' })
+        return Object.assign(deny('VMU_BALLOT_TIE_UNRESOLVED', '平票且 tieRule=unresolved ⇒ 不判定（自曝规则：unresolved ✓）', '设 tieRule=chair|status-quo，或人工裁定'), { tally: { cast: castN, votes: box.votes.size, abstain: box.abstain.size, absent: box.absent.length, floor, floorBase }, enforced, tieUsed: 'unresolved' })
       }
-      box.tieUsed = c.tieRule
-      outcome = (c.tieRule === 'chair') ? (String(a && a.chairChoice || '') || top.option) : top.option
+      if (c.tieRule === 'status-quo') {
+        // G5 第六轮 F2: the declared domain value now has an EXPLICIT branch (it used to fall through the else).
+        // status-quo = keep the current leading option, and SAY SO in the receipt.
+        box.tieUsed = 'status-quo'
+        outcome = top.option
+      } else {
+        box.tieUsed = c.tieRule
+        outcome = (c.tieRule === 'chair') ? (String(a && a.chairChoice || '') || top.option) : top.option
+      }
     }
     // 第二轮（runoffTopN）
     if (c.method === 'runoff' && c.runoffTopN >= 2 && box.round < c.roundsMax && tie) {

@@ -959,7 +959,7 @@ recount(ballotId):
 | `vmu.ballot.minVotesRatio` | number | 0 | 0..1 | 主持人 | 开票前 | 成立门槛的比例形式 |
 | `vmu.ballot.roundsMax` | int | 1 | ≥1 | 主持人 | 下一次 | 多轮上限（**事先写明** ✓） |
 | `vmu.ballot.runoffTopN` | int | 2 | ≥2 | 主持人 | 下一次 | 决选取前 N 名 |
-| `vmu.ballot.tieRule` | enum | `undecided` | `undecided｜runoff｜largest-group` | 主持人 | 开票前 | 平票规则（**不得临时解释** ✗） |
+| `vmu.ballot.tieRule` | enum | `chair` | `chair｜unresolved｜status-quo` | 主持人 | 开票前 | 平票规则（**不得临时解释** ✗）：chair=主席裁决；unresolved=具名拒；status-quo=保持当前领先选项 |
 | `vmu.ballot.secrecy` | enum | `named` | `named｜secret｜mixed` | 主持人 | 开票前 | 记名/不记名（**开票前选定** ✓） |
 | `vmu.ballot.secrecyRecordFact` | bool | true | bool | pack | 开票前 | 不记名时仍留档"本次不记名" |
 | `vmu.ballot.abstainAllowed` | bool | true | bool | 主持人 | 开票前 | 是否允许弃权 |

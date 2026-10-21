@@ -60,7 +60,24 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         if (action !== 'open' && !idText(id) && idText(meetingArg)) id = idText(meetingArg)
         const live = (what) => {
           const meeting = kernel.liveMeeting(need(id, 'id'))
-          if (!meeting) throw Object.assign(new Error('no live meeting with id ' + String(id)), { code: 'VMU_NO_SUCH_OBJECT', hint: 'use action=list' })
+          // ★ THE REFUSAL MUST NOT MISLEAD. A meeting opened through the SERVICE registry really exists, but most
+          // actions still address the primitive registry only, so a bare "no live meeting with id" reads as "that
+          // meeting does not exist". Name the actual situation and the actions that DO cross registries.
+          if (!meeting) {
+            const svcIds = (() => {
+              try {
+                const s = kernel.meetings && kernel.meetings.status ? kernel.meetings.status() : null
+                return s && Array.isArray(s.liveMeetings) ? s.liveMeetings : []
+              } catch { return [] }
+            })()
+            const inService = svcIds.includes(String(id))
+            throw Object.assign(new Error('no live meeting with id ' + String(id)), {
+              code: 'VMU_NO_SUCH_OBJECT',
+              hint: inService
+                ? 'meeting ' + String(id) + ' lives in the SERVICE registry: list/speak/summary/close cross registries, but ' + String(what || 'this action') + ' addresses the primitive registry only'
+                : 'use action=list (it reports both registries: meetings, serviceMeetings, unionMeetings)',
+            })
+          }
           return meeting
         }
         const liveBallot = () => {

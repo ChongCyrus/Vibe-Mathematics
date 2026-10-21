@@ -803,6 +803,17 @@
 | `VMU_PACK_INSTITUTE_MIN_NOT_LOCKED` | 整合包**未锁定**即需锁定态才能做的操作（实现于 `packs/institute-min/index.js` ✓） | 整合包 | ✅（**已实现** ✓；`packs/institute-min/index.js:33`／`:68` ✓） |
 | `VMU_PACK_V3_CORE_MANUAL_GATE` | v3 核心**人工闸**未通过（实现于 `packs/v3-core/index.js` ✓） | 整合包 | ✅（**已实现** ✓；`packs/v3-core/index.js:36`／`:109` ✓） |
 | `VMU_PACK_V3_CORE_VERIFIER_QUORUM` | v3 核心**验证者法定人数**不足（实现于 `packs/v3-core/index.js` ✓） | 整合包 | ✅（**已实现** ✓；`packs/v3-core/index.js:35`／`:86` ✓） |
+| `VMU_PACK_V3_DEFECT_TARGET_UNRESOLVED` | v3 缺陷记录的**目标无法解析**（实现于 `kernel/library.js` 的缺陷路径 ✓） | v3 复刻包 | ✅（**已实现** ✓；`kernel/library.js:565` ✓） |
+| `VMU_PACK_V3_DUPLICATE_DISPATCH` | v3 **重复派发**同一动作（实现于 `packs/v3/middleware/planner.js` ✓） | v3 复刻包 | ✅（**已实现** ✓；`packs/v3/middleware/planner.js:501`／`packs/v3/index.js:77` ✓） |
+| `VMU_PACK_V3_LEAN_REQUIRED` | v3 该动作**要求 Lean 形式化**（实现于 `packs/v3/middleware/lean-gate.js` ✓） | v3 复刻包 | ✅（**已实现** ✓；`packs/v3/middleware/lean-gate.js:26`／`packs/v3/index.js:77` ✓） |
+| `VMU_PACK_V3_TOOL_NOT_PERMITTED` | v3 **工具不在允许集**（实现于 `packs/v3/middleware/toolfilter.js` ✓） | v3 复刻包 | ✅（**已实现** ✓；`packs/v3/middleware/toolfilter.js:10` ✓） |
+| `VMU_PACK_V3_TOOL_UNRESOLVED` | v3 **工具名无法解析**（实现于 `packs/v3/middleware/toolfilter.js` ✓） | v3 复刻包 | ✅（**已实现** ✓；`packs/v3/middleware/toolfilter.js:13` ✓） |
+| `VMU_PACK_V3_PROPOSITION_NOT_EXTRACTABLE` | v3 **命题无法从产出中抽取**（实现于 `packs/v3/middleware/dataplane.js` ✓） | v3 复刻包 | ✅（**已实现** ✓；`packs/v3/middleware/dataplane.js:721` ✓） |
+| `VMU_PACK_V3_PAPER_INCOMPLETE` | v3 **论文不完整**（实现于 `packs/v3/middleware/paper-close.js` ✓） | v3 复刻包 | ✅（**已实现** ✓；`packs/v3/middleware/paper-close.js:8` ✓） |
+| `VMU_PACK_V3_DEFECT_WITHDRAWN` | v3 缺陷**已撤回**（实现于 `packs/v3/middleware/dataplane.js` ✓） | v3 复刻包 | ✅（**已实现** ✓；`packs/v3/middleware/dataplane.js:606` ✓） |
+| `VMU_PACK_V3_DEFECT_NOTE_REQUIRED` | v3 缺陷**缺说明**（实现于 `packs/v3/middleware/defects.js` ✓） | v3 复刻包 | ✅（**已实现** ✓；`packs/v3/middleware/defects.js:29` ✓） |
+| `VMU_PACK_V3_DEFECT_UNENFORCED` | v3 缺陷**未被强制执行**（实现于 `packs/v3/middleware/defects.js` ✓） | v3 复刻包 | ✅（**已实现** ✓；`packs/v3/middleware/defects.js:30` ✓） |
+| `VMU_PACK_V3_DEFECT_MODE_UNKNOWN` | v3 缺陷**模式未知**（实现于 `packs/v3/middleware/defects.js` ✓） | v3 复刻包 | ✅（**已实现** ✓；`packs/v3/middleware/defects.js:32` ✓） |
 | `VMU_PACK_V5R_CORE_NOT_SETTLED` | v5r 核心**未结项**（实现于 `packs/v5r/prompts/v5r-core.js` ✓） | 整合包 | ✅（**已实现** ✓；`packs/v5r/prompts/v5r-core.js:33`／`:101` ✓） |
 | `VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS` | v5r 核心**禁用临时脚本**（实现于 `packs/v5r/prompts/v5r-core.js` ✓） | 整合包 | ✅（**已实现** ✓；`packs/v5r/prompts/v5r-core.js:34`／`:72` ✓） |
 | `VMU_PACK_V5R_CORE_PAPER_STATE` | v5r **论文状态机**拒绝该动作（非 writing 记 part／非 reviewing 记 review／非 awaiting-editor 记 final／轮次上限仍要修订）⇒ 具名；实现于 `packs/v5r/paper.js` | 论文·整合包 | ✅（**已实现** ✓；`packs/v5r/paper.js` ✓） |
@@ -1108,7 +1119,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **421** 个码，**逐行**给出状态 ✓：其中 **382** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **432** 个码，**逐行**给出状态 ✓：其中 **393** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1399,6 +1410,17 @@
 | `VMU_PACK_PROMPT_POLICY_UNCONSUMED` | **已实现 ✓** | `vibe-math-vmu/kernel/pack.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V3_CORE_MANUAL_GATE` | **已实现 ✓** | `vibe-math-vmu/packs/v3-core/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V3_CORE_VERIFIER_QUORUM` | **已实现 ✓** | `vibe-math-vmu/packs/v3-core/index.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_V3_DEFECT_MODE_UNKNOWN` | **已实现 ✓** | `vibe-math-vmu/packs/v3/middleware/defects.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_V3_DEFECT_NOTE_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/packs/v3/middleware/defects.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_V3_DEFECT_TARGET_UNRESOLVED` | **已实现 ✓** | `vibe-math-vmu/kernel/library.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_V3_DEFECT_UNENFORCED` | **已实现 ✓** | `vibe-math-vmu/packs/v3/middleware/defects.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_V3_DEFECT_WITHDRAWN` | **已实现 ✓** | `vibe-math-vmu/packs/v3/middleware/dataplane.js`、`vibe-math-vmu/packs/v3/middleware/defects.js`、`vibe-math-vmu/packs/v3/middleware/verify.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_V3_DUPLICATE_DISPATCH` | **已实现 ✓** | `vibe-math-vmu/packs/v3/index.js`、`vibe-math-vmu/packs/v3/middleware/planner.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_V3_LEAN_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/packs/v3/index.js`、`vibe-math-vmu/packs/v3/middleware/lean-gate.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_V3_PAPER_INCOMPLETE` | **已实现 ✓** | `vibe-math-vmu/packs/v3/index.js`、`vibe-math-vmu/packs/v3/middleware/paper-close.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_V3_PROPOSITION_NOT_EXTRACTABLE` | **已实现 ✓** | `vibe-math-vmu/packs/v3/index.js`、`vibe-math-vmu/packs/v3/middleware/dataplane.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_V3_TOOL_NOT_PERMITTED` | **已实现 ✓** | `vibe-math-vmu/packs/v3/index.js`、`vibe-math-vmu/packs/v3/middleware/toolfilter.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_V3_TOOL_UNRESOLVED` | **已实现 ✓** | `vibe-math-vmu/packs/v3/index.js`、`vibe-math-vmu/packs/v3/middleware/toolfilter.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_CORE_NOT_SETTLED` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/prompts/v5r-core.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/prompts/v5r-core.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/paper.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-core.js` | 代码里有该码字符串 ✓ |
@@ -1564,6 +1586,10 @@
 ## 9. Settings keys（索引）
 
 全表在 `04-settings.md` §4（命名空间 `vmu.*`）。**登记规则**：新增键必须同时更新 04 与 §6 的公开键清单（如涉及耐久）⇒ 否则门禁红。
+
+**设计阶段登记（planned，未接线 ✓）**：`vmu.core.storeBackend` 的 `storage-domain` 备选后端目前**没有运行时读者**（红线 4：没有消费者就不给机制）⇒ 该键在 `settings/planned.js` 以 planned 登记，接线前不承诺任何行为；当前 `json-fold` 是唯一实现。
+
+**只回显（display-only ✓）**：`vmu.math.leanInitiative` 会被读到并回显，但**不参与判定**（`kernel/lean.js` 的 `policy()` 自曝 `initiativeEffect:'display-only'`）；它不改变任何行为，`formalVerify` 才是判定时的策略。
 
 ---
 

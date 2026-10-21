@@ -96,6 +96,16 @@ test('a tie is resolved by tieRule and the rule used is SELF-REPORTED', () => {
   assert.equal(r2.ok, true)
   assert.equal(r2.tieUsed, 'chair', '必须自曝用了哪条规则')
   assert.equal(r2.outcome, 'b')
+  // G5 F2: status-quo is a DECLARED domain value and must have its own branch (not fall through the else),
+  // and the receipt must self-report it.
+  const sq = box({ 'vmu.ballot.tieRule': 'status-quo' })
+  const o3 = sq.open(OPEN)
+  sq.cast({ boxId: o3.boxId, by: 'r-1', choice: 'a' })
+  sq.cast({ boxId: o3.boxId, by: 'r-2', choice: 'b' })
+  const r3 = sq.close({ boxId: o3.boxId })
+  assert.equal(r3.ok, true)
+  assert.equal(r3.tieUsed, 'status-quo', 'status-quo must self-report its own rule')
+  assert.equal(r3.outcome, 'a', 'status-quo keeps the current leading option (deterministic tie order)')
   passed += 1
 })
 
@@ -355,6 +365,29 @@ test('per-box rules: mode/maxChoices enforced, and zero rules changes nothing', 
   passed += 1
 })
 
+// ★ ELIGIBILITY IS ENFORCED AT CAST TIME, NOT ONLY AT OPEN TIME. Before this, `eligible` was consulted only
+// when validating minVotes and never stored, so cast had no idea who was entitled to vote - a caller reaching it
+// directly could add a vote from someone who is not. That is the same bypass the meeting service had.
+cases.push({ n: '★ eligible list: an outsider is refused BY NAME at cast', f: () => {
+  const svc = createBallotBox({ clock: () => 0 })
+  const b = svc.open({ question: 'q-elig', options: ['a', 'b'], eligible: ['acad', 'r-1'] })
+  const out = svc.cast({ boxId: b.boxId, by: 't-1', choice: 'a' })
+  if (out.ok !== false) throw new Error('an ineligible voter was COUNTED: ' + JSON.stringify(out))
+  if (out.code !== 'VMU_NOT_PERMITTED') throw new Error('expected VMU_NOT_PERMITTED, got ' + String(out.code))
+  if (!/t-1/.test(String(out.message))) throw new Error('the refusal should name the voter: ' + String(out.message))
+} })
+cases.push({ n: '★ eligible list: an entitled voter still counts (the guard is not a blanket refusal)', f: () => {
+  const svc = createBallotBox({ clock: () => 0 })
+  const b = svc.open({ question: 'q-elig2', options: ['a', 'b'], eligible: ['acad', 'r-1'] })
+  const okOut = svc.cast({ boxId: b.boxId, by: 'acad', choice: 'a' })
+  if (okOut.ok !== true) throw new Error('an eligible voter was refused: ' + JSON.stringify(okOut))
+} })
+cases.push({ n: '★ NO eligible list means no restriction (the zero-policy default is preserved)', f: () => {
+  const svc = createBallotBox({ clock: () => 0 })
+  const b = svc.open({ question: 'q-elig3', options: ['a', 'b'] })
+  const out = svc.cast({ boxId: b.boxId, by: 't-1', choice: 'a' })
+  if (out.ok !== true) throw new Error('an unrestricted box refused a voter: ' + JSON.stringify(out))
+} })
 for (const c of cases) {
   try { await c.f(); console.log('ok - ' + c.n) } catch (e) { failed += 1; console.log('FAIL - ' + c.n + ' :: ' + String((e && e.message) || e)) }
 }

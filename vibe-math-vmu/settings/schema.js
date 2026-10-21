@@ -58,7 +58,6 @@ export const HOT = Object.freeze({ H0: 'H0', H1: 'H1', H2: 'H2', H3: 'H3' })
 const CORE_DEFS = Object.freeze([
   // ---- core ---------------------------------------------------------------------------------
   { key: 'vmu.core.enabled', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '内核总开关（关闭＝完全不介入）' },
-  { key: 'vmu.core.storeBackend', type: 'enum', domain: ['json-fold', 'storage-domain'], def: 'json-fold', hot: HOT.H3, who: 'office', doc: '耐久后端（O1：默认 fold；换后端须过同一套门禁）' },
   { key: 'vmu.core.logLevel', type: 'enum', domain: ['debug', 'info', 'warn', 'error'], def: 'info', hot: HOT.H0, who: 'office', doc: '日志级别（不进模型上下文）' },
 
   // ---- limits (machine-enforced; refusals must name the current value and the cap) ----------
@@ -254,7 +253,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.math.leanArgs', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: 'P3：Lean 附加参数（显式 -R/--root 优先于 searchPaths）' },
   { key: 'vmu.math.leanTimeoutMs', type: 'natural', def: 120000, hot: HOT.H0, who: 'office', doc: 'P3：单次 Lean 编译预算' },
   { key: 'vmu.math.leanAsync', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: 'P3：后台队列编译；只有"退出 0 且文件内容哈希未变"才可标 passed' },
-  { key: 'vmu.math.leanInitiative', type: 'enum', domain: ['off', 'normal', 'eager'], def: 'normal', hot: HOT.H2, who: 'office', doc: 'P3：日常形式化积极性（与 formalVerify 判定时要求正交）' },
+  { key: 'vmu.math.leanInitiative', type: 'enum', domain: ['off', 'normal', 'eager'], def: 'normal', hot: HOT.H2, who: 'office', doc: 'P3：日常形式化积极性（**本运行时只回显：policy().initiativeEffect=display-only，不参与判定**；与 formalVerify 正交）' },
   { key: 'vmu.math.leanSearchPaths', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: 'P3：额外 -R 根（去重后注入，自动 VibMath 根之前）' },
   { key: 'vmu.math.leanJobsMaxParallel', type: 'positiveInteger', def: 1, hot: HOT.H1, who: 'office', doc: 'P3：后台编译并发（1＝串行）' },
 

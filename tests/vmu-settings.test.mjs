@@ -173,7 +173,7 @@ ok(js.additionalProperties === false, 'JSON Schema closes the surface (no phanto
 ok(js.properties['vmu.meetings.quorumRule'].enum.join('|') === 'm-unanimous|all-unanimous', 'enum projected to JSON Schema')
 ok(js.properties['vmu.limits.maxLiveMembers'].minimum === 0, 'numeric lower bound projected')
 ok(js.properties['vmu.limits.toolCallsPerTurnCap'].default === 0, 'harmless default projected (0 = unlimited)')
-ok(js.properties['vmu.core.storeBackend']['x-vmu-hot'] === 'H3', 'hot class is carried outwards')
+ok(js.properties['vmu.core.storeBackend']['x-vmu-hot'] === 'H1', 'hot class is carried outwards (planned entry: generator default H1)')
 ok(js.properties['vmu.packs.active'].default.length === 0, 'defaults are "do nothing" (empty pack list)')
 
 // ---- 6. the carrier is injected; absence is named -----------------------------------------------

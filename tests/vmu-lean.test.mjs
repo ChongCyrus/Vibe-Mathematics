@@ -302,7 +302,10 @@ test('formalVerify=off yields zero policy; initiative stays orthogonal', async (
   assert.equal(p1.requireFormal, false)
   assert.equal(p1.encourageFormal, false)
   assert.equal(p1.initiative, 'eager', '日常主动性只如实回显，不受 formalVerify 影响')
+  // G5 F2: display-only must be visible in the receipt, not only in a comment.
+  assert.equal(p1.initiativeEffect, 'display-only', 'policy self-reports that the initiative value is display-only')
   const req = createLeanFace({ settings: mkSettings({ 'vmu.math.formalVerify': 'require' }), spawn: async () => ({ exitCode: 0 }), root: dir })
+  assert.equal(req.policy().initiativeEffect, 'display-only', 'the effect marker is independent of the value/formalVerify')
   assert.equal(req.policy().requireFormal, true)
   passed += 1
 })

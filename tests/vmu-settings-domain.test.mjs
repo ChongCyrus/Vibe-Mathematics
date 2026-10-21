@@ -117,7 +117,8 @@ console.log('=== 4. THREE STATES, NEVER MIXED ===')
 console.log('=== 5. ★ REGRESSION WITNESS (the blind spot that let the 319-key defect through): EVERY declared type ===')
 {
   // ★ THE DEFECT THIS SECTION EXISTS FOR: A first shipped enforcement only for the types that already had a case,
-  // and refused every LEGAL value of the other five (`string` 173 keys, `planned` 112, `object` 21, `integer` 7,
+  // and refused every LEGAL value of the other five (`string` 173 keys, `planned` 113 after G5 moved
+  // `vmu.core.storeBackend` to planned, `object` 21, `integer` 7,
   // `number` 7 = 319 ≈ 26%). No assertion here walked a `string` key, so the regression was INVISIBLE to this suite.
   const k = build()
   // ★ ROUND 31 (task-149 C③) — THE REPRESENTATIVE KEY MUST NOT BE HARD-CODED. W1–W5 used to name
@@ -184,7 +185,7 @@ console.log('=== 5. ★ REGRESSION WITNESS (the blind spot that let the 319-key 
   ok(Array.isArray(unenforced.declarations) && unenforced.declarations.every((d) => d.key && d.reason),
     'W9. ★ and every declared key whose own default contradicts its declaration is NAMED too (count printed)', unenforced.declarations.length)
   const planned = unenforced.types.find((t) => t.type === 'planned')
-  ok(planned === undefined || planned.count === 112, 'W10. the `planned` count is the measured 112 keys', planned && planned.count)
+  ok(planned === undefined || planned.count === 113, 'W10. the `planned` count is the measured 113 keys (G5: storeBackend moved to planned)', planned && planned.count)
 }
 
 console.log('=== 6. ★ COVERAGE GATE: every declared type is either JUDGED or NAMED (a new case-less type reddens this) ===')

@@ -252,6 +252,9 @@ export function createLeanFace(opts) {
       requireFormal: c.formalVerify === 'require',
       encourageFormal: c.formalVerify === 'encourage',
       initiative: c.leanInitiative, // 与 formalVerify **正交**：这里只如实回显，不参与判定
+      // ★ G5 第六轮 F2：这个键【有读者但无效果】不是隐藏缺陷，而是**具名说明**——回执自曝其效果级别，
+      // 这样调用方不会误以为 leanInitiative 会改变判定。设计卷/设置表同步写“只回显”。
+      initiativeEffect: 'display-only',
     }
   }
 

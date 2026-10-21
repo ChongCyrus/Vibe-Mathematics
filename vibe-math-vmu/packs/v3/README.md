@@ -190,8 +190,8 @@ planner、数据面与方法整理代劳（再发工具＝给模型 26 个没有
 
 - 这**不是** v3，也**不是**行为等价证明。P0 只做"机制可用"；行为等价的 A/B 是另立项（与 P0-10 同一口径）。
 - **没有新拒码**：数据面的拒绝复用已登记的内核码（`VMU_INVALID_ARGUMENT`／`VMU_STATE`／`VMU_NO_SUCH_OBJECT`／
-  `VMU_ENGINE_UNAVAILABLE`）。新 `VMU_PACK_V3_*` 码须先登记进 `docs/03 §8.1`，而 `docs/**` 不在本卡写域 ⇒
-  不造未登记码。
+  `VMU_ENGINE_UNAVAILABLE`）。`VMU_PACK_V3_*` 码**已登记进 `docs/03 §8` 的登记表**（G5 第六轮：把本卡此前
+  自认的“登记债”还掉；11 条均带实现位置），不再造未登记码。
 - **索引 5s 节流是常量**（`INDEX_THROTTLE_MS=5000`，v3 `:2039`），没有设置键：新增 `vmu.v3.*` 键必须先登记
   进 `settings/schema.js`（本卡写域不含该文件）⇒ `dataplane.status()` 自报 `throttleMs`，**不自称可配**。
 - **规划器的四把键**（`vmu.v3.planningHorizon/plannerEnabled/planMinIntervalMs/plannerMaxFails`）**调用期**读取，
