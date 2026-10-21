@@ -1477,6 +1477,11 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     let turnOverride = null
     try { turnOverride = typeof kernel.memberToolOverride === 'function' ? kernel.memberToolOverride(member) : null } catch { turnOverride = null }
     if (!turnOverride) { try { await ensurePtcForAgent(context && context.agent) } catch { /* named unapplied is recorded by the helper */ } }
+    // ★ PHASE 9 / new goal round 1: PTC changes the WIRE (a single run_code) but not the LOGICAL effective list. The
+    // block must say so, or it will claim "wire-identical" while the wire is a presentation wrapper — the exact drift
+    // this block exists to prevent, re-entering through a presentation mode. `ptcActive` is true only when this turn
+    // actually applied presentAs (and no per-turn allow override suppressed it).
+    const ptcActive = !turnOverride && ptcAppliedAgents.has(agentId)
     try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ matched: 1 + ((kernel.toolFacePull && kernel.toolFacePull().matched) || 0), lastMember: member }) } catch { /* diagnostics */ }
     try {
       const resolved = kernel.resolveMemberToolDeny(member)
@@ -1489,10 +1494,19 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       else out.tools = (Array.isArray(out.tools) ? out.tools : []).filter((t) => !deny.has(t && t.name))
       const effectiveNames = (Array.isArray(out.tools) ? out.tools : []).map((t) => (t && typeof t === 'object' ? t.name : t)).filter((n) => typeof n === 'string')
       const slot = resolved.slot || 'member'
-      const blockText = effectiveNames.length
-        ? '【本轮你实际能调用的工具｜' + slot + '】' + effectiveNames.length + ' 个：' + effectiveNames.join('、') +
+      const namesText = effectiveNames.join('、')
+      const nativeBlockText = effectiveNames.length
+        ? '【本轮你实际能调用的工具｜' + slot + '】' + effectiveNames.length + ' 个：' + namesText +
           '（这份列表与你这回合的 wire 完全一致；角色段里的静态清单只作职责说明，以本段为准）'
         : '【本轮你实际能调用的工具｜' + slot + '】0 个（本回合没有可用工具；角色段里的静态清单不代表本回合可用性）'
+      const ptcBlockText = effectiveNames.length
+        ? '【本轮工具呈现｜' + slot + '】本回合以 run_code 呈现：下列 ' + effectiveNames.length + ' 个工具可通过代码调用：' + namesText +
+          '（它们不在 wire 的顶层目录里，这是呈现方式的差异，不是收窄；角色段里的静态清单只作职责说明，以本段为准）'
+        : '【本轮工具呈现｜' + slot + '】本回合没有可用工具（run_code 也不呈现空清单；角色段里的静态清单不代表本回合可用性）'
+      const deferSuffix = presentationState && presentationState.mode === 'defer' && Array.isArray(presentationState.deferLoading) && presentationState.deferLoading.length
+        ? '；其中部分工具需 load 后才可调用（deferLoading）'
+        : ''
+      const blockText = (ptcActive ? ptcBlockText : nativeBlockText) + deferSuffix
       // Prefer a PACK-PROVIDED placeholder section (named v5r-effective-tools / marked by the title). If none exists,
       // APPEND one and record that fact — a missing placeholder must never silently leave the old static list in force.
       const sections = Array.isArray(out.sections) ? out.sections : (out.sections = [])

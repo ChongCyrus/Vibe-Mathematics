@@ -737,6 +737,49 @@ if (SELF_PROBE) {
   }
 }
 
+// ── PHASE 9 / new goal round 1: PTC changes the wire; the block must not claim "wire-identical" ────────────────────
+{
+  const mkPtc = async (withPresentAs) => {
+    const listeners = {}
+    const presentCalls = []
+    const agent = { id: 'member-a', ctx: { tools: {
+      schemas: () => [{ name: 'vibe_v5_say' }, { name: 'vibe_vmu_status' }],
+      restrict: () => () => {},
+      ...(withPresentAs ? { presentAs: async (mode) => { presentCalls.push(mode); return () => {} } } : {}),
+    } } }
+    const ctx = {
+      tools: { register: async () => () => {} },
+      effect: (fn) => fn(),
+      on: (event, fn) => { (listeners[event] = listeners[event] || []).push(fn) },
+      get: (name) => (name === 'agents' ? { get: (id) => (id === 'member-a' ? agent : null) } : null),
+    }
+    const k = km.createKernel({ clock })
+    k.declareSlots([{ id: 'member', label: '成员', capacity: 1 }])
+    await k.members.hire({ id: 'member-a', slot: 'member', institution: 'sim' })
+    k.declarePackToolPresentation({ mode: 'ptc' }, { by: 'p-ptc' })
+    await hm.createHostAdapter({ ctx, kernel: k, settings: {} }).install()
+    const hook = (listeners['system-prompt/assemble'] || [])[0]
+    const assembly = { tools: [{ name: 'vibe_v5_say' }, { name: 'vibe_vmu_status' }] }
+    const out = await hook(assembly, { agent }, () => Promise.resolve(assembly))
+    const block = (out.sections || []).find((s) => s.name === 'v5r-effective-tools')
+    return { block, presentCalls, kernel: k }
+  }
+  const ptc = await mkPtc(true)
+  ok(ptc.presentCalls.includes('ptc') && ptc.block && /【本轮工具呈现｜member】/.test(ptc.block.text) &&
+    /run_code 呈现/.test(ptc.block.text) && /呈现方式的差异，不是收窄/.test(ptc.block.text) &&
+    !/与你这回合的 wire 完全一致/.test(ptc.block.text),
+    '★ 正（ptc）：块如实说“以 run_code 呈现”，且不写“wire 完全一致”这句错话', ptc.block && ptc.block.text)
+  ok(ptc.block && /vibe_v5_say/.test(ptc.block.text) && /vibe_vmu_status/.test(ptc.block.text),
+    '★ 正（ptc）：可代码调用的名字仍来自同一个 effectiveNames', ptc.block && ptc.block.text)
+  const native = await mkPtc(false)
+  ok(native.presentCalls.length === 0 && native.block && /【本轮你实际能调用的工具｜member】2 个：vibe_v5_say、vibe_vmu_status/.test(native.block.text) &&
+    /这份列表与你这回合的 wire 完全一致/.test(native.block.text) && !/run_code|呈现/.test(native.block.text),
+    '★ 反（ptc 未应用）：没有 presentAs ⇒ 回落 native 逐字形状（wire 真的没变）', native.block && native.block.text)
+  const hostSrc = await readFile(join(REPO, 'vibe-math-vmu', 'host.js'), 'utf8')
+  ok((hostSrc.match(/const effectiveNames =/g) || []).length === 1,
+    '★ 名字只有一个来源：源码里 effectiveNames 只声明一次，块与 wire 只能从它取名字', (hostSrc.match(/const effectiveNames =/g) || []).length)
+}
+
 // ── ★ PHASE 9 / round 5: `*` is a DECISION, not a typo; and "in effect" must be visible ─────────────────────────
 {
   const unconfirmed = hm.resolveFaces({ settings: { 'vmu.tools.faces': ['*'] } })
