@@ -11,6 +11,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
       name: TOOL_NAMES.meeting,
       description: 'vmu 会议/表决面：action=list|open|speak|silent|hand|refuse|invite|invitedspeak|end|aggregation|complete|phase|status|summary|snapshot|close|extend|lapse|revokelapse|ballot|vote|tally|reopen|freeze|unfreeze|boxopen|boxcast|boxclose|boxreopen|boxlapse|boxrevokelapse|flow|overrideorder。' +
         '会议与表决是**逐对象原语**（内核给工厂、pack 给政策）；本工具只用**内核已登记的实例 id** 寻址（未知 id 具名拒）。' +
+        '★ **A2（轮 1）：一个会议对象，两个面都能寻址。** `list` 返回两套注册表：`meetings`（原语）、`serviceMeetings`（`vmu.meetings` 服务，即 `vibe_v5_meeting` 建的那些）、`unionMeetings`（并集）；`status`/`speak`/`close` **先找原语、找不到再找服务**（服务侧的 `status` 带 `registry:"service"` 与动议视图，`speak` 走服务的发言面，`close` 走服务的收束并**进归档**，回执带 `registry` 与 `closeSemantics`）。两处都没有 ⇒ 具名 `VMU_NO_SUCH_OBJECT`，hint **逐条列出两个 id 空间**。' +
         '要点：**被拒输入不推进轮次**（refuse）；**受邀发言只记、不计票、不阻塞收束**（invite/invitedspeak）；' +
         '**聚合必须先显式结束辩论**（end ⇒ aggregation.allowed=true，R10-2a）；**表决期冻结**由逐场票箱原语承载（freeze/unfreeze）。' +
         '**F28 有界兜底**：超过声明的墙钟上限（`vmu.meetings.hardLimitMs`）后可用 **lapse** 具名收束（回执带 `{name,why,at,revocable}`），**未到上限会具名拒**，收束后可用 **revokelapse（必须给理由）**恢复；`extend` 是**声明步长**的延长命令（读 `speechExtendMs/Max`）。' +
@@ -54,8 +55,38 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
           if (!ballot) throw Object.assign(new Error('no live ballot with id ' + String(ballotId)), { code: 'VMU_NO_SUCH_OBJECT', hint: 'use action=list' })
           return ballot
         }
+        // ── A2 (round 1): THE SECOND REGISTRY ───────────────────────────────────────────────────────────────
+        // The v5 pack's `vibe_v5_meeting` opens a `vmu.meetings` SERVICE record; this face's `open` builds a
+        // per-object PRIMITIVE. A2 makes the four addressed actions cross that boundary: primitive FIRST (its
+        // behaviour is unchanged), service as the fallback, and a refusal that NAMES both spaces when neither has
+        // the id. Reads are freely cross-face; writes say WHICH registry they wrote to in the receipt.
+        const svcOf = () => (kernel && kernel.meetings) || null
+        const serviceIds = () => {
+          const svc = svcOf()
+          if (!svc || typeof svc.status !== 'function') return []
+          try { return (svc.status().liveMeetings || []).slice() } catch (e) { return [] }
+        }
+        /** Does the SERVICE registry hold this id? A read (`meetingView`), so the answer is a fact, not a guess. */
+        const serviceHas = (idv) => {
+          const svc = svcOf()
+          if (!svc || typeof svc.meetingView !== 'function' || idv === undefined || idv === null || String(idv) === '') return false
+          try { svc.meetingView({ meeting: String(idv) }); return true } catch (e) { return false }
+        }
+        const noSuchMeeting = (idv) => Object.assign(
+          new Error('no meeting with id ' + String(idv) + ' in either meeting registry (primitive or service)'), {
+            code: 'VMU_NO_SUCH_OBJECT',
+            hint: 'primitive registry: ' + ((kernel.liveList().meetings || []).join(', ') || '(none)')
+              + ' ; service registry: ' + (serviceIds().join(', ') || '(none)')
+              + ' ; action=list reports both',
+          })
+        const sid = (idv) => String(idv === undefined || idv === null ? '' : idv)
         try {
-          if (action === 'list') return Object.assign({ ok: true, action }, kernel.liveList())
+          if (action === 'list') {
+            const prim = kernel.liveList()
+            const services = serviceIds()
+            const unionMeetings = [...new Set([...(prim.meetings || []), ...services])].sort()
+            return Object.assign({ ok: true, action }, prim, { serviceMeetings: services, unionMeetings })
+          }
           if (action === 'open') {
             const meeting = kernel.meeting({ id: id || undefined, roster: Array.isArray(roster) ? roster : undefined })
             if (typeof secretary === 'string' && secretary !== '') meeting.secretary = secretary
@@ -76,7 +107,19 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             return { ok: true, action, id: meeting.id, state: meeting.state, phase: meeting.phase, secretary: meeting.secretary || null,
               serviceMeeting, ...(serviceError ? { serviceError } : {}) }
           }
-          if (action === 'speak') return Object.assign({ ok: true, action, id }, await live().speak(need(member, 'member'), need(text, 'text')))
+          if (action === 'speak') {
+            const pid = sid(id)
+            const primitive = kernel.liveMeeting(pid)
+            if (primitive) return Object.assign({ ok: true, action, id }, await primitive.speak(need(member, 'member'), need(text, 'text')))
+            // A2: a SERVICE meeting has its own speech face (`meetings.speak`, which enforces presence/quota/budget).
+            // Supporting it here means no new policy — the service decides, this face only routes and names the registry.
+            const svc = svcOf()
+            if (svc && typeof svc.speak === 'function' && serviceHas(pid)) {
+              return Object.assign({ ok: true, action, id: pid, registry: 'service' },
+                svc.speak({ meeting: pid, member: need(member, 'member'), text: need(text, 'text') }))
+            }
+            throw noSuchMeeting(pid)
+          }
           if (action === 'silent') return Object.assign({ ok: true, action, id }, await live().markSilent(need(member, 'member'), reason || 'no input'))
           if (action === 'hand') return Object.assign({ ok: true, action, id }, live().handUp(need(member, 'member')))
           if (action === 'refuse') return Object.assign({ ok: true, action, id }, live().refuseInput(need(member, 'member'), text || '', reason || 'refused'))
@@ -91,7 +134,22 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
           if (action === 'aggregation') return Object.assign({ ok: true, action, id }, live().aggregationAllowed())
           if (action === 'complete') return Object.assign({ ok: true, action, id }, live().roundComplete())
           if (action === 'phase') return { ok: true, action, id: need(id, 'id'), phase: live().phase }
-          if (action === 'status') return Object.assign({ ok: true, action }, live().status())
+          if (action === 'status') {
+            const pid = sid(id)
+            const primitive = kernel.liveMeeting(pid)
+            if (primitive) return Object.assign({ ok: true, action }, primitive.status())
+            // A2: the SERVICE view. `meetingView` is the service's own observable read (state/chair/secretary/motions);
+            // the quorum view is added when available. `registry:'service'` tells the caller WHICH object answered —
+            // the primitive status shape is deliberately left exactly as it was.
+            const svc = svcOf()
+            if (svc && typeof svc.meetingView === 'function' && serviceHas(pid)) {
+              const view = svc.meetingView({ meeting: pid })
+              let quorum = null
+              if (typeof svc.quorum === 'function') { try { quorum = svc.quorum({ meeting: pid }) } catch (e) { quorum = null } }
+              return Object.assign({ ok: true, action, registry: 'service', quorum }, view)
+            }
+            throw noSuchMeeting(pid)
+          }
           if (action === 'summary') {
             // A1 round 10 — TWO ID SPACES, TWO READ FACES. A primitive meeting is summarized by the primitive; a
             // meeting created by the v5 pack lives in the meetings SERVICE and is summarized there. This action
@@ -107,7 +165,22 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
               hint: 'this action reads the meetings SERVICE for a service id (vibe_v5_meeting opens those); action=list lists the primitive registry this face opens' })
           }
           if (action === 'snapshot') return Object.assign({ ok: true, action }, live().snapshot())
-          if (action === 'close') return Object.assign({ ok: true, action, id }, await live().close(reason || 'closed'))
+          if (action === 'close') {
+            const pid = sid(id)
+            const primitive = kernel.liveMeeting(pid)
+            if (primitive) return Object.assign({ ok: true, action, id }, await primitive.close(reason || 'closed'))
+            // A2: closing a SERVICE meeting uses the service's own close (its rails apply). The two close semantics
+            // DIFFER and the receipt says so: the service moves the meeting to its ARCHIVE (it leaves the service
+            // live table; `summary` stays the archive read face), while a primitive close keeps it in the live map.
+            const svc = svcOf()
+            if (svc && typeof svc.close === 'function' && serviceHas(pid)) {
+              const out = svc.close({ meeting: pid })
+              return Object.assign({ ok: true, action, id: pid, registry: 'service', closeSemantics: 'service-archives' }, out, {
+                note: 'closed in the meetings SERVICE: the meeting moved to the service ARCHIVE (not the primitive live table); its motions/votes remain readable via action=summary',
+              })
+            }
+            throw noSuchMeeting(pid)
+          }
           // F28: the bounded fallback (named + revocable) and the declared extension step (GAP-MTG-05).
           if (action === 'hands') {
             return Object.assign({ ok: true, action, id }, live().hands({ op: need(op, 'op'), member: member || null,
