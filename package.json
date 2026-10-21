@@ -575,6 +575,8 @@
     "tests/vmu-set-attribution.test.mjs",
     "tests/vmu-turn-notice-source.test.mjs",
     "tests/vmu-commit-store-e2e.test.mjs",
+    "tests/_lib/require-file.mjs",
+    "tests/audit-no-silent-reads.test.mjs",
     "tests/_lib/falsify.mjs",
     "tests/_lib/package-exemptions.mjs",
     "tests/vmu-mailbox-falsify.test.mjs",

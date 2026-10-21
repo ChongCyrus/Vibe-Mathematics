@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { requireFile } from './_lib/require-file.mjs'
 /**
  * SPEC/README ↔ CODE TRACEABILITY (all four presets).
  *
@@ -20,7 +21,7 @@ import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 
 const HERE = fileURLToPath(new URL('../', import.meta.url))
-const read = (rel) => (existsSync(join(HERE, rel)) ? readFileSync(join(HERE, rel), 'utf8') : null)
+const read = (rel) => requireFile(join(HERE, rel), 'a spec/README the traceability suite reads')
 
 const PRESETS = [
   { tag: 'v2', js: 'vibe-math-v2/vibe-math-v2.js', spec: 'vibe-math-v2/实现方案.md', prefix: 'vibe_math_' },
@@ -36,7 +37,7 @@ const NOT_A_TOOL = new Set([
 ])
 const LEAN_PARAMS = ['formalVerify', 'leanCommand', 'leanArgs', 'leanTimeoutMs']
 
-const README = read('README.md') || ''
+const README = read('README.md')
 const findings = []
 const notes = []
 let passed = 0
@@ -161,7 +162,7 @@ for (const P of PRESETS) {
 }
 
 // cross-preset: the shared contract must name the four parameters too
-const contract = read('docs/formal-verification.md') || ''
+const contract = read('docs/formal-verification.md')
 ok(LEAN_PARAMS.length > 0, 'non-vacuous: the shared contract sweep needs a non-empty parameter table')
 for (const prm of LEAN_PARAMS) ok(contract.includes(prm), 'contract documents ' + prm)
 

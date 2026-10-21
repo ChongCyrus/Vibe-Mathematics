@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { requireFile } from './_lib/require-file.mjs'
 /**
  * PROMPT/INTERACTION INVARIANTS — the specific defect CLASSES this project has actually shipped,
  * encoded as static invariants over all four presets. This is the mechanical answer to
@@ -637,7 +638,7 @@ for (const P of PRESETS) {
   }
 
   // I10 — the prompt-rule probes exist for this preset (a guard nobody can prove is a guard nobody has).
-  const probeSrc = read('tests/audit-formal-sensitivity.mjs') || ''
+  const probeSrc = requireFile(join(HERE, 'tests/audit-formal-sensitivity.mjs'), 'the formal-sensitivity probe source this suite inspects')
   for (const kind of ['fidelity-defect-rule-removed', 'abbreviated-tool-name-injected', 'require-wording-removed', 'defect-decision-not-offered']) {
     check(probeSrc.includes("tag + '-" + kind + "'") || probeSrc.includes("'" + P.tag + '-' + kind + "'"),
       P.tag + ' I10: probe exists for ' + kind)
@@ -775,9 +776,9 @@ for (const P of PRESETS) {
 
 // Cross-preset: the probe script must refuse to report success on an empty selection (false green).
 {
-  const probeSrc = read('tests/audit-formal-sensitivity.mjs') || ''
+  const probeSrc = requireFile(join(HERE, 'tests/audit-formal-sensitivity.mjs'), 'the formal-sensitivity probe source this suite inspects')
   check(/selected\.length === 0/.test(probeSrc), 'X1: the probe runner fails on an empty selection instead of reporting success')
-  const runner = read('tests/run-tests.mjs') || ''
+  const runner = requireFile(join(HERE, 'tests/run-tests.mjs'), 'the test runner source this suite inspects')
   check(/no suites matched/.test(runner), 'X2: the suite runner fails when no suite matches')
   check(/argv\[i \+ 1\]/.test(runner) && /argv\[\+\+i\]/.test(runner), 'X3: the suite runner accepts both --flag=x and --flag x')
   // X4 (task-29) — the GATE must be independent of whether the HOST has TeX installed: the runner points

@@ -1,3 +1,4 @@
+import { requireFile } from './_lib/require-file.mjs'
 // ============================================================================================
 // math_computation — PARITY guard (integration owner).
 //
@@ -490,7 +491,7 @@ for (const p of PRESETS) {
 {
   const E = await import(pathToFileURL(join(REPO, 'vibe-math-v2', 'math-engines.js')).href)
   const modPath = join(REPO, 'vibe-math-v2', 'math-computation.js')
-  const src = existsSync(modPath) ? readFileSync(modPath, 'utf8') : ''
+  const src = requireFile(modPath, 'the math-computation baseline the parity suite compares against')
   const all = Object.assign({}, E.MATH_ENGINES, E.MATH_P2_ENGINES)
   const unknown = unknownPlaceholders(src, all)
   const unimplemented = unimplementedPlaceholders(src, all)
@@ -505,8 +506,8 @@ for (const p of PRESETS) {
 {
   const engPath = join(REPO, 'vibe-math-v2', 'math-engines.js')
   const modPath = join(REPO, 'vibe-math-v2', 'math-computation.js')
-  const eng = existsSync(engPath) ? readFileSync(engPath, 'utf8') : ''
-  const mod = existsSync(modPath) ? readFileSync(modPath, 'utf8') : ''
+  const eng = requireFile(engPath, 'the math-engines baseline the parity suite compares against')
+  const mod = requireFile(modPath, 'the math-computation baseline (second read) the parity suite compares against')
   ok(cliDeclaresPolicy(eng),
     'the cli descriptor DECLARES its policy (requiresMathMode + requiresEngineInList)')
   ok(cliConsumesPolicy(mod),
@@ -517,14 +518,14 @@ for (const p of PRESETS) {
 
 // ── 9. doc-sync: the v5 editor closed set and v2's single-source status/report helper are documented
 {
-  const v5 = existsSync(join(REPO, 'vibe-math-v5', 'vibe-math-v5.js')) ? readFileSync(join(REPO, 'vibe-math-v5', 'vibe-math-v5.js'), 'utf8') : ''
-  const fp = existsSync(join(REPO, 'docs', 'final-paper.md')) ? readFileSync(join(REPO, 'docs', 'final-paper.md'), 'utf8') : ''
+  const v5 = requireFile(join(REPO, 'vibe-math-v5', 'vibe-math-v5.js'), 'the v5 preset source the parity suite reads')
+  const fp = requireFile(join(REPO, 'docs', 'final-paper.md'), 'the final-paper contract the parity suite checks')
   // The closed set appears twice in v5 (the coerce call and the tool schema enum); the separator may be
   // written with or without a space, so accept both rather than pinning one spelling.
   ok(/\[\s*'office'\s*,\s*'academician'\s*\]/.test(v5) && /V5_INVALID_ARGUMENT/.test(v5), 'v5 validates the paper editor against the closed set and returns V5_INVALID_ARGUMENT')
   ok(fp.indexOf('office|academician') !== -1 && fp.indexOf('V5_INVALID_ARGUMENT') !== -1, 'docs/final-paper.md documents the v5 editor closed set + its error code')
-  const v2src = existsSync(join(REPO, 'vibe-math-v2', 'vibe-math-v2.js')) ? readFileSync(join(REPO, 'vibe-math-v2', 'vibe-math-v2.js'), 'utf8') : ''
-  const v2doc = existsSync(join(REPO, 'vibe-math-v2', '实现方案.md')) ? readFileSync(join(REPO, 'vibe-math-v2', '实现方案.md'), 'utf8') : ''
+  const v2src = requireFile(join(REPO, 'vibe-math-v2', 'vibe-math-v2.js'), 'the v2 preset source the parity suite reads')
+  const v2doc = requireFile(join(REPO, 'vibe-math-v2', '实现方案.md'), 'the v2 specification the parity suite checks')
   ok((v2src.match(/verifyTasksView\(/g) || []).length >= 3, 'v2 produces status+report through ONE verifyTasksView helper')
   ok(v2doc.indexOf('verifyTasksView') !== -1, 'the v2 design doc states the single-source status/report helper')
 }

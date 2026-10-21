@@ -1,3 +1,4 @@
+import { requireFile } from './_lib/require-file.mjs'
 // ============================================================================================
 // CROSS-PRESET PARTICIPANT-SET PARITY (P4 / item 6.3)
 //
@@ -24,7 +25,7 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const REPO = resolve(fileURLToPath(new URL('..', import.meta.url)))
-const read = (rel) => existsSync(join(REPO, rel)) ? readFileSync(join(REPO, rel), 'utf8') : ''
+const read = (rel) => requireFile(join(REPO, rel), 'a preset source the participant-set parity suite compares')
 
 let passed = 0, failed = 0
 const failures = []

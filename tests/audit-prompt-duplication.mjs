@@ -1,3 +1,4 @@
+import { requireFile } from './_lib/require-file.mjs'
 // ============================================================================
 // audit-prompt-duplication.mjs — shipped invariant for v2/v3/v4 (v5 has its own,
 // tests/audit-v5-prompt-duplication.mjs): every preset's injected toolkit prompt
@@ -102,7 +103,7 @@ for (const preset of PRESETS) {
     for (const [name, re] of PATH_CLAUSES) check(re.test(shared), preset + ': ' + name + ' present in BOTH copies (inside the shared prefix)')
     // bidirectional: the prompt declares the behaviour ⇔ the JS carries its marker
     const jsAbs = join(REPO, preset, preset + '.js')
-    const js = existsSync(jsAbs) ? readFileSync(jsAbs, 'utf8') : ''
+    const js = requireFile(jsAbs, 'a preset source the prompt-duplication suite diffs')
     check(!!js, preset + ': the JS source is readable for the code-truth check')
     DISCLOSURES.forEach(([name, promptRe, codeRe, applies]) => {
       const expected = applies.indexOf(PRESET_KEY[preset]) !== -1

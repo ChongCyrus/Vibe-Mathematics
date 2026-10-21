@@ -1,3 +1,4 @@
+import { requireFile } from './_lib/require-file.mjs'
 // ============================================================================================
 // math_computation — CROSS-PRESET CONTRACT guard (integration owner).
 //
@@ -254,14 +255,14 @@ for (const P of PRESETS) {
 
 // 5. README (both languages) document the six parameters
 for (const f of ['README.md', 'README.en.md']) {
-  const md = existsSync(join(ROOT, f)) ? read(f) : ''
+  const md = requireFile(join(ROOT, f), 'a contract document the suite enumerates')
   for (const k of SIX) ok(md.indexOf(k) !== -1, f + ' documents ' + k)
   ok(/math-computation\.md|math_computation/.test(md), f + ' links the math_computation feature')
 }
 
 // 6. AUDIT-A/C honesty disclosures must not silently disappear from the contract doc.
 {
-  const doc = existsSync(join(ROOT, 'docs/math-computation.md')) ? read('docs/math-computation.md') : ''
+  const doc = requireFile(join(ROOT, 'docs/math-computation.md'), 'the math-computation contract document')
   ok(doc.indexOf('字符串级') !== -1 && doc.indexOf('不解析符号链接') !== -1, 'docs §6 states the path guard is string-level and does not resolve links/junctions')
   // round-9 (F0): the boundary paragraph must pin the CORRECTED truth - real engines were verified on
   // this machine, AND the still-unverified set is named. (The old claim "only through the fake
@@ -276,7 +277,7 @@ for (const f of ['README.md', 'README.en.md']) {
   // ── P1/6.1: the v4 frozen participant set is documented as the ATOMIC triple, and the deprecated
   // alias is described as an alias - both in the doc AND verifiable in the preset source.
   {
-    const v4 = existsSync(join(ROOT, 'vibe-math-v4/vibe-math-v4.js')) ? read('vibe-math-v4/vibe-math-v4.js') : ''
+    const v4 = requireFile(join(ROOT, 'vibe-math-v4/vibe-math-v4.js'), 'the v4 preset source the contract suite reads')
     const atomic = /frozen:\s*\(function\(sn\)\{\s*return \{version: sn\?sn\.rosterVersion:null, participants: sn\?sn\.rosterSnapshot:null, kind:/.test(v4)
     ok(atomic, 'v4 exposes the frozen participant set as ONE atomic object {version, participants, kind}')
     const alias = /frozenParticipants:\s*\(activeRosterSnapshot\(\)\|\|\{\}\)\.rosterSnapshot\|\|null/.test(v4) && /deprecated/.test(v4)

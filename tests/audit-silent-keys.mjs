@@ -1,3 +1,4 @@
+import { requireFile } from './_lib/require-file.mjs'
 // tests/audit-silent-keys.mjs — ROUND 98 (corrected). "A DECLARATION WITH NO CONSUMER IS THE SILENT LIE THIS PROJECT
 // REFUSES" — enforced as a reading, not as prose.
 //
@@ -105,7 +106,7 @@ for (const dir of ["tests", "scripts"]) {
   for (const f of jsFiles(p)) sources.set(f, readFileSync(f, "utf8"))
 }
 const schemaPath = join(VMU, "settings", "schema.js")
-const ledgerText = existsSync(LEDGER) ? readFileSync(LEDGER, "utf8") : ""
+const ledgerText = requireFile(LEDGER, 'the declared ledger the silent-keys suite consults')
 const keys = silentKeys({ schemaSrc: sources.get(schemaPath) || "", sources, ledgerText, schemaPath })
 // ★ BARE-MODE SELF-PROOF (runs on every gate run, not only with --selftest): the relaxed criterion still catches a
 // silently-declared key. Without this, the relaxation could have been a blanket pass and nothing would say so.
