@@ -46,6 +46,26 @@ test('file paths are resolved against root, not the process cwd', async () => {
   passed += 1
 })
 
+// ★ 反：a same-named file in the PROCESS CWD must NOT be read when root is set (the old bug).
+test('a file in the process cwd is not used when root points elsewhere', async () => {
+  const cwdElsewhere = join(dir, 'cwd-elsewhere')
+  await mkdir(join(cwdElsewhere, 'Formal'), { recursive: true })
+  await writeFile(join(cwdElsewhere, 'Formal', 'Y.lean'), 'theorem y : True := trivial\n', 'utf8')
+  const emptyRoot = join(dir, 'empty-root')
+  await mkdir(emptyRoot, { recursive: true })
+  const previous = process.cwd()
+  try {
+    process.chdir(cwdElsewhere)
+    const face = createLeanFace({ settings: mkSettings({ 'vmu.math.leanAsync': false }), spawn: async () => ({ exitCode: 0 }), root: emptyRoot, clock: () => 4, log: () => {} })
+    const sub = await face.submit({ statement: 'True', file: 'Formal/Y.lean' })
+    const s2 = await face.settle(sub.id)
+    assert.equal(s2.receipt.code, 'VMU_LEAN_FILE_UNREADABLE', 'root (not cwd) is the base: the cwd file must be invisible')
+  } finally {
+    process.chdir(previous)
+  }
+  passed += 1
+})
+
 const leanFile = join(dir, 'Proof.lean')
 await writeFile(leanFile, 'theorem t : True := trivial\n', 'utf8')
 
