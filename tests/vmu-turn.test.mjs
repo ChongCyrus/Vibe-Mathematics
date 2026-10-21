@@ -52,6 +52,18 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   const b = await mk().assemble(mk().open({ member: 'r-1', phase: 'normal' }).turn)
   ok(a.text === b.text, 'T3. ★★★ assembly is DETERMINISTIC: the same turn spec yields byte-identical text')
 }
+// ★ PHASE 9 / round 7: `why` is the per-turn instruction; it used to live only on the turn object/host wake spec.
+{
+  const t = mk()
+  const { turn } = t.open({ member: 'r-1', phase: 'normal', why: '本回合只调用一次 wait，不要做别的' })
+  const asm = await t.assemble(turn)
+  ok(asm.instructionDelivered === true && /【本轮指令】/.test(asm.text) && /只调用一次 wait/.test(asm.text),
+    'T3b. ★ 正：step 的 why 进入成员提示词（【本轮指令】+ instructionDelivered:true）', { delivered: asm.instructionDelivered })
+  const plain = mk().open({ member: 'r-1', phase: 'normal' })
+  const asm2 = await mk().assemble(plain.turn)
+  ok(asm2.instructionDelivered === false && !/【本轮指令】/.test(asm2.text),
+    'T3c. ★ 反：没有 why 的回合不追加空指令块（instructionDelivered:false）', { delivered: asm2.instructionDelivered })
+}
 {
   const bare = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS,})
   const { turn } = bare.open({ member: 'r-1', phase: 'normal' })
@@ -124,6 +136,14 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(half.skipped.length === 1 && half.skipped[0].reason === 'face-not-wired' && t.status().counts.notExecuted === 1,
     'T16. ★★★ a field whose face is NOT wired is reported and COUNTED - a half-installed host is visible, never silent',
     { skipped: half.skipped, counts: t.status().counts })
+  // ★ PHASE 9 / round 7: no open meeting is a SYMPTOM; the real chain (a field no tool in this turn could produce) is named.
+  const noMeeting = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(),
+    faces: { 'vmu.meetings': { speak: async () => { const e = new Error('no meeting is open'); e.code = 'VMU_NO_OPEN_MEETING'; throw e } } } })
+  let wrapped = null
+  try { await noMeeting.apply({ say: 'x' }) } catch (e) { wrapped = e }
+  ok(wrapped && wrapped.code === 'VMU_TURN_FIELD_NOT_CALLED' && wrapped.cause && wrapped.cause.code === 'VMU_NO_OPEN_MEETING' &&
+    /instructionDelivered/.test(String(wrapped.hint)),
+    'T16b. ★ 反：回执带 meeting 字段但本回合无会议工具 ⇒ 具名 VMU_TURN_FIELD_NOT_CALLED（保留 cause，不再只报 NO_OPEN_MEETING）', wrapped && { code: wrapped.code, cause: wrapped.cause && wrapped.cause.code })
 }
 
 // ⑤ the whole loop in one call, through both seams

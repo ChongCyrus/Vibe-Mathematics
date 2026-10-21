@@ -117,5 +117,31 @@ const makeSeam = (record) => m.createHostSpawn({
     '★ 正（done reject）：doneError.code/message 与 resolved 都在错误对象上', refused && { doneError: refused.doneError, resolved: refused.resolved })
 }
 
+// ★ PHASE 9 / round 7: the host's done shape is not promised to be {exitCode}; accept the measured aliases and carry
+// the raw value + handle keys so a real "no exitCode" can be diagnosed instead of guessed.
+for (const [label, value] of [['exitCode', { exitCode: 0 }], ['code', { code: 0 }], ['status', { status: 0 }]]) {
+  const seen = []
+  const sub = {
+    async resolveExecutable() { return 'C:\\fake\\lean.EXE' },
+    spawn() { return { done: Promise.resolve(value), wait: () => {}, collected: { stdout: { readFrom: () => ({ text: '' }) }, stderr: { readFrom: () => ({ text: '' }) } } } },
+  }
+  const seam = m.createHostSpawn({ ctx: { get: () => sub }, defaultCwd: null })
+  const out = await seam({ file: 'lean', args: ['--version'], timeoutMs: 5000 })
+  ok(out.code === 0 && typeof out.doneValue === 'string' && out.doneValue.includes(String(value.code ?? value.status ?? value.exitCode)) &&
+    Array.isArray(out.handleKeys) && out.handleKeys.includes('done'),
+    '★ 正：handle.done 返回 {' + label + ':0} ⇒ 归一化为 exitCode 0，并带回 doneValue/keys', { code: out.code, doneValue: out.doneValue, handleKeys: out.handleKeys })
+  seen.push(out)
+}
+{
+  const sub = {
+    async resolveExecutable() { return 'C:\\fake\\lean.EXE' },
+    spawn() { return { done: Promise.resolve({ foo: 1 }), collected: { stdout: { readFrom: () => ({ text: '' }) }, stderr: { readFrom: () => ({ text: '' }) } } } },
+  }
+  const seam = m.createHostSpawn({ ctx: { get: () => sub }, defaultCwd: null })
+  const out = await seam({ file: 'lean', args: ['--version'], timeoutMs: 5000 })
+  ok(out.code === null && out.doneValue === '{"foo":1}' && out.doneShape === 'object',
+    '★ 反：done 返回未知形状 ⇒ exitCode 仍是 null，但 doneValue 原样保留（不再只剩“无退出码”）', { code: out.code, doneValue: out.doneValue, doneShape: out.doneShape })
+}
+
 console.log('=== VMU SPAWN: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) process.exit(1)

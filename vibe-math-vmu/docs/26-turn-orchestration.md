@@ -628,6 +628,13 @@ root agent 自己的 assembly（root 不属于任何成员槽）。
 ★ **可观测**：`mailbox.status().delivery = { deliverableCalls, flushCalls, noSeam, sent, refused, urgentDelivered, noticesBuilt }` ⇒ “没被调”与“调了没送出”可区分。
 ★ **wakeOn**：默认**不声明**（零机制）。`wait()` 仍可等待并超时，但超时前只有显式 `notify()` 能唤醒；`activity.status().wake.reason='wake-on-not-declared'` + hint 明确写出这一点，**不假装已接线**。
 
+## 3.38 ★★★★★ per-turn 指令（`why`）必须进成员提示词（PHASE 9 / 轮 7）
+
+★ **真机病**：`step` 的 `why` 只存在 turn 对象和 host wake spec 里，**没进装配文本**；只给 `vibe_v5_wait` 的回合，成员不知道“只等一次”，回了会议字段，最后只看到 `VMU_NO_OPEN_MEETING`。
+★ **修**：`assemble()` 在 `why`/`nextStep` 非空时追加 `【本轮指令】<原文>`（截断 4000），返回 `instructionDelivered:true`；无指令的回合不追加空块（false）。
+★ **交付回执**：`awaiting` 与最终 turn 回执都带 `instructionDelivered`，所以“指令到了吗”可读。
+★ **会议门**：`apply()` 中 meeting face 抛 `VMU_NO_OPEN_MEETING` 时，改为具名 `VMU_TURN_FIELD_NOT_CALLED`（保留 `cause`），hint 指向 `instructionDelivered` 与 per-turn tools allowlist——**不再把“成员没收到指令”误报成“会议服务坏了”**。
+
 ## 4. v1 的边界（**未做，明写** ✗）
 
 1. ★★★ **投递缝已接进内核（轮 339）＋ 宿主桥已提供（轮 344）＋ 入口已装配（轮 1／K3）** ✓✓✓：**vmu.turn 在 kernel/index.js 里建成** ✓，**投递缝是内核的 `deliverTurn` 选项** ✓（★ **轮 1 更正** ✗✓：原文只写 `host.deliverTurn` —— 而真实入口交给内核的 `host` 是 `host-math.js` 的适配器，**它没有 `deliverTurn`** ⇒ 于是**真机每一轮都在 `turn/index.js` 的缺缝分支具名拒** ✗；旧名仍兼容，但**不再是唯一来源** ✓）；★ **宿主不给缝 ⇒ 具名拒 VMU_ENGINE_UNAVAILABLE** ✓（**绝不假装成员答了** ✗，且**计数可见** ✓，`status().seams.turnDeliver`／`turnDeliverSource` 自曝 ✓）。★★★ **宿主桥 `deliverViaSubagents(subagents, extract?)`** ✓✓：**入口已按声明装配** —— `vibe-math-vmu.js` 把它接到 `ctx.get('subagents')`（**调用时解析**，因为 `apply()` 可能早于服务挂载 ✓），宿主**不需要自己写适配器** ✓；★ **它只送【装配后的文本】，绝不自拼** ✗；**标签带轮次 id（可追）** ✓；★ **不给缝 ⇒ 具名拒** ✓；★★ **宿主收下却不回回复 ⇒ 也是【具名拒**】✓（**绝不解析成"模型什么都没说"** ✗）。★ **实测（T35–T39）** ✓✓：**整轮走宿主缝跑通** —— 装配 ⇒ 桥投递 ⇒ 解析 ⇒ **任务台账真的增长** ✓✓；★ **到达缝的正是装配文本且带轮次标签** ✓（>1000 字 ✓）。★★ **轮 1 复测** ✓：以假宿主（`ctx.get('subagents')`）走**真实入口** `entry.apply(...)` ⇒ `seams.turnDeliver:true`，`kernel.turn.step({members:[{id}]})` **真的投递并分派**（`receipt.executed ≥ 1`，桥收到的 `label === 'vmu-turn-<id>'`）✓。

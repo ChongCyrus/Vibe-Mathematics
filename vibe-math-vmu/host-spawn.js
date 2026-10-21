@@ -92,6 +92,23 @@ export function createHostSpawn({
   // `spawnHandle(opts, onHandle)` and expect the HANDLE synchronously so `cancel({jobId})` can call `terminate()`
   // immediately (without it they can only refuse by name: "this seam cannot kill"). One implementation, two call
   // shapes: `spawn(request)` and `spawn(request, (handle) => …)`.
+  // ★ PHASE 9 / round 7: the real machine returned `hadHandle:true, exitCode:undefined` while the host's own header
+  // says `done -> { exitCode, signal }`. Do NOT assume the field name: try the shapes this repo has seen and CARRY the
+  // raw resolved value + the handle's keys, so the next run can distinguish empty/renamed/Promise-wrapped outcomes.
+  const safeValueText = (v) => {
+    try { const s = JSON.stringify(v); return s === undefined ? String(v) : s.slice(0, 1000) } catch { return String(v).slice(0, 1000) }
+  }
+  const handleKeysOf = (h) => { try { return Object.keys(h || {}).slice(0, 40) } catch { return [] } }
+  const exitCodeOf = (v) => {
+    if (v === null || v === undefined) return null
+    if (typeof v === 'number') return Number.isInteger(v) ? v : null
+    if (typeof v !== 'object') return null
+    for (const k of ['exitCode', 'code', 'status', 'exit']) {
+      const n = v[k]
+      if (typeof n === 'number' && Number.isInteger(n)) return n
+    }
+    return null
+  }
   const spawnSeam = async function spawnSeam(request = {}, onHandle = null) {
     const sub = subprocessOf()
     if (!sub || typeof sub.spawn !== 'function') {
@@ -268,7 +285,8 @@ export function createHostSpawn({
       if (outcome.timeout) {
         // Return the shape the bridge turns into VMU_JOB_TIMEOUT; the host's graceMs terminates the process.
         return { code: null, stdout: text('stdout'), stderr: text('stderr'), timedOut: true, ms,
-          signal: null, resolved: resolvedExe, doneError, spawnError, resolveError, cwd: null, path: pathPrefix }
+          signal: null, resolved: resolvedExe, doneError, spawnError, resolveError, cwd: null, path: pathPrefix,
+          doneValue: null, doneShape: 'timeout-no-resolve', handleKeys: handleKeysOf(handle) }
       }
       if (!outcome.settled) {
         doneError = {
@@ -284,10 +302,14 @@ export function createHostSpawn({
         err.path = pathPrefix
         throw err
       }
-      return { code: outcome.value && Number.isInteger(outcome.value.exitCode) ? outcome.value.exitCode : null,
+      const value = outcome.value
+      const exitCode = exitCodeOf(value)
+      return { code: exitCode,
         stdout: text('stdout'), stderr: text('stderr'), timedOut: false, ms,
-        signal: (outcome.value && outcome.value.signal) || null,
-        resolved: resolvedExe, doneError, spawnError, resolveError, cwd: null, path: pathPrefix }
+        signal: (value && value.signal) || null,
+        resolved: resolvedExe, doneError, spawnError, resolveError, cwd: null, path: pathPrefix,
+        doneValue: safeValueText(value), doneShape: exitCode === null ? (value === null || value === undefined ? 'undefined' : typeof value) : 'exitCode',
+        handleKeys: handleKeysOf(handle) }
     } finally {
       if (budgetTimer !== null) {
         const t = budgetTimer

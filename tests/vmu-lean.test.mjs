@@ -139,7 +139,8 @@ test('hadHandle + undefined exitCode + no error is VMU_LEAN_EXIT_UNOBSERVED', as
   const settings = mkSettings({ 'vmu.math.leanAsync': false })
   const spawnHandle = async (req, onHandle) => {
     onHandle({ kill: () => {} })
-    return { exitCode: undefined, resolved: 'D:\\.elan\\bin\\lean.EXE', doneError: null, spawnError: null, resolveError: null }
+    return { exitCode: undefined, resolved: 'D:\\.elan\\bin\\lean.EXE', doneError: null, spawnError: null, resolveError: null,
+      doneValue: '{"code":0}', doneShape: 'object', handleKeys: ['done', 'collected'] }
   }
   const face = createLeanFace({ settings, spawn: async () => ({ exitCode: 0 }), spawnHandle, root: dir, clock: () => 5, log: () => {} })
   const sub = await face.submit({ statement: 'True', file: leanFile })
@@ -148,6 +149,8 @@ test('hadHandle + undefined exitCode + no error is VMU_LEAN_EXIT_UNOBSERVED', as
   assert.match(s.receipt.message, /已解析|退出码/)
   assert.match(s.receipt.hint, /沙箱|workspace-write|权限/)
   assert.equal(s.receipt.resolved, 'D:\\.elan\\bin\\lean.EXE')
+  assert.equal(s.receipt.doneValue, '{"code":0}')
+  assert.deepEqual(s.receipt.handleKeys, ['done', 'collected'])
   passed += 1
 })
 

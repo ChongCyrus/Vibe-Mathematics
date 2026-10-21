@@ -759,7 +759,15 @@ export function createTurnOrchestrator({
       if (Array.isArray(visible)) { visibleToolsByMember.set(String(turn.member), visible.slice()); toolVotedThisTurn.delete(String(turn.member)) }
       if (Array.isArray(visible) && visible.length > 0) withVisible += "\n\n【本轮可用工具】" + visible.slice(0, 80).join('、')
     }
-    return { ok: true, text: withVisible, sources: out.sources || [], truncation: out.truncation || null }
+    // ★ PHASE 9 / round 7: the per-turn instruction (`why`, the thing `step` was asked to make the member do) used to
+    // live only on the turn object and in the HOST wake spec — it never entered the prompt, so an instruction-only
+    // round (e.g. "only wait once") was blind. Carry it as its own block, and let the receipt say whether it was there.
+    const instruction = typeof turn.why === 'string' && turn.why.trim() !== ''
+      ? turn.why.trim()
+      : (typeof turn.nextStep === 'string' && turn.nextStep.trim() !== '' ? turn.nextStep.trim() : '')
+    if (instruction) withVisible += '\n\n【本轮指令】' + instruction.slice(0, 4000)
+    return { ok: true, text: withVisible, sources: out.sources || [], truncation: out.truncation || null,
+      instructionDelivered: instruction !== '' }
   }
 
   /** ③ deliver through the adapter seam. A missing adapter is refused, never faked. */
@@ -1072,10 +1080,25 @@ export function createTurnOrchestrator({
         skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'face-not-wired' })
         continue
       }
-      const res = await fn(d.payload, { field: d.field, face: d.face, op: d.op })
+      let res
+      try {
+        res = await fn(d.payload, { field: d.field, face: d.face, op: d.op })
+      } catch (e) {
+        if (e && e.code === 'VMU_NO_OPEN_MEETING') {
+          // ★ PHASE 9 / round 7: the real reason for the measured failure was NOT "meetings is broken": the member
+          // answered a tool-only instruction round with a meeting field, because the instruction never reached its
+          // prompt. Keep the underlying message, but name the field/tool/instruction chain so a reader does not chase
+          // the meeting service. Nothing is pretended to have executed.
+          const err = new Error('this turn was not given a meeting tool, and no meeting is open: the reply field "' + d.field + '" cannot be applied (' + String(e.message || e) + ')')
+          err.code = 'VMU_TURN_FIELD_NOT_CALLED'
+          err.hint = 'the member answered with a field no tool in this turn could produce; check instructionDelivered on the turn receipt, and the per-turn tools allowlist. The underlying meeting error is kept as cause.'
+          err.cause = e
+          throw err
+        }
+        throw e
+      }
       counts.dispatched += 1
-      executed.push({ field: d.field, face: d.face, op: d.op, result: res })
-    }
+      executed.push({ field: d.field, face: d.face, op: d.op, result: res })    }
     // ROUND 394: the remaining recorded fields used to be RECOGNISED AND THEN DISCARDED - a model that wrote prioritize,
     // hire or fire had its payload vanish with no trace, which is the silent-failure class this repository refuses.
     // Each one is now kept on the turn state under its own name and reported in the receipt, so the framework can read
@@ -1096,7 +1119,8 @@ export function createTurnOrchestrator({
     // the caller can play the member turn and answer on the next call.
     if (raw && typeof raw === 'object' && raw.awaiting === true) {
       return { ok: true, awaiting: true, turn, memberPrompt: raw.memberPrompt || null,
-        assembled: { chars: asm.text.length, sources: asm.sources.length }, fields: [], executed: [], skipped: [], refused: [],
+        assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true,
+        fields: [], executed: [], skipped: [], refused: [],
         attribution: Object.assign({}, lastAttribution) }
     }
     let parsed
@@ -1174,7 +1198,7 @@ export function createTurnOrchestrator({
       queueNotice(turn.member, line)
       refused.push({ field: e.field, code: r.code === undefined ? null : r.code })
     }
-    return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, fields: parsed.fields, ignoredFields: parsed.ignoredFields || [], refused, attribution: Object.assign({}, lastAttribution), ...out }
+    return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true, fields: parsed.fields, ignoredFields: parsed.ignoredFields || [], refused, attribution: Object.assign({}, lastAttribution), ...out }
   }
 
   /**

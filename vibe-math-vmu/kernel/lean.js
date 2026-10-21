@@ -183,6 +183,11 @@ export function createLeanFace(opts) {
       pathPrefix: pathText,
       signal: o.signal === undefined ? null : o.signal,
       timedOut: o.timedOut === true,
+      // ★ PHASE 9 / round 7: the raw value `await handle.done` resolved to, and the handle's own keys. Without these a
+      // renamed field (code/status) or Promise-wrapped outcome is indistinguishable from "the host gave nothing".
+      doneValue: o.doneValue === undefined ? null : o.doneValue,
+      doneShape: o.doneShape === undefined ? null : o.doneShape,
+      handleKeys: Array.isArray(o.handleKeys) ? o.handleKeys.slice(0, 40) : [],
     }
   }
   const commandNotFoundOf = (e, diag) => {
@@ -195,7 +200,10 @@ export function createLeanFace(opts) {
     ' resolveError=' + JSON.stringify(diag.resolveError) +
     ' spawnError=' + JSON.stringify(diag.spawnError) +
     ' cwd=' + JSON.stringify(diag.cwd) + ' pathPrefix=' + JSON.stringify(diag.pathPrefix) +
-    ' signal=' + JSON.stringify(diag.signal) + ' timedOut=' + String(diag.timedOut)
+    ' signal=' + JSON.stringify(diag.signal) + ' timedOut=' + String(diag.timedOut) +
+    ' doneValue=' + JSON.stringify(diag.doneValue === undefined ? null : diag.doneValue) +
+    ' doneShape=' + JSON.stringify(diag.doneShape === undefined ? null : diag.doneShape) +
+    ' handleKeys=' + JSON.stringify(diag.handleKeys || [])
 
   // ── 设置读取（**唯一口径**；每个键只在此处被读 ⇒ keysUsed() 与实现必然一致）────────────
   const cfg = () => {

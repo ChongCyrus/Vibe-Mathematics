@@ -676,6 +676,8 @@ ok(keyShapeRun && keyShapeRun.status === 0,
   keyShapeRun ? 'exit=' + keyShapeRun.status : 'not run')
 const inspectRun = runSelfProof('slv-inspect.mjs', '--selftest')
 ok(inspectRun && inspectRun.status === 0, 'slv-inspect --selftest really runs green (it plants prompt/wire/unknown-call mismatches and must report them)')
+const noConsumerRun = runSelfProof('audit-no-consumer.mjs', '--selftest')
+ok(noConsumerRun && noConsumerRun.status === 0, 'audit-no-consumer --selftest really runs green (it plants a mechanism with no production caller and requires A)')
 const cleanRun = runSelfProof('clean-temp.mjs', '--self-test')
 ok(cleanRun && cleanRun.status === 0, 'clean-temp --self-test really runs green (declared self-proof flag #2)')
 const releaseRun = runSelfProof('release-check.mjs', '--self-test')
