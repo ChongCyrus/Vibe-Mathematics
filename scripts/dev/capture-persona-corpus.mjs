@@ -11,9 +11,11 @@ import { readFileSync, existsSync, mkdirSync, writeFileSync, readdirSync, rename
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { legacyEntry } from '../../tests/_lib/legacy-presets.mjs'
 
 const OUT = 'prompt-corpus-v5/persona-corpus-v5.json'
-const mod = await import('../../vibe-math-v5r/vibe-math-v5r.js')
+const mod = await import(pathToFileURL(legacyEntry('vibe-math-v5r')).href)
 const workspace = mkdtempSync(join(tmpdir(), 'v5r-persona-capture-'))
 const root = { id: 'capture-root', session: { id: 'capture-root', header: { cwd: workspace } }, options: {} }
 const captured = []
