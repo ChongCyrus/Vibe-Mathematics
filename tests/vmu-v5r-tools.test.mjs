@@ -1361,6 +1361,10 @@ try {
     join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'settings', 'defaults.json'), 'utf8')).defaults || {}
   const packKeyCountR7 = Object.keys(packDefaultsR7).length
   const staleKeyR7 = 'vmu.mailbox.urgentKinds'
+  const urgencyDefR7 = kernel.settingDef(staleKeyR7)
+  ok(urgencyDefR7 && Array.isArray(urgencyDefR7.def) && urgencyDefR7.def.length === 0,
+    '★ 正：该键的默认在 schema 里就是空表 ⇒ 值层"不声明"＝采用框架默认，不是"忘了配"',
+    urgencyDefR7 && { type: urgencyDefR7.type, def: urgencyDefR7.def })
   ok(!Object.prototype.hasOwnProperty.call(packDefaultsR7, staleKeyR7),
     '★★★ 反：pack 值层不再显式声明信箱自动紧迫种类的键（schema 的默认是唯一所有者；旧显式值会把它盖住）',
     { keys: packKeyCountR7, present: Object.prototype.hasOwnProperty.call(packDefaultsR7, staleKeyR7) })
@@ -1396,6 +1400,67 @@ try {
   })
   ok(promptHits.filter((h) => h.wait && h.order && h.urgent && h.noInterrupt && h.waitTool && h.noTemplate).length === 3,
     '★★★ prompts: all four mailbox-semantics lines are in EVERY role section, item 3 keeps "不代表内容更重要 / 不必中断", and no `{{ }}`', promptHits)
+
+  // ── ⑦l PHASE 9 / goal 3 (pack side): the ENVIRONMENT face must be PUBLISHED here, and the prompts must teach the
+  // four-step protocol (probe first → do not force it → report a finding → the main agent asks the user for authorization).
+  // ★ WHY THE PUBLICATION IS MEASURED, NOT ASSUMED: the host publishes this face from a FAMILY declaration (`vmu.env.*`
+  // or ANY `vmu.math.*`), and v5r declares math keys in its value layer - so the face is expected. But "expected" is
+  // exactly what this repository refuses to accept, so there are TWO arms: with the pack the name IS in the registered
+  // specs; with NO pack it is ABSENT, which is what makes the pack's declaration the live cause (zero mechanism holds).
+  console.log('=== 7l. ENV FACE PUBLISHED IN v5r + THE FOUR-STEP ENVIRONMENT PROTOCOL IN THE PROMPTS ===')
+  const hostModL = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'host.js')).href)
+  ok(Object.keys(hostModL.TOOL_NAMES).length >= 54 && hostModL.TOOL_NAMES.env === 'vibe_vmu_env',
+    '★ the framework declares the env face by name (TOOL_NAMES.env)', { count: Object.keys(hostModL.TOOL_NAMES).length, env: hostModL.TOOL_NAMES.env })
+  ok(v5rBoot.names.includes('vibe_vmu_env'),
+    '★★★ 正：v5r 的可见工具里有 vibe_vmu_env（宿主 register 捕获，不是读源码猜的）',
+    { tools: v5rBoot.names.length, has: v5rBoot.names.includes('vibe_vmu_env') })
+  ok(!bare.names.includes('vibe_vmu_env'),
+    '★★ 反（零机制对照）：没有 pack 的那一次装配里没有它 ⇒ v5r 的声明才是这次发布的原因', { bareTools: bare.names.length })
+  const envSpecL = v5rBoot.specOf('vibe_vmu_env')
+  const envPropsL = envSpecL && envSpecL.parameters && envSpecL.parameters.properties ? envSpecL.parameters.properties : {}
+  const envActionsL = envPropsL.action && Array.isArray(envPropsL.action.enum) ? envPropsL.action.enum.slice().sort() : []
+  ok(envActionsL.length === 3 && envActionsL.join(',') === 'list,probe,report',
+    '★★ the DEPLOYED schema offers exactly probe/list/report (so the prompt may name these actions)', { actions: envActionsL })
+  // ★ The CAUSE is stated as data too, so "why is it published" is checkable after the fact: v5r's value layer declares
+  // `vmu.math.*` keys, and the host's env family is ['vmu.env.', 'vmu.math.'] - so the math knobs an institution wants
+  // anyway are what activate the environment face. (No `vmu.env.needs` declaration is added: restating a 22-row table
+  // that the schema already owns is the stale-explicit-value defect pinned in §7k-bis.)
+  const packDefaultsL = JSON.parse((await import('node:fs')).readFileSync(
+    join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'settings', 'defaults.json'), 'utf8')).defaults || {}
+  const envFamilyL = Object.keys(packDefaultsL).filter((k) => k.startsWith('vmu.env.') || k.startsWith('vmu.math.'))
+  ok(envFamilyL.length >= 1 && envFamilyL.filter((k) => k.startsWith('vmu.math.')).length >= 1,
+    '★★ 发布原因可复核：v5r 的值层里有 vmu.math.* 键（宿主 env 面的家族是 vmu.env. 或 vmu.math.）⇒ 不必再声明一张 env 需求表',
+    envFamilyL)
+  // The four steps, as markers over the REAL section text (not over the source file).
+  const stepRowsL = roleSecs.map((s) => {
+    const t = String((s && s.text) || '')
+    return {
+      role: (s && s.scope && s.scope.role) || (s && s.name),
+      probe: t.includes('动手前先探环境') && t.includes("action:'probe'"),
+      noForce: t.includes('探不通不要硬试') && t.includes('框架不会替你安装') && t.includes('不会静默假装成功'),
+      report: t.includes('探不通就上报') && t.includes("action:'report'") && t.includes('主代理会读到'),
+      authorize: t.includes('未获授权前不要尝试安装') && t.includes('不要改用户的系统'),
+      inBullet: /^[ \t]*·[ \t]*vibe_vmu_env\b/m.test(t),
+    }
+  })
+  ok(stepRowsL.length === 3 && stepRowsL.filter((r) => r.probe && r.noForce && r.report && r.authorize && r.inBullet).length === 3,
+    '★★★ 正：三段角色提示词都写了四步（先探 → 不硬试 → 上报 → 未授权前不装），且名字出现在该角色的 `·` bullet 里', stepRowsL)
+  const chairTextL = String((roleSecs.find((s) => s && s.scope && s.scope.role === 'chair') || {}).text || '')
+  ok(chairTextL.includes('你是主代理') && chairTextL.includes('installCommand') && chairTextL.includes('请求授权') &&
+    chairTextL.includes('未获授权前不要尝试安装'),
+    '★★★★ 正（主代理那一步）：chair 段写着"读到 environment-missing 的 finding → 报告缺什么 ＋ 给 installCommand ＋ 请求授权"，并逐字含着"未获授权前不要尝试安装"',
+    { mainAgent: chairTextL.includes('你是主代理'), install: chairTextL.includes('installCommand'), verbatim: chairTextL.includes('未获授权前不要尝试安装') })
+  // ★ 反：NO hard-coded absolute path may reach the model from these sections ("no hard-coded paths" must be checkable
+  // at the PROMPT layer, not only in code). The detector is proved NON-BLIND on a planted control before the zero counts.
+  const absReL = /[A-Za-z]:[\\/]|\/usr\/bin\/|\/usr\/local\/bin\/|\\Users\\|\\\\[A-Za-z0-9_.-]+\\/
+  const absReLg = new RegExp(absReL.source, 'g')
+  const plantedL = 'D:\\tools\\lean.exe and /usr/bin/python3 and C:/Users/x'
+  ok((plantedL.match(absReLg) || []).length === 3,
+    '★ 反断言的自证：同一个检测器在种下的三处绝对路径上真的命中（否则下面的 0 命中也说明不了什么）',
+    (plantedL.match(absReLg) || []).length)
+  const absHitsL = roleSecs.map((s) => (String((s && s.text) || '').match(absReL) || []).slice(0, 3))
+  ok(absHitsL.length === 3 && absHitsL.filter((h) => h.length === 0).length === 3,
+    '★★★ 反：三段角色提示词里没有任何写死的绝对路径（盘符／/usr/bin／用户目录／UNC 一律 0 命中）', absHitsL)
 
 } finally {
   // The store writes atomically through temp+rename, so a removal can race one in-flight file: retry, and never let

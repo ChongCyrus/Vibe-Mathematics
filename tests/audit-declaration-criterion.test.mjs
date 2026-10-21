@@ -674,6 +674,8 @@ const keyShapeRun = runSelfProof('generate-wired-schema.mjs', '--selftest')
 ok(keyShapeRun && keyShapeRun.status === 0,
   'the wired-schema KEY_SHAPE --selftest really runs green (round 3: the "a key quoted in a COMMENT is not a key" probe has an execution point)',
   keyShapeRun ? 'exit=' + keyShapeRun.status : 'not run')
+const inspectRun = runSelfProof('slv-inspect.mjs', '--selftest')
+ok(inspectRun && inspectRun.status === 0, 'slv-inspect --selftest really runs green (it plants prompt/wire/unknown-call mismatches and must report them)')
 const cleanRun = runSelfProof('clean-temp.mjs', '--self-test')
 ok(cleanRun && cleanRun.status === 0, 'clean-temp --self-test really runs green (declared self-proof flag #2)')
 const releaseRun = runSelfProof('release-check.mjs', '--self-test')

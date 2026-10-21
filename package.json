@@ -830,7 +830,9 @@
     "vibe-math-vmu/kit/paper.js",
     "vibe-math-vmu/settings/env-needs.js",
     "vibe-math-vmu/kernel/env.js",
-    "vibe-math-vmu/tools/env.js"
+    "vibe-math-vmu/tools/env.js",
+    "scripts/slv-inspect.mjs",
+    "docs/AUDIT-CHECKLIST-SLV-INSPECT.md"
   ],
   "license": "MIT",
   "keywords": [
