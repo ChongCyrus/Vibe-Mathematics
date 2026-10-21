@@ -1393,8 +1393,10 @@ export function createTurnOrchestrator({
       // the caller knows to play the member turn and answer on the next call.
       // ★ ROUND 88: and it NAMES THE ROUTE that handed the prompt back, so "which delivery path ran" is read from the
       // receipt the agent actually sees rather than inferred from prose in a transcript.
-      if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null, receipt: null, attribution: r.attribution || null }
-      return { ok: true, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, turn: r.turn.id } }
+      if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null,
+        instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null }
+      return { ok: true, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length,
+        instructionDelivered: r.instructionDelivered === true, turn: r.turn.id } }
     } catch (e) {
       // ★★★ ROUND 61: THE STACK STAYS. This catch kept only the message, and that is precisely why a real machine's
       // failure was undiagnosable: the transcript recorded `Cannot read properties of undefined (reading 'id')` thirty-

@@ -51,10 +51,12 @@ const mk = (settings = {}, extra = {}) => m.createMailbox(Object.assign({ clock,
   const mb = mk({}, { deliver: async (env) => { calls.push(env); return { ok: true } } })
   mb.send('r-1', { to: 'r-2', text: 'hello', kind: 'dm', urgent: true })
   const out = await mb.flush('r-2')
-  ok(out.ok === true && out.acked.length === 1 && out.remaining === 0, 'a successful urgent flush acknowledges the urgent entry')
+  ok(out.ok === true && out.acked.length === 0 && out.remaining === 1, 'an urgent flush DELIVERS the body but does NOT ack it (the inbox must still show the message)')
   ok(calls.length === 1 && calls[0].member === 'r-2' && calls[0].count === 1 && calls[0].urgent === true, 'the transport sees the envelope with the urgent flag')
   ok(calls[0].entries[0].text === 'hello', 'an URGENT envelope carries the body (dropped only at ack)')
-  ok(mb.status().acked === 1 && mb.status().pending === 0, 'status separates pending from the acked ledger')
+  ok(mb.status().acked === 0 && mb.status().pending === 1, 'status keeps the urgent entry pending until the member opens/acks it')
+  ok(mb.list('r-2').entries.length === 1 && /1 条/.test(out.notice),
+    '★ 正：提示词说 N 条，list() 也正好有 N 条（紧急投递不再自相矛盾）', { list: mb.list('r-2').entries.length, notice: out.notice })
 
   // A transport that returns false acks NOTHING.
   const refuseMb = mk({}, { deliver: async () => false })
@@ -121,9 +123,11 @@ const mk = (settings = {}, extra = {}) => m.createMailbox(Object.assign({ clock,
   const id = sent.ids[0]
   ok(mb.anchor(id).text === 'evidence', 'live mail resolves as an anchor')
   await mb.flush('r-2')
-  await expectThrow(() => mb.anchor(id), 'VMU_MAILBOX_ANCHOR_DANGLING', 'delivered mail can no longer be quoted')
+  ok(mb.anchor(id).text === 'evidence', 'urgent delivery leaves the body pending: the prompt count and list() match')
+  await mb.ack('r-2', [id])
+  await expectThrow(() => mb.anchor(id), 'VMU_MAILBOX_ANCHOR_DANGLING', 'acked mail can no longer be quoted')
   await expectThrow(() => mb.send('r-1', { to: 'r-3', text: 're', kind: 'dm', replyTo: id }),
-    'VMU_MAILBOX_ANCHOR_DANGLING', 'a reply to delivered mail is refused by name')
+    'VMU_MAILBOX_ANCHOR_DANGLING', 'a reply to acked mail is refused by name')
   await expectThrow(() => mb.anchor('ml-9999'), 'VMU_MAILBOX_ANCHOR_DANGLING', 'an unknown id is refused too')
   await expectThrow(() => mb.ack('r-2', [id]), 'VMU_MAILBOX_ACK_UNKNOWN', 'acking an already-acked entry is refused (no silent no-op)')
 }

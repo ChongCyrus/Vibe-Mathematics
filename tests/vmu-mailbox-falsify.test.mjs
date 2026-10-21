@@ -74,8 +74,8 @@ const family = await falsifyFamily({
 })
 
 console.log('=== CONTROL GROUP: the unmutated module satisfies the invariant ===')
-ok(family.cases[0].real.goodAcked === 1 && family.cases[0].real.goodPending === 0,
-  'a GOOD transport acks the entry (the control direction, so "pending" below is a real reading)', family.cases[0].real)
+ok(family.cases[0].real.goodAcked === 0 && family.cases[0].real.goodPending === 1,
+  '★ 正：flush 不 ack（紧急正文投递后仍留在信箱，成员 list/open/ack 才结算）', family.cases[0].real)
 ok(family.cases[0].real.refusedPending === 1 && family.cases[0].real.throwPending === 1,
   '★ a refusing AND a throwing transport both leave the entry pending', family.cases[0].real)
 ok(family.cases[0].real.refusedCode === 'VMU_MAILBOX_DELIVERY_FAILED' && family.cases[0].real.throwCode === 'VMU_MAILBOX_DELIVERY_FAILED',
@@ -88,8 +88,8 @@ ok(family.ok, '★ every mutation of the mailbox family is caught (control green
 const byLabel = (needle) => family.results.find((r) => r.label.includes(needle))
 ok(!!byLabel('ack BEFORE') && byLabel('ack BEFORE').red.refusedPending === 0 && byLabel('ack BEFORE').red.throwPending === 0,
   '★ "ack before delivery": a FAILED delivery now acks everything (refusedPending/throwPending both 0)', byLabel('ack BEFORE') && byLabel('ack BEFORE').red)
-ok(!!byLabel('ack BEFORE') && byLabel('ack BEFORE').red.goodError === 'VMU_MAILBOX_ACK_UNKNOWN',
-  '★ and the later LEGITIMATE ack is then refused as a double ack (the defect is named, not silent)', byLabel('ack BEFORE') && byLabel('ack BEFORE').red.goodError)
+ok(!!byLabel('ack BEFORE') && byLabel('ack BEFORE').red.goodPending === 0,
+  '★ "ack before delivery" consumes the entry before settlement (control flush leaves it pending)', byLabel('ack BEFORE') && byLabel('ack BEFORE').red)
 ok(!!byLabel('ack ON') && byLabel('ack ON').red.refusedPending === 0 && byLabel('ack ON').red.throwPending === 1,
   '★ "ack on the refused branch": only the refusing path consumes the entry it did not deliver (the throwing path is untouched)', byLabel('ack ON') && byLabel('ack ON').red)
 ok(family.results.length > 0 && family.results.every((r) => r.applied && r.importable && r.falsified),

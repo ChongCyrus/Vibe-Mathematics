@@ -333,6 +333,10 @@ export function createLeanFace(opts) {
     code: (j.receipt && j.receipt.code) || null,
     message: (j.receipt && j.receipt.message) || null,
     hint: (j.receipt && j.receipt.hint) || null,
+    // ★ PHASE 9 / round 9: a compile with rc=1 was unreadable ("真错在哪"). Tails live on the JOB view only (never
+    // status), capped at 2000 chars each; this is the compiler's own words, not a synthesized judgement.
+    stdoutTail: String((j.receipt && (j.receipt.stdoutTail || j.receipt.stdout)) || '').slice(-2000),
+    stderrTail: String((j.receipt && j.receipt.stderrTail) || '').slice(-2000),
     dropped: { events: droppedEvents }, // 截断/丢弃必计数（纪律）
   })
 
@@ -526,7 +530,10 @@ export function createLeanFace(opts) {
     }
     // ★ PHASE 7 / round 19: exitCode null/undefined used to become NaN and be labelled EXIT_NONZERO - a WRONG NAME
     // (it sends the reader to the proof while the truth is that spawn returned nothing). No exit code = spawn failure.
-    const rawExit = r.exitCode
+    // ★ PHASE 9 / round 9: the seam has TWO names for the same fact (`host-spawn` returns `code`, and also mirrors it
+    // as `exitCode` since this round). Read both, in that order; the old `r.exitCode` alone made a host that returned
+    // doneValue {"exitCode":1} look like "no exitCode" forever. This was a FIELD-NAME defect, not a missing channel.
+    const rawExit = r.exitCode !== undefined ? r.exitCode : r.code
     const exitCode = Number(rawExit)
     if (rawExit === null || rawExit === undefined || !Number.isFinite(exitCode)) {
       j.state = 'failed'; j.exitCode = null; j.endedAt = clock()
@@ -567,7 +574,8 @@ export function createLeanFace(opts) {
       ? { ok: true, passed: true, isRefutation: false, exitCode, hashUnchanged: true, stdout: capOut.text.slice(0, 4000),
           stdoutDroppedBytes: capOut.droppedBytes, stderrDroppedBytes: capErr.droppedBytes, hostLossy, spillPath: hostSpill }
       : Object.assign(refuse(exitCode === 0 ? 'VMU_LEAN_HASH_CHANGED' : 'VMU_LEAN_EXIT_NONZERO',
-        exitCode === 0 ? '编译期间文件内容已变 ⇒ 结果不算 passed（hash 变了）' : 'Lean 退出码 ' + exitCode,
+        exitCode === 0 ? '编译期间文件内容已变 ⇒ 结果不算 passed（hash 变了）'
+          : 'Lean 退出码 ' + exitCode + (capErr.text ? '；stderr 尾部：' + capErr.text.slice(-800) : '（stderr 为空）'),
         exitCode === 0 ? '编译后不要再改文件；重跑一次' : '看 stdout/stderr 修证明；本面不猜结论'),
         { stdoutDroppedBytes: capOut.droppedBytes, stderrDroppedBytes: capErr.droppedBytes, hostLossy, spillPath: hostSpill,
           stdoutTail: capOut.text.slice(-2000), stderrTail: capErr.text.slice(-2000) })

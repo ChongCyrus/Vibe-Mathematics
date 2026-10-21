@@ -1313,6 +1313,7 @@ recount(ballotId):
 **不变式（与 v5r 的对应关系）**
 - 群聊：消息 `{id:'msg-N', seq, from, at, text, replyTo, quotes[], kind}` —— **id／发言人／时间／回复目标**四件齐全；被拒发言**不追加**（"拒绝不是一条消息"）；禁言**到期即自动解除并留痕**；配额 `0＝不限`、窗口 `0＝整场`；**表决期禁言由注入的 `isFrozen()` 派生**（与 `ballot.freeze` 同源，无定时器），`freezeExemptAdmins` 保留 v5r 的 chair-first 豁免开关。
 - 信箱：**每收件人一份**（群发＝N 条 N 个 id）；**非紧急投递只给提示（count／发件人／标题，notice ≤300 字），正文不进提示词**；成员用 `list` 看 8 字段行（无正文），`open` 返回正文并置 `read:true`，`setState` 改 read/todo；**`ack` 是投递层结算，不等于读过**；**ack 后正文即删**，指向它的引用锚**具名悬空拒**；`freshOnly`＋`markInjected/clearInjected` ＝ **每提示一次去重**；紧急只有发送方**显式 `urgent:true`** 才带正文（`vmu.mailbox.urgentKinds` 默认空，机构可声明 kind 自动紧急）；其余按 `digestMax`／`digestWindowMs` 合批（45000ms／12 是**非紧急提示的节奏**，不是批量投正文）；`plan()` 受 `wakeBudget` 约束且**具名列出被推迟者与原因**。
+- **紧急投递（PHASE 9 / 轮 9）**：紧急正文进提示词，但**不 ack**；条目留在信箱里（`list` 的 N 与提示词一致），成员 `open` 读正文，`ack` 仍由成员/调用方显式结算。这样“提示词说收到 N 条”与“信箱里真有 N 条”不会自相矛盾。
 - 状态面板：字段 `overall`（总目标）／`subgoal`／`plan[]`／`status`／**`subtasks[]`（正在执行的子任务，v5r 缺的独立字段）**，`state ∈ planned|running|blocked|done`；**只追加**历史；时间**由框架写**（自带 `…At/…Ms` 具名拒）；同值幂等；他人改 `overall` ⇒ 记 `deviation`（保留原作者与原值）或按 `deviationPolicy:"refuse"` **具名拒**；`view()` **留痕**且上限触界**计数上报**；有 `members` 接缝时镜像 `overall/subgoal/plan/status`（**不镜像 `subtasks`**，那个面不认识它）。
 
 ### 25.2 基线 A（v5r 实际实现）覆盖表

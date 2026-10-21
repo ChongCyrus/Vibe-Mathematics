@@ -461,12 +461,15 @@ export function createMailbox({
       deliveryStats.sent += 1
       deliveryStats.noticesBuilt += 1
       deliveryStats.urgentDelivered += urgentRows.length
-      let ackedIds = []
-      if (urgentRows.length) ackedIds = mailbox.ack(id, urgentRows.map((e) => e.id)).acked
-      if (plainRows.length) mailbox.markInjected(id, plainRows.map((e) => e.id))
-      record('flushed', { member: id, acked: ackedIds.length, notified: plainRows.length, urgent: isUrgent })
-      emitHook('mailbox/delivered', { member: id, acked: ackedIds.length, notified: plainRows.length, remaining: mailbox.pending(id).length, urgent: isUrgent }, { member: id })
-      return { ok: true, member: id, delivered: urgentRows.length, acked: ackedIds, notified: plainRows.length,
+      // ★ PHASE 9 / round 9 (UX): an URGENT body is DELIVERED IN THE PROMPT, not acked. The member's prompt says
+      // "you received N messages"; if flush acked them the inbox would show 0 and the member correctly reports a
+      // contradiction (measured: it spent two rounds looking). Keep the entry pending and mark it injected so it is
+      // not repeated; `open()` still returns the body, and `ack()` remains the explicit settlement.
+      const ackedIds = []
+      if (allRows.length) mailbox.markInjected(id, allRows.map((e) => e.id))
+      record('flushed', { member: id, acked: ackedIds.length, notified: allRows.length, urgent: isUrgent })
+      emitHook('mailbox/delivered', { member: id, acked: ackedIds.length, notified: allRows.length, remaining: mailbox.pending(id).length, urgent: isUrgent }, { member: id })
+      return { ok: true, member: id, delivered: urgentRows.length, acked: ackedIds, notified: allRows.length,
         remaining: mailbox.pending(id).length, urgent: isUrgent, notice, noticeLength: notice.length,
         entries: envelope.entries.length, timeoutMs: envelope.timeoutMs, enforced: ['vmu.mailbox.deliverTimeoutMs'] }
     },

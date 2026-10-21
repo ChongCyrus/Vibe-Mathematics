@@ -166,6 +166,24 @@ test('a real non-zero exit is still VMU_LEAN_EXIT_NONZERO', async () => {
   passed += 1
 })
 
+// ★ PHASE 9 / round 9: host-spawn returns { code, exitCode }; reading ONLY r.exitCode made a real rc=1 invisible.
+test('both exitCode and code shapes reach EXIT_NONZERO, and compiler stderr is in message/job view', async () => {
+  for (const shape of [{ exitCode: 1 }, { code: 1 }]) {
+    const settings = mkSettings({ 'vmu.math.leanAsync': false })
+    const spawn = async () => Object.assign({ stderr: 'error: unknown identifier Foo' }, shape)
+    const face = createLeanFace({ settings, spawn, root: dir, clock: () => 7, log: () => {} })
+    const sub = await face.submit({ statement: 'True', file: leanFile })
+    const s = await face.settle(sub.id)
+    assert.equal(s.exitCode, 1, JSON.stringify(shape))
+    assert.equal(s.receipt.code, 'VMU_LEAN_EXIT_NONZERO', JSON.stringify(shape))
+    assert.match(s.receipt.message, /unknown identifier Foo/, 'the compiler stderr is in the message')
+    const job = face.list().jobs.find((j) => j.id === sub.id)
+    assert.match(job.stderrTail, /unknown identifier Foo/, 'job view carries stderrTail')
+    assert.equal(typeof job.stdoutTail, 'string', 'job view carries stdoutTail (even empty)')
+  }
+  passed += 1
+})
+
 // ★ PHASE 9 / round 1: the failure must carry EVIDENCE and distinguish "command not found" from "ran but failed".
 test('spawn resolve/ENOENT is VMU_LEAN_COMMAND_NOT_FOUND and carries resolved/doneError/pathPrefix', async () => {
   const settings = mkSettings({ 'vmu.math.leanAsync': false })

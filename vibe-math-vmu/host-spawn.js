@@ -284,7 +284,7 @@ export function createHostSpawn({
       const text = (side) => { try { const c = handle.collected && handle.collected[side]; return c ? c.readFrom(0).text : '' } catch { return '' } }
       if (outcome.timeout) {
         // Return the shape the bridge turns into VMU_JOB_TIMEOUT; the host's graceMs terminates the process.
-        return { code: null, stdout: text('stdout'), stderr: text('stderr'), timedOut: true, ms,
+        return { code: null, exitCode: null, stdout: text('stdout'), stderr: text('stderr'), timedOut: true, ms,
           signal: null, resolved: resolvedExe, doneError, spawnError, resolveError, cwd: null, path: pathPrefix,
           doneValue: null, doneShape: 'timeout-no-resolve', handleKeys: handleKeysOf(handle) }
       }
@@ -304,7 +304,7 @@ export function createHostSpawn({
       }
       const value = outcome.value
       const exitCode = exitCodeOf(value)
-      return { code: exitCode,
+      return { code: exitCode, exitCode,
         stdout: text('stdout'), stderr: text('stderr'), timedOut: false, ms,
         signal: (value && value.signal) || null,
         resolved: resolvedExe, doneError, spawnError, resolveError, cwd: null, path: pathPrefix,

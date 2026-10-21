@@ -127,7 +127,7 @@ for (const [label, value] of [['exitCode', { exitCode: 0 }], ['code', { code: 0 
   }
   const seam = m.createHostSpawn({ ctx: { get: () => sub }, defaultCwd: null })
   const out = await seam({ file: 'lean', args: ['--version'], timeoutMs: 5000 })
-  ok(out.code === 0 && typeof out.doneValue === 'string' && out.doneValue.includes(String(value.code ?? value.status ?? value.exitCode)) &&
+  ok(out.code === 0 && out.exitCode === 0 && typeof out.doneValue === 'string' && out.doneValue.includes(String(value.code ?? value.status ?? value.exitCode)) &&
     Array.isArray(out.handleKeys) && out.handleKeys.includes('done'),
     '★ 正：handle.done 返回 {' + label + ':0} ⇒ 归一化为 exitCode 0，并带回 doneValue/keys', { code: out.code, doneValue: out.doneValue, handleKeys: out.handleKeys })
   seen.push(out)
@@ -139,7 +139,7 @@ for (const [label, value] of [['exitCode', { exitCode: 0 }], ['code', { code: 0 
   }
   const seam = m.createHostSpawn({ ctx: { get: () => sub }, defaultCwd: null })
   const out = await seam({ file: 'lean', args: ['--version'], timeoutMs: 5000 })
-  ok(out.code === null && out.doneValue === '{"foo":1}' && out.doneShape === 'object',
+  ok(out.code === null && out.exitCode === null && out.doneValue === '{"foo":1}' && out.doneShape === 'object',
     '★ 反：done 返回未知形状 ⇒ exitCode 仍是 null，但 doneValue 原样保留（不再只剩“无退出码”）', { code: out.code, doneValue: out.doneValue, doneShape: out.doneShape })
 }
 

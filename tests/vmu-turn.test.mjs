@@ -366,6 +366,10 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(ticks[0].receipt.member === 'acad' && ticks[1].receipt.member === 'r-1' && ticks[2].receipt.member === 'r-2',
     'T50. **** and the THREE QUESTIONS now have three owners: WHEN is the host tick (the clock is a seam by design), WHO is the declared policy, and WHAT PROMPT is the pipeline - none of them left to the host to compose',
     { order: ticks.map((t) => t.receipt && t.receipt.member) })
+  // ★ PHASE 9 / round 9: `step` used to drop instructionDelivered; a host could not tell whether the why reached the prompt.
+  ok(ticks.every((t) => t.receipt.instructionDelivered === true), 'T50b. ★ 正：带 why 的 step 回执 instructionDelivered:true', ticks.map((t) => t.receipt.instructionDelivered))
+  const noWhy = await loop3.step({ members: roster, phase: 'normal' })
+  ok(noWhy.ok === true && noWhy.receipt.instructionDelivered === false, 'T50c. ★ 反：无 why 的 step 回执 instructionDelivered:false', noWhy.receipt)
   const bad = await loop3.step({ members: roster, phase: 'not-a-phase' })
   ok(bad.ok === false && bad.code === 'VMU_INVALID_ARGUMENT' && bad.receipt === null,
     'T51. **** a failed round is RETURNED with its code rather than thrown, because a failed round is an operational outcome - while a malformed ARGUMENT still throws',

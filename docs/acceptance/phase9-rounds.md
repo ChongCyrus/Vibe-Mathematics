@@ -104,6 +104,13 @@
 - **假红根因**：它只读用户消息，没并入 `system-prompt` 追加消息；修后 `sessions-r6` **0 RED**。
 - 静态清单降 **INFO**；**同源块才是权威**。
 
+### 轮 8–9：字段名、尾输出、step 回执、紧急消息一致性
+- **Lean `doneValue` 真机读到**：`{"exitCode":1,"signal":null}`、`handleKeys` 含 `done/terminate/waitForExit` ⇒ 通道是通的，**`lean.js` 却读 `r.exitCode` 而 `host-spawn` 返回 `{code}`** ⇒ 一行字段名缺陷。
+- **双保险**：`lean.js` 读 `r.exitCode ?? r.code`；`host-spawn` 同时返回 `code` 与 `exitCode`；两种形状都断言到 `EXIT_NONZERO`。
+- **`lean_job` view** 增 `stdoutTail`／`stderrTail`（各截 2000）；`EXIT_NONZERO` message 带 stderr 尾部；**只进 job view，不进 status**。
+- **`step` 回执** 增 `instructionDelivered`（此前只有 `run` 有）。
+- **紧急消息 UX**：紧急正文进提示词但**不再 ack**；条目留在信箱，`list` 的 N 与提示词一致，`open` 读正文，`ack` 显式结算。
+
 ---
 
 ## §6 真机证据（逐条原文；来源见标注）
