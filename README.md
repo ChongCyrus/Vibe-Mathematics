@@ -18,6 +18,10 @@
 
 安装本插件包（或手动复制预设）后，DSH 的预设选择器里会出现**四个** agent preset。
 
+> **⚠️ 旧 preset 弃用（v2 / v3 / v4 / v5 / v5r）**：它们仍在仓内作历史参考，但方向已改为
+> `vibe-math-vmu` ＋ pack；对应关系与“为何尚未从发货面移除”见
+> `docs/DEPRECATED-LEGACY-PRESETS.md`。
+
 ---
 
 ## 🧭 导航：我想要……→ 从这里开始
