@@ -881,7 +881,14 @@ async function toolPaper(args = {}, { kernel } = {}) {
         missing: Array.isArray(finalized.missing) ? finalized.missing.slice() : [],
         pdf: finalized.pdf ? { ok: finalized.pdf.ok === true, code: finalized.pdf.code || null, message: finalized.pdf.message || null,
           faceCode: finalized.pdf.faceCode || null,
-          triedEngines: Array.isArray(finalized.pdf.triedEngines) ? finalized.pdf.triedEngines.slice(0, 12) : [] } : null,
+          // ★ THE CAP MUST ANNOUNCE ITSELF. A caller that sees a truncated list with no marker concludes those are
+          // all the engines that were tried - the same silent-truncation defect records.list and read_library had.
+          // The cap stays (a receipt must stay bounded) but `triedEnginesTotal` and `triedEnginesTruncated` say so.
+          ...(() => {
+            const all = Array.isArray(finalized.pdf.triedEngines) ? finalized.pdf.triedEngines : []
+            const capped = all.slice(0, 12)
+            return { triedEngines: capped, triedEnginesTotal: all.length, triedEnginesTruncated: all.length > capped.length }
+          })() } : null,
       } }
     }
     case 'render': {

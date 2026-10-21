@@ -14,7 +14,10 @@
 //               swallow the next function produces false passes.
 import { readFileSync } from 'node:fs'
 
-const R = new URL('../', import.meta.url)
+// ★ G4 stage A: every preset source is resolved through the ONE preset seam (legacy-presets.mjs), so the
+// five directories can move by flipping LEGACY_BASE without editing this audit.
+import { legacyFile } from './_lib/legacy-presets.mjs'
+
 const ENV_OF = {
   'vibe-math-v2/vibe-math-v2.js': 'V2_PLUGIN',
   'vibe-math-v3/vibe-math-v3.js': 'V3_PLUGIN',
@@ -22,9 +25,13 @@ const ENV_OF = {
   'vibe-math-v5/vibe-math-v5.js': 'V5_PLUGIN',
 }
 // a mutant harness (tests/audit-path-discipline.mutants.mjs) points these at scratch copies
+const legacyPathOf = (p) => {
+  const idx = p.indexOf('/')
+  return legacyFile(p.slice(0, idx), p.slice(idx + 1))
+}
 const rd = (p) => {
   const e = ENV_OF[p] && process.env[ENV_OF[p]]
-  return e ? readFileSync(e, 'utf8') : readFileSync(new URL(p, R), 'utf8')
+  return e ? readFileSync(e, 'utf8') : readFileSync(legacyPathOf(p), 'utf8')
 }
 let passed = 0
 let failed = 0

@@ -50,6 +50,9 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, unlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+// ★ G4 stage A: preset sources come from the ONE preset seam; the PERSONA_ROOT override still wins for the
+// sensitivity harness (which copies presets into a scratch root with the same directory names).
+import { legacyDir } from './_lib/legacy-presets.mjs'
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url))
 /**
@@ -61,6 +64,8 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url))
  * shared contract is not part of a preset copy.
  */
 const BASE = process.env.PERSONA_ROOT ? resolve(process.env.PERSONA_ROOT) : ROOT
+/** Directory of one preset under the active root (scratch root for the sensitivity harness, else the seam). */
+const presetDir = (P) => (process.env.PERSONA_ROOT ? join(BASE, P.dir) : legacyDir(P.dir))
 
 let passed = 0
 let failed = 0
@@ -223,8 +228,8 @@ const LEAN_PARAMS = ['formalVerify', 'leanCommand', 'leanArgs', 'leanTimeoutMs',
 
 ok(PRESETS.length > 0, 'non-vacuous: the preset table must not be empty (' + PRESETS.length + ' presets)')
 for (const P of PRESETS) {
-  const ymlPath = join(BASE, P.dir, 'agent.cordis.yml')
-  const jsPath = join(BASE, P.dir, P.js)
+  const ymlPath = join(presetDir(P), 'agent.cordis.yml')
+  const jsPath = join(presetDir(P), P.js)
   const yml = readFileSync(ymlPath, 'utf8')
   const src = readFileSync(jsPath, 'utf8')
 

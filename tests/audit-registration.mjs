@@ -10,6 +10,8 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, mkdirSync, 
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+// ★ G4 stage A: the DEFAULT preset comes from the ONE preset seam; a preset-directory move needs no edit here.
+import { legacyFile } from './_lib/legacy-presets.mjs';
 
 const WS = mkdtempSync(join(tmpdir(), 'reg-'));
 const toolRegs = [];
@@ -39,7 +41,8 @@ const ctx = {
 };
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const FILE = process.argv[2] || 'vibe-math-v3/vibe-math-v3.js';
+// ★ G4 stage A: the default path is RESOLVED THROUGH legacy-presets.mjs (LEGACY_BASE), never hard-coded.
+const FILE = process.argv[2] || legacyFile('vibe-math-v3', 'vibe-math-v3.js');
 const TARGET = isAbsolute(FILE) ? FILE : resolve(REPO, FILE);
 const mod = await import(pathToFileURL(TARGET).href + '?t=' + Date.now());
 const plugin = mod.default || mod;

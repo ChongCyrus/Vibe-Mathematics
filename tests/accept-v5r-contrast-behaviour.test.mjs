@@ -177,8 +177,14 @@ const opened = (settings) => { const t = face(settings); const o = t.open({ type
   ok(/指纹与磁盘正文不一致/.test(src) && /绝不静默用旧文/.test(src), 'v5r names the falsifiable consequence: a mismatch blocks by name')
   const rec = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'records.js'), 'utf8')
   ok(/fingerprintPolicy/.test(rec), '有意改进 (source-read): vmu makes the fingerprint policy CONFIGURABLE, where v5r fixes one scheme')
-  ok(/raw bytes/.test(readFileSync(join(REPO, 'vibe-math-vmu', 'docs', '07-durability-library.md'), 'utf8')) || true,
-    '有意改进: the divergence is on purpose - vmu hashes raw bytes because only unchanged bytes count as passed')
+  // ★ THIS ASSERTION USED TO END IN `|| true`, which made it unconditionally true: it asserted nothing at all
+  // while reading like a claim about the durability volume. Removing the escape hatch immediately proved the point -
+  // the phrase it looked for does not appear there, because the claim was never written down in that form.
+  // What IS true and IS documented (07:699) is the actual contrast: vmu makes the fingerprint policy a settled
+  // setting, where v5r fixed one scheme in code.
+  const dur = readFileSync(join(REPO, 'vibe-math-vmu', 'docs', '07-durability-library.md'), 'utf8')
+  ok(/`vmu\.records\.fingerprintPolicy`/.test(dur),
+    '有意改进: the divergence is on purpose - vmu exposes the fingerprint policy as a setting (content-only by default), where v5r fixes one scheme in code')
 }
 // ---------- 9. 待续标记 (#5): in-flight work that survives a restart ----------
 {

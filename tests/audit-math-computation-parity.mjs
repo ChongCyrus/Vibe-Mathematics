@@ -1,4 +1,4 @@
-import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { legacyDir, legacyFile, LEGACY_PRESET_NAMES } from './_lib/legacy-presets.mjs'
 import { requireFile } from './_lib/require-file.mjs'
 // ============================================================================================
 // math_computation — PARITY guard (integration owner).
@@ -70,7 +70,12 @@ function skip(label, reason) {
   console.log('  SKIP ' + label + ' — ' + reason)
 }
 const sha = (p) => createHash('sha256').update(readFileSync(p)).digest('hex')
-const read = (rel) => readFileSync(join(REPO, rel), 'utf8')
+// ★ G4 stage A: repo-relative reads that point INTO a legacy preset dir resolve through the ONE preset seam.
+const read = (rel) => {
+  const idx = rel.indexOf('/')
+  const p = idx > 0 && LEGACY_PRESET_NAMES.includes(rel.slice(0, idx)) ? legacyFile(rel.slice(0, idx), rel.slice(idx + 1)) : join(REPO, rel)
+  return readFileSync(p, 'utf8')
+}
 
 // ---- extracted predicates (shared by the checks below AND by --self-probe) -----------------------
 // §7/§8 used to compute these inline; extracting them is what lets the self-probe feed the SAME
@@ -469,16 +474,22 @@ for (const p of PRESETS) {
   const reasonFields = [...callSites.matchAll(/\breason:\s*([^,}\n]*)/g)].map((m) => m[1].trim())
   const nonLiteralReasons = reasonFields.filter((v) => !/^'[^']*'$/.test(v))
   ok(nonLiteralReasons.length === 0, 'every reason: value is a STRING LITERAL (the exhaustive list cannot be evaded)', 'non-literal: ' + JSON.stringify(nonLiteralReasons.slice(0, 3)))
-  const schemaPath = [join(REPO, '_oneoff', 'mc-P1-ready', 'tool-schema.json'), resolve(REPO, '..', '_oneoff', 'mc-P1-ready', 'tool-schema.json')].find((p) => existsSync(p))
-  const schema = schemaPath ? JSON.parse(rf(schemaPath, 'utf8')) : null
-  const RV = schema && schema.refusalVocabulary
-  const same = (a, b) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort())
-  if (!RV) {
-    console.log('  note refusalVocabulary source absent (published tree) - deriving from the module only')
-  } else {
-    ok(same(kinds, RV.nextKinds), 'documented next.kind list is EXHAUSTIVE', 'code=' + [...kinds].sort().join(',') + ' doc=' + RV.nextKinds.join(','))
-    ok(same(reasons, RV.reasons), 'documented next.reason list is EXHAUSTIVE', 'code=' + [...reasons].sort().join(',') + ' doc=' + RV.reasons.join(','))
-    ok(codes.size === 11 && schema.failureCodes.length === 11, 'the emitted failure-code set is the frozen 11')
+  // ★ ROUND 16 / G4: this block used to `console.log('note …')` when the reference was absent, which let the
+  // exhaustive-vocabulary assertions vanish SILENTLY (the exact class audit-no-silent-reads exists for). The
+  // reference ships as a vendored fixture now, so absence is a NAMED RED; an absent field inside a present file is
+  // red too. The out-of-repo locations remain only as fallbacks for a historical dev checkout.
+  const schemaPath = [SCHEMA, join(REPO, '_oneoff', 'mc-P1-ready', 'tool-schema.json'), resolve(REPO, '..', '_oneoff', 'mc-P1-ready', 'tool-schema.json')].find((p) => existsSync(p))
+  ok(!!schemaPath, 'the tool-schema reference is PRESENT (its absence must redden, never silently skip the exhaustive-vocabulary checks)', 'looked at ' + SCHEMA)
+  if (schemaPath) {
+    const schema = JSON.parse(rf(schemaPath, 'utf8'))
+    const RV = schema && schema.refusalVocabulary
+    ok(!!RV, 'the tool-schema reference carries refusalVocabulary (a present file without the field is a named red, not a note)', schemaPath)
+    if (RV) {
+      const same = (a, b) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort())
+      ok(same(kinds, RV.nextKinds), 'documented next.kind list is EXHAUSTIVE', 'code=' + [...kinds].sort().join(',') + ' doc=' + RV.nextKinds.join(','))
+      ok(same(reasons, RV.reasons), 'documented next.reason list is EXHAUSTIVE', 'code=' + [...reasons].sort().join(',') + ' doc=' + RV.reasons.join(','))
+      ok(codes.size === 11 && schema.failureCodes.length === 11, 'the emitted failure-code set is the frozen 11')
+    }
   }
   const doc = rf(join(REPO, 'docs', 'math-computation.md'), 'utf8')
   for (const k of kinds) ok(doc.indexOf('`' + k + '`') !== -1, 'docs/math-computation.md names next.kind ' + k)

@@ -1,4 +1,4 @@
-import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { legacyDir, legacyFile, LEGACY_PRESET_NAMES } from './_lib/legacy-presets.mjs'
 import { requireFile } from './_lib/require-file.mjs'
 // ============================================================================================
 // math_computation — CROSS-PRESET CONTRACT guard (integration owner).
@@ -45,7 +45,12 @@ function ok(cond, label, detail) {
   failed++; failures.push(label + (detail ? ' — ' + detail : ''))
   return false
 }
-const read = (rel) => readFileSync(join(ROOT, rel), 'utf8')
+// ★ G4 stage A: repo-relative reads that point INTO a legacy preset dir resolve through the ONE preset seam.
+const read = (rel) => {
+  const idx = rel.indexOf('/')
+  const p = idx > 0 && LEGACY_PRESET_NAMES.includes(rel.slice(0, idx)) ? legacyFile(rel.slice(0, idx), rel.slice(idx + 1)) : join(ROOT, rel)
+  return readFileSync(p, 'utf8')
+}
 
 // round-8: the persona rule lines must be VERBATIM copies of the shared module constants, so a module
 // wording change can never silently leave one preset behind. Import the module once (ESM top level).
@@ -278,7 +283,7 @@ for (const f of ['README.md', 'README.en.md']) {
   // ── P1/6.1: the v4 frozen participant set is documented as the ATOMIC triple, and the deprecated
   // alias is described as an alias - both in the doc AND verifiable in the preset source.
   {
-    const v4 = requireFile(join(ROOT, 'vibe-math-v4/vibe-math-v4.js'), 'the v4 preset source the contract suite reads')
+    const v4 = requireFile(legacyFile('vibe-math-v4', 'vibe-math-v4.js'), 'the v4 preset source the contract suite reads')
     const atomic = /frozen:\s*\(function\(sn\)\{\s*return \{version: sn\?sn\.rosterVersion:null, participants: sn\?sn\.rosterSnapshot:null, kind:/.test(v4)
     ok(atomic, 'v4 exposes the frozen participant set as ONE atomic object {version, participants, kind}')
     const alias = /frozenParticipants:\s*\(activeRosterSnapshot\(\)\|\|\{\}\)\.rosterSnapshot\|\|null/.test(v4) && /deprecated/.test(v4)
@@ -289,7 +294,7 @@ for (const f of ['README.md', 'README.en.md']) {
   // ── P1/6.2: the evidence-field list cannot drift from the code again - every timeout evidence field
   // the module produces must be named in the doc, and vice versa for the two receipt-only ones.
   {
-    const mod = readFileSync(join(ROOT, 'vibe-math-v2/math-computation.js'), 'utf8')
+    const mod = readFileSync(legacyFile('vibe-math-v2', 'math-computation.js'), 'utf8')
     const timeoutFields = ['partialStdout', 'partialStderr', 'stdout', 'stderr', 'exit', 'timedOut']
     const docMissing = timeoutFields.filter((f) => doc.indexOf(f) === -1)
     ok(docMissing.length === 0, 'docs name every MATH_TIMEOUT evidence field', 'missing in doc: ' + JSON.stringify(docMissing))

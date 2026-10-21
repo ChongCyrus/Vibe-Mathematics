@@ -30,6 +30,9 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
+// ★ G4 stage A: source presets come from the ONE preset seam; the scratch root keeps the same directory names.
+import { legacyDir } from './_lib/legacy-presets.mjs'
+
 const REPO = fileURLToPath(new URL('..', import.meta.url))
 const SUITE = join(REPO, 'tests', 'audit-persona-surface.test.mjs')
 const PRESETS = [
@@ -45,8 +48,8 @@ function prepareRoot() {
   const root = mkdtempSync(join(tmpdir(), 'persona-sens-'))
   for (const P of PRESETS) {
     mkdirSync(join(root, P.dir), { recursive: true })
-    cpSync(join(REPO, P.dir, 'agent.cordis.yml'), join(root, P.dir, 'agent.cordis.yml'))
-    cpSync(join(REPO, P.dir, P.js), join(root, P.dir, P.js))
+    cpSync(join(legacyDir(P.dir), 'agent.cordis.yml'), join(root, P.dir, 'agent.cordis.yml'))
+    cpSync(join(legacyDir(P.dir), P.js), join(root, P.dir, P.js))
   }
   return root
 }

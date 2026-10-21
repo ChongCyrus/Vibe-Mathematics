@@ -9,6 +9,9 @@ import { readFileSync, existsSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+// ★ G4 stage A: the five historical preset dirs come from ONE seam; `vibe-math-vmu` is the CURRENT framework
+// (not a legacy preset) and stays repo-relative on purpose.
+import { legacyDir } from './_lib/legacy-presets.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -24,15 +27,16 @@ const ok = (cond, label, detail) => {
 }
 
 const VERSIONS = ['vibe-math-v2', 'vibe-math-v3', 'vibe-math-v4', 'vibe-math-v5', 'vibe-math-v5r', 'vibe-math-vmu']
+const dirOf = (v) => (v === 'vibe-math-vmu' ? join(REPO, v) : legacyDir(v))
 const sha = (p) => createHash('sha256').update(readFileSync(p)).digest('hex')
 
 console.log('=== 1. EVERY COPY EXISTS ===')
-const present = VERSIONS.filter((v) => existsSync(join(REPO, v, 'math-computation.js')))
+const present = VERSIONS.filter((v) => existsSync(join(dirOf(v), 'math-computation.js')))
 ok(VERSIONS.length > 0 && present.length > 0, 'the module list and the copies found are BOTH non-empty, so the comparison below cannot pass vacuously', { versions: VERSIONS.length, present: present.length })
 ok(present.length === VERSIONS.length, 'all six copies of the shared module are present', { present: present.length, of: VERSIONS.length })
 
 console.log('=== 2. AND THEY ARE ALL THE SAME BYTES ===')
-const hashes = new Map(present.map((v) => [v, sha(join(REPO, v, 'math-computation.js'))]))
+const hashes = new Map(present.map((v) => [v, sha(join(dirOf(v), 'math-computation.js'))]))
 const distinct = new Set(hashes.values())
 ok(distinct.size === 1,
   'every copy is byte-identical, which is what "reused verbatim" means and what makes a math result comparable across presets',

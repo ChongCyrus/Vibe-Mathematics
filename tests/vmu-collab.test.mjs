@@ -132,7 +132,12 @@ const mk = (settings = {}) => createCollab({ clock: () => now, settings: Object.
   c.agreements(); c.status(); c.authorship({ agreementId: (c.openAgreement({ counterparty: 'reader' }).id) })
   const mid = JSON.stringify(c.status())
   c.agreements(); c.status()
-  ok(before !== mid || true, 'purity: reads are callable repeatedly')
+  // ★ THIS LINE USED TO END IN `|| true`, so it could not fail. "Reads are callable repeatedly" is a claim about
+  // not throwing, so it is now asserted as exactly that: repeat the read calls and require no throw.
+  let repeatError = null
+  try { c.agreements(); c.status(); c.readers && c.readers() } catch (e) { repeatError = e }
+  ok(repeatError === null, 'purity: reads are callable repeatedly without throwing', repeatError && String(repeatError.message))
+  void before; void mid
   ok(c.status().dropped === 0, 'purity: nothing was silently dropped below the cap')
 }
 

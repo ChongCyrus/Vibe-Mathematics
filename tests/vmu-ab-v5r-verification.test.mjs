@@ -151,8 +151,10 @@ ok(closed.process && Array.isArray(closed.process.answered) && Array.isArray(clo
 ok(closed.outcome === 'undecided' && closed.process && typeof closed.process.mean === 'number' && closed.process.silent.length > 0,
   'V15. ★★★ C3 MEASURED AS A SEPARATION: a mean IS computed from the opposing verdicts, and the OUTCOME still stays undecided because members stayed silent',
   { outcome: closed.outcome, mean: closed.process && closed.process.mean, silent: closed.process && closed.process.silent })
-ok(closed.process.participants === undefined || true,
-  'V16. ★ (the payload shape is recorded, not asserted beyond what was observed)')
+// ★ THIS LINE USED TO END IN `|| true`, so it asserted nothing at all. It now states the one thing that WAS
+// observed - the process payload is an object - and says plainly that its extra fields are not being claimed.
+ok(closed.process !== null && typeof closed.process === 'object',
+  'V16. ★ the close process payload is an object; its additional fields were observed but are not asserted here')
 
 // ── D5a: who may file a reconsideration, and what does the payload say about the rule? ───────────────────────
 const lateProbe = await call('vibe_v5_minutes', {}, seat('acad'))

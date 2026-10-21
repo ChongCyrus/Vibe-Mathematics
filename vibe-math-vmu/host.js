@@ -1597,9 +1597,16 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
             if (urgentBodies.length) {
               mailText += '\n紧急正文：' + urgentBodies.map((b) => '（' + String(b.from || '') + '｜' + String(b.subject || '(无标题)') + '）' + String(b.text || '')).join('\n')
             }
-            const secs = Array.isArray(out.sections) ? out.sections : (out.sections = [])
-            let mt = secs.find((s) => s && s.name === 'v5r-mail-notice')
-            if (!mt) { mt = { name: 'v5r-mail-notice', text: mailText }; try { secs.push(mt) } catch { out.sections = [...secs, mt] } } else { mt.text = mailText }
+            // ★ COPY-ON-WRITE, for the SAME reason as the tool block above: an `out` object can be reused across
+            // assemblies (a member's assembly followed by root's), and mutating the array or the section object in
+            // place leaks one agent's mail notice into the next agent's prompt. Build a fresh array and replace the
+            // matching section with a fresh object; never write through a reference we did not create.
+            const prevSecs = Array.isArray(out.sections) ? out.sections : []
+            const secs = prevSecs.slice()
+            const hitAt = secs.findIndex((s) => s && s.name === 'v5r-mail-notice')
+            if (hitAt < 0) secs.push({ name: 'v5r-mail-notice', text: mailText })
+            else secs[hitAt] = Object.assign({}, secs[hitAt], { text: mailText })
+            out.sections = secs
             try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ mailNotice: 'injected', mailEntries: res.entries || 0, mailUrgent: !!res.urgent }) } catch { /* diagnostics */ }
           } else if (res && res.code) {
             try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ mailNotice: 'refused', mailNoticeCode: res.code, mailEntries: fresh.length }) } catch { /* diagnostics */ }

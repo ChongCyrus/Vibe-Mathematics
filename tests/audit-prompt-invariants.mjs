@@ -43,15 +43,24 @@ import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
+// ★ G4 stage A: files under the five historical preset directories resolve through the ONE preset seam;
+// everything else (tests/, packs/, kernel/) stays where it is.
+import { legacyFile, LEGACY_PRESET_NAMES } from './_lib/legacy-presets.mjs'
 
 const HERE = fileURLToPath(new URL('../', import.meta.url))
+/** Resolve a mutation/fixture rel-path: legacy preset dirs go through the seam, all others are repo-relative. */
+function resolveRel(rel) {
+  const idx = rel.indexOf('/')
+  if (idx > 0 && LEGACY_PRESET_NAMES.includes(rel.slice(0, idx))) return legacyFile(rel.slice(0, idx), rel.slice(idx + 1))
+  return join(HERE, rel)
+}
 /**
  * `PROMPT_INVARIANTS_MUTATE` carries a JSON `[rel, from, to]` triple: a single file is mutated IN
  * MEMORY for one child run, so `--self-probe` can demonstrate that the invariant keyed to it really
  * turns red. (Not a NUL-separated string: env values may not contain NUL bytes.)
  */
 function readRaw(rel) {
-  const p = join(HERE, rel)
+  const p = resolveRel(rel)
   if (!existsSync(p)) return null
   let text = readFileSync(p, 'utf8')
   const mut = process.env.PROMPT_INVARIANTS_MUTATE
@@ -255,7 +264,7 @@ if (process.argv.includes('--self-probe')) {
    * A missing target is a NAMED refusal (requireFile), never an empty string: silently degrading it is the exact
    * class tests/audit-no-silent-reads.test.mjs keeps at zero.
    */
-  const readPlain = (rel) => requireFile(join(HERE, rel), 'the mutation target of the prompt-invariant self-probe')
+  const readPlain = (rel) => requireFile(resolveRel(rel), 'the mutation target of the prompt-invariant self-probe')
   for (const mut of SELF_PROBE_MUTATIONS) {
     // ★ ANTI-VACUOUS MUTATION (round 13). A mutation is a guard on the guard: if its `from` text has moved on, the
     // child runs UNMUTATED, stays green, and the probe reports `hit=false` — a silent no-op that reads like a real
@@ -766,7 +775,7 @@ for (const P of PRESETS) {
 // is trivially true, and (c) is host-independent either way.
 {
   const items = PRESETS.map((P) => ({
-    tag: P.tag, file: join(HERE, P.js), env: 'V' + P.tag.slice(1) + '_TEX_ROOTS_SANDBOX', sandbox: '',
+    tag: P.tag, file: resolveRel(P.js), env: 'V' + P.tag.slice(1) + '_TEX_ROOTS_SANDBOX', sandbox: '',
   }))
   const dir = mkdtempSync(join(tmpdir(), 'prompt-invariants-tex-sandbox-'))
   try {

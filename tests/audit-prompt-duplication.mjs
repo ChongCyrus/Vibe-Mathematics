@@ -1,4 +1,5 @@
-import { requireFile } from './_lib/require-file.mjs'
+// ★ G4 stage A: the three preset sources resolve through the ONE preset seam (legacy-presets.mjs).
+import { legacyFile } from './_lib/legacy-presets.mjs'
 // ============================================================================
 // audit-prompt-duplication.mjs — shipped invariant for v2/v3/v4 (v5 has its own,
 // tests/audit-v5-prompt-duplication.mjs): every preset's injected toolkit prompt
@@ -17,6 +18,7 @@ import { requireFile } from './_lib/require-file.mjs'
 import { readFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { requireFile } from './_lib/require-file.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -72,7 +74,7 @@ const report = []
 
 for (const preset of PRESETS) {
   const rel = preset + '/agent.cordis.yml'
-  const abs = join(REPO, rel)
+  const abs = legacyFile(preset, 'agent.cordis.yml')
   if (!existsSync(abs)) { check(false, rel + ' is missing'); continue }
   let text = readFileSync(abs, 'utf8')
   if (MUT && MUT[0] === preset) {
@@ -102,7 +104,7 @@ for (const preset of PRESETS) {
   if (!SKIP_CLAUSES) {
     for (const [name, re] of PATH_CLAUSES) check(re.test(shared), preset + ': ' + name + ' present in BOTH copies (inside the shared prefix)')
     // bidirectional: the prompt declares the behaviour ⇔ the JS carries its marker
-    const jsAbs = join(REPO, preset, preset + '.js')
+    const jsAbs = legacyFile(preset, preset + '.js')
     const js = requireFile(jsAbs, 'a preset source the prompt-duplication suite diffs')
     check(!!js, preset + ': the JS source is readable for the code-truth check')
     DISCLOSURES.forEach(([name, promptRe, codeRe, applies]) => {
