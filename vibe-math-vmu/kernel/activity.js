@@ -518,7 +518,11 @@ export function createActivity({
         policy: p, bounds: TIMEOUT_BOUNDS,
         timer: { shape: timerShape, injected: timerSeam.injected },
         wake: { declared: wakeDeclared.raw.slice(), accepted: wakeDeclared.hooks.slice(), wired: wakeEntryId !== null,
-          entryId: wakeEntryId, problems: wakeProblems.map((x) => Object.assign({}, x)) },
+          entryId: wakeEntryId, problems: wakeProblems.map((x) => Object.assign({}, x)),
+          reason: wakeDeclared.raw.length === 0 ? 'wake-on-not-declared' : (wakeEntryId !== null ? 'wired' : 'declared-but-unwired'),
+          hint: wakeDeclared.raw.length === 0
+            ? 'zero mechanism: wait() can still wait and time out, but only an explicit notify() can wake it before the timeout; declare vmu.activity.wakeOn to subscribe to committed events'
+            : null },
         peerCheck: { seam: typeof activePeers === 'function', shortCircuit: p.noPeerShortCircuit },
         invariants: { futureOnly: true, oneShot: true, noBacklog: true, disposerOnEveryBranch: true, readsArePure: true },
         registeredHooks: KNOWN_HOOKS.size,

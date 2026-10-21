@@ -365,6 +365,7 @@ vmu.packs.active: [v5r]
 | `vmu.math.compileTimeoutMs` | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/formal.js` | 编译超时；0＝作业级默认 |
 | `vmu.math.formalVerify` | enum | `off` | `off`∣`encourage`∣`require` | 会话 | H2 | office | ✅ 已接线 | `host.js` | P3：判定时的形式化要求；默认 off＝零策略 |
 | `vmu.env.needs` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/env.js` | P9：外部环境需求表（每个 need 的 probe/installCommand/requiresUser/why；新增环境只改这张表，不改内核） |
+| `vmu.env.probeTimeoutMs` | number | `15000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/env.js` | P9：单个环境 probe 的预算（ms），作为 host spawn 的 timeoutMs/graceMs；正整数 |
 | `vmu.math.leanCommand` | string | `lean` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | P3：Lean 命令名（命令模板可覆盖） |
 | `vmu.math.leanArgs` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | P3：Lean 附加参数（显式 -R/--root 优先于 searchPaths） |
 | `vmu.math.leanTimeoutMs` | int ≥0 | `120000` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/formal.js` | P3：单次 Lean 编译预算 |
@@ -1535,7 +1536,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1146** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1147** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1573,7 +1574,7 @@ vmu.packs.active: [v5r]
 | `vmu.delegation.*` | 12 |
 | `vmu.discipline.*` | 6 |
 | `vmu.dissemination.*` | 10 |
-| `vmu.env.*` | 1 |
+| `vmu.env.*` | 2 |
 | `vmu.explain.*` | 7 |
 | `vmu.export.*` | 2 |
 | `vmu.external.*` | 31 |

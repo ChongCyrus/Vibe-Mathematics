@@ -42,7 +42,7 @@ const km = await import(pathToFileURL(KERNEL).href)
 const { assertDeclared } = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'settings', 'schema.js')).href)
 const packm = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'kernel', 'pack.js')).href)
 const { PACK: V5R_PACK } = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'index.js')).href)
-const clock = () => '2026-10-09T00:00:00.000Z'
+const clock = () => 1000
 
 const fakeHost = ({ withEffect = true } = {}) => {
   const state = { specs: [], disposed: 0, effects: [], live: new Set() }
@@ -655,6 +655,19 @@ if (SELF_PROBE) {
   const replacedBlocks = (replacedOut.sections || []).filter((s) => s.name === 'v5r-effective-tools')
   ok(replacedBlocks.length === 1 && /vibe_vmu_status/.test(replacedBlocks[0].text) && !/OLD/.test(replacedBlocks[0].text),
     '★ 正：pack 提供占位段 ⇒ 原段被替换（不是追加第二段）', replacedBlocks.map((s) => s.text))
+  // ★ PHASE 9 / round 5: mail notice must actually enter the member prompt (non-urgent: notice only; urgent: body).
+  kernel.mailbox.send('chair', { to: 'member-a', subject: '非紧急进展同步', text: '今日进度已记录', kind: 'notice' })
+  const plainMail = await runOut(agentA, ['vibe_v5_say', 'vibe_vmu_status'])
+  const plainBlock = (plainMail.out.sections || []).find((s) => s.name === 'v5r-mail-notice')
+  ok(plainBlock && /你收到 1 条新留言/.test(plainBlock.text) && !/今日进度已记录/.test(plainBlock.text),
+    '★ 正：非紧急留言 ⇒ 提示词出现“收到 N 条留言”，但不带正文', plainBlock && plainBlock.text)
+  kernel.mailbox.send('chair', { to: 'member-a', subject: '紧急：请立刻回复', text: '紧急正文内容', kind: 'notice', urgent: true })
+  const urgentMail = await runOut(agentA, ['vibe_v5_say', 'vibe_vmu_status'])
+  const urgentBlock = (urgentMail.out.sections || []).find((s) => s.name === 'v5r-mail-notice')
+  ok(urgentBlock && /紧急正文内容/.test(urgentBlock.text),
+    '★ 正：紧急留言 ⇒ 提示词带正文', urgentBlock && urgentBlock.text)
+  ok(kernel.mailbox.status().delivery && kernel.mailbox.status().delivery.flushCalls >= 2 && kernel.mailbox.status().delivery.sent >= 2,
+    '★ 诊断计数：deliverable/flush/sent 可读（不再靠猜）', kernel.mailbox.status().delivery)
   const zero = km.createKernel({ clock })
   zero.declareSlots([{ id: 'member', label: '成员', capacity: 0 }])
   await zero.members.hire({ id: 'member-a', slot: 'member', institution: 'sim' })

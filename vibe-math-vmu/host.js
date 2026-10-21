@@ -1506,6 +1506,32 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
         if (!target.name) target.name = 'v5r-effective-tools'
       }
       try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ effectiveBlock: placement, effectiveCount: effectiveNames.length }) } catch { /* diagnostics */ }
+      // ★ PHASE 9 / round 5: THE MISSING THIRD SEAM. Mail was sent, but nothing ever put its notice into the member's
+      // prompt. Inject it HERE, in the same assembly hook that already knows the member: non-urgent mail contributes
+      // ONLY its notice (N entries, senders, subjects); urgent mail additionally carries its body. `flush` with a local
+      // `send` is the prompt transport — the external deliver seam remains optional and is not invented.
+      try {
+        const mb = kernel.mailbox
+        if (mb && typeof mb.flush === 'function') {
+          const fresh = (typeof mb.pending === 'function' ? mb.pending(member, { freshOnly: true }) : []) || []
+          const urgentBodies = fresh.filter((e) => e && e.urgent).map((e) => ({ from: e.from, subject: e.subject, text: e.text }))
+          const res = await mb.flush(member, { send: async () => true })
+          if (res && res.ok === true && res.notice) {
+            let mailText = '【信箱】' + String(res.notice)
+            if (urgentBodies.length) {
+              mailText += '\n紧急正文：' + urgentBodies.map((b) => '（' + String(b.from || '') + '｜' + String(b.subject || '(无标题)') + '）' + String(b.text || '')).join('\n')
+            }
+            const secs = Array.isArray(out.sections) ? out.sections : (out.sections = [])
+            let mt = secs.find((s) => s && s.name === 'v5r-mail-notice')
+            if (!mt) { mt = { name: 'v5r-mail-notice', text: mailText }; try { secs.push(mt) } catch { out.sections = [...secs, mt] } } else { mt.text = mailText }
+            try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ mailNotice: 'injected', mailEntries: res.entries || 0, mailUrgent: !!res.urgent }) } catch { /* diagnostics */ }
+          } else if (res && res.code) {
+            try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ mailNotice: 'refused', mailNoticeCode: res.code, mailEntries: fresh.length }) } catch { /* diagnostics */ }
+          }
+        }
+      } catch (e) {
+        try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ mailNotice: 'error', mailNoticeError: String((e && e.message) || e) }) } catch { /* diagnostics */ }
+      }
       const tools = context.agent && context.agent.ctx && context.agent.ctx.tools
       if (tools && typeof tools.restrict === 'function') {
         try { tools.restrict(resolved.all ? { allow: [] } : (Array.isArray(resolved.allow) ? { allow: resolved.allow.slice() } : { deny: [...deny] })) } catch { /* assembly already filtered; this only aligns future steps */ }

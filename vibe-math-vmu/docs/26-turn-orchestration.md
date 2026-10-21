@@ -618,6 +618,16 @@ root agent 自己的 assembly（root 不属于任何成员槽）。
 ★★ **占位段**：pack 可提供名为 `v5r-effective-tools` 的段（或文本含 `【本轮你实际能调用的工具`）；有则**替换**，无则**追加**并在 `toolFacePull.effectiveBlock` 记录 `appended`（**不静默**）。角色静态清单可保留作职责说明，但以本块为准。
 ★ **验收**：`node scripts/slv-inspect.mjs <会话>` 对含该块的回合，`promptTools` 与 `wireTools` 双向差集为空。
 
+## 3.37 ★★★★★ 信箱通知进入成员提示词（PHASE 9 / 轮 5）
+
+★ **真机病**：root 发信回执正确，但成员提示词里**连“有一封留言”都没有**；`status` 显示 `wake.wired:false`、`peerCheck.shortCircuit:true`。
+★ **根因**：生产代码里**没有任何地方调用 `mailbox.flush`** ⇒ 投递路径从未执行；不是“无正文”，是**通知根本没生成**。
+★ **修**：`system-prompt/assemble` 的成员 hook 在算完有效工具后调用 `mailbox.flush(member, { send: async () => true })`（`send` 是 prompt 的投递；外部 deliver 仍是可选，不被发明）。结果：
+- 非紧急 ⇒ 追加段 `v5r-mail-notice`，内容只有 `【信箱】你收到 N 条新留言（来自 …）。标题：…`（**无正文**）；
+- 紧急 ⇒ 同段带 `紧急正文：…`（正文来自 flush 前的 `pending(freshOnly)`）。
+★ **可观测**：`mailbox.status().delivery = { deliverableCalls, flushCalls, noSeam, sent, refused, urgentDelivered, noticesBuilt }` ⇒ “没被调”与“调了没送出”可区分。
+★ **wakeOn**：默认**不声明**（零机制）。`wait()` 仍可等待并超时，但超时前只有显式 `notify()` 能唤醒；`activity.status().wake.reason='wake-on-not-declared'` + hint 明确写出这一点，**不假装已接线**。
+
 ## 4. v1 的边界（**未做，明写** ✗）
 
 1. ★★★ **投递缝已接进内核（轮 339）＋ 宿主桥已提供（轮 344）＋ 入口已装配（轮 1／K3）** ✓✓✓：**vmu.turn 在 kernel/index.js 里建成** ✓，**投递缝是内核的 `deliverTurn` 选项** ✓（★ **轮 1 更正** ✗✓：原文只写 `host.deliverTurn` —— 而真实入口交给内核的 `host` 是 `host-math.js` 的适配器，**它没有 `deliverTurn`** ⇒ 于是**真机每一轮都在 `turn/index.js` 的缺缝分支具名拒** ✗；旧名仍兼容，但**不再是唯一来源** ✓）；★ **宿主不给缝 ⇒ 具名拒 VMU_ENGINE_UNAVAILABLE** ✓（**绝不假装成员答了** ✗，且**计数可见** ✓，`status().seams.turnDeliver`／`turnDeliverSource` 自曝 ✓）。★★★ **宿主桥 `deliverViaSubagents(subagents, extract?)`** ✓✓：**入口已按声明装配** —— `vibe-math-vmu.js` 把它接到 `ctx.get('subagents')`（**调用时解析**，因为 `apply()` 可能早于服务挂载 ✓），宿主**不需要自己写适配器** ✓；★ **它只送【装配后的文本】，绝不自拼** ✗；**标签带轮次 id（可追）** ✓；★ **不给缝 ⇒ 具名拒** ✓；★★ **宿主收下却不回回复 ⇒ 也是【具名拒**】✓（**绝不解析成"模型什么都没说"** ✗）。★ **实测（T35–T39）** ✓✓：**整轮走宿主缝跑通** —— 装配 ⇒ 桥投递 ⇒ 解析 ⇒ **任务台账真的增长** ✓✓；★ **到达缝的正是装配文本且带轮次标签** ✓（>1000 字 ✓）。★★ **轮 1 复测** ✓：以假宿主（`ctx.get('subagents')`）走**真实入口** `entry.apply(...)` ⇒ `seams.turnDeliver:true`，`kernel.turn.step({members:[{id}]})` **真的投递并分派**（`receipt.executed ≥ 1`，桥收到的 `label === 'vmu-turn-<id>'`）✓。

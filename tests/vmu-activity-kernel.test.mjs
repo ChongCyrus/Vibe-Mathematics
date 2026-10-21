@@ -434,6 +434,8 @@ console.log('=== 11. EVERY DECLARED KEY REALLY DECIDES SOMETHING ===')
   ok(plainBus.status().entries.length === 0 && withWake.status().wake.wired === true,
     '★ vmu.activity.wakeOn decides whether a bus wake subscription exists (default = zero mechanism)', { entries: plainBus.status().entries.length, wired: withWake.status().wake.wired })
   ok(without.status().wake.declared.length === 0, 'and with nothing declared the wake list is empty, not undefined')
+  ok(without.status().wake.reason === 'wake-on-not-declared' && /wait\(\) can still wait/.test(String(without.status().wake.hint)),
+    '★ 反：未声明 wakeOn ⇒ status 明确说 reason/hint（wait 仍可等/超时，但只有显式 notify 能在超时前唤醒）', without.status().wake)
 }
 
 console.log('=== 12. A DECLARED WAKE HOOK WAKES THE WAITERS FOR REAL (real bus) ===')

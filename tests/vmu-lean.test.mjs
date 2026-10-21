@@ -3,7 +3,7 @@
 // 运行：`node tests/vmu-lean.test.mjs`（末行 `ALL GREEN (passed=N, failed=0)`／失败则非 0 退出）。
 
 import assert from 'node:assert/strict'
-import { mkdtemp, writeFile, appendFile, rm } from 'node:fs/promises'
+import { mkdtemp, writeFile, appendFile, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createLeanFace, LEAN_KEYS, LEAN_JOB_LOG_MAX } from '../vibe-math-vmu/kernel/lean.js'
@@ -33,6 +33,19 @@ const mkSettings = (over) => {
 }
 
 const dir = await mkdtemp(join(tmpdir(), 'vmu-lean-'))
+// ★ PHASE 9 / round 5: readHash MUST resolve against root, not the process cwd (real machine: VMU_LEAN_FILE_UNREADABLE).
+test('file paths are resolved against root, not the process cwd', async () => {
+  const root = join(dir, 'workspace-root')
+  await mkdir(join(root, 'Formal'), { recursive: true })
+  await writeFile(join(root, 'Formal', 'X.lean'), 'theorem x : True := trivial\n', 'utf8')
+  const face = createLeanFace({ settings: mkSettings({ 'vmu.math.leanAsync': false }), spawn: async () => ({ exitCode: 0 }), root, clock: () => 3, log: () => {} })
+  const sub = await face.submit({ statement: 'True', file: 'Formal/X.lean' })
+  const s2 = await face.settle(sub.id)
+  assert.equal(s2.passed, true, 'ROOT-relative file was read and its hash was unchanged')
+  assert.equal(s2.receipt && s2.receipt.code, undefined)
+  passed += 1
+})
+
 const leanFile = join(dir, 'Proof.lean')
 await writeFile(leanFile, 'theorem t : True := trivial\n', 'utf8')
 

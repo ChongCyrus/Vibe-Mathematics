@@ -71,8 +71,16 @@ export function createEnvFace({ settings = {}, spawn = null, records = null, log
         hint: 'the host installs the spawn seam (host-spawn.js); absence is named, never a fabricated version' })
     }
     let out = null
+    // ★ PHASE 9 / round 5: the host's subprocess shape REQUIRES a positive grace budget. Without it the first real
+    // probe was refused synchronously ("subprocess graceMs must be a positive finite number"). timeoutMs is what
+    // host-spawn maps to the subprocess graceMs; graceMs is also carried for callers that read it directly.
+    const probeTimeoutMs = (() => {
+      const n = Math.floor(Number(readKey('vmu.env.probeTimeoutMs')))
+      return Number.isSafeInteger(n) && n > 0 ? Math.min(n, 2147483647) : 15000
+    })()
     try {
-      out = await spawn({ command: probe.command, args: Array.isArray(probe.args) ? probe.args.map(String) : [] })
+      out = await spawn({ command: probe.command, args: Array.isArray(probe.args) ? probe.args.map(String) : [],
+        timeoutMs: probeTimeoutMs, graceMs: probeTimeoutMs })
     } catch (e) {
       const result = Object.assign(base, { ok: false, found: false, code: (e && e.code) || 'VMU_ENV_PROBE_FAILED',
         message: 'probe threw: ' + String((e && e.message) || e), hint: (e && e.hint) || null })

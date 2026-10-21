@@ -45,6 +45,7 @@
 // 拒绝一律 `VMU_*` ＋ `hint`；截断/丢弃必须计数（见 `view()` 的 `dropped`）。
 
 import { readFile } from 'node:fs/promises'
+import { resolve as resolvePath } from 'node:path'
 import { createHash } from 'node:crypto'
 import { createJobMirror, safeRelDir, ENFORCED_SCOPE, createChildBudget, RECOVERY_LEASE_TTL_MS, defaultTimer } from './mathjobs.js'
 import { mint as mintId, observeIds } from './ids.js'
@@ -126,6 +127,9 @@ export function createLeanFace(opts) {
   const spawnHandle = typeof o.spawnHandle === 'function' ? o.spawnHandle : null
   const budget = createChildBudget({ timer: o.timer })
   const root = String(o.root || '.')
+  // ★ PHASE 9 / round 5: every file the face reads is resolved against `root`, exactly as the file header says.
+  // With no `root`, `resolve(s)` uses the process cwd — the documented fallback, not a second convention.
+  const resolveFile = (f) => resolvePath(root, String(f))
   /** ROUND 9 · C: this face's identity for the recovery lease (process + random; never an id-counter consumer). */
   const faceOwner = 'lf-' + String(typeof process !== 'undefined' && process.pid ? process.pid : 'x') + '-' + Math.random().toString(36).slice(2, 8)
   const leaseTtlFor = (jobTimeoutMs) => Math.max(RECOVERY_LEASE_TTL_MS, (Number(jobTimeoutMs) || 0) + 30000)
@@ -288,7 +292,7 @@ export function createLeanFace(opts) {
 
   const readHash = async (file) => {
     try {
-      const buf = await readFile(file)
+      const buf = await readFile(resolveFile(file))
       return createHash('sha256').update(buf).digest('hex')
     } catch (e) {
       return undefined // 读不到 ⇒ 由调用处具名拒（不静默当"未变"）
@@ -933,7 +937,7 @@ export function createLeanFace(opts) {
         '重新 archive() 登记新内容，或恢复原文件（只引不复制 ⇒ **不返回旧内容** ✗）')
     }
     let content
-    try { content = String(await readFile(e.file, 'utf8')) } catch (err) {
+    try { content = String(await readFile(resolveFile(e.file), 'utf8')) } catch (err) {
       return refuse('VMU_LEAN_FILE_UNREADABLE', '读不到 ' + e.file, '检查权限或路径')
     }
     const truncated = content.length > ARCHIVE_READ_MAX

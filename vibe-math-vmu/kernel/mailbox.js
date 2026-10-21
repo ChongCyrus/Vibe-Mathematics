@@ -126,6 +126,9 @@ export function createMailbox({
   const injected = new Map()       // member -> Set(ids)  ("already put in a prompt, not yet acked")
   const audit = []
   const dropped = { acked: 0, audit: 0, injectedMarks: 0 }
+  // ★ PHASE 9 / round 5: the delivery path was invisible on the real machine (mail sent, no prompt notice). These
+  // counters make "was deliverable/flush ever called?" a fact instead of a guess.
+  const deliveryStats = { deliverableCalls: 0, flushCalls: 0, noSeam: 0, sent: 0, refused: 0, urgentDelivered: 0, noticesBuilt: 0 }
   const refusals = new Map()
   let seq = 0
   let durable = false
@@ -378,6 +381,7 @@ export function createMailbox({
      * A transport that fails acks NOTHING and keeps everything redeliverable.
      */
     async flush(member, { send = null } = {}) {
+      deliveryStats.flushCalls += 1
       const id = String(member === undefined || member === null ? '' : member)
       if (!id) throw refuse('VMU_INVALID_ARGUMENT', 'flush needs a member id', 'pass { member }')
       const allPending = mailbox.pending(id)
@@ -395,6 +399,7 @@ export function createMailbox({
       const isUrgent = urgentRows.length > 0
       const tx = typeof send === 'function' ? send : deliver
       if (typeof tx !== 'function') {
+        deliveryStats.noSeam += 1
         note('VMU_ENGINE_UNAVAILABLE')
         record('flush-refused', { member: id, reason: 'no-deliver-seam', pending: fresh.length })
         return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', code: 'VMU_ENGINE_UNAVAILABLE',
@@ -453,6 +458,9 @@ export function createMailbox({
           remaining: fresh.length, hint: 'nothing was acknowledged: the same entries are still pending' }
       }
       // Success: only the URGENT bodies are settled by this delivery. Non-urgent entries stay readable until ack().
+      deliveryStats.sent += 1
+      deliveryStats.noticesBuilt += 1
+      deliveryStats.urgentDelivered += urgentRows.length
       let ackedIds = []
       if (urgentRows.length) ackedIds = mailbox.ack(id, urgentRows.map((e) => e.id)).acked
       if (plainRows.length) mailbox.markInjected(id, plainRows.map((e) => e.id))
@@ -561,6 +569,7 @@ export function createMailbox({
 
     /** The v5r delivery decision: urgent kinds go now, plain chat waits for the digest window or the max. */
     deliverable(member) {
+      deliveryStats.deliverableCalls += 1
       const id = String(member)
       const rows = mailbox.pending(id)
       if (!rows.length) return { ok: true, member: id, deliver: false, urgent: false, count: 0, reason: 'nothing-pending' }
@@ -704,6 +713,7 @@ export function createMailbox({
           ackedLedgerCap: ackedCapOf(), wakeBudget: wakeBudgetOf(), deliverTimeoutMs: deliverTimeoutOf(), boxCap: MAILBOX_BOX_CAP },
         mechanism: { hasDeliverSeam: typeof deliver === 'function', hasAudienceSeam: typeof resolveAudience === 'function',
           hasStore: !!(store && typeof store.patch === 'function'), clockInjected: true },
+        delivery: Object.assign({}, deliveryStats),
         dropped: Object.assign({}, dropped), refusals: Object.fromEntries(refusals) }
     },
 

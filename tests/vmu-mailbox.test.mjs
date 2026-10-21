@@ -246,6 +246,20 @@ const mk = (settings = {}, extra = {}) => m.createMailbox(Object.assign({ clock,
   ok((b.refusals()['VMU_INVALID_ARGUMENT'] || 0) >= 1, 'the refusal is counted so it is greppable in the audit trail')
 }
 
+// ---- PHASE 9 / round 5: the delivery path is COUNTED, so "was it ever called?" is a fact ---------------
+{
+  const mb = mk()
+  mb.send('r-1', { to: 'r-2', subject: '非紧急进展同步', text: '今日进度已记录', kind: 'notice' })
+  const d = mb.deliverable('r-2')
+  ok(d.ok === true && d.count === 1 && d.deliver === false, 'deliverable() sees the pending entry but leaves it to the digest window', d)
+  const flushed = await mb.flush('r-2', { send: async () => true })
+  ok(flushed.ok === true && /你收到 1 条新留言/.test(flushed.notice) && !/今日进度已记录/.test(flushed.notice),
+    '★ 正：非紧急投递的 notice 只报数量/来源/标题，不带正文', flushed.notice)
+  const st = mb.status()
+  ok(st.delivery && st.delivery.deliverableCalls === 1 && st.delivery.flushCalls === 1 && st.delivery.sent === 1,
+    '★ 诊断计数：deliverable/flush/sent 都可读（真机不再只能猜“接缝没接”）', st.delivery)
+}
+
 console.log('vmu-mailbox: ' + passed + ' passed, ' + failed + ' failed')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

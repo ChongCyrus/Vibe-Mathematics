@@ -36,6 +36,8 @@ const face = mod.createEnvFace({ settings, spawn: spawnOk })
     '★ 正：exit 0 ⇒ ok/found/version/resolved', r)
   ok(calls.length === 1 && calls[0].command === 'python' && Array.isArray(calls[0].args),
     'the probe command/args come from the need table and go through the injected spawn seam', calls[0])
+  ok(Number.isInteger(calls[0].timeoutMs) && calls[0].timeoutMs > 0 && calls[0].graceMs === calls[0].timeoutMs,
+    '★ 正：probe 的 spawn 请求带正整数 timeoutMs 与同样的 graceMs（宿主同步校验要求）', { timeoutMs: calls[0].timeoutMs, graceMs: calls[0].graceMs })
 }
 // ── 2. a FAILED probe is a result, not an exception; the install data is present ────────────────────────────────
 {
@@ -71,6 +73,35 @@ const face = mod.createEnvFace({ settings, spawn: spawnOk })
     'the body carries the missing need and points at installCommand as DATA', captured.body)
 }
 // ── 6. SOURCE PROBE: this face never installs, never touches child_process/network ─────────────────────────────
+// ── 6. the probe's request survives the REAL host-spawn seam: it must arrive as a positive graceMs ─────────────
+{
+  const spawnMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'host-spawn.js')).href)
+  const seen = []
+  const fakeSub = {
+    async resolveExecutable(cmd) { return 'C:\\fake\\' + cmd + '.EXE' },
+    spawn(opts) {
+      seen.push(opts)
+      return { done: Promise.resolve({ exitCode: 0, signal: null }),
+        collected: { stdout: { readFrom: () => ({ text: '3.11.9' }) }, stderr: { readFrom: () => ({ text: '' }) } } }
+    },
+  }
+  const seam = spawnMod.createHostSpawn({ ctx: { get: (n) => (n === 'subprocess' ? fakeSub : null) }, defaultCwd: 'D:\\_tmp', clock: () => 0 })
+  const face2 = mod.createEnvFace({ settings, spawn: seam })
+  const r = await face2.probe({ need: 'python' })
+  ok(seen.length === 1 && Number.isInteger(seen[0].graceMs) && seen[0].graceMs > 0,
+    '★ 正：环境 probe 经过真实 host-spawn 时，宿主收到正整数 graceMs（真机曾因缺它被同步拒）', { graceMs: seen[0] && seen[0].graceMs })
+}
+
+// ── 7. every kernel spawn point must carry a timeout/grace budget (the env miss was one of six) ───────────────
+{
+  const points = ['kernel/env.js', 'kernel/lean.js', 'kernel/latex.js', 'kernel/formal.js', 'kernel/mathjobs.js', 'kernel/mathadapters.js', 'kernel/script-bridge.js']
+  const missing = points.filter((rel) => {
+    const code = readFileSync(join(REPO, 'vibe-math-vmu', rel), 'utf8')
+    return !/(?:timeoutMs|graceMs)\s*:/.test(code)
+  })
+  ok(missing.length === 0, '★ 全部 spawn 调用点都带 timeoutMs/graceMs（环境面漏的那次已补）', missing)
+}
+
 {
   const strip = (src) => src
     .replace(/\/\*[\s\S]*?\*\//g, ' ')

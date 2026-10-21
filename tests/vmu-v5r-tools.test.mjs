@@ -1462,6 +1462,61 @@ try {
   ok(absHitsL.length === 3 && absHitsL.filter((h) => h.length === 0).length === 3,
     '★★★ 反：三段角色提示词里没有任何写死的绝对路径（盘符／/usr/bin／用户目录／UNC 一律 0 命中）', absHitsL)
 
+  // ── ⑦m PHASE 9 / round 5: THE EFFECTIVE-TOOLS PLACEHOLDER + THE "以本段为准" SENTENCE ─────────────────────────────
+  // The host now computes the effective member tool set ONCE and uses it for BOTH the wire and a prompt block titled
+  // 【本轮你实际能调用的工具｜…】. Without a declared placeholder the host APPENDS that block wherever the section list
+  // ends, which can be far from the static role list it corrects ⇒ a member could read two contradictory tables. What is
+  // pinned: (正) one declared placeholder per role, positioned after its static list, carrying the title the host looks
+  // for; and the sentence that sends the reader to the block is present in EVERY section that carries a static list;
+  // (反) neither the sentence nor the placeholder text introduces a tool NAME (that would silently change the derived
+  // role bullet face — the very drift pair A/B/C measures), and the detector for that is proved non-blind on a control.
+  console.log('=== 7m. EFFECTIVE-TOOLS PLACEHOLDER + "以本段为准" (pack side) ===')
+  const hostSrcM = (await import('node:fs')).readFileSync(join(REPO, 'vibe-math-vmu', 'host.js'), 'utf8')
+  ok(hostSrcM.includes("sec.name === 'v5r-effective-tools'") && hostSrcM.includes("sec.text.includes('【本轮你实际能调用的工具"),
+    '★ the host really looks for EITHER that name OR that title in the text (the predicate our placeholders must satisfy)',
+    { byName: hostSrcM.includes("sec.name === 'v5r-effective-tools'"), byText: hostSrcM.includes("sec.text.includes('【本轮你实际能调用的工具") })
+  const phs = PACK.sections.filter((s) => /^v5r-effective-tools-/.test(String(s.name)))
+  const phNames = phs.map((s) => s.name)
+  ok(phs.length === 3 && new Set(phNames).size === 3,
+    '★★★ 正：三个角色各有一个占位段，且段名互不相同（★ 同名段是具名 pack 冲突，会拒绝整包装载）', phNames)
+  ok(phs.filter((s) => ['chair', 'member', 'temp'].includes(s.scope && s.scope.role)).length === 3,
+    '★★ 占位段的 scope.role 就是内核的角色词汇（chair／member／temp，不是显示名）', phs.map((s) => s.scope && s.scope.role))
+  const secOfM = (n) => PACK.sections.filter((s) => s.name === n)[0]
+  const corner = { chair: secOfM('v5r-tools-academician'), member: secOfM('v5r-tools-researcher'), temp: secOfM('v5r-tools-temp') }
+  const phByRole = { chair: phs.find((s) => s.scope.role === 'chair'), member: phs.find((s) => s.scope.role === 'member'), temp: phs.find((s) => s.scope.role === 'temp') }
+  ok(['chair', 'member', 'temp'].every((r) => corner[r] && phByRole[r] && Number.isInteger(phByRole[r].order) && phByRole[r].order > corner[r].order &&
+    String(phByRole[r].text).includes('【本轮你实际能调用的工具')),
+    '★★★ 正：每个占位段的 order 都晚于该角色的静态清单（★ 否则"替换块"会跑到清单前面），且文本带宿主要找的标题标记',
+    ['chair', 'member', 'temp'].map((r) => ({ role: r, listOrder: corner[r] && corner[r].order, phOrder: phByRole[r] && phByRole[r].order })))
+  const sentinel = '★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。'
+  const listSections = [...roleSecs, PACK.sections.filter((s) => s.name === 'v5r-fixture-tools')[0]]
+  const sentenceHits = listSections.map((s) => ({ name: s && s.name, has: String((s && s.text) || '').includes(sentinel) }))
+  ok(sentenceHits.length === 4 && sentenceHits.filter((h) => h.has).length === 4,
+    '★★★ 正：三段角色清单 ＋ 研究回合清单（v5r-fixture-tools）都写了"以【本轮你实际能调用的工具】为准"那句', sentenceHits)
+  // ★ 反：no tool NAME may enter through the new text (a name here would silently widen/narrow the derived bullet face).
+  const newTexts = [...phs.map((s) => String(s.text)), sentinel]
+  const nameReM = /vibe_v5_[a-z0-9_]+/g
+  const plantedM = '· vibe_v5_say —— 控制组，应当被检测到'
+  ok((plantedM.match(nameReM) || []).length === 1,
+    '★ 反断言的自证：同一个检测器在种下的工具名上真的命中（否则下面的 0 命中说明不了什么）',
+    (plantedM.match(nameReM) || []).length)
+  const leakedNamesM = newTexts.map((t) => (t.match(nameReM) || []).slice(0, 3))
+  ok(leakedNamesM.length === 4 && leakedNamesM.filter((h) => h.length === 0).length === 4,
+    '★★★ 反：新文字（三份占位段 ＋ 那句话）里没有任何工具名 ⇒ 不扰动 bullet 派生／角色面', leakedNamesM)
+  // ★ The placement must be true in the REAL assembly (not only in the declaration list): one placeholder per role, after
+  // that role's static list. That is what makes the host's in-place replacement land next to the table it corrects.
+  const promptModM = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kernel', 'prompt', 'index.js')).href)
+  const pipeM = promptModM.createPromptPipeline({ sections: PACK.sections, bindings: PACK.bindings || [], settings: {}, counts: {} })
+  const roleMarksM = { chair: '【本轮可用的工具｜院士】', member: '【本轮可用的工具｜研究员】', temp: '【本轮可用的工具｜临时成员】' }
+  const placementM = {}
+  for (const role of ['chair', 'member', 'temp']) {
+    const t = (await pipeM.assemble({ member: 'r-1', role, roleLabel: role, phase: 'normal' })).text
+    placementM[role] = { placeholder: (t.match(/｜占位段】/g) || []).length,
+      blockAt: t.indexOf('【本轮你实际能调用的工具｜占位段】'), listAt: t.indexOf(roleMarksM[role]) }
+  }
+  ok(['chair', 'member', 'temp'].filter((r) => placementM[r].placeholder === 1 && placementM[r].listAt >= 0 && placementM[r].blockAt > placementM[r].listAt).length === 3,
+    '★★★ 正（真装配）：每个角色的提示词里【恰好一个】占位段，且位置在该角色静态清单【之后】—— 内核的原地替换才会落在"该在的位置"', placementM)
+
 } finally {
   // The store writes atomically through temp+rename, so a removal can race one in-flight file: retry, and never let
   // a cleanup failure turn a green run red (the assertions above already reported the truth).

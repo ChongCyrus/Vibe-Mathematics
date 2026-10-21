@@ -1,4 +1,4 @@
-// vmu pack — `v5r-core`: v5r's institution as an INSTITUTIONAL PACK (docs/10 §5, the V5 deliverable).
+﻿// vmu pack — `v5r-core`: v5r's institution as an INSTITUTIONAL PACK (docs/10 §5, the V5 deliverable).
 //
 // Why a second pack when `institute-min` exists: institute-min proved the SHAPE (slots/tracks/settings/
 // rules/aliases) but its rule names a v5-era tool that no host registers (`vibe_v5_poll_vote`), so it never
@@ -411,6 +411,9 @@ const v5rCharterSectionsGlobal = () => [...CHARTER_SECTIONS, v5rRoleSection,
   v5rFixtureConstraint, v5rFixtureTools,
   // PHASE 7 / goal 2: the per-role TOOL DISCOVERY sections (non-source-derived, role-scoped, unique markers).
   v5rToolSectionAcademician, v5rToolSectionResearcher, v5rToolSectionTemp,
+  // ★ PHASE 9 / round 5: the host renders 【本轮你实际能调用的工具】 INTO these placeholders, one per role (three unique
+  // names — duplicate section names are a named pack conflict), so the correction sits right after the static list.
+  v5rEffectiveToolsChair, v5rEffectiveToolsMember, v5rEffectiveToolsTemp,
   // PHASE 7 round 8: the PAPER PROMPTS — phase-scoped (`paper-write` / `paper-review` / `paper-final`), so at most ONE
   // of them is in any given turn's prompt (the pipeline matches scope.phase; no kernel change needed).
   ...V5R_PAPER_PROMPT_SECTIONS,
@@ -534,6 +537,7 @@ export const v5rFixtureTools = Object.freeze({
     '   · {"say":"已经在群里说过的一句话"}（已经用 vibe_v5_say 说过时，回执里可只留一句说明）',
     '   · {"solved":false}（结题表决只走回执；它不是工具）',
     '   · 写卡片请直接用工具（vibe_v5_record_*），**不要**把卡片塞进回执的 record 字段。',
+    '★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。',
   ].join('\n'),
 })
 
@@ -600,6 +604,7 @@ export const v5rToolSectionAcademician = Object.freeze({
     '★★★ 你是主代理（院士席）：读到 environment-missing 的 finding 时，向用户报告缺什么、给出 installCommand（可先用 vibe_vmu_env {action:\'probe\', need:\'…\'} 回执里的 installCommand），并请求授权（引导用户自己装，或经用户明确授权后再部署）。',
     '★★★★ 未获授权前不要尝试安装、不要改用户的系统 —— 这条优先于"把任务做完"。',
     '★ 清单之外的工具不要尝试调用：本段列出的就是你此刻能用的全部；没列出的名字属于别的席位。。\n    若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准；没有该约束时，上表就是你现在真的能调用的工具。',
+    '★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。',
   ].join('\n'),
 })
 
@@ -640,6 +645,7 @@ export const v5rToolSectionResearcher = Object.freeze({
     '★ 清单之外的工具不要尝试调用：本段列出的就是你此刻能用的全部；没列出的名字属于别的席位，调用只会被具名拒。',
     '★★ 回执样例（可直接照抄）：{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"做了什么与下一步"},"solved":false}；★ progress 必须是**一个对象**（不是字符串/数组）。',
     '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。',
+    '★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。',
   ].join('\n'),
 })
 
@@ -671,7 +677,58 @@ export const v5rToolSectionTemp = Object.freeze({
     '★ 清单之外的工具不要尝试调用：本段列出的就是你此刻能用的全部；没列出的名字属于别的席位，调用只会被具名拒。',
     '★★ 回执样例（可直接照抄）：{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"做了什么与下一步"}}；★ progress 必须是**一个对象**（不是字符串/数组）。',
     '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。',
+    '★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。',
   ].join('\n'),
+})
+
+/**
+ * ★★★ PHASE 9 / round 5 — THE EFFECTIVE-TOOLS PLACEHOLDER (one per role, deliberately THREE names).
+ *
+ * WHY A PLACEHOLDER AT ALL: the host now computes the effective member tool set ONCE and uses it for BOTH the wire and
+ * a prompt block titled 【本轮你实际能调用的工具｜…】. Without a declared placeholder the host APPENDS that block wherever
+ * the assembled section list ends — which can be far from the static role list it corrects, so a member could read two
+ * mutually contradictory tables. With a placeholder the correction sits exactly where the table it corrects sits.
+ *
+ * ★ WHY THE NAMES ARE NOT IDENTICAL: `collectPackSections` (kernel/pack.js) refuses DUPLICATE section names by name
+ * (`VMU_PACK_CONFLICT`) — three sections literally called `v5r-effective-tools` would refuse the whole pack load. The
+ * host's lookup accepts EITHER the exact name OR any section whose text carries the block title, so these three keep
+ * unique names and carry the title; the rendered block still replaces them IN PLACE.
+ *
+ * ★ The text below is never meant to be read by a model: the host overwrites `text` on each assembly. It still says
+ * what to do if the replacement did NOT happen, so a silent wiring drift cannot leave a dangling placeholder looking
+ * like a tool table.
+ */
+const v5rEffectiveToolsText = [
+  '【本轮你实际能调用的工具｜占位段】',
+  '★ 这是一段【占位段】：宿主在每次模型请求前，会把这一段替换成【本轮你实际能调用的工具】的真实清单（与 wire 完全一致）。',
+  '★ 若你读到的仍是这句占位说明，说明替换没有发生 —— 此时不要据本段推断任何可用工具，以本回合真实可用的工具为准。',
+].join('\n')
+
+export const v5rEffectiveToolsChair = Object.freeze({
+  name: 'v5r-effective-tools-chair',
+  order: 610,
+  range: 'pack',
+  source: 'v5r-fixture:effective-tools',
+  scope: Object.freeze({ role: 'chair' }),
+  text: v5rEffectiveToolsText,
+})
+
+export const v5rEffectiveToolsMember = Object.freeze({
+  name: 'v5r-effective-tools-member',
+  order: 611,
+  range: 'pack',
+  source: 'v5r-fixture:effective-tools',
+  scope: Object.freeze({ role: 'member' }),
+  text: v5rEffectiveToolsText,
+})
+
+export const v5rEffectiveToolsTemp = Object.freeze({
+  name: 'v5r-effective-tools-temp',
+  order: 612,
+  range: 'pack',
+  source: 'v5r-fixture:effective-tools',
+  scope: Object.freeze({ role: 'temp' }),
+  text: v5rEffectiveToolsText,
 })
 
 /** The corpus sections PLUS the per-member section.

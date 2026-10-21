@@ -249,6 +249,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.math.compileTimeoutMs', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '编译超时；0＝作业级默认' },
   { key: 'vmu.math.formalVerify', type: 'enum', domain: ['off', 'encourage', 'require'], def: 'off', hot: HOT.H2, who: 'office', doc: 'P3：判定时的形式化要求；默认 off＝零策略' },
   { key: 'vmu.env.needs', type: 'object', def: ENV_NEEDS_DEFAULTS, hot: HOT.H1, who: 'office', doc: 'P9：外部环境需求表（每个 need 的 probe/installCommand/requiresUser/why；新增环境只改这张表，不改内核）' },
+  { key: 'vmu.env.probeTimeoutMs', type: 'number', def: 15000, min: 1, max: 2147483647, hot: HOT.H1, who: 'office', doc: 'P9：单个环境 probe 的预算（ms），作为 host spawn 的 timeoutMs/graceMs；正整数' },
   { key: 'vmu.math.leanCommand', type: 'string', def: 'lean', hot: HOT.H1, who: 'office', doc: 'P3：Lean 命令名（命令模板可覆盖）' },
   { key: 'vmu.math.leanArgs', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: 'P3：Lean 附加参数（显式 -R/--root 优先于 searchPaths）' },
   { key: 'vmu.math.leanTimeoutMs', type: 'natural', def: 120000, hot: HOT.H0, who: 'office', doc: 'P3：单次 Lean 编译预算' },
