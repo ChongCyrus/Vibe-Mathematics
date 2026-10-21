@@ -33,8 +33,9 @@
 **① 【核心**]服务（★ 下面是**值得逐个点名**的那些 ✓；括号内为出现条件 ✓）**
 
 > ★★ **轮 527 更正** ✓：★ 本处原写 **72** ✗ —— ★★ **域合规两支服务已【降级出内核**]✓（★ 见 `docs/25` 的执行记录 ✓）⇒ **`registry.register` 实测注册 **80** 个服务** ✓（★ 轮 3／task-20 更新：轮 2 的 77 ＋ `vmu.activity`／`vmu.fidelity` 两个新面 ✓；★ 计数口径＝**静态注册点数**（含 5 个条件注册），与 `tests/audit-doc-vs-code-tables.test.mjs` 的判据一致 ✓）。
-> ★★★ **口径（★ 轮 493 实测修正 ✓；轮 2/3 复核 ✓）**：★ **本表【不是**]发布面的全集** ✗ —— ★ **`kernel/index.js` 的 `registry.register` 实际注册了 **81** 个服务** ✓（★ 本表点名 **8** 个 ✓）。★★ **真源只有一个**：★ **`registry.register` 的调用点** ✓ ⇒ ★★ **要"发布面全集"就读代码，不要读这张表** ✓。★★★ **本行原先写"真正**发布**的服务"，★ 那会让读者以为发布面就是这 8 个** ✗ —— ★ **而漏掉的 73 个同样在契约里、同样可被 pack 的 `requires` 引用** ✓。
-> ★★★ **PHASE 7 更正（★ 不改写上面的历史，★ 只追加）** ✓：★ 80 变 **81** 的原因是新增了 **`vmu.status`** ✓
+> ★★★ **口径（★ 轮 493 实测修正 ✓；轮 2/3 复核 ✓；PHASE 9 / 轮 4 起 **82**）**：★ **本表【不是**]发布面的全集** ✗ —— ★ **`kernel/index.js` 的 `registry.register` 实际注册了 **82** 个服务** ✓（★ 本表点名 **8** 个 ✓）。★★ **真源只有一个**：★ **`registry.register` 的调用点** ✓ ⇒ ★★ **要"发布面全集"就读代码，不要读这张表** ✓。★★★ **本行原先写"真正**发布**的服务"，★ 那会让读者以为发布面就是这 8 个** ✗ —— ★ **而漏掉的 74 个同样在契约里、同样可被 pack 的 `requires` 引用** ✓。
+> ★★★ **PHASE 7 更正（★ 不改写上面的历史，★ 只追加）** ✓：★ 80 变 **81** 的原因是新增了 **`vmu.status`**
+> ★★★ **PHASE 9 更正（★ 同上：★ 只追加 ✓）**：★ 81 变 **82** 的原因是新增了 **`vmu.env`**（★ 环境探测面：★ 标准 `probe`／`list`／`report` 三动作，★ 用 `vmu.env.needs` 声明本部署需要哪些外部环境）✓。★★ **口径不变**（★ 仍然是 `registry.register` 的静态注册点数）✓。 ✓
 > ★ 它为什么存在：★ **pack 模块拿不到真 kernel**（★ `loader` 交付的 `services.kernel` 是 `Object.freeze({ read })` 只读门面，★ 而 `services.get` 的目录里没有 `vmu.kernel`）⇒ ★ **一个 pack 想贡献一段 `status()` 就【无路可走】** ✓
 > ★★ 所以补的是**通用通道**而不是给单个功能开洞：★ `services.get('vmu.status')` 提供 **`registerSection(name, fn)`（返回 disposer）／`unregisterSection(name)`／`names()`**，★ 同名注册**具名拒**；★ 模块可导出 `dispose`，★ `pack.unload()` 会 `await` 它 ⇒ ★ **卸载真的清零** ✓
 > ★★★ **计数口径不变**（★ 仍是 `registry.register` 的静态注册点数，★ 与 `tests/audit-doc-vs-code-tables.test.mjs` 的判据一致）✓

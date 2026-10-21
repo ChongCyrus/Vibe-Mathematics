@@ -35,7 +35,7 @@ async function boot() {
     on: () => () => {},
     tools: { register: async (spec) => { state.specs.push(spec); return () => {} } },
   }
-  const handle = entry.apply(ctx, { clock: () => 0, vmu: { 'vmu.tools.faces': ['*'] } })
+  const handle = entry.apply(ctx, { clock: () => 0, vmu: { 'vmu.tools.faces': ['*'], 'vmu.tools.allowAll': true } })
   await new Promise((r) => setTimeout(r, 90))
   const set = state.specs.find((s) => s.name === 'vibe_vmu_set')
   return { handle, set, state }

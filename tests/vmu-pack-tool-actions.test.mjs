@@ -40,7 +40,7 @@ const kernel = km.createKernel({ clock: () => 1000000, root })
 const loader = pm.createPackLoader({ kernel, registry: kernel.registry })
 const specs = []
 const ctx = { tools: { register: async (spec) => { specs.push(spec); return () => {} } }, effect: (fn) => fn() }
-const adapter = hm.createHostAdapter({ ctx, kernel, settings: { 'vmu.tools.faces': ['*'] }, packLoader: () => loader })
+const adapter = hm.createHostAdapter({ ctx, kernel, settings: { 'vmu.tools.faces': ['*'], 'vmu.tools.allowAll': true }, packLoader: () => loader })
 await adapter.install()
 const spec = specs.find((s) => s.name === 'vibe_vmu_pack')
 const call = async (args) => JSON.parse(await spec.execute(args, {}))

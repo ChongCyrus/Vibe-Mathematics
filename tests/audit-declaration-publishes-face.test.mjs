@@ -74,7 +74,7 @@ console.log('=== 1b. an empty namespace declares nothing (still one tool, still 
 console.log('=== 2. dotted declaration (vmu.tools.faces) ===')
 let dotted = null
 {
-  dotted = await boot({ clock: () => 0, vmu: { 'vmu.tools.faces': ['*'] } })
+  dotted = await boot({ clock: () => 0, vmu: { 'vmu.tools.faces': ['*'], 'vmu.tools.allowAll': true } })
   ok(dotted.names.includes('vibe_vmu_chat') && dotted.names.includes('vibe_vmu_panel') && dotted.names.includes('vibe_vmu_report'),
     '★ a DOTTED declaration publishes the faces: chat + panel + report appear in ctx.tools', vmuFaces(dotted.names))
   ok(dotted.names.length > 3, 'and more than the status face is published', dotted.names.length)
@@ -84,7 +84,7 @@ let dotted = null
 // ── 3. the NESTED tree (what the overlay recipe writes) ⇒ THE SAME faces
 console.log('=== 3. nested declaration (vmu: { tools: { faces: [...] } }) ===')
 {
-  const nested = await boot({ clock: () => 0, vmu: { tools: { faces: ['*'] } } })
+  const nested = await boot({ clock: () => 0, vmu: { tools: { faces: ['*'], allowAll: true } } })
   ok(JSON.stringify(vmuFaces(nested.names)) === JSON.stringify(vmuFaces(dotted.names)),
     '★ the NESTED shape publishes EXACTLY the same vmu faces as the dotted shape (one contract, two spellings)',
     { nested: vmuFaces(nested.names), dotted: vmuFaces(dotted.names) })
@@ -152,7 +152,7 @@ console.log('=== 4c. three unparsable kinds ⇒ three named entries, counts agre
 // ── 5. the same key in BOTH shapes ⇒ dotted wins, and the conflict is disclosed
 console.log('=== 5. one key declared twice in two shapes ===')
 {
-  const both = await boot({ clock: () => 0, vmu: { 'vmu.tools.faces': ['*'], tools: { faces: [] } } })
+  const both = await boot({ clock: () => 0, vmu: { 'vmu.tools.faces': ['*'], 'vmu.tools.allowAll': true, tools: { faces: [] } } })
   ok(vmuFaces(both.names).includes('vibe_vmu_chat'),
     '★ the DOTTED key wins, so the faces declared by it are still published', vmuFaces(both.names))
   ok(both.handle.settingsConflicts().some((c) => String(c.key) === 'vmu.tools.faces'),
@@ -162,8 +162,8 @@ console.log('=== 5. one key declared twice in two shapes ===')
 // ── 6. the published list is stable across two boots (no order/caching artefact in the assertion itself)
 console.log('=== 6. determinism ===')
 {
-  const a = await boot({ clock: () => 0, vmu: { tools: { faces: ['*'] } } })
-  const b = await boot({ clock: () => 0, vmu: { tools: { faces: ['*'] } } })
+  const a = await boot({ clock: () => 0, vmu: { tools: { faces: ['*'], allowAll: true } } })
+  const b = await boot({ clock: () => 0, vmu: { tools: { faces: ['*'], allowAll: true } } })
   ok(JSON.stringify(a.names) === JSON.stringify(b.names), 'two identical boots publish identical tool lists', { a: a.names, b: b.names })
 }
 

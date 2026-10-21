@@ -42,8 +42,8 @@ const facesOnly = (r) => r.faces.filter((n) => n !== 'vibe_vmu_set').sort()
 /** The observable reading: four boots, four facts. */
 async function probe(mod) {
   const clean = await boot(mod, { clock: () => 0 })
-  const dotted = await boot(mod, { clock: () => 0, vmu: { 'vmu.tools.faces': ['*'] } })
-  const nested = await boot(mod, { clock: () => 0, vmu: { tools: { faces: ['*'] } } })
+  const dotted = await boot(mod, { clock: () => 0, vmu: { 'vmu.tools.faces': ['*'], 'vmu.tools.allowAll': true } })
+  const nested = await boot(mod, { clock: () => 0, vmu: { tools: { faces: ['*'], allowAll: true } } })
   const malformed = await boot(mod, { clock: () => 0, vmu: { 'vmu.tools..faces': ['*'] } })
   return {
     cleanFaces: facesOnly(clean),

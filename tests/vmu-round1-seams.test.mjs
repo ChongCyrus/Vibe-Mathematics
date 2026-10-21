@@ -100,7 +100,7 @@ console.log('== K1: tool-face reachability ==')
     'toolSpecs with nothing declared publishes exactly one tool', JSON.stringify(specsNone.map((s) => s.name)))
   // `library` is a read-only getter on the kernel, so the surface it represents is supplied read-through.
   const kernelWithLibrary = new Proxy(kernel, { get: (t, k) => (k === 'library' ? { list: async () => [] } : t[k]) })
-  const all = resolveFaces({ config: {}, settings: { 'vmu.tools.faces': ['*'] }, kernel: kernelWithLibrary, scripts: [{}], packLoader: () => ({}) })
+  const all = resolveFaces({ config: {}, settings: { 'vmu.tools.faces': ['*'], 'vmu.tools.allowAll': true }, kernel: kernelWithLibrary, scripts: [{}], packLoader: () => ({}) })
   ok(all.enabled.length === FACES,
     'vmu.tools.faces=[*] enables ALL faces the table declares when their surfaces are satisfied',
     all.enabled.length + '/' + FACES + ' enabled; unavailable=' + JSON.stringify(all.unavailable))
@@ -142,7 +142,7 @@ console.log('== K1: tool-face reachability ==')
 {
   // A host that can start a continuable child: K1d is about the TOOL FACE; the delivery path is K3's subject.
   const h = fakeHost({ subagents: { async startContinuable() { return { childId: 'c-1' } } } })
-  const app = entry.apply(h.ctx, { root: mkroot('vmu-seams-root-'), packs: ['institute-min'], scripts: [{ id: 's1', file: 's1.js' }], 'vmu.tools.faces': ['*'] })
+  const app = entry.apply(h.ctx, { root: mkroot('vmu-seams-root-'), packs: ['institute-min'], scripts: [{ id: 's1', file: 's1.js' }], 'vmu.tools.faces': ['*'], 'vmu.tools.allowAll': true })
   await app.ready()
   const names = h.tools.map((t) => t.name).sort()
   ok(TOOL_FACES.length > 0 && names.length === TOOL_FACES.length,

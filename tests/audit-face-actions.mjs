@@ -105,7 +105,7 @@ if (process.argv.includes("--selftest")) {
 const { createKernel } = await import("file:///" + VMU.replace(/\\/g, "/").replace(/ /g, "%20") + "/kernel/index.js")
 const { toolSpecs } = await import("file:///" + VMU.replace(/\\/g, "/").replace(/ /g, "%20") + "/host.js")
 const kernel = createKernel({ clock: () => 0, settings: {}, root: VMU, host: null, slots: [{ id: "member", capacity: 0, permissions: ["speak", "vote"] }] })
-const specs = toolSpecs({ kernel, settings: { "vmu.tools.faces": ["*"] }, instance: "audit" })
+const specs = toolSpecs({ kernel, settings: { "vmu.tools.faces": ["*"], "vmu.tools.allowAll": true }, instance: "audit" })
 const sources = new Map()
 for (const f of readdirSync(join(VMU, "tools"))) if (f.endsWith(".js")) sources.set(f, readFileSync(join(VMU, "tools", f), "utf8"))
 
