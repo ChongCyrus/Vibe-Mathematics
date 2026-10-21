@@ -821,8 +821,13 @@ async function toolPaper(args = {}, { kernel } = {}) {
       return { ok: true, tool, action, sections: paper.sections() }
     case 'status': {
       const got = paper.state(target)
+      // ★ G7 finding: status exposed the flow state only, while render exposed missing/complete/pdf. Same source,
+      // same fields: a status reader must not have to render (which WRITES artefacts) just to learn what is missing.
+      const artifacts = got && got.state && typeof paper.PaperArtifacts === 'function' ? paper.PaperArtifacts({ target }) : null
       return { ok: true, tool, action, target, exists: !!(got && got.state),
-        paper: got && got.state ? got.state : null }
+        paper: got && got.state ? got.state : null,
+        missing: artifacts ? artifacts.missing : [], complete: artifacts ? artifacts.complete === true : false,
+        pdf: artifacts ? artifacts.pdf : null }
     }
     case 'start': {
       const started = paper.start({

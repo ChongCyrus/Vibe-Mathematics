@@ -511,6 +511,9 @@ export const v5rFixtureTools = Object.freeze({
     '你这一刻能用的工具清单就在本提示词的「本轮可用的工具｜<你的角色>」段里（按你的席位列出，逐条只有工具名与一句用途）；不确定时可调用工具帮助本身。',
     '调用工具后结果立即可见；**回执可以很薄**——动作已经由工具完成了，回执只需说明"这一轮做了什么、下一步是什么"，不要为了凑长篇而重复工具已经记录的内容。',
     '仍然只输出一个合法 JSON 对象作为回执（不要输出额外的说明文字）。',
+    // ★ G7 (real machine): members quoted tool receipts containing `{}` in their reply prose, the first brace opened
+    // the reply object and the whole turn was rejected as VMU_TURN_BAD_JSON. This is a prompt obligation, not a parser bug.
+    '回执正文里【不要】粘贴 JSON 对象或工具回执原文；需要引用时用一句话概括（正文里的大括号会被当成回执边界）。',
     // ★ PHASE 7 round 15 (real-machine defect): this used to say "把 code 与 hint 写进回执的 note" — but `note` is NOT
     // a top-level field the kernel accepts (`FIELDS` ∪ `RECORDED_FIELDS`), so that advice itself produced
     // VMU_TURN_UNKNOWN_FIELD. The refusal text has to go somewhere that IS accepted.

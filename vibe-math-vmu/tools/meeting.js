@@ -7,6 +7,9 @@
 // `end` (R10-2a 显式结束辩论), `aggregation` (聚合闸), `complete`/`phase` (两阶段派生), `status`/`summary`/`snapshot`,
 // and ballot `freeze`/`unfreeze` (表决期冻结). Every one of them calls an existing kernel method: this face adds no policy.
 export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
+  // ★ G7 (real machine): a ballot opened from this face is bound to (service meeting, motion) so that cast votes can
+  // be mirrored into the ONE authoritative tally. Keyed by ballot id, per spec instance.
+  const ballotRefs = new Map()
   return {
       name: TOOL_NAMES.meeting,
       description: 'vmu 会议/表决面：action=list|open|speak|silent|hand|refuse|invite|invitedspeak|end|aggregation|complete|phase|status|summary|snapshot|close|extend|lapse|revokelapse|ballot|vote|tally|reopen|freeze|unfreeze|boxopen|boxcast|boxclose|boxreopen|boxlapse|boxrevokelapse|flow|overrideorder。' +
@@ -22,6 +25,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         action: param('string', 'list｜open｜speak｜silent｜hand｜hands｜refuse｜invite｜invitedspeak｜end｜aggregation｜complete｜phase｜status｜summary｜snapshot｜close｜extend｜lapse｜revokelapse｜ballot｜vote｜tally｜reopen｜freeze｜unfreeze｜boxopen｜boxcast｜boxclose｜boxreopen｜boxlapse｜boxrevokelapse｜second｜withdraw｜flow｜overrideorder', { required: true,
           enum: ['list', 'open', 'speak', 'silent', 'hand', 'hands', 'refuse', 'invite', 'invitedspeak', 'end', 'agendaclose', 'agendaitems', 'leaverequest', 'leaveapprove', 'leaverequests', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse', 'second', 'withdraw', 'flow', 'overrideorder'] }),
         id: param('string', '会议 id（speak/silent/hand/refuse/invite/invitedspeak/end/aggregation/complete/phase/status/summary/snapshot/close/extend/lapse/revokelapse 必填；open 可指定）'),
+        meeting: param('string', '会议 id 的【别名】：与 id 同义（两者都接受；同时给且不一致 ⇒ 具名拒）。ballot 用它把票绑定到服务会议，见 summary/close 与 ballot 的读数'),
         ballotId: param('string', '表决/票箱 id（vote/tally/reopen/freeze/unfreeze/boxcast/boxclose/boxreopen/boxlapse/boxrevokelapse 必填）'),
         member: param('string', '成员 id（speak/silent/hand/refuse/invitedspeak/extend/vote/boxcast 必填）'),
         text: param('string', '发言内容（speak/refuse/invitedspeak 必填）'),
@@ -43,8 +47,17 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         by: param('string', 'invite/invitedspeak/end 的执行人（审计事实）；flow/overrideorder 必填且必须是该会议的主席'),
         mode: param('string', 'flow/overrideorder 的模式（flow：open｜hands｜round_robin｜call_on；overrideorder：fifo｜round-robin｜chair｜random）', { enum: ['open', 'hands', 'round_robin', 'call_on', 'fifo', 'round-robin', 'chair', 'random'] }),
       },
-      run: async ({ action, id, ballotId, member, text, reason, agenda, roster, target, value, kind, why, by, options, ms, op, scope, mode, secretary, motion, rules } = {}) => {
+      run: async ({ action, id, meeting: meetingArg, ballotId, member, text, reason, agenda, roster, target, value, kind, why, by, options, ms, op, scope, mode, secretary, motion, rules } = {}) => {
         const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
+        // ★ G7 (real machine): `meeting` and `id` name the same object but only `id` was read, so a caller that used
+        // the documented-in-the-task `meeting:"m1"` got `no live meeting with id undefined`. BOTH are accepted now; a
+        // DISAGREEMENT is refused by name (silently preferring one would act on the wrong meeting).
+        const idText = (v) => (v === undefined || v === null || String(v) === '' ? '' : String(v))
+        if (idText(id) && idText(meetingArg) && idText(id) !== idText(meetingArg)) {
+          return refused('VMU_INVALID_ARGUMENT', 'id and meeting name different meetings: ' + idText(id) + ' vs ' + idText(meetingArg),
+            'pass ONE meeting id; `meeting` is an alias of `id` (both are accepted for the same object)')
+        }
+        if (action !== 'open' && !idText(id) && idText(meetingArg)) id = idText(meetingArg)
         const live = (what) => {
           const meeting = kernel.liveMeeting(need(id, 'id'))
           if (!meeting) throw Object.assign(new Error('no live meeting with id ' + String(id)), { code: 'VMU_NO_SUCH_OBJECT', hint: 'use action=list' })
@@ -77,9 +90,12 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             code: 'VMU_NO_SUCH_OBJECT',
             hint: 'primitive registry: ' + ((kernel.liveList().meetings || []).join(', ') || '(none)')
               + ' ; service registry: ' + (serviceIds().join(', ') || '(none)')
-              + ' ; action=list reports both',
+              + ' ; action=list reports both (id and meeting are aliases of the same field)',
           })
         const sid = (idv) => String(idv === undefined || idv === null ? '' : idv)
+        // ★ G7: "错传只报 id undefined" — the refusal must say WHICH field the action reads. Both names are accepted.
+        const meetingFieldRefusal = (a) => refused('VMU_INVALID_ARGUMENT', 'action ' + a + ' needs a meeting id (got neither id nor meeting)',
+          'pass id:"<meeting id>" — `meeting:"<id>"` is an accepted alias; action=list shows the primitive and service ids')
         try {
           if (action === 'list') {
             const prim = kernel.liveList()
@@ -136,6 +152,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
           if (action === 'phase') return { ok: true, action, id: need(id, 'id'), phase: live().phase }
           if (action === 'status') {
             const pid = sid(id)
+            if (!pid) return meetingFieldRefusal('status')
             const primitive = kernel.liveMeeting(pid)
             if (primitive) return Object.assign({ ok: true, action }, primitive.status())
             // A2: the SERVICE view. `meetingView` is the service's own observable read (state/chair/secretary/motions);
@@ -155,18 +172,20 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             // meeting created by the v5 pack lives in the meetings SERVICE and is summarized there. This action
             // used to answer ONLY from the primitive registry, so a service meeting got "no live meeting" even
             // though it existed (measured on a real run: open ok, status/list/summary all "no such meeting").
-            const primitive = kernel.liveMeeting(String(id === undefined || id === null ? '' : id))
+            const pid = sid(id)
+            if (!pid) return meetingFieldRefusal('summary')
+            const primitive = kernel.liveMeeting(pid)
             if (primitive) return Object.assign({ ok: true, action }, primitive.summary())
             const svc = kernel && kernel.meetings ? kernel.meetings : null
-            if (svc && typeof svc.summary === 'function' && id !== undefined && id !== null && String(id) !== '') {
-              return Object.assign({ ok: true, action }, svc.summary({ meeting: String(id) }))
+            if (svc && typeof svc.summary === 'function') {
+              return Object.assign({ ok: true, action }, svc.summary({ meeting: pid }))
             }
-            throw Object.assign(new Error('no live meeting with id ' + String(id)), { code: 'VMU_NO_SUCH_OBJECT',
-              hint: 'this action reads the meetings SERVICE for a service id (vibe_v5_meeting opens those); action=list lists the primitive registry this face opens' })
+            throw noSuchMeeting(pid)
           }
           if (action === 'snapshot') return Object.assign({ ok: true, action }, live().snapshot())
           if (action === 'close') {
             const pid = sid(id)
+            if (!pid) return meetingFieldRefusal('close')
             const primitive = kernel.liveMeeting(pid)
             if (primitive) return Object.assign({ ok: true, action, id }, await primitive.close(reason || 'closed'))
             // A2: closing a SERVICE meeting uses the service's own close (its rails apply). The two close semantics
@@ -213,12 +232,29 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
               return refused('VMU_STATE', 'the declared voter seats have nobody seated, so this ballot would have no eligible voter',
                 'seat a member in one of: ' + ((rule.seats || []).join(' / ') || '(none declared)'))
             }
-            const ballot = kernel.ballot(Object.assign({ id: bid }, rule && rule.restricted === true ? { eligible: rule.ids } : {}))
+            // ★ G7 ①/③: the ballot constructor takes the TARGET, so `opened.target` is no longer null while the
+            // top-level says "mo1"; and the ballot is BOUND to (service meeting, motion) so its casts can be mirrored
+            // into the ONE authoritative tally below.
+            const motionTarget = need(target, 'target')
+            const meetingForBallot = sid(id) && !kernel.liveMeeting(sid(id)) ? sid(id) : null
+            const ballot = kernel.ballot(Object.assign({ id: bid, target: String(motionTarget) },
+              rule && rule.restricted === true ? { eligible: rule.ids } : {}))
             const opened = await ballot.open()
-            return { ok: true, action, ballotId: bid, opened, target: need(target, 'target'),
+            if (meetingForBallot) ballotRefs.set(String(bid), { meeting: meetingForBallot, motion: String(motionTarget) })
+            return { ok: true, action, ballotId: bid, opened, target: motionTarget,
+              meeting: meetingForBallot,
+              mergedInto: meetingForBallot ? { meeting: meetingForBallot, motion: String(motionTarget) } : null,
               eligible: rule && rule.restricted === true ? rule.ids : null }
           }
           if (action === 'vote') {
+            const hasBallot = !!sid(ballotId)
+            const hasServiceMotion = !!sid(id) && !!motion
+            // ★ G7 ②: the same action has TWO legal addresses — a ballot id, or (meeting + motion) for a service
+            // motion vote — and the refusal names BOTH shapes instead of a bare "ballotId is required".
+            if (!hasBallot && !hasServiceMotion) {
+              return refused('VMU_INVALID_ARGUMENT', 'action vote needs ballotId, or (meeting + motion) for a service meeting vote',
+                'pass ballotId:"<ballot id>", or meeting:"<meeting id>" + motion:"<motion id>"; id/meeting are aliases of the same field')
+            }
             // The ballot primitive speaks 1/0 for decisive votes (it says so in its own refusal), but a model
             // reasons in words: normalise the obvious spellings HERE, at the face, and pass anything else
             // through untouched so the primitive still gives the authoritative refusal.
@@ -227,8 +263,29 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             const castValue = raw === 1 || raw === 0 ? raw
               : (['1', 'true', 'for', 'yes', '赞成', '同意'].includes(key) ? 1
                 : (['0', 'false', 'against', 'no', '反对'].includes(key) ? 0 : raw))
-            return Object.assign({ ok: true, action, ballotId },
-              await liveBallot().cast(need(member, 'member'), castValue, { kind: kind || 'decisive' }))
+            if (!hasBallot) {
+              const svc = svcOf()
+              if (!svc || typeof svc.vote !== 'function') {
+                return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel has no meetings service to vote in',
+                  'assemble a kernel with the meetings service (vibe-math-vmu.js); a ballot vote needs ballotId instead')
+              }
+              return Object.assign({ ok: true, action, registry: 'service' },
+                svc.vote({ meeting: sid(id), member: need(member, 'member'), motion: need(motion, 'motion'), value: castValue === 0 ? 0 : 1 }))
+            }
+            const cast = await liveBallot().cast(need(member, 'member'), castValue, { kind: kind || 'decisive' })
+            // ★ G7 ① — ONE AUTHORITY. A ballot bound to a service motion ALSO writes the service tally (the read path
+            // was unified in A2; the WRITE path was still split, so ballot outcome:true and service tally:0 coexisted).
+            // A service refusal is carried BY NAME on `serviceVote` rather than being swallowed or pretending success.
+            const ref = ballotRefs.get(String(ballotId)) || null
+            let serviceVote = null
+            if (ref) {
+              const svc = svcOf()
+              if (svc && typeof svc.vote === 'function') {
+                try { serviceVote = Object.assign({ ok: true }, svc.vote({ meeting: ref.meeting, member: need(member, 'member'), motion: ref.motion, value: castValue === 0 ? 0 : 1 })) }
+                catch (e) { serviceVote = { ok: false, code: (e && e.code) || 'VMU_STATE', message: String((e && e.message) || e), hint: (e && e.hint) || null } }
+              }
+            }
+            return Object.assign({ ok: true, action, ballotId }, cast, ref ? { serviceVote } : {})
           }
           if (action === 'tally') return Object.assign({ ok: true, action, ballotId }, await liveBallot().close('tally'))
           if (action === 'reopen') {

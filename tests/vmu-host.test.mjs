@@ -135,6 +135,7 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
     'vmu.records.tracks': ['problems'],
     'vmu.records.allowedKinds': ['problem', 'state'],
     'vmu.records.requireSettledRecords': false,
+    'vmu.records.headListAt': 5,
   }
   const kernel = km.createKernel({ clock: () => 1000, root, settings })
   await kernel.store.open()
@@ -150,6 +151,19 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   const expanded = await call(recSpec, { action: 'expand', id: put.id })
   ok(expanded && expanded.ok === true && String(expanded.body) === 'tool-body',
     '★ expand returns the body instead of VMU_NO_SUCH_OBJECT', expanded && expanded.code)
+  // ★ G7 finding: a capped list silently returned only `.items` — an expandable record was absent from the list.
+  // The face must NARROW with visible accounting, never look complete.
+  for (let i = 0; i < 20; i += 1) kernel.records.put({ track: 'problems', kind: 'problem', title: 'cap-' + i, body: 'b' + i, settled: true })
+  const capped = await call(recSpec, { action: 'list' })
+  ok(capped.ok === true && capped.total === 21 && capped.returned === 5 && capped.truncated === true && typeof capped.hint === 'string',
+    '★ records.list reports total/returned/truncated/hint when the head cap bites (no silent data loss)', {
+      total: capped.total, returned: capped.returned, truncated: capped.truncated, hint: capped.hint,
+    })
+  const all = await call(recSpec, { action: 'list', limit: 0 })
+  ok(all.ok === true && all.total === 21 && all.returned === 21 && all.truncated === false,
+    '★ limit:0 returns the whole set and says truncated:false (the escape hatch named by hint)', {
+      total: all.total, returned: all.returned, truncated: all.truncated,
+    })
   const missing = await call(recSpec, { action: 'expand', id: 'r-nope' })
   ok(missing && missing.ok === false && missing.code === 'VMU_NO_SUCH_OBJECT',
     'reverse: an id that was never written still refuses by name (no invented record)', missing && missing.code)
@@ -887,6 +901,40 @@ if (SELF_PROBE) {
   const root = await handler(asm(false), { agent: rootAgent }, async () => asm(false))
   ok(root.tools.length === 4 && full.length === 4,
     '★ G6 正：root（session-…）的 wire 不受 sticky 影响，仍是全量（fixture 4 个）', root.tools.length)
+
+  // ★ G7 ⑥ (mirror of the wire leak): the effective-tools section is PER-AGENT and used to be MUTATED IN PLACE, so the
+  // next assembly (root) inherited the last member's block. Same shared section object: member first, then root.
+  {
+    let handler2 = null
+    const sharedSection = { name: 'v5r-effective-tools', text: '【本轮你实际能调用的工具｜占位段】' }
+    const stub2 = {
+      members: { roster: () => [{ id: 'r-1', state: 'live', slot: 'member' }] },
+      memberSession: (id) => (id === 'r-1' ? 'child-9' : null),
+      resolveMemberToolDeny: () => ({ allow: ['vibe_vmu_task'], deny: [], slot: 'member' }),
+      memberToolOverride: () => ({ all: false, allow: ['vibe_vmu_task'], deny: [] }),
+      currentTurnMember: () => 'r-1',
+      noteToolFacePull: () => {}, toolFacePull: () => ({}), status: () => ({}),
+      packTools: () => [], setToolFaceCatalogue: () => {}, setToolFaceDescriptions: () => {},
+      setMemberToolFaceApplier: () => {}, setToolFacePullRegistered: () => {}, setPackToolRetractObserver: () => {},
+    }
+    const ctx2 = { effect(fn) { return fn() }, get() { return null }, root: null, on(ev, fn) { if (ev === 'system-prompt/assemble') handler2 = fn; return () => {} } }
+    hm.createHostAdapter({
+      ctx: ctx2, kernel: stub2, settings: { 'vmu.core.enabled': true },
+      faces: { enabled: ['status'], disabled: [], unavailable: [], unknownDisabled: [], unknownListed: [], sources: {} },
+    })
+    const memberAgent = { id: 'child-9', ctx: { tools: { restrict: () => () => {}, schemas: () => [] } } }
+    const rootAgent2 = { id: 'session-root', ctx: { tools: { restrict: () => () => {}, schemas: () => [] } } }
+    const assembly = () => ({ sections: [sharedSection], contexts: [], tools: full.map((name) => ({ name })) })
+    const memberOut = await handler2(assembly(), { agent: memberAgent }, async () => assembly())
+    const memberText = String((memberOut.sections.find((s) => s && s.name === 'v5r-effective-tools') || {}).text || '')
+    const rootOut = await handler2(assembly(), { agent: rootAgent2 }, async () => assembly())
+    const rootText = String((rootOut.sections.find((s) => s && s.name === 'v5r-effective-tools') || {}).text || '')
+    ok(/｜member】/.test(memberText) && !/｜member】/.test(rootText),
+      '★ G7 ⑥: the shared section object does NOT leak the member block into the ROOT assembly (per-agent, copy-on-write)',
+      { memberText: memberText.slice(0, 90), rootText: rootText.slice(0, 90) })
+    ok(!/｜member】/.test(JSON.stringify(rootOut.sections)),
+      '★ G7 ⑥: no root prompt section anywhere contains the member-only block (slv-inspect criterion, held locally)')
+  }
 }
 
 console.log('=== VMU HOST: ' + passed + ' passed, ' + failed + ' failed ===')

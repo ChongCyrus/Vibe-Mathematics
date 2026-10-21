@@ -7,6 +7,7 @@
 // So this REPORT lists them with their hints rather than judging, the discipline that has held all session.
 import { toolSpecs, TOOL_NAMES } from '../vibe-math-vmu/host.js'
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
+import { boundedToolResult, safeStringify, CIRCULAR_MARKER } from '../vibe-math-vmu/kernel/receiptbounds.js'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -114,6 +115,34 @@ console.log('=== 2b. GATE (G6 tier 2): EVERY NAMED REFUSAL CARRIES A NON-EMPTY H
   for (const hire of [{ member_id: 'acad', slot: 'chair' }, { member_id: 'r-1', slot: 'member' }]) {
     try { await control.execute(Object.assign({ action: 'hire', institution: 'hint-gate' }, hire), {}) } catch (e) { /* recorded by the sweep below */ }
   }
+  // ★ G7 ④/⑤ — ONE GATE FOR THE SERIALIZATION-ARTEFACT CLASS: no receipt field may contain "[object Object]" or
+  // "[circular]". Two measured instances drove this: the service close receipt carried `enforced:"[circular]"` (a
+  // SHARED array was mistaken for a cycle) and the paper PDF failure said "已试引擎=[object Object]" (an array of
+  // engine records was joined with String()). The serializer and the paper message are fixed; this gate scans the
+  // receipts this sweep really produces plus one real service-close receipt, so neither artefact can come back.
+  const markerHits = []
+  let scannedReceipts = 0
+  try {
+    const opened = handle.kernel.meetings.open({ chair: 'acad', roster: ['acad', 'r-1'] })
+    const closed = handle.kernel.meetings.close({ meeting: opened.meeting })
+    const closeJson = boundedToolResult(Object.assign({ ok: true, action: 'close' }, closed))
+    const closeParsed = JSON.parse(closeJson)
+    scannedReceipts += 1
+    ok(Array.isArray(closeParsed.enforced) && Array.isArray(closeParsed.receipt && closeParsed.receipt.enforced),
+      'G7 ④: a service CLOSE receipt keeps `enforced` as a readable ARRAY at BOTH levels (not "[circular]" strings)',
+      { top: closeParsed.enforced, inReceipt: closeParsed.receipt && closeParsed.receipt.enforced })
+    markerHits.push(...(closeJson.match(/\[circular\]|\[object Object\]/g) || []))
+  } catch (e) { ok(false, 'G7 ④ setup: a service meeting could be opened and closed', String((e && e.message) || e)) }
+  // A shared-but-acyclic reference must serialize twice; only a true cycle gets the marker.
+  {
+    const shared = ['k1', 'k2']
+    const out = JSON.parse(safeStringify({ top: shared, inner: { enforced: shared } }))
+    ok(Array.isArray(out.top) && Array.isArray(out.inner.enforced) && out.inner.enforced.join(',') === 'k1,k2',
+      'G7 ④: a SHARED (acyclic) reference serializes twice as arrays — a false CIRCULAR_MARKER cannot come back', out)
+    const cyc = {}; cyc.self = cyc
+    ok(JSON.parse(safeStringify(cyc)).self === CIRCULAR_MARKER,
+      'G7 ④ 反: a REAL cycle still gets the named CIRCULAR_MARKER (the safety property is not weakened)')
+  }
   const refusals = []
   const missing = []
   const thrown = []
@@ -122,6 +151,10 @@ console.log('=== 2b. GATE (G6 tier 2): EVERY NAMED REFUSAL CARRIES A NON-EMPTY H
     try { raw = await spec.execute(minimalArgs(spec), {}) } catch (e) { thrown.push(spec.name + ': ' + String((e && e.message) || e)); continue }
     let parsed = raw
     if (typeof raw === 'string') { try { parsed = JSON.parse(raw) } catch { parsed = null } }
+    // The artefact gate scans EVERY face receipt (success or refusal), so the count is the swept surface.
+    scannedReceipts += 1
+    const rawText = typeof raw === 'string' ? raw : JSON.stringify(parsed)
+    markerHits.push(...(rawText.match(/\[circular\]|\[object Object\]/g) || []))
     if (!parsed || parsed.ok !== false) continue
     const code = String(parsed.code || '')
     if (!/^VMU_/.test(code)) continue
@@ -133,6 +166,9 @@ console.log('=== 2b. GATE (G6 tier 2): EVERY NAMED REFUSAL CARRIES A NON-EMPTY H
   ok(specs.length >= 90, 'the sweep really covers the registered surface (non-vacuous: ' + specs.length + ' faces)', specs.length)
   ok(refusals.length >= 15, 'the sweep really produces named refusals to judge (non-vacuous: ' + refusals.length + ')', refusals.slice(0, 6))
   ok(missing.length === 0, 'GATE: every VMU_* refusal carries a non-empty hint — "named but no way forward" cannot come back', missing)
+  ok(scannedReceipts >= 90 && markerHits.length === 0,
+    'GATE (G7 ④/⑤): no scanned receipt contains "[object Object]" or "[circular]" (serialization artefacts are a class, not a site)',
+    { scanned: scannedReceipts, hits: markerHits.slice(0, 8) })
 
   console.log('=== 2c. GATE: THE STOPPED-KERNEL PAUSE/RESUME REFUSALS GIVE A ROUTE (G6 tier 2 regression) ===')
   // The measured defect: kernel.pause()/resume() refuse VMU_STATE without a hint. Drive the exact path deterministically.

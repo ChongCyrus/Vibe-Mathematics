@@ -140,10 +140,16 @@ export function createPaperFlow({
       throw refuse('VMU_INVALID_ARGUMENT', 'the part carries no content', 'give at least a title and one contribution field (solution/methods/rules/limits)')
     }
     const put = records.put({ track: TRACK, kind: 'paper-part', title: recordName(state.target, 'part|' + part.member), body: JSON.stringify(part), by: author })
-    state.parts[part.member] = { recordId: put && put.id, fingerprint: put && put.fingerprint, round: part.round, at: 1 }
+    const previous = state.parts[part.member] || null
+    state.parts[part.member] = { recordId: put && put.id, fingerprint: put && put.fingerprint, round: part.round, at: 1, title: part.title }
     state.updatedAt = 1
     writeState(state)
-    return { ok: true, recorded: part.member, round: state.round, recordId: put && put.id, fingerprint: put && put.fingerprint }
+    return { ok: true, recorded: part.member, round: state.round, recordId: put && put.id, fingerprint: put && put.fingerprint,
+      // ★ G7 finding: the old state kept ONE part per member, so a second `part` silently replaced the first. This
+      // minimal fix does not claim a multi-slot model; it NAMES what was replaced so the caller can re-record it.
+      replaced: previous && previous.recordId !== (put && put.id)
+        ? { recordId: previous.recordId, round: previous.round, title: previous.title || null }
+        : null }
   }
 
   /** ③ a review: deliverable must be a real boolean ("未表态不算可交付", the original's wording). */
@@ -364,9 +370,13 @@ export function createPaperFlow({
     const r = await latexFace.check(request)
     if (!r || r.ok !== true) {
       const tail = (s) => String(s === undefined || s === null ? '' : s).slice(-1500)
+      const engineList = (r && Array.isArray(r.tried) ? r.tried : []).map((t) => {
+        if (t && typeof t === 'object') return [t.engine, t.phase, t.code].filter((x) => x !== undefined && x !== null && x !== '').join(':')
+        return String(t)
+      }).filter((x) => x !== '')
       const failure = refuse(CODES.PDF_FAILED,
         'LaTeX 编译失败：' + String((r && r.code) || 'unknown') + (r && r.engine ? '（engine=' + r.engine + '）' : '') +
-          (r && Array.isArray(r.tried) && r.tried.length ? '；已试引擎=' + r.tried.join('、') : ''),
+          (engineList.length ? '；已试引擎=' + engineList.join(', ') : ''),
         '这不是"论文为假"，只是**没编译出来**：把 stderrTail 交给人看；回执不声称有 pdf')
       // the face's own diagnostics travel ON the error (bounded), so the caller can put them into a receipt
       failure.faceCode = (r && r.code) || null

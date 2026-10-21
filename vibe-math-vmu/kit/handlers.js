@@ -270,8 +270,11 @@ function toolReadLibrary(args = {}, { kernel } = {}) {
       cards.push(it)
     }
   }
+  const returned = cards.slice(0, limit)
   return { ok: true, tool: 'vibe_v5_read_library', member: wanted, kind: has(args.kind) ? str(args.kind) : null,
-    count: cards.length, cards: cards.slice(0, limit), skippedTracks: skipped }
+    total: cards.length, returned: returned.length, truncated: cards.length > returned.length,
+    hint: cards.length > returned.length ? '只回了 ' + returned.length + '/' + cards.length + ' 张：传 limit 提高上限，或按 kind/member 收窄' : null,
+    count: returned.length, cards: returned, skippedTracks: skipped }
 }
 
 

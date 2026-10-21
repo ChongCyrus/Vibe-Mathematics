@@ -445,6 +445,13 @@ try {
   const part = paper.recordPart({ target: TARGET, member: 'r-1', title: '引理 A 的证明骨架', solution: '把 A 拆成两个引理', evidence: ['r-1 的命题卡'] })
   ok(part && part.ok === true && !!part.recordId && typeof part.fingerprint === 'string' && part.fingerprint.length > 0,
     '★ recordPart: 正 — the part is archived as its own record AND carries the KERNEL-computed fingerprint', part && { id: part.recordId, fp: String(part.fingerprint).slice(0, 12) })
+  // ★ G7 finding: a second part by the same member used to overwrite the first state slot silently. The minimal fix
+  // names what was replaced instead of pretending both are represented.
+  const part2 = paper.recordPart({ target: TARGET, member: 'r-1', title: '引理 A 的第二种写法', solution: '改写成反证法' })
+  ok(part2 && part2.ok === true && part2.replaced && part2.replaced.recordId === part.recordId,
+    '★ recordPart: 正 — a second part NAMES the replaced record (replaced.recordId === the first part id)', part2 && part2.replaced)
+  ok(part2.replaced && part2.replaced.title === '引理 A 的证明骨架',
+    '★ recordPart: replaced also names the replaced title, so the caller can re-record it', part2 && part2.replaced && part2.replaced.title)
   let reviewTooEarly = null
   try { paper.recordReview({ target: TARGET, member: 'r-2', deliverable: true }) } catch (e) { reviewTooEarly = e }
   ok(reviewTooEarly && reviewTooEarly.code === 'VMU_PACK_V5R_CORE_PAPER_STATE', '★ recordReview: 反 — a review in the WRITING stage is refused by name (out-of-order is never silently accepted)', reviewTooEarly && reviewTooEarly.code)
@@ -484,6 +491,16 @@ try {
   const md = paper.PaperMd({ target: TARGET })
   ok(typeof md === 'string' && md.includes(paperMod.PAPER_SECTIONS[0]) && md.includes('r-1'),
     '★ PaperMd: 正 — the body is REBUILT from the parts (by id + fingerprint), section headings from the original\'s nine', md.length)
+  // ★ G7 finding: status exposed the flow state only; a caller had to render (which writes) to learn missing/pdf.
+  const toolsMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')).href)
+  const paperTool = toolsMod.V5R_PACK_TOOLS.find((t) => t.name === 'vibe_v5_paper')
+  const statusAfterFinal = await paperTool.handler({ action: 'status', target: TARGET }, { kernel })
+  ok(statusAfterFinal && statusAfterFinal.exists === true && Array.isArray(statusAfterFinal.missing) &&
+    statusAfterFinal.missing.includes('pdf') && statusAfterFinal.complete === false &&
+    statusAfterFinal.pdf && statusAfterFinal.pdf.code === 'VMU_PACK_V5R_CORE_PAPER_PDF_NEEDS_KERNEL',
+    '★ status: 正 — missing/complete/pdf come from the SAME PaperArtifacts source as render (no write needed)', {
+      missing: statusAfterFinal && statusAfterFinal.missing, complete: statusAfterFinal && statusAfterFinal.complete,
+    })
   const tex = paper.PaperTex({ target: TARGET })
   ok(typeof tex === 'string' && tex.includes('\\documentclass') && tex.includes('ctex') && tex.includes('xelatex'),
     '★ PaperTex: 正 — the tex carries the engine order (xelatex first for zh ⇒ ctex preamble)', tex.length)
@@ -1134,6 +1151,50 @@ try {
   const a1ChairCast = await receipt(v5rBoot, 'vibe_vmu_meeting', { action: 'vote', ballotId: a1Bid, member: 'r-1', value: '1' })
   ok(a1ChairCast.parsed && a1ChairCast.parsed.ok !== false,
     '★ A1③ 正: a member seat can cast it', a1ChairCast.parsed && a1ChairCast.parsed.ok)
+  // ── ⑦b-quater G7 (round 9): ONE AUTHORITY — a ballot's votes reach the service motion tally ────────────────
+  console.log('=== 7b-quater. G7: ballot votes merge into the service tally (one authority) ===')
+  const g7m = await receipt(v5rBoot, 'vibe_v5_meeting', { agenda: 'G7 合流', kind: 'sync', member: chairId })
+  const g7mid = g7m.parsed && g7m.parsed.meeting
+  const g7mo = await receipt(v5rBoot, 'vibe_v5_motion', { meeting: g7mid, member: 'r-1', kind: 'topic', text: '接受证明' })
+  const g7moid = g7mo.parsed && g7mo.parsed.motion
+  await receipt(v5rBoot, 'vibe_v5_second', { meeting: g7mid, motion_id: g7moid, member: chairId })
+  const g7ballot = await receipt(v5rBoot, 'vibe_vmu_meeting', { action: 'ballot', meeting: g7mid, target: g7moid, member: chairId })
+  ok(g7ballot.parsed && g7ballot.parsed.ok === true && g7ballot.parsed.opened && g7ballot.parsed.opened.target === g7moid &&
+    g7ballot.parsed.target === g7moid && g7ballot.parsed.meeting === g7mid && g7ballot.parsed.mergedInto && g7ballot.parsed.mergedInto.motion === g7moid,
+    '★ G7 ③: `opened.target` equals the top-level target, and the ballot is BOUND to (meeting, motion) — no self-contradicting receipt',
+    g7ballot.parsed && { openedTarget: g7ballot.parsed.opened && g7ballot.parsed.opened.target, target: g7ballot.parsed.target, mergedInto: g7ballot.parsed.mergedInto })
+  const g7bid = g7ballot.parsed && g7ballot.parsed.ballotId
+  const g7v1 = await receipt(v5rBoot, 'vibe_vmu_meeting', { action: 'vote', ballotId: g7bid, member: 'r-1', value: 1 })
+  const g7v2 = await receipt(v5rBoot, 'vibe_vmu_meeting', { action: 'vote', ballotId: g7bid, member: chairId, value: 1 })
+  ok(g7v1.parsed && g7v1.parsed.ok === true && g7v1.parsed.serviceVote && g7v1.parsed.serviceVote.ok === true && g7v1.parsed.serviceVote.tally.for === 1 &&
+    g7v2.parsed && g7v2.parsed.serviceVote && g7v2.parsed.serviceVote.ok === true && g7v2.parsed.serviceVote.tally.for === 2,
+    '★ G7 ① 正: each ballot cast writes the SERVICE motion tally (1 → 2) and the mirror receipt is on the vote',
+    { v1: g7v1.parsed && g7v1.parsed.serviceVote && g7v1.parsed.serviceVote.tally, v2: g7v2.parsed && g7v2.parsed.serviceVote && g7v2.parsed.serviceVote.tally })
+  const g7sum = await receipt(v5rBoot, 'vibe_vmu_meeting', { action: 'summary', meeting: g7mid })
+  ok(g7sum.parsed && g7sum.parsed.ok === true && g7sum.parsed.motions && g7sum.parsed.motions[0] &&
+    g7sum.parsed.motions[0].tally && g7sum.parsed.motions[0].tally.for === 2 && g7sum.parsed.votes === 2,
+    '★ G7 ① 判据：ballot vote 之后 service summary 的 tally.for=2、votes=2（两套账合流）',
+    g7sum.parsed && { tally: g7sum.parsed.motions && g7sum.parsed.motions[0] && g7sum.parsed.motions[0].tally, votes: g7sum.parsed.votes })
+  const g7conflict = await receipt(v5rBoot, 'vibe_vmu_meeting', { action: 'summary', id: 'another-meeting', meeting: g7mid })
+  ok(g7conflict.parsed && g7conflict.parsed.ok === false && g7conflict.parsed.code === 'VMU_INVALID_ARGUMENT' && /different/.test(String(g7conflict.parsed.message)),
+    '★ G7 ② 反：id 与 meeting 不一致 ⇒ 具名拒（不静默偏向其中一个）', g7conflict.parsed && g7conflict.parsed.message)
+  const g7missing = await receipt(v5rBoot, 'vibe_vmu_meeting', { action: 'summary' })
+  ok(g7missing.parsed && g7missing.parsed.ok === false && g7missing.parsed.code === 'VMU_INVALID_ARGUMENT' &&
+    /meeting id/.test(String(g7missing.parsed.message)) && /alias/.test(String(g7missing.parsed.hint)),
+    '★ G7 ② 正：两个参数都没给 ⇒ 拒说清"这个 action 要哪个字段"并点明 alias', g7missing.parsed && { message: g7missing.parsed.message, hint: g7missing.parsed.hint })
+  const g7mo2 = await receipt(v5rBoot, 'vibe_v5_motion', { meeting: g7mid, member: 'r-1', kind: 'topic', text: '第二动议' })
+  const g7sv = await receipt(v5rBoot, 'vibe_vmu_meeting', { action: 'vote', meeting: g7mid, motion: g7mo2.parsed && g7mo2.parsed.motion, member: 'r-1', value: 1 })
+  ok(g7sv.parsed && g7sv.parsed.ok === true && g7sv.parsed.registry === 'service' && g7sv.parsed.tally && g7sv.parsed.tally.for === 1,
+    '★ G7 ②: action vote ALSO accepts (meeting + motion) — the service-motion vote path is reachable from the same action',
+    g7sv.parsed && { registry: g7sv.parsed.registry, tally: g7sv.parsed.tally })
+  const g7vbad = await receipt(v5rBoot, 'vibe_vmu_meeting', { action: 'vote' })
+  ok(g7vbad.parsed && g7vbad.parsed.ok === false && g7vbad.parsed.code === 'VMU_INVALID_ARGUMENT' &&
+    /ballotId/.test(String(g7vbad.parsed.message)) && /meeting/.test(String(g7vbad.parsed.message)),
+    '★ G7 ② 反：vote 没有任何地址 ⇒ 具名拒并同时说出两种合法形状', g7vbad.parsed && g7vbad.parsed.message)
+  const g7close = await receipt(v5rBoot, 'vibe_vmu_meeting', { action: 'close', meeting: g7mid })
+  ok(g7close.parsed && g7close.parsed.ok === true && Array.isArray(g7close.parsed.enforced) && Array.isArray(g7close.parsed.receipt && g7close.parsed.receipt.enforced),
+    '★ G7 ④：close 回执的 enforced 是【数组】（顶层与 receipt 内都是），不是 "[circular]" 串',
+    g7close.parsed && { enforced: g7close.parsed.enforced, inReceipt: g7close.parsed.receipt && g7close.parsed.receipt.enforced })
   console.log('=== 7c. GOAL A: role-scoped tool faces (prompt == declaration) ===')
   const faces = PACK.toolFaces
   const faceRoles = faces ? Object.keys(faces).sort() : []
@@ -1280,6 +1341,38 @@ try {
   const flowMethods = ['start', 'recordPart', 'recordReview', 'advance', 'pass', 'recordFinal', 'PaperMd', 'PaperTex', 'PaperArtifacts', 'render', 'compilePdf', 'sections', 'state']
   ok(flowMethods.filter((m) => typeof paperFlow[m] === 'function').length === flowMethods.length,
     '★★ the subsystem still exposes all 13 methods (the shell forwards the kit flow)', flowMethods.length)
+
+  // ── ⑦h-bis G7 ⑤: the paper PDF failure message renders engine RECORDS readably ─────────────────────────────
+  console.log('=== 7h-bis. G7 ⑤: the paper PDF failure names engines readably ===')
+  {
+    const { createPaperFlow } = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')).href)
+    const { PAPER_CODES, PAPER_ENGINE_ORDER } = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper.js')).href)
+    const rows = new Map()
+    let seq = 0
+    const recordsStub = {
+      put(r) { const id = r.id || ('row-' + (++seq)); rows.set(id, Object.assign({ id }, r)); return { id, fingerprint: 'fp-' + id } },
+      get({ id }) { return { record: rows.get(id) || null } },
+      list() { return { items: [...rows.values()] } },
+    }
+    const failure = {
+      ok: false, code: 'VMU_LATEX_NO_ENGINE',
+      tried: [{ engine: 'xelatex', phase: 'probe', available: false }, { engine: 'latexmk', phase: 'probe', available: false, code: 'VMU_LATEX_NO_ENGINE' }],
+      stderr: 'xelatex: not found',
+    }
+    const flow = createPaperFlow({
+      kernel: { records: recordsStub, settingsSnapshot: () => ({ 'vmu.records.tracks': ['paper'] }), latex: { check: async () => failure } },
+      codes: PAPER_CODES, sections: ['题与摘要'], maxRounds: 3, track: 'paper', engineOrder: PAPER_ENGINE_ORDER,
+    })
+    flow.start({ target: 'g7-paper', participants: ['r-1'] })
+    let err = null
+    try { await flow.compilePdf({ target: 'g7-paper' }) } catch (e) { err = e }
+    ok(err && err.code === PAPER_CODES.PDF_FAILED && /xelatex/.test(String(err.message)) && /latexmk/.test(String(err.message)) &&
+      !/\[object Object\]/.test(String(err.message)) && !/\[circular\]/.test(String(err.message)),
+      '★ G7 ⑤ 正：PDF 失败回执把引擎【记录】渲染成可读名（xelatex/latexmk），不是 [object Object]',
+      err && String(err.message).slice(0, 180))
+    ok(err && Array.isArray(err.tried) && err.tried.length === 2 && typeof err.tried[0] === 'object',
+      '★ G7 ⑤ 反：机器可读的 `tried` 数组仍保留（可读文案不替代数据）', err && err.tried && err.tried.length)
+  }
 
   // ── ⑦i PHASE 8 / goal 10 (round 38): the PACK declares its tool presentation; the HOST applies it ───────────────
   // ★ PHASE 9 / round 1 — THE FOUNDER'S RULING, AS ASSERTIONS: v5r DECLARES NOTHING.

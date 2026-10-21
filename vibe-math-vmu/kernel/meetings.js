@@ -1072,10 +1072,13 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         while (archive.length && now - archive[0].openedAt > K.minutesRetentionMs) { archive.shift(); dropped += 1 }
         if (dropped) { counters.prunedMinutes += dropped; say({ type: 'meetings/minutes-pruned', at: now, dropped }) }
       }
-      const receipt = { at: now, action: 'close', meeting: m.id, wallMs: m.wallMs, turns: m.turns, tokens: m.tokens, enforced, enforcedScope: ENFORCED_SCOPE }
+      // ★ G7: the SAME `enforced` array appeared at the top level AND inside `receipt`. The serializer used to mark a
+      // second sight of a shared reference as "[circular]", so this receipt carried `enforced:"[circular]"`. Copies
+      // (not a shared reference) keep both fields as readable key lists even for a serializer that marks repeats.
+      const receipt = { at: now, action: 'close', meeting: m.id, wallMs: m.wallMs, turns: m.turns, tokens: m.tokens, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
-      say({ type: 'meetings/closed', at: now, meeting: m.id, enforced, enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, meeting: m.id, wallMs: m.wallMs, turns: m.turns, tokens: m.tokens, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      say({ type: 'meetings/closed', at: now, meeting: m.id, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE })
+      return { ok: true, meeting: m.id, wallMs: m.wallMs, turns: m.turns, tokens: m.tokens, receipt, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
     },
 
     /** READ-ONLY quorum view (never mutates). */

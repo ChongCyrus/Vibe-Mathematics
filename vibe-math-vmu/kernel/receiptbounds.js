@@ -111,16 +111,36 @@ const dig = (s) => createHash(HASH_ALGO).update(s).digest('hex')
  * A circular edge is REPLACED BY A NAMED MARKER rather than dropped in silence, so the receipt still says what
  * happened - the same discipline this file applies to elided text.
  */
-export const CIRCULAR_MARKER = "[circular]"
-export function safeStringify(value) {
-  const seen = new WeakSet()
-  return JSON.stringify(value, function (key, v) {
-    if (typeof v === "object" && v !== null) {
-      if (seen.has(v)) return CIRCULAR_MARKER
-      seen.add(v)
+export const CIRCULAR_MARKER = '[circular]'
+/**
+ * ★ G7 (real machine, via the member's anomaly list): the OLD replacer marked a value by FIRST-SIGHT (`seen`), so a
+ * perfectly ordinary SHARED reference — the SAME `enforced` array appearing at the top of a receipt and inside
+ * `receipt.enforced` — was serialized as the string "[circular]" at its second appearance. That is not a cycle, and
+ * the reader gets a receipt whose `enforced` field is a marker string instead of the key list.
+ *
+ * A cycle is "this value is one of its OWN ancestors". So the replacer now walks the value with an ancestor stack and
+ * replaces ONLY a true back-edge; shared-but-acyclic references serialize as ordinary (duplicated) JSON. True cycles
+ * keep the documented `CIRCULAR_MARKER` behaviour, so nothing that relied on the safety property is weakened.
+ */
+function cycleSafe(value) {
+  const ancestors = new Set()
+  const walk = (node) => {
+    if (node === null || typeof node !== 'object') return node
+    if (ancestors.has(node)) return CIRCULAR_MARKER
+    ancestors.add(node)
+    let out
+    if (Array.isArray(node)) out = node.map((v) => walk(v))
+    else {
+      out = {}
+      for (const k of Object.keys(node)) out[k] = walk(node[k])
     }
-    return v
-  })
+    ancestors.delete(node)
+    return out
+  }
+  return walk(value)
+}
+export function safeStringify(value) {
+  return JSON.stringify(cycleSafe(value))
 }
 
 export function boundedToolResult(value) {
