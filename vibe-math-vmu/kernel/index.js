@@ -1470,6 +1470,11 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // formalisation announcement really arrives in that member's next assembly instead of only being readable through
     // the face. Absent (no Lean face) ⇒ `[]`, so an assembly without Lean is byte-identical to before.
     noticeSource: (member) => (lean && typeof lean.takeNoticesFor === 'function' ? lean.takeNoticesFor(member) : []),
+    // ★ G7 ④: the turn step receipt carries a bounded summary of the member's own tool calls (the host hook is the
+    // only place that sees them; it writes to memberToolCallLog above). Lazy arrows: the map is declared later in
+    // this function's scope, and by the time a step runs it exists.
+    memberToolCalls: (member) => (memberToolCallLog.get(String(member)) || []).slice(),
+    clearMemberToolCalls: (member) => { memberToolCallLog.delete(String(member)) },
   })
   // ★ PHASE 7 / round 17: THE ONE CLOSURE-VOTE CALCULATION. The turn face and kernel.status() call THIS function with the
   // SAME inputs, so "two places compute the same reading" cannot drift into eligible:[] again.
@@ -1786,6 +1791,13 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   const packToolPresentation = new Map()
   /** ★ PHASE 8 / round 24: per-TURN overrides consumed by the pull resolver at request time (tools:"none"). */
   const memberToolOverrides = new Map()
+  /**
+   * ★ G7 ④: WHAT THE MEMBER CALLED INSIDE ITS TURN, as a bounded summary (name / whether a receipt exists / ok).
+   * The host hook is the only place that sees the child Agent's tool calls; it reports here, and the turn step receipt
+   * includes the summary so the root can see "what this member did" without reading a transcript. Full receipts are
+   * NEVER stored here (the host's own receipt already carries them; this is an index, not a copy).
+   */
+  const memberToolCallLog = new Map()
   /** ★ PHASE 8: the member this step is currently driving, so the pull hook can resolve a one-shot child Agent. */
   let activeTurnMember = null
   /** ★ PHASE 8: named failures from the pull hook, visible in status() instead of silently skipped. */
@@ -2217,6 +2229,23 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     /** ★ PHASE 8: a per-turn override (e.g. tools:"none"). The pull resolver reads it; the turn tool clears it in finally. */
     setActiveTurnMember(member) { activeTurnMember = typeof member === 'string' ? member : null; return { ok: true, member: activeTurnMember } },
     currentTurnMember() { return activeTurnMember },
+    /**
+     * ★ G7 ④: the HOST hook reports one member tool call here (the caller has already resolved the member from the
+     * child Agent + current turn). `phase:'call'` is recorded at pre-execute, `phase:'result'` at tools/result, so the
+     * summary can say whether a receipt came back and whether the call succeeded. Bounded ring (64 per member).
+     */
+    noteMemberToolCall({ member, name = null, phase = 'call', ok = null } = {}) {
+      const id = typeof member === 'string' ? member.trim() : ''
+      if (!id) return { ok: false, code: 'VMU_INVALID_ARGUMENT', message: 'noteMemberToolCall needs a member', hint: 'pass member:"<roster id>"' }
+      const list = memberToolCallLog.get(id) || []
+      const entry = { name: typeof name === 'string' && name !== '' ? name.slice(0, 80) : null, phase: phase === 'result' ? 'result' : 'call', ok: ok === true ? true : (ok === false ? false : null), at: clock() }
+      list.push(entry)
+      if (list.length > 64) list.shift()
+      memberToolCallLog.set(id, list)
+      return { ok: true, member: id, count: list.length, entry }
+    },
+    memberToolCalls(member) { return (memberToolCallLog.get(String(member)) || []).slice() },
+    clearMemberToolCalls(member) { return { ok: true, member: String(member), removed: memberToolCallLog.delete(String(member)) } },
     setMemberToolOverride({ member, all = false, allow = null, deny = null } = {}) {
       const id = typeof member === 'string' ? member.trim() : ''
       if (!id) throw refuse('VMU_INVALID_ARGUMENT', 'setMemberToolOverride needs a member', 'pass member:"<roster id>"')

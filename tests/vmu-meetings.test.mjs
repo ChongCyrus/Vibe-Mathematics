@@ -106,6 +106,42 @@ const err = (fn) => errOf(fn)
   const ekNo = opened({})
   ok(codeOf(() => ekNo.h.t.motion({ meeting: ekNo.id, member: 'acad', kind: 'emergency' })) === 'VMU_MEETING_EMERGENCY_NOT_ALLOWED',
     'emergencyKinds[-]: with an empty whitelist the emergency kind is refused')
+
+  // ★ G7 ① (real machine): after votes the quorum snapshot still said present=1 / unanswered=["r-1"] although r-1 had
+  // just voted — a caller reads that as "one person has not decided". A VOTE IS PARTICIPATION: vote() adds the voter.
+  {
+    const q = opened({}, {}, { roster: ['acad', 'r-1'] })
+    const before = q.h.t.quorum({ meeting: q.id })
+    ok(before.present === 1 && before.unanswered === 1 && before.unansweredList.join(',') === 'r-1',
+      '★ G7 ① 前置：开会后 present 只有主席，unanswered 列出未到会/未投票的 r-1', { before: { present: before.present, unanswered: before.unansweredList } })
+    const v1 = q.h.t.vote({ meeting: q.id, member: 'r-1', value: 1 })
+    ok(v1.quorum.present === 2 && v1.quorum.unanswered === 0 && v1.quorum.unansweredList.length === 0 &&
+      v1.quorum.unansweredPolicy === 'members who have neither attended nor voted',
+      '★ G7 ① 正：r-1 投票后 present 与已投人数一致、unanswered 递减到 0（policy 字段说清口径）',
+      { present: v1.quorum.present, unanswered: v1.quorum.unansweredList, policy: v1.quorum.unansweredPolicy })
+    const v2 = q.h.t.vote({ meeting: q.id, member: 'acad', value: 1 })
+    ok(v2.quorum.present === 2 && v2.quorum.unanswered === 0 && v2.quorum.unansweredList.length === 0,
+      '★ G7 ① 判据：两人都投 ⇒ unanswered:0、unansweredList:[]、present=2（不再是陈旧的 1）',
+      { present: v2.quorum.present, unanswered: v2.quorum.unansweredList })
+    const after = q.h.t.quorum({ meeting: q.id })
+    ok(after.present === 2 && after.unanswered === 0, '★ G7 ① 反：独立调用 quorum() 与 vote 回执读数一致（同一个计算）', { present: after.present, unanswered: after.unanswered })
+  }
+
+  // ★ G7 ② (real machine): close answered `enforced:[]`, which reads as "nothing was evaluated". The close rails ARE
+  // consulted every time; all off is a value, not an absence, so they are disclosed like any other evaluated key.
+  {
+    const c = opened({}, {}, { roster: ['acad', 'r-1'] })
+    const closed = c.h.t.close({ meeting: c.id })
+    const keys = closed.enforced
+    ok(Array.isArray(keys) && keys.length >= 4 &&
+      keys.includes('vmu.meetings.confirmPreviousMinutes') && keys.includes('vmu.meetings.committeeReportRequired') &&
+      keys.includes('vmu.meetings.minutesActionsRequired') && keys.includes('vmu.meetings.minutesRetentionMs'),
+      '★ G7 ②：close 披露它本轮真正评估的 rail 键（全在默认值也照样列出），不再回 enforced:[]',
+      keys)
+    ok(closed.enforcedScope === 'evaluated-so-far' && Array.isArray(closed.receipt.enforced) && closed.receipt.enforced.length === 4,
+      '★ G7 ② 反：enforcedScope 仍是 evaluated-so-far，receipt 内是同一份 4 键列表（不是共享引用/标记）',
+      { scope: closed.enforcedScope, inReceipt: closed.receipt.enforced && closed.receipt.enforced.length })
+  }
 }
 
 // ── 11–14 chair / committee ─────────────────────────────────────────────────────────────────────────

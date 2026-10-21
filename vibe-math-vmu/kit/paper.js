@@ -238,7 +238,11 @@ export function createPaperFlow({
       try {
         pdf = { ok: true, ...(await compilePdf({ target })) }
       } catch (e) {
-        pdf = { ok: false, code: (e && e.code) || null, message: String((e && e.message) || e) }
+        // ★ G7 ③: keep a MACHINE-READABLE engine list on the failure (the prose message alone forces a caller to parse
+        // Chinese text to answer "which engines were tried, which one failed"). The array is bounded, never full logs.
+        pdf = { ok: false, code: (e && e.code) || null, message: String((e && e.message) || e),
+          faceCode: (e && e.faceCode) || null,
+          triedEngines: Array.isArray(e && e.triedEngines) ? e.triedEngines.slice(0, 12) : [] }
       }
       return { ok: true, finalized: true, target: state.target, final: fin, artifacts: rendered.artifacts, missing: rendered.missing, pdf }
     }
@@ -381,6 +385,11 @@ export function createPaperFlow({
       // the face's own diagnostics travel ON the error (bounded), so the caller can put them into a receipt
       failure.faceCode = (r && r.code) || null
       failure.tried = (r && Array.isArray(r.tried)) ? r.tried.slice() : []
+      // ★ G7 ③: structured engines: [{engine, phase, code}] — bounded, and only the fields a caller can act on.
+      failure.triedEngines = (r && Array.isArray(r.tried) ? r.tried : []).slice(0, 12).map((t) => {
+        if (t && typeof t === 'object') return { engine: t.engine === undefined || t.engine === null ? null : String(t.engine), phase: t.phase === undefined || t.phase === null ? null : String(t.phase), code: t.code === undefined ? null : t.code }
+        return { engine: String(t), phase: null, code: null }
+      })
       failure.stderrTail = tail(r && r.stderr)
       failure.stdoutTail = tail(r && r.stdout)
       failure.signal = (r && r.signal) || null

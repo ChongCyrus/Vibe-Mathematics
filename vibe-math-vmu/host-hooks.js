@@ -151,6 +151,22 @@ export function attachHostHooks({ ctx, kernel, settings = {}, log = () => {}, on
             }
           }
           const payload = { tool: exec.name || exec.tool || null, args: exec.args || {}, agent: exec.agent || null, hook }
+          // ★ G7 ④: THIS is the only layer that sees the member's own tool calls (the child Agent executes them). Record
+          // a bounded name/phase/ok index so the turn step receipt can show what the member did; full receipts stay on
+          // the host side and never travel through the kernel.
+          if (hook === 'tools/pre-execute' || hook === 'tools/result') {
+            try {
+              const aid = exec.agent && typeof exec.agent.id === 'string' ? exec.agent.id : ''
+              const member = aid !== '' && !aid.startsWith('session-') && typeof kernel.currentTurnMember === 'function' ? kernel.currentTurnMember() : null
+              if (member && typeof kernel.noteMemberToolCall === 'function') {
+                const rawName = exec.name || (exec.tool && (typeof exec.tool === 'string' ? exec.tool : exec.tool.name)) || (exec.call && exec.call.name) || null
+                const resultOk = hook === 'tools/result'
+                  ? (exec.result && typeof exec.result === 'object' && typeof exec.result.ok === 'boolean' ? exec.result.ok : (typeof exec.ok === 'boolean' ? exec.ok : null))
+                  : null
+                kernel.noteMemberToolCall({ member, name: typeof rawName === 'string' ? rawName : null, phase: hook === 'tools/result' ? 'result' : 'call', ok: resultOk })
+              }
+            } catch { /* the summary index must never break a tool call */ }
+          }
           let decided = null
           try {
             // BRIDGE: these are the HOST's hook names (DSH vocabulary), forwarded so vmu middleware can observe

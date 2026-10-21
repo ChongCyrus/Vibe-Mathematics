@@ -1648,5 +1648,18 @@ for (const m of roster) chat.mute(m, { by: chair, reason: 'meeting in progress' 
 
 真机装配证据（`tests/vmu-activity-tool.test.mjs` §4）：声明 `vmu.activity.wakeOn:['chat/sent']` 的**真 kernel** 上，`k.activity.wait(...)` 被 `k.bus.emit('chat/sent', …)` **真的**唤醒（`notified.what==='hook:chat/sent'`）；同一装配下 `vmu.activity.noPeerShortCircuit=false` 的第 2 个 kernel **真的**超时（平台定时器）且 disposer 已跑；空名册时 `wait()` 立即 `noProgress:'no-active-peer'`。
 
+## 27. 会议两注册表、ballot 镜像与 close 语义（PHASE 9+ / G7 真机）
+
+会议面有**两个注册表**：`primitive`（`vibe_v5_meeting` 等逐对象原语开的）与 `service`（`vmu.meetings` 服务开的）。`vibe_vmu_meeting action:"list"` 同时报 `meetings`／`serviceMeetings`／`unionMeetings`；`summary`/`close` 的 `id` 读 **service**，`ballot` 的 `meeting` 读 **primitive** —— 参数名按 action 不同，传错只回 `id undefined`（已知可用性瑕疵）。
+
+★ **ballot 绑定 `(meeting, motion)`**：`action:"ballot"` 回执带
+`{ballotId, opened, target, mergedInto:{meeting,motion}, eligible}`。
+★ **投票镜像到 service**：`action:"vote"` 回执带
+`serviceVote:{ok, counted, tally, tallyNote, ballot:{mirrored, reason, boxId, code}}`；
+`action:"summary"` 的 `motions[0].tally` 与 `votes` **必须和 ballot 票数一致**（G7 复验：两票后 `tally.for:2`、`votes` 两条、会议级 `votes:2`）。
+★ **close**：`action:"close"` 回 `registry:"service"`、`closeSemantics:"service-archives"`、`enforced` **必须是数组**（不是字符串 `"[circular]"`）；会议进 service 归档后 `summary` 仍可读 motion/票。
+★ **`eligibleSeats`**：框架默认 **`[]`（零策略：不替机构决定谁有票）**；v5r 的 pack 值层声明 `chair/member` —— 这是“政策在 pack，不在内核”的红线 1 例子。
+★ **真机证据**：G7 复验（`D:\_tmp\slv-v5r\g7-verify.txt`，仓库外实测文件）—— `serviceVote.ballot.mirrored:true`、`summary.tally.for:2`、`close.enforced:[]`（数组）、`slv-inspect 5 sessions / 0 RED`。
+
 
 

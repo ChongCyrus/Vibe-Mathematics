@@ -197,6 +197,23 @@
 
 > **真实接线面（此前文档完全没写 ✗）**：这 5 个工具由 **profile 行的 `config`** 装配 —— `config.root`（耐久库 ⇒ `records`）、`config.vmu['vmu.middleware.entries']`（总线 ⇒ `middleware`）、`config.scripts`（⇒ `script`）、`config.instance`（身份自证）、`config.packs`（整合包装载）。**没有** `settings.yml`／`pack.yml`／`middleware/*.yml` 这类落盘配置 ✗（运行时**不读任何 YAML 文件** ✓）。
 
+### 3.1a v5r pack 的工具面（41 个，`packs/v5r/tools.js`）★ G7 补
+
+★ **这些不是框架面**：它们由 **`packs/v5r` manifest 的 `tools[]`** 声明，只在装载该 pack 时出现；名字集合见 `packs/v5r/tools.js` 的 `V5R_PACK_TOOLS`（生成式索引仍以 `docs/18` 为准）。★ **v5r 不声明 `toolPresentation`**，所以呈现是 native。
+
+| 工具 | 要点 | 参数/返回 |
+|---|---|---|
+| `vibe_v5_paper` ★ G7 重点 | **论文的唯一运行入口**：`start/part/advance/review/final/render/status/compile/sections`（9 action）。`final` **只有 chair 席**能过（成员 ⇒ `VMU_NOT_PERMITTED`）；`render` 回 `wrote/missing/complete/pdf`；`status` 回同一 `PaperArtifacts` 的 `missing/complete/pdf`（不写产物） | `action`、`target`、`member`、`participants`、`part/title`、`body`、`deliverable`、`notes`、`decision` |
+| `vibe_v5_inbox` | 信箱：`list/open/mark`；`list` 行 **8 字段无正文**，`open` 置 `read:true`，`mark` 改 read/todo。与 `vibe_vmu_mailbox` **同一套存储**（非紧急提示无正文；紧急只有发送方 `urgent:true` 才带正文） | `action`、`member`、`status`、`id`、`read`、`todo` |
+| `vibe_v5_wait` | 等待：`wait/status`；**面名是 `activity`（不是 `wait`）**；回执 `timedOut/waitedMs/timeoutMs`；无 peer 接缝时 `peerCheck:"no-seam"` | `action`、`timeout_ms`、`member`、`reason` |
+| `vibe_v5_record_*` | 研究日志/成果卡（内容指纹去重） | `content`/`statement`、`value`、`motive`、`p`、`track` |
+| `vibe_v5_message` / `_say` | 所办转达/群聊私信；`urgent` 默认 **false**（kind 不自动紧急） | `to`、`content`、`subject`、`urgent` |
+| `vibe_v5_meeting` / `_motion` / `_second` / `_poll_*` / `_verdict` | 机构会议/投票面；与 `vibe_vmu_meeting` 的 service 注册表/ballot 镜像见 `docs/08 §27` | 见 `packs/v5r/tools.js` |
+| `vibe_v5_lean_run` / `_job` / `_lib` / `_read` / `_archive` | Lean 面：无宿主 spawn 时**具名 `VMU_ENGINE_UNAVAILABLE`**，不假装编译 | `file`、`statement`、`jobId`、`kind` |
+| `vibe_v5_task_*` / `_hire` / `_assign` / `_fire` / `_nudge` / `_prioritize` / `_feedback` / `_read_library` / `_overview` / `_report` / `_start` / `_stop` / `_pause` / `_resume` / `_configure` / `_set` / `_tool_help` | 任务板/招聘/所务管理/控制；被具名拒时保留原码 | 见 manifest |
+
+★ **框架侧的同名能力**（`vibe_vmu_*`）仍在 §3.1；两套并存的边界以“谁是当前 pack 的 manifest 工具”为准，**不要用一张手写清单代替 manifest**。
+
 ### 3.2 规划中（`⛔ 未实现`，**当前不可调用**）
 
 > 这些名字宿主**没有注册**；保留在此仅为规划追溯 ✓。

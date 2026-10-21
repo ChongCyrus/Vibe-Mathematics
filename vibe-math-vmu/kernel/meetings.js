@@ -266,7 +266,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       unanswered: unanswered.length, unansweredList: unanswered.slice().sort(),
       denominator: effective, denominatorPolicy: K.unansweredInDenominator ? 'all-roster (unanswered counted)' : 'present-only',
       required: need, met: m.present.size >= need, ratio: K.quorumRatio, min: needMin,
-      emergencyRatio: K.emergencyQuorumRatio, note: 'unanswered members are named, never passed over silently (08 卷 D3/L4 口径)',
+      emergencyRatio: K.emergencyQuorumRatio,
+      // ★ G7 (real machine): "unanswered" used to mean "not in the PRESENT set", so after two votes it still listed a
+      // member who had just voted (present stayed at 1) — a caller read that as "one person has not decided yet". The
+      // present set now also records VOTERS (vote() adds the voter), and this policy field says so in words.
+      unansweredPolicy: 'members who have neither attended nor voted',
+      note: 'unanswered members are named, never passed over silently (08 卷 D3/L4 口径); voting counts as participation',
     }
   }
 
@@ -747,7 +752,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       if (K.unansweredInDenominator) mark(enforced, 'vmu.meetings.unansweredInDenominator')
       if (K.attendanceMode !== 'roster') mark(enforced, 'vmu.meetings.attendanceMode')
       if (target) target.votes.set(String(member), value === 0 ? 0 : 1)
+      // ★ G7: A VOTE IS PARTICIPATION. Without this, the quorum snapshot stayed stale after voting (present still 1,
+      // unanswered still ["r-1"] although r-1 had just voted) and a caller could read "someone has not decided yet".
+      m.present.add(String(member))
       counters.votes += 1
+      // the receipt reports the quorum AFTER this vote, so present/unanswered cannot lag the registered vote
+      const quorumAfter = quorumOf(m)
       // HONESTY (R15): with NO motion there is NO box to count, so the receipt must not report a tally it cannot back
       // (it used to answer {for:0,against:0,abstain:0} while `counters.votes` rose and the minutes row was written).
       // The real open-ballot CONTAINER is `kernel/ballot.js` (v5r pollOpen/pollVote/pollClose ≙ action ballot/vote/tally).
@@ -756,9 +766,9 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       m.minutes.entries.push({ at: now, kind: 'vote', motion: target ? target.id : null, member: String(member), value: value === 0 ? 0 : 1 })
       const ballotMirror = mirrorVote({ ballot, boxFor: boxBinding.resolve(), counters, meeting: m.id, motionId: target ? target.id : null, member, value,
         motionText: target ? target.text : null, motionKind: target ? target.kind : null, motionEmergency: target ? target.emergency === true : false })
-      const receipt = { at: now, action: 'vote', meeting: m.id, motion: target ? target.id : null, member: String(member), tally, counted: target !== null, tallyNote, quorum: q, enforced, enforcedScope: ENFORCED_SCOPE, ballot: ballotMirror }
+      const receipt = { at: now, action: 'vote', meeting: m.id, motion: target ? target.id : null, member: String(member), tally, counted: target !== null, tallyNote, quorum: quorumAfter, enforced, enforcedScope: ENFORCED_SCOPE, ballot: ballotMirror }
       pushReceipt(receipt)
-      return { ok: true, tally, counted: target !== null, tallyNote, quorum: q, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      return { ok: true, tally, counted: target !== null, tallyNote, quorum: quorumAfter, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** Transfer the chair. `chairTransferAudit` demands a reason. */
@@ -1036,22 +1046,26 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       }
       // Each rail is marked the moment its switch is CONSULTED (not only when it fires), so a refusal by a
       // LATER rail still shows that these earlier rails were active in this call.
+      // ★ G7 (real machine): close answered `enforced:[]`, which reads as "nothing was evaluated". The four close rails
+      // ARE consulted on every close; they were simply all at their defaults, so none fired. Marking them on
+      // CONSULTATION (the same convention vote() uses for the seat key) makes the close receipt a real reading and
+      // keeps `enforcedScope:'evaluated-so-far'` truthful.
+      mark(enforced, 'vmu.meetings.confirmPreviousMinutes')
       if (K.confirmPreviousMinutes) {
-        mark(enforced, 'vmu.meetings.confirmPreviousMinutes')
         if (!m.previousConfirmed) {
           throw deny('VMU_MINUTES_NOT_CONFIRMED', 'vmu.meetings.confirmPreviousMinutes=true: the previous minutes are not confirmed',
             'call confirmMinutes() before closing (vmu.meetings.confirmPreviousMinutes)', enforced)
         }
       }
+      mark(enforced, 'vmu.meetings.committeeReportRequired')
       if (K.committeeReportRequired) {
-        mark(enforced, 'vmu.meetings.committeeReportRequired')
         if (m.type === 'committee' && !report) {
           throw deny('VMU_STATE', 'vmu.meetings.committeeReportRequired=true: a committee meeting needs a report',
             'pass { report: <pointer> } (the report is stored by 07/22)', enforced)
         }
       }
+      mark(enforced, 'vmu.meetings.minutesActionsRequired')
       if (K.minutesActionsRequired) {
-        mark(enforced, 'vmu.meetings.minutesActionsRequired')
         if (!(Array.isArray(actions) && actions.length)) {
           throw deny('VMU_MINUTES_ACTION_REQUIRED', 'vmu.meetings.minutesActionsRequired=true: closing needs at least one action item',
             'pass { actions: [ … ] } (vmu.meetings.minutesActionsRequired)', enforced)
@@ -1066,8 +1080,8 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       archive.push(m)
       counters.closed += 1
       // minutes retention pruning (counted, never silent)
+      mark(enforced, 'vmu.meetings.minutesRetentionMs')
       if (K.minutesRetentionMs > 0) {
-        mark(enforced, 'vmu.meetings.minutesRetentionMs')
         let dropped = 0
         while (archive.length && now - archive[0].openedAt > K.minutesRetentionMs) { archive.shift(); dropped += 1 }
         if (dropped) { counters.prunedMinutes += dropped; say({ type: 'meetings/minutes-pruned', at: now, dropped }) }

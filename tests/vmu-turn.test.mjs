@@ -1250,6 +1250,44 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   }
 }
 
+// ★ G7 ④ (real machine): the step receipt said only `executed:1/parsed:3`, so the root could not see WHAT the member
+// called inside its turn. The host hook now records a bounded index (name/phase/ok) and the step receipt carries a
+// SUMMARY: names + call/receipt counts + the result ok, never full receipts.
+{
+  let calls = []
+  const recorder = {
+    memberToolCalls: (m) => calls.filter((c) => c.member === m),
+    clearMemberToolCalls: (m) => { calls = calls.filter((c) => c.member !== m) },
+  }
+  const t = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(), ...recorder,
+    deliver: async ({ turn }) => {
+      const m = turn.member
+      calls.push({ member: m, name: 'vibe_vmu_meeting', phase: 'call', ok: null })
+      calls.push({ member: m, name: 'vibe_vmu_meeting', phase: 'result', ok: true })
+      calls.push({ member: m, name: 'vibe_v5_paper', phase: 'call', ok: null })
+      calls.push({ member: m, name: 'vibe_v5_paper', phase: 'result', ok: false })
+      return fence({ progress: 'did the work' })
+    },
+    faces: { 'vmu.records': { put: async () => ({ ok: true }) } },
+  })
+  const out = await t.step({ members: [{ id: 'r-2', role: 'member' }], why: 'G7 toolCalls' })
+  const tc = out && out.receipt && out.receipt.toolCalls
+  ok(Array.isArray(tc) && tc.length === 2 &&
+    tc.some((x) => x.name === 'vibe_vmu_meeting' && x.called === 1 && x.receipts === 1 && x.ok === true) &&
+    tc.some((x) => x.name === 'vibe_v5_paper' && x.called === 1 && x.receipts === 1 && x.ok === false),
+    '★ G7 ④ 正：step 回执带 toolCalls 摘要（名字 + 调用/回执次数 + 成败），root 能看见成员这轮调了什么',
+    tc)
+  ok(Array.isArray(tc) && tc.length === 2 && tc.every((x) => Object.keys(x).sort().join(',') === 'called,name,ok,receipts'),
+    '★ G7 ④ 反：摘要是体积受控的形状 — 只有 name/called/receipts/ok，不携带任何完整回执', tc && tc.map((x) => Object.keys(x).sort().join(',')))
+  const quiet = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(), ...recorder,
+    deliver: async () => fence({ progress: 'no tools' }),
+    faces: { 'vmu.records': { put: async () => ({ ok: true }) } },
+  })
+  const quietOut = await quiet.step({ members: [{ id: 'r-2', role: 'member' }], why: 'G7 no calls' })
+  ok(quietOut && quietOut.receipt && Array.isArray(quietOut.receipt.toolCalls) && quietOut.receipt.toolCalls.length === 0,
+    '★ G7 ④ 反：成员没用工具 ⇒ 摘要为空数组（形状稳定，不是缺字段）', quietOut && quietOut.receipt && quietOut.receipt.toolCalls)
+}
+
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

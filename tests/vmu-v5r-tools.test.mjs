@@ -1360,7 +1360,7 @@ try {
       stderr: 'xelatex: not found',
     }
     const flow = createPaperFlow({
-      kernel: { records: recordsStub, settingsSnapshot: () => ({ 'vmu.records.tracks': ['paper'] }), latex: { check: async () => failure } },
+      kernel: { records: recordsStub, settingsSnapshot: () => ({ 'vmu.records.tracks': ['paper'] }), members: { roster: () => [{ id: 'acad', slot: 'chair' }] }, latex: { check: async () => failure } },
       codes: PAPER_CODES, sections: ['题与摘要'], maxRounds: 3, track: 'paper', engineOrder: PAPER_ENGINE_ORDER,
     })
     flow.start({ target: 'g7-paper', participants: ['r-1'] })
@@ -1372,6 +1372,20 @@ try {
       err && String(err.message).slice(0, 180))
     ok(err && Array.isArray(err.tried) && err.tried.length === 2 && typeof err.tried[0] === 'object',
       '★ G7 ⑤ 反：机器可读的 `tried` 数组仍保留（可读文案不替代数据）', err && err.tried && err.tried.length)
+    ok(err && Array.isArray(err.triedEngines) && err.triedEngines.length === 2 &&
+      err.triedEngines[0].engine === 'xelatex' && err.triedEngines[0].phase === 'probe' &&
+      err.triedEngines[1].engine === 'latexmk' && err.triedEngines[1].code === 'VMU_LATEX_NO_ENGINE',
+      '★ G7 ③ 正：失败错误上带结构化的 triedEngines:[{engine,phase,code}]（可程序化判断试过谁、哪个错）',
+      err && err.triedEngines)
+    // and the FINAL receipt's `pdf` carries it (the user-facing projection, not only the thrown error)
+    const stateRow = [...rows.values()].find((r) => String(r.title || '').endsWith('|state'))
+    if (stateRow) { const st = JSON.parse(stateRow.body); st.status = 'awaiting-editor'; st.stage = 'awaiting-editor'; stateRow.body = JSON.stringify(st) }
+    const finalized = await flow.recordFinal({ target: 'g7-paper', member: 'acad', decision: 'deliverable' })
+    ok(finalized && finalized.pdf && finalized.pdf.ok === false && Array.isArray(finalized.pdf.triedEngines) &&
+      finalized.pdf.triedEngines.some((x) => x.engine === 'xelatex') && finalized.pdf.triedEngines.some((x) => x.engine === 'latexmk') &&
+      finalized.pdf.code === PAPER_CODES.PDF_FAILED,
+      '★ G7 ③ 反（最终回执）：final 回执的 pdf 同时含 code/message 与结构化 triedEngines（散文保留、数据可程序化）',
+      finalized && finalized.pdf && { code: finalized.pdf.code, triedEngines: finalized.pdf.triedEngines })
   }
 
   // ── ⑦i PHASE 8 / goal 10 (round 38): the PACK declares its tool presentation; the HOST applies it ───────────────

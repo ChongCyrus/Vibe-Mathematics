@@ -33,7 +33,7 @@
 | `vibe_vmu_status`（`status`） | **内核启用即恒有** | 只读 | ✓ | （无 action；纯读） |
 | `vibe_vmu_set`（`set`） | 提供 `assertDeclared`（键登记表）时 | 设置写；**H3 键具名拒** | ✗（写；重复同值＝无害但非幂等语义） | （无 action；`key`/`value`） |
 | `vibe_vmu_middleware`（`middleware`） | **有已声明条目 或 总线已有条目** | 机制管理 | `list/validate/dryRun` ✓ 只读；`disable/enable` ✗ | `list`(默认)`/disable/enable/validate/dryRun` |
-| `vibe_vmu_records`（`records`） | `kernel.library` 存在（有 `root`） | 记录读写 | `list/expand` ✓；`append` ✗（内容指纹去重） | `list`(默认)`/expand/append` |
+| `vibe_vmu_records`（`records`） | `kernel.library` 存在（有 `root`） | 记录读写 | `list/expand` ✓；`append` ✗（内容指纹去重） | `list`(默认)`/expand/append`；`list` 回 `total/returned/truncated`（`limit:0` 全量） |
 | `vibe_vmu_script`（`script`） | 本次运行**声明了脚本** | 执行 M3 脚本 | `list` ✓；`run` ✗ | `list`(默认)`/run` |
 | `vibe_vmu_pack`（`pack`） | 传入 `packLoader` | 包装载 | `list/plan` ✓；`apply/unload` ✗ | `list`(默认)`/plan/apply/unload` |
 | `vibe_vmu_control`（`control`） | `controlTool` 为真 | 控制面 | `status` ✓；`pause/resume/stop/beat` ✗ | `status`(默认)`/pause/resume/stop/beat/roster/hire/fire` |
@@ -42,7 +42,7 @@
 | `vibe_vmu_turn`（`turn`） | `turnTool` 为真 | 回合执行 | `status` ✓；`step/drive` ✗ | `status`(默认)`/step/drive` |
 | `vibe_vmu_tools`（`memberTools`） | `vmu.members.*` 或 `vmu.tools.faces` 声明该面 | 成员可见工具自省 | 全只读 ✓ | `member`（必填） |
 | `vibe_vmu_vote`（`vote`） | `vmu.turn.*` 或 `vmu.tools.faces` 声明该面 | 结题表决（与回执 `vote_solved` 同一写入者） | 写入一票 ✗（只改本成员布尔） | `member`、`solved`（必填） |
-| `vibe_vmu_env`（`env`） | `vmu.env.*` 或任一 `vmu.math.*` 声明 | 环境探测/列表/上报（不安装、不联网） | probe/list ✓；report ✗（写一条 finding） | `action`；`need`／`needs`；`why`／`detail` |
+| `vibe_vmu_env`（`env`） | `vmu.env.*` 或任一 `vmu.math.*` 声明 | 环境探测/列表/上报（不安装、不联网；`needs` 22 项由 `settings/env-needs.js` 拥有，docs 不手抄副本） | probe/list ✓；report ✗（写一条 finding） | `action`；`need`／`needs`；`why`／`detail` |
 | `vibe_vmu_minutes`（`minutes`） | `minutesTool` 为真 | 纪要读写 | `list/actions/status` ✓；`draft/confirm/append` ✗ | `list`(默认)`/draft/confirm/append/actions/status` |
 | `vibe_vmu_board`（`board`） | `boardTool` 为真 | 看板读写 | `columns`/`swimlanes`/`aging`/`status` ✓；`addColumn`/`move`/`setWip` ✗ | `columns`(默认)`/addColumn/move/setWip/swimlanes/aging/status` |
 | `vibe_vmu_budget`（`budget`） | `budgetTool` 为真 | 配额读写 | `remaining`/`status`/`list`/`totals`/`perTaskShare` ✓；`open`/`charge`/`reserve` ✗ | `status`(默认)`/open/charge/reserve/remaining/list/totals/perTaskShare` |
@@ -125,8 +125,8 @@
 - **反模式**：✗ 把 `rule` 传成对象（必须 JSON **字符串**）｜✗ 用 `dryRun` 期望"真的跑一次"（它**只报告**）｜✗ 用 `disable` 当作卸载（总线上有 `remove` 才算卸载；`disable` 只是停用）。
 
 ### 2.4 `vibe_vmu_records` ✓
-- **参数**：`action`（enum：`list`(默认)`|expand|append`）｜`id`（expand 必填）｜`kind`（append：`proposition|method|subproblem`）｜`statement`（append）｜`proof`（append：证明/方法正文）。
-- **返回**：`list` ⇒ `{records:[…]}`（**不含正文**）｜`expand` ⇒ 记录正文（**超限计数**：截断数字可见）｜`append` ⇒ `{ok,id,fingerprint,deduplicated,...}`（**按内容指纹去重**）。
+- **参数**：`action`（enum：`list`(默认)`|expand|append`）｜`id`（expand 必填）｜`limit`（list 最大条数；`0` = 全部；省略用 `vmu.records.headListAt`）｜`kind`（append：`proposition|method|subproblem`）｜`statement`（append）｜`proof`（append：证明/方法正文）。
+- **返回**：`list` ⇒ `{records:[…], total, returned, truncated, hint}`（**不含正文**；G7 真机修复：截断必须可见，`truncated:true` 时 hint 说 `limit:0`/`track`/`expand` 怎么取全）｜`expand` ⇒ 记录正文（**超限计数**：截断数字可见）｜`append` ⇒ `{ok,id,fingerprint,deduplicated,...}`（**按内容指纹去重**）。
 - **错误码**：`VMU_INVALID_ARGUMENT`（action 非法/缺参）｜`VMU_NO_SUCH_OBJECT`（expand 悬空 id）｜`VMU_WRITE_FAILED`（落盘失败）｜`VMU_BODY_TRUNCATED`（正文被计数式截断返回）。
 - **幂等**：`list/expand` ✓；`append` **内容幂等**（同内容 ⇒ `deduplicated:true`）。
 - **可照抄**：`{"action":"append","kind":"proposition","statement":"设 n>2…","proof":"最小反例归约…"}`

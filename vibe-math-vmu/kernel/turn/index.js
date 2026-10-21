@@ -638,7 +638,10 @@ export function createTurnOrchestrator({
   // dispatch) and drains them exactly once at assembly; this seam lets a face that OWNS a durable notice queue (the
   // Lean face's `takeNoticesFor(member)`) feed the SAME one-shot channel, so an announcement really reaches the
   // member's next prompt. Absent ⇒ nothing is added (the loop's own behaviour is unchanged, byte for byte).
-  noticeSource = null } = {}) {
+  noticeSource = null,
+  // ★ G7 ④: the HOST-side member tool-call index (kernel records name/phase/ok at the tool hooks). The step receipt
+  // carries a BOUNDED SUMMARY so the root can see what the member actually called; full receipts never travel here.
+  memberToolCalls = null, clearMemberToolCalls = null } = {}) {
   const owners = resolveOwners(bindings)
   const known = Object.keys(owners)
   // ROUND 347: the wakeup POLICY (docs/26 section 3.2). The original preset recorded only WHO should be woken and
@@ -1387,6 +1390,20 @@ export function createTurnOrchestrator({
   const step = async ({ members = [], phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
     const spec = nextTurn({ members, phase, why, nextStep, role })
     if (!spec) return { ok: true, receipt: null, stopped: 'no-members' }
+    // ★ G7 ④: clear this member's tool-call index at the START of the step, so the receipt reports THIS turn only.
+    if (typeof clearMemberToolCalls === 'function') { try { clearMemberToolCalls(spec.member) } catch { /* diagnostics only */ } }
+    const toolCallSummary = () => {
+      const rows = typeof memberToolCalls === 'function' ? (memberToolCalls(spec.member) || []) : []
+      const byName = new Map()
+      for (const r of rows) {
+        if (!r || typeof r.name !== 'string') continue
+        const cur = byName.get(r.name) || { name: r.name, called: 0, receipts: 0, ok: null }
+        if (r.phase === 'result') { cur.receipts += 1; cur.ok = r.ok === true ? true : (r.ok === false ? false : null) }
+        else cur.called += 1
+        byName.set(r.name, cur)
+      }
+      return [...byName.values()].slice(0, 30)
+    }
     try {
       const r = await run({ ...spec, round: turns.size + 1 })
       // ★★★ ROUND 73: a caller-played turn is a LEGAL outcome, not a receipt with empty fields. It is surfaced as such so
@@ -1394,9 +1411,9 @@ export function createTurnOrchestrator({
       // ★ ROUND 88: and it NAMES THE ROUTE that handed the prompt back, so "which delivery path ran" is read from the
       // receipt the agent actually sees rather than inferred from prose in a transcript.
       if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null,
-        instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null }
+        instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null, toolCalls: toolCallSummary() }
       return { ok: true, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length,
-        instructionDelivered: r.instructionDelivered === true, turn: r.turn.id } }
+        instructionDelivered: r.instructionDelivered === true, turn: r.turn.id, toolCalls: toolCallSummary() } }
     } catch (e) {
       // ★★★ ROUND 61: THE STACK STAYS. This catch kept only the message, and that is precisely why a real machine's
       // failure was undiagnosable: the transcript recorded `Cannot read properties of undefined (reading 'id')` thirty-

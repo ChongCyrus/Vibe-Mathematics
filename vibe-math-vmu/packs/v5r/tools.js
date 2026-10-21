@@ -879,7 +879,9 @@ async function toolPaper(args = {}, { kernel } = {}) {
         ok: finalized.ok === true, finalized: finalized.finalized === true, target: finalized.target,
         final: finalized.final || null,
         missing: Array.isArray(finalized.missing) ? finalized.missing.slice() : [],
-        pdf: finalized.pdf ? { ok: finalized.pdf.ok === true, code: finalized.pdf.code || null, message: finalized.pdf.message || null } : null,
+        pdf: finalized.pdf ? { ok: finalized.pdf.ok === true, code: finalized.pdf.code || null, message: finalized.pdf.message || null,
+          faceCode: finalized.pdf.faceCode || null,
+          triedEngines: Array.isArray(finalized.pdf.triedEngines) ? finalized.pdf.triedEngines.slice(0, 12) : [] } : null,
       } }
     }
     case 'render': {

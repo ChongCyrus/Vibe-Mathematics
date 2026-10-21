@@ -196,6 +196,34 @@ if (SELF_PROBE) {
   ok((await call()) === 'delegated', 'after the host ends the turn the budget is reset (the next turn is not punished)')
 }
 
+// ---- G7 ④: the member tool-call index is written by the HOST hook, keyed by the member the turn is driving --------
+{
+  const rule = denyRule('g7-index')
+  rule.on = ['tools/pre-execute', 'tools/result']
+  const settings = { 'vmu.middleware.entries': [rule] }
+  const kernel = km.createKernel({ clock, settings })
+  await kernel.start()
+  kernel.setActiveTurnMember('r-1')
+  const host = fakeCtx()
+  const bridge = hm.attachHostHooks({ ctx: host.ctx, kernel, settings })
+  bridge.attach()
+  const child = { id: 'child-g7' }
+  const pre = host.state.listeners['tools/pre-execute'] && host.state.listeners['tools/pre-execute'][0]
+  const post = host.state.listeners['tools/result'] && host.state.listeners['tools/result'][0]
+  await pre({ name: 'vibe_mu_extra', args: {}, agent: child }, async () => ({ kind: 'allow' }))
+  if (typeof post === 'function') await post({ name: 'vibe_mu_extra', args: {}, agent: child, result: { ok: false } }, async () => ({ kind: 'allow' }))
+  const calls = kernel.memberToolCalls('r-1')
+  ok(calls.length >= 1 && calls[0].name === 'vibe_mu_extra' && calls[0].phase === 'call',
+    '★ G7 ④ 正：child Agent 的 tool hook 把调用写进该成员的工具索引（name + phase）', calls)
+  ok(calls.some((c) => c.phase === 'result' && c.ok === false),
+    '★ G7 ④ 正：tools/result 写入回执阶段与 ok（失败可见）', calls.map((c) => c.phase + ':' + c.ok))
+  const before = calls.length
+  await pre({ name: 'root_tool', args: {}, agent: { id: 'session-root' } }, async () => ({ kind: 'allow' }))
+  ok(kernel.memberToolCalls('r-1').length === before,
+    '★ G7 ④ 反：root（session-…）的工具调用不写进成员索引（只记成员自己的回合）', kernel.memberToolCalls('r-1').length)
+  kernel.setActiveTurnMember(null)
+}
+
 console.log('=== VMU HOST HOOKS: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
