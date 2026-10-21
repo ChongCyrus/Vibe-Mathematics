@@ -406,9 +406,11 @@ function toolFeedback(args = {}, { kernel } = {}) {
  *
  *  ① `V5_NOT_VOTER` — "列席／受邀／临时工没有表决权（D8）；授权也不能把票权授出去（H12/R36）". The vmu ballot box has no
  *     role/eligibility concept (its cast takes `by` and never asks who that is), so the rule lands HERE, on the pack's
- *     OWN declared slots: `VOTER_SLOTS = ['chair','member']` — the two permanent seats in this pack's slots[];
- *     `temp` (and an id not on the roster) is refused by name with the original wording. "Authorisation cannot lend
- *     the vote" is structural: this face has no grant path, so there is nothing to lend — stated in the refusal.
+ *     OWN slots: the VOTER SEATS are now a DECLARED VALUE (`vmu.meetings.eligibleSeats`, shipped in this pack's
+ *     settings/defaults.json as chair + member), not a constant in this file - policy belongs to the institution,
+ *     not to code (red line 1). `temp` (and an id not on the roster) is refused by name with the original wording.
+ *     "Authorisation cannot lend the vote" is structural: this face has no grant path, so there is nothing to lend -
+ *     stated in the refusal.
  *
  *  ② `min_votes` — "whether THIS ballot counts, not the quorum". vmu's ballot box HAS that floor, but per-INSTANCE
  *     (constructor config `vmu.ballot.minVotes` / `minVotesRatio`), and `open()` accepts only question+options. ⇒ a
@@ -422,7 +424,12 @@ function toolFeedback(args = {}, { kernel } = {}) {
  *     vote — the secretary still votes through the ordinary eligibility rules.
  */
 const CHAIR_SLOT = 'chair'
-const VOTER_SLOTS = Object.freeze(['chair', 'member'])
+/** The DECLARED voter seats, read per call through the kernel's live settings view (empty ⇒ no seat restriction). */
+function voterSeatsOf(kernel) {
+  const view = kernel && typeof kernel.settingsView === 'function' ? kernel.settingsView() : null
+  const raw = view ? view['vmu.meetings.eligibleSeats'] : undefined
+  return Array.isArray(raw) ? raw.map(String).filter((x) => x !== '') : []
+}
 
 function seatOf(kernel, member) {
   const roster = membersOf(kernel).roster()
@@ -443,12 +450,13 @@ function requireChairSeat(kernel, member, what) {
   }
   return row
 }
-/** ① V5_NOT_VOTER, landed on the pack's own slot declaration. */
+/** ① V5_NOT_VOTER, landed on the pack's DECLARED voter seats (never a constant in this file). */
 function requireVoter(kernel, member, what) {
   const row = requireSeat(kernel, member, what)
-  if (!VOTER_SLOTS.includes(String(row.slot))) {
+  const seats = voterSeatsOf(kernel)
+  if (seats.length && !seats.includes(String(row.slot))) {
     throw refuse('VMU_NOT_PERMITTED', '列席／受邀／临时工没有表决权（原版 V5_NOT_VOTER／D8）："' + row.id + '" 在 "' + String(row.slot) + '" 席',
-      '只有常设席（chair/member）有票权；授权也不能把票权授出去（H12/R36）——本面没有授权路径，所以结构上无从授出')
+      '只有声明的表决席有票权（本机构声明：' + seats.join(' / ') + '）；授权也不能把票权授出去（H12/R36）——本面没有授权路径，所以结构上无从授出')
   }
   return row
 }
@@ -693,17 +701,19 @@ async function toolPause(args = {}, { kernel } = {}) {
   const r = await kernel.pause(has(args.reason) ? str(args.reason) : 'paused by vibe_v5_pause')
   return { ok: true, tool: 'vibe_v5_pause', receipt: r }
 }
-/** ★ `vibe_v5_resume` — un-pause through the kernel's CONTROL face (NOT `kernel.resume`, which is the durability
- * projection: a same-name trap, written down here instead of being learned the hard way). */
+/** ★ `vibe_v5_resume` — un-pause through the kernel's CONTROL-FLOW face. NOTE the name collision measured in
+ * `kernel/index.js:1935-1941`: `kernel.resume(reason)` IS the control-flow counterpart of `pause()`; the DURABILITY
+ * projection is `kernel.recovery` / `kernel.resumeService`. This handler used to call
+ * `kernel.controlService.resume({...})`, which is the SCOPE-LEVEL approval resume — it answered ok while the kernel
+ * stayed paused (measured in the A1 probe: `controlState.state === 'paused'`, `resumes:0`), so meetings and ballots
+ * could not be opened after a pause. One state, one writer. */
 async function toolResume(args = {}, { kernel } = {}) {
-  const control = kernel && kernel.controlService
-  if (!control || typeof control.resume !== 'function') {
-    throw refuse('VMU_ENGINE_UNAVAILABLE', 'no control face is published, so a paused institute cannot be resumed', 'assemble a kernel with the control service')
+  if (!kernel || typeof kernel.resume !== 'function') {
+    throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no control-flow resume()', 'assemble a full kernel (vibe-math-vmu.js)')
   }
-  const r = control.resume(has(args.reason) ? str(args.reason) : undefined)
-  const receipt = r && typeof r.then === 'function' ? await r : r
-  return { ok: true, tool: 'vibe_v5_resume', receipt,
-    note: 'resumed through the control face (kernel.resume is the DURABILITY projection and is deliberately not used here)' }
+  const r = await kernel.resume(has(args.reason) ? str(args.reason) : undefined)
+  return { ok: true, tool: 'vibe_v5_resume', receipt: r,
+    note: 'resumed through the kernel control state (the durability projection is kernel.recovery, never used here)' }
 }
 
 /** Apply ONE declared setting through the kernel's guarded writer and report the hot level it declares. Shared body of

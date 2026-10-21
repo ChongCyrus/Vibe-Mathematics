@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 // B1′ resident assertion — the staleness report's SHAPE and its hard-failure MESSAGE, with a REAL fixture.
-// Fixture: copy docs/04-settings.md, delete the §11 body's FIRST row (0-based 259; header at 258 — coordinates
-// measured by the Lead), then run `generate-wiring-index.mjs --check` with VMU_SETTINGS_DOC pointed at the copy.
+// Fixture: copy docs/04-settings.md, delete the §11 body's FIRST row (located by CONTENT: the `| 键 | 类型 |`
+// header, then its separator, then the first `| \`vmu.…\`` body row), then run `generate-wiring-index.mjs --check`
+// with VMU_SETTINGS_DOC pointed at the copy. ★ ROUND 13: the header used to be addressed as a hard-coded line
+// number; every added settings key shifted it and reddened this suite, so the fixture now asserts the header is
+// present EXACTLY ONCE instead of pinning where it is.
 // ★ NON-EMPTY PRECONDITION: the run must actually go STALE (exit 2 + a `诊断:` line) — without that the rest of the
 // assertions would only be exercising the clean path.
 // ★ LIVE PROOF that the fixture is live: the same call with the UNMODIFIED doc must be up to date (exit 0).
@@ -33,8 +36,13 @@ const root = mkdtempSync(join(tmpdir(), 'b1prime-'))
 try {
   const src = readFileSync(join(REPO, 'vibe-math-vmu', 'docs', '04-settings.md'), 'utf8')
   const lines = src.split('\n')
-  const headerIdx = lines.findIndex((l) => l.startsWith('| 键 | 类型 |'))
-  ok(headerIdx === 258, 'the §11 table header is where the fixture assumes it is (0-based 258)', headerIdx)
+  // ★ ROUND 13: LOCATE BY CONTENT, NOT BY COORDINATES. This used to assert `headerIdx === 258`; adding ONE settings
+  // key to §11 shifted the header and reddened a suite whose subject is the staleness MESSAGE, not the line number.
+  // Adding a key is routine, so a coordinate assertion is a fixture that breaks on normal work. The header text is
+  // stable; assert it is present EXACTLY ONCE (a duplicate would make "the first one" a silent guess).
+  const headerHits = lines.map((l, i) => (l.startsWith('| 键 | 类型 |') ? i : -1)).filter((i) => i >= 0)
+  ok(headerHits.length === 1, 'the §11 table header occurs EXACTLY ONCE (located by CONTENT, not by a hard-coded line)', JSON.stringify(headerHits))
+  const headerIdx = headerHits[0]
   const bodyFirst = headerIdx + 2        // ★ +2: headerIdx+1 is the `|---|…|` SEPARATOR (my first version deleted the
   ok(/^\| `vmu\./.test(lines[bodyFirst]), 'the first §11 body row (after the separator) is a key row (the row the fixture deletes)', lines[bodyFirst].slice(0, 40))
   const pristine = join(root, 'pristine.md')

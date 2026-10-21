@@ -242,6 +242,8 @@ vmu.packs.active: [v5r]
 
 ---
 
+> **★ 关于「⚠️ 未接线」的读法（轮 9）**：表内 `⚠️ 未接线` 的键**全部是 `planned` 类型**——它们**按设计就未接线**（声明了扩展面，没有承载者），**不是文档漂移**，也**不是**"工具说无读点而文档说已接线"的不一致。判据：`type=planned` ＋ `def=null` ⇒ 零机制是正确状态；只有**非 planned** 的键出现 ⚠️ 才是缺陷。
+
 ## 11. 参数总表（**首版；机器可核**：与 schema 键集合必须完全一致）
 
 > 列含义：**H**＝热改等级（H0 立即／H1 下一回合／H2 下一会话／H3 只读）；**谁**＝可改者（office＝会话根；role:槽位＝可下放）。**本表由 schema 派生**（手写副本仅作首版基线，P0 后由生成器替换 ✓）。
@@ -1064,6 +1066,7 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.allowLight` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 是否允许 light（简流程）会议：false ⇒ 内核在开会/收束处以具名拒挡住 light（与 `tier` 共用同一派生判定点）。读者：`kernel/meetings.js` 的 `K.allowLight`。 |
 | `vmu.ballot.reopenFloor` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ballotbox.js` | 投票板重开门槛（0＝不设门槛；>0 时 reopen 需要达到该支持数）。读者：`kernel/ballotbox.js` 的 `reopen()`（reader-c 的 GAP-MTG-10；该面自有实现，不并存第二份）。 |
 | `vmu.meetings.leaveApprover` | enum | `chair` | `chair`∣`office` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingdomain.js` | 请假/休会的批准人：chair＝主席批准，office＝办公室兜底。★ 本轮**只声明键**（B② 的 requestLeave/approveLeave 未落）；键被读时必须按此值域判定，未落前读取具名降级。 |
+| `vmu.meetings.eligibleSeats` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 投票席位白名单（席别名；空＝不按席别限制，只要求是本场成员）。一个判据、两个消费者：`kernel/meetings.js` 的 `vote()`（票权闸）与 `eligibleVoterIds()`（供逐对象票箱取 eligible）。默认空＝零策略；v5r 包声明 chair/member。 |
 | `vmu.prompt.compactThreshold` | int ≥0 | `66` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 上下文占比达到该值 ⇒ 组装时注入 [CONTEXT COMPACT] 指示。**百分数 0–100，不是 0–1**。v5r `compactThreshold:66`（`:1078`；`:449` 明写 never clamp to 0-1；`:9869` 拒 ≤0）。读者：`kernel/prompt/index.js` 的 `assemble()`（读 `ctx.contextPct`）。 |
 | `vmu.prompt.compactAfterRounds` | int ≥0 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 距上次压缩的轮数达到该值 ⇒ 同上注入（与阈值是**或**关系）。v5r `compactAfterRounds:8`（`:1079`；`soft` 判定 `:3902-3903`）。读者：`kernel/prompt/index.js` 的 `assemble()`（读 `ctx.round`）。 |
 | `vmu.paper.finalPaper` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/paper.js` | 运行结束时**自动**写最终论文。v5r `finalPaper:true`（`:1163`；消费点 `:7867` `if (params.finalPaper !== false)`）。读者：`kernel/paper.js` 的 `finalize({auto:true})`（false ⇒ 具名拒，不静默改成手动）。 |
@@ -1536,7 +1539,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1147** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1148** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1597,7 +1600,7 @@ vmu.packs.active: [v5r]
 | `vmu.limits.*` | 5 |
 | `vmu.mailbox.*` | 6 |
 | `vmu.math.*` | 105 |
-| `vmu.meetings.*` | 58 |
+| `vmu.meetings.*` | 59 |
 | `vmu.members.*` | 1 |
 | `vmu.memory.*` | 16 |
 | `vmu.metadata.*` | 2 |

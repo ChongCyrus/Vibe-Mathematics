@@ -29,6 +29,19 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
     // ★ PHASE 7 / round 17: the turn face used to call closureVoteOf with its DEFAULTS (roster []), so a seated member
     // with the vote permission still read eligible:[]. Use the kernel's ONE calculation instead of a second one.
     if (typeof kernel.closureVoteView === 'function') status.closureVote = kernel.closureVoteView()
+    // ★ PHASE 9+ / round 12: `detail` used to be silently dropped (not even declared), so `detail:'closure'` returned
+    // the FULL status and the caller could not tell whether it had been narrowed. It NARROWS here (the reason it
+    // exists: status was large enough to be truncated), and any unknown value is a NAMED refusal, never a no-op.
+    const detail = args.detail === undefined || args.detail === null ? null : String(args.detail)
+    if (detail !== null && detail !== 'closure') {
+      return refused('VMU_INVALID_ARGUMENT', 'unknown status detail: ' + detail,
+        'known detail values: closure (omit detail for the full status)')
+    }
+    if (detail === 'closure') {
+      return { ok: true, detail: 'closure',
+        closureVote: status.closureVote || null,
+        closureVoteWrites: Number.isInteger(status.closureVoteWrites) ? status.closureVoteWrites : 0 }
+    }
     return { ok: true, status }
   }
       // ★★★ ROUND 73: THE CALLER-PLAYED TURN, SECOND HALF. When a host cannot lend an Agent, the assembled member
@@ -113,6 +126,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       // tools:'none' never reached coreTurn. It is a param map now, exactly like every other tool.
       parameters: {
         op: param('string', 'step＝一轮／drive＝连跑若干轮／status＝读数', { required: true }),
+        detail: param('string', '仅 status：closure＝只回 closureVote（小回执）；未知值具名拒'),
         members: param('array', '本轮可唤醒的成员：[{id, role}]；缺省时由内核名册推断（无成员 ⇒ 合法空转）'),
         rounds: param('integer', 'drive 的轮数（必须为正整数；没有无限默认）'),
         phase: param('string', '相位：founding／normal／checkpoint／verify／verify-debate／meeting／resume'),

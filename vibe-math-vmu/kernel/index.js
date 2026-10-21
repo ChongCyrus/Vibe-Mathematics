@@ -1295,7 +1295,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       return ballotbox.cast({ boxId: String(args.boxId), by: String(args.by || args.member || ''), choice: args.value })
     },
   }
-  meetingsRef.current = createMeetings({ settings: settingsView, bus, clock: guardedClock, log, durable: meetingsDomainSeam, ballot: meetingBallot })
+  meetingsRef.current = createMeetings({ settings: settingsView, bus, clock: guardedClock, log, durable: meetingsDomainSeam, ballot: meetingBallot, members: memberRef })
   const meetings = meetingsRef.current
   // ROUND 9 / task-66 A (G7): the board's cast/settle commits through the SAME durable log as the mailbox — one
   // instance, one ticket sequence, so a recovery replay has a single order to follow. Absent store ⇒ the board's
@@ -2008,6 +2008,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     },
     meeting: (opts = {}) => {
       const id = (opts && typeof opts.id === 'string' && opts.id) ? opts.id : 'm-' + (++liveSeq)
+      // A1 round 10: an explicit id that is already LIVE is refused BY NAME. Overwriting it would silently
+      // replace a meeting another caller is still addressing (the same guard the meetings SERVICE now has).
+      if (liveMeetings.has(id)) throw refuse('VMU_CONFLICT', 'a live meeting already uses id ' + String(id), 'choose another id; a live meeting is never silently replaced')
       const made = createMeeting(Object.assign({ bus, clock, deliver,
         // PHASE 6 / P0 (goal-3 audit R1): these used to read raw and fall back to 0, turning the declared caps OFF.
         // The declared defaults (2 / 3) now come from the ONE reader, and an unconfigured deployment enforces them.

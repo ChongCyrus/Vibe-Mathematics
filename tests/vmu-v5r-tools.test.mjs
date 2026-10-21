@@ -1077,6 +1077,63 @@ try {
   ok(plainPoll.parsed && plainPoll.parsed.ok === true && plainPoll.parsed.rulesDeclared === false && Object.keys(plainPoll.parsed.rules || {}).length === 0,
     '★★ ① 反: with no rules asked, rulesDeclared is FALSE and the box behaves as before (the deployment policy applies)', plainPoll.parsed && { rulesDeclared: plainPoll.parsed.rulesDeclared })
   // ── ⑦c GOAL A (PHASE 8): THE ROLE-SCOPED TOOL FACE ────────────────────────
+  // ── ⑦b-bis A1 (轮 10): THE FOUR DEFECTS OF THE MEETING CHAIN ──────────────────────────────────────────────
+  console.log('=== 7b-bis. A1: ghost vote / id bridge / eligible seats / service summary ===')
+  const a1Kernel = v5rBoot.handle.kernel
+  const a1Svc = a1Kernel.meetings
+  const a1View = typeof a1Kernel.settingsView === 'function' ? a1Kernel.settingsView() : {}
+  const a1Seats = a1View['vmu.meetings.eligibleSeats']
+  ok(Array.isArray(a1Seats) && a1Seats.join(',') === 'chair,member',
+    '★ A1④: the voter seats are a DECLARED pack value (chair/member) — no longer a constant in the pack handler', a1Seats)
+  const a1Elig = a1Svc.eligibleVoterIds()
+  ok(a1Elig && a1Elig.restricted === true && a1Elig.ids.includes('r-1') === true && a1Elig.ids.includes('r-temp-1') === false,
+    '★ A1④: the SAME declaration decides the eligible ids (a member seat yes / a temp seat no)', a1Elig)
+  const a1Open = await receipt(v5rBoot, 'vibe_v5_meeting', { agenda: 'A1 会议', kind: 'sync', member: chairId })
+  const a1Mid = a1Open.parsed && (a1Open.parsed.meeting && (a1Open.parsed.meeting.id || a1Open.parsed.meeting))
+  ok(!!a1Mid, '★ A1 setup: a service meeting was opened', a1Mid)
+  const a1Mo = await receipt(v5rBoot, 'vibe_v5_motion', { meeting: a1Mid, kind: 'topic', text: 'A1 动议', member: 'r-1' })
+  const a1MoId = a1Mo.parsed && a1Mo.parsed.motion
+  ok(!!a1MoId, '★ A1 setup: a motion exists for the vote checks', a1Mo.parsed && a1Mo.parsed.motion)
+  // ① ghost vote (was counted: the service had no roster seam)
+  let a1Ghost = null
+  try { a1Svc.vote({ meeting: a1Mid, member: 'r-ghost-a1', motion: a1MoId, value: 1 }) } catch (e) { a1Ghost = e }
+  ok(a1Ghost && a1Ghost.code === 'VMU_NOT_MEMBER',
+    '★ A1①: a NON-MEMBER vote is refused by name (the assembly passes the members seam now; this used to be counted)', a1Ghost && a1Ghost.code)
+  // ③ temp seat on the SERVICE (the seat declaration decides)
+  let a1TempVote = null
+  try { a1Svc.vote({ meeting: a1Mid, member: 'r-temp-1', motion: a1MoId, value: 1 }) } catch (e) { a1TempVote = e }
+  ok(a1TempVote && a1TempVote.code === 'VMU_NOT_PERMITTED' && Array.isArray(a1TempVote.enforced) && a1TempVote.enforced.includes('vmu.meetings.eligibleSeats'),
+    '★ A1③[service]: the TEMP seat is refused by the declared seats, and the refusal names the key in enforced[]', a1TempVote && { code: a1TempVote.code, enforced: a1TempVote.enforced })
+  const a1ChairVote = a1Svc.vote({ meeting: a1Mid, member: chairId, motion: a1MoId, value: 1 })
+  ok(a1ChairVote && a1ChairVote.counted === true && a1ChairVote.tally.for === 1,
+    '★ A1③[service] 正: a declared voter seat still counts', a1ChairVote && a1ChairVote.tally)
+  // ⑤ summary reads the SERVICE for a service id
+  const a1Sum = await receipt(v5rBoot, 'vibe_vmu_meeting', { action: 'summary', id: a1Mid })
+  ok(a1Sum.parsed && a1Sum.parsed.ok === true && Array.isArray(a1Sum.parsed.motions) && a1Sum.parsed.motions.length === 1 &&
+    a1Sum.parsed.motions[0].tally && a1Sum.parsed.motions[0].tally.for === 1 && Array.isArray(a1Sum.parsed.motions[0].votes),
+    '★ A1⑤: the vmu summary reads a SERVICE meeting and carries motions/votes (this answered "no live meeting" before)', a1Sum.parsed && a1Sum.parsed.motions)
+  // ② the id bridge
+  const a1Bridge = await receipt(v5rBoot, 'vibe_vmu_meeting', { action: 'open', id: 'a1-bridge-id', agenda: 'A1 桥', roster: a1Kernel.members.roster().map((m) => m.id), secretary: chairId })
+  const a1BridgeId = a1Bridge.parsed && a1Bridge.parsed.id
+  ok(a1Bridge.parsed && a1Bridge.parsed.ok === true && a1BridgeId === 'a1-bridge-id' && a1Bridge.parsed.serviceMeeting === a1BridgeId,
+    '★ A1② 正: an explicit id is honoured by the service — the primitive and the service record share ONE id', a1Bridge.parsed && { id: a1Bridge.parsed.id, serviceMeeting: a1Bridge.parsed.serviceMeeting })
+  ok(!!a1Kernel.liveMeeting('a1-bridge-id') && a1Svc.status().liveMeetings.includes('a1-bridge-id'),
+    '★ A1②: the same id is addressable in BOTH spaces (this is the "vibe_vmu_meeting status finds it" criterion)', { live: a1Kernel.liveList().meetings.filter((x) => x === 'a1-bridge-id'), service: a1Svc.status().liveMeetings.filter((x) => x === 'a1-bridge-id') })
+  const a1Dup = await receipt(v5rBoot, 'vibe_vmu_meeting', { action: 'open', id: 'a1-bridge-id', agenda: 'dup', secretary: chairId })
+  ok(a1Dup.parsed && a1Dup.parsed.ok === false && a1Dup.parsed.code === 'VMU_CONFLICT',
+    '★ A1② 反: re-using a LIVE id is refused by name (no silent replacement)', a1Dup.parsed && a1Dup.parsed.code)
+  // ③ the per-object ballot gets the declared eligible list
+  const a1Ballot = await receipt(v5rBoot, 'vibe_vmu_meeting', { action: 'ballot', target: 'a1-claim', member: chairId })
+  const a1Bid = a1Ballot.parsed && a1Ballot.parsed.ballotId
+  ok(a1Ballot.parsed && a1Ballot.parsed.ok !== false && Array.isArray(a1Ballot.parsed.eligible) &&
+    a1Ballot.parsed.eligible.includes('r-1') && !a1Ballot.parsed.eligible.includes('r-temp-1'),
+    '★ A1③: the per-object ballot is created with the DECLARED eligible list (temp excluded)', a1Ballot.parsed && a1Ballot.parsed.eligible)
+  const a1TempCast = await receipt(v5rBoot, 'vibe_vmu_meeting', { action: 'vote', ballotId: a1Bid, member: 'r-temp-1', value: '1' })
+  ok(a1TempCast.parsed && a1TempCast.parsed.ok === false && a1TempCast.parsed.code === 'VMU_NOT_PERMITTED',
+    '★ A1③ 反: the temp seat cannot cast that ballot (the kernel ballot refuses by name)', a1TempCast.parsed && a1TempCast.parsed.code)
+  const a1ChairCast = await receipt(v5rBoot, 'vibe_vmu_meeting', { action: 'vote', ballotId: a1Bid, member: 'r-1', value: '1' })
+  ok(a1ChairCast.parsed && a1ChairCast.parsed.ok !== false,
+    '★ A1③ 正: a member seat can cast it', a1ChairCast.parsed && a1ChairCast.parsed.ok)
   console.log('=== 7c. GOAL A: role-scoped tool faces (prompt == declaration) ===')
   const faces = PACK.toolFaces
   const faceRoles = faces ? Object.keys(faces).sort() : []

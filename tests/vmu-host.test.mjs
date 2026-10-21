@@ -780,6 +780,22 @@ if (SELF_PROBE) {
     '★ 名字只有一个来源：源码里 effectiveNames 只声明一次，块与 wire 只能从它取名字', (hostSrc.match(/const effectiveNames =/g) || []).length)
 }
 
+// ── PHASE 9+ / G5: every TOOL_NAMES row is either REGISTERED or has an explicit false family/surface ───────────────
+{
+  const settings = { 'vmu.tools.faces': ['*'], 'vmu.tools.allowAll': true }
+  const faces = hm.resolveFaces({ settings })
+  const kernel = km.createKernel({ clock })
+  const specs = hm.toolSpecs({ kernel, settings, faces, assertDeclared: () => true }).map((s) => s.name)
+  const missing = Object.values(hm.TOOL_NAMES).filter((n) => !specs.includes(n))
+  const explained = missing.map((n) => (faces.unavailable || []).find((u) => u.name === n) || null)
+  ok(missing.length === 3 &&
+    missing.includes(hm.TOOL_NAMES.records) && missing.includes(hm.TOOL_NAMES.script) && missing.includes(hm.TOOL_NAMES.pack) &&
+    explained.every((u) => u && u.code === 'VMU_ENGINE_UNAVAILABLE' && typeof u.reason === 'string'),
+    '★ 门禁：每个 TOOL_NAMES 要么注册，要么有明确的家族/surface 条件为假；未注册的 3 个各自带原因', {
+      missing, reasons: explained.map((u) => u && { name: u.name, declaredBy: u.declaredBy, reason: u.reason }),
+    })
+}
+
 // ── ★ PHASE 9 / round 5: `*` is a DECISION, not a typo; and "in effect" must be visible ─────────────────────────
 {
   const unconfirmed = hm.resolveFaces({ settings: { 'vmu.tools.faces': ['*'] } })

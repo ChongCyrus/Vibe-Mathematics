@@ -53,6 +53,7 @@
 
     "vmu.meetings.tier": "formal",
     "vmu.meetings.allowLight": false,
+    "vmu.meetings.eligibleSeats": ["chair", "member"],
     "vmu.ballot.reopenFloor": 0,
 
     "vmu.paper.officeConsult": "required",

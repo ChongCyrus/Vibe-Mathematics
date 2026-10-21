@@ -352,6 +352,17 @@ if (SELF_PROBE) {
     String(refused2 && refused2.code))
 }
 
+// ★ G5: a slot capacity of 0 means UNLIMITED, and the receipt must say so instead of showing 0 seats.
+{
+  const kc = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z', settings: { 'vmu.limits.maxParallel': 9 } })
+  kc.declareSlots([{ id: 'm', label: '成员', capacity: 0 }, { id: 'one', label: '单席', capacity: 1 }])
+  const hOne = await kc.members.hire({ id: 'r-9', slot: 'one' })
+  const hM = await kc.members.hire({ id: 'r-1', slot: 'm' })
+  ok(hM.ok === true && hM.capacity === 0 && hM.unlimited === true && hOne.capacity === 1 && hOne.unlimited === false,
+    'A slot capacity 0 is stated as unlimited:true (not a 0-seat contradiction); capacity 1 is unlimited:false',
+    { member: hM, one: hOne })
+}
+
 // ---- three more wired keys: logLevel, delegableKeys, activeOverrides ----------------------------------
 {
   // 1) vmu.core.logLevel is a REAL consumer, and backwards compatible: default `info` keeps today's text.

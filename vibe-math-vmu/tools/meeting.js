@@ -92,7 +92,20 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
           if (action === 'complete') return Object.assign({ ok: true, action, id }, live().roundComplete())
           if (action === 'phase') return { ok: true, action, id: need(id, 'id'), phase: live().phase }
           if (action === 'status') return Object.assign({ ok: true, action }, live().status())
-          if (action === 'summary') return Object.assign({ ok: true, action }, live().summary())
+          if (action === 'summary') {
+            // A1 round 10 — TWO ID SPACES, TWO READ FACES. A primitive meeting is summarized by the primitive; a
+            // meeting created by the v5 pack lives in the meetings SERVICE and is summarized there. This action
+            // used to answer ONLY from the primitive registry, so a service meeting got "no live meeting" even
+            // though it existed (measured on a real run: open ok, status/list/summary all "no such meeting").
+            const primitive = kernel.liveMeeting(String(id === undefined || id === null ? '' : id))
+            if (primitive) return Object.assign({ ok: true, action }, primitive.summary())
+            const svc = kernel && kernel.meetings ? kernel.meetings : null
+            if (svc && typeof svc.summary === 'function' && id !== undefined && id !== null && String(id) !== '') {
+              return Object.assign({ ok: true, action }, svc.summary({ meeting: String(id) }))
+            }
+            throw Object.assign(new Error('no live meeting with id ' + String(id)), { code: 'VMU_NO_SUCH_OBJECT',
+              hint: 'this action reads the meetings SERVICE for a service id (vibe_v5_meeting opens those); action=list lists the primitive registry this face opens' })
+          }
           if (action === 'snapshot') return Object.assign({ ok: true, action }, live().snapshot())
           if (action === 'close') return Object.assign({ ok: true, action, id }, await live().close(reason || 'closed'))
           // F28: the bounded fallback (named + revocable) and the declared extension step (GAP-MTG-05).
@@ -117,9 +130,20 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
           }
           if (action === 'ballot') {
             const bid = ballotId || ('b-' + (kernel.liveList().ballots.length + 1) + '-' + Date.now().toString(36))
-            const ballot = kernel.ballot({ id: bid })
+            // A1 round 10 — THE ELIGIBLE LIST COMES FROM THE DECLARED VOTER SEATS, not from "everyone" (an empty
+            // `eligible` on the primitive means exactly that). The meetings service owns the ONE criterion; this
+            // face only asks it. A declared-seat list with nobody seated is a NAMED state, never a silent
+            // unrestricted ballot.
+            const rule = kernel && kernel.meetings && typeof kernel.meetings.eligibleVoterIds === 'function'
+              ? kernel.meetings.eligibleVoterIds() : null
+            if (rule && rule.restricted === true && rule.ids.length === 0) {
+              return refused('VMU_STATE', 'the declared voter seats have nobody seated, so this ballot would have no eligible voter',
+                'seat a member in one of: ' + ((rule.seats || []).join(' / ') || '(none declared)'))
+            }
+            const ballot = kernel.ballot(Object.assign({ id: bid }, rule && rule.restricted === true ? { eligible: rule.ids } : {}))
             const opened = await ballot.open()
-            return { ok: true, action, ballotId: bid, opened, target: need(target, 'target') }
+            return { ok: true, action, ballotId: bid, opened, target: need(target, 'target'),
+              eligible: rule && rule.restricted === true ? rule.ids : null }
           }
           if (action === 'vote') {
             // The ballot primitive speaks 1/0 for decisive votes (it says so in its own refusal), but a model

@@ -91,6 +91,11 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     // `tier` = the meeting's level; `allowLight=false` = this institution does not run light procedures, so a
     // `light` tier becomes a named configuration conflict instead of a silently weakened meeting.
     allowLight: sget('vmu.meetings.allowLight') !== false,
+    // WHO MAY VOTE (A1 round 10): the DECLARED voter seats. Empty = the framework imposes no seat rule (zero
+    // mechanism); a deployment/pack declares the seats its institution treats as voters. ONE criterion, TWO
+    // consumers: the `vote()` gate below and `eligibleVoterIds()` (which the per-object ballot face asks for the
+    // eligible list). The comparison is on the ROSTER's slot, never a role hard-coded in this file.
+    eligibleSeats: arr(sget('vmu.meetings.eligibleSeats')).map(String),
     liveCap: n(sget('vmu.meetings.liveCap')),
     quorumMin: n(sget('vmu.meetings.quorumMin')), quorumRatio: n(sget('vmu.meetings.quorumRatio')),
     // ROUND 203: the quorum ceiling (declared default 3; 0 = no ceiling). `undefined` means unset -> default 3,
@@ -225,6 +230,11 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     } catch (e) { return true }
     return true
   }
+  /** The roster row (id + slot) of a member, or null when this face has no roster to ask (same seam as `isMember`). */
+  const seatRowOf = (id) => {
+    if (!members || typeof members.roster !== 'function') return null
+    try { return (members.roster() || []).filter((x) => x && String(x.id) === String(id))[0] || null } catch (e) { return null }
+  }
   /**
    * ROUND 316: reading a MEETING RECORD (minutes, transcript) is not the act of speaking, so it is not gated by
    * membership the way the acting surface is. What gates it is the meeting's own confidentiality LEVEL: a meeting
@@ -347,7 +357,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     WIRED_KEYS, UNWIRED_REASONS,
 
     /** Open a meeting. `type`/`size`/`materials` are checked against `typeCatalog` / `committeeMax` / `materialsRequired`. */
-    open({ type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null } = {}) {
+    open({ id = null, type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null } = {}) {
       const enforced = []
       const ms = at === null ? clock() : at
       // GAP-MTG-02: a CONTRADICTORY tier declaration is refused BEFORE any state is created. Same predicate as
@@ -372,9 +382,16 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         mark(enforced, 'vmu.meetings.materialsRequired')
         if (!materials) throw deny('VMU_STATE', 'vmu.meetings.materialsRequired=true: a meeting cannot open without materials', 'pass { materials: <pointer> } — the pointer belongs to 07/22 and is only referenced here', enforced)
       }
-      const id = 'm' + (counters.opened + 1)
+      // A1 round 10 — AN EXPLICIT id IS HONOURED, and a COLLISION IS REFUSED BY NAME. The vmu meeting face's
+      // secretary bridge passes the primitive id in, and this used to ignore it: the tool believed it had
+      // aligned two records while the service minted its own id (measured: primitive pm9 vs service m3).
+      // The auto id stays the default, and the counter still advances on an explicit open so the two can
+      // never mint the same name later without the guard below firing.
+      const wanted = (typeof id === 'string' && id.trim() !== '') ? id.trim() : null
+      const mid = wanted || ('m' + (counters.opened + 1))
+      if (live.has(mid)) throw deny('VMU_CONFLICT', 'a live meeting already uses id ' + String(mid), 'open: ' + [...live.keys()].sort().join(', '), enforced)
       const m = {
-        id, type: String(type), kind: kind === null ? null : String(kind), chair: chair === null ? null : String(chair), secretary: secretary === null ? null : String(secretary),
+        id: mid, type: String(type), kind: kind === null ? null : String(kind), chair: chair === null ? null : String(chair), secretary: secretary === null ? null : String(secretary),
         roster: arr(roster).map(String), present: new Set(chair === null ? [] : [String(chair)]),
         openedAt: ms, state: 'open', turns: 0, tokens: 0, wallStartMs: ms,
         queue: [], speechUsed: new Map(), interrupts: new Map(), warnings: new Map(), mutes: new Map(),
@@ -382,13 +399,13 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         transcript: [], confidentiality: K.confidentialityDefault, motions: [], appeals: [], closedAt: null,
         committeeReport: null, dissent: [],
       }
-      live.set(id, m)
+      live.set(mid, m)
       markState(m, 'open')
       counters.opened += 1
-      const receipt = { at: ms, action: 'open', meeting: id, type: m.type, confidentiality: m.confidentiality, enforced, enforcedScope: ENFORCED_SCOPE }
+      const receipt = { at: ms, action: 'open', meeting: mid, type: m.type, confidentiality: m.confidentiality, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
-      say({ type: 'meetings/opened', at: ms, meeting: id, type: m.type, enforced, enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, meeting: id, quorum: quorumOf(m), receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      say({ type: 'meetings/opened', at: ms, meeting: mid, type: m.type, enforced, enforcedScope: ENFORCED_SCOPE })
+      return { ok: true, meeting: mid, quorum: quorumOf(m), receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** Join. `lateAfterMs` decides whether a late arrival is allowed/recorded/refused. */
@@ -687,6 +704,18 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const enforced = []
       const now = at === null ? clock() : at
       if (!isMember(member)) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'the roster seam rejected it', [])
+      // THE VOTER-SEAT GATE (A1 round 10). Declared seats only; no declaration = no seat rule. The refusal NAMES the
+      // slot and the seats, because the caller's next question is always "then who may vote?".
+      if (K.eligibleSeats.length) {
+        mark(enforced, 'vmu.meetings.eligibleSeats')
+        const row = seatRowOf(member)
+        const seat = row ? String(row.slot) : null
+        if (!K.eligibleSeats.includes(seat)) {
+          throw deny('VMU_NOT_PERMITTED',
+            'this seat has no vote: "' + String(member) + '" is in slot "' + String(seat || '(unknown)') + '"; the declared voter seats are ' + K.eligibleSeats.join(' / '),
+            'only the declared voter seats may vote (invitees, observers and temporary workers never vote; an authorisation cannot transfer a vote)', enforced)
+        }
+      }
       const q = quorumOf(m)
       if (K.quorumMin > 0) mark(enforced, 'vmu.meetings.quorumMin')
       if (K.quorumRatio > 0) mark(enforced, 'vmu.meetings.quorumRatio')
@@ -1068,6 +1097,48 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     },
 
     /** ★ PHASE 7: one meeting's OBSERVABLE state — who records (chair/secretary) and every motion's state. */
+    /**
+     * READ-ONLY: who may vote under the DECLARED voter seats. `restricted:false` means no seat rule is declared
+     * (the framework imposes none); `restricted:true` + `ids` is the eligible list a ballot takes. This is the
+     * SECOND consumer of the one criterion (`K.eligibleSeats`) — the first is the `vote()` gate above.
+     */
+    eligibleVoterIds() {
+      if (!K.eligibleSeats.length) return { ok: true, restricted: false, seats: [], ids: [] }
+      const roster = (members && typeof members.roster === 'function') ? (members.roster() || []) : []
+      const ids = roster
+        .filter((x) => x && String(x.state) === 'live' && K.eligibleSeats.includes(String(x.slot)))
+        .map((x) => String(x.id))
+      return { ok: true, restricted: true, seats: K.eligibleSeats.slice(), ids }
+    },
+
+    /**
+     * READ-ONLY: one meeting's DECISION summary — motions with their votes — for a live meeting or an archived
+     * one. The face used to have no summary at all (`meetingView` shows motion STATE, not votes), so a caller
+     * asking "what was voted and how" had to reconstruct it from minutes.
+     */
+    summary({ meeting = null } = {}) {
+      const id = String(meeting)
+      const m = live.get(id) || archive.filter((x) => String(x.id) === id)[0] || null
+      if (!m) {
+        throw deny('VMU_NO_SUCH_OBJECT', 'no such meeting: ' + id,
+          'live: ' + ([...live.keys()].sort().join(', ') || '(none)') + (archive.length ? '; archived: ' + archive.map((x) => String(x.id)).sort().join(', ') : ''))
+      }
+      const motions = (m.motions || []).map((mo) => {
+        const voters = [...mo.votes.entries()].map(([memberId, value]) => ({ member: memberId, value }))
+        return {
+          id: mo.id, by: mo.by, kind: mo.kind, text: mo.text, status: mo.status, secondedBy: mo.secondedBy || null,
+          tally: { for: voters.filter((v) => v.value === 1).length, against: voters.filter((v) => v.value === 0).length, abstain: mo.abstain.size },
+          votes: voters, abstentions: [...mo.abstain],
+        }
+      })
+      return {
+        ok: true, id: m.id, meeting: m.id, kind: m.kind, state: m.state,
+        chair: m.chair || null, secretary: m.secretary || null,
+        motions, votes: (m.minutes && Array.isArray(m.minutes.entries)) ? m.minutes.entries.filter((e) => e && e.kind === 'vote').length : 0,
+        closedAt: m.closedAt || null,
+      }
+    },
+
     meetingView({ meeting = null } = {}) {
       const m = requireMeeting(meeting, { readOnly: true })
       return { ok: true, meeting: m.id, state: m.state, chair: m.chair || null, secretary: m.secretary || null,

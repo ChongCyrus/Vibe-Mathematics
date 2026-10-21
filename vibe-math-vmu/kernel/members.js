@@ -6,6 +6,8 @@
 //   · to record who currently occupies which slot;
 //   · to ENFORCE capacity as a machine limit, refusing by name with the current count and the cap
 //     (docs/08 §3, the S25-E lesson: a limit the machine cannot enforce is a suggestion, not a limit);
+//     A declared capacity of 0 means NO LIMIT (unlimited), and the receipt states `unlimited:true` so an
+//     `occupied:1, capacity:0` reading cannot be mistaken for a contradiction;
 //   · to build a wake envelope and hand it to an injected deliver seam, so the module itself never
 //     calls the host (docs/11 §4.1: a missing seam is refused by name, never faked);
 //   · ROUND 132: to record a member's OWN self-report (v5r's `self_report`, G6) VERBATIM and APPEND-ONLY -
@@ -157,7 +159,10 @@ export function createMembers({
         }
       }
       members.set(id, rec)
-      return { ok: true, id, slot: slotId, occupied: occupancy(slotId), capacity: def.capacity }
+      // `capacity` stays EXACTLY as declared (existing consumers read it); `unlimited` states what 0 MEANS.
+      // Basis: the gate above is `def.capacity > 0 && used >= def.capacity` (:141), so 0 = "no limit", and a
+      // receipt reading `occupied:1, capacity:0` looks like a contradiction without this field.
+      return { ok: true, id, slot: slotId, occupied: occupancy(slotId), capacity: def.capacity, unlimited: def.capacity === 0 }
     },
 
     /**

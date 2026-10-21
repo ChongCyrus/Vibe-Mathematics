@@ -198,7 +198,15 @@ stage('4. A-PERIOD (PATH 2, TOOL FALLBACK) AND A-THRESHOLD: DRIVEN THROUGH `vibe
   ok(!!thrRow && thrRow.text === '【阈值汇报】9 件成果',
     'a threshold report fires from a metric crossing its line, with the metric IN the text', thrRow && thrRow.text)
   const below = await reportTool({ action: 'tick', metrics: JSON.stringify({ artifacts: 2 }) })
-  ok(below.fired.length === 0, 'and does NOT fire below the line (it is a line, not a trigger-happy event)', below.fired.map((f) => f.name))
+  // ★ ROUND 13: assert the THRESHOLD line, not "zero firings". `e2e-period` has everyMs=5, and the comment below
+  // already states that a later tool call may legitimately re-fire the period — so `fired.length === 0` was a
+  // TIMING test. It reddened a full T1 under load (the gap between two ticks exceeded 5ms) while the behaviour under
+  // test (the threshold fired ABOVE its line, not BELOW it) was correct. Read the THRESHOLD firings directly:
+  // `[].every(...)` would be vacuously true (RULE E), and a length check on the filtered set states the absence.
+  const belowThreshold = below.fired.filter((f) => f.trigger === 'threshold')
+  ok(belowThreshold.length === 0,
+    'and does NOT fire the THRESHOLD below the line (a period re-fire is a legitimate clock tick, not a threshold firing)',
+    below.fired.map((f) => f.name))
   const st = a.report().status()
   // COVERAGE, not a count: `everyMs=5` means a second tool call a few milliseconds later may legitimately fire the
   // period again, so asserting an exact total would make this a timing test. What matters is that all three kinds fired

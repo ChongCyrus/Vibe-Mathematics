@@ -698,6 +698,64 @@ const err = (fn) => errOf(fn)
   ok(voteBySecretary.ok === true, '★ secretary 的表决仍按原有成员资格进行（没有因为 secretry 而获得额外票权）', voteBySecretary && voteBySecretary.ok)
 }
 
+// ── ★ A1 (round 10): declared voter seats + service summary ──────────────────────────────────────────────
+{
+  const ROSTER = [
+    { id: 'acad', slot: 'chair', state: 'live' },
+    { id: 'r-1', slot: 'member', state: 'live' },
+    { id: 't-1', slot: 'temp', state: 'live' },
+  ]
+  const seatsSeam = { members: { roster: () => ROSTER } }
+  const SEATS = { 'vmu.meetings.eligibleSeats': ['chair', 'member'] }
+
+  // ④ the one criterion, exposed twice: vote() gate and eligibleVoterIds()
+  const h = mk(SEATS, seatsSeam)
+  const elig = h.t.eligibleVoterIds()
+  ok(elig.restricted === true && JSON.stringify(elig.seats) === JSON.stringify(['chair', 'member']) && JSON.stringify(elig.ids) === JSON.stringify(['acad', 'r-1']),
+    '★ A1④: eligibleVoterIds() derives the eligible ids from the DECLARED seats (live members only, temp excluded)', elig)
+  ok(mk({}, seatsSeam).t.eligibleVoterIds().restricted === false,
+    '★ A1④ 反: with no declared seats the framework imposes NO seat rule (zero mechanism, not a hidden default)')
+  const openedSeats = h.t.open({ chair: 'acad', roster: ROSTER.map((x) => x.id) })
+  const mid = openedSeats.meeting
+  const mo = h.t.motion({ meeting: mid, member: 'acad', kind: 'ordinary', text: 'adopt' })
+  const tempVote = err(() => h.t.vote({ meeting: mid, member: 't-1', motion: mo.motion, value: 1 }))
+  ok(tempVote && tempVote.code === 'VMU_NOT_PERMITTED' && /declared voter seats/.test(String(tempVote.message)) && /temp/.test(String(tempVote.message)),
+    '★ A1③ 反: a TEMP seat is refused by the DECLARED seats, and the refusal names the slot and the seats', tempVote && tempVote.message)
+  const chairVote = h.t.vote({ meeting: mid, member: 'acad', motion: mo.motion, value: 1 })
+  ok(chairVote.ok === true && chairVote.counted === true && chairVote.tally.for === 1,
+    '★ A1③ 正: a declared voter seat still counts', chairVote.tally)
+  // the key really decides: the SAME temp seat votes when no seat rule is declared
+  const noSeats = mk({}, seatsSeam)
+  const noSeatsId = noSeats.t.open({ chair: 'acad', roster: ROSTER.map((x) => x.id) }).meeting
+  const noSeatsMo = noSeats.t.motion({ meeting: noSeatsId, member: 'acad', kind: 'ordinary', text: 'x' })
+  ok(noSeats.t.vote({ meeting: noSeatsId, member: 't-1', motion: noSeatsMo.motion, value: 1 }).counted === true,
+    '★ A1③ 反: with no declared seats the temp seat votes (the declaration is what decides, not a hard-coded list)')
+  // the seat gate marks the key in enforced[] (a consulted key must be named in the refusal)
+  ok(tempVote && Array.isArray(tempVote.enforced) && tempVote.enforced.includes('vmu.meetings.eligibleSeats'),
+    '★ A1④: the seat key is NAMED in the refusal enforced[] (it was consulted, not merely declared)', tempVote && tempVote.enforced)
+}
+
+// ── ★ A1 (round 10): service summary (motions + votes), live AND archived ───────────────────────────────
+{
+  const h = mk({}, {})
+  const mid = h.t.open({ chair: 'acad', roster }).meeting
+  const unknown = err(() => h.t.summary({ meeting: 'nope' }))
+  ok(unknown && unknown.code === 'VMU_NO_SUCH_OBJECT',
+    '★ A1⑤ 反: summary of an unknown meeting is a NAMED refusal', unknown && unknown.code)
+  const mo = h.t.motion({ meeting: mid, member: 'acad', kind: 'ordinary', text: 'adopt' })
+  h.t.second({ meeting: mid, motion: mo.motion, member: 'r-1' })
+  h.t.vote({ meeting: mid, member: 'r-1', motion: mo.motion, value: 1 })
+  const s = h.t.summary({ meeting: mid })
+  ok(s.ok === true && Array.isArray(s.motions) && s.motions.length === 1 && s.motions[0].tally && s.motions[0].tally.for === 1 &&
+    Array.isArray(s.motions[0].votes) && s.motions[0].votes.length === 1 && s.motions[0].secondedBy === 'r-1',
+    '★ A1⑤ 正: the service summary carries motions with their per-vote tally (the face had none before)', s.motions)
+  ok(s.votes === 1, '★ A1⑤: the summary also reports how many vote rows were recorded', s.votes)
+  h.t.close({ meeting: mid })
+  const closed = h.t.summary({ meeting: mid })
+  ok(closed.ok === true && closed.state === 'closed' && closed.motions.length === 1,
+    '★ A1⑤: an ARCHIVED meeting is still summarizable (close moves it out of the live map)', { state: closed.state, motions: closed.motions.length })
+}
+
 console.log('=== VMU MEETINGS: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL - ' + f)
 process.exit(failed ? 1 : 0)

@@ -397,6 +397,20 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     'T55. **** THE TOOL REACHES THE LOOP: asking for status returns the loop own surface, policy included', { policy: st.status && st.status.policy })
   ok(typeof (await spec.execute({ op: 'status' })) === 'string',
     'T55b. *** and it answers with a JSON STRING like every other face, so a host never has to know which tool speaks which type')
+  // ★ PHASE 9+ / round 12: `detail:'closure'` used to be silently ignored; now it NARROWS and unknown values refuse.
+  {
+    const fullText = await spec.execute({ op: 'status' })
+    const closeText = await spec.execute({ op: 'status', detail: 'closure' })
+    const close = JSON.parse(closeText)
+    ok(close.ok === true && close.detail === 'closure' && close.closureVote && 'cast' in close.closureVote &&
+      'for' in close.closureVote && 'eligible' in close.closureVote && 'missing' in close.closureVote,
+      '★ 正：detail:closure 只回 closureVote（含 cast/for/eligible/missing）', close)
+    ok(closeText.length < fullText.length,
+      '★ 正：closure 回执显著小于默认 status 回执（不再“收了 detail 却返回全量”）', { closureBytes: closeText.length, fullBytes: fullText.length })
+    const bad = JSON.parse(await spec.execute({ op: 'status', detail: 'not-a-detail' }))
+    ok(bad.ok === false && bad.code === 'VMU_INVALID_ARGUMENT' && /known detail/.test(String(bad.hint || bad.message)),
+      '★ 反：未知 detail 值 ⇒ 具名 VMU_INVALID_ARGUMENT，不再静默忽略', bad)
+  }
   const stepOut = JSON.parse(await spec.execute({ op: 'step', members: [{ id: 'r-1', role: 'researcher', roleLabel: '常驻研究员' }], phase: 'normal' }))
   ok(stepOut.ok === false && stepOut.code === 'VMU_ENGINE_UNAVAILABLE',
     'T56. **** and a round with NO delivery seam comes back as a returned refusal, so a host that cannot deliver is told rather than quietly getting a half-run',

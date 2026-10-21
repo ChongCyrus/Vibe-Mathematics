@@ -646,6 +646,15 @@ root agent 自己的 assembly（root 不属于任何成员槽）。
 ★ **单一来源**：源码里 `const effectiveNames =` 只出现一次；ptc/native 只是两个渲染分支，**名字集合不另算**。
 ★ **promptAck 的边界**：它只保证“该 pack 的提示词提到了呈现方式”，**不能替代本块的同源计算**；本块由宿主每次按实际 `presentAs` 结果改写，因此声明者无需在 pack 里复述工具名。
 
+## 3.40 ★★★★★ `status` 的 `detail:'closure'` 必须真的收窄（PHASE 9+ / 轮 12）
+
+★ **真机病**：`vibe_vmu_turn {op:'status', detail:'closure'}` 的 `detail` 既不在 schema 也不在实现，参数被**静默丢弃**，返回仍是全量 status；closureVote 能读到纯属它本来就在回执里。
+★ **修**：`tools/turn.js` 声明并消费 `detail`：
+- `detail:'closure'` ⇒ 只回 `{ok, detail, closureVote, closureVoteWrites}`；closureVote 含 `cast/for/against/missing/eligible`；
+- 未知 detail ⇒ 具名 `VMU_INVALID_ARGUMENT`（hint 列出已知值），**不再静默**。
+★ **体积**：真机默认 status 回执 **1,875 bytes**；closure 回执（同一 closureVote 对象＋writes）**240 bytes**。
+★ **同类**：这是“输入收了但没起作用”的第 N 个变体（与 tools 参数被塞进 properties、urgent 缺键被剥、PUBLIC_API 标注不改 cls 同族）。
+
 ## 4. v1 的边界（**未做，明写** ✗）
 
 1. ★★★ **投递缝已接进内核（轮 339）＋ 宿主桥已提供（轮 344）＋ 入口已装配（轮 1／K3）** ✓✓✓：**vmu.turn 在 kernel/index.js 里建成** ✓，**投递缝是内核的 `deliverTurn` 选项** ✓（★ **轮 1 更正** ✗✓：原文只写 `host.deliverTurn` —— 而真实入口交给内核的 `host` 是 `host-math.js` 的适配器，**它没有 `deliverTurn`** ⇒ 于是**真机每一轮都在 `turn/index.js` 的缺缝分支具名拒** ✗；旧名仍兼容，但**不再是唯一来源** ✓）；★ **宿主不给缝 ⇒ 具名拒 VMU_ENGINE_UNAVAILABLE** ✓（**绝不假装成员答了** ✗，且**计数可见** ✓，`status().seams.turnDeliver`／`turnDeliverSource` 自曝 ✓）。★★★ **宿主桥 `deliverViaSubagents(subagents, extract?)`** ✓✓：**入口已按声明装配** —— `vibe-math-vmu.js` 把它接到 `ctx.get('subagents')`（**调用时解析**，因为 `apply()` 可能早于服务挂载 ✓），宿主**不需要自己写适配器** ✓；★ **它只送【装配后的文本】，绝不自拼** ✗；**标签带轮次 id（可追）** ✓；★ **不给缝 ⇒ 具名拒** ✓；★★ **宿主收下却不回回复 ⇒ 也是【具名拒**】✓（**绝不解析成"模型什么都没说"** ✗）。★ **实测（T35–T39）** ✓✓：**整轮走宿主缝跑通** —— 装配 ⇒ 桥投递 ⇒ 解析 ⇒ **任务台账真的增长** ✓✓；★ **到达缝的正是装配文本且带轮次标签** ✓（>1000 字 ✓）。★★ **轮 1 复测** ✓：以假宿主（`ctx.get('subagents')`）走**真实入口** `entry.apply(...)` ⇒ `seams.turnDeliver:true`，`kernel.turn.step({members:[{id}]})` **真的投递并分派**（`receipt.executed ≥ 1`，桥收到的 `label === 'vmu-turn-<id>'`）✓。

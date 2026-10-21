@@ -250,7 +250,31 @@ const SELF_PROBE_MUTATIONS = [
 
 if (process.argv.includes('--self-probe')) {
   const bad = []
+  /**
+   * Read a file WITHOUT the mutation seam, so the loop can prove the mutation really changes something.
+   * A missing target is a NAMED refusal (requireFile), never an empty string: silently degrading it is the exact
+   * class tests/audit-no-silent-reads.test.mjs keeps at zero.
+   */
+  const readPlain = (rel) => requireFile(join(HERE, rel), 'the mutation target of the prompt-invariant self-probe')
   for (const mut of SELF_PROBE_MUTATIONS) {
+    // ★ ANTI-VACUOUS MUTATION (round 13). A mutation is a guard on the guard: if its `from` text has moved on, the
+    // child runs UNMUTATED, stays green, and the probe reports `hit=false` — a silent no-op that reads like a real
+    // miss. This repo's own discipline is "before a scanner reports 0, prove its predicate can hit"; the same
+    // applies here, so a mutation that changes NOTHING is a hard failure with its own message.
+    if (!mut.control) {
+      let before = null
+      try { before = readPlain(mut.rel) } catch (e) {
+        console.log('FAIL ' + mut.name + '  → mutation target unreadable: ' + e.message)
+        bad.push(mut.name + ' (mutation target unreadable)')
+        continue
+      }
+      const after = mut.from ? before.replace(mut.from, mut.to) : before
+      if (!mut.from || before === after) {
+        console.log('FAIL ' + mut.name + '  → mutation target NOT FOUND (replacing it changes nothing): ' + JSON.stringify(String(mut.from).slice(0, 90)))
+        bad.push(mut.name + ' (mutation made no change)')
+        continue
+      }
+    }
     const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--json'], {
       cwd: HERE,
       env: Object.assign({}, process.env, mut.control ? {} : { PROMPT_INVARIANTS_MUTATE: JSON.stringify([mut.rel, mut.from, mut.to]) }),
@@ -778,7 +802,11 @@ for (const P of PRESETS) {
 {
   const probeSrc = requireFile(join(HERE, 'tests/audit-formal-sensitivity.mjs'), 'the formal-sensitivity probe source this suite inspects')
   check(/selected\.length === 0/.test(probeSrc), 'X1: the probe runner fails on an empty selection instead of reporting success')
-  const runner = requireFile(join(HERE, 'tests/run-tests.mjs'), 'the test runner source this suite inspects')
+  // ★ ROUND 13: MUTATION-AWARE READ. This used to go through `requireFile()`, which reads the file DIRECTLY and
+  // therefore BYPASSED the `PROMPT_INVARIANTS_MUTATE` seam — the X4 self-probe mutated a string nobody read and
+  // reported `hit=false` while claiming to prove the guard. `read()` is the mutation-aware door; `requireFile()` is
+  // kept as the NAMED "this file must exist" fallback, so a missing runner still fails loudly (never silent '').
+  const runner = read('tests/run-tests.mjs') ?? requireFile(join(HERE, 'tests/run-tests.mjs'), 'the test runner source this suite inspects')
   check(/no suites matched/.test(runner), 'X2: the suite runner fails when no suite matches')
   check(/argv\[i \+ 1\]/.test(runner) && /argv\[\+\+i\]/.test(runner), 'X3: the suite runner accepts both --flag=x and --flag x')
   // X4 (task-29) — the GATE must be independent of whether the HOST has TeX installed: the runner points

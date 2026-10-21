@@ -52,6 +52,17 @@ const handle = await loadPack(root)
 const k = handle.kernel
 
 const meeting = k.meetings.open({ chair: 'c1', roster: ['c1', 'm1', 'm2'] }).meeting
+// ★★ ROUND 13 (A1 aftermath): SEAT THE FIXTURE - AND SAY WHY. This suite used to pass with ids that were NEVER on
+// the roster, because the meetings face had no `members` seam at all: `isMember()` was vacuously true (no seam ⇒
+// accepts everyone), so `motion({member:'m1'})` "worked". A1 wired the seam into the assembly (kernel/index.js) and
+// the same call now refuses `VMU_NOT_MEMBER` - the guard got teeth and the fixture was the thing that was wrong.
+// The fix is to hire the ids the fixture talks about, never to relax the guard (that would re-create the false green).
+ok(k.members !== null, 'B0. the v5r pack declared role slots (a roster service exists - the fixture must seat into it)')
+await k.members.hire({ id: 'c1', slot: 'chair' })
+await k.members.hire({ id: 'm1', slot: 'member' })
+await k.members.hire({ id: 'm2', slot: 'member' })
+ok(k.members.roster().filter((m) => m.state === 'live').length === 3,
+  'B0b. and every id this suite addresses is really LIVE on that roster (c1 chair, m1/m2 members)', k.members.roster().map((m) => m.id + ':' + m.slot))
 const moved = k.meetings.motion({ meeting, member: 'm1', kind: 'ordinary', text: 'convene a vote' })
 const motion = moved.motion
 await new Promise((r) => setTimeout(r, 60))
