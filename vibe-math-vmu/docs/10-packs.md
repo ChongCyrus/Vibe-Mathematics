@@ -198,7 +198,7 @@ pack 默认  <  预设 Config  <  会话 settings  <  运行时 set
 
 ### 4.5 **保真度**：哪些声明是"改行为"，哪些只是"复述默认"（轮 7，主交付 `_handoff/vmu/11-pack-fidelity.md`）
 
-> 口径（`docs/01 R1`：**一代人的行为由它的 PACK 承载**）：**"框架能表达" ≠ "这个 preset 会那样跑"**。所以逐个核 **v5r 当年到底怎么跑**（权威源＝`vibe-math-v5r/vibe-math-v5r.js` 的 `DEFAULT_PARAMS` `:1062-1183`），再看 pack 的声明**是否真的改变了行为**。
+> 口径（`docs/01 R1`：**一代人的行为由它的 PACK 承载**）：**"框架能表达" ≠ "这个 preset 会那样跑"**。所以逐个核 **v5r 当年到底怎么跑**（权威源＝`archive/legacy-presets/vibe-math-v5r/vibe-math-v5r.js` 的 `DEFAULT_PARAMS` `:1062-1183`；旧 preset 已归档，见 `docs/DEPRECATED-LEGACY-PRESETS.md`），再看 pack 的声明**是否真的改变了行为**。
 
 **本轮修掉的 3 处不保真**（都有 v5r 出处）：
 

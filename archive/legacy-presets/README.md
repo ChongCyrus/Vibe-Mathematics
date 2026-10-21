@@ -33,3 +33,18 @@
 
 - `docs/DEPRECATED-LEGACY-PRESETS.md` —— 弃用声明与迁移说明。
 - `docs-landed/00-README.md` —— 快照声明（"旧 preset 已弃用"）。
+
+## 从 npm 包（tarball）运行测试时的一个已知限制
+
+★ **事实（实测，不是推断）**：`package.json#files` 发货 366 个 `tests/**` 文件，其中 **53 个**通过
+`tests/_lib/legacy-presets.mjs` 读本目录。而**本目录不发货**（归档物不进包，这是有意的）。
+⇒ 从 tarball 解包后跑这 53 个套件会 **`ERR_MODULE_NOT_FOUND`**（实测其一：`tests/math-computation-shared.test.mjs`）。
+
+★ **这是有意保留的状态，不是遗漏**：
+- **产品运行时不依赖本目录** —— 非测试发货代码按旧根读取本目录的站点 **0 处**（全仓核实）；
+- `installer.js` 的 `PRESETS` 只剩 `vmu`，本目录不会被安装；
+- **本目录一旦发货**，就等于把"已弃用的 preset"重新放进产品面 —— 那与本目录存在的理由相反。
+
+★ **所以：要跑这些套件，请在【仓库内】跑（`GATE_SCOPE=vmu node tests/run-tests.mjs`），不要在解包后的包里跑。**
+★ 若将来要让包内测试可跑，正确的做法是**把这 53 个套件与归档一起作为 test fixture 单独发布**，而不是把归档并进产品包；
+那是打包策略决定，需要单独裁定。

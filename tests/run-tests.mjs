@@ -237,6 +237,12 @@ const TIMEOUT_OVERRIDES = {
   'run-tests.mutants.mjs': 900000,        // MEASURED 62.7 s / 93.0 s / 128.3 s standalone and 225.3 s with two
                                           // copies concurrent; the gate killed it at the 180 s default three
                                           // times (it embeds several full run-tests runs + scans large dirs) => 900 s
+  // audit-generators-current.test.mjs: MEASURED 136.8 s standalone on 2026-10-22, after the archive move and the
+  // tree-kill fix. It spawns every generator with --check, so its wall time tracks the number of generated
+  // artifacts - and that number only grows. The 180 s default leaves it 31% headroom, so gate-load amplification
+  // times it out while its own counts stay green (measured: 23/0 standalone, killed in full sweeps). Same shape as
+  // run-tests.mutants.mjs above. 300 s = 2.19x the measurement, satisfying the 2x rule; only the budget moves.
+  'audit-generators-current.test.mjs': 300000,
 }
 /** One place decides a job limit: explicit job value, then the named override, then (S22) the family
  *  default for `*.mutants.mjs`, then the 180 s suite default. Every layer has a safe default, so a

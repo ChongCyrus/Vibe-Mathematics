@@ -1,6 +1,6 @@
 # 参数机读 schema（`vibe_math_set_params`）与 `PARAM_PROPS_EXTRA` 例外表
 
-**真源**：调度参数的描述与类型以 `PARAM_SCHEMA`（`vibe-math-v2.js:307` / `vibe-math-v3.js` 同段）为唯一真源；
+**真源**（★ 历史文档：v2/v3/v4/v5/v5r 已归档，见 `docs/DEPRECATED-LEGACY-PRESETS.md`；当前发货面只有 vmu，下列参数机读 schema 指向已归档 preset 的历史真源）：调度参数的描述与类型以 `PARAM_SCHEMA`（`vibe-math-v2.js:307` / `vibe-math-v3.js` 同段）为唯一真源；
 工具面 `vibe_math_set_params` 的 `parameters` 由 `paramProps()` 从该真源**派生**（两处注册点共用同一派生，杜绝手写字面量两份近似重复）。
 
 **派生规则**：源条目 `type: 'enum'` **或** 带 `options: [...]` ⇒ 派生为 `{ type: 'string', enum: options }`（仅 `type === 'enum'` 才算 enum 会漏掉 `leanInitiative`/`mathInstallScope` 这类"string + options"条目）；`description` 仅在源里**非空**时才带上（源缺描述时**在源里补**，绝不在 schema 字面量里编词）。
