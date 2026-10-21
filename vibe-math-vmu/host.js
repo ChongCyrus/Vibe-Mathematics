@@ -1636,14 +1636,21 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     // ★ { global: true } is REQUIRED: this event is dispatched through a scope carrier (dsh-scope routes it by
     // context.scope = the agent). A NORMAL listener is filtered by its own context tag; the DSH invariant installs the
     // same event with { global: true } for exactly this reason. Without it the listener is silently never called.
-    if (rootCtx && typeof rootCtx.on === 'function') { rootCtx.on('system-prompt/assemble', pullMemberToolFace, { global: true }); if (kernel.setToolFacePullRegistered) kernel.setToolFacePullRegistered(true) }
+    // ★ EVERY LISTENER NEEDS A DISPOSABLE HANDLE. `uninstall()` unwinds `disposers`, and these three registrations
+    // were not going into it: the root listener, the agent/created watcher, and - worst of all - the per-agent
+    // listeners that watcher installs, which are created once PER AGENT and would accumulate on every re-assembly
+    // with no way to take them back. `keepOn` captures whatever the host returns and registers it, tolerating a
+    // host that returns nothing (then there is simply nothing to dispose, which is not a silent success because
+    // the uninstall receipt keeps reporting the registrations it did own).
+    const keepOn = (d) => { if (typeof d === 'function') { try { disposers.push(d) } catch { /* non-fatal */ } return d } return d }
+    if (rootCtx && typeof rootCtx.on === 'function') { keepOn(rootCtx.on('system-prompt/assemble', pullMemberToolFace, { global: true })); if (kernel.setToolFacePullRegistered) kernel.setToolFacePullRegistered(true) }
     if (ctx && typeof ctx.on === 'function') {
-      ctx.on('agent/created', (payload) => {
+      keepOn(ctx.on('agent/created', (payload) => {
         const agent = payload && payload.agent
         const agentCtx = agent && agent.ctx
         if (!agentCtx || typeof agentCtx.on !== 'function') return
-        try { agentCtx.on('system-prompt/assemble', pullMemberToolFace) } catch { /* root registration still applies */ }
-      })
+        try { keepOn(agentCtx.on('system-prompt/assemble', pullMemberToolFace)) } catch { /* root registration still applies */ }
+      }))
     }
   } catch (e) { log('vmu: system-prompt/assemble hook was refused: ' + String((e && e.message) || e)) }
   if (kernel && kernel.turn && typeof kernel.turn.setVisibleToolsProvider === 'function') {
