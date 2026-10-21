@@ -137,3 +137,39 @@ node scripts/slv-inspect.mjs <session-dir>     # 真机：块与 wire、0 RED �
 3. ★★★ **诊断面本身是被测系统的一部分** —— ★ `slv-inspect` 自己错过一次（只读 user 消息、块在另一条 `system-prompt` 消息里）。
 4. ★★★ **不许静默** —— ★ 本阶段修掉 **4 处静默**（截断 ×2、未知名面、`detail`）。
 5. ★★★ **留在红的中间态比慢更贵** —— ★ 三次归档尝试失败，★ **三次干净回退**；★ 两次并发写窗口靠"等收工再刷新"化解。
+
+---
+
+## §11 收尾（目标 4 与目标 8 完成后的追加记录）
+
+### 目标 4 的物理移动：**第四次成了**，而前三次的失败是它成功的原因
+
+★ **前三次**：★ 先移目录 → 1058 处引用全断；★ 先删发货条目 → 21 套红；★ 先改 482 处 import → 发现**那个数字是误计**（`vibe-math-v*` 的模式把 `vibe-math-vmu` 也匹配了，★ 真实 12 处）。★ **三次都干净回退**。
+
+★ **第四次**：★ **先把"路径来源"收敛到一个开关**（`tests/_lib/legacy-presets.mjs` 的 `LEGACY_BASE` ＋ `legacyDir`/`legacyFile`），★ **base 仍指仓根 ⇒ 行为零变化**；★ **31 个脚本用"复制五个 preset 到临时根 ＋ `VMU_LEGACY_BASE` 指过去"证明真的跟着开关走**；★ **再改四类间接用法**（对仓根 `join` 的 helper／对 `tests/` 解析的 URL／相对串数组／从仓根拼的 YAML）；★ **最后 `git mv` ＋ 翻一行 base**。
+
+★ **结果**：★ `exports` 10→5；★ `files` 819→761（删的 58 条**正是五卷**）；★ `installer.js` `PRESETS` 6→1；★ `npm pack` 763 文件、**declared 761 / missing 0 / declared-not-packed 0**；★ 全仓**运行时按旧根读取 0 处**。
+
+★ **卡了三次的 `audit-installer-policy` §14，真因是它自己的夹具**：★ 它**编辑一个 preset，把另一个当"未编辑"的对照** —— ★ 那只有在"有两个 preset"时成立。★ 改成单 preset 后 **90/0**。
+
+### 一个必须写下来的打包限制（★ 不藏）
+
+★ `package.json#files` 发货 **366 个 `tests/**`**，★ 其中 **53 个**通过 helper 读 archive，★ 而 **archive 不发货**（有意）⇒ ★ **从 tarball 跑这 53 个会 `ERR_MODULE_NOT_FOUND`**。
+
+★ **这不是遗漏**：★ 非测试发货代码按旧根读取 archive 的站点 **0 处**；★ installer 不再安装它；★ **而把 archive 发货就等于把已弃用的 preset 放回产品面**。★ 已在 `archive/legacy-presets/README.md` 写明，★ 并给出正确做法（在仓库内跑；若要让包内测试可跑，应把 53 个套件与归档**作为 test fixture 单独发布**）。
+
+### 目标 5 的第四、五轮
+
+★ **第四轮**（6 条）：★ **提示词教已废弃的 paper 回执字段**（★ 两个文件、六段，★ 其中一处还写着"它不是工具，别去找同名工具"，★ 而**现在正好相反**）⇒ ★ 全部改成教 `vibe_v5_paper`；★ 另 4 条是 `docs/03` 的动作清单滞后。
+
+★ **第五轮**（★ 未达零发现）：★ **1 个打包策略 finding**（上面的 F1）＋ ★ **1 处 docs stale 已修**（`docs/parameter-schema.md:3` 把已归档的 `PARAM_SCHEMA` 说成"唯一真源"）＋ ★ **15 篇历史文档无字面限定词**（★ 13 篇 `docs/acceptance` 禁改、★ 1 篇 release notes、★ 1 篇 vmu 审计）⇒ ★ **判为历史，不改**。
+
+★ **并落成一条新门禁**：★ `tests/audit-doc-actions.test.mjs` —— ★ **docs 的 action 清单 ⊇ 真实 enum**（★ 正向）＋ ★ **真实 enum ⊇ docs 的 action 清单**（★ 反向：★ "教了不存在的动作"）★ 带 `--selftest`（★ 正例/反例/反向 3/3）。★ **开发中它抓到 4 处滞后**（★ `meeting` 9 vs 42、★ `minutes` 缺 5、★ **`board` 写成 `setWpi`，★ 真名 `setWip`**）⇒ ★ **证明它不是空扫**。
+
+### 一条操作纪律（★ 用真金换的）
+
+★ **全量 T1 必须在【没有其它 lane 活跃】时跑**。★ 本阶段有两次 T1 报 395/396，★ 都是两个 T1 并发 ⇒ ★ `audit-generators-current` 撞预算。★ 而它自己的预算是 **136.8s 实测 vs 180s 默认** ⇒ ★ 只余 31% ⇒ ★ 已按仓库的 **2x 规则**给它 **300s 显式预算**（★ 记录实测值，★ 并在 `TIMEOUT_OVERRIDES` 里注明）。★ **全局默认仍是 180s，一个字没动。**
+
+### 本阶段最终读数
+
+★ **T1 = 397 PASS / 0 FAIL（333 套件 ＋ 64 探针）**；★ **派生作业 466**；★ `npm pack` **763 文件、missing 0**；★ `regen` **16/16**；★ `check-docs` PASS；★ `preflight` PASS。
