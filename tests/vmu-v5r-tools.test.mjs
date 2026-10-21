@@ -1345,6 +1345,45 @@ try {
   const msgExplicitFalse = await specs('vibe_v5_message').handler({ to: 'r-1', content: 'hi', urgent: false }, { kernel: stubC })
   ok(msgExplicitFalse.urgent === false && stubC._sent.payload.kind === 'note',
     '★ 显式 urgent:false ⇒ 仍是非紧急（kind=note），不会因为别的字段变紧急', stubC._sent.payload.kind)
+  // ── ⑦k-bis PHASE 9 / round 7: THE THIRD FACE OF THE SAME ROOT CAUSE — a STALE EXPLICIT VALUE in the pack's VALUE
+  // layer. Bug A was a parameter map that dropped a field; bug B was a handler default that decided the answer. This one
+  // is the value layer: the pack still spelled out the OLD seven automatic-urgency kinds for the mailbox, and because a
+  // pack default is folded UNDER the user's settings but OVER the schema default, it SHADOWED the schema's new default
+  // (empty). So the kernel still treated a 'notice'-kind message as automatically urgent and the sender could not win.
+  // ★ The rule this pins: an institution has no reason to restate a framework default, and a STALE explicit value is
+  // WORSE than "not set" — it looks configured while its semantics are old. If this institution ever really wants
+  // kind-driven urgency, it must declare the list explicitly AND say why, never copy an outdated default.
+  // What is asserted: (反) the pack's value layer carries no such key while its neighbours are still there (so the
+  // absence is not a broken/empty map); (正) the LIVE kernel built from the REAL entry now reports an empty automatic
+  // list, a plain notice is NOT urgent, and the mechanism is not switched off — an explicit urgent:true is still true.
+  console.log('=== 7k-bis. THE PACK VALUE LAYER MUST NOT RESTATE THE FRAMEWORK\'S URGENCY DEFAULT ===')
+  const packDefaultsR7 = JSON.parse((await import('node:fs')).readFileSync(
+    join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'settings', 'defaults.json'), 'utf8')).defaults || {}
+  const packKeyCountR7 = Object.keys(packDefaultsR7).length
+  const staleKeyR7 = 'vmu.mailbox.urgentKinds'
+  ok(!Object.prototype.hasOwnProperty.call(packDefaultsR7, staleKeyR7),
+    '★★★ 反：pack 值层不再显式声明信箱自动紧迫种类的键（schema 的默认是唯一所有者；旧显式值会把它盖住）',
+    { keys: packKeyCountR7, present: Object.prototype.hasOwnProperty.call(packDefaultsR7, staleKeyR7) })
+  ok(packKeyCountR7 >= 20 && packDefaultsR7['vmu.mailbox.wakeBudget'] === 1,
+    '★ 非空洞对照：同一张表里邻居键仍在（wakeBudget=1，且键数 ≥20）⇒ 上面那条"不存在"不是"表读坏了"',
+    { keys: packKeyCountR7, wakeBudget: packDefaultsR7['vmu.mailbox.wakeBudget'] })
+  const policyKindsR7 = kernel.mailbox.status().policy.urgentKinds
+  ok(Array.isArray(policyKindsR7) && policyKindsR7.length === 0,
+    '★★★ 正：真入口折入后，活动内核的信箱策略里自动紧迫种类是空表（schema 默认真正生效，不再被值层的旧值覆盖）',
+    policyKindsR7)
+  await kernel.members.hire({ id: 'r7-a', slot: 'member' })
+  await kernel.members.hire({ id: 'r7-b', slot: 'member' })
+  const liveRosterR7 = kernel.members.roster().map((m) => m.id)
+  ok(liveRosterR7.includes('r7-a') && liveRosterR7.includes('r7-b'),
+    '★ 前置（RULE E）：两个真实成员在位，下面两条是真实投递而不是桩', liveRosterR7.filter((id) => /^r7-/.test(id)))
+  const plainNoticeR7 = kernel.mailbox.send('r7-a', { to: 'r7-b', text: '普通通告', kind: 'notice' })
+  ok(plainNoticeR7 && plainNoticeR7.ok === true && plainNoticeR7.urgent === false,
+    '★★★ 正（真缺陷的反证）：非紧急的 notice 消息现在 urgent===false —— 上轮真机回执里正是这里回了 true',
+    plainNoticeR7 && { ok: plainNoticeR7.ok, urgent: plainNoticeR7.urgent })
+  const explicitUrgentR7 = kernel.mailbox.send('r7-a', { to: 'r7-b', text: '紧急通告', kind: 'note', urgent: true })
+  ok(explicitUrgentR7 && explicitUrgentR7.urgent === true,
+    '★★ 反（机制没被关死）：发送方显式 urgent:true 仍然为真 ⇒ 这是"默认假、显式真"，不是"紧迫永远为假"',
+    explicitUrgentR7 && { ok: explicitUrgentR7.ok, urgent: explicitUrgentR7.urgent })
   // prompts: the four lines exist in EACH role section, item 3 carries the exact tightening, and nothing uses `{{ }}`.
   const roleSecs = ['v5r-tools-academician', 'v5r-tools-researcher', 'v5r-tools-temp'].map((n) => PACK.sections.filter((s) => s.name === n)[0])
   const promptHits = roleSecs.map((s) => {

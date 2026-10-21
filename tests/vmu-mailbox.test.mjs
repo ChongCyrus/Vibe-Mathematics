@@ -177,14 +177,14 @@ const mk = (settings = {}, extra = {}) => m.createMailbox(Object.assign({ clock,
   const kindsMb = mk({ 'vmu.mailbox.urgentKinds': ['chat'] })
   kindsMb.send('r-1', { to: 'r-2', text: 'x', kind: 'chat' })
   ok(kindsMb.deliverable('r-2').urgent === true, 'the urgent-kind list is declared, not hard-coded')
-  // ★ PHASE 9 / round 6: [] must be expressible (not fall back to a default), and the LEGACY seven-kind default must
-  // not make kind-only urgency come back through an old pack default.
+  // ★ PHASE 9 / round 7: the kernel must NOT special-case the old seven-kind list; an explicit list is policy and is
+  // honoured verbatim. [] is the only way to turn kind-only urgency off.
   const emptyKinds = mk({ 'vmu.mailbox.urgentKinds': [] })
   emptyKinds.send('r-1', { to: 'r-2', text: 'x', kind: 'notice' })
   ok(emptyKinds.deliverable('r-2').urgent === false, 'an explicit [] means NO kind is auto-urgent (empty is expressible)', emptyKinds.deliverable('r-2'))
   const legacyKinds = mk({ 'vmu.mailbox.urgentKinds': ['dm', 'office', 'assign', 'nudge', 'notice', 'meeting', 'verify'] })
   legacyKinds.send('r-1', { to: 'r-2', text: 'x', kind: 'notice' })
-  ok(legacyKinds.deliverable('r-2').urgent === false, 'the legacy seven-kind default is treated as OLD DEFAULT, not policy', legacyKinds.deliverable('r-2'))
+  ok(legacyKinds.deliverable('r-2').urgent === true, 'an explicit old seven-kind list STILL makes those kinds urgent (kernel must not hijack a policy value)', legacyKinds.deliverable('r-2'))
 }
 
 // ---- 6. the wake plan is budgeted and NAMES the deferred -----------------------------------------

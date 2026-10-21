@@ -2,6 +2,7 @@
   "_comment": "The v5r pack's own settings defaults. Pure data on purpose: the plugin must fold these UNDER the user's settings BEFORE the kernel is constructed, and a synchronous JSON read is the only way to do that from a plugin whose top level cannot await. Every key must exist in settings/schema.js; the gate can check that, because a default for an undeclared key is a typo that would otherwise fail silently.",
   "_round2": "ROUND 2 (D-08): the v5r INSTITUTION's preferences for the new primitives (chat / mailbox / panel / resume / human / math jobs). These are STRATEGY, not mechanism: the kernel primitives read them and enforce; the pack only says what this institution wants. Values are grounded in _handoff/vmu/v5r-inventory-c.md (chat/panel/meeting) and inventory-a (resume). The reporting policy is NOT here: it is declared on the loaded manifest (packs/v5r/prompts/v5r-core.js) and applied by the pack loader - a key declared in both places would be refused as a conflict (O4).",
   "_round7": "ROUND 7 fidelity audit (Lead ruling): `vmu.math.maxParallel` below is a RESTATEMENT OF THE FRAMEWORK DEFAULT (def 1) and is NOT fidelity evidence - v5r's own parameter for this is `leanJobsMaxParallel: 1` (vibe-math-v5r.js:1119), whose framework twin `vmu.math.leanJobsMaxParallel` already defaults to 1. It is kept because an integration pack should be readable and tunable. The real round-7 fidelity corrections are documented in defaults.js: `vmu.turn.selfCheck` true->false (v5r:1122 resourceSelfCheck false), `vmu.control.idleAfterMs: 120000` (v5r:1082 activityTimeoutMs), and the REMOVAL of `vmu.limits.maxLiveMembers: 3` (v5r:1130 maxLiveChildren 0 = no cap).",
+  "_round9": "PHASE 9 ROUND 7 — ONE LINE WAS DELETED HERE ON PURPOSE: the pack used to spell out a seven-kind list for the mailbox's automatic-urgency key, which SHADOWED the schema's new default (an empty list: nothing is urgent by kind out of the box; urgency comes only from the sender explicitly saying urgent:true). While that stale explicit value sat here, `kind:'notice'` stayed automatically urgent and the sender could not win. A stale explicit value is WORSE than 'not set': it looks configured while its semantics are old. RULE: this institution has no reason to restate a framework default; if a day comes when it really wants kind-driven urgency, it must declare the list explicitly AND write the institution's reason here — never copy an outdated default. Pinned by tests/vmu-v5r-tools.test.mjs §7k (the pack's value layer must not carry that key).",
   "defaults": {
     "vmu.turn.replyCatalogue": "compact",
       "vmu.turn.closureVotePermission": "vote",
@@ -30,7 +31,6 @@
     "vmu.chat.muteDefaultMs": 0,
     "vmu.chat.freezeExemptAdmins": true,
 
-    "vmu.mailbox.urgentKinds": ["dm", "office", "assign", "nudge", "notice", "meeting", "verify"],
     "vmu.mailbox.wakeBudget": 1,
 
     "vmu.panel.deviationPolicy": "record",
