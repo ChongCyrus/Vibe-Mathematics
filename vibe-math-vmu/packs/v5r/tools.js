@@ -698,8 +698,15 @@ async function toolStop(args = {}, { kernel } = {}) {
 }
 async function toolPause(args = {}, { kernel } = {}) {
   if (typeof kernel.pause !== 'function') throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no pause()', 'assemble a full kernel (vibe-math-vmu.js)')
-  const r = await kernel.pause(has(args.reason) ? str(args.reason) : 'paused by vibe_v5_pause')
-  return { ok: true, tool: 'vibe_v5_pause', receipt: r }
+  try {
+    const r = await kernel.pause(has(args.reason) ? str(args.reason) : 'paused by vibe_v5_pause')
+    return { ok: true, tool: 'vibe_v5_pause', receipt: r }
+  } catch (e) {
+    // ★ G6 tier 2 (UX): "named but no way forward". The kernel refuses VMU_STATE with no hint; the tool layer owes
+    // the caller a ROUTE (the reciprocal action + the read path) or an explicit statement that none exists.
+    if (e && e.code === 'VMU_STATE' && !e.hint) e.hint = 'nothing was paused: the kernel is stopped (terminal) — read the control state with vibe_vmu_control {action:"status"} (fields state/pausedReason/stops); a stopped institute cannot be resumed, start a fresh one with vibe_v5_start'
+    throw e
+  }
 }
 /** ★ `vibe_v5_resume` — un-pause through the kernel's CONTROL-FLOW face. NOTE the name collision measured in
  * `kernel/index.js:1935-1941`: `kernel.resume(reason)` IS the control-flow counterpart of `pause()`; the DURABILITY
@@ -711,9 +718,14 @@ async function toolResume(args = {}, { kernel } = {}) {
   if (!kernel || typeof kernel.resume !== 'function') {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no control-flow resume()', 'assemble a full kernel (vibe-math-vmu.js)')
   }
-  const r = await kernel.resume(has(args.reason) ? str(args.reason) : undefined)
-  return { ok: true, tool: 'vibe_v5_resume', receipt: r,
-    note: 'resumed through the kernel control state (the durability projection is kernel.recovery, never used here)' }
+  try {
+    const r = await kernel.resume(has(args.reason) ? str(args.reason) : undefined)
+    return { ok: true, tool: 'vibe_v5_resume', receipt: r,
+      note: 'resumed through the kernel control state (the durability projection is kernel.recovery, never used here)' }
+  } catch (e) {
+    if (e && e.code === 'VMU_STATE' && !e.hint) e.hint = 'nothing was resumed: the kernel is NOT in the paused state (it may be running or stopped) — read the control state with vibe_vmu_control {action:"status"} (field state); pause with vibe_v5_pause first if that is the intent, and note that a STOPPED kernel is terminal (start a fresh one with vibe_v5_start)'
+    throw e
+  }
 }
 
 /** Apply ONE declared setting through the kernel's guarded writer and report the hot level it declares. Shared body of

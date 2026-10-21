@@ -30,8 +30,22 @@ export function makeControlSpec({ param, refused, TOOL_NAMES, kernel }) {
       run: async ({ action = 'status', reason, note, member_id, slot, institution, since, key, value, byRole } = {}) => {
         try {
           if (action === 'status') return Object.assign({ ok: true, action }, kernel.control())
-          if (action === 'pause') return Object.assign({ ok: true, action }, await kernel.pause(reason || 'paused by tool'))
-          if (action === 'resume') return Object.assign({ ok: true, action }, await kernel.resume(reason || null))
+          // ★ G6 tier 2 (UX): a named refusal must carry a ROUTE, not just a message. This face's pause/resume go
+          // straight to the kernel control state, whose VMU_STATE refusals used to arrive with hint:null ("named but
+          // no way forward"). The hint below names the read path (this face's own `status`) and the reciprocal action;
+          // a STOPPED kernel is terminal and says so, because "resume" cannot bring it back.
+          if (action === 'pause') {
+            try { return Object.assign({ ok: true, action }, await kernel.pause(reason || 'paused by tool')) } catch (e) {
+              if (e && e.code === 'VMU_STATE' && !e.hint) e.hint = 'nothing was paused: the kernel is stopped (terminal) or otherwise not pausable — read the current control state with vibe_vmu_control {action:"status"} (fields state/pausedReason/stops), and start a fresh institute instead of resuming a stopped one'
+              throw e
+            }
+          }
+          if (action === 'resume') {
+            try { return Object.assign({ ok: true, action }, await kernel.resume(reason || null)) } catch (e) {
+              if (e && e.code === 'VMU_STATE' && !e.hint) e.hint = 'nothing was resumed: the kernel is not in the paused state (it may be running or stopped) — read the current control state with vibe_vmu_control {action:"status"} (field state), pause with action:"pause" first if that is the intent, and note that a STOPPED kernel is terminal'
+              throw e
+            }
+          }
           if (action === 'stop') return Object.assign({ ok: true, action }, await kernel.stop(reason || null))
           if (action === 'beat') return Object.assign({ ok: true, action }, await kernel.beat(note || null))
           // ★★★ ROUND 44 (measured on a real machine): THIS FACE WAS ON THE WRONG LEDGER - ALL THREE ACTIONS, NOT ONE.

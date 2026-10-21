@@ -7,6 +7,12 @@
 // So this REPORT lists them with their hints rather than judging, the discipline that has held all session.
 import { toolSpecs, TOOL_NAMES } from '../vibe-math-vmu/host.js'
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { join, dirname } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
+const REPO = join(HERE, '..')
 
 let passed = 0
 let failed = 0
@@ -47,6 +53,104 @@ console.log('  NO prior step named (suspect: the field may never have arrived): 
 for (const e of without.slice(0, 12)) console.log('      ' + e)
 ok(withPrior.length > 0, 'the common case - a step not yet done - is recognised by its hint, so the report is not one flat list', { n: withPrior.length })
 ok(Array.isArray(without), 'and the suspect list is produced for a reader, not turned into a verdict', { n: without.length })
+
+console.log('=== 2b. GATE (G6 tier 2): EVERY NAMED REFUSAL CARRIES A NON-EMPTY HINT ===')
+// ★ WHY THIS GATE EXISTS (measured on the real machine, G6 tier 1): `vibe_v5_pause`/`vibe_v5_resume` refused with
+// `VMU_STATE` and `hint:null` — a NAMED refusal that gives no route forward. "Named but no way forward" is a UX
+// defect class, so the layer-1 sweep is encoded as a resident assertion: call EVERY registered tool face with a
+// minimal legal payload and require that any refusal whose code starts `VMU_` names a hint. The two slow waiters are
+// driven with action:"status" (a real 30s/60s wait is not a fixture; their timeout path is covered elsewhere).
+{
+  const entry = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href)
+  const root = mkdtempSync(join('D:/_tmp', 'vmu-refusal-hints-'))
+  const specs = []
+  const ctx = {
+    effect(fn) { return fn() },
+    on() { return () => {} },
+    tools: { register: async (spec) => { specs.push(spec); return () => {} } },
+  }
+  const handle = entry.apply(ctx, {
+    root, workspace: root, clock: () => 1000, packs: ['v5r'],
+    vmu: { 'vmu.tools.faces': ['*'], 'vmu.tools.allowAll': true },
+  })
+  await handle.ready()
+  const stringFor = (key, face) => {
+    const k = String(key || '').toLowerCase()
+    if (k === 'action') return 'status'
+    if (k === 'member' || k === 'to' || k === 'by' || k === 'owner') return 'r-1'
+    if (k === 'id' || k.endsWith('id') || k.endsWith('_id')) return 'p1'
+    if (k === 'file') return 'Probe.lean'
+    if (k === 'meeting') return 'm1'
+    if (k === 'key') return 'vmu.core.logLevel'
+    if (k === 'value') return 'info'
+    if (k === 'decision') return 'deliverable'
+    return 'probe'
+  }
+  const minimalArgs = (spec) => {
+    const schema = spec.parameters || {}
+    const props = schema && schema.properties && typeof schema.properties === 'object' ? schema.properties : (schema && !schema.type ? schema : {})
+    // The two waiters are the ONLY faces whose default path blocks for tens of seconds: use their own fast read.
+    if (spec.name === 'vibe_vmu_wait' || spec.name === 'vibe_v5_wait') return { action: 'status' }
+    const required = Array.isArray(schema.required) ? schema.required
+      : Array.isArray(schema.requiredProperties) ? schema.requiredProperties
+        : Object.entries(props).filter(([, d]) => d && d.required === true).map(([k]) => k)
+    const out = {}
+    for (const key of required) {
+      const def = props[key] || {}
+      const t = def.type
+      if (key === 'action') {
+        const enumVals = Array.isArray(def.enum) ? def.enum : []
+        out.action = ['status', 'list', 'summary'].find((x) => enumVals.includes(x)) || enumVals[0] || 'list'
+      } else if (t === 'array') out[key] = []
+      else if (t === 'integer' || t === 'number') out[key] = 1
+      else if (t === 'boolean') out[key] = true
+      else if (t === 'object') out[key] = {}
+      else out[key] = stringFor(key, spec.name)
+    }
+    return out
+  }
+  // A roster makes the member-facing faces reach their real decision points instead of an empty-roster shortcut.
+  const control = specs.find((s) => s.name === 'vibe_vmu_control')
+  for (const hire of [{ member_id: 'acad', slot: 'chair' }, { member_id: 'r-1', slot: 'member' }]) {
+    try { await control.execute(Object.assign({ action: 'hire', institution: 'hint-gate' }, hire), {}) } catch (e) { /* recorded by the sweep below */ }
+  }
+  const refusals = []
+  const missing = []
+  const thrown = []
+  for (const spec of specs) {
+    let raw
+    try { raw = await spec.execute(minimalArgs(spec), {}) } catch (e) { thrown.push(spec.name + ': ' + String((e && e.message) || e)); continue }
+    let parsed = raw
+    if (typeof raw === 'string') { try { parsed = JSON.parse(raw) } catch { parsed = null } }
+    if (!parsed || parsed.ok !== false) continue
+    const code = String(parsed.code || '')
+    if (!/^VMU_/.test(code)) continue
+    refusals.push(spec.name + ' ' + code)
+    const hint = typeof parsed.hint === 'string' ? parsed.hint.trim() : ''
+    if (!hint) missing.push(spec.name + ' ' + code + ' (hint is ' + (parsed.hint === null ? 'null' : 'empty') + ')')
+  }
+  ok(thrown.length === 0, 'the minimal-args sweep calls every registered face without a thrown exception (U=0)', thrown.slice(0, 4))
+  ok(specs.length >= 90, 'the sweep really covers the registered surface (non-vacuous: ' + specs.length + ' faces)', specs.length)
+  ok(refusals.length >= 15, 'the sweep really produces named refusals to judge (non-vacuous: ' + refusals.length + ')', refusals.slice(0, 6))
+  ok(missing.length === 0, 'GATE: every VMU_* refusal carries a non-empty hint — "named but no way forward" cannot come back', missing)
+
+  console.log('=== 2c. GATE: THE STOPPED-KERNEL PAUSE/RESUME REFUSALS GIVE A ROUTE (G6 tier 2 regression) ===')
+  // The measured defect: kernel.pause()/resume() refuse VMU_STATE without a hint. Drive the exact path deterministically.
+  await handle.kernel.stop('hint-gate')
+  const read = (raw) => { try { return JSON.parse(raw) } catch { return null } }
+  const specOf = (name) => specs.find((s) => s.name === name)
+  const pauseV5 = read(await specOf('vibe_v5_pause').execute({}, {}))
+  ok(pauseV5 && pauseV5.code === 'VMU_STATE' && /vibe_vmu_control|paused|stopped/i.test(String(pauseV5.hint || '')),
+    'vibe_v5_pause on a STOPPED kernel refuses by name AND names the route (control status / stopped is terminal)', pauseV5 && { code: pauseV5.code, hint: String(pauseV5.hint || '').slice(0, 120) })
+  const resumeV5 = read(await specOf('vibe_v5_resume').execute({}, {}))
+  ok(resumeV5 && resumeV5.code === 'VMU_STATE' && /paused|stopped|vibe_v5_pause|control/i.test(String(resumeV5.hint || '')),
+    'vibe_v5_resume when nothing is paused refuses by name AND says what state it is in / how to read it', resumeV5 && { code: resumeV5.code, hint: String(resumeV5.hint || '').slice(0, 120) })
+  const pauseVmu = read(await specOf('vibe_vmu_control').execute({ action: 'pause' }, {}))
+  ok(pauseVmu && pauseVmu.code === 'VMU_STATE' && /status|stopped|paused/i.test(String(pauseVmu.hint || '')),
+    'vibe_vmu_control pause carries the same route (one defect class, both faces)', pauseVmu && { code: pauseVmu.code, hint: String(pauseVmu.hint || '').slice(0, 120) })
+  try { rmSync(root, { recursive: true, force: true }) } catch (e) { /* Windows may keep a store handle; best effort as elsewhere */ }
+}
+
 
 console.log('=== 3. WHAT THIS REPORT WOULD *NOT* HAVE CAUGHT (recorded honestly) ===')
 // Reconstruct what they said before the fix: both named no prior step while a field had in fact been supplied by the tool's own
