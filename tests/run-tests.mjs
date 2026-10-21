@@ -84,7 +84,7 @@
  *     a deferred job that started BEFORE the release would RED BY NAME.
  *   · ROLLBACK: set `GATE_HEADSTART_MIN_MS=0` (no code change needed).
  */
-import { spawn, execFileSync } from 'node:child_process'
+import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { cpus, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -948,7 +948,19 @@ function runSuite(job) {
     const limitMs = jobLimit(job)
     const child = spawn(process.execPath, argv, { cwd: REPO, stdio: ['ignore', 'pipe', 'pipe'] })
     let timedOut = false
-    const killer = setTimeout(() => { timedOut = true; try { child.kill('SIGKILL') } catch (e) { /* already gone */ } }, limitMs)
+    // ★ KILL THE WHOLE TREE, NOT JUST THE CHILD. `child.kill()` stops the suite it was pointed at and leaves
+    // any process THAT suite spawned running - and audit-generators-current spawns every generator, so a
+    // timeout there used to leave generate-wiring-index and generate-vmu-settings-table alive as orphans. Those
+    // orphans then competed with the NEXT sweep, which timed out again on an honest suite: one timeout became a
+    // cascade of them. This was measured, not inferred - hunting the orphans down and killing them made the same
+    // suite finish in 164 s and the sweep go clean. The timeout budget itself is deliberately NOT raised here.
+    const killer = setTimeout(() => {
+      timedOut = true
+      if (process.platform === 'win32' && child.pid) {
+        try { spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }) } catch { /* already gone */ }
+      }
+      try { child.kill('SIGKILL') } catch (e) { /* already gone */ }
+    }, limitMs)
     const clearKiller = () => clearTimeout(killer)
     let out = '', err = ''
     child.stdout.on('data', (d) => { out += d.toString() })
