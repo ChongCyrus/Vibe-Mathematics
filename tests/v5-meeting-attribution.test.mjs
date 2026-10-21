@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 // ============================================================
 // V5 ROUND-2 E2E — the behaviour paths the first suite never exercised:
 //   · the hardened JSON backend (the ONLY backend: `makeFileBackend`/`installBackend`)
@@ -40,7 +42,7 @@ process.env.V5_TEX_ROOTS_SANDBOX = EMPTY_ENGINE_ROOT   // task-29: the documente
 // e2e block of the sensitivity audit was vacuous.
 const PLUGIN = process.env.V5_PLUGIN
   ? new URL('file:///' + String(process.env.V5_PLUGIN).replace(/\\/g, '/'))
-  : new URL('../vibe-math-v5/vibe-math-v5.js', import.meta.url)
+  : pathToFileURL(legacyFile('vibe-math-v5', 'vibe-math-v5.js'))
 let passed = 0, failed = 0
 const failures = []
 const assert = (c, m) => { if (c) { passed++; console.log('  ok - ' + m) } else { failed++; failures.push(m); console.error('  FAIL - ' + m) } }
@@ -340,7 +342,7 @@ assert(raw.indexOf(speech) !== -1, 'the speech DID reach the meeting minutes')
 console.log('  (meeting=' + mtId + ', asked=' + asked + ', minutesBytes=' + raw.length + ')')
 
 console.log('\n[2] the wake kind travels with the turn (source contract)')
-const src2 = readFileSync(new URL('../vibe-math-v5/vibe-math-v5.js', import.meta.url), 'utf8')
+const src2 = readFileSync(pathToFileURL(legacyFile('vibe-math-v5', 'vibe-math-v5.js')), 'utf8')
 assert(/inflight\.set\(member\.childId, \{ token, kind: kind \|\| 'normal' \}\)/.test(src2),
   '★ wakeMember stores the wake kind together with the in-flight turn')
 assert(/inflight\.set\(started\.childId, \{ token: shortId\(\), kind \}\)/.test(src2),

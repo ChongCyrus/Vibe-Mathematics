@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 /**
  * Mutant harness for tests/math-computation-shared.test.mjs §23 / §23b (ENGINE DISCOVERY) and §24 (install
  * suggestions must be runnable). Ships: `tests/*.mutants.mjs`. Replaces the dev-only drafts
@@ -23,7 +24,7 @@ import { fileURLToPath } from 'node:url'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = join(HERE, '..')
-const SRC = join(REPO, 'vibe-math-v2')
+const SRC = legacyDir('vibe-math-v2')
 const SUITE = join(HERE, 'math-computation-shared.test.mjs')
 let passed = 0, failed = 0
 const ok = (c, l, d) => { if (c) { passed++; console.log('  ok   ' + l) } else { failed++; console.log('  FAIL ' + l + (d ? ' — ' + d : '')) } }

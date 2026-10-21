@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 // tests/vmu-ab-v5r-verification.test.mjs — the verification CHAIN, driven end to end on the v5r side.
 //
 // Volume 24 §0 fixes the method: an equivalence claim is only admissible when both sides are RUN and their observable
@@ -175,7 +177,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
 
 // ── D4 and D8: one is a DELIBERATE ABSENCE (so not a gap), the other is enforced in code ──────────────────────
 {
-  const rulings = readFileSync(new URL('../vibe-math-v5r/docs/02-rulings.md', import.meta.url), 'utf8')
+  const rulings = readFileSync(pathToFileURL(legacyFile('vibe-math-v5r', 'docs/02-rulings.md')), 'utf8')
   ok(/故意不做/.test(rulings) && /无窗口|无定时器/.test(rulings) && /D10/.test(rulings),
     'V22. ★★★ D4 ANSWERED AS A DESIGNED ABSENCE: the ruling volume says the window/frequency layer of reconsideration is DELIBERATELY not built, on the R1/D10 principle that the framework recommends and never drives - so "no extension cap" is a decision, not a missing gate',
     { cites: 'docs/02-rulings.md' })
@@ -183,7 +185,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   const hireProps = Object.keys((hire.parameters || {}).properties || {})
   ok(hireProps.includes('term') && hireProps.includes('purpose') && hireProps.includes('initial_task'),
     'V23. ★ a temporary worker is hired with a TERM, a purpose and a first task - the roster distinguishes temp from permanent', hireProps)
-  const vsrc = readFileSync(new URL('../vibe-math-v5r/vibe-math-v5r.js', import.meta.url), 'utf8')
+  const vsrc = readFileSync(pathToFileURL(legacyFile('vibe-math-v5r', 'vibe-math-v5r.js')), 'utf8')
   ok(/kind !== 'temp'/.test(vsrc) && /列席／受邀／临时工没有表决权（D8）/.test(vsrc),
     'V24. ★★★ D8 ENFORCED IN CODE: temporary members are excluded from the active set, and a vote attempt is refused by name with the ruling cited',
     { cites: "kind !== 'temp' + the D8 refusal" })
@@ -197,7 +199,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   ok(typeof closed.endedBy === 'string' && typeof closed.reason === 'string' && closed.outcome !== undefined,
     'V26. ★★ D9 MEASURED: the broadcast carries all three elements - by which rule/who it was closed, WHY, and the result',
     { by: closed.endedBy, why: String(closed.reason).slice(0, 40), outcome: closed.outcome })
-  const voting = readFileSync(new URL('../vibe-math-v5r/MEETING-PLATFORM-VOTING.md', import.meta.url), 'utf8')
+  const voting = readFileSync(pathToFileURL(legacyFile('vibe-math-v5r', 'MEETING-PLATFORM-VOTING.md')), 'utf8')
   const rows = voting.split('\n').filter((l) => /^\|\s*\d+\s*\|/.test(l))
   ok(rows.length >= 10 && /纳入/.test(voting) && /不建议纳入/.test(voting),
     'V27. ★★ v5r enumerates a full method set with adopt / adapt / DO-NOT-ADOPT verdicts per method', { methods: rows.length })
@@ -230,7 +232,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
     { chain: chain.trim() })
   ok(/rollback is not allowed/.test(pubSrc) && /legal next/.test(pubSrc) && /VMU_VERSION_CHAIN_BROKEN/.test(pubSrc),
     'V35. ★★★ and the chain is enforced: a jump or a rollback is refused BY NAME with the current version and the legal next one - never silently accepted')
-  const rulings = readFileSync(new URL('../vibe-math-v5r/MEETING-PLATFORM-RULINGS.md', import.meta.url), 'utf8')
+  const rulings = readFileSync(pathToFileURL(legacyFile('vibe-math-v5r', 'MEETING-PLATFORM-RULINGS.md')), 'utf8')
   const covered = (rulings.match(/已覆盖/g) || []).length
   ok(covered >= 5 && /矛盾与张力/.test(rulings) && /残余漏洞/.test(rulings),
     'V36. ★★★ the three-volume CONFLICTS ARE DECLARED BY THE VOLUMES THEMSELVES: the ruling volume carries a consistency review of the decision volume faults plus residual gaps, each with a coverage verdict',

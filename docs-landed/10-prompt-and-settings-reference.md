@@ -3,6 +3,10 @@
 > ★ **本文的证据规则**：**每一句结论后面都挂 `file:line`** ✓；★ **凡我没读到实现的地方，一律写明「未验证」并给补法** —— ★ **绝不把"没读到"写成"没问题"** ✓。
 > ★ **路径基准**：仓库根 `D:\wd\vibemath开发\Vibe-Mathematics`；下文相对路径即从此起算。
 > ★ **行号时点**：本文所有行号**取自本轮实读**的那一刻；★ 该文件在既往轮次里发生过行漂移（例如 `scope:` 从 `:361` 漂到 `:377`）⇒ ★ **引用时请以内容为准，行号为辅** ✓。
+>
+> ★★ **快照声明（G8）**：本卷是**弃用前**的 `docs-landed` 参考快照，不是当前权威清单（旧 `vibe-math-v2`…`v5r`
+> preset 已弃用，见 `docs/DEPRECATED-LEGACY-PRESETS.md`）。★ **当前设置键数以生成卷 `docs/04` 为准**，工具面以
+> `docs/18`／`docs/03` 为准；★ 表内的字节数、条目数都是**写作时点读数**，会漂移 ⇒ 不据此判断"当前"。
 
 ---
 
@@ -98,10 +102,10 @@
 
 ### 2.1 两个 `settings/` 目录的分工
 
-| 目录 | 角色 | 实体（实测存在） | 大小（由 `Get-ChildItem` 派生） |
+| 目录 | 角色 | 实体（实测存在） | 大小（写作时点读数；以文件为准，不据此断言"当前"） |
 |---|---|---|---|
-| `vibe-math-vmu/settings/` | ★ **声明＝代码** | `schema.js`／`planned.js` | `schema.js` 251,706 B；`planned.js` 43,374 B ✓ |
-| `vibe-math-vmu/packs/<id>/settings/` | ★ **取值＝数据** | `packs/v5r/settings/defaults.json`／`defaults.js` | 3,730 B／3,047 B ✓ |
+| `vibe-math-vmu/settings/` | ★ **声明＝代码** | `schema.js`／`planned.js` | 字节数以文件为准（本卷不再手抄）✓ |
+| `vibe-math-vmu/packs/<id>/settings/` | ★ **取值＝数据** | `packs/v5r/settings/defaults.json`／`defaults.js` | 字节数以文件为准（本卷不再手抄）✓ |
 
 ★ **能不能删**（我的判断，附依据）：★ **声明目录不可删** —— `SETTING_DEFS` 是**唯一**的声明源，且 `assertDeclared` 未声明即拒（§2.4）⇒ 删一条声明会让所有引用它的部署**立即具名拒** ✓；★ **取值目录可删（逐 pack）** —— 它只是取值，删掉后该 pack 的键回到声明默认（★ **未验证**：这一点我没有读到 fold 的失败语义，仅由"取值为数据"的结构推得 ⇒ **补法**见 §2.6 第 3 条）。
 

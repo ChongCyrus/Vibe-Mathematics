@@ -211,7 +211,7 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓；PHASE 6 复测 ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 454 / suites 348 / probes 106`** ✓（旧值 134／68／66、322／250／72 均已在扩卷与增件后过期 ✗；PHASE 6 删除 `audit-gate-snapshot.test.mjs` 后作业数 −1） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 362 / suites 259 / probes 103`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 363 / suites 259 / probes 104`** ✓ |
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓；**PHASE 6 起由 `--scope-report` 派生、`update-doc-counts --write` 自动重写** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 385 / suites 323 / probes 62`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。

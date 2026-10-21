@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // ============================================================================================
 // math_computation — shared module contract suite (integration owner).
 //
@@ -22,7 +23,7 @@ import { readFileSync } from 'node:fs'
 // of the module pair; the default is the shipped copy in vibe-math-v2/.
 const MODULE = process.env.MATH_COMPUTATION_MODULE
   ? pathToFileURL(process.env.MATH_COMPUTATION_MODULE).href
-  : new URL('../vibe-math-v2/math-computation.js', import.meta.url).href
+  : pathToFileURL(legacyFile('vibe-math-v2', 'math-computation.js')).href
 const M = await import(MODULE)
 
 // §30 predicates — used by the §30 assertions AND by `--self-probe` case 3, so the shipped proof and the
@@ -38,7 +39,7 @@ if (process.argv.includes('--self-probe')) {
   const { tmpdir } = await import('node:os')
   const { join, dirname } = await import('node:path')
   const { spawnSync } = await import('node:child_process')
-  const modPath = process.env.MATH_COMPUTATION_MODULE || fileURLToPath(new URL('../vibe-math-v2/math-computation.js', import.meta.url))
+  const modPath = process.env.MATH_COMPUTATION_MODULE || fileURLToPath(pathToFileURL(legacyFile('vibe-math-v2', 'math-computation.js')))
   const dir = mkdtempSync(join(tmpdir(), 'mc-shared-selfprobe-'))
   const enginesSrc = join(dirname(modPath), 'math-engines.js')
   try { copyFileSync(enginesSrc, join(dir, 'math-engines.js')) } catch (e) { /* engines may be resolved elsewhere */ }

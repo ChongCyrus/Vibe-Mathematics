@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 // ============================================================
 // V4 FINAL PAPER SUITE  (docs/final-paper.md, v1 + v2 amendments)
 //
@@ -29,7 +31,7 @@ import { join, dirname } from 'node:path'
 let g3WriteFail = null   // G3 test-side: RegExp matched against the fs targetKey; null = unchanged
 const PLUGIN = process.env.V4_PLUGIN
   ? new URL('file:///' + String(process.env.V4_PLUGIN).replace(/\\/g, '/'))
-  : new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)
+  : pathToFileURL(legacyFile('vibe-math-v4', 'vibe-math-v4.js'))
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 let passed = 0, failed = 0
 const failures = []

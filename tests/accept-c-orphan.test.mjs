@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // ============================================================
 // ACCEPT-C — 独立验收（verifier-c）：孤儿任务派发 / 上限 / 既有分支不变
 //
@@ -333,7 +334,7 @@ function gitToFile(args, outPath) {
 const CONTROL_REF = process.env.ACCEPT_C_CONTROL || ''
 
 function extractHeadBaseline() {
-  const srcDir = join(REPO, 'vibe-math-v5')
+  const srcDir = legacyDir('vibe-math-v5')
   const dir = mkdtempSync(join(tmpdir(), 'v5head-acc-c-'))
   for (const f of ['math-computation.js', 'math-engines.js']) copyFileSync(join(srcDir, f), join(dir, f))
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module' }) + '\n', 'utf8')
@@ -675,7 +676,7 @@ log('时间: ' + new Date().toISOString())
 log('cwd: ' + process.cwd())
 log('repo: ' + REPO)
 
-const NEW_PATH = process.env.V5_PLUGIN ? String(process.env.V5_PLUGIN) : join(REPO, 'vibe-math-v5', 'vibe-math-v5.js')
+const NEW_PATH = process.env.V5_PLUGIN ? String(process.env.V5_PLUGIN) : join(legacyDir('vibe-math-v5'), 'vibe-math-v5.js')
 
 const revTmp = join(mkdtempSync(join(tmpdir(), 'v5rev-')), 'rev.txt')
 gitToFile(['rev-parse', 'HEAD'], revTmp)

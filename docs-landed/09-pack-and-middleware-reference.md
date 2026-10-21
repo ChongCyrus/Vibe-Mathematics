@@ -5,6 +5,10 @@
 > ★★ **铁律**：本卷每条都核到代码并给 `file:line`；**核不到的写「未验证」＋补法**，★ **不把"没读到"写成"没问题"**。
 > ★ 上游 `docs/*.md` 是**主张**，代码是**事实**；二者不一致处在 §5 单列。
 > ★ 路径前缀约定：`kernel/` ＝ `vibe-math-vmu/kernel/`，`packs/` ＝ `vibe-math-vmu/packs/`，`vibe-math-vmu.js`／`host.js` 在 `vibe-math-vmu/` 下。
+>
+> ★★ **快照声明（G8）**：本卷是**弃用前**的 `docs-landed` 参考快照，不是当前权威清单（旧 `vibe-math-v2`…`v5r`
+> preset 已弃用，见 `docs/DEPRECATED-LEGACY-PRESETS.md`）。★ **下面各表若要找"当前"的工具面／提示词／设置**，
+> 以生成式索引为准：工具面见 `docs/18`、接口见 `docs/03`、设置键见 `docs/04`（生成）；★ 行号是写作时点，以内容为准。
 
 ---
 

@@ -19,8 +19,7 @@
 // The message is deliberately actionable: file, why, and the archive hint.
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 
-const ARCHIVE_HINT = ' (if the legacy presets were archived, point this path at archive/legacy-presets/… or move the '
-  + 'suite to the archive with them)'
+const ARCHIVE_HINT = '（归档提示：若旧 preset 已归档，指向归档根目录或随套件一起移动）'
 
 /** Read a file that MUST exist. Throws a named, actionable error instead of degrading to ''. */
 export function requireFile(path, why) {

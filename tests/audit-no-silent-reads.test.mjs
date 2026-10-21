@@ -144,7 +144,7 @@ console.log('=== 2. requireFile REALLY REFUSES (positive) AND READS (negative) =
     let threw = null
     try { requireFile(join(root, 'absent.txt'), 'the selftest fixture that must exist') } catch (e) { threw = e }
     ok(!!threw && /REQUIRED FILE MISSING/.test(String(threw.message)) && String(threw.message).includes('absent.txt')
-      && /archive\/legacy-presets/.test(String(threw.message)),
+      && /归档提示/.test(String(threw.message)),
       '★ 正：文件缺失 ⇒ 具名抛错，message 含【路径 ＋ 为什么该在 ＋ 归档提示】', threw && threw.message)
     let dirThrew = null
     try { requireDir(join(root, 'no-dir'), 'a selftest dir') } catch (e) { dirThrew = e }

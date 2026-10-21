@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { toolRegistry } from './helpers/v5-tool-registry.mjs'
@@ -345,7 +347,7 @@ assert.equal(Object.values(counterState.institutes)[0].artifactCount, 6, 'concur
 await counterHost.close()
 
 // Exercise the production graph validator without quadratic task-file setup.
-const pluginSource = fs.readFileSync(new URL('../vibe-math-v5/vibe-math-v5.js', import.meta.url), 'utf8')
+const pluginSource = fs.readFileSync(pathToFileURL(legacyFile('vibe-math-v5', 'vibe-math-v5.js')), 'utf8')
 
 const waitBody = pluginSource.split('    async function waitForProcess(handle, cap) {')[1].split('    async function mathSpawn')[0]
 let timeoutCallback, disposedTimers = 0, terminatedProcesses = 0

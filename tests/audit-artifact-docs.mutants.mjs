@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 /**
  * Mutant harness for tests/audit-artifact-docs.mjs (ships: `tests/*.mutants.mjs`).
  *
@@ -45,7 +46,7 @@ else {
   if (!named) for (const l of a.failLines.slice(0, 3)) console.log('      guard failure: ' + l.trim().slice(0, 130))
 }
 // B) v4 "gains" the artifact
-const v4 = readFileSync(join(REPO, 'vibe-math-v4/vibe-math-v4.js'), 'utf8')
+const v4 = readFileSync(legacyFile('vibe-math-v4', 'vibe-math-v4.js'), 'utf8')
 writeFileSync(join(dir, 'vibe-math-v4.js'), v4 + '\n// mutant: pretend v4 writes ' + ARTIFACT + '\n')
 const b = run({ ARTIFACT_V4_JS: join(dir, 'vibe-math-v4.js') })
 const namedB = b.failLines.some((l) => l.indexOf('the writing presets are exactly v2,v3') !== -1)

@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 // ============================================================================
 // accept-ab-v5-minimal.test.mjs — INDEPENDENT ACCEPTANCE (verifier-ab, task-1)
 //
@@ -59,7 +61,7 @@ process.env.V5_TEX_ROOTS_SANDBOX = EMPTY_ENGINE_ROOT
 
 const PLUGIN = process.env.V5_PLUGIN
   ? new URL('file:///' + String(process.env.V5_PLUGIN).replace(/\\/g, '/'))
-  : new URL('../vibe-math-v5/vibe-math-v5.js', import.meta.url)
+  : pathToFileURL(legacyFile('vibe-math-v5', 'vibe-math-v5.js'))
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 

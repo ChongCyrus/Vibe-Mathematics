@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // ============================================================
 // Defect class: F-6 (durability surfacing). A swallowed durable write / index rebuild / compaction
 // failure must be NAMED once, with its consequence, instead of disappearing silently.
@@ -129,13 +130,13 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 // plain filesystem path or a file:// URL, and never touch the value otherwise.
 function pluginUrl() {
   const raw = process.env.V4_PLUGIN
-  if (!raw || !String(raw).trim()) return new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)
+  if (!raw || !String(raw).trim()) return pathToFileURL(legacyFile('vibe-math-v4', 'vibe-math-v4.js'))
   const s = String(raw).trim()
   if (/^file:/i.test(s)) return new URL(s)
   return pathToFileURL(fileURLToPath(new URL('file:///' + s.replace(/\\/g, '/'))))
 }
 const PLUGIN = pluginUrl()
-function PLUGIN_SRC() { return readFileSync(process.env.V4_PLUGIN ? String(process.env.V4_PLUGIN) : fileURLToPath(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)), 'utf8') }   // protocol 搂9: ONE seam-aware resolution for source-text guards
+function PLUGIN_SRC() { return readFileSync(process.env.V4_PLUGIN ? String(process.env.V4_PLUGIN) : fileURLToPath(pathToFileURL(legacyFile('vibe-math-v4', 'vibe-math-v4.js'))), 'utf8') }   // protocol 搂9: ONE seam-aware resolution for source-text guards
 // docs §10 item 10: the Lean prompt corpus is shipped under prompt-corpus-v4/ so a HUMAN can read
 // the exact text the framework sends. V4_CORPUS_DIR overrides the destination (same convention v3
 // and v5 use for V3_CORPUS_DIR / V5_CORPUS_DIR).
@@ -1771,7 +1772,7 @@ section('N5 v4 member-facing paths are PROJECT-ROOT (the shape the framework sca
   assert(/Progress\/<你>\/progress\.md/.test(text), '* the documented progress path matches publishProgress (Progress/<rId>/progress.md)')
   assert(/Propos\/<你>\//.test(text) && /Methods\/<你>\//.test(text) && /Subproblems\/<你>\//.test(text), '* the documented card paths match the record tools (Propos|Methods|Subproblems/<rId>/<id>.md)')
   // CLASS GUARD (one level above v3's): what the prompt documents must be what the code reads/scans
-  const src4 = readFileSync(fileURLToPath(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)), 'utf8')
+  const src4 = readFileSync(fileURLToPath(pathToFileURL(legacyFile('vibe-math-v4', 'vibe-math-v4.js'))), 'utf8')
   for (const base of ['Progress', 'Propos', 'Methods', 'Subproblems']) {
     assert(new RegExp("'" + base + "'").test(src4), '* class guard: the framework reads/scans ' + base + ' - every documented write path must map onto a scanned base')
   }

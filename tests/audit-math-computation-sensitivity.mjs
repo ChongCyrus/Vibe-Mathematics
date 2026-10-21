@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // ============================================================================================
 // math_computation — SENSITIVITY probes (integration owner).
 //
@@ -20,7 +21,7 @@ import { fileURLToPath } from 'node:url'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
-const SRC = join(REPO, 'vibe-math-v2')
+const SRC = legacyDir('vibe-math-v2')
 const SUITE = join(HERE, 'math-computation-shared.test.mjs')
 
 const PROBES = [

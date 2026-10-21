@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // ============================================================
 // LEAN FORMAL-VERIFICATION SENSITIVITY PROBES (all four architectures)
 //
@@ -35,11 +36,11 @@ const dir = mkdtempSync(join(tmpdir(), 'v5-formal-sens-'))
 const PLUGINS = {
   // corpusEnv: each suite writes a human-reviewable prompt corpus; concurrent probes of the SAME
   // suite must not race on it, so every probe gets its own corpus dir.
-  v2: { file: join(REPO, 'vibe-math-v2', 'vibe-math-v2.js'), suite: 'tests/formal-verify-v2.test.mjs', env: 'V2_PLUGIN', corpusEnv: 'V2_CORPUS_DIR' },
-  v3: { file: join(REPO, 'vibe-math-v3', 'vibe-math-v3.js'), suite: 'tests/formal-verify-v3.test.mjs', env: 'V3_PLUGIN', corpusEnv: 'V3_CORPUS_DIR' },
-  v4: { file: join(REPO, 'vibe-math-v4', 'vibe-math-v4.js'), suite: 'tests/formal-verify-v4.test.mjs', env: 'V4_PLUGIN', corpusEnv: 'V4_CORPUS_DIR' },
-  v5: { file: join(REPO, 'vibe-math-v5', 'vibe-math-v5.js'), suite: 'tests/formal-verify-v5.test.mjs', env: 'V5_PLUGIN', corpusEnv: 'V5_CORPUS_DIR' },
-  v5r: { file: join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), suite: 'tests/formal-verify-v5.test.mjs', env: 'V5_PLUGIN', corpusEnv: 'V5_CORPUS_DIR' },
+  v2: { file: join(legacyDir('vibe-math-v2'), 'vibe-math-v2.js'), suite: 'tests/formal-verify-v2.test.mjs', env: 'V2_PLUGIN', corpusEnv: 'V2_CORPUS_DIR' },
+  v3: { file: join(legacyDir('vibe-math-v3'), 'vibe-math-v3.js'), suite: 'tests/formal-verify-v3.test.mjs', env: 'V3_PLUGIN', corpusEnv: 'V3_CORPUS_DIR' },
+  v4: { file: join(legacyDir('vibe-math-v4'), 'vibe-math-v4.js'), suite: 'tests/formal-verify-v4.test.mjs', env: 'V4_PLUGIN', corpusEnv: 'V4_CORPUS_DIR' },
+  v5: { file: join(legacyDir('vibe-math-v5'), 'vibe-math-v5.js'), suite: 'tests/formal-verify-v5.test.mjs', env: 'V5_PLUGIN', corpusEnv: 'V5_CORPUS_DIR' },
+  v5r: { file: join(legacyDir('vibe-math-v5r'), 'vibe-math-v5r.js'), suite: 'tests/formal-verify-v5.test.mjs', env: 'V5_PLUGIN', corpusEnv: 'V5_CORPUS_DIR' },
 }
 const ORIGINAL = {}
 for (const [k, v] of Object.entries(PLUGINS)) {

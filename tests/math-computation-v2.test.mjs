@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // Defect class: A1 skip ledger: "the package manager exists ⇒ a runnable command exists" must actually be exercised (a platform condition may not silently swallow the assertion).
 // Every assertion below must be falsifiable: tests/*.mutants.mjs contains the matching single-site
 // mutants whose named reds prove it (see docs/parameter-schema.md for the F-B exception table).
@@ -21,7 +22,7 @@
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync, statSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
   MATH_PARAM_NAMES,
   MATH_PARAM_DEFAULTS,
@@ -36,7 +37,7 @@ import { MATH_ENGINES } from '../vibe-math-v2/math-engines.js'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PLUGIN = process.env.MC_V2_PLUGIN
   ? new URL('file:///' + String(process.env.MC_V2_PLUGIN).replace(/\\/g, '/'))
-  : new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url)
+  : pathToFileURL(legacyFile('vibe-math-v2', 'vibe-math-v2.js'))
 
 let passed = 0
 let failed = 0

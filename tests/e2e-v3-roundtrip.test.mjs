@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 /**
  * Regression test for the v3 card round-trip fix.
  *
@@ -13,7 +15,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 
-const PLUGIN = new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url);
+const PLUGIN = pathToFileURL(legacyFile('vibe-math-v3', 'vibe-math-v3.js'));
 const WS = mkdtempSync(join(tmpdir(), 'vibe-rt-'));
 
 let passed = 0; let failed = 0;

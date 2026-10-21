@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // ============================================================
 // V3 LEAN FORMAL VERIFICATION SUITE  (docs/formal-verification.md)
 //
@@ -39,7 +40,7 @@ function writeFileAtomic(target, text) {
 // `math-computation-v*` suites use. Default behaviour (env var unset) is unchanged.
 const PLUGIN = process.env.V3_PLUGIN
   ? pathToFileURL(isAbsolute(process.env.V3_PLUGIN) ? process.env.V3_PLUGIN : join(dirname(fileURLToPath(import.meta.url)), '..', process.env.V3_PLUGIN))
-  : new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url)
+  : pathToFileURL(legacyFile('vibe-math-v3', 'vibe-math-v3.js'))
 const HERE = dirname(fileURLToPath(import.meta.url))
 // AUDIT-CHECKLIST §2.4: the suite must also keep the INTERACTION TEXT it drove, so a human can
 // re-read the prompts the framework really emitted. V3_CORPUS_DIR overrides the destination.

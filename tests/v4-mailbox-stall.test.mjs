@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 // ============================================================
 // V4 MAILBOX DELIVERY FAILURE — the P0 that Round A fixed (audit 2.4.1 / v4 F1).
 //
@@ -23,7 +25,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 
-const PLUGIN = new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)
+const PLUGIN = pathToFileURL(legacyFile('vibe-math-v4', 'vibe-math-v4.js'))
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 let passed = 0, failed = 0

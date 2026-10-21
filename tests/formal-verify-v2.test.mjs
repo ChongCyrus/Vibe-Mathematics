@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // ============================================================
 // V2 LEAN FORMAL VERIFICATION SUITE  (docs/formal-verification.md)
 //
@@ -48,7 +49,7 @@ function writeFileAtomic(target, text) {
 // `math-computation-v*` suites use. Default behaviour (env var unset) is unchanged.
 const PLUGIN = process.env.V2_PLUGIN
   ? pathToFileURL(isAbsolute(process.env.V2_PLUGIN) ? process.env.V2_PLUGIN : join(dirname(fileURLToPath(import.meta.url)), '..', process.env.V2_PLUGIN))
-  : new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url)
+  : pathToFileURL(legacyFile('vibe-math-v2', 'vibe-math-v2.js'))
 // 纯函数测试面（__testHelpers）：参数归一化/搜索路径计划/哈希/指纹都从这里守卫。
 const MOD = await import(PLUGIN.href)
 const HERE = dirname(fileURLToPath(import.meta.url))

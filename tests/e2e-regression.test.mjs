@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 // Single-session regression E2E for vibe-math-v2 after the multi-session refactor.
 // Verifies the core flows still work on the refactored per-session code:
 //   R1 explorer -> directions written
@@ -10,7 +12,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const PLUGIN = new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url)
+const PLUGIN = pathToFileURL(legacyFile('vibe-math-v2', 'vibe-math-v2.js'))
 
 let passed = 0
 let failed = 0

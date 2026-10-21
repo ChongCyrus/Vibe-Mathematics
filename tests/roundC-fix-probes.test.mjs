@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 /**
  * Round C regression probes — the two Round-A fixes that an independent re-verification
  * (see _oneoff/audit-roundB-reverify.md §1.1 and §1.4) found incomplete. Both behaviours are
@@ -31,7 +33,7 @@ const assert = (cond, msg) => { if (cond) { passed += 1; console.log('  ok - ' +
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ═══════════════════════════ 1. v3 project-lock lease ═══════════════════════════
-const V3 = new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url);
+const V3 = pathToFileURL(legacyFile('vibe-math-v3', 'vibe-math-v3.js'));
 /** Fresh mock host + fresh plugin instance (one per process, so the in-memory lease starts empty). */
 async function makeV3Host(tag) {
   const WS = mkdtempSync(join(tmpdir(), 'roundC-v3' + tag + '-'));
@@ -147,7 +149,7 @@ async function makeV3Host(tag) {
 // ═══════════════════════════ 2. v4 mailbox delivery in brainstorm ═══════════════════════════
 {
   console.log('\n-- v4: a failed wake in `brainstorm` still gets its queued message delivered later --');
-  const V4 = new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url);
+  const V4 = pathToFileURL(legacyFile('vibe-math-v4', 'vibe-math-v4.js'));
   const WS = mkdtempSync(join(tmpdir(), 'roundC-v4mail-'));
   const listeners = {}; const toolRegs = [];
   const subprocessMock = { async spawn() { return { done: Promise.resolve({ exitCode: 0 }) }; }, async resolveExecutable(n) { return n; } };

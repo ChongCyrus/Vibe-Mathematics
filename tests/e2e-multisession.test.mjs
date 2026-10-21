@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 // Multi-session isolation E2E for vibe-math-v2 (standing-mount shared instance).
 // Simulates TWO DSH sessions (root agents A and B) that BOTH mount the SAME
 // preset plugin instance (as standing mount does in real DSH), and verifies:
@@ -15,7 +17,7 @@ import { join, dirname } from 'node:path'
 // tests/math-computation-v2.test.mjs) so A6/F-guards can be reddened without editing the repo.
 const PLUGIN = process.env.MC_V2_PLUGIN
   ? new URL('file:///' + String(process.env.MC_V2_PLUGIN).replace(/\\/g, '/'))
-  : new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url)
+  : pathToFileURL(legacyFile('vibe-math-v2', 'vibe-math-v2.js'))
 
 let passed = 0
 let failed = 0

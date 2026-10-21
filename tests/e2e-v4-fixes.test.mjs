@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 // e2e-v4-fixes.test.mjs — verifies the v1.3.3 fixes that need a driven verify
 // (A1 non-unanimous write-back, A2 method label, A3 abort->resume, B2 recordProposition
 // auto-sync). Each scenario runs on a FRESH mock host instance, so the shared
@@ -5,7 +7,7 @@
 import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute } from 'node:path'
-const PLUGIN = new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)
+const PLUGIN = pathToFileURL(legacyFile('vibe-math-v4', 'vibe-math-v4.js'))
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 // task-13: per-loop WALL-CLOCK cap. The scripts below pump followups with FIXED iteration caps (i<300 etc.);
 // under a loaded gate those ran out BEFORE the plugin's next scheduling tick created the verification/debate wakes

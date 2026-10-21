@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 /**
  * REAL-ENGINE FACES (task-3) — presence-detected, loud-SKIP guards for the three "engine faces" that the
  * scripted live validation could only sample: numeric (python/Rscript), Lean (lean), LaTeX (xelatex).
@@ -123,7 +124,7 @@ if (!PY && !RC) {
 } else {
   const WS = mkdtempSync(join(tmpdir(), 'engine-num-'))
   try {
-    const M = await import(pathToFileURL(process.env.MATH_COMPUTATION_MODULE ? resolve(REPO, process.env.MATH_COMPUTATION_MODULE) : join(REPO, 'vibe-math-v2/math-computation.js')).href + '?t=' + Date.now())
+    const M = await import(pathToFileURL(process.env.MATH_COMPUTATION_MODULE ? resolve(REPO, process.env.MATH_COMPUTATION_MODULE) : legacyFile('vibe-math-v2', 'math-computation.js')).href + '?t=' + Date.now())
     const engines = []
     if (PY) engines.push('python')
     if (RC) engines.push('r')

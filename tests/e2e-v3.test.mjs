@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 // V3 E2E — paper-style Markdown knowledge base + planner-agent scheduling +
 // universal method library + verification (near-consensus verdict fix).
 //
@@ -21,7 +23,7 @@ import { join, dirname, isAbsolute } from 'node:path'
 // tests/math-computation-v2.test.mjs) so A6/F-guards can be reddened without editing the repo.
 const PLUGIN = process.env.MC_V3_PLUGIN
   ? new URL('file:///' + String(process.env.MC_V3_PLUGIN).replace(/\\/g, '/'))
-  : new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url)
+  : pathToFileURL(legacyFile('vibe-math-v3', 'vibe-math-v3.js'))
 
 let passed = 0
 let failed = 0

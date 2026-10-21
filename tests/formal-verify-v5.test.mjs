@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // ============================================================
 // V5 LEAN FORMAL VERIFICATION SUITE  (docs/formal-verification.md)
 //
@@ -19,11 +20,11 @@
 import { mkdtempSync, existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const PLUGIN = process.env.V5_PLUGIN
   ? new URL('file:///' + String(process.env.V5_PLUGIN).replace(/\\/g, '/'))
-  : new URL('../vibe-math-v5/vibe-math-v5.js', import.meta.url)
+  : pathToFileURL(legacyFile('vibe-math-v5', 'vibe-math-v5.js'))
 const WS = mkdtempSync(join(tmpdir(), 'vibe-v5-lean-'))
 
 let passed = 0, failed = 0

@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 /**
  * Regression test: a present-but-unparseable state file that the plugin READS and
  * later REWRITES must never be silently overwritten with emptiness.
@@ -69,7 +70,7 @@ function makeCtx(WS, toolRegs) {
 const CASES = [
   {
     name: 'vibe-math-v2',
-    url: fileURLToPath(new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url)),
+    url: fileURLToPath(pathToFileURL(legacyFile('vibe-math-v2', 'vibe-math-v2.js'))),
     // v2 reads qs/qs.json on every tick and rewrites it from any mutating tool
     corruptRel: 'qs/qs.json',
     corruptText: '{"not":"an array", BROKEN',
@@ -80,7 +81,7 @@ const CASES = [
   },
   {
     name: 'vibe-math-v3',
-    url: fileURLToPath(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url)),
+    url: fileURLToPath(pathToFileURL(legacyFile('vibe-math-v3', 'vibe-math-v3.js'))),
     // v3's loadState() reads State/agents.json; saveAll() rewrites it
     corruptRel: 'State/agents.json',
     corruptText: '{"c-old": {BROKEN',
@@ -91,7 +92,7 @@ const CASES = [
   },
   {
     name: 'vibe-math-v4',
-    url: fileURLToPath(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)),
+    url: fileURLToPath(pathToFileURL(legacyFile('vibe-math-v4', 'vibe-math-v4.js'))),
     // v4's loadAll() reads State/residents.json; saveAll() rewrites it. Drive a
     // tool that definitely saves (pause -> saveAll).
     corruptRel: 'State/residents.json',

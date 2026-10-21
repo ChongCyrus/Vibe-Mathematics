@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 import { requireFile } from './_lib/require-file.mjs'
 // ============================================================================================
 // math_computation — PARITY guard (integration owner).
@@ -129,7 +130,7 @@ const refusalSurfacesPolicy = (n) => !!n && n.reason === 'policy' && n.requiresM
 async function selfProbe() {
   const mod = read('vibe-math-v2/math-computation.js')
   const eng = read('vibe-math-v2/math-engines.js')
-  const { MATH_ENGINES, MATH_P2_ENGINES } = await import(pathToFileURL(join(REPO, 'vibe-math-v2', 'math-engines.js')).href)
+  const { MATH_ENGINES, MATH_P2_ENGINES } = await import(pathToFileURL(join(legacyDir('vibe-math-v2'), 'math-engines.js')).href)
   const all = Object.assign({}, MATH_ENGINES, MATH_P2_ENGINES)
   const LIT = /<script>/
   const matlabTemplate = ['-batch', "run('<script>')"]
@@ -215,7 +216,7 @@ for (const p of PRESETS) {
 
 // ---- 4. the freeze matches tool-schema.json ----
 {
-  const mod = await import(new URL('../vibe-math-v2/math-computation.js', import.meta.url).href)
+  const mod = await import(pathToFileURL(legacyFile('vibe-math-v2', 'math-computation.js')).href)
   if (existsSync(SCHEMA)) {
     const s = JSON.parse(readFileSync(SCHEMA, 'utf8'))
     const schemaCodes = s.failureCodes.map((c) => c.code)
@@ -248,7 +249,7 @@ for (const p of PRESETS) {
     // REACHABILITY: every code the contract promises must have an EMIT SITE in the shipped module (and every
     // emit site must be declared). This is what makes "no missing / no extra" mean something about the
     // product rather than about two literals agreeing with each other.
-    const emittedSrc = readFileSync(join(REPO, 'vibe-math-v2', 'math-computation.js'), 'utf8')
+    const emittedSrc = readFileSync(join(legacyDir('vibe-math-v2'), 'math-computation.js'), 'utf8')
     const emitted = new Set([...emittedSrc.matchAll(/fail\('(MATH_[A-Z_]+)'/g)].map((m) => m[1]))
     const unreachable = schemaCodes.filter((c) => !emitted.has(c))
     const undocumented = [...emitted].filter((c) => !schemaSet.has(c))
@@ -291,10 +292,10 @@ for (const p of PRESETS) {
     // The shipped side honours the mutant seam, so every assertion below can be PROVEN to fail.
     const ship = await import(process.env.MATH_COMPUTATION_MODULE
       ? pathToFileURL(process.env.MATH_COMPUTATION_MODULE).href
-      : new URL('../vibe-math-v2/math-computation.js', import.meta.url).href)
+      : pathToFileURL(legacyFile('vibe-math-v2', 'math-computation.js')).href)
     const shipE = await import(process.env.MATH_ENGINES_MODULE
       ? new URL('file:///' + String(process.env.MATH_ENGINES_MODULE).replace(/\\/g, '/')).href
-      : new URL('../vibe-math-v2/math-engines.js', import.meta.url).href)
+      : pathToFileURL(legacyFile('vibe-math-v2', 'math-engines.js')).href)
 
     // (1) the exported SURFACE: the reference carries every name of the frozen list, and the shipped module
     //     exposes the same set with the same KINDS. The list is a constant here, so it cannot silently shrink
@@ -390,7 +391,7 @@ for (const p of PRESETS) {
   // able to delete a dispatch manager or a scope reason without touching the repository).
   const E = await import(process.env.MATH_ENGINES_MODULE
     ? new URL('file:///' + String(process.env.MATH_ENGINES_MODULE).replace(/\\/g, '/')).href
-    : new URL('../vibe-math-v2/math-engines.js', import.meta.url).href)
+    : pathToFileURL(legacyFile('vibe-math-v2', 'math-engines.js')).href)
   const order = E.MATH_ENGINE_ORDER
   ok(JSON.stringify(order) === JSON.stringify(['python', 'r', 'octave', 'julia', 'matlab', 'maple', 'wolfram', 'cli']), 'MATH_ENGINE_ORDER is exactly the P1 set')
   // Item-3 ruling: `defaultOn` was declared but never consumed - cli's default-on property is
@@ -398,7 +399,7 @@ for (const p of PRESETS) {
   const zombie = ['winPrefix', 'stdinArgv', 'defaultOn']
     .filter((f) => JSON.stringify(E.MATH_ENGINES).indexOf('"' + f + '"') !== -1 || JSON.stringify(E.MATH_P2_ENGINES).indexOf('"' + f + '"') !== -1)
   ok(zombie.length === 0, 'no zombie descriptor field is declared (winPrefix/stdinArgv/defaultOn were removed)', JSON.stringify(zombie))
-  ok(!/<cliArgv/.test(readFileSync(join(REPO, 'vibe-math-v2', 'math-engines.js'), 'utf8')), 'the decorative <cliArgv...> marker is gone from the descriptor table')
+  ok(!/<cliArgv/.test(readFileSync(join(legacyDir('vibe-math-v2'), 'math-engines.js'), 'utf8')), 'the decorative <cliArgv...> marker is gone from the descriptor table')
   ok(E.MATH_ENGINES.cli.policy && E.MATH_ENGINES.cli.policy.requiresMathMode === 'typed+shell' && E.MATH_ENGINES.cli.policy.requiresEngineInList === true, 'cli policy gate declared')
   ok(E.MATH_ENGINES.maple.verify === true && !!E.MATH_ENGINES.maple.verifyReason, 'Maple template is flagged VERIFY with a reason')
   for (const name of ['matlab', 'maple', 'wolfram']) {
@@ -445,7 +446,7 @@ for (const p of PRESETS) {
 {
   const modHref = process.env.MATH_COMPUTATION_MODULE
     ? new URL('file:///' + String(process.env.MATH_COMPUTATION_MODULE).replace(/\\/g, '/'))
-    : new URL('../vibe-math-v2/math-computation.js', import.meta.url)
+    : pathToFileURL(legacyFile('vibe-math-v2', 'math-computation.js'))
   const { readFileSync: rf } = await import('node:fs')
   const src = rf(fileURLToPath(modHref), 'utf8')
   const kinds = new Set(); for (const m of src.matchAll(/next\('([a-z-]+)'/g)) kinds.add(m[1])
@@ -489,8 +490,8 @@ for (const p of PRESETS) {
 // `run('<script>')` reached the engine literally. The fix is string-level; this guard keeps the two
 // sides in sync: no descriptor may use a placeholder the module does not substitute.
 {
-  const E = await import(pathToFileURL(join(REPO, 'vibe-math-v2', 'math-engines.js')).href)
-  const modPath = join(REPO, 'vibe-math-v2', 'math-computation.js')
+  const E = await import(pathToFileURL(join(legacyDir('vibe-math-v2'), 'math-engines.js')).href)
+  const modPath = join(legacyDir('vibe-math-v2'), 'math-computation.js')
   const src = requireFile(modPath, 'the math-computation baseline the parity suite compares against')
   const all = Object.assign({}, E.MATH_ENGINES, E.MATH_P2_ENGINES)
   const unknown = unknownPlaceholders(src, all)
@@ -504,8 +505,8 @@ for (const p of PRESETS) {
 // while the same rules were hard-coded twice in the module (so they could drift). The module now reads
 // the descriptor; this guard makes a hard-coded revert impossible to land.
 {
-  const engPath = join(REPO, 'vibe-math-v2', 'math-engines.js')
-  const modPath = join(REPO, 'vibe-math-v2', 'math-computation.js')
+  const engPath = join(legacyDir('vibe-math-v2'), 'math-engines.js')
+  const modPath = join(legacyDir('vibe-math-v2'), 'math-computation.js')
   const eng = requireFile(engPath, 'the math-engines baseline the parity suite compares against')
   const mod = requireFile(modPath, 'the math-computation baseline (second read) the parity suite compares against')
   ok(cliDeclaresPolicy(eng),
@@ -518,14 +519,14 @@ for (const p of PRESETS) {
 
 // ── 9. doc-sync: the v5 editor closed set and v2's single-source status/report helper are documented
 {
-  const v5 = requireFile(join(REPO, 'vibe-math-v5', 'vibe-math-v5.js'), 'the v5 preset source the parity suite reads')
+  const v5 = requireFile(join(legacyDir('vibe-math-v5'), 'vibe-math-v5.js'), 'the v5 preset source the parity suite reads')
   const fp = requireFile(join(REPO, 'docs', 'final-paper.md'), 'the final-paper contract the parity suite checks')
   // The closed set appears twice in v5 (the coerce call and the tool schema enum); the separator may be
   // written with or without a space, so accept both rather than pinning one spelling.
   ok(/\[\s*'office'\s*,\s*'academician'\s*\]/.test(v5) && /V5_INVALID_ARGUMENT/.test(v5), 'v5 validates the paper editor against the closed set and returns V5_INVALID_ARGUMENT')
   ok(fp.indexOf('office|academician') !== -1 && fp.indexOf('V5_INVALID_ARGUMENT') !== -1, 'docs/final-paper.md documents the v5 editor closed set + its error code')
-  const v2src = requireFile(join(REPO, 'vibe-math-v2', 'vibe-math-v2.js'), 'the v2 preset source the parity suite reads')
-  const v2doc = requireFile(join(REPO, 'vibe-math-v2', '实现方案.md'), 'the v2 specification the parity suite checks')
+  const v2src = requireFile(join(legacyDir('vibe-math-v2'), 'vibe-math-v2.js'), 'the v2 preset source the parity suite reads')
+  const v2doc = requireFile(join(legacyDir('vibe-math-v2'), '实现方案.md'), 'the v2 specification the parity suite checks')
   ok((v2src.match(/verifyTasksView\(/g) || []).length >= 3, 'v2 produces status+report through ONE verifyTasksView helper')
   ok(v2doc.indexOf('verifyTasksView') !== -1, 'the v2 design doc states the single-source status/report helper')
 }
@@ -536,7 +537,7 @@ for (const p of PRESETS) {
 // which makes a canonical-only change impossible to ship unnoticed - a stronger defence than a text grep.
 // ── 11. S6: the version policy has ONE wording (constant + helper), not one per path.
 {
-  const mc = readFileSync(join(REPO, 'vibe-math-v2', 'math-computation.js'), 'utf8')
+  const mc = readFileSync(join(legacyDir('vibe-math-v2'), 'math-computation.js'), 'utf8')
   ok((mc.match(/version-constraints-are-existence-only: /g) || []).length === 1, '★ S6: the policy wording appears exactly ONCE (in MATH_VERSION_POLICY)')
   ok(/function mathVersionPolicy\(/.test(mc), 'S6: the shared helper mathVersionPolicy() exists')
   ok(mc.indexOf('版本求解交给包管理器（本工具只检查是否已安装') === -1, '★ S6: the old divergent install-plan wording is gone')

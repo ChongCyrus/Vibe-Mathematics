@@ -3,7 +3,10 @@
 > ★ 用户对框架的定位里**点名了十个方面**，并要求"**涵盖所有必要的功能**"。
 > ★ 这一卷就回答：★ **每一个方面，★ 框架里【落在哪】** —— ★ 并给出**可查的锚点**。
 > ★ **★ 纪律**：★ **权威清单由【生成的文件】给出**，★ 本卷不手抄模块列表（★ 手抄必漂移）：
-> ★ **`vibe-math-vmu/docs/02-architecture.md`**（★ 内核索引，★ **生成**）／★ **`docs/03-interface-contract.md`**（★ 面与错误码）／★ **`docs/04-settings.md`**（★ 1232 键，★ **生成**）。
+> ★ **`vibe-math-vmu/docs/02-architecture.md`**（★ 内核索引，★ **生成**）／★ **`docs/03-interface-contract.md`**（★ 面与错误码）／★ **`docs/04-settings.md`**（★ **生成**；★ **设置键数以该生成卷为准，本卷不手抄计数**）。
+>
+> ★★ **快照声明（G8）**：本卷是**弃用前**的 `docs-landed` 快照，不是当前权威清单（旧 `vibe-math-v2`…`v5r`
+> preset 已弃用，见 `docs/DEPRECATED-LEGACY-PRESETS.md`）；下文若出现旧 preset 目录/计数，均按**历史**读。
 
 ## 0. ★★★ 三个"任何方面都共用"的底座
 

@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 // Comprehensive BUSINESS-LOGIC E2E for vibe-math v2 (0.3.19).
 // Covers flows the other suites do not:
 //   B1 v2 q_sub three-object registration (sub-problem + judge problem + p-tmp proposition)
@@ -75,7 +77,7 @@ console.log('\n########## v2 BUSINESS FLOWS ##########')
 const WS2 = mkdtempSync(join(tmpdir(), 'vibe-biz-v2-'))
 const spawns2 = [], followups2 = [], interrupts2 = []
 const h2 = makeCtx(WS2, spawns2, followups2, interrupts2)
-const mod2 = await import(new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url).href + '?t=' + Date.now())
+const mod2 = await import(pathToFileURL(legacyFile('vibe-math-v2', 'vibe-math-v2.js')).href + '?t=' + Date.now())
 const plugin2 = mod2.default || mod2
 plugin2.apply(h2.ctx)
 const ROOT2 = makeRoot('sess-v2', WS2)

@@ -1,8 +1,8 @@
 // tests/_lib/legacy-presets.mjs — the ONE seam for the five historical presets.
 //
 // Stage A (this commit): LEGACY_BASE still points at the repo root, so every resolved path is
-// byte-identical to before and T1 stays green. Stage B flips this ONE string to
-// 'archive/legacy-presets' and `git mv`s the five directories; no test should need a second edit.
+// byte-identical to before and T1 stays green. Stage B flips this ONE string to the archived root
+// and `git mv`s the five directories; no test should need a second edit.
 //
 // The five directory names are NOT interchangeable (`vibe-math-v2` is both the directory and the
 // JavaScript entry stem), so this module exports a base plus small builders instead of five constants.
@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 
 const REPO = fileURLToPath(new URL('../..', import.meta.url))
 
-/** Root that contains the five preset directories. Stage B: 'archive/legacy-presets'. */
+/** Root that contains the five preset directories. Stage B: the archived root. */
 export const LEGACY_BASE = '.'
 
 /** Directory of one preset, e.g. legacyDir('vibe-math-v5r'). */

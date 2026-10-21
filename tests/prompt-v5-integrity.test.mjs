@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // ============================================================
 // Vibe-Math-V5 PROMPT & INTERACTION INTEGRITY SUITE
 //
@@ -29,7 +30,7 @@
 import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute, resolve as pathResolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 // fileURLToPath, not URL.pathname: a Windows path with non-ASCII characters comes back
 // percent-encoded from `.pathname`, which would silently write the corpus into a
@@ -37,7 +38,7 @@ import { fileURLToPath } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PLUGIN = process.env.V5_PLUGIN
   ? new URL('file:///' + String(process.env.V5_PLUGIN).replace(/\\/g, '/'))
-  : new URL('../vibe-math-v5/vibe-math-v5.js', import.meta.url)
+  : pathToFileURL(legacyFile('vibe-math-v5', 'vibe-math-v5.js'))
 const CORPUS_DIR = process.env.V5_CORPUS_DIR ? pathResolve(process.env.V5_CORPUS_DIR) : join(HERE, '..', 'prompt-corpus-v5')
 const WS = mkdtempSync(join(tmpdir(), 'vibe-v5-prompt-'))
 

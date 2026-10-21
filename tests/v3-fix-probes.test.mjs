@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 /**
  * v3 round B regression suite — the four findings whose fix is only observable by
  * writing/reading real Markdown or by driving the real scheduler:
@@ -18,7 +20,7 @@ import { join, dirname } from 'node:path';
 // point the preset at a mutant copy so source-level guards can be reddened without editing the repo.
 const PLUGIN = process.env.V3_PLUGIN
   ? new URL('file:///' + String(process.env.V3_PLUGIN).replace(/\\/g, '/'))
-  : new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url);
+  : pathToFileURL(legacyFile('vibe-math-v3', 'vibe-math-v3.js'));
 const WS = mkdtempSync(join(tmpdir(), 'vibe-fixprobe-'));
 
 let passed = 0; let failed = 0;
@@ -601,7 +603,7 @@ console.log('\n-- PAPER §2 (v3): a pre-existing paper.pdf is never deleted or o
 console.log('\n-- D1 guard: every member-facing write path is one the writer accepts --');
 {
   const js = readFileSync(PLUGIN, 'utf8');
-  const yml = readFileSync(new URL('../vibe-math-v3/agent.cordis.yml', import.meta.url), 'utf8');
+  const yml = readFileSync(pathToFileURL(legacyFile('vibe-math-v3', 'agent.cordis.yml')), 'utf8');
   const plugin = js + '\n' + yml;
   // 1) the whitelist the writer really enforces (applyAgentWrites)
   const wl = /if \(!\/\^\(([A-Za-z|]+)\)\\\/\//.exec(js);

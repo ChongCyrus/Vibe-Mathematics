@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 // ============================================================
 // Vibe-Math-V4 SELF-DRIVING TEST — drives the real vibe-v4 plugin with a mock
 // host, feeding simulated resident replies based on each wake's prompt kind.
@@ -8,7 +10,7 @@
 import { mkdtempSync, rmSync, existsSync, readdirSync, mkdirSync, writeFileSync, readFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute } from 'node:path'
-const PLUGIN = new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)
+const PLUGIN = pathToFileURL(legacyFile('vibe-math-v4', 'vibe-math-v4.js'))
 const WS = mkdtempSync(join(tmpdir(), 'vibe-v4-'))
 const listeners = {}, toolRegs = [], spawns = [], followups = []
 let passed = 0, failed = 0

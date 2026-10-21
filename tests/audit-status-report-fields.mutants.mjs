@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 /**
  * Mutant harness for tests/audit-status-report-fields.mjs (ships: `tests/*.mutants.mjs`).
  *
@@ -46,7 +47,7 @@ else {
   if (!named) for (const l of a.failLines.slice(0, 3)) console.log('      guard failure: ' + l.trim().slice(0, 130))
 }
 // B) source -> doc
-const v2Path = join(REPO, 'vibe-math-v2/vibe-math-v2.js')
+const v2Path = legacyFile('vibe-math-v2', 'vibe-math-v2.js')
 const v2src = readFileSync(v2Path, 'utf8')
 const m = /(\n\s*session:\s*\[)([\s\S]*?)(\])/.exec(v2src)
 if (!m) ok(false, 'B: the v2 fieldScopes session array exists (anchor check)', 'ANCHOR MISS')

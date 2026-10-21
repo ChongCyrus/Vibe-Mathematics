@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // ============================================================================
 // audit-v5-lean-abstention.mutants.mjs — falsifiability for the L2 abstention audit.
 // Each mutant is a SINGLE-SITE edit; every one must turn a NAMED assertion red in
@@ -13,7 +14,7 @@ import { join, dirname } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
-const PRESET = join(REPO, 'vibe-math-v5')
+const PRESET = legacyDir('vibe-math-v5')
 const AUDIT = join(HERE, 'audit-v5-lean-abstention.mjs')
 const INVARIANTS = process.env.PROMPT_INVARIANTS_SUITE ? String(process.env.PROMPT_INVARIANTS_SUITE) : join(HERE, 'audit-prompt-invariants.mjs')
 const ONLY = process.env.MUTANTS_ONLY ? String(process.env.MUTANTS_ONLY).split(',').map((x) => x.trim()).filter(Boolean) : null

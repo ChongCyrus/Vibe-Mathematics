@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 // ============================================================
 // Vibe-Math-V5 SELF-DRIVING TEST — drives the REAL vibe-math-v5 plugin with a mock
 // host. The host deliberately offers NO session services: v5 keeps its durable state in
@@ -15,7 +17,7 @@ import { join, dirname, isAbsolute } from 'node:path'
 // V5_PLUGIN lets a sensitivity probe point this suite at a deliberately broken copy.
 const PLUGIN = process.env.V5_PLUGIN
   ? new URL('file:///' + String(process.env.V5_PLUGIN).replace(/\\/g, '/'))
-  : new URL('../vibe-math-v5/vibe-math-v5.js', import.meta.url)
+  : pathToFileURL(legacyFile('vibe-math-v5', 'vibe-math-v5.js'))
 const WS = mkdtempSync(join(tmpdir(), 'vibe-v5-'))
 let passed = 0, failed = 0
 const failures = []

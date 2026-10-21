@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // Defect class: silent-failure surfacing (F6a/F6b/F6c), declared asymmetry (F-A), path-base mixing (F6), fence-root drift (F5).
 // Every assertion below must be falsifiable: tests/*.mutants.mjs contains the matching single-site
 // mutants whose named reds prove it (see docs/parameter-schema.md for the F-B exception table).
@@ -9,7 +10,7 @@
 import { mkdtempSync, rmSync, existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve as pathResolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 let passed = 0, failed = 0
 const assert = (c, m) => { if (c) { passed++; console.log('  ok - ' + m) } else { failed++; process.stderr.write('  FAIL - ' + m + '\n') } }
@@ -95,10 +96,10 @@ function harness(opts) {
 // (R19: this is what a mutant harness needs to reach it). Default is unchanged: the repo file.
 const readPluginSrc = () => (process.env.V2_PLUGIN
   ? readFileSync(String(process.env.V2_PLUGIN), 'utf8')
-  : readFileSync(new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url), 'utf8'))
+  : readFileSync(pathToFileURL(legacyFile('vibe-math-v2', 'vibe-math-v2.js')), 'utf8'))
 const PLUGIN_URL = process.env.V2_PLUGIN
   ? new URL('file:///' + String(process.env.V2_PLUGIN).replace(/\\/g, '/'))
-  : new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url)
+  : pathToFileURL(legacyFile('vibe-math-v2', 'vibe-math-v2.js'))
 async function load(h) {
   const CACHE_KEY = '__v2PluginPromise:' + PLUGIN_URL.href
   if (!globalThis[CACHE_KEY]) globalThis[CACHE_KEY] = import(PLUGIN_URL.href)

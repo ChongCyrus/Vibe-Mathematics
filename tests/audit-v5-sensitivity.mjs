@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // ============================================================
 // V5 SENSITIVITY PROBES — prove the suites are not vacuous.
 //
@@ -17,9 +18,9 @@ import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
-const SRC = new URL('../vibe-math-v5/vibe-math-v5.js', import.meta.url)
+const SRC = pathToFileURL(legacyFile('vibe-math-v5', 'vibe-math-v5.js'))
 // Keyed by the EXACT suite filename a probe names in its `ref`. A ternary chain here once
 // silently routed every new probe to the wrong suite (which then stayed green because the
 // mutation did not touch what it tests) — that reports a blind spot that does not exist.

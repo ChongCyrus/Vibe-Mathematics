@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // tests/vmu-v5r-tools.test.mjs — PHASE 7 / goal 2 (first batch): the v5r PACK-DECLARED tool face (6 tools).
 //
 // THE DEFECT CLASS THIS PINS (measured in docs/acceptance/phase7-coverage-matrix.md §2): `packs/v5r` declared **0
@@ -1024,7 +1025,7 @@ try {
   // The emptiness is not "vacuous": it is paired with the closed-world check — every vibe_v5_* name the PROMPTS teach
   // must be declared. A new taught-but-missing name reddens here instead of lingering.
   const fsMod = await import('node:fs')
-  const origSrc = fsMod.readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+  const origSrc = fsMod.readFileSync(join(legacyDir('vibe-math-v5r'), 'vibe-math-v5r.js'), 'utf8')
   const corpusSrc = fsMod.readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-prompts.js'), 'utf8')
   const taught = [...new Set((corpusSrc.match(/vibe_v5_[a-z_]+/g) || []))]
   const undeclaredTaught = taught.filter((n) => !EXPECTED.includes(n))

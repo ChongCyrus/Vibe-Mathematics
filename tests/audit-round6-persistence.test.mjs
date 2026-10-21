@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 /**
  * ROUND 6 — verify the P0-A convergence flag actually PERSISTS across a reload, and that
  * a proposition is always found in the category file it was written to.
@@ -39,7 +41,7 @@ const ctx = {
   },
 };
 const ROOT = { id: 'S', options: {}, session: { id: 'S', header: { cwd: WS } } };
-const mod = await import(new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url).href + '?t=' + Date.now());
+const mod = await import(pathToFileURL(legacyFile('vibe-math-v2', 'vibe-math-v2.js')).href + '?t=' + Date.now());
 (mod.default || mod).apply(ctx);
 const call = async (n, a) => JSON.parse(await (toolRegs.find((s) => s.name === n)).execute(a || {}, { agent: ROOT }));
 

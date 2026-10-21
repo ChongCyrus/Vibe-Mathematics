@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 // ============================================================
 // HOST FAILURE PATHS — the contracts every mock used to hide.
 //
@@ -77,7 +79,7 @@ async function v5Host() {
     fs: fsMock(WS),
   }
   ROOT = { id: 'sess-A', options: {}, session: makeSession('sess-A', undefined) }
-  const mod = await import(new URL('../vibe-math-v5/vibe-math-v5.js', import.meta.url).href + '?t=' + Date.now() + '-' + Math.random())
+  const mod = await import(pathToFileURL(legacyFile('vibe-math-v5', 'vibe-math-v5.js')).href + '?t=' + Date.now() + '-' + Math.random())
   ;(mod.default || mod).apply(ctx)
   const call = async (n, a, agent) => JSON.parse(await toolRegs.find((s) => s.name === n).execute(a || {}, { agent: agent || ROOT }))
   const labelOf = (cid) => { const s = spawns.find((x) => x.childId === cid); const m = s ? /vibe5 (\S+) /.exec(s.label) : null; return m ? m[1] : '' }
@@ -134,7 +136,7 @@ async function v4Host() {
     fs: fsMock(WS),
   }
   ROOT = { id: 'sess-A', options: {}, session: { id: 'sess-A', header: { cwd: WS } } }
-  const mod = await import(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url).href + '?t=' + Date.now() + '-' + Math.random())
+  const mod = await import(pathToFileURL(legacyFile('vibe-math-v4', 'vibe-math-v4.js')).href + '?t=' + Date.now() + '-' + Math.random())
   ;(mod.default || mod).apply(ctx)
   const call = async (n, a) => JSON.parse(await toolRegs.find((d) => d.name === n).execute(a || {}, { agent: ROOT }))
   // `reply === undefined` OMITS `lastAssistantMessage` entirely — the shape the real host sends
@@ -216,7 +218,7 @@ console.log('\n-- v2: the /vibe command reports business failures as errors --')
     fs: fsMock(WS),
   }
   const ROOT = { id: 'S', options: {}, session: { id: 'S', header: { cwd: WS } } }
-  const mod = await import(new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url).href + '?t=' + Date.now() + '-' + Math.random())
+  const mod = await import(pathToFileURL(legacyFile('vibe-math-v2', 'vibe-math-v2.js')).href + '?t=' + Date.now() + '-' + Math.random())
   ;(mod.default || mod).apply(ctx)
   const call = async (n, a) => JSON.parse(await toolRegs.find((s) => s.name === n).execute(a || {}, { agent: ROOT }))
   // The session is created by the first real tool use; only then does the command handler route.

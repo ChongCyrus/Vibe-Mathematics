@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // Behaviour-level contrast between the v5r body and vmu, for the five behaviour settings this session brought across.
 // Method: docs/10-§5.1 - the same scenarios, both sides driven, only OBSERVABLE behaviour compared, every pair classified
 // as 等价 | 有意改进 | 缺陷 | 未覆盖, and anything not 等价 reported rather than smoothed over.
@@ -16,7 +17,7 @@ import { createBallot } from '../vibe-math-vmu/kernel/ballot.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
-const V5R = readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+const V5R = readFileSync(join(legacyDir('vibe-math-v5r'), 'vibe-math-v5r.js'), 'utf8')
 
 let passed = 0
 const failures = []
@@ -119,7 +120,7 @@ const opened = (settings) => { const t = face(settings); const o = t.open({ type
 
 // ---------- 6. 表决期禁言 (the volume calls this v5r's real regression point) ----------
 {
-  const src = readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+  const src = readFileSync(join(legacyDir('vibe-math-v5r'), 'vibe-math-v5r.js'), 'utf8')
   const i = src.indexOf('function speechFrozen()')
   ok(i !== -1, 'v5r has speechFrozen(): a ballot that is OPEN freezes speech (read from its source)')
   const near = i === -1 ? '' : src.slice(Math.max(0, i - 700), i + 100)
@@ -161,7 +162,7 @@ const opened = (settings) => { const t = face(settings); const o = t.open({ type
 
 // ---------- 7. 记录分轨＋截断计数 (v5r: without a counter the truncation was invisible) ----------
 {
-  const src = readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+  const src = readFileSync(join(legacyDir('vibe-math-v5r'), 'vibe-math-v5r.js'), 'utf8')
   ok(/officeRequestsDropped/.test(src), 'v5r keeps an explicit dropped counter for the truncated office requests')
   ok(/invisible in status\/report/.test(src), 'v5r own comment states what the counter is FOR: without it the truncation is invisible')
   const rec = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'records.js'), 'utf8')
@@ -171,7 +172,7 @@ const opened = (settings) => { const t = face(settings); const o = t.open({ type
 
 // ---------- 8. 内容指纹 (round 137 measured this as a deliberate divergence) ----------
 {
-  const src = readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+  const src = readFileSync(join(legacyDir('vibe-math-v5r'), 'vibe-math-v5r.js'), 'utf8')
   ok(/function contentFingerprint\(kind, parts\)/.test(src), 'v5r computes the fingerprint in ONE place, as its own rule demands')
   ok(/指纹与磁盘正文不一致/.test(src) && /绝不静默用旧文/.test(src), 'v5r names the falsifiable consequence: a mismatch blocks by name')
   const rec = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'records.js'), 'utf8')
@@ -181,7 +182,7 @@ const opened = (settings) => { const t = face(settings); const o = t.open({ type
 }
 // ---------- 9. 待续标记 (#5): in-flight work that survives a restart ----------
 {
-  const src = readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+  const src = readFileSync(join(legacyDir('vibe-math-v5r'), 'vibe-math-v5r.js'), 'utf8')
   ok(/pendingWork/.test(src), 'v5r keeps an in-flight work ledger (pendingWork) so a restart does not lose the thread (read from source)')
   const docs = readFileSync(join(REPO, 'vibe-math-vmu', 'docs', '07-durability-library.md'), 'utf8')
   ok(/台账/.test(docs), '等价 (source-read): vmu carries the same idea as an in-flight ledger (台账) in the durability volume')
@@ -189,7 +190,7 @@ const opened = (settings) => { const t = face(settings); const o = t.open({ type
 
 // ---------- 10. 归档头部列表 ＋ 内容指纹载体 (PR#16 / S21) ----------
 {
-  const src = readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+  const src = readFileSync(join(legacyDir('vibe-math-v5r'), 'vibe-math-v5r.js'), 'utf8')
   ok(/头部列表/.test(src), 'v5r states the head-list rule: cross-object references carry id + title + fingerprint + status (source)')
   const rec = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'records.js'), 'utf8')
   ok(/headListAt/.test(rec), '等价 (source-read): vmu has a head-list setting (vmu.records.headListAt) so the rule is configurable, not hard-coded')
@@ -199,7 +200,7 @@ const opened = (settings) => { const t = face(settings); const o = t.open({ type
 // ---------- 11. 学术院编制与角色 (role slots in the kernel, instances in the pack) ----------
 {
   const idx = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'index.js'), 'utf8')
-  const v5 = readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+  const v5 = readFileSync(join(legacyDir('vibe-math-v5r'), 'vibe-math-v5r.js'), 'utf8')
   ok(/academician/.test(v5) && /researcher/.test(v5), 'v5r staffs institutes with academicians/researchers/temps (its DEFAULT_PARAMS name them)')
   ok(/role/.test(idx) && /pack/.test(idx), '等价: vmu keeps roles as kernel SLOTS whose instances and permissions come from pack content (the kernel comment says so)')
 }
@@ -244,7 +245,7 @@ const opened = (settings) => { const t = face(settings); const o = t.open({ type
 // ---------- 17. 资源预算的具名拒 (#4) ----------
 {
   const bud = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'budget.js'), 'utf8')
-  const v5 = readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+  const v5 = readFileSync(join(legacyDir('vibe-math-v5r'), 'vibe-math-v5r.js'), 'utf8')
   ok(/OFFICE_REQUEST_CAP/.test(v5), 'v5r caps office requests and keeps a dropped counter so the loss is visible')
   ok(/Named refusal/i.test(bud) || /VMU_RESOURCE_BUDGET/.test(bud), '等价: vmu refuses exhaustion BY NAME at the budget rail')
   ok(/onExceed/i.test(bud), '等价: and the consequence is configurable (refuse | warn | pause) rather than hard-coded')
@@ -252,14 +253,14 @@ const opened = (settings) => { const t = face(settings); const o = t.open({ type
 
 // ---------- 18. 编制上限 (staffing ceilings) ----------
 {
-  const v5 = readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+  const v5 = readFileSync(join(legacyDir('vibe-math-v5r'), 'vibe-math-v5r.js'), 'utf8')
   ok(/maxTempPerMember/.test(v5) && /maxTempTotal/.test(v5), 'v5r caps temps per member AND in total (its DEFAULT_PARAMS)')
   const lim = readFileSync(join(REPO, 'vibe-math-vmu', 'settings', 'schema.js'), 'utf8')
   ok(/maxLiveMembers/.test(lim), '等价 (source-read): vmu declares a live-member ceiling as a setting, so the cap is tunable per pack')
 }
 // ---------- 19. 论文阶段与收束 ----------
 {
-  const v5 = readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+  const v5 = readFileSync(join(legacyDir('vibe-math-v5r'), 'vibe-math-v5r.js'), 'utf8')
   ok(/phase: .idle./.test(v5), 'v5r keeps a phase on its institute record')
   ok(/phase=.solved./.test(v5) && /refuses to wake/.test(v5),
     'v5r states a FALSIFIABLE phase rule: after solved the machinery refuses to wake a member')
@@ -269,7 +270,7 @@ const opened = (settings) => { const t = face(settings); const o = t.open({ type
 
 // ---------- 20. 内容身份 (content identity) ----------
 {
-  const v5 = readFileSync(join(REPO, 'vibe-math-v5r', 'vibe-math-v5r.js'), 'utf8')
+  const v5 = readFileSync(join(legacyDir('vibe-math-v5r'), 'vibe-math-v5r.js'), 'utf8')
   ok(/function contentFingerprint/.test(v5), 'v5r computes content identity in ONE place')
   const chain = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'auditchain.js'), 'utf8')
   ok(/sha256|createHash/.test(chain), '等价 (source-read): vmu carries a real sha256 content chain (auditchain.js)')

@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 // Probe for audit finding C1 (path escape in Verification_logs/).
 //
 // Drives the REAL plugin (real settleVerdict → writeJson path) with a mocked fs whose
@@ -18,7 +20,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 // unsanitised path) and REQUIRE it to fail — a probe that cannot fail proves nothing.
 const PLUGIN = process.env.V2_PLUGIN
   ? new URL('file:///' + String(process.env.V2_PLUGIN).replace(/\\/g, '/'))
-  : new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url)
+  : pathToFileURL(legacyFile('vibe-math-v2', 'vibe-math-v2.js'))
 
 async function runCase(problemId) {
   const WS = mkdtempSync(join(tmpdir(), 'v2-c1-'))

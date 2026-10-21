@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 /**
  * Regression tests for D9 (activeCount drift) and D13 (sticky scheduler.gate).
  *
@@ -64,7 +66,7 @@ function makeCtx(WS, opts = {}) {
 
 async function load(WS, opts) {
   const h = makeCtx(WS, opts);
-  const mod = await import(new URL('../vibe-math-v2/vibe-math-v2.js', import.meta.url).href + '?t=' + Date.now());
+  const mod = await import(pathToFileURL(legacyFile('vibe-math-v2', 'vibe-math-v2.js')).href + '?t=' + Date.now());
   (mod.default || mod).apply(h.ctx);
   const call = async (n, a) => JSON.parse(await (h.toolRegs.find((s) => s.name === n)).execute(a || {}, { agent: h.root }));
   return { ...h, call };

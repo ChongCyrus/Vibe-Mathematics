@@ -29,6 +29,7 @@
     "docs/AUDIT-CHECKLIST.md",
     "docs/DEPRECATED-LEGACY-PRESETS.md",
     "docs/maintenance-policy.md",
+    "tests/_lib/legacy-presets.mjs",
     "tests/audit-formal-sensitivity.mjs",
     "tests/audit-persona-sensitivity.mjs",
     "tests/audit-persona-surface.test.mjs",

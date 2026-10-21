@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 /**
  * Regression test for the F-1 fix: v4's real /compact path must reach
  * `compaction.compactIfNeeded`.
@@ -132,7 +133,7 @@ function makeCtx(opts = {}) {
 // plain filesystem path or a file:// URL and never touches the value otherwise.
 function auditPluginUrl() {
   const raw = process.env.V4_PLUGIN
-  if (!raw || !String(raw).trim()) return new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url)
+  if (!raw || !String(raw).trim()) return pathToFileURL(legacyFile('vibe-math-v4', 'vibe-math-v4.js'))
   const v = String(raw).trim()
   if (/^file:/i.test(v)) return new URL(v)
   return pathToFileURL(fileURLToPath(new URL('file:///' + v.replace(/\\/g, '/'))))

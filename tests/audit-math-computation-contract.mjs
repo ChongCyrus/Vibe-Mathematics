@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 import { requireFile } from './_lib/require-file.mjs'
 // ============================================================================================
 // math_computation — CROSS-PRESET CONTRACT guard (integration owner).
@@ -19,7 +20,7 @@ import { requireFile } from './_lib/require-file.mjs'
 // ============================================================================================
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -27,7 +28,7 @@ const REPO = resolve(HERE, '..')
 // mutant, which must delete 'Formal/Jobs' from one preset without touching the repo).
 const ROOT = process.env.MC_CONTRACT_ROOT ? resolve(String(process.env.MC_CONTRACT_ROOT)) : REPO
 // The shared defaults are the reference for AUDIT-B #6 (no preset may hold a drifting literal).
-const M = await import(new URL('../vibe-math-v2/math-computation.js', import.meta.url).href)
+const M = await import(pathToFileURL(legacyFile('vibe-math-v2', 'math-computation.js')).href)
 const PRESETS = [
   { dir: 'vibe-math-v2', designator: 'vibe-math-v2', dualRegistration: true },
   { dir: 'vibe-math-v3', designator: 'vibe-math-v3', dualRegistration: true },
@@ -48,7 +49,7 @@ const read = (rel) => readFileSync(join(ROOT, rel), 'utf8')
 
 // round-8: the persona rule lines must be VERBATIM copies of the shared module constants, so a module
 // wording change can never silently leave one preset behind. Import the module once (ESM top level).
-const MATH_MODULE = await import(new URL('../vibe-math-v2/math-computation.js', import.meta.url).href)
+const MATH_MODULE = await import(pathToFileURL(legacyFile('vibe-math-v2', 'math-computation.js')).href)
 const ARCHIVE_RULE_ZH = MATH_MODULE.MATH_ARCHIVE_WORKFLOW_LINE
 const ARCHIVE_RULE_EN = MATH_MODULE.MATH_ARCHIVE_WORKFLOW_LINE_EN
 

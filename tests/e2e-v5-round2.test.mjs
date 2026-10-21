@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 // ============================================================
 // V5 ROUND-2 E2E — the behaviour paths the first suite never exercised:
 //   · the hardened JSON backend (the ONLY backend: `makeFileBackend`/`installBackend`)
@@ -40,7 +42,7 @@ process.env.V5_TEX_ROOTS_SANDBOX = EMPTY_ENGINE_ROOT   // task-29: the documente
 // e2e block of the sensitivity audit was vacuous.
 const PLUGIN = process.env.V5_PLUGIN
   ? new URL('file:///' + String(process.env.V5_PLUGIN).replace(/\\/g, '/'))
-  : new URL('../vibe-math-v5/vibe-math-v5.js', import.meta.url)
+  : pathToFileURL(legacyFile('vibe-math-v5', 'vibe-math-v5.js'))
 let passed = 0, failed = 0
 const failures = []
 const assert = (c, m) => { if (c) { passed++; console.log('  ok - ' + m) } else { failed++; failures.push(m); console.error('  FAIL - ' + m) } }
@@ -2453,7 +2455,7 @@ console.log('\n[46] memberDiagnosis: per-branch kind + exact next.tool')
 {
   const { readFileSync } = await import('node:fs')
   const { fileURLToPath } = await import('node:url')
-  const src = readFileSync(fileURLToPath(new URL('../vibe-math-v5/vibe-math-v5.js', import.meta.url)), 'utf8')
+  const src = readFileSync(fileURLToPath(pathToFileURL(legacyFile('vibe-math-v5', 'vibe-math-v5.js'))), 'utf8')
   const dStart = src.indexOf('function memberDiagnosis(')
   const dEnd = src.indexOf('\n    function ', dStart + 10)
   const body = src.slice(dStart, dEnd > 0 ? dEnd : dStart + 4000)   // scope: the diagnosis branches only
@@ -2797,7 +2799,7 @@ console.log('\n[53] v5 L1 leanPathContractOk: the queued note reaches report() d
   const src25 = readFileSync(PLUGIN, 'utf8')
   assert(src25.includes('pendingVoters: need.filter((id) => !votes[id])'),
     '★ [real1004-visibility] an incomplete electorate NAMES the missing voters (pendingVoters)')
-  const v4src = readFileSync(new URL('../vibe-math-v4/vibe-math-v4.js', import.meta.url), 'utf8')
+  const v4src = readFileSync(pathToFileURL(legacyFile('vibe-math-v4', 'vibe-math-v4.js')), 'utf8')
   assert(v4src.includes('；未投 true：'),
     '★ [real1004-visibility] v4 names the residents that did not vote solved=true (no silent "no unanimous vote")')
 }

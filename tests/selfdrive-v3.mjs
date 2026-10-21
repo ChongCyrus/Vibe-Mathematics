@@ -1,3 +1,4 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // ============================================================
 // Vibe-Math-V3 SELF-DRIVING FULL-PIPELINE RECORDER
 //   - 用真实宿主 mock 驱动真实调度器
@@ -10,8 +11,8 @@
 import { mkdtempSync, rmSync, existsSync, readdirSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute } from 'node:path'
-import { fileURLToPath } from 'node:url'
-const PLUGIN = new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url)
+import { fileURLToPath, pathToFileURL } from 'node:url'
+const PLUGIN = pathToFileURL(legacyFile('vibe-math-v3', 'vibe-math-v3.js'))
 const WS = mkdtempSync(join(tmpdir(), 'vibe-sd-'))
 const LOG = []   // interaction log
 const listeners = {}, toolRegs = [], spawns = [], followups = []

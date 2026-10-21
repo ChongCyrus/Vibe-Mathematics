@@ -1,3 +1,5 @@
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { pathToFileURL } from 'node:url'
 /**
  * ROUND 1 / CHECK A — is the v3 card round-trip IDEMPOTENT?
  *
@@ -37,7 +39,7 @@ const ctx = {
   },
 };
 const ROOT = { id: 'S', options: {}, session: { id: 'S', header: { cwd: WS } } };
-const mod = await import(new URL('../vibe-math-v3/vibe-math-v3.js', import.meta.url).href + '?t=' + Date.now());
+const mod = await import(pathToFileURL(legacyFile('vibe-math-v3', 'vibe-math-v3.js')).href + '?t=' + Date.now());
 (mod.default || mod).apply(ctx);
 const call = async (n, a) => JSON.parse(await (toolRegs.find((s) => s.name === n)).execute(a || {}, { agent: ROOT }));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

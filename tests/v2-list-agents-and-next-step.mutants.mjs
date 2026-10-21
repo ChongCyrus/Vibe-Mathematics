@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // NOTE (standalone runs): this suite's baseline runs `tests/v2-fix-probes.test.mjs` against a COPY of the
 // v2 preset, so the v2 probe discovers whatever TeX the HOST has installed. Run it standalone with
 // `V2_TEX_ROOTS_SANDBOX=<empty dir>` set, or the baseline reports the host-dependent 218/5 and the family
@@ -38,7 +39,7 @@ function runSuite(file, env) {
   }
 }
 const named = (r, needle) => r.failLines.some((l) => l.indexOf(needle) !== -1)
-const V2_SRC = join(REPO, 'vibe-math-v2', 'vibe-math-v2.js')
+const V2_SRC = join(legacyDir('vibe-math-v2'), 'vibe-math-v2.js')
 const ORIGIN = readFileSync(V2_SRC, 'utf8')
 const REGISTER = "registerTool('vibe_math_list_agents'"
 const NEXT_STEP = '下一步：把该对象形式化到 Lean 通过'
@@ -46,7 +47,7 @@ const COPY_AS = 'vibe_math_list_agentsX'
 
 // ---------- baselines: the shipped suites are green on the COPIED artifacts ----------
 const baseRoot = mkdtempSync(join(tmpdir(), 'v2gaps-base-'))
-cpSync(join(REPO, 'vibe-math-v2'), join(baseRoot, 'vibe-math-v2'), { recursive: true, filter: () => true })
+cpSync(legacyDir('vibe-math-v2'), join(baseRoot, 'vibe-math-v2'), { recursive: true, filter: () => true })
 {
   const a = runSuite('math-computation-v2.test.mjs', { MC_V2_PLUGIN: join(baseRoot, 'vibe-math-v2', 'vibe-math-v2.js') })
   ok(a.status === 0, 'baseline: math-computation-v2 is green on the COPIED v2 preset (MC_V2_PLUGIN)', a.sum.slice(0, 60))
@@ -65,7 +66,7 @@ rmSync(baseRoot, { recursive: true, force: true })
 // ---------- F3a: the tool must EXIST (rename the registration -> the documented call fails) ----------
 {
   const dir = mkdtempSync(join(tmpdir(), 'v2gaps-exist-'))
-  cpSync(join(REPO, 'vibe-math-v2'), join(dir, 'vibe-math-v2'), { recursive: true, filter: () => true })
+  cpSync(legacyDir('vibe-math-v2'), join(dir, 'vibe-math-v2'), { recursive: true, filter: () => true })
   const p = join(dir, 'vibe-math-v2', 'vibe-math-v2.js')
   const src = readFileSync(p, 'utf8')
   writeFileSync(p, src.replace(REGISTER, REGISTER.replace('list_agents', 'list_agentsX')))
@@ -92,7 +93,7 @@ rmSync(baseRoot, { recursive: true, force: true })
 // ---------- F4: a require-gate refusal must carry an executable NEXT STEP ----------
 {
   const dir = mkdtempSync(join(tmpdir(), 'v2gaps-next-'))
-  cpSync(join(REPO, 'vibe-math-v2'), join(dir, 'vibe-math-v2'), { recursive: true, filter: () => true })
+  cpSync(legacyDir('vibe-math-v2'), join(dir, 'vibe-math-v2'), { recursive: true, filter: () => true })
   const p = join(dir, 'vibe-math-v2', 'vibe-math-v2.js')
   const src = readFileSync(p, 'utf8')
   if (src.indexOf(NEXT_STEP) === -1) ok(false, 'F4: the single-site next-step anchor applies', 'ANCHOR MISS')
