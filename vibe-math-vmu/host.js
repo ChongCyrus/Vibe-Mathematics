@@ -1481,11 +1481,31 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     try {
       const resolved = kernel.resolveMemberToolDeny(member)
       const deny = new Set(resolved.deny || [])
-      if (!resolved.all && deny.size === 0) return out
       try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ applied: 1 + ((kernel.toolFacePull && kernel.toolFacePull().applied) || 0), lastMember: member }) } catch { /* diagnostics */ }
+      // ★ PHASE 9 / round 4: ONE COMPUTATION, TWO CONSUMERS. The effective names are computed HERE and used for BOTH
+      // the wire (`out.tools` / restrict) and the prompt block below — no second name table is ever built.
       if (resolved.all) out.tools = []
       else if (Array.isArray(resolved.allow)) out.tools = (Array.isArray(out.tools) ? out.tools : []).filter((t) => resolved.allow.includes(t && t.name))
       else out.tools = (Array.isArray(out.tools) ? out.tools : []).filter((t) => !deny.has(t && t.name))
+      const effectiveNames = (Array.isArray(out.tools) ? out.tools : []).map((t) => (t && typeof t === 'object' ? t.name : t)).filter((n) => typeof n === 'string')
+      const slot = resolved.slot || 'member'
+      const blockText = effectiveNames.length
+        ? '【本轮你实际能调用的工具｜' + slot + '】' + effectiveNames.length + ' 个：' + effectiveNames.join('、') +
+          '（这份列表与你这回合的 wire 完全一致；角色段里的静态清单只作职责说明，以本段为准）'
+        : '【本轮你实际能调用的工具｜' + slot + '】0 个（本回合没有可用工具；角色段里的静态清单不代表本回合可用性）'
+      // Prefer a PACK-PROVIDED placeholder section (named v5r-effective-tools / marked by the title). If none exists,
+      // APPEND one and record that fact — a missing placeholder must never silently leave the old static list in force.
+      const sections = Array.isArray(out.sections) ? out.sections : (out.sections = [])
+      let target = sections.find((sec) => sec && (sec.name === 'v5r-effective-tools' || (typeof sec.text === 'string' && sec.text.includes('【本轮你实际能调用的工具'))))
+      const placement = target ? 'replaced' : 'appended'
+      if (!target) {
+        target = { name: 'v5r-effective-tools', text: blockText }
+        try { sections.push(target) } catch { out.sections = [...sections, target] }
+      } else {
+        target.text = blockText
+        if (!target.name) target.name = 'v5r-effective-tools'
+      }
+      try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ effectiveBlock: placement, effectiveCount: effectiveNames.length }) } catch { /* diagnostics */ }
       const tools = context.agent && context.agent.ctx && context.agent.ctx.tools
       if (tools && typeof tools.restrict === 'function') {
         try { tools.restrict(resolved.all ? { allow: [] } : (Array.isArray(resolved.allow) ? { allow: resolved.allow.slice() } : { deny: [...deny] })) } catch { /* assembly already filtered; this only aligns future steps */ }

@@ -608,6 +608,16 @@ root agent 自己的 assembly（root 不属于任何成员槽）。
 ★ **顺序（避免再次静默）**：每次请求前按 ① per-turn override（`tools:'none'` ⇒ deny all）② pack
 `toolFaces[slot].deny` ③ 无声明 ⇒ 不动；**只 deny 不 allow**（allow 会推翻框架面自己的发布）。
 
+## 3.36 ★★★★★ 提示词工具段与 wire 的**同源渲染**（PHASE 9 轮 4）
+
+★★ **问题**：per-turn `tools:{allow}`／`'none'` 只收窄了 `out.tools`（wire），提示词里的角色静态清单不变 ⇒ 成员读到一份它调不到的工具表。`scripts/slv-inspect.mjs` 能抓到（`promptTools` vs `wireTools` 双向差集非空）。
+★★ **机制**：在**同一个 `system-prompt/assemble` hook** 里，算完 `resolved` 后**只算一次** `effectiveNames = out.tools.map(name)`，然后**同时**：
+1. 用 `effectiveNames` 过滤 `out.tools`（wire）；
+2. 渲染一个**短块** `【本轮你实际能调用的工具｜<slot>】N 个：a、b、c` 到装配段 `v5r-effective-tools`。
+★ **没有第二张名字表**：块里的名字就是同一变量；`tools:'none'` ⇒ 块写 `0 个`，不退化成空块或沿用上次。
+★★ **占位段**：pack 可提供名为 `v5r-effective-tools` 的段（或文本含 `【本轮你实际能调用的工具`）；有则**替换**，无则**追加**并在 `toolFacePull.effectiveBlock` 记录 `appended`（**不静默**）。角色静态清单可保留作职责说明，但以本块为准。
+★ **验收**：`node scripts/slv-inspect.mjs <会话>` 对含该块的回合，`promptTools` 与 `wireTools` 双向差集为空。
+
 ## 4. v1 的边界（**未做，明写** ✗）
 
 1. ★★★ **投递缝已接进内核（轮 339）＋ 宿主桥已提供（轮 344）＋ 入口已装配（轮 1／K3）** ✓✓✓：**vmu.turn 在 kernel/index.js 里建成** ✓，**投递缝是内核的 `deliverTurn` 选项** ✓（★ **轮 1 更正** ✗✓：原文只写 `host.deliverTurn` —— 而真实入口交给内核的 `host` 是 `host-math.js` 的适配器，**它没有 `deliverTurn`** ⇒ 于是**真机每一轮都在 `turn/index.js` 的缺缝分支具名拒** ✗；旧名仍兼容，但**不再是唯一来源** ✓）；★ **宿主不给缝 ⇒ 具名拒 VMU_ENGINE_UNAVAILABLE** ✓（**绝不假装成员答了** ✗，且**计数可见** ✓，`status().seams.turnDeliver`／`turnDeliverSource` 自曝 ✓）。★★★ **宿主桥 `deliverViaSubagents(subagents, extract?)`** ✓✓：**入口已按声明装配** —— `vibe-math-vmu.js` 把它接到 `ctx.get('subagents')`（**调用时解析**，因为 `apply()` 可能早于服务挂载 ✓），宿主**不需要自己写适配器** ✓；★ **它只送【装配后的文本】，绝不自拼** ✗；**标签带轮次 id（可追）** ✓；★ **不给缝 ⇒ 具名拒** ✓；★★ **宿主收下却不回回复 ⇒ 也是【具名拒**】✓（**绝不解析成"模型什么都没说"** ✗）。★ **实测（T35–T39）** ✓✓：**整轮走宿主缝跑通** —— 装配 ⇒ 桥投递 ⇒ 解析 ⇒ **任务台账真的增长** ✓✓；★ **到达缝的正是装配文本且带轮次标签** ✓（>1000 字 ✓）。★★ **轮 1 复测** ✓：以假宿主（`ctx.get('subagents')`）走**真实入口** `entry.apply(...)` ⇒ `seams.turnDeliver:true`，`kernel.turn.step({members:[{id}]})` **真的投递并分派**（`receipt.executed ≥ 1`，桥收到的 `label === 'vmu-turn-<id>'`）✓。

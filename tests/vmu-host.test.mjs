@@ -628,6 +628,33 @@ if (SELF_PROBE) {
   kernel.clearMemberToolOverride('member-a')
   const restored = await runHook(agentA, ['vibe_v5_say', 'vibe_vmu_status'])
   ok(restored.join(',') === 'vibe_vmu_status', '★ 反：override 清除后恢复为槽 deny 的补集', restored)
+  // ★ PHASE 9 / round 4: the SAME effective list is rendered into the prompt block; no second table.
+  const runOut = async (agent, tools) => {
+    const assembly = { tools: tools.map((name) => ({ name })) }
+    const out = await hook(assembly, { agent }, () => Promise.resolve(assembly))
+    const block = (out.sections || []).find((s) => s.name === 'v5r-effective-tools')
+    return { out, block }
+  }
+  const roleOut = await runOut(agentA, ['vibe_v5_say', 'vibe_vmu_status'])
+  ok(roleOut.block && /【本轮你实际能调用的工具｜member】1 个：vibe_vmu_status/.test(roleOut.block.text),
+    '★ 正：角色收窄回合的提示词块 == wire（同源，只有 vibe_vmu_status）', roleOut.block && roleOut.block.text)
+  kernel.setMemberToolOverride({ member: 'member-a', allow: ['vibe_vmu_status'] })
+  const allowOut = await runOut(agentA, ['vibe_v5_say', 'vibe_vmu_status'])
+  ok(allowOut.block && /1 个：vibe_vmu_status/.test(allowOut.block.text) && allowOut.out.tools.map((t) => t.name).join(',') === 'vibe_vmu_status',
+    '★ 正：tools:{allow} 回合的提示词块 == wire（都只有 allow 的名字）', allowOut.block && allowOut.block.text)
+  kernel.clearMemberToolOverride('member-a')
+  kernel.setMemberToolOverride({ member: 'member-a', all: true })
+  const noneOut = await runOut(agentA, ['vibe_v5_say', 'vibe_vmu_status'])
+  ok(noneOut.block && /【本轮你实际能调用的工具｜member】0 个/.test(noneOut.block.text) && noneOut.out.tools.length === 0,
+    '★ 反 2：tools:"none" 回合提示词块说 0 个（不退化成空块/沿用上次）', noneOut.block && noneOut.block.text)
+  kernel.clearMemberToolOverride('member-a')
+  ok(kernel.toolFacePull && kernel.toolFacePull().effectiveBlock === 'appended',
+    '★ 无 pack 占位段 ⇒ 记录 effectiveBlock=appended（不静默）', kernel.toolFacePull && kernel.toolFacePull().effectiveBlock)
+  const placeholder = { tools: [{ name: 'vibe_v5_say' }, { name: 'vibe_vmu_status' }], sections: [{ name: 'v5r-effective-tools', text: 'OLD' }] }
+  const replacedOut = await hook(placeholder, { agent: agentA }, () => Promise.resolve(placeholder))
+  const replacedBlocks = (replacedOut.sections || []).filter((s) => s.name === 'v5r-effective-tools')
+  ok(replacedBlocks.length === 1 && /vibe_vmu_status/.test(replacedBlocks[0].text) && !/OLD/.test(replacedBlocks[0].text),
+    '★ 正：pack 提供占位段 ⇒ 原段被替换（不是追加第二段）', replacedBlocks.map((s) => s.text))
   const zero = km.createKernel({ clock })
   zero.declareSlots([{ id: 'member', label: '成员', capacity: 0 }])
   await zero.members.hire({ id: 'member-a', slot: 'member', institution: 'sim' })
