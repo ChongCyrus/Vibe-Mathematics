@@ -723,3 +723,23 @@ Error [ERR_MODULE_NOT_FOUND]: Cannot find module 'C:\Users\admin\.dsh\profiles\n
 ★ **已排除（★ 全部有测量）**：★ 旧 dsh、★ `$BIN`、★ `$OUT` 乱码、★ `DSH_BIN`、★ provider、★ 变量值、★ `ws` 依赖、★ **payload 形状（★ 本轮实测与 schema 逐字段吻合）**。
 
 ★ **下一轮的方向**：★ **① 查 `session/new` 与 `session/prompt` 之间是否还需要一步**（★ 端点表里有 `session/new`、★ `session/created`、★ `session/end-seed`、★ **`session/end-seed` 很可疑**）；★ **② 或直接问用户：★ 你在当前 GUI 里发一条消息时，客户端调的是哪一串 RPC** —— ★ 这能把"静默不启动"一步定位。
+### §6.55 ★★★★★ 用户两问的答案 —— ★ **① 一直用旧 dsh（但那是设计）★ ② 我确实用了旧 vmu 包**
+
+**① 用户问"是不是一直用旧版本 dsh"** —— ★ **是的**。★ 所有 `slv*.ps1` 的 `$BIN` 都指向 scoop 的 `@deepseek-ai/dsh`（★ `0.2.0-rc.2`），★ **而那是 SLV harness 的设计**。★ 我把它当作缺陷删掉，★ **反而破坏了能跑的环境**（★ 现已恢复）。
+
+**② 用户问"用的 vmu 是不是最新的"** —— ★★ **不是！** ★ 时间线：
+| ★ 事件 | ★ 时间 |
+|---|---|
+| ★ 我用过的 tarball | ★ **`dsh-vibe-math-r41.tgz` @ 18:12** |
+| ★ 我今天的 **代码** commit | ★ **18:12 之后**（★ #29 第 2 步、#31、schema 参数……） |
+| ★ 我今天的 **文档** commit | ★ **20:00–20:40** |
+★★★ **⇒ 所有真机跑（★ 包括那次 265 秒 / 5.6M token）都跑在【18:12 的旧包】上** ⇒ ★ **17 条修复里的后半批【从未在真机上被跑过】**。
+
+**③ 而本轮又发现一个更基础的事实**：★ **所有 `slv*.ps1` 的 `$DRIVE`/`$OUT` 都是【双重编码的乱码】** —— ★ 两种形态：★ `vibemath寮€鍙慭` 与 ★ `vibemath瀵㆓偓閸欐叚` ⇒ ★ **`node $DRIVE` 必然 `Cannot find module`**。
+★★★★ **⇒ 这些脚本按原样【都不可能跑通】**。★ 而 **我改过的 `slv-r41`…`slv-r56` 有正确路径**（★ 我读过它们的 `$DRIVE` 确认是 `vibemath开发`）⇒ ★ **只有它们能过这一步**。
+
+**★★ 本轮已做的两件实事**：
+1. ★ **旧 dsh 已恢复**（★ `dsh --version` ⇒ `0.2.0-rc.2`）★ 且 ★ **scoop 顶层 `node_modules\ws` 已补回**（★ drive 的依赖）。
+2. ★★ **从当前 HEAD `08077ca1` 重新打包** —— ★ `D:\_tmp\slv-phase5\dsh-vibe-math-HEAD.tgz`（★ 20:48，9,641,347 字节）⇒ ★ **这个包才含全部 17 条修复**。
+
+**★★★ 下一轮的唯一正确组合（★ 从未试过）**：★ **`slv-r56-run.ps1`（★ 正确路径 ＋ `$BIN` 已修 ＋ `$OUT` 已修 ＋ Start-Process 完整日志）＋ 远端旧 dsh（★ 已恢复）＋ `dsh-vibe-math-HEAD.tgz`（★ 含全部修复）＋ `-Provider dsh-opencode-go`** ⇒ ★ **这一组合把所有已知坏点都排除了。**
