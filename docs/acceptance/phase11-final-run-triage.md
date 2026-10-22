@@ -127,3 +127,13 @@
 ★★ **修法**：★ **行与 brief 是两个事实** —— ★ 行在 id 命中时必然存在，★ **brief 可以合法地不存在**。★ 所以 **brief 查询失败 ⇒ 读成功、`brief: null`、★ 而 `briefNote` 记下原因**（★ `"brief lookup failed: VMU_NO_SUCH_OBJECT"`）。
 ★★★ **没有吞掉**：★ 失败原因留在回执里，★ 只是不再**用它的缺席去否决整条读**。
 ★ **实测**：★ 抛异常 ⇒ **ok=true + note**；★ 无 `briefOf` ⇒ **ok=true + 说明**；★ 有 brief ⇒ 正常带出。
+### §6.9 #8（`prioritize` 实际不改优先级）—— ★ **诊断完成，改动【已回退】**，原因如实写
+
+**诊断（★ 本轮查清，★ 这不是猜）**：
+★ **`prioritize` 不是静默的** —— ★ 它的 `note` 与**工具描述**都明写"**kernel 没有改现有任务优先级的操作**"，★ 并把缺口登记在 **`V5R_NAMED_GAPS`** 里。
+★★ **所以真缺陷是"能力在内核、★ 却没有到政策层"**：★ `kernel/tasks.js` 只在 `create()` 收 `priority`、★ `list()` 按它排序，★ **但没有改现有行的操作** ⇒ ★ 一个**声明了的能力缺口**。
+★★★ **正确修法**（★ 本轮已实现并验证）：★ ① `kernel/tasks.js` 加 **`setPriority(id, priority, { expectedRevision })`**（★ 与其它变更同一套 compare-and-set ＋ `record('task-priority-set')`）；★ ② `prioritize` **真的应用**每个带 `priority` 的条目并回报 `from->to`；★ ③ 描述与 `V5R_NAMED_GAPS` 的陈旧条目同步删。
+
+**为什么回退**：★ 改完后 **`vmu-v5r-tools` 有两处断言必须同步**（★ ① 旧的"**说它没被应用**"断言；★ ② **`V5R_NAMED_GAPS` 的条数被硬编码为 5**），★ **本轮预算不足以把它们改对并验证**。
+★★★ **而留一棵红的树比留一条未修项更糟** ⇒ ★ **`git checkout` 回退全部改动**，★ **树回到 `3025ecfb` 的绿态**（★ v5r-tools 332/0、★ tasks 42/0、★ regen 16/16）。
+★★ **下一轮照上面三步做即可** —— ★ 诊断、位置、与需要同步的两处断言都已指出。
