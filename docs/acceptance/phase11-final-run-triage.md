@@ -626,3 +626,19 @@ $srv = Start-Process node -ArgumentList @($BIN,'--profile',$CloneName,'--port',"
 - ★ 若**也零事件** ⇒ ★ **问题在当前 dsh 的 preset 装载**（★ 与 provider 无关）⇒ ★ 查 `agentAvailable:true` 之后为何不起 turn
 
 ★ **本轮零仓内代码改动**；★ `dirty = 0`。★ `slvr52-ws`（★ server 日志）与 `slvr51-ws` 保留供复核。
+### §6.50 A/B 结果 ＋ 卡点收缩到【ps1 里那一行 node 调用】
+
+**A/B 结果（★ 关键）**：★ **`deepseek-official` 与 `opencode-go` 在当前 dsh 上【表现完全一样】** —— ★ 都是装配全绿、★ **然后同一处 `esm/resolve:272` 失败** ⇒ ★ **⇒ 这不是 provider 问题。**
+★★ **而同时**：★ **手工用【同一组旗标】跑 `node dsh-drive.mjs …` 是成功的**（★ `session/create`、★ `prompt accepted`、★ poll 全出）⇒ ★ **drive 本身没问题**。
+
+★★★ **⇒ 失败只出现在 `slv-r52-run.ps1:128` 那一行**：
+```powershell
+node $DRIVE --port $Port --token $tok --cwd $WS --preset $Preset --task-file $TaskFile `
+  --follow-stream --follow-members --jsonl $jsonl --timeout $TimeoutSec --max-tokens $MaxTokens *> $log
+```
+★ 已核实：★ `$DRIVE` = **正路径**（★ `D:\wd\vibemath开发\_oneoff\vm-drive\dsh-drive.mjs`，★ 存在）、★ 脚本**语法 0 错误**。
+
+**★ 下一轮唯一动作（★ 一行就够）**：★ **在这行前面 `Write-Host` 出【完整的命令字符串与每个变量】再跑** —— ★ 因为手工跑能成、★ 脚本跑不成，★ **差异必在那几个变量的实际值里**（★ 最可疑的是 `$jsonl`：★ 它在**乱码的 `$OUT`** 目录下，★ 即 `D:\wd\vibemath寮€鍙慭_oneoff\vm-slv`）。
+★★★ **另一条要顺手验的**：★ **把 `$OUT` 的乱码路径改正确**（★ 应为 `D:\wd\vibemath开发\_oneoff\vm-slv`）—— ★ 这**同时解释了为什么 `*.run.log` 一直是 0 字节**（★ 写入畸形目录）。
+
+★ **本轮零仓内代码改动**；★ `dirty = 0`。
