@@ -1272,3 +1272,27 @@ const seam = async ({ turn, text }) => {
 ② **渲染时变量**：把这整句话提成 `{{ leaderSentence }}` 一类变量，由渲染层在 `leaderId` 为空时产出无领头人句子；
 ③ **最小且诚实**：在渲染层把已解析的 `leaderId` 传进 `charterSections`，让空串走 leaderless 分支（**必须先有渲染层这个消费者**）。
 ★ **不得先加参数再说「以后接」** —— 那就是 §1.4.4 的静默不生效，**这一轮已经证明那条路连 getter 都过不去**。
+﻿
+### §6.83 E 的修法定了：**给两个变体不同的 section 名**，走既有策略范式
+
+**为什么不是别的路（都有硬阻塞）**：
+| ★ 候选 | ★ 阻塞 |
+|---|---|
+| ★ 加 `{{ leaderSentence }}` 变量 | ★ `03-interface-contract.md:269` —— **变量是白名单制、未登记即拒** ⇒ **要动内核** |
+| ★ getter 传参 | ★ `v5r-core.js:340` 是无参 getter、`pack.js` 的策略契约只能按名启停 |
+| ★ 策略按名切 | ★ **两变体同名**（同一个 `b.name`）⇒ 切不了 |
+| ★ 改句子让它"优雅降级" | ★ 治标：仍然在无领头人时点名院士，**违反 charter 规则 1**（`v5r-charter.js:21`）
+
+**★★★ 正解（符合仓内既有范式）**：★ `v5r-blocks-a.js:404-406` 已经示范了正确形状 ——
+> ★ *"BOTH fixture variants are DECLARED here; `decideSections` enables exactly one per assembly"*
+
+⇒ ★ **把每个 `leader-conditional` 块拆成【两个独立声明】、用不同 section 名**（例如 `…-with-leader` / `…-leaderless`），★ **由 `decideSections` 按「是否有在册领头人」启停一个**。
+★ **这样**：★ ① 不需要新变量（不动内核白名单）；② 不需要 getter 传参；③ **决策落在策略层，正是 pack 该做的事**；④ **`CHARTER_LEADER_VARIANTS`/`OMISSIONS`/`MISSING_TEXT` 这套机制第一次真正有消费者**。
+
+**★ 工作量（估计 1–2 轮）**：
+1. ★ `v5r-blocks-a.js`/`v5r-blocks-b.js`：★ 5 个 `leader-conditional` 块各拆成两段（`-with-leader` / `-leaderless`），★ 名字进 `CHARTER_BLOCKS`；
+2. ★ `v5r-charter.js`：★ `CHARTER_SECTIONS` 改为**两段都发**；★ `charterSections()` 保留但不再是唯一出路；
+3. ★ `prompt-switches.js`：★ 新增 `decideSections` 决策对 —— ★ `enabled` 由 **`turn.leaderOnStaff` 或 `settings['vmu.turn.leaderId']` 是否命中在册名册** 推出；
+4. ★ **断言**：★ 无领头人时 out 里**不含** `本所的领头人是` 那句、★ 且**不含** `{{ setting:vmu.turn.leaderId }}` 的空槽；★ 有领头人时**恰有一段**在。
+5. ★ `docs/26` 与 `docs/04` 相应更新。
+**★★ 在完成之前，E 维持"已定位、未修"** —— ★ 不半做（§1.4.4）。
