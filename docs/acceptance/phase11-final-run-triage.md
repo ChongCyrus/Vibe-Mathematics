@@ -685,3 +685,20 @@ Error [ERR_MODULE_NOT_FOUND]: Cannot find module 'C:\Users\admin\.dsh\profiles\n
 
 **已排除的（★ 全部有测量）**：★ 旧 dsh（已删）、★ `$BIN` 旧路径（已修）、★ `$OUT` 乱码（已修）、★ `DSH_BIN`（无关）、★ provider 选择（无关）、★ 变量值（全对、已回显）、★ `ws` 依赖（已补）。
 ★★ **剩下的唯一问题**：★ **当前 dsh 上 `session/prompt` 被接受后 agent 循环不启动。** ★ 下一步应查 **`0.2.1-rc.2` 的 `deliveryPath`/`caller` 模式** 或 ★ **该 preset 在当前版本下的 `agentAvailable:true` 之后的实际装载**。
+### §6.53 ★★★★★ 真机链路的**真正根因**：★ `dsh 0.2.1-rc.2` 的 `session/prompt` wire 契约变了
+
+**证据（★ `Start-Process` 完整 stderr 拿到）**：
+★ 把 drive 的 `mode: 'queue'` 试改成 `'send'` ⇒ ★ **被边界校验拒绝**：
+```json
+{"code":"gateway/input-invalid",
+ "message":"typert gateway: session/prompt: wire field \"request\" failed boundary validation",
+ "details":{"endpoint":"session/prompt","field":"request"}}
+```
+★★★ **⇒ `'send'` 不是合法 mode；★ 而 `'queue'` 是【合法但静默无效】**（★ 返回 `accepted:true`、★ 会话零事件）。
+
+★★★★ **⇒ `0.2.1-rc.2` 的 `SessionPromptRequest` 形状与 drive 里那份（★ 来自旧版）不一致** —— ★ **`{requestId, sessionId, mode:'queue'|'steer', content:[{type:'text',text}]}` 这套在旧版成立、★ 在新版只是"能过校验但不触发"。**
+
+**已全部排除的（★ 每项都有测量）**：★ 旧 dsh（已删）、★ `$BIN` 旧路径（已修）、★ `$OUT` 乱码（已修）、★ `DSH_BIN`（无关）、★ provider（两者相同）、★ 变量值（全对）、★ `ws` 依赖（已补）。
+
+**★★ 下一轮唯一要做的**：★ **从【当前 app】里取出 `session/prompt` 的 typert schema**（★ 在 `app.asar` 的 `@deepseek-ai/dsh-*` 里搜 `session/prompt` 的 `SessionPromptRequest` 定义）★ **按新契约改 drive 的 payload** —— ★ **这是最后一个未知量，★ 而且它现在被精确定位到【一个 JSON 字段】。**
+★ **注意**：★ 这**完全不是 vmu 的缺陷** —— ★ **是 SLV 驱动器与新运行时的契约差异**。
